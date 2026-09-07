@@ -10,7 +10,7 @@ func (dt *DataTable) GetColIndexByName(name string) string {
 		result, ok = dt.getColIndexByName_notAtomic(name)
 	})
 	if !ok {
-		dt.warn("GetColIndexByName", "Column name not found: %s, returning empty string", name)
+		dt.fail("GetColIndexByName", "Column name not found: %s, returning empty string", name)
 	}
 	return result
 }
@@ -27,7 +27,7 @@ func (dt *DataTable) GetColIndexByNumber(number int) string {
 		}
 	})
 	if result == "" {
-		dt.warn("GetColIndexByNumber", "Column number not found: %d, returning empty string", number)
+		dt.fail("GetColIndexByNumber", "Column number not found: %d, returning empty string", number)
 	}
 	return result
 }

@@ -2646,14 +2646,20 @@ dl.ReplaceAll(2, 99)
 Insyra never ends your program on a failure: the error is recorded on the instance and the call returns something usable. For fluent/chained operations, check `Err()` (or `PopErr()`) once at the end of the chain.
 
 `Err()` is **sticky**: it holds the *first* failure until you clear it, so a
-long chain reports the root cause rather than whatever broke downstream. A
-lookup that simply finds nothing (a missing name, a value that is not there,
-a statistic over an empty list) is a normal result and does **not** set it; an
-out-of-range index or an invalid argument does.
+long chain reports the root cause rather than whatever broke downstream.
 
-Nothing in a chain ever returns `nil`, so a failed step cannot turn the next
-one into a nil dereference — the result is an empty, usable value carrying the
-same error.
+Asking whether a value is present and getting "no" is an answer, not a
+failure: `FindFirst`, `FindLast`, `Count` and statistics over an empty list
+leave `Err()` alone. Addressing a column, row or index that is not there is
+different — the caller asserted it existed and the only other signal is a bare
+`nil` — so that is recorded, as is any invalid argument.
+
+A **transform** that computes a new list (`Normalize`, `MovingAverage`,
+`Diff`, `Rank`, …) never returns `nil`: on failure you get an empty, usable
+list carrying the error, so the next step in the chain cannot nil-dereference.
+A **lookup** (`GetColByName`, `GetRow`, …) still returns `nil` when the target
+is not there — that is its "not found" answer — so check it before chaining
+off the result.
 
 
 ### Instance-Level Error Checking

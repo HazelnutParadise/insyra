@@ -85,11 +85,11 @@ func TestCloneStartsWithoutError(t *testing.T) {
 	}
 }
 
-// D-5: searching for a name or a value and finding nothing is a normal
-// result, not an error. Otherwise a sticky Err() would be permanently set by
-// ordinary lookups. An out-of-range *index*, by contrast, is a caller mistake
-// and stays an error.
-func TestLookupsDoNotRecordErrors(t *testing.T) {
+// D-5: asking whether a value is present and getting "no" is an answer, not a
+// failure, so it must not fill in the sticky Err(). Addressing a column, row
+// or index that does not exist is a different thing: the caller asserted it
+// was there, the only other signal is a nil, and that stays an error.
+func TestValueSearchesDoNotRecordErrors(t *testing.T) {
 	restoreConfig(t)
 	Config.SetLogLevel(LogLevelFatal)
 	Config.SetPanicOnError(false)
@@ -101,10 +101,11 @@ func TestLookupsDoNotRecordErrors(t *testing.T) {
 		t.Fatalf("a lookup that found nothing set Err(): %v", err)
 	}
 
-	indexed := NewDataList(1, 2, 3)
-	indexed.Get(99)
-	if indexed.Err() == nil {
-		t.Fatal("an out-of-range index should be recorded as an error")
+	if empty := NewDataList().Pop(); empty != nil {
+		t.Fatalf("Pop on an empty list should return nil, got %v", empty)
+	}
+	if err := dl.Err(); err != nil {
+		t.Fatalf("Pop on an empty list set Err(): %v", err)
 	}
 
 	empty := NewDataList()
@@ -117,21 +118,48 @@ func TestLookupsDoNotRecordErrors(t *testing.T) {
 	}
 
 	dt := NewDataTable(NewDataList(1, 2).SetName("a"))
-	dt.GetColByName("nope")
-	dt.GetRowByName("nope")
-	dt.GetCol("ZZ")
-	dt.GetColIndexByName("nope")
+	if idx, ok := dt.GetRowIndexByName("nope"); ok || idx != -1 {
+		t.Fatalf("GetRowIndexByName = %d, %v; want -1, false", idx, ok)
+	}
 	if err := dt.Err(); err != nil {
-		t.Fatalf("a DataTable lookup that found nothing set Err(): %v", err)
+		t.Fatalf("a comma-ok lookup set Err(): %v", err)
+	}
+}
+
+// The other half of the same rule: addressing something that is not there is
+// a caller mistake. These all hand back a bare nil or -1, so without Err()
+// the caller would have no signal at all.
+func TestStructuralMissesRecordErrors(t *testing.T) {
+	restoreConfig(t)
+	Config.SetLogLevel(LogLevelFatal)
+	Config.SetPanicOnError(false)
+
+	cases := map[string]func(){}
+	cases["Get out of range"] = func() { NewDataList(1, 2, 3).Get(99) }
+	cases["GetElementByNumberIndex out of range"] = func() {
+		NewDataTable(NewDataList(1, 2)).GetElementByNumberIndex(0, 99)
+	}
+	cases["GetColByName missing"] = func() { NewDataTable(NewDataList(1, 2).SetName("a")).GetColByName("nope") }
+	cases["GetCol missing"] = func() { NewDataTable(NewDataList(1, 2).SetName("a")).GetCol("ZZ") }
+	cases["GetRowByName missing"] = func() { NewDataTable(NewDataList(1, 2)).GetRowByName("nope") }
+	cases["GetColByNumber out of range"] = func() { NewDataTable(NewDataList(1, 2)).GetColByNumber(9) }
+	cases["GetRow out of range"] = func() { NewDataTable(NewDataList(1, 2)).GetRow(99) }
+	cases["GetColIndexByName missing"] = func() { NewDataTable(NewDataList(1, 2)).GetColIndexByName("nope") }
+	cases["GetColNumberByName missing"] = func() { NewDataTable(NewDataList(1, 2)).GetColNumberByName("nope") }
+
+	for name, call := range cases {
+		t.Run(name, func(t *testing.T) {
+			ClearErrors()
+			call()
+			errs := GetAllErrors()
+			if len(errs) == 0 || errs[len(errs)-1].Level != LogLevelError {
+				t.Fatalf("%s did not record an error: %v", name, errs)
+			}
+		})
 	}
 
-	indexedTable := NewDataTable(NewDataList(1, 2).SetName("a"))
-	indexedTable.GetElementByNumberIndex(0, 99)
-	if indexedTable.Err() == nil {
-		t.Fatal("an out-of-range index on a DataTable should be recorded as an error")
-	}
-
-	// A genuinely invalid call is still an error.
+	// An invalid mutation is an error too, and the message names the target.
+	dt := NewDataTable(NewDataList(1, 2).SetName("a"))
 	dt.SetColToRowNames("ZZ")
 	if err := dt.Err(); err == nil {
 		t.Fatal("an invalid mutation recorded nothing")

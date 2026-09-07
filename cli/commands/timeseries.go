@@ -215,8 +215,8 @@ func runDiffNCommand(ctx *ExecContext, args []string) error {
 		return fmt.Errorf("diffn: invalid periods %q: %w", coreArgs[1], err)
 	}
 	result := dl.Clone().Diff(periods)
-	if result == nil {
-		return fmt.Errorf("diffn: periods must be > 0")
+	if err := result.PopErr(); err != nil {
+		return fmt.Errorf("diffn: %v", err)
 	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
@@ -237,8 +237,8 @@ func runPctChangeCommand(ctx *ExecContext, args []string) error {
 		return fmt.Errorf("pctchange: invalid periods %q: %w", coreArgs[1], err)
 	}
 	result := dl.Clone().PctChange(periods)
-	if result == nil {
-		return fmt.Errorf("pctchange: periods must be > 0")
+	if err := result.PopErr(); err != nil {
+		return fmt.Errorf("pctchange: %v", err)
 	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)

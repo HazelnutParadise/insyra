@@ -57,14 +57,14 @@ func (dl *DataList) Shift(periods int, fill ...any) *DataList {
 // out[i] = in[i] - in[i-periods] (numeric subtraction). The first periods
 // positions are nil. Cells where either operand is non-numeric or nil are
 // emitted as nil. periods must be > 0; non-positive periods produce a warning
-// and return nil.
+// and return an empty list carrying the error.
 //
 // Unlike the legacy Difference (which returns length n-1), Diff preserves the
 // input length so the result lines up with neighbouring columns.
 func (dl *DataList) Diff(periods int) *DataList {
 	if periods <= 0 {
 		dl.fail("Diff", "periods must be > 0, got %d", periods)
-		return nil
+		return dl.failedResult()
 	}
 	var result *DataList
 	dl.AtomicDo(func(dl *DataList) {
@@ -96,7 +96,7 @@ func (dl *DataList) Diff(periods int) *DataList {
 func (dl *DataList) PctChange(periods int) *DataList {
 	if periods <= 0 {
 		dl.fail("PctChange", "periods must be > 0, got %d", periods)
-		return nil
+		return dl.failedResult()
 	}
 	var result *DataList
 	dl.AtomicDo(func(dl *DataList) {

@@ -117,12 +117,18 @@ func TestDataList_Diff_NilInside(t *testing.T) {
 }
 
 func TestDataList_Diff_BadPeriods(t *testing.T) {
-	dl := NewDataList(1.0, 2.0, 3.0)
-	if got := dl.Diff(0); got != nil {
-		t.Errorf("expected nil for periods=0, got %v", got)
-	}
-	if got := dl.Diff(-1); got != nil {
-		t.Errorf("expected nil for periods=-1, got %v", got)
+	for _, periods := range []int{0, -1} {
+		dl := NewDataList(1.0, 2.0, 3.0)
+		got := dl.Diff(periods)
+		if got == nil {
+			t.Fatalf("Diff(%d) returned nil; a transform must return a usable list", periods)
+		}
+		if got.Len() != 0 {
+			t.Errorf("Diff(%d) = %v, want an empty list", periods, got.Data())
+		}
+		if dl.Err() == nil {
+			t.Errorf("Diff(%d) did not record an error", periods)
+		}
 	}
 }
 

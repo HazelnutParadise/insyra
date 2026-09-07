@@ -32,7 +32,7 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable {
 			}
 			var column *DataList
 			if config.ColumnIndex != "" {
-				column = t.GetCol(config.ColumnIndex)
+				column = t.colSilently(config.ColumnIndex)
 			} else if config.ColumnName != "" {
 				column = t.GetColByName(config.ColumnName)
 			} else if config.ColumnNumber >= 0 {

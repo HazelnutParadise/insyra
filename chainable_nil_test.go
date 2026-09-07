@@ -2,8 +2,11 @@ package insyra
 
 import "testing"
 
-// D-3: a chainable method never returns nil, so a failed step cannot turn the
-// next one into a nil dereference.
+// D-3: a transform that computes a new list never returns nil, so a failed
+// step cannot turn the next one into a nil dereference. (Lookups such as
+// GetColByName still return nil when the column is absent — that is the
+// documented "not found" answer, and they record an error so the caller has a
+// signal; changing them to a non-nil value is tracked separately as D-6.)
 func TestChainableTransformsNeverReturnNil(t *testing.T) {
 	restoreConfig(t)
 	Config.SetLogLevel(LogLevelFatal)
@@ -21,6 +24,8 @@ func TestChainableTransformsNeverReturnNil(t *testing.T) {
 		{"MovingStdev", func(dl *DataList) *DataList { return dl.Clone().MovingStdev(99) }},
 		{"Difference", func(dl *DataList) *DataList { return dl.Clone().Append("x").Difference() }},
 		{"Rank", func(dl *DataList) *DataList { return dl.Clone().Append("x").Rank() }},
+		{"Diff", func(dl *DataList) *DataList { return dl.Clone().Diff(0) }},
+		{"PctChange", func(dl *DataList) *DataList { return dl.Clone().PctChange(-1) }},
 	}
 	base := NewDataList(1.0, 2.0, 3.0)
 	for _, c := range cases {

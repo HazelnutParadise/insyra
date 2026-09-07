@@ -91,21 +91,33 @@ func (p *dlTransformProxy) rank(name string, ascending bool) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dl.Clone().Rank(ascending), nil
+	result := dl.Clone().Rank(ascending)
+	if err := result.PopErr(); err != nil {
+		return nil, fmt.Errorf("rank: %v", err)
+	}
+	return result, nil
 }
 func (p *dlTransformProxy) normalize(name string) (any, error) {
 	dl, err := getDataListVar(p.ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	return dl.Clone().Normalize(), nil
+	result := dl.Clone().Normalize()
+	if err := result.PopErr(); err != nil {
+		return nil, fmt.Errorf("normalize: %v", err)
+	}
+	return result, nil
 }
 func (p *dlTransformProxy) standardize(name string) (any, error) {
 	dl, err := getDataListVar(p.ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	return dl.Clone().Standardize(), nil
+	result := dl.Clone().Standardize()
+	if err := result.PopErr(); err != nil {
+		return nil, fmt.Errorf("standardize: %v", err)
+	}
+	return result, nil
 }
 func (p *dlTransformProxy) reverse(name string) (any, error) {
 	dl, err := getDataListVar(p.ctx, name)

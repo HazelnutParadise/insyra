@@ -60,9 +60,11 @@ if err := result.PopErr(); err != nil {
 }
 ```
 
-A lookup that simply finds nothing — a missing column name, a value that is
-not in the list, a statistic over an empty list — is a normal result, not an
-error, and does not touch `Err()`. An out-of-range index does.
+Asking whether a value is present and getting "no" is an answer, not a
+failure, so `FindFirst`, `FindLast`, `Count` and statistics over an empty list
+leave `Err()` alone. Addressing a column, row or index that is not there is
+recorded, because the caller asserted it existed and the only other signal
+would be a bare `nil`.
 
 ### Failing fast (opt-in)
 

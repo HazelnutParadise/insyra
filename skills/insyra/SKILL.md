@@ -149,7 +149,7 @@ Use Insyra when you need any of these in Go:
 - DataTable: multiple named DataList columns as a table.
 - isr syntactic sugar: preferred entrypoint for new codebases.
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.
-- Error handling has exactly two shapes. Ordinary functions return `(T, error)`. Chainable types (DataList, DataTable, isr) never return nil and never end the program: they record a **sticky** `Err()` that keeps the FIRST failure, so check once at the end of a chain with `PopErr()` (reads and clears) or `Err()`. A name or value that is not found, or an empty input, is a normal result and does NOT set `Err()`; an out-of-range index or a bad argument does. `insyra.Config.SetPanicOnError(true)` opts into fail-fast: every recorded error then panics (recoverably) with an `*insyra.ErrorInfo`.
+- Error handling has exactly two shapes. Ordinary functions return `(T, error)`. Chainable types (DataList, DataTable, isr) never return nil and never end the program: they record a **sticky** `Err()` that keeps the FIRST failure, so check once at the end of a chain with `PopErr()` (reads and clears) or `Err()`. Searching for a value and not finding it (`FindFirst`, `Count`), or working over an empty list, is a normal result and does NOT set `Err()`. Addressing something that is not there (`Get(99)`, `GetColByName("nope")`) does, because the only other signal is a bare nil. Transforms never return nil (you get an empty list carrying the error); lookups still do, so nil-check a lookup before chaining off it. `insyra.Config.SetPanicOnError(true)` opts into fail-fast: every recorded error then panics (recoverably) with an `*insyra.ErrorInfo`.
 
 ### Fitted KMeans assignment
 

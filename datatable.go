@@ -318,13 +318,14 @@ func (dt *DataTable) GetCol(index string) *DataList {
 			return
 		}
 
-		// Try name-based lookup using cache-aware GetColByName
-		if res := dt.GetColByName(index); res != nil {
+		// Name-based fallback, silently: this method reports the miss once,
+		// below, so the inner lookup must not record an error of its own.
+		if res := dt.colByNameSilently(index); res != nil {
 			result = res
 			return
 		}
 
-		dt.warn("GetCol", "Column '%s' not found, returning nil", index)
+		dt.fail("GetCol", "Column '%s' not found, returning nil", index)
 		result = nil
 	})
 	return result
@@ -349,18 +350,67 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 }
 
 func (dt *DataTable) GetColByName(name string) *DataList {
+	result := dt.colByNameSilently(name)
+	if result == nil {
+		dt.fail("GetColByName", "Column '%s' not found, returning nil", name)
+	}
+	return result
+}
+
+// Err() is sticky, so the first recorded failure is the one the caller sees.
+// A public method that reports its own miss must therefore look things up
+// through these silent helpers, or the inner lookup would claim the error and
+// point at an internal step instead of the call the user made.
+
+// colByNameSilently returns a clone of the named column, or nil, without
+// recording anything.
+func (dt *DataTable) colByNameSilently(name string) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
-		// Linear scan for column by name
 		for _, column := range dt.columns {
 			if column.name == name {
 				result = column.Clone()
 				return
 			}
 		}
-		dt.warn("GetColByName", "Column '%s' not found, returning nil", name)
-		result = nil
+	})
+	return result
+}
 
+// colSilently resolves an Excel-style index or a column name, or nil, without
+// recording anything.
+func (dt *DataTable) colSilently(index string) *DataList {
+	var result *DataList
+	dt.AtomicDo(func(dt *DataTable) {
+		upper := strings.ToUpper(index)
+		if colPos, ok := utils.ParseColIndex(upper); ok && colPos >= 0 && colPos < len(dt.columns) {
+			result = dt.columns[colPos].Clone()
+			return
+		}
+		result = dt.colByNameSilently(upper)
+	})
+	return result
+}
+
+// rowSilently returns a clone of the row at index (negative counts from the
+// end), or nil, without recording anything.
+func (dt *DataTable) rowSilently(index int) *DataList {
+	var result *DataList
+	dt.AtomicDo(func(dt *DataTable) {
+		if index < 0 {
+			index = dt.getMaxColLength() + index
+		}
+		if index < 0 || index >= dt.getMaxColLength() {
+			return
+		}
+		dl := NewDataList()
+		dl.data = make([]any, len(dt.columns))
+		for i, column := range dt.columns {
+			if index < len(column.data) {
+				dl.data[i] = column.data[index]
+			}
+		}
+		result = dl
 	})
 	return result
 }
@@ -411,7 +461,7 @@ func (dt *DataTable) GetRowByName(name string) *DataList {
 			result = dl
 			return
 		}
-		dt.warn("GetRowByName", "Row name '%s' not found, returning nil", name)
+		dt.fail("GetRowByName", "Row name '%s' not found, returning nil", name)
 		result = nil
 	})
 	return result
@@ -522,7 +572,7 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable {
 func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
 	columnIndex = strings.ToUpper(columnIndex)
 	dt.AtomicDo(func(dt *DataTable) {
-		column := dt.GetCol(columnIndex)
+		column := dt.colSilently(columnIndex)
 		if column == nil {
 			dt.fail("SetColToRowNames", "Column '%s' not found, returning", columnIndex)
 			return
@@ -544,7 +594,7 @@ func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
 // SetRowToColNames sets the column names to the values of the specified row and drops the row.
 func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
-		row := dt.GetRow(rowIndex)
+		row := dt.rowSilently(rowIndex)
 		if row == nil {
 			dt.fail("SetRowToColNames", "Row index %d is out of range, returning", rowIndex)
 			return

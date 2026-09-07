@@ -101,7 +101,7 @@ func (dt *DataTable) GetColNumberByName(name string) int {
 		result, ok = dt.getColNumberByName_notAtomic(name)
 	})
 	if !ok {
-		dt.warn("GetColNumberByName", "Column name not found: %s, returning -1", name)
+		dt.fail("GetColNumberByName", "Column name not found: %s, returning -1", name)
 	}
 	return result
 }

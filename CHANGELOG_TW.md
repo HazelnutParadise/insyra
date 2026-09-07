@@ -26,8 +26,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：insyra 不再結束你的程式。`LogFatal` 改為記錄失敗後返回，不再呼叫 `os.Exit(1)`，所以存圖失敗、GLPK 安裝失敗或檔案讀不到都不會讓程式中止。想要原本的 fail-fast，開 `Config.SetPanicOnError(true)`：任何被記錄的錯誤都會帶著 `*ErrorInfo` panic（可 recover，不是 `os.Exit`）。`SetDontPanic`／`GetDontPanicStatus` 仍是新開關的反向別名，已標為 **Deprecated**，會在下下個版本移除。
 - 新增介於 Warning 與 Fatal 之間的 `LogLevelError` 與 `LogError`。所有寫進實例 `Err()` 的紀錄改用 Error 等級，Warning 回歸「做完了但值得注意」的原意。
 - **BREAKING**：`DataList` 與 `DataTable` 的 `Err()` 改為**黏性**：保留第一個失敗直到清除，串接結尾檢查一次就能看到根因而不是最後的症狀。新增 `PopErr()` 一次讀取並清除；`Clone()` 從無錯誤開始。`IDataList`／`IDataTable` 新增 `PopErr()` 與 `SetErr()`。
-- **BREAKING**：查無結果不再設定 `Err()`。`FindFirst`、`FindLast`、`GetColByName`、`GetRowByName`、`GetColIndexByName` 與空 list 的統計量改以 Warning 記錄，不動 `Err()`，黏性錯誤才不會被一般讀取填滿。越界的**索引**仍然算錯誤。
-- **BREAKING**：可串接的 `DataList` 方法不再回傳 `nil`。`Normalize`、`MovingAverage`、`WeightedMovingAverage`、`ExponentialSmoothing`、`DoubleExponentialSmoothing`、`MovingStdev`、`Difference`、`Rank` 失敗時回傳帶著錯誤的空 list（接收者也會記錄），`dl.MovingAverage(0).Sort()` 不再因 nil 而 panic。
+- **BREAKING**：搜尋某個值而沒找到不再設定 `Err()`。`FindFirst`、`FindLast`、`FindAll`、`Count` 與空 list 的統計量改以 Warning 記錄，不動 `Err()`，黏性錯誤才不會被一般提問填滿。指涉不存在的東西（越界索引、`GetColByName` 找不存在的欄）仍算錯誤，因為呼叫端除了一個裸 nil 之外沒有別的訊號。
+- **BREAKING**：`DataList` 的轉換方法不再回傳 `nil`。`Normalize`、`MovingAverage`、`WeightedMovingAverage`、`ExponentialSmoothing`、`DoubleExponentialSmoothing`、`MovingStdev`、`Difference`、`Diff`、`PctChange`、`Rank` 失敗時回傳帶著錯誤的空 list（接收者也會記錄），`dl.MovingAverage(0).Sort()` 不再因 nil 而 panic。查找類（如 `GetColByName`）找不到時仍回 `nil`；針對上列轉換寫的 `result == nil` 檢查會失效，請改成 `result.PopErr()`。
 - 全域錯誤緩衝區上限 1536 筆，滿了丟最舊的，不再無限成長。文件定位改為診斷用日誌而非錯誤處理 API；其中九個存取函式（`PopError`、`PopErrorByPackageName`、`PopErrorByFuncName`、`PopErrorAndCallback`、`PeekError`、`GetErrorsByLevel`、`GetErrorsByPackage`、`PopErrorInfo`、`HasErrorAboveLevel`）標為 **Deprecated**，改用 `GetAllErrors`、`PopAllErrors`、`HasError`、`GetErrorCount`、`ClearErrors`。
 
 ### CLI

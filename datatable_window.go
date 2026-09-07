@@ -48,8 +48,10 @@ func (dt *DataTable) DiffCol(col string, periods int) *DataList {
 		return NewDataList()
 	}
 	out := snap.Diff(periods)
-	if out == nil {
-		return NewDataList()
+	if err := out.Err(); err != nil {
+		// snap is a throwaway copy, so its error would be lost; report it on
+		// the table the caller actually holds.
+		dt.SetErr("DataTable", "DiffCol", "%s", err.Message)
 	}
 	return out
 }
@@ -61,8 +63,8 @@ func (dt *DataTable) PctChangeCol(col string, periods int) *DataList {
 		return NewDataList()
 	}
 	out := snap.PctChange(periods)
-	if out == nil {
-		return NewDataList()
+	if err := out.Err(); err != nil {
+		dt.SetErr("DataTable", "PctChangeCol", "%s", err.Message)
 	}
 	return out
 }
