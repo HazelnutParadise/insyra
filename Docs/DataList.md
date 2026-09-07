@@ -2013,6 +2013,8 @@ func (dl *DataList) HermiteInterpolation(x float64, derivatives []float64) float
 
 **Description:** Performs Hermite interpolation with derivatives for a given x value.
 
+The interpolant now satisfies its defining conditions: it passes through every value **and** matches every supplied derivative at the corresponding index. Earlier versions used the wrong basis and met neither.
+
 **Parameters:**
 
 - `x`: The x-value for interpolation
@@ -2066,6 +2068,8 @@ func (dl *DataList) ShowRangeTo(w io.Writer, startEnd ...any) // same output, wr
 
 **Description:** Displays DataList content within a specified range. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout.
 
+The end index is exclusive, and a negative end counts back from the end and stays exclusive — exactly like a Python slice, so `ShowRange(2, -1)` stops before the last item. Pass `nil` as the end to run all the way to the end.
+
 **Parameters:**
 
 - `startEnd`: Variable parameters for range specification
@@ -2086,6 +2090,7 @@ dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 dl.ShowRange(3)      // Show first 3 items
 dl.ShowRange(-3)     // Show last 3 items
 dl.ShowRange(2, 5)   // Show items from index 2 to 4
+dl.ShowRange(2, -1)  // Show items from index 2 up to but NOT including the last one
 dl.ShowRange(5, nil) // Show items from index 5 to end
 ```
 

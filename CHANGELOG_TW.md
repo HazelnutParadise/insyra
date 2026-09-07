@@ -29,6 +29,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：搜尋某個值而沒找到不再設定 `Err()`。`FindFirst`、`FindLast`、`FindAll`、`Count` 與空 list 的統計量改以 Warning 記錄，不動 `Err()`，黏性錯誤才不會被一般提問填滿。指涉不存在的東西（越界索引、`GetColByName` 找不存在的欄）仍算錯誤，因為呼叫端除了一個裸 nil 之外沒有別的訊號。
 - **BREAKING**：`DataList` 的轉換方法不再回傳 `nil`。`Normalize`、`MovingAverage`、`WeightedMovingAverage`、`ExponentialSmoothing`、`DoubleExponentialSmoothing`、`MovingStdev`、`Difference`、`Diff`、`PctChange`、`Rank` 失敗時回傳帶著錯誤的空 list（接收者也會記錄），`dl.MovingAverage(0).Sort()` 不再因 nil 而 panic。查找類（如 `GetColByName`）找不到時仍回 `nil`；針對上列轉換寫的 `result == nil` 檢查會失效，請改成 `result.PopErr()`。
 - 全域錯誤緩衝區上限 1536 筆，滿了丟最舊的，不再無限成長。文件定位改為診斷用日誌而非錯誤處理 API；其中九個存取函式（`PopError`、`PopErrorByPackageName`、`PopErrorByFuncName`、`PopErrorAndCallback`、`PeekError`、`GetErrorsByLevel`、`GetErrorsByPackage`、`PopErrorInfo`、`HasErrorAboveLevel`）標為 **Deprecated**，改用 `GetAllErrors`、`PopAllErrors`、`HasError`、`GetErrorCount`、`ClearErrors`。
+- 修正整數排序失去精度。過去所有整數都經 float64 比較，任何兩個大於 2^53 的 `int64` 都會被視為相等：`Sort` 保持原順序、`Rank` 給出並列。現在整數以精確方式比較（含混合有號／無號與超出 `int64` 的值），`Rank` 也改以原始儲存格排序與判定並列，不再用 float64 副本。`SortBy`、`Pivot`、`Describe` 的 min/max 一併修正。
+- 修正 `HermiteInterpolation` 用錯基底，完全不滿足它名稱所宣稱的導數條件。現在會通過每個值、符合每個給定導數，並精確重現低次多項式。
+- `TryParseTime` 接受常見的無時區版面：`2006-01-02 15:04:05`、`2006-01-02T15:04:05`、`2006-01-02 15:04` 及以 `/` 分隔的等價寫法，一律視為 UTC。CCL 的日期函式與 `datafetch` 過去會把這些字串當成純文字。
+- 修正 `ShowTypes` 超過 26 欄時印成 `A, AA, AB, B, …`，現在與 `Show` 同順序。`ShowRange` 的文件改為與實作一致：end 為排除，負數 end 由尾端往回數且仍為排除（同 Python slice），要顯示到最後請傳 `nil`。
+- `DataList`／`DataTable` 的 `Close()` 不再丟棄已在等鎖的操作。Close 停止的是加鎖，不是已排隊的工作。
 
 ### CLI
 
@@ -66,6 +71,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`Skewness` 與 `Kurtosis` 改為拒絕無法讀成有限數字的值，不再當成零，與 v0.3.1 起其他所有 `stats` 入口一致。它們是最後兩個還經由 `SliceToF64` 讀值的函式。錯誤訊息指出 `sample` 與從 1 起算的列號；全數值輸入的結果不變。
 - **BREAKING**：`SingleSampleTTest`、`TwoSampleTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`BartlettTest`、`LeveneTest` 與 `CalculateMoment` 改為拒絕無法讀成有限數字的格子，錯誤指出序列與從 1 起算的列號。過去 n 取 list 長度、而平均與標準差跳過那一格，`[1, 2, nil, 3]` 會得到 t = 4.00、p = 0.028 而不是 t = 3.46、p = 0.074，一個空白把不顯著變成顯著。全數值輸入的結果不變；檢定前請用 `ClearNils` 清掉空白。
 - 接受 `insyra.IDataList` 的函式對 `nil` 或非 `*insyra.DataList` 的實作不再 panic；值會被轉換，`nil` 以一般錯誤回報。
+- `KMeans` 的初始中心改為相異列，與 R 一致。資料含重複列時，單次啟動過去會抽到同一列兩次而回報 "empty cluster"（實測 50 個 seed 中有 44 個失敗）。現在抽到重複才從相異列重抽；本來就相異的抽樣完全不動，既有 seed 的結果逐位不變。
 
 ### `csvxl`
 

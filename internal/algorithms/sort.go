@@ -55,6 +55,13 @@ func CompareAny(a, b any) int {
 			cmp = strings.Compare(va, fmt.Sprint(b))
 		}
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		// Integers first, exactly: float64 has 53 bits of mantissa, so routing
+		// two int64 above 2^53 through it makes them compare equal and
+		// silently corrupts Sort, Rank, SortBy and Describe's min/max.
+		if c, ok := compareIntegers(a, b); ok {
+			cmp = c
+			break
+		}
 		fa := utils.ToFloat64(a)
 		if fb, ok := utils.ToFloat64Safe(b); ok {
 			// Order NaN deterministically (NaN sorts before every number, and all
@@ -236,5 +243,80 @@ func getOptimalGoroutines(n int) int {
 			goroutines = 16 // Minimum for very large datasets
 		}
 		return goroutines
+	}
+}
+
+// asInt64 reports whether v is a signed integer kind and its value.
+func asInt64(v any) (int64, bool) {
+	switch t := v.(type) {
+	case int:
+		return int64(t), true
+	case int8:
+		return int64(t), true
+	case int16:
+		return int64(t), true
+	case int32:
+		return int64(t), true
+	case int64:
+		return t, true
+	}
+	return 0, false
+}
+
+// asUint64 reports whether v is an unsigned integer kind and its value.
+func asUint64(v any) (uint64, bool) {
+	switch t := v.(type) {
+	case uint:
+		return uint64(t), true
+	case uint8:
+		return uint64(t), true
+	case uint16:
+		return uint64(t), true
+	case uint32:
+		return uint64(t), true
+	case uint64:
+		return t, true
+	}
+	return 0, false
+}
+
+// compareIntegers compares a and b exactly when both are integer kinds,
+// including the mixed signed/unsigned cases that do not fit in either type.
+// It reports false when either side is not an integer, leaving the caller to
+// fall back to float64 comparison.
+func compareIntegers(a, b any) (int, bool) {
+	ai, aSigned := asInt64(a)
+	au, aUnsigned := asUint64(a)
+	bi, bSigned := asInt64(b)
+	bu, bUnsigned := asUint64(b)
+	if (!aSigned && !aUnsigned) || (!bSigned && !bUnsigned) {
+		return 0, false
+	}
+	switch {
+	case aSigned && bSigned:
+		return cmpOrdered(ai, bi), true
+	case aUnsigned && bUnsigned:
+		return cmpOrdered(au, bu), true
+	case aSigned: // a signed, b unsigned
+		if ai < 0 {
+			return -1, true
+		}
+		return cmpOrdered(uint64(ai), bu), true
+	default: // a unsigned, b signed
+		if bi < 0 {
+			return 1, true
+		}
+		return cmpOrdered(au, uint64(bi)), true
+	}
+}
+
+func cmpOrdered[T int64 | uint64](x, y T) int {
+	switch {
+	case x < y:
+		return -1
+	case x > y:
+		return 1
+	default:
+		return 0
 	}
 }

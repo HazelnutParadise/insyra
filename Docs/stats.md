@@ -58,6 +58,7 @@ For clustering APIs, Insyra uses an R-oriented result shape and cross-language v
 - Python baselines are used as a verification companion, not as the source of truth
 - v1 clustering distance support is Euclidean-only
 - `KMeansOptions.Seed` is an Insyra reproducibility extension for deterministic validation
+- Initial centres are always distinct rows, as in R: if a random draw picks the same row twice (which happens easily when the data has repeated rows), it is redrawn from the distinct rows instead of failing with "empty cluster"
 - Clustering computations are implemented in pure Go; R and Python are used only for parity validation in tests
 
 ---

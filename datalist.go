@@ -1,7 +1,6 @@
 package insyra
 
 import (
-	"cmp"
 	"fmt"
 	"math"
 	"reflect"
@@ -971,6 +970,7 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 // Pass false to rank in descending order.
 func (dl *DataList) Rank(ascending ...bool) *DataList {
 	var data []float64
+	var cells []any
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
 		var badRow int
@@ -979,7 +979,11 @@ func (dl *DataList) Rank(ascending ...bool) *DataList {
 		if !ok {
 			dl.fail("Rank", "non-numeric value at row %d", badRow)
 			isFailed = true
+			return
 		}
+		// Keep the original cells: ranking on the float64 copies would tie any
+		// two integers above 2^53, which float64 cannot tell apart.
+		cells = append([]any(nil), dl.data...)
 	})
 	if isFailed {
 		return dl.failedResult()
@@ -1005,20 +1009,20 @@ func (dl *DataList) Rank(ascending ...bool) *DataList {
 		indexes = append(indexes, i)
 	}
 
-	// 根據數據排序，並追蹤索引
+	// Order on the original cells so exact integers stay distinct.
 	algorithms.ParallelSortStableFunc(indexes, func(i, j int) int {
 		if ascendingOrder {
-			return cmp.Compare(data[i], data[j])
+			return algorithms.CompareAny(cells[i], cells[j])
 		}
-		return cmp.Compare(data[j], data[i])
+		return algorithms.CompareAny(cells[j], cells[i])
 	})
 
 	// 分配秩次，處理重複值的情況
 	for i := 0; i < len(indexes); {
 		sumRank := 0.0
 		count := 0
-		val := data[indexes[i]]
-		for j := i; j < len(indexes) && data[indexes[j]] == val; j++ {
+		val := cells[indexes[i]]
+		for j := i; j < len(indexes) && algorithms.CompareAny(cells[indexes[j]], val) == 0; j++ {
 			sumRank += float64(j + 1)
 			count++
 		}

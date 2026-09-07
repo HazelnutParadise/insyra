@@ -306,13 +306,29 @@ func convertTimestampToString(ts int64, goDateFormat string) string {
 
 // TryParseTime attempts to parse common date/time string formats and returns
 // the parsed time and true on success. Exported so other packages can reuse it.
+//
+// Both "-" and "/" date separators are accepted, with or without a time part
+// and with or without a zone; a layout that carries no zone is read as UTC.
+// Strings that are not dates (plain numbers, words) never match, so callers
+// such as CCL can use it to probe a value.
 func TryParseTime(str string) (time.Time, bool) {
+	// Longest first, so "2006-01-02 15:04:05" is not truncated by a shorter
+	// layout. Layouts without a zone are read as UTC (time.Parse's rule).
 	formats := []string{
-		time.RFC3339,
 		time.RFC3339Nano,
-		"2006-01-02",
-		"2006-01-02T15:04:05Z07:00",
+		time.RFC3339,
 		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02T15:04:05.999999999",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		"2006/01/02 15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02 15:04",
+		"2006/01/02 15:04",
+		"2006-01-02",
+		"2006/01/02",
 	}
 	for _, f := range formats {
 		if t, err := time.Parse(f, str); err == nil {
