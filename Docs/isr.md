@@ -923,7 +923,8 @@ if err := t.PopErr(); err != nil {
 
 `Err()` is sticky — it keeps the **first** failure, so the message points at
 the root cause rather than at whatever broke downstream. `PopErr()` reads and
-clears it in one step; `ClearErr()` just clears.
+clears it in one step; `ClearErr()` just clears and returns the `DT`/`DL` so
+the chain continues. `SetErr(pkg, fn, msg, args...)` records one yourself.
 
 To stop at the first mistake instead (handy in a script), set
 `insyra.Config.SetPanicOnError(true)`; every recorded error then panics with

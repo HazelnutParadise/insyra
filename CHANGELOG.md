@@ -95,6 +95,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `CreateRadarChart` without indicators and `CreateHeatMap` in calendar mode with the wrong X type or no `CalendarOpts` record an error and return `nil` instead of ending the program or panicking.
 
 ### `isr`
+- `Err()`, `PopErr()`, `ClearErr()` and `SetErr()` are available on `DT` and `DL`; `ClearErr`/`SetErr` return the isr type, so they keep the block syntax instead of ending the chain at `*insyra.DataTable`.
 - `DT.From`, `Col`, `Row`, `Push`, `UseDL` and `UseDT` no longer end the program on a bad input. They return a usable object carrying the error, so the block syntax survives a failure: `t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`. `UseDL`/`UseDT` also stopped returning `nil`.
 
 ### `gplot`

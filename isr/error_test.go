@@ -110,3 +110,28 @@ func TestUseDLUseDTNeverReturnNil(t *testing.T) {
 		t.Fatal("UseDT did not record the nil input")
 	}
 }
+
+// The Err surface must keep the block syntax: ClearErr and SetErr are
+// inherited from the embedded type and would otherwise return
+// *insyra.DataTable / *insyra.DataList and end the chain.
+func TestErrSurfaceStaysChainable(t *testing.T) {
+	quietFatal(t)
+
+	tbl := isr.DT.From(isr.CSV{FilePath: "no_such_file_for_insyra_test.csv"}).
+		ClearErr().
+		Push(isr.Row{"a": 1})
+	if tbl == nil {
+		t.Fatal("chain returned nil")
+	}
+	if err := tbl.Err(); err != nil {
+		t.Fatalf("ClearErr did not clear the read failure: %v", err)
+	}
+	if rows, _ := tbl.Size(); rows != 1 {
+		t.Fatalf("Push after ClearErr did not run, rows=%d", rows)
+	}
+
+	list := isr.DL.From([]any{1, 2, 3}).SetErr("test", "TestErrSurface", "boom").ClearErr()
+	if list == nil || list.Err() != nil {
+		t.Fatalf("DL error surface broken: %v", list)
+	}
+}
