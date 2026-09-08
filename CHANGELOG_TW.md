@@ -8,6 +8,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
+## v0.3.2
+
 ### Core
 
 - `CSVReadOptions` 新增 opt-in 的 `AllowRaggedRows` 與 `TrimLeadingSpace`，`isr.CSV_inOpts` 也提供對應欄位。Ragged 模式會替短列補空字串，並把多出的 cell 保留在自動命名欄位；零值仍維持嚴格行為。（[issue #198](https://github.com/HazelnutParadise/insyra/issues/198)）

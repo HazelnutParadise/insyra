@@ -341,8 +341,11 @@ func TestTWStockConfigDefaultsAndUserAgent(t *testing.T) {
 	if _, err := stock.AllDailyQuotes(TWMarketTWSE); err != nil {
 		t.Fatalf("AllDailyQuotes error: %v", err)
 	}
-	if got := transport.lastUserAgent(); got != "insyra-datafetch/0.3.1" {
-		t.Errorf("User-Agent = %q", got)
+	// Derived from insyra.Version, not hard-coded: a literal here breaks on
+	// every release, which is exactly what happened cutting v0.3.2.
+	wantUA := "insyra-datafetch/" + insyra.Version
+	if got := transport.lastUserAgent(); got != wantUA {
+		t.Errorf("User-Agent = %q, want %q", got, wantUA)
 	}
 }
 

@@ -8,6 +8,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ## Unreleased
 
+## v0.3.2
+
 ### Core
 
 - Added opt-in `AllowRaggedRows` and `TrimLeadingSpace` to `CSVReadOptions` and matching `isr.CSV_inOpts` fields. Ragged reads pad short rows and retain extra cells in auto-named columns; the zero value remains strict. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
