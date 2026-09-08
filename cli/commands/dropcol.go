@@ -31,11 +31,24 @@ func runDropColCommand(ctx *ExecContext, args []string) error {
 			names = append(names, token)
 		}
 	}
+	for _, index := range indices {
+		if index < 0 || index >= table.NumCols() {
+			return fmt.Errorf("dropcol: column %d is out of range (the table has %d columns)", index, table.NumCols())
+		}
+	}
+	for _, name := range names {
+		if err := requireColumnName("dropcol", table, name); err != nil {
+			return err
+		}
+	}
 	if len(indices) > 0 {
 		table.DropColsByNumber(indices...)
 	}
 	if len(names) > 0 {
 		table.DropColsByName(names...)
+	}
+	if err := checkTableErr("dropcol", table); err != nil {
+		return err
 	}
 	_, _ = fmt.Fprintln(ctx.Output, "columns dropped")
 	return nil

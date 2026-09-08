@@ -2,8 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
 )
@@ -25,16 +23,26 @@ func runSortCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	selector := args[1]
-	desc := len(args) >= 3 && strings.EqualFold(args[2], "desc")
-
-	config := insyra.DataTableSortConfig{ColumnNumber: -1, Descending: desc}
-	if number, convErr := strconv.Atoi(selector); convErr == nil {
-		config.ColumnNumber = number
-	} else {
-		config.ColumnName = selector
+	desc := false
+	if len(args) >= 3 {
+		desc, err = parseSortDirection(args[2])
+		if err != nil {
+			return fmt.Errorf("sort: %v", err)
+		}
 	}
+	if len(args) > 3 {
+		return fmt.Errorf("sort: unexpected argument %q (usage: sort <var> <col> [asc|desc])", args[3])
+	}
+
+	name, number, err := resolveColumn("sort", table, args[1])
+	if err != nil {
+		return err
+	}
+	config := insyra.DataTableSortConfig{ColumnNumber: number, ColumnName: name, Descending: desc}
 	table.SortBy(config)
+	if err := checkTableErr("sort", table); err != nil {
+		return err
+	}
 	_, _ = fmt.Fprintln(ctx.Output, "sorted")
 	return nil
 }

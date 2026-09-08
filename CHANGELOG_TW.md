@@ -43,6 +43,12 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `--env`、`--no-color`、`--log-level` 放在 `newdl`、`addcol`、`addrow`、`show` 前面時會生效，不再被當成資料寫進 default 環境。
 - `run` 遇到腳本裡的 `env open` 不再開啟互動 REPL；腳本自己呼叫自己超過 16 層會停止。
 - `db connect` 寫進 `history.txt`、REPL 歷史與 `env export` 時密碼會被遮罩（URL、`user:pass@`、`password=` 三種形式）；history 檔以 0600 建立。
+- **BREAKING**：指令做不到被交代的事時，改為回傳錯誤並以非零狀態結束，不再印出成功訊息。`sort`、`dropcol`、`droprow`、`swap`、`setcolnames`、`sample` 會先檢查目標並指出缺少什麼；`ccl` 與 `addcolccl` 會回報無法編譯的運算式。原本被靜默忽略的腳本步驟現在會失敗。
+- **BREAKING**：拼錯的選項值改為拒絕，不再退回預設值。`sort … dsc`、`ttest … eqaul`、`ztest … bogus`、`clean … outliers abc` 過去分別會以升冪、合併變異數、雙尾、2.0 個標準差執行——那是在呼叫端沒有做過的假設下算出來的統計結果。
+- **BREAKING**：`plot`、`fetch`、`merge` 對不認識的引數改為回報而非丟棄；`plot` 的 Usage 也不再宣告它從來不接受的選項。
+- `config` 拒絕未知的 key（並列出可用的），並驗證 `log-level`、`no-color`、`accel-mode`，無效設定不會寫進設定檔。
+- `accel` 的 Usage 不再宣稱有不存在的 `run` 子命令；`--precision` 已寫進文件並註冊，`insyra accel plan --precision float32` 在 one-shot 模式可用。
+- `sample` 對小於等於 0、或不放回時超過來源長度的數量改為回錯，不再存下空結果；`setcolnames` 要求名稱數量與欄數相同，不再把其餘欄名清空或新增空欄。
 
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。

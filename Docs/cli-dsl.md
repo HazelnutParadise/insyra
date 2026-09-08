@@ -164,6 +164,15 @@ Available on the root command:
 - `--no-color`: disable colored output.
 - `--log-level <debug|info|warning|fatal>`: set runtime log level.
 
+A command that cannot do what it was asked returns an error and exits non-zero
+instead of printing its success line: sorting by a column that is not there,
+dropping a row past the end, swapping names that do not exist, a CCL
+expression that will not compile. Option values are matched against the
+documented spellings only — `sort … dsc`, `ttest … eqaul` and
+`clean … outliers abc` are rejected rather than quietly replaced by the
+default — and an argument a command does not understand is reported, not
+dropped.
+
 Examples:
 
 ```bash

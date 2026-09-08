@@ -169,6 +169,7 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 		}
 		if localHandler.Name == "accel" {
 			created.Flags().String("mode", "", "Acceleration mode: auto|cpu|gpu|strict-gpu")
+			created.Flags().String("precision", "", "Acceleration precision: exact|float32")
 		}
 	}
 

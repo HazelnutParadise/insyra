@@ -128,12 +128,29 @@ func applySampleN(ctx *ExecContext, varName string, n int, opts sampleCommandOpt
 	if !exists {
 		return nil, fmt.Errorf("variable not found: %s", varName)
 	}
+	if n <= 0 {
+		return nil, fmt.Errorf("sample: size must be greater than 0, got %d", n)
+	}
 	samplingOpts := samplingOptionsFromCLI(opts)
 	switch v := value.(type) {
 	case *insyra.DataTable:
-		return v.Sample(n, opts.Replace, samplingOpts...), nil
+		if !opts.Replace && n > v.NumRows() {
+			return nil, fmt.Errorf("sample: cannot take %d of %d rows without replacement", n, v.NumRows())
+		}
+		result := v.Sample(n, opts.Replace, samplingOpts...)
+		if err := checkTableErr("sample", v); err != nil {
+			return nil, err
+		}
+		return result, nil
 	case *insyra.DataList:
-		return v.Sample(n, opts.Replace, samplingOpts...), nil
+		if !opts.Replace && n > v.Len() {
+			return nil, fmt.Errorf("sample: cannot take %d of %d items without replacement", n, v.Len())
+		}
+		result := v.Sample(n, opts.Replace, samplingOpts...)
+		if err := result.PopErr(); err != nil {
+			return nil, fmt.Errorf("sample: %v", err)
+		}
+		return result, nil
 	default:
 		return nil, fmt.Errorf("variable %s is not a DataList or DataTable", varName)
 	}

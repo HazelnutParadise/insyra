@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -99,19 +100,37 @@ func (m *Manager) UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
 	}
 	switch key {
 	case "default-env", "defaultEnv":
-		cfg.DefaultEnv = value
+		name := strings.TrimSpace(value)
+		if name == "" {
+			return GlobalConfig{}, fmt.Errorf("invalid value for default-env: the environment name cannot be empty")
+		}
+		cfg.DefaultEnv = name
 	case "log-level", "logLevel":
-		cfg.LogLevel = value
+		level := strings.ToLower(strings.TrimSpace(value))
+		if !slices.Contains(validLogLevels, level) {
+			return GlobalConfig{}, fmt.Errorf("invalid value %q for log-level (use %s)", value, strings.Join(validLogLevels, ", "))
+		}
+		cfg.LogLevel = level
 	case "no-color", "noColor":
-		cfg.NoColor = value == "true" || value == "1" || value == "yes"
+		parsed, parseErr := parseConfigBool(value)
+		if parseErr != nil {
+			return GlobalConfig{}, fmt.Errorf("invalid value %q for no-color: %v", value, parseErr)
+		}
+		cfg.NoColor = parsed
 	case "accel-mode", "accelMode", "accel.mode":
-		cfg.AccelMode = value
+		mode := strings.ToLower(strings.TrimSpace(value))
+		if !slices.Contains(validAccelModes, mode) {
+			return GlobalConfig{}, fmt.Errorf("invalid value %q for accel-mode (use %s)", value, strings.Join(validAccelModes, ", "))
+		}
+		cfg.AccelMode = mode
 	case "fetch.tw.interval_ms", "fetch-tw-interval-ms", "fetchTWIntervalMS":
 		milliseconds, convErr := strconv.Atoi(strings.TrimSpace(value))
 		if convErr != nil || milliseconds < 0 {
 			return GlobalConfig{}, fmt.Errorf("invalid value %q for fetch.tw.interval_ms: expected a non-negative integer number of milliseconds", value)
 		}
 		cfg.FetchTWIntervalMS = milliseconds
+	default:
+		return GlobalConfig{}, fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(ConfigKeys(), ", "))
 	}
 	if err := m.SaveGlobalConfig(cfg); err != nil {
 		return GlobalConfig{}, err
@@ -129,4 +148,30 @@ func SaveGlobalConfig(cfg GlobalConfig) error { return defaultManager.SaveGlobal
 
 func UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
 	return defaultManager.UpdateGlobalConfig(key, value)
+}
+
+// The accepted values for the enumerated settings. A key or a value the CLI
+// does not understand is refused rather than written to disk: a typo that
+// persists is worse than one that is rejected.
+var (
+	validLogLevels  = []string{"debug", "info", "warning", "error", "fatal"}
+	validAccelModes = []string{"auto", "cpu", "gpu", "strict-gpu"}
+)
+
+// ConfigKeys lists the keys `insyra config <key> <value>` accepts.
+func ConfigKeys() []string {
+	return []string{"default-env", "log-level", "no-color", "accel-mode", "fetch.tw.interval_ms"}
+}
+
+// parseConfigBool accepts the spellings the rest of the CLI accepts for a
+// boolean option, and refuses anything else.
+func parseConfigBool(value string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true", "yes", "on", "1":
+		return true, nil
+	case "false", "no", "off", "0":
+		return false, nil
+	default:
+		return false, fmt.Errorf("expected true or false")
+	}
 }

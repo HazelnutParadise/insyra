@@ -35,6 +35,12 @@ func runSwapCommand(ctx *ExecContext, args []string) error {
 				return fmt.Errorf("both col selectors must be numeric or both names")
 			}
 		} else {
+			if err := requireColumnName("swap", table, a); err != nil {
+				return err
+			}
+			if err := requireColumnName("swap", table, b); err != nil {
+				return err
+			}
 			table.SwapColsByName(a, b)
 		}
 	case "row":
@@ -45,10 +51,19 @@ func runSwapCommand(ctx *ExecContext, args []string) error {
 				return fmt.Errorf("both row selectors must be numeric or both names")
 			}
 		} else {
+			if err := requireRowName("swap", table, a); err != nil {
+				return err
+			}
+			if err := requireRowName("swap", table, b); err != nil {
+				return err
+			}
 			table.SwapRowsByName(a, b)
 		}
 	default:
 		return fmt.Errorf("dimension must be col or row")
+	}
+	if err := checkTableErr("swap", table); err != nil {
+		return err
 	}
 	_, _ = fmt.Fprintln(ctx.Output, "swap complete")
 	return nil

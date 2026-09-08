@@ -126,7 +126,11 @@ func runTTestCommand(ctx *ExecContext, args []string) error {
 		}
 		equalVariance := true
 		if len(args) >= 4 {
-			equalVariance = strings.EqualFold(args[3], "equal")
+			var parseErr error
+			equalVariance, parseErr = parseEqualVariance(args[3])
+			if parseErr != nil {
+				return fmt.Errorf("ttest: %v", parseErr)
+			}
 		}
 		result, err := stats.TwoSampleTTest(a, b, equalVariance)
 		if err != nil {
@@ -180,7 +184,11 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 		}
 		alternative := stats.TwoSided
 		if len(args) >= 5 {
-			alternative = parseAlternativeHypothesis(args[4])
+			var parseErr error
+			alternative, parseErr = parseAlternativeHypothesis(args[4])
+			if parseErr != nil {
+				return fmt.Errorf("%s", parseErr)
+			}
 		}
 		result, err := stats.SingleSampleZTest(dl, mu, sigma, alternative, 0.95)
 		if err != nil {
@@ -210,7 +218,11 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 		}
 		alternative := stats.TwoSided
 		if len(args) >= 6 {
-			alternative = parseAlternativeHypothesis(args[5])
+			var parseErr error
+			alternative, parseErr = parseAlternativeHypothesis(args[5])
+			if parseErr != nil {
+				return fmt.Errorf("%s", parseErr)
+			}
 		}
 		result, err := stats.TwoSampleZTest(a, b, s1, s2, alternative, 0.95)
 		if err != nil {
@@ -392,14 +404,32 @@ func runChiSqCommand(ctx *ExecContext, args []string) error {
 	}
 }
 
-func parseAlternativeHypothesis(raw string) stats.AlternativeHypothesis {
+// parseAlternativeHypothesis accepts the documented spellings and nothing
+// else: silently falling back to two-sided would report a p-value computed
+// under an assumption the caller did not make.
+func parseAlternativeHypothesis(raw string) (stats.AlternativeHypothesis, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "greater", ">":
-		return stats.Greater
+		return stats.Greater, nil
 	case "less", "<":
-		return stats.Less
+		return stats.Less, nil
+	case "two-sided", "twosided", "two_sided", "!=", "":
+		return stats.TwoSided, nil
 	default:
-		return stats.TwoSided
+		return stats.TwoSided, fmt.Errorf("invalid alternative %q (use two-sided, greater or less)", raw)
+	}
+}
+
+// parseEqualVariance accepts the documented spellings for the two-sample
+// t-test's variance assumption.
+func parseEqualVariance(raw string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "equal", "pooled":
+		return true, nil
+	case "unequal", "welch":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid variance assumption %q (use equal or unequal)", raw)
 	}
 }
 

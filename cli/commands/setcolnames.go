@@ -19,7 +19,14 @@ func runSetColNamesCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	table.SetColNames(args[1:])
+	names := args[1:]
+	if len(names) != table.NumCols() {
+		return fmt.Errorf("setcolnames: got %d names for %d columns; pass exactly one name per column", len(names), table.NumCols())
+	}
+	table.SetColNames(names)
+	if err := checkTableErr("setcolnames", table); err != nil {
+		return err
+	}
 	_, _ = fmt.Fprintln(ctx.Output, "column names updated")
 	return nil
 }

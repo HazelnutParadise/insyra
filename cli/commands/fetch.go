@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -61,6 +62,14 @@ func runFetchCommand(ctx *ExecContext, args []string) error {
 	ticker := coreArgs[1]
 	method := strings.ToLower(coreArgs[2])
 	params := coreArgs[3:]
+
+	// Only `news` takes parameters. Dropping an extra token silently would
+	// make a typo look like it worked. An unknown method is reported by the
+	// switch below, which is the more useful message, so this only fires for
+	// a method that exists.
+	if len(params) > 0 && method != "news" && slices.Contains(yahooMethodsWithoutParams, method) {
+		return fmt.Errorf("fetch yahoo %s: unexpected argument %q (only `news` takes a parameter)", method, params[0])
+	}
 
 	yf, err := datafetch.YFinance(datafetch.YFinanceConfig{})
 	if err != nil {
@@ -144,3 +153,7 @@ func runFetchCommand(ctx *ExecContext, args []string) error {
 	_, _ = fmt.Fprintf(ctx.Output, "fetched into %s\n", alias)
 	return nil
 }
+
+// yahooMethodsWithoutParams are the `fetch yahoo` methods that take no
+// parameters; only `news` does.
+var yahooMethodsWithoutParams = []string{"quote", "info", "history", "dividends", "splits", "actions", "options"}

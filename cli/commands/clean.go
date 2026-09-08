@@ -23,9 +23,17 @@ func runCleanCommand(ctx *ExecContext, args []string) error {
 	mode := strings.ToLower(args[1])
 	stddev := 2.0
 	if len(args) >= 3 {
-		if parsed, err := strconv.ParseFloat(args[2], 64); err == nil {
-			stddev = parsed
+		parsed, err := strconv.ParseFloat(args[2], 64)
+		if err != nil {
+			return fmt.Errorf("clean: invalid standard deviation %q: it must be a number", args[2])
 		}
+		if parsed <= 0 {
+			return fmt.Errorf("clean: standard deviation must be greater than 0, got %v", parsed)
+		}
+		stddev = parsed
+	}
+	if len(args) > 3 {
+		return fmt.Errorf("clean: unexpected argument %q (usage: clean <var> nan|nil|strings|outliers [<stddev>])", args[3])
 	}
 
 	if table, err := getDataTableVar(ctx, name); err == nil {

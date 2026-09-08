@@ -33,11 +33,14 @@ func runMergeCommand(ctx *ExecContext, args []string) error {
 		return err
 	}
 	onColumns := []string{}
-	for index := 4; index < len(coreArgs); index++ {
-		if coreArgs[index] == "on" {
-			onColumns = append(onColumns, coreArgs[index+1:]...)
-			break
+	if len(coreArgs) > 4 {
+		if !strings.EqualFold(coreArgs[4], "on") {
+			return fmt.Errorf("merge: unexpected argument %q (usage: merge <var1> <var2> <direction> <mode> [on <cols>] [as <var>])", coreArgs[4])
 		}
+		if len(coreArgs) == 5 {
+			return fmt.Errorf("merge: `on` needs at least one column name")
+		}
+		onColumns = append(onColumns, coreArgs[5:]...)
 	}
 	result, err := left.Merge(right, direction, mode, onColumns...)
 	if err != nil {

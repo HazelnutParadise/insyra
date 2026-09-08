@@ -407,7 +407,8 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `plot`
 - Description: Create charts from variables
-- Usage: `plot <type> <var> [options...] [save <file>]`
+- Usage: `plot <type> <var> [save <file>]`
+- `save` is the only option; any other argument is an error rather than being ignored.
 - Supported types:
 	- `line`, `bar`, `scatter`
 - Save behavior:

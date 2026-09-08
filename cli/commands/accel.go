@@ -20,7 +20,7 @@ type accelArgs struct {
 func init() {
 	_ = Register(&CommandHandler{
 		Name:               "accel",
-		Usage:              "accel <devices|cache|plan|run> [--mode auto|cpu|gpu|strict-gpu]",
+		Usage:              "accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]",
 		Description:        "Inspect acceleration backends, cache state, and planning reports",
 		DisableFlagParsing: false,
 		Run:                runAccelCommand,
@@ -29,7 +29,7 @@ func init() {
 
 func runAccelCommand(ctx *ExecContext, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: accel <devices|cache|plan|run> [--mode auto|cpu|gpu|strict-gpu]")
+		return fmt.Errorf("usage: accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]")
 	}
 
 	action := strings.ToLower(args[0])

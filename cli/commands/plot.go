@@ -12,7 +12,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "plot",
-		Usage:       "plot <type> <var> [options...] [save <file>]",
+		Usage:       "plot <type> <var> [save <file>]",
 		Description: "Create charts from variables",
 		Forms: []string{
 			"plot line <var> [save <file>]                line chart",
@@ -88,16 +88,22 @@ func runPlotCommand(ctx *ExecContext, args []string) error {
 	return nil
 }
 
+// parsePlotSavePath reads the only option plot takes. Anything else is an
+// error: silently dropping an argument makes a typo look like it worked.
 func parsePlotSavePath(args []string, plotType string) (string, error) {
-	for i := 0; i < len(args); i++ {
-		if strings.EqualFold(args[i], "save") {
-			if i+1 >= len(args) {
-				return "", fmt.Errorf("missing file path after save")
-			}
-			return args[i+1], nil
-		}
+	if len(args) == 0 {
+		return fmt.Sprintf("%s.html", plotType), nil
 	}
-	return fmt.Sprintf("%s.html", plotType), nil
+	if !strings.EqualFold(args[0], "save") {
+		return "", fmt.Errorf("plot: unexpected argument %q (usage: plot <type> <var> [save <file>])", args[0])
+	}
+	if len(args) < 2 {
+		return "", fmt.Errorf("plot: missing file path after save")
+	}
+	if len(args) > 2 {
+		return "", fmt.Errorf("plot: unexpected argument %q after the file path", args[2])
+	}
+	return args[1], nil
 }
 
 func extractPlotSeries(value any) ([]insyra.IDataList, error) {

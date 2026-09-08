@@ -43,6 +43,12 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `--env`, `--no-color` and `--log-level` placed before `newdl`, `addcol`, `addrow` or `show` now apply instead of being stored as data in the default environment.
 - `run` no longer opens the interactive REPL when the script contains `env open`, and stops a script that runs itself after 16 nested levels.
 - `db connect` lines are written to `history.txt`, the REPL history and `env export` with the password masked (URL, `user:pass@`, and `password=` forms); history files are created with mode 0600.
+- **BREAKING**: a command that could not do what it was asked now returns an error and exits non-zero instead of printing its success line. `sort`, `dropcol`, `droprow`, `swap`, `setcolnames` and `sample` check their target first and name what was missing; `ccl` and `addcolccl` report an expression that would not compile. A script whose step has been silently ignored will now fail.
+- **BREAKING**: a misspelled option value is rejected instead of falling back to the default. `sort … dsc`, `ttest … eqaul`, `ztest … bogus` and `clean … outliers abc` used to run with ascending order, pooled variance, a two-sided alternative and 2.0 standard deviations respectively — a statistical result computed under an assumption the caller never made.
+- **BREAKING**: `plot`, `fetch` and `merge` report an argument they do not understand instead of dropping it, and `plot`'s usage no longer advertises options it never accepted.
+- `config` refuses an unknown key (listing the ones it takes) and validates `log-level`, `no-color` and `accel-mode`, so nothing invalid reaches the config file.
+- `accel`'s usage no longer claims a `run` subcommand that does not exist, and `--precision` is documented and registered, so `insyra accel plan --precision float32` works in one-shot mode.
+- `sample` rejects a size of zero or below, or one larger than the source without replacement, instead of saving an empty result; `setcolnames` requires exactly one name per column instead of blanking the rest or adding empty columns.
 
 ### `datafetch`
 - The file geocode cache (`NewFileGeocodeCache`) writes to a temporary file and renames it into place, so an interrupted write can no longer leave a corrupt cache that the next run silently discards.

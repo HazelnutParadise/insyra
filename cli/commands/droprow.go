@@ -31,11 +31,24 @@ func runDropRowCommand(ctx *ExecContext, args []string) error {
 			names = append(names, token)
 		}
 	}
+	for _, index := range indices {
+		if err := requireRowIndex("droprow", table, index); err != nil {
+			return err
+		}
+	}
+	for _, name := range names {
+		if err := requireRowName("droprow", table, name); err != nil {
+			return err
+		}
+	}
 	if len(indices) > 0 {
 		table.DropRowsByIndex(indices...)
 	}
 	if len(names) > 0 {
 		table.DropRowsByName(names...)
+	}
+	if err := checkTableErr("droprow", table); err != nil {
+		return err
 	}
 	_, _ = fmt.Fprintln(ctx.Output, "rows dropped")
 	return nil

@@ -19,6 +19,9 @@ func runCCLCommand(ctx *ExecContext, args []string) error {
 		return err
 	}
 	table.ExecuteCCL(strings.Join(args[1:], " "))
+	if err := checkTableErr("ccl", table); err != nil {
+		return err
+	}
 	_, _ = fmt.Fprintln(ctx.Output, "ccl executed")
 	return nil
 }
@@ -32,6 +35,9 @@ func runAddColCCLCommand(ctx *ExecContext, args []string) error {
 		return err
 	}
 	table.AddColUsingCCL(args[1], strings.Join(args[2:], " "))
+	if err := checkTableErr("addcolccl", table); err != nil {
+		return err
+	}
 	_, _ = fmt.Fprintln(ctx.Output, "column added by ccl")
 	return nil
 }
