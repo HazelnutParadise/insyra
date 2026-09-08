@@ -155,6 +155,8 @@ type CSVReadOptions struct {
     FirstRowToColNames bool
     Encoding           string // file input only; "" or "auto" auto-detects
     RawStrings         bool   // keep every cell as its original string; skip type inference
+    AllowRaggedRows    bool   // pad short rows; keep long rows in extra columns
+    TrimLeadingSpace   bool   // ignore leading spaces before fields and quotes
 }
 
 func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, error)
@@ -165,6 +167,10 @@ func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTabl
 
 Set `RawStrings: true` to disable column type inference entirely: every cell is kept as its original string and empty cells stay `""` (not `NaN`). Use this for data that looks numeric but must not be parsed as numbers — stock IDs (`0050` would otherwise become `int64` `50`, losing the leading zeros), tax IDs, phone numbers, zip codes, or exact monetary amounts you want to parse with a decimal type yourself.
 
+Set `AllowRaggedRows: true` for exports with uneven row lengths. Missing trailing cells are padded with `""` so columns stay aligned; extra cells are retained in automatically named `extra_N` columns (numbered by their position in the file), and earlier rows get `""` in those columns. This is useful for trailer notes, optional trailing fields, and rows with a trailing comma. The default `false` keeps the current strict `wrong number of fields` error. Note that padded cells count as empty for column type inference: an otherwise-integer column touched by padding loads as `float64` with `NaN` in the padded rows. Combine with `RawStrings: true` when cells must stay verbatim strings.
+
+Set `TrimLeadingSpace: true` to ignore leading whitespace before fields, including whitespace before an opening quote such as `2330, "1,000"`. The default `false` keeps the current CSV parser behavior. These two options are independent and opt-in; combine them when an external export has both uneven rows and whitespace before quoted fields.
+
 **Example:**
 
 ```go
@@ -172,6 +178,8 @@ csvData := "id,price\n0050,600.855\n00878,100.14"
 dt, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{
     FirstRowToColNames: true,
     RawStrings:         true,
+    AllowRaggedRows:    true,
+    TrimLeadingSpace:   true,
 })
 if err != nil {
     log.Fatal(err)
@@ -1264,11 +1272,12 @@ func (dt *DataTable) CumMaxCol(col string) *DataList
 func (dt *DataTable) CumMinCol(col string) *DataList
 func (dt *DataTable) RollingCol(col string, opts RollingOptions) *RollingDataList
 func (dt *DataTable) ExpandingCol(col string, minObs int) *ExpandingDataList
+func (dt *DataTable) EWMCol(col string, opts EWMOptions) *EWMDataList
 ```
 
 **Description:** Per-column time-series / sequence transforms. Each method resolves `col` by **name first**, then by Excel-style index (`"A"`, `"B"`, ...), and runs the matching operation on a snapshot of that column. The returned `*DataList` (or builder) has the same length as the source so the result lines up with neighbouring columns when appended back.
 
-The scalar transforms (`ShiftCol` / `DiffCol` / `PctChangeCol` / `Cum*Col`) return `*DataList` directly. `RollingCol` and `ExpandingCol` return builders — pick a reducer (`.Mean()` / `.Sum()` / `.Min()` / `.Max()` / `.Median()` / `.Std()` / `.Var()` / `.Apply(...)` / `.Corr(...)`) to materialise the column. See [DataList.Rolling](DataList.md#rolling) and [DataList.Expanding](DataList.md#expanding) for the full reducer list and `RollingOptions` semantics.
+The scalar transforms (`ShiftCol` / `DiffCol` / `PctChangeCol` / `Cum*Col`) return `*DataList` directly. `RollingCol`, `ExpandingCol`, and `EWMCol` return builders — pick a reducer to materialise the column. Rolling supports `.Mean()` / `.Sum()` / `.Min()` / `.Max()` / `.Median()` / `.Std()` / `.Var()` / `.Apply(...)` / `.Corr(...)` / `.Cov(...)` / `.Beta(...)`; EWM supports `.Mean()` / `.Var()` / `.Std()`. See [DataList.Rolling](DataList.md#rolling), [DataList.Expanding](DataList.md#expanding), and [DataList.Exponentially weighted windows](DataList.md#exponentially-weighted-windows) for the full semantics.
 
 **Missing-value behaviour:** edge positions (e.g. the first row of `ShiftCol(_, 1)` or partial windows below `MinObs`) emit `nil`. `Shift` works on any column type (including strings / bools); the rest coerce numerically and emit `nil` for cells that aren't numeric.
 
@@ -1286,10 +1295,88 @@ cum    := dt.CumSumCol("price")                                              // 
 hwm    := dt.CumMaxCol("price")                                              // historical high
 ma7    := dt.RollingCol("price", insyra.RollingOptions{Window: 7}).Mean()    // 7-day MA
 ewmean := dt.ExpandingCol("price", 1).Mean()                                 // expanding mean
+ewm7   := dt.EWMCol("price", insyra.EWMOptions{Span: 7, Adjust: true}).Mean() // EWM mean
 
 // Attach results back to the table.
 ma7.SetName("ma7")
 dt.AppendCols(ma7)
+```
+
+### Resample
+
+```go
+type ResampleFreq int
+
+const (
+    ResampleWeekly ResampleFreq = iota // Monday through Sunday
+    ResampleMonthly
+    ResampleQuarterly
+    ResampleYearly
+)
+
+type ResampleAgg struct {
+    Col string
+    Op  AggregateOp
+    As  string
+}
+
+func (dt *DataTable) Resample(timeCol string, freq ResampleFreq, aggs ...ResampleAgg) (*DataTable, error)
+```
+
+`Resample` groups rows by calendar period and labels each non-empty period with
+its final calendar day at midnight. Weekly periods run Monday through Sunday;
+monthly, quarterly, and yearly periods end on the corresponding calendar
+boundary. The output is sorted by `timeCol`, empty periods are omitted, and
+each label keeps the input `time.Time` value's location. The input row order
+does not affect the result. `ResampleAgg` reuses `AggregateOp`; an empty `As`
+keeps the source column name.
+
+```go
+monthly, err := dt.Resample("Date", insyra.ResampleMonthly,
+    insyra.ResampleAgg{Col: "Open", Op: insyra.OpFirst},
+    insyra.ResampleAgg{Col: "High", Op: insyra.OpMax},
+    insyra.ResampleAgg{Col: "Low", Op: insyra.OpMin},
+    insyra.ResampleAgg{Col: "Close", Op: insyra.OpLast, As: "MonthClose"},
+    insyra.ResampleAgg{Col: "Volume", Op: insyra.OpSum},
+)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+`timeCol` and aggregate columns resolve by name first, then Excel-style index.
+The method returns an error when the time or aggregate column is missing, a
+time cell is not `time.Time` (the error includes its row number), `aggs` is
+empty, or `freq` is unknown.
+
+### ParseDatesCols
+
+```go
+func (dt *DataTable) ParseDatesCols(cols []string, layouts ...string) *DataTable
+```
+
+Converts date strings to `time.Time` in place for the named columns and returns
+the table, so the call chains. Each column is converted by the rules of
+[`DataList.ParseDates`](DataList.md#parsedates): a string matching a layout
+becomes that instant in UTC, a value already `time.Time` is kept unchanged, and
+anything else becomes `nil`. With no `layouts`, the same ISO-style defaults
+`ReadSQLOptions.ParseDates` uses are tried; passing layouts replaces that list.
+
+Columns resolve by name first, then Excel-style index. A column that does not
+exist records a warning (readable through `dt.Err()`) and is skipped, leaving
+the other named columns converted.
+
+This is the conversion `ReadSQL`'s `ParseDates` option performs, available for
+tables loaded from anywhere else. CSV inference produces `int64`/`float64` and
+leaves everything else a string, so a CSV date column needs this step before
+`Resample` will accept it:
+
+```go
+dt, _ := insyra.ReadCSV_File("bars.csv", false, true)
+dt.ParseDatesCols([]string{"Date"})
+monthly, err := dt.Resample("Date", insyra.ResampleMonthly,
+    insyra.ResampleAgg{Col: "Close", Op: insyra.OpLast},
+)
 ```
 
 #### GroupBy-aware versions

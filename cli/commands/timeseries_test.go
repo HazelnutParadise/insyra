@@ -325,3 +325,231 @@ func TestShiftCommand_WrongType(t *testing.T) {
 		t.Error("expected wrong-type error")
 	}
 }
+
+// ===========================================================================
+// ewm / rolling cov|beta (add-cli-timeseries-commands)
+// ===========================================================================
+
+// newTimeSeriesContext builds the shared test ExecContext preloaded with vars.
+func newTimeSeriesContext(t *testing.T, vars map[string]any) *ExecContext {
+	t.Helper()
+	ctx := newTestExecContext(t)
+	for name, value := range vars {
+		ctx.Vars[name] = value
+	}
+	return ctx
+}
+
+func namedList(name string, values ...any) *insyra.DataList {
+	dl := insyra.NewDataList(values...)
+	dl.SetName(name)
+	return dl
+}
+
+// --- ewm -------------------------------------------------------------------
+
+func TestRunEWMCommand_RecursiveMean(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"x": namedList("x", 1, 2, 3)})
+	if err := runEWMCommand(ctx, []string{"x", "alpha", "0.5", "mean", "as", "m"}); err != nil {
+		t.Fatalf("runEWMCommand failed: %v", err)
+	}
+	got, ok := ctx.Vars["m"].(*insyra.DataList)
+	if !ok {
+		t.Fatalf("expected DataList, got %T", ctx.Vars["m"])
+	}
+	want := []float64{1, 1.5, 2.25}
+	data := got.Data()
+	if len(data) != len(want) {
+		t.Fatalf("length = %d want %d", len(data), len(want))
+	}
+	for i, w := range want {
+		f, ok := insyra.ToFloat64Safe(data[i])
+		if !ok || math.Abs(f-w) > 1e-12 {
+			t.Errorf("m[%d] = %v want %v", i, data[i], w)
+		}
+	}
+}
+
+func TestRunEWMCommand_OptionsMatchLibrary(t *testing.T) {
+	src := namedList("x", 1, 2, 3, 4, 5)
+	ctx := newTimeSeriesContext(t, map[string]any{"x": src})
+	if err := runEWMCommand(ctx, []string{
+		"x", "span", "3", "std",
+		"adjust", "yes", "bias", "yes", "minobs", "2", "as", "s",
+	}); err != nil {
+		t.Fatalf("runEWMCommand failed: %v", err)
+	}
+	got, ok := ctx.Vars["s"].(*insyra.DataList)
+	if !ok {
+		t.Fatalf("expected DataList, got %T", ctx.Vars["s"])
+	}
+	want := src.Clone().EWM(insyra.EWMOptions{Span: 3, Adjust: true, Bias: true, MinObs: 2}).Std()
+	gotData, wantData := got.Data(), want.Data()
+	if len(gotData) != len(wantData) {
+		t.Fatalf("length = %d want %d", len(gotData), len(wantData))
+	}
+	for i := range wantData {
+		if gotData[i] == nil || wantData[i] == nil {
+			if gotData[i] != wantData[i] {
+				t.Errorf("s[%d] = %v want %v", i, gotData[i], wantData[i])
+			}
+			continue
+		}
+		g, _ := insyra.ToFloat64Safe(gotData[i])
+		w, _ := insyra.ToFloat64Safe(wantData[i])
+		if math.Abs(g-w) > 1e-12 {
+			t.Errorf("s[%d] = %v want %v", i, gotData[i], wantData[i])
+		}
+	}
+}
+
+func TestRunEWMCommand_InvalidDecayIsRefused(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"x": namedList("x", 1, 2, 3)})
+	err := runEWMCommand(ctx, []string{"x", "alpha", "0", "mean"})
+	if err == nil {
+		t.Fatalf("expected an error for alpha 0")
+	}
+	if !strings.HasPrefix(err.Error(), "ewm: ") {
+		t.Errorf("error %q should carry the ewm: prefix", err)
+	}
+	if _, exists := ctx.Vars["$result"]; exists {
+		t.Errorf("no variable should be stored on error, got %v", ctx.Vars["$result"])
+	}
+}
+
+func TestRunEWMCommand_UnknownReducer(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"x": namedList("x", 1, 2, 3)})
+	err := runEWMCommand(ctx, []string{"x", "alpha", "0.5", "median"})
+	if err == nil || !strings.Contains(err.Error(), "unknown reducer") {
+		t.Fatalf("expected unknown reducer error, got %v", err)
+	}
+}
+
+func TestRunEWMCommand_UnknownOption(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"x": namedList("x", 1, 2, 3)})
+	err := runEWMCommand(ctx, []string{"x", "alpha", "0.5", "mean", "center", "yes"})
+	if err == nil || !strings.Contains(err.Error(), "unknown option") {
+		t.Fatalf("expected unknown option error, got %v", err)
+	}
+}
+
+func TestRunEWMCommand_NotADataList(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"t": insyra.NewDataTable()})
+	err := runEWMCommand(ctx, []string{"t", "alpha", "0.5", "mean"})
+	if err == nil || !strings.HasPrefix(err.Error(), "ewm: ") {
+		t.Fatalf("expected ewm-prefixed error, got %v", err)
+	}
+}
+
+func TestRunEWMCommand_DefaultsToResultVar(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"x": namedList("x", 1, 2, 3)})
+	if err := runEWMCommand(ctx, []string{"x", "halflife", "1", "mean"}); err != nil {
+		t.Fatalf("runEWMCommand failed: %v", err)
+	}
+	if _, ok := ctx.Vars["$result"].(*insyra.DataList); !ok {
+		t.Fatalf("expected $result DataList, got %T", ctx.Vars["$result"])
+	}
+}
+
+// --- rolling cov / beta ----------------------------------------------------
+
+func TestRunRollingCommand_Beta(t *testing.T) {
+	b := namedList("b", 1, 3, 2, 5, 4)
+	aValues := make([]any, 0, 5)
+	for _, v := range b.Data() {
+		f, _ := insyra.ToFloat64Safe(v)
+		aValues = append(aValues, 2*f+1)
+	}
+	ctx := newTimeSeriesContext(t, map[string]any{"a": namedList("a", aValues...), "b": b})
+	if err := runRollingCommand(ctx, []string{"a", "3", "beta", "b", "as", "rb"}); err != nil {
+		t.Fatalf("runRollingCommand failed: %v", err)
+	}
+	rb, ok := ctx.Vars["rb"].(*insyra.DataList)
+	if !ok {
+		t.Fatalf("expected DataList, got %T", ctx.Vars["rb"])
+	}
+	data := rb.Data()
+	if len(data) != 5 {
+		t.Fatalf("length = %d want 5", len(data))
+	}
+	if data[0] != nil || data[1] != nil {
+		t.Errorf("first two cells = %v, %v want nil, nil", data[0], data[1])
+	}
+	for i := 2; i < 5; i++ {
+		f, ok := insyra.ToFloat64Safe(data[i])
+		if !ok || math.Abs(f-2) > 1e-9 {
+			t.Errorf("rb[%d] = %v want 2", i, data[i])
+		}
+	}
+}
+
+func TestRunRollingCommand_Cov(t *testing.T) {
+	a := namedList("a", 1, 2, 3, 4)
+	b := namedList("b", 2, 4, 6, 8)
+	ctx := newTimeSeriesContext(t, map[string]any{"a": a, "b": b})
+	if err := runRollingCommand(ctx, []string{"a", "3", "cov", "b", "as", "rc"}); err != nil {
+		t.Fatalf("runRollingCommand failed: %v", err)
+	}
+	rc := ctx.Vars["rc"].(*insyra.DataList)
+	want := a.Clone().Rolling(insyra.RollingOptions{Window: 3}).Cov(b)
+	gotData, wantData := rc.Data(), want.Data()
+	if len(gotData) != len(wantData) {
+		t.Fatalf("length = %d want %d", len(gotData), len(wantData))
+	}
+	for i := range wantData {
+		if gotData[i] == nil || wantData[i] == nil {
+			if gotData[i] != wantData[i] {
+				t.Errorf("rc[%d] = %v want %v", i, gotData[i], wantData[i])
+			}
+			continue
+		}
+		g, _ := insyra.ToFloat64Safe(gotData[i])
+		w, _ := insyra.ToFloat64Safe(wantData[i])
+		if math.Abs(g-w) > 1e-12 {
+			t.Errorf("rc[%d] = %v want %v", i, gotData[i], wantData[i])
+		}
+	}
+}
+
+func TestRunRollingCommand_CovWithOptionsAfterOther(t *testing.T) {
+	a := namedList("a", 1, 2, 3, 4)
+	b := namedList("b", 2, 4, 6, 8)
+	ctx := newTimeSeriesContext(t, map[string]any{"a": a, "b": b})
+	if err := runRollingCommand(ctx, []string{"a", "3", "cov", "b", "minobs", "2", "as", "rc"}); err != nil {
+		t.Fatalf("runRollingCommand failed: %v", err)
+	}
+	rc := ctx.Vars["rc"].(*insyra.DataList)
+	if rc.Data()[1] == nil {
+		t.Errorf("with minobs 2 the second cell should be populated, got nil")
+	}
+}
+
+func TestRunRollingCommand_CovMissingOther(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"a": namedList("a", 1, 2, 3)})
+	err := runRollingCommand(ctx, []string{"a", "3", "cov"})
+	if err == nil {
+		t.Fatalf("expected an error when the second variable is missing")
+	}
+	if !strings.Contains(err.Error(), "second DataList") {
+		t.Errorf("error %q should say a second DataList variable is required", err)
+	}
+}
+
+func TestRunRollingCommand_BetaOtherNotFound(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"a": namedList("a", 1, 2, 3)})
+	err := runRollingCommand(ctx, []string{"a", "3", "beta", "nope"})
+	if err == nil || !strings.HasPrefix(err.Error(), "rolling: ") {
+		t.Fatalf("expected rolling-prefixed error, got %v", err)
+	}
+}
+
+func TestRollingHelpListsCovAndBeta(t *testing.T) {
+	handler, ok := Registry["rolling"]
+	if !ok {
+		t.Fatalf("rolling command is not registered")
+	}
+	joined := strings.Join(handler.Forms, "\n")
+	if !strings.Contains(joined, "cov <other>") || !strings.Contains(joined, "beta <other>") {
+		t.Errorf("rolling Forms should list cov and beta, got:\n%s", joined)
+	}
+}

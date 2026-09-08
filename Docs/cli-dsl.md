@@ -255,6 +255,23 @@ Commands whose arguments go through this ladder include (non-exhaustive):
 
 This is intentionally separate from the boolean-flag parsing used by option arguments like `headers true|false`, `center yes|no`, `rownames 1|0` — those go through `parseFlexBool` and accept `yes/no/on/off/1/0/true/false` but **not** numeric or special-float tokens. See the option-parsing convention in each command's `help` output.
 
+#### Negative numbers in one-shot mode
+
+A token starting with `-` looks like a flag to the one-shot CLI's argument parser. `newdl`, `addrow`, and `addcol` turn that parsing off, so negative values need nothing special:
+
+```bash
+insyra newdl 0.01 -0.004 0.02 as r
+```
+
+The REPL and `.isr` scripts never parsed flags, so they are unaffected either way. Any *other* command that takes a value starting with `-` needs a bare `--` before the values, which stops flag parsing for the rest of the line:
+
+```bash
+insyra set dt 0 A -- -2.5
+insyra shift x 1 fill -- -1
+```
+
+`help <command>` still works for the commands with flag parsing disabled; `insyra newdl --help` does not, because the command no longer reads flags.
+
 ## CLI Script Runner vs Go DSL API
 
 `insyra run <script.isr>` and `Session.ExecuteFile(path)` are intentionally different on error handling.
@@ -304,12 +321,14 @@ insyra --env demo run pipeline.isr
 
 ### A1. Controlling headers and row names for CSV / Excel
 
-`load` and `save` accept three shared options for delimited/spreadsheet formats:
+`load` and `save` accept shared options for delimited/spreadsheet formats:
 
 - `headers true|false` — whether the first row holds column names. Default `true`.
 - `rownames true|false` — whether the first column holds row names. Default `false`.
 - `encoding <enc>` — read-side hint for CSVs that aren't UTF-8 (e.g. `big5`, `gbk`). Auto-detected when omitted.
 - `infer true|false` — read-side, CSV only. `infer false` keeps every cell as its original string (no type inference): leading zeros in stock IDs survive, amounts stay verbatim, empty cells stay empty strings. Default `true`.
+- `ragged true|false` — read-side, CSV only. `ragged true` pads short rows with empty cells and keeps extra cells in automatically named columns. Padded cells count as empty for type inference (an otherwise-integer column becomes float with `NaN`); combine with `infer false` to keep cells verbatim. Default `false`, so uneven rows remain strict errors unless enabled.
+- `trimspace true|false` — read-side, CSV only. `trimspace true` ignores leading whitespace before fields, including before quoted fields. Default `false`.
 - `bom true|false` — save-side, write a UTF-8 BOM (helps Windows Excel open Chinese CSVs). Default `false`.
 
 Boolean values accept `true|false`, `yes|no`, `on|off`, `1|0` (case-insensitive).
@@ -326,6 +345,9 @@ load legacy.csv encoding big5 as t
 
 # Stock IDs / exact amounts: load everything as raw strings
 load stocks.csv infer false as raw
+
+# Noisy CSV: trailer rows, extra cells, and whitespace before quotes
+load inventory.csv ragged true trimspace true as inventory
 
 # Excel: 'sheet' is required; headers/rownames are optional
 load report.xlsx sheet 2025 rownames true as t
@@ -455,6 +477,148 @@ scale transform sc test as test_scaled
 scale inverse sc train_scaled as train_original
 ```
 
+### B6. Exponential weighting and calendar resampling
+
+`ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]` computes an exponentially weighted statistic over a DataList. Exactly one decay keyword is given: `alpha` in `(0, 1]`, `span >= 1` (`alpha = 2 / (span + 1)`), or `halflife > 0`. `adjust` and `bias` default to no, `minobs` to 1. The result is a DataList of the same length as the input.
+
+```text
+ewm price alpha 0.5 mean as ewma
+ewm price span 12 mean adjust yes as ema12
+ewm returns halflife 5 std minobs 3 as ewvol
+```
+
+`rolling` additionally takes two paired reducers, each consuming a second DataList variable: `rolling <var> <window> cov <other> [...]` and `rolling <var> <window> beta <other> [...]`. `beta` is `Cov(var, other) / Var(other)`; a flat benchmark window yields nil.
+
+```text
+rolling asset 20 cov benchmark as roll_cov
+rolling asset 20 beta benchmark minobs 10 as roll_beta
+```
+
+`resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [...] [as <var>]` turns time-keyed rows into calendar-period aggregates. Each output row is labelled with the period's final calendar day, periods with no rows are omitted, and `op` accepts the same operator names as `groupby`. The optional third field renames the output column; without it the output keeps the source column name. Column names containing `:` cannot be written in this syntax.
+
+```text
+fetch yahoo AAPL history as bars
+resample bars Date monthly Open:first High:max Low:min Close:last:MonthClose Volume:sum as monthly_bars
+show monthly_bars
+```
+
+`<timecol>` must hold `time.Time` values; a column of date *strings* is rejected with a row-numbered error. A CSV load leaves date columns as strings, so convert the column with `parsedates` first (below), or start from a source that carries real timestamps such as `fetch yahoo <ticker> history`.
+
+`parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]` turns date strings into `time.Time`. On a DataList the whole list is converted; on a DataTable `cols` is required and names the columns to convert (by name, or by Excel index such as `A`). `layout` takes a Go reference layout and may be repeated — the layouts are tried in order and the first match wins. Without `layout`, common ISO shapes are tried (`2006-01-02`, `2006-01-02 15:04:05`, RFC 3339). A cell no layout matches becomes nil, so `resample` then reports it by row rather than converting half a column silently.
+
+```text
+load bars.csv as bars
+parsedates bars cols Date as bars
+resample bars Date monthly Close:last as monthly_close
+```
+
+```text
+parsedates trades cols TradeDate,SettleDate layout 02/01/2006 as trades
+```
+
+### B7. Risk report from a return series
+
+`quant` reaches the `quant` package: performance ratios, tail risk, market exposure, factor attribution, and European option pricing. Every series argument is a DataList variable of **per-period returns**, not prices, so convert a price column first — `pctchange` leaves a leading nil that `clean nil` removes.
+
+```text
+fetch yahoo AAPL history as bars
+col bars Close as price
+pctchange price 1 as ret
+clean ret nil
+quant sharpe ret 252 rf 0.0001 as sharpe
+quant sortino ret 252 as sortino
+quant var ret 0.95 as var95
+quant cvar ret 0.95 parametric as cvar95
+```
+
+Each scalar form prints `name=value` and stores a `float64` under `as <var>` (or `$result`). `periods`, `days`, and `confidence` are required — the library refuses to guess an annualization factor, so there is no CLI-side default of 252. `rf`, `mar`, and `q` default to 0.
+
+`capm` and `bs` store a one-row DataTable; `factor` stores one row per factor plus `<var>_alpha`; `drawdown` stores a DataList.
+
+```text
+quant capm asset market rf 0.0002 as capm
+quant factor asset factors as fm
+show fm
+show fm_alpha
+quant bs call 42 40 0.10 0.20 0.5 as opt
+quant iv call 4.759 42 40 0.10 0.5
+```
+
+`portfolio` and `frontier` take a **DataTable** of aligned per-period returns — one column per asset, one row per period — instead of a single series:
+
+```text
+quant portfolio <returns_dt> minvar|target <r>|maxsharpe [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]
+quant frontier <returns_dt> <points> [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]
+```
+
+`min` and `max` are comma-separated per-asset bounds in column order; the default box is long-only `[0, 1]`, so a short position needs an explicit negative `min`. A list whose length does not match the table's column count is refused before the solver runs. `rf` is per period and defaults to 0.
+
+### B8. Taiwan stock beta from the CLI
+
+`fetch tw` reaches the Taiwan Stock Exchange (TWSE) and Taipei Exchange (TPEx) daily datasets. No API key is needed, dates are written `YYYY-MM-DD`, and the trailing market keyword is `twse`, `tpex`, or `auto` (the default).
+
+```text
+fetch tw <code> prices <from> <to> [twse|tpex|auto] [as <var>]
+fetch tw <code> adjprices <from> <to> [twse|auto] [as <var>]
+fetch tw exrights <from> <to> [twse|auto] [as <var>]
+fetch tw institutional <date> [twse|tpex|auto] [as <var>]
+fetch tw margin <date> [twse|tpex|auto] [as <var>]
+fetch tw quotes [twse|tpex|auto] [as <var>]
+```
+
+Use `adjprices` for anything that becomes a return series: on an ex-dividend or ex-rights day the quoted price drops without any loss to the holder, so `Close` shows a fake loss that `AdjClose` removes. `adjprices` and `exrights` are TWSE-only — TPEx publishes no dated ex-rights history, so passing `tpex` returns an explicit error rather than a silently unadjusted table.
+
+Beta of TSMC against the 0050 market ETF, end to end:
+
+```text
+fetch tw 2330 adjprices 2026-01-01 2026-08-31 twse as tsmc
+fetch tw 0050 adjprices 2026-01-01 2026-08-31 twse as market
+col tsmc AdjClose as tsmc_px
+col market AdjClose as market_px
+pctchange tsmc_px 1 as tsmc_ret
+pctchange market_px 1 as market_ret
+clean tsmc_ret nil
+clean market_ret nil
+quant beta tsmc_ret market_ret as beta
+```
+
+Requests are throttled to one every 300 ms with two retries, which is what the exchanges' unauthenticated endpoints tolerate for a multi-year backfill. A script that needs a different pace sets the interval once:
+
+```text
+config fetch.tw.interval_ms 1000
+```
+
+The value is milliseconds and must be a non-negative integer; `0` turns throttling off.
+
+### B9. Portfolio weights from the CLI
+
+`quant portfolio` turns a table of aligned return columns into an allocation. Build the table by fetching each asset, taking returns, and putting the series side by side. `setcolnames` matters: `newdt` names each column after its DataList, and two series both extracted from an `AdjClose` column would otherwise arrive with the same name.
+
+```text
+fetch tw 2330 adjprices 2026-01-01 2026-08-31 twse as tsmc
+fetch tw 2317 adjprices 2026-01-01 2026-08-31 twse as hon_hai
+col tsmc AdjClose as tsmc_px
+col hon_hai AdjClose as hon_hai_px
+pctchange tsmc_px 1 as tsmc_ret
+pctchange hon_hai_px 1 as hon_hai_ret
+clean tsmc_ret nil
+clean hon_hai_ret nil
+newdt tsmc_ret hon_hai_ret as rets
+setcolnames rets TSMC HonHai
+quant portfolio rets maxsharpe rf 0.0001 as w
+show w
+show w_stats
+```
+
+`portfolio` prints one `<asset>=<weight>` line plus a summary (`return= vol= sharpe= iterations= converged=`). It stores a two-column `Asset, Weight` DataTable under `as <var>` (or `$result`), and a one-row `<var>_stats` table with `ExpectedReturn`, `Variance`, `Volatility`, `SharpeRatio`, `Iterations` and `Converged`. A solve that hits the iteration cap is reported as `converged=false` with the best weights found — it is not an error.
+
+`frontier` sweeps the same problem across the attainable return range and stores one row per point: the fixed columns `ExpectedReturn`, `Variance`, `Volatility`, `SharpeRatio` and `Converged`, then one weight column per asset named after the asset. An asset literally named after one of those five columns is refused rather than silently renamed.
+
+```text
+quant frontier rets 20 min -0.2,-0.2 max 1,1 as f
+save f frontier.csv
+```
+
 ### C. Go `engine/dsl` session flow
 
 ```go
@@ -496,8 +660,9 @@ High-level command map:
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
 - **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
-- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `fillna`
+- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `parsedates`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
+- **Quant**: `quant` (`sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`, `portfolio`, `frontier`)
 
 ### Missing-Value Fill Commands
 
@@ -561,10 +726,11 @@ Source policy:
 | `droprow` | `droprow <var> <index\|name...>` | Drop rows by index or name |
 | `encode` | `encode <var> onehot\|label\|ordinal ... [as <var>]` | One-shot categorical encoding for DataTable variables |
 | `env` | `env <create\|list\|open\|clear\|export\|import\|delete\|rename\|info> [args]` | Environment management |
+| `ewm` | `ewm <var> alpha\|span\|halflife <value> mean\|var\|std [adjust yes\|no] [bias yes\|no] [minobs <n>] [as <var>]` | Exponentially weighted mean/var/std over a DataList |
 | `exit` | `exit` | Exit REPL |
 | `expanding` | `expanding <var> <minobs> <reducer> [as <var>]` | Expanding-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
 | `expsmooth` | `expsmooth <var> <alpha> [as <var>]` | Exponential smoothing |
-| `fetch` | `fetch yahoo <ticker> <method> [params...] [as <var>]` | Fetch external data |
+| `fetch` | `fetch yahoo <ticker> <method> [params...] [as <var>]` / `fetch tw [<code>] prices\|adjprices\|exrights\|institutional\|margin\|quotes ... [as <var>]` | Fetch external data |
 | `fillna` | `fillna <var> mean\|median\|mode\|ffill\|bfill\|interpolate [cols A,B,C] [limit N] [extrapolate yes\|no] [missing nan\|nil\|both] [as <var>]` | Fill missing DataList/DataTable values |
 | `fillnan` | `fillnan <var> mean [as <var>]` | Fill NaN with mean (deprecated alias) |
 | `filter` | `filter <var> <expr> [as <var>]` | Filter DataTable by CCL expression |
@@ -593,6 +759,7 @@ Source policy:
 | `newdt` | `newdt <dl_vars...> [as <var>]` | Create DataTable from DataList variables |
 | `normalize` | `normalize <var> [as <var>]` | Normalize DataList |
 | `parsenums` | `parsenums <var> [as <var>]` | Parse DataList strings to numbers |
+| `parsedates` | `parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]` | Convert date strings to `time.Time` in a DataList or DataTable columns |
 | `parsestrings` | `parsestrings <var> [as <var>]` | Parse DataList numbers to strings |
 | `pca` | `pca <var> <n>` | Principal component analysis |
 | `pctchange` | `pctchange <var> <periods> [as <var>]` | Percent change over `periods` rows |
@@ -603,6 +770,7 @@ Source policy:
 | `silhouette` | `silhouette <var> <labels_var> [as <var>]` | Silhouette analysis |
 | `percentile` | `percentile <var> <p>` | DataList percentile |
 | `plot` | `plot <type> <var> [options...] [save <file>]` | Create charts from variables |
+| `quant` | `quant sharpe\|sortino\|ir\|maxdd\|annret\|calmar\|drawdown\|var\|cvar\|beta\|capm\|factor\|bs\|iv\|portfolio\|frontier ...` | Quantitative finance: performance, risk, exposure, factor, option and portfolio analytics |
 | `quartile` | `quartile <var> <q>` | DataList quartile |
 | `range` | `range <var>` | DataList range |
 | `rank` | `rank <var> [asc\|desc\|true\|false] [as <var>]` | Rank DataList |
@@ -610,8 +778,9 @@ Source policy:
 | `regression` | `regression <type> <y> <x...>` | Regression analysis: linear/poly/exp/log/logistic/poisson |
 | `rename` | `rename <var> <new>` | Rename variable |
 | `replace` | `replace <var> <old\|nan\|nil> <new>` | Replace values in DataTable/DataList |
+| `resample` | `resample <dt> <timecol> weekly\|monthly\|quarterly\|yearly <col>:<op>[:<name>] [...] [as <var>]` | Aggregate a time-indexed DataTable into calendar periods |
 | `reverse` | `reverse <var> [as <var>]` | Reverse DataList |
-| `rolling` | `rolling <var> <window> <reducer> [minobs <n>] [center yes\|no] [as <var>]` | Rolling-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
+| `rolling` | `rolling <var> <window> <reducer> [minobs <n>] [center yes\|no] [as <var>]` | Rolling-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var, or cov\|beta with a second DataList) |
 | `row` | `row <var> <index\|name> [as <var>]` | Extract DataTable row as DataList |
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |
@@ -694,4 +863,3 @@ load parquet data.parquet cols id,amount,status rowgroups 0,1 as t
 # invalid (unknown option)
 load parquet data.parquet columns id
 ```
-

@@ -29,10 +29,17 @@ const daysPerYear = 365.0
 // The standard deviation is the sample (n-1) standard deviation, matching
 // the common convention used by most backtesting tools and by gonum.
 //
-// Returns an error if fewer than 2 returns are given, periodsPerYear is
-// non-positive, or the return series has zero volatility (Sharpe undefined).
+// Returns an error if returns is nil, fewer than 2 returns are given,
+// periodsPerYear is non-positive, or the return series has zero volatility
+// (Sharpe undefined). Every value must be numeric and finite — an
+// unreadable, NaN, or Inf cell is an error naming its one-based row, never
+// a substituted zero.
 func SharpeRatio(returns insyra.IDataList, riskFreeRate, periodsPerYear float64) (float64, error) {
-	return sharpeRatioF64(returns.ToF64Slice(), riskFreeRate, periodsPerYear)
+	values, err := numericSeries(returns, "returns")
+	if err != nil {
+		return math.NaN(), err
+	}
+	return sharpeRatioF64(values, riskFreeRate, periodsPerYear)
 }
 
 func sharpeRatioF64(returns []float64, riskFreeRate, periodsPerYear float64) (float64, error) {
@@ -65,9 +72,15 @@ func sharpeRatioF64(returns []float64, riskFreeRate, periodsPerYear float64) (fl
 // equity should be a positive value series; points where the running peak
 // is non-positive are skipped (drawdown is undefined there).
 //
-// Returns an error if equity is empty.
+// Returns an error if equity is nil or empty. Every value must be numeric
+// and finite — an unreadable, NaN, or Inf cell is an error naming its
+// one-based row, never a substituted zero.
 func MaxDrawdown(equity insyra.IDataList) (float64, error) {
-	return maxDrawdownF64(equity.ToF64Slice())
+	values, err := numericSeries(equity, "equity")
+	if err != nil {
+		return math.NaN(), err
+	}
+	return maxDrawdownF64(values)
 }
 
 func maxDrawdownF64(equity []float64) (float64, error) {
@@ -98,11 +111,17 @@ func maxDrawdownF64(equity []float64) (float64, error) {
 // equity is a value/NAV curve (only its first and last points matter);
 // days is the calendar-day span the curve covers.
 //
-// Returns an error if fewer than 2 points are given, days is non-positive,
-// or the first/last equity value is non-positive (the growth ratio would
-// be undefined).
+// Returns an error if equity is nil, fewer than 2 points are given, days is
+// non-positive, or the first/last equity value is non-positive (the growth
+// ratio would be undefined). Every value must be numeric and finite — an
+// unreadable, NaN, or Inf cell is an error naming its one-based row, never
+// a substituted zero.
 func AnnualizedReturn(equity insyra.IDataList, days int) (float64, error) {
-	return annualizedReturnF64(equity.ToF64Slice(), days)
+	values, err := numericSeries(equity, "equity")
+	if err != nil {
+		return math.NaN(), err
+	}
+	return annualizedReturnF64(values, days)
 }
 
 func annualizedReturnF64(equity []float64, days int) (float64, error) {

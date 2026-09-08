@@ -16,16 +16,6 @@ import (
 // when ReadSQLOptions.ChunkSize is unset.
 const defaultStreamChunkSize = 1000
 
-// dateParseLayouts are the time layouts ParseDates tries in order.
-var dateParseLayouts = []string{
-	time.RFC3339Nano,
-	time.RFC3339,
-	"2006-01-02 15:04:05.999999999",
-	"2006-01-02 15:04:05",
-	"2006-01-02T15:04:05",
-	"2006-01-02",
-}
-
 type ReadSQLOptions struct {
 	// RowNameColumn names the column whose values should become DataTable row
 	// names. If empty, no column is treated as the row-name column. Defaults
@@ -268,11 +258,6 @@ func scanRowsToDataTable(rows *sql.Rows, opts ReadSQLOptions, maxRows int) (*Dat
 		colTypes = nil
 	}
 
-	parseDateSet := make(map[string]bool, len(opts.ParseDates))
-	for _, c := range opts.ParseDates {
-		parseDateSet[strings.ToLower(c)] = true
-	}
-
 	rowNameColIndex := -1
 	if opts.RowNameColumn != "" {
 		for i, colName := range columnNames {
@@ -325,7 +310,7 @@ func scanRowsToDataTable(rows *sql.Rows, opts ReadSQLOptions, maxRows int) (*Dat
 			if colTypes != nil && i < len(colTypes) {
 				ct = colTypes[i]
 			}
-			converted := convertSQLValue(val, ct, columnNames[i], opts, parseDateSet)
+			converted := convertSQLValue(val, ct, columnNames[i], opts)
 			dl.Append(converted)
 		}
 		rowIndex++
@@ -363,13 +348,42 @@ func scanRowsToDataTable(rows *sql.Rows, opts ReadSQLOptions, maxRows int) (*Dat
 				dt.SetRowNameByIndex(i, name)
 			}
 		}
+		if cols := parseDateColumns(columnNames, rowNameColIndex, opts); len(cols) > 0 {
+			dt.ParseDatesCols(cols)
+		}
 	}
 	return dt, done, nil
 }
 
-// convertSQLValue applies DType coercion, ParseDates parsing, and the
-// historical []byte → string fallback while preserving binary blobs.
-func convertSQLValue(val any, ct *sql.ColumnType, colName string, opts ReadSQLOptions, parseDateSet map[string]bool) any {
+// parseDateColumns resolves ReadSQLOptions.ParseDates (matched case-insensitively,
+// as it always has been) to the actual column names present in the result. The
+// row-name column is not a column of the table, and a column whose type DType
+// already forces is left to DType.
+func parseDateColumns(columnNames []string, rowNameColIndex int, opts ReadSQLOptions) []string {
+	if len(opts.ParseDates) == 0 {
+		return nil
+	}
+	wanted := make(map[string]bool, len(opts.ParseDates))
+	for _, c := range opts.ParseDates {
+		wanted[strings.ToLower(c)] = true
+	}
+	cols := make([]string, 0, len(opts.ParseDates))
+	for i, name := range columnNames {
+		if i == rowNameColIndex || !wanted[strings.ToLower(name)] {
+			continue
+		}
+		if _, forced := opts.DType[name]; forced {
+			continue
+		}
+		cols = append(cols, name)
+	}
+	return cols
+}
+
+// convertSQLValue applies DType coercion and the historical []byte → string
+// fallback while preserving binary blobs. ParseDates runs afterwards, once the
+// whole table exists, through DataTable.ParseDatesCols.
+func convertSQLValue(val any, ct *sql.ColumnType, colName string, opts ReadSQLOptions) any {
 	if val == nil {
 		return nil
 	}
@@ -377,12 +391,6 @@ func convertSQLValue(val any, ct *sql.ColumnType, colName string, opts ReadSQLOp
 	if target, ok := opts.DType[colName]; ok {
 		if v, ok := coerceToType(val, target); ok {
 			return v
-		}
-	}
-
-	if parseDateSet[strings.ToLower(colName)] {
-		if t, ok := tryParseTime(val); ok {
-			return t
 		}
 	}
 
@@ -447,12 +455,7 @@ func tryParseTime(val any) (time.Time, bool) {
 }
 
 func tryParseTimeString(s string) (time.Time, bool) {
-	for _, layout := range dateParseLayouts {
-		if t, err := time.Parse(layout, s); err == nil {
-			return t, true
-		}
-	}
-	return time.Time{}, false
+	return parseTimeWithLayouts(s, dateParseLayouts)
 }
 
 // coerceToType performs a best-effort conversion of val to target. Returns

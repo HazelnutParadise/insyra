@@ -5,7 +5,7 @@ import "fmt"
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "read",
-		Usage:       "read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>]",
+		Usage:       "read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>]",
 		Description: "Quick preview a file without saving variable",
 		Run:         runReadCommand,
 	})
@@ -13,7 +13,7 @@ func init() {
 
 func runReadCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>]")
+		return fmt.Errorf("usage: read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>]")
 	}
 	fakeArgs := append([]string(nil), args...)
 	fakeArgs = append(fakeArgs, "as", "$preview")

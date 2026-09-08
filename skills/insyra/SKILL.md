@@ -403,11 +403,17 @@ func main() {
     raw, err := insyra.ReadCSV_FileWithOptions("stocks.csv", insyra.CSVReadOptions{
         FirstRowToColNames: true,
         RawStrings:         true,
+        AllowRaggedRows:    true,
+        TrimLeadingSpace:   true,
     })
     if err != nil {
         log.Fatal(err)
     }
     _ = raw
+
+    // AllowRaggedRows pads short rows with "" and keeps extra cells in
+    // automatically named columns. TrimLeadingSpace also accepts whitespace
+    // before quoted fields. Both are opt-in; the zero value stays strict.
 
     // Quick console preview (first N rows)
     insyra.Show("preview", dt, 5)
@@ -427,6 +433,47 @@ orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{Prese
 
 listSample := dl.Sample(10, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
 ```
+
+### 2c) Time-series windows and resampling
+
+Use `DataList.Rolling(opts)` for fixed-size windows, `Expanding(minObs)` for
+all-history windows, and `EWM(EWMOptions{...})` for exponentially weighted
+statistics. Rolling reducers include `Corr`, `Cov`, and `Beta`; `Cov` uses
+sample covariance and `Beta` is `Cov(source, benchmark) / Var(benchmark)`, so a
+flat benchmark returns nil. Paired windows align by index, skip nil or
+non-numeric pairs, truncate to the shorter input, and preserve the existing
+`MinObs` and nil-window rules.
+
+```go
+rolling := prices.Rolling(insyra.RollingOptions{Window: 20, MinObs: 10})
+cov := rolling.Cov(benchmark)
+beta := rolling.Beta(benchmark)
+ewm := prices.EWM(insyra.EWMOptions{Span: 10, Adjust: false})
+mean := ewm.Mean()
+std := ewm.Std()
+```
+
+`EWMOptions` requires exactly one of `Alpha`, `Span`, or `HalfLife`. `Adjust`
+and `Bias` follow pandas, gaps decay without resetting the accumulated state,
+and `MinObs` suppresses early output. Invalid decay options warn and return an
+empty result. For table columns use `EWMCol` with the same name-first,
+Excel-index fallback as `RollingCol`.
+
+For calendar aggregation use `DataTable.Resample(timeCol, freq, aggs...)` with
+`ResampleWeekly`, `ResampleMonthly`, `ResampleQuarterly`, or `ResampleYearly`.
+Weekly buckets are Monday through Sunday, labels are period-end `time.Time`
+values, empty periods are omitted, and `ResampleAgg` reuses `AggregateOp`.
+Input rows are sorted by time for `first`/`last` semantics and the result is
+returned in period order. Missing columns, empty aggregations, unknown
+frequencies, and non-`time.Time` cells return errors.
+
+A CSV load leaves date columns as strings, so `Resample` rejects them. Convert
+first with `dt.ParseDatesCols([]string{"Date"})`, or `dl.ParseDates()` on a
+single list. Both take optional Go layouts (`ParseDates("02/01/2006")`) and
+default to the ISO shapes `ReadSQLOptions.ParseDates` uses. Strings become UTC
+`time.Time`, existing `time.Time` values are kept, and anything unparsable
+becomes nil — never a half-converted column. `ParseDatesCols` warns and skips a
+column that does not exist.
 
 ### ML model selection
 
@@ -708,6 +755,80 @@ enriched, err := g.ReverseTableByColName(dt, "lat", "lng")
 
 On quota exhaustion the batch stops, returns already-resolved rows (rest marked `pending`), and returns a `*datafetch.RateLimitError` (unwraps to `ErrGeocodeRateLimited`; carries `ResetAt`). See `Docs/datafetch.md` for the full API.
 
+### 8) Fetch Taiwan stock exchange data (datafetch)
+
+`datafetch.TWStock` returns typed `DataTable` values from the unauthenticated TWSE and TPEx APIs. Historical prices are paged by month; use `TWMarketTWSE`, `TWMarketTPEx`, or `TWMarketAuto`.
+
+```go
+import (
+    "time"
+    "github.com/HazelnutParadise/insyra/datafetch"
+)
+
+stocks, _ := datafetch.TWStock(datafetch.TWStockConfig{
+    Interval: 300 * time.Millisecond,
+})
+prices, err := stocks.DailyPrices(
+    "2330", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+    time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC), datafetch.TWMarketTWSE,
+)
+```
+
+The other methods are `DailyPricesAdjusted`, `ExRights`, `InstitutionalTrades`, `MarginBalance`, and `AllDailyQuotes`; all return `*insyra.DataTable` with `time.Time` dates and numeric columns. When combining price data with return series for `quant.Beta`, call `Merge` first so the two series are aligned by date.
+
+**Compute returns from `AdjClose`, not `Close`.** `DailyPricesAdjusted` adds `AdjFactor` and `AdjOpen/High/Low/Close`, backward-adjusted the same way as Yahoo's `Adj Close`, so an ex-dividend day no longer shows a fake loss. Ex-dates are taken from `[from, to]` only, so extend `to` to today for a stable series. `ExRights` and `DailyPricesAdjusted` are TWSE-only — `TWMarketTPEx` returns an explicit "not supported" error.
+
+```go
+prices, err := stocks.DailyPricesAdjusted("2330", from, time.Now(), datafetch.TWMarketTWSE)
+returns := prices.PctChangeCol("AdjClose", 1).ClearNils()
+```
+
+### 9) Probabilistic forecast from a return series (quant)
+
+`quant.BlockBootstrap` resamples historical returns in blocks (keeps autocorrelation and fat tails, no normality assumption) into simulated paths; `quant.PercentileBands` turns them into fan-chart bands. Same inputs + `Seed` → bit-identical output; `Seed` always applies (zero value is seed 0). Config is validated, not defaulted. Input values must be finite numbers — an unreadable cell is an error naming the row, never a zero.
+
+```go
+import "github.com/HazelnutParadise/insyra/quant"
+
+// returns: insyra.IDataList of per-period simple returns (0.012 = +1.2%)
+res, err := quant.BlockBootstrap(returns, quant.BootstrapConfig{
+    Horizon: 252, BlockSize: 20, Paths: 5000, Seed: 42, // Stationary: true for geometric block lengths
+})
+if err != nil { /* handle */ }
+// res.Returns: Paths×Horizon resampled returns; res.Equity: Paths×(Horizon+1) compounded from 1.0
+bands, err := quant.PercentileBands(res.Equity, []float64{5, 25, 50, 75, 95}) // bands[i] ↔ percentiles[i], R type-7
+```
+
+See `Docs/quant.md` for parameter guidance (block length ≈ n^(1/3), a few thousand paths) and the other quant tools (Sharpe, max drawdown, PBO, Deflated Sharpe, walk-forward).
+
+### 8b) Market beta / CAPM from aligned returns (quant)
+
+`quant.Beta(assetReturns, marketReturns)` returns the market exposure, while `quant.CAPM(assetReturns, marketReturns, riskFreeRate)` also returns per-period alpha, R², standard errors, and observation count. These functions require aligned per-period returns: merge the two price tables with an inner `Merge` on the date, then call `PctChangeCol(..., 1).ClearNils()` on both price columns. They refuse unreadable or non-finite cells rather than treating them as zero. `quant.FactorModel(assetReturns, factors, riskFreeRate)` extends this to named factor columns, subtracting the risk-free rate from the asset only; pass a raw market column after subtracting the same rate yourself. See `Docs/quant.md` for the complete CAPM and factor-model APIs and the `Close` versus `Adj Close`, window-length, and frequency choices that change the result.
+
+### 8c) Risk metrics (quant)
+
+`quant.ValueAtRisk` and `quant.ConditionalValueAtRisk` report per-period tail losses (historical or parametric), while `quant.SortinoRatio`, `quant.CalmarRatio`, `quant.InformationRatio`, and `quant.DrawdownSeries` cover downside, drawdown-relative, benchmark-relative, and per-period drawdown analysis. Every `quant` input series must hold finite numbers; an unreadable cell is an error naming the series and the row, never a zero — this covers the older `SharpeRatio`, `MaxDrawdown`, `AnnualizedReturn`, `DeflatedSharpeRatio`, and `PBO` as well.
+
+```go
+var95, err := quant.ValueAtRisk(returns, 0.95, quant.VaRHistorical)
+if err != nil { /* handle */ }
+cvar95, err := quant.ConditionalValueAtRisk(returns, 0.95, quant.VaRHistorical)
+```
+
+VaR and CVaR use a positive-loss convention and are not annualized. See `Docs/quant.md` for the formulas, confidence direction, and ratio annualization arguments.
+
+For European option pricing, use `quant.BlackScholes` for the price and five greeks, or `quant.ImpliedVolatility` to recover volatility from a market price; rates and volatility are decimal annual inputs, Vega is per unit of volatility, and Theta is per year.
+
+### 8d) Portfolio weights (quant)
+
+`quant.OptimizePortfolio(returnsTable, quant.PortfolioConfig{...})` returns mean-variance weights from a table of aligned per-period returns (one column per asset), for `MinimumVariance` (the zero value), `TargetReturn`, or `MaximumSharpe`. Weights always sum to 1 and stay inside `MinWeight`/`MaxWeight`, which default to long-only `[0, 1]` — a short position needs an explicit negative `MinWeight`. `quant.OptimizePortfolioMoments(mean, cov, names, cfg)` takes moments you estimated yourself (shrinkage, factor covariance, forecasts) and refuses a `cov` that is not symmetric and positive semidefinite; `quant.EfficientFrontier(returnsTable, points, cfg)` sweeps the frontier. `PortfolioResult.SharpeRatio` is per period — multiply by `math.Sqrt(252)` for daily data. Hitting `MaxIterations` is not an error: check `Converged` before trusting weights from strongly correlated assets. Sector caps, turnover, cardinality, and transaction costs are out of scope.
+
+```go
+res, err := quant.OptimizePortfolio(returns, quant.PortfolioConfig{Objective: quant.MaximumSharpe, RiskFreeRate: 0.0001})
+if err != nil { /* handle */ }
+w, ok := res.Weight("GOLD")
+```
+
 ## Engine package (advanced primitives)
 The repo includes an `engine` package that re-exports well-tested internal primitives (see [`engine/`](../../engine) and `engine/README.md).
 
@@ -872,6 +993,7 @@ Note: not every structure in `engine` is concurrent-safe by itself (e.g., `BiInd
 
 ## References (quick lookup)
 - `references/ccl-operators.md` - CCL operators, ranges, row access, quoting rules, and edge-case notes.
+- `references/window-functions.md` - Rolling `Cov`/`Beta`, `EWM` options and reducers, and `DataTable.Resample` semantics.
 
 ## Insyra docs via MCP (recommended for agents)
 If you want up-to-date Insyra documentation inside an MCP-capable client, prefer these:

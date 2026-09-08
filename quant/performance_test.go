@@ -2,7 +2,10 @@ package quant
 
 import (
 	"math"
+	"strings"
 	"testing"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
 // refSharpe is an independent reimplementation used only to validate the
@@ -121,5 +124,80 @@ func TestAnnualizedReturn(t *testing.T) {
 		if _, err := AnnualizedReturn(toDL(tc.equity...), tc.days); err == nil {
 			t.Errorf("%s: expected error", tc.name)
 		}
+	}
+}
+
+func TestPerformanceRejectsUnreadableInput(t *testing.T) {
+	cases := []struct {
+		name   string
+		values []any
+		series string
+		row    string
+	}{
+		{"nil cell", []any{0.01, nil, 0.02}, "returns", "row 2"},
+		{"text cell", []any{0.01, "n/a", 0.02}, "returns", "row 2"},
+		{"NaN cell", []any{0.01, math.NaN(), 0.02}, "returns", "row 2"},
+		{"positive Inf cell", []any{0.01, math.Inf(1), 0.02}, "returns", "row 2"},
+		{"negative Inf cell", []any{0.01, math.Inf(-1), 0.02}, "returns", "row 2"},
+		{"unreadable last cell", []any{0.01, 0.02, "x"}, "returns", "row 3"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := SharpeRatio(insyra.NewDataList(tc.values...), 0, 252)
+			if err == nil {
+				t.Fatalf("SharpeRatio returned nil error, got %v", got)
+			}
+			if !strings.Contains(err.Error(), tc.series) || !strings.Contains(err.Error(), tc.row) {
+				t.Errorf("SharpeRatio error = %q, want %s and %s", err, tc.series, tc.row)
+			}
+			if !math.IsNaN(got) {
+				t.Errorf("SharpeRatio = %v on refusal, want NaN", got)
+			}
+		})
+	}
+
+	// The same cells are refused by the equity-curve entry points, which
+	// label the series "equity".
+	equityCases := []struct {
+		name   string
+		values []any
+		row    string
+	}{
+		{"text cell", []any{100.0, "n/a", 90.0}, "row 2"},
+		{"nil cell", []any{100.0, nil, 90.0}, "row 2"},
+		{"NaN cell", []any{100.0, math.NaN(), 90.0}, "row 2"},
+		{"Inf cell", []any{100.0, math.Inf(1), 90.0}, "row 2"},
+	}
+	for _, tc := range equityCases {
+		t.Run("equity/"+tc.name, func(t *testing.T) {
+			check := func(name string, got float64, err error) {
+				t.Helper()
+				if err == nil {
+					t.Fatalf("%s returned nil error, got %v", name, got)
+				}
+				if !strings.Contains(err.Error(), "equity") || !strings.Contains(err.Error(), tc.row) {
+					t.Errorf("%s error = %q, want equity and %s", name, err, tc.row)
+				}
+				if !math.IsNaN(got) {
+					t.Errorf("%s = %v on refusal, want NaN", name, got)
+				}
+			}
+			dd, ddErr := MaxDrawdown(insyra.NewDataList(tc.values...))
+			check("MaxDrawdown", dd, ddErr)
+			ar, arErr := AnnualizedReturn(insyra.NewDataList(tc.values...), 30)
+			check("AnnualizedReturn", ar, arErr)
+		})
+	}
+}
+
+func TestPerformanceRejectsNilInput(t *testing.T) {
+	if got, err := SharpeRatio(nil, 0, 252); err == nil || !strings.Contains(err.Error(), "returns is nil") {
+		t.Errorf("SharpeRatio(nil) = %v, %v; want an error naming \"returns is nil\"", got, err)
+	}
+	if got, err := MaxDrawdown(nil); err == nil || !strings.Contains(err.Error(), "equity is nil") {
+		t.Errorf("MaxDrawdown(nil) = %v, %v; want an error naming \"equity is nil\"", got, err)
+	}
+	if got, err := AnnualizedReturn(nil, 30); err == nil || !strings.Contains(err.Error(), "equity is nil") {
+		t.Errorf("AnnualizedReturn(nil) = %v, %v; want an error naming \"equity is nil\"", got, err)
 	}
 }

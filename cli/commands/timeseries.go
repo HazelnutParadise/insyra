@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -51,6 +52,8 @@ func init() {
 		Description: "Rolling-window reduction over a DataList",
 		Forms: []string{
 			"<reducer>                sum, mean, min, max, median, std, var",
+			"cov <other>              rolling sample covariance against DataList <other>",
+			"beta <other>             rolling Cov(var, other) / Var(other)",
 			"minobs <n>               minimum valid observations (default = window)",
 			"center yes|no            anchor window at the central row (default no)",
 		},
@@ -58,8 +61,30 @@ func init() {
 			"insyra rolling price 3 mean as ma3",
 			"insyra rolling price 7 mean minobs 1 as ma7_soft",
 			"insyra rolling price 5 std center yes as roll_std",
+			"insyra rolling asset 20 cov benchmark as roll_cov",
+			"insyra rolling asset 20 beta benchmark minobs 10 as roll_beta",
 		},
 		Run: runRollingCommand,
+	})
+	_ = Register(&CommandHandler{
+		Name:        "ewm",
+		Usage:       "ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]",
+		Description: "Exponentially weighted mean / variance / standard deviation over a DataList",
+		Forms: []string{
+			"alpha <value>            smoothing factor in (0, 1]",
+			"span <value>             span >= 1, alpha = 2 / (span + 1)",
+			"halflife <value>         half-life > 0, alpha = 1 - exp(ln(0.5) / halflife)",
+			"<reducer>                mean, var, std",
+			"adjust yes|no            use the adjusted (decaying-weight) form (default no)",
+			"bias yes|no              population variance instead of the corrected one (default no)",
+			"minobs <n>               minimum valid observations before emitting (default 1)",
+		},
+		Examples: []string{
+			"insyra ewm price alpha 0.5 mean as ewma",
+			"insyra ewm price span 12 mean adjust yes as ema12",
+			"insyra ewm returns halflife 5 std minobs 3 as ewvol",
+		},
+		Run: runEWMCommand,
 	})
 	_ = Register(&CommandHandler{
 		Name:        "expanding",
@@ -250,8 +275,23 @@ func runRollingCommand(ctx *ExecContext, args []string) error {
 	}
 	reducer := strings.ToLower(coreArgs[2])
 
+	// `cov` and `beta` take the next positional as the second series; option
+	// parsing then continues from the token after it.
+	optionStart := 3
+	var other *insyra.DataList
+	if reducer == "cov" || reducer == "beta" {
+		if len(coreArgs) < 4 {
+			return fmt.Errorf("rolling: reducer %q requires a second DataList variable (usage: rolling <var> <window> %s <other> [minobs <n>] [center yes|no] [as <var>])", reducer, reducer)
+		}
+		other, err = getDataListVar(ctx, coreArgs[3])
+		if err != nil {
+			return fmt.Errorf("rolling: %w", err)
+		}
+		optionStart = 4
+	}
+
 	opts := insyra.RollingOptions{Window: window}
-	for i := 3; i < len(coreArgs); {
+	for i := optionStart; i < len(coreArgs); {
 		key := strings.ToLower(coreArgs[i])
 		next := func() (string, error) {
 			if i+1 >= len(coreArgs) {
@@ -304,8 +344,12 @@ func runRollingCommand(ctx *ExecContext, args []string) error {
 		result = r.Std()
 	case "var":
 		result = r.Var()
+	case "cov":
+		result = r.Cov(other)
+	case "beta":
+		result = r.Beta(other)
 	default:
-		return fmt.Errorf("rolling: unknown reducer %q (supported: sum, mean, min, max, median, std, var)", coreArgs[2])
+		return fmt.Errorf("rolling: unknown reducer %q (supported: sum, mean, min, max, median, std, var, cov <other>, beta <other>)", coreArgs[2])
 	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
@@ -346,6 +390,98 @@ func runExpandingCommand(ctx *ExecContext, args []string) error {
 		result = e.Var()
 	default:
 		return fmt.Errorf("expanding: unknown reducer %q (supported: sum, mean, min, max, median, std, var)", coreArgs[2])
+	}
+	ctx.Vars[alias] = result
+	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
+	return nil
+}
+
+func runEWMCommand(ctx *ExecContext, args []string) error {
+	coreArgs, alias := parseAlias(args)
+	if len(coreArgs) < 4 {
+		return fmt.Errorf("usage: ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]")
+	}
+	dl, err := getDataListVar(ctx, coreArgs[0])
+	if err != nil {
+		return fmt.Errorf("ewm: %w", err)
+	}
+
+	decay := strings.ToLower(coreArgs[1])
+	value, err := strconv.ParseFloat(coreArgs[2], 64)
+	if err != nil {
+		return fmt.Errorf("ewm: invalid %s %q: %w", decay, coreArgs[2], err)
+	}
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return fmt.Errorf("ewm: %s must be a finite number, got %q", decay, coreArgs[2])
+	}
+
+	var opts insyra.EWMOptions
+	switch decay {
+	case "alpha":
+		if value <= 0 || value > 1 {
+			return fmt.Errorf("ewm: alpha must be in (0, 1], got %v", value)
+		}
+		opts.Alpha = value
+	case "span":
+		if value < 1 {
+			return fmt.Errorf("ewm: span must be >= 1, got %v", value)
+		}
+		opts.Span = value
+	case "halflife":
+		if value <= 0 {
+			return fmt.Errorf("ewm: halflife must be > 0, got %v", value)
+		}
+		opts.HalfLife = value
+	default:
+		return fmt.Errorf("ewm: unknown decay keyword %q (supported: alpha, span, halflife)", coreArgs[1])
+	}
+
+	reducer := strings.ToLower(coreArgs[3])
+	for i := 4; i < len(coreArgs); {
+		key := strings.ToLower(coreArgs[i])
+		if i+1 >= len(coreArgs) {
+			return fmt.Errorf("ewm: option %q requires a value", coreArgs[i])
+		}
+		raw := coreArgs[i+1]
+		switch key {
+		case "adjust":
+			b, err := parseFlexBool(raw)
+			if err != nil {
+				return fmt.Errorf("ewm: invalid value for adjust: %w", err)
+			}
+			opts.Adjust = b
+		case "bias":
+			b, err := parseFlexBool(raw)
+			if err != nil {
+				return fmt.Errorf("ewm: invalid value for bias: %w", err)
+			}
+			opts.Bias = b
+		case "minobs":
+			n, err := strconv.Atoi(raw)
+			if err != nil {
+				return fmt.Errorf("ewm: invalid minobs %q: %w", raw, err)
+			}
+			opts.MinObs = n
+		default:
+			return fmt.Errorf("ewm: unknown option %q (supported: adjust, bias, minobs)", coreArgs[i])
+		}
+		i += 2
+	}
+
+	e := dl.Clone().EWM(opts)
+	var result *insyra.DataList
+	switch reducer {
+	case "mean":
+		result = e.Mean()
+	case "var":
+		result = e.Var()
+	case "std", "stdev":
+		result = e.Std()
+	default:
+		return fmt.Errorf("ewm: unknown reducer %q (supported: mean, var, std)", coreArgs[3])
+	}
+	if result.Len() != dl.Len() {
+		return fmt.Errorf("ewm: invalid options (alpha %v, span %v, halflife %v)", opts.Alpha, opts.Span, opts.HalfLife)
 	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)

@@ -202,7 +202,7 @@ type RollingOptions struct {
 
 // RollingDataList is the intermediate produced by DataList.Rolling. The
 // terminal reducers (Sum / Mean / Min / Max / Median / Std / Var / Apply /
-// Corr) each return a new DataList of the same length as the source. A
+// Corr / Cov / Beta) each return a new DataList of the same length as the source. A
 // RollingDataList carries a snapshot of the source data; the source itself is
 // not held under lock while reducers run.
 type RollingDataList struct {
@@ -467,18 +467,18 @@ func (r *RollingDataList) Apply(fn func(window []any) any) *DataList {
 	return dl
 }
 
-// Corr returns the rolling Pearson correlation against other. The two
-// DataLists are aligned by index; pairs where either side is non-numeric or
-// nil are skipped within each window. Windows with fewer than 2 valid pairs
-// emit nil.
-func (r *RollingDataList) Corr(other *DataList) *DataList {
+// pairWindow applies a paired rolling reducer to r and other. The two
+// DataLists are aligned by index and truncated to the shorter sequence.
+func (r *RollingDataList) pairWindow(other *DataList, operation string, reducer func(xs, ys []float64) any) *DataList {
 	if r.err != "" {
 		out := NewDataList()
 		out.name = r.srcName
 		return out
 	}
 	if other == nil {
-		r.parent.warn("RollingCorr", "other DataList is nil")
+		if r.parent != nil {
+			r.parent.warn(operation, "other DataList is nil")
+		}
 		out := NewDataList()
 		out.name = r.srcName
 		return out
@@ -514,11 +514,41 @@ func (r *RollingDataList) Corr(other *DataList) *DataList {
 			out[i] = nil
 			continue
 		}
-		out[i] = pearson(xs, ys)
+		out[i] = reducer(xs, ys)
 	}
 	dl := NewDataList(out...)
 	dl.name = r.srcName
 	return dl
+}
+
+// Corr returns the rolling Pearson correlation against other. The two
+// DataLists are aligned by index; pairs where either side is non-numeric or
+// nil are skipped within each window. Windows with fewer than 2 valid pairs
+// emit nil.
+func (r *RollingDataList) Corr(other *DataList) *DataList {
+	return r.pairWindow(other, "RollingCorr", func(xs, ys []float64) any {
+		return pearson(xs, ys)
+	})
+}
+
+// Cov returns the rolling sample covariance against other.
+func (r *RollingDataList) Cov(other *DataList) *DataList {
+	return r.pairWindow(other, "RollingCov", func(xs, ys []float64) any {
+		return sampleCovariance(xs, ys)
+	})
+}
+
+// Beta returns rolling asset exposure to other as Cov(asset, benchmark) /
+// Var(benchmark), using sample covariance and variance. A flat benchmark
+// produces nil because beta is undefined.
+func (r *RollingDataList) Beta(other *DataList) *DataList {
+	return r.pairWindow(other, "RollingBeta", func(xs, ys []float64) any {
+		benchmarkVariance := sampleVariance(ys)
+		if benchmarkVariance == 0 {
+			return nil
+		}
+		return sampleCovariance(xs, ys) / benchmarkVariance
+	})
 }
 
 // =============================================================================
@@ -677,6 +707,22 @@ func sampleVariance(vals []float64) float64 {
 		ss += d * d
 	}
 	return ss / float64(len(vals)-1)
+}
+
+func sampleCovariance(xs, ys []float64) float64 {
+	meanX := 0.0
+	meanY := 0.0
+	for i := range xs {
+		meanX += xs[i]
+		meanY += ys[i]
+	}
+	meanX /= float64(len(xs))
+	meanY /= float64(len(ys))
+	var sum float64
+	for i := range xs {
+		sum += (xs[i] - meanX) * (ys[i] - meanY)
+	}
+	return sum / float64(len(xs)-1)
 }
 
 // pearson returns the sample Pearson correlation between xs and ys. Caller

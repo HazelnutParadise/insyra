@@ -36,7 +36,7 @@ This list is generated from `insyra help` in this repository state.
 - `newdl` - Create DataList manually
 - `newdt` - Create DataTable from DataList variables
 - `load` - Load data into a DataTable variable from a file, parquet, or SQL connection
-  - File options: `headers true|false` (default `true`), `rownames true|false` (default `false`), `encoding <enc>` (CSV only), `sheet <name>` (Excel)
+  - File options: `headers true|false` (default `true`), `rownames true|false` (default `false`), `encoding <enc>` (CSV only), `infer true|false`, `ragged true|false`, `trimspace true|false` (CSV only), `sheet <name>` (Excel)
 - `read` - Quick preview a file without saving variable (forwards the same file options as `load`)
 - `save` - Save a DataTable variable to a file or SQL connection
   - File options: `headers true|false` (default `true`), `rownames true|false` (default `false`), `bom true|false` (default `false`, CSV only)
@@ -117,6 +117,7 @@ This list is generated from `insyra help` in this repository state.
 - `capitalize` - Capitalize DataList strings
 - `parsenums` - Parse DataList strings to numbers
 - `parsestrings` - Parse DataList numbers to strings
+- `parsedates` - Convert date strings to `time.Time` in a DataList or DataTable columns
 - `movavg` - Moving average
 - `expsmooth` - Exponential smoothing
 - `diff` - Difference (legacy, length n-1)
@@ -127,8 +128,10 @@ This list is generated from `insyra help` in this repository state.
 - `cumprod` - Running product
 - `cummax` - Running maximum (historical high)
 - `cummin` - Running minimum (historical low)
-- `rolling` - Rolling-window reduction (sum/mean/min/max/median/std/var)
+- `rolling` - Rolling-window reduction (sum/mean/min/max/median/std/var, or cov/beta against a second DataList)
 - `expanding` - Expanding-window reduction (sum/mean/min/max/median/std/var)
+- `ewm` - Exponentially weighted mean/var/std (alpha/span/halflife)
+- `resample` - Aggregate a time-indexed DataTable into weekly/monthly/quarterly/yearly periods
 - `fillna` - Fill missing DataList/DataTable values (mean/median/mode/ffill/bfill/interpolate)
 - `fillnan` - Fill NaN with mean (deprecated alias)
 
@@ -150,6 +153,24 @@ This list is generated from `insyra help` in this repository state.
 - `chisq` - Chi-square test commands
 - `plot` - Create charts from variables
 - `fetch` - Fetch external data
+  - `fetch yahoo` - Yahoo Finance quotes, info, history, dividends, splits, actions, options, news, calendar, fastinfo
+  - `fetch tw` - Taiwan TWSE/TPEx daily prices, adjusted prices, ex-rights, institutional trades, margin balances, all-code quotes
+
+## Quantitative Finance
+- `quant sharpe` - SharpeRatio (annualized)
+- `quant sortino` - SortinoRatio (downside deviation)
+- `quant ir` - InformationRatio against a benchmark
+- `quant maxdd` - MaxDrawdown of an equity curve
+- `quant annret` - AnnualizedReturn (CAGR) over a calendar-day span
+- `quant calmar` - CalmarRatio
+- `quant drawdown` - DrawdownSeries, stored as a DataList
+- `quant var` / `quant cvar` - Value at risk and conditional VaR (historical or parametric)
+- `quant beta` - Market beta
+- `quant capm` - CAPM beta, alpha, R2, standard errors, N (one-row DataTable)
+- `quant factor` - Multi-factor exposures (one row per factor, plus `<var>_alpha`)
+- `quant bs` / `quant iv` - Black-Scholes price and greeks, implied volatility
+- `quant portfolio` - OptimizePortfolio: mean-variance weights (`Asset, Weight` plus `<var>_stats`)
+- `quant frontier` - EfficientFrontier: one row per point, one weight column per asset
 
 ## Missing-Value Fill Commands
 

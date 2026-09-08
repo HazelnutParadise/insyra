@@ -1669,6 +1669,8 @@ func (dl *DataList) Rolling(opts RollingOptions) *RollingDataList
 | `Var()` | Sample (n-1) variance |
 | `Apply(fn func(window []any) any)` | Custom reducer over the raw window slice (nils preserved) |
 | `Corr(other *DataList)` | Sample Pearson correlation against `other` |
+| `Cov(other *DataList)` | Sample covariance against `other` |
+| `Beta(other *DataList)` | Rolling beta, `Cov(src, other) / Var(other)` |
 
 **Example:**
 
@@ -1689,6 +1691,45 @@ ss := src.Rolling(insyra.RollingOptions{Window: 2}).Apply(func(w []any) any {
 // Rolling correlation.
 y := insyra.NewDataList(2, 4, 6, 8, 10)
 corr := src.Rolling(insyra.RollingOptions{Window: 3}).Corr(y)
+cov := src.Rolling(insyra.RollingOptions{Window: 3}).Cov(y)
+beta := src.Rolling(insyra.RollingOptions{Window: 3}).Beta(y)
+```
+
+### Exponentially weighted windows
+
+```go
+type EWMOptions struct {
+    Alpha    float64
+    Span     float64
+    HalfLife float64
+    Adjust   bool
+    Bias     bool
+    MinObs   int
+}
+
+func (dl *DataList) EWM(opts EWMOptions) *EWMDataList
+```
+
+`EWM` builds a pandas-compatible exponentially weighted view. Exactly one of
+`Alpha` (`0 < Alpha <= 1`), `Span` (`>= 1`), or `HalfLife` (`> 0`) is required;
+`Span` and `HalfLife` are converted using pandas' `2/(span+1)` and
+`1-exp(ln(0.5)/halflife)` formulas. `Adjust: false` uses the recursive form,
+while `Adjust: true` uses adjusted weights. `Bias: false` applies pandas'
+finite-sample weighted variance correction and `Bias: true` returns the
+weighted population variance. `MinObs <= 0` means one observation.
+
+Available reducers are `Mean()`, `Var()`, and `Std()`. Each returns a
+same-length `*DataList`; nil and non-numeric cells are skipped without
+resetting the accumulated decay, and positions below `MinObs` are nil. An
+invalid or missing decay parameter records a warning and returns an empty
+result.
+
+```go
+prices := insyra.NewDataList(1, 2, 3, 4)
+ewm := prices.EWM(insyra.EWMOptions{Alpha: 0.5, Adjust: false})
+mean := ewm.Mean() // [1, 1.5, 2.25, 3.125]
+variance := ewm.Var()
+stddev := ewm.Std()
 ```
 
 ### Expanding
@@ -2194,6 +2235,33 @@ func (dl *DataList) ParseStrings() *DataList
 dl := insyra.NewDataList(1, 2.5, true, "hello")
 dl.ParseStrings()
 // All elements become strings: ["1", "2.5", "true", "hello"]
+```
+
+### ParseDates
+
+```go
+func (dl *DataList) ParseDates(layouts ...string) *DataList
+```
+
+**Description:** Converts date strings to `time.Time` in place. Each string element is tried against `layouts` in order and, on the first layout that matches, becomes that instant expressed in UTC. Elements that are already `time.Time` are kept unchanged, including their location. Every other element — a number, a bool, a nil, or a string no layout matched — becomes `nil`, so the list is either usable as a time column or visibly empty rather than half converted.
+
+**Parameters:**
+
+- `layouts` (optional): Go reference layouts (for example `"2006-01-02"`). With none given, the same ISO-style defaults `ReadSQLOptions.ParseDates` uses are tried: RFC 3339 (with and without nanoseconds), `"2006-01-02 15:04:05.999999999"`, `"2006-01-02 15:04:05"`, `"2006-01-02T15:04:05"`, `"2006-01-02"`. Passing layouts replaces that list entirely.
+
+**Returns:**
+
+- `*DataList`: Reference to the modified DataList
+
+**Example:**
+
+```go
+dl := insyra.NewDataList("2026-09-01", "2026-09-02", "n/a")
+dl.ParseDates()
+// ["2026-09-01" -> time.Time, "2026-09-02" -> time.Time, "n/a" -> nil]
+
+custom := insyra.NewDataList("01/09/2026")
+custom.ParseDates("02/01/2006")
 ```
 
 ### ToF64Slice

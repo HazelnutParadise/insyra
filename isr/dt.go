@@ -119,6 +119,8 @@ func (d dt) From(item any) *dt {
 			FirstRowToColNames: val.InputOpts.FirstRow2ColNames,
 			Encoding:           val.InputOpts.Encoding,
 			RawStrings:         val.InputOpts.RawStrings,
+			AllowRaggedRows:    val.InputOpts.AllowRaggedRows,
+			TrimLeadingSpace:   val.InputOpts.TrimLeadingSpace,
 		}
 		if val.FilePath != "" {
 			t.DataTable, err = insyra.ReadCSV_FileWithOptions(val.FilePath, opts)

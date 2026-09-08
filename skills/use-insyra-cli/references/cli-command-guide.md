@@ -104,15 +104,17 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `load`
 - Description: Load data into a DataTable variable from a file, parquet, or SQL connection
-- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
-- Defaults: `headers=true`, `rownames=false`, `infer=true`. Booleans accept `true|false|yes|no|on|off|1|0`.
+- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Defaults: `headers=true`, `rownames=false`, `infer=true`, `ragged=false`, `trimspace=false`. Booleans accept `true|false|yes|no|on|off|1|0`.
 - Types: an all-integer CSV column loads as `int64` (large IDs keep full precision); a column with any decimal loads as `float64`; others stay strings. `infer false` (CSV only) skips this and keeps every cell as its original string — use it for stock IDs, tax IDs, or exact amounts where `0050` must not become `50`.
+- `ragged true` and `trimspace true` are CSV-only. Ragged mode pads short rows with empty cells and keeps extra cells in new columns; trimspace mode accepts leading whitespace before fields and quotes.
 - Examples:
   - `insyra load data.csv as t`
   - `insyra load matrix.csv headers false as t` (no header row)
   - `insyra load gdp.csv rownames true as t` (first column = row names)
   - `insyra load legacy.csv encoding big5 as t`
   - `insyra load stocks.csv infer false as raw` (all cells stay raw strings)
+  - `insyra load inventory.csv ragged true trimspace true as inventory` (tolerate uneven rows and quoted-field spaces)
   - `insyra load report.xlsx sheet 2025 rownames true as t`
   - `insyra load parquet data.parquet cols id,amount rowgroups 0,1 as t`
   - `insyra load sql main customers as customers`
@@ -473,6 +475,12 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Usage: `parsestrings <var> [as <var>]`
 - Example: `insyra parsestrings x`
 
+### `parsedates`
+- Description: Convert date strings to `time.Time`, in place on a copy of the variable. A DataList converts whole; a DataTable requires `cols` (column names or Excel indices) and errors without it. `layout` takes a Go reference layout and may be repeated, tried in order; without it, common ISO layouts are tried. A cell already `time.Time` is kept; anything no layout matches becomes nil.
+- Usage: `parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]`
+- Examples: `insyra parsedates bars cols Date as bars` / `insyra parsedates trades cols TradeDate,SettleDate layout 02/01/2006 as trades`
+- Notes: This is the step that makes a CSV-loaded date column usable by `resample`.
+
 ### `movavg`
 - Description: Moving average
 - Usage: `movavg <var> <window> [as <var>]`
@@ -524,9 +532,20 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Example: `insyra cummin price as trough`
 
 ### `rolling`
-- Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style).
-- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]`
-- Example: `insyra rolling price 7 mean minobs 1 as ma7_soft`
+- Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var, plus the paired `cov <other>` and `beta <other>`, which take the next token as a second DataList variable. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style). `beta` is Cov(var, other) / Var(other) and emits nil when the benchmark window is flat.
+- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]` / `rolling <var> <window> cov|beta <other> [minobs <n>] [center yes|no] [as <var>]`
+- Examples: `insyra rolling price 7 mean minobs 1 as ma7_soft` / `insyra rolling asset 20 beta benchmark minobs 10 as roll_beta`
+
+### `ewm`
+- Description: Exponentially weighted mean, variance, or standard deviation over a DataList. Exactly one decay keyword: `alpha` in (0, 1], `span` >= 1 (alpha = 2 / (span + 1)), or `halflife` > 0. `adjust` and `bias` default to no, `minobs` to 1. Output is the same length as the input, with nil until `minobs` valid observations exist.
+- Usage: `ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]`
+- Examples: `insyra ewm price span 12 mean adjust yes as ema12` / `insyra ewm returns halflife 5 std minobs 3 as ewvol`
+
+### `resample`
+- Description: Aggregate a time-indexed DataTable into calendar periods. Each output row is labelled with the period's final calendar day; periods with no rows are omitted. `op` uses the `groupby` operator names; the optional `:name` renames the output column, otherwise the source column name is kept. Column names containing `:` cannot be expressed in this syntax.
+- Usage: `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [<col>:<op>[:<name>] ...] [as <var>]`
+- Examples: `insyra resample bars Date monthly Open:first High:max Low:min Close:last:MonthClose Volume:sum as monthly_bars` / `insyra resample sales Date quarterly revenue:sum:total`
+- Notes: `<timecol>` must hold `time.Time` values. A CSV load leaves date columns as strings and the command fails with a row-numbered error; run `parsedates <dt> cols <timecol>` first, or use a source that carries real timestamps (e.g. `fetch yahoo <ticker> history`).
 
 ### `expanding`
 - Description: Expanding-window reduction over `in[0..=i]`. Reducers: sum, mean, min, max, median, std, var. Emits nil until `minobs` valid observations are available.
@@ -640,7 +659,44 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `fetch`
 - Description: Fetch external data
-- Usage: `fetch yahoo <ticker> <method> [params...] [as <var>]`
+- Usage: `fetch yahoo <ticker> <method> [params...] [as <var>]` / `fetch tw [<code>] <form> [args...] [as <var>]`
 - Example: `insyra fetch yahoo AAPL quote`
 - Yahoo methods: `quote`, `info`, `history`, `dividends`, `splits`, `actions`, `options`, `news [count]`, `calendar`, `fastinfo`.
+- Taiwan (TWSE/TPEx) forms:
+	- `fetch tw <code> prices <from> <to> [twse|tpex|auto] [as <var>]` — `DailyPrices`
+	- `fetch tw <code> adjprices <from> <to> [twse|auto] [as <var>]` — `DailyPricesAdjusted`, adds `AdjFactor` and adjusted OHLC
+	- `fetch tw exrights <from> <to> [twse|auto] [as <var>]` — `ExRights`
+	- `fetch tw institutional <date> [twse|tpex|auto] [as <var>]` — `InstitutionalTrades`
+	- `fetch tw margin <date> [twse|tpex|auto] [as <var>]` — `MarginBalance`
+	- `fetch tw quotes [twse|tpex|auto] [as <var>]` — `AllDailyQuotes`
+- Dates are `YYYY-MM-DD`; `market` defaults to `auto`. Bad dates, `from` after `to`, and unknown markets are rejected before any request, and library errors are returned verbatim behind a `fetch tw:` prefix.
+- `adjprices` and `exrights` are TWSE-only: TPEx publishes no dated ex-rights history, so `tpex` (or an `auto` lookup that lands on TPEx) returns an explicit error rather than an unadjusted table.
+- Build return series from `AdjClose`, not `Close` — the quoted price drops on an ex-date without any loss to the holder.
+- Requests are spaced 300 ms apart with two retries; `insyra config fetch.tw.interval_ms <milliseconds>` overrides the interval (non-negative integer, `0` disables throttling).
 
+## Quantitative Finance
+### `quant`
+- Description: Quantitative finance: performance, risk, exposure, factor and option analytics
+- Usage: `quant sharpe|sortino|ir|maxdd|annret|calmar|drawdown|var|cvar|beta|capm|factor|bs|iv|portfolio|frontier ...`
+- Example: `insyra quant sharpe returns 252 rf 0.0001 as sharpe`
+- Full forms:
+	- `quant sharpe <returns> <periods> [rf <r>] [as <var>]` — `SharpeRatio`
+	- `quant sortino <returns> <periods> [mar <r>] [as <var>]` — `SortinoRatio`
+	- `quant ir <returns> <benchmark> <periods> [as <var>]` — `InformationRatio`
+	- `quant maxdd <equity> [as <var>]` — `MaxDrawdown`
+	- `quant annret <equity> <days> [as <var>]` — `AnnualizedReturn`
+	- `quant calmar <equity> <days> [as <var>]` — `CalmarRatio`
+	- `quant drawdown <equity> [as <var>]` — `DrawdownSeries`, stores a DataList
+	- `quant var <returns> <confidence> [historical|parametric] [as <var>]` — `ValueAtRisk`
+	- `quant cvar <returns> <confidence> [historical|parametric] [as <var>]` — `ConditionalValueAtRisk`
+	- `quant beta <asset> <market> [as <var>]` — `Beta`
+	- `quant capm <asset> <market> [rf <r>] [as <var>]` — `CAPM`, stores a one-row DataTable
+	- `quant factor <asset> <factors> [rf <r>] [as <var>]` — `FactorModel`, one row per factor plus `<var>_alpha`
+	- `quant bs call|put <spot> <strike> <rate> <vol> <years> [q <yield>] [as <var>]` — `BlackScholes`, stores a one-row DataTable
+	- `quant iv call|put <price> <spot> <strike> <rate> <years> [q <yield>] [as <var>]` — `ImpliedVolatility`
+	- `quant portfolio <returns_dt> minvar|target <r>|maxsharpe [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]` — `OptimizePortfolio`, stores an `Asset, Weight` DataTable plus a one-row `<var>_stats`
+	- `quant frontier <returns_dt> <points> [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]` — `EfficientFrontier`, one row per point with fixed columns then one weight column per asset
+- Series arguments are DataList variables of per-period returns (or an equity curve), not prices — convert with `pctchange` then `clean nil` first.
+- `periods`, `days`, and `confidence` are required positionals; `rf`, `mar`, `q` default to 0 and the VaR method to `historical`.
+- Scalar forms print `name=value` and store a float64 under `as <var>` (or `$result`); `capm` and `bs` store a one-row DataTable, `factor` stores one row per factor plus `<var>_alpha`, `drawdown` stores a DataList.
+- `portfolio` and `frontier` take a **DataTable** of aligned per-period returns (one column per asset), not a DataList. `min`/`max` are comma-separated per-asset bounds in column order, default long-only `[0, 1]`; a list whose length does not match the column count is refused before the solver runs. A non-converged solve is reported as `converged=false`, not as an error.

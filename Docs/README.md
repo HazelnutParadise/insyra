@@ -56,7 +56,7 @@ dt.Show()
 
 | Document                  | Description                                                                                       |
 | ------------------------- | ------------------------------------------------------------------------------------------------- |
-| [datafetch](datafetch.md) | Google Maps store review crawler and Yahoo Finance wrapper (network required for remote fetchers) |
+| [datafetch](datafetch.md) | Google Maps reviews, Yahoo Finance, Taiwan reverse geocoding, and TWSE/TPEx stock data (network required for remote fetchers) |
 
 #### Statistical Analysis
 
@@ -91,7 +91,7 @@ dt.Show()
 | Document              | Description                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------------------------- |
 | [finance](finance.md) | High-precision TVM, NPV/IRR/MIRR/XNPV/XIRR, depreciation, bonds, T-bills, amortization schedules  |
-| [quant](quant.md)     | Strategy/backtest evaluation: Sharpe, max drawdown, annualized return, PBO (CSCV), Deflated Sharpe Ratio, walk-forward |
+| [quant](quant.md)     | Strategy/backtest evaluation: Sharpe, VaR/CVaR, Sortino/Calmar, max drawdown, annualized return, market beta/CAPM, European option pricing and greeks, implied volatility, multi-factor attribution, PBO (CSCV), Deflated Sharpe Ratio, walk-forward, block-bootstrap path simulation, mean-variance portfolio optimization |
 
 #### Integration & Utilities
 
@@ -142,6 +142,10 @@ go get github.com/HazelnutParadise/insyra/plot
 | Analyze customer behavior                 | [mkt](mkt.md)                   |
 | Run high-precision financial math         | [finance](finance.md)           |
 | Evaluate a trading strategy / backtest    | [quant](quant.md)               |
+| Measure market beta / CAPM exposure       | [quant](quant.md)               |
+| Price European options and their greeks   | [quant](quant.md)               |
+| Simulate future equity paths (fan chart)  | [quant](quant.md)               |
+| Choose portfolio weights (mean-variance)  | [quant](quant.md)               |
 | Use Python libraries from Go              | [py](py.md)                     |
 | Run functions in parallel                 | [parallel](parallel.md)         |
 

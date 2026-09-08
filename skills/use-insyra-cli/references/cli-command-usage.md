@@ -202,6 +202,10 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Description: Environment management
 - Usage: `env <create|list|open|clear|export|import|delete|rename|info> [args]`
 
+## `ewm`
+- Description: Exponentially weighted mean/var/std. Exactly one decay keyword: alpha in (0, 1], span >= 1, or halflife > 0. `adjust`/`bias` default to no, `minobs` to 1.
+- Usage: `ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]`
+
 ## `exit`
 - Description: Exit REPL
 - Usage: `exit`
@@ -216,10 +220,17 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `fetch`
 - Description: Fetch external data
-- Usage: `fetch yahoo <ticker> <method> [params...] [as <var>]`
-- Supported methods:
+- Usage: `fetch yahoo <ticker> <method> [params...] [as <var>]` / `fetch tw [<code>] <form> [args...] [as <var>]`
+- Supported yahoo methods:
 	- `quote`, `info`, `history`, `dividends`, `splits`, `actions`, `options`, `calendar`, `fastinfo`
 	- `news [count]` (default count = `10`)
+- Supported tw forms (dates `YYYY-MM-DD`, market `twse|tpex|auto`, default `auto`):
+	- `fetch tw <code> prices <from> <to> [market]`
+	- `fetch tw <code> adjprices <from> <to> [market]` (TWSE only)
+	- `fetch tw exrights <from> <to> [market]` (TWSE only)
+	- `fetch tw institutional <date> [market]`
+	- `fetch tw margin <date> [market]`
+	- `fetch tw quotes [market]`
 
 ## `fillna`
 - Description: Fill missing DataList/DataTable values
@@ -300,12 +311,14 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `load`
 - Description: Load data into a DataTable variable from a file, parquet, or SQL connection
-- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
 - File options (CSV / Excel):
 	- `headers true|false` — first row is column names. Default `true`. JSON ignores this option (warns on use); Excel respects it.
 	- `rownames true|false` — first column is row names. Default `false`.
 	- `encoding <enc>` — CSV-only read-side hint (e.g. `big5`, `gbk`). Auto-detect when omitted.
 	- `infer true|false` — CSV-only. `infer false` keeps every cell as its original string (no type inference; empty cells stay `""`). Default `true`.
+	- `ragged true|false` — CSV-only. `ragged true` pads short rows with `""` and preserves extra cells in automatically named columns. Default `false`.
+	- `trimspace true|false` — CSV-only. `trimspace true` ignores leading whitespace before fields, including quoted fields. Default `false`.
 	- `sheet <name>` — Excel-only; required for `.xlsx`/`.xlsm`/`.xls`.
 	- Booleans accept `true|false|yes|no|on|off|1|0` (case-insensitive).
 - SQL options:
@@ -364,6 +377,10 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Description: Parse DataList numbers to strings
 - Usage: `parsestrings <var> [as <var>]`
 
+## `parsedates`
+- Description: Convert date strings to `time.Time`. A DataList converts whole; a DataTable needs `cols`. `layout` may be repeated and is tried in order; without it, common ISO layouts are tried. Unmatched cells become nil.
+- Usage: `parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]`
+
 ## `pca`
 - Description: Principal component analysis
 - Usage: `pca <var> <n>`
@@ -396,6 +413,27 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Save behavior:
 	- default output: `<type>.html`
 	- with `save <file>`: `.png` uses PNG export, other extensions use HTML export
+
+## `quant`
+- Description: Quantitative finance metrics from the `quant` package. Series arguments are DataList variables of per-period **returns** (or an equity curve), never prices. `periods`, `days`, and `confidence` are required — there is no CLI default of 252. `rf`, `mar`, and `q` default to 0; the VaR method defaults to `historical`. Scalar forms print `name=value` and store a float64; library errors are returned verbatim behind a `quant <form>:` prefix. `portfolio` and `frontier` take a DataTable of aligned return columns instead of a series, with comma-separated per-asset `min`/`max` bounds in column order (default long-only `[0, 1]`).
+- Usage: `quant sharpe|sortino|ir|maxdd|annret|calmar|drawdown|var|cvar|beta|capm|factor|bs|iv|portfolio|frontier ...`
+- Full forms:
+	- `quant sharpe <returns> <periods> [rf <r>] [as <var>]` — `SharpeRatio`
+	- `quant sortino <returns> <periods> [mar <r>] [as <var>]` — `SortinoRatio`
+	- `quant ir <returns> <benchmark> <periods> [as <var>]` — `InformationRatio`
+	- `quant maxdd <equity> [as <var>]` — `MaxDrawdown`
+	- `quant annret <equity> <days> [as <var>]` — `AnnualizedReturn`
+	- `quant calmar <equity> <days> [as <var>]` — `CalmarRatio`
+	- `quant drawdown <equity> [as <var>]` — `DrawdownSeries`, stores a DataList
+	- `quant var <returns> <confidence> [historical|parametric] [as <var>]` — `ValueAtRisk`
+	- `quant cvar <returns> <confidence> [historical|parametric] [as <var>]` — `ConditionalValueAtRisk`
+	- `quant beta <asset> <market> [as <var>]` — `Beta`
+	- `quant capm <asset> <market> [rf <r>] [as <var>]` — `CAPM`, stores a one-row DataTable
+	- `quant factor <asset> <factors> [rf <r>] [as <var>]` — `FactorModel`, one row per factor plus `<var>_alpha`
+	- `quant bs call|put <spot> <strike> <rate> <vol> <years> [q <yield>] [as <var>]` — `BlackScholes`, stores a one-row DataTable
+	- `quant iv call|put <price> <spot> <strike> <rate> <years> [q <yield>] [as <var>]` — `ImpliedVolatility`
+	- `quant portfolio <returns_dt> minvar|target <r>|maxsharpe [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]` — `OptimizePortfolio`, stores an `Asset, Weight` DataTable plus a one-row `<var>_stats`
+	- `quant frontier <returns_dt> <points> [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]` — `EfficientFrontier`, one row per point with fixed columns then one weight column per asset
 
 ## `quartile`
 - Description: DataList quartile
@@ -436,13 +474,17 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Description: Replace values in DataTable/DataList
 - Usage: `replace <var> <old|nan|nil> <new>`
 
+## `resample`
+- Description: Aggregate a time-indexed DataTable into weekly/monthly/quarterly/yearly periods. `op` uses the `groupby` operator names; `:name` renames the output column. `<timecol>` must hold `time.Time` values.
+- Usage: `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [<col>:<op>[:<name>] ...] [as <var>]`
+
 ## `reverse`
 - Description: Reverse DataList
 - Usage: `reverse <var> [as <var>]`
 
 ## `rolling`
-- Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style).
-- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]`
+- Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var, plus `cov <other>` and `beta <other>` against a second DataList. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style).
+- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]` / `rolling <var> <window> cov|beta <other> [minobs <n>] [center yes|no] [as <var>]`
 
 ## `row`
 - Description: Extract DataTable row as DataList
@@ -590,4 +632,3 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Full forms:
 	- `ztest single <var> <mu> <sigma> [two-sided|greater|less]`
 	- `ztest two <var1> <var2> <sigma1> <sigma2> [two-sided|greater|less]`
-
