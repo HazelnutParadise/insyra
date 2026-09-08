@@ -78,15 +78,22 @@ func splitScriptTokens(line string) []string {
 		builder.Reset()
 	}
 
-	for _, ch := range line {
+	runes := []rune(line)
+	for idx, ch := range runes {
 		if escaped {
 			builder.WriteRune(ch)
 			escaped = false
 			continue
 		}
-		if ch == '\\' {
-			escaped = true
-			continue
+		// A backslash escapes only a quote or another backslash. Treating it
+		// as a universal escape ate every separator of a Windows path, so
+		// `load C:\Users\me\bars.csv` opened `C:Usersmebars.csv`.
+		if ch == '\\' && idx+1 < len(runes) {
+			switch runes[idx+1] {
+			case '"', '\'', '\\':
+				escaped = true
+				continue
+			}
 		}
 		if quote != 0 {
 			if ch == quote {
