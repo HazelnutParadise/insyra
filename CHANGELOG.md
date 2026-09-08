@@ -9,10 +9,6 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ## Unreleased
 
 ### Core
-
-- Added opt-in `AllowRaggedRows` and `TrimLeadingSpace` to `CSVReadOptions` and matching `isr.CSV_inOpts` fields. Ragged reads pad short rows and retain extra cells in auto-named columns; the zero value remains strict. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
-- Fixed CSV file loading parsing the input twice through a serialize-reparse round trip, which silently dropped rows holding a single empty field. `ReadCSV_File` and `ReadCSV_String` now agree on every input.
-- Added pandas-compatible exponentially weighted `DataList` reducers (`EWM().Mean/Var/Std`), rolling `Cov` and `Beta`, and `DataTable` `EWMCol` and calendar `Resample`; `IDataList` and `IDataTable` now expose the new methods.
 - **BREAKING**: `DataList` numeric transforms no longer rewrite part of a list before failing, and no longer read an unreadable cell as `0`. `Normalize`, `Standardize`, `ClearOutliers`, `Difference`, and `FillNaNWithMean` scan the whole list first; a cell that is neither numeric, `nil`, nor `NaN` sets `Err()` (naming the row) and leaves every cell as it was, where previously `[1, "x", 3].Normalize()` returned `nil` after overwriting the first cell with `0`. `nil` and `NaN` cells pass through unchanged and are excluded from the mean, standard deviation, min, and max the transform uses, so `ClearOutliers` on a list with blanks now checks every numeric cell instead of stopping at the first blank. `Rank`, `ExponentialSmoothing`, `DoubleExponentialSmoothing`, and the six `*Interpolation` methods stop reading through `ToF64Slice`: `Rank` gives `nil`/`NaN` cells a `NaN` rank without consuming a rank position and fails on any other non-numeric cell (`[3, "b", 1].Rank()` used to rank `"b"` first as `0`); the smoothing and interpolation methods require a fully numeric series and fail otherwise. Results on fully numeric input are unchanged.
 - Fixed `DataList.ReplaceLast` replacing the last `NaN` cell instead of the last cell equal to `oldValue` when the list ended in `NaN` (`[5, NaN].ReplaceLast(5, 0)` gave `[5, 0]`).
 - Fixed `ReadJSON_File` loading integer literals as `float64` while `ReadJSON` loaded them as `int64`; both now decode through the same path, so large integers keep full precision from a file and a file holding a single object loads as one row.
@@ -36,12 +32,6 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `Close()` on a `DataList` or `DataTable` no longer discards an operation that was already waiting for the lock. Close stops the locking, not the queued work.
 
 ### CLI
-
-- Added CSV-only `load` options `ragged true|false` and `trimspace true|false`, with the same strict defaults and explicit rejection on non-CSV formats. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
-- Added `ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>]` and `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] ...`, and gave `rolling` the paired reducers `cov <other>` and `beta <other>`. The CLI now reaches the exponentially weighted, paired-window, and calendar-period primitives that were previously Go-only. `resample` uses the same operator names as `groupby`, and its time column must hold `time.Time` values.
-- Added `quant sharpe|sortino|ir|maxdd|annret|calmar|drawdown|var|cvar|beta|capm|factor|bs|iv`, putting the whole `quant` package — performance ratios, tail risk, market exposure, factor attribution, and European option pricing — behind one command with one form per function. Series arguments are DataList variables of per-period returns (or an equity curve); `periods`, `days`, and `confidence` are required positionals because the library refuses to default them, while `rf`, `mar`, and `q` default to 0 and the VaR method to `historical`. Scalar forms print `name=value` and store a `float64`; `capm` and `bs` store a one-row DataTable, `factor` stores one row per factor plus a `<var>_alpha` table, and `drawdown` stores a DataList. Library errors are returned verbatim behind a `quant <form>:` prefix.
-- Added the `tw` source to `fetch`: `fetch tw <code> prices|adjprices <from> <to> [market]`, `fetch tw exrights <from> <to> [market]`, `fetch tw institutional|margin <date> [market]`, and `fetch tw quotes [market]` reach all six `datafetch.TWStock` methods, so a `.isr` script can pull Taiwan daily prices, adjusted prices, ex-rights tables, institutional trades, margin balances, and the full quote table. Dates are `YYYY-MM-DD` and `market` is `twse`, `tpex`, or `auto` (the default); malformed dates, a `from` after `to`, and unknown markets are rejected before any request, and library errors — including the TPEx "not supported" refusal for `adjprices` and `exrights` — come back verbatim behind a `fetch tw:` prefix. Requests are spaced 300 ms apart with two retries, overridable with the new `config fetch.tw.interval_ms <milliseconds>` key. Existing `fetch yahoo` forms are unchanged.
-- Added `quant portfolio <returns_dt> minvar|target <r>|maxsharpe [rf <r>] [min <v1,...>] [max <v1,...>]` and `quant frontier <returns_dt> <points> [rf <r>] [min <v1,...>] [max <v1,...>]`, reaching `quant.OptimizePortfolio` and `quant.EfficientFrontier`. These are the first `quant` forms that take a DataTable of aligned per-period returns — one column per asset — instead of a single series, so a `.isr` script can now ask for an allocation rather than only measuring one. `portfolio` prints one `<asset>=<weight>` line plus a summary and stores an `Asset, Weight` DataTable together with a one-row `<var>_stats` table (`ExpectedReturn`, `Variance`, `Volatility`, `SharpeRatio`, `Iterations`, `Converged`); `frontier` stores one row per point with those fixed columns followed by one weight column per asset. `min`/`max` are comma-separated per-asset bounds in column order and default to long-only `[0, 1]`, a list of the wrong length or with a non-numeric entry is refused before the solver runs, and a non-converged solve is reported as `converged=false` rather than as an error, matching the library.
 - Environment names are now validated: only letters, digits, `.`, `_` and `-` (starting with a letter or digit, no `..`). A name was previously joined straight onto the environments directory, so `../x` created or deleted directories outside it.
 - The command registry is guarded by a lock, so registering commands from several goroutines (embedders) is no longer a data race.
 - Fixed a crash when `col`, `row`, `movavg`, `expsmooth` or `diff` failed to find or compute a result: the nil result was stored and the next save of the session panicked. They now return an error and store nothing.
@@ -49,6 +39,64 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `--env`, `--no-color` and `--log-level` placed before `newdl`, `addcol`, `addrow` or `show` now apply instead of being stored as data in the default environment.
 - `run` no longer opens the interactive REPL when the script contains `env open`, and stops a script that runs itself after 16 nested levels.
 - `db connect` lines are written to `history.txt`, the REPL history and `env export` with the password masked (URL, `user:pass@`, and `password=` forms); history files are created with mode 0600.
+
+### `datafetch`
+- The file geocode cache (`NewFileGeocodeCache`) writes to a temporary file and renames it into place, so an interrupted write can no longer leave a corrupt cache that the next run silently discards.
+
+### `stats`
+- **BREAKING**: `Skewness` and `Kurtosis` now refuse a value they cannot read as a finite number instead of treating it as zero, matching every other `stats` entry point since v0.3.1. They were the last two still reading through `SliceToF64`. The error names `sample` and the one-based row; results on fully numeric input are unchanged.
+- **BREAKING**: `SingleSampleTTest`, `TwoSampleTTest`, `SingleSampleZTest`, `TwoSampleZTest`, `FTestForVarianceEquality`, `BartlettTest`, `LeveneTest`, and `CalculateMoment` now refuse a cell they cannot read as a finite number, naming the series and the one-based row. They used to take `n` from the list length while the mean and standard deviation skipped the unreadable cell, so `[1, 2, nil, 3]` reported t = 4.00, p = 0.028 instead of t = 3.46, p = 0.074 — a blank turned an insignificant result significant. Results on fully numeric input are unchanged; clean blanks with `ClearNils` before testing.
+- Functions taking `insyra.IDataList` no longer panic on a `nil` argument or on an implementation other than `*insyra.DataList`; the value is converted and a `nil` is reported as an ordinary error.
+- `KMeans` picks distinct initial centres, as R does. On data with repeated rows a single-start run used to draw the same row twice and fail with "empty cluster" — 44 of 50 seeds in one measured case. A colliding draw is now redrawn from the distinct rows; a draw that was already distinct is untouched, so every existing seeded result is bit-identical.
+
+### `csvxl`
+- Fixed `AppendCsvToExcel` leaving the old sheet's cells in place when a sheet of the same name already existed: `excelize.NewSheet` returns the existing sheet, so only the cells covered by the new CSV were overwritten and the rest survived. The sheet is now deleted and recreated, including when it is the workbook's only sheet.
+- Fixed `AppendCsvToExcel`, `ExcelToCsv`, and `EachExcelToCsv` never closing the workbooks they opened.
+- Errors wrap their cause with `%w` (so `errors.Is(err, os.ErrNotExist)` works) and output directories are created with mode 0755 instead of 0777.
+- `ExcelToCsv` and `EachExcelToCsv` reject a sheet name that cannot be a single file name (`../x`, `a/b`), which a crafted workbook could use to truncate a file outside the output directory, and write each CSV through a temporary file after the sheet has been read.
+
+### `parquet`
+- Fixed `ReadColumnOptions.MaxValues` having no effect. `ReadColumn` now sums the row counts of the selected row groups from the file metadata and refuses the read before loading anything when the count exceeds the limit, which is what the field documented.
+- `Write` writes to a temporary file and renames it into place, so a failure part-way cannot leave a truncated Parquet file; close-time errors are logged through Insyra's logger instead of the standard `log` package, so `Config.SetLogLevel` applies to them.
+
+### `mkt`
+- Fixed `RFM` crashing the process when an amount cell was not numeric; the row is now skipped with a warning naming it. `RFM` and `CustomerActivityIndex` output rows are sorted by customer ID, where they previously came out in Go map order and differed between runs.
+- The notices for defaulted `DateFormat`/`TimeScale` in `RFM` and `CustomerActivityIndex` are logged at Debug instead of Info.
+
+### `lp`
+- The additional-info table returned by `SolveFromFile` and `SolveModel` has a fixed row order (Status, Execution Time, Warnings, Full Output, Iterations, Nodes); it previously followed Go map iteration and changed between runs.
+- A failed GLPK download, extraction or build no longer ends the program: the failure is recorded and `SolveModel`/`SolveFromFile` report it through the additional-info table. The two temporary-file failures in `SolveModel` do the same instead of returning two nils.
+
+### `plot`
+- **BREAKING**: `SavePNG` no longer falls back to the online rendering service by default. Passing no third argument (or `false`) now returns an error when the local Chrome/Chromium render fails; pass `true` to opt in to the fallback, which uploads the chart and its data to `server3.hazelnut-paradise.com`. The previous default sent user data off the host without being asked.
+- `CreateRadarChart` without indicators and `CreateHeatMap` in calendar mode with the wrong X type or no `CalendarOpts` record an error and return `nil` instead of ending the program or panicking.
+
+### `isr`
+- `Err()`, `PopErr()`, `ClearErr()` and `SetErr()` are available on `DT` and `DL`; `ClearErr`/`SetErr` return the isr type, so they keep the block syntax instead of ending the chain at `*insyra.DataTable`.
+- `DT.From`, `Col`, `Row`, `Push`, `UseDL` and `UseDT` no longer end the program on a bad input. They return a usable object carrying the error, so the block syntax survives a failure: `t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`. `UseDL`/`UseDT` also stopped returning `nil`.
+
+### `gplot`
+- **BREAKING**: `SaveChart` returns an `error` instead of ending the program when the file cannot be written. Existing calls need `if err := gplot.SaveChart(...); err != nil { ... }` or an explicit `_ =`.
+- `CreateHistogram` with a zero-value config no longer panics: `Bins` of zero or less means the default of 10. `CreateLineChart` and `CreateStepChart` record an error instead of panicking when a series cannot be built.
+
+### `py`
+- A failed IPC listen is recorded and leaves the server down instead of ending the program.
+
+## v0.3.2
+
+### Core
+
+- Added opt-in `AllowRaggedRows` and `TrimLeadingSpace` to `CSVReadOptions` and matching `isr.CSV_inOpts` fields. Ragged reads pad short rows and retain extra cells in auto-named columns; the zero value remains strict. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
+- Fixed CSV file loading parsing the input twice through a serialize-reparse round trip, which silently dropped rows holding a single empty field. `ReadCSV_File` and `ReadCSV_String` now agree on every input.
+- Added pandas-compatible exponentially weighted `DataList` reducers (`EWM().Mean/Var/Std`), rolling `Cov` and `Beta`, and `DataTable` `EWMCol` and calendar `Resample`; `IDataList` and `IDataTable` now expose the new methods.
+
+### CLI
+
+- Added CSV-only `load` options `ragged true|false` and `trimspace true|false`, with the same strict defaults and explicit rejection on non-CSV formats. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
+- Added `ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>]` and `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] ...`, and gave `rolling` the paired reducers `cov <other>` and `beta <other>`. The CLI now reaches the exponentially weighted, paired-window, and calendar-period primitives that were previously Go-only. `resample` uses the same operator names as `groupby`, and its time column must hold `time.Time` values.
+- Added `quant sharpe|sortino|ir|maxdd|annret|calmar|drawdown|var|cvar|beta|capm|factor|bs|iv`, putting the whole `quant` package — performance ratios, tail risk, market exposure, factor attribution, and European option pricing — behind one command with one form per function. Series arguments are DataList variables of per-period returns (or an equity curve); `periods`, `days`, and `confidence` are required positionals because the library refuses to default them, while `rf`, `mar`, and `q` default to 0 and the VaR method to `historical`. Scalar forms print `name=value` and store a `float64`; `capm` and `bs` store a one-row DataTable, `factor` stores one row per factor plus a `<var>_alpha` table, and `drawdown` stores a DataList. Library errors are returned verbatim behind a `quant <form>:` prefix.
+- Added the `tw` source to `fetch`: `fetch tw <code> prices|adjprices <from> <to> [market]`, `fetch tw exrights <from> <to> [market]`, `fetch tw institutional|margin <date> [market]`, and `fetch tw quotes [market]` reach all six `datafetch.TWStock` methods, so a `.isr` script can pull Taiwan daily prices, adjusted prices, ex-rights tables, institutional trades, margin balances, and the full quote table. Dates are `YYYY-MM-DD` and `market` is `twse`, `tpex`, or `auto` (the default); malformed dates, a `from` after `to`, and unknown markets are rejected before any request, and library errors — including the TPEx "not supported" refusal for `adjprices` and `exrights` — come back verbatim behind a `fetch tw:` prefix. Requests are spaced 300 ms apart with two retries, overridable with the new `config fetch.tw.interval_ms <milliseconds>` key. Existing `fetch yahoo` forms are unchanged.
+- Added `quant portfolio <returns_dt> minvar|target <r>|maxsharpe [rf <r>] [min <v1,...>] [max <v1,...>]` and `quant frontier <returns_dt> <points> [rf <r>] [min <v1,...>] [max <v1,...>]`, reaching `quant.OptimizePortfolio` and `quant.EfficientFrontier`. These are the first `quant` forms that take a DataTable of aligned per-period returns — one column per asset — instead of a single series, so a `.isr` script can now ask for an allocation rather than only measuring one. `portfolio` prints one `<asset>=<weight>` line plus a summary and stores an `Asset, Weight` DataTable together with a one-row `<var>_stats` table (`ExpectedReturn`, `Variance`, `Volatility`, `SharpeRatio`, `Iterations`, `Converged`); `frontier` stores one row per point with those fixed columns followed by one weight column per asset. `min`/`max` are comma-separated per-asset bounds in column order and default to long-only `[0, 1]`, a list of the wrong length or with a non-numeric entry is refused before the solver runs, and a non-converged solve is reported as `converged=false` rather than as an error, matching the library.
 
 ### `quant`
 
@@ -64,52 +112,6 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Added `TWStock` for typed TWSE/TPEx daily prices, institutional trades, margin balances, and full daily quote tables, with monthly history paging, throttle/retry controls, automatic market fallback, and opt-in live access in tests.
 - Added `TWStock.ExRights` and `TWStock.DailyPricesAdjusted`. `ExRights` returns the TWSE ex-rights/ex-dividend reference table for a date range, including the exchange's own `AdjFactor` (reference price ÷ prior close), paging ranges longer than a year. `DailyPricesAdjusted` returns every `DailyPrices` column plus `AdjFactor` and backward-adjusted `AdjOpen`, `AdjHigh`, `AdjLow`, and `AdjClose`, using the Yahoo `Adj Close` convention, so a return series no longer shows a fake loss on ex-dates. Ex-dates outside `[from, to]` are not applied. Both methods are TWSE-only: TPEx publishes no dated ex-rights history endpoint, so `TWMarketTPEx` returns an explicit "not supported" error rather than an empty table.
-- The file geocode cache (`NewFileGeocodeCache`) writes to a temporary file and renames it into place, so an interrupted write can no longer leave a corrupt cache that the next run silently discards.
-
-### `stats`
-
-- **BREAKING**: `Skewness` and `Kurtosis` now refuse a value they cannot read as a finite number instead of treating it as zero, matching every other `stats` entry point since v0.3.1. They were the last two still reading through `SliceToF64`. The error names `sample` and the one-based row; results on fully numeric input are unchanged.
-- **BREAKING**: `SingleSampleTTest`, `TwoSampleTTest`, `SingleSampleZTest`, `TwoSampleZTest`, `FTestForVarianceEquality`, `BartlettTest`, `LeveneTest`, and `CalculateMoment` now refuse a cell they cannot read as a finite number, naming the series and the one-based row. They used to take `n` from the list length while the mean and standard deviation skipped the unreadable cell, so `[1, 2, nil, 3]` reported t = 4.00, p = 0.028 instead of t = 3.46, p = 0.074 — a blank turned an insignificant result significant. Results on fully numeric input are unchanged; clean blanks with `ClearNils` before testing.
-- Functions taking `insyra.IDataList` no longer panic on a `nil` argument or on an implementation other than `*insyra.DataList`; the value is converted and a `nil` is reported as an ordinary error.
-- `KMeans` picks distinct initial centres, as R does. On data with repeated rows a single-start run used to draw the same row twice and fail with "empty cluster" — 44 of 50 seeds in one measured case. A colliding draw is now redrawn from the distinct rows; a draw that was already distinct is untouched, so every existing seeded result is bit-identical.
-
-### `csvxl`
-
-- Fixed `AppendCsvToExcel` leaving the old sheet's cells in place when a sheet of the same name already existed: `excelize.NewSheet` returns the existing sheet, so only the cells covered by the new CSV were overwritten and the rest survived. The sheet is now deleted and recreated, including when it is the workbook's only sheet.
-- Fixed `AppendCsvToExcel`, `ExcelToCsv`, and `EachExcelToCsv` never closing the workbooks they opened.
-- Errors wrap their cause with `%w` (so `errors.Is(err, os.ErrNotExist)` works) and output directories are created with mode 0755 instead of 0777.
-- `ExcelToCsv` and `EachExcelToCsv` reject a sheet name that cannot be a single file name (`../x`, `a/b`), which a crafted workbook could use to truncate a file outside the output directory, and write each CSV through a temporary file after the sheet has been read.
-
-### `parquet`
-
-- Fixed `ReadColumnOptions.MaxValues` having no effect. `ReadColumn` now sums the row counts of the selected row groups from the file metadata and refuses the read before loading anything when the count exceeds the limit, which is what the field documented.
-- `Write` writes to a temporary file and renames it into place, so a failure part-way cannot leave a truncated Parquet file; close-time errors are logged through Insyra's logger instead of the standard `log` package, so `Config.SetLogLevel` applies to them.
-
-### `mkt`
-
-- Fixed `RFM` crashing the process when an amount cell was not numeric; the row is now skipped with a warning naming it. `RFM` and `CustomerActivityIndex` output rows are sorted by customer ID, where they previously came out in Go map order and differed between runs.
-- The notices for defaulted `DateFormat`/`TimeScale` in `RFM` and `CustomerActivityIndex` are logged at Debug instead of Info.
-
-### `lp`
-
-- The additional-info table returned by `SolveFromFile` and `SolveModel` has a fixed row order (Status, Execution Time, Warnings, Full Output, Iterations, Nodes); it previously followed Go map iteration and changed between runs.
-- A failed GLPK download, extraction or build no longer ends the program: the failure is recorded and `SolveModel`/`SolveFromFile` report it through the additional-info table. The two temporary-file failures in `SolveModel` do the same instead of returning two nils.
-
-### `plot`
-
-- **BREAKING**: `SavePNG` no longer falls back to the online rendering service by default. Passing no third argument (or `false`) now returns an error when the local Chrome/Chromium render fails; pass `true` to opt in to the fallback, which uploads the chart and its data to `server3.hazelnut-paradise.com`. The previous default sent user data off the host without being asked.
-- `CreateRadarChart` without indicators and `CreateHeatMap` in calendar mode with the wrong X type or no `CalendarOpts` record an error and return `nil` instead of ending the program or panicking.
-
-### `isr`
-- `Err()`, `PopErr()`, `ClearErr()` and `SetErr()` are available on `DT` and `DL`; `ClearErr`/`SetErr` return the isr type, so they keep the block syntax instead of ending the chain at `*insyra.DataTable`.
-- `DT.From`, `Col`, `Row`, `Push`, `UseDL` and `UseDT` no longer end the program on a bad input. They return a usable object carrying the error, so the block syntax survives a failure: `t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`. `UseDL`/`UseDT` also stopped returning `nil`.
-
-### `gplot`
-- **BREAKING**: `SaveChart` returns an `error` instead of ending the program when the file cannot be written. Existing calls need `if err := gplot.SaveChart(...); err != nil { ... }` or an explicit `_ =`.
-- `CreateHistogram` with a zero-value config no longer panics: `Bins` of zero or less means the default of 10. `CreateLineChart` and `CreateStepChart` record an error instead of panicking when a series cannot be built.
-
-### `py`
-- A failed IPC listen is recorded and leaves the server down instead of ending the program.
 
 ## v0.3.1
 
