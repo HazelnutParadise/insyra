@@ -1,5 +1,7 @@
 # Delivery Status
 
+> **You are on `0.4` (2026-09-09).** This branch carries the whole-repo API review and its breaking changes: the library no longer terminates on a fatal, `Err()` is sticky, `gplot.SaveChart` returns an error, several methods stopped returning `nil`. `dev` stays on the 0.3.x line so feature releases can ship while the review continues, and `api-review.md`, the review's OpenSpec changes and every fix batch live here only. Non-breaking fixes are backported to `dev` as ordinary commits; merge `dev` into `0.4` after each 0.3.x change so this line keeps them.
+
 ## Current Phase
 Production-readiness hardening (2026-09-06). Every package's exported surface was reviewed symbol by symbol, then the whole repository was reviewed beyond exported symbols (CLI command behaviour, CCL semantics, internal packages, security, test quality, repo/CI hygiene). The ledger is `api-review.md`; every open finding is a GitHub issue labelled `api-review` with a `severity:*` label (#205–#368). Fixes land in numbered OpenSpec batches: `fix-api-review-batch-1` through `-4` are archived.
 
