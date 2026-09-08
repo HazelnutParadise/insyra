@@ -30,7 +30,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `TryParseTime` 接受常見的無時區版面：`2006-01-02 15:04:05`、`2006-01-02T15:04:05`、`2006-01-02 15:04` 及以 `/` 分隔的等價寫法，一律視為 UTC。CCL 的日期函式與 `datafetch` 過去會把這些字串當成純文字。
 - 修正 `ShowTypes` 超過 26 欄時印成 `A, AA, AB, B, …`，現在與 `Show` 同順序。`ShowRange` 的文件改為與實作一致：end 為排除，負數 end 由尾端往回數且仍為排除（同 Python slice），要顯示到最後請傳 `nil`。
 - `DataList`／`DataTable` 的 `Close()` 不再丟棄已在等鎖的操作。Close 停止的是加鎖，不是已排隊的工作。
-- **BREAKING**：讀取 insyra 無法解碼的 CSV 編碼改為回傳錯誤並列出支援的編碼，不再把原始位元組當成儲存格塞進表（那些內容不是有效的 UTF-8 卻沒有任何提示）。Windows-1250／1251／1252、ISO-8859-1／2／15、Shift-JIS、EUC-JP、EUC-KR 現在會正確解碼；過去 `iso-8859-1` 根本沒有分支，直接走原始路徑。
+- **BREAKING**：讀取 insyra 無法解碼的 CSV 編碼改為回傳錯誤並列出支援的編碼，不再把原始位元組當成儲存格塞進表（那些內容不是有效的 UTF-8 卻沒有任何提示）。支援範圍擴大到偵測器可能回報的每一種字元集：UTF-16／32、所有 ISO-8859 分部、Windows-1250 到 1258、KOI8-R／U、Shift-JIS、ISO-2022-JP、EUC-JP、EUC-KR、IBM866、Macintosh，以及常見別名；分隔符號與大小寫都不影響（`ISO-8859-1`、`iso8859_1`、`latin1` 視為相同）。過去 `iso-8859-1` 根本沒有解碼分支：偵測器判斷正確，位元組卻被原樣讀入。
 - `DetectEncoding` 能辨識 UTF-32 的 BOM（過去會被判成 UTF-16，因為後者的 BOM 是前者的前綴）；取樣太短導致偵測器無法判定時，改為記警告並退回 UTF-8，不再讓整個讀取失敗。
 - 新增 `DataTable.ToCSVWithOptions` 與 `CSVWriteOptions`，其中 `SanitizeFormulas` 會在開頭為 `=`、`+`、`-`、`@` 的儲存格前加上單引號，避免試算表把它當公式執行。預設關閉，因為它會改變寫出的值；`ToCSV` 的輸出不變。
 - 修正 SQLite 上 `ToSQL` 無法附加到名稱含空白的資料表：查詢既有欄位的語句沒有像其他語句一樣為識別字加引號。
