@@ -135,6 +135,18 @@ func KMeans(data [][]float64, centers int, opts KMeansOptions) (*KMeansResult, e
 		centerIdxs[s] = rng.sampleInt(len(initPool), centers)
 	}
 
+	// R draws the initial centres from the DISTINCT rows. Above, NStart >= 2
+	// already uses uniqueRows, so only the single-start path can draw the
+	// same row twice — the case that used to fail with "empty cluster".
+	// Redrawing just that case leaves every existing seeded result
+	// bit-identical, and keeps one shared initPool for all starts (they index
+	// into it below).
+	if opts.NStart == 1 {
+		if pool, idx, ok := redrawIfDuplicate(rng, initPool, centerIdxs[0], centers); ok {
+			initPool, centerIdxs[0] = pool, idx
+		}
+	}
+
 	results := make([]*KMeansResult, opts.NStart)
 	errs := make([]error, opts.NStart)
 	// Each start runs an independent kmeansSingleStart whose cost is at
@@ -1597,4 +1609,32 @@ func (r *rRNG) sampleInt(n, k int) []int {
 		x[j] = x[n]
 	}
 	return out
+}
+
+// redrawIfDuplicate reports whether idx picks the same row of pool twice and,
+// if so, redraws from the distinct rows, returning the pool the new indices
+// refer to. When ok is false the caller keeps its pool and indices, so a draw
+// that was already distinct consumes the RNG exactly as before and reproduces
+// bit-identically for a given seed.
+func redrawIfDuplicate(rng *rRNG, pool [][]float64, idx []int, centers int) ([][]float64, []int, bool) {
+	seen := make(map[string]struct{}, len(idx))
+	duplicate := false
+	for _, i := range idx {
+		key := rowKey(pool[i])
+		if _, ok := seen[key]; ok {
+			duplicate = true
+			break
+		}
+		seen[key] = struct{}{}
+	}
+	if !duplicate {
+		return pool, idx, false
+	}
+	distinct := uniqueRows(pool)
+	if len(distinct) < centers {
+		// Fewer distinct points than centres: leave the draw alone so the
+		// caller reports the existing "empty cluster" error.
+		return pool, idx, false
+	}
+	return distinct, rng.sampleInt(len(distinct), centers), true
 }

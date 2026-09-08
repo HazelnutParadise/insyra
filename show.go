@@ -481,7 +481,7 @@ func (dt *DataTable) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
 		for colIndex := range dataMap {
 			colIndices = append(colIndices, colIndex)
 		}
-		sort.Strings(colIndices)
+		sortColIndices(colIndices)
 
 		// Get terminal window width
 		width := utils.GetTerminalWidth()
@@ -733,7 +733,10 @@ func (dl *DataList) ShowTo(w io.Writer) {
 // Example: dl.ShowRange(5) - shows the first 5 items
 // Example: dl.ShowRange(-5) - shows the last 5 items
 // Example: dl.ShowRange(2, 10) - shows items with indices 2 to 9 (not including 10)
-// Example: dl.ShowRange(2, -1) - shows items from index 2 to the end of the list
+// A negative end counts back from the end and is still exclusive, exactly like
+// a Python slice: ShowRange(2, -1) stops before the last item. To run all the
+// way to the end, pass nil.
+// Example: dl.ShowRange(2, -1) - shows items from index 2 up to but NOT including the last item
 // Example: dl.ShowRange(2, nil) - shows items from index 2 to the end of the list
 func (dl *DataList) ShowRange(startEnd ...any) {
 	dl.ShowRangeTo(os.Stdout, startEnd...)
@@ -1341,4 +1344,25 @@ func prepareTableLayoutTypes(dt *DataTable, dataMap map[string][]any, colIndices
 	}
 
 	return colWidths, rowNames, maxName
+}
+
+// sortColIndices orders Excel-style column indices by the position they
+// denote (A, B, ... Z, AA, AB), which is not their lexicographic order.
+// Anything unparseable sorts after the rest, by string, so the result stays
+// deterministic.
+func sortColIndices(indices []string) {
+	sort.Slice(indices, func(i, j int) bool {
+		a, aok := utils.ParseColIndex(indices[i])
+		b, bok := utils.ParseColIndex(indices[j])
+		switch {
+		case aok && bok:
+			return a < b
+		case aok:
+			return true
+		case bok:
+			return false
+		default:
+			return indices[i] < indices[j]
+		}
+	})
 }

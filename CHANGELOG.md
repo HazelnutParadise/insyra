@@ -8,6 +8,18 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ## Unreleased
 
+### Core
+
+- Fixed ordering losing precision on integers. Every integer was compared through `float64`, so any two `int64` above 2^53 looked equal and `Sort`, `SortBy`, `Pivot` and `Describe`'s min/max ordered them wrongly. Integers now compare exactly, including mixed signed/unsigned and values past `int64`.
+- Fixed `HermiteInterpolation` using the wrong basis: it satisfied none of the derivative conditions it is named for. It now passes through every value and matches every supplied derivative, and reproduces low-degree polynomials exactly.
+- `TryParseTime` accepts the common layouts that carry no zone — `2006-01-02 15:04:05`, `2006-01-02T15:04:05`, `2006-01-02 15:04` and the `/`-separated equivalents — read as UTC. CCL's date functions and `datafetch` were silently treating those strings as text.
+- Fixed `ShowTypes` printing columns as `A, AA, AB, B, …` past column 26; it now uses the same order as `Show`. `ShowRange`'s documentation now states the rule the code implements: the end index is exclusive and a negative end counts back from the end and stays exclusive, like a Python slice, so pass `nil` to run to the end.
+- `Close()` on a `DataList` or `DataTable` no longer discards an operation that was already waiting for the lock. Close stops the locking, not the queued work.
+
+### `stats`
+
+- `KMeans` picks distinct initial centres, as R does. On data with repeated rows a single-start run used to draw the same row twice and fail with "empty cluster" — 44 of 50 seeds in one measured case. A colliding draw is now redrawn from the distinct rows; a draw that was already distinct is untouched, so every existing seeded result is bit-identical.
+
 ## v0.3.2
 
 ### Core

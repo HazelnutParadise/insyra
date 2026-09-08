@@ -1,5 +1,7 @@
 # Delivery Status
 
+> **Branches (2026-09-09).** The whole-repo API review lives on **`0.4`**, because it carries breaking changes (the library no longer terminates on a fatal, `Err()` is sticky, `gplot.SaveChart` returns an error, several methods stopped returning `nil`). `dev` stays on the 0.3.x line so feature releases can ship while the review continues; the ledger `api-review.md`, the review's OpenSpec changes and every batch beyond the ones noted below are on `0.4` only. Non-breaking fixes found by the review are backported here as ordinary commits. Merge `dev` into `0.4` periodically so the review line keeps the 0.3.x fixes.
+
 ## Current Phase
 `insyra/nn` phase 2 (training): the MLP, attention, and CNN operator families are done, M25–M29 layer-surface work is complete, and M21 is complete — the tape now trains a seeded 784→128→10 MLP to ≥95% MNIST test accuracy with a sane loss curve. `insyra/ml` v1 (PR #194) and the entire `insyra/nn` package (PR #195, 107 commits, M13–M31) are merged to dev. Acceleration now has one opt-in wired call site, KNN; large 2-D `nn` MatMul is default-on with CPU fallback.
 
