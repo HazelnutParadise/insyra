@@ -20,7 +20,7 @@ func (w *failingWriter) Write(p []byte) (int, error) {
 // the final flush.
 func TestToCSVReportsWriteFailure(t *testing.T) {
 	dt := NewDataTable(NewDataList(1, 2, 3))
-	if err := dt.writeCSV(&failingWriter{}, false, false, false); err == nil {
+	if err := dt.writeCSV(&failingWriter{}, CSVWriteOptions{}); err == nil {
 		t.Fatal("writeCSV to a failing writer returned nil")
 	}
 }

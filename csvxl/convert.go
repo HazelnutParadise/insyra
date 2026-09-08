@@ -10,12 +10,9 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 	"github.com/HazelnutParadise/insyra"
+	insyracsv "github.com/HazelnutParadise/insyra/internal/csv"
 
 	"github.com/xuri/excelize/v2"
-	"golang.org/x/text/encoding/simplifiedchinese"
-	"golang.org/x/text/encoding/traditionalchinese"
-	"golang.org/x/text/encoding/unicode"
-	"golang.org/x/text/transform"
 )
 
 // CsvEncoding Options
@@ -313,16 +310,9 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 		return fmt.Errorf("failed to seek file %s: %w", csvFile, err)
 	}
 
-	var reader io.Reader
-	switch {
-	case strings.Contains(encoding, "big5"):
-		reader = transform.NewReader(file, traditionalchinese.Big5.NewDecoder())
-	case strings.Contains(encoding, "gb") || strings.Contains(encoding, "gb-"):
-		reader = transform.NewReader(file, simplifiedchinese.GB18030.NewDecoder())
-	case strings.Contains(encoding, "utf-16") || strings.Contains(encoding, "utf16"):
-		reader = transform.NewReader(file, unicode.UTF16(unicode.LittleEndian, unicode.UseBOM).NewDecoder())
-	default:
-		reader = file
+	reader, decErr := insyracsv.DecodingReader(file, encoding)
+	if decErr != nil {
+		return fmt.Errorf("failed to read CSV file %s: %w", csvFile, decErr)
 	}
 
 	csvReader := csv.NewReader(reader)

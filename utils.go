@@ -294,9 +294,16 @@ func DetectEncoding(filePath string) (string, error) {
 	}
 	sample := buf[:n]
 
-	// BOM checks
+	// BOM checks. UTF-32's BOMs start with UTF-16's, so they must be tested
+	// first or every UTF-32LE file is reported as UTF-16LE.
 	if bytes.HasPrefix(sample, []byte{0xEF, 0xBB, 0xBF}) {
 		return "utf-8", nil
+	}
+	if bytes.HasPrefix(sample, []byte{0xFF, 0xFE, 0x00, 0x00}) {
+		return "utf-32le", nil
+	}
+	if bytes.HasPrefix(sample, []byte{0x00, 0x00, 0xFE, 0xFF}) {
+		return "utf-32be", nil
 	}
 	if bytes.HasPrefix(sample, []byte{0xFF, 0xFE}) {
 		return "utf-16le", nil
@@ -312,11 +319,14 @@ func DetectEncoding(filePath string) (string, error) {
 		return "utf-8", nil
 	}
 
-	// Fallback to chardet
+	// Fallback to chardet. When it cannot name a charset — which happens on a
+	// very short sample — assume UTF-8 rather than failing the whole read; the
+	// decoder reports any byte it then cannot handle.
 	detector := chardet.NewTextDetector()
 	res, err := detector.DetectBest(sample)
 	if err != nil {
-		return "", fmt.Errorf("failed to detect encoding for file %s: %w", filePath, err)
+		LogWarning("insyra", "DetectEncoding", "could not identify the encoding of %s (%v); assuming utf-8", filePath, err)
+		return "utf-8", nil
 	}
 
 	charset := strings.ToLower(res.Charset)

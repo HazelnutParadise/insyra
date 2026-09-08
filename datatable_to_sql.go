@@ -350,7 +350,10 @@ func fetchTableColumns(tx *gorm.DB, dialect, schema, table string) ([]string, er
 			rows, err = tx.Raw("SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = current_schema()", table).Rows()
 		}
 	default: // sqlite or unknown
-		rows, err = tx.Raw(fmt.Sprintf("PRAGMA table_info(%s)", table)).Rows()
+		// Quote like every other statement here: an unquoted identifier breaks
+		// on an ordinary name containing a space, and leaves the statement open
+		// to whatever the name contains.
+		rows, err = tx.Raw(fmt.Sprintf("PRAGMA table_info(%s)", quoteSQLIdent(dialect, table))).Rows()
 	}
 	if err != nil {
 		return nil, err

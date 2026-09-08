@@ -34,6 +34,12 @@ func main() {
 }
 ```
 
+## Supported encodings
+
+Reading decodes UTF-8, UTF-16 (LE/BE, by BOM), Big5, GB18030/GBK/GB2312, Shift-JIS, EUC-JP, EUC-KR, Windows-1250/1251/1252 and ISO-8859-1/2/15. Any other name is an error: insyra will not copy bytes it cannot decode into a table, because the result would be cells that are not valid UTF-8 with nothing to say so.
+
+`Auto` detects the encoding from the file's first 8 KB. A UTF-32 byte-order mark is recognised before the UTF-16 one they share a prefix with, and a sample too short to identify falls back to UTF-8 with a warning rather than failing the read.
+
 ## Encoding Constants
 
 ```go
