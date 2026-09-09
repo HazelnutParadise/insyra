@@ -281,18 +281,27 @@ func (p *parser) parsePrimary() (cclNode, error) {
 		if p.current().typ == tLPAREN {
 			p.advance()
 			args := []cclNode{}
-			for p.current().typ != tRPAREN && p.current().typ != tEOF {
-				arg, err := p.parseExpression(0)
-				if err != nil {
-					return nil, err
-				}
-				args = append(args, arg)
-				if p.current().typ == tCOMMA {
+			// Arguments are separated by exactly one comma. Accepting a
+			// missing one (the loop used to just keep parsing) turned the typo
+			// "SUM(A B)" into SUM(A, B) and returned a number nobody asked for.
+			if p.current().typ != tRPAREN {
+				for {
+					arg, err := p.parseExpression(0)
+					if err != nil {
+						return nil, err
+					}
+					args = append(args, arg)
+					if p.current().typ != tCOMMA {
+						break
+					}
 					p.advance()
+					if p.current().typ == tRPAREN {
+						return nil, fmt.Errorf("trailing comma before ')' in call to %s: arguments are separated by a single comma", name)
+					}
 				}
 			}
 			if p.current().typ != tRPAREN {
-				return nil, fmt.Errorf("expected ')' to close call to %s", name)
+				return nil, fmt.Errorf("expected ',' or ')' in call to %s at position %d: arguments must be separated by a comma", name, p.pos)
 			}
 			p.advance()
 			return &funcCallNode{name: name, args: args}, nil
@@ -343,6 +352,10 @@ func (p *parser) parsePrimary() (cclNode, error) {
 	}
 }
 
+// getPrecedence returns the binding strength of a binary operator; higher
+// binds tighter. The order matches Excel, which matters most for '&': it sits
+// below the arithmetic operators, so "'a' & 1 + 2" concatenates the sum rather
+// than trying to add 2 to the string "a1". Docs/CCL.md carries the same table.
 func getPrecedence(op string) int {
 	switch op {
 	case "||": // 邏輯或優先級最低
@@ -351,18 +364,18 @@ func getPrecedence(op string) int {
 		return 2
 	case "=", "==", "!=", ">", "<", ">=", "<=":
 		return 3
-	case "&": // 字串連接，與加減同級
+	case "&": // 字串連接，低於算術（與 Excel 一致）
 		return 4
 	case "+", "-":
-		return 4
-	case "*", "/", "%":
 		return 5
-	case "^":
+	case "*", "/", "%":
 		return 6
-	case ".":
+	case "^":
 		return 7
-	case ":":
+	case ".":
 		return 8
+	case ":":
+		return 9
 	default:
 		return 0
 	}

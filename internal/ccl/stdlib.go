@@ -34,68 +34,14 @@ func RegisterStandardFunctions() {
 	registerAggregateStatFunctions()
 
 	// Logical Functions
-	registerFunction("IF", func(args ...any) (any, error) {
-		if len(args) != 3 {
-			return nil, fmt.Errorf("IF requires 3 arguments")
-		}
-
-		cond, ok := toBool(args[0])
-		if !ok {
-			// Try to parse if it's not directly a bool
-			// This mimics the behavior in insyra/ccl.go but using our internal helper
-			// Note: toBool handles more cases now
-			return nil, fmt.Errorf("first argument to IF cannot be converted to boolean: %T", args[0])
-		}
-
-		if cond {
-			return args[1], nil
-		}
-		return args[2], nil
-	})
-
-	registerFunction("AND", func(args ...any) (any, error) {
-		if len(args) < 2 {
-			return nil, fmt.Errorf("AND requires at least 2 arguments")
-		}
-		for _, arg := range args {
-			if cond, ok := toBool(arg); !ok || !cond {
-				return false, nil
-			}
-		}
-		return true, nil
-	})
-
-	registerFunction("OR", func(args ...any) (any, error) {
-		if len(args) < 2 {
-			return nil, fmt.Errorf("OR requires at least 2 arguments")
-		}
-		for _, arg := range args {
-			if cond, ok := toBool(arg); ok && cond {
-				return true, nil
-			}
-		}
-		return false, nil
-	})
-
-	registerFunction("CASE", func(args ...any) (any, error) {
-		if len(args) < 3 {
-			return nil, fmt.Errorf("CASE requires at least 3 arguments")
-		}
-		if len(args)%2 != 1 {
-			return nil, fmt.Errorf("CASE requires an odd number of arguments")
-		}
-
-		for i := 0; i < len(args)-1; i += 2 {
-			if cond, ok := toBool(args[i]); ok {
-				if cond {
-					return args[i+1], nil
-				}
-			} else {
-				return nil, fmt.Errorf("condition at position %d cannot be evaluated as boolean", i)
-			}
-		}
-		return args[len(args)-1], nil
-	})
+	//
+	// IF, AND, OR and CASE are NOT registered here. They control which of their
+	// arguments get evaluated, which a registered function cannot do — by the
+	// time one is called every argument already has a value — so the evaluator
+	// implements them directly (see evaluateWithCallDepth). They used to be
+	// registered as well, and those copies were unreachable: their argument
+	// checks never ran, which is why AND() with no arguments was true and
+	// AND('abc', true) was a silent false.
 
 	// String Functions
 	registerFunction("CONCAT", func(args ...any) (any, error) {
@@ -104,7 +50,9 @@ func RegisterStandardFunctions() {
 		}
 		var sb strings.Builder
 		for _, arg := range args {
-			_, _ = fmt.Fprint(&sb, arg)
+			// toString, not Fprint: fmt renders nil as "<nil>", which then
+			// lands in a cell as data.
+			sb.WriteString(toString(arg))
 		}
 		return sb.String(), nil
 	})

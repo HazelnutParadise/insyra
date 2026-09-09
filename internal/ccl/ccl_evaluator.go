@@ -29,7 +29,26 @@ type EvaluationResult struct {
 
 // Evaluate evaluates a CCL node with the given context.
 func Evaluate(n cclNode, ctx Context) (any, error) {
-	return evaluateWithContext(n, ctx, 0)
+	val, err := evaluateWithContext(n, ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	return checkResultValue(val)
+}
+
+// checkResultValue rejects a result that is one of the evaluator's internal
+// range representations. `A:B` and `1:5` describe which columns or rows an
+// operator should read; they are not values. Returned as-is they were written
+// into every cell as a ccl.ColumnRange the caller cannot even name, because
+// the type is internal.
+func checkResultValue(val any) (any, error) {
+	switch v := val.(type) {
+	case ColumnRange:
+		return nil, fmt.Errorf("a column range is not a value: use it inside an aggregate (SUM(A:C)) or with row access (A:C.0)")
+	case RowRange:
+		return nil, fmt.Errorf("a row range is not a value: use it with row access (A.(%d:%d))", v.Start, v.End)
+	}
+	return val, nil
 }
 
 // EvaluateStatement evaluates a CCL statement and returns detailed result
@@ -37,7 +56,7 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 	switch t := n.(type) {
 	case *cclAssignmentNode:
 		// Evaluate the expression
-		val, err := evaluateWithContext(t.expr, ctx, 0)
+		val, err := Evaluate(t.expr, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -48,7 +67,7 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 		}, nil
 	case *cclNewColNode:
 		// Evaluate the expression for new column
-		val, err := evaluateWithContext(t.expr, ctx, 0)
+		val, err := Evaluate(t.expr, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -59,7 +78,7 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 		}, nil
 	default:
 		// Regular expression
-		val, err := evaluateWithContext(n, ctx, 0)
+		val, err := Evaluate(n, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -282,32 +301,59 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			return evaluateWithCallDepth(t.args[2], ctx, depth+1, functionDepth)
 		}
 
-		if upper == "AND" {
+		if upper == "AND" || upper == "OR" {
+			// AND stops at the first false, OR at the first true; an argument
+			// that is not a boolean is an error, matching the && and ||
+			// operators. Both used to return a plain false for a value they
+			// could not read, which is indistinguishable from a real answer.
+			if len(t.args) < 2 {
+				return nil, fmt.Errorf("%s requires at least 2 arguments, got %d", upper, len(t.args))
+			}
 			functionDepth := callDepth + 1
-			for _, arg := range t.args {
+			for i, arg := range t.args {
 				val, err := evaluateWithCallDepth(arg, ctx, depth+1, functionDepth)
 				if err != nil {
 					return nil, err
 				}
-				if b, ok := toBool(val); !ok || !b {
+				b, ok := toBool(val)
+				if !ok {
+					return nil, fmt.Errorf("argument %d to %s cannot be converted to boolean: %v", i+1, upper, val)
+				}
+				if upper == "AND" && !b {
 					return false, nil
 				}
-			}
-			return true, nil
-		}
-
-		if upper == "OR" {
-			functionDepth := callDepth + 1
-			for _, arg := range t.args {
-				val, err := evaluateWithCallDepth(arg, ctx, depth+1, functionDepth)
-				if err != nil {
-					return nil, err
-				}
-				if b, ok := toBool(val); ok && b {
+				if upper == "OR" && b {
 					return true, nil
 				}
 			}
-			return false, nil
+			return upper == "AND", nil
+		}
+
+		if upper == "CASE" {
+			// CASE picks a branch before evaluating it, like IF. Evaluating
+			// every branch first made CASE(B != 0, A / B, nil) fail with the
+			// division by zero it was written to avoid.
+			if len(t.args) < 3 {
+				return nil, fmt.Errorf("CASE requires at least 3 arguments, got %d", len(t.args))
+			}
+			if len(t.args)%2 != 1 {
+				return nil, fmt.Errorf("CASE requires an odd number of arguments, got %d", len(t.args))
+			}
+			functionDepth := callDepth + 1
+			for i := 0; i+1 < len(t.args); i += 2 {
+				condVal, err := evaluateWithCallDepth(t.args[i], ctx, depth+1, functionDepth)
+				if err != nil {
+					return nil, err
+				}
+				cond, ok := toBool(condVal)
+				if !ok {
+					return nil, fmt.Errorf("condition at position %d cannot be evaluated as boolean: %v", i, condVal)
+				}
+				if cond {
+					return evaluateWithCallDepth(t.args[i+1], ctx, depth+1, functionDepth)
+				}
+			}
+			return evaluateWithCallDepth(t.args[len(t.args)-1], ctx, depth+1, functionDepth)
 		}
 
 		// Sequence functions: whole-column input, same-length-column output.
@@ -319,6 +365,12 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			functionDepth := callDepth + 1
 			seqArgs := make([][]any, len(t.args))
 			for i, arg := range t.args {
+				// '@' is the whole row, and evaluateToColumn flattens the whole
+				// table for it. Shifting that produces one nonsense slice
+				// repeated in every cell, so refuse it here with the reason.
+				if _, isAt := arg.(*cclAtNode); isAt {
+					return nil, fmt.Errorf("sequence function %s operates on a single column; '@' refers to the whole row", t.name)
+				}
 				colData, err := evaluateToColumn(arg, ctx, depth+1, functionDepth)
 				if err != nil {
 					return nil, fmt.Errorf("sequence function %s: %v", t.name, err)
@@ -384,6 +436,9 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		if t.op == ":" {
 			return evaluateRange(t.left, t.right, ctx, depth, callDepth)
 		}
+		if t.op == "&&" || t.op == "||" {
+			return evaluateLogical(t.op, t.left, t.right, ctx, depth, callDepth)
+		}
 		left, err := evaluateWithCallDepth(t.left, ctx, depth+1, callDepth)
 		if err != nil {
 			return nil, err
@@ -395,18 +450,39 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		return applyOperator(t.op, left, right)
 	case *cclFoldChainNode:
 		// 左摺疊，運算序列與巢狀二元節點完全一致：逐一「求值運算元、套用
-		// 運算子」由左至右，錯誤同樣先到先回。不引入短路（二元的 && / ||
-		// 本來就不短路，行為必須一致）。
+		// 運算子」由左至右，錯誤同樣先到先回。&& 與 || 在兩種形狀都短路，
+		// 摺疊與巢狀必須給出同一個答案（ccl_fold_behavior_test.go 釘住）。
 		acc, err := evaluateWithCallDepth(t.init, ctx, depth+1, callDepth)
 		if err != nil {
 			return nil, err
 		}
 		for i, operand := range t.operands {
+			op := t.ops[i]
+			if op == "&&" || op == "||" {
+				ab, ok := toBool(acc)
+				if !ok {
+					return nil, fmt.Errorf("invalid left operand for %s: %v (must be boolean)", op, acc)
+				}
+				if (op == "&&" && !ab) || (op == "||" && ab) {
+					acc = ab
+					continue
+				}
+				rv, err := evaluateWithCallDepth(operand, ctx, depth+1, callDepth)
+				if err != nil {
+					return nil, err
+				}
+				rb, ok := toBool(rv)
+				if !ok {
+					return nil, fmt.Errorf("invalid right operand for %s: %v (must be boolean)", op, rv)
+				}
+				acc = rb
+				continue
+			}
 			rv, err := evaluateWithCallDepth(operand, ctx, depth+1, callDepth)
 			if err != nil {
 				return nil, err
 			}
-			acc, err = applyOperator(t.ops[i], acc, rv)
+			acc, err = applyOperator(op, acc, rv)
 			if err != nil {
 				return nil, err
 			}
@@ -450,6 +526,60 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 	}
 
 	return nil, fmt.Errorf("invalid node")
+}
+
+// daysToDuration converts a (possibly fractional) number of days into a
+// Duration without losing anything below an hour.
+func daysToDuration(days float64) time.Duration {
+	return time.Duration(days * 24 * float64(time.Hour))
+}
+
+// evaluateLogical evaluates && and || without touching the right operand when
+// the left one already settles the answer. Writing `B != 0 && A / B > 1` is the
+// standard way to avoid dividing by zero, and it only works if the guard runs
+// first.
+func evaluateLogical(op string, left, right cclNode, ctx Context, depth, callDepth int) (any, error) {
+	lv, err := evaluateWithCallDepth(left, ctx, depth+1, callDepth)
+	if err != nil {
+		return nil, err
+	}
+	lb, ok := toBool(lv)
+	if !ok {
+		return nil, fmt.Errorf("invalid left operand for %s: %v (must be boolean)", op, lv)
+	}
+	if (op == "&&" && !lb) || (op == "||" && lb) {
+		return lb, nil
+	}
+	rv, err := evaluateWithCallDepth(right, ctx, depth+1, callDepth)
+	if err != nil {
+		return nil, err
+	}
+	rb, ok := toBool(rv)
+	if !ok {
+		return nil, fmt.Errorf("invalid right operand for %s: %v (must be boolean)", op, rv)
+	}
+	return rb, nil
+}
+
+// wholeIndex turns a value used as an index — a row number, a range bound —
+// into an int, refusing anything that is not a finite whole number. A bare
+// int(f) truncates 1.7 to 1 and turns NaN into 0 on arm64 but MinInt64 on
+// amd64, so the same expression answered differently on different machines.
+func wholeIndex(v any, what string) (int, error) {
+	f, ok := toFloat64(v)
+	if !ok {
+		return 0, fmt.Errorf("invalid %s type: %T", what, v)
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, fmt.Errorf("%s must be a whole number, got %v", what, v)
+	}
+	if f != math.Trunc(f) {
+		return 0, fmt.Errorf("%s must be a whole number, got %v", what, f)
+	}
+	if f > math.MaxInt32 || f < math.MinInt32 {
+		return 0, fmt.Errorf("%s %v is out of range", what, f)
+	}
+	return int(f), nil
 }
 
 func applyOperator(op string, left, right any) (any, error) {
@@ -499,9 +629,12 @@ func applyOperator(op string, left, right any) (any, error) {
 		if rf, ok := toFloat64(right); ok {
 			switch op {
 			case "+":
-				return lt.Add(time.Duration(rf*24.0) * time.Hour), nil
+				// Convert days straight to a Duration; multiplying an integer
+				// Duration by an hour first threw away everything under an
+				// hour, so A + 0.001 moved the timestamp not at all.
+				return lt.Add(daysToDuration(rf)), nil
 			case "-":
-				return lt.Add(-time.Duration(rf*24.0) * time.Hour), nil
+				return lt.Add(-daysToDuration(rf)), nil
 			}
 		}
 	}
@@ -511,7 +644,7 @@ func applyOperator(op string, left, right any) (any, error) {
 		if lf, ok := toFloat64(left); ok {
 			switch op {
 			case "+":
-				return rt.Add(time.Duration(lf*24.0) * time.Hour), nil
+				return rt.Add(daysToDuration(lf)), nil
 			case "-":
 				// number - date doesn't make sense
 				return nil, fmt.Errorf("invalid operands for -: %v, %v", left, right)
@@ -554,11 +687,10 @@ func applyOperator(op string, left, right any) (any, error) {
 		}
 	}
 
-	// 處理 & 運算符（字串連接，等同於 CONCAT）
+	// 處理 & 運算符（字串連接，等同於 CONCAT）。用 toString 而非 %v，
+	// 否則 nil 會把 Go 的 "<nil>" 字面寫進儲存格。
 	if op == "&" {
-		leftStr := fmt.Sprintf("%v", left)
-		rightStr := fmt.Sprintf("%v", right)
-		return leftStr + rightStr, nil
+		return toString(left) + toString(right), nil
 	}
 	// 處理 && 運算符（邏輯與，等同於 AND）
 	if op == "&&" {
@@ -656,9 +788,25 @@ func applyOperator(op string, left, right any) (any, error) {
 		}
 	}
 
-	// 對於大小比較，如果不能轉換為數字，返回false
+	// 大小比較的非數值路徑。兩邊都是字串時用字典序（過去兩個方向都回
+	// false，等於字串根本沒有順序）；一邊是數字、另一邊是讀不成數字的字串
+	// 時回錯，這正是 Docs/CCL.md 一直寫的行為。
 	if op == ">" || op == "<" || op == ">=" || op == "<=" {
-		return false, nil
+		ls, lIsStr := left.(string)
+		rs, rIsStr := right.(string)
+		if lIsStr && rIsStr {
+			switch op {
+			case ">":
+				return ls > rs, nil
+			case "<":
+				return ls < rs, nil
+			case ">=":
+				return ls >= rs, nil
+			case "<=":
+				return ls <= rs, nil
+			}
+		}
+		return nil, fmt.Errorf("invalid operands for %s: %v, %v (cannot be compared)", op, left, right)
 	}
 
 	// 處理範圍運算符 :
@@ -819,7 +967,11 @@ func evaluateRowAccess(left, right cclNode, ctx Context, depth, callDepth int) (
 			}
 		}
 	case float64:
-		rowIndices = []int{int(v)}
+		idx, err := wholeIndex(v, "row index")
+		if err != nil {
+			return nil, err
+		}
+		rowIndices = []int{idx}
 	case int:
 		rowIndices = []int{v}
 	case string:
@@ -978,12 +1130,18 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 		return nil, err
 	}
 
-	lf, lok := toFloat64(lVal)
-	rf, rok := toFloat64(rVal)
+	_, lok := toFloat64(lVal)
+	_, rok := toFloat64(rVal)
 
 	if lok && rok {
-		lRowIdx := int(lf)
-		rRowIdx := int(rf)
+		lRowIdx, err := wholeIndex(lVal, "row index")
+		if err != nil {
+			return nil, err
+		}
+		rRowIdx, err := wholeIndex(rVal, "row index")
+		if err != nil {
+			return nil, err
+		}
 		rowCount := ctx.GetRowCount()
 		if lRowIdx < 0 || lRowIdx >= rowCount {
 			return nil, fmt.Errorf("row index %d out of range (total rows: %d)", lRowIdx, rowCount)
@@ -997,8 +1155,8 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 	// 3. 嘗試解析為行名稱或混合範圍 (Row Name/Index Range)
 	// Helper to resolve row index from value (int/float or string)
 	resolveRowIdx := func(val any) (int, error) {
-		if f, ok := toFloat64(val); ok {
-			return int(f), nil
+		if _, ok := toFloat64(val); ok {
+			return wholeIndex(val, "row index")
 		}
 		if s, ok := val.(string); ok {
 			return ctx.GetRowIndexByName(s)

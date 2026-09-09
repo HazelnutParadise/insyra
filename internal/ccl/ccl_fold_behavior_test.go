@@ -102,7 +102,7 @@ var foldDifferentialCorpus = []string{
 	"'a' & 'b' & 'c'",
 	"'v=' & 1 & 2",
 	"1 & 2 & 'x'",
-	// boolean chains (no short-circuit!) and comparison→logical
+	// boolean chains (short-circuiting) and comparison→logical
 	"true && true && false",
 	"true || false || true",
 	"true && false || true",
@@ -252,23 +252,33 @@ func TestFoldChain_GoldenValues(t *testing.T) {
 	}
 }
 
-// TestFoldChain_NoShortCircuit pins that && / || still evaluate their right
-// operands (binary chains never short-circuited; folding must not either).
-func TestFoldChain_NoShortCircuit(t *testing.T) {
+// TestFoldChain_ShortCircuits pins that a folded chain skips the operands a
+// short-circuit makes irrelevant, exactly as the nested binary form does. The
+// two shapes must stay interchangeable; before batch 8 they agreed by both
+// evaluating everything, which meant `false && (1/0 > 0)` reported a division
+// by zero that never happened.
+func TestFoldChain_ShortCircuits(t *testing.T) {
 	ctx := foldTestContext(t)
-	for _, expr := range []string{
-		"false && (1/0 > 0)",
-		"true || (1/0 > 0)",
-		"false && (1/0 > 0) && true",
-		"true || (1/0 > 0) || false",
+	for _, tc := range []struct {
+		expr string
+		want bool
+	}{
+		{"false && (1/0 > 0)", false},
+		{"true || (1/0 > 0)", true},
+		{"false && (1/0 > 0) && true", false},
+		{"true || (1/0 > 0) || false", true},
 	} {
-		t.Run(expr, func(t *testing.T) {
-			node, err := CompileExpression(expr)
+		t.Run(tc.expr, func(t *testing.T) {
+			node, err := CompileExpression(tc.expr)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
 			}
-			if _, err := Evaluate(node, ctx); err == nil {
-				t.Error("expected division-by-zero error to surface (no short-circuit), got nil")
+			got, err := Evaluate(node, ctx)
+			if err != nil {
+				t.Fatalf("evaluate: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
 	}

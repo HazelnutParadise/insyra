@@ -46,6 +46,11 @@ func scalarInt(arg []any, fnName, paramName string) (int, error) {
 	if math.IsNaN(f) || math.IsInf(f, 0) || f > math.MaxInt32 || f < math.MinInt32 {
 		return 0, fmt.Errorf("%s: %s %v is out of range", fnName, paramName, arg[0])
 	}
+	// A fractional window or period silently became its floor, so
+	// ROLLING_MEAN(A, 2.9) averaged over two rows and said nothing.
+	if f != math.Trunc(f) {
+		return 0, fmt.Errorf("%s: %s must be a whole number, got %v", fnName, paramName, arg[0])
+	}
 	return int(f), nil
 }
 

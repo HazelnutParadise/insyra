@@ -172,11 +172,15 @@ func TestCCL_StringConcatenation(t *testing.T) {
 			expected: []any{"Price: 123", "Value: 45.67", "Total: 999", "Count: 42"},
 		},
 		{
+			// nil concatenates as the empty string. It used to render as Go's
+			// "<nil>" placeholder, which put a formatting artifact into the
+			// data — and disagreed with UPPER(nil) & 'x', which already gave
+			// "x". Changed in batch 8 (CCL-11).
 			name:     "nil in string concatenation",
 			colA:     []any{"Value: ", "Data: ", "Result: ", "Output: "},
 			colB:     []any{nil, "test", nil, 123},
 			cclExpr:  "A & B",
-			expected: []any{"Value: <nil>", "Data: test", "Result: <nil>", "Output: 123"},
+			expected: []any{"Value: ", "Data: test", "Result: ", "Output: 123"},
 		},
 	}
 

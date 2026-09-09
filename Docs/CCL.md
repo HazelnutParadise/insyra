@@ -196,6 +196,7 @@ CCL supports the following data types:
 - `-` : Subtraction
 - `*` : Multiplication
 - `/` : Division
+- `%` : Remainder (same as `MOD`; `A % 0` is an error)
 - `^` : Exponentiation
 - `.` : Row access (e.g., `A.0`, `['Sales'].10`)
 - `:` : Range operator (e.g., `A:C` for column range, `1:5` for row range)
@@ -220,6 +221,11 @@ CCL supports the following data types:
 
 > **Note on Bounds Checking:**
 > Both the row access operator (`.`) and the range operator (`:`) perform strict bounds checking. If an index is out of range (e.g., `A.100` when there are only 10 rows, or `A:Z` when there are only 3 columns), CCL will throw an error. Negative indices are not supported.
+>
+> **Indices must be whole numbers.** `A.(1.7)`, `A.(0:1.9)` and a rolling window such as `ROLLING_MEAN(A, 2.9)` are errors, not silently truncated to `1`, `1` and `2`. `NaN` and infinity are errors for the same reason.
+
+> **Note: a range is not a value.**
+> `A:C` and `1:5` say *which* columns or rows an operator should read. They only mean something inside an aggregate (`SUM(A:C)`) or with row access (`A.(1:5)`). Used on their own — `AddColUsingCCL("r", "A:B")` — they are an error, because there is nothing sensible to put in the cell.
 
 ### Range Expansion in Aggregate Functions
 
@@ -254,6 +260,8 @@ When a range (column range or row range) is used inside an aggregate function (l
 > - In arithmetic operations, `nil` is treated as `0`.
 > - In logical operations, `nil` is treated as `false`.
 
+**What gets compared.** `>`, `<`, `>=` and `<=` try numbers first: if both sides read as numbers — including numeric strings — they are compared numerically, so `'10' > '9'` is `true`. If neither side is a number and both are strings, they are compared as text, so `'apple' < 'banana'` is `true`. Anything else (a word against a number) is an error.
+
 ### Logical Operators
 
 - `&&` : Logical AND (equivalent to `AND()` function)
@@ -265,6 +273,15 @@ When a range (column range or row range) is used inside an aggregate function (l
 "(A > 0 && B > 0) || C"  // Combined logical operations
 ```
 
+**Both operators short-circuit.** `&&` only evaluates its right side when the left is true, and `||` only when the left is false, so a guard works:
+
+```
+"B != 0 && A / B > 1"     // B = 0 gives false; the division never runs
+"B == 0 || A / B > 1"     // same guard, written the other way round
+```
+
+`IF`, `AND()`, `OR()` and `CASE()` behave the same way: only the branch that is selected is evaluated.
+
 ### String Concatenation Operator
 
 - `&` : String concatenation (equivalent to `CONCAT()` function)
@@ -274,6 +291,26 @@ When a range (column range or row range) is used inside an aggregate function (l
 "A & '-' & B"    // Concatenate with separator (e.g., "Hello-World")
 "A & B & C"      // Chain multiple concatenations
 ```
+
+### Operator Precedence
+
+Tightest binding at the top. Operators on the same row are evaluated left to right.
+
+| Operators                          | Notes                                                        |
+| ---------------------------------- | ------------------------------------------------------------ |
+| `:`                                | Range                                                         |
+| `.`                                | Row access                                                    |
+| `^`                                | Exponentiation, **left**-associative: `2^3^2` is `64`, not `512` |
+| `*` `/` `%`                        |                                                               |
+| `+` `-`                            |                                                               |
+| `&`                                | Concatenation, below arithmetic as in Excel: `'a' & 1 + 2` is `"a3"` |
+| `==` `!=` `>` `<` `>=` `<=`        |                                                               |
+| `&&`                               | Short-circuits                                                |
+| `\|\|`                             | Short-circuits                                                |
+
+Unary minus binds tighter than `^`, also as in Excel: **`-2^2` is `4`**, not `-4`. Write `0 - 2^2` for the other reading.
+
+Function arguments are separated by exactly one comma. A missing comma (`SUM(A B)`), a trailing comma (`IF(A > 1, 1, 0,)`) and a doubled comma are all errors — silently accepting them turned a typo into a different question.
 
 ## Type Coercion and Comparison Behavior
 
@@ -350,23 +387,34 @@ nil * 3             // 0 (nil is treated as 0)
 #### String Concatenation with `nil`
 
 ```go
-"Hello" & nil       // "Hello<nil>" (nil is converted to string "<nil>")
-nil & " World"      // "<nil> World"
+"Hello" & nil       // "Hello" (nil becomes the empty string)
+nil & " World"      // " World"
+CONCAT(nil, "x")    // "x"
 ```
 
 ### Boolean Operations
 
-Logical operators require boolean operands:
+`&&`, `||`, `IF`, `AND()`, `OR()` and `CASE()` read their condition through the same conversion, which accepts more than a bare boolean:
+
+| Value                                        | Reads as        |
+| -------------------------------------------- | --------------- |
+| `true` / `false`                             | itself          |
+| any number                                   | `false` if `0`  |
+| `'true'`, `'yes'`, `'1'`                     | `true`          |
+| `'false'`, `'no'`, `'0'`, `''`               | `false`         |
+| `nil`                                        | `false`         |
+| any other string                             | **error**       |
 
 ```go
 true && false       // false
-true || false       // true
-(A > 10) && (B < 20)    // Evaluate both conditions
+1 && 0              // false (0 reads as false)
+'yes' && true       // true
+(A > 10) && (B < 20)    // the usual form
 
-// These will cause errors
-"yes" && true       // Error: "yes" is not a boolean
-1 && 0              // Error: numbers are not booleans
+'abc' && true       // Error: 'abc' is not a boolean
 ```
+
+A 0/1 indicator column can therefore be used directly: `A && B`.
 
 ### Type Coercion Summary
 
@@ -374,10 +422,12 @@ true || false       // true
 | ----------------------- | ------------- | ------------- | ------------------------------------------------- |
 | `+`, `-`, `*`, `/`, `^` | Number/String | Number/String | Convert both to numbers, then calculate           |
 | `>`, `<`, `>=`, `<=`    | Number/String | Number/String | Convert both to numbers, then compare             |
+| `>`, `<`, `>=`, `<=`    | String        | String        | Compare as text when neither reads as a number    |
+| `>`, `<`, `>=`, `<=`    | Number        | Non-numeric string | Error                                        |
 | `==`, `!=`              | Number/String | Number/String | Convert both to numbers if possible, then compare |
 | `==`, `!=`              | nil           | any           | Special nil handling (see above)                  |
-| `&`                     | any           | any           | Convert both to strings, then concatenate         |
-| `&&`, `\|\|`            | Boolean       | Boolean       | Must be boolean, no coercion                      |
+| `&`                     | any           | any           | Convert both to strings (`nil` → `""`), then concatenate |
+| `&&`, `\|\|`            | any           | any           | Read as boolean (see the table above); short-circuits |
 
 ### Best Practices for Type Safety
 
@@ -527,6 +577,8 @@ Example:
 "OR(condition1, condition2, ...)"   // Returns true if any condition is true
 ```
 
+Both require at least two arguments, stop at the first argument that settles the answer, and report an error for an argument that is not a boolean — the same rules as `&&` and `||`.
+
 Examples:
 
 ```
@@ -589,6 +641,12 @@ Example:
 ```
 "CASE(A > 90, 'A', A > 80, 'B', A > 70, 'C', 'F')"
 // Returns 'A' if A > 90, 'B' if A > 80, 'C' if A > 70, otherwise returns 'F'
+```
+
+Conditions are tested in order and only the selected result is evaluated, so a branch that would fail on the rows it does not cover is safe:
+
+```
+"CASE(B != 0, A / B, nil)"   // rows where B is 0 get nil; no division by zero
 ```
 
 ### Math Functions
@@ -854,6 +912,8 @@ dt.ExecuteCCL(`
 
 dt.AddColUsingCCL("rolling_via_name", "ROLLING_SUM(['price'], 2)")
 ```
+
+> **Note:** a sequence function works on one column. `@` refers to the whole row, so `LAG(@, 1)` and `CUMSUM(@)` are errors. Name the column instead.
 
 ### v1 limitation: top-level usage only
 
