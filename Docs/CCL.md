@@ -1165,7 +1165,7 @@ Offset 6 is a position in the string you wrote, so you can point at it. Some com
 cannot evaluate "A / B" at row 1: division by zero
 ```
 
-An expression that does not depend on the row is evaluated once, and reports no row rather than a misleading one.
+An expression that does not depend on the row is evaluated once, and reports no row rather than a misleading one. Inside `ExecuteCCL`, the expression named is the statement that failed, so a script of several lines says which one.
 
 Both are typed values, so a program can react to them:
 

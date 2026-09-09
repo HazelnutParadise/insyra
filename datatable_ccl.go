@@ -152,8 +152,8 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) (result *DataTable) {
 		startTime := time.Now()
 		LogDebug("DataTable", "ExecuteCCL", "Starting CCL execution: %s", cclStatements)
 
-		// 編譯多行 CCL 語句
-		nodes, err := ccl.CompileMultiline(cclStatements)
+		// 編譯多行 CCL 語句，並保留每條語句的原文，讓執行期錯誤指得出是哪一條
+		stmts, err := ccl.CompileMultilineStatements(cclStatements)
 		if err != nil {
 			dt.failErr("ExecuteCCL", err)
 			return
@@ -179,9 +179,9 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) (result *DataTable) {
 		rowNameMap := dt.rowNames
 
 		// 執行每個 CCL 語句
-		for _, node := range nodes {
-			if err := executeCCLNode(dt, node, numRow, colNameMap, tableData, rowNameMap); err != nil {
-				dt.failErr("ExecuteCCL", err)
+		for _, stmt := range stmts {
+			if err := executeCCLNode(dt, stmt.Node, numRow, colNameMap, tableData, rowNameMap); err != nil {
+				dt.failErr("ExecuteCCL", ccl.AttachExpr(stmt.Src, err))
 				return
 			}
 			// 更新 numCol 和 colNameMap（如果添加了新列）
@@ -290,7 +290,9 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 			// 評估表達式
 			evalResult, err := ccl.EvaluateStatement(boundNode, ctx)
 			if err != nil {
-				return err
+				// The statement's source text is filled in by ExecuteCCL,
+				// which is the only place that knows which line is running.
+				return &ccl.EvalError{Row: i, Err: err}
 			}
 			results[i] = evalResult.Value
 		}
@@ -307,7 +309,7 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 		ctx.rowIndex = 0
 		evalResult, err := ccl.EvaluateStatement(boundNode, ctx)
 		if err != nil {
-			return err
+			return &ccl.EvalError{Row: -1, Err: err}
 		}
 		val := evalResult.Value
 
@@ -372,7 +374,9 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 			// 評估表達式
 			evalResult, err := ccl.EvaluateStatement(boundNode, ctx)
 			if err != nil {
-				return err
+				// The statement's source text is filled in by ExecuteCCL,
+				// which is the only place that knows which line is running.
+				return &ccl.EvalError{Row: i, Err: err}
 			}
 			results[i] = evalResult.Value
 		}
@@ -388,7 +392,7 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 		ctx.rowIndex = 0
 		evalResult, err := ccl.EvaluateStatement(boundNode, ctx)
 		if err != nil {
-			return err
+			return &ccl.EvalError{Row: -1, Err: err}
 		}
 		val := evalResult.Value
 

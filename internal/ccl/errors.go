@@ -71,3 +71,27 @@ func asCompileError(expr string, err error) error {
 	}
 	return &CompileError{Expr: expr, Offset: -1, Msg: err.Error()}
 }
+
+// AttachExpr fills in the expression on an error raised somewhere that did not
+// know the source text — a statement inside a multi-statement script, for
+// instance, where only the caller knows which line is running. An error that is
+// neither of the two CCL types is wrapped as an evaluation failure, because
+// that is the only place this is reached from.
+func AttachExpr(expr string, err error) error {
+	if err == nil {
+		return nil
+	}
+	switch e := err.(type) {
+	case *EvalError:
+		if e.Expr == "" {
+			e.Expr = expr
+		}
+		return e
+	case *CompileError:
+		if e.Expr == "" {
+			e.Expr = expr
+		}
+		return e
+	}
+	return &EvalError{Expr: expr, Row: -1, Err: err}
+}

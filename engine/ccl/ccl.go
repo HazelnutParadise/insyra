@@ -34,6 +34,16 @@ func CompileMultiline(script string) ([]CCLNode, error) {
 	return internalccl.CompileMultiline(script)
 }
 
+// CompiledStatement pairs a compiled statement with the source line it came
+// from, so a failure part-way through a script can say which line failed.
+type CompiledStatement = internalccl.CompiledStatement
+
+// CompileMultilineStatements compiles a script and keeps each statement's
+// source text alongside its AST.
+func CompileMultilineStatements(script string) ([]CompiledStatement, error) {
+	return internalccl.CompileMultilineStatements(script)
+}
+
 // Bind resolves column references to indices.
 func Bind(n CCLNode, colNameMap map[string]int) (CCLNode, error) {
 	return internalccl.Bind(n, colNameMap)

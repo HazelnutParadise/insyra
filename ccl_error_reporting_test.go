@@ -104,3 +104,37 @@ func TestCCLErrorTypesAreExported(t *testing.T) {
 		t.Fatalf("errors.As could not reach engine/ccl.CompileError: %v", err)
 	}
 }
+
+// CCL-15: a script is several statements, and a runtime failure in one of them
+// used to report only "division by zero" — nothing said which line.
+func TestExecuteCCLNamesTheFailingStatement(t *testing.T) {
+	restoreConfig(t)
+	Config.SetLogLevel(LogLevelFatal)
+
+	dt := NewDataTable(
+		NewDataList(10, 20, 30).SetName("price"),
+		NewDataList(1, 0, 3).SetName("qty"),
+	)
+	dt.ExecuteCCL("NEW('x') = A + 1\nNEW('y') = A / B\nNEW('z') = A")
+	err := dt.PopErr()
+	if err == nil {
+		t.Fatal("the script was accepted")
+	}
+	if !strings.Contains(err.Error(), "NEW('y') = A / B") {
+		t.Errorf("the error must name the statement that failed: %v", err)
+	}
+	if !strings.Contains(err.Error(), "row 1") {
+		t.Errorf("the error must name the row: %v", err)
+	}
+
+	var ee *ccl.EvalError
+	if !errors.As(err, &ee) {
+		t.Fatalf("errors.As could not reach a *ccl.EvalError: %v", err)
+	}
+	if ee.Expr != "NEW('y') = A / B" {
+		t.Errorf("EvalError.Expr = %q", ee.Expr)
+	}
+	if ee.Row != 1 {
+		t.Errorf("EvalError.Row = %d, want 1", ee.Row)
+	}
+}
