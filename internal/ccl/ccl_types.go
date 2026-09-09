@@ -26,6 +26,12 @@ const (
 type cclToken struct {
 	typ   cclTokenType
 	value string
+	// pos is the byte offset of this token in the expression it was read
+	// from, so an error can point at text the caller wrote. The tokenizer
+	// already reported byte offsets; the parser used to report an index into
+	// this slice under the same word "position", which pointed at nothing.
+	// The synthetic EOF token carries -1.
+	pos int
 }
 
 // CCLNode is the exported type alias for compiled CCL AST nodes.

@@ -209,13 +209,15 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 		}
 
 		// Bind AST to table columns to resolve indices at compile time
+		// Binding and the column-range check happen once, before any row, so
+		// they report as compile failures rather than as a failure on row 0.
 		boundAST, err2 := ccl.Bind(ast, colNameMap)
 		if err2 != nil {
-			err = err2
+			err = &ccl.CompileError{Expr: expression, Offset: -1, Msg: err2.Error()}
 			return
 		}
 		if err2 := checkCCLColRange(boundAST, numCol); err2 != nil {
-			err = err2
+			err = &ccl.CompileError{Expr: expression, Offset: -1, Msg: err2.Error()}
 			return
 		}
 
@@ -254,7 +256,9 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 				// 直接使用預編譯且綁定的 AST
 				val, err2 := ccl.Evaluate(boundAST, ctx)
 				if err2 != nil {
-					err = err2
+					// Name the row: on a large table "division by zero" with
+					// no row is not something anyone can act on.
+					err = &ccl.EvalError{Expr: expression, Row: i, Err: err2}
 					return
 				}
 				result[i] = val
@@ -271,7 +275,9 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 			ctx.rowIndex = 0
 			val, err2 := ccl.Evaluate(boundAST, ctx)
 			if err2 != nil {
-				err = err2
+				// Row -1: this expression does not depend on the row, so
+				// naming one would point at an innocent bystander.
+				err = &ccl.EvalError{Expr: expression, Row: -1, Err: err2}
 				return
 			}
 

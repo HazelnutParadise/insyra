@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -133,6 +134,42 @@ func rowSliceAt(cr ColumnRange, rowIdx int, ctx Context) ([]any, error) {
 		out = append(out, cell)
 	}
 	return out, nil
+}
+
+// describeNode names an AST node the way the caller wrote it, for an error
+// message. Printing the node itself dumps a Go struct, pointers included.
+func describeNode(n cclNode) string {
+	switch t := n.(type) {
+	case *cclIdentifierNode:
+		return t.name
+	case *cclColIndexNode:
+		return "[" + t.index + "]"
+	case *cclColNameNode:
+		return "['" + t.name + "']"
+	case *cclResolvedColNode:
+		if t.name != "" {
+			return t.name
+		}
+		return fmt.Sprintf("column %d", t.index)
+	case *cclNumberNode:
+		return strconv.FormatFloat(t.value, 'g', -1, 64)
+	case *cclStringNode:
+		return "'" + t.value + "'"
+	case *cclBooleanNode:
+		return strconv.FormatBool(t.value)
+	case *cclNilNode:
+		return "nil"
+	case *cclAtNode:
+		return "@"
+	case *cclRowIndexNode:
+		return "#"
+	case *funcCallNode:
+		return t.name + "(...)"
+	case *cclBinaryOpNode:
+		return describeNode(t.left) + " " + t.op + " " + describeNode(t.right)
+	default:
+		return "expression"
+	}
 }
 
 // describeRowShaped names a row-shaped argument for an error message.
@@ -1227,10 +1264,10 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 	if lIsCol && rIsCol {
 		// Check for invalid indices (-1) which resolveColumnIndex might return if not found but "looks like" a column
 		if lIdx == -1 {
-			return nil, fmt.Errorf("column not found: %v", left)
+			return nil, fmt.Errorf("column not found: %s", describeNode(left))
 		}
 		if rIdx == -1 {
-			return nil, fmt.Errorf("column not found: %v", right)
+			return nil, fmt.Errorf("column not found: %s", describeNode(right))
 		}
 
 		// Check bounds
@@ -1307,7 +1344,8 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 		return RowRange{Start: lRowIdx, End: rRowIdx}, nil
 	}
 
-	return nil, fmt.Errorf("invalid range operands: %v : %v", left, right)
+	// %v on the nodes printed the AST structs, pointers and all.
+	return nil, fmt.Errorf("invalid range operands: %s : %s", describeNode(left), describeNode(right))
 }
 
 func resolveColumnIndex(n cclNode, ctx Context) (int, bool) {

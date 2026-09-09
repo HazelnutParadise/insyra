@@ -26,8 +26,9 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) (result *Data
 
 		result, err := applyCCLOnDataTable(dt, cclFormula)
 		if err != nil {
-			elapsed := time.Since(startTime)
-			dt.fail("AddColUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
+			// The error already says whether it could not compile or failed on
+			// a particular row; an elapsed time adds nothing to either.
+			dt.failErr("AddColUsingCCL", err)
 		} else {
 			elapsed := time.Since(startTime)
 			LogDebug("DataTable", "AddColUsingCCL", "CCL evaluation completed in %v", elapsed)
@@ -79,8 +80,9 @@ func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) (result
 
 		result, err := applyCCLOnDataTable(dt, cclFormula)
 		if err != nil {
-			elapsed := time.Since(startTime)
-			dt.fail("EditColByIndexUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
+			// The error already says whether it could not compile or failed on
+			// a particular row; an elapsed time adds nothing to either.
+			dt.failErr("EditColByIndexUsingCCL", err)
 		} else {
 			elapsed := time.Since(startTime)
 			LogDebug("DataTable", "EditColByIndexUsingCCL", "CCL evaluation completed in %v", elapsed)
@@ -120,8 +122,9 @@ func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) (result *
 
 		result, err := applyCCLOnDataTable(dt, cclFormula)
 		if err != nil {
-			elapsed := time.Since(startTime)
-			dt.fail("EditColByNameUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
+			// The error already says whether it could not compile or failed on
+			// a particular row; an elapsed time adds nothing to either.
+			dt.failErr("EditColByNameUsingCCL", err)
 		} else {
 			elapsed := time.Since(startTime)
 			LogDebug("DataTable", "EditColByNameUsingCCL", "CCL evaluation completed in %v", elapsed)
@@ -152,7 +155,7 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) (result *DataTable) {
 		// 編譯多行 CCL 語句
 		nodes, err := ccl.CompileMultiline(cclStatements)
 		if err != nil {
-			dt.fail("ExecuteCCL", "Failed to parse CCL statements: %v", err)
+			dt.failErr("ExecuteCCL", err)
 			return
 		}
 
@@ -178,7 +181,7 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) (result *DataTable) {
 		// 執行每個 CCL 語句
 		for _, node := range nodes {
 			if err := executeCCLNode(dt, node, numRow, colNameMap, tableData, rowNameMap); err != nil {
-				dt.fail("ExecuteCCL", "Failed to execute CCL statement: %v", err)
+				dt.failErr("ExecuteCCL", err)
 				return
 			}
 			// 更新 numCol 和 colNameMap（如果添加了新列）

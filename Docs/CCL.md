@@ -1147,6 +1147,46 @@ Note that compilation still tokenizes the input before rejecting it, so memory u
 
 ## Troubleshooting
 
+### Reading a CCL Error
+
+Every failure says which of two things went wrong, so the first question — is my formula malformed, or is my data? — is answered by the first word.
+
+**A compile failure** names the expression, the byte offset where the problem is, and the text at that offset:
+
+```
+cannot compile "SUM(A B)" at offset 6 (near "B"): expected ',' or ')' in call to SUM: arguments must be separated by a comma
+```
+
+Offset 6 is a position in the string you wrote, so you can point at it. Some compile failures have no position — a column that does not exist, for instance — and then the offset is omitted.
+
+**An evaluation failure** names the row:
+
+```
+cannot evaluate "A / B" at row 1: division by zero
+```
+
+An expression that does not depend on the row is evaluated once, and reports no row rather than a misleading one.
+
+Both are typed values, so a program can react to them:
+
+```go
+import (
+    "errors"
+    ccl "github.com/HazelnutParadise/insyra/engine/ccl"
+)
+
+dt.AddColUsingCCL("result", formula)
+
+var compileErr *ccl.CompileError
+var evalErr *ccl.EvalError
+switch {
+case errors.As(dt.Err(), &compileErr):
+    // compileErr.Expr, .Offset, .Near — the formula is wrong
+case errors.As(dt.Err(), &evalErr):
+    // evalErr.Row, errors.Unwrap(evalErr) — the data is wrong on that row
+}
+```
+
 ### Common Issues
 
 1. **Assignment to Non-Existent Column**

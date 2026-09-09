@@ -12,19 +12,19 @@ import (
 func CompileExpression(expression string) (CCLNode, error) {
 	tokens, err := tokenize(expression)
 	if err != nil {
-		return nil, err
+		return nil, asCompileError(expression, err)
 	}
 
 	if err := checkExpressionMode(tokens); err != nil {
-		return nil, err
+		return nil, asCompileError(expression, err)
 	}
 
-	node, err := parseExpression(tokens)
+	node, err := parseExpression(tokens, expression)
 	if err != nil {
-		return nil, err
+		return nil, asCompileError(expression, err)
 	}
 	if err := checkASTDepth(node); err != nil {
-		return nil, err
+		return nil, asCompileError(expression, err)
 	}
 	return node, nil
 }
@@ -33,14 +33,14 @@ func CompileExpression(expression string) (CCLNode, error) {
 func compileStatement(statement string) (CCLNode, error) {
 	tokens, err := tokenize(statement)
 	if err != nil {
-		return nil, err
+		return nil, asCompileError(statement, err)
 	}
-	node, err := parseStatement(tokens)
+	node, err := parseStatement(tokens, statement)
 	if err != nil {
-		return nil, err
+		return nil, asCompileError(statement, err)
 	}
 	if err := checkASTDepth(node); err != nil {
-		return nil, err
+		return nil, asCompileError(statement, err)
 	}
 	return node, nil
 }

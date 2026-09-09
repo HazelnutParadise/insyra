@@ -10,6 +10,15 @@ type MapContext = internalccl.MapContext
 type Func = internalccl.Func
 type AggFunc = internalccl.AggFunc
 
+// CompileError reports an expression that could not be compiled, carrying the
+// byte offset into the expression and the text at it. Match it with errors.As.
+type CompileError = internalccl.CompileError
+
+// EvalError reports a failure while evaluating a compiled expression, carrying
+// the row it happened on (-1 when the expression does not depend on the row)
+// and wrapping the cause. Match it with errors.As.
+type EvalError = internalccl.EvalError
+
 // NewMapContext creates a map-based CCL context.
 func NewMapContext(data map[string][]any) (*MapContext, error) {
 	return internalccl.NewMapContext(data)

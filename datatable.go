@@ -1728,6 +1728,12 @@ func (dt *DataTable) ClearErr() *DataTable {
 // error stays until ClearErr or PopErr is called, so a long chain reports the
 // root cause instead of a downstream symptom.
 func (dt *DataTable) setError(level LogLevel, packageName, funcName, message string) {
+	dt.setErrorCause(level, packageName, funcName, message, nil)
+}
+
+// setErrorCause is setError plus the underlying error, so errors.As can reach a
+// typed cause through Err().
+func (dt *DataTable) setErrorCause(level LogLevel, packageName, funcName, message string, cause error) {
 	if dt.lastError != nil {
 		return
 	}
@@ -1737,6 +1743,7 @@ func (dt *DataTable) setError(level LogLevel, packageName, funcName, message str
 		FuncName:    funcName,
 		Message:     message,
 		Timestamp:   time.Now(),
+		Cause:       cause,
 	}
 }
 
@@ -1755,4 +1762,13 @@ func (dt *DataTable) fail(funcName, msg string, args ...any) {
 	fullMsg := fmt.Sprintf(msg, args...)
 	dt.setError(LogLevelError, "DataTable", funcName, fullMsg)
 	LogError("DataTable", funcName, "%s", fullMsg)
+}
+
+// failErr records err as the sticky error, keeping the value itself so a caller
+// can errors.As it. Use it when the failure came from something that already
+// says what went wrong; fail is for a message this method composes.
+func (dt *DataTable) failErr(funcName string, err error) {
+	msg := err.Error()
+	dt.setErrorCause(LogLevelError, "DataTable", funcName, msg, err)
+	LogError("DataTable", funcName, "%s", msg)
 }

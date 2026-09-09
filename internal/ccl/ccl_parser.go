@@ -15,14 +15,20 @@ const maxParseDepth = 10000
 
 type parser struct {
 	tokens []cclToken
+	expr   string // the source text, so an error can point into it
 	pos    int
 	depth  int
 }
 
+// errAt builds a CompileError pointing at the token the parser is looking at.
+func (p *parser) errAt(format string, args ...any) error {
+	return compileErrorAt(p.expr, p.current(), format, args...)
+}
+
 // parseExpression parses a CCL expression (no assignment).
 // For expressions like: A + B * C, IF(A > 0, 1, 0)
-func parseExpression(tokens []cclToken) (cclNode, error) {
-	p := &parser{tokens: tokens}
+func parseExpression(tokens []cclToken, expr string) (cclNode, error) {
+	p := &parser{tokens: tokens, expr: expr}
 	node, err := p.parseExpression(0)
 	if err != nil {
 		return nil, err
@@ -30,21 +36,21 @@ func parseExpression(tokens []cclToken) (cclNode, error) {
 	// Require the whole input to be consumed; otherwise trailing tokens (e.g.
 	// "1 2 3", "5 * 3 garbage") would be silently dropped and yield wrong results.
 	if p.current().typ != tEOF {
-		return nil, fmt.Errorf("unexpected token %q at position %d", p.current().value, p.pos)
+		return nil, p.errAt("unexpected token")
 	}
 	return node, nil
 }
 
 // parseStatement parses a single statement that may include assignment
 // Returns the parsed node which can be either an expression or an assignment
-func parseStatement(tokens []cclToken) (cclNode, error) {
-	p := &parser{tokens: tokens}
+func parseStatement(tokens []cclToken, expr string) (cclNode, error) {
+	p := &parser{tokens: tokens, expr: expr}
 	node, err := p.parseStatement()
 	if err != nil {
 		return nil, err
 	}
 	if p.current().typ != tEOF {
-		return nil, fmt.Errorf("unexpected token %q at position %d", p.current().value, p.pos)
+		return nil, p.errAt("unexpected token")
 	}
 	return node, nil
 }
@@ -89,26 +95,26 @@ func (p *parser) parseStatement() (cclNode, error) {
 func (p *parser) parseNewFunction() (cclNode, error) {
 	p.advance() // Skip NEW
 	if p.current().typ != tLPAREN {
-		return nil, fmt.Errorf("expected '(' after NEW")
+		return nil, p.errAt("expected '(' after NEW")
 	}
 	p.advance() // Skip '('
 
 	// Parse column name (must be a string)
 	if p.current().typ != tSTRING {
-		return nil, fmt.Errorf("NEW requires a string literal for column name")
+		return nil, p.errAt("NEW requires a string literal for the column name")
 	}
 	colName := p.current().value
 	p.advance()
 
 	// Expect closing parenthesis
 	if p.current().typ != tRPAREN {
-		return nil, fmt.Errorf("expected ')' after column name in NEW")
+		return nil, p.errAt("expected ')' after the column name in NEW")
 	}
 	p.advance()
 
 	// Expect assignment operator
 	if p.current().typ != tASSIGN {
-		return nil, fmt.Errorf("expected '=' after NEW('colName')")
+		return nil, p.errAt("expected '=' after NEW('colName')")
 	}
 	p.advance()
 
@@ -250,7 +256,7 @@ func (p *parser) parsePrimary() (cclNode, error) {
 	p.depth++
 	defer func() { p.depth-- }()
 	if p.depth > maxParseDepth {
-		return nil, fmt.Errorf("expression too deeply nested (max %d levels)", maxParseDepth)
+		return nil, p.errAt("expression too deeply nested (max %d levels)", maxParseDepth)
 	}
 
 	tok := p.current()
@@ -296,12 +302,12 @@ func (p *parser) parsePrimary() (cclNode, error) {
 					}
 					p.advance()
 					if p.current().typ == tRPAREN {
-						return nil, fmt.Errorf("trailing comma before ')' in call to %s: arguments are separated by a single comma", name)
+						return nil, p.errAt("trailing comma before ')' in call to %s: arguments are separated by a single comma", name)
 					}
 				}
 			}
 			if p.current().typ != tRPAREN {
-				return nil, fmt.Errorf("expected ',' or ')' in call to %s at position %d: arguments must be separated by a comma", name, p.pos)
+				return nil, p.errAt("expected ',' or ')' in call to %s: arguments must be separated by a comma", name)
 			}
 			p.advance()
 			return &funcCallNode{name: name, args: args}, nil
@@ -322,7 +328,7 @@ func (p *parser) parsePrimary() (cclNode, error) {
 			return nil, err
 		}
 		if p.current().typ != tRPAREN {
-			return nil, fmt.Errorf("expected ')' at position %d", p.pos)
+			return nil, p.errAt("expected ')'")
 		}
 		p.advance()
 		return expr, nil
@@ -346,9 +352,10 @@ func (p *parser) parsePrimary() (cclNode, error) {
 			p.advance()
 			return p.parsePrimary()
 		}
-		return nil, fmt.Errorf("unexpected operator in primary expression: %s", tok.value)
+		return nil, p.errAt("unexpected operator %q", tok.value)
 	default:
-		return nil, fmt.Errorf("unexpected token: %v", tok)
+		// %v on the token itself used to print the struct, e.g. "{5 )}".
+		return nil, p.errAt("unexpected token")
 	}
 }
 
