@@ -3,6 +3,7 @@ package ccl
 import (
 	"fmt"
 	"math"
+	"strings"
 )
 
 // stdlib_sequences.go registers CCL sequence functions (whole-column input,
@@ -24,6 +25,22 @@ func init() {
 	registerSequenceFunction("ROLLING_MIN", seqRollingMin)
 	registerSequenceFunction("ROLLING_MAX", seqRollingMax)
 	registerSequenceFunction("ROLLING_STD", seqRollingStd)
+}
+
+// rowCapableSequenceFunctions lists the sequence functions that only move
+// values around and never do arithmetic on them, so they can take a whole row
+// per element — `LAG(@, 1)` gives every row the row before it. Every other
+// sequence function needs numbers, and a row is never one. Adding a sequence
+// function means deciding which of the two it is.
+var rowCapableSequenceFunctions = map[string]bool{
+	"LAG":  true,
+	"LEAD": true,
+}
+
+// SequenceFunctionTakesRows reports whether name accepts a row-shaped column
+// ('@' or a column range) instead of a column of values.
+func SequenceFunctionTakesRows(name string) bool {
+	return rowCapableSequenceFunctions[strings.ToUpper(name)]
 }
 
 // scalarInt extracts an int scalar from a CCL argument column. The evaluator

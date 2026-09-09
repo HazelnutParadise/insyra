@@ -219,34 +219,100 @@ func TestConcatBindsLooserThanAddition(t *testing.T) {
 	}
 }
 
-// CCL-23 / CCL-39: internal representations must never become a value.
-func TestRangesAndRowsAreNotValues(t *testing.T) {
+// CCL-23 / CCL-39: a range and '@' stand for a row, so they resolve to that
+// row's values. They used to leak an internal ccl.ColumnRange struct into every
+// cell, and LAG(@, 1) shifted the whole flattened table into one nonsense slice.
+func TestRowShapedValues(t *testing.T) {
 	ctx := b8Ctx(t)
-	for _, expr := range []string{"A:B", "LAG(@, 1)", "CUMSUM(@)"} {
+
+	// A bare column range is the current row restricted to those columns —
+	// the same defaulting that makes a bare `A` mean `A.#`.
+	got, err := evalCol(t, ctx, "A:B")
+	if err != nil {
+		t.Fatalf("A:B: %v", err)
+	}
+	want := [][]any{{10.0, 1.0}, {20.0, 0.0}, {30.0, 3.0}}
+	for i := range want {
+		if !reflect.DeepEqual(got[i], []any(want[i])) {
+			t.Fatalf("A:B = %v, want %v", got, want)
+		}
+	}
+
+	// LAG over a whole row gives each row the one before it. A context is
+	// free to represent a row as a slice or a map, so this is pinned against
+	// the spelling that already worked rather than against a literal shape.
+	viaAt, err := evalCol(t, ctx, "LAG(@, 1)")
+	if err != nil {
+		t.Fatalf("LAG(@, 1): %v", err)
+	}
+	viaExplicit, err := evalCol(t, ctx, "LAG(@.#, 1)")
+	if err != nil {
+		t.Fatalf("LAG(@.#, 1): %v", err)
+	}
+	if !reflect.DeepEqual(viaAt, viaExplicit) {
+		t.Errorf("LAG(@, 1) = %v, want the same as LAG(@.#, 1) = %v", viaAt, viaExplicit)
+	}
+	if viaAt[0] != nil {
+		t.Errorf("LAG(@, 1): first row = %v, want nil", viaAt[0])
+	}
+
+	// A column range inside LAG shifts the same way, and its rows are slices
+	// because they are read cell by cell.
+	shifted, err := evalCol(t, ctx, "LAG(A:B, 1)")
+	if err != nil {
+		t.Fatalf("LAG(A:B, 1): %v", err)
+	}
+	if shifted[0] != nil {
+		t.Errorf("LAG(A:B, 1): first row = %v, want nil", shifted[0])
+	}
+	if !reflect.DeepEqual(shifted[1], []any{10.0, 1.0}) {
+		t.Errorf("LAG(A:B, 1): second row = %v, want [10 1]", shifted[1])
+	}
+}
+
+// A row range names rows but not of what, and a sequence function that does
+// arithmetic cannot take a row.
+func TestRowShapedValuesThatStayErrors(t *testing.T) {
+	ctx := b8Ctx(t)
+	for _, expr := range []string{"1:2", "CUMSUM(@)", "DIFF(@)", "ROLLING_SUM(A:B, 2)"} {
 		node, err := CompileExpression(expr)
 		if err != nil {
-			continue // rejected at compile time is also fine
+			continue
 		}
 		bound, err := Bind(node, ctx.ColNameMap)
 		if err != nil {
 			continue
 		}
 		if got, err := Evaluate(bound, ctx); err == nil {
-			t.Errorf("%s = %v (%T); an internal type must not become a value", expr, got, got)
+			t.Errorf("%s = %v; want an error", expr, got)
 		}
 	}
-	// The forms that consume a range still work.
-	for _, expr := range []string{"SUM(A:B)", "A.(0:1)"} {
-		node, err := CompileExpression(expr)
+}
+
+// The readings that consume a range must keep the values they always had: a
+// range inside an aggregate is every cell in those columns, and a row range
+// attached to a column is that slice of it, evaluated once.
+func TestRangeConsumersUnchanged(t *testing.T) {
+	ctx := b8Ctx(t)
+	for _, tc := range []struct {
+		expr string
+		want float64
+	}{
+		{"SUM(A:B)", 64},        // 10+20+30 + 1+0+3
+		{"SUM(A.(0:1))", 30},    // 10+20, once
+		{"AVG(A:B)", 64.0 / 6},
+		{"MAX(A:B)", 30},
+	} {
+		got, err := evalCol(t, ctx, tc.expr)
 		if err != nil {
-			t.Fatalf("compile %q: %v", expr, err)
+			t.Errorf("%s: %v", tc.expr, err)
+			continue
 		}
-		bound, err := Bind(node, ctx.ColNameMap)
-		if err != nil {
-			t.Fatalf("bind %q: %v", expr, err)
-		}
-		if _, err := Evaluate(bound, ctx); err != nil {
-			t.Errorf("%s: %v", expr, err)
+		for _, v := range got {
+			if v != tc.want {
+				t.Errorf("%s = %v, want %v in every row", tc.expr, got, tc.want)
+				break
+			}
 		}
 	}
 }

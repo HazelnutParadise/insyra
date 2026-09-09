@@ -33,22 +33,114 @@ func Evaluate(n cclNode, ctx Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return checkResultValue(val)
+	return resolveResultValue(val, ctx)
 }
 
-// checkResultValue rejects a result that is one of the evaluator's internal
-// range representations. `A:B` and `1:5` describe which columns or rows an
-// operator should read; they are not values. Returned as-is they were written
-// into every cell as a ccl.ColumnRange the caller cannot even name, because
-// the type is internal.
-func checkResultValue(val any) (any, error) {
+// resolveResultValue turns the evaluator's internal range representations into
+// something a cell can hold. A column range left as the whole answer means the
+// current row restricted to those columns — the same defaulting that makes a
+// bare `A` mean `A.#` and a bare `@` mean `@.#` — so `A:B` yields that row's A
+// and B values. It used to yield a ccl.ColumnRange struct, an internal type the
+// caller cannot even name.
+//
+// A row range has no such reading: it says which rows, but not of what, so it
+// is only meaningful attached to a column.
+func resolveResultValue(val any, ctx Context) (any, error) {
 	switch v := val.(type) {
 	case ColumnRange:
-		return nil, fmt.Errorf("a column range is not a value: use it inside an aggregate (SUM(A:C)) or with row access (A:C.0)")
+		return rowSliceForRange(v, ctx)
 	case RowRange:
-		return nil, fmt.Errorf("a row range is not a value: use it with row access (A.(%d:%d))", v.Start, v.End)
+		return nil, fmt.Errorf("a row range says which rows but not of what: attach it to a column, as in A.(%d:%d)", v.Start, v.End)
 	}
 	return val, nil
+}
+
+// rowSliceForRange returns the current row's values for the columns in cr.
+func rowSliceForRange(cr ColumnRange, ctx Context) ([]any, error) {
+	rowIdx := ctx.GetRowIndex()
+	out := make([]any, 0, cr.End-cr.Start+1)
+	for c := cr.Start; c <= cr.End; c++ {
+		cell, err := ctx.GetCell(c, rowIdx)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, cell)
+	}
+	return out, nil
+}
+
+// rowShapedColumn builds the per-row column for an argument that stands for a
+// whole row: '@' (every column) or a column range (some of them). It returns
+// isRowShaped=false for anything else, leaving the caller to read it as an
+// ordinary column of values.
+func rowShapedColumn(arg cclNode, ctx Context, depth, callDepth int) (rows []any, isRowShaped bool, err error) {
+	var cr *ColumnRange
+	switch node := arg.(type) {
+	case *cclAtNode:
+	case *cclBinaryOpNode:
+		if node.op != ":" {
+			return nil, false, nil
+		}
+		v, err := evaluateRange(node.left, node.right, ctx, depth, callDepth)
+		if err != nil {
+			return nil, false, err
+		}
+		got, ok := v.(ColumnRange)
+		if !ok {
+			return nil, false, nil
+		}
+		cr = &got
+	default:
+		return nil, false, nil
+	}
+
+	// Reading a row moves the cursor on some contexts, so put it back.
+	current := ctx.GetRowIndex()
+	defer func() {
+		if setErr := ctx.SetRowIndex(current); setErr != nil && err == nil {
+			err = setErr
+		}
+	}()
+
+	n := ctx.GetRowCount()
+	rows = make([]any, 0, n)
+	for i := 0; i < n; i++ {
+		if cr == nil {
+			row, err := ctx.GetRowAt(i)
+			if err != nil {
+				return nil, true, err
+			}
+			rows = append(rows, row)
+			continue
+		}
+		slice, err := rowSliceAt(*cr, i, ctx)
+		if err != nil {
+			return nil, true, err
+		}
+		rows = append(rows, slice)
+	}
+	return rows, true, nil
+}
+
+// rowSliceAt returns row rowIdx restricted to the columns in cr.
+func rowSliceAt(cr ColumnRange, rowIdx int, ctx Context) ([]any, error) {
+	out := make([]any, 0, cr.End-cr.Start+1)
+	for c := cr.Start; c <= cr.End; c++ {
+		cell, err := ctx.GetCell(c, rowIdx)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, cell)
+	}
+	return out, nil
+}
+
+// describeRowShaped names a row-shaped argument for an error message.
+func describeRowShaped(arg cclNode) string {
+	if _, ok := arg.(*cclAtNode); ok {
+		return "'@'"
+	}
+	return "a column range"
 }
 
 // EvaluateStatement evaluates a CCL statement and returns detailed result
@@ -137,11 +229,14 @@ func IsRowDependent(n cclNode) bool {
 		if t.op == "." {
 			return IsRowDependent(t.right)
 		}
-		if t.op == ":" {
-			// 範圍運算符特殊處理：如果兩邊都是靜態欄位引用，則視為行無關
-			if isStaticColumnNode(t.left) && isStaticColumnNode(t.right) {
-				return false
-			}
+		if t.op == ":" && isStaticColumnNode(t.left) && isStaticColumnNode(t.right) {
+			// A COLUMN range on its own is the current row restricted to those
+			// columns — the same defaulting that makes a bare `A` mean `A.#` —
+			// so it changes from row to row. A ROW range (`0:1`) has no such
+			// reading and falls through to the operand check below. Inside an
+			// aggregate the range never reaches this case: evaluateToColumn
+			// expands it before asking.
+			return true
 		}
 		return IsRowDependent(t.left) || IsRowDependent(t.right)
 	case *cclFoldChainNode:
@@ -365,11 +460,20 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			functionDepth := callDepth + 1
 			seqArgs := make([][]any, len(t.args))
 			for i, arg := range t.args {
-				// '@' is the whole row, and evaluateToColumn flattens the whole
-				// table for it. Shifting that produces one nonsense slice
-				// repeated in every cell, so refuse it here with the reason.
-				if _, isAt := arg.(*cclAtNode); isAt {
-					return nil, fmt.Errorf("sequence function %s operates on a single column; '@' refers to the whole row", t.name)
+				// A row-shaped argument — '@' or a column range — is one row
+				// per element, not one value per element. evaluateToColumn
+				// flattens both into the whole table, which LAG would then
+				// shift into a single nonsense slice repeated in every cell.
+				rows, isRowShaped, err := rowShapedColumn(arg, ctx, depth+1, functionDepth)
+				if err != nil {
+					return nil, fmt.Errorf("sequence function %s: %v", t.name, err)
+				}
+				if isRowShaped {
+					if !SequenceFunctionTakesRows(upper) {
+						return nil, fmt.Errorf("sequence function %s needs numbers, and %s is a whole row; only LAG and LEAD accept one", t.name, describeRowShaped(arg))
+					}
+					seqArgs[i] = rows
+					continue
 				}
 				colData, err := evaluateToColumn(arg, ctx, depth+1, functionDepth)
 				if err != nil {
@@ -841,6 +945,31 @@ func applyOperator(op string, left, right any) (any, error) {
 }
 
 func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, error) {
+	// 0. A column range names columns; here we want everything in them. This
+	// has to be decided before the row-dependence check below, because a range
+	// that IS the whole answer means something else — the current row
+	// restricted to those columns — and is therefore row-dependent.
+	if bin, ok := n.(*cclBinaryOpNode); ok && bin.op == ":" {
+		v, err := evaluateRange(bin.left, bin.right, ctx, depth, callDepth)
+		if err != nil {
+			return nil, err
+		}
+		switch r := v.(type) {
+		case ColumnRange:
+			var allData []any
+			for i := r.Start; i <= r.End; i++ {
+				col, err := ctx.GetColData(i)
+				if err != nil {
+					return nil, err
+				}
+				allData = append(allData, col...)
+			}
+			return allData, nil
+		case RowRange:
+			return nil, fmt.Errorf("raw row range cannot be used as a data source; use @.start:end instead")
+		}
+	}
+
 	// 1. 針對直接欄位引用的優化
 	switch t := n.(type) {
 	case *cclAtNode:

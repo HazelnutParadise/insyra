@@ -224,8 +224,10 @@ CCL supports the following data types:
 >
 > **Indices must be whole numbers.** `A.(1.7)`, `A.(0:1.9)` and a rolling window such as `ROLLING_MEAN(A, 2.9)` are errors, not silently truncated to `1`, `1` and `2`. `NaN` and infinity are errors for the same reason.
 
-> **Note: a range is not a value.**
-> `A:C` and `1:5` say *which* columns or rows an operator should read. They only mean something inside an aggregate (`SUM(A:C)`) or with row access (`A.(1:5)`). Used on their own — `AddColUsingCCL("r", "A:B")` — they are an error, because there is nothing sensible to put in the cell.
+> **Note: what a range means depends on where it is.**
+> Inside an aggregate, `A:C` is every value in those columns — `SUM(A:C)` sums all of them. On its own it is the *current row* restricted to those columns, so `AddColUsingCCL("r", "A:B")` puts that row's A and B values in each cell as a slice, exactly like `(A:B).#`. This is the same defaulting that makes a bare `A` mean `A.#` and a bare `@` mean the current row.
+>
+> A *row* range has no such reading: `1:5` says which rows but not of what, so it must be attached to a column (`A.(1:5)`).
 
 ### Range Expansion in Aggregate Functions
 
@@ -913,7 +915,7 @@ dt.ExecuteCCL(`
 dt.AddColUsingCCL("rolling_via_name", "ROLLING_SUM(['price'], 2)")
 ```
 
-> **Note:** a sequence function works on one column. `@` refers to the whole row, so `LAG(@, 1)` and `CUMSUM(@)` are errors. Name the column instead.
+> **Note on whole rows:** `LAG` and `LEAD` accept a row — `LAG(@, 1)` gives every row the one before it, and `LAG(A:B, 1)` does the same for just those columns. Every other sequence function does arithmetic on each value, and a row is not a number, so `CUMSUM(@)` and `ROLLING_SUM(A:B, 2)` are errors.
 
 ### v1 limitation: top-level usage only
 

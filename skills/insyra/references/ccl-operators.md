@@ -30,8 +30,12 @@ Row access (`.`) and ranges (`:`) do strict bounds checking. Out-of-range indice
 
 Indices must be **whole numbers**: `A.(1.7)`, `A.(0:1.9)` and `ROLLING_MEAN(A, 2.9)` are errors, not silently truncated. NaN and infinity are errors too.
 
-### A range is not a value
-`A:C` and `1:5` only mean something inside an aggregate (`SUM(A:C)`) or with row access (`A.(1:5)`). On their own — `AddColUsingCCL("r", "A:B")` — they are an error.
+### A range means different things in different places
+Inside an aggregate, `A:C` is every value in those columns (`SUM(A:C)`). On its own it is the **current row** restricted to those columns, so `AddColUsingCCL("r", "A:B")` gives each cell that row's A and B values as a slice — same as `(A:B).#`, and the same defaulting that makes bare `A` mean `A.#`.
+
+A **row** range has no standalone reading: `1:5` says which rows but not of what, so attach it to a column (`A.(1:5)`).
+
+`LAG` and `LEAD` accept a whole row: `LAG(@, 1)` gives every row the one before it, `LAG(A:B, 1)` the same for those columns. Other sequence functions do arithmetic per value and reject a row (`CUMSUM(@)` is an error).
 
 ### Combined column+row ranges (recommended parentheses)
 When both a **column range** and a **row range** appear together, prefer explicit parentheses to avoid ambiguity:
