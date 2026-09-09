@@ -142,6 +142,17 @@ golangci-lint run
 govulncheck ./...
 ```
 
+## Dependency Refresh Before a Release
+
+Dependencies move on their own schedule; ours is the release. **Before `dev` is merged into `main`, refresh every dependency to the newest version that leaves the `go` directive in `go.mod` unchanged.**
+
+- Do it as its own change, ahead of the release commit, so a bump that misbehaves is visible on its own and can be reverted without touching the release.
+- Verify with `go build ./...`, `go test ./...` and `govulncheck ./...`.
+- **Never let a bump raise the `go` directive.** The minimum-Go promise to downstream users is a separate, explicit decision. Stop at the newest version that keeps the current directive.
+- Anything held back — its newest version needs a newer Go, or it breaks a tool CI depends on — goes into the Follow-ups below with the reason, the way the chromedp chain already is.
+
+Why this is a rule and not a habit: dependencies only moved when Dependabot filed an alert, which means the graph only moved once something was already broken, and the fix was taken under time pressure. Dependabot also reads the default branch, so an alert raised against a released version stays open until the next merge to `main` no matter how quickly it is fixed on `dev`.
+
 ## Architecture
 
 ### Core Package (`github.com/HazelnutParadise/insyra`)
