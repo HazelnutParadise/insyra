@@ -2666,6 +2666,18 @@ A **lookup** (`GetColByName`, `GetRow`, …) still returns `nil` when the target
 is not there — that is its "not found" answer — so check it before chaining
 off the result.
 
+**A failure does not stop the chain.** Every call after the failing one still
+runs — the error is recorded, not thrown — so a chain does not short-circuit
+the way a `Result` type would. Because `Err()` keeps the *first* failure, what
+you read at the end is still the root cause. To stop at the first mistake,
+check between the steps, or set `Config.SetPanicOnError(true)` to turn every
+recorded error into a recoverable panic.
+
+**A recorded error is also printed.** It is logged at Error level to the
+standard `log` package (stderr by default, in red), so a failure is visible
+even when nothing checks `Err()`. `Config.SetLogLevel(insyra.LogLevelFatal)`
+silences it; the error is still recorded on the instance either way.
+
 
 ### Instance-Level Error Checking
 

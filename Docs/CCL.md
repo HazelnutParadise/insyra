@@ -1167,6 +1167,25 @@ cannot evaluate "A / B" at row 1: division by zero
 
 An expression that does not depend on the row is evaluated once, and reports no row rather than a misleading one. Inside `ExecuteCCL`, the expression named is the statement that failed, so a script of several lines says which one.
 
+### How a CCL failure reaches you
+
+`AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` and
+`ExecuteCCL` return the `*DataTable` so they can be chained; they do not return
+an `error`. A failure is recorded on the table and read with `Err()` or
+`PopErr()`, and the table is left exactly as it was — no half-written column.
+
+Three things follow, and they surprise people:
+
+- **The next call in the chain still runs.** The error does not stop anything,
+  it is just recorded. `Err()` keeps the *first* failure, so checking once at
+  the end gives you the root cause rather than a later symptom.
+- **The failure is printed too**, at Error level to the standard log.
+  `Config.SetLogLevel(insyra.LogLevelFatal)` silences that; it does not stop
+  the error being recorded.
+- **Use `engine/ccl` if you want `(value, error)`.** `CompileExpression`,
+  `Bind` and `Evaluate` return errors directly — the same two types — at the
+  cost of preparing the context and looping the rows yourself.
+
 Both are typed values, so a program can react to them:
 
 ```go
