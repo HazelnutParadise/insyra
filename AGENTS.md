@@ -253,6 +253,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-10] — a nil `*DataList` / `*DataTable` panics even on `Err()`
+- **Where**: `datalist.go` `Err()`, `datatable.go` `Err()`
+- **What**: the library's stated principle is that it never terminates by default, but its own error accessor is a bare field read on a pointer receiver, so `dl.Err()` on a nil `dl` panics. That makes "ask what went wrong" the thing that crashes. It surfaced while fixing `ml`/`nn`'s `Classes()`, which used to hand out exactly such a nil; three independent analyses of that change landed on this as the underlying flaw rather than the ten methods.
+- **Suggestion**: give `Err()` alone a nil-receiver guard returning a fixed `*ErrorInfo` ("nil DataList"), roughly three lines each. Do **not** extend this to every method: a nil receiver that silently answers `Len() == 0` lets the nil travel, which is the failure mode this review has spent most of its time removing. `Err()` is different because it is read-only, side-effect free, and is the one question whose answer should never be a crash. Decide it on its own; it is not a prerequisite for anything.
+- **Status**: pending
+
 ### [2026-09-07] — remove `Config.SetDontPanic` one release after `SetPanicOnError` shipped
 - **Where**: `config.go` (`SetDontPanic`, `GetDontPanicStatus`)
 - **What**: The library never terminates or panics by default. `LogFatal` records the error and returns; `Config.SetPanicOnError(true)` is the opt-in that turns any recorded error into a `panic` (never `os.Exit`). `SetDontPanic(v)` remains one release as a Deprecated alias for `SetPanicOnError(!v)` so existing callers keep compiling. Shipped in `make-errors-non-terminating` (2026-09-07).
