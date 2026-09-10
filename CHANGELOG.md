@@ -53,6 +53,9 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `accel`'s usage no longer claims a `run` subcommand that does not exist, and `--precision` is documented and registered, so `insyra accel plan --precision float32` works in one-shot mode.
 - `sample` rejects a size of zero or below, or one larger than the source without replacement, instead of saving an empty result; `setcolnames` requires exactly one name per column instead of blanking the rest or adding empty columns.
 
+### `ml` and `nn`
+- **BREAKING (behaviour, not signature)**: `Classes()` never returns nil. On the ten classifier types across `ml` and `nn`, a model that has no classes to report — it was not fitted, or a pipeline wraps something that is not a classifier — now returns an empty `*insyra.DataList` whose `Err()` says which, instead of nil. A nil `*insyra.DataList` panics on every method it has, `Err()` included, so the caller's first safe move — asking the value what went wrong — was itself the crash. **The signature is unchanged, so nothing stops compiling: code written as `if classes == nil` keeps building and its branch never runs again.** Replace it with `if classes.Err() != nil`. `ml/mltest.RunConformance` now fails an implementation whose `Classes()` returns nil, rather than crashing on it, because `ml.Classifier` is a public interface that code outside this repository can implement.
+
 ### `datafetch`
 - The file geocode cache (`NewFileGeocodeCache`) writes to a temporary file and renames it into place, so an interrupted write can no longer leave a corrupt cache that the next run silently discards.
 

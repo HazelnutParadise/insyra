@@ -904,7 +904,7 @@ func (g *treeGrowth) partition(rows []int, split *treeSplit) ([]int, []int) {
 
 func (m *DecisionTreeClassifier) Classes() *insyra.DataList {
 	if m == nil || m.classes == nil {
-		return nil
+		return noClasses("ml", "decision-tree classifier is not fitted")
 	}
 	return m.classes.Clone()
 }

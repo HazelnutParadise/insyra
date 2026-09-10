@@ -30,6 +30,30 @@ type Transformer interface {
 
 `Step` and `Estimator` store fit functions. Configuration can be captured by a closure, so a caller can fit the same step repeatedly without cloning or reflection.
 
+### `Classes()`
+
+A model that predicts one of a known set of labels implements `Classifier`, which adds one method:
+
+```go
+type Classifier interface {
+    Model
+    Classes() *insyra.DataList
+}
+```
+
+**`Classes()` never returns nil.** When there are no classes to report — the model was not fitted, or a pipeline wraps something that is not a classifier — it returns an empty list whose `Err()` says which:
+
+```go
+classes := model.Classes()
+if err := classes.Err(); err != nil {
+    // not fitted, or not a classifier
+}
+```
+
+Check `Err()`, not `== nil`. A nil `*insyra.DataList` panics on every method it has, `Err()` included, so returning one would leave you no safe way to ask what happened.
+
+If you implement `Classifier` yourself, hold to the same rule: `ml/mltest.RunConformance` fails an implementation whose `Classes()` returns nil.
+
 ## Splitting and cross-validation
 
 `KFold` returns disjoint folds. Rows are shuffled by default, and a seeded

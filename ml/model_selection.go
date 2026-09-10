@@ -1118,7 +1118,11 @@ func classLabelsFromProbabilities(probabilities *insyra.DataTable, classes *insy
 		return nil, fmt.Errorf("ml: probability table has no classes")
 	}
 	classValues := make([]any, probabilities.NumCols())
-	if classes != nil && !isNilPointer(classes) {
+	// classes may come from a third-party ProbaModel, which this library's
+	// "never nil" rule cannot reach, so the guard stays. isNilPointer is not
+	// needed here: the parameter is a concrete *insyra.DataList, not an
+	// interface, so a typed nil cannot hide inside it.
+	if classes != nil {
 		if classes.Len() != probabilities.NumCols() {
 			return nil, fmt.Errorf("ml: probability classes (%d) and columns (%d) do not match", classes.Len(), probabilities.NumCols())
 		}
@@ -1267,7 +1271,11 @@ func rocAUCScore(yTrue *insyra.DataList, prediction Prediction) (float64, error)
 
 func probabilityClassValues(probabilities *insyra.DataTable, classes *insyra.DataList) ([]any, error) {
 	values := make([]any, probabilities.NumCols())
-	if classes != nil && !isNilPointer(classes) {
+	// classes may come from a third-party ProbaModel, which this library's
+	// "never nil" rule cannot reach, so the guard stays. isNilPointer is not
+	// needed here: the parameter is a concrete *insyra.DataList, not an
+	// interface, so a typed nil cannot hide inside it.
+	if classes != nil {
 		if classes.Len() != probabilities.NumCols() {
 			return nil, fmt.Errorf("ml: probability classes (%d) and columns (%d) do not match", classes.Len(), probabilities.NumCols())
 		}

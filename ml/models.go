@@ -410,7 +410,7 @@ func (m *LogisticModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) 
 
 func (m *LogisticModel) Classes() *insyra.DataList {
 	if m == nil || m.Result == nil {
-		return nil
+		return noClasses("ml", "logistic model is not fitted")
 	}
 	return insyra.NewDataList(m.Result.ClassLabels...).SetName("classes")
 }
@@ -485,7 +485,7 @@ func (m *KNNClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error) 
 
 func (m *KNNClassifier) Classes() *insyra.DataList {
 	if m == nil || m.Result == nil {
-		return nil
+		return noClasses("ml", "KNN classifier is not fitted")
 	}
 	return asDataList(m.Result.Classes)
 }

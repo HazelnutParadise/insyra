@@ -393,7 +393,7 @@ func (m *GradientBoostingClassifier) PredictProba(dt *insyra.DataTable) (*insyra
 
 func (m *GradientBoostingClassifier) Classes() *insyra.DataList {
 	if m == nil || m.classes == nil {
-		return nil
+		return noClasses("ml", "gradient-boosting classifier is not fitted")
 	}
 	return m.classes.Clone()
 }

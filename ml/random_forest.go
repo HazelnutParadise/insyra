@@ -255,7 +255,7 @@ func (m *RandomForestClassifier) PredictProba(dt *insyra.DataTable) (*insyra.Dat
 
 func (m *RandomForestClassifier) Classes() *insyra.DataList {
 	if m == nil || m.classes == nil {
-		return nil
+		return noClasses("ml", "random-forest classifier is not fitted")
 	}
 	return m.classes.Clone()
 }

@@ -857,9 +857,14 @@ model, err := ml.FitLinearRegression(trainX, trainY)
 predictions, err := model.Predict(testX)
 
 if proba, ok := model.(ml.ProbaModel); ok {
+    // Classes() never returns nil. When the model has no classes to give —
+    // it was not fitted, or the pipeline wraps something else — you get an
+    // empty list whose Err() says why, so check that rather than nil.
     classes := proba.Classes()
+    if err := classes.Err(); err != nil {
+        return err
+    }
     probabilities, err := proba.PredictProba(testX)
-    _ = classes
     _ = probabilities
     _ = err
 }

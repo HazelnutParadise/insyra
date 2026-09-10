@@ -78,6 +78,17 @@ func requireTable(dt *insyra.DataTable) error {
 	return nil
 }
 
+// noClasses is what a Classes() method hands back when it has none to give:
+// an empty but fully usable list carrying the reason. Returning nil instead
+// would panic on every method the caller reaches for, Err() included, so the
+// caller's first safe move — asking what went wrong — would be the crash.
+func noClasses(pkg, reason string) *insyra.DataList {
+	out := insyra.NewDataList()
+	out.SetName("classes")
+	out.SetErr(pkg, "Classes", "%s", reason)
+	return out
+}
+
 func isNilPointer(v any) bool {
 	rv := reflect.ValueOf(v)
 	return rv.IsValid() && rv.Kind() == reflect.Pointer && rv.IsNil()
@@ -165,6 +176,11 @@ func probabilityTable(classes *insyra.DataList, probabilities [][]float64) *insy
 			data[j] = value
 		}
 		name := fmt.Sprintf("class_%d", i+1)
+		// The guard stays live: PCATransformer.Transform passes nil here on
+		// purpose (components are not classes and are named afterwards), and
+		// the other callers pass the raw m.classes field, which is nil on an
+		// unfitted model. Classes() no longer returning nil does not reach
+		// either path.
 		if classes != nil && i < classes.Len() {
 			name = fmt.Sprint(classes.Get(i))
 		}

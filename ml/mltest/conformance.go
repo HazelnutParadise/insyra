@@ -164,6 +164,9 @@ func RunConformance(t *testing.T, model ml.Model, x *insyra.DataTable, y *insyra
 	// checking it is what stops the parameter from being decoration.
 	if classifier, ok := model.(ml.Classifier); ok && y != nil {
 		classes := classifier.Classes()
+		if err := checkClassesUsable(classes); err != nil {
+			t.Fatalf("%v", err)
+		}
 		known := make(map[string]struct{}, classes.Len())
 		for i := 0; i < classes.Len(); i++ {
 			known[fmt.Sprint(classes.Get(i))] = struct{}{}
@@ -197,4 +200,20 @@ func contains(value, want string) bool {
 		}
 	}
 	return false
+}
+
+// checkClassesUsable reports why a Classifier's Classes() result cannot be
+// used, or nil when it can.
+//
+// A nil *insyra.DataList panics on every method it has, Err() included, so a
+// caller cannot even ask what went wrong. The library's own classifiers return
+// an empty list carrying the reason instead; ml.Classifier is a public
+// interface with only exported methods, so an implementation outside this
+// repository can still return nil, and this suite is where it finds out —
+// rather than crashing on the Len() that follows.
+func checkClassesUsable(classes *insyra.DataList) error {
+	if classes == nil {
+		return fmt.Errorf("Classes() returned nil; return an empty list carrying the reason on its Err() instead, so callers can ask what happened")
+	}
+	return nil
 }

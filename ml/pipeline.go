@@ -267,7 +267,7 @@ type fittedPipelineClassifier struct{ *fittedPipeline }
 func (p *fittedPipelineClassifier) Classes() *insyra.DataList {
 	model, ok := p.model.(Classifier)
 	if !ok {
-		return nil
+		return noClasses("ml", "fitted pipeline model is not a classifier")
 	}
 	return model.Classes()
 }
@@ -277,7 +277,7 @@ type fittedPipelineProba struct{ *fittedPipeline }
 func (p *fittedPipelineProba) Classes() *insyra.DataList {
 	model, ok := p.model.(ProbaModel)
 	if !ok {
-		return nil
+		return noClasses("ml", "fitted pipeline model does not provide probabilities")
 	}
 	return model.Classes()
 }
@@ -311,7 +311,7 @@ type fittedPipelineClassifierImportances struct {
 func (p *fittedPipelineClassifierImportances) Classes() *insyra.DataList {
 	model, ok := p.model.(Classifier)
 	if !ok {
-		return nil
+		return noClasses("ml", "fitted pipeline model is not a classifier")
 	}
 	return model.Classes()
 }
@@ -329,7 +329,7 @@ type fittedPipelineProbaImportances struct{ *fittedPipeline }
 func (p *fittedPipelineProbaImportances) Classes() *insyra.DataList {
 	model, ok := p.model.(ProbaModel)
 	if !ok {
-		return nil
+		return noClasses("ml", "fitted pipeline model does not provide probabilities")
 	}
 	return model.Classes()
 }

@@ -160,9 +160,18 @@ func (m *BoundClassifier) Features() []string {
 }
 
 // Classes returns an independent copy of the caller-supplied class labels.
+//
+// BindClassifier refuses an empty class list, so a BoundClassifier built
+// through the public API always has them; the guard below covers a zero value
+// or a nil receiver. It returns an empty list carrying the reason rather than
+// nil, because a nil *insyra.DataList panics on every method it has, Err()
+// included, leaving the caller no safe way to ask what happened.
 func (m *BoundClassifier) Classes() *insyra.DataList {
 	if m == nil || m.classes == nil {
-		return nil
+		out := insyra.NewDataList()
+		out.SetName("classes")
+		out.SetErr("nn", "Classes", "bound classifier is not fitted")
+		return out
 	}
 	return m.classes.Clone()
 }
