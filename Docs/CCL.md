@@ -351,6 +351,22 @@ The `&` operator always performs string concatenation by converting all operands
 "Value: " & 45.67           // "Value: 45.67"
 ```
 
+**How a number becomes text.** `&`, `CONCAT`, `TOSTR`, `LEN`, `UPPER` and the
+other string functions render a number with Go's default formatting. For values
+of ordinary magnitude that is what you expect, but very large and very small
+`float64` values switch to scientific notation:
+
+```go
+"x" & 0.0000001             // "x1e-07", not "x0.0000001"
+LEN(1000000)                // 5 — the literal is a float64 and renders "1e+06"
+```
+
+A number that arrives **from a column** keeps the type it was stored as, so an
+integer column is unaffected: `LEN(A)` where `A` holds the integer `1000000` is
+`7`. A number written **in the expression** is always a `float64`, which is why
+the same value spelled as a literal can render differently. Use `TOSTR(x, fmt)`
+when the exact text matters.
+
 ### Handling `nil` Values
 
 CCL has specific rules for handling `nil` values in different operations:
@@ -452,6 +468,15 @@ A 0/1 indicator column can therefore be used directly: `A && B`.
 ## Column References
 
 CCL provides three ways to reference columns in your expressions:
+
+> **Note on case.** Function names and Excel-style column indices ignore case:
+> `sum(a)`, `SUM(A)` and `Sum(a)` are the same expression, and so are `a + 1`
+> and `A + 1`. Keywords do too (`true`, `TRUE`, `nil`, `NULL`).
+>
+> **Column *names* do not.** `['price']` and `['Price']` are different columns,
+> and asking for one that is not there is an error, not an empty column. This is
+> the one place in CCL where case matters, because a column name is data you
+> chose rather than syntax the language defines.
 
 ### 1. Direct Column Index (Excel-style)
 
@@ -788,6 +813,24 @@ Calculates the sum of all numeric values in the input.
 "SUM(@.#)"           // Sum of all columns in the current row (Row Sum)
 "SUM(@)"             // Sum of all numeric values in the entire table (Total Sum)
 ```
+
+### AVG
+
+Calculates the mean of the numeric values in the input.
+
+```
+"AVG(A)"             // Mean of column A
+"AVG(A, B)"          // Mean over columns A and B together
+"AVG(@.#)"           // Mean of the current row
+"AVG(@)"             // Mean of every numeric value in the table
+"AVG(A.(0:9))"       // Mean of the first ten rows of A
+```
+
+**`AVG` is not `SUM` divided by `COUNT`.** `AVG` divides by how many values it
+could read as numbers; `COUNT` counts values that are not `nil`, including text.
+On a column holding `[10, nil, 30, "abc"]`, `SUM` is `40`, `COUNT` is `3`, and
+`AVG` is `20` — because the mean is taken over the two numbers, not over the
+three non-empty cells.
 
 ### COUNT
 

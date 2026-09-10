@@ -253,6 +253,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-10] — CCL renders a `float64` into text with scientific notation
+- **Where**: `internal/ccl/stdlib_string.go` `toString`, and everything built on it (`&`, `CONCAT`, `TOSTR` without a format, `LEN`, `UPPER`, …)
+- **What**: numbers reach text through Go's `fmt.Sprint`, whose `%v` for a `float64` is `%g`, so magnitudes outside roughly 1e-5..1e21 come out in exponent form. `'id-' & 0.0000001` is `"id-1e-07"`, and because every numeric literal in CCL is a `float64`, `LEN(1000000)` is `5` — it renders as `"1e+06"` — while the same value read from an integer column gives `7`. Found while documenting CCL-35, whose own suggestion was only to write the behaviour down; that is done, but the behaviour itself is the same shape as the `<nil>` that batch 8 removed: a Go formatting default leaking into data.
+- **Suggestion**: decide, do not drift. `strconv.FormatFloat(f, 'f', -1, 64)` gives the shortest exact decimal with no exponent (`"0.0000001"`), which is almost certainly what someone concatenating a number wants. The cost is that a genuinely huge value becomes unwieldy — `1e300` would render as 301 characters — so a threshold may be wanted. It is a **breaking** change to any expression that builds text from a float, which is why it is not folded into the documentation batch.
+- **Status**: pending
+
 ### [2026-09-10] — a nil `*DataList` / `*DataTable` panics even on `Err()`
 - **Where**: `datalist.go` `Err()`, `datatable.go` `Err()`
 - **What**: the library's stated principle is that it never terminates by default, but its own error accessor is a bare field read on a pointer receiver, so `dl.Err()` on a nil `dl` panics. That makes "ask what went wrong" the thing that crashes. It surfaced while fixing `ml`/`nn`'s `Classes()`, which used to hand out exactly such a nil; three independent analyses of that change landed on this as the underlying flaw rather than the ten methods.
