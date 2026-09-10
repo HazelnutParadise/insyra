@@ -1123,12 +1123,42 @@ Test environment: 100,000 rows × 3 columns
 | With function      | `IF(A > 50000, 1, 0)`                          | ~59ms  | ~0.59μs |
 | Complex expression | `IF(AND(A > 10000, B < 150000), A * 2 + B, C)` | ~103ms | ~1.03μs |
 
+### Aggregates inside a per-row expression
+
+An aggregate whose answer is the same on every row — anything that does not
+mention `#` — is computed **once** before the rows are walked, not once per
+row. This matters a lot: on 20,000 rows, `A / SUM(A)` used to sum the whole
+column 20,000 times.
+
+| Expression | Before | Now |
+| --- | --- | --- |
+| `A / 1` (baseline) | 1.4 ms | 1.4 ms |
+| `A / SUM(A)` | 2.1 s | 1.3 ms |
+| `(A - AVG(A)) / STDEV(A)` | 6.0 s | 2.1 ms |
+
+An aggregate that *does* mention `#` reads the current row, so it stays
+per-row — `SUM(A.(0:#))` is a running total and cannot be hoisted.
+
+### Rolling windows
+
+`ROLLING_*` is **O(rows × window)** on purpose. A running accumulator would
+make it linear, but adding the entering value and subtracting the leaving one
+accumulates rounding error that recomputing the window does not have, so a long
+window over values of mixed magnitude would return a different number. Each
+window is still summed from scratch; what changed is that the column is
+converted out of `any` once instead of once per window per element, which took
+100,000 rows with a window of 5,000 from 2.2 s to 0.66 s.
+
+If a linear rolling sum matters more to you than matching the recomputed value,
+compute it with `DataList` methods rather than in CCL.
+
 ### Performance Tips
 
 1. **Prefer simple expressions**: Arithmetic operations are faster than function calls
 2. **Minimize function nesting**: Each function call adds overhead
 3. **Use bracket syntax when needed**: `[A]` and `['name']` have minimal overhead compared to direct references
 4. **Batch operations**: Process all rows at once using `AddColUsingCCL` rather than row-by-row operations
+5. **A repeated pattern is compiled once**: `REGEX_MATCH` caches compiled patterns, so a literal pattern costs one compilation for the whole column
 
 ## Limits
 

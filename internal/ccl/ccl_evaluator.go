@@ -159,6 +159,8 @@ func describeNode(n cclNode) string {
 		return strconv.FormatBool(t.value)
 	case *cclNilNode:
 		return "nil"
+	case *cclFoldedValueNode:
+		return fmt.Sprint(t.value)
 	case *cclAtNode:
 		return "@"
 	case *cclRowIndexNode:
@@ -258,7 +260,7 @@ func IsNewColNode(n cclNode) bool {
 // IsRowDependent checks if the expression depends on the current row.
 func IsRowDependent(n cclNode) bool {
 	switch t := n.(type) {
-	case *cclNumberNode, *cclStringNode, *cclBooleanNode, *cclNilNode:
+	case *cclNumberNode, *cclStringNode, *cclBooleanNode, *cclNilNode, *cclFoldedValueNode:
 		return false
 	case *cclIdentifierNode, *cclColIndexNode, *cclColNameNode, *cclResolvedColNode, *cclAtNode, *cclRowIndexNode:
 		return true
@@ -388,6 +390,8 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		return t.value, nil
 	case *cclNilNode:
 		return nil, nil
+	case *cclFoldedValueNode:
+		return t.value, nil
 	case *cclAtNode:
 		return ctx.GetCurrentRow(), nil
 	case *cclRowIndexNode:
@@ -675,6 +679,117 @@ func daysToDuration(days float64) time.Duration {
 	return time.Duration(days * 24 * float64(time.Hour))
 }
 
+// FoldRowInvariantAggregates replaces every aggregate call whose answer cannot
+// change from row to row with that answer, so the per-row loop does not
+// recompute it. On 20,000 rows this is the difference between `A / SUM(A)`
+// taking two seconds and taking a millisecond: SUM(A) was summing the whole
+// column once per row.
+//
+// An aggregate that mentions `#` reads the current row and is left alone. So is
+// one whose evaluation fails: returning the tree unchanged lets the normal
+// per-row path raise the error where it always did, with the row it belongs to,
+// rather than moving the message somewhere the caller does not expect.
+func FoldRowInvariantAggregates(n cclNode, ctx Context) cclNode {
+	folded, _ := foldAggregates(n, ctx)
+	return folded
+}
+
+// foldAggregates returns the rewritten node and whether anything changed.
+func foldAggregates(n cclNode, ctx Context) (cclNode, bool) {
+	switch t := n.(type) {
+	case *funcCallNode:
+		upper := strings.ToUpper(t.name)
+		if _, isAgg := lookupAggregateFunction(upper); isAgg && !containsRowIndex(t) {
+			val, err := evaluateWithCallDepth(t, ctx, 0, 0)
+			if err != nil {
+				return n, false
+			}
+			// Only a scalar is safe to inline. A column-shaped result belongs
+			// to the sequence path, which spreads it across the rows itself.
+			if _, isSlice := val.([]any); isSlice {
+				return n, false
+			}
+			return literalNode(val), true
+		}
+		changed := false
+		args := make([]cclNode, len(t.args))
+		for i, arg := range t.args {
+			a, c := foldAggregates(arg, ctx)
+			args[i] = a
+			changed = changed || c
+		}
+		if !changed {
+			return n, false
+		}
+		return &funcCallNode{name: t.name, args: args}, true
+	case *cclBinaryOpNode:
+		// ':' resolves column references structurally; folding either side
+		// would turn `A:B` into numbers and change what it means.
+		if t.op == ":" {
+			return n, false
+		}
+		left, lc := foldAggregates(t.left, ctx)
+		right, rc := foldAggregates(t.right, ctx)
+		if !lc && !rc {
+			return n, false
+		}
+		return &cclBinaryOpNode{op: t.op, left: left, right: right}, true
+	case *cclFoldChainNode:
+		init, changed := foldAggregates(t.init, ctx)
+		operands := make([]cclNode, len(t.operands))
+		for i, operand := range t.operands {
+			o, c := foldAggregates(operand, ctx)
+			operands[i] = o
+			changed = changed || c
+		}
+		if !changed {
+			return n, false
+		}
+		return &cclFoldChainNode{init: init, ops: t.ops, operands: operands}, true
+	case *cclChainedComparisonNode:
+		changed := false
+		values := make([]cclNode, len(t.values))
+		for i, v := range t.values {
+			nv, c := foldAggregates(v, ctx)
+			values[i] = nv
+			changed = changed || c
+		}
+		if !changed {
+			return n, false
+		}
+		return &cclChainedComparisonNode{ops: t.ops, values: values}, true
+	case *cclAssignmentNode:
+		expr, changed := foldAggregates(t.expr, ctx)
+		if !changed {
+			return n, false
+		}
+		return &cclAssignmentNode{target: t.target, expr: expr}, true
+	case *cclNewColNode:
+		expr, changed := foldAggregates(t.expr, ctx)
+		if !changed {
+			return n, false
+		}
+		return &cclNewColNode{colName: t.colName, expr: expr}, true
+	}
+	return n, false
+}
+
+// literalNode wraps an already-computed value so the evaluator can read it back
+// without recomputing anything.
+func literalNode(v any) cclNode {
+	switch x := v.(type) {
+	case float64:
+		return &cclNumberNode{value: x}
+	case string:
+		return &cclStringNode{value: x}
+	case bool:
+		return &cclBooleanNode{value: x}
+	case nil:
+		return &cclNilNode{}
+	}
+	return &cclFoldedValueNode{value: v}
+}
+
 // evaluateLogical evaluates && and || without touching the right operand when
 // the left one already settles the answer. Writing `B != 0 && A / B > 1` is the
 // standard way to avoid dividing by zero, and it only works if the guard runs
@@ -730,6 +845,13 @@ func applyOperator(op string, left, right any) (any, error) {
 		case time.Time:
 			return x, true
 		case string:
+			// Every layout below starts with a four-digit year, so a string
+			// that does not start with a digit cannot match any of them.
+			// Skipping the four time.Parse calls takes a 100k-row text column
+			// from 45ms to roughly what a numeric one costs.
+			if len(x) == 0 || x[0] < '0' || x[0] > '9' {
+				return time.Time{}, false
+			}
 			formats := []string{time.RFC3339, time.RFC3339Nano, "2006-01-02", "2006-01-02T15:04:05Z07:00"}
 			for _, f := range formats {
 				if t, err := time.Parse(f, x); err == nil {

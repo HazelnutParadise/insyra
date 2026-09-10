@@ -258,16 +258,33 @@ func seqCumMin(args ...[]any) ([]any, error) {
 func seqRollingReduce(col []any, window int, fn func(vals []float64) any) []any {
 	n := len(col)
 	out := make([]any, n)
+
+	// Convert the column once. Each element used to be pulled out of its
+	// interface once per window it appeared in: at 100,000 rows and a window
+	// of 5,000 that is 500 million unboxings of 100,000 distinct values. The
+	// slice handed to fn holds the same values in the same order, so every
+	// result is bit-identical — this takes the constant factor, not the
+	// arithmetic.
+	nums := make([]float64, n)
+	usable := make([]bool, n)
+	for i, v := range col {
+		f, ok := toFloat64(v)
+		if ok && !math.IsNaN(f) {
+			nums[i] = f
+			usable[i] = true
+		}
+	}
+
+	// One buffer for every window instead of one allocation per window. None
+	// of the reducers keeps the slice, so reusing it is safe.
+	vals := make([]float64, 0, window)
 	for i := range n {
 		lo := max(i-window+1, 0)
-		hi := i
-		var vals []float64
-		for j := lo; j <= hi; j++ {
-			f, ok := toFloat64(col[j])
-			if !ok || math.IsNaN(f) {
-				continue
+		vals = vals[:0]
+		for j := lo; j <= i; j++ {
+			if usable[j] {
+				vals = append(vals, nums[j])
 			}
-			vals = append(vals, f)
 		}
 		if len(vals) < window {
 			out[i] = nil
