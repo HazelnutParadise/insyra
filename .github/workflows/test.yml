@@ -23,9 +23,15 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS-latest]
         include:
           # The race detector needs cgo and slows the run, and a race does
-          # not depend on the OS, so one leg carries it and the coverage.
+          # not depend on the OS, so one leg carries it.
           - os: ubuntu-latest
-            testflags: -race -coverprofile=coverage.out -covermode=atomic
+            testflags: -race
+          # Coverage runs on a leg without the race detector. Together, the
+          # atomic coverage counters and the race detector slowed the
+          # clustering tests past the 10-minute timeout; either one alone
+          # finishes in under 30 seconds on a Mac.
+          - os: macOS-latest
+            testflags: -coverprofile=coverage.out
     name: Tests
     runs-on: ${{ matrix.os }}
     steps:
@@ -42,5 +48,5 @@ jobs:
     - name: Unit Test
       run: go test -v ${{ matrix.testflags }} ./...
     - name: Coverage summary
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.os == 'macOS-latest'
       run: go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
