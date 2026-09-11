@@ -56,13 +56,13 @@ func dlarrd(
 ) (m int, wl, wu float64, info int) {
 
 	const (
-		fudge   = 2.0
-		allRng  = 1
-		valRng  = 2
-		indRng  = 3
-		safmin  = lapackSafmin
-		eps     = 2.2204460492503131e-16
-		uflow   = lapackSafmin
+		fudge  = 2.0
+		allRng = 1
+		valRng = 2
+		indRng = 3
+		safmin = lapackSafmin
+		eps    = 2.2204460492503131e-16
+		uflow  = lapackSafmin
 	)
 
 	m = 0
@@ -481,8 +481,8 @@ func dlarrdBlockLoop(
 		innerIwork := make([]int, in)
 
 		// First call: IJOB=1, mmax=in, minp=1.
-		ab[0] = gl    // AB(1,1)
-		ab[in] = gu   // AB(1,2)  → flat index in*1 + 0 = in
+		ab[0] = gl  // AB(1,1)
+		ab[in] = gu // AB(1,2)  → flat index in*1 + 0 = in
 		_, iinfo := dlaebz(1, 0, in, in, 1, nb, atoli, rtoli, pivmin,
 			d[ibegin-1:], e[ibegin-1:], e2[ibegin-1:],
 			idumma, ab, cBuf, nab, innerWork, innerIwork)
@@ -490,8 +490,8 @@ func dlarrdBlockLoop(
 			return m, nwl, nwu, iinfo
 		}
 		// Accumulate per-block negcounts at GL/GU into NWL/NWU.
-		nwl += nab[0]    // NAB(1,1)
-		nwu += nab[in]   // NAB(1,2)
+		nwl += nab[0]  // NAB(1,1)
+		nwu += nab[in] // NAB(1,2)
 		iwoff := m - nab[0]
 
 		// Second call: IJOB=2, mmax=in, minp=1.

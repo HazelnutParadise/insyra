@@ -1,10 +1,13 @@
 // fa/lapack_dlarrb.go
 //
 // dlarrb — local-bisection refinement of selected eigenvalues of an
-//          LDL^T factored tridiagonal, using twisted-factorization
-//          Sturm counts (dlaneg).
+//
+//	LDL^T factored tridiagonal, using twisted-factorization
+//	Sturm counts (dlaneg).
+//
 // dlaneg — Sturm-sequence negcount via twisted factorization, with
-//          NaN-tolerant block-loop safety. Used by dlarrb.
+//
+//	NaN-tolerant block-loop safety. Used by dlarrb.
 //
 // Faithful translations of LAPACK 3.12.1 dlarrb.f and dlaneg.f.
 package fa

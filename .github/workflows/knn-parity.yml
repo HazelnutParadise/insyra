@@ -2,9 +2,12 @@ name: KNN Parity
 
 on:
   push:
-    branches: ["main", "dev"]
+    branches: ["main", "dev", "0.4"]
   pull_request:
-    branches: ["main", "dev"]
+    branches: ["main", "dev", "0.4"]
+
+permissions:
+  contents: read
 
 jobs:
   knn-parity:

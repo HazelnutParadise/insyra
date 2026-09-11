@@ -2,12 +2,12 @@
 //
 // Tridiagonal-reduction layer for the dsyevr port:
 //
-//   dsymv  — symmetric matrix-vector multiply (BLAS-2)
-//   dsyr2  — symmetric rank-2 update         (BLAS-2)
-//   dlatrd — reduce nb panel of A to tridiagonal form (LAPACK aux)
-//   dsytrd — reduce A to symmetric tridiagonal T = Q^T A Q (LAPACK)
-//   dorgtr — generate the orthogonal Q from dsytrd's reflectors
-//   dormtr — apply Q (or Q^T) to a matrix
+//	dsymv  — symmetric matrix-vector multiply (BLAS-2)
+//	dsyr2  — symmetric rank-2 update         (BLAS-2)
+//	dlatrd — reduce nb panel of A to tridiagonal form (LAPACK aux)
+//	dsytrd — reduce A to symmetric tridiagonal T = Q^T A Q (LAPACK)
+//	dorgtr — generate the orthogonal Q from dsytrd's reflectors
+//	dormtr — apply Q (or Q^T) to a matrix
 //
 // Faithful translations of LAPACK 3.12.1 reference Fortran. We use the
 // UNBLOCKED path throughout (NB=1) since our matrices are small (n < 50)

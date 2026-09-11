@@ -3,10 +3,10 @@
 // Small RRR (relatively robust representations) helpers used by the
 // dsyevr code path.
 //
-//   dlarrr  — Determine if relative-accuracy preserving computations
-//             are advisable for a tridiagonal matrix.
-//   dlarrk  — Compute one eigenvalue of a symmetric tridiagonal matrix
-//             by bisection.
+//	dlarrr  — Determine if relative-accuracy preserving computations
+//	          are advisable for a tridiagonal matrix.
+//	dlarrk  — Compute one eigenvalue of a symmetric tridiagonal matrix
+//	          by bisection.
 //
 // Faithful translations of LAPACK 3.12.1 reference Fortran (dlarrr.f /
 // dlarrk.f). Both are leaves — no further LAPACK dependencies.
@@ -19,7 +19,8 @@ import "math"
 // (length n) and off-diagonal e (length n-1).
 //
 // Returns: 0 = relative-accuracy preserved (RRR mode appropriate);
-//          1 = otherwise (the safer absolute-accuracy bisection path).
+//
+//	1 = otherwise (the safer absolute-accuracy bisection path).
 //
 // Mirrors LAPACK dlarrr.f. Only the "scaled diagonal dominance" test is
 // implemented (the U/L bidiagonal-conditioning tests are stubs in the

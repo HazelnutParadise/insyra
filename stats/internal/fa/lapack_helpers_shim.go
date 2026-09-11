@@ -9,7 +9,8 @@
 // equivalent.
 //
 // Functions delegated:
-//   dlapy2, dlae2, dlaev2, dlartg, dlassq, dlanst, dlasrt, dsterf, dlarfg
+//
+//	dlapy2, dlae2, dlaev2, dlartg, dlassq, dlanst, dlasrt, dsterf, dlarfg
 //
 // Functions NOT delegated (require column-major layout; gonum is
 // row-major): dlansy, dlaset, dlascl, dlarf, dlasr, dgemv, dger, dsymv,

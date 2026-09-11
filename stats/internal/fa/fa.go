@@ -76,4 +76,3 @@ func Rotate(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat
 
 	return rotatedLoadings, rotMat, phiMat, converged, nil
 }
-

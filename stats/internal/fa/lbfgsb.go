@@ -5,14 +5,14 @@
 // goal is bit-near-perfect parity with R's optim(method = "L-BFGS-B"),
 // which wraps the same Fortran. The port is split across several files:
 //
-//   lbfgsb.go         - public entry, lbfgsbState, public driver loop
-//   lbfgsb_blas.go    - BLAS-1 (daxpy/dcopy/ddot/dnrm2/dscal) + dpofa/dtrsl
-//   lbfgsb_lnsrch.go  - dcsrch + dcstep (Moré-Thuente line search)
-//   lbfgsb_setulb.go  - setulb / mainlb driver, errclb, active, projgr,
-//                       cmprlb, freev, hpsolb, matupd
-//   lbfgsb_cauchy.go  - cauchy (generalized Cauchy point) + bmv
-//   lbfgsb_form.go    - formk, formt
-//   lbfgsb_subsm.go   - subsm (subspace minimization)
+//	lbfgsb.go         - public entry, lbfgsbState, public driver loop
+//	lbfgsb_blas.go    - BLAS-1 (daxpy/dcopy/ddot/dnrm2/dscal) + dpofa/dtrsl
+//	lbfgsb_lnsrch.go  - dcsrch + dcstep (Moré-Thuente line search)
+//	lbfgsb_setulb.go  - setulb / mainlb driver, errclb, active, projgr,
+//	                    cmprlb, freev, hpsolb, matupd
+//	lbfgsb_cauchy.go  - cauchy (generalized Cauchy point) + bmv
+//	lbfgsb_form.go    - formk, formt
+//	lbfgsb_subsm.go   - subsm (subspace minimization)
 //
 // All matrices are stored Fortran-style (column-major flattened []float64)
 // so BLAS calls and stride/`incx` arguments translate verbatim.

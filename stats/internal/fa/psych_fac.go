@@ -1022,4 +1022,3 @@ func faOut(psi []float64, s *mat.Dense, q int) *mat.Dense {
 
 	return loadings
 }
-

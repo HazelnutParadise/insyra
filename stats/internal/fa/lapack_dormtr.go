@@ -7,10 +7,10 @@
 // Implementation strategy: we cannot reuse gonum's Dormqr because gonum
 // uses ROW-MAJOR storage (dense[i*ld + j]), while our entire LAPACK port
 // is column-major (Fortran convention dense[(j-1)*ld + (i-1)]). So we:
-//   1. Build the explicit Q via our dorgtr (column-major, already
-//      validated against gonum's EigenSym in dsyev).
-//   2. Multiply Q (or Q^T) by C in column-major into a temporary,
-//      copy back to C.
+//  1. Build the explicit Q via our dorgtr (column-major, already
+//     validated against gonum's EigenSym in dsyev).
+//  2. Multiply Q (or Q^T) by C in column-major into a temporary,
+//     copy back to C.
 package fa
 
 import "math"

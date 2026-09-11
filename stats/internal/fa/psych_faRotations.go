@@ -783,4 +783,3 @@ func rotMatFromTh(Th *mat.Dense, nf int) *mat.Dense {
 	}
 	return mat.DenseCopyOf(invTh.T())
 }
-

@@ -184,9 +184,9 @@ func TestDBSCANCoversAllDispatchBranches(t *testing.T) {
 		expectedDispatch string // "brute_serial" | "brute_parallel" | "kd_parallel"
 	}
 	cfgs := []cfg{
-		{"brute_serial_small", 30, 2, 0.5, "brute_serial"},        // n²·p < 30K
-		{"brute_serial_low_dim", 50, 2, 0.5, "brute_serial"},      // n²·p = 5000 < 30K
-		{"brute_parallel_med", 200, 4, 0.8, "brute_parallel"},     // n²·p = 160K, n*p = 800 < 8000
+		{"brute_serial_small", 30, 2, 0.5, "brute_serial"},    // n²·p < 30K
+		{"brute_serial_low_dim", 50, 2, 0.5, "brute_serial"},  // n²·p = 5000 < 30K
+		{"brute_parallel_med", 200, 4, 0.8, "brute_parallel"}, // n²·p = 160K, n*p = 800 < 8000
 		{"brute_parallel_below_kd", 499, 4, 0.8, "brute_parallel"},
 		{"kd_parallel_500_p16", 500, 16, 1.5, "kd_parallel"},
 		{"kd_parallel_2000_p4", 2000, 4, 0.6, "kd_parallel"},
@@ -747,4 +747,3 @@ func TestKMeansInitAssignmentParity(t *testing.T) {
 		}
 	}
 }
-

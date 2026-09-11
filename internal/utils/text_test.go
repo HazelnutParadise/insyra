@@ -18,18 +18,18 @@ func TestFloatText(t *testing.T) {
 		{1, "1"},
 		{12345.678, "12345.678"},
 		{999999, "999999"},
-		{1000000, "1000000"},    // %v: 1e+06
-		{1500000, "1500000"},    // %v: 1.5e+06
-		{-1500000, "-1500000"},  // sign kept
+		{1000000, "1000000"},   // %v: 1e+06
+		{1500000, "1500000"},   // %v: 1.5e+06
+		{-1500000, "-1500000"}, // sign kept
 		{1234567.5, "1234567.5"},
 		{1e20, "100000000000000000000"},
-		{1e21, "1e+21"},         // at the upper edge: exponent, as before
-		{1.5e300, "1.5e+300"},   // stays short
+		{1e21, "1e+21"},       // at the upper edge: exponent, as before
+		{1.5e300, "1.5e+300"}, // stays short
 		{0.0001, "0.0001"},
-		{0.00001, "0.00001"},    // %v: 1e-05
-		{1e-6, "0.000001"},      // lower edge is inclusive
-		{9.99e-7, "9.99e-07"},   // just below: exponent, as before
-		{1e-7, "1e-07"},         // unchanged from %v
+		{0.00001, "0.00001"},  // %v: 1e-05
+		{1e-6, "0.000001"},    // lower edge is inclusive
+		{9.99e-7, "9.99e-07"}, // just below: exponent, as before
+		{1e-7, "1e-07"},       // unchanged from %v
 		{math.NaN(), "NaN"},
 		{math.Inf(1), "+Inf"},
 		{math.Inf(-1), "-Inf"},

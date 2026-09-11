@@ -298,8 +298,8 @@ func TestRangeConsumersUnchanged(t *testing.T) {
 		expr string
 		want float64
 	}{
-		{"SUM(A:B)", 64},        // 10+20+30 + 1+0+3
-		{"SUM(A.(0:1))", 30},    // 10+20, once
+		{"SUM(A:B)", 64},     // 10+20+30 + 1+0+3
+		{"SUM(A.(0:1))", 30}, // 10+20, once
 		{"AVG(A:B)", 64.0 / 6},
 		{"MAX(A:B)", 30},
 	} {
