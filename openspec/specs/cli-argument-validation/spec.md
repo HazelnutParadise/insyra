@@ -4,6 +4,7 @@
 CLI 的選項值只接受文件所列的寫法，不認識的引數必須回報而非忽略。
 
 ## Requirements
+
 ### Requirement: Option values come from a closed set
 
 `sort` 的方向、`ttest` 的變異數假設、`ztest` 的對立假設、`clean` 的標準差 SHALL 只接受文件所列的寫法；拼錯 SHALL 回傳錯誤，SHALL NOT 退回預設值。
@@ -44,3 +45,22 @@ CLI 的選項值只接受文件所列的寫法，不認識的引數必須回報�
 - **WHEN** 建立 `accel` 的 Cobra 命令
 - **THEN** `mode` 與 `precision` 兩個旗標都存在
 
+### Requirement: Commands reject arguments they do not use
+
+The DataList statistics commands (`sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`) and `accel` SHALL return an error naming the command and the argument when given an argument they do not use, and SHALL NOT perform the action.
+
+#### Scenario: An alias on a command that stores nothing
+- **WHEN** 執行 `mean x as m`
+- **THEN** 回傳指出 `mean` 與 `"as"` 的錯誤，而且不會建立變數 `m`
+
+#### Scenario: A removed accel flag
+- **WHEN** 執行 `accel plan --precision float32`
+- **THEN** 回傳錯誤，不產生規劃報告
+
+### Requirement: accel advertises only what it reads
+
+Besides its action, `accel`'s Usage and registered flags SHALL list only `--mode`.
+
+#### Scenario: help accel
+- **WHEN** 執行 `help accel`
+- **THEN** Usage 不含 `--precision`，Cobra 也沒有註冊 `--precision`
