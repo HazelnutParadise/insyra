@@ -511,7 +511,7 @@ if err != nil {
 func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
 ```
 
-**Description:** Saves the DataTable as a CSV file. `time.Time` cells are written in RFC 3339 form (with nanoseconds), which is the first layout `ParseDates` tries, so a table written here reads back as the same instants. The file is written to a temporary file in the same directory and renamed into place once every write succeeded, so a failure (disk full, closed pipe) returns an error and never leaves a truncated file at `filePath`. `ToJSON` follows the same rule.
+**Description:** Saves the DataTable as a CSV file. `time.Time` cells are written in RFC 3339 form (with nanoseconds), which is the first layout `ParseDates` tries, so a table written here reads back as the same instants. Numbers are written by the same rule as `ToJSON`: a plain decimal from 0.000001 up to (not including) 1e21, exponent form outside, so a revenue of 1,500,000 is written `1500000` rather than `1.5e+06`. Read back, every number is the same value. The file is written to a temporary file in the same directory and renamed into place once every write succeeded, so a failure (disk full, closed pipe) returns an error and never leaves a truncated file at `filePath`. `ToJSON` follows the same rule.
 
 > **Opening the file in a spreadsheet:** a cell whose text begins with `=`, `+`, `-` or `@` is a formula to Excel, LibreOffice and Google Sheets, and they will execute it. `ToCSV` writes such a cell unchanged, so a round trip keeps the exact value. When the file is meant to be opened in a spreadsheet and the data is not wholly your own, write it with `ToCSVWithOptions` and `SanitizeFormulas: true`, which prefixes those cells with a single quote.
 
@@ -950,6 +950,8 @@ long, err := dt.Unpivot(insyra.UnpivotConfig{
 
 **Relationship to `GroupBy + Aggregate`:** `Pivot` is essentially `GroupBy(Index..., Columns).Aggregate(Values, AggFunc)` followed by spreading the `Columns` key out into headers. When you only need the grouped summary (one row per key, no header spreading), use `GroupBy + Aggregate` directly — it is simpler and produces the same intermediate structure.
 
+> **Column names from numbers.** A numeric `Columns` value becomes a column name by the same rule as `ToCSV`: `1500000.0` gives the column `1500000`, not `1.5e+06`. A `nil` value gives the column `<nil>`.
+
 ### Categorical Encoding
 
 ```go
@@ -1003,7 +1005,7 @@ type OrdinalEncodeOptions struct {
 }
 ```
 
-`OneHotEncode` emits one `0/1` `int` column per category, named `<prefix><separator><category>`; by default the prefix is the source column name and the separator is `"_"`. `DropFirst` omits the first category as the reference level. `LabelEncode` maps each class to an integer id. `OrdinalEncode` uses the explicit `Order` slice as `0..n-1`.
+`OneHotEncode` emits one `0/1` `int` column per category, named `<prefix><separator><category>`; by default the prefix is the source column name and the separator is `"_"`. A numeric category is written by the same rule as `ToCSV`, so `1500000.0` gives `price_1500000`. `DropFirst` omits the first category as the reference level. `LabelEncode` maps each class to an integer id. `OrdinalEncode` uses the explicit `Order` slice as `0..n-1`.
 
 **Encoder interface and introspection:**
 

@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"math"
 	"reflect"
 	"sort"
@@ -1995,7 +1996,7 @@ func (dl *DataList) ToStringSlice() []string {
 
 		stringData := make([]string, len(dl.data))
 		for i, v := range dl.data {
-			stringData[i] = conv.ToString(v)
+			stringData[i] = utils.ValueText(v)
 		}
 
 		result = stringData

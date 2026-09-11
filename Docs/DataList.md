@@ -2312,7 +2312,7 @@ floatSlice := dl.ToF64Slice() // [1.0, 2.5, 0.0, 4.0]
 func (dl *DataList) ToStringSlice() []string
 ```
 
-**Description:** Converts DataList to a slice of string values.
+**Description:** Converts DataList to a slice of string values. Numbers are written by the same rule as `ToCSV` and `ToJSON`: a plain decimal from 0.000001 up to (not including) 1e21, exponent form outside, so `1500000.0` becomes `"1500000"`.
 
 **Parameters:**
 

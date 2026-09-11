@@ -1,11 +1,12 @@
 package ccl
 
 import (
-	"sync"
 	"fmt"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"math"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -18,7 +19,8 @@ func toString(val any) string {
 	if s, ok := val.(string); ok {
 		return s
 	}
-	return fmt.Sprint(val)
+	// utils.ValueText, not fmt.Sprint: %v writes 1,500,000 as "1.5e+06".
+	return utils.ValueText(val)
 }
 
 // runeAt returns a substring [start, start+length) measured in runes.

@@ -2,7 +2,7 @@ package insyra
 
 import (
 	"encoding/csv"
-	"fmt"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"io"
 	"strings"
 	"time"
@@ -127,7 +127,9 @@ func (dt *DataTable) writeCSV(w io.Writer, opts CSVWriteOptions) error {
 						// table written here reads back as the same instants.
 						record = append(record, v.Format(time.RFC3339Nano))
 					default:
-						cell := fmt.Sprintf("%v", value)
+						// Same rule as ToJSON: %v wrote 1,500,000 as
+						// "1.5e+06" while ToJSON wrote 1500000.
+						cell := utils.ValueText(value)
 						if opts.SanitizeFormulas {
 							cell = sanitizeCSVFormula(cell)
 						}

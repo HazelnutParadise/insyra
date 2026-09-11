@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"math"
 	"sort"
 	"strings"
@@ -578,7 +579,7 @@ func pivotColLabel(v any) string {
 	if v == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("%v", v)
+	return utils.ValueText(v)
 }
 
 // pivotColLabelForIndex returns a stable fallback label for an unnamed

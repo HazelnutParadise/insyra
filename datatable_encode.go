@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"maps"
 	"reflect"
 	"sort"
@@ -1074,7 +1075,7 @@ func oneHotCategoryColumnName(prefix, sep string, v any) string {
 	if sep == "" {
 		sep = "_"
 	}
-	return prefix + sep + fmt.Sprint(v)
+	return prefix + sep + utils.ValueText(v)
 }
 
 func (e *OneHotEncoder) refreshOutputColumns() {

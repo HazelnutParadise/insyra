@@ -50,7 +50,7 @@ This is especially useful in nested expressions and aggregate calls (e.g., `SUM(
 Function names, Excel-style column indices and keywords ignore case: `sum(a)` == `SUM(A)`, `nil` == `NULL`. **Column names do not**: `['price']` and `['Price']` are different columns, and a name that is not there is an error.
 
 ### Numbers rendered as text
-`&`, `CONCAT`, `TOSTR`, `LEN` and the string functions use Go's default number formatting, so very large and very small `float64` values come out in scientific notation: `'x' & 0.0000001` is `"x1e-07"`. A value read from an integer column keeps its type (`LEN(A)` on the integer `1000000` is `7`), but a literal written in the expression is always `float64` (`LEN(1000000)` is `5`, because it renders as `"1e+06"`). Use `TOSTR(x, fmt)` when the exact text matters.
+`&`, `CONCAT`, `TOSTR` without a format, `LEN` and the string functions write a number by the same rule as `ToJSON` and `ToCSV`: a plain decimal from 0.000001 up to (not including) 1e21, exponent form outside. `'Revenue: ' & 1500000` is `"Revenue: 1500000"`, `LEN(1000000)` is `7`, and `'x' & 0.0000001` is still `"x1e-07"`. Use `TOSTR(x, fmt)` for a fixed number of decimals.
 
 ### Names vs indexes (quoting rule of thumb)
 - **Names** use quotes (typically single quotes):

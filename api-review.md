@@ -415,7 +415,7 @@
 | CCL-32 | Low | `TOSTR(1.5, '%d')` → `"%!d(float64=1.5)"`、`TOSTR(1,'%')` → `"%!(NOVERB)…"` 靜默寫進資料 | internal/ccl/stdlib_typeconv.go:52-56 | 格式化後檢查 `%!` 前綴回錯，或限制動詞 |
 | CCL-33 | Low | `DATEADD('2024-01-31', 1, 'month')` → `2024-03-02`（Go `AddDate` 正規化，Excel `EDATE` 是 2/29）；`DATEADD(d, 10^300, 'year')` 溢位繞回 2022 年 | internal/ccl/stdlib_datetime.go:128-138 | 文件寫明或月底夾住；限制 n 範圍 |
 | CCL-34 | ~~Low~~ 已修正（batch 11，文件） | 函數名與 Excel 欄位索引大小寫不分（`sum(a)` 可用），`['name']` 區分大小寫；文件只提後者 | internal/ccl/ccl_functions.go:40；internal/utils/utils.go:73-76；Docs/CCL.md:436 | 文件寫明 |
-| CCL-35 | ~~Low~~ 已修正（batch 11，文件；另發現 float64 科學記號外洩，見 AGENTS.md Follow-ups） | 字串函數對數字直接 `fmt.Sprint`：`LEN(A)`（int 10）→ 2、`LEN(123.0)` → 3 | internal/ccl/stdlib_string.go:12-20 | 文件寫明 |
+| CCL-35 | ~~Low~~ 已修正（batch 11 補文件；batch 12 統一數字轉文字的規則） | 字串函數對數字直接 `fmt.Sprint`：`LEN(A)`（int 10）→ 2、`LEN(123.0)` → 3 | internal/ccl/stdlib_string.go:12-20 | 文件寫明 |
 | CCL-36 | ~~Low~~ 已修正（batch 9） | 非 ASCII 識別字錯誤訊息是位元組層級：`中文 + 1` → `unexpected character '¸' at position 1` | internal/ccl/ccl_tokenizer.go:14-30, 202-207 | tokenizer 改以 rune 走訪 |
 | CCL-37 | ~~Low~~ 已修正（AVG 章節 batch 11；`E`／`NULL` 在 batch 4 已處理） | `AVG` 沒有自己的文件章節；文件有 `E` 常數與 `NULL` 關鍵字但實作沒有（實際是 CCL-1 的欄位索引） | Docs/CCL.md:228, 604, 713-786, 944 | 補章節；移除或實作 `E`／`NULL` |
 | CCL-38 | ~~Low~~ 已修正（batch 10；ROLLING_* 刻意維持 O(n·w)，見 Docs/CCL.md） | 效能：字串運算元每次 `applyOperator` 先跑 4 次 `time.Parse` 探測日期（100k 列 `A + 1` 38ms vs 數字欄 4.7ms）；`REGEX_MATCH` 每列重新 `regexp.Compile`（159ms vs `CONTAINS` 16ms）；`ROLLING_*` 是 O(n·w)（100k 列視窗 5000 要 3.5s） | internal/ccl/ccl_evaluator.go:457-470；stdlib_string.go:205；stdlib_sequences.go:230-251 | 日期探測先看首字元；regex LRU 快取；rolling 改累積和 |

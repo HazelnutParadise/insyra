@@ -351,21 +351,20 @@ The `&` operator always performs string concatenation by converting all operands
 "Value: " & 45.67           // "Value: 45.67"
 ```
 
-**How a number becomes text.** `&`, `CONCAT`, `TOSTR`, `LEN`, `UPPER` and the
-other string functions render a number with Go's default formatting. For values
-of ordinary magnitude that is what you expect, but very large and very small
-`float64` values switch to scientific notation:
+**How a number becomes text.** `&`, `CONCAT`, `TOSTR` without a format, `LEN`,
+`UPPER` and the other string functions write a number by the same rule as
+`ToJSON` and `ToCSV`: a plain decimal from 0.000001 up to (not including) 1e21,
+and exponent form outside that range.
 
 ```go
-"x" & 0.0000001             // "x1e-07", not "x0.0000001"
-LEN(1000000)                // 5 — the literal is a float64 and renders "1e+06"
+"Revenue: " & A * B        // "Revenue: 1500000" when A is 1500 and B is 1000
+LEN(1000000)               // 7
+"x" & 0.00001              // "x0.00001"
+"x" & 0.0000001            // "x1e-07" (below 0.000001, so exponent form)
 ```
 
-A number that arrives **from a column** keeps the type it was stored as, so an
-integer column is unaffected: `LEN(A)` where `A` holds the integer `1000000` is
-`7`. A number written **in the expression** is always a `float64`, which is why
-the same value spelled as a literal can render differently. Use `TOSTR(x, fmt)`
-when the exact text matters.
+Use `TOSTR(x, fmt)` when you need a fixed number of decimals or a different
+layout, for example `TOSTR(A, '%.2f')`.
 
 ### Handling `nil` Values
 
