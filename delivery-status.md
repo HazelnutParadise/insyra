@@ -1,9 +1,9 @@
 # Delivery Status
 
-> **You are on `0.4` (2026-09-09).** This branch carries the whole-repo API review and its breaking changes: the library no longer terminates on a fatal, `Err()` is sticky, `gplot.SaveChart` returns an error, several methods stopped returning `nil`. `dev` stays on the 0.3.x line so feature releases can ship while the review continues, and `api-review.md`, the review's OpenSpec changes and every fix batch live here only. Non-breaking fixes are backported to `dev` as ordinary commits; merge `dev` into `0.4` after each 0.3.x change so this line keeps them.
+> **You are on `0.4` (2026-09-11).** This branch carries the whole-repo API review and its breaking changes: the library no longer terminates on a fatal, `Err()` is sticky, `gplot.SaveChart` returns an error, several methods stopped returning `nil`. `dev` stays on the 0.3.x line so feature releases can ship while the review continues, and `api-review.md`, the review's OpenSpec changes and every fix batch live here only. Non-breaking fixes are backported to `dev` as ordinary commits; merge `dev` into `0.4` after each 0.3.x change so this line keeps them.
 
 ## Current Phase
-Production-readiness hardening (2026-09-06). Every package's exported surface was reviewed symbol by symbol, then the whole repository was reviewed beyond exported symbols (CLI command behaviour, CCL semantics, internal packages, security, test quality, repo/CI hygiene). The ledger is `api-review.md`; every open finding is a GitHub issue labelled `api-review` with a `severity:*` label (#205–#368). Fixes land in numbered OpenSpec batches: `fix-api-review-batch-1` through `-8` are archived; 114 findings remain open (7 high, 58 medium, 49 low).
+Production-readiness hardening (2026-09-06). Every package's exported surface was reviewed symbol by symbol, then the whole repository was reviewed beyond exported symbols (CLI command behaviour, CCL semantics, internal packages, security, test quality, repo/CI hygiene). The ledger is `api-review.md`; every open finding is a GitHub issue labelled `api-review` with a `severity:*` label (#205–#368). Fixes land in OpenSpec batches: `fix-api-review-batch-1` through `-8`, then changes named for what they fix (listed under Latest Milestones). 106 findings remain open (7 high, 50 medium, 49 low).
 
 `insyra/nn` phase 2 (training), `insyra/ml` v1, and the acceleration package are merged and stable; no feature workstream is active while the review backlog is worked down.
 
@@ -14,9 +14,17 @@ Close the `severity:high` issues first, then medium, with one OpenSpec change pe
 None in flight. Every remaining `severity:high` issue carries a decision fork and needs the owner:
 - #249 Google Maps crawler removal (DF-1), #257 `lp` runtime GLPK install (LP-1), #267 `csvxl` batch error policy (C-1), #271 `parallel` package future (P-1/P-4), #302 CVXPY reference run in CI (TS-4), #303 GPU/MNIST verifications in CI (TS-5), #341 CCL name-vs-index resolution (CCL-1, same decision as #225/T-11).
 
-Also awaiting a ruling: `CSVWriteOptions.SanitizeFormulas`'s default (commented on #285), and what to do with two unmerged legacy branches (`copilot/fix-aa06638c-…`, `lingo-to-lp`).
+Also awaiting a ruling: `CSVWriteOptions.SanitizeFormulas`'s default (commented on #285), what to do with two unmerged legacy branches (`copilot/fix-aa06638c-…`, `lingo-to-lp`), and the `AGENTS.md` follow-up proposing a nil-receiver guard on `Err()`.
 
 ## Latest Milestones
+- 2026-09-11 `core-lock-and-snapshot`: `AtomicDoAll` takes `...Lockable` (a wrong type no longer compiles, a nil instance is skipped); `GroupBy` copies the data it groups; `ExecuteCCL` is all or nothing; custom CCL functions are documented with a locking rule measured under `-race` and a mirror-deadlock test; tests restore the global `Config` they change.
+- 2026-09-11 `format-numbers-as-text`: CCL strings, `ToCSV`, `ToStringSlice` and generated column names write a float by `encoding/json`'s rule instead of `%v`, which switched to exponent form at one million.
+- 2026-09-10 `ccl-performance`: row-invariant aggregates are folded before the row loop (20k-row z-score 6.0 s to 2.1 ms); date-probe fast path, regex cache, and a rolling conversion hoist. 66,000 values compared bit for bit before and after.
+- 2026-09-10 CCL documentation gaps (#356, documentation only): case rules, `AVG` versus `SUM`/`COUNT`, how a number becomes text.
+- 2026-09-10 `ml-classes-never-nil`: the ten `Classes()` methods return an empty list carrying the reason; `ml/mltest` rejects a third-party `Classes()` that returns nil.
+- 2026-09-10 `enforce-chainable-never-nil`: `TestChainableMethodsNeverReturnNil` parses the module and fails on a chainable method that returns nil (182 methods, none violating).
+- 2026-09-09 `ccl-error-reporting` and `ccl-row-slice-values`: typed `CompileError`/`EvalError` with byte offsets and row numbers, reachable through `errors.As(dt.Err(), …)`; a bare column range and `LAG(@, n)` resolve against the current row.
+- 2026-09-09 `refresh-deps-before-release` and `bump-grpc-xds-advisory` (on `dev`, merged here): dependencies are refreshed before every merge to `main`; grpc moved past its xDS advisory.
 - 2026-09-09 `fix-api-review-batch-8`: nine CCL defects that produced a value for an expression that could not mean what it said. `&&`/`||`/`CASE` short-circuit; argument lists require commas; strings compare as text and a word against a number is an error; `nil` concatenates as the empty string; `&` binds looser than `+`/`-` and the docs gained a precedence table; a bare range and `LAG(@, …)` are errors; `AND()`/`OR()` check their arguments (the unreachable duplicate implementations are deleted); indices and windows must be whole numbers; fractional days keep sub-hour precision.
 - 2026-09-08 `fix-api-review-batch-7`: six CLI defects where a command reported success after doing nothing. Shared target pre-checks, closed-set option parsing, `config` key and value validation, usage text matching the command, rejected extra arguments, range checks.
 - 2026-09-08 `fix-api-review-batch-6`: I/O corruption. Every charset the detector can report now has a decoder and an undecodable file is an error rather than raw bytes in a cell; UTF-32 BOM recognised; SQLite identifiers quoted; `ToCSVWithOptions` with opt-in formula sanitising.
@@ -36,9 +44,15 @@ Also awaiting a ruling: `CSVWriteOptions.SanitizeFormulas`'s default (commented 
 The next batch's tests green under `go test ./...`, `go test -race` on the touched packages, and `golangci-lint run`, with the corresponding issues closed and `api-review.md` rows marked.
 
 ## Next OpenSpec Change
-Owner decision needed before proposing: pick from the decision-fork list above. Without a decision, the next decision-free work is the `severity:med` backlog (`gh issue list --label severity:med`) — the largest remaining coherent group is CCL error reporting and performance (#354, #355) and the CCL documentation gaps (#356).
+Owner decision needed before proposing: pick from the decision-fork list above. Most of the remaining `severity:med` issues are API redesigns that need the same kind of decision. The decision-free ones left are test coverage (#304–#309), CI hygiene (#277–#279) and the CLI documentation mismatches (#321).
 
 ## Decision Delta Since Previous Handoff
+- `AtomicDoAll` narrows to a closed `Lockable` interface rather than keeping `...any` with a louder runtime error: a value that cannot be locked is a mistake the compiler can catch (core-lock-and-snapshot).
+- A custom CCL function that reads another table is made safe by locking every table involved from outside the CCL call. Locking from inside the function was measured to deadlock against the mirror image, so it is documented as the thing not to do (core-lock-and-snapshot).
+- `ExecuteCCL` gets no `ExecuteCCLErr`: typed errors already reach callers through `errors.As` (core-lock-and-snapshot).
+- A number written as text follows `encoding/json`'s rule. Sort keys, cache keys and `Show`'s display are deliberately excluded, and a `nil` category keeps the documented name `<nil>` (format-numbers-as-text).
+- `ROLLING_*` stays O(rows × window): a running accumulator would change results by drift where recomputing does not (ccl-performance).
+- `Classes()` returns an empty list with a reason rather than changing its signature, because `Classifier` is a public interface; consumers keep a nil guard since third parties can still return nil (ml-classes-never-nil).
 - CCL boolean coercion stays and the documentation was corrected, rather than the reverse: `IF`, `AND`, `OR`, `CASE`, `&&` and `||` all read their condition the same way, so a strict `&&` would have split the language (batch 8).
 - CCL comparison resolves in one order — numbers, then text, then an error — so `'10' > '9'` keeps its documented numeric reading while `'abc' < 'abd'` gains a real one (batch 8).
 - `ColumnRange`/`RowRange` stay internal and an expression that ends with one is an error, instead of exporting them so callers can type-assert an implementation detail (batch 8).
