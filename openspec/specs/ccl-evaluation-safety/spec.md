@@ -4,6 +4,7 @@
 CCL 求值安全契約：使用者運算式不得 panic、不得讓列互相別名、不得越界讀取、時長不得被靜默誤比。
 
 ## Requirements
+
 ### Requirement: Keywords and out-of-range references
 
 `TRUE`／`FALSE`／`NULL`／`NIL` 不分大小寫 SHALL 是字面值。綁定後引用超過最後一欄的 Excel 式索引 SHALL 使 `AddColUsingCCL`／`EditCol*UsingCCL`／`ExecuteCCL` 回報錯誤（`Err()`），SHALL NOT 產生整欄 nil。
@@ -36,3 +37,14 @@ CCL 求值安全契約：使用者運算式不得 panic、不得讓列互相別�
 - **WHEN** 欄位為 `[10, NaN, 5]` 求 `SUM(A)`
 - **THEN** 結果為 15
 
+### Requirement: Numeric arguments give the same answer on every platform
+
+When CCL turns a numeric argument into an integer or a duration, the result SHALL NOT depend on the platform. NaN, infinities and values a `time.Duration` or a date shift cannot hold SHALL be refused. The exception is a character count, character position or digit count: it SHALL be clamped, so that a count past the end of a string still means "to the end".
+
+#### Scenario: A huge length
+- **WHEN** 在 amd64 或 arm64 上求值 `MID('abc', 2, 10^300)`
+- **THEN** 兩者都得到 `"bc"`
+
+#### Scenario: A huge date shift
+- **WHEN** 求值 `DATEADD(D, 10^300, 'day')` 或 `D + 10^300`
+- **THEN** 回傳錯誤，不產生日期
