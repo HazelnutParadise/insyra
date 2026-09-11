@@ -16,7 +16,7 @@ import (
 // constructors refuse bad input, so this is the state a caller reaches by
 // declaring a model and using it too early.
 func TestClassesNeverReturnsNil(t *testing.T) {
-	insyra.Config.SetLogLevel(insyra.LogLevelFatal)
+	quietInsyraLogs(t)
 
 	for name, classes := range map[string]func() *insyra.DataList{
 		"DecisionTreeClassifier":     func() *insyra.DataList { return (&DecisionTreeClassifier{}).Classes() },
@@ -56,7 +56,7 @@ func TestClassesNeverReturnsNil(t *testing.T) {
 
 // A pipeline wrapper delegates to the model it holds; the same rule applies.
 func TestPipelineClassesNeverReturnsNil(t *testing.T) {
-	insyra.Config.SetLogLevel(insyra.LogLevelFatal)
+	quietInsyraLogs(t)
 
 	for name, classes := range map[string]func() *insyra.DataList{
 		"fittedPipelineClassifier": func() *insyra.DataList {
@@ -87,7 +87,7 @@ func TestPipelineClassesNeverReturnsNil(t *testing.T) {
 
 // A fitted model still reports its classes; the guard must not swallow them.
 func TestFittedClassifierStillReportsClasses(t *testing.T) {
-	insyra.Config.SetLogLevel(insyra.LogLevelFatal)
+	quietInsyraLogs(t)
 
 	x := insyra.NewDataTable(
 		insyra.NewDataList(1.0, 2.0, 3.0, 4.0).SetName("a"),
@@ -105,4 +105,14 @@ func TestFittedClassifierStillReportsClasses(t *testing.T) {
 	if got.Err() != nil {
 		t.Errorf("a fitted model must not record an error: %v", got.Err())
 	}
+}
+
+// quietInsyraLogs turns insyra's logging down for one test and puts the
+// previous level back afterwards, so the setting cannot leak into the tests
+// that run after it.
+func quietInsyraLogs(t *testing.T) {
+	t.Helper()
+	prev := insyra.Config.GetLogLevel()
+	insyra.Config.SetLogLevel(insyra.LogLevelFatal)
+	t.Cleanup(func() { insyra.Config.SetLogLevel(prev) })
 }

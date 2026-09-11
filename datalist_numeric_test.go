@@ -7,11 +7,6 @@ import (
 	"testing"
 )
 
-func init() {
-	SetDefaultConfig()
-	Config.SetLogLevel(LogLevelFatal)
-}
-
 func TestReplaceLastLeavesTrailingNaN(t *testing.T) {
 	dl := NewDataList(5, math.NaN())
 	dl.ReplaceLast(5, 0)

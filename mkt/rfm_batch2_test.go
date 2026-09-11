@@ -8,8 +8,7 @@ import (
 )
 
 func TestRFMDoesNotPanicOnTextAmount(t *testing.T) {
-	insyra.SetDefaultConfig()
-	insyra.Config.SetLogLevel(insyra.LogLevelFatal)
+	quietInsyraLogs(t)
 	dt := insyra.NewDataTable(
 		insyra.NewDataList("c1", "c1", "c2").SetName("id"),
 		insyra.NewDataList("2024-01-01", "2024-02-01", "2024-03-01").SetName("day"),
@@ -27,8 +26,7 @@ func TestRFMDoesNotPanicOnTextAmount(t *testing.T) {
 }
 
 func TestRFMAndCAIOutputSorted(t *testing.T) {
-	insyra.SetDefaultConfig()
-	insyra.Config.SetLogLevel(insyra.LogLevelFatal)
+	quietInsyraLogs(t)
 	ids := []any{}
 	days := []any{}
 	amts := []any{}
@@ -52,4 +50,14 @@ func TestRFMAndCAIOutputSorted(t *testing.T) {
 			t.Fatalf("CAI rows not sorted: %v", gotC)
 		}
 	}
+}
+
+// quietInsyraLogs turns insyra's logging down for one test and puts the
+// previous level back afterwards, so the setting cannot leak into the tests
+// that run after it.
+func quietInsyraLogs(t *testing.T) {
+	t.Helper()
+	prev := insyra.Config.GetLogLevel()
+	insyra.Config.SetLogLevel(insyra.LogLevelFatal)
+	t.Cleanup(func() { insyra.Config.SetLogLevel(prev) })
 }

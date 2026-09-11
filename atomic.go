@@ -106,7 +106,7 @@ func (dt *DataTable) cleanup() {
 //	insyra.AtomicDoAll(func() {
 //		// both a and b are locked here
 //	}, a, b)
-func AtomicDoAll(f func(), instances ...any) {
+func AtomicDoAll(f func(), instances ...Lockable) {
 	if !Config.threadSafe.Load() {
 		f()
 		return
@@ -114,18 +114,43 @@ func AtomicDoAll(f func(), instances ...any) {
 	actors := make([]*core.AtomicActor, 0, len(instances))
 	hooks := make([]func(), 0, len(instances))
 	for _, inst := range instances {
-		switch v := inst.(type) {
-		case *DataList:
-			v.atomicActor.SetGroupOnce(dataListAtomicGroup)
-			actors = append(actors, &v.atomicActor)
-			hooks = append(hooks, func() { runtime.SetFinalizer(v, (*DataList).cleanup) })
-		case *DataTable:
-			v.atomicActor.SetGroupOnce(dataTableAtomicGroup)
-			actors = append(actors, &v.atomicActor)
-			hooks = append(hooks, func() { runtime.SetFinalizer(v, (*DataTable).cleanup) })
-		default:
-			LogWarning("insyra", "AtomicDoAll", "unsupported instance type %T; skipped (not locked)", inst)
+		if inst == nil {
+			continue
 		}
+		actor, keepAlive := inst.lockHandle()
+		if actor == nil {
+			// A nil *DataList or *DataTable has nothing to lock. It used to be
+			// dereferenced here and panic.
+			continue
+		}
+		actors = append(actors, actor)
+		hooks = append(hooks, keepAlive)
 	}
 	core.AtomicDoNWithInit(actors, hooks, f)
+}
+
+// Lockable is a value AtomicDoAll can lock: a *DataList, a *DataTable, or a
+// type that embeds one (the isr wrappers do). Its method is unexported, so the
+// set is closed on purpose. AtomicDoAll used to take ...any, log a warning for
+// anything else and run the callback without locking it, so a caller who
+// passed the wrong thing believed they were protected and were not. Now that
+// does not compile.
+type Lockable interface {
+	lockHandle() (actor *core.AtomicActor, keepAlive func())
+}
+
+func (dl *DataList) lockHandle() (*core.AtomicActor, func()) {
+	if dl == nil {
+		return nil, nil
+	}
+	dl.atomicActor.SetGroupOnce(dataListAtomicGroup)
+	return &dl.atomicActor, func() { runtime.SetFinalizer(dl, (*DataList).cleanup) }
+}
+
+func (dt *DataTable) lockHandle() (*core.AtomicActor, func()) {
+	if dt == nil {
+		return nil, nil
+	}
+	dt.atomicActor.SetGroupOnce(dataTableAtomicGroup)
+	return &dt.atomicActor, func() { runtime.SetFinalizer(dt, (*DataTable).cleanup) }
 }

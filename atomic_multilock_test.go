@@ -299,7 +299,7 @@ func TestStress_NWayOverlappingBatches(t *testing.T) {
 		// Mixed pool: DataLists and DataTables (mixed groups).
 		lists := []*DataList{NewDataList(1), NewDataList(2), NewDataList(3), NewDataList(4), NewDataList(5)}
 		tables := []*DataTable{NewDataTable(NewDataList(1)), NewDataTable(NewDataList(2)), NewDataTable(NewDataList(3))}
-		pool := make([]any, 0, len(lists)+len(tables))
+		pool := make([]Lockable, 0, len(lists)+len(tables))
 		for _, l := range lists {
 			pool = append(pool, l)
 		}
@@ -317,7 +317,7 @@ func TestStress_NWayOverlappingBatches(t *testing.T) {
 					// goroutines request overlapping instances in different arg orders.
 					step := (g*7 + i*3) % len(pool)
 					size := 2 + (i % 4) // 2..5 instances
-					batch := make([]any, 0, size)
+					batch := make([]Lockable, 0, size)
 					for k := 0; k < size; k++ {
 						batch = append(batch, pool[(step+k*(g+1))%len(pool)])
 					}

@@ -33,7 +33,9 @@ func TestConformanceRejectsNilClasses(t *testing.T) {
 }
 
 func TestConformanceAcceptsEmptyClasses(t *testing.T) {
+	prev := insyra.Config.GetLogLevel()
 	insyra.Config.SetLogLevel(insyra.LogLevelFatal)
+	t.Cleanup(func() { insyra.Config.SetLogLevel(prev) })
 
 	// An empty list carrying a reason is what the library's own classifiers
 	// return when they have nothing; the suite must let it through to the

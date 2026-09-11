@@ -15,6 +15,7 @@ CCL (Column Calculation Language) is a specialized expression language in Insyra
 - [Sequence Functions](#sequence-functions)
 - [Conditional Expressions](#conditional-expressions)
 - [Chained Comparisons](#chained-comparisons)
+- [Custom Functions](#custom-functions)
 - [Examples](#examples)
 - [Best Practices](#best-practices)
 - [Performance](#performance)
@@ -81,6 +82,8 @@ Executes CCL statements that can modify existing columns or create new ones. Sup
 #### Sequential Execution and Data Consistency
 
 When executing multiple statements in a single `ExecuteCCL` call, statements are executed **sequentially**. Each statement sees the results of the previous statements.
+
+If any statement fails, **none of them is applied**. The script runs against a copy of the table, and the table changes only once every statement has succeeded. `Err()` names the statement that failed.
 
 ```go
 dt.ExecuteCCL(`
@@ -1015,6 +1018,60 @@ Chained comparisons are equivalent to using the AND operator:
 "A == B > C"         // Equivalent to: AND(A == B, B > C)
 "A < B <= C < D"     // Equivalent to: AND(A < B, B <= C, C < D)
 ```
+
+## Custom Functions
+
+Register your own scalar function with `RegisterFunction` from `engine/ccl`. It
+receives the evaluated arguments and returns a value or an error; an error stops
+the expression the same way a built-in function's error does. Names are matched
+without regard to case, and registering is safe while other goroutines are
+evaluating.
+
+```go
+import (
+    "fmt"
+
+    ccl "github.com/HazelnutParadise/insyra/engine/ccl"
+)
+
+ccl.RegisterFunction("DOUBLE", func(args ...any) (any, error) {
+    if len(args) != 1 {
+        return nil, fmt.Errorf("DOUBLE takes 1 argument, got %d", len(args))
+    }
+    switch v := args[0].(type) {
+    case int:
+        return float64(v) * 2, nil
+    case float64:
+        return v * 2, nil
+    }
+    return nil, fmt.Errorf("DOUBLE: %v is not a number", args[0])
+})
+
+dt.AddColUsingCCL("twice", "DOUBLE(A)")
+```
+
+### Reading another table from inside a function
+
+A function runs while the CCL call holds the lock on the table it is
+evaluating, and on nothing else. If the function reads a different `DataTable`
+or `DataList` that another goroutine may be writing, the two race.
+
+Lock both tables from the outside, before the CCL call starts:
+
+```go
+insyra.AtomicDoAll(func() {
+    dt.AddColUsingCCL("ratio", "A / OTHERTOTAL()")
+}, dt, other)
+```
+
+`AtomicDoAll` takes both locks in a fixed order, so two goroutines doing this
+cannot wait on each other.
+
+Do not take the second lock from inside the function. Calling
+`AtomicDoAll(..., other)` there does stop the race, but it takes `other`'s lock
+while `dt`'s is already held. If another goroutine runs CCL on `other` with a
+function that locks `dt`, each ends up waiting for the other, and neither call
+ever returns.
 
 ## Examples
 

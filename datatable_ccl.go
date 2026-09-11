@@ -3,6 +3,7 @@ package insyra
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -159,46 +160,49 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) (result *DataTable) {
 			return
 		}
 
-		numRow, numCol := dt.getMaxColLength(), len(dt.columns)
+		// Run the whole script against a private working copy and write it
+		// back only when every statement succeeds. Applying the statements to
+		// dt one at a time left the first n-1 in place when statement n
+		// failed, and nothing told the caller the table was half-changed.
+		work := dt.cclWorkingCopy()
+		numRow, numCol := work.getMaxColLength(), len(work.columns)
 
-		// 建立欄位名稱到索引的映射
 		colNameMap := make(map[string]int, numCol)
 		for j := range numCol {
-			if dt.columns[j].name != "" {
-				colNameMap[dt.columns[j].name] = j
+			if work.columns[j].name != "" {
+				colNameMap[work.columns[j].name] = j
 			}
 		}
 
-		// 準備 tableData 和 rowNameMap 以支援 . 運算符和聚合函數
-		// 在 ExecuteCCL 開始時做一次 snapshot，確保所有語句看到一致的資料
-		tableData := make([][]any, len(dt.columns))
-		for j := range len(dt.columns) {
-			tableData[j] = make([]any, len(dt.columns[j].data))
-			copy(tableData[j], dt.columns[j].data)
+		// Every statement sees a snapshot of the table as the previous
+		// statements left it.
+		tableData := make([][]any, len(work.columns))
+		for j := range len(work.columns) {
+			tableData[j] = make([]any, len(work.columns[j].data))
+			copy(tableData[j], work.columns[j].data)
 		}
-		rowNameMap := dt.rowNames
+		rowNameMap := work.rowNames
 
-		// 執行每個 CCL 語句
 		for _, stmt := range stmts {
-			if err := executeCCLNode(dt, stmt.Node, numRow, colNameMap, tableData, rowNameMap); err != nil {
+			if err := executeCCLNode(work, stmt.Node, numRow, colNameMap, tableData, rowNameMap); err != nil {
 				dt.failErr("ExecuteCCL", ccl.AttachExpr(stmt.Src, err))
 				return
 			}
-			// 更新 numCol 和 colNameMap（如果添加了新列）
-			numCol = len(dt.columns)
+			numCol = len(work.columns)
 			for j := range numCol {
-				if dt.columns[j].name != "" {
-					colNameMap[dt.columns[j].name] = j
+				if work.columns[j].name != "" {
+					colNameMap[work.columns[j].name] = j
 				}
 			}
-			// 更新 tableData 和 rowNameMap，確保後續語句能看到最新的資料
-			tableData = make([][]any, len(dt.columns))
-			for j := range len(dt.columns) {
-				tableData[j] = make([]any, len(dt.columns[j].data))
-				copy(tableData[j], dt.columns[j].data)
+			tableData = make([][]any, len(work.columns))
+			for j := range len(work.columns) {
+				tableData[j] = make([]any, len(work.columns[j].data))
+				copy(tableData[j], work.columns[j].data)
 			}
-			rowNameMap = dt.rowNames
+			rowNameMap = work.rowNames
 		}
+
+		dt.commitCCLWorkingCopy(work)
 
 		elapsed := time.Since(startTime)
 		LogDebug("DataTable", "ExecuteCCL", "CCL execution completed in %v", elapsed)
@@ -422,4 +426,33 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 	dt.AppendCols(newCol)
 
 	return nil
+}
+
+// cclWorkingCopy returns a private copy of dt's columns and row names for
+// ExecuteCCL to run a script against. Nothing else can reach it, so it needs no
+// locking of its own.
+func (dt *DataTable) cclWorkingCopy() *DataTable {
+	work := NewDataTable()
+	work.columns = make([]*DataList, len(dt.columns))
+	for i, col := range dt.columns {
+		work.columns[i] = &DataList{name: col.name, data: slices.Clone(col.data)}
+	}
+	if dt.rowNames != nil {
+		work.rowNames = dt.rowNames.Clone()
+	}
+	return work
+}
+
+// commitCCLWorkingCopy writes a successful script's result back into dt. The
+// existing columns keep their DataList objects and take the new data, so
+// anything inside the library already holding one stays attached to the table;
+// the columns the script created are appended after them.
+func (dt *DataTable) commitCCLWorkingCopy(work *DataTable) {
+	orig := len(dt.columns)
+	for i := 0; i < orig; i++ {
+		dt.columns[i].data = work.columns[i].data
+	}
+	for _, col := range work.columns[orig:] {
+		dt.AppendCols(col)
+	}
 }

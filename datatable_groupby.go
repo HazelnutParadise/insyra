@@ -3,6 +3,7 @@ package insyra
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
@@ -113,9 +114,9 @@ type GroupedDataTable struct {
 	// available, otherwise the Excel-style index used as the lookup token).
 	keyColLabels []string
 
-	// columnsSnapshot is a defensive shallow copy of the parent's columns at
-	// the moment GroupBy was called. We do not hold the parent lock during
-	// Aggregate, mirroring the existing actor-model conventions.
+	// columnsSnapshot holds a copy of the parent's column data taken when
+	// GroupBy ran, so Aggregate works on the same table the groups were built
+	// from and never touches the parent's data without its lock.
 	columnsSnapshot []*DataList
 
 	// rowsByGroup maps a stable string-encoded composite key to the row
@@ -164,8 +165,14 @@ func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable {
 		// Snapshot column references so subsequent operations work without
 		// holding the actor lock. Columns are pointers; the data slices are
 		// not mutated by Aggregate, so a shallow copy is safe.
+		// Copy the data, not only the column pointers. The groups are
+		// decided from the rows as they are now; reading the parent's live
+		// data at Aggregate time paired those row indices with whatever the
+		// parent held by then, and read it without holding any lock.
 		g.columnsSnapshot = make([]*DataList, len(t.columns))
-		copy(g.columnsSnapshot, t.columns)
+		for i, col := range t.columns {
+			g.columnsSnapshot[i] = &DataList{name: col.name, data: slices.Clone(col.data)}
+		}
 
 		g.keyColNumbers = make([]int, 0, len(keyCols))
 		g.keyColLabels = make([]string, 0, len(keyCols))
@@ -570,4 +577,3 @@ func nonEmptyOr(s, fallback string) string {
 	}
 	return s
 }
-

@@ -11,7 +11,7 @@ import (
 )
 
 func TestConfigSettersRaceFree(t *testing.T) {
-	SetDefaultConfig()
+	restoreConfig(t)
 	Config.SetLogLevel(LogLevelFatal)
 	var wg sync.WaitGroup
 	for i := 0; i < 4; i++ {
@@ -39,7 +39,7 @@ func TestConfigSettersRaceFree(t *testing.T) {
 }
 
 func TestErrorHookOrdered(t *testing.T) {
-	SetDefaultConfig()
+	restoreConfig(t)
 	Config.SetLogLevel(LogLevelFatal)
 	var mu sync.Mutex
 	got := []string{}

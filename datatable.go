@@ -67,7 +67,7 @@ func NewDataTable(columns ...*DataList) *DataTable {
 func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 	// Lock the table AND every passed list together, so reading each list's .data
 	// below is race-free (previously the passed lists were read unlocked).
-	instances := make([]any, 0, len(columns)+1)
+	instances := make([]Lockable, 0, len(columns)+1)
 	instances = append(instances, dt)
 	for _, c := range columns {
 		instances = append(instances, c)
@@ -113,7 +113,7 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 // If the rows are longer than the existing columns, the existing columns will be extended with nil values.
 func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable {
 	// Lock the table AND every passed row-list together (their .data is read below).
-	instances := make([]any, 0, len(rowsData)+1)
+	instances := make([]Lockable, 0, len(rowsData)+1)
 	instances = append(instances, dt)
 	for _, r := range rowsData {
 		instances = append(instances, r)

@@ -563,7 +563,7 @@ dt.EditColByNameUsingCCL("total", "['quantity'] * ['price']")
 // dt.AddColUsingCCL("bad", "NEW('col')")
 ```
 
-**Statement mode (`ExecuteCCL`) supports assignments + `NEW()` and runs sequentially:**
+**Statement mode (`ExecuteCCL`) supports assignments + `NEW()` and runs sequentially. It is all or nothing: if any statement fails, none is applied and `Err()` names the failing statement:**
 
 ```go
 // Create new columns and reuse them in later statements

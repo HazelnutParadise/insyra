@@ -3315,6 +3315,8 @@ dt.ExecuteCCL(`
 
 ## Searching
 
+> **All or nothing.** If any statement fails, none of them is applied: the script runs against a copy of the table, and the table changes only once every statement has succeeded. `Err()` names the statement that failed and, for an evaluation failure, the row.
+
 ### FindRowsIfContains
 
 ```go

@@ -12,11 +12,6 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/ccl"
 )
 
-func init() {
-	SetDefaultConfig()
-	Config.SetLogLevel(LogLevelFatal)
-}
-
 func noPanic(t *testing.T, name string, f func()) {
 	t.Helper()
 	defer func() {
@@ -67,12 +62,12 @@ func TestFilterResultsDoNotAlias(t *testing.T) {
 	src := NewDataTable(NewDataList(1, 2).SetName("a"), NewDataList(3, 4).SetName("b"))
 	src.SetRowNames([]string{"r0", "r1"})
 	filters := map[string]func() *DataTable{
-		"ByColNameEqualTo":                  func() *DataTable { return src.FilterColsByColNameEqualTo("a") },
-		"ByColNameContains":                 func() *DataTable { return src.FilterColsByColNameContains("a") },
-		"ByColIndexEqualTo":                 func() *DataTable { return src.FilterColsByColIndexEqualTo("A") },
-		"ByColIndexGreaterThanOrEqualTo":    func() *DataTable { return src.FilterColsByColIndexGreaterThanOrEqualTo("A") },
-		"ByColIndexLessThanOrEqualTo":       func() *DataTable { return src.FilterColsByColIndexLessThanOrEqualTo("A") },
-		"FilterCols":                        func() *DataTable { return src.FilterCols(func(int, string, any) bool { return true }) },
+		"ByColNameEqualTo":               func() *DataTable { return src.FilterColsByColNameEqualTo("a") },
+		"ByColNameContains":              func() *DataTable { return src.FilterColsByColNameContains("a") },
+		"ByColIndexEqualTo":              func() *DataTable { return src.FilterColsByColIndexEqualTo("A") },
+		"ByColIndexGreaterThanOrEqualTo": func() *DataTable { return src.FilterColsByColIndexGreaterThanOrEqualTo("A") },
+		"ByColIndexLessThanOrEqualTo":    func() *DataTable { return src.FilterColsByColIndexLessThanOrEqualTo("A") },
+		"FilterCols":                     func() *DataTable { return src.FilterCols(func(int, string, any) bool { return true }) },
 	}
 	for name, f := range filters {
 		out := f()
