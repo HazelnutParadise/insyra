@@ -6,6 +6,7 @@ import (
 	"maps"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -1085,7 +1086,16 @@ func (e *OneHotEncoder) refreshOutputColumns() {
 	}
 }
 
+// labelKey identifies a category. An integer is identified by its value alone,
+// so int(1) and the int64(1) a CSV load produces are one category, the way
+// value lookups treat them; anything else keeps its type as well.
 func labelKey(v any) string {
+	if s, u, signed, ok := integerParts(v); ok {
+		if signed {
+			return "int:" + strconv.FormatInt(s, 10)
+		}
+		return "int:" + strconv.FormatUint(u, 10)
+	}
 	return fmt.Sprintf("%T:%#v", v, v)
 }
 

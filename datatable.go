@@ -646,15 +646,16 @@ func (dt *DataTable) FindRowsIfContains(value any) []int {
 func (dt *DataTable) FindRowsIfContainsAll(values ...any) []int {
 	var result []int
 	dt.AtomicDo(func(dt *DataTable) {
+		matchers := valueMatchers(values)
 		// 檢查每一行是否包含所有指定的值
 		for rowIndex := 0; rowIndex < dt.getMaxColLength(); rowIndex++ {
 			foundAll := true
 
 			// 檢查該行中的所有列是否包含指定的值
-			for _, value := range values {
+			for _, matches := range matchers {
 				found := false
 				for _, column := range dt.columns {
-					if rowIndex < len(column.data) && column.data[rowIndex] == value {
+					if rowIndex < len(column.data) && matches(column.data[rowIndex]) {
 						found = true
 						break
 					}
@@ -987,21 +988,14 @@ func (dt *DataTable) DropColsContainNaN() *DataTable {
 // DropColsContain drops columns that contain the specified value.
 func (dt *DataTable) DropColsContain(value ...any) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
+		matchers := valueMatchers(value)
 		columnsToDelete := make([]int, 0)
 		for colIndex, column := range dt.columns {
 			containsValue := false
-			for _, v := range value {
-				if slices.Contains(column.data, v) {
+			for _, matches := range matchers {
+				if slices.ContainsFunc(column.data, matches) {
 					containsValue = true
 					break
-				}
-				if vFloat, ok := v.(float64); ok {
-					for _, dataValue := range column.data {
-						if dataFloat, ok := dataValue.(float64); ok && math.IsNaN(vFloat) && math.IsNaN(dataFloat) {
-							containsValue = true
-							break
-						}
-					}
 				}
 			}
 			if containsValue {
@@ -1254,28 +1248,13 @@ func (dt *DataTable) DropRowsContain(value ...any) *DataTable {
 		maxLength := dt.getMaxColLength()
 		rowsToKeep := make([]bool, maxLength)
 
-		hasNaNInValue := false
-		for _, v := range value {
-			if f, ok := v.(float64); ok && math.IsNaN(f) {
-				hasNaNInValue = true
-				break
-			}
-		}
-
+		matchers := valueMatchers(value)
 		for rowIndex := range maxLength {
 			keepRow := true
 			for _, column := range dt.columns {
-				if rowIndex < len(column.data) && slices.Contains(value, column.data[rowIndex]) {
+				if rowIndex < len(column.data) && matchesAny(matchers, column.data[rowIndex]) {
 					keepRow = false
 					break
-				}
-				if hasNaNInValue {
-					if rowIndex < len(column.data) {
-						if dataFloat, ok := column.data[rowIndex].(float64); ok && math.IsNaN(dataFloat) {
-							keepRow = false
-							break
-						}
-					}
 				}
 			}
 			rowsToKeep[rowIndex] = keepRow

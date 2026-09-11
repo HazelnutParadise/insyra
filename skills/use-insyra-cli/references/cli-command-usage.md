@@ -23,6 +23,8 @@ Commands that take a "value" argument (`addcol`, `set`, `shift ... fill ...`, `r
 
 Because the float row dispatches through Go's `strconv.ParseFloat`, the tokens `nan`/`inf`/`infinity` are recognised as IEEE-754 special values, **not** as literal strings. If you genuinely need the string `"nan"` itself, pick a different token (e.g. `missing`).
 
+When a command looks for a value (`count`, `find`, `replace`, `encode ordinal ... order`), an integer matches integer cells of any Go type, so `count x 3` finds the 3s in a CSV-loaded column, which stores them as `int64`. It does not match `3.0`: type `3.0` to find a float.
+
 This is separate from boolean-flag parsing used by option arguments like `headers true|false`, `center yes|no`, `rownames 1|0` — those accept only `yes/no/on/off/1/0/true/false`.
 
 ## `accel`

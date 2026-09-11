@@ -245,17 +245,9 @@ func (dl *DataList) InsertAt(index int, value any) *DataList {
 func (dl *DataList) FindFirst(value any) any {
 	var result any
 	dl.AtomicDo(func(dl *DataList) {
-		isValNaN := false
-		if f, ok := value.(float64); ok && math.IsNaN(f) {
-			isValNaN = true
-		}
+		matches := valueMatcher(value)
 		for i, v := range dl.data {
-			if isValNaN {
-				if f, ok := v.(float64); ok && math.IsNaN(f) {
-					result = i
-					return
-				}
-			} else if v == value {
+			if matches(v) {
 				result = i
 				return
 			}
@@ -271,8 +263,9 @@ func (dl *DataList) FindFirst(value any) any {
 func (dl *DataList) findFirstIndex(value any) (int, bool) {
 	idx, found := -1, false
 	dl.AtomicDo(func(dl *DataList) {
+		matches := valueMatcher(value)
 		for i, v := range dl.data {
-			if equalCell(v, value) {
+			if matches(v) {
 				idx, found = i, true
 				return
 			}
@@ -286,17 +279,9 @@ func (dl *DataList) findFirstIndex(value any) (int, bool) {
 func (dl *DataList) FindLast(value any) any {
 	var result any
 	dl.AtomicDo(func(dl *DataList) {
-		isValNaN := false
-		if f, ok := value.(float64); ok && math.IsNaN(f) {
-			isValNaN = true
-		}
+		matches := valueMatcher(value)
 		for i := len(dl.data) - 1; i >= 0; i-- {
-			if isValNaN {
-				if f, ok := dl.data[i].(float64); ok && math.IsNaN(f) {
-					result = i
-					return
-				}
-			} else if dl.data[i] == value {
+			if matches(dl.data[i]) {
 				result = i
 				return
 			}
@@ -319,17 +304,9 @@ func (dl *DataList) FindAll(value any) []int {
 			return
 		}
 
-		isValNaN := false
-		if f, ok := value.(float64); ok && math.IsNaN(f) {
-			isValNaN = true
-		}
-
+		matches := valueMatcher(value)
 		for i, v := range dl.data {
-			if isValNaN {
-				if f, ok := v.(float64); ok && math.IsNaN(f) {
-					indices = append(indices, i)
-				}
-			} else if v == value {
+			if matches(v) {
 				indices = append(indices, i)
 			}
 		}
@@ -479,16 +456,10 @@ func (dl *DataList) DropAll(toDrop ...any) *DataList {
 		if len(dl.data) == 0 {
 			return
 		}
+		matchers := valueMatchers(toDrop)
 		kept := make([]any, 0, len(dl.data))
 		for _, v := range dl.data {
-			drop := false
-			for _, td := range toDrop {
-				if equalCell(v, td) {
-					drop = true
-					break
-				}
-			}
-			if !drop {
+			if !matchesAny(matchers, v) {
 				kept = append(kept, v)
 			}
 		}
@@ -624,6 +595,116 @@ func equalCell(a, b any) (eq bool) {
 		}
 	}()
 	return a == b
+}
+
+// valueMatcher returns the test every search, count, replace and drop applies
+// to a cell to decide that it holds want. Two integers match when their values
+// do, whatever their Go types: a CSV load stores int64 while a Go literal is
+// int, and comparing them with == made Count(2) return 0 on data that plainly
+// held 2. A negative value never matches an unsigned one, a float never
+// matches an integer, NaN matches NaN, and any other value compares the way
+// equalCell compares it. IsEqualTo and IsTheSameAs keep equalCell: they ask
+// whether two lists hold identical data, type included.
+//
+// The test is chosen once per call from want. Choosing it again for every cell
+// made a million-cell Count of floats or strings three times slower.
+func valueMatcher(want any) func(cell any) bool {
+	if ws, wu, wSigned, ok := integerParts(want); ok {
+		return func(cell any) bool {
+			cs, cu, cSigned, ok := integerParts(cell)
+			switch {
+			case !ok:
+				return false
+			case wSigned && cSigned:
+				return ws == cs
+			case !wSigned && !cSigned:
+				return wu == cu
+			case wSigned:
+				return ws >= 0 && uint64(ws) == cu
+			default:
+				return cs >= 0 && uint64(cs) == wu
+			}
+		}
+	}
+	switch w := want.(type) {
+	case nil:
+		return func(cell any) bool {
+			return cell == nil
+		}
+	case string:
+		return func(cell any) bool {
+			c, ok := cell.(string)
+			return ok && c == w
+		}
+	case bool:
+		return func(cell any) bool {
+			c, ok := cell.(bool)
+			return ok && c == w
+		}
+	case float64:
+		if math.IsNaN(w) {
+			return func(cell any) bool {
+				c, ok := cell.(float64)
+				return ok && math.IsNaN(c)
+			}
+		}
+		return func(cell any) bool {
+			c, ok := cell.(float64)
+			return ok && c == w
+		}
+	}
+	return func(cell any) bool {
+		return equalCell(cell, want)
+	}
+}
+
+// valueMatchers builds one matcher per value, for the calls that take several.
+func valueMatchers(values []any) []func(any) bool {
+	matchers := make([]func(any) bool, len(values))
+	for i, v := range values {
+		matchers[i] = valueMatcher(v)
+	}
+	return matchers
+}
+
+// matchesAny reports whether cell holds any of the values behind matchers.
+func matchesAny(matchers []func(any) bool, cell any) bool {
+	for _, matches := range matchers {
+		if matches(cell) {
+			return true
+		}
+	}
+	return false
+}
+
+// integerParts splits a Go integer into its value, widened to int64 when the
+// type is signed and to uint64 when it is not.
+func integerParts(v any) (s int64, u uint64, signed, ok bool) {
+	switch x := v.(type) {
+	case int:
+		return int64(x), 0, true, true
+	case int8:
+		return int64(x), 0, true, true
+	case int16:
+		return int64(x), 0, true, true
+	case int32:
+		return int64(x), 0, true, true
+	case int64:
+		return x, 0, true, true
+	case uint:
+		return 0, uint64(x), false, true
+	case uint8:
+		return 0, uint64(x), false, true
+	case uint16:
+		return 0, uint64(x), false, true
+	case uint32:
+		return 0, uint64(x), false, true
+	case uint64:
+		return 0, x, false, true
+	case uintptr:
+		return 0, uint64(x), false, true
+	}
+	return 0, 0, false, false
 }
 
 // ClearOutliers removes values from the DataList that are outside the specified number of standard deviations.

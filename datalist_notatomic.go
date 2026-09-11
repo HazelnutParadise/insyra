@@ -7,18 +7,9 @@ import (
 func (dl *DataList) replaceAll_notAtomic(oldValue, newValue any) {
 	defer dl.updateTimestamp()
 
-	isOldValueNaN := false
-	if val, ok := oldValue.(float64); ok && math.IsNaN(val) {
-		isOldValueNaN = true
-	}
-
-	// 單線程處理資料替換
+	matches := valueMatcher(oldValue)
 	for i, v := range dl.data {
-		if isOldValueNaN {
-			if val, ok := v.(float64); ok && math.IsNaN(val) {
-				dl.data[i] = newValue
-			}
-		} else if v == oldValue {
+		if matches(v) {
 			dl.data[i] = newValue
 		}
 	}
@@ -27,41 +18,22 @@ func (dl *DataList) replaceAll_notAtomic(oldValue, newValue any) {
 func (dl *DataList) replaceFirst_notAtomic(oldValue, newValue any) {
 	defer dl.updateTimestamp()
 
-	isOldValueNaN := false
-	if val, ok := oldValue.(float64); ok && math.IsNaN(val) {
-		isOldValueNaN = true
-	}
-	// 單線程處理資料替換
+	matches := valueMatcher(oldValue)
 	for i, v := range dl.data {
-		if !isOldValueNaN && v == oldValue {
+		if matches(v) {
 			dl.data[i] = newValue
 			return
-		}
-		if isOldValueNaN {
-			if val, ok := v.(float64); ok && math.IsNaN(val) {
-				dl.data[i] = newValue
-				return
-			}
 		}
 	}
 }
 
 func (dl *DataList) replaceLast_notAtomic(oldValue, newValue any) {
 	defer dl.updateTimestamp()
-	isOldValueNaN := false
-	if val, ok := oldValue.(float64); ok && math.IsNaN(val) {
-		isOldValueNaN = true
-	}
-	// 單線程處理資料替換
+	matches := valueMatcher(oldValue)
 	for i := len(dl.data) - 1; i >= 0; i-- {
-		if !isOldValueNaN && dl.data[i] == oldValue {
+		if matches(dl.data[i]) {
 			dl.data[i] = newValue
 			return
-		} else if isOldValueNaN {
-			if val, ok := dl.data[i].(float64); ok && math.IsNaN(val) {
-				dl.data[i] = newValue
-				return
-			}
 		}
 	}
 }

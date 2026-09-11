@@ -253,10 +253,10 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-09-11] — `count`, `find` and `replace` in the CLI never match an integer
-- **Where**: `cli/commands/helpers.go` `parseLiteral`, and the commands that compare with what it returns: `count` (`stats_dl_extra.go`), `find` (`find.go`), `replace`
-- **What**: `parseLiteral` turns `3` into a Go `int`, but the values those commands compare against are `int64`: CSV inference produces `int64`, and every variable restored from an environment comes back as `int64`. The library compares with `==`, and inside an `any`, `int(3) == int64(3)` is false. So on data that plainly contains 3, `count x 3` prints `0`, `find x 3` prints `[]`, and `replace x 3 0` prints `replaced` and changes nothing. Strings, floats and `nil` are unaffected. Measured in one-shot mode on 2026-09-11. The Go API is not affected on its own: `NewDataList(1, 2, 1)` stores `int`, and `Count(1)` returns 2.
-- **Suggestion**: have `parseLiteral` return `int64`, the type the CLI's data already uses, so `newdl` stores what a CSV load or a restore would. Making the library's comparison numeric-aware would also cover Go callers who mix `int` and `int64`, but it changes library semantics and is a separate decision. Found while fixing #321; the guide's examples use string values until this is fixed.
+### [2026-09-11] — `Counter()` still keeps `int(1)` and `int64(1)` apart
+- **Where**: `datalist.go` `DataList.Counter`, `datatable.go` `DataTable.Counter`
+- **What**: since `match-integers-by-value`, every search, count, replace and drop matches integers by value, and GroupBy, Pivot and Merge already did (`encodeGroupKey` writes every integer as `i:<value>`). `Counter()` is the one place left that does not: it returns a `map[any]int` keyed by the stored value, so a column holding both `int(1)` and `int64(1)` reports two keys while `Count(1)` reports their total. A column only mixes the two when rows are added by hand to loaded data, for example Go literals appended to a CSV table.
+- **Suggestion**: merging them means the map key has to be one of the two stored values, which decides which literal a caller can index it with (`counter[1]` or `counter[int64(1)]`). Pick one rule, or document that `Counter` reports stored types, rather than leave it implicit.
 - **Status**: pending
 
 ### [2026-09-11] — CLI arguments that are accepted and then ignored

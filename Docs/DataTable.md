@@ -962,7 +962,7 @@ func (dt *DataTable) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *Ordi
 
 **Description:** Categorical encoding turns string or mixed-type category columns into numeric columns that can feed `stats.LinearRegression`, KNN, PCA, and clustering. Each method returns a fresh `*DataTable`; the receiver is not modified. The returned encoder stores the fitted category mapping and can `Transform` another table with the same schema, such as a test set or prediction batch.
 
-Column references are resolved by column name first, then Excel-style index (`"A"`, `"B"`, ..., `"AA"`). Category identity uses both type and value, so `int(1)` and string `"1"` are distinct. Missing means `nil` or `NaN`. For one-hot encoding, two distinct categories that would generate the same indicator column name (for example `int(1)` and `"1"`, both `c_1`, or `nil` and the string `"<nil>"`) are rejected at fit time; rename a category or set a distinct `Prefix`/`Separator`.
+Column references are resolved by column name first, then Excel-style index (`"A"`, `"B"`, ..., `"AA"`). An integer category is identified by its value, so `int(1)` and the `int64(1)` a CSV load produces are one category, and an `Order` written as `[]any{1, 2, 3}` matches a CSV column. Other categories keep their type as well as their value, so `int(1)`, `1.0` and the string `"1"` are distinct. Missing means `nil` or `NaN`. For one-hot encoding, two distinct categories that would generate the same indicator column name (for example `int(1)` and `"1"`, both `c_1`, or `nil` and the string `"<nil>"`) are rejected at fit time; rename a category or set a distinct `Prefix`/`Separator`.
 
 **Policies:**
 
@@ -3063,7 +3063,7 @@ orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{Prese
 
 ## Data Replacement
 
-DataTable provides several methods to replace values within the entire table, a specific row, or a specific column.
+DataTable provides several methods to replace values within the entire table, a specific row, or a specific column. They find `oldValue` the way the searches do (see Searching), so `Replace(2, 0)` replaces the `int64` 2s a CSV load produces.
 
 ### Missing-Value Fill Methods
 
@@ -3313,9 +3313,11 @@ dt.ExecuteCCL(`
 `)
 ```
 
+> **All or nothing.** If any statement fails, none of them is applied: the script runs against a copy of the table, and the table changes only once every statement has succeeded. `Err()` names the statement that failed and, for an evaluation failure, the row.
+
 ## Searching
 
-> **All or nothing.** If any statement fails, none of them is applied: the script runs against a copy of the table, and the table changes only once every statement has succeeded. `Err()` names the statement that failed and, for an evaluation failure, the row.
+**How a value is matched.** The searches below, `Count`, the `Replace` methods and `DropRowsContain`/`DropColsContain` compare cells the same way. An integer matches an integer of the same value whatever their Go types, so `Count(2)` finds the `int64` 2s a CSV load produces. A float never matches an integer: search with `2.0` to find `2.0`. `NaN` matches `NaN`.
 
 ### FindRowsIfContains
 

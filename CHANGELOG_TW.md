@@ -42,6 +42,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`AtomicDoAll` 的參數從 `...any` 改成 `...Lockable`。它原本什麼都收，遇到鎖不了的值只記一則警告，然後在那個值沒上鎖的情況下照樣執行回呼，所以傳錯東西的人以為自己受到保護，其實沒有。`*DataList`、`*DataTable` 與 `isr` 的包裝型別都符合 `Lockable`，其他型別現在會編譯失敗，用 `[]any` 組的切片要改成 `[]insyra.Lockable`。傳入 nil 會直接略過，不再 panic。
 - **BREAKING**：`ExecuteCCL` 改為全有或全無。原本腳本在第三條語句失敗時，前兩條已經套用，表停在改了一半的狀態，也沒有任何地方告訴呼叫者。現在腳本先在表的私有副本上執行，全部成功才寫回，`Err()` 會指出是哪一條失敗。
 - 修正 `GroupBy` 算出來的是 `Aggregate` 執行當下的父表資料，而不是分組當下的資料。它原本只保留父表欄位的指標，所以兩次呼叫之間對父表的修改會跑進結果（原本是 `3` 的一組加總變成 `102`），而且 `Aggregate` 讀那些資料時沒有上鎖，其他 goroutine 可能同時在寫。現在 `GroupBy` 會複製它分組用的欄位資料。
+- 修正依值搜尋、計數、取代與刪除時，找不到以另一種 Go 整數型別儲存的整數。CSV 讀進來的整數是 `int64`，Go 程式裡寫的 `2` 是 `int`，原本用 `==` 比對，`int64` 和 `int` 永遠不相等，所以對 CSV 讀入的表，`Count(2)` 回傳 0，`FindAll(2)`、`FindRowsIfContains(2)` 什麼都找不到，`Replace(2, 0)` 什麼都沒改。現在 `Count`、`FindFirst`、`FindLast`、`FindAll`、各個 `Replace` 方法、`DropAll`、`FindRowsIfContains(All)`、`FindColsIfContains(All)`、`DropRowsContain`、`DropColsContain` 都依數值比對整數，`int8` 到 `int64`、`uint8` 到 `uint64` 一律如此。小數仍然不等於整數，要找 `2.0` 請用 `2.0` 搜尋。編碼器也用同樣的規則處理整數類別：`OrdinalEncode` 的 `Order: []any{1, 2, 3}` 現在能對上 CSV 的欄，不再報錯。在 `int` 資料上 fit 的編碼器可以轉換 `int64` 資料，同一欄裡的 `int(1)` 與 `int64(1)` 也算同一個類別。`IsEqualTo` 與 `IsTheSameAs` 仍然連型別一起比較。比對方式改成依要找的值的型別，每次呼叫只挑一次，所以搜尋小數或字串也變快了：一百萬格的 `Count`，小數從 2.3 毫秒降到 1.5 毫秒，字串從 2.7 毫秒降到 2.0 毫秒。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
@@ -58,6 +59,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `accel` 的 Usage 不再宣稱有不存在的 `run` 子命令。`--precision` 已註冊，one-shot 模式也能像 REPL 一樣接受它，但剩下的三個動作都不會用到這個值。
 - `sample` 對小於等於 0、或不放回時超過來源長度的數量改為回錯，不再存下空結果；`setcolnames` 要求名稱數量與欄數相同，不再把其餘欄名清空或新增空欄。
 - `help` 現在如實列出 `pca`、`regression`、`count` 的參數：前兩者可以用 `as <var>` 存結果，`count` 的 value 是必填，不再標成選填。`save … sql` 的用法錯誤訊息也跟 Usage 一致，列出 `rownames [true|false]`。
+- `count`、`find`、`replace` 與 `encode … ordinal … order` 現在能對上 CSV 載入的表，以及 one-shot 模式下每次還原的變數裡的整數。原本打的 `2` 是 `int`，存著的是 `int64`，永遠比對不到：`count x 2` 印出 0，`replace x 2 0` 印出 `replaced` 卻什麼都沒改，`encode … order 1,2,3` 把每一格都編成 nil。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外——也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。另外 `ml/mltest.RunConformance` 現在會判定「`Classes()` 回傳 nil」的實作不合格，而不是自己 panic——因為 `ml.Classifier` 是公開介面，函式庫外部的程式也能實作它。

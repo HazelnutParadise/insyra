@@ -2451,6 +2451,8 @@ timestamp := dl.GetLastModifiedTimestamp()
 
 ## Utility Methods
 
+**How a value is matched.** `Count`, `FindFirst`, `FindLast`, `FindAll`, the `Replace` methods and `DropAll` compare cells the same way. An integer matches an integer of the same value whatever their Go types, so `Count(2)` finds the `int64` 2s a CSV load produces. A float never matches an integer: search with `2.0` to find `2.0`. `NaN` matches `NaN`. `IsEqualTo` is stricter, because it asks whether two lists hold identical data: it compares cell by cell including the Go type, so `[1]` and `[int64(1)]` are not equal.
+
 ### Count
 
 ```go
