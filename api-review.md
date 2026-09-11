@@ -413,7 +413,7 @@
 | CCL-30 | ~~Low~~ 已修正（batch 8） | `-2^2` → 4、`-A^2` → 100（一元負號綁得比 `^` 緊，與 Excel 同但與數學慣例不同）；`2^3^2` → 64（左結合）。文件未提 | internal/ccl/ccl_parser.go:349-364, 205 | 文件寫明 |
 | CCL-31 | Low | 數字字面值溢位靜默成 `+Inf`（`ParseFloat` 錯誤被 `_` 丟掉）；`1e5` 字面值不支援（tokenize 成 `1` 與識別字 `e5`），但 `VALUE('1e3')` 可以 | internal/ccl/ccl_parser.go:337；ccl_tokenizer.go:45-78 | 檢查 `ParseFloat` 錯誤；決定是否支援科學記號 |
 | CCL-32 | Low | `TOSTR(1.5, '%d')` → `"%!d(float64=1.5)"`、`TOSTR(1,'%')` → `"%!(NOVERB)…"` 靜默寫進資料 | internal/ccl/stdlib_typeconv.go:52-56 | 格式化後檢查 `%!` 前綴回錯，或限制動詞 |
-| CCL-33 | Low | `DATEADD('2024-01-31', 1, 'month')` → `2024-03-02`（Go `AddDate` 正規化，Excel `EDATE` 是 2/29）；`DATEADD(d, 10^300, 'year')` 溢位繞回 2022 年 | internal/ccl/stdlib_datetime.go:128-138 | 文件寫明或月底夾住；限制 n 範圍 |
+| CCL-33 | Low（極大 n 溢位已由 ccl-portable-integer-arguments 修正，月底正規化仍待決定） | `DATEADD('2024-01-31', 1, 'month')` → `2024-03-02`（Go `AddDate` 正規化，Excel `EDATE` 是 2/29）；`DATEADD(d, 10^300, 'year')` 溢位繞回 2022 年 | internal/ccl/stdlib_datetime.go:128-138 | 文件寫明或月底夾住；限制 n 範圍 |
 | CCL-34 | ~~Low~~ 已修正（batch 11，文件） | 函數名與 Excel 欄位索引大小寫不分（`sum(a)` 可用），`['name']` 區分大小寫；文件只提後者 | internal/ccl/ccl_functions.go:40；internal/utils/utils.go:73-76；Docs/CCL.md:436 | 文件寫明 |
 | CCL-35 | ~~Low~~ 已修正（batch 11 補文件；batch 12 統一數字轉文字的規則） | 字串函數對數字直接 `fmt.Sprint`：`LEN(A)`（int 10）→ 2、`LEN(123.0)` → 3 | internal/ccl/stdlib_string.go:12-20 | 文件寫明 |
 | CCL-36 | ~~Low~~ 已修正（batch 9） | 非 ASCII 識別字錯誤訊息是位元組層級：`中文 + 1` → `unexpected character '¸' at position 1` | internal/ccl/ccl_tokenizer.go:14-30, 202-207 | tokenizer 改以 rune 走訪 |
