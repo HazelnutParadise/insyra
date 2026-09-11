@@ -1,7 +1,7 @@
 # cli-argument-validation Specification
 
 ## Purpose
-CLI 的選項值只接受文件所列的寫法，不認識的引數必須回報而非忽略。
+CLI 的選項值只接受文件所列的寫法，不認識或用不到的引數必須回報並停止執行，不能默默忽略，因為被忽略的引數會讓打錯字看起來像是成功了。
 
 ## Requirements
 
@@ -15,11 +15,19 @@ CLI 的選項值只接受文件所列的寫法，不認識的引數必須回報�
 
 ### Requirement: Unknown arguments are refused
 
-`plot`、`fetch`、`merge`、`clean`、`sort` 對不屬於其文法的引數 SHALL 回傳錯誤，SHALL NOT 忽略。`plot` 的 Usage SHALL NOT 宣告它不接受的選項。
+`plot`、`fetch`、`merge`、`clean`、`sort`、`accel` 與九個 DataList 統計指令（`sum`、`mean`、`median`、`mode`、`stdev`、`var`、`min`、`max`、`range`）對不屬於其文法的引數 SHALL 回傳錯誤並指出該引數，SHALL NOT 忽略，也 SHALL NOT 執行動作。`plot` 的 Usage SHALL NOT 宣告它不接受的選項。
 
 #### Scenario: Extra tokens after a plot
 - **WHEN** 執行 `plot line series extra junk`
 - **THEN** 回傳錯誤指出 `extra`
+
+#### Scenario: An alias on a command that stores nothing
+- **WHEN** 執行 `mean x as m`
+- **THEN** 回傳指出 `mean` 與 `"as"` 的錯誤，而且不會建立變數 `m`
+
+#### Scenario: A removed accel flag
+- **WHEN** 執行 `accel plan --precision float32`
+- **THEN** 回傳錯誤，不產生規劃報告
 
 ### Requirement: config validates keys and values
 
@@ -39,28 +47,8 @@ CLI 的選項值只接受文件所列的寫法，不認識的引數必須回報�
 
 ### Requirement: accel's usage matches the command
 
-`accel` 的 Usage SHALL NOT 宣告不存在的 `run` 子命令，SHALL 列出 `--precision`，且 `--mode` 與 `--precision` SHALL 都註冊在 Cobra 命令上。
+`accel` 的 Usage SHALL NOT 宣告不存在的 `run` 子命令，也 SHALL NOT 宣告沒有任何動作會讀的 `--precision`。除了動作之外，Usage SHALL 只列 `--mode`，Cobra 命令上也 SHALL 只註冊 `--mode`。
 
-#### Scenario: One-shot precision flag
+#### Scenario: Registered flags
 - **WHEN** 建立 `accel` 的 Cobra 命令
-- **THEN** `mode` 與 `precision` 兩個旗標都存在
-
-### Requirement: Commands reject arguments they do not use
-
-The DataList statistics commands (`sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`) and `accel` SHALL return an error naming the command and the argument when given an argument they do not use, and SHALL NOT perform the action.
-
-#### Scenario: An alias on a command that stores nothing
-- **WHEN** 執行 `mean x as m`
-- **THEN** 回傳指出 `mean` 與 `"as"` 的錯誤，而且不會建立變數 `m`
-
-#### Scenario: A removed accel flag
-- **WHEN** 執行 `accel plan --precision float32`
-- **THEN** 回傳錯誤，不產生規劃報告
-
-### Requirement: accel advertises only what it reads
-
-Besides its action, `accel`'s Usage and registered flags SHALL list only `--mode`.
-
-#### Scenario: help accel
-- **WHEN** 執行 `help accel`
-- **THEN** Usage 不含 `--precision`，Cobra 也沒有註冊 `--precision`
+- **THEN** `mode` 旗標存在，`precision` 旗標不存在

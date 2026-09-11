@@ -19,11 +19,11 @@ The owner approved rejecting these on 2026-09-11.
 
 ### New Capabilities
 
-- `cli-argument-validation`: a command reports an argument it does not use instead of ignoring it.
+(none)
 
 ### Modified Capabilities
 
-(none)
+- `cli-argument-validation`, created by batch 7: "Unknown arguments are refused" now covers `accel` and the nine DataList statistics, and "accel's usage matches the command" no longer requires `--precision`. The change was first archived as two added requirements, the second of which contradicted batch 7's; both were folded into the existing requirements afterwards.
 
 ## Impact
 
