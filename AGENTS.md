@@ -253,16 +253,22 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-11] — `insyra run` exits 0 when a line fails
+- **Where**: `cli/commands/run.go`, the loop that prints `line N: <error>` and moves on
+- **What**: `Docs/cli-dsl.md` says `run` continues after a failing line, and it does, but it then prints `script complete` and exits 0, so a shell script or CI job running `insyra run job.isr` cannot tell that a step failed. Measured on 2026-09-11: a script whose third line was rejected exited 0. The Go `Session.ExecuteFile` stops at the first error and returns it.
+- **Suggestion**: keep continuing if that is the intended behaviour, but exit non-zero when any line failed (for example "script finished, 1 of 3 lines failed"), or add a stop-on-error option. Either way the exit code belongs in the docs.
+- **Status**: pending
+
 ### [2026-09-11] — `Counter()` still keeps `int(1)` and `int64(1)` apart
 - **Where**: `datalist.go` `DataList.Counter`, `datatable.go` `DataTable.Counter`
 - **What**: since `match-integers-by-value`, every search, count, replace and drop matches integers by value, and GroupBy, Pivot and Merge already did (`encodeGroupKey` writes every integer as `i:<value>`). `Counter()` is the one place left that does not: it returns a `map[any]int` keyed by the stored value, so a column holding both `int(1)` and `int64(1)` reports two keys while `Count(1)` reports their total. A column only mixes the two when rows are added by hand to loaded data, for example Go literals appended to a CSV table.
 - **Suggestion**: merging them means the map key has to be one of the two stored values, which decides which literal a caller can index it with (`counter[1]` or `counter[int64(1)]`). Pick one rule, or document that `Counter` reports stored types, rather than leave it implicit.
 - **Status**: pending
 
-### [2026-09-11] — CLI arguments that are accepted and then ignored
-- **Where**: `cli/commands/accel.go` (`--precision`, extra positionals), `cli/commands/stats_dl.go` `makeDLNumberPrinter`
-- **What**: `accel` parses `--precision` into a field nothing reads. It belonged to `accel run`, removed in v0.3.1; batch 7 then registered it with Cobra and put it in the Usage, so `help accel` advertises it. `accel devices foo` ignores `foo`. The DataList statistics (`sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`) read `args[0]` and drop the rest, so `mean x as m` prints the mean and stores nothing. cli/AGENTS.md says an argument a command does not understand is an error.
-- **Suggestion**: remove `--precision` (its Cobra registration never shipped, so one-shot users lose nothing they had) and reject extra arguments in all of these. Decide them together: rejecting stray positionals is what makes the removed flag fail loudly in the REPL instead of being ignored.
+### [2026-09-11] — 53 CLI commands accept a trailing argument and ignore it
+- **Where**: `cli/commands/`, one `Run` function per command
+- **What**: cli/AGENTS.md says an argument a command does not understand is an error, because an ignored one makes a typo look like it worked. `cli-reject-ignored-args` fixed `accel` and the nine DataList statistics. An audit on 2026-09-11 that appended `junk` to a valid call found these still exit 0 and ignore it: `iqr`, `skewness`, `kurtosis`, `counter`, `quartile`, `percentile`, `count`, `cov`, `corr`, `corrmatrix`, `shape`, `types`, `summary`, `cols`, `rows`, `get`, `set`, `find`, `replace`, `swap`, `transpose`, `rename`, `drop`, `clone`, `reverse`, `normalize`, `standardize`, `parsenums`, `parsestrings`, `upper`, `lower`, `capitalize`, `cumsum`, `cumprod`, `cummax`, `cummin`, `diff`, `diffn`, `pctchange`, `movavg`, `expsmooth`, `ttest` (all three forms), `ztest single`, `ftest var`, `pca`, `dbscan`, `vars`, `history`, `version`, `help`, `config`, `run` and `exit`. `show`, `shift`, `rank` and `sort` already reject it. Commands that take a variable number of arguments (`newdl`, `addcol`, `dropcol`, …) were not audited.
+- **Suggestion**: declare each command's maximum argument count at registration and check it in one place, instead of fifty hand-written checks. The decision is the count for every command, including how `as <var>` and optional trailing arguments (`sort <var> <col> [asc|desc]`) are counted.
 - **Status**: pending
 
 ### [2026-09-10] — a nil `*DataList` / `*DataTable` panics even on `Err()`

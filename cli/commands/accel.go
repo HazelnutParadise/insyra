@@ -12,15 +12,15 @@ import (
 )
 
 type accelArgs struct {
-	cfg         accelpkg.Config
-	positionals []string
-	precision   accelpkg.Precision
+	cfg accelpkg.Config
 }
+
+const accelUsage = "accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu]"
 
 func init() {
 	_ = Register(&CommandHandler{
 		Name:               "accel",
-		Usage:              "accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]",
+		Usage:              accelUsage,
 		Description:        "Inspect acceleration backends, cache state, and planning reports",
 		DisableFlagParsing: false,
 		Run:                runAccelCommand,
@@ -29,7 +29,7 @@ func init() {
 
 func runAccelCommand(ctx *ExecContext, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]")
+		return fmt.Errorf("usage: %s", accelUsage)
 	}
 
 	action := strings.ToLower(args[0])
@@ -82,7 +82,7 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 }
 
 func accelConfigFromArgs(args []string) (accelArgs, error) {
-	parsed := accelArgs{cfg: accelpkg.Config{}, precision: accelpkg.PrecisionExact}
+	parsed := accelArgs{cfg: accelpkg.Config{}}
 	explicitMode := ""
 	for idx := 0; idx < len(args); idx++ {
 		switch args[idx] {
@@ -92,18 +92,8 @@ func accelConfigFromArgs(args []string) (accelArgs, error) {
 			}
 			explicitMode = args[idx+1]
 			idx++
-		case "--precision":
-			if idx+1 >= len(args) {
-				return parsed, fmt.Errorf("usage: --precision exact|float32")
-			}
-			precision, err := resolveAccelPrecision(args[idx+1])
-			if err != nil {
-				return parsed, err
-			}
-			parsed.precision = precision
-			idx++
 		default:
-			parsed.positionals = append(parsed.positionals, args[idx])
+			return parsed, fmt.Errorf("accel: unexpected argument %q (usage: %s)", args[idx], accelUsage)
 		}
 	}
 
@@ -113,20 +103,6 @@ func accelConfigFromArgs(args []string) (accelArgs, error) {
 	}
 	parsed.cfg.Mode = mode
 	return parsed, nil
-}
-
-// resolveAccelPrecision maps the CLI flag onto the runtime's precision opt-in.
-// The default refuses to narrow a float64 column, because GPU backends have no
-// f64 and narrowing silently would change the user's numbers.
-func resolveAccelPrecision(explicit string) (accelpkg.Precision, error) {
-	switch accelpkg.Precision(strings.TrimSpace(strings.ToLower(explicit))) {
-	case accelpkg.PrecisionExact:
-		return accelpkg.PrecisionExact, nil
-	case accelpkg.PrecisionFloat32:
-		return accelpkg.PrecisionFloat32, nil
-	default:
-		return "", fmt.Errorf("invalid accel precision: %s (supported: exact, float32)", explicit)
-	}
 }
 
 func resolveAccelMode(explicit string) (accelpkg.Mode, error) {

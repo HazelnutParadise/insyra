@@ -29,14 +29,14 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `accel`
 - Description: Inspect acceleration backends, cache state, and planning reports
-- Usage: `accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]`
+- Usage: `accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu]`
 - Actions:
 	- `accel devices` — list the detected devices, or say why none were found.
 	- `accel cache` — load this session's variables into the device cache and report what is resident.
 	- `accel plan` — show how work would be split across the selected devices, without running anything.
 - Notes:
 	- `--mode` overrides the `accel-mode` config value for one call. With neither set, the mode is `auto`.
-	- `--precision` is accepted, but none of the three actions reads it. It set the precision of `accel run`, which has been removed.
+	- Any other argument is an error.
 
 ## `addcol`
 - Description: Add one column to DataTable

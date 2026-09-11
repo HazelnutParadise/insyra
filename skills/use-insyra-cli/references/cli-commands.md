@@ -212,4 +212,4 @@ Every registered command appears here, grouped by topic, and a test in `cli/comm
 - The GPU backend is builtin, so nothing extra needs installing. `INSYRA_ACCEL_DISABLE_WGPU=1` turns it off.
 - There is no `accel run`. It was removed along with the operations it invoked, once each was measured to be slower than the CPU using all its cores. These commands inspect the runtime; none of them executes anything.
 - `config accel.mode <auto|cpu|gpu|strict-gpu>`, `show accel.devices`, `show accel.cache`.
-- `--mode auto|cpu|gpu|strict-gpu` overrides the configured mode for one call. `--precision exact|float32` is accepted, but none of the three actions reads it.
+- `--mode auto|cpu|gpu|strict-gpu` overrides the configured mode for one call.

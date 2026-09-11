@@ -709,7 +709,7 @@ Organized by topic. Each Usage line is the command's own `insyra help <command>`
 ## GPU Acceleration
 ### `accel`
 - Description: Inspect acceleration backends, cache state, and planning reports
-- Usage: `accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]`
+- Usage: `accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu]`
 - Examples: `insyra accel devices` / `insyra accel plan --mode cpu`
 - `devices` lists the detected devices or says why none were found. `cache` loads this session's variables into the device cache and reports what is resident. `plan` shows how work would be split across the selected devices, without running anything.
-- `--mode` overrides the `accel-mode` config value for one call, and with neither set the mode is `auto`. `--precision` is accepted, but none of the three actions reads it: it set the precision of `accel run`, which has been removed.
+- `--mode` overrides the `accel-mode` config value for one call, and with neither set the mode is `auto`. Any other argument is an error.

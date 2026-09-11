@@ -710,7 +710,7 @@ Source policy:
 
 | Command | Usage | Description |
 | --- | --- | --- |
-| `accel` | `accel <devices\|cache\|plan> [--mode auto\|cpu\|gpu\|strict-gpu] [--precision exact\|float32]` | Inspect acceleration backends, cache state, and planning reports |
+| `accel` | `accel <devices\|cache\|plan> [--mode auto\|cpu\|gpu\|strict-gpu]` | Inspect acceleration backends, cache state, and planning reports |
 | `addcol` | `addcol <var> <values...>` | Add one column to DataTable |
 | `addcolccl` | `addcolccl <var> <name> <expr>` | Add DataTable column using CCL |
 | `addrow` | `addrow <var> <values...>` | Add one row to DataTable |

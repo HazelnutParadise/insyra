@@ -127,8 +127,10 @@ func TestAccelUsageMatchesTheCommand(t *testing.T) {
 	if strings.Contains(handler.Usage, "run") {
 		t.Errorf("Usage claims an `accel run` subcommand that does not exist: %q", handler.Usage)
 	}
-	if !strings.Contains(handler.Usage, "--precision") {
-		t.Errorf("Usage omits --precision, which the command parses: %q", handler.Usage)
+	// --precision chose the precision of `accel run`, removed in v0.3.1. No
+	// action reads it, so advertising it promised something that never happens.
+	if strings.Contains(handler.Usage, "--precision") {
+		t.Errorf("Usage advertises --precision, which nothing reads: %q", handler.Usage)
 	}
 
 	ctx := newTestExecContext(t)
@@ -137,18 +139,19 @@ func TestAccelUsageMatchesTheCommand(t *testing.T) {
 	}
 }
 
-// The flags accel parses must be registered on its Cobra command, or a
-// one-shot `insyra accel ... --precision float32` is rejected before it runs.
+// accel registers the one flag it reads, --mode, so one-shot mode and the REPL
+// accept the same arguments and Cobra rejects anything else before it runs.
 func TestAccelFlagsAreRegistered(t *testing.T) {
 	ctx := newTestExecContext(t)
 	for _, cmd := range BuildCobraCommands(ctx) {
 		if cmd.Name() != "accel" {
 			continue
 		}
-		for _, flag := range []string{"mode", "precision"} {
-			if cmd.Flags().Lookup(flag) == nil {
-				t.Errorf("accel does not register --%s", flag)
-			}
+		if cmd.Flags().Lookup("mode") == nil {
+			t.Error("accel does not register --mode")
+		}
+		if cmd.Flags().Lookup("precision") != nil {
+			t.Error("accel registers --precision, which nothing reads")
 		}
 		return
 	}
