@@ -685,7 +685,7 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | Function | Description | Example |
 | --- | --- | --- |
 | `ABS(x)` | Absolute value | `ABS(-3.5)` → `3.5` |
-| `ROUND(x, n?)` | Round to `n` decimal places (default `0`) | `ROUND(3.14159, 2)` → `3.14` |
+| `ROUND(x, n?)` | Round to `n` decimal places (default `0`); a `NaN` for `n` is an error | `ROUND(3.14159, 2)` → `3.14` |
 | `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
 | `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
 | `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
@@ -705,7 +705,7 @@ dt.AddColUsingCCL("delta", "ABS(['actual'] - ['target'])")
 
 ### String Functions
 
-All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID`/`SUBSTR` slice by rune.
+All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID`/`SUBSTR` slice by rune. A count or position past the end of the string means "to the end", so `MID('abc', 2, 10^300)` is `"bc"`, and a `NaN` count is an error.
 
 | Function | Description |
 | --- | --- |
@@ -758,7 +758,7 @@ These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers an
 | `DAYOFMONTH(d)` | Day 1–31 |
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
-| `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year` |
+| `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A fractional `n` truncates for `day`, `month` and `year`. More than 2,147,483,647 days, months or years, or more than about 292 years in hours, minutes or seconds, is an error |
 | `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
 
 ```go
@@ -781,7 +781,7 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 - Date strings (e.g., `"2006-01-02"`, RFC3339) are automatically parsed as `time.Time` when possible; parsed values are treated as date/time values.
 - A date difference (`A - B`) is a duration. In a numeric context it counts **seconds**, so `(A - B) > 0` and `(A - B) / 86400` work; `DAY(A - B)` converts it to days directly.
 - `date - date` returns a `time.Duration` representing the difference between the two dates. Use `DAY(...)`, `HOUR(...)`, `MINUTE(...)`, or `SECOND(...)` to convert the result to numeric values.
-- `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days).
+- `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days). A fraction keeps its hours and minutes. The date moves by a duration, so a shift of more than about 292 years (106,751 days) either way is an error.
 - Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
 - If a string cannot be parsed as a date (or the operands are other unsupported types), operations fall back to their original behavior (numeric/string comparison or an error).
 
@@ -791,6 +791,7 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 - `HOUR(x)`: returns hours as `float64`.
 - `MINUTE(x)`: returns minutes as `float64`.
 - `SECOND(x)`: returns seconds as `float64`.
+- For all four, a numeric value of more than about 292 years of seconds, either way, is an error rather than a wrapped-around number.
 
 Examples:
 

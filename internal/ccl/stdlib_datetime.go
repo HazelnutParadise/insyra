@@ -2,6 +2,7 @@ package ccl
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -124,14 +125,22 @@ func registerDateTimeFunctions() {
 			return nil, fmt.Errorf("DATEADD: unit must be a string, got %T", args[2])
 		}
 		switch strings.ToLower(unit) {
+		case "day", "days", "month", "months", "year", "years":
+			// AddDate takes an int. Past the int32 range nobody means the
+			// shift, and int(n) there differs by platform.
+			if math.IsNaN(n) || n > math.MaxInt32 || n < math.MinInt32 {
+				return nil, fmt.Errorf("DATEADD: a shift of %v %s is out of range", args[1], unit)
+			}
+		}
+		switch strings.ToLower(unit) {
 		case "day", "days":
-			return t.AddDate(0, 0, int(n)), nil
+			return t.AddDate(0, 0, int(n)), nil // a fraction truncates, as it always has
 		case "hour", "hours":
-			return t.Add(time.Duration(n * float64(time.Hour))), nil
+			return addDuration(t, n, time.Hour, args[1], unit)
 		case "minute", "minutes":
-			return t.Add(time.Duration(n * float64(time.Minute))), nil
+			return addDuration(t, n, time.Minute, args[1], unit)
 		case "second", "seconds":
-			return t.Add(time.Duration(n * float64(time.Second))), nil
+			return addDuration(t, n, time.Second, args[1], unit)
 		case "month", "months":
 			return t.AddDate(0, int(n), 0), nil
 		case "year", "years":
@@ -157,4 +166,14 @@ func registerDateTimeFunctions() {
 		}
 		return t.Format(layout), nil
 	})
+}
+
+// addDuration shifts t by n units of a clock unit, refusing a shift a Duration
+// cannot hold instead of converting it differently on each platform.
+func addDuration(t time.Time, n float64, unit time.Duration, arg any, unitName string) (any, error) {
+	d, ok := durationOf(n, unit)
+	if !ok {
+		return nil, fmt.Errorf("DATEADD: a shift of %v %s is out of range", arg, unitName)
+	}
+	return t.Add(d), nil
 }

@@ -673,10 +673,15 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 	return nil, fmt.Errorf("invalid node")
 }
 
-// daysToDuration converts a (possibly fractional) number of days into a
-// Duration without losing anything below an hour.
-func daysToDuration(days float64) time.Duration {
-	return time.Duration(days * 24 * float64(time.Hour))
+// shiftDays adds a (possibly fractional) number of days to t without losing
+// anything below an hour. A shift past what a Duration holds, about 292
+// years, is refused rather than converted.
+func shiftDays(t time.Time, days float64) (any, error) {
+	d, ok := durationOf(days*24, time.Hour)
+	if !ok {
+		return nil, fmt.Errorf("a shift of %v days is out of range", days)
+	}
+	return t.Add(d), nil
 }
 
 // FoldRowInvariantAggregates replaces every aggregate call whose answer cannot
@@ -838,6 +843,30 @@ func wholeIndex(v any, what string) (int, error) {
 	return int(f), nil
 }
 
+// clampedInt turns a character count, character position or digit count
+// into an int, clamping it to the int32 range first. A bare int(f) past the
+// int range differs by platform: amd64 gives the most negative int and arm64
+// the most positive, so MID('abc', 2, 10^300) was "" on amd64 and "bc" on
+// arm64. Clamped, a count past the end of a string means "to the end"
+// everywhere. NaN is no count at all.
+func clampedInt(f float64, what string) (int, error) {
+	if math.IsNaN(f) {
+		return 0, fmt.Errorf("%s must be a number, got NaN", what)
+	}
+	return int(max(min(f, math.MaxInt32), math.MinInt32)), nil
+}
+
+// durationOf converts f units into a Duration. time.Duration(f) is undefined
+// past ±2^63 nanoseconds (about 292 years) and for NaN, and the platforms
+// disagree there, so those report false instead.
+func durationOf(f float64, unit time.Duration) (time.Duration, bool) {
+	d := f * float64(unit)
+	if math.IsNaN(d) || d >= 1<<63 || d < -(1<<63) {
+		return 0, false
+	}
+	return time.Duration(d), true
+}
+
 func applyOperator(op string, left, right any) (any, error) {
 	// Try to interpret date-like operands first (time.Time or parseable date strings)
 	parseTimeLike := func(v any) (time.Time, bool) {
@@ -895,9 +924,9 @@ func applyOperator(op string, left, right any) (any, error) {
 				// Convert days straight to a Duration; multiplying an integer
 				// Duration by an hour first threw away everything under an
 				// hour, so A + 0.001 moved the timestamp not at all.
-				return lt.Add(daysToDuration(rf)), nil
+				return shiftDays(lt, rf)
 			case "-":
-				return lt.Add(-daysToDuration(rf)), nil
+				return shiftDays(lt, -rf)
 			}
 		}
 	}
@@ -907,7 +936,7 @@ func applyOperator(op string, left, right any) (any, error) {
 		if lf, ok := toFloat64(left); ok {
 			switch op {
 			case "+":
-				return rt.Add(daysToDuration(lf)), nil
+				return shiftDays(rt, lf)
 			case "-":
 				// number - date doesn't make sense
 				return nil, fmt.Errorf("invalid operands for -: %v, %v", left, right)
@@ -1075,11 +1104,17 @@ func applyOperator(op string, left, right any) (any, error) {
 	// 處理範圍運算符 :
 	if op == ":" {
 		// 1. 數字範圍 (Row Range)
-		lf, lok := toFloat64(left)
-		rf, rok := toFloat64(right)
+		_, lok := toFloat64(left)
+		_, rok := toFloat64(right)
 		if lok && rok {
-			start := int(lf)
-			end := int(rf)
+			start, err := wholeIndex(left, "range start")
+			if err != nil {
+				return nil, err
+			}
+			end, err := wholeIndex(right, "range end")
+			if err != nil {
+				return nil, err
+			}
 			// 支援負數索引
 			// 但這裡我們不知道總行數，所以無法在這裡處理負數索引轉換
 			// 負數索引轉換應該在 evaluateRowAccess 中處理

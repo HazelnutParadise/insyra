@@ -101,7 +101,11 @@ func registerStringFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("LEFT: count arg must be a number, got %T", args[1])
 		}
-		return runeSlice(s, 0, int(n)), nil
+		count, err := clampedInt(n, "LEFT: count")
+		if err != nil {
+			return nil, err
+		}
+		return runeSlice(s, 0, count), nil
 	})
 
 	registerFunction("RIGHT", func(args ...any) (any, error) {
@@ -113,7 +117,10 @@ func registerStringFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("RIGHT: count arg must be a number, got %T", args[1])
 		}
-		count := int(n)
+		count, err := clampedInt(n, "RIGHT: count")
+		if err != nil {
+			return nil, err
+		}
 		if count <= 0 {
 			return "", nil
 		}
@@ -138,8 +145,15 @@ func registerStringFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("length arg must be a number, got %T", args[2])
 		}
-		startIdx := int(start) - 1 // convert to 0-based
-		return runeSlice(s, startIdx, int(length)), nil
+		first, err := clampedInt(start, "start")
+		if err != nil {
+			return nil, err
+		}
+		count, err := clampedInt(length, "length")
+		if err != nil {
+			return nil, err
+		}
+		return runeSlice(s, first-1, count), nil // start is 1-based
 	}
 	registerFunction("MID", func(args ...any) (any, error) {
 		v, err := mid(args...)
