@@ -17,7 +17,7 @@ import (
 // the already-resolved DataTable. args holds the remainder after `sql`.
 func runSaveSQL(ctx *ExecContext, varName string, table *insyra.DataTable, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]")
+		return fmt.Errorf("usage: save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]")
 	}
 	conn, err := getDBConn(ctx, args[0])
 	if err != nil {

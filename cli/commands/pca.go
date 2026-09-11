@@ -8,13 +8,13 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "pca", Usage: "pca <var> <n>", Description: "Principal component analysis", Run: runPCACommand})
+	_ = Register(&CommandHandler{Name: "pca", Usage: "pca <var> <n> [as <var>]", Description: "Principal component analysis", Run: runPCACommand})
 }
 
 func runPCACommand(ctx *ExecContext, args []string) error {
 	coreArgs, alias := parseAlias(args)
 	if len(coreArgs) < 2 {
-		return fmt.Errorf("usage: pca <var> <n>")
+		return fmt.Errorf("usage: pca <var> <n> [as <var>]")
 	}
 	dt, err := getDataTableVar(ctx, coreArgs[0])
 	if err != nil {

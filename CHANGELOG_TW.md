@@ -55,8 +55,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：拼錯的選項值改為拒絕，不再退回預設值。`sort … dsc`、`ttest … eqaul`、`ztest … bogus`、`clean … outliers abc` 過去分別會以升冪、合併變異數、雙尾、2.0 個標準差執行——那是在呼叫端沒有做過的假設下算出來的統計結果。
 - **BREAKING**：`plot`、`fetch`、`merge` 對不認識的引數改為回報而非丟棄；`plot` 的 Usage 也不再宣告它從來不接受的選項。
 - `config` 拒絕未知的 key（並列出可用的），並驗證 `log-level`、`no-color`、`accel-mode`，無效設定不會寫進設定檔。
-- `accel` 的 Usage 不再宣稱有不存在的 `run` 子命令；`--precision` 已寫進文件並註冊，`insyra accel plan --precision float32` 在 one-shot 模式可用。
+- `accel` 的 Usage 不再宣稱有不存在的 `run` 子命令。`--precision` 已註冊，one-shot 模式也能像 REPL 一樣接受它，但剩下的三個動作都不會用到這個值。
 - `sample` 對小於等於 0、或不放回時超過來源長度的數量改為回錯，不再存下空結果；`setcolnames` 要求名稱數量與欄數相同，不再把其餘欄名清空或新增空欄。
+- `help` 現在如實列出 `pca`、`regression`、`count` 的參數：前兩者可以用 `as <var>` 存結果，`count` 的 value 是必填，不再標成選填。`save … sql` 的用法錯誤訊息也跟 Usage 一致，列出 `rownames [true|false]`。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外——也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。另外 `ml/mltest.RunConformance` 現在會判定「`Classes()` 回傳 nil」的實作不合格，而不是自己 panic——因為 `ml.Classifier` 是公開介面，函式庫外部的程式也能實作它。

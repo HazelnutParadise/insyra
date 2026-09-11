@@ -669,15 +669,16 @@ func main() {
 High-level command map:
 
 - **Core**: `help`, `version`, `exit`, `history`, `clear`, `config`, `run`, `completion`
-- **Environment**: `env`, `vars`, `drop`, `clone`, `rename`, `shape`, `types`, `show`, `summary`
+- **Environment**: `env`, `vars`, `drop`, `clone`, `rename`, `shape`, `types`, `show`, `summary`, `describe`
 - **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`
 - **Database**: `db` (`connect` / `list` / `tables` / `disconnect`), `load sql`, `save <var> sql`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
-- **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
+- **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `fillnan` (deprecated), `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `parsedates`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
 - **Quant**: `quant` (`sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`, `portfolio`, `frontier`)
+- **Acceleration**: `accel` (`devices`, `cache`, `plan`)
 
 ### Missing-Value Fill Commands
 
@@ -705,9 +706,11 @@ Source policy:
 
 - Registry commands: `go run ./cmd/insyra help` and `go run ./cmd/insyra help <command>`.
 - Cobra built-in command noted explicitly: `completion`.
+- The Usage column is each command's own `help` text, and `TestCLIDocsMatchRegistry` in `cli/commands` fails when a row stops matching. Where a Usage shortens a command's shapes to `...`, `help <command>` lists them in full.
 
 | Command | Usage | Description |
 | --- | --- | --- |
+| `accel` | `accel <devices\|cache\|plan> [--mode auto\|cpu\|gpu\|strict-gpu] [--precision exact\|float32]` | Inspect acceleration backends, cache state, and planning reports |
 | `addcol` | `addcol <var> <values...>` | Add one column to DataTable |
 | `addcolccl` | `addcolccl <var> <name> <expr>` | Add DataTable column using CCL |
 | `addrow` | `addrow <var> <values...>` | Add one row to DataTable |
@@ -725,7 +728,7 @@ Source policy:
 | `convert` | `convert <input> <output>` | Convert file formats (csv<->xlsx) |
 | `corr` | `corr <x> <y> [pearson\|kendall\|spearman]` | Correlation between two DataLists |
 | `corrmatrix` | `corrmatrix <datatable> [pearson\|kendall\|spearman] [as <var>]` | Correlation matrix for a DataTable |
-| `count` | `count <var> [value]` | Count occurrences |
+| `count` | `count <var> <value>` | Count occurrences |
 | `counter` | `counter <var>` | DataList frequency map |
 | `cov` | `cov <x> <y>` | Covariance between two DataLists |
 | `db` | `db connect <name> <dsn> \| db list \| db tables <name> [schema <s>] \| db disconnect <name>` | Manage named database connections (sqlite, mysql, postgres; pure-Go drivers) |
@@ -733,7 +736,7 @@ Source policy:
 | `cummin` | `cummin <var> [as <var>]` | Running minimum (historical low) |
 | `cumprod` | `cumprod <var> [as <var>]` | Running product |
 | `cumsum` | `cumsum <var> [as <var>]` | Running total |
-| `describe` | `describe <var> [by <col1[,col2,...]>] [all true\|false] [percentiles <p1,p2,...>] [as <var>]` | Create a programmatic summary table |
+| `describe` | `describe <var> [by <col1>[,<col2>...]] [all true\|false] [percentiles <p1,p2,...>] [as <var>]` | Create a programmatic summary table |
 | `diff` | `diff <var> [as <var>]` | Difference (legacy, length n-1) |
 | `diffn` | `diffn <var> <periods> [as <var>]` | Backward difference, same-length output with leading nils |
 | `drop` | `drop <var>` | Delete variable |
@@ -745,7 +748,7 @@ Source policy:
 | `exit` | `exit` | Exit REPL |
 | `expanding` | `expanding <var> <minobs> <reducer> [as <var>]` | Expanding-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
 | `expsmooth` | `expsmooth <var> <alpha> [as <var>]` | Exponential smoothing |
-| `fetch` | `fetch yahoo <ticker> <method> [params...] [as <var>]` / `fetch tw [<code>] prices\|adjprices\|exrights\|institutional\|margin\|quotes ... [as <var>]` | Fetch external data |
+| `fetch` | `fetch yahoo\|tw ... [as <var>]` | Fetch external data |
 | `fillna` | `fillna <var> mean\|median\|mode\|ffill\|bfill\|interpolate [cols A,B,C] [limit N] [extrapolate yes\|no] [missing nan\|nil\|both] [as <var>]` | Fill missing DataList/DataTable values |
 | `fillnan` | `fillnan <var> mean [as <var>]` | Fill NaN with mean (deprecated alias) |
 | `filter` | `filter <var> <expr> [as <var>]` | Filter DataTable by CCL expression |
@@ -761,7 +764,7 @@ Source policy:
 | `knn_neighbors` | `knn_neighbors <train_var> <test_var> <k> [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors search |
 | `kmeans` | `kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]` | K-means clustering |
 | `kurtosis` | `kurtosis <var>` | Kurtosis of a DataList |
-| `load` | `load <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [sheet <name>] \| load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] \| load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] \| load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]` | Load data into a DataTable variable from a file, parquet, or SQL connection |
+| `load` | `load <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [ragged true\|false] [trimspace true\|false] [sheet <name>] \| load parquet <file> [...] \| load sql <conn> <table>\|query "<sql>" [...] [as <var>]` | Load data into a DataTable variable from a file, parquet, or SQL connection |
 | `lower` | `lower <var> [as <var>]` | Lowercase DataList strings |
 | `max` | `max <var>` | DataList maximum |
 | `mean` | `mean <var>` | DataList mean |
@@ -776,7 +779,7 @@ Source policy:
 | `parsenums` | `parsenums <var> [as <var>]` | Parse DataList strings to numbers |
 | `parsedates` | `parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]` | Convert date strings to `time.Time` in a DataList or DataTable columns |
 | `parsestrings` | `parsestrings <var> [as <var>]` | Parse DataList numbers to strings |
-| `pca` | `pca <var> <n>` | Principal component analysis |
+| `pca` | `pca <var> <n> [as <var>]` | Principal component analysis |
 | `pctchange` | `pctchange <var> <periods> [as <var>]` | Percent change over `periods` rows |
 | `pivot` | `pivot <var> index <col1[,col2,...]> columns <col> values <col> [agg <op>] [fillna <literal>] [sortcols true\|false] [as <var>]` | Reshape long-form DataTable to wide form |
 | `hclust` | `hclust <var> <method> [as <var>]` | Hierarchical agglomerative clustering |
@@ -784,23 +787,23 @@ Source policy:
 | `dbscan` | `dbscan <var> <eps> <minpts> [as <var>]` | Density-based clustering |
 | `silhouette` | `silhouette <var> <labels_var> [as <var>]` | Silhouette analysis |
 | `percentile` | `percentile <var> <p>` | DataList percentile |
-| `plot` | `plot <type> <var> [options...] [save <file>]` | Create charts from variables |
+| `plot` | `plot <type> <var> [save <file>]` | Create charts from variables |
 | `quant` | `quant sharpe\|sortino\|ir\|maxdd\|annret\|calmar\|drawdown\|var\|cvar\|beta\|capm\|factor\|bs\|iv\|portfolio\|frontier ...` | Quantitative finance: performance, risk, exposure, factor, option and portfolio analytics |
 | `quartile` | `quartile <var> <q>` | DataList quartile |
 | `range` | `range <var>` | DataList range |
 | `rank` | `rank <var> [asc\|desc\|true\|false] [as <var>]` | Rank DataList |
-| `read` | `read <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [sheet <name>]` | Quick preview a file without saving variable |
-| `regression` | `regression <type> <y> <x...>` | Regression analysis: linear/poly/exp/log/logistic/poisson |
+| `read` | `read <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [ragged true\|false] [trimspace true\|false] [sheet <name>]` | Quick preview a file without saving variable |
+| `regression` | `regression <type> <y> <x...> [as <var>]` | Regression analysis: linear/poly/exp/log/logistic/poisson |
 | `rename` | `rename <var> <new>` | Rename variable |
 | `replace` | `replace <var> <old\|nan\|nil> <new>` | Replace values in DataTable/DataList |
-| `resample` | `resample <dt> <timecol> weekly\|monthly\|quarterly\|yearly <col>:<op>[:<name>] [...] [as <var>]` | Aggregate a time-indexed DataTable into calendar periods |
+| `resample` | `resample <dt> <timecol> weekly\|monthly\|quarterly\|yearly <col>:<op>[:<name>] [<col>:<op>[:<name>] ...] [as <var>]` | Aggregate a time-indexed DataTable into calendar periods |
 | `reverse` | `reverse <var> [as <var>]` | Reverse DataList |
 | `rolling` | `rolling <var> <window> <reducer> [minobs <n>] [center yes\|no] [as <var>]` | Rolling-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var, or cov\|beta with a second DataList) |
 | `row` | `row <var> <index\|name> [as <var>]` | Extract DataTable row as DataList |
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |
 | `sample` | `sample <var> <n>\|frac <frac>\|shuffle [replace true\|false] [seed N] [as <var>]` | Randomly sample or shuffle a DataList/DataTable |
-| `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames]` | Save a DataTable variable to a file or SQL connection |
+| `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames [true\|false]]` | Save a DataTable variable to a file or SQL connection |
 | `scale` | `scale fit std\|minmax\|robust\|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...> \| scale transform\|inverse <scalerVar> <tableVar> as <outVar>` | Fit a reusable feature scaler and transform/inverse tables with it |
 | `set` | `set <var> <row> <col> <value>` | Set single element in DataTable |
 | `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |

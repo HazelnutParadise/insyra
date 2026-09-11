@@ -1,6 +1,6 @@
 ﻿# Insyra CLI Command Guide (By Topic + Examples)
 
-Generated from current command registry (`insyra help`, `insyra help <command>`), then organized by topic.
+Organized by topic. Each Usage line is the command's own `insyra help <command>` text, and a test in `cli/commands` fails when one stops matching.
 
 ## Core / Session
 ### `help`
@@ -36,13 +36,13 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ### `run`
 - Description: Run DSL script file
 - Usage: `run <script.isr>`
-- Example: `insyra run <script.isr>`
+- Example: `insyra run pipeline.isr`
 
 ## Environment
 ### `env`
 - Description: Environment management
 - Usage: `env <create|list|open|clear|export|import|delete|rename|info> [args]`
-- Example: `insyra env <create|list|open|clear|export|import|delete|rename|info>`
+- Example: `insyra env list`
 - Subcommands: `create`, `list`, `open`, `clear`, `export`, `import`, `delete`, `rename`, `info`.
 
 ### `vars`
@@ -87,7 +87,7 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `describe`
 - Description: Create a reusable summary DataTable
-- Usage: `describe <var> [by <col1[,col2,...]>] [all true|false] [percentiles <p1,p2,...>] [as <var>]`
+- Usage: `describe <var> [by <col1>[,<col2>...]] [all true|false] [percentiles <p1,p2,...>] [as <var>]`
 - Example: `insyra describe sales all true as summary`
 - Grouped example: `insyra describe sales by region percentiles 0.1,0.5,0.9 as region_summary`
 
@@ -104,7 +104,7 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `load`
 - Description: Load data into a DataTable variable from a file, parquet, or SQL connection
-- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query "<sql>" [...] [as <var>]`
 - Defaults: `headers=true`, `rownames=false`, `infer=true`, `ragged=false`, `trimspace=false`. Booleans accept `true|false|yes|no|on|off|1|0`.
 - Types: an all-integer CSV column loads as `int64` (large IDs keep full precision); a column with any decimal loads as `float64`; others stay strings. `infer false` (CSV only) skips this and keeps every cell as its original string — use it for stock IDs, tax IDs, or exact amounts where `0050` must not become `50`.
 - `ragged true` and `trimspace true` are CSV-only. Ragged mode pads short rows with empty cells and keeps extra cells in new columns; trimspace mode accepts leading whitespace before fields and quotes.
@@ -122,13 +122,13 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `read`
 - Description: Quick preview a file without saving variable
-- Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>]`
+- Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>]`
 - Example: `insyra read data.csv`
 - Note: forwards the same file options as `load`.
 
 ### `save`
 - Description: Save a DataTable variable to a file or SQL connection
-- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]`
 - Defaults: `headers=true`, `rownames=false`, `bom=false`. Booleans accept `true|false|yes|no|on|off|1|0`.
 - Examples:
   - `insyra save x data.csv`
@@ -165,7 +165,7 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `save sql`
 - Description: Write a DataTable to a SQL table
-- Usage: `save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- Usage: `save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]`
 - Example: `insyra save report sql main report_table if-exists replace batch 1000`
 
 ## DataTable Structure & Access
@@ -212,12 +212,12 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ### `row`
 - Description: Extract DataTable row as DataList
 - Usage: `row <var> <index|name> [as <var>]`
-- Example: `insyra row x <index|name>`
+- Example: `insyra row x 0 as first_row`
 
 ### `col`
 - Description: Extract DataTable column as DataList
 - Usage: `col <var> <name|index> [as <var>]`
-- Example: `insyra col x <name|index>`
+- Example: `insyra col x 0 as first_col`
 
 ### `get`
 - Description: Get single element from DataTable
@@ -227,7 +227,7 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ### `set`
 - Description: Set single element in DataTable
 - Usage: `set <var> <row> <col> <value>`
-- Example: `insyra set x 0 0 <value>`
+- Example: `insyra set x 0 A 99` (`<col>` is the column letter)
 
 ### `setrownames`
 - Description: Set DataTable row names
@@ -243,7 +243,7 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ### `filter`
 - Description: Filter DataTable by CCL expression
 - Usage: `filter <var> <expr> [as <var>]`
-- Example: `insyra filter x <expr>`
+- Example: `insyra filter x "A > 1" as big`
 
 ### `sort`
 - Description: Sort DataTable by one column
@@ -263,22 +263,23 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ### `find`
 - Description: Find rows containing value
 - Usage: `find <var> <value>`
-- Example: `insyra find x <value>`
+- Example: `insyra find x blue`
 
 ### `replace`
 - Description: Replace values in DataTable/DataList
 - Usage: `replace <var> <old|nan|nil> <new>`
-- Example: `insyra replace x <old|nan|nil> newname`
+- Example: `insyra replace x nil 0`
 
 ### `clean`
 - Description: Clean values from DataTable/DataList
 - Usage: `clean <var> nan|nil|strings|outliers [<stddev>]`
-- Example: `insyra clean x nan|nil|strings|outliers`
+- Example: `insyra clean x nil`
 
 ### `merge`
 - Description: Merge two DataTables
 - Usage: `merge <var1> <var2> <direction> <mode> [on <cols>] [as <var>]`
-- Example: `insyra merge x1 x2 inner strict`
+- Example: `insyra merge x1 x2 horizontal inner`
+- Directions: `horizontal`, `vertical`. Modes: `inner`, `outer`, `left`, `right`. `on` takes one or more key column names, separated by spaces.
 
 ### `groupby`
 - Description: Group a DataTable and aggregate columns (split-apply-combine)
@@ -311,7 +312,7 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `scale`
 - Description: Fit a reusable feature scaler and transform/inverse tables with it (stateful)
-- Usage: `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...>` / `scale transform|inverse <scalerVar> <tableVar> as <outVar>`
+- Usage: `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...> | scale transform|inverse <scalerVar> <tableVar> as <outVar>`
 - Examples: `insyra scale fit std sc train cols Age,Income` / `insyra scale transform sc test as test_scaled` / `insyra scale inverse sc pred as pred_original`
 - Full forms:
   - `scale fit std <scalerVar> <tableVar> cols <c1,c2,...>`
@@ -325,12 +326,12 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ### `ccl`
 - Description: Execute CCL statements on DataTable
 - Usage: `ccl <var> <expression>`
-- Example: `insyra ccl x <expression>`
+- Example: `insyra ccl x "NEW('total') = A + B"`
 
 ### `addcolccl`
 - Description: Add DataTable column using CCL
 - Usage: `addcolccl <var> <name> <expr>`
-- Example: `insyra addcolccl x name <expr>`
+- Example: `insyra addcolccl x total "A + B"`
 
 ## DataList Statistics
 ### `sum`
@@ -392,12 +393,13 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ### `percentile`
 - Description: DataList percentile
 - Usage: `percentile <var> <p>`
-- Example: `insyra percentile x 0.9`
+- Example: `insyra percentile x 90`
+- Note: `<p>` runs from 0 to 100, so `90` is the 90th percentile. `describe … percentiles` takes fractions such as `0.9` instead.
 
 ### `count`
 - Description: Count occurrences
-- Usage: `count <var> [value]`
-- Example: `insyra count x`
+- Usage: `count <var> <value>`
+- Example: `insyra count colors red`
 
 ### `counter`
 - Description: DataList frequency map
@@ -417,7 +419,8 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ### `corrmatrix`
 - Description: Correlation matrix for a DataTable
 - Usage: `corrmatrix <datatable> [pearson|kendall|spearman] [as <var>]`
-- Example: `insyra corrmatrix <datatable>`
+- Example: `insyra corrmatrix x as cm`
+- Side variable: `<alias>_p` (the p-values).
 
 ### `skewness`
 - Description: Skewness of a DataList
@@ -533,7 +536,8 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `rolling`
 - Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var, plus the paired `cov <other>` and `beta <other>`, which take the next token as a second DataList variable. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style). `beta` is Cov(var, other) / Var(other) and emits nil when the benchmark window is flat.
-- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]` / `rolling <var> <window> cov|beta <other> [minobs <n>] [center yes|no] [as <var>]`
+- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]`
+- Full forms: `rolling <var> <window> sum|mean|min|max|median|std|var [minobs <n>] [center yes|no] [as <var>]` / `rolling <var> <window> cov|beta <other> [minobs <n>] [center yes|no] [as <var>]`
 - Examples: `insyra rolling price 7 mean minobs 1 as ma7_soft` / `insyra rolling asset 20 beta benchmark minobs 10 as roll_beta`
 
 ### `ewm`
@@ -567,14 +571,14 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ## Modeling / Inference / Visualization / Fetch
 ### `regression`
 - Description: Regression analysis: linear/poly/exp/log/logistic/poisson
-- Usage: `regression <type> <y> <x...>`
+- Usage: `regression <type> <y> <x...> [as <var>]`
 - Examples: `insyra regression logistic y x1 x2 as fit` / `insyra regression poisson y x1 x2`
 - Full forms: `regression linear <y> <x1> [x2 ...] [as <var>]` / `regression poly <y> <x> <degree> [as <var>]` / `regression exp <y> <x> [as <var>]` / `regression log <y> <x> [as <var>]` / `regression logistic <y> <x1> [x2 ...] [as <var>]` / `regression poisson <y> <x1> [x2 ...] [as <var>]`
 
 ### `pca`
 - Description: Principal component analysis
-- Usage: `pca <var> <n>`
-- Example: `insyra pca x 3`
+- Usage: `pca <var> <n> [as <var>]`
+- Example: `insyra pca x 2 as pcs`
 
 ### `kmeans`
 - Description: K-means clustering
@@ -624,44 +628,45 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ### `ttest`
 - Description: T-test commands
 - Usage: `ttest single|two|paired ...`
-- Example: `insyra ttest single`
+- Example: `insyra ttest single x 3`
 - Full forms: `ttest single <var> <mu>` / `ttest two <var1> <var2> [equal|unequal]` / `ttest paired <var1> <var2>`
 
 ### `ztest`
 - Description: Z-test commands
 - Usage: `ztest single|two ...`
-- Example: `insyra ztest single`
+- Example: `insyra ztest single x 3 1`
 - Full forms: `ztest single <var> <mu> <sigma> [two-sided|greater|less]` / `ztest two <var1> <var2> <sigma1> <sigma2> [two-sided|greater|less]`
 
 ### `anova`
 - Description: ANOVA commands
 - Usage: `anova oneway|twoway|repeated ...`
-- Example: `insyra anova oneway`
+- Example: `insyra anova oneway g1 g2 g3`
 - Full forms: `anova oneway <group1> <group2> [group3...]` / `anova twoway <aLevels> <bLevels> <cell1> <cell2> ...` / `anova repeated <subject1> <subject2> ...`
 
 ### `ftest`
 - Description: F-test commands
 - Usage: `ftest var|levene|bartlett ...`
-- Example: `insyra ftest var`
+- Example: `insyra ftest var g1 g2`
 - Full forms: `ftest var <var1> <var2>` / `ftest levene <group1> <group2> [group3...]` / `ftest bartlett <group1> <group2> [group3...]`
 
 ### `chisq`
 - Description: Chi-square test commands
 - Usage: `chisq gof|indep ...`
-- Example: `insyra chisq gof`
+- Example: `insyra chisq gof colors`
 - Full forms: `chisq gof <var> [p1 p2 ...]` / `chisq indep <rowVar> <colVar>`
+- `gof` counts how often each value occurs in the DataList and tests those counts against the expected proportions, which are equal unless `p1 p2 ...` are given.
 
 ### `plot`
 - Description: Create charts from variables
-- Usage: `plot <type> <var> [options...] [save <file>]`
+- Usage: `plot <type> <var> [save <file>]`
 - Example: `insyra plot line x`
 - Types: `line`, `bar`, `scatter`; default output is `<type>.html` unless `save <file>` is specified.
 
 ### `fetch`
 - Description: Fetch external data
-- Usage: `fetch yahoo <ticker> <method> [params...] [as <var>]` / `fetch tw [<code>] <form> [args...] [as <var>]`
+- Usage: `fetch yahoo|tw ... [as <var>]`
 - Example: `insyra fetch yahoo AAPL quote`
-- Yahoo methods: `quote`, `info`, `history`, `dividends`, `splits`, `actions`, `options`, `news [count]`, `calendar`, `fastinfo`.
+- Yahoo form: `fetch yahoo <ticker> <method> [params...] [as <var>]`. Methods: `quote`, `info`, `history`, `dividends`, `splits`, `actions`, `options`, `news [count]`, `calendar`, `fastinfo`.
 - Taiwan (TWSE/TPEx) forms:
 	- `fetch tw <code> prices <from> <to> [twse|tpex|auto] [as <var>]` — `DailyPrices`
 	- `fetch tw <code> adjprices <from> <to> [twse|auto] [as <var>]` — `DailyPricesAdjusted`, adds `AdjFactor` and adjusted OHLC
@@ -700,3 +705,11 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - `periods`, `days`, and `confidence` are required positionals; `rf`, `mar`, `q` default to 0 and the VaR method to `historical`.
 - Scalar forms print `name=value` and store a float64 under `as <var>` (or `$result`); `capm` and `bs` store a one-row DataTable, `factor` stores one row per factor plus `<var>_alpha`, `drawdown` stores a DataList.
 - `portfolio` and `frontier` take a **DataTable** of aligned per-period returns (one column per asset), not a DataList. `min`/`max` are comma-separated per-asset bounds in column order, default long-only `[0, 1]`; a list whose length does not match the column count is refused before the solver runs. A non-converged solve is reported as `converged=false`, not as an error.
+
+## GPU Acceleration
+### `accel`
+- Description: Inspect acceleration backends, cache state, and planning reports
+- Usage: `accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]`
+- Examples: `insyra accel devices` / `insyra accel plan --mode cpu`
+- `devices` lists the detected devices or says why none were found. `cache` loads this session's variables into the device cache and reports what is resident. `plan` shows how work would be split across the selected devices, without running anything.
+- `--mode` overrides the `accel-mode` config value for one call, and with neither set the mode is `auto`. `--precision` is accepted, but none of the three actions reads it: it set the precision of `accel run`, which has been removed.

@@ -1,6 +1,6 @@
 ﻿# Insyra CLI Command Usage (Full)
 
-Generated from `insyra help` + `insyra help <command>` in current repository state.
+Each Usage line is the command's own `insyra help <command>` text, and a test in `cli/commands` fails when one stops matching. Where a Usage shortens a command's shapes to `...`, the lines under it spell them out.
 
 For expanded subcommand forms and practical examples, see `cli-command-guide.md`.
 
@@ -24,6 +24,17 @@ Commands that take a "value" argument (`addcol`, `set`, `shift ... fill ...`, `r
 Because the float row dispatches through Go's `strconv.ParseFloat`, the tokens `nan`/`inf`/`infinity` are recognised as IEEE-754 special values, **not** as literal strings. If you genuinely need the string `"nan"` itself, pick a different token (e.g. `missing`).
 
 This is separate from boolean-flag parsing used by option arguments like `headers true|false`, `center yes|no`, `rownames 1|0` — those accept only `yes/no/on/off/1/0/true/false`.
+
+## `accel`
+- Description: Inspect acceleration backends, cache state, and planning reports
+- Usage: `accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]`
+- Actions:
+	- `accel devices` — list the detected devices, or say why none were found.
+	- `accel cache` — load this session's variables into the device cache and report what is resident.
+	- `accel plan` — show how work would be split across the selected devices, without running anything.
+- Notes:
+	- `--mode` overrides the `accel-mode` config value for one call. With neither set, the mode is `auto`.
+	- `--precision` is accepted, but none of the three actions reads it. It set the precision of `accel run`, which has been removed.
 
 ## `addcol`
 - Description: Add one column to DataTable
@@ -98,7 +109,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `count`
 - Description: Count occurrences
-- Usage: `count <var> [value]`
+- Usage: `count <var> <value>`
 
 ## `counter`
 - Description: DataList frequency map
@@ -183,7 +194,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `scale`
 - Description: Fit a reusable feature scaler and transform/inverse tables with it (stateful)
-- Usage: `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...>` / `scale transform|inverse <scalerVar> <tableVar> as <outVar>`
+- Usage: `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...> | scale transform|inverse <scalerVar> <tableVar> as <outVar>`
 - Full forms:
 	- `scale fit std <scalerVar> <tableVar> cols <c1,c2,...>`
 	- `scale fit minmax <scalerVar> <tableVar> range <min> <max> cols <c1,c2,...>`
@@ -220,7 +231,10 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `fetch`
 - Description: Fetch external data
-- Usage: `fetch yahoo <ticker> <method> [params...] [as <var>]` / `fetch tw [<code>] <form> [args...] [as <var>]`
+- Usage: `fetch yahoo|tw ... [as <var>]`
+- Full forms:
+	- `fetch yahoo <ticker> <method> [params...] [as <var>]`
+	- `fetch tw [<code>] <form> [args...] [as <var>]`
 - Supported yahoo methods:
 	- `quote`, `info`, `history`, `dividends`, `splits`, `actions`, `options`, `calendar`, `fastinfo`
 	- `news [count]` (default count = `10`)
@@ -311,9 +325,9 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `load`
 - Description: Load data into a DataTable variable from a file, parquet, or SQL connection
-- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query "<sql>" [...] [as <var>]`
 - File options (CSV / Excel):
-	- `headers true|false` — first row is column names. Default `true`. JSON ignores this option (warns on use); Excel respects it.
+	- `headers true|false` — first row is column names. Default `true`. Excel respects it. JSON takes no file options: `headers`, or any other option in this list, on a `.json` file is an error.
 	- `rownames true|false` — first column is row names. Default `false`.
 	- `encoding <enc>` — CSV-only read-side hint (e.g. `big5`, `gbk`). Auto-detect when omitted.
 	- `infer true|false` — CSV-only. `infer false` keeps every cell as its original string (no type inference; empty cells stay `""`). Default `true`.
@@ -324,6 +338,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - SQL options:
 	- Table form: `where "<expr>"`, `order "<expr>"`, `limit N`, `offset N`, `cols "c1,c2,..."`, `schema <s>`, `indexcol <c>`, `parsedates "c1,c2"`.
 	- Query form: only `params <v1> <v2> ...` (positional bind values, parsed as literals).
+- Parquet options: `cols <c1,c2,...>` reads only those columns, and `rowgroups <i1,i2,...>` reads only those row groups.
 
 ## `lower`
 - Description: Lowercase DataList strings
@@ -383,7 +398,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `pca`
 - Description: Principal component analysis
-- Usage: `pca <var> <n>`
+- Usage: `pca <var> <n> [as <var>]`
 
 ## `pctchange`
 - Description: Percent change over `periods` rows
@@ -451,12 +466,12 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `read`
 - Description: Quick preview a file without saving variable
-- Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>]`
+- Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>]`
 - Notes: forwards the file-side options to `load`; result is shown but not stored.
 
 ## `regression`
 - Description: Regression analysis: linear/poly/exp/log/logistic/poisson
-- Usage: `regression <type> <y> <x...>`
+- Usage: `regression <type> <y> <x...> [as <var>]`
 - Full forms:
 	- `regression linear <y> <x1> [x2 ...] [as <var>]`
 	- `regression poly <y> <x> <degree> [as <var>]`
@@ -486,7 +501,10 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `rolling`
 - Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var, plus `cov <other>` and `beta <other>` against a second DataList. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style).
-- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]` / `rolling <var> <window> cov|beta <other> [minobs <n>] [center yes|no] [as <var>]`
+- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]`
+- Full forms:
+	- `rolling <var> <window> sum|mean|min|max|median|std|var [minobs <n>] [center yes|no] [as <var>]`
+	- `rolling <var> <window> cov|beta <other> [minobs <n>] [center yes|no] [as <var>]`
 
 ## `row`
 - Description: Extract DataTable row as DataList
@@ -510,7 +528,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `save`
 - Description: Save a DataTable variable to a file or SQL connection
-- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]`
 - File options (CSV):
 	- `headers true|false` — write column names as the first row. Default `true`.
 	- `rownames true|false` — write row names as the first column. Default `false`.
@@ -522,7 +540,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 	- `if-exists fail|replace|append` (default: `fail`)
 	- `batch N` — INSERT batch size
 	- `schema <s>` — target schema (mysql/postgres)
-	- `rownames` — flag, write the DataTable row names as an extra column
+	- `rownames [true|false]` — write the row names as an extra column. A bare `rownames` means `true`.
 
 ## `set`
 - Description: Set single element in DataTable

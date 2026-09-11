@@ -253,6 +253,18 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-11] — `count`, `find` and `replace` in the CLI never match an integer
+- **Where**: `cli/commands/helpers.go` `parseLiteral`, and the commands that compare with what it returns: `count` (`stats_dl_extra.go`), `find` (`find.go`), `replace`
+- **What**: `parseLiteral` turns `3` into a Go `int`, but the values those commands compare against are `int64`: CSV inference produces `int64`, and every variable restored from an environment comes back as `int64`. The library compares with `==`, and inside an `any`, `int(3) == int64(3)` is false. So on data that plainly contains 3, `count x 3` prints `0`, `find x 3` prints `[]`, and `replace x 3 0` prints `replaced` and changes nothing. Strings, floats and `nil` are unaffected. Measured in one-shot mode on 2026-09-11. The Go API is not affected on its own: `NewDataList(1, 2, 1)` stores `int`, and `Count(1)` returns 2.
+- **Suggestion**: have `parseLiteral` return `int64`, the type the CLI's data already uses, so `newdl` stores what a CSV load or a restore would. Making the library's comparison numeric-aware would also cover Go callers who mix `int` and `int64`, but it changes library semantics and is a separate decision. Found while fixing #321; the guide's examples use string values until this is fixed.
+- **Status**: pending
+
+### [2026-09-11] — CLI arguments that are accepted and then ignored
+- **Where**: `cli/commands/accel.go` (`--precision`, extra positionals), `cli/commands/stats_dl.go` `makeDLNumberPrinter`
+- **What**: `accel` parses `--precision` into a field nothing reads. It belonged to `accel run`, removed in v0.3.1; batch 7 then registered it with Cobra and put it in the Usage, so `help accel` advertises it. `accel devices foo` ignores `foo`. The DataList statistics (`sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`) read `args[0]` and drop the rest, so `mean x as m` prints the mean and stores nothing. cli/AGENTS.md says an argument a command does not understand is an error.
+- **Suggestion**: remove `--precision` (its Cobra registration never shipped, so one-shot users lose nothing they had) and reject extra arguments in all of these. Decide them together: rejecting stray positionals is what makes the removed flag fail loudly in the REPL instead of being ignored.
+- **Status**: pending
+
 ### [2026-09-10] — a nil `*DataList` / `*DataTable` panics even on `Err()`
 - **Where**: `datalist.go` `Err()`, `datatable.go` `Err()`
 - **What**: the library's stated principle is that it never terminates by default, but its own error accessor is a bare field read on a pointer receiver, so `dl.Err()` on a nil `dl` panics. That makes "ask what went wrong" the thing that crashes. It surfaced while fixing `ml`/`nn`'s `Classes()`, which used to hand out exactly such a nil; three independent analyses of that change landed on this as the underlying flaw rather than the ten methods.
