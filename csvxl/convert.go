@@ -150,10 +150,19 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 	// filter it against `sheetsInXlsx` to only process existing sheets.
 	var sheetsToProcess []string
 	if len(onlyContainSheets) > 0 {
+		// A name that is not in the file used to be dropped without a word, so
+		// a typo produced a smaller conversion that looked like it had worked.
+		var missing []string
 		for _, s := range onlyContainSheets {
 			if sliceutil.Contains(sheetsInXlsx, s) {
 				sheetsToProcess = append(sheetsToProcess, s)
+			} else {
+				missing = append(missing, s)
 			}
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("sheet(s) %s are not in %s (it has %s)",
+				strings.Join(missing, ", "), excelFile, strings.Join(sheetsInXlsx, ", "))
 		}
 	} else {
 		sheetsToProcess = sheetsInXlsx

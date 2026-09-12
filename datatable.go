@@ -42,6 +42,8 @@ type DataTable struct {
 	lastError *ErrorInfo
 }
 
+// NewDataTable creates a DataTable from the given columns, in order. A column
+// whose name collides with an earlier one is renamed with a numeric suffix.
 func NewDataTable(columns ...*DataList) *DataTable {
 	now := time.Now().Unix()
 	newTable := &DataTable{
@@ -153,7 +155,7 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable {
 	return dt
 }
 
-// AppendRowsByIndex appends rows to the DataTable, with each row represented by a map of column index and value.
+// AppendRowsByColIndex appends rows to the DataTable, with each row represented by a map of column index and value.
 // If the rows are shorter than the existing columns, nil values will be appended to match the length.
 // If the rows are longer than the existing columns, the existing columns will be extended with nil values.
 func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable {
@@ -283,6 +285,9 @@ func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any {
 	return result
 }
 
+// GetElementByNumberIndex returns the cell at the given row and column numbers,
+// both 0-based. A negative index counts back from the end. An index outside the
+// table records the failure on Err() and returns nil.
 func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any {
 	var result any
 	dt.AtomicDo(func(dt *DataTable) {
@@ -331,6 +336,10 @@ func (dt *DataTable) GetCol(index string) *DataList {
 	return result
 }
 
+// GetColByNumber returns a copy of the column at the given 0-based number. A
+// negative index counts back from the end. Out of range records the failure on
+// Err() and returns nil. The result is a copy: appending to it does not change
+// the table.
 func (dt *DataTable) GetColByNumber(index int) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
@@ -349,6 +358,9 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 	return result
 }
 
+// GetColByName returns a copy of the column with the given name, or nil when
+// there is none, recording the failure on Err(). The result is a copy:
+// appending to it does not change the table.
 func (dt *DataTable) GetColByName(name string) *DataList {
 	result := dt.colByNameSilently(name)
 	if result == nil {
@@ -444,6 +456,8 @@ func (dt *DataTable) GetRow(index int) *DataList {
 	return result
 }
 
+// GetRowByName returns the row with the given name as a DataList, or nil when
+// there is none, recording the failure on Err().
 func (dt *DataTable) GetRowByName(name string) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
@@ -1282,6 +1296,8 @@ func (dt *DataTable) DropRowsContainExcelNA() *DataTable {
 
 // ======================== Data ========================
 
+// Data returns a copy of every column, keyed by column name when the column has
+// one and by Excel-style index otherwise. Pass false to key by index throughout.
 func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 	var result map[string][]any
 	dt.AtomicDo(func(dt *DataTable) {
@@ -1356,6 +1372,8 @@ func (dt *DataTable) Size() (numRows int, numCols int) {
 	return rows, cols
 }
 
+// NumRows returns the length of the longest column, which is how many rows the
+// table has when its columns are ragged.
 func (dt *DataTable) NumRows() int {
 	var numRows int
 	dt.AtomicDo(func(dt *DataTable) {
@@ -1364,6 +1382,7 @@ func (dt *DataTable) NumRows() int {
 	return numRows
 }
 
+// NumCols returns the number of columns.
 func (dt *DataTable) NumCols() int {
 	var numCols int
 	dt.AtomicDo(func(dt *DataTable) {
@@ -1649,10 +1668,13 @@ func (dt *DataTable) updateTimestamp() {
 	}
 }
 
+// GetCreationTimestamp returns when the table was created, as Unix seconds.
 func (dt *DataTable) GetCreationTimestamp() int64 {
 	return dt.creationTimestamp
 }
 
+// GetLastModifiedTimestamp returns when the table was last changed, as Unix
+// seconds. Two changes within the same second are indistinguishable.
 func (dt *DataTable) GetLastModifiedTimestamp() int64 {
 	return dt.lastModifiedTimestamp.Load()
 }

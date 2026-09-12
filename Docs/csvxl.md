@@ -102,6 +102,8 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 
 Each sheet becomes `<outputDir>/<sheet>.csv` (or the matching `csvNames` entry). A sheet name that cannot be a single file name — it contains `/`, `\` or is `..` — is rejected with an error before any file is touched, because sheet names come from the workbook and could otherwise escape `outputDir`. Each CSV is read fully from the sheet first and written through a temporary file, so a failing sheet never truncates an existing CSV.
 
+A name in `onlyContainSheets` that the workbook does not have is an error naming the sheets it does have, rather than a sheet that quietly does not appear in the output.
+
 ```go
 ```
 

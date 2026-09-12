@@ -68,7 +68,7 @@ func (dt *DataTable) ToJSON(filePath string, useColNames bool) error {
 	})
 }
 
-// ToJSON_Byte converts the DataTable to JSON format and returns it as a byte slice.
+// ToJSON_Bytes converts the DataTable to JSON format and returns it as a byte slice.
 // The function accepts one parameter:
 // - useColName: if true, the column names will be used as keys in the JSON object, otherwise the column index(A, B, C...) will be used.
 // Every row will be a JSON object with the column names as keys and the row values as values.
@@ -78,7 +78,7 @@ func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte {
 
 	jsonData, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
-		dt.fail("ToJSON_Byte", "%v", err)
+		dt.fail("ToJSON_Bytes", "%v", err)
 		return nil
 	}
 

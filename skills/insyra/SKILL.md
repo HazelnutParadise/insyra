@@ -999,6 +999,9 @@ Note: not every structure in `engine` is concurrent-safe by itself (e.g., `BiInd
 ## References (quick lookup)
 - `references/ccl-operators.md` - CCL operators, ranges, row access, quoting rules, and edge-case notes.
 - `references/window-functions.md` - Rolling `Cov`/`Beta`, `EWM` options and reducers, and `DataTable.Resample` semantics.
+- `references/stats.md` - which test to use, what every result type holds, and the places `stats` answers something surprising.
+- `references/plotting.md` - `plot` vs `gplot`, what data shape each chart takes, which save path needs a browser.
+- `references/ml-decision-tree.md` - how the decision tree splits and what its options mean.
 
 ## Insyra docs via MCP (recommended for agents)
 If you want up-to-date Insyra documentation inside an MCP-capable client, prefer these:

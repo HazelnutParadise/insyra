@@ -14,13 +14,10 @@ bar_with_colors.png
 output_pie_chart_datalist.html
 line.html
 .DS_Store
-/.insyra_py_env
 *.lp
 lingo.txt
 *.csv
-/.insyra_py25a
 /local
-/insyra_py25b
 .insyra_env/
 
 # generated docs: keep sidebar out of repo

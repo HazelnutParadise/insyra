@@ -79,6 +79,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `kmeans` 與 `knn` 的選項鍵不分大小寫——`NSTART 3` 可以用了——未知的選項會列出有哪些。`knn` 的 `weighting` 與 `algorithm` 會先對照允許的值，不再把字串直接往下傳，所以拼錯會在這裡被擋下，而不是變成函式庫收到一個不認識的模式。
 - `clone`、`replace`、`clean`、`fillna`、`count` 能分辨「變數不存在」與「變數存在但型別不對」。五個過去都對明明就在的變數說「variable not found」，害人去找一個根本不存在的拼字錯誤。
 - `help` 的表格依最長的指令名稱對齊，`knn_neighbors` 不再把描述擠歪；`read` 與 `env` 補上 Forms 與 Examples——`env` 有九個子指令，過去一個都沒列。
+- `read sales.csv as x` 會告訴你該怎麼做，不再回答 `unknown option "as"`。`read` 只做預覽，內部自己補了一個別名，使用者再給一個就變成第二個 `as`，抱怨的地方完全不對。現在的訊息是「read only previews a file. Use `load sales.csv as <var>` to keep it」。
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外——也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。另外 `ml/mltest.RunConformance` 現在會判定「`Classes()` 回傳 nil」的實作不合格，而不是自己 panic——因為 `ml.Classifier` 是公開介面，函式庫外部的程式也能實作它。
 
@@ -96,6 +97,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 修正 `AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv` 開啟的工作簿從未關閉。
 - 錯誤改用 `%w` 包裝底層原因（`errors.Is(err, os.ErrNotExist)` 可用），輸出目錄改以 0755 建立而不是 0777。
 - `ExcelToCsv` 與 `EachExcelToCsv` 拒絕無法當單一檔名的工作表名稱（`../x`、`a/b`），惡意 workbook 過去可藉此截斷輸出目錄外的檔案；每張 CSV 先讀完工作表再經暫存檔寫入。
+- `ExcelToCsv` 遇到 `onlyContainSheets` 裡工作簿沒有的名稱會回報錯誤，並列出檔案實際有哪些工作表。名稱拼錯過去會被靜默略過，轉出來的檔案少了幾張，看起來卻像成功。
 
 ### `parquet`
 - 修正 `ReadColumnOptions.MaxValues` 完全沒有作用。`ReadColumn` 現在先從檔案 metadata 加總所選 row group 的列數，超過上限時在讀取任何資料前就拒絕，這才是該欄位文件寫的行為。

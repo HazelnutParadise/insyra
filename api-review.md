@@ -91,7 +91,7 @@
 | C-5 | ~~Low~~ 已修正（batch 3） | 錯誤用 `%v` 包裝，呼叫端無法 `errors.Is(err, os.ErrNotExist)`；`read_csv.go` 已用 `%w`，套件內不一致 | convert.go 全檔 | 改 `%w` |
 | C-6 | Low | `UTF8/Big5/Auto` 是裸 string 常數，而實際比對用 `strings.Contains`，任何字串都會被接受 | convert.go:22-26 | typed `Encoding` string 型別 |
 | C-7 | ~~Low~~ 已修正（batch 3） | 目錄用 `os.ModePerm`（0777）建立 | convert.go:143; convertDir.go:50 | 0755 |
-| C-8 | Low | 路徑沒有 `.csv` 結尾就自動補；`ExcelToCsv` 的 `onlyContainSheets` 指到不存在的 sheet 靜默略過；`EachExcelToCsv` log 標錯函式名 | convert.go:44, 158-164; convertDir.go:62 | 不補副檔名（或改 doc）；找不到的 sheet 回錯；修 log |
+| C-8 | Low（部分已修正：docs-hygiene-and-remaining-partials 補上不存在 sheet 回錯與 log 名稱；自動補 `.csv` 待決策） | 路徑沒有 `.csv` 結尾就自動補；`ExcelToCsv` 的 `onlyContainSheets` 指到不存在的 sheet 靜默略過；`EachExcelToCsv` log 標錯函式名 | convert.go:44, 158-164; convertDir.go:62 | 不補副檔名（或改 doc）；找不到的 sheet 回錯；修 log |
 | C-10 | Med | 全套件只吃檔案路徑，沒有 `io.Reader`/`io.Writer` 版本：記憶體中的 CSV、HTTP 回應、`embed.FS` 都得先落地成檔案才能轉（準則 8、10） | 全套件 | 核心改成 Reader/Writer，路徑版當薄包裝 |
 | C-11 | Med | `CsvToExcel(csvFiles, sheetNames, ...)` 用兩個平行切片靠索引對位，錯一格就對到別的 sheet；`ExcelToCsv(…, csvNames, onlyContainSheets...)` 同樣問題（準則 4、8） | convert.go:31, 135 | `[]SheetSpec{Path, Sheet}` 一個切片 |
 | C-12 | Low | 命名不符 Go 慣例：`Csv` 應為 `CSV`；`EachCsvToOneExcel` 讀起來要想一下（「每個 CSV 到一個 Excel」）；doc comment 缺 Go 風格開頭（準則 3、9、E） | 全套件 | v1 前統一改名 |
@@ -119,8 +119,8 @@
 | Q-6 | Low | `FilterWithCCL` / `ApplyCCL` batchSize 寫死 1000，無法調 | ccl.go:456, 577 | 選項或常數說明 |
 | Q-8 | Med | 所有函式只吃路徑；Arrow reader 本來就吃 `io.ReaderAt`，卻沒有暴露 `ReadFrom(r io.ReaderAt, size)` / `WriteTo(w io.Writer)`，S3、HTTP、記憶體來源都得先落地（準則 8、10） | api.go 全檔 | 加 Reader/Writer 版本，路徑版包裝它 |
 | Q-9 | Low | `Stream` 回傳兩個 channel 是 Go 1.23 之前的寫法；`iter.Seq2[*DataTable, error]` 讓 `for dt, err := range` 直接用，也自然解決 Q-7 的洩漏契約（準則 8） | api.go:246 | 改 `iter.Seq2`，舊簽名保留一版 |
-| Q-10 | Low | doc comment 是「Read: read …」冒號風格，不是 Go 的「Read reads …」；`FileInfo`、`ColumnInfo`、`RowGroupInfo` 無 doc（準則 E） | api.go | 補齊 |
-| Q-7 | Low | `Stream` 若消費者中途停止讀取又不 cancel ctx，producer goroutine 永久阻塞在 send；doc 沒寫「必須 drain 或 cancel」。記錄不會遺失（unbuffered channel，已推演 close 順序） | api.go:246-286 | doc 明講使用契約 |
+| Q-10 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials） | doc comment 是「Read: read …」冒號風格，不是 Go 的「Read reads …」；`FileInfo`、`ColumnInfo`、`RowGroupInfo` 無 doc（準則 E） | api.go | 補齊 |
+| Q-7 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials：doc 寫明 drain 或 cancel 契約） | `Stream` 若消費者中途停止讀取又不 cancel ctx，producer goroutine 永久阻塞在 send；doc 沒寫「必須 drain 或 cancel」。記錄不會遺失（unbuffered channel，已推演 close 順序） | api.go:246-286 | doc 明講使用契約 |
 
 ### core — 基礎層（version, config, logger, error_buffer, atomic, interfaces, utils, read）
 
@@ -198,7 +198,7 @@
 | T-19 | ~~Med~~ 已修正（batch 3） | `FindColsIfContains`／`FindColsIfContainsAll` 用 `FindFirst != nil` 判斷，每個不含該值的欄都會觸發一次 warn 進 `Err()`（D-5 跨欄放大）；`FindRowsIfAllElementsContainSubstring` 把非字串格子視為「符合」，全數字的列會被當作符合（準則 13） | datatable.go:652-690, 626-650 | 內部用不設 Err 的查找；非字串視為不符 |
 | T-20 | Low（doc 部分見 T-11） | `replace` 系列的 `mode ...int` 用 0/1/-1 魔數當 variadic 選項；`ReplaceInCol` doc 說「index or name」實作只吃索引（T-11）；NaN 判定 InRow/InCol 只認 float64，表層版用 `isNilOrNaN` 認 float32（準則 8、E） | datatable_replace.go 全檔 | typed `ReplaceMode`；統一 `isNilOrNaN` |
 | T-21 | Low | 13 個 `FilterColsByColIndexGreaterThan…`／`FilterRowsByRowIndexLessThanOrEqualTo…` 長名方法做的是切片，pandas 是 `iloc[a:b]`；`Headers`／`SetHeaders` 是 `ColNames`／`SetColNames` 的別名；`Counter` 與 DataList 重複；`SimpleRandomSample` 已 Deprecated（準則 1） | datatable_filters.go；datatable_colname.go:159, 187 | 收斂成 `SliceRows(from, to)`／`SliceCols(from, to)`，舊的標 Deprecated |
-| T-22 | Low | 缺 doc：`NewDataTable`、`GetElementByNumberIndex`、`GetColByNumber`、`GetColByName`、`GetRowByName`、`NumRows`、`NumCols`、`Data`、`GetCreationTimestamp`、`GetLastModifiedTimestamp`、colname.go 前 6 個方法。`AppendRowsByColIndex` doc 標題寫成 `AppendRowsByIndex`；`ToJSON_Bytes` 的 Err 記成 `ToJSON_Byte`（準則 E） | 各檔 | 補 |
+| T-22 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials） | 缺 doc：`NewDataTable`、`GetElementByNumberIndex`、`GetColByNumber`、`GetColByName`、`GetRowByName`、`NumRows`、`NumCols`、`Data`、`GetCreationTimestamp`、`GetLastModifiedTimestamp`、colname.go 前 6 個方法。`AppendRowsByColIndex` doc 標題寫成 `AppendRowsByIndex`；`ToJSON_Bytes` 的 Err 記成 `ToJSON_Byte`（準則 E） | 各檔 | 補 |
 | T-23 | Low | `SortBy` 的 `DataTableSortConfig` 零值 `ColumnNumber: 0` 無法與「沒指定」區分，空 config 會默默用第 0 欄排序；找不到欄時只 `LogWarning` 不設 Err | datatable_sort.go:7-40 | `ColumnNumber` 改 `*int` 或加 `HasColumnNumber` |
 | T-24 | OK | 設計較好、可當範本的部分：`Resample` 回傳 `error`；`Pivot`／`Unpivot` 同時回 error 與設 `Err()`；`GroupBy`／`Aggregate` 的 options struct 與 `AggregateOp.String()`；`SamplingOptions` 有 seed；`SummaryTo(io.Writer)`；Rolling／EWM 的表層包裝。這些是 v1 API 該長的樣子 | — | — |
 
@@ -238,7 +238,7 @@
 | ST-5 | Med | 結果型別的共同部分 `testResultBase` 未匯出：`Statistic`、`PValue`、`DF`、`CI`、`EffectSizes` 被提升可用，但使用者無法寫一個接受「任何檢定結果」的函式，也無法用介面判斷；`TTestResult.Mean *float64` 與 `ZTestResult.Mean float64` 選填欄位一個用指標一個不用（準則 3、6） | stats/structs.go；ttest.go:13；ztest.go:10 | 匯出 `TestResult` 基底或定義 `interface{ Stat() float64; P() float64 }` |
 | ST-6 | Med | `ChiSquareTestResult.ContingencyTable` 的每格是 `[2]float64{observed, expected}` 陣列塞進 DataTable，全套件沒有其他 API 能處理這種格子，`Show` 印出 `[5 4.5]`；`ChiSquareGoodnessOfFit` 的 `p` 依「類別字串排序後」的順序對位，doc 自己標了 IMPORTANT 警告（準則 5、7） | stats/chi_square.go:14-19, 60-70 | 拆成 `Observed`、`Expected` 兩張表；GoF 改收 `map[string]float64` |
 | ST-7 | Med | `TwoWayANOVA(aLevels, bLevels int, cells ...IDataList)` 要使用者自己按 row-major 排 a×b 個 cell，pandas／R 收長格式加因子欄；`RepeatedMeasuresANOVA(subjects ...)`、`FriedmanTest(subjects ...)` 每個受試者一個 list，同樣不是資料表的自然形狀（準則 5） | stats/anova.go:112, 253；nonparam_friedman.go:36 | 加收 `(dt, valueCol, factorCols...)` 的長格式入口 |
-| ST-8 | Low（batch 2 評估後保留：z 檢定的 R 對照測試釘住 |d|，改符號會違反參考值） | 效應量正負號：t 檢定保留方向（註解說 paired 已修），z 檢定用 `math.Abs` 丟掉方向；`SingleSampleTTest` 常數資料回 NaN／Inf 統計量與 p=0 沒有寫進 doc（準則 6、E） | stats/ztest.go:57, 122；ttest.go:76-108 | 統一保留方向；補 doc |
+| ST-8 | ~~Low~~ 已修正（batch 2 決定保留 z 檢定的 |d|；doc 由 docs-hygiene-and-remaining-partials 補齊） | 效應量正負號：t 檢定保留方向（註解說 paired 已修），z 檢定用 `math.Abs` 丟掉方向；`SingleSampleTTest` 常數資料回 NaN／Inf 統計量與 p=0 沒有寫進 doc（準則 6、E） | stats/ztest.go:57, 122；ttest.go:76-108 | 統一保留方向；補 doc |
 | ST-9 | Low（另：`Docs/stats.md` 沒有 `TwoSampleZTest` 章節） | `Show()` 只在 `ChiSquareTestResult` 與 `FactorAnalysisResult` 上有，其餘結果型別沒有，也沒有 `io.Writer` 版本；`FactorAnalysisResult` 15 個 `IDataTable` 欄位（K-7）；`Diag(x any, dims ...int) (any, error)` 進出都是 `any`（準則 8） | chi_square.go:21；factor_analysis.go:180；diag.go:11 | 統一 `String()`；Diag 拆成 `DiagOf(*mat.Dense)`／`DiagMatrix([]float64)` |
 | ST-10 | OK | 做得好的部分：regression／GLM／clustering／KNN／PCA／non-parametric 全部先驗證輸入再計算、回 error、結果 struct 欄位齊全且對 R 驗證；`numericinput.go` 的說明是本專案最清楚的設計文件之一；`RegisterKNNDeviceSearcher` 讓 accel 反向掛入而不讓 stats 依賴 accel | — | — |
 
@@ -376,7 +376,7 @@
 | CLI-18 | ~~Low~~ 已修正（cli-message-and-help-fixes） | `help` 表格 `%-12s`，`knn_neighbors`（13 字）錯位；`help` 直接讀 `Registry` 未取 `registryMu`；`read`、`env` 沒有 Forms／Examples（`env` 有 9 個子命令） | help.go:19, 39-48；read.go:6-11；env.go:10-16 | `%-14s`；上讀鎖；補 Forms |
 | CLI-19 | ~~Low~~ 已修正（cli-message-and-help-fixes） | `clone`／`replace`／`clean`／`fillna`／`count` 對「變數存在但型別不對」回報「variable not found」 | clone.go:30；replace.go:49；clean.go:63；fillna.go:110；stats_dl_extra.go:78 | 先判存在再 type switch，訊息區分 |
 | CLI-20 | Low | `exit`／`quit` 註冊為指令但只在 REPL 攔截；one-shot `insyra exit` 與 `.isr` 內的 `exit` 都是 no-op（實測 `run s2.isr` 含 `exit` 仍繼續執行）；cli-command-guide.md:19 給了 `insyra exit` 當範例 | exit.go:1-13；run.go:40；repl.go:82-84 | `run` 支援 `exit` 提前結束；或文件說明 |
-| CLI-21 | Low | `save` 不支援 `.xlsx`（實測 → `unsupported output file type`），但 `load` 能讀 excel、`convert` 能 csv→xlsx；`read <file> as x` 被 `load` 以「unknown option "as"」拒絕，訊息誤導 | save.go:54-69；read.go:18-19 | `save` 加 excel 分支；`read` 對 `as` 給專屬訊息 |
+| CLI-21 | Low（部分已修正：docs-hygiene-and-remaining-partials 讓 `read` 對 `as` 給專屬訊息；`save` 加 excel 分支待決策） | `save` 不支援 `.xlsx`（實測 → `unsupported output file type`），但 `load` 能讀 excel、`convert` 能 csv→xlsx；`read <file> as x` 被 `load` 以「unknown option "as"」拒絕，訊息誤導 | save.go:54-69；read.go:18-19 | `save` 加 excel 分支；`read` 對 `as` 給專屬訊息 |
 
 ### CCL 語言（第二輪，語意探測 120 餘條、fuzz 130 餘條、-race）
 
@@ -506,11 +506,11 @@
 | RP-3 | ~~Med~~ 已修正（ci-hygiene；24 個檔案全部排版，`stats/internal/fa` 也一起，不另設例外） | `gofmt -l .` 有 6 個非 vendored 檔案未格式化（`allpkgs/allpkgs.go`、`benchmark/datalist_bench_test.go`、`datatable_batch2_test.go`、`datatable_groupby.go`、`py/init.go`、`stats/internal/clustering/dispatch_coverage_test.go`），CI 抓不到：沒有 `gofmt -l` 步驟，`.golangci.yml`（v2）沒有 `formatters:` 區塊 | `.golangci.yml:3-8` | `.golangci.yml` 加 `formatters: enable: [gofmt]`，或 CI 加 gofmt 檢查（排除 `stats/internal/fa`） |
 | RP-4 | ~~Med~~ 已修正（ci-hygiene；`-race` 在 ubuntu、覆蓋率在 macOS，兩者疊在同一條會讓 clustering 超過 10 分鐘逾時） | `test.yml` 沒有 `-race`、沒有覆蓋率、沒有獨立 `go vet` 步驟；三個 OS 都只跑 `go test -v ./...`，跨語言驗證在三個 OS 上都靜默 skip（已由 `reference-verification.yml` 補強，屬已知） | `.github/workflows/test.yml:20-25` | ubuntu leg 加 `-race`；加 `go vet ./...` 步驟 |
 | RP-5 | ~~Med~~ 已修正（ci-hygiene；`persist-credentials` 改成 `false`，只刪那一行不會有效果，因為預設就是 `true`） | `deploy-docs.yml` 用 `persist-credentials: true` 但實際用的是 `peaceiris/actions-gh-pages` 自帶 token；其餘 6 個 workflow 完全沒有 `permissions:` block，用 repo 預設權限 | `.github/workflows/deploy-docs.yml:19`；其他 workflow | 拿掉 `persist-credentials: true`；每個 workflow 補 `permissions: contents: read` |
-| RP-6 | Low | Action 版本沒有統一釘版：`checkout@v4`／`@v5`、`setup-go@v5`／`@v6` 混用；`golangci-lint-action` 寫 `version: latest`，lint 結果不可重現 | `.github/workflows/golangci-lint.yml:20` 等 | 統一 major 版本；`version` 改明確版號 |
+| RP-6 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials） | Action 版本沒有統一釘版：`checkout@v4`／`@v5`、`setup-go@v5`／`@v6` 混用；`golangci-lint-action` 寫 `version: latest`，lint 結果不可重現 | `.github/workflows/golangci-lint.yml:20` 等 | 統一 major 版本；`version` 改明確版號 |
 | RP-7 | Low | `clustering-parity.yml`、`knn-parity.yml`、`reference-verification.yml` 各自重複貼一模一樣的 Python/R 安裝步驟 | 三檔 `:20-31` 等段 | 抽成 composite action |
 | RP-8 | Low | `.golangci.yml` 只啟用 5 個預設 linter，沒開 `gosec`、`unparam`、`bodyclose` 等；本專案有 SQL builder、chromedp 等外部輸入面 | `.golangci.yml` | 評估加開 `gosec`、`unparam` |
-| RP-9 | Low（`*.test` 已加入 batch 4；舊項目待清） | `.gitignore` 含過期項目 `/.insyra_py_env`、`/.insyra_py25a`、`/insyra_py25b`，目前 `py/const.go:12` 用 `.insyra_env/py25c_…`（已被 `.insyra_env/` 涵蓋） | `.gitignore`；`py/const.go:12` | 清掉三行舊命名 |
-| RP-14 | Low | `skills/insyra/references/` 只有 3 份主題式檔案，`stats`、`plot`、`gplot`、`parquet`、`mkt`、`finance`、`lp`、`py`、`pd`、`parallel`、`accel` 沒有專屬深挖段落，覆蓋深度不一 | `skills/insyra/references/`；`skills/insyra/SKILL.md` | 為常用套件（`stats`、`plot`）補 reference 檔 |
+| RP-9 | ~~Low~~ 已修正（`*.test` batch 4；三行舊命名 docs-hygiene-and-remaining-partials） | `.gitignore` 含過期項目 `/.insyra_py_env`、`/.insyra_py25a`、`/insyra_py25b`，目前 `py/const.go:12` 用 `.insyra_env/py25c_…`（已被 `.insyra_env/` 涵蓋） | `.gitignore`；`py/const.go:12` | 清掉三行舊命名 |
+| RP-14 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials：補 `stats`、`plotting` 兩份並列進 SKILL.md） | `skills/insyra/references/` 只有 3 份主題式檔案，`stats`、`plot`、`gplot`、`parquet`、`mkt`、`finance`、`lp`、`py`、`pd`、`parallel`、`accel` 沒有專屬深挖段落，覆蓋深度不一 | `skills/insyra/references/`；`skills/insyra/SKILL.md` | 為常用套件（`stats`、`plot`）補 reference 檔 |
 
 
 ## Issue 對照（2026-09-06）

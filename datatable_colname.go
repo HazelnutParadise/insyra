@@ -1,5 +1,8 @@
 package insyra
 
+// SetColNameByIndex names the column at the given Excel-style index ("A", "B",
+// ...). A name another column already has gets a numeric suffix. Returns the
+// receiver.
 func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -24,6 +27,8 @@ func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable {
 	return result
 }
 
+// SetColNameByNumber names the column at the given 0-based number. A name
+// another column already has gets a numeric suffix. Returns the receiver.
 func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -45,6 +50,7 @@ func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable
 	return result
 }
 
+// ChangeColName renames the column called oldName. Returns the receiver.
 func (dt *DataTable) ChangeColName(oldName, newName string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -63,6 +69,9 @@ func (dt *DataTable) ChangeColName(oldName, newName string) *DataTable {
 	return result
 }
 
+// GetColNameByNumber returns the name of the column at the given 0-based
+// number, or "" when the column has no name or the index is out of range.
+// A negative index counts back from the end.
 func (dt *DataTable) GetColNameByNumber(index int) string {
 	var result string
 	dt.AtomicDo(func(dt *DataTable) {
@@ -94,6 +103,8 @@ func (dt *DataTable) GetColNameByIndex(index string) string {
 	return result
 }
 
+// GetColNumberByName returns the 0-based number of the column with the given
+// name, or -1 when there is none, recording the failure on Err().
 func (dt *DataTable) GetColNumberByName(name string) int {
 	var ok bool
 	var result int
@@ -106,6 +117,8 @@ func (dt *DataTable) GetColNumberByName(name string) int {
 	return result
 }
 
+// ColNamesToFirstRow inserts the column names as a new first row and clears
+// them. Returns the receiver.
 func (dt *DataTable) ColNamesToFirstRow() *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -125,6 +138,8 @@ func (dt *DataTable) ColNamesToFirstRow() *DataTable {
 	return result
 }
 
+// DropColNames clears every column name, leaving the data alone. Returns the
+// receiver.
 func (dt *DataTable) DropColNames() *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -143,6 +158,8 @@ func (dt *DataTable) DropColNames() *DataTable {
 	return result
 }
 
+// ColNames returns every column's name in order. A column with no name
+// contributes an empty string.
 func (dt *DataTable) ColNames() []string {
 	var result []string
 	dt.AtomicDo(func(dt *DataTable) {
@@ -160,6 +177,9 @@ func (dt *DataTable) Headers() []string {
 	return dt.ColNames()
 }
 
+// SetColNames names the columns in order. More names than columns appends empty
+// columns to carry the extra names; a name another column already has gets a
+// numeric suffix. Returns the receiver.
 func (dt *DataTable) SetColNames(colNames []string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {

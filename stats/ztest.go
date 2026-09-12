@@ -15,6 +15,9 @@ type ZTestResult struct {
 	N2    *int     // sample size of the second group (nil if not applicable)
 }
 
+// The effect size is reported as an absolute value, so it carries no
+// direction. That is deliberate: the R comparison these tests are checked
+// against reports |d|, and the t-tests keep the sign.
 func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error) {
 	if sigma <= 0 {
 		return nil, errors.New("sigma must be greater than zero")
@@ -66,6 +69,9 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 	}, nil
 }
 
+// The effect size is reported as an absolute value, so it carries no
+// direction. That is deliberate: the R comparison these tests are checked
+// against reports |d|, and the t-tests keep the sign.
 func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error) {
 	if sigma1 <= 0 || sigma2 <= 0 {
 		return nil, errors.New("sigma1 and sigma2 must be greater than zero")

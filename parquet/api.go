@@ -14,18 +14,21 @@ import (
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
 )
 
-// ReadOptions: The options for reading Parquet files
+// ReadOptions selects what a read covers. An empty field means everything.
 type ReadOptions struct {
 	Columns   []string // empty=all
 	RowGroups []int    // empty=all
 }
 
-// ReadColumnOptions: Only for ReadColumn (to avoid putting individual requirements into ReadOptions)
+// ReadColumnOptions are the options ReadColumn takes. They are separate from
+// ReadOptions so a limit that only makes sense for one column does not appear on
+// every read.
 type ReadColumnOptions struct {
 	RowGroups []int // empty=all
 	MaxValues int64 // 0=no limit; if exceeded, return error to avoid RAM explosion
 }
 
+// FileInfo is what Inspect reports about a file.
 type FileInfo struct {
 	NumRows      int64
 	NumRowGroups int
@@ -36,6 +39,7 @@ type FileInfo struct {
 	RowGroups    []RowGroupInfo
 }
 
+// ColumnInfo describes one column's schema.
 type ColumnInfo struct {
 	Name         string
 	PhysicalType string
@@ -43,13 +47,14 @@ type ColumnInfo struct {
 	Repetition   string
 }
 
+// RowGroupInfo describes one row group's size.
 type RowGroupInfo struct {
 	NumRows             int64
 	TotalByteSize       int64
 	TotalCompressedSize int64
 }
 
-// Inspect: inspect parquet file metadata
+// Inspect reads a Parquet file's metadata without reading any values.
 func Inspect(path string) (FileInfo, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -126,7 +131,9 @@ func Inspect(path string) (FileInfo, error) {
 	return info, nil
 }
 
-// Write: write insyra.DataTable to parquet file
+// Write writes dt to path as a Parquet file. It writes to a sibling temporary
+// file and renames it into place, so a failure part-way never leaves a truncated
+// file at path.
 func Write(dt insyra.IDataTable, path string) error {
 	// Write to a sibling temp file and rename so a failure part-way never
 	// leaves a truncated file at path (same shape as ApplyCCL).
@@ -170,7 +177,8 @@ func Write(dt insyra.IDataTable, path string) error {
 	return nil
 }
 
-// Read: read parquet file into insyra.DataTable at once
+// Read reads a Parquet file into a DataTable in one go. For a file too large to
+// hold in memory, use Stream.
 func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -248,7 +256,18 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 	return dataTable, nil
 }
 
-// Stream: streaming read parquet file, returning insyra.DataTable batches
+// Stream reads a Parquet file batch by batch, sending each batch as a DataTable.
+// The caller must either read dtChan to completion or cancel ctx. The channel
+// is unbuffered, so a consumer that stops part-way leaves the producing
+// goroutine parked on its next send for the life of the process. Ranging over
+// dtChan and then checking errChan does the right thing; breaking out of the
+// range does not unless ctx is cancelled:
+//
+//	ctx, cancel := context.WithCancel(context.Background())
+//	defer cancel()
+//	dtChan, errChan := parquet.Stream(ctx, path, parquet.ReadOptions{}, 1000)
+//	for dt := range dtChan { … }
+//	if err := <-errChan; err != nil { … }
 func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error) {
 	dtChan := make(chan *insyra.DataTable)
 	errChan := make(chan error, 1)

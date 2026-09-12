@@ -26,6 +26,14 @@ type TTestResult struct {
 //   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
 //     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
 //
+// Constant data has no variance, so the t statistic is ±Inf when the mean
+// differs from mu and NaN when it equals it, with a p-value of 0 or NaN to
+// match. That is the arithmetic, not a failure, and no error is returned —
+// check the statistic before reporting it.
+//
+// The effect sizes carry their sign, unlike the z-tests', which report the
+// absolute value to match the R output their reference tests are pinned to.
+//
 // ** Verified using R **
 func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error) {
 	values, err := testSeries(data, "data")

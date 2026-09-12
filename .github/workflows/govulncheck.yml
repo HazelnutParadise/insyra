@@ -16,9 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Vulnerability Scan
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         # Latest 1.25 patch rather than go.mod's exact 1.25.0: 1.25.0 ships
         # standard-library CVEs fixed in 1.25.9/1.25.10/1.25.11, which the scan

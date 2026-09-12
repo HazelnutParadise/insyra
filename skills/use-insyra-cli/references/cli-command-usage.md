@@ -469,7 +469,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 ## `read`
 - Description: Quick preview a file without saving variable
 - Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>]`
-- Notes: forwards the file-side options to `load`; result is shown but not stored.
+- Notes: forwards the file-side options to `load`; result is shown but not stored. It takes no `as` — to keep the table, use `load <file> as <var>`.
 
 ## `regression`
 - Description: Regression analysis: linear/poly/exp/log/logistic/poisson
