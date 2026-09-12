@@ -112,7 +112,7 @@ entirely.
 | `Float32`, `Float64` | `float32`, `float64` |
 | `Bool` | `bool` |
 | `String`, `LargeString` | `string` |
-| `Binary`, `LargeBinary`, `FixedSizeBinary` | `string` holding the raw bytes; recover them with `[]byte(cell)`, and `Show` prints them as hex |
+| `Binary`, `LargeBinary`, `FixedSizeBinary` | `[]byte`, so a binary column is never mistaken for a text one; `Show` prints the whole column as hex |
 | `Timestamp` | `time.Time` |
 | `Date32`, `Date64` | `time.Time` at UTC midnight |
 | `Decimal128`, `Decimal256` | `decimal.Decimal` ([go-decimal](https://github.com/TimLai666/go-decimal)), exact |
@@ -123,9 +123,9 @@ rounded, and it sorts by value rather than by the text of its digits. Like a
 `time.Time`, it is not a number to `Mean`, `Sum` and the rest of the numeric
 path; convert it first if you need arithmetic.
 
-Exporting a binary column to JSON is lossy, because a JSON string has to be
-valid UTF-8 and a byte that is not gets replaced. CSV and the cell itself keep
-the bytes.
+A binary column exports to JSON as base64, which is what `encoding/json` does
+with a `[]byte`, so nothing is lost. Writing the table back to Parquet keeps
+it a binary column.
 
 Dictionary-encoded columns are not a special case: the reader materialises them
 as their underlying type, so a pandas `category` column of strings reads as

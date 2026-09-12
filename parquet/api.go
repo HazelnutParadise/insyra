@@ -255,7 +255,7 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 		if !supportedArrowType(col.DataType()) {
 			dataTable.SetErr("parquet", "Read", unsupportedColumnMsg, col.Name(), col.DataType())
 		}
-		dataTable.AppendCols(insyra.NewDataList(data).SetName(col.Name()))
+		dataTable.AppendCols(newColumn(data, col.Name()))
 	}
 
 	return dataTable, nil

@@ -1,10 +1,12 @@
 package parquet
 
 import (
+	"bytes"
 	"context"
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -148,12 +150,12 @@ func TestReadRepresentableForeignTypes(t *testing.T) {
 	if got := dt.GetElementByNumberIndex(1, 6); got != int8(-128) {
 		t.Errorf("i8: got %v (%T)", got, got)
 	}
-	// Binary arrives as a string because a DataList cell cannot be a slice.
+	// Binary arrives as []byte, so it is distinguishable from a text column.
 	// The bytes still have to survive exactly, 0x00 and invalid UTF-8 included.
-	got, ok := dt.GetElementByNumberIndex(1, 7).(string)
+	b, ok := dt.GetElementByNumberIndex(1, 7).([]byte)
 	if !ok {
-		t.Errorf("binary: got %T, want string", dt.GetElementByNumberIndex(1, 7))
-	} else if b := []byte(got); len(b) != 2 || b[0] != 0x00 || b[1] != 0xff {
+		t.Errorf("binary: got %T, want []byte", dt.GetElementByNumberIndex(1, 7))
+	} else if len(b) != 2 || b[0] != 0x00 || b[1] != 0xff {
 		t.Errorf("binary: got % x, want 00 ff", b)
 	}
 }
@@ -409,5 +411,100 @@ func TestReadColumnCarriesTheReason(t *testing.T) {
 		if got := dl.Get(i); got != nil {
 			t.Errorf("row %d: got %v (%T), want nil", i, got, got)
 		}
+	}
+}
+
+// A Binary column and a String column used to be indistinguishable: both read
+// as a Go string, so a caller could not tell which held text and which held
+// bytes, the column's rendering followed whether a given row happened to be
+// valid UTF-8, and a round trip turned the binary column into a string one.
+func TestBinaryAndStringColumnsAreDistinguishable(t *testing.T) {
+	path := writeForeignParquet(t, []arrow.Field{
+		{Name: "as_string", Type: arrow.BinaryTypes.String, Nullable: true},
+		{Name: "as_binary", Type: arrow.BinaryTypes.Binary, Nullable: true},
+	}, func(b *array.RecordBuilder) {
+		b.Field(0).(*array.StringBuilder).AppendValues([]string{"A-01", "C-3"}, nil)
+		b.Field(1).(*array.BinaryBuilder).AppendValues([][]byte{[]byte("A-01"), {0x00, 0xff, 0x41}}, nil)
+	})
+
+	dt, err := Read(context.Background(), path, ReadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := dt.GetElementByNumberIndex(0, 0).(string); !ok {
+		t.Errorf("the text column holds %T, want string", dt.GetElementByNumberIndex(0, 0))
+	}
+	for row := 0; row < 2; row++ {
+		if _, ok := dt.GetElementByNumberIndex(row, 1).([]byte); !ok {
+			t.Fatalf("the binary column row %d holds %T, want []byte", row, dt.GetElementByNumberIndex(row, 1))
+		}
+	}
+	if got := dt.GetElementByNumberIndex(0, 1).([]byte); string(got) != "A-01" {
+		t.Errorf("binary bytes = % x", got)
+	}
+	if got := dt.GetElementByNumberIndex(1, 1).([]byte); len(got) != 3 || got[1] != 0xff {
+		t.Errorf("binary bytes = % x, want 00 ff 41", got)
+	}
+}
+
+func TestABinaryColumnRendersTheSameWayOnEveryRow(t *testing.T) {
+	path := writeForeignParquet(t, []arrow.Field{
+		{Name: "sku", Type: arrow.BinaryTypes.Binary, Nullable: true},
+	}, func(b *array.RecordBuilder) {
+		// The first is valid UTF-8, the second is not.
+		b.Field(0).(*array.BinaryBuilder).AppendValues([][]byte{[]byte("A-01"), {0x00, 0xff, 0x41}}, nil)
+	})
+	dt, err := Read(context.Background(), path, ReadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	dt.ShowTo(&buf)
+	out := buf.String()
+	if strings.Contains(out, "'A-01'") {
+		t.Errorf("one row rendered as text and the other as bytes:\n%s", out)
+	}
+	if !strings.Contains(out, "412d3031") || !strings.Contains(out, "00ff41") {
+		t.Errorf("the column did not render as hex:\n%s", out)
+	}
+}
+
+func TestABinaryColumnSurvivesARoundTrip(t *testing.T) {
+	src := writeForeignParquet(t, []arrow.Field{
+		{Name: "sku", Type: arrow.BinaryTypes.Binary, Nullable: true},
+	}, func(b *array.RecordBuilder) {
+		b.Field(0).(*array.BinaryBuilder).AppendValues([][]byte{{0x00, 0xff, 0x41}, {0x01}}, nil)
+	})
+	dt, err := Read(context.Background(), src, ReadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(t.TempDir(), "round.parquet")
+	if err := Write(dt, out); err != nil {
+		t.Fatal(err)
+	}
+	info, err := Inspect(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Columns[0].PhysicalType; got != "BYTE_ARRAY" {
+		t.Errorf("physical type after a round trip = %s", got)
+	}
+	if got := info.Columns[0].LogicalType; strings.Contains(strings.ToLower(got), "string") {
+		t.Errorf("the binary column was written back as a string column (logical type %s)", got)
+	}
+
+	back, err := Read(context.Background(), out, ReadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := back.GetElementByNumberIndex(0, 0).([]byte)
+	if !ok {
+		t.Fatalf("after a round trip the cell holds %T, want []byte", back.GetElementByNumberIndex(0, 0))
+	}
+	if len(got) != 3 || got[1] != 0xff {
+		t.Errorf("bytes after a round trip = % x, want 00 ff 41", got)
 	}
 }

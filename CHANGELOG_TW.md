@@ -117,6 +117,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：讀取其他工具寫出的 Parquet 檔時，reader 不認識的欄位型別不再變成一串重複的字。`getVal` 的 fallback 回傳 `arr.String()`，也就是整個 array 的字串形式，忽略列索引，所以那一欄每一列都讀成類似 `["a" "b" "c"]` 的東西，而 `Read` 回傳 nil error、表格的 `Err()` 也是 nil。`parquet.Write` 只寫得出七種 Arrow 型別，所以這個問題在本函式庫自己寫的檔案上看不到，只在讀別人的檔案時發生。現在每個有忠實 Go 表示法的 Arrow 型別都有對應：`Date32`／`Date64` 讀成 `time.Time`，`Int8`／`Int16` 與四種無號整數讀成同名的 Go 型別，`Binary`／`LargeBinary`／`FixedSizeBinary` 讀成保有原始位元組的 `string`，`LargeString` 讀成 `string`，`Decimal128`／`Decimal256` 以檔案自己的未縮放整數與 scale 精確讀成 [go-decimal](https://github.com/TimLai666/go-decimal) 的 `decimal.Decimal`。其餘的 `List`、`Struct`、`Map`、`Time32`、`Time64`、`Duration`、`Interval` 讀成 `nil`，並在表格的 `Err()` 留下 `column "tags": unsupported Arrow column type list<item: int64>`；檔案其他欄位照常讀取，也可以用 `ReadOptions.Columns` 跳過該欄。`Read`、`Stream`、`ReadColumn` 與 `FilterWithCCL` 行為一致。Dictionary 編碼的欄位從來不受影響，reader 會把它還原成底層型別。
 - `decimal.Decimal` 依數值大小排序，不是依數字文字的字典順序，所以含 9.5、10.2、100.0 的欄位會照這個順序排，而不是 10.2、100.0、9.5。與 `time.Time` 一樣，它對 `Mean`、`Sum` 與 `IsNumeric` 而言不是數值。
 
+- **BREAKING**：Parquet 的 `Binary`、`LargeBinary`、`FixedSizeBinary` 欄改為讀成 `[]byte`，不再是持有原始位元組的 `string`。當初用字串是因為 `DataList` 的格子放不了切片、而 `[]byte` 格子也不能用，這兩件事都已修好；字串形式留下一個真的缺陷：二進位欄與文字欄完全分不出來，Go 型別相同、值也相等，讀回來再寫出去還會讓二進位欄變成字串欄。顯示也是跟著資料而不是跟著欄位，同一欄第一列印 `'A-01'`、第二列印 `00ff41`。現在 `Show` 整欄以十六進位顯示，`Write` 把 `[]byte` 格子的欄位寫成 Arrow `Binary`，round trip 保住型別，JSON 匯出改為 base64 而不是被替換過的字串。原本對這種格子做 `.(string)` 斷言的呼叫端要改成 `.([]byte)`。
+
 ### `mkt`
 - 修正 `RFM` 遇到非數值金額格子時讓整個程序崩潰的問題，現在跳過該列並以警告指出列號。`RFM` 與 `CustomerActivityIndex` 的輸出列依客戶 ID 排序，過去依 Go map 順序輸出、每次執行都不同。
 - `RFM` 與 `CustomerActivityIndex` 套用預設 `DateFormat`／`TimeScale` 的提示改為 Debug 等級而非 Info。

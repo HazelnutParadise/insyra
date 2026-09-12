@@ -140,7 +140,7 @@ Use Insyra when you need any of these in Go:
 - ETL / data cleaning: normalize columns, filter/sort, derive new columns.
 - Quick inspection / debugging: get a fast console preview of a table/list.
 - Parallel data transforms: speed up map/filter-style workloads.
-- File chores: read/write CSV, convert CSV <-> Excel, Parquet read/write. Reading a Parquet file written by another tool: a column type with no faithful Go representation (`List`, `Struct`, `Map`, `Time32/64`, `Duration`) reads as `nil` cells with the reason on the table's `Err()`, so check it after a read. `Decimal128`/`Decimal256` read as a go-decimal `decimal.Decimal`, exact and sorting by value, but it is not a number to `Mean`/`Sum` any more than a `time.Time` is. `Binary` reads as a `string` holding the raw bytes.
+- File chores: read/write CSV, convert CSV <-> Excel, Parquet read/write. Reading a Parquet file written by another tool: a column type with no faithful Go representation (`List`, `Struct`, `Map`, `Time32/64`, `Duration`) reads as `nil` cells with the reason on the table's `Err()`, so check it after a read. `Decimal128`/`Decimal256` read as a go-decimal `decimal.Decimal`, exact and sorting by value, but it is not a number to `Mean`/`Sum` any more than a `time.Time` is. `Binary` reads as `[]byte`, distinguishable from a text column, and writes back as a binary column.
 - Excel-like formulas: compute derived columns with CCL.
 
 ## Core mental model

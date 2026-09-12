@@ -266,14 +266,13 @@ func getVal(arr arrow.Array, i int) any {
 	case *array.Boolean:
 		return a.Value(i)
 	case *array.Binary:
-		// A string, not a []byte: NewDataList flattens every reflect.Slice, so
-		// a slice cannot be a cell. A Go string holds arbitrary bytes, 0x00 and
-		// invalid UTF-8 included, so []byte(cell) recovers them exactly.
-		return string(a.Value(i))
+		// []byte, so a binary column is not indistinguishable from a text one.
+		// The value is copied because Arrow owns the buffer behind it.
+		return append([]byte(nil), a.Value(i)...)
 	case *array.LargeBinary:
-		return string(a.Value(i))
+		return append([]byte(nil), a.Value(i)...)
 	case *array.FixedSizeBinary:
-		return string(a.Value(i))
+		return append([]byte(nil), a.Value(i)...)
 	case *array.Timestamp:
 		return a.Value(i).ToTime(a.DataType().(*arrow.TimestampType).Unit)
 	case *array.Date32:
@@ -294,6 +293,19 @@ func getVal(arr arrow.Array, i int) any {
 	}
 }
 
+// newColumn builds a column from what chunkedToSlice returned.
+//
+// A []any is appended rather than handed to NewDataList, because the
+// constructor flattens every slice and a binary column's cells are []byte.
+// For anything else the two are the same: flattening a []any of scalars
+// already produces one cell per element.
+func newColumn(data any, name string) *insyra.DataList {
+	if vals, ok := data.([]any); ok {
+		return insyra.NewDataList().Append(vals...).SetName(name)
+	}
+	return insyra.NewDataList(data).SetName(name)
+}
+
 func recordToDataTable(rec arrow.Record) *insyra.DataTable {
 	dataTable := insyra.NewDataTable()
 	if rec == nil {
@@ -310,7 +322,7 @@ func recordToDataTable(rec arrow.Record) *insyra.DataTable {
 		if !supportedArrowType(col.DataType()) {
 			dataTable.SetErr("parquet", "Stream", unsupportedColumnMsg, colName, col.DataType())
 		}
-		dataTable.AppendCols(insyra.NewDataList(data).SetName(colName))
+		dataTable.AppendCols(newColumn(data, colName))
 	}
 	return dataTable
 }
@@ -369,7 +381,7 @@ func dataTableToArrowTable(dt insyra.IDataTable) (arrow.Table, error) {
 //     time+number), falls back to String, which conv.ToString can represent for
 //     every value.
 func inferArrowType(data []any) arrow.DataType {
-	var hasInt, hasFloat, hasString, hasBool, hasTime, hasOther bool
+	var hasInt, hasFloat, hasString, hasBool, hasTime, hasBytes, hasOther bool
 	for _, v := range data {
 		if v == nil {
 			continue
@@ -385,13 +397,20 @@ func inferArrowType(data []any) arrow.DataType {
 			hasBool = true
 		case time.Time:
 			hasTime = true
+		case []byte:
+			hasBytes = true
 		default:
 			hasOther = true
 		}
 	}
 	numeric := hasInt || hasFloat
 	switch {
-	case hasString || hasOther:
+	// A column of nothing but byte slices round-trips as binary. Mixed with
+	// anything else it falls through to String, which conv.ToString can
+	// represent for every value.
+	case hasBytes && !hasString && !hasOther && !numeric && !hasBool && !hasTime:
+		return arrow.BinaryTypes.Binary
+	case hasString || hasOther || hasBytes:
 		return arrow.BinaryTypes.String
 	case hasBool && !numeric && !hasTime:
 		return arrow.FixedWidthTypes.Boolean
@@ -415,6 +434,12 @@ func appendValue(b array.Builder, v any) {
 		builder.Append(conv.ParseF64(v))
 	case *array.StringBuilder:
 		builder.Append(conv.ToString(v))
+	case *array.BinaryBuilder:
+		if b, ok := v.([]byte); ok {
+			builder.Append(b)
+		} else {
+			builder.Append([]byte(conv.ToString(v)))
+		}
 	case *array.BooleanBuilder:
 		builder.Append(conv.ParseBool(v))
 	case *array.TimestampBuilder:

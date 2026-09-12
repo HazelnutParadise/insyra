@@ -283,10 +283,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: the decision is whether a decimal is a number in insyra. If it is, `ToFloat64Safe` needs an arm for it, which today means going through `String()` and `strconv.ParseFloat` because go-decimal exposes no `Float64()`; adding one upstream would be cleaner and it is the same author's library. Weigh that against making `internal/utils`, which every value in the library passes through, depend on a decimal package.
 - **Status**: pending
 
-### [2026-09-12] — reading a Parquet file and writing it back still changes column types
+### [2026-09-12] — reading a Parquet file and writing it back still changes some column types
 - **Where**: `parquet/internal.go` `inferArrowType`
-- **What**: the reader now handles twenty Arrow types; the writer still emits seven. So a read-then-write round trip downgrades: a `Date32` column comes back as a timestamp, a `Binary` column as a string, a decimal as its text, an `Int16` as an `Int64`. Nothing is silently wrong, but the file is not the file that went in. Found on 2026-09-12 while fixing #371, which only concerned the read half.
-- **Suggestion**: `inferArrowType` infers from Go values, so it cannot tell an `int16` that came from a `Date32` column from any other. Carrying the source schema through a read would fix it properly; inferring `time.Time` to `Date64` and `[]byte`-bearing strings to `Binary` would not, and would guess wrong on ordinary data. Worth doing only if round-tripping is a use case someone has.
+- **What**: the reader handles twenty Arrow types; the writer emits eight. `parquet-binary-is-bytes` added `Binary`, so a binary column now survives a round trip, but a `Date32` column still comes back as a timestamp, a decimal as its text, and an `Int16` as an `Int64`.
+- **Suggestion**: `inferArrowType` infers from Go values, so it cannot tell an `int16` that came from a `Date32` column from any other. Carrying the source schema through a read would fix it properly; inferring `time.Time` to `Date64` would guess wrong on ordinary data. Worth doing only if round-tripping is a use case someone has.
 - **Status**: pending
 
 ### [2026-09-12] — 46 of the 105 archived specs have a `## Purpose` nobody wrote
