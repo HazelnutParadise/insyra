@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
@@ -241,6 +242,16 @@ func FormatValue(value any) string {
 		return "false"
 
 	case string:
+		// 不是合法的 UTF-8 就不是文字。Parquet 的 Binary 欄位會以字串形式進到
+		// 格子裡（DataList 的格子放不了 slice），把那些位元組加引號交給終端機，
+		// 除了看不懂之外還會讓整列歪掉：runewidth 把 NUL 算 0 欄寬、把非法位元組
+		// 算成一個 U+FFFD，而終端機實際畫幾欄由它自己決定，實測差一欄。改走
+		// []byte 的顯示方式，同一條「這是位元組不是文字」的規則，而且十六進位
+		// 是 ASCII，欄寬算得準。這個檢查要在多行判斷之前，因為位元組裡剛好有
+		// 0x0a 不代表它是多行字串。
+		if !utf8.ValidString(v) {
+			return FormatValue([]byte(v))
+		}
 		// 如果是多行字符串，只顯示第一行
 		if strings.Contains(v, "\n") {
 			lines := strings.Split(v, "\n")

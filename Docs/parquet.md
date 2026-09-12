@@ -112,7 +112,7 @@ entirely.
 | `Float32`, `Float64` | `float32`, `float64` |
 | `Bool` | `bool` |
 | `String`, `LargeString` | `string` |
-| `Binary`, `LargeBinary`, `FixedSizeBinary` | `string` holding the raw bytes; recover them with `[]byte(cell)` |
+| `Binary`, `LargeBinary`, `FixedSizeBinary` | `string` holding the raw bytes; recover them with `[]byte(cell)`, and `Show` prints them as hex |
 | `Timestamp` | `time.Time` |
 | `Date32`, `Date64` | `time.Time` at UTC midnight |
 | `Decimal128`, `Decimal256` | `decimal.Decimal` ([go-decimal](https://github.com/TimLai666/go-decimal)), exact |

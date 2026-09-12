@@ -56,6 +56,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - 讀取 Excel 現在傳給 excelize 512 MB 的解壓上限，不再沿用它 16 GB 的預設值，所以一個解壓後比主機記憶體還大的小檔案會被拒絕而不是讀進來。`insyra.ExcelReadOptions` 匯出，讓 `csvxl` 套用同一個上限。
 - 一個知道自己怎麼轉成文字、卻不知道怎麼序列化的值，不再在輸出時消失。`Show` 與其他顯示路徑最後會走到一個分支，對 struct 直接印 `<pkg.Type>`，從來沒問過它能不能自己印；`ToJSON` 則把原值交給 marshaller，而欄位未匯出的 struct 會被寫成 `{}`。Parquet 的十進位欄位因此顯示成 `<decimal.Decimal>`、匯出成 `{}`。現在實作 `fmt.Stringer` 的值會以它的文字顯示與匯出；已實作 `json.Marshaler` 或 `encoding.TextMarshaler` 的值不受影響，所以 `time.Time` 維持 RFC 3339 形式。
+- 內容是位元組而不是文字的格子改以十六進位顯示，不再是加了引號的亂碼。Parquet 的 `Binary` 欄位會以 `string` 形式進到格子裡（`DataList` 的格子放不了 slice），`Show` 過去把那些位元組加引號直接交給終端機。除了看不懂，它還會讓整列歪掉一欄：`runewidth` 把 NUL 算 0 欄寬、把非法位元組算成一個 `U+FFFD`，而終端機實際畫幾欄由它自己決定，任何寬度計算都不可能算對。現在 `utf8.ValidString` 不通過的字串改用 `[]byte` 原本就在用的顯示方式，也就是 `00ff41`，超過 20 個位元組會截斷並附上總長度；十六進位是 ASCII，欄位就對得齊。合法的 UTF-8 完全不受影響，中日韓文字與 emoji 也一樣，儲存的值不變。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
