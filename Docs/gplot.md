@@ -75,7 +75,7 @@ Creates a bar chart for comparing values across categories.
 ```go
 type BarChartConfig struct {
     Title     string    // Chart title
-    XAxis     []string  // Category labels
+    XAxis     []string  // Optional: category labels; omitted, the bars are drawn against a numeric axis
     XAxisName string    // Optional: X-axis label
     YAxisName string    // Optional: Y-axis label
     BarWidth  float64   // Optional: Bar width (default: 20)
@@ -314,10 +314,14 @@ type HeatmapChartConfig struct {
     YAxis     []float64 // Optional: Y-axis coordinates
     XAxisName string    // Optional: X-axis label
     YAxisName string    // Optional: Y-axis label
-    Colors    int       // Optional: Number of colors (default: 20)
+    Colors    int       // Optional: Number of colors (zero or less means the default of 20)
     Alpha     float64   // Optional: Transparency (default: 1.0)
 }
 ```
+
+Every row of the data must hold the same number of values. A ragged grid is
+refused: the error names the first row whose length differs, and the function
+returns `nil`.
 
 **Example:**
 

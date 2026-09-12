@@ -249,10 +249,12 @@ func lingo_handleVariableDeclarations(expr string, declarationType string, targe
 		if !strings.HasPrefix(strings.ToUpper(declaration), declarationType) {
 			continue
 		}
-		// 提取括號內的變數名稱
+		// 提取括號內的變數名稱。start 與 end 都是「第一個」出現的位置，
+		// 順序顛倒時（例如 `@BIN)X(;`）切片邊界會反過來而 panic，
+		// 因此要求 end 在 start 之後；讀不懂的宣告與其他讀不懂的行一樣略過。
 		start := strings.Index(declaration, "(")
 		end := strings.Index(declaration, ")")
-		if start != -1 && end != -1 {
+		if start != -1 && end > start {
 			varName := declaration[start+1 : end]
 			*targetList = append(*targetList, strings.TrimSpace(varName))
 		}

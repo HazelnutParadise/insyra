@@ -70,6 +70,13 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 		return fmt.Errorf("invalid number of arguments for useOnlineServiceOnFail; expected at most 1")
 	}
 
+	// The snapshot dependency reads the format from the extension as
+	// filepath.Ext(file)[1:], which slices an empty string when there is none.
+	// Check it here so the caller gets an error instead of a panic.
+	if filepath.Ext(pngPath) == "" {
+		return fmt.Errorf("output path %q has no file extension; SavePNG needs one to choose the image format (for example .png)", pngPath)
+	}
+
 	doesUseOnlineServiceOnFail := len(useOnlineServiceOnFail) > 0 && useOnlineServiceOnFail[0]
 
 	disableAnimation(chart)

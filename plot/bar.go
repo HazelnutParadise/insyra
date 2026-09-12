@@ -38,6 +38,7 @@ type BarChartConfig struct {
 
 // CreateBarChart generates and returns a *charts.Bar object based on BarChartConfig.
 func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar {
+	data = nonNilLists("CreateBarChart", data)
 	if len(data) == 0 {
 		insyra.LogWarning("plot", "CreateBarChart", "No data available for bar chart. Returning nil.")
 		return nil

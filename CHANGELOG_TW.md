@@ -91,6 +91,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 修正 `RFM` 遇到非數值金額格子時讓整個程序崩潰的問題，現在跳過該列並以警告指出列號。`RFM` 與 `CustomerActivityIndex` 的輸出列依客戶 ID 排序，過去依 Go map 順序輸出、每次執行都不同。
 - `RFM` 與 `CustomerActivityIndex` 套用預設 `DateFormat`／`TimeScale` 的提示改為 Debug 等級而非 Info。
 
+### `lpgen`
+- LINGO 解析器遇到括號順序顛倒的宣告（`@BIN)X(;`）不再 panic。過去它取第一個 `(` 與第一個 `)` 而不檢查誰在前面，切片邊界反過來就會當掉；現在這種宣告會像其他讀不懂的行一樣被略過，模型的其餘部分照常解析。
+
 ### `lp`
 - `SolveFromFile` 與 `SolveModel` 回傳的附加資訊表列順序固定為 Status、Execution Time、Warnings、Full Output、Iterations、Nodes，過去依 Go map 順序每次不同。
 - GLPK 下載、解壓或編譯失敗不再結束程式：失敗會被記錄，`SolveModel`／`SolveFromFile` 透過附加資訊表回報。`SolveModel` 兩處暫存檔失敗同樣改為回報，不再回傳兩個 nil。
@@ -98,6 +101,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `plot`
 - **BREAKING**：`SavePNG` 預設不再退回線上渲染服務。不傳第三個參數（或傳 `false`）時，本機 Chrome／Chromium 渲染失敗會回傳錯誤；傳 `true` 才允許退回線上服務，該服務會把圖表連同資料上傳到 `server3.hazelnut-paradise.com`。過去的預設會在沒有詢問的情況下把使用者資料送出主機。
 - `CreateRadarChart` 未提供 indicators、`CreateHeatMap` 日曆模式的 X 型別錯誤或未設 `CalendarOpts` 時，改為記錄錯誤並回傳 `nil`，不再結束程式或 panic。
+- `nil` 的 `IDataList` 不再讓程式當掉。`CreateBarChart`、`CreateLineChart` 與 `CreateBoxPlot` 會略過 nil 的清單並畫出其餘部分，全部都是 nil 時才回傳 `nil`；`CreateWordCloud` 回傳 `nil`。每個圖表都透過 `AtomicDo` 讀資料，而那會解參考接收者，所以夾在正常清單裡的一個 nil 過去會 panic。
+- `SavePNG` 在輸出路徑沒有副檔名時回傳錯誤，不再在快照套件裡 panic，該套件是以副檔名決定圖片格式的。
 
 ### `isr`
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。
@@ -106,6 +111,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `gplot`
 - **BREAKING**：`SaveChart` 檔案寫不出來時改為回傳 `error`，不再結束程式。既有呼叫要改成 `if err := gplot.SaveChart(...); err != nil { ... }` 或明確寫 `_ =`。
 - `CreateHistogram` 用零值設定不再 panic：`Bins` 為 0 或負數時採用預設值 10。`CreateLineChart` 與 `CreateStepChart` 在建立序列失敗時改為記錄錯誤而非 panic。
+- 另外四個繪圖呼叫遇到一般的錯誤輸入也不再 panic。`CreateBarChart` 沒有 `XAxis` 時（零值設定就是這樣）改為畫在數值軸上，不再在 gonum 的 `NominalX` 裡當掉。`CreateFunctionPlot` 拒絕 `nil` 函式。`CreateHeatmapChart` 拒絕各列長度不一致的資料並指出第一個不同的列，`Colors` 為負數時比照 0 採用預設值 20。
 
 ### `py`
 - IPC 監聽失敗改為記錄並讓伺服器保持關閉，不再結束程式。

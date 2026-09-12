@@ -112,6 +112,11 @@ func CalcColIndex(colNumber int) (colIndex string, ok bool) {
 
 // TruncateString 截斷字符串到指定寬度，太長的字符串末尾加上省略號，使用 runewidth 計算字元寬度
 func TruncateString(s string, maxLength int) string {
+	// 負的寬度沒有意義，而且會讓下面的 rs[:maxLength] 以負邊界切片而 panic。
+	// 當成 0 處理，回傳空字串。
+	if maxLength < 0 {
+		maxLength = 0
+	}
 	// 總寬度小於等於限制，直接返回
 	if runewidth.StringWidth(s) <= maxLength {
 		return s

@@ -3,6 +3,7 @@ package gplot
 import (
 	"math"
 
+	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
 )
@@ -20,6 +21,14 @@ type FunctionPlotConfig struct {
 
 // CreateFunctionPlot generates and returns a plot.Plot object based on FunctionPlotConfig.
 func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) float64) *plot.Plot {
+	// There is nothing to sample without a function, and calling one that is nil
+	// panics. Refuse it the way every other constructor here refuses input it
+	// cannot plot.
+	if function == nil {
+		insyra.LogWarning("gplot", "CreateFunctionPlot", "No function provided")
+		return nil
+	}
+
 	// 如果沒有設置 X 軸範圍，則默認使用 [-10, 10]
 	if config.XMin == 0 && config.XMax == 0 {
 		config.XMin = -10

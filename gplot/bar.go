@@ -60,8 +60,13 @@ func CreateBarChart(config BarChartConfig, data any) *plot.Plot {
 		return nil
 	}
 
-	// Set axis labels (categories).
-	plt.NominalX(config.XAxis...)
+	// Set axis labels (categories). gonum's NominalX indexes names[0] with no
+	// length check, so an empty XAxis — which is what a zero-value config has —
+	// used to panic here. Without labels the bars still draw against the
+	// numeric axis, so skip the call rather than refuse the chart.
+	if len(config.XAxis) > 0 {
+		plt.NominalX(config.XAxis...)
+	}
 
 	plt.Add(bars)
 
