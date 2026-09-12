@@ -413,7 +413,7 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 | **[csvxl](/Docs/csvxl.md)** | Work with Excel and CSV files (e.g. convert CSV to Excel). |
 | **[parquet](/Docs/parquet.md)** | Apache Parquet read/write, deeply integrated with `DataTable`/`DataList`; streaming, column-level reads, CCL filtering. |
 | **[mkt](/Docs/mkt.md)** | Marketing analytics: RFM, Customer Activity Index, and market-basket analysis. |
-| **[finance](/Docs/finance.md)** | High-precision fixed-point finance: TVM, NPV/IRR, depreciation, bond pricing, and amortization schedules. |
+| **[finance](/Docs/finance.md)** | High-precision fixed-point finance: TVM, NPV/IRR, depreciation, bond pricing, and amortization schedules. Values are [`go-decimal`](https://github.com/TimLai666/go-decimal) decimals; use the same package for anything you pass in or read back, so no conversion sits at the boundary. |
 | **[quant](/Docs/quant.md)** | Quantitative finance for strategy/backtest evaluation: Sharpe ratio, VaR/CVaR, Sortino and Calmar ratios, max drawdown, annualized return, market beta/CAPM, European option pricing and greeks, implied volatility, multi-factor attribution, PBO (CSCV), Deflated Sharpe Ratio, walk-forward validation, block-bootstrap path simulation with percentile bands, and mean-variance portfolio optimization with an efficient-frontier sweep. |
 | **[py](/Docs/py.md)** | Run Python from Go with no manual environment setup; pass variables both ways. |
 | **[pd](/Docs/pd.md)** | Pandas-like `DataFrame` helpers built on `gpandas`, with `DataTable` conversion. |

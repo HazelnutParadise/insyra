@@ -277,13 +277,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: the same depth bound, or a visited-pointer set. A bound is cheaper and a 64-deep slice literal is already pathological; a visited set is exact but costs an allocation per construction. Measure `NewDataList` on a large flat slice before and after, because that path runs for every table built from a slice.
 - **Status**: pending
 
-### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
-- **Where**: `internal/utils` `IsNumeric` / `ToFloat64Safe`, and every numeric path behind them
-- **What**: `parquet-foreign-column-types` made `Decimal128` and `Decimal256` read as a go-decimal `decimal.Decimal`, exact and sorting by value. It is a struct, so `IsNumeric` says no and `ToFloat64Safe` cannot read it, which means `Mean`, `Sum`, `Stdev` and CCL arithmetic cannot read a decimal column. Measured on 2026-09-12: they do not refuse it, they skip every cell and return `NaN` with `Err()` nil, and a `time.Time` column does the same thing side by side. That follows the `time.Time` precedent exactly, and it is the reason the change did not go further on its own. But a money column is far likelier to want arithmetic than a date column is, and a silent `NaN` is a poor way to learn the column is not numeric.
-- **Also**: `finance` already puts this same type in cells (`ScheduleTable`, [#247](https://github.com/HazelnutParadise/insyra/issues/247) FI-2), so this is not only a parquet question. Measured on 2026-09-12, that table now displays, exports, counts, groups and sorts correctly and only `Mean`/`Sum`/`Describe` fail — silently, with `NaN` and a nil `Err()`.
-- **Suggestion**: the decision is whether a decimal is a number in insyra. If it is, `ToFloat64Safe` needs an arm for it, which today means going through `String()` and `strconv.ParseFloat` because go-decimal exposes no `Float64()`; adding one upstream would be cleaner and it is the same author's library. Weigh that against making `internal/utils`, which every value in the library passes through, depend on a decimal package.
-- **Status**: pending
-
 ### [2026-09-12] — reading a Parquet file and writing it back still changes some column types
 - **Where**: `parquet/internal.go` `inferArrowType`
 - **What**: the reader handles twenty Arrow types; the writer emits eight. `parquet-binary-is-bytes` added `Binary`, so a binary column now survives a round trip, but a `Date32` column still comes back as a timestamp, a decimal as its text, and an `Int16` as an `Int64`.

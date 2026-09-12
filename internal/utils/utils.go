@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -61,9 +62,44 @@ func ToFloat64(v any) float64 {
 		// user-defined numeric type; the reflect fallback is the same shape
 		// accel's projection settled on, and it only runs for values the type
 		// switch already missed.
-		f, _ := reflectToFloat64(v)
+		if f, ok := reflectToFloat64(v); ok {
+			return f
+		}
+		// A fixed-point decimal reads through its own text.
+		f, _ := DecimalToFloat64(v)
 		return f
 	}
+}
+
+// decimalValue is the shape of a fixed-point decimal: it can write itself and
+// report its scale.
+//
+// Matching on the shape rather than on a concrete type keeps this package,
+// which every value in the library passes through, free of a dependency on
+// any one decimal library. finance's tie to a single one is already a review
+// finding, and core would be a worse place for the same tie.
+type decimalValue interface {
+	String() string
+	Scale() int32
+}
+
+// DecimalToFloat64 reads a fixed-point decimal through its own text.
+//
+// The text has to parse as a number as well as the methods matching, so a
+// type that merely happens to have both is not treated as one. A float64
+// carries about 16 significant digits, so a wider decimal is rounded here —
+// which is what asking for float arithmetic means. The cell keeps its exact
+// value either way.
+func DecimalToFloat64(v any) (float64, bool) {
+	d, ok := v.(decimalValue)
+	if !ok {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(d.String(), 64)
+	if err != nil {
+		return 0, false
+	}
+	return f, true
 }
 
 // reflectToFloat64 converts a named type over a numeric kind. It reports false
@@ -90,7 +126,10 @@ func ToFloat64Safe(v any) (float64, bool) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		return ToFloat64(v), true
 	default:
-		return reflectToFloat64(v)
+		if f, ok := reflectToFloat64(v); ok {
+			return f, true
+		}
+		return DecimalToFloat64(v)
 	}
 }
 

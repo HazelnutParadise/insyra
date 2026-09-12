@@ -119,9 +119,10 @@ entirely.
 | anything else | `nil`, with the reason on `Err()` |
 
 A `Decimal` keeps the file's own unscaled integer and scale, so nothing is
-rounded, and it sorts by value rather than by the text of its digits. Like a
-`time.Time`, it is not a number to `Mean`, `Sum` and the rest of the numeric
-path; convert it first if you need arithmetic.
+rounded, and it sorts by value rather than by the text of its digits. It is a
+number to `Mean`, `Sum` and the rest of the numeric path, which read it
+through its own text; the cell keeps its exact value, and the rounding to
+about 16 significant digits happens only in the float result.
 
 A binary column exports to JSON as base64, which is what `encoding/json` does
 with a `[]byte`, so nothing is lost. Writing the table back to Parquet keeps

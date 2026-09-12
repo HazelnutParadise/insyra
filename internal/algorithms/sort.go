@@ -22,16 +22,17 @@ func GetTypeSortingRank(v any) int {
 	switch v.(type) {
 	case bool:
 		return 1
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64,
+		decimal.Decimal:
+		// A decimal is a number, so it sorts among them rather than in a group
+		// of its own after strings.
 		return 2
 	case string:
 		return 3
 	case time.Time:
 		return 4
-	case decimal.Decimal:
-		return 5
 	default:
-		return 6
+		return 5
 	}
 }
 
@@ -102,11 +103,25 @@ func CompareAny(a, b any) int {
 			cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
 		}
 	case decimal.Decimal:
-		// By value, not by the lexicographic order of its text: "10.2" sorts
-		// before "9.5" as a string. Decimals reach a DataList from a Parquet
-		// Decimal128 or Decimal256 column.
+		// Two decimals compare exactly: a float64 carries about 16 significant
+		// digits and two decimals can differ beyond that. Against any other
+		// number they compare as floats, like any two numbers of different
+		// width. Never by text: "10.2" sorts before "9.5" as a string.
 		if vb, ok := b.(decimal.Decimal); ok {
 			cmp = decimal.Cmp(va, vb)
+			break
+		}
+		fa, aok := utils.ToFloat64Safe(a)
+		fb, bok := utils.ToFloat64Safe(b)
+		if aok && bok {
+			switch {
+			case fa < fb:
+				cmp = -1
+			case fa > fb:
+				cmp = 1
+			default:
+				cmp = 0
+			}
 		} else {
 			cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
 		}

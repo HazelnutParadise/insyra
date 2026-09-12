@@ -12,6 +12,24 @@ go get github.com/HazelnutParadise/insyra/finance
 
 The package depends on [`github.com/TimLai666/go-decimal`](https://github.com/TimLai666/go-decimal) for fixed-point decimal arithmetic. It is added automatically by `go mod tidy`.
 
+Every function here takes and returns `decimal.Decimal`, so use the same
+package for the values you pass in and the ones you read back — anything else
+puts a conversion, and a rounding decision, at every boundary. A Parquet
+`Decimal128` column reads as the same type, so a table loaded from Parquet and
+a schedule built here hold values you can compare and combine directly.
+
+Insyra's numeric paths read a decimal, so a column of them can be averaged,
+summed and described like any other number column:
+
+```go
+table, _ := finance.ScheduleTable(rate, nper, pv, fv, finance.PaymentEnd)
+avg := table.GetColByName("Interest").Mean()
+```
+
+The cell keeps its exact value; the conversion to `float64` happens only where
+float arithmetic is asked for, and a `float64` carries about 16 significant
+digits, so a wider decimal is rounded at that point.
+
 ---
 
 ## Overview

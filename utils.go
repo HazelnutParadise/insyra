@@ -237,6 +237,14 @@ func IsNumeric(v any) bool {
 		return true
 	}
 
+	// A fixed-point decimal is a number. This has to agree with the read
+	// path: fix-clear-defects-core fixed exactly this split for named numeric
+	// types, and reopening it would leave a value that is a number to one
+	// half of the library and unreadable to the other.
+	if _, ok := utils.DecimalToFloat64(v); ok {
+		return true
+	}
+
 	return false
 }
 
