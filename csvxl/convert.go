@@ -88,7 +88,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 		return fmt.Errorf("too many arguments for csvEncoding")
 	}
 
-	f, err := excelize.OpenFile(existingFile)
+	f, err := excelize.OpenFile(existingFile, insyra.ExcelReadOptions())
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %w", existingFile, err)
 	}
@@ -130,7 +130,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 // ExcelToCsv splits an Excel file into multiple CSV files, one per sheet.
 // If customNames is provided, it uses them as CSV filenames; otherwise, it uses the sheet names.
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error {
-	f, err := excelize.OpenFile(excelFile)
+	f, err := excelize.OpenFile(excelFile, insyra.ExcelReadOptions())
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
 	}

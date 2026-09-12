@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -26,6 +27,14 @@ import (
 func sanitizeChartText(s string) string {
 	return html.EscapeString(s)
 }
+
+// Limits for the opt-in online rendering fallback.
+const (
+	// onlineRenderTimeout bounds the whole request, not just the connection.
+	onlineRenderTimeout = 60 * time.Second
+	// maxOnlineRenderBytes bounds the reply. A chart PNG is well under this.
+	maxOnlineRenderBytes int64 = 64 << 20 // 64 MiB
+)
 
 // Renderer
 // Any kinds of charts have their render implementation, and
@@ -119,7 +128,9 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 		req.Header.Set("Content-Type", "application/octet-stream")
 		req.Header.Set("Accept", "image/png") // 指定接收 PNG 格式
 
-		client := &http.Client{}
+		// A bare http.Client has no timeout, so a server that accepts the
+		// connection and then stops talking hangs the caller for good.
+		client := &http.Client{Timeout: onlineRenderTimeout}
 		resp, err := client.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to send HTTP request: %w", err)
@@ -131,9 +142,16 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 		}
 		insyra.LogInfo("plot", "SavePNG", "successfully received PNG response from HazelnutParadise online service.")
 		// 讀入回應並驗證 PNG 簽章，避免把錯誤頁（如 HTML）當成圖片寫入 .png。
-		data, err := io.ReadAll(resp.Body)
+		// Bounded: an unbounded ReadAll on a remote response is an
+		// out-of-memory waiting for a large or hostile reply. One byte past the
+		// cap is enough to tell the difference between "at the limit" and
+		// "truncated".
+		data, err := io.ReadAll(io.LimitReader(resp.Body, maxOnlineRenderBytes+1))
 		if err != nil {
 			return fmt.Errorf("failed to read PNG response: %w", err)
+		}
+		if int64(len(data)) > maxOnlineRenderBytes {
+			return fmt.Errorf("online service returned more than %d bytes; refusing to write it", maxOnlineRenderBytes)
 		}
 		pngSig := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
 		if len(data) < len(pngSig) || !bytes.Equal(data[:len(pngSig)], pngSig) {

@@ -54,6 +54,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - CCL: a number literal too large for a `float64` is an error instead of silently becoming `+Inf` — `strconv.ParseFloat`'s error was being dropped. Exponent notation is now a literal form: `1e5`, `1.5e-3` and `2E+3` compile, where they used to split into a number and an identifier and fail with `unexpected token`, even though `VALUE('1e3')` always worked and CCL's own string output uses exponent form. An `e` only joins the number when a digit follows, so a column called `E` or `E1` is unaffected. `TOSTR(1.5, '%d')` and `TOSTR(1, '%')` report the mismatch instead of writing Go's own complaint — `%!d(float64=1.5)`, `%!(NOVERB)` — into the cell.
 
+- Excel reads now pass excelize an unzip limit of 512 MB instead of accepting its 16 GB default, so a small file that decompresses into more memory than the host has is refused rather than read. `insyra.ExcelReadOptions` is exported so `csvxl` applies the same limit.
+
 ### CLI
 - Environment names are now validated: only letters, digits, `.`, `_` and `-` (starting with a letter or digit, no `..`). A name was previously joined straight onto the environments directory, so `../x` created or deleted directories outside it.
 - The command registry is guarded by a lock, so registering commands from several goroutines (embedders) is no longer a data race.
@@ -72,6 +74,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `count`, `find`, `replace` and `encode … ordinal … order` match the integers in CSV-loaded tables, and in every variable restored between one-shot commands. They compared the typed `2`, an `int`, with stored `int64` values and never matched: `count x 2` printed 0, `replace x 2 0` printed `replaced` and changed nothing, and `encode … order 1,2,3` encoded every cell as nil.
 - **BREAKING**: `accel` and the nine DataList statistics (`sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`) reject an argument they do not use instead of ignoring it. `mean x as m` printed the mean and stored nothing; it is now an error that names the argument. `accel` no longer accepts `--precision`, which chose the precision of the `accel run` removed in v0.3.1 and has been read by nothing since.
 
+- Database connections no longer print gorm's query log. Its default logger interpolates bound parameters into the message on a failing or slow query, so a `WHERE token = ?` put the token in the terminal and in anything capturing it. The CLI reports its own errors, so nothing is lost.
 ### `ml` and `nn`
 - **BREAKING (behaviour, not signature)**: `Classes()` never returns nil. On the ten classifier types across `ml` and `nn`, a model that has no classes to report — it was not fitted, or a pipeline wraps something that is not a classifier — now returns an empty `*insyra.DataList` whose `Err()` says which, instead of nil. A nil `*insyra.DataList` panics on every method it has, `Err()` included, so the caller's first safe move — asking the value what went wrong — was itself the crash. **The signature is unchanged, so nothing stops compiling: code written as `if classes == nil` keeps building and its branch never runs again.** Replace it with `if classes.Err() != nil`. `ml/mltest.RunConformance` now fails an implementation whose `Classes()` returns nil, rather than crashing on it, because `ml.Classifier` is a public interface that code outside this repository can implement.
 
@@ -111,12 +114,14 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - A failed GLPK download, extraction or build no longer ends the program: the failure is recorded and `SolveModel`/`SolveFromFile` report it through the additional-info table. The two temporary-file failures in `SolveModel` do the same instead of returning two nils.
 - **BREAKING**: `SolveFromFile` and `SolveModel` never return a `nil` DataTable. Every failure path — a timeout, a solver error, an unwritable temporary file, a nil model, more than one `timeoutSeconds` — used to return `nil` as the first table, and `Docs/lp.md`'s own example called `result.Show()` on it, which panics. Both returns are now empty but usable tables carrying the reason on `Err()`. A caller that detected failure with `result == nil` must check `result.Err()` instead; `nil` was never a documented return value. `Status` in the info table is now `Success` only when there is a result to read: a solve that ran but whose output file could not be read reports `Error` with the reason in `Warnings`, where it used to say `Success` beside a nil result. The arguments are also checked before the GLPK install runs, so a call that is already wrong no longer triggers it.
 
+- The directories created while extracting GLPK are 0o755 rather than 0777.
 ### `plot`
 - **BREAKING**: `SavePNG` no longer falls back to the online rendering service by default. Passing no third argument (or `false`) now returns an error when the local Chrome/Chromium render fails; pass `true` to opt in to the fallback, which uploads the chart and its data to `server3.hazelnut-paradise.com`. The previous default sent user data off the host without being asked.
 - `CreateRadarChart` without indicators and `CreateHeatMap` in calendar mode with the wrong X type or no `CalendarOpts` record an error and return `nil` instead of ending the program or panicking.
 - A `nil` `IDataList` no longer takes the program down. `CreateBarChart`, `CreateLineChart` and `CreateBoxPlot` skip a nil list with a warning and draw the rest, returning `nil` only when nothing is left to draw; `CreateWordCloud` returns `nil`. Every chart reads its data through `AtomicDo`, which dereferences the receiver, so a nil among real lists used to panic.
 - `SavePNG` returns an error when the output path has no file extension, instead of panicking inside the snapshot dependency, which reads the image format from the extension.
 
+- `SavePNG`'s opt-in online fallback now gives up after 60 seconds and reads at most 64 MiB of the reply. It used a `http.Client{}` with no timeout, which waits forever on a server that accepts the connection and then stops talking, and an unbounded `io.ReadAll` on a remote body.
 ### `isr`
 - `Err()`, `PopErr()`, `ClearErr()` and `SetErr()` are available on `DT` and `DL`; `ClearErr`/`SetErr` return the isr type, so they keep the block syntax instead of ending the chain at `*insyra.DataTable`.
 - `DT.From`, `Col`, `Row`, `Push`, `UseDL` and `UseDT` no longer end the program on a bad input. They return a usable object carrying the error, so the block syntax survives a failure: `t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`. `UseDL`/`UseDT` also stopped returning `nil`.
@@ -128,6 +133,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Four more chart calls no longer panic on ordinary bad input. `CreateBarChart` with no `XAxis` — which is what a zero-value config has — numbers the bars 1, 2, 3, … the way `plot.CreateBarChart` does, instead of crashing inside gonum's `NominalX`. `CreateFunctionPlot` refuses a `nil` function. `CreateHeatmapChart` refuses a grid whose rows are not all the same length, naming the first row that differs, and treats a negative `Colors` as the default of 20 the way zero already did.
 
 ### `py`
+- `PipInstall` and `PipUninstall` refuse a dependency name starting with `-`, and pass `--` before it. The caller's string went to `uv pip install` as one argv, so `--requirement=/path` made uv read that file and install whatever it listed.
+- The IPC server no longer spins on a failing listener, sets a ten-minute deadline on each connection, and removes its socket file from the temp directory when the process ends. A permanently failing `Accept` used to print a warning per iteration for the life of the process.
+- `ipc.WriteMessage` refuses a payload larger than the 256 MiB the reader accepts, before writing anything. It used to write a length the other end would reject — or, past 4 GiB, a truncated one that misframes every message after it.
+- Directories created for the Python environment are 0o755 rather than 0777.
 - A failed IPC listen is recorded and leaves the server down instead of ending the program.
 
 ## v0.3.2

@@ -28,7 +28,7 @@ func ReinstallPyEnv() error {
 	}
 
 	// 重新創建目錄
-	if err := os.MkdirAll(absInstallDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(absInstallDir, 0o755); err != nil {
 		return fmt.Errorf("failed to recreate install directory: %w", err)
 	}
 
@@ -297,12 +297,30 @@ finally:
 	return nil
 }
 
+// checkDependencyName refuses an argument that uv would read as an option
+// rather than a package. A single argv such as "--requirement=/etc/reqs.txt"
+// makes `uv pip install` read that file instead, so a caller passing a name
+// through from somewhere else could install anything.
+func checkDependencyName(dep string) error {
+	if dep == "" {
+		return fmt.Errorf("dependency name is empty")
+	}
+	if strings.HasPrefix(dep, "-") {
+		return fmt.Errorf("dependency name %q starts with '-', which uv would read as an option, not a package", dep)
+	}
+	return nil
+}
+
 // Install dependencies using uv pip
 func PipInstall(dep string) error {
+	if err := checkDependencyName(dep); err != nil {
+		return fmt.Errorf("PipInstall: %w", err)
+	}
 	if err := pyEnvInit(); err != nil {
 		return err
 	}
-	pythonCmd := exec.Command("uv", "pip", "install", dep, "--python", pyPath)
+	// The "--" stops uv reading anything after it as an option.
+	pythonCmd := exec.Command("uv", "pip", "install", "--python", pyPath, "--", dep)
 	pythonCmd.Dir = absInstallDir
 	var stdout, stderr bytes.Buffer
 	pythonCmd.Stdout = &stdout
@@ -317,10 +335,13 @@ func PipInstall(dep string) error {
 
 // Uninstall dependencies using uv pip
 func PipUninstall(dep string) error {
+	if err := checkDependencyName(dep); err != nil {
+		return fmt.Errorf("PipUninstall: %w", err)
+	}
 	if err := pyEnvInit(); err != nil {
 		return err
 	}
-	pythonCmd := exec.Command("uv", "pip", "uninstall", dep, "--python", pyPath)
+	pythonCmd := exec.Command("uv", "pip", "uninstall", "--python", pyPath, "--", dep)
 	pythonCmd.Dir = absInstallDir
 	var stdout, stderr bytes.Buffer
 	pythonCmd.Stdout = &stdout

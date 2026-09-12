@@ -54,6 +54,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - CCL：超出 `float64` 範圍的數字字面值改為回報錯誤，不再靜默變成 `+Inf`——`strconv.ParseFloat` 的錯誤本來被丟掉了。指數形式現在是合法的字面值：`1e5`、`1.5e-3`、`2E+3` 都能編譯，過去會被拆成數字加識別字然後以 `unexpected token` 失敗，儘管 `VALUE('1e3')` 一直可用、CCL 自己的字串輸出也用指數形式。`e` 後面要有數字才會併入數字，所以名為 `E` 或 `E1` 的欄位不受影響。`TOSTR(1.5, '%d')` 與 `TOSTR(1, '%')` 改為回報格式不符，不再把 Go 自己的抱怨——`%!d(float64=1.5)`、`%!(NOVERB)`——寫進儲存格。
 
+- 讀取 Excel 現在傳給 excelize 512 MB 的解壓上限，不再沿用它 16 GB 的預設值，所以一個解壓後比主機記憶體還大的小檔案會被拒絕而不是讀進來。`insyra.ExcelReadOptions` 匯出，讓 `csvxl` 套用同一個上限。
+
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
 - 命令登錄表加上鎖，多個 goroutine（嵌入端）同時註冊命令不再是 data race。
@@ -72,6 +74,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `count`、`find`、`replace` 與 `encode … ordinal … order` 現在能對上 CSV 載入的表，以及 one-shot 模式下每次還原的變數裡的整數。原本打的 `2` 是 `int`，存著的是 `int64`，永遠比對不到：`count x 2` 印出 0，`replace x 2 0` 印出 `replaced` 卻什麼都沒改，`encode … order 1,2,3` 把每一格都編成 nil。
 - **BREAKING**：`accel` 與九個 DataList 統計指令（`sum`、`mean`、`median`、`mode`、`stdev`、`var`、`min`、`max`、`range`）遇到用不到的引數改為回錯，不再默默忽略。原本 `mean x as m` 會印出平均數卻什麼都沒存，現在會回傳指出那個引數的錯誤。`accel` 不再接受 `--precision`，這個旗標原本用來選 `accel run` 的精度，`accel run` 在 v0.3.1 就已移除，之後沒有任何地方讀它。
 
+- 資料庫連線不再印出 gorm 的查詢日誌。它的預設 logger 在查詢失敗或過慢時會把綁定參數內插進訊息，所以 `WHERE token = ?` 會把 token 印在終端機以及任何收集它的地方。CLI 本來就自己回報錯誤，不會少掉什麼。
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外——也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。另外 `ml/mltest.RunConformance` 現在會判定「`Classes()` 回傳 nil」的實作不合格，而不是自己 panic——因為 `ml.Classifier` 是公開介面，函式庫外部的程式也能實作它。
 
@@ -111,12 +114,14 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - GLPK 下載、解壓或編譯失敗不再結束程式：失敗會被記錄，`SolveModel`／`SolveFromFile` 透過附加資訊表回報。`SolveModel` 兩處暫存檔失敗同樣改為回報，不再回傳兩個 nil。
 - **BREAKING**：`SolveFromFile` 與 `SolveModel` 不再回傳 `nil` 的 DataTable。每一條失敗路徑——逾時、求解失敗、暫存檔寫不出來、model 是 nil、傳超過一個 `timeoutSeconds`——過去第一個回傳值都是 `nil`，而 `Docs/lp.md` 自己的範例就直接呼叫 `result.Show()`，那會 panic。現在兩個回傳值都是空但可用的表格，原因記在 `Err()` 上。原本以 `result == nil` 判斷失敗的呼叫端要改成檢查 `result.Err()`；`nil` 從來不是文件寫過的回傳值。資訊表的 `Status` 現在只有真的讀得到結果才會是 `Success`：求解跑完但結果檔讀不到時回報 `Error`，原因放在 `Warnings`，過去那種情況會顯示 `Success` 卻搭配 nil 的結果。引數也改在 GLPK 安裝流程之前檢查，已經寫錯的呼叫不會再觸發安裝。
 
+- 解壓 GLPK 時建立的目錄權限改為 0o755，不再是 0777。
 ### `plot`
 - **BREAKING**：`SavePNG` 預設不再退回線上渲染服務。不傳第三個參數（或傳 `false`）時，本機 Chrome／Chromium 渲染失敗會回傳錯誤；傳 `true` 才允許退回線上服務，該服務會把圖表連同資料上傳到 `server3.hazelnut-paradise.com`。過去的預設會在沒有詢問的情況下把使用者資料送出主機。
 - `CreateRadarChart` 未提供 indicators、`CreateHeatMap` 日曆模式的 X 型別錯誤或未設 `CalendarOpts` 時，改為記錄錯誤並回傳 `nil`，不再結束程式或 panic。
 - `nil` 的 `IDataList` 不再讓程式當掉。`CreateBarChart`、`CreateLineChart` 與 `CreateBoxPlot` 會略過 nil 的清單並畫出其餘部分，全部都是 nil 時才回傳 `nil`；`CreateWordCloud` 回傳 `nil`。每個圖表都透過 `AtomicDo` 讀資料，而那會解參考接收者，所以夾在正常清單裡的一個 nil 過去會 panic。
 - `SavePNG` 在輸出路徑沒有副檔名時回傳錯誤，不再在快照套件裡 panic，該套件是以副檔名決定圖片格式的。
 
+- `SavePNG` 的線上備援（需自行開啟）現在 60 秒放棄，回應最多讀 64 MiB。過去用的是沒有 timeout 的 `http.Client{}`——伺服器接了連線然後不講話就會永遠等下去——以及對遠端回應無上限的 `io.ReadAll`。
 ### `isr`
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。
 - `DT.From`、`Col`、`Row`、`Push`、`UseDL`、`UseDT` 遇到錯誤的輸入不再結束程式，改為回傳帶著錯誤、可繼續串接的物件：`t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`。`UseDL`／`UseDT` 也不再回傳 `nil`。
@@ -128,6 +133,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 另外四個繪圖呼叫遇到一般的錯誤輸入也不再 panic。`CreateBarChart` 沒有 `XAxis` 時（零值設定就是這樣）改為比照 `plot.CreateBarChart` 把長條編號成 1、2、3……，不再在 gonum 的 `NominalX` 裡當掉。`CreateFunctionPlot` 拒絕 `nil` 函式。`CreateHeatmapChart` 拒絕各列長度不一致的資料並指出第一個不同的列，`Colors` 為負數時比照 0 採用預設值 20。
 
 ### `py`
+- `PipInstall` 與 `PipUninstall` 拒絕以 `-` 開頭的依賴名稱，並在名稱前加上 `--`。呼叫端的字串過去是以單一 argv 交給 `uv pip install`，所以 `--requirement=/path` 會讓 uv 去讀那個檔案並安裝裡面列的東西。
+- IPC 伺服器不再在監聽器持續失敗時空轉，每條連線設十分鐘期限，行程結束時會把暫存目錄裡的 socket 檔移除。過去 `Accept` 持續失敗會在行程的餘生每次迭代印一行警告。
+- `ipc.WriteMessage` 在寫入任何位元組之前，拒絕超過讀取端上限（256 MiB）的訊息。過去會寫出一個對端會拒絕的長度，超過 4 GiB 時前綴還會被截斷，讓對端之後每一則訊息都解框錯位。
+- 建立 Python 環境的目錄權限改為 0o755，不再是 0777。
 - IPC 監聽失敗改為記錄並讓伺服器保持關閉，不再結束程式。
 
 ## v0.3.2

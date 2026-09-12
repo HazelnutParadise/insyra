@@ -82,7 +82,7 @@ func pyEnvInit() error {
 func prepareInstallDir() error {
 	// 確保目錄存在
 	if _, err := os.Stat(absInstallDir); os.IsNotExist(err) {
-		err := os.MkdirAll(absInstallDir, os.ModePerm)
+		err := os.MkdirAll(absInstallDir, 0o755)
 		if err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", absInstallDir, err)
 		}
@@ -110,7 +110,7 @@ func setupUvEnvironment() error {
 	}
 
 	// 重新創建目錄
-	if err := os.MkdirAll(absInstallDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(absInstallDir, 0o755); err != nil {
 		return fmt.Errorf("failed to recreate install directory: %w", err)
 	}
 

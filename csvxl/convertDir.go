@@ -47,7 +47,7 @@ func EachExcelToCsv(dir string, outputDir string) error {
 // excelFileToCsv writes every sheet of one workbook as a CSV file and closes
 // the workbook before returning, on every path.
 func excelFileToCsv(excelFile, outputDir string) error {
-	f, err := excelize.OpenFile(excelFile)
+	f, err := excelize.OpenFile(excelFile, insyra.ExcelReadOptions())
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
 	}

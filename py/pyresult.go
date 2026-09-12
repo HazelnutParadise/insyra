@@ -2,6 +2,7 @@ package py
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -63,6 +64,11 @@ func waitForResult(executionID string, processDone <-chan struct{}, execErr <-ch
 	}
 }
 
+// ipcConnDeadline bounds one request/response exchange on an IPC connection.
+// A Python call that legitimately takes longer than this is the caller's
+// timeout to set, not the framing layer's.
+const ipcConnDeadline = 10 * time.Minute
+
 // 啟動 IPC 伺服器來接收 Python 回傳的複雜資料結構
 func startServer() {
 	serverOnce.Do(func() {
@@ -101,15 +107,36 @@ func startServer() {
 		// Signal that the server is ready
 		close(serverReady)
 
-		// Accept loop
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				insyra.LogWarning("py", "server", "Accept error: %v", err)
-				continue
-			}
-			go handleIPCConnection(conn)
+		// Clean up the socket file when the process ends. Without this every
+		// run leaves one behind in os.TempDir().
+		if runtime.GOOS != "windows" {
+			addr := ipcAddress
+			runtime.AddCleanup(&serverOnce, func(path string) {
+				_ = os.Remove(path)
+			}, addr)
 		}
+
+		// Accept loop
+		go func() {
+			for {
+				conn, err := ln.Accept()
+				if err != nil {
+					// A listener that is closed, or permanently broken, makes
+					// Accept fail every time. `continue` then spun a warning
+					// per iteration for the life of the process.
+					if errors.Is(err, net.ErrClosed) {
+						return
+					}
+					var ne net.Error
+					if errors.As(err, &ne) && ne.Timeout() {
+						continue
+					}
+					insyra.LogError("py", "server", "IPC accept failed, stopping the listener: %v", err)
+					return
+				}
+				go handleIPCConnection(conn)
+			}
+		}()
 	})
 }
 
@@ -119,6 +146,12 @@ func handleIPCConnection(conn net.Conn) {
 			insyra.LogWarning("py", "server", "conn.Close error: %v", cerr)
 		}
 	}()
+
+	// A peer that connects and then says nothing would hold the goroutine and
+	// the connection open for good.
+	if derr := conn.SetDeadline(time.Now().Add(ipcConnDeadline)); derr != nil {
+		insyra.LogWarning("py", "server", "failed to set a deadline on the IPC connection: %v", derr)
+	}
 
 	// Read message
 	msg, err := ipc.ReadMessage(conn)

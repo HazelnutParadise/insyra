@@ -380,9 +380,21 @@ func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTabl
 
 // ----- excel -----
 
+// excelUnzipSizeLimit bounds how much an Excel file may expand to while it is
+// being read. excelize's default is 16 GB, which is no protection at all
+// against a zip bomb: a few kilobytes on disk can decompress into more memory
+// than the host has. 512 MB is far above any real spreadsheet.
+const excelUnzipSizeLimit = 512 << 20
+
+// ExcelReadOptions returns the options every Excel read in this module uses.
+// It is exported so csvxl applies the same limit.
+func ExcelReadOptions() excelize.Options {
+	return excelize.Options{UnzipSizeLimit: excelUnzipSizeLimit}
+}
+
 // ReadExcelSheet reads a specific sheet from an Excel file and loads it into a DataTable.
 func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
-	f, err := excelize.OpenFile(filePath)
+	f, err := excelize.OpenFile(filePath, ExcelReadOptions())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Excel file %s: %v", filePath, err)
 	}

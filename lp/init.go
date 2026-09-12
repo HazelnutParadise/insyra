@@ -393,7 +393,7 @@ func untar(src string, dest string) error {
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
+			if err := os.MkdirAll(fpath, 0o755); err != nil {
 				return err
 			}
 		case tar.TypeReg:
@@ -425,12 +425,12 @@ func unzip(src string, dest string) error {
 			return err
 		}
 		if f.FileInfo().IsDir() {
-			err := os.MkdirAll(fpath, os.ModePerm)
+			err := os.MkdirAll(fpath, 0o755)
 			if err != nil {
 				return err
 			}
 		} else {
-			if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
+			if err := os.MkdirAll(filepath.Dir(fpath), 0o755); err != nil {
 				return err
 			}
 
