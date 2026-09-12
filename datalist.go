@@ -55,6 +55,12 @@ func flattenWithNilSupport(values []any) []any {
 			continue
 		}
 
+		// Cell asks for exactly one cell, whatever is inside.
+		if m, ok := value.(cellMarker); ok {
+			result = append(result, m.v)
+			continue
+		}
+
 		// Use reflection to check if the value is a slice (but not array)
 		rv := reflect.ValueOf(value)
 		if rv.Kind() == reflect.Slice {
@@ -99,7 +105,7 @@ func NewDataList(values ...any) *DataList {
 func (dl *DataList) Append(values ...any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		// Append data and update timestamp
-		dl.data = append(dl.data, values...)
+		dl.data = append(dl.data, unwrapCells(values)...)
 		dl.updateTimestamp()
 	})
 	return dl
@@ -208,7 +214,7 @@ func (dl *DataList) Update(index int, newValue any) *DataList {
 			dl.fail("Update", "Index %d out of bounds", index)
 			return
 		}
-		dl.data[index] = newValue
+		dl.data[index] = unwrapCell(newValue)
 		dl.updateTimestamp()
 	})
 	return dl
@@ -218,6 +224,7 @@ func (dl *DataList) Update(index int, newValue any) *DataList {
 // If the index is out of bounds, the value is appended to the end of the list.
 // Returns the DataList to support chaining calls.
 func (dl *DataList) InsertAt(index int, value any) *DataList {
+	value = unwrapCell(value)
 	dl.AtomicDo(func(dl *DataList) {
 		// Handle negative index
 		if index < 0 {
@@ -334,6 +341,7 @@ func (dl *DataList) Filter(filterFunc func(any) bool) *DataList {
 
 // ReplaceFirst replaces the first occurrence of oldValue with newValue.
 func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList {
+	oldValue, newValue = unwrapCell(oldValue), unwrapCell(newValue)
 	dl.AtomicDo(func(dl *DataList) {
 		dl.replaceFirst_notAtomic(oldValue, newValue)
 	})
@@ -342,6 +350,7 @@ func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList {
 
 // ReplaceLast replaces the last occurrence of oldValue with newValue.
 func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList {
+	oldValue, newValue = unwrapCell(oldValue), unwrapCell(newValue)
 	dl.AtomicDo(func(dl *DataList) {
 		dl.replaceLast_notAtomic(oldValue, newValue)
 	})
@@ -351,6 +360,7 @@ func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList {
 // ReplaceAll replaces all occurrences of oldValue with newValue in the DataList.
 // If oldValue is not found, no changes are made.
 func (dl *DataList) ReplaceAll(oldValue, newValue any) *DataList {
+	oldValue, newValue = unwrapCell(oldValue), unwrapCell(newValue)
 	dl.AtomicDo(func(dl *DataList) {
 		dl.replaceAll_notAtomic(oldValue, newValue)
 	})
@@ -591,6 +601,7 @@ func filterCells(data []any, keep func(any) bool) []any {
 // FindAll or Replace even when it was plainly there, and disagreed with what
 // Counter reported for the same value.
 func equalCell(a, b any) (eq bool) {
+	a, b = unwrapCell(a), unwrapCell(b)
 	if fa, ok := a.(float64); ok {
 		if fb, ok := b.(float64); ok && math.IsNaN(fa) && math.IsNaN(fb) {
 			return true
@@ -619,6 +630,7 @@ func equalCell(a, b any) (eq bool) {
 // The test is chosen once per call from want. Choosing it again for every cell
 // made a million-cell Count of floats or strings three times slower.
 func valueMatcher(want any) func(cell any) bool {
+	want = unwrapCell(want)
 	if ws, wu, wSigned, ok := integerParts(want); ok {
 		return func(cell any) bool {
 			cs, cu, cSigned, ok := integerParts(cell)

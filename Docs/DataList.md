@@ -74,6 +74,19 @@ func NewDataList(values ...any) *DataList
 - **Arrays** are kept as single elements (e.g., `[3]int{1, 2, 3}` remains as one element)
 - Nested slices are recursively flattened
 - Other types are preserved as-is
+- Wrap an argument in `insyra.Cell` to keep it whole, inline among ordinary
+  values. The cell holds the value at its own type; the mark is removed on the
+  way in and is never stored:
+
+```go
+insyra.NewDataList(insyra.Cell([]int{1, 2}), 3, "a")   // three cells
+insyra.NewDataList([]int{1, 2}, 3, "a")                // four cells
+```
+
+  `Append`, `Update`, `InsertAt`, the `Replace` methods, `UpdateElement` and
+  the row appenders accept it too. Those never flatten, so it changes nothing
+  there — it is accepted so that writing it for consistency is not a trap. A
+  slice in a cell is counted, matched, grouped and ordered by its content.
 
 **Example:**
 

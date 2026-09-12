@@ -259,10 +259,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: three decisions. Compare `rotation_matrix`, loadings and `Phi` up to column order and sign, as `TestRestartsParameter` already reasons. Compare a multimodal rotation by criterion value rather than by which minimum R's unseeded starts happened to hit. Record the R package versions in the baseline cache key, or in the cached file, so a stale cache cannot pass as current. The ~595 figure at `factorParityTol` should be replaced by whatever the suite reports once those are settled.
 - **Status**: pending
 
-### [2026-09-12] — only the constructors treat a `[]byte` as a list of numbers
-- **Where**: `datalist.go` `flattenWithNilSupport`, against `Count`, `Counter`, `GroupBy` and the rest
-- **What**: since `identify-uncomparable-cells`, a `[]byte` cell is one value everywhere it is read — counted as one, matched as one, grouped as one. `NewDataList([]byte{0, 255})` still produces two cells holding `0` and `255`, because the constructor flattens every slice. The owner ruled on 2026-09-12 that the flattening stays, since it is what makes `NewDataList` read like constructing a pandas Series. So the two are consistent by decision rather than by accident, but a reader who writes `NewDataList(blob)` and then `Count(blob)` gets 0 with nothing to explain it. A blob reaches a cell through `Append` or `ReadSQL`.
-- **Suggestion**: not a code change on its own. The planned `Cell(v)` marker is the answer for the general case — `NewDataList(Cell(blob), …)` — so document the constructor's behaviour alongside it rather than separately, and make sure the `Counter`/`Count` doc examples build their list with `Append` so they are runnable as written.
+### [2026-09-12] — a bare `[]byte` still flattens in the constructors
+- **Where**: `datalist.go` `flattenWithNilSupport`
+- **What**: a `[]byte` cell is one value everywhere it is read — counted, matched, grouped and ordered by content — but `NewDataList([]byte{0, 255})` still produces two cells holding `0` and `255`, because the constructor flattens every slice. The owner ruled on 2026-09-12 that the flattening stays: it is what makes `NewDataList` read like constructing a pandas Series. `one-value-one-cell` gave that decision an escape hatch, `NewDataList(Cell(blob), …)`, so the remaining gap is only that a reader who writes the bare form and then searches for the blob gets 0 with nothing to explain it.
+- **Suggestion**: documentation, not code. `Docs/DataList.md` now describes the flattening and `Cell` together; check that the `Count`/`Counter` examples build their list with `Append` or `Cell` so they are runnable as written, and consider whether `Count` should say something when it is handed a slice that the receiving list could not be holding.
 - **Status**: pending
 
 ### [2026-09-12] — `labelKey` still merges nested values that print alike

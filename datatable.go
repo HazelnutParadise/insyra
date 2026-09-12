@@ -164,7 +164,7 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
 		for i, rowData := range rowsData {
 			upperCaseRowData := make(map[string]any)
 			for colIndex, value := range rowData {
-				upperCaseRowData[strings.ToUpper(colIndex)] = value
+				upperCaseRowData[strings.ToUpper(colIndex)] = unwrapCell(value)
 			}
 			upperCaseRowsData[i] = upperCaseRowData
 		}
@@ -229,7 +229,7 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable 
 			}
 			sort.Strings(colNames)
 			for _, colName := range colNames {
-				value := rowData[colName]
+				value := unwrapCell(rowData[colName])
 				found := false
 				for i := 0; i < len(dt.columns); i++ {
 					if dt.columns[i].name == colName {
@@ -485,6 +485,7 @@ func (dt *DataTable) GetRowByName(name string) *DataList {
 
 // UpdateElement updates the element at the given row and column index.
 func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable {
+	value = unwrapCell(value)
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndex = strings.ToUpper(columnIndex)
 		colPos, ok := utils.ParseColIndex(columnIndex)
