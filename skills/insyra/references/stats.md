@@ -90,9 +90,10 @@ fa, err := stats.FactorAnalysis(dt, stats.DefaultFactorAnalysisOptions())
 `KMeansOptions` has `NStart`, `IterMax` and `Seed` (a `*int64` — set it for a
 reproducible run).
 
-`Rotation.Restarts` is how many starting points the rotation is run from, best
-criterion value winning. The default of 1 is fine for Varimax and Oblimin;
-raise it for Geomin or Simplimax, whose criteria have local minima. The lowest
+`Rotation.Restarts` is how many starting points the rotation is run from, the
+lowest criterion value among those that converged winning. The default is 20,
+as in psych 2.6.5; set it to 1 for the single identity start SPSS and
+`GPArotation` use by default. The lowest
 criterion value can be a solution with highly correlated factors, especially
 when more factors are fitted than the data hold, so check `Phi` when a
 multi-start result differs from the single-start one.

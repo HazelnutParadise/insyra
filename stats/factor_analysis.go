@@ -90,7 +90,7 @@ type FactorRotationOptions struct {
 	Kappa            float64          // Optional: Promax power (default 4)
 	Delta            float64          // Optional: Oblimin gamma (default 0)
 	GeominEpsilon    float64          // Optional: Geomin delta (default 0.01)
-	Restarts         int              // Optional: number of orthogonal starts a GPA rotation is run from, best criterion value wins (default 1)
+	Restarts         int              // Optional: number of orthogonal starts a GPA rotation is run from, lowest criterion value among those that converged wins (default 20, psych 2.6.5's n.rotations; 1 is the single identity start SPSS and GPArotation use)
 	VarimaxAlgorithm VarimaxAlgorithm // Optional: "kaiser" (psych default) or "gparotation"
 }
 
@@ -231,7 +231,7 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 			Method:           FactorRotationOblimin, // R default: "oblimin"
 			Kappa:            4,                     // R default for promax
 			Delta:            0,                     // R default for oblimin
-			Restarts:         1,
+			Restarts:         20,                    // psych 2.6.5 default: n.rotations = 20
 			VarimaxAlgorithm: VarimaxKaiser,
 		},
 		Scoring:      FactorScoreRegression, // R default: "regression"

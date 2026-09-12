@@ -265,10 +265,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: `inferArrowType` infers from Go values, so it cannot tell an `int16` that came from a `Date32` column from any other. Carrying the source schema through a read would fix it properly; inferring `time.Time` to `Date64` and `[]byte`-bearing strings to `Binary` would not, and would guess wrong on ordinary data. Worth doing only if round-tripping is a use case someone has.
 - **Status**: pending
 
-### [2026-09-12] — the best-of-restarts rule follows GPArotation's engine, not psych's `faRotations`
-- **Where**: `stats/internal/fa/psych_faRotations.go`, `preferCandidate` and the `hyper` parameter of `FaRotations`
-- **What**: the file is named after `psych::faRotations`, which ranks the starts by hyperplane count (the share of loadings below `hyper = .15` in absolute value), then complexity, then fit, and rerotates from the winner. Ours keeps the lowest criterion value among the starts that converged, which is what `GPArotation::.GPA_RS_engine` does (strict minimum `f`, no convergence preference). `FaRotations`'s `hyper` parameter carries psych's name but oblimin's gamma. Seen on 2026-09-12 while reading both sources (psych 2.6.5, GPArotation 2026.8-2) for `oblimin-honours-its-start`; psych 2.6.5 also changed `fa()`'s `n.rotations` default from 1 to 20.
-- **Suggestion**: two decisions, both about which reference this file claims to follow: the selection rule (criterion value versus hyperplane count), and whether `Restarts` should follow psych's new default of 20, which would move the default output. Neither is a defect. Both change results, the first at `Restarts > 1`, the second by default.
+### [2026-09-12] — a multi-start rotation logs one "did not converge" warning per start that hit the cap
+- **Where**: `stats/internal/fa/GPArotation_GPFoblq.go` and `GPArotation_GPForth.go`, the `LogWarning` after the iteration loop
+- **What**: each start that runs out of iterations logs a warning, whether or not the start that wins converged. With `Restarts` now defaulting to 20 (`default-restarts-follow-psych`), a criterion with local minima such as geomin or simplimax can log it several times per `FactorAnalysis` call while `RotationConverged` is true. Oblimin, the default rotation, converged on 240 of 240 starts measured, so the default path does not show it. Pre-existing for anyone who set `Restarts: 20` by hand.
+- **Suggestion**: log once, from `FaRotations`, and only when the chosen solution did not converge — the per-start flag already reaches `preferCandidate`, and the caller reads the outcome from `RotationConverged`. Demote the per-start message to debug.
 - **Status**: pending
 
 ### [2026-09-12] — 46 of the 105 archived specs have a `## Purpose` nobody wrote

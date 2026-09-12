@@ -140,7 +140,7 @@ func TestRestartsIsTheNumberOfStarts(t *testing.T) {
 	L := noisyStructure()
 	_, nf := L.Dims()
 	for _, restarts := range []int{1, 2, 3, 5, 20} {
-		if got := len(buildStarts(L, nf, restarts)); got != restarts {
+		if got := len(buildStarts(L, nf, restarts, 1e-5, 1000)); got != restarts {
 			t.Errorf("Restarts %d produced %d starts", restarts, got)
 		}
 	}
@@ -149,7 +149,7 @@ func TestRestartsIsTheNumberOfStarts(t *testing.T) {
 func TestEveryStartIsOrthogonal(t *testing.T) {
 	for name, L := range map[string]*mat.Dense{"simple": simpleStructure(), "noisy": noisyStructure()} {
 		_, nf := L.Dims()
-		for _, s := range buildStarts(L, nf, 20) {
+		for _, s := range buildStarts(L, nf, 20, 1e-5, 1000) {
 			if d := departureFromOrthogonal(s); d > startOrthogonalityTol {
 				t.Errorf("%s: a start is off the orthogonal group by %.4e", name, d)
 			}
@@ -267,7 +267,7 @@ func TestOneRestartIsTheIdentityAlone(t *testing.T) {
 	L := noisyStructure()
 	_, nf := L.Dims()
 	for _, restarts := range []int{-1, 0, 1} {
-		starts := buildStarts(L, nf, restarts)
+		starts := buildStarts(L, nf, restarts, 1e-5, 1000)
 		if len(starts) != 1 {
 			t.Fatalf("Restarts %d produced %d starts, want 1", restarts, len(starts))
 		}
@@ -287,13 +287,13 @@ func TestARejectedStartIsReplaced(t *testing.T) {
 		"denormalised": mat.NewDense(6, 3, []float64{1e-300, 0, 0, 0, 1e-300, 0, 0, 0, 1e-300, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
 	}
 	for name, L := range degenerate {
-		vm := Varimax(L, true, 1e-08, 5000)
+		vm := Varimax(L, true, 1e-5, 1000)
 		if rot, ok := vm["rotmat"].(*mat.Dense); ok && isOrthonormal(rot) {
 			t.Errorf("%s: Varimax now produces a usable start, so this fixture no longer exercises the rejection", name)
 			continue
 		}
 		const want = 5
-		starts := buildStarts(L, 3, want)
+		starts := buildStarts(L, 3, want, 1e-5, 1000)
 		if len(starts) != want {
 			t.Errorf("%s: %d starts after one was rejected, want %d", name, len(starts), want)
 		}

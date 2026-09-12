@@ -1302,7 +1302,7 @@ type FactorRotationOptions struct {
     Kappa            float64          // Promax power m (default 4); cast to int internally
     Delta            float64          // Oblimin gamma (default 0)
     GeominEpsilon    float64          // Geomin ε (default 0.01)
-    Restarts         int              // number of orthogonal starts to run from (default 1)
+    Restarts         int              // number of orthogonal starts to run from (default 20; 1 is a single identity start)
     VarimaxAlgorithm VarimaxAlgorithm // "kaiser" (psych default) or "gparotation"
 }
 ```
@@ -1313,11 +1313,17 @@ Default `1e7` matches R's "moderate accuracy"; lower to `1` for machine
 precision (slower; useful when converging on a flat / boundary objective).
 
 `DefaultFactorAnalysisOptions()` returns: Kaiser count, MINRES extraction,
-Oblimin rotation, Regression scoring, MaxIter=50, MinErr=0.001, OptimFactr=1e7,
-OptimMaxIter=100 (matching R `psych::fa` defaults).
+Oblimin rotation, Regression scoring, Restarts=20, MaxIter=50, MinErr=0.001,
+OptimFactr=1e7, OptimMaxIter=100 (matching R `psych::fa` defaults).
 
 `Restarts` is the number of starting points the rotation is run from; the
-solution with the best criterion value wins, preferring one that converged. The
+solution with the lowest criterion value among the starts that converged wins.
+That is the rule `GPArotation`'s engine and `fungible::faMain` use;
+`psych::faRotations` ranks starts by hyperplane count instead, and on every
+dataset measured the two rules chose the same solution. The default of 20 is
+psych 2.6.5's `n.rotations`, changed from 1 after a real example of a single
+start stopping in a local minimum; `Restarts: 1` is the single identity start
+SPSS and `GPArotation` use by default. The
 criteria are not convex, and geomin and simplimax in particular have local
 minima, so more than one start is worth trying. What wins is the lowest
 criterion value, which is not the same as the most readable solution: on an

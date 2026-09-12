@@ -453,7 +453,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		baseLoadings = loadings
 	}
 
-	starts := buildStarts(baseLoadings, nf, restarts)
+	starts := buildStarts(baseLoadings, nf, restarts, eps, maxIter)
 
 	for idx, start := range starts {
 
@@ -636,8 +636,9 @@ const startOrthogonalityTol = 1e-8
 //
 // The list is the identity, Varimax's rotation matrix as one informed start,
 // and random orthogonal matrices for the rest. len(starts) == restarts, so the
-// parameter means what it says.
-func buildStarts(baseLoadings *mat.Dense, nf, restarts int) []*mat.Dense {
+// parameter means what it says. eps and maxIter are the rotation's own, and
+// bound the informed start.
+func buildStarts(baseLoadings *mat.Dense, nf, restarts int, eps float64, maxIter int) []*mat.Dense {
 	starts := make([]*mat.Dense, 0, max(1, restarts))
 	starts = append(starts, identityMatrix(nf))
 	if restarts <= 1 || nf <= 1 {
@@ -646,8 +647,11 @@ func buildStarts(baseLoadings *mat.Dense, nf, restarts int) []*mat.Dense {
 
 	// Varimax's rotation matrix is orthogonal by construction, but it is
 	// checked like any other start: a rotation that ran out of iterations can
-	// hand back a matrix that has drifted off the manifold.
-	vm := Varimax(baseLoadings, true, 1e-08, 5000)
+	// hand back a matrix that has drifted off the manifold. It runs at the
+	// search's own tolerance: a start only has to be on the manifold, and at
+	// 1e-8 / 5000 it hit the cap and cost 80 ms on tables where the whole
+	// twenty-start search costs 2.
+	vm := Varimax(baseLoadings, true, eps, maxIter)
 	if rot, ok := vm["rotmat"].(*mat.Dense); ok && isOrthonormal(rot) {
 		starts = append(starts, mat.DenseCopyOf(rot))
 	}

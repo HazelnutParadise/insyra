@@ -1556,3 +1556,13 @@ func TestObliminRestartsSearchTheCriterion(t *testing.T) {
 		t.Errorf("oblimin f = %.6f at Restarts 1 and %.6f at Restarts 5; the extra starts were not used", one, five)
 	}
 }
+
+// The default number of starts follows psych 2.6.5, whose fa() changed
+// n.rotations from 1 to 20 after a real example of a single start stopping in
+// a local minimum. Restarts: 1 is the single identity start SPSS and
+// GPArotation use by default.
+func TestDefaultRestartsFollowPsych(t *testing.T) {
+	if got := stats.DefaultFactorAnalysisOptions().Rotation.Restarts; got != 20 {
+		t.Errorf("DefaultFactorAnalysisOptions().Rotation.Restarts = %d, want 20", got)
+	}
+}
