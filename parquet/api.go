@@ -250,6 +250,11 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 	for i := 0; i < int(arrowTable.NumCols()); i++ {
 		col := arrowTable.Column(i)
 		data := chunkedToSlice(col.Data())
+		// getVal already yields nil for a type it cannot represent; the reason
+		// has to be recorded here, where the column's name and type are known.
+		if !supportedArrowType(col.DataType()) {
+			dataTable.SetErr("parquet", "Read", unsupportedColumnMsg, col.Name(), col.DataType())
+		}
 		dataTable.AppendCols(insyra.NewDataList(data).SetName(col.Name()))
 	}
 
@@ -334,7 +339,12 @@ func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnO
 	if err != nil {
 		return nil, err
 	}
-	return table.GetCol("A"), nil
+	list := table.GetCol("A")
+	// Err() lives on the table, and the caller only gets the list.
+	if e := table.Err(); e != nil {
+		list.SetErr("parquet", "ReadColumn", "%s", e.Message)
+	}
+	return list, nil
 }
 
 // selectedRowCount sums the row counts of the given row groups from the file

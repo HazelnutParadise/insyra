@@ -98,6 +98,35 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 - `*insyra.DataTable`: Return value.
 - `error`: Error when the operation fails.
 
+**Column types:** the table below is what each Arrow column type in the file
+becomes in Go. A type that is not listed has no faithful Go representation, so
+its cells are read as `nil` and the reason, naming the column and the Arrow
+type, is recorded on the returned table's `Err()`. The rest of the file still
+reads normally, and `ReadOptions.Columns` can be used to skip such a column
+entirely.
+
+| Arrow column type | Go value |
+| --- | --- |
+| `Int8`, `Int16`, `Int32`, `Int64` | `int8`, `int16`, `int32`, `int64` |
+| `Uint8`, `Uint16`, `Uint32`, `Uint64` | `uint8`, `uint16`, `uint32`, `uint64` |
+| `Float32`, `Float64` | `float32`, `float64` |
+| `Bool` | `bool` |
+| `String`, `LargeString` | `string` |
+| `Binary`, `LargeBinary`, `FixedSizeBinary` | `string` holding the raw bytes; recover them with `[]byte(cell)` |
+| `Timestamp` | `time.Time` |
+| `Date32`, `Date64` | `time.Time` at UTC midnight |
+| `Decimal128`, `Decimal256` | `decimal.Decimal` ([go-decimal](https://github.com/TimLai666/go-decimal)), exact |
+| anything else | `nil`, with the reason on `Err()` |
+
+A `Decimal` keeps the file's own unscaled integer and scale, so nothing is
+rounded, and it sorts by value rather than by the text of its digits. Like a
+`time.Time`, it is not a number to `Mean`, `Sum` and the rest of the numeric
+path; convert it first if you need arithmetic.
+
+Dictionary-encoded columns are not a special case: the reader materialises them
+as their underlying type, so a pandas `category` column of strings reads as
+strings.
+
 ### Write
 
 ```go

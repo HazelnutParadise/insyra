@@ -253,6 +253,18 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
+- **Where**: `internal/utils` `IsNumeric` / `ToFloat64Safe`, and every numeric path behind them
+- **What**: `parquet-foreign-column-types` made `Decimal128` and `Decimal256` read as a go-decimal `decimal.Decimal`, exact and sorting by value. It is a struct, so `IsNumeric` says no and `ToFloat64Safe` cannot read it, which means `Mean`, `Sum`, `Stdev` and CCL arithmetic refuse a decimal column naming the row. That follows the `time.Time` precedent exactly, and it is the reason the change did not go further on its own. But a money column is far likelier to want arithmetic than a date column is.
+- **Suggestion**: the decision is whether a decimal is a number in insyra. If it is, `ToFloat64Safe` needs an arm for it, which today means going through `String()` and `strconv.ParseFloat` because go-decimal exposes no `Float64()`; adding one upstream would be cleaner and it is the same author's library. Weigh that against making `internal/utils`, which every value in the library passes through, depend on a decimal package.
+- **Status**: pending
+
+### [2026-09-12] — reading a Parquet file and writing it back still changes column types
+- **Where**: `parquet/internal.go` `inferArrowType`
+- **What**: the reader now handles twenty Arrow types; the writer still emits seven. So a read-then-write round trip downgrades: a `Date32` column comes back as a timestamp, a `Binary` column as a string, a decimal as its text, an `Int16` as an `Int64`. Nothing is silently wrong, but the file is not the file that went in. Found on 2026-09-12 while fixing #371, which only concerned the read half.
+- **Suggestion**: `inferArrowType` infers from Go values, so it cannot tell an `int16` that came from a `Date32` column from any other. Carrying the source schema through a read would fix it properly; inferring `time.Time` to `Date64` and `[]byte`-bearing strings to `Binary` would not, and would guess wrong on ordinary data. Worth doing only if round-tripping is a use case someone has.
+- **Status**: pending
+
 ### [2026-09-12] — `oblimin` ignores its starting point, so `Restarts` costs it N identical runs
 - **Where**: `stats/internal/fa/psych_faRotations.go`, the `"oblimin"` arm of the switch in `FaRotations`
 - **What**: every other method rotates from the start it was handed; oblimin builds its own identity matrix and rotates from that, ignoring the start entirely. With `Restarts: 20` it therefore performs the same computation twenty times and returns the first result. The comment says the identity start is deliberate, "better SPSS compatibility than random starts". Found on 2026-09-12 while fixing #373, which made every start orthogonal — so the starts oblimin is refusing are now legitimate ones.
@@ -263,12 +275,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `openspec/specs/*/spec.md`, the `## Purpose` section
 - **What**: `openspec validate --specs --strict` on 2026-09-12 reported 46 failures, and every one is the same shape: 26 specs still carry the placeholder sentence `openspec archive` writes for a new capability (`TBD - created by archiving change <id>. Update Purpose after archive.`) and 20 have a Purpose under 50 characters. Eight also have a requirement over 500 characters. The failures are not new and nothing in CI runs this command, which is why they accumulated — the capability is created by the first change that touches it, the placeholder lands in the main spec, and a `## Purpose` written in a later delta is ignored because deltas only supply one at creation. `verification-integrity` was fixed in `docs-hygiene-and-remaining-partials` as an example of the size the replacement should be.
 - **Suggestion**: not a mechanical pass. Each Purpose is one or two sentences saying what the capability is for, which means reading the requirements under it, so this is 46 small judgements rather than one edit. Do it as its own change, and add `openspec validate --specs --strict` to the lint workflow afterwards so the count cannot climb again. Until then, anyone archiving a change that creates a capability must write its Purpose in the same commit.
-- **Status**: pending
-
-### [2026-09-12] — a Parquet column type the reader does not know reads back as the same string in every row ([#371](https://github.com/HazelnutParadise/insyra/issues/371))
-- **Where**: `parquet/internal.go` `getVal`, the `default` arm
-- **What**: `getVal` handles Int64, Int32, Float64, Float32, String, Boolean and Timestamp. For anything else it returns `arr.String()` — the string form of the **whole array**, ignoring the row index `i` — so every cell of such a column reads back as one identical string like `["a" "b" "c"]`, with no error anywhere. It feeds `Read`, `Stream`, `ReadColumn` and the CCL bridge alike. `parquet.Write` only ever emits the seven handled types, so this is invisible on files this library wrote and hits files written by anything else: Date32/Date64, Decimal128, uint64, Int16/Int8, Binary, List and Dictionary columns are all common in the wild. Found on 2026-09-12 while writing the CCL bridge tests in `test-unpinned-behaviour`.
-- **Suggestion**: the decision is what the unhandled case should do, not whether to extend the switch. Two candidates: return `nil` and record an error naming the Arrow type, which matches how the CSV charset work handled an undecodable file; or refuse the column at read time so a caller cannot get a table of plausible-looking nonsense. Adding Date32/Date64, Decimal128 and the remaining integer widths is worth doing either way, but it does not close the hole on its own.
 - **Status**: pending
 
 ### [2026-09-11] — `insyra run` exits 0 when a line fails

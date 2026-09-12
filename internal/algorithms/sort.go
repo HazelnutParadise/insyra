@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
+	"github.com/TimLai666/go-decimal/decimal"
 )
 
 // GetTypeSortingRank returns the type rank for sorting mixed types.
@@ -27,8 +28,10 @@ func GetTypeSortingRank(v any) int {
 		return 3
 	case time.Time:
 		return 4
-	default:
+	case decimal.Decimal:
 		return 5
+	default:
+		return 6
 	}
 }
 
@@ -95,6 +98,15 @@ func CompareAny(a, b any) int {
 			} else {
 				cmp = 0
 			}
+		} else {
+			cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
+		}
+	case decimal.Decimal:
+		// By value, not by the lexicographic order of its text: "10.2" sorts
+		// before "9.5" as a string. Decimals reach a DataList from a Parquet
+		// Decimal128 or Decimal256 column.
+		if vb, ok := b.(decimal.Decimal); ok {
+			cmp = decimal.Cmp(va, vb)
 		} else {
 			cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
 		}
