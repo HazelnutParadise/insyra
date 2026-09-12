@@ -2501,6 +2501,22 @@ counter := dl.Counter()
 // Returns: map[1:1 2:3 3:1 4:1]
 ```
 
+**Values Go cannot use as a map key.** A cell holding a slice, a map, or
+anything containing one — a `[]byte` read from a SQL BLOB column, for
+instance — cannot be a key in the returned map. Such a value is keyed by an
+`insyra.UncomparableKey` standing in for it, and `insyra.KeyOf` builds the
+same stand-in so the count can be read back:
+
+```go
+counter := dl.Counter()
+n := counter[insyra.KeyOf([]byte{0x00, 0xff, 0x41})]
+```
+
+Comparable values are still keyed by themselves, so `counter[1]` and
+`counter["a"]` work as before. Printing the whole map is readable: a stand-in
+shows as its type with a shortened form of its content, such as
+`[]uint8(00ff41)`. `Count` and `FindAll` agree with these counts.
+
 ### FindFirst
 
 ```go

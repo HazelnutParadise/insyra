@@ -279,7 +279,9 @@ func encodeGroupKey(values []any) string {
 			uint, uint8, uint16, uint32, uint64:
 			fmt.Fprintf(&b, "i:%v", v)
 		default:
-			fmt.Fprintf(&b, "o:%T:%v", v, v)
+			// Through encodeCell so a composite value descends: %v alone wrote
+			// []any{1} and []any{"1"} identically, merging two distinct groups.
+			b.WriteString(encodeCell(v))
 		}
 	}
 	return b.String()
@@ -568,7 +570,7 @@ func uniqueKey(v any) string {
 		}
 		return fmt.Sprintf("f:%v", f)
 	}
-	return fmt.Sprintf("o:%T:%v", v, v)
+	return encodeCell(v)
 }
 
 func nonEmptyOr(s, fallback string) string {

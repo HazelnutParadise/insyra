@@ -259,6 +259,18 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: three decisions. Compare `rotation_matrix`, loadings and `Phi` up to column order and sign, as `TestRestartsParameter` already reasons. Compare a multimodal rotation by criterion value rather than by which minimum R's unseeded starts happened to hit. Record the R package versions in the baseline cache key, or in the cached file, so a stale cache cannot pass as current. The ~595 figure at `factorParityTol` should be replaced by whatever the suite reports once those are settled.
 - **Status**: pending
 
+### [2026-09-12] — `labelKey` still merges nested values that print alike
+- **Where**: `datatable_encode.go` `labelKey`, its default arm
+- **What**: `identify-uncomparable-cells` gave `encodeGroupKey` and `uniqueKey` a recursive encoder, so `[]any{1}` and `[]any{"1"}` are no longer one group. `labelKey` has the same non-recursive shape (`%T:%#v`), so it still merges them — `%#v` separates an int from a string but not `[]any{1}` from `[]any{1.0}`. It was left out on purpose: its integer rule is by value where cell identity is by type, so folding it into the same encoder would change what a label means, not just fix a collision.
+- **Suggestion**: decide whether an encoder label is identity or value. If identity, point it at `encodeCell` and accept that `1` and `1.0` stop sharing a label. If value, it needs its own recursion with the value rule applied at every level. Either way it is a handful of lines once the question is answered.
+- **Status**: pending
+
+### [2026-09-12] — a self-referential slice takes the process down in `NewDataList`
+- **Where**: `datalist.go` `flattenWithNilSupport`
+- **What**: it recurses into every `reflect.Slice` with no depth limit, so a slice containing itself exhausts the stack. Measured on 2026-09-12: `cyclic := []any{1}; cyclic[0] = cyclic; insyra.NewDataList(cyclic)` ends with `fatal error: stack overflow`. That is not a panic, `recover` cannot catch it, and the library promises never to terminate. `encodeCell` was given a depth limit of 64 for exactly this reason; the flattener was not touched because it is the constructor's hot path and the fix should be measured against it.
+- **Suggestion**: the same depth bound, or a visited-pointer set. A bound is cheaper and a 64-deep slice literal is already pathological; a visited set is exact but costs an allocation per construction. Measure `NewDataList` on a large flat slice before and after, because that path runs for every table built from a slice.
+- **Status**: pending
+
 ### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
 - **Where**: `internal/utils` `IsNumeric` / `ToFloat64Safe`, and every numeric path behind them
 - **What**: `parquet-foreign-column-types` made `Decimal128` and `Decimal256` read as a go-decimal `decimal.Decimal`, exact and sorting by value. It is a struct, so `IsNumeric` says no and `ToFloat64Safe` cannot read it, which means `Mean`, `Sum`, `Stdev` and CCL arithmetic cannot read a decimal column. Measured on 2026-09-12: they do not refuse it, they skip every cell and return `NaN` with `Err()` nil, and a `time.Time` column does the same thing side by side. That follows the `time.Time` precedent exactly, and it is the reason the change did not go further on its own. But a money column is far likelier to want arithmetic than a date column is, and a silent `NaN` is a poor way to learn the column is not numeric.
@@ -285,6 +297,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-09-11] — `Counter()` still keeps `int(1)` and `int64(1)` apart
 - **Where**: `datalist.go` `DataList.Counter`, `datatable.go` `DataTable.Counter`
+- **Note (2026-09-12)**: `identify-uncomparable-cells` deliberately did not settle this. Comparable values are still keyed by themselves, so the split is exactly as it was.
 - **What**: since `match-integers-by-value`, every search, count, replace and drop matches integers by value, and GroupBy, Pivot and Merge already did (`encodeGroupKey` writes every integer as `i:<value>`). `Counter()` is the one place left that does not: it returns a `map[any]int` keyed by the stored value, so a column holding both `int(1)` and `int64(1)` reports two keys while `Count(1)` reports their total. A column only mixes the two when rows are added by hand to loaded data, for example Go literals appended to a CSV table.
 - **Suggestion**: merging them means the map key has to be one of the two stored values, which decides which literal a caller can index it with (`counter[1]` or `counter[int64(1)]`). Pick one rule, or document that `Counter` reports stored types, rather than leave it implicit.
 - **Status**: pending

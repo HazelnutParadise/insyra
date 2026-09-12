@@ -189,7 +189,9 @@ func (dl *DataList) Counter() map[any]int {
 	counter := make(map[any]int)
 	dl.AtomicDo(func(dl *DataList) {
 		for _, value := range dl.data {
-			counter[value]++
+			// KeyOf, not the value: a cell Go cannot hash — a []byte read from
+			// a SQL BLOB column, say — used to take the process down here.
+			counter[KeyOf(value)]++
 		}
 	})
 	return counter
@@ -581,13 +583,21 @@ func filterCells(data []any, keep func(any) bool) []any {
 }
 
 // equalCell compares two cells the way a data analyst expects: two float64
-// NaNs are equal (pandas `equals` semantics), and values that Go cannot
-// compare with == never panic — they are simply unequal.
+// NaNs are equal (pandas `equals` semantics), and a value Go cannot compare
+// with == is compared by its identity instead of being called unequal.
+//
+// It used to answer "not equal" for anything uncomparable, which meant a
+// []byte cell — what a SQL BLOB column reads as — was never found by Count,
+// FindAll or Replace even when it was plainly there, and disagreed with what
+// Counter reported for the same value.
 func equalCell(a, b any) (eq bool) {
 	if fa, ok := a.(float64); ok {
 		if fb, ok := b.(float64); ok && math.IsNaN(fa) && math.IsNaN(fb) {
 			return true
 		}
+	}
+	if !comparableCell(a) || !comparableCell(b) {
+		return encodeCell(a) == encodeCell(b)
 	}
 	defer func() {
 		if recover() != nil {
