@@ -172,9 +172,12 @@ func TestDT_From_RowsAndCols(t *testing.T) {
 			t.Error("a string map produced no columns")
 		}
 	})
-	// map[int]any is listed as a supported input but never works — it
-	// stringifies the key to "0" where AppendRowsByColIndex wants an Excel
-	// index. Pinned in the change that fixes it, not here.
+	t.Run("map[int]any", func(t *testing.T) {
+		table := DT.From(map[int]any{0: 1, 1: 2})
+		if _, cols := table.Size(); cols != 2 {
+			t.Errorf("an int map produced %d columns, want 2", cols)
+		}
+	})
 }
 
 // Reading a CSV that is there, not just one that is missing.

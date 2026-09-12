@@ -18,6 +18,14 @@ type F64orRat interface {
 	float64 | *big.Rat
 }
 
+// The bounds of int64 as float64 values. 2^63 is the first value past the top
+// of the range and is exactly representable, so a float is convertible when it
+// is at least minInt64AsFloat and strictly below twoToThe63.
+const (
+	minInt64AsFloat = -9223372036854775808.0
+	twoToThe63      = 9223372036854775808.0
+)
+
 // ToFloat64 converts any numeric value to float64.
 func ToFloat64(v any) float64 {
 	switch v := v.(type) {
@@ -162,9 +170,13 @@ func FormatValue(value any) string {
 			return "-Inf"
 		}
 
-		// 針對整數值的浮點數使用整數格式
-		if v == float64(int(v)) {
-			return fmt.Sprintf("%d", int(v))
+		// 針對整數值的浮點數使用整數格式。int(v) 對超出範圍的浮點數在 Go 裡
+		// 沒有定義結果（amd64 得到 MinInt64，arm64 飽和到 MaxInt64），過去
+		// 2^63 在 Mac 上會印成 9223372036854775807，比實際值少 1，而在
+		// Linux／Windows 上印成指數形式。轉換前先確認落在 int64 範圍內：
+		// 上界寫成嚴格小於 2^63，因為 float64(math.MaxInt64) 會進位成 2^63。
+		if v >= minInt64AsFloat && v < twoToThe63 && v == math.Trunc(v) {
+			return fmt.Sprintf("%d", int64(v))
 		}
 
 		// 根據大小動態調整小數位數
@@ -295,8 +307,12 @@ func convertTimestampToString(ts int64, goDateFormat string) string {
 		t := base.AddDate(0, 0, int(ts))
 		return t.Format(goDateFormat)
 	} else if ts >= 1000000000000 && ts < 100000000000000 { // 13 digits, milliseconds
-		// Unix timestamp in milliseconds
-		t := time.Unix(0, ts*int64(time.Millisecond)).UTC()
+		// Unix timestamp in milliseconds. time.UnixMilli rather than
+		// time.Unix(0, ts*int64(time.Millisecond)): that multiplication
+		// overflows int64 above 9223372036854 ms (about 2262-04-11), which is
+		// well inside the range this branch accepts, and silently produced a
+		// different date.
+		t := time.UnixMilli(ts).UTC()
 		return t.Format(goDateFormat)
 	} else if ts >= 1000000000000000000 { // 19 digits, nanoseconds
 		// Unix timestamp in nanoseconds

@@ -45,6 +45,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 修正依值搜尋、計數、取代與刪除時，找不到以另一種 Go 整數型別儲存的整數。CSV 讀進來的整數是 `int64`，Go 程式裡寫的 `2` 是 `int`，原本用 `==` 比對，`int64` 和 `int` 永遠不相等，所以對 CSV 讀入的表，`Count(2)` 回傳 0，`FindAll(2)`、`FindRowsIfContains(2)` 什麼都找不到，`Replace(2, 0)` 什麼都沒改。現在 `Count`、`FindFirst`、`FindLast`、`FindAll`、各個 `Replace` 方法、`DropAll`、`FindRowsIfContains(All)`、`FindColsIfContains(All)`、`DropRowsContain`、`DropColsContain` 都依數值比對整數，`int8` 到 `int64`、`uint8` 到 `uint64` 一律如此。小數仍然不等於整數，要找 `2.0` 請用 `2.0` 搜尋。編碼器也用同樣的規則處理整數類別：`OrdinalEncode` 的 `Order: []any{1, 2, 3}` 現在能對上 CSV 的欄，不再報錯。在 `int` 資料上 fit 的編碼器可以轉換 `int64` 資料，同一欄裡的 `int(1)` 與 `int64(1)` 也算同一個類別。`IsEqualTo` 與 `IsTheSameAs` 仍然連型別一起比較。比對方式改成依要找的值的型別，每次呼叫只挑一次，所以搜尋小數或字串也變快了：一百萬格的 `Count`，小數從 2.3 毫秒降到 1.5 毫秒，字串從 2.7 毫秒降到 2.0 毫秒。
 - 修正 CCL 在 amd64 與 arm64 上對同一個運算式給出不同答案的問題。計數、小數位數或日期位移大到超出 Go 整數或時間長度轉換的範圍時，結果依平台而定：在 Linux 與 Windows 上 `MID('abc', 2, 10^300)` 回傳 `""`，Mac 上卻是 `"bc"`，`DATEADD(d, 10^300, 'day')` 在兩邊也各自算出不同的錯誤日期。現在字元計數或位置超過字串結尾，一律代表「到結尾」。`NaN` 的計數或位數、超過 2,147,483,647 個日曆單位或約 292 年的日期位移，以及超出 int32 範圍的列範圍邊界，都會回傳錯誤。一般數值的結果不變。
 
+- 修正 `Show`（以及其他所有顯示路徑）在 amd64 與 arm64 上印出不同的數字。格式化以 `v == float64(int(v))` 判斷浮點數是否為整數，而該轉換在 Go 裡對超出 `int` 範圍的值沒有定義結果：`2^63` 在 Mac 上印成 `9223372036854775807`，看起來像精確整數但比實際值少 1，在 Linux 與 Windows 上印成 `9.2234e+18`。超出 `int64` 範圍的值現在一律使用指數形式。範圍內的整數不變。
+- 修正毫秒的 Unix 時間戳超過 2262-04-11 後讀成錯誤日期。轉換時先把毫秒乘成奈秒，而該乘法在它自己接受的區間內就會溢位 `int64`，`99999999999999` 因此回傳 2216 年而不是 5138 年。
+
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
 - 命令登錄表加上鎖，多個 goroutine（嵌入端）同時註冊命令不再是 data race。
@@ -107,6 +110,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `isr`
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。
 - `DT.From`、`Col`、`Row`、`Push`、`UseDL`、`UseDT` 遇到錯誤的輸入不再結束程式，改為回傳帶著錯誤、可繼續串接的物件：`t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`。`UseDL`／`UseDT` 也不再回傳 `nil`。
+- 修正 `DT.From(map[int]any{...})` 永遠產生空表格。鍵被直接轉成字串，`0` 變成 `"0"`，而 `AppendRowsByColIndex` 要的是 Excel 式的欄位索引，因此每個鍵都被拒絕。現在改用 `Row` 路徑相同的轉換，`0` 就是 A 欄。負數的鍵沒有對應欄位，會被回報。
 
 ### `gplot`
 - **BREAKING**：`SaveChart` 檔案寫不出來時改為回傳 `error`，不再結束程式。既有呼叫要改成 `if err := gplot.SaveChart(...); err != nil { ... }` 或明確寫 `_ =`。

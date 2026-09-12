@@ -143,9 +143,13 @@ func (d dt) From(item any) *dt {
 	case map[string]any:
 		t.DataTable = insyra.NewDataTable().AppendRowsByColIndex(val)
 	case map[int]any:
+		// AppendRowsByColIndex wants an Excel-style index, so key 0 has to
+		// become "A". conv.ToString made it "0", which the method rejected —
+		// every key, so this documented input always produced an empty table.
+		// numberToColIndex is the same helper the Row path uses.
 		strV := make(map[string]any)
 		for k, v := range val {
-			strV[conv.ToString(k)] = v
+			strV[numberToColIndex(k)] = v
 		}
 		t.DataTable = insyra.NewDataTable().AppendRowsByColIndex(strV)
 	case nil:
