@@ -473,14 +473,9 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			pre.Mul(baseLoadings, start)
 			result = Quartimin(pre, false, eps, maxIter)
 		case "oblimin":
-			// Use identity matrix as starting point
-			// This provides better SPSS compatibility than random starts
-			startIdentity := mat.NewDense(nf, nf, nil)
-			for i := 0; i < nf; i++ {
-				startIdentity.Set(i, i, 1.0)
-			}
-			var gpf map[string]any
-			gpf, err := GPFoblq(baseLoadings, startIdentity, false, eps, maxIter, "oblimin", hyper)
+			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+			pre.Mul(baseLoadings, start)
+			gpf, err := GPFoblq(pre, identityMatrix(nf), false, eps, maxIter, "oblimin", hyper)
 			if err != nil {
 				continue
 			}
@@ -562,12 +557,8 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 
 		var finalRot *mat.Dense
 		if rm, ok := result["rotmat"].(*mat.Dense); ok && rm != nil {
-			if rotateLower == "oblimin" {
-				finalRot = mat.DenseCopyOf(rm)
-			} else {
-				finalRot = mat.NewDense(start.RawMatrix().Rows, rm.RawMatrix().Cols, nil)
-				finalRot.Mul(start, rm)
-			}
+			finalRot = mat.NewDense(start.RawMatrix().Rows, rm.RawMatrix().Cols, nil)
+			finalRot.Mul(start, rm)
 		} else {
 			continue
 		}

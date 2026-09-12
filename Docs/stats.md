@@ -1319,7 +1319,11 @@ OptimMaxIter=100 (matching R `psych::fa` defaults).
 `Restarts` is the number of starting points the rotation is run from; the
 solution with the best criterion value wins, preferring one that converged. The
 criteria are not convex, and geomin and simplimax in particular have local
-minima, so more than one start is worth trying. Every start is an orthogonal
+minima, so more than one start is worth trying. What wins is the lowest
+criterion value, which is not the same as the most readable solution: on an
+over-factored model the extra starts can reach a solution whose factors
+correlate at 0.9, so look at `Phi` before preferring a multi-start result over
+the single-start one. Every start is an orthogonal
 matrix — the identity, the Varimax solution, then random ones — which is what
 `GPArotation::Random.Start` produces for orthogonal and oblique rotations
 alike. `RotationConverged` reports whether the solution that was chosen

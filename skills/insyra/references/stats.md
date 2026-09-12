@@ -92,7 +92,10 @@ reproducible run).
 
 `Rotation.Restarts` is how many starting points the rotation is run from, best
 criterion value winning. The default of 1 is fine for Varimax and Oblimin;
-raise it for Geomin or Simplimax, whose criteria have local minima.
+raise it for Geomin or Simplimax, whose criteria have local minima. The lowest
+criterion value can be a solution with highly correlated factors, especially
+when more factors are fitted than the data hold, so check `Phi` when a
+multi-start result differs from the single-start one.
 `RotationConverged` says whether the chosen solution converged, and `MaxIter`
 governs extraction rather than rotation.
 

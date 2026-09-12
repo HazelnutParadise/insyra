@@ -304,3 +304,59 @@ func TestARejectedStartIsReplaced(t *testing.T) {
 		}
 	}
 }
+
+// overFactoredStructure is what ML extraction of four factors from the
+// three-factor synthetic table in stats/verify_more_test.go returns
+// (buildSyntheticTable(60, 6, syntheticGen3Factor), FixedK = 4). Pinned here
+// because it is the one fixture on which the identity start stops in a basin
+// a random start escapes: oblimin at gamma = 0 reaches f = 0.0444 from the
+// identity and f = 0.00094 from the third random start.
+func overFactoredStructure() *mat.Dense {
+	return mat.NewDense(6, 4, []float64{
+		0.97371501712956454, 0.0079721325645778496, -0.014459486993830628, -0.21588523283154318,
+		0.24494542308991687, 0.39670957381899075, 0.818573580412012, -0.026861909522813428,
+		0.24618789823293688, 0.87788500026365501, -0.18411403330678633, 0.10511937386832459,
+		0.97328202834432709, -0.049024267698480777, 0.0048744505795983543, 0.21282611261386447,
+		0.25480162936163508, 0.40368803304199108, 0.79654947492798456, -0.012421277991481435,
+		0.24555549634269103, 0.91633995553871161, -0.205167492487175, 0.096432095362504286,
+	})
+}
+
+func criterionOf(t *testing.T, method string, L *mat.Dense, restarts int) float64 {
+	t.Helper()
+	res, ok := FaRotations(mat.DenseCopyOf(L), nil, method, 0, restarts, 4, 0.01, 1e-5, 1000).(map[string]any)
+	if !ok {
+		t.Fatalf("%s: FaRotations returned a non-map", method)
+	}
+	if msg, _ := res["error"].(string); msg != "" {
+		t.Fatalf("%s: %s", method, msg)
+	}
+	f, ok := res["f"].(float64)
+	if !ok {
+		t.Fatalf("%s: no criterion value in the chosen candidate", method)
+	}
+	return f
+}
+
+// Oblimin used to build its own identity start on every pass and ignore the
+// one it was handed, so Restarts ran the same computation N times. At gamma = 0
+// oblimin is the quartimin criterion, and quartimin does use its starts, so the
+// two must agree for the same start list — they did not, at Restarts >= 5 on
+// the over-factored fixture, where a random start reaches a lower basin.
+func TestObliminRunsFromTheStartItIsGiven(t *testing.T) {
+	for name, L := range map[string]*mat.Dense{"noisy": noisyStructure(), "over-factored": overFactoredStructure()} {
+		for _, restarts := range []int{1, 2, 5, 20} {
+			fo := criterionOf(t, "oblimin", L, restarts)
+			fq := criterionOf(t, "quartimin", L, restarts)
+			if math.Abs(fo-fq) > 1e-12 {
+				t.Errorf("%s/restarts=%d: oblimin f = %.12f, quartimin f = %.12f — oblimin is not rotating from the same starts", name, restarts, fo, fq)
+			}
+		}
+	}
+
+	L := overFactoredStructure()
+	one, five := criterionOf(t, "oblimin", L, 1), criterionOf(t, "oblimin", L, 5)
+	if five >= one/10 {
+		t.Errorf("over-factored: f = %.6f at one start and %.6f at five; the search did not leave the identity's basin", one, five)
+	}
+}
