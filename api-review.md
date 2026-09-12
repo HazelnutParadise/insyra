@@ -266,7 +266,7 @@
 | --- | --- | --- | --- | --- |
 | FI-1 | Med | 全部 43 個函式的參數與回傳都是 `github.com/TimLai666/go-decimal/decimal.Decimal`。這是作者自己的 decimal 套件而非社群通用的 `shopspring/decimal`，使用者呼叫任何函式都必須引入這個第三方型別；型別一旦改版整個 finance API 跟著 breaking（準則 8、10） | finance 全套件 | 這是設計決策，至少在 Docs 明講並釘住版本；或提供 `float64` 便利版 |
 | FI-2 | Med | `ScheduleTable` 回傳的 DataTable 格子是 `decimal.Decimal`，core 的 `ToFloat64Safe` 不認識它，這張表的 `Mean`／`Sum`／`Describe` 全部失效，doc 只說「用 `.String()` 轉文字」；且回傳型別是 `insyra.IDataTable`（K-7）（準則 6、13） | finance/amortization.go:93-119 | 提供 `float64` 欄位版本，或讓 core 認識 decimal |
-| FI-3 | Low | `RoundUnnecessary` 模式下需要捨入時「panics with decimal.ErrRoundingNecessary」（doc 原文），程式庫選項導致 panic；`opts ...Options` variadic「最後一個生效」（D-8）；`var Zero` 可被覆寫（K-12）（準則 11） | finance/options.go:66, 128-140；helpers.go:22 | 該模式改回 error；Zero 改 func 或文件註明不可改 |
+| FI-3 | Low（panic 已修正 fix-clear-defects-ccl-finance；variadic Options 屬 D-8、Zero 可覆寫屬 K-12，待決） | `RoundUnnecessary` 模式下需要捨入時「panics with decimal.ErrRoundingNecessary」（doc 原文），程式庫選項導致 panic；`opts ...Options` variadic「最後一個生效」（D-8）；`var Zero` 可被覆寫（K-12）（準則 11） | finance/options.go:66, 128-140；helpers.go:22 | 該模式改回 error；Zero 改 func 或文件註明不可改 |
 | FI-4 | OK | 其餘是範本等級：每個函式驗證參數並回 error、`Options` 零值可用且逐欄位獨立預設、Excel 對應（`basis`、`type`）寫明、`NPV` 與 `NPVExcel` 的 t=0／t=1 差異講清楚、精度以 guard digits 處理 | — | — |
 
 ### datafetch
@@ -411,8 +411,8 @@
 | CCL-28 | Med（VAR／STDEV 的錯誤契約有文件與測試釘住，待決） | 聚合函數對「值不夠」處理不一致：`STDEV(A.(0:0))` 整欄報錯，`MEDIAN(A.(1:1))` 靜默整欄 nil，`MAX` 無值回 nil | internal/ccl/stdlib_aggregates.go:25-36, 63-103；stdlib.go:188-226 | 統一並寫文件 |
 | CCL-29 | Med | EN-1 補充：`engine/ccl` 匯出 `Func`／`AggFunc` 與 `RegisterFunction`／`RegisterAggregateFunction`，但沒有 `SeqFunc`／`RegisterSequenceFunction`；`ResetEvalDepth`／`ResetFuncCallDepth` 是空函數；`EvaluationResult`、`MapContext`（含 CCL-4）以型別別名直接暴露 | engine/ccl/ccl.go:5-11, 88-97；internal/ccl/ccl_functions.go:31-34 | 補 `RegisterSequenceFunction`；no-op 標 Deprecated（併入 EN-1） |
 | CCL-30 | ~~Low~~ 已修正（batch 8） | `-2^2` → 4、`-A^2` → 100（一元負號綁得比 `^` 緊，與 Excel 同但與數學慣例不同）；`2^3^2` → 64（左結合）。文件未提 | internal/ccl/ccl_parser.go:349-364, 205 | 文件寫明 |
-| CCL-31 | Low | 數字字面值溢位靜默成 `+Inf`（`ParseFloat` 錯誤被 `_` 丟掉）；`1e5` 字面值不支援（tokenize 成 `1` 與識別字 `e5`），但 `VALUE('1e3')` 可以 | internal/ccl/ccl_parser.go:337；ccl_tokenizer.go:45-78 | 檢查 `ParseFloat` 錯誤；決定是否支援科學記號 |
-| CCL-32 | Low | `TOSTR(1.5, '%d')` → `"%!d(float64=1.5)"`、`TOSTR(1,'%')` → `"%!(NOVERB)…"` 靜默寫進資料 | internal/ccl/stdlib_typeconv.go:52-56 | 格式化後檢查 `%!` 前綴回錯，或限制動詞 |
+| CCL-31 | ~~Low~~ 已修正（fix-clear-defects-ccl-finance） | 數字字面值溢位靜默成 `+Inf`（`ParseFloat` 錯誤被 `_` 丟掉）；`1e5` 字面值不支援（tokenize 成 `1` 與識別字 `e5`），但 `VALUE('1e3')` 可以 | internal/ccl/ccl_parser.go:337；ccl_tokenizer.go:45-78 | 檢查 `ParseFloat` 錯誤；決定是否支援科學記號 |
+| CCL-32 | ~~Low~~ 已修正（fix-clear-defects-ccl-finance） | `TOSTR(1.5, '%d')` → `"%!d(float64=1.5)"`、`TOSTR(1,'%')` → `"%!(NOVERB)…"` 靜默寫進資料 | internal/ccl/stdlib_typeconv.go:52-56 | 格式化後檢查 `%!` 前綴回錯，或限制動詞 |
 | CCL-33 | Low（極大 n 溢位已由 ccl-portable-integer-arguments 修正，月底正規化仍待決定） | `DATEADD('2024-01-31', 1, 'month')` → `2024-03-02`（Go `AddDate` 正規化，Excel `EDATE` 是 2/29）；`DATEADD(d, 10^300, 'year')` 溢位繞回 2022 年 | internal/ccl/stdlib_datetime.go:128-138 | 文件寫明或月底夾住；限制 n 範圍 |
 | CCL-34 | ~~Low~~ 已修正（batch 11，文件） | 函數名與 Excel 欄位索引大小寫不分（`sum(a)` 可用），`['name']` 區分大小寫；文件只提後者 | internal/ccl/ccl_functions.go:40；internal/utils/utils.go:73-76；Docs/CCL.md:436 | 文件寫明 |
 | CCL-35 | ~~Low~~ 已修正（batch 11 補文件；batch 12 統一數字轉文字的規則） | 字串函數對數字直接 `fmt.Sprint`：`LEN(A)`（int 10）→ 2、`LEN(123.0)` → 3 | internal/ccl/stdlib_string.go:12-20 | 文件寫明 |
@@ -683,7 +683,7 @@
 | CCL-31 | [#365](https://github.com/HazelnutParadise/insyra/issues/365) |  |
 | CCL-32 | [#366](https://github.com/HazelnutParadise/insyra/issues/366) |  |
 | CCL-33 | [#367](https://github.com/HazelnutParadise/insyra/issues/367) |  |
-| CCL-36 | [#368](https://github.com/HazelnutParadise/insyra/issues/368) |  |
+| CCL-36 | [#368](https://github.com/HazelnutParadise/insyra/issues/368) | 已關閉（batch 9 就修好了，2026-09-12 驗證並補回歸測試） |
 | SEC-8 | [#205](https://github.com/HazelnutParadise/insyra/issues/205) | 補充留言 |
 | SEC-14 | [#249](https://github.com/HazelnutParadise/insyra/issues/249) | 補充留言 |
 | CCL-15 | [#234](https://github.com/HazelnutParadise/insyra/issues/234) | 補充留言 |
