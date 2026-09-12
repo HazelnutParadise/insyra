@@ -21,6 +21,8 @@
 - **THEN** 兩者的格子型別不同，分辨得出哪一欄是二進位
 - **AND** 二進位欄的位元組完整保留，整欄以十六進位顯示，不因某一列剛好是合法 UTF-8 而改變顯示方式
 
+## ADDED Requirements
+
 ### Requirement: A binary column survives a round trip
 
 把含二進位欄位的檔案讀進來再寫出去時，該欄 SHALL 仍然是 Arrow 的二進位型別，SHALL NOT 變成字串欄。
