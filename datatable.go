@@ -1355,7 +1355,7 @@ func (dt *DataTable) Counter() map[any]int {
 		result = make(map[any]int)
 		for _, column := range dt.columns {
 			for _, value := range column.data {
-				result[CounterKey(value)] += 1
+				result[MapKey(value)] += 1
 			}
 		}
 	})
