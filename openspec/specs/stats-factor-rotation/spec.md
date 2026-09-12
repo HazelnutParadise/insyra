@@ -2,7 +2,6 @@
 
 ## Purpose
 Factor rotation turns a fitted loading matrix into an equivalent one that is easier to read, and the whole point is that it is equivalent: the common part of the model must survive it untouched. This capability says what that means in numbers, what a multi-start search may start from so the guarantee holds, and what the convergence flag a caller reads is allowed to claim. It exists because none of the three was enforced — an orthogonal rotation could come back oblique, and a rotation that ran out of iterations reported success.
-
 ## Requirements
 ### Requirement: A rotation preserves the fitted model
 
@@ -56,4 +55,20 @@ Factor rotation turns a fitted loading matrix into an equivalent one that is eas
 #### Scenario: One start converges and another does not
 - **WHEN** 多個起點中只有一部分收斂
 - **THEN** 被選中的是收斂那一群裡準則值最小的解
+
+### Requirement: Every rotation runs from the start it is given
+
+多起點搜尋中的每一個起點 SHALL 真的被當成該次旋轉的起點使用，任何旋轉方法 SHALL NOT 忽略傳入的起點而改用自己固定的起點。`Restarts` 對所有方法 SHALL 表示同一件事：從 `Restarts` 個不同的正交起點各跑一次，依既有規則挑出最佳解。
+
+#### Scenario: Oblimin and quartimin agree on the same starts
+- **WHEN** 以 `gamma = 0` 的 Oblimin 與 Quartimin 各自從同一份起點清單旋轉同一組載荷
+- **THEN** 兩者回傳的準則值在 1e-12 之內相同，因為 `gamma = 0` 的 Oblimin 準則就是 Quartimin 準則
+
+#### Scenario: A start other than the identity wins
+- **WHEN** 在一組單位矩陣起點收斂到局部最小值的載荷上，以 `Restarts` 大於 1 旋轉
+- **THEN** 回傳的解是所有收斂起點中準則值最小者，該準則值低於單位矩陣起點得到的準則值
+
+#### Scenario: One start is still the identity alone
+- **WHEN** `Restarts` 為 1 或更小
+- **THEN** 每個方法的結果與多起點搜尋存在之前逐位元相同，包括 Oblimin
 
