@@ -21,7 +21,15 @@ const maxCellEncodeDepth = 64
 // uncomparableDisplayBytes is how much of a value's content String renders
 // before cutting it off. A counter holding one large blob has to stay
 // readable when the whole map is printed.
-const uncomparableDisplayBytes = 16
+//
+// It is wide enough that a small composite shows whole rather than losing its
+// last character or two, which reads as a broken rendering rather than as a
+// truncation: a two-entry map encodes to 17 characters and a ten-element
+// []int to 42. A blob is far longer than any limit worth setting, so it is
+// cut and the ellipsis says so. Nothing tries to close an unterminated
+// bracket, because a string cell's own content can contain one and the
+// closer would be a guess.
+const uncomparableDisplayBytes = 48
 
 // UncomparableKey stands in for a cell value that Go cannot use as a map key —
 // a slice, a map, or anything containing one. It is what ToMapKey returns

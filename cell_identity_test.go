@@ -131,6 +131,32 @@ func TestPrintingACounterStaysReadable(t *testing.T) {
 	}
 }
 
+// A value short enough to show whole must not lose its last character or two:
+// that reads as a broken rendering rather than as a truncation, and nothing
+// tries to close the bracket afterwards because a string cell's own content
+// can contain one.
+func TestASmallCompositeIsNotCutShort(t *testing.T) {
+	for _, v := range []any{
+		map[string]int{"a": 1, "b": 2},
+		[][]int{{1}, {2, 3}},
+		[]int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+		[]string{"a", "b"},
+	} {
+		got := fmt.Sprintf("%v", ToMapKey(v))
+		if strings.Contains(got, "…") {
+			t.Errorf("%T rendered truncated: %s", v, got)
+		}
+		if opens, closes := strings.Count(got, "["), strings.Count(got, "]"); opens != closes {
+			t.Errorf("%T rendered with unbalanced brackets: %s", v, got)
+		}
+	}
+	// A value that genuinely is long stays truncated, and says so.
+	got := fmt.Sprintf("%v", ToMapKey(make([]byte, 64)))
+	if !strings.Contains(got, "…") {
+		t.Errorf("a 64-byte value was not truncated: %s", got)
+	}
+}
+
 // Scalar group keys must not move: GroupBy, Pivot and Merge depend on them.
 func TestScalarGroupKeysAreUnchanged(t *testing.T) {
 	for _, c := range []struct {
