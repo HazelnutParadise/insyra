@@ -14,14 +14,18 @@
 
 ### Requirement: A multimodal rotation is judged by its criterion value
 
-對梯度投影旋轉（varimax、quartimax、geomin、bentler、quartimin、oblimin、simplimax），對齊後的載荷若仍超出容忍度，比對 SHALL 以該方法自己的準則函數分別評估兩邊的載荷。我方準則值不高於 R 的 SHALL 視為等價或更好的解而通過，並記錄兩個準則值；高於 R 的 SHALL 失敗並指出兩個準則值。Promax 沒有準則，SHALL 維持逐元素比對。
+對梯度投影旋轉（varimax、quartimax、geomin、bentler、quartimin、oblimin、simplimax），對齊後的載荷若仍超出容忍度，比對 SHALL 以該方法自己的準則函數分別評估兩邊的載荷。兩邊準則值在相對 1e-4 之內 SHALL 視為同一個最小值，因子座標下的欄位改以準則曲率所能決定的精度（`factorRotationTol`）比對；我方準則值更低的 SHALL 視為更好的解而通過，並記錄兩個準則值；高於 R 超過該範圍的 SHALL 失敗並指出兩個準則值。Promax 沒有準則，SHALL 維持逐元素比對。
 
 #### Scenario: A lower minimum than R
 - **WHEN** simplimax 的 20 個起點找到準則值 0.1445 的解，而 R 回傳 0.1599 的解
 - **THEN** 比對通過，並記錄兩個準則值
 
+#### Scenario: The same minimum, reached to different precision
+- **WHEN** 兩邊準則值相差在相對 1e-4 之內，而載荷相差 1e-4
+- **THEN** 因子座標下的欄位以 `factorRotationTol` 比對並通過，並記錄兩個準則值
+
 #### Scenario: A worse minimum than R
-- **WHEN** 我方解的準則值高於 R 的解超過 1e-8
+- **WHEN** 我方解的準則值高於 R 的解超過相對 1e-4
 - **THEN** 載荷比對失敗，訊息含兩個準則值
 
 ### Requirement: A cached reference baseline is bound to the toolchain that produced it

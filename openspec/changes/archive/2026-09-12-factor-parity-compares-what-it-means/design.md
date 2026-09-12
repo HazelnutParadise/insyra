@@ -23,4 +23,5 @@
 
 - [The first strict run regenerates every baseline] → about 18 minutes for R on this machine, once per toolchain change.
 - [A criterion pass hides a real difference] → only when our criterion is at or below R's, which is the definition of at least as good; the difference is logged with both values so it is not invisible.
-- [Promax stays red on two datasets] → it is not a criterion minimisation; recorded in the `factorParityTol` comment as what remains.
+- [Promax stays red] → 1,028 of the 1,672 leaves left; it is not a criterion minimisation and differs from psych on 11 of 16 datasets at either default. Recorded as its own `AGENTS.md` follow-up and in the `factorParityTol` comment.
+- [Same-minimum solutions are compared at 5e-3 rather than 2e-5] → a criterion pins its minimiser only as well as its curvature allows (Δf ≈ c·ΔL²); measured over 351 such combinations the loadings differ by 7e-5 at the median and 2.1e-3 at most, and tightening our eps to 1e-7 moved 23 of them while leaving 132 rotations unconverged. The bound is recorded at `factorRotationTol` with the distribution.
