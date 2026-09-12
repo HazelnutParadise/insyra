@@ -58,9 +58,12 @@ func (s *BiIndex) Set(id int, name string) (string, bool) {
 	if id < 0 || name == "" {
 		return "", false
 	}
-	// remove old mapping for this name if exists
+	// remove old mapping for this name if exists. The id it leaves behind goes
+	// on the free list: deleting it without freeing it made a hole no Assign
+	// could ever hand out again.
 	if oldID, ok := s.stringToID[name]; ok && oldID != id {
 		delete(s.idToString, oldID)
+		s.freed = append(s.freed, oldID)
 	}
 	// get previous occupant
 	prev := s.idToString[id]

@@ -53,6 +53,12 @@ func LagrangeInterpolation(data []float64, x float64) (float64, error) {
 	if n < 2 {
 		return 0, ErrNotEnoughData
 	}
+	// A NaN x produces a NaN answer with no error, which is the same silent
+	// failure NearestNeighborInterpolation had.
+	if math.IsNaN(x) {
+		return 0, ErrOutOfBounds
+	}
+
 	result := 0.0
 	for i := 0; i < n; i++ {
 		term := data[i]
@@ -70,6 +76,13 @@ func NearestNeighborInterpolation(data []float64, x float64) (float64, error) {
 	if len(data) == 0 {
 		return 0, ErrOutOfBounds
 	}
+	// Every comparison against NaN is false, so a NaN x used to walk straight
+	// through the search and answer data[0] — or come out as NaN — while the
+	// other interpolations refused it.
+	if math.IsNaN(x) {
+		return 0, ErrOutOfBounds
+	}
+
 	closestIndex := 0
 	minDiff := math.Abs(x - 0)
 	for i := 1; i < len(data); i++ {
@@ -90,6 +103,12 @@ func NewtonInterpolation(data []float64, x float64) (float64, error) {
 	if n < 2 {
 		return 0, ErrNotEnoughData
 	}
+	// A NaN x produces a NaN answer with no error, which is the same silent
+	// failure NearestNeighborInterpolation had.
+	if math.IsNaN(x) {
+		return 0, ErrOutOfBounds
+	}
+
 	dividedDiff := make([]float64, n)
 	copy(dividedDiff, data)
 	for i := 1; i < n; i++ {

@@ -191,7 +191,7 @@
 | T-12 | Med（時間格式已修正 batch 2；JSON 部分待決） | `ToJSON_Bytes`／`ToJSON_String` 遇到 NaN 回 nil／空字串只設 Err（已實測），呼叫端拿到空 JSON 不會察覺；`ToCSV` 用 `%v` 輸出 `time.Time` 成 `2024-01-02 03:04:05 +0000 UTC`，`ParseDates` 預設 layout 讀不回來，CSV 往返壞掉（已實測）；`ToCSV(path, bool, bool, bool)` 三個裸 bool 且無 `io.Writer` 版本 | datatable_json.go:85-105；datatable_csv.go:13 | JSON 回 error；CSV 時間用 RFC3339；加 options struct 與 `WriteCSV(w io.Writer)` |
 | T-13 | Med | `Filter(func(row, col, value) bool)` 與 `FilterRows` 是「任一格子符合就留整列」，不是列謂詞。最常見的 `A > B` 這種跨欄條件無法表達，只能繞去 CCL；`FilterByCustomElement` 與 `Filter` 重複（準則 4、5） | datatable_filters.go:333-440 | 加 `FilterRowsWhere(func(row *DataList) bool)` |
 | T-14 | Med | `SetColNames` 給的名字比欄多時自動新增空欄（已實測），pandas 是長度不符即 raise；`AppendCols` 遇同名自動改成 `name_1` 不通知 | datatable_colname.go:163-185；datatable.go:69 | 長度不符回錯；同名至少 warn |
-| T-15 | Med | `mergeVertical` 對沒有欄名的表（`NewDataTable(NewDataList(...))` 預設）判定「重複欄名 ""」而回錯，兩張無名表無法垂直合併（推論，未實測）；`Merge(other IDataTable, ...)` 內部立刻斷言 `*DataTable`，介面參數只是裝飾（K-7） | datatable_merge.go:31, 389-400 | 無名欄以位置對齊；參數改 `*DataTable` |
+| T-15 | Med（無名欄垂直合併已修正 fix-clear-defects-core；IDataTable 參數屬 K-7 待決） | `mergeVertical` 對沒有欄名的表（`NewDataTable(NewDataList(...))` 預設）判定「重複欄名 ""」而回錯，兩張無名表無法垂直合併（推論，未實測）；`Merge(other IDataTable, ...)` 內部立刻斷言 `*DataTable`，介面參數只是裝飾（K-7） | datatable_merge.go:31, 389-400 | 無名欄以位置對齊；參數改 `*DataTable` |
 | T-16 | ~~Med~~ 已修正（batch 13）  | GroupBy 的 `columnsSnapshot` 是欄位指標的淺拷貝，`Aggregate` 在鎖外讀 `sourceCol.data`；父表被並行修改時是 data race（程式碼註解自己承認）。與 Rolling／EWM 深拷貝快照的做法不一致 | datatable_groupby.go:139-146 | 深拷貝或在 Aggregate 期間持鎖 |
 | T-17 | Med | 聚合相關 API 三種寫法：`Aggregate` 用 typed `AggregateOp`，`Pivot.AggFunc` 用字串（含 "avg"、"std" 別名），`Resample` 用 `AggregateOp`。GroupBy 的 key 把 `int 1` 與 `float64 1.0` 分成兩組（CSV 讀進來的 int64 與手動建的 float 會分家），pandas 視為同一組（準則 5、6） | datatable_pivot.go:44, 545-580；datatable_groupby.go:210 | Pivot 改收 `AggregateOp`；數值 key 正規化 |
 | T-18 | ~~Med~~ 已修正（batch 3） | 效能：`Count` 為了加總各欄用 `asyncutil.ParallelForEach` 再經 float64 `Sum` 轉回 int；`Clone` 用 `parallel.GroupUp` 跑兩件小事；`Map` 每格經 `originalCol.Get`（每格一次鎖）；`containsSubstring` 手寫遞迴，長字串遞迴深度等於字串長度，`strings.Contains` 就有 | datatable.go:1271-1282, 1384-1410, 1568-1571；datatable_map.go:30 | 直接迴圈；`strings.Contains` |
@@ -435,18 +435,18 @@
 | IN-7 | ~~Med~~ 已修正（make-errors-non-terminating） | 錯誤緩衝區無上限：`Ring` 滿了會擴容而非覆寫，`pushError` 也不裁剪，長時間執行且沒人 `PopError` 的程式記憶體持續成長。5000 次 `LogWarning` → `GetErrorCount()==5000`，初始容量 1536 顯然是想當上限 | error_buffer.go:63, 76；internal/core/ring.go:64-72 | `pushError` 在 `Len()>=cap` 時先 `PopFront`；文件註明上限與丟棄策略（K-4 相關） |
 | IN-8 | ~~Med~~ 已修正（batch 5） | `DataList.ShowRange(2, -1)` 文件說「顯示到最後」，實際負數 end 是 `totalItems+end`，最後一項被排除（5 項資料只顯示 index 2..3）；`ShowTypesRange` 同 | show.go:736（文件）, 793, 1076 | 改文件（`-1` 排除最後一項，與 Python slice 一致）並提供「到最後」的正式寫法 |
 | IN-9 | ~~Med~~ 已修正（batch 5） | `DataTable.ShowTypes` 超過 26 欄時欄位順序錯：用 `sort.Strings` 得到 `A, AA, AB, B, C…`，`Show` 則正確用 `ParseColIndex` 排序（28 欄表 `ShowTypesRangeTo` 表頭 `A AA AB B C …`） | show.go:484 | 抽出 `ShowRangeTo` 的欄序比較器共用 |
-| IN-10 | Low | `ConvertToDateString` 對 16 位（微秒）時間戳當秒處理：`int64(1700000000000000)` → `"53872825-06-17 22:13:20"` | internal/utils/utils.go:292-296 | `>= 1e15 && < 1e18` 視為微秒 |
+| IN-10 | ~~Low~~ 已修正（fix-clear-defects-core） | `ConvertToDateString` 對 16 位（微秒）時間戳當秒處理：`int64(1700000000000000)` → `"53872825-06-17 22:13:20"` | internal/utils/utils.go:292-296 | `>= 1e15 && < 1e18` 視為微秒 |
 | IN-11 | Low | `TruncateString(s, n)` 在 `n<0` 時 panic（`rs[:maxLength]`），目前呼叫端不可達 | internal/utils/utils.go:125 | `maxLength<=0` 回 `""` |
-| IN-12 | Low | `CalcColIndex(MaxInt64)` 產生的字串 `ParseColIndex` 解不回來（內部先算 `n+1` 溢位被拒）；其他範圍往返正確 | internal/utils/utils.go:82-87 | 溢位檢查允許最後一步 |
-| IN-13 | Low | `FormatValue(float64(1<<63))` 印出 `9223372036854775807`（arm64 `int(v)` 飽和轉換，amd64 行為不同）；`9999.99999` 印 `10000` | internal/utils/utils.go:161 | 整數判斷限制在 `|v| < 2^53` |
-| IN-14 | Low | `ConvertDateFormat` 逐序字串取代：`"MMM"`→`"011"`、`"Mon DD"`→`"1on 02"`；`hh` 對到 24 小時制、`A` 不支援 | internal/utils/utils.go:387-394 | 改 tokenizer |
+| IN-12 | ~~Low~~ 已修正（fix-clear-defects-core） | `CalcColIndex(MaxInt64)` 產生的字串 `ParseColIndex` 解不回來（內部先算 `n+1` 溢位被拒）；其他範圍往返正確 | internal/utils/utils.go:82-87 | 溢位檢查允許最後一步 |
+| IN-13 | ~~Low~~ 已修正（fix-clear-defects-core） | `FormatValue(float64(1<<63))` 印出 `9223372036854775807`（arm64 `int(v)` 飽和轉換，amd64 行為不同）；`9999.99999` 印 `10000` | internal/utils/utils.go:161 | 整數判斷限制在 `|v| < 2^53` |
+| IN-14 | ~~Low~~ 已修正（fix-clear-defects-core） | `ConvertDateFormat` 逐序字串取代：`"MMM"`→`"011"`、`"Mon DD"`→`"1on 02"`；`hh` 對到 24 小時制、`A` 不支援 | internal/utils/utils.go:387-394 | 改 tokenizer |
 | IN-15 | Low | `AtomicDoAll(f, (*DataList)(nil))` 直接 nil deref panic；`nil any` 與 nil actor 會被跳過，型別化 nil 不會 | atomic.go:118 | `case *DataList: if v == nil { continue }`（K-8 相關） |
-| IN-16 | Low | `BiIndex.Set(id, name)` 當 name 已屬另一 id 時，舊 id 被刪但不進 freelist，成為永久空洞（`Len` 少 1）。公開 API 有 `safeRowName` 擋住，內部直接呼叫者會踩到 | internal/core/biindex.go:63 | `oldID` push 到 `freed`，或回 `false` 拒絕搶名 |
+| IN-16 | ~~Low~~ 已修正（fix-clear-defects-core） | `BiIndex.Set(id, name)` 當 name 已屬另一 id 時，舊 id 被刪但不進 freelist，成為永久空洞（`Len` 少 1）。公開 API 有 `safeRowName` 擋住，內部直接呼叫者會踩到 | internal/core/biindex.go:63 | `oldID` push 到 `freed`，或回 `false` 拒絕搶名 |
 | IN-17 | Low | `PowRat(base, -2)` 回 1（負指數被 `range` 靜默忽略）；`SqrtRat(-1)` panic，文件都沒說 | utils.go:90, 105 | 負指數取倒數或回錯；`SqrtRat` 負數回 nil 並註明（K-15 相關） |
-| IN-18 | Low | `IsNumeric(MyInt(3))` 為 true（反射），但 `ToFloat64Safe(MyInt(3))` 為 false，同一值一邊說是數字一邊轉不了 | utils.go:221-238；internal/utils/utils.go:20-49 | 兩邊統一 |
+| IN-18 | ~~Low~~ 已修正（fix-clear-defects-core） | `IsNumeric(MyInt(3))` 為 true（反射），但 `ToFloat64Safe(MyInt(3))` 為 false，同一值一邊說是數字一邊轉不了 | utils.go:221-238；internal/utils/utils.go:20-49 | 兩邊統一 |
 | IN-19 | Low | `ipc.WriteMessage` 不檢查 `maxMessageSize` 與 `len(b) > 2^32`（長度前綴截斷讓對端解框錯位）：寫 256MiB+1 成功、`ReadMessage` 回「exceeds maximum」 | py/internal/ipc/framing.go:34 | 寫入前檢查回錯 |
 | IN-20 | ~~Low~~ 已修正（batch 6） | `DetectEncoding`：`FF FE 00 00`（UTF-32LE BOM）判成 utf-16le；小樣本 Big5（4 bytes 中文）判成 iso-8859-1 讀出亂碼；小樣本 Latin-1 chardet 回「Charset not detected」導致 `ReadCSV_File` 整個失敗而非退回 utf-8 | utils.go:301, 322-330 | UTF-32 BOM 先判；chardet 失敗退回 utf-8 並記警告（SEC-5 相關） |
-| IN-21 | Low | `NearestNeighborInterpolation(x=NaN)` 靜默回 `data[0]`；`Linear`／`Quadratic` 對 NaN 回 `ErrOutOfBounds`，不一致 | internal/algorithms/interpolation.go:74 | 開頭 `IsNaN` 回 `ErrOutOfBounds` |
+| IN-21 | ~~Low~~ 已修正（fix-clear-defects-core） | `NearestNeighborInterpolation(x=NaN)` 靜默回 `data[0]`；`Linear`／`Quadratic` 對 NaN 回 `ErrOutOfBounds`，不一致 | internal/algorithms/interpolation.go:74 | 開頭 `IsNaN` 回 `ErrOutOfBounds` |
 | IN-22 | Low | `Show(5)` 對 1M×3 表花 475ms：`prepareTableLayout` 對每個 cell 跑 `FormatValue` 計寬度，不看顯示範圍 | show.go:1241 | 只對要顯示的列計寬（E-8 相關） |
 
 ### 安全與強韌性（第二輪，跨套件；含 -race 全套件結果）

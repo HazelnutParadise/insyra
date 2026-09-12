@@ -392,83 +392,117 @@ func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable
 	o := otherDT
 	// Lock both tables together (deadlock-free) instead of nesting AtomicDo.
 	AtomicDoAll(func() {
-		colNames1 := d.ColNames()
-		colNames2 := o.ColNames()
-
-		// Vertical merge aligns columns by name; a duplicate name within a
-		// table would silently drop the extra column's data. Reject it.
-		seen1 := make(map[string]bool)
-		for _, name := range colNames1 {
-			if seen1[name] {
-				mergeErr = fmt.Errorf("vertical merge requires unique column names; first table has duplicate %q", name)
-				return
+		// Vertical merge lines columns up by name, but a table built with
+		// NewDataTable(NewDataList(...)) has no names at all, and the empty name
+		// then counted as a duplicate of itself — so two such tables could not
+		// be merged. Unnamed columns line up by their position among the
+		// unnamed ones instead; named columns still line up by name.
+		keysOf := func(t *DataTable) ([]string, []string, error) {
+			keys := make([]string, 0, len(t.columns))
+			names := make([]string, 0, len(t.columns))
+			seen := make(map[string]bool, len(t.columns))
+			unnamed := 0
+			for _, col := range t.columns {
+				var key string
+				if col.name == "" {
+					key = fmt.Sprintf("#%d", unnamed)
+					unnamed++
+				} else {
+					key = "name:" + col.name
+				}
+				// A duplicate name would silently drop the extra column's data.
+				// The public constructors rename a duplicate to "n_1", so this
+				// only guards a table assembled internally.
+				if seen[key] {
+					return nil, nil, fmt.Errorf("vertical merge requires unique column names; duplicate %q", col.name)
+				}
+				seen[key] = true
+				keys = append(keys, key)
+				names = append(names, col.name)
 			}
-			seen1[name] = true
-		}
-		seen2 := make(map[string]bool)
-		for _, name := range colNames2 {
-			if seen2[name] {
-				mergeErr = fmt.Errorf("vertical merge requires unique column names; second table has duplicate %q", name)
-				return
-			}
-			seen2[name] = true
+			return keys, names, nil
 		}
 
-		var finalColNames []string
+		keys1, names1, err := keysOf(d)
+		if err != nil {
+			mergeErr = fmt.Errorf("first table: %w", err)
+			return
+		}
+		keys2, names2, err := keysOf(o)
+		if err != nil {
+			mergeErr = fmt.Errorf("second table: %w", err)
+			return
+		}
+
+		// nameFor remembers the display name each key should carry.
+		nameFor := make(map[string]string, len(keys1)+len(keys2))
+		for i, k := range keys1 {
+			nameFor[k] = names1[i]
+		}
+		for i, k := range keys2 {
+			if _, ok := nameFor[k]; !ok {
+				nameFor[k] = names2[i]
+			}
+		}
+
+		var finalKeys []string
 		if mode == MergeModeInner {
-			set2 := make(map[string]bool)
-			for _, name := range colNames2 {
-				set2[name] = true
+			set2 := make(map[string]bool, len(keys2))
+			for _, k := range keys2 {
+				set2[k] = true
 			}
-			for _, name := range colNames1 {
-				if set2[name] {
-					finalColNames = append(finalColNames, name)
+			for _, k := range keys1 {
+				if set2[k] {
+					finalKeys = append(finalKeys, k)
 				}
 			}
 		} else {
-			set := make(map[string]bool)
-			for _, name := range colNames1 {
-				if !set[name] {
-					finalColNames = append(finalColNames, name)
-					set[name] = true
+			set := make(map[string]bool, len(keys1)+len(keys2))
+			for _, k := range keys1 {
+				if !set[k] {
+					finalKeys = append(finalKeys, k)
+					set[k] = true
 				}
 			}
-			for _, name := range colNames2 {
-				if !set[name] {
-					finalColNames = append(finalColNames, name)
-					set[name] = true
+			for _, k := range keys2 {
+				if !set[k] {
+					finalKeys = append(finalKeys, k)
+					set[k] = true
 				}
 			}
 		}
 
-		if len(finalColNames) == 0 {
+		if len(finalKeys) == 0 {
 			result = NewDataTable()
 			return
 		}
 
-		newCols := make([]*DataList, len(finalColNames))
-		for i, name := range finalColNames {
-			newCols[i] = NewDataList().SetName(name)
+		newCols := make([]*DataList, len(finalKeys))
+		for i, k := range finalKeys {
+			newCols[i] = NewDataList()
+			if name := nameFor[k]; name != "" {
+				newCols[i].SetName(name)
+			}
 		}
 		result = NewDataTable(newCols...)
 
-		// Helper to get column index by name (not atomic)
-		getColIdx := func(dt *DataTable, name string) int {
-			for i, col := range dt.columns {
-				if col.name == name {
-					return i
-				}
+		// colIdxOf maps a key back to a column index in the given table.
+		indexOf := func(keys []string) map[string]int {
+			m := make(map[string]int, len(keys))
+			for i, k := range keys {
+				m[k] = i
 			}
-			return -1
+			return m
 		}
+		idx1 := indexOf(keys1)
+		idx2 := indexOf(keys2)
 
 		// Append rows from d
 		dMax := d.getMaxColLength()
 		for i := 0; i < dMax; i++ {
-			for j, name := range finalColNames {
-				idx := getColIdx(d, name)
+			for j, k := range finalKeys {
 				var val any = nil
-				if idx != -1 && i < len(d.columns[idx].data) {
+				if idx, ok := idx1[k]; ok && i < len(d.columns[idx].data) {
 					val = d.columns[idx].data[i]
 				}
 				result.columns[j].data = append(result.columns[j].data, val)
@@ -484,10 +518,9 @@ func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable
 		oMax := o.getMaxColLength()
 		currentRows := result.getMaxColLength()
 		for i := 0; i < oMax; i++ {
-			for j, name := range finalColNames {
-				idx := getColIdx(o, name)
+			for j, k := range finalKeys {
 				var val any = nil
-				if idx != -1 && i < len(o.columns[idx].data) {
+				if idx, ok := idx2[k]; ok && i < len(o.columns[idx].data) {
 					val = o.columns[idx].data[i]
 				}
 				result.columns[j].data = append(result.columns[j].data, val)

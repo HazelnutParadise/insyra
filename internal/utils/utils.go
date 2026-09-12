@@ -54,8 +54,33 @@ func ToFloat64(v any) float64 {
 	case float64:
 		return v
 	default:
-		return 0
+		// A named type over a numeric kind — `type Celsius float64` — does not
+		// match any case above, but IsNumeric (which goes through reflection)
+		// calls it a number. One of the two had to be wrong about every
+		// user-defined numeric type; the reflect fallback is the same shape
+		// accel's projection settled on, and it only runs for values the type
+		// switch already missed.
+		f, _ := reflectToFloat64(v)
+		return f
 	}
+}
+
+// reflectToFloat64 converts a named type over a numeric kind. It reports false
+// for anything else, including nil.
+func reflectToFloat64(v any) (float64, bool) {
+	if v == nil {
+		return 0, false
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return float64(rv.Int()), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return float64(rv.Uint()), true
+	case reflect.Float32, reflect.Float64:
+		return rv.Float(), true
+	}
+	return 0, false
 }
 
 // ToFloat64Safe tries to convert any numeric value to float64 and returns a boolean indicating success.
@@ -64,7 +89,7 @@ func ToFloat64Safe(v any) (float64, bool) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		return ToFloat64(v), true
 	default:
-		return 0, false
+		return reflectToFloat64(v)
 	}
 }
 
@@ -73,8 +98,12 @@ func ParseColIndex(colIndex string) (colNumber int, ok bool) {
 	if len(colIndex) == 0 {
 		return -1, false
 	}
-	result := 0
-	// Process bytes directly to avoid allocation from strings.ToUpper
+	// Accumulate the 0-based index directly rather than the 1-based value and
+	// subtracting at the end: the largest index CalcColIndex can produce needs
+	// a 1-based value of maxInt+1, so the old form rejected its own output.
+	// Going straight to 0-based, z_next = z*26 + (v + 25).
+	const maxInt = int(^uint(0) >> 1)
+	z := 0
 	for i := 0; i < len(colIndex); i++ {
 		c := colIndex[i]
 		var v int
@@ -85,14 +114,17 @@ func ParseColIndex(colIndex string) (colNumber int, ok bool) {
 		} else {
 			return -1, false
 		}
-		// Overflow check: ensure result*26 + v fits into int
-		maxInt := int(^uint(0) >> 1)
-		if result > (maxInt-v)/26 {
+		if i == 0 {
+			z = v - 1
+			continue
+		}
+		step := v + 25
+		if z > (maxInt-step)/26 {
 			return -1, false
 		}
-		result = result*26 + v
+		z = z*26 + step
 	}
-	return result - 1, true
+	return z, true
 }
 
 func CalcColIndex(colNumber int) (colIndex string, ok bool) {
@@ -187,7 +219,14 @@ func FormatValue(value any) string {
 		// 顯示數字，但不顯示尾部的零
 		s := fmt.Sprintf("%.4f", v)
 		s = strings.TrimRight(s, "0")
-		return strings.TrimRight(s, ".")
+		s = strings.TrimRight(s, ".")
+		// 四捨五入到小數第四位後，9999.99999 會變成 "10000"，把一個不是整數的
+		// 值顯示成整數。近似值帶著小數點還看得出是近似，整數不會，所以這種情況
+		// 改用完整表示法。
+		if !strings.ContainsAny(s, ".eE") {
+			return FloatText(v, 64)
+		}
+		return s
 
 	case float32:
 		return FormatValue(float64(v))
@@ -306,13 +345,18 @@ func convertTimestampToString(ts int64, goDateFormat string) string {
 		base := time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
 		t := base.AddDate(0, 0, int(ts))
 		return t.Format(goDateFormat)
-	} else if ts >= 1000000000000 && ts < 100000000000000 { // 13 digits, milliseconds
+	} else if ts >= 1000000000000 && ts < 1000000000000000 { // 13-15 digits, milliseconds
 		// Unix timestamp in milliseconds. time.UnixMilli rather than
 		// time.Unix(0, ts*int64(time.Millisecond)): that multiplication
 		// overflows int64 above 9223372036854 ms (about 2262-04-11), which is
 		// well inside the range this branch accepts, and silently produced a
 		// different date.
 		t := time.UnixMilli(ts).UTC()
+		return t.Format(goDateFormat)
+	} else if ts >= 1000000000000000 && ts < 1000000000000000000 { // 16-18 digits, microseconds
+		// Without this window a 16-digit stamp was read as seconds, which put a
+		// 2023 date in the year 53872.
+		t := time.UnixMicro(ts).UTC()
 		return t.Format(goDateFormat)
 	} else if ts >= 1000000000000000000 { // 19 digits, nanoseconds
 		// Unix timestamp in nanoseconds
@@ -383,53 +427,104 @@ func IsColorSupported() bool {
 	return true
 }
 
-// ConvertDateFormat 將常見的日期格式模式轉換為 Go 語言的時間格式
+// ConvertDateFormat turns a common date-format pattern into a Go time layout.
+//
+// It scans left to right, taking a maximal run of one letter as a single token,
+// so "MMM" is a three-letter month rather than three separate months. Text in
+// square brackets is copied out verbatim, which is the only way to put a letter
+// in the output without it being read as a token. Everything else — separators,
+// digits, spaces — is copied as it is.
+//
+// It used to run a sequence of ReplaceAll over the whole string, which rewrote
+// letters wherever they appeared: "MMM" became "011" and "Date:" became "2ate:".
+//
+// Recognised tokens:
+//
+//	YYYY yyyy  four-digit year      YY yy  two-digit year
+//	MMMM       full month name      MMM    short month name
+//	MM M       month number         DD dd D d  day of month
+//	HH H       hour, 24-hour        hh h   hour (see below)
+//	mm m       minute               SS ss S s  second
+//	A a        AM/PM                [text]     literal text
+//
+// `hh` and `h` map to the 24-hour layout rather than the 12-hour one most
+// conventions give them. That predates this rewrite and callers pass their own
+// patterns, so it is left alone rather than silently changing what their charts
+// print.
 func ConvertDateFormat(pattern string) string {
-	// 常見的日期格式映射（支援大小寫）
-	formatMap := map[string]string{
-		"YYYY": "2006", // 四位年份（大寫）
-		"yyyy": "2006", // 四位年份（小寫）
-		"YY":   "06",   // 兩位年份（大寫）
-		"yy":   "06",   // 兩位年份（小寫）
-
-		// 月份（使用大寫 M 表示月份）
-		"MM": "01", // 兩位月份（大寫）
-		"M":  "1",  // 一位月份（大寫）
-
-		// 分鐘（使用小寫 m 表示分鐘）
-		"mm": "04", // 兩位分鐘（小寫）
-		"m":  "4",  // 一位分鐘（小寫）
-
-		// 日期
-		"DD": "02", // 兩位日期（大寫）
-		"dd": "02", // 兩位日期（小寫）
-		"D":  "2",  // 一位日期（大寫）
-		"d":  "2",  // 一位日期（小寫）
-
-		// 小時（24小時制）
-		"HH": "15", // 24小時制小時（大寫）
-		"hh": "15", // 24小時制小時（小寫）
-		"H":  "15", // 24小時制小時（大寫）
-		"h":  "15", // 24小時制小時（小寫）
-
-		// 秒
-		"SS": "05", // 秒（大寫）
-		"ss": "05", // 秒（小寫）
-		"S":  "5",  // 秒（大寫）
-		"s":  "5",  // 秒（小寫）
+	// Keyed by the letter and how many times it repeats.
+	runs := map[byte]map[int]string{
+		'Y': {4: "2006", 2: "06"},
+		'y': {4: "2006", 2: "06"},
+		'M': {4: "January", 3: "Jan", 2: "01", 1: "1"},
+		'D': {2: "02", 1: "2"},
+		'd': {2: "02", 1: "2"},
+		'H': {2: "15", 1: "15"},
+		'h': {2: "15", 1: "15"},
+		'm': {2: "04", 1: "4"},
+		'S': {2: "05", 1: "5"},
+		's': {2: "05", 1: "5"},
+		'A': {1: "PM"},
+		'a': {1: "pm"},
 	}
 
-	result := pattern
-	// 注意：要先替換長的模式，避免部分替換
-	orderedKeys := []string{"YYYY", "yyyy", "YY", "yy", "MM", "mm", "DD", "dd", "HH", "hh", "SS", "ss", "M", "m", "D", "d", "H", "h", "S", "s"}
+	isLetter := func(c byte) bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') }
 
-	for _, key := range orderedKeys {
-		if val, exists := formatMap[key]; exists {
-			result = strings.ReplaceAll(result, key, val)
+	var b strings.Builder
+	for i := 0; i < len(pattern); {
+		c := pattern[i]
+
+		// Literal text.
+		if c == '[' {
+			if end := strings.IndexByte(pattern[i:], ']'); end >= 0 {
+				b.WriteString(pattern[i+1 : i+end])
+				i += end + 1
+				continue
+			}
+			// No closing bracket: nothing to escape, copy it out.
+			b.WriteByte(c)
+			i++
+			continue
+		}
+
+		if !isLetter(c) {
+			b.WriteByte(c)
+			i++
+			continue
+		}
+
+		// A maximal run of the same letter.
+		n := 1
+		for i+n < len(pattern) && pattern[i+n] == c {
+			n++
+		}
+		lengths, known := runs[c]
+		if !known {
+			b.WriteString(pattern[i : i+n])
+			i += n
+			continue
+		}
+		// Consume the run greedily, longest known length first, so an
+		// unrecognised length such as "MMMMM" still produces something rather
+		// than passing the whole run through.
+		for n > 0 {
+			used := 0
+			for length := n; length >= 1; length-- {
+				if out, ok := lengths[length]; ok {
+					b.WriteString(out)
+					used = length
+					break
+				}
+			}
+			if used == 0 {
+				b.WriteString(strings.Repeat(string(c), n))
+				break
+			}
+			i += used
+			n -= used
 		}
 	}
-
-	return result
+	return b.String()
 }
 
 // Get terminal window width
