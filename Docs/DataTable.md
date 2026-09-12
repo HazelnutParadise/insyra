@@ -2944,18 +2944,28 @@ fmt.Printf("Value counts: %v\n", counts)
 **Values Go cannot use as a map key.** A cell holding a slice, a map, or
 anything containing one — a `[]byte` read from a SQL BLOB column, for
 instance — cannot be a key in the returned map. Such a value is keyed by an
-`insyra.UncomparableKey` standing in for it, and `insyra.KeyOf` builds the
-same stand-in so the count can be read back:
+`insyra.UncomparableKey` standing in for it. Comparable values are still keyed
+by themselves, so `counter[1]` and `counter["a"]` work as before, and printing
+the whole map stays readable: a stand-in shows as its type with a shortened
+form of its content, such as `[]uint8(00ff41)`.
+
+**To read one value's count, use `Count`, not this map.** `Count` matches
+integers by value, where the map keys them by Go type: a CSV load stores
+integers as `int64`, so `counter[1]` finds nothing in a counter built from
+loaded data while `Count(1)` is right. `Count` also finds an uncomparable
+value, which is the whole reason the two now agree.
 
 ```go
-counter := dl.Counter()
-n := counter[insyra.KeyOf([]byte{0x00, 0xff, 0x41})]
+n := dt.Count(someValue)
 ```
 
-Comparable values are still keyed by themselves, so `counter[1]` and
-`counter["a"]` work as before. Printing the whole map is readable: a stand-in
-shows as its type with a shortened form of its content, such as
-`[]uint8(00ff41)`. `Count` and `FindAll` agree with these counts.
+`insyra.CounterKey(v)` builds the key the map uses, for when you are indexing
+the whole map yourself rather than asking about one value:
+
+```go
+counter := dt.Counter()
+n := counter[insyra.CounterKey(blob)]
+```
 
 ### GetCreationTimestamp
 

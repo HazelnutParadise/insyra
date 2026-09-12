@@ -24,13 +24,13 @@ const maxCellEncodeDepth = 64
 const uncomparableDisplayBytes = 16
 
 // UncomparableKey stands in for a cell value that Go cannot use as a map key —
-// a slice, a map, or anything containing one. It is what KeyOf returns for
-// such a value and what appears as the key in a Counter result.
+// a slice, a map, or anything containing one. It is what CounterKey returns
+// for such a value, and what appears as the key in a Counter result.
 //
 // Two of them are equal exactly when the values they stand for count, match
 // and group as the same value. The content they carry is deliberately not
 // exported: it is the encoder's format, shared with grouping, and it will
-// change. Build one with KeyOf rather than by hand.
+// change. Build one with CounterKey rather than by hand.
 type UncomparableKey struct {
 	// Type is the Go type of the value, as %T would write it.
 	Type string
@@ -51,13 +51,15 @@ func (k UncomparableKey) String() string {
 	return k.Type + "(" + c + ")"
 }
 
-// KeyOf returns a value usable as a map key for v.
+// CounterKey returns the key under which Counter counts v: v itself when Go
+// can compare it, and an UncomparableKey when it cannot.
 //
-// A value Go can compare is returned as it is, so counter[1] and counter["a"]
-// read a Counter result directly. A value Go cannot compare comes back as an
-// UncomparableKey, so counter[insyra.KeyOf(blob)] reads the count of a cell
-// that could not otherwise be a key at all.
-func KeyOf(v any) any {
+// Integer widths are not merged. Counter keys int(1) and int64(1) apart, and a
+// CSV load stores integers as int64, so CounterKey(1) can find nothing in a
+// counter built from loaded data. To read one value's count, prefer Count(v),
+// which matches integers by value. This is for indexing the whole map
+// yourself, where a cell Go cannot compare could not otherwise be a key.
+func CounterKey(v any) any {
 	if comparableCell(v) {
 		return v
 	}

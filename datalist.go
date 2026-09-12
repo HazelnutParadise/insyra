@@ -189,9 +189,9 @@ func (dl *DataList) Counter() map[any]int {
 	counter := make(map[any]int)
 	dl.AtomicDo(func(dl *DataList) {
 		for _, value := range dl.data {
-			// KeyOf, not the value: a cell Go cannot hash — a []byte read from
+			// CounterKey, not the value: a cell Go cannot hash — a []byte read from
 			// a SQL BLOB column, say — used to take the process down here.
-			counter[KeyOf(value)]++
+			counter[CounterKey(value)]++
 		}
 	})
 	return counter

@@ -45,7 +45,7 @@ func TestBlobColumnCanBeCountedAndFound(t *testing.T) {
 	want := []byte{0x00, 0xff, 0x41}
 
 	counter := col.Counter() // used to panic: hash of unhashable type []uint8
-	if got := counter[KeyOf(want)]; got != 2 {
+	if got := counter[CounterKey(want)]; got != 2 {
 		t.Errorf("Counter reports %d for a value held by two rows, want 2", got)
 	}
 	if got := col.Count(want); got != 2 {
@@ -67,7 +67,7 @@ func TestTypesThatLookComparableAndAreNot(t *testing.T) {
 		dl.Append(v)
 		dl.Append(v)
 		counter := dl.Counter()
-		if got := counter[KeyOf(v)]; got != 2 {
+		if got := counter[CounterKey(v)]; got != 2 {
 			t.Errorf("%T: Counter reports %d, want 2", v, got)
 		}
 		if got := dl.Count(v); got != 2 {
