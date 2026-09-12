@@ -265,6 +265,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: documentation, not code. `Docs/DataList.md` now describes the flattening and `Cell` together; check that the `Count`/`Counter` examples build their list with `Append` or `Cell` so they are runnable as written, and consider whether `Count` should say something when it is handed a slice that the receiving list could not be holding.
 - **Status**: pending
 
+### [2026-09-12] — an UncomparableKey prints a Stringer's internals instead of its text
+- **Where**: `cell_identity.go` `UncomparableKey.String`
+- **What**: the display renders the encoded content, which for a struct is its fields. A `decimal.Decimal` from `finance` or a Parquet `Decimal128` column therefore prints as `decimal.Decimal({{b:1,[i:3400221114815]},i:10})` — `big.Int`'s sign and words — where the value knows perfectly well how to write itself as `-340.0221114815`. Correctness is unaffected; the encoded content is what makes the key exact and must stay.
+- **Suggestion**: carry a third field holding the value's own `String()` when it has one, used by `String()` and ignored for meaning. Including it in struct equality is harmless because it is a function of the same value, but that reasoning should be written down next to it, and a `String()` that is not deterministic would break it. Small, and it only improves what a printed counter looks like.
+- **Status**: pending
+
 ### [2026-09-12] — `labelKey` still merges nested values that print alike
 - **Where**: `datatable_encode.go` `labelKey`, its default arm
 - **What**: `identify-uncomparable-cells` gave `encodeGroupKey` and `uniqueKey` a recursive encoder, so `[]any{1}` and `[]any{"1"}` are no longer one group. `labelKey` has the same non-recursive shape (`%T:%#v`), so it still merges them — `%#v` separates an int from a string but not `[]any{1}` from `[]any{1.0}`. It was left out on purpose: its integer rule is by value where cell identity is by type, so folding it into the same encoder would change what a label means, not just fix a collision.
@@ -280,6 +286,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 ### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
 - **Where**: `internal/utils` `IsNumeric` / `ToFloat64Safe`, and every numeric path behind them
 - **What**: `parquet-foreign-column-types` made `Decimal128` and `Decimal256` read as a go-decimal `decimal.Decimal`, exact and sorting by value. It is a struct, so `IsNumeric` says no and `ToFloat64Safe` cannot read it, which means `Mean`, `Sum`, `Stdev` and CCL arithmetic cannot read a decimal column. Measured on 2026-09-12: they do not refuse it, they skip every cell and return `NaN` with `Err()` nil, and a `time.Time` column does the same thing side by side. That follows the `time.Time` precedent exactly, and it is the reason the change did not go further on its own. But a money column is far likelier to want arithmetic than a date column is, and a silent `NaN` is a poor way to learn the column is not numeric.
+- **Also**: `finance` already puts this same type in cells (`ScheduleTable`, [#247](https://github.com/HazelnutParadise/insyra/issues/247) FI-2), so this is not only a parquet question. Measured on 2026-09-12, that table now displays, exports, counts, groups and sorts correctly and only `Mean`/`Sum`/`Describe` fail — silently, with `NaN` and a nil `Err()`.
 - **Suggestion**: the decision is whether a decimal is a number in insyra. If it is, `ToFloat64Safe` needs an arm for it, which today means going through `String()` and `strconv.ParseFloat` because go-decimal exposes no `Float64()`; adding one upstream would be cleaner and it is the same author's library. Weigh that against making `internal/utils`, which every value in the library passes through, depend on a decimal package.
 - **Status**: pending
 
