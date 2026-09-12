@@ -1333,7 +1333,10 @@ the single-start one. Every start is an orthogonal
 matrix — the identity, the Varimax solution, then random ones — which is what
 `GPArotation::Random.Start` produces for orthogonal and oblique rotations
 alike. `RotationConverged` reports whether the solution that was chosen
-converged; `MaxIter` governs extraction and is not passed to the rotation,
+converged, and a rotation that did not converge from any start logs one
+warning naming the method and the number of starts — a start that ran out of
+iterations while another one converged is not reported, because it is not the
+answer. `MaxIter` governs extraction and is not passed to the rotation,
 which uses R's own defaults of `eps = 1e-5` and `maxit = 1000`.
 
 #### FactorAnalysisResult

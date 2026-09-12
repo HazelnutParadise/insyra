@@ -192,10 +192,13 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		iter++
 	}
 
-	// Warn on non-convergence — R's GPArotation::GPFoblq emits a warning
-	// when the gradient norm hasn't dropped below eps within maxit iters.
+	// A run that hit the cap is reported here at debug level only. Under a
+	// multi-start search this is one start of many, and the caller decides
+	// whether the chosen solution converged: FaRotations warns once, and
+	// only then. R's GPArotation::GPFoblq warns per run because it is the
+	// whole computation there.
 	if !convergence {
-		insyra.LogWarning("fa", "GPFoblq",
+		insyra.LogDebug("fa", "GPFoblq",
 			"oblique rotation did not converge after %d iterations (max %d)",
 			iter, maxit)
 	}

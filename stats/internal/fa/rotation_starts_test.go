@@ -1,10 +1,14 @@
 package fa
 
 import (
+	"bytes"
+	"log"
 	"math"
 	"math/rand"
+	"strings"
 	"testing"
 
+	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -358,5 +362,67 @@ func TestObliminRunsFromTheStartItIsGiven(t *testing.T) {
 	one, five := criterionOf(t, "oblimin", L, 1), criterionOf(t, "oblimin", L, 5)
 	if five >= one/10 {
 		t.Errorf("over-factored: f = %.6f at one start and %.6f at five; the search did not leave the identity's basin", one, five)
+	}
+}
+
+// captureWarnings routes the logger into a buffer at warning level for the
+// duration of the test and returns the buffer.
+func captureWarnings(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var out bytes.Buffer
+	prevWriter := log.Writer()
+	prevLevel := insyra.Config.GetLogLevel()
+	log.SetOutput(&out)
+	insyra.Config.SetLogLevel(insyra.LogLevelWarning)
+	t.Cleanup(func() {
+		log.SetOutput(prevWriter)
+		insyra.Config.SetLogLevel(prevLevel)
+	})
+	return &out
+}
+
+// A multi-start search reports non-convergence once, and only when the
+// solution it chose did not converge. GPForth and GPFoblq used to warn on
+// every start that hit the cap, so twenty starts could log twenty warnings —
+// and push twenty entries into the global error buffer — while the chosen
+// solution had converged, and the informed Varimax start warned as well.
+func TestUnconvergedRotationWarnsOnce(t *testing.T) {
+	out := captureWarnings(t)
+	before := insyra.GetErrorCount()
+	_, _, _, converged, err := Rotate(noisyStructure(), "quartimin",
+		&RotOpts{Eps: 1e-12, MaxIter: 1, PromaxPower: 4, Restarts: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if converged {
+		t.Fatal("the fixture converged, so it no longer exercises the case")
+	}
+	if n := strings.Count(out.String(), "[insyra - Warning]"); n != 1 {
+		t.Errorf("%d warnings logged for one unconverged rotation over 5 starts, want 1:\n%s", n, out.String())
+	}
+	if !strings.Contains(out.String(), "quartimin") || !strings.Contains(out.String(), "5 starts") {
+		t.Errorf("the warning does not name the method and the number of starts:\n%s", out.String())
+	}
+	if got := insyra.GetErrorCount() - before; got != 1 {
+		t.Errorf("%d entries pushed into the error buffer, want 1", got)
+	}
+}
+
+func TestConvergedRotationDoesNotWarn(t *testing.T) {
+	out := captureWarnings(t)
+	before := insyra.GetErrorCount()
+	_, _, _, converged, err := Rotate(simpleStructure(), "quartimin",
+		&RotOpts{Eps: 1e-5, MaxIter: 1000, PromaxPower: 4, Restarts: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !converged {
+		t.Fatal("the fixture did not converge, so it no longer exercises the case")
+	}
+	if out.Len() != 0 {
+		t.Errorf("a converged rotation logged:\n%s", out.String())
+	}
+	if got := insyra.GetErrorCount() - before; got != 0 {
+		t.Errorf("%d entries pushed into the error buffer for a converged rotation", got)
 	}
 }

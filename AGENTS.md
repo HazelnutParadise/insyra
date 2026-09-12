@@ -265,12 +265,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: `inferArrowType` infers from Go values, so it cannot tell an `int16` that came from a `Date32` column from any other. Carrying the source schema through a read would fix it properly; inferring `time.Time` to `Date64` and `[]byte`-bearing strings to `Binary` would not, and would guess wrong on ordinary data. Worth doing only if round-tripping is a use case someone has.
 - **Status**: pending
 
-### [2026-09-12] — a multi-start rotation logs one "did not converge" warning per start that hit the cap
-- **Where**: `stats/internal/fa/GPArotation_GPFoblq.go` and `GPArotation_GPForth.go`, the `LogWarning` after the iteration loop
-- **What**: each start that runs out of iterations logs a warning, whether or not the start that wins converged. With `Restarts` now defaulting to 20 (`default-restarts-follow-psych`), a criterion with local minima such as geomin or simplimax can log it several times per `FactorAnalysis` call while `RotationConverged` is true. Oblimin, the default rotation, converged on 240 of 240 starts measured, so the default path does not show it. Pre-existing for anyone who set `Restarts: 20` by hand.
-- **Suggestion**: log once, from `FaRotations`, and only when the chosen solution did not converge — the per-start flag already reaches `preferCandidate`, and the caller reads the outcome from `RotationConverged`. Demote the per-start message to debug.
-- **Status**: pending
-
 ### [2026-09-12] — 46 of the 105 archived specs have a `## Purpose` nobody wrote
 - **Where**: `openspec/specs/*/spec.md`, the `## Purpose` section
 - **What**: `openspec validate --specs --strict` on 2026-09-12 reported 46 failures, and every one is the same shape: 26 specs still carry the placeholder sentence `openspec archive` writes for a new capability (`TBD - created by archiving change <id>. Update Purpose after archive.`) and 20 have a Purpose under 50 characters. Eight also have a requirement over 500 characters. The failures are not new and nothing in CI runs this command, which is why they accumulated — the capability is created by the first change that touches it, the placeholder lands in the main spec, and a `## Purpose` written in a later delta is ignored because deltas only supply one at creation. `verification-integrity` was fixed in `docs-hygiene-and-remaining-partials` as an example of the size the replacement should be.
