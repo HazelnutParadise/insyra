@@ -8,6 +8,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ## Unreleased
 
+### `stats`
+
+- Fixed orthogonal factor rotations (Varimax / Quartimax / GeominT / BentlerT) returning a non-orthogonal rotation matrix when `Rotation.Restarts > 1`. Restarts now only uses orthonormal starts for those methods and caps the total start count. ([issue #373](https://github.com/HazelnutParadise/insyra/issues/373))
+
 ## v0.3.2
 
 ### Core

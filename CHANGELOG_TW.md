@@ -8,6 +8,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
+### `stats`
+
+- 修正正交因子旋轉（Varimax／Quartimax／GeominT／BentlerT）在 `Rotation.Restarts > 1` 時回傳非正交旋轉矩陣的問題。這些方法的 Restarts 現在只用正交起點，並限制起點總數。（[issue #373](https://github.com/HazelnutParadise/insyra/issues/373)）
+
 ## v0.3.2
 
 ### Core
