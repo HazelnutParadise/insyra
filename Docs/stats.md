@@ -1245,7 +1245,8 @@ const (
 The model matrix is preserved across rotations:
 `L_rotated · Phi · L_rotated' = L_unrotated · L_unrotated'`. For orthogonal
 rotations Phi = I and the relationship simplifies to `L · L' = Lu · Lu'`.
-This invariant is checked by `TestRotationInvariants`.
+This invariant is checked by `TestRotationInvariants`. Orthogonal methods with
+`Restarts > 1` only try orthonormal starts so that property still holds.
 
 #### Factor Score Method
 
@@ -1301,7 +1302,7 @@ type FactorRotationOptions struct {
     Kappa            float64          // Promax power m (default 4); cast to int internally
     Delta            float64          // Oblimin gamma (default 0)
     GeominEpsilon    float64          // Geomin ε (default 0.01)
-    Restarts         int              // random orthonormal starts for GPA rotations (default 1)
+    Restarts         int              // GPA starts (default 1). Orthogonal methods use only orthonormal starts (identity / Varimax / random); oblique methods may also use Promax / Target. Caps total starts, not only random ones.
     VarimaxAlgorithm VarimaxAlgorithm // "kaiser" (psych default) or "gparotation"
 }
 ```

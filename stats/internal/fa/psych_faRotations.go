@@ -472,37 +472,55 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		baseLoadings = loadings
 	}
 
-	// Build starting rotation matrices
-	// To emulate SPSS Direct Oblimin behavior deterministically, when
-	// restarts <= 1, use only identity start. For larger restarts, include
-	// additional heuristics (Varimax/Promax/Target) and random starts up to
-	// the requested count.
+	// Orthogonal GPA methods preserve R'R = I only when every start is orthogonal.
+	// Promax / TargetRot starts are oblique; if they win on the criterion they
+	// silently return a non-orthogonal "orthogonal" rotation (issue #373).
+	// Oblique methods may still use those heuristics. Restarts is a hard cap on
+	// the total number of starts (heuristics + random), not only the random ones.
+	orthogonalMethods := map[string]bool{
+		"varimax":   true,
+		"quartimax": true,
+		"geomint":   true,
+		"bentlert":  true,
+	}
+	isOrthogonal := orthogonalMethods[rotateLower]
+
 	starts := make([]*mat.Dense, 0, max(1, restarts))
 	starts = append(starts, identityMatrix(nf))
 	if restarts > 1 && nf > 1 {
-		// Heuristic starts
-		vm := Varimax(baseLoadings, true, 1e-08, 5000)
-		if rot, ok := vm["rotmat"].(*mat.Dense); ok && rot != nil {
-			starts = append(starts, mat.DenseCopyOf(rot))
+		if len(starts) < restarts {
+			vm := Varimax(baseLoadings, true, 1e-08, 5000)
+			if rot, ok := vm["rotmat"].(*mat.Dense); ok && rot != nil {
+				starts = append(starts, mat.DenseCopyOf(rot))
+			}
 		}
-		pm := Promax(baseLoadings, 4, true)
-		if rot, ok := pm["rotmat"].(*mat.Dense); ok && rot != nil {
-			starts = append(starts, mat.DenseCopyOf(rot))
-		}
-		if loadings != nil {
-			if _, trgRot, _, err := TargetRot(baseLoadings); err == nil {
-				if trgRot != nil {
+		if !isOrthogonal {
+			if len(starts) < restarts {
+				pm := Promax(baseLoadings, 4, true)
+				if rot, ok := pm["rotmat"].(*mat.Dense); ok && rot != nil {
+					starts = append(starts, mat.DenseCopyOf(rot))
+				}
+			}
+			if len(starts) < restarts && loadings != nil {
+				if _, trgRot, _, err := TargetRot(baseLoadings); err == nil && trgRot != nil {
 					starts = append(starts, mat.DenseCopyOf(trgRot))
 				}
 			}
 		}
-		// Add random orthonormal starts if budget remains
-		if restarts > len(starts) {
+		if len(starts) < restarts {
 			seed := seedFromMatrix(baseLoadings)
 			rnd := rand.New(rand.NewSource(seed))
-			for i := len(starts); i < restarts; i++ {
+			for len(starts) < restarts {
 				starts = append(starts, randomOrthonormalMatrix(nf, rnd))
 			}
+		}
+	}
+
+	// QR-orthonormalize starts for orthogonal methods so a drifted heuristic
+	// cannot leave the Stiefel manifold (R GPArotation::Random.Start does this).
+	if isOrthogonal {
+		for i, s := range starts {
+			starts[i] = orthonormalizeColumns(s)
 		}
 	}
 
@@ -690,6 +708,33 @@ func randomOrthonormalMatrix(n int, rnd *rand.Rand) *mat.Dense {
 	var q mat.Dense
 	qr.QTo(&q)
 	return mat.DenseCopyOf(&q)
+}
+
+
+// orthonormalizeColumns returns the Q factor of A via thin QR so columns are
+// orthonormal. Keeps orthogonal-rotation starts on the Stiefel manifold.
+func orthonormalizeColumns(A *mat.Dense) *mat.Dense {
+	if A == nil {
+		return nil
+	}
+	r, c := A.Dims()
+	if r == 0 || c == 0 {
+		return mat.DenseCopyOf(A)
+	}
+	var qr mat.QR
+	qr.Factorize(A)
+	var q mat.Dense
+	qr.QTo(&q)
+	if q.RawMatrix().Cols == c {
+		return mat.DenseCopyOf(&q)
+	}
+	out := mat.NewDense(r, c, nil)
+	for j := 0; j < c; j++ {
+		for i := 0; i < r; i++ {
+			out.Set(i, j, q.At(i, j))
+		}
+	}
+	return out
 }
 
 func seedFromMatrix(m *mat.Dense) int64 {
