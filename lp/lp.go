@@ -291,16 +291,20 @@ func createAdditionalInfoDataTable(status string, executionTime float64, warning
 	return dataTable
 }
 
+// Compiled once: these ran through regexp.MustCompile on every call.
+var (
+	lpIterRe    = regexp.MustCompile(`\*\s+(\d+):`)
+	lpNodeRe    = regexp.MustCompile(`\+\s+(\d+):`)
+	lpWarningRe = regexp.MustCompile(`warning:.*`)
+)
+
 // extractIterationNodeCounts extracts iterations and node counts from the GLPK output file
 func extractIterationNodeCounts(output string) (string, string) {
 	iterations := ""
 	nodes := ""
 
-	iterRegex := regexp.MustCompile(`\*\s+(\d+):`)
-	nodeRegex := regexp.MustCompile(`\+\s+(\d+):`)
-
-	iterMatches := iterRegex.FindAllStringSubmatch(output, -1)
-	nodeMatches := nodeRegex.FindAllStringSubmatch(output, -1)
+	iterMatches := lpIterRe.FindAllStringSubmatch(output, -1)
+	nodeMatches := lpNodeRe.FindAllStringSubmatch(output, -1)
 
 	if len(iterMatches) > 0 {
 		iterations = iterMatches[len(iterMatches)-1][1]
@@ -315,8 +319,7 @@ func extractIterationNodeCounts(output string) (string, string) {
 // extractWarnings extracts warnings from the output
 func extractWarnings(output []byte) string {
 	warnings := []string{}
-	re := regexp.MustCompile(`warning:.*`)
-	matches := re.FindAllString(string(output), -1)
+	matches := lpWarningRe.FindAllString(string(output), -1)
 	warnings = append(warnings, matches...)
 	return strings.Join(warnings, "; ")
 }

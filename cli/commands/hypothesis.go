@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
@@ -102,7 +101,7 @@ func runTTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		mu, err := strconv.ParseFloat(args[2], 64)
+		mu, err := parseFloatArg("ttest", "mu", args[2])
 		if err != nil {
 			return err
 		}
@@ -174,11 +173,11 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		mu, err := strconv.ParseFloat(args[2], 64)
+		mu, err := parseFloatArg("ztest", "mu", args[2])
 		if err != nil {
 			return err
 		}
-		sigma, err := strconv.ParseFloat(args[3], 64)
+		sigma, err := parseFloatArg("ztest", "sigma", args[3])
 		if err != nil {
 			return err
 		}
@@ -208,11 +207,11 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		s1, err := strconv.ParseFloat(args[3], 64)
+		s1, err := parseFloatArg("ztest", "s1", args[3])
 		if err != nil {
 			return err
 		}
-		s2, err := strconv.ParseFloat(args[4], 64)
+		s2, err := parseFloatArg("ztest", "s2", args[4])
 		if err != nil {
 			return err
 		}
@@ -258,11 +257,11 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		if len(args) < 4 {
 			return fmt.Errorf("usage: anova twoway <aLevels> <bLevels> <cell1> <cell2> [cellN]")
 		}
-		aLevels, err := strconv.Atoi(args[1])
+		aLevels, err := parseIntArg("anova", "aLevels", args[1])
 		if err != nil {
 			return err
 		}
-		bLevels, err := strconv.Atoi(args[2])
+		bLevels, err := parseIntArg("anova", "bLevels", args[2])
 		if err != nil {
 			return err
 		}
@@ -369,7 +368,7 @@ func runChiSqCommand(ctx *ExecContext, args []string) error {
 		}
 		probabilities := make([]float64, 0, len(args)-2)
 		for _, raw := range args[2:] {
-			value, parseErr := strconv.ParseFloat(raw, 64)
+			value, parseErr := parseFloatArg("chisq", "value", raw)
 			if parseErr != nil {
 				return parseErr
 			}

@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats"
@@ -117,23 +118,40 @@ func runKNNNeighborsCommand(ctx *ExecContext, args []string) error {
 
 func parseKNNCommandOptions(args []string) (stats.KNNOptions, error) {
 	opts := stats.KNNOptions{}
+	const supported = "weighting, algorithm, leafsize"
 	for i := 0; i < len(args); i += 2 {
 		if i+1 >= len(args) {
-			return opts, fmt.Errorf("missing value for option %s", args[i])
+			return opts, fmt.Errorf("knn: option %q needs a value (supported: %s)", args[i], supported)
 		}
-		switch args[i] {
+		// Option keys are matched without regard to case, like every other
+		// option in the CLI.
+		switch strings.ToLower(args[i]) {
 		case "weighting":
-			opts.Weighting = stats.KNNWeighting(args[i+1])
+			// The value used to be converted straight into the enum, so a
+			// misspelling reached the library as an unknown weighting.
+			w := stats.KNNWeighting(strings.ToLower(args[i+1]))
+			switch w {
+			case stats.KNNUniformWeighting, stats.KNNDistanceWeighting:
+			default:
+				return opts, fmt.Errorf("knn: unknown weighting %q (supported: uniform, distance)", args[i+1])
+			}
+			opts.Weighting = w
 		case "algorithm":
-			opts.Algorithm = stats.KNNAlgorithm(args[i+1])
+			a := stats.KNNAlgorithm(strings.ToLower(args[i+1]))
+			switch a {
+			case stats.KNNAuto, stats.KNNBruteForce, stats.KNNKDTree, stats.KNNBallTree:
+			default:
+				return opts, fmt.Errorf("knn: unknown algorithm %q (supported: auto, brute, kd_tree, ball_tree)", args[i+1])
+			}
+			opts.Algorithm = a
 		case "leafsize":
 			v, err := strconv.Atoi(args[i+1])
 			if err != nil {
-				return opts, fmt.Errorf("invalid leafsize: %s", args[i+1])
+				return opts, fmt.Errorf("knn: invalid leafsize %q, expected a whole number", args[i+1])
 			}
 			opts.LeafSize = v
 		default:
-			return opts, fmt.Errorf("unknown option: %s", args[i])
+			return opts, fmt.Errorf("knn: unknown option %q (supported: %s)", args[i], supported)
 		}
 	}
 	return opts, nil

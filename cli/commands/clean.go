@@ -68,5 +68,5 @@ func runCleanCommand(ctx *ExecContext, args []string) error {
 		return nil
 	}
 
-	return fmt.Errorf("variable not found: %s", name)
+	return varTypeError(ctx, "clean", name)
 }

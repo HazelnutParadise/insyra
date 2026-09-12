@@ -12,7 +12,26 @@ func init() {
 		Usage:              "env <create|list|open|clear|export|import|delete|rename|info> [args]",
 		Description:        "Environment management",
 		DisableFlagParsing: false,
-		Run:                runEnvCommand,
+		Forms: []string{
+			"env create <name>                      make a new environment",
+			"env list                               list every environment",
+			"env open <name>                        switch to one",
+			"env info [name]                        show where it lives and what is in it",
+			"env clear [name] [--keep-history]      drop its variables",
+			"env rename <old> <new>                 rename one",
+			"env delete <name>                      remove one (not the current one)",
+			"",
+			"env export [name] <file>               write it to a file",
+			"env import <file> [name] [--force]     read one back; --force overwrites",
+		},
+		Examples: []string{
+			"insyra env create analysis",
+			"insyra env open analysis",
+			"insyra env export analysis backup.zip",
+			"insyra env import backup.zip restored",
+			"insyra env clear analysis --keep-history",
+		},
+		Run: runEnvCommand,
 	})
 }
 

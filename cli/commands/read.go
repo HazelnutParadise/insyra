@@ -7,7 +7,23 @@ func init() {
 		Name:        "read",
 		Usage:       "read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>]",
 		Description: "Quick preview a file without saving variable",
-		Run:         runReadCommand,
+		Forms: []string{
+			"read <file>                       preview with the format taken from the extension",
+			"",
+			"headers true|false                treat the first row as column names",
+			"rownames true|false               treat the first column as row names",
+			"encoding <enc>                    override the detected CSV encoding",
+			"infer true|false                  infer column types (CSV only)",
+			"ragged true|false                 allow rows of differing length (CSV only)",
+			"trimspace true|false              ignore spaces before a CSV field",
+			"sheet <name>                      which sheet to read (Excel only)",
+		},
+		Examples: []string{
+			"insyra read sales.csv",
+			"insyra read sales.csv headers true rownames true",
+			"insyra read book.xlsx sheet Q1",
+		},
+		Run: runReadCommand,
 	})
 }
 

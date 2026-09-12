@@ -46,5 +46,5 @@ func runReplaceCommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintln(ctx.Output, "replaced")
 		return nil
 	}
-	return fmt.Errorf("variable not found: %s", name)
+	return varTypeError(ctx, "replace", name)
 }

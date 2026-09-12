@@ -107,7 +107,7 @@ func runFillNACommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
 		return nil
 	}
-	return fmt.Errorf("variable not found: %s", coreArgs[0])
+	return varTypeError(ctx, "fillna", coreArgs[0])
 }
 
 func applyFillNAToList(dl *insyra.DataList, strategy string, opts fillNAOptions) (*insyra.DataList, error) {

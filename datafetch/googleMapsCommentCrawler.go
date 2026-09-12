@@ -17,6 +17,13 @@ import (
 	json "github.com/goccy/go-json"
 )
 
+// Compiled once: these were rebuilt on every call.
+var (
+	gmapsFeatureIDRe = regexp.MustCompile(`0x.{16}:0x.{16}`)
+	gmapsMetaNameRe  = regexp.MustCompile(`<meta[^>]*itemprop=["']name["'][^>]*>`)
+	gmapsStoreNameRe = regexp.MustCompile(`".*·`)
+)
+
 // GoogleMapsStoreReview is a struct for Google Maps store reviews.
 type GoogleMapsStoreReview struct {
 	Reviewer      string `json:"reviewer"`
@@ -128,11 +135,10 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData 
 	}
 
 	// 定義正則表達式
-	pattern := regexp.MustCompile(`0x.{16}:0x.{16}`)
 
 	// 取得匹配的 storeId（使用 map 來去重）
 	storeIdSet := make(map[string]struct{})
-	matches := pattern.FindAllString(string(resTxt), -1)
+	matches := gmapsFeatureIDRe.FindAllString(string(resTxt), -1)
 	for _, match := range matches {
 		cleanedId := strings.ReplaceAll(match, "\\", "")
 		storeIdSet[cleanedId] = struct{}{}
@@ -358,17 +364,15 @@ func (c *googleMapsStoreCrawler) getStoreName(storeId string) (string, error) {
 	html := string(body)
 
 	// 使用正則表達式匹配 <meta itemprop="name">
-	metaTagPattern := regexp.MustCompile(`<meta[^>]*itemprop=["']name["'][^>]*>`)
-	metaTags := metaTagPattern.FindAllString(html, -1)
+	metaTags := gmapsMetaNameRe.FindAllString(html, -1)
 	if len(metaTags) == 0 {
 		return "", fmt.Errorf("cannot get store data")
 	}
 
 	// 從 meta 標籤提取名稱
 	name := ""
-	namePattern := regexp.MustCompile(`".*·`)
 	for _, tag := range metaTags {
-		match := namePattern.FindString(tag)
+		match := gmapsStoreNameRe.FindString(tag)
 		if match != "" {
 			name = match[1 : len(match)-2] // 去掉首尾多餘的字元
 			break

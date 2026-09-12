@@ -111,7 +111,7 @@ func runMovAvgCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	window, err := strconv.Atoi(coreArgs[1])
+	window, err := parseIntArg("movavg", "window", coreArgs[1])
 	if err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ func runExpSmoothCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	alpha, err := strconv.ParseFloat(coreArgs[1], 64)
+	alpha, err := parseFloatArg("expsmooth", "alpha", coreArgs[1])
 	if err != nil {
 		return err
 	}
@@ -182,7 +182,7 @@ func runShiftCommand(ctx *ExecContext, args []string) error {
 	}
 	periods, err := strconv.Atoi(coreArgs[1])
 	if err != nil {
-		return fmt.Errorf("shift: invalid periods %q: %w", coreArgs[1], err)
+		return fmt.Errorf("shift: invalid periods %q", coreArgs[1])
 	}
 	var fillArgs []any
 	for i := 2; i < len(coreArgs); {
@@ -212,7 +212,7 @@ func runDiffNCommand(ctx *ExecContext, args []string) error {
 	}
 	periods, err := strconv.Atoi(coreArgs[1])
 	if err != nil {
-		return fmt.Errorf("diffn: invalid periods %q: %w", coreArgs[1], err)
+		return fmt.Errorf("diffn: invalid periods %q", coreArgs[1])
 	}
 	result := dl.Clone().Diff(periods)
 	if err := result.PopErr(); err != nil {
@@ -234,7 +234,7 @@ func runPctChangeCommand(ctx *ExecContext, args []string) error {
 	}
 	periods, err := strconv.Atoi(coreArgs[1])
 	if err != nil {
-		return fmt.Errorf("pctchange: invalid periods %q: %w", coreArgs[1], err)
+		return fmt.Errorf("pctchange: invalid periods %q", coreArgs[1])
 	}
 	result := dl.Clone().PctChange(periods)
 	if err := result.PopErr(); err != nil {
@@ -286,7 +286,7 @@ func runRollingCommand(ctx *ExecContext, args []string) error {
 	}
 	window, err := strconv.Atoi(coreArgs[1])
 	if err != nil {
-		return fmt.Errorf("rolling: invalid window %q: %w", coreArgs[1], err)
+		return fmt.Errorf("rolling: invalid window %q", coreArgs[1])
 	}
 	reducer := strings.ToLower(coreArgs[2])
 
@@ -322,7 +322,7 @@ func runRollingCommand(ctx *ExecContext, args []string) error {
 			}
 			n, err := strconv.Atoi(v)
 			if err != nil {
-				return fmt.Errorf("rolling: invalid minobs %q: %w", v, err)
+				return fmt.Errorf("rolling: invalid minobs %q", v)
 			}
 			opts.MinObs = n
 			i += 2
@@ -382,7 +382,7 @@ func runExpandingCommand(ctx *ExecContext, args []string) error {
 	}
 	minObs, err := strconv.Atoi(coreArgs[1])
 	if err != nil {
-		return fmt.Errorf("expanding: invalid minobs %q: %w", coreArgs[1], err)
+		return fmt.Errorf("expanding: invalid minobs %q", coreArgs[1])
 	}
 	reducer := strings.ToLower(coreArgs[2])
 
@@ -424,7 +424,7 @@ func runEWMCommand(ctx *ExecContext, args []string) error {
 	decay := strings.ToLower(coreArgs[1])
 	value, err := strconv.ParseFloat(coreArgs[2], 64)
 	if err != nil {
-		return fmt.Errorf("ewm: invalid %s %q: %w", decay, coreArgs[2], err)
+		return fmt.Errorf("ewm: invalid %s %q", decay, coreArgs[2])
 	}
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return fmt.Errorf("ewm: %s must be a finite number, got %q", decay, coreArgs[2])
@@ -474,7 +474,7 @@ func runEWMCommand(ctx *ExecContext, args []string) error {
 		case "minobs":
 			n, err := strconv.Atoi(raw)
 			if err != nil {
-				return fmt.Errorf("ewm: invalid minobs %q: %w", raw, err)
+				return fmt.Errorf("ewm: invalid minobs %q", raw)
 			}
 			opts.MinObs = n
 		default:
