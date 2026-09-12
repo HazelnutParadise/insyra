@@ -618,11 +618,11 @@
 | TS-3 | [#301](https://github.com/HazelnutParadise/insyra/issues/301) |  |
 | TS-4 | [#302](https://github.com/HazelnutParadise/insyra/issues/302) |  |
 | TS-5、TS-17 | [#303](https://github.com/HazelnutParadise/insyra/issues/303) |  |
-| TS-7、TS-8 | [#304](https://github.com/HazelnutParadise/insyra/issues/304) |  |
-| TS-9 | [#305](https://github.com/HazelnutParadise/insyra/issues/305) |  |
-| TS-10 | [#306](https://github.com/HazelnutParadise/insyra/issues/306) |  |
+| TS-7、TS-8 | [#304](https://github.com/HazelnutParadise/insyra/issues/304) | 已關閉（test-unpinned-behaviour） |
+| TS-9 | [#305](https://github.com/HazelnutParadise/insyra/issues/305) | 已關閉（test-unpinned-behaviour） |
+| TS-10 | [#306](https://github.com/HazelnutParadise/insyra/issues/306) | 已關閉（test-unpinned-behaviour） |
 | TS-11 | [#307](https://github.com/HazelnutParadise/insyra/issues/307) |  |
-| TS-12 | [#308](https://github.com/HazelnutParadise/insyra/issues/308) |  |
+| TS-12 | [#308](https://github.com/HazelnutParadise/insyra/issues/308) | 已關閉（test-unpinned-behaviour；補測試時發現並修正 FilterWithCCL 只回傳前 1000 列） |
 | TS-13、TS-18 | [#309](https://github.com/HazelnutParadise/insyra/issues/309) |  |
 | TS-14 | [#310](https://github.com/HazelnutParadise/insyra/issues/310) |  |
 | CLI-1 | [#311](https://github.com/HazelnutParadise/insyra/issues/311) |  |
