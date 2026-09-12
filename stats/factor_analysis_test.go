@@ -18,11 +18,15 @@ import (
 //
 // What the strict suite reports, measured on 2026-09-13 against baselines
 // from psych 2.6.5 and GPArotation 2026.8.2 (the cache is keyed on those
-// versions, see toolchainSignature): 1,672 of 42,969 leaf sub-tests fail.
+// versions, see toolchainSignature): 875 of 42,969 leaf sub-tests fail.
 //
-//	Promax                              1,028  a different solution from psych's on 11 of 16
-//	                                           datasets, not a multi-start or tolerance effect
-//	                                           (AGENTS.md follow-up, 2026-09-13)
+//	Promax                                233  two ten-row tables (two_blocks, missing_rows)
+//	                                           where the varimax pre-rotation's criterion is
+//	                                           nearly flat, so the pre-rotation stops 1e-4 to
+//	                                           6e-4 from psych's; and near_collinear with ML,
+//	                                           which is extraction drift below. Promax itself
+//	                                           follows psych 2.6.5 since promax-matches-psych
+//	                                           (PCA to 4e-13, the rest to 6.4e-4 at worst)
 //	extraction drift, adversarial data    ~260  unrotated_loadings, uniquenesses, communalities
 //	                                           and eigenvalues on near_collinear, mixed_scale,
 //	                                           heavy_tail, narrow_plus_group: 52 combinations,
@@ -37,7 +41,8 @@ import (
 // Before this comparison was made to respect what a factor solution is —
 // order and sign of the factors, and the criterion value for a solution in
 // a different minimum — the same run failed 5,334 leaves, 1,408 of them a
-// rotation matrix off by a column swap or a sign. On 2026-05-03, against
+// rotation matrix off by a column swap or a sign; before Promax followed
+// psych 2.6.5's pre-rotation it failed 1,672. On 2026-05-03, against
 // the R of that day, the same tolerance failed ~595, all on three
 // adversarial datasets; GPArotation's 2026.4-1 rewrite of its step and
 // psych's move to twenty random starts are what changed in between.

@@ -9,7 +9,13 @@ import (
 )
 
 // Promax performs Promax rotation.
-// Mirrors psych::Promax exactly
+//
+// psych has two Promax paths and they differ in the varimax they start from.
+// psych::Promax, which fa() reaches through kaiser(), pre-rotates with
+// GPArotation::Varimax since 2.6.5; stats::promax, which principal() uses,
+// pre-rotates with stats::varimax and its Kaiser row normalisation. normalize
+// selects between them: false is psych::Promax, true is stats::promax. The
+// target-matrix least-squares step after that is the same in both.
 func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	rows, cols := x.Dims()
 
@@ -29,17 +35,47 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 		}
 	}
 
-	// Step 1: psych::Promax uses stats::varimax(x), whose normalize default is TRUE.
-	xx, rotmatVarimax, err := KaiserVarimaxWithRotationMatrix(x, true, 1000, 1e-5)
-	if err != nil {
-		return map[string]any{
-			"error":       fmt.Sprintf("varimax pre-rotation failed: %v", err),
-			"diagnostics": diagnostics,
+	// Step 1: the varimax pre-rotation. psych::Promax used stats::varimax
+	// until 2.6.5, which replaced it with GPArotation::Varimax from the
+	// identity ("replaced with GPArotation Varimax 5/9/26", psych/R/Promax.R):
+	// no Kaiser normalisation, eps 1e-5. The two agree on data with a clear
+	// varimax optimum, but on a nearly flat criterion they stop at different
+	// angles, and the power step below raises that to the fourth power —
+	// measured on the parity suite's ten-row table, loading[0,0] was 0.700
+	// against psych's 0.625 before this followed psych.
+	var xx, rotmatVarimax *mat.Dense
+	if normalize {
+		// stats::promax: xx <- varimax(x), Kaiser normalisation on.
+		var err error
+		xx, rotmatVarimax, err = KaiserVarimaxWithRotationMatrix(x, true, 1000, 1e-5)
+		if err != nil {
+			return map[string]any{
+				"error":       fmt.Sprintf("varimax pre-rotation failed: %v", err),
+				"diagnostics": diagnostics,
+			}
+		}
+	} else {
+		vx := Varimax(x, false, 1e-5, 1000)
+		if msg, _ := vx["error"].(string); msg != "" {
+			return map[string]any{
+				"error":       fmt.Sprintf("varimax pre-rotation failed: %s", msg),
+				"diagnostics": diagnostics,
+			}
+		}
+		var ok, ok2 bool
+		xx, ok = vx["loadings"].(*mat.Dense)
+		rotmatVarimax, ok2 = vx["rotmat"].(*mat.Dense)
+		if !ok || !ok2 || xx == nil || rotmatVarimax == nil {
+			return map[string]any{
+				"error":       "varimax pre-rotation returned no loadings or rotation matrix",
+				"diagnostics": diagnostics,
+			}
 		}
 	}
 
 	// x <- xx$loadings
 	x = xx
+	var err error
 
 	// Step 2: Compute Q matrix: Q <- x * abs(x)^(m - 1)
 	Q := mat.NewDense(rows, cols, nil)
@@ -108,7 +144,7 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	var z mat.Dense
 	z.Mul(x, &U)
 
-	// Step 7: U <- xx$rotmat %*% U
+	// Step 7: U <- Th %*% U, Th being Varimax's rotation matrix (orthogonal, so t(solve(Th)) = Th)
 	var rotmat mat.Dense
 	rotmat.Mul(rotmatVarimax, &U)
 

@@ -1492,7 +1492,10 @@ func rotatePrincipalPromax(loadings *mat.Dense, rotationOpts FactorRotationOptio
 	if power <= 0 {
 		power = 4
 	}
-	res := fa.Promax(loadings, power, false)
+	// psych::principal rotates with stats::promax, whose varimax step is
+	// stats::varimax with Kaiser normalisation; fa() goes through kaiser()
+	// and psych::Promax instead. normalize = true selects the former.
+	res := fa.Promax(loadings, power, true)
 	if errMsg, ok := res["error"].(string); ok && errMsg != "" {
 		return nil, nil, nil, false, fmt.Errorf("promax rotation failed: %s", errMsg)
 	}

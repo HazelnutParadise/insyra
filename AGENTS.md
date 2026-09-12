@@ -253,12 +253,6 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-09-13] — Promax does not reproduce psych's on most datasets
-- **Where**: `stats/internal/fa/psych_faRotations.go`, the `"promax"` arm of `FaRotations` (Kaiser row weights, then `Promax(weighted, power, false)`), and `stats/internal/fa/psych_Promax.go`
-- **What**: the strict parity suite, once it compares factor solutions up to order and sign (`factor-parity-compares-what-it-means`), still fails 1,028 of its 3,639 leaves on Promax alone. Measured on 2026-09-13 with psych 2.6.5: on `factorAnalysisRows` (10 × 6, two factors) our Promax loading[0,0] is 0.699 against psych's 0.624 and `Phi[0,1]` is −0.878 against −0.881; over the 16 datasets × MINRES comparison only 5 are within 1e-4 of psych, at `Restarts: 1` and 20 alike, so it is not a multi-start effect. psych's `promax` is `kaiser(loadings, rotate = "Promax")` — Kaiser normalisation, `stats::varimax`-based Promax with `m = 4`, then de-normalisation — and the difference is too large for a convergence tolerance. Promax has no criterion to compare, so the suite cannot say which side is right.
-- **Suggestion**: reproduce psych's `kaiser()` and `Promax()` step by step on `factorAnalysisRows` (varimax first, the target `|L|^m·sign(L)`, the least-squares transform, the column rescaling) and find the step where the numbers part. Until then the 1,028 Promax leaves are the known remainder of the strict suite.
-- **Status**: pending
-
 ### [2026-09-12] — a bare `[]byte` still flattens in the constructors
 - **Where**: `datalist.go` `flattenWithNilSupport`
 - **What**: a `[]byte` cell is one value everywhere it is read — counted, matched, grouped and ordered by content — but `NewDataList([]byte{0, 255})` still produces two cells holding `0` and `255`, because the constructor flattens every slice. The owner ruled on 2026-09-12 that the flattening stays: it is what makes `NewDataList` read like constructing a pandas Series. `one-value-one-cell` gave that decision an escape hatch, `NewDataList(Cell(blob), …)`, so the remaining gap is only that a reader who writes the bare form and then searches for the blob gets 0 with nothing to explain it.
