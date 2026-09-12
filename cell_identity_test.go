@@ -349,3 +349,61 @@ func TestAValueContainingNaNIsNotAKeyEither(t *testing.T) {
 		t.Error("an array with no NaN was treated as unusable")
 	}
 }
+
+// A value that knows how to write itself should print that way in a counter,
+// not as its internal fields. decimal.Decimal — what finance.ScheduleTable
+// puts in cells and what a Parquet Decimal128 column reads as — used to print
+// as big.Int's sign and words.
+
+// zzStringerSlice is uncomparable, because it holds a slice, and knows its own
+// text. That is the shape of a decimal: a big.Int inside, a String outside.
+type zzStringerSlice struct{ v []int }
+
+func (s zzStringerSlice) String() string { return fmt.Sprintf("%d values", len(s.v)) }
+
+func TestAStandInPrintsTheWayTheValueWritesItself(t *testing.T) {
+	got := fmt.Sprintf("%v", ToMapKey(zzStringerSlice{[]int{1, 2}}))
+	if !strings.Contains(got, "2 values") {
+		t.Errorf("the stand-in did not print the value's own text: %s", got)
+	}
+	if strings.Contains(got, "i:1") {
+		t.Errorf("the stand-in printed the encoding instead: %s", got)
+	}
+}
+
+func TestAValueWithNoTextPrintsItsEncoding(t *testing.T) {
+	for _, v := range []any{[]byte{0x00, 0xff}, []int{1, 2}, map[string]int{"a": 1}} {
+		got := fmt.Sprintf("%v", ToMapKey(v))
+		if !strings.ContainsAny(got, ":[{") && !strings.Contains(got, "00ff") {
+			t.Errorf("%T no longer shows its encoding: %s", v, got)
+		}
+	}
+}
+
+// The text is for reading. Identity still comes from the encoding, so two
+// values whose text matches but whose contents differ stay apart.
+func TestTextDoesNotDecideIdentity(t *testing.T) {
+	a := zzStringerSlice{[]int{1, 2}}
+	b := zzStringerSlice{[]int{3, 4}} // same String(), different content
+	if a.String() != b.String() {
+		t.Fatal("the fixture no longer has two values with the same text")
+	}
+	dl := NewDataList(Cell(a), Cell(b))
+	if got := len(dl.Counter()); got != 2 {
+		t.Errorf("two values with the same text were merged into %d group(s)", got)
+	}
+}
+
+// A String that runs long is cut like any other content.
+func TestALongTextIsTruncated(t *testing.T) {
+	got := fmt.Sprintf("%v", ToMapKey(zzLongStringer{}))
+	if !strings.Contains(got, "…") {
+		t.Errorf("a long text was not truncated: %s", got)
+	}
+}
+
+type zzLongStringer struct{ v []int }
+
+// The slice field is what makes it uncomparable, and it is read so the
+// field is not dead.
+func (l zzLongStringer) String() string { return strings.Repeat("x", 200-len(l.v)) }

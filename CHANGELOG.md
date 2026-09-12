@@ -63,6 +63,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Fixed `Counter` making one unreachable entry per `NaN`. A `NaN` is comparable to Go but is never equal to itself, so every `counter[NaN]++` created a new key nobody could look up: a column with three `NaN`s reported three counts of one, while `Count` correctly said 3. All the `NaN`s in a column are now one entry with the right count, read with `counter[insyra.ToMapKey(math.NaN())]`. The same applies to an array or struct holding a `NaN`, which is equally unequal to itself. `counter[math.NaN()]` still returns 0, as it always did and always must — a Go map cannot match a `NaN` key.
 
+- A stand-in key in a `Counter` result prints the way the value writes itself. It rendered the encoded content, which for a struct is its fields, so a decimal — what `finance.ScheduleTable` puts in cells and what a Parquet `Decimal128` column reads as — printed as `decimal.Decimal({{b:1,[i:3400221114815]},i:10})` instead of `decimal.Decimal(-340.0221114815)`. A value implementing `fmt.Stringer` now shows its own text, truncated by the same limit; a value without one is unchanged. Identity still comes from the encoding, not the text, because a `String` may be lossy and two distinct values whose text matched must not merge into one count.
+
 ### CLI
 - Environment names are now validated: only letters, digits, `.`, `_` and `-` (starting with a letter or digit, no `..`). A name was previously joined straight onto the environments directory, so `../x` created or deleted directories outside it.
 - The command registry is guarded by a lock, so registering commands from several goroutines (embedders) is no longer a data race.

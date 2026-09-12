@@ -63,6 +63,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - 修正 `Counter` 對每個 `NaN` 產生一個取不回來的項目。`NaN` 對 Go 而言可比較，卻永遠不等於自己，所以每次 `counter[NaN]++` 都建立一個誰也查不到的新 key：含三個 `NaN` 的欄位會回報三個計數為 1 的項目，而 `Count` 正確地回答 3。現在整欄的 `NaN` 合併成一個項目並帶正確計數，以 `counter[insyra.ToMapKey(math.NaN())]` 讀取。含 `NaN` 的陣列或結構同樣處理，它們一樣不等於自己。`counter[math.NaN()]` 仍然回 0，這一直如此也必然如此，因為 Go 的 map 比對不到 `NaN` key。
 
+- `Counter` 結果中的替身 key 改以值自己的寫法顯示。它原本印的是編碼內容，對結構而言就是其欄位，所以十進位（`finance.ScheduleTable` 放進格子的、以及 Parquet `Decimal128` 欄讀成的那個型別）會印成 `decimal.Decimal({{b:1,[i:3400221114815]},i:10})` 而不是 `decimal.Decimal(-340.0221114815)`。現在實作 `fmt.Stringer` 的值顯示它自己的文字，套用同一個截斷上限；沒有實作的值顯示不變。識別仍然由編碼決定而不是文字，因為 `String` 可能失真，兩個不同的值若文字相同絕不能被併成一組。
+
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
 - 命令登錄表加上鎖，多個 goroutine（嵌入端）同時註冊命令不再是 data race。

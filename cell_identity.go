@@ -49,19 +49,42 @@ type UncomparableKey struct {
 	Type string
 
 	content string
+
+	// text is what the value's own String returned, when it has one. It is
+	// for reading only: identity comes from content, because a String may be
+	// lossy and two distinct values whose text matched would otherwise merge
+	// into one count.
+	//
+	// It takes part in == like any field, which is safe because it is a
+	// function of the same value content came from: equal values produce
+	// equal text, so no new key appears, and two different values that
+	// happened to share an encoding are told apart rather than merged. The
+	// one thing that would break it is a String that returns different text
+	// for the same value, which would count that value twice. Nothing can
+	// detect that, so it is written down rather than guarded.
+	text string
 }
 
 // String renders the type with a shortened form of the content, so printing a
 // whole Counter stays readable even when a cell holds a large value.
 func (k UncomparableKey) String() string {
+	// What the value writes for itself, when it wrote anything: a decimal
+	// reads as -340.0221114815 rather than as big.Int's sign and words.
+	if k.text != "" {
+		return k.Type + "(" + truncateForDisplay(k.text) + ")"
+	}
 	// A byte sequence drops its marker: hex describes itself, and a blob is
 	// the common case here. Composite values keep theirs, because two groups
 	// that differ only by the type of a nested value have to look different.
 	c := strings.TrimPrefix(k.content, "x:")
-	if len(c) > uncomparableDisplayBytes {
-		c = c[:uncomparableDisplayBytes] + "…"
+	return k.Type + "(" + truncateForDisplay(c) + ")"
+}
+
+func truncateForDisplay(s string) string {
+	if len(s) > uncomparableDisplayBytes {
+		return s[:uncomparableDisplayBytes] + "…"
 	}
-	return k.Type + "(" + c + ")"
+	return s
 }
 
 // ToMapKey converts v into something usable as a map key: v itself when Go
@@ -83,7 +106,11 @@ func ToMapKey(v any) any {
 		return v
 	}
 	typ, content := splitCellEncoding(v)
-	return UncomparableKey{Type: typ, content: content}
+	key := UncomparableKey{Type: typ, content: content}
+	if s, ok := v.(fmt.Stringer); ok {
+		key.text = s.String()
+	}
+	return key
 }
 
 // comparableCell reports whether v can serve as a map key — which asks not

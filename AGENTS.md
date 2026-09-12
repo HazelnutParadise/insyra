@@ -265,12 +265,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: documentation, not code. `Docs/DataList.md` now describes the flattening and `Cell` together; check that the `Count`/`Counter` examples build their list with `Append` or `Cell` so they are runnable as written, and consider whether `Count` should say something when it is handed a slice that the receiving list could not be holding.
 - **Status**: pending
 
-### [2026-09-12] — an UncomparableKey prints a Stringer's internals instead of its text
-- **Where**: `cell_identity.go` `UncomparableKey.String`
-- **What**: the display renders the encoded content, which for a struct is its fields. A `decimal.Decimal` from `finance` or a Parquet `Decimal128` column therefore prints as `decimal.Decimal({{b:1,[i:3400221114815]},i:10})` — `big.Int`'s sign and words — where the value knows perfectly well how to write itself as `-340.0221114815`. Correctness is unaffected; the encoded content is what makes the key exact and must stay.
-- **Suggestion**: carry a third field holding the value's own `String()` when it has one, used by `String()` and ignored for meaning. Including it in struct equality is harmless because it is a function of the same value, but that reasoning should be written down next to it, and a `String()` that is not deterministic would break it. Small, and it only improves what a printed counter looks like.
-- **Status**: pending
-
 ### [2026-09-12] — `labelKey` still merges nested values that print alike
 - **Where**: `datatable_encode.go` `labelKey`, its default arm
 - **What**: `identify-uncomparable-cells` gave `encodeGroupKey` and `uniqueKey` a recursive encoder, so `[]any{1}` and `[]any{"1"}` are no longer one group. `labelKey` has the same non-recursive shape (`%T:%#v`), so it still merges them — `%#v` separates an int from a string but not `[]any{1}` from `[]any{1.0}`. It was left out on purpose: its integer rule is by value where cell identity is by type, so folding it into the same encoder would change what a label means, not just fix a collision.
