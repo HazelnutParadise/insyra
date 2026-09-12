@@ -253,6 +253,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-12] — `oblimin` ignores its starting point, so `Restarts` costs it N identical runs
+- **Where**: `stats/internal/fa/psych_faRotations.go`, the `"oblimin"` arm of the switch in `FaRotations`
+- **What**: every other method rotates from the start it was handed; oblimin builds its own identity matrix and rotates from that, ignoring the start entirely. With `Restarts: 20` it therefore performs the same computation twenty times and returns the first result. The comment says the identity start is deliberate, "better SPSS compatibility than random starts". Found on 2026-09-12 while fixing #373, which made every start orthogonal — so the starts oblimin is refusing are now legitimate ones.
+- **Suggestion**: the decision is SPSS parity against an honest `Restarts`, not how to write it. Either let oblimin use the starts like everything else, which moves oblimin results for `Restarts > 1` and may move them away from SPSS, or keep the identity start and reject `Restarts > 1` for oblimin so the parameter stops claiming a search it does not run. Do it as its own change either way; `TestRestartsParameter` in `stats/verify_more_test.go` already covers oblimin and will pin whichever is chosen.
+- **Status**: pending
+
 ### [2026-09-12] — 46 of the 105 archived specs have a `## Purpose` nobody wrote
 - **Where**: `openspec/specs/*/spec.md`, the `## Purpose` section
 - **What**: `openspec validate --specs --strict` on 2026-09-12 reported 46 failures, and every one is the same shape: 26 specs still carry the placeholder sentence `openspec archive` writes for a new capability (`TBD - created by archiving change <id>. Update Purpose after archive.`) and 20 have a Purpose under 50 characters. Eight also have a requirement over 500 characters. The failures are not new and nothing in CI runs this command, which is why they accumulated — the capability is created by the first change that touches it, the placeholder lands in the main spec, and a `## Purpose` written in a later delta is ignored because deltas only supply one at creation. `verification-integrity` was fixed in `docs-hygiene-and-remaining-partials` as an example of the size the replacement should be.

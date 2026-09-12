@@ -91,6 +91,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`SingleSampleTTest`、`TwoSampleTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`BartlettTest`、`LeveneTest` 與 `CalculateMoment` 改為拒絕無法讀成有限數字的格子，錯誤指出序列與從 1 起算的列號。過去 n 取 list 長度、而平均與標準差跳過那一格，`[1, 2, nil, 3]` 會得到 t = 4.00、p = 0.028 而不是 t = 3.46、p = 0.074，一個空白把不顯著變成顯著。全數值輸入的結果不變；檢定前請用 `ClearNils` 清掉空白。
 - 接受 `insyra.IDataList` 的函式對 `nil` 或非 `*insyra.DataList` 的實作不再 panic；值會被轉換，`nil` 以一般錯誤回報。
 - `KMeans` 的初始中心改為相異列，與 R 一致。資料含重複列時，單次啟動過去會抽到同一列兩次而回報 "empty cluster"（實測 50 個 seed 中有 44 個失敗）。現在抽到重複才從相異列重抽；本來就相異的抽樣完全不動，既有 seed 的結果逐位不變。
+- **BREAKING**：`FactorAnalysis` 在 `Rotation.Restarts` 大於 1 時，回傳的載荷已經不是被配適的那個模型。旋轉準則是在有約束的集合上最佳化，正交是 `T'T = I`、斜交是 `diag(T'T) = I`，而梯度投影演算法只有在起點落在該集合上時，才保證每一步都留在上面。`Restarts > 1` 時加入的起點中，有兩個是 Promax 與 Target 的旋轉矩陣，兩者都是斜交的，所以哪個起點在準則值上勝出，就決定了答案還算不算旋轉。以 6 個變數 3 個因子實測，Quartimax 的 `max|L·L' − Lu·Lu'|` 從 1 次起點的 7e-16 變成 5 次的 0.287，BentlerQ 則讓自己的斜交不變量偏離 0.763。現在所有起點都是正交矩陣，依序為單位矩陣、Varimax 解、QR 產生的隨機正交矩陣，也就是 `GPArotation::Random.Start` 對兩個家族給的同一種起點，而且使用前會先驗證。`Restarts` 也改為就是起點總數：過去它只限制隨機起點的數量，三個啟發式起點無條件追加，所以 `Restarts: 2` 實際跑 4 個。預設的 `Restarts: 1` 結果不變。
+- `FactorAnalysisResult.RotationConverged` 改為回報旋轉實際上有沒有收斂。它過去恆為 `true`：多起點挑出來的候選從來沒帶收斂旗標，`fa.Rotate` 只好用預設值，所以一個在 1e-12 容忍度下只跑一次迭代就停的旋轉也回報收斂。現在挑選時優先取收斂的解，全部未收斂時取準則值最佳者並回報 `false`。
 
 ### `csvxl`
 - 修正 `AppendCsvToExcel` 遇到同名工作表時舊儲存格殘留的問題：`excelize.NewSheet` 對既有名稱只回傳原工作表，所以只有新 CSV 覆蓋到的儲存格被改寫，其餘保留。現在會先刪除再重建，工作簿只有那一張工作表時也能完成。

@@ -240,6 +240,7 @@
 | ST-7 | Med | `TwoWayANOVA(aLevels, bLevels int, cells ...IDataList)` 要使用者自己按 row-major 排 a×b 個 cell，pandas／R 收長格式加因子欄；`RepeatedMeasuresANOVA(subjects ...)`、`FriedmanTest(subjects ...)` 每個受試者一個 list，同樣不是資料表的自然形狀（準則 5） | stats/anova.go:112, 253；nonparam_friedman.go:36 | 加收 `(dt, valueCol, factorCols...)` 的長格式入口 |
 | ST-8 | ~~Low~~ 已修正（batch 2 決定保留 z 檢定的 |d|；doc 由 docs-hygiene-and-remaining-partials 補齊） | 效應量正負號：t 檢定保留方向（註解說 paired 已修），z 檢定用 `math.Abs` 丟掉方向；`SingleSampleTTest` 常數資料回 NaN／Inf 統計量與 p=0 沒有寫進 doc（準則 6、E） | stats/ztest.go:57, 122；ttest.go:76-108 | 統一保留方向；補 doc |
 | ST-9 | Low（另：`Docs/stats.md` 沒有 `TwoSampleZTest` 章節） | `Show()` 只在 `ChiSquareTestResult` 與 `FactorAnalysisResult` 上有，其餘結果型別沒有，也沒有 `io.Writer` 版本；`FactorAnalysisResult` 15 個 `IDataTable` 欄位（K-7）；`Diag(x any, dims ...int) (any, error)` 進出都是 `any`（準則 8） | chi_square.go:21；factor_analysis.go:180；diag.go:11 | 統一 `String()`；Diag 拆成 `DiagOf(*mat.Dense)`／`DiagMatrix([]float64)` |
+| ST-11 | ~~High~~ 已修正（orthogonal-rotation-starts） | **Bug（已實測）**：`FactorAnalysis` 在 `Rotation.Restarts > 1` 時回傳的載荷不再描述被配適的模型。`FaRotations` 無條件加入 Promax 與 TargetRot 的旋轉矩陣當起點，兩者都是斜交的，梯度投影演算法只保證「相對於起點」的可行性，所以哪個起點勝出就決定答案還算不算旋轉。6 變數 3 因子實測，Quartimax 的 `max｜L·L' − Lu·Lu'｜` 從 1 次起點的 7e-16 變成 5 次的 0.287，斜交的 BentlerQ 也偏離 0.763。同一個迴圈裡 candidate 不帶收斂旗標，`RotationConverged` 恆為 true | stats/internal/fa/psych_faRotations.go:482-507（修正前）；stats/internal/fa/fa.go:23 | 起點一律正交並於使用前驗證；`Restarts` 等於起點數；挑選時優先收斂的解 |
 | ST-10 | OK | 做得好的部分：regression／GLM／clustering／KNN／PCA／non-parametric 全部先驗證輸入再計算、回 error、結果 struct 欄位齊全且對 R 驗證；`numericinput.go` 的說明是本專案最清楚的設計文件之一；`RegisterKNNDeviceSearcher` 讓 accel 反向掛入而不讓 stats 依賴 accel | — | — |
 
 ### quant
@@ -560,6 +561,7 @@
 | ST-7 | [#243](https://github.com/HazelnutParadise/insyra/issues/243) |  |
 | ST-8 | [#244](https://github.com/HazelnutParadise/insyra/issues/244) |  |
 | ST-9 | [#245](https://github.com/HazelnutParadise/insyra/issues/245) |  |
+| ST-11 | [#373](https://github.com/HazelnutParadise/insyra/issues/373) | 已修正（orthogonal-rotation-starts） |
 | QU-1 | [#246](https://github.com/HazelnutParadise/insyra/issues/246) |  |
 | FI-1、FI-2 | [#247](https://github.com/HazelnutParadise/insyra/issues/247) |  |
 | FI-3 | [#248](https://github.com/HazelnutParadise/insyra/issues/248) |  |

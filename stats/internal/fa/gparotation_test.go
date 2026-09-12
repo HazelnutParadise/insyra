@@ -585,39 +585,10 @@ func TestRotate_SingleStartPreservesCommunalities(t *testing.T) {
 	}
 }
 
-// With more than one start, an orthogonal rotation comes back non-orthogonal:
-// FaRotations seeds the search with Promax's and TargetRot's rotation matrices,
-// which are oblique, and an orthogonal GPA run started from an oblique matrix
-// ends on one too. The rotated loadings then no longer describe the same model.
-// Measured on 2026-09-12 and reported; this pins the broken behaviour so the
-// fix has something to turn green.
-func TestRotate_RestartsBreakOrthogonality(t *testing.T) {
-	A := loadings()
-
-	_, R, _, _, err := Rotate(mat.DenseCopyOf(A), "varimax", &RotOpts{
-		Eps: 1e-5, MaxIter: 1000, Restarts: 2,
-	})
-	if err != nil {
-		t.Fatalf("Rotate: %v", err)
-	}
-
-	var RtR mat.Dense
-	RtR.Mul(R.T(), R)
-	worst := 0.0
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			want := 0.0
-			if i == j {
-				want = 1.0
-			}
-			worst = math.Max(worst, math.Abs(RtR.At(i, j)-want))
-		}
-	}
-	if worst < 1e-8 {
-		t.Errorf("Rotate with restarts now returns an orthogonal matrix (worst |R'R - I| = %.3e); "+
-			"the defect is fixed, so replace this test with the communality check", worst)
-	}
-}
+// The restart behaviour this file used to pin as broken
+// (TestRotate_RestartsBreakOrthogonality, #373) is fixed, and the replacement
+// it asked for lives in rotation_starts_test.go: every method, both families,
+// checked on the invariant rather than on the rotation matrix alone.
 
 func TestRotate_UnknownMethod(t *testing.T) {
 	if _, _, _, _, err := Rotate(loadings(), "no-such-rotation", nil); err == nil {
