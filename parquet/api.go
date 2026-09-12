@@ -271,7 +271,15 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<
 				return // Stream finished or errored
 			case rec, ok := <-recChan:
 				if !ok {
-					return // Stream closed
+					// The reader closes its error channel before its record
+					// channel, so this receive cannot block. Read it rather than
+					// letting the select choose between two ready cases, which
+					// would drop an error reported after the last batch and end
+					// the stream as if the file had been read in full.
+					if err := <-internalErrChan; err != nil {
+						errChan <- err
+					}
+					return
 				}
 				dt := recordToDataTable(rec)
 				rec.Release()

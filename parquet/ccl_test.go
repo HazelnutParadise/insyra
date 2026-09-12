@@ -78,6 +78,84 @@ func TestFilterWithCCL_KeepsMatchingRows(t *testing.T) {
 	}
 }
 
+// The stream is read in batches of 1000, and the result was assembled through
+// DataTable.GetColByNumber, which hands back a copy — so every batch after the
+// first was appended to a value nothing kept, and a 2500-row file filtered on a
+// condition every row satisfies came back with 1000 rows and no error.
+func TestFilterWithCCL_AcrossBatches(t *testing.T) {
+	const n = 2500
+	vals := make([]any, n)
+	for i := range vals {
+		vals[i] = i
+	}
+	path := filepath.Join(t.TempDir(), "big.parquet")
+	if err := Write(insyra.NewDataTable(insyra.NewDataList(vals...).SetName("num")), path); err != nil {
+		t.Fatalf("writing the fixture: %v", err)
+	}
+
+	res, err := FilterWithCCL(context.Background(), path, "['num'] >= 0")
+	if err != nil {
+		t.Fatalf("FilterWithCCL: %v", err)
+	}
+
+	rows, _ := res.Size()
+	if rows != n {
+		t.Fatalf("a condition every row satisfies returned %d of %d rows", rows, n)
+	}
+	got := colValues(t, res, "num")
+	for i := 0; i < n; i++ {
+		if got[i] != int64(i) {
+			t.Fatalf("row %d: got %v, want %d", i, got[i], i)
+		}
+	}
+}
+
+// Read and Inspect allow for Arrow's reader having already closed the file;
+// the streaming path did not, so every successful Stream, FilterWithCCL and
+// ApplyCCL logged "failed to close file … file already closed", and ApplyCCL
+// logged the same about its own temporary file.
+func TestStreamingCallsLogNothingOnSuccess(t *testing.T) {
+	path := fixture(t)
+	insyra.ClearErrors()
+
+	if _, err := FilterWithCCL(context.Background(), path, "['num'] > 0"); err != nil {
+		t.Fatalf("FilterWithCCL: %v", err)
+	}
+	if err := ApplyCCL(context.Background(), path, "NEW('x') = 1"); err != nil {
+		t.Fatalf("ApplyCCL: %v", err)
+	}
+
+	for _, e := range insyra.GetAllErrors() {
+		if e.PackageName == "parquet" && e.FuncName == "close" {
+			t.Errorf("a successful call logged: %s", e.Message)
+		}
+	}
+}
+
+// Matches that fall in different batches all survive, in file order.
+func TestFilterWithCCL_MatchesSpreadAcrossBatches(t *testing.T) {
+	const n = 2500
+	vals := make([]any, n)
+	for i := range vals {
+		vals[i] = i
+	}
+	path := filepath.Join(t.TempDir(), "big.parquet")
+	if err := Write(insyra.NewDataTable(insyra.NewDataList(vals...).SetName("num")), path); err != nil {
+		t.Fatalf("writing the fixture: %v", err)
+	}
+
+	// 500 is in the first batch, 1500 in the second, 2400 in the third.
+	res, err := FilterWithCCL(context.Background(), path, "['num'] == 500 || ['num'] == 1500 || ['num'] == 2400")
+	if err != nil {
+		t.Fatalf("FilterWithCCL: %v", err)
+	}
+
+	want := []any{int64(500), int64(1500), int64(2400)}
+	if got := colValues(t, res, "num"); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
 // A filter over a string column and one over a boolean column go through
 // different branches of the "does this row pass" switch.
 func TestFilterWithCCL_StringAndBooleanConditions(t *testing.T) {
