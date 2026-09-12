@@ -494,7 +494,7 @@
 | TS-14 | ~~Med~~ 已修正（batch 13）  | 全域 `Config` 在多個測試中被改成 `LogLevelFatal` 後沒有還原（`datalist_numeric_test.go:12`、`datatable_batch2_test.go:17`、`stats/nil_input_test.go:17`），而 `config_acceleration_log_test.go:18-29`、`accel/logging_test.go:21-30` 有正確的 `t.Cleanup` 還原寫法 | 上列 | 統一「讀舊值 + `t.Cleanup` 還原」 |
 | TS-15 | Low | `TestDataListGetCreationTimestamp` 用真實 `time.Sleep(1s)` 跨秒界，每次固定拖慢 1 秒（與 D-12 秒級時間戳同根） | datalist_test.go:678-687 | 注入時鐘 |
 | TS-17 | Low | `TestCrossLangFactorAnalysis*` 被 `reference-verification.yml` 明確 `-skip`，且 `INSYRA_STRICT_FACTOR_R_PARITY` 從未在任何 workflow 設定；已在 AGENTS.md 記錄為數學等價差異，僅供稽核完整性 | stats/factor_analysis_test.go:64 | 維持現狀，文件已有 |
-| TS-18 | Med（部分完成：isr、internal/utils、internal/algorithms 已補，其餘五個待處理） | 覆蓋率低於 50% 的套件：`cli/repl` 39.5%、`datafetch` 44.5%、`internal/algorithms` 34.8%、`internal/utils` 28.7%、`isr` 32.9%（README 推薦入口）、`ml/mltest` 39.8%、`stats/internal/fa` 22.2%、`accel/knnbridge` 21.1% | `go test -cover ./...` | 依使用頻率優先補 `isr`、`internal/utils`、`internal/algorithms` |
+| TS-18 | ~~Med~~ 已處理（test-untested-packages 補 isr／internal/utils，internal/algorithms 審查期間已升；test-low-coverage-packages 補 cli/repl／stats/internal/fa／datafetch；ml/mltest 與 accel/knnbridge 刻意不補，理由見 change） | 覆蓋率低於 50% 的套件：`cli/repl` 39.5%、`datafetch` 44.5%、`internal/algorithms` 34.8%、`internal/utils` 28.7%、`isr` 32.9%（README 推薦入口）、`ml/mltest` 39.8%、`stats/internal/fa` 22.2%、`accel/knnbridge` 21.1% | `go test -cover ./...` | 依使用頻率優先補 `isr`、`internal/utils`、`internal/algorithms` |
 | TS-16 | Low | `.gitignore` 列有 `line_plot.png`、`output.csv`、`bar_basic.html`、`bar_with_colors.png`、`output_pie_chart_datalist.html` 等舊產物規則，目前沒有任何程式碼會產出這些檔名 | .gitignore | 清理 |
 
 ### 倉庫衛生、CI、文件同步（第二輪）
@@ -572,6 +572,7 @@
 | PY-2 | [#255](https://github.com/HazelnutParadise/insyra/issues/255) |  |
 | PD-1 | [#256](https://github.com/HazelnutParadise/insyra/issues/256) |  |
 | LP-1 | [#257](https://github.com/HazelnutParadise/insyra/issues/257) |  |
+| LP-2 | [#372](https://github.com/HazelnutParadise/insyra/issues/372) | 與 #257 一起決定；nil 回傳已修正 |
 | LP-3 | [#258](https://github.com/HazelnutParadise/insyra/issues/258) |  |
 | EN-1 | [#259](https://github.com/HazelnutParadise/insyra/issues/259) |  |
 | EN-2 | [#260](https://github.com/HazelnutParadise/insyra/issues/260) |  |
@@ -623,7 +624,7 @@
 | TS-10 | [#306](https://github.com/HazelnutParadise/insyra/issues/306) | 已關閉（test-unpinned-behaviour） |
 | TS-11 | [#307](https://github.com/HazelnutParadise/insyra/issues/307) | 已關閉（test-untested-packages） |
 | TS-12 | [#308](https://github.com/HazelnutParadise/insyra/issues/308) | 已關閉（test-unpinned-behaviour；補測試時發現並修正 FilterWithCCL 只回傳前 1000 列） |
-| TS-13、TS-18 | [#309](https://github.com/HazelnutParadise/insyra/issues/309) | TS-13 已完成；TS-18 剩 cli/repl、datafetch、ml/mltest、stats/internal/fa、accel/knnbridge |
+| TS-13、TS-18 | [#309](https://github.com/HazelnutParadise/insyra/issues/309) | 已關閉（test-untested-packages、test-low-coverage-packages） |
 | TS-14 | [#310](https://github.com/HazelnutParadise/insyra/issues/310) |  |
 | CLI-1 | [#311](https://github.com/HazelnutParadise/insyra/issues/311) |  |
 | CLI-2 | [#312](https://github.com/HazelnutParadise/insyra/issues/312) |  |
