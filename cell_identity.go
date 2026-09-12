@@ -34,9 +34,11 @@ const maxCellEncodeDepth = 64
 // string cell's own content can contain one and the closer would be a guess.
 const uncomparableDisplayBytes = 64
 
-// UncomparableKey stands in for a cell value that Go cannot use as a map key —
-// a slice, a map, or anything containing one. It is what ToMapKey returns
-// for such a value, and what appears as the key in a Counter result.
+// UncomparableKey stands in for a cell value that cannot serve as a map key:
+// a slice, a map or anything containing one, which Go refuses to compare, and
+// a NaN or anything containing one, which compares unequal to itself and so
+// would make an entry nobody could look up. It is what ToMapKey returns for
+// such a value, and what appears as the key in a Counter result.
 //
 // Two of them are equal exactly when the values they stand for count, match
 // and group as the same value. The content they carry is deliberately not
@@ -84,16 +86,29 @@ func ToMapKey(v any) any {
 	return UncomparableKey{Type: typ, content: content}
 }
 
-// comparableCell reports whether == on v is safe.
+// comparableCell reports whether v can serve as a map key — which asks not
+// only whether == is legal but whether it is useful.
 //
-// reflect.TypeOf(v).Comparable() is not this test: an array of interfaces and
-// a struct with an interface field both report true, and both panic on ==
-// when what they hold is a slice. reflect.Value.Comparable inspects the value.
+// Two things make it false. A value Go refuses to compare panics on ==, and
+// reflect.TypeOf(v).Comparable() is not the test for that: an array of
+// interfaces and a struct with an interface field both report true and both
+// panic when what they hold is a slice, so it has to be
+// reflect.Value.Comparable, which inspects the value.
+//
+// A value that does not equal itself is the other. A NaN is comparable by the
+// type system and NaN != NaN, so using one as a map key makes an entry nobody
+// can look up: three NaNs in a column became three counts of one. Self-
+// equality catches the nested shapes too — an array or a struct holding a NaN
+// compares element by element and so is unequal to itself as well.
 func comparableCell(v any) bool {
 	if v == nil {
 		return true
 	}
-	return reflect.ValueOf(v).Comparable()
+	if !reflect.ValueOf(v).Comparable() {
+		return false
+	}
+	// Safe now: == cannot panic on a value reflect says is comparable.
+	return v == v
 }
 
 // splitCellEncoding returns v's type name and the encoding of its content.

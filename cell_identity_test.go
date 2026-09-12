@@ -3,6 +3,7 @@ package insyra
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -290,4 +291,61 @@ func TestDataTableValueMethodsMatchUncomparableCells(t *testing.T) {
 			t.Errorf("a value written into a cell was not found again: %v", got)
 		}
 	})
+}
+
+// A NaN is comparable in Go's type system, so it used to be its own map key —
+// and NaN != NaN, so every one of them created an entry nobody could look up.
+// Three NaNs became three entries of one while Count said 3, which is the
+// disagreement this capability exists to prevent. NaN in a numeric column is
+// ordinary: it is what a missing value reads as.
+func TestNaNIsCountedOnceAndFound(t *testing.T) {
+	dl := NewDataList(math.NaN(), math.NaN(), math.NaN(), 1.0)
+
+	counter := dl.Counter()
+	if len(counter) != 2 {
+		t.Errorf("Counter has %d entries, want 2 (one for NaN, one for 1.0): %v", len(counter), counter)
+	}
+	if got := counter[ToMapKey(math.NaN())]; got != 3 {
+		t.Errorf("Counter reports %d NaNs, want 3", got)
+	}
+	if got := dl.Count(math.NaN()); got != 3 {
+		t.Errorf("Count reports %d NaNs, want 3", got)
+	}
+	if counter[ToMapKey(math.NaN())] != dl.Count(math.NaN()) {
+		t.Error("Count and Counter disagree about NaN")
+	}
+	if got := counter[1.0]; got != 1 {
+		t.Errorf("an ordinary float is no longer keyed by itself: %v", counter)
+	}
+}
+
+// Comparable() is true for both of these and == is false, so the guard has to
+// be self-equality rather than comparability.
+func TestAValueContainingNaNIsNotAKeyEither(t *testing.T) {
+	type withFloat struct {
+		Name string
+		V    float64
+	}
+	for _, v := range []any{
+		[2]float64{math.NaN(), 1},
+		withFloat{"x", math.NaN()},
+	} {
+		dl := NewDataList(v, v)
+		counter := dl.Counter()
+		if len(counter) != 1 {
+			t.Errorf("%T produced %d entries, want 1: %v", v, len(counter), counter)
+		}
+		if got := counter[ToMapKey(v)]; got != 2 {
+			t.Errorf("%T: Counter reports %d, want 2", v, got)
+		}
+	}
+
+	// The same shapes without a NaN are ordinary keys.
+	clean := withFloat{"x", 1}
+	if _, wrapped := ToMapKey(clean).(UncomparableKey); wrapped {
+		t.Error("a struct with no NaN was treated as unusable")
+	}
+	if _, wrapped := ToMapKey([2]float64{1, 2}).(UncomparableKey); wrapped {
+		t.Error("an array with no NaN was treated as unusable")
+	}
 }

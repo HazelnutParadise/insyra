@@ -2949,6 +2949,11 @@ by themselves, so `counter[1]` and `counter["a"]` work as before, and printing
 the whole map stays readable: a stand-in shows as its type with a shortened
 form of its content, such as `[]uint8(00ff41)`.
 
+`insyra.UncomparableKey` also stands in for a `NaN`, and for an array or
+struct holding one. A `NaN` is comparable to Go but never equal to itself, so
+using one as a map key would make an entry nobody could read back: three
+`NaN`s in a column used to become three counts of one.
+
 **To read one value's count, use `Count`, not this map.** `Count` matches
 integers by value, where the map keys them by Go type: a CSV load stores
 integers as `int64`, so `counter[1]` finds nothing in a counter built from

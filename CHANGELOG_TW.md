@@ -61,6 +61,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`GroupBy`、`Pivot` 與 `Merge` 不再把列印結果碰巧相同的相異值併成一組。key 編碼器的 fallback 是 `%T:%v`，不會往內遞迴，所以 `[]any{1}` 與 `[]any{"1"}` 產生同一個 key，整數與字串變成同一組。編碼器現在會遞迴進入 slice、array、map 與 struct，map 依編碼後的 key 排序輸出使結果與迭代順序無關，並在深度 64 停止，因為自我參照的值會耗盡堆疊，而那在 Go 裡是 `recover` 接不到的 fatal error。一般純量的 key 逐位元組不變。
 - `insyra.Cell(v)` 讓一個值在建構子會攤平它的情況下仍然佔一格。`NewDataList` 刻意攤平切片，好讓建構清單讀起來像建構 pandas Series，而在此之前沒有辦法只讓其中一個引數例外，只能離開建構子改用 `Append`，但那沒辦法跟其他值寫在同一次呼叫裡。`NewDataList(insyra.Cell([]int{1, 2}), 3, "a")` 是三格，第一格以原本的型別持有那個切片。每個接受呼叫端傳入值的入口都接受這個標記並拆掉它，包含本來就不攤平的那些，所以 `Append(Cell(x))` 與 `Append(x)` 意思相同，`Count(Cell(x))` 與 `Count(x)` 也一致。沒有標記的切片仍然攤平。
 
+- 修正 `Counter` 對每個 `NaN` 產生一個取不回來的項目。`NaN` 對 Go 而言可比較，卻永遠不等於自己，所以每次 `counter[NaN]++` 都建立一個誰也查不到的新 key：含三個 `NaN` 的欄位會回報三個計數為 1 的項目，而 `Count` 正確地回答 3。現在整欄的 `NaN` 合併成一個項目並帶正確計數，以 `counter[insyra.ToMapKey(math.NaN())]` 讀取。含 `NaN` 的陣列或結構同樣處理，它們一樣不等於自己。`counter[math.NaN()]` 仍然回 0，這一直如此也必然如此，因為 Go 的 map 比對不到 `NaN` key。
+
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
 - 命令登錄表加上鎖，多個 goroutine（嵌入端）同時註冊命令不再是 data race。
