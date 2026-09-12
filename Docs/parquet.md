@@ -123,6 +123,10 @@ rounded, and it sorts by value rather than by the text of its digits. Like a
 `time.Time`, it is not a number to `Mean`, `Sum` and the rest of the numeric
 path; convert it first if you need arithmetic.
 
+Exporting a binary column to JSON is lossy, because a JSON string has to be
+valid UTF-8 and a byte that is not gets replaced. CSV and the cell itself keep
+the bytes.
+
 Dictionary-encoded columns are not a special case: the reader materialises them
 as their underlying type, so a pandas `category` column of strings reads as
 strings.

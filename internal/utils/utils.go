@@ -290,6 +290,14 @@ func FormatValue(value any) string {
 			return fmt.Sprintf("{...%d keys}", size)
 		}
 
+		// 值自己知道怎麼轉成文字就用它的文字。放在 struct 分支之前，因為
+		// 型別名稱對讀表格的人沒有用：一個從 Parquet 讀進來的十進位欄位
+		// 整欄印成 <decimal.Decimal>，值就看不見了。上面有專屬 case 的型別
+		// （time.Time 等）走不到這裡，行為不變。
+		if s, ok := value.(fmt.Stringer); ok {
+			return s.String()
+		}
+
 		// 檢測是否是結構體
 		if kind == reflect.Struct {
 			typeName := reflect.TypeOf(value).String()

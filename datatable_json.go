@@ -1,12 +1,34 @@
 package insyra
 
 import (
+	"encoding"
+	stdjson "encoding/json"
 	"fmt"
 	"io"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	json "github.com/goccy/go-json"
 )
+
+// jsonCell returns what to hand the marshaller for one cell.
+//
+// A value that knows how to serialise itself is left alone: json.Marshaler and
+// encoding.TextMarshaler are exactly that claim, and it is what keeps a
+// time.Time on its RFC 3339 form rather than Go's "2024-01-01 00:00:00 +0000
+// UTC". A value that knows only how to print itself is written as its text,
+// because the alternative is silence: a decimal read from a Parquet column
+// holds a big.Int and an int32, both unexported, so it marshals to {} and the
+// value disappears from the export with nothing to say so.
+func jsonCell(v any) any {
+	switch v.(type) {
+	case stdjson.Marshaler, encoding.TextMarshaler:
+		return v
+	}
+	if s, ok := v.(fmt.Stringer); ok {
+		return s.String()
+	}
+	return v
+}
 
 // buildJSONRows builds the row-oriented representation used by the ToJSON
 // family directly from the ordered column slice, so columns that share a name
@@ -38,7 +60,7 @@ func (dt *DataTable) buildJSONRows(useColNames bool) []map[string]any {
 			row := make(map[string]any, n)
 			for i, col := range dt.columns {
 				if r < len(col.data) {
-					row[keys[i]] = col.data[r]
+					row[keys[i]] = jsonCell(col.data[r])
 				} else {
 					row[keys[i]] = nil
 				}

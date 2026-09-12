@@ -55,6 +55,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL：超出 `float64` 範圍的數字字面值改為回報錯誤，不再靜默變成 `+Inf`——`strconv.ParseFloat` 的錯誤本來被丟掉了。指數形式現在是合法的字面值：`1e5`、`1.5e-3`、`2E+3` 都能編譯，過去會被拆成數字加識別字然後以 `unexpected token` 失敗，儘管 `VALUE('1e3')` 一直可用、CCL 自己的字串輸出也用指數形式。`e` 後面要有數字才會併入數字，所以名為 `E` 或 `E1` 的欄位不受影響。`TOSTR(1.5, '%d')` 與 `TOSTR(1, '%')` 改為回報格式不符，不再把 Go 自己的抱怨——`%!d(float64=1.5)`、`%!(NOVERB)`——寫進儲存格。
 
 - 讀取 Excel 現在傳給 excelize 512 MB 的解壓上限，不再沿用它 16 GB 的預設值，所以一個解壓後比主機記憶體還大的小檔案會被拒絕而不是讀進來。`insyra.ExcelReadOptions` 匯出，讓 `csvxl` 套用同一個上限。
+- 一個知道自己怎麼轉成文字、卻不知道怎麼序列化的值，不再在輸出時消失。`Show` 與其他顯示路徑最後會走到一個分支，對 struct 直接印 `<pkg.Type>`，從來沒問過它能不能自己印；`ToJSON` 則把原值交給 marshaller，而欄位未匯出的 struct 會被寫成 `{}`。Parquet 的十進位欄位因此顯示成 `<decimal.Decimal>`、匯出成 `{}`。現在實作 `fmt.Stringer` 的值會以它的文字顯示與匯出；已實作 `json.Marshaler` 或 `encoding.TextMarshaler` 的值不受影響，所以 `time.Time` 維持 RFC 3339 形式。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
