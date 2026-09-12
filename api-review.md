@@ -488,13 +488,13 @@
 | TS-8 | ~~Med~~ 已修正（test-unpinned-behaviour） | Docs 記載 `Sort` 多欄排序穩定，但 `datatable_sort_test.go` 沒有 tie-break 穩定性斷言 | Docs/DataTable.md:4325, 4336；datatable_sort_test.go | 補穩定性測試 |
 | TS-9 | ~~Med~~ 已修正（test-unpinned-behaviour） | `internal/core`（BiIndex／Ring／Actor）套件覆蓋率 20.5%，`BiIndex.Get/DeleteByName/Has/Len/IDs/Clone/Clear`、`Ring` 全部方法、`AtomicDo/AtomicDoN/Close` 沒有直接單元測試釘住邊界（空 Ring 取值、BiIndex 重複 id／name） | internal/core/*.go | 補直接單元測試 |
 | TS-10 | ~~Med~~ 已修正（test-unpinned-behaviour） | `lp` 套件覆蓋率 2.2%，`SolveFromFile`、`SolveModel`、`parseGLPKOutputFromFile`、`extractWarnings` 全 0%；純字串解析函式不需 GLPK 也能測 | lp/lp.go:21, 83, 195 | 為解析函式補單元測試；文件註記需 GLPK |
-| TS-11 | Med | `gplot` 覆蓋率 14.9%，所有 `CreateXxxChart`／`SaveChart` 0%，沒有任何 `gplot/*_test.go` | gplot/ | 補「合法輸入無 panic 產檔」煙霧測試（`t.TempDir()`） |
+| TS-11 | ~~Med~~ 已修正（test-untested-packages） | `gplot` 覆蓋率 14.9%，所有 `CreateXxxChart`／`SaveChart` 0%，沒有任何 `gplot/*_test.go` | gplot/ | 補「合法輸入無 panic 產檔」煙霧測試（`t.TempDir()`） |
 | TS-12 | ~~Med~~ 已修正（test-unpinned-behaviour） | `parquet/ccl.go` 整個 CCL 介接層（`FilterWithCCL`、`ApplyCCL`、`GetCol`、`GetCellByName` 等 20+ 函式）覆蓋率 0% | parquet/ccl.go | 補 parquet 上跑 CCL 的整合測試 |
-| TS-13 | Med | 完全沒有測試檔的套件：`cli`（根）、`cli/style`、`cmd/insyra`、`engine/algorithms`、`engine/atomic`、`engine/biindex`、`engine/ccl`、`engine/ring`、`internal/csv`、`lpgen`、`plot`、`plot/internal`、`py`、`stats/internal/parutil`、`tools/gendocs`、`datafetch/internal/limiter`。`plot`（對外 API）與 `cli` 根套件最值得優先 | 上列套件 | 先為 `plot`、`cli`、`internal/csv`、`lpgen` 補測試 |
+| TS-13 | ~~Med~~ 已修正（test-untested-packages） | 完全沒有測試檔的套件：`cli`（根）、`cli/style`、`cmd/insyra`、`engine/algorithms`、`engine/atomic`、`engine/biindex`、`engine/ccl`、`engine/ring`、`internal/csv`、`lpgen`、`plot`、`plot/internal`、`py`、`stats/internal/parutil`、`tools/gendocs`、`datafetch/internal/limiter`。`plot`（對外 API）與 `cli` 根套件最值得優先 | 上列套件 | 先為 `plot`、`cli`、`internal/csv`、`lpgen` 補測試 |
 | TS-14 | ~~Med~~ 已修正（batch 13）  | 全域 `Config` 在多個測試中被改成 `LogLevelFatal` 後沒有還原（`datalist_numeric_test.go:12`、`datatable_batch2_test.go:17`、`stats/nil_input_test.go:17`），而 `config_acceleration_log_test.go:18-29`、`accel/logging_test.go:21-30` 有正確的 `t.Cleanup` 還原寫法 | 上列 | 統一「讀舊值 + `t.Cleanup` 還原」 |
 | TS-15 | Low | `TestDataListGetCreationTimestamp` 用真實 `time.Sleep(1s)` 跨秒界，每次固定拖慢 1 秒（與 D-12 秒級時間戳同根） | datalist_test.go:678-687 | 注入時鐘 |
 | TS-17 | Low | `TestCrossLangFactorAnalysis*` 被 `reference-verification.yml` 明確 `-skip`，且 `INSYRA_STRICT_FACTOR_R_PARITY` 從未在任何 workflow 設定；已在 AGENTS.md 記錄為數學等價差異，僅供稽核完整性 | stats/factor_analysis_test.go:64 | 維持現狀，文件已有 |
-| TS-18 | Med | 覆蓋率低於 50% 的套件：`cli/repl` 39.5%、`datafetch` 44.5%、`internal/algorithms` 34.8%、`internal/utils` 28.7%、`isr` 32.9%（README 推薦入口）、`ml/mltest` 39.8%、`stats/internal/fa` 22.2%、`accel/knnbridge` 21.1% | `go test -cover ./...` | 依使用頻率優先補 `isr`、`internal/utils`、`internal/algorithms` |
+| TS-18 | Med（部分完成：isr、internal/utils、internal/algorithms 已補，其餘五個待處理） | 覆蓋率低於 50% 的套件：`cli/repl` 39.5%、`datafetch` 44.5%、`internal/algorithms` 34.8%、`internal/utils` 28.7%、`isr` 32.9%（README 推薦入口）、`ml/mltest` 39.8%、`stats/internal/fa` 22.2%、`accel/knnbridge` 21.1% | `go test -cover ./...` | 依使用頻率優先補 `isr`、`internal/utils`、`internal/algorithms` |
 | TS-16 | Low | `.gitignore` 列有 `line_plot.png`、`output.csv`、`bar_basic.html`、`bar_with_colors.png`、`output_pie_chart_datalist.html` 等舊產物規則，目前沒有任何程式碼會產出這些檔名 | .gitignore | 清理 |
 
 ### 倉庫衛生、CI、文件同步（第二輪）
@@ -621,9 +621,9 @@
 | TS-7、TS-8 | [#304](https://github.com/HazelnutParadise/insyra/issues/304) | 已關閉（test-unpinned-behaviour） |
 | TS-9 | [#305](https://github.com/HazelnutParadise/insyra/issues/305) | 已關閉（test-unpinned-behaviour） |
 | TS-10 | [#306](https://github.com/HazelnutParadise/insyra/issues/306) | 已關閉（test-unpinned-behaviour） |
-| TS-11 | [#307](https://github.com/HazelnutParadise/insyra/issues/307) |  |
+| TS-11 | [#307](https://github.com/HazelnutParadise/insyra/issues/307) | 已關閉（test-untested-packages） |
 | TS-12 | [#308](https://github.com/HazelnutParadise/insyra/issues/308) | 已關閉（test-unpinned-behaviour；補測試時發現並修正 FilterWithCCL 只回傳前 1000 列） |
-| TS-13、TS-18 | [#309](https://github.com/HazelnutParadise/insyra/issues/309) |  |
+| TS-13、TS-18 | [#309](https://github.com/HazelnutParadise/insyra/issues/309) | TS-13 已完成；TS-18 剩 cli/repl、datafetch、ml/mltest、stats/internal/fa、accel/knnbridge |
 | TS-14 | [#310](https://github.com/HazelnutParadise/insyra/issues/310) |  |
 | CLI-1 | [#311](https://github.com/HazelnutParadise/insyra/issues/311) |  |
 | CLI-2 | [#312](https://github.com/HazelnutParadise/insyra/issues/312) |  |

@@ -253,7 +253,7 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-09-12] — a Parquet column type the reader does not know reads back as the same string in every row
+### [2026-09-12] — a Parquet column type the reader does not know reads back as the same string in every row ([#371](https://github.com/HazelnutParadise/insyra/issues/371))
 - **Where**: `parquet/internal.go` `getVal`, the `default` arm
 - **What**: `getVal` handles Int64, Int32, Float64, Float32, String, Boolean and Timestamp. For anything else it returns `arr.String()` — the string form of the **whole array**, ignoring the row index `i` — so every cell of such a column reads back as one identical string like `["a" "b" "c"]`, with no error anywhere. It feeds `Read`, `Stream`, `ReadColumn` and the CCL bridge alike. `parquet.Write` only ever emits the seven handled types, so this is invisible on files this library wrote and hits files written by anything else: Date32/Date64, Decimal128, uint64, Int16/Int8, Binary, List and Dictionary columns are all common in the wild. Found on 2026-09-12 while writing the CCL bridge tests in `test-unpinned-behaviour`.
 - **Suggestion**: the decision is what the unhandled case should do, not whether to extend the switch. Two candidates: return `nil` and record an error naming the Arrow type, which matches how the CSV charset work handled an undecodable file; or refuse the column at read time so a caller cannot get a table of plausible-looking nonsense. Adding Date32/Date64, Decimal128 and the remaining integer widths is worth doing either way, but it does not close the hole on its own.
