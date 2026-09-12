@@ -149,3 +149,109 @@ func TestScalarGroupKeysAreUnchanged(t *testing.T) {
 		}
 	}
 }
+
+// Every DataTable method that compares by value goes through the same
+// valueMatcher/equalCell seam as DataList, but that is a reason to believe
+// they agree, not evidence. These pin the DataTable side: a cell Go cannot
+// compare is found, counted and dropped by content, and a different value is
+// not.
+func TestDataTableValueMethodsMatchUncomparableCells(t *testing.T) {
+	found := []byte{0x00, 0xff, 0x41}
+	// A separate slice with the same content: == would be false for these even
+	// if Go allowed it, so matching has to be by content.
+	same := []byte{0x00, 0xff, 0x41}
+	absent := []byte{0x09}
+
+	table := func() *DataTable {
+		a := NewDataList()
+		a.Append(found, same, "x")
+		b := NewDataList()
+		b.Append("p", "q", []byte{0x01})
+		return NewDataTable(a.SetName("a"), b.SetName("b"))
+	}
+
+	t.Run("Count", func(t *testing.T) {
+		if got := table().Count(found); got != 2 {
+			t.Errorf("Count = %d, want 2", got)
+		}
+		if got := table().Count(absent); got != 0 {
+			t.Errorf("Count of a value that is not there = %d, want 0", got)
+		}
+	})
+
+	t.Run("Counter", func(t *testing.T) {
+		if got := table().Counter()[ToMapKey(found)]; got != 2 {
+			t.Errorf("Counter = %d, want 2", got)
+		}
+	})
+
+	t.Run("FindRowsIfContains", func(t *testing.T) {
+		if got := table().FindRowsIfContains(found); len(got) != 2 || got[0] != 0 || got[1] != 1 {
+			t.Errorf("got rows %v, want [0 1]", got)
+		}
+		if got := table().FindRowsIfContains(absent); len(got) != 0 {
+			t.Errorf("a value that is not there matched rows %v", got)
+		}
+	})
+
+	t.Run("FindRowsIfContainsAll", func(t *testing.T) {
+		if got := table().FindRowsIfContainsAll(found, "p"); len(got) != 1 || got[0] != 0 {
+			t.Errorf("got rows %v, want [0]", got)
+		}
+		if got := table().FindRowsIfContainsAll(found, absent); len(got) != 0 {
+			t.Errorf("a row matched although one value is not there: %v", got)
+		}
+	})
+
+	t.Run("FindColsIfContains", func(t *testing.T) {
+		if got := table().FindColsIfContains(found); len(got) != 1 || got[0] != "A" {
+			t.Errorf("got cols %v, want [A]", got)
+		}
+		if got := table().FindColsIfContains(absent); len(got) != 0 {
+			t.Errorf("a value that is not there matched cols %v", got)
+		}
+	})
+
+	t.Run("FindColsIfContainsAll", func(t *testing.T) {
+		if got := table().FindColsIfContainsAll(found, "x"); len(got) != 1 || got[0] != "A" {
+			t.Errorf("got cols %v, want [A]", got)
+		}
+		if got := table().FindColsIfContainsAll(found, "p"); len(got) != 0 {
+			t.Errorf("a column matched although the two values are in different columns: %v", got)
+		}
+	})
+
+	t.Run("DropColsContain", func(t *testing.T) {
+		dt := table()
+		dt.DropColsContain(found)
+		if _, cols := dt.Size(); cols != 1 {
+			t.Errorf("%d columns left, want 1", cols)
+		}
+		dt = table()
+		dt.DropColsContain(absent)
+		if _, cols := dt.Size(); cols != 2 {
+			t.Errorf("a value that is not there dropped a column: %d left, want 2", cols)
+		}
+	})
+
+	t.Run("DropRowsContain", func(t *testing.T) {
+		dt := table()
+		dt.DropRowsContain(found)
+		if rows, _ := dt.Size(); rows != 1 {
+			t.Errorf("%d rows left, want 1", rows)
+		}
+		dt = table()
+		dt.DropRowsContain(absent)
+		if rows, _ := dt.Size(); rows != 3 {
+			t.Errorf("a value that is not there dropped a row: %d left, want 3", rows)
+		}
+	})
+
+	t.Run("UpdateElement then find", func(t *testing.T) {
+		dt := table()
+		dt.UpdateElement(2, "A", absent)
+		if got := dt.FindRowsIfContains(absent); len(got) != 1 || got[0] != 2 {
+			t.Errorf("a value written into a cell was not found again: %v", got)
+		}
+	})
+}
