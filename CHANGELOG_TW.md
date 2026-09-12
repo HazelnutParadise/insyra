@@ -52,6 +52,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`mkt.RFM`、`mkt.CustomerActivityIndex` 與 `plot.CreateKlineChart` 收的日期格式樣式，改由掃描器解析，不再是逐個樣式對整個字串做取代。同一個字母的連續段落是一個 token，所以 `MMM` 是短月份名稱（過去會變成 `011`）、`MMMM` 是完整名稱，`A`／`a` 是 AM/PM。字面文字現在要用方括號——`"[Date]: YYYY"`——因為沒有括起來的 `D` 是日期 token；在這次改動之前 `"Date: YYYY"` 會變成 `"2ate: 2006"`，所以含字面文字的樣式本來也不能用。`hh` 與 `h` 仍然對應 24 小時制。
 - 修正兩張沒有欄位名稱的表無法垂直合併。`NewDataTable(NewDataList(...))` 建出來的每一欄都沒有名稱，而重複名稱的檢查把空字串當成自己的重複，所以最單純的建構式產生的形狀無法與同類合併。沒有名稱的欄位現在依「在無名欄中的位置」對齊，有名稱的仍然依名稱對齊。
 
+- CCL：超出 `float64` 範圍的數字字面值改為回報錯誤，不再靜默變成 `+Inf`——`strconv.ParseFloat` 的錯誤本來被丟掉了。指數形式現在是合法的字面值：`1e5`、`1.5e-3`、`2E+3` 都能編譯，過去會被拆成數字加識別字然後以 `unexpected token` 失敗，儘管 `VALUE('1e3')` 一直可用、CCL 自己的字串輸出也用指數形式。`e` 後面要有數字才會併入數字，所以名為 `E` 或 `E1` 的欄位不受影響。`TOSTR(1.5, '%d')` 與 `TOSTR(1, '%')` 改為回報格式不符，不再把 Go 自己的抱怨——`%!d(float64=1.5)`、`%!(NOVERB)`——寫進儲存格。
+
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
 - 命令登錄表加上鎖，多個 goroutine（嵌入端）同時註冊命令不再是 data race。
@@ -97,6 +99,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `mkt`
 - 修正 `RFM` 遇到非數值金額格子時讓整個程序崩潰的問題，現在跳過該列並以警告指出列號。`RFM` 與 `CustomerActivityIndex` 的輸出列依客戶 ID 排序，過去依 Go map 順序輸出、每次執行都不同。
 - `RFM` 與 `CustomerActivityIndex` 套用預設 `DateFormat`／`TimeScale` 的提示改為 Debug 等級而非 Info。
+
+### `finance`
+- `RoundUnnecessary` 在需要捨入時改為回報錯誤，不再 panic。這個模式的用途是得知結果放不進指定的小數位數，而它過去是用中止程序來達成：`NPV(0.03, []{0, 1}, Options{Scale: 2, Mode: RoundUnnecessary})` 會 panic。現在回傳帶著精確值的錯誤。其他捨入模式不變。
 
 ### `lpgen`
 - LINGO 解析器遇到括號順序顛倒的宣告（`@BIN)X(;`）不再 panic。過去它取第一個 `(` 與第一個 `)` 而不檢查誰在前面，切片邊界反過來就會當掉；現在這種宣告會像其他讀不懂的行一樣被略過，模型的其餘部分照常解析。

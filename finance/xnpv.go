@@ -26,7 +26,7 @@ func XNPV(rate decimal.Decimal, values []decimal.Decimal, dates []time.Time, opt
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 // XIRR returns the rate that drives XNPV to zero. Uses Newton's
@@ -55,7 +55,7 @@ func XIRR(values []decimal.Decimal, dates []time.Time, guess decimal.Decimal, op
 			return decimal.Decimal{}, err
 		}
 		if absCmp(f, tol) <= 0 {
-			return o.outCtx().Normalize(r), nil
+			return o.finish(r)
 		}
 		df, err := xnpvDeriv(work, r, values, dates)
 		if err != nil {
@@ -80,7 +80,7 @@ func XIRR(values []decimal.Decimal, dates []time.Time, guess decimal.Decimal, op
 		}
 		r = newR
 		if absCmp(delta, tol) <= 0 {
-			return o.outCtx().Normalize(r), nil
+			return o.finish(r)
 		}
 	}
 	return decimal.Decimal{}, fmt.Errorf("XIRR did not converge in %d iterations", maxIter)

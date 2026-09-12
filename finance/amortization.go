@@ -29,7 +29,6 @@ func AmortizationSchedule(rate decimal.Decimal, nper int, pv, fv decimal.Decimal
 
 	o := resolveOpts(opts)
 	work := o.workCtx()
-	out := o.outCtx()
 
 	pmt, err := pmtInternal(work, rate, nper, pv, fv, timing)
 	if err != nil {
@@ -38,7 +37,12 @@ func AmortizationSchedule(rate decimal.Decimal, nper int, pv, fv decimal.Decimal
 
 	rows := make([]AmortizationRow, 0, nper)
 	balance := pv
-	pmtOut := out.Normalize(pmt)
+	// o.finish rather than o.outCtx().Normalize: under RoundUnnecessary the
+	// latter panics on the first cell that needs rounding.
+	pmtOut, err := o.finish(pmt)
+	if err != nil {
+		return nil, err
+	}
 
 	for per := 1; per <= nper; per++ {
 		var ipmt, ppmt decimal.Decimal
@@ -78,12 +82,24 @@ func AmortizationSchedule(rate decimal.Decimal, nper int, pv, fv decimal.Decimal
 			}
 		}
 
+		interestOut, err := o.finish(ipmt)
+		if err != nil {
+			return nil, err
+		}
+		principalOut, err := o.finish(ppmt)
+		if err != nil {
+			return nil, err
+		}
+		balanceOut, err := o.finish(balance)
+		if err != nil {
+			return nil, err
+		}
 		rows = append(rows, AmortizationRow{
 			Period:    per,
 			Payment:   pmtOut,
-			Interest:  out.Normalize(ipmt),
-			Principal: out.Normalize(ppmt),
-			Balance:   out.Normalize(balance),
+			Interest:  interestOut,
+			Principal: principalOut,
+			Balance:   balanceOut,
 		})
 	}
 	return rows, nil

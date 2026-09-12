@@ -79,5 +79,5 @@ func MIRR(cashflows []decimal.Decimal, financeRate, reinvestRate decimal.Decimal
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(decimal.Sub(work, root, one)), nil
+	return o.finish(decimal.Sub(work, root, one))
 }

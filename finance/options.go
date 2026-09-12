@@ -1,6 +1,10 @@
 package finance
 
-import "github.com/TimLai666/go-decimal/decimal"
+import (
+	"fmt"
+
+	"github.com/TimLai666/go-decimal/decimal"
+)
 
 // PaymentTiming indicates whether an annuity payment occurs at the end
 // of each period (ordinary annuity, Excel's type=0) or at the beginning
@@ -126,8 +130,30 @@ func resolveOpts(opts []Options) Options {
 }
 
 // outCtx returns the decimal.Context to apply to the final result.
+//
+// Under RoundUnnecessary this context makes the decimal library panic the
+// moment a result has to be rounded. Prefer finish, which reports that as an
+// error: error-philosophy says no insyra package panics by default, and the
+// whole point of the mode is to learn that rounding was needed.
 func (o Options) outCtx() decimal.Context {
 	return decimal.Context{Scale: o.Scale, Mode: o.Mode.toDecimal()}
+}
+
+// finish applies the output context to v and returns the result.
+//
+// For every mode but RoundUnnecessary this is outCtx().Normalize. For that one
+// it rounds half-up instead and compares: an answer that changed is exactly the
+// case the mode asserts will not happen, and it is reported rather than thrown.
+func (o Options) finish(v decimal.Decimal) (decimal.Decimal, error) {
+	if o.Mode != RoundUnnecessary {
+		return o.outCtx().Normalize(v), nil
+	}
+	rounded := decimal.Context{Scale: o.Scale, Mode: decimal.RoundingModeHalfUp}.Normalize(v)
+	if decimal.Cmp(rounded, v) != 0 {
+		return decimal.Decimal{}, fmt.Errorf(
+			"rounding was necessary to reach scale %d but Mode is RoundUnnecessary (exact value %s)", o.Scale, v)
+	}
+	return rounded, nil
 }
 
 // workCtx returns the high-precision context used inside computations.

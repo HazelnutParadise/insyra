@@ -161,12 +161,19 @@ dt.ExecuteCCL("NEW('status') = IF(A > 100, 'High', 'Low')")
 
 CCL supports the following data types:
 
-1. **Numbers** - Integers and floating-point numbers
+1. **Numbers** - Integers and floating-point numbers, in plain or exponent form
 
    ```
-   "42"    // Integer
-   "3.14"  // Floating-point number
+   "42"      // Integer
+   "3.14"    // Floating-point number
+   "1e5"     // 100000
+   "1.5e-3"  // 0.0015
+   "2E+3"    // 2000
    ```
+
+   An `e` is only part of a number when at least one digit follows it (after an
+   optional sign), so a column called `E` or `E1` still reads as a column. A
+   literal too large for a `float64` is an error rather than `+Inf`.
 
 2. **Strings** - Enclosed in single quotes
 
@@ -735,7 +742,7 @@ dt.ExecuteCCL(`
 | Function | Description |
 | --- | --- |
 | `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
-| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`) |
+| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)` |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |

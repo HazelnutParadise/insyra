@@ -25,7 +25,7 @@ func IPMT(rate decimal.Decimal, per, nper int, pv, fv decimal.Decimal, timing Pa
 	work := o.workCtx()
 
 	if timing == PaymentBegin && per == 1 {
-		return o.outCtx().Normalize(decimal.NewFromInt64(work, 0)), nil
+		return o.finish(decimal.NewFromInt64(work, 0))
 	}
 
 	pmt, err := pmtInternal(work, rate, nper, pv, fv, timing)
@@ -44,7 +44,7 @@ func IPMT(rate decimal.Decimal, per, nper int, pv, fv decimal.Decimal, timing Pa
 			return decimal.Decimal{}, err
 		}
 	}
-	return o.outCtx().Normalize(ipmt), nil
+	return o.finish(ipmt)
 }
 
 // PPMT returns the principal portion of the per-th payment. By
@@ -85,7 +85,7 @@ func PPMT(rate decimal.Decimal, per, nper int, pv, fv decimal.Decimal, timing Pa
 		}
 	}
 
-	return o.outCtx().Normalize(decimal.Sub(work, pmt, ipmt)), nil
+	return o.finish(decimal.Sub(work, pmt, ipmt))
 }
 
 // CumIPMT returns the cumulative interest paid between periods
@@ -150,7 +150,7 @@ func cumulate(rate decimal.Decimal, nper int, pv decimal.Decimal, startPeriod, e
 			total = decimal.Add(work, total, decimal.Sub(work, pmt, ipmt))
 		}
 	}
-	return o.outCtx().Normalize(total), nil
+	return o.finish(total)
 }
 
 func validatePer(per, nper int) error {

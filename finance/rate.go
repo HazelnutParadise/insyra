@@ -29,7 +29,7 @@ func EffectiveRate(nominal decimal.Decimal, periodsPerYear int, opts ...Options)
 		return decimal.Decimal{}, err
 	}
 	one := decimal.NewFromInt64(work, 1)
-	return o.outCtx().Normalize(decimal.Sub(work, pow, one)), nil
+	return o.finish(decimal.Sub(work, pow, one))
 }
 
 // NominalRate converts an effective annual rate into the equivalent
@@ -61,7 +61,7 @@ func NominalRate(effective decimal.Decimal, periodsPerYear int, opts ...Options)
 		return decimal.Decimal{}, err
 	}
 	nominal := decimal.Mul(work, m, decimal.Sub(work, root, one))
-	return o.outCtx().Normalize(nominal), nil
+	return o.finish(nominal)
 }
 
 // ContinuousFromAnnual converts an effective annual rate r into the
@@ -75,7 +75,7 @@ func ContinuousFromAnnual(effective decimal.Decimal, opts ...Options) (decimal.D
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 // AnnualFromContinuous converts a continuously compounded rate ρ into
@@ -85,5 +85,5 @@ func AnnualFromContinuous(continuous decimal.Decimal, opts ...Options) (decimal.
 	work := o.workCtx()
 	one := decimal.NewFromInt64(work, 1)
 	v := decimal.Exp(work, continuous)
-	return o.outCtx().Normalize(decimal.Sub(work, v, one)), nil
+	return o.finish(decimal.Sub(work, v, one))
 }

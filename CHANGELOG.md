@@ -52,6 +52,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - **BREAKING**: the date-format patterns taken by `mkt.RFM`, `mkt.CustomerActivityIndex` and `plot.CreateKlineChart` are read by a scanner instead of a sequence of replacements over the whole string. A run of one letter is one token, so `MMM` is a short month name (it used to become `011`) and `MMMM` a full one, and `A`/`a` gives AM/PM. Literal letters now need square brackets — `"[Date]: YYYY"` — because an unbracketed `D` is a day token; before this change `"Date: YYYY"` came out as `"2ate: 2006"`, so no pattern with a literal word worked either way. `hh` and `h` still mean the 24-hour layout.
 - Fixed two tables with no column names failing to merge vertically. `NewDataTable(NewDataList(...))` leaves every column unnamed, and the duplicate-name check counted the empty name as a duplicate of itself, so the plainest constructor produced a shape that could not be merged with another of its kind. Unnamed columns now line up by their position among the unnamed ones; named columns still line up by name.
 
+- CCL: a number literal too large for a `float64` is an error instead of silently becoming `+Inf` — `strconv.ParseFloat`'s error was being dropped. Exponent notation is now a literal form: `1e5`, `1.5e-3` and `2E+3` compile, where they used to split into a number and an identifier and fail with `unexpected token`, even though `VALUE('1e3')` always worked and CCL's own string output uses exponent form. An `e` only joins the number when a digit follows, so a column called `E` or `E1` is unaffected. `TOSTR(1.5, '%d')` and `TOSTR(1, '%')` report the mismatch instead of writing Go's own complaint — `%!d(float64=1.5)`, `%!(NOVERB)` — into the cell.
+
 ### CLI
 - Environment names are now validated: only letters, digits, `.`, `_` and `-` (starting with a letter or digit, no `..`). A name was previously joined straight onto the environments directory, so `../x` created or deleted directories outside it.
 - The command registry is guarded by a lock, so registering commands from several goroutines (embedders) is no longer a data race.
@@ -97,6 +99,9 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `mkt`
 - Fixed `RFM` crashing the process when an amount cell was not numeric; the row is now skipped with a warning naming it. `RFM` and `CustomerActivityIndex` output rows are sorted by customer ID, where they previously came out in Go map order and differed between runs.
 - The notices for defaulted `DateFormat`/`TimeScale` in `RFM` and `CustomerActivityIndex` are logged at Debug instead of Info.
+
+### `finance`
+- `RoundUnnecessary` reports that rounding was needed instead of panicking. The mode exists to find out that a result did not fit the chosen scale, and it did that by taking the program down: `NPV(0.03, []{0, 1}, Options{Scale: 2, Mode: RoundUnnecessary})` panicked. It now returns an error carrying the exact value. The other rounding modes are unchanged.
 
 ### `lpgen`
 - The LINGO parser no longer panics on a declaration whose parentheses are the wrong way round (`@BIN)X(;`). It took the first `(` and the first `)` without checking which came first and sliced with reversed bounds; such a declaration is now skipped like any other line it cannot read, and the rest of the model still parses.

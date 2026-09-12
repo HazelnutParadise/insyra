@@ -73,12 +73,14 @@ func tokenize(input string) ([]cclToken, error) {
 					for i < len(input) && isDigit(input[i]) {
 						i++
 					}
+					i = scanExponent(input, i)
 					tokens = append(tokens, cclToken{pos: tokStart, typ: tNUMBER, value: input[start:i]})
 				} else {
 					tokens = append(tokens, cclToken{pos: tokStart, typ: tNUMBER, value: input[start:i]})
 					// 不前進 i，讓下一個 case 處理 '.'
 				}
 			} else {
+				i = scanExponent(input, i)
 				tokens = append(tokens, cclToken{pos: tokStart, typ: tNUMBER, value: input[start:i]})
 			}
 		case ch == '.':
@@ -97,6 +99,7 @@ func tokenize(input string) ([]cclToken, error) {
 					for i < len(input) && isDigit(input[i]) {
 						i++
 					}
+					i = scanExponent(input, i)
 					tokens = append(tokens, cclToken{pos: tokStart, typ: tNUMBER, value: input[start:i]})
 				} else {
 					tokens = append(tokens, cclToken{pos: tokStart, typ: tDOT, value: "."})
@@ -235,7 +238,31 @@ func runeStart(s string, i int) int {
 }
 
 func isLetter(ch byte) bool { return unicode.IsLetter(rune(ch)) || ch == '_' }
-func isDigit(ch byte) bool  { return unicode.IsDigit(rune(ch)) }
+
+// scanExponent extends a number token over an exponent suffix — the "e5" of
+// "1e5" — when one is really there: an e or E, an optional sign, and at least
+// one digit. Without at least one digit the e stays an identifier, so a column
+// reference such as E or E1 is untouched. The literal form used to tokenize as
+// a number followed by an identifier and fail to compile, while VALUE('1e3')
+// and CCL's own string output both use exponent notation.
+func scanExponent(input string, i int) int {
+	if i >= len(input) || (input[i] != 'e' && input[i] != 'E') {
+		return i
+	}
+	j := i + 1
+	if j < len(input) && (input[j] == '+' || input[j] == '-') {
+		j++
+	}
+	if j >= len(input) || !isDigit(input[j]) {
+		return i
+	}
+	for j < len(input) && isDigit(input[j]) {
+		j++
+	}
+	return j
+}
+
+func isDigit(ch byte) bool { return unicode.IsDigit(rune(ch)) }
 func isOperatorChar(ch byte) bool {
 	return strings.ContainsRune("+-*/%^", rune(ch))
 }
