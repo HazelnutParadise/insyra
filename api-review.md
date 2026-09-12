@@ -303,7 +303,7 @@
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | LP-1 | High | 第一次呼叫 `SolveModel`／`SolveFromFile` 時，程式庫自己從 ftp.gnu.org（Windows 走 SourceForge 的 latest/download 轉址）下載 GLPK 原始碼，在使用者機器上執行 `./configure && make && make install` 裝進 `$HOME/local`，再改寫**當前程序**的 `PATH` 環境變數。下載沒有校驗和、失敗路徑有 8 處 `LogFatal`。一個 Go 資料程式庫在執行期編譯 C 程式，是供應鏈與可移植性風險，生產環境不可接受（準則 14；K-1） | lp/init.go:33-260 | 移除自動安裝：找不到 `glpsol` 就回錯並在 Docs 說明安裝方式；或改用純 Go 求解器 |
-| LP-2 | Med（列順序已修正 batch 2；error 形狀待決） | `SolveFromFile`／`SolveModel` 回傳 `(*DataTable, *DataTable)` 沒有 error；錯誤與逾時被編碼成第二張表裡的字串（`Status: "Error"`），且那張表的列順序來自 map 迭代（MK-2）；結果表是 GLPK 輸出「逐行文字」，變數值沒有解析成欄位；`timeoutSeconds ...int` 用 variadic（準則 8、11） | lp/lp.go:21-80, 83-215, 256-280 | 回 `(*Solution, error)`，Solution 含 `Status`、`Objective`、`Variables map[string]float64` |
+| LP-2 | Med（列順序已修正 batch 2；nil 回傳已修正 lp-never-returns-a-nil-table；error 形狀與結果解析待決） | `SolveFromFile`／`SolveModel` 回傳 `(*DataTable, *DataTable)` 沒有 error；錯誤與逾時被編碼成第二張表裡的字串（`Status: "Error"`），且那張表的列順序來自 map 迭代（MK-2）；結果表是 GLPK 輸出「逐行文字」，變數值沒有解析成欄位；`timeoutSeconds ...int` 用 variadic（準則 8、11） | lp/lp.go:21-80, 83-215, 256-280 | 回 `(*Solution, error)`，Solution 含 `Status`、`Objective`、`Variables map[string]float64` |
 | LP-3 | Low | `lpgen.LPModel` 以字串拼 LP 檔（`AddConstraint("x + y <= 10")`），沒有結構化建模；`GenerateLPFile(filename)` 無 error；`ParseLingoModel_str`／`_txt` 底線命名、失敗回 nil 無 error | lpgen/lpgen.go；lingo.go | 回 error；命名 `ParseLingo`／`ParseLingoFile` |
 
 ### engine

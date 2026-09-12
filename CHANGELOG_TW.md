@@ -100,6 +100,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `lp`
 - `SolveFromFile` 與 `SolveModel` 回傳的附加資訊表列順序固定為 Status、Execution Time、Warnings、Full Output、Iterations、Nodes，過去依 Go map 順序每次不同。
 - GLPK 下載、解壓或編譯失敗不再結束程式：失敗會被記錄，`SolveModel`／`SolveFromFile` 透過附加資訊表回報。`SolveModel` 兩處暫存檔失敗同樣改為回報，不再回傳兩個 nil。
+- **BREAKING**：`SolveFromFile` 與 `SolveModel` 不再回傳 `nil` 的 DataTable。每一條失敗路徑——逾時、求解失敗、暫存檔寫不出來、model 是 nil、傳超過一個 `timeoutSeconds`——過去第一個回傳值都是 `nil`，而 `Docs/lp.md` 自己的範例就直接呼叫 `result.Show()`，那會 panic。現在兩個回傳值都是空但可用的表格，原因記在 `Err()` 上。原本以 `result == nil` 判斷失敗的呼叫端要改成檢查 `result.Err()`；`nil` 從來不是文件寫過的回傳值。資訊表的 `Status` 現在只有真的讀得到結果才會是 `Success`：求解跑完但結果檔讀不到時回報 `Error`，原因放在 `Warnings`，過去那種情況會顯示 `Success` 卻搭配 nil 的結果。引數也改在 GLPK 安裝流程之前檢查，已經寫錯的呼叫不會再觸發安裝。
 
 ### `plot`
 - **BREAKING**：`SavePNG` 預設不再退回線上渲染服務。不傳第三個參數（或傳 `false`）時，本機 Chrome／Chromium 渲染失敗會回傳錯誤；傳 `true` 才允許退回線上服務，該服務會把圖表連同資料上傳到 `server3.hazelnut-paradise.com`。過去的預設會在沒有詢問的情況下把使用者資料送出主機。
@@ -115,7 +116,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `gplot`
 - **BREAKING**：`SaveChart` 檔案寫不出來時改為回傳 `error`，不再結束程式。既有呼叫要改成 `if err := gplot.SaveChart(...); err != nil { ... }` 或明確寫 `_ =`。
 - `CreateHistogram` 用零值設定不再 panic：`Bins` 為 0 或負數時採用預設值 10。`CreateLineChart` 與 `CreateStepChart` 在建立序列失敗時改為記錄錯誤而非 panic。
-- 另外四個繪圖呼叫遇到一般的錯誤輸入也不再 panic。`CreateBarChart` 沒有 `XAxis` 時（零值設定就是這樣）改為畫在數值軸上，不再在 gonum 的 `NominalX` 裡當掉。`CreateFunctionPlot` 拒絕 `nil` 函式。`CreateHeatmapChart` 拒絕各列長度不一致的資料並指出第一個不同的列，`Colors` 為負數時比照 0 採用預設值 20。
+- 另外四個繪圖呼叫遇到一般的錯誤輸入也不再 panic。`CreateBarChart` 沒有 `XAxis` 時（零值設定就是這樣）改為比照 `plot.CreateBarChart` 把長條編號成 1、2、3……，不再在 gonum 的 `NominalX` 裡當掉。`CreateFunctionPlot` 拒絕 `nil` 函式。`CreateHeatmapChart` 拒絕各列長度不一致的資料並指出第一個不同的列，`Colors` 為負數時比照 0 採用預設值 20。
 
 ### `py`
 - IPC 監聽失敗改為記錄並讓伺服器保持關閉，不再結束程式。

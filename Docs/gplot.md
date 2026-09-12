@@ -75,7 +75,7 @@ Creates a bar chart for comparing values across categories.
 ```go
 type BarChartConfig struct {
     Title     string    // Chart title
-    XAxis     []string  // Optional: category labels; omitted, the bars are drawn against a numeric axis
+    XAxis     []string  // Optional: category labels; omitted, the bars are numbered 1, 2, 3, ...
     XAxisName string    // Optional: X-axis label
     YAxisName string    // Optional: Y-axis label
     BarWidth  float64   // Optional: Bar width (default: 20)

@@ -33,13 +33,19 @@ func SolveFromFile(lpFile string, timeoutSeconds ...int) (*DataTable, *DataTable
 
 **Returns:**
 
-- `*DataTable`: The solution DataTable(the column name and the row name will not be set).
-- `*DataTable`: The additional information DataTable(the column name and the row name will be set). Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes.
+- `*DataTable`: The solution DataTable(the column name and the row name will not be set). **Never `nil`.** When the solve fails — a timeout, a solver error, a bad argument — this is an empty table carrying the reason on `Err()`.
+- `*DataTable`: The additional information DataTable(the column name and the row name will be set). **Never `nil`.** Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes. `Status` is `Success` only when there is a result to read; a solve that ran but whose output could not be read reports `Error` with the reason in `Warnings`.
 
 #### Example
 
 ```go
 result, info := lp.SolveFromFile("model.lp", 10)
+if err := result.Err(); err != nil {
+    // The solve did not produce a result. `info` still says what happened.
+    info.Show()
+    log.Fatal(err)
+}
+
 result.Show()
 info.Show()
 
@@ -47,6 +53,9 @@ info.Show()
 result.ToCSV("solution.csv", false, false, false)
 info.ToCSV("info.csv", true, true, false)
 ```
+
+Neither return is ever `nil`, so calling a method on the result is always safe.
+Check `result.Err()` to tell a solved model from a failed one.
 
 > [!TIP]
 > Using `ToCSV` method, you can easily export the result to a CSV file.
@@ -66,8 +75,8 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*DataTable, *DataT
 
 **Returns:**
 
-- `*DataTable`: The solution DataTable(the column name and the row name will not be set).
-- `*DataTable`: The additional information DataTable(the column name and the row name will be set). Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes.
+- `*DataTable`: The solution DataTable(the column name and the row name will not be set). **Never `nil`.** When the solve fails — a timeout, a solver error, a bad argument — this is an empty table carrying the reason on `Err()`.
+- `*DataTable`: The additional information DataTable(the column name and the row name will be set). **Never `nil`.** Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes. `Status` is `Success` only when there is a result to read; a solve that ran but whose output could not be read reports `Error` with the reason in `Warnings`.
 
 #### Example
 

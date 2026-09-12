@@ -259,12 +259,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: the decision is what the unhandled case should do, not whether to extend the switch. Two candidates: return `nil` and record an error naming the Arrow type, which matches how the CSV charset work handled an undecodable file; or refuse the column at read time so a caller cannot get a table of plausible-looking nonsense. Adding Date32/Date64, Decimal128 and the remaining integer widths is worth doing either way, but it does not close the hole on its own.
 - **Status**: pending
 
-### [2026-09-12] — `lp.SolveFromFile` returns a nil result table and the documented example dereferences it
-- **Where**: `lp/lp.go` `SolveFromFile` and `SolveModel`; the example in `Docs/lp.md`
-- **What**: on a timeout, a solver error, or more than one `timeoutSeconds` argument, both functions return `nil` as the first DataTable — `nil, nil` in the last case. `Docs/lp.md` says only "returns the result as two DataTable" and its example calls `result.Show()` straight away. A nil `*DataTable` panics on `Show()`; measured on 2026-09-12. Found while writing the parser tests in `test-unpinned-behaviour`, which cover the failure path of `parseGLPKOutputFromFile` (also nil on an unreadable file).
-- **Suggestion**: the same call the review already flagged elsewhere — the library is not supposed to hand out a nil that the caller will dereference. Either return an empty DataTable carrying the error through `Err()`, like the chainable methods do, or state in the docs that the first return is nil on failure and change the example to check the Status row first. The first is the shape the rest of the library settled on; it is a behaviour change, so it needs a ruling.
-- **Status**: pending
-
 ### [2026-09-11] — `insyra run` exits 0 when a line fails
 - **Where**: `cli/commands/run.go`, the loop that prints `line N: <error>` and moves on
 - **What**: `Docs/cli-dsl.md` says `run` continues after a failing line, and it does, but it then prints `script complete` and exits 0, so a shell script or CI job running `insyra run job.isr` cannot tell that a step failed. Measured on 2026-09-11: a script whose third line was rejected exited 0. The Go `Session.ExecuteFile` stops at the first error and returns it.

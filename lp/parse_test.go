@@ -91,16 +91,10 @@ func TestParseGLPKOutputFromFile_EmptyFile(t *testing.T) {
 	}
 }
 
-// A missing file is how a timed-out or crashed solver shows up. The function
-// reports it and hands back nil, which is what SolveFromFile then returns as
-// its result table.
-func TestParseGLPKOutputFromFile_MissingFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "does-not-exist.txt")
-
-	if dt := parseGLPKOutputFromFile(path); dt != nil {
-		t.Errorf("a missing file gave %v, want nil", dt)
-	}
-}
+// A missing file is how a timed-out or crashed solver shows up. It used to give
+// nil, which SolveFromFile handed straight to the caller;
+// TestParseGLPKOutputFromFile_UnreadableFileIsUsable in usable_returns_test.go
+// covers what it does now.
 
 func TestExtractIterationNodeCounts(t *testing.T) {
 	tests := []struct {
