@@ -95,6 +95,14 @@ Values that cannot be read as a finite number are refused rather than converted,
 
 The test that makes this real: permuting 600 rows spanning magnitudes 10⁻³ to 10³ must fit a bit-identical tree. Floating-point accumulation cannot pass it.
 
+## Exact decimals
+
+An exact decimal anywhere in Insyra is a `github.com/TimLai666/go-decimal` `decimal.Decimal`. `finance` takes and returns it, `parquet` reads `Decimal128` and `Decimal256` as it, and the documentation recommends it to users for any value that has to stay exact. Do not introduce a second decimal type in a new package; a caller moving values between two of them pays a conversion and a rounding decision at every boundary.
+
+Core does not import it. The numeric read path, `IsNumeric` and sorting recognise a decimal by shape — a value that reports its own text and its scale, where that text parses as a number — so `internal/utils`, which every cell passes through, stays independent of any one decimal package. Two decimals compare through `decimal.Cmp`, exactly; a decimal against any other number compares as `float64`. A decimal is not a map key (its `big.Int` holds a slice) and goes through `ToMapKey` like any other uncomparable value.
+
+The choice was checked against the current versions of the alternatives on 2026-09-13; the comparison and the reasons are in `Docs/finance.md`, under "Choosing a decimal package". The version is pinned in `go.mod` at v0.1.3. Re-check that comparison before changing the dependency, not the other way round.
+
 ## When a device may be used
 
 Decided by the **shape of the result**, not by how hot the operation is.

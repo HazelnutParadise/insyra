@@ -396,6 +396,20 @@ For a complete guide to CCL syntax and features, see the **[CCL Documentation](/
 
 For a complete list of DataTable methods and features, please refer to the **[DataTable Documentation](/Docs/DataTable.md)**.
 
+## Exact Decimals
+
+When a number has to stay exact — money, rates, anything where `0.1 + 0.2` must be `0.3` — use [`github.com/TimLai666/go-decimal`](https://github.com/TimLai666/go-decimal). It is the decimal type Insyra is built around: every [`finance`](/Docs/finance.md) function takes and returns it, a Parquet `Decimal128` column reads as it, and a column of them works with `Mean`, `Sum`, sorting and the rest like any other number column.
+
+```go
+import "github.com/TimLai666/go-decimal/decimal"
+
+ctx := decimal.Context{Scale: 2, Mode: decimal.RoundingModeHalfEven}
+price := decimal.MustParse(ctx, "19.99")
+dl := insyra.NewDataList(insyra.Cell(price))
+```
+
+Why this package rather than another, compared against the current versions of the alternatives, is in the [finance documentation](/Docs/finance.md#choosing-a-decimal-package).
+
 ## Packages
 
 **Insyra** also provides several expansion packages, each focusing on a specific aspect of data analysis.

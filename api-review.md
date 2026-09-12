@@ -267,8 +267,8 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| FI-1 | Med | 全部 43 個函式的參數與回傳都是 `github.com/TimLai666/go-decimal/decimal.Decimal`。這是作者自己的 decimal 套件而非社群通用的 `shopspring/decimal`，使用者呼叫任何函式都必須引入這個第三方型別；型別一旦改版整個 finance API 跟著 breaking（準則 8、10） | finance 全套件 | 這是設計決策，至少在 Docs 明講並釘住版本；或提供 `float64` 便利版 |
-| FI-2 | Med | `ScheduleTable` 回傳的 DataTable 格子是 `decimal.Decimal`，core 的 `ToFloat64Safe` 不認識它，這張表的 `Mean`／`Sum`／`Describe` 全部失效，doc 只說「用 `.String()` 轉文字」；且回傳型別是 `insyra.IDataTable`（K-7）（準則 6、13） | finance/amortization.go:93-119 | 提供 `float64` 欄位版本，或讓 core 認識 decimal |
+| FI-1 | ~~Med~~ 已決定（2026-09-13）：保留 go-decimal，並在全庫文件推薦它作為精確小數型別；與 shopspring／apd／govalues 當前版本的比較及理由寫進 `Docs/finance.md`，長期決策寫進 `ENG.md`，版本釘在 `go.mod` 的 v0.1.3 | 全部 43 個函式的參數與回傳都是 `github.com/TimLai666/go-decimal/decimal.Decimal`。這是作者自己的 decimal 套件而非社群通用的 `shopspring/decimal`，使用者呼叫任何函式都必須引入這個第三方型別；型別一旦改版整個 finance API 跟著 breaking（準則 8、10） | finance 全套件 | 這是設計決策，至少在 Docs 明講並釘住版本；或提供 `float64` 便利版 |
+| FI-2 | ~~Med~~ 已修正（a-decimal-is-a-number） | `ScheduleTable` 回傳的 DataTable 格子是 `decimal.Decimal`，core 的 `ToFloat64Safe` 不認識它，這張表的 `Mean`／`Sum`／`Describe` 全部失效，doc 只說「用 `.String()` 轉文字」；且回傳型別是 `insyra.IDataTable`（K-7）（準則 6、13） | finance/amortization.go:93-119 | 提供 `float64` 欄位版本，或讓 core 認識 decimal |
 | FI-3 | Low（panic 已修正 fix-clear-defects-ccl-finance；variadic Options 屬 D-8、Zero 可覆寫屬 K-12，待決） | `RoundUnnecessary` 模式下需要捨入時「panics with decimal.ErrRoundingNecessary」（doc 原文），程式庫選項導致 panic；`opts ...Options` variadic「最後一個生效」（D-8）；`var Zero` 可被覆寫（K-12）（準則 11） | finance/options.go:66, 128-140；helpers.go:22 | 該模式改回 error；Zero 改 func 或文件註明不可改 |
 | FI-4 | OK | 其餘是範本等級：每個函式驗證參數並回 error、`Options` 零值可用且逐欄位獨立預設、Excel 對應（`basis`、`type`）寫明、`NPV` 與 `NPVExcel` 的 t=0／t=1 差異講清楚、精度以 guard digits 處理 | — | — |
 
@@ -566,7 +566,7 @@
 | ST-11 | [#373](https://github.com/HazelnutParadise/insyra/issues/373) | 已修正（orthogonal-rotation-starts） |
 | ST-12 | —（來自 `AGENTS.md` follow-up，無 issue） | 已修正（oblimin-honours-its-start） |
 | QU-1 | [#246](https://github.com/HazelnutParadise/insyra/issues/246) |  |
-| FI-1、FI-2 | [#247](https://github.com/HazelnutParadise/insyra/issues/247) |  |
+| FI-1、FI-2 | [#247](https://github.com/HazelnutParadise/insyra/issues/247) | FI-1 已決定並記錄、FI-2 已修正 |
 | FI-3 | [#248](https://github.com/HazelnutParadise/insyra/issues/248) |  |
 | DF-1 | [#249](https://github.com/HazelnutParadise/insyra/issues/249) |  |
 | DF-2 | [#250](https://github.com/HazelnutParadise/insyra/issues/250) |  |

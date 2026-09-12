@@ -32,6 +32,30 @@ digits, so a wider decimal is rounded at that point.
 
 ---
 
+## Choosing a decimal package
+
+Insyra uses [`go-decimal`](https://github.com/TimLai666/go-decimal) for every exact decimal and recommends it for yours. The Go alternatives were compared at their current versions on 2026-09-13, by reading their source and running them.
+
+| | go-decimal v0.1.3 | shopspring/decimal v1.4.0 | cockroachdb/apd v3.2.3 | govalues/decimal v0.1.36 |
+| --- | --- | --- | --- | --- |
+| Largest value | unbounded | unbounded | unbounded | 19 digits in total |
+| Places a result keeps | set per call by `Context.Scale`, digits after the point | division: the package variable `DivisionPrecision`; otherwise per call | `Context.Precision`, digits in total | per call |
+| Rounding modes | 9, chosen in the `Context` | 7, one method each | chosen in the `Context` | `Round`, `Trunc`, `Ceil`, `Floor` |
+| Settings shared by the whole program | none | 4 package variables | none | none |
+| `Sqrt` / `Exp` / `Log` / `Pow` | all four | no `Sqrt` | all four | all four |
+| A call | `decimal.Add(ctx, a, b)` | `a.Add(b)` | `ctx.Add(dst, a, b)` returning `(Condition, error)` | `a.Add(b)` returning `(Decimal, error)` |
+
+What decided it:
+
+- **A result keeps the places you asked for.** An amount of money has a fixed number of places, and `Context.Scale` says exactly that. `apd` counts digits in total, so how many land after the point depends on how large the number is. `govalues` holds 19 digits in total and drops places to make a value fit, without an error: at this package's default of 10 places, `999999999.9999999999 + 0.0000000001` came back as `1000000000.000000000`, with nine.
+- **Nothing the rest of the program does changes a result.** In `shopspring/decimal`, `Div` rounds to the package variable `DivisionPrecision`, which any code in the same program can set. `1/3` gave `0.3333333333333333`; after another part of the program set it to 4, the same division gave `0.3333`.
+- **The math this package needs is all there.** `finance` calls `Sqrt`, `Exp`, `Log` and `Pow`, and `shopspring/decimal` has no `Sqrt`.
+- **One type across the library.** The same `decimal.Decimal` comes out of `finance` and out of a Parquet `Decimal128` column, and goes into `Mean`, `Sum` and sorting, so nothing is converted on the way.
+
+`go.mod` pins go-decimal at v0.1.3.
+
+---
+
 ## Overview
 
 The `finance` package provides high-precision financial calculations for banking and corporate-finance use cases:

@@ -149,6 +149,7 @@ Use Insyra when you need any of these in Go:
 - DataTable: multiple named DataList columns as a table.
 - isr syntactic sugar: preferred entrypoint for new codebases.
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.
+- Exact decimals (money, rates): use `github.com/TimLai666/go-decimal` (`decimal.Decimal`), never `float64` and never another decimal package. It is what `finance` takes and returns and what a Parquet `Decimal128` column reads as. A column of them works with `Mean`/`Sum`/sorting; a slice of them passed to `NewDataList` is flattened like any slice, so wrap a whole value in `insyra.Cell(v)` or build with `Append`.
 - Error handling has exactly two shapes. Ordinary functions return `(T, error)`. Chainable types (DataList, DataTable, isr) never return nil and never end the program: they record a **sticky** `Err()` that keeps the FIRST failure, so check once at the end of a chain with `PopErr()` (reads and clears) or `Err()`. Searching for a value and not finding it (`FindFirst`, `Count`), or working over an empty list, is a normal result and does NOT set `Err()`. Addressing something that is not there (`Get(99)`, `GetColByName("nope")`) does, because the only other signal is a bare nil. Transforms never return nil (you get an empty list carrying the error); lookups still do, so nil-check a lookup before chaining off it. `insyra.Config.SetPanicOnError(true)` opts into fail-fast: every recorded error then panics (recoverably) with an `*insyra.ErrorInfo`. Two things that catch people out: a failure does NOT stop the chain — every later call still runs, the error is recorded rather than thrown, and `Err()` keeps the first one — and a recorded error is ALSO printed at Error level to the standard log (silence it with `Config.SetLogLevel(insyra.LogLevelFatal)`; it is still recorded).
 
 ### Fitted KMeans assignment
@@ -399,7 +400,7 @@ func main() {
 
     // RawStrings disables inference entirely — every cell stays its original
     // string (empty cells stay ""). Use for stock IDs ("0050" must not become
-    // int64 50), tax IDs, or exact amounts you parse with a decimal type.
+    // int64 50), tax IDs, or exact amounts you parse with go-decimal.
     raw, err := insyra.ReadCSV_FileWithOptions("stocks.csv", insyra.CSVReadOptions{
         FirstRowToColNames: true,
         RawStrings:         true,
