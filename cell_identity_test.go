@@ -150,7 +150,17 @@ func TestASmallCompositeIsNotCutShort(t *testing.T) {
 			t.Errorf("%T rendered with unbalanced brackets: %s", v, got)
 		}
 	}
-	// A value that genuinely is long stays truncated, and says so.
+	// The binary values a column actually holds show whole: a UUID and an MD5
+	// are 16 bytes, a SHA-1 20, a SHA-256 32. This is what the display limit
+	// is set from, so it is pinned here rather than left to the constant.
+	for name, size := range map[string]int{"UUID": 16, "MD5": 16, "SHA-1": 20, "SHA-256": 32} {
+		got := fmt.Sprintf("%v", ToMapKey(make([]byte, size)))
+		if strings.Contains(got, "…") {
+			t.Errorf("a %s (%d bytes) rendered truncated: %s", name, size, got)
+		}
+	}
+
+	// Longer than that is cut, and says so.
 	got := fmt.Sprintf("%v", ToMapKey(make([]byte, 64)))
 	if !strings.Contains(got, "…") {
 		t.Errorf("a 64-byte value was not truncated: %s", got)

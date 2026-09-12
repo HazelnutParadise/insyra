@@ -22,14 +22,17 @@ const maxCellEncodeDepth = 64
 // before cutting it off. A counter holding one large blob has to stay
 // readable when the whole map is printed.
 //
-// It is wide enough that a small composite shows whole rather than losing its
-// last character or two, which reads as a broken rendering rather than as a
-// truncation: a two-entry map encodes to 17 characters and a ten-element
-// []int to 42. A blob is far longer than any limit worth setting, so it is
-// cut and the ellipsis says so. Nothing tries to close an unterminated
-// bracket, because a string cell's own content can contain one and the
-// closer would be a guess.
-const uncomparableDisplayBytes = 48
+// 64 is the width at which the binary values a column actually holds render
+// whole: a UUID and an MD5 are 32 hex characters, a SHA-1 is 40 and a SHA-256
+// is 64. A SHA-512 and a real blob are longer than any limit worth setting,
+// so they are cut and the ellipsis says so.
+//
+// It also clears every small composite, which has to show whole: losing its
+// last character or two reads as a broken rendering rather than as a
+// truncation, and a two-entry map encodes to 17 characters, a ten-element
+// []int to 42. Nothing tries to close an unterminated bracket, because a
+// string cell's own content can contain one and the closer would be a guess.
+const uncomparableDisplayBytes = 64
 
 // UncomparableKey stands in for a cell value that Go cannot use as a map key —
 // a slice, a map, or anything containing one. It is what ToMapKey returns
