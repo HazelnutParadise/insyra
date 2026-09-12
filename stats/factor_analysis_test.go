@@ -9,41 +9,60 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/reftest"
 	"github.com/HazelnutParadise/insyra/stats"
+	"github.com/HazelnutParadise/insyra/stats/internal/fa"
+	"gonum.org/v1/gonum/mat"
 )
 
 // factorParityTol is the strict per-element |Go - R| tolerance. Tightened
-// from 1e-3 to 2e-5 in commit a6eb8ff. With this threshold, ~595 (field ×
-// case) sub-tests fail, all on 3 adversarial datasets (near_collinear,
-// mixed_scale, narrow_plus_group). Empirical max diff per field on those
-// failing cases (last full strict-suite run, 2026-05-03):
+// from 1e-3 to 2e-5 in commit a6eb8ff.
 //
-//	field                 max |Go - R|     decimal places that match R
-//	--------------------  ---------------  --------------------------
-//	explained_proportion  3.08e-5          ~4
-//	cumulative_proportion 3.08e-5          ~4
-//	eigenvalues           6.91e-5          ~4
-//	unrotated_loadings    1.01e-4          ~3-4
-//	loadings              1.16e-4          ~3-4
-//	communalities         1.24e-4          ~3-4
-//	uniquenesses          1.24e-4          ~3-4
-//	phi                   1.72e-4          ~3
-//	score_covariance      1.79e-4          ~3
-//	structure             1.88e-4          ~3
-//	scores                2.78e-4          ~3
-//	rotation_matrix       2.80e-4          ~3
-//	score_coefficients    3.25e-4          ~3
+// What the strict suite reports, measured on 2026-09-13 against baselines
+// from psych 2.6.5 and GPArotation 2026.8.2 (the cache is keyed on those
+// versions, see toolchainSignature): 1,672 of 42,969 leaf sub-tests fail.
 //
-// Root cause is gonum's BLAS/LAPACK port differing from R's at 1 ULP per
-// element in matrix multiplication and dsyevr (MRRR) eigendecomposition;
-// this is amplified by 1/psi² (Heywood floor 0.005 → ×40000) and 1/θ²
-// (~×4×10⁶ in subspace minimization) on ill-conditioned data. Eliminating
-// the residual gap requires cgo binding the same LAPACK R uses. On normal
-// (non-adversarial) datasets all 12+ test datasets PASS at this tolerance.
+//	Promax                              1,028  a different solution from psych's on 11 of 16
+//	                                           datasets, not a multi-start or tolerance effect
+//	                                           (AGENTS.md follow-up, 2026-09-13)
+//	extraction drift, adversarial data    ~260  unrotated_loadings, uniquenesses, communalities
+//	                                           and eigenvalues on near_collinear, mixed_scale,
+//	                                           heavy_tail, narrow_plus_group: 52 combinations,
+//	                                           plus the fields downstream of them
+//	anderson-rubin scoring                  99  the combination fails before any field runs
+//	rotation_converged                      50  geominQ, oblimin and quartimin on near-collinear
+//	                                           data run out of iterations from every start
+//	simplimax, a worse minimum than R's      6  20 starts is not enough for a criterion with
+//	                                           16 local minima; psych's 20 unseeded ones did
+//	                                           better on three_blocks and cross_loading
 //
-// The 595 failures are mathematically equivalent solutions: see
-// TestVerifyAllAdversarial — Go's objective f(Go_psi) ≤ R's f(R_psi) on
-// every tested cluster, often deeper.
+// Before this comparison was made to respect what a factor solution is —
+// order and sign of the factors, and the criterion value for a solution in
+// a different minimum — the same run failed 5,334 leaves, 1,408 of them a
+// rotation matrix off by a column swap or a sign. On 2026-05-03, against
+// the R of that day, the same tolerance failed ~595, all on three
+// adversarial datasets; GPArotation's 2026.4-1 rewrite of its step and
+// psych's move to twenty random starts are what changed in between.
+//
+// The extraction-level residue is gonum's BLAS/LAPACK port differing from
+// R's at 1 ULP per element in matrix multiplication and dsyevr (MRRR)
+// eigendecomposition, amplified by 1/psi² (Heywood floor 0.005 → ×40000)
+// and 1/θ² (~×4×10⁶ in subspace minimization) on ill-conditioned data.
+// Eliminating it requires cgo binding the same LAPACK R uses. Those are
+// mathematically equivalent solutions: see TestVerifyAllAdversarial — Go's
+// objective f(Go_psi) ≤ R's f(R_psi) on every tested cluster, often deeper.
 const factorParityTol = 2e-5
+
+// factorRotationTol is the per-element tolerance for the factor-frame fields
+// (loadings, structure, Phi, rotation matrix, scores, proportions) when our
+// solution and psych's are the same minimum of the rotation criterion but
+// not the same point. A criterion pins its minimiser only as well as its
+// curvature allows: Δf ≈ c·ΔL², so at eps = 1e-5 on the gradient a loading
+// is fixed to about 1e-4, and on a criterion as flat as bentlerQ's at
+// f ≈ 3e-6 to about 2e-3. Measured on 2026-09-13 over the 351 same-minimum
+// combinations, max|ΔL| was 2.0e-5 at the least, 7.1e-5 at the median,
+// 2.2e-4 at the 90th percentile and 2.1e-3 at the most (bentlerQ). Tightening
+// our eps to 1e-7 moved 23 of the 351 and left 132 rotations unconverged at
+// maxit 1000, so the gap is not our precision; it is the criterion's.
+const factorRotationTol = 5e-3
 
 func requireFactorAnalysisRTools(t *testing.T) {
 	t.Helper()
@@ -555,7 +574,52 @@ func runField(t *testing.T, name string, fn func(t *testing.T)) {
 	t.Run(name, fn)
 }
 
-func assertFactorAnalysisMatchesR(t *testing.T, got *stats.FactorModel, rb crossLangBaseline, tol float64) {
+// gpaCriterionRotations are the rotations FaRotations minimises by gradient
+// projection; each reports the criterion value it reached. Promax is a
+// closed-form target rotation and has no criterion to compare.
+var gpaCriterionRotations = map[stats.FactorRotationMethod]bool{
+	stats.FactorRotationVarimax: true, stats.FactorRotationQuartimax: true,
+	stats.FactorRotationBentlerT: true, stats.FactorRotationGeominT: true,
+	stats.FactorRotationQuartimin: true, stats.FactorRotationOblimin: true,
+	stats.FactorRotationGeominQ: true, stats.FactorRotationBentlerQ: true,
+	stats.FactorRotationSimplimax: true,
+}
+
+// rotationCriterion evaluates rotation's own criterion at L with the
+// options the parity tests run under (Delta 0, GeominEpsilon 0.01).
+func rotationCriterion(t *testing.T, rotation stats.FactorRotationMethod, L [][]float64) float64 {
+	t.Helper()
+	if len(L) == 0 || len(L[0]) == 0 {
+		t.Fatalf("%s: no loadings to evaluate the criterion at", rotation)
+	}
+	m := mat.NewDense(len(L), len(L[0]), nil)
+	for i := range L {
+		for j := range L[i] {
+			m.Set(i, j, L[i][j])
+		}
+	}
+	f, err := fa.Criterion(string(rotation), m, 0, 0.01)
+	if err != nil {
+		t.Fatalf("%s: %v", rotation, err)
+	}
+	return f
+}
+
+// assertFactorAnalysisMatchesR compares a fitted model with psych's.
+//
+// A factor solution is defined up to the order and sign of its factors, so
+// the comparison first aligns our factors to R's from the loadings and applies
+// that one alignment to every factor-indexed field. psych's rot.mat is the
+// matrix before its own sign standardisation, so without this a sign flip
+// showed as a difference of 2.0.
+//
+// For a gradient projection rotation, loadings that still differ after
+// alignment are judged by the criterion the rotation minimises: a solution at
+// or below R's criterion value is an equivalent or better answer and passes
+// with both values logged; one above R's fails naming both. psych runs twenty
+// unseeded random starts and picks by hyperplane count, so on a criterion
+// with several minima which one it reports is not something to reproduce.
+func assertFactorAnalysisMatchesR(t *testing.T, got *stats.FactorModel, rb crossLangBaseline, rotation stats.FactorRotationMethod, tol float64) {
 	t.Helper()
 	runField(t, "count_used", func(t *testing.T) {
 		if got.CountUsed <= 0 {
@@ -572,14 +636,10 @@ func assertFactorAnalysisMatchesR(t *testing.T, got *stats.FactorModel, rb cross
 			t.Errorf("expected factor rotation to converge")
 		}
 	})
-	runField(t, "loadings", func(t *testing.T) {
-		assertMatrixCloseToBoth(t, "loadings", dataTableMatrix(got.Loadings), baselineFloatMatrix(t, rb, "loadings"), baselineFloatMatrix(t, rb, "loadings"), tol)
-	})
+
+	// Extraction-level fields carry no factor frame.
 	runField(t, "unrotated_loadings", func(t *testing.T) {
 		assertMatrixCloseToBoth(t, "unrotated_loadings", dataTableMatrix(got.UnrotatedLoadings), baselineFloatMatrix(t, rb, "unrotated_loadings"), baselineFloatMatrix(t, rb, "unrotated_loadings"), tol)
-	})
-	runField(t, "structure", func(t *testing.T) {
-		assertMatrixCloseToBoth(t, "structure", dataTableMatrix(got.Structure), baselineFloatMatrix(t, rb, "structure"), baselineFloatMatrix(t, rb, "structure"), tol)
 	})
 	runField(t, "uniquenesses", func(t *testing.T) {
 		assertSliceCloseToBoth(t, "uniquenesses", got.Uniquenesses.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "uniquenesses"), baselineFloatSlice(t, rb, "uniquenesses"), tol)
@@ -589,18 +649,6 @@ func assertFactorAnalysisMatchesR(t *testing.T, got *stats.FactorModel, rb cross
 	})
 	runField(t, "eigenvalues", func(t *testing.T) {
 		assertSliceCloseToBoth(t, "eigenvalues", got.Eigenvalues.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "eigenvalues"), baselineFloatSlice(t, rb, "eigenvalues"), tol)
-	})
-	runField(t, "explained_proportion", func(t *testing.T) {
-		assertSliceCloseToBoth(t, "explained", got.ExplainedProportion.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "explained_proportion"), baselineFloatSlice(t, rb, "explained_proportion"), tol)
-	})
-	runField(t, "cumulative_proportion", func(t *testing.T) {
-		assertSliceCloseToBoth(t, "cumulative", got.CumulativeProportion.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "cumulative_proportion"), baselineFloatSlice(t, rb, "cumulative_proportion"), tol)
-	})
-	runField(t, "phi", func(t *testing.T) {
-		assertOptionalMatrixCloseToR(t, "phi", dataTableMatrix(got.Phi), rb, "phi", tol)
-	})
-	runField(t, "rotation_matrix", func(t *testing.T) {
-		assertOptionalMatrixCloseToR(t, "rotation_matrix", dataTableMatrix(got.RotationMatrix), rb, "rotation_matrix", tol)
 	})
 	runField(t, "sampling_adequacy", func(t *testing.T) {
 		assertSliceCloseToBoth(t, "sampling_adequacy", got.SamplingAdequacy.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "sampling_adequacy"), baselineFloatSlice(t, rb, "sampling_adequacy"), tol)
@@ -612,6 +660,277 @@ func assertFactorAnalysisMatchesR(t *testing.T, got *stats.FactorModel, rb cross
 		assertCloseToBoth(t, "bartlett.p_value", got.BartlettTest.PValue, baselineFloat(t, bart, "p_value"), baselineFloat(t, bart, "p_value"), tol)
 		assertCloseToBoth(t, "bartlett.sample_size", float64(got.BartlettTest.SampleSize), baselineFloat(t, bart, "sample_size"), baselineFloat(t, bart, "sample_size"), tol)
 	})
+
+	// Everything below lives in the factor frame.
+	gotL := dataTableMatrix(got.Loadings)
+	rL := baselineFloatMatrix(t, rb, "loadings")
+	al, ok := alignFactors(gotL, rL)
+	if !ok {
+		runField(t, "loadings", func(t *testing.T) {
+			assertMatrixCloseToBoth(t, "loadings", gotL, rL, rL, tol)
+		})
+		return
+	}
+	alignedL := al.columns(gotL)
+
+	frameTol := tol
+	if gpaCriterionRotations[rotation] && maxAbsGrid(alignedL, rL) > tol {
+		// Two solutions of the same criterion. Within a relative 1e-4 of
+		// each other they are the same minimum: the rotated loadings are
+		// then determined only up to the criterion's curvature there, and
+		// the factor-frame fields are compared at factorRotationTol.
+		// Beyond that they are different minima, and the lower criterion
+		// is the better answer.
+		fGo, fR := rotationCriterion(t, rotation, alignedL), rotationCriterion(t, rotation, rL)
+		switch d, sameMinimum := fGo-fR, 1e-8+1e-4*math.Abs(fR); {
+		case math.Abs(d) <= sameMinimum:
+			frameTol = factorRotationTol
+			t.Logf("%s: the same minimum as R's, criterion go=%.9g r=%.9g; loadings differ by %.3e, compared at %.0e", rotation, fGo, fR, maxAbsGrid(alignedL, rL), frameTol)
+		case d < 0:
+			t.Logf("%s: a different minimum from R's, and a lower one, criterion go=%.9g r=%.9g (max|dL| = %.3e); rotation-dependent fields not compared", rotation, fGo, fR, maxAbsGrid(alignedL, rL))
+			return
+		default:
+			runField(t, "loadings", func(t *testing.T) {
+				t.Errorf("%s: a worse minimum than R's, criterion go=%.9g r=%.9g (max|dL| = %.3e)", rotation, fGo, fR, maxAbsGrid(alignedL, rL))
+			})
+			return
+		}
+	}
+
+	runField(t, "loadings", func(t *testing.T) {
+		assertMatrixCloseToBoth(t, "loadings", alignedL, rL, rL, frameTol)
+	})
+	runField(t, "structure", func(t *testing.T) {
+		assertMatrixCloseToBoth(t, "structure", al.columns(dataTableMatrix(got.Structure)), baselineFloatMatrix(t, rb, "structure"), baselineFloatMatrix(t, rb, "structure"), frameTol)
+	})
+	runField(t, "explained_proportion", func(t *testing.T) {
+		assertSliceCloseToBoth(t, "explained", al.vector(got.ExplainedProportion.GetColByNumber(0).ToF64Slice()), baselineFloatSlice(t, rb, "explained_proportion"), baselineFloatSlice(t, rb, "explained_proportion"), frameTol)
+	})
+	runField(t, "cumulative_proportion", func(t *testing.T) {
+		cum := got.CumulativeProportion.GetColByNumber(0).ToF64Slice()
+		if !al.identity() {
+			cum = cumulative(al.vector(got.ExplainedProportion.GetColByNumber(0).ToF64Slice()))
+		}
+		assertSliceCloseToBoth(t, "cumulative", cum, baselineFloatSlice(t, rb, "cumulative_proportion"), baselineFloatSlice(t, rb, "cumulative_proportion"), frameTol)
+	})
+	runField(t, "phi", func(t *testing.T) {
+		assertOptionalMatrixCloseToR(t, "phi", al.both(dataTableMatrix(got.Phi)), rb, "phi", frameTol)
+	})
+	runField(t, "rotation_matrix", func(t *testing.T) {
+		// psych's rot.mat is the matrix before its factor sorting and sign
+		// standardisation, so it sits in a frame of its own rather than in
+		// its loadings' — measured on 2026-09-13, the loadings' alignment
+		// left quartimax, geominT, bentlerT and bentlerQ differing by a
+		// column swap or a sign. And an oblique rotation matrix is (T')⁻¹:
+		// when two factors correlate at 0.9965 its entries reach 12, and
+		// loadings that agree to 8e-6 give matrices that differ by 2.6e-4.
+		// So the two matrices are compared by what they do — the loadings
+		// each one produces from our unrotated loadings — after aligning
+		// R's to ours up to permutation and sign. Two rotation matrices
+		// that rotate the fitted loadings to the same place are the same
+		// rotation.
+		gotR := dataTableMatrix(got.RotationMatrix)
+		rR, ok := optionalBaselineMatrix(rb, "rotation_matrix")
+		if !ok || gotR == nil {
+			assertOptionalMatrixCloseToR(t, "rotation_matrix", gotR, rb, "rotation_matrix", frameTol)
+			return
+		}
+		if own, ok := alignFactors(rR, gotR); ok {
+			rR = own.columns(rR)
+		}
+		Lu := dataTableMatrix(got.UnrotatedLoadings)
+		assertMatrixCloseToBoth(t, "rotation_matrix (as Lu·R)", mulGrid(Lu, gotR), mulGrid(Lu, rR), mulGrid(Lu, rR), frameTol)
+	})
+	if got.Scores != nil && rb["scores"] != nil {
+		runField(t, "scores", func(t *testing.T) {
+			assertMatrixCloseToBoth(t, "scores", al.columns(dataTableMatrix(got.Scores)), baselineFloatMatrix(t, rb, "scores"), baselineFloatMatrix(t, rb, "scores"), frameTol)
+		})
+		runField(t, "score_coefficients", func(t *testing.T) {
+			assertMatrixCloseToBoth(t, "score_coefficients", al.columns(dataTableMatrix(got.ScoreCoefficients)), baselineFloatMatrix(t, rb, "score_coefficients"), baselineFloatMatrix(t, rb, "score_coefficients"), frameTol)
+		})
+		runField(t, "score_covariance", func(t *testing.T) {
+			assertMatrixCloseToBoth(t, "score_covariance", al.both(dataTableMatrix(got.ScoreCovariance)), baselineFloatMatrix(t, rb, "score_covariance"), baselineFloatMatrix(t, rb, "score_covariance"), frameTol)
+		})
+	}
+}
+
+// factorAlignment is a column permutation and sign pattern: aligned[:, j] =
+// sign[j] * m[:, perm[j]].
+type factorAlignment struct {
+	perm []int
+	sign []float64
+}
+
+// alignFactors finds the permutation and signs that bring got closest to
+// want in max-abs distance. ok is false when the shapes do not admit one.
+func alignFactors(got, want [][]float64) (factorAlignment, bool) {
+	if len(got) == 0 || len(got) != len(want) || len(got[0]) == 0 || len(got[0]) != len(want[0]) {
+		return factorAlignment{}, false
+	}
+	k := len(got[0])
+	best, bestDist := factorAlignment{}, math.Inf(1)
+	var perm []int
+	used := make([]bool, k)
+	var walk func()
+	walk = func() {
+		if len(perm) == k {
+			for s := 0; s < 1<<k; s++ {
+				sign := make([]float64, k)
+				for j := range sign {
+					sign[j] = 1
+					if s&(1<<j) != 0 {
+						sign[j] = -1
+					}
+				}
+				cand := factorAlignment{perm: append([]int{}, perm...), sign: sign}
+				if d := maxAbsGrid(cand.columns(got), want); d < bestDist {
+					best, bestDist = cand, d
+				}
+			}
+			return
+		}
+		for j := 0; j < k; j++ {
+			if !used[j] {
+				used[j] = true
+				perm = append(perm, j)
+				walk()
+				perm = perm[:len(perm)-1]
+				used[j] = false
+			}
+		}
+	}
+	walk()
+	return best, true
+}
+
+func (a factorAlignment) identity() bool {
+	for j := range a.perm {
+		if a.perm[j] != j || a.sign[j] != 1 {
+			return false
+		}
+	}
+	return true
+}
+
+// columns aligns a matrix whose columns are factors.
+func (a factorAlignment) columns(m [][]float64) [][]float64 {
+	if m == nil {
+		return nil
+	}
+	out := make([][]float64, len(m))
+	for i := range m {
+		if len(m[i]) != len(a.perm) {
+			return m
+		}
+		out[i] = make([]float64, len(a.perm))
+		for j := range a.perm {
+			out[i][j] = a.sign[j] * m[i][a.perm[j]]
+		}
+	}
+	return out
+}
+
+// both aligns a factor-by-factor matrix on both axes: D·P'·M·P·D.
+func (a factorAlignment) both(m [][]float64) [][]float64 {
+	if m == nil || len(m) != len(a.perm) {
+		return m
+	}
+	out := make([][]float64, len(m))
+	for i := range a.perm {
+		if len(m[a.perm[i]]) != len(a.perm) {
+			return m
+		}
+		out[i] = make([]float64, len(a.perm))
+		for j := range a.perm {
+			out[i][j] = a.sign[i] * a.sign[j] * m[a.perm[i]][a.perm[j]]
+		}
+	}
+	return out
+}
+
+// vector permutes a per-factor vector; sign does not apply.
+func (a factorAlignment) vector(v []float64) []float64 {
+	if len(v) != len(a.perm) {
+		return v
+	}
+	out := make([]float64, len(v))
+	for j := range a.perm {
+		out[j] = v[a.perm[j]]
+	}
+	return out
+}
+
+// optionalBaselineMatrix reads a matrix the baseline may carry as null or as
+// an empty object, without failing the test when it does.
+func optionalBaselineMatrix(rb crossLangBaseline, key string) ([][]float64, bool) {
+	v, ok := rb[key]
+	if !ok || v == nil {
+		return nil, false
+	}
+	rows, ok := v.([]any)
+	if !ok || len(rows) == 0 {
+		return nil, false
+	}
+	out := make([][]float64, len(rows))
+	for i, r := range rows {
+		cells, ok := r.([]any)
+		if !ok {
+			return nil, false
+		}
+		out[i] = make([]float64, len(cells))
+		for j, c := range cells {
+			f, ok := toFloat64FromAny(c)
+			if !ok {
+				return nil, false
+			}
+			out[i][j] = f
+		}
+	}
+	return out, true
+}
+
+func mulGrid(a, b [][]float64) [][]float64 {
+	if len(a) == 0 || len(b) == 0 || len(a[0]) != len(b) {
+		return nil
+	}
+	out := make([][]float64, len(a))
+	for i := range a {
+		out[i] = make([]float64, len(b[0]))
+		for j := range out[i] {
+			for k := range b {
+				out[i][j] += a[i][k] * b[k][j]
+			}
+		}
+	}
+	return out
+}
+
+func cumulative(v []float64) []float64 {
+	out := make([]float64, len(v))
+	sum := 0.0
+	for i, x := range v {
+		sum += x
+		out[i] = sum
+	}
+	return out
+}
+
+func maxAbsGrid(a, b [][]float64) float64 {
+	if len(a) != len(b) {
+		return math.Inf(1)
+	}
+	m := 0.0
+	for i := range a {
+		if len(a[i]) != len(b[i]) {
+			return math.Inf(1)
+		}
+		for j := range a[i] {
+			if d := math.Abs(a[i][j] - b[i][j]); d > m {
+				m = d
+			}
+		}
+	}
+	return m
 }
 
 func baselineMap(t *testing.T, m crossLangBaseline, key string) crossLangBaseline {
@@ -664,7 +983,7 @@ func TestCrossLangFactorAnalysisExtractions(t *testing.T) {
 			rb := runRBaseline(t, "factor_analysis", map[string]any{
 				"rows": rows, "extraction": string(extraction), "rotation": "oblimin", "scoring": "regression", "nfactors": 2,
 			})
-			assertFactorAnalysisMatchesR(t, got, rb, factorParityTol)
+			assertFactorAnalysisMatchesR(t, got, rb, stats.FactorRotationOblimin, factorParityTol)
 		})
 	}
 }
@@ -695,7 +1014,7 @@ func TestCrossLangFactorAnalysisRotations(t *testing.T) {
 			rb := runRBaseline(t, "factor_analysis", map[string]any{
 				"rows": rows, "extraction": "minres", "rotation": string(rotation), "scoring": "none", "nfactors": 2,
 			})
-			assertFactorAnalysisMatchesR(t, got, rb, factorParityTol)
+			assertFactorAnalysisMatchesR(t, got, rb, rotation, factorParityTol)
 		})
 	}
 }
@@ -719,12 +1038,7 @@ func TestCrossLangFactorAnalysisScoring(t *testing.T) {
 			rb := runRBaseline(t, "factor_analysis", map[string]any{
 				"rows": rows, "extraction": "minres", "rotation": "oblimin", "scoring": string(scoring), "nfactors": 2,
 			})
-			assertFactorAnalysisMatchesR(t, got, rb, factorParityTol)
-			if scoring != stats.FactorScoreNone {
-				assertMatrixCloseToBoth(t, "scores", dataTableMatrix(got.Scores), baselineFloatMatrix(t, rb, "scores"), baselineFloatMatrix(t, rb, "scores"), factorParityTol)
-				assertMatrixCloseToBoth(t, "score_coefficients", dataTableMatrix(got.ScoreCoefficients), baselineFloatMatrix(t, rb, "score_coefficients"), baselineFloatMatrix(t, rb, "score_coefficients"), factorParityTol)
-				assertMatrixCloseToBoth(t, "score_covariance", dataTableMatrix(got.ScoreCovariance), baselineFloatMatrix(t, rb, "score_covariance"), baselineFloatMatrix(t, rb, "score_covariance"), factorParityTol)
-			}
+			assertFactorAnalysisMatchesR(t, got, rb, stats.FactorRotationOblimin, factorParityTol)
 		})
 	}
 }
@@ -771,18 +1085,7 @@ func TestCrossLangFactorAnalysisAllModeCombinations(t *testing.T) {
 						rb := runRBaseline(t, "factor_analysis", map[string]any{
 							"rows": ds.rows, "extraction": string(extraction), "rotation": string(rotation), "scoring": string(scoring), "nfactors": ds.nFactors,
 						})
-						assertFactorAnalysisMatchesR(t, got, rb, factorParityTol)
-						if scoring != stats.FactorScoreNone {
-							runField(t, "scores", func(t *testing.T) {
-								assertMatrixCloseToBoth(t, "scores", dataTableMatrix(got.Scores), baselineFloatMatrix(t, rb, "scores"), baselineFloatMatrix(t, rb, "scores"), factorParityTol)
-							})
-							runField(t, "score_coefficients", func(t *testing.T) {
-								assertMatrixCloseToBoth(t, "score_coefficients", dataTableMatrix(got.ScoreCoefficients), baselineFloatMatrix(t, rb, "score_coefficients"), baselineFloatMatrix(t, rb, "score_coefficients"), factorParityTol)
-							})
-							runField(t, "score_covariance", func(t *testing.T) {
-								assertMatrixCloseToBoth(t, "score_covariance", dataTableMatrix(got.ScoreCovariance), baselineFloatMatrix(t, rb, "score_covariance"), baselineFloatMatrix(t, rb, "score_covariance"), factorParityTol)
-							})
-						}
+						assertFactorAnalysisMatchesR(t, got, rb, rotation, factorParityTol)
 					})
 				}
 			}
@@ -834,12 +1137,7 @@ func TestCrossLangFactorAnalysisRepresentativeDatasets(t *testing.T) {
 			rb := runRBaseline(t, "factor_analysis", map[string]any{
 				"rows": tc.dataset.rows, "extraction": string(tc.extraction), "rotation": string(tc.rotation), "scoring": string(tc.scoring), "nfactors": tc.dataset.nFactors,
 			})
-			assertFactorAnalysisMatchesR(t, got, rb, factorParityTol)
-			if tc.scoring != stats.FactorScoreNone {
-				assertMatrixCloseToBoth(t, "scores", dataTableMatrix(got.Scores), baselineFloatMatrix(t, rb, "scores"), baselineFloatMatrix(t, rb, "scores"), factorParityTol)
-				assertMatrixCloseToBoth(t, "score_coefficients", dataTableMatrix(got.ScoreCoefficients), baselineFloatMatrix(t, rb, "score_coefficients"), baselineFloatMatrix(t, rb, "score_coefficients"), factorParityTol)
-				assertMatrixCloseToBoth(t, "score_covariance", dataTableMatrix(got.ScoreCovariance), baselineFloatMatrix(t, rb, "score_covariance"), baselineFloatMatrix(t, rb, "score_covariance"), factorParityTol)
-			}
+			assertFactorAnalysisMatchesR(t, got, rb, tc.rotation, factorParityTol)
 		})
 	}
 }
@@ -884,10 +1182,7 @@ func TestCrossLangFactorAnalysisAdversarialDatasets(t *testing.T) {
 						rb := runRBaseline(t, "factor_analysis", map[string]any{
 							"rows": ds.rows, "extraction": string(extraction), "rotation": string(rotation), "scoring": string(scoring), "nfactors": ds.nFactors,
 						})
-						assertFactorAnalysisMatchesR(t, got, rb, factorParityTol)
-						assertMatrixCloseToBoth(t, "scores", dataTableMatrix(got.Scores), baselineFloatMatrix(t, rb, "scores"), baselineFloatMatrix(t, rb, "scores"), factorParityTol)
-						assertMatrixCloseToBoth(t, "score_coefficients", dataTableMatrix(got.ScoreCoefficients), baselineFloatMatrix(t, rb, "score_coefficients"), baselineFloatMatrix(t, rb, "score_coefficients"), factorParityTol)
-						assertMatrixCloseToBoth(t, "score_covariance", dataTableMatrix(got.ScoreCovariance), baselineFloatMatrix(t, rb, "score_covariance"), baselineFloatMatrix(t, rb, "score_covariance"), factorParityTol)
+						assertFactorAnalysisMatchesR(t, got, rb, rotation, factorParityTol)
 					})
 				}
 			}
