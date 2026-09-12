@@ -24,13 +24,13 @@ const maxCellEncodeDepth = 64
 const uncomparableDisplayBytes = 16
 
 // UncomparableKey stands in for a cell value that Go cannot use as a map key —
-// a slice, a map, or anything containing one. It is what MapKey returns
+// a slice, a map, or anything containing one. It is what ToMapKey returns
 // for such a value, and what appears as the key in a Counter result.
 //
 // Two of them are equal exactly when the values they stand for count, match
 // and group as the same value. The content they carry is deliberately not
 // exported: it is the encoder's format, shared with grouping, and it will
-// change. Build one with MapKey rather than by hand.
+// change. Build one with ToMapKey rather than by hand.
 type UncomparableKey struct {
 	// Type is the Go type of the value, as %T would write it.
 	Type string
@@ -51,21 +51,21 @@ func (k UncomparableKey) String() string {
 	return k.Type + "(" + c + ")"
 }
 
-// MapKey returns a value usable as a map key for v: v itself when Go can
-// compare it, and an UncomparableKey when it cannot.
+// ToMapKey converts v into something usable as a map key: v itself when Go
+// can compare it, and an UncomparableKey when it cannot.
 //
 // It exists because a cell can hold a slice — a []byte read from a SQL BLOB
 // column, say — and indexing any map with one panics. That is the caller's
 // own map operation, which no library can guard, so build the key through
-// this for a tally, a set, an index or a dedup over cell values, and to read
+// ToMapKey for a tally, a set, an index or a dedup over cell values, and to read
 // a Counter result.
 //
 // Integer widths are not merged, because a map keyed by Go values keeps
 // int(1) and int64(1) apart and this changes nothing about that. A CSV load
-// stores integers as int64, so MapKey(1) finds nothing in a map built from
+// stores integers as int64, so ToMapKey(1) finds nothing in a map built from
 // loaded data. To ask how often one value appears, prefer Count(v), which
 // matches integers by value.
-func MapKey(v any) any {
+func ToMapKey(v any) any {
 	if comparableCell(v) {
 		return v
 	}

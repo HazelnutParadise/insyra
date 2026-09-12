@@ -2959,14 +2959,14 @@ value, which is the whole reason the two now agree.
 n := dt.Count(someValue)
 ```
 
-`insyra.MapKey(v)` builds the key. Use it when you index the counter yourself
+`insyra.ToToMapKey(v)` builds the key. Use it when you index the counter yourself
 rather than asking about one value, and in any map, set or index of your own
 over cell values — indexing a map with a slice panics, and that is your own
 map operation, which no library can guard:
 
 ```go
 counter := dt.Counter()
-n := counter[insyra.MapKey(blob)]
+n := counter[insyra.ToMapKey(blob)]
 ```
 
 ### GetCreationTimestamp
