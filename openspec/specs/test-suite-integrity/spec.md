@@ -2,9 +2,7 @@
 
 ## Purpose
 測試必須有斷言，參考對照必須有 workflow 執行，文件承諾的行為與函式庫賴以運作的基礎型別必須有測試釘住，需要外部工具的套件其不需要該工具的部分也必須測得到。
-
 ## Requirements
-
 ### Requirement: Tests assert, and reference comparisons run
 
 `datalist_test.go` 中的 DataList 轉換測試 SHALL 有真實斷言；因子分析邊界測試 SHALL 斷言預期結果；`reference-verification.yml` 的 scikit-learn 步驟 SHALL 同時匹配 `AgainstScikitLearn` 與 `MatchesScikitLearnPredictions`；repo SHALL NOT 追蹤 `*.test` 二進位檔。
@@ -39,11 +37,11 @@
 
 ### Requirement: Solver-free and bridge code is tested without its external dependency
 
-不需要外部工具就能執行的程式碼 SHALL 有不依賴該工具的測試。`lp` 解析 GLPK 輸出的函式 SHALL 以固定的輸出樣本測試，不呼叫 `glpsol`；`parquet` 的 CCL 介接層 SHALL 以測試自行寫出的 Parquet 檔案測試 `FilterWithCCL`、`ApplyCCL` 與 `parquetContext` 的存取方法。
+不需要外部工具就能執行的程式碼 SHALL 有不依賴該工具的測試。`lp` 的 go-milp 引擎與 LP 讀取器 SHALL 在沒有 `glpsol` 的機器上完整測試；解析 GLPK 輸出的函式 SHALL 以實際 `glpsol` 產生的輸出樣本測試，不呼叫 `glpsol`；需要 `glpsol` 的端對端測試 SHALL 在找不到它時跳過而不是失敗。`parquet` 的 CCL 介接層 SHALL 以測試自行寫出的 Parquet 檔案測試 `FilterWithCCL`、`ApplyCCL` 與 `parquetContext` 的存取方法。
 
 #### Scenario: GLPK is not installed
 - **WHEN** 在沒有 `glpsol` 的機器上執行 `go test ./lp/...`
-- **THEN** 解析函式的測試照常執行並通過
+- **THEN** go-milp 引擎、LP 讀取器與 GLPK 輸出解析的測試照常執行並通過，需要 `glpsol` 的測試標示為跳過
 
 #### Scenario: A CCL filter over a Parquet file
 - **WHEN** 對測試寫出的 Parquet 檔執行 `FilterWithCCL`
@@ -76,3 +74,4 @@
 #### Scenario: An orthogonal rotation that is not orthogonal
 - **WHEN** `GPForth` 回傳的旋轉矩陣不滿足 T'T = I
 - **THEN** 測試失敗，因為旋轉後的載荷已經不代表同一個模型
+

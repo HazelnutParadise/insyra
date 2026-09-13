@@ -29,4 +29,4 @@
 - [x] 4.4 兩份 CHANGELOG 的 BREAKING 條目（`lp`）與新增條目（`lpgen`）。
 - [x] 4.5 `api-review.md` 的 LP-1、LP-2、SEC-9、SEC-19，`delivery-status.md`。
 - [x] 4.6 `gofmt -l`、`go build ./...`、`go vet ./...`、`go test ./...`（含有 `glpsol` 的端對端）、`golangci-lint run`、`govulncheck ./...`。
-- [ ] 4.7 歸檔後補寫 `lp-solve` 的 Purpose，更新 `deterministic-and-atomic-output` 的 Purpose；在 #257、#372 留言附證據並關閉。
+- [x] 4.7 歸檔後補寫 `lp-solve` 的 Purpose，更新 `deterministic-and-atomic-output` 的 Purpose；在 #257、#372 留言附證據並關閉。

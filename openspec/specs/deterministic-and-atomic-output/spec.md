@@ -1,17 +1,8 @@
 # deterministic-and-atomic-output Specification
 
 ## Purpose
-`lp`'s additional-info table has a fixed row order and the file geocode cache is written atomically (temp file + rename).
-
+The file geocode cache is written atomically, through a temporary file renamed into place, so a reader never sees a half-written cache.
 ## Requirements
-### Requirement: lp additional-info table has a fixed row order
-
-`SolveFromFile`／`SolveModel` 的第二張表 SHALL 依 `Status, Execution Time, Warnings, Full Output, Iterations, Nodes` 順序排列。
-
-#### Scenario: Row order
-- **WHEN** 任一次求解（含錯誤路徑）
-- **THEN** 列名依上述順序
-
 ### Requirement: File geocode cache is written atomically
 
 `fileGeocodeCache.Set` SHALL 先寫入暫存檔再 rename 到目標路徑。
