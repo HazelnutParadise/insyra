@@ -251,6 +251,18 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-14] — `DataList.Shift` flattens a slice cell
+- **Where**: `datalist_window.go` `Shift`
+- **What**: `Shift` builds its result through `NewDataList`, which flattens every slice, so a list holding `[]byte{1, 2}` and `3` comes back three cells long: measured on 2026-09-14, `Append([]byte{1, 2}, 3)` then `Shift(0)` gives `[1 2 3]`. Present on v0.3.2; found while backporting `one-value-one-cell`.
+- **Suggestion**: build the result with `Append`, or wrap each cell with `Cell`. The length and cells of the result change for lists holding slices, so decide which line takes it.
+- **Status**: pending
+
+### [2026-09-14] — 26 main specs fail `openspec validate --specs --strict`
+- **Where**: `openspec/specs/*/spec.md`, mostly the `## Purpose` section
+- **What**: on 2026-09-14 the strict run reports 26 failures of 101 specs: the seven `accel-*` specs, `changelog`, `cli-entry`, `command-registry`, `core-preprocessing`, `dsl-commands`, `env-management`, the five `ml-*` specs, `nn-inference`, `nn-training`, `repl-engine`, `script-runner`, `stats-clustering`, `stats-decomposition`, `stats-knn` and `stats-regression`. dev at e6fbb53 had 27 of 50; the 0.4 backport fixed `verification-integrity` and gave every spec it added a real Purpose. Nothing in CI runs the command.
+- **Suggestion**: write each Purpose from its requirements as its own change, then add the strict run to the lint workflow so the count cannot climb again.
+- **Status**: pending
+
 ### [2026-09-12] — grouping, pivoting, merging and `Describe` still merge nested values that print alike
 - **Where**: `datatable_groupby.go` `encodeGroupKey` and `uniqueKey`, `datatable_encode.go` `labelKey`, their default arms
 - **What**: `encodeGroupKey` and `uniqueKey` fall back to `%T:%v`, which does not descend, so `[]any{1}` and `[]any{"1"}` produce the same key: `GroupBy`, `Pivot` and `Merge` put the integer and the string in one group, and `Describe`'s unique count counts them once. `labelKey` uses `%T:%#v`, which separates an int from a string but not `[]any{1}` from `[]any{1.0}`. Measured on 2026-09-13. `identify-uncomparable-cells` gave cell lookups a recursive encoder, `encodeCell`; on 0.4 `encodeGroupKey` and `uniqueKey` moved to it too, but that changes the keys existing data groups by, so it stayed off the 0.3.x line.
@@ -271,6 +283,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
 - **Where**: `internal/utils` `IsNumeric` / `ToFloat64Safe`, and every numeric path behind them
+- **Note (2026-09-14)**: measured on this line, a decimal column reaches `stats.SingleSampleTTest`, which returns a `NaN` result with a nil error, and `stats.Skewness`, which fails with "zero variance" because `SliceToF64` reads every decimal as 0; `stats.Correlation` refuses it. `ToJSON` writes a decimal cell as `{}`. `0.4` fixes these through changes that stayed there.
 - **What**: `parquet-foreign-column-types` made `Decimal128` and `Decimal256` read as a go-decimal `decimal.Decimal`, exact and sorting by value. It is a struct, so `IsNumeric` says no and `ToFloat64Safe` cannot read it, which means the numeric path treats a decimal cell the way it treats a `time.Time` cell: as not a number. That follows the `time.Time` precedent exactly, and it is the reason the change did not go further on its own. But a money column is far likelier to want arithmetic than a date column is.
 - **Suggestion**: the decision is whether a decimal is a number in insyra. If it is, `ToFloat64Safe` needs an arm for it, which today means going through `String()` and `strconv.ParseFloat` because go-decimal exposes no `Float64()`; adding one upstream would be cleaner and it is the same author's library. Weigh that against making `internal/utils`, which every value in the library passes through, depend on a decimal package.
 - **Status**: pending

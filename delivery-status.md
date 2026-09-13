@@ -1,6 +1,6 @@
 # Delivery Status
 
-> **Branches (2026-09-09).** The whole-repo API review lives on **`0.4`**, because it carries breaking changes (the library no longer terminates on a fatal, `Err()` is sticky, `gplot.SaveChart` returns an error, several methods stopped returning `nil`). `dev` stays on the 0.3.x line so feature releases can ship while the review continues; the ledger `api-review.md`, the review's OpenSpec changes and every batch beyond the ones noted below are on `0.4` only. Non-breaking fixes found by the review are backported here as ordinary commits. Merge `dev` into `0.4` periodically so the review line keeps the 0.3.x fixes.
+> **Branches (2026-09-09, updated 2026-09-14).** The whole-repo API review lives on **`0.4`**, because it carries breaking changes (the library no longer terminates on a fatal, `Err()` is sticky, `gplot.SaveChart` returns an error, several methods stopped returning `nil`). `dev` stays on the 0.3.x line so feature releases can ship while the review continues. `api-review.md` and every breaking change stay on `0.4`. The non-breaking part of `0.4` as of cfd7bee is backported here: each commit names its `0.4` source and lists what stayed behind, the OpenSpec archives and specs came along trimmed to this line's code, and four changes still open on `0.4` (their only unchecked task is closing GitHub issues) are mirrored under `openspec/changes/`. `0.4` commits after cfd7bee have not been reviewed for backporting. Merge `dev` into `0.4` periodically so the review line keeps the 0.3.x fixes.
 
 ## Current Phase
 `insyra/nn` phase 2 (training): the MLP, attention, and CNN operator families are done, M25–M29 layer-surface work is complete, and M21 is complete — the tape now trains a seeded 784→128→10 MLP to ≥95% MNIST test accuracy with a sane loss curve. `insyra/ml` v1 (PR #194) and the entire `insyra/nn` package (PR #195, 107 commits, M13–M31) are merged to dev. Acceleration now has one opt-in wired call site, KNN; large 2-D `nn` MatMul is default-on with CPU fallback.
@@ -68,6 +68,11 @@ Note for any host running the reference suites locally: the crosslang venv moved
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: A `0.4` change reaches `dev` only when code or data that worked on v0.3.2 keeps its result type, returned values, nil/error behaviour, written files and defaults; a fix whose old behaviour was a panic, a process exit, lost data or an answer wrong by any reading qualifies. The owner decided five cases: rotation changes at `Restarts >= 2`, `IsEqualTo` treating NaN as equal, and temp-file-and-rename writes stay on `0.4`; Parquet `Binary` columns read as `[]byte` and `ReadJSON_File` reads integers as `int64` on `dev`.
+  rationale: most `0.4` commits mix breaking and non-breaking parts, and later fixes are written on top of sticky `Err()` and `fail()`, so they were ported by hand against one written rule. Each commit says what it left behind, and the owner ruled where the rule left room.
+  timestamp: 2026-09-14
+  impacted_ticket_ids: backport/0.4-non-breaking
 
 - decision: Acceleration execution logging is session-scoped and output-only: first actual device use and first qualifying runtime fallback are info events, while every execution and caller-ineligible fallback is debug detail.
   rationale: Discovery does not prove execution, caller-selected ineligibility is not a device failure, and the root logger must remain the single level-control surface. Session locking makes the once-only announcements safe for concurrent callers without changing results or public API.
