@@ -44,8 +44,15 @@ func TestChainableMethodsNeverReturnNil(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
+			// Skip what the go command skips: a directory whose name starts
+			// with "." or "_" is not part of the module. A git worktree under
+			// .claude/worktrees holds another branch's copy of every file, and
+			// walking into it reported that branch's code as this one's.
+			if name := d.Name(); path != "." && (strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")) {
+				return filepath.SkipDir
+			}
 			switch d.Name() {
-			case ".git", "openspec", "Docs", "skills", "node_modules", "testdata":
+			case "openspec", "Docs", "skills", "node_modules", "testdata":
 				return filepath.SkipDir
 			}
 			return nil
