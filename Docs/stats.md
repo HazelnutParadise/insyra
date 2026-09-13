@@ -2249,14 +2249,81 @@ Call sites should always check `err` and handle it explicitly.
 
 ---
 
+## Reference Implementations
+
+Which package each method is checked against, read off the scripts under
+`stats/testdata/` and the tests that run them rather than off intent. Two
+kinds of check exist:
+
+- **Cross-language**: `crosslang_baseline.R` and `crosslang_baseline.py` compute
+  the reference live on the same inputs, and the `TestCrossLang*` tests compare.
+  They skip when Rscript or Python is absent; `INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1`
+  turns that skip into a failure.
+- **Pinned**: a `*_reference.R` script produced the numbers once and the
+  corresponding `*_test.go` carries them. Seven of the ten scripts name R 4.5.1;
+  `ttest_reference.R`, `clustering_reference.R` and `km_dbscan_reference.R` name
+  no version.
+
+"formula" means the script recomputes the statistic in plain R or NumPy/SciPy
+(`pt`, `pf`, `pchisq`, `pnorm`, ranks) instead of calling the library function
+named next to it: the arithmetic is the same, the library's own edge-case
+handling is not exercised.
+
+| Method | R | Python | Pinned R output | Tolerance |
+| --- | --- | --- | --- | --- |
+| t-tests (single, two-sample incl. Welch, paired) | formula | formula (`scipy.stats.t`) | `t.test` | statistic and p 1e-8 (two-sample 1e-7), CI 1e-7, means 1e-10; pinned 1e-12, CI 1e-10 |
+| z-tests | formula | formula | formula (`pnorm`/`qnorm`; `BSDA::z.test` is the equivalent, not called) | statistic and p 1e-8, CI 1e-7, means 1e-10; pinned 1e-12, CI 1e-10 |
+| Chi-square goodness of fit, independence | formula (`pchisq`) | formula | formula (`chisq.test` not called) | 1e-8; pinned 1e-12 |
+| One-way, two-way, repeated-measures ANOVA | formula | formula | `aov` (two-way: Type I SS, balanced designs only) | 1e-8, two-way and repeated-measures 1e-7; pinned 1e-10 |
+| F-test for variance equality | formula (`pf`) | formula | formula (`var.test` not called) | 1e-8; pinned 1e-12 |
+| Levene | one-way ANOVA on \|x − median\| by formula | formula | `aov` on \|x − median\| (`car::leveneTest` not called) | 1e-8 |
+| Bartlett | formula | formula | `bartlett.test` | 1e-8; pinned 1e-12 |
+| F-test for regression, nested models | formula | formula | formula | 1e-10 |
+| Skewness, kurtosis, moments | formula | formula | formula | 1e-10; pinned 1e-12 |
+| Pearson correlation | `cor`, t and p by formula | `numpy.corrcoef`, formula | `cor`, formula (`cor.test` not called) | statistic and p 1e-8, CI 1e-7; pinned 1e-12, CI 1e-10 |
+| Spearman correlation | `cor.test(method = "spearman")` for p, `cor` for rho | a port of R's `prho` | `cor`, `cor.test` for p | as Pearson |
+| Kendall correlation | `cor(method = "kendall")`, p by an exact enumeration for n ≤ 7 and the normal approximation above | `scipy.stats.kendalltau` for tau, the same p | `cor`, the same p | as Pearson |
+| Covariance | `cov` | `numpy.cov` | `cov` | 1e-10 |
+| Bartlett sphericity, correlation matrix, correlation analysis | formula | formula | formula | 1e-7, matrices 1e-6 |
+| Wilcoxon (single, paired), Mann-Whitney U | `wilcox.test(conf.int = TRUE)` | `scipy.stats.wilcoxon`, `mannwhitneyu` for p; the statistic from ranks | R examples pinned in `nonparam_wilcoxon_test.go` | 1e-9 exact, 1e-8 asymptotic; asymptotic CI 0.1 |
+| Kruskal-Wallis, Friedman | `kruskal.test`, `friedman.test` | `scipy.stats.kruskal`, `friedmanchisquare` | R examples pinned | 1e-9 |
+| PCA | formula (`scale`, `eigen`) | formula (`numpy.linalg.eigh`) | `prcomp(center = TRUE, scale = TRUE)` | eigenvalues 1e-6, components 1e-5; pinned 1e-9 |
+| Factor analysis | `psych::fa`, `psych::principal`, `psych::smc`, `psych::KMO`, `psych::cortest.bartlett`; rotations through GPArotation | — | — | 2e-5 per element. Factor frames are compared up to order and sign, a gradient-projection rotation by its criterion value (5e-3 within the same minimum). Opt-in with `INSYRA_STRICT_FACTOR_R_PARITY=1`; the known remainder is itemised at `factorParityTol` in `factor_analysis_test.go` |
+| KMeans | `stats::kmeans` (Hartigan-Wong, seeded) | a port of Hartigan-Wong driven by a port of R's RNG | `kmeans(nstart = 50)` | exact clusters, 1e-10 SS and centres; pinned 1e-9 |
+| `KMeans.Assign` | formula | — | — | exact assignments, 1e-10 distances |
+| Hierarchical clustering, cut tree | `hclust(dist())`, `cutree`, seven linkages incl. ward.D2, centroid, median | hand-written Lance-Williams | `hclust` | exact merges and labels, 1e-10 heights; pinned 1e-12 |
+| DBSCAN | `dbscan::dbscan`, `dbscan::is.corepoint` | hand-written | `dbscan::dbscan` | exact |
+| Silhouette | `cluster::silhouette` | hand-written | formula | 1e-10; pinned 1e-12 |
+| KNN classification, regression, neighbour search | formula (Euclidean sort, vote, weighting) | formula | hand-computed | exact labels and indices, 1e-10 values |
+| Linear, polynomial regression | formula (OLS on the design matrix); `lm` for predictions | `statsmodels.OLS` | `lm` | 1e-6, t 1e-5; pinned 1e-9 |
+| Exponential, logarithmic regression | formula on the log-transformed data; `lm` for predictions | `statsmodels.OLS` | `lm(log(y) ~ x)`, `lm(y ~ log(x))` | 1e-6, t 1e-5 |
+| Logistic, Poisson, generic GLM | `glm` (`confint.default`, `logLik`, `BIC`, `predict`) | `statsmodels.GLM` | — | 1e-6, SE/z/CI 1e-5 |
+| Weighted linear regression | — | `statsmodels.WLS` | — | 1e-8 |
+| Ridge, Lasso | — | `sklearn.linear_model.Ridge(solver = "cholesky")`, `Lasso` | — | 1e-8; Lasso 1e-6 with the zero coefficients required to match |
+| NormCDF, NormPPF, Diag | — | — | — | hand-written expected values only |
+
+Three things the table makes visible:
+
+- Some methods are checked on one side only: factor analysis and `KMeans.Assign`
+  against R alone, weighted least squares, Ridge and Lasso against Python alone
+  (glmnet is excluded by design).
+- The generic GLM's Python reference picks the link from the family and ignores
+  the requested one; only Poisson with a log link is exercised there.
+- The t-test and z-test scripts still write `ttest_reference.txt` and
+  `ztest_reference.txt`, but the tests carry the values as literals and do not
+  read the files.
+
 ## Behavior Differences From R
 
-The numerical output of insyra's `stats` package agrees with R's standard
-functions (`t.test`, `cor.test`, `aov`, `prcomp`, `kmeans`, `dbscan`,
-`lm`, `chisq.test`, `var.test`, `bartlett.test`, median-centered
-`car::leveneTest`) to within ~1e-12 on every well-defined numerical
-field, with the single semantic exception below. Discrete outputs (DF,
-cluster IDs, hclust merge structure) match exactly.
+The numerical output of insyra's `stats` package agrees with the references
+above to within the tolerances listed. On the pinned outputs that is 1e-12 for
+`bartlett.test` and `hclust` and for the statistics and p-values of `t.test` and
+`cor.test` (1e-10 on their intervals), 1e-10 for `aov`, 1e-9 for `prcomp`,
+`kmeans` and `lm`, and an exact match for `dbscan`. Where the canonical function
+is not called (chi-square, `var.test`, median-centered `car::leveneTest`), the
+comparison is against the same R formulas. This holds with the
+single semantic exception below. Discrete outputs (DF, cluster IDs, hclust
+merge structure) match exactly.
 
 ### Behavior on degenerate / constant inputs
 

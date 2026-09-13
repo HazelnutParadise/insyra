@@ -57,7 +57,9 @@ when the test has only one group.
 
 **The t-tests keep the sign of the effect size. The z-tests report its absolute
 value**, to match the R output their reference tests are pinned to. Do not read
-direction out of a z-test's effect size.
+direction out of a z-test's effect size. Which package and function each
+method is checked against, and how closely, is the "Reference Implementations"
+table in `Docs/stats.md`.
 
 **Constant data has no variance**, so a t statistic comes out ±Inf (or NaN when
 the mean equals `mu`) with a p-value of 0 or NaN, and no error. Check the

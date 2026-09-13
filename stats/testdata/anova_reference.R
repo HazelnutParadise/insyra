@@ -5,8 +5,10 @@
 ##   two-way ANOVA      -> aov(values ~ A * B)            (Type I sums of squares
 ##                          ; matches insyra for *balanced* designs only)
 ##   repeated-measures  -> aov(values ~ cond + Error(subj/cond))
-##   var.test           -> stats::var.test
-##   Levene's test      -> car::leveneTest(values ~ factor, center = median)
+##   var.test           -> variance ratio with a two-sided pf, by formula
+##                         (what stats::var.test computes; not called)
+##   Levene's test      -> aov(|x - median| ~ factor), by formula (what
+##                         car::leveneTest(center = median) computes; not called)
 ##   Bartlett's test    -> stats::bartlett.test
 ##
 ## Eta-squared convention: insyra returns *partial* eta² for between-subjects
