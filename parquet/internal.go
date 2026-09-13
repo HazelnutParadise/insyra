@@ -33,6 +33,12 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 		}
 		defer func() {
 			if err := f.Close(); err != nil {
+				// Reader.Close() may already close the underlying file, the same
+				// way Read and Inspect allow for. Without this guard every
+				// successful Stream, FilterWithCCL and ApplyCCL logged a warning.
+				if errors.Is(err, os.ErrClosed) {
+					return
+				}
 				insyra.LogWarning("parquet", "close", "failed to close file %s: %v", path, err)
 			}
 		}()

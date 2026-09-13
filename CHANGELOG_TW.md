@@ -74,6 +74,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - 修正 `ReadColumnOptions.MaxValues` 完全沒有作用。`ReadColumn` 現在先從檔案 metadata 加總所選 row group 的列數，超過上限時在讀取任何資料前就拒絕，這才是該欄位文件寫的行為。
 - `Write` 關閉 Parquet writer 失敗時改為回傳錯誤，而不是只寫 log。檔尾在關閉時才寫入，過去關閉失敗會留下無法讀取的檔案卻回傳 `nil`。套件其他地方關閉時的錯誤改經 Insyra 的 logger 而非標準 `log` 套件，`Config.SetLogLevel` 對它們生效。
+- 修正 `FilterWithCCL` 只回傳前 1000 列符合的資料。檔案以每批 1000 列讀取，而第一批之後的每一批都被接到結果欄位的複本上而不是欄位本身，所以 2500 列的檔案用每列都成立的條件過濾，回傳的是 1000 列，而且完全沒有錯誤。符合的列現在跨整段串流收集。
+- 最後一批之後才發生的讀取錯誤不再被換成部分結果。讀取端的紀錄通道與錯誤通道是一起關閉的，`FilterWithCCL`、`ApplyCCL` 與 `Stream` 的 `select` 可能挑中任何一個，因此讀到一半失敗的檔案可能回傳截斷的表格而 error 為 nil，`ApplyCCL` 更會把截斷的結果覆蓋回原檔。三者現在都先讀錯誤通道再結束。成功的串流呼叫也不再每次都印出 `failed to close file … file already closed`。
 
 ### `mkt`
 

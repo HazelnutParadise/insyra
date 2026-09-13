@@ -185,7 +185,8 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 
 **Returns:**
 
-- A new `DataTable` containing only rows that satisfy the filter condition
+- A new `DataTable` containing only rows that satisfy the filter condition, however large the file. When nothing matches, the table has the file's columns and no rows.
+- An error when the expression does not compile, when it cannot be evaluated against a row, or when the file cannot be read — including a read that fails part-way. A read failure is always reported as an error; a partial table is never returned in its place.
 - The original Parquet file is **not modified**
 
 **Example:**
