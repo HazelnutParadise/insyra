@@ -2550,7 +2550,7 @@ dt.DropColsContainString() // Drops all columns that have at least one string el
 func (dt *DataTable) DropColsContainNumber() *DataTable
 ```
 
-**Description:** Drops columns that contain any numeric elements (every Go integer and float type, as judged by `IsNumeric`).
+**Description:** Drops columns that contain any numeric elements: a cell of a built-in Go integer or float type (`int`, `int8`…`int64`, `uint`…`uint64`, `float32`, `float64`). A named numeric type such as `time.Duration` does not count.
 
 **Parameters:**
 
@@ -2684,7 +2684,7 @@ dt.DropRowsContainString() // Drops all rows that have at least one string eleme
 func (dt *DataTable) DropRowsContainNumber() *DataTable
 ```
 
-**Description:** Drops rows that contain any numeric elements.
+**Description:** Drops rows that contain any numeric elements, using the same rule as `DropColsContainNumber`: built-in Go integer and float types count, a named numeric type such as `time.Duration` does not.
 
 **Parameters:**
 

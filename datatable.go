@@ -877,7 +877,7 @@ func (dt *DataTable) DropColsContainNumber() *DataTable {
 			containsNumber := false
 
 			for _, value := range column.data {
-				if IsNumeric(value) {
+				if isBuiltinNumber(value) {
 					containsNumber = true
 					break
 				}
@@ -896,6 +896,17 @@ func (dt *DataTable) DropColsContainNumber() *DataTable {
 		dt.updateTimestamp()
 	})
 	return dt
+}
+
+// isBuiltinNumber reports whether v holds one of Go's built-in integer or float
+// types. A named numeric kind such as time.Duration is not a number here, the
+// same rule ClearNumbers uses.
+func isBuiltinNumber(v any) bool {
+	switch v.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return true
+	}
+	return false
 }
 
 // DropColsContainNil drops columns that contain nil elements.
@@ -1100,7 +1111,7 @@ func (dt *DataTable) DropRowsContainNumber() *DataTable {
 		for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
 			keepRow := true
 			for _, column := range dt.columns {
-				if rowIndex < len(column.data) && IsNumeric(column.data[rowIndex]) {
+				if rowIndex < len(column.data) && isBuiltinNumber(column.data[rowIndex]) {
 					keepRow = false
 					break
 				}

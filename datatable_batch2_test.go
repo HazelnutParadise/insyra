@@ -4,6 +4,7 @@ import (
 	"math"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func noPanic(t *testing.T, name string, f func()) {
@@ -123,6 +124,21 @@ func TestNumericMembershipIncludesInt64(t *testing.T) {
 	dt2.DropRowsContainNumber()
 	if dt2.NumRows() != 1 {
 		t.Fatalf("expected 1 row, got %d", dt2.NumRows())
+	}
+}
+
+// A named numeric kind is not a built-in number: a time.Duration column and a
+// row holding a Duration are kept, the way v0.3.2 and ClearNumbers keep them.
+func TestContainNumberKeepsNamedNumericKinds(t *testing.T) {
+	dt := NewDataTable(NewDataList(time.Second, 2*time.Second).SetName("d"), NewDataList("s", "t").SetName("s"))
+	dt.DropColsContainNumber()
+	if !reflect.DeepEqual(dt.ColNames(), []string{"d", "s"}) {
+		t.Fatalf("DropColsContainNumber dropped a Duration column: %v", dt.ColNames())
+	}
+	dt2 := NewDataTable(NewDataList(time.Second, "x"), NewDataList("a", uint8(1)))
+	dt2.DropRowsContainNumber()
+	if dt2.NumRows() != 1 || dt2.GetElement(0, "A") != time.Second {
+		t.Fatalf("DropRowsContainNumber: want only the Duration row kept, got %d rows", dt2.NumRows())
 	}
 }
 

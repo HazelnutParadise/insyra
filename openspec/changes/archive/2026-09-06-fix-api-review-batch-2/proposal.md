@@ -47,7 +47,7 @@ The second pass of `api-review.md` (DataTable, stats, mkt, cli, lp, datafetch) v
 Dev received:
 - `GetElementByNumberIndex`, `SetRowToColNames`, `SetColToRowNames` setting `Err()` instead of panicking; a no-match `Filter*` result being `NewDataTable()`; `FilterRows`/`FilterCols` tolerating ragged columns (`datatable-bounds-and-aliasing`, trimmed).
 - `DropRowsByIndex`, `Transpose`, `AppendRowsByColIndex` fixes (`datatable-row-operations`, trimmed).
-- `IsNumeric` membership and the `Mean` denominator (`datatable-numeric-membership`).
+- Numeric membership for `DropColsContainNumber`/`DropRowsContainNumber` and the `Mean` denominator (`datatable-numeric-membership`), adapted to the built-in integer and float type switch `ClearNumbers` uses (backport review): `IsNumeric` also matches named numeric kinds, so a `time.Duration` column, which v0.3.2 kept, was dropped.
 - `RFM` no longer panicking on an unreadable amount and sorted `RFM`/`CAI` output (`mkt-input-and-order`), adapted so numeric strings are still read as `conv.ParseF64` reads them.
 - Environment names that escape the environments directory being refused (`cli-env-name`), adapted to a containment check instead of the character regex.
 - Fixed `lp` info-table order and atomic geocode cache writes (`deterministic-and-atomic-output`).
