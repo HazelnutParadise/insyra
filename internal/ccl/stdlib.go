@@ -34,49 +34,13 @@ func RegisterStandardFunctions() {
 	registerAggregateStatFunctions()
 
 	// Logical Functions
-	registerFunction("IF", func(args ...any) (any, error) {
-		if len(args) != 3 {
-			return nil, fmt.Errorf("IF requires 3 arguments")
-		}
-
-		cond, ok := toBool(args[0])
-		if !ok {
-			// Try to parse if it's not directly a bool
-			// This mimics the behavior in insyra/ccl.go but using our internal helper
-			// Note: toBool handles more cases now
-			return nil, fmt.Errorf("first argument to IF cannot be converted to boolean: %T", args[0])
-		}
-
-		if cond {
-			return args[1], nil
-		}
-		return args[2], nil
-	})
-
-	registerFunction("AND", func(args ...any) (any, error) {
-		if len(args) < 2 {
-			return nil, fmt.Errorf("AND requires at least 2 arguments")
-		}
-		for _, arg := range args {
-			if cond, ok := toBool(arg); !ok || !cond {
-				return false, nil
-			}
-		}
-		return true, nil
-	})
-
-	registerFunction("OR", func(args ...any) (any, error) {
-		if len(args) < 2 {
-			return nil, fmt.Errorf("OR requires at least 2 arguments")
-		}
-		for _, arg := range args {
-			if cond, ok := toBool(arg); ok && cond {
-				return true, nil
-			}
-		}
-		return false, nil
-	})
-
+	//
+	// IF, AND and OR are NOT registered here. The evaluator implements them
+	// directly (see evaluateWithCallDepth) so they can skip arguments they do
+	// not need, and it handles them before any registered function is looked
+	// up. The copies that used to be registered were unreachable: their
+	// argument checks never ran. CASE has no such special case, so its
+	// registration below is the one that runs.
 	registerFunction("CASE", func(args ...any) (any, error) {
 		if len(args) < 3 {
 			return nil, fmt.Errorf("CASE requires at least 3 arguments")

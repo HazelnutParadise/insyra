@@ -196,6 +196,7 @@ CCL supports the following data types:
 - `-` : Subtraction
 - `*` : Multiplication
 - `/` : Division
+- `%` : Remainder (same as `MOD`; `A % 0` is an error)
 - `^` : Exponentiation
 - `.` : Row access (e.g., `A.0`, `['Sales'].10`)
 - `:` : Range operator (e.g., `A:C` for column range, `1:5` for row range)
@@ -274,6 +275,23 @@ When a range (column range or row range) is used inside an aggregate function (l
 "A & '-' & B"    // Concatenate with separator (e.g., "Hello-World")
 "A & B & C"      // Chain multiple concatenations
 ```
+
+### Operator Precedence
+
+Tightest binding at the top. Operators on the same row are evaluated left to right.
+
+| Operators                          | Notes                                                        |
+| ---------------------------------- | ------------------------------------------------------------ |
+| `:`                                | Range                                                         |
+| `.`                                | Row access                                                    |
+| `^`                                | Exponentiation, **left**-associative: `2^3^2` is `64`, not `512` |
+| `*` `/` `%`                        |                                                               |
+| `+` `-` `&`                        | Concatenation binds as tightly as addition: `'a' & 1 + 2` reads as `('a' & 1) + 2` and is an error; write `'a' & (1 + 2)` |
+| `==` `!=` `>` `<` `>=` `<=`        | Consecutive comparisons chain: `10 <= A <= 20`                |
+| `&&`                               |                                                               |
+| `\|\|`                             |                                                               |
+
+Unary minus binds tighter than `^`, as in Excel: **`-2^2` is `4`**, not `-4`. Write `0 - 2^2` for the other reading.
 
 ## Type Coercion and Comparison Behavior
 
@@ -356,17 +374,28 @@ nil & " World"      // "<nil> World"
 
 ### Boolean Operations
 
-Logical operators require boolean operands:
+`&&`, `||`, `IF` and `CASE()` read their condition through the same conversion, which accepts more than a bare boolean:
+
+| Value                                                   | Reads as        |
+| ------------------------------------------------------- | --------------- |
+| `true` / `false`                                        | itself          |
+| an `int`, `int32`, `int64`, `float32` or `float64`      | `false` if `0`  |
+| `'true'`, `'yes'`, `'1'` (any case, spaces trimmed)     | `true`          |
+| `'false'`, `'no'`, `'0'`, `''` (any case, spaces trimmed) | `false`       |
+| `nil`                                                   | `false`         |
+| any other value                                         | **error**       |
 
 ```go
 true && false       // false
 true || false       // true
+1 && 0              // false (0 reads as false)
+'yes' && true       // true
 (A > 10) && (B < 20)    // Evaluate both conditions
 
-// These will cause errors
-"yes" && true       // Error: "yes" is not a boolean
-1 && 0              // Error: numbers are not booleans
+'abc' && true       // Error: 'abc' is not a boolean
 ```
+
+A 0/1 indicator column can therefore be used directly: `A && B`. `AND()` and `OR()` use the same conversion, but count a value it cannot read as `false` instead of reporting an error: `AND('abc', true)` is `false`.
 
 ### Type Coercion Summary
 
@@ -377,7 +406,7 @@ true || false       // true
 | `==`, `!=`              | Number/String | Number/String | Convert both to numbers if possible, then compare |
 | `==`, `!=`              | nil           | any           | Special nil handling (see above)                  |
 | `&`                     | any           | any           | Convert both to strings, then concatenate         |
-| `&&`, `\|\|`            | Boolean       | Boolean       | Must be boolean, no coercion                      |
+| `&&`, `\|\|`            | any           | any           | Read as boolean (see the table above)             |
 
 ### Best Practices for Type Safety
 

@@ -10,7 +10,8 @@ Source of truth: `Docs/CCL.md` (Operators section). If behavior differs, follow 
 | `-` | Subtraction | `A - B` |
 | `*` | Multiplication | `A * B` |
 | `/` | Division | `A / B` |
-| `^` | Exponentiation | `A ^ 2` |
+| `%` | Remainder | `A % 3` (same as `MOD`; `A % 0` is an error) |
+| `^` | Exponentiation | `A ^ 2` (left-associative: `2^3^2` = 64) |
 | `.` | Row access | `A.0`, `['Sales'].10`, `A.(1:5)` |
 | `:` | Range | Column range: `A:C` / `[A]:[C]` / `['Start']:['End']`; Row range: `@.0:5`, `A.0:5`, `A.(1:5)` |
 | `#` | Current row index (0-based) | `A.#` (same row), `IF(#>0, A.(#-1) - A, NULL)` |
@@ -70,8 +71,16 @@ Nil/Null note:
 | `&&` | AND | `A > 10 && B < 20` |
 | `||` | OR | `A > 10 || B > 10` |
 
+Operands are read as booleans, not required to be booleans: numbers (`0` is false), and the strings `true`/`yes`/`1`/`false`/`no`/`0`/`''`. Any other string is an error for `&&`, `||`, `IF` and `CASE()`; `AND()`/`OR()` count it as false.
+
 ## String concatenation
 
 | Operator | Meaning | Examples |
 |---|---|---|
 | `&` | Concatenate strings | `A & '-' & B`, `CONCAT(A, ' ', B)` |
+
+## Precedence
+
+Tightest first: `:` → `.` → `^` → `*` `/` `%` → `+` `-` `&` → comparisons → `&&` → `||`.
+
+`&` binds as tightly as `+`/`-`, left to right: `'a' & 1 + 2` is `('a' & 1) + 2`, an error; write `'a' & (1 + 2)`. Unary minus binds tighter than `^`: `-2^2` is `4`.
