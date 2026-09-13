@@ -15,4 +15,4 @@
 - [x] 3.2 兩份 CHANGELOG 新增 `parallel` 段落的 BREAKING 條目。
 - [x] 3.3 `api-review.md` P-1、P-2、P-4、P-5 與 parallel 符號清單，`delivery-status.md`。
 - [x] 3.4 `gofmt -l`、`go build ./...`、`go vet ./...`、`go test ./...`、`go test -race ./parallel/ ./mkt/ ./stats/`、`golangci-lint run`。
-- [ ] 3.5 歸檔並寫 `parallel-groups` 的 Purpose；在 #271 留言附證據並關閉。
+- [x] 3.5 歸檔並寫 `parallel-groups` 的 Purpose；在 #271 留言附證據並關閉。
