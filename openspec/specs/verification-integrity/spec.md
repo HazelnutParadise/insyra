@@ -1,8 +1,10 @@
 # verification-integrity Specification
 
 ## Purpose
-TBD - created by archiving change make-skipped-verifications-visible. Update Purpose after archive.
+驗證要能被相信：跑不起來的檢查必須讓人看得見，不能靜默通過；CI 跑的工具版本必須釘住，否則同一份程式碼在不同時間會得到不同結論。
+
 ## Requirements
+
 ### Requirement: A check that could not run says so in a way that fails
 The system SHALL provide a mode in which any verification skipped for a missing reference implementation fails the run instead, naming the missing tool and the verification that went unperformed.
 
@@ -51,3 +53,10 @@ The system SHALL install, in every workflow that exists to run a reference-imple
 - **THEN** it does so with reference-toolchain verification required
 - **AND** a check that could not run fails the workflow
 
+### Requirement: CI pins the versions it runs
+
+每個 workflow 對同一個 action SHALL 使用同一個主版本；linter SHALL 釘在明確版號，SHALL NOT 使用 `latest`，否則 lint 結果無法重現。
+
+#### Scenario: Two workflows using the same action
+- **WHEN** 比較任兩個 workflow 的 `actions/checkout` 與 `actions/setup-go`
+- **THEN** 版本相同
