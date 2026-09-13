@@ -58,14 +58,18 @@ var (
 
 // GoogleMapsStoreReview is a struct for Google Maps store reviews.
 type GoogleMapsStoreReview struct {
-	Reviewer      string `json:"reviewer"`
-	ReviewerID    string `json:"reviewer_id"`
-	ReviewerState string `json:"reviewer_state"`
-	ReviewerLevel int    `json:"reviewer_level"`
-	ReviewTime    string `json:"review_time"`
-	ReviewDate    string `json:"review_date"`
-	Content       string `json:"content"`
-	Rating        int    `json:"rating"`
+	Reviewer            string `json:"reviewer"`
+	ReviewerID          string `json:"reviewer_id"`
+	ReviewerState       string `json:"reviewer_state"`
+	ReviewerLevel       int    `json:"reviewer_level"`
+	ReviewerReviewCount int    `json:"reviewer_review_count"` // How many reviews the reviewer has written
+	ReviewerPhotoCount  int    `json:"reviewer_photo_count"`  // How many photos the reviewer has posted
+	ReviewID            string `json:"review_id"`
+	ReviewTime          string `json:"review_time"`
+	ReviewDate          string `json:"review_date"`
+	Language            string `json:"language"` // The review's language code, such as zh-Hant; empty when the review has no text
+	Content             string `json:"content"`
+	Rating              int    `json:"rating"`
 }
 
 // GoogleMapsStoreReviews is a slice of GoogleMapsStoreReview.
@@ -281,12 +285,16 @@ func parseGoogleMapsReviewPage(body []byte) ([]GoogleMapsStoreReview, string, er
 			continue
 		}
 		reviews = append(reviews, GoogleMapsStoreReview{
-			Reviewer:   extractString(record, 3, 0),
-			ReviewerID: gmapsContribID(extractString(record, 3, 2)),
-			ReviewTime: extractString(record, 2, 0),
-			ReviewDate: gmapsReviewDate(extractString(record, 2, 2)),
-			Content:    html.UnescapeString(strings.ReplaceAll(extractString(record, 27), "<br>", "\n")),
-			Rating:     extractInt(record, 1),
+			Reviewer:            extractString(record, 3, 0),
+			ReviewerID:          gmapsContribID(extractString(record, 3, 2)),
+			ReviewerReviewCount: extractInt(record, 3, 3),
+			ReviewerPhotoCount:  extractInt(record, 3, 4),
+			ReviewID:            extractString(record, 5),
+			ReviewTime:          extractString(record, 2, 0),
+			ReviewDate:          gmapsReviewDate(extractString(record, 2, 2)),
+			Language:            extractString(record, 26),
+			Content:             html.UnescapeString(strings.ReplaceAll(extractString(record, 27), "<br>", "\n")),
+			Rating:              extractInt(record, 1),
 		})
 	}
 	next, _ := extractValue(block, 6).(string)
@@ -316,14 +324,18 @@ func (reviews GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable {
 	for _, review := range reviews {
 		dt.AppendRowsByColName(
 			map[string]any{
-				"Reviewer":      review.Reviewer,
-				"ReviewerID":    review.ReviewerID,
-				"ReviewerState": review.ReviewerState,
-				"ReviewerLevel": review.ReviewerLevel,
-				"ReviewTime":    review.ReviewTime,
-				"ReviewDate":    review.ReviewDate,
-				"Content":       review.Content,
-				"Rating":        review.Rating,
+				"Reviewer":            review.Reviewer,
+				"ReviewerID":          review.ReviewerID,
+				"ReviewerState":       review.ReviewerState,
+				"ReviewerLevel":       review.ReviewerLevel,
+				"ReviewerReviewCount": review.ReviewerReviewCount,
+				"ReviewerPhotoCount":  review.ReviewerPhotoCount,
+				"ReviewID":            review.ReviewID,
+				"ReviewTime":          review.ReviewTime,
+				"ReviewDate":          review.ReviewDate,
+				"Language":            review.Language,
+				"Content":             review.Content,
+				"Rating":              review.Rating,
 			},
 		)
 	}

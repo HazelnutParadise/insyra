@@ -37,7 +37,9 @@ func TestGoogleMapsReviewsLive(t *testing.T) {
 		t.Fatalf("got %d reviews over two pages, want 20; Google may have changed the response", len(reviews))
 	}
 	for i, r := range reviews {
-		if r.Reviewer == "" || r.ReviewerID == "" || r.Rating < 1 || r.Rating > 5 || len(r.ReviewDate) != len("2006-01-02") {
+		// A review with only a star rating has no text and no language.
+		if r.Reviewer == "" || r.ReviewerID == "" || r.ReviewID == "" || (r.Content != "" && r.Language == "") || r.ReviewerReviewCount < 1 ||
+			r.Rating < 1 || r.Rating > 5 || len(r.ReviewDate) != len("2006-01-02") {
 			t.Errorf("review %d is missing fields: %+v", i, r)
 		}
 		if i > 0 && r.ReviewDate > reviews[i-1].ReviewDate {

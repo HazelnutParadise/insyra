@@ -143,6 +143,10 @@ func (r GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable
   - `ReviewDate`: The date the review was posted, in UTC, as `YYYY-MM-DD`
   - `Content`: Review text
   - `Rating`: Star rating (1-5)
+  - `ReviewID`: The review's own ID, useful for dropping repeats when merging pages fetched in different sort orders
+  - `Language`: The review's language code, such as `zh-Hant`. Empty for a review with only a star rating, which has no text
+  - `ReviewerReviewCount`: How many reviews the reviewer has written
+  - `ReviewerPhotoCount`: How many photos the reviewer has posted
 
 **Example:**
 
@@ -171,14 +175,18 @@ Represents a single review.
 
 ```go
 type GoogleMapsStoreReview struct {
-    Reviewer      string    // Reviewer's display name
-    ReviewerID    string    // Unique reviewer identifier
-    ReviewerState string    // Always empty; no longer provided by Google
-    ReviewerLevel int       // Always 0; no longer provided by Google
-    ReviewTime    string    // Relative time in Traditional Chinese (e.g., "2 個月前")
-    ReviewDate    string    // Posting date in UTC, YYYY-MM-DD
-    Content       string    // Review text
-    Rating        int       // Star rating (1-5)
+    Reviewer            string // Reviewer's display name
+    ReviewerID          string // Unique reviewer identifier
+    ReviewerState       string // Always empty; no longer provided by Google
+    ReviewerLevel       int    // Always 0; no longer provided by Google
+    ReviewerReviewCount int    // How many reviews the reviewer has written
+    ReviewerPhotoCount  int    // How many photos the reviewer has posted
+    ReviewID            string // The review's own ID
+    ReviewTime          string // Relative time in Traditional Chinese (e.g., "2 個月前")
+    ReviewDate          string // Posting date in UTC, YYYY-MM-DD
+    Language            string // The review's language code, such as zh-Hant; empty when there is no text
+    Content             string // Review text
+    Rating              int    // Star rating (1-5)
 }
 ```
 
