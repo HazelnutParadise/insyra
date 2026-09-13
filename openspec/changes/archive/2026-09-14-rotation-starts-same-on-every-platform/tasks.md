@@ -22,6 +22,6 @@
 
 ## 4. 收尾
 
-- [ ] 4.1 `gofmt -l .`、`go vet ./...`、`go test ./...`、`GOARCH=amd64 go test ./stats/...`、`golangci-lint run`。
-- [ ] 4.2 `openspec validate rotation-starts-same-on-every-platform --strict`。
-- [ ] 4.3 推到 `0.4`，確認 Test workflow 在三個 OS 都綠，再 archive。
+- [x] 4.1 `gofmt -l .`、`go vet ./...`、`go test ./...`、`GOARCH=amd64 go test ./stats/...`、`golangci-lint run`。
+- [x] 4.2 `openspec validate rotation-starts-same-on-every-platform --strict`。
+- [x] 4.3 推到 `0.4`，確認 Test workflow 在三個 OS 都綠，再 archive。
