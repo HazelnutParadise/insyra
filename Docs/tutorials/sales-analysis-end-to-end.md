@@ -15,7 +15,7 @@ By the end of this guide, you will have a runnable pipeline that:
 
 ## Prerequisites
 
-- Go 1.25+ (per this repository's `go.mod`)
+- Go 1.26+ (per this repository's `go.mod`)
 - Insyra installed in your module:
 
 ```bash

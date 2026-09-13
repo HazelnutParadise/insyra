@@ -67,6 +67,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - **BREAKING**：格子裡的定點十進位值算是數值。`Mean`、`Sum`、`Describe`、`stats` 與其他所有數值路徑都讀得到它，過去它們會回 `NaN` 而且沒有錯誤，而金額欄位正是這種情況，因為 `finance.ScheduleTable` 與 Parquet 的 `Decimal128` 欄都放十進位值。`IsNumeric` 跟著一致，因為「對函式庫的一半是數值、對另一半讀不到」正是 `fix-clear-defects-core` 為具名數值型別關掉的裂縫。十進位現在也與其他數值一起排序，而不是排在字串之後自成一組，所以混合欄位會依值交錯；兩個十進位之間仍以十進位本身的比較決定，超出 `float64` 十六位有效數字的差異照樣分辨得出。判斷依據是形狀，也就是能報出自己的文字與小數位數、且該文字可解析為數字，所以每個值都會經過的 `internal/utils` 不依賴任何特定十進位套件，任何同樣形狀的函式庫都適用。
 - 修正 `SortBy` 處理不存在欄位的方式。過去超出範圍的 `ColumnIndex` 什麼都不做、`Err()` 也是 nil，找不到的名稱或數字回報的是內部的 `GetColByName`、`GetColByNumber` 而不是 `SortBy`，多層排序其中一層無效時其他層照樣套用。現在會在移動任何一列之前檢查每一層，找不到欄位時在 `SortBy` 記錄錯誤並保持表格不變。同一個設定同時給了 `ColumnIndex`、`ColumnName`、`ColumnNumber` 其中多個時，仍照文件的優先順序（索引、名稱、數字）排序，並新增一則警告指出被忽略的欄位。沒有指定任何欄位的設定仍依第一欄排序，`Docs/DataTable.md` 現在有寫明：`ColumnNumber` 不為零才算有指定，所以它的零值不會蓋過名稱或索引。
+- **BREAKING**：Insyra 現在需要 Go 1.26，`go.mod` 的 `go` 指示為 `1.26.8`。`lp` 套件新的預設求解器 [go-milp](https://github.com/daniel-sullivan/go-milp) 需要 Go 1.26。使用 Go 1.21 以上時，除非設定 `GOTOOLCHAIN=local`，`go` 指令會自動下載 1.26.8 工具鏈。0.3.x 版本線維持 Go 1.25。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。

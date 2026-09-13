@@ -13,7 +13,7 @@ You will build a static reporting pipeline that:
 
 ## Prerequisites
 
-- Go 1.25+.
+- Go 1.26+.
 - Insyra + gplot:
 
 ```bash

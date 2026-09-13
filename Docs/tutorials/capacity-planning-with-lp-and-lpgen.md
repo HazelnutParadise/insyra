@@ -15,7 +15,7 @@ You will build a model that:
 
 ## Prerequisites
 
-- Go 1.25+.
+- Go 1.26+.
 - Insyra + optimization packages:
 
 ```bash

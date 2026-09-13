@@ -354,4 +354,5 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `go.mod` — `chromedp v0.11.2`, `cdproto v0.0.0-20241208230723-d1c7de7e5dd2` (pulled in via `go-echarts/snapshot-chromedp`)
 - **What**: The 2026-07-11 dependency refresh could not move these. (1) `chromedp v0.15.0+` and newer `cdproto` require go >= 1.26, while the module's `go` directive stays on 1.25.x (minimum-Go promise to downstream users). (2) The newest go1.25-compatible version, `chromedp v0.14.2`, hard-requires `go-json-experiment/json`, whose generic-variadic code panics govulncheck's symbol-level scan ("got jsontext.Value, want variadic parameter of unnamed slice or string type" in x/tools go/ssa — still broken as of x/tools v0.48.0 / x/vuln v1.6.0), which would permanently break the Govulncheck CI workflow.
 - **Suggestion**: When raising the minimum Go version to 1.26, retry upgrading the whole chain and re-verify `govulncheck ./...` completes (the x/tools SSA bug may be fixed by then).
-- **Status**: pending
+- **Update (2026-09-13)**: `require-go-1-26` raised the `0.4` line's `go` directive to 1.26.8, so blocker (1) no longer applies there. `dev` stays on Go 1.25, so the chain stays held back on the 0.3.x line. Blocker (2) has not been re-checked.
+- **Status**: pending — retry on `0.4`
