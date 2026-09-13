@@ -16,7 +16,11 @@ type CompileError = internalccl.CompileError
 
 // EvalError reports a failure while evaluating a compiled expression, carrying
 // the row it happened on (-1 when the expression does not depend on the row)
-// and wrapping the cause. Match it with errors.As.
+// and wrapping the cause. Match it with errors.As on an error that came out of
+// a DataTable — AddColUsingCCL, ExecuteCCL and their siblings attach the row
+// and the expression. Evaluate below returns the underlying error as it is,
+// because it evaluates one node against one context and has no statement or
+// row loop to name.
 type EvalError = internalccl.EvalError
 
 // NewMapContext creates a map-based CCL context.
