@@ -149,7 +149,7 @@ Use Insyra when you need any of these in Go:
 - DataTable: multiple named DataList columns as a table.
 - isr syntactic sugar: preferred entrypoint for new codebases.
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.
-- Instance error tracking: chain fluent ops, then check Err() / ClearErr().
+- Instance error tracking: chain fluent ops, then check Err() / PopErr() (read and clear) / ClearErr().
 
 ### Fitted KMeans assignment
 

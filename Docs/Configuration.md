@@ -63,7 +63,9 @@ insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageNam
 handler := insyra.Config.GetDefaultErrHandlingFunc()
 ```
 
-**Note:** For chainable methods on `DataList` and `DataTable`, you can inspect and clear instance-level errors using `Err()` and `ClearErr()` (e.g., `dl.Err()`, `dt.Err()`).
+**Note:** For chainable methods on `DataList` and `DataTable`, you can inspect and clear instance-level errors using `Err()`, `PopErr()` (read and clear in one step) and `ClearErr()` (e.g., `dl.Err()`, `dt.PopErr()`).
+
+The global buffer behind `GetAllErrors`, `PopAllErrors`, `HasError`, `GetErrorCount` and `ClearErrors` is a diagnostic log rather than an error-handling API: it holds up to `insyra.ErrorBufferCapacity` (1536) records from every goroutine and every object, and drops the oldest when full. Use it to see what a run did, and handle errors through `Err()`/`PopErr()` or a returned `error`. `PopError`, `PopErrorByPackageName`, `PopErrorByFuncName`, `PopErrorAndCallback`, `PeekError`, `GetErrorsByLevel`, `GetErrorsByPackage`, `PopErrorInfo` and `HasErrorAboveLevel` are deprecated for that reason.
 
 ## Performance Configuration
 

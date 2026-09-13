@@ -91,6 +91,8 @@ type IDataList interface {
 
 	// Error handling (instance-level)
 	Err() *ErrorInfo
+	PopErr() *ErrorInfo
+	SetErr(packageName, funcName, msg string, args ...any) *DataList
 	ClearErr() *DataList
 
 	// comparison
@@ -222,6 +224,8 @@ type IDataTable interface {
 
 	// Error handling (instance-level)
 	Err() *ErrorInfo
+	PopErr() *ErrorInfo
+	SetErr(packageName, funcName, msg string, args ...any) *DataTable
 	ClearErr() *DataTable
 
 	// Operations

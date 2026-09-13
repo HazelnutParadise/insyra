@@ -24,6 +24,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - CCL: `NULL`, `TRUE` and `FALSE` are keywords in any case instead of column references; `@` used as a value gives each row its own slice (every cell used to show the last row); a date difference compares and divides as seconds, so `(A - B) > 0` no longer reads as `false`; a sequence function inside another sequence or aggregate function (`LAG(LAG(A,1),1)`, `SUM(LAG(A,1))`) keeps the whole column; absurd `LAG`/`LEAD`/`ROLLING_*` shifts and `REPEAT` counts are errors instead of panics; the function registry is safe to extend while another goroutine evaluates; `engine/ccl.NewMapContext` orders columns by name so `A`/`B` are deterministic.
 - `ToCSV` returns the error from its final flush; a small table written to a broken pipe used to report success.
 - `AtomicDoAll` called from inside an `AtomicDo` on one of its instances no longer deadlocks against a goroutine doing the mirror image: it runs the callback inline without locking the others, the same rule nested `AtomicDo` follows.
+- Added `PopErr()` to `DataList` and `DataTable`, which returns the current `Err()` and clears it, and `SetErr(packageName, funcName, msg, args...)`, which records an error on the instance the way insyra's own methods do (a warning is logged and `Err()` is replaced). `IDataList` and `IDataTable` include both.
+- The global error buffer is bounded at `ErrorBufferCapacity` (1536) records and drops the oldest instead of growing without limit. It is documented as a diagnostic log rather than an error-handling API, and nine of its accessors (`PopError`, `PopErrorByPackageName`, `PopErrorByFuncName`, `PopErrorAndCallback`, `PeekError`, `GetErrorsByLevel`, `GetErrorsByPackage`, `PopErrorInfo`, `HasErrorAboveLevel`) are deprecated in favour of `GetAllErrors`, `PopAllErrors`, `HasError`, `GetErrorCount` and `ClearErrors`.
 
 ### CLI
 
@@ -64,6 +66,23 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `lp`
 
 - The additional-info table returned by `SolveFromFile` and `SolveModel` has a fixed row order (Status, Execution Time, Warnings, Full Output, Iterations, Nodes); it previously followed Go map iteration and changed between runs.
+- A failed GLPK download, extraction or build no longer ends the program: the failure is logged as a warning and a later `SolveModel`/`SolveFromFile` reports the missing solver through the additional-info table. The two temporary-file failures in `SolveModel` log a warning and return `nil, nil` instead of ending the program.
+
+### `plot`
+
+- `CreateRadarChart` without indicators and `CreateHeatMap` in calendar mode with the wrong X type or no `CalendarOpts` log a warning and return `nil` instead of ending the program or panicking.
+
+### `isr`
+
+- `DT.From`, `Col`, `Row`, `Push`, `UseDL` and `UseDT` no longer end the program on an unsupported type or a failed read. They return a usable object with the error recorded on it, so a chain can be checked with `Err()` or `PopErr()` afterwards.
+
+### `gplot`
+
+- `CreateHistogram` with a zero-value config no longer panics: `Bins` of zero or less means the default of 10. `CreateLineChart` and `CreateStepChart` log a warning and leave out a series that cannot be drawn (for example one holding `NaN`) instead of panicking.
+
+### `py`
+
+- A failed IPC listen is logged as a warning and leaves the server down instead of ending the program.
 
 ## v0.3.2
 

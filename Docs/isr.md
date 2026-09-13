@@ -909,7 +909,17 @@ processed := isr.DL.From(1, 2, 3).Push(4, 5).At(4) // Returns 5
 
 ## Error Handling
 
-All methods use `insyra.LogFatal()` for error handling. Invalid operations will terminate the program with descriptive error messages.
+`DT.From`, `Col`, `Row`, `Push`, `UseDL` and `UseDT` do not end the program on an unsupported type or a failed read. They return a usable object and record the error on it, so check it after the chain:
+
+```go
+t := isr.DT.From(isr.CSV{FilePath: "sales.csv"})
+if err := t.PopErr(); err != nil {
+    log.Printf("could not read the table: %v", err)
+    return
+}
+```
+
+`Err()` returns the most recent error, `PopErr()` returns it and clears it, and `ClearErr()` only clears. When `Col` or `Row` finds no such column or row, the returned `DL` wraps a `nil` `DataList`, so check it before use.
 
 ## Best Practices
 

@@ -2040,6 +2040,29 @@ func (dl *DataList) ClearErr() *DataList {
 	return dl
 }
 
+// PopErr returns the error recorded on this DataList and clears it, so a chain can
+// be checked and the list reused in one step. It returns nil when no error is
+// recorded.
+func (dl *DataList) PopErr() *ErrorInfo {
+	err := dl.lastError
+	dl.lastError = nil
+	return err
+}
+
+// SetErr records an error on this DataList the way insyra's own methods do: it
+// logs a warning and sets Err(), replacing any error recorded earlier. Wrapper
+// packages such as isr use it so their failures reach the caller the same way
+// the core's do.
+//
+// packageName and funcName identify the reporting call site (for example
+// "isr", "DT.From"); msg and args are formatted with fmt.Sprintf.
+func (dl *DataList) SetErr(packageName, funcName, msg string, args ...any) *DataList {
+	fullMsg := fmt.Sprintf(msg, args...)
+	LogWarning(packageName, funcName, "%s", fullMsg)
+	dl.setError(LogLevelWarning, packageName, funcName, fullMsg)
+	return dl
+}
+
 // setError is an internal method to record an error on the DataList instance.
 func (dl *DataList) setError(level LogLevel, packageName, funcName, message string) {
 	dl.lastError = &ErrorInfo{

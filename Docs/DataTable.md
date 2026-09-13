@@ -4484,6 +4484,11 @@ if err := dt.Err(); err != nil {
     // Handle the error
 }
 
+// Or read and clear in one step
+if err := dt.PopErr(); err != nil {
+    fmt.Printf("Error occurred: %s\n", err.Error())
+}
+
 // Clear the error for future operations
 dt.ClearErr()
 ```
@@ -4493,11 +4498,15 @@ dt.ClearErr()
 | Method                  | Description                                                                                     |
 | ----------------------- | ----------------------------------------------------------------------------------------------- |
 | `Err() *ErrorInfo`      | Returns the last error that occurred during a chained operation, or `nil` if no error occurred. |
+| `PopErr() *ErrorInfo`   | Returns the last error and clears it, so the table can be reused straight away.                 |
 | `ClearErr() *DataTable` | Clears the last error and returns the DataTable for continued chaining.                         |
+| `SetErr(pkg, fn, msg string, args ...any) *DataTable` | Records an error the way insyra's own methods do: logs a warning and sets `Err()`, replacing any earlier error. Wrapper packages (such as `isr`) use it. |
 
 ### Global Error Buffer
 
 The global error buffer collects all errors across the application. This is useful for monitoring and logging purposes.
+
+It is a diagnostic log rather than an error-handling API: it keeps up to `insyra.ErrorBufferCapacity` (1536) records from every goroutine and every object, dropping the oldest when full, so a record you pop may belong to someone else. Handle errors through `Err()`/`PopErr()` or a returned `error`. For that reason `PopError`, `PopErrorByPackageName`, `PopErrorByFuncName`, `PopErrorAndCallback`, `PeekError`, `GetErrorsByLevel`, `GetErrorsByPackage`, `PopErrorInfo` and `HasErrorAboveLevel` are deprecated; `GetAllErrors`, `PopAllErrors`, `HasError`, `GetErrorCount` and `ClearErrors` remain the supported way to inspect it.
 
 #### Checking for Errors
 

@@ -122,7 +122,7 @@ type HistogramConfig struct {
     Title     string // Chart title
     XAxisName string // Optional: X-axis label
     YAxisName string // Optional: Y-axis label
-    Bins      int    // Number of bins
+    Bins      int    // Number of bins; zero or negative means 10
 }
 ```
 

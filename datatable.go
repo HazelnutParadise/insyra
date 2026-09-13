@@ -1649,6 +1649,29 @@ func (dt *DataTable) ClearErr() *DataTable {
 	return dt
 }
 
+// PopErr returns the error recorded on this DataTable and clears it, so a chain can
+// be checked and the table reused in one step. It returns nil when no error is
+// recorded.
+func (dt *DataTable) PopErr() *ErrorInfo {
+	err := dt.lastError
+	dt.lastError = nil
+	return err
+}
+
+// SetErr records an error on this DataTable the way insyra's own methods do: it
+// logs a warning and sets Err(), replacing any error recorded earlier. Wrapper
+// packages such as isr use it so their failures reach the caller the same way
+// the core's do.
+//
+// packageName and funcName identify the reporting call site (for example
+// "isr", "DT.From"); msg and args are formatted with fmt.Sprintf.
+func (dt *DataTable) SetErr(packageName, funcName, msg string, args ...any) *DataTable {
+	fullMsg := fmt.Sprintf(msg, args...)
+	LogWarning(packageName, funcName, "%s", fullMsg)
+	dt.setError(LogLevelWarning, packageName, funcName, fullMsg)
+	return dt
+}
+
 // setError is an internal method to record an error on the DataTable instance.
 func (dt *DataTable) setError(level LogLevel, packageName, funcName, message string) {
 	dt.lastError = &ErrorInfo{

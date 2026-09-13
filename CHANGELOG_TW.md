@@ -24,6 +24,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL：`NULL`、`TRUE`、`FALSE` 不分大小寫都是關鍵字而非欄位參照；`@` 當值使用時每列拿到自己的 slice（過去每格都顯示最後一列）；日期相減以秒參與比較與除法，`(A - B) > 0` 不再靜默為 false；序列函數放在另一個序列或聚合函數裡（`LAG(LAG(A,1),1)`、`SUM(LAG(A,1))`）保留整欄；離譜的 `LAG`／`LEAD`／`ROLLING_*` 位移與 `REPEAT` 次數回錯誤而非 panic；函數註冊表可在另一個 goroutine 求值時安全新增；`engine/ccl.NewMapContext` 依欄名排序，`A`／`B` 指向固定的欄。
 - `ToCSV` 會回傳最後一次 flush 的錯誤；小表寫到已斷的 pipe 過去會回報成功。
 - 在某個實例的 `AtomicDo` 內呼叫 `AtomicDoAll` 不再與另一個做鏡像操作的 goroutine 死鎖：改成不再加鎖、內聯執行回呼，與巢狀 `AtomicDo` 同一規則。
+- `DataList` 與 `DataTable` 新增 `PopErr()`，回傳目前的 `Err()` 並清除它；另新增 `SetErr(packageName, funcName, msg, args...)`，以 insyra 自身方法相同的方式在實例上記錄錯誤（寫一筆警告並取代 `Err()`）。`IDataList` 與 `IDataTable` 都包含這兩個方法。
+- 全域錯誤緩衝區上限為 `ErrorBufferCapacity`（1536 筆），滿了丟最舊的，不再無限成長。文件定位改為診斷用日誌而非錯誤處理 API；其中九個存取函式（`PopError`、`PopErrorByPackageName`、`PopErrorByFuncName`、`PopErrorAndCallback`、`PeekError`、`GetErrorsByLevel`、`GetErrorsByPackage`、`PopErrorInfo`、`HasErrorAboveLevel`）標為 deprecated，改用 `GetAllErrors`、`PopAllErrors`、`HasError`、`GetErrorCount`、`ClearErrors`。
 
 ### CLI
 
@@ -64,6 +66,23 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `lp`
 
 - `SolveFromFile` 與 `SolveModel` 回傳的附加資訊表列順序固定為 Status、Execution Time、Warnings、Full Output、Iterations、Nodes，過去依 Go map 順序每次不同。
+- GLPK 下載、解壓或編譯失敗不再結束程式：失敗以警告記錄，之後呼叫 `SolveModel`／`SolveFromFile` 時透過附加資訊表回報找不到求解器。`SolveModel` 兩處建立暫存檔失敗改為記錄警告並回傳 `nil, nil`，不再結束程式。
+
+### `plot`
+
+- `CreateRadarChart` 未提供 indicators、`CreateHeatMap` 日曆模式的 X 型別錯誤或未設 `CalendarOpts` 時，改為記錄警告並回傳 `nil`，不再結束程式或 panic。
+
+### `isr`
+
+- `DT.From`、`Col`、`Row`、`Push`、`UseDL`、`UseDT` 遇到不支援的型別或讀檔失敗時不再結束程式，改為回傳記錄了錯誤、可繼續使用的物件，串接結束後可用 `Err()` 或 `PopErr()` 檢查。
+
+### `gplot`
+
+- `CreateHistogram` 用零值設定不再 panic：`Bins` 為 0 或負數時採用預設值 10。`CreateLineChart` 與 `CreateStepChart` 遇到無法繪製的序列（例如含 `NaN`）時改為記錄警告並略過該序列，不再 panic。
+
+### `py`
+
+- IPC 監聽失敗改為記錄警告並讓伺服器保持關閉，不再結束程式。
 
 ## v0.3.2
 

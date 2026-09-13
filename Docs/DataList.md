@@ -2634,7 +2634,7 @@ dl.ReplaceAll(2, 99)
 
 ## Error Handling
 
-Insyra provides both a global error buffer and instance-level error tracking for `DataList`. For fluent/chained operations, use the instance-level `Err()` method to check for errors after a chain and `ClearErr()` to clear them before continuing.
+Insyra provides both a global error buffer and instance-level error tracking for `DataList`. For fluent/chained operations, use the instance-level `Err()` method to check for errors after a chain, `PopErr()` to read and clear in one step, and `ClearErr()` to clear them before continuing.
 
 ### Instance-Level Error Checking
 
@@ -2650,6 +2650,11 @@ if err := dl.Err(); err != nil {
     // Handle the error
 }
 
+// Or read and clear in one step
+if err := dl.PopErr(); err != nil {
+    fmt.Printf("Error occurred: %s\n", err.Message)
+}
+
 // Clear the error for future operations and continue chaining
 dl.ClearErr()
 ```
@@ -2659,7 +2664,9 @@ dl.ClearErr()
 | Method                 | Description                                                                                     |
 | ---------------------- | ----------------------------------------------------------------------------------------------- |
 | `Err() *ErrorInfo`     | Returns the last error that occurred during a chained operation, or `nil` if no error occurred. |
+| `PopErr() *ErrorInfo`  | Returns the last error and clears it, so the list can be reused straight away.                  |
 | `ClearErr() *DataList` | Clears the last error and returns the DataList for continued chaining.                          |
+| `SetErr(pkg, fn, msg string, args ...any) *DataList` | Records an error the way insyra's own methods do: logs a warning and sets `Err()`, replacing any earlier error. Wrapper packages (such as `isr`) use it; application code rarely needs it. |
 
 > **Note:** `setError` is an internal helper used by methods to record the last error on the instance. Most chainable methods will call it when an operation fails.
 
