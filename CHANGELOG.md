@@ -45,6 +45,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `run` no longer opens the interactive REPL when the script contains `env open`, and stops a script that runs itself after 16 nested levels.
 - `db connect` lines are written to `history.txt`, the REPL history and `env export` with the password masked (URL, `user:pass@`, and `password=` forms); history files are created with mode 0600.
 - `accel`'s usage no longer claims a `run` subcommand that does not exist.
+- `help` now shows what `pca`, `regression` and `count` actually take. The first two accept `as <var>`, and `count` requires its value instead of marking it optional. The usage error for `save … sql` lists `rownames [true|false]`, matching its Usage.
 
 ### `ml` and `nn`
 

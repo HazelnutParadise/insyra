@@ -12,7 +12,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "regression",
-		Usage:       "regression <type> <y> <x...>",
+		Usage:       "regression <type> <y> <x...> [as <var>]",
 		Description: "Regression analysis: linear/poly/exp/log/logistic/poisson",
 		Forms: []string{
 			"regression linear <y> <x1> [x2 ...] [as <var>]    multiple linear regression",
@@ -37,7 +37,7 @@ func init() {
 func runRegressionCommand(ctx *ExecContext, args []string) error {
 	coreArgs, alias := parseAlias(args)
 	if len(coreArgs) < 3 {
-		return fmt.Errorf("usage: regression <type> <y> <x...>")
+		return fmt.Errorf("usage: regression <type> <y> <x...> [as <var>]")
 	}
 
 	regressionType := strings.ToLower(coreArgs[0])
