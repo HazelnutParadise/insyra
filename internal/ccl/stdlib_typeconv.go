@@ -3,6 +3,7 @@ package ccl
 import (
 	"fmt"
 	"math"
+	"strings"
 )
 
 // registerTypeConversionFunctions registers value coercion and null-handling
@@ -53,7 +54,14 @@ func registerTypeConversionFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("format arg must be a string, got %T", args[1])
 		}
-		return fmt.Sprintf(format, args[0]), nil
+		out := fmt.Sprintf(format, args[0])
+		// fmt writes its own complaint into the string when the verb does not
+		// match the value — TOSTR(1.5, '%d') gave "%!d(float64=1.5)" — and that
+		// went straight into the cell. Report it instead.
+		if marker := fmtErrorMarker(out); marker != "" {
+			return nil, fmt.Errorf("format %q does not fit %T: %s", format, args[0], marker)
+		}
+		return out, nil
 	}
 	registerFunction("TOSTR", func(args ...any) (any, error) {
 		v, err := tostr(args...)
@@ -110,4 +118,27 @@ func registerTypeConversionFunctions() {
 		}
 		return args[0], nil
 	})
+}
+
+// fmtErrorMarker reports the first formatting-error marker fmt left in s, or ""
+// when there is none. fmt writes these and nothing else does, so their presence
+// means the format and the value did not match. A value that itself contains a
+// marker-shaped substring would be a false positive; that is far rarer than
+// writing Go's error text into a column.
+func fmtErrorMarker(s string) string {
+	for _, m := range []string{"%!(NOVERB)", "%!(EXTRA ", "(MISSING)", "%!(BADPREC)", "%!(BADWIDTH)"} {
+		if strings.Contains(s, m) {
+			return m
+		}
+	}
+	// %!<verb>( — the shape fmt uses for a verb that does not fit the value.
+	for i := 0; i+3 < len(s); i++ {
+		if s[i] == '%' && s[i+1] == '!' && s[i+3] == '(' {
+			c := s[i+2]
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+				return s[i : i+4]
+			}
+		}
+	}
+	return ""
 }

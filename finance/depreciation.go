@@ -22,7 +22,7 @@ func SLN(cost, salvage decimal.Decimal, life int, opts ...Options) (decimal.Deci
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 // SYD returns the depreciation in the per-th period under the
@@ -49,7 +49,7 @@ func SYD(cost, salvage decimal.Decimal, life, per int, opts ...Options) (decimal
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 // DDB returns the depreciation in the per-th period under the
@@ -100,7 +100,7 @@ func DDB(cost, salvage decimal.Decimal, life, per int, factor decimal.Decimal, o
 		depr = raw
 		bookValue = decimal.Sub(work, bookValue, raw)
 	}
-	return o.outCtx().Normalize(depr), nil
+	return o.finish(depr)
 }
 
 // VDB returns the cumulative depreciation between startPeriod and
@@ -138,7 +138,7 @@ func VDB(cost, salvage decimal.Decimal, life int, startPeriod, endPeriod, factor
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(decimal.Sub(work, cumEnd, cumStart)), nil
+	return o.finish(decimal.Sub(work, cumEnd, cumStart))
 }
 
 // vdbCumulative returns total depreciation accumulated from time 0 up

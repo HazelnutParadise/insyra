@@ -263,7 +263,12 @@ func (p *parser) parsePrimary() (cclNode, error) {
 	switch tok.typ {
 	case tNUMBER:
 		p.advance()
-		val, _ := strconv.ParseFloat(tok.value, 64)
+		// The error used to be dropped, so a literal too large for a float64
+		// became +Inf and every row carried an infinity nobody asked for.
+		val, perr := strconv.ParseFloat(tok.value, 64)
+		if perr != nil {
+			return nil, p.errAt("number %s is out of range for a float64", tok.value)
+		}
 		return &cclNumberNode{value: val}, nil
 	case tSTRING:
 		p.advance()

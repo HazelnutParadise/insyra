@@ -46,7 +46,7 @@ func TBillEq(settlement, maturity time.Time, discount decimal.Decimal, opts ...O
 		if err != nil {
 			return decimal.Decimal{}, err
 		}
-		return o.outCtx().Normalize(v), nil
+		return o.finish(v)
 	}
 
 	// Long bill (DSM > 182): US Treasury / SIA coupon-equivalent yield.
@@ -86,7 +86,7 @@ func TBillEq(settlement, maturity time.Time, discount decimal.Decimal, opts ...O
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 // TBillPrice returns the price per $100 face value of a Treasury bill
@@ -113,7 +113,7 @@ func TBillPrice(settlement, maturity time.Time, discount decimal.Decimal, opts .
 	one := decimal.NewFromInt64(work, 1)
 	hundred := decimal.NewFromInt64(work, 100)
 	v := decimal.Mul(work, hundred, decimal.Sub(work, one, frac))
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 // TBillYield returns the yield of a Treasury bill given its price per
@@ -143,7 +143,7 @@ func TBillYield(settlement, maturity time.Time, pr decimal.Decimal, opts ...Opti
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(decimal.Mul(work, priceFactor, dayFactor)), nil
+	return o.finish(decimal.Mul(work, priceFactor, dayFactor))
 }
 
 // tbillDSM returns the calendar days from settlement to maturity,
