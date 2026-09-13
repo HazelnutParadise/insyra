@@ -40,6 +40,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `--env`、`--no-color`、`--log-level` 放在 `newdl`、`addcol`、`addrow`、`show` 前面時會生效，不再被當成資料寫進 default 環境。
 - `run` 遇到腳本裡的 `env open` 不再開啟互動 REPL；腳本自己呼叫自己超過 16 層會停止。
 - `db connect` 寫進 `history.txt`、REPL 歷史與 `env export` 時密碼會被遮罩（URL、`user:pass@`、`password=` 三種形式）；history 檔以 0600 建立。
+- `accel` 的 Usage 不再宣稱有不存在的 `run` 子命令。
 
 ### `datafetch`
 
