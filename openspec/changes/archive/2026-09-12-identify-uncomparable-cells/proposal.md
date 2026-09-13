@@ -61,6 +61,7 @@ Adapted:
 - On this line `IsEqualTo` and `IsTheSameAs` use `comparableEqual`, not `equalCell`, so the encoding fallback went into `comparableEqual`. A scalar `NaN` cell stays unequal in `IsEqualTo`; inside a slice, map or struct a `NaN` is encoded as content, so two `[]any{NaN}` cells are equal and match. A test pins both.
 - `TestIsEqualToUncomparableCellsDoNotPanic` asserted that such cells are unequal, the behaviour this change replaces; it was rewritten to the new rule.
 - The changelog entries that said such a cell "simply does not match" or is "unequal" now say it is matched by type and content, so `## Unreleased` states the net behaviour.
+- `valueMatcher` encodes a searched value Go cannot compare once per call and rejects a cell of another dynamic type before encoding it (backport review). Going through `equalCell` for every cell re-encoded the searched value each time: `FindAll`, `Count` and `DropRowsContain` with a 64 KB `[]byte` over 20,000 `int64` cells took 5.3 s together.
 - The AGENTS.md follow-ups: the `labelKey` entry is rewritten to cover `encodeGroupKey` and `uniqueKey` too, which still merge nested values that print alike on this line (measured); the self-referential `NewDataList` entry was re-measured here.
 
 Left on 0.4:

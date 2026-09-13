@@ -188,7 +188,7 @@ func TestScalarGroupKeysAreUnchanged(t *testing.T) {
 }
 
 // Every DataTable method that compares by value goes through the same
-// valueMatcher/equalCell seam as DataList, but that is a reason to believe
+// valueMatcher seam as DataList, but that is a reason to believe
 // they agree, not evidence. These pin the DataTable side: a cell Go cannot
 // compare is found, counted and dropped by content, and a different value is
 // not.

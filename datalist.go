@@ -599,19 +599,6 @@ func filterCells(data []any, keep func(any) bool) []any {
 	return out
 }
 
-// equalCell matches a cell against a searched-for value the way FindFirst and
-// DropAll always have: a float64 NaN matches only a float64 NaN, and a value
-// Go cannot compare with == is compared by its type and content.
-func equalCell(a, b any) bool {
-	a, b = unwrapCell(a), unwrapCell(b)
-	if fa, ok := a.(float64); ok {
-		if fb, ok := b.(float64); ok && math.IsNaN(fa) && math.IsNaN(fb) {
-			return true
-		}
-	}
-	return comparableEqual(a, b)
-}
-
 // comparableEqual is a == b, except that a value Go cannot compare with == is
 // compared by its type and content (encodeCell) instead of panicking. A scalar
 // NaN is not equal to NaN.
@@ -637,9 +624,10 @@ func comparableEqual(a, b any) (eq bool) {
 // do, whatever their Go types: a CSV load stores int64 while a Go literal is
 // int, and comparing them with == made Count(2) return 0 on data that plainly
 // held 2. A negative value never matches an unsigned one, a float never
-// matches an integer, NaN matches NaN, and any other value compares the way
-// equalCell compares it. IsEqualTo and IsTheSameAs keep comparableEqual: they
-// ask whether two lists hold identical data, type included.
+// matches an integer, NaN matches NaN, and any other value matches a cell of
+// its own type by ==, or by type and content when Go cannot compare it.
+// IsEqualTo and IsTheSameAs keep comparableEqual: they ask whether two lists
+// hold identical data, type included.
 //
 // The test is chosen once per call from want. Choosing it again for every cell
 // made a million-cell Count of floats or strings three times slower.
@@ -689,8 +677,22 @@ func valueMatcher(want any) func(cell any) bool {
 			return ok && c == w
 		}
 	}
+	// Every other value. A cell of a different dynamic type never matches: ==
+	// says so for comparable values, and the encoding starts with the type for
+	// the rest. Checking the type first, and encoding a value Go cannot compare
+	// once per call rather than once per cell, keeps a search for a 64 KB
+	// []byte over a numeric column at a type check per cell.
+	wantType := reflect.TypeOf(want)
+	if !comparableCell(want) {
+		wantKey := encodeCell(want)
+		return func(cell any) bool {
+			cell = unwrapCell(cell)
+			return reflect.TypeOf(cell) == wantType && encodeCell(cell) == wantKey
+		}
+	}
 	return func(cell any) bool {
-		return equalCell(cell, want)
+		cell = unwrapCell(cell)
+		return reflect.TypeOf(cell) == wantType && comparableEqual(cell, want)
 	}
 }
 

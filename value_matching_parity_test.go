@@ -334,3 +334,36 @@ func TestValueLookupsDoNotPanicOnUncomparableCells(t *testing.T) {
 		}()
 	}
 }
+
+// Searching for a value Go cannot compare over a column of other types costs
+// about a type check per cell. The searched value used to be encoded again for
+// every cell, so a 64 KB []byte over 20,000 int64 cells took seconds.
+func TestSearchingForAnUncomparableValueDoesNotReencodeItPerCell(t *testing.T) {
+	quietLogs(t)
+	cells := make([]any, 20000)
+	for i := range cells {
+		cells[i] = int64(i)
+	}
+	blob := make([]byte, 64<<10)
+	blob[0] = 1
+	cells[7] = Cell(append([]byte(nil), blob...))
+	dl := NewDataList(cells...)
+	dt := NewDataTable(NewDataList(cells...))
+
+	start := time.Now()
+	found := dl.FindAll(blob)
+	count := dl.Count(blob)
+	dt.DropRowsContain(blob)
+	elapsed := time.Since(start)
+	t.Logf("FindAll + Count + DropRowsContain with a 64 KB []byte over 20,000 cells: %v", elapsed)
+
+	if len(found) != 1 || found[0] != 7 || count != 1 {
+		t.Fatalf("FindAll = %v, Count = %d; want [7] and 1", found, count)
+	}
+	if dt.NumRows() != 19999 {
+		t.Fatalf("DropRowsContain left %d rows, want 19999", dt.NumRows())
+	}
+	if elapsed > time.Second {
+		t.Fatalf("searching took %v; the searched value is being re-encoded per cell", elapsed)
+	}
+}
