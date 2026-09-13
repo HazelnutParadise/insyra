@@ -251,6 +251,13 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-10] — how insyra turns a number into text is decided nowhere
+- **Where**: every path that writes a number as text — `internal/ccl/stdlib_string.go` `toString` (behind CCL's `CONCAT`, `TOSTR` without a format, `LEN`, `UPPER`, …), the `&` operator in `internal/ccl/ccl_evaluator.go`, `ToCSV`, `ToJSON`, and `Show`.
+- **What**: each path uses Go's default formatting, so a `float64` outside roughly 1e-5..1e21 comes out in exponent form. Measured on one column `[0.0000001, 1e6, 1e21, 12345.678]`: CCL `'x' & A` gives `x1e-07`, `x1e+06`, `x1e+21`; `ToCSV` writes `1e-07`, `1e+06`, `1e+21`; `ToJSON` writes `1e-07`; `Show` prints `1.0000e-07`, `1000000`, `1.0000e+21`, `1.2346e+04`, a display format of its own. Every numeric literal in CCL is a `float64`, so `LEN(1000000)` is `5` while the same value read from an integer column gives `7`.
+- **Why it is not a CCL-only fix**: CCL is not the odd one out — `ToCSV` and `ToJSON` write the same exponent form. Changing CCL alone would make `'x' & A` say `x0.0000001` while `ToCSV` of the same column still says `1e-07`. That split may well be the right answer: a serialised number and a number embedded in text do different jobs, and `1e-07` in a CSV or JSON number cell reads back as the same value, whereas `id-1e-07` in a string reads back as nothing useful. But it should be chosen, not fall out of a patch to one file. It is also a different question from the `<nil>` that CCL's `&` still writes for a nil operand on this line: CCL is the only path that writes that — `ToCSV` writes an empty cell and `ToJSON` writes `null`.
+- **Suggestion**: decide per path. The strongest case for a change is text built inside CCL, where `strconv.FormatFloat(f, 'f', -1, 64)` gives the shortest exact decimal with no exponent (`"0.0000001"`). The cost is that a genuinely huge value gets long (`1e300` is 301 characters), so a magnitude threshold may be wanted. Any change is **breaking** for expressions that build text from a float.
+- **Status**: pending
+
 ### [2026-08-01] — multi-GPU planning and execution coverage
 - **Where**: `accel/planner.go` (`PlanShardable`, weighted per-device `ShardAssignment`s), `accel/exact.go` (per-assignment dispatch)
 - **What**: the planner retains capability-weighted heterogeneous assignments and its existing `MergePolicy`. `ExecuteNearestExact` now dispatches one worker per assignment, uses the bounded chunk seam, merges by input range, and falls back per assignment without changing the exact CPU decision.
