@@ -4382,7 +4382,10 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable
 - Supports sorting by column index, number, or name
 - Multi-level sorting: sorts by the first config, then by subsequent configs for ties
 - Uses stable sort to maintain relative order of equal elements
-- At least one of ColumnIndex, ColumnNumber, or ColumnName must be specified
+- Each config names a column with one of `ColumnIndex`, `ColumnName` or `ColumnNumber`
+- If a config gives more than one, **index takes precedence over name, and name over number**; the sort runs, a warning is logged naming the fields that were ignored, and `Err()` stays nil
+- A config that gives none sorts by the first column. `ColumnNumber` is 0-based and its zero value is the first column, so `DataTableSortConfig{}`, `{Descending: true}` and `{ColumnNumber: 0}` all sort by column 0
+- Every level is checked before any row moves: a column that is not there records the error on `SortBy` and leaves the table unchanged
 
 **Parameters:**
 
@@ -4398,9 +4401,9 @@ Sorts the DataTable rows based on one or more column configurations. Supports mu
 
 ```go
 type DataTableSortConfig struct {
-    ColumnIndex  string // Column index (A, B, C...)
-    ColumnNumber int    // Column number (0-based)
-    ColumnName   string // Column name
+    ColumnIndex  string // Column index (A, B, C...); takes precedence over ColumnName and ColumnNumber
+    ColumnNumber int    // 0-based column number, used when ColumnIndex and ColumnName are empty; the zero value is the first column
+    ColumnName   string // Column name; takes precedence over ColumnNumber
     Descending   bool   // Sort in descending order
 }
 ```
@@ -4410,6 +4413,9 @@ type DataTableSortConfig struct {
 ```go
 // Single column sort
 dt.SortBy(insyra.DataTableSortConfig{ColumnName: "Age", Descending: false})
+
+// The first column by position (an empty config selects it too)
+dt.SortBy(insyra.DataTableSortConfig{ColumnNumber: 0})
 
 // Multi-column sort: sort by Age ascending, then by Name descending
 dt.SortBy(
