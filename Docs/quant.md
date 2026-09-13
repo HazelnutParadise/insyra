@@ -610,7 +610,7 @@ func main() {
 }
 ```
 
-Already have a column in a `DataTable`? Pass it straight in: `quant.SharpeRatio(dt.GetCol("returns"), 0, 252)`.
+Already have a column in a `DataTable`? Pass it straight in: `quant.SharpeRatio(dt.GetColByName("returns"), 0, 252)`.
 
 ### Option pricing and implied volatility from a datafetch chain
 
