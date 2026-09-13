@@ -257,6 +257,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: moving `encodeGroupKey` and `uniqueKey` to `encodeCell` is a change of result, so it belongs to 0.4. `labelKey` needs a decision first: its integer rule is by value where cell identity is by type, so decide whether an encoder label is identity or value before pointing it at any encoder.
 - **Status**: pending
 
+### [2026-09-12] — a bare `[]byte` still flattens in the constructors
+- **Where**: `datalist.go` `flattenWithNilSupport`
+- **What**: a `[]byte` cell is one value everywhere it is looked up — counted and matched by content — but `NewDataList([]byte{0, 255})` still produces two cells holding `0` and `255`, because the constructor flattens every slice (pinned by `TestAnUnmarkedSliceStillFlattens`). The owner ruled on 2026-09-12 that the flattening stays: it is what makes `NewDataList` read like constructing a pandas Series. `one-value-one-cell` gave that decision an escape hatch, `NewDataList(Cell(blob), …)`, so the remaining gap is only that a reader who writes the bare form and then searches for the blob gets 0 with nothing to explain it.
+- **Suggestion**: documentation, not code. `Docs/DataList.md` describes the flattening and `Cell` together; keep the `Count`/`Counter` examples building their list with `Append` or `Cell` so they are runnable as written, and consider whether `Count` should say something when it is handed a slice that the receiving list could not be holding.
+- **Status**: pending
+
 ### [2026-09-12] — a self-referential slice takes the process down in `NewDataList`
 - **Where**: `datalist.go` `flattenWithNilSupport`
 - **What**: it recurses into every `reflect.Slice` with no depth limit, so a slice containing itself exhausts the stack. Measured on 2026-09-13: `cyclic := []any{1}; cyclic[0] = cyclic; insyra.NewDataList(cyclic)` ends with `fatal error: stack overflow`. That is not a panic, `recover` cannot catch it, and the library promises never to terminate. `encodeCell` was given a depth limit of 64 for exactly this reason; the flattener was not touched because it is the constructor's hot path and the fix should be measured against it.

@@ -219,6 +219,7 @@ func (dt *DataTable) replaceNaNsWith_notAtomic(newValue any) {
 
 func (dt *DataTable) replaceNaNsAndNilsWith_notAtomic(newValue any) {
 	defer dt.updateTimestamp()
+	newValue = unwrapCell(newValue)
 	for i, col := range dt.columns {
 		for j, cell := range col.data {
 			// Route through isNilOrNaN so float32 NaN is handled too (a bare
@@ -232,6 +233,7 @@ func (dt *DataTable) replaceNaNsAndNilsWith_notAtomic(newValue any) {
 
 func (dt *DataTable) replaceInRow_notAtomic(rowIndex int, oldValue, newValue any, mode ...int) error {
 	defer dt.updateTimestamp()
+	newValue = unwrapCell(newValue)
 	modeFlag := 0
 	if len(mode) > 1 {
 		return fmt.Errorf("mode parameter can only have 0 or 1 value")
@@ -275,6 +277,7 @@ func (dt *DataTable) replaceInRow_notAtomic(rowIndex int, oldValue, newValue any
 
 func (dt *DataTable) replaceNaNsAndNilsInRow_notAtomic(rowIndex int, newValue any, mode ...int) error {
 	defer dt.updateTimestamp()
+	newValue = unwrapCell(newValue)
 	modeFlag := 0
 	if len(mode) > 1 {
 		return fmt.Errorf("mode parameter can only have 0 or 1 value")
@@ -364,6 +367,7 @@ func (dt *DataTable) replaceInCol_notAtomic(colIndex string, oldValue, newValue 
 }
 
 func (dt *DataTable) replaceNaNsAndNilsInCol_notAtomic(colIndex string, newValue any, mode ...int) error {
+	newValue = unwrapCell(newValue)
 	modeFlag := 0
 	if len(mode) > 1 {
 		return fmt.Errorf("mode parameter can only have 0 or 1 value")
