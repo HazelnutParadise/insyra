@@ -74,6 +74,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `datafetch`
 
 - The file geocode cache (`NewFileGeocodeCache`) writes to a temporary file and renames it into place, so an interrupted write can no longer leave a corrupt cache that the next run silently discards.
+- The Google Maps crawler's `Search` works again. Google stopped putting store IDs in the page it read, so it returned nothing for every query without a warning. It now reads the result list the Maps web page requests: up to 20 stores with their names in one request, instead of one extra page load per store, and a warning when nothing comes back. `GoogleMapsStores()` no longer downloads its endpoints and request headers from a GitHub repository at run time, so it needs no network access and never returns nil, and every request times out after 30 seconds. `GetReviews` logs progress at debug level instead of printing to standard output, no longer panics when `MaxWaitingInterval_Milliseconds` is exactly 1000, and treats a zero `SortBy` or `MaxWaitingInterval_Milliseconds` as its default without a warning. `GetReviews` itself still fails, because Google answers its request with HTTP 403 ([#249](https://github.com/HazelnutParadise/insyra/issues/249)).
 
 ### `stats`
 

@@ -1,28 +1,49 @@
-// FIXME: this crawler doesn't work anymore because Google has changed their API.
+// Google Maps store search and reviews.
+//
+// Both read endpoints the Google Maps web page calls, which Google changes
+// without notice. Search was restored on 2026-09-13. The review endpoint has
+// answered HTTP 403 since at least that date, so GetReviews currently fails
+// (#249).
 
 package datafetch
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
 
-	"math/rand/v2"
-
 	"github.com/HazelnutParadise/insyra"
 	json "github.com/goccy/go-json"
 )
 
-// Compiled once: these were rebuilt on every call.
-var (
-	gmapsFeatureIDRe = regexp.MustCompile(`0x.{16}:0x.{16}`)
-	gmapsMetaNameRe  = regexp.MustCompile(`<meta[^>]*itemprop=["']name["'][^>]*>`)
-	gmapsStoreNameRe = regexp.MustCompile(`".*·`)
+const (
+	gmapsSearchURL = "https://www.google.com.tw/search"
+	gmapsReviewURL = "https://www.google.com.tw/maps/rpc/listugcposts"
+
+	// gmapsSearchPB is the request descriptor the Maps web page sends with a
+	// search, cut down to the fields the result list depends on: 7i20 asks for
+	// 20 stores, and without 10b1 or 34m19 Google returns no store records.
+	// Measured on 2026-09-13, it returns the same stores as the page's full
+	// 1,643-character descriptor.
+	gmapsSearchPB = "!7i20!10b1!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1"
+
+	// gmapsSearchResults is where a search response keeps its result list.
+	// Each entry holds its store record at 1, with the feature ID at 10 and
+	// the name at 11.
+	gmapsSearchResults = 64
+
+	gmapsUserAgent       = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+	gmapsRequestTimeout  = 30 * time.Second
+	gmapsMaxResponseSize = 64 << 20
 )
+
+var gmapsFeatureIDRe = regexp.MustCompile(`^0x[0-9a-f]+:0x[0-9a-f]+$`)
 
 // GoogleMapsStoreReview is a struct for Google Maps store reviews.
 type GoogleMapsStoreReview struct {
@@ -40,9 +61,11 @@ type GoogleMapsStoreReview struct {
 type GoogleMapsStoreReviews []GoogleMapsStoreReview
 
 // GoogleMapsStoreReviewsFetchingOptions is a struct for options when fetching reviews.
+// A zero field means its default.
 type GoogleMapsStoreReviewsFetchingOptions struct {
 	SortBy GoogleMapsStoreReviewSortBy
 	// MaxWaitingInterval_Milliseconds is the maximum waiting interval in milliseconds between requests.
+	// It must be at least 1000; zero means 5000.
 	MaxWaitingInterval_Milliseconds uint
 }
 
@@ -60,8 +83,8 @@ const (
 )
 
 type googleMapsStoreCrawler struct {
+	client         *http.Client
 	headers        map[string]string
-	storeNameUrl   string
 	storeSearchUrl string
 	storeReviewUrl string
 }
@@ -71,100 +94,70 @@ type GoogleMapsStoreData struct {
 	Name string
 }
 
-// GoogleMapsStores returns a crawler for Google Maps store data.
-// Returns nil if failed to initialize.
+// GoogleMapsStores returns a crawler for Google Maps store data. It needs no
+// network access and never returns nil.
 func GoogleMapsStores() *googleMapsStoreCrawler {
-	const configUrl = "https://raw.githubusercontent.com/TimLai666/google-maps-store-review-crawler/refs/heads/main/crawler_config.json"
-	res, err := http.Get(configUrl)
-	if err != nil {
-		insyra.LogWarning("datafetch", "GoogleMapsStores", "Failed to fetch GoogleMapsStoreReviewCrawler config. Error: %v. Returning nil.", err)
-		return nil
-	}
-	// Register the close before the status check so a non-200 response does not
-	// leak the body (the defer was previously after the early return).
-	defer func() { _ = res.Body.Close() }()
-	if res.StatusCode != 200 {
-		insyra.LogWarning("datafetch", "GoogleMapsStores", "Failed to fetch GoogleMapsStoreReviewCrawler config. HTTP status: %d. Returning nil.", res.StatusCode)
-		return nil
-	}
-
-	config := struct {
-		Headers        map[string]string `json:"headers"`
-		StoreNameUrl   string            `json:"storeNameUrl"`
-		StoreSearchUrl string            `json:"storeSearchUrl"`
-		StoreReviewUrl string            `json:"reviewUrl"`
-	}{}
-	err = json.NewDecoder(res.Body).Decode(&config)
-	if err != nil {
-		insyra.LogWarning("datafetch", "GoogleMapsStores", "Failed to decode GoogleMapsStoreReviewCrawler config. Error: %v. Returning nil.", err)
-		return nil
-	}
-
 	return &googleMapsStoreCrawler{
-		headers:        config.Headers,
-		storeNameUrl:   config.StoreNameUrl,
-		storeSearchUrl: config.StoreSearchUrl,
-		storeReviewUrl: config.StoreReviewUrl,
+		client:         &http.Client{Timeout: gmapsRequestTimeout},
+		headers:        map[string]string{"User-Agent": gmapsUserAgent},
+		storeSearchUrl: gmapsSearchURL,
+		storeReviewUrl: gmapsReviewURL,
 	}
 }
 
-// Search searches for stores with the given name.
-// Returns a list of store data.
-// Returns nil if failed to search.
+// Search searches Google Maps for stores matching storeName and returns up to
+// 20 of them, in Google's order. It returns nil when the request fails or no
+// store comes back, and logs a warning saying which.
 func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData {
-	url := strings.Replace(c.storeSearchUrl, "{store_name}", storeName, 1)
-	req, err := http.NewRequest("GET", url, nil)
+	params := url.Values{}
+	params.Set("tbm", "map")
+	params.Set("hl", "zh-TW")
+	params.Set("gl", "tw")
+	params.Set("q", storeName)
+	params.Set("pb", gmapsSearchPB)
+
+	body, err := c.get(c.storeSearchUrl + "?" + params.Encode())
 	if err != nil {
-		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Failed to create request. Error: %v. Returning nil.", err)
+		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Failed to search: %v. Returning nil.", err)
 		return nil
 	}
-	for k, v := range c.headers {
-		req.Header.Add(k, v)
-	}
-	res, err := http.DefaultClient.Do(req)
+	stores, err := parseGoogleMapsSearch(body)
 	if err != nil {
-		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Failed to send request. Error: %v. Returning nil.", err)
+		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "%v. Returning nil.", err)
 		return nil
 	}
-	defer func() { _ = res.Body.Close() }()
-
-	resTxt, err := io.ReadAll(res.Body)
-	if err != nil {
-		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Failed to read response. Error: %v. Returning nil.", err)
+	if len(stores) == 0 {
+		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Google returned no stores for %q. If the store exists, the response format may have changed. Returning nil.", storeName)
 		return nil
 	}
+	return stores
+}
 
-	// 定義正則表達式
-
-	// 取得匹配的 storeId（使用 map 來去重）
-	storeIdSet := make(map[string]struct{})
-	matches := gmapsFeatureIDRe.FindAllString(string(resTxt), -1)
-	for _, match := range matches {
-		cleanedId := strings.ReplaceAll(match, "\\", "")
-		storeIdSet[cleanedId] = struct{}{}
+// parseGoogleMapsSearch reads the stores out of a search response, keeping
+// Google's order and dropping repeats and entries without a feature ID.
+func parseGoogleMapsSearch(body []byte) ([]GoogleMapsStoreData, error) {
+	var data []any
+	if err := json.Unmarshal(stripGoogleJSONPrefix(body), &data); err != nil {
+		return nil, fmt.Errorf("failed to decode the search response: %w", err)
 	}
 
-	// 轉換為 slice
-	var storeIdList []string
-	for storeId := range storeIdSet {
-		storeIdList = append(storeIdList, storeId)
-	}
-
-	// 同步處理：逐個獲取商店名稱
-	var storeList []GoogleMapsStoreData
-	for _, storeId := range storeIdList {
-		storeName, err := c.getStoreName(storeId)
-		if err != nil {
-			insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Error fetching store name for %s: %v\n", storeId, err)
-			continue // 碰到錯誤就跳過
+	results, _ := extractValue(data, gmapsSearchResults).([]any)
+	var stores []GoogleMapsStoreData
+	seen := make(map[string]struct{})
+	for _, item := range results {
+		entry, _ := item.([]any)
+		id, _ := extractValue(entry, 1, 10).(string)
+		if !gmapsFeatureIDRe.MatchString(id) {
+			continue
 		}
-		storeList = append(storeList, GoogleMapsStoreData{
-			ID:   storeId,
-			Name: storeName,
-		})
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		name, _ := extractValue(entry, 1, 11).(string)
+		stores = append(stores, GoogleMapsStoreData{ID: id, Name: name})
 	}
-
-	return storeList
+	return stores, nil
 }
 
 // GetReviews fetches reviews for the store with the given ID.
@@ -172,34 +165,36 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData 
 // If pageCount is 0, all reviews will be fetched.
 // Returns a list of reviews.
 // Returns nil if failed to fetch reviews.
+//
+// Google currently answers this request with HTTP 403, so GetReviews returns
+// nil with a warning (#249).
 func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews {
 	fetchingOptions := GoogleMapsStoreReviewsFetchingOptions{
 		SortBy:                          SortByRelevance,
 		MaxWaitingInterval_Milliseconds: 5000,
 	}
 	if len(options) == 1 {
-		fetchingOptions = options[0]
-		if fetchingOptions.MaxWaitingInterval_Milliseconds < 1000 {
-			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "MaxWaitingInterval is too small. Using default value.")
-			fetchingOptions.MaxWaitingInterval_Milliseconds = 5000
-		}
-		if fetchingOptions.SortBy < SortByRelevance || fetchingOptions.SortBy > SortByLowestRating {
+		// A zero field keeps its default; only a value that is set and out of
+		// range is worth a warning.
+		if sortBy := options[0].SortBy; sortBy > SortByLowestRating {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "SortBy is invalid. Using default value.")
-			fetchingOptions.SortBy = SortByRelevance
+		} else if sortBy != 0 {
+			fetchingOptions.SortBy = sortBy
+		}
+		if wait := options[0].MaxWaitingInterval_Milliseconds; wait != 0 && wait < 1000 {
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "MaxWaitingInterval is too small. Using default value.")
+		} else if wait != 0 {
+			fetchingOptions.MaxWaitingInterval_Milliseconds = wait
 		}
 	} else if len(options) > 1 {
 		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Got too many options. Using default options.")
 	}
 
-	reviewUrl := c.storeReviewUrl
-	headers := c.headers
-
 	nextToken := ""
 	reviews := []GoogleMapsStoreReview{}
-	page := 1
 
-	for pageCount == 0 || page <= pageCount {
-		fmt.Printf("fetching reviews on page %d...\n", page)
+	for page := 1; pageCount == 0 || page <= pageCount; page++ {
+		insyra.LogDebug("datafetch", "GoogleMapsStores.GetReviews", "fetching reviews on page %d", page)
 
 		// 組合請求參數
 		params := url.Values{}
@@ -209,46 +204,13 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 		params.Set("pb", fmt.Sprintf("!1m6!1s%s!6m4!4m1!1e1!4m1!1e3!2m2!1i10!2s%s!5m2!1s0OBwZ4OnGsrM1e8PxIjW6AI!7e81!8m5!1b1!2b1!3b1!5b1!7b1!11m0!13m1!1e%d",
 			storeId, nextToken, fetchingOptions.SortBy))
 
-		// 建立 HTTP 請求
-		req, err := http.NewRequest("GET", reviewUrl+"?"+params.Encode(), nil)
+		body, err := c.get(c.storeReviewUrl + "?" + params.Encode())
 		if err != nil {
-			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to create request. Error: %v. Returning nil.", err)
-			return nil
-		}
-		for key, value := range headers {
-			req.Header.Set(key, value)
-		}
-
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to send request. Error: %v. Returning nil.", err)
-			return nil
-		}
-
-		// 確保回應狀態碼為 200 OK
-		if resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
-			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to fetch reviews. HTTP status code: %d. Returning nil.", resp.StatusCode)
-			return nil
-		}
-
-		// 讀取回應內容（限制大小避免無界讀取），並即時關閉 Body。此處在分頁迴圈
-		// 內，若用 defer 會累積到函式結束才釋放連線。
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
-		_ = resp.Body.Close()
-		if err != nil {
-			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to read response. Error: %v. Returning nil.", err)
-			return nil
-		}
-
-		// Google 回應有 `)]}'` 前綴，需去除前 4 個字元；回應過短則跳過避免切片越界
-		if len(body) < 4 {
-			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Response too short (%d bytes). Returning nil.", len(body))
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to fetch reviews: %v. Returning nil.", err)
 			return nil
 		}
 		jsonData := []any{}
-		if err := json.Unmarshal(body[4:], &jsonData); err != nil {
+		if err := json.Unmarshal(stripGoogleJSONPrefix(body), &jsonData); err != nil {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to decode JSON. Error: %v. Returning nil.", err)
 			return nil
 		}
@@ -281,12 +243,6 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 					content := extractString(reviewData, 0, 2, -1, 0, 0)
 					rating := extractInt(reviewData, 0, 2, 0, 0)
 
-					// reviewDateObj, err := time.Parse("2006-01-02", reviewDate)
-					// if err != nil {
-					// 	insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to parse review date. Error: %v. Skipping.", err)
-					// 	reviewDateObj = time.Time{} // 預設為零值
-					// }
-
 					reviews = append(reviews, GoogleMapsStoreReview{
 						Reviewer:      reviewer,
 						ReviewerID:    reviewerID,
@@ -306,12 +262,12 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 			break
 		}
 
-		// 隨機等待時間，防止被 Google 封鎖
-		waitTime := rand.IntN(int(fetchingOptions.MaxWaitingInterval_Milliseconds)-1000) + 1000
-		fmt.Printf("Waiting %.1fs before fetching the next page...\n", float64(waitTime)/1000)
+		// 隨機等待 1 秒到 MaxWaitingInterval，防止被 Google 封鎖。上限剛好是 1000
+		// 時只有一種等待時間，rand.IntN 的參數仍須大於零。
+		maxWait := int(fetchingOptions.MaxWaitingInterval_Milliseconds)
+		waitTime := 1000 + rand.IntN(maxWait-1000+1)
+		insyra.LogDebug("datafetch", "GoogleMapsStores.GetReviews", "waiting %.1fs before fetching the next page", float64(waitTime)/1000)
 		time.Sleep(time.Duration(waitTime) * time.Millisecond)
-
-		page++
 	}
 
 	return reviews
@@ -338,52 +294,35 @@ func (reviews GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable {
 	return dt
 }
 
-func (c *googleMapsStoreCrawler) getStoreName(storeId string) (string, error) {
-	url := strings.Replace(c.storeNameUrl, "{store_id}", storeId, 1)
-	req, err := http.NewRequest("GET", url, nil)
+// get sends a GET request with the crawler's headers and returns the body of
+// a 200 response, read up to gmapsMaxResponseSize.
+func (c *googleMapsStoreCrawler) get(rawURL string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	for k, v := range c.headers {
-		req.Header.Add(k, v)
+		req.Header.Set(k, v)
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := c.client.Do(req)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("cannot get store data, HTTP status code: %d", res.StatusCode)
+		return nil, fmt.Errorf("HTTP status %d", res.StatusCode)
 	}
-
-	// 讀取 HTML 內容
-	body, err := io.ReadAll(res.Body)
+	body, err := io.ReadAll(io.LimitReader(res.Body, gmapsMaxResponseSize))
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
-	html := string(body)
+	return body, nil
+}
 
-	// 使用正則表達式匹配 <meta itemprop="name">
-	metaTags := gmapsMetaNameRe.FindAllString(html, -1)
-	if len(metaTags) == 0 {
-		return "", fmt.Errorf("cannot get store data")
-	}
-
-	// 從 meta 標籤提取名稱
-	name := ""
-	for _, tag := range metaTags {
-		match := gmapsStoreNameRe.FindString(tag)
-		if match != "" {
-			name = match[1 : len(match)-2] // 去掉首尾多餘的字元
-			break
-		}
-	}
-
-	if name == "" {
-		return "", fmt.Errorf("cannot get store data")
-	}
-
-	return name, nil
+// stripGoogleJSONPrefix removes the )]}' line Google puts in front of its JSON
+// responses.
+func stripGoogleJSONPrefix(body []byte) []byte {
+	return bytes.TrimPrefix(body, []byte(")]}'"))
 }
 
 // extractString 從 JSON 層級結構中擷取字串
