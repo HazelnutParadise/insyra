@@ -51,6 +51,7 @@ Dev received:
 - The command registry lock (`cli-registry-safety`), `mkt` notices at Debug, and the doc-comment and gofmt hunks.
 
 Adapted on dev:
+- `DetectEncoding` drops a trailing partial rune only when the read filled the 8 KB sample and the tail is a valid but incomplete rune prefix (backport review); trimming any invalid tail made a short Latin-1 file such as `name\nJos\xe9\n` report `utf-8`.
 - `ClearNumbers` keeps its built-in numeric type switch; `IsNumeric` also matches named numeric kinds such as `time.Duration`, which `ClearNumbers` has always kept.
 - `IsEqualTo`/`IsTheSameAs` compare with a panic-safe `==`, so NaN stays unequal; the NaN-aware `equalCell` serves only `FindColsIfContains*` and `DropAll`, where it matches what `FindFirst` and `DropAll` already did.
 - `parquet.Write` keeps writing straight to `path` and returns the close error.

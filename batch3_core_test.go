@@ -105,6 +105,19 @@ func TestDetectEncodingBoundary(t *testing.T) {
 	}
 }
 
+// A file shorter than the sample holds every byte of itself, so an invalid tail
+// is invalid, not cut off: Latin-1 "Jos\xe9" must not be judged UTF-8 by
+// trimming the \xe9 away.
+func TestDetectEncodingKeepsAnInvalidTailOfAShortFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "latin1.csv")
+	if err := os.WriteFile(p, []byte("name\nJos\xe9\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if enc, err := DetectEncoding(p); err == nil && enc == "utf-8" {
+		t.Fatalf("a Latin-1 file was reported as utf-8")
+	}
+}
+
 // uncomparableCell holds a slice, so Go panics when two of them meet ==.
 type uncomparableCell struct{ s []int }
 

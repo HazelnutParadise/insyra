@@ -312,10 +312,11 @@ func DetectEncoding(filePath string) (string, error) {
 		return "utf-16be", nil
 	}
 
-	// Quick UTF-8 heuristic. The sample may end in the middle of a multi-byte
-	// rune, which is not invalid UTF-8, just truncated: back off to the last
-	// complete rune before judging.
-	if utf8.Valid(sample) || utf8.Valid(trimIncompleteRune(sample)) {
+	// Quick UTF-8 heuristic. A sample that filled the buffer may end in the
+	// middle of a multi-byte rune, which is not invalid UTF-8, just truncated:
+	// back off to the last complete rune before judging. A shorter sample is
+	// the whole file, so its tail is judged as it is.
+	if utf8.Valid(sample) || (n == len(buf) && utf8.Valid(trimIncompleteRune(sample))) {
 		return "utf-8", nil
 	}
 
@@ -330,12 +331,17 @@ func DetectEncoding(filePath string) (string, error) {
 	return charset, nil
 }
 
-// trimIncompleteRune drops a trailing partial UTF-8 sequence (at most 3
-// bytes) so a sample cut at an arbitrary byte boundary can still be judged.
+// trimIncompleteRune drops a trailing partial UTF-8 sequence so a sample cut at
+// an arbitrary byte boundary can still be judged. Only a valid-but-incomplete
+// prefix of a rune is dropped: the bytes from the last rune start must be too
+// few for the rune that start announces. Any other tail is returned unchanged.
 func trimIncompleteRune(b []byte) []byte {
-	for cut := 1; cut <= 3 && cut <= len(b); cut++ {
-		if utf8.Valid(b[:len(b)-cut]) {
-			return b[:len(b)-cut]
+	for i := len(b) - 1; i >= 0 && i > len(b)-utf8.UTFMax; i-- {
+		if utf8.RuneStart(b[i]) {
+			if !utf8.FullRune(b[i:]) {
+				return b[:i]
+			}
+			return b
 		}
 	}
 	return b
