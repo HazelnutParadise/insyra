@@ -174,6 +174,8 @@ insyra --log-level debug help
 
 ## Environment Model
 
+An environment name is joined onto the environments directory, so a name that would resolve outside it (empty, absolute, or escaping through `..`, such as `../x`) is refused before any file is touched. Any other name, including one with spaces or non-ASCII letters, is accepted.
+
 Insyra persists state per environment under:
 
 ```text

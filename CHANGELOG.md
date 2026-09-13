@@ -17,6 +17,15 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `Close()` on a `DataList` or `DataTable` no longer discards an operation that was already waiting for the lock. Close stops the locking, not the queued work.
 - Fixed `DataList.ReplaceLast` replacing the last `NaN` cell instead of the last cell equal to `oldValue` when the list ended in `NaN` (`[5, NaN].ReplaceLast(5, 0)` gave `[5, 0]`).
 - Fixed `ReadJSON_File` loading integer literals as `float64` while `ReadJSON` loaded them as `int64`; both now decode through the same path, so large integers keep full precision from a file and a file holding a single object loads as one row.
+- Fixed several `DataTable` behaviours found by the API review: `GetElementByNumberIndex`, `SetRowToColNames`, and `SetColToRowNames` no longer panic on an out-of-range index (they set `Err()`), and `GetElementByNumberIndex` accepts a negative column index; a `Filter*` call with no match returns an empty table whose methods are safe to call; `FilterRows`/`FilterCols` no longer panic on a ragged table; `DropRowsByIndex` resolves negative indices against the original row count and ignores duplicates (`(-1, 0)` used to keep row 0, `(1, 1)` used to delete two rows); `Transpose` keeps every row name (names beyond the old column count were lost); `AppendRowsByColIndex` grows the table to the addressed column instead of dropping the value; `DropColsContainNumber`/`DropRowsContainNumber` recognise every numeric type (an `int64` column from CSV inference was not dropped); and `Mean` divides by the number of numeric cells.
+
+### CLI
+
+- Environment names that would resolve outside the environments directory are now refused: an empty or absolute name, or one that escapes through `..` (`../x`, `a/../../x`). A name was previously joined straight onto the environments directory, so `../x` created or deleted directories outside it. Every other name, including ones with spaces or non-ASCII letters, still works.
+
+### `datafetch`
+
+- The file geocode cache (`NewFileGeocodeCache`) writes to a temporary file and renames it into place, so an interrupted write can no longer leave a corrupt cache that the next run silently discards.
 
 ### `stats`
 
@@ -30,6 +39,14 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `parquet`
 
 - Fixed `ReadColumnOptions.MaxValues` having no effect. `ReadColumn` now sums the row counts of the selected row groups from the file metadata and refuses the read before loading anything when the count exceeds the limit, which is what the field documented.
+
+### `mkt`
+
+- Fixed `RFM` crashing the process when an amount cell could not be read as a number; the row is now skipped with a warning naming it. Numeric strings are still read as their number. `RFM` and `CustomerActivityIndex` output rows are sorted by customer ID, where they previously came out in Go map order and differed between runs.
+
+### `lp`
+
+- The additional-info table returned by `SolveFromFile` and `SolveModel` has a fixed row order (Status, Execution Time, Warnings, Full Output, Iterations, Nodes); it previously followed Go map iteration and changed between runs.
 
 ## v0.3.2
 

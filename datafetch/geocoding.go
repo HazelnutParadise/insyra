@@ -630,7 +630,15 @@ func (c *fileGeocodeCache) persist() {
 		insyra.LogWarning("datafetch", "NewFileGeocodeCache", "Failed to marshal cache: %v", err)
 		return
 	}
-	if err := os.WriteFile(c.path, data, 0o644); err != nil {
-		insyra.LogWarning("datafetch", "NewFileGeocodeCache", "Failed to write cache file %q: %v", c.path, err)
+	// Write to a sibling temp file and rename so an interrupted write can never
+	// leave a truncated cache that the next run would treat as corrupt (empty).
+	tmp := c.path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		insyra.LogWarning("datafetch", "NewFileGeocodeCache", "Failed to write cache file %q: %v", tmp, err)
+		return
+	}
+	if err := os.Rename(tmp, c.path); err != nil {
+		_ = os.Remove(tmp)
+		insyra.LogWarning("datafetch", "NewFileGeocodeCache", "Failed to replace cache file %q: %v", c.path, err)
 	}
 }

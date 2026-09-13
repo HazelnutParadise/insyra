@@ -1,6 +1,7 @@
 package mkt
 
 import (
+	"sort"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -171,7 +172,13 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 		insyra.NewDataList().SetName("WMLE"),
 		insyra.NewDataList().SetName("CAI"),
 	)
-	for customerID, mle := range customerMLEs {
+	customerIDs := make([]string, 0, len(customerMLEs))
+	for customerID := range customerMLEs {
+		customerIDs = append(customerIDs, customerID)
+	}
+	sort.Strings(customerIDs) // 可重現的輸出順序
+	for _, customerID := range customerIDs {
+		mle := customerMLEs[customerID]
 		wmle := customerWMLEs[customerID]
 		cai := (mle - wmle) / mle * 100 // 百分比表示
 		resultDT.AppendRowsByColName(map[string]any{

@@ -127,15 +127,28 @@ func (m *Manager) EnvsPath() (string, error) {
 	return filepath.Join(base, m.EnvsDirName()), nil
 }
 
+// ResolveEnvPath joins name onto the environments directory. A name whose
+// joined path would not stay strictly inside that directory is refused: an
+// empty or absolute name, one carrying a volume or leading separator, and one
+// that escapes (or resolves to the directory itself) through "..". Any other
+// name, including one with spaces or non-ASCII letters, is accepted.
 func (m *Manager) ResolveEnvPath(name string) (string, error) {
 	if strings.TrimSpace(name) == "" {
 		return "", errors.New("environment name is required")
+	}
+	if filepath.IsAbs(name) || filepath.VolumeName(name) != "" || name[0] == '/' || name[0] == filepath.Separator {
+		return "", fmt.Errorf("invalid environment name %q: must be a relative name inside the environments directory", name)
 	}
 	envsPath, err := m.EnvsPath()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(envsPath, name), nil
+	envPath := filepath.Join(envsPath, name)
+	rel, err := filepath.Rel(envsPath, envPath)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid environment name %q: must stay inside the environments directory", name)
+	}
+	return envPath, nil
 }
 
 func (m *Manager) EnsureDefaultEnvironment() error {
@@ -520,8 +533,8 @@ func writeDefaultFiles(envPath string) error {
 // backward compatibility with code that doesn't yet thread a Manager
 // through. New code should prefer NewManager + method calls.
 
-func BasePath() (string, error)               { return defaultManager.BasePath() }
-func EnvsPath() (string, error)                { return defaultManager.EnvsPath() }
+func BasePath() (string, error) { return defaultManager.BasePath() }
+func EnvsPath() (string, error) { return defaultManager.EnvsPath() }
 func ResolveEnvPath(name string) (string, error) {
 	return defaultManager.ResolveEnvPath(name)
 }
