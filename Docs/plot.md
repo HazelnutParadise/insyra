@@ -158,7 +158,7 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 **Parameters:**
 
 - `chart`: The chart object. Type: `Renderable`.
-- `pngPath`: The file path to save the PNG. Type: `string`.
+- `pngPath`: The file path to save the PNG. Type: `string`. It must carry a file extension — that is what chooses the image format — and `SavePNG` returns an error when it does not.
 - `useOnlineServiceOnFail`: Optional boolean. If true (default), it tries to use an online rendering service if local rendering fails.
 
 **Returns:**

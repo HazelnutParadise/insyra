@@ -43,6 +43,18 @@ type BoxPlotConfig struct {
 
 // CreateBoxPlot generates and returns a *charts.BoxPlot object
 func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlot {
+	// Drop nil lists inside each series, then drop a series whose lists were
+	// all nil. A series whose Data was empty to begin with is kept, as before.
+	kept := make([]BoxPlotSeries, 0, len(series))
+	for _, s := range series {
+		hadLists := len(s.Data) > 0
+		s.Data = nonNilLists("CreateBoxPlot", s.Data)
+		if hadLists && len(s.Data) == 0 {
+			continue
+		}
+		kept = append(kept, s)
+	}
+	series = kept
 	if len(series) == 0 {
 		insyra.LogWarning("plot", "CreateBoxPlot", "no series provided in BoxPlotConfig.Series; returning nil")
 		return nil

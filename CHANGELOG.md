@@ -82,6 +82,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Fixed `RFM` crashing the process when an amount cell could not be read as a number; the row is now skipped with a warning naming it. Numeric strings are still read as their number. `RFM` and `CustomerActivityIndex` output rows are sorted by customer ID, where they previously came out in Go map order and differed between runs.
 - The notices for defaulted `DateFormat`/`TimeScale` in `RFM` and `CustomerActivityIndex` are logged at Debug instead of Info.
 
+### `lpgen`
+
+- The LINGO parser no longer panics on a declaration whose parentheses are the wrong way round (`@BIN)X(;`). It took the first `(` and the first `)` without checking which came first and sliced with reversed bounds; such a declaration is now skipped like any other line it cannot read, and the rest of the model still parses.
+
 ### `lp`
 
 - The additional-info table returned by `SolveFromFile` and `SolveModel` has a fixed row order (Status, Execution Time, Warnings, Full Output, Iterations, Nodes); it previously followed Go map iteration and changed between runs.
@@ -90,6 +94,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `plot`
 
 - `CreateRadarChart` without indicators and `CreateHeatMap` in calendar mode with the wrong X type or no `CalendarOpts` log a warning and return `nil` instead of ending the program or panicking.
+- A `nil` `IDataList` no longer takes the program down. `CreateBarChart` and `CreateLineChart` skip a nil list with a warning and draw the rest, returning `nil` only when nothing is left to draw. `CreateBoxPlot` skips a nil list inside a series the same way and leaves out a series whose lists were all nil; a series with no lists at all is kept as before. `CreateWordCloud` returns `nil`. Every chart reads its data through `AtomicDo`, which dereferences the receiver, so a nil among real lists used to panic.
+- `SavePNG` returns an error when the output path has no file extension, instead of panicking inside the snapshot dependency, which reads the image format from the extension.
 
 ### `isr`
 
@@ -98,6 +104,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `gplot`
 
 - `CreateHistogram` with a zero-value config no longer panics: `Bins` of zero or less means the default of 10. `CreateLineChart` and `CreateStepChart` log a warning and leave out a series that cannot be drawn (for example one holding `NaN`) instead of panicking.
+- Four more chart calls no longer panic on ordinary bad input. `CreateBarChart` with no `XAxis` — which is what a zero-value config has — draws the bars against a numeric axis instead of crashing inside gonum's `NominalX`. `CreateFunctionPlot` logs a warning and returns `nil` for a `nil` function. `CreateHeatmapChart` logs a warning naming the first row shorter than row 0 and returns `nil` (a longer row still draws, its extra values ignored), and treats a negative `Colors` as the default of 20 the way zero already did.
 
 ### `py`
 

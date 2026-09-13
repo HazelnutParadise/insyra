@@ -82,6 +82,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 修正 `RFM` 遇到無法讀成數值的金額格子時讓整個程序崩潰的問題，現在跳過該列並以警告指出列號。數值字串仍照常讀成數字。`RFM` 與 `CustomerActivityIndex` 的輸出列依客戶 ID 排序，過去依 Go map 順序輸出、每次執行都不同。
 - `RFM` 與 `CustomerActivityIndex` 套用預設 `DateFormat`／`TimeScale` 的提示改為 Debug 等級而非 Info。
 
+### `lpgen`
+
+- LINGO 解析器遇到括號順序顛倒的宣告（`@BIN)X(;`）不再 panic。過去它取第一個 `(` 與第一個 `)` 而不檢查誰在前面，切片邊界反過來就會當掉；現在這種宣告會像其他讀不懂的行一樣被略過，模型的其餘部分照常解析。
+
 ### `lp`
 
 - `SolveFromFile` 與 `SolveModel` 回傳的附加資訊表列順序固定為 Status、Execution Time、Warnings、Full Output、Iterations、Nodes，過去依 Go map 順序每次不同。
@@ -90,6 +94,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `plot`
 
 - `CreateRadarChart` 未提供 indicators、`CreateHeatMap` 日曆模式的 X 型別錯誤或未設 `CalendarOpts` 時，改為記錄警告並回傳 `nil`，不再結束程式或 panic。
+- `nil` 的 `IDataList` 不再讓程式當掉。`CreateBarChart` 與 `CreateLineChart` 會記錄警告、略過 nil 的清單並畫出其餘部分，全部都是 nil 時才回傳 `nil`。`CreateBoxPlot` 以同樣方式略過序列裡 nil 的清單，清單全是 nil 的序列會被拿掉；原本就沒有任何清單的序列照舊保留。`CreateWordCloud` 回傳 `nil`。每個圖表都透過 `AtomicDo` 讀資料，而那會解參考接收者，所以夾在正常清單裡的一個 nil 過去會 panic。
+- `SavePNG` 在輸出路徑沒有副檔名時回傳錯誤，不再在快照套件裡 panic，該套件是以副檔名決定圖片格式的。
 
 ### `isr`
 
@@ -98,6 +104,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `gplot`
 
 - `CreateHistogram` 用零值設定不再 panic：`Bins` 為 0 或負數時採用預設值 10。`CreateLineChart` 與 `CreateStepChart` 遇到無法繪製的序列（例如含 `NaN`）時改為記錄警告並略過該序列，不再 panic。
+- 另外四個繪圖呼叫遇到一般的錯誤輸入也不再 panic。`CreateBarChart` 沒有 `XAxis` 時（零值設定就是這樣）改為畫在數值軸上，不再在 gonum 的 `NominalX` 裡當掉。`CreateFunctionPlot` 收到 `nil` 函式時記錄警告並回傳 `nil`。`CreateHeatmapChart` 遇到比第 0 列短的列時記錄警告、指出第一個這樣的列並回傳 `nil`（比較長的列照常繪製，多出來的值會被忽略），`Colors` 為負數時比照 0 採用預設值 20。
 
 ### `py`
 

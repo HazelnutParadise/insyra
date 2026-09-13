@@ -79,6 +79,10 @@ func TestTruncateString(t *testing.T) {
 		{name: "limit of one", s: "hello", maxLength: 1, want: "h"},
 		{name: "limit of zero", s: "hello", maxLength: 0, want: ""},
 		{name: "empty string", s: "", maxLength: 5, want: ""},
+		// A negative width has no meaning and used to slice with a negative
+		// bound, which panicked.
+		{name: "negative limit", s: "hello", maxLength: -1, want: ""},
+		{name: "negative limit on an empty string", s: "", maxLength: -1, want: ""},
 		// Width, not rune count: each of these is two columns wide.
 		{name: "wide runes counted by width", s: "日本語テスト", maxLength: 9, want: "日本語..."},
 		{name: "wide runes below the ellipsis", s: "日本語テスト", maxLength: 4, want: "..."},

@@ -73,7 +73,7 @@ Creates a bar chart for comparing values across categories.
 ```go
 type BarChartConfig struct {
     Title     string    // Chart title
-    XAxis     []string  // Category labels
+    XAxis     []string  // Optional: category labels; omitted, the bars are drawn against a numeric axis
     XAxisName string    // Optional: X-axis label
     YAxisName string    // Optional: Y-axis label
     BarWidth  float64   // Optional: Bar width (default: 20)
@@ -312,10 +312,14 @@ type HeatmapChartConfig struct {
     YAxis     []float64 // Optional: Y-axis coordinates
     XAxisName string    // Optional: X-axis label
     YAxisName string    // Optional: Y-axis label
-    Colors    int       // Optional: Number of colors (default: 20)
+    Colors    int       // Optional: Number of colors (zero or less means the default of 20)
     Alpha     float64   // Optional: Transparency (default: 1.0)
 }
 ```
+
+No row of the data may hold fewer values than the first row. A grid with a
+shorter row is refused: a warning names that row and the function returns
+`nil`. Values in a row past the first row's length are ignored.
 
 **Example:**
 
