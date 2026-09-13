@@ -12,13 +12,13 @@ import (
 // direction. Give one of ColumnIndex, ColumnName and ColumnNumber. When more
 // than one is given, the first in that order is used and SortBy logs a
 // warning naming the others — the same index-before-name rule mkt's configs
-// follow.
+// follow. A config that gives none sorts by the first column.
 type DataTableSortConfig struct {
 	ColumnIndex string // The column index (A, B, C, ...). Takes precedence over ColumnName and ColumnNumber.
-	// ColumnNumber is the column's 0-based position, used only when
-	// ColumnIndex and ColumnName are empty. Zero is the same value as not
-	// setting it, so a config that sets only ColumnNumber: 0 names no column
-	// and is refused; select the first column with ColumnIndex: "A".
+	// ColumnNumber is the column's 0-based position, used when ColumnIndex
+	// and ColumnName are empty. Its zero value is the first column, so an
+	// empty config, or one that sets only Descending, sorts by the first
+	// column.
 	ColumnNumber int
 	ColumnName   string // The column name. Takes precedence over ColumnNumber.
 	Descending   bool   // Whether to sort in descending order, default is ascending
@@ -28,9 +28,9 @@ type DataTableSortConfig struct {
 // Supports sorting by column index (A, B, ...), column number (0, 1, ...), or column name.
 // For multi-column sorting, the order of configs determines the priority (first config has highest priority).
 //
-// Every level is resolved before any row moves. A level that names no column,
-// or a column that is not there, records the error on SortBy and leaves the
-// table unchanged, rather than sorting by the levels that happened to be valid.
+// Every level is resolved before any row moves. A level that names a column
+// that is not there records the error on SortBy and leaves the table
+// unchanged, rather than sorting by the levels that happened to be valid.
 func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable {
 	if len(configs) == 0 {
 		dt.warn("SortBy", "No sorting configuration provided, returning original DataTable.")
@@ -72,15 +72,18 @@ func (dt *DataTable) sortColumnPosition(level int, config DataTableSortConfig) (
 		given = append(given, "ColumnNumber")
 	}
 
-	if len(given) == 0 {
-		return -1, formatSortProblem(level, `names no column; ColumnNumber: 0 is the same value as not setting it, so select the first column with ColumnIndex: "A"`)
-	}
 	if len(given) > 1 {
 		dt.warn("SortBy", "level %d gives %s; sorting by %s and ignoring %s",
 			level, strings.Join(given, ", "), given[0], strings.Join(given[1:], ", "))
 	}
+	// A config that gives none is ColumnNumber: 0, the first column. Go cannot
+	// tell the two apart, and the zero value is documented to mean it.
+	selector := "ColumnNumber"
+	if len(given) > 0 {
+		selector = given[0]
+	}
 
-	switch given[0] {
+	switch selector {
 	case "ColumnIndex":
 		upper := strings.ToUpper(config.ColumnIndex)
 		if pos, ok := utils.ParseColIndex(upper); ok && pos >= 0 && pos < len(dt.columns) {

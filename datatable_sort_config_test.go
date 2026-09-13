@@ -10,7 +10,8 @@ import (
 
 // #233. A sort config selects its column with one of three fields, and Go
 // cannot tell a config that names no column from one that says
-// ColumnNumber: 0 — they are the same value. These pin what SortBy does with
+// ColumnNumber: 0, because they are the same value. The owner ruled that both
+// sort by the first column, as documented. These pin what SortBy does with
 // each shape of config.
 
 // Original order: id 2, 3, 1. Sorting by score descending puts id 1 first;
@@ -28,30 +29,40 @@ func ids(dt *DataTable) []any { return dt.GetColByNumber(0).Data() }
 
 var unsorted = []any{2, 3, 1}
 
-func TestSortByRefusesAConfigThatNamesNoColumn(t *testing.T) {
+func TestSortByFirstColumnOnlyWhenNothingIsNamed(t *testing.T) {
+	// The documented default is not worth a warning. TestMain turns logging
+	// down to Fatal, which would make the no-warning check pass vacuously.
+	restoreConfig(t)
+	Config.SetLogLevel(LogLevelWarning)
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
 	for _, c := range []struct {
 		label string
 		cfg   DataTableSortConfig
+		want  []any
 	}{
-		{"empty", DataTableSortConfig{}},
-		{"only Descending", DataTableSortConfig{Descending: true}},
-		{"ColumnNumber 0 alone", DataTableSortConfig{ColumnNumber: 0}},
+		{"empty", DataTableSortConfig{}, []any{1, 2, 3}},
+		{"only Descending", DataTableSortConfig{Descending: true}, []any{3, 2, 1}},
+		{"ColumnNumber 0", DataTableSortConfig{ColumnNumber: 0}, []any{1, 2, 3}},
+		// ColumnNumber is left at zero here too. It is the lowest precedence and
+		// counts only when non-zero, so the name is used, not the first column.
+		// Score ascending gives ids 3, 2, 1; the first column would give 1, 2, 3.
+		{"ColumnName with ColumnNumber at zero", DataTableSortConfig{ColumnName: "score"}, []any{3, 2, 1}},
 	} {
+		buf.Reset()
 		dt := sortConfigTable()
 		dt.SortBy(c.cfg)
-		e := dt.Err()
-		if e == nil {
-			t.Errorf("%s: no error for a config that names no column", c.label)
-			continue
+		if e := dt.Err(); e != nil {
+			t.Errorf("%s: unexpected error: %v", c.label, e)
 		}
-		if !strings.Contains(e.Error(), "SortBy") {
-			t.Errorf("%s: the error does not name SortBy: %v", c.label, e)
+		if got := ids(dt); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: sorted as %v, want %v", c.label, got, c.want)
 		}
-		if !strings.Contains(e.Error(), `ColumnIndex: "A"`) {
-			t.Errorf("%s: the error does not say how to select the first column: %v", c.label, e)
-		}
-		if got := ids(dt); !reflect.DeepEqual(got, unsorted) {
-			t.Errorf("%s: the table moved: %v", c.label, got)
+		if strings.Contains(buf.String(), "SortBy") {
+			t.Errorf("%s: sorting by the first column logged a warning: %q", c.label, buf.String())
 		}
 	}
 }

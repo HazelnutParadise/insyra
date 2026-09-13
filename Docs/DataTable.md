@@ -4379,10 +4379,10 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable
 - Supports sorting by column index, number, or name
 - Multi-level sorting: sorts by the first config, then by subsequent configs for ties
 - Uses stable sort to maintain relative order of equal elements
-- Each config must name a column with one of `ColumnIndex`, `ColumnName` or `ColumnNumber`
+- Each config names a column with one of `ColumnIndex`, `ColumnName` or `ColumnNumber`
 - If a config gives more than one, **index takes precedence over name, and name over number**; the sort runs and a warning names the fields that were ignored
-- `ColumnNumber: 0` is the same value as not setting it, so a config that sets only `ColumnNumber: 0` names no column and is refused. Select the first column with `ColumnIndex: "A"`
-- Every level is checked before any row moves: a level that names no column, or a column that is not there, records the error on `SortBy` and leaves the table unchanged
+- A config that gives none sorts by the first column. `ColumnNumber` is 0-based and its zero value is the first column, so `DataTableSortConfig{}`, `{Descending: true}` and `{ColumnNumber: 0}` all sort by column 0
+- Every level is checked before any row moves: a column that is not there records the error on `SortBy` and leaves the table unchanged
 
 **Parameters:**
 
@@ -4399,7 +4399,7 @@ Sorts the DataTable rows based on one or more column configurations. Supports mu
 ```go
 type DataTableSortConfig struct {
     ColumnIndex  string // Column index (A, B, C...); takes precedence over ColumnName and ColumnNumber
-    ColumnNumber int    // 0-based column number, used when ColumnIndex and ColumnName are empty; 0 means not set
+    ColumnNumber int    // 0-based column number, used when ColumnIndex and ColumnName are empty; the zero value is the first column
     ColumnName   string // Column name; takes precedence over ColumnNumber
     Descending   bool   // Sort in descending order
 }
@@ -4411,8 +4411,8 @@ type DataTableSortConfig struct {
 // Single column sort
 dt.SortBy(insyra.DataTableSortConfig{ColumnName: "Age", Descending: false})
 
-// The first column by position
-dt.SortBy(insyra.DataTableSortConfig{ColumnIndex: "A"})
+// The first column by position (an empty config selects it too)
+dt.SortBy(insyra.DataTableSortConfig{ColumnNumber: 0})
 
 // Multi-column sort: sort by Age ascending, then by Name descending
 dt.SortBy(

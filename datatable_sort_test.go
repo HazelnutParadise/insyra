@@ -55,9 +55,8 @@ func TestDataTable_SortBy_ByIndex(t *testing.T) {
 	colB := NewDataList("a", "b", "c")
 	dt.AppendCols(colA, colB)
 
-	// 依第一欄升序。第一欄以 ColumnIndex "A" 指定：單獨的 ColumnNumber: 0 與空設定
-	// 在 Go 裡是同一個值，無法分辨，所以會被拒絕（sortby-column-selection）。
-	dt.SortBy(DataTableSortConfig{ColumnIndex: "A", Descending: false})
+	// 按列索引 0 升序
+	dt.SortBy(DataTableSortConfig{ColumnNumber: 0, Descending: false})
 
 	aData := dt.GetColByNumber(0).Data()
 	bData := dt.GetColByNumber(1).Data()

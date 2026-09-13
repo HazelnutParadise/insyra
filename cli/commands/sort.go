@@ -38,16 +38,11 @@ func runSortCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Set only the field resolveColumn found: a number next to a name would
+	// log a precedence warning on every sort by name.
 	config := insyra.DataTableSortConfig{ColumnName: name, Descending: desc}
 	if name == "" {
-		// A position is passed as its Excel index. ColumnNumber: 0 is the same
-		// value as not setting it, which SortBy refuses, and setting a number
-		// next to a name would log a warning on every sort by name.
-		index, ok := insyra.CalcColIndex(number)
-		if !ok {
-			return fmt.Errorf("sort: column %d is out of range", number)
-		}
-		config = insyra.DataTableSortConfig{ColumnIndex: index, Descending: desc}
+		config.ColumnNumber = number
 	}
 	table.SortBy(config)
 	if err := checkTableErr("sort", table); err != nil {

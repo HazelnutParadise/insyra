@@ -200,7 +200,7 @@
 | T-20 | Low（doc 部分見 T-11） | `replace` 系列的 `mode ...int` 用 0/1/-1 魔數當 variadic 選項；`ReplaceInCol` doc 說「index or name」實作只吃索引（T-11）；NaN 判定 InRow/InCol 只認 float64，表層版用 `isNilOrNaN` 認 float32（準則 8、E） | datatable_replace.go 全檔 | typed `ReplaceMode`；統一 `isNilOrNaN` |
 | T-21 | Low | 13 個 `FilterColsByColIndexGreaterThan…`／`FilterRowsByRowIndexLessThanOrEqualTo…` 長名方法做的是切片，pandas 是 `iloc[a:b]`；`Headers`／`SetHeaders` 是 `ColNames`／`SetColNames` 的別名；`Counter` 與 DataList 重複；`SimpleRandomSample` 已 Deprecated（準則 1） | datatable_filters.go；datatable_colname.go:159, 187 | 收斂成 `SliceRows(from, to)`／`SliceCols(from, to)`，舊的標 Deprecated |
 | T-22 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials） | 缺 doc：`NewDataTable`、`GetElementByNumberIndex`、`GetColByNumber`、`GetColByName`、`GetRowByName`、`NumRows`、`NumCols`、`Data`、`GetCreationTimestamp`、`GetLastModifiedTimestamp`、colname.go 前 6 個方法。`AppendRowsByColIndex` doc 標題寫成 `AppendRowsByIndex`；`ToJSON_Bytes` 的 Err 記成 `ToJSON_Byte`（準則 E） | 各檔 | 補 |
-| T-23 | ~~Low~~ 已修正（sortby-column-selection）：沒指定欄的設定改為報錯，第一欄以 `ColumnIndex: "A"` 指定；找不到欄時報錯並指名 `SortBy`；多層排序全有全無；多個欄位同時給時依優先順序排序並警告 | `SortBy` 的 `DataTableSortConfig` 零值 `ColumnNumber: 0` 無法與「沒指定」區分，空 config 會默默用第 0 欄排序；找不到欄時只 `LogWarning` 不設 Err | datatable_sort.go:7-40 | `ColumnNumber` 改 `*int` 或加 `HasColumnNumber` |
+| T-23 | ~~Low~~ 已修正（sortby-column-selection、sortby-empty-config-first-column）：沒指定欄的設定依第一欄排序並寫進文件（擁有者裁定，只有想排序的人才會呼叫 `SortBy`），找不到欄時報錯並指名 `SortBy`，多層排序全有全無，多個欄位同時給時依優先順序排序並警告 | `SortBy` 的 `DataTableSortConfig` 零值 `ColumnNumber: 0` 無法與「沒指定」區分，空 config 會默默用第 0 欄排序；找不到欄時只 `LogWarning` 不設 Err | datatable_sort.go:7-40 | `ColumnNumber` 改 `*int` 或加 `HasColumnNumber` |
 | T-24 | OK | 設計較好、可當範本的部分：`Resample` 回傳 `error`；`Pivot`／`Unpivot` 同時回 error 與設 `Err()`；`GroupBy`／`Aggregate` 的 options struct 與 `AggregateOp.String()`；`SamplingOptions` 有 seed；`SummaryTo(io.Writer)`；Rolling／EWM 的表層包裝。這些是 v1 API 該長的樣子 | — | — |
 
 ### core — DataTable 第二批（encode、scale、simple_imputer、impute、to_sql、from_sql、ccl、show）
@@ -550,7 +550,7 @@
 | T-17 | [#230](https://github.com/HazelnutParadise/insyra/issues/230) |  |
 | T-21 | [#231](https://github.com/HazelnutParadise/insyra/issues/231) |  |
 | T-22 | [#232](https://github.com/HazelnutParadise/insyra/issues/232) |  |
-| T-23 | [#233](https://github.com/HazelnutParadise/insyra/issues/233) | 已修正（sortby-column-selection） |
+| T-23 | [#233](https://github.com/HazelnutParadise/insyra/issues/233) | 已修正（sortby-column-selection、sortby-empty-config-first-column） |
 | E-2 | [#234](https://github.com/HazelnutParadise/insyra/issues/234) |  |
 | E-3 | [#235](https://github.com/HazelnutParadise/insyra/issues/235) |  |
 | E-8 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) |  |

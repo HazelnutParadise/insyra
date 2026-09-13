@@ -66,7 +66,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `Counter` 結果中的替身 key 改以值自己的寫法顯示。它原本印的是編碼內容，對結構而言就是其欄位，所以十進位（`finance.ScheduleTable` 放進格子的、以及 Parquet `Decimal128` 欄讀成的那個型別）會印成 `decimal.Decimal({{b:1,[i:3400221114815]},i:10})` 而不是 `decimal.Decimal(-340.0221114815)`。現在實作 `fmt.Stringer` 的值顯示它自己的文字，套用同一個截斷上限；沒有實作的值顯示不變。識別仍然由編碼決定而不是文字，因為 `String` 可能失真，兩個不同的值若文字相同絕不能被併成一組。
 
 - **BREAKING**：格子裡的定點十進位值算是數值。`Mean`、`Sum`、`Describe`、`stats` 與其他所有數值路徑都讀得到它，過去它們會回 `NaN` 而且沒有錯誤，而金額欄位正是這種情況，因為 `finance.ScheduleTable` 與 Parquet 的 `Decimal128` 欄都放十進位值。`IsNumeric` 跟著一致，因為「對函式庫的一半是數值、對另一半讀不到」正是 `fix-clear-defects-core` 為具名數值型別關掉的裂縫。十進位現在也與其他數值一起排序，而不是排在字串之後自成一組，所以混合欄位會依值交錯；兩個十進位之間仍以十進位本身的比較決定，超出 `float64` 十六位有效數字的差異照樣分辨得出。判斷依據是形狀，也就是能報出自己的文字與小數位數、且該文字可解析為數字，所以每個值都會經過的 `internal/utils` 不依賴任何特定十進位套件，任何同樣形狀的函式庫都適用。
-- **BREAKING**：`SortBy` 收到沒有指定欄位的設定時改為拒絕，不再依第一欄排序。`DataTableSortConfig{}`、只設 `Descending` 的設定與單獨的 `{ColumnNumber: 0}` 在 Go 裡是同一個值，所以過去三者都會默默依第 0 欄排序；現在會在 `SortBy` 記錄錯誤並保持表格不變。第一欄請以 `ColumnIndex: "A"` 指定，`ColumnNumber` 從 1 起不受影響。指定的欄不存在時同樣在 `SortBy` 記錄錯誤：超出範圍的 `ColumnIndex` 過去什麼都不做、`Err()` 也是 nil，找不到的名稱或數字則回報內部的 `GetColByName`、`GetColByNumber` 而不是使用者呼叫的函式。多層排序會在移動任何一列之前檢查每一層，所以其中一層無效時，表格不會被其他層排成沒人要求的順序。同一個設定同時給了 `ColumnIndex`、`ColumnName`、`ColumnNumber` 其中多個時仍然會排序，照文件的優先順序（索引、名稱、數字），並新增一則警告指出被忽略的欄位。
+- 修正 `SortBy` 處理不存在欄位的方式。過去超出範圍的 `ColumnIndex` 什麼都不做、`Err()` 也是 nil，找不到的名稱或數字回報的是內部的 `GetColByName`、`GetColByNumber` 而不是 `SortBy`，多層排序其中一層無效時其他層照樣套用。現在會在移動任何一列之前檢查每一層，找不到欄位時在 `SortBy` 記錄錯誤並保持表格不變。同一個設定同時給了 `ColumnIndex`、`ColumnName`、`ColumnNumber` 其中多個時，仍照文件的優先順序（索引、名稱、數字）排序，並新增一則警告指出被忽略的欄位。沒有指定任何欄位的設定仍依第一欄排序，`Docs/DataTable.md` 現在有寫明：`ColumnNumber` 不為零才算有指定，所以它的零值不會蓋過名稱或索引。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。

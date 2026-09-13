@@ -11,9 +11,8 @@ import (
 )
 
 // The sort command resolves a column argument to a name or a position and
-// passes only that field. It used to set ColumnNumber: -1 next to every name
-// and ColumnNumber: 0 for the first column; SortBy now warns on the first and
-// refuses the second.
+// passes only that field. It used to set ColumnNumber: -1 next to every name,
+// which SortBy now reads as a second selector and warns about.
 func TestSortCommandPassesOnlyTheFieldItResolved(t *testing.T) {
 	// A warning only reaches the log at Warning level or below, so pin it; a
 	// quieter level would make the no-warning check pass vacuously.
