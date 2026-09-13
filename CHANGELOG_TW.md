@@ -31,6 +31,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `DataTable.ToCSVWithOptions` 與 `CSVWriteOptions`，其中 `SanitizeFormulas` 會在開頭為 `=`、`+`、`-`、`@` 的儲存格前加上單引號，避免試算表把它當公式執行。預設關閉，因為它會改變寫出的值；`ToCSV` 的輸出不變。
 - 修正 SQLite 上 `ToSQL` 無法附加到名稱含空白的資料表：查詢既有欄位的語句沒有像其他語句一樣為識別字加引號。
 - CCL 的錯誤會說清楚是哪個階段、出在哪裡。編譯失敗指出運算式、問題所在的位元組偏移量與該處的文字（`cannot compile "(A B)" at offset 3 (near "B"): expected ')'`）；執行期失敗指出列號（`cannot evaluate "A / B" at row 1: division by zero`），不依賴列的運算式則不報列號，而不是報一個誤導的。`AddColUsingCCL`、`EditColByIndexUsingCCL`、`EditColByNameUsingCCL` 過去兩種失敗共用 `Failed to apply CCL on DataTable after 213.792µs` 這個前綴，既回答不了「是我公式寫錯還是資料有問題」，還把碼錶讀數放在原因該在的位置。`position N` 原本在一個地方是位元組偏移、在另一個地方是 token 序號，現在一律是位元組偏移，並且會對齊到字元邊界，非 ASCII 的運算式才指得到真的位置。兩則訊息會印出 Go 的內部結構（`unexpected token: {5 )}`、`invalid range operands: &{: 0x1d48…}`），現在改印原始文字。`ExecuteCCL` 裡的失敗會指出是哪一條語句，五行的腳本不會再只回 `Failed to execute CCL statement: division by zero` 卻沒說是哪一行。錯誤本身是匯出型別 `engine/ccl` 的 `CompileError` 與 `EvalError`，`ErrorInfo` 也加上 `Cause` 欄位與 `Unwrap`，所以可以用 `errors.As(dt.Err(), &compileErr)` 判斷，不必比對訊息字串。它們仍和其他 `DataTable` 錯誤一樣以警告記錄。
+- CCL 不再重複計算答案不會變的東西。`AddColUsingCCL`、`EditColByIndexUsingCCL`、`EditColByNameUsingCCL` 裡沒有用到 `#` 的聚合函數，改為在逐列走訪之前算一次，而不是每一列都對整欄的新副本重算一遍：20,000 列的 `A / SUM(A)` 從 2.1 秒變成 1.0 毫秒，z-score `(A - AVG(A)) / STDEV(A)` 從 6.2 秒變成 1.8 毫秒。有用到 `#` 的聚合會依賴當前列，仍然逐列計算。同一條路徑上另外三項：字串只有在首字元可能是日期開頭時才交給日期解析器、`REGEX_MATCH` 每個樣式只編譯一次而不是每列編譯、`ROLLING_*` 整欄只轉換一次而不是每個視窗把每個元素各轉一次。**結果完全沒有改變**；`ROLLING_*` 刻意維持與視窗成正比的計算量，因為改用累加器會產生重算視窗所沒有的誤差飄移。
 
 ### CLI
 
