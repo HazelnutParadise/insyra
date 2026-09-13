@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 func tokenize(input string) ([]cclToken, error) {
@@ -11,6 +12,10 @@ func tokenize(input string) ([]cclToken, error) {
 	i := 0
 	for i < len(input) {
 		ch := input[i]
+		// Every iteration produces at most one token, and it starts here.
+		// Recording it lets an error point at text the caller wrote instead
+		// of at an index into this slice.
+		tokStart := i
 		switch {
 		case unicode.IsSpace(rune(ch)):
 			i++
@@ -26,20 +31,20 @@ func tokenize(input string) ([]cclToken, error) {
 			// and NIL are literals, never column references.
 			switch strings.ToLower(word) {
 			case "true", "false":
-				tokens = append(tokens, cclToken{typ: tBOOLEAN, value: strings.ToLower(word)})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tBOOLEAN, value: strings.ToLower(word)})
 			case "nil", "null":
-				tokens = append(tokens, cclToken{typ: tNIL, value: strings.ToLower(word)})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tNIL, value: strings.ToLower(word)})
 			default:
-				tokens = append(tokens, cclToken{typ: tIDENT, value: word})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tIDENT, value: word})
 			}
 		case ch == '@':
-			tokens = append(tokens, cclToken{typ: tAT, value: "@"})
+			tokens = append(tokens, cclToken{pos: tokStart, typ: tAT, value: "@"})
 			i++
 		case ch == '#':
-			tokens = append(tokens, cclToken{typ: tROW_INDEX, value: "#"})
+			tokens = append(tokens, cclToken{pos: tokStart, typ: tROW_INDEX, value: "#"})
 			i++
 		case ch == ':':
-			tokens = append(tokens, cclToken{typ: tCOLON, value: ":"})
+			tokens = append(tokens, cclToken{pos: tokStart, typ: tCOLON, value: ":"})
 			i++
 		case isDigit(ch):
 			start := i
@@ -68,13 +73,13 @@ func tokenize(input string) ([]cclToken, error) {
 					for i < len(input) && isDigit(input[i]) {
 						i++
 					}
-					tokens = append(tokens, cclToken{typ: tNUMBER, value: input[start:i]})
+					tokens = append(tokens, cclToken{pos: tokStart, typ: tNUMBER, value: input[start:i]})
 				} else {
-					tokens = append(tokens, cclToken{typ: tNUMBER, value: input[start:i]})
+					tokens = append(tokens, cclToken{pos: tokStart, typ: tNUMBER, value: input[start:i]})
 					// 不前進 i，讓下一個 case 處理 '.'
 				}
 			} else {
-				tokens = append(tokens, cclToken{typ: tNUMBER, value: input[start:i]})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tNUMBER, value: input[start:i]})
 			}
 		case ch == '.':
 			// 檢查是否為數字開頭的小數（如 .5）
@@ -92,13 +97,13 @@ func tokenize(input string) ([]cclToken, error) {
 					for i < len(input) && isDigit(input[i]) {
 						i++
 					}
-					tokens = append(tokens, cclToken{typ: tNUMBER, value: input[start:i]})
+					tokens = append(tokens, cclToken{pos: tokStart, typ: tNUMBER, value: input[start:i]})
 				} else {
-					tokens = append(tokens, cclToken{typ: tDOT, value: "."})
+					tokens = append(tokens, cclToken{pos: tokStart, typ: tDOT, value: "."})
 					i++
 				}
 			} else {
-				tokens = append(tokens, cclToken{typ: tDOT, value: "."})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tDOT, value: "."})
 				i++
 			}
 		case ch == '"' || ch == '\'':
@@ -109,26 +114,26 @@ func tokenize(input string) ([]cclToken, error) {
 				i++
 			}
 			if i >= len(input) {
-				return nil, fmt.Errorf("unclosed string starting with %c", quoteChar)
+				return nil, &CompileError{Expr: input, Offset: tokStart, Near: string(quoteChar), Msg: "unclosed string"}
 			}
-			tokens = append(tokens, cclToken{typ: tSTRING, value: input[start:i]})
+			tokens = append(tokens, cclToken{pos: tokStart, typ: tSTRING, value: input[start:i]})
 			i++
 		case ch == '(':
-			tokens = append(tokens, cclToken{typ: tLPAREN, value: "("})
+			tokens = append(tokens, cclToken{pos: tokStart, typ: tLPAREN, value: "("})
 			i++
 		case ch == ')':
-			tokens = append(tokens, cclToken{typ: tRPAREN, value: ")"})
+			tokens = append(tokens, cclToken{pos: tokStart, typ: tRPAREN, value: ")"})
 			i++
 		case ch == ',':
-			tokens = append(tokens, cclToken{typ: tCOMMA, value: ","})
+			tokens = append(tokens, cclToken{pos: tokStart, typ: tCOMMA, value: ","})
 			i++
 		case ch == '=':
 			// Check if it's == (comparison) or = (assignment)
 			if i+1 < len(input) && input[i+1] == '=' {
-				tokens = append(tokens, cclToken{typ: tOPERATOR, value: "=="})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tOPERATOR, value: "=="})
 				i += 2
 			} else {
-				tokens = append(tokens, cclToken{typ: tASSIGN, value: "="})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tASSIGN, value: "="})
 				i++
 			}
 		case ch == '<', ch == '>', ch == '!':
@@ -139,23 +144,23 @@ func tokenize(input string) ([]cclToken, error) {
 			if i < len(input) && input[i] == '=' {
 				i++
 			}
-			tokens = append(tokens, cclToken{typ: tOPERATOR, value: input[start:i]})
+			tokens = append(tokens, cclToken{pos: tokStart, typ: tOPERATOR, value: input[start:i]})
 		case ch == '&':
 			// 處理 & (字串連接) 和 && (邏輯與)
 			if i+1 < len(input) && input[i+1] == '&' {
-				tokens = append(tokens, cclToken{typ: tOPERATOR, value: "&&"})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tOPERATOR, value: "&&"})
 				i += 2
 			} else {
-				tokens = append(tokens, cclToken{typ: tOPERATOR, value: "&"})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tOPERATOR, value: "&"})
 				i++
 			}
 		case ch == '|':
 			// 處理 || (邏輯或)
 			if i+1 < len(input) && input[i+1] == '|' {
-				tokens = append(tokens, cclToken{typ: tOPERATOR, value: "||"})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tOPERATOR, value: "||"})
 				i += 2
 			} else {
-				return nil, fmt.Errorf("invalid operator: single '|' is not supported, use '||' for logical OR")
+				return nil, &CompileError{Expr: input, Offset: tokStart, Near: "|", Msg: "single '|' is not supported; use '||' for logical OR"}
 			}
 		case ch == '[':
 			// 處理 [colIndex] 或 ['colName'] 語法
@@ -183,7 +188,7 @@ func tokenize(input string) ([]cclToken, error) {
 					return nil, fmt.Errorf("expected ']' after column name reference")
 				}
 				i++ // 跳過 ']'
-				tokens = append(tokens, cclToken{typ: tCOL_NAME, value: colName})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tCOL_NAME, value: colName})
 			} else {
 				// [colIndex] 形式（不帶引號的欄位索引）
 				start := i
@@ -195,7 +200,7 @@ func tokenize(input string) ([]cclToken, error) {
 				}
 				colIndex := input[start:i]
 				i++ // 跳過 ']'
-				tokens = append(tokens, cclToken{typ: tCOL_INDEX, value: colIndex})
+				tokens = append(tokens, cclToken{pos: tokStart, typ: tCOL_INDEX, value: colIndex})
 			}
 		default:
 			start := i
@@ -205,13 +210,28 @@ func tokenize(input string) ([]cclToken, error) {
 			// 若沒有消耗任何字元（遇到無法辨識的字元，如 ~ $ ? \ { } ; 或非 ASCII 符號），
 			// 必須回傳錯誤，否則 i 不前進、外層迴圈永久空轉造成掛死。
 			if i == start {
-				return nil, fmt.Errorf("unexpected character %q at position %d", input[i], i)
+				// The scanner walks bytes, so a non-ASCII character stalls it
+				// partway through. Back up to the start of the character
+				// before reporting: an offset pointing into the middle of one
+				// is not something a reader can find in what they wrote.
+				at := runeStart(input, i)
+				r, _ := utf8.DecodeRuneInString(input[at:])
+				return nil, &CompileError{Expr: input, Offset: at, Near: string(r), Msg: "unexpected character"}
 			}
-			tokens = append(tokens, cclToken{typ: tOPERATOR, value: input[start:i]})
+			tokens = append(tokens, cclToken{pos: tokStart, typ: tOPERATOR, value: input[start:i]})
 		}
 	}
-	tokens = append(tokens, cclToken{typ: tEOF})
+	tokens = append(tokens, cclToken{pos: -1, typ: tEOF})
 	return tokens, nil
+}
+
+// runeStart snaps a byte offset back to the first byte of the character that
+// contains it.
+func runeStart(s string, i int) int {
+	for i > 0 && i < len(s) && !utf8.RuneStart(s[i]) {
+		i--
+	}
+	return i
 }
 
 func isLetter(ch byte) bool { return unicode.IsLetter(rune(ch)) || ch == '_' }

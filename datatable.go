@@ -1674,12 +1674,19 @@ func (dt *DataTable) SetErr(packageName, funcName, msg string, args ...any) *Dat
 
 // setError is an internal method to record an error on the DataTable instance.
 func (dt *DataTable) setError(level LogLevel, packageName, funcName, message string) {
+	dt.setErrorCause(level, packageName, funcName, message, nil)
+}
+
+// setErrorCause is setError plus the underlying error, so errors.As can reach a
+// typed cause through Err().
+func (dt *DataTable) setErrorCause(level LogLevel, packageName, funcName, message string, cause error) {
 	dt.lastError = &ErrorInfo{
 		Level:       level,
 		PackageName: packageName,
 		FuncName:    funcName,
 		Message:     message,
 		Timestamp:   time.Now(),
+		Cause:       cause,
 	}
 }
 
@@ -1689,4 +1696,13 @@ func (dt *DataTable) warn(funcName, msg string, args ...any) {
 	fullMsg := fmt.Sprintf(msg, args...)
 	LogWarning("DataTable", funcName, "%s", fullMsg)
 	dt.setError(LogLevelWarning, "DataTable", funcName, fullMsg)
+}
+
+// warnErr is warn for a failure that is already an error value: it logs the
+// error's text as a warning and records it with the value kept as the cause,
+// so a caller can errors.As it through Err().
+func (dt *DataTable) warnErr(funcName string, err error) {
+	msg := err.Error()
+	LogWarning("DataTable", funcName, "%s", msg)
+	dt.setErrorCause(LogLevelWarning, "DataTable", funcName, msg, err)
 }

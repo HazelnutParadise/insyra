@@ -12,19 +12,19 @@ import (
 func CompileExpression(expression string) (CCLNode, error) {
 	tokens, err := tokenize(expression)
 	if err != nil {
-		return nil, err
+		return nil, asCompileError(expression, err)
 	}
 
 	if err := checkExpressionMode(tokens); err != nil {
-		return nil, err
+		return nil, asCompileError(expression, err)
 	}
 
-	node, err := parseExpression(tokens)
+	node, err := parseExpression(tokens, expression)
 	if err != nil {
-		return nil, err
+		return nil, asCompileError(expression, err)
 	}
 	if err := checkASTDepth(node); err != nil {
-		return nil, err
+		return nil, asCompileError(expression, err)
 	}
 	return node, nil
 }
@@ -33,14 +33,14 @@ func CompileExpression(expression string) (CCLNode, error) {
 func compileStatement(statement string) (CCLNode, error) {
 	tokens, err := tokenize(statement)
 	if err != nil {
-		return nil, err
+		return nil, asCompileError(statement, err)
 	}
-	node, err := parseStatement(tokens)
+	node, err := parseStatement(tokens, statement)
 	if err != nil {
-		return nil, err
+		return nil, asCompileError(statement, err)
 	}
 	if err := checkASTDepth(node); err != nil {
-		return nil, err
+		return nil, asCompileError(statement, err)
 	}
 	return node, nil
 }
@@ -103,6 +103,20 @@ func exceedsDepth(n cclNode, limit int) bool {
 // CompileMultiline compiles a multi-line CCL script into a list of AST nodes.
 // It splits the script by ';' or newline and compiles each statement individually.
 func CompileMultiline(script string) ([]CCLNode, error) {
+	stmts, err := CompileMultilineStatements(script)
+	if err != nil {
+		return nil, err
+	}
+	nodes := make([]CCLNode, 0, len(stmts))
+	for _, st := range stmts {
+		nodes = append(nodes, st.Node)
+	}
+	return nodes, nil
+}
+
+// splitStatements breaks a script into statements on ';' and newlines, leaving
+// separators inside string literals alone.
+func splitStatements(script string) []string {
 	// Split by ; or newline
 	// We need a more robust splitter that respects strings, but for now simple split is used
 	// consistent with previous implementation.
@@ -141,15 +155,30 @@ func CompileMultiline(script string) ([]CCLNode, error) {
 		lines = append(lines, line)
 	}
 
-	nodes := make([]CCLNode, 0, len(lines))
+	return lines
+}
+
+// CompiledStatement pairs a compiled statement with the source line it came
+// from, so a failure part-way through a script can say which line failed. A
+// runtime error from the third of five statements is not actionable without it.
+type CompiledStatement struct {
+	Node CCLNode
+	Src  string
+}
+
+// CompileMultilineStatements compiles a script and keeps each statement's
+// source text alongside its AST.
+func CompileMultilineStatements(script string) ([]CompiledStatement, error) {
+	lines := splitStatements(script)
+	out := make([]CompiledStatement, 0, len(lines))
 	for _, line := range lines {
 		node, err := compileStatement(line)
 		if err != nil {
 			return nil, err
 		}
-		nodes = append(nodes, node)
+		out = append(out, CompiledStatement{Node: node, Src: line})
 	}
-	return nodes, nil
+	return out, nil
 }
 
 // Bind traverses the AST and resolves column references to indices.

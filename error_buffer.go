@@ -35,12 +35,20 @@ type ErrorInfo struct {
 	FuncName    string
 	Message     string
 	Timestamp   time.Time
+	// Cause is the underlying error, when the failure came from one. It lets
+	// errors.Is and errors.As reach a typed error — ccl.CompileError, say —
+	// through a recorded Err(), instead of the caller matching on Message.
+	Cause error
 }
 
 // Error implements the error interface for ErrorInfo.
 func (e ErrorInfo) Error() string {
 	return fmt.Sprintf("[%s] %s.%s: %s", e.Level.String(), e.PackageName, e.FuncName, e.Message)
 }
+
+// Unwrap returns the underlying error, so errors.Is and errors.As see through
+// a recorded ErrorInfo to whatever actually failed.
+func (e ErrorInfo) Unwrap() error { return e.Cause }
 
 // String returns a string representation of the LogLevel.
 func (l LogLevel) String() string {
