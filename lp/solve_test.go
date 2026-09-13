@@ -150,15 +150,18 @@ func TestSolveFile(t *testing.T) {
 	}
 }
 
-// The 400-variable knapsack GLPK could not finish in two seconds.
+// The 400-variable knapsack GLPK could not finish in two seconds. The limit
+// has to leave go-milp time to find a first solution under the race detector:
+// measured on 2026-09-13 it needed about 500ms there, against under 200ms in a
+// plain build.
 func TestSolveStopsAtTheTimeLimit(t *testing.T) {
 	start := time.Now()
-	sol, err := SolveFile(fixtureLP("mip_time_limit_feasible"), Options{TimeLimit: 200 * time.Millisecond})
+	sol, err := SolveFile(fixtureLP("mip_time_limit_feasible"), Options{TimeLimit: 2 * time.Second})
 	if err != nil {
 		t.Fatalf("a time limit is an outcome, not an error: %v", err)
 	}
 	if elapsed := time.Since(start); elapsed > 10*time.Second {
-		t.Errorf("the solve took %v with a 200ms limit", elapsed)
+		t.Errorf("the solve took %v with a 2s limit", elapsed)
 	}
 	switch sol.Status {
 	case StatusFeasible, StatusOptimal:
