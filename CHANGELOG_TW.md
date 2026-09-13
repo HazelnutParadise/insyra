@@ -98,6 +98,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。
 - Google Maps 爬蟲的 `Search` 恢復可用。Google 不再把店家 ID 放在爬蟲讀取的頁面裡，所以過去任何查詢都回傳空結果，也沒有警告。現在改讀 Maps 網頁本身請求的搜尋結果清單，一次請求就取得最多 20 家店和店名，不必再為每家店多開一個頁面，查不到時也會警告。`GoogleMapsStores()` 不再於執行期從 GitHub repo 下載端點與請求標頭，建立時不需要網路，也不會回傳 nil，每個請求都有 30 秒逾時。`GetReviews` 的進度改記在 debug log，不再印到標準輸出，`MaxWaitingInterval_Milliseconds` 剛好是 1000 時不再 panic，`SortBy` 或 `MaxWaitingInterval_Milliseconds` 為零時直接使用預設值，不再警告。`GetReviews` 也恢復可用。Google 會拒絕它原本送出的評論請求，Google 地圖對未登入的訪客也只顯示五則評論，所以現在改讀 Google 搜尋結果中評論視窗的評論頁：每頁 10 則，四種排序都能用，不需要登入（[#249](https://github.com/HazelnutParadise/insyra/issues/249)）。`ReviewDate` 改為 UTC 的發布日期（`YYYY-MM-DD`），`Content` 的 `<br>` 改為換行，`ReviewerState` 與 `ReviewerLevel` 則一律為空，因為新的評論頁不再提供。
+- `GoogleMapsStoreReview` 新增四個欄位，由 `GetReviews` 填入，`ToDataTable` 也會產生同名的欄：`ReviewID`、`Language`（評論的語言代碼，例如 `zh-Hant`，只給星等沒寫內容的評論則為空）、`ReviewerReviewCount`（評論者寫過幾則評論）與 `ReviewerPhotoCount`（評論者上傳過幾張相片）。
 
 ### `stats`
 - **BREAKING**：`Skewness` 與 `Kurtosis` 改為拒絕無法讀成有限數字的值，不再當成零，與 v0.3.1 起其他所有 `stats` 入口一致。它們是最後兩個還經由 `SliceToF64` 讀值的函式。錯誤訊息指出 `sample` 與從 1 起算的列號；全數值輸入的結果不變。

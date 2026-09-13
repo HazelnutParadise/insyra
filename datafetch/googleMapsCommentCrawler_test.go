@@ -155,8 +155,12 @@ func reviewRecord(rating int, relative string, posted time.Time, name, contribUR
 	record[2] = []any{relative, nil, strconv.FormatInt(posted.UnixMilli(), 10)}
 	record[3] = []any{name, "https://lh3.googleusercontent.com/a-/avatar", contribURL, 18, 173, []any{nil, 1}}
 	record[5] = "Ci9DQUlRQUNvZENodHljRjlvT21sNVlUSm9lVmM1ZVRSRmNFZFZWbXRMWTBGMVdYYxAB"
-	record[26] = "zh-Hant"
-	record[27] = text
+	// A review with only a star rating has neither a language nor a text, as
+	// on the live pages.
+	if text != "" {
+		record[26] = "zh-Hant"
+		record[27] = text
+	}
 	return record
 }
 
@@ -249,28 +253,36 @@ func TestGetReviewsReadsReviewPages(t *testing.T) {
 		),
 		"page-2": reviewPage(t, "",
 			reviewRecord(1, "1 年前", posted.AddDate(-1, 0, 0), "Dan", "https://www.google.com/maps/contrib/107256/reviews", "太吵"),
+			reviewRecord(4, "5 天前", posted, "Eve", "https://www.google.com/maps/contrib/107056/reviews", ""),
 		),
 	})
 
 	reviews := crawlerFor(server).GetReviews(store, 0,
 		GoogleMapsStoreReviewsFetchingOptions{SortBy: SortByNewest, MaxWaitingInterval_Milliseconds: 1000})
 
-	if len(reviews) != 3 {
-		t.Fatalf("got %d reviews over two pages, want 3: %+v", len(reviews), reviews)
+	if len(reviews) != 4 {
+		t.Fatalf("got %d reviews over two pages, want 4: %+v", len(reviews), reviews)
 	}
 	want := GoogleMapsStoreReview{
-		Reviewer:   "陌生人。",
-		ReviewerID: "111798366699800592810",
-		ReviewTime: "2 個月前",
-		ReviewDate: "2026-07-05",
-		Content:    "第一行\n第二行 & 更多",
-		Rating:     5,
+		Reviewer:            "陌生人。",
+		ReviewerID:          "111798366699800592810",
+		ReviewerReviewCount: 18,
+		ReviewerPhotoCount:  173,
+		ReviewID:            "Ci9DQUlRQUNvZENodHljRjlvT21sNVlUSm9lVmM1ZVRSRmNFZFZWbXRMWTBGMVdYYxAB",
+		ReviewTime:          "2 個月前",
+		ReviewDate:          "2026-07-05",
+		Language:            "zh-Hant",
+		Content:             "第一行\n第二行 & 更多",
+		Rating:              5,
 	}
 	if reviews[0] != want {
 		t.Errorf("first review is %+v, want %+v", reviews[0], want)
 	}
 	if reviews[2].Rating != 1 || reviews[2].ReviewDate != "2025-07-05" || reviews[2].Reviewer != "Dan" {
 		t.Errorf("the second page's review is %+v", reviews[2])
+	}
+	if star := reviews[3]; star.Rating != 4 || star.Language != "" || star.Content != "" || star.ReviewerID != "107056" {
+		t.Errorf("a review with only a star rating came back as %+v, want rating 4 with no language or content", star)
 	}
 
 	wantRequests := []reviewRequest{
@@ -279,6 +291,35 @@ func TestGetReviewsReadsReviewPages(t *testing.T) {
 	}
 	if got := requests(); !reflect.DeepEqual(got, wantRequests) {
 		t.Errorf("requests were %+v, want %+v", got, wantRequests)
+	}
+}
+
+func TestGoogleMapsReviewsToDataTableHasEveryField(t *testing.T) {
+	dt := GoogleMapsStoreReviews{{
+		Reviewer:            "陌生人。",
+		ReviewerID:          "111798366699800592810",
+		ReviewerReviewCount: 18,
+		ReviewerPhotoCount:  173,
+		ReviewID:            "Ci9DQUlRQUNvZENodHlj",
+		ReviewTime:          "2 個月前",
+		ReviewDate:          "2026-07-05",
+		Language:            "zh-Hant",
+		Content:             "好吃",
+		Rating:              5,
+	}}.ToDataTable()
+
+	for name, want := range map[string]any{
+		"ReviewID":            "Ci9DQUlRQUNvZENodHlj",
+		"Language":            "zh-Hant",
+		"ReviewerReviewCount": 18,
+		"ReviewerPhotoCount":  173,
+		"Reviewer":            "陌生人。",
+		"Rating":              5,
+	} {
+		col := dt.GetColByName(name)
+		if col.Len() != 1 || col.Get(0) != want {
+			t.Errorf("column %s holds %v, want [%v]", name, col.Data(), want)
+		}
 	}
 }
 
