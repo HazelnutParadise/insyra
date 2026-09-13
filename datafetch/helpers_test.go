@@ -10,9 +10,8 @@ import (
 )
 
 // Two helpers that decide what a caller sees, neither of which needs the
-// network. The rest of the package's uncovered half is the Google Maps
-// crawler (#249, whose removal is still being decided) and the live HTTP
-// paths.
+// network. The Google Maps crawler's tests are in
+// googleMapsCommentCrawler_test.go; the live HTTP paths stay uncovered here.
 
 func TestRateLimitError(t *testing.T) {
 	t.Run("with a reset time", func(t *testing.T) {

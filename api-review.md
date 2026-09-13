@@ -276,7 +276,7 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| DF-1 | High | Google Maps 爬蟲：檔案第一行寫著 `FIXME: this crawler doesn't work anymore because Google has changed their API`，但 `GoogleMapsStores`／`Search`／`GetReviews` 仍是公開 API。而且它在執行期從作者個人 GitHub repo 的 raw URL 下載設定（要打的 URL 與要送的 headers），誰控制那個 repo 就控制程式庫的對外請求與夾帶的標頭，是供應鏈注入面；用沒有 timeout 的 `http.DefaultClient`、`fmt.Printf` 直接印進度到 stdout、全部失敗只回 nil 加 warning（準則 11、14） | datafetch/googleMapsCommentCrawler.go:1, 69-105, 107-160, 169-300 | 從程式庫移除（或拆成獨立 module）；至少標 Deprecated 並在 Docs 註明已失效 |
+| DF-1 | ~~High~~ 部分修正（gmaps-search-restored）：搜尋恢復、移除遠端設定、加逾時、不再印到 stdout，評論端點仍回 403，研究中 | Google Maps 爬蟲：檔案第一行寫著 `FIXME: this crawler doesn't work anymore because Google has changed their API`，但 `GoogleMapsStores`／`Search`／`GetReviews` 仍是公開 API。而且它在執行期從作者個人 GitHub repo 的 raw URL 下載設定（要打的 URL 與要送的 headers），誰控制那個 repo 就控制程式庫的對外請求與夾帶的標頭，是供應鏈注入面；用沒有 timeout 的 `http.DefaultClient`、`fmt.Printf` 直接印進度到 stdout、全部失敗只回 nil 加 warning（準則 11、14） | datafetch/googleMapsCommentCrawler.go:1, 69-105, 107-160, 169-300 | 從程式庫移除（或拆成獨立 module）；至少標 Deprecated 並在 Docs 註明已失效 |
 | DF-2 | Med | 所有抓取方法都沒有 `context.Context`：`DailyPrices(code, from, to, market)`、`History(params)`、`Reverse(lat, lng)`、`ReverseTable(...)`；限流器內部用 `context.Background()`。跑到一半的批次抓取無法取消，也無法接 HTTP handler 的 ctx（準則 8、12） | twstock.go:110-113, 193；yfinance.go:275；geocoding.go:166-430 | 每個方法加 ctx 版本（`DailyPricesContext`）或直接改簽名 |
 | DF-3 | Med | 建構子回傳未匯出型別：`TWStock() (*twStock, error)`、`YFinance() (*yahooFinance, error)`、`Ticker() *ticker`、`TWGeocoding() (*twGeocoder, error)`、`GoogleMapsStores() *googleMapsStoreCrawler`。使用者無法在自己的 struct 或函式簽名宣告這些型別（I-2 同族） | twstock.go:94；yfinance.go:108, 251；geocoding.go:150 | 匯出型別或定義介面 |
 | DF-4 | Med | 第三方型別直接進公開簽名：`YFHistoryParams = models.HistoryParams`、`News(count int, tab models.NewsTab)` 洩漏 `wnjoon/go-yfinance` 的型別，該套件改版即 breaking；yfinance 預設 User-Agent 偽裝成 Chrome 117（服務條款風險，至少要在 Docs 標明）（準則 8、10、14） | yfinance.go:23, 49, 491 | 自有 `YFHistoryParams` struct 轉接；UA 改為誠實識別並讓使用者自行覆寫 |
@@ -469,7 +469,7 @@
 | SEC-11 | ~~Med~~ 已修正（batch 4） | 資料庫密碼明文落地：readline `HistoryFile` 把 `db connect x postgres://user:PASS@…` 整行寫進 `history.txt`（0644）；`env export` 把整份 history 放進匯出檔；`maskDSNPassword` 只處理 `://` 與 `user:pass@`，libpq KV 形式 `password=secret` 不遮罩 | cli/repl/repl.go:51；cli/env/state.go:161-176；cli/env/manager.go:355-371；cli/commands/db_conn.go:118-150 | 寫 history 前先 `maskDSNPassword`；補 KV 形式遮罩；history.txt 改 0600；Docs 建議用環境變數／`~/.pgpass` |
 | SEC-12 | ~~Low~~ 已修正（harden-limits-and-permissions） | SQL 參數值進入日誌：gorm 預設 logger 在錯誤與慢查詢時把綁定參數內嵌印出，實測 `ReadSQL(Query: "… token = ?", Params: {"SECRET"})` 失敗時 stderr 出現完整值；`LogDebug` 印含 WhereClause 字面值的查詢 | datatable_from_sql.go:87, 140；cli/commands/db_conn.go:38-42 | CLI 開連線設 `logger.Silent` 或 `ParameterizedQueries: true` |
 | SEC-13 | ~~Low~~ 已修正（harden-limits-and-permissions） | 線上 PNG 備援（已 opt-in）仍用無 timeout 的 `http.Client{}` 並 `io.ReadAll` 無上限；chromedp 失敗時可能無限等 | plot/save_chart.go:115, 127 | `Timeout: 60s`；`io.LimitReader` |
-| SEC-14 | Low | DF-1 細節：`GoogleMapsStores()` 執行期從個人 GitHub repo 拉 JSON，其中 `headers` 與三個 URL 直接套用到後續請求；`Search`／`getStoreName` 的 `io.ReadAll` 無上限 | datafetch/googleMapsCommentCrawler.go:70-71, 109-124, 337-354 | 併入 DF-1 |
+| SEC-14 | ~~Low~~ 已修正（gmaps-search-restored）：不再下載遠端設定，回應讀取有上限 | DF-1 細節：`GoogleMapsStores()` 執行期從個人 GitHub repo 拉 JSON，其中 `headers` 與三個 URL 直接套用到後續請求；`Search`／`getStoreName` 的 `io.ReadAll` 無上限 | datafetch/googleMapsCommentCrawler.go:70-71, 109-124, 337-354 | 併入 DF-1 |
 | SEC-15 | ~~Low~~ 已修正（harden-limits-and-permissions） | `os.MkdirAll(..., os.ModePerm)`（0777）用於 py 環境目錄與 GLPK 解壓目錄 | py/init.go:85, 113；py/py.go:31；lp/init.go:383, 415, 420 | 改 0o755 |
 | SEC-16 | Low（UnzipSizeLimit 已修正 harden-limits-and-permissions；CSV 串流入口屬 K-11 待決） | Excel 讀取沒設 `UnzipSizeLimit`（excelize 預設 16 GB），zip bomb 幾乎無保護；CSV 一律 `ReadAll` 進記憶體，無串流入口 | read.go:385；csvxl/convert.go:94, 136；csvxl/convertDir.go:50 | `excelize.Options{UnzipSizeLimit}` 可設定；CSV 補串流入口（與 K-11 同族） |
 | SEC-17 | ~~Low~~ 已修正（harden-limits-and-permissions） | py IPC 伺服器：`Accept` 永久失敗時 `continue` 忙迴圈；socket 檔留在 `os.TempDir()` 不清；連線無讀取 deadline | py/pyresult.go:81, 96-103, 110-118 | `net.ErrClosed` 時 return；`SetDeadline`；結束時 `os.Remove` |
@@ -568,7 +568,7 @@
 | QU-1 | [#246](https://github.com/HazelnutParadise/insyra/issues/246) |  |
 | FI-1、FI-2 | [#247](https://github.com/HazelnutParadise/insyra/issues/247) | FI-1 已決定並記錄、FI-2 已修正 |
 | FI-3 | [#248](https://github.com/HazelnutParadise/insyra/issues/248) |  |
-| DF-1 | [#249](https://github.com/HazelnutParadise/insyra/issues/249) |  |
+| DF-1 | [#249](https://github.com/HazelnutParadise/insyra/issues/249) | 部分修正（gmaps-search-restored），評論研究中 |
 | DF-2 | [#250](https://github.com/HazelnutParadise/insyra/issues/250) |  |
 | DF-3 | [#251](https://github.com/HazelnutParadise/insyra/issues/251) |  |
 | DF-4 | [#252](https://github.com/HazelnutParadise/insyra/issues/252) |  |
@@ -691,7 +691,7 @@
 | CCL-33 | [#367](https://github.com/HazelnutParadise/insyra/issues/367) |  |
 | CCL-36 | [#368](https://github.com/HazelnutParadise/insyra/issues/368) | 已關閉（batch 9 就修好了，2026-09-12 驗證並補回歸測試） |
 | SEC-8 | [#205](https://github.com/HazelnutParadise/insyra/issues/205) | 補充留言 |
-| SEC-14 | [#249](https://github.com/HazelnutParadise/insyra/issues/249) | 補充留言 |
+| SEC-14 | [#249](https://github.com/HazelnutParadise/insyra/issues/249) | 補充留言，已修正（gmaps-search-restored） |
 | CCL-15 | [#234](https://github.com/HazelnutParadise/insyra/issues/234) | 補充留言 |
 | CCL-29 | [#259](https://github.com/HazelnutParadise/insyra/issues/259) | 補充留言 |
 | IN-15 | [#209](https://github.com/HazelnutParadise/insyra/issues/209) | 補充留言 |

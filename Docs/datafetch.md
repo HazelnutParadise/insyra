@@ -55,15 +55,12 @@ func GoogleMapsStores() *googleMapsStoreCrawler
 
 **Returns:**
 
-- A crawler instance (unexported type), or `nil` if initialization fails
+- A crawler instance (unexported type). Creating it needs no network access, and it is never `nil`.
 
 **Example:**
 
 ```go
 crawler := datafetch.GoogleMapsStores()
-if crawler == nil {
-    log.Fatal("Failed to initialize crawler")
-}
 ```
 
 ### Search
@@ -80,7 +77,7 @@ func (c *googleMapsStoreCrawler) Search(query string) []GoogleMapsStoreData
 
 **Returns:**
 
-- `[]GoogleMapsStoreData`: List of matching stores
+- `[]GoogleMapsStoreData`: Up to 20 matching stores, in Google's order. `nil` when the request fails or no store comes back; a warning says which.
 
 **Example:**
 
@@ -98,6 +95,8 @@ func (c *googleMapsStoreCrawler) GetReviews(storeID string, pageCount int, optio
 ```
 
 **Description:** Fetches reviews for a specific store.
+
+> **Currently unavailable.** Google answers the review request with HTTP 403, so `GetReviews` returns `nil` with a warning. Restoring it is tracked in [#249](https://github.com/HazelnutParadise/insyra/issues/249).
 
 **Parameters:**
 
@@ -198,8 +197,8 @@ type GoogleMapsStoreReviewsFetchingOptions struct {
 
 **Fields:**
 
-- `SortBy`: How to sort reviews (default: by relevance)
-- `MaxWaitingInterval_Milliseconds`: Maximum wait time between requests (helps avoid rate limiting)
+- `SortBy`: How to sort reviews. Zero means by relevance.
+- `MaxWaitingInterval_Milliseconds`: Maximum wait time between requests (helps avoid rate limiting). Each wait is random between 1000 and this value, so it must be at least 1000. Zero means 5000.
 
 ### GoogleMapsStoreReviewSortBy
 
@@ -216,8 +215,9 @@ const (
 
 ## Notes
 
-- This crawler depends on Google Maps internal endpoints and a remote config file; availability can change without notice.
+- This crawler depends on Google Maps internal endpoints; availability can change without notice.
 - Be prepared for rate limits or empty results and handle `nil` returns.
+- Every request times out after 30 seconds. Progress is logged at debug level.
 - Review fetching requires a stable internet connection.
 - Large review counts may take longer to fetch.
 - Use `MaxWaitingInterval_Milliseconds` to control request pacing.
@@ -237,9 +237,6 @@ import (
 func main() {
     // Initialize crawler
     crawler := datafetch.GoogleMapsStores()
-    if crawler == nil {
-        log.Fatal("Failed to initialize crawler")
-    }
 
     // Search for stores
     stores := crawler.Search("Apple Store Taipei")
