@@ -17,4 +17,4 @@
 - [x] 3.2 兩份 CHANGELOG 的 `csvxl` BREAKING 條目。
 - [x] 3.3 `api-review.md` C-1，`delivery-status.md`。
 - [x] 3.4 `gofmt -l`、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`。
-- [ ] 3.5 歸檔並寫 `csvxl-batch-conversion` 的 Purpose；在 #267 留言附證據並關閉。
+- [x] 3.5 歸檔並寫 `csvxl-batch-conversion` 的 Purpose；在 #267 留言附證據並關閉。
