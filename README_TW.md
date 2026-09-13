@@ -383,11 +383,14 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 import "github.com/TimLai666/go-decimal/decimal"
 
 ctx := decimal.Context{Scale: 2, Mode: decimal.RoundingModeHalfEven}
-price := decimal.MustParse(ctx, "19.99")
-dl := insyra.NewDataList(insyra.Cell(price))
+prices := []decimal.Decimal{
+    decimal.MustParse(ctx, "19.99"),
+    decimal.MustParse(ctx, "5.01"),
+}
+dl := insyra.NewDataList(prices) // 每個價格一格
 ```
 
-為什麼選這個套件而不是其他套件，以及與各替代方案當前版本的比較，請見 [finance 文件](/Docs/finance.md#choosing-a-decimal-package)。
+格子怎麼處理十進位，以及為什麼選這個套件、與各替代方案當前版本的比較，請見 **[精確小數文件](/Docs/Decimal.md)**。
 
 ## 套件
 

@@ -404,11 +404,14 @@ When a number has to stay exact — money, rates, anything where `0.1 + 0.2` mus
 import "github.com/TimLai666/go-decimal/decimal"
 
 ctx := decimal.Context{Scale: 2, Mode: decimal.RoundingModeHalfEven}
-price := decimal.MustParse(ctx, "19.99")
-dl := insyra.NewDataList(insyra.Cell(price))
+prices := []decimal.Decimal{
+    decimal.MustParse(ctx, "19.99"),
+    decimal.MustParse(ctx, "5.01"),
+}
+dl := insyra.NewDataList(prices) // one cell per price
 ```
 
-Why this package rather than another, compared against the current versions of the alternatives, is in the [finance documentation](/Docs/finance.md#choosing-a-decimal-package).
+How a cell treats a decimal, and why this package rather than another, compared against the current versions of the alternatives, is in **[Exact Decimals](/Docs/Decimal.md)**.
 
 ## Packages
 
