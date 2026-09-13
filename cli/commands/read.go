@@ -1,6 +1,9 @@
 package commands
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func init() {
 	_ = Register(&CommandHandler{
@@ -30,6 +33,14 @@ func init() {
 func runReadCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>]")
+	}
+	// read previews without storing anything, so it supplies its own alias.
+	// A user-supplied `as` reached load as a second one and came back as
+	// `unknown option "as"`, which points at the wrong thing entirely.
+	for _, a := range args {
+		if strings.EqualFold(a, "as") {
+			return fmt.Errorf("read: `as` is not supported; read only previews a file. Use `load %s as <var>` to keep it", args[0])
+		}
 	}
 	fakeArgs := append([]string(nil), args...)
 	fakeArgs = append(fakeArgs, "as", "$preview")

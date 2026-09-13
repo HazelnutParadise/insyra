@@ -124,7 +124,7 @@ Organized by topic. Each Usage line is the command's own `insyra help <command>`
 - Description: Quick preview a file without saving variable
 - Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>]`
 - Example: `insyra read data.csv`
-- Note: forwards the same file options as `load`.
+- Note: forwards the same file options as `load`. There is no `as` — use `load <file> as <var>` to keep the table.
 
 ### `save`
 - Description: Save a DataTable variable to a file or SQL connection
