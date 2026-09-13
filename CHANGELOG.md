@@ -15,10 +15,21 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `TryParseTime` accepts the common layouts that carry no zone — `2006-01-02 15:04:05`, `2006-01-02T15:04:05`, `2006-01-02 15:04` and the `/`-separated equivalents — read as UTC. CCL's date functions and `datafetch` were silently treating those strings as text.
 - Fixed `ShowTypes` printing columns as `A, AA, AB, B, …` past column 26; it now uses the same order as `Show`. `ShowRange`'s documentation now states the rule the code implements: the end index is exclusive and a negative end counts back from the end and stays exclusive, like a Python slice, so pass `nil` to run to the end.
 - `Close()` on a `DataList` or `DataTable` no longer discards an operation that was already waiting for the lock. Close stops the locking, not the queued work.
+- Fixed `DataList.ReplaceLast` replacing the last `NaN` cell instead of the last cell equal to `oldValue` when the list ended in `NaN` (`[5, NaN].ReplaceLast(5, 0)` gave `[5, 0]`).
+- Fixed `ReadJSON_File` loading integer literals as `float64` while `ReadJSON` loaded them as `int64`; both now decode through the same path, so large integers keep full precision from a file and a file holding a single object loads as one row.
 
 ### `stats`
 
 - `KMeans` picks distinct initial centres, as R does. On data with repeated rows a single-start run used to draw the same row twice and fail with "empty cluster" — 44 of 50 seeds in one measured case. A colliding draw is now redrawn from the distinct rows; a draw that was already distinct is untouched, so every existing seeded result is bit-identical.
+
+### `csvxl`
+
+- Fixed `AppendCsvToExcel` leaving the old sheet's cells in place when a sheet of the same name already existed: `excelize.NewSheet` returns the existing sheet, so only the cells covered by the new CSV were overwritten and the rest survived. The sheet is now deleted and recreated, including when it is the workbook's only sheet.
+- Fixed `AppendCsvToExcel`, `ExcelToCsv`, and `EachExcelToCsv` never closing the workbooks they opened.
+
+### `parquet`
+
+- Fixed `ReadColumnOptions.MaxValues` having no effect. `ReadColumn` now sums the row counts of the selected row groups from the file metadata and refuses the read before loading anything when the count exceeds the limit, which is what the field documented.
 
 ## v0.3.2
 

@@ -2588,7 +2588,7 @@ dl.ReplaceFirst(2, 99)
 func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList
 ```
 
-**Description:** Replaces the last occurrence of a value with a new value.
+**Description:** Replaces the last occurrence of a value with a new value. Only cells equal to `oldValue` are candidates; a `NaN` cell matches only when `oldValue` is itself `NaN`.
 
 **Parameters:**
 

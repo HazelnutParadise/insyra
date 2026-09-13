@@ -351,22 +351,8 @@ func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList {
 
 // ReplaceLast replaces the last occurrence of oldValue with newValue.
 func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList {
-	isOldValueNaN := false
-	if val, ok := oldValue.(float64); ok && math.IsNaN(val) {
-		isOldValueNaN = true
-	}
 	dl.AtomicDo(func(dl *DataList) {
-		for i := len(dl.data) - 1; i >= 0; i-- {
-			if !isOldValueNaN && dl.data[i] == oldValue {
-				dl.data[i] = newValue
-				dl.updateTimestamp()
-				return
-			} else if val, ok := dl.data[i].(float64); ok && math.IsNaN(val) {
-				dl.data[i] = newValue
-				dl.updateTimestamp()
-				return
-			}
-		}
+		dl.replaceLast_notAtomic(oldValue, newValue)
 	})
 	return dl
 }

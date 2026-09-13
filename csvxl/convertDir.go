@@ -36,33 +36,39 @@ func EachExcelToCsv(dir string, outputDir string) error {
 	}
 
 	for _, excelFile := range files {
-		f, err := excelize.OpenFile(excelFile)
-		if err != nil {
-			return fmt.Errorf("failed to open Excel file %s: %v", excelFile, err)
+		if err := excelFileToCsv(excelFile, outputDir); err != nil {
+			return err
 		}
-
-		excelFileName := filepath.Base(excelFile)
-		excelFileName = strings.TrimSuffix(excelFileName, ".xlsx")
-
-		sheets := f.GetSheetList()
-		for _, sheet := range sheets {
-			csvName := excelFileName + "_" + sheet + ".csv"
-
-			// Check if output directory exists, if not create it
-			if _, err := os.Stat(outputDir); os.IsNotExist(err) {
-				err := os.MkdirAll(outputDir, os.ModePerm)
-				if err != nil {
-					return fmt.Errorf("failed to create directory %s: %v", outputDir, err)
-				}
-			}
-			outputCsv := filepath.Join(outputDir, csvName)
-			if err := saveSheetAsCsv(f, sheet, outputCsv); err != nil {
-				return fmt.Errorf("failed to save sheet %s as CSV: %v", sheet, err)
-			}
-		}
-
-		insyra.LogInfo("csvxl", "EachCsvToOneExcel", "Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
 	}
 
+	return nil
+}
+
+// excelFileToCsv writes every sheet of one workbook as a CSV file and closes
+// the workbook before returning, on every path.
+func excelFileToCsv(excelFile, outputDir string) error {
+	f, err := excelize.OpenFile(excelFile)
+	if err != nil {
+		return fmt.Errorf("failed to open Excel file %s: %v", excelFile, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	excelFileName := strings.TrimSuffix(filepath.Base(excelFile), ".xlsx")
+
+	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+			return fmt.Errorf("failed to create directory %s: %v", outputDir, err)
+		}
+	}
+
+	sheets := f.GetSheetList()
+	for _, sheet := range sheets {
+		outputCsv := filepath.Join(outputDir, excelFileName+"_"+sheet+".csv")
+		if err := saveSheetAsCsv(f, sheet, outputCsv); err != nil {
+			return fmt.Errorf("failed to save sheet %s as CSV: %v", sheet, err)
+		}
+	}
+
+	insyra.LogInfo("csvxl", "EachExcelToCsv", "Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
 	return nil
 }
