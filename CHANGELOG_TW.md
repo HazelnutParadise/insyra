@@ -41,6 +41,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 修正六個安靜出錯的值。16 位（微秒）時間戳被當成秒，`2023-11-14` 變成 `53872825-06-17`；毫秒的區間也沒接到微秒，中間留了一段會掉到秒的範圍。`CalcColIndex` 在 `int` 範圍的最上緣產生出自己的 `ParseColIndex` 讀不回來的欄位名稱。`Show` 把 `9999.99999` 印成 `10000`——四捨五入到小數第四位後再去掉尾零，看起來就是個整數。`IsNumeric` 與數值讀取路徑對「以數值 kind 為底的具名型別」（`type Celsius float64`、`time.Duration`）看法不同：`IsNumeric` 說這種儲存格是數字，`ToFloat64Safe` 卻拒絕、`ToFloat64` 給 `0`，所以 `Mean` 與 `Sum` 會跳過它，`ToF64Slice` 會把它變成 `0`。兩邊現在都讀出它的值（`time.Duration` 以奈秒讀取）。`DataList.NearestNeighborInterpolation` 對 NaN 的 x 回傳第一個值——與 NaN 的比較永遠為 false，搜尋根本沒動過——而 `LagrangeInterpolation` 與 `NewtonInterpolation` 回傳 NaN 且 `Err()` 沒有任何紀錄；三者現在都回傳 NaN 並把失敗記在 `Err()`，與原本就會拒絕的 `LinearInterpolation`／`QuadraticInterpolation` 一致。
 - 修正兩張沒有欄位名稱的表無法垂直合併。`NewDataTable(NewDataList(...))` 建出來的每一欄都沒有名稱，而重複名稱的檢查把空字串當成自己的重複，所以最單純的建構式產生的形狀無法與同類合併。沒有名稱的欄位現在依「在無名欄中的位置」對齊，有名稱的仍然依名稱對齊。
 - CCL：超出 `float64` 範圍的數字字面值改為回報錯誤，不再靜默變成 `+Inf`——`strconv.ParseFloat` 的錯誤本來被丟掉了。指數形式現在是合法的字面值：`1e5`、`1.5e-3`、`2E+3` 都能編譯，過去會被拆成數字加識別字然後以 `unexpected token` 失敗，儘管 `VALUE('1e3')` 一直可用、CCL 自己的字串輸出也用指數形式。`e` 後面要有數字才會併入數字，所以名為 `E` 或 `E1` 的欄位不受影響。`TOSTR(1.5, '%d')` 與 `TOSTR(1, '%')` 改為回報格式不符，不再把 Go 自己的抱怨——`%!d(float64=1.5)`、`%!(NOVERB)`——寫進儲存格。
+- `Show` 與其他顯示路徑對實作 `fmt.Stringer` 的 struct 值，改為印出它自己的文字。格式化函式最後會走到一個分支，對 struct 直接印 `<pkg.Type>`，從來沒問過它能不能自己印，所以 Parquet 的十進位欄位每一列都顯示成 `<decimal.Decimal>`。沒有 `String()` 的 struct 仍然顯示型別名稱，儲存的值不變。
 
 ### CLI
 
