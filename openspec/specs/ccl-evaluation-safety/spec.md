@@ -35,3 +35,19 @@ CCL 求值安全契約：使用者運算式不得 panic、不得讓列互相別�
 #### Scenario: Map iteration order
 - **WHEN** 以欄名 `z`、`a`、`m` 建立 `MapContext`
 - **THEN** 欄序固定為 `a`、`m`、`z`
+
+### Requirement: Numeric arguments give the same answer on every platform
+
+When CCL turns a numeric argument into an integer or a duration, the result SHALL NOT depend on the platform. NaN and values that a `time.Duration`, a date shift or a row range bound cannot hold SHALL be refused. A character count, character position or digit count SHALL instead be clamped, so a count past the end of a string still means "to the end". Ordinary values SHALL give the results they gave before.
+
+#### Scenario: A huge length
+- **WHEN** 在 amd64 或 arm64 上求值 `MID('abc', 2, 10^300)`
+- **THEN** 兩者都得到 `"bc"`
+
+#### Scenario: A huge date shift
+- **WHEN** 求值 `DATEADD(D, 10^300, 'day')` 或 `D + 10^300`
+- **THEN** 回傳錯誤，不產生日期
+
+#### Scenario: A fractional day count
+- **WHEN** 求值 `D + 0.5` 或 `D + 0.01`
+- **THEN** 日期分別移動 12 小時與不移動，與原本相同
