@@ -251,10 +251,16 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-09-12] — a Parquet column type the reader does not know reads back as the same string in every row ([#371](https://github.com/HazelnutParadise/insyra/issues/371))
-- **Where**: `parquet/internal.go` `getVal`, the `default` arm
-- **What**: `getVal` handles Int64, Int32, Float64, Float32, String, Boolean and Timestamp. For anything else it returns `arr.String()` — the string form of the **whole array**, ignoring the row index `i` — so every cell of such a column reads back as one identical string like `["a" "b" "c"]`, with no error anywhere. It feeds `Read`, `Stream`, `ReadColumn` and the CCL bridge alike. `parquet.Write` only ever emits the seven handled types, so this is invisible on files this library wrote and hits files written by anything else: Date32/Date64, Decimal128, uint64, Int16/Int8, Binary, List and Dictionary columns are all common in the wild. Found on 2026-09-12 while writing the CCL bridge tests in `test-unpinned-behaviour`.
-- **Suggestion**: the decision is what the unhandled case should do, not whether to extend the switch. Two candidates: return `nil` and record an error naming the Arrow type, which matches how the CSV charset work handled an undecodable file; or refuse the column at read time so a caller cannot get a table of plausible-looking nonsense. Adding Date32/Date64, Decimal128 and the remaining integer widths is worth doing either way, but it does not close the hole on its own.
+### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
+- **Where**: `internal/utils` `IsNumeric` / `ToFloat64Safe`, and every numeric path behind them
+- **What**: `parquet-foreign-column-types` made `Decimal128` and `Decimal256` read as a go-decimal `decimal.Decimal`, exact and sorting by value. It is a struct, so `IsNumeric` says no and `ToFloat64Safe` cannot read it, which means the numeric path treats a decimal cell the way it treats a `time.Time` cell: as not a number. That follows the `time.Time` precedent exactly, and it is the reason the change did not go further on its own. But a money column is far likelier to want arithmetic than a date column is.
+- **Suggestion**: the decision is whether a decimal is a number in insyra. If it is, `ToFloat64Safe` needs an arm for it, which today means going through `String()` and `strconv.ParseFloat` because go-decimal exposes no `Float64()`; adding one upstream would be cleaner and it is the same author's library. Weigh that against making `internal/utils`, which every value in the library passes through, depend on a decimal package.
+- **Status**: pending
+
+### [2026-09-12] — reading a Parquet file and writing it back still changes column types
+- **Where**: `parquet/internal.go` `inferArrowType`
+- **What**: the reader handles more Arrow types than the writer's seven, so a read-then-write round trip downgrades: a `Date32` column comes back as a timestamp, a decimal as a string column, an `Int16` as an `Int64`. Nothing is silently wrong, but the file is not the file that went in. Found on 2026-09-12 while fixing #371, which only concerned the read half.
+- **Suggestion**: `inferArrowType` infers from Go values, so it cannot tell an `int16` that came from a `Date32` column from any other. Carrying the source schema through a read would fix it properly; inferring `time.Time` to `Date64` would not, and would guess wrong on ordinary data. Worth doing only if round-tripping is a use case someone has.
 - **Status**: pending
 
 ### [2026-09-12] — `lp.SolveFromFile` returns a nil result table and the documented example dereferences it
