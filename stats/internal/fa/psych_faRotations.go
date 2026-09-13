@@ -633,6 +633,14 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 // produced: the Promax start was off by 0.42.
 const startOrthogonalityTol = 1e-8
 
+// rotationStartSeed seeds the random starts. It is fixed rather than taken from
+// the loadings: extraction reproduces the loadings only to floating-point noise
+// across architectures (the ML loadings of one table differ in the eighth
+// decimal between amd64 and arm64), and a seed hashed from their bits drew an
+// unrelated set of starts on each, so the same call reached a different basin
+// on Linux than on a Mac.
+const rotationStartSeed = 1
+
 // buildStarts returns the starting rotation matrices for a multi-start search.
 //
 // Every start has to lie on the criterion's own manifold. The gradient
@@ -667,7 +675,7 @@ func buildStarts(baseLoadings *mat.Dense, nf, restarts int, eps float64, maxIter
 
 	// A start that fails the check is skipped rather than used, and another is
 	// drawn in its place, so the count does not silently shrink.
-	rnd := rand.New(rand.NewSource(seedFromMatrix(baseLoadings)))
+	rnd := rand.New(rand.NewSource(rotationStartSeed))
 	for attempts := 0; len(starts) < restarts && attempts < 4*restarts; attempts++ {
 		if q := randomOrthonormalMatrix(nf, rnd); isOrthonormal(q) {
 			starts = append(starts, q)
@@ -752,19 +760,6 @@ func randomOrthonormalMatrix(n int, rnd *rand.Rand) *mat.Dense {
 	var q mat.Dense
 	qr.QTo(&q)
 	return mat.DenseCopyOf(&q)
-}
-
-func seedFromMatrix(m *mat.Dense) int64 {
-	data := m.RawMatrix().Data
-	var seed = uint64(len(data)) + 1
-	for _, v := range data {
-		bits := math.Float64bits(v)
-		seed ^= bits + 0x9e3779b97f4a7c15 + (seed << 6) + (seed >> 2)
-	}
-	if seed == 0 {
-		seed = 0x9e3779b97f4a7c15
-	}
-	return int64(seed)
 }
 
 func finalizeGpfResult(gpf map[string]any, nf int) map[string]any {

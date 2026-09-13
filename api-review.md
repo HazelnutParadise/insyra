@@ -243,6 +243,7 @@
 | ST-9 | Low（另：`Docs/stats.md` 沒有 `TwoSampleZTest` 章節） | `Show()` 只在 `ChiSquareTestResult` 與 `FactorAnalysisResult` 上有，其餘結果型別沒有，也沒有 `io.Writer` 版本；`FactorAnalysisResult` 15 個 `IDataTable` 欄位（K-7）；`Diag(x any, dims ...int) (any, error)` 進出都是 `any`（準則 8） | chi_square.go:21；factor_analysis.go:180；diag.go:11 | 統一 `String()`；Diag 拆成 `DiagOf(*mat.Dense)`／`DiagMatrix([]float64)` |
 | ST-11 | ~~High~~ 已修正（orthogonal-rotation-starts） | **Bug（已實測）**：`FactorAnalysis` 在 `Rotation.Restarts > 1` 時回傳的載荷不再描述被配適的模型。`FaRotations` 無條件加入 Promax 與 TargetRot 的旋轉矩陣當起點，兩者都是斜交的，梯度投影演算法只保證「相對於起點」的可行性，所以哪個起點勝出就決定答案還算不算旋轉。6 變數 3 因子實測，Quartimax 的 `max｜L·L' − Lu·Lu'｜` 從 1 次起點的 7e-16 變成 5 次的 0.287，斜交的 BentlerQ 也偏離 0.763。同一個迴圈裡 candidate 不帶收斂旗標，`RotationConverged` 恆為 true | stats/internal/fa/psych_faRotations.go:482-507（修正前）；stats/internal/fa/fa.go:23 | 起點一律正交並於使用前驗證；`Restarts` 等於起點數；挑選時優先收斂的解 |
 | ST-12 | ~~Medium~~ 已修正（oblimin-honours-its-start） | **Bug（已實測）**：`FaRotations` 的 `"oblimin"` 分支無條件自建單位矩陣起點、忽略傳入的起點，`Restarts: 20` 把同一份計算跑 20 次再回傳第一個（實測 5 因子時花 202 ms 回傳 9.9 ms 的答案），`Docs/stats.md` 承諾的多起點搜尋對預設方法從沒發生。註解說是為了 SPSS 相容，SPSS 確實是單起點（IBM Algorithms：C initialized to Im），但那對應 `Restarts: 1`，本來就逐位元不變。psych 2.6.5 的 `faRotations` 把起點傳給 `GPArotation::oblimin(Tmat=initial)`，GPArotation 自己也有 `randomStarts`。實測 60×6 合成表抽 4 個因子，多起點的準則值從 0.0444 降到 0.00094 | stats/internal/fa/psych_faRotations.go:475-487、565-570（修正前） | oblimin 改為和其他方法一樣使用起點；`gamma = 0` 時與 quartimin 逐位元相同 |
+| ST-13 | ~~Medium~~ 已修正（rotation-starts-same-on-every-platform） | **Bug（已實測）**：`buildStarts` 用 `seedFromMatrix` 把未旋轉載荷的每個位元雜湊成隨機起點的種子，但抽取結果在不同架構上只能重現到浮點誤差：60×6 合成表以 ML 抽 4 個因子，載荷 `[1,1]` 在 amd64 是 0.39670959426，在 arm64 是 0.39670957382。2e-8 的差距換來完全不同的一組隨機起點，同一個 `FactorAnalysis` 呼叫在 `Restarts: 5` 時，Mac 落到準則值 0.00094 的解，Linux 與 Windows 停在 0.0444。CI 的 `TestObliminRestartsSearchTheCriterion` 因此從 2026-09-12 起在 amd64 上一直是紅的 | stats/internal/fa/psych_faRotations.go:670、757-768（修正前） | 隨機起點改用固定種子，刪掉 `seedFromMatrix` |
 | ST-10 | OK | 做得好的部分：regression／GLM／clustering／KNN／PCA／non-parametric 全部先驗證輸入再計算、回 error、結果 struct 欄位齊全且對 R 驗證；`numericinput.go` 的說明是本專案最清楚的設計文件之一；`RegisterKNNDeviceSearcher` 讓 accel 反向掛入而不讓 stats 依賴 accel | — | — |
 
 ### quant
@@ -565,6 +566,7 @@
 | ST-9 | [#245](https://github.com/HazelnutParadise/insyra/issues/245) |  |
 | ST-11 | [#373](https://github.com/HazelnutParadise/insyra/issues/373) | 已修正（orthogonal-rotation-starts） |
 | ST-12 | —（來自 `AGENTS.md` follow-up，無 issue） | 已修正（oblimin-honours-its-start） |
+| ST-13 | —（CI 在 amd64 上發現，無 issue） | 已修正（rotation-starts-same-on-every-platform） |
 | QU-1 | [#246](https://github.com/HazelnutParadise/insyra/issues/246) |  |
 | FI-1、FI-2 | [#247](https://github.com/HazelnutParadise/insyra/issues/247) | FI-1 已決定並記錄、FI-2 已修正 |
 | FI-3 | [#248](https://github.com/HazelnutParadise/insyra/issues/248) |  |

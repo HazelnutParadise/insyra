@@ -98,7 +98,8 @@ as in psych 2.6.5; set it to 1 for the single identity start SPSS and
 `GPArotation` use by default. The lowest
 criterion value can be a solution with highly correlated factors, especially
 when more factors are fitted than the data hold, so check `Phi` when a
-multi-start result differs from the single-start one.
+multi-start result differs from the single-start one. The random starts come
+from a fixed seed, so a multi-start run uses the same starts on every platform.
 `RotationConverged` says whether the chosen solution converged, and `MaxIter`
 governs extraction rather than rotation.
 

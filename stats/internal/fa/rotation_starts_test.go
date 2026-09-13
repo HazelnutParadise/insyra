@@ -314,7 +314,7 @@ func TestARejectedStartIsReplaced(t *testing.T) {
 // (buildSyntheticTable(60, 6, syntheticGen3Factor), FixedK = 4). Pinned here
 // because it is the one fixture on which the identity start stops in a basin
 // a random start escapes: oblimin at gamma = 0 reaches f = 0.0444 from the
-// identity and f = 0.00094 from the third random start.
+// identity and f = 0.00094 from the second random start.
 func overFactoredStructure() *mat.Dense {
 	return mat.NewDense(6, 4, []float64{
 		0.97371501712956454, 0.0079721325645778496, -0.014459486993830628, -0.21588523283154318,
@@ -362,6 +362,38 @@ func TestObliminRunsFromTheStartItIsGiven(t *testing.T) {
 	one, five := criterionOf(t, "oblimin", L, 1), criterionOf(t, "oblimin", L, 5)
 	if five >= one/10 {
 		t.Errorf("over-factored: f = %.6f at one start and %.6f at five; the search did not leave the identity's basin", one, five)
+	}
+}
+
+// The random starts used to be seeded from a hash of every bit of the loadings,
+// and extraction does not reproduce those bits across architectures: ML
+// extraction of the synthetic table gives loading [1,1] = 0.39670957381899075
+// on arm64 and 0.39670959426082741 on amd64. That 2e-8 drew an unrelated set of
+// random starts, so the same FactorAnalysis call reached the lower basin at five
+// starts on a Mac and stayed in the identity's basin on Linux.
+func TestRandomStartsDoNotDependOnTheLoadingsBits(t *testing.T) {
+	arm64 := overFactoredStructure()
+	amd64 := mat.DenseCopyOf(arm64)
+	amd64.Set(1, 1, 0.39670959426082741)
+	_, nf := arm64.Dims()
+
+	const restarts = 20
+	a := buildStarts(arm64, nf, restarts, 1e-5, 1000)
+	b := buildStarts(amd64, nf, restarts, 1e-5, 1000)
+	if len(a) != restarts || len(b) != restarts {
+		t.Fatalf("%d and %d starts, want %d", len(a), len(b), restarts)
+	}
+	// Start 0 is the identity and start 1 the Varimax solution, which follows
+	// the loadings by design; the random ones after it must not.
+	for i := 2; i < restarts; i++ {
+		if d := maxAbsDiff(a[i], b[i]); d != 0 {
+			t.Errorf("random start %d differs by %.3e between loadings 2e-8 apart", i, d)
+		}
+	}
+
+	fArm, fAmd := criterionOf(t, "oblimin", arm64, 5), criterionOf(t, "oblimin", amd64, 5)
+	if math.Abs(fArm-fAmd) > 1e-6 {
+		t.Errorf("oblimin at five starts: f = %.9f and %.9f for loadings 2e-8 apart; the search reached different basins", fArm, fAmd)
 	}
 }
 

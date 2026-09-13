@@ -18,7 +18,10 @@ import (
 //
 // What the strict suite reports, measured on 2026-09-13 against baselines
 // from psych 2.6.5 and GPArotation 2026.8.2 (the cache is keyed on those
-// versions, see toolchainSignature): 875 of 42,969 leaf sub-tests fail.
+// versions, see toolchainSignature): 922 of 42,969 leaf sub-tests fail on an
+// Apple M3. Seeds 2 to 5 for the rotation's random starts give 879 to 906,
+// and the data-derived seed that rotation-starts-same-on-every-platform
+// replaced gave 873; the rotation_converged row is why.
 //
 //	Promax                                233  two ten-row tables (two_blocks, missing_rows)
 //	                                           where the varimax pre-rotation's criterion is
@@ -32,11 +35,15 @@ import (
 //	                                           heavy_tail, narrow_plus_group: 52 combinations,
 //	                                           plus the fields downstream of them
 //	anderson-rubin scoring                  99  the combination fails before any field runs
-//	rotation_converged                      50  geominQ, oblimin and quartimin on near-collinear
-//	                                           data run out of iterations from every start
-//	simplimax, a worse minimum than R's      6  20 starts is not enough for a criterion with
+//	rotation_converged                      99  geominQ, oblimin and quartimin on the two
+//	                                           ten-row tables, whose two-factor fit is nearly
+//	                                           rank one: they converge within 1000 iterations
+//	                                           only from a start a few degrees from the
+//	                                           solution, so whether one of twenty starts does
+//	                                           is the luck of the draw
+//	simplimax, a worse minimum than R's     12  20 starts is not enough for a criterion with
 //	                                           16 local minima; psych's 20 unseeded ones did
-//	                                           better on three_blocks and cross_loading
+//	                                           better on three_blocks
 //
 // Before this comparison was made to respect what a factor solution is —
 // order and sign of the factors, and the criterion value for a solution in
