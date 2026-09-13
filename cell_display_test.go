@@ -43,3 +43,27 @@ func TestAValueThatMarshalsItselfKeepsItsOwnForm(t *testing.T) {
 		t.Errorf("time.Time lost its RFC 3339 form: %s", got)
 	}
 }
+
+// A nil pointer whose element type has a value-receiver String() satisfies
+// fmt.Stringer, but calling String() on it panics. It is shown as <nil>, the
+// way v0.3.2 showed it, and Show does not panic.
+func TestANilPointerCellIsShownAsNil(t *testing.T) {
+	var nilTime *time.Time
+	if got := utils.FormatValue(nilTime); got != "<nil>" {
+		t.Errorf("FormatValue(nil *time.Time) = %q, want %q", got, "<nil>")
+	}
+	var nilPrinter *printsItself
+	if got := utils.FormatValue(nilPrinter); got != "<nil>" {
+		t.Errorf("FormatValue(nil *printsItself) = %q, want %q", got, "<nil>")
+	}
+	now := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	if got, want := utils.FormatValue(&now), now.String(); got != want {
+		t.Errorf("FormatValue(&time.Time) = %q, want %q", got, want)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Show panicked on a nil *time.Time cell: %v", r)
+		}
+	}()
+	NewDataList(nilTime, 1).Show()
+}

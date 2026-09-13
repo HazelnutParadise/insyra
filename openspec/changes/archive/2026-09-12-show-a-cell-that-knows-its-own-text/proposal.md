@@ -42,6 +42,8 @@ Both have the same cause, and neither is specific to decimals.
 
 Dev received: `FormatValue` asking a `fmt.Stringer` before its struct fallback, so every display path (`Show`, `ShowRange`, the table layout) prints such a struct as its text; the display test, plus the `time.Time` JSON test, which pins behaviour this line already has; the changelog entry, display only; the correction to the archived `parquet-foreign-column-types` proposal, reworded to what this line measures (the numeric path skips a decimal cell with a warning on `Err()`, and an all-decimal list gives `NaN`).
 
+Adapted (backport review): `FormatValue` shows a nil pointer as `<nil>` before asking `fmt.Stringer`. A nil `*time.Time` satisfies `fmt.Stringer` through its value-receiver `String()`, and calling it panicked inside `Show`; the spec gained that scenario.
+
 Left on 0.4:
 - `jsonCell` in `buildJSONRows`: breaking, it changes `ToJSON` output for values that already export, such as a `time.Duration` (a number today, its text after), a `fmt.Stringer` struct with exported fields, or a named number with `String()`.
 - The JSON requirement, its test and the changelog sentence on JSON: they describe the excluded code.

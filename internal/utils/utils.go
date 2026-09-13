@@ -305,6 +305,12 @@ func FormatValue(value any) string {
 		// 型別名稱對讀表格的人沒有用：一個從 Parquet 讀進來的十進位欄位
 		// 整欄印成 <decimal.Decimal>，值就看不見了。上面有專屬 case 的型別
 		// （time.Time 等）走不到這裡，行為不變。
+		// nil 指標要先排除：元素型別有值接收者 String() 時（例如 *time.Time），
+		// nil 指標也算 fmt.Stringer，但呼叫 String() 會 panic。交給 %v 印成
+		// <nil>，和過去一樣。
+		if kind == reflect.Pointer && rv.IsNil() {
+			return fmt.Sprintf("%v", value)
+		}
 		if s, ok := value.(fmt.Stringer); ok {
 			return s.String()
 		}

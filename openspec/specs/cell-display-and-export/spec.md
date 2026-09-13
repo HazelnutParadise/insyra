@@ -17,6 +17,10 @@ Most cells hold a primitive the library knows how to render. Some hold a value i
 - **WHEN** 顯示一個沒有 `String()` 的 struct 值
 - **THEN** 仍然顯示 `<型別名>`
 
+#### Scenario: A nil pointer
+- **WHEN** 顯示一個 nil 指標，而它的元素型別有值接收者的 `String()`（例如 nil 的 `*time.Time`）
+- **THEN** 顯示 `<nil>`，不呼叫 `String()`、不 panic
+
 ### Requirement: A string that is not text is shown as bytes
 
 顯示字串時，若它不是合法的 UTF-8，系統 SHALL 以十六進位顯示其位元組，與 `[]byte` 的顯示方式相同，超過 20 個位元組 SHALL 截斷並附上總長度。系統 SHALL NOT 把這種值當成文字加引號輸出。合法的 UTF-8 字串 SHALL 不受影響。

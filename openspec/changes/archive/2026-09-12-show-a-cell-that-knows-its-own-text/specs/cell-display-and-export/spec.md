@@ -12,3 +12,7 @@
 #### Scenario: A struct that cannot
 - **WHEN** 顯示一個沒有 `String()` 的 struct 值
 - **THEN** 仍然顯示 `<型別名>`
+
+#### Scenario: A nil pointer
+- **WHEN** 顯示一個 nil 指標，而它的元素型別有值接收者的 `String()`（例如 nil 的 `*time.Time`）
+- **THEN** 顯示 `<nil>`，不呼叫 `String()`、不 panic
