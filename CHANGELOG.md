@@ -43,6 +43,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `db connect` lines are written to `history.txt`, the REPL history and `env export` with the password masked (URL, `user:pass@`, and `password=` forms); history files are created with mode 0600.
 - `accel`'s usage no longer claims a `run` subcommand that does not exist.
 
+### `ml` and `nn`
+
+- `ml/mltest.RunConformance` fails an implementation whose `Classes()` returns nil, instead of crashing on it. `ml.Classifier` is a public interface that code outside this repository can implement, and the suite used to call `Len()` on the result unchecked.
+
 ### `datafetch`
 
 - The file geocode cache (`NewFileGeocodeCache`) writes to a temporary file and renames it into place, so an interrupted write can no longer leave a corrupt cache that the next run silently discards.

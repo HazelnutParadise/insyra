@@ -43,6 +43,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `db connect` 寫進 `history.txt`、REPL 歷史與 `env export` 時密碼會被遮罩（URL、`user:pass@`、`password=` 三種形式）；history 檔以 0600 建立。
 - `accel` 的 Usage 不再宣稱有不存在的 `run` 子命令。
 
+### `ml` 與 `nn`
+
+- `ml/mltest.RunConformance` 遇到 `Classes()` 回傳 nil 的實作時會判定失敗，不再直接 panic。`ml.Classifier` 是公開介面，本 repo 以外的程式也能實作；測試套件過去對結果直接呼叫 `Len()`，沒有任何檢查。
+
 ### `datafetch`
 
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。
