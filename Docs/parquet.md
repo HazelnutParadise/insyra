@@ -113,7 +113,7 @@ be used to skip such a column entirely.
 | `Float32`, `Float64` | `float32`, `float64` |
 | `Bool` | `bool` |
 | `String`, `LargeString` | `string` |
-| `Binary`, `LargeBinary`, `FixedSizeBinary` | not decoded yet: every cell holds the text of the whole column |
+| `Binary`, `LargeBinary`, `FixedSizeBinary` | `[]byte`, so a binary column is never mistaken for a text one; `Show` prints the whole column as hex |
 | `Timestamp` | `time.Time` |
 | `Date32`, `Date64` | `time.Time` at UTC midnight |
 | `Decimal128`, `Decimal256` | `decimal.Decimal` ([go-decimal](https://github.com/TimLai666/go-decimal)), exact |
@@ -123,6 +123,11 @@ A `Decimal` keeps the file's own unscaled integer and scale, so nothing is
 rounded, and it sorts by value rather than by the text of its digits. Like a
 `time.Time`, it is not a number to `Mean`, `Sum` and the rest of the numeric
 path; convert it first if you need arithmetic.
+
+A binary column exports to JSON as base64, which is what a `[]byte` becomes
+in JSON, so nothing is lost. `Write` still writes a column of `[]byte` cells
+as a string column holding Go's text for the slice, such as `[65 45 48 49]`,
+so a read-then-write round trip keeps neither the binary type nor the bytes.
 
 Dictionary-encoded columns are not a special case: the reader materialises them
 as their underlying type, so a pandas `category` column of strings reads as

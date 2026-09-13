@@ -265,10 +265,14 @@ func getVal(arr arrow.Array, i int) any {
 		return a.Value(i)
 	case *array.Boolean:
 		return a.Value(i)
-	case *array.Binary, *array.LargeBinary, *array.FixedSizeBinary:
-		// Not decoded yet: a binary cell still reads as the string form of the
-		// whole array, as it did before foreign column types were handled.
-		return arr.String()
+	case *array.Binary:
+		// []byte, so a binary column is not indistinguishable from a text one.
+		// The value is copied because Arrow owns the buffer behind it.
+		return append([]byte(nil), a.Value(i)...)
+	case *array.LargeBinary:
+		return append([]byte(nil), a.Value(i)...)
+	case *array.FixedSizeBinary:
+		return append([]byte(nil), a.Value(i)...)
 	case *array.Timestamp:
 		return a.Value(i).ToTime(a.DataType().(*arrow.TimestampType).Unit)
 	case *array.Date32:
@@ -289,6 +293,19 @@ func getVal(arr arrow.Array, i int) any {
 	}
 }
 
+// newColumn builds a column from what chunkedToSlice returned.
+//
+// A []any is appended rather than handed to NewDataList, because the
+// constructor flattens every slice and a binary column's cells are []byte.
+// For anything else the two are the same: flattening a []any of scalars
+// already produces one cell per element.
+func newColumn(data any, name string) *insyra.DataList {
+	if vals, ok := data.([]any); ok {
+		return insyra.NewDataList().Append(vals...).SetName(name)
+	}
+	return insyra.NewDataList(data).SetName(name)
+}
+
 func recordToDataTable(rec arrow.Record) *insyra.DataTable {
 	dataTable := insyra.NewDataTable()
 	if rec == nil {
@@ -305,7 +322,7 @@ func recordToDataTable(rec arrow.Record) *insyra.DataTable {
 		if !supportedArrowType(col.DataType()) {
 			dataTable.SetErr("parquet", "Stream", unsupportedColumnMsg, colName, col.DataType())
 		}
-		dataTable.AppendCols(insyra.NewDataList(data).SetName(colName))
+		dataTable.AppendCols(newColumn(data, colName))
 	}
 	return dataTable
 }

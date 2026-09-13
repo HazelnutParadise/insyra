@@ -1,6 +1,7 @@
 package parquet
 
 import (
+	"bytes"
 	"context"
 	"math/big"
 	"os"
@@ -71,6 +72,7 @@ func TestReadRepresentableForeignTypes(t *testing.T) {
 		{Name: "u32", Type: arrow.PrimitiveTypes.Uint32, Nullable: true},
 		{Name: "i16", Type: arrow.PrimitiveTypes.Int16, Nullable: true},
 		{Name: "i8", Type: arrow.PrimitiveTypes.Int8, Nullable: true},
+		{Name: "bin", Type: arrow.BinaryTypes.Binary, Nullable: true},
 	}
 
 	big38, ok := new(big.Int).SetString(decimal38, 10)
@@ -89,6 +91,7 @@ func TestReadRepresentableForeignTypes(t *testing.T) {
 		b.Field(4).(*array.Uint32Builder).AppendValues([]uint32{7, 4294967295, 0}, nil)
 		b.Field(5).(*array.Int16Builder).AppendValues([]int16{10, -32768, 0}, nil)
 		b.Field(6).(*array.Int8Builder).AppendValues([]int8{1, -128, 0}, nil)
+		b.Field(7).(*array.BinaryBuilder).AppendValues([][]byte{[]byte("aa"), {0x00, 0xff}, {}}, nil)
 	})
 
 	dt, err := Read(context.Background(), path, ReadOptions{})
@@ -146,6 +149,105 @@ func TestReadRepresentableForeignTypes(t *testing.T) {
 	}
 	if got := dt.GetElementByNumberIndex(1, 6); got != int8(-128) {
 		t.Errorf("i8: got %v (%T)", got, got)
+	}
+	// Binary arrives as []byte, so it is distinguishable from a text column.
+	// The bytes have to survive exactly, 0x00 and invalid UTF-8 included.
+	bin, ok := dt.GetElementByNumberIndex(1, 7).([]byte)
+	if !ok {
+		t.Errorf("binary: got %T, want []byte", dt.GetElementByNumberIndex(1, 7))
+	} else if len(bin) != 2 || bin[0] != 0x00 || bin[1] != 0xff {
+		t.Errorf("binary: got % x, want 00 ff", bin)
+	}
+}
+
+// A Binary column used to read as the text of the whole array in every row.
+// It reads as []byte now, and a String column beside it stays a string, so a
+// caller can tell which held text and which held bytes.
+func TestBinaryAndStringColumnsAreDistinguishable(t *testing.T) {
+	path := writeForeignParquet(t, []arrow.Field{
+		{Name: "as_string", Type: arrow.BinaryTypes.String, Nullable: true},
+		{Name: "as_binary", Type: arrow.BinaryTypes.Binary, Nullable: true},
+	}, func(b *array.RecordBuilder) {
+		b.Field(0).(*array.StringBuilder).AppendValues([]string{"A-01", "C-3"}, nil)
+		b.Field(1).(*array.BinaryBuilder).AppendValues([][]byte{[]byte("A-01"), {0x00, 0xff, 0x41}}, nil)
+	})
+
+	dt, err := Read(context.Background(), path, ReadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := dt.GetElementByNumberIndex(0, 0).(string); !ok {
+		t.Errorf("the text column holds %T, want string", dt.GetElementByNumberIndex(0, 0))
+	}
+	for row := 0; row < 2; row++ {
+		if _, ok := dt.GetElementByNumberIndex(row, 1).([]byte); !ok {
+			t.Fatalf("the binary column row %d holds %T, want []byte", row, dt.GetElementByNumberIndex(row, 1))
+		}
+	}
+	if got := dt.GetElementByNumberIndex(0, 1).([]byte); string(got) != "A-01" {
+		t.Errorf("binary bytes = % x", got)
+	}
+	if got := dt.GetElementByNumberIndex(1, 1).([]byte); len(got) != 3 || got[1] != 0xff {
+		t.Errorf("binary bytes = % x, want 00 ff 41", got)
+	}
+}
+
+func TestABinaryColumnRendersTheSameWayOnEveryRow(t *testing.T) {
+	path := writeForeignParquet(t, []arrow.Field{
+		{Name: "sku", Type: arrow.BinaryTypes.Binary, Nullable: true},
+	}, func(b *array.RecordBuilder) {
+		// The first is valid UTF-8, the second is not.
+		b.Field(0).(*array.BinaryBuilder).AppendValues([][]byte{[]byte("A-01"), {0x00, 0xff, 0x41}}, nil)
+	})
+	dt, err := Read(context.Background(), path, ReadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	dt.ShowTo(&buf)
+	out := buf.String()
+	if strings.Contains(out, "'A-01'") {
+		t.Errorf("one row rendered as text and the other as bytes:\n%s", out)
+	}
+	if !strings.Contains(out, "412d3031") || !strings.Contains(out, "00ff41") {
+		t.Errorf("the column did not render as hex:\n%s", out)
+	}
+}
+
+// JSON export writes a []byte as base64, which keeps every byte.
+func TestABinaryColumnExportsToJSONAsBase64(t *testing.T) {
+	path := writeForeignParquet(t, []arrow.Field{
+		{Name: "sku", Type: arrow.BinaryTypes.Binary, Nullable: true},
+	}, func(b *array.RecordBuilder) {
+		b.Field(0).(*array.BinaryBuilder).AppendValues([][]byte{{0x00, 0xff, 0x41}}, nil)
+	})
+	dt, err := Read(context.Background(), path, ReadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dt.ToJSON_String(true); !strings.Contains(got, `"AP9B"`) {
+		t.Errorf("JSON does not carry the bytes as base64 AP9B: %s", got)
+	}
+}
+
+// The writer is unchanged on this line: a column of []byte cells is still
+// written as a string column, as it was before binary columns read as bytes.
+func TestAByteColumnIsStillWrittenAsAString(t *testing.T) {
+	dl := insyra.NewDataList()
+	dl.Append([]byte("A-01"), []byte("C-3"))
+	out := filepath.Join(t.TempDir(), "bytes.parquet")
+	if err := Write(insyra.NewDataTable(dl.SetName("sku")), out); err != nil {
+		t.Fatal(err)
+	}
+	back, err := Read(context.Background(), out, ReadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := back.GetElementByNumberIndex(0, 0).(string); !ok {
+		t.Errorf("a []byte column read back as %T, want the string column the writer produces", back.GetElementByNumberIndex(0, 0))
+	} else {
+		t.Logf("written as string %q", got)
 	}
 }
 

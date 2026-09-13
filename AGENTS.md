@@ -277,7 +277,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-09-12] — reading a Parquet file and writing it back still changes column types
 - **Where**: `parquet/internal.go` `inferArrowType`
-- **What**: the reader handles more Arrow types than the writer's seven, so a read-then-write round trip downgrades: a `Date32` column comes back as a timestamp, a decimal as a string column, an `Int16` as an `Int64`. Nothing is silently wrong, but the file is not the file that went in. Found on 2026-09-12 while fixing #371, which only concerned the read half.
+- **What**: the reader handles more Arrow types than the writer's seven, so a read-then-write round trip downgrades: a `Date32` column comes back as a timestamp, a decimal or a `Binary` column as a string column, an `Int16` as an `Int64`. A `Binary` column loses more than its type: `appendValue` writes each `[]byte` through `conv.ToString`, so `A-01` goes out as the text `[65 45 48 49]` (measured 2026-09-14). On 0.4 `parquet-binary-is-bytes` also writes a column of `[]byte` cells as Arrow `Binary`; that changes file output, so it stayed off the 0.3.x line. Nothing is silently wrong, but the file is not the file that went in. Found on 2026-09-12 while fixing #371, which only concerned the read half.
 - **Suggestion**: `inferArrowType` infers from Go values, so it cannot tell an `int16` that came from a `Date32` column from any other. Carrying the source schema through a read would fix it properly; inferring `time.Time` to `Date64` would not, and would guess wrong on ordinary data. Worth doing only if round-tripping is a use case someone has.
 - **Status**: pending
 
