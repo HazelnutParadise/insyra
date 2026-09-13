@@ -276,7 +276,7 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| DF-1 | ~~High~~ 部分修正（gmaps-search-restored）：搜尋恢復、移除遠端設定、加逾時、不再印到 stdout，評論端點仍回 403，研究中 | Google Maps 爬蟲：檔案第一行寫著 `FIXME: this crawler doesn't work anymore because Google has changed their API`，但 `GoogleMapsStores`／`Search`／`GetReviews` 仍是公開 API。而且它在執行期從作者個人 GitHub repo 的 raw URL 下載設定（要打的 URL 與要送的 headers），誰控制那個 repo 就控制程式庫的對外請求與夾帶的標頭，是供應鏈注入面；用沒有 timeout 的 `http.DefaultClient`、`fmt.Printf` 直接印進度到 stdout、全部失敗只回 nil 加 warning（準則 11、14） | datafetch/googleMapsCommentCrawler.go:1, 69-105, 107-160, 169-300 | 從程式庫移除（或拆成獨立 module）；至少標 Deprecated 並在 Docs 註明已失效 |
+| DF-1 | ~~High~~ 已修正（gmaps-search-restored、gmaps-reviews-restored）：搜尋與評論都恢復，評論改讀 Google 搜尋結果的評論視窗，每頁 10 則可翻頁，另外移除遠端設定、加逾時、不再印到 stdout | Google Maps 爬蟲：檔案第一行寫著 `FIXME: this crawler doesn't work anymore because Google has changed their API`，但 `GoogleMapsStores`／`Search`／`GetReviews` 仍是公開 API。而且它在執行期從作者個人 GitHub repo 的 raw URL 下載設定（要打的 URL 與要送的 headers），誰控制那個 repo 就控制程式庫的對外請求與夾帶的標頭，是供應鏈注入面；用沒有 timeout 的 `http.DefaultClient`、`fmt.Printf` 直接印進度到 stdout、全部失敗只回 nil 加 warning（準則 11、14） | datafetch/googleMapsCommentCrawler.go:1, 69-105, 107-160, 169-300 | 從程式庫移除（或拆成獨立 module）；至少標 Deprecated 並在 Docs 註明已失效 |
 | DF-2 | Med | 所有抓取方法都沒有 `context.Context`：`DailyPrices(code, from, to, market)`、`History(params)`、`Reverse(lat, lng)`、`ReverseTable(...)`；限流器內部用 `context.Background()`。跑到一半的批次抓取無法取消，也無法接 HTTP handler 的 ctx（準則 8、12） | twstock.go:110-113, 193；yfinance.go:275；geocoding.go:166-430 | 每個方法加 ctx 版本（`DailyPricesContext`）或直接改簽名 |
 | DF-3 | Med | 建構子回傳未匯出型別：`TWStock() (*twStock, error)`、`YFinance() (*yahooFinance, error)`、`Ticker() *ticker`、`TWGeocoding() (*twGeocoder, error)`、`GoogleMapsStores() *googleMapsStoreCrawler`。使用者無法在自己的 struct 或函式簽名宣告這些型別（I-2 同族） | twstock.go:94；yfinance.go:108, 251；geocoding.go:150 | 匯出型別或定義介面 |
 | DF-4 | Med | 第三方型別直接進公開簽名：`YFHistoryParams = models.HistoryParams`、`News(count int, tab models.NewsTab)` 洩漏 `wnjoon/go-yfinance` 的型別，該套件改版即 breaking；yfinance 預設 User-Agent 偽裝成 Chrome 117（服務條款風險，至少要在 Docs 標明）（準則 8、10、14） | yfinance.go:23, 49, 491 | 自有 `YFHistoryParams` struct 轉接；UA 改為誠實識別並讓使用者自行覆寫 |
@@ -568,7 +568,7 @@
 | QU-1 | [#246](https://github.com/HazelnutParadise/insyra/issues/246) |  |
 | FI-1、FI-2 | [#247](https://github.com/HazelnutParadise/insyra/issues/247) | FI-1 已決定並記錄、FI-2 已修正 |
 | FI-3 | [#248](https://github.com/HazelnutParadise/insyra/issues/248) |  |
-| DF-1 | [#249](https://github.com/HazelnutParadise/insyra/issues/249) | 部分修正（gmaps-search-restored），評論研究中 |
+| DF-1 | [#249](https://github.com/HazelnutParadise/insyra/issues/249) | 已修正（gmaps-search-restored、gmaps-reviews-restored） |
 | DF-2 | [#250](https://github.com/HazelnutParadise/insyra/issues/250) |  |
 | DF-3 | [#251](https://github.com/HazelnutParadise/insyra/issues/251) |  |
 | DF-4 | [#252](https://github.com/HazelnutParadise/insyra/issues/252) |  |
