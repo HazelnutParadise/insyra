@@ -29,13 +29,6 @@ func ParseLingoModel_txt(filePath string) *LPModel {
 		IntegerVars: make([]string, 0),
 	}
 
-	// 正則表達式
-	re := regexp.MustCompile(`^\[\_\d+\]\s*`)
-	multiplyRe := regexp.MustCompile(`\s*\*\s*`)
-	spaceRe := regexp.MustCompile(`\s+`)
-	missingSpaceRe := regexp.MustCompile(`([a-zA-Z_0-9]+)([+-])`)
-	scientificNotationSpaceFixRe := regexp.MustCompile(`(\d)([eE])\s*([+-]?\d+)`)
-
 	// 用於累積多行表達式
 	var currentExpr strings.Builder
 	var isFirstLine = true
@@ -51,7 +44,7 @@ func ParseLingoModel_txt(filePath string) *LPModel {
 		}
 
 		// 移除方括號和內部數字
-		line = re.ReplaceAllString(line, "")
+		line = lingoRowLabelRe.ReplaceAllString(line, "")
 		line = strings.TrimSpace(line)
 
 		// 累積當前行到表達式
@@ -76,10 +69,10 @@ func ParseLingoModel_txt(filePath string) *LPModel {
 		isFirstLine = true
 
 		// 清理表達式格式
-		expr = multiplyRe.ReplaceAllString(expr, " ")
-		expr = missingSpaceRe.ReplaceAllString(expr, `$1 $2`)
-		expr = scientificNotationSpaceFixRe.ReplaceAllString(expr, `$1$2$3`)
-		expr = spaceRe.ReplaceAllString(expr, " ")
+		expr = lingoMultiplyRe.ReplaceAllString(expr, " ")
+		expr = lingoMissingSpaceRe.ReplaceAllString(expr, `$1 $2`)
+		expr = lingoSciNotationRe.ReplaceAllString(expr, `$1$2$3`)
+		expr = lingoSpaceRe.ReplaceAllString(expr, " ")
 
 		// 判斷和處理目標函數
 		if strings.HasPrefix(strings.ToUpper(expr), "MIN=") || strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
@@ -126,13 +119,6 @@ func ParseLingoModel_str(modelStr string) *LPModel {
 		IntegerVars: make([]string, 0),
 	}
 
-	// 正則表達式
-	re := regexp.MustCompile(`^\[\_\d+\]\s*`)
-	multiplyRe := regexp.MustCompile(`\s*\*\s*`)
-	spaceRe := regexp.MustCompile(`\s+`)
-	missingSpaceRe := regexp.MustCompile(`([a-zA-Z_0-9]+)([+-])`)
-	scientificNotationSpaceFixRe := regexp.MustCompile(`(\d)([eE])\s*([+-]?\d+)`)
-
 	// 用於累積多行表達式
 	var currentExpr strings.Builder
 	var isFirstLine = true
@@ -148,7 +134,7 @@ func ParseLingoModel_str(modelStr string) *LPModel {
 		}
 
 		// 移除方括號和內部數字
-		line = re.ReplaceAllString(line, "")
+		line = lingoRowLabelRe.ReplaceAllString(line, "")
 		line = strings.TrimSpace(line)
 
 		// 累積當前行到表達式
@@ -173,10 +159,10 @@ func ParseLingoModel_str(modelStr string) *LPModel {
 		isFirstLine = true
 
 		// 清理表達式格式
-		expr = multiplyRe.ReplaceAllString(expr, " ")
-		expr = missingSpaceRe.ReplaceAllString(expr, `$1 $2`)
-		expr = scientificNotationSpaceFixRe.ReplaceAllString(expr, `$1$2$3`)
-		expr = spaceRe.ReplaceAllString(expr, " ")
+		expr = lingoMultiplyRe.ReplaceAllString(expr, " ")
+		expr = lingoMissingSpaceRe.ReplaceAllString(expr, `$1 $2`)
+		expr = lingoSciNotationRe.ReplaceAllString(expr, `$1$2$3`)
+		expr = lingoSpaceRe.ReplaceAllString(expr, " ")
 
 		// 判斷和處理目標函數
 		if strings.HasPrefix(strings.ToUpper(expr), "MIN=") || strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
@@ -210,6 +196,15 @@ func ParseLingoModel_str(modelStr string) *LPModel {
 
 	return model
 }
+
+// Compiled once: both parsers rebuilt these five on every call.
+var (
+	lingoRowLabelRe     = regexp.MustCompile(`^\[\_\d+\]\s*`)
+	lingoMultiplyRe     = regexp.MustCompile(`\s*\*\s*`)
+	lingoSpaceRe        = regexp.MustCompile(`\s+`)
+	lingoMissingSpaceRe = regexp.MustCompile(`([a-zA-Z_0-9]+)([+-])`)
+	lingoSciNotationRe  = regexp.MustCompile(`(\d)([eE])\s*([+-]?\d+)`)
+)
 
 // handleVariableDeclarations 處理變數宣告並將變數名稱添加到相應的列表中
 var lingoBareVarRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

@@ -55,6 +55,31 @@ var Registry = map[string]*CommandHandler{}
 
 var registryMu sync.RWMutex
 
+// LookupCommand returns the handler registered under name, taking the read
+// lock. Reading Registry directly is not safe while another goroutine
+// registers, which an embedder may do at any time.
+func LookupCommand(name string) (*CommandHandler, bool) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	h, ok := Registry[name]
+	return h, ok
+}
+
+// SnapshotRegistry returns the registered names in sorted order and the
+// handlers they point at, taken under the read lock.
+func SnapshotRegistry() ([]string, map[string]*CommandHandler) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	names := make([]string, 0, len(Registry))
+	handlers := make(map[string]*CommandHandler, len(Registry))
+	for name, h := range Registry {
+		names = append(names, name)
+		handlers[name] = h
+	}
+	sort.Strings(names)
+	return names, handlers
+}
+
 func Register(handler *CommandHandler) error {
 	if handler == nil {
 		return fmt.Errorf("handler is nil")

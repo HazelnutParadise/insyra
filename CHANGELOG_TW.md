@@ -55,6 +55,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `help` 現在如實列出 `pca`、`regression`、`count` 的參數：前兩者可以用 `as <var>` 存結果，`count` 的 value 是必填，不再標成選填。`save … sql` 的用法錯誤訊息也跟 Usage 一致，列出 `rownames [true|false]`。
 - `count`、`find`、`replace` 現在能對上 CSV 載入的表，以及 one-shot 模式下每次還原的變數裡的整數。原本打的 `2` 是 `int`，存著的是 `int64`，永遠比對不到：`count x 2` 印出 0，`find x 2` 印出 `[]`，`replace x 2 0` 印出 `replaced` 卻什麼都沒改。
 - 資料庫連線不再印出 gorm 的查詢日誌。它的預設 logger 在查詢失敗或過慢時會把綁定參數內插進訊息，所以 `WHERE token = ?` 會把 token 印在終端機以及任何收集它的地方。CLI 本來就自己回報錯誤，不會少掉什麼。
+- 錯誤訊息會指出是哪個指令、哪個引數，不再直接把標準函式庫的文字丟回來。`ttest single x abc` 過去回答 `strconv.ParseFloat: parsing "abc": invalid syntax`，現在是 `ttest: invalid mu "abc", expected a number`。`ttest`、`ztest`、`anova`、`chisq`、`movavg`、`expsmooth`、`shift`、`diffn`、`pctchange`、`rolling`、`expanding`、`ewm`、`quartile`、`percentile` 與 `fetch` 共 21 處統一成這個寫法。
+- `kmeans` 與 `knn` 的選項鍵不分大小寫——`NSTART 3` 可以用了——未知的選項會列出有哪些。`knn` 的 `weighting` 與 `algorithm` 會先不分大小寫地對照允許的值，不再把字串直接往下傳，所以拼錯會在這裡被擋下，而不是變成函式庫收到一個不認識的模式。
+- `clone`、`replace`、`clean`、`fillna`、`count` 能分辨「變數不存在」與「變數存在但型別不對」。五個過去都對明明就在的變數說「variable not found」，害人去找一個根本不存在的拼字錯誤。
+- `help` 的表格依最長的指令名稱對齊，`knn_neighbors` 不再把描述擠歪；`read` 與 `env` 補上 Forms 與 Examples——`env` 有九個子指令，過去一個都沒列。`help` 與 Tab 補全改為在鎖保護下讀取指令登錄表，透過新匯出的 `commands.LookupCommand` 與 `commands.SnapshotRegistry`。
 
 ### `ml` 與 `nn`
 
