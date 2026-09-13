@@ -1,21 +1,8 @@
 # datatable-sort-config Specification
 
 ## Purpose
-定義 `DataTable.SortBy` 如何從 `DataTableSortConfig` 選出要排序的欄：每個設定都必須指定一欄，同時指定多種方式時依索引、名稱、數字的順序選欄並警告，任何一層無效時整次排序不動並把錯誤記在 `SortBy`。
-
+定義 `DataTable.SortBy` 如何從 `DataTableSortConfig` 選出要排序的欄：沒有指定欄位的設定依第一欄排序，同時指定多種方式時依索引、名稱、數字的順序選欄並警告，指向不存在的欄時整次排序不動並把錯誤記在 `SortBy`。
 ## Requirements
-### Requirement: A sort config must name a column
-
-`SortBy` 收到沒有指定任何欄位的設定時 SHALL 在 `Err()` 記錄以 `SortBy` 為名的錯誤，且 SHALL NOT 改變表格。因為 `{ColumnNumber: 0}` 與空設定在 Go 中是同一個值，單獨的 `{ColumnNumber: 0}` SHALL 同樣被拒絕，錯誤訊息 SHALL 指出第一欄應以 `ColumnIndex: "A"` 指定。
-
-#### Scenario: An empty config
-- **WHEN** 以 `DataTableSortConfig{}` 或只設 `Descending` 的設定呼叫 `SortBy`
-- **THEN** `Err()` 記錄錯誤，表格不變
-
-#### Scenario: The first column by position
-- **WHEN** 以 `ColumnIndex: "A"` 排序
-- **THEN** 依第一欄排序，沒有錯誤
-
 ### Requirement: A column that is not there is refused
 
 設定指向的欄位不存在時，`SortBy` SHALL 記錄以 `SortBy` 為名的錯誤，SHALL NOT 讓錯誤指向內部查找函式，且 SHALL NOT 改變表格。
@@ -43,4 +30,20 @@
 #### Scenario: A name and a number together
 - **WHEN** 同時設定 `ColumnName` 與非零的 `ColumnNumber`
 - **THEN** 依 `ColumnName` 排序，記錄警告，`Err()` 為 nil
+
+### Requirement: A config that names no column sorts by the first column
+
+`SortBy` 收到沒有設定 `ColumnIndex`、`ColumnName`，且 `ColumnNumber` 為零的設定時 SHALL 依第一欄排序，SHALL NOT 在 `Err()` 記錄錯誤，也 SHALL NOT 記錄警告。因為 `{ColumnNumber: 0}` 與空設定在 Go 中是同一個值，兩者 SHALL 行為相同。設定了 `ColumnIndex` 或 `ColumnName` 時 SHALL 依該欄排序，SHALL NOT 因 `ColumnNumber` 的零值改排第一欄。
+
+#### Scenario: An empty config
+- **WHEN** 以 `DataTableSortConfig{}` 或 `{ColumnNumber: 0}` 呼叫 `SortBy`
+- **THEN** 依第一欄遞增排序，`Err()` 為 nil，沒有警告
+
+#### Scenario: Only Descending
+- **WHEN** 以只設 `Descending: true` 的設定呼叫 `SortBy`
+- **THEN** 依第一欄遞減排序，`Err()` 為 nil，沒有警告
+
+#### Scenario: A name with ColumnNumber left at zero
+- **WHEN** 只設定 `ColumnName`
+- **THEN** 依該名稱的欄排序，沒有警告
 
