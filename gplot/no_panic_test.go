@@ -1,6 +1,9 @@
 package gplot
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -13,14 +16,47 @@ import (
 // A zero-value BarChartConfig is the first thing anyone writes, and XAxis is
 // the only field on it the documentation does not mark optional. It used to
 // panic inside gonum's NominalX, which indexes names[0] with no length check.
-func TestCreateBarChart_NoXAxisStillDraws(t *testing.T) {
+// The bars are now numbered 1..n, the way plot.CreateBarChart numbers them.
+func TestCreateBarChart_NoXAxisNumbersTheBars(t *testing.T) {
 	quietLogs(t)
 
-	plt := CreateBarChart(BarChartConfig{}, []float64{1, 2, 3})
+	// Values far from 1..3, so neither axis would print a tick "3" on its own:
+	// the unlabelled numeric x axis runs 0..2 and the y axis counts in hundreds.
+	plt := CreateBarChart(BarChartConfig{}, []float64{100, 200, 300})
 	if plt == nil {
 		t.Fatal("CreateBarChart returned nil for valid data with no labels")
 	}
-	mustSave(t, plt, "bar.png")
+
+	// The generated labels reach the axis, so the rendered chart carries them.
+	// SaveChart returns nothing on this line, so the file is read back instead.
+	svg := filepath.Join(t.TempDir(), "bar.svg")
+	SaveChart(plt, svg)
+	b, err := os.ReadFile(svg)
+	if err != nil {
+		t.Fatalf("reading the chart back: %v", err)
+	}
+	for _, want := range []string{">1<", ">2<", ">3<"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("the rendered chart has no tick %q", want)
+		}
+	}
+}
+
+// One label per data point, however many there are.
+func TestCreateBarChart_NoXAxisMatchesTheDataLength(t *testing.T) {
+	quietLogs(t)
+
+	for _, n := range []int{1, 5, 12} {
+		values := make([]float64, n)
+		for i := range values {
+			values[i] = float64(i + 1)
+		}
+		plt := CreateBarChart(BarChartConfig{}, values)
+		if plt == nil {
+			t.Fatalf("%d bars gave no chart", n)
+		}
+		mustSave(t, plt, "bar.png")
+	}
 }
 
 func TestCreateFunctionPlot_NilFunction(t *testing.T) {

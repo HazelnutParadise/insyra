@@ -259,7 +259,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-09-12] — `lp.SolveFromFile` returns a nil result table and the documented example dereferences it
 - **Where**: `lp/lp.go` `SolveFromFile` and `SolveModel`; the example in `Docs/lp.md`
-- **What**: on a timeout, a solver error, or more than one `timeoutSeconds` argument, both functions return `nil` as the first DataTable — `nil, nil` in the last case. `Docs/lp.md` says only "returns the result as two DataTable" and its example calls `result.Show()` straight away. A nil `*DataTable` panics on `Show()`; measured on 2026-09-12. Found while writing the parser tests in `test-unpinned-behaviour`, which cover the failure path of `parseGLPKOutputFromFile` (also nil on an unreadable file).
+- **What**: on a timeout or a solver error both functions return `nil` as the first DataTable, and `SolveFromFile` returns `nil, nil` for more than one `timeoutSeconds` argument. `Docs/lp.md` says only "returns the result as two DataTable" and its example calls `result.Show()` straight away. A nil `*DataTable` panics on `Show()`; measured on 2026-09-12. Found while writing the parser tests in `test-unpinned-behaviour`, which cover the failure path of `parseGLPKOutputFromFile` (also nil on an unreadable file).
 - **Suggestion**: returning an empty table instead of nil changes a returned value, so on the 0.3.x line the nil stays (the never-nil version lives on 0.4 as `lp-never-returns-a-nil-table`). What can still change here is the documentation: say that the first return is nil on failure, and make the example check it, or the Status row of the second table, before calling `Show()`.
 - **Status**: pending
 

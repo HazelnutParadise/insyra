@@ -19,13 +19,17 @@ import (
 // SolveFromFile solves an LP file with GLPK and sets a timeout in seconds.
 // Returns two DataTables: one with the parsed results and one with additional info.
 func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable) {
+	// Check the arguments before initGLPK: a call that is already wrong is no
+	// reason to go looking for — or install — a solver.
+	if len(timeoutSeconds) > 1 {
+		insyra.LogWarning("lp", "SolveFromFile", "Only one timeout can be set")
+		return nil, nil
+	}
+
 	initGLPK()
 	timeout := 0 * time.Second
 	if len(timeoutSeconds) == 1 {
 		timeout = time.Duration(timeoutSeconds[0]) * time.Second
-	} else if len(timeoutSeconds) > 1 {
-		insyra.LogWarning("lp", "SolveFromFile", "Only one timeout can be set")
-		return nil, nil
 	}
 
 	// Unique temporary file for GLPK output. A fixed "solution.txt" in the CWD

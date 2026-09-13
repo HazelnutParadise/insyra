@@ -3,6 +3,8 @@
 package gplot
 
 import (
+	"strconv"
+
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
@@ -62,11 +64,16 @@ func CreateBarChart(config BarChartConfig, data any) *plot.Plot {
 
 	// Set axis labels (categories). gonum's NominalX indexes names[0] with no
 	// length check, so an empty XAxis — which is what a zero-value config has —
-	// used to panic here. Without labels the bars still draw against the
-	// numeric axis, so skip the call rather than refuse the chart.
-	if len(config.XAxis) > 0 {
-		plt.NominalX(config.XAxis...)
+	// used to panic here. Number the bars instead, the way plot.CreateBarChart
+	// does, so a config without labels still gives a readable chart.
+	labels := config.XAxis
+	if len(labels) == 0 {
+		labels = make([]string, len(values))
+		for i := range labels {
+			labels[i] = strconv.Itoa(i + 1)
+		}
 	}
+	plt.NominalX(labels...)
 
 	plt.Add(bars)
 

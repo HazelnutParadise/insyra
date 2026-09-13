@@ -92,6 +92,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - The additional-info table returned by `SolveFromFile` and `SolveModel` has a fixed row order (Status, Execution Time, Warnings, Full Output, Iterations, Nodes); it previously followed Go map iteration and changed between runs.
 - A failed GLPK download, extraction or build no longer ends the program: the failure is logged as a warning and a later `SolveModel`/`SolveFromFile` reports the missing solver through the additional-info table. The two temporary-file failures in `SolveModel` log a warning and return `nil, nil` instead of ending the program.
+- `SolveFromFile` given more than one `timeoutSeconds` refuses the call before it looks for or installs GLPK, so a call that is already wrong no longer triggers the install. It still logs a warning and returns `nil, nil`.
 
 ### `plot`
 
@@ -107,7 +108,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `gplot`
 
 - `CreateHistogram` with a zero-value config no longer panics: `Bins` of zero or less means the default of 10. `CreateLineChart` and `CreateStepChart` log a warning and leave out a series that cannot be drawn (for example one holding `NaN`) instead of panicking.
-- Four more chart calls no longer panic on ordinary bad input. `CreateBarChart` with no `XAxis` — which is what a zero-value config has — draws the bars against a numeric axis instead of crashing inside gonum's `NominalX`. `CreateFunctionPlot` logs a warning and returns `nil` for a `nil` function. `CreateHeatmapChart` logs a warning naming the first row shorter than row 0 and returns `nil` (a longer row still draws, its extra values ignored), and treats a negative `Colors` as the default of 20 the way zero already did.
+- Four more chart calls no longer panic on ordinary bad input. `CreateBarChart` with no `XAxis` — which is what a zero-value config has — numbers the bars 1, 2, 3, … the way `plot.CreateBarChart` does, instead of crashing inside gonum's `NominalX`. `CreateFunctionPlot` logs a warning and returns `nil` for a `nil` function. `CreateHeatmapChart` logs a warning naming the first row shorter than row 0 and returns `nil` (a longer row still draws, its extra values ignored), and treats a negative `Colors` as the default of 20 the way zero already did.
 
 ### `py`
 

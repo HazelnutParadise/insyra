@@ -92,6 +92,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `SolveFromFile` 與 `SolveModel` 回傳的附加資訊表列順序固定為 Status、Execution Time、Warnings、Full Output、Iterations、Nodes，過去依 Go map 順序每次不同。
 - GLPK 下載、解壓或編譯失敗不再結束程式：失敗以警告記錄，之後呼叫 `SolveModel`／`SolveFromFile` 時透過附加資訊表回報找不到求解器。`SolveModel` 兩處建立暫存檔失敗改為記錄警告並回傳 `nil, nil`，不再結束程式。
+- `SolveFromFile` 收到超過一個 `timeoutSeconds` 時，改在尋找或安裝 GLPK 之前就拒絕，已經寫錯的呼叫不會再觸發安裝。它仍然記錄警告並回傳 `nil, nil`。
 
 ### `plot`
 
@@ -107,7 +108,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `gplot`
 
 - `CreateHistogram` 用零值設定不再 panic：`Bins` 為 0 或負數時採用預設值 10。`CreateLineChart` 與 `CreateStepChart` 遇到無法繪製的序列（例如含 `NaN`）時改為記錄警告並略過該序列，不再 panic。
-- 另外四個繪圖呼叫遇到一般的錯誤輸入也不再 panic。`CreateBarChart` 沒有 `XAxis` 時（零值設定就是這樣）改為畫在數值軸上，不再在 gonum 的 `NominalX` 裡當掉。`CreateFunctionPlot` 收到 `nil` 函式時記錄警告並回傳 `nil`。`CreateHeatmapChart` 遇到比第 0 列短的列時記錄警告、指出第一個這樣的列並回傳 `nil`（比較長的列照常繪製，多出來的值會被忽略），`Colors` 為負數時比照 0 採用預設值 20。
+- 另外四個繪圖呼叫遇到一般的錯誤輸入也不再 panic。`CreateBarChart` 沒有 `XAxis` 時（零值設定就是這樣）改為比照 `plot.CreateBarChart` 把長條編號成 1、2、3……，不再在 gonum 的 `NominalX` 裡當掉。`CreateFunctionPlot` 收到 `nil` 函式時記錄警告並回傳 `nil`。`CreateHeatmapChart` 遇到比第 0 列短的列時記錄警告、指出第一個這樣的列並回傳 `nil`（比較長的列照常繪製，多出來的值會被忽略），`Colors` 為負數時比照 0 採用預設值 20。
 
 ### `py`
 
