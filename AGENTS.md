@@ -251,6 +251,18 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-12] — grouping, pivoting, merging and `Describe` still merge nested values that print alike
+- **Where**: `datatable_groupby.go` `encodeGroupKey` and `uniqueKey`, `datatable_encode.go` `labelKey`, their default arms
+- **What**: `encodeGroupKey` and `uniqueKey` fall back to `%T:%v`, which does not descend, so `[]any{1}` and `[]any{"1"}` produce the same key: `GroupBy`, `Pivot` and `Merge` put the integer and the string in one group, and `Describe`'s unique count counts them once. `labelKey` uses `%T:%#v`, which separates an int from a string but not `[]any{1}` from `[]any{1.0}`. Measured on 2026-09-13. `identify-uncomparable-cells` gave cell lookups a recursive encoder, `encodeCell`; on 0.4 `encodeGroupKey` and `uniqueKey` moved to it too, but that changes the keys existing data groups by, so it stayed off the 0.3.x line.
+- **Suggestion**: moving `encodeGroupKey` and `uniqueKey` to `encodeCell` is a change of result, so it belongs to 0.4. `labelKey` needs a decision first: its integer rule is by value where cell identity is by type, so decide whether an encoder label is identity or value before pointing it at any encoder.
+- **Status**: pending
+
+### [2026-09-12] — a self-referential slice takes the process down in `NewDataList`
+- **Where**: `datalist.go` `flattenWithNilSupport`
+- **What**: it recurses into every `reflect.Slice` with no depth limit, so a slice containing itself exhausts the stack. Measured on 2026-09-13: `cyclic := []any{1}; cyclic[0] = cyclic; insyra.NewDataList(cyclic)` ends with `fatal error: stack overflow`. That is not a panic, `recover` cannot catch it, and the library promises never to terminate. `encodeCell` was given a depth limit of 64 for exactly this reason; the flattener was not touched because it is the constructor's hot path and the fix should be measured against it.
+- **Suggestion**: the same depth bound, or a visited-pointer set. A bound is cheaper and a 64-deep slice literal is already pathological; a visited set is exact but costs an allocation per construction. Measure `NewDataList` on a large flat slice before and after, because that path runs for every table built from a slice.
+- **Status**: pending
+
 ### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
 - **Where**: `internal/utils` `IsNumeric` / `ToFloat64Safe`, and every numeric path behind them
 - **What**: `parquet-foreign-column-types` made `Decimal128` and `Decimal256` read as a go-decimal `decimal.Decimal`, exact and sorting by value. It is a struct, so `IsNumeric` says no and `ToFloat64Safe` cannot read it, which means the numeric path treats a decimal cell the way it treats a `time.Time` cell: as not a number. That follows the `time.Time` precedent exactly, and it is the reason the change did not go further on its own. But a money column is far likelier to want arithmetic than a date column is.

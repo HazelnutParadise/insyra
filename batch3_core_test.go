@@ -108,17 +108,27 @@ func TestDetectEncodingBoundary(t *testing.T) {
 // uncomparableCell holds a slice, so Go panics when two of them meet ==.
 type uncomparableCell struct{ s []int }
 
+// Such a cell used to be unequal to everything, itself included. Since
+// identify-uncomparable-cells it is compared by its type and content, like
+// every lookup, so a copy holding the same content is equal and one holding
+// different content is not.
 func TestIsEqualToUncomparableCellsDoNotPanic(t *testing.T) {
 	quietLogs(t)
 	dl := NewDataList(1.0, uncomparableCell{s: []int{1}})
+	other := NewDataList(1.0, uncomparableCell{s: []int{2}})
 	noPanic(t, "IsEqualTo", func() {
-		if dl.IsEqualTo(dl.Clone()) {
-			t.Fatal("a cell Go cannot compare should be unequal")
+		if !dl.IsEqualTo(dl.Clone()) {
+			t.Fatal("a copy holding the same uncomparable cell should be equal")
+		}
+		if dl.IsEqualTo(other) {
+			t.Fatal("an uncomparable cell with different content should be unequal")
 		}
 	})
 	noPanic(t, "IsTheSameAs", func() {
-		if dl.IsTheSameAs(dl.Clone()) {
-			t.Fatal("a cell Go cannot compare should be unequal")
+		// Not asserted against a clone: Clone stamps a fresh creation time,
+		// so the answer would depend on the clock, not on the cells.
+		if dl.IsTheSameAs(other) {
+			t.Fatal("an uncomparable cell with different content should not be the same")
 		}
 	})
 	if !NewDataList(1.0, "x").IsEqualTo(NewDataList(1.0, "x")) {

@@ -189,7 +189,9 @@ func (dl *DataList) Counter() map[any]int {
 	counter := make(map[any]int)
 	dl.AtomicDo(func(dl *DataList) {
 		for _, value := range dl.data {
-			counter[value]++
+			// ToMapKey, not the value: a cell Go cannot hash — a []byte read
+			// from a SQL BLOB column, say — used to take the process down here.
+			counter[ToMapKey(value)]++
 		}
 	})
 	return counter
@@ -590,8 +592,8 @@ func filterCells(data []any, keep func(any) bool) []any {
 }
 
 // equalCell matches a cell against a searched-for value the way FindFirst and
-// DropAll always have: a float64 NaN matches only a float64 NaN, and values
-// that Go cannot compare with == are unequal instead of a panic.
+// DropAll always have: a float64 NaN matches only a float64 NaN, and a value
+// Go cannot compare with == is compared by its type and content.
 func equalCell(a, b any) bool {
 	if fa, ok := a.(float64); ok {
 		if fb, ok := b.(float64); ok && math.IsNaN(fa) && math.IsNaN(fb) {
@@ -601,9 +603,18 @@ func equalCell(a, b any) bool {
 	return comparableEqual(a, b)
 }
 
-// comparableEqual is a == b, except that values Go cannot compare with == are
-// unequal instead of a panic. NaN is not equal to NaN.
+// comparableEqual is a == b, except that a value Go cannot compare with == is
+// compared by its type and content (encodeCell) instead of panicking. A scalar
+// NaN is not equal to NaN.
+//
+// It used to answer "not equal" for anything uncomparable, which meant a
+// []byte cell — what a SQL BLOB column reads as — was never found by Count,
+// FindAll or Replace even when it was plainly there, and disagreed with what
+// Counter reported for the same value.
 func comparableEqual(a, b any) (eq bool) {
+	if !comparableCell(a) || !comparableCell(b) {
+		return encodeCell(a) == encodeCell(b)
+	}
 	defer func() {
 		if recover() != nil {
 			eq = false

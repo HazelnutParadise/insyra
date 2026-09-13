@@ -2487,6 +2487,34 @@ counter := dl.Counter()
 // Returns: map[1:1 2:3 3:1 4:1]
 ```
 
+**Values Go cannot use as a map key.** A cell holding a slice, a map, or
+anything containing one — a `[]byte` read from a SQL BLOB column, for
+instance — cannot be a key in the returned map. Such a value is keyed by an
+`insyra.UncomparableKey` standing in for it. Comparable values are still keyed
+by themselves, so `counter[1]` and `counter["a"]` work as before, and printing
+the whole map stays readable: a stand-in shows as its type with a shortened
+form of its content, such as `[]uint8(00ff41)`.
+
+**To read one value's count, use `Count`, not this map.** `Count` matches
+integers by value, where the map keys them by Go type: a CSV load stores
+integers as `int64`, so `counter[1]` finds nothing in a counter built from
+loaded data while `Count(1)` is right. `Count` also finds an uncomparable
+value, which is the whole reason the two now agree.
+
+```go
+n := dl.Count(someValue)
+```
+
+`insyra.ToMapKey(v)` builds the key. Use it when you index the counter yourself
+rather than asking about one value, and in any map, set or index of your own
+over cell values — indexing a map with a slice panics, and that is your own
+map operation, which no library can guard:
+
+```go
+counter := dl.Counter()
+n := counter[insyra.ToMapKey(blob)]
+```
+
 ### FindFirst
 
 ```go
