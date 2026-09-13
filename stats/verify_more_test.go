@@ -1304,39 +1304,36 @@ func TestInfInputListwiseDeletion(t *testing.T) {
 	}
 }
 
-// TestRotationConvergedFlag: when MaxIter is set very low, oblique rotations
-// should report RotationConverged=false. With normal MaxIter, true.
+// TestRotationConvergedFlag: a rotation that finishes reports that it did.
+//
+// This used to try to force the opposite by setting opt.MaxIter = 1, but that
+// governs extraction and is deliberately not passed to the rotation (see
+// rotateFactors in factor_analysis.go), so the crippled case rotated with the
+// R defaults like any other and the assertion was written as a t.Logf to let
+// it pass either way. There is no public call that can starve a rotation of
+// iterations, so the negative case is pinned where the knob exists:
+// TestRotateReportsThatItDidNotConverge in stats/internal/fa.
 func TestRotationConvergedFlag(t *testing.T) {
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 
-	// Normal: should converge
 	opt := stats.DefaultFactorAnalysisOptions()
 	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 3
 	opt.Extraction = stats.FactorExtractionML
 	opt.Rotation.Method = stats.FactorRotationOblimin
-	opt.MaxIter = 1000
 	opt.Scoring = stats.FactorScoreNone
-	res, err := stats.FactorAnalysis(tbl, opt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !res.RotationConverged {
-		t.Errorf("normal: RotationConverged=false (expected true)")
-	}
-	fmt.Printf("normal MaxIter=1000: RotationConverged=%v ✓\n", res.RotationConverged)
 
-	// Cripple: MaxIter=1 should not converge for GPF-based oblique rotations
-	opt.MaxIter = 1
-	res2, err := stats.FactorAnalysis(tbl, opt)
-	if err != nil {
-		t.Fatal(err)
+	for _, restarts := range []int{1, 5} {
+		opt.Rotation.Restarts = restarts
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !res.RotationConverged {
+			t.Errorf("[restarts=%d] RotationConverged=false on data an oblimin rotation converges on", restarts)
+		}
 	}
-	if res2.RotationConverged {
-		t.Logf("note: even MaxIter=1 reports RotationConverged=true (rotation may converge in 1 iter on this data)")
-	}
-	fmt.Printf("crippled MaxIter=1: RotationConverged=%v\n", res2.RotationConverged)
 }
 
 // TestNoRotationConvergedTrue: when Rotation=None, RotationConverged should

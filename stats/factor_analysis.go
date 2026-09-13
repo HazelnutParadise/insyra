@@ -90,7 +90,7 @@ type FactorRotationOptions struct {
 	Kappa            float64          // Optional: Promax power (default 4)
 	Delta            float64          // Optional: Oblimin gamma (default 0)
 	GeominEpsilon    float64          // Optional: Geomin delta (default 0.01)
-	Restarts         int              // Optional: random orthonormal starts for GPA rotations (default 10)
+	Restarts         int              // Optional: random orthonormal starts for GPA rotations (default 1)
 	VarimaxAlgorithm VarimaxAlgorithm // Optional: "kaiser" (psych default) or "gparotation"
 }
 

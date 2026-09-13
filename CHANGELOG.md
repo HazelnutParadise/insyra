@@ -73,6 +73,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `KMeans` picks distinct initial centres, as R does. On data with repeated rows a single-start run used to draw the same row twice and fail with "empty cluster" — 44 of 50 seeds in one measured case. A colliding draw is now redrawn from the distinct rows; a draw that was already distinct is untouched, so every existing seeded result is bit-identical.
 - Functions taking `insyra.IDataList` no longer panic on a `nil` argument or on an implementation other than `*insyra.DataList`; the value is converted and a `nil` is reported as an ordinary error.
+- `FactorAnalysisResult.RotationConverged` reports whether the rotation converged. It was always `true`: the candidate chosen among restarts never carried the flag, so `fa.Rotate` fell back to its default — a rotation stopped after one iteration at a tolerance of 1e-12 still reported convergence. The flag now describes the solution that is returned; how that solution is chosen among restarts is unchanged.
 
 ### `csvxl`
 

@@ -100,7 +100,8 @@ reproducible run).
 **Factor analysis: leave `Rotation.Restarts` at its default of 1 when the
 rotation is orthogonal.** More than one restart currently returns a
 non-orthogonal rotation matrix, so the rotated loadings stop describing the same
-model. Tracked as issue #373.
+model. Tracked as issue #373. `RotationConverged` says whether the returned
+rotation converged, and `MaxIter` governs extraction rather than rotation.
 
 ## Things that are easy to get wrong
 

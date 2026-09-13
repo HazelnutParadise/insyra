@@ -47,16 +47,11 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 	}
 
 	// Return with correct key names expected by FaRotations.
-	// Propagate convergence so callers can correctly report RotationConverged.
-	out := map[string]any{
+	return withConvergence(map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
-	}
-	if conv, ok := result["convergence"]; ok {
-		out["convergence"] = conv
-	}
-	return out
+	}, result)
 }
 
 // Quartimax performs quartimax rotation.
@@ -94,16 +89,11 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	}
 
 	// Return with correct key names expected by FaRotations.
-	// Propagate convergence so callers can correctly report RotationConverged.
-	out := map[string]any{
+	return withConvergence(map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
-	}
-	if conv, ok := result["convergence"]; ok {
-		out["convergence"] = conv
-	}
-	return out
+	}, result)
 }
 
 // Quartimin performs quartimin rotation.
@@ -142,12 +132,12 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	}
 
 	// Return with correct key names expected by FaRotations
-	return map[string]any{
+	return withConvergence(map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
 		"f":        result["f"],
-	}
+	}, result)
 }
 
 // Oblimin performs oblimin rotation.
@@ -186,12 +176,12 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 	}
 
 	// Return with correct key names expected by FaRotations
-	return map[string]any{
+	return withConvergence(map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
 		"f":        result["f"],
-	}
+	}, result)
 }
 
 // GeominT performs geomin rotation.
@@ -229,16 +219,11 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	}
 
 	// Return with correct key names expected by FaRotations.
-	// Propagate convergence so callers can correctly report RotationConverged.
-	out := map[string]any{
+	return withConvergence(map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
-	}
-	if conv, ok := result["convergence"]; ok {
-		out["convergence"] = conv
-	}
-	return out
+	}, result)
 }
 
 // BentlerT performs Bentler's criterion rotation.
@@ -270,16 +255,11 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	rotMatDense := mat.DenseCopyOf(Th)
 
 	// Return with correct key names expected by FaRotations.
-	// Propagate convergence so callers can correctly report RotationConverged.
-	out := map[string]any{
+	return withConvergence(map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
-	}
-	if conv, ok := result["convergence"]; ok {
-		out["convergence"] = conv
-	}
-	return out
+	}, result)
 }
 
 // Simplimax performs simplimax rotation.
@@ -318,12 +298,12 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 	}
 
 	// Return with correct key names expected by FaRotations
-	return map[string]any{
+	return withConvergence(map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
 		"f":        result["f"],
-	}
+	}, result)
 }
 
 // GeominQ performs geomin rotation (oblique).
@@ -363,12 +343,12 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	}
 
 	// Return with correct key names expected by FaRotations
-	return map[string]any{
+	return withConvergence(map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
 		"f":        result["f"],
-	}
+	}, result)
 }
 
 // BentlerQ performs Bentler's criterion rotation (oblique).
@@ -407,12 +387,12 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	}
 
 	// Return with correct key names expected by FaRotations
-	return map[string]any{
+	return withConvergence(map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
 		"f":        result["f"],
-	}
+	}, result)
 }
 
 // FaRotations performs rotation selection with optional random restarts.
@@ -650,6 +630,15 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			score = 0
 		}
 
+		// The chosen candidate carries its own convergence flag, so fa.Rotate
+		// reports whether the solution it returns converged instead of
+		// falling back to its default of true.
+		converged := true
+		if conv, ok := result["convergence"].(bool); ok {
+			converged = conv
+		}
+		candidate["convergence"] = converged
+
 		if best == nil || score < bestScore || (math.IsNaN(bestScore) && !math.IsNaN(score)) {
 			best = candidate
 			bestScore = score
@@ -669,6 +658,15 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 	}
 
 	return best
+}
+
+// withConvergence copies the convergence flag out of a GPForth/GPFoblq result
+// so the caller can report whether the rotation it chose actually converged.
+func withConvergence(out, from map[string]any) map[string]any {
+	if conv, ok := from["convergence"]; ok {
+		out["convergence"] = conv
+	}
+	return out
 }
 
 func identityMatrix(n int) *mat.Dense {

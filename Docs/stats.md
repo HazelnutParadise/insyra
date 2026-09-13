@@ -1316,6 +1316,10 @@ precision (slower; useful when converging on a flat / boundary objective).
 Oblimin rotation, Regression scoring, MaxIter=50, MinErr=0.001, OptimFactr=1e7,
 OptimMaxIter=100 (matching R `psych::fa` defaults).
 
+`RotationConverged` reports whether the rotation solution that was returned
+converged. `MaxIter` governs extraction and is not passed to the rotation,
+which uses R's own defaults of `eps = 1e-5` and `maxit = 1000`.
+
 #### FactorAnalysisResult
 
 ```go
