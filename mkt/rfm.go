@@ -157,7 +157,7 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	fThresholds := make([]float64, numGroups-1)
 	mThresholds := make([]float64, numGroups-1)
 	customerRMap := make(map[string]int64) // map[customerID]R_value (days since last trade)
-	parallel.GroupUp(func() {
+	if err := parallel.GroupUp(func() {
 		// Recency 基準時間（UTC）：資料集最新交易日或使用者指定的 AsOfDate
 		now := time.Unix(referenceUnix, 0).UTC()
 
@@ -202,7 +202,10 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 			percentile := float64(i+1) / float64(numGroups) * 100
 			mThresholds[i] = allTotalAmounts.Percentile(percentile)
 		}
-	}).Run().AwaitResult()
+	}).Run().AwaitNoResult(); err != nil {
+		insyra.LogWarning("mkt", "RFM", "Failed to compute the score thresholds: %v, returning nil", err)
+		return nil
+	}
 
 	// 創建RFM表
 	rfmTable := insyra.NewDataTable()

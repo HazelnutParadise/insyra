@@ -107,15 +107,18 @@ Compute multiple independent metrics concurrently.
 **Code**
 
 ```go
-results := parallel.GroupUp(
+results, err := parallel.GroupUp(
 	func() any { return enriched.GetColByName("ARPU").Mean() },
 	func() any { return enriched.GetColByName("Revenue").Sum() },
 	func() any { return enriched.GetColByName("Sessions").Sum() },
 ).Run().AwaitResult()
+if err != nil {
+	log.Fatal(err)
+}
 ```
 
 **Expected outcome**  
-`results` contains three computed KPI values.
+`results` contains three computed KPI values, one per function. `err` is nil unless one of the functions panicked.
 
 ## Step 5: Build summary DataTable
 
@@ -195,11 +198,14 @@ insyra.Return(df)
 	}
 	_ = tagged // available for campaign output if needed
 
-	results := parallel.GroupUp(
+	results, err := parallel.GroupUp(
 		func() any { return enriched.GetColByName("ARPU").Mean() },
 		func() any { return enriched.GetColByName("Revenue").Sum() },
 		func() any { return enriched.GetColByName("Sessions").Sum() },
 	).Run().AwaitResult()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	summary := insyra.NewDataTable(
 		insyra.NewDataList("ARPU_Mean", "Revenue_Sum", "Sessions_Sum").SetName("Metric"),

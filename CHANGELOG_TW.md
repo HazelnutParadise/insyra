@@ -174,6 +174,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 建立 Python 環境的目錄權限改為 0o755，不再是 0777。
 - IPC 監聽失敗改為記錄並讓伺服器保持關閉，不再結束程式。
 
+### `parallel`
+- **BREAKING**：`Run` 改為回傳新的 `*RunningGroup`，等待時會回報失敗的函式。`ParallelGroup` 現在是一份可以重複使用的函式清單，只有 `Run` 方法，每次 `Run` 都是一次獨立的執行，結果各自存放。過去同一個 group 跑兩次會把所有函式重跑一遍、寫進同樣的結果欄位，兩個 `Run` 同時呼叫還會發生資料競爭。`RunningGroup` 只有 `AwaitResult` 與 `AwaitNoResult`，所以等待一個從沒啟動的 group 會直接編譯失敗，過去則是立刻回傳空結果。`AwaitResult` 改為回傳 `([][]any, error)`，`AwaitNoResult` 改為回傳 `error`。函式 panic 或傳入的值無法呼叫時，該格為 `nil`，並以帶有位置、panic 值與呼叫堆疊的 `*parallel.WorkerError` 回報。過去該格會放一個 `error`，和函式自己回傳的 error 分不出來；函式自己回傳的 error 現在就單純留在結果格裡。`GroupUp` 會複製傳入的參數。遷移方式：`results := g.Run().AwaitResult()` 改成 `results, err := g.Run().AwaitResult()`，宣告為 `*parallel.ParallelGroup` 並用來接 `Run()` 結果的變數，改成 `*parallel.RunningGroup`。
+
 ## v0.3.2
 
 ### Core

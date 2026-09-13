@@ -176,7 +176,7 @@ The root package defines everything central:
 | `csvxl/` | CSV and Excel I/O |
 | `parquet/` | Parquet file I/O via Apache Arrow |
 | `datafetch/` | HTTP data fetching helpers |
-| `parallel/` | Parallel map/reduce over DataList/DataTable |
+| `parallel/` | Run zero-argument functions at once and collect their results (`GroupUp(...).Run().AwaitResult()`) |
 | `lp/` / `lpgen/` | Linear programming |
 | `mkt/` | Market data helpers |
 | `py/` | Python interop (runs Python via embedded env) |

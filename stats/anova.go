@@ -287,7 +287,7 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) (*RepeatedMeasuresANOVA
 	grandMean := grandTotal / float64(conditionCount*len(subjects))
 
 	var ssTotal, ssBetween, ssSubjects float64
-	parallel.GroupUp(func() {
+	if err := parallel.GroupUp(func() {
 		for i := range data {
 			for j := range data[i] {
 				ssTotal += (data[i][j] - grandMean) * (data[i][j] - grandMean)
@@ -311,7 +311,9 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) (*RepeatedMeasuresANOVA
 			subjectMean /= float64(conditionCount)
 			ssSubjects += float64(conditionCount) * (subjectMean - grandMean) * (subjectMean - grandMean)
 		}
-	}).Run().AwaitResult()
+	}).Run().AwaitNoResult(); err != nil {
+		return nil, fmt.Errorf("computing the sums of squares: %w", err)
+	}
 
 	SSWithin := ssTotal - ssBetween - ssSubjects
 

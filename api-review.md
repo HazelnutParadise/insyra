@@ -101,11 +101,11 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| P-1 | High | 整個 API 以 `any` 進出：函式是 `any`，結果是 `[][]any`。worker panic 被轉成 `error` 塞進結果槽，與函式本身回傳 `error` 的情況無法區分；型別錯誤只能在執行期發現 | parallel/parallel_computing.go:16, 24-58, 61 | 見 P-4 |
-| P-2 | Med | `Run` 呼叫兩次會重新執行所有函式並覆寫結果；沒有 context、沒有併發上限 | parallel_computing.go:24 | 記錄已執行狀態；或整包重設計 |
+| P-1 | ~~High~~ 已修正（parallel-runs-and-worker-errors）：`any` 依擁有者裁示保留，讓回傳型別不同的函式能放進同一組；panic 與無法呼叫的值改以 `*WorkerError` 從 Await 的 error 回報，結果格只放函式自己的回傳值 | 整個 API 以 `any` 進出：函式是 `any`，結果是 `[][]any`。worker panic 被轉成 `error` 塞進結果槽，與函式本身回傳 `error` 的情況無法區分；型別錯誤只能在執行期發現 | parallel/parallel_computing.go:16, 24-58, 61 | 見 P-4 |
+| P-2 | ~~Med~~ 已修正（parallel-runs-and-worker-errors）：每次 `Run` 回傳獨立的 `*RunningGroup`，結果分開存放，同時 Run 沒有資料競爭；context 與併發上限不做 | `Run` 呼叫兩次會重新執行所有函式並覆寫結果；沒有 context、沒有併發上限 | parallel_computing.go:24 | 記錄已執行狀態；或整包重設計 |
 | P-3 | ~~Low~~ 已修正（batch 3） | `AwaitNoResult` doc 說「避免結果收集開銷」，但 `Run` 一律收集 | parallel_computing.go:66-70 | 修 doc 或真的分開 |
-| P-5 | Med | 最常見用法要串三步 `GroupUp(...).Run().AwaitResult()`，業界標竿 `errgroup.Group` 是 `g.Go(f); g.Wait()` 兩步且回傳 error（準則 4、10） | 全套件 | 併入 P-4 決策 |
-| P-4 | 決策 | 套件內部只有 `datatable.go`、`mkt/rfm.go`、`stats/anova.go` 三處使用，都是「跑幾個無回傳閉包再等」的用法。標準庫 `sync.WaitGroup` / `errgroup.Group` 已涵蓋。要嘛用 generics 重做成型別安全版本，要嘛標 Deprecated 並把三處改回 WaitGroup | 全套件 | 建議後者：一個公開套件維護成本高於三處 WaitGroup |
+| P-5 | ~~Med~~ 不改（擁有者 2026-09-13 裁示）：`GroupUp(...).Run().AwaitResult()` 是刻意的設計；沒有 Run 不能 Await 改由型別保證 | 最常見用法要串三步 `GroupUp(...).Run().AwaitResult()`，業界標竿 `errgroup.Group` 是 `g.Go(f); g.Wait()` 兩步且回傳 error（準則 4、10） | 全套件 | 併入 P-4 決策 |
+| P-4 | ~~決策~~ 已裁示（2026-09-13）：保留套件、不棄用，在原設計內修正（parallel-runs-and-worker-errors） | 套件內部只有 `datatable.go`、`mkt/rfm.go`、`stats/anova.go` 三處使用，都是「跑幾個無回傳閉包再等」的用法。標準庫 `sync.WaitGroup` / `errgroup.Group` 已涵蓋。要嘛用 generics 重做成型別安全版本，要嘛標 Deprecated 並把三處改回 WaitGroup | 全套件 | 建議後者：一個公開套件維護成本高於三處 WaitGroup |
 
 ### parquet
 
@@ -593,7 +593,7 @@
 | C-6 | [#268](https://github.com/HazelnutParadise/insyra/issues/268) |  |
 | C-8 | [#269](https://github.com/HazelnutParadise/insyra/issues/269) |  |
 | C-11 | [#270](https://github.com/HazelnutParadise/insyra/issues/270) |  |
-| P-1、P-2、P-5、P-4 | [#271](https://github.com/HazelnutParadise/insyra/issues/271) |  |
+| P-1、P-2、P-5、P-4 | [#271](https://github.com/HazelnutParadise/insyra/issues/271) | 已關閉（parallel-runs-and-worker-errors） |
 | Q-2、Q-6 | [#272](https://github.com/HazelnutParadise/insyra/issues/272) |  |
 | Q-9、Q-7 | [#273](https://github.com/HazelnutParadise/insyra/issues/273) |  |
 | Q-10 | [#274](https://github.com/HazelnutParadise/insyra/issues/274) |  |
@@ -2378,9 +2378,9 @@
 
 ## parallel (5)
 
-- [x] `func (pg *ParallelGroup) AwaitNoResult()` (parallel_computing.go:68) — P-3 doc 宣稱省掉結果收集，但 Run 一律收集
-- [x] `func (pg *ParallelGroup) AwaitResult() [][]any` (parallel_computing.go:61) — P-1 回傳 [][]any；未呼叫 Run 直接 Await 立即回傳全 nil，無警示
-- [x] `func (pg *ParallelGroup) Run() *ParallelGroup` (parallel_computing.go:24) — P-1 panic 轉成 error 塞進結果槽，與函式自己回傳的 error 無法區分；P-2 呼叫兩次會重跑；無 context、無併發上限
+- [x] `func (pg *ParallelGroup) AwaitNoResult()` (parallel_computing.go:68) — P-3 doc 宣稱省掉結果收集，但 Run 一律收集 → 已移到 `(*RunningGroup).AwaitNoResult() error`（parallel-runs-and-worker-errors）
+- [x] `func (pg *ParallelGroup) AwaitResult() [][]any` (parallel_computing.go:61) — P-1 回傳 [][]any；未呼叫 Run 直接 Await 立即回傳全 nil，無警示 → 已移到 `(*RunningGroup).AwaitResult() ([][]any, error)`，未 Run 無法編譯（parallel-runs-and-worker-errors）
+- [x] `func (pg *ParallelGroup) Run() *ParallelGroup` (parallel_computing.go:24) — P-1 panic 轉成 error 塞進結果槽，與函式自己回傳的 error 無法區分；P-2 呼叫兩次會重跑；無 context、無併發上限 → 改回傳 `*RunningGroup`，每次獨立執行，失敗以 `*WorkerError` 回報（parallel-runs-and-worker-errors）
 - [x] `func GroupUp(fns ...any) *ParallelGroup` (parallel_computing.go:16) — P-1 參數型別 any，錯誤只能在執行期發現、P-5 三步串接
 - [x] `type ParallelGroup struct { fns []any results [][]any wg sync.WaitGroup }` (parallel_computing.go:9) — 欄位全私有，零值可用但無意義；建議整體見 P-4
 

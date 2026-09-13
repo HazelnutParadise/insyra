@@ -174,6 +174,9 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Directories created for the Python environment are 0o755 rather than 0777.
 - A failed IPC listen is recorded and leaves the server down instead of ending the program.
 
+### `parallel`
+- **BREAKING**: `Run` returns a new `*RunningGroup`, and waiting reports functions that failed. A `ParallelGroup` is now a reusable list of functions with only `Run`, and each `Run` starts an independent run with its own results. Running one group twice used to execute every function again into the same result slots, and two `Run` calls at once raced. A `RunningGroup` has only `AwaitResult` and `AwaitNoResult`, so awaiting a group that was never started no longer compiles, where it used to return empty results at once. `AwaitResult` returns `([][]any, error)` and `AwaitNoResult` returns `error`. A function that panics, or a value that cannot be called, leaves its slot `nil` and is reported as a `*parallel.WorkerError` with its index, the panic value and the stack. It used to leave an `error` in its slot that could not be told apart from an error the function returned itself, which now simply stays in the slot. `GroupUp` copies its arguments. Migration: `results := g.Run().AwaitResult()` becomes `results, err := g.Run().AwaitResult()`, and a variable declared as `*parallel.ParallelGroup` that holds the result of `Run()` becomes `*parallel.RunningGroup`.
+
 ## v0.3.2
 
 ### Core
