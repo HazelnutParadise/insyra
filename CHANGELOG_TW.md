@@ -119,6 +119,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 錯誤改用 `%w` 包裝底層原因（`errors.Is(err, os.ErrNotExist)` 可用），輸出目錄改以 0755 建立而不是 0777。
 - `ExcelToCsv` 與 `EachExcelToCsv` 拒絕無法當單一檔名的工作表名稱（`../x`、`a/b`），惡意 workbook 過去可藉此截斷輸出目錄外的檔案；每張 CSV 先讀完工作表再經暫存檔寫入。
 - `ExcelToCsv` 遇到 `onlyContainSheets` 裡工作簿沒有的名稱會回報錯誤，並列出檔案實際有哪些工作表。名稱拼錯過去會被靜默略過，轉出來的檔案少了幾張，看起來卻像成功。
+- **BREAKING**：`CsvToExcel`、`AppendCsvToExcel` 與 `EachCsvToOneExcel` 會指出哪些 CSV 失敗，也不再留下損壞的工作表。過去錯誤只寫「2 files failed to convert」，每個失敗的檔案都在工作簿裡留下一張空工作表，`AppendCsvToExcel` 甚至先清空同名的既有工作表，才發現 CSV 讀不到，接著照樣存檔。現在每個 CSV 會先完整讀完，才建立或取代工作表。失敗的檔案不產生工作表，既有工作表保留原內容，其他檔案照常轉換並存檔。錯誤逐行列出每個失敗的檔案與原因，`errors.Is(err, os.ErrNotExist)` 也能用。Excel 不接受的工作表名稱現在只讓那個檔案失敗，過去會讓整個呼叫在存檔前就中止。全部失敗時，`CsvToExcel` 不寫出工作簿，`AppendCsvToExcel` 不改動檔案。
 
 ### `parquet`
 - 修正 `ReadColumnOptions.MaxValues` 完全沒有作用。`ReadColumn` 現在先從檔案 metadata 加總所選 row group 的列數，超過上限時在讀取任何資料前就拒絕，這才是該欄位文件寫的行為。

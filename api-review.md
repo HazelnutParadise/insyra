@@ -84,7 +84,7 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| C-1 | High | 單一 CSV 轉換失敗時只累加計數，錯誤內容丟棄；Excel 仍然存檔（含空 sheet），最後回傳「N files failed」。呼叫端不知道哪個檔、為什麼 | csvxl/convert.go:64-67, 116-119 | 用 `errors.Join` 帶檔名回傳每個失敗；或改成 fail-fast 不存檔。二選一要由你決定：批次容錯還是全有全無 |
+| C-1 | ~~High~~ 已修正（csvxl-batch-failures）：採批次容錯，每個失敗的檔案帶檔名與原因回傳，失敗的檔案不留工作表，`AppendCsvToExcel` 先讀完 CSV 才取代同名工作表 | 單一 CSV 轉換失敗時只累加計數，錯誤內容丟棄；Excel 仍然存檔（含空 sheet），最後回傳「N files failed」。呼叫端不知道哪個檔、為什麼 | csvxl/convert.go:64-67, 116-119 | 用 `errors.Join` 帶檔名回傳每個失敗；或改成 fail-fast 不存檔。二選一要由你決定：批次容錯還是全有全無 |
 | C-2 | Med | `csvEncoding ...string` / `encoding ...string` 拿 variadic 當選填參數，傳兩個以上才在執行期報錯；未知編碼字串（如 `"latin1"`）靜默走 raw 讀取 | convert.go:31-37, 86-92; convertDir.go:16; read_csv.go:11 | 改成明確參數或 options struct；未知編碼回傳錯誤 |
 | C-3 | ~~Med~~ 已修正 | `AppendCsvToExcel` doc 說「sheet 已存在會被覆寫」，但 excelize `NewSheet` 對既有名稱只回傳索引不清空（已查 v2.11.0 sheet.go:57-59），結果是新資料蓋在舊資料上，舊資料超出範圍的儲存格殘留 | convert.go:83-107 | 存在時先 `DeleteSheet` 再建，或改 doc 說明是合併 |
 | C-4 | ~~Med~~ 已修正 | `excelize.OpenFile` 回傳的 `*File` 從未 `Close()`：`AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv`（每個檔案各漏一次） | convert.go:94, 136; convertDir.go:38 | `defer f.Close()` |
@@ -587,7 +587,7 @@
 | ML-2 | [#264](https://github.com/HazelnutParadise/insyra/issues/264) |  |
 | NN-1 | [#265](https://github.com/HazelnutParadise/insyra/issues/265) |  |
 | NN-2 | [#266](https://github.com/HazelnutParadise/insyra/issues/266) |  |
-| C-1 | [#267](https://github.com/HazelnutParadise/insyra/issues/267) |  |
+| C-1 | [#267](https://github.com/HazelnutParadise/insyra/issues/267) | 已關閉（csvxl-batch-failures） |
 | C-6 | [#268](https://github.com/HazelnutParadise/insyra/issues/268) |  |
 | C-8 | [#269](https://github.com/HazelnutParadise/insyra/issues/269) |  |
 | C-11 | [#270](https://github.com/HazelnutParadise/insyra/issues/270) |  |

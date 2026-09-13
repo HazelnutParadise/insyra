@@ -718,14 +718,22 @@ func main() {
 ```go
 package main
 
-import "github.com/HazelnutParadise/insyra/csvxl"
+import (
+    "log"
+
+    "github.com/HazelnutParadise/insyra/csvxl"
+)
 
 func main() {
-    _ = csvxl.CsvToExcel(
+    // A CSV that cannot be read gets no sheet, the other files are still
+    // written, and err lists every file that failed with its cause.
+    if err := csvxl.CsvToExcel(
         []string{"file1.csv", "file2.csv"},
         nil,
         "output.xlsx",
-    )
+    ); err != nil {
+        log.Println(err)
+    }
 }
 ```
 

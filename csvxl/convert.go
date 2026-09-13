@@ -2,6 +2,7 @@ package csvxl
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -25,6 +26,10 @@ const (
 // Convert multiple CSV files to an Excel file, supporting custom sheet names.
 // If the sheet name is not specified, the file name of the CSV file will be used.
 // If csvEncoding is not specified, auto-detection will be used.
+//
+// A CSV that cannot be read, or whose sheet cannot be created, gets no sheet,
+// and the other files are still converted. The returned error lists every
+// file that failed. When every file fails, no workbook is written.
 func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error {
 	encoding := Auto // Default to auto-detection
 	if len(csvEncoding) == 1 {
@@ -34,7 +39,9 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 	}
 
 	f := excelize.NewFile()
-	failedFiles := 0
+	defer func() { _ = f.Close() }()
+	var failures []error
+	converted := 0
 
 	for idx, csvFile := range csvFiles {
 		if !strings.HasSuffix(csvFile, ".csv") {
@@ -44,35 +51,40 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 		// 如果提供了自訂工作表名稱，則使用它，否則使用 CSV 檔案的名稱
 		sheetName := getSheetName(csvFile, sheetNames, idx)
 
-		// 第一個工作表重命名，而不是創建新工作表
-		if idx == 0 {
-			err := f.SetSheetName(f.GetSheetName(0), sheetName)
-			if err != nil {
-				return fmt.Errorf("failed to set sheet name %s: %w", sheetName, err)
+		records, fileErr := readCsvRecords(csvFile, encoding)
+		if fileErr == nil {
+			// 第一個成功的檔案沿用新工作簿的預設工作表，而不是另建一張
+			if converted == 0 {
+				fileErr = f.SetSheetName(f.GetSheetName(0), sheetName)
+			} else {
+				_, fileErr = f.NewSheet(sheetName)
 			}
-		} else {
-			_, err := f.NewSheet(sheetName)
-			if err != nil {
-				return fmt.Errorf("failed to create new sheet %s: %w", sheetName, err)
+			if fileErr != nil {
+				fileErr = fmt.Errorf("failed to create sheet %s for %s: %w", sheetName, csvFile, fileErr)
 			}
 		}
-
-		err := addCsvSheet(f, sheetName, csvFile, encoding)
-		if err != nil {
-			failedFiles++
+		if fileErr == nil {
+			fileErr = writeRecords(f, sheetName, csvFile, records)
+		}
+		if fileErr != nil {
+			failures = append(failures, fileErr)
 			continue
 		}
+		converted++
+	}
+
+	if converted == 0 && len(failures) > 0 {
+		return batchError("convert", failures, len(csvFiles))
 	}
 
 	if err := f.SaveAs(output); err != nil {
 		return fmt.Errorf("failed to save Excel file %s: %w", output, err)
 	}
 
-	if failedFiles > 0 {
-		return fmt.Errorf("%d files failed to convert", failedFiles)
+	insyra.LogInfo("csvxl", "CsvToExcel", "Converted %d of %d CSV files to Excel file %s.", converted, len(csvFiles), output)
+	if len(failures) > 0 {
+		return batchError("convert", failures, len(csvFiles))
 	}
-
-	insyra.LogInfo("csvxl", "CsvToExcel", "Successfully converted %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, output, failedFiles)
 	return nil
 }
 
@@ -80,6 +92,11 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 // If the sheet name is not specified, the file name of the CSV file will be used.
 // If the sheet is exists, it will be overwritten.
 // If csvEncoding is not specified, auto-detection will be used.
+//
+// A CSV is read in full before its sheet is replaced, so a CSV that cannot be
+// read leaves the sheet of the same name as it was, and the other files are
+// still appended. The returned error lists every file that failed. When every
+// file fails, the workbook is not rewritten.
 func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error {
 	encoding := Auto // Default to auto-detection
 	if len(csvEncoding) == 1 {
@@ -94,7 +111,8 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 	}
 	defer func() { _ = f.Close() }()
 
-	failedFiles := 0
+	var failures []error
+	appended := 0
 
 	for idx, csvFile := range csvFiles {
 		if !strings.HasSuffix(csvFile, ".csv") {
@@ -104,26 +122,34 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 		// 如果提供了自訂工作表名稱，則使用它，否則使用 CSV 檔案的名稱
 		sheetName := getSheetName(csvFile, sheetNames, idx)
 
-		if err := replaceSheet(f, sheetName); err != nil {
-			return fmt.Errorf("failed to create new sheet %s: %w", sheetName, err)
+		records, fileErr := readCsvRecords(csvFile, encoding)
+		if fileErr == nil {
+			if fileErr = replaceSheet(f, sheetName); fileErr != nil {
+				fileErr = fmt.Errorf("failed to create sheet %s for %s: %w", sheetName, csvFile, fileErr)
+			}
 		}
-
-		err = addCsvSheet(f, sheetName, csvFile, encoding)
-		if err != nil {
-			failedFiles++
+		if fileErr == nil {
+			fileErr = writeRecords(f, sheetName, csvFile, records)
+		}
+		if fileErr != nil {
+			failures = append(failures, fileErr)
 			continue
 		}
+		appended++
+	}
+
+	if appended == 0 && len(failures) > 0 {
+		return batchError("append", failures, len(csvFiles))
 	}
 
 	if err := f.SaveAs(existingFile); err != nil {
 		return fmt.Errorf("failed to save Excel file %s: %w", existingFile, err)
 	}
 
-	if failedFiles > 0 {
-		return fmt.Errorf("%d files failed to append", failedFiles)
+	insyra.LogInfo("csvxl", "AppendCsvToExcel", "Appended %d of %d CSV files to Excel file %s.", appended, len(csvFiles), existingFile)
+	if len(failures) > 0 {
+		return batchError("append", failures, len(csvFiles))
 	}
-
-	insyra.LogInfo("csvxl", "AppendCsvToExcel", "Successfully appended %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, existingFile, failedFiles)
 	return nil
 }
 
@@ -293,41 +319,41 @@ func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) er
 	return nil
 }
 
-// 私有函數：將 CSV 數據加入 Excel 的指定工作表，並處理非 UTF-8 編碼
-func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) error {
+// readCsvRecords reads and decodes a whole CSV file, handling non-UTF-8
+// encodings, so a file that cannot be read is known before any sheet is
+// created or replaced. A file with more rows or columns than a sheet can hold
+// is refused here for the same reason.
+func readCsvRecords(csvFile string, encoding string) ([][]string, error) {
 	file, err := os.Open(csvFile)
 	if err != nil {
-		return fmt.Errorf("failed to open CSV file %s: %w", csvFile, err)
+		return nil, fmt.Errorf("failed to open CSV file %s: %w", csvFile, err)
 	}
 	defer func() { _ = file.Close() }()
-
-	var records [][]string
 
 	// Auto-detect encoding if specified
 	if encoding == Auto {
 		detectedEncoding, err := insyra.DetectEncoding(csvFile)
 		if err != nil {
 			// Propagate the detection error instead of silently falling back
-			return fmt.Errorf("failed to auto-detect encoding for %s: %w", csvFile, err)
+			return nil, fmt.Errorf("failed to auto-detect encoding for %s: %w", csvFile, err)
 		}
 		encoding = strings.ToLower(detectedEncoding)
-		insyra.LogInfo("csvxl", "addCsvSheet", "Auto-detected encoding %s for file %s", encoding, csvFile)
+		insyra.LogInfo("csvxl", "readCsvRecords", "Auto-detected encoding %s for file %s", encoding, csvFile)
 	}
 
 	// Ensure we start reading from the beginning of the file
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek file %s: %w", csvFile, err)
+		return nil, fmt.Errorf("failed to seek file %s: %w", csvFile, err)
 	}
 
 	reader, decErr := insyracsv.DecodingReader(file, encoding)
 	if decErr != nil {
-		return fmt.Errorf("failed to read CSV file %s: %w", csvFile, decErr)
+		return nil, fmt.Errorf("failed to read CSV file %s: %w", csvFile, decErr)
 	}
 
-	csvReader := csv.NewReader(reader)
-	records, err = csvReader.ReadAll()
+	records, err := csv.NewReader(reader).ReadAll()
 	if err != nil {
-		return fmt.Errorf("failed to read CSV file %s: %w", csvFile, err)
+		return nil, fmt.Errorf("failed to read CSV file %s: %w", csvFile, err)
 	}
 
 	// Trim UTF-8 BOM if present
@@ -335,17 +361,37 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 		records[0][0] = strings.TrimPrefix(records[0][0], "\uFEFF")
 	}
 
+	if len(records) > excelize.TotalRows {
+		return nil, fmt.Errorf("CSV file %s has %d rows, more than the %d a sheet can hold", csvFile, len(records), excelize.TotalRows)
+	}
+	for i, record := range records {
+		if len(record) > excelize.MaxColumns {
+			return nil, fmt.Errorf("row %d of CSV file %s has %d columns, more than the %d a sheet can hold", i+1, csvFile, len(record), excelize.MaxColumns)
+		}
+	}
+	return records, nil
+}
+
+// writeRecords writes rows read by readCsvRecords into a sheet.
+func writeRecords(f *excelize.File, sheetName, csvFile string, records [][]string) error {
 	for rowIdx, record := range records {
 		for colIdx, cell := range record {
-			cellAddr, _ := excelize.CoordinatesToCellName(colIdx+1, rowIdx+1)
-			err := f.SetCellValue(sheetName, cellAddr, cell)
+			cellAddr, err := excelize.CoordinatesToCellName(colIdx+1, rowIdx+1)
+			if err == nil {
+				err = f.SetCellValue(sheetName, cellAddr, cell)
+			}
 			if err != nil {
-				return fmt.Errorf("failed to set cell value %s: %w", cellAddr, err)
+				return fmt.Errorf("failed to write row %d of %s to sheet %s: %w", rowIdx+1, csvFile, sheetName, err)
 			}
 		}
 	}
-
 	return nil
+}
+
+// batchError reports every file in a batch that failed, one per line, and
+// wraps each cause so errors.Is still finds it.
+func batchError(verb string, failures []error, total int) error {
+	return fmt.Errorf("%d of %d CSV files failed to %s:\n%w", len(failures), total, verb, errors.Join(failures...))
 }
 
 // 私有函數：取得工作表名稱，如果提供了自訂名稱則使用，否則使用 CSV 檔案名稱

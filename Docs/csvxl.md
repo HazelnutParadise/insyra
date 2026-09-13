@@ -64,6 +64,8 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 
 **Description:** Converts multiple CSV files into a new Excel workbook. If `sheetNames` is empty, filenames are used.
 
+Each CSV is read in full before its sheet is created. When a CSV cannot be read, or Excel rejects its sheet name, that file gets no sheet, and the other files are still converted and saved. The returned error then begins with a count such as `1 of 3 CSV files failed to convert` and lists each failed file with its cause on its own line. `errors.Is` works on it, for example with `os.ErrNotExist`. When every file fails, no workbook is written.
+
 **Parameters:**
 
 - `csvFiles`: File path to use. Type: `[]string`.
@@ -82,6 +84,8 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 ```
 
 **Description:** Appends CSV files as new sheets. An existing sheet with the same name is deleted first and replaced in full, so nothing from the old sheet survives — including cells outside the range of the new CSV. This works even when it is the workbook's only sheet.
+
+Each CSV is read in full before its sheet is replaced, so a CSV that cannot be read leaves the existing sheet of that name as it was. The other files are still appended, and the error lists the files that failed in the same form as `CsvToExcel`. When every file fails, the workbook file is not rewritten.
 
 **Parameters:**
 
@@ -126,7 +130,7 @@ A name in `onlyContainSheets` that the workbook does not have is an error naming
 func EachCsvToOneExcel(dir string, output string, encoding ...string) error
 ```
 
-**Description:** Converts all CSV files in a directory into a single Excel workbook.
+**Description:** Converts all CSV files in a directory into a single Excel workbook through `CsvToExcel`, so a file that fails is skipped and reported the same way.
 
 **Parameters:**
 
