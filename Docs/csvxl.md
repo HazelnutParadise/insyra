@@ -34,6 +34,14 @@ func main() {
 }
 ```
 
+## Supported encodings
+
+Reading decodes UTF-8/ASCII, UTF-16 and UTF-32 (LE/BE, BOM-aware), Big5, GB18030/GBK/GB2312, Shift-JIS, ISO-2022-JP, EUC-JP, EUC-KR, every ISO-8859 part x/text ships, Windows-1250 through 1258, KOI8-R/U, IBM866 and Macintosh Roman — every charset the auto-detector can report, plus the usual aliases (`latin1`, `cp1252`, `sjis`, …). Separators and case do not matter: `ISO-8859-1`, `iso8859_1` and `ISO 8859 1` are the same.
+
+A name outside that list is matched the way earlier releases did: one containing `big5` reads as Big5, one containing `gb` as GB18030, one containing `utf-16` as UTF-16. Any other name reads the bytes without decoding, so pass the file's real encoding when it is not UTF-8.
+
+`Auto` detects the encoding from the file's first 8 KB. A UTF-32 byte-order mark is recognised before the UTF-16 one they share a prefix with.
+
 ## Encoding Constants
 
 ```go

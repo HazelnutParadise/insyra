@@ -294,9 +294,16 @@ func DetectEncoding(filePath string) (string, error) {
 	}
 	sample := buf[:n]
 
-	// BOM checks
+	// BOM checks. UTF-32's BOMs start with UTF-16's, so they must be tested
+	// first or every UTF-32LE file is reported as UTF-16LE.
 	if bytes.HasPrefix(sample, []byte{0xEF, 0xBB, 0xBF}) {
 		return "utf-8", nil
+	}
+	if bytes.HasPrefix(sample, []byte{0xFF, 0xFE, 0x00, 0x00}) {
+		return "utf-32le", nil
+	}
+	if bytes.HasPrefix(sample, []byte{0x00, 0x00, 0xFE, 0xFF}) {
+		return "utf-32be", nil
 	}
 	if bytes.HasPrefix(sample, []byte{0xFF, 0xFE}) {
 		return "utf-16le", nil

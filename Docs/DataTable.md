@@ -513,6 +513,8 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 
 **Description:** Saves the DataTable as a CSV file. Every write error is returned, including one the CSV writer only reports when it flushes its buffer at the end (disk full, closed pipe).
 
+> **Opening the file in a spreadsheet:** a cell whose text begins with `=`, `+`, `-` or `@` is a formula to Excel, LibreOffice and Google Sheets, and they will execute it. `ToCSV` writes such a cell unchanged, so a round trip keeps the exact value. When the file is meant to be opened in a spreadsheet and the data is not wholly your own, write it with `ToCSVWithOptions` and `SanitizeFormulas: true`, which prefixes those cells with a single quote.
+
 **Parameters:**
 
 - `filePath`: Output CSV file path
@@ -528,6 +530,33 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 
 ```go
 err := dt.ToCSV("output.csv", false, true, false)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### ToCSVWithOptions
+
+```go
+func (dt *DataTable) ToCSVWithOptions(filePath string, opts CSVWriteOptions) error
+
+type CSVWriteOptions struct {
+    SetRowNamesToFirstCol bool // write the row names as the first column
+    SetColNamesToFirstRow bool // write the column names as the first row
+    IncludeBOM            bool // write a UTF-8 byte-order mark
+    SanitizeFormulas      bool // prefix =, +, -, @ cells with a single quote
+}
+```
+
+**Description:** `ToCSV` with an options struct instead of positional flags. The zero value writes the data as-is, exactly like `ToCSV(path, false, false, false)`. `SanitizeFormulas` is off by default because it changes the value written; see the note under `ToCSV`.
+
+**Example:**
+
+```go
+err := dt.ToCSVWithOptions("export.csv", insyra.CSVWriteOptions{
+    SetColNamesToFirstRow: true,
+    SanitizeFormulas:      true,
+})
 if err != nil {
     log.Fatal(err)
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 // ToCSV converts the DataTable to CSV format and writes it to the provided file path.
@@ -13,20 +14,71 @@ import (
 // - setRowNamesToFirstCol: if true, the first column will be used as row names
 // - setColNamesToFirstRow: if true, the first row will be used as column names
 func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error {
+	return dt.ToCSVWithOptions(filePath, CSVWriteOptions{
+		SetRowNamesToFirstCol: setRowNamesToFirstCol,
+		SetColNamesToFirstRow: setColNamesToFirstRow,
+		IncludeBOM:            includeBOM,
+	})
+}
+
+// CSVWriteOptions controls how ToCSVWithOptions writes a table. The zero value
+// writes the data as-is, exactly like ToCSV(path, false, false, false).
+type CSVWriteOptions struct {
+	// SetRowNamesToFirstCol writes the row names as the first column.
+	SetRowNamesToFirstCol bool
+	// SetColNamesToFirstRow writes the column names as the first row.
+	SetColNamesToFirstRow bool
+	// IncludeBOM writes a UTF-8 byte-order mark, which some spreadsheet
+	// programs need to read the file as UTF-8.
+	IncludeBOM bool
+	// SanitizeFormulas guards against CSV formula injection: a spreadsheet
+	// opening the file executes a cell that begins with =, +, - or @, so a
+	// value that came from an untrusted source can run there. With this set,
+	// such a cell is prefixed with a single quote, which spreadsheets treat as
+	// "this is text".
+	//
+	// It is off by default because it changes the value written: a table saved
+	// with it on and read back is not identical to the original. Turn it on
+	// when the file is meant to be opened in a spreadsheet and the data is not
+	// wholly your own.
+	SanitizeFormulas bool
+}
+
+// ToCSVWithOptions writes the DataTable as CSV using opts. Like ToCSV, every
+// write error is returned, including the one the CSV writer only reports when
+// it flushes its buffer at the end.
+func (dt *DataTable) ToCSVWithOptions(filePath string, opts CSVWriteOptions) error {
 	file, err := os.Create(filePath)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = file.Close() }()
 
-	return dt.writeCSV(file, setRowNamesToFirstCol, setColNamesToFirstRow, includeBOM)
+	return dt.writeCSV(file, opts)
+}
+
+// sanitizeCSVFormula prefixes a value a spreadsheet would execute with a
+// single quote. Only leading =, +, - and @ (and the whitespace a spreadsheet
+// skips before them) start a formula.
+func sanitizeCSVFormula(s string) string {
+	trimmed := strings.TrimLeft(s, " \t\r\n")
+	if trimmed == "" {
+		return s
+	}
+	switch trimmed[0] {
+	case '=', '+', '-', '@':
+		return "'" + s
+	}
+	return s
 }
 
 // writeCSV streams the table as CSV to w. Every write error, including the
 // one csv.Writer only reports at Flush, is returned.
-func (dt *DataTable) writeCSV(w io.Writer, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error {
+func (dt *DataTable) writeCSV(w io.Writer, opts CSVWriteOptions) error {
+	setRowNamesToFirstCol := opts.SetRowNamesToFirstCol
+	setColNamesToFirstRow := opts.SetColNamesToFirstRow
 	// 寫入 UTF-8 BOM
-	if includeBOM {
+	if opts.IncludeBOM {
 		if _, err := w.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
 			return err
 		}
@@ -74,7 +126,11 @@ func (dt *DataTable) writeCSV(w io.Writer, setRowNamesToFirstCol bool, setColNam
 					if value == nil {
 						record = append(record, "")
 					} else {
-						record = append(record, fmt.Sprintf("%v", value))
+						cell := fmt.Sprintf("%v", value)
+						if opts.SanitizeFormulas {
+							cell = sanitizeCSVFormula(cell)
+						}
+						record = append(record, cell)
 					}
 				} else {
 					record = append(record, "")
