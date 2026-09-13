@@ -229,10 +229,10 @@ func TestConvertToDateString_TimestampBoundaries(t *testing.T) {
 		{name: "first unix second", ts: 100000, want: "1970-01-02 03:46:40"},
 		{name: "last unix second", ts: 999999999999, want: "33658-09-27 01:46:39"},
 		{name: "first millisecond", ts: 1000000000000, want: "2001-09-09 01:46:40"},
-		// Between the millisecond and nanosecond windows it falls back to reading
-		// the number as seconds, which is why this is a year and not a date near
-		// the one above it.
-		{name: "between the windows", ts: 100000000000000, want: "3170843-11-07 09:46:40"},
+		// The millisecond window runs to 10^15, where the microsecond one starts:
+		// there is no gap between them any more, so this stays a millisecond
+		// reading rather than falling through to seconds.
+		{name: "still milliseconds", ts: 100000000000000, want: "5138-11-16 09:46:40"},
 		{name: "first nanosecond", ts: 1000000000000000000, want: "2001-09-09 01:46:40"},
 	}
 	for _, tt := range tests {

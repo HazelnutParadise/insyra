@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,8 +55,33 @@ func ToFloat64(v any) float64 {
 	case float64:
 		return v
 	default:
-		return 0
+		// A named type over a numeric kind — `type Celsius float64` — does not
+		// match any case above, but IsNumeric (which goes through reflection)
+		// calls it a number. One of the two had to be wrong about every
+		// user-defined numeric type; the reflect fallback is the same shape
+		// accel's projection settled on, and it only runs for values the type
+		// switch already missed.
+		f, _ := reflectToFloat64(v)
+		return f
 	}
+}
+
+// reflectToFloat64 converts a named type over a numeric kind. It reports false
+// for anything else, including nil.
+func reflectToFloat64(v any) (float64, bool) {
+	if v == nil {
+		return 0, false
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return float64(rv.Int()), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return float64(rv.Uint()), true
+	case reflect.Float32, reflect.Float64:
+		return rv.Float(), true
+	}
+	return 0, false
 }
 
 // ToFloat64Safe tries to convert any numeric value to float64 and returns a boolean indicating success.
@@ -64,7 +90,7 @@ func ToFloat64Safe(v any) (float64, bool) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		return ToFloat64(v), true
 	default:
-		return 0, false
+		return reflectToFloat64(v)
 	}
 }
 
@@ -73,8 +99,12 @@ func ParseColIndex(colIndex string) (colNumber int, ok bool) {
 	if len(colIndex) == 0 {
 		return -1, false
 	}
-	result := 0
-	// Process bytes directly to avoid allocation from strings.ToUpper
+	// Accumulate the 0-based index directly rather than the 1-based value and
+	// subtracting at the end: the largest index CalcColIndex can produce needs
+	// a 1-based value of maxInt+1, so the old form rejected its own output.
+	// Going straight to 0-based, z_next = z*26 + (v + 25).
+	const maxInt = int(^uint(0) >> 1)
+	z := 0
 	for i := 0; i < len(colIndex); i++ {
 		c := colIndex[i]
 		var v int
@@ -85,14 +115,17 @@ func ParseColIndex(colIndex string) (colNumber int, ok bool) {
 		} else {
 			return -1, false
 		}
-		// Overflow check: ensure result*26 + v fits into int
-		maxInt := int(^uint(0) >> 1)
-		if result > (maxInt-v)/26 {
+		if i == 0 {
+			z = v - 1
+			continue
+		}
+		step := v + 25
+		if z > (maxInt-step)/26 {
 			return -1, false
 		}
-		result = result*26 + v
+		z = z*26 + step
 	}
-	return result - 1, true
+	return z, true
 }
 
 func CalcColIndex(colNumber int) (colIndex string, ok bool) {
@@ -187,7 +220,14 @@ func FormatValue(value any) string {
 		// 顯示數字，但不顯示尾部的零
 		s := fmt.Sprintf("%.4f", v)
 		s = strings.TrimRight(s, "0")
-		return strings.TrimRight(s, ".")
+		s = strings.TrimRight(s, ".")
+		// 四捨五入到小數第四位後，9999.99999 會變成 "10000"，把一個不是整數的
+		// 值顯示成整數。近似值帶著小數點還看得出是近似，整數不會，所以這種情況
+		// 改用完整表示法。
+		if !strings.ContainsAny(s, ".eE") {
+			return strconv.FormatFloat(v, 'f', -1, 64)
+		}
+		return s
 
 	case float32:
 		return FormatValue(float64(v))
@@ -306,13 +346,18 @@ func convertTimestampToString(ts int64, goDateFormat string) string {
 		base := time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
 		t := base.AddDate(0, 0, int(ts))
 		return t.Format(goDateFormat)
-	} else if ts >= 1000000000000 && ts < 100000000000000 { // 13 digits, milliseconds
+	} else if ts >= 1000000000000 && ts < 1000000000000000 { // 13-15 digits, milliseconds
 		// Unix timestamp in milliseconds. time.UnixMilli rather than
 		// time.Unix(0, ts*int64(time.Millisecond)): that multiplication
 		// overflows int64 above 9223372036854 ms (about 2262-04-11), which is
 		// well inside the range this branch accepts, and silently produced a
 		// different date.
 		t := time.UnixMilli(ts).UTC()
+		return t.Format(goDateFormat)
+	} else if ts >= 1000000000000000 && ts < 1000000000000000000 { // 16-18 digits, microseconds
+		// Without this window a 16-digit stamp was read as seconds, which put a
+		// 2023 date in the year 53872.
+		t := time.UnixMicro(ts).UTC()
 		return t.Format(goDateFormat)
 	} else if ts >= 1000000000000000000 { // 19 digits, nanoseconds
 		// Unix timestamp in nanoseconds
