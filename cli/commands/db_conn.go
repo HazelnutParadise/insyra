@@ -10,6 +10,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // DBConn represents a named database connection registered in an ExecContext.
@@ -35,14 +36,19 @@ func openDBConn(name, dsn string) (*DBConn, error) {
 		return nil, err
 	}
 
+	// gorm's default logger prints a failing or slow query with its bound
+	// parameters interpolated, so a WHERE on a token or a password ends up in
+	// the terminal and in whatever captures it. The CLI reports errors itself.
+	cfg := &gorm.Config{Logger: gormlogger.Discard}
+
 	var db *gorm.DB
 	switch dialect {
 	case "sqlite":
-		db, err = gorm.Open(sqlite.Open(raw), &gorm.Config{})
+		db, err = gorm.Open(sqlite.Open(raw), cfg)
 	case "mysql":
-		db, err = gorm.Open(mysql.Open(toMySQLNativeDSN(raw)), &gorm.Config{})
+		db, err = gorm.Open(mysql.Open(toMySQLNativeDSN(raw)), cfg)
 	case "postgres":
-		db, err = gorm.Open(postgres.Open(raw), &gorm.Config{})
+		db, err = gorm.Open(postgres.Open(raw), cfg)
 	default:
 		return nil, fmt.Errorf("unsupported dialect %q (supported: sqlite, mysql, postgres)", dialect)
 	}

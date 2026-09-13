@@ -54,6 +54,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `accel`'s usage no longer claims a `run` subcommand that does not exist.
 - `help` now shows what `pca`, `regression` and `count` actually take. The first two accept `as <var>`, and `count` requires its value instead of marking it optional. The usage error for `save … sql` lists `rownames [true|false]`, matching its Usage.
 - `count`, `find` and `replace` match the integers in CSV-loaded tables, and in every variable restored between one-shot commands. They compared the typed `2`, an `int`, with stored `int64` values and never matched: `count x 2` printed 0, `find x 2` printed `[]`, and `replace x 2 0` printed `replaced` and changed nothing.
+- Database connections no longer print gorm's query log. Its default logger interpolates bound parameters into the message on a failing or slow query, so a `WHERE token = ?` put the token in the terminal and in anything capturing it. The CLI reports its own errors, so nothing is lost.
 
 ### `ml` and `nn`
 
@@ -99,12 +100,14 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - The additional-info table returned by `SolveFromFile` and `SolveModel` has a fixed row order (Status, Execution Time, Warnings, Full Output, Iterations, Nodes); it previously followed Go map iteration and changed between runs.
 - A failed GLPK download, extraction or build no longer ends the program: the failure is logged as a warning and a later `SolveModel`/`SolveFromFile` reports the missing solver through the additional-info table. The two temporary-file failures in `SolveModel` log a warning and return `nil, nil` instead of ending the program.
 - `SolveFromFile` given more than one `timeoutSeconds` refuses the call before it looks for or installs GLPK, so a call that is already wrong no longer triggers the install. It still logs a warning and returns `nil, nil`.
+- The directories created while extracting GLPK are 0o755 rather than 0777.
 
 ### `plot`
 
 - `CreateRadarChart` without indicators and `CreateHeatMap` in calendar mode with the wrong X type or no `CalendarOpts` log a warning and return `nil` instead of ending the program or panicking.
 - A `nil` `IDataList` no longer takes the program down. `CreateBarChart` and `CreateLineChart` skip a nil list with a warning and draw the rest, returning `nil` only when nothing is left to draw. `CreateBoxPlot` skips a nil list inside a series the same way and leaves out a series whose lists were all nil; a series with no lists at all is kept as before. `CreateWordCloud` returns `nil`. Every chart reads its data through `AtomicDo`, which dereferences the receiver, so a nil among real lists used to panic.
 - `SavePNG` returns an error when the output path has no file extension, instead of panicking inside the snapshot dependency, which reads the image format from the extension.
+- `SavePNG`'s online fallback, which is still the default when the local Chrome/Chromium render fails, now gives up after 60 seconds and reads at most 64 MiB of the reply. It used a `http.Client{}` with no timeout, which waits forever on a server that accepts the connection and then stops talking, and an unbounded `io.ReadAll` on a remote body.
 
 ### `isr`
 
@@ -119,6 +122,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `py`
 
 - A failed IPC listen is logged as a warning and leaves the server down instead of ending the program.
+- `ipc.WriteMessage` refuses a payload larger than the 256 MiB the reader accepts, before writing anything. It used to write a length the other end would reject — or, past 4 GiB, a truncated one that misframes every message after it.
+- Directories created for the Python environment are 0o755 rather than 0777.
 
 ## v0.3.2
 

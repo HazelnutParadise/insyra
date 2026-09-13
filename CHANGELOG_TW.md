@@ -54,6 +54,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `accel` 的 Usage 不再宣稱有不存在的 `run` 子命令。
 - `help` 現在如實列出 `pca`、`regression`、`count` 的參數：前兩者可以用 `as <var>` 存結果，`count` 的 value 是必填，不再標成選填。`save … sql` 的用法錯誤訊息也跟 Usage 一致，列出 `rownames [true|false]`。
 - `count`、`find`、`replace` 現在能對上 CSV 載入的表，以及 one-shot 模式下每次還原的變數裡的整數。原本打的 `2` 是 `int`，存著的是 `int64`，永遠比對不到：`count x 2` 印出 0，`find x 2` 印出 `[]`，`replace x 2 0` 印出 `replaced` 卻什麼都沒改。
+- 資料庫連線不再印出 gorm 的查詢日誌。它的預設 logger 在查詢失敗或過慢時會把綁定參數內插進訊息，所以 `WHERE token = ?` 會把 token 印在終端機以及任何收集它的地方。CLI 本來就自己回報錯誤，不會少掉什麼。
 
 ### `ml` 與 `nn`
 
@@ -99,12 +100,14 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `SolveFromFile` 與 `SolveModel` 回傳的附加資訊表列順序固定為 Status、Execution Time、Warnings、Full Output、Iterations、Nodes，過去依 Go map 順序每次不同。
 - GLPK 下載、解壓或編譯失敗不再結束程式：失敗以警告記錄，之後呼叫 `SolveModel`／`SolveFromFile` 時透過附加資訊表回報找不到求解器。`SolveModel` 兩處建立暫存檔失敗改為記錄警告並回傳 `nil, nil`，不再結束程式。
 - `SolveFromFile` 收到超過一個 `timeoutSeconds` 時，改在尋找或安裝 GLPK 之前就拒絕，已經寫錯的呼叫不會再觸發安裝。它仍然記錄警告並回傳 `nil, nil`。
+- 解壓 GLPK 時建立的目錄權限改為 0o755，不再是 0777。
 
 ### `plot`
 
 - `CreateRadarChart` 未提供 indicators、`CreateHeatMap` 日曆模式的 X 型別錯誤或未設 `CalendarOpts` 時，改為記錄警告並回傳 `nil`，不再結束程式或 panic。
 - `nil` 的 `IDataList` 不再讓程式當掉。`CreateBarChart` 與 `CreateLineChart` 會記錄警告、略過 nil 的清單並畫出其餘部分，全部都是 nil 時才回傳 `nil`。`CreateBoxPlot` 以同樣方式略過序列裡 nil 的清單，清單全是 nil 的序列會被拿掉；原本就沒有任何清單的序列照舊保留。`CreateWordCloud` 回傳 `nil`。每個圖表都透過 `AtomicDo` 讀資料，而那會解參考接收者，所以夾在正常清單裡的一個 nil 過去會 panic。
 - `SavePNG` 在輸出路徑沒有副檔名時回傳錯誤，不再在快照套件裡 panic，該套件是以副檔名決定圖片格式的。
+- `SavePNG` 的線上備援（本機 Chrome／Chromium 渲染失敗時預設仍會使用）現在 60 秒放棄，回應最多讀 64 MiB。過去用的是沒有 timeout 的 `http.Client{}`——伺服器接了連線然後不講話就會永遠等下去——以及對遠端回應無上限的 `io.ReadAll`。
 
 ### `isr`
 
@@ -119,6 +122,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `py`
 
 - IPC 監聽失敗改為記錄警告並讓伺服器保持關閉，不再結束程式。
+- `ipc.WriteMessage` 在寫入任何位元組之前，拒絕超過讀取端上限（256 MiB）的訊息。過去會寫出一個對端會拒絕的長度，超過 4 GiB 時前綴還會被截斷，讓對端之後每一則訊息都解框錯位。
+- 建立 Python 環境的目錄權限改為 0o755，不再是 0777。
 
 ## v0.3.2
 
