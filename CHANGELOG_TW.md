@@ -75,6 +75,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `KMeans` 的初始中心改為相異列，與 R 一致。資料含重複列時，單次啟動過去會抽到同一列兩次而回報 "empty cluster"（實測 50 個 seed 中有 44 個失敗）。現在抽到重複才從相異列重抽；本來就相異的抽樣完全不動，既有 seed 的結果逐位不變。
 - 接受 `insyra.IDataList` 的函式對 `nil` 或非 `*insyra.DataList` 的實作不再 panic；值會被轉換，`nil` 以一般錯誤回報。
 - `FactorAnalysisResult.RotationConverged` 改為回報旋轉實際上有沒有收斂。它過去恆為 `true`：多起點挑出來的候選從來沒帶收斂旗標，`fa.Rotate` 只好用預設值，所以一個在 1e-12 容忍度下只跑一次迭代就停的旋轉也回報收斂。現在旗標描述的是實際回傳的那個解，多起點之間怎麼挑選則不變。
+- 旋轉沒有收斂時，每次搜尋只記錄一則警告，指出方法、起點數與迭代上限，而且只在回傳的解沒有收斂時才記錄，也就是 `RotationConverged` 為 `false` 的情況。過去 `GPForth` 與 `GPFoblq` 對每個跑到上限的起點都警告一次，多起點搜尋自己建的 Varimax 起點也會警告，所以 `Restarts` 大於 1 的呼叫可能記下好幾則警告、往全域錯誤緩衝區塞同樣多筆，而回傳的解其實已經收斂。那些個別起點現在只在 debug 層級回報。
 
 ### `csvxl`
 

@@ -1317,7 +1317,10 @@ Oblimin rotation, Regression scoring, MaxIter=50, MinErr=0.001, OptimFactr=1e7,
 OptimMaxIter=100 (matching R `psych::fa` defaults).
 
 `RotationConverged` reports whether the rotation solution that was returned
-converged. `MaxIter` governs extraction and is not passed to the rotation,
+converged, and when it did not, the rotation logs one warning naming the
+method, the number of starts and the iteration cap. A start that ran out of
+iterations is otherwise reported at debug level only, because it is not the
+answer. `MaxIter` governs extraction and is not passed to the rotation,
 which uses R's own defaults of `eps = 1e-5` and `maxit = 1000`.
 
 #### FactorAnalysisResult

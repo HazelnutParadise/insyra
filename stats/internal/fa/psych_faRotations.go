@@ -7,6 +7,8 @@ import (
 	"math/rand"
 	"strings"
 
+	"github.com/HazelnutParadise/insyra"
+
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -652,6 +654,13 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		best = map[string]any{
 			"error": fmt.Sprintf("rotation %s failed for all starts", rotate),
 		}
+	} else if conv, ok := best["convergence"].(bool); ok && !conv {
+		// One warning for the search, not one per start: the per-start
+		// runs report at debug level, and the caller reads the outcome
+		// from the convergence flag this candidate carries.
+		insyra.LogWarning("fa", "FaRotations",
+			"%s rotation chosen from %d starts did not converge within %d iterations",
+			rotateLower, len(starts), maxIter)
 	}
 	if debugOblimin && rotateLower == "oblimin" {
 		fmt.Printf("oblimin best score=%.9f\n", bestScore)
