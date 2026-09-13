@@ -15,7 +15,7 @@ A Parquet file written by another tool carries column types this library never w
 
 ### Requirement: Every Arrow type with a faithful Go representation gets one
 
-以下 Arrow 型別 SHALL 讀成對應的 Go 值：`Date32` 與 `Date64` 讀成 `time.Time`；`Int8`、`Int16`、`Uint8`、`Uint16`、`Uint32`、`Uint64` 讀成同名的 Go 整數型別；`LargeString` 讀成 `string`；`Decimal128` 與 `Decimal256` 讀成保留原始係數與 scale 的十進位值。轉換 SHALL NOT 捨入或改變數值。
+以下 Arrow 型別 SHALL 讀成對應的 Go 值：`Date32` 與 `Date64` 讀成 `time.Time`；`Int8`、`Int16`、`Uint8`、`Uint16`、`Uint32`、`Uint64` 讀成同名的 Go 整數型別；`Binary`、`LargeBinary`、`FixedSizeBinary` 讀成 `[]byte`；`LargeString` 讀成 `string`；`Decimal128` 與 `Decimal256` 讀成保留原始係數與 scale 的十進位值。轉換 SHALL NOT 捨入或改變數值。二進位欄位的格子 SHALL NOT 與文字欄位的格子無法區分。
 
 #### Scenario: A date column written by another tool
 - **WHEN** 讀取 `Date32` 或 `Date64` 欄位
@@ -28,6 +28,11 @@ A Parquet file written by another tool carries column types this library never w
 #### Scenario: An integer width the writer never emits
 - **WHEN** 讀取 `Int8`、`Int16` 或任一無號整數欄位
 - **THEN** 每一格是該列的整數值，且與其他 Go 整數型別以數值相等比較
+
+#### Scenario: A binary column beside a text column
+- **WHEN** 同一份檔案同時有 `Binary` 欄與 `String` 欄，且內容相同
+- **THEN** 兩者的格子型別不同，分辨得出哪一欄是二進位
+- **AND** 二進位欄的位元組完整保留，整欄以十六進位顯示，不因某一列剛好是合法 UTF-8 而改變顯示方式
 
 ### Requirement: A column that cannot be read says so
 
