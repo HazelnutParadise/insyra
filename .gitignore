@@ -15,6 +15,8 @@ output_pie_chart_datalist.html
 line.html
 .DS_Store
 *.lp
+# lp's recorded GLPK fixtures are inputs to its tests
+!lp/testdata/**/*.lp
 lingo.txt
 *.csv
 /local
