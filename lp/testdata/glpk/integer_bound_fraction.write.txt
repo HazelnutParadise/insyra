@@ -1,0 +1,11 @@
+c Problem:    
+c Rows:       1
+c Columns:    1
+c Non-zeros:  1
+c Status:     INTEGER UNDEFINED
+c Objective:  obj = 0 (MINimum)
+c
+s mip 1 1 u 0
+i 1 0
+j 1 0
+e o f

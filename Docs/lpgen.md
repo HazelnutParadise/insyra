@@ -122,6 +122,30 @@ func (lp *LPModel) AddIntegerVar(varName string) *LPModel
 
 - `*LPModel`: Updated model for chaining. Type: `*LPModel`.
 
+### Write LP Text
+
+```go
+func (lp *LPModel) WriteLP(w io.Writer) error
+```
+
+**Description:** Writes the model to `w` in CPLEX LP format. The text is exactly what `GenerateLPFile` saves, so you can send it to a buffer, a network connection or any other writer. [`lp.Solve`](lp.md) uses it to solve a model without creating a file.
+
+**Parameters:**
+
+- `w`: Where to write the model. Type: `io.Writer`.
+
+**Returns:**
+
+- `error`: An error from `w`, or an error for an objective type other than `Minimize`/`Min`/`Minimum` or `Maximize`/`Max`/`Maximum` (any letter case). The two comment lines at the top of the text have already been written when the objective type is rejected.
+
+```go
+var buf bytes.Buffer
+if err := model.WriteLP(&buf); err != nil {
+    log.Fatal(err)
+}
+fmt.Print(buf.String())
+```
+
 ### Generate LP File
 
 ```go

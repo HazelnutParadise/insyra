@@ -1,0 +1,12 @@
+c Problem:    
+c Rows:       1
+c Columns:    2
+c Non-zeros:  2
+c Status:     UNDEFINED
+c Objective:  obj = 0 (MAXimum)
+c
+s bas 1 2 u u 0
+i 1 b 0 0
+j 1 l 0 0
+j 2 l 0 0
+e o f

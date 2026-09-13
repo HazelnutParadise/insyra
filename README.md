@@ -436,7 +436,7 @@ How a cell treats a decimal, and why this package rather than another, compared 
 | **[pd](/Docs/pd.md)** | Pandas-like `DataFrame` helpers built on `gpandas`, with `DataTable` conversion. |
 | **[datafetch](/Docs/datafetch.md)** | Easy data fetching: Google Maps store reviews, Yahoo Finance, Taiwan reverse geocoding, and TWSE/TPEx stock data. |
 | **[lpgen](/Docs/lpgen.md)** | Generate linear programming (LP) models and export them as `.lp` files. |
-| **[lp](/Docs/lp.md)** | Fully automatic LP solver using [GLPK](https://www.gnu.org/software/glpk/). |
+| **[lp](/Docs/lp.md)** | Solve linear and mixed-integer programs with no external solver to install, or with [GLPK](https://www.gnu.org/software/glpk/) if you have it. |
 | **[engine](/engine/README.md)** | Re-exports selected Insyra internals for reuse in other projects. |
 
 ## Advanced Usage

@@ -1,0 +1,29 @@
+GLPSOL--GLPK LP/MIP Solver 5.0
+Parameter(s) specified in the command line:
+ --lp mip_unbounded.lp --output mip_unbounded.presol.report.txt --write mip_unbounded.presol.write.txt
+Reading problem data from 'mip_unbounded.lp'...
+1 row, 2 columns, 2 non-zeros
+One variable is integer
+7 lines were read
+GLPK Integer Optimizer 5.0
+1 row, 2 columns, 2 non-zeros
+1 integer variable, none of which are binary
+Preprocessing...
+1 row, 2 columns, 2 non-zeros
+1 integer variable, none of which are binary
+Scaling...
+ A: min|aij| =  1.000e+00  max|aij| =  1.000e+00  ratio =  1.000e+00
+Problem data seem to be well scaled
+Constructing initial basis...
+Size of triangular part is 1
+Solving LP relaxation...
+GLPK Simplex Optimizer 5.0
+1 row, 2 columns, 2 non-zeros
+*     0: obj =  -0.000000000e+00 inf =   0.000e+00 (2)
+*     1: obj =   1.000000000e+00 inf =   0.000e+00 (1)
+LP HAS UNBOUNDED PRIMAL SOLUTION
+Time used:   0.0 secs
+Memory used: 0.0 Mb (32525 bytes)
+Writing MIP solution to 'mip_unbounded.presol.report.txt'...
+Writing MIP solution to 'mip_unbounded.presol.write.txt'...
+12 lines were written

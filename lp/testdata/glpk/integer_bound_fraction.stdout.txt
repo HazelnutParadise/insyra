@@ -1,0 +1,14 @@
+GLPSOL--GLPK LP/MIP Solver 5.0
+Parameter(s) specified in the command line:
+ --lp integer_bound_fraction.lp --output integer_bound_fraction.report.txt
+ --write integer_bound_fraction.write.txt
+Reading problem data from 'integer_bound_fraction.lp'...
+1 row, 1 column, 1 non-zero
+One variable is integer
+9 lines were read
+glp_intopt: integer column 1 has non-integer lower bound 0.5
+Time used:   0.0 secs
+Memory used: 0.0 Mb (32525 bytes)
+Writing MIP solution to 'integer_bound_fraction.report.txt'...
+Writing MIP solution to 'integer_bound_fraction.write.txt'...
+11 lines were written

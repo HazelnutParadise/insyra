@@ -1,0 +1,42 @@
+GLPSOL--GLPK LP/MIP Solver 5.0
+Parameter(s) specified in the command line:
+ --lp hard.lp --tmlim 2 --output hard.report.txt --write hard.write.txt
+Reading problem data from 'hard.lp'...
+8 rows, 400 columns, 3200 non-zeros
+400 integer variables, all of which are binary
+413 lines were read
+GLPK Integer Optimizer 5.0
+8 rows, 400 columns, 3200 non-zeros
+400 integer variables, all of which are binary
+Preprocessing...
+8 rows, 400 columns, 3200 non-zeros
+400 integer variables, all of which are binary
+Scaling...
+ A: min|aij| =  5.000e+00  max|aij| =  1.000e+02  ratio =  2.000e+01
+GM: min|aij| =  2.236e-01  max|aij| =  4.472e+00  ratio =  2.000e+01
+EQ: min|aij| =  5.025e-02  max|aij| =  1.000e+00  ratio =  1.990e+01
+2N: min|aij| =  3.906e-02  max|aij| =  1.016e+00  ratio =  2.600e+01
+Constructing initial basis...
+Size of triangular part is 8
+Solving LP relaxation...
+GLPK Simplex Optimizer 5.0
+8 rows, 400 columns, 3200 non-zeros
+*     0: obj =  -0.000000000e+00 inf =   0.000e+00 (400)
+*   200: obj =   1.290220905e+04 inf =   0.000e+00 (0)
+OPTIMAL LP SOLUTION FOUND
+Integer optimization begins...
+Long-step dual simplex will be used
++   200: mip =     not found yet <=              +inf        (1; 0)
+Solution found by heuristic: 12822
+Solution found by heuristic: 12846
+Solution found by heuristic: 12863
+Solution found by heuristic: 12866
+Solution found by heuristic: 12871
+Solution found by heuristic: 12874
++ 29472: mip =   1.287400000e+04 <=   1.289600000e+04   0.2% (7805; 1613)
+TIME LIMIT EXCEEDED; SEARCH TERMINATED
+Time used:   2.0 secs
+Memory used: 6.1 Mb (6439344 bytes)
+Writing MIP solution to 'hard.report.txt'...
+Writing MIP solution to 'hard.write.txt'...
+417 lines were written

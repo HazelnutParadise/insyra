@@ -1,0 +1,6 @@
+GLPSOL--GLPK LP/MIP Solver 5.0
+Parameter(s) specified in the command line:
+ --lp syntax_error.lp --output syntax_error.report.txt --write syntax_error.write.txt
+Reading problem data from 'syntax_error.lp'...
+syntax_error.lp:6: missing right-hand side
+CPLEX LP file processing error

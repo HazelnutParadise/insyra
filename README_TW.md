@@ -415,7 +415,7 @@ dl := insyra.NewDataList(prices) // 每個價格一格
 | **[pd](/Docs/pd.md)** | 基於 `gpandas` 的 Pandas 風格 `DataFrame` 工具，含 `DataTable` 轉換。 |
 | **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance、台灣逆地理編碼，以及 TWSE／TPEx 股票資料。 |
 | **[lpgen](/Docs/lpgen.md)** | 產生線性規劃（LP）模型並輸出 `.lp` 檔。 |
-| **[lp](/Docs/lp.md)** | 使用 [GLPK](https://www.gnu.org/software/glpk/) 的全自動 LP 求解器。 |
+| **[lp](/Docs/lp.md)** | 求解線性與混合整數規劃，不必另外安裝求解器，已安裝 [GLPK](https://www.gnu.org/software/glpk/) 的話也可以改用它。 |
 | **[engine](/engine/README.md)** | 匯出部分 Insyra 內部實作，供其他專案重用。 |
 
 ## 進階使用

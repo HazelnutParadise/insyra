@@ -1,0 +1,13 @@
+GLPSOL--GLPK LP/MIP Solver 5.0
+Parameter(s) specified in the command line:
+ --lp bounds_crossed.lp --output bounds_crossed.report.txt --write bounds_crossed.write.txt
+Reading problem data from 'bounds_crossed.lp'...
+1 row, 1 column, 1 non-zero
+7 lines were read
+glp_simplex: column 1: lb = 5, ub = 3; incorrect bounds
+If you need actual output for non-optimal solution, use --nopresol
+Time used:   0.0 secs
+Memory used: 0.0 Mb (32525 bytes)
+Writing basic solution to 'bounds_crossed.report.txt'...
+Writing basic solution to 'bounds_crossed.write.txt'...
+11 lines were written

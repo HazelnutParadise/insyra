@@ -78,7 +78,7 @@ dt.Show()
 
 | Document          | Description                           |
 | ----------------- | ------------------------------------- |
-| [lp](lp.md)       | Linear programming solver using GLPK  |
+| [lp](lp.md)       | Linear and integer programming solver |
 | [lpgen](lpgen.md) | LP model generator with LINGO support |
 
 #### Marketing Analytics

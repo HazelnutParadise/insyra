@@ -1,0 +1,34 @@
+Problem:    
+Rows:       1
+Columns:    1
+Non-zeros:  1
+Status:     UNDEFINED
+Objective:  obj = 0 (MINimum)
+
+   No.   Row name   St   Activity     Lower bound   Upper bound    Marginal
+------ ------------ -- ------------- ------------- ------------- -------------
+     1 c            B              0             1               
+
+   No. Column name  St   Activity     Lower bound   Upper bound    Marginal
+------ ------------ -- ------------- ------------- ------------- -------------
+     1 x            NU             0             5             3         < eps
+
+Karush-Kuhn-Tucker optimality conditions:
+
+KKT.PE: max.abs.err = 0.00e+00 on row 0
+        max.rel.err = 0.00e+00 on row 0
+        High quality
+
+KKT.PB: max.abs.err = 5.00e+00 on column 1
+        max.rel.err = 8.33e-01 on column 1
+        PRIMAL SOLUTION IS INFEASIBLE
+
+KKT.DE: max.abs.err = 1.00e+00 on column 1
+        max.rel.err = 5.00e-01 on column 1
+        DUAL SOLUTION IS WRONG
+
+KKT.DB: max.abs.err = 0.00e+00 on row 0
+        max.rel.err = 0.00e+00 on row 0
+        High quality
+
+End of output

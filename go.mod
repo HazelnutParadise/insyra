@@ -139,6 +139,7 @@ require (
 	github.com/apache/arrow/go/v17 v17.0.0
 	github.com/apoplexi24/gpandas v0.2.0
 	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/daniel-sullivan/go-milp v0.2.0
 	github.com/ergochat/readline v0.1.3
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-echarts/go-echarts/v2 v2.7.2

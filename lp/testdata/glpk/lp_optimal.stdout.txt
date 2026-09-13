@@ -1,0 +1,21 @@
+GLPSOL--GLPK LP/MIP Solver 5.0
+Parameter(s) specified in the command line:
+ --lp lp_optimal.lp --output /dev/null
+Reading problem data from 'lp_optimal.lp'...
+2 rows, 2 columns, 4 non-zeros
+6 lines were read
+GLPK Simplex Optimizer 5.0
+2 rows, 2 columns, 4 non-zeros
+Preprocessing...
+2 rows, 2 columns, 4 non-zeros
+Scaling...
+ A: min|aij| =  1.000e+00  max|aij| =  3.000e+00  ratio =  3.000e+00
+Problem data seem to be well scaled
+Constructing initial basis...
+Size of triangular part is 2
+*     0: obj =  -0.000000000e+00 inf =   0.000e+00 (2)
+*     1: obj =   1.200000000e+01 inf =   0.000e+00 (0)
+OPTIMAL LP SOLUTION FOUND
+Time used:   0.0 secs
+Memory used: 0.0 Mb (32525 bytes)
+Writing basic solution to '/dev/null'...

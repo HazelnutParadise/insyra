@@ -1,0 +1,36 @@
+GLPSOL--GLPK LP/MIP Solver 5.0
+Parameter(s) specified in the command line:
+ --lp mip_optimal.lp --output /dev/null
+Reading problem data from 'mip_optimal.lp'...
+1 row, 8 columns, 8 non-zeros
+8 integer variables, all of which are binary
+14 lines were read
+GLPK Integer Optimizer 5.0
+1 row, 8 columns, 8 non-zeros
+8 integer variables, all of which are binary
+Preprocessing...
+1 row, 8 columns, 8 non-zeros
+8 integer variables, all of which are binary
+Scaling...
+ A: min|aij| =  1.000e+01  max|aij| =  3.500e+01  ratio =  3.500e+00
+GM: min|aij| =  1.000e+00  max|aij| =  1.000e+00  ratio =  1.000e+00
+EQ: min|aij| =  1.000e+00  max|aij| =  1.000e+00  ratio =  1.000e+00
+2N: min|aij| =  6.875e-01  max|aij| =  1.250e+00  ratio =  1.818e+00
+Constructing initial basis...
+Size of triangular part is 1
+Solving LP relaxation...
+GLPK Simplex Optimizer 5.0
+1 row, 8 columns, 8 non-zeros
+*     0: obj =  -0.000000000e+00 inf =   0.000e+00 (8)
+*     6: obj =   5.442857143e+01 inf =   0.000e+00 (0)
+OPTIMAL LP SOLUTION FOUND
+Integer optimization begins...
+Long-step dual simplex will be used
++     6: mip =     not found yet <=              +inf        (1; 0)
+Solution found by heuristic: 50
+Solution found by heuristic: 53
++    10: mip =   5.300000000e+01 <=     tree is empty   0.0% (0; 7)
+INTEGER OPTIMAL SOLUTION FOUND
+Time used:   0.0 secs
+Memory used: 0.1 Mb (55178 bytes)
+Writing MIP solution to '/dev/null'...

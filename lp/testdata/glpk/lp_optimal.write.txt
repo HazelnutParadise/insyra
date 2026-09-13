@@ -1,0 +1,13 @@
+c Problem:    
+c Rows:       2
+c Columns:    2
+c Non-zeros:  4
+c Status:     OPTIMAL
+c Objective:  obj = 12 (MAXimum)
+c
+s bas 2 2 f f 12
+i 1 u 4 3
+i 2 b 4 0
+j 1 b 4 0
+j 2 l 0 -1
+e o f

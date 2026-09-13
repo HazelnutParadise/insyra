@@ -1,0 +1,18 @@
+c Problem:    
+c Rows:       1
+c Columns:    8
+c Non-zeros:  8
+c Status:     INTEGER OPTIMAL
+c Objective:  obj = 53 (MAXimum)
+c
+s mip 1 8 o 53
+i 1 59
+j 1 0
+j 2 1
+j 3 1
+j 4 0
+j 5 0
+j 6 0
+j 7 1
+j 8 0
+e o f

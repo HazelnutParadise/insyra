@@ -1,0 +1,15 @@
+GLPSOL--GLPK LP/MIP Solver 5.0
+Parameter(s) specified in the command line:
+ --lp mip_infeasible.lp --output /dev/null
+Reading problem data from 'mip_infeasible.lp'...
+1 row, 1 column, 1 non-zero
+One variable is integer
+9 lines were read
+GLPK Integer Optimizer 5.0
+1 row, 1 column, 1 non-zero
+1 integer variable, none of which are binary
+Preprocessing...
+PROBLEM HAS NO PRIMAL FEASIBLE SOLUTION
+Time used:   0.0 secs
+Memory used: 0.0 Mb (32525 bytes)
+Writing MIP solution to '/dev/null'...

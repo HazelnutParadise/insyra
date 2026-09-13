@@ -1,0 +1,16 @@
+c Problem:    
+c Rows:       3
+c Columns:    4
+c Non-zeros:  10
+c Status:     INTEGER OPTIMAL
+c Objective:  obj = 27 (MAXimum)
+c
+s mip 3 4 o 27
+i 1 10
+i 2 3
+i 3 7
+j 1 4
+j 2 3
+j 3 0
+j 4 0
+e o f

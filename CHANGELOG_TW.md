@@ -139,11 +139,13 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `lpgen`
 - LINGO 解析器遇到括號順序顛倒的宣告（`@BIN)X(;`）不再 panic。過去它取第一個 `(` 與第一個 `)` 而不檢查誰在前面，切片邊界反過來就會當掉；現在這種宣告會像其他讀不懂的行一樣被略過，模型的其餘部分照常解析。
+- 新增 `LPModel.WriteLP(io.Writer) error`，把 `GenerateLPFile` 存檔的同一份 CPLEX LP 文字寫進任何 writer，遇到不認識的目標型別時回傳錯誤。`GenerateLPFile` 改為透過它寫檔，輸出內容不變。
 
 ### `lp`
 - `SolveFromFile` 與 `SolveModel` 回傳的附加資訊表列順序固定為 Status、Execution Time、Warnings、Full Output、Iterations、Nodes，過去依 Go map 順序每次不同。
 - GLPK 下載、解壓或編譯失敗不再結束程式：失敗會被記錄，`SolveModel`／`SolveFromFile` 透過附加資訊表回報。`SolveModel` 兩處暫存檔失敗同樣改為回報，不再回傳兩個 nil。
 - **BREAKING**：`SolveFromFile` 與 `SolveModel` 不再回傳 `nil` 的 DataTable。每一條失敗路徑——逾時、求解失敗、暫存檔寫不出來、model 是 nil、傳超過一個 `timeoutSeconds`——過去第一個回傳值都是 `nil`，而 `Docs/lp.md` 自己的範例就直接呼叫 `result.Show()`，那會 panic。現在兩個回傳值都是空但可用的表格，原因記在 `Err()` 上。原本以 `result == nil` 判斷失敗的呼叫端要改成檢查 `result.Err()`；`nil` 從來不是文件寫過的回傳值。資訊表的 `Status` 現在只有真的讀得到結果才會是 `Success`：求解跑完但結果檔讀不到時回報 `Error`，原因放在 `Warnings`，過去那種情況會顯示 `Success` 卻搭配 nil 的結果。引數也改在 GLPK 安裝流程之前檢查，已經寫錯的呼叫不會再觸發安裝。
+- **BREAKING**：`lp` 改用以 Go 撰寫的求解器 [go-milp](https://github.com/daniel-sullivan/go-milp) 求解，不需要另外安裝任何程式。函式庫不再下載、編譯或安裝 GLPK，也不再修改程序的 `PATH`。`SolveFromFile(path, seconds)` 與 `SolveModel(model, seconds)` 由 `SolveFile(path, opts)` 與 `Solve(model, opts)` 取代，回傳 `(*lp.Solution, error)`。解答帶有 `Status`（`StatusOptimal`、`StatusFeasible`、`StatusInfeasible`、`StatusUnbounded` 或 `StatusStopped`）、`Objective` 與 `Values`。`Values` 是以完整精度讀出的 `map[string]float64`，舊版結果表放的則是 GLPK 報告的逐行文字。模型無解或無界時回傳對應的狀態，error 為 nil。回傳 error 表示沒有解答，可用 `errors.Is` 比對 `ErrInvalidModel`、`ErrEngineUnavailable` 或 `ErrSolverFailed`。`Options.TimeLimit` 的型別是 `time.Duration`。附加資訊表已移除，原本的執行時間、節點數與輸出改由 `Solution.Elapsed`、`Nodes` 與 `Log` 提供，`Solution.ToDataTable()` 則回傳 `Variable`／`Value` 兩欄的表。要繼續用 GLPK 求解，請先安裝（`Docs/lp.md` 列有各系統的安裝指令），再傳入 `lp.Options{Engine: lp.EngineGLPK}`，`lp` 會從 `GLPK_PATH` 或 `PATH` 找 `glpsol`。遷移範例：`result, info := lp.SolveModel(model, 10)` 改成 `sol, err := lp.Solve(model, lp.Options{TimeLimit: 10 * time.Second})`。
 
 - 解壓 GLPK 時建立的目錄權限改為 0o755，不再是 0777。
 ### `plot`

@@ -1,0 +1,36 @@
+GLPSOL--GLPK LP/MIP Solver 5.0
+Parameter(s) specified in the command line:
+ --lp /Users/timlai/Developer/insyra/lp/testdata/glpk/solvemodel_format.lp
+ --output /dev/null
+Reading problem data from '/Users/timlai/Developer/insyra/lp/testdata/glpk/solvemodel_format.lp'...
+/Users/timlai/Developer/insyra/lp/testdata/glpk/solvemodel_format.lp:15: warning: lower bound of variable 'x1' redefined
+/Users/timlai/Developer/insyra/lp/testdata/glpk/solvemodel_format.lp:15: warning: upper bound of variable 'x1' redefined
+3 rows, 4 columns, 10 non-zeros
+4 integer variables, none of which are binary
+17 lines were read
+GLPK Integer Optimizer 5.0
+3 rows, 4 columns, 10 non-zeros
+4 integer variables, none of which are binary
+Preprocessing...
+2 rows, 4 columns, 6 non-zeros
+4 integer variables, none of which are binary
+Scaling...
+ A: min|aij| =  1.000e+00  max|aij| =  3.000e+00  ratio =  3.000e+00
+Problem data seem to be well scaled
+Constructing initial basis...
+Size of triangular part is 2
+Solving LP relaxation...
+GLPK Simplex Optimizer 5.0
+2 rows, 4 columns, 6 non-zeros
+*     0: obj =   5.000000000e+00 inf =   0.000e+00 (3)
+*     3: obj =   2.700000000e+01 inf =   0.000e+00 (0)
+OPTIMAL LP SOLUTION FOUND
+Integer optimization begins...
+Long-step dual simplex will be used
++     3: mip =     not found yet <=              +inf        (1; 0)
++     3: >>>>>   2.700000000e+01 <=   2.700000000e+01   0.0% (1; 0)
++     3: mip =   2.700000000e+01 <=     tree is empty   0.0% (0; 1)
+INTEGER OPTIMAL SOLUTION FOUND
+Time used:   0.0 secs
+Memory used: 0.1 Mb (60458 bytes)
+Writing MIP solution to '/dev/null'...

@@ -305,8 +305,8 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| LP-1 | High | 第一次呼叫 `SolveModel`／`SolveFromFile` 時，程式庫自己從 ftp.gnu.org（Windows 走 SourceForge 的 latest/download 轉址）下載 GLPK 原始碼，在使用者機器上執行 `./configure && make && make install` 裝進 `$HOME/local`，再改寫**當前程序**的 `PATH` 環境變數。下載沒有校驗和、失敗路徑有 8 處 `LogFatal`。一個 Go 資料程式庫在執行期編譯 C 程式，是供應鏈與可移植性風險，生產環境不可接受（準則 14；K-1） | lp/init.go:33-260 | 移除自動安裝：找不到 `glpsol` 就回錯並在 Docs 說明安裝方式；或改用純 Go 求解器 |
-| LP-2 | Med（列順序已修正 batch 2；nil 回傳已修正 lp-never-returns-a-nil-table；error 形狀與結果解析待決） | `SolveFromFile`／`SolveModel` 回傳 `(*DataTable, *DataTable)` 沒有 error；錯誤與逾時被編碼成第二張表裡的字串（`Status: "Error"`），且那張表的列順序來自 map 迭代（MK-2）；結果表是 GLPK 輸出「逐行文字」，變數值沒有解析成欄位；`timeoutSeconds ...int` 用 variadic（準則 8、11） | lp/lp.go:21-80, 83-215, 256-280 | 回 `(*Solution, error)`，Solution 含 `Status`、`Objective`、`Variables map[string]float64` |
+| LP-1 | ~~High~~ 已修正（lp-pure-go-default）：預設改用 go-milp，自動安裝整段刪除，GLPK 改為使用者自行安裝後選用 | 第一次呼叫 `SolveModel`／`SolveFromFile` 時，程式庫自己從 ftp.gnu.org（Windows 走 SourceForge 的 latest/download 轉址）下載 GLPK 原始碼，在使用者機器上執行 `./configure && make && make install` 裝進 `$HOME/local`，再改寫**當前程序**的 `PATH` 環境變數。下載沒有校驗和、失敗路徑有 8 處 `LogFatal`。一個 Go 資料程式庫在執行期編譯 C 程式，是供應鏈與可移植性風險，生產環境不可接受（準則 14；K-1） | lp/init.go:33-260 | 移除自動安裝：找不到 `glpsol` 就回錯並在 Docs 說明安裝方式；或改用純 Go 求解器 |
+| LP-2 | ~~Med~~ 已修正（列順序 batch 2；nil 回傳 lp-never-returns-a-nil-table；回傳形狀與結果解析 lp-pure-go-default：`Solve`／`SolveFile` 回 `(*Solution, error)`，數值從 GLPK 結果檔以完整精度讀出） | `SolveFromFile`／`SolveModel` 回傳 `(*DataTable, *DataTable)` 沒有 error；錯誤與逾時被編碼成第二張表裡的字串（`Status: "Error"`），且那張表的列順序來自 map 迭代（MK-2）；結果表是 GLPK 輸出「逐行文字」，變數值沒有解析成欄位；`timeoutSeconds ...int` 用 variadic（準則 8、11） | lp/lp.go:21-80, 83-215, 256-280 | 回 `(*Solution, error)`，Solution 含 `Status`、`Objective`、`Variables map[string]float64` |
 | LP-3 | Low | `lpgen.LPModel` 以字串拼 LP 檔（`AddConstraint("x + y <= 10")`），沒有結構化建模；`GenerateLPFile(filename)` 無 error；`ParseLingoModel_str`／`_txt` 底線命名、失敗回 nil 無 error | lpgen/lpgen.go；lingo.go | 回 error；命名 `ParseLingo`／`ParseLingoFile` |
 
 ### engine
@@ -464,7 +464,7 @@
 | SEC-6 | ~~Med~~ 已修正（make-errors-non-terminating） | `gplot.CreateHistogram` 零值設定即 panic：`HistogramConfig{}` 的 `Bins` 為 0，`plotter.NewHist` 回錯後直接 `panic(err)`。實測 `CreateHistogram(HistogramConfig{}, NewDataList(1.0, 2.0))` → PANIC；`line.go:127`、`step.go:101` 同樣 `panic(err)` | gplot/histogram.go:45-46；gplot/line.go:127；gplot/step.go:101 | `Bins <= 0` 給預設值或 LogWarning 回 nil；移除三處 `panic(err)` |
 | SEC-7 | ~~Med~~ 已修正（batch 4） | `ToCSV`／`ToJSON` 非原子寫入，失敗留下半截檔：實測 512 KiB RAM disk 寫 1 MB 表，`ToCSV` 回 ENOSPC 但留下 376,832 bytes 殘檔；`ToJSON` 留 0 byte 檔。parquet、cli/env、geocode cache 已是 tmp+rename | datatable_csv.go:16；datatable_json.go:66 | 比照 parquet：寫 `*.tmp` 成功後 `os.Rename` |
 | SEC-8 | ~~Med~~ 已修正（make-errors-non-terminating） | 函式庫路徑內 `os.Exit`（K-1 的新呼叫點清單）：GLPK 下載／解壓／編譯失敗 `lp/init.go:151,156,162,195,203,211,219`、Windows 初始化 `:127`、`SolveModel` 建暫存檔失敗 `lp/lp.go:143,150`、py IPC socket 監聽失敗 `py/pyresult.go:88` | logger.go:20-24 及上述 | 改回傳 error；併入 K-1 |
-| SEC-9 | Med | LP-1 新細節：暫存路徑可預測且 `os.Create` 跟隨 symlink：下載到固定 `os.TempDir()/glpk.tar.gz`、解壓到 `os.TempDir()/glpk` 後在該目錄執行 `./configure && make`，共用主機上他人可預佔或放 symlink；無 checksum／簽章；Windows 走 SourceForge `latest/download` 未釘版且跟隨任意轉址；`http.Get` 無 timeout | lp/init.go:145-147, 199, 265-268, 320, 330 | `os.MkdirTemp`／`CreateTemp`；釘版本比對 SHA-256；`http.Client{Timeout}` + `CheckRedirect` 白名單；安裝改成明確 `lp.Install()` |
+| SEC-9 | ~~Med~~ 已修正（lp-pure-go-default）：下載、解壓與編譯的程式碼已刪除；GLPK 引擎的暫存檔改用 `os.MkdirTemp` | LP-1 新細節：暫存路徑可預測且 `os.Create` 跟隨 symlink：下載到固定 `os.TempDir()/glpk.tar.gz`、解壓到 `os.TempDir()/glpk` 後在該目錄執行 `./configure && make`，共用主機上他人可預佔或放 symlink；無 checksum／簽章；Windows 走 SourceForge `latest/download` 未釘版且跟隨任意轉址；`http.Get` 無 timeout | lp/init.go:145-147, 199, 265-268, 320, 330 | `os.MkdirTemp`／`CreateTemp`；釘版本比對 SHA-256；`http.Client{Timeout}` + `CheckRedirect` 白名單；安裝改成明確 `lp.Install()` |
 | SEC-10 | Med | py 環境安裝鏈未釘版本、無驗證：`curl -LsSf https://astral.sh/uv/install.sh \| sh` 與 PowerShell `irm \| iex` 直接執行遠端腳本；`pythonVersion = "3.12.*"`；13 個 Python 套件 `uv pip install <name>` 抓最新版，每台機器版本不同 | py/init.go:152-167；py/const.go:11, 19-33 | 釘 uv 版本並比對 hash；套件 `name==version` 或 `uv sync` + `uv.lock` |
 | SEC-11 | ~~Med~~ 已修正（batch 4） | 資料庫密碼明文落地：readline `HistoryFile` 把 `db connect x postgres://user:PASS@…` 整行寫進 `history.txt`（0644）；`env export` 把整份 history 放進匯出檔；`maskDSNPassword` 只處理 `://` 與 `user:pass@`，libpq KV 形式 `password=secret` 不遮罩 | cli/repl/repl.go:51；cli/env/state.go:161-176；cli/env/manager.go:355-371；cli/commands/db_conn.go:118-150 | 寫 history 前先 `maskDSNPassword`；補 KV 形式遮罩；history.txt 改 0600；Docs 建議用環境變數／`~/.pgpass` |
 | SEC-12 | ~~Low~~ 已修正（harden-limits-and-permissions） | SQL 參數值進入日誌：gorm 預設 logger 在錯誤與慢查詢時把綁定參數內嵌印出，實測 `ReadSQL(Query: "… token = ?", Params: {"SECRET"})` 失敗時 stderr 出現完整值；`LogDebug` 印含 WhereClause 字面值的查詢 | datatable_from_sql.go:87, 140；cli/commands/db_conn.go:38-42 | CLI 開連線設 `logger.Silent` 或 `ParameterizedQueries: true` |
@@ -474,7 +474,7 @@
 | SEC-16 | Low（UnzipSizeLimit 已修正 harden-limits-and-permissions；CSV 串流入口屬 K-11 待決） | Excel 讀取沒設 `UnzipSizeLimit`（excelize 預設 16 GB），zip bomb 幾乎無保護；CSV 一律 `ReadAll` 進記憶體，無串流入口 | read.go:385；csvxl/convert.go:94, 136；csvxl/convertDir.go:50 | `excelize.Options{UnzipSizeLimit}` 可設定；CSV 補串流入口（與 K-11 同族） |
 | SEC-17 | ~~Low~~ 已修正（harden-limits-and-permissions） | py IPC 伺服器：`Accept` 永久失敗時 `continue` 忙迴圈；socket 檔留在 `os.TempDir()` 不清；連線無讀取 deadline | py/pyresult.go:81, 96-103, 110-118 | `net.ErrClosed` 時 return；`SetDeadline`；結束時 `os.Remove` |
 | SEC-18 | ~~Low~~ 已修正（cli-message-and-help-fixes） | 每次呼叫重新 `regexp.MustCompile` | lp/lp.go:252-253, 271；lpgen/lingo.go:33-37, 130-134；datafetch/googleMapsCommentCrawler.go:131, 361, 369 | 提到套件層 `var` |
-| SEC-19 | Low | `untar` 在 `io.Copy` 失敗時 `outFile` 未關閉；tar/zip 解壓無大小上限；`TypeReg` 沒先 `MkdirAll(filepath.Dir)` | lp/init.go:387-392, 424-432 | `defer Close`；`io.CopyN` 上限；補 MkdirAll |
+| SEC-19 | ~~Low~~ 已修正（lp-pure-go-default）：`untar` 與解壓程式碼已刪除 | `untar` 在 `io.Copy` 失敗時 `outFile` 未關閉；tar/zip 解壓無大小上限；`TypeReg` 沒先 `MkdirAll(filepath.Dir)` | lp/init.go:387-392, 424-432 | `defer Close`；`io.CopyN` 上限；補 MkdirAll |
 | SEC-20 | ~~Low~~ 已修正（harden-limits-and-permissions） | `PipInstall(dep)` 把使用者字串當單一 argv 交給 `uv pip install`，`--requirement=/path` 可安裝任意需求檔 | py/py.go:305, 323 | 拒絕 `-` 開頭或加 `--` |
 | SEC-21 | Med（未實測，依 MySQL 文件推論） | MySQL 上 `IfExists: Replace` 的 `DROP TABLE` 在 `db.Transaction` 內，但 MySQL DDL 隱式 commit，後續 INSERT 失敗（例如 `BatchSize × 欄數 > 65535`）時舊表已無法還原 | datatable_to_sql.go:213 | Replace 改「建新表 → 寫入 → RENAME 交換 → DROP 舊表」 |
 
@@ -576,8 +576,8 @@
 | PY-1 | [#254](https://github.com/HazelnutParadise/insyra/issues/254) |  |
 | PY-2 | [#255](https://github.com/HazelnutParadise/insyra/issues/255) |  |
 | PD-1 | [#256](https://github.com/HazelnutParadise/insyra/issues/256) |  |
-| LP-1 | [#257](https://github.com/HazelnutParadise/insyra/issues/257) |  |
-| LP-2 | [#372](https://github.com/HazelnutParadise/insyra/issues/372) | 與 #257 一起決定；nil 回傳已修正 |
+| LP-1 | [#257](https://github.com/HazelnutParadise/insyra/issues/257) | 已關閉（lp-pure-go-default） |
+| LP-2 | [#372](https://github.com/HazelnutParadise/insyra/issues/372) | 已關閉（lp-pure-go-default） |
 | LP-3 | [#258](https://github.com/HazelnutParadise/insyra/issues/258) |  |
 | EN-1 | [#259](https://github.com/HazelnutParadise/insyra/issues/259) |  |
 | EN-2 | [#260](https://github.com/HazelnutParadise/insyra/issues/260) |  |
@@ -696,7 +696,7 @@
 | CCL-29 | [#259](https://github.com/HazelnutParadise/insyra/issues/259) | 補充留言 |
 | IN-15 | [#209](https://github.com/HazelnutParadise/insyra/issues/209) | 補充留言 |
 | IN-17 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) | 補充留言 |
-| SEC-9、SEC-19 | [#257](https://github.com/HazelnutParadise/insyra/issues/257) | 補充留言 |
+| SEC-9、SEC-19 | [#257](https://github.com/HazelnutParadise/insyra/issues/257) | 補充留言；已隨 #257 關閉（lp-pure-go-default） |
 | TS-15 | [#220](https://github.com/HazelnutParadise/insyra/issues/220) | 補充留言 |
 | IN-22 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) | 補充留言 |
 | CLI-6 | [#225](https://github.com/HazelnutParadise/insyra/issues/225) | 補充留言 |
@@ -1828,8 +1828,8 @@
 
 ## lp (2)
 
-- [x] `func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable)` (lp.go:21) — LP-1 執行期自動安裝 GLPK；LP-2 無 error、結果為文字列
-- [x] `func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable)` (lp.go:83) — LP-1 執行期自動安裝 GLPK；LP-2 無 error、結果為文字列
+- [x] `func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable)` (lp.go:21) — LP-1 執行期自動安裝 GLPK；LP-2 無 error、結果為文字列 → 已由 `SolveFile(path, Options) (*Solution, error)` 取代（lp-pure-go-default）
+- [x] `func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable)` (lp.go:83) — LP-1 執行期自動安裝 GLPK；LP-2 無 error、結果為文字列 → 已由 `Solve(model, Options) (*Solution, error)` 取代（lp-pure-go-default）
 
 ## lpgen (10)
 

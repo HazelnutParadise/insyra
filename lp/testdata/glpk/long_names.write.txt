@@ -1,0 +1,12 @@
+c Problem:    
+c Rows:       1
+c Columns:    2
+c Non-zeros:  2
+c Status:     OPTIMAL
+c Objective:  obj = 246913.578 (MAXimum)
+c
+s bas 1 2 f f 246913.578
+i 1 u 123456.789 2
+j 1 l 0 -0.76543211
+j 2 b 123456.789 0
+e o f

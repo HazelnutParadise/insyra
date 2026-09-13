@@ -43,6 +43,15 @@ jobs:
         cache-dependency-path: go.sum
     - name: Install dependencies
       run: go mod download
+    # lp's GLPK engine tests, and the tests that check go-milp and GLPK agree,
+    # skip where glpsol is missing. Windows has no GLPK package to install, so
+    # they run on the other two legs.
+    - name: Install GLPK
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y glpk-utils
+    - name: Install GLPK
+      if: runner.os == 'macOS'
+      run: brew install glpk
     - name: Vet
       run: go vet ./...
     - name: Unit Test

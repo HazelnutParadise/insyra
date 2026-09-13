@@ -1,0 +1,33 @@
+Problem:    
+Rows:       1
+Columns:    8 (8 integer, 8 binary)
+Non-zeros:  8
+Status:     INTEGER OPTIMAL
+Objective:  obj = 53 (MAXimum)
+
+   No.   Row name        Activity     Lower bound   Upper bound
+------ ------------    ------------- ------------- -------------
+     1 cap                        59                          60 
+
+   No. Column name       Activity     Lower bound   Upper bound
+------ ------------    ------------- ------------- -------------
+     1 a            *              0             0             1 
+     2 b            *              1             0             1 
+     3 c            *              1             0             1 
+     4 d            *              0             0             1 
+     5 e            *              0             0             1 
+     6 f            *              0             0             1 
+     7 g            *              1             0             1 
+     8 h            *              0             0             1 
+
+Integer feasibility conditions:
+
+KKT.PE: max.abs.err = 0.00e+00 on row 0
+        max.rel.err = 0.00e+00 on row 0
+        High quality
+
+KKT.PB: max.abs.err = 0.00e+00 on row 0
+        max.rel.err = 0.00e+00 on row 0
+        High quality
+
+End of output

@@ -9,8 +9,8 @@ You will build a model that:
 - defines production decision variables,
 - sets objective and constraints,
 - writes an LP file,
-- solves the LP model with GLPK backend,
-- reviews decision and meta tables,
+- solves the model with `lp`'s default engine, which needs nothing installed,
+- reads the solution status, total margin and production quantities,
 - exports optimization outputs.
 
 ## Prerequisites
@@ -64,19 +64,22 @@ model.GenerateLPFile("capacity_plan.lp")
 ## Step 3: Solve the LP model
 
 **Goal**  
-Get optimal decision variables and solver metadata.
+Get the optimal production quantities.
 
 **Code**
 
 ```go
-solution, meta := lp.SolveModel(model, 30)
-if solution == nil || meta == nil {
-	log.Fatal("solver failed")
+sol, err := lp.Solve(model, lp.Options{TimeLimit: 30 * time.Second})
+if err != nil {
+	log.Fatal(err)
+}
+if sol.Status != lp.StatusOptimal {
+	log.Fatalf("no optimal plan: %v", sol.Status)
 }
 ```
 
 **Expected outcome**  
-Two DataTables are returned: solution table and meta table.
+`err` is nil and `sol.Status` is `lp.StatusOptimal`. An error means the model could not be solved as written, for example because of a typo in a constraint. A model with no feasible plan returns a nil error with `sol.Status` set to `lp.StatusInfeasible`.
 
 ## Step 4: Inspect optimization outputs
 
@@ -86,12 +89,13 @@ Understand selected quantities and objective result.
 **Code**
 
 ```go
+fmt.Printf("total margin: %g\n", sol.Objective)
+solution := sol.ToDataTable()
 solution.ShowRange(20)
-meta.ShowRange(20)
 ```
 
 **Expected outcome**  
-You can see selected values for `x1`, `x2`, and objective diagnostics.
+The total margin is 4650, and the table shows `x1` = 30 and `x2` = 45 in its `Variable` and `Value` columns. Both machine hours (2 × 30 + 4 × 45 = 240) and labor hours (3 × 30 + 2 × 45 = 180) are fully used.
 
 ## Step 5: Add a business interpretation table
 
@@ -120,12 +124,11 @@ Persist LP outputs for downstream workflows.
 
 ```go
 _ = solution.ToCSV("capacity_solution.csv", false, true, false)
-_ = meta.ToCSV("capacity_meta.csv", false, true, false)
 _ = summary.ToCSV("capacity_summary.csv", false, true, false)
 ```
 
 **Expected outcome**  
-Three CSV files are generated for solver results and business summary.
+Two CSV files are generated: the production quantities and the business summary.
 
 ## Complete runnable Go program
 
@@ -133,7 +136,9 @@ Three CSV files are generated for solver results and business summary.
 package main
 
 import (
+	"fmt"
 	"log"
+	"time"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/lp"
@@ -149,18 +154,22 @@ func main() {
 	model.AddBound("0 <= x2 <= 70")
 	model.GenerateLPFile("capacity_plan.lp")
 
-	solution, meta := lp.SolveModel(model, 30)
-	if solution == nil || meta == nil {
-		log.Fatal("solver failed")
+	sol, err := lp.Solve(model, lp.Options{TimeLimit: 30 * time.Second})
+	if err != nil {
+		log.Fatal(err)
 	}
+	if sol.Status != lp.StatusOptimal {
+		log.Fatalf("no optimal plan: %v", sol.Status)
+	}
+	fmt.Printf("total margin: %g\n", sol.Objective)
 
+	solution := sol.ToDataTable()
 	summary := insyra.NewDataTable(
 		insyra.NewDataList("Decision", "Description").SetName("Field"),
 		insyra.NewDataList("CapacityPlan", "Optimal production under labor/machine constraints").SetName("Value"),
 	)
 
 	_ = solution.ToCSV("capacity_solution.csv", false, true, false)
-	_ = meta.ToCSV("capacity_meta.csv", false, true, false)
 	_ = summary.ToCSV("capacity_summary.csv", false, true, false)
 }
 ```

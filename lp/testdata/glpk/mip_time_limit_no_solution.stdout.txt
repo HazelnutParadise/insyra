@@ -1,0 +1,37 @@
+GLPSOL--GLPK LP/MIP Solver 5.0
+Parameter(s) specified in the command line:
+ --lp split.lp --tmlim 1 --output split.report.txt --write split.write.txt
+Reading problem data from 'split.lp'...
+5 rows, 50 columns, 250 non-zeros
+50 integer variables, all of which are binary
+60 lines were read
+GLPK Integer Optimizer 5.0
+5 rows, 50 columns, 250 non-zeros
+50 integer variables, all of which are binary
+Preprocessing...
+5 rows, 50 columns, 250 non-zeros
+50 integer variables, all of which are binary
+Scaling...
+ A: min|aij| =  1.000e+00  max|aij| =  9.900e+01  ratio =  9.900e+01
+GM: min|aij| =  1.468e-01  max|aij| =  6.812e+00  ratio =  4.641e+01
+EQ: min|aij| =  2.175e-02  max|aij| =  1.000e+00  ratio =  4.597e+01
+2N: min|aij| =  1.562e-02  max|aij| =  1.547e+00  ratio =  9.900e+01
+Constructing initial basis...
+Size of triangular part is 1
+Solving LP relaxation...
+GLPK Simplex Optimizer 5.0
+5 rows, 50 columns, 250 non-zeros
+      0: obj =   0.000000000e+00 inf =   3.876e+03 (5)
+     30: obj =   1.000000000e+00 inf =   0.000e+00 (0)
+*    34: obj =   0.000000000e+00 inf =   0.000e+00 (0)
+OPTIMAL LP SOLUTION FOUND
+Integer optimization begins...
+Long-step dual simplex will be used
++    34: mip =     not found yet >=              -inf        (1; 0)
++ 72789: mip =     not found yet >=   0.000000000e+00        (14763; 5132)
+TIME LIMIT EXCEEDED; SEARCH TERMINATED
+Time used:   1.0 secs
+Memory used: 7.5 Mb (7846990 bytes)
+Writing MIP solution to 'split.report.txt'...
+Writing MIP solution to 'split.write.txt'...
+64 lines were written
