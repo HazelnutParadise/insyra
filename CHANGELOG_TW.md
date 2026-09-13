@@ -34,6 +34,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL 不再重複計算答案不會變的東西。`AddColUsingCCL`、`EditColByIndexUsingCCL`、`EditColByNameUsingCCL` 裡沒有用到 `#` 的聚合函數，改為在逐列走訪之前算一次，而不是每一列都對整欄的新副本重算一遍：20,000 列的 `A / SUM(A)` 從 2.1 秒變成 1.0 毫秒，z-score `(A - AVG(A)) / STDEV(A)` 從 6.2 秒變成 1.8 毫秒。有用到 `#` 的聚合會依賴當前列，仍然逐列計算。同一條路徑上另外三項：字串只有在首字元可能是日期開頭時才交給日期解析器、`REGEX_MATCH` 每個樣式只編譯一次而不是每列編譯、`ROLLING_*` 整欄只轉換一次而不是每個視窗把每個元素各轉一次。**結果完全沒有改變**；`ROLLING_*` 刻意維持與視窗成正比的計算量，因為改用累加器會產生重算視窗所沒有的誤差飄移。
 - `AtomicDoAll` 遇到 nil 的實例（nil 的 `*DataList`、nil 的 `*DataTable` 或 nil 值）會直接略過，不再 panic；同時傳入的其他實例照樣上鎖。
 - 修正 `GroupBy` 算出來的是 `Aggregate` 執行當下的父表資料，而不是分組當下的資料。它原本只保留父表欄位的指標，所以兩次呼叫之間對父表的修改會跑進結果（原本是 `3` 的一組加總變成 `102`），而且 `Aggregate` 讀那些資料時沒有上鎖，其他 goroutine 可能同時在寫。現在 `GroupBy` 會複製它分組用的欄位資料。
+- 修正依值搜尋、計數、取代與刪除時，找不到以另一種 Go 整數型別儲存的整數。CSV 讀進來的整數是 `int64`，Go 程式裡寫的 `2` 是 `int`，原本用 `==` 比對，`int64` 和 `int` 永遠不相等，所以對 CSV 讀入的表，`Count(2)` 回傳 0，`FindAll(2)`、`FindRowsIfContains(2)` 什麼都找不到，`Replace(2, 0)` 什麼都沒改。現在 `Count`、`FindFirst`、`FindLast`、`FindAll`、各個 `Replace` 方法、`DropAll`、`FindRowsIfContains(All)`、`FindColsIfContains(All)`、`DropRowsContain`、`DropColsContain` 都依數值比對整數，`int8` 到 `int64`、`uint8` 到 `uint64` 一律如此。小數仍然不等於整數，要找 `2.0` 請用 `2.0` 搜尋；小數、字串、布林值、`nil` 與 `NaN` 的比對結果都和原本完全相同。`IsEqualTo` 與 `IsTheSameAs` 仍然連型別一起比較。遇到 Go 無法用 `==` 比較的儲存格（例如含 slice 的 struct），這些查找也不再 panic，只是不算相符。比對方式改成依要找的值的型別，每次呼叫只挑一次，所以搜尋小數或字串也變快了：一百萬格的 `Count`，小數從 2.3 毫秒降到 1.7 毫秒，字串從 2.8 毫秒降到 2.0 毫秒。
 
 ### CLI
 
@@ -46,6 +47,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `db connect` 寫進 `history.txt`、REPL 歷史與 `env export` 時密碼會被遮罩（URL、`user:pass@`、`password=` 三種形式）；history 檔以 0600 建立。
 - `accel` 的 Usage 不再宣稱有不存在的 `run` 子命令。
 - `help` 現在如實列出 `pca`、`regression`、`count` 的參數：前兩者可以用 `as <var>` 存結果，`count` 的 value 是必填，不再標成選填。`save … sql` 的用法錯誤訊息也跟 Usage 一致，列出 `rownames [true|false]`。
+- `count`、`find`、`replace` 現在能對上 CSV 載入的表，以及 one-shot 模式下每次還原的變數裡的整數。原本打的 `2` 是 `int`，存著的是 `int64`，永遠比對不到：`count x 2` 印出 0，`find x 2` 印出 `[]`，`replace x 2 0` 印出 `replaced` 卻什麼都沒改。
 
 ### `ml` 與 `nn`
 

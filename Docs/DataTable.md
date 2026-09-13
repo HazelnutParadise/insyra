@@ -3073,7 +3073,7 @@ orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{Prese
 
 ## Data Replacement
 
-DataTable provides several methods to replace values within the entire table, a specific row, or a specific column.
+DataTable provides several methods to replace values within the entire table, a specific row, or a specific column. They find `oldValue` the way the searches do (see Searching), so `Replace(2, 0)` replaces the `int64` 2s a CSV load produces.
 
 ### Missing-Value Fill Methods
 
@@ -3324,6 +3324,8 @@ dt.ExecuteCCL(`
 ```
 
 ## Searching
+
+**How a value is matched.** The value searches below, `Count`, the `Replace` methods and `DropRowsContain`/`DropColsContain` compare cells the same way. An integer matches an integer of the same value whatever their Go types, so `Count(2)` finds the `int64` 2s a CSV load produces. A float never matches an integer: search with `2.0` to find `2.0`. `NaN` matches `NaN`, except in `FindRowsIfContainsAll`, where a `NaN` never matches.
 
 ### FindRowsIfContains
 

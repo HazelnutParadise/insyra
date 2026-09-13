@@ -240,58 +240,31 @@ func (dt *DataTable) replaceInRow_notAtomic(rowIndex int, oldValue, newValue any
 		modeFlag = mode[0]
 	}
 
-	isOldValueNaN := false
-	if val, ok := oldValue.(float64); ok && math.IsNaN(val) {
-		isOldValueNaN = true
-	}
-
+	matches := valueMatcher(oldValue)
 	switch modeFlag {
 	case 1:
 		// 取代第一個
 		for _, col := range dt.columns {
-			if rowIndex >= 0 && rowIndex < len(col.data) {
-				if isOldValueNaN {
-					if val, ok := col.data[rowIndex].(float64); ok && math.IsNaN(val) {
-						col.data[rowIndex] = newValue
-						col.updateTimestamp()
-						break
-					}
-				} else if col.data[rowIndex] == oldValue {
-					col.data[rowIndex] = newValue
-					col.updateTimestamp()
-					break
-				}
+			if rowIndex >= 0 && rowIndex < len(col.data) && matches(col.data[rowIndex]) {
+				col.data[rowIndex] = newValue
+				col.updateTimestamp()
+				break
 			}
 		}
 	case 0: // 取代所有符合的
 		for _, col := range dt.columns {
-			if rowIndex >= 0 && rowIndex < len(col.data) {
-				if isOldValueNaN {
-					if val, ok := col.data[rowIndex].(float64); ok && math.IsNaN(val) {
-						col.data[rowIndex] = newValue
-						col.updateTimestamp()
-					}
-				} else if col.data[rowIndex] == oldValue {
-					col.data[rowIndex] = newValue
-					col.updateTimestamp()
-				}
+			if rowIndex >= 0 && rowIndex < len(col.data) && matches(col.data[rowIndex]) {
+				col.data[rowIndex] = newValue
+				col.updateTimestamp()
 			}
 		}
 	case -1: // 從後往前取代第一個
 		for i := len(dt.columns) - 1; i >= 0; i-- {
 			col := dt.columns[i]
-			if rowIndex >= 0 && rowIndex < len(col.data) {
-				if isOldValueNaN {
-					if val, ok := col.data[rowIndex].(float64); ok && math.IsNaN(val) {
-						col.data[rowIndex] = newValue
-						col.updateTimestamp()
-						break
-					}
-				} else if col.data[rowIndex] == oldValue {
-					col.data[rowIndex] = newValue
-					col.updateTimestamp()
-					break
-				}
+			if rowIndex >= 0 && rowIndex < len(col.data) && matches(col.data[rowIndex]) {
+				col.data[rowIndex] = newValue
+				col.updateTimestamp()
+				break
 			}
 		}
 	default:
