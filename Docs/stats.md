@@ -2251,6 +2251,11 @@ Call sites should always check `err` and handle it explicitly.
 
 ## Reference Implementations
 
+Every method in `stats` is pure Go: the R and Python packages below are
+reference answers used by the tests, not code the library calls, and running
+`stats` needs neither R nor Python on the machine. "Mirrors `psych::fa`" means
+the algorithm was ported, not that psych is invoked.
+
 Which package each method is checked against, read off the scripts under
 `stats/testdata/` and the tests that run them rather than off intent. Two
 kinds of check exist:
