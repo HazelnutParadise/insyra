@@ -2,9 +2,7 @@ package insyra
 
 import (
 	"fmt"
-	"log"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/core"
@@ -104,9 +102,11 @@ func pushError(errType LogLevel, packageName, fnName, errMes string) {
 	}
 }
 
-// The error hook runs on one goroutine behind a bounded queue: one goroutine
-// per error (the previous design) grew without limit under a slow hook, and
-// delivered messages out of order.
+// The error hook runs on one goroutine behind a bounded queue, so the calls
+// that fit in the queue are delivered in order instead of one goroutine per
+// error. A call that finds the queue full is delivered on its own goroutine,
+// the way every call used to be, so a burst larger than the queue reaches the
+// hook out of order rather than not at all.
 type hookCall struct {
 	fn  errHandlingFunc
 	err errorStruct
@@ -115,9 +115,8 @@ type hookCall struct {
 const hookQueueSize = 1024
 
 var (
-	hookQueue     chan hookCall
-	hookOnce      sync.Once
-	hookDropNoted atomic.Bool
+	hookQueue chan hookCall
+	hookOnce  sync.Once
 )
 
 func dispatchToHook(call hookCall) {
@@ -132,9 +131,7 @@ func dispatchToHook(call hookCall) {
 	select {
 	case hookQueue <- call:
 	default:
-		if hookDropNoted.CompareAndSwap(false, true) {
-			log.Printf("[insyra - Warning] error hook queue full (%d); further hook calls are dropped until it drains (errors are still recorded)", hookQueueSize)
-		}
+		go call.fn(call.err.errType, call.err.packageName, call.err.fnName, call.err.message)
 	}
 }
 

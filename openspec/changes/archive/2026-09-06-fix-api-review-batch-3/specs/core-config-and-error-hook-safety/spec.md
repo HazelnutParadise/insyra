@@ -8,13 +8,17 @@
 - **WHEN** 一個 goroutine 反覆 `SetLogLevel`，另一個反覆 `LogInfo`
 - **THEN** race detector 無回報
 
-### Requirement: The error hook is bounded and ordered
+### Requirement: The error hook is ordered and loses no call
 
-透過 `SetDefaultErrHandlingFunc` 設定的 hook SHALL 由單一 goroutine 依產生順序呼叫；佇列有上限，超過時 SHALL 丟棄 hook 呼叫但仍寫入錯誤環。
+透過 `SetDefaultErrHandlingFunc` 設定的 hook SHALL 由單一 goroutine 依產生順序呼叫，佇列容量為 1,024。佇列已滿時，該次呼叫 SHALL 改由自己的 goroutine 送達 hook，SHALL NOT 丟棄，這些呼叫不保證順序。
 
 #### Scenario: Hook sees errors in order
 - **WHEN** 連續發出 100 個 warning
 - **THEN** hook 依序收到這 100 個訊息
+
+#### Scenario: A slow hook and a burst larger than the queue
+- **WHEN** hook 每次呼叫都很慢，連續發出 3000 個 warning
+- **THEN** hook 最終收到全部 3000 次呼叫
 
 ### Requirement: Importing the library prints nothing
 
