@@ -94,19 +94,17 @@ for _, store := range stores {
 func (c *googleMapsStoreCrawler) GetReviews(storeID string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews
 ```
 
-**Description:** Fetches reviews for a specific store.
-
-> **Currently unavailable.** Google answers the review request with HTTP 403, so `GetReviews` returns `nil` with a warning. Restoring it is tracked in [#249](https://github.com/HazelnutParadise/insyra/issues/249).
+**Description:** Fetches reviews for a specific store, 10 per page, from the review window Google Search shows for the store. No sign-in is needed.
 
 **Parameters:**
 
 - `storeID`: The store's Google Maps ID (obtained from Search)
-- `pageCount`: Number of review pages to fetch (`0` fetches all available pages)
+- `pageCount`: Number of review pages to fetch, 10 reviews each (`0` fetches every page)
 - `options`: Optional fetching configuration
 
 **Returns:**
 
-- `GoogleMapsStoreReviews`: Collection of reviews (can be converted to DataTable)
+- `GoogleMapsStoreReviews`: Collection of reviews (can be converted to DataTable). `nil` when a request fails or Google's response format has changed; a warning says which.
 
 **Example:**
 
@@ -139,10 +137,10 @@ func (r GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable
 - `*insyra.DataTable`: Table containing review data with columns:
   - `Reviewer`: Reviewer's display name
   - `ReviewerID`: Unique reviewer identifier
-  - `ReviewerState`: Reviewer's location (if available)
-  - `ReviewerLevel`: Local Guide level
-  - `ReviewTime`: Time description (e.g., "2 weeks ago")
-  - `ReviewDate`: Raw date string from the source
+  - `ReviewerState`: Always empty; Google's review pages no longer include it
+  - `ReviewerLevel`: Always 0; Google's review pages no longer include it
+  - `ReviewTime`: Time description as Google shows it, in Traditional Chinese (e.g., "2 個月前")
+  - `ReviewDate`: The date the review was posted, in UTC, as `YYYY-MM-DD`
   - `Content`: Review text
   - `Rating`: Star rating (1-5)
 
@@ -175,10 +173,10 @@ Represents a single review.
 type GoogleMapsStoreReview struct {
     Reviewer      string    // Reviewer's display name
     ReviewerID    string    // Unique reviewer identifier
-    ReviewerState string    // Reviewer's location
-    ReviewerLevel int       // Local Guide level (0-10)
-    ReviewTime    string    // Relative time (e.g., "2 weeks ago")
-    ReviewDate    string    // Raw review date string
+    ReviewerState string    // Always empty; no longer provided by Google
+    ReviewerLevel int       // Always 0; no longer provided by Google
+    ReviewTime    string    // Relative time in Traditional Chinese (e.g., "2 個月前")
+    ReviewDate    string    // Posting date in UTC, YYYY-MM-DD
     Content       string    // Review text
     Rating        int       // Star rating (1-5)
 }
@@ -215,7 +213,7 @@ const (
 
 ## Notes
 
-- This crawler depends on Google Maps internal endpoints; availability can change without notice.
+- This crawler depends on internal Google endpoints: the Google Maps result list for `Search`, and the review window on Google Search results for `GetReviews`, because Google Maps shows a signed-out visitor only five reviews. Availability can change without notice.
 - Be prepared for rate limits or empty results and handle `nil` returns.
 - Every request times out after 30 seconds. Progress is logged at debug level.
 - Review fetching requires a stable internet connection.

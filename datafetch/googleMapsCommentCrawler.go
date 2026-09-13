@@ -1,20 +1,22 @@
 // Google Maps store search and reviews.
 //
-// Both read endpoints the Google Maps web page calls, which Google changes
-// without notice. Search was restored on 2026-09-13. The review endpoint has
-// answered HTTP 403 since at least that date, so GetReviews currently fails
-// (#249).
+// Both read endpoints Google's own pages call, which Google changes without
+// notice. Search replays the result list the Maps page requests. Reviews come
+// from the review window on Google Search results, because Google Maps itself
+// shows a signed-out visitor only five reviews (#249, measured 2026-09-13).
 
 package datafetch
 
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"io"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +26,13 @@ import (
 
 const (
 	gmapsSearchURL = "https://www.google.com.tw/search"
-	gmapsReviewURL = "https://www.google.com.tw/maps/rpc/listugcposts"
+
+	// gmapsReviewURL is what the review window on Google Search results calls
+	// for each page of reviews. It needs no cookies and pages with a token.
+	gmapsReviewURL = "https://www.google.com.tw/httpservice/web/PrivateLocalSearchUiDataService/GetLocalBoqProxy"
+
+	// gmapsReviewsPerPage is the page size the review window asks for.
+	gmapsReviewsPerPage = 10
 
 	// gmapsSearchPB is the request descriptor the Maps web page sends with a
 	// search, cut down to the fields the result list depends on: 7i20 asks for
@@ -43,7 +51,10 @@ const (
 	gmapsMaxResponseSize = 64 << 20
 )
 
-var gmapsFeatureIDRe = regexp.MustCompile(`^0x[0-9a-f]+:0x[0-9a-f]+$`)
+var (
+	gmapsFeatureIDRe = regexp.MustCompile(`^0x[0-9a-f]+:0x[0-9a-f]+$`)
+	gmapsContribIDRe = regexp.MustCompile(`/contrib/(\d+)`)
+)
 
 // GoogleMapsStoreReview is a struct for Google Maps store reviews.
 type GoogleMapsStoreReview struct {
@@ -160,14 +171,14 @@ func parseGoogleMapsSearch(body []byte) ([]GoogleMapsStoreData, error) {
 	return stores, nil
 }
 
-// GetReviews fetches reviews for the store with the given ID.
+// GetReviews fetches reviews for the store with the given ID, 10 per page.
 // The pageCount parameter specifies the number of pages to fetch.
 // If pageCount is 0, all reviews will be fetched.
 // Returns a list of reviews.
 // Returns nil if failed to fetch reviews.
 //
-// Google currently answers this request with HTTP 403, so GetReviews returns
-// nil with a warning (#249).
+// ReviewerState and ReviewerLevel are always empty: the review pages no longer
+// carry a reviewer's status line or guide level.
 func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews {
 	fetchingOptions := GoogleMapsStoreReviewsFetchingOptions{
 		SortBy:                          SortByRelevance,
@@ -190,75 +201,27 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Got too many options. Using default options.")
 	}
 
-	nextToken := ""
+	token := ""
 	reviews := []GoogleMapsStoreReview{}
 
 	for page := 1; pageCount == 0 || page <= pageCount; page++ {
 		insyra.LogDebug("datafetch", "GoogleMapsStores.GetReviews", "fetching reviews on page %d", page)
 
-		// 組合請求參數
-		params := url.Values{}
-		params.Set("authuser", "0")
-		params.Set("hl", "zh-TW")
-		params.Set("gl", "tw")
-		params.Set("pb", fmt.Sprintf("!1m6!1s%s!6m4!4m1!1e1!4m1!1e3!2m2!1i10!2s%s!5m2!1s0OBwZ4OnGsrM1e8PxIjW6AI!7e81!8m5!1b1!2b1!3b1!5b1!7b1!11m0!13m1!1e%d",
-			storeId, nextToken, fetchingOptions.SortBy))
-
-		body, err := c.get(c.storeReviewUrl + "?" + params.Encode())
+		body, err := c.get(c.storeReviewUrl + "?" + gmapsReviewQuery(storeId, fetchingOptions.SortBy, token))
 		if err != nil {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to fetch reviews: %v. Returning nil.", err)
 			return nil
 		}
-		jsonData := []any{}
-		if err := json.Unmarshal(stripGoogleJSONPrefix(body), &jsonData); err != nil {
-			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to decode JSON. Error: %v. Returning nil.", err)
+		pageReviews, next, err := parseGoogleMapsReviewPage(body)
+		if err != nil {
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "%v. Returning nil.", err)
 			return nil
 		}
-
-		// 解析 `nextToken`
-		if len(jsonData) > 1 {
-			nextToken, _ = jsonData[1].(string)
-		}
-
-		// 解析評論數據
-		if len(jsonData) > 2 {
-			rawReviews, ok := jsonData[2].([]any)
-			if ok {
-				for _, item := range rawReviews {
-					reviewData, _ := item.([]any)
-					if len(reviewData) < 3 {
-						continue
-					}
-
-					reviewer := extractString(reviewData, 0, 1, 4, 5, 0)
-					reviewerID := extractString(reviewData, 0, 0)
-					reviewerState := extractString(reviewData, 0, 1, 4, 5, 10, 0)
-					reviewerLevel := extractInt(reviewData, 0, 1, 4, 5, 9)
-					reviewTime := extractString(reviewData, 0, 1, 6)
-					reviewDate := strings.Join([]string{
-						strings.Repeat("0", 4-len(extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 0))) + extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 0),
-						strings.Repeat("0", 2-len(extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 1))) + extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 1),
-						strings.Repeat("0", 2-len(extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 2))) + extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 2),
-					}, "-")
-					content := extractString(reviewData, 0, 2, -1, 0, 0)
-					rating := extractInt(reviewData, 0, 2, 0, 0)
-
-					reviews = append(reviews, GoogleMapsStoreReview{
-						Reviewer:      reviewer,
-						ReviewerID:    reviewerID,
-						ReviewerState: reviewerState,
-						ReviewerLevel: reviewerLevel,
-						ReviewTime:    reviewTime,
-						ReviewDate:    reviewDate,
-						Content:       content,
-						Rating:        rating,
-					})
-				}
-			}
-		}
+		reviews = append(reviews, pageReviews...)
+		token = next
 
 		// 若無下一頁，結束迴圈
-		if nextToken == "" || page == pageCount {
+		if token == "" || page == pageCount {
 			break
 		}
 
@@ -271,6 +234,80 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 	}
 
 	return reviews
+}
+
+// gmapsReviewQuery builds the query for one page of reviews. reqpld is the
+// argument list the review window sends: the sort order at 1, the page size
+// at 9, the store at 11 and the page token at 19 vary, and the other values
+// are what the window sends.
+func gmapsReviewQuery(storeID string, sortBy GoogleMapsStoreReviewSortBy, token string) string {
+	args := make([]any, 24)
+	args[1] = int(sortBy)
+	args[9] = gmapsReviewsPerPage
+	args[11] = []any{storeID}
+	args[16] = []any{1, 1, nil, []any{[]any{3}, []any{4}, []any{5}, []any{6}, []any{7}}}
+	args[19] = token
+	args[23] = 0
+	request := make([]any, 10)
+	request[9] = args
+	payload, _ := json.Marshal([]any{nil, request})
+
+	params := url.Values{}
+	params.Set("hl", "zh-TW")
+	params.Set("reqpld", string(payload))
+	params.Set("msc", "gwsrpc")
+	params.Set("opi", "89978449")
+	return params.Encode()
+}
+
+// parseGoogleMapsReviewPage reads one page of reviews and the token for the
+// next page, which is empty on the last page. A page keeps its reviews at
+// [1][10][2] and the token at [1][10][6].
+func parseGoogleMapsReviewPage(body []byte) ([]GoogleMapsStoreReview, string, error) {
+	var data []any
+	if err := json.Unmarshal(stripGoogleJSONPrefix(body), &data); err != nil {
+		return nil, "", fmt.Errorf("failed to decode the review page: %w", err)
+	}
+	block, ok := extractValue(data, 1, 10).([]any)
+	if !ok {
+		return nil, "", fmt.Errorf("the review page has no review block; the response format may have changed")
+	}
+
+	records, _ := extractValue(block, 2).([]any)
+	reviews := make([]GoogleMapsStoreReview, 0, len(records))
+	for _, item := range records {
+		record, ok := item.([]any)
+		if !ok {
+			continue
+		}
+		reviews = append(reviews, GoogleMapsStoreReview{
+			Reviewer:   extractString(record, 3, 0),
+			ReviewerID: gmapsContribID(extractString(record, 3, 2)),
+			ReviewTime: extractString(record, 2, 0),
+			ReviewDate: gmapsReviewDate(extractString(record, 2, 2)),
+			Content:    html.UnescapeString(strings.ReplaceAll(extractString(record, 27), "<br>", "\n")),
+			Rating:     extractInt(record, 1),
+		})
+	}
+	next, _ := extractValue(block, 6).(string)
+	return reviews, next, nil
+}
+
+// gmapsContribID reads the reviewer's ID out of their contributions link.
+func gmapsContribID(contribURL string) string {
+	if m := gmapsContribIDRe.FindStringSubmatch(contribURL); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// gmapsReviewDate turns a review's millisecond timestamp into its UTC date.
+func gmapsReviewDate(millis string) string {
+	ms, err := strconv.ParseInt(millis, 10, 64)
+	if err != nil {
+		return ""
+	}
+	return time.UnixMilli(ms).UTC().Format("2006-01-02")
 }
 
 // ToDataTable converts the reviews to a DataTable.
