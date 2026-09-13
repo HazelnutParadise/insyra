@@ -210,7 +210,9 @@ func RegisterStandardFunctions() {
 		default:
 			if f, ok := toFloat64(val); ok {
 				// treat numeric as seconds
-				d = time.Duration(f * float64(time.Second))
+				if d, ok = durationOf(f, time.Second); !ok {
+					return nil, fmt.Errorf("DAY: %v seconds is out of range", f)
+				}
 			} else {
 				return nil, fmt.Errorf("unsupported type for DAY: %T", val)
 			}
@@ -237,7 +239,9 @@ func RegisterStandardFunctions() {
 			}
 		default:
 			if f, ok := toFloat64(val); ok {
-				d = time.Duration(f * float64(time.Second))
+				if d, ok = durationOf(f, time.Second); !ok {
+					return nil, fmt.Errorf("HOUR: %v seconds is out of range", f)
+				}
 			} else {
 				return nil, fmt.Errorf("unsupported type for HOUR: %T", val)
 			}
@@ -264,7 +268,9 @@ func RegisterStandardFunctions() {
 			}
 		default:
 			if f, ok := toFloat64(val); ok {
-				d = time.Duration(f * float64(time.Second))
+				if d, ok = durationOf(f, time.Second); !ok {
+					return nil, fmt.Errorf("MINUTE: %v seconds is out of range", f)
+				}
 			} else {
 				return nil, fmt.Errorf("unsupported type for MINUTE: %T", val)
 			}
@@ -291,7 +297,9 @@ func RegisterStandardFunctions() {
 			}
 		default:
 			if f, ok := toFloat64(val); ok {
-				d = time.Duration(f * float64(time.Second))
+				if d, ok = durationOf(f, time.Second); !ok {
+					return nil, fmt.Errorf("SECOND: %v seconds is out of range", f)
+				}
 			} else {
 				return nil, fmt.Errorf("unsupported type for SECOND: %T", val)
 			}

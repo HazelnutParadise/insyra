@@ -34,7 +34,11 @@ func registerMathFunctions() {
 			if !ok {
 				return nil, fmt.Errorf("ROUND: digits arg must be a number, got %T", args[1])
 			}
-			digits = int(d)
+			n, err := clampedInt(d, "ROUND: digits")
+			if err != nil {
+				return nil, err
+			}
+			digits = n
 		}
 		shift := math.Pow(10, float64(digits))
 		return math.Round(f*shift) / shift, nil

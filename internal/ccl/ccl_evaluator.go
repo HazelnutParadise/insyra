@@ -566,6 +566,59 @@ func literalNode(v any) cclNode {
 	return &cclFoldedValueNode{value: v}
 }
 
+// clampedInt turns a character count, character position or digit count
+// into an int, clamping it to the int32 range first. A bare int(f) past the
+// int range differs by platform: amd64 gives the most negative int and arm64
+// the most positive, so MID('abc', 2, 10^300) was "" on amd64 and "bc" on
+// arm64. Clamped, a count past the end of a string means "to the end"
+// everywhere. NaN is no count at all.
+func clampedInt(f float64, what string) (int, error) {
+	if math.IsNaN(f) {
+		return 0, fmt.Errorf("%s must be a number, got NaN", what)
+	}
+	return int(max(min(f, math.MaxInt32), math.MinInt32)), nil
+}
+
+// durationOf converts f units into a Duration. time.Duration(f) is undefined
+// past ±2^63 nanoseconds (about 292 years) and for NaN, and the platforms
+// disagree there, so those report false instead.
+func durationOf(f float64, unit time.Duration) (time.Duration, bool) {
+	d := f * float64(unit)
+	if math.IsNaN(d) || d >= 1<<63 || d < -(1<<63) {
+		return 0, false
+	}
+	return time.Duration(d), true
+}
+
+// dayShift converts a number of days added to or subtracted from a date into
+// the Duration the date moves by. It keeps the arithmetic date ± number has
+// always used, time.Duration(days*24) * time.Hour, so a fraction of an hour is
+// dropped, and refuses only what that arithmetic cannot hold: NaN, the
+// infinities, and a shift past about 292 years, where the conversion is
+// undefined or the product wraps around.
+func dayShift(days float64) (time.Duration, error) {
+	hours := days * 24.0
+	if math.IsNaN(hours) || hours >= 1<<63 || hours < -(1<<63) {
+		return 0, fmt.Errorf("a shift of %v days is out of range", days)
+	}
+	h := time.Duration(hours)
+	if h > math.MaxInt64/time.Hour || h < math.MinInt64/time.Hour {
+		return 0, fmt.Errorf("a shift of %v days is out of range", days)
+	}
+	return h * time.Hour, nil
+}
+
+// rangeBound turns a row range bound into an int the way the range operator
+// always has, dropping a fraction. NaN, the infinities and values past the
+// int32 range are refused: int(f) is undefined past the int range, and amd64
+// and arm64 disagree there.
+func rangeBound(f float64, what string) (int, error) {
+	if math.IsNaN(f) || f > math.MaxInt32 || f < math.MinInt32 {
+		return 0, fmt.Errorf("row range %s %v is out of range", what, f)
+	}
+	return int(f), nil
+}
+
 func applyOperator(op string, left, right any) (any, error) {
 	// Try to interpret date-like operands first (time.Time or parseable date strings)
 	parseTimeLike := func(v any) (time.Time, bool) {
@@ -620,9 +673,17 @@ func applyOperator(op string, left, right any) (any, error) {
 		if rf, ok := toFloat64(right); ok {
 			switch op {
 			case "+":
-				return lt.Add(time.Duration(rf*24.0) * time.Hour), nil
+				d, err := dayShift(rf)
+				if err != nil {
+					return nil, err
+				}
+				return lt.Add(d), nil
 			case "-":
-				return lt.Add(-time.Duration(rf*24.0) * time.Hour), nil
+				d, err := dayShift(rf)
+				if err != nil {
+					return nil, err
+				}
+				return lt.Add(-d), nil
 			}
 		}
 	}
@@ -632,7 +693,11 @@ func applyOperator(op string, left, right any) (any, error) {
 		if lf, ok := toFloat64(left); ok {
 			switch op {
 			case "+":
-				return rt.Add(time.Duration(lf*24.0) * time.Hour), nil
+				d, err := dayShift(lf)
+				if err != nil {
+					return nil, err
+				}
+				return rt.Add(d), nil
 			case "-":
 				// number - date doesn't make sense
 				return nil, fmt.Errorf("invalid operands for -: %v, %v", left, right)
@@ -788,8 +853,14 @@ func applyOperator(op string, left, right any) (any, error) {
 		lf, lok := toFloat64(left)
 		rf, rok := toFloat64(right)
 		if lok && rok {
-			start := int(lf)
-			end := int(rf)
+			start, err := rangeBound(lf, "start")
+			if err != nil {
+				return nil, err
+			}
+			end, err := rangeBound(rf, "end")
+			if err != nil {
+				return nil, err
+			}
 			// 支援負數索引
 			// 但這裡我們不知道總行數，所以無法在這裡處理負數索引轉換
 			// 負數索引轉換應該在 evaluateRowAccess 中處理
@@ -1141,8 +1212,14 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 	rf, rok := toFloat64(rVal)
 
 	if lok && rok {
-		lRowIdx := int(lf)
-		rRowIdx := int(rf)
+		lRowIdx, err := rangeBound(lf, "start")
+		if err != nil {
+			return nil, err
+		}
+		rRowIdx, err := rangeBound(rf, "end")
+		if err != nil {
+			return nil, err
+		}
 		rowCount := ctx.GetRowCount()
 		if lRowIdx < 0 || lRowIdx >= rowCount {
 			return nil, fmt.Errorf("row index %d out of range (total rows: %d)", lRowIdx, rowCount)
@@ -1157,7 +1234,7 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 	// Helper to resolve row index from value (int/float or string)
 	resolveRowIdx := func(val any) (int, error) {
 		if f, ok := toFloat64(val); ok {
-			return int(f), nil
+			return rangeBound(f, "bound")
 		}
 		if s, ok := val.(string); ok {
 			return ctx.GetRowIndexByName(s)
