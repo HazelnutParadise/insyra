@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: ["main", "dev"]
 
+permissions:
+  contents: read
+
 jobs:
   clustering-parity:
     name: Slow clustering parity gate

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -32,7 +33,9 @@ func TestExcelToCsvDirPerm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm&0o002 != 0 {
+	// Windows has no POSIX permission bits: Go reports a directory there as
+	// 0777 whatever mode it was created with, so the check means nothing.
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm&0o002 != 0 {
 		t.Fatalf("output dir is world-writable: %o", perm)
 	}
 }

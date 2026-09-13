@@ -16,6 +16,9 @@ on:
   pull_request:
     branches: ["main", "dev"]
 
+permissions:
+  contents: read
+
 jobs:
   reference-verification:
     name: Cross-language and round-trip verification

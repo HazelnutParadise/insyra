@@ -20,8 +20,8 @@ func init() {}
 // applyHideWindow moved to internal utils; use utils.ApplyHideWindow(cmd) instead.
 
 var isPyEnvInit = false
-var pyInitMu sync.Mutex        // serializes pyEnvInit against concurrent RunCode calls
-var serverStartOnce sync.Once  // starts the IPC server exactly once
+var pyInitMu sync.Mutex       // serializes pyEnvInit against concurrent RunCode calls
+var serverStartOnce sync.Once // starts the IPC server exactly once
 
 // 主要邏輯
 // 使用uv管理Python環境

@@ -135,7 +135,7 @@ go build -o insyra ./cmd/insyra/
 # Run the CLI REPL
 go run ./cmd/insyra/
 
-# Lint (CI uses golangci-lint)
+# Lint (CI uses golangci-lint; it also fails on a file gofmt would change)
 golangci-lint run
 
 # Vulnerability check (CI uses govulncheck)
