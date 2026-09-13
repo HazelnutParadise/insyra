@@ -4,11 +4,17 @@ package insyra
 
 import "sync/atomic"
 
+// errHandlingFunc is the signature of the hook installed by
+// SetDefaultErrHandlingFunc.
+type errHandlingFunc = func(errType LogLevel, packageName string, funcName string, errMsg string)
+
 type configStruct struct {
-	logLevel               LogLevel
-	coloredOutput          bool
-	dontPanic              bool
-	defaultErrHandlingFunc func(errType LogLevel, packageName string, funcName string, errMsg string)
+	// Every field below is read on logging hot paths and written by setters
+	// that a program may call at any time, so all of them are atomic.
+	logLevel               atomic.Int32
+	coloredOutput          atomic.Bool
+	dontPanic              atomic.Bool
+	defaultErrHandlingFunc atomic.Pointer[errHandlingFunc]
 	// threadSafe is read on every AtomicDo (hot path) and written by
 	// Dangerously_TurnOffThreadSafety / SetDefaultConfig; use an atomic to avoid
 	// a data race between those.
@@ -34,35 +40,48 @@ const (
 )
 
 func (c *configStruct) SetLogLevel(level LogLevel) {
-	c.logLevel = level
+	c.logLevel.Store(int32(level))
 }
 
 func (c *configStruct) GetLogLevel() LogLevel {
-	return LogLevel(c.logLevel)
+	return LogLevel(c.logLevel.Load())
 }
 
 func (c *configStruct) SetUseColoredOutput(colored bool) {
-	c.coloredOutput = colored
+	c.coloredOutput.Store(colored)
 }
 
 func (c *configStruct) GetDoesUseColoredOutput() bool {
-	return c.coloredOutput
+	return c.coloredOutput.Load()
 }
 
 func (c *configStruct) SetDontPanic(dontPanic bool) {
-	c.dontPanic = dontPanic
+	c.dontPanic.Store(dontPanic)
 }
 
 func (c *configStruct) GetDontPanicStatus() bool {
-	return c.dontPanic
+	return c.dontPanic.Load()
 }
 
+// SetDefaultErrHandlingFunc installs a hook that receives every warning and
+// fatal message. The hook runs on one dedicated goroutine, in the order the
+// messages were produced, behind a bounded queue: if the queue is full the
+// message is still kept in the error buffer but the hook call is dropped.
+// Pass nil to remove the hook.
 func (c *configStruct) SetDefaultErrHandlingFunc(fn func(errType LogLevel, packageName string, funcName string, errMsg string)) {
-	c.defaultErrHandlingFunc = fn
+	if fn == nil {
+		c.defaultErrHandlingFunc.Store(nil)
+		return
+	}
+	c.defaultErrHandlingFunc.Store(&fn)
 }
 
 func (c *configStruct) GetDefaultErrHandlingFunc() func(errType LogLevel, packageName string, funcName string, errMsg string) {
-	return c.defaultErrHandlingFunc
+	p := c.defaultErrHandlingFunc.Load()
+	if p == nil {
+		return nil
+	}
+	return *p
 }
 
 // SetAcceleration controls whether device acceleration may be used.
@@ -94,12 +113,14 @@ func (c *configStruct) Dangerously_TurnOffThreadSafety() {
 
 // ======================== Configs ========================
 
-// DefaultConfig returns a Config with default values.
+// SetDefaultConfig resets every Config field to its default value: log level
+// Info, coloured output on, dontPanic off, no error hook, thread safety on,
+// acceleration on.
 func SetDefaultConfig() {
-	Config.logLevel = LogLevelInfo
-	Config.coloredOutput = true
-	Config.dontPanic = false
-	Config.defaultErrHandlingFunc = nil
+	Config.logLevel.Store(int32(LogLevelInfo))
+	Config.coloredOutput.Store(true)
+	Config.dontPanic.Store(false)
+	Config.defaultErrHandlingFunc.Store(nil)
 	Config.threadSafe.Store(true)
 	Config.acceleration.Store(true)
 }

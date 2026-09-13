@@ -17,8 +17,8 @@ import (
 // at relative scale. p-values go through gonum's distuv.F which agrees with
 // R's pf() to a few ULPs.
 const (
-	tolANOVA   = 1e-10 // statistic / SS (relative)
-	tolANOVAP  = 1e-10 // p-value (relative)
+	tolANOVA    = 1e-10 // statistic / SS (relative)
+	tolANOVAP   = 1e-10 // p-value (relative)
 	tolANOVAEta = 1e-12
 )
 
@@ -261,10 +261,10 @@ func TestOneWayANOVA_Errors(t *testing.T) {
 // ============================================================
 
 type twoWayCase struct {
-	name           string
+	name             string
 	aLevels, bLevels int
-	cells          [][]float64
-	prefix         string
+	cells            [][]float64
+	prefix           string
 }
 
 func TestTwoWayANOVA_R(t *testing.T) {

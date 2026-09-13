@@ -19,8 +19,8 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, erro
 	var var1, var2 float64
 	var len1, len2 int
 
-	d1 := data1.(*insyra.DataList)
-	d2 := data2.(*insyra.DataList)
+	d1 := asDataList(data1)
+	d2 := asDataList(data2)
 	insyra.AtomicDoAll(func() {
 		var1 = d1.Var()
 		var2 = d2.Var()

@@ -1476,7 +1476,7 @@ dt.AppendRowsByColIndex(map[string]any{
 func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable
 ```
 
-**Description:** Appends rows using column names.
+**Description:** Appends rows using column names. Keys that name an existing column append to it; keys that do not are added as new columns in sorted key order, so the same input always produces the same column layout.
 
 **Parameters:**
 

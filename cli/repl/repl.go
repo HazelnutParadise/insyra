@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/cli/commands"
 	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/HazelnutParadise/insyra/cli/style"
@@ -23,6 +24,11 @@ func Start(ctx *commands.ExecContext) error {
 	defer func() {
 		ctx.InREPL = false
 	}()
+	// The library itself prints nothing on import; the interactive REPL is the
+	// one place a banner belongs.
+	if ctx.Output != nil {
+		fmt.Fprintf(ctx.Output, "Welcome to Insyra %s (v%s)!\nOfficial website: https://insyra.hazelnut-paradise.com\n\n", insyra.VersionName, insyra.Version)
+	}
 	if ctx.EnvName == "" {
 		ctx.EnvName = "default"
 	}

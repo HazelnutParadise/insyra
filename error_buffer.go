@@ -2,7 +2,9 @@ package insyra
 
 import (
 	"fmt"
+	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/core"
@@ -70,12 +72,46 @@ func pushError(errType LogLevel, packageName, fnName, errMes string) {
 		message:     errMes,
 		timestamp:   time.Now(),
 	}
-	if errHandlingFunc := Config.GetDefaultErrHandlingFunc(); errHandlingFunc != nil {
-		go errHandlingFunc(err.errType, err.packageName, err.fnName, err.message)
-	}
 	errorMutex.Lock()
 	errRing.Push(err)
 	errorMutex.Unlock()
+	if errHandlingFunc := Config.GetDefaultErrHandlingFunc(); errHandlingFunc != nil {
+		dispatchToHook(hookCall{fn: errHandlingFunc, err: err})
+	}
+}
+
+// The error hook runs on one goroutine behind a bounded queue: one goroutine
+// per error (the previous design) grew without limit under a slow hook, and
+// delivered messages out of order.
+type hookCall struct {
+	fn  errHandlingFunc
+	err errorStruct
+}
+
+const hookQueueSize = 1024
+
+var (
+	hookQueue     chan hookCall
+	hookOnce      sync.Once
+	hookDropNoted atomic.Bool
+)
+
+func dispatchToHook(call hookCall) {
+	hookOnce.Do(func() {
+		hookQueue = make(chan hookCall, hookQueueSize)
+		go func() {
+			for c := range hookQueue {
+				c.fn(c.err.errType, c.err.packageName, c.err.fnName, c.err.message)
+			}
+		}()
+	})
+	select {
+	case hookQueue <- call:
+	default:
+		if hookDropNoted.CompareAndSwap(false, true) {
+			log.Printf("[insyra - Warning] error hook queue full (%d); further hook calls are dropped until it drains (errors are still recorded)", hookQueueSize)
+		}
+	}
 }
 
 // PopError retrieves and removes the first error from the buffer.

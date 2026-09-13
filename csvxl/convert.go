@@ -51,12 +51,12 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 		if idx == 0 {
 			err := f.SetSheetName(f.GetSheetName(0), sheetName)
 			if err != nil {
-				return fmt.Errorf("failed to set sheet name %s: %v", sheetName, err)
+				return fmt.Errorf("failed to set sheet name %s: %w", sheetName, err)
 			}
 		} else {
 			_, err := f.NewSheet(sheetName)
 			if err != nil {
-				return fmt.Errorf("failed to create new sheet %s: %v", sheetName, err)
+				return fmt.Errorf("failed to create new sheet %s: %w", sheetName, err)
 			}
 		}
 
@@ -68,7 +68,7 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 	}
 
 	if err := f.SaveAs(output); err != nil {
-		return fmt.Errorf("failed to save Excel file %s: %v", output, err)
+		return fmt.Errorf("failed to save Excel file %s: %w", output, err)
 	}
 
 	if failedFiles > 0 {
@@ -93,7 +93,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 
 	f, err := excelize.OpenFile(existingFile)
 	if err != nil {
-		return fmt.Errorf("failed to open Excel file %s: %v", existingFile, err)
+		return fmt.Errorf("failed to open Excel file %s: %w", existingFile, err)
 	}
 	defer func() { _ = f.Close() }()
 
@@ -108,7 +108,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 		sheetName := getSheetName(csvFile, sheetNames, idx)
 
 		if err := replaceSheet(f, sheetName); err != nil {
-			return fmt.Errorf("failed to create new sheet %s: %v", sheetName, err)
+			return fmt.Errorf("failed to create new sheet %s: %w", sheetName, err)
 		}
 
 		err = addCsvSheet(f, sheetName, csvFile, encoding)
@@ -119,7 +119,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 	}
 
 	if err := f.SaveAs(existingFile); err != nil {
-		return fmt.Errorf("failed to save Excel file %s: %v", existingFile, err)
+		return fmt.Errorf("failed to save Excel file %s: %w", existingFile, err)
 	}
 
 	if failedFiles > 0 {
@@ -135,16 +135,16 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error {
 	f, err := excelize.OpenFile(excelFile)
 	if err != nil {
-		return fmt.Errorf("failed to open Excel file %s: %v", excelFile, err)
+		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
 	}
 	defer func() { _ = f.Close() }()
 
 	// Check if output directory exists, if not create it
 	// todo: 移到後面
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
-		err := os.MkdirAll(outputDir, os.ModePerm)
+		err := os.MkdirAll(outputDir, 0o755)
 		if err != nil {
-			return fmt.Errorf("failed to create directory %s: %v", outputDir, err)
+			return fmt.Errorf("failed to create directory %s: %w", outputDir, err)
 		}
 	}
 
@@ -176,7 +176,7 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 		outputCsv := filepath.Join(outputDir, csvName)
 		err := saveSheetAsCsv(f, sheet, outputCsv)
 		if err != nil {
-			return fmt.Errorf("failed to save sheet %s as CSV: %v", sheet, err)
+			return fmt.Errorf("failed to save sheet %s as CSV: %w", sheet, err)
 		}
 	}
 
@@ -223,7 +223,7 @@ func replaceSheet(f *excelize.File, sheetName string) error {
 func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) error {
 	file, err := os.Create(outputCsvName)
 	if err != nil {
-		return fmt.Errorf("failed to create CSV file %s: %v", outputCsvName, err)
+		return fmt.Errorf("failed to create CSV file %s: %w", outputCsvName, err)
 	}
 	defer func() { _ = file.Close() }()
 
@@ -232,19 +232,19 @@ func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) er
 
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
-		return fmt.Errorf("failed to read rows from sheet %s: %v", sheetName, err)
+		return fmt.Errorf("failed to read rows from sheet %s: %w", sheetName, err)
 	}
 
 	for rowIdx, row := range rows {
 		// Check if the row is visible (not filtered out)
 		visible, err := f.GetRowVisible(sheetName, rowIdx+1) // rowIdx is 0-based, GetRowVisible is 1-based
 		if err != nil {
-			return fmt.Errorf("failed to check visibility of row %d in sheet %s: %v", rowIdx+1, sheetName, err)
+			return fmt.Errorf("failed to check visibility of row %d in sheet %s: %w", rowIdx+1, sheetName, err)
 		}
 		if visible {
 			err := writer.Write(row)
 			if err != nil {
-				return fmt.Errorf("failed to write row to CSV file %s: %v", outputCsvName, err)
+				return fmt.Errorf("failed to write row to CSV file %s: %w", outputCsvName, err)
 			}
 		}
 	}
@@ -256,7 +256,7 @@ func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) er
 func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) error {
 	file, err := os.Open(csvFile)
 	if err != nil {
-		return fmt.Errorf("failed to open CSV file %s: %v", csvFile, err)
+		return fmt.Errorf("failed to open CSV file %s: %w", csvFile, err)
 	}
 	defer func() { _ = file.Close() }()
 
@@ -267,7 +267,7 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 		detectedEncoding, err := insyra.DetectEncoding(csvFile)
 		if err != nil {
 			// Propagate the detection error instead of silently falling back
-			return fmt.Errorf("failed to auto-detect encoding for %s: %v", csvFile, err)
+			return fmt.Errorf("failed to auto-detect encoding for %s: %w", csvFile, err)
 		}
 		encoding = strings.ToLower(detectedEncoding)
 		insyra.LogInfo("csvxl", "addCsvSheet", "Auto-detected encoding %s for file %s", encoding, csvFile)
@@ -275,7 +275,7 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 
 	// Ensure we start reading from the beginning of the file
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek file %s: %v", csvFile, err)
+		return fmt.Errorf("failed to seek file %s: %w", csvFile, err)
 	}
 
 	var reader io.Reader
@@ -293,7 +293,7 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 	csvReader := csv.NewReader(reader)
 	records, err = csvReader.ReadAll()
 	if err != nil {
-		return fmt.Errorf("failed to read CSV file %s: %v", csvFile, err)
+		return fmt.Errorf("failed to read CSV file %s: %w", csvFile, err)
 	}
 
 	// Trim UTF-8 BOM if present
@@ -306,7 +306,7 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 			cellAddr, _ := excelize.CoordinatesToCellName(colIdx+1, rowIdx+1)
 			err := f.SetCellValue(sheetName, cellAddr, cell)
 			if err != nil {
-				return fmt.Errorf("failed to set cell value %s: %v", cellAddr, err)
+				return fmt.Errorf("failed to set cell value %s: %w", cellAddr, err)
 			}
 		}
 	}

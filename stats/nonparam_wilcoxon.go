@@ -86,8 +86,8 @@ func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, co
 
 	var d1Slice, d2Slice []any
 	var inputErr error
-	dl1 := data1.(*insyra.DataList)
-	dl2 := data2.(*insyra.DataList)
+	dl1 := asDataList(data1)
+	dl2 := asDataList(data2)
 	insyra.AtomicDoAll(func() {
 		if dl1.Len() != dl2.Len() {
 			inputErr = errors.New("paired samples must have the same length")

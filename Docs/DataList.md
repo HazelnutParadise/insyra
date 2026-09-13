@@ -2150,7 +2150,7 @@ dl.ShowTypesRange(2, nil) // Show types from index 2 to end
 func (dl *DataList) IsEqualTo(other *DataList) bool
 ```
 
-**Description:** Checks if the data content is equal to another DataList.
+**Description:** Checks if the data content is equal to another DataList. Cells Go cannot compare with `==` (such as a struct holding a slice) are unequal rather than a panic.
 
 **Parameters:**
 

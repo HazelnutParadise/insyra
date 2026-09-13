@@ -18,10 +18,14 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 修正 `DataList.ReplaceLast` 在 list 以 `NaN` 結尾時，改掉最後一個 `NaN` 而不是最後一個等於 `oldValue` 的格子（`[5, NaN].ReplaceLast(5, 0)` 得到 `[5, 0]`）。
 - 修正 `ReadJSON_File` 把整數字面值讀成 `float64`、而 `ReadJSON` 讀成 `int64` 的不一致；兩者現在走同一條解碼路徑，從檔案讀大整數不失真，內容為單一物件的檔案載入為一列。
 - 修正 API 審查找到的多個 `DataTable` 行為：`GetElementByNumberIndex`、`SetRowToColNames`、`SetColToRowNames` 遇到越界索引不再 panic（改設 `Err()`），`GetElementByNumberIndex` 也接受負的欄索引；`Filter*` 沒有符合時回傳可安全呼叫方法的空表；`FilterRows`／`FilterCols` 對參差不齊的表不再 panic；`DropRowsByIndex` 以原始列數換算負索引並忽略重複（過去 `(-1, 0)` 會留下第 0 列、`(1, 1)` 會刪掉兩列）；`Transpose` 保留所有列名（超過原欄數的列名過去會遺失）；`AppendRowsByColIndex` 補欄到指定索引而不是丟掉值；`DropColsContainNumber`／`DropRowsContainNumber` 認得所有數值型別（CSV 推斷出的 `int64` 欄過去不會被刪）；`Mean` 以數值格數作分母。
+- `Config.SetLogLevel`、`SetUseColoredOutput`、`SetDontPanic`、`SetDefaultErrHandlingFunc` 改為原子操作，另一個 goroutine 正在寫 log 時呼叫它們不再是 data race。`SetDefaultErrHandlingFunc` 設定的 hook 改由單一 goroutine 依序處理、佇列有上限，不再每個 warning 開一個 goroutine；已有 1,024 個呼叫在排隊時，後續的 hook 呼叫會被丟棄，錯誤本身仍會記錄。import 套件不再印出「Welcome to Insyra」橫幅，改由 CLI REPL 啟動時印出。
+- `DetectEncoding` 不再因多位元組字元恰好被 8 KB 取樣邊界切開而誤判 UTF-8 檔案。
+- `DataList.IsEqualTo` 與 `IsTheSameAs` 遇到 Go 無法用 `==` 比較的格子（例如含 slice 的 struct）不再 panic，這類格子視為不相等。`ClearNaNs`、`ClearNils`、`ClearNilsAndNaNs`、`ClearNumbers`、`DropAll`、`ClearStrings` 改為單趟過濾，結果不變，不再是平方級原地刪除或每次呼叫開 goroutine；`Update` 在 `Err()` 記的是自己而不是 `ReplaceAtIndex`。`DataTable.FindColsIfContains`／`FindColsIfContainsAll` 不再在每個不含該值的欄上留下警告；`Count` 與 `Clone` 移除 goroutine 分派。`AppendRowsByColName`（連帶 `ReadJSON`／`ReadJSON_File`）新增欄位時依欄名排序，同一份 JSON 不再每次讀出不同的欄序。
 
 ### CLI
 
 - 會解析到環境目錄之外的環境名稱現在會被拒絕：空白或絕對路徑的名稱，以及經由 `..` 跳出目錄的名稱（`../x`、`a/../../x`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。其他名稱照常可用，包含含空格或非 ASCII 字元的名稱。
+- 命令登錄表加上鎖，多個 goroutine（嵌入端）同時註冊命令不再是 data race。
 
 ### `datafetch`
 
@@ -30,19 +34,23 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `stats`
 
 - `KMeans` 的初始中心改為相異列，與 R 一致。資料含重複列時，單次啟動過去會抽到同一列兩次而回報 "empty cluster"（實測 50 個 seed 中有 44 個失敗）。現在抽到重複才從相異列重抽；本來就相異的抽樣完全不動，既有 seed 的結果逐位不變。
+- 接受 `insyra.IDataList` 的函式對 `nil` 或非 `*insyra.DataList` 的實作不再 panic；值會被轉換，`nil` 以一般錯誤回報。
 
 ### `csvxl`
 
 - 修正 `AppendCsvToExcel` 遇到同名工作表時舊儲存格殘留的問題：`excelize.NewSheet` 對既有名稱只回傳原工作表，所以只有新 CSV 覆蓋到的儲存格被改寫，其餘保留。現在會先刪除再重建，工作簿只有那一張工作表時也能完成。
 - 修正 `AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv` 開啟的工作簿從未關閉。
+- 錯誤改用 `%w` 包裝底層原因（`errors.Is(err, os.ErrNotExist)` 可用），輸出目錄改以 0755 建立而不是 0777。
 
 ### `parquet`
 
 - 修正 `ReadColumnOptions.MaxValues` 完全沒有作用。`ReadColumn` 現在先從檔案 metadata 加總所選 row group 的列數，超過上限時在讀取任何資料前就拒絕，這才是該欄位文件寫的行為。
+- `Write` 關閉 Parquet writer 失敗時改為回傳錯誤，而不是只寫 log。檔尾在關閉時才寫入，過去關閉失敗會留下無法讀取的檔案卻回傳 `nil`。套件其他地方關閉時的錯誤改經 Insyra 的 logger 而非標準 `log` 套件，`Config.SetLogLevel` 對它們生效。
 
 ### `mkt`
 
 - 修正 `RFM` 遇到無法讀成數值的金額格子時讓整個程序崩潰的問題，現在跳過該列並以警告指出列號。數值字串仍照常讀成數字。`RFM` 與 `CustomerActivityIndex` 的輸出列依客戶 ID 排序，過去依 Go map 順序輸出、每次執行都不同。
+- `RFM` 與 `CustomerActivityIndex` 套用預設 `DateFormat`／`TimeScale` 的提示改為 Debug 等級而非 Info。
 
 ### `lp`
 

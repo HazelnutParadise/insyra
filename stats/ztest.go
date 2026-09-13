@@ -86,8 +86,8 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alter
 	var n1, n2 int
 	var mean1, mean2 float64
 	var err error
-	dl1 := data1.(*insyra.DataList)
-	dl2 := data2.(*insyra.DataList)
+	dl1 := asDataList(data1)
+	dl2 := asDataList(data2)
 	insyra.AtomicDoAll(func() {
 		n1 = dl1.Len()
 		n2 = dl2.Len()

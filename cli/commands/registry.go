@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/spf13/cobra"
@@ -44,7 +45,12 @@ type CommandHandler struct {
 	Run                func(ctx *ExecContext, args []string) error
 }
 
+// Registry holds every registered command by name. Access it through
+// Register, Dispatch, and BuildCobraCommands, which take registryMu; reading
+// the map directly is not safe while another goroutine registers.
 var Registry = map[string]*CommandHandler{}
+
+var registryMu sync.RWMutex
 
 func Register(handler *CommandHandler) error {
 	if handler == nil {
@@ -56,6 +62,8 @@ func Register(handler *CommandHandler) error {
 	if handler.Run == nil {
 		return fmt.Errorf("handler run function is required")
 	}
+	registryMu.Lock()
+	defer registryMu.Unlock()
 	if _, exists := Registry[handler.Name]; exists {
 		return fmt.Errorf("command already registered: %s", handler.Name)
 	}
@@ -64,7 +72,9 @@ func Register(handler *CommandHandler) error {
 }
 
 func Dispatch(ctx *ExecContext, name string, args []string) error {
+	registryMu.RLock()
 	handler, ok := Registry[name]
+	registryMu.RUnlock()
 	if !ok {
 		return fmt.Errorf("unknown command: %s", name)
 	}
@@ -84,15 +94,19 @@ func Dispatch(ctx *ExecContext, name string, args []string) error {
 }
 
 func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
+	registryMu.RLock()
 	keys := make([]string, 0, len(Registry))
-	for name := range Registry {
+	handlers := make(map[string]*CommandHandler, len(Registry))
+	for name, h := range Registry {
 		keys = append(keys, name)
+		handlers[name] = h
 	}
+	registryMu.RUnlock()
 	sort.Strings(keys)
 
 	commands := make([]*cobra.Command, 0, len(keys))
 	for _, name := range keys {
-		handler := Registry[name]
+		handler := handlers[name]
 		localHandler := handler
 
 		use := localHandler.Usage

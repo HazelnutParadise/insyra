@@ -18,7 +18,7 @@ import (
 const defaultBatchSize = 500
 
 type ToSQLOptions struct {
-	IfExists    SQLActionIfTableExists // "fail", "replace", "append"
+	IfExists    SQLActionIfTableExists // SQLActionIfTableExistsFail (default), Replace, or Append
 	RowNames    bool
 	ColumnTypes map[string]string // 自訂型別
 

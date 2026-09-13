@@ -9,11 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra/internal/core"
 	"github.com/HazelnutParadise/insyra/internal/utils"
-	"github.com/HazelnutParadise/insyra/parallel"
 )
 
 // DataTable is the core data structure of Insyra for handling structured data.
@@ -221,7 +219,15 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable 
 		for _, rowData := range rowsData {
 			maxLength := dt.getMaxColLength()
 
-			for colName, value := range rowData {
+			// Iterate keys in sorted order so new columns are added in a
+			// deterministic order; Go map iteration is randomized.
+			colNames := make([]string, 0, len(rowData))
+			for colName := range rowData {
+				colNames = append(colNames, colName)
+			}
+			sort.Strings(colNames)
+			for _, colName := range colNames {
+				value := rowData[colName]
 				found := false
 				for i := 0; i < len(dt.columns); i++ {
 					if dt.columns[i].name == colName {
@@ -669,7 +675,7 @@ func (dt *DataTable) FindColsIfContains(value any) []string {
 	var result []string
 	dt.AtomicDo(func(dt *DataTable) {
 		for i := range dt.columns {
-			if dt.columns[i].FindFirst(value) != nil {
+			if _, found := dt.columns[i].findFirstIndex(value); found {
 				if colName, ok := utils.CalcColIndex(i); ok {
 					result = append(result, colName)
 				}
@@ -687,7 +693,7 @@ func (dt *DataTable) FindColsIfContainsAll(values ...any) []string {
 			foundAll := true
 
 			for _, value := range values {
-				if dt.columns[i].FindFirst(value) == nil {
+				if _, found := dt.columns[i].findFirstIndex(value); !found {
 					foundAll = false
 					break
 				}
@@ -1289,12 +1295,11 @@ func (dt *DataTable) ToMap(useNamesAsKeys ...bool) map[string][]any {
 func (dt *DataTable) Count(value any) int {
 	var count float64
 	dt.AtomicDo(func(dt *DataTable) {
-		result := asyncutil.ParallelForEach(dt.columns, func(i int, column any) int {
-			return dt.columns[i].Count(value)
-		})
-		count = NewDataList(result).Sum()
+		for _, column := range dt.columns {
+			count += float64(column.Count(value))
+		}
 	})
-	return conv.ParseInt(count)
+	return int(count)
 }
 
 // Counter returns the number of occurrences of the given value in the DataTable.
@@ -1417,13 +1422,10 @@ func (dt *DataTable) Clone() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		clonedColumns := make([]*DataList, len(dt.columns))
 		var clonedRowNames *core.BiIndex
-		parallel.GroupUp(func() {
-			for i, col := range dt.columns {
-				clonedColumns[i] = col.Clone()
-			}
-		}, func() {
-			clonedRowNames = dt.rowNames.Clone()
-		}).Run().AwaitResult()
+		for i, col := range dt.columns {
+			clonedColumns[i] = col.Clone()
+		}
+		clonedRowNames = dt.rowNames.Clone()
 
 		newDT = &DataTable{
 			columns:           clonedColumns,
@@ -1605,9 +1607,9 @@ func safeColName(dt *DataTable, name string) string {
 	return name
 }
 
-// containsSubstring 是一個輔助函數，用來檢查一個字符串是否包含子字符串
+// containsSubstring reports whether value contains substring.
 func containsSubstring(value string, substring string) bool {
-	return len(value) >= len(substring) && (value == substring || len(value) > len(substring) && (value[:len(substring)] == substring || containsSubstring(value[1:], substring)))
+	return strings.Contains(value, substring)
 }
 
 func (dt *DataTable) updateTimestamp() {

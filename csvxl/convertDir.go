@@ -16,7 +16,7 @@ import (
 func EachCsvToOneExcel(dir string, output string, encoding ...string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*.csv"))
 	if err != nil {
-		return fmt.Errorf("failed to list CSV files in %s: %v", dir, err)
+		return fmt.Errorf("failed to list CSV files in %s: %w", dir, err)
 	}
 
 	var csvFiles []string
@@ -32,7 +32,7 @@ func EachCsvToOneExcel(dir string, output string, encoding ...string) error {
 func EachExcelToCsv(dir string, outputDir string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*.xlsx"))
 	if err != nil {
-		return fmt.Errorf("failed to list Excel files in %s: %v", dir, err)
+		return fmt.Errorf("failed to list Excel files in %s: %w", dir, err)
 	}
 
 	for _, excelFile := range files {
@@ -49,15 +49,15 @@ func EachExcelToCsv(dir string, outputDir string) error {
 func excelFileToCsv(excelFile, outputDir string) error {
 	f, err := excelize.OpenFile(excelFile)
 	if err != nil {
-		return fmt.Errorf("failed to open Excel file %s: %v", excelFile, err)
+		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
 	}
 	defer func() { _ = f.Close() }()
 
 	excelFileName := strings.TrimSuffix(filepath.Base(excelFile), ".xlsx")
 
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
-			return fmt.Errorf("failed to create directory %s: %v", outputDir, err)
+		if err := os.MkdirAll(outputDir, 0o755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", outputDir, err)
 		}
 	}
 
@@ -65,7 +65,7 @@ func excelFileToCsv(excelFile, outputDir string) error {
 	for _, sheet := range sheets {
 		outputCsv := filepath.Join(outputDir, excelFileName+"_"+sheet+".csv")
 		if err := saveSheetAsCsv(f, sheet, outputCsv); err != nil {
-			return fmt.Errorf("failed to save sheet %s as CSV: %v", sheet, err)
+			return fmt.Errorf("failed to save sheet %s as CSV: %w", sheet, err)
 		}
 	}
 

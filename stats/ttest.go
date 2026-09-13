@@ -131,8 +131,8 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 	var mean1, mean2 float64
 	var stddev1, stddev2 float64
 	var err error
-	dl1 := data1.(*insyra.DataList)
-	dl2 := data2.(*insyra.DataList)
+	dl1 := asDataList(data1)
+	dl2 := asDataList(data2)
 	insyra.AtomicDoAll(func() {
 		n1 = dl1.Len()
 		n2 = dl2.Len()
@@ -222,8 +222,8 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TT
 	var n int
 	var err error
 	var data1Slice, data2Slice []any
-	dl1 := data1.(*insyra.DataList)
-	dl2 := data2.(*insyra.DataList)
+	dl1 := asDataList(data1)
+	dl2 := asDataList(data2)
 	insyra.AtomicDoAll(func() {
 		n = dl1.Len()
 		if n != dl2.Len() || n <= 1 {

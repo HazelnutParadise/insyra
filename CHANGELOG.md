@@ -18,10 +18,14 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Fixed `DataList.ReplaceLast` replacing the last `NaN` cell instead of the last cell equal to `oldValue` when the list ended in `NaN` (`[5, NaN].ReplaceLast(5, 0)` gave `[5, 0]`).
 - Fixed `ReadJSON_File` loading integer literals as `float64` while `ReadJSON` loaded them as `int64`; both now decode through the same path, so large integers keep full precision from a file and a file holding a single object loads as one row.
 - Fixed several `DataTable` behaviours found by the API review: `GetElementByNumberIndex`, `SetRowToColNames`, and `SetColToRowNames` no longer panic on an out-of-range index (they set `Err()`), and `GetElementByNumberIndex` accepts a negative column index; a `Filter*` call with no match returns an empty table whose methods are safe to call; `FilterRows`/`FilterCols` no longer panic on a ragged table; `DropRowsByIndex` resolves negative indices against the original row count and ignores duplicates (`(-1, 0)` used to keep row 0, `(1, 1)` used to delete two rows); `Transpose` keeps every row name (names beyond the old column count were lost); `AppendRowsByColIndex` grows the table to the addressed column instead of dropping the value; `DropColsContainNumber`/`DropRowsContainNumber` recognise every numeric type (an `int64` column from CSV inference was not dropped); and `Mean` divides by the number of numeric cells.
+- `Config.SetLogLevel`, `SetUseColoredOutput`, `SetDontPanic`, and `SetDefaultErrHandlingFunc` are now atomic, so calling them while another goroutine logs is no longer a data race. The error hook installed by `SetDefaultErrHandlingFunc` runs on one goroutine behind a bounded queue, in order, instead of one goroutine per warning; when 1,024 calls are already waiting, further hook calls are dropped while the errors themselves are still recorded. Importing the package no longer prints the "Welcome to Insyra" banner; the CLI REPL prints it at startup.
+- `DetectEncoding` no longer misjudges a UTF-8 file whose multi-byte character straddles its 8 KB sample boundary.
+- `DataList.IsEqualTo` and `IsTheSameAs` no longer panic on cells Go cannot compare with `==` (such as a struct holding a slice); such cells are unequal. `ClearNaNs`, `ClearNils`, `ClearNilsAndNaNs`, `ClearNumbers`, `DropAll`, and `ClearStrings` filter in one pass, with the same results, instead of quadratic in-place deletion or a goroutine per call; `Update` records itself, not `ReplaceAtIndex`, in `Err()`. `DataTable.FindColsIfContains`/`FindColsIfContainsAll` no longer leave a warning on every column that lacks the value; `Count` and `Clone` drop their goroutine fan-out. `AppendRowsByColName` (and therefore `ReadJSON`/`ReadJSON_File`) adds new columns in sorted key order, so a JSON document no longer loads with a different column order on each run.
 
 ### CLI
 
 - Environment names that would resolve outside the environments directory are now refused: an empty or absolute name, or one that escapes through `..` (`../x`, `a/../../x`). A name was previously joined straight onto the environments directory, so `../x` created or deleted directories outside it. Every other name, including ones with spaces or non-ASCII letters, still works.
+- The command registry is guarded by a lock, so registering commands from several goroutines (embedders) is no longer a data race.
 
 ### `datafetch`
 
@@ -30,19 +34,23 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `stats`
 
 - `KMeans` picks distinct initial centres, as R does. On data with repeated rows a single-start run used to draw the same row twice and fail with "empty cluster" — 44 of 50 seeds in one measured case. A colliding draw is now redrawn from the distinct rows; a draw that was already distinct is untouched, so every existing seeded result is bit-identical.
+- Functions taking `insyra.IDataList` no longer panic on a `nil` argument or on an implementation other than `*insyra.DataList`; the value is converted and a `nil` is reported as an ordinary error.
 
 ### `csvxl`
 
 - Fixed `AppendCsvToExcel` leaving the old sheet's cells in place when a sheet of the same name already existed: `excelize.NewSheet` returns the existing sheet, so only the cells covered by the new CSV were overwritten and the rest survived. The sheet is now deleted and recreated, including when it is the workbook's only sheet.
 - Fixed `AppendCsvToExcel`, `ExcelToCsv`, and `EachExcelToCsv` never closing the workbooks they opened.
+- Errors wrap their cause with `%w` (so `errors.Is(err, os.ErrNotExist)` works) and output directories are created with mode 0755 instead of 0777.
 
 ### `parquet`
 
 - Fixed `ReadColumnOptions.MaxValues` having no effect. `ReadColumn` now sums the row counts of the selected row groups from the file metadata and refuses the read before loading anything when the count exceeds the limit, which is what the field documented.
+- `Write` returns the error from closing the Parquet writer instead of only logging it. The footer is written on close, so a failed close used to leave an unreadable file behind a `nil` error. Close-time errors elsewhere in the package are logged through Insyra's logger instead of the standard `log` package, so `Config.SetLogLevel` applies to them.
 
 ### `mkt`
 
 - Fixed `RFM` crashing the process when an amount cell could not be read as a number; the row is now skipped with a warning naming it. Numeric strings are still read as their number. `RFM` and `CustomerActivityIndex` output rows are sorted by customer ID, where they previously came out in Go map order and differed between runs.
+- The notices for defaulted `DateFormat`/`TimeScale` in `RFM` and `CustomerActivityIndex` are logged at Debug instead of Info.
 
 ### `lp`
 
