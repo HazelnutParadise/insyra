@@ -99,8 +99,9 @@ func (dt *DataTable) cleanup() {
 // AtomicDo on another instance does NOT lock it and can race a concurrent
 // mutation. Accepts *DataList / *DataTable values (or IDataList / IDataTable
 // whose concrete type is one of those). Instances already locked by the current
-// goroutine, and duplicates, are handled automatically. Callers close over their
-// own typed variables inside f.
+// goroutine, and duplicates, are handled automatically. A nil value, or a nil
+// *DataList or *DataTable, has nothing to lock and is skipped. Callers close
+// over their own typed variables inside f.
 //
 //	a, b := ... // two *DataList
 //	insyra.AtomicDoAll(func() {
@@ -114,12 +115,23 @@ func AtomicDoAll(f func(), instances ...any) {
 	actors := make([]*core.AtomicActor, 0, len(instances))
 	hooks := make([]func(), 0, len(instances))
 	for _, inst := range instances {
+		if inst == nil {
+			continue
+		}
 		switch v := inst.(type) {
 		case *DataList:
+			if v == nil {
+				// A nil *DataList has nothing to lock. It used to be
+				// dereferenced here and panic.
+				continue
+			}
 			v.atomicActor.SetGroupOnce(dataListAtomicGroup)
 			actors = append(actors, &v.atomicActor)
 			hooks = append(hooks, func() { runtime.SetFinalizer(v, (*DataList).cleanup) })
 		case *DataTable:
+			if v == nil {
+				continue
+			}
 			v.atomicActor.SetGroupOnce(dataTableAtomicGroup)
 			actors = append(actors, &v.atomicActor)
 			hooks = append(hooks, func() { runtime.SetFinalizer(v, (*DataTable).cleanup) })
