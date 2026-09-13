@@ -98,10 +98,15 @@ func (dt *DataTable) cleanup() {
 // Use this instead of nesting AtomicDo on different instances — a nested
 // AtomicDo on another instance does NOT lock it and can race a concurrent
 // mutation. Accepts *DataList / *DataTable values (or IDataList / IDataTable
-// whose concrete type is one of those). Instances already locked by the current
-// goroutine, and duplicates, are handled automatically. A nil value, or a nil
+// whose concrete type is one of those). An instance the current goroutine
+// already holds (f of its AtomicDo is running) is skipped and the others are
+// still locked; duplicates are handled automatically. A nil value, or a nil
 // *DataList or *DataTable, has nothing to lock and is skipped. Callers close
 // over their own typed variables inside f.
+//
+// Called from inside one instance's AtomicDo, it takes the other locks while
+// that one is held, so two goroutines nesting it in mirror image can deadlock;
+// call it from the outermost level when that can happen.
 //
 //	a, b := ... // two *DataList
 //	insyra.AtomicDoAll(func() {

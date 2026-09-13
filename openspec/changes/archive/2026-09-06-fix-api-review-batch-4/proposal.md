@@ -39,7 +39,6 @@ The second-round repository review (`api-review.md`, 2026-09-06) left 30 `severi
 Dev received:
 - CCL keywords in any case, `@` row copies, durations as seconds, nested sequence functions, bounded arguments with recovered panics, the locked function registry, and name-ordered `NewMapContext` (`ccl-evaluation-safety`, trimmed).
 - `ToCSV` returning its final flush error (`core-atomic-file-output`, trimmed to that requirement).
-- `AtomicDoAll` running inline when nested in `AtomicDo` (`core-multilock-reentry`), with the AGENTS.md and `Docs/DataList.md` text.
 - `csvxl` refusing unsafe sheet names and reading a sheet before creating its CSV (`csvxl-sheet-name-safety`, trimmed).
 - The CLI nil-result checks, NaN-safe state, root flags before raw-arg commands, script-safe `env open` with the nesting limit (`cli-session-robustness`, adapted), and masked `db connect` history at 0600 (`cli-secret-hygiene`).
 - The DataList TODO test assertions that hold on dev, the factor-analysis edge assertions, the scikit-learn workflow pattern, and the `insyra.test` removal (`test-suite-integrity`).
@@ -50,6 +49,7 @@ Adapted on dev:
 - `datalist_test.go` drops the nil-cell `Normalize` and one-value `Standardize` assertions, which describe batch 1's rework.
 
 Stayed on 0.4:
+- `AtomicDoN` running the callback inline when nested in `AtomicDo`: the other instances went unlocked, a data race v0.3.2 did not have. Dev keeps skipping the held actors and locking the rest; `core-multilock-reentry` and its delta spec here were rewritten to say so (backport review).
 - `SUM`/`AVG` and `collectFloats` skipping NaN: changes returned values.
 - An Excel-style reference past the last column becoming an error (`MaxResolvedColIndex`, `checkCCLColRange`): starts returning an error.
 - `ToCSV`/`ToJSON` and `csvxl` CSVs written through a temp file and rename (`write_atomic.go`): changes how files are produced; owner decision.

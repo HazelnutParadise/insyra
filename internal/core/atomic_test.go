@@ -306,28 +306,43 @@ func TestAtomicDoN_EmptyAndAllNil(t *testing.T) {
 	}
 }
 
-// Called from inside an AtomicDo on one of its own actors, AtomicDoN takes the
-// inline trust-zone path instead of locking the rest — locking there would
-// deadlock against a goroutine doing the mirror image.
-func TestAtomicDoN_ReentryRunsInline(t *testing.T) {
+// Called from inside an AtomicDo on one of its own actors, AtomicDoN skips the
+// actor this goroutine already holds and locks the rest, so the other instance
+// is protected inside the callback. It does not take the trust-zone path.
+func TestAtomicDoN_ReentryLocksTheActorsNotHeld(t *testing.T) {
 	hookCalls := withHook(t)
 	a := NewAtomicActor(NewAtomicGroup())
 	b := NewAtomicActor(NewAtomicGroup())
 	ca := &counter{}
 	inner := false
+	bFree := true
 
 	mustFinish(t, "AtomicDoN inside AtomicDo", func() {
 		AtomicDo(a, ca, func(ca *counter) {
-			AtomicDoN([]*AtomicActor{a, b}, func() { inner = true })
+			AtomicDoN([]*AtomicActor{a, b}, func() {
+				inner = true
+				if b.mu.TryLock() {
+					b.mu.Unlock()
+				} else {
+					bFree = false
+				}
+			})
 		})
 	})
 
 	if !inner {
 		t.Error("the inner callback did not run")
 	}
-	if got := hookCalls(); got != 1 {
-		t.Errorf("trust-zone hook fired %d times, want 1", got)
+	if bFree {
+		t.Error("the actor not held by the caller was not locked inside the callback")
 	}
+	if got := hookCalls(); got != 0 {
+		t.Errorf("trust-zone hook fired %d times, want 0", got)
+	}
+	// Every lock is released afterwards.
+	mustFinish(t, "a later AtomicDoN on both actors", func() {
+		AtomicDoN([]*AtomicActor{a, b}, func() {})
+	})
 }
 
 func TestAtomicDoNWithInit_RunsEachHookOnce(t *testing.T) {

@@ -39,7 +39,7 @@ Tests only. No library or CLI behaviour changes, so no changelog entry and no do
 
 ## Backport to dev (0.3.x)
 
-- Dev received all seven test files unchanged; every one passes on dev, and `TestAtomicDoN_ReentryRunsInline` passes because the inline re-entry was backported earlier.
+- Dev received all seven test files; every one passes on dev. `TestAtomicDoN_ReentryRunsInline` became `TestAtomicDoN_ReentryLocksTheActorsNotHeld`, because dev locks the actors a nested `AtomicDoN` does not already hold instead of running inline (backport review).
 - `lp/parse_test.go` pins the nil an unreadable GLPK output file returns, which is still dev's behaviour.
 - Dev received both `AGENTS.md` follow-ups, measured true on dev; the `lp` one says the nil table stays on 0.3.x, since an empty table would change a returned value.
 - Stayed on 0.4: the `api-review.md` and `delivery-status.md` edits (0.4 ledger).

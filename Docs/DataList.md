@@ -2778,7 +2778,7 @@ insyra.AtomicDoAll(func() {
 }, a, b)
 ```
 
-`insyra.AtomicDoAll(f func(), instances ...any)` accepts any mix of `*DataList` / `*DataTable`; duplicates are handled automatically, and a nil instance is skipped instead of panicking. Call it from the outermost level: when the current goroutine already holds one of the instances (it is inside that instance's `AtomicDo`), `f` runs inline **without** locking the others, exactly like nested `AtomicDo`, because acquiring more locks there could deadlock against another goroutine doing the mirror image.
+`insyra.AtomicDoAll(f func(), instances ...any)` accepts any mix of `*DataList` / `*DataTable`; duplicates are handled automatically, and a nil instance is skipped instead of panicking. Instances the current goroutine already holds (it is inside that instance's `AtomicDo`) are skipped and the others are still locked. Two goroutines doing that in mirror image — one inside `a.AtomicDo` asking for `b`, the other inside `b.AtomicDo` asking for `a` — can wait on each other forever, so call it from the outermost level when that can happen.
 
 Guidelines
 

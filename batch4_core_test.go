@@ -2,8 +2,8 @@ package insyra
 
 import (
 	"errors"
+	"sync"
 	"testing"
-	"time"
 )
 
 type failingWriter struct{ n int }
@@ -22,31 +22,29 @@ func TestToCSVReportsWriteFailure(t *testing.T) {
 	}
 }
 
-// IN-1: AtomicDoAll called from inside AtomicDo on one of its instances must
-// not deadlock against another goroutine doing the mirror image.
-func TestAtomicDoAllNestedInAtomicDoDoesNotDeadlock(t *testing.T) {
-	a := NewDataList(1)
-	b := NewDataList(2)
-	done := make(chan struct{}, 2)
+// AtomicDoAll called from inside AtomicDo on one of its instances skips the
+// instance this goroutine already holds and still locks the others. When it
+// ran the callback inline instead, AppendCols inside dt.AtomicDo read col's
+// data unlocked and raced this goroutine's col.Append (reported under -race).
+func TestAtomicDoAllNestedInAtomicDoLocksTheOthers(t *testing.T) {
+	dt := NewDataTable()
+	col := NewDataList(1, 2, 3)
+	var wg sync.WaitGroup
+	wg.Add(2)
 	go func() {
-		a.AtomicDo(func(*DataList) {
-			time.Sleep(20 * time.Millisecond)
-			AtomicDoAll(func() {}, a, b)
-		})
-		done <- struct{}{}
-	}()
-	go func() {
-		b.AtomicDo(func(*DataList) {
-			time.Sleep(20 * time.Millisecond)
-			AtomicDoAll(func() {}, a, b)
-		})
-		done <- struct{}{}
-	}()
-	for i := 0; i < 2; i++ {
-		select {
-		case <-done:
-		case <-time.After(3 * time.Second):
-			t.Fatal("deadlock: nested AtomicDoAll never returned")
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			col.Append(i)
 		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			dt.AtomicDo(func(tbl *DataTable) { tbl.AppendCols(col) })
+		}
+	}()
+	wg.Wait()
+	if got := dt.getMaxColLength(); got < 3 {
+		t.Fatalf("appended columns are shorter than the source list: %d", got)
 	}
 }
