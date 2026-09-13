@@ -122,7 +122,7 @@ be used to skip such a column entirely.
 A `Decimal` keeps the file's own unscaled integer and scale, so nothing is
 rounded, and it sorts by value rather than by the text of its digits. Like a
 `time.Time`, it is not a number to `Mean`, `Sum` and the rest of the numeric
-path; convert it first if you need arithmetic.
+path; convert it first if you need arithmetic. See [Exact Decimals](Decimal.md).
 
 A binary column exports to JSON as base64, which is what a `[]byte` becomes
 in JSON, so nothing is lost. `Write` still writes a column of `[]byte` cells

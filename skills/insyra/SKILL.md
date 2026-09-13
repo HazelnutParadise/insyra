@@ -149,6 +149,7 @@ Use Insyra when you need any of these in Go:
 - DataTable: multiple named DataList columns as a table.
 - isr syntactic sugar: preferred entrypoint for new codebases.
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.
+- Exact decimals (money, rates): use `github.com/TimLai666/go-decimal` (`decimal.Decimal`), never `float64` and never another decimal package. It is what `finance` takes and returns and what a Parquet `Decimal128` column reads as. A `[]decimal.Decimal` passed to `NewDataList` gives one cell per value (no `Cell` needed). A decimal cell sorts by value but is not a number to `Mean`/`Sum`/`IsNumeric`/`stats`: convert with `strconv.ParseFloat(d.String(), 64)` for analysis, and total money exactly with `decimal.Add` over the cells. `ToJSON` writes a decimal cell as `{}`, so convert the column to strings before JSON export. See `Docs/Decimal.md`.
 - Instance error tracking: chain fluent ops, then check Err() / PopErr() (read and clear) / ClearErr().
 
 ### Fitted KMeans assignment
@@ -399,7 +400,7 @@ func main() {
 
     // RawStrings disables inference entirely — every cell stays its original
     // string (empty cells stay ""). Use for stock IDs ("0050" must not become
-    // int64 50), tax IDs, or exact amounts you parse with a decimal type.
+    // int64 50), tax IDs, or exact amounts you parse with go-decimal.
     raw, err := insyra.ReadCSV_FileWithOptions("stocks.csv", insyra.CSVReadOptions{
         FirstRowToColNames: true,
         RawStrings:         true,
