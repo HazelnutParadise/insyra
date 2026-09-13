@@ -45,3 +45,6 @@ pca.prof
 /.codex-go-build
 .spectra/
 openspec/.vector-search.db*
+
+# compiled test binaries (go test -c)
+*.test

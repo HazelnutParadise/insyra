@@ -40,6 +40,12 @@ func scalarInt(arg []any, fnName, paramName string) (int, error) {
 	if !ok {
 		return 0, fmt.Errorf("%s: %s must be numeric, got %T", fnName, paramName, arg[0])
 	}
+	// int(f) on NaN, ±Inf or a value past the int range is undefined and
+	// differs by platform; anything beyond int32 is never a sane shift or
+	// window, so refuse it before it can index a slice with garbage.
+	if math.IsNaN(f) || math.IsInf(f, 0) || f > math.MaxInt32 || f < math.MinInt32 {
+		return 0, fmt.Errorf("%s: %s %v is out of range", fnName, paramName, arg[0])
+	}
 	return int(f), nil
 }
 

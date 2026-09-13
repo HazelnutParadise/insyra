@@ -21,11 +21,19 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `Config.SetLogLevel`, `SetUseColoredOutput`, `SetDontPanic`, and `SetDefaultErrHandlingFunc` are now atomic, so calling them while another goroutine logs is no longer a data race. The error hook installed by `SetDefaultErrHandlingFunc` runs on one goroutine behind a bounded queue, in order, instead of one goroutine per warning; when 1,024 calls are already waiting, further hook calls are dropped while the errors themselves are still recorded. Importing the package no longer prints the "Welcome to Insyra" banner; the CLI REPL prints it at startup.
 - `DetectEncoding` no longer misjudges a UTF-8 file whose multi-byte character straddles its 8 KB sample boundary.
 - `DataList.IsEqualTo` and `IsTheSameAs` no longer panic on cells Go cannot compare with `==` (such as a struct holding a slice); such cells are unequal. `ClearNaNs`, `ClearNils`, `ClearNilsAndNaNs`, `ClearNumbers`, `DropAll`, and `ClearStrings` filter in one pass, with the same results, instead of quadratic in-place deletion or a goroutine per call; `Update` records itself, not `ReplaceAtIndex`, in `Err()`. `DataTable.FindColsIfContains`/`FindColsIfContainsAll` no longer leave a warning on every column that lacks the value; `Count` and `Clone` drop their goroutine fan-out. `AppendRowsByColName` (and therefore `ReadJSON`/`ReadJSON_File`) adds new columns in sorted key order, so a JSON document no longer loads with a different column order on each run.
+- CCL: `NULL`, `TRUE` and `FALSE` are keywords in any case instead of column references; `@` used as a value gives each row its own slice (every cell used to show the last row); a date difference compares and divides as seconds, so `(A - B) > 0` no longer reads as `false`; a sequence function inside another sequence or aggregate function (`LAG(LAG(A,1),1)`, `SUM(LAG(A,1))`) keeps the whole column; absurd `LAG`/`LEAD`/`ROLLING_*` shifts and `REPEAT` counts are errors instead of panics; the function registry is safe to extend while another goroutine evaluates; `engine/ccl.NewMapContext` orders columns by name so `A`/`B` are deterministic.
+- `ToCSV` returns the error from its final flush; a small table written to a broken pipe used to report success.
+- `AtomicDoAll` called from inside an `AtomicDo` on one of its instances no longer deadlocks against a goroutine doing the mirror image: it runs the callback inline without locking the others, the same rule nested `AtomicDo` follows.
 
 ### CLI
 
 - Environment names that would resolve outside the environments directory are now refused: an empty or absolute name, or one that escapes through `..` (`../x`, `a/../../x`). A name was previously joined straight onto the environments directory, so `../x` created or deleted directories outside it. Every other name, including ones with spaces or non-ASCII letters, still works.
 - The command registry is guarded by a lock, so registering commands from several goroutines (embedders) is no longer a data race.
+- Fixed a crash when `col`, `row`, `movavg`, `expsmooth` or `diff` failed to find or compute a result: the nil result was stored and the next save of the session panicked. They now return an error and store nothing.
+- Variables holding `NaN` or ±Inf (a CSV with a blank cell) are saved and restored intact; previously such a table came back as an empty string, and such a list or raw value made the whole save fail. Every other variable is written exactly as before, and existing state files still load.
+- `--env`, `--no-color` and `--log-level` placed before `newdl`, `addcol`, `addrow` or `show` now apply instead of being stored as data in the default environment.
+- `run` no longer opens the interactive REPL when the script contains `env open`, and stops a script that runs itself after 16 nested levels.
+- `db connect` lines are written to `history.txt`, the REPL history and `env export` with the password masked (URL, `user:pass@`, and `password=` forms); history files are created with mode 0600.
 
 ### `datafetch`
 
@@ -41,6 +49,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Fixed `AppendCsvToExcel` leaving the old sheet's cells in place when a sheet of the same name already existed: `excelize.NewSheet` returns the existing sheet, so only the cells covered by the new CSV were overwritten and the rest survived. The sheet is now deleted and recreated, including when it is the workbook's only sheet.
 - Fixed `AppendCsvToExcel`, `ExcelToCsv`, and `EachExcelToCsv` never closing the workbooks they opened.
 - Errors wrap their cause with `%w` (so `errors.Is(err, os.ErrNotExist)` works) and output directories are created with mode 0755 instead of 0777.
+- `ExcelToCsv` and `EachExcelToCsv` reject a sheet name that cannot be a single file name (`../x`, `a/b`), which a crafted workbook could use to truncate a file outside the output directory. Each sheet is read before its CSV is created, and a write error at the final flush is returned.
 
 ### `parquet`
 

@@ -22,11 +22,13 @@ func tokenize(input string) ([]cclToken, error) {
 			word := input[start:i]
 
 			// 檢查是否為布林關鍵字或 nil
-			switch word {
+			// Keywords are case-insensitive, like function names: TRUE, Null
+			// and NIL are literals, never column references.
+			switch strings.ToLower(word) {
 			case "true", "false":
-				tokens = append(tokens, cclToken{typ: tBOOLEAN, value: word})
+				tokens = append(tokens, cclToken{typ: tBOOLEAN, value: strings.ToLower(word)})
 			case "nil", "null":
-				tokens = append(tokens, cclToken{typ: tNIL, value: word})
+				tokens = append(tokens, cclToken{typ: tNIL, value: strings.ToLower(word)})
 			default:
 				tokens = append(tokens, cclToken{typ: tIDENT, value: word})
 			}

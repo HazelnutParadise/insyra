@@ -511,7 +511,7 @@ if err != nil {
 func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
 ```
 
-**Description:** Saves the DataTable as a CSV file.
+**Description:** Saves the DataTable as a CSV file. Every write error is returned, including one the CSV writer only reports when it flushes its buffer at the end (disk full, closed pipe).
 
 **Parameters:**
 

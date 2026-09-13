@@ -21,11 +21,19 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `Config.SetLogLevel`、`SetUseColoredOutput`、`SetDontPanic`、`SetDefaultErrHandlingFunc` 改為原子操作，另一個 goroutine 正在寫 log 時呼叫它們不再是 data race。`SetDefaultErrHandlingFunc` 設定的 hook 改由單一 goroutine 依序處理、佇列有上限，不再每個 warning 開一個 goroutine；已有 1,024 個呼叫在排隊時，後續的 hook 呼叫會被丟棄，錯誤本身仍會記錄。import 套件不再印出「Welcome to Insyra」橫幅，改由 CLI REPL 啟動時印出。
 - `DetectEncoding` 不再因多位元組字元恰好被 8 KB 取樣邊界切開而誤判 UTF-8 檔案。
 - `DataList.IsEqualTo` 與 `IsTheSameAs` 遇到 Go 無法用 `==` 比較的格子（例如含 slice 的 struct）不再 panic，這類格子視為不相等。`ClearNaNs`、`ClearNils`、`ClearNilsAndNaNs`、`ClearNumbers`、`DropAll`、`ClearStrings` 改為單趟過濾，結果不變，不再是平方級原地刪除或每次呼叫開 goroutine；`Update` 在 `Err()` 記的是自己而不是 `ReplaceAtIndex`。`DataTable.FindColsIfContains`／`FindColsIfContainsAll` 不再在每個不含該值的欄上留下警告；`Count` 與 `Clone` 移除 goroutine 分派。`AppendRowsByColName`（連帶 `ReadJSON`／`ReadJSON_File`）新增欄位時依欄名排序，同一份 JSON 不再每次讀出不同的欄序。
+- CCL：`NULL`、`TRUE`、`FALSE` 不分大小寫都是關鍵字而非欄位參照；`@` 當值使用時每列拿到自己的 slice（過去每格都顯示最後一列）；日期相減以秒參與比較與除法，`(A - B) > 0` 不再靜默為 false；序列函數放在另一個序列或聚合函數裡（`LAG(LAG(A,1),1)`、`SUM(LAG(A,1))`）保留整欄；離譜的 `LAG`／`LEAD`／`ROLLING_*` 位移與 `REPEAT` 次數回錯誤而非 panic；函數註冊表可在另一個 goroutine 求值時安全新增；`engine/ccl.NewMapContext` 依欄名排序，`A`／`B` 指向固定的欄。
+- `ToCSV` 會回傳最後一次 flush 的錯誤；小表寫到已斷的 pipe 過去會回報成功。
+- 在某個實例的 `AtomicDo` 內呼叫 `AtomicDoAll` 不再與另一個做鏡像操作的 goroutine 死鎖：改成不再加鎖、內聯執行回呼，與巢狀 `AtomicDo` 同一規則。
 
 ### CLI
 
 - 會解析到環境目錄之外的環境名稱現在會被拒絕：空白或絕對路徑的名稱，以及經由 `..` 跳出目錄的名稱（`../x`、`a/../../x`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。其他名稱照常可用，包含含空格或非 ASCII 字元的名稱。
 - 命令登錄表加上鎖，多個 goroutine（嵌入端）同時註冊命令不再是 data race。
+- 修正 `col`、`row`、`movavg`、`expsmooth`、`diff` 找不到或算不出結果時把 nil 存進變數，下一次存檔整個 session panic 的問題；現在回錯誤且不存。
+- 含 `NaN` 或 ±Inf 的變數（例如有空白格的 CSV）能完整存檔與還原；過去這種表會變成空字串，這種 list 或一般值則讓整次存檔失敗。其他變數的寫法與過去完全相同，既有的 state 檔也照常能讀。
+- `--env`、`--no-color`、`--log-level` 放在 `newdl`、`addcol`、`addrow`、`show` 前面時會生效，不再被當成資料寫進 default 環境。
+- `run` 遇到腳本裡的 `env open` 不再開啟互動 REPL；腳本自己呼叫自己超過 16 層會停止。
+- `db connect` 寫進 `history.txt`、REPL 歷史與 `env export` 時密碼會被遮罩（URL、`user:pass@`、`password=` 三種形式）；history 檔以 0600 建立。
 
 ### `datafetch`
 
@@ -41,6 +49,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 修正 `AppendCsvToExcel` 遇到同名工作表時舊儲存格殘留的問題：`excelize.NewSheet` 對既有名稱只回傳原工作表，所以只有新 CSV 覆蓋到的儲存格被改寫，其餘保留。現在會先刪除再重建，工作簿只有那一張工作表時也能完成。
 - 修正 `AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv` 開啟的工作簿從未關閉。
 - 錯誤改用 `%w` 包裝底層原因（`errors.Is(err, os.ErrNotExist)` 可用），輸出目錄改以 0755 建立而不是 0777。
+- `ExcelToCsv` 與 `EachExcelToCsv` 拒絕無法當單一檔名的工作表名稱（`../x`、`a/b`），惡意 workbook 過去可藉此截斷輸出目錄外的檔案。每張工作表先讀完才建立 CSV，最後一次 flush 的寫入錯誤也會回傳。
 
 ### `parquet`
 

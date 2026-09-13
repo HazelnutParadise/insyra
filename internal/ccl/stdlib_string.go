@@ -2,6 +2,7 @@ package ccl
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -34,9 +35,11 @@ func runeSlice(s string, start, length int) string {
 	if start >= n {
 		return ""
 	}
-	end := start + length
-	if end > n {
-		end = n
+	// length may be huge (MID('abc', 2, 10^300)); compare instead of adding
+	// so the end index cannot overflow.
+	end := n
+	if length < n-start {
+		end = start + length
 	}
 	return string(runes[start:end])
 }
@@ -218,10 +221,14 @@ func registerStringFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("REPEAT: count arg must be a number, got %T", args[1])
 		}
-		count := int(n)
-		if count < 0 {
-			return nil, fmt.Errorf("REPEAT: negative count %d", count)
+		if math.IsNaN(n) || n < 0 {
+			return nil, fmt.Errorf("REPEAT: count must be a non-negative number, got %v", args[1])
 		}
-		return strings.Repeat(s, count), nil
+		// Cap the result at 64 MiB so a stray exponent cannot exhaust memory.
+		const maxRepeatBytes = 64 << 20
+		if n > maxRepeatBytes || float64(len(s))*n > maxRepeatBytes {
+			return nil, fmt.Errorf("REPEAT: result would exceed %d bytes", maxRepeatBytes)
+		}
+		return strings.Repeat(s, int(n)), nil
 	})
 }

@@ -164,6 +164,9 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 
 	numSheets := len(sheetsToProcess)
 	for idx, sheet := range sheetsToProcess {
+		if err := safeSheetFileName(sheet); err != nil {
+			return err
+		}
 		csvName := sheet + ".csv"
 		if len(csvNames) > idx && csvNames[idx] != "" {
 			if strings.HasSuffix(csvNames[idx], ".csv") {
@@ -219,8 +222,27 @@ func replaceSheet(f *excelize.File, sheetName string) error {
 	return err
 }
 
-// saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file.
+// safeSheetFileName returns the sheet name if it can be used as a single
+// path element under the output directory, or an error. A workbook's
+// sheet names come from workbook.xml and are attacker-controlled, so
+// "../x" or "a/b" must never be joined onto outputDir.
+func safeSheetFileName(sheet string) error {
+	if sheet == "" || sheet == "." || sheet == ".." ||
+		strings.ContainsAny(sheet, `/\`) || filepath.Base(sheet) != sheet {
+		return fmt.Errorf("sheet name %q cannot be used as a file name", sheet)
+	}
+	return nil
+}
+
+// saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file. The
+// rows are read before the output is touched, so a sheet that cannot be read
+// never truncates an existing file.
 func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) error {
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return fmt.Errorf("failed to read rows from sheet %s: %w", sheetName, err)
+	}
+
 	file, err := os.Create(outputCsvName)
 	if err != nil {
 		return fmt.Errorf("failed to create CSV file %s: %w", outputCsvName, err)
@@ -228,12 +250,6 @@ func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) er
 	defer func() { _ = file.Close() }()
 
 	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	rows, err := f.GetRows(sheetName)
-	if err != nil {
-		return fmt.Errorf("failed to read rows from sheet %s: %w", sheetName, err)
-	}
 
 	for rowIdx, row := range rows {
 		// Check if the row is visible (not filtered out)
@@ -248,7 +264,10 @@ func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) er
 			}
 		}
 	}
-
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return fmt.Errorf("failed to write CSV file %s: %w", outputCsvName, err)
+	}
 	return nil
 }
 

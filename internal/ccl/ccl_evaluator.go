@@ -148,11 +148,11 @@ func IsRowDependent(n cclNode) bool {
 		// Sequence functions (LAG, CUMSUM, ROLLING_MEAN, ...) consume whole
 		// columns and produce same-length output; they are evaluated once
 		// per expression, not per row.
-		if _, isSeq := sequenceFunctions[upper]; isSeq {
+		if IsSequenceFunction(upper) {
 			return false
 		}
 		// Aggregate functions are row-independent unless # appears in args.
-		if _, isAgg := aggregateFunctions[upper]; isAgg {
+		if _, isAgg := lookupAggregateFunction(upper); isAgg {
 			return containsRowIndex(t)
 		}
 		for _, arg := range t.args {
@@ -315,7 +315,7 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		// returned []any is consumed directly by the assigner / cell broadcaster
 		// at the top level. Nested usage inside arithmetic is not supported
 		// in v1 and may produce undefined results.
-		if _, isSeq := sequenceFunctions[upper]; isSeq {
+		if IsSequenceFunction(upper) {
 			functionDepth := callDepth + 1
 			seqArgs := make([][]any, len(t.args))
 			for i, arg := range t.args {
@@ -329,7 +329,7 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		}
 
 		// 檢查是否為聚合函數
-		if _, isAgg := aggregateFunctions[upper]; isAgg {
+		if _, isAgg := lookupAggregateFunction(upper); isAgg {
 			functionDepth := callDepth + 1
 			// 如果是行相關的（包含 #），則將其視為普通函數評估（逐行聚合）
 			if containsRowIndex(t) {
@@ -747,11 +747,12 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 			return nil, fmt.Errorf("raw row range cannot be used as a data source; use @.start:end instead")
 		}
 
-		// Return as single element slice? Or repeat?
-		// Aggregates usually ignore single values or treat as constant column?
-		// If we return []any{val}, SUM will be val.
-		// But if it's a column expression, it should be len(rows).
-		// Let's assume single value for now.
+		// A sequence function (LAG, CUMSUM, ...) already produced a whole
+		// column; hand it through so nesting keeps every row.
+		if col, ok := val.([]any); ok && len(col) == ctx.GetRowCount() {
+			return col, nil
+		}
+		// Otherwise a scalar: aggregates see it as a one-element column.
 		return []any{val}, nil
 	}
 

@@ -42,8 +42,13 @@ func (c *dataTableContext) GetRowIndex() int {
 	return c.rowIndex
 }
 
+// GetCurrentRow returns a copy of the current row. The evaluator reuses one
+// row buffer across rows, so handing out the buffer itself would make every
+// cell produced by `@` alias the last row.
 func (c *dataTableContext) GetCurrentRow() any {
-	return c.row
+	row := make([]any, len(c.row))
+	copy(row, c.row)
+	return row
 }
 
 func (c *dataTableContext) GetCell(colIndex, rowIndex int) (any, error) {

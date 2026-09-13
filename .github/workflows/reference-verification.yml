@@ -81,4 +81,4 @@ jobs:
       - name: nn ONNX operator and model parity
         run: go test -count=1 -timeout 10m ./nn/...
       - name: Comparisons against scikit-learn
-        run: go test -count=1 -timeout 10m ./ml/ -run "AgainstScikitLearn"
+        run: go test -count=1 -timeout 10m ./ml/ -run "ScikitLearn"

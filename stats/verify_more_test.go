@@ -3,6 +3,7 @@ package stats_test
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -319,10 +320,13 @@ func TestEdgeCaseSmallSample(t *testing.T) {
 		opt.Rotation.Method = stats.FactorRotationNone
 		opt.Scoring = stats.FactorScoreNone
 		res, err := stats.FactorAnalysis(tbl, opt)
-		if err != nil {
-			fmt.Printf("[%s n=%d p=%d] error: %v ✓ (expected; p>n)\n", ex, n, p, err)
-		} else {
-			fmt.Printf("[%s n=%d p=%d] succeeded with %d factors\n", ex, n, p, res.CountUsed)
+		// With p > n the correlation matrix is singular; the library must
+		// refuse rather than return factors from a rank-deficient input.
+		if err == nil {
+			t.Fatalf("[%s n=%d p=%d] expected an error for p > n, got %d factors", ex, n, p, res.CountUsed)
+		}
+		if !strings.Contains(err.Error(), "singular") {
+			t.Fatalf("[%s n=%d p=%d] error should name the singular matrix, got: %v", ex, n, p, err)
 		}
 	}
 }
@@ -474,10 +478,13 @@ func TestEdgeCaseHighCollinearity(t *testing.T) {
 	opt.Rotation.Method = stats.FactorRotationVarimax
 	opt.Scoring = stats.FactorScoreNone
 	res, err := stats.FactorAnalysis(tbl, opt)
-	if err != nil {
-		fmt.Printf("high-collinearity: error: %v ✓\n", err)
-	} else {
-		fmt.Printf("high-collinearity: succeeded with %d factors, converged=%v ✓\n", res.CountUsed, res.Converged)
+	// Nearly identical columns make the correlation matrix singular; the
+	// current contract is an explicit error, never a silent degenerate fit.
+	if err == nil {
+		t.Fatalf("high-collinearity: expected an error, got %d factors (converged=%v)", res.CountUsed, res.Converged)
+	}
+	if !strings.Contains(err.Error(), "singular") {
+		t.Fatalf("high-collinearity: error should name the singular matrix, got: %v", err)
 	}
 }
 
