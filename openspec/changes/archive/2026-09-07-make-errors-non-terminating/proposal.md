@@ -48,6 +48,7 @@ Adapted on dev:
 - `SolveModel`'s two temporary-file failures keep returning `nil, nil` and only log a warning.
 - `Col`/`Row` for a column or row that does not exist, `UseDL`/`UseDT` given a nil value, and `DT.From(nil)` keep returning a wrapper around `nil`.
 - The macOS GLPK install loop gets the same stop-on-failure guard as Linux.
+- The Windows branch returns after the install-failure warning and leaves `GLPK_PATH` and `PATH` untouched (backport review). The warning replaced `LogFatal` without a `return`, so `glpsolPath` was `""` and `filepath.Dir("")`, which is `.`, was set as `GLPK_PATH` and put at the front of `PATH`.
 
 Stayed on 0.4:
 - `LogFatal` no longer exiting, `SetPanicOnError`/`GetPanicOnError` and the `SetDontPanic` deprecation: breaking, changes a default.

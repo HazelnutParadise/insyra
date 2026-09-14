@@ -129,7 +129,11 @@ func initializeOnWindows() {
 	// 檢查 glpsol 是否已經安裝
 	glpsolPath, err := locateOrInstallGLPK_Win()
 	if err != nil {
+		// Leave GLPK_PATH and PATH alone: with no glpsol found, glpsolPath is
+		// "" and filepath.Dir("") is ".", which would put the working
+		// directory on PATH. Later Solve* calls report the missing glpsol.
 		insyra.LogWarning("lp", "init", "Failed to initialize: %v", err)
+		return
 	}
 
 	// 設置 GLPK_PATH 環境變數
