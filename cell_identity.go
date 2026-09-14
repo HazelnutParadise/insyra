@@ -12,10 +12,12 @@ import (
 
 // maxCellEncodeDepth bounds how far encodeCell descends.
 //
-// A value that contains itself would otherwise recurse forever, and running
-// out of stack in Go is a fatal error that recover cannot catch — the library
-// would terminate, which it promises never to do. Beyond the limit a value is
+// A value nested too deeply would otherwise exhaust the stack, and running out
+// of stack in Go is a fatal error that recover cannot catch — the library would
+// terminate, which it promises never to do. Beyond the limit a value is
 // identified by its address, which is what == means for a reference anyway.
+// A value that contains itself does not reach the limit: a reference back to a
+// slice or map still being encoded is written as a back-reference (cellRef).
 const maxCellEncodeDepth = 64
 
 // uncomparableDisplayBytes is how much of a value's content String renders
@@ -127,7 +129,7 @@ func comparableCell(v any) bool {
 func splitCellEncoding(v any) (typ, content string) {
 	typ = fmt.Sprintf("%T", v)
 	var b strings.Builder
-	writeCellValue(&b, reflect.ValueOf(v), 0)
+	writeCellValue(&b, reflect.ValueOf(v), 0, nil)
 	return typ, b.String()
 }
 
@@ -177,9 +179,37 @@ func encodeCellFloat(f float64) string {
 	return fmt.Sprintf("f:%v", f)
 }
 
+// cellRef names a slice or map being encoded: the same type, backing pointer
+// and length is the same value.
+type cellRef struct {
+	typ    reflect.Type
+	ptr    uintptr
+	length int
+}
+
+// enterCellRef reports how many levels up rv already appears on path, the
+// slices and maps enclosing it, or 0 when it does not; in that case it returns
+// path extended by rv.
+//
+// Without it a value that refers to itself twice, s[0] = s; s[1] = s, doubles
+// the work at every level down to maxCellEncodeDepth and never finishes. The
+// back-reference is written as its distance, so the encoding stays structural:
+// two cyclic values of the same shape and content encode alike, and different
+// content still encodes differently.
+func enterCellRef(path []cellRef, rv reflect.Value) (int, []cellRef) {
+	ref := cellRef{typ: rv.Type(), ptr: rv.Pointer(), length: rv.Len()}
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == ref {
+			return len(path) - i, path
+		}
+	}
+	return 0, append(path, ref)
+}
+
 // writeCellValue encodes rv through reflection, so it can descend into struct
 // fields that are not exported. It must not call Interface() for that reason.
-func writeCellValue(b *strings.Builder, rv reflect.Value, depth int) {
+// path holds the slices and maps enclosing rv.
+func writeCellValue(b *strings.Builder, rv reflect.Value, depth int, path []cellRef) {
 	if !rv.IsValid() {
 		b.WriteString("n:")
 		return
@@ -200,7 +230,7 @@ func writeCellValue(b *strings.Builder, rv reflect.Value, depth int) {
 			writeCellAddress(b, rv)
 			return
 		}
-		writeCellValue(b, rv.Elem(), depth+1)
+		writeCellValue(b, rv.Elem(), depth+1, path)
 
 	case reflect.String:
 		b.WriteString("s:")
@@ -240,12 +270,19 @@ func writeCellValue(b *strings.Builder, rv reflect.Value, depth int) {
 			b.WriteString("n:")
 			return
 		}
+		if rv.Kind() == reflect.Slice && rv.Len() > 0 {
+			var up int
+			if up, path = enterCellRef(path, rv); up > 0 {
+				b.WriteString("r:" + strconv.Itoa(up))
+				return
+			}
+		}
 		b.WriteByte('[')
 		for i := 0; i < rv.Len(); i++ {
 			if i > 0 {
 				b.WriteByte(',')
 			}
-			writeCellValue(b, rv.Index(i), depth+1)
+			writeCellValue(b, rv.Index(i), depth+1, path)
 		}
 		b.WriteByte(']')
 
@@ -254,14 +291,21 @@ func writeCellValue(b *strings.Builder, rv reflect.Value, depth int) {
 			b.WriteString("n:")
 			return
 		}
+		if rv.Len() > 0 {
+			var up int
+			if up, path = enterCellRef(path, rv); up > 0 {
+				b.WriteString("r:" + strconv.Itoa(up))
+				return
+			}
+		}
 		// Sorted by encoded key, so the identity does not depend on the order
 		// Go happens to iterate the map in.
 		entries := make([]string, 0, rv.Len())
 		iter := rv.MapRange()
 		for iter.Next() {
 			var kb, vb strings.Builder
-			writeCellValue(&kb, iter.Key(), depth+1)
-			writeCellValue(&vb, iter.Value(), depth+1)
+			writeCellValue(&kb, iter.Key(), depth+1, path)
+			writeCellValue(&vb, iter.Value(), depth+1, path)
 			entries = append(entries, kb.String()+"="+vb.String())
 		}
 		sort.Strings(entries)
@@ -275,7 +319,7 @@ func writeCellValue(b *strings.Builder, rv reflect.Value, depth int) {
 			if i > 0 {
 				b.WriteByte(',')
 			}
-			writeCellValue(b, rv.Field(i), depth+1)
+			writeCellValue(b, rv.Field(i), depth+1, path)
 		}
 		b.WriteByte('}')
 

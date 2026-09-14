@@ -14,8 +14,9 @@
 - **THEN** 一樣不 panic，並以型別與內容識別
 
 #### Scenario: A self-referential value
-- **WHEN** 格子值是一個包含自己的切片
-- **THEN** 編碼在固定深度停止，不會耗盡堆疊
+- **WHEN** 格子值是一個包含自己的切片或 map，即使在多個位置都指回自己（例如 `s[0] = s; s[1] = s`）
+- **THEN** 指回正在編碼中的切片或 map 時寫成回指標記而不再展開，`Counter` 立即完成，不會耗盡堆疊
+- **AND** 內容不同的兩個循環值識別不同，內容相同的識別相同，每次結果一致
 
 ### Requirement: Counting and searching give the same answer
 

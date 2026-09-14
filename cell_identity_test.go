@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	gsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -109,6 +110,53 @@ func TestSelfReferentialValueDoesNotExhaustTheStack(t *testing.T) {
 	// A fatal stack overflow cannot be recovered, so reaching the next line at
 	// all is the assertion.
 	_ = encodeCell(cyclic)
+}
+
+// A value that refers to itself more than once used to double its work at every
+// level down to the depth limit, so counting it never finished. A reference
+// back to a container still being encoded is written as a marker instead.
+func TestSelfReferentialValueIsEncodedPromptly(t *testing.T) {
+	s := []any{nil, nil}
+	s[0] = s
+	s[1] = s
+	m := map[string]any{}
+	m["a"] = m
+	m["b"] = m
+
+	done := make(chan map[any]int, 1)
+	go func() { done <- NewDataList(Cell(s), Cell(s), Cell(m)).Counter() }()
+	select {
+	case counter := <-done:
+		if got := counter[ToMapKey(s)]; got != 2 {
+			t.Errorf("Counter[s] = %d, want 2", got)
+		}
+		if got := counter[ToMapKey(m)]; got != 1 {
+			t.Errorf("Counter[m] = %d, want 1", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Counter on a value that refers to itself twice did not finish")
+	}
+
+	// Distinct cyclic values are told apart, the same content is the same
+	// value, and the answer does not change between calls.
+	a := []any{nil, 1}
+	a[0] = a
+	b := []any{nil, 2}
+	b[0] = b
+	c := []any{nil, 1}
+	c[0] = c
+	if encodeCell(a) == encodeCell(b) {
+		t.Error("cyclic values with different content encode alike")
+	}
+	if encodeCell(a) != encodeCell(c) {
+		t.Error("cyclic values with the same content encode differently")
+	}
+	if first, again := encodeCell(a), encodeCell(a); first != again {
+		t.Error("the encoding of a cyclic value changed between calls")
+	}
+	if got := NewDataList(Cell(a), Cell(b), Cell(c)).Count(a); got != 2 {
+		t.Errorf("Count(a) = %d, want 2", got)
+	}
 }
 
 func TestComparableValuesAreStillKeyedByThemselves(t *testing.T) {
