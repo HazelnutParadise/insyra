@@ -2303,7 +2303,7 @@ handling is not exercised.
 | Linear, polynomial regression | formula (OLS on the design matrix); `lm` for predictions | `statsmodels.OLS` | `lm` | 1e-6, t 1e-5; pinned 1e-9 |
 | Exponential, logarithmic regression | formula on the log-transformed data; `lm` for predictions | `statsmodels.OLS` | `lm(log(y) ~ x)`, `lm(y ~ log(x))` | 1e-6, t 1e-5 |
 | Logistic, Poisson, generic GLM | `glm` (`confint.default`, `logLik`, `BIC`, `predict`) | `statsmodels.GLM` | — | 1e-6, SE/z/CI 1e-5 |
-| Weighted linear regression | — | `statsmodels.WLS` | — | 1e-8 |
+| Weighted linear regression | — | `statsmodels.WLS` | — | 1e-8, t 1e-6, R² 1e-10 |
 | Ridge, Lasso | — | `sklearn.linear_model.Ridge(solver = "cholesky")`, `Lasso` | — | 1e-8; Lasso 1e-6 with the zero coefficients required to match |
 | NormCDF, NormPPF, Diag | — | — | — | hand-written expected values only |
 
