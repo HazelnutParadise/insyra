@@ -54,3 +54,5 @@ Adapted on dev:
 Stayed on 0.4:
 - The messages that exist only because of batch 8's comma enforcement: that check is breaking.
 - The compile error from the out-of-range column check: the check itself stayed on 0.4 with batch 4.
+
+Backport review: `ErrorInfo.Unwrap` moved to a pointer receiver that returns nil for a nil `*ErrorInfo`. As a value method it panicked when `errors.As(dt.Err(), &compileErr)`, the pattern `Docs/CCL.md` shows, ran after a formula that succeeded; the example now also checks `dt.Err()` for nil first.

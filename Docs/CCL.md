@@ -1283,11 +1283,13 @@ dt.AddColUsingCCL("result", formula)
 
 var compileErr *ccl.CompileError
 var evalErr *ccl.EvalError
-switch {
-case errors.As(dt.Err(), &compileErr):
-    // compileErr.Expr, .Offset, .Near — the formula is wrong
-case errors.As(dt.Err(), &evalErr):
-    // evalErr.Row, errors.Unwrap(evalErr) — the data is wrong on that row
+if e := dt.Err(); e != nil {
+    switch {
+    case errors.As(e, &compileErr):
+        // compileErr.Expr, .Offset, .Near — the formula is wrong
+    case errors.As(e, &evalErr):
+        // evalErr.Row, errors.Unwrap(evalErr) — the data is wrong on that row
+    }
 }
 ```
 

@@ -45,8 +45,15 @@ func (e ErrorInfo) Error() string {
 }
 
 // Unwrap returns the underlying error, so errors.Is and errors.As see through
-// a recorded ErrorInfo to whatever actually failed.
-func (e ErrorInfo) Unwrap() error { return e.Cause }
+// a recorded ErrorInfo to whatever actually failed. It is on the pointer and
+// returns nil for a nil *ErrorInfo, which is what Err() returns after a call
+// that succeeded: errors.As(dt.Err(), &target) must not panic there.
+func (e *ErrorInfo) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
 
 // String returns a string representation of the LogLevel.
 func (l LogLevel) String() string {
