@@ -1,7 +1,9 @@
 package csv
 
 import (
+	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"golang.org/x/text/encoding"
@@ -116,35 +118,66 @@ func normalizeEncodingName(name string) string {
 }
 
 // legacyDecoder resolves a name the table does not know the way earlier
-// releases did: by substring, case-sensitively, on the name as given. A name
-// that matches none of these is read without decoding, as it always was, so
+// releases did: by substring, case-sensitively, on the name as given, so
 // "big5-hkscs" still reads as Big5, "x-gbk" as GB18030 and "utf-8-sig" as
-// UTF-8.
-func legacyDecoder(name string) encoding.Encoding {
+// UTF-8. ok is false for a name matching none of these.
+func legacyDecoder(name string) (enc encoding.Encoding, ok bool) {
 	switch {
 	case strings.Contains(name, "utf-8"):
-		return nil
+		return nil, true
 	case strings.Contains(name, "big5"):
-		return traditionalchinese.Big5
+		return traditionalchinese.Big5, true
 	case strings.Contains(name, "gb"):
-		return simplifiedchinese.GB18030
+		return simplifiedchinese.GB18030, true
 	case strings.Contains(name, "utf-16") || strings.Contains(name, "utf16"):
-		return unicode.UTF16(unicode.LittleEndian, unicode.UseBOM)
+		return unicode.UTF16(unicode.LittleEndian, unicode.UseBOM), true
 	default:
+		return nil, false
+	}
+}
+
+// resolveDecoder finds the decoder for a name: the table first, then the
+// substring rules. A nil decoder with ok true means the bytes are already
+// UTF-8; ok false means nothing here decodes the name.
+func resolveDecoder(name string) (encoding.Encoding, bool) {
+	if enc, ok := decoders[normalizeEncodingName(name)]; ok {
+		return enc, true
+	}
+	return legacyDecoder(name)
+}
+
+// SupportedEncodings lists the charset names DecodingReader accepts, sorted,
+// for use in error messages and documentation.
+func SupportedEncodings() []string {
+	out := make([]string, 0, len(decoders))
+	for name := range decoders {
+		if name == "" {
+			continue
+		}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// CheckDecodable returns an error naming the supported encodings when nothing
+// here decodes encodingName, the case in which DecodingReader hands the bytes
+// back undecoded.
+func CheckDecodable(encodingName string) error {
+	if _, ok := resolveDecoder(encodingName); ok {
 		return nil
 	}
+	return fmt.Errorf("unsupported encoding %q: insyra can decode %s", encodingName, strings.Join(SupportedEncodings(), ", "))
 }
 
 // DecodingReader wraps r so its bytes are decoded from the named encoding into
 // UTF-8. An empty name means the bytes are already UTF-8.
 //
 // A name outside the decoder table falls back to the substring rules earlier
-// releases used; a name matching none of them returns r unchanged.
+// releases used; a name matching none of them returns r unchanged. Call
+// CheckDecodable first where undecoded bytes must not come back.
 func DecodingReader(r io.Reader, encodingName string) io.Reader {
-	enc, ok := decoders[normalizeEncodingName(encodingName)]
-	if !ok {
-		enc = legacyDecoder(encodingName)
-	}
+	enc, _ := resolveDecoder(encodingName)
 	if enc == nil {
 		return r
 	}

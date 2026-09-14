@@ -40,6 +40,9 @@ Adapted on dev:
 - A name outside the table falls back to the substring rules dev already had (`utf-8`, `big5`, `gb`, `utf-16`), then reads the bytes undecoded, so `big5-hkscs`, `x-gbk` and `utf-8-sig` resolve as before.
 - `ToCSVWithOptions` creates the file directly, like dev's `ToCSV`.
 
+Dev received (documented behaviour):
+- `csvxl.ReadCsvToString` returning an error naming the supported encodings for a name nothing decodes, given or detected by `Auto` (2026-09-14): v0.3.2's `Docs/csvxl.md` said it "returns UTF-8 content". `SupportedEncodings` comes with it; `CheckDecodable` is dev's check, because `DecodingReader` keeps its fallback for the other readers.
+
 Stayed on 0.4:
-- An unknown encoding name returning an error: starts returning an error.
+- An unknown encoding name returning an error in the other CSV readers (`ReadCSV_File`, `CsvToExcel`, `AppendCsvToExcel`, `EachCsvToOneExcel`): starts returning an error, and their documentation did not promise UTF-8.
 - A chardet failure returning `utf-8` with a warning: `DetectEncoding` and the readers built on it stop returning an error.

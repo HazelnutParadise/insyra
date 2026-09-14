@@ -38,7 +38,7 @@ func main() {
 
 Reading decodes UTF-8/ASCII, UTF-16 and UTF-32 (LE/BE, BOM-aware), Big5, GB18030/GBK/GB2312, Shift-JIS, ISO-2022-JP, EUC-JP, EUC-KR, every ISO-8859 part x/text ships, Windows-1250 through 1258, KOI8-R/U, IBM866 and Macintosh Roman, plus the usual aliases (`latin1`, `cp1252`, `sjis`, …). Separators and case do not matter: `ISO-8859-1`, `iso8859_1` and `ISO 8859 1` are the same.
 
-A name outside that list is matched the way earlier releases did: one containing `big5` reads as Big5, one containing `gb` as GB18030, one containing `utf-16` as UTF-16. Any other name reads the bytes without decoding, so pass the file's real encoding when it is not UTF-8. That includes four charsets the auto-detector can report but nothing here decodes, ISO-2022-KR, ISO-2022-CN, IBM424 and IBM420: with `Auto`, a file detected as one of them is read as raw bytes, with no error.
+A name outside that list is matched the way earlier releases did: one containing `big5` reads as Big5, one containing `gb` as GB18030, one containing `utf-16` as UTF-16. For any other name `ReadCsvToString` returns an error naming the supported encodings, because it returns UTF-8 content. `CsvToExcel`, `AppendCsvToExcel` and `EachCsvToOneExcel` read the bytes without decoding instead, so pass the file's real encoding when it is not UTF-8. That includes four charsets the auto-detector can report but nothing here decodes, ISO-2022-KR, ISO-2022-CN, IBM424 and IBM420: with `Auto`, `ReadCsvToString` refuses a file detected as one of them, and the Excel conversions read it as raw bytes, with no error.
 
 `Auto` detects the encoding from the file's first 8 KB. A UTF-32 byte-order mark is recognised before the UTF-16 one they share a prefix with.
 
@@ -156,7 +156,7 @@ func EachExcelToCsv(dir string, outputDir string) error
 func ReadCsvToString(filePath string, encoding ...string) (string, error)
 ```
 
-**Description:** Reads a CSV file and returns UTF-8 content.
+**Description:** Reads a CSV file and returns UTF-8 content. An encoding nothing here decodes, whether passed or detected by `Auto`, is an error naming the supported encodings; the file's raw bytes are never returned.
 
 **Parameters:**
 
