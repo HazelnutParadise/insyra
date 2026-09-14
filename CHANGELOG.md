@@ -85,7 +85,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `csvxl`
 
-- Fixed `AppendCsvToExcel` leaving the old sheet's cells in place when a sheet of the same name already existed: `excelize.NewSheet` returns the existing sheet, so only the cells covered by the new CSV were overwritten and the rest survived. The sheet is now deleted and recreated, including when it is the workbook's only sheet.
+- Fixed `AppendCsvToExcel` leaving the old sheet's cells in place when a sheet of the same name already existed: `excelize.NewSheet` returns the existing sheet, so only the cells covered by the new CSV were overwritten and the rest survived. The existing sheet is now cleared in place before the CSV is written, so no old cell or formula survives while the sheet keeps its position and its settings such as column widths, including when it is the workbook's only sheet.
 - Fixed `AppendCsvToExcel`, `ExcelToCsv`, and `EachExcelToCsv` never closing the workbooks they opened.
 - Errors wrap their cause with `%w` (so `errors.Is(err, os.ErrNotExist)` works) and output directories are created with mode 0755 instead of 0777.
 - `ExcelToCsv` and `EachExcelToCsv` reject a sheet name that cannot be a single file name (`../x`, `a/b`), which a crafted workbook could use to truncate a file outside the output directory. Each sheet is read before its CSV is created, and a write error at the final flush is returned.

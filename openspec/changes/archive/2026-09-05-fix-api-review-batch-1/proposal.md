@@ -45,6 +45,9 @@ Dev received:
 - `parquet.ReadColumn` enforcing `MaxValues` from metadata before reading (capability `parquet-read-column-limit`).
 - `ReadJSON_File` decoding through `ReadJSON`, so integer literals load as `int64` from a file as they already did from bytes (capability `json-read-numbers`). Integer cells read from a file change type from `float64`; the owner chose to take this on dev because dev's own documentation already promised `int64`.
 
+Adapted on dev (backport review):
+- `AppendCsvToExcel` clears an existing sheet's cell values and formulas in place instead of deleting and recreating it. Deleting moved the sheet to the end of the workbook and dropped its settings, such as a custom column width, which v0.3.2 kept; its only defect was the stale cells.
+
 Stayed on 0.4:
 - `Normalize`/`Standardize`/`ClearOutliers`/`Difference`/`FillNaNWithMean` scan-first rework (`datalist-numeric-input`): breaking, changes results and failure behaviour for mixed input.
 - `Rank`, smoothing and interpolation refusing non-numeric cells: breaking, new errors and nil results.

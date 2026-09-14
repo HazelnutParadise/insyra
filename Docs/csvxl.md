@@ -81,7 +81,7 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error
 ```
 
-**Description:** Appends CSV files as new sheets. An existing sheet with the same name is deleted first and replaced in full, so nothing from the old sheet survives — including cells outside the range of the new CSV. This works even when it is the workbook's only sheet.
+**Description:** Appends CSV files as new sheets. An existing sheet with the same name is cleared in place before the CSV is written: every old cell value and formula is removed, including cells outside the range of the new CSV, while the sheet keeps its position among the sheets and its sheet-level settings such as column widths, views and merged ranges. This works even when it is the workbook's only sheet.
 
 **Parameters:**
 

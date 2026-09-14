@@ -2,7 +2,7 @@
 
 ### Requirement: Appending to an existing sheet name replaces the sheet
 
-`csvxl.AppendCsvToExcel` 遇到工作簿已有同名工作表時 SHALL 先移除該工作表再建立新的，使結果只含 CSV 的內容，舊工作表超出 CSV 範圍的儲存格 SHALL NOT 殘留。工作簿只有那一張工作表時 SHALL 仍能完成替換。
+`csvxl.AppendCsvToExcel` 遇到工作簿已有同名工作表時 SHALL 就地清除該工作表所有儲存格的值與公式再寫入 CSV，使結果只含 CSV 的內容，舊工作表超出 CSV 範圍的儲存格 SHALL NOT 殘留。該工作表 SHALL 保留它在工作簿中的位置，以及欄寬等工作表層級設定。工作簿只有那一張工作表時 SHALL 仍能完成替換。
 
 #### Scenario: Stale cells do not survive an append
 
@@ -13,6 +13,11 @@
 
 - **WHEN** 工作簿只有 `data` 一張工作表，對 `data` 執行 `AppendCsvToExcel`
 - **THEN** 呼叫成功，工作簿仍只有 `data` 一張工作表且內容為新 CSV
+
+#### Scenario: The sheet keeps its position and settings
+
+- **WHEN** 工作表依序為 `First`、`Target`、`Last`，`Target` 的 A 欄寬為 40，之後對 `Target` 執行 `AppendCsvToExcel`
+- **THEN** 工作表順序仍是 `First`、`Target`、`Last`，A 欄寬仍為 40，舊儲存格與公式都不殘留
 
 ### Requirement: Every opened workbook is closed
 

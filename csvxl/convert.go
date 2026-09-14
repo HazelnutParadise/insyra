@@ -186,37 +186,55 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 
 // ===============================
 
-// replaceSheet makes sheetName an empty sheet in f. An existing sheet of that
-// name is deleted first so nothing from it survives; excelize.NewSheet alone
-// would return the existing sheet and leave its cells in place. excelize
-// refuses to delete a workbook's only sheet, so in that case a placeholder is
-// created first and removed once the new sheet exists.
+// replaceSheet makes sheetName an empty sheet in f. An existing sheet is
+// cleared in place: every cell's value and formula is removed, while the sheet
+// keeps its place among the sheets and its sheet-level settings (column widths,
+// views, merged ranges). excelize.NewSheet alone would return the existing
+// sheet with its old cells in place, and deleting and recreating the sheet
+// would move it to the end and drop those settings.
 func replaceSheet(f *excelize.File, sheetName string) error {
 	idx, err := f.GetSheetIndex(sheetName)
 	if err != nil {
 		return err
 	}
-	if idx != -1 {
-		placeholder := ""
-		if f.SheetCount == 1 {
-			placeholder = "__insyra_placeholder__"
-			if _, err := f.NewSheet(placeholder); err != nil {
+	if idx == -1 {
+		_, err = f.NewSheet(sheetName)
+		return err
+	}
+	rows, err := f.Rows(sheetName)
+	if err != nil {
+		return err
+	}
+	var cells []string
+	for row := 1; rows.Next(); row++ {
+		cols, err := rows.Columns(excelize.Options{RawCellValue: true})
+		if err != nil {
+			_ = rows.Close()
+			return err
+		}
+		for col := range cols {
+			cell, err := excelize.CoordinatesToCellName(col+1, row)
+			if err != nil {
+				_ = rows.Close()
 				return err
 			}
+			cells = append(cells, cell)
 		}
-		if err := f.DeleteSheet(sheetName); err != nil {
-			return err
-		}
-		if _, err := f.NewSheet(sheetName); err != nil {
-			return err
-		}
-		if placeholder != "" {
-			return f.DeleteSheet(placeholder)
-		}
-		return nil
 	}
-	_, err = f.NewSheet(sheetName)
-	return err
+	if err := rows.Error(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	// SetCellValue with nil empties the value and removes the formula.
+	for _, cell := range cells {
+		if err := f.SetCellValue(sheetName, cell, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // safeSheetFileName returns the sheet name if it can be used as a single
