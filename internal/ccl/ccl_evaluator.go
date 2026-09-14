@@ -957,13 +957,16 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 	rowCount := ctx.GetRowCount()
 	results := make([]any, rowCount)
 
-	// Save current row index to restore later
-	originalRowIdx := ctx.GetRowIndex()
-	defer func() {
-		if err := ctx.SetRowIndex(originalRowIdx); err != nil {
-			log.Printf("ccl: failed to restore row index: %v", err)
-		}
-	}()
+	// Save current row index to restore later. With no rows the loop below
+	// never moves it, and setting row 0 of an empty context would fail.
+	if rowCount > 0 {
+		originalRowIdx := ctx.GetRowIndex()
+		defer func() {
+			if err := ctx.SetRowIndex(originalRowIdx); err != nil {
+				log.Printf("ccl: failed to restore row index: %v", err)
+			}
+		}()
+	}
 
 	for i := 0; i < rowCount; i++ {
 		if err := ctx.SetRowIndex(i); err != nil {

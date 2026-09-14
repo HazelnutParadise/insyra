@@ -17,6 +17,10 @@ In `AddColUsingCCL`, `EditColByIndexUsingCCL` and `EditColByNameUsingCCL`, an ag
 - **WHEN** 求值一個引數含有 `#` 的聚合
 - **THEN** 它仍然逐列求值，各列結果不同
 
+#### Scenario: A table with no rows
+- **WHEN** 對沒有任何列的表以 `AddColUsingCCL` 求值含逐列部分的運算式，例如 `A + ZZ(A)` 或 `A + SUM(A * 2)`
+- **THEN** 其中的聚合一次都不被呼叫，也不會寫任何東西到 Go 的標準 logger
+
 ### Requirement: Optimisations do not change results
 
 Every value produced by an optimised path SHALL equal the value the unoptimised path produced, including the order in which floating-point operations are applied.

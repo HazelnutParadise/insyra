@@ -1,7 +1,11 @@
 package insyra
 
 import (
+	"bytes"
+	"log"
 	"sort"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra/internal/ccl"
@@ -103,5 +107,36 @@ func TestAnAggregateArgumentIsAColumnOnlyWhenItIsASequenceCall(t *testing.T) {
 		if got, _ := ToFloat64Safe(dt.GetElement(row, "B")); got != 3 {
 			t.Errorf("row %d: ZZLEN(LAG(A, 1)) = %v, want 3", row, dt.GetElement(row, "B"))
 		}
+	}
+}
+
+// On a table with no rows the row loop never runs, so v0.3.2 never called an
+// aggregate inside a row-dependent expression there, and folding must not call
+// it once up front. (A bare aggregate is row-independent and is evaluated once,
+// as it always was.) Nor may an expression reach Go's standard logger, which
+// bypasses insyra's own, by trying to restore row 0 of an empty table.
+func TestAZeroRowTableCallsNoAggregateAndLogsNothing(t *testing.T) {
+	quietLogs(t)
+	var calls atomic.Int64
+	ccl.RegisterAggregateFunction("ZZCOUNTCALLS_REVIEW", func(args ...[]any) (any, error) {
+		calls.Add(1)
+		return 0.0, nil
+	})
+
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	dt := NewDataTable()
+	dt.AppendCols(NewDataList().SetName("A"))
+	dt.AddColUsingCCL("R", "A + ZZCOUNTCALLS_REVIEW(A)")
+	dt.AddColUsingCCL("S", "A + SUM(A * 2)")
+
+	if n := calls.Load(); n != 0 {
+		t.Errorf("an aggregate in a row-dependent expression was called %d times on a table with no rows, want 0", n)
+	}
+	if strings.Contains(buf.String(), "restore row index") {
+		t.Errorf("the standard logger received: %q", buf.String())
 	}
 }

@@ -240,7 +240,10 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 		// An aggregate that does not read the current row has the same answer
 		// on every row, so compute it once here instead of once per row. On
 		// 20,000 rows `A / SUM(A)` went from two seconds to a millisecond.
-		boundAST = ccl.FoldRowInvariantAggregates(boundAST, ctx)
+		// A table with no rows evaluates nothing, so it folds nothing either.
+		if numRow > 0 {
+			boundAST = ccl.FoldRowInvariantAggregates(boundAST, ctx)
+		}
 
 		if ccl.IsRowDependent(ccl.GetExpressionNode(boundAST)) {
 			for i := range numRow {

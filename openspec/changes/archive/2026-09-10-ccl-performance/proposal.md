@@ -37,6 +37,7 @@ Closes #355.
 Dev received: row-invariant aggregate folding in `applyCCLOnDataTable`, the first-character gate before date parsing, the bounded `REGEX_MATCH` pattern cache, and `ROLLING_*` converting its column once (`ccl-performance`).
 
 Adapted on dev:
+- Folding is skipped on a table with no rows, and `evaluateToColumn` does not restore a row index when there are no rows (backport review). Folding called an aggregate inside a row-dependent expression, such as `A + ZZ(A)`, once where v0.3.2's empty row loop never called it, and `A + SUM(A * 2)` wrote `ccl: failed to restore row index: row index 0 out of range` to Go's standard logger.
 - Measured on dev, 20,000 rows: `A / SUM(A)` 2.09 s to 0.99 ms, `(A - AVG(A)) / STDEV(A)` 6.19 s to 1.77 ms, `A / 1` 1.08 ms before and after; the changelog and `Docs/CCL.md` use these numbers and leave out the string, regex and rolling timings, which were measured on 0.4.
 - The correctness tests use a column past the last one for the failing-aggregate case and add a check that folding keeps `IF`'s selected-branch results and errors, since dev's `&&`, `||` and `CASE` do not short-circuit and only `IF`, `AND` and `OR` skip arguments.
 
