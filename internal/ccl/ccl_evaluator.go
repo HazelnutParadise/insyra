@@ -940,9 +940,13 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 		}
 
 		// A sequence function (LAG, CUMSUM, ...) already produced a whole
-		// column; hand it through so nesting keeps every row.
-		if col, ok := val.([]any); ok && len(col) == ctx.GetRowCount() {
-			return col, nil
+		// column; hand it through so nesting keeps every row. Decide by the
+		// node, not by the length: a row read such as @.0 is one value even on
+		// a table whose column count equals its row count.
+		if fc, isCall := n.(*funcCallNode); isCall && IsSequenceFunction(fc.name) {
+			if col, ok := val.([]any); ok {
+				return col, nil
+			}
 		}
 		// Otherwise a scalar: aggregates see it as a one-element column.
 		return []any{val}, nil

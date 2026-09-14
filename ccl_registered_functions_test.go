@@ -68,3 +68,40 @@ func TestARegisteredAggregateCannotReorderTheColumnItReads(t *testing.T) {
 		}
 	}
 }
+
+// An aggregate's argument is a whole column only when it is a sequence
+// function call. A row read such as @.0 is one value, even on a table whose
+// column count happens to equal its row count: ZZLEN(@.0) gave 3 on a 3x3
+// table and 1 on a 2x3 one, where v0.3.2 gave 1 for both.
+func TestAnAggregateArgumentIsAColumnOnlyWhenItIsASequenceCall(t *testing.T) {
+	quietLogs(t)
+	ccl.RegisterAggregateFunction("ZZLEN_REVIEW", func(args ...[]any) (any, error) {
+		return float64(len(args[0])), nil
+	})
+
+	for cols, newCol := range map[int]string{3: "D", 2: "C"} {
+		lists := make([]*DataList, cols)
+		for c := range lists {
+			lists[c] = NewDataList(1, 2, 3)
+		}
+		dt := NewDataTable(lists...)
+		dt.AddColUsingCCL("R", "ZZLEN_REVIEW(@.0)")
+		if e := dt.Err(); e != nil {
+			t.Fatalf("%d columns: Err() = %v", cols, e)
+		}
+		for row := 0; row < 3; row++ {
+			if got, _ := ToFloat64Safe(dt.GetElement(row, newCol)); got != 1 {
+				t.Errorf("%d columns, row %d: ZZLEN(@.0) = %v, want 1", cols, row, dt.GetElement(row, newCol))
+			}
+		}
+	}
+
+	// A sequence function nested in an aggregate still hands over the column.
+	dt := NewDataTable(NewDataList(1, 2, 3))
+	dt.AddColUsingCCL("R", "ZZLEN_REVIEW(LAG(A, 1))")
+	for row := 0; row < 3; row++ {
+		if got, _ := ToFloat64Safe(dt.GetElement(row, "B")); got != 3 {
+			t.Errorf("row %d: ZZLEN(LAG(A, 1)) = %v, want 3", row, dt.GetElement(row, "B"))
+		}
+	}
+}
