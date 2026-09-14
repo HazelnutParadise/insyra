@@ -91,7 +91,7 @@ km, err := stats.KMeans(dt, 3)                       // or KMeans(dt, 3, opts)
 hc, err := stats.HierarchicalAgglomerative(dt, …)
 labels, err := stats.CutTreeByK(hc, 3)               // or CutTreeByHeight
 db, err := stats.DBSCAN(dt, eps, minPts)
-sil, err := stats.Silhouette(dt, labels)
+sil, err := stats.Silhouette(dt, insyra.NewDataList(labels)) // labels is a []int
 p, err := stats.PCA(dt, …)
 fa, err := stats.FactorAnalysis(dt, stats.DefaultFactorAnalysisOptions())
 ```
@@ -107,9 +107,12 @@ rotation converged, and `MaxIter` governs extraction rather than rotation.
 
 ## Things that are easy to get wrong
 
-- A blank or non-numeric cell is refused, not read as zero. `PairedTTest`,
-  `OneWayANOVA` and the non-parametric tests reject the list; clean it first
-  with `ClearNaNs`/`ClearNils`.
+- A blank or non-numeric cell is never read as zero, but not every test refuses
+  it. `PairedTTest`, `OneWayANOVA` and the non-parametric tests reject the
+  list. `SingleSampleTTest`, `TwoSampleTTest` and the z-tests do not: they take
+  n from `Len()` while the mean and standard deviation skip the blank, so they
+  return a result built on mismatched counts with no error. Clean blanks first
+  with `ClearNaNs`/`ClearNils`, and always before those tests.
 - `TwoWayANOVA` wants its cells in row-major order, `factorALevels ×
   factorBLevels` of them. There is no long-format entry point.
 - `ChiSquareTestResult.ContingencyTable` stores each cell as a `[2]float64`
