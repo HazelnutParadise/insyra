@@ -159,6 +159,78 @@ func TestSelfReferentialValueIsEncodedPromptly(t *testing.T) {
 	}
 }
 
+// A value that shares a sub-value without containing itself, built as
+// x = []any{x, x} over and over, has 2^depth paths through it, and encoding
+// every path took 675 ms at depth 22 and never finished at depth 40. Its
+// identity must still come from its content, whether or not the content is
+// shared.
+func TestSharedSubValueIsEncodedPromptly(t *testing.T) {
+	shared := func(depth, leaf int) any {
+		var x any = leaf
+		for range depth {
+			x = []any{x, x}
+		}
+		return x
+	}
+	var unshared func(depth int) any
+	unshared = func(depth int) any {
+		if depth == 0 {
+			return 1
+		}
+		return []any{unshared(depth - 1), unshared(depth - 1)}
+	}
+
+	// Each level of []any is two levels of encoding, a slice and the interface
+	// holding it, so depth 30 is the deepest whose leaves the encoder still
+	// reads and depth 40 is cut short by maxCellEncodeDepth.
+	for _, depth := range []int{30, 40} {
+		x, y, other := shared(depth, 1), shared(depth, 1), shared(depth, 2)
+		type result struct {
+			count   int
+			elapsed time.Duration
+		}
+		done := make(chan result, 1)
+		go func() {
+			start := time.Now()
+			n := NewDataList(Cell(x), Cell(y), Cell(other)).Count(x)
+			done <- result{n, time.Since(start)}
+		}()
+		select {
+		case r := <-done:
+			want := 2 // x and y, not other
+			if depth > 30 {
+				want = 3 // beyond the limit the leaves are not read
+			}
+			if r.count != want {
+				t.Errorf("depth %d: Count(x) = %d, want %d", depth, r.count, want)
+			}
+			if r.elapsed > 100*time.Millisecond {
+				t.Errorf("depth %d: Count took %v, want under 100ms", depth, r.elapsed)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("depth %d: Count on a value sharing its sub-values did not finish", depth)
+		}
+	}
+
+	// Sharing does not change identity: the same content built without
+	// sharing is the same value, and one different leaf is a different value.
+	tree := unshared(12)
+	if encodeCell(tree) != encodeCell(shared(12, 1)) {
+		t.Error("the same content encodes differently with and without sharing")
+	}
+	if first, again := encodeCell(tree), encodeCell(tree); first != again {
+		t.Error("the encoding of a large nested value changed between calls")
+	}
+	node := tree.([]any)
+	for range 11 {
+		node = node[1].([]any)
+	}
+	node[1] = 2
+	if encodeCell(tree) == encodeCell(shared(12, 1)) {
+		t.Error("values differing in one deep leaf encode alike")
+	}
+}
+
 func TestComparableValuesAreStillKeyedByThemselves(t *testing.T) {
 	dl := NewDataList(1, 1, "a", 2.5, true)
 	counter := dl.Counter()

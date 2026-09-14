@@ -18,6 +18,11 @@
 - **THEN** 指回正在編碼中的切片或 map 時寫成回指標記而不再展開，`Counter` 立即完成，不會耗盡堆疊
 - **AND** 內容不同的兩個循環值識別不同，內容相同的識別相同，每次結果一致
 
+#### Scenario: A value that shares its sub-values
+- **WHEN** 格子值層層共用同一個子值但不包含自己（例如重複 30 次 `x = []any{x, x}`）
+- **THEN** 同一次編碼中已寫過的切片或 map 直接沿用結果，過長的巢狀編碼改寫成其內容的 SHA-256 摘要，`Count` 立即完成
+- **AND** 分別建立、內容相同的兩個值識別相同，不論子值有沒有共用；葉值不同的識別不同
+
 ### Requirement: Counting and searching give the same answer
 
 同一個無法比較的值，`Counter` 認為它出現幾次，`Count` SHALL 回報同樣的次數。`FindAll`、`Replace`、`DropAll`、`IsEqualTo`、`IsTheSameAs` 與 `DataTable` 的查找、刪除方法 SHALL 依同一套識別規則判斷相等。系統 SHALL NOT 讓一個方法找得到而另一個找不到。

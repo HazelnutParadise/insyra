@@ -1,10 +1,12 @@
 package insyra
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"math"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -129,7 +131,7 @@ func comparableCell(v any) bool {
 func splitCellEncoding(v any) (typ, content string) {
 	typ = fmt.Sprintf("%T", v)
 	var b strings.Builder
-	writeCellValue(&b, reflect.ValueOf(v), 0, nil)
+	writeCellValue(&b, reflect.ValueOf(v), 0, nil, nil)
 	return typ, b.String()
 }
 
@@ -187,50 +189,209 @@ type cellRef struct {
 	length int
 }
 
-// enterCellRef reports how many levels up rv already appears on path, the
-// slices and maps enclosing it, or 0 when it does not; in that case it returns
-// path extended by rv.
+// cellMemoKey names a slice or map written at a depth. The depth is part of it
+// because maxCellEncodeDepth can cut a value short at one depth and not at
+// another.
+type cellMemoKey struct {
+	ref   cellRef
+	depth int
+}
+
+// noCellRef is what writeCellValue returns when what it wrote refers back to
+// no slice or map enclosing it.
+const noCellRef = math.MaxInt
+
+// maxInlineCellBytes is the longest encoding a nested slice or map that holds
+// another slice or map is written as. A longer one is written as the SHA-256
+// digest of that encoding instead.
 //
-// Without it a value that refers to itself twice, s[0] = s; s[1] = s, doubles
-// the work at every level down to maxCellEncodeDepth and never finishes. The
-// back-reference is written as its distance, so the encoding stays structural:
-// two cyclic values of the same shape and content encode alike, and different
-// content still encodes differently.
-func enterCellRef(path []cellRef, rv reflect.Value) (int, []cellRef) {
+// A value that shares a sub-value, x = []any{x, x} repeated, has an encoding
+// that doubles at every level: a terabyte by depth 40. Memoizing a shared
+// sub-value saves the work of walking it again but not the length of writing
+// it again, and the digest bounds that length. It is a function of the content
+// alone, so equal content still encodes alike whether it is shared or copied.
+// The outermost value is never digested, so a printed key still shows its
+// content, and neither is a container that holds no other, whose encoding
+// cannot double.
+const maxInlineCellBytes = 1024
+
+// writeContainer writes the non-empty slice or map rv and returns the lowest
+// path index a back-reference in it points to.
+//
+// A container already on path is written as its distance up the path. Without
+// that, a value that refers to itself twice, s[0] = s; s[1] = s, doubles the
+// work at every level down to maxCellEncodeDepth and never finishes; with it,
+// the encoding stays structural, so two cyclic values of the same shape and
+// content encode alike and different content still encodes differently.
+//
+// A container this call has already written at the same depth is written from
+// memo. One that refers back to a container enclosing it is not memoized,
+// because the distance would be wrong anywhere else.
+func writeContainer(b *strings.Builder, rv reflect.Value, depth int, path []cellRef, memo map[cellMemoKey]string) int {
 	ref := cellRef{typ: rv.Type(), ptr: rv.Pointer(), length: rv.Len()}
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i] == ref {
-			return len(path) - i, path
+			b.WriteString("r:" + strconv.Itoa(len(path)-i))
+			return i
 		}
 	}
-	return 0, append(path, ref)
+	writeElems := writeSliceElems
+	if rv.Kind() == reflect.Map {
+		writeElems = writeMapEntries
+	}
+	own := len(path)
+	path = append(path, ref)
+	if depth == 0 || !holdsContainer(rv) {
+		// The outermost value is met again only through a cycle, which the
+		// path catches, and a container holding no other shares nothing and
+		// refers to nothing: neither is worth memoizing.
+		writeElems(b, rv, depth, path, memo)
+		return noCellRef
+	}
+	key := cellMemoKey{ref: ref, depth: depth}
+	if memo == nil {
+		// Made by the first container that needs one and shared by everything
+		// inside it, so a value holding no nested container allocates none.
+		memo = map[cellMemoKey]string{}
+	} else if text, ok := memo[key]; ok {
+		b.WriteString(text)
+		return noCellRef
+	}
+	var inner strings.Builder
+	lowest := writeElems(&inner, rv, depth, path, memo)
+	text := inner.String()
+	if len(text) > maxInlineCellBytes {
+		sum := sha256.Sum256([]byte(text))
+		text = "h:" + hex.EncodeToString(sum[:])
+	}
+	b.WriteString(text)
+	if lowest < own {
+		return lowest
+	}
+	memo[key] = text
+	return noCellRef
+}
+
+// holdsContainer reports whether an element of the slice or map rv may be, or
+// may hold, a slice or map. It looks through interfaces and counts any array
+// or struct.
+func holdsContainer(rv reflect.Value) bool {
+	switch rv.Type().Elem().Kind() {
+	case reflect.Interface:
+	case reflect.Slice, reflect.Map, reflect.Array, reflect.Struct:
+		return true
+	default:
+		return false
+	}
+	isContainer := func(v reflect.Value) bool {
+		for v.Kind() == reflect.Interface && !v.IsNil() {
+			v = v.Elem()
+		}
+		switch v.Kind() {
+		case reflect.Slice, reflect.Map, reflect.Array, reflect.Struct:
+			return true
+		}
+		return false
+	}
+	if rv.Kind() == reflect.Map {
+		iter := rv.MapRange()
+		for iter.Next() {
+			if isContainer(iter.Value()) {
+				return true
+			}
+		}
+		return false
+	}
+	for i := 0; i < rv.Len(); i++ {
+		if isContainer(rv.Index(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+// writeSliceElems writes the elements of the slice or array rv.
+func writeSliceElems(b *strings.Builder, rv reflect.Value, depth int, path []cellRef, memo map[cellMemoKey]string) int {
+	lowest := noCellRef
+	b.WriteByte('[')
+	for i := 0; i < rv.Len(); i++ {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		lowest = min(lowest, writeCellValue(b, rv.Index(i), depth+1, path, memo))
+	}
+	b.WriteByte(']')
+	return lowest
+}
+
+// writeMapEntries writes the entries of the map rv, sorted by their encoding,
+// so the identity does not depend on the order Go iterates the map in.
+func writeMapEntries(b *strings.Builder, rv reflect.Value, depth int, path []cellRef, memo map[cellMemoKey]string) int {
+	type entry struct {
+		key string
+		val reflect.Value
+	}
+	// A key holds no slice or map, so its encoding does not depend on what was
+	// written before it. Writing the values in key order keeps what memo holds,
+	// and so the result, from depending on the iteration order as well.
+	entries := make([]entry, 0, rv.Len())
+	iter := rv.MapRange()
+	for iter.Next() {
+		var kb strings.Builder
+		writeCellValue(&kb, iter.Key(), depth+1, path, memo)
+		entries = append(entries, entry{key: kb.String(), val: iter.Value()})
+	}
+	slices.SortFunc(entries, func(x, y entry) int { return strings.Compare(x.key, y.key) })
+	lowest := noCellRef
+	texts := make([]string, len(entries))
+	for i, e := range entries {
+		var eb strings.Builder
+		eb.WriteString(e.key)
+		eb.WriteByte('=')
+		lowest = min(lowest, writeCellValue(&eb, e.val, depth+1, path, memo))
+		texts[i] = eb.String()
+	}
+	// Sorted again by the whole entry, so two keys that encode alike still give
+	// one order.
+	sort.Strings(texts)
+	b.WriteByte('{')
+	for i, text := range texts {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(text)
+	}
+	b.WriteByte('}')
+	return lowest
 }
 
 // writeCellValue encodes rv through reflection, so it can descend into struct
 // fields that are not exported. It must not call Interface() for that reason.
-// path holds the slices and maps enclosing rv.
-func writeCellValue(b *strings.Builder, rv reflect.Value, depth int, path []cellRef) {
+// path holds the slices and maps enclosing rv, and memo the slices and maps
+// this call has already written. It returns the lowest path index a
+// back-reference in what it wrote points to, or noCellRef.
+func writeCellValue(b *strings.Builder, rv reflect.Value, depth int, path []cellRef, memo map[cellMemoKey]string) int {
 	if !rv.IsValid() {
 		b.WriteString("n:")
-		return
+		return noCellRef
 	}
 	if depth > maxCellEncodeDepth {
 		writeCellAddress(b, rv)
-		return
+		return noCellRef
 	}
 
 	switch rv.Kind() {
 	case reflect.Interface, reflect.Pointer:
 		if rv.IsNil() {
 			b.WriteString("n:")
-			return
+			return noCellRef
 		}
 		if rv.Kind() == reflect.Pointer {
 			// A pointer is identified the way == identifies it.
 			writeCellAddress(b, rv)
-			return
+			return noCellRef
 		}
-		writeCellValue(b, rv.Elem(), depth+1, path)
+		return writeCellValue(b, rv.Elem(), depth+1, path, memo)
 
 	case reflect.String:
 		b.WriteString("s:")
@@ -264,69 +425,44 @@ func writeCellValue(b *strings.Builder, rv reflect.Value, depth int, path []cell
 		if rv.Type().Elem().Kind() == reflect.Uint8 {
 			b.WriteString("x:")
 			b.WriteString(hex.EncodeToString(cellBytes(rv)))
-			return
+			return noCellRef
 		}
 		if rv.Kind() == reflect.Slice && rv.IsNil() {
 			b.WriteString("n:")
-			return
+			return noCellRef
 		}
 		if rv.Kind() == reflect.Slice && rv.Len() > 0 {
-			var up int
-			if up, path = enterCellRef(path, rv); up > 0 {
-				b.WriteString("r:" + strconv.Itoa(up))
-				return
-			}
+			return writeContainer(b, rv, depth, path, memo)
 		}
-		b.WriteByte('[')
-		for i := 0; i < rv.Len(); i++ {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-			writeCellValue(b, rv.Index(i), depth+1, path)
-		}
-		b.WriteByte(']')
+		return writeSliceElems(b, rv, depth, path, memo)
 
 	case reflect.Map:
 		if rv.IsNil() {
 			b.WriteString("n:")
-			return
+			return noCellRef
 		}
 		if rv.Len() > 0 {
-			var up int
-			if up, path = enterCellRef(path, rv); up > 0 {
-				b.WriteString("r:" + strconv.Itoa(up))
-				return
-			}
+			return writeContainer(b, rv, depth, path, memo)
 		}
-		// Sorted by encoded key, so the identity does not depend on the order
-		// Go happens to iterate the map in.
-		entries := make([]string, 0, rv.Len())
-		iter := rv.MapRange()
-		for iter.Next() {
-			var kb, vb strings.Builder
-			writeCellValue(&kb, iter.Key(), depth+1, path)
-			writeCellValue(&vb, iter.Value(), depth+1, path)
-			entries = append(entries, kb.String()+"="+vb.String())
-		}
-		sort.Strings(entries)
-		b.WriteByte('{')
-		b.WriteString(strings.Join(entries, ","))
-		b.WriteByte('}')
+		b.WriteString("{}")
 
 	case reflect.Struct:
+		lowest := noCellRef
 		b.WriteByte('{')
 		for i := 0; i < rv.NumField(); i++ {
 			if i > 0 {
 				b.WriteByte(',')
 			}
-			writeCellValue(b, rv.Field(i), depth+1, path)
+			lowest = min(lowest, writeCellValue(b, rv.Field(i), depth+1, path, memo))
 		}
 		b.WriteByte('}')
+		return lowest
 
 	default:
 		// Channels and funcs are identified by address, as == identifies them.
 		writeCellAddress(b, rv)
 	}
+	return noCellRef
 }
 
 // cellBytes reads a byte slice or byte array without requiring the value to be
