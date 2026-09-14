@@ -15,3 +15,7 @@ When CCL turns a numeric argument into an integer or a duration, the result SHAL
 #### Scenario: A large but deterministic argument
 - **WHEN** 求值 `LAG(A, 3000000000)`、`LEN(REPEAT('', 100000000))` 或 `DATEADD(D, 3000000000, 'day')`
 - **THEN** 分別得到整欄 nil、`0` 與一個日期，不回傳錯誤
+
+#### Scenario: A negative fractional repeat count
+- **WHEN** 求值 `REPEAT('ab', 0-0.5)` 與 `REPEAT('ab', 0-1)`
+- **THEN** 前者捨去小數成 0 次，得到 `""`，與原本相同；後者回傳錯誤

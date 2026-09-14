@@ -68,6 +68,14 @@ func TestIntegerArgumentsAgreeAcrossPlatforms(t *testing.T) {
 		{"REPEAT('ab', 10^300)", nil, true},
 		{"REPEAT('', C)", nil, true},
 		{"REPEAT('ab', 0-1)", nil, true},
+		{"REPEAT('ab', 0-1.5)", nil, true},
+		{"REPEAT('', 0-1)", nil, true},
+		{"REPEAT('ab', 0-10^300)", nil, true},
+		// A fraction that truncates to 0 is still no shift or window.
+		{"DIFF(A, 0-0.5)", nil, true},
+		{"PCT_CHANGE(A, 0-0.5)", nil, true},
+		{"ROLLING_MEAN(A, 0-0.5)", nil, true},
+		{"ROLLING_SUM(A, 0.5)", nil, true},
 		{"REPEAT('abc', 9223372036854775807)", nil, true}, // the bytes overflow int
 		// A row range bound that is NaN or past the int32 range is refused.
 		{"SUM(A.(0:10^300))", nil, true},
@@ -139,6 +147,21 @@ func TestIntegerArgumentsOrdinaryValuesUnchanged(t *testing.T) {
 		{"DATEADD(B, 3000000000, 'day')", jan1.AddDate(0, 0, 3000000000)},
 		{"SUM(A.(0:1))", 3.0},
 		{"SUM(A.(0.9:1.9))", 3.0},
+		// A fraction between -1 and 0 truncates to 0, as int(n) did on v0.3.2.
+		{"REPEAT('ab', 0-0.5)", ""},
+		{"REPEAT('ab', 0-0.999)", ""},
+		{"LEN(REPEAT('', 0-0.5))", 0.0},
+		{"REPEAT('ab', 0.5)", ""},
+		{"LEFT('abc', 0-0.5)", ""},
+		{"RIGHT('abc', 0-0.5)", ""},
+		{"MID('abc', 0-0.5, 2)", "ab"},
+		{"MID('abc', 1, 0-0.5)", ""},
+		{"LAG(A, 0-0.5)", 1.0},
+		{"LEAD(A, 0-0.5)", 1.0},
+		{"DATEADD(B, 0-0.5, 'day')", jan1},
+		{"DATEADD(B, 0-0.999, 'month')", jan1},
+		{"DATEADD(B, 0-0.5, 'year')", jan1},
+		{"DATEADD(B, 0-0.5, 'hour')", jan1.Add(-30 * time.Minute)},
 	} {
 		got, err := evalCol(t, ctx, c.expr)
 		switch {

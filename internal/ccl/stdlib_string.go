@@ -237,9 +237,11 @@ func registerStringFunctions() {
 			return nil, fmt.Errorf("REPEAT: count arg must be a number, got %T", args[1])
 		}
 		// int(n) on NaN, ±Inf or a value past the int64 range differs by
-		// platform, and strings.Repeat panics on a negative count.
-		if math.IsNaN(n) || n < 0 || n >= 1<<63 {
-			return nil, fmt.Errorf("REPEAT: count must be a non-negative number within int64, got %v", args[1])
+		// platform, and strings.Repeat panics on a negative count. A fraction
+		// truncates toward zero, so a count between -1 and 0 is 0, as it was
+		// on v0.3.2.
+		if math.IsNaN(n) || n <= -1 || n >= 1<<63 {
+			return nil, fmt.Errorf("REPEAT: count must truncate to a non-negative integer within int64, got %v", args[1])
 		}
 		if s == "" {
 			return "", nil

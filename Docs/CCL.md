@@ -694,7 +694,7 @@ All string functions are rune-aware (Unicode safe). `nil` is treated as the empt
 | `FIND(needle, haystack)` | 1-based position of `needle`; `0` if not found |
 | `CONTAINS(s, sub)` / `STARTSWITH(s, p)` / `ENDSWITH(s, p)` | Boolean checks |
 | `REGEX_MATCH(s, pattern)` | Go regexp match |
-| `REPEAT(s, n)` | Repeat `s` `n` times. A count that is `NaN`, negative, infinite or beyond `int64`, or a result too long for an `int`, is an error |
+| `REPEAT(s, n)` | Repeat `s` `n` times. A fractional `n` truncates toward zero, so a count between -1 and 0 gives `""`. A count that is `NaN`, -1 or less, infinite or beyond `int64`, or a result too long for an `int`, is an error |
 
 ```go
 // Email cleanup pipeline
