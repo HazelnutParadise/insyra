@@ -85,6 +85,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `FactorAnalysisResult.RotationConverged` 改為回報旋轉實際上有沒有收斂。它過去恆為 `true`：多起點挑出來的候選從來沒帶收斂旗標，`fa.Rotate` 只好用預設值，所以一個在 1e-12 容忍度下只跑一次迭代就停的旋轉也回報收斂。現在旗標描述的是實際回傳的那個解，多起點之間怎麼挑選則不變。
 - 旋轉沒有收斂時，每次搜尋只記錄一則警告，指出方法、起點數與迭代上限，而且只在回傳的解沒有收斂時才記錄，也就是 `RotationConverged` 為 `false` 的情況。過去 `GPForth` 與 `GPFoblq` 對每個跑到上限的起點都警告一次，多起點搜尋自己建的 Varimax 起點也會警告，所以 `Restarts` 大於 1 的呼叫可能記下好幾則警告、往全域錯誤緩衝區塞同樣多筆，而回傳的解其實已經收斂。那些個別起點現在只在 debug 層級回報。
 - `Skewness` 與 `Kurtosis` 改為拒絕無法讀成有限數字的值，不再當成零，這正是 `stats` 文件一直對每個數值入口的描述。空白、文字、`NaN` 或 `Inf` 的格子會回報錯誤，指出 `sample` 與從 1 起算的列號：過去 `[1, nil, 3, 4]` 的 `Skewness` 回傳 `0`，`[1, "x", 3, 4]` 的 `Kurtosis` 回傳 `-1.64`。一如文件所寫，拼成數字的字串同樣會被拒絕。全數值輸入的結果不變。
+- `SingleSampleTTest`、`TwoSampleTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`BartlettTest`、`LeveneTest` 與 `CalculateMoment` 改為拒絕無法讀成有限數字的格子，錯誤指出序列與從 1 起算的列號，這正是 `stats` 文件一直對每個數值入口的描述。過去檢定的 n 取 list 長度，平均與標準差卻跳過那一格，`[1, 2, nil, 3]` 會得到 t = 4.00、p = 0.028，而不是 `[1, 2, 3]` 的 t = 3.46、p = 0.074，一個空白就把不顯著變成顯著。`CalculateMoment` 則把那一格當成零；原本就會拒絕的 `LeveneTest` 現在也同樣指出列號。`nil` 的 list（不論是否帶型別）在 `SingleSampleTTest`、`SingleSampleZTest` 與 `CalculateMoment` 回傳錯誤，不再 panic。全數值輸入的結果不變；檢定前請用 `ClearNils` 清掉空白。
 
 ### `csvxl`
 

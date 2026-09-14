@@ -52,12 +52,14 @@ Dev received:
 - Environment names that escape the environments directory being refused (`cli-env-name`), adapted to a containment check instead of the character regex.
 - Fixed `lp` info-table order (`deterministic-and-atomic-output`, without the geocode cache requirement).
 
+Dev received (documented behaviour):
+- t/z/F/Bartlett/Levene tests and `CalculateMoment` refusing a cell they cannot read as a finite number (`stats-test-input`, 2026-09-14): v0.3.2's `skills/insyra/SKILL.md` already said every `stats` numeric entry point refuses such a value, naming the series and the row. Adapted: `testSeries` converts through `asDataList` before `numericSlice`, so a nil or typed nil list is an error, not a panic.
+
 Stayed on 0.4:
 - `Data()`/`ToMap()` copies and `Filter*` results cloning columns and row names: breaking, changes aliasing that callers can observe.
 - `ChangeRowName` suffixing a colliding name: breaking, changes the resulting row names.
 - `ToCSV` writing `time.Time` as RFC 3339 (`datatable-csv-time-roundtrip`): breaking, changes file output.
 - CCL methods returning the receiver after a recovered panic (`datatable-ccl-failure-shape`): breaking, nil becomes non-nil.
-- t/z/F/Bartlett/Levene/`CalculateMoment` refusals (`stats-test-input`): breaking, new errors.
 - The strict `^[A-Za-z0-9][A-Za-z0-9._-]*$` environment-name rule: breaking, rejects existing names with spaces or CJK letters.
 
 Stayed on 0.4 (owner decision):
