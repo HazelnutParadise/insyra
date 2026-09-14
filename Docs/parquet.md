@@ -130,9 +130,12 @@ in JSON, so nothing is lost. `Write` still writes a column of `[]byte` cells
 as a string column holding Go's text for the slice, such as `[65 45 48 49]`,
 so a read-then-write round trip keeps neither the binary type nor the bytes.
 
-Dictionary-encoded columns are not a special case: the reader materialises them
-as their underlying type, so a pandas `category` column of strings reads as
-strings.
+A dictionary-encoded column reads as the values it holds, in the Go type the
+table above gives their Arrow type, so a pandas `category` column of strings
+reads as strings. That holds whether the reader materialises the column or, for
+a file that stores its Arrow schema, hands it over as an Arrow dictionary. A
+dictionary whose values have no Go representation reads as `nil`, with the
+reason on `Err()`.
 
 `Stream` and `ReadColumn` read the same types the same way, and record the
 reason on each batch or on the returned list. `FilterWithCCL` also sees `nil`

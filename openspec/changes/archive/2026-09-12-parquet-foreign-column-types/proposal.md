@@ -56,6 +56,7 @@ Adapted:
 - `Err()` on this line is not sticky: each unsupported column logs a warning and replaces `Err()`, so with several of them `Err()` names the last. A test pins it.
 - Binary columns (`Binary`, `LargeBinary`, `FixedSizeBinary`) keep their old reading here, the text of the whole array, and count as supported so no reason is recorded. The 0.4 intermediate of a `string` holding the raw bytes was not taken; `parquet-binary-is-bytes` brings `[]byte` directly.
 - `Null` counts as a supported type and reads as `nil` with no reason recorded (backport review). Every cell of such a column already read as `nil`, but `Read`, `Stream` and `ReadColumn` also recorded "unsupported Arrow column type null", reporting a column that was read in full.
+- A dictionary column reads as its values when the reader receives an Arrow dictionary, as it does for a file that stores its Arrow schema (backport review). `getVal` had no arm for `*array.Dictionary`, so such a column read as `nil` cells with an "unsupported" reason, while `Docs/parquet.md` said dictionary columns read as their underlying type.
 
 Left on 0.4:
 - `Binary` as a `string` of raw bytes, its test assertion and its requirement text: an intermediate step, replaced on this line by `parquet-binary-is-bytes`.

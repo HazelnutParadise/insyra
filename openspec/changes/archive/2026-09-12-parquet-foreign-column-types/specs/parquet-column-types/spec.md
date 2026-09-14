@@ -29,6 +29,14 @@
 - **WHEN** 讀取 `Int8`、`Int16` 或任一無號整數欄位
 - **THEN** 每一格是該列的整數值，且與其他 Go 整數型別以數值相等比較
 
+### Requirement: A dictionary column reads as its values
+
+Dictionary 欄位 SHALL 讀成每一列索引所指的值，型別與直接讀取該值型別時相同；該列索引或所指的值為 null 時 SHALL 讀成 `nil`。檔案保存了 Arrow schema、reader 拿到的是 Arrow dictionary 時也 SHALL 如此。值型別沒有對應表示法時，SHALL 比照該型別讀成 `nil` 並記錄原因。
+
+#### Scenario: A dictionary of strings stored with its schema
+- **WHEN** 以 pqarrow 保存 Arrow schema 寫入 `dictionary<values=utf8, indices=int32>` 欄位，內容為 `x`、`y`、null、`x`
+- **THEN** 讀回 `"x"`、`"y"`、`nil`、`"x"`，且 `Err()` 為 nil
+
 ### Requirement: A column that cannot be read says so
 
 遇到沒有對應表示法的欄位型別時，系統 SHALL 在回傳的 DataTable 上記錄錯誤，內容指出欄位名稱與 Arrow 型別。系統 SHALL 仍然回傳其餘欄位可用的表格，SHALL NOT 因為單一欄位而讓整份檔案讀不了。

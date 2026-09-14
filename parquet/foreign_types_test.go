@@ -33,6 +33,13 @@ const decimal38 = "99999999999999999999999999999999999999"
 // its path.
 func writeForeignParquet(t *testing.T, fields []arrow.Field, fill func(*array.RecordBuilder)) string {
 	t.Helper()
+	return writeForeignParquetWith(t, fields, fill, pqarrow.DefaultWriterProps())
+}
+
+// writeForeignParquetWith is writeForeignParquet with the Arrow writer
+// properties given, such as WithStoreSchema.
+func writeForeignParquetWith(t *testing.T, fields []arrow.Field, fill func(*array.RecordBuilder), props pqarrow.ArrowWriterProperties) string {
+	t.Helper()
 
 	mem := memory.NewGoAllocator()
 	schema := arrow.NewSchema(fields, nil)
@@ -48,7 +55,7 @@ func writeForeignParquet(t *testing.T, fields []arrow.Field, fill func(*array.Re
 	if err != nil {
 		t.Fatal(err)
 	}
-	w, err := pqarrow.NewFileWriter(schema, f, parquet.NewWriterProperties(), pqarrow.DefaultWriterProps())
+	w, err := pqarrow.NewFileWriter(schema, f, parquet.NewWriterProperties(), props)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,6 +411,54 @@ func TestANullTypedColumnReadsAsNilWithoutAReason(t *testing.T) {
 	}
 }
 
+// A file that stores its Arrow schema hands a dictionary column to the reader
+// as an Arrow dictionary rather than as its values. It reads as the values the
+// indices point to, a null index as nil, with no reason recorded.
+func TestADictionaryColumnStoredWithItsSchemaReadsAsItsValues(t *testing.T) {
+	dictType := &arrow.DictionaryType{IndexType: arrow.PrimitiveTypes.Int32, ValueType: arrow.BinaryTypes.String}
+	path := writeForeignParquetWith(t, []arrow.Field{
+		{Name: "category", Type: dictType, Nullable: true},
+	}, func(b *array.RecordBuilder) {
+		db := b.Field(0).(*array.BinaryDictionaryBuilder)
+		for _, v := range []string{"x", "y", "", "x"} {
+			if v == "" {
+				db.AppendNull()
+				continue
+			}
+			if err := db.AppendString(v); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}, pqarrow.NewArrowWriterProperties(pqarrow.WithStoreSchema()))
+
+	want := []any{"x", "y", nil, "x"}
+	dt, err := Read(context.Background(), path, ReadOptions{})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if e := dt.Err(); e != nil {
+		t.Errorf("Read recorded a reason for a dictionary of strings: %v", e)
+	}
+	for row, w := range want {
+		if got := dt.GetElementByNumberIndex(row, 0); got != w {
+			t.Errorf("Read row %d: got %v (%T), want %v", row, got, got, w)
+		}
+	}
+
+	dl, err := ReadColumn(context.Background(), path, "category", ReadColumnOptions{})
+	if err != nil {
+		t.Fatalf("ReadColumn: %v", err)
+	}
+	if e := dl.Err(); e != nil {
+		t.Errorf("ReadColumn recorded a reason for a dictionary of strings: %v", e)
+	}
+	for row, w := range want {
+		if got := dl.Get(row); got != w {
+			t.Errorf("ReadColumn row %d: got %v (%T), want %v", row, got, got, w)
+		}
+	}
+}
+
 // supportedArrowType and getVal are two lists of the same thing, and they drift
 // silently: a type in the first but not the second reads as nil while claiming
 // to be supported, and one in the second but not the first makes the reader
@@ -425,7 +480,9 @@ func TestSupportedTypesAreExactlyWhatGetValHandles(t *testing.T) {
 		&arrow.Decimal128Type{Precision: 10, Scale: 2},
 		&arrow.Decimal256Type{Precision: 40, Scale: 4},
 		arrow.Null,
+		&arrow.DictionaryType{IndexType: arrow.PrimitiveTypes.Int32, ValueType: arrow.BinaryTypes.String},
 		// Not representable:
+		&arrow.DictionaryType{IndexType: arrow.PrimitiveTypes.Int32, ValueType: arrow.FixedWidthTypes.Time32s},
 		arrow.FixedWidthTypes.Time32s, arrow.FixedWidthTypes.Time64us,
 		arrow.FixedWidthTypes.Duration_s,
 		arrow.FixedWidthTypes.MonthInterval,
@@ -453,7 +510,10 @@ func TestSupportedTypesAreExactlyWhatGetValHandles(t *testing.T) {
 // getValHandles reports whether getVal has an arm for this array's Go type,
 // independent of the value in it.
 func getValHandles(arr arrow.Array) bool {
-	switch arr.(type) {
+	switch a := arr.(type) {
+	case *array.Dictionary:
+		// A dictionary is read through its values.
+		return getValHandles(a.Dictionary())
 	case *array.Int64, *array.Int32, *array.Int16, *array.Int8,
 		*array.Uint64, *array.Uint32, *array.Uint16, *array.Uint8,
 		*array.Float64, *array.Float32,
