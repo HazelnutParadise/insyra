@@ -710,7 +710,7 @@ dt.ExecuteCCL(`
 | Function | Description |
 | --- | --- |
 | `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
-| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)` |
+| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |

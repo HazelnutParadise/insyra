@@ -14,8 +14,12 @@
 
 ### Requirement: A format that does not fit is an error
 
-`TOSTR`／`TEXT` 的兩引數形式 SHALL 在格式與值不相符時回報錯誤，SHALL NOT 把 `fmt` 的錯誤標記（`%!d(...)`、`%!(NOVERB)`）當成結果寫進儲存格。
+`TOSTR`／`TEXT` 的兩引數形式 SHALL 在格式與值不相符時回報錯誤，SHALL NOT 把 `fmt` 的錯誤標記（`%!d(...)`、`%!(NOVERB)`）當成結果寫進儲存格。原本就出現在值的文字或格式字串裡的相同文字 SHALL NOT 被當成錯誤標記。
 
 #### Scenario: A verb that does not fit
 - **WHEN** `TOSTR(1.5, '%d')`
 - **THEN** 回報錯誤，指出格式與值的型別
+
+#### Scenario: Text that only looks like a marker
+- **WHEN** 對值 `Item (MISSING)` 求值 `TOSTR(A, '%s')`，或求值 `TOSTR(3, 'n=%v (MISSING)')`
+- **THEN** 分別得到 `Item (MISSING)` 與 `n=3 (MISSING)`，不回報錯誤

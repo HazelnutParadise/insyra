@@ -38,5 +38,7 @@ Three more findings whose fix has one right answer: #365 (CCL-31), #366 (CCL-32)
 
 Dev received all four code fixes, their tests and the `Docs/CCL.md` and changelog text: the out-of-range literal error, exponent literals, `TOSTR`/`TEXT` reporting a format mismatch, and `RoundUnnecessary` returning an error. The parser hunk sits on this line's `errAt` from the ccl-error-reporting backport, and `TestNonASCIIErrorsPointAtACharacter` passes unchanged.
 
+Adapted (backport review): `fmtErrorMarker` no longer treats a bare `(MISSING)` as a marker, since fmt writes it only as `%!<verb>(MISSING)`, which the verb scan finds, and it ignores a marker already present in the value's text or the format string. `TOSTR(A, '%s')` on `Item (MISSING)` and `TOSTR(A, 'n=%v (MISSING)')` worked on v0.3.2 and had started to fail.
+
 Left on 0.4:
 - the `api-review.md` and `delivery-status.md` edits of this commit and of the ledger commit that followed it (0.4 bookkeeping).
