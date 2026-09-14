@@ -37,7 +37,7 @@ The system SHALL route every check that depends on an external reference impleme
 - **THEN** its absence is reported through the shared gate
 
 ### Requirement: Continuous integration provides the toolchains it gates on
-The system SHALL install, in every workflow that exists to run a reference-implementation comparison, every dependency that comparison's own gate requires.
+The system SHALL install, in every workflow that exists to run a reference-implementation comparison, every dependency that comparison's own gate requires. Every opt-in comparison that strict mode turns on SHALL be run by a step of such a workflow.
 
 #### Scenario: A parity workflow runs its suite
 
@@ -50,6 +50,12 @@ The system SHALL install, in every workflow that exists to run a reference-imple
 - **WHEN** continuous integration runs the reference-implementation verifications
 - **THEN** it does so with reference-toolchain verification required
 - **AND** a check that could not run fails the workflow
+
+#### Scenario: An opt-in comparison has a step that runs it
+
+- **WHEN** a test is opt-in because its reference implementation is usually absent, such as the portfolio comparison against cvxpy
+- **THEN** the reference verification workflow installs that implementation and has a step whose `go test` pattern selects the test
+- **AND** the test executes in that step rather than skipping
 
 ### Requirement: CI pins the versions it runs
 

@@ -10,4 +10,4 @@
 ## 3. 驗證與紀錄
 - [x] 3.1 推上 `0.4` 後 Reference Verification 通過，且 log 顯示 `TestPortfolioAgreesWithCVXPY` 實際執行並 PASS。
 - [x] 3.2 `api-review.md` TS-4、`delivery-status.md`。
-- [ ] 3.3 歸檔；在 #302 留言附證據並關閉。
+- [x] 3.3 歸檔；在 #302 留言附證據並關閉。
