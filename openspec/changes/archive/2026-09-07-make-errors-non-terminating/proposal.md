@@ -40,7 +40,7 @@ The decided philosophy: **the library never terminates or panics by default; pan
 Dev received:
 - `PopErr()` and `SetErr()` on `DataList`/`DataTable` and in `IDataList`/`IDataTable` (`instance-error-contract`, rewritten for dev's model).
 - The global error buffer bounded at `ErrorBufferCapacity`, documented as a diagnostic log, with the nine accessors deprecated (`global-error-buffer-scope`).
-- `isr` `DT.From`/`Col`/`Row`/`Push`/`UseDL`/`UseDT` recording an error instead of exiting; the `gplot` default bin count and series failures, `plot` radar/heatmap misuse, `lp` GLPK install failures and the `py` IPC listen failure logging a warning instead of exiting or panicking (`error-philosophy`, narrowed to these paths).
+- `isr` `DT.From`/`Col`/`Row`/`Push`/`UseDL`/`UseDT` logging a warning instead of exiting; the `gplot` default bin count and series failures, `plot` radar/heatmap misuse, `lp` GLPK install failures and the `py` IPC listen failure logging a warning instead of exiting or panicking (`error-philosophy`, narrowed to these paths).
 
 Adapted on dev:
 - `SetErr` records like dev's internal `warn`: Warning level, the latest error replaces `Err()`, no panic switch.
@@ -49,6 +49,7 @@ Adapted on dev:
 - `Col`/`Row` for a column or row that does not exist, `UseDL`/`UseDT` given a nil value, and `DT.From(nil)` keep returning a wrapper around `nil`.
 - The macOS GLPK install loop gets the same stop-on-failure guard as Linux.
 - The Windows branch returns after the install-failure warning and leaves `GLPK_PATH` and `PATH` untouched (backport review). The warning replaced `LogFatal` without a `return`, so `glpsolPath` was `""` and `filepath.Dir("")`, which is `.`, was set as `GLPK_PATH` and put at the front of `PATH`.
+- Owner decision (2026-09-14): what these calls return under `Config.SetDontPanic(true)` stays as on v0.3.2, where `LogFatal` only logged and the code went on, and the default configuration returns the same. `isr` wraps a `nil` `DataTable` or `DataList` where v0.3.2 did, skips a row or column it cannot add and carries on, and records `Err()` only on a table that is not nil. `CreateRadarChart` without indicators returns the chart. The calendar heat map, `gplot`, the `lp` install and the `py` listen keep 0.4's fix, because under `SetDontPanic(true)` v0.3.2 panicked, retried the install without end or put `.` on `PATH` (Windows), or crashed on a nil listener.
 
 Stayed on 0.4:
 - `LogFatal` no longer exiting, `SetPanicOnError`/`GetPanicOnError` and the `SetDontPanic` deprecation: breaking, changes a default.

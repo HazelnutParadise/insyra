@@ -909,17 +909,27 @@ processed := isr.DL.From(1, 2, 3).Push(4, 5).At(4) // Returns 5
 
 ## Error Handling
 
-`DT.From`, `Col`, `Row`, `Push`, `UseDL` and `UseDT` do not end the program on an unsupported type or a failed read. They return a usable object and record the error on it, so check it after the chain:
+`DT.From`, `Col`, `Row`, `Push`, `UseDL` and `UseDT` do not end the program on an unsupported type or a failed read. They log a warning and return what they returned before with `insyra.Config.SetDontPanic(true)`, whether or not it is set:
+
+- `DT.From` that cannot read its CSV, JSON or Excel source, cannot convert a 2D slice, or is given a type it does not support returns a `DT` wrapping a `nil` `DataTable`.
+- `Col` and `Row` given a selector of an unsupported type return a `DL` wrapping a `nil` `DataList`, the same as for a column or row that does not exist.
+- A `Row` or `Col` that cannot be added, for example one whose keys mix ints and strings, is skipped and the others are still added. `DT.From` with a `Row`, `Rows`, `Col` or `Cols`, and every `Push`, return the table with the error recorded on its `Err()`. `Push` given an unsupported type records the error the same way.
+
+So check the wrapped value before using it, and check `Err()` after the chain:
 
 ```go
 t := isr.DT.From(isr.CSV{FilePath: "sales.csv"})
-if err := t.PopErr(); err != nil {
-    log.Printf("could not read the table: %v", err)
+if t.DataTable == nil {
+    log.Print("could not read sales.csv")
     return
+}
+t.Push(isr.Rows{{"A": 1}, {"A": 2}})
+if err := t.PopErr(); err != nil {
+    log.Printf("a row was skipped: %v", err)
 }
 ```
 
-`Err()` returns the most recent error, `PopErr()` returns it and clears it, and `ClearErr()` only clears. When `Col` or `Row` finds no such column or row, the returned `DL` wraps a `nil` `DataList`, so check it before use.
+`Err()` returns the most recent error, `PopErr()` returns it and clears it, and `ClearErr()` only clears.
 
 ## Best Practices
 

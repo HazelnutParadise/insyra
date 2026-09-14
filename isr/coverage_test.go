@@ -1,6 +1,7 @@
 package isr
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -197,13 +198,32 @@ func TestDT_From_CSVFile(t *testing.T) {
 	}
 }
 
+// eachDontPanic runs f with Config.SetDontPanic off and then on: a failure
+// that ended the program on v0.3.2 returns, in both, what v0.3.2 returned with
+// SetDontPanic(true). error_test.go has the same helper in the external
+// package.
+func eachDontPanic(t *testing.T, f func(t *testing.T)) {
+	t.Helper()
+	for _, dontPanic := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dontPanic=%v", dontPanic), func(t *testing.T) {
+			previous := insyra.Config.GetDontPanicStatus()
+			insyra.Config.SetDontPanic(dontPanic)
+			t.Cleanup(func() { insyra.Config.SetDontPanic(previous) })
+			f(t)
+		})
+	}
+}
+
+// An Excel source with no path cannot be read, so the wrapper holds no table.
 func TestDT_From_Excel_EmptyPath(t *testing.T) {
 	quietTest(t)
 
-	table := DT.From(Excel{})
-	if table.Err() == nil {
-		t.Error("an Excel source with no path recorded no error")
-	}
+	eachDontPanic(t, func(t *testing.T) {
+		table := DT.From(Excel{})
+		if table == nil || table.DataTable != nil {
+			t.Error("an Excel source with no path did not give a wrapper around a nil DataTable")
+		}
+	})
 }
 
 func TestDT_Of(t *testing.T) {
@@ -232,14 +252,16 @@ func TestDT_ColSelectors(t *testing.T) {
 	}
 
 	// A selector that is not there finds no column: on the 0.3.x line the
-	// returned DL wraps no DataList. One of the wrong kind records the failure
-	// on the returned list rather than handing back nil.
+	// returned DL wraps no DataList. One of the wrong kind logs a warning and
+	// gives the same wrapper around nil.
 	if l := table.Col(99); l == nil || l.DataList != nil {
 		t.Error("Col(99) found a column")
 	}
-	if l := table.Col(1.5); l == nil || l.Err() == nil {
-		t.Error("Col with a float selector did not record an error")
-	}
+	eachDontPanic(t, func(t *testing.T) {
+		if l := table.Col(1.5); l == nil || l.DataList != nil {
+			t.Error("Col with a float selector did not give a wrapper around a nil DataList")
+		}
+	})
 }
 
 func TestDT_RowSelectors(t *testing.T) {
@@ -258,9 +280,11 @@ func TestDT_RowSelectors(t *testing.T) {
 	if l := table.Row(99); l == nil || l.DataList != nil {
 		t.Error("Row(99) found a row")
 	}
-	if l := table.Row("nope"); l == nil || l.Err() == nil {
-		t.Error("Row with a string selector did not record an error")
-	}
+	eachDontPanic(t, func(t *testing.T) {
+		if l := table.Row("nope"); l == nil || l.DataList != nil {
+			t.Error("Row with a string selector did not give a wrapper around a nil DataList")
+		}
+	})
 }
 
 func TestDT_At(t *testing.T) {
@@ -334,10 +358,19 @@ func TestDT_PushForms(t *testing.T) {
 		}
 	})
 	t.Run("unsupported", func(t *testing.T) {
-		table := sampleDT().Push(3.14)
-		if table.Err() == nil {
-			t.Error("pushing an unsupported type recorded no error")
-		}
+		eachDontPanic(t, func(t *testing.T) {
+			before := sampleDT()
+			table := before.Push(3.14)
+			if table != before {
+				t.Fatal("pushing an unsupported type returned a different table")
+			}
+			if _, cols := table.Size(); cols != 2 {
+				t.Errorf("columns: got %d, want 2", cols)
+			}
+			if table.Err() == nil {
+				t.Error("pushing an unsupported type recorded no error")
+			}
+		})
 	})
 }
 
@@ -365,14 +398,23 @@ func TestDT_RowWithNameKeys(t *testing.T) {
 	}
 }
 
-// A Row whose keys are neither all ints nor all strings is refused.
+// A Row whose keys are neither all ints nor all strings is refused: the table
+// stays empty and the refusal is recorded on it.
 func TestDT_RowWithMixedKeys(t *testing.T) {
 	quietTest(t)
 
-	table := DT.From(Row{"A": 1, 0: 2})
-	if table.Err() == nil {
-		t.Error("a Row with mixed key types recorded no error")
-	}
+	eachDontPanic(t, func(t *testing.T) {
+		table := DT.From(Row{"A": 1, 0: 2})
+		if table.DataTable == nil {
+			t.Fatal("a Row with mixed key types gave no table")
+		}
+		if rows, cols := table.Size(); rows != 0 || cols != 0 {
+			t.Errorf("size: got %dx%d, want 0x0", rows, cols)
+		}
+		if table.Err() == nil {
+			t.Error("a Row with mixed key types recorded no error")
+		}
+	})
 }
 
 // --- window wrappers --------------------------------------------------------

@@ -424,6 +424,8 @@ Helper functions:
 - `HeatMapPoint(x, y, value)`
 - `HeatMapMissingPoint(x, y)`
 
+In calendar mode (`UseCalendar: true`) every X value must be a `time.Time` and `CalendarOpts` must be set. Otherwise a warning is logged and `nil` is returned.
+
 ### 6. Radar Chart
 
 ![Radar Chart Example](./img/plot/radar_example.png)
@@ -469,6 +471,8 @@ func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Rad
 **Returns:**
 
 - `*charts.Radar`: Return value.
+
+When neither `Indicators` nor `MaxValues` is set, a warning is logged and the chart is returned without indicators, as it was before with `insyra.Config.SetDontPanic(true)`; earlier releases ended the program in the default configuration. Set `Indicators` to get a usable chart.
 
 ### 7. Funnel Chart
 

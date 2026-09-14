@@ -2,31 +2,19 @@ package isr
 
 import "github.com/HazelnutParadise/insyra"
 
-// isr is a block-syntax API: every method has to return something the next
-// method in the chain can be called on. A failure in DT.From, Col, Row or Push
-// therefore does not end the process; it records the error on the object it
-// hands back, and the caller checks Err() (or PopErr()) at the end of the
-// chain:
+// A failure in DT.From, Col, Row or Push does not end the program. It logs a
+// warning, and the call returns what it returned on v0.3.2 with
+// Config.SetDontPanic(true), where LogFatal only logged and the code went on:
+// a source that cannot be read leaves a nil DataTable, an unsupported selector
+// a nil DataList, and a row or column that cannot be added is skipped. Both
+// configurations return that value.
 //
-//	t := isr.DT.From(isr.CSV{FilePath: path}).Push(row)
-//	if err := t.PopErr(); err != nil { ... }
-//
-// failDT and failDL are the two helpers that do this. They guarantee the
-// wrapper holds a usable underlying value before recording the error, so the
-// caller cannot dereference a nil.
-
-func failDT(t *dt, funcName, msg string, args ...any) *dt {
+// recordDT records the error on the table as well, but only when there is a
+// table to record it on, so nothing that was nil becomes non-nil.
+func recordDT(t *dt, funcName, msg string, args ...any) {
 	if t.DataTable == nil {
-		t.DataTable = insyra.NewDataTable()
+		insyra.LogWarning("isr", funcName, msg, args...)
+		return
 	}
 	t.SetErr("isr", funcName, msg, args...)
-	return t
-}
-
-func failDL(l *dl, funcName, msg string, args ...any) *dl {
-	if l.DataList == nil {
-		l.DataList = insyra.NewDataList()
-	}
-	l.SetErr("isr", funcName, msg, args...)
-	return l
 }

@@ -175,9 +175,11 @@ func TestEmptyInputGivesNoChart(t *testing.T) {
 	if c := CreateRadarChart(RadarChartConfig{}, nil); c != nil {
 		t.Error("CreateRadarChart with no series returned a chart")
 	}
-	// A radar chart with series but nothing to measure them against.
-	if c := CreateRadarChart(RadarChartConfig{}, []RadarSeries{{Name: "s", Values: []float32{1}}}); c != nil {
-		t.Error("CreateRadarChart with neither indicators nor maximums returned a chart")
+	// A radar chart with series but nothing to measure them against still
+	// comes back, with no indicators, as it did on v0.3.2 under
+	// SetDontPanic(true). error_paths_test.go pins it in both configurations.
+	if c := CreateRadarChart(RadarChartConfig{}, []RadarSeries{{Name: "s", Values: []float32{1}}}); c == nil {
+		t.Error("CreateRadarChart with neither indicators nor maximums returned nil")
 	}
 	if c := CreateKlineChart(KlineChartConfig{}); c != nil {
 		t.Error("CreateKlineChart with no points returned a chart")

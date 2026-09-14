@@ -116,20 +116,20 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `lp`
 
 - `SolveFromFile` 與 `SolveModel` 回傳的附加資訊表列順序固定為 Status、Execution Time、Warnings、Full Output、Iterations、Nodes，過去依 Go map 順序每次不同。
-- GLPK 下載、解壓或編譯失敗不再結束程式：失敗以警告記錄，之後呼叫 `SolveModel`／`SolveFromFile` 時透過附加資訊表回報找不到求解器。`SolveModel` 兩處建立暫存檔失敗改為記錄警告並回傳 `nil, nil`，不再結束程式。
+- GLPK 下載、解壓或編譯失敗不再結束程式：失敗以警告記錄，之後呼叫 `SolveModel`／`SolveFromFile` 時透過附加資訊表回報找不到求解器。過去開啟 `Config.SetDontPanic(true)` 讓程式繼續時，Linux 與 macOS 會無止境地重試安裝，Windows 會把工作目錄加進 `PATH`，現在各系統都在第一個失敗就停止安裝。`SolveModel` 兩處建立暫存檔失敗改為記錄警告並回傳 `nil, nil`，也就是過去開啟 `SetDontPanic(true)` 時的回傳值，不再結束程式。
 - `SolveFromFile` 收到超過一個 `timeoutSeconds` 時，改在尋找或安裝 GLPK 之前就拒絕，已經寫錯的呼叫不會再觸發安裝。它仍然記錄警告並回傳 `nil, nil`。
 - 解壓 GLPK 時建立的目錄權限改為 0o755，不再是 0777。
 
 ### `plot`
 
-- `CreateRadarChart` 未提供 indicators、`CreateHeatMap` 日曆模式的 X 型別錯誤或未設 `CalendarOpts` 時，改為記錄警告並回傳 `nil`，不再結束程式或 panic。
+- `CreateRadarChart` 未提供 indicators 時不再結束程式，改為記錄警告並回傳沒有 indicators 的圖表，與過去開啟 `Config.SetDontPanic(true)` 時相同。`CreateHeatMap` 日曆模式的 X 型別錯誤或未設 `CalendarOpts` 時，改為記錄警告並回傳 `nil`，不再 panic。
 - `nil` 的 `IDataList` 不再讓程式當掉。`CreateBarChart` 與 `CreateLineChart` 會記錄警告、略過 nil 的清單並畫出其餘部分，全部都是 nil 時才回傳 `nil`。`CreateBoxPlot` 以同樣方式略過序列裡 nil 的清單，清單全是 nil 的序列會被拿掉；原本就沒有任何清單的序列照舊保留。`CreateWordCloud` 回傳 `nil`。每個圖表都透過 `AtomicDo` 讀資料，而那會解參考接收者，所以夾在正常清單裡的一個 nil 過去會 panic。
 - `SavePNG` 在輸出路徑沒有副檔名時回傳錯誤，不再在快照套件裡 panic，該套件是以副檔名決定圖片格式的。
 - `SavePNG` 的線上備援（本機 Chrome／Chromium 渲染失敗時預設仍會使用）現在 60 秒放棄，回應最多讀 64 MiB。過去用的是沒有 timeout 的 `http.Client{}`——伺服器接了連線然後不講話就會永遠等下去——以及對遠端回應無上限的 `io.ReadAll`。
 
 ### `isr`
 
-- `DT.From`、`Col`、`Row`、`Push`、`UseDL`、`UseDT` 遇到不支援的型別或讀檔失敗時不再結束程式，改為回傳記錄了錯誤、可繼續使用的物件，串接結束後可用 `Err()` 或 `PopErr()` 檢查。
+- `DT.From`、`Col`、`Row`、`Push`、`UseDL`、`UseDT` 遇到不支援的型別或讀檔失敗時不再結束程式，改為記錄警告，並回傳過去開啟 `Config.SetDontPanic(true)` 時的值。`DT.From` 讀不到來源或不支援輸入的型別時，回傳包著 `nil` `DataTable` 的 `DT`。`Col`、`Row` 的選擇器型別不支援時，回傳包著 `nil` `DataList` 的 `DL`。加不進去的 `Row` 或 `Col` 會被略過，其餘照常加入，回傳的表格會在 `Err()` 記錄錯誤。
 - 修正 `DT.From(map[int]any{...})` 永遠產生空表格。鍵被直接轉成字串，`0` 變成 `"0"`，而 `AppendRowsByColIndex` 要的是 Excel 式的欄位索引，因此每個鍵都被拒絕。現在改用 `Row` 路徑相同的轉換，`0` 就是 A 欄。負數的鍵沒有對應欄位，會被回報。
 
 ### `gplot`
@@ -139,7 +139,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `py`
 
-- IPC 監聽失敗改為記錄警告並讓伺服器保持關閉，不再結束程式。
+- IPC 監聽失敗改為記錄警告並讓伺服器保持關閉，不再結束程式，開啟 `Config.SetDontPanic(true)` 時也不再因為監聽器是 nil 而當掉。
 - `ipc.WriteMessage` 在寫入任何位元組之前，拒絕超過讀取端上限（256 MiB）的訊息。過去會寫出一個對端會拒絕的長度，超過 4 GiB 時前綴還會被截斷，讓對端之後每一則訊息都解框錯位。
 - 建立 Python 環境的目錄權限改為 0o755，不再是 0777。
 

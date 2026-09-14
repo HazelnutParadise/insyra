@@ -12,7 +12,8 @@ func UseDL[T *insyra.DataList | dl](l T) *dl {
 	case dl:
 		return &concrete
 	default:
-		return &dl{insyra.NewDataList().SetErr("isr", "UseDL", "got unexpected type %T", l)}
+		insyra.LogWarning("isr", "UseDL", "got unexpected type %T", l)
+		return nil
 	}
 }
 
@@ -26,6 +27,7 @@ func UseDT[T *insyra.DataTable | dt](t T) *dt {
 	case dt:
 		return &concrete
 	default:
-		return &dt{insyra.NewDataTable().SetErr("isr", "UseDT", "got unexpected type %T", t)}
+		insyra.LogWarning("isr", "UseDT", "got unexpected type %T", t)
+		return nil
 	}
 }
