@@ -486,7 +486,7 @@
 | TS-1 | ~~High~~ 已修正（batch 4） | `DataList.ClearNaNs`、`ClearNumbers`、`ReplaceOutliers`、`MovingAverage`、`WeightedMovingAverage`、`MovingStdev` 函式層級覆蓋率 0%，對應測試函式本體只有 `// TODO` 卻回報 PASS，造成已驗證假象 | datalist_test.go:318-347；`go tool cover -func` datalist.go:561, 570, 750, 783, 904 | 補真實斷言（含 NaN／nil 邊界），或刪除空殼測試 |
 | TS-2 | ~~High~~ 已修正（batch 4） | `stats.FactorAnalysis` 邊界測試在 p>n 與高共線性情境不論成功或失敗都只 `fmt.Printf`，永遠不會失敗 | stats/verify_more_test.go:307-328（TestEdgeCaseSmallSample）、460-482（TestEdgeCaseHighCollinearity） | 明確斷言預期行為 |
 | TS-3 | ~~High~~ 已修正（batch 4） | `ml.TestExactTreeMatchesScikitLearnPredictions` 設計為 Strict 模式強制執行，但 `reference-verification.yml` 只用 `-run "AgainstScikitLearn"` 篩選，函式名不含此字串，在任何 workflow 都不會執行；`test.yml` 也一律 skip | ml/exact_split_test.go:87-91；.github/workflows/reference-verification.yml | `-run` 改 `ScikitLearn` |
-| TS-4 | High | `quant/portfolio_cvxpy_test.go` 的 `TestPortfolioAgreesWithCVXPY` 受 `INSYRA_RUN_CVXPY` 或 Strict 保護，但沒有 workflow 設定它、`reference-verification.yml` 不跑 `./quant/`，且 pip 清單沒裝 cvxpy，打開也會失敗 | quant/portfolio_cvxpy_test.go:90-95；.github/workflows/reference-verification.yml | 新增 quant 步驟並安裝 cvxpy；否則在 ENG.md 記錄「從未在 CI 執行」 |
+| TS-4 | ~~High~~ 已修正（run-cvxpy-reference-in-ci）：Reference Verification 安裝 cvxpy 並以嚴格模式跑 `TestPortfolioAgreesWithCVXPY`，run 34838428857 通過 | `quant/portfolio_cvxpy_test.go` 的 `TestPortfolioAgreesWithCVXPY` 受 `INSYRA_RUN_CVXPY` 或 Strict 保護，但沒有 workflow 設定它、`reference-verification.yml` 不跑 `./quant/`，且 pip 清單沒裝 cvxpy，打開也會失敗 | quant/portfolio_cvxpy_test.go:90-95；.github/workflows/reference-verification.yml | 新增 quant 步驟並安裝 cvxpy；否則在 ENG.md 記錄「從未在 CI 執行」 |
 | TS-5 | High | `nn` 所有需真實資料的測試（MNIST 收斂、真實模型 parity）與 `accel`／`nn` GPU 測試全靠環境變數守門（`INSYRA_NN_MNIST_DIR`、`INSYRA_NN_REAL_MODELS_DIR`、`INSYRA_NN_REAL_MODEL`、`INSYRA_ACCEL_GPU_TESTS`），沒有任何 workflow 設定，CI 全部 skip | nn/mnist_convergence_test.go:346-351；nn/fit_mnist_test.go:15-19；nn/real_model_parity_test.go:44；nn/device_matmul_test.go:16；accel/multi_device_test.go:154-167；accel/chunked_test.go:123-235；accel/knnbridge/bridge_test.go:49 | 建排程 workflow 在有 GPU／資料集的 runner 跑；短期在 delivery-status.md 標明僅手動執行 |
 | TS-7 | ~~Med~~ 已修正（test-unpinned-behaviour） | `Docs/DataTable.md` 記載並附範例的 `MergeModeLeft`／`MergeModeRight`，全 repo 沒有任何測試呼叫（`datatable_merge_test.go` 只測 Inner／Outer） | Docs/DataTable.md:725-726, 761, 769；datatable_merge_test.go | 補 Left／Right 測試，覆蓋非配對列補 nil |
 | TS-8 | ~~Med~~ 已修正（test-unpinned-behaviour） | Docs 記載 `Sort` 多欄排序穩定，但 `datatable_sort_test.go` 沒有 tie-break 穩定性斷言 | Docs/DataTable.md:4325, 4336；datatable_sort_test.go | 補穩定性測試 |
@@ -625,7 +625,7 @@
 | TS-1 | [#299](https://github.com/HazelnutParadise/insyra/issues/299) |  |
 | TS-2 | [#300](https://github.com/HazelnutParadise/insyra/issues/300) |  |
 | TS-3 | [#301](https://github.com/HazelnutParadise/insyra/issues/301) |  |
-| TS-4 | [#302](https://github.com/HazelnutParadise/insyra/issues/302) |  |
+| TS-4 | [#302](https://github.com/HazelnutParadise/insyra/issues/302) | 已關閉（run-cvxpy-reference-in-ci） |
 | TS-5、TS-17 | [#303](https://github.com/HazelnutParadise/insyra/issues/303) |  |
 | TS-7、TS-8 | [#304](https://github.com/HazelnutParadise/insyra/issues/304) | 已關閉（test-unpinned-behaviour） |
 | TS-9 | [#305](https://github.com/HazelnutParadise/insyra/issues/305) | 已關閉（test-unpinned-behaviour） |

@@ -8,6 +8,6 @@
 - [x] 2.2 `ENG.md` 的參考工具清單加上 cvxpy。
 
 ## 3. 驗證與紀錄
-- [ ] 3.1 推上 `0.4` 後 Reference Verification 通過，且 log 顯示 `TestPortfolioAgreesWithCVXPY` 實際執行並 PASS。
-- [ ] 3.2 `api-review.md` TS-4、`delivery-status.md`。
+- [x] 3.1 推上 `0.4` 後 Reference Verification 通過，且 log 顯示 `TestPortfolioAgreesWithCVXPY` 實際執行並 PASS。
+- [x] 3.2 `api-review.md` TS-4、`delivery-status.md`。
 - [ ] 3.3 歸檔；在 #302 留言附證據並關閉。
