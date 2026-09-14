@@ -756,7 +756,7 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 - Date strings (e.g., `"2006-01-02"`, RFC3339) are automatically parsed as `time.Time` when possible; parsed values are treated as date/time values.
 - A date difference (`A - B`) is a duration. In a numeric context it counts **seconds**, so `(A - B) > 0` and `(A - B) / 86400` work; `DAY(A - B)` converts it to days directly.
 - `date - date` returns a `time.Duration` representing the difference between the two dates. Use `DAY(...)`, `HOUR(...)`, `MINUTE(...)`, or `SECOND(...)` to convert the result to numeric values.
-- `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days). The days are converted to whole hours, so `0.5` moves the date 12 hours and anything under an hour is dropped. A shift of more than 106,751 days (about 292 years) either way is an error.
+- `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days). A fraction keeps its hours and minutes: `0.5` moves the date 12 hours, `0.0625` 1 hour 30 minutes and `0.001` 86.4 seconds. The date moves by a duration, so a shift of more than about 292 years (106,751 days) either way is an error.
 - Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
 - If a string cannot be parsed as a date (or the operands are other unsupported types), operations fall back to their original behavior (numeric/string comparison or an error).
 

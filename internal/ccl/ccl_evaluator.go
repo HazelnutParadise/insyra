@@ -590,22 +590,15 @@ func durationOf(f float64, unit time.Duration) (time.Duration, bool) {
 	return time.Duration(d), true
 }
 
-// dayShift converts a number of days added to or subtracted from a date into
-// the Duration the date moves by. It keeps the arithmetic date ± number has
-// always used, time.Duration(days*24) * time.Hour, so a fraction of an hour is
-// dropped, and refuses only what that arithmetic cannot hold: NaN, the
-// infinities, and a shift past about 292 years, where the conversion is
-// undefined or the product wraps around.
-func dayShift(days float64) (time.Duration, error) {
-	hours := days * 24.0
-	if math.IsNaN(hours) || hours >= 1<<63 || hours < -(1<<63) {
-		return 0, fmt.Errorf("a shift of %v days is out of range", days)
+// shiftDays adds a (possibly fractional) number of days to t without losing
+// anything below an hour. A shift past what a Duration holds, about 292
+// years, is refused rather than converted.
+func shiftDays(t time.Time, days float64) (any, error) {
+	d, ok := durationOf(days*24, time.Hour)
+	if !ok {
+		return nil, fmt.Errorf("a shift of %v days is out of range", days)
 	}
-	h := time.Duration(hours)
-	if h > math.MaxInt64/time.Hour || h < math.MinInt64/time.Hour {
-		return 0, fmt.Errorf("a shift of %v days is out of range", days)
-	}
-	return h * time.Hour, nil
+	return t.Add(d), nil
 }
 
 // rangeBound turns a row range bound into an int the way the range operator
@@ -673,17 +666,12 @@ func applyOperator(op string, left, right any) (any, error) {
 		if rf, ok := toFloat64(right); ok {
 			switch op {
 			case "+":
-				d, err := dayShift(rf)
-				if err != nil {
-					return nil, err
-				}
-				return lt.Add(d), nil
+				// Convert days straight to a Duration; multiplying an integer
+				// Duration by an hour first threw away everything under an
+				// hour, so A + 0.001 moved the timestamp not at all.
+				return shiftDays(lt, rf)
 			case "-":
-				d, err := dayShift(rf)
-				if err != nil {
-					return nil, err
-				}
-				return lt.Add(-d), nil
+				return shiftDays(lt, -rf)
 			}
 		}
 	}
@@ -693,11 +681,7 @@ func applyOperator(op string, left, right any) (any, error) {
 		if lf, ok := toFloat64(left); ok {
 			switch op {
 			case "+":
-				d, err := dayShift(lf)
-				if err != nil {
-					return nil, err
-				}
-				return rt.Add(d), nil
+				return shiftDays(rt, lf)
 			case "-":
 				// number - date doesn't make sense
 				return nil, fmt.Errorf("invalid operands for -: %v, %v", left, right)

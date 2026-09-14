@@ -47,10 +47,11 @@ Dev received:
 Adapted on dev:
 - `DATEADD`'s day, month and year shift, like the `LAG`/`LEAD`/`DIFF`/`PCT_CHANGE`/`ROLLING_*` periods and window, is refused only when it is `NaN`, infinite or outside int64, not outside int32 (backport review). Inside int64 the conversion is the same on every platform, and `DATEADD(d, 3000000000, 'day')` returned a date on v0.3.2.
 - Dev has no `wholeIndex`: a row range bound goes through `rangeBound`, which refuses only `NaN`, the infinities and values outside int32, and still truncates a fractional bound as dev always has.
-- Dev has no `daysToDuration`: date ± number keeps dev's whole-hour arithmetic, `time.Duration(days*24) * time.Hour`, through `dayShift`, which refuses only the inputs where that conversion is undefined or the product wraps.
 - A range inside `A.( )` is converted in `evaluateRange`, not in the `:` operator, so both places go through `rangeBound`, as does the numeric side of a mixed name and index range. A single row index, `A.(n)`, keeps its conversion: it is not a range bound.
 - Measured on dev before the change: the guard cases gave different wrong answers on arm64 and under `GOARCH=amd64` (`MID('abc', 2, 10^300)` was `"bc"` and `""`, `DATEADD(B, 10^300, 'day')` 2023-12-31 and 2024-01-01, `SUM(A.(0:C))` with `C` NaN `3` and an error), `SUM(A.(0:10^300))` already failed on both, and a separate table of ordinary values, truncating ones included, passed on both before and after.
 
+Dev received (documented behaviour):
+- `shiftDays` keeping the sub-hour part of a fractional day count, with batch 8's arithmetic through `durationOf` (2026-09-14). v0.3.2's `Docs/CCL.md` already said `date + number` treats the number as days, so the whole-hour truncation was a part left unimplemented, not a documented result.
+
 Stayed on 0.4:
-- `shiftDays` keeping the sub-hour part of a fractional day count: it depends on batch 8's `daysToDuration` and changes returned values.
 - A row range bound going through `wholeIndex`: a fractional bound would become an error, which batch 8 introduced.

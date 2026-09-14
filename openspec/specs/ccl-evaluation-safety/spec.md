@@ -42,7 +42,7 @@ CCL 求值安全契約：使用者運算式不得 panic、不得讓列互相別�
 
 ### Requirement: Numeric arguments give the same answer on every platform
 
-When CCL turns a numeric argument into an integer or a duration, the result SHALL NOT depend on the platform. NaN, infinities, a count or shift outside the int64 range, and a value that overflows a `time.Duration` SHALL be refused; a row range bound SHALL be refused outside the int32 range. A character count, character position or digit count SHALL instead be clamped, so a count past the end of a string still means "to the end". Ordinary values SHALL give the results they gave before.
+When CCL turns a numeric argument into an integer or a duration, the result SHALL NOT depend on the platform. NaN, infinities, a count or shift outside the int64 range, and a value that overflows a `time.Duration` SHALL be refused; a row range bound SHALL be refused outside the int32 range. A character count, character position or digit count SHALL instead be clamped, so a count past the end of a string still means "to the end". Ordinary values SHALL otherwise give the results they gave before.
 
 #### Scenario: A huge length
 - **WHEN** 在 amd64 或 arm64 上求值 `MID('abc', 2, 10^300)`
@@ -52,10 +52,6 @@ When CCL turns a numeric argument into an integer or a duration, the result SHAL
 - **WHEN** 求值 `DATEADD(D, 10^300, 'day')` 或 `D + 10^300`
 - **THEN** 回傳錯誤，不產生日期
 
-#### Scenario: A fractional day count
-- **WHEN** 求值 `D + 0.5` 或 `D + 0.01`
-- **THEN** 日期分別移動 12 小時與不移動，與原本相同
-
 #### Scenario: A large but deterministic argument
 - **WHEN** 求值 `LAG(A, 3000000000)`、`LEN(REPEAT('', 100000000))` 或 `DATEADD(D, 3000000000, 'day')`
 - **THEN** 分別得到整欄 nil、`0` 與一個日期，不回傳錯誤
@@ -63,3 +59,11 @@ When CCL turns a numeric argument into an integer or a duration, the result SHAL
 #### Scenario: A negative fractional repeat count
 - **WHEN** 求值 `REPEAT('ab', 0-0.5)` 與 `REPEAT('ab', 0-1)`
 - **THEN** 前者捨去小數成 0 次，得到 `""`，與原本相同；後者回傳錯誤
+
+### Requirement: A fractional day count keeps its fraction
+
+Adding a number of days to a date, or subtracting one from it, SHALL move the date by that many days including the part below an hour, and SHALL NOT truncate the shift to whole hours, because `Docs/CCL.md` describes the number as days.
+
+#### Scenario: A fractional day count
+- **WHEN** 求值 `D + 0.5`、`D + 0.0625` 或 `D + 0.001`
+- **THEN** 日期分別移動 12 小時、1 小時 30 分與 86.4 秒

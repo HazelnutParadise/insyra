@@ -58,7 +58,7 @@ func TestIntegerArgumentsAgreeAcrossPlatforms(t *testing.T) {
 		{"B - 10^300", nil, true},
 		{"10^300 + B", nil, true},
 		{"B + C", nil, true},
-		// One day past the largest shift whole hours of a Duration can hold.
+		// One day past the largest shift a Duration can hold.
 		{"B + 106752", nil, true},
 		{"B - 106752", nil, true},
 		// A shift, window or repeat count nothing can hold is refused.
@@ -97,7 +97,8 @@ func TestIntegerArgumentsAgreeAcrossPlatforms(t *testing.T) {
 // The guards only refuse what no platform could compute. Every ordinary value
 // gives the result it gave before them, including the conversions that
 // truncate: a fractional count, digit count, DATEADD day count or range bound
-// drops its fraction, and a number of days added to a date becomes whole hours.
+// drops its fraction. A number of days added to a date keeps its fraction,
+// because Docs/CCL.md has always said the number counts days.
 func TestIntegerArgumentsOrdinaryValuesUnchanged(t *testing.T) {
 	ctx := portableCtx(t)
 	jan1 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -132,7 +133,12 @@ func TestIntegerArgumentsOrdinaryValuesUnchanged(t *testing.T) {
 		{"B - 1", jan1.AddDate(0, 0, -1)},
 		{"1 + B", jan1.AddDate(0, 0, 1)},
 		{"B + 0.5", jan1.Add(12 * time.Hour)},
-		{"B + 0.01", jan1}, // 0.24 hours is dropped
+		{"B + 0.01", jan1.Add(864 * time.Second)},
+		// Nothing under an hour is dropped: v0.3.2 moved these 1 hour and 0.
+		{"B + 0.0625", jan1.Add(90 * time.Minute)},
+		{"B - 0.0625", jan1.Add(-90 * time.Minute)},
+		{"0.0625 + B", jan1.Add(90 * time.Minute)},
+		{"B + 0.001", jan1.Add(86400 * time.Millisecond)},
 		{"B + 106751", jan1.Add(time.Duration(106751*24) * time.Hour)},
 		{"B - 106751", jan1.Add(-time.Duration(106751*24) * time.Hour)},
 		// Large but deterministic arguments give what they gave on v0.3.2: a
