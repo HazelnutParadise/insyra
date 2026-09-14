@@ -161,18 +161,20 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 
 	numSheets := len(sheetsToProcess)
 	for idx, sheet := range sheetsToProcess {
-		csvName := sheet + ".csv"
+		var outputCsv string
 		if len(csvNames) > idx && csvNames[idx] != "" {
-			if strings.HasSuffix(csvNames[idx], ".csv") {
-				csvName = csvNames[idx]
-			} else {
-				csvName = csvNames[idx] + ".csv"
+			// The caller chose this name, so it is used as given, as it
+			// always was; only a name taken from the workbook is checked.
+			csvName := csvNames[idx]
+			if !strings.HasSuffix(csvName, ".csv") {
+				csvName += ".csv"
 			}
-		}
-
-		outputCsv, err := safeSheetCSVPath(outputDir, sheet, csvName)
-		if err != nil {
-			return err
+			outputCsv = filepath.Join(outputDir, csvName)
+		} else {
+			outputCsv, err = safeSheetCSVPath(outputDir, sheet, sheet+".csv")
+			if err != nil {
+				return err
+			}
 		}
 		err = saveSheetAsCsv(f, sheet, outputCsv)
 		if err != nil {
@@ -237,12 +239,12 @@ func replaceSheet(f *excelize.File, sheetName string) error {
 	return nil
 }
 
-// safeSheetCSVPath joins the CSV file name used for a sheet onto outputDir. A
-// workbook's sheet names come from workbook.xml and are attacker-controlled, so
-// the name actually used, the sheet name plus ".csv" or the caller's csvNames
-// entry, is refused when it holds a path separator or when the joined path
-// would not be a file directly inside outputDir. Any other name is an ordinary
-// file name: a sheet named "." or ".." becomes "..csv" or "...csv".
+// safeSheetCSVPath joins a CSV file name made from a sheet name onto outputDir.
+// A workbook's sheet names come from workbook.xml and are attacker-controlled,
+// so such a name is refused when it holds a path separator or when the joined
+// path would not be a file directly inside outputDir. Any other name is an
+// ordinary file name: a sheet named "." or ".." becomes "..csv" or "...csv". A
+// name the caller passes in csvNames does not come through here.
 func safeSheetCSVPath(outputDir, sheet, fileName string) (string, error) {
 	path := filepath.Join(outputDir, fileName)
 	if fileName == "" || strings.ContainsAny(fileName, `/\`) || filepath.Dir(path) != filepath.Clean(outputDir) {

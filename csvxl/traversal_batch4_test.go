@@ -94,9 +94,9 @@ func TestExcelToCsvRejectsTraversingSheetName(t *testing.T) {
 }
 
 // A sheet named "." or ".." is an ordinary name: v0.3.2 wrote it to "..csv"
-// and "...csv" inside the output directory. What is checked is the file name
-// actually used, so a caller's csvNames entry that leaves the output directory
-// is refused before anything is written.
+// and "...csv" inside the output directory. Only a name taken from the workbook
+// is checked: a caller's csvNames entry is used as given, as on v0.3.2, so it
+// can place the CSV in a subdirectory.
 func TestExcelToCsvChecksTheFileNameActuallyUsed(t *testing.T) {
 	root := t.TempDir()
 	outDir := filepath.Join(root, "out")
@@ -118,15 +118,28 @@ func TestExcelToCsvChecksTheFileNameActuallyUsed(t *testing.T) {
 		}
 	}
 
-	evil := filepath.Join(root, "evil", "evil.xlsx")
-	if err := os.MkdirAll(filepath.Dir(evil), 0o755); err != nil {
+	plain := filepath.Join(root, "plain", "plain.xlsx")
+	if err := os.MkdirAll(filepath.Dir(plain), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	craftWorkbookWithSheetName(t, evil, "sheet")
-	if err := ExcelToCsv(evil, outDir, []string{"../escape"}); err == nil {
-		t.Fatal("a csvNames entry that leaves the output directory was accepted")
+	craftWorkbookWithSheetName(t, plain, "sheet")
+	if err := os.MkdirAll(filepath.Join(outDir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "escape.csv")); err == nil {
-		t.Fatal("a file was written outside the output directory")
+	if err := ExcelToCsv(plain, outDir, []string{"sub/renamed"}); err != nil {
+		t.Fatalf("a csvNames entry naming a subdirectory was refused: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "sub", "renamed.csv")); err != nil {
+		t.Fatalf("the csvNames entry was not used as given: %v", err)
+	}
+
+	slashed := filepath.Join(root, "slashed", "slashed.xlsx")
+	if err := os.MkdirAll(filepath.Dir(slashed), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	craftWorkbookWithSheetName(t, slashed, "a/b")
+	err := ExcelToCsv(slashed, outDir, nil)
+	if err == nil || !strings.Contains(err.Error(), "sheet name") {
+		t.Fatalf("a sheet name holding a separator was not refused by the name check: %v", err)
 	}
 }

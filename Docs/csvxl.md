@@ -100,7 +100,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error
 ```
 
-Each sheet becomes `<outputDir>/<sheet>.csv` (or the matching `csvNames` entry). The file name actually used is checked for each sheet before that sheet's CSV is written: a name containing `/` or `\`, or one that would not be a file directly inside `outputDir`, is rejected with an error, because sheet names come from the workbook and could otherwise escape `outputDir`. A `csvNames` entry is checked in place of the sheet name it replaces, and a sheet named `.` or `..` is an ordinary name that becomes `..csv` or `...csv`. Each sheet is read fully before its CSV is created, so a sheet that cannot be read never truncates an existing CSV.
+Each sheet becomes `<outputDir>/<sheet>.csv` (or the matching `csvNames` entry). A file name made from a sheet name is checked for each sheet before that sheet's CSV is written: a name containing `/` or `\`, or one that would not be a file directly inside `outputDir`, is rejected with an error, because sheet names come from the workbook and could otherwise escape `outputDir`. A `csvNames` entry is the caller's own choice and is used as given. A sheet named `.` or `..` is an ordinary name that becomes `..csv` or `...csv`. Each sheet is read fully before its CSV is created, so a sheet that cannot be read never truncates an existing CSV.
 
 **Description:** Splits an Excel workbook into CSV files. Use `onlyContainSheets` to export selected sheets.
 
