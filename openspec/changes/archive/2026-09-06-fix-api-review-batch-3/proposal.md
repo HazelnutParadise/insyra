@@ -51,6 +51,7 @@ Dev received:
 - The command registry lock (`cli-registry-safety`), `mkt` notices at Debug, and the doc-comment and gofmt hunks.
 
 Adapted on dev:
+- `csvxl.ReadCsvToString` wraps its auto-detection error with `%w` as well (backport review); it was the one `csvxl` error still formatted with `%v`, so `errors.As` could not reach the cause.
 - The error hook keeps its ordered single worker, but a call that finds the 1,024-slot queue full goes to its own goroutine, as every call did on v0.3.2, instead of being dropped with a once-per-process notice (backport review): a slow hook facing a 3,000-warning burst received 1,025 calls.
 - `DetectEncoding` drops a trailing partial rune only when the read filled the 8 KB sample and the tail is a valid but incomplete rune prefix (backport review); trimming any invalid tail made a short Latin-1 file such as `name\nJos\xe9\n` report `utf-8`.
 - `ClearNumbers` keeps its built-in numeric type switch; `IsNumeric` also matches named numeric kinds such as `time.Duration`, which `ClearNumbers` has always kept.

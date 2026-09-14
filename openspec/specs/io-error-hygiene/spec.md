@@ -12,6 +12,10 @@
 - **WHEN** `ExcelToCsv("/definitely/not/here.xlsx", dir, nil)`
 - **THEN** 回傳的錯誤 `errors.Is(err, os.ErrNotExist)` 為 true
 
+#### Scenario: Auto-detection fails
+- **WHEN** 以 `Auto` 對一個打得開但讀不了的路徑（例如目錄）呼叫 `ReadCsvToString`
+- **THEN** 回傳的錯誤可用 `errors.As` 取得底層的 `*fs.PathError`
+
 #### Scenario: Output directory is not world-writable
 - **WHEN** `ExcelToCsv` 建立原本不存在的輸出目錄
 - **THEN** 該目錄權限不含其他人的寫入位元
