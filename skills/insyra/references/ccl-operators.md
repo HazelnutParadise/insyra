@@ -65,6 +65,8 @@ You can **mix** name + index in the same expression. For readability, parenthesi
 | `==` | equal | `A == B`, `A == nil` |
 | `!=` | not equal | `A != B` |
 
+A string that is not a number compared for size with a number (`'hello' > 5`) is an error. `==`/`!=` report such a pair unequal, and a numeric string compares as a number (`'5' > 3` is `true`).
+
 Nil/Null note:
 - `== nil` or `== null` checks missing values.
 - In arithmetic operations, `nil` is treated as `0`.

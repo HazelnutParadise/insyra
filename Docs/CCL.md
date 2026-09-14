@@ -321,6 +321,7 @@ When performing arithmetic operations or comparisons, CCL attempts to convert op
 - If both operands can be converted to numbers, numeric comparison is used
 - String-to-number conversion follows standard parsing rules
 - Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
+- The comparison error applies to `>`, `<`, `>=` and `<=` between such a string and a number. `==` and `!=` do not raise it: a non-numeric string is simply not equal to a number, so `"hello" == 5` is `false`
 
 ```go
 // These will cause errors
@@ -426,7 +427,7 @@ A 0/1 indicator column can therefore be used directly: `A && B`. `AND()` and `OR
 | Operation               | Left Type     | Right Type    | Behavior                                          |
 | ----------------------- | ------------- | ------------- | ------------------------------------------------- |
 | `+`, `-`, `*`, `/`, `^` | Number/String | Number/String | Convert both to numbers, then calculate           |
-| `>`, `<`, `>=`, `<=`    | Number/String | Number/String | Convert both to numbers, then compare             |
+| `>`, `<`, `>=`, `<=`    | Number/String | Number/String | Convert both to numbers, then compare; a string that is not a number against a number is an error |
 | `==`, `!=`              | Number/String | Number/String | Convert both to numbers if possible, then compare |
 | `==`, `!=`              | nil           | any           | Special nil handling (see above)                  |
 | `&`                     | any           | any           | Convert both to strings, then concatenate         |

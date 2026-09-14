@@ -612,6 +612,20 @@ func rangeBound(f float64, what string) (int, error) {
 	return int(f), nil
 }
 
+// isWordAgainstNumber reports whether a is a string and b a number. It is
+// only asked after toFloat64 failed on one of the two operands, and a number
+// always converts, so the string is one that does not read as a number.
+func isWordAgainstNumber(a, b any) bool {
+	if _, ok := a.(string); !ok {
+		return false
+	}
+	switch b.(type) {
+	case float64, float32, int, int32, int64:
+		return true
+	}
+	return false
+}
+
 func applyOperator(op string, left, right any) (any, error) {
 	// Try to interpret date-like operands first (time.Time or parseable date strings)
 	parseTimeLike := func(v any) (time.Time, bool) {
@@ -826,8 +840,13 @@ func applyOperator(op string, left, right any) (any, error) {
 		}
 	}
 
-	// 對於大小比較，如果不能轉換為數字，返回false
+	// 大小比較的非數值路徑。一邊是數字、另一邊是讀不成數字的字串時回錯，
+	// 這正是 Docs/CCL.md 一直寫的行為；其他組合（兩個字串、布林、日期、
+	// 時長等）維持回 false。
 	if op == ">" || op == "<" || op == ">=" || op == "<=" {
+		if isWordAgainstNumber(left, right) || isWordAgainstNumber(right, left) {
+			return nil, fmt.Errorf("invalid operands for %s: %v, %v (cannot be compared)", op, left, right)
+		}
 		return false, nil
 	}
 
