@@ -83,6 +83,9 @@ func Start(ctx *commands.ExecContext) error {
 			return nil
 		}
 		trimmed := strings.TrimSpace(line)
+		if entry, ok := historyEntry(line); ok {
+			_ = instance.SaveToHistory(entry)
+		}
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
@@ -93,7 +96,6 @@ func Start(ctx *commands.ExecContext) error {
 		if len(tokens) == 0 {
 			continue
 		}
-		_ = instance.SaveToHistory(commands.SanitizeHistoryLine(trimmed))
 
 		if err := commands.Dispatch(ctx, tokens[0], tokens[1:]); err != nil {
 			_, _ = fmt.Fprintln(instance.Stderr(), style.ErrorText(err.Error()))
@@ -109,6 +111,19 @@ func Start(ctx *commands.ExecContext) error {
 			instance.SetPrompt(prompt(ctx.EnvName))
 		}
 	}
+}
+
+// historyEntry returns what an entered line adds to history.txt, with any
+// database password masked. Every non-empty line is saved, comments, exit and
+// lines without tokens included, as readline's automatic saving did before
+// history was saved by hand; the caller saves it before deciding what the line
+// does.
+func historyEntry(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return "", false
+	}
+	return commands.SanitizeHistoryLine(trimmed), true
 }
 
 func prompt(envName string) string {
