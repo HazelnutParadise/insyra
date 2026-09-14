@@ -236,15 +236,20 @@ func registerStringFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("REPEAT: count arg must be a number, got %T", args[1])
 		}
-		if math.IsNaN(n) || n < 0 {
-			return nil, fmt.Errorf("REPEAT: count must be a non-negative number, got %v", args[1])
+		// int(n) on NaN, ±Inf or a value past the int64 range differs by
+		// platform, and strings.Repeat panics on a negative count.
+		if math.IsNaN(n) || n < 0 || n >= 1<<63 {
+			return nil, fmt.Errorf("REPEAT: count must be a non-negative number within int64, got %v", args[1])
 		}
-		// Cap the result at 64 MiB so a stray exponent cannot exhaust memory.
-		const maxRepeatBytes = 64 << 20
-		if n > maxRepeatBytes || float64(len(s))*n > maxRepeatBytes {
-			return nil, fmt.Errorf("REPEAT: result would exceed %d bytes", maxRepeatBytes)
+		if s == "" {
+			return "", nil
 		}
-		return strings.Repeat(s, int(n)), nil
+		count := int(n)
+		// strings.Repeat panics when the result's length overflows int.
+		if count > 0 && len(s) > math.MaxInt/count {
+			return nil, fmt.Errorf("REPEAT: a result of %d x %d bytes is too long", len(s), count)
+		}
+		return strings.Repeat(s, count), nil
 	})
 }
 

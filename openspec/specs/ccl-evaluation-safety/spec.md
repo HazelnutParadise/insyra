@@ -22,7 +22,7 @@ CCL 求值安全契約：使用者運算式不得 panic、不得讓列互相別�
 
 ### Requirement: Nested sequence functions and bounded arguments
 
-序列函數作為另一個序列或聚合函數的引數 SHALL 保留整欄。位移、視窗、重複次數超出合理範圍 SHALL 回錯誤，SHALL NOT panic；字元長度、位置與位數則依「Numeric arguments give the same answer on every platform」截到上限，SHALL NOT 回錯誤。使用者註冊的聚合或序列函數若 panic，SHALL 由呼叫的方法（例如 `AddColUsingCCL`）自身的 recover 處理：方法回傳 nil 並記錄 `Err()`，與 v0.3.2 相同。
+序列函數作為另一個序列或聚合函數的引數 SHALL 保留整欄。位移、視窗或重複次數為 NaN、無限大或超出 int64 範圍，或重複結果的長度超出 int 時，SHALL 回錯誤，SHALL NOT panic；比欄位還長的位移或視窗 SHALL 得到 nil，SHALL NOT 回錯誤；字元長度、位置與位數則依「Numeric arguments give the same answer on every platform」截到上限，SHALL NOT 回錯誤。使用者註冊的聚合或序列函數若 panic，SHALL 由呼叫的方法（例如 `AddColUsingCCL`）自身的 recover 處理：方法回傳 nil 並記錄 `Err()`，與 v0.3.2 相同。
 
 #### Scenario: Absurd shift
 - **WHEN** 求值 `LEAD(A, 10^300)`
@@ -38,7 +38,7 @@ CCL 求值安全契約：使用者運算式不得 panic、不得讓列互相別�
 
 ### Requirement: Numeric arguments give the same answer on every platform
 
-When CCL turns a numeric argument into an integer or a duration, the result SHALL NOT depend on the platform. NaN and values that a `time.Duration`, a date shift or a row range bound cannot hold SHALL be refused. A character count, character position or digit count SHALL instead be clamped, so a count past the end of a string still means "to the end". Ordinary values SHALL give the results they gave before.
+When CCL turns a numeric argument into an integer or a duration, the result SHALL NOT depend on the platform. NaN, infinities, a count or shift outside the int64 range, and a value that overflows a `time.Duration` SHALL be refused; a row range bound SHALL be refused outside the int32 range. A character count, character position or digit count SHALL instead be clamped, so a count past the end of a string still means "to the end". Ordinary values SHALL give the results they gave before.
 
 #### Scenario: A huge length
 - **WHEN** 在 amd64 或 arm64 上求值 `MID('abc', 2, 10^300)`
@@ -51,3 +51,7 @@ When CCL turns a numeric argument into an integer or a duration, the result SHAL
 #### Scenario: A fractional day count
 - **WHEN** 求值 `D + 0.5` 或 `D + 0.01`
 - **THEN** 日期分別移動 12 小時與不移動，與原本相同
+
+#### Scenario: A large but deterministic argument
+- **WHEN** 求值 `LAG(A, 3000000000)`、`LEN(REPEAT('', 100000000))` 或 `DATEADD(D, 3000000000, 'day')`
+- **THEN** 分別得到整欄 nil、`0` 與一個日期，不回傳錯誤

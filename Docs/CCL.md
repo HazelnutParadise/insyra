@@ -694,7 +694,7 @@ All string functions are rune-aware (Unicode safe). `nil` is treated as the empt
 | `FIND(needle, haystack)` | 1-based position of `needle`; `0` if not found |
 | `CONTAINS(s, sub)` / `STARTSWITH(s, p)` / `ENDSWITH(s, p)` | Boolean checks |
 | `REGEX_MATCH(s, pattern)` | Go regexp match |
-| `REPEAT(s, n)` | Repeat `s` `n` times |
+| `REPEAT(s, n)` | Repeat `s` `n` times. A count that is `NaN`, negative, infinite or beyond `int64`, or a result too long for an `int`, is an error |
 
 ```go
 // Email cleanup pipeline
@@ -733,7 +733,7 @@ These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers an
 | `DAYOFMONTH(d)` | Day 1–31 |
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
-| `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A fractional `n` truncates for `day`, `month` and `year`. More than 2,147,483,647 days, months or years, or more than about 292 years in hours, minutes or seconds, is an error |
+| `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A fractional `n` truncates for `day`, `month` and `year`. A day, month or year count that is `NaN`, infinite or beyond `int64`, or more than about 292 years in hours, minutes or seconds, is an error |
 | `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
 
 ```go

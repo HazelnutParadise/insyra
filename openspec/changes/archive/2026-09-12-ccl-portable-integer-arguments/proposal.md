@@ -45,6 +45,7 @@ Dev received:
 - The `Docs/CCL.md` notes and the changelog entry, with a test run natively and under `GOARCH=amd64`.
 
 Adapted on dev:
+- `DATEADD`'s day, month and year shift, like the `LAG`/`LEAD`/`DIFF`/`PCT_CHANGE`/`ROLLING_*` periods and window, is refused only when it is `NaN`, infinite or outside int64, not outside int32 (backport review). Inside int64 the conversion is the same on every platform, and `DATEADD(d, 3000000000, 'day')` returned a date on v0.3.2.
 - Dev has no `wholeIndex`: a row range bound goes through `rangeBound`, which refuses only `NaN`, the infinities and values outside int32, and still truncates a fractional bound as dev always has.
 - Dev has no `daysToDuration`: date ± number keeps dev's whole-hour arithmetic, `time.Duration(days*24) * time.Hour`, through `dayShift`, which refuses only the inputs where that conversion is undefined or the product wraps.
 - A range inside `A.( )` is converted in `evaluateRange`, not in the `:` operator, so both places go through `rangeBound`, as does the numeric side of a mixed name and index range. A single row index, `A.(n)`, keeps its conversion: it is not a range bound.

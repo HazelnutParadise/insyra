@@ -61,6 +61,14 @@ func TestIntegerArgumentsAgreeAcrossPlatforms(t *testing.T) {
 		// One day past the largest shift whole hours of a Duration can hold.
 		{"B + 106752", nil, true},
 		{"B - 106752", nil, true},
+		// A shift, window or repeat count nothing can hold is refused.
+		{"LAG(A, 10^300)", nil, true},
+		{"LEAD(A, C)", nil, true},
+		{"ROLLING_MEAN(A, 10^300)", nil, true},
+		{"REPEAT('ab', 10^300)", nil, true},
+		{"REPEAT('', C)", nil, true},
+		{"REPEAT('ab', 0-1)", nil, true},
+		{"REPEAT('abc', 9223372036854775807)", nil, true}, // the bytes overflow int
 		// A row range bound that is NaN or past the int32 range is refused.
 		{"SUM(A.(0:10^300))", nil, true},
 		{"SUM(A.(0-10^300:1))", nil, true},
@@ -119,6 +127,16 @@ func TestIntegerArgumentsOrdinaryValuesUnchanged(t *testing.T) {
 		{"B + 0.01", jan1}, // 0.24 hours is dropped
 		{"B + 106751", jan1.Add(time.Duration(106751*24) * time.Hour)},
 		{"B - 106751", jan1.Add(-time.Duration(106751*24) * time.Hour)},
+		// Large but deterministic arguments give what they gave on v0.3.2: a
+		// shift or window longer than the column is all nil, and a long result
+		// is not capped.
+		{"LAG(A, 3000000000)", nil},
+		{"LEAD(A, 3000000000)", nil},
+		{"LAG(A, 0-9223372036854775808)", nil},
+		{"ROLLING_MEAN(A, 3000000000)", nil},
+		{"LEN(REPEAT('', 100000000))", 0.0},
+		{"LEN(REPEAT('ab', 34000000))", 68000000.0},
+		{"DATEADD(B, 3000000000, 'day')", jan1.AddDate(0, 0, 3000000000)},
 		{"SUM(A.(0:1))", 3.0},
 		{"SUM(A.(0.9:1.9))", 3.0},
 	} {

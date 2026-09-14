@@ -18,7 +18,7 @@
 
 ### Requirement: Nested sequence functions and bounded arguments
 
-序列函數作為另一個序列或聚合函數的引數 SHALL 保留整欄。位移、視窗、重複次數超出合理範圍 SHALL 回錯誤，SHALL NOT panic；字元長度、位置與位數則依「Numeric arguments give the same answer on every platform」截到上限，SHALL NOT 回錯誤。使用者註冊的聚合或序列函數若 panic，SHALL 由呼叫的方法（例如 `AddColUsingCCL`）自身的 recover 處理：方法回傳 nil 並記錄 `Err()`，與 v0.3.2 相同。
+序列函數作為另一個序列或聚合函數的引數 SHALL 保留整欄。位移、視窗或重複次數為 NaN、無限大或超出 int64 範圍，或重複結果的長度超出 int 時，SHALL 回錯誤，SHALL NOT panic；比欄位還長的位移或視窗 SHALL 得到 nil，SHALL NOT 回錯誤；字元長度、位置與位數則依「Numeric arguments give the same answer on every platform」截到上限，SHALL NOT 回錯誤。使用者註冊的聚合或序列函數若 panic，SHALL 由呼叫的方法（例如 `AddColUsingCCL`）自身的 recover 處理：方法回傳 nil 並記錄 `Err()`，與 v0.3.2 相同。
 
 #### Scenario: Absurd shift
 - **WHEN** 求值 `LEAD(A, 10^300)`

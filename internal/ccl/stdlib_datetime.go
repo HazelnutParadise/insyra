@@ -126,9 +126,9 @@ func registerDateTimeFunctions() {
 		}
 		switch strings.ToLower(unit) {
 		case "day", "days", "month", "months", "year", "years":
-			// AddDate takes an int. Past the int32 range nobody means the
-			// shift, and int(n) there differs by platform.
-			if math.IsNaN(n) || n > math.MaxInt32 || n < math.MinInt32 {
+			// AddDate takes an int, and int(n) on NaN, ±Inf or a value past
+			// the int64 range differs by platform.
+			if math.IsNaN(n) || n >= 1<<63 || n < -(1<<63) {
 				return nil, fmt.Errorf("DATEADD: a shift of %v %s is out of range", args[1], unit)
 			}
 		}
