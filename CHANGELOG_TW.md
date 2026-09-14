@@ -88,7 +88,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 修正 `AppendCsvToExcel` 遇到同名工作表時舊儲存格殘留的問題：`excelize.NewSheet` 對既有名稱只回傳原工作表，所以只有新 CSV 覆蓋到的儲存格被改寫，其餘保留。現在寫入 CSV 前會就地清空既有工作表，舊儲存格與公式都不會殘留，工作表仍保留原本的位置與欄寬等設定，工作簿只有那一張工作表時也能完成。
 - 修正 `AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv` 開啟的工作簿從未關閉。
 - 錯誤改用 `%w` 包裝底層原因（`errors.Is(err, os.ErrNotExist)` 可用），輸出目錄改以 0755 建立而不是 0777。
-- `ExcelToCsv` 與 `EachExcelToCsv` 拒絕無法當單一檔名的工作表名稱（`../x`、`a/b`），惡意 workbook 過去可藉此截斷輸出目錄外的檔案。每張工作表先讀完才建立 CSV，最後一次 flush 的寫入錯誤也會回傳。
+- `ExcelToCsv` 與 `EachExcelToCsv` 拒絕不會落在輸出目錄內的 CSV 檔名，例如由 `../x`、`a/b` 這類工作表名稱組成的檔名，惡意 workbook 過去可藉此截斷輸出目錄外的檔案。檢查的是實際使用的檔名，所以有 `csvNames` 時改檢查它，名為 `.` 或 `..` 的工作表照常轉換。每張工作表先讀完才建立 CSV，最後一次 flush 的寫入錯誤也會回傳。
 
 ### `parquet`
 

@@ -161,9 +161,6 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 
 	numSheets := len(sheetsToProcess)
 	for idx, sheet := range sheetsToProcess {
-		if err := safeSheetFileName(sheet); err != nil {
-			return err
-		}
 		csvName := sheet + ".csv"
 		if len(csvNames) > idx && csvNames[idx] != "" {
 			if strings.HasSuffix(csvNames[idx], ".csv") {
@@ -173,8 +170,11 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 			}
 		}
 
-		outputCsv := filepath.Join(outputDir, csvName)
-		err := saveSheetAsCsv(f, sheet, outputCsv)
+		outputCsv, err := safeSheetCSVPath(outputDir, sheet, csvName)
+		if err != nil {
+			return err
+		}
+		err = saveSheetAsCsv(f, sheet, outputCsv)
 		if err != nil {
 			return fmt.Errorf("failed to save sheet %s as CSV: %w", sheet, err)
 		}
@@ -237,16 +237,18 @@ func replaceSheet(f *excelize.File, sheetName string) error {
 	return nil
 }
 
-// safeSheetFileName returns the sheet name if it can be used as a single
-// path element under the output directory, or an error. A workbook's
-// sheet names come from workbook.xml and are attacker-controlled, so
-// "../x" or "a/b" must never be joined onto outputDir.
-func safeSheetFileName(sheet string) error {
-	if sheet == "" || sheet == "." || sheet == ".." ||
-		strings.ContainsAny(sheet, `/\`) || filepath.Base(sheet) != sheet {
-		return fmt.Errorf("sheet name %q cannot be used as a file name", sheet)
+// safeSheetCSVPath joins the CSV file name used for a sheet onto outputDir. A
+// workbook's sheet names come from workbook.xml and are attacker-controlled, so
+// the name actually used, the sheet name plus ".csv" or the caller's csvNames
+// entry, is refused when it holds a path separator or when the joined path
+// would not be a file directly inside outputDir. Any other name is an ordinary
+// file name: a sheet named "." or ".." becomes "..csv" or "...csv".
+func safeSheetCSVPath(outputDir, sheet, fileName string) (string, error) {
+	path := filepath.Join(outputDir, fileName)
+	if fileName == "" || strings.ContainsAny(fileName, `/\`) || filepath.Dir(path) != filepath.Clean(outputDir) {
+		return "", fmt.Errorf("sheet name %q cannot be used as a file name: %q", sheet, fileName)
 	}
-	return nil
+	return path, nil
 }
 
 // saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file. The

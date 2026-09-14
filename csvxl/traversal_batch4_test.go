@@ -92,3 +92,41 @@ func TestExcelToCsvRejectsTraversingSheetName(t *testing.T) {
 		t.Fatalf("victim file was modified by EachExcelToCsv: %q", b)
 	}
 }
+
+// A sheet named "." or ".." is an ordinary name: v0.3.2 wrote it to "..csv"
+// and "...csv" inside the output directory. What is checked is the file name
+// actually used, so a caller's csvNames entry that leaves the output directory
+// is refused before anything is written.
+func TestExcelToCsvChecksTheFileNameActuallyUsed(t *testing.T) {
+	root := t.TempDir()
+	outDir := filepath.Join(root, "out")
+
+	for sheet, file := range map[string]string{".": "..csv", "..": "...csv"} {
+		xlsx := filepath.Join(root, "dots.xlsx")
+		craftWorkbookWithSheetName(t, xlsx, sheet)
+		if err := ExcelToCsv(xlsx, outDir, nil); err != nil {
+			t.Fatalf("ExcelToCsv refused a sheet named %q: %v", sheet, err)
+		}
+		if _, err := os.Stat(filepath.Join(outDir, file)); err != nil {
+			t.Fatalf("a sheet named %q was not written to %s: %v", sheet, file, err)
+		}
+		if err := EachExcelToCsv(root, outDir); err != nil {
+			t.Fatalf("EachExcelToCsv refused a sheet named %q: %v", sheet, err)
+		}
+		if _, err := os.Stat(filepath.Join(outDir, "dots_"+file)); err != nil {
+			t.Fatalf("EachExcelToCsv did not write dots_%s: %v", file, err)
+		}
+	}
+
+	evil := filepath.Join(root, "evil", "evil.xlsx")
+	if err := os.MkdirAll(filepath.Dir(evil), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	craftWorkbookWithSheetName(t, evil, "sheet")
+	if err := ExcelToCsv(evil, outDir, []string{"../escape"}); err == nil {
+		t.Fatal("a csvNames entry that leaves the output directory was accepted")
+	}
+	if _, err := os.Stat(filepath.Join(root, "escape.csv")); err == nil {
+		t.Fatal("a file was written outside the output directory")
+	}
+}
