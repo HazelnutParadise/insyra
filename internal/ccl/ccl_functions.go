@@ -110,30 +110,24 @@ func callFunction(name string, args []any, callDepth int) (result any, err error
 	return fn(args...)
 }
 
-func callAggregateFunction(name string, args [][]any) (result any, err error) {
+// callAggregateFunction does not recover a panic from fn. A registered
+// aggregate that panics is handled by the recover in the DataTable method that
+// started the evaluation, which returns nil as it always has; recovering here
+// would make that method return the table instead.
+func callAggregateFunction(name string, args [][]any) (any, error) {
 	fn, ok := lookupAggregateFunction(name)
 	if !ok {
 		return nil, fmt.Errorf("undefined aggregate function: %s", name)
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			result = nil
-			err = fmt.Errorf("aggregate function %s panicked: %v", name, r)
-		}
-	}()
 	return fn(args...)
 }
 
-func callSequenceFunction(name string, args [][]any) (result []any, err error) {
+// callSequenceFunction does not recover a panic from fn, for the same reason
+// as callAggregateFunction.
+func callSequenceFunction(name string, args [][]any) ([]any, error) {
 	fn, ok := lookupSequenceFunction(name)
 	if !ok {
 		return nil, fmt.Errorf("undefined sequence function: %s", name)
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			result = nil
-			err = fmt.Errorf("sequence function %s panicked: %v", name, r)
-		}
-	}()
 	return fn(args...)
 }

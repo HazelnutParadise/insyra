@@ -37,7 +37,7 @@ The second-round repository review (`api-review.md`, 2026-09-06) left 30 `severi
 ## Backport to dev (0.3.x)
 
 Dev received:
-- CCL keywords in any case, `@` row copies, durations as seconds, nested sequence functions, bounded arguments with recovered panics, the locked function registry, and name-ordered `NewMapContext` (`ccl-evaluation-safety`, trimmed).
+- CCL keywords in any case, `@` row copies, durations as seconds, nested sequence functions, bounded arguments, the locked function registry, and name-ordered `NewMapContext` (`ccl-evaluation-safety`, trimmed).
 - `ToCSV` returning its final flush error (`core-atomic-file-output`, trimmed to that requirement).
 - `csvxl` refusing unsafe sheet names and reading a sheet before creating its CSV (`csvxl-sheet-name-safety`, trimmed).
 - The CLI nil-result checks, NaN-safe state, root flags before raw-arg commands, script-safe `env open` with the nesting limit (`cli-session-robustness`, adapted), and masked `db connect` history at 0600 (`cli-secret-hygiene`).
@@ -50,6 +50,7 @@ Adapted on dev:
 - `datalist_test.go` drops the nil-cell `Normalize` and one-value `Standardize` assertions, which describe batch 1's rework.
 
 Stayed on 0.4:
+- The recovers in `callAggregateFunction` and `callSequenceFunction` (backport review): a registered aggregate or sequence function that panics would make `AddColUsingCCL` and the `EditCol*UsingCCL` methods return the receiver instead of nil, a changed return value. On dev the method's own recover handles it, as on v0.3.2; the built-in shift and `REPEAT` guards return errors without it.
 - `AtomicDoN` running the callback inline when nested in `AtomicDo`: the other instances went unlocked, a data race v0.3.2 did not have. Dev keeps skipping the held actors and locking the rest; `core-multilock-reentry` and its delta spec here were rewritten to say so (backport review).
 - `SUM`/`AVG` and `collectFloats` skipping NaN: changes returned values.
 - An Excel-style reference past the last column becoming an error (`MaxResolvedColIndex`, `checkCCLColRange`): starts returning an error.

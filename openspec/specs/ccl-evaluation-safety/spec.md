@@ -22,7 +22,7 @@ CCL 求值安全契約：使用者運算式不得 panic、不得讓列互相別�
 
 ### Requirement: Nested sequence functions and bounded arguments
 
-序列函數作為另一個序列或聚合函數的引數 SHALL 保留整欄。位移、視窗、重複次數超出合理範圍 SHALL 回錯誤，SHALL NOT panic；字元長度、位置與位數則依「Numeric arguments give the same answer on every platform」截到上限，SHALL NOT 回錯誤；聚合與序列函數的 panic SHALL 被轉成錯誤。
+序列函數作為另一個序列或聚合函數的引數 SHALL 保留整欄。位移、視窗、重複次數超出合理範圍 SHALL 回錯誤，SHALL NOT panic；字元長度、位置與位數則依「Numeric arguments give the same answer on every platform」截到上限，SHALL NOT 回錯誤。使用者註冊的聚合或序列函數若 panic，SHALL 由呼叫的方法（例如 `AddColUsingCCL`）自身的 recover 處理：方法回傳 nil 並記錄 `Err()`，與 v0.3.2 相同。
 
 #### Scenario: Absurd shift
 - **WHEN** 求值 `LEAD(A, 10^300)`
