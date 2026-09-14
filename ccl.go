@@ -118,11 +118,14 @@ func (c *dataTableContext) GetColData(index int) ([]any, error) {
 	if index < 0 || index >= len(c.tableData) {
 		return nil, fmt.Errorf("column index %d out of range", index)
 	}
-	// tableData is already a snapshot taken for this evaluation and nothing
-	// writes to it, so handing back the slice is safe. Copying here cost one
-	// full column copy per aggregate call, which before the folding in
-	// applyCCLOnDataTable meant one per row.
-	return c.tableData[index], nil
+	// A copy, not the snapshot itself: a registered aggregate or sequence
+	// function may sort or rewrite the slice it is given, and the rest of the
+	// expression still reads rows from tableData. Since applyCCLOnDataTable
+	// folds a row-invariant aggregate, this costs one copy per aggregate call
+	// rather than one per row.
+	res := make([]any, len(c.tableData[index]))
+	copy(res, c.tableData[index])
+	return res, nil
 }
 
 func (c *dataTableContext) GetColDataByName(name string) ([]any, error) {

@@ -34,10 +34,11 @@ Closes #355.
 
 ## Backport to dev (0.3.x)
 
-Dev received every item: row-invariant aggregate folding in `applyCCLOnDataTable`, `GetColData` without a copy, the first-character gate before date parsing, the bounded `REGEX_MATCH` pattern cache, and `ROLLING_*` converting its column once (`ccl-performance`).
+Dev received: row-invariant aggregate folding in `applyCCLOnDataTable`, the first-character gate before date parsing, the bounded `REGEX_MATCH` pattern cache, and `ROLLING_*` converting its column once (`ccl-performance`).
 
 Adapted on dev:
 - Measured on dev, 20,000 rows: `A / SUM(A)` 2.09 s to 0.99 ms, `(A - AVG(A)) / STDEV(A)` 6.19 s to 1.77 ms, `A / 1` 1.08 ms before and after; the changelog and `Docs/CCL.md` use these numbers and leave out the string, regex and rolling timings, which were measured on 0.4.
 - The correctness tests use a column past the last one for the failing-aggregate case and add a check that folding keeps `IF`'s selected-branch results and errors, since dev's `&&`, `||` and `CASE` do not short-circuit and only `IF`, `AND` and `OR` skip arguments.
 
-Stayed on 0.4: nothing from this change.
+Stayed on 0.4:
+- `GetColData` handing out the evaluation snapshot without a copy (backport review): a registered aggregate that sorts its input in place changed what the rest of the expression read, so `ZZSORTFIRST(A) + A.0` gave 2 where v0.3.2 gave 4. Dev copies the column per aggregate call again; with folding that is one copy per call, and `A / SUM(A)` on 20,000 rows measured 0.92 to 1.17 ms against 0.99 ms without the copy, so the published numbers stand.

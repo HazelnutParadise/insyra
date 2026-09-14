@@ -24,6 +24,10 @@ Every value produced by an optimised path SHALL equal the value the unoptimised 
 - **WHEN** 對文字欄求值 `B & 'x'`
 - **THEN** 結果不變，且不再對每個值嘗試日期解析
 
+#### Scenario: A registered aggregate that rewrites its input
+- **WHEN** 已註冊的聚合函數就地排序它收到的欄位，並求值 `ZZSORTFIRST(A) + A.0`
+- **THEN** 聚合拿到的是欄位的複本，`A.0` 與逐列讀到的 `A` 仍是原本的順序
+
 ### Requirement: A compiled pattern is reused
 
 `REGEX_MATCH` SHALL compile a given pattern once and reuse it. The cache SHALL be bounded so that patterns built per row cannot grow it without limit, and an invalid pattern SHALL still be reported.
