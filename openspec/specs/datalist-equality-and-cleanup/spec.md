@@ -1,15 +1,19 @@
 # datalist-equality-and-cleanup Specification
 
 ## Purpose
-`DataList` 相等比較與清理方法的語意：無法用 `==` 比較的格子不會讓相等比較 panic、清理方法單趟完成且結果不變、`Err()` 記錄正確的方法名。
+`DataList` 相等比較與清理方法的語意：無法用 `==` 比較的格子以型別與內容比較、不會讓相等比較 panic、清理方法單趟完成且結果不變、`Err()` 記錄正確的方法名。
 
 ## Requirements
 ### Requirement: Equality never panics
 
-`DataList.IsEqualTo` 與 `IsTheSameAs` 遇到 Go 無法用 `==` 比較的格子 SHALL 視為不相等，SHALL NOT panic；兩個 float64 NaN SHALL 維持不相等。
+`DataList.IsEqualTo` 與 `IsTheSameAs` 遇到 Go 無法用 `==` 比較的格子 SHALL 以型別與內容比較，SHALL NOT panic：內容相同的這種格子相等，內容不同則不相等；兩個純量 float64 NaN SHALL 維持不相等。
 
 #### Scenario: Uncomparable cell
 - **WHEN** `dl := NewDataList(1.0, uncomparableCell{s: []int{1}}); dl.IsEqualTo(dl.Clone())`
+- **THEN** 回傳 true，不 panic
+
+#### Scenario: Uncomparable cell with different content
+- **WHEN** `NewDataList(1.0, uncomparableCell{s: []int{1}}).IsEqualTo(NewDataList(1.0, uncomparableCell{s: []int{2}}))`
 - **THEN** 回傳 false，不 panic
 
 #### Scenario: NaN stays unequal

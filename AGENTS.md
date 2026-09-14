@@ -251,6 +251,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-14] — `stats` functions outside the input guard still crash on a nil list
+- **Where**: `stats/anova.go` `OneWayANOVA` (and `LeveneTest`, `BartlettTest`, `KruskalWallis`, `FriedmanTest`), `stats/ttest.go` `SingleSampleTTest`, `TwoWayANOVA`, and `stats/numericinput.go` `numericSlice`
+- **What**: `stats-input-type-guard` covers only the functions that read their arguments through `asDataList` or `numericSlice`. Reported by the 2026-09-14 backport review: a nil group given to `OneWayANOVA`, `LeveneTest`, `BartlettTest`, `KruskalWallis` or `FriedmanTest` is dereferenced inside a goroutine (`groups[i].AtomicDo` in `OneWayANOVA`), which ends the process because no caller can recover it; `SingleSampleTTest`, `TwoWayANOVA` and other functions calling `AtomicDo` on the argument directly panic. `numericSlice` checks only for a nil interface, so a typed nil `*DataList` still reaches `AtomicDo` and panics.
+- **Suggestion**: route these entry points through `asDataList`, which already turns a typed nil into an empty list, or check for nil before any goroutine starts, then widen the spec to name them. Decide first whether a nil list is an error or an empty sample.
+- **Status**: pending
+
 ### [2026-09-14] — `DataList.Shift` flattens a slice cell
 - **Where**: `datalist_window.go` `Shift`
 - **What**: `Shift` builds its result through `NewDataList`, which flattens every slice, so a list holding `[]byte{1, 2}` and `3` comes back three cells long: measured on 2026-09-14, `Append([]byte{1, 2}, 3)` then `Shift(0)` gives `[1 2 3]`. Present on v0.3.2; found while backporting `one-value-one-cell`.

@@ -1,7 +1,7 @@
 # value-matching Specification
 
 ## Purpose
-Defines how the library decides that a cell holds the value being looked for: integers match by value across Go integer types, a float never matches an integer, every other value matches as it did before, and whole-list comparison stays type-strict.
+Defines how the library decides that a cell holds the value being looked for: integers match by value across Go integer types, a float never matches an integer, a value Go cannot compare matches by type and content, every other value matches as it did before, and whole-list comparison stays type-strict.
 
 ## Requirements
 
@@ -23,15 +23,15 @@ When the library looks for a value in a DataList or DataTable, whether counting,
 
 ### Requirement: Other values match as they did before
 
-Floats, strings, bools, nil and NaN SHALL match exactly as they did before integers matched by value. A float64 NaN SHALL match a float64 NaN in every lookup except `FindRowsIfContainsAll`, which SHALL keep treating NaN as unequal. A cell Go cannot compare with `==` SHALL NOT match and SHALL NOT cause a panic.
+Floats, strings, bools, nil and NaN SHALL match exactly as they did before integers matched by value. A float64 NaN SHALL match a float64 NaN in every lookup except `FindRowsIfContainsAll`, which SHALL keep treating NaN as unequal. A cell Go cannot compare with `==` SHALL match a searched value of the same type and content, and SHALL NOT cause a panic.
 
 #### Scenario: Searching for NaN
 - **WHEN** 對含 NaN 的 DataList 呼叫 `Count(math.NaN())`
 - **THEN** 回傳 NaN 的個數
 
 #### Scenario: An uncomparable cell
-- **WHEN** 對含有無法以 `==` 比較之值的 DataList 呼叫 `FindAll` 搜尋該值
-- **THEN** 不 panic，且該格不算相符
+- **WHEN** 對含有無法以 `==` 比較之值的 DataList 呼叫 `FindAll` 搜尋型別與內容相同的值
+- **THEN** 不 panic，且該格算相符
 
 ### Requirement: Whole-list comparison stays type-strict
 
