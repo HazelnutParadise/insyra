@@ -25,7 +25,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ToCSV` 會回傳最後一次 flush 的錯誤，寫入成功時也會回傳關閉檔案的錯誤；小表寫到已斷的 pipe 過去會回報成功。
 - `DataList` 與 `DataTable` 新增 `PopErr()`，回傳目前的 `Err()` 並清除它；另新增 `SetErr(packageName, funcName, msg, args...)`，以 insyra 自身方法相同的方式在實例上記錄錯誤（寫一筆警告並取代 `Err()`）。`IDataList` 與 `IDataTable` 都包含這兩個方法。
 - 全域錯誤緩衝區上限為 `ErrorBufferCapacity`（1536 筆），滿了丟最舊的，不再無限成長。文件定位改為診斷用日誌而非錯誤處理 API；其中九個存取函式（`PopError`、`PopErrorByPackageName`、`PopErrorByFuncName`、`PopErrorAndCallback`、`PeekError`、`GetErrorsByLevel`、`GetErrorsByPackage`、`PopErrorInfo`、`HasErrorAboveLevel`）標為 deprecated，改用 `GetAllErrors`、`PopAllErrors`、`HasError`、`GetErrorCount`、`ClearErrors`。
-- 讀取 CSV（`ReadCSV_File` 與 `csvxl` 的 CSV 讀取函式）能解碼偵測器可能回報的每一種字元集：UTF-16／32、所有 ISO-8859 分部、Windows-1250 到 1258、KOI8-R／U、Shift-JIS、ISO-2022-JP、EUC-JP、EUC-KR、IBM866、Macintosh，以及常見別名；分隔符號與大小寫都不影響（`ISO-8859-1`、`iso8859_1`、`latin1` 視為相同）。過去只有 UTF-8、UTF-16、Big5、GB18030 有解碼器：偵測器判斷正確的 `iso-8859-1` 會被原樣塞進表，儲存格不是有效的 UTF-8；沒有 BOM 的 `utf-16be` 則被當成 little-endian 讀取。其他名稱的讀法維持不變。
+- 讀取 CSV（`ReadCSV_File` 與 `csvxl` 的 CSV 讀取函式）能解碼 UTF-16／32、ISO-8859 各分部、Windows-1250 到 1258、KOI8-R／U、Shift-JIS、ISO-2022-JP、EUC-JP、EUC-KR、IBM866、Macintosh，以及常見別名；分隔符號與大小寫都不影響（`ISO-8859-1`、`iso8859_1`、`latin1` 視為相同）。過去只有 UTF-8、UTF-16、Big5、GB18030 有解碼器：偵測器判斷正確的 `iso-8859-1` 會被原樣塞進表，儲存格不是有效的 UTF-8；沒有 BOM 的 `utf-16be` 則被當成 little-endian 讀取。其他名稱的讀法維持不變，包括偵測器可能回報、但以原始位元組讀入的 ISO-2022-KR、ISO-2022-CN、IBM424 與 IBM420。
 - `DetectEncoding` 能辨識 UTF-32 的 BOM；過去會被判成 UTF-16，因為後者的 BOM 是前者的前綴。
 - 新增 `DataTable.ToCSVWithOptions` 與 `CSVWriteOptions`，其中 `SanitizeFormulas` 會在開頭為 `=`、`+`、`-`、`@` 的儲存格前加上單引號，避免試算表把它當公式執行。預設關閉，因為它會改變寫出的值；`ToCSV` 的輸出不變。
 - 修正 SQLite 上 `ToSQL` 無法附加到名稱含空白的資料表：查詢既有欄位的語句沒有像其他語句一樣為識別字加引號。
