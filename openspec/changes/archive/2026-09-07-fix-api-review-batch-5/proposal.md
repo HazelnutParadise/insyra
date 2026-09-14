@@ -47,3 +47,5 @@ Dev received:
 
 Stayed on 0.4:
 - `DataList.Rank` ordering and detecting ties on the original cells: on dev `Rank` still reads through `ToF64Slice`, and the fix depends on batch 1's `numericCells` rework, which is breaking.
+
+Backport review: `sortColIndices` strips a column name's "(name)" before parsing the column letters, as `Show` does. Parsing the whole "AA(name)" key failed and fell back to a string sort, so ShowTypes still printed 28 named columns as A, AA, AB, B.
