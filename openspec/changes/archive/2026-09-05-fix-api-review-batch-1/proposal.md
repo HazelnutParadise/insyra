@@ -48,8 +48,10 @@ Dev received:
 Adapted on dev (backport review):
 - `AppendCsvToExcel` clears an existing sheet's cell values and formulas in place instead of deleting and recreating it. Deleting moved the sheet to the end of the workbook and dropped its settings, such as a custom column width, which v0.3.2 kept; its only defect was the stale cells.
 
+Dev received (documented behaviour):
+- `stats.Skewness`/`Kurtosis` refusing a value they cannot read as a finite number (`stats-moment-input`, 2026-09-14): v0.3.2's `skills/insyra/SKILL.md` and `Docs/stats.md` already said every `stats` numeric entry point refuses such a value, naming the series and the row.
+
 Stayed on 0.4:
 - `Normalize`/`Standardize`/`ClearOutliers`/`Difference`/`FillNaNWithMean` scan-first rework (`datalist-numeric-input`): breaking, changes results and failure behaviour for mixed input.
 - `Rank`, smoothing and interpolation refusing non-numeric cells: breaking, new errors and nil results.
-- `stats.Skewness`/`Kurtosis` refusals (`stats-moment-input`): breaking, new errors.
 - The `AGENTS.md` `ToF64Slice` follow-up edit: describes the excluded rework.
