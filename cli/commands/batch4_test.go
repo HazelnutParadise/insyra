@@ -131,6 +131,33 @@ func TestSanitizeHistoryLineMasksAPasswordWithSpaces(t *testing.T) {
 	}
 }
 
+// libpq and pgx accept spaces around '=', a single-quoted libpq value escapes a
+// quote or a backslash with a backslash, and an ODBC braced value writes '}' as
+// '}}'. Masking missed the first form and stopped early inside the other two.
+func TestSanitizeHistoryLineMasksEscapedAndSpacedPasswords(t *testing.T) {
+	cases := map[string]string{
+		`db connect pg "host=h password = s3cr3tA port=5432"`:    `db connect pg "host=h password = *** port=5432"`,
+		`db connect pg "host=h PASSWORD=  s3cr3tA"`:              `db connect pg "host=h PASSWORD=  ***"`,
+		`db connect pg "host=h password='it\'s s3cr3tB' port=5"`: `db connect pg "host=h password=*** port=5"`,
+		`db connect pg "password='a\\' port=5"`:                  `db connect pg "password=*** port=5"`,
+		`db connect ms "Server=s;PWD={ab}}s3cr3tC};Database=d"`:  `db connect ms "Server=s;PWD=***;Database=d"`,
+		`db connect ms "Server=s;Pwd={}}}}s3cr3tC}"`:             `db connect ms "Server=s;Pwd=***"`,
+	}
+	for line, want := range cases {
+		if got := SanitizeHistoryLine(line); got != want {
+			t.Errorf("SanitizeHistoryLine(%q)\n got %q\nwant %q", line, got, want)
+		}
+	}
+	for _, line := range []string{
+		`set password = s3cr3tA`,
+		`echo "password='it\'s s3cr3tB'"`,
+	} {
+		if got := SanitizeHistoryLine(line); got != line {
+			t.Errorf("a line that is not db connect changed: %q -> %q", line, got)
+		}
+	}
+}
+
 // CLI-4: the one-shot dispatcher path writes the sanitized line.
 func TestDispatchHistoryIsSanitized(t *testing.T) {
 	base := t.TempDir()

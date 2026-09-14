@@ -131,8 +131,9 @@ func (c *DBConn) maskedDSN() string {
 }
 
 // dsnKVPasswordKey matches the key of a libpq / ODBC style "password=secret"
-// (or pwd=) pair; maskKVPasswords decides where its value ends.
-var dsnKVPasswordKey = regexp.MustCompile(`(?i)\b(password|pwd)=`)
+// (or pwd=) pair, with any spaces around the '=' that libpq and pgx accept;
+// maskKVPasswords decides where its value ends.
+var dsnKVPasswordKey = regexp.MustCompile(`(?i)\b(password|pwd)\s*=\s*`)
 
 // dsnNextKVKey matches the start of the next " key=" pair in a libpq DSN.
 var dsnNextKVKey = regexp.MustCompile(`\s+[A-Za-z_][A-Za-z0-9_]*=`)
@@ -141,7 +142,8 @@ var dsnNextKVKey = regexp.MustCompile(`\s+[A-Za-z_][A-Za-z0-9_]*=`)
 // "***". A value may be quoted ('a b', "a b" or {a b}); otherwise it runs to
 // the next ';', to a '"' closing a quoted DSN, or to the next " key=". A
 // value that stopped at the first space left the rest of a password containing
-// spaces in history.
+// spaces in history, and one that stopped at an escaped quote or brace left
+// the rest of the password there.
 func maskKVPasswords(dsn string) string {
 	var b strings.Builder
 	rest := dsn
@@ -157,14 +159,39 @@ func maskKVPasswords(dsn string) string {
 	}
 }
 
-// kvValueLen returns the length of the value at the start of s.
+// kvValueLen returns the length of the value at the start of s. Inside a
+// libpq single-quoted value a backslash escapes the next character, and inside
+// an ODBC braced value "}}" stands for one '}'. An unterminated value runs to
+// the end of s.
 func kvValueLen(s string) int {
 	if s == "" {
 		return 0
 	}
-	closers := map[byte]byte{'\'': '\'', '"': '"', '{': '}'}
-	if closer, quoted := closers[s[0]]; quoted {
-		if end := strings.IndexByte(s[1:], closer); end >= 0 {
+	switch s[0] {
+	case '\'':
+		for i := 1; i < len(s); i++ {
+			switch s[i] {
+			case '\\':
+				i++
+			case '\'':
+				return i + 1
+			}
+		}
+		return len(s)
+	case '{':
+		for i := 1; i < len(s); i++ {
+			if s[i] != '}' {
+				continue
+			}
+			if i+1 < len(s) && s[i+1] == '}' {
+				i++
+				continue
+			}
+			return i + 1
+		}
+		return len(s)
+	case '"':
+		if end := strings.IndexByte(s[1:], '"'); end >= 0 {
 			return end + 2
 		}
 		return len(s)

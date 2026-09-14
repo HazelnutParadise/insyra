@@ -56,7 +56,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 含 `NaN` 或 ±Inf 的變數（例如有空白格的 CSV）能完整存檔與還原；過去這種表會變成空字串，這種 list 或一般值則讓整次存檔失敗。其他變數的寫法與過去完全相同，既有的 state 檔也照常能讀。
 - `--env`、`--no-color`、`--log-level` 放在 `newdl`、`addcol`、`addrow`、`show` 前面時會生效，不再被當成資料寫進 default 環境。
 - `run` 遇到腳本裡的 `env open` 不再開啟互動 REPL；腳本自己呼叫自己超過 16 層會停止。
-- `db connect` 寫進 `history.txt`、REPL 歷史與 `env export` 時密碼會被遮罩（URL、`user:pass@`、`password=` 三種形式，`password=` 的值加了引號或含空格時整段遮罩）；history 檔以 0600 建立。
+- `db connect` 寫進 `history.txt`、REPL 歷史與 `env export` 時密碼會被遮罩（URL、`user:pass@`、`password=` 三種形式，`password=` 的值加了引號或含空格時整段遮罩，`=` 前後有空格、單引號內用反斜線跳脫引號，或大括號內寫 `}}` 時也一樣）；history 檔以 0600 建立。
 - `accel` 的 Usage 不再宣稱有不存在的 `run` 子命令。
 - `help` 現在如實列出 `pca`、`regression`、`count` 的參數：前兩者可以用 `as <var>` 存結果，`count` 的 value 是必填，不再標成選填。`save … sql` 的用法錯誤訊息也跟 Usage 一致，列出 `rownames [true|false]`。
 - `count`、`find`、`replace` 現在能對上 CSV 載入的表，以及 one-shot 模式下每次還原的變數裡的整數。原本打的 `2` 是 `int`，存著的是 `int64`，永遠比對不到：`count x 2` 印出 0，`find x 2` 印出 `[]`，`replace x 2 0` 印出 `replaced` 卻什麼都沒改。

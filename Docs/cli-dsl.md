@@ -187,7 +187,7 @@ Insyra persists state per environment under:
 Each environment contains:
 
 - `state.json`: serialized variables (`DataTable`, `DataList`, and raw values).
-- `history.txt`: command history. A `db connect` line is stored with its password masked (`user:***@…`, `password=***`, including a quoted `password=` value or one containing spaces), and the file is created private to the user (mode 0600).
+- `history.txt`: command history. A `db connect` line is stored with its password masked (`user:***@…`, `password=***`, including a quoted `password=` value, one containing spaces or an escaped quote, and one written with spaces around `=`), and the file is created private to the user (mode 0600).
 - `config.json`: environment-local config payload.
 
 Default behavior:
