@@ -41,3 +41,5 @@ Dev received all of it: `parseFloatArg`/`parseIntArg` at the thirteen sites and 
 Adapted: `fetch.go`'s import block differs on this line (no `slices`), so only `strconv` is dropped there. The other contexts (`hypothesis.go`, `timeseries.go`, `clean.go`) applied unchanged.
 
 Left on 0.4: the `api-review.md` and `delivery-status.md` edits.
+
+Backport review: the 21 rewritten argument errors keep their messages but carry the `strconv` error behind them again (`argError`, `Unwrap`), so `errors.Is(err, strconv.ErrSyntax)` holds from `commands.Dispatch` as it did on v0.3.2, where they used `%w`. A literal `%w` would have appended strconv's text to the message this change removed.

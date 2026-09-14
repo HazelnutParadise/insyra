@@ -110,7 +110,7 @@ func varTypeError(ctx *ExecContext, cmd, name string) error {
 func parseFloatArg(cmd, field, raw string) (float64, error) {
 	v, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
-		return 0, fmt.Errorf("%s: invalid %s %q, expected a number", cmd, field, raw)
+		return 0, wrapArgError(err, "%s: invalid %s %q, expected a number", cmd, field, raw)
 	}
 	return v, nil
 }
@@ -119,7 +119,23 @@ func parseFloatArg(cmd, field, raw string) (float64, error) {
 func parseIntArg(cmd, field, raw string) (int, error) {
 	v, err := strconv.Atoi(raw)
 	if err != nil {
-		return 0, fmt.Errorf("%s: invalid %s %q, expected a whole number", cmd, field, raw)
+		return 0, wrapArgError(err, "%s: invalid %s %q, expected a whole number", cmd, field, raw)
 	}
 	return v, nil
+}
+
+// argError is a message naming the command and the argument that keeps the
+// error behind it reachable. The message leaves out strconv's own text, which
+// only repeats the input, while errors.Is(err, strconv.ErrSyntax) and
+// errors.As still see the cause, as they did when these errors used %w.
+type argError struct {
+	msg string
+	err error
+}
+
+func (e *argError) Error() string { return e.msg }
+func (e *argError) Unwrap() error { return e.err }
+
+func wrapArgError(err error, format string, args ...any) error {
+	return &argError{msg: fmt.Sprintf(format, args...), err: err}
 }
