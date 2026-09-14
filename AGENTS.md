@@ -283,7 +283,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-09-12] — a self-referential slice takes the process down in `NewDataList`
 - **Where**: `datalist.go` `flattenWithNilSupport`
-- **What**: it recurses into every `reflect.Slice` with no depth limit, so a slice containing itself exhausts the stack. Measured on 2026-09-13: `cyclic := []any{1}; cyclic[0] = cyclic; insyra.NewDataList(cyclic)` ends with `fatal error: stack overflow`. That is not a panic, `recover` cannot catch it, and the library promises never to terminate. `encodeCell` was given a depth limit of 64 for exactly this reason; the flattener was not touched because it is the constructor's hot path and the fix should be measured against it.
+- **What**: it recurses into every `reflect.Slice` with no depth limit, so a slice containing itself exhausts the stack. Measured on 2026-09-13: `cyclic := []any{1}; cyclic[0] = cyclic; insyra.NewDataList(cyclic)` ends with `fatal error: stack overflow`. That is not a panic: `recover` cannot catch it, and the whole program ends. `encodeCell` was given a depth limit of 64 for exactly this reason; the flattener was not touched because it is the constructor's hot path and the fix should be measured against it.
 - **Suggestion**: the same depth bound, or a visited-pointer set. A bound is cheaper and a 64-deep slice literal is already pathological; a visited set is exact but costs an allocation per construction. Measure `NewDataList` on a large flat slice before and after, because that path runs for every table built from a slice.
 - **Status**: pending
 

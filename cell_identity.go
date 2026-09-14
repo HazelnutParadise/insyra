@@ -15,9 +15,10 @@ import (
 // maxCellEncodeDepth bounds how far encodeCell descends.
 //
 // A value nested too deeply would otherwise exhaust the stack, and running out
-// of stack in Go is a fatal error that recover cannot catch — the library would
-// terminate, which it promises never to do. Beyond the limit a value is
-// identified by its address, which is what == means for a reference anyway.
+// of stack in Go is a fatal error that recover cannot catch: the whole program
+// would end. The limit keeps encoding from overflowing the stack. Beyond it a
+// value is identified by its address, which is what == means for a reference
+// anyway.
 // A value that contains itself does not reach the limit: a reference back to a
 // slice or map still being encoded is written as a back-reference (cellRef).
 const maxCellEncodeDepth = 64

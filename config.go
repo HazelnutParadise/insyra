@@ -65,9 +65,10 @@ func (c *configStruct) GetDontPanicStatus() bool {
 
 // SetDefaultErrHandlingFunc installs a hook that receives every warning and
 // fatal message. The hook runs on one dedicated goroutine, in the order the
-// messages were produced, behind a bounded queue: if the queue is full the
-// message is still kept in the error buffer but the hook call is dropped.
-// Pass nil to remove the hook.
+// messages were produced, behind a queue of 1,024 calls. A call that finds the
+// queue full is not dropped: it is delivered on its own goroutine, so during a
+// burst the hook can receive messages out of order. Pass nil to remove the
+// hook.
 func (c *configStruct) SetDefaultErrHandlingFunc(fn func(errType LogLevel, packageName string, funcName string, errMsg string)) {
 	if fn == nil {
 		c.defaultErrHandlingFunc.Store(nil)
