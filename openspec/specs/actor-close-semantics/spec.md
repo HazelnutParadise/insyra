@@ -1,7 +1,7 @@
 # actor-close-semantics Specification
 
 ## Purpose
-`DataList`／`DataTable` 的 `Close()` 語意：它停止的是加鎖，不是已在等鎖、已排隊的工作，排隊中的操作不得被靜默丟棄。
+`DataList`／`DataTable` 的 `Close()` 對 `AtomicDo` 的語意：它停止的是加鎖，不是已在等鎖、已排隊的 `AtomicDo` 回呼，這種操作不得被靜默丟棄。`AtomicDoAll`／`AtomicDoN` 不在此列：取得所有鎖時若其中任一實例已在等待期間被關閉，整批回呼不執行。
 
 ## Requirements
 ### Requirement: Close stops locking, not queued work
