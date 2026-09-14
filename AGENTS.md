@@ -257,6 +257,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: route these entry points through `asDataList`, which already turns a typed nil into an empty list, or check for nil before any goroutine starts, then widen the spec to name them. Decide first whether a nil list is an error or an empty sample.
 - **Status**: pending
 
+### [2026-09-14] — two deeply nested values with different leaves count as one
+- **Where**: `cell_identity.go` `maxCellEncodeDepth` and the interface arm of `writeCellValue`
+- **What**: a `[]any` level spends two encoding levels (the slice and the interface inside it), so a value nested more than 32 `[]any` deep reaches the limit of 64. Past it an interface is written as `p:interface {}`, its type with no address, so two such values that differ only in their deepest leaf encode alike: measured on 2026-09-14, a list holding a depth-40 value with leaf 1 and two with leaf 2 reports `Count` 3 for either. On v0.3.2 the same `Count` panicked, so nothing that worked changed, but the answer is silently wrong.
+- **Suggestion**: at the limit, unwrap the interface and write the address of the value inside it, which is what the comment above `maxCellEncodeDepth` says already happens.
+- **Status**: pending
+
 ### [2026-09-14] — `DataList.Shift` flattens a slice cell
 - **Where**: `datalist_window.go` `Shift`
 - **What**: `Shift` builds its result through `NewDataList`, which flattens every slice, so a list holding `[]byte{1, 2}` and `3` comes back three cells long: measured on 2026-09-14, `Append([]byte{1, 2}, 3)` then `Shift(0)` gives `[1 2 3]`. Present on v0.3.2; found while backporting `one-value-one-cell`.
