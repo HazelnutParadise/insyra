@@ -101,7 +101,8 @@ when more factors are fitted than the data hold, so check `Phi` when a
 multi-start result differs from the single-start one. The random starts come
 from a fixed seed, so a multi-start run uses the same starts on every platform.
 `RotationConverged` says whether the chosen solution converged, and `MaxIter`
-governs extraction rather than rotation.
+governs extraction rather than rotation. The rotation follows GPArotation's
+default algorithm and runs at most 2000 iterations from each start.
 
 ## Things that are easy to get wrong
 

@@ -42,3 +42,7 @@ So the code is wrong and the test is right. The test's claim, that the extra sta
 - `stats.FactorAnalysis` with `Rotation.Restarts > 1`, which is the default since `default-restarts-follow-psych`: the same call now reaches the same basin on amd64 and arm64. Where several minima exist, or where only a few starts converge, the solution may change from the unreleased `0.4` behaviour. On the strict R parity suite that is 873 to 922 failing leaves, within the 879 to 906 other fixed seeds give.
 - CI: `TestObliminRestartsSearchTheCriterion` passes on all three operating systems without being changed.
 - Both `CHANGELOG` files gain an entry at the end of `stats`. `Docs/stats.md` and `skills/insyra/references/stats.md` say the random starts come from a fixed seed. `api-review.md` gains row ST-13. `delivery-status.md` gains a milestone and a decision.
+
+## Correction (2026-09-14)
+
+The cause given above for the `rotation_converged` movement is wrong. Quartimin and geominQ rarely converged on the two ten-row tables because the port stepped the way GPArotation's old function does, not because the data are nearly one-dimensional. On the same loadings GPArotation's default `"bb"` algorithm converges from 400 of 400 random starts, so with that algorithm the random-start seed makes no difference on those tables, and the parity count did not move with the seed because convergence there is luck. The fixed seed and its reasoning stand. `rotations-use-gparotation-bb` ports the algorithm.

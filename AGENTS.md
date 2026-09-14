@@ -253,6 +253,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-14] — simplimax's criterion does not match GPArotation's for three or more factors
+- **Where**: `stats/internal/fa/GPArotation_vgQ_simplimax.go` `vgQSimplimax`, called with `k` = the number of variables from `psych_faRotations.go` (`Simplimax` and the `"simplimax"` arm of `FaRotations`), `GPArotation_GPFoblq.go` and `criterion.go`
+- **What**: GPArotation 2026.8.2's `simplimax` wrapper, which psych 2.6.5 calls without a `k`, uses `k = nrow(A) * (ncol(A) - 1)` and puts exactly the `k` smallest squared loadings in the criterion (`order(L2)[1:k]`). The port uses `k = nrow(A)` and every squared loading at or below the `k`-th smallest, so it also counts entries tied with it. The two agree only for two factors with no ties. Measured on 2026-09-14 on the 6×3 loading matrix the gradient tests use, at the identity: GPArotation's criterion is 0.245 at its default `k = 12` and 0.0575 at `k = 6`, ours is 0.125. Found while pinning `rotations-use-gparotation-bb`'s reference values, which leave simplimax on that matrix out for this reason. It probably underlies the strict parity suite's simplimax rows on `three_blocks` ("a worse minimum than R's"), since `fa.Criterion` judges both solutions with our `k`.
+- **Suggestion**: follow the wrapper in the criterion, the rotation and `fa.Criterion` together: `k = p·(m−1)` by default and exactly `k` entries, ties broken in R's column-major order. Then remeasure the parity suite's simplimax rows. It changes simplimax results for three or more factors, so it is **BREAKING** and its own change.
+- **Status**: pending
+
 ### [2026-09-12] — a bare `[]byte` still flattens in the constructors
 - **Where**: `datalist.go` `flattenWithNilSupport`
 - **What**: a `[]byte` cell is one value everywhere it is read — counted, matched, grouped and ordered by content — but `NewDataList([]byte{0, 255})` still produces two cells holding `0` and `255`, because the constructor flattens every slice. The owner ruled on 2026-09-12 that the flattening stays: it is what makes `NewDataList` read like constructing a pandas Series. `one-value-one-cell` gave that decision an escape hatch, `NewDataList(Cell(blob), …)`, so the remaining gap is only that a reader who writes the bare form and then searches for the blob gets 0 with nothing to explain it.

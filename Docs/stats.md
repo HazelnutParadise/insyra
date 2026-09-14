@@ -1334,11 +1334,14 @@ matrix — the identity, the Varimax solution, then random ones — which is wha
 `GPArotation::Random.Start` produces for orthogonal and oblique rotations
 alike. The random ones are drawn from a fixed seed, not from the loadings, so
 the same call runs from the same starts on every platform. `RotationConverged`
-reports whether the solution that was chosen converged, and a rotation that did not converge from any start logs one
-warning naming the method and the number of starts — a start that ran out of
-iterations while another one converged is not reported, because it is not the
-answer. `MaxIter` governs extraction and is not passed to the rotation,
-which uses R's own defaults of `eps = 1e-5` and `maxit = 1000`.
+reports whether the solution that was chosen converged, and a rotation that
+did not converge from any start logs one warning naming the method and the
+number of starts — a start that ran out of iterations while another one
+converged is not reported, because it is not the answer. `MaxIter` governs
+extraction and is not passed to the rotation. Every gradient projection
+rotation steps the way GPArotation 2026.8.2 does by default, with its `"bb"`
+algorithm, and uses GPArotation's defaults of `eps = 1e-5` and at most 2000
+iterations from each start.
 
 #### FactorAnalysisResult
 

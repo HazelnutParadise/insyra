@@ -29,3 +29,7 @@
 - [Tuning the seed to the parity count] → Rejected. Seed 5 would report 879 leaves instead of 922, but that is fitting a fixed seed to one test corpus and to psych's own unseeded draws. The seed stays at the value chosen before any measurement.
 - [A start that sits on a basin boundary could still split platforms by floating-point noise] → Possible for any start, and unrelated to the seed. On the fixture all eight starts agree across four builds. CI on three operating systems is the ongoing check.
 - [Other sessions push to `0.4`] → The change is made on its own branch and rebased onto `origin/0.4` before pushing. `delivery-status.md`, both changelogs and `api-review.md` are re-read right before they are edited.
+
+## Correction (2026-09-14)
+
+The cause given above for the `rotation_converged` movement is wrong. Quartimin and geominQ rarely converged on the two ten-row tables because the port stepped the way GPArotation's old function does, not because the data are nearly one-dimensional. On the same loadings GPArotation's default `"bb"` algorithm converges from 400 of 400 random starts, so with that algorithm the random-start seed makes no difference on those tables, and the parity count did not move with the seed because convergence there is luck. The fixed seed and its reasoning stand. `rotations-use-gparotation-bb` ports the algorithm.

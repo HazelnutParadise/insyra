@@ -1589,10 +1589,10 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 	}
 
 	// Use fa.Rotate function. Note: opt.MinErr/opt.MaxIter govern extraction
-	// iteration, not rotation. Rotation uses its own R-default eps=1e-05 and
-	// maxit=1000 (per psych::fa); passing the much smaller extraction defaults
-	// (MaxIter=50) here would prevent oblique rotations from converging on
-	// realistic data. Leaving Eps/MaxIter unset → FaRotations falls back to
+	// iteration, not rotation. Rotation uses GPArotation's own defaults,
+	// eps=1e-05 and maxit=2000, which psych::fa does not override; passing the
+	// much smaller extraction defaults (MaxIter=50) here would prevent oblique
+	// rotations from converging on realistic data. Leaving Eps/MaxIter unset → FaRotations falls back to
 	// the algorithm defaults.
 	_ = minErr
 	_ = maxIter

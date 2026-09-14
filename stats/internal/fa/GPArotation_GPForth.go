@@ -97,6 +97,9 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	var iter int
 	var VgQt map[string]any
 
+	// The step follows GPArotation 2026.8.2's default, algorithm = "bb" with
+	// fwindow = 10, the same as GPFoblq: see nextStepSize and windowMax.
+	var prevT, prevGp *mat.Dense
 	for iter = 0; iter <= maxit; iter++ {
 		// M <- crossprod(Tmat, G)
 		M := mat.NewDense(Tmat.RawMatrix().Cols, G.RawMatrix().Cols, nil)
@@ -130,7 +133,8 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			break
 		}
 
-		al *= 2
+		al = nextStepSize(al, Tmat, prevT, Gp, prevGp)
+		target := windowMax(Table)
 		var Tmatt *mat.Dense
 		for i := 0; i <= 10; i++ {
 			// X <- Tmat - al * Gp
@@ -195,13 +199,14 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 				return nil, fmt.Errorf("unsupported orthogonal rotation criterion: %s", method)
 			}
 
-			// if (VgQt$f < (f - 0.5 * s^2 * al)) break
-			if VgQt["f"].(float64) < (f - 0.5*s*s*al) {
+			// if ((target_f - VgQt$f) > 0.5 * s^2 * alpha) break
+			if target-VgQt["f"].(float64) > 0.5*s*s*al {
 				break
 			}
 			al /= 2
 		}
 
+		prevT, prevGp = Tmat, Gp
 		Tmat = Tmatt
 		f = VgQt["f"].(float64)
 		// G <- crossprod(A, VgQt$Gq)

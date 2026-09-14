@@ -16,34 +16,36 @@ import (
 // factorParityTol is the strict per-element |Go - R| tolerance. Tightened
 // from 1e-3 to 2e-5 in commit a6eb8ff.
 //
-// What the strict suite reports, measured on 2026-09-13 against baselines
+// What the strict suite reports, measured on 2026-09-14 against baselines
 // from psych 2.6.5 and GPArotation 2026.8.2 (the cache is keyed on those
-// versions, see toolchainSignature): 922 of 42,969 leaf sub-tests fail on an
-// Apple M3. Seeds 2 to 5 for the rotation's random starts give 879 to 906,
-// and the data-derived seed that rotation-starts-same-on-every-platform
-// replaced gave 873; the rotation_converged row is why.
+// versions, see toolchainSignature): 709 of 42,969 leaf sub-tests fail on an
+// Apple M3. Each leaf is counted once, in the first row that applies:
 //
-//	Promax                                233  two ten-row tables (two_blocks, missing_rows)
-//	                                           where the varimax pre-rotation's criterion is
-//	                                           nearly flat, so the pre-rotation stops 1e-4 to
-//	                                           6e-4 from psych's; and near_collinear with ML,
-//	                                           which is extraction drift below. Promax itself
-//	                                           follows psych 2.6.5 since promax-matches-psych
-//	                                           (PCA to 4e-13, the rest to 6.4e-4 at worst)
-//	extraction drift, adversarial data    ~260  unrotated_loadings, uniquenesses, communalities
-//	                                           and eigenvalues on near_collinear, mixed_scale,
-//	                                           heavy_tail, narrow_plus_group: 52 combinations,
-//	                                           plus the fields downstream of them
-//	anderson-rubin scoring                  99  the combination fails before any field runs
-//	rotation_converged                      99  geominQ, oblimin and quartimin on the two
-//	                                           ten-row tables, whose two-factor fit is nearly
-//	                                           rank one: they converge within 1000 iterations
-//	                                           only from a start a few degrees from the
-//	                                           solution, so whether one of twenty starts does
-//	                                           is the luck of the draw
-//	simplimax, a worse minimum than R's     12  20 starts is not enough for a criterion with
-//	                                           16 local minima; psych's 20 unseeded ones did
-//	                                           better on three_blocks
+//	Promax                                 76  62 on near_collinear and 67 with ML: the extraction
+//	                                           drift below reaching Promax. The 154 Promax leaves on
+//	                                           the two ten-row tables closed when the varimax
+//	                                           pre-rotation took GPArotation's current step
+//	extraction drift, adversarial data    206  unrotated_loadings, uniquenesses, communalities and
+//	                                           eigenvalues on near_collinear: 52 combinations, plus
+//	                                           the fields downstream of them
+//	anderson-rubin scoring                 90  the combination fails before any field runs
+//	factor-frame fields of a GPA rotation 326  structure, Phi and scores where the loadings agree
+//	                                           with psych's within this tolerance and Phi does not,
+//	                                           242 of them on the ten-row tables and near_collinear.
+//	                                           On a flat criterion Phi is pinned more loosely than
+//	                                           the loadings: in R, |Phi12| spans 3.3e-3 over 40
+//	                                           converged starts of one minimum on two_blocks with ML
+//	                                           and oblimin, so psych's unseeded starts decide it
+//	other                                  11  score, structure and Phi fields of the extraction
+//	                                           test's ML case and of unrotated narrow_plus_group
+//	                                           and mixed_scale solutions
+//
+// rotation_converged failed 99 leaves until rotations-use-gparotation-bb.
+// The rotations had ported GPArotation's old step, which on the ten-row
+// tables converges within 1000 iterations from a few percent of starts, and
+// the suite's count moved with the random-start seed for that reason: 922 at
+// seed 1, 873 with the data-derived seed rotation-starts-same-on-every-platform
+// replaced.
 //
 // Before this comparison was made to respect what a factor solution is —
 // order and sign of the factors, and the criterion value for a solution in

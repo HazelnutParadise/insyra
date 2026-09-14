@@ -52,7 +52,11 @@ func TestPromaxMatchesPsych(t *testing.T) {
 		}
 		best = math.Min(best, d)
 	}
-	const tol = 5e-4
+	// Measured at 1.1e-10 for the loadings and 3.8e-12 for Phi, on arm64 and
+	// amd64, once the pre-rotation took GPArotation 2026.8.2's default step
+	// (rotations-use-gparotation-bb). With the old step it stopped short on this
+	// flat criterion and the gap was up to 5e-4.
+	const tol = 1e-8
 	if best > tol {
 		t.Errorf("Promax loadings differ from psych 2.6.5 by %.3e, want <= %.0e:\n%v", best, tol, mat.Formatted(L))
 	}

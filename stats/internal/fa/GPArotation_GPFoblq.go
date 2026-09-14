@@ -58,8 +58,6 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 	}
 
-	alpha := 1.0 // Start with larger alpha for better initial progress
-
 	// Re-normalize columns of T so each has unit norm. Oblique GPA expects
 	// columns of T on the unit sphere; an arbitrary start (e.g. an oblique
 	// matrix from Promax) violates this and corrupts the first iteration.
@@ -78,118 +76,69 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 	}
 
-	computeL := func(Tcur *mat.Dense) (*mat.Dense, error) {
-		invT, err := invertDense(Tcur)
-		if err != nil {
-			return nil, fmt.Errorf("failed to invert oblique rotation matrix: %w", err)
-		}
+	// computeL returns L = A·(T')⁻¹ together with the inverse, which the
+	// gradient needs as well.
+	computeL := func(Tcur *mat.Dense) (*mat.Dense, *mat.Dense) {
+		invT := safeInverse(Tcur)
 		L := mat.NewDense(rows, cols, nil)
 		L.Mul(Aw, invT.T())
-		return L, nil
+		return L, invT
 	}
 
-	L, err := computeL(T)
-	if err != nil {
-		return nil, err
-	}
+	L, invT := computeL(T)
 	Gq, f, methodName, err := obliqueCriterion(method, L, gamma)
 	if err != nil {
 		return nil, err
 	}
-	G, err := computeGMatrix(L, Gq, T)
-	if err != nil {
-		return nil, err
-	}
+	G := computeGMatrix(L, Gq, invT)
 
 	table := make([][]float64, 0, max(1, maxit+1))
 	convergence := false
 
+	// The step follows GPArotation 2026.8.2's default, algorithm = "bb" with
+	// fwindow = 10: see nextStepSize and windowMax. A trial is accepted when it
+	// improves enough on the largest criterion value of the recent iterations,
+	// not only on the current one, so the search does not have to crawl along
+	// a nearly flat criterion. The old step, which GPArotation keeps as
+	// GPFoblq.legacy, stopped at its cap from most starts on such loadings.
+	alpha := 1.0
+	var prevT, prevGp *mat.Dense
 	iter := 0
-	for iter <= maxit {
+	for ; iter <= maxit; iter++ {
 		Gp := computeGp(G, T)
 		s := frobNorm(Gp)
-		logTerm := math.Inf(-1)
-		if s > 0 {
-			logTerm = math.Log10(s)
-		}
-		table = append(table, []float64{float64(iter), f, logTerm, alpha})
-
+		table = append(table, []float64{float64(iter), f, math.Log10(s), alpha})
 		if s < eps {
 			convergence = true
 			break
 		}
-		// Match R's strategy: double alpha at start of each iteration
-		// R code: al <- 2 * al
-		alpha *= 2
+		alpha = nextStepSize(alpha, T, prevT, Gp, prevGp)
+		target := windowMax(table)
 
-		// Step size selection with backtracking. R updates Tmat to the last
-		// trial Tmatt even when the sufficient-improvement condition does not
-		// trigger before the inner loop limit.
-		var lastT, lastL, lastGq *mat.Dense
-		var lastF float64
+		// Up to eleven trials, halving the step after each one that does not
+		// improve enough. R moves to the last trial even when none did.
+		var Tt, Lt, invTt, Gqt *mat.Dense
+		var ft float64
 		for i := 0; i <= 10; i++ {
 			X := mat.DenseCopyOf(T)
 			var scaledGp mat.Dense
 			scaledGp.Scale(alpha, Gp)
 			X.Sub(X, &scaledGp)
-
-			// Normalize columns of X
-			colsX := X.RawMatrix().Cols
-			scaleVals := make([]float64, colsX)
-			for j := 0; j < colsX; j++ {
-				sumSq := 0.0
-				for i := 0; i < X.RawMatrix().Rows; i++ {
-					val := X.At(i, j)
-					sumSq += val * val
-				}
-				if sumSq <= 0 {
-					scaleVals[j] = 1.0
-				} else {
-					scaleVals[j] = 1.0 / math.Sqrt(sumSq)
-				}
-			}
-			diagScale := mat.NewDiagDense(colsX, scaleVals)
-			Tnew := mat.NewDense(X.RawMatrix().Rows, colsX, nil)
-			Tnew.Mul(X, diagScale)
-
-			Lnew, err := computeL(Tnew)
-			if err != nil {
-				continue
-			}
-			GqNew, fNew, _, err := obliqueCriterion(method, Lnew, gamma)
-			if err != nil {
-				// Skip this step if criterion fails
-				continue
-			}
-			lastT = Tnew
-			lastL = Lnew
-			lastGq = GqNew
-			lastF = fNew
-
-			improvement := f - fNew
-			// Match R's threshold: 0.5 * s^2 * al
-			// R code: if (improvement > 0.5 * s^2 * al) break
-			threshold := 0.5 * s * s * alpha
-
-			if improvement > threshold {
-				break
-			} else {
-				alpha /= 2
-			}
-		}
-
-		if lastT != nil {
-			T = lastT
-			L = lastL
-			Gq = lastGq
-			f = lastF
-			G, err = computeGMatrix(L, Gq, T)
+			Tt = normalizeColumns(X)
+			Lt, invTt = computeL(Tt)
+			Gqt, ft, _, err = obliqueCriterion(method, Lt, gamma)
 			if err != nil {
 				return nil, err
 			}
+			if target-ft > 0.5*s*s*alpha {
+				break
+			}
+			alpha /= 2
 		}
 
-		iter++
+		prevT, prevGp = T, Gp
+		T, L, Gq, f = Tt, Lt, Gqt, ft
+		G = computeGMatrix(L, Gq, invTt)
 	}
 
 	// A run that hit the cap is reported here at debug level only. Under a
@@ -233,18 +182,10 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}, nil
 }
 
-func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) (*mat.Dense, error) {
-	// R: G <- -t(t(L) %*% Gq %*% solve(Tmat))
-	var Lt mat.Dense
-	Lt.CloneFrom(L.T())
-
+func computeGMatrix(L, Gq, invT *mat.Dense) *mat.Dense {
+	// R: G <- -t(t(L) %*% Gq %*% Tmat_inv)
 	var LtGq mat.Dense
-	LtGq.Mul(&Lt, Gq)
-
-	invT, err := invertDense(T)
-	if err != nil {
-		return nil, fmt.Errorf("failed to invert oblique rotation matrix for gradient: %w", err)
-	}
+	LtGq.Mul(L.T(), Gq)
 
 	var temp mat.Dense
 	temp.Mul(&LtGq, invT)
@@ -252,7 +193,108 @@ func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) (*mat.Dense, erro
 	var G mat.Dense
 	G.CloneFrom(temp.T())
 	G.Scale(-1, &G)
-	return &G, nil
+	return &G
+}
+
+// gparotationWindow is GPArotation's fwindow under algorithm = "bb": the
+// number of recent criterion values a trial step has to improve on.
+const gparotationWindow = 10
+
+// nextStepSize is the step size GPArotation 2026.8.2 uses at the start of an
+// iteration under algorithm = "bb". The first iteration doubles it. After
+// that it is the Barzilai-Borwein estimate sum(dT^2) / |sum(dT * dGp)| from
+// the previous iteration, held in [1e-10, 20], and it is left as it was when
+// the projected gradient did not change. The sums run in column-major order,
+// as R's do.
+func nextStepSize(alpha float64, T, prevT, Gp, prevGp *mat.Dense) float64 {
+	if prevT == nil {
+		return 2 * alpha
+	}
+	rows, cols := T.Dims()
+	var sq, cross, denom float64
+	for j := 0; j < cols; j++ {
+		for i := 0; i < rows; i++ {
+			dT := T.At(i, j) - prevT.At(i, j)
+			dG := Gp.At(i, j) - prevGp.At(i, j)
+			sq += dT * dT
+			cross += dT * dG
+			denom += dG * dG
+		}
+	}
+	if !(denom > 0) {
+		return alpha
+	}
+	return math.Max(1e-10, math.Min(sq/math.Abs(cross), 20))
+}
+
+// windowMax is the largest criterion value among the last gparotationWindow
+// rows of the iteration table, the target a trial step has to improve on.
+// A NaN value is skipped, as R's max(..., na.rm = TRUE) skips it.
+func windowMax(table [][]float64) float64 {
+	best := math.Inf(-1)
+	for _, row := range table[max(0, len(table)-gparotationWindow):] {
+		if row[1] > best {
+			best = row[1]
+		}
+	}
+	return best
+}
+
+// normalizeColumns scales every column of X to unit length, leaving a zero
+// column as it is.
+func normalizeColumns(X *mat.Dense) *mat.Dense {
+	rows, cols := X.Dims()
+	out := mat.DenseCopyOf(X)
+	for j := 0; j < cols; j++ {
+		sumSq := 0.0
+		for i := 0; i < rows; i++ {
+			sumSq += X.At(i, j) * X.At(i, j)
+		}
+		if sumSq <= 0 {
+			continue
+		}
+		scale := 1 / math.Sqrt(sumSq)
+		for i := 0; i < rows; i++ {
+			out.Set(i, j, X.At(i, j)*scale)
+		}
+	}
+	return out
+}
+
+// safeInverse is GPArotation's safe_inverse: the inverse when the matrix has
+// one, and otherwise the pseudo-inverse from its singular value decomposition,
+// with singular values at or below sqrt(machine epsilon) treated as zero. A
+// decomposition that fails yields NaN, so the trial's criterion is NaN and
+// the step is not accepted.
+func safeInverse(x *mat.Dense) *mat.Dense {
+	if inv, err := invertDense(x); err == nil {
+		return inv
+	}
+	n, _ := x.Dims()
+	var svd mat.SVD
+	if !svd.Factorize(x, mat.SVDFull) {
+		nan := mat.NewDense(n, n, nil)
+		for i := 0; i < n; i++ {
+			for j := 0; j < n; j++ {
+				nan.Set(i, j, math.NaN())
+			}
+		}
+		return nan
+	}
+	var U, V mat.Dense
+	svd.UTo(&U)
+	svd.VTo(&V)
+	tol := math.Sqrt(2.220446049250313e-16)
+	dInv := mat.NewDense(n, n, nil)
+	for i, d := range svd.Values(nil) {
+		if d > tol {
+			dInv.Set(i, i, 1/d)
+		}
+	}
+	var tmp, out mat.Dense
+	tmp.Mul(&V, dInv)
+	out.Mul(&tmp, U.T())
+	return &out
 }
 
 // computeGp computes the projected gradient Gp.

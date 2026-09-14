@@ -411,8 +411,10 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 	if eps <= 0 {
 		eps = 1e-05
 	}
+	// GPArotation 2026.8.2's default cap under algorithm = "bb"; psych 2.6.5
+	// never overrides it.
 	if maxIter <= 0 {
-		maxIter = 1000
+		maxIter = 2000
 	}
 	_, nf := loadings.Dims()
 	if nf == 0 {

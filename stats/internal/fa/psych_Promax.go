@@ -55,7 +55,7 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 			}
 		}
 	} else {
-		vx := Varimax(x, false, 1e-5, 1000)
+		vx := Varimax(x, false, 1e-5, 2000)
 		if msg, _ := vx["error"].(string); msg != "" {
 			return map[string]any{
 				"error":       fmt.Sprintf("varimax pre-rotation failed: %s", msg),

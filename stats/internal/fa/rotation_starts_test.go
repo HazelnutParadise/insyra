@@ -440,6 +440,25 @@ func TestUnconvergedRotationWarnsOnce(t *testing.T) {
 	}
 }
 
+// Left unset, the iteration cap is GPArotation's default of 2000, which both
+// GPForth and GPFoblq take under algorithm = "bb" and which psych 2.6.5 never
+// overrides. It was 1000, the cap of the old step GPArotation now keeps as
+// GPFoblq.legacy.
+func TestRotationIterationCapDefaultsToGPArotations(t *testing.T) {
+	out := captureWarnings(t)
+	_, _, _, converged, err := Rotate(noisyStructure(), "quartimin",
+		&RotOpts{Eps: 1e-300, PromaxPower: 4, Restarts: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if converged {
+		t.Fatal("a tolerance of 1e-300 was met, so the fixture no longer exercises the cap")
+	}
+	if !strings.Contains(out.String(), "within 2000 iterations") {
+		t.Errorf("the warning does not report a cap of 2000:\n%s", out.String())
+	}
+}
+
 func TestConvergedRotationDoesNotWarn(t *testing.T) {
 	out := captureWarnings(t)
 	before := insyra.GetErrorCount()
