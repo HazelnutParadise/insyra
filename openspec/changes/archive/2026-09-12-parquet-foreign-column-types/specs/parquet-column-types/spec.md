@@ -11,11 +11,15 @@
 
 ### Requirement: Every Arrow type with a faithful Go representation gets one
 
-以下 Arrow 型別 SHALL 讀成對應的 Go 值：`Date32` 與 `Date64` 讀成 `time.Time`；`Int8`、`Int16`、`Uint8`、`Uint16`、`Uint32`、`Uint64` 讀成同名的 Go 整數型別；`LargeString` 讀成 `string`；`Decimal128` 與 `Decimal256` 讀成保留原始係數與 scale 的十進位值。轉換 SHALL NOT 捨入或改變數值。
+以下 Arrow 型別 SHALL 讀成對應的 Go 值：`Date32` 與 `Date64` 讀成 `time.Time`；`Int8`、`Int16`、`Uint8`、`Uint16`、`Uint32`、`Uint64` 讀成同名的 Go 整數型別；`LargeString` 讀成 `string`；`Null` 讀成 `nil`，這種欄位本來就只有 null，不算讀不了；`Decimal128` 與 `Decimal256` 讀成保留原始係數與 scale 的十進位值。轉換 SHALL NOT 捨入或改變數值。
 
 #### Scenario: A date column written by another tool
 - **WHEN** 讀取 `Date32` 或 `Date64` 欄位
 - **THEN** 每一格是對應日期的 `time.Time`
+
+#### Scenario: A null-typed column
+- **WHEN** 讀取 Arrow 型別為 `Null` 的欄位
+- **THEN** 每一格為 `nil`，且 `Err()` 不記錄這一欄的原因
 
 #### Scenario: A decimal column
 - **WHEN** 讀取 `Decimal128` 欄位

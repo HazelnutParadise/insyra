@@ -117,6 +117,7 @@ be used to skip such a column entirely.
 | `Timestamp` | `time.Time` |
 | `Date32`, `Date64` | `time.Time` at UTC midnight |
 | `Decimal128`, `Decimal256` | `decimal.Decimal` ([go-decimal](https://github.com/TimLai666/go-decimal)), exact |
+| `Null` | `nil` in every cell, which is all such a column holds; no reason is recorded |
 | anything else | `nil`, with the reason on `Err()` |
 
 A `Decimal` keeps the file's own unscaled integer and scale, so nothing is

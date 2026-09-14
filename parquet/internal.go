@@ -218,7 +218,8 @@ func supportedArrowType(dt arrow.DataType) bool {
 		arrow.STRING, arrow.LARGE_STRING,
 		arrow.BINARY, arrow.LARGE_BINARY, arrow.FIXED_SIZE_BINARY,
 		arrow.TIMESTAMP, arrow.DATE32, arrow.DATE64,
-		arrow.DECIMAL128, arrow.DECIMAL256:
+		arrow.DECIMAL128, arrow.DECIMAL256,
+		arrow.NULL:
 		return true
 	}
 	return false
@@ -288,6 +289,9 @@ func getVal(arr arrow.Array, i int) any {
 	case *array.Decimal256:
 		n := a.Value(i).BigInt()
 		return decimal.NewFromScaledInt(n, a.DataType().(*arrow.Decimal256Type).Scale)
+	case *array.Null:
+		// Every cell of a null-typed column is null, and nil is exactly that.
+		return nil
 	default:
 		return nil
 	}

@@ -353,6 +353,57 @@ func contains(s, sub string) bool {
 	return strings.Contains(s, sub)
 }
 
+// A column whose Arrow type is null holds nothing but nulls, which read as nil
+// exactly. It is a readable column, not an unsupported one, so no reason is
+// recorded on Read, ReadColumn or Stream.
+func TestANullTypedColumnReadsAsNilWithoutAReason(t *testing.T) {
+	path := writeForeignParquet(t, []arrow.Field{
+		{Name: "ok", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+		{Name: "empty", Type: arrow.Null, Nullable: true},
+	}, func(b *array.RecordBuilder) {
+		b.Field(0).(*array.Int64Builder).AppendValues([]int64{1, 2}, nil)
+		nb := b.Field(1).(*array.NullBuilder)
+		nb.AppendNull()
+		nb.AppendNull()
+	})
+
+	dt, err := Read(context.Background(), path, ReadOptions{})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if e := dt.Err(); e != nil {
+		t.Errorf("Read recorded a reason for a null-typed column: %v", e)
+	}
+	for row := 0; row < 2; row++ {
+		if got := dt.GetElementByNumberIndex(row, 1); got != nil {
+			t.Errorf("row %d: got %v (%T), want nil", row, got, got)
+		}
+	}
+
+	dl, err := ReadColumn(context.Background(), path, "empty", ReadColumnOptions{})
+	if err != nil {
+		t.Fatalf("ReadColumn: %v", err)
+	}
+	if e := dl.Err(); e != nil {
+		t.Errorf("ReadColumn recorded a reason for a null-typed column: %v", e)
+	}
+	if dl.Len() != 2 || dl.Get(0) != nil || dl.Get(1) != nil {
+		t.Errorf("ReadColumn = %v, want two nils", dl.Data())
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dtChan, errChan := Stream(ctx, path, ReadOptions{}, 1)
+	for batch := range dtChan {
+		if e := batch.Err(); e != nil {
+			t.Errorf("Stream recorded a reason for a null-typed column: %v", e)
+		}
+	}
+	if err := <-errChan; err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+}
+
 // supportedArrowType and getVal are two lists of the same thing, and they drift
 // silently: a type in the first but not the second reads as nil while claiming
 // to be supported, and one in the second but not the first makes the reader
@@ -373,6 +424,7 @@ func TestSupportedTypesAreExactlyWhatGetValHandles(t *testing.T) {
 		arrow.FixedWidthTypes.Date32, arrow.FixedWidthTypes.Date64,
 		&arrow.Decimal128Type{Precision: 10, Scale: 2},
 		&arrow.Decimal256Type{Precision: 40, Scale: 4},
+		arrow.Null,
 		// Not representable:
 		arrow.FixedWidthTypes.Time32s, arrow.FixedWidthTypes.Time64us,
 		arrow.FixedWidthTypes.Duration_s,
@@ -408,7 +460,8 @@ func getValHandles(arr arrow.Array) bool {
 		*array.String, *array.LargeString, *array.Boolean,
 		*array.Binary, *array.LargeBinary, *array.FixedSizeBinary,
 		*array.Timestamp, *array.Date32, *array.Date64,
-		*array.Decimal128, *array.Decimal256:
+		*array.Decimal128, *array.Decimal256,
+		*array.Null:
 		return true
 	}
 	return false
