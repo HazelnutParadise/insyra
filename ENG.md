@@ -68,7 +68,7 @@ A pipeline step is a **fit function, not a configured object**. scikit-learn ref
 | Order-independence | permuting input rows fits an identical tree | `ml/decision_tree_test.go` |
 | Calibration | where a device wins, across 96 shapes | `accel/shapemap_test.go` |
 
-Cross-language tests **skip** without `Rscript` (jsonlite, cluster, dbscan) and `python` (numpy, scipy, statsmodels, sklearn, onnxruntime). Set **`INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1`** to turn every such skip into a failure naming what was missing and what went unverified; the `Reference Verification` workflow installs all of them and runs with it set. Without it the default is unchanged, so `go test ./...` still passes on a machine with none of them.
+Cross-language tests **skip** without `Rscript` (jsonlite, cluster, dbscan) and `python` (numpy, scipy, statsmodels, sklearn, onnxruntime, and cvxpy for the `quant` portfolio comparison). Set **`INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1`** to turn every such skip into a failure naming what was missing and what went unverified; the `Reference Verification` workflow installs all of them and runs with it set. Without it the default is unchanged, so `go test ./...` still passes on a machine with none of them.
 
 Every gate routes through `internal/reftest` so none can opt out of that switch. The one deliberate exception is a `psych::factor.scores` upstream bug, where R is present and broken rather than absent — failing there would fail on something nobody can install their way out of.
 

@@ -48,7 +48,7 @@ jobs:
       # without adding its dependency here makes this job fail rather than skip,
       # which is the point.
       - name: Install Python reference implementations
-        run: python -m pip install --upgrade pip numpy scipy statsmodels scikit-learn onnx onnxruntime safetensors
+        run: python -m pip install --upgrade pip numpy scipy statsmodels scikit-learn onnx onnxruntime safetensors cvxpy
       # torch is the gradient reference for the nn training suite. The CPU
       # wheel index keeps the download at ~200MB instead of the CUDA ~2GB.
       - name: Install PyTorch (CPU)
@@ -63,7 +63,7 @@ jobs:
       - name: Confirm both interpreter names resolve
         run: |
           python -c "import numpy, scipy, statsmodels, sklearn"
-          python3 -c "import onnx, onnxruntime, numpy"
+          python3 -c "import onnx, onnxruntime, numpy, cvxpy"
 
       # Three groups are excluded rather than left to skip silently, which is
       # the failure mode this whole job exists to remove:
@@ -85,3 +85,7 @@ jobs:
         run: go test -count=1 -timeout 10m ./nn/...
       - name: Comparisons against scikit-learn
         run: go test -count=1 -timeout 10m ./ml/ -run "ScikitLearn"
+      # Opt-in on a developer machine because cvxpy is usually absent; strict
+      # mode above turns it on here.
+      - name: Portfolio optimisation against cvxpy
+        run: go test -count=1 -timeout 10m ./quant/ -run "TestPortfolioAgreesWithCVXPY"
