@@ -114,6 +114,23 @@ func TestSanitizeHistoryLineMasksPasswords(t *testing.T) {
 	}
 }
 
+// A quoted DSN or a quoted password value may contain spaces; masking stopped
+// at the first space and left the rest of the password in history.
+func TestSanitizeHistoryLineMasksAPasswordWithSpaces(t *testing.T) {
+	cases := map[string]string{
+		`db connect pg "host=h password=a b"`:                           `db connect pg "host=h password=***"`,
+		`db connect pg "host=h password='a b' port=5"`:                  `db connect pg "host=h password=*** port=5"`,
+		`db connect pg "host=h password=a b sslmode=disable"`:           `db connect pg "host=h password=*** sslmode=disable"`,
+		`db connect ms "Server=s;Pwd=a b;Database=d"`:                   `db connect ms "Server=s;Pwd=***;Database=d"`,
+		"db connect b postgres:host=x user=u password=hunter2 dbname=d": "db connect b postgres:host=x user=u password=*** dbname=d",
+	}
+	for line, want := range cases {
+		if got := SanitizeHistoryLine(line); got != want {
+			t.Errorf("SanitizeHistoryLine(%q)\n got %q\nwant %q", line, got, want)
+		}
+	}
+}
+
 // CLI-4: the one-shot dispatcher path writes the sanitized line.
 func TestDispatchHistoryIsSanitized(t *testing.T) {
 	base := t.TempDir()
