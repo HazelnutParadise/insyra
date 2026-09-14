@@ -113,7 +113,7 @@ be used to skip such a column entirely.
 | `Float32`, `Float64` | `float32`, `float64` |
 | `Bool` | `bool` |
 | `String`, `LargeString` | `string` |
-| `Binary`, `LargeBinary`, `FixedSizeBinary` | `[]byte`, so a binary column is never mistaken for a text one; `Show` prints the whole column as hex |
+| `Binary`, `LargeBinary`, `FixedSizeBinary` | `[]byte`, so a binary column is never mistaken for a text one; `Show` prints each cell as hex, shortened for a value longer than 20 bytes (for example `30313233343536373839... (26 bytes)`) |
 | `Timestamp` | `time.Time` |
 | `Date32`, `Date64` | `time.Time` at UTC midnight |
 | `Decimal128`, `Decimal256` | `decimal.Decimal` ([go-decimal](https://github.com/TimLai666/go-decimal)), exact |
@@ -138,7 +138,10 @@ dictionary whose values have no Go representation reads as `nil`, with the
 reason on `Err()`.
 
 `Stream` and `ReadColumn` read the same types the same way, and record the
-reason on each batch or on the returned list. `FilterWithCCL` also sees `nil`
+reason on each batch or on the returned list. `ReadColumn` selects a column by
+its Parquet leaf name, so a nested column (`List`, `Struct`, `Map`), whose leaf
+is not named after the field, cannot be selected by name: it reports that the
+column is not found. `FilterWithCCL` also sees `nil`
 for an unsupported column, but records no reason.
 
 ### Write

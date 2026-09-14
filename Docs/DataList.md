@@ -84,10 +84,13 @@ insyra.NewDataList([]int{1, 2}, 3, "a")                // four cells
 ```
 
   `Append`, `Update`, `InsertAt`, the `Replace` and `Replace…With` methods,
-  `Shift`'s fill value, `UpdateElement`, the row appenders and the
-  `DataTable` replace methods accept it too. Those never flatten, so it
-  changes nothing there — it is accepted so that writing it for consistency
-  is not a trap. A search (`Count`, `FindAll`, …) with a marked value gives
+  `UpdateElement`, the row appenders and the `DataTable` replace methods
+  accept it too. Those never flatten, so it changes nothing there — it is
+  accepted so that writing it for consistency is not a trap. `Shift` is
+  different: it builds its result with `NewDataList`, so a slice given as its
+  fill value is flattened unless it is wrapped in `Cell`. On `[1, 2, 3]`,
+  `Shift(1, []int{7, 8})` gives `[7 8 1 2]`, while
+  `Shift(1, insyra.Cell([]int{7, 8}))` gives `[[7 8] 1 2]`. A search (`Count`, `FindAll`, …) with a marked value gives
   the same answer as with the bare value. A slice in a cell is counted and
   matched by its content.
 
@@ -2166,7 +2169,7 @@ dl.ShowTypesRange(2, nil) // Show types from index 2 to end
 func (dl *DataList) IsEqualTo(other *DataList) bool
 ```
 
-**Description:** Checks if the data content is equal to another DataList. Cells Go cannot compare with `==` (such as a struct holding a slice) are unequal rather than a panic.
+**Description:** Checks if the data content is equal to another DataList. A cell Go cannot compare with `==` (such as a struct holding a slice) is compared by its type and content instead of panicking, so a copy holding the same content is equal; a scalar `NaN` is still unequal to `NaN`.
 
 **Parameters:**
 
