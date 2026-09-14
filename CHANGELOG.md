@@ -88,7 +88,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Fixed `AppendCsvToExcel` leaving the old sheet's cells in place when a sheet of the same name already existed: `excelize.NewSheet` returns the existing sheet, so only the cells covered by the new CSV were overwritten and the rest survived. The existing sheet is now cleared in place before the CSV is written, so no old cell or formula survives while the sheet keeps its position and its settings such as column widths, including when it is the workbook's only sheet.
 - Fixed `AppendCsvToExcel`, `ExcelToCsv`, and `EachExcelToCsv` never closing the workbooks they opened.
-- Errors wrap their cause with `%w` (so `errors.Is(err, os.ErrNotExist)` works) and output directories are created with mode 0755 instead of 0777.
+- Errors wrap their cause with `%w` (so `errors.Is(err, os.ErrNotExist)` works) and output directories are created with mode 0755 instead of 0777, so on a system with umask 0002 they no longer give the group write permission.
 - `ExcelToCsv` and `EachExcelToCsv` reject a CSV file name that would not land directly inside the output directory, such as one made from a sheet named `../x` or `a/b`, which a crafted workbook could use to truncate a file outside it. Only a name made from a sheet name is checked, so a `csvNames` entry is used as given, and a sheet named `.` or `..` still converts. Each sheet is read before its CSV is created, and a write error at the final flush is returned.
 
 ### `parquet`
@@ -118,7 +118,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - The additional-info table returned by `SolveFromFile` and `SolveModel` has a fixed row order (Status, Execution Time, Warnings, Full Output, Iterations, Nodes); it previously followed Go map iteration and changed between runs.
 - A failed GLPK download, extraction or build no longer ends the program: the failure is logged as a warning and a later `SolveModel`/`SolveFromFile` reports the missing solver through the additional-info table. With `Config.SetDontPanic(true)`, which used to let the program go on, Linux and macOS retried the install without end and Windows put the working directory on `PATH`; the install now stops at the first failure on every system. The two temporary-file failures in `SolveModel` log a warning and return `nil, nil`, what they already returned with `SetDontPanic(true)`, instead of ending the program.
 - `SolveFromFile` given more than one `timeoutSeconds` refuses the call before it looks for or installs GLPK, so a call that is already wrong no longer triggers the install. It still logs a warning and returns `nil, nil`.
-- The directories created while extracting GLPK are 0o755 rather than 0777.
+- The directories created while extracting GLPK are 0o755 rather than 0777, so on a system with umask 0002 they no longer give the group write permission.
 
 ### `plot`
 
@@ -141,7 +141,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - A failed IPC listen is logged as a warning and leaves the server down, instead of ending the program or, with `Config.SetDontPanic(true)`, crashing on a nil listener.
 - `ipc.WriteMessage` refuses a payload larger than the 256 MiB the reader accepts, before writing anything. It used to write a length the other end would reject — or, past 4 GiB, a truncated one that misframes every message after it.
-- Directories created for the Python environment are 0o755 rather than 0777.
+- Directories created for the Python environment are 0o755 rather than 0777, so on a system with umask 0002 they no longer give the group write permission.
 
 ## v0.3.2
 

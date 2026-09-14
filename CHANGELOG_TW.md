@@ -88,7 +88,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - 修正 `AppendCsvToExcel` 遇到同名工作表時舊儲存格殘留的問題：`excelize.NewSheet` 對既有名稱只回傳原工作表，所以只有新 CSV 覆蓋到的儲存格被改寫，其餘保留。現在寫入 CSV 前會就地清空既有工作表，舊儲存格與公式都不會殘留，工作表仍保留原本的位置與欄寬等設定，工作簿只有那一張工作表時也能完成。
 - 修正 `AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv` 開啟的工作簿從未關閉。
-- 錯誤改用 `%w` 包裝底層原因（`errors.Is(err, os.ErrNotExist)` 可用），輸出目錄改以 0755 建立而不是 0777。
+- 錯誤改用 `%w` 包裝底層原因（`errors.Is(err, os.ErrNotExist)` 可用），輸出目錄改以 0755 建立而不是 0777，在 umask 為 0002 的系統上不再給群組寫入權限。
 - `ExcelToCsv` 與 `EachExcelToCsv` 拒絕不會落在輸出目錄內的 CSV 檔名，例如由 `../x`、`a/b` 這類工作表名稱組成的檔名，惡意 workbook 過去可藉此截斷輸出目錄外的檔案。只檢查由工作表名稱組成的檔名，所以 `csvNames` 指定的檔名照原樣使用，名為 `.` 或 `..` 的工作表照常轉換。每張工作表先讀完才建立 CSV，最後一次 flush 的寫入錯誤也會回傳。
 
 ### `parquet`
@@ -118,7 +118,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `SolveFromFile` 與 `SolveModel` 回傳的附加資訊表列順序固定為 Status、Execution Time、Warnings、Full Output、Iterations、Nodes，過去依 Go map 順序每次不同。
 - GLPK 下載、解壓或編譯失敗不再結束程式：失敗以警告記錄，之後呼叫 `SolveModel`／`SolveFromFile` 時透過附加資訊表回報找不到求解器。過去開啟 `Config.SetDontPanic(true)` 讓程式繼續時，Linux 與 macOS 會無止境地重試安裝，Windows 會把工作目錄加進 `PATH`，現在各系統都在第一個失敗就停止安裝。`SolveModel` 兩處建立暫存檔失敗改為記錄警告並回傳 `nil, nil`，也就是過去開啟 `SetDontPanic(true)` 時的回傳值，不再結束程式。
 - `SolveFromFile` 收到超過一個 `timeoutSeconds` 時，改在尋找或安裝 GLPK 之前就拒絕，已經寫錯的呼叫不會再觸發安裝。它仍然記錄警告並回傳 `nil, nil`。
-- 解壓 GLPK 時建立的目錄權限改為 0o755，不再是 0777。
+- 解壓 GLPK 時建立的目錄權限改為 0o755，不再是 0777，在 umask 為 0002 的系統上不再給群組寫入權限。
 
 ### `plot`
 
@@ -141,7 +141,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - IPC 監聽失敗改為記錄警告並讓伺服器保持關閉，不再結束程式，開啟 `Config.SetDontPanic(true)` 時也不再因為監聽器是 nil 而當掉。
 - `ipc.WriteMessage` 在寫入任何位元組之前，拒絕超過讀取端上限（256 MiB）的訊息。過去會寫出一個對端會拒絕的長度，超過 4 GiB 時前綴還會被截斷，讓對端之後每一則訊息都解框錯位。
-- 建立 Python 環境的目錄權限改為 0o755，不再是 0777。
+- 建立 Python 環境的目錄權限改為 0o755，不再是 0777，在 umask 為 0002 的系統上不再給群組寫入權限。
 
 ## v0.3.2
 
