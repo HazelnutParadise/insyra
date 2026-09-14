@@ -4,7 +4,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 )
 
 // mapCtx builds a MapContext and fails the test on error.
@@ -60,28 +59,6 @@ func TestMapContextDeterministicOrder(t *testing.T) {
 		if got := strings.Join(ctx.ColNames, ","); got != "a,m,z" {
 			t.Fatalf("iteration %d: column order %q", i, got)
 		}
-	}
-}
-
-// CCL-3: a date difference compares as a number of seconds instead of
-// silently reading as false.
-func TestDurationComparison(t *testing.T) {
-	a := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)
-	b := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	ctx := mapCtx(t, map[string][]any{"A": {a}, "B": {b}})
-	got, err := evalCol(t, ctx, "(A - B) > 0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got[0] != true {
-		t.Fatalf("(A - B) > 0 = %v, want true", got[0])
-	}
-	days, err := evalCol(t, ctx, "(A - B) / 86400")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f, _ := toFloat64(days[0]); f != 2 {
-		t.Fatalf("(A - B) / 86400 = %v, want 2", days[0])
 	}
 }
 

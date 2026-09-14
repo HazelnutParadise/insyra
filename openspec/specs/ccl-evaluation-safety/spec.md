@@ -1,7 +1,7 @@
 # ccl-evaluation-safety Specification
 
 ## Purpose
-CCL 求值安全契約：使用者運算式不得 panic、不得讓列互相別名、時長不得被靜默誤比，函數註冊與求值可以並行。
+CCL 求值安全契約：使用者運算式不得 panic、不得讓列互相別名，數值引數在每個平台上得到相同答案，函數註冊與求值可以並行。
 
 ## Requirements
 ### Requirement: Keywords are case-insensitive literals
@@ -12,9 +12,9 @@ CCL 求值安全契約：使用者運算式不得 panic、不得讓列互相別�
 - **WHEN** 求值 `IF(TRUE, NULL, 1)`
 - **THEN** 結果為 nil
 
-### Requirement: Row snapshot and duration arithmetic
+### Requirement: Row snapshot
 
-`@` 當值使用時每列 SHALL 得到獨立複本。`time.Duration` 在數值情境 SHALL 換算為秒。
+`@` 當值使用時每列 SHALL 得到獨立複本。
 
 #### Scenario: `@` column
 - **WHEN** 三列表執行 `AddColUsingCCL("r", "@")`

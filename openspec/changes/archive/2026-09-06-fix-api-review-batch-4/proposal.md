@@ -37,7 +37,7 @@ The second-round repository review (`api-review.md`, 2026-09-06) left 30 `severi
 ## Backport to dev (0.3.x)
 
 Dev received:
-- CCL keywords in any case, `@` row copies, durations as seconds, nested sequence functions, bounded arguments, the locked function registry, and name-ordered `NewMapContext` (`ccl-evaluation-safety`, trimmed).
+- CCL keywords in any case, `@` row copies, nested sequence functions, bounded arguments, the locked function registry, and name-ordered `NewMapContext` (`ccl-evaluation-safety`, trimmed).
 - `ToCSV` returning its final flush error (`core-atomic-file-output`, trimmed to that requirement).
 - `csvxl` refusing unsafe sheet names and reading a sheet before creating its CSV (`csvxl-sheet-name-safety`, trimmed).
 - The CLI nil-result checks, NaN-safe state, root flags before raw-arg commands, script-safe `env open` with the nesting limit (`cli-session-robustness`, adapted), and masked `db connect` history at 0600 (`cli-secret-hygiene`).
@@ -52,6 +52,9 @@ Adapted on dev:
 - `ToCSV` keeps creating the file directly and returns the flush error from `writeCSV`, and, when the write succeeded, the error from closing the file (backport review: it was discarded by a deferred `Close`); `saveSheetAsCsv` reads the sheet first, creates the CSV directly and returns its flush error.
 - A DataTable variable uses the column layout only when a cell is NaN or ±Inf; every other variable, including finite `float32` cells, is written byte-for-byte as before.
 - `datalist_test.go` drops the nil-cell `Normalize` and one-value `Standardize` assertions, which describe batch 1's rework.
+
+Stayed on 0.4 (owner rule: undocumented):
+- `toFloat64` reading a `time.Duration` as seconds, so a date difference compares and divides as a number (2026-09-14). v0.3.2's `Docs/CCL.md` said to convert a date difference with `DAY()`, `HOUR()`, `MINUTE()` or `SECOND()` and never described a duration as a number, so `(A - B) > 0`, `(A - B) / 86400` and `SUM`/`AVG`/`MAX` over durations keep v0.3.2's answers.
 
 Stayed on 0.4:
 - The recovers in `callAggregateFunction` and `callSequenceFunction` (backport review): a registered aggregate or sequence function that panics would make `AddColUsingCCL` and the `EditCol*UsingCCL` methods return the receiver instead of nil, a changed return value. On dev the method's own recover handles it, as on v0.3.2; the built-in shift and `REPEAT` guards return errors without it.
