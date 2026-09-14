@@ -203,32 +203,14 @@ func replaceSheet(f *excelize.File, sheetName string) error {
 		_, err = f.NewSheet(sheetName)
 		return err
 	}
-	rows, err := f.Rows(sheetName)
+	// An empty pattern matches every cell the sheet stores, a formula-only one
+	// included, and lists only those. It needs each cell's address, so a sheet
+	// that leaves the r attribute out is walked row by row instead.
+	cells, err := f.SearchSheet(sheetName, "", true)
 	if err != nil {
-		return err
-	}
-	var cells []string
-	for row := 1; rows.Next(); row++ {
-		cols, err := rows.Columns(excelize.Options{RawCellValue: true})
-		if err != nil {
-			_ = rows.Close()
+		if cells, err = paddedSheetCells(f, sheetName); err != nil {
 			return err
 		}
-		for col := range cols {
-			cell, err := excelize.CoordinatesToCellName(col+1, row)
-			if err != nil {
-				_ = rows.Close()
-				return err
-			}
-			cells = append(cells, cell)
-		}
-	}
-	if err := rows.Error(); err != nil {
-		_ = rows.Close()
-		return err
-	}
-	if err := rows.Close(); err != nil {
-		return err
 	}
 	// SetCellValue with nil empties the value and removes the formula.
 	for _, cell := range cells {
@@ -237,6 +219,41 @@ func replaceSheet(f *excelize.File, sheetName string) error {
 		}
 	}
 	return nil
+}
+
+// paddedSheetCells returns every position from column A to the last value or
+// formula of each row. Rows pads a row out to its last cell, so a row with a
+// value in XFD yields 16,384 positions; replaceSheet uses this only for a sheet
+// whose cells SearchSheet cannot address.
+func paddedSheetCells(f *excelize.File, sheetName string) ([]string, error) {
+	rows, err := f.Rows(sheetName)
+	if err != nil {
+		return nil, err
+	}
+	var cells []string
+	for row := 1; rows.Next(); row++ {
+		cols, err := rows.Columns(excelize.Options{RawCellValue: true})
+		if err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		for col := range cols {
+			cell, err := excelize.CoordinatesToCellName(col+1, row)
+			if err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+			cells = append(cells, cell)
+		}
+	}
+	if err := rows.Error(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	return cells, nil
 }
 
 // safeSheetCSVPath joins a CSV file name made from a sheet name onto outputDir.
