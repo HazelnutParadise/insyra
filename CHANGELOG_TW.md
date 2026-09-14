@@ -46,6 +46,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `insyra.Cell(v)` 讓一個值在建構子會攤平它的情況下仍然佔一格。`NewDataList` 刻意攤平切片，好讓建構清單讀起來像建構 pandas Series，而在此之前沒有辦法只讓其中一個引數例外，只能離開建構子改用 `Append`，但那沒辦法跟其他值寫在同一次呼叫裡。`NewDataList(insyra.Cell([]int{1, 2}), 3, "a")` 是三格，第一格以原本的型別持有那個切片。每個接受呼叫端傳入值的入口都接受這個標記並拆掉它，包括 `Append`、`Update`、`InsertAt`、`DataList` 與 `DataTable` 的 `Replace` 和 `Replace…With` 系列、`Shift` 的填補值、`UpdateElement` 與兩個列附加方法，其中也包含本來就不攤平的那些，所以 `Append(Cell(x))` 與 `Append(x)` 意思相同，`Count(Cell(x))` 與 `Count(x)` 也一致。沒有標記的切片仍然攤平。
 - `insyra.UncomparableKey` 改以值自己的寫法顯示。它原本印的是編碼內容，對結構而言就是其欄位，所以實作 `fmt.Stringer` 的不可比較值在印出的 `Counter` 結果裡會顯示內部欄位：Parquet `Decimal128` 欄讀成的 `decimal.Decimal` 會印出其 `big.Int` 的正負號與位元組。現在這種值顯示它自己的文字，例如 `decimal.Decimal(-340.0221114815)`，套用同一個截斷上限；沒有 `String()` 的值顯示不變。識別仍然由編碼決定而不是文字，因為 `String` 可能失真，兩個不同的值若文字相同絕不能被併成一組。
 - 修正 `SortBy` 處理不存在欄位的方式。過去找不到的索引、名稱或數字是由內部的 `GetCol`、`GetColByName`、`GetColByNumber` 回報，而不是 `SortBy`，多層排序其中一層無效時其他層照樣套用。現在會在移動任何一列之前檢查每一層，找不到欄位時在 `SortBy` 記錄錯誤並保持表格不變。同一個設定同時給了 `ColumnIndex`、`ColumnName`、`ColumnNumber` 其中多個時，仍照文件的優先順序（索引、名稱、數字）排序，並新增一則警告指出被忽略的欄位，`Err()` 維持 nil。沒有指定任何欄位的設定仍依第一欄排序，`Docs/DataTable.md` 現在有寫明：`ColumnNumber` 不為零才算有指定，所以它的零值不會蓋過名稱或索引。
+- `engine/biindex`：`BiIndex.Set` 把名稱移到另一個 id 時，現在會釋放該名稱原本的 id，之後的 `Assign` 能再次配發。過去舊 id 被刪掉卻沒有釋放，成了任何 `Assign` 都用不到的空洞。
 
 ### CLI
 
