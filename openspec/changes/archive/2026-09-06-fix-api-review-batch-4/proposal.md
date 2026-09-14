@@ -44,7 +44,7 @@ Dev received:
 - The DataList TODO test assertions that hold on dev, the factor-analysis edge assertions, the scikit-learn workflow pattern, and the `insyra.test` removal (`test-suite-integrity`).
 
 Adapted on dev:
-- `ToCSV` keeps creating the file directly and returns the flush error from `writeCSV`; `saveSheetAsCsv` reads the sheet first, creates the CSV directly and returns its flush error.
+- `ToCSV` keeps creating the file directly and returns the flush error from `writeCSV`, and, when the write succeeded, the error from closing the file (backport review: it was discarded by a deferred `Close`); `saveSheetAsCsv` reads the sheet first, creates the CSV directly and returns its flush error.
 - A DataTable variable uses the column layout only when a cell is NaN or ±Inf; every other variable, including finite `float32` cells, is written byte-for-byte as before.
 - `datalist_test.go` drops the nil-cell `Normalize` and one-value `Standardize` assertions, which describe batch 1's rework.
 

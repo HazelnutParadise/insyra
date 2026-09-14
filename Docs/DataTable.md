@@ -511,7 +511,7 @@ if err != nil {
 func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
 ```
 
-**Description:** Saves the DataTable as a CSV file. Every write error is returned, including one the CSV writer only reports when it flushes its buffer at the end (disk full, closed pipe).
+**Description:** Saves the DataTable as a CSV file. Every write error is returned, including one the CSV writer only reports when it flushes its buffer at the end (disk full, closed pipe) and one the file system only reports when the file is closed.
 
 > **Opening the file in a spreadsheet:** a cell whose text begins with `=`, `+`, `-` or `@` is a formula to Excel, LibreOffice and Google Sheets, and they will execute it. `ToCSV` writes such a cell unchanged, so a round trip keeps the exact value. When the file is meant to be opened in a spreadsheet and the data is not wholly your own, write it with `ToCSVWithOptions` and `SanitizeFormulas: true`, which prefixes those cells with a single quote.
 

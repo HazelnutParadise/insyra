@@ -52,9 +52,19 @@ func (dt *DataTable) ToCSVWithOptions(filePath string, opts CSVWriteOptions) err
 	if err != nil {
 		return err
 	}
-	defer func() { _ = file.Close() }()
+	return dt.writeCSVAndClose(file, opts)
+}
 
-	return dt.writeCSV(file, opts)
+// writeCSVAndClose writes the table to wc and closes it. The close error is
+// returned when the write itself succeeded: a file system may only report a
+// write it could not complete when the file is closed.
+func (dt *DataTable) writeCSVAndClose(wc io.WriteCloser, opts CSVWriteOptions) (err error) {
+	defer func() {
+		if closeErr := wc.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+	return dt.writeCSV(wc, opts)
 }
 
 // sanitizeCSVFormula prefixes a value a spreadsheet would execute with a
