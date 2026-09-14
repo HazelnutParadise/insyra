@@ -36,11 +36,11 @@ func runReadCommand(ctx *ExecContext, args []string) error {
 	}
 	// read previews without storing anything, so it supplies its own alias.
 	// A user-supplied `as` reached load as a second one and came back as
-	// `unknown option "as"`, which points at the wrong thing entirely.
-	for _, a := range args {
-		if strings.EqualFold(a, "as") {
-			return fmt.Errorf("read: `as` is not supported; read only previews a file. Use `load %s as <var>` to keep it", args[0])
-		}
+	// `unknown option "as"`, which points at the wrong thing entirely. Only
+	// the alias position counts, the one parseAlias would take: an `as`
+	// anywhere else is an ordinary argument, such as a sheet named "as".
+	if len(args) >= 2 && strings.EqualFold(args[len(args)-2], "as") {
+		return fmt.Errorf("read: `as` is not supported; read only previews a file. Use `load %s as <var>` to keep it", args[0])
 	}
 	fakeArgs := append([]string(nil), args...)
 	fakeArgs = append(fakeArgs, "as", "$preview")
