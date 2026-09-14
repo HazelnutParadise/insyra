@@ -29,4 +29,4 @@
 
 - [x] 5.1 `gofmt -l .`、`go vet ./...`、`go test ./...`、`golangci-lint run` 都通過。
 - [x] 5.2 `openspec validate rotations-use-gparotation-bb --strict` 通過。
-- [ ] 5.3 推上 `0.4`，確認 Test workflow 在三個 OS 都綠，再 verify 與 archive。
+- [x] 5.3 推上 `0.4`，確認 Test workflow 在三個 OS 都綠，再 verify 與 archive。（4138f504：Test、Reference Verification、Lint、Govulncheck、KNN／Clustering Parity 全綠）
