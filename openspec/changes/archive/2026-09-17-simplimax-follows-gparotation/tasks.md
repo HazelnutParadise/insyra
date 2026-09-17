@@ -27,4 +27,4 @@
 
 - [x] 5.1 `gofmt -l .`、`go vet ./...`、`go test ./...`、`golangci-lint run` 都通過。
 - [x] 5.2 `openspec validate simplimax-follows-gparotation --strict` 通過。
-- [ ] 5.3 推上 `0.4`，確認 CI 全綠，再 verify 與 archive。
+- [x] 5.3 推上 `0.4`，確認 CI 全綠，再 verify 與 archive。（466fd52f：Test 三個 OS、Reference Verification、Lint、Govulncheck、KNN／Clustering Parity 全綠）
