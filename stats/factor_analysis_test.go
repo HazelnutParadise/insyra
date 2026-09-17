@@ -1,9 +1,12 @@
 package stats_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -18,7 +21,7 @@ import (
 //
 // What the strict suite reports, measured on 2026-09-17 against baselines
 // from psych 2.6.5 and GPArotation 2026.8.2 (the cache is keyed on those
-// versions, see toolchainSignature): 709 of 42,969 leaf sub-tests fail on an
+// versions, see toolchainSignature): 691 of 42,969 leaf sub-tests fail on an
 // Apple M3. Each leaf is counted once, in the first row that applies:
 //
 //	Promax                                 76  62 on near_collinear and 67 with ML: the extraction
@@ -29,9 +32,9 @@ import (
 //	                                           eigenvalues on near_collinear: 52 combinations, plus
 //	                                           the fields downstream of them
 //	anderson-rubin scoring                 90  the combination fails before any field runs
-//	factor-frame fields of a GPA rotation 326  structure, Phi and scores where the loadings agree
+//	factor-frame fields of a GPA rotation 308  structure, Phi and scores where the loadings agree
 //	                                           with psych's within this tolerance and Phi does not,
-//	                                           242 of them on the ten-row tables and near_collinear.
+//	                                           246 of them on the ten-row tables and near_collinear.
 //	                                           On a flat criterion Phi is pinned more loosely than
 //	                                           the loadings: in R, |Phi12| spans 3.3e-3 over 40
 //	                                           converged starts of one minimum on two_blocks with ML
@@ -45,7 +48,12 @@ import (
 // our starts reach 0.0068 to 0.236 where psych's answer sits at 0.101 to
 // 0.668, because psych ranks its twenty starts by hyperplane count. That is
 // why simplimax-follows-gparotation, which changed the criterion itself for
-// three or more factors, left the count at 709.
+// three or more factors, left the count where it was.
+//
+// The R baselines are built with R's random number generator seeded
+// (factor-baselines-reproducible). Before that, psych::fa's nineteen random
+// starts came from whatever state the session was in, and the leaves that
+// failed moved with it: seeding alone took 64 out and put 46 in, 709 to 691.
 //
 // rotation_converged failed 99 leaves until rotations-use-gparotation-bb.
 // The rotations had ported GPArotation's old step, which on the ten-row
@@ -983,6 +991,33 @@ func assertOptionalMatrixCloseToR(t *testing.T, label string, got [][]float64, r
 	}
 	want := baselineFloatMatrix(t, rb, key)
 	assertMatrixCloseToBoth(t, label, got, want, want, tol)
+}
+
+// psych::fa rotates from twenty starting points, nineteen of them drawn from
+// R's random number generator, so an unseeded baseline is a different
+// reference in every session: run three times on this payload, Phi differed
+// by up to 5.3e-5 while the loadings agreed to 3.5e-6, more than the 2e-5 the
+// suite compares at. The script is run directly, twice, so the cache cannot
+// hide it.
+func TestFactorAnalysisBaselineIsReproducible(t *testing.T) {
+	requireFactorAnalysisRTools(t)
+	payload, err := json.Marshal(map[string]any{
+		"rows": factorAnalysisRowsAny(), "extraction": "ml", "rotation": "oblimin", "scoring": "regression", "nfactors": 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join("testdata", "crosslang_baseline.R")
+	run := func() []byte {
+		out, err := exec.Command("Rscript", script, "factor_analysis", string(payload)).Output()
+		if err != nil {
+			t.Fatalf("baseline script failed: %v", err)
+		}
+		return out
+	}
+	if first, second := run(), run(); !bytes.Equal(first, second) {
+		t.Errorf("the same payload produced two different baselines:\n%s\n%s", first, second)
+	}
 }
 
 func TestCrossLangFactorAnalysisExtractions(t *testing.T) {
