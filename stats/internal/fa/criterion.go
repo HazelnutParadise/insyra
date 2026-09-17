@@ -62,7 +62,7 @@ func Criterion(method string, L *mat.Dense, gamma, delta float64) (float64, erro
 		_, f, err := vgQOblimin(L, gamma)
 		return f, err
 	case "simplimax":
-		_, f, _ := vgQSimplimax(L, rows)
+		_, f, _ := vgQSimplimax(L, simplimaxK(L))
 		return f, nil
 	}
 	return 0, fmt.Errorf("criterion: %q is not a gradient projection criterion", method)

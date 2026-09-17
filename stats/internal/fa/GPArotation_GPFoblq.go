@@ -359,9 +359,7 @@ func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, f
 		return Gq, f, "vgQ.oblimin", nil
 
 	case "simplimax":
-		// Use number of rows as k parameter for simplimax
-		k := L.RawMatrix().Rows
-		Gq, f, _ := vgQSimplimax(L, k)
+		Gq, f, _ := vgQSimplimax(L, simplimaxK(L))
 		return Gq, f, "vgQ.simplimax", nil
 
 	case "geominq":

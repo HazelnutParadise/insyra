@@ -16,7 +16,7 @@ import (
 // factorParityTol is the strict per-element |Go - R| tolerance. Tightened
 // from 1e-3 to 2e-5 in commit a6eb8ff.
 //
-// What the strict suite reports, measured on 2026-09-14 against baselines
+// What the strict suite reports, measured on 2026-09-17 against baselines
 // from psych 2.6.5 and GPArotation 2026.8.2 (the cache is keyed on those
 // versions, see toolchainSignature): 709 of 42,969 leaf sub-tests fail on an
 // Apple M3. Each leaf is counted once, in the first row that applies:
@@ -39,6 +39,13 @@ import (
 //	other                                  11  score, structure and Phi fields of the extraction
 //	                                           test's ML case and of unrotated narrow_plus_group
 //	                                           and mixed_scale solutions
+//
+// Simplimax on three_blocks and cross_loading passes as a different, lower
+// minimum rather than as psych's solution: under GPArotation's own criterion
+// our starts reach 0.0068 to 0.236 where psych's answer sits at 0.101 to
+// 0.668, because psych ranks its twenty starts by hyperplane count. That is
+// why simplimax-follows-gparotation, which changed the criterion itself for
+// three or more factors, left the count at 709.
 //
 // rotation_converged failed 99 leaves until rotations-use-gparotation-bb.
 // The rotations had ported GPArotation's old step, which on the ten-row

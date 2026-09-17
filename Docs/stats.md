@@ -1248,6 +1248,11 @@ The model matrix is preserved across rotations:
 rotations Phi = I and the relationship simplifies to `L · L' = Lu · Lu'`.
 This invariant is checked by `TestRotationInvariants`.
 
+Simplimax minimises the sum of the `k` smallest squared loadings, with `k` =
+the number of variables × (the number of factors − 1). That is
+`GPArotation::simplimax`'s default, which psych uses. When squared loadings
+are equal, the ones earlier in column-major order are counted first.
+
 #### Factor Score Method
 
 ```go

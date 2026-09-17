@@ -265,8 +265,8 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 }
 
 // Simplimax performs simplimax rotation.
-// Mirrors GPArotation::simplimax
-func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k int) map[string]any {
+// Mirrors GPArotation::simplimax with its default k (see simplimaxK).
+func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
 	_, cols := loadings.Dims()
 	if cols <= 1 {
 		// No rotation needed for single factor
@@ -503,7 +503,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		case "simplimax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = Simplimax(pre, false, eps, maxIter, pre.RawMatrix().Rows)
+			result = Simplimax(pre, false, eps, maxIter)
 		case "promax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
