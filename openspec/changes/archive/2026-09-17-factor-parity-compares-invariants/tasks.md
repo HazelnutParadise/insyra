@@ -20,4 +20,4 @@
 
 - [x] 4.1 `stats/factor_analysis_test.go` 開頭註解依 3.1 更新，`delivery-status.md` 新增 milestone 與 decision。
 - [x] 4.2 `gofmt -l .`、`go vet ./...`、`go test ./stats/...`、`golangci-lint run`、`openspec validate factor-parity-compares-invariants --strict` 都通過。
-- [ ] 4.3 推上 `0.4`，確認 CI 全綠，再 verify 與 archive。
+- [x] 4.3 推上 `0.4`，確認 CI 全綠，再 verify 與 archive。（1ef3e25b：Test 三個 OS、Reference Verification、Lint、Govulncheck、KNN／Clustering Parity 全綠）
