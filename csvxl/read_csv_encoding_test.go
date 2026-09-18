@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 )
 
@@ -80,6 +81,75 @@ func TestReadCsvToStringStillReadsKnownNames(t *testing.T) {
 		if err != nil || got != "a,b\n1,2\n" {
 			t.Errorf("ReadCsvToString(%s) = %q, %v", name, got, err)
 		}
+	}
+}
+
+// Docs/csvxl.md says separators and case do not matter in an encoding name.
+// The substring aliases the table does not hold were matched on the name as
+// typed, so an upper-case spelling of one failed where its lower-case twin
+// read. insyra.ReadCSV_File lower-cases the name before it asks, so the two
+// readers disagreed about the same file.
+func TestReadCsvToStringReadsMixedCaseAliases(t *testing.T) {
+	const text = "名稱,值\n甲,1\n"
+	big5, err := traditionalchinese.Big5.NewEncoder().String(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gbk, err := simplifiedchinese.GB18030.NewEncoder().String(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := "a,b\n1,2\n"
+
+	for _, c := range []struct {
+		name string
+		data string
+		want string
+	}{
+		{"UTF-8-SIG", plain, plain},
+		{"Utf-8-Sig", plain, plain},
+		{"BIG5-HKSCS", big5, text},
+		{"Big5-HKSCS", big5, text},
+		{"X-GBK", gbk, text},
+		{"x-GBK", gbk, text},
+	} {
+		path := writeCSVBytes(t, []byte(c.data))
+		got, err := ReadCsvToString(path, c.name)
+		if err != nil {
+			t.Errorf("ReadCsvToString(%s): %v", c.name, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("ReadCsvToString(%s) = %q, want %q", c.name, got, c.want)
+		}
+	}
+
+	// A name no rule knows still fails, in any case.
+	for _, name := range []string{"klingon-1", "KLINGON-1"} {
+		path := writeCSVBytes(t, []byte(plain))
+		if got, err := ReadCsvToString(path, name); err == nil {
+			t.Errorf("ReadCsvToString(%s) = %q with no error", name, got)
+		}
+	}
+}
+
+// The unsupported-encoding message has to name the aliases that work, not
+// only the table's normalised keys: someone told "insyra can decode ... big5"
+// after typing "big5-hkscs" has no way to tell that the name they typed would
+// have worked.
+func TestUnsupportedEncodingErrorNamesTheAliases(t *testing.T) {
+	path := writeCSVBytes(t, []byte("a,b\n1,2\n"))
+	_, err := ReadCsvToString(path, "klingon-1")
+	if err == nil {
+		t.Fatal("klingon-1 must be refused")
+	}
+	for _, want := range []string{"big5", "gb", "utf8", "utf16"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error should mention the %q family: %v", want, err)
+		}
+	}
+	if !strings.Contains(err.Error(), "contain") {
+		t.Errorf("the error should say a name containing one of those families is accepted: %v", err)
 	}
 }
 

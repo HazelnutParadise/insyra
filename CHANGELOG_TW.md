@@ -94,7 +94,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 修正 `AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv` 開啟的工作簿從未關閉。
 - 錯誤改用 `%w` 包裝底層原因（`errors.Is(err, os.ErrNotExist)` 可用），輸出目錄改以 0755 建立而不是 0777，在 umask 為 0002 的系統上不再給群組寫入權限。
 - `ExcelToCsv` 與 `EachExcelToCsv` 拒絕不會落在輸出目錄內的 CSV 檔名，例如由 `../x`、`a/b` 這類工作表名稱組成的檔名，惡意 workbook 過去可藉此截斷輸出目錄外的檔案。只檢查由工作表名稱組成的檔名，所以 `csvNames` 指定的檔名照原樣使用，名為 `.` 或 `..` 的工作表照常轉換。每張工作表先讀完才建立 CSV，最後一次 flush 的寫入錯誤也會回傳。
-- `ReadCsvToString` 回傳 UTF-8 內容或錯誤，這正是它的文件一直寫的。遇到沒有解碼器的編碼，不論是指定的名稱或由 `Auto` 偵測到的（ISO-2022-KR、ISO-2022-CN、IBM424、IBM420），過去會回傳檔案的原始位元組（不是有效的 UTF-8）且錯誤為 nil；現在改為回傳列出支援編碼的錯誤。解碼表內或符合舊有子字串規則的名稱（`big5-hkscs`、`utf-8-sig`）讀法不變，`CsvToExcel`、`AppendCsvToExcel`、`EachCsvToOneExcel` 與 `ReadCSV_File` 遇到未知編碼仍不解碼直接讀取。
+- `ReadCsvToString` 回傳 UTF-8 內容或錯誤，這正是它的文件一直寫的。遇到沒有解碼器的編碼，不論是指定的名稱或由 `Auto` 偵測到的（ISO-2022-KR、ISO-2022-CN、IBM424、IBM420），過去會回傳檔案的原始位元組（不是有效的 UTF-8）且錯誤為 nil；現在改為回傳列出支援編碼的錯誤。解碼表內或符合舊有子字串規則的名稱（`big5-hkscs`、`utf-8-sig`）讀法不變，大小寫也不影響：過去子字串規則是照使用者輸入的原字串比對，所以 `UTF-8-SIG`、`Utf-8-Sig`、`BIG5-HKSCS`、`X-GBK` 會被拒絕，小寫拼法卻讀得到，而會先把名稱轉小寫的 `ReadCSV_File` 對同一個檔案的判斷又和 `ReadCsvToString` 不一致。「unsupported encoding」錯誤訊息現在也會列出四組子字串家族（`utf8`、`big5`、`gb`、`utf16`），不再只列解碼表正規化後的鍵。`CsvToExcel`、`AppendCsvToExcel`、`EachCsvToOneExcel` 與 `ReadCSV_File` 遇到未知編碼仍不解碼直接讀取。
 
 ### `parquet`
 

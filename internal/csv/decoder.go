@@ -117,23 +117,34 @@ func normalizeEncodingName(name string) string {
 	return b.String()
 }
 
-// legacyDecoder resolves a name the table does not know the way earlier
-// releases did: by substring, case-sensitively, on the name as given, so
-// "big5-hkscs" still reads as Big5, "x-gbk" as GB18030 and "utf-8-sig" as
-// UTF-8. ok is false for a name matching none of these.
+// legacyFamilies are the substring rules earlier releases used for a name the
+// table does not hold, in the order they are tried: "big5-hkscs" reads as
+// Big5, "x-gbk" as GB18030 and "utf-8-sig" as UTF-8. The fragments are matched
+// against the normalised name, so case and separators never decide, and they
+// double as the families the unsupported-encoding message names.
+//
+// Order matters: "big5hkscs" contains no "gb", but the big5 rule has to come
+// before the gb one for any name that holds both.
+var legacyFamilies = []struct {
+	fragment string
+	enc      encoding.Encoding
+}{
+	{"utf8", nil},
+	{"big5", traditionalchinese.Big5},
+	{"gb", simplifiedchinese.GB18030},
+	{"utf16", unicode.UTF16(unicode.LittleEndian, unicode.UseBOM)},
+}
+
+// legacyDecoder resolves a name the table does not know by substring. ok is
+// false for a name matching none of the families.
 func legacyDecoder(name string) (enc encoding.Encoding, ok bool) {
-	switch {
-	case strings.Contains(name, "utf-8"):
-		return nil, true
-	case strings.Contains(name, "big5"):
-		return traditionalchinese.Big5, true
-	case strings.Contains(name, "gb"):
-		return simplifiedchinese.GB18030, true
-	case strings.Contains(name, "utf-16") || strings.Contains(name, "utf16"):
-		return unicode.UTF16(unicode.LittleEndian, unicode.UseBOM), true
-	default:
-		return nil, false
+	normalized := normalizeEncodingName(name)
+	for _, f := range legacyFamilies {
+		if strings.Contains(normalized, f.fragment) {
+			return f.enc, true
+		}
 	}
+	return nil, false
 }
 
 // resolveDecoder finds the decoder for a name: the table first, then the
@@ -160,14 +171,32 @@ func SupportedEncodings() []string {
 	return out
 }
 
+// SupportedEncodingFamilies lists the substring aliases DecodingReader accepts
+// on top of the table: any name containing one of these, in any case and with
+// any separators, decodes as that family.
+func SupportedEncodingFamilies() []string {
+	out := make([]string, 0, len(legacyFamilies))
+	for _, f := range legacyFamilies {
+		out = append(out, f.fragment)
+	}
+	return out
+}
+
 // CheckDecodable returns an error naming the supported encodings when nothing
 // here decodes encodingName, the case in which DecodingReader hands the bytes
-// back undecoded.
+// back undecoded. The message names the substring families too, because a
+// reader told only the table's keys after typing "big5-hkscs" cannot tell that
+// the name they typed does work.
 func CheckDecodable(encodingName string) error {
 	if _, ok := resolveDecoder(encodingName); ok {
 		return nil
 	}
-	return fmt.Errorf("unsupported encoding %q: insyra can decode %s", encodingName, strings.Join(SupportedEncodings(), ", "))
+	return fmt.Errorf(
+		"unsupported encoding %q: insyra can decode %s, and any name that contains %s (case and separators do not matter)",
+		encodingName,
+		strings.Join(SupportedEncodings(), ", "),
+		strings.Join(SupportedEncodingFamilies(), ", "),
+	)
 }
 
 // DecodingReader wraps r so its bytes are decoded from the named encoding into
