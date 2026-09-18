@@ -324,11 +324,16 @@ When performing arithmetic operations or comparisons, CCL attempts to convert op
 - String-to-number conversion follows standard parsing rules
 - Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
 - The comparison error applies to `>`, `<`, `>=` and `<=` between such a string and a number. `==` and `!=` do not raise it: a non-numeric string is simply not equal to a number, so `"hello" == 5` is `false`
+- Two kinds of string are not words and are not an error against a number. A string CCL reads as a date (see [Duration & Time Functions](#duration--time-functions)) is a date, so `A > 0` over a date column loaded from CSV or Excel compares as `false`, the same answer the dates give when held as `time.Time`. An empty string is a blank cell, and also compares as `false`
 
 ```go
 // These will cause errors
 "abc" + 10          // Error: cannot convert "abc" to number
 "hello" > 5         // Error: cannot convert "hello" to number
+
+// These do not: they compare as false
+"2024-01-02" > 5    // false (a date, not a word)
+"" > 5              // false (a blank cell, not a word)
 ```
 
 ### String Concatenation
@@ -430,7 +435,7 @@ A 0/1 indicator column can therefore be used directly: `A && B` and `AND(A, B)`.
 | Operation               | Left Type     | Right Type    | Behavior                                          |
 | ----------------------- | ------------- | ------------- | ------------------------------------------------- |
 | `+`, `-`, `*`, `/`, `^` | Number/String | Number/String | Convert both to numbers, then calculate           |
-| `>`, `<`, `>=`, `<=`    | Number/String | Number/String | Convert both to numbers, then compare; a string that is not a number against a number is an error |
+| `>`, `<`, `>=`, `<=`    | Number/String | Number/String | Convert both to numbers, then compare; a string that is not a number, a date or empty against a number is an error |
 | `==`, `!=`              | Number/String | Number/String | Convert both to numbers if possible, then compare |
 | `==`, `!=`              | nil           | any           | Special nil handling (see above)                  |
 | `&`                     | any           | any           | Convert both to strings, then concatenate         |

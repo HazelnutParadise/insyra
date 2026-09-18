@@ -65,7 +65,7 @@ You can **mix** name + index in the same expression. For readability, parenthesi
 | `==` | equal | `A == B`, `A == nil` |
 | `!=` | not equal | `A != B` |
 
-A string that is not a number compared for size with a number (`'hello' > 5`) is an error. `==`/`!=` report such a pair unequal, and a numeric string compares as a number (`'5' > 3` is `true`).
+A string that is not a number compared for size with a number (`'hello' > 5`) is an error. `==`/`!=` report such a pair unequal, and a numeric string compares as a number (`'5' > 3` is `true`). A string CCL reads as a date (`'2024-01-02'`, RFC3339) and an empty string are not words: they compare as `false` against a number, not as an error, so `A > 0` over a CSV date column still produces a column.
 
 Nil/Null note:
 - `== nil` or `== null` checks missing values.

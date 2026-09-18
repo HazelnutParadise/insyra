@@ -612,11 +612,44 @@ func rangeBound(f float64, what string) (int, error) {
 	return int(f), nil
 }
 
-// isWordAgainstNumber reports whether a is a string and b a number. It is
-// only asked after toFloat64 failed on one of the two operands, and a number
-// always converts, so the string is one that does not read as a number.
+// parseDateString reads the date layouts the evaluator accepts in a string
+// operand. It is the single place that decides whether a string is a date, so
+// that comparing against a number and arithmetic agree on the answer.
+func parseDateString(x string) (time.Time, bool) {
+	// Every layout below starts with a four-digit year, so a string that does
+	// not start with a digit cannot match any of them. Skipping the four
+	// time.Parse calls takes a 100k-row text column from 45ms to roughly what
+	// a numeric one costs.
+	if len(x) == 0 || x[0] < '0' || x[0] > '9' {
+		return time.Time{}, false
+	}
+	formats := []string{time.RFC3339, time.RFC3339Nano, "2006-01-02", "2006-01-02T15:04:05Z07:00"}
+	for _, f := range formats {
+		if t, err := time.Parse(f, x); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// isWordAgainstNumber reports whether a is a word and b a number. It is only
+// asked after toFloat64 failed on one of the two operands, and a number always
+// converts, so the string is one that does not read as a number.
+//
+// Two kinds of string are not words. A string parseDateString accepts is a
+// date: Docs/CCL.md says date strings are parsed as dates, and CSV and Excel
+// loads store whole date columns as strings, so `A > 0` over one of those must
+// answer the way the same dates held as time.Time do. The empty string is a
+// blank cell, not a word. Both returned false on v0.3.2 and keep doing so.
 func isWordAgainstNumber(a, b any) bool {
-	if _, ok := a.(string); !ok {
+	s, ok := a.(string)
+	if !ok {
+		return false
+	}
+	if s == "" {
+		return false
+	}
+	if _, isDate := parseDateString(s); isDate {
 		return false
 	}
 	switch b.(type) {
@@ -633,19 +666,7 @@ func applyOperator(op string, left, right any) (any, error) {
 		case time.Time:
 			return x, true
 		case string:
-			// Every layout below starts with a four-digit year, so a string
-			// that does not start with a digit cannot match any of them.
-			// Skipping the four time.Parse calls takes a 100k-row text column
-			// from 45ms to roughly what a numeric one costs.
-			if len(x) == 0 || x[0] < '0' || x[0] > '9' {
-				return time.Time{}, false
-			}
-			formats := []string{time.RFC3339, time.RFC3339Nano, "2006-01-02", "2006-01-02T15:04:05Z07:00"}
-			for _, f := range formats {
-				if t, err := time.Parse(f, x); err == nil {
-					return t, true
-				}
-			}
+			return parseDateString(x)
 		}
 		return time.Time{}, false
 	}
