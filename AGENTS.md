@@ -263,6 +263,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: clamp in `chiSquaredPValue` — a negative `chi2` is a rounding artefact of a statistic that is zero, so returning 1 for it is the right answer, and a non-positive `df` should return NaN the way `tQuantile` already does. That changes a panic into a value for every caller at once, which needs deciding before it is done: it is a behaviour change, though the old behaviour was a panic.
 - **Status**: pending
 
+### [2026-09-19] — govulncheck fails on every branch: excelize GO-2026-6452 has no fixed version
+- **Where**: `go.mod` — `github.com/xuri/excelize/v2 v2.11.0`; the call sites are `read.go` `ReadExcelSheet` and, on this line, `csvxl` `replaceSheet` and `paddedSheetCells`
+- **What**: GO-2026-6452, "Panic via negative shared-string index in github.com/xuri/excelize", lists `Fixed in: N/A`. `govulncheck ./...` exits 3 on `origin/dev` itself (trace `read.go:390 ReadExcelSheet calls excelize.File.GetRows`), and the Vulnerability Scan job on `0.4` has failed since 2026-09-18 15:56 for the same reason. Measured on 2026-09-19 against a clean checkout of `origin/dev`. No dependency bump can clear it while upstream has no release.
+- **Suggestion**: watch for an excelize release that fixes it and bump as part of the dependency refresh before the next release. If it stays unfixed and the job has to go green, the choice is between a documented `-show verbose` exception list in the workflow and not calling the affected functions, neither of which should be decided quietly.
+- **Status**: pending
+
 ### [2026-09-14] — `stats` functions outside the input guard still crash on a nil list
 - **Where**: `stats/anova.go` `OneWayANOVA` (and `KruskalWallis`, `FriedmanTest`), `TwoWayANOVA`, and `stats/numericinput.go` `numericSlice`
 - **What**: `stats-input-type-guard` covers only the functions that read their arguments through `asDataList` or `numericSlice`. Reported by the 2026-09-14 backport review: a nil group given to `OneWayANOVA`, `KruskalWallis` or `FriedmanTest` is dereferenced inside a goroutine (`groups[i].AtomicDo` in `OneWayANOVA`), which ends the process because no caller can recover it; `TwoWayANOVA` and other functions calling `AtomicDo` on the argument directly panic. `numericSlice` checks only for a nil interface, so a typed nil `*DataList` still reaches `AtomicDo` and panics; the t, z, F, Bartlett and Levene tests and `CalculateMoment` avoid that by converting through `asDataList` first.
