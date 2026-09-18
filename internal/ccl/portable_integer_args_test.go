@@ -3,6 +3,7 @@ package ccl
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -175,6 +176,36 @@ func TestIntegerArgumentsOrdinaryValuesUnchanged(t *testing.T) {
 			t.Errorf("%s: unexpected error %v", c.expr, err)
 		case fmt.Sprint(got[0]) != fmt.Sprint(c.want):
 			t.Errorf("%s = %v; want %v", c.expr, got[0], c.want)
+		}
+	}
+}
+
+// The out-of-range message quotes the number the expression was written with,
+// not the signed shift the evaluator applies. `B - 106752` subtracts 106,752
+// days; saying "a shift of -106752 days" sends the reader looking for a minus
+// sign that is not in their expression.
+func TestDateShiftErrorQuotesTheOperandAsWritten(t *testing.T) {
+	ctx := portableCtx(t)
+	for _, c := range []struct {
+		expr string
+		want string
+	}{
+		{"B + 106752", "a shift of 106752 days is out of range"},
+		{"B - 106752", "a shift of 106752 days is out of range"},
+		{"106752 + B", "a shift of 106752 days is out of range"},
+		// (0-106752) is a negative operand, so the message keeps its sign.
+		{"B + (0-106752)", "a shift of -106752 days is out of range"},
+		{"B - (0-106752)", "a shift of -106752 days is out of range"},
+		// B + 0-106752 parses as (B + 0) - 106752, a subtraction of 106752.
+		{"B + 0-106752", "a shift of 106752 days is out of range"},
+	} {
+		_, err := evalCol(t, ctx, c.expr)
+		if err == nil {
+			t.Errorf("%s: want an error", c.expr)
+			continue
+		}
+		if !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: error %q does not contain %q", c.expr, err, c.want)
 		}
 	}
 }
