@@ -54,7 +54,7 @@ func SaveChart(plt *plot.Plot, filename string)
 
 **Returns:**
 
-- None.
+- None. A path that cannot be written, or an extension that is not supported, goes to `insyra.LogFatal`, which **ends the program** with status 1 unless `insyra.Config.SetDontPanic(true)` is set, in which case it is only logged. Create the output directory before calling this.
 
 **Supported formats:** `.png`, `.jpg`, `.jpeg`, `.pdf`, `.svg`, `.tex`, `.tif`, `.tiff`
 
