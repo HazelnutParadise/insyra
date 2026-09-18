@@ -308,7 +308,10 @@ Use DataTable categorical encoders before stats methods that require numeric fea
 
 Every `stats` numeric entry point refuses a value it cannot read as a finite
 number — a missing value, a blank, text, an infinity — naming the series and
-the row. Only Go numeric types convert, so a string spelling a number is
+the row. Five have not caught up: `PairedTTest`, `MannWhitneyU`, `OneWayANOVA`,
+`KruskalWallis` and `FriedmanTest` refuse a blank or text but not `NaN` or
+`±Inf`, and say less about where it was; `references/stats.md` gives each one's
+exact wording. Only Go numeric types convert, so a string spelling a number is
 refused too: a table loaded without type inference needs converting first.
 Impute or drop missing values before analysing (`insyra` provides
 `SimpleImputer`). Two families are deliberately different and are documented as

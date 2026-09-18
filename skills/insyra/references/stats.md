@@ -107,11 +107,27 @@ rotation converged, and `MaxIter` governs extraction rather than rotation.
 
 ## Things that are easy to get wrong
 
-- A blank or non-numeric cell is refused, not read as zero. The t-, z- and
-  F-tests, `BartlettTest`, `LeveneTest`, `PairedTTest`, `OneWayANOVA`, the
-  non-parametric tests, `CalculateMoment`, `Skewness` and `Kurtosis` reject the
-  list with an error naming the row; clean it first with
-  `ClearNaNs`/`ClearNils`.
+- A blank or non-numeric cell is refused, not read as zero — but how much the
+  error tells you, and whether NaN and ±Inf count as unreadable, differs by
+  function. Clean the list first with `ClearNaNs`/`ClearNils` and none of this
+  matters.
+  - `SingleSampleTTest`, `TwoSampleTTest`, `SingleSampleZTest`, `TwoSampleZTest`,
+    `FTestForVarianceEquality`, `BartlettTest`, `LeveneTest`, `CalculateMoment`,
+    `Skewness` and `Kurtosis` name the series and the **one-based** row, and
+    refuse NaN and ±Inf as well: `data contains a non-numeric value at row 3:
+    <nil>`, `data1 contains a non-finite value at row 3: NaN`, `group 0 contains
+    a non-numeric value at row 3: <nil>`.
+  - `PairedTTest` and `MannWhitneyU` name only the series: `invalid numeric
+    value in data1`, with no position.
+  - `OneWayANOVA`, `KruskalWallis` and `FriedmanTest` name a **zero-based**
+    position: `invalid data at group 0 index 2`, `invalid numeric value at
+    group 0 index 2`, `invalid numeric value at subject 0 condition 2`.
+  - None of the five in the previous two bullets refuses NaN or ±Inf. A NaN
+    reaches the arithmetic: `PairedTTest` returns a NaN statistic and a NaN
+    p-value with a nil error, `OneWayANOVA` returns F and P as NaN with a nil
+    error, and `KruskalWallis`, `MannWhitneyU` and `FriedmanTest` rank the NaN
+    and return an ordinary-looking result. Check the statistic before reporting
+    it.
 - `TwoWayANOVA` wants its cells in row-major order, `factorALevels ×
   factorBLevels` of them. There is no long-format entry point.
 - `ChiSquareTestResult.ContingencyTable` stores each cell as a `[2]float64`
