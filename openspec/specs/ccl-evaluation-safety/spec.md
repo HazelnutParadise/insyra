@@ -67,3 +67,19 @@ Adding a number of days to a date, or subtracting one from it, SHALL move the da
 #### Scenario: A fractional day count
 - **WHEN** 求值 `D + 0.5`、`D + 0.0625` 或 `D + 0.001`
 - **THEN** 日期分別移動 12 小時、1 小時 30 分與 86.4 秒
+
+### Requirement: A logical function reports an argument it cannot read
+
+`AND()` and `OR()` SHALL report an argument they evaluate and cannot read as a boolean, and SHALL NOT count it as `false`, because `Docs/CCL.md` describes them as the same operation as `&&` and `||`, which already report it. The conversion itself SHALL be unchanged, the argument count SHALL NOT be checked, and both SHALL keep stopping at the argument that settles the answer, so an argument they skip is never evaluated and therefore never reported.
+
+#### Scenario: A word as an argument
+- **WHEN** 求值 `AND('abc', TRUE)` 或 `OR(FALSE, 'abc')`
+- **THEN** 回傳錯誤並指出是第幾個引數，與 `'abc' && TRUE` 一致
+
+#### Scenario: A value the conversion reads
+- **WHEN** 求值 `AND(1, TRUE)`、`AND(nil, TRUE)` 或 `AND('yes', TRUE)`
+- **THEN** 分別得到 true、false 與 true，與 `1 && TRUE`、`nil && TRUE`、`'yes' && TRUE` 相同
+
+#### Scenario: No argument, and an argument the short-circuit skips
+- **WHEN** 求值 `AND()`、`AND(TRUE)`、`AND(FALSE, 'abc')` 或 `AND(B != 0, A / B > 1)`
+- **THEN** 分別得到 true、true、false 與逐列的 false／true／true，都不回傳錯誤

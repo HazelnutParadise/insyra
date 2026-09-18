@@ -285,32 +285,32 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			return evaluateWithCallDepth(t.args[2], ctx, depth+1, functionDepth)
 		}
 
-		if upper == "AND" {
+		if upper == "AND" || upper == "OR" {
+			// AND stops at the first false, OR at the first true, so an
+			// argument either of them skips is never evaluated. An argument
+			// they do evaluate and cannot read as a boolean is an error,
+			// matching the && and || operators: reading it as false made
+			// AND('abc', TRUE) answer the same thing a real comparison does.
 			functionDepth := callDepth + 1
-			for _, arg := range t.args {
+			for i, arg := range t.args {
 				val, err := evaluateWithCallDepth(arg, ctx, depth+1, functionDepth)
 				if err != nil {
 					return nil, err
 				}
-				if b, ok := toBool(val); !ok || !b {
+				b, ok := toBool(val)
+				if !ok {
+					return nil, fmt.Errorf("argument %d to %s cannot be converted to boolean: %v", i+1, upper, val)
+				}
+				if upper == "AND" && !b {
 					return false, nil
 				}
-			}
-			return true, nil
-		}
-
-		if upper == "OR" {
-			functionDepth := callDepth + 1
-			for _, arg := range t.args {
-				val, err := evaluateWithCallDepth(arg, ctx, depth+1, functionDepth)
-				if err != nil {
-					return nil, err
-				}
-				if b, ok := toBool(val); ok && b {
+				if upper == "OR" && b {
 					return true, nil
 				}
 			}
-			return false, nil
+			// No argument settled it: AND() and AND(TRUE) are true, OR() and
+			// OR(FALSE) are false. The argument count is not checked.
+			return upper == "AND", nil
 		}
 
 		// Sequence functions: whole-column input, same-length-column output.

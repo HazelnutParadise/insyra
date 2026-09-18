@@ -274,6 +274,8 @@ When a range (column range or row range) is used inside an aggregate function (l
 "(A > 0 && B > 0) || C"  // Combined logical operations
 ```
 
+They read their operands exactly as `AND()` and `OR()` read their arguments — see [Boolean Operations](#boolean-operations) — and differ in one way: `AND()` and `OR()` stop at the argument that settles the answer, while `&&` and `||` evaluate both operands. So `AND(B != 0, A / B > 1)` guards the division and `B != 0 && A / B > 1` still reports it.
+
 ### String Concatenation Operator
 
 - `&` : String concatenation (equivalent to `CONCAT()` function)
@@ -399,7 +401,7 @@ nil & " World"      // "<nil> World"
 
 ### Boolean Operations
 
-`&&`, `||`, `IF` and `CASE()` read their condition through the same conversion, which accepts more than a bare boolean:
+`&&`, `||`, `IF`, `AND()`, `OR()` and `CASE()` read their condition through the same conversion, which accepts more than a bare boolean:
 
 | Value                                                   | Reads as        |
 | ------------------------------------------------------- | --------------- |
@@ -418,9 +420,10 @@ true || false       // true
 (A > 10) && (B < 20)    // Evaluate both conditions
 
 'abc' && true       // Error: 'abc' is not a boolean
+AND('abc', true)    // Error: the same word, reported the same way
 ```
 
-A 0/1 indicator column can therefore be used directly: `A && B`. `AND()` and `OR()` use the same conversion, but count a value it cannot read as `false` instead of reporting an error: `AND('abc', true)` is `false`.
+A 0/1 indicator column can therefore be used directly: `A && B` and `AND(A, B)`.
 
 ### Type Coercion Summary
 
@@ -589,6 +592,18 @@ Example:
 "AND(condition1, condition2, ...)"  // Returns true if all conditions are true
 "OR(condition1, condition2, ...)"   // Returns true if any condition is true
 ```
+
+Both read their arguments as booleans exactly as `&&` and `||` do, and report an argument they cannot read: `AND('abc', true)` is an error, not `false`.
+
+Both also stop as soon as an argument settles the answer — `AND()` at the first false, `OR()` at the first true — and an argument they skip is never evaluated, so a guard works:
+
+```
+"AND(B != 0, A / B > 1)"   // rows where B is 0 give false; the division never runs
+```
+
+A skipped argument is not read either, so `AND(false, 'abc')` is `false` rather than an error.
+
+With no argument at all `AND()` is `true` and `OR()` is `false`, the identity of each operation; one argument answers as that argument reads.
 
 Examples:
 

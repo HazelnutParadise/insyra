@@ -79,7 +79,9 @@ Nil/Null note:
 | `&&` | AND | `A > 10 && B < 20` |
 | `||` | OR | `A > 10 || B > 10` |
 
-Operands are read as booleans, not required to be booleans: numbers (`0` is false), and the strings `true`/`yes`/`1`/`false`/`no`/`0`/`''`. Any other string is an error for `&&`, `||`, `IF` and `CASE()`; `AND()`/`OR()` count it as false.
+Operands are read as booleans, not required to be booleans: numbers (`0` is false), and the strings `true`/`yes`/`1`/`false`/`no`/`0`/`''`. Any other string is an error, for `AND()`/`OR()` as much as for `&&`, `||`, `IF` and `CASE()`: `AND('abc', true)` is an error, not `false`.
+
+`AND()`/`OR()` take any number of arguments — `AND()` is `true`, `OR()` is `false` — and stop at the argument that settles the answer, so `AND(B != 0, A / B > 1)` guards the division and an argument it skips is never read (`AND(false, 'abc')` is `false`). `&&` and `||` evaluate both operands, so `B != 0 && A / B > 1` still reports the division by zero.
 
 ## String concatenation
 
