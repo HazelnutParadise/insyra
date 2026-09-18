@@ -253,6 +253,18 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-18] — `govulncheck` is red on `0.4`: excelize panics on a negative shared-string index
+- **Where**: [read.go](read.go) `ReadExcelSheet`, the `excelize.File.GetRows` call
+- **What**: GO-2026-6452, published 2026-09-16, reports that excelize panics on a crafted `.xlsx` whose shared-string index is negative. It affects every published version (`introduced: 0`), has no fixed version, and the `v2.11.0` in `go.mod` is already the newest release, so this cannot be resolved by a bump. govulncheck's symbol scan reaches it through `ReadExcelSheet` → `GetRows`, so the Govulncheck workflow fails on `0.4` from the 2026-09-18 run (a3194b46) onward — the run before it predates the database picking the advisory up. A panic raised inside excelize is not something the library's error path can catch, so "the library never terminates" does not currently hold for a hostile spreadsheet.
+- **Suggestion**: recover around the excelize calls in the Excel read path and record the failure through the normal `Err()` path, which is both what the library promises and what turns this advisory into a handled case. Do not add a govulncheck exception — that silences a path that really does panic. Drop the workaround once excelize publishes a fixed version.
+- **Status**: pending
+
+### [2026-09-17] — psych 2.6.5's `faRotations` tie-break picks a start that did not tie, and nobody upstream has been told
+- **Where**: upstream `psych::faRotations`; recorded on our side in [stats/testdata/crosslang_baseline.R](stats/testdata/crosslang_baseline.R) and in the comment at `factorParityTol` in [stats/factor_analysis_test.go](stats/factor_analysis_test.go)
+- **What**: when several rotation starts tie on the highest hyperplane count, psych breaks the tie by applying `which()` to the tied rows alone and then uses that result as a start number. `which()` returns a position within the subset, so with starts 1 and 3 tied and start 3 the simpler one, psych selects start 2, which never tied. The fit comparison that follows is computed and never assigned, so it has no effect. Our port selects by criterion value and does not share the defect; the only thing that depends on it is which solution psych's own baselines record.
+- **Suggestion**: report it to the maintainer. There is no GitHub route: psych declares no `BugReports` URL, `revelle` has no psych repository, and `cran/psych` is a read-only mirror with issues disabled, so the only channel is the maintainer address in `DESCRIPTION` (`revelle@northwestern.edu`). A report needs the reproduction (hyperplane `c(.5,.4,.5,.3)` with complexity `c(1.3,1.0,1.1,1.0)` selects 2, not 3) and the fix — index back into the tied set at both steps, and assign the fit step. Sending it goes out under the owner's name, so it waits for the owner.
+- **Status**: pending
+
 ### [2026-09-12] — a bare `[]byte` still flattens in the constructors
 - **Where**: `datalist.go` `flattenWithNilSupport`
 - **What**: a `[]byte` cell is one value everywhere it is read — counted, matched, grouped and ordered by content — but `NewDataList([]byte{0, 255})` still produces two cells holding `0` and `255`, because the constructor flattens every slice. The owner ruled on 2026-09-12 that the flattening stays: it is what makes `NewDataList` read like constructing a pandas Series. `one-value-one-cell` gave that decision an escape hatch, `NewDataList(Cell(blob), …)`, so the remaining gap is only that a reader who writes the bare form and then searches for the blob gets 0 with nothing to explain it.
