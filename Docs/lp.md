@@ -211,4 +211,4 @@ End
 - A variable under `Binary` becomes an integer, and only the sides `Bounds` left open default to 0 and 1. With `0 <= x <= 4` in `Bounds`, `x` can still be 4.
 - Comments start with `\` and run to the end of the line.
 
-GLPK reads a bound such as `x >= -foo`, where a name follows the sign, as "no lower bound". `lp` reports `missing lower bound` instead.
+GLPK reads a bound such as `x >= -foo`, where a name follows the sign, as "no lower bound". `lp` reports `missing lower bound` instead. The CPLEX format allows only a number or ±inf there, and GLPK's own reader was confirmed on the bug-glpk list in September 2026 to take that branch by mistake. No GLPK release carries the fix yet, so the two still differ on such a file.

@@ -19,7 +19,10 @@ import (
 //
 // One place is stricter than GLPK on purpose. GLPK reads "x >= -foo" as "x has
 // no lower bound", because a test in that branch is inverted; this reader
-// reports a missing lower bound instead of solving a different model.
+// reports a missing lower bound instead of solving a different model. The
+// CPLEX format allows only a number or an infinity after the sign, and the
+// inverted test was confirmed upstream in September 2026 (bug-glpk archive,
+// 2026-09). No GLPK release carries the fix.
 func readLP(name string, text []byte) (*problem, error) {
 	r := &lpReader{
 		name: name, text: text, c: '\n',
