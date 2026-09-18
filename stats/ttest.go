@@ -130,11 +130,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 //
 // ** Verified using R **
 func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error) {
-	values1, err := testSeries(data1, "data1")
-	if err != nil {
-		return nil, err
-	}
-	values2, err := testSeries(data2, "data2")
+	values1, values2, err := testSeriesPair(data1, data2, "data1", "data2")
 	if err != nil {
 		return nil, err
 	}

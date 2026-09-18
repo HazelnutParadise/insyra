@@ -69,6 +69,11 @@ Note for any host running the reference suites locally: the crosslang venv moved
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
 
+- decision: `LeveneTest` and `BartlettTest` keep the sequential per-group read the input-refusal backport gave them, and the cost is recorded rather than recovered.
+  rationale: measured on the 8-core M3, 8 groups of 200,000 values, best of 5 runs of 5 iterations. Levene 37.2 ms at 3bf0ae7e (parallel goroutines, no per-value check) against 121.5 ms at 1b996ac8 (sequential, every value validated); Bartlett 2.25 ms against 10.37 ms. Putting the per-group `testSeries` calls back on goroutines, measured on a patched copy, gives Levene 117.3 ms and Bartlett 4.37 ms — so for Levene parallelism is worth 4.2 ms of the 84.3 ms and the rest is the validation the refusal exists for, while for Bartlett it is worth 6.0 ms of the 8.1 ms and could be recovered. Neither is recovered now: the goroutines were removed so a nil group cannot end the process from inside one, and re-adding them is a change of its own with that question to answer first.
+  timestamp: 2026-09-19
+  impacted_ticket_ids: backport/0.4-non-breaking
+
 - decision: A `0.4` change reaches `dev` only when code or data that worked on v0.3.2 keeps its result type, returned values, nil/error behaviour, written files and defaults; a fix whose old behaviour was a panic, a process exit, lost data or an answer wrong by any reading qualifies. The owner decided five cases: rotation changes at `Restarts >= 2`, `IsEqualTo` treating NaN as equal, and temp-file-and-rename writes stay on `0.4`; Parquet `Binary` columns read as `[]byte` and `ReadJSON_File` reads integers as `int64` on `dev`.
   rationale: most `0.4` commits mix breaking and non-breaking parts, and later fixes are written on top of sticky `Err()` and `fail()`, so they were ported by hand against one written rule. Each commit says what it left behind, and the owner ruled where the rule left room.
   timestamp: 2026-09-14

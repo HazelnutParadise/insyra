@@ -83,11 +83,7 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alter
 		return nil, errors.New("confidenceLevel must be between 0 and 1")
 	}
 
-	values1, err := testSeries(data1, "data1")
-	if err != nil {
-		return nil, err
-	}
-	values2, err := testSeries(data2, "data2")
+	values1, values2, err := testSeriesPair(data1, data2, "data1", "data2")
 	if err != nil {
 		return nil, err
 	}
