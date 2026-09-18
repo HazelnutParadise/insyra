@@ -73,8 +73,8 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*DataTable, *DataT
 
 **Returns:**
 
-- `*DataTable`: The solution DataTable(the column name and the row name will not be set). It is `nil` when the solve does not produce a solution: a timeout, a solver error, a temporary file that could not be written, or arguments that were rejected. Check it before calling a method on it.
-- `*DataTable`: The additional information DataTable(the column name and the row name will be set). Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes. It is `nil` too when the arguments are rejected, for example more than one `timeoutSeconds`.
+- `*DataTable`: The solution DataTable(the column name and the row name will not be set). It is `nil` when the solve does not produce a solution: a timeout, a solver error, or a temporary file that could not be created or written. Check it before calling a method on it.
+- `*DataTable`: The additional information DataTable(the column name and the row name will be set). Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes. It is `nil` too when the temporary files could not be created. Unlike `SolveFromFile`, `SolveModel` does not reject more than one `timeoutSeconds`: it uses the first and ignores the rest.
 
 #### Example
 
