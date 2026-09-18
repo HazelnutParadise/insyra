@@ -39,8 +39,21 @@ func TestIPCListenFailureDoesNotEndProgram(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestIPCListenFailureDoesNotEndProgram$", "-test.v")
-	cmd.Env = append(os.Environ(), listenFailureChildEnv+"=1", "TMPDIR="+filepath.Join(t.TempDir(), "missing"))
+	// The child's TMPDIR has to be missing for the listen to fail, and a
+	// coverage-instrumented binary creates its coverage directory with
+	// os.MkdirTemp, which then fails before the test runs ("error setting
+	// GOCOVERDIR"). Under coverage the child therefore gets a directory of
+	// its own; a binary built without coverage refuses the flag, so it is
+	// only passed when this one has it.
+	args := []string{"-test.run=^TestIPCListenFailureDoesNotEndProgram$", "-test.v"}
+	env := append(os.Environ(), listenFailureChildEnv+"=1", "TMPDIR="+filepath.Join(t.TempDir(), "missing"))
+	if testing.CoverMode() != "" {
+		coverDir := t.TempDir()
+		args = append(args, "-test.gocoverdir="+coverDir)
+		env = append(env, "GOCOVERDIR="+coverDir)
+	}
+	cmd := exec.CommandContext(ctx, os.Args[0], args...)
+	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("child process ended with %v:\n%s", err, out)
