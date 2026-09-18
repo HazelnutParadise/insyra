@@ -33,13 +33,20 @@ func SolveFromFile(lpFile string, timeoutSeconds ...int) (*DataTable, *DataTable
 
 **Returns:**
 
-- `*DataTable`: The solution DataTable(the column name and the row name will not be set).
-- `*DataTable`: The additional information DataTable(the column name and the row name will be set). Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes.
+- `*DataTable`: The solution DataTable(the column name and the row name will not be set). It is `nil` when the solve does not produce a solution: a timeout, a solver error, a temporary file that could not be written, or arguments that were rejected. Check it before calling a method on it.
+- `*DataTable`: The additional information DataTable(the column name and the row name will be set). Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes. It is `nil` too when the arguments are rejected, for example more than one `timeoutSeconds`.
 
 #### Example
 
 ```go
 result, info := lp.SolveFromFile("model.lp", 10)
+if result == nil {
+    // No solution: info carries the reason in its Status and Warnings rows.
+    if info != nil {
+        info.Show()
+    }
+    return
+}
 result.Show()
 info.Show()
 
@@ -66,8 +73,8 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*DataTable, *DataT
 
 **Returns:**
 
-- `*DataTable`: The solution DataTable(the column name and the row name will not be set).
-- `*DataTable`: The additional information DataTable(the column name and the row name will be set). Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes.
+- `*DataTable`: The solution DataTable(the column name and the row name will not be set). It is `nil` when the solve does not produce a solution: a timeout, a solver error, a temporary file that could not be written, or arguments that were rejected. Check it before calling a method on it.
+- `*DataTable`: The additional information DataTable(the column name and the row name will be set). Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes. It is `nil` too when the arguments are rejected, for example more than one `timeoutSeconds`.
 
 #### Example
 
@@ -88,6 +95,13 @@ model.AddBinaryVar("x1")
 model.AddBinaryVar("x2")
 
 result, info := lp.SolveModel(model, 10)
+if result == nil {
+    // No solution: info carries the reason in its Status and Warnings rows.
+    if info != nil {
+        info.Show()
+    }
+    return
+}
 result.ToCSV("solution.csv", false, false, false)
 info.ToCSV("info.csv", true, true, false)
 ```

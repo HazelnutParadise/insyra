@@ -309,8 +309,8 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 ### [2026-09-12] — `lp.SolveFromFile` returns a nil result table and the documented example dereferences it
 - **Where**: `lp/lp.go` `SolveFromFile` and `SolveModel`; the example in `Docs/lp.md`
 - **What**: on a timeout or a solver error both functions return `nil` as the first DataTable, and `SolveFromFile` returns `nil, nil` for more than one `timeoutSeconds` argument. `Docs/lp.md` says only "returns the result as two DataTable" and its example calls `result.Show()` straight away. A nil `*DataTable` panics on `Show()`; measured on 2026-09-12. Found while writing the parser tests in `test-unpinned-behaviour`, which cover the failure path of `parseGLPKOutputFromFile` (also nil on an unreadable file).
-- **Suggestion**: returning an empty table instead of nil changes a returned value, so on the 0.3.x line the nil stays (the never-nil version lives on 0.4 as `lp-never-returns-a-nil-table`). What can still change here is the documentation: say that the first return is nil on failure, and make the example check it, or the Status row of the second table, before calling `Show()`.
-- **Status**: pending
+- **Suggestion**: returning an empty table instead of nil changes a returned value, so on the 0.3.x line the nil stays (the never-nil version lives on 0.4 as `lp-never-returns-a-nil-table`). `Docs/lp.md` was corrected on 2026-09-18: both Returns sections say the solution is nil when the solve produces none, and both examples check it. What is left is the code decision for a future release.
+- **Status**: pending (documentation corrected; the nil return itself is undecided)
 
 ### [2026-09-10] — how insyra turns a number into text is decided nowhere
 - **Where**: every path that writes a number as text — `internal/ccl/stdlib_string.go` `toString` (behind CCL's `CONCAT`, `TOSTR` without a format, `LEN`, `UPPER`, …), the `&` operator in `internal/ccl/ccl_evaluator.go`, `ToCSV`, `ToJSON`, and `Show`.
