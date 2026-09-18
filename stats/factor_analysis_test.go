@@ -118,11 +118,11 @@ func requireFactorAnalysisRTools(t *testing.T) {
 	// Deliberately NOT forced on by reftest.Strict. Strict mode promotes an
 	// opt-in whose reason was "the tool is usually absent"; this flag's reason
 	// is different and documented at factorParityTol — the comparison is known
-	// to fail ~595 sub-tests on three adversarial datasets, at differences
-	// traced to gonum's LAPACK port differing from R's by 1 ULP and amplified
-	// by ill-conditioning. Those are mathematically equivalent solutions, not
-	// defects. Forcing this on would make the verification job permanently red
-	// over a known and accepted difference.
+	// to fail 512 of 52,176 leaves, on extraction drift on adversarial data,
+	// anderson-rubin scoring, and scores amplified through R⁻¹. Those are
+	// mathematically equivalent solutions, not defects. Forcing this on would
+	// make the verification job permanently red over a known and accepted
+	// difference.
 	//
 	// The toolchain probes below still report through reftest, so someone who
 	// does opt in on a machine without psych hears about it rather than
