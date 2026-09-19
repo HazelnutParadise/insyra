@@ -1302,7 +1302,7 @@ type FactorRotationOptions struct {
     Kappa            float64          // Promax power m (default 4); cast to int internally
     Delta            float64          // Oblimin gamma (default 0)
     GeominEpsilon    float64          // Geomin ε (default 0.01)
-    Restarts         int              // random orthonormal starts for GPA rotations (default 1)
+    Restarts         int              // number of orthogonal starts to run from (default 1)
     VarimaxAlgorithm VarimaxAlgorithm // "kaiser" (psych default) or "gparotation"
 }
 ```
@@ -1315,6 +1315,16 @@ precision (slower; useful when converging on a flat / boundary objective).
 `DefaultFactorAnalysisOptions()` returns: Kaiser count, MINRES extraction,
 Oblimin rotation, Regression scoring, MaxIter=50, MinErr=0.001, OptimFactr=1e7,
 OptimMaxIter=100 (matching R `psych::fa` defaults).
+
+`Restarts` is the number of starting points the rotation is run from; the
+solution with the best criterion value wins, preferring one that converged. The
+criteria are not convex, and geomin and simplimax in particular have local
+minima, so more than one start is worth trying. Every start is an orthogonal
+matrix — the identity, the Varimax solution, then random ones — which is what
+`GPArotation::Random.Start` produces for orthogonal and oblique rotations
+alike. Oblimin is the exception: it rotates from the identity on every pass and
+ignores the starts, so `Restarts` above 1 costs it N identical runs and changes
+nothing.
 
 `RotationConverged` reports whether the rotation solution that was returned
 converged, and when it did not, the rotation logs one warning naming the

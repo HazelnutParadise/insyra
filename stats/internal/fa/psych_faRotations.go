@@ -445,6 +445,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 	var normalizedLoadings *mat.Dense
 
 	bestScore := math.Inf(1)
+	bestConverged := false
 	var best map[string]any
 
 	var baseLoadings *mat.Dense
@@ -454,39 +455,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		baseLoadings = loadings
 	}
 
-	// Build starting rotation matrices
-	// To emulate SPSS Direct Oblimin behavior deterministically, when
-	// restarts <= 1, use only identity start. For larger restarts, include
-	// additional heuristics (Varimax/Promax/Target) and random starts up to
-	// the requested count.
-	starts := make([]*mat.Dense, 0, max(1, restarts))
-	starts = append(starts, identityMatrix(nf))
-	if restarts > 1 && nf > 1 {
-		// Heuristic starts
-		vm := Varimax(baseLoadings, true, 1e-08, 5000)
-		if rot, ok := vm["rotmat"].(*mat.Dense); ok && rot != nil {
-			starts = append(starts, mat.DenseCopyOf(rot))
-		}
-		pm := Promax(baseLoadings, 4, true)
-		if rot, ok := pm["rotmat"].(*mat.Dense); ok && rot != nil {
-			starts = append(starts, mat.DenseCopyOf(rot))
-		}
-		if loadings != nil {
-			if _, trgRot, _, err := TargetRot(baseLoadings); err == nil {
-				if trgRot != nil {
-					starts = append(starts, mat.DenseCopyOf(trgRot))
-				}
-			}
-		}
-		// Add random orthonormal starts if budget remains
-		if restarts > len(starts) {
-			seed := seedFromMatrix(baseLoadings)
-			rnd := rand.New(rand.NewSource(seed))
-			for i := len(starts); i < restarts; i++ {
-				starts = append(starts, randomOrthonormalMatrix(nf, rnd))
-			}
-		}
-	}
+	starts := buildStarts(baseLoadings, nf, restarts)
 
 	for idx, start := range starts {
 
@@ -641,9 +610,10 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		}
 		candidate["convergence"] = converged
 
-		if best == nil || score < bestScore || (math.IsNaN(bestScore) && !math.IsNaN(score)) {
+		if preferCandidate(best != nil, bestConverged, bestScore, converged, score) {
 			best = candidate
 			bestScore = score
+			bestConverged = converged
 		}
 		if debugOblimin && rotateLower == "oblimin" {
 			fmt.Printf("oblimin start %d score=%.9f\n", idx, score)
@@ -654,12 +624,13 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		best = map[string]any{
 			"error": fmt.Sprintf("rotation %s failed for all starts", rotate),
 		}
-	} else if conv, ok := best["convergence"].(bool); ok && !conv {
+	} else if !bestConverged {
 		// One warning for the search, not one per start: the per-start
 		// runs report at debug level, and the caller reads the outcome
-		// from the convergence flag this candidate carries.
+		// from the convergence flag this candidate carries. Selection
+		// prefers a converged start, so reaching here means none did.
 		insyra.LogWarning("fa", "FaRotations",
-			"%s rotation chosen from %d starts did not converge within %d iterations",
+			"%s rotation did not converge from any of %d starts within %d iterations; returning the best of them",
 			rotateLower, len(starts), maxIter)
 	}
 	if debugOblimin && rotateLower == "oblimin" {
@@ -667,6 +638,99 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 	}
 
 	return best
+}
+
+// startOrthogonalityTol bounds how far a starting matrix may sit from the
+// orthogonal group. It is loose enough for a matrix assembled by QR or handed
+// back by a rotation that converged, and far tighter than the departures #373
+// produced: the Promax start was off by 0.42.
+const startOrthogonalityTol = 1e-8
+
+// buildStarts returns the starting rotation matrices for a multi-start search.
+//
+// Every start has to lie on the criterion's own manifold. The gradient
+// projection algorithms project each step relative to where they began, so a
+// start off the manifold yields a matrix that is not a rotation at all, and
+// loadings that no longer describe the fitted model (#373). An orthogonal
+// matrix satisfies both families' constraints, T'T = I for the orthogonal
+// criteria and diag(T'T) = I for the oblique ones, which is why
+// GPArotation::Random.Start hands the same QR-orthogonalised matrices to both.
+//
+// The list is the identity, Varimax's rotation matrix as one informed start,
+// and random orthogonal matrices for the rest. len(starts) == restarts, so the
+// parameter means what it says.
+func buildStarts(baseLoadings *mat.Dense, nf, restarts int) []*mat.Dense {
+	starts := make([]*mat.Dense, 0, max(1, restarts))
+	starts = append(starts, identityMatrix(nf))
+	if restarts <= 1 || nf <= 1 {
+		return starts
+	}
+
+	// Varimax's rotation matrix is orthogonal by construction, but it is
+	// checked like any other start: a rotation that ran out of iterations can
+	// hand back a matrix that has drifted off the manifold.
+	vm := Varimax(baseLoadings, true, 1e-08, 5000)
+	if rot, ok := vm["rotmat"].(*mat.Dense); ok && isOrthonormal(rot) {
+		starts = append(starts, mat.DenseCopyOf(rot))
+	}
+
+	// A start that fails the check is skipped rather than used, and another is
+	// drawn in its place, so the count does not silently shrink.
+	rnd := rand.New(rand.NewSource(seedFromMatrix(baseLoadings)))
+	for attempts := 0; len(starts) < restarts && attempts < 4*restarts; attempts++ {
+		if q := randomOrthonormalMatrix(nf, rnd); isOrthonormal(q) {
+			starts = append(starts, q)
+		}
+	}
+	return starts
+}
+
+// isOrthonormal reports whether m'm is the identity within
+// startOrthogonalityTol.
+func isOrthonormal(m *mat.Dense) bool {
+	if m == nil {
+		return false
+	}
+	rows, cols := m.Dims()
+	if rows != cols {
+		return false
+	}
+	for i := 0; i < cols; i++ {
+		for j := i; j < cols; j++ {
+			dot := 0.0
+			for k := 0; k < rows; k++ {
+				dot += m.At(k, i) * m.At(k, j)
+			}
+			want := 0.0
+			if i == j {
+				want = 1.0
+			}
+			if math.Abs(dot-want) > startOrthogonalityTol {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// preferCandidate decides whether a newly finished start beats the best so far.
+//
+// A converged solution always beats one that did not converge: comparing
+// criterion values across starts only means something among runs that actually
+// finished. When nothing converged the best of them is still returned, and
+// reported as not converged, because an approximate rotation is more use to a
+// caller than none.
+func preferCandidate(haveBest, bestConverged bool, bestScore float64, converged bool, score float64) bool {
+	if !haveBest {
+		return true
+	}
+	if converged != bestConverged {
+		return converged
+	}
+	if math.IsNaN(bestScore) {
+		return !math.IsNaN(score)
+	}
+	return score < bestScore
 }
 
 // withConvergence copies the convergence flag out of a GPForth/GPFoblq result

@@ -545,9 +545,9 @@ func TestKaiserVarimaxWithRotationMatrix_SingleFactor(t *testing.T) {
 }
 
 // Rotate is the package's own entry point over the two GPA families. With a
-// single start it is a plain orthogonal rotation and preserves communalities
-// exactly. It does NOT with the default of twenty restarts — see
-// TestRotate_RestartsBreakOrthogonality below.
+// single start — the default — it is a plain orthogonal rotation and preserves
+// communalities exactly. The same invariant under more than one start is
+// checked in rotation_starts_test.go, over every method and both families.
 func TestRotate_SingleStartPreservesCommunalities(t *testing.T) {
 	for _, method := range []string{"varimax", "quartimax"} {
 		t.Run(method, func(t *testing.T) {
@@ -585,41 +585,10 @@ func TestRotate_SingleStartPreservesCommunalities(t *testing.T) {
 	}
 }
 
-// With more than one start, an orthogonal rotation comes back non-orthogonal:
-// FaRotations seeds the search with Promax's and TargetRot's rotation matrices,
-// which are oblique, and an orthogonal GPA run started from an oblique matrix
-// ends on one too. The rotated loadings then no longer describe the same model.
-// Measured on 2026-09-12 and reported as #373. This test documents a known
-// defect of the 0.3.x line: the fix (orthogonal starts for an orthogonal
-// rotation) lives on 0.4 only, so here it pins the broken behaviour, and it
-// fails once the defect is fixed on this line.
-func TestRotate_RestartsBreakOrthogonality(t *testing.T) {
-	A := loadings()
-
-	_, R, _, _, err := Rotate(mat.DenseCopyOf(A), "varimax", &RotOpts{
-		Eps: 1e-5, MaxIter: 1000, Restarts: 2,
-	})
-	if err != nil {
-		t.Fatalf("Rotate: %v", err)
-	}
-
-	var RtR mat.Dense
-	RtR.Mul(R.T(), R)
-	worst := 0.0
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			want := 0.0
-			if i == j {
-				want = 1.0
-			}
-			worst = math.Max(worst, math.Abs(RtR.At(i, j)-want))
-		}
-	}
-	if worst < 1e-8 {
-		t.Errorf("Rotate with restarts now returns an orthogonal matrix (worst |R'R - I| = %.3e); "+
-			"the defect is fixed, so replace this test with the communality check", worst)
-	}
-}
+// The restart behaviour this file used to pin as broken
+// (TestRotate_RestartsBreakOrthogonality, #373) is fixed, and the replacement
+// it asked for lives in rotation_starts_test.go: every method, both families,
+// checked on the invariant rather than on the rotation matrix alone.
 
 func TestRotate_UnknownMethod(t *testing.T) {
 	if _, _, _, _, err := Rotate(loadings(), "no-such-rotation", nil); err == nil {

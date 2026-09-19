@@ -57,11 +57,17 @@ Also left alone: `oblimin` ignores the start entirely and rotates from the ident
 
 ## Backport to dev (0.3.x)
 
-Dev received: every rotation wrapper handing its convergence flag back (`withConvergence`), the candidate chosen among restarts carrying it, so `fa.Rotate` and `FactorAnalysisResult.RotationConverged` report whether the returned rotation converged; the `Restarts` field comment's default corrected to 1; `TestRotationConvergedFlag` repaired and the convergence tests of `rotation_starts_test.go`; the `stats-factor-rotation` capability, holding the convergence-flag requirement only.
+Dev has this change in full. The owner ruled on 2026-09-19 that a `0.4` change whose behaviour v0.3's own documentation already described is taken even when results move: `Docs/stats.md` on the 0.3.x line called `Rotation.Restarts` "random orthonormal starts for GPA rotations", while `buildStarts` mixed in oblique Promax and Target starts, so the documented behaviour and the implemented one were never the same thing.
+
+Measured on the 0.3.x line over the 20 datasets of `stats/factor_analysis_test.go` and all four extractions:
+
+- `Restarts: 1`, the default, is bit-identical before and after across all 800 dataset/extraction/rotation combinations, loadings, `Phi` and `RotationConverged` alike.
+- At `Restarts >= 2` the model invariant `max|L·Φ·L' − Lu·Lu'|` fell from a worst case of 0.766 to at most 2.4e-15, and individual loadings move by up to 2.04.
+- Oblimin and Promax are unchanged at every `Restarts`: oblimin ignores the start it is handed (the follow-up below), and Promax is not in `supportsRestarts`, so it runs from one start regardless.
+
+Landed on dev in two commits: the convergence flag alone first (1aad654, when the start list was still excluded), then the starts, `preferCandidate` and `Restarts` as the number of starts.
 
 Left on 0.4:
-- Orthogonal starts (`buildStarts`, `isOrthonormal`, dropping the Promax and TargetRot starts) and `Restarts` meaning the number of starts: breaking, results at `Restarts > 1` change. #373 stays open on this line and `TestRotate_RestartsBreakOrthogonality` still pins it.
-- Preferring a converged start (`preferCandidate`): breaking, it can change which solution is returned. Dev still picks the lowest criterion value.
-- `TestRestartsParameter` over all ten methods and the start and invariant tests: they assert the excluded fix.
-- The requirements on preserving the model, on start orthogonality and on `Restarts` as the number of starts, the `Docs/stats.md` paragraph on starts, the skill's #373 warning removal and the oblimin AGENTS.md follow-up: they describe the excluded fix.
+- The oblimin arm rotating from the start it is given (6c4fce1). On the 0.3.x line oblimin still builds its own identity on every pass, so `Restarts > 1` costs it N identical runs. Recorded as an `AGENTS.md` follow-up.
+- The psych 2.6.5 default of 20 restarts, and the Promax pre-rotation change that came with it: they move the default path, which this line's rule does not allow.
 - `api-review.md` and `delivery-status.md` edits.

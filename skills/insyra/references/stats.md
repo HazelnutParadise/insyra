@@ -99,10 +99,11 @@ fa, err := stats.FactorAnalysis(dt, stats.DefaultFactorAnalysisOptions())
 `KMeansOptions` has `NStart`, `IterMax` and `Seed` (a `*int64` — set it for a
 reproducible run).
 
-**Factor analysis: leave `Rotation.Restarts` at its default of 1 when the
-rotation is orthogonal.** More than one restart currently returns a
-non-orthogonal rotation matrix, so the rotated loadings stop describing the same
-model. Tracked as issue #373. `RotationConverged` says whether the returned
+`Rotation.Restarts` is how many starting points the rotation is run from, best
+criterion value winning, preferring one that converged. The default of 1 is
+fine for Varimax; raise it for Geomin or Simplimax, whose criteria have local
+minima. Oblimin ignores the starts and always rotates from the identity, so
+raising it there only costs time. `RotationConverged` says whether the returned
 rotation converged, and `MaxIter` governs extraction rather than rotation.
 
 ## Things that are easy to get wrong

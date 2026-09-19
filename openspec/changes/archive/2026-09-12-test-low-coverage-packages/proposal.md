@@ -42,6 +42,6 @@ R is not available here, so the rotation tests check properties that hold by def
 ## Backport to dev (0.3.x)
 
 - Dev received all three test files, and `test-suite-integrity` gained this change's requirement unchanged. Every test passes on dev.
-- `TestRotate_RestartsBreakOrthogonality` pins defect #373, which remains on dev. The fix, orthogonal starts for an orthogonal rotation, stayed on 0.4 by owner decision.
-- Adapted: that test's comment now says it documents a known defect of the 0.3.x line.
+- `TestRotate_RestartsBreakOrthogonality` pinned defect #373, which stayed open on dev while the fix, orthogonal starts for an orthogonal rotation, remained on 0.4 by owner decision. **Superseded on 2026-09-19**: the owner took the fix here too, so #373 is closed on this line and that test is deleted, as it was written to be once the defect was fixed. See `2026-09-12-orthogonal-rotation-starts`.
+- Adapted: that test's comment said it documents a known defect of the 0.3.x line, until the test was removed.
 - Stayed on 0.4: the `api-review.md` and `delivery-status.md` edits.

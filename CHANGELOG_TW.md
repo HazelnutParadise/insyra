@@ -83,10 +83,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `KMeans` 的初始中心改為相異列，與 R 一致。資料含重複列時，單次啟動過去會抽到同一列兩次而回報 "empty cluster"（實測 50 個 seed 中有 44 個失敗）。現在抽到重複才從相異列重抽；本來就相異的抽樣完全不動，既有 seed 的結果逐位不變。
 - 接受 `insyra.IDataList` 的函式對 `nil` 或非 `*insyra.DataList` 的實作不再 panic；值會被轉換，`nil` 以一般錯誤回報。
-- `FactorAnalysisResult.RotationConverged` 改為回報旋轉實際上有沒有收斂。它過去恆為 `true`：多起點挑出來的候選從來沒帶收斂旗標，`fa.Rotate` 只好用預設值，所以一個在 1e-12 容忍度下只跑一次迭代就停的旋轉也回報收斂。現在旗標描述的是實際回傳的那個解，多起點之間怎麼挑選則不變。
+- `FactorAnalysisResult.RotationConverged` 改為回報旋轉實際上有沒有收斂。它過去恆為 `true`：多起點挑出來的候選從來沒帶收斂旗標，`fa.Rotate` 只好用預設值，所以一個在 1e-12 容忍度下只跑一次迭代就停的旋轉也回報收斂。現在旗標描述的是實際回傳的那個解，而多起點之間挑選時優先取收斂的解，全部未收斂時取準則值最佳者並回報 `false`。
 - 旋轉沒有收斂時，每次搜尋只記錄一則警告，指出方法、起點數與迭代上限，而且只在回傳的解沒有收斂時才記錄，也就是 `RotationConverged` 為 `false` 的情況。過去 `GPForth` 與 `GPFoblq` 對每個跑到上限的起點都警告一次，多起點搜尋自己建的 Varimax 起點也會警告，所以 `Restarts` 大於 1 的呼叫可能記下好幾則警告、往全域錯誤緩衝區塞同樣多筆，而回傳的解其實已經收斂。那些個別起點現在只在 debug 層級回報。
 - `Skewness` 與 `Kurtosis` 改為拒絕無法讀成有限數字的值，不再當成零，這正是 `stats` 文件一直對每個數值入口的描述。空白、文字、`NaN` 或 `Inf` 的格子會回報錯誤，指出 `sample` 與從 1 起算的列號：過去 `[1, nil, 3, 4]` 的 `Skewness` 回傳 `0`，`[1, "x", 3, 4]` 的 `Kurtosis` 回傳 `-1.64`。一如文件所寫，拼成數字的字串同樣會被拒絕。全數值輸入的結果不變。
 - `SingleSampleTTest`、`TwoSampleTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`BartlettTest`、`LeveneTest` 與 `CalculateMoment` 改為拒絕無法讀成有限數字的格子，錯誤指出序列與從 1 起算的列號，這正是 `stats` 文件一直對每個數值入口的描述。過去檢定的 n 取 list 長度，平均與標準差卻跳過那一格，`[1, 2, nil, 3]` 會得到 t = 4.00、p = 0.028，而不是 `[1, 2, 3]` 的 t = 3.46、p = 0.074，一個空白就把不顯著變成顯著。`CalculateMoment` 則把那一格當成零；原本就會拒絕的 `LeveneTest` 現在也同樣指出列號。`nil` 的 list（不論是否帶型別）在 `SingleSampleTTest`、`SingleSampleZTest` 與 `CalculateMoment` 回傳錯誤，不再 panic。全數值輸入的結果不變；檢定前請用 `ClearNils` 清掉空白。
+- `FactorAnalysis` 在 `Rotation.Restarts` 大於 1 時，回傳的載荷已經不是被配適的那個模型。旋轉準則是在有約束的集合上最佳化，正交是 `T'T = I`、斜交是 `diag(T'T) = I`，而梯度投影演算法只有在起點落在該集合上時，才保證每一步都留在上面。`Restarts > 1` 時加入的起點中，有兩個是 Promax 與 Target 的旋轉矩陣，兩者都是斜交的，所以哪個起點在準則值上勝出，就決定了答案還算不算旋轉。以因子分析測試套件的 20 個資料集搭配四種抽取法實測，`Restarts >= 2` 時 `max|L·Φ·L' − Lu·Lu'|` 最大到 0.766，現在最大只有 2.4e-15。現在所有起點都是正交矩陣，依序為單位矩陣、Varimax 解、QR 產生的隨機正交矩陣，也就是 `GPArotation::Random.Start` 對兩個家族給的同一種起點，而且使用前會先驗證。`Restarts` 也改為就是起點總數：過去它只限制隨機起點的數量，三個啟發式起點無條件追加，所以 `Restarts: 2` 實際跑 4 個。**`Restarts >= 2` 的結果會變**，單一載荷最多差 2.04，因為它過去回傳的並不是該模型的旋轉；Oblimin 與 Promax 不受影響，前者本來就忽略起點，後者只跑一個起點。預設的 `Restarts: 1` 結果不變，實測 800 組資料集／抽取法／旋轉法組合逐位相同。
 
 ### `csvxl`
 
