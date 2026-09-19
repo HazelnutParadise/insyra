@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
+	"github.com/TimLai666/go-decimal/decimal"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
@@ -34,7 +34,13 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 		}
 		defer func() {
 			if err := f.Close(); err != nil {
-				log.Printf("parquet: failed to close file %s: %v", path, err)
+				// Reader.Close() may already close the underlying file, the same
+				// way Read and Inspect allow for. Without this guard every
+				// successful Stream, FilterWithCCL and ApplyCCL logged a warning.
+				if errors.Is(err, os.ErrClosed) {
+					return
+				}
+				insyra.LogWarning("parquet", "close", "failed to close file %s: %v", path, err)
 			}
 		}()
 
@@ -45,7 +51,7 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 		}
 		defer func() {
 			if err := r.Close(); err != nil {
-				log.Printf("parquet: failed to close reader for %s: %v", path, err)
+				insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", path, err)
 			}
 		}()
 
@@ -192,11 +198,67 @@ func chunkedToSlice(chunked *arrow.Chunked) any {
 	}
 }
 
+// unsupportedColumnMsg is the reason recorded on a table or list holding a
+// column whose Arrow type has no faithful Go representation.
+const unsupportedColumnMsg = "column %q: unsupported Arrow column type %s; its cells were read as nil"
+
+// supportedArrowType reports whether a column of this type can be read into a
+// Go value that means what the file says.
+//
+// It must stay in step with getVal: a type listed here and missing from getVal
+// reads as nil while claiming to be supported, and a type getVal handles but
+// this does not makes the reader report a column it read perfectly well.
+// TestSupportedTypesAreExactlyWhatGetValHandles pins the two together.
+func supportedArrowType(dt arrow.DataType) bool {
+	switch dt.ID() {
+	case arrow.INT8, arrow.INT16, arrow.INT32, arrow.INT64,
+		arrow.UINT8, arrow.UINT16, arrow.UINT32, arrow.UINT64,
+		arrow.FLOAT32, arrow.FLOAT64,
+		arrow.BOOL,
+		arrow.STRING, arrow.LARGE_STRING,
+		arrow.BINARY, arrow.LARGE_BINARY, arrow.FIXED_SIZE_BINARY,
+		arrow.TIMESTAMP, arrow.DATE32, arrow.DATE64,
+		arrow.DECIMAL128, arrow.DECIMAL256,
+		arrow.NULL:
+		return true
+	case arrow.DICTIONARY:
+		// A dictionary is read through its values, so it is as readable as
+		// they are.
+		return supportedArrowType(dt.(*arrow.DictionaryType).ValueType)
+	}
+	return false
+}
+
+// getVal reads one cell.
+//
+// The default arm returns nil rather than a value, because a value that does
+// not mean what the file says is worse than no value at all. It used to return
+// arr.String() — the string form of the whole array, ignoring i — so every row
+// of a column this switch does not cover read back as one identical string,
+// with nothing reported anywhere (#371).
+//
+// Callers must check supportedArrowType at column level so the reason reaches
+// the caller; a nil here on its own is indistinguishable from a null cell.
 func getVal(arr arrow.Array, i int) any {
 	switch a := arr.(type) {
 	case *array.Int64:
 		return a.Value(i)
 	case *array.Int32:
+		return a.Value(i)
+	case *array.Int16:
+		return a.Value(i)
+	case *array.Int8:
+		return a.Value(i)
+	case *array.Uint64:
+		// Stays uint64: a value above 2^63 does not fit an int64, and since
+		// match-integers-by-value an integer is matched by value whatever its
+		// Go type.
+		return a.Value(i)
+	case *array.Uint32:
+		return a.Value(i)
+	case *array.Uint16:
+		return a.Value(i)
+	case *array.Uint8:
 		return a.Value(i)
 	case *array.Float64:
 		return a.Value(i)
@@ -204,13 +266,64 @@ func getVal(arr arrow.Array, i int) any {
 		return a.Value(i)
 	case *array.String:
 		return a.Value(i)
+	case *array.LargeString:
+		return a.Value(i)
 	case *array.Boolean:
 		return a.Value(i)
+	case *array.Binary:
+		// []byte, so a binary column is not indistinguishable from a text one.
+		// The value is copied because Arrow owns the buffer behind it.
+		return append([]byte(nil), a.Value(i)...)
+	case *array.LargeBinary:
+		return append([]byte(nil), a.Value(i)...)
+	case *array.FixedSizeBinary:
+		return append([]byte(nil), a.Value(i)...)
 	case *array.Timestamp:
 		return a.Value(i).ToTime(a.DataType().(*arrow.TimestampType).Unit)
+	case *array.Date32:
+		return a.Value(i).ToTime().UTC()
+	case *array.Date64:
+		return a.Value(i).ToTime().UTC()
+	case *array.Decimal128:
+		// NewFromScaledInt rounds and normalises nothing, and the coefficient
+		// is a big.Int, so the full 38-digit range survives. A float64 would
+		// lose the exactness that is the whole reason a column is decimal.
+		n := a.Value(i).BigInt()
+		return decimal.NewFromScaledInt(n, a.DataType().(*arrow.Decimal128Type).Scale)
+	case *array.Decimal256:
+		n := a.Value(i).BigInt()
+		return decimal.NewFromScaledInt(n, a.DataType().(*arrow.Decimal256Type).Scale)
+	case *array.Null:
+		// Every cell of a null-typed column is null, and nil is exactly that.
+		return nil
+	case *array.Dictionary:
+		// A file that stores its Arrow schema hands a dictionary column over
+		// as indices into a values array; the cell is the value its index
+		// points to. A null index or a null value is nil.
+		if a.IsNull(i) {
+			return nil
+		}
+		values, idx := a.Dictionary(), a.GetValueIndex(i)
+		if values.IsNull(idx) {
+			return nil
+		}
+		return getVal(values, idx)
 	default:
-		return arr.String()
+		return nil
 	}
+}
+
+// newColumn builds a column from what chunkedToSlice returned.
+//
+// A []any is appended rather than handed to NewDataList, because the
+// constructor flattens every slice and a binary column's cells are []byte.
+// For anything else the two are the same: flattening a []any of scalars
+// already produces one cell per element.
+func newColumn(data any, name string) *insyra.DataList {
+	if vals, ok := data.([]any); ok {
+		return insyra.NewDataList().Append(vals...).SetName(name)
+	}
+	return insyra.NewDataList(data).SetName(name)
 }
 
 func recordToDataTable(rec arrow.Record) *insyra.DataTable {
@@ -226,7 +339,10 @@ func recordToDataTable(rec arrow.Record) *insyra.DataTable {
 		chunked.Release()
 
 		colName := rec.Schema().Field(i).Name
-		dataTable.AppendCols(insyra.NewDataList(data).SetName(colName))
+		if !supportedArrowType(col.DataType()) {
+			dataTable.SetErr("parquet", "Stream", unsupportedColumnMsg, colName, col.DataType())
+		}
+		dataTable.AppendCols(newColumn(data, colName))
 	}
 	return dataTable
 }

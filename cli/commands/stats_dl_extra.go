@@ -2,14 +2,13 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
 )
 
 func init() {
 	_ = Register(&CommandHandler{Name: "quartile", Usage: "quartile <var> <q>", Description: "DataList quartile", Run: runQuartileCommand})
 	_ = Register(&CommandHandler{Name: "iqr", Usage: "iqr <var>", Description: "DataList IQR", Run: runIQRCommand})
 	_ = Register(&CommandHandler{Name: "percentile", Usage: "percentile <var> <p>", Description: "DataList percentile", Run: runPercentileCommand})
-	_ = Register(&CommandHandler{Name: "count", Usage: "count <var> [value]", Description: "Count occurrences", Run: runCountCommand})
+	_ = Register(&CommandHandler{Name: "count", Usage: "count <var> <value>", Description: "Count occurrences", Run: runCountCommand})
 	_ = Register(&CommandHandler{Name: "counter", Usage: "counter <var>", Description: "DataList frequency map", Run: runCounterCommand})
 }
 
@@ -21,7 +20,7 @@ func runQuartileCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	q, err := strconv.Atoi(args[1])
+	q, err := parseIntArg("quartile", "q", args[1])
 	if err != nil {
 		return err
 	}
@@ -49,7 +48,7 @@ func runPercentileCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	p, err := strconv.ParseFloat(args[1], 64)
+	p, err := parseFloatArg("percentile", "p", args[1])
 	if err != nil {
 		return err
 	}
@@ -59,7 +58,7 @@ func runPercentileCommand(ctx *ExecContext, args []string) error {
 
 func runCountCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: count <var> [value]")
+		return fmt.Errorf("usage: count <var> <value>")
 	}
 	if dl, err := getDataListVar(ctx, args[0]); err == nil {
 		if len(args) < 2 {
@@ -75,7 +74,7 @@ func runCountCommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintf(ctx.Output, "%d\n", dt.Count(parseLiteral(args[1])))
 		return nil
 	}
-	return fmt.Errorf("variable not found: %s", args[0])
+	return varTypeError(ctx, "count", args[0])
 }
 
 func runCounterCommand(ctx *ExecContext, args []string) error {

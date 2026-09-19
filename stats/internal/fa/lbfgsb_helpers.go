@@ -1,15 +1,16 @@
 // fa/lbfgsb_helpers.go
 //
 // Direct ports of the small bookkeeping subroutines from lbfgsb.f v3.0:
-//   active   — initial active-set classification + projection
-//   projgr   — infinity norm of the projected gradient
-//   errclb   — input error checking
-//   freev    — find free / leaving / entering variables at the GCP
-//   hpsolb   — heap-based pop of the smallest breakpoint
-//   matupd   — update the (s, y) pairs and the SY/SS matrices
-//   cmprlb   — compute the reduced gradient r = -Z'B(xcp - xk) - Z'g
-//   lnsrlb   — driver for the Moré-Thuente line search
-//   bmv      — multiply the 2m × 2m middle matrix in the compact L-BFGS form
+//
+//	active   — initial active-set classification + projection
+//	projgr   — infinity norm of the projected gradient
+//	errclb   — input error checking
+//	freev    — find free / leaving / entering variables at the GCP
+//	hpsolb   — heap-based pop of the smallest breakpoint
+//	matupd   — update the (s, y) pairs and the SY/SS matrices
+//	cmprlb   — compute the reduced gradient r = -Z'B(xcp - xk) - Z'g
+//	lnsrlb   — driver for the Moré-Thuente line search
+//	bmv      — multiply the 2m × 2m middle matrix in the compact L-BFGS form
 //
 // All routines preserve Fortran's 1-based semantics through explicit
 // `idx-1` adjustments at access sites; matrix arguments are column-major
@@ -220,7 +221,7 @@ func matupd(n, m int, ws, wy, sy, ss []float64, d, r []float64,
 ) {
 	if *iupdat <= m {
 		*col = *iupdat
-		*itail = ((*head+*iupdat-2)%m + m) % m + 1
+		*itail = ((*head+*iupdat-2)%m+m)%m + 1
 	} else {
 		*itail = (*itail)%m + 1
 		*head = (*head)%m + 1

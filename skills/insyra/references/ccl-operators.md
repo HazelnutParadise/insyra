@@ -10,7 +10,8 @@ Source of truth: `Docs/CCL.md` (Operators section). If behavior differs, follow 
 | `-` | Subtraction | `A - B` |
 | `*` | Multiplication | `A * B` |
 | `/` | Division | `A / B` |
-| `^` | Exponentiation | `A ^ 2` |
+| `%` | Remainder | `A % 3` (same as `MOD`; `A % 0` is an error) |
+| `^` | Exponentiation | `A ^ 2` (left-associative: `2^3^2` = 64) |
 | `.` | Row access | `A.0`, `['Sales'].10`, `A.(1:5)` |
 | `:` | Range | Column range: `A:C` / `[A]:[C]` / `['Start']:['End']`; Row range: `@.0:5`, `A.0:5`, `A.(1:5)` |
 | `#` | Current row index (0-based) | `A.#` (same row), `IF(#>0, A.(#-1) - A, NULL)` |
@@ -35,6 +36,12 @@ When both a **column range** and a **row range** appear together, prefer explici
 This is especially useful in nested expressions and aggregate calls (e.g., `SUM((A:B).(1:5))`).
 
 
+### Case
+Function names, Excel-style column indices and keywords ignore case: `sum(a)` == `SUM(A)`, `nil` == `NULL`. **Column names do not**: `['price']` and `['Price']` are different columns, and a name that is not there is an error.
+
+### Numbers rendered as text
+`&`, `CONCAT`, `TOSTR`, `LEN` and the string functions use Go's default number formatting, so very large and very small `float64` values come out in scientific notation: `'x' & 0.0000001` is `"x1e-07"`. A value read from an integer column keeps its type (`LEN(A)` on the integer `1000000` is `7`), but a literal written in the expression is always `float64` (`LEN(1000000)` is `5`, because it renders as `"1e+06"`). Use `TOSTR(x, fmt)` when the exact text matters.
+
 ### Names vs indexes (quoting rule of thumb)
 - **Names** use quotes (typically single quotes):
   - Column name: `['Price']`
@@ -58,6 +65,8 @@ You can **mix** name + index in the same expression. For readability, parenthesi
 | `==` | equal | `A == B`, `A == nil` |
 | `!=` | not equal | `A != B` |
 
+A string that is not a number compared for size with a number (`'hello' > 5`) is an error. `==`/`!=` report such a pair unequal, and a numeric string compares as a number (`'5' > 3` is `true`). A string CCL reads as a date (`'2024-01-02'`, RFC3339) and an empty string are not words: they compare as `false` against a number, not as an error, so `A > 0` over a CSV date column still produces a column.
+
 Nil/Null note:
 - `== nil` or `== null` checks missing values.
 - In arithmetic operations, `nil` is treated as `0`.
@@ -70,8 +79,18 @@ Nil/Null note:
 | `&&` | AND | `A > 10 && B < 20` |
 | `||` | OR | `A > 10 || B > 10` |
 
+Operands are read as booleans, not required to be booleans: numbers (`0` is false), and the strings `true`/`yes`/`1`/`false`/`no`/`0`/`''`. Any other string is an error, for `AND()`/`OR()` as much as for `&&`, `||`, `IF` and `CASE()`: `AND('abc', true)` is an error, not `false`.
+
+`AND()`/`OR()` take any number of arguments — `AND()` is `true`, `OR()` is `false` — and stop at the argument that settles the answer, so `AND(B != 0, A / B > 1)` guards the division and an argument it skips is never read (`AND(false, 'abc')` is `false`). `&&` and `||` evaluate both operands, so `B != 0 && A / B > 1` still reports the division by zero.
+
 ## String concatenation
 
 | Operator | Meaning | Examples |
 |---|---|---|
 | `&` | Concatenate strings | `A & '-' & B`, `CONCAT(A, ' ', B)` |
+
+## Precedence
+
+Tightest first: `:` → `.` → `^` → `*` `/` `%` → `+` `-` `&` → comparisons → `&&` → `||`.
+
+`&` binds as tightly as `+`/`-`, left to right: `'a' & 1 + 2` is `('a' & 1) + 2`, an error; write `'a' & (1 + 2)`. Unary minus binds tighter than `^`: `-2^2` is `4`.

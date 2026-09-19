@@ -49,12 +49,10 @@ func (c *simpleCompleter) Do(line []rune, pos int) ([][]rune, int) {
 }
 
 func commandCompletions(target string) [][]rune {
-	commandsList := make([]string, 0, len(commands.Registry))
-	for name := range commands.Registry {
-		commandsList = append(commandsList, name)
-	}
-	sort.Strings(commandsList)
-	return toSuffixes(commandsList, target)
+	// Through the locked snapshot: reading commands.Registry directly is not
+	// safe while another goroutine registers, which an embedder may do.
+	names, _ := commands.SnapshotRegistry()
+	return toSuffixes(names, target)
 }
 
 func variableCompletions(ctx *commands.ExecContext, target string) [][]rune {

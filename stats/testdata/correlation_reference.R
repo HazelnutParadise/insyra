@@ -2,7 +2,8 @@
 ##
 ## Sources of truth:
 ##   Pearson r        -> cor(x, y, method="pearson")
-##   Pearson p, df    -> cor.test(x, y, method="pearson") -> Student t (n-2 df)
+##   Pearson p, df    -> Student t on n-2 df, by formula (what
+##                       cor.test(x, y, method="pearson") gives; not called)
 ##   Pearson Fisher CI-> direct formula matching insyra's pearsonFisherCI
 ##   Spearman rho     -> cor(x, y, method="spearman")  (computed as Pearson on ranks)
 ##   Spearman p, df   -> cor.test(x, y, method="spearman")$p.value

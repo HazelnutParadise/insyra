@@ -269,7 +269,8 @@ type WorkloadEstimate struct {
 	// Dimensions identifies the measured per-row shape used by auto sharding.
 	// Zero means the conservative 32-dimensional class.
 	Dimensions int
-	// Op is the operation to execute on the device. Empty means OpSum.
+	// Op is the operation to execute on the device. Empty means OpNearestShortlist,
+	// the only operation the runtime ships.
 	Op Op
 	// Precision is what the caller will accept. Empty means PrecisionExact.
 	Precision Precision

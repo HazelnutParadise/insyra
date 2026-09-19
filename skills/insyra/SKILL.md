@@ -140,7 +140,7 @@ Use Insyra when you need any of these in Go:
 - ETL / data cleaning: normalize columns, filter/sort, derive new columns.
 - Quick inspection / debugging: get a fast console preview of a table/list.
 - Parallel data transforms: speed up map/filter-style workloads.
-- File chores: read/write CSV, convert CSV <-> Excel, Parquet read/write.
+- File chores: read/write CSV, convert CSV <-> Excel, Parquet read/write. Reading a Parquet file written by another tool: a column type with no faithful Go representation (`List`, `Struct`, `Map`, `Time32/64`, `Duration`) reads as `nil` cells with the reason on the table's `Err()`, so check it after a read. `Decimal128`/`Decimal256` read as a go-decimal `decimal.Decimal`, exact and sorting by value, but it is not a number to `Mean`/`Sum` any more than a `time.Time` is. `Binary` reads as `[]byte`, distinguishable from a text column; `Write` still writes such a column back as a string column.
 - Excel-like formulas: compute derived columns with CCL.
 
 ## Core mental model
@@ -149,7 +149,8 @@ Use Insyra when you need any of these in Go:
 - DataTable: multiple named DataList columns as a table.
 - isr syntactic sugar: preferred entrypoint for new codebases.
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.
-- Instance error tracking: chain fluent ops, then check Err() / ClearErr().
+- Exact decimals (money, rates): use `github.com/TimLai666/go-decimal` (`decimal.Decimal`), never `float64` and never another decimal package. It is what `finance` takes and returns and what a Parquet `Decimal128` column reads as. A `[]decimal.Decimal` passed to `NewDataList` gives one cell per value (no `Cell` needed). A decimal cell sorts by value but is not a number to `Mean`/`Sum`/`IsNumeric`/`stats`: convert with `strconv.ParseFloat(d.String(), 64)` for analysis, and total money exactly with `decimal.Add` over the cells. `ToJSON` writes a decimal cell as `{}`, so convert the column to strings before JSON export. See `Docs/Decimal.md`.
+- Instance error tracking: chain fluent ops, then check Err() / PopErr() (read and clear) / ClearErr().
 
 ### Fitted KMeans assignment
 
@@ -307,7 +308,10 @@ Use DataTable categorical encoders before stats methods that require numeric fea
 
 Every `stats` numeric entry point refuses a value it cannot read as a finite
 number — a missing value, a blank, text, an infinity — naming the series and
-the row. Only Go numeric types convert, so a string spelling a number is
+the row. Five have not caught up: `PairedTTest`, `MannWhitneyU`, `OneWayANOVA`,
+`KruskalWallis` and `FriedmanTest` refuse a blank or text but not `NaN` or
+`±Inf`, and say less about where it was; `references/stats.md` gives each one's
+exact wording. Only Go numeric types convert, so a string spelling a number is
 refused too: a table loaded without type inference needs converting first.
 Impute or drop missing values before analysing (`insyra` provides
 `SimpleImputer`). Two families are deliberately different and are documented as
@@ -399,7 +403,7 @@ func main() {
 
     // RawStrings disables inference entirely — every cell stays its original
     // string (empty cells stay ""). Use for stock IDs ("0050" must not become
-    // int64 50), tax IDs, or exact amounts you parse with a decimal type.
+    // int64 50), tax IDs, or exact amounts you parse with go-decimal.
     raw, err := insyra.ReadCSV_FileWithOptions("stocks.csv", insyra.CSVReadOptions{
         FirstRowToColNames: true,
         RawStrings:         true,
@@ -994,6 +998,9 @@ Note: not every structure in `engine` is concurrent-safe by itself (e.g., `BiInd
 ## References (quick lookup)
 - `references/ccl-operators.md` - CCL operators, ranges, row access, quoting rules, and edge-case notes.
 - `references/window-functions.md` - Rolling `Cov`/`Beta`, `EWM` options and reducers, and `DataTable.Resample` semantics.
+- `references/stats.md` - which test to use, what every result type holds, and the places `stats` answers something surprising.
+- `references/plotting.md` - `plot` vs `gplot`, what data shape each chart takes, which save path needs a browser.
+- `references/ml-decision-tree.md` - how the decision tree splits and what its options mean.
 
 ## Insyra docs via MCP (recommended for agents)
 If you want up-to-date Insyra documentation inside an MCP-capable client, prefer these:

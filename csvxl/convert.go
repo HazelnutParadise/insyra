@@ -10,12 +10,9 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 	"github.com/HazelnutParadise/insyra"
+	insyracsv "github.com/HazelnutParadise/insyra/internal/csv"
 
 	"github.com/xuri/excelize/v2"
-	"golang.org/x/text/encoding/simplifiedchinese"
-	"golang.org/x/text/encoding/traditionalchinese"
-	"golang.org/x/text/encoding/unicode"
-	"golang.org/x/text/transform"
 )
 
 // CsvEncoding Options
@@ -51,12 +48,12 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 		if idx == 0 {
 			err := f.SetSheetName(f.GetSheetName(0), sheetName)
 			if err != nil {
-				return fmt.Errorf("failed to set sheet name %s: %v", sheetName, err)
+				return fmt.Errorf("failed to set sheet name %s: %w", sheetName, err)
 			}
 		} else {
 			_, err := f.NewSheet(sheetName)
 			if err != nil {
-				return fmt.Errorf("failed to create new sheet %s: %v", sheetName, err)
+				return fmt.Errorf("failed to create new sheet %s: %w", sheetName, err)
 			}
 		}
 
@@ -68,7 +65,7 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 	}
 
 	if err := f.SaveAs(output); err != nil {
-		return fmt.Errorf("failed to save Excel file %s: %v", output, err)
+		return fmt.Errorf("failed to save Excel file %s: %w", output, err)
 	}
 
 	if failedFiles > 0 {
@@ -93,8 +90,9 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 
 	f, err := excelize.OpenFile(existingFile)
 	if err != nil {
-		return fmt.Errorf("failed to open Excel file %s: %v", existingFile, err)
+		return fmt.Errorf("failed to open Excel file %s: %w", existingFile, err)
 	}
+	defer func() { _ = f.Close() }()
 
 	failedFiles := 0
 
@@ -106,9 +104,8 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 		// 如果提供了自訂工作表名稱，則使用它，否則使用 CSV 檔案的名稱
 		sheetName := getSheetName(csvFile, sheetNames, idx)
 
-		_, err := f.NewSheet(sheetName)
-		if err != nil {
-			return fmt.Errorf("failed to create new sheet %s: %v", sheetName, err)
+		if err := replaceSheet(f, sheetName); err != nil {
+			return fmt.Errorf("failed to create new sheet %s: %w", sheetName, err)
 		}
 
 		err = addCsvSheet(f, sheetName, csvFile, encoding)
@@ -119,7 +116,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 	}
 
 	if err := f.SaveAs(existingFile); err != nil {
-		return fmt.Errorf("failed to save Excel file %s: %v", existingFile, err)
+		return fmt.Errorf("failed to save Excel file %s: %w", existingFile, err)
 	}
 
 	if failedFiles > 0 {
@@ -135,15 +132,16 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error {
 	f, err := excelize.OpenFile(excelFile)
 	if err != nil {
-		return fmt.Errorf("failed to open Excel file %s: %v", excelFile, err)
+		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
 	}
+	defer func() { _ = f.Close() }()
 
 	// Check if output directory exists, if not create it
 	// todo: 移到後面
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
-		err := os.MkdirAll(outputDir, os.ModePerm)
+		err := os.MkdirAll(outputDir, 0o755)
 		if err != nil {
-			return fmt.Errorf("failed to create directory %s: %v", outputDir, err)
+			return fmt.Errorf("failed to create directory %s: %w", outputDir, err)
 		}
 	}
 
@@ -163,19 +161,24 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 
 	numSheets := len(sheetsToProcess)
 	for idx, sheet := range sheetsToProcess {
-		csvName := sheet + ".csv"
+		var outputCsv string
 		if len(csvNames) > idx && csvNames[idx] != "" {
-			if strings.HasSuffix(csvNames[idx], ".csv") {
-				csvName = csvNames[idx]
-			} else {
-				csvName = csvNames[idx] + ".csv"
+			// The caller chose this name, so it is used as given, as it
+			// always was; only a name taken from the workbook is checked.
+			csvName := csvNames[idx]
+			if !strings.HasSuffix(csvName, ".csv") {
+				csvName += ".csv"
+			}
+			outputCsv = filepath.Join(outputDir, csvName)
+		} else {
+			outputCsv, err = safeSheetCSVPath(outputDir, sheet, sheet+".csv")
+			if err != nil {
+				return err
 			}
 		}
-
-		outputCsv := filepath.Join(outputDir, csvName)
-		err := saveSheetAsCsv(f, sheet, outputCsv)
+		err = saveSheetAsCsv(f, sheet, outputCsv)
 		if err != nil {
-			return fmt.Errorf("failed to save sheet %s as CSV: %v", sheet, err)
+			return fmt.Errorf("failed to save sheet %s as CSV: %w", sheet, err)
 		}
 	}
 
@@ -185,36 +188,122 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 
 // ===============================
 
-// saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file.
+// replaceSheet makes sheetName an empty sheet in f. An existing sheet is
+// cleared in place: every cell's value and formula is removed, while the sheet
+// keeps its place among the sheets and its sheet-level settings (column widths,
+// views, merged ranges). excelize.NewSheet alone would return the existing
+// sheet with its old cells in place, and deleting and recreating the sheet
+// would move it to the end and drop those settings.
+func replaceSheet(f *excelize.File, sheetName string) error {
+	idx, err := f.GetSheetIndex(sheetName)
+	if err != nil {
+		return err
+	}
+	if idx == -1 {
+		_, err = f.NewSheet(sheetName)
+		return err
+	}
+	// An empty pattern matches every cell the sheet stores, a formula-only one
+	// included, and lists only those. It needs each cell's address, so a sheet
+	// that leaves the r attribute out is walked row by row instead.
+	cells, err := f.SearchSheet(sheetName, "", true)
+	if err != nil {
+		if cells, err = paddedSheetCells(f, sheetName); err != nil {
+			return err
+		}
+	}
+	// SetCellValue with nil empties the value and removes the formula.
+	for _, cell := range cells {
+		if err := f.SetCellValue(sheetName, cell, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// paddedSheetCells returns every position from column A to the last value or
+// formula of each row. Rows pads a row out to its last cell, so a row with a
+// value in XFD yields 16,384 positions; replaceSheet uses this only for a sheet
+// whose cells SearchSheet cannot address.
+func paddedSheetCells(f *excelize.File, sheetName string) ([]string, error) {
+	rows, err := f.Rows(sheetName)
+	if err != nil {
+		return nil, err
+	}
+	var cells []string
+	for row := 1; rows.Next(); row++ {
+		cols, err := rows.Columns(excelize.Options{RawCellValue: true})
+		if err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		for col := range cols {
+			cell, err := excelize.CoordinatesToCellName(col+1, row)
+			if err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+			cells = append(cells, cell)
+		}
+	}
+	if err := rows.Error(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	return cells, nil
+}
+
+// safeSheetCSVPath joins a CSV file name made from a sheet name onto outputDir.
+// A workbook's sheet names come from workbook.xml and are attacker-controlled,
+// so such a name is refused when it holds a path separator or when the joined
+// path would not be a file directly inside outputDir. Any other name is an
+// ordinary file name: a sheet named "." or ".." becomes "..csv" or "...csv". A
+// name the caller passes in csvNames does not come through here.
+func safeSheetCSVPath(outputDir, sheet, fileName string) (string, error) {
+	path := filepath.Join(outputDir, fileName)
+	if fileName == "" || strings.ContainsAny(fileName, `/\`) || filepath.Dir(path) != filepath.Clean(outputDir) {
+		return "", fmt.Errorf("sheet name %q cannot be used as a file name: %q", sheet, fileName)
+	}
+	return path, nil
+}
+
+// saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file. The
+// rows are read before the output is touched, so a sheet that cannot be read
+// never truncates an existing file.
 func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) error {
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return fmt.Errorf("failed to read rows from sheet %s: %w", sheetName, err)
+	}
+
 	file, err := os.Create(outputCsvName)
 	if err != nil {
-		return fmt.Errorf("failed to create CSV file %s: %v", outputCsvName, err)
+		return fmt.Errorf("failed to create CSV file %s: %w", outputCsvName, err)
 	}
 	defer func() { _ = file.Close() }()
 
 	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	rows, err := f.GetRows(sheetName)
-	if err != nil {
-		return fmt.Errorf("failed to read rows from sheet %s: %v", sheetName, err)
-	}
 
 	for rowIdx, row := range rows {
 		// Check if the row is visible (not filtered out)
 		visible, err := f.GetRowVisible(sheetName, rowIdx+1) // rowIdx is 0-based, GetRowVisible is 1-based
 		if err != nil {
-			return fmt.Errorf("failed to check visibility of row %d in sheet %s: %v", rowIdx+1, sheetName, err)
+			return fmt.Errorf("failed to check visibility of row %d in sheet %s: %w", rowIdx+1, sheetName, err)
 		}
 		if visible {
 			err := writer.Write(row)
 			if err != nil {
-				return fmt.Errorf("failed to write row to CSV file %s: %v", outputCsvName, err)
+				return fmt.Errorf("failed to write row to CSV file %s: %w", outputCsvName, err)
 			}
 		}
 	}
-
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return fmt.Errorf("failed to write CSV file %s: %w", outputCsvName, err)
+	}
 	return nil
 }
 
@@ -222,7 +311,7 @@ func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) er
 func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) error {
 	file, err := os.Open(csvFile)
 	if err != nil {
-		return fmt.Errorf("failed to open CSV file %s: %v", csvFile, err)
+		return fmt.Errorf("failed to open CSV file %s: %w", csvFile, err)
 	}
 	defer func() { _ = file.Close() }()
 
@@ -233,7 +322,7 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 		detectedEncoding, err := insyra.DetectEncoding(csvFile)
 		if err != nil {
 			// Propagate the detection error instead of silently falling back
-			return fmt.Errorf("failed to auto-detect encoding for %s: %v", csvFile, err)
+			return fmt.Errorf("failed to auto-detect encoding for %s: %w", csvFile, err)
 		}
 		encoding = strings.ToLower(detectedEncoding)
 		insyra.LogInfo("csvxl", "addCsvSheet", "Auto-detected encoding %s for file %s", encoding, csvFile)
@@ -241,25 +330,13 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 
 	// Ensure we start reading from the beginning of the file
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek file %s: %v", csvFile, err)
+		return fmt.Errorf("failed to seek file %s: %w", csvFile, err)
 	}
 
-	var reader io.Reader
-	switch {
-	case strings.Contains(encoding, "big5"):
-		reader = transform.NewReader(file, traditionalchinese.Big5.NewDecoder())
-	case strings.Contains(encoding, "gb") || strings.Contains(encoding, "gb-"):
-		reader = transform.NewReader(file, simplifiedchinese.GB18030.NewDecoder())
-	case strings.Contains(encoding, "utf-16") || strings.Contains(encoding, "utf16"):
-		reader = transform.NewReader(file, unicode.UTF16(unicode.LittleEndian, unicode.UseBOM).NewDecoder())
-	default:
-		reader = file
-	}
-
-	csvReader := csv.NewReader(reader)
+	csvReader := csv.NewReader(insyracsv.DecodingReader(file, encoding))
 	records, err = csvReader.ReadAll()
 	if err != nil {
-		return fmt.Errorf("failed to read CSV file %s: %v", csvFile, err)
+		return fmt.Errorf("failed to read CSV file %s: %w", csvFile, err)
 	}
 
 	// Trim UTF-8 BOM if present
@@ -272,7 +349,7 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 			cellAddr, _ := excelize.CoordinatesToCellName(colIdx+1, rowIdx+1)
 			err := f.SetCellValue(sheetName, cellAddr, cell)
 			if err != nil {
-				return fmt.Errorf("failed to set cell value %s: %v", cellAddr, err)
+				return fmt.Errorf("failed to set cell value %s: %w", cellAddr, err)
 			}
 		}
 	}

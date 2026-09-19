@@ -210,12 +210,12 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 	convergence = (s < eps)
 	// Loop exits with iter == maxit+1 when it ran the full count without
-	// breaking early on convergence. The previous "iter == maxit" check
-	// never fired because the variable always overshoots by 1 after a
-	// completed for-loop. Use convergence flag directly so non-converged
-	// rotations actually warn.
+	// breaking early on convergence. Reported at debug level only: under a
+	// multi-start search this is one start of many (or the informed Varimax
+	// start), and FaRotations warns once if the solution it chose did not
+	// converge.
 	if !convergence {
-		insyra.LogWarning("fa", "GPForth",
+		insyra.LogDebug("fa", "GPForth",
 			"convergence not obtained after %d iterations (max %d)",
 			iter-1, maxit)
 	}

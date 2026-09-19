@@ -1,11 +1,13 @@
 ## Reference values for stats/chi_square.go computed in R 4.5.1.
 ##
 ## Sources of truth (base R):
-##   GoF          : chisq.test(observed, p = p_expected)
+##   GoF          : chi-square by formula, p = 1 - pchisq(chi, df) — what
+##                  chisq.test(observed, p = p_expected) gives; not called.
 ##                  insyra: ChiSquareGoodnessOfFit takes raw category strings
 ##                  and tabulates them; the equivalent R input is observed
 ##                  counts ordered by sort(unique(category)).
-##   Independence : chisq.test(matrix(observed, nrow, ncol))
+##   Independence : chi-square by formula, p = 1 - pchisq(chi, df) — what
+##                  chisq.test(matrix(observed, nrow, ncol)) gives; not called.
 ##                  insyra computes expected = rowSum*colSum/total without
 ##                  Yates' continuity correction; we mirror that (R's default
 ##                  for any > 2x2 table; for 2x2 set correct=FALSE).

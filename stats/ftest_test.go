@@ -20,26 +20,26 @@ const (
 // ============================================================
 
 type fVarCase struct {
-	name        string
+	name         string
 	data1, data2 []float64
-	prefix      string
+	prefix       string
 }
 
 func TestFTestForVarianceEquality_R(t *testing.T) {
 	cases := []fVarCase{
 		{name: "fv_basic",
-			data1: []float64{10, 12, 9, 11},
-			data2: []float64{20, 19, 21, 22},
+			data1:  []float64{10, 12, 9, 11},
+			data2:  []float64{20, 19, 21, 22},
 			prefix: "fv_basic",
 		},
 		{name: "fv_unequal",
-			data1: []float64{1, 2, 3, 4, 5},
-			data2: []float64{10, 30, 50, 70, 90, 100, 5},
+			data1:  []float64{1, 2, 3, 4, 5},
+			data2:  []float64{10, 30, 50, 70, 90, 100, 5},
 			prefix: "fv_unequal",
 		},
 		{name: "fv_largeN",
-			data1: anovaDump.get(t, "fv_largeN_1"),
-			data2: anovaDump.get(t, "fv_largeN_2"),
+			data1:  anovaDump.get(t, "fv_largeN_1"),
+			data2:  anovaDump.get(t, "fv_largeN_2"),
 			prefix: "fv_largeN",
 		},
 	}
@@ -209,10 +209,10 @@ func TestBartlettTest_Errors(t *testing.T) {
 
 func TestFTestForRegression_R(t *testing.T) {
 	cases := []struct {
-		name      string
-		ssr, sse  float64
-		df1, df2  int
-		prefix    string
+		name     string
+		ssr, sse float64
+		df1, df2 int
+		prefix   string
 	}{
 		{"freg_basic", 500, 200, 3, 16, "freg_basic"},
 		{"freg_large", 1000, 50, 4, 95, "freg_large"},
@@ -263,10 +263,10 @@ func TestFTestForRegression_Errors(t *testing.T) {
 
 func TestFTestForNestedModels_R(t *testing.T) {
 	cases := []struct {
-		name                   string
-		rssReduced, rssFull    float64
-		dfReduced, dfFull      int
-		prefix                 string
+		name                string
+		rssReduced, rssFull float64
+		dfReduced, dfFull   int
+		prefix              string
 	}{
 		{"fnest_basic", 300, 200, 18, 16, "fnest_basic"},
 		{"fnest_2", 250, 200, 20, 18, "fnest_2"},

@@ -55,15 +55,12 @@ func GoogleMapsStores() *googleMapsStoreCrawler
 
 **Returns:**
 
-- A crawler instance (unexported type), or `nil` if initialization fails
+- A crawler instance (unexported type). Creating it needs no network access, and it is never `nil`.
 
 **Example:**
 
 ```go
 crawler := datafetch.GoogleMapsStores()
-if crawler == nil {
-    log.Fatal("Failed to initialize crawler")
-}
 ```
 
 ### Search
@@ -80,7 +77,7 @@ func (c *googleMapsStoreCrawler) Search(query string) []GoogleMapsStoreData
 
 **Returns:**
 
-- `[]GoogleMapsStoreData`: List of matching stores
+- `[]GoogleMapsStoreData`: Up to 20 matching stores, in Google's order. `nil` when the request fails or no store comes back; a warning says which.
 
 **Example:**
 
@@ -97,17 +94,17 @@ for _, store := range stores {
 func (c *googleMapsStoreCrawler) GetReviews(storeID string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews
 ```
 
-**Description:** Fetches reviews for a specific store.
+**Description:** Fetches reviews for a specific store, 10 per page, from the review window Google Search shows for the store. No sign-in is needed.
 
 **Parameters:**
 
 - `storeID`: The store's Google Maps ID (obtained from Search)
-- `pageCount`: Number of review pages to fetch (`0` fetches all available pages)
+- `pageCount`: Number of review pages to fetch, 10 reviews each (`0` fetches every page)
 - `options`: Optional fetching configuration
 
 **Returns:**
 
-- `GoogleMapsStoreReviews`: Collection of reviews (can be converted to DataTable)
+- `GoogleMapsStoreReviews`: Collection of reviews (can be converted to DataTable). `nil` when a request fails or Google's response format has changed; a warning says which.
 
 **Example:**
 
@@ -137,15 +134,19 @@ func (r GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable
 
 **Returns:**
 
-- `*insyra.DataTable`: Table containing review data with columns:
+- `*insyra.DataTable`: Table containing review data, one row per review. The columns are ordered by name, in this order:
+  - `Content`: Review text
+  - `Language`: The review's language code, such as `zh-Hant`. Empty for a review with only a star rating, which has no text
+  - `Rating`: Star rating (1-5)
+  - `ReviewDate`: The date the review was posted, in UTC, as `YYYY-MM-DD`
+  - `ReviewID`: The review's own ID, useful for dropping repeats when merging pages fetched in different sort orders
+  - `ReviewTime`: Time description as Google shows it, in Traditional Chinese (e.g., "2 個月前")
   - `Reviewer`: Reviewer's display name
   - `ReviewerID`: Unique reviewer identifier
-  - `ReviewerState`: Reviewer's location (if available)
-  - `ReviewerLevel`: Local Guide level
-  - `ReviewTime`: Time description (e.g., "2 weeks ago")
-  - `ReviewDate`: Raw date string from the source
-  - `Content`: Review text
-  - `Rating`: Star rating (1-5)
+  - `ReviewerLevel`: Always 0; Google's review pages no longer include it
+  - `ReviewerPhotoCount`: How many photos the reviewer has posted
+  - `ReviewerReviewCount`: How many reviews the reviewer has written
+  - `ReviewerState`: Always empty; Google's review pages no longer include it
 
 **Example:**
 
@@ -174,14 +175,18 @@ Represents a single review.
 
 ```go
 type GoogleMapsStoreReview struct {
-    Reviewer      string    // Reviewer's display name
-    ReviewerID    string    // Unique reviewer identifier
-    ReviewerState string    // Reviewer's location
-    ReviewerLevel int       // Local Guide level (0-10)
-    ReviewTime    string    // Relative time (e.g., "2 weeks ago")
-    ReviewDate    string    // Raw review date string
-    Content       string    // Review text
-    Rating        int       // Star rating (1-5)
+    Reviewer            string // Reviewer's display name
+    ReviewerID          string // Unique reviewer identifier
+    ReviewerState       string // Always empty; no longer provided by Google
+    ReviewerLevel       int    // Always 0; no longer provided by Google
+    ReviewerReviewCount int    // How many reviews the reviewer has written
+    ReviewerPhotoCount  int    // How many photos the reviewer has posted
+    ReviewID            string // The review's own ID
+    ReviewTime          string // Relative time in Traditional Chinese (e.g., "2 個月前")
+    ReviewDate          string // Posting date in UTC, YYYY-MM-DD
+    Language            string // The review's language code, such as zh-Hant; empty when there is no text
+    Content             string // Review text
+    Rating              int    // Star rating (1-5)
 }
 ```
 
@@ -198,8 +203,8 @@ type GoogleMapsStoreReviewsFetchingOptions struct {
 
 **Fields:**
 
-- `SortBy`: How to sort reviews (default: by relevance)
-- `MaxWaitingInterval_Milliseconds`: Maximum wait time between requests (helps avoid rate limiting)
+- `SortBy`: How to sort reviews. Zero means by relevance.
+- `MaxWaitingInterval_Milliseconds`: Maximum wait time between requests (helps avoid rate limiting). Each wait is random between 1000 and this value, so it must be at least 1000. Zero means 5000.
 
 ### GoogleMapsStoreReviewSortBy
 
@@ -216,8 +221,9 @@ const (
 
 ## Notes
 
-- This crawler depends on Google Maps internal endpoints and a remote config file; availability can change without notice.
+- This crawler depends on internal Google endpoints: the Google Maps result list for `Search`, and the review window on Google Search results for `GetReviews`, because Google Maps shows a signed-out visitor only five reviews. Availability can change without notice.
 - Be prepared for rate limits or empty results and handle `nil` returns.
+- Every request times out after 30 seconds. Progress is logged at debug level.
 - Review fetching requires a stable internet connection.
 - Large review counts may take longer to fetch.
 - Use `MaxWaitingInterval_Milliseconds` to control request pacing.
@@ -237,9 +243,6 @@ import (
 func main() {
     // Initialize crawler
     crawler := datafetch.GoogleMapsStores()
-    if crawler == nil {
-        log.Fatal("Failed to initialize crawler")
-    }
 
     // Search for stores
     stores := crawler.Search("Apple Store Taipei")

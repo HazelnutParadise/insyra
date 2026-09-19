@@ -1,0 +1,37 @@
+## ADDED Requirements
+
+### Requirement: Documented behaviour is pinned by a test
+
+每一個在 `Docs/` 中以範例或文字承諾的行為，SHALL 有一個測試在該行為停止成立時失敗。合併模式 `MergeModeLeft` 與 `MergeModeRight` SHALL 被斷言到逐格的值與列順序；`SortBy` 承諾的穩定性 SHALL 被一個含重複鍵、且不靠第二個排序條件打破平手的測試釘住。
+
+#### Scenario: An unstable sort
+- **WHEN** `SortBy` 改成不穩定排序
+- **THEN** 相同鍵的列失去原始相對順序，穩定性測試失敗
+
+#### Scenario: A left join that drops unmatched rows
+- **WHEN** `MergeModeLeft` 漏掉左表沒有配對的列
+- **THEN** 合併測試比對到缺少的列與 `nil` 欄位，測試失敗
+
+### Requirement: The primitives the library is built on are tested directly
+
+`internal/core` 的 `Ring`、`BiIndex` 與 `AtomicActor` SHALL 有直接的單元測試涵蓋其邊界：空容器的取值與彈出、成長與環繞、越界索引、空名稱與負 id、複製後的獨立性，以及 actor 的序列化、同 actor 與跨 actor 重入、`AtomicDoN` 的鎖定順序與去重，和 `Close` 之後各條路徑的行為。這些測試 SHALL NOT 依賴 `insyra` 套件間接觸發。
+
+#### Scenario: An empty ring
+- **WHEN** 對空的 `Ring` 呼叫 `Get`、`PopFront` 或 `PopBack`
+- **THEN** 回傳零值與 `false`，不 panic
+
+#### Scenario: Two goroutines on one actor
+- **WHEN** 兩個 goroutine 同時對同一個 actor 呼叫 `AtomicDo`
+- **THEN** 兩段 callback 不重疊執行
+
+### Requirement: Solver-free and bridge code is tested without its external dependency
+
+不需要外部工具就能執行的程式碼 SHALL 有不依賴該工具的測試。`lp` 解析 GLPK 輸出的函式 SHALL 以固定的輸出樣本測試，不呼叫 `glpsol`；`parquet` 的 CCL 介接層 SHALL 以測試自行寫出的 Parquet 檔案測試 `FilterWithCCL`、`ApplyCCL` 與 `parquetContext` 的存取方法。
+
+#### Scenario: GLPK is not installed
+- **WHEN** 在沒有 `glpsol` 的機器上執行 `go test ./lp/...`
+- **THEN** 解析函式的測試照常執行並通過
+
+#### Scenario: A CCL filter over a Parquet file
+- **WHEN** 對測試寫出的 Parquet 檔執行 `FilterWithCCL`
+- **THEN** 回傳的 DataTable 只含符合條件的列

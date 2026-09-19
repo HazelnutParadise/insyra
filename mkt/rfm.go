@@ -1,6 +1,9 @@
 package mkt
 
 import (
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -8,6 +11,17 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/HazelnutParadise/insyra/parallel"
 )
+
+// parseAmount reads an amount cell the way conv.ParseF64 does (every Go
+// numeric type, and a string parsed after trimming spaces) but reports a value
+// it cannot read instead of panicking.
+func parseAmount(v any) (float64, bool) {
+	if s, ok := v.(string); ok {
+		f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+		return f, err == nil
+	}
+	return insyra.ToFloat64Safe(v)
+}
 
 type RFMConfig struct {
 	CustomerIDColIndex string    // The column index(A, B, C, ...) of customer ID in the data table
@@ -62,13 +76,13 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 
 	dateFormat := rfmConfig.DateFormat
 	if dateFormat == "" {
-		insyra.LogInfo("mkt", "RFM", "No DateFormat specified, using default format YYYY-MM-DD")
+		insyra.LogDebug("mkt", "RFM", "No DateFormat specified, using default format YYYY-MM-DD")
 		dateFormat = "YYYY-MM-DD" // 預設使用 ISO 8601 格式（大寫）
 	}
 
 	timeScale := rfmConfig.TimeScale
 	if timeScale == "" {
-		insyra.LogInfo("mkt", "RFM", "No TimeScale specified, using default scale 'daily'")
+		insyra.LogDebug("mkt", "RFM", "No TimeScale specified, using default scale 'daily'")
 		timeScale = TimeScaleDaily
 	}
 
@@ -89,10 +103,15 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 			dateValue := dt.GetElement(i, tradingDayColIndex)
 			lastTradingDayStr := utils.ConvertToDateString(dateValue, goDateFormat)
 			customerID := conv.ToString(dt.GetElement(i, customerIDColIndex))
-			amount := conv.ParseF64(dt.GetElement(i, amountColIndex))
 
 			// 跳過無效的資料
 			if lastTradingDayStr == "" || customerID == "" {
+				continue
+			}
+			amountValue := dt.GetElement(i, amountColIndex)
+			amount, ok := parseAmount(amountValue)
+			if !ok {
+				insyra.LogWarning("mkt", "RFM", "Amount at row %d is not numeric (%v), skipping the row", i+1, amountValue)
 				continue
 			}
 
@@ -201,8 +220,15 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	// 創建RFM表
 	rfmTable := insyra.NewDataTable()
 
-	// 為每個客戶計算分數
+	// 依 CustomerID 排序輸出，讓結果可重現（map 迭代順序每次不同）。
+	customerIDs := make([]string, 0, len(customerLastTradingDayMap))
 	for customerID := range customerLastTradingDayMap {
+		customerIDs = append(customerIDs, customerID)
+	}
+	sort.Strings(customerIDs)
+
+	// 為每個客戶計算分數
+	for _, customerID := range customerIDs {
 		rValue := customerRMap[customerID]
 		fValue := customerTradingFrequencyMap[customerID]
 		mValue := customerTotalAmountMap[customerID]

@@ -214,7 +214,11 @@ func AtomicDoWithInit[T any](actor *AtomicActor, owner *T, f func(*T), initHook 
 // deadlock-free way to operate on several instances atomically, replacing the
 // racy pattern of nesting AtomicDo on different instances. Actors may belong to
 // different groups; nil/closed actors and actors already held by this goroutine
-// are skipped, and duplicate pointers are de-duplicated.
+// are skipped, and duplicate pointers are de-duplicated. Called from inside an
+// AtomicDo on one of the actors, it locks the others while this goroutine keeps
+// holding that one, so two goroutines nesting it in mirror image (G1 holds a and
+// asks for b, G2 holds b and asks for a) can deadlock; call it from the
+// outermost level when that can happen.
 func AtomicDoN(actors []*AtomicActor, f func()) {
 	AtomicDoNWithInit(actors, nil, f)
 }

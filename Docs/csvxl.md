@@ -34,6 +34,14 @@ func main() {
 }
 ```
 
+## Supported encodings
+
+Reading decodes UTF-8/ASCII, UTF-16 and UTF-32 (LE/BE, BOM-aware), Big5, GB18030/GBK/GB2312, Shift-JIS, ISO-2022-JP, EUC-JP, EUC-KR, every ISO-8859 part x/text ships, Windows-1250 through 1258, KOI8-R/U, IBM866 and Macintosh Roman, plus the usual aliases (`latin1`, `cp1252`, `sjis`, …). Separators and case do not matter: `ISO-8859-1`, `iso8859_1` and `ISO 8859 1` are the same.
+
+A name outside that list is matched the way earlier releases did: one containing `utf8` reads as UTF-8, one containing `big5` as Big5, one containing `gb` as GB18030, one containing `utf16` as UTF-16. Separators and case do not matter here either, so `UTF-8-SIG`, `Big5-HKSCS` and `X-GBK` read the same as their lower-case spellings. For any other name `ReadCsvToString` returns an error naming the supported encodings, because it returns UTF-8 content. `CsvToExcel`, `AppendCsvToExcel` and `EachCsvToOneExcel` read the bytes without decoding instead, so pass the file's real encoding when it is not UTF-8. That includes four charsets the auto-detector can report but nothing here decodes, ISO-2022-KR, ISO-2022-CN, IBM424 and IBM420: with `Auto`, `ReadCsvToString` refuses a file detected as one of them, and the Excel conversions read it as raw bytes, with no error.
+
+`Auto` detects the encoding from the file's first 8 KB. A UTF-32 byte-order mark is recognised before the UTF-16 one they share a prefix with.
+
 ## Encoding Constants
 
 ```go
@@ -73,7 +81,7 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error
 ```
 
-**Description:** Appends CSV files as new sheets. Existing sheets with the same name are overwritten.
+**Description:** Appends CSV files as new sheets. An existing sheet with the same name is cleared in place before the CSV is written: every old cell value and formula is removed, including cells outside the range of the new CSV, while the sheet keeps its position among the sheets and its sheet-level settings such as column widths, views and merged ranges. This works even when it is the workbook's only sheet.
 
 **Parameters:**
 
@@ -91,6 +99,8 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 ```go
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error
 ```
+
+Each sheet becomes `<outputDir>/<sheet>.csv` (or the matching `csvNames` entry). A file name made from a sheet name is checked for each sheet before that sheet's CSV is written: a name containing `/` or `\`, or one that would not be a file directly inside `outputDir`, is rejected with an error, because sheet names come from the workbook and could otherwise escape `outputDir`. A `csvNames` entry is the caller's own choice and is used as given. A sheet named `.` or `..` is an ordinary name that becomes `..csv` or `...csv`. Each sheet is read fully before its CSV is created, so a sheet that cannot be read never truncates an existing CSV.
 
 **Description:** Splits an Excel workbook into CSV files. Use `onlyContainSheets` to export selected sheets.
 
@@ -146,7 +156,7 @@ func EachExcelToCsv(dir string, outputDir string) error
 func ReadCsvToString(filePath string, encoding ...string) (string, error)
 ```
 
-**Description:** Reads a CSV file and returns UTF-8 content.
+**Description:** Reads a CSV file and returns UTF-8 content. An encoding nothing here decodes, whether passed or detected by `Auto`, is an error naming the supported encodings; the file's raw bytes are never returned.
 
 **Parameters:**
 
@@ -174,3 +184,7 @@ func insyra.DetectEncoding(csvFile string) (string, error)
 
 - `string`: Return value.
 - `error`: Error when the operation fails.
+
+## Errors
+
+Errors wrap the underlying cause, so `errors.Is(err, os.ErrNotExist)` and similar checks work through them. Output directories are created with mode 0755.

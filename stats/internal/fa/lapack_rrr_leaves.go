@@ -2,11 +2,11 @@
 //
 // Small leaf routines underpinning the MRRR eigenvalue path:
 //
-//   dlarra — split a tridiagonal matrix into independent sub-blocks.
-//   dlarrc — Sturm-sequence eigenvalue counting in an interval.
-//   dlaruv — multiplicative congruential RNG returning N<=128 reals
-//             in (0,1). Auxiliary for dlarnv.
-//   dlarnv — vectorised RNG (uniform/normal) wrapping dlaruv.
+//	dlarra — split a tridiagonal matrix into independent sub-blocks.
+//	dlarrc — Sturm-sequence eigenvalue counting in an interval.
+//	dlaruv — multiplicative congruential RNG returning N<=128 reals
+//	          in (0,1). Auxiliary for dlarnv.
+//	dlarnv — vectorised RNG (uniform/normal) wrapping dlaruv.
 //
 // Faithful translations of LAPACK 3.12.1 reference Fortran.
 package fa

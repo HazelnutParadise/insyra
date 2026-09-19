@@ -100,7 +100,7 @@ func Price(settlement, maturity time.Time, rate, yld, redemption decimal.Decimal
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 // priceInternal does the PRICE calculation in the given working
@@ -232,7 +232,7 @@ func Yield(settlement, maturity time.Time, rate, pr, redemption decimal.Decimal,
 		}
 		f := decimal.Sub(work, p, pr)
 		if absCmp(f, tol) <= 0 {
-			return o.outCtx().Normalize(y), nil
+			return o.finish(y)
 		}
 
 		pp, err := priceInternal(work, settlement, maturity, rate,
@@ -262,7 +262,7 @@ func Yield(settlement, maturity time.Time, rate, pr, redemption decimal.Decimal,
 		y = decimal.Sub(work, y, delta)
 
 		if absCmp(delta, tol) <= 0 {
-			return o.outCtx().Normalize(y), nil
+			return o.finish(y)
 		}
 	}
 	return decimal.Decimal{}, errors.New("YIELD did not converge in 80 iterations")
@@ -286,7 +286,7 @@ func Duration(settlement, maturity time.Time, coupon, yld decimal.Decimal,
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 func durationInternal(ctx decimal.Context, settlement, maturity time.Time,
@@ -386,7 +386,7 @@ func MDuration(settlement, maturity time.Time, coupon, yld decimal.Decimal,
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 // AccrInt returns the accrued interest of a security that pays
@@ -421,7 +421,7 @@ func AccrInt(issue, firstInterest, settlement time.Time, rate, par decimal.Decim
 		return decimal.Decimal{}, err
 	}
 	v := decimal.Mul(work, decimal.Mul(work, par, rate), yf)
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 // validateBondInputs runs the common settlement/maturity/freq/basis

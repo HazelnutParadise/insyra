@@ -64,7 +64,10 @@ func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Rad
 			}
 			sort.Strings(indicators) // 保證穩定順序
 		} else {
-			insyra.LogFatal("plot", "CreateRadarChart", "Indicators must be provided in RadarChartConfig when passing series directly")
+			// The chart is still built, with no indicators: that is what
+			// v0.3.2 returned under Config.SetDontPanic(true), where LogFatal
+			// only logged, and both configurations return it now.
+			insyra.LogWarning("plot", "CreateRadarChart", "Indicators must be provided in RadarChartConfig when passing series directly")
 		}
 	}
 

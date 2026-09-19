@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"bytes"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -78,6 +79,34 @@ func TestShowTypesColumnOrderBeyondZ(t *testing.T) {
 	dt := NewDataTable()
 	for i := 0; i < 28; i++ {
 		dt.AppendCols(NewDataList(i))
+	}
+	coloured := Config.GetDoesUseColoredOutput()
+	Config.SetUseColoredOutput(false)
+	defer Config.SetUseColoredOutput(coloured)
+
+	var typesOut, showOut bytes.Buffer
+	dt.ShowTypesRangeTo(&typesOut)
+	dt.ShowRangeTo(&showOut)
+
+	typeCols := headerColumns(typesOut.String())
+	showCols := headerColumns(showOut.String())
+	if len(typeCols) == 0 || len(showCols) == 0 {
+		t.Fatalf("could not find the header row\ntypes:\n%s\nshow:\n%s", typesOut.String(), showOut.String())
+	}
+	if strings.Join(typeCols, ",") != strings.Join(showCols, ",") {
+		t.Fatalf("ShowTypes column order %v differs from Show's %v", typeCols, showCols)
+	}
+}
+
+// The same order holds when the columns have names. ShowTypes keys a named
+// column as "AA(name)", and parsing that whole key as a column index failed, so
+// it fell back to a string sort and printed A, AA, AB, B again.
+func TestShowTypesColumnOrderBeyondZWithNamedColumns(t *testing.T) {
+	quietLogs(t)
+
+	dt := NewDataTable()
+	for i := 0; i < 28; i++ {
+		dt.AppendCols(NewDataList(i).SetName(fmt.Sprintf("c%d", i)))
 	}
 	coloured := Config.GetDoesUseColoredOutput()
 	Config.SetUseColoredOutput(false)

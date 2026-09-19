@@ -89,7 +89,13 @@ func startServer() {
 
 		ln, err := ipc.Listen(ipcAddress)
 		if err != nil {
-			insyra.LogFatal("py", "init", "Failed to start IPC server on %s: %v", ipcAddress, err)
+			// A library must not end the caller's process: log the failure and
+			// leave the server down. serverReady is still closed, so callers
+			// waiting for the address do not block, and the accept loop never
+			// runs on a nil listener.
+			insyra.LogWarning("py", "startServer", "Failed to start IPC server on %s: %v", ipcAddress, err)
+			close(serverReady)
+			return
 		}
 		// insyra.LogInfo("py", "init", "Insyra IPC server listening on %s", ipcAddress)
 

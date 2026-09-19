@@ -65,7 +65,7 @@ func dlarrv(
 	//   work[indlld..indlld+n-1]    : L*L*D
 	//   work[indwrk..indwrk+8n-1]   : scratch for dlarrb/dlar1v
 	const _ = 0
-	indld := n     // 0-based offset for "INDLD-1+J" => indld + j-1 (j 1-based)
+	indld := n // 0-based offset for "INDLD-1+J" => indld + j-1 (j 1-based)
 	indlld := 2 * n
 	indwrk := 3 * n
 	minwsize := 12 * n

@@ -165,7 +165,7 @@ func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTabl
 
 **Description:** Options-based variants of `ReadCSV_File` / `ReadCSV_String`. The zero value of `CSVReadOptions` behaves exactly like the legacy functions with both flags `false`.
 
-Set `RawStrings: true` to disable column type inference entirely: every cell is kept as its original string and empty cells stay `""` (not `NaN`). Use this for data that looks numeric but must not be parsed as numbers — stock IDs (`0050` would otherwise become `int64` `50`, losing the leading zeros), tax IDs, phone numbers, zip codes, or exact monetary amounts you want to parse with a decimal type yourself.
+Set `RawStrings: true` to disable column type inference entirely: every cell is kept as its original string and empty cells stay `""` (not `NaN`). Use this for data that looks numeric but must not be parsed as numbers — stock IDs (`0050` would otherwise become `int64` `50`, losing the leading zeros), tax IDs, phone numbers, zip codes, or exact monetary amounts you want to parse with a decimal type yourself. For those, use [`github.com/TimLai666/go-decimal`](https://github.com/TimLai666/go-decimal), the decimal type the rest of Insyra uses, so the parsed cells work with `finance` and sort by value; see [Exact Decimals](Decimal.md).
 
 Set `AllowRaggedRows: true` for exports with uneven row lengths. Missing trailing cells are padded with `""` so columns stay aligned; extra cells are retained in automatically named `extra_N` columns (numbered by their position in the file), and earlier rows get `""` in those columns. This is useful for trailer notes, optional trailing fields, and rows with a trailing comma. The default `false` keeps the current strict `wrong number of fields` error. Note that padded cells count as empty for column type inference: an otherwise-integer column touched by padding loads as `float64` with `NaN` in the padded rows. Combine with `RawStrings: true` when cells must stay verbatim strings.
 
@@ -193,7 +193,7 @@ if err != nil {
 func ReadJSON_File(filePath string) (*DataTable, error)
 ```
 
-**Description:** Reads a JSON file and loads the data into a new DataTable. JSON numbers are typed per value: an integer literal (`25`) becomes `int64` so large integers keep full precision, while a decimal literal (`25.5`, `25.0`) stays `float64` — matching Python's `json.loads` and consistent with `ReadCSV` loading integer columns as `int64`.
+**Description:** Reads a JSON file and loads the data into a new DataTable. JSON numbers are typed per value: an integer literal (`25`) becomes `int64` so large integers keep full precision, while a decimal literal (`25.5`, `25.0`) stays `float64` — matching Python's `json.loads` and consistent with `ReadCSV` loading integer columns as `int64`. It decodes through the same path as `ReadJSON`, so a file and its bytes always load identically; a file holding a single object loads as one row.
 
 **Parameters:**
 
@@ -511,7 +511,9 @@ if err != nil {
 func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
 ```
 
-**Description:** Saves the DataTable as a CSV file.
+**Description:** Saves the DataTable as a CSV file. Every write error is returned, including one the CSV writer only reports when it flushes its buffer at the end (disk full, closed pipe) and one the file system only reports when the file is closed.
+
+> **Opening the file in a spreadsheet:** a cell whose text begins with `=`, `+`, `-` or `@` is a formula to Excel, LibreOffice and Google Sheets, and they will execute it. `ToCSV` writes such a cell unchanged, so a round trip keeps the exact value. When the file is meant to be opened in a spreadsheet and the data is not wholly your own, write it with `ToCSVWithOptions` and `SanitizeFormulas: true`, which prefixes those cells with a single quote.
 
 **Parameters:**
 
@@ -528,6 +530,33 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 
 ```go
 err := dt.ToCSV("output.csv", false, true, false)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### ToCSVWithOptions
+
+```go
+func (dt *DataTable) ToCSVWithOptions(filePath string, opts CSVWriteOptions) error
+
+type CSVWriteOptions struct {
+    SetRowNamesToFirstCol bool // write the row names as the first column
+    SetColNamesToFirstRow bool // write the column names as the first row
+    IncludeBOM            bool // write a UTF-8 byte-order mark
+    SanitizeFormulas      bool // prefix =, +, -, @ cells with a single quote
+}
+```
+
+**Description:** `ToCSV` with an options struct instead of positional flags. The zero value writes the data as-is, exactly like `ToCSV(path, false, false, false)`. `SanitizeFormulas` is off by default because it changes the value written; see the note under `ToCSV`.
+
+**Example:**
+
+```go
+err := dt.ToCSVWithOptions("export.csv", insyra.CSVWriteOptions{
+    SetColNamesToFirstRow: true,
+    SanitizeFormulas:      true,
+})
 if err != nil {
     log.Fatal(err)
 }
@@ -1450,7 +1479,7 @@ dt.AppendCols(col)
 func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
 ```
 
-**Description:** Appends rows using column indices.
+**Description:** Appends rows using column indices. A column index beyond the current width grows the table up to that column (intermediate columns are empty), so the value is never dropped.
 
 **Parameters:**
 
@@ -1476,7 +1505,7 @@ dt.AppendRowsByColIndex(map[string]any{
 func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable
 ```
 
-**Description:** Appends rows using column names.
+**Description:** Appends rows using column names. Keys that name an existing column append to it; keys that do not are added as new columns in sorted key order, so the same input always produces the same column layout.
 
 **Parameters:**
 
@@ -1775,7 +1804,7 @@ dt.UpdateRow(0, newRow).UpdateCol("A", newCol)
 func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any
 ```
 
-**Description:** Gets the value at a specific row and column using numeric indices.
+**Description:** Gets the value at a specific row and column using numeric indices. Negative indices count from the end; an out-of-range row or column returns nil and sets `Err()`.
 
 **Parameters:**
 
@@ -2411,7 +2440,7 @@ dt.DropColsByName("Age", "Address")
 func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable
 ```
 
-**Description:** Drops rows by their numeric indices (0-based).
+**Description:** Drops rows by their numeric indices (0-based). Negative indices count from the end and are resolved against the original row count; duplicates and out-of-range indices are ignored, so `DropRowsByIndex(-1, 0)` removes exactly the first and last rows.
 
 **Parameters:**
 
@@ -2521,7 +2550,7 @@ dt.DropColsContainString() // Drops all columns that have at least one string el
 func (dt *DataTable) DropColsContainNumber() *DataTable
 ```
 
-**Description:** Drops columns that contain any numeric elements.
+**Description:** Drops columns that contain any numeric elements: a cell of a built-in Go integer or float type (`int`, `int8`…`int64`, `uint`…`uint64`, `float32`, `float64`). A named numeric type such as `time.Duration` does not count.
 
 **Parameters:**
 
@@ -2655,7 +2684,7 @@ dt.DropRowsContainString() // Drops all rows that have at least one string eleme
 func (dt *DataTable) DropRowsContainNumber() *DataTable
 ```
 
-**Description:** Drops rows that contain any numeric elements.
+**Description:** Drops rows that contain any numeric elements, using the same rule as `DropColsContainNumber`: built-in Go integer and float types count, a named numeric type such as `time.Duration` does not.
 
 **Parameters:**
 
@@ -2922,6 +2951,34 @@ counts := dt.Counter()
 fmt.Printf("Value counts: %v\n", counts)
 ```
 
+**Values Go cannot use as a map key.** A cell holding a slice, a map, or
+anything containing one — a `[]byte` read from a SQL BLOB column, for
+instance — cannot be a key in the returned map. Such a value is keyed by an
+`insyra.UncomparableKey` standing in for it. Comparable values are still keyed
+by themselves, so `counter[1]` and `counter["a"]` work as before, and printing
+the whole map stays readable: a stand-in shows as its type with a shortened
+form of its content, such as `[]uint8(00ff41)`.
+
+**To read one value's count, use `Count`, not this map.** `Count` matches
+integers by value, where the map keys them by Go type: a CSV load stores
+integers as `int64`, so `counter[1]` finds nothing in a counter built from
+loaded data while `Count(1)` is right. `Count` also finds an uncomparable
+value, which is the whole reason the two now agree.
+
+```go
+n := dt.Count(someValue)
+```
+
+`insyra.ToMapKey(v)` builds the key. Use it when you index the counter yourself
+rather than asking about one value, and in any map, set or index of your own
+over cell values — indexing a map with a slice panics, and that is your own
+map operation, which no library can guard:
+
+```go
+counter := dt.Counter()
+n := counter[insyra.ToMapKey(blob)]
+```
+
 ### GetCreationTimestamp
 
 ```go
@@ -3044,7 +3101,7 @@ orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{Prese
 
 ## Data Replacement
 
-DataTable provides several methods to replace values within the entire table, a specific row, or a specific column.
+DataTable provides several methods to replace values within the entire table, a specific row, or a specific column. They find `oldValue` the way the searches do (see Searching), so `Replace(2, 0)` replaces the `int64` 2s a CSV load produces.
 
 ### Missing-Value Fill Methods
 
@@ -3296,6 +3353,8 @@ dt.ExecuteCCL(`
 
 ## Searching
 
+**How a value is matched.** The value searches below, `Count`, the `Replace` methods and `DropRowsContain`/`DropColsContain` compare cells the same way. An integer matches an integer of the same value whatever their Go types, so `Count(2)` finds the `int64` 2s a CSV load produces. A float never matches an integer: search with `2.0` to find `2.0`. `NaN` matches `NaN`, except in `FindRowsIfContainsAll`, where a `NaN` never matches.
+
 ### FindRowsIfContains
 
 ```go
@@ -3480,7 +3539,7 @@ colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 ```
 
-**Description:** Filters the DataTable using a custom filter function. Keeps only rows where the filter function returns true for at least one cell.
+**Description:** Filters the DataTable using a custom filter function. Keeps only rows where the filter function returns true for at least one cell. A `Filter*` method whose filter matches nothing returns an empty table that is safe to use.
 
 **Parameters:**
 
@@ -3587,7 +3646,7 @@ filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
 func (dt *DataTable) FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable
 ```
 
-**Description:** Filters columns based on a custom function applied to each cell. Keeps only columns where the filter function returns true for at least one cell in that column.
+**Description:** Filters columns based on a custom function applied to each cell. Keeps only columns where the filter function returns true for at least one cell in that column. Rows are counted across the whole table; shorter columns are read as nil beyond their length.
 
 **Parameters:**
 
@@ -4056,7 +4115,7 @@ fmt.Printf("Table has %d columns\n", cols)
 func (dt *DataTable) Mean() any
 ```
 
-**Description:** Calculates the mean of all numeric values in the DataTable.
+**Description:** Calculates the mean of all numeric values in the DataTable. Only cells that can be read as numbers count, in both the sum and the denominator; a table with no numeric cell returns NaN.
 
 **Parameters:**
 
@@ -4296,7 +4355,7 @@ transformedDt := dt.Map(func(rowIndex int, colIndex string, element any) any {
 func (dt *DataTable) Transpose() *DataTable
 ```
 
-**Description:** Transposes the DataTable (rows become columns and vice versa).
+**Description:** Transposes the DataTable in place (rows become columns and vice versa) and returns it. Every row name becomes the corresponding column name and every column name becomes a row name.
 
 **Parameters:**
 
@@ -4323,7 +4382,10 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable
 - Supports sorting by column index, number, or name
 - Multi-level sorting: sorts by the first config, then by subsequent configs for ties
 - Uses stable sort to maintain relative order of equal elements
-- At least one of ColumnIndex, ColumnNumber, or ColumnName must be specified
+- Each config names a column with one of `ColumnIndex`, `ColumnName` or `ColumnNumber`
+- If a config gives more than one, **index takes precedence over name, and name over number**; the sort runs, a warning is logged naming the fields that were ignored, and `Err()` stays nil
+- A config that gives none sorts by the first column. `ColumnNumber` is 0-based and its zero value is the first column, so `DataTableSortConfig{}`, `{Descending: true}` and `{ColumnNumber: 0}` all sort by column 0
+- Every level is checked before any row moves: a column that is not there records the error on `SortBy` and leaves the table unchanged
 
 **Parameters:**
 
@@ -4339,9 +4401,9 @@ Sorts the DataTable rows based on one or more column configurations. Supports mu
 
 ```go
 type DataTableSortConfig struct {
-    ColumnIndex  string // Column index (A, B, C...)
-    ColumnNumber int    // Column number (0-based)
-    ColumnName   string // Column name
+    ColumnIndex  string // Column index (A, B, C...); takes precedence over ColumnName and ColumnNumber
+    ColumnNumber int    // 0-based column number, used when ColumnIndex and ColumnName are empty; the zero value is the first column
+    ColumnName   string // Column name; takes precedence over ColumnNumber
     Descending   bool   // Sort in descending order
 }
 ```
@@ -4351,6 +4413,9 @@ type DataTableSortConfig struct {
 ```go
 // Single column sort
 dt.SortBy(insyra.DataTableSortConfig{ColumnName: "Age", Descending: false})
+
+// The first column by position (an empty config selects it too)
+dt.SortBy(insyra.DataTableSortConfig{ColumnNumber: 0})
 
 // Multi-column sort: sort by Age ascending, then by Name descending
 dt.SortBy(
@@ -4484,6 +4549,11 @@ if err := dt.Err(); err != nil {
     // Handle the error
 }
 
+// Or read and clear in one step
+if err := dt.PopErr(); err != nil {
+    fmt.Printf("Error occurred: %s\n", err.Error())
+}
+
 // Clear the error for future operations
 dt.ClearErr()
 ```
@@ -4493,11 +4563,15 @@ dt.ClearErr()
 | Method                  | Description                                                                                     |
 | ----------------------- | ----------------------------------------------------------------------------------------------- |
 | `Err() *ErrorInfo`      | Returns the last error that occurred during a chained operation, or `nil` if no error occurred. |
+| `PopErr() *ErrorInfo`   | Returns the last error and clears it, so the table can be reused straight away.                 |
 | `ClearErr() *DataTable` | Clears the last error and returns the DataTable for continued chaining.                         |
+| `SetErr(pkg, fn, msg string, args ...any) *DataTable` | Records an error the way insyra's own methods do: logs a warning and sets `Err()`, replacing any earlier error. Wrapper packages (such as `isr`) use it. |
 
 ### Global Error Buffer
 
 The global error buffer collects all errors across the application. This is useful for monitoring and logging purposes.
+
+It is a diagnostic log rather than an error-handling API: it keeps up to `insyra.ErrorBufferCapacity` (1536) records from every goroutine and every object, dropping the oldest when full, so a record you pop may belong to someone else. Handle errors through `Err()`/`PopErr()` or a returned `error`. For that reason `PopError`, `PopErrorByPackageName`, `PopErrorByFuncName`, `PopErrorAndCallback`, `PeekError`, `GetErrorsByLevel`, `GetErrorsByPackage`, `PopErrorInfo` and `HasErrorAboveLevel` are deprecated; `GetAllErrors`, `PopAllErrors`, `HasError`, `GetErrorCount` and `ClearErrors` remain the supported way to inspect it.
 
 #### Checking for Errors
 

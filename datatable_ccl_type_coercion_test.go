@@ -261,6 +261,44 @@ func TestCCL_BooleanOperations(t *testing.T) {
 	}
 }
 
+// A word is not a boolean, and AND()/OR() must say so instead of writing a
+// column of false the caller cannot tell from a real answer. The && and ||
+// operators have always reported it, and Docs/CCL.md calls them equivalent.
+func TestCCL_BooleanFunctionsRejectANonBooleanArgument(t *testing.T) {
+	quietLogs(t)
+
+	for _, expr := range []string{
+		"AND('abc', TRUE)",
+		"AND(TRUE, 'abc')",
+		"OR('abc', FALSE)",
+		"OR(FALSE, 'abc')",
+	} {
+		dt := NewDataTable(NewDataList(10, 20).SetName("A"))
+		dt.AddColUsingCCL("result", expr)
+		if err := dt.PopErr(); err == nil {
+			t.Errorf("%s was accepted; result column = %v", expr, dt.GetColByName("result").Data())
+		}
+	}
+
+	// The argument count and the short-circuit are unchanged: AND() is still
+	// true, and an argument AND() skips is still never read.
+	dt := NewDataTable(NewDataList(10, 20).SetName("A"))
+	dt.AddColUsingCCL("kept", "AND()")
+	if err := dt.PopErr(); err != nil {
+		t.Fatalf("AND() reported %v", err)
+	}
+	if got := dt.GetColByName("kept").Data()[0]; got != true {
+		t.Errorf("AND() = %v, want true", got)
+	}
+	dt.AddColUsingCCL("skipped", "AND(FALSE, 'abc')")
+	if err := dt.PopErr(); err != nil {
+		t.Fatalf("AND(FALSE, 'abc') reported %v, but the word is never evaluated", err)
+	}
+	if got := dt.GetColByName("skipped").Data()[0]; got != false {
+		t.Errorf("AND(FALSE, 'abc') = %v, want false", got)
+	}
+}
+
 // TestCCL_ChainedComparison 測試連續比較
 func TestCCL_ChainedComparison(t *testing.T) {
 	tests := []struct {

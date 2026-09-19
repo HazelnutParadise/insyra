@@ -10,7 +10,7 @@ This document describes all public APIs in the `finance` package, designed for A
 go get github.com/HazelnutParadise/insyra/finance
 ```
 
-The package depends on [`github.com/TimLai666/go-decimal`](https://github.com/TimLai666/go-decimal) for fixed-point decimal arithmetic. It is added automatically by `go mod tidy`.
+The package depends on [`github.com/TimLai666/go-decimal`](https://github.com/TimLai666/go-decimal) for fixed-point decimal arithmetic. It is added automatically by `go mod tidy`. It is the exact decimal type used across Insyra; [Exact Decimals](Decimal.md) covers how a cell treats it and why this package was chosen.
 
 ---
 

@@ -135,7 +135,7 @@ go build -o insyra ./cmd/insyra/
 # Run the CLI REPL
 go run ./cmd/insyra/
 
-# Lint (CI uses golangci-lint)
+# Lint (CI uses golangci-lint; it also fails on a file gofmt would change)
 golangci-lint run
 
 # Vulnerability check (CI uses govulncheck)
@@ -213,7 +213,7 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 - `GetRowIndexByName` returns `(-1, false)` when not found — always check the boolean, because `-1` is also a valid "last element" index in many `Get` methods.
 - Thread safety is on by default via the actor model. `Config.Dangerously_TurnOffThreadSafety()` exists but is explicitly discouraged.
 - `AtomicDo` serializes access to ONE instance (same-instance nesting is safe, e.g. `Stdev`→`Var`). To read/operate on MULTIPLE instances atomically, use `insyra.AtomicDoAll(func(){...}, a, b, ...)` — it locks all given DataList/DataTable instances together in a deadlock-free order. Do NOT nest `AtomicDo` on a *different* instance inside a callback: that inner call runs WITHOUT locking the other instance and can race a concurrent mutation. (`engine/atomic.AtomicDoN([]*Actor, f)` is the same primitive for arbitrary user structs holding an `*atomic.Actor`.)
-- Error handling uses an instance-level `Err()` pattern rather than returning errors from every method (check `.Err()` after chained calls).
+- Error handling uses an instance-level `Err()` pattern rather than returning errors from every method (check `.Err()` after chained calls; `PopErr()` reads and clears it). Wrapper packages such as `isr` record their failures through the exported `SetErr(packageName, funcName, msg, args...)`.
 - The `isr` package is the recommended public API for new projects; the root `insyra` package is the implementation layer.
 
 ## Docs, Changelog & Skills Must Stay in Sync
@@ -250,6 +250,98 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 ## Follow-ups
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
+
+### [2026-09-20] — `oblimin` ignores its starting point, so `Restarts` costs it N identical runs
+- **Where**: `stats/internal/fa/psych_faRotations.go`, the `"oblimin"` arm of the switch in `FaRotations`
+- **What**: every other method rotates from the start it was handed; oblimin builds its own identity matrix and rotates from that, ignoring the start entirely. The comment says the identity start is deliberate, "better SPSS compatibility than random starts". Measured on 2026-09-20 after `orthogonal-rotation-starts` landed here: over the 20 datasets of `stats/factor_analysis_test.go` and all four extractions, oblimin returns the `Restarts: 1` answer in all 240 combinations at `Restarts` 2, 5 and 20, while every other GPA method differs from its single-start answer in more than half of them. On the `noisyStructure` fixture, best of 5, `Restarts: 20` takes 74.6 ms to return the 2.6 ms answer. It matters more now than before: the starts oblimin is refusing used to include two oblique matrices and are now all legitimate.
+- **Suggestion**: the decision is SPSS parity against an honest `Restarts`, not how to write it. Either let oblimin use the starts like everything else, which moves oblimin results for `Restarts > 1` and may move them away from SPSS, or keep the identity start and reject `Restarts > 1` for oblimin so the parameter stops claiming a search it does not run. `0.4` took the first (6c4fce1, which also pins that at `Delta` 0 oblimin then agrees with quartimin bit for bit); it is not on this line because it moves results with nothing in v0.3's documentation describing the move. `TestRestartsParameter` in `stats/verify_more_test.go` already covers oblimin and will pin whichever is chosen. `Docs/stats.md` and `skills/insyra/references/stats.md` state the current behaviour meanwhile.
+- **Status**: pending
+
+### [2026-09-19] — `gplot.SaveChart` still ends the program on a path it cannot write
+- **Where**: `gplot/save_chart.go:17`
+- **What**: it calls `insyra.LogFatal`, which under the default configuration is `log.Fatalf`, so a bad path ends the host program. Measured on 2026-09-19: a program calling `gplot.SaveChart(plt, "/no/such/dir/chart.png")` printed `<{[insyra - FATAL!]}> gplot.SaveChart: Failed to save chart: open /no/such/dir/chart.png: no such file or directory` and exited with status 1; the statement after the call never ran. `insyra.Config.SetDontPanic(true)` downgrades it to a log line, which is what `skills/insyra/references/plotting.md` already tells readers. The `error-philosophy` spec on this line covers `gplot` and `plot` chart *construction* and `plot.SavePNG`'s path check; it does not cover `gplot`'s saving, correctly, and no doc, skill or spec claims otherwise.
+- **Suggestion**: the fix is the error-returning `SaveChart`, which changes the signature and therefore stays on `0.4`. Nothing to do on the 0.3.x line but keep the documentation honest. When the two lines merge, this entry goes away with it.
+- **Status**: pending (0.4 carries the fix; recorded here so the gap is not mistaken for closed)
+
+### [2026-09-19] — `BartlettTest` panics when the group variances come out equal
+- **Where**: `stats/ftest.go` `BartlettTest`, through `stats/distutil.go` `chiSquaredPValue`
+- **What**: Bartlett's `T` is a difference of logs, so for groups whose variances agree it lands at or just below zero by rounding. `chiSquaredPValue` passes it straight to `distuv.ChiSquared{K: df}.CDF`, which panics with `cephes: parameter out of bounds` for any negative argument — measured on 2026-09-19, `chiSquaredPValue(-1e-16, 1)` panics while `chiSquaredPValue(0, 1)` returns 1. Whether two identical groups panic therefore depends on the values: `{0.1, 0.2, 0.3}` twice returns statistic 0 and p 1, while `{-0.32329881667362437, -0.319580921043235, 0.9093452052941211, 0.9788142136474671}` twice panics. A random sweep over k=2..4 and n=2..40 hit it 5 times in 135 tries. Pre-existing: the same input panics identically on e6fbb53, so this is not a backport regression. `df <= 0` panics the same way (`chiSquaredPValue(1, 0)`), which `FriedmanTest`, `KruskalWallis`, `ChiSquareTest`, `PartialCorrelation` and `FactorAnalysis` also reach.
+- **Suggestion**: clamp in `chiSquaredPValue` — a negative `chi2` is a rounding artefact of a statistic that is zero, so returning 1 for it is the right answer, and a non-positive `df` should return NaN the way `tQuantile` already does. That changes a panic into a value for every caller at once, which needs deciding before it is done: it is a behaviour change, though the old behaviour was a panic.
+- **Status**: pending
+
+### [2026-09-19] — govulncheck fails on every branch: excelize GO-2026-6452 has no fixed version
+- **Where**: `go.mod` — `github.com/xuri/excelize/v2 v2.11.0`; the call sites are `read.go` `ReadExcelSheet` and, on this line, `csvxl` `replaceSheet` and `paddedSheetCells`
+- **What**: GO-2026-6452, "Panic via negative shared-string index in github.com/xuri/excelize", lists `Fixed in: N/A`. `govulncheck ./...` exits 3 on `origin/dev` itself (trace `read.go:390 ReadExcelSheet calls excelize.File.GetRows`), and the Vulnerability Scan job on `0.4` has failed since 2026-09-18 15:56 for the same reason. Measured on 2026-09-19 against a clean checkout of `origin/dev`. No dependency bump can clear it while upstream has no release.
+- **Suggestion**: watch for an excelize release that fixes it and bump as part of the dependency refresh before the next release. If it stays unfixed and the job has to go green, the choice is between a documented `-show verbose` exception list in the workflow and not calling the affected functions, neither of which should be decided quietly.
+- **Status**: pending
+
+### [2026-09-14] — `stats` functions outside the input guard still crash on a nil list
+- **Where**: `stats/anova.go` `OneWayANOVA` (and `KruskalWallis`, `FriedmanTest`), `TwoWayANOVA`, and `stats/numericinput.go` `numericSlice`
+- **What**: `stats-input-type-guard` covers only the functions that read their arguments through `asDataList` or `numericSlice`. Reported by the 2026-09-14 backport review: a nil group given to `OneWayANOVA`, `KruskalWallis` or `FriedmanTest` is dereferenced inside a goroutine (`groups[i].AtomicDo` in `OneWayANOVA`), which ends the process because no caller can recover it; `TwoWayANOVA` and other functions calling `AtomicDo` on the argument directly panic. `numericSlice` checks only for a nil interface, so a typed nil `*DataList` still reaches `AtomicDo` and panics; the t, z, F, Bartlett and Levene tests and `CalculateMoment` avoid that by converting through `asDataList` first.
+- **Suggestion**: route these entry points through `asDataList`, which already turns a typed nil into an empty list, or check for nil before any goroutine starts, then widen the spec to name them. Decide first whether a nil list is an error or an empty sample.
+- **Status**: pending
+
+### [2026-09-14] — two deeply nested values with different leaves count as one
+- **Where**: `cell_identity.go` `maxCellEncodeDepth` and the interface arm of `writeCellValue`
+- **What**: a `[]any` level spends two encoding levels (the slice and the interface inside it), so a value nested more than 32 `[]any` deep reaches the limit of 64. Past it an interface is written as `p:interface {}`, its type with no address, so two such values that differ only in their deepest leaf encode alike: measured on 2026-09-14, a list holding a depth-40 value with leaf 1 and two with leaf 2 reports `Count` 3 for either. On v0.3.2 the same `Count` panicked, so nothing that worked changed, but the answer is silently wrong.
+- **Suggestion**: at the limit, unwrap the interface and write the address of the value inside it, which is what the comment above `maxCellEncodeDepth` says already happens.
+- **Status**: pending
+
+### [2026-09-14] — `DataList.Shift` flattens a slice cell
+- **Where**: `datalist_window.go` `Shift`
+- **What**: `Shift` builds its result through `NewDataList`, which flattens every slice, so a list holding `[]byte{1, 2}` and `3` comes back three cells long: measured on 2026-09-14, `Append([]byte{1, 2}, 3)` then `Shift(0)` gives `[1 2 3]`. Present on v0.3.2; found while backporting `one-value-one-cell`.
+- **Suggestion**: build the result with `Append`, or wrap each cell with `Cell`. The length and cells of the result change for lists holding slices, so decide which line takes it.
+- **Status**: pending
+
+### [2026-09-14] — 26 main specs fail `openspec validate --specs --strict`
+- **Where**: `openspec/specs/*/spec.md`, mostly the `## Purpose` section
+- **What**: on 2026-09-14 the strict run reports 26 failures of 101 specs: the seven `accel-*` specs, `changelog`, `cli-entry`, `command-registry`, `core-preprocessing`, `dsl-commands`, `env-management`, the five `ml-*` specs, `nn-inference`, `nn-training`, `repl-engine`, `script-runner`, `stats-clustering`, `stats-decomposition`, `stats-knn` and `stats-regression`. dev at e6fbb53 had 27 of 50; the 0.4 backport fixed `verification-integrity` and gave every spec it added a real Purpose. Nothing in CI runs the command.
+- **Suggestion**: write each Purpose from its requirements as its own change, then add the strict run to the lint workflow so the count cannot climb again.
+- **Status**: pending
+
+### [2026-09-12] — grouping, pivoting, merging and `Describe` still merge nested values that print alike
+- **Where**: `datatable_groupby.go` `encodeGroupKey` and `uniqueKey`, `datatable_encode.go` `labelKey`, their default arms
+- **What**: `encodeGroupKey` and `uniqueKey` fall back to `%T:%v`, which does not descend, so `[]any{1}` and `[]any{"1"}` produce the same key: `GroupBy`, `Pivot` and `Merge` put the integer and the string in one group, and `Describe`'s unique count counts them once. `labelKey` uses `%T:%#v`, which separates an int from a string but not `[]any{1}` from `[]any{1.0}`. Measured on 2026-09-13. `identify-uncomparable-cells` gave cell lookups a recursive encoder, `encodeCell`; on 0.4 `encodeGroupKey` and `uniqueKey` moved to it too, but that changes the keys existing data groups by, so it stayed off the 0.3.x line.
+- **Suggestion**: moving `encodeGroupKey` and `uniqueKey` to `encodeCell` is a change of result, so it belongs to 0.4. `labelKey` needs a decision first: its integer rule is by value where cell identity is by type, so decide whether an encoder label is identity or value before pointing it at any encoder.
+- **Status**: pending
+
+### [2026-09-12] — a bare `[]byte` still flattens in the constructors
+- **Where**: `datalist.go` `flattenWithNilSupport`
+- **What**: a `[]byte` cell is one value everywhere it is looked up — counted and matched by content — but `NewDataList([]byte{0, 255})` still produces two cells holding `0` and `255`, because the constructor flattens every slice (pinned by `TestAnUnmarkedSliceStillFlattens`). The owner ruled on 2026-09-12 that the flattening stays: it is what makes `NewDataList` read like constructing a pandas Series. `one-value-one-cell` gave that decision an escape hatch, `NewDataList(Cell(blob), …)`, so the remaining gap is only that a reader who writes the bare form and then searches for the blob gets 0 with nothing to explain it.
+- **Suggestion**: documentation, not code. `Docs/DataList.md` describes the flattening and `Cell` together; keep the `Count`/`Counter` examples building their list with `Append` or `Cell` so they are runnable as written, and consider whether `Count` should say something when it is handed a slice that the receiving list could not be holding.
+- **Status**: pending
+
+### [2026-09-12] — a self-referential slice takes the process down in `NewDataList`
+- **Where**: `datalist.go` `flattenWithNilSupport`
+- **What**: it recurses into every `reflect.Slice` with no depth limit, so a slice containing itself exhausts the stack. Measured on 2026-09-13: `cyclic := []any{1}; cyclic[0] = cyclic; insyra.NewDataList(cyclic)` ends with `fatal error: stack overflow`. That is not a panic: `recover` cannot catch it, and the whole program ends. `encodeCell` was given a depth limit of 64 for exactly this reason; the flattener was not touched because it is the constructor's hot path and the fix should be measured against it.
+- **Suggestion**: the same depth bound, or a visited-pointer set. A bound is cheaper and a 64-deep slice literal is already pathological; a visited set is exact but costs an allocation per construction. Measure `NewDataList` on a large flat slice before and after, because that path runs for every table built from a slice.
+- **Status**: pending
+
+### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
+- **Where**: `internal/utils` `IsNumeric` / `ToFloat64Safe`, and every numeric path behind them
+- **Note (2026-09-14)**: measured on this line, a decimal column reaches `stats.SingleSampleTTest`, which returns a `NaN` result with a nil error, and `stats.Skewness`, which fails with "zero variance" because `SliceToF64` reads every decimal as 0; `stats.Correlation` refuses it. `ToJSON` writes a decimal cell as `{}`. `0.4` fixes these through changes that stayed there.
+- **What**: `parquet-foreign-column-types` made `Decimal128` and `Decimal256` read as a go-decimal `decimal.Decimal`, exact and sorting by value. It is a struct, so `IsNumeric` says no and `ToFloat64Safe` cannot read it, which means the numeric path treats a decimal cell the way it treats a `time.Time` cell: as not a number. That follows the `time.Time` precedent exactly, and it is the reason the change did not go further on its own. But a money column is far likelier to want arithmetic than a date column is.
+- **Suggestion**: the decision is whether a decimal is a number in insyra. If it is, `ToFloat64Safe` needs an arm for it, which today means going through `String()` and `strconv.ParseFloat` because go-decimal exposes no `Float64()`; adding one upstream would be cleaner and it is the same author's library. Weigh that against making `internal/utils`, which every value in the library passes through, depend on a decimal package.
+- **Status**: pending
+
+### [2026-09-12] — reading a Parquet file and writing it back still changes column types
+- **Where**: `parquet/internal.go` `inferArrowType`
+- **What**: the reader handles more Arrow types than the writer's seven, so a read-then-write round trip downgrades: a `Date32` column comes back as a timestamp, a decimal or a `Binary` column as a string column, an `Int16` as an `Int64`. A `Binary` column loses more than its type: `appendValue` writes each `[]byte` through `conv.ToString`, so `A-01` goes out as the text `[65 45 48 49]` (measured 2026-09-14). On 0.4 `parquet-binary-is-bytes` also writes a column of `[]byte` cells as Arrow `Binary`; that changes file output, so it stayed off the 0.3.x line. Nothing is silently wrong, but the file is not the file that went in. Found on 2026-09-12 while fixing #371, which only concerned the read half.
+- **Suggestion**: `inferArrowType` infers from Go values, so it cannot tell an `int16` that came from a `Date32` column from any other. Carrying the source schema through a read would fix it properly; inferring `time.Time` to `Date64` would not, and would guess wrong on ordinary data. Worth doing only if round-tripping is a use case someone has.
+- **Status**: pending
+
+### [2026-09-12] — `lp.SolveFromFile` returns a nil result table and the documented example dereferences it
+- **Where**: `lp/lp.go` `SolveFromFile` and `SolveModel`; the example in `Docs/lp.md`
+- **What**: on a timeout or a solver error both functions return `nil` as the first DataTable, and `SolveFromFile` returns `nil, nil` for more than one `timeoutSeconds` argument. `Docs/lp.md` says only "returns the result as two DataTable" and its example calls `result.Show()` straight away. A nil `*DataTable` panics on `Show()`; measured on 2026-09-12. Found while writing the parser tests in `test-unpinned-behaviour`, which cover the failure path of `parseGLPKOutputFromFile` (also nil on an unreadable file).
+- **Suggestion**: returning an empty table instead of nil changes a returned value, so on the 0.3.x line the nil stays (the never-nil version lives on 0.4 as `lp-never-returns-a-nil-table`). `Docs/lp.md` was corrected on 2026-09-18: both Returns sections say the solution is nil when the solve produces none, and both examples check it. What is left is the code decision for a future release.
+- **Status**: pending (documentation corrected; the nil return itself is undecided)
+
+### [2026-09-10] — how insyra turns a number into text is decided nowhere
+- **Where**: every path that writes a number as text — `internal/ccl/stdlib_string.go` `toString` (behind CCL's `CONCAT`, `TOSTR` without a format, `LEN`, `UPPER`, …), the `&` operator in `internal/ccl/ccl_evaluator.go`, `ToCSV`, `ToJSON`, and `Show`.
+- **What**: each path uses Go's default formatting, so a `float64` outside roughly 1e-5..1e21 comes out in exponent form. Measured on one column `[0.0000001, 1e6, 1e21, 12345.678]`: CCL `'x' & A` gives `x1e-07`, `x1e+06`, `x1e+21`; `ToCSV` writes `1e-07`, `1e+06`, `1e+21`; `ToJSON` writes `1e-07`; `Show` prints `1.0000e-07`, `1000000`, `1.0000e+21`, `1.2346e+04`, a display format of its own. Every numeric literal in CCL is a `float64`, so `LEN(1000000)` is `5` while the same value read from an integer column gives `7`.
+- **Why it is not a CCL-only fix**: CCL is not the odd one out — `ToCSV` and `ToJSON` write the same exponent form. Changing CCL alone would make `'x' & A` say `x0.0000001` while `ToCSV` of the same column still says `1e-07`. That split may well be the right answer: a serialised number and a number embedded in text do different jobs, and `1e-07` in a CSV or JSON number cell reads back as the same value, whereas `id-1e-07` in a string reads back as nothing useful. But it should be chosen, not fall out of a patch to one file. It is also a different question from the `<nil>` that CCL's `&` still writes for a nil operand on this line: CCL is the only path that writes that — `ToCSV` writes an empty cell and `ToJSON` writes `null`.
+- **Suggestion**: decide per path. The strongest case for a change is text built inside CCL, where `strconv.FormatFloat(f, 'f', -1, 64)` gives the shortest exact decimal with no exponent (`"0.0000001"`). The cost is that a genuinely huge value gets long (`1e300` is 301 characters), so a magnitude threshold may be wanted. Any change is **breaking** for expressions that build text from a float.
+- **Status**: pending
 
 ### [2026-08-01] — multi-GPU planning and execution coverage
 - **Where**: `accel/planner.go` (`PlanShardable`, weighted per-device `ShardAssignment`s), `accel/exact.go` (per-assignment dispatch)

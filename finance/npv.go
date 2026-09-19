@@ -25,7 +25,7 @@ func NPV(rate decimal.Decimal, cashflows []decimal.Decimal, opts ...Options) (de
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 // NPVExcel matches Excel's NPV(rate, value1, value2, ...): the first
@@ -41,7 +41,7 @@ func NPVExcel(rate decimal.Decimal, cashflows []decimal.Decimal, opts ...Options
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(v), nil
+	return o.finish(v)
 }
 
 // IRR computes the internal rate of return for a cashflow stream
@@ -75,7 +75,7 @@ func IRR(cashflows []decimal.Decimal, guess decimal.Decimal, opts ...Options) (d
 			return decimal.Decimal{}, err
 		}
 		if absCmp(f, tol) <= 0 {
-			return o.outCtx().Normalize(r), nil
+			return o.finish(r)
 		}
 
 		// Analytic derivative:
@@ -111,7 +111,7 @@ func IRR(cashflows []decimal.Decimal, guess decimal.Decimal, opts ...Options) (d
 		r = newR
 
 		if absCmp(delta, tol) <= 0 {
-			return o.outCtx().Normalize(r), nil
+			return o.finish(r)
 		}
 	}
 	return decimal.Decimal{}, fmt.Errorf("IRR did not converge in %d iterations", maxIter)

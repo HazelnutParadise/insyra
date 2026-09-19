@@ -247,7 +247,7 @@ func DetectEncoding(filePath string) (string, error)
 
 - Reads a 8192-byte sample for detection.
 - Checks BOM markers (`utf-8`, `utf-16le`, `utf-16be`).
-- Returns `utf-8` if the sample is valid UTF-8.
+- Returns `utf-8` if the sample is valid UTF-8. When the sample fills all 8192 bytes, a character cut off by that boundary is ignored; a file shorter than the sample is judged as it is.
 - Falls back to `chardet` for other encodings.
 - Returns an error for empty files or failed detection.
 

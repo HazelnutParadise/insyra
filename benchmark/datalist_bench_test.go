@@ -1,8 +1,8 @@
 package benchmark
 
 import (
-	"testing"
 	"github.com/HazelnutParadise/insyra"
+	"testing"
 )
 
 func createLargeDataList(size int) *insyra.DataList {

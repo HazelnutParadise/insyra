@@ -2,11 +2,11 @@
 //
 // dsyevr — public driver for symmetric eigenproblem.
 //
-//   1. dsytrd: A → tridiagonal T = Q^T A Q
-//   2. dstemr (MRRR) for eigenvalues + eigenvectors of T
-//      (fallback to dstebz/dstein if MRRR fails)
-//   3. dormtr: apply Q to map eigenvectors back to A's basis
-//   4. rescale + sort
+//  1. dsytrd: A → tridiagonal T = Q^T A Q
+//  2. dstemr (MRRR) for eigenvalues + eigenvectors of T
+//     (fallback to dstebz/dstein if MRRR fails)
+//  3. dormtr: apply Q to map eigenvectors back to A's basis
+//  4. rescale + sort
 //
 // Faithful translation of LAPACK 3.12.1 dsyevr.f. Currently restricted
 // to UPLO='L' (matches dormtr's only-implemented path).

@@ -3,6 +3,7 @@ package ccl
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 type Func = func(args ...any) (any, error)
@@ -15,6 +16,10 @@ type AggFunc = func(args ...[]any) (any, error)
 // enabling LAG, CUMSUM, ROLLING_MEAN, etc.
 type SeqFunc = func(args ...[]any) ([]any, error)
 
+// registryMu guards the three function tables: registration may happen at
+// any time (users register custom functions), and evaluation reads them
+// concurrently from every AddColUsingCCL.
+var registryMu sync.RWMutex
 var defaultFunctions = map[string]Func{}
 var aggregateFunctions = map[string]AggFunc{}
 var sequenceFunctions = map[string]SeqFunc{}
@@ -37,21 +42,48 @@ func RegisterSequenceFunction(name string, fn SeqFunc) {
 }
 
 func registerFunction(name string, fn Func) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
 	defaultFunctions[strings.ToUpper(name)] = fn
 }
 
 func registerAggregateFunction(name string, fn AggFunc) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
 	aggregateFunctions[strings.ToUpper(name)] = fn
 }
 
 func registerSequenceFunction(name string, fn SeqFunc) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
 	sequenceFunctions[strings.ToUpper(name)] = fn
+}
+
+func lookupFunction(name string) (Func, bool) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	fn, ok := defaultFunctions[strings.ToUpper(name)]
+	return fn, ok
+}
+
+func lookupAggregateFunction(name string) (AggFunc, bool) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	fn, ok := aggregateFunctions[strings.ToUpper(name)]
+	return fn, ok
+}
+
+func lookupSequenceFunction(name string) (SeqFunc, bool) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	fn, ok := sequenceFunctions[strings.ToUpper(name)]
+	return fn, ok
 }
 
 // IsSequenceFunction reports whether name resolves to a registered sequence
 // function. Exposed for the evaluator and IsRowDependent.
 func IsSequenceFunction(name string) bool {
-	_, ok := sequenceFunctions[strings.ToUpper(name)]
+	_, ok := lookupSequenceFunction(name)
 	return ok
 }
 
@@ -61,7 +93,7 @@ func callFunction(name string, args []any, callDepth int) (result any, err error
 		return nil, fmt.Errorf("callFunction: maximum function call depth exceeded, possibly recursive function calls")
 	}
 
-	fn, ok := defaultFunctions[strings.ToUpper(name)]
+	fn, ok := lookupFunction(name)
 	if !ok {
 		return nil, fmt.Errorf("undefined function: %s", name)
 	}
@@ -78,17 +110,22 @@ func callFunction(name string, args []any, callDepth int) (result any, err error
 	return fn(args...)
 }
 
+// callAggregateFunction does not recover a panic from fn. A registered
+// aggregate that panics is handled by the recover in the DataTable method that
+// started the evaluation, which returns nil as it always has; recovering here
+// would make that method return the table instead.
 func callAggregateFunction(name string, args [][]any) (any, error) {
-	fn, ok := aggregateFunctions[strings.ToUpper(name)]
+	fn, ok := lookupAggregateFunction(name)
 	if !ok {
 		return nil, fmt.Errorf("undefined aggregate function: %s", name)
 	}
-
 	return fn(args...)
 }
 
+// callSequenceFunction does not recover a panic from fn, for the same reason
+// as callAggregateFunction.
 func callSequenceFunction(name string, args [][]any) ([]any, error) {
-	fn, ok := sequenceFunctions[strings.ToUpper(name)]
+	fn, ok := lookupSequenceFunction(name)
 	if !ok {
 		return nil, fmt.Errorf("undefined sequence function: %s", name)
 	}

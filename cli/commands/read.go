@@ -1,19 +1,46 @@
 package commands
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "read",
 		Usage:       "read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>]",
 		Description: "Quick preview a file without saving variable",
-		Run:         runReadCommand,
+		Forms: []string{
+			"read <file>                       preview with the format taken from the extension",
+			"",
+			"headers true|false                treat the first row as column names",
+			"rownames true|false               treat the first column as row names",
+			"encoding <enc>                    override the detected CSV encoding",
+			"infer true|false                  infer column types (CSV only)",
+			"ragged true|false                 allow rows of differing length (CSV only)",
+			"trimspace true|false              ignore spaces before a CSV field",
+			"sheet <name>                      which sheet to read (Excel only)",
+		},
+		Examples: []string{
+			"insyra read sales.csv",
+			"insyra read sales.csv headers true rownames true",
+			"insyra read book.xlsx sheet Q1",
+		},
+		Run: runReadCommand,
 	})
 }
 
 func runReadCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>]")
+	}
+	// read previews without storing anything, so it supplies its own alias.
+	// A user-supplied `as` reached load as a second one and came back as
+	// `unknown option "as"`, which points at the wrong thing entirely. Only
+	// the alias position counts, the one parseAlias would take: an `as`
+	// anywhere else is an ordinary argument, such as a sheet named "as".
+	if len(args) >= 2 && strings.EqualFold(args[len(args)-2], "as") {
+		return fmt.Errorf("read: `as` is not supported; read only previews a file. Use `load %s as <var>` to keep it", args[0])
 	}
 	fakeArgs := append([]string(nil), args...)
 	fakeArgs = append(fakeArgs, "as", "$preview")
