@@ -102,9 +102,11 @@ reproducible run).
 `Rotation.Restarts` is how many starting points the rotation is run from, best
 criterion value winning, preferring one that converged. The default of 1 is
 fine for Varimax; raise it for Geomin or Simplimax, whose criteria have local
-minima. Oblimin ignores the starts and always rotates from the identity, so
-raising it there only costs time. `RotationConverged` says whether the returned
-rotation converged, and `MaxIter` governs extraction rather than rotation.
+minima. The random starts come from a fixed seed, so a multi-start run uses the
+same starts on every platform. Oblimin ignores the starts and always rotates
+from the identity, so raising it there only costs time. `RotationConverged`
+says whether the returned rotation converged, and `MaxIter` governs extraction
+rather than rotation.
 
 ## Things that are easy to get wrong
 

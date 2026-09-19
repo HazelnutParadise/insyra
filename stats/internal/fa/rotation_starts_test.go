@@ -309,6 +309,80 @@ func TestARejectedStartIsReplaced(t *testing.T) {
 	}
 }
 
+// overFactoredStructure is what ML extraction of four factors from the
+// three-factor synthetic table in stats/verify_more_test.go returns
+// (buildSyntheticTable(60, 6, syntheticGen3Factor), FixedK = 4). Pinned here
+// because it is the one fixture on which the identity start stops in a basin a
+// random start escapes: the quartimin criterion reaches f = 0.0444 from the
+// identity and from the informed Varimax start, and f = 0.00094 from the first
+// random start. Oblimin at gamma = 0 is the same criterion, but on this line it
+// builds its own identity start and ignores the ones it is handed, so it stays
+// at 0.0444 however many starts are asked for.
+func overFactoredStructure() *mat.Dense {
+	return mat.NewDense(6, 4, []float64{
+		0.97371501712956454, 0.0079721325645778496, -0.014459486993830628, -0.21588523283154318,
+		0.24494542308991687, 0.39670957381899075, 0.818573580412012, -0.026861909522813428,
+		0.24618789823293688, 0.87788500026365501, -0.18411403330678633, 0.10511937386832459,
+		0.97328202834432709, -0.049024267698480777, 0.0048744505795983543, 0.21282611261386447,
+		0.25480162936163508, 0.40368803304199108, 0.79654947492798456, -0.012421277991481435,
+		0.24555549634269103, 0.91633995553871161, -0.205167492487175, 0.096432095362504286,
+	})
+}
+
+func criterionOf(t *testing.T, method string, L *mat.Dense, restarts int) float64 {
+	t.Helper()
+	res, ok := FaRotations(mat.DenseCopyOf(L), nil, method, 0, restarts, 4, 0.01, 1e-5, 1000).(map[string]any)
+	if !ok {
+		t.Fatalf("%s: FaRotations returned a non-map", method)
+	}
+	if msg, _ := res["error"].(string); msg != "" {
+		t.Fatalf("%s: %s", method, msg)
+	}
+	f, ok := res["f"].(float64)
+	if !ok {
+		t.Fatalf("%s: no criterion value in the chosen candidate", method)
+	}
+	return f
+}
+
+// The random starts used to be seeded from a hash of every bit of the loadings,
+// and extraction does not reproduce those bits across architectures: ML
+// extraction of the synthetic table gives loading [1,1] = 0.39670957381899075
+// on arm64 and 0.39670959426082741 on amd64. That 2e-8 drew an unrelated set of
+// random starts, so the same FactorAnalysis call could reach a different basin
+// on Linux than on a Mac. Measured over the 20 datasets of
+// stats/factor_analysis_test.go and all four extractions, 197 of the 2400
+// Restarts >= 2 combinations disagreed between the two architectures by more
+// than 1e-5, the worst of them by 2.1.
+//
+// Quartimin rather than oblimin: at gamma = 0 they are the same criterion, but
+// oblimin ignores the starts it is given on this line.
+func TestRandomStartsDoNotDependOnTheLoadingsBits(t *testing.T) {
+	arm64 := overFactoredStructure()
+	amd64 := mat.DenseCopyOf(arm64)
+	amd64.Set(1, 1, 0.39670959426082741)
+	_, nf := arm64.Dims()
+
+	const restarts = 20
+	a := buildStarts(arm64, nf, restarts)
+	b := buildStarts(amd64, nf, restarts)
+	if len(a) != restarts || len(b) != restarts {
+		t.Fatalf("%d and %d starts, want %d", len(a), len(b), restarts)
+	}
+	// Start 0 is the identity and start 1 the Varimax solution, which follows
+	// the loadings by design; the random ones after it must not.
+	for i := 2; i < restarts; i++ {
+		if d := maxAbsDiff(a[i], b[i]); d != 0 {
+			t.Errorf("random start %d differs by %.3e between loadings 2e-8 apart", i, d)
+		}
+	}
+
+	fArm, fAmd := criterionOf(t, "quartimin", arm64, 5), criterionOf(t, "quartimin", amd64, 5)
+	if math.Abs(fArm-fAmd) > 1e-6 {
+		t.Errorf("quartimin at five starts: f = %.9f and %.9f for loadings 2e-8 apart; the search reached different basins", fArm, fAmd)
+	}
+}
+
 // captureWarnings routes the logger into a buffer at warning level for the
 // duration of the test and returns the buffer.
 func captureWarnings(t *testing.T) *bytes.Buffer {

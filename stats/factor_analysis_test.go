@@ -19,9 +19,15 @@ import (
 // What the strict suite reports, measured on 2026-09-13 on the 0.4 line
 // against baselines from psych 2.6.5 and GPArotation 2026.8.2 (the cache is
 // keyed on those versions, see toolchainSignature): 1,672 of 42,969 leaf
-// sub-tests fail. The 0.3.x line runs its rotations with a different start
-// list, a single default start and oblimin always from the identity, so its
-// count differs; the breakdown below is 0.4's.
+// sub-tests fail. This line fails 1,842, measured on 2026-09-20 on an Apple
+// M3 against the same baselines; the breakdown below is 0.4's. The two counts
+// differ because this line keeps a default of one start where 0.4 follows
+// psych 2.6.5 with twenty, rotates oblimin from the identity whatever it is
+// handed, and keeps the pre-2.6.5 Promax pre-rotation. Neither
+// orthogonal-rotation-starts nor rotation-starts-same-on-every-platform moved
+// this line's count: both leave `Restarts: 1` bit-identical and the suite runs
+// at the default, so the 1,842 failing leaves and every number they report are
+// the same before and after.
 //
 //	Promax                              1,028  a different solution from psych's on 11 of 16
 //	                                           datasets, not a multi-start or tolerance effect

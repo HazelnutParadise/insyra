@@ -1322,9 +1322,10 @@ criteria are not convex, and geomin and simplimax in particular have local
 minima, so more than one start is worth trying. Every start is an orthogonal
 matrix — the identity, the Varimax solution, then random ones — which is what
 `GPArotation::Random.Start` produces for orthogonal and oblique rotations
-alike. Oblimin is the exception: it rotates from the identity on every pass and
-ignores the starts, so `Restarts` above 1 costs it N identical runs and changes
-nothing.
+alike. The random ones are drawn from a fixed seed, not from the loadings, so
+the same call runs from the same starts on every platform. Oblimin is the
+exception: it rotates from the identity on every pass and ignores the starts,
+so `Restarts` above 1 costs it N identical runs and changes nothing.
 
 `RotationConverged` reports whether the rotation solution that was returned
 converged, and when it did not, the rotation logs one warning naming the
