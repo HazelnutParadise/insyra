@@ -70,9 +70,9 @@ jobs:
       #   ClusteringGeneratedCorpus, KNNGeneratedCorpus — 25-minute corpora,
       #     already run by the Clustering Parity and KNN Parity workflows.
       #   FactorAnalysis — guarded by INSYRA_STRICT_FACTOR_R_PARITY because the
-      #     comparison is known not to pass: ~595 sub-tests differ on three
-      #     adversarial datasets, traced to gonum's LAPACK port differing from
-      #     R's by 1 ULP and amplified by ill-conditioning, and documented at
+      #     comparison is known not to pass: 1,720 of 52,119 leaves differ, on
+      #     Promax, extraction drift on near-collinear data, anderson-rubin
+      #     scoring and rotations that run out of iterations, and documented at
       #     factorParityTol as mathematically equivalent solutions.
       - name: Cross-language verification against R and Python
         run: >

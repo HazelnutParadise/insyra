@@ -19,32 +19,51 @@ import (
 // factorParityTol is the strict per-element |Go - R| tolerance. Tightened
 // from 1e-3 to 2e-5 in commit a6eb8ff.
 //
-// What the strict suite reports, measured on 2026-09-13 on the 0.4 line
-// against baselines from psych 2.6.5 and GPArotation 2026.8.2 (the cache is
-// keyed on those versions, see toolchainSignature): 1,672 of 42,969 leaf
-// sub-tests fail. This line fails 1,842, measured on 2026-09-20 on an Apple
-// M3 against the same baselines; the breakdown below is 0.4's. The two counts
-// differ because this line keeps a default of one start where 0.4 follows
-// psych 2.6.5 with twenty, rotates oblimin from the identity whatever it is
-// handed, and keeps the pre-2.6.5 Promax pre-rotation. Neither
-// orthogonal-rotation-starts nor rotation-starts-same-on-every-platform moved
-// this line's count: both leave `Restarts: 1` bit-identical and the suite runs
-// at the default, so the 1,842 failing leaves and every number they report are
-// the same before and after.
+// What the strict suite reports, measured on 2026-09-20 on this line on an
+// Apple M3, against seeded baselines from psych 2.6.5 and GPArotation
+// 2026.8.2 (the cache is keyed on those versions and on the script, see
+// toolchainSignature): 1,720 of 52,119 leaf sub-tests fail. Each leaf is
+// counted once, in the first row that applies:
 //
-//	Promax                              1,028  a different solution from psych's on 11 of 16
+//	Promax                              1,053  a different solution from psych's on 11 of 16
 //	                                           datasets, not a multi-start or tolerance effect
 //	                                           (AGENTS.md follow-up, 2026-09-13)
-//	extraction drift, adversarial data    ~260  unrotated_loadings, uniquenesses, communalities
-//	                                           and eigenvalues on near_collinear, mixed_scale,
-//	                                           heavy_tail, narrow_plus_group: 52 combinations,
-//	                                           plus the fields downstream of them
-//	anderson-rubin scoring                  99  the combination fails before any field runs
-//	rotation_converged                      50  geominQ, oblimin and quartimin on near-collinear
+//	extraction drift, near_collinear      260  unrotated_loadings, uniquenesses, communalities
+//	                                           and eigenvalues, and every field downstream of
+//	                                           them — the rotation-invariant ones included:
+//	                                           model_reproduction, structure_reproduction and
+//	                                           score_weights_reproduction fail on this dataset
+//	                                           and on no other
+//	anderson-rubin scoring                211  the combination fails before any field runs
+//	rotation_converged                    135  geominQ, oblimin and quartimin on near-collinear
 //	                                           data run out of iterations from every start
-//	simplimax, a worse minimum than R's      6  20 starts is not enough for a criterion with
-//	                                           16 local minima; psych's 20 unseeded ones did
-//	                                           better on three_blocks and cross_loading
+//	simplimax, a different minimum         12  a criterion with 16 local minima; a lower
+//	                                           criterion value alone no longer counts as the
+//	                                           same solution
+//	everything else                        49  spread across the smaller suites
+//
+// 0.4 reports 512 of 52,176 (a3194b46, measured 2026-09-18). The two lines
+// differ because this one keeps a default of one start where 0.4 follows
+// psych 2.6.5 with twenty, rotates oblimin from the identity whatever it is
+// handed, keeps the pre-2.6.5 Promax pre-rotation, and ports GPArotation's
+// old step rather than its bb one.
+//
+// The R baselines are built with R's random number generator seeded
+// (factor-baselines-reproducible). Before that, psych::fa's nineteen random
+// starts came from whatever state the session was in, and a cached reference
+// depended on the session that built it.
+//
+// The factor-frame fields of a gradient projection rotation (structure, Phi,
+// scores) are compared at factorRotationTol once the loadings say the two are
+// the same solution, and the rotation-invariant quantities L·Phi·L', S·L' and
+// W·L' hold the comparison to factorParityTol and scoreInvariantTol
+// (factor-parity-compares-invariants). Measured here on 2026-09-20, that
+// change and the seeding together took 1,842 failing leaves to 1,720: 265
+// stopped failing — 66 scores, 66 score_coefficients, 47 Phi, 47 structure,
+// 28 score_covariance and 11 loadings, all of them where along a flat minimum
+// psych's start had stopped — and 143 started, 134 of them the new invariant
+// sub-tests on near_collinear and 9 simplimax loadings on cross_loading and
+// mixed_scale, where a lower criterion value used to pass on its own.
 //
 // Before this comparison was made to respect what a factor solution is —
 // order and sign of the factors, and the criterion value for a solution in
@@ -65,8 +84,10 @@ const factorParityTol = 2e-5
 
 // factorRotationTol is the per-element tolerance for the factor-frame fields
 // (loadings, structure, Phi, rotation matrix, scores, proportions) when our
-// solution and psych's are the same minimum of the rotation criterion but
-// not the same point. A criterion pins its minimiser only as well as its
+// solution and psych's are the same solution of the rotation criterion but
+// not the same point, and the loadings distance under which the two count as
+// the same solution. Different local minima differ by far more: 0.1 and up in
+// Nguyen & Waller's examples, 0.8 between simplimax's minima here. A criterion pins its minimiser only as well as its
 // curvature allows: Δf ≈ c·ΔL², so at eps = 1e-5 on the gradient a loading
 // is fixed to about 1e-4, and on a criterion as flat as bentlerQ's at
 // f ≈ 3e-6 to about 2e-3. Measured on 2026-09-13 over the 351 same-minimum
@@ -74,7 +95,25 @@ const factorParityTol = 2e-5
 // 2.2e-4 at the 90th percentile and 2.1e-3 at the most (bentlerQ). Tightening
 // our eps to 1e-7 moved 23 of the 351 and left 132 rotations unconverged at
 // maxit 1000, so the gap is not our precision; it is the criterion's.
-const factorRotationTol = 5e-3
+//
+// It was 5e-3 until factor-parity-compares-invariants. GPArotation 2026.8.2 on
+// three_blocks' MINRES loadings with bentlerQ, from 40 random starts that all
+// reached the same minimum (f = 5.669e-5), spread by 4.7e-3 in the loadings
+// and 6.0e-3 in Phi, the gap our solution showed against psych's; Phi moves
+// more than the loadings because the criterion sees the rotation only through
+// them. 1e-2 covers that with a 1.7x margin and stays below the 0.02 that
+// EFAtools and Grieder & Steiner (2022) treat as a practically small
+// difference. Precision is not given up: the rotation-invariant quantities
+// below are compared at factorParityTol.
+const factorRotationTol = 1e-2
+
+// scoreInvariantTol compares W·L', the score weights times the loadings,
+// which a rotation leaves unchanged for regression and Bartlett scores
+// (W = R⁻¹S and U⁻²L(L'U⁻²L)⁻¹ respectively). Measured on 2026-09-17 over
+// every combination whose L·Phi·L' agreed with psych's to 2e-5, it differed
+// by at most 4.5e-5 (narrow_plus_group with ML): the extraction's own 6e-6
+// multiplied through R⁻¹, not the rotation.
+const scoreInvariantTol = 1e-4
 
 func requireFactorAnalysisRTools(t *testing.T) {
 	t.Helper()
@@ -82,9 +121,9 @@ func requireFactorAnalysisRTools(t *testing.T) {
 	// Deliberately NOT forced on by reftest.Strict. Strict mode promotes an
 	// opt-in whose reason was "the tool is usually absent"; this flag's reason
 	// is different and documented at factorParityTol — the comparison is known
-	// to fail ~595 sub-tests on three adversarial datasets, at differences
-	// traced to gonum's LAPACK port differing from R's by 1 ULP and amplified
-	// by ill-conditioning. Those are mathematically equivalent solutions, not
+	// to fail 1,720 of 52,119 leaves, on Promax, extraction drift on
+	// near-collinear data, anderson-rubin scoring and rotations that run out
+	// of iterations. Those are mathematically equivalent solutions, not
 	// defects. Forcing this on would make the verification job permanently red
 	// over a known and accepted difference.
 	//
@@ -631,7 +670,7 @@ func rotationCriterion(t *testing.T, rotation stats.FactorRotationMethod, L [][]
 // with both values logged; one above R's fails naming both. psych runs twenty
 // unseeded random starts and picks by hyperplane count, so on a criterion
 // with several minima which one it reports is not something to reproduce.
-func assertFactorAnalysisMatchesR(t *testing.T, got *stats.FactorModel, rb crossLangBaseline, rotation stats.FactorRotationMethod, tol float64) {
+func assertFactorAnalysisMatchesR(t *testing.T, got *stats.FactorModel, rb crossLangBaseline, rotation stats.FactorRotationMethod, scoring stats.FactorScoreMethod, tol float64) {
 	t.Helper()
 	runField(t, "count_used", func(t *testing.T) {
 		if got.CountUsed <= 0 {
@@ -685,25 +724,71 @@ func assertFactorAnalysisMatchesR(t *testing.T, got *stats.FactorModel, rb cross
 	}
 	alignedL := al.columns(gotL)
 
+	// A solution of a flat rotation criterion is pinned only up to where along
+	// the minimum it stopped, and psych picks among unseeded starts, so the
+	// factor-frame fields alone cannot hold the comparison to 2e-5. What a
+	// rotation leaves unchanged can: L·Phi·L' and S·L' are the common part of
+	// the fitted model at any point of any minimum, and W·L' is too for
+	// regression and Bartlett scores. They are compared for every rotation
+	// and whatever the verdict below, including a different minimum. Measured
+	// on 2026-09-17 over the 125 combinations whose Phi, structure or scores
+	// differed from psych's by more than 2e-5, L·Phi·L' and S·L' agreed to
+	// 6.2e-6.
+	gotPhi := phiOrIdentity(dataTableMatrix(got.Phi), len(rL[0]))
+	rPhiRaw, _ := optionalBaselineMatrix(rb, "phi")
+	rPhi := phiOrIdentity(rPhiRaw, len(rL[0]))
+	gotS := dataTableMatrix(got.Structure)
+	rS := baselineFloatMatrix(t, rb, "structure")
+	runField(t, "model_reproduction", func(t *testing.T) {
+		want := mulGrid(mulGrid(rL, rPhi), transposeGrid(rL))
+		assertMatrixCloseToBoth(t, "L·Phi·L'", mulGrid(mulGrid(gotL, gotPhi), transposeGrid(gotL)), want, want, tol)
+	})
+	runField(t, "structure_reproduction", func(t *testing.T) {
+		want := mulGrid(rS, transposeGrid(rL))
+		assertMatrixCloseToBoth(t, "S·L'", mulGrid(gotS, transposeGrid(gotL)), want, want, tol)
+	})
+	if (scoring == stats.FactorScoreRegression || scoring == stats.FactorScoreBartlett) && got.ScoreCoefficients != nil && rb["score_coefficients"] != nil {
+		runField(t, "score_weights_reproduction", func(t *testing.T) {
+			want := mulGrid(baselineFloatMatrix(t, rb, "score_coefficients"), transposeGrid(rL))
+			assertMatrixCloseToBoth(t, "W·L'", mulGrid(dataTableMatrix(got.ScoreCoefficients), transposeGrid(gotL)), want, want, scoreInvariantTol)
+		})
+	}
+	// The structure has to come from the same rotation as the loadings and
+	// Phi; a frame error that the comparison with psych could absorb would
+	// show here first.
+	runField(t, "structure_is_loadings_times_phi", func(t *testing.T) {
+		if d := maxAbsGrid(gotS, mulGrid(gotL, gotPhi)); d > 1e-10 {
+			t.Errorf("structure differs from loadings times Phi by %.3e", d)
+		}
+	})
+
 	frameTol := tol
-	if gpaCriterionRotations[rotation] && maxAbsGrid(alignedL, rL) > tol {
-		// Two solutions of the same criterion. Within a relative 1e-4 of
-		// each other they are the same minimum: the rotated loadings are
-		// then determined only up to the criterion's curvature there, and
-		// the factor-frame fields are compared at factorRotationTol.
-		// Beyond that they are different minima, and the lower criterion
-		// is the better answer.
+	if gpaCriterionRotations[rotation] {
+		// The loadings decide whether the two are the same solution: two
+		// minima can share a criterion value to six digits and still differ
+		// (Nguyen & Waller 2023, supplement Table S17). The criterion only
+		// has to be no worse than psych's, and a different solution passes
+		// only when its criterion is lower.
 		fGo, fR := rotationCriterion(t, rotation, alignedL), rotationCriterion(t, rotation, rL)
-		switch d, sameMinimum := fGo-fR, 1e-8+1e-4*math.Abs(fR); {
-		case math.Abs(d) <= sameMinimum:
+		margin := 1e-8 + 1e-4*math.Abs(fR)
+		dL := maxAbsGrid(alignedL, rL)
+		switch {
+		case dL <= factorRotationTol && fGo <= fR+margin:
 			frameTol = factorRotationTol
-			t.Logf("%s: the same minimum as R's, criterion go=%.9g r=%.9g; loadings differ by %.3e, compared at %.0e", rotation, fGo, fR, maxAbsGrid(alignedL, rL), frameTol)
-		case d < 0:
-			t.Logf("%s: a different minimum from R's, and a lower one, criterion go=%.9g r=%.9g (max|dL| = %.3e); rotation-dependent fields not compared", rotation, fGo, fR, maxAbsGrid(alignedL, rL))
+			if dL > tol {
+				t.Logf("%s: the same solution as R's, criterion go=%.9g r=%.9g; loadings differ by %.3e, frame fields compared at %.0e", rotation, fGo, fR, dL, frameTol)
+			}
+		case dL <= factorRotationTol:
+			runField(t, "loadings", func(t *testing.T) {
+				t.Errorf("%s: the same solution as R's with a worse criterion, go=%.9g r=%.9g (max|dL| = %.3e)", rotation, fGo, fR, dL)
+			})
+			return
+		case fGo < fR-margin:
+			t.Logf("%s: a different minimum from R's, and a lower one, criterion go=%.9g r=%.9g (max|dL| = %.3e); frame fields not compared", rotation, fGo, fR, dL)
 			return
 		default:
 			runField(t, "loadings", func(t *testing.T) {
-				t.Errorf("%s: a worse minimum than R's, criterion go=%.9g r=%.9g (max|dL| = %.3e)", rotation, fGo, fR, maxAbsGrid(alignedL, rL))
+				t.Errorf("%s: a different solution from R's without a lower criterion, go=%.9g r=%.9g (max|dL| = %.3e)", rotation, fGo, fR, dL)
 			})
 			return
 		}
@@ -927,6 +1012,79 @@ func cumulative(v []float64) []float64 {
 	return out
 }
 
+// The parity comparison keeps its strictness through L·Phi·L' and S·L' when
+// it compares the factor-frame fields loosely, so both have to stay put when
+// only the rotation, the factor order or the signs change, and move when the
+// frame is inconsistent. Checked here without R.
+func TestFactorInvariantsSeparateFrameErrorsFromRotation(t *testing.T) {
+	A := [][]float64{{0.8, 0.1}, {0.7, 0.2}, {0.1, 0.9}, {0.2, 0.6}}
+	model := mulGrid(A, transposeGrid(A))
+
+	// An oblique rotation with unit columns: L = A(T')⁻¹, Phi = T'T, S = AT.
+	T := [][]float64{{1, 0.6}, {0, 0.8}}
+	tInvT := [][]float64{{1, 0}, {-0.75, 1.25}} // (T')⁻¹
+	L := mulGrid(A, tInvT)
+	Phi := mulGrid(transposeGrid(T), T)
+	S := mulGrid(A, T)
+	invariants := func(L, Phi, S [][]float64) (float64, float64) {
+		return maxAbsGrid(mulGrid(mulGrid(L, Phi), transposeGrid(L)), model), maxAbsGrid(mulGrid(S, transposeGrid(L)), model)
+	}
+	if lpl, sl := invariants(L, Phi, S); lpl > 1e-15 || sl > 1e-15 {
+		t.Fatalf("an oblique rotation moved the invariants: L·Phi·L' by %.3e, S·L' by %.3e", lpl, sl)
+	}
+
+	// The same solution with the factors swapped and one sign flipped.
+	swap := func(m [][]float64) [][]float64 {
+		out := make([][]float64, len(m))
+		for i := range m {
+			out[i] = []float64{-m[i][1], m[i][0]}
+		}
+		return out
+	}
+	PhiSwapped := [][]float64{{Phi[1][1], -Phi[1][0]}, {-Phi[0][1], Phi[0][0]}}
+	if lpl, sl := invariants(swap(L), PhiSwapped, swap(S)); lpl > 1e-15 || sl > 1e-15 {
+		t.Errorf("reordering and re-signing the factors moved the invariants: %.3e, %.3e", lpl, sl)
+	}
+
+	// Frame errors: Phi's correlation with the wrong sign, and a structure
+	// that was never multiplied by Phi.
+	PhiWrongSign := [][]float64{{1, -Phi[0][1]}, {-Phi[1][0], 1}}
+	if lpl, _ := invariants(L, PhiWrongSign, S); lpl < 0.1 {
+		t.Errorf("a sign error in Phi moved L·Phi·L' by only %.3e", lpl)
+	}
+	if _, sl := invariants(L, Phi, L); sl < 0.1 {
+		t.Errorf("a structure equal to the pattern moved S·L' by only %.3e", sl)
+	}
+}
+
+func transposeGrid(m [][]float64) [][]float64 {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make([][]float64, len(m[0]))
+	for j := range out {
+		out[j] = make([]float64, len(m))
+		for i := range m {
+			out[j][i] = m[i][j]
+		}
+	}
+	return out
+}
+
+// phiOrIdentity returns phi, or the k×k identity when the solution has no
+// factor correlations (an orthogonal rotation or none).
+func phiOrIdentity(phi [][]float64, k int) [][]float64 {
+	if len(phi) != 0 {
+		return phi
+	}
+	out := make([][]float64, k)
+	for i := range out {
+		out[i] = make([]float64, k)
+		out[i][i] = 1
+	}
+	return out
+}
+
 func maxAbsGrid(a, b [][]float64) float64 {
 	if len(a) != len(b) {
 		return math.Inf(1)
@@ -1022,7 +1180,7 @@ func TestCrossLangFactorAnalysisExtractions(t *testing.T) {
 			rb := runRBaseline(t, "factor_analysis", map[string]any{
 				"rows": rows, "extraction": string(extraction), "rotation": "oblimin", "scoring": "regression", "nfactors": 2,
 			})
-			assertFactorAnalysisMatchesR(t, got, rb, stats.FactorRotationOblimin, factorParityTol)
+			assertFactorAnalysisMatchesR(t, got, rb, stats.FactorRotationOblimin, stats.FactorScoreRegression, factorParityTol)
 		})
 	}
 }
@@ -1053,7 +1211,7 @@ func TestCrossLangFactorAnalysisRotations(t *testing.T) {
 			rb := runRBaseline(t, "factor_analysis", map[string]any{
 				"rows": rows, "extraction": "minres", "rotation": string(rotation), "scoring": "none", "nfactors": 2,
 			})
-			assertFactorAnalysisMatchesR(t, got, rb, rotation, factorParityTol)
+			assertFactorAnalysisMatchesR(t, got, rb, rotation, stats.FactorScoreNone, factorParityTol)
 		})
 	}
 }
@@ -1077,7 +1235,7 @@ func TestCrossLangFactorAnalysisScoring(t *testing.T) {
 			rb := runRBaseline(t, "factor_analysis", map[string]any{
 				"rows": rows, "extraction": "minres", "rotation": "oblimin", "scoring": string(scoring), "nfactors": 2,
 			})
-			assertFactorAnalysisMatchesR(t, got, rb, stats.FactorRotationOblimin, factorParityTol)
+			assertFactorAnalysisMatchesR(t, got, rb, stats.FactorRotationOblimin, scoring, factorParityTol)
 		})
 	}
 }
@@ -1124,7 +1282,7 @@ func TestCrossLangFactorAnalysisAllModeCombinations(t *testing.T) {
 						rb := runRBaseline(t, "factor_analysis", map[string]any{
 							"rows": ds.rows, "extraction": string(extraction), "rotation": string(rotation), "scoring": string(scoring), "nfactors": ds.nFactors,
 						})
-						assertFactorAnalysisMatchesR(t, got, rb, rotation, factorParityTol)
+						assertFactorAnalysisMatchesR(t, got, rb, rotation, scoring, factorParityTol)
 					})
 				}
 			}
@@ -1176,7 +1334,7 @@ func TestCrossLangFactorAnalysisRepresentativeDatasets(t *testing.T) {
 			rb := runRBaseline(t, "factor_analysis", map[string]any{
 				"rows": tc.dataset.rows, "extraction": string(tc.extraction), "rotation": string(tc.rotation), "scoring": string(tc.scoring), "nfactors": tc.dataset.nFactors,
 			})
-			assertFactorAnalysisMatchesR(t, got, rb, tc.rotation, factorParityTol)
+			assertFactorAnalysisMatchesR(t, got, rb, tc.rotation, tc.scoring, factorParityTol)
 		})
 	}
 }
@@ -1221,7 +1379,7 @@ func TestCrossLangFactorAnalysisAdversarialDatasets(t *testing.T) {
 						rb := runRBaseline(t, "factor_analysis", map[string]any{
 							"rows": ds.rows, "extraction": string(extraction), "rotation": string(rotation), "scoring": string(scoring), "nfactors": ds.nFactors,
 						})
-						assertFactorAnalysisMatchesR(t, got, rb, rotation, factorParityTol)
+						assertFactorAnalysisMatchesR(t, got, rb, rotation, scoring, factorParityTol)
 					})
 				}
 			}
