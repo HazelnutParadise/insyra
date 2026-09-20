@@ -34,6 +34,7 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 	}
 
 	f := excelize.NewFile()
+	defer func() { _ = f.Close() }()
 	failedFiles := 0
 
 	for idx, csvFile := range csvFiles {
