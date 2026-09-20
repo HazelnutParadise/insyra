@@ -66,6 +66,8 @@ The implementation has no code blocker. Acceptance still needs a multi-GPU host 
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
+The `quant` portfolio comparison against cvxpy now runs in the `Reference Verification` workflow: it installs cvxpy and runs `TestPortfolioAgreesWithCVXPY` with strict mode on, so the comparison can no longer skip unseen.
+
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
 
