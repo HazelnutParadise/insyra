@@ -1,9 +1,12 @@
 package stats_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -971,6 +974,33 @@ func assertOptionalMatrixCloseToR(t *testing.T, label string, got [][]float64, r
 	}
 	want := baselineFloatMatrix(t, rb, key)
 	assertMatrixCloseToBoth(t, label, got, want, want, tol)
+}
+
+// psych::fa rotates from twenty starting points, nineteen of them drawn from
+// R's random number generator, so an unseeded baseline is a different
+// reference in every session: run three times on this payload, Phi differed
+// by up to 5.3e-5 while the loadings agreed to 3.5e-6, more than the 2e-5 the
+// suite compares at. The script is run directly, twice, so the cache cannot
+// hide it.
+func TestFactorAnalysisBaselineIsReproducible(t *testing.T) {
+	requireFactorAnalysisRTools(t)
+	payload, err := json.Marshal(map[string]any{
+		"rows": factorAnalysisRowsAny(), "extraction": "ml", "rotation": "oblimin", "scoring": "regression", "nfactors": 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join("testdata", "crosslang_baseline.R")
+	run := func() []byte {
+		out, err := exec.Command("Rscript", script, "factor_analysis", string(payload)).Output()
+		if err != nil {
+			t.Fatalf("baseline script failed: %v", err)
+		}
+		return out
+	}
+	if first, second := run(), run(); !bytes.Equal(first, second) {
+		t.Errorf("the same payload produced two different baselines:\n%s\n%s", first, second)
+	}
 }
 
 func TestCrossLangFactorAnalysisExtractions(t *testing.T) {
