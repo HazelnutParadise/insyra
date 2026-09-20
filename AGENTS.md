@@ -254,6 +254,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-20] — `TestSequentialFitMNISTConvergence` still pins numbers recorded on one machine
+- **Where**: [nn/fit_mnist_test.go](nn/fit_mnist_test.go), the mean-loss and accuracy assertions
+- **What**: Fit's sugar-changes-nothing proof compares against the transcribed `0.347310`, `0.165883` and `0.9547` instead of against the hand-written loop it claims to reproduce. Its sibling `TestSequentialMNISTConvergence` failed exactly that way on `ubuntu-latest` on 2026-09-20 — `0.163855` recorded on arm64 against `0.163840` measured on amd64, while the two code paths still agreed with each other — and now runs the hand loop in the same process (`mnist-proof-compares-runs`). Fit's numbers happen to hold on both platforms measured so far, so nothing is red today.
+- **Suggestion**: the same treatment. Run the documented hand loop inside the test and compare the two curves, keeping only bounds any platform meets. It costs one more MNIST run, about 30 seconds in CI. Worth doing the next time `nn`'s training path is touched, or sooner if a third platform disagrees.
+- **Status**: pending
+
 ### [2026-09-20] — `oblimin` ignores its starting point, so `Restarts` costs it N identical runs
 - **Where**: `stats/internal/fa/psych_faRotations.go`, the `"oblimin"` arm of the switch in `FaRotations`
 - **What**: every other method rotates from the start it was handed; oblimin builds its own identity matrix and rotates from that, ignoring the start entirely. The comment says the identity start is deliberate, "better SPSS compatibility than random starts". Measured on 2026-09-20 after `orthogonal-rotation-starts` landed here: over the 20 datasets of `stats/factor_analysis_test.go` and all four extractions, oblimin returns the `Restarts: 1` answer in all 240 combinations at `Restarts` 2, 5 and 20, while every other GPA method differs from its single-start answer in more than half of them. On the `noisyStructure` fixture, best of 5, `Restarts: 20` takes 74.6 ms to return the 2.6 ms answer. It matters more now than before: the starts oblimin is refusing used to include two oblique matrices and are now all legitimate.
