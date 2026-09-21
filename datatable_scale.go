@@ -10,7 +10,7 @@ import (
 // column. Only the fields relevant to the fitted kind are populated; the rest
 // stay at their zero value.
 type ScalerParams struct {
-	Column string
+	Column any
 	Kind   string
 	// Replacement is populated by fitted imputers. It is nil for scalers.
 	Replacement any
@@ -40,9 +40,9 @@ type ScalerParams struct {
 // parameters, which is the correct way to scale a test set with statistics
 // learned from the training set (no data leakage).
 type Scaler interface {
-	Fit(dt *DataTable, cols ...string) error
+	Fit(dt *DataTable, cols ...any) error
 	Transform(dt *DataTable) (*DataTable, error)
-	FitTransform(dt *DataTable, cols ...string) (*DataTable, error)
+	FitTransform(dt *DataTable, cols ...any) (*DataTable, error)
 	InverseTransform(dt *DataTable) (*DataTable, error)
 	Params() map[string]ScalerParams
 	Kind() string
@@ -61,7 +61,7 @@ type DataListScaler interface {
 // x = (y-offset)/gain*scale + center. Degenerate inputs set scale = 1 so the
 // transform never divides by zero and never panics.
 type scalerColumn struct {
-	ref    string
+	ref    any
 	name   string
 	params ScalerParams
 
@@ -115,7 +115,7 @@ func NewRobustScaler() *RobustScaler { return &RobustScaler{scaler{kind: "robust
 func NewMaxAbsScaler() *MaxAbsScaler { return &MaxAbsScaler{scaler{kind: "maxabs"}} }
 
 // StandardScale fits a StandardScaler on cols and returns the scaled table.
-func (dt *DataTable) StandardScale(cols ...string) (*DataTable, *StandardScaler, error) {
+func (dt *DataTable) StandardScale(cols ...any) (*DataTable, *StandardScaler, error) {
 	sc := NewStandardScaler()
 	out, err := sc.FitTransform(dt, cols...)
 	if err != nil {
@@ -125,7 +125,7 @@ func (dt *DataTable) StandardScale(cols ...string) (*DataTable, *StandardScaler,
 }
 
 // MinMaxScale fits a MinMaxScaler on cols and returns the scaled table.
-func (dt *DataTable) MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error) {
+func (dt *DataTable) MinMaxScale(featureMin, featureMax float64, cols ...any) (*DataTable, *MinMaxScaler, error) {
 	sc := NewMinMaxScaler(featureMin, featureMax)
 	out, err := sc.FitTransform(dt, cols...)
 	if err != nil {
@@ -135,7 +135,7 @@ func (dt *DataTable) MinMaxScale(featureMin, featureMax float64, cols ...string)
 }
 
 // RobustScale fits a RobustScaler on cols and returns the scaled table.
-func (dt *DataTable) RobustScale(cols ...string) (*DataTable, *RobustScaler, error) {
+func (dt *DataTable) RobustScale(cols ...any) (*DataTable, *RobustScaler, error) {
 	sc := NewRobustScaler()
 	out, err := sc.FitTransform(dt, cols...)
 	if err != nil {
@@ -145,7 +145,7 @@ func (dt *DataTable) RobustScale(cols ...string) (*DataTable, *RobustScaler, err
 }
 
 // MaxAbsScale fits a MaxAbsScaler on cols and returns the scaled table.
-func (dt *DataTable) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error) {
+func (dt *DataTable) MaxAbsScale(cols ...any) (*DataTable, *MaxAbsScaler, error) {
 	sc := NewMaxAbsScaler()
 	out, err := sc.FitTransform(dt, cols...)
 	if err != nil {
@@ -169,7 +169,7 @@ func (s *scaler) Params() map[string]ScalerParams {
 // Fit learns scaling parameters from the given columns without modifying dt.
 // cols is required; pass at least one column reference (name or Excel-style
 // index such as "A").
-func (s *scaler) Fit(dt *DataTable, cols ...string) error {
+func (s *scaler) Fit(dt *DataTable, cols ...any) error {
 	if dt == nil {
 		return fmt.Errorf("%sScaler.Fit: table is nil", s.kind)
 	}
@@ -183,11 +183,11 @@ func (s *scaler) Fit(dt *DataTable, cols ...string) error {
 		for _, ref := range cols {
 			idx, label, ok := resolveEncodingColumn(t, ref)
 			if !ok {
-				err = fmt.Errorf("%sScaler.Fit: column %q not found", s.kind, ref)
+				err = fmt.Errorf("%sScaler.Fit: column %v not found", s.kind, ref)
 				return
 			}
 			if _, dup := seen[idx]; dup {
-				err = fmt.Errorf("%sScaler.Fit: column %q listed more than once", s.kind, ref)
+				err = fmt.Errorf("%sScaler.Fit: column %v listed more than once", s.kind, ref)
 				return
 			}
 			seen[idx] = struct{}{}
@@ -201,7 +201,13 @@ func (s *scaler) Fit(dt *DataTable, cols ...string) error {
 			if err != nil {
 				return
 			}
-			fitted = append(fitted, s.computeColumn(label, name, vals))
+			// The fitted column is remembered the way it can be found again:
+			// by name when it has one, by position when it does not.
+			var fittedRef any = idx
+			if t.columns[idx].name != "" {
+				fittedRef = Name(t.columns[idx].name)
+			}
+			fitted = append(fitted, s.computeColumn(fittedRef, name, vals))
 		}
 	})
 	if err != nil {
@@ -213,7 +219,7 @@ func (s *scaler) Fit(dt *DataTable, cols ...string) error {
 }
 
 // FitTransform fits on cols and immediately returns the scaled table.
-func (s *scaler) FitTransform(dt *DataTable, cols ...string) (*DataTable, error) {
+func (s *scaler) FitTransform(dt *DataTable, cols ...any) (*DataTable, error) {
 	if err := s.Fit(dt, cols...); err != nil {
 		return nil, err
 	}
@@ -255,7 +261,7 @@ func (s *scaler) apply(dt *DataTable, inverse bool) (*DataTable, error) {
 				if inverse {
 					continue
 				}
-				err = fmt.Errorf("%sScaler.%s: fitted column %q not found", s.kind, op, s.cols[i].ref)
+				err = fmt.Errorf("%sScaler.%s: fitted column %v not found", s.kind, op, s.cols[i].ref)
 				return
 			}
 			colByIndex[idx] = &s.cols[i]
@@ -309,7 +315,7 @@ func (s *scaler) applyColumn(c *scalerColumn, name string, data []any, inverse b
 
 // computeColumn turns a column's numeric values into fitted parameters and the
 // affine coefficients used by apply. Degenerate spreads set scale = 1.
-func (s *scaler) computeColumn(ref, name string, vals []float64) scalerColumn {
+func (s *scaler) computeColumn(ref any, name string, vals []float64) scalerColumn {
 	c := scalerColumn{ref: ref, name: name}
 	c.params.Column = name
 	c.params.Kind = s.kind
@@ -369,7 +375,7 @@ func (s *scaler) FitDataList(dl *DataList) error {
 		if err != nil {
 			return
 		}
-		fitted = s.computeColumn(d.name, d.name, vals)
+		fitted = s.computeColumn(Name(d.name), d.name, vals)
 	})
 	if err != nil {
 		return err

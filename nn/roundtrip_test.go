@@ -127,7 +127,7 @@ func TestMLPipelineExportReadsBackAndReproducesItself(t *testing.T) {
 	pipeline := ml.NewPipeline([]ml.Step{
 		{Name: "scale", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
 			scaler := insyra.NewStandardScaler()
-			if err := scaler.Fit(x, "x1", "x2"); err != nil {
+			if err := scaler.Fit(x, insyra.Name("x1"), insyra.Name("x2")); err != nil {
 				return nil, err
 			}
 			return scaler, nil

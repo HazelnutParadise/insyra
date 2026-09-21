@@ -110,7 +110,7 @@ Sort by net sales to validate engineered results quickly.
 
 ```go
 dt.SortBy(insyra.DataTableSortConfig{
-	ColumnName: "NetSales",
+	Col: insyra.Name("NetSales"),
 	Descending: true,
 })
 dt.ShowRange(5)
@@ -175,7 +175,7 @@ func main() {
 	dt.AddColUsingCCL("NetSales", "['GrossSales'] * (1 - ['DiscountRate'])")
 	dt.AddColUsingCCL("OrderTag", "IF(['NetSales'] > 1000, 'HighValue', 'Standard')")
 
-	dt.SortBy(insyra.DataTableSortConfig{ColumnName: "NetSales", Descending: true})
+	dt.SortBy(insyra.DataTableSortConfig{Col: insyra.Name("NetSales"), Descending: true})
 	dt.ShowRange(5)
 
 	if err := dt.ToCSV("dq_clean.csv", false, true, false); err != nil {

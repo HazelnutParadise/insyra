@@ -16,7 +16,7 @@ func TestSimpleImputerUsesTrainingReplacementOnNewTable(t *testing.T) {
 	)
 
 	imputer := NewSimpleImputer(ImputeMean)
-	if err := imputer.Fit(training, "value"); err != nil {
+	if err := imputer.Fit(training, Name("value")); err != nil {
 		t.Fatal(err)
 	}
 	got, err := imputer.Transform(validation)
@@ -44,7 +44,7 @@ func TestSimpleImputerFitTransformMatchesInPlaceMethods(t *testing.T) {
 			want := input.Clone()
 			test.inPlace(want)
 
-			got, err := NewSimpleImputer(test.strategy).FitTransform(input, "value")
+			got, err := NewSimpleImputer(test.strategy).FitTransform(input, Name("value"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,7 +63,7 @@ func TestSimpleImputerParamsAndStrategies(t *testing.T) {
 	)
 
 	imputer := NewSimpleImputer(ImputeMean)
-	if err := imputer.Fit(training, "mean"); err != nil {
+	if err := imputer.Fit(training, Name("mean")); err != nil {
 		t.Fatal(err)
 	}
 	params := imputer.Params()
@@ -76,7 +76,7 @@ func TestSimpleImputerParamsAndStrategies(t *testing.T) {
 
 	constant := NewSimpleImputer(ImputeConstant, 7.0)
 	constantInput := NewDataTable(NewDataList(10.0, nil, 20.0).SetName("constant"))
-	if err := constant.Fit(constantInput, "constant"); err != nil {
+	if err := constant.Fit(constantInput, Name("constant")); err != nil {
 		t.Fatal(err)
 	}
 	if got := constant.Params()["constant"].Replacement; got != 7.0 {
@@ -93,13 +93,13 @@ func TestSimpleImputerParamsAndStrategies(t *testing.T) {
 
 func TestSimpleImputerErrorsAndPassThrough(t *testing.T) {
 	allMissing := NewDataTable(NewDataList(nil, math.NaN()).SetName("empty"))
-	if err := NewSimpleImputer(ImputeMedian).Fit(allMissing, "empty"); err == nil || !strings.Contains(err.Error(), `column "empty"`) {
+	if err := NewSimpleImputer(ImputeMedian).Fit(allMissing, Name("empty")); err == nil || !strings.Contains(err.Error(), `column "empty"`) {
 		t.Fatalf("all-missing error = %v", err)
 	}
 
 	text := NewDataTable(NewDataList("red", nil, "blue").SetName("color"))
 	imputer := NewSimpleImputer(ImputeMean)
-	if err := imputer.Fit(text, "color"); err != nil {
+	if err := imputer.Fit(text, Name("color")); err != nil {
 		t.Fatal(err)
 	}
 	if !imputer.Params()["color"].PassThrough {

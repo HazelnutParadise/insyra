@@ -839,10 +839,10 @@ dt := insyra.NewDataTable(
     insyra.NewDataList(1, 2, 3, 4, 5).SetName("qty"),
 )
 
-report := dt.GroupBy("region").Aggregate(
-    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum,  As: "total_rev"},
-    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpMean, As: "avg_rev"},
-    insyra.AggregateConfig{SourceCol: "qty",     Op: insyra.OpSum,  As: "total_qty"},
+report := dt.GroupBy(insyra.Name("region")).Aggregate(
+    insyra.AggregateConfig{SourceCol: insyra.Name("revenue"), Op: insyra.OpSum,  As: "total_rev"},
+    insyra.AggregateConfig{SourceCol: insyra.Name("revenue"), Op: insyra.OpMean, As: "avg_rev"},
+    insyra.AggregateConfig{SourceCol: insyra.Name("qty"),     Op: insyra.OpSum,  As: "total_qty"},
 )
 // report columns: region, total_rev, avg_rev, total_qty
 // report rows:    east 300 150 3 / west 125 62.5 7 / south 300 300 5
@@ -851,10 +851,10 @@ report := dt.GroupBy("region").Aggregate(
 **Example (multiple keys, custom aggregate):**
 
 ```go
-weighted := dt.GroupBy("region", "product").Aggregate(
-    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum},  // auto-named "revenue_sum"
+weighted := dt.GroupBy(insyra.Name("region"), insyra.Name("product")).Aggregate(
+    insyra.AggregateConfig{SourceCol: insyra.Name("revenue"), Op: insyra.OpSum},  // auto-named "revenue_sum"
     insyra.AggregateConfig{
-        SourceCol: "price",
+        SourceCol: insyra.Name("price"),
         As:        "wprice",
         Op:        insyra.OpCustom,
         Custom: func(group *insyra.DataList) any {
@@ -872,8 +872,8 @@ weighted := dt.GroupBy("region", "product").Aggregate(
 top := dt.
     FilterRows(func(_, _ string, x any) bool { return true /* ... */ }).
     GroupBy("region").
-    Aggregate(insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum, As: "total"}).
-    SortBy(insyra.DataTableSortConfig{ColumnName: "total", Descending: true})
+    Aggregate(insyra.AggregateConfig{SourceCol: insyra.Name("revenue"), Op: insyra.OpSum, As: "total"}).
+    SortBy(insyra.DataTableSortConfig{Col: insyra.Name("total"), Descending: true})
 ```
 
 ### Pivot / Unpivot (long ↔ wide reshape)
@@ -916,9 +916,9 @@ func (dt *DataTable) Unpivot(cfg UnpivotConfig) (*DataTable, error)
 //   APAC   | B       | 20
 //   EMEA   | A       | 30
 wide, err := dt.Pivot(insyra.PivotConfig{
-    Index:    []string{"region"},
-    Columns:  "product",
-    Values:   "sales",
+    Index:    []any{insyra.Name("region")},
+    Columns:  insyra.Name("product"),
+    Values:   insyra.Name("sales"),
     AggFunc:  "sum",  // optional; required if (region, product) has duplicates
     FillNA:   0,
     SortCols: true,
@@ -936,8 +936,8 @@ wide, err := dt.Pivot(insyra.PivotConfig{
 //   id | Q1 | Q2 | Q3
 //   1  | 5  | 4  | 3
 long, err := dt.Unpivot(insyra.UnpivotConfig{
-    IDVars:    []string{"id"},
-    ValueVars: []string{"Q1", "Q2", "Q3"},
+    IDVars:    []any{insyra.Name("id")},
+    ValueVars: []any{insyra.Name("Q1"), insyra.Name("Q2"), insyra.Name("Q3")},
     VarName:   "question",
     ValueName: "score",
 })
@@ -1308,13 +1308,13 @@ The scalar transforms (`ShiftCol` / `DiffCol` / `PctChangeCol` / `Cum*Col`) retu
 // Date | Price
 dt := insyra.NewDataTable(/* date, price */)
 
-prev   := dt.ShiftCol("price", 1)                                            // lag-1
-ret    := dt.PctChangeCol("price", 1)                                        // simple return
-cum    := dt.CumSumCol("price")                                              // running total
-hwm    := dt.CumMaxCol("price")                                              // historical high
-ma7    := dt.RollingCol("price", insyra.RollingOptions{Window: 7}).Mean()    // 7-day MA
-ewmean := dt.ExpandingCol("price", 1).Mean()                                 // expanding mean
-ewm7   := dt.EWMCol("price", insyra.EWMOptions{Span: 7, Adjust: true}).Mean() // EWM mean
+prev   := dt.ShiftCol(insyra.Name("price"), 1)                                            // lag-1
+ret    := dt.PctChangeCol(insyra.Name("price"), 1)                                        // simple return
+cum    := dt.CumSumCol(insyra.Name("price"))                                              // running total
+hwm    := dt.CumMaxCol(insyra.Name("price"))                                              // historical high
+ma7    := dt.RollingCol(insyra.Name("price"), insyra.RollingOptions{Window: 7}).Mean()    // 7-day MA
+ewmean := dt.ExpandingCol(insyra.Name("price"), 1).Mean()                                 // expanding mean
+ewm7   := dt.EWMCol(insyra.Name("price"), insyra.EWMOptions{Span: 7, Adjust: true}).Mean() // EWM mean
 
 // Attach results back to the table.
 ma7.SetName("ma7")
@@ -1351,12 +1351,12 @@ does not affect the result. `ResampleAgg` reuses `AggregateOp`; an empty `As`
 keeps the source column name.
 
 ```go
-monthly, err := dt.Resample("Date", insyra.ResampleMonthly,
-    insyra.ResampleAgg{Col: "Open", Op: insyra.OpFirst},
-    insyra.ResampleAgg{Col: "High", Op: insyra.OpMax},
-    insyra.ResampleAgg{Col: "Low", Op: insyra.OpMin},
-    insyra.ResampleAgg{Col: "Close", Op: insyra.OpLast, As: "MonthClose"},
-    insyra.ResampleAgg{Col: "Volume", Op: insyra.OpSum},
+monthly, err := dt.Resample(insyra.Name("Date"), insyra.ResampleMonthly,
+    insyra.ResampleAgg{Col: insyra.Name("Open"), Op: insyra.OpFirst},
+    insyra.ResampleAgg{Col: insyra.Name("High"), Op: insyra.OpMax},
+    insyra.ResampleAgg{Col: insyra.Name("Low"), Op: insyra.OpMin},
+    insyra.ResampleAgg{Col: insyra.Name("Close"), Op: insyra.OpLast, As: "MonthClose"},
+    insyra.ResampleAgg{Col: insyra.Name("Volume"), Op: insyra.OpSum},
 )
 if err != nil {
     log.Fatal(err)
@@ -1393,8 +1393,8 @@ leaves everything else a string, so a CSV date column needs this step before
 ```go
 dt, _ := insyra.ReadCSV_File("bars.csv", false, true)
 dt.ParseDatesCols([]string{"Date"})
-monthly, err := dt.Resample("Date", insyra.ResampleMonthly,
-    insyra.ResampleAgg{Col: "Close", Op: insyra.OpLast},
+monthly, err := dt.Resample(insyra.Name("Date"), insyra.ResampleMonthly,
+    insyra.ResampleAgg{Col: insyra.Name("Close"), Op: insyra.OpLast},
 )
 ```
 
@@ -1428,12 +1428,12 @@ For `RollingCol` / `ExpandingCol`, the builder exposes the same reducers as the 
 //   B  | 2 | 110
 //   A  | 3 | 11
 //   B  | 3 | 105
-prev := dt.GroupBy("id").ShiftCol("price", 1).As("prev_price")
+prev := dt.GroupBy(insyra.Name("id")).ShiftCol(insyra.Name("price"), 1).As("prev_price")
 // Per group, lag-1: A -> [nil, 10, 12]; B -> [nil, 100, 110]
 // Aligned to original row order: [nil, nil, 10, 100, 12, 110]
 
-ma3 := dt.GroupBy("id").RollingCol("price", insyra.RollingOptions{Window: 3}).Mean().As("ma3")
-cum := dt.GroupBy("id").CumSumCol("price").As("cum_price")
+ma3 := dt.GroupBy(insyra.Name("id")).RollingCol(insyra.Name("price"), insyra.RollingOptions{Window: 3}).Mean().As("ma3")
+cum := dt.GroupBy(insyra.Name("id")).CumSumCol(insyra.Name("price")).As("cum_price")
 
 dt.AppendCols(prev, ma3, cum)
 ```
@@ -4010,7 +4010,7 @@ desc := dt.Describe(insyra.DescribeOptions{
     Percentiles: []float64{0.1, 0.5, 0.9},
 })
 
-byRegion := dt.GroupBy("region").Describe(insyra.DescribeOptions{IncludeAll: true})
+byRegion := dt.GroupBy(insyra.Name("region")).Describe(insyra.DescribeOptions{IncludeAll: true})
 ```
 
 ### Summary
@@ -4381,7 +4381,7 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable
 - Uses stable sort to maintain relative order of equal elements
 - Each config names a column with one of `ColumnIndex`, `ColumnName` or `ColumnNumber`
 - If a config gives more than one, **index takes precedence over name, and name over number**; the sort runs and a warning names the fields that were ignored
-- A config that gives none sorts by the first column. `ColumnNumber` is 0-based and its zero value is the first column, so `DataTableSortConfig{}`, `{Descending: true}` and `{ColumnNumber: 0}` all sort by column 0
+- A config that gives none sorts by the first column. `ColumnNumber` is 0-based and its zero value is the first column, so `DataTableSortConfig{}`, `{Descending: true}` and `{Col: 0}` all sort by column 0
 - Every level is checked before any row moves: a column that is not there records the error on `SortBy` and leaves the table unchanged
 
 **Parameters:**
@@ -4409,15 +4409,15 @@ type DataTableSortConfig struct {
 
 ```go
 // Single column sort
-dt.SortBy(insyra.DataTableSortConfig{ColumnName: "Age", Descending: false})
+dt.SortBy(insyra.DataTableSortConfig{Col: insyra.Name("Age"), Descending: false})
 
 // The first column by position (an empty config selects it too)
-dt.SortBy(insyra.DataTableSortConfig{ColumnNumber: 0})
+dt.SortBy(insyra.DataTableSortConfig{Col: 0})
 
 // Multi-column sort: sort by Age ascending, then by Name descending
 dt.SortBy(
-    insyra.DataTableSortConfig{ColumnName: "Age", Descending: false},
-    insyra.DataTableSortConfig{ColumnName: "Name", Descending: true},
+    insyra.DataTableSortConfig{Col: insyra.Name("Age"), Descending: false},
+    insyra.DataTableSortConfig{Col: insyra.Name("Name"), Descending: true},
 )
 ```
 

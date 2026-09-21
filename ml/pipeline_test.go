@@ -226,13 +226,13 @@ func TestPipelineMixesRootScalersAndEncoders(t *testing.T) {
 	pipeline := ml.NewPipeline([]ml.Step{
 		{Name: "numeric scale", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
 			scaler := insyra.NewStandardScaler()
-			if err := scaler.Fit(x, "number"); err != nil {
+			if err := scaler.Fit(x, insyra.Name("number")); err != nil {
 				return nil, err
 			}
 			return scaler, nil
 		}},
 		{Name: "categorical encode", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			_, encoder, err := x.OneHotEncode(insyra.OneHotOptions{Columns: []string{"color"}, SortCategories: true})
+			_, encoder, err := x.OneHotEncode(insyra.OneHotOptions{Columns: []any{insyra.Name("color")}, SortCategories: true})
 			return encoder, err
 		}},
 	}, ml.Estimator{

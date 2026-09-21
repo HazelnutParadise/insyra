@@ -780,9 +780,9 @@ report := isr.DT.From(isr.Rows{
     {"region": "east", "revenue": 100, "qty": 1},
     {"region": "east", "revenue": 200, "qty": 2},
     {"region": "west", "revenue": 50,  "qty": 3},
-}).GroupBy("region").Aggregate(
-    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum,  As: "total_rev"},
-    insyra.AggregateConfig{SourceCol: "qty",     Op: insyra.OpMean, As: "avg_qty"},
+}).GroupBy(isr.Name("region")).Aggregate(
+    insyra.AggregateConfig{SourceCol: isr.Name("revenue"), Op: insyra.OpSum,  As: "total_rev"},
+    insyra.AggregateConfig{SourceCol: isr.Name("qty"),     Op: insyra.OpMean, As: "avg_qty"},
 )
 // report columns: region, total_rev, avg_qty
 ```
@@ -790,7 +790,7 @@ report := isr.DT.From(isr.Rows{
 **Method:**
 
 ```go
-GroupBy(keyCols ...string) *insyra.GroupedDataTable
+GroupBy(keyCols ...any) *insyra.GroupedDataTable
 ```
 
 **Description:** Splits the DataTable by the value combinations of the given key columns and returns an intermediate object whose `Aggregate`, `AggregateAll`, or `Count` methods produce a new `*insyra.DataTable`. See [DataTable.GroupBy](DataTable.md#groupby) for the full list of supported aggregate operations.
@@ -809,11 +809,11 @@ GroupBy(keyCols ...string) *insyra.GroupedDataTable
 
 ```go
 // Per-column time-series transforms on a DataTable.
-dataTable.Push(dataTable.Shift("price", 1).SetName("prev_price"))
-dataTable.Push(dataTable.PctChange("price", 1).SetName("ret"))
-dataTable.Push(dataTable.CumSum("price").SetName("cum"))
-dataTable.Push(dataTable.RollingOn("price", isr.Rolling{Window: 7}).Mean().SetName("ma7"))
-dataTable.Push(dataTable.ExpandingOn("price", 1).Mean().SetName("emean"))
+dataTable.Push(dataTable.Shift(isr.Name("price"), 1).SetName("prev_price"))
+dataTable.Push(dataTable.PctChange(isr.Name("price"), 1).SetName("ret"))
+dataTable.Push(dataTable.CumSum(isr.Name("price")).SetName("cum"))
+dataTable.Push(dataTable.RollingOn(isr.Name("price"), isr.Rolling{Window: 7}).Mean().SetName("ma7"))
+dataTable.Push(dataTable.ExpandingOn(isr.Name("price"), 1).Mean().SetName("emean"))
 ```
 
 **Methods:**

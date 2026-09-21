@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
-	"strings"
 )
 
 // NaNPolicy controls how missing (nil or NaN) source values are encoded.
@@ -48,7 +47,7 @@ const (
 
 // OneHotOptions configures DataTable one-hot encoding.
 type OneHotOptions struct {
-	Columns        []string
+	Columns        []any
 	DropFirst      bool
 	HandleNaN      NaNPolicy
 	Unknown        UnknownPolicy
@@ -60,7 +59,7 @@ type OneHotOptions struct {
 
 // LabelEncodeOptions configures DataTable label encoding.
 type LabelEncodeOptions struct {
-	Column       string
+	Column       any
 	NewColumn    string
 	SortBy       LabelSort
 	HandleNaN    NaNPolicy
@@ -70,7 +69,7 @@ type LabelEncodeOptions struct {
 
 // OrdinalEncodeOptions configures DataTable ordinal encoding.
 type OrdinalEncodeOptions struct {
-	Column       string
+	Column       any
 	Order        []any
 	NewColumn    string
 	HandleNaN    NaNPolicy
@@ -93,7 +92,7 @@ type OneHotEncoder struct {
 }
 
 type oneHotColumnState struct {
-	sourceRef     string
+	sourceRef     any
 	sourceName    string
 	sourceIndex   int
 	prefix        string
@@ -105,7 +104,7 @@ type oneHotColumnState struct {
 // LabelEncoder stores a fitted label encoding.
 type LabelEncoder struct {
 	opts        LabelEncodeOptions
-	sourceRef   string
+	sourceRef   any
 	sourceName  string
 	encodedName string
 	classes     []any
@@ -115,7 +114,7 @@ type LabelEncoder struct {
 // OrdinalEncoder stores a fitted ordinal encoding.
 type OrdinalEncoder struct {
 	opts        OrdinalEncodeOptions
-	sourceRef   string
+	sourceRef   any
 	sourceName  string
 	encodedName string
 	classes     []any
@@ -253,7 +252,7 @@ func (e *OneHotEncoder) Options() OneHotOptions {
 		return OneHotOptions{}
 	}
 	options := e.opts
-	options.Columns = append([]string(nil), options.Columns...)
+	options.Columns = append([]any(nil), options.Columns...)
 	return options
 }
 
@@ -396,7 +395,7 @@ func fitOneHotEncoder(dt *DataTable, opts OneHotOptions) (*OneHotEncoder, error)
 		for _, ref := range opts.Columns {
 			idx, label, ok := resolveEncodingColumn(t, ref)
 			if !ok {
-				err = fmt.Errorf("OneHotEncode: column %q not found", ref)
+				err = fmt.Errorf("OneHotEncode: column %v not found", ref)
 				return
 			}
 			if _, exists := seenCols[idx]; exists {
@@ -409,7 +408,7 @@ func fitOneHotEncoder(dt *DataTable, opts OneHotOptions) (*OneHotEncoder, error)
 				prefix = label
 			}
 			state := oneHotColumnState{
-				sourceRef:   label,
+				sourceRef:   any(idx),
 				sourceName:  label,
 				sourceIndex: idx,
 				prefix:      prefix,
@@ -417,7 +416,7 @@ func fitOneHotEncoder(dt *DataTable, opts OneHotOptions) (*OneHotEncoder, error)
 			}
 			if t.columns[idx].name != "" {
 				state.sourceName = t.columns[idx].name
-				state.sourceRef = t.columns[idx].name
+				state.sourceRef = Name(t.columns[idx].name)
 			}
 			if err = collectOneHotCategories(&state, t.columns[idx].data, opts); err != nil {
 				return
@@ -440,7 +439,7 @@ func fitOneHotEncoder(dt *DataTable, opts OneHotOptions) (*OneHotEncoder, error)
 }
 
 func fitLabelEncoder(dt *DataTable, opts LabelEncodeOptions) (*LabelEncoder, error) {
-	if strings.TrimSpace(opts.Column) == "" {
+	if isEmptySelector(opts.Column) {
 		return nil, fmt.Errorf("LabelEncode: Column is required")
 	}
 	enc := &LabelEncoder{opts: opts}
@@ -448,13 +447,13 @@ func fitLabelEncoder(dt *DataTable, opts LabelEncodeOptions) (*LabelEncoder, err
 	dt.AtomicDo(func(t *DataTable) {
 		idx, label, ok := resolveEncodingColumn(t, opts.Column)
 		if !ok {
-			err = fmt.Errorf("LabelEncode: column %q not found", opts.Column)
+			err = fmt.Errorf("LabelEncode: column %v not found", opts.Column)
 			return
 		}
-		enc.sourceRef = label
+		enc.sourceRef = idx
 		enc.sourceName = label
 		if t.columns[idx].name != "" {
-			enc.sourceRef = t.columns[idx].name
+			enc.sourceRef = Name(t.columns[idx].name)
 			enc.sourceName = t.columns[idx].name
 		}
 		enc.encodedName = enc.sourceName
@@ -470,7 +469,7 @@ func fitLabelEncoder(dt *DataTable, opts LabelEncodeOptions) (*LabelEncoder, err
 }
 
 func fitOrdinalEncoder(dt *DataTable, opts OrdinalEncodeOptions) (*OrdinalEncoder, error) {
-	if strings.TrimSpace(opts.Column) == "" {
+	if isEmptySelector(opts.Column) {
 		return nil, fmt.Errorf("OrdinalEncode: Column is required")
 	}
 	if len(opts.Order) == 0 {
@@ -481,13 +480,13 @@ func fitOrdinalEncoder(dt *DataTable, opts OrdinalEncodeOptions) (*OrdinalEncode
 	dt.AtomicDo(func(t *DataTable) {
 		idx, label, ok := resolveEncodingColumn(t, opts.Column)
 		if !ok {
-			err = fmt.Errorf("OrdinalEncode: column %q not found", opts.Column)
+			err = fmt.Errorf("OrdinalEncode: column %v not found", opts.Column)
 			return
 		}
-		enc.sourceRef = label
+		enc.sourceRef = idx
 		enc.sourceName = label
 		if t.columns[idx].name != "" {
-			enc.sourceRef = t.columns[idx].name
+			enc.sourceRef = Name(t.columns[idx].name)
 			enc.sourceName = t.columns[idx].name
 		}
 		enc.encodedName = enc.sourceName
@@ -618,7 +617,7 @@ func (e *OneHotEncoder) transformNotAtomic(t *DataTable) ([]*DataList, error) {
 	for i := range e.columns {
 		idx, _, ok := resolveEncodingColumn(t, e.columns[i].sourceRef)
 		if !ok {
-			return nil, fmt.Errorf("OneHotEncoder.Transform: column %q not found", e.columns[i].sourceRef)
+			return nil, fmt.Errorf("OneHotEncoder.Transform: column %v not found", e.columns[i].sourceRef)
 		}
 		stateByIndex[idx] = &e.columns[i]
 	}
@@ -726,7 +725,7 @@ func (e *OneHotEncoder) inverseTransformNotAtomic(t *DataTable) ([]*DataList, er
 		}
 		first := -1
 		for _, name := range state.outputColumns {
-			idx, _, ok := resolveEncodingColumn(t, name)
+			idx, _, ok := resolveEncodingColumn(t, Name(name))
 			if ok && (first < 0 || idx < first) {
 				first = idx
 			}
@@ -789,7 +788,7 @@ func (e *OneHotEncoder) decodeOneHotColumn(t *DataTable, state *oneHotColumnStat
 	}
 	indicatorCols := make([]*DataList, len(state.outputColumns))
 	for i, name := range state.outputColumns {
-		idx, _, ok := resolveEncodingColumn(t, name)
+		idx, _, ok := resolveEncodingColumn(t, Name(name))
 		if !ok {
 			return nil, fmt.Errorf("OneHotEncoder.InverseTransform: indicator column %q not found", name)
 		}
@@ -880,13 +879,13 @@ func (e *OrdinalEncoder) inverseOne(v any) (any, error) {
 	return e.classes[id], nil
 }
 
-func transformScalarEncoder(dt *DataTable, sourceRef, sourceName, encodedName string, hasNewColumn, keepOriginal bool, encode func(any) (any, error)) (*DataTable, error) {
+func transformScalarEncoder(dt *DataTable, sourceRef any, sourceName, encodedName string, hasNewColumn, keepOriginal bool, encode func(any) (any, error)) (*DataTable, error) {
 	out := NewDataTable()
 	var err error
 	dt.AtomicDo(func(t *DataTable) {
 		idx, _, ok := resolveEncodingColumn(t, sourceRef)
 		if !ok {
-			err = fmt.Errorf("encoder Transform: column %q not found", sourceRef)
+			err = fmt.Errorf("encoder Transform: column %v not found", sourceRef)
 			return
 		}
 		outCols := []*DataList{}
@@ -936,7 +935,7 @@ func inverseScalarEncoder(dt *DataTable, sourceName, encodedName string, hasNewC
 	out := NewDataTable()
 	var err error
 	dt.AtomicDo(func(t *DataTable) {
-		encodedIdx, _, ok := resolveEncodingColumn(t, encodedName)
+		encodedIdx, _, ok := resolveEncodingColumn(t, Name(encodedName))
 		if !ok {
 			err = fmt.Errorf("encoder InverseTransform: column %q not found", encodedName)
 			return

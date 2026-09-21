@@ -34,12 +34,12 @@ first, then Excel-style index.
 ## DataTable
 
 ```go
-monthly, err := dt.Resample("Date", insyra.ResampleMonthly,
-    insyra.ResampleAgg{Col: "Open", Op: insyra.OpFirst},
-    insyra.ResampleAgg{Col: "High", Op: insyra.OpMax},
-    insyra.ResampleAgg{Col: "Low", Op: insyra.OpMin},
-    insyra.ResampleAgg{Col: "Close", Op: insyra.OpLast},
-    insyra.ResampleAgg{Col: "Volume", Op: insyra.OpSum},
+monthly, err := dt.Resample(insyra.Name("Date"), insyra.ResampleMonthly,
+    insyra.ResampleAgg{Col: insyra.Name("Open"), Op: insyra.OpFirst},
+    insyra.ResampleAgg{Col: insyra.Name("High"), Op: insyra.OpMax},
+    insyra.ResampleAgg{Col: insyra.Name("Low"), Op: insyra.OpMin},
+    insyra.ResampleAgg{Col: insyra.Name("Close"), Op: insyra.OpLast},
+    insyra.ResampleAgg{Col: insyra.Name("Volume"), Op: insyra.OpSum},
 )
 ```
 

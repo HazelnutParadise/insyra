@@ -136,7 +136,7 @@ func TestCrossValidateRefitsPreprocessingAndReturnsFoldScores(t *testing.T) {
 	result, err := ml.CrossValidate(x, y, ml.Estimator{Name: "scaled", Fit: func(trainX *insyra.DataTable, _ *insyra.DataList) (ml.Model, error) {
 		fitCount++
 		scaler := insyra.NewStandardScaler()
-		scaled, err := scaler.FitTransform(trainX, "x")
+		scaled, err := scaler.FitTransform(trainX, insyra.Name("x"))
 		if err != nil {
 			return nil, err
 		}

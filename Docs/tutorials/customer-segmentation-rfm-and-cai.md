@@ -70,9 +70,9 @@ Assign customers into R/F/M score groups.
 
 ```go
 rfm := mkt.RFM(dt, mkt.RFMConfig{
-	CustomerIDColName: "CustomerID",
-	TradingDayColName: "TradingDay",
-	AmountColName:     "Amount",
+	CustomerIDCol: insyra.Name("CustomerID"),
+	TradingDayCol: insyra.Name("TradingDay"),
+	AmountCol: insyra.Name("Amount"),
 	NumGroups:         5,
 	DateFormat:        "YYYY-MM-DD",
 	TimeScale:         mkt.TimeScaleDaily,
@@ -95,8 +95,8 @@ Measure customer activity trend over time.
 
 ```go
 cai := mkt.CustomerActivityIndex(dt, mkt.CAIConfig{
-	CustomerIDColName: "CustomerID",
-	TradingDayColName: "TradingDay",
+	CustomerIDCol: insyra.Name("CustomerID"),
+	TradingDayCol: insyra.Name("TradingDay"),
 	DateFormat:        "YYYY-MM-DD",
 	TimeScale:         mkt.TimeScaleDaily,
 })
@@ -117,8 +117,8 @@ Quickly inspect who is high-value and who is declining.
 **Code**
 
 ```go
-rfm.SortBy(insyra.DataTableSortConfig{ColumnName: "RFM_Score", Descending: true})
-cai.SortBy(insyra.DataTableSortConfig{ColumnName: "CAI", Descending: false})
+rfm.SortBy(insyra.DataTableSortConfig{Col: insyra.Name("RFM_Score"), Descending: true})
+cai.SortBy(insyra.DataTableSortConfig{Col: insyra.Name("CAI"), Descending: false})
 
 rfm.ShowRange(5) // top value segment
 cai.ShowRange(5) // most declining activity first
@@ -193,9 +193,9 @@ C003,2025-02-25,340
 	}
 
 	rfm := mkt.RFM(dt, mkt.RFMConfig{
-		CustomerIDColName: "CustomerID",
-		TradingDayColName: "TradingDay",
-		AmountColName:     "Amount",
+		CustomerIDCol: insyra.Name("CustomerID"),
+		TradingDayCol: insyra.Name("TradingDay"),
+		AmountCol: insyra.Name("Amount"),
 		NumGroups:         5,
 		DateFormat:        "YYYY-MM-DD",
 		TimeScale:         mkt.TimeScaleDaily,
@@ -205,8 +205,8 @@ C003,2025-02-25,340
 	}
 
 	cai := mkt.CustomerActivityIndex(dt, mkt.CAIConfig{
-		CustomerIDColName: "CustomerID",
-		TradingDayColName: "TradingDay",
+		CustomerIDCol: insyra.Name("CustomerID"),
+		TradingDayCol: insyra.Name("TradingDay"),
 		DateFormat:        "YYYY-MM-DD",
 		TimeScale:         mkt.TimeScaleDaily,
 	})
@@ -214,8 +214,8 @@ C003,2025-02-25,340
 		log.Fatal("cai failed")
 	}
 
-	rfm.SortBy(insyra.DataTableSortConfig{ColumnName: "RFM_Score", Descending: true})
-	cai.SortBy(insyra.DataTableSortConfig{ColumnName: "CAI", Descending: false})
+	rfm.SortBy(insyra.DataTableSortConfig{Col: insyra.Name("RFM_Score"), Descending: true})
+	cai.SortBy(insyra.DataTableSortConfig{Col: insyra.Name("CAI"), Descending: false})
 	rfm.AddColUsingCCL("CampaignTag", "IF(['RFM_Score'] >= 12, 'VIP_Upsell', 'Nurture')")
 
 	if err := rfm.ToCSV("customer_rfm.csv", false, true, false); err != nil {

@@ -108,7 +108,7 @@ func TestDataTableValueLookupsMatchIntegersAcrossTypes(t *testing.T) {
 
 func TestEncoderCategoriesMatchIntegersAcrossTypes(t *testing.T) {
 	src := NewDataTable(NewDataList(int64(1), int64(2), int64(3), int64(2)).SetName("v"))
-	out, _, err := src.OrdinalEncode(OrdinalEncodeOptions{Column: "v", Order: []any{1, 2, 3}, Unknown: UnknownError})
+	out, _, err := src.OrdinalEncode(OrdinalEncodeOptions{Column: Name("v"), Order: []any{1, 2, 3}, Unknown: UnknownError})
 	if err != nil {
 		t.Fatalf("OrdinalEncode with Order written as int literals: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestEncoderCategoriesMatchIntegersAcrossTypes(t *testing.T) {
 	}
 
 	fitted := NewDataTable(NewDataList(1, 2, 3).SetName("v"))
-	_, enc, err := fitted.LabelEncode(LabelEncodeOptions{Column: "v", Unknown: UnknownError})
+	_, enc, err := fitted.LabelEncode(LabelEncodeOptions{Column: Name("v"), Unknown: UnknownError})
 	if err != nil {
 		t.Fatalf("LabelEncode: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestEncoderCategoriesMatchIntegersAcrossTypes(t *testing.T) {
 	// int(1) and int64(1) in one column are one category, not two that
 	// render as the same column name.
 	mixed := NewDataTable(NewDataList(1, int64(1), 2).SetName("v"))
-	_, oh, err := mixed.OneHotEncode(OneHotOptions{Columns: []string{"v"}})
+	_, oh, err := mixed.OneHotEncode(OneHotOptions{Columns: []any{Name("v")}})
 	if err != nil {
 		t.Fatalf("OneHotEncode on a column mixing int and int64: %v", err)
 	}

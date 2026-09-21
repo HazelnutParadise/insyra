@@ -508,13 +508,13 @@ func mustPipelineRoundTripModel(t *testing.T) ml.Model {
 	pipeline := ml.NewPipeline([]ml.Step{
 		{Name: "scale", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
 			scaler := insyra.NewStandardScaler()
-			if err := scaler.Fit(x, "x1"); err != nil {
+			if err := scaler.Fit(x, insyra.Name("x1")); err != nil {
 				return nil, err
 			}
 			return ml.NewColumnTransformer(scaler, "x1"), nil
 		}},
 		{Name: "encode", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			_, encoder, err := x.OneHotEncode(insyra.OneHotOptions{Columns: []string{"color"}, DropFirst: true, SortCategories: true})
+			_, encoder, err := x.OneHotEncode(insyra.OneHotOptions{Columns: []any{insyra.Name("color")}, DropFirst: true, SortCategories: true})
 			if err != nil {
 				return nil, err
 			}

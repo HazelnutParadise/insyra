@@ -49,7 +49,7 @@ func assertApproxSlice(t *testing.T, got []float64, want []float64) {
 
 func TestStandardScalerFitParamsAndRoundTrip(t *testing.T) {
 	dt := scaleTestTable()
-	out, sc, err := dt.StandardScale("age")
+	out, sc, err := dt.StandardScale(Name("age"))
 	if err != nil {
 		t.Fatalf("StandardScale: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestStandardScalerFitParamsAndRoundTrip(t *testing.T) {
 
 func TestStandardScalerConstantColumnNoPanic(t *testing.T) {
 	dt := NewDataTable(NewDataList(5.0, 5.0, 5.0).SetName("c"))
-	out, sc, err := dt.StandardScale("c")
+	out, sc, err := dt.StandardScale(Name("c"))
 	if err != nil {
 		t.Fatalf("StandardScale constant: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestStandardScalerConstantColumnNoPanic(t *testing.T) {
 
 func TestMinMaxScalerDefaultAndCustomRange(t *testing.T) {
 	dt := scaleTestTable()
-	out, sc, err := dt.MinMaxScale(0, 1, "age")
+	out, sc, err := dt.MinMaxScale(0, 1, Name("age"))
 	if err != nil {
 		t.Fatalf("MinMaxScale: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestMinMaxScalerDefaultAndCustomRange(t *testing.T) {
 	}
 	assertApproxSlice(t, floatsOf(t, back.GetColByName("age")), []float64{1, 2, 3, 4})
 
-	out2, _, err := dt.MinMaxScale(-1, 1, "age")
+	out2, _, err := dt.MinMaxScale(-1, 1, Name("age"))
 	if err != nil {
 		t.Fatalf("MinMaxScale custom: %v", err)
 	}
@@ -121,13 +121,13 @@ func TestMinMaxScalerDefaultAndCustomRange(t *testing.T) {
 
 func TestMinMaxScalerConstantColumnOutputsFeatureMin(t *testing.T) {
 	dt := NewDataTable(NewDataList(7.0, 7.0, 7.0).SetName("c"))
-	out, _, err := dt.MinMaxScale(0, 1, "c")
+	out, _, err := dt.MinMaxScale(0, 1, Name("c"))
 	if err != nil {
 		t.Fatalf("MinMaxScale constant: %v", err)
 	}
 	assertApproxSlice(t, floatsOf(t, out.GetColByName("c")), []float64{0, 0, 0})
 
-	out2, _, err := NewDataTable(NewDataList(7.0, 7.0).SetName("c")).MinMaxScale(2, 5, "c")
+	out2, _, err := NewDataTable(NewDataList(7.0, 7.0).SetName("c")).MinMaxScale(2, 5, Name("c"))
 	if err != nil {
 		t.Fatalf("MinMaxScale constant range: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestMinMaxScalerConstantColumnOutputsFeatureMin(t *testing.T) {
 func TestRobustScalerParamsAndRoundTrip(t *testing.T) {
 	// 1..5, type-7: median 3, Q1 (h=0.25*(5-1)=1.0 -> idx1) = 2, Q3 (h=3.0 -> idx3) = 4, IQR = 2
 	dt := NewDataTable(NewDataList(1.0, 2.0, 3.0, 4.0, 5.0).SetName("x"))
-	out, sc, err := dt.RobustScale("x")
+	out, sc, err := dt.RobustScale(Name("x"))
 	if err != nil {
 		t.Fatalf("RobustScale: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestRobustScalerOutlierStabilityAndConstant(t *testing.T) {
 	}
 
 	dt := NewDataTable(NewDataList(2.0, 2.0, 2.0).SetName("c"))
-	out, _, err := dt.RobustScale("c")
+	out, _, err := dt.RobustScale(Name("c"))
 	if err != nil {
 		t.Fatalf("RobustScale constant: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestRobustScalerOutlierStabilityAndConstant(t *testing.T) {
 
 func TestMaxAbsScalerSignAndRoundTrip(t *testing.T) {
 	dt := NewDataTable(NewDataList(-4.0, -2.0, 0.0, 2.0).SetName("x"))
-	out, sc, err := dt.MaxAbsScale("x")
+	out, sc, err := dt.MaxAbsScale(Name("x"))
 	if err != nil {
 		t.Fatalf("MaxAbsScale: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestMaxAbsScalerSignAndRoundTrip(t *testing.T) {
 
 func TestMaxAbsScalerAllZeroNoPanic(t *testing.T) {
 	dt := NewDataTable(NewDataList(0.0, 0.0, 0.0).SetName("c"))
-	out, _, err := dt.MaxAbsScale("c")
+	out, _, err := dt.MaxAbsScale(Name("c"))
 	if err != nil {
 		t.Fatalf("MaxAbsScale zero: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestScalerTransformOnlyFittedColsAndPreservesShape(t *testing.T) {
 	dt.SetRowNameByIndex(0, "r0")
 	dt.SetRowNameByIndex(3, "r3")
 
-	out, _, err := dt.MinMaxScale(0, 1, "age")
+	out, _, err := dt.MinMaxScale(0, 1, Name("age"))
 	if err != nil {
 		t.Fatalf("MinMaxScale: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestScalerTrainTestUsesTrainParams(t *testing.T) {
 	test := NewDataTable(NewDataList(5.0, 20.0).SetName("x"))
 
 	sc := NewMinMaxScaler(0, 1)
-	if _, err := sc.FitTransform(train, "x"); err != nil {
+	if _, err := sc.FitTransform(train, Name("x")); err != nil {
 		t.Fatalf("fit train: %v", err)
 	}
 	out, err := sc.Transform(test)
@@ -258,7 +258,7 @@ func TestScalerTrainTestUsesTrainParams(t *testing.T) {
 func TestScalerTransformMissingFittedColumnErrors(t *testing.T) {
 	dt := scaleTestTable()
 	sc := NewStandardScaler()
-	if err := sc.Fit(dt, "age"); err != nil {
+	if err := sc.Fit(dt, Name("age")); err != nil {
 		t.Fatalf("fit: %v", err)
 	}
 	other := NewDataTable(NewDataList(1.0, 2.0).SetName("income"))
@@ -270,14 +270,14 @@ func TestScalerTransformMissingFittedColumnErrors(t *testing.T) {
 func TestScalerNonNumericColumnErrors(t *testing.T) {
 	dt := scaleTestTable()
 	sc := NewStandardScaler()
-	if err := sc.Fit(dt, "label"); err == nil {
+	if err := sc.Fit(dt, Name("label")); err == nil {
 		t.Fatalf("expected error fitting non-numeric column")
 	}
 }
 
 func TestScalerNaNAndNilPreserved(t *testing.T) {
 	dt := NewDataTable(NewDataList(1.0, math.NaN(), nil, 3.0).SetName("x"))
-	out, sc, err := dt.MinMaxScale(0, 1, "x")
+	out, sc, err := dt.MinMaxScale(0, 1, Name("x"))
 	if err != nil {
 		t.Fatalf("MinMaxScale: %v", err)
 	}

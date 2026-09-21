@@ -43,6 +43,11 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
+		// A CLI token carries no type, so it is resolved against the table
+		// the same way the rest of the CLI resolves one.
+		for i, col := range opts.Columns {
+			opts.Columns[i] = colSelector(table, fmt.Sprint(col))
+		}
 		result, _, err = table.OneHotEncode(opts)
 		if err != nil {
 			return err
@@ -52,6 +57,7 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
+		opts.Column = colSelector(table, fmt.Sprint(opts.Column))
 		result, _, err = table.LabelEncode(opts)
 		if err != nil {
 			return err
@@ -61,6 +67,7 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
+		opts.Column = colSelector(table, fmt.Sprint(opts.Column))
 		result, _, err = table.OrdinalEncode(opts)
 		if err != nil {
 			return err
@@ -78,9 +85,13 @@ func parseOneHotEncodeOptions(args []string) (insyra.OneHotOptions, error) {
 	if len(args) == 0 {
 		return opts, fmt.Errorf("encode onehot: columns are required")
 	}
-	opts.Columns = parseCSVTokens(args[0])
-	if len(opts.Columns) == 0 {
+	tokens := parseCSVTokens(args[0])
+	if len(tokens) == 0 {
 		return opts, fmt.Errorf("encode onehot: columns are required")
+	}
+	opts.Columns = make([]any, len(tokens))
+	for i, token := range tokens {
+		opts.Columns[i] = token
 	}
 	for i := 1; i < len(args); {
 		key := strings.ToLower(args[i])

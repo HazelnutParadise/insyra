@@ -320,10 +320,10 @@ type IDataTable interface {
 	OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error)
 
 	// Scaling
-	StandardScale(cols ...string) (*DataTable, *StandardScaler, error)
-	MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error)
-	RobustScale(cols ...string) (*DataTable, *RobustScaler, error)
-	MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error)
+	StandardScale(cols ...any) (*DataTable, *StandardScaler, error)
+	MinMaxScale(featureMin, featureMax float64, cols ...any) (*DataTable, *MinMaxScaler, error)
+	RobustScale(cols ...any) (*DataTable, *RobustScaler, error)
+	MaxAbsScale(cols ...any) (*DataTable, *MaxAbsScaler, error)
 
 	ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable
 	ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable

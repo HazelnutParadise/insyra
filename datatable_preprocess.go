@@ -9,22 +9,16 @@ import "fmt"
 // resolveEncodingColumn resolves a column reference (name or Excel-style index)
 // to its index and a stable label, mirroring the lookup the public Get/Update
 // column methods use.
-func resolveEncodingColumn(dt *DataTable, ref string) (int, string, bool) {
-	if idx, ok := dt.getColNumberByName_notAtomic(ref); ok {
-		label := dt.columns[idx].name
-		if label == "" {
-			label = fallbackEncodingColumnName(idx)
-		}
-		return idx, label, true
+func resolveEncodingColumn(dt *DataTable, ref any) (int, string, bool) {
+	idx, _, problem := dt.lookupColSelector(ref)
+	if problem != "" {
+		return -1, "", false
 	}
-	if idx, ok := ParseColIndex(ref); ok && idx >= 0 && idx < len(dt.columns) {
-		label := dt.columns[idx].name
-		if label == "" {
-			label = fallbackEncodingColumnName(idx)
-		}
-		return idx, label, true
+	label := dt.columns[idx].name
+	if label == "" {
+		label = fallbackEncodingColumnName(idx)
 	}
-	return -1, "", false
+	return idx, label, true
 }
 
 func fallbackEncodingColumnName(idx int) string {

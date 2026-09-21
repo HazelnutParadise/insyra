@@ -292,9 +292,9 @@ func main() {
 
     // Configure RFM analysis
     config := mkt.RFMConfig{
-        CustomerIDColIndex: "A",
-        TradingDayColIndex: "B",
-        AmountColIndex:     "C",
+        CustomerIDCol: "A",
+        TradingDayCol: "B",
+        AmountCol: "C",
         NumGroups:          5,  // 5-point scale
         DateFormat:         "2006-01-02",
     }
@@ -324,9 +324,9 @@ func main() {
 ```go
 // Using column names instead of indices
 config := mkt.RFMConfig{
-    CustomerIDColName:  "CustomerID",
-    TradingDayColName:  "PurchaseDate",
-    AmountColName:      "TotalAmount",
+    CustomerIDCol: insyra.Name("CustomerID"),
+    TradingDayCol: insyra.Name("PurchaseDate"),
+    AmountCol: insyra.Name("TotalAmount"),
     NumGroups:          3,  // 3-point scale (Low/Medium/High)
     DateFormat:         "02/01/2006",  // DD/MM/YYYY format
 }
@@ -336,10 +336,10 @@ config.DateFormat = "2006-01-02"  // ISO format
 
 // Mixed usage (index takes precedence if both are provided)
 config := mkt.RFMConfig{
-    CustomerIDColIndex: "A",           // This will be used
-    CustomerIDColName:  "CustomerID",  // Ignored
-    TradingDayColIndex: "B",
-    AmountColIndex:     "C",
+    CustomerIDCol: "A",           // This will be used
+    CustomerIDCol: insyra.Name("CustomerID"),  // Ignored
+    TradingDayCol: "B",
+    AmountCol: "C",
     NumGroups:          5,
     DateFormat:         "2006-01-02",
 }
@@ -350,9 +350,9 @@ config := mkt.RFMConfig{
 ```go
 // Configure RFM analysis with weekly time scale
 config := mkt.RFMConfig{
-    CustomerIDColName:  "CustomerID",
-    TradingDayColName:  "PurchaseDate",
-    AmountColName:      "TotalAmount",
+    CustomerIDCol: insyra.Name("CustomerID"),
+    TradingDayCol: insyra.Name("PurchaseDate"),
+    AmountCol: insyra.Name("TotalAmount"),
     NumGroups:          5,
     DateFormat:         "2006-01-02",
     TimeScale:          mkt.TimeScaleWeekly,  // Calculate recency in weeks
@@ -408,8 +408,8 @@ func main() {
 
     // Configure CAI analysis
     config := mkt.CAIConfig{
-        CustomerIDColIndex: "A",
-        TradingDayColIndex: "B",
+        CustomerIDCol: "A",
+        TradingDayCol: "B",
         DateFormat:         "2006-01-02",
         TimeScale:          mkt.TimeScaleDaily,
     }
@@ -441,8 +441,8 @@ func main() {
 ```go
 // Configure CAI analysis with weekly time scale
 config := mkt.CAIConfig{
-    CustomerIDColName:  "CustomerID",
-    TradingDayColName:  "PurchaseDate",
+    CustomerIDCol: insyra.Name("CustomerID"),
+    TradingDayCol: insyra.Name("PurchaseDate"),
     DateFormat:         "2006-01-02",
     TimeScale:          mkt.TimeScaleWeekly,  // Calculate intervals in weeks
 }
@@ -492,8 +492,8 @@ func main() {
     dt.SetColNameByIndex("B", "ProductID")
 
     result := mkt.BasketAnalysis(dt, mkt.BasketConfig{
-        OrderIDColName:   "OrderID",
-        ProductIDColName: "ProductID",
+        OrderIDCol: insyra.Name("OrderID"),
+        ProductIDCol: insyra.Name("ProductID"),
     })
     if result == nil {
         fmt.Println("Basket analysis failed")

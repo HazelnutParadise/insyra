@@ -96,7 +96,7 @@ func TestNumberTextInGeneratedColumnNames(t *testing.T) {
 	Config.SetLogLevel(LogLevelFatal)
 
 	dt := NewDataTable(NewDataList(1500000.0, 2500000.0, 1500000.0).SetName("price"))
-	out, _, err := dt.OneHotEncode(OneHotOptions{Columns: []string{"price"}})
+	out, _, err := dt.OneHotEncode(OneHotOptions{Columns: []any{Name("price")}})
 	if err != nil {
 		t.Fatal(err)
 	}

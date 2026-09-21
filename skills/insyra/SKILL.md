@@ -613,23 +613,23 @@ import "github.com/HazelnutParadise/insyra"
 
 dt := /* DataTable with columns region, product, revenue, qty, status */
 
-report := dt.GroupBy("region").Aggregate(
-    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum,   As: "total_rev"},
-    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpMean,  As: "avg_rev"},
-    insyra.AggregateConfig{SourceCol: "qty",     Op: insyra.OpSum,   As: "total_qty"},
-    insyra.AggregateConfig{SourceCol: "status",  Op: insyra.OpCount, As: "n_orders"},
+report := dt.GroupBy(insyra.Name("region")).Aggregate(
+    insyra.AggregateConfig{SourceCol: insyra.Name("revenue"), Op: insyra.OpSum,   As: "total_rev"},
+    insyra.AggregateConfig{SourceCol: insyra.Name("revenue"), Op: insyra.OpMean,  As: "avg_rev"},
+    insyra.AggregateConfig{SourceCol: insyra.Name("qty"),     Op: insyra.OpSum,   As: "total_qty"},
+    insyra.AggregateConfig{SourceCol: insyra.Name("status"),  Op: insyra.OpCount, As: "n_orders"},
 )
 
 // Multi-key (auto-named output columns)
-quarterly := dt.GroupBy("region", "product").Aggregate(
-    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum},  // -> "revenue_sum"
-    insyra.AggregateConfig{SourceCol: "qty",     Op: insyra.OpMean}, // -> "qty_mean"
+quarterly := dt.GroupBy(insyra.Name("region"), insyra.Name("product")).Aggregate(
+    insyra.AggregateConfig{SourceCol: insyra.Name("revenue"), Op: insyra.OpSum},  // -> "revenue_sum"
+    insyra.AggregateConfig{SourceCol: insyra.Name("qty"),     Op: insyra.OpMean}, // -> "qty_mean"
 )
 
 // Custom aggregate
-weighted := dt.GroupBy("region").Aggregate(
+weighted := dt.GroupBy(insyra.Name("region")).Aggregate(
     insyra.AggregateConfig{
-        SourceCol: "price",
+        SourceCol: insyra.Name("price"),
         As:        "wprice",
         Op:        insyra.OpCustom,
         Custom: func(group *insyra.DataList) any {
@@ -650,7 +650,7 @@ desc := dt.Describe(insyra.DescribeOptions{
     IncludeAll:  true,
     Percentiles: []float64{0.1, 0.5, 0.9},
 })
-byRegion := dt.GroupBy("region").Describe(insyra.DescribeOptions{IncludeAll: true})
+byRegion := dt.GroupBy(insyra.Name("region")).Describe(insyra.DescribeOptions{IncludeAll: true})
 ```
 
 `DataList.Describe()` and `DataTable.Describe()` return `*DataTable`. `GroupBy(...).Describe()` returns one row per group with flattened columns such as `revenue_mean` and `segment_top`. `nil` and `NaN` are missing. Do not assume an `isr` wrapper exists; call the root API.
@@ -667,9 +667,9 @@ Use `Pivot` to spread the unique values of one column into new column headers (l
 //   EMEA   | A       | 30
 
 wide, err := dt.Pivot(insyra.PivotConfig{
-    Index:    []string{"region"},
-    Columns:  "product",
-    Values:   "sales",
+    Index:    []any{insyra.Name("region")},
+    Columns:  insyra.Name("product"),
+    Values:   insyra.Name("sales"),
     AggFunc:  "sum",   // optional; required if (region, product) has duplicates
     FillNA:   0,
     SortCols: true,
@@ -682,8 +682,8 @@ wide, err := dt.Pivot(insyra.PivotConfig{
 // Wide input:
 //   id | Q1 | Q2 | Q3
 long, err := wide.Unpivot(insyra.UnpivotConfig{
-    IDVars:    []string{"id"},
-    ValueVars: []string{"Q1", "Q2", "Q3"}, // optional; defaults to all non-IDVars
+    IDVars:    []any{insyra.Name("id")},
+    ValueVars: []any{insyra.Name("Q1"), insyra.Name("Q2"), insyra.Name("Q3")}, // optional; defaults to all non-IDVars
     VarName:   "question",                  // default "variable"
     ValueName: "score",                     // default "value"
     DropNA:    false,
@@ -793,7 +793,7 @@ The other methods are `DailyPricesAdjusted`, `ExRights`, `InstitutionalTrades`, 
 
 ```go
 prices, err := stocks.DailyPricesAdjusted("2330", from, time.Now(), datafetch.TWMarketTWSE)
-returns := prices.PctChangeCol("AdjClose", 1).ClearNils()
+returns := prices.PctChangeCol(insyra.Name("AdjClose"), 1).ClearNils()
 ```
 
 ### 9) Probabilistic forecast from a return series (quant)

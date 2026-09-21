@@ -363,7 +363,7 @@ func TestMLModelsRejectUnsupportedFeatureSchemasAndOffsets(t *testing.T) {
 func TestRootScalersAndEncodersArePipelineTransformers(t *testing.T) {
 	train := testFeatures().table
 	scaler := insyra.NewStandardScaler()
-	if _, err := scaler.FitTransform(train, "x1"); err != nil {
+	if _, err := scaler.FitTransform(train, insyra.Name("x1")); err != nil {
 		t.Fatal(err)
 	}
 	var transformer ml.Transformer = scaler
@@ -372,7 +372,7 @@ func TestRootScalersAndEncodersArePipelineTransformers(t *testing.T) {
 	}
 
 	categories := insyra.NewDataTable(dataList([]any{"red", "blue", "red"}, "color"))
-	_, encoder, err := categories.OneHotEncode(insyra.OneHotOptions{Columns: []string{"color"}})
+	_, encoder, err := categories.OneHotEncode(insyra.OneHotOptions{Columns: []any{insyra.Name("color")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestRootScalersAndEncodersArePipelineTransformers(t *testing.T) {
 
 	imputationInput := insyra.NewDataTable(dataList([]any{1.0, nil, 3.0}, "value"))
 	imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
-	if err := imputer.Fit(imputationInput, "value"); err != nil {
+	if err := imputer.Fit(imputationInput, insyra.Name("value")); err != nil {
 		t.Fatal(err)
 	}
 	transformer = imputer

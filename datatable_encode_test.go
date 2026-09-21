@@ -36,7 +36,7 @@ func assertEncodeCols(t *testing.T, dt *DataTable, want []string) {
 
 func TestOneHotEncodeBasicDropFirstKeepOriginalAndInverse(t *testing.T) {
 	dt := encodeTestTable()
-	out, enc, err := dt.OneHotEncode(OneHotOptions{Columns: []string{"color"}})
+	out, enc, err := dt.OneHotEncode(OneHotOptions{Columns: []any{Name("color")}})
 	if err != nil {
 		t.Fatalf("OneHotEncode failed: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestOneHotEncodeBasicDropFirstKeepOriginalAndInverse(t *testing.T) {
 	assertEncodeCols(t, roundTrip, []string{"color", "size", "value"})
 	assertEncodeData(t, roundTrip.GetColByName("color"), []any{"red", "blue", "red"})
 
-	dropped, encDrop, err := dt.OneHotEncode(OneHotOptions{Columns: []string{"color"}, DropFirst: true, KeepOriginal: true})
+	dropped, encDrop, err := dt.OneHotEncode(OneHotOptions{Columns: []any{Name("color")}, DropFirst: true, KeepOriginal: true})
 	if err != nil {
 		t.Fatalf("DropFirst OneHotEncode failed: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestOneHotEncodeMultiColumnPrefixSeparatorAndSort(t *testing.T) {
 		NewDataList(1, 2).SetName("value"),
 	)
 	out, enc, err := dt.OneHotEncode(OneHotOptions{
-		Columns:        []string{"color", "size"},
+		Columns:        []any{Name("color"), Name("size")},
 		Prefix:         "cat",
 		Separator:      "__",
 		SortCategories: true,
@@ -95,7 +95,7 @@ func TestOneHotTransformUnknownPolicies(t *testing.T) {
 	train := NewDataTable(NewDataList("red", "blue").SetName("color"))
 	test := NewDataTable(NewDataList("green").SetName("color"))
 
-	_, ignoreEnc, err := train.OneHotEncode(OneHotOptions{Columns: []string{"color"}, Unknown: UnknownIgnore})
+	_, ignoreEnc, err := train.OneHotEncode(OneHotOptions{Columns: []any{Name("color")}, Unknown: UnknownIgnore})
 	if err != nil {
 		t.Fatalf("fit ignore encoder: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestOneHotTransformUnknownPolicies(t *testing.T) {
 	assertEncodeData(t, ignored.GetColByName("color_red"), []any{0})
 	assertEncodeData(t, ignored.GetColByName("color_blue"), []any{0})
 
-	_, errorEnc, err := train.OneHotEncode(OneHotOptions{Columns: []string{"color"}, Unknown: UnknownError})
+	_, errorEnc, err := train.OneHotEncode(OneHotOptions{Columns: []any{Name("color")}, Unknown: UnknownError})
 	if err != nil {
 		t.Fatalf("fit error encoder: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestOneHotTransformUnknownPolicies(t *testing.T) {
 		t.Fatalf("expected unknown-category error")
 	}
 
-	_, newEnc, err := train.OneHotEncode(OneHotOptions{Columns: []string{"color"}, Unknown: UnknownAsNew})
+	_, newEnc, err := train.OneHotEncode(OneHotOptions{Columns: []any{Name("color")}, Unknown: UnknownAsNew})
 	if err != nil {
 		t.Fatalf("fit new encoder: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestOneHotNaNPoliciesEmptyAndSingleCategory(t *testing.T) {
 		NewDataList(1, 2, 3).SetName("id"),
 		NewDataList("red", nil, "blue").SetName("color"),
 	)
-	asCategory, enc, err := withMissing.OneHotEncode(OneHotOptions{Columns: []string{"color"}, HandleNaN: NaNAsCategory})
+	asCategory, enc, err := withMissing.OneHotEncode(OneHotOptions{Columns: []any{Name("color")}, HandleNaN: NaNAsCategory})
 	if err != nil {
 		t.Fatalf("NaNAsCategory failed: %v", err)
 	}
@@ -143,22 +143,22 @@ func TestOneHotNaNPoliciesEmptyAndSingleCategory(t *testing.T) {
 	}
 	assertEncodeData(t, roundTrip.GetColByName("color"), []any{"red", nil, "blue"})
 
-	skipped, _, err := withMissing.OneHotEncode(OneHotOptions{Columns: []string{"color"}, HandleNaN: NaNSkip})
+	skipped, _, err := withMissing.OneHotEncode(OneHotOptions{Columns: []any{Name("color")}, HandleNaN: NaNSkip})
 	if err != nil {
 		t.Fatalf("NaNSkip failed: %v", err)
 	}
 	assertEncodeData(t, skipped.GetColByName("color_red"), []any{1, 0, 0})
 	assertEncodeData(t, skipped.GetColByName("color_blue"), []any{0, 0, 1})
 
-	if _, _, err := withMissing.OneHotEncode(OneHotOptions{Columns: []string{"color"}, HandleNaN: NaNError}); err == nil {
+	if _, _, err := withMissing.OneHotEncode(OneHotOptions{Columns: []any{Name("color")}, HandleNaN: NaNError}); err == nil {
 		t.Fatalf("expected NaNError to fail")
 	}
-	if _, _, err := NewDataTable(NewDataList(math.NaN()).SetName("x")).OneHotEncode(OneHotOptions{Columns: []string{"x"}, HandleNaN: NaNError}); err == nil {
+	if _, _, err := NewDataTable(NewDataList(math.NaN()).SetName("x")).OneHotEncode(OneHotOptions{Columns: []any{Name("x")}, HandleNaN: NaNError}); err == nil {
 		t.Fatalf("expected NaNError to catch NaN")
 	}
 
 	empty := NewDataTable(NewDataList().SetName("color"))
-	emptyOut, _, err := empty.OneHotEncode(OneHotOptions{Columns: []string{"color"}})
+	emptyOut, _, err := empty.OneHotEncode(OneHotOptions{Columns: []any{Name("color")}})
 	if err != nil {
 		t.Fatalf("empty column failed: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestOneHotNaNPoliciesEmptyAndSingleCategory(t *testing.T) {
 		NewDataList(1, 2).SetName("id"),
 		NewDataList("red", "red").SetName("color"),
 	)
-	singleOut, singleEnc, err := single.OneHotEncode(OneHotOptions{Columns: []string{"color"}, DropFirst: true})
+	singleOut, singleEnc, err := single.OneHotEncode(OneHotOptions{Columns: []any{Name("color")}, DropFirst: true})
 	if err != nil {
 		t.Fatalf("single-category DropFirst failed: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestLabelEncodeSortNewColumnKeepOriginalInverseAndIdentity(t *testing.T) {
 		NewDataList("b", "a", "b").SetName("label"),
 		NewDataList(1, 2, 3).SetName("value"),
 	)
-	firstSeen, enc, err := dt.LabelEncode(LabelEncodeOptions{Column: "label"})
+	firstSeen, enc, err := dt.LabelEncode(LabelEncodeOptions{Column: Name("label")})
 	if err != nil {
 		t.Fatalf("LabelEncode failed: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestLabelEncodeSortNewColumnKeepOriginalInverseAndIdentity(t *testing.T) {
 	}
 	assertEncodeData(t, roundTrip.GetColByName("label"), []any{"b", "a", "b"})
 
-	lex, _, err := dt.LabelEncode(LabelEncodeOptions{Column: "label", NewColumn: "label_id", SortBy: LabelSortLexicographic})
+	lex, _, err := dt.LabelEncode(LabelEncodeOptions{Column: Name("label"), NewColumn: "label_id", SortBy: LabelSortLexicographic})
 	if err != nil {
 		t.Fatalf("lex LabelEncode failed: %v", err)
 	}
@@ -217,19 +217,19 @@ func TestLabelEncodeSortNewColumnKeepOriginalInverseAndIdentity(t *testing.T) {
 	assertEncodeData(t, lex.GetColByName("label_id"), []any{1, 0, 1})
 
 	freqSrc := NewDataTable(NewDataList("b", "a", "a", "b", "a").SetName("label"))
-	freq, _, err := freqSrc.LabelEncode(LabelEncodeOptions{Column: "label", SortBy: LabelSortByFrequency})
+	freq, _, err := freqSrc.LabelEncode(LabelEncodeOptions{Column: Name("label"), SortBy: LabelSortByFrequency})
 	if err != nil {
 		t.Fatalf("freq LabelEncode failed: %v", err)
 	}
 	assertEncodeData(t, freq.GetColByName("label"), []any{1, 0, 0, 1, 0})
 
-	kept, _, err := dt.LabelEncode(LabelEncodeOptions{Column: "label", NewColumn: "label_id", KeepOriginal: true})
+	kept, _, err := dt.LabelEncode(LabelEncodeOptions{Column: Name("label"), NewColumn: "label_id", KeepOriginal: true})
 	if err != nil {
 		t.Fatalf("keep LabelEncode failed: %v", err)
 	}
 	assertEncodeCols(t, kept, []string{"label", "label_id", "value"})
 
-	typed, typedEnc, err := NewDataTable(NewDataList(1, "1").SetName("mixed")).LabelEncode(LabelEncodeOptions{Column: "mixed"})
+	typed, typedEnc, err := NewDataTable(NewDataList(1, "1").SetName("mixed")).LabelEncode(LabelEncodeOptions{Column: Name("mixed")})
 	if err != nil {
 		t.Fatalf("typed LabelEncode failed: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestLabelTransformUnknownAndNaNPolicies(t *testing.T) {
 	train := NewDataTable(NewDataList("red", "blue").SetName("color"))
 	test := NewDataTable(NewDataList("green").SetName("color"))
 
-	_, ignoreEnc, err := train.LabelEncode(LabelEncodeOptions{Column: "color", Unknown: UnknownIgnore})
+	_, ignoreEnc, err := train.LabelEncode(LabelEncodeOptions{Column: Name("color"), Unknown: UnknownIgnore})
 	if err != nil {
 		t.Fatalf("fit ignore label: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestLabelTransformUnknownAndNaNPolicies(t *testing.T) {
 	}
 	assertEncodeData(t, ignored.GetColByName("color"), []any{nil})
 
-	_, errorEnc, err := train.LabelEncode(LabelEncodeOptions{Column: "color", Unknown: UnknownError})
+	_, errorEnc, err := train.LabelEncode(LabelEncodeOptions{Column: Name("color"), Unknown: UnknownError})
 	if err != nil {
 		t.Fatalf("fit error label: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestLabelTransformUnknownAndNaNPolicies(t *testing.T) {
 		t.Fatalf("expected label unknown error")
 	}
 
-	_, newEnc, err := train.LabelEncode(LabelEncodeOptions{Column: "color", Unknown: UnknownAsNew})
+	_, newEnc, err := train.LabelEncode(LabelEncodeOptions{Column: Name("color"), Unknown: UnknownAsNew})
 	if err != nil {
 		t.Fatalf("fit new label: %v", err)
 	}
@@ -272,17 +272,17 @@ func TestLabelTransformUnknownAndNaNPolicies(t *testing.T) {
 	assertEncodeData(t, extended.GetColByName("color"), []any{2})
 
 	missing := NewDataTable(NewDataList("red", nil).SetName("color"))
-	asCategory, _, err := missing.LabelEncode(LabelEncodeOptions{Column: "color", HandleNaN: NaNAsCategory})
+	asCategory, _, err := missing.LabelEncode(LabelEncodeOptions{Column: Name("color"), HandleNaN: NaNAsCategory})
 	if err != nil {
 		t.Fatalf("label NaNAsCategory: %v", err)
 	}
 	assertEncodeData(t, asCategory.GetColByName("color"), []any{0, 1})
-	skipped, _, err := missing.LabelEncode(LabelEncodeOptions{Column: "color", HandleNaN: NaNSkip})
+	skipped, _, err := missing.LabelEncode(LabelEncodeOptions{Column: Name("color"), HandleNaN: NaNSkip})
 	if err != nil {
 		t.Fatalf("label NaNSkip: %v", err)
 	}
 	assertEncodeData(t, skipped.GetColByName("color"), []any{0, nil})
-	if _, _, err := missing.LabelEncode(LabelEncodeOptions{Column: "color", HandleNaN: NaNError}); err == nil {
+	if _, _, err := missing.LabelEncode(LabelEncodeOptions{Column: Name("color"), HandleNaN: NaNError}); err == nil {
 		t.Fatalf("expected label NaNError")
 	}
 }
@@ -293,7 +293,7 @@ func TestOrdinalEncodeOrderUnknownNaNAndInverse(t *testing.T) {
 		NewDataList(1, 2, 3).SetName("value"),
 	)
 	out, enc, err := dt.OrdinalEncode(OrdinalEncodeOptions{
-		Column:    "satisfaction",
+		Column:    Name("satisfaction"),
 		Order:     []any{"low", "medium", "high"},
 		NewColumn: "rank",
 	})
@@ -311,11 +311,11 @@ func TestOrdinalEncodeOrderUnknownNaNAndInverse(t *testing.T) {
 	}
 	assertEncodeData(t, roundTrip.GetColByName("satisfaction"), []any{"low", "high", "medium"})
 
-	if _, _, err := dt.OrdinalEncode(OrdinalEncodeOptions{Column: "satisfaction"}); err == nil {
+	if _, _, err := dt.OrdinalEncode(OrdinalEncodeOptions{Column: Name("satisfaction")}); err == nil {
 		t.Fatalf("expected empty Order error")
 	}
 	if _, _, err := dt.OrdinalEncode(OrdinalEncodeOptions{
-		Column:  "satisfaction",
+		Column:  Name("satisfaction"),
 		Order:   []any{"low", "medium"},
 		Unknown: UnknownError,
 	}); err == nil {
@@ -323,7 +323,7 @@ func TestOrdinalEncodeOrderUnknownNaNAndInverse(t *testing.T) {
 	}
 
 	ignored, _, err := dt.OrdinalEncode(OrdinalEncodeOptions{
-		Column:  "satisfaction",
+		Column:  Name("satisfaction"),
 		Order:   []any{"low", "medium"},
 		Unknown: UnknownIgnore,
 	})
@@ -333,7 +333,7 @@ func TestOrdinalEncodeOrderUnknownNaNAndInverse(t *testing.T) {
 	assertEncodeData(t, ignored.GetColByName("satisfaction"), []any{0, nil, 1})
 
 	_, errEnc, err := NewDataTable(NewDataList("low").SetName("satisfaction")).OrdinalEncode(OrdinalEncodeOptions{
-		Column:  "satisfaction",
+		Column:  Name("satisfaction"),
 		Order:   []any{"low"},
 		Unknown: UnknownError,
 	})
@@ -344,7 +344,7 @@ func TestOrdinalEncodeOrderUnknownNaNAndInverse(t *testing.T) {
 		t.Fatalf("expected ordinal transform unknown error")
 	}
 	_, newEnc, err := NewDataTable(NewDataList("low").SetName("satisfaction")).OrdinalEncode(OrdinalEncodeOptions{
-		Column:  "satisfaction",
+		Column:  Name("satisfaction"),
 		Order:   []any{"low"},
 		Unknown: UnknownAsNew,
 	})
@@ -359,7 +359,7 @@ func TestOrdinalEncodeOrderUnknownNaNAndInverse(t *testing.T) {
 
 	missing := NewDataTable(NewDataList("low", nil).SetName("satisfaction"))
 	asCategory, _, err := missing.OrdinalEncode(OrdinalEncodeOptions{
-		Column:    "satisfaction",
+		Column:    Name("satisfaction"),
 		Order:     []any{"low"},
 		HandleNaN: NaNAsCategory,
 	})
@@ -368,7 +368,7 @@ func TestOrdinalEncodeOrderUnknownNaNAndInverse(t *testing.T) {
 	}
 	assertEncodeData(t, asCategory.GetColByName("satisfaction"), []any{0, 1})
 	skipped, _, err := missing.OrdinalEncode(OrdinalEncodeOptions{
-		Column:    "satisfaction",
+		Column:    Name("satisfaction"),
 		Order:     []any{"low"},
 		HandleNaN: NaNSkip,
 	})
@@ -377,7 +377,7 @@ func TestOrdinalEncodeOrderUnknownNaNAndInverse(t *testing.T) {
 	}
 	assertEncodeData(t, skipped.GetColByName("satisfaction"), []any{0, nil})
 	if _, _, err := missing.OrdinalEncode(OrdinalEncodeOptions{
-		Column:    "satisfaction",
+		Column:    Name("satisfaction"),
 		Order:     []any{"low"},
 		HandleNaN: NaNError,
 	}); err == nil {
@@ -387,16 +387,16 @@ func TestOrdinalEncodeOrderUnknownNaNAndInverse(t *testing.T) {
 
 func TestEncodeErrorsUseColumnResolutionAndDuplicateNames(t *testing.T) {
 	dt := encodeTestTable()
-	if _, _, err := dt.OneHotEncode(OneHotOptions{Columns: []string{"missing"}}); err == nil {
+	if _, _, err := dt.OneHotEncode(OneHotOptions{Columns: []any{Name("missing")}}); err == nil {
 		t.Fatalf("expected missing column error")
 	}
-	byIndex, _, err := dt.OneHotEncode(OneHotOptions{Columns: []string{"A"}})
+	byIndex, _, err := dt.OneHotEncode(OneHotOptions{Columns: []any{"A"}})
 	if err != nil {
 		t.Fatalf("Excel-style column reference failed: %v", err)
 	}
 	assertEncodeData(t, byIndex.GetColByName("color_red"), []any{1, 0, 1})
 
-	_, _, err = dt.LabelEncode(LabelEncodeOptions{Column: "color", NewColumn: "size"})
+	_, _, err = dt.LabelEncode(LabelEncodeOptions{Column: Name("color"), NewColumn: "size"})
 	if err == nil || !strings.Contains(err.Error(), "duplicate output column name") {
 		t.Fatalf("expected duplicate-name error, got %v", err)
 	}
@@ -407,7 +407,7 @@ func TestEncodeErrorsUseColumnResolutionAndDuplicateNames(t *testing.T) {
 // time with a message naming the offending categories.
 func TestOneHotRejectsColumnNameCollision(t *testing.T) {
 	dt := NewDataTable(NewDataList(1, "1").SetName("mixed"))
-	_, _, err := dt.OneHotEncode(OneHotOptions{Columns: []string{"mixed"}})
+	_, _, err := dt.OneHotEncode(OneHotOptions{Columns: []any{Name("mixed")}})
 	if err == nil || !strings.Contains(err.Error(), "both map to indicator column") {
 		t.Fatalf("expected collision error, got %v", err)
 	}
@@ -418,7 +418,7 @@ func TestOneHotRejectsColumnNameCollision(t *testing.T) {
 // idempotent and don't leak categories across calls.
 func TestOneHotUnknownAsNewTransformIsPure(t *testing.T) {
 	train := NewDataTable(NewDataList("red", "blue").SetName("color"))
-	_, enc, err := train.OneHotEncode(OneHotOptions{Columns: []string{"color"}, Unknown: UnknownAsNew})
+	_, enc, err := train.OneHotEncode(OneHotOptions{Columns: []any{Name("color")}, Unknown: UnknownAsNew})
 	if err != nil {
 		t.Fatalf("fit: %v", err)
 	}
@@ -444,7 +444,7 @@ func TestOneHotUnknownAsNewTransformIsPure(t *testing.T) {
 func TestScalarEncoderUnknownAsNewTransformIsPure(t *testing.T) {
 	train := NewDataTable(NewDataList("red", "blue").SetName("color"))
 
-	_, lab, err := train.LabelEncode(LabelEncodeOptions{Column: "color", Unknown: UnknownAsNew})
+	_, lab, err := train.LabelEncode(LabelEncodeOptions{Column: Name("color"), Unknown: UnknownAsNew})
 	if err != nil {
 		t.Fatalf("fit label: %v", err)
 	}
@@ -464,7 +464,7 @@ func TestScalarEncoderUnknownAsNewTransformIsPure(t *testing.T) {
 	}
 	assertEncodeData(t, yellow.GetColByName("color"), []any{2})
 
-	_, ord, err := train.OrdinalEncode(OrdinalEncodeOptions{Column: "color", Order: []any{"red", "blue"}, Unknown: UnknownAsNew})
+	_, ord, err := train.OrdinalEncode(OrdinalEncodeOptions{Column: Name("color"), Order: []any{"red", "blue"}, Unknown: UnknownAsNew})
 	if err != nil {
 		t.Fatalf("fit ordinal: %v", err)
 	}

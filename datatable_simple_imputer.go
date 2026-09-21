@@ -31,7 +31,7 @@ type SimpleImputer struct {
 }
 
 type simpleImputerColumn struct {
-	ref         string // original fit-time reference, retained for inspection/debugging
+	ref         any // original fit-time reference, retained for inspection/debugging
 	name        string
 	replacement any
 	passThrough bool
@@ -79,7 +79,7 @@ func (i *SimpleImputer) Params() map[string]ScalerParams {
 }
 
 // Fit derives replacements from selected columns without modifying dt.
-func (i *SimpleImputer) Fit(dt *DataTable, cols ...string) error {
+func (i *SimpleImputer) Fit(dt *DataTable, cols ...any) error {
 	if i == nil {
 		return errors.New("SimpleImputer.Fit: imputer is nil")
 	}
@@ -118,8 +118,12 @@ func (i *SimpleImputer) Fit(dt *DataTable, cols ...string) error {
 				err = deriveErr
 				return
 			}
+			fittedRef := any(idx)
+			if t.columns[idx].name != "" {
+				fittedRef = Name(t.columns[idx].name)
+			}
 			fitted = append(fitted, simpleImputerColumn{
-				ref:         ref,
+				ref:         fittedRef,
 				name:        name,
 				replacement: replacement,
 				passThrough: passThrough,
@@ -135,7 +139,7 @@ func (i *SimpleImputer) Fit(dt *DataTable, cols ...string) error {
 }
 
 // FitTransform fits on cols and returns a transformed copy of dt.
-func (i *SimpleImputer) FitTransform(dt *DataTable, cols ...string) (*DataTable, error) {
+func (i *SimpleImputer) FitTransform(dt *DataTable, cols ...any) (*DataTable, error) {
 	if err := i.Fit(dt, cols...); err != nil {
 		return nil, err
 	}
@@ -160,7 +164,7 @@ func (i *SimpleImputer) Transform(dt *DataTable) (*DataTable, error) {
 		byIndex := make(map[int]*simpleImputerColumn, len(i.columns))
 		for idx := range i.columns {
 			column := &i.columns[idx]
-			resolved, _, ok := resolveEncodingColumn(t, column.name)
+			resolved, _, ok := resolveEncodingColumn(t, Name(column.name))
 			if !ok {
 				err = fmt.Errorf("SimpleImputer.Transform: fitted column %q not found", column.name)
 				return
