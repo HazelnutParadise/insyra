@@ -41,11 +41,11 @@ func mustGetFloat(t *testing.T, dl *DataList, idx int) float64 {
 
 func TestDataTable_GroupBy_SingleKey_MultiAgg(t *testing.T) {
 	dt := buildSalesTable()
-	out := dt.GroupBy("region").Aggregate(
-		AggregateConfig{SourceCol: "revenue", Op: OpSum, As: "total_rev"},
-		AggregateConfig{SourceCol: "revenue", Op: OpMean, As: "avg_rev"},
-		AggregateConfig{SourceCol: "qty", Op: OpSum, As: "total_qty"},
-		AggregateConfig{SourceCol: "status", Op: OpCount, As: "n_orders"},
+	out := dt.GroupBy(Name("region")).Aggregate(
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpSum, As: "total_rev"},
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpMean, As: "avg_rev"},
+		AggregateConfig{SourceCol: Name("qty"), Op: OpSum, As: "total_qty"},
+		AggregateConfig{SourceCol: Name("status"), Op: OpCount, As: "n_orders"},
 	)
 
 	if out.NumRows() != 3 {
@@ -89,9 +89,9 @@ func TestDataTable_GroupBy_SingleKey_MultiAgg(t *testing.T) {
 
 func TestDataTable_GroupBy_MultiKey_AutoAlias(t *testing.T) {
 	dt := buildSalesTable()
-	out := dt.GroupBy("region", "product").Aggregate(
-		AggregateConfig{SourceCol: "revenue", Op: OpSum},
-		AggregateConfig{SourceCol: "qty", Op: OpMean},
+	out := dt.GroupBy(Name("region"), Name("product")).Aggregate(
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpSum},
+		AggregateConfig{SourceCol: Name("qty"), Op: OpMean},
 	)
 
 	if out.NumCols() != 4 {
@@ -130,17 +130,17 @@ func TestDataTable_GroupBy_MultiKey_AutoAlias(t *testing.T) {
 
 func TestDataTable_GroupBy_OpsCoverage(t *testing.T) {
 	dt := buildSalesTable()
-	out := dt.GroupBy("region").Aggregate(
-		AggregateConfig{SourceCol: "revenue", Op: OpMin, As: "rmin"},
-		AggregateConfig{SourceCol: "revenue", Op: OpMax, As: "rmax"},
-		AggregateConfig{SourceCol: "revenue", Op: OpMedian, As: "rmed"},
-		AggregateConfig{SourceCol: "revenue", Op: OpStdev, As: "rstd"},
-		AggregateConfig{SourceCol: "revenue", Op: OpStdevP, As: "rstdp"},
-		AggregateConfig{SourceCol: "revenue", Op: OpVar, As: "rvar"},
-		AggregateConfig{SourceCol: "revenue", Op: OpVarP, As: "rvarp"},
-		AggregateConfig{SourceCol: "status", Op: OpFirst, As: "first_status"},
-		AggregateConfig{SourceCol: "status", Op: OpLast, As: "last_status"},
-		AggregateConfig{SourceCol: "product", Op: OpNUnique, As: "n_products"},
+	out := dt.GroupBy(Name("region")).Aggregate(
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpMin, As: "rmin"},
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpMax, As: "rmax"},
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpMedian, As: "rmed"},
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpStdev, As: "rstd"},
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpStdevP, As: "rstdp"},
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpVar, As: "rvar"},
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpVarP, As: "rvarp"},
+		AggregateConfig{SourceCol: Name("status"), Op: OpFirst, As: "first_status"},
+		AggregateConfig{SourceCol: Name("status"), Op: OpLast, As: "last_status"},
+		AggregateConfig{SourceCol: Name("product"), Op: OpNUnique, As: "n_products"},
 		AggregateConfig{Op: OpCountAll, As: "n_rows"},
 	)
 
@@ -205,9 +205,9 @@ func TestDataTable_GroupBy_OpsCoverage(t *testing.T) {
 
 func TestDataTable_GroupBy_Custom(t *testing.T) {
 	dt := buildSalesTable()
-	out := dt.GroupBy("region").Aggregate(
+	out := dt.GroupBy(Name("region")).Aggregate(
 		AggregateConfig{
-			SourceCol: "revenue",
+			SourceCol: Name("revenue"),
 			As:        "rev_x_qty",
 			Op:        OpCustom,
 			Custom: func(group *DataList) any {
@@ -245,8 +245,8 @@ func TestDataTable_GroupBy_Custom(t *testing.T) {
 func TestDataTable_GroupBy_CustomNil_ReturnsEmpty(t *testing.T) {
 	dt := buildSalesTable()
 	dt.ClearErr()
-	out := dt.GroupBy("region").Aggregate(
-		AggregateConfig{SourceCol: "revenue", Op: OpCustom, As: "bad"},
+	out := dt.GroupBy(Name("region")).Aggregate(
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpCustom, As: "bad"},
 	)
 	if out.NumCols() == 0 {
 		t.Fatalf("expected key column to still be emitted")
@@ -265,8 +265,8 @@ func TestDataTable_GroupBy_CustomNil_ReturnsEmpty(t *testing.T) {
 func TestDataTable_GroupBy_UnknownKey(t *testing.T) {
 	dt := buildSalesTable()
 	dt.ClearErr()
-	out := dt.GroupBy("nonexistent").Aggregate(
-		AggregateConfig{SourceCol: "revenue", Op: OpSum},
+	out := dt.GroupBy(Name("nonexistent")).Aggregate(
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpSum},
 	)
 	if out.NumRows() != 0 || out.NumCols() != 0 {
 		t.Fatalf("expected empty DataTable for unknown key, got %dx%d", out.NumRows(), out.NumCols())
@@ -279,9 +279,9 @@ func TestDataTable_GroupBy_UnknownKey(t *testing.T) {
 func TestDataTable_GroupBy_UnknownSource(t *testing.T) {
 	dt := buildSalesTable()
 	dt.ClearErr()
-	out := dt.GroupBy("region").Aggregate(
-		AggregateConfig{SourceCol: "nope", Op: OpSum, As: "bad"},
-		AggregateConfig{SourceCol: "revenue", Op: OpSum, As: "good"},
+	out := dt.GroupBy(Name("region")).Aggregate(
+		AggregateConfig{SourceCol: Name("nope"), Op: OpSum, As: "bad"},
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpSum, As: "good"},
 	)
 	if out.NumRows() != 3 {
 		t.Fatalf("expected 3 groups, got %d", out.NumRows())
@@ -308,8 +308,8 @@ func TestDataTable_GroupBy_NilKeys(t *testing.T) {
 	b.SetName("v")
 	dt := NewDataTable()
 	dt.AppendCols(a, b)
-	out := dt.GroupBy("k").Aggregate(
-		AggregateConfig{SourceCol: "v", Op: OpSum, As: "vs"},
+	out := dt.GroupBy(Name("k")).Aggregate(
+		AggregateConfig{SourceCol: Name("v"), Op: OpSum, As: "vs"},
 	)
 	if out.NumRows() != 2 {
 		t.Fatalf("nil should form its own group; expected 2 groups, got %d", out.NumRows())
@@ -335,8 +335,8 @@ func TestDataTable_GroupBy_NumericVsStringKey(t *testing.T) {
 	v.SetName("v")
 	dt := NewDataTable()
 	dt.AppendCols(k, v)
-	out := dt.GroupBy("k").Aggregate(
-		AggregateConfig{SourceCol: "v", Op: OpSum, As: "vs"},
+	out := dt.GroupBy(Name("k")).Aggregate(
+		AggregateConfig{SourceCol: Name("v"), Op: OpSum, As: "vs"},
 	)
 	if out.NumRows() != 2 {
 		t.Fatalf("typed keys should distinguish int 1 from string \"1\", got %d groups", out.NumRows())
@@ -353,8 +353,8 @@ func TestDataTable_GroupBy_NumericVsStringKey(t *testing.T) {
 func TestDataTable_GroupBy_EmptyTable(t *testing.T) {
 	dt := NewDataTable()
 	dt.AppendCols(NewDataList().SetName("k"), NewDataList().SetName("v"))
-	out := dt.GroupBy("k").Aggregate(
-		AggregateConfig{SourceCol: "v", Op: OpSum, As: "vs"},
+	out := dt.GroupBy(Name("k")).Aggregate(
+		AggregateConfig{SourceCol: Name("v"), Op: OpSum, As: "vs"},
 	)
 	if out.NumRows() != 0 {
 		t.Fatalf("empty table should produce zero groups, got %d", out.NumRows())
@@ -371,8 +371,8 @@ func TestDataTable_GroupBy_SingleRow(t *testing.T) {
 	v.SetName("v")
 	dt := NewDataTable()
 	dt.AppendCols(k, v)
-	out := dt.GroupBy("k").Aggregate(
-		AggregateConfig{SourceCol: "v", Op: OpSum, As: "vs"},
+	out := dt.GroupBy(Name("k")).Aggregate(
+		AggregateConfig{SourceCol: Name("v"), Op: OpSum, As: "vs"},
 	)
 	if out.NumRows() != 1 {
 		t.Fatalf("expected 1 group, got %d", out.NumRows())
@@ -389,9 +389,9 @@ func TestDataTable_GroupBy_SingleGroupAllRows(t *testing.T) {
 	v.SetName("v")
 	dt := NewDataTable()
 	dt.AppendCols(k, v)
-	out := dt.GroupBy("k").Aggregate(
-		AggregateConfig{SourceCol: "v", Op: OpSum, As: "vs"},
-		AggregateConfig{SourceCol: "v", Op: OpMean, As: "vm"},
+	out := dt.GroupBy(Name("k")).Aggregate(
+		AggregateConfig{SourceCol: Name("v"), Op: OpSum, As: "vs"},
+		AggregateConfig{SourceCol: Name("v"), Op: OpMean, As: "vm"},
 	)
 	if out.NumRows() != 1 {
 		t.Fatalf("expected 1 group, got %d", out.NumRows())
@@ -420,7 +420,7 @@ func TestDataTable_GroupBy_KeyByExcelIndex(t *testing.T) {
 
 func TestDataTable_GroupBy_AggregateAll(t *testing.T) {
 	dt := buildSalesTable()
-	out := dt.GroupBy("region").AggregateAll(OpSum)
+	out := dt.GroupBy(Name("region")).AggregateAll(OpSum)
 	headers := out.ColNames()
 	// region + every non-key column
 	want := []string{"region", "product_sum", "revenue_sum", "qty_sum", "status_sum"}
@@ -436,7 +436,7 @@ func TestDataTable_GroupBy_AggregateAll(t *testing.T) {
 func TestDataTable_GroupBy_AggregateAll_RejectsCustom(t *testing.T) {
 	dt := buildSalesTable()
 	dt.ClearErr()
-	out := dt.GroupBy("region").AggregateAll(OpCustom)
+	out := dt.GroupBy(Name("region")).AggregateAll(OpCustom)
 	if out.NumRows() != 0 {
 		t.Errorf("AggregateAll(OpCustom) should return empty table")
 	}
@@ -447,7 +447,7 @@ func TestDataTable_GroupBy_AggregateAll_RejectsCustom(t *testing.T) {
 
 func TestDataTable_GroupBy_Count(t *testing.T) {
 	dt := buildSalesTable()
-	out := dt.GroupBy("region").Count()
+	out := dt.GroupBy(Name("region")).Count()
 	if out.NumCols() != 2 {
 		t.Fatalf("expected region + count, got %d cols", out.NumCols())
 	}
@@ -463,7 +463,7 @@ func TestDataTable_GroupBy_Count(t *testing.T) {
 func TestDataTable_GroupBy_NoConfigs(t *testing.T) {
 	dt := buildSalesTable()
 	dt.ClearErr()
-	out := dt.GroupBy("region").Aggregate()
+	out := dt.GroupBy(Name("region")).Aggregate()
 	if out.NumRows() != 0 || out.NumCols() != 0 {
 		t.Fatalf("expected empty table when no configs, got %dx%d", out.NumRows(), out.NumCols())
 	}
@@ -475,7 +475,7 @@ func TestDataTable_GroupBy_NoConfigs(t *testing.T) {
 func TestDataTable_GroupBy_NoKeys(t *testing.T) {
 	dt := buildSalesTable()
 	dt.ClearErr()
-	out := dt.GroupBy().Aggregate(AggregateConfig{SourceCol: "revenue", Op: OpSum})
+	out := dt.GroupBy().Aggregate(AggregateConfig{SourceCol: Name("revenue"), Op: OpSum})
 	if out.NumRows() != 0 || out.NumCols() != 0 {
 		t.Fatalf("expected empty table when no keys, got %dx%d", out.NumRows(), out.NumCols())
 	}
@@ -486,8 +486,8 @@ func TestDataTable_GroupBy_NoKeys(t *testing.T) {
 
 func TestDataTable_GroupBy_PipelineWithSortBy(t *testing.T) {
 	dt := buildSalesTable()
-	out := dt.GroupBy("region").Aggregate(
-		AggregateConfig{SourceCol: "revenue", Op: OpSum, As: "total_rev"},
+	out := dt.GroupBy(Name("region")).Aggregate(
+		AggregateConfig{SourceCol: Name("revenue"), Op: OpSum, As: "total_rev"},
 	)
 	out.SortBy(DataTableSortConfig{Col: Name("total_rev"), Descending: true})
 	regions := out.GetColByName("region").Data()

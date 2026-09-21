@@ -296,9 +296,9 @@ type IDataTable interface {
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 
 	Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)
-	EWMCol(string, EWMOptions) *EWMDataList
-	Resample(string, ResampleFreq, ...ResampleAgg) (*DataTable, error)
-	ParseDatesCols(cols []string, layouts ...string) *DataTable
+	EWMCol(any, EWMOptions) *EWMDataList
+	Resample(any, ResampleFreq, ...ResampleAgg) (*DataTable, error)
+	ParseDatesCols(cols []any, layouts ...string) *DataTable
 
 	AddColUsingCCL(newColName, ccl string) *DataTable
 

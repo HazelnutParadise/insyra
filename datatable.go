@@ -356,39 +356,6 @@ func (dt *DataTable) GetColByName(name string) *DataList {
 	return dt.getCol("GetColByName", Name(name))
 }
 
-// Err() is sticky, so the first recorded failure is the one the caller sees.
-// A public method that reports its own miss must therefore look things up
-// through these silent helpers, or the inner lookup would claim the error and
-// point at an internal step instead of the call the user made.
-
-// colByNameSilently returns a clone of the named column, or nil, without
-// recording anything.
-func (dt *DataTable) colByNameSilently(name string) *DataList {
-	var result *DataList
-	dt.AtomicDo(func(dt *DataTable) {
-		for _, column := range dt.columns {
-			if column.name == name {
-				result = column.Clone()
-				return
-			}
-		}
-	})
-	return result
-}
-
-// colSilently resolves a column selector, or nil, without recording anything.
-func (dt *DataTable) colSilently(col any) *DataList {
-	var result *DataList
-	dt.AtomicDo(func(dt *DataTable) {
-		num, _, problem := dt.lookupColSelector(col)
-		if problem != "" {
-			return
-		}
-		result = dt.columns[num].Clone()
-	})
-	return result
-}
-
 // rowSilently returns a clone of the row at index (negative counts from the
 // end), or nil, without recording anything.
 func (dt *DataTable) rowSilently(index int) *DataList {

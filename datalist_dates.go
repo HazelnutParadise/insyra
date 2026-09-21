@@ -43,13 +43,12 @@ func (dl *DataList) ParseDates(layouts ...string) *DataList {
 // This is the conversion `load sql … parsedates` performs, exposed for tables
 // that came from anywhere else — a CSV date column, for instance, which
 // inference leaves as strings and Resample therefore refuses.
-func (dt *DataTable) ParseDatesCols(cols []string, layouts ...string) *DataTable {
+func (dt *DataTable) ParseDatesCols(cols []any, layouts ...string) *DataTable {
 	use := effectiveDateLayouts(layouts)
 	dt.AtomicDo(func(t *DataTable) {
 		for _, col := range cols {
-			num, _, found := resolveColForGroup(t, col)
-			if !found {
-				t.fail("ParseDatesCols", "column %q not found", col)
+			num, ok := t.resolveColSelector("ParseDatesCols", col)
+			if !ok {
 				continue
 			}
 			parseDatesInPlace(t.columns[num].data, use)

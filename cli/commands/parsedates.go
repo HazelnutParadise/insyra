@@ -56,7 +56,7 @@ func runParseDatesCommand(ctx *ExecContext, args []string) error {
 		if len(cols) == 0 {
 			return fmt.Errorf("parsedates: cols is required for a DataTable (parsedates %s cols <c1,c2>)", name)
 		}
-		ctx.Vars[alias] = source.Clone().ParseDatesCols(cols, layouts...)
+		ctx.Vars[alias] = source.Clone().ParseDatesCols(colSelectors(source, cols), layouts...)
 		_, _ = fmt.Fprintf(ctx.Output, "saved as %s (%s)\n", alias, strings.Join(cols, ", "))
 	default:
 		return fmt.Errorf("parsedates: variable %s is not a DataList or DataTable", name)

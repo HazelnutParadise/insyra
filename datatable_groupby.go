@@ -84,10 +84,11 @@ func (o AggregateOp) String() string {
 
 // AggregateConfig describes a single aggregation operation produced by Aggregate.
 type AggregateConfig struct {
-	// SourceCol is the source column to aggregate. It is matched first by name,
-	// then by Excel-style index ("A"/"B"/...). Required for every Op except
-	// OpCountAll, where an empty SourceCol is allowed.
-	SourceCol string
+	// SourceCol is the source column to aggregate, given as a column selector:
+	// an Excel-style index string ("A", "B", ...), a Name, or an int position.
+	// Required for every Op except OpCountAll, where a nil SourceCol is
+	// allowed.
+	SourceCol any
 	// As is the output column name. If empty, the column is auto-named as
 	// "<source>_<op>" (e.g., "revenue_sum"). For OpCountAll without a source
 	// column, the default is "count_all".
@@ -150,7 +151,7 @@ type GroupedDataTable struct {
 //
 // Group order in the resulting DataTable follows the order in which each key
 // combination is first seen during a single linear scan of the input rows.
-func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable {
+func (dt *DataTable) GroupBy(keyCols ...any) *GroupedDataTable {
 	g := &GroupedDataTable{
 		parent:         dt,
 		rowsByGroup:    map[string][]int{},
@@ -223,25 +224,41 @@ func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable {
 // resolveColForGroup matches a token to a DataTable column. It tries the
 // column name first, then the Excel-style index, and returns (colNumber,
 // displayLabel, ok). The label prefers the column's name when present.
-func resolveColForGroup(t *DataTable, token string) (int, string, bool) {
-	if num, ok := t.getColNumberByName_notAtomic(token); ok {
-		label := token
-		if name := t.columns[num].name; name != "" {
-			label = name
-		}
-		return num, label, true
+// resolveColForGroup resolves a column selector and returns the label the
+// output should carry for that column: its name when it has one, and otherwise
+// the way it was addressed.
+func resolveColForGroup(t *DataTable, selector any) (int, string, bool) {
+	num, warning, problem := t.lookupColSelector(selector)
+	if problem != "" {
+		return 0, selectorLabel(selector), false
 	}
-	upper := strings.ToUpper(token)
-	if num, ok := utils.ParseColIndex(upper); ok {
-		if num >= 0 && num < len(t.columns) {
-			label := upper
-			if name := t.columns[num].name; name != "" {
-				label = name
-			}
-			return num, label, true
-		}
+	if warning != "" {
+		t.warn("GroupBy", "%s", warning)
 	}
-	return 0, token, false
+	label := selectorLabel(selector)
+	if name := t.columns[num].name; name != "" {
+		label = name
+	}
+	return num, label, true
+}
+
+// selectorLabel is how a selector reads in a message or an output column name
+// when the column it picks has no name of its own.
+func selectorLabel(selector any) string {
+	switch v := selector.(type) {
+	case string:
+		return strings.ToUpper(v)
+	case NameSelector:
+		return v.Value()
+	case int:
+		letters, ok := utils.CalcColIndex(v)
+		if !ok {
+			return fmt.Sprintf("%d", v)
+		}
+		return letters
+	default:
+		return fmt.Sprintf("%v", selector)
+	}
 }
 
 // encodeGroupKey produces a stable, collision-resistant string encoding of a
@@ -381,13 +398,11 @@ func (g *GroupedDataTable) AggregateAll(op AggregateOp) *DataTable {
 		if _, isKey := keySet[i]; isKey {
 			continue
 		}
-		ref := col.name
-		if ref == "" {
-			idx, ok := utils.CalcColIndex(i)
-			if !ok {
-				continue
-			}
-			ref = idx
+		// The column is addressed by what it is: a named column by its name,
+		// an unnamed one by its position.
+		var ref any = i
+		if col.name != "" {
+			ref = Name(col.name)
 		}
 		configs = append(configs, AggregateConfig{SourceCol: ref, Op: op})
 	}
@@ -417,7 +432,7 @@ type aggregateResolved struct {
 func (g *GroupedDataTable) resolveConfig(cfg AggregateConfig) aggregateResolved {
 	r := aggregateResolved{cfg: cfg, sourceNum: -1}
 	// Source column is optional only for OpCountAll.
-	if cfg.SourceCol == "" {
+	if cfg.SourceCol == nil {
 		if cfg.Op != OpCountAll {
 			r.err = fmt.Sprintf("Aggregate: SourceCol required for op %s", cfg.Op)
 			r.outputName = nonEmptyOr(cfg.As, "")
@@ -446,23 +461,16 @@ func (g *GroupedDataTable) resolveConfig(cfg AggregateConfig) aggregateResolved 
 // lookupSnapshotCol resolves a token against the snapshot taken at GroupBy
 // time, returning (colNumber, displayLabel, ok). Order: name first, then
 // Excel-style index.
-func (g *GroupedDataTable) lookupSnapshotCol(token string) (int, string, bool) {
-	for i, col := range g.columnsSnapshot {
-		if col.name == token {
-			return i, token, true
-		}
+func (g *GroupedDataTable) lookupSnapshotCol(selector any) (int, string, bool) {
+	num, _, problem := lookupColIn(g.columnsSnapshot, selector)
+	if problem != "" {
+		return 0, selectorLabel(selector), false
 	}
-	upper := strings.ToUpper(token)
-	if num, ok := utils.ParseColIndex(upper); ok {
-		if num >= 0 && num < len(g.columnsSnapshot) {
-			label := upper
-			if name := g.columnsSnapshot[num].name; name != "" {
-				label = name
-			}
-			return num, label, true
-		}
+	label := selectorLabel(selector)
+	if name := g.columnsSnapshot[num].name; name != "" {
+		label = name
 	}
-	return 0, token, false
+	return num, label, true
 }
 
 // computeAggregate runs a single aggregate over the rows belonging to a group.

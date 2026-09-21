@@ -95,7 +95,7 @@ func (t *GroupedColumnTransform) As(name string) *DataList {
 
 // resolveSource picks a source column from the parent's snapshot. ok=false
 // records an error on the returned transform so .As emits an empty column.
-func (g *GroupedDataTable) resolveSource(funcName, col string) (int, string, bool) {
+func (g *GroupedDataTable) resolveSource(funcName string, col any) (int, string, bool) {
 	if g == nil {
 		return 0, "", false
 	}
@@ -108,15 +108,16 @@ func (g *GroupedDataTable) resolveSource(funcName, col string) (int, string, boo
 	num, label, ok := g.lookupSnapshotCol(col)
 	if !ok {
 		if g.parent != nil {
-			g.parent.fail(funcName, "column %q not found", col)
+			_, _, problem := lookupColIn(g.columnsSnapshot, col)
+			g.parent.fail(funcName, "%s", problem)
 		}
-		return 0, col, false
+		return 0, label, false
 	}
 	return num, label, true
 }
 
 // ShiftCol applies Shift per group.
-func (g *GroupedDataTable) ShiftCol(col string, periods int, fill ...any) *GroupedColumnTransform {
+func (g *GroupedDataTable) ShiftCol(col any, periods int, fill ...any) *GroupedColumnTransform {
 	num, label, ok := g.resolveSource("ShiftCol", col)
 	t := &GroupedColumnTransform{parent: g, sourceCol: num, sourceLabel: label}
 	if !ok {
@@ -128,7 +129,7 @@ func (g *GroupedDataTable) ShiftCol(col string, periods int, fill ...any) *Group
 }
 
 // DiffCol applies Diff per group.
-func (g *GroupedDataTable) DiffCol(col string, periods int) *GroupedColumnTransform {
+func (g *GroupedDataTable) DiffCol(col any, periods int) *GroupedColumnTransform {
 	num, label, ok := g.resolveSource("DiffCol", col)
 	t := &GroupedColumnTransform{parent: g, sourceCol: num, sourceLabel: label}
 	if !ok {
@@ -140,7 +141,7 @@ func (g *GroupedDataTable) DiffCol(col string, periods int) *GroupedColumnTransf
 }
 
 // PctChangeCol applies PctChange per group.
-func (g *GroupedDataTable) PctChangeCol(col string, periods int) *GroupedColumnTransform {
+func (g *GroupedDataTable) PctChangeCol(col any, periods int) *GroupedColumnTransform {
 	num, label, ok := g.resolveSource("PctChangeCol", col)
 	t := &GroupedColumnTransform{parent: g, sourceCol: num, sourceLabel: label}
 	if !ok {
@@ -152,7 +153,7 @@ func (g *GroupedDataTable) PctChangeCol(col string, periods int) *GroupedColumnT
 }
 
 // CumSumCol applies CumSum per group.
-func (g *GroupedDataTable) CumSumCol(col string) *GroupedColumnTransform {
+func (g *GroupedDataTable) CumSumCol(col any) *GroupedColumnTransform {
 	num, label, ok := g.resolveSource("CumSumCol", col)
 	t := &GroupedColumnTransform{parent: g, sourceCol: num, sourceLabel: label}
 	if !ok {
@@ -164,7 +165,7 @@ func (g *GroupedDataTable) CumSumCol(col string) *GroupedColumnTransform {
 }
 
 // CumProdCol applies CumProd per group.
-func (g *GroupedDataTable) CumProdCol(col string) *GroupedColumnTransform {
+func (g *GroupedDataTable) CumProdCol(col any) *GroupedColumnTransform {
 	num, label, ok := g.resolveSource("CumProdCol", col)
 	t := &GroupedColumnTransform{parent: g, sourceCol: num, sourceLabel: label}
 	if !ok {
@@ -176,7 +177,7 @@ func (g *GroupedDataTable) CumProdCol(col string) *GroupedColumnTransform {
 }
 
 // CumMaxCol applies CumMax per group.
-func (g *GroupedDataTable) CumMaxCol(col string) *GroupedColumnTransform {
+func (g *GroupedDataTable) CumMaxCol(col any) *GroupedColumnTransform {
 	num, label, ok := g.resolveSource("CumMaxCol", col)
 	t := &GroupedColumnTransform{parent: g, sourceCol: num, sourceLabel: label}
 	if !ok {
@@ -188,7 +189,7 @@ func (g *GroupedDataTable) CumMaxCol(col string) *GroupedColumnTransform {
 }
 
 // CumMinCol applies CumMin per group.
-func (g *GroupedDataTable) CumMinCol(col string) *GroupedColumnTransform {
+func (g *GroupedDataTable) CumMinCol(col any) *GroupedColumnTransform {
 	num, label, ok := g.resolveSource("CumMinCol", col)
 	t := &GroupedColumnTransform{parent: g, sourceCol: num, sourceLabel: label}
 	if !ok {
@@ -213,7 +214,7 @@ type GroupedRollingCol struct {
 
 // RollingCol builds a rolling-window view over the given column, scoped to
 // each group separately.
-func (g *GroupedDataTable) RollingCol(col string, opts RollingOptions) *GroupedRollingCol {
+func (g *GroupedDataTable) RollingCol(col any, opts RollingOptions) *GroupedRollingCol {
 	num, label, ok := g.resolveSource("RollingCol", col)
 	gr := &GroupedRollingCol{parent: g, sourceCol: num, sourceLabel: label, opts: opts}
 	if !ok {
@@ -293,7 +294,7 @@ type GroupedExpandingCol struct {
 
 // ExpandingCol builds an expanding-window view over the given column, scoped
 // to each group separately.
-func (g *GroupedDataTable) ExpandingCol(col string, minObs int) *GroupedExpandingCol {
+func (g *GroupedDataTable) ExpandingCol(col any, minObs int) *GroupedExpandingCol {
 	num, label, ok := g.resolveSource("ExpandingCol", col)
 	ge := &GroupedExpandingCol{parent: g, sourceCol: num, sourceLabel: label, minObs: minObs}
 	if !ok {

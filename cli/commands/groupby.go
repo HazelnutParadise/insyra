@@ -56,20 +56,22 @@ func runGroupByCommand(ctx *ExecContext, args []string) error {
 	if len(specs) == 0 {
 		return fmt.Errorf("groupby requires at least one aggregate spec after 'agg'")
 	}
+	table, err := getDataTableVar(ctx, coreArgs[0])
+	if err != nil {
+		return err
+	}
+
+	// The table is needed to read a spec: a CLI token carries no type, so
+	// which column it names is decided against the table it runs on.
 	configs := make([]insyra.AggregateConfig, 0, len(specs))
 	for _, spec := range specs {
-		cfg, err := parseAggregateSpec(spec)
+		cfg, err := parseAggregateSpec(table, spec)
 		if err != nil {
 			return err
 		}
 		configs = append(configs, cfg)
 	}
-
-	table, err := getDataTableVar(ctx, coreArgs[0])
-	if err != nil {
-		return err
-	}
-	result := table.GroupBy(keys...).Aggregate(configs...)
+	result := table.GroupBy(colSelectors(table, keys)...).Aggregate(configs...)
 	if errInfo := table.Err(); errInfo != nil {
 		// Surface the parent-level error to the user. The result is still
 		// stored so they can inspect partial output.
@@ -90,7 +92,7 @@ func runGroupByCommand(ctx *ExecContext, args []string) error {
 //	count          (special-case shorthand for :countall:count)
 //
 // Aliases are auto-derived as "<col>_<op>" when omitted.
-func parseAggregateSpec(spec string) (insyra.AggregateConfig, error) {
+func parseAggregateSpec(table *insyra.DataTable, spec string) (insyra.AggregateConfig, error) {
 	var cfg insyra.AggregateConfig
 	if strings.EqualFold(spec, "count") {
 		// shorthand: total row count, no source column
@@ -102,7 +104,10 @@ func parseAggregateSpec(spec string) (insyra.AggregateConfig, error) {
 	if len(parts) < 2 {
 		return cfg, fmt.Errorf("invalid aggregate spec %q (expected <col>:<op>[:<alias>])", spec)
 	}
-	cfg.SourceCol = strings.TrimSpace(parts[0])
+	source := strings.TrimSpace(parts[0])
+	if source != "" {
+		cfg.SourceCol = colSelector(table, source)
+	}
 	op, err := parseAggregateOp(parts[1])
 	if err != nil {
 		return cfg, fmt.Errorf("invalid op in spec %q: %w", spec, err)
@@ -111,7 +116,7 @@ func parseAggregateSpec(spec string) (insyra.AggregateConfig, error) {
 	if len(parts) == 3 {
 		cfg.As = strings.TrimSpace(parts[2])
 	}
-	if cfg.SourceCol == "" && op != insyra.OpCountAll {
+	if cfg.SourceCol == nil && op != insyra.OpCountAll {
 		return cfg, fmt.Errorf("invalid aggregate spec %q: source column is required for op %s", spec, op)
 	}
 	return cfg, nil

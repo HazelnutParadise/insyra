@@ -150,7 +150,7 @@ func TestParseAggregateSpec(t *testing.T) {
 		{":sum", 0, "", "", true},
 	}
 	for _, tc := range cases {
-		cfg, err := parseAggregateSpec(tc.raw)
+		cfg, err := parseAggregateSpec(specTable(), tc.raw)
 		if tc.fail {
 			if err == nil {
 				t.Errorf("expected error for spec %q", tc.raw)
@@ -164,11 +164,25 @@ func TestParseAggregateSpec(t *testing.T) {
 		if cfg.Op != tc.op {
 			t.Errorf("spec %q: op = %v want %v", tc.raw, cfg.Op, tc.op)
 		}
-		if cfg.SourceCol != tc.col {
-			t.Errorf("spec %q: col = %q want %q", tc.raw, cfg.SourceCol, tc.col)
+		var wantCol any
+		if tc.col != "" {
+			wantCol = insyra.Name(tc.col)
+		}
+		if cfg.SourceCol != wantCol {
+			t.Errorf("spec %q: col = %v want %v", tc.raw, cfg.SourceCol, wantCol)
 		}
 		if cfg.As != tc.as {
 			t.Errorf("spec %q: as = %q want %q", tc.raw, cfg.As, tc.as)
 		}
 	}
+}
+
+// specTable carries the column names the aggregate specs above address, so a
+// spec resolves the way it would against a real table.
+func specTable() *insyra.DataTable {
+	dt := insyra.NewDataTable()
+	for _, name := range []string{"revenue", "qty", "price", "x"} {
+		dt.AppendCols(insyra.NewDataList(1, 2).SetName(name))
+	}
+	return dt
 }

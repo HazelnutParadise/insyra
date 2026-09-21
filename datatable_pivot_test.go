@@ -27,9 +27,9 @@ func pivotDuplicateLongTable() *DataTable {
 func TestPivot_UniqueIndexColumns(t *testing.T) {
 	dt := pivotLongTable()
 	wide, err := dt.Pivot(PivotConfig{
-		Index:    []string{"region"},
-		Columns:  "product",
-		Values:   "sales",
+		Index:    []any{Name("region")},
+		Columns:  Name("product"),
+		Values:   Name("sales"),
 		FillNA:   0,
 		SortCols: true,
 	})
@@ -70,9 +70,9 @@ func TestPivot_UniqueIndexColumns(t *testing.T) {
 func TestPivot_AggSum(t *testing.T) {
 	dt := pivotDuplicateLongTable()
 	wide, err := dt.Pivot(PivotConfig{
-		Index:   []string{"region"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{Name("region")},
+		Columns: Name("product"),
+		Values:  Name("sales"),
 		AggFunc: "sum",
 		FillNA:  0,
 	})
@@ -88,9 +88,9 @@ func TestPivot_AggSum(t *testing.T) {
 func TestPivot_AggMean(t *testing.T) {
 	dt := pivotDuplicateLongTable()
 	wide, err := dt.Pivot(PivotConfig{
-		Index:   []string{"region"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{Name("region")},
+		Columns: Name("product"),
+		Values:  Name("sales"),
 		AggFunc: "mean",
 	})
 	if err != nil {
@@ -105,9 +105,9 @@ func TestPivot_AggMean(t *testing.T) {
 func TestPivot_AggCount(t *testing.T) {
 	dt := pivotDuplicateLongTable()
 	wide, err := dt.Pivot(PivotConfig{
-		Index:   []string{"region"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{Name("region")},
+		Columns: Name("product"),
+		Values:  Name("sales"),
 		AggFunc: "count",
 		FillNA:  0,
 	})
@@ -123,9 +123,9 @@ func TestPivot_AggCount(t *testing.T) {
 func TestPivot_AggCustom(t *testing.T) {
 	dt := pivotDuplicateLongTable()
 	wide, err := dt.Pivot(PivotConfig{
-		Index:   []string{"region"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{Name("region")},
+		Columns: Name("product"),
+		Values:  Name("sales"),
 		AggFunc: "custom",
 		Custom: func(group *DataList) any {
 			return group.Max()
@@ -143,9 +143,9 @@ func TestPivot_AggCustom(t *testing.T) {
 func TestPivot_DuplicateWithoutAggErrors(t *testing.T) {
 	dt := pivotDuplicateLongTable()
 	_, err := dt.Pivot(PivotConfig{
-		Index:   []string{"region"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{Name("region")},
+		Columns: Name("product"),
+		Values:  Name("sales"),
 	})
 	if err == nil {
 		t.Fatalf("expected error when duplicates exist with no AggFunc")
@@ -154,26 +154,26 @@ func TestPivot_DuplicateWithoutAggErrors(t *testing.T) {
 
 func TestPivot_MissingColumnsError(t *testing.T) {
 	dt := pivotLongTable()
-	if _, err := dt.Pivot(PivotConfig{Index: []string{"nope"}, Columns: "product", Values: "sales"}); err == nil {
+	if _, err := dt.Pivot(PivotConfig{Index: []any{Name("nope")}, Columns: Name("product"), Values: Name("sales")}); err == nil {
 		t.Errorf("expected error for missing index column")
 	}
-	if _, err := dt.Pivot(PivotConfig{Index: []string{"region"}, Columns: "nope", Values: "sales"}); err == nil {
+	if _, err := dt.Pivot(PivotConfig{Index: []any{Name("region")}, Columns: Name("nope"), Values: Name("sales")}); err == nil {
 		t.Errorf("expected error for missing columns column")
 	}
-	if _, err := dt.Pivot(PivotConfig{Index: []string{"region"}, Columns: "product", Values: "nope"}); err == nil {
+	if _, err := dt.Pivot(PivotConfig{Index: []any{Name("region")}, Columns: Name("product"), Values: Name("nope")}); err == nil {
 		t.Errorf("expected error for missing values column")
 	}
 }
 
 func TestPivot_MissingRequiredFields(t *testing.T) {
 	dt := pivotLongTable()
-	if _, err := dt.Pivot(PivotConfig{Columns: "product", Values: "sales"}); err == nil {
+	if _, err := dt.Pivot(PivotConfig{Columns: Name("product"), Values: Name("sales")}); err == nil {
 		t.Errorf("expected error for empty Index")
 	}
-	if _, err := dt.Pivot(PivotConfig{Index: []string{"region"}, Values: "sales"}); err == nil {
+	if _, err := dt.Pivot(PivotConfig{Index: []any{Name("region")}, Values: Name("sales")}); err == nil {
 		t.Errorf("expected error for empty Columns")
 	}
-	if _, err := dt.Pivot(PivotConfig{Index: []string{"region"}, Columns: "product"}); err == nil {
+	if _, err := dt.Pivot(PivotConfig{Index: []any{Name("region")}, Columns: Name("product")}); err == nil {
 		t.Errorf("expected error for empty Values")
 	}
 }
@@ -186,9 +186,9 @@ func TestPivot_EmptyTable(t *testing.T) {
 	dt.AppendCols(region, product, sales)
 
 	wide, err := dt.Pivot(PivotConfig{
-		Index:   []string{"region"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{Name("region")},
+		Columns: Name("product"),
+		Values:  Name("sales"),
 	})
 	if err != nil {
 		t.Fatalf("Pivot on empty table failed: %v", err)
@@ -210,9 +210,9 @@ func TestPivot_MultipleIndexCols(t *testing.T) {
 	dt.AppendCols(year, region, product, sales)
 
 	wide, err := dt.Pivot(PivotConfig{
-		Index:    []string{"year", "region"},
-		Columns:  "product",
-		Values:   "sales",
+		Index:    []any{Name("year"), Name("region")},
+		Columns:  Name("product"),
+		Values:   Name("sales"),
 		FillNA:   0,
 		SortCols: true,
 	})
@@ -235,9 +235,9 @@ func TestPivot_SortColsFalse_KeepsFirstSeen(t *testing.T) {
 	dt.AppendCols(region, product, sales)
 
 	wide, err := dt.Pivot(PivotConfig{
-		Index:    []string{"region"},
-		Columns:  "product",
-		Values:   "sales",
+		Index:    []any{Name("region")},
+		Columns:  Name("product"),
+		Values:   Name("sales"),
 		SortCols: false,
 	})
 	if err != nil {
@@ -251,9 +251,9 @@ func TestPivot_SortColsFalse_KeepsFirstSeen(t *testing.T) {
 func TestPivot_IndexColumnOverlap(t *testing.T) {
 	dt := pivotLongTable()
 	if _, err := dt.Pivot(PivotConfig{
-		Index:   []string{"region", "product"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{Name("region"), Name("product")},
+		Columns: Name("product"),
+		Values:  Name("sales"),
 	}); err == nil {
 		t.Errorf("expected error when Index includes Columns column")
 	}
@@ -262,9 +262,9 @@ func TestPivot_IndexColumnOverlap(t *testing.T) {
 func TestPivot_CustomMissingFuncErrors(t *testing.T) {
 	dt := pivotDuplicateLongTable()
 	if _, err := dt.Pivot(PivotConfig{
-		Index:   []string{"region"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{Name("region")},
+		Columns: Name("product"),
+		Values:  Name("sales"),
 		AggFunc: "custom",
 	}); err == nil {
 		t.Errorf("expected error when AggFunc=custom but Custom is nil")
@@ -274,9 +274,9 @@ func TestPivot_CustomMissingFuncErrors(t *testing.T) {
 func TestPivot_UnknownAggFuncErrors(t *testing.T) {
 	dt := pivotDuplicateLongTable()
 	if _, err := dt.Pivot(PivotConfig{
-		Index:   []string{"region"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{Name("region")},
+		Columns: Name("product"),
+		Values:  Name("sales"),
 		AggFunc: "wat",
 	}); err == nil {
 		t.Errorf("expected error for unknown AggFunc")
@@ -288,9 +288,9 @@ func TestPivot_DoesNotMutateSource(t *testing.T) {
 	origRows := dt.NumRows()
 	origHeaders := append([]string(nil), dt.ColNames()...)
 	if _, err := dt.Pivot(PivotConfig{
-		Index:   []string{"region"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{Name("region")},
+		Columns: Name("product"),
+		Values:  Name("sales"),
 	}); err != nil {
 		t.Fatalf("Pivot failed: %v", err)
 	}
@@ -317,8 +317,8 @@ func unpivotWideTable() *DataTable {
 func TestUnpivot_ExplicitValueVars(t *testing.T) {
 	dt := unpivotWideTable()
 	long, err := dt.Unpivot(UnpivotConfig{
-		IDVars:    []string{"id"},
-		ValueVars: []string{"Q1", "Q2", "Q3"},
+		IDVars:    []any{Name("id")},
+		ValueVars: []any{Name("Q1"), Name("Q2"), Name("Q3")},
 		VarName:   "question",
 		ValueName: "score",
 	})
@@ -351,7 +351,7 @@ func TestUnpivot_ExplicitValueVars(t *testing.T) {
 func TestUnpivot_DefaultValueVars(t *testing.T) {
 	dt := unpivotWideTable()
 	long, err := dt.Unpivot(UnpivotConfig{
-		IDVars: []string{"id"},
+		IDVars: []any{Name("id")},
 	})
 	if err != nil {
 		t.Fatalf("Unpivot failed: %v", err)
@@ -372,7 +372,7 @@ func TestUnpivot_DropNA(t *testing.T) {
 	dt.AppendCols(id, q1, q2)
 
 	long, err := dt.Unpivot(UnpivotConfig{
-		IDVars: []string{"id"},
+		IDVars: []any{Name("id")},
 		DropNA: true,
 	})
 	if err != nil {
@@ -391,7 +391,7 @@ func TestUnpivot_DropNAFalse_KeepsNils(t *testing.T) {
 	dt.AppendCols(id, q1)
 
 	long, err := dt.Unpivot(UnpivotConfig{
-		IDVars: []string{"id"},
+		IDVars: []any{Name("id")},
 		DropNA: false,
 	})
 	if err != nil {
@@ -411,7 +411,7 @@ func TestUnpivot_MixedTypes(t *testing.T) {
 	dt.AppendCols(id, a, b, c)
 
 	long, err := dt.Unpivot(UnpivotConfig{
-		IDVars: []string{"id"},
+		IDVars: []any{Name("id")},
 	})
 	if err != nil {
 		t.Fatalf("Unpivot failed: %v", err)
@@ -432,7 +432,7 @@ func TestUnpivot_EmptyValueVars(t *testing.T) {
 	dt.AppendCols(id)
 
 	long, err := dt.Unpivot(UnpivotConfig{
-		IDVars: []string{"id"},
+		IDVars: []any{Name("id")},
 	})
 	if err != nil {
 		t.Fatalf("Unpivot with no value cols failed: %v", err)
@@ -447,10 +447,10 @@ func TestUnpivot_EmptyValueVars(t *testing.T) {
 
 func TestUnpivot_MissingColumnError(t *testing.T) {
 	dt := unpivotWideTable()
-	if _, err := dt.Unpivot(UnpivotConfig{IDVars: []string{"nope"}}); err == nil {
+	if _, err := dt.Unpivot(UnpivotConfig{IDVars: []any{Name("nope")}}); err == nil {
 		t.Errorf("expected error for missing IDVars column")
 	}
-	if _, err := dt.Unpivot(UnpivotConfig{IDVars: []string{"id"}, ValueVars: []string{"Q9"}}); err == nil {
+	if _, err := dt.Unpivot(UnpivotConfig{IDVars: []any{Name("id")}, ValueVars: []any{Name("Q9")}}); err == nil {
 		t.Errorf("expected error for missing ValueVars column")
 	}
 }
@@ -458,7 +458,7 @@ func TestUnpivot_MissingColumnError(t *testing.T) {
 func TestUnpivot_VarValueNameClashError(t *testing.T) {
 	dt := unpivotWideTable()
 	if _, err := dt.Unpivot(UnpivotConfig{
-		IDVars:    []string{"id"},
+		IDVars:    []any{Name("id")},
 		VarName:   "x",
 		ValueName: "x",
 	}); err == nil {
@@ -469,8 +469,8 @@ func TestUnpivot_VarValueNameClashError(t *testing.T) {
 func TestUnpivot_OverlapError(t *testing.T) {
 	dt := unpivotWideTable()
 	if _, err := dt.Unpivot(UnpivotConfig{
-		IDVars:    []string{"id", "Q1"},
-		ValueVars: []string{"Q1", "Q2"},
+		IDVars:    []any{Name("id"), Name("Q1")},
+		ValueVars: []any{Name("Q1"), Name("Q2")},
 	}); err == nil {
 		t.Errorf("expected error when IDVars and ValueVars overlap")
 	}
@@ -480,7 +480,7 @@ func TestUnpivot_DoesNotMutateSource(t *testing.T) {
 	dt := unpivotWideTable()
 	origRows := dt.NumRows()
 	origHeaders := append([]string(nil), dt.ColNames()...)
-	if _, err := dt.Unpivot(UnpivotConfig{IDVars: []string{"id"}}); err != nil {
+	if _, err := dt.Unpivot(UnpivotConfig{IDVars: []any{Name("id")}}); err != nil {
 		t.Fatalf("Unpivot failed: %v", err)
 	}
 	if dt.NumRows() != origRows {
@@ -500,7 +500,7 @@ func TestPivotUnpivot_RoundTrip(t *testing.T) {
 	wide.AppendCols(id, a, b)
 
 	long, err := wide.Unpivot(UnpivotConfig{
-		IDVars:    []string{"id"},
+		IDVars:    []any{Name("id")},
 		VarName:   "var",
 		ValueName: "val",
 	})
@@ -511,9 +511,9 @@ func TestPivotUnpivot_RoundTrip(t *testing.T) {
 		t.Fatalf("long rows = %d, want 4", long.NumRows())
 	}
 	round, err := long.Pivot(PivotConfig{
-		Index:    []string{"id"},
-		Columns:  "var",
-		Values:   "val",
+		Index:    []any{Name("id")},
+		Columns:  Name("var"),
+		Values:   Name("val"),
 		SortCols: true,
 	})
 	if err != nil {

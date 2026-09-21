@@ -134,7 +134,7 @@ func parseDatesTestTable() *DataTable {
 
 func TestDataTable_ParseDatesCols_InPlaceThenResample(t *testing.T) {
 	dt := parseDatesTestTable()
-	out := dt.ParseDatesCols([]string{"Date"})
+	out := dt.ParseDatesCols([]any{Name("Date")})
 	if out != dt {
 		t.Fatalf("ParseDatesCols should return the same DataTable")
 	}
@@ -145,7 +145,7 @@ func TestDataTable_ParseDatesCols_InPlaceThenResample(t *testing.T) {
 		t.Fatalf("Date[0] = %T want time.Time", dt.GetColByName("Date").Get(0))
 	}
 
-	m, err := dt.Resample("Date", ResampleMonthly, ResampleAgg{Col: "Close", Op: OpLast})
+	m, err := dt.Resample(Name("Date"), ResampleMonthly, ResampleAgg{Col: Name("Close"), Op: OpLast})
 	if err != nil {
 		t.Fatalf("Resample after ParseDatesCols failed: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestDataTable_ParseDatesCols_InPlaceThenResample(t *testing.T) {
 
 func TestDataTable_ParseDatesCols_AcceptsExcelIndex(t *testing.T) {
 	dt := parseDatesTestTable()
-	dt.ParseDatesCols([]string{"A"})
+	dt.ParseDatesCols([]any{"A"})
 	if _, ok := dt.GetColByName("Date").Get(0).(time.Time); !ok {
 		t.Fatalf("Date[0] = %T want time.Time", dt.GetColByName("Date").Get(0))
 	}
@@ -164,7 +164,7 @@ func TestDataTable_ParseDatesCols_AcceptsExcelIndex(t *testing.T) {
 
 func TestDataTable_ParseDatesCols_MissingColumnWarns(t *testing.T) {
 	dt := parseDatesTestTable()
-	dt.ParseDatesCols([]string{"nope", "Date"})
+	dt.ParseDatesCols([]any{Name("nope"), Name("Date")})
 	if err := dt.Err(); err == nil {
 		t.Fatal("expected a warning recorded for the missing column")
 	}
@@ -176,7 +176,7 @@ func TestDataTable_ParseDatesCols_MissingColumnWarns(t *testing.T) {
 
 func TestDataTable_ParseDatesCols_LeavesOtherColumnsAlone(t *testing.T) {
 	dt := parseDatesTestTable()
-	dt.ParseDatesCols([]string{"Date"})
+	dt.ParseDatesCols([]any{Name("Date")})
 	if got := dt.GetColByName("Close").Get(0); got != 10.0 {
 		t.Errorf("Close[0] = %v want 10", got)
 	}
@@ -187,7 +187,7 @@ func TestDataTable_ParseDatesCols_CustomLayout(t *testing.T) {
 	date.SetName("Date")
 	dt := NewDataTable()
 	dt.AppendCols(date)
-	dt.ParseDatesCols([]string{"Date"}, "02/01/2006")
+	dt.ParseDatesCols([]any{Name("Date")}, "02/01/2006")
 	parsed, ok := dt.GetColByName("Date").Get(0).(time.Time)
 	if !ok {
 		t.Fatalf("Date[0] = %T want time.Time", dt.GetColByName("Date").Get(0))
@@ -206,7 +206,7 @@ func TestParseDates_OnInterfaces(t *testing.T) {
 	}
 
 	var table IDataTable = parseDatesTestTable()
-	table.ParseDatesCols([]string{"Date"})
+	table.ParseDatesCols([]any{Name("Date")})
 	if _, ok := table.GetColByName("Date").Get(0).(time.Time); !ok {
 		t.Fatalf("IDataTable.ParseDatesCols did not convert the column")
 	}

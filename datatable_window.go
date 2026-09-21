@@ -13,12 +13,19 @@ package insyra
 // snapshotCol resolves col against dt and returns a stand-alone *DataList
 // containing a copy of the column's data, plus its display label. ok is false
 // when the column is missing; a warning is recorded on dt.
-func (dt *DataTable) snapshotCol(funcName, col string) (snap *DataList, label string, ok bool) {
+func (dt *DataTable) snapshotCol(funcName string, col any) (snap *DataList, label string, ok bool) {
 	dt.AtomicDo(func(t *DataTable) {
-		num, lbl, found := resolveColForGroup(t, col)
-		if !found {
-			t.fail(funcName, "column %q not found", col)
+		num, warning, problem := t.lookupColSelector(col)
+		if problem != "" {
+			t.fail(funcName, "%s", problem)
 			return
+		}
+		if warning != "" {
+			t.warn(funcName, "%s", warning)
+		}
+		lbl := selectorLabel(col)
+		if name := t.columns[num].name; name != "" {
+			lbl = name
 		}
 		src := t.columns[num]
 		buf := make([]any, len(src.data))
@@ -33,7 +40,7 @@ func (dt *DataTable) snapshotCol(funcName, col string) (snap *DataList, label st
 
 // ShiftCol returns a new column equal to dt[col].Shift(periods, fill...).
 // Returns an empty DataList when the column is missing.
-func (dt *DataTable) ShiftCol(col string, periods int, fill ...any) *DataList {
+func (dt *DataTable) ShiftCol(col any, periods int, fill ...any) *DataList {
 	snap, _, ok := dt.snapshotCol("ShiftCol", col)
 	if !ok {
 		return NewDataList()
@@ -42,7 +49,7 @@ func (dt *DataTable) ShiftCol(col string, periods int, fill ...any) *DataList {
 }
 
 // DiffCol returns a new column equal to dt[col].Diff(periods).
-func (dt *DataTable) DiffCol(col string, periods int) *DataList {
+func (dt *DataTable) DiffCol(col any, periods int) *DataList {
 	snap, _, ok := dt.snapshotCol("DiffCol", col)
 	if !ok {
 		return NewDataList()
@@ -57,7 +64,7 @@ func (dt *DataTable) DiffCol(col string, periods int) *DataList {
 }
 
 // PctChangeCol returns a new column equal to dt[col].PctChange(periods).
-func (dt *DataTable) PctChangeCol(col string, periods int) *DataList {
+func (dt *DataTable) PctChangeCol(col any, periods int) *DataList {
 	snap, _, ok := dt.snapshotCol("PctChangeCol", col)
 	if !ok {
 		return NewDataList()
@@ -70,7 +77,7 @@ func (dt *DataTable) PctChangeCol(col string, periods int) *DataList {
 }
 
 // CumSumCol returns the cumulative sum of dt[col].
-func (dt *DataTable) CumSumCol(col string) *DataList {
+func (dt *DataTable) CumSumCol(col any) *DataList {
 	snap, _, ok := dt.snapshotCol("CumSumCol", col)
 	if !ok {
 		return NewDataList()
@@ -79,7 +86,7 @@ func (dt *DataTable) CumSumCol(col string) *DataList {
 }
 
 // CumProdCol returns the cumulative product of dt[col].
-func (dt *DataTable) CumProdCol(col string) *DataList {
+func (dt *DataTable) CumProdCol(col any) *DataList {
 	snap, _, ok := dt.snapshotCol("CumProdCol", col)
 	if !ok {
 		return NewDataList()
@@ -88,7 +95,7 @@ func (dt *DataTable) CumProdCol(col string) *DataList {
 }
 
 // CumMaxCol returns the running maximum of dt[col].
-func (dt *DataTable) CumMaxCol(col string) *DataList {
+func (dt *DataTable) CumMaxCol(col any) *DataList {
 	snap, _, ok := dt.snapshotCol("CumMaxCol", col)
 	if !ok {
 		return NewDataList()
@@ -97,7 +104,7 @@ func (dt *DataTable) CumMaxCol(col string) *DataList {
 }
 
 // CumMinCol returns the running minimum of dt[col].
-func (dt *DataTable) CumMinCol(col string) *DataList {
+func (dt *DataTable) CumMinCol(col any) *DataList {
 	snap, _, ok := dt.snapshotCol("CumMinCol", col)
 	if !ok {
 		return NewDataList()
@@ -108,7 +115,7 @@ func (dt *DataTable) CumMinCol(col string) *DataList {
 // RollingCol returns a RollingDataList view of dt[col]. Terminal reducers
 // (Mean, Sum, Min, Max, Median, Std, Var, Apply, Corr, Cov, Beta) produce a
 // *DataList the same length as the column.
-func (dt *DataTable) RollingCol(col string, opts RollingOptions) *RollingDataList {
+func (dt *DataTable) RollingCol(col any, opts RollingOptions) *RollingDataList {
 	snap, _, ok := dt.snapshotCol("RollingCol", col)
 	if !ok {
 		return &RollingDataList{opts: opts, err: "RollingCol: column not found"}
@@ -117,7 +124,7 @@ func (dt *DataTable) RollingCol(col string, opts RollingOptions) *RollingDataLis
 }
 
 // ExpandingCol returns an ExpandingDataList view of dt[col].
-func (dt *DataTable) ExpandingCol(col string, minObs int) *ExpandingDataList {
+func (dt *DataTable) ExpandingCol(col any, minObs int) *ExpandingDataList {
 	snap, _, ok := dt.snapshotCol("ExpandingCol", col)
 	if !ok {
 		return &ExpandingDataList{minObs: minObs, err: "ExpandingCol: column not found"}
@@ -127,7 +134,7 @@ func (dt *DataTable) ExpandingCol(col string, minObs int) *ExpandingDataList {
 
 // EWMCol returns an EWMDataList view of dt[col]. The column may be named or
 // addressed by its Excel-style index.
-func (dt *DataTable) EWMCol(col string, opts EWMOptions) *EWMDataList {
+func (dt *DataTable) EWMCol(col any, opts EWMOptions) *EWMDataList {
 	snap, _, ok := dt.snapshotCol("EWMCol", col)
 	if !ok {
 		return &EWMDataList{opts: opts, err: "EWMCol: column not found"}

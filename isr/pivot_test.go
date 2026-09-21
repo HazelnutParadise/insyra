@@ -16,7 +16,7 @@ func TestDT_PivotUnpivot_RoundTrip(t *testing.T) {
 	})
 
 	long := wide.Unpivot(Unpivot{
-		IDVars:    []string{"id"},
+		IDVars:    []any{insyra.Name("id")},
 		VarName:   "var",
 		ValueName: "val",
 	})
@@ -25,9 +25,9 @@ func TestDT_PivotUnpivot_RoundTrip(t *testing.T) {
 	assert.Equal(t, []string{"id", "var", "val"}, long.ColNames())
 
 	round := long.Pivot(Pivot{
-		Index:    []string{"id"},
-		Columns:  "var",
-		Values:   "val",
+		Index:    []any{insyra.Name("id")},
+		Columns:  insyra.Name("var"),
+		Values:   insyra.Name("val"),
 		SortCols: true,
 	})
 	assert.Nil(t, round.Err(), "pivot back should not record an error")
@@ -53,9 +53,9 @@ func TestDT_Pivot_AggSum(t *testing.T) {
 		DL.From(10, 5, 20, 30).SetName("sales"),
 	})
 	wide := dt.Pivot(Pivot{
-		Index:   []string{"region"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{insyra.Name("region")},
+		Columns: insyra.Name("product"),
+		Values:  insyra.Name("sales"),
 		Agg:     "sum",
 		FillNA:  0,
 	})
@@ -72,9 +72,9 @@ func TestDT_Pivot_RecordsErrOnBadConfig(t *testing.T) {
 		DL.From(10, 20).SetName("sales"),
 	})
 	out := dt.Pivot(Pivot{
-		Index:   []string{"region"},
-		Columns: "product",
-		Values:  "sales",
+		Index:   []any{insyra.Name("region")},
+		Columns: insyra.Name("product"),
+		Values:  insyra.Name("sales"),
 	})
 	assert.NotNil(t, out.Err(), "duplicate (Index, Columns) without Agg should record an error")
 }

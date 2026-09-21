@@ -50,14 +50,14 @@ func runResampleCommand(ctx *ExecContext, args []string) error {
 
 	aggs := make([]insyra.ResampleAgg, 0, len(coreArgs)-3)
 	for _, spec := range coreArgs[3:] {
-		agg, err := parseResampleSpec(spec)
+		agg, err := parseResampleSpec(table, spec)
 		if err != nil {
 			return err
 		}
 		aggs = append(aggs, agg)
 	}
 
-	result, err := table.Resample(timeCol, freq, aggs...)
+	result, err := table.Resample(colSelector(table, timeCol), freq, aggs...)
 	if err != nil {
 		return fmt.Errorf("resample: %w", err)
 	}
@@ -82,16 +82,17 @@ func parseResampleFreq(raw string) (insyra.ResampleFreq, error) {
 
 // parseResampleSpec parses one `<col>:<op>[:<name>]` descriptor. Column names
 // containing ':' cannot be expressed in this syntax.
-func parseResampleSpec(spec string) (insyra.ResampleAgg, error) {
+func parseResampleSpec(table *insyra.DataTable, spec string) (insyra.ResampleAgg, error) {
 	var agg insyra.ResampleAgg
 	parts := strings.Split(spec, ":")
 	if len(parts) < 2 || len(parts) > 3 {
 		return agg, fmt.Errorf("resample: invalid spec %q (expected <col>:<op>[:<name>])", spec)
 	}
-	agg.Col = strings.TrimSpace(parts[0])
-	if agg.Col == "" {
+	source := strings.TrimSpace(parts[0])
+	if source == "" {
 		return agg, fmt.Errorf("resample: invalid spec %q (expected <col>:<op>[:<name>]): source column is required", spec)
 	}
+	agg.Col = colSelector(table, source)
 	op, err := parseAggregateOp(parts[1])
 	if err != nil {
 		return agg, fmt.Errorf("resample: invalid op in spec %q: %w (supported: %s)", spec, err, resampleOps)

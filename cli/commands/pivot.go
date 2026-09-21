@@ -81,9 +81,9 @@ func runPivotCommand(ctx *ExecContext, args []string) error {
 		return err
 	}
 	result, perr := table.Pivot(insyra.PivotConfig{
-		Index:    opts.Index,
-		Columns:  opts.Columns,
-		Values:   opts.Values,
+		Index:    colSelectors(table, opts.Index),
+		Columns:  colSelector(table, opts.Columns),
+		Values:   colSelector(table, opts.Values),
 		AggFunc:  opts.Agg,
 		FillNA:   opts.FillNA,
 		SortCols: opts.SortCols,
@@ -187,8 +187,8 @@ func runUnpivotCommand(ctx *ExecContext, args []string) error {
 		return err
 	}
 	result, perr := table.Unpivot(insyra.UnpivotConfig{
-		IDVars:    opts.IDVars,
-		ValueVars: opts.ValueVars,
+		IDVars:    colSelectors(table, opts.IDVars),
+		ValueVars: colSelectors(table, opts.ValueVars),
 		VarName:   opts.VarName,
 		ValueName: opts.ValueName,
 		DropNA:    opts.DropNA,

@@ -17,10 +17,10 @@ func TestGroupByAggregatesTheSnapshot(t *testing.T) {
 		NewDataList("a", "a", "b").SetName("k"),
 		NewDataList(1, 2, 3).SetName("v"),
 	)
-	g := dt.GroupBy("k")
+	g := dt.GroupBy(Name("k"))
 	dt.UpdateElement(0, "B", 100) // after GroupBy; must not reach the groups
 
-	out := g.Aggregate(AggregateConfig{SourceCol: "v", Op: OpSum, As: "s"})
+	out := g.Aggregate(AggregateConfig{SourceCol: Name("v"), Op: OpSum, As: "s"})
 	if err := dt.PopErr(); err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestGroupByAggregateDoesNotRaceParentWrites(t *testing.T) {
 		vals[i] = i
 	}
 	dt := NewDataTable(NewDataList(keys...).SetName("k"), NewDataList(vals...).SetName("v"))
-	g := dt.GroupBy("k")
+	g := dt.GroupBy(Name("k"))
 
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
@@ -61,7 +61,7 @@ func TestGroupByAggregateDoesNotRaceParentWrites(t *testing.T) {
 		}
 	}()
 	for range 50 {
-		g.Aggregate(AggregateConfig{SourceCol: "v", Op: OpSum, As: "s"})
+		g.Aggregate(AggregateConfig{SourceCol: Name("v"), Op: OpSum, As: "s"})
 	}
 	close(stop)
 	wg.Wait()

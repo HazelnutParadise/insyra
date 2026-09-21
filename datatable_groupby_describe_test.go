@@ -9,7 +9,7 @@ func TestGroupedDataTableDescribeNumeric(t *testing.T) {
 		NewDataList("retail", "retail", "enterprise").SetName("segment"),
 	)
 
-	desc := dt.GroupBy("region").Describe()
+	desc := dt.GroupBy(Name("region")).Describe()
 
 	if got := desc.ColNames(); len(got) != 10 || got[0] != "region" || got[1] != "revenue_count" {
 		t.Fatalf("unexpected grouped describe columns: %v", got)
@@ -28,7 +28,7 @@ func TestGroupedDataTableDescribeIncludeAll(t *testing.T) {
 		NewDataList("retail", "online", "retail").SetName("segment"),
 	)
 
-	desc := dt.GroupBy("region").Describe(DescribeOptions{IncludeAll: true})
+	desc := dt.GroupBy(Name("region")).Describe(DescribeOptions{IncludeAll: true})
 
 	if got := desc.GetColByName("segment_unique").Data(); got[0] != 2 || got[1] != 1 {
 		t.Fatalf("unexpected segment_unique: %v", got)

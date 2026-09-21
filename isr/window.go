@@ -22,44 +22,44 @@ type Rolling struct {
 }
 
 // Shift returns dt[col].Shift(periods, fill...).
-func (t *dt) Shift(col string, periods int, fill ...any) *insyra.DataList {
+func (t *dt) Shift(col any, periods int, fill ...any) *insyra.DataList {
 	return t.ShiftCol(col, periods, fill...)
 }
 
 // Diff returns dt[col].Diff(periods).
-func (t *dt) Diff(col string, periods int) *insyra.DataList {
+func (t *dt) Diff(col any, periods int) *insyra.DataList {
 	return t.DiffCol(col, periods)
 }
 
 // PctChange returns dt[col].PctChange(periods).
-func (t *dt) PctChange(col string, periods int) *insyra.DataList {
+func (t *dt) PctChange(col any, periods int) *insyra.DataList {
 	return t.PctChangeCol(col, periods)
 }
 
 // CumSum returns dt[col].CumSum().
-func (t *dt) CumSum(col string) *insyra.DataList {
+func (t *dt) CumSum(col any) *insyra.DataList {
 	return t.CumSumCol(col)
 }
 
 // CumProd returns dt[col].CumProd().
-func (t *dt) CumProd(col string) *insyra.DataList {
+func (t *dt) CumProd(col any) *insyra.DataList {
 	return t.CumProdCol(col)
 }
 
 // CumMax returns dt[col].CumMax().
-func (t *dt) CumMax(col string) *insyra.DataList {
+func (t *dt) CumMax(col any) *insyra.DataList {
 	return t.CumMaxCol(col)
 }
 
 // CumMin returns dt[col].CumMin().
-func (t *dt) CumMin(col string) *insyra.DataList {
+func (t *dt) CumMin(col any) *insyra.DataList {
 	return t.CumMinCol(col)
 }
 
 // RollingOn builds a rolling-window view over dt[col]. The terminal call
 // (Mean / Sum / Min / Max / Median / Std / Var / Apply / Corr) materialises
 // a column the same length as the source.
-func (t *dt) RollingOn(col string, r Rolling) *insyra.RollingDataList {
+func (t *dt) RollingOn(col any, r Rolling) *insyra.RollingDataList {
 	return t.RollingCol(col, insyra.RollingOptions{
 		Window:  r.Window,
 		MinObs:  r.MinObs,
@@ -69,6 +69,6 @@ func (t *dt) RollingOn(col string, r Rolling) *insyra.RollingDataList {
 }
 
 // ExpandingOn builds an expanding-window view over dt[col].
-func (t *dt) ExpandingOn(col string, minObs int) *insyra.ExpandingDataList {
+func (t *dt) ExpandingOn(col any, minObs int) *insyra.ExpandingDataList {
 	return t.ExpandingCol(col, minObs)
 }

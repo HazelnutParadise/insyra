@@ -392,17 +392,17 @@ func TestDT_WindowWrappers(t *testing.T) {
 		get  func(*dt) *insyra.DataList
 		want []any
 	}{
-		{name: "Diff", get: func(t *dt) *insyra.DataList { return t.Diff("v", 1) },
+		{name: "Diff", get: func(t *dt) *insyra.DataList { return t.Diff(Name("v"), 1) },
 			want: []any{nil, 2.0, -1.0, 4.0}},
-		{name: "PctChange", get: func(t *dt) *insyra.DataList { return t.PctChange("v", 1) },
+		{name: "PctChange", get: func(t *dt) *insyra.DataList { return t.PctChange(Name("v"), 1) },
 			want: []any{nil, 2.0, -1.0 / 3.0, 2.0}},
-		{name: "CumSum", get: func(t *dt) *insyra.DataList { return t.CumSum("v") },
+		{name: "CumSum", get: func(t *dt) *insyra.DataList { return t.CumSum(Name("v")) },
 			want: []any{1.0, 4.0, 6.0, 12.0}},
-		{name: "CumProd", get: func(t *dt) *insyra.DataList { return t.CumProd("v") },
+		{name: "CumProd", get: func(t *dt) *insyra.DataList { return t.CumProd(Name("v")) },
 			want: []any{1.0, 3.0, 6.0, 36.0}},
-		{name: "CumMax", get: func(t *dt) *insyra.DataList { return t.CumMax("v") },
+		{name: "CumMax", get: func(t *dt) *insyra.DataList { return t.CumMax(Name("v")) },
 			want: []any{1.0, 3.0, 3.0, 6.0}},
-		{name: "CumMin", get: func(t *dt) *insyra.DataList { return t.CumMin("v") },
+		{name: "CumMin", get: func(t *dt) *insyra.DataList { return t.CumMin(Name("v")) },
 			want: []any{1.0, 1.0, 1.0, 1.0}},
 	}
 	for _, tt := range tests {

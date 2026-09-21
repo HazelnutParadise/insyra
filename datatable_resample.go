@@ -19,7 +19,7 @@ const (
 // ResampleAgg describes one column aggregation in DataTable.Resample.
 // When As is empty, the output column uses Col as its name.
 type ResampleAgg struct {
-	Col string
+	Col any
 	Op  AggregateOp
 	As  string
 }
@@ -27,7 +27,7 @@ type ResampleAgg struct {
 // Resample converts rows keyed by timeCol into calendar-period aggregates.
 // Input rows are ordered by time for first/last semantics, and the result is
 // labelled by each period's final calendar day. Missing periods are omitted.
-func (dt *DataTable) Resample(timeCol string, freq ResampleFreq, aggs ...ResampleAgg) (*DataTable, error) {
+func (dt *DataTable) Resample(timeCol any, freq ResampleFreq, aggs ...ResampleAgg) (*DataTable, error) {
 	empty := NewDataTable()
 	if dt == nil {
 		return empty, fmt.Errorf("Resample: DataTable is nil")
@@ -50,11 +50,11 @@ func (dt *DataTable) Resample(timeCol string, freq ResampleFreq, aggs ...Resampl
 		var ok bool
 		timeNum, timeName, ok = resolveColForGroup(t, timeCol)
 		if !ok {
-			resErr = fmt.Errorf("Resample: time column %q not found", timeCol)
+			resErr = fmt.Errorf("Resample: time column %v not found", timeCol)
 			return
 		}
 		for _, agg := range aggs {
-			if agg.Col == "" {
+			if agg.Col == nil {
 				resErr = fmt.Errorf("Resample: aggregate column is required")
 				return
 			}
@@ -124,11 +124,11 @@ func (dt *DataTable) Resample(timeCol string, freq ResampleFreq, aggs ...Resampl
 	for i, agg := range aggs {
 		outputName := agg.As
 		if outputName == "" {
-			outputName = agg.Col
+			outputName = selectorLabel(agg.Col)
 		}
 		configs[i] = AggregateConfig{SourceCol: agg.Col, Op: agg.Op, As: outputName}
 	}
-	result := work.GroupBy(timeName).Aggregate(configs...)
+	result := work.GroupBy(Name(timeName)).Aggregate(configs...)
 	result.SortBy(DataTableSortConfig{Col: Name(timeName)})
 	return result, nil
 }

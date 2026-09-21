@@ -83,3 +83,27 @@ func parseSortDirection(raw string) (descending bool, err error) {
 		return false, fmt.Errorf("invalid direction %q (use asc or desc)", raw)
 	}
 }
+
+// colSelector turns a CLI token into the library's column selector, keeping
+// the CLI's own rule: a token that matches a column name is that column, and
+// anything else is read the way the library reads a bare string, as an
+// Excel-style index. The CLI has no type to carry the distinction the Go API
+// carries, and #315 is where that convention is being decided.
+func colSelector(table *insyra.DataTable, token string) any {
+	if slices.Contains(table.ColNames(), token) {
+		return insyra.Name(token)
+	}
+	if n, err := strconv.Atoi(token); err == nil {
+		return n
+	}
+	return token
+}
+
+// colSelectors maps colSelector over several tokens.
+func colSelectors(table *insyra.DataTable, tokens []string) []any {
+	out := make([]any, len(tokens))
+	for i, token := range tokens {
+		out[i] = colSelector(table, token)
+	}
+	return out
+}

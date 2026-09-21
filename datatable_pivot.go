@@ -27,17 +27,17 @@ import (
 type PivotConfig struct {
 	// Index lists the columns kept as identifiers; their unique combinations
 	// form the row keys of the output. At least one entry is required. Each
-	// entry is resolved by name first, then as an Excel-style index.
-	Index []string
+	// entry is a column selector: an Excel-style index string, a Name, or an
+	// int position.
+	Index []any
 
-	// Columns names the column whose unique values become new column headers
-	// in the output. Required. Resolved by name first, then as an Excel-style
-	// index.
-	Columns string
+	// Columns picks the column whose unique values become new column headers
+	// in the output. Required. Takes a column selector.
+	Columns any
 
-	// Values names the column whose cell values fill the new (Index, Columns)
-	// cells. Required. Resolved by name first, then as an Excel-style index.
-	Values string
+	// Values picks the column whose cell values fill the new (Index, Columns)
+	// cells. Required. Takes a column selector.
+	Values any
 
 	// AggFunc is the aggregator applied when an (Index, Columns) combination
 	// occurs more than once. Recognised names: "sum", "mean" (alias "avg"),
@@ -70,14 +70,13 @@ type PivotConfig struct {
 // consulted. Tokens that match neither a name nor a valid alphabetic index
 // produce an error.
 type UnpivotConfig struct {
-	// IDVars lists the columns kept as-is (identifier columns). Each entry
-	// is resolved by name first, then as an Excel-style index.
-	IDVars []string
+	// IDVars lists the columns kept as-is (identifier columns). Each entry is
+	// a column selector.
+	IDVars []any
 
-	// ValueVars lists the columns to unpivot. Each entry is resolved by name
-	// first, then as an Excel-style index. When empty, all columns not
-	// listed in IDVars are unpivoted.
-	ValueVars []string
+	// ValueVars lists the columns to unpivot, each a column selector. When
+	// empty, all columns not listed in IDVars are unpivoted.
+	ValueVars []any
 
 	// VarName is the name of the new "variable" column in the output. When
 	// empty it defaults to "variable".
@@ -105,10 +104,10 @@ func (dt *DataTable) Pivot(cfg PivotConfig) (*DataTable, error) {
 	if len(cfg.Index) == 0 {
 		return failPivot(out, "Index requires at least one column")
 	}
-	if strings.TrimSpace(cfg.Columns) == "" {
+	if isEmptySelector(cfg.Columns) {
 		return failPivot(out, "Columns is required")
 	}
-	if strings.TrimSpace(cfg.Values) == "" {
+	if isEmptySelector(cfg.Values) {
 		return failPivot(out, "Values is required")
 	}
 
@@ -133,7 +132,7 @@ func (dt *DataTable) Pivot(cfg PivotConfig) (*DataTable, error) {
 		for _, name := range cfg.Index {
 			num, label, ok := resolveColForGroup(t, name)
 			if !ok {
-				errMsg = fmt.Sprintf("index column %q not found", name)
+				errMsg = fmt.Sprintf("index column %v not found", name)
 				return
 			}
 			indexNums = append(indexNums, num)
@@ -141,12 +140,12 @@ func (dt *DataTable) Pivot(cfg PivotConfig) (*DataTable, error) {
 		}
 		colsNum, _, ok := resolveColForGroup(t, cfg.Columns)
 		if !ok {
-			errMsg = fmt.Sprintf("columns column %q not found", cfg.Columns)
+			errMsg = fmt.Sprintf("columns column %v not found", cfg.Columns)
 			return
 		}
 		valsNum, _, ok := resolveColForGroup(t, cfg.Values)
 		if !ok {
-			errMsg = fmt.Sprintf("values column %q not found", cfg.Values)
+			errMsg = fmt.Sprintf("values column %v not found", cfg.Values)
 			return
 		}
 

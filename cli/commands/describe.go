@@ -54,7 +54,7 @@ func runDescribeCommand(ctx *ExecContext, args []string) error {
 	switch typed := value.(type) {
 	case *insyra.DataTable:
 		if len(opts.GroupBy) > 0 {
-			result = typed.GroupBy(opts.GroupBy...).Describe(opts.DescribeOptions)
+			result = typed.GroupBy(colSelectors(typed, opts.GroupBy)...).Describe(opts.DescribeOptions)
 			if errInfo := typed.Err(); errInfo != nil {
 				_, _ = fmt.Fprintf(ctx.Output, "warning: %s\n", errInfo.Error())
 			}

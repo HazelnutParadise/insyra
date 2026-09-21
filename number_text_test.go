@@ -112,7 +112,7 @@ func TestNumberTextInGeneratedColumnNames(t *testing.T) {
 		NewDataList(1500000.0, 2500000.0).SetName("k"),
 		NewDataList(1, 2).SetName("v"),
 	)
-	pivoted, err := pv.Pivot(PivotConfig{Index: []string{"id"}, Columns: "k", Values: "v"})
+	pivoted, err := pv.Pivot(PivotConfig{Index: []any{Name("id")}, Columns: Name("k"), Values: Name("v")})
 	if err != nil {
 		t.Fatal(err)
 	}

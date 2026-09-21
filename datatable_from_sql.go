@@ -352,7 +352,13 @@ func scanRowsToDataTable(rows *sql.Rows, opts ReadSQLOptions, maxRows int) (*Dat
 			}
 		}
 		if cols := parseDateColumns(columnNames, rowNameColIndex, opts); len(cols) > 0 {
-			dt.ParseDatesCols(cols)
+			// The names come from the query's own column list, so they are
+			// names, not indices.
+			selectors := make([]any, len(cols))
+			for i, col := range cols {
+				selectors[i] = Name(col)
+			}
+			dt.ParseDatesCols(selectors)
 		}
 	}
 	return dt, done, nil

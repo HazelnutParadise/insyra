@@ -6,9 +6,9 @@ import "github.com/HazelnutParadise/insyra"
 // mirror insyra.PivotConfig but use a shorter Agg field for ergonomics in
 // chained calls. See insyra.PivotConfig for full semantics.
 type Pivot struct {
-	Index    []string
-	Columns  string
-	Values   string
+	Index    []any
+	Columns  any
+	Values   any
 	Agg      string
 	Custom   func(group *insyra.DataList) any
 	FillNA   any
@@ -18,8 +18,8 @@ type Pivot struct {
 // Unpivot is the isr-style argument struct for (*DataTable).Unpivot. Field
 // names mirror insyra.UnpivotConfig. See insyra.UnpivotConfig for semantics.
 type Unpivot struct {
-	IDVars    []string
-	ValueVars []string
+	IDVars    []any
+	ValueVars []any
 	VarName   string
 	ValueName string
 	DropNA    bool

@@ -40,6 +40,6 @@ func TestDataList_EWM_MinObs(t *testing.T) {
 func TestDataTable_EWMCol_ResolvesNameAndIndex(t *testing.T) {
 	dt := buildPriceTable()
 	want := []any{100.0, 105.0, 112.5, 113.75, 121.875}
-	sliceEqualApprox(t, dt.EWMCol("price", EWMOptions{Alpha: 0.5, Adjust: false}).Mean().Data(), want, 1e-12)
+	sliceEqualApprox(t, dt.EWMCol(Name("price"), EWMOptions{Alpha: 0.5, Adjust: false}).Mean().Data(), want, 1e-12)
 	sliceEqualApprox(t, dt.EWMCol("B", EWMOptions{Alpha: 0.5, Adjust: false}).Mean().Data(), want, 1e-12)
 }

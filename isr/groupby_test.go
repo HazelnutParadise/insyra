@@ -17,9 +17,9 @@ func TestDT_GroupBy_Aggregate(t *testing.T) {
 		},
 	)
 
-	report := dt.GroupBy("region").Aggregate(
-		insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum, As: "total_rev"},
-		insyra.AggregateConfig{SourceCol: "qty", Op: insyra.OpMean, As: "avg_qty"},
+	report := dt.GroupBy(insyra.Name("region")).Aggregate(
+		insyra.AggregateConfig{SourceCol: insyra.Name("revenue"), Op: insyra.OpSum, As: "total_rev"},
+		insyra.AggregateConfig{SourceCol: insyra.Name("qty"), Op: insyra.OpMean, As: "avg_qty"},
 	)
 
 	assert.Equal(t, 3, report.NumRows(), "expected 3 groups")

@@ -23,12 +23,12 @@ func TestDataTable_Resample_MonthlyOHLCV(t *testing.T) {
 		NewDataList(11.0, 14.0, 13.0, 17.0).SetName("Close"),
 		NewDataList(100.0, 200.0, 300.0, 400.0).SetName("Volume"),
 	)
-	out, err := dt.Resample("Date", ResampleMonthly,
-		ResampleAgg{Col: "Open", Op: OpFirst},
-		ResampleAgg{Col: "High", Op: OpMax},
-		ResampleAgg{Col: "Low", Op: OpMin},
-		ResampleAgg{Col: "Close", Op: OpLast},
-		ResampleAgg{Col: "Volume", Op: OpSum},
+	out, err := dt.Resample(Name("Date"), ResampleMonthly,
+		ResampleAgg{Col: Name("Open"), Op: OpFirst},
+		ResampleAgg{Col: Name("High"), Op: OpMax},
+		ResampleAgg{Col: Name("Low"), Op: OpMin},
+		ResampleAgg{Col: Name("Close"), Op: OpLast},
+		ResampleAgg{Col: Name("Volume"), Op: OpSum},
 	)
 	if err != nil {
 		t.Fatalf("Resample returned error: %v", err)
@@ -57,7 +57,7 @@ func TestDataTable_Resample_WeeklyMondaySunday(t *testing.T) {
 		NewDataList(time.Date(2024, 1, 5, 0, 0, 0, 0, loc), time.Date(2024, 1, 8, 0, 0, 0, 0, loc)).SetName("Date"),
 		NewDataList(5.0, 8.0).SetName("Value"),
 	)
-	out, err := dt.Resample("Date", ResampleWeekly, ResampleAgg{Col: "Value", Op: OpSum})
+	out, err := dt.Resample(Name("Date"), ResampleWeekly, ResampleAgg{Col: Name("Value"), Op: OpSum})
 	if err != nil {
 		t.Fatalf("Resample returned error: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestDataTable_Resample_SkipsEmptyPeriodsAndNamesAs(t *testing.T) {
 		NewDataList(time.Date(2024, 1, 1, 0, 0, 0, 0, loc), time.Date(2024, 4, 1, 0, 0, 0, 0, loc)).SetName("Date"),
 		NewDataList(10.0, 40.0).SetName("Close"),
 	)
-	out, err := dt.Resample("Date", ResampleMonthly, ResampleAgg{Col: "Close", Op: OpLast, As: "MonthClose"})
+	out, err := dt.Resample(Name("Date"), ResampleMonthly, ResampleAgg{Col: Name("Close"), Op: OpLast, As: "MonthClose"})
 	if err != nil {
 		t.Fatalf("Resample returned error: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestDataTable_Resample_RejectsBadTimeColumnWithRow(t *testing.T) {
 		NewDataList(time.Now(), "not a time").SetName("Date"),
 		NewDataList(1.0, 2.0).SetName("Value"),
 	)
-	_, err := dt.Resample("Date", ResampleMonthly, ResampleAgg{Col: "Value", Op: OpSum})
+	_, err := dt.Resample(Name("Date"), ResampleMonthly, ResampleAgg{Col: Name("Value"), Op: OpSum})
 	if err == nil || !strings.Contains(err.Error(), "row 2") {
 		t.Fatalf("error = %v, want row 2", err)
 	}
@@ -102,9 +102,9 @@ func TestDataTable_Resample_IsInputOrderIndependent(t *testing.T) {
 	values := []any{29.0, 31.0, 2.0}
 	unsorted := NewDataTable(NewDataList(anyTimes(dates)...).SetName("Date"), NewDataList(values...).SetName("Value"))
 	sorted := NewDataTable(NewDataList(anyTimes([]time.Time{dates[2], dates[1], dates[0]})...).SetName("Date"), NewDataList(2.0, 31.0, 29.0).SetName("Value"))
-	configs := []ResampleAgg{{Col: "Value", Op: OpFirst}, {Col: "Value", Op: OpLast}}
-	a, errA := unsorted.Resample("Date", ResampleMonthly, configs...)
-	b, errB := sorted.Resample("Date", ResampleMonthly, configs...)
+	configs := []ResampleAgg{{Col: Name("Value"), Op: OpFirst}, {Col: Name("Value"), Op: OpLast}}
+	a, errA := unsorted.Resample(Name("Date"), ResampleMonthly, configs...)
+	b, errB := sorted.Resample(Name("Date"), ResampleMonthly, configs...)
 	if errA != nil || errB != nil {
 		t.Fatalf("Resample errors: %v, %v", errA, errB)
 	}
@@ -123,7 +123,7 @@ func TestDataTable_Resample_MixedTimeZonesKeepLocalPeriods(t *testing.T) {
 		).SetName("Date"),
 		NewDataList(1.0, 2.0).SetName("Value"),
 	)
-	out, err := dt.Resample("Date", ResampleMonthly, ResampleAgg{Col: "Value", Op: OpSum})
+	out, err := dt.Resample(Name("Date"), ResampleMonthly, ResampleAgg{Col: Name("Value"), Op: OpSum})
 	if err != nil {
 		t.Fatalf("Resample returned error: %v", err)
 	}
@@ -153,13 +153,13 @@ func TestDataTable_Resample_ErrorCases(t *testing.T) {
 		aggs []ResampleAgg
 		want string
 	}{
-		{"missing column", ResampleMonthly, []ResampleAgg{{Col: "missing", Op: OpSum}}, "column"},
+		{"missing column", ResampleMonthly, []ResampleAgg{{Col: Name("missing"), Op: OpSum}}, "column"},
 		{"empty aggs", ResampleMonthly, nil, "aggregate"},
-		{"unknown frequency", ResampleFreq(99), []ResampleAgg{{Col: "Value", Op: OpSum}}, "frequency"},
+		{"unknown frequency", ResampleFreq(99), []ResampleAgg{{Col: Name("Value"), Op: OpSum}}, "frequency"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := dt.Resample("Date", tc.freq, tc.aggs...)
+			_, err := dt.Resample(Name("Date"), tc.freq, tc.aggs...)
 			if err == nil || !strings.Contains(strings.ToLower(err.Error()), tc.want) {
 				t.Errorf("error = %v, want mention %q", err, tc.want)
 			}

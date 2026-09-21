@@ -9,6 +9,6 @@ import "github.com/HazelnutParadise/insyra"
 //	report := dt.GroupBy("region").Aggregate(
 //	    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum},
 //	)
-func (t *dt) GroupBy(keyCols ...string) *insyra.GroupedDataTable {
+func (t *dt) GroupBy(keyCols ...any) *insyra.GroupedDataTable {
 	return t.DataTable.GroupBy(keyCols...)
 }

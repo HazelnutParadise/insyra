@@ -29,7 +29,7 @@ func buildPanelTable() *DataTable {
 
 func TestGroupedDataTable_ShiftCol(t *testing.T) {
 	dt := buildPanelTable()
-	out := dt.GroupBy("id").ShiftCol("price", 1).As("prev_price")
+	out := dt.GroupBy(Name("id")).ShiftCol(Name("price"), 1).As("prev_price")
 	got := out.Data()
 	// Per group, lag-1: A -> [nil, 10, 12]; B -> [nil, 100, 110]
 	// Interleaved back: A1, B1, A2, B2, A3, B3
@@ -40,7 +40,7 @@ func TestGroupedDataTable_ShiftCol(t *testing.T) {
 
 func TestGroupedDataTable_DiffCol(t *testing.T) {
 	dt := buildPanelTable()
-	out := dt.GroupBy("id").DiffCol("price", 1).As("d1")
+	out := dt.GroupBy(Name("id")).DiffCol(Name("price"), 1).As("d1")
 	got := out.Data()
 	// A: [nil, 12-10=2, 11-12=-1]; B: [nil, 110-100=10, 105-110=-5]
 	// Interleaved: [nil(A1), nil(B1), 2(A2), 10(B2), -1(A3), -5(B3)]
@@ -50,7 +50,7 @@ func TestGroupedDataTable_DiffCol(t *testing.T) {
 
 func TestGroupedDataTable_CumSumCol(t *testing.T) {
 	dt := buildPanelTable()
-	out := dt.GroupBy("id").CumSumCol("price").As("cum")
+	out := dt.GroupBy(Name("id")).CumSumCol(Name("price")).As("cum")
 	got := out.Data()
 	// A: cumsum([10, 12, 11]) = [10, 22, 33]
 	// B: cumsum([100, 110, 105]) = [100, 210, 315]
@@ -61,7 +61,7 @@ func TestGroupedDataTable_CumSumCol(t *testing.T) {
 
 func TestGroupedDataTable_RollingCol_Mean(t *testing.T) {
 	dt := buildPanelTable()
-	out := dt.GroupBy("id").RollingCol("price", RollingOptions{Window: 2}).Mean().As("ma2")
+	out := dt.GroupBy(Name("id")).RollingCol(Name("price"), RollingOptions{Window: 2}).Mean().As("ma2")
 	got := out.Data()
 	// A: rolling mean window=2 of [10,12,11] = [nil, 11, 11.5]
 	// B: rolling mean window=2 of [100,110,105] = [nil, 105, 107.5]
@@ -72,7 +72,7 @@ func TestGroupedDataTable_RollingCol_Mean(t *testing.T) {
 
 func TestGroupedDataTable_ExpandingCol_Mean(t *testing.T) {
 	dt := buildPanelTable()
-	out := dt.GroupBy("id").ExpandingCol("price", 1).Mean().As("emean")
+	out := dt.GroupBy(Name("id")).ExpandingCol(Name("price"), 1).Mean().As("emean")
 	got := out.Data()
 	// A: [10, 11, 11]
 	// B: [100, 105, 105]
@@ -83,7 +83,7 @@ func TestGroupedDataTable_ExpandingCol_Mean(t *testing.T) {
 
 func TestGroupedDataTable_MissingCol(t *testing.T) {
 	dt := buildPanelTable()
-	out := dt.GroupBy("id").CumSumCol("missing").As("x")
+	out := dt.GroupBy(Name("id")).CumSumCol(Name("missing")).As("x")
 	if len(out.Data()) != 0 {
 		t.Errorf("expected empty result, got %v", out.Data())
 	}
@@ -91,7 +91,7 @@ func TestGroupedDataTable_MissingCol(t *testing.T) {
 
 func TestGroupedDataTable_BadGroupBy(t *testing.T) {
 	dt := buildPanelTable()
-	out := dt.GroupBy("nope").ShiftCol("price", 1).As("x")
+	out := dt.GroupBy(Name("nope")).ShiftCol(Name("price"), 1).As("x")
 	if len(out.Data()) != 0 {
 		t.Errorf("expected empty result on bad GroupBy, got %v", out.Data())
 	}
