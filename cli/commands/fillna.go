@@ -151,19 +151,22 @@ func runListStrategy(dl *insyra.DataList, strategy string, opts fillNAOptions) e
 }
 
 func runTableStrategy(dt *insyra.DataTable, strategy string, opts fillNAOptions) error {
+	// A CLI token carries no type, so it resolves against the table the same
+	// way the rest of the CLI resolves one.
+	cols := colSelectors(dt, opts.Cols)
 	switch strategy {
 	case "mean":
-		dt.FillWithMean(opts.Cols...)
+		dt.FillWithMean(cols...)
 	case "median":
-		dt.FillWithMedian(opts.Cols...)
+		dt.FillWithMedian(cols...)
 	case "mode":
-		dt.FillWithMode(opts.Cols...)
+		dt.FillWithMode(cols...)
 	case "ffill":
-		dt.FillForward(opts.Limit, opts.Cols...)
+		dt.FillForward(opts.Limit, cols...)
 	case "bfill":
-		dt.FillBackward(opts.Limit, opts.Cols...)
+		dt.FillBackward(opts.Limit, cols...)
 	case "interpolate":
-		dt.FillByInterpolation(opts.Cols...)
+		dt.FillByInterpolation(cols...)
 	default:
 		return fmt.Errorf("fillna: unknown strategy %q (supported: mean, median, mode, ffill, bfill, interpolate)", strategy)
 	}

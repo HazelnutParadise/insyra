@@ -34,9 +34,9 @@ func TestSimpleImputerFitTransformMatchesInPlaceMethods(t *testing.T) {
 		strategy ImputationStrategy
 		inPlace  func(*DataTable)
 	}{
-		{name: "mean", strategy: ImputeMean, inPlace: func(dt *DataTable) { dt.FillWithMean("value") }},
-		{name: "median", strategy: ImputeMedian, inPlace: func(dt *DataTable) { dt.FillWithMedian("value") }},
-		{name: "mode", strategy: ImputeMode, inPlace: func(dt *DataTable) { dt.FillWithMode("value") }},
+		{name: "mean", strategy: ImputeMean, inPlace: func(dt *DataTable) { dt.FillWithMean(Name("value")) }},
+		{name: "median", strategy: ImputeMedian, inPlace: func(dt *DataTable) { dt.FillWithMedian(Name("value")) }},
+		{name: "mode", strategy: ImputeMode, inPlace: func(dt *DataTable) { dt.FillWithMode(Name("value")) }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

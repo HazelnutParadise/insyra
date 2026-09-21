@@ -12,7 +12,7 @@ func TestDataTableFillForwardSpecificColumns(t *testing.T) {
 		NewDataList(10.0, math.NaN(), 30.0).SetName("other"),
 	)
 
-	dt.FillForward(0, "num")
+	dt.FillForward(0, Name("num"))
 
 	assertImputeData(t, dt.GetColByName("num"), []any{1.0, 1.0, 3.0})
 	assertImputeData(t, dt.GetColByName("text"), []any{"x", nil, "z"})
@@ -51,8 +51,8 @@ func TestDataTableFillWithMeanAndMode(t *testing.T) {
 		NewDataList("red", nil, "red").SetName("color"),
 	)
 
-	dt.FillWithMean("num")
-	dt.FillWithMode("color")
+	dt.FillWithMean(Name("num"))
+	dt.FillWithMode(Name("color"))
 
 	assertImputeData(t, dt.GetColByName("num"), []any{1.0, 2.0, 3.0})
 	assertImputeData(t, dt.GetColByName("color"), []any{"red", "red", "red"})

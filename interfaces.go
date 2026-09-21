@@ -307,12 +307,12 @@ type IDataTable interface {
 	ReplaceNaNsWith(newValue any) *DataTable
 	ReplaceNilsWith(newValue any) *DataTable
 	ReplaceNaNsAndNilsWith(newValue any) *DataTable
-	FillForward(int, ...string) *DataTable
-	FillBackward(int, ...string) *DataTable
-	FillWithMean(...string) *DataTable
-	FillWithMedian(...string) *DataTable
-	FillWithMode(...string) *DataTable
-	FillByInterpolation(...string) *DataTable
+	FillForward(int, ...any) *DataTable
+	FillBackward(int, ...any) *DataTable
+	FillWithMean(...any) *DataTable
+	FillWithMedian(...any) *DataTable
+	FillWithMode(...any) *DataTable
+	FillByInterpolation(...any) *DataTable
 
 	// Encoding
 	OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error)
