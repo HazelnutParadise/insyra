@@ -138,7 +138,8 @@ type IDataTable interface {
 	UpdateCol(index string, dl *DataList) *DataTable
 	UpdateColByNumber(index int, dl *DataList) *DataTable
 	UpdateRow(index int, dl *DataList) *DataTable
-	SetColToRowNames(columnIndex string) *DataTable
+	SetColToRowNames(col any) *DataTable
+	SetColToRowNamesByName(name string) *DataTable
 	SetRowToColNames(rowIndex int) *DataTable
 	ChangeColName(oldName, newName string) *DataTable
 	GetColNameByNumber(index int) string

@@ -313,7 +313,7 @@ func TestDecimalColumnSortsByValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dt.SortBy(insyra.DataTableSortConfig{ColumnIndex: "A"})
+	dt.SortBy(insyra.DataTableSortConfig{Col: "A"})
 
 	want := []string{"9.5", "10.2", "100.0"}
 	for i, w := range want {

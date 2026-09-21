@@ -2,26 +2,17 @@ package insyra
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/HazelnutParadise/insyra/internal/algorithms"
-	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // DataTableSortConfig selects one sort level: the column to sort by and its
-// direction. Give one of ColumnIndex, ColumnName and ColumnNumber. When more
-// than one is given, the first in that order is used and SortBy logs a
-// warning naming the others — the same index-before-name rule mkt's configs
-// follow. A config that gives none sorts by the first column.
+// direction. Col takes the library's column selector, so it is an Excel-style
+// index string ("A", "B", ... "AA"), a Name, or an int position. A config that
+// leaves Col nil sorts by the first column.
 type DataTableSortConfig struct {
-	ColumnIndex string // The column index (A, B, C, ...). Takes precedence over ColumnName and ColumnNumber.
-	// ColumnNumber is the column's 0-based position, used when ColumnIndex
-	// and ColumnName are empty. Its zero value is the first column, so an
-	// empty config, or one that sets only Descending, sorts by the first
-	// column.
-	ColumnNumber int
-	ColumnName   string // The column name. Takes precedence over ColumnNumber.
-	Descending   bool   // Whether to sort in descending order, default is ascending
+	Col        any  // The column to sort by. nil sorts by the first column.
+	Descending bool // Whether to sort in descending order, default is ascending
 }
 
 // SortBy sorts the DataTable based on multiple columns as specified in the configs.
@@ -61,56 +52,22 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable {
 // its own, so the error names the call the user made rather than an internal
 // lookup.
 func (dt *DataTable) sortColumnPosition(level int, config DataTableSortConfig) (int, string) {
-	var given []string
-	if config.ColumnIndex != "" {
-		given = append(given, "ColumnIndex")
-	}
-	if config.ColumnName != "" {
-		given = append(given, "ColumnName")
-	}
-	if config.ColumnNumber != 0 {
-		given = append(given, "ColumnNumber")
-	}
-
-	if len(given) > 1 {
-		dt.warn("SortBy", "level %d gives %s; sorting by %s and ignoring %s",
-			level, strings.Join(given, ", "), given[0], strings.Join(given[1:], ", "))
-	}
-	// A config that gives none is ColumnNumber: 0, the first column. Go cannot
-	// tell the two apart, and the zero value is documented to mean it.
-	selector := "ColumnNumber"
-	if len(given) > 0 {
-		selector = given[0]
-	}
-
-	switch selector {
-	case "ColumnIndex":
-		upper := strings.ToUpper(config.ColumnIndex)
-		if pos, ok := utils.ParseColIndex(upper); ok && pos >= 0 && pos < len(dt.columns) {
-			return pos, ""
+	// A config that picks no column sorts by the first one, which is what the
+	// zero value has always meant.
+	if config.Col == nil {
+		if len(dt.columns) == 0 {
+			return -1, formatSortProblem(level, "the table has no columns")
 		}
-		// The same name fallback colSilently and GetCol use. The owner has
-		// ruled it should go (#225); until then SortBy keeps it, so the three
-		// agree.
-		for pos, column := range dt.columns {
-			if column.name == upper {
-				return pos, ""
-			}
-		}
-		return -1, formatSortProblem(level, "ColumnIndex %q matches no column", config.ColumnIndex)
-	case "ColumnName":
-		for pos, column := range dt.columns {
-			if column.name == config.ColumnName {
-				return pos, ""
-			}
-		}
-		return -1, formatSortProblem(level, "no column is named %q", config.ColumnName)
-	default:
-		if config.ColumnNumber < 0 || config.ColumnNumber >= len(dt.columns) {
-			return -1, formatSortProblem(level, "ColumnNumber %d is out of range (the table has %d columns)", config.ColumnNumber, len(dt.columns))
-		}
-		return config.ColumnNumber, ""
+		return 0, ""
 	}
+	num, warning, problem := dt.lookupColSelector(config.Col)
+	if problem != "" {
+		return -1, formatSortProblem(level, "%s", problem)
+	}
+	if warning != "" {
+		dt.warn("SortBy", "level %d: %s", level, warning)
+	}
+	return num, ""
 }
 
 func formatSortProblem(level int, msg string, args ...any) string {

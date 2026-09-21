@@ -38,11 +38,9 @@ func runSortCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Set only the field resolveColumn found: a number next to a name would
-	// log a precedence warning on every sort by name.
-	config := insyra.DataTableSortConfig{ColumnName: name, Descending: desc}
+	config := insyra.DataTableSortConfig{Col: insyra.Name(name), Descending: desc}
 	if name == "" {
-		config.ColumnNumber = number
+		config.Col = number
 	}
 	table.SortBy(config)
 	if err := checkTableErr("sort", table); err != nil {

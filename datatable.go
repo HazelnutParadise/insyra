@@ -376,17 +376,15 @@ func (dt *DataTable) colByNameSilently(name string) *DataList {
 	return result
 }
 
-// colSilently resolves an Excel-style index or a column name, or nil, without
-// recording anything.
-func (dt *DataTable) colSilently(index string) *DataList {
+// colSilently resolves a column selector, or nil, without recording anything.
+func (dt *DataTable) colSilently(col any) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
-		upper := strings.ToUpper(index)
-		if colPos, ok := utils.ParseColIndex(upper); ok && colPos >= 0 && colPos < len(dt.columns) {
-			result = dt.columns[colPos].Clone()
+		num, _, problem := dt.lookupColSelector(col)
+		if problem != "" {
 			return
 		}
-		result = dt.colByNameSilently(upper)
+		result = dt.columns[num].Clone()
 	})
 	return result
 }
@@ -570,23 +568,31 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable {
 
 // ======================== Set ========================
 
-// SetColToRowNames sets the row names to the values of the specified column and drops the column.
-func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
-	columnIndex = strings.ToUpper(columnIndex)
+// SetColToRowNames sets the row names to the values of the column the selector
+// picks and drops that column.
+func (dt *DataTable) SetColToRowNames(col any) *DataTable {
+	return dt.setColToRowNames("SetColToRowNames", col)
+}
+
+// SetColToRowNamesByName is SetColToRowNames for a column addressed by name.
+func (dt *DataTable) SetColToRowNamesByName(name string) *DataTable {
+	return dt.setColToRowNames("SetColToRowNamesByName", Name(name))
+}
+
+func (dt *DataTable) setColToRowNames(funcName string, col any) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
-		column := dt.colSilently(columnIndex)
-		if column == nil {
-			dt.fail("SetColToRowNames", "Column '%s' not found, returning", columnIndex)
+		num, ok := dt.resolveColSelector(funcName, col)
+		if !ok {
 			return
 		}
-		for i, value := range column.data {
+		for i, value := range dt.columns[num].data {
 			if value != nil {
 				rowName := safeRowName(dt, conv.ToString(value))
 				_, _ = dt.rowNames.Set(i, rowName)
 			}
 		}
 
-		dt.DropColsByIndex(columnIndex)
+		dt.DropColsByNumber(num)
 
 		dt.updateTimestamp()
 	})

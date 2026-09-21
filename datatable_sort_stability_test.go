@@ -16,7 +16,7 @@ func TestDataTable_SortBy_StableOnTies(t *testing.T) {
 		NewDataList(0, 1, 2, 3, 4, 5, 6, 7).SetName("Seq"),
 	)
 
-	dt.SortBy(DataTableSortConfig{ColumnName: "Key"})
+	dt.SortBy(DataTableSortConfig{Col: Name("Key")})
 
 	wantKey := []any{1, 1, 1, 1, 2, 2, 2, 2}
 	wantSeq := []any{1, 3, 5, 7, 0, 2, 4, 6}
@@ -36,7 +36,7 @@ func TestDataTable_SortBy_StableOnTies_Descending(t *testing.T) {
 		NewDataList(0, 1, 2, 3, 4, 5).SetName("Seq"),
 	)
 
-	dt.SortBy(DataTableSortConfig{ColumnName: "Key", Descending: true})
+	dt.SortBy(DataTableSortConfig{Col: Name("Key"), Descending: true})
 
 	wantKey := []any{2, 2, 2, 1, 1, 1}
 	wantSeq := []any{1, 3, 5, 0, 2, 4}
@@ -57,8 +57,8 @@ func TestDataTable_SortBy_StableOnTies_MultiLevel(t *testing.T) {
 	)
 
 	dt.SortBy(
-		DataTableSortConfig{ColumnName: "A"},
-		DataTableSortConfig{ColumnName: "B", Descending: true},
+		DataTableSortConfig{Col: Name("A")},
+		DataTableSortConfig{Col: Name("B"), Descending: true},
 	)
 
 	wantA := []any{"x", "x", "x", "y", "y", "y"}
@@ -79,7 +79,7 @@ func TestDataTable_SortBy_StableOnTies_RowNames(t *testing.T) {
 	)
 	dt.SetRowNames([]string{"r0", "r1", "r2", "r3"})
 
-	dt.SortBy(DataTableSortConfig{ColumnName: "Key"})
+	dt.SortBy(DataTableSortConfig{Col: Name("Key")})
 
 	wantNames := []string{"r1", "r3", "r0", "r2"}
 	for i, want := range wantNames {

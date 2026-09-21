@@ -129,7 +129,7 @@ func (dt *DataTable) Resample(timeCol string, freq ResampleFreq, aggs ...Resampl
 		configs[i] = AggregateConfig{SourceCol: agg.Col, Op: agg.Op, As: outputName}
 	}
 	result := work.GroupBy(timeName).Aggregate(configs...)
-	result.SortBy(DataTableSortConfig{ColumnName: timeName})
+	result.SortBy(DataTableSortConfig{Col: Name(timeName)})
 	return result, nil
 }
 

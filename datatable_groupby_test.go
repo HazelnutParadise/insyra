@@ -489,7 +489,7 @@ func TestDataTable_GroupBy_PipelineWithSortBy(t *testing.T) {
 	out := dt.GroupBy("region").Aggregate(
 		AggregateConfig{SourceCol: "revenue", Op: OpSum, As: "total_rev"},
 	)
-	out.SortBy(DataTableSortConfig{ColumnName: "total_rev", Descending: true})
+	out.SortBy(DataTableSortConfig{Col: Name("total_rev"), Descending: true})
 	regions := out.GetColByName("region").Data()
 	if regions[0] != "east" {
 		t.Errorf("after sort, top region should be east (450), got %v", regions[0])

@@ -10,7 +10,7 @@ import (
 
 // #233. A sort config selects its column with one of three fields, and Go
 // cannot tell a config that names no column from one that says
-// ColumnNumber: 0, because they are the same value. The owner ruled that both
+// Col: 0, because they are the same value. The owner ruled that both
 // sort by the first column, as documented. These pin what SortBy does with
 // each shape of config.
 
@@ -46,11 +46,7 @@ func TestSortByFirstColumnOnlyWhenNothingIsNamed(t *testing.T) {
 	}{
 		{"empty", DataTableSortConfig{}, []any{1, 2, 3}},
 		{"only Descending", DataTableSortConfig{Descending: true}, []any{3, 2, 1}},
-		{"ColumnNumber 0", DataTableSortConfig{ColumnNumber: 0}, []any{1, 2, 3}},
-		// ColumnNumber is left at zero here too. It is the lowest precedence and
-		// counts only when non-zero, so the name is used, not the first column.
-		// Score ascending gives ids 3, 2, 1; the first column would give 1, 2, 3.
-		{"ColumnName with ColumnNumber at zero", DataTableSortConfig{ColumnName: "score"}, []any{3, 2, 1}},
+		{"position 0", DataTableSortConfig{Col: 0}, []any{1, 2, 3}},
 	} {
 		buf.Reset()
 		dt := sortConfigTable()
@@ -69,7 +65,7 @@ func TestSortByFirstColumnOnlyWhenNothingIsNamed(t *testing.T) {
 
 func TestSortByFirstColumnByIndex(t *testing.T) {
 	dt := sortConfigTable()
-	dt.SortBy(DataTableSortConfig{ColumnIndex: "A"})
+	dt.SortBy(DataTableSortConfig{Col: "A"})
 	if e := dt.Err(); e != nil {
 		t.Fatalf("unexpected error: %v", e)
 	}
@@ -83,10 +79,10 @@ func TestSortByRefusesAMissingColumnNamingSortBy(t *testing.T) {
 		label string
 		cfg   DataTableSortConfig
 	}{
-		{"ColumnIndex that matches nothing", DataTableSortConfig{ColumnIndex: "Z"}},
-		{"ColumnName that is not there", DataTableSortConfig{ColumnName: "scroe"}},
-		{"ColumnNumber out of range", DataTableSortConfig{ColumnNumber: 99}},
-		{"negative ColumnNumber", DataTableSortConfig{ColumnNumber: -1}},
+		{"an index that matches nothing", DataTableSortConfig{Col: "Z"}},
+		{"a name that is not there", DataTableSortConfig{Col: Name("scroe")}},
+		{"a number out of range", DataTableSortConfig{Col: 99}},
+		{"a number further back than the table", DataTableSortConfig{Col: -99}},
 	} {
 		dt := sortConfigTable()
 		dt.SortBy(c.cfg)
@@ -108,8 +104,8 @@ func TestSortByRefusesAMissingColumnNamingSortBy(t *testing.T) {
 func TestSortByIsAllOrNothing(t *testing.T) {
 	dt := sortConfigTable()
 	dt.SortBy(
-		DataTableSortConfig{ColumnName: "score", Descending: true},
-		DataTableSortConfig{ColumnName: "nope"},
+		DataTableSortConfig{Col: Name("score"), Descending: true},
+		DataTableSortConfig{Col: Name("nope")},
 	)
 	if dt.Err() == nil {
 		t.Error("no error for a bad second level")
@@ -119,41 +115,28 @@ func TestSortByIsAllOrNothing(t *testing.T) {
 	}
 }
 
-// Several selectors in one config are not an error: the precedence rule —
-// index, then name, then number, the same one mkt's configs document — picks
-// the column, and a warning says which fields were ignored.
-func TestSortByWarnsAndFollowsPrecedence(t *testing.T) {
-	// TestMain turns logging down to Fatal, which would hide the warning.
-	restoreConfig(t)
-	Config.SetLogLevel(LogLevelWarning)
-	var buf bytes.Buffer
-	prev := log.Writer()
-	log.SetOutput(&buf)
-	t.Cleanup(func() { log.SetOutput(prev) })
-
+// One field takes every form the library's selector takes, and the spellings
+// of the same column sort the same way.
+func TestSortByTakesEverySelectorForm(t *testing.T) {
 	for _, c := range []struct {
 		label string
 		cfg   DataTableSortConfig
 		want  []any
 	}{
-		// B is score; descending puts id 1 (score 30) first. The name "id"
-		// would have sorted by id instead.
-		{"index and name", DataTableSortConfig{ColumnIndex: "B", ColumnName: "id", Descending: true}, []any{1, 2, 3}},
-		// Name wins over a non-zero number. Score ascending gives ids 3, 2, 1;
-		// column 2 is name, which would have given 1, 2, 3.
-		{"name and number", DataTableSortConfig{ColumnName: "score", ColumnNumber: 2}, []any{3, 2, 1}},
+		// B is score; ascending gives ids 3, 2, 1.
+		{"excel index", DataTableSortConfig{Col: "B"}, []any{3, 2, 1}},
+		{"name", DataTableSortConfig{Col: Name("score")}, []any{3, 2, 1}},
+		{"position", DataTableSortConfig{Col: 1}, []any{3, 2, 1}},
+		{"position from the end", DataTableSortConfig{Col: -2}, []any{3, 2, 1}},
 	} {
-		buf.Reset()
 		dt := sortConfigTable()
 		dt.SortBy(c.cfg)
 		if e := dt.Err(); e != nil {
-			t.Errorf("%s: several selectors should warn, not fail: %v", c.label, e)
+			t.Errorf("%s: unexpected error: %v", c.label, e)
+			continue
 		}
 		if got := ids(dt); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: sorted as %v, want %v", c.label, got, c.want)
-		}
-		if !strings.Contains(buf.String(), "SortBy") {
-			t.Errorf("%s: no warning was logged: %q", c.label, buf.String())
 		}
 	}
 }

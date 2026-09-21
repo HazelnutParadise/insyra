@@ -14,7 +14,7 @@ func TestDataTable_SortBy(t *testing.T) {
 	dt.SetColNameByNumber(1, "B").Show()
 
 	// 多層排序：先按 A 升序，再按 B 降序
-	dt.SortBy(DataTableSortConfig{ColumnName: "A", Descending: false}, DataTableSortConfig{ColumnName: "B", Descending: true}).Show()
+	dt.SortBy(DataTableSortConfig{Col: Name("A"), Descending: false}, DataTableSortConfig{Col: Name("B"), Descending: true}).Show()
 
 	// 預期結果：A 升序，對於相同 A 按 B 降序
 	// 原始：A:3,1,2,1 B:a,c,b,d
@@ -39,7 +39,7 @@ func TestDataTable_SortBy_SingleColumn(t *testing.T) {
 	dt.SetColNameByNumber(0, "A")
 
 	// 單列降序
-	dt.SortBy(DataTableSortConfig{ColumnName: "A", Descending: true})
+	dt.SortBy(DataTableSortConfig{Col: Name("A"), Descending: true})
 
 	aData := dt.GetColByName("A").Data()
 	expectedA := []any{3, 2, 1}
@@ -56,7 +56,7 @@ func TestDataTable_SortBy_ByIndex(t *testing.T) {
 	dt.AppendCols(colA, colB)
 
 	// 按列索引 0 升序
-	dt.SortBy(DataTableSortConfig{ColumnNumber: 0, Descending: false})
+	dt.SortBy(DataTableSortConfig{Col: 0, Descending: false})
 
 	aData := dt.GetColByNumber(0).Data()
 	bData := dt.GetColByNumber(1).Data()
