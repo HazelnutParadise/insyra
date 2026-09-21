@@ -1310,6 +1310,19 @@ cannot evaluate "A / B" at row 1: division by zero
 
 An expression that does not depend on the row is evaluated once, and reports no row rather than a misleading one. Inside `ExecuteCCL`, the expression named is the statement that failed, so a script of several lines says which one.
 
+### I wrote the column's name and it failed
+
+```
+cannot compile "price * 2": 'price' reads as column index PRICE, past the last of 2 column(s), and this table has a column named price, so write ['price']
+```
+
+A bare word is a column index, so `price` is read the way a spreadsheet reads
+column letters. Write `['price']` for the column named `price`. The same rule
+holds on the left of an assignment: `price = A + 1` fails and
+`['price'] = A + 1` works. When the table has no column of that name, the
+failure just says the index does not exist, because there is nothing to
+suggest.
+
 ### How a CCL failure reaches you
 
 `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` and
