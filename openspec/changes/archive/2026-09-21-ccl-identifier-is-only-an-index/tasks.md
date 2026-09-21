@@ -17,4 +17,4 @@
 - [x] 3.1 `Docs/CCL.md` 改寫解析規則那兩處，範例檢查一遍。
 - [x] 3.2 兩份 CHANGELOG 標 BREAKING；`skills/insyra/` 同步。
 - [x] 3.3 `api-review.md` CCL-1 與 issue 對照列、`delivery-status.md`。
-- [ ] 3.4 全套驗證（gofmt、build、vet、test、golangci-lint）後歸檔，在 #341 留言附證據並關閉。
+- [x] 3.4 全套驗證（gofmt、build、vet、test、golangci-lint）後歸檔，在 #341 留言附證據並關閉。
