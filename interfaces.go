@@ -128,7 +128,8 @@ type IDataTable interface {
 	AppendRowsByColName(rowsData ...map[string]any) *DataTable
 	GetElement(rowIndex int, columnIndex string) any
 	GetElementByNumberIndex(rowIndex int, columnIndex int) any
-	GetCol(index string) *DataList
+	GetCol(col any) *DataList
+	GetColByIndex(index string) *DataList
 	GetColByNumber(index int) *DataList
 	GetColByName(name string) *DataList
 	GetRow(index int) *DataList

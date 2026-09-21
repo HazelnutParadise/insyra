@@ -312,26 +312,31 @@ func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any 
 	return result
 }
 
-// GetCol returns a new DataList containing the data of the column with the given index.
-func (dt *DataTable) GetCol(index string) *DataList {
+// GetCol returns a copy of the column the selector picks: an Excel-style index
+// string ("A", "B", ... "AA"), a Name, or an int position. It returns nil and
+// records the failure on Err() when nothing resolves.
+func (dt *DataTable) GetCol(col any) *DataList {
+	return dt.getCol("GetCol", col)
+}
+
+// GetColByIndex returns a copy of the column at the given Excel-style index.
+// Unlike GetCol it reads its argument only as an index, never as a name.
+func (dt *DataTable) GetColByIndex(index string) *DataList {
+	return dt.getCol("GetColByIndex", index)
+}
+
+// getCol is the one body behind GetCol and its explicit spellings, so all of
+// them resolve a column the same way and differ only in the name a failure
+// carries.
+func (dt *DataTable) getCol(funcName string, col any) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
-		index = strings.ToUpper(index)
-		colPos, ok := utils.ParseColIndex(index)
-		if ok && colPos >= 0 && colPos < len(dt.columns) {
-			result = dt.columns[colPos].Clone()
+		num, ok := dt.resolveColSelector(funcName, col)
+		if !ok {
+			result = nil
 			return
 		}
-
-		// Name-based fallback, silently: this method reports the miss once,
-		// below, so the inner lookup must not record an error of its own.
-		if res := dt.colByNameSilently(index); res != nil {
-			result = res
-			return
-		}
-
-		dt.fail("GetCol", "Column '%s' not found, returning nil", index)
-		result = nil
+		result = dt.columns[num].Clone()
 	})
 	return result
 }
@@ -341,32 +346,14 @@ func (dt *DataTable) GetCol(index string) *DataList {
 // Err() and returns nil. The result is a copy: appending to it does not change
 // the table.
 func (dt *DataTable) GetColByNumber(index int) *DataList {
-	var result *DataList
-	dt.AtomicDo(func(dt *DataTable) {
-		if index < 0 {
-			index = len(dt.columns) + index
-		}
-
-		if index < 0 || index >= len(dt.columns) {
-			dt.fail("GetColByNumber", "Col index is out of range, returning nil")
-			result = nil
-			return
-		}
-
-		result = dt.columns[index].Clone()
-	})
-	return result
+	return dt.getCol("GetColByNumber", index)
 }
 
 // GetColByName returns a copy of the column with the given name, or nil when
 // there is none, recording the failure on Err(). The result is a copy:
 // appending to it does not change the table.
 func (dt *DataTable) GetColByName(name string) *DataList {
-	result := dt.colByNameSilently(name)
-	if result == nil {
-		dt.fail("GetColByName", "Column '%s' not found, returning nil", name)
-	}
-	return result
+	return dt.getCol("GetColByName", Name(name))
 }
 
 // Err() is sticky, so the first recorded failure is the one the caller sees.
