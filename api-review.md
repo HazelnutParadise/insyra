@@ -188,7 +188,7 @@
 | T-8 | ~~Med~~ 已修正（batch 2） | **Bug（已實測）**：`Transpose` 只把前 ncols 個列名搬成欄名（迴圈變數是舊欄索引），3 列 2 欄的表轉置後第 3 個列名遺失；而且是原地轉置又回傳自己，doc 沒說（pandas `.T` 回新表） | datatable.go:1341-1382 | 迴圈改用列數；doc 標明 in-place |
 | T-9 | ~~Med~~ 已修正（batch 2） | **Bug（已實測）**：`ChangeRowName("b", "a")` 在 "a" 已存在時，BiIndex 把 "a" 從第 0 列移到第 1 列，第 0 列悄悄失去名字。其他 setter 都走 `safeRowName`，這個沒有 | datatable_rowname.go:111-129 | 走 `safeRowName` 或回錯 |
 | T-10 | ~~Med~~ 已修正（batch 2） | `Mean() any`：回傳 `any`（永遠是 float64），分母用 rows×cols 含非數值與 nil 格子：`[2,"x"],[4,nil]` 得 1.5（6/4），是靠分母捏造（已實測） | datatable.go:1324-1338 | 回 float64，只數數值格 |
-| T-11 | Med | `GetCol(index)` 先 `ToUpper` 再退回名稱查詢，`GetCol("price")` 找不到名為 price 的欄（已實測，專案記憶已有此陷阱）；`ReplaceInCol("a", …)` 把名稱 "a" 當成 Excel 索引 A（已實測），欄名 "b" 若在第 0 欄會改到第 1 欄。名稱與索引共用一個 string 參數是整個 DataTable 的結構性歧義（準則 3、6） | datatable.go:297-317；datatable_replace.go:361 | `GetCol` 不退回名稱；長期：索引用 typed `ColIndex`，名稱用 `ByName` |
+| T-11 | ~~Med~~ 已修正（one-column-selector）：全庫統一一套欄位選擇器，裸字串一律是 Excel 索引、`Name(...)` 是欄名、`int` 是位置；`GetCol` 的大寫欄名 fallback 移除，核心存取器補齊明講版 | `GetCol(index)` 先 `ToUpper` 再退回名稱查詢，`GetCol("price")` 找不到名為 price 的欄（已實測，專案記憶已有此陷阱）；`ReplaceInCol("a", …)` 把名稱 "a" 當成 Excel 索引 A（已實測），欄名 "b" 若在第 0 欄會改到第 1 欄。名稱與索引共用一個 string 參數是整個 DataTable 的結構性歧義（準則 3、6） | datatable.go:297-317；datatable_replace.go:361 | `GetCol` 不退回名稱；長期：索引用 typed `ColIndex`，名稱用 `ByName` |
 | T-12 | Med（時間格式已修正 batch 2；JSON 部分待決） | `ToJSON_Bytes`／`ToJSON_String` 遇到 NaN 回 nil／空字串只設 Err（已實測），呼叫端拿到空 JSON 不會察覺；`ToCSV` 用 `%v` 輸出 `time.Time` 成 `2024-01-02 03:04:05 +0000 UTC`，`ParseDates` 預設 layout 讀不回來，CSV 往返壞掉（已實測）；`ToCSV(path, bool, bool, bool)` 三個裸 bool 且無 `io.Writer` 版本 | datatable_json.go:85-105；datatable_csv.go:13 | JSON 回 error；CSV 時間用 RFC3339；加 options struct 與 `WriteCSV(w io.Writer)` |
 | T-13 | Med | `Filter(func(row, col, value) bool)` 與 `FilterRows` 是「任一格子符合就留整列」，不是列謂詞。最常見的 `A > B` 這種跨欄條件無法表達，只能繞去 CCL；`FilterByCustomElement` 與 `Filter` 重複（準則 4、5） | datatable_filters.go:333-440 | 加 `FilterRowsWhere(func(row *DataList) bool)` |
 | T-14 | Med | `SetColNames` 給的名字比欄多時自動新增空欄（已實測），pandas 是長度不符即 raise；`AppendCols` 遇同名自動改成 `name_1` 不通知 | datatable_colname.go:163-185；datatable.go:69 | 長度不符回錯；同名至少 warn |
@@ -197,7 +197,7 @@
 | T-17 | Med | 聚合相關 API 三種寫法：`Aggregate` 用 typed `AggregateOp`，`Pivot.AggFunc` 用字串（含 "avg"、"std" 別名），`Resample` 用 `AggregateOp`。GroupBy 的 key 把 `int 1` 與 `float64 1.0` 分成兩組（CSV 讀進來的 int64 與手動建的 float 會分家），pandas 視為同一組（準則 5、6） | datatable_pivot.go:44, 545-580；datatable_groupby.go:210 | Pivot 改收 `AggregateOp`；數值 key 正規化 |
 | T-18 | ~~Med~~ 已修正（batch 3） | 效能：`Count` 為了加總各欄用 `asyncutil.ParallelForEach` 再經 float64 `Sum` 轉回 int；`Clone` 用 `parallel.GroupUp` 跑兩件小事；`Map` 每格經 `originalCol.Get`（每格一次鎖）；`containsSubstring` 手寫遞迴，長字串遞迴深度等於字串長度，`strings.Contains` 就有 | datatable.go:1271-1282, 1384-1410, 1568-1571；datatable_map.go:30 | 直接迴圈；`strings.Contains` |
 | T-19 | ~~Med~~ 已修正（batch 3） | `FindColsIfContains`／`FindColsIfContainsAll` 用 `FindFirst != nil` 判斷，每個不含該值的欄都會觸發一次 warn 進 `Err()`（D-5 跨欄放大）；`FindRowsIfAllElementsContainSubstring` 把非字串格子視為「符合」，全數字的列會被當作符合（準則 13） | datatable.go:652-690, 626-650 | 內部用不設 Err 的查找；非字串視為不符 |
-| T-20 | Low（doc 部分見 T-11） | `replace` 系列的 `mode ...int` 用 0/1/-1 魔數當 variadic 選項；`ReplaceInCol` doc 說「index or name」實作只吃索引（T-11）；NaN 判定 InRow/InCol 只認 float64，表層版用 `isNilOrNaN` 認 float32（準則 8、E） | datatable_replace.go 全檔 | typed `ReplaceMode`；統一 `isNilOrNaN` |
+| T-20 | Low（doc 部分已隨 one-column-selector 修正：`ReplaceInCol` 現在真的收「索引或名稱」；`mode` 魔數與 `isNilOrNaN` 未處理） | `replace` 系列的 `mode ...int` 用 0/1/-1 魔數當 variadic 選項；`ReplaceInCol` doc 說「index or name」實作只吃索引（T-11）；NaN 判定 InRow/InCol 只認 float64，表層版用 `isNilOrNaN` 認 float32（準則 8、E） | datatable_replace.go 全檔 | typed `ReplaceMode`；統一 `isNilOrNaN` |
 | T-21 | Low | 13 個 `FilterColsByColIndexGreaterThan…`／`FilterRowsByRowIndexLessThanOrEqualTo…` 長名方法做的是切片，pandas 是 `iloc[a:b]`；`Headers`／`SetHeaders` 是 `ColNames`／`SetColNames` 的別名；`Counter` 與 DataList 重複；`SimpleRandomSample` 已 Deprecated（準則 1） | datatable_filters.go；datatable_colname.go:159, 187 | 收斂成 `SliceRows(from, to)`／`SliceCols(from, to)`，舊的標 Deprecated |
 | T-22 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials） | 缺 doc：`NewDataTable`、`GetElementByNumberIndex`、`GetColByNumber`、`GetColByName`、`GetRowByName`、`NumRows`、`NumCols`、`Data`、`GetCreationTimestamp`、`GetLastModifiedTimestamp`、colname.go 前 6 個方法。`AppendRowsByColIndex` doc 標題寫成 `AppendRowsByIndex`；`ToJSON_Bytes` 的 Err 記成 `ToJSON_Byte`（準則 E） | 各檔 | 補 |
 | T-23 | ~~Low~~ 已修正（sortby-column-selection、sortby-empty-config-first-column）：沒指定欄的設定依第一欄排序並寫進文件（擁有者裁定，只有想排序的人才會呼叫 `SortBy`），找不到欄時報錯並指名 `SortBy`，多層排序全有全無，多個欄位同時給時依優先順序排序並警告 | `SortBy` 的 `DataTableSortConfig` 零值 `ColumnNumber: 0` 無法與「沒指定」區分，空 config 會默默用第 0 欄排序；找不到欄時只 `LogWarning` 不設 Err | datatable_sort.go:7-40 | `ColumnNumber` 改 `*int` 或加 `HasColumnNumber` |
@@ -263,7 +263,7 @@
 | --- | --- | --- | --- | --- |
 | MK-1 | ~~High~~ 已修正（batch 2） | **panic（已實測）**：`RFM` 用 `conv.ParseF64` 讀金額欄，遇到 `"abc"` 直接 panic 穿出 `AtomicDo`，整個程序崩潰。三個公開函式（`RFM`、`CustomerActivityIndex`、`BasketAnalysis`）失敗時只 `LogWarning` 後回 nil，沒有 error 回傳、沒有 `Err()`；欄名打錯時 `GetColIndexByName` 回空字串，之後每列 `GetElement(i, "")` 都是 nil，結果是「一張空表、零錯誤」（準則 11） | mkt/rfm.go:26-80, 100；cai.go:38-60；basket.go:38-56 | 三個函式改回 `(result, error)`；金額走 `ToFloat64Safe` 並指出列號 |
 | MK-2 | ~~Med~~ 已修正（batch 2） | 輸出列順序來自 Go map 迭代（`for customerID := range customerLastTradingDayMap`），每次執行 RFM／CAI 的列順序都不同，結果不可重現、無法 diff；`BasketAnalysis` 有排序（準則 13） | rfm.go:236；cai.go:180 | 依 CustomerID 排序輸出 |
-| MK-3 | Med | 每個欄位都提供 `XxxColIndex` + `XxxColName` 兩個欄位（三個 config 共 8 對），「同時給時 index 優先」是把 T-11 的歧義寫進設定檔；`DateFormat` 用自訂的 `"YYYY-MM-DD"` 記法再轉 Go layout，`NumGroups uint`；`var CAI = CustomerActivityIndex` 是可被覆寫的函式變數（K-12）（準則 3、6、8） | mkt/rfm.go:12-22；cai.go:12-22；basket.go:12-17 | 只留一個欄位參照（名稱或索引擇一）；`CAI` 改 func |
+| MK-3 | ~~Med~~ 部分修正（one-column-selector）：三個 config 的八組 `ColIndex`／`ColName` 收成一個選擇器欄位；`DateFormat`、`NumGroups uint`、`CAI` 函式變數未處理 | 每個欄位都提供 `XxxColIndex` + `XxxColName` 兩個欄位（三個 config 共 8 對），「同時給時 index 優先」是把 T-11 的歧義寫進設定檔；`DateFormat` 用自訂的 `"YYYY-MM-DD"` 記法再轉 Go layout，`NumGroups uint`；`var CAI = CustomerActivityIndex` 是可被覆寫的函式變數（K-12）（準則 3、6、8） | mkt/rfm.go:12-22；cai.go:12-22；basket.go:12-17 | 只留一個欄位參照（名稱或索引擇一）；`CAI` 改 func |
 | MK-4 | ~~Low~~ 已修正（batch 3） | 預設值套用時以 Info 等級 log（DateFormat、TimeScale），噪音；用 `parallel.GroupUp`（P-4）與 `insyra.SortTimes`（K-15）；CAI 對每位客戶排序兩次 | rfm.go:60-70, 157；cai.go:66-73, 118 | 移除 log；直接迴圈 |
 
 ### finance
@@ -545,7 +545,7 @@
 | D-14 | [#222](https://github.com/HazelnutParadise/insyra/issues/222) |  |
 | D-16 | [#223](https://github.com/HazelnutParadise/insyra/issues/223) |  |
 | D-18 | [#224](https://github.com/HazelnutParadise/insyra/issues/224) |  |
-| T-11、T-20、MK-3 | [#225](https://github.com/HazelnutParadise/insyra/issues/225) |  |
+| T-11、T-20、MK-3 | [#225](https://github.com/HazelnutParadise/insyra/issues/225) | 已關閉（one-column-selector；T-20 的 mode 魔數與 MK-3 的其餘項目另開） |
 | T-13 | [#226](https://github.com/HazelnutParadise/insyra/issues/226) |  |
 | T-14 | [#227](https://github.com/HazelnutParadise/insyra/issues/227) |  |
 | T-15 | [#228](https://github.com/HazelnutParadise/insyra/issues/228) |  |
