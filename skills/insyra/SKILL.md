@@ -352,7 +352,7 @@ Policies:
 - `NaNAsCategory`, `NaNError`, `NaNSkip` handle `nil`/`NaN`.
 - `UnknownIgnore`, `UnknownError`, `UnknownAsNew` handle categories seen only during `Transform`. `UnknownAsNew` extends only the returned table; the fitted encoder is unchanged, so `Transform` is pure and reusable across calls.
 - `LabelSortFirstSeen`, `LabelSortLexicographic`, `LabelSortByFrequency` control label ids.
-- Column refs resolve by name first, then Excel-style index (`A`, `B`, `AA`). Category identity keeps typed values distinct (`1` and `"1"` are different). For one-hot, two categories that produce the same indicator column name (e.g. `1` and `"1"`) are rejected at fit time.
+- Column refs are selectors: a bare string is an Excel-style index (`A`, `B`, `AA`), `insyra.Name("price")` is a name, an int is a position. Category identity keeps typed values distinct (`1` and `"1"` are different). For one-hot, two categories that produce the same indicator column name (e.g. `1` and `"1"`) are rejected at fit time.
 
 ### 1d) Scale numeric features (fit once, reuse)
 
@@ -589,6 +589,9 @@ dt.ExecuteCCL("['price'] = ['price'] * 1.1")
 // A bare word is ALWAYS an index, never a name, on both sides of an
 // assignment. On a table with a column named price, "price * 2" and
 // "price = A" are errors that tell you to write ['price'].
+//
+// The Go API follows the same rule: dt.GetCol("price") reads an index,
+// dt.GetCol(insyra.Name("price")) reads the name.
 
 dt.AddColUsingCCL("profit", "['revenue'] - ['cost']")
 dt.AddColUsingCCL("mixed", "[A] * 2 + ['cost']")

@@ -5,6 +5,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 ## Table of Contents
 
 - [Data Structure](#data-structure)
+- [Column selectors](#column-selectors)
 - [Creating DataTable](#creating-datatable)
 - [Data Loading](#data-loading)
 - [Data Saving](#data-saving)
@@ -21,6 +22,43 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Error Handling](#error-handling)
 - [AtomicDo](#atomicdo)
 - [Notes](#notes)
+
+## Column selectors
+
+Every method and every config field that picks a column takes the same three
+forms, and nothing else:
+
+| You write | It means |
+| --- | --- |
+| `"A"`, `"B"`, ... `"AA"` (a string) | an Excel-style column index, case-insensitive |
+| `insyra.Name("price")` | the column named `price`, compared exactly |
+| `0`, `1`, `-1` (an int) | a 0-based position, counting from the end when negative |
+
+```go
+dt.GetCol("A")                  // first column
+dt.GetCol(insyra.Name("price")) // the column named price
+dt.GetCol(-1)                   // last column
+
+dt.GroupBy(insyra.Name("region")).Aggregate(
+    insyra.AggregateConfig{SourceCol: insyra.Name("revenue"), Op: insyra.OpSum},
+)
+```
+
+**A bare string is never a column name.** `dt.GetCol("price")` reads `price` as
+Excel letters, so on a three-column table it fails rather than finding the
+column called `price`. That is what keeps a call's meaning independent of the
+data: renaming a column cannot silently change which column an existing call
+reads. When the table does have a column of the name you wrote, the failure
+says so and gives you the `Name(...)` form to use.
+
+One case is neither: a table whose column is literally named `B` asked for
+`"B"`. The index wins, and a warning names both readings.
+
+The core accessors also have explicit spellings, for when you would rather say
+it in the method name than in the argument: `GetColByIndex`, `GetColByName`,
+`GetColByNumber`, and the same three for `UpdateCol`, plus `ByName` forms for
+`SetColToRowNames` and the four `Replace*InCol` methods. They behave exactly
+like the selector they stand for.
 
 ## Data Structure
 
@@ -794,7 +832,7 @@ resRight, _ := dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeR
 ### GroupBy
 
 ```go
-func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable
+func (dt *DataTable) GroupBy(keyCols ...any) *GroupedDataTable
 func (g *GroupedDataTable) Aggregate(configs ...AggregateConfig) *DataTable
 func (g *GroupedDataTable) AggregateAll(op AggregateOp) *DataTable
 func (g *GroupedDataTable) Count() *DataTable
@@ -805,7 +843,7 @@ func (g *GroupedDataTable) Describe(options ...DescribeOptions) *DataTable
 
 **`AggregateConfig` fields:**
 
-- `SourceCol`: The column to aggregate. Resolved by name first, then as an Excel-style index (`"A"`, `"B"`, ...). Required for every op except `OpCountAll`.
+- `SourceCol`: The column to aggregate, given as a column selector (see [Column selectors](#column-selectors)). Required for every op except `OpCountAll`.
 - `As`: Output column name. When empty it is auto-named `"<source>_<op>"` (e.g. `"revenue_sum"`).
 - `Op`: One of the `AggregateOp` constants below.
 - `Custom`: Used only when `Op == OpCustom`. The provided function receives a `*DataList` containing the source-column values of the group, in original row order, including `nil` entries.
@@ -962,7 +1000,7 @@ func (dt *DataTable) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *Ordi
 
 **Description:** Categorical encoding turns string or mixed-type category columns into numeric columns that can feed `stats.LinearRegression`, KNN, PCA, and clustering. Each method returns a fresh `*DataTable`; the receiver is not modified. The returned encoder stores the fitted category mapping and can `Transform` another table with the same schema, such as a test set or prediction batch.
 
-Column references are resolved by column name first, then Excel-style index (`"A"`, `"B"`, ..., `"AA"`). An integer category is identified by its value, so `int(1)` and the `int64(1)` a CSV load produces are one category, and an `Order` written as `[]any{1, 2, 3}` matches a CSV column. Other categories keep their type as well as their value, so `int(1)`, `1.0` and the string `"1"` are distinct. Missing means `nil` or `NaN`. For one-hot encoding, two distinct categories that would generate the same indicator column name (for example `int(1)` and `"1"`, both `c_1`, or `nil` and the string `"<nil>"`) are rejected at fit time; rename a category or set a distinct `Prefix`/`Separator`.
+Column references are column selectors (see [Column selectors](#column-selectors)). An integer category is identified by its value, so `int(1)` and the `int64(1)` a CSV load produces are one category, and an `Order` written as `[]any{1, 2, 3}` matches a CSV column. Other categories keep their type as well as their value, so `int(1)`, `1.0` and the string `"1"` are distinct. Missing means `nil` or `NaN`. For one-hot encoding, two distinct categories that would generate the same indicator column name (for example `int(1)` and `"1"`, both `c_1`, or `nil` and the string `"<nil>"`) are rejected at fit time; rename a category or set a distinct `Prefix`/`Separator`.
 
 **Policies:**
 
@@ -1113,10 +1151,10 @@ func main() {
 ### Feature Scaling
 
 ```go
-func (dt *DataTable) StandardScale(cols ...string) (*DataTable, *StandardScaler, error)
-func (dt *DataTable) MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error)
-func (dt *DataTable) RobustScale(cols ...string) (*DataTable, *RobustScaler, error)
-func (dt *DataTable) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error)
+func (dt *DataTable) StandardScale(cols ...any) (*DataTable, *StandardScaler, error)
+func (dt *DataTable) MinMaxScale(featureMin, featureMax float64, cols ...any) (*DataTable, *MinMaxScaler, error)
+func (dt *DataTable) RobustScale(cols ...any) (*DataTable, *RobustScaler, error)
+func (dt *DataTable) MaxAbsScale(cols ...any) (*DataTable, *MaxAbsScaler, error)
 ```
 
 **Description:** Feature scalers fit numeric scaling parameters once and reuse them. Each method returns a fresh `*DataTable` (the receiver is not modified) plus a fitted scaler. The scaler can `Transform` and `InverseTransform` other tables with the same parameters.
@@ -1134,7 +1172,7 @@ func (dt *DataTable) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, err
 
 **Behavior:**
 
-- Column references resolve by name first, then Excel-style index (`"A"`, `"B"`, ...). `cols` is required.
+- Column references are column selectors (see [Column selectors](#column-selectors)). `cols` is required.
 - Only the listed columns are scaled; other columns pass through unchanged, preserving column order, names, table name, and row names.
 - `nil` and `NaN` are preserved and excluded from fitting (they do not affect the computed parameters).
 - A non-numeric, non-missing value in a target column is an error.
@@ -1145,9 +1183,9 @@ func (dt *DataTable) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, err
 
 ```go
 type Scaler interface {
-    Fit(dt *DataTable, cols ...string) error
+    Fit(dt *DataTable, cols ...any) error
     Transform(dt *DataTable) (*DataTable, error)
-    FitTransform(dt *DataTable, cols ...string) (*DataTable, error)
+    FitTransform(dt *DataTable, cols ...any) (*DataTable, error)
     InverseTransform(dt *DataTable) (*DataTable, error)
     Params() map[string]ScalerParams
     Kind() string
@@ -1282,19 +1320,19 @@ func main() {
 ### Window / sequence transforms (Shift / Diff / PctChange / Cum\* / Rolling / Expanding)
 
 ```go
-func (dt *DataTable) ShiftCol(col string, periods int, fill ...any) *DataList
-func (dt *DataTable) DiffCol(col string, periods int) *DataList
-func (dt *DataTable) PctChangeCol(col string, periods int) *DataList
-func (dt *DataTable) CumSumCol(col string) *DataList
-func (dt *DataTable) CumProdCol(col string) *DataList
-func (dt *DataTable) CumMaxCol(col string) *DataList
-func (dt *DataTable) CumMinCol(col string) *DataList
-func (dt *DataTable) RollingCol(col string, opts RollingOptions) *RollingDataList
-func (dt *DataTable) ExpandingCol(col string, minObs int) *ExpandingDataList
-func (dt *DataTable) EWMCol(col string, opts EWMOptions) *EWMDataList
+func (dt *DataTable) ShiftCol(col any, periods int, fill ...any) *DataList
+func (dt *DataTable) DiffCol(col any, periods int) *DataList
+func (dt *DataTable) PctChangeCol(col any, periods int) *DataList
+func (dt *DataTable) CumSumCol(col any) *DataList
+func (dt *DataTable) CumProdCol(col any) *DataList
+func (dt *DataTable) CumMaxCol(col any) *DataList
+func (dt *DataTable) CumMinCol(col any) *DataList
+func (dt *DataTable) RollingCol(col any, opts RollingOptions) *RollingDataList
+func (dt *DataTable) ExpandingCol(col any, minObs int) *ExpandingDataList
+func (dt *DataTable) EWMCol(col any, opts EWMOptions) *EWMDataList
 ```
 
-**Description:** Per-column time-series / sequence transforms. Each method resolves `col` by **name first**, then by Excel-style index (`"A"`, `"B"`, ...), and runs the matching operation on a snapshot of that column. The returned `*DataList` (or builder) has the same length as the source so the result lines up with neighbouring columns when appended back.
+**Description:** Per-column time-series / sequence transforms. Each method takes `col` as a column selector (see [Column selectors](#column-selectors)) and runs the matching operation on a snapshot of that column. The returned `*DataList` (or builder) has the same length as the source so the result lines up with neighbouring columns when appended back.
 
 The scalar transforms (`ShiftCol` / `DiffCol` / `PctChangeCol` / `Cum*Col`) return `*DataList` directly. `RollingCol`, `ExpandingCol`, and `EWMCol` return builders — pick a reducer to materialise the column. Rolling supports `.Mean()` / `.Sum()` / `.Min()` / `.Max()` / `.Median()` / `.Std()` / `.Var()` / `.Apply(...)` / `.Corr(...)` / `.Cov(...)` / `.Beta(...)`; EWM supports `.Mean()` / `.Var()` / `.Std()`. See [DataList.Rolling](DataList.md#rolling), [DataList.Expanding](DataList.md#expanding), and [DataList.Exponentially weighted windows](DataList.md#exponentially-weighted-windows) for the full semantics.
 
@@ -1339,7 +1377,7 @@ type ResampleAgg struct {
     As  string
 }
 
-func (dt *DataTable) Resample(timeCol string, freq ResampleFreq, aggs ...ResampleAgg) (*DataTable, error)
+func (dt *DataTable) Resample(timeCol any, freq ResampleFreq, aggs ...ResampleAgg) (*DataTable, error)
 ```
 
 `Resample` groups rows by calendar period and labels each non-empty period with
@@ -1363,7 +1401,7 @@ if err != nil {
 }
 ```
 
-`timeCol` and aggregate columns resolve by name first, then Excel-style index.
+`timeCol` and the aggregate columns are column selectors (see [Column selectors](#column-selectors)).
 The method returns an error when the time or aggregate column is missing, a
 time cell is not `time.Time` (the error includes its row number), `aggs` is
 empty, or `freq` is unknown.
@@ -1371,7 +1409,7 @@ empty, or `freq` is unknown.
 ### ParseDatesCols
 
 ```go
-func (dt *DataTable) ParseDatesCols(cols []string, layouts ...string) *DataTable
+func (dt *DataTable) ParseDatesCols(cols []any, layouts ...string) *DataTable
 ```
 
 Converts date strings to `time.Time` in place for the named columns and returns
@@ -1381,7 +1419,7 @@ becomes that instant in UTC, a value already `time.Time` is kept unchanged, and
 anything else becomes `nil`. With no `layouts`, the same ISO-style defaults
 `ReadSQLOptions.ParseDates` uses are tried; passing layouts replaces that list.
 
-Columns resolve by name first, then Excel-style index. A column that does not
+Columns are column selectors (see [Column selectors](#column-selectors)). A column that does not
 exist records a warning (readable through `dt.Err()`) and is skipped, leaving
 the other named columns converted.
 
@@ -1401,15 +1439,15 @@ monthly, err := dt.Resample(insyra.Name("Date"), insyra.ResampleMonthly,
 #### GroupBy-aware versions
 
 ```go
-func (g *GroupedDataTable) ShiftCol(col string, periods int, fill ...any) *GroupedColumnTransform
-func (g *GroupedDataTable) DiffCol(col string, periods int) *GroupedColumnTransform
-func (g *GroupedDataTable) PctChangeCol(col string, periods int) *GroupedColumnTransform
-func (g *GroupedDataTable) CumSumCol(col string) *GroupedColumnTransform
-func (g *GroupedDataTable) CumProdCol(col string) *GroupedColumnTransform
-func (g *GroupedDataTable) CumMaxCol(col string) *GroupedColumnTransform
-func (g *GroupedDataTable) CumMinCol(col string) *GroupedColumnTransform
-func (g *GroupedDataTable) RollingCol(col string, opts RollingOptions) *GroupedRollingCol
-func (g *GroupedDataTable) ExpandingCol(col string, minObs int) *GroupedExpandingCol
+func (g *GroupedDataTable) ShiftCol(col any, periods int, fill ...any) *GroupedColumnTransform
+func (g *GroupedDataTable) DiffCol(col any, periods int) *GroupedColumnTransform
+func (g *GroupedDataTable) PctChangeCol(col any, periods int) *GroupedColumnTransform
+func (g *GroupedDataTable) CumSumCol(col any) *GroupedColumnTransform
+func (g *GroupedDataTable) CumProdCol(col any) *GroupedColumnTransform
+func (g *GroupedDataTable) CumMaxCol(col any) *GroupedColumnTransform
+func (g *GroupedDataTable) CumMinCol(col any) *GroupedColumnTransform
+func (g *GroupedDataTable) RollingCol(col any, opts RollingOptions) *GroupedRollingCol
+func (g *GroupedDataTable) ExpandingCol(col any, minObs int) *GroupedExpandingCol
 
 func (t *GroupedColumnTransform) As(name string) *DataList
 ```
@@ -1541,7 +1579,7 @@ dt.AppendRowsFromDataList(row)
 ### GetElement
 
 ```go
-func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any
+func (dt *DataTable) GetElement(rowIndex int, col any) any
 ```
 
 **Description:** Gets the value at a specific row and column.
@@ -1565,7 +1603,8 @@ fmt.Println(value)
 ### GetCol
 
 ```go
-func (dt *DataTable) GetCol(index string) *DataList
+func (dt *DataTable) GetCol(col any) *DataList
+func (dt *DataTable) GetColByIndex(index string) *DataList
 ```
 
 **Description:** Gets a column by its index.
@@ -1675,7 +1714,7 @@ row := dt.GetRowByName("row_name")
 ### UpdateElement
 
 ```go
-func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable
+func (dt *DataTable) UpdateElement(rowIndex int, col any, value any) *DataTable
 ```
 
 **Description:** Updates the value at a specific position. Returns the table to support chaining calls.
@@ -1704,7 +1743,9 @@ dt.UpdateElement(0, "A", "Jane").UpdateCol("B", newCol)
 ### UpdateCol
 
 ```go
-func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable
+func (dt *DataTable) UpdateCol(col any, dl *DataList) *DataTable
+func (dt *DataTable) UpdateColByIndex(index string, dl *DataList) *DataTable
+func (dt *DataTable) UpdateColByName(name string, dl *DataList) *DataTable
 ```
 
 **Description:** Updates an entire column with new data. The passed `DataList` is **copied** into the table, so later mutations of it do not affect the table. Returns the table to support chaining calls.
@@ -1815,7 +1856,8 @@ fmt.Println(value)
 ### SetColToRowNames
 
 ```go
-func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable
+func (dt *DataTable) SetColToRowNames(col any) *DataTable
+func (dt *DataTable) SetColToRowNamesByName(name string) *DataTable
 ```
 
 **Description:** Sets the row names to the values of the specified column and drops the column.
@@ -3101,12 +3143,12 @@ DataTable provides several methods to replace values within the entire table, a 
 ### Missing-Value Fill Methods
 
 ```go
-func (dt *DataTable) FillForward(limit int, cols ...string) *DataTable
-func (dt *DataTable) FillBackward(limit int, cols ...string) *DataTable
-func (dt *DataTable) FillWithMean(cols ...string) *DataTable
-func (dt *DataTable) FillWithMedian(cols ...string) *DataTable
-func (dt *DataTable) FillWithMode(cols ...string) *DataTable
-func (dt *DataTable) FillByInterpolation(cols ...string) *DataTable
+func (dt *DataTable) FillForward(limit int, cols ...any) *DataTable
+func (dt *DataTable) FillBackward(limit int, cols ...any) *DataTable
+func (dt *DataTable) FillWithMean(cols ...any) *DataTable
+func (dt *DataTable) FillWithMedian(cols ...any) *DataTable
+func (dt *DataTable) FillWithMode(cols ...any) *DataTable
+func (dt *DataTable) FillByInterpolation(cols ...any) *DataTable
 ```
 
 **Description:** Fills `nil` and `math.NaN()` values column by column. When `cols` is omitted, all applicable columns are processed. Mean, median, and interpolation apply only to numeric columns; mode and forward/backward fill can apply to any selected column.
@@ -3228,7 +3270,7 @@ func (dt *DataTable) ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ..
 ### ReplaceInCol
 
 ```go
-func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceInCol(col any, oldValue, newValue any, mode ...int) *DataTable
 ```
 
 **Description:** Replaces occurrences of `oldValue` with `newValue` in a specific column.
@@ -3252,9 +3294,9 @@ func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode 
 Similar to `ReplaceInCol`, but specifically for `NaN`, `nil`, or both.
 
 ```go
-func (dt *DataTable) ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable
-func (dt *DataTable) ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
-func (dt *DataTable) ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceNaNsInCol(col any, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceNilsInCol(col any, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceNaNsAndNilsInCol(col any, newValue any, mode ...int) *DataTable
 ```
 
 ## Column Calculation
@@ -4376,12 +4418,10 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable
 
 **Description:**
 
-- Supports sorting by column index, number, or name
 - Multi-level sorting: sorts by the first config, then by subsequent configs for ties
 - Uses stable sort to maintain relative order of equal elements
-- Each config names a column with one of `ColumnIndex`, `ColumnName` or `ColumnNumber`
-- If a config gives more than one, **index takes precedence over name, and name over number**; the sort runs and a warning names the fields that were ignored
-- A config that gives none sorts by the first column. `ColumnNumber` is 0-based and its zero value is the first column, so `DataTableSortConfig{}`, `{Descending: true}` and `{Col: 0}` all sort by column 0
+- Each config names its column in `Col`, a column selector (see [Column selectors](#column-selectors))
+- A config that leaves `Col` nil sorts by the first column, so `DataTableSortConfig{}`, `{Descending: true}` and `{Col: 0}` all sort by column 0
 - Every level is checked before any row moves: a column that is not there records the error on `SortBy` and leaves the table unchanged
 
 **Parameters:**
@@ -4398,10 +4438,8 @@ Sorts the DataTable rows based on one or more column configurations. Supports mu
 
 ```go
 type DataTableSortConfig struct {
-    ColumnIndex  string // Column index (A, B, C...); takes precedence over ColumnName and ColumnNumber
-    ColumnNumber int    // 0-based column number, used when ColumnIndex and ColumnName are empty; the zero value is the first column
-    ColumnName   string // Column name; takes precedence over ColumnNumber
-    Descending   bool   // Sort in descending order
+    Col        any  // The column to sort by, as a column selector. nil sorts by the first column
+    Descending bool // Sort in descending order
 }
 ```
 

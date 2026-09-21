@@ -61,5 +61,5 @@ convert in place and return the receiver. A matching string becomes a UTC
 `time.Time`, a value already `time.Time` is left alone, and everything else
 becomes nil, so a column is either usable or visibly empty. Passing layouts
 replaces the defaults rather than adding to them. `ParseDatesCols` resolves a
-column by name first, then Excel-style index, and warns and skips one that does
+column through the library's selector (a string is an Excel-style index, `insyra.Name("x")` a name, an int a position), and warns and skips one that does
 not exist.
