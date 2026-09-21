@@ -2,7 +2,7 @@
 
 ### Requirement: Keywords and out-of-range references
 
-`TRUE`／`FALSE`／`NULL`／`NIL` 不分大小寫 SHALL 是字面值。其餘裸識別字 SHALL 只解析為 Excel 式欄索引，賦值左右兩側同一套規則；欄名 SHALL 只能以 `['name']` 指涉。解析 SHALL NOT 退回欄名表，識別字含數字或底線時 SHALL 回報錯誤而非改查欄名。綁定後引用超過最後一欄的 Excel 式索引 SHALL 使 `AddColUsingCCL`／`EditCol*UsingCCL`／`ExecuteCCL` 回報錯誤（`Err()`），SHALL NOT 產生整欄 nil。錯誤訊息 SHALL 在該表存在同名欄位時指出改寫成 `['name']`，該資訊 SHALL NOT 影響解析結果。
+`TRUE`／`FALSE`／`NULL`／`NIL` 不分大小寫 SHALL 是字面值。其餘裸識別字 SHALL 只解析為 Excel 式欄索引，賦值左右兩側同一套規則；欄名 SHALL 只能以 `['name']` 指涉。解析 SHALL NOT 退回欄名表，識別字含數字或底線時 SHALL 回報錯誤而非改查欄名；`[A]` 這種括號索引同一套規則，內容不是欄位字母時 SHALL 在編譯階段失敗。綁定後引用超過最後一欄的 Excel 式索引 SHALL 使 `AddColUsingCCL`／`EditCol*UsingCCL`／`ExecuteCCL` 回報錯誤（`Err()`），SHALL NOT 產生整欄 nil。錯誤訊息 SHALL 在該表存在同名欄位時指出改寫成 `['name']`，該資訊 SHALL NOT 影響解析結果。
 
 #### Scenario: Reference past the last column
 - **WHEN** 單欄表執行 `AddColUsingCCL("r", "E + 1")`
@@ -18,6 +18,11 @@
 
 - **WHEN** 欄位名為 `qty_1` 的表執行 `AddColUsingCCL("r", "qty_1 * 2")`
 - **THEN** `Err()` 非 nil，訊息指出改寫成 `['qty_1']`，SHALL NOT 因為它不是純字母就改查欄名
+
+#### Scenario: A bracketed reference that is not letters
+
+- **WHEN** 求值 `[qty_1] * 2`
+- **THEN** 失敗 SHALL 在編譯階段而非第 0 列，訊息指出改寫成 `['qty_1']`
 
 #### Scenario: An assignment target follows the same rule
 

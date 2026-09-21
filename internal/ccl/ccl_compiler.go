@@ -196,7 +196,10 @@ func Bind(n cclNode, colNameMap map[string]int) (cclNode, error) {
 		if ok {
 			return &cclResolvedColNode{index: idx, name: t.index}, nil
 		}
-		return t, nil
+		// `[qty_1]` is no more an index than `qty_1` is, and saying so here
+		// reports it as the compile failure it is rather than as a failure on
+		// row 0.
+		return nil, NotAnIndexError(t.index, colNameMap)
 	case *cclColNameNode:
 		if idx, ok := colNameMap[t.name]; ok {
 			return &cclResolvedColNode{index: idx, name: t.name}, nil

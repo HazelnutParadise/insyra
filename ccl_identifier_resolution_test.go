@@ -130,3 +130,15 @@ func TestCCLAssignmentTargetFollowsTheSameRule(t *testing.T) {
 		t.Fatalf("index assignment first value = %v, want 10", got)
 	}
 }
+
+func TestCCLBracketedIndexThatIsNotLettersFailsAtCompileTime(t *testing.T) {
+	dt := identifierTestTable()
+	dt.AddColUsingCCL("out", "[qty_1] * 2")
+	message := cclFailure(t, dt)
+	if !strings.Contains(message, "['qty_1']") {
+		t.Fatalf("message does not offer the bracketed name form: %s", message)
+	}
+	if !strings.Contains(message, "cannot compile") {
+		t.Fatalf("a reference that cannot resolve is a compile failure, not a row failure: %s", message)
+	}
+}
