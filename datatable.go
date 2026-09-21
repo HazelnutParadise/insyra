@@ -491,23 +491,35 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) 
 	return dt
 }
 
-// UpdateCol updates the column with the given index.
-func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable {
+// UpdateCol replaces the column the selector picks with a copy of dl.
+func (dt *DataTable) UpdateCol(col any, dl *DataList) *DataTable {
+	return dt.updateCol("UpdateCol", col, dl)
+}
+
+// UpdateColByIndex replaces the column at the given Excel-style index.
+func (dt *DataTable) UpdateColByIndex(index string, dl *DataList) *DataTable {
+	return dt.updateCol("UpdateColByIndex", index, dl)
+}
+
+// UpdateColByName replaces the column with the given name.
+func (dt *DataTable) UpdateColByName(name string, dl *DataList) *DataTable {
+	return dt.updateCol("UpdateColByName", Name(name), dl)
+}
+
+func (dt *DataTable) updateCol(funcName string, col any, dl *DataList) *DataTable {
 	// Lock the table AND the passed list together: dl.data/dl.name are read below
 	// and cloned into a table-owned column. Storing dl directly (dt.columns[i] = dl)
 	// would make the table share a live object with the caller — later mutation of
 	// dl would leak into the table and race dt operations across two actor locks.
 	AtomicDoAll(func() {
-		index = strings.ToUpper(index)
-		colPos, ok := utils.ParseColIndex(index)
-		if ok && colPos >= 0 && colPos < len(dt.columns) {
-			column := NewDataList()
-			column.data = slices.Clone(dl.data)
-			column.name = dl.name
-			dt.columns[colPos] = column
-		} else {
-			dt.fail("UpdateCol", "Col index does not exist, returning")
+		num, ok := dt.resolveColSelector(funcName, col)
+		if !ok {
+			return
 		}
+		column := NewDataList()
+		column.data = slices.Clone(dl.data)
+		column.name = dl.name
+		dt.columns[num] = column
 		dt.updateTimestamp()
 	}, dt, dl)
 	return dt

@@ -135,7 +135,9 @@ type IDataTable interface {
 	GetRow(index int) *DataList
 	GetRowByName(name string) *DataList
 	UpdateElement(rowIndex int, columnIndex string, value any) *DataTable
-	UpdateCol(index string, dl *DataList) *DataTable
+	UpdateCol(col any, dl *DataList) *DataTable
+	UpdateColByIndex(index string, dl *DataList) *DataTable
+	UpdateColByName(name string, dl *DataList) *DataTable
 	UpdateColByNumber(index int, dl *DataList) *DataTable
 	UpdateRow(index int, dl *DataList) *DataTable
 	SetColToRowNames(col any) *DataTable
@@ -327,8 +329,12 @@ type IDataTable interface {
 	ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable
 	ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
 	ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
-	ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable
-	ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable
-	ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
-	ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
+	ReplaceInCol(col any, oldValue, newValue any, mode ...int) *DataTable
+	ReplaceInColByName(name string, oldValue, newValue any, mode ...int) *DataTable
+	ReplaceNaNsInCol(col any, newValue any, mode ...int) *DataTable
+	ReplaceNaNsInColByName(name string, newValue any, mode ...int) *DataTable
+	ReplaceNilsInCol(col any, newValue any, mode ...int) *DataTable
+	ReplaceNilsInColByName(name string, newValue any, mode ...int) *DataTable
+	ReplaceNaNsAndNilsInCol(col any, newValue any, mode ...int) *DataTable
+	ReplaceNaNsAndNilsInColByName(name string, newValue any, mode ...int) *DataTable
 }

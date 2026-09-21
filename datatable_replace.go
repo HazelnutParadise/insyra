@@ -3,8 +3,6 @@ package insyra
 import (
 	"fmt"
 	"math"
-
-	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // Replace all occurrences of oldValue with newValue in the DataTable.
@@ -130,14 +128,25 @@ func (dt *DataTable) ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ..
 //   - 0 (default): Replace all occurrences.
 //   - 1: Replace only the first occurrence.
 //   - -1: Replace only the last occurrence.
-func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable {
-	var err error
+func (dt *DataTable) ReplaceInCol(col any, oldValue, newValue any, mode ...int) *DataTable {
+	return dt.replaceInCol("ReplaceInCol", col, oldValue, newValue, mode...)
+}
+
+// ReplaceInColByName is ReplaceInCol for a column addressed by name.
+func (dt *DataTable) ReplaceInColByName(name string, oldValue, newValue any, mode ...int) *DataTable {
+	return dt.replaceInCol("ReplaceInColByName", Name(name), oldValue, newValue, mode...)
+}
+
+func (dt *DataTable) replaceInCol(funcName string, col any, oldValue, newValue any, mode ...int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
-		err = dt.replaceInCol_notAtomic(colIndex, oldValue, newValue, mode...)
+		num, ok := dt.resolveColSelector(funcName, col)
+		if !ok {
+			return
+		}
+		if err := dt.replaceInCol_notAtomic(num, oldValue, newValue, mode...); err != nil {
+			dt.fail(funcName, "%s", err.Error())
+		}
 	})
-	if err != nil {
-		dt.fail("ReplaceInCol", "Error: %s", err.Error())
-	}
 	return dt
 }
 
@@ -150,14 +159,25 @@ func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode 
 //   - 0 (default): Replace all occurrences.
 //   - 1: Replace only the first occurrence.
 //   - -1: Replace only the last occurrence.
-func (dt *DataTable) ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable {
-	var err error
+func (dt *DataTable) ReplaceNaNsInCol(col any, newValue any, mode ...int) *DataTable {
+	return dt.replaceNaNsInCol("ReplaceNaNsInCol", col, newValue, mode...)
+}
+
+// ReplaceNaNsInColByName is ReplaceNaNsInCol for a column addressed by name.
+func (dt *DataTable) ReplaceNaNsInColByName(name string, newValue any, mode ...int) *DataTable {
+	return dt.replaceNaNsInCol("ReplaceNaNsInColByName", Name(name), newValue, mode...)
+}
+
+func (dt *DataTable) replaceNaNsInCol(funcName string, col any, newValue any, mode ...int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
-		err = dt.replaceInCol_notAtomic(colIndex, math.NaN(), newValue, mode...)
+		num, ok := dt.resolveColSelector(funcName, col)
+		if !ok {
+			return
+		}
+		if err := dt.replaceInCol_notAtomic(num, math.NaN(), newValue, mode...); err != nil {
+			dt.fail(funcName, "%s", err.Error())
+		}
 	})
-	if err != nil {
-		dt.fail("ReplaceNaNsInCol", "Error: %s", err.Error())
-	}
 	return dt
 }
 
@@ -170,14 +190,25 @@ func (dt *DataTable) ReplaceNaNsInCol(colIndex string, newValue any, mode ...int
 //   - 0 (default): Replace all occurrences.
 //   - 1: Replace only the first occurrence.
 //   - -1: Replace only the last occurrence.
-func (dt *DataTable) ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable {
-	var err error
+func (dt *DataTable) ReplaceNilsInCol(col any, newValue any, mode ...int) *DataTable {
+	return dt.replaceNilsInCol("ReplaceNilsInCol", col, newValue, mode...)
+}
+
+// ReplaceNilsInColByName is ReplaceNilsInCol for a column addressed by name.
+func (dt *DataTable) ReplaceNilsInColByName(name string, newValue any, mode ...int) *DataTable {
+	return dt.replaceNilsInCol("ReplaceNilsInColByName", Name(name), newValue, mode...)
+}
+
+func (dt *DataTable) replaceNilsInCol(funcName string, col any, newValue any, mode ...int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
-		err = dt.replaceInCol_notAtomic(colIndex, nil, newValue, mode...)
+		num, ok := dt.resolveColSelector(funcName, col)
+		if !ok {
+			return
+		}
+		if err := dt.replaceInCol_notAtomic(num, nil, newValue, mode...); err != nil {
+			dt.fail(funcName, "%s", err.Error())
+		}
 	})
-	if err != nil {
-		dt.fail("ReplaceNilsInCol", "Error: %s", err.Error())
-	}
 	return dt
 }
 
@@ -190,14 +221,25 @@ func (dt *DataTable) ReplaceNilsInCol(colIndex string, newValue any, mode ...int
 //   - 0 (default): Replace all occurrences.
 //   - 1: Replace only the first occurrence.
 //   - -1: Replace only the last occurrence.
-func (dt *DataTable) ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable {
-	var err error
+func (dt *DataTable) ReplaceNaNsAndNilsInCol(col any, newValue any, mode ...int) *DataTable {
+	return dt.replaceNaNsAndNilsInCol("ReplaceNaNsAndNilsInCol", col, newValue, mode...)
+}
+
+// ReplaceNaNsAndNilsInColByName is ReplaceNaNsAndNilsInCol for a column addressed by name.
+func (dt *DataTable) ReplaceNaNsAndNilsInColByName(name string, newValue any, mode ...int) *DataTable {
+	return dt.replaceNaNsAndNilsInCol("ReplaceNaNsAndNilsInColByName", Name(name), newValue, mode...)
+}
+
+func (dt *DataTable) replaceNaNsAndNilsInCol(funcName string, col any, newValue any, mode ...int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
-		err = dt.replaceNaNsAndNilsInCol_notAtomic(colIndex, newValue, mode...)
+		num, ok := dt.resolveColSelector(funcName, col)
+		if !ok {
+			return
+		}
+		if err := dt.replaceNaNsAndNilsInCol_notAtomic(num, newValue, mode...); err != nil {
+			dt.fail(funcName, "%s", err.Error())
+		}
 	})
-	if err != nil {
-		dt.fail("ReplaceNaNsAndNilsInCol", "Error: %s", err.Error())
-	}
 	return dt
 }
 
@@ -337,7 +379,7 @@ func (dt *DataTable) replaceNaNsAndNilsInRow_notAtomic(rowIndex int, newValue an
 	return nil
 }
 
-func (dt *DataTable) replaceInCol_notAtomic(colIndex string, oldValue, newValue any, mode ...int) error {
+func (dt *DataTable) replaceInCol_notAtomic(colNo int, oldValue, newValue any, mode ...int) error {
 	modeFlag := 0
 	if len(mode) > 1 {
 		return fmt.Errorf("mode parameter can only have 0 or 1 value")
@@ -345,25 +387,21 @@ func (dt *DataTable) replaceInCol_notAtomic(colIndex string, oldValue, newValue 
 	if len(mode) == 1 {
 		modeFlag = mode[0]
 	}
-	if colNo, ok := utils.ParseColIndex(colIndex); ok && colNo >= 0 && colNo < len(dt.columns) {
-		switch modeFlag {
-		case 1:
-			// 取代第一個
-			dt.columns[colNo].replaceFirst_notAtomic(oldValue, newValue)
-		case 0: // 取代所有符合的
-			dt.columns[colNo].replaceAll_notAtomic(oldValue, newValue)
-		case -1: // 從後往前取代第一個
-			dt.columns[colNo].replaceLast_notAtomic(oldValue, newValue)
-		default:
-			return fmt.Errorf("invalid mode parameter, no replacements made")
-		}
-	} else {
-		return fmt.Errorf("column '%s' does not exist", colIndex)
+	switch modeFlag {
+	case 1:
+		// 取代第一個
+		dt.columns[colNo].replaceFirst_notAtomic(oldValue, newValue)
+	case 0: // 取代所有符合的
+		dt.columns[colNo].replaceAll_notAtomic(oldValue, newValue)
+	case -1: // 從後往前取代第一個
+		dt.columns[colNo].replaceLast_notAtomic(oldValue, newValue)
+	default:
+		return fmt.Errorf("invalid mode parameter, no replacements made")
 	}
 	return nil
 }
 
-func (dt *DataTable) replaceNaNsAndNilsInCol_notAtomic(colIndex string, newValue any, mode ...int) error {
+func (dt *DataTable) replaceNaNsAndNilsInCol_notAtomic(colNo int, newValue any, mode ...int) error {
 	modeFlag := 0
 	if len(mode) > 1 {
 		return fmt.Errorf("mode parameter can only have 0 or 1 value")
@@ -371,41 +409,37 @@ func (dt *DataTable) replaceNaNsAndNilsInCol_notAtomic(colIndex string, newValue
 	if len(mode) == 1 {
 		modeFlag = mode[0]
 	}
-	if colNo, ok := utils.ParseColIndex(colIndex); ok && colNo >= 0 && colNo < len(dt.columns) {
-		switch modeFlag {
-		case 1:
-			// 取代第一個
-			for i, val := range dt.columns[colNo].data {
-				if val == nil {
-					dt.columns[colNo].data[i] = newValue
-					dt.columns[colNo].updateTimestamp()
-					break
-				} else if v, ok := val.(float64); ok && math.IsNaN(v) {
-					dt.columns[colNo].data[i] = newValue
-					dt.columns[colNo].updateTimestamp()
-					break
-				}
+	switch modeFlag {
+	case 1:
+		// 取代第一個
+		for i, val := range dt.columns[colNo].data {
+			if val == nil {
+				dt.columns[colNo].data[i] = newValue
+				dt.columns[colNo].updateTimestamp()
+				break
+			} else if v, ok := val.(float64); ok && math.IsNaN(v) {
+				dt.columns[colNo].data[i] = newValue
+				dt.columns[colNo].updateTimestamp()
+				break
 			}
-		case 0: // 取代所有符合的
-			dt.columns[colNo].replaceNaNsAndNilsWith_notAtomic(newValue)
-		case -1: // 從後往前取代第一個
-			for i := len(dt.columns[colNo].data) - 1; i >= 0; i-- {
-				val := dt.columns[colNo].data[i]
-				if val == nil {
-					dt.columns[colNo].data[i] = newValue
-					dt.columns[colNo].updateTimestamp()
-					break
-				} else if v, ok := val.(float64); ok && math.IsNaN(v) {
-					dt.columns[colNo].data[i] = newValue
-					dt.columns[colNo].updateTimestamp()
-					break
-				}
-			}
-		default:
-			return fmt.Errorf("invalid mode parameter, no replacements made")
 		}
-	} else {
-		return fmt.Errorf("column '%s' does not exist", colIndex)
+	case 0: // 取代所有符合的
+		dt.columns[colNo].replaceNaNsAndNilsWith_notAtomic(newValue)
+	case -1: // 從後往前取代第一個
+		for i := len(dt.columns[colNo].data) - 1; i >= 0; i-- {
+			val := dt.columns[colNo].data[i]
+			if val == nil {
+				dt.columns[colNo].data[i] = newValue
+				dt.columns[colNo].updateTimestamp()
+				break
+			} else if v, ok := val.(float64); ok && math.IsNaN(v) {
+				dt.columns[colNo].data[i] = newValue
+				dt.columns[colNo].updateTimestamp()
+				break
+			}
+		}
+	default:
+		return fmt.Errorf("invalid mode parameter, no replacements made")
 	}
 	return nil
 }
