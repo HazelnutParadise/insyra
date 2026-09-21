@@ -434,24 +434,23 @@ func (dt *DataTable) GetRowByName(name string) *DataList {
 
 // ======================== Update ========================
 
-// UpdateElement updates the element at the given row and column index.
-func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable {
+// UpdateElement updates the cell at the given row and the column the selector
+// picks.
+func (dt *DataTable) UpdateElement(rowIndex int, col any, value any) *DataTable {
 	value = unwrapCell(value)
 	dt.AtomicDo(func(dt *DataTable) {
-		columnIndex = strings.ToUpper(columnIndex)
-		colPos, ok := utils.ParseColIndex(columnIndex)
-		if ok && colPos >= 0 && colPos < len(dt.columns) {
-			if rowIndex < 0 {
-				rowIndex = len(dt.columns[colPos].data) + rowIndex
-			}
-			if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
-				dt.fail("UpdateElement", "Row index is out of range, returning")
-				return
-			}
-			dt.columns[colPos].data[rowIndex] = value
-		} else {
-			dt.fail("UpdateElement", "Col index does not exist, returning")
+		colPos, ok := dt.resolveColSelector("UpdateElement", col)
+		if !ok {
+			return
 		}
+		if rowIndex < 0 {
+			rowIndex = len(dt.columns[colPos].data) + rowIndex
+		}
+		if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
+			dt.fail("UpdateElement", "Row index is out of range, returning")
+			return
+		}
+		dt.columns[colPos].data[rowIndex] = value
 		dt.updateTimestamp()
 	})
 	return dt

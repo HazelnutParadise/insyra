@@ -134,7 +134,7 @@ type IDataTable interface {
 	GetColByName(name string) *DataList
 	GetRow(index int) *DataList
 	GetRowByName(name string) *DataList
-	UpdateElement(rowIndex int, columnIndex string, value any) *DataTable
+	UpdateElement(rowIndex int, col any, value any) *DataTable
 	UpdateCol(col any, dl *DataList) *DataTable
 	UpdateColByIndex(index string, dl *DataList) *DataTable
 	UpdateColByName(name string, dl *DataList) *DataTable
