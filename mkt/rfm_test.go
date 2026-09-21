@@ -42,9 +42,9 @@ func TestRFM(t *testing.T) {
 
 	// RFM 配置
 	config := RFMConfig{
-		CustomerIDColName:  "CustomerID",
-		TradingDayColIndex: "B",
-		AmountColIndex:     "C",
+		CustomerIDCol: insyra.Name("CustomerID"),
+		TradingDayCol: "B",
+		AmountCol: "C",
 		NumGroups:          5,
 		DateFormat:         "2006-01-02",
 	}

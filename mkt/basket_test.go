@@ -38,8 +38,8 @@ func TestBasketAnalysis(t *testing.T) {
 	dt.SetColNameByIndex("B", "ProductID")
 
 	result := BasketAnalysis(dt, BasketConfig{
-		OrderIDColName:   "OrderID",
-		ProductIDColName: "ProductID",
+		OrderIDCol:   insyra.Name("OrderID"),
+		ProductIDCol: insyra.Name("ProductID"),
 	})
 	if result == nil {
 		t.Fatal("BasketAnalysis returned nil")
@@ -95,10 +95,10 @@ func TestBasketAnalysisMissingConfig(t *testing.T) {
 	dt := insyra.NewDataTable()
 	dt.AppendRowsByColIndex(map[string]any{"A": "O1", "B": "X"})
 
-	if BasketAnalysis(dt, BasketConfig{ProductIDColIndex: "B"}) != nil {
+	if BasketAnalysis(dt, BasketConfig{ProductIDCol: "B"}) != nil {
 		t.Error("expected nil when OrderID column is not provided")
 	}
-	if BasketAnalysis(dt, BasketConfig{OrderIDColIndex: "A"}) != nil {
+	if BasketAnalysis(dt, BasketConfig{OrderIDCol: "A"}) != nil {
 		t.Error("expected nil when ProductID column is not provided")
 	}
 }

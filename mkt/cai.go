@@ -11,12 +11,12 @@ import (
 )
 
 type CAIConfig struct {
-	CustomerIDColIndex string    // The column index(A, B, C, ...) of customer ID in the data table
-	CustomerIDColName  string    // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
-	TradingDayColIndex string    // The column index(A, B, C, ...) of trading day in the data table
-	TradingDayColName  string    // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
-	DateFormat         string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
-	TimeScale          TimeScale // The time scale for analysis (e.g., hourly, daily, weekly, monthly, yearly)
+	// Each column is given as the library's selector: an Excel-style index
+	// string ("A", "B", ...), insyra.Name("customer_id"), or an int position.
+	CustomerIDCol any
+	TradingDayCol any
+	DateFormat    string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+	TimeScale     TimeScale // The time scale for analysis (e.g., hourly, daily, weekly, monthly, yearly)
 }
 
 // CAI is an alias for CustomerActivityIndex.
@@ -42,23 +42,15 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 	customerMLEs := make(map[string]float64)
 	customerWMLEs := make(map[string]float64)
 
-	var customerIDColIndex string
-	if caiConfig.CustomerIDColIndex != "" {
-		customerIDColIndex = caiConfig.CustomerIDColIndex
-	} else if caiConfig.CustomerIDColName != "" {
-		customerIDColIndex = dt.GetColIndexByName(caiConfig.CustomerIDColName)
-	} else {
-		insyra.LogWarning("mkt", "CustomerActivityIndex", "CustomerIDColIndex or CustomerIDColName must be provided, returning nil")
+	customerIDCol := caiConfig.CustomerIDCol
+	if customerIDCol == nil {
+		insyra.LogWarning("mkt", "CustomerActivityIndex", "CustomerIDCol must be provided, returning nil")
 		return nil
 	}
 
-	var tradingDayColIndex string
-	if caiConfig.TradingDayColIndex != "" {
-		tradingDayColIndex = caiConfig.TradingDayColIndex
-	} else if caiConfig.TradingDayColName != "" {
-		tradingDayColIndex = dt.GetColIndexByName(caiConfig.TradingDayColName)
-	} else {
-		insyra.LogWarning("mkt", "CustomerActivityIndex", "TradingDayColIndex or TradingDayColName must be provided, returning nil")
+	tradingDayCol := caiConfig.TradingDayCol
+	if tradingDayCol == nil {
+		insyra.LogWarning("mkt", "CustomerActivityIndex", "TradingDayCol must be provided, returning nil")
 		return nil
 	}
 
@@ -80,8 +72,8 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 	dt.AtomicDo(func(dt *insyra.DataTable) {
 		numRows, _ := dt.Size()
 		for i := range numRows {
-			customerID := conv.ToString(dt.GetElement(i, customerIDColIndex))
-			tradingTimeStr := conv.ToString(dt.GetElement(i, tradingDayColIndex))
+			customerID := conv.ToString(dt.GetElement(i, customerIDCol))
+			tradingTimeStr := conv.ToString(dt.GetElement(i, tradingDayCol))
 			if customerID == "" || tradingTimeStr == "" {
 				continue
 			}

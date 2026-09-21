@@ -263,24 +263,23 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable 
 // ======================== Get ========================
 
 // GetElement returns the element at the given row and column index.
-func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any {
+func (dt *DataTable) GetElement(rowIndex int, col any) any {
 	var result any
 	dt.AtomicDo(func(dt *DataTable) {
-		columnIndex = strings.ToUpper(columnIndex)
-		colPos, ok := utils.ParseColIndex(columnIndex)
-		if ok && colPos >= 0 && colPos < len(dt.columns) {
-			if rowIndex < 0 {
-				rowIndex = len(dt.columns[colPos].data) + rowIndex
-			}
-			if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
-				dt.fail("GetElement", "Row index is out of range, returning nil")
-				result = nil
-				return
-			}
-			result = dt.columns[colPos].data[rowIndex]
-		} else {
+		colPos, ok := dt.resolveColSelector("GetElement", col)
+		if !ok {
 			result = nil
+			return
 		}
+		if rowIndex < 0 {
+			rowIndex = len(dt.columns[colPos].data) + rowIndex
+		}
+		if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
+			dt.fail("GetElement", "Row index is out of range, returning nil")
+			result = nil
+			return
+		}
+		result = dt.columns[colPos].data[rowIndex]
 	})
 	return result
 }

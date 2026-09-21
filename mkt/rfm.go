@@ -11,47 +11,32 @@ import (
 )
 
 type RFMConfig struct {
-	CustomerIDColIndex string    // The column index(A, B, C, ...) of customer ID in the data table
-	CustomerIDColName  string    // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
-	TradingDayColIndex string    // The column index(A, B, C, ...) of trading day in the data table
-	TradingDayColName  string    // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
-	AmountColIndex     string    // The column index(A, B, C, ...) of amount in the data table
-	AmountColName      string    // The column name of amount in the data table (if both index and name are provided, index takes precedence)
-	NumGroups          uint      // The number of groups to divide the customers into
-	DateFormat         string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
-	TimeScale          TimeScale // The time scale for analysis (e.g., hourly, daily, weekly, monthly, yearly)
+	// Each column is given as the library's selector: an Excel-style index
+	// string ("A", "B", ...), insyra.Name("customer_id"), or an int position.
+	CustomerIDCol any
+	TradingDayCol any
+	AmountCol     any
+	NumGroups     uint      // The number of groups to divide the customers into
+	DateFormat    string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+	TimeScale     TimeScale // The time scale for analysis (e.g., hourly, daily, weekly, monthly, yearly)
 }
 
 // RFM performs RFM analysis on the given data table based on the provided configuration.
 // It returns a new data table containing the R, F, M scores and the combined RFM score for each customer.
 func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
-	var customerIDColIndex string
-	if rfmConfig.CustomerIDColIndex != "" {
-		customerIDColIndex = rfmConfig.CustomerIDColIndex
-	} else if rfmConfig.CustomerIDColName != "" {
-		customerIDColIndex = dt.GetColIndexByName(rfmConfig.CustomerIDColName)
-	} else {
-		insyra.LogWarning("mkt", "RFM", "CustomerIDColIndex or CustomerIDColName must be provided, returning nil")
+	customerIDCol := rfmConfig.CustomerIDCol
+	if customerIDCol == nil {
+		insyra.LogWarning("mkt", "RFM", "CustomerIDCol must be provided, returning nil")
 		return nil
 	}
-
-	var tradingDayColIndex string
-	if rfmConfig.TradingDayColIndex != "" {
-		tradingDayColIndex = rfmConfig.TradingDayColIndex
-	} else if rfmConfig.TradingDayColName != "" {
-		tradingDayColIndex = dt.GetColIndexByName(rfmConfig.TradingDayColName)
-	} else {
-		insyra.LogWarning("mkt", "RFM", "TradingDayColIndex or TradingDayColName must be provided, returning nil")
+	tradingDayCol := rfmConfig.TradingDayCol
+	if tradingDayCol == nil {
+		insyra.LogWarning("mkt", "RFM", "TradingDayCol must be provided, returning nil")
 		return nil
 	}
-
-	var amountColIndex string
-	if rfmConfig.AmountColIndex != "" {
-		amountColIndex = rfmConfig.AmountColIndex
-	} else if rfmConfig.AmountColName != "" {
-		amountColIndex = dt.GetColIndexByName(rfmConfig.AmountColName)
-	} else {
-		insyra.LogWarning("mkt", "RFM", "AmountColIndex or AmountColName must be provided, returning nil")
+	amountCol := rfmConfig.AmountCol
+	if amountCol == nil {
+		insyra.LogWarning("mkt", "RFM", "AmountCol must be provided, returning nil")
 		return nil
 	}
 
@@ -87,15 +72,15 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 		// 找出每個客戶的最後交易日
 		numRows, _ := dt.Size()
 		for i := range numRows {
-			dateValue := dt.GetElement(i, tradingDayColIndex)
+			dateValue := dt.GetElement(i, tradingDayCol)
 			lastTradingDayStr := utils.ConvertToDateString(dateValue, goDateFormat)
-			customerID := conv.ToString(dt.GetElement(i, customerIDColIndex))
+			customerID := conv.ToString(dt.GetElement(i, customerIDCol))
 
 			// 跳過無效的資料
 			if lastTradingDayStr == "" || customerID == "" {
 				continue
 			}
-			amountValue := dt.GetElement(i, amountColIndex)
+			amountValue := dt.GetElement(i, amountCol)
 			amount, ok := insyra.ToFloat64Safe(amountValue)
 			if !ok {
 				insyra.LogWarning("mkt", "RFM", "Amount at row %d is not numeric (%v), skipping the row", i+1, amountValue)

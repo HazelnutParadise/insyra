@@ -19,7 +19,7 @@ func TestRFMDoesNotPanicOnTextAmount(t *testing.T) {
 			t.Fatalf("RFM panicked: %v", r)
 		}
 	}()
-	out := RFM(dt, RFMConfig{CustomerIDColName: "id", TradingDayColName: "day", AmountColName: "amt", NumGroups: 2})
+	out := RFM(dt, RFMConfig{CustomerIDCol: insyra.Name("id"), TradingDayCol: insyra.Name("day"), AmountCol: insyra.Name("amt"), NumGroups: 2})
 	if out == nil || out.NumRows() != 2 {
 		t.Fatalf("expected 2 customers, got %v", out)
 	}
@@ -39,12 +39,12 @@ func TestRFMAndCAIOutputSorted(t *testing.T) {
 	}
 	dt := insyra.NewDataTable(insyra.NewDataList(ids...).SetName("id"), insyra.NewDataList(days...).SetName("day"), insyra.NewDataList(amts...).SetName("amt"))
 	for run := 0; run < 2; run++ {
-		rfm := RFM(dt, RFMConfig{CustomerIDColName: "id", TradingDayColName: "day", AmountColName: "amt", NumGroups: 3})
+		rfm := RFM(dt, RFMConfig{CustomerIDCol: insyra.Name("id"), TradingDayCol: insyra.Name("day"), AmountCol: insyra.Name("amt"), NumGroups: 3})
 		got := rfm.GetColByName("CustomerID").ToStringSlice()
 		if !sort.StringsAreSorted(got) {
 			t.Fatalf("RFM rows not sorted: %v", got)
 		}
-		cai := CustomerActivityIndex(dt, CAIConfig{CustomerIDColName: "id", TradingDayColName: "day"})
+		cai := CustomerActivityIndex(dt, CAIConfig{CustomerIDCol: insyra.Name("id"), TradingDayCol: insyra.Name("day")})
 		gotC := cai.GetColByName("CustomerID").ToStringSlice()
 		if !sort.StringsAreSorted(gotC) {
 			t.Fatalf("CAI rows not sorted: %v", gotC)

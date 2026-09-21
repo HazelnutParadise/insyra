@@ -10,10 +10,10 @@ import (
 // BasketConfig 是 BasketAnalysis 的設定。
 // 輸入資料形式與 RFM / CAI 類似：每一列代表「某張訂單包含的某項商品」。
 type BasketConfig struct {
-	OrderIDColIndex   string // The column index(A, B, C, ...) of order ID in the data table
-	OrderIDColName    string // The column name of order ID in the data table (if both index and name are provided, index takes precedence)
-	ProductIDColIndex string // The column index(A, B, C, ...) of product ID in the data table
-	ProductIDColName  string // The column name of product ID in the data table (if both index and name are provided, index takes precedence)
+	// Each column is given as the library's selector: an Excel-style index
+	// string ("A", "B", ...), insyra.Name("order_id"), or an int position.
+	OrderIDCol   any
+	ProductIDCol any
 }
 
 // BasketResult holds the three matrices returned by BasketAnalysis.
@@ -36,23 +36,14 @@ type BasketResult struct {
 // Each order is treated as a set of items, so duplicated product IDs within the
 // same order are counted only once.
 func BasketAnalysis(dt insyra.IDataTable, config BasketConfig) *BasketResult {
-	var orderIDColIndex string
-	if config.OrderIDColIndex != "" {
-		orderIDColIndex = config.OrderIDColIndex
-	} else if config.OrderIDColName != "" {
-		orderIDColIndex = dt.GetColIndexByName(config.OrderIDColName)
-	} else {
-		insyra.LogWarning("mkt", "BasketAnalysis", "OrderIDColIndex or OrderIDColName must be provided, returning nil")
+	orderIDCol := config.OrderIDCol
+	if orderIDCol == nil {
+		insyra.LogWarning("mkt", "BasketAnalysis", "OrderIDCol must be provided, returning nil")
 		return nil
 	}
-
-	var productIDColIndex string
-	if config.ProductIDColIndex != "" {
-		productIDColIndex = config.ProductIDColIndex
-	} else if config.ProductIDColName != "" {
-		productIDColIndex = dt.GetColIndexByName(config.ProductIDColName)
-	} else {
-		insyra.LogWarning("mkt", "BasketAnalysis", "ProductIDColIndex or ProductIDColName must be provided, returning nil")
+	productIDCol := config.ProductIDCol
+	if productIDCol == nil {
+		insyra.LogWarning("mkt", "BasketAnalysis", "ProductIDCol must be provided, returning nil")
 		return nil
 	}
 
@@ -61,8 +52,8 @@ func BasketAnalysis(dt insyra.IDataTable, config BasketConfig) *BasketResult {
 	dt.AtomicDo(func(dt *insyra.DataTable) {
 		numRows, _ := dt.Size()
 		for i := range numRows {
-			orderID := conv.ToString(dt.GetElement(i, orderIDColIndex))
-			productID := conv.ToString(dt.GetElement(i, productIDColIndex))
+			orderID := conv.ToString(dt.GetElement(i, orderIDCol))
+			productID := conv.ToString(dt.GetElement(i, productIDCol))
 			if orderID == "" || productID == "" {
 				continue
 			}
