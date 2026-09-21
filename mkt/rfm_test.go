@@ -44,9 +44,9 @@ func TestRFM(t *testing.T) {
 	config := RFMConfig{
 		CustomerIDCol: insyra.Name("CustomerID"),
 		TradingDayCol: "B",
-		AmountCol: "C",
-		NumGroups:          5,
-		DateFormat:         "2006-01-02",
+		AmountCol:     "C",
+		NumGroups:     5,
+		DateFormat:    "2006-01-02",
 	}
 
 	// 執行 RFM
