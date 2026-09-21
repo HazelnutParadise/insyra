@@ -2,6 +2,10 @@
 
 Source of truth: `Docs/CCL.md` (Operators section). If behavior differs, follow the repo docs/tests for your target version.
 
+## Column references
+
+A bare word is an Excel-style column index (`A`, `B`, ... `AA`) and nothing else, on both sides of an assignment. A column name is written `['name']`. `price * 2` on a table with a column named `price` is an error naming the bracketed form, not a name lookup, so an expression means the same thing whatever the columns are called.
+
 ## Arithmetic + special operators
 
 | Operator | Meaning | Notes / Examples |

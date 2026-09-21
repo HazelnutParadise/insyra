@@ -190,10 +190,7 @@ func Bind(n cclNode, colNameMap map[string]int) (cclNode, error) {
 		if ok {
 			return &cclResolvedColNode{index: idx, name: t.name}, nil
 		}
-		if idx, ok := colNameMap[t.name]; ok {
-			return &cclResolvedColNode{index: idx, name: t.name}, nil
-		}
-		return t, nil
+		return nil, NotAnIndexError(t.name, colNameMap)
 	case *cclColIndexNode:
 		idx, ok := utils.ParseColIndex(t.index)
 		if ok {
@@ -266,24 +263,20 @@ func Bind(n cclNode, colNameMap map[string]int) (cclNode, error) {
 	}
 }
 
-// MaxResolvedColIndex walks a bound AST and returns the largest column index
-// referenced by an Excel-style or resolved column node, or -1 when none.
-// Callers use it to reject A..Z references past the last column before
-// evaluation, instead of silently reading nil.
-func MaxResolvedColIndex(n cclNode) int {
-	maxIdx := -1
+// walkResolvedCols visits every column reference a bound AST resolves to,
+// in source order, passing the word as it was written and the index it
+// resolved to.
+func walkResolvedCols(n cclNode, visit func(source string, index int)) {
 	var walk func(n cclNode)
 	walk = func(n cclNode) {
 		switch t := n.(type) {
 		case nil:
 			return
 		case *cclResolvedColNode:
-			if t.index > maxIdx {
-				maxIdx = t.index
-			}
+			visit(t.name, t.index)
 		case *cclColIndexNode:
-			if idx, ok := utils.ParseColIndex(t.index); ok && idx > maxIdx {
-				maxIdx = idx
+			if idx, ok := utils.ParseColIndex(t.index); ok {
+				visit(t.index, idx)
 			}
 		case *cclBinaryOpNode:
 			walk(t.left)
@@ -308,5 +301,29 @@ func MaxResolvedColIndex(n cclNode) int {
 		}
 	}
 	walk(n)
+}
+
+// MaxResolvedColIndex walks a bound AST and returns the largest column index
+// it references, or -1 when it references none.
+func MaxResolvedColIndex(n cclNode) int {
+	maxIdx := -1
+	walkResolvedCols(n, func(_ string, index int) {
+		if index > maxIdx {
+			maxIdx = index
+		}
+	})
 	return maxIdx
+}
+
+// FirstColPastEnd returns the first column reference past the last column, as
+// it was written, so a failure can quote the word the reader typed rather than
+// the letters it decoded to.
+func FirstColPastEnd(n cclNode, numCol int) (source string, index int, found bool) {
+	walkResolvedCols(n, func(word string, idx int) {
+		if found || idx < numCol {
+			return
+		}
+		source, index, found = word, idx, true
+	})
+	return source, index, found
 }

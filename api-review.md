@@ -388,7 +388,7 @@
 
 | 編號 | 嚴重度 | 發現 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| CCL-1 | High（越界回錯與關鍵字已修正 batch 4；名稱優先於索引待 T-11 決策） | 任何純英文字母的識別字都先被當成 Excel 欄位索引，永遠不會落到欄位名稱查表；索引超出範圍時 `GetCol` 靜默回 nil。實測欄名 `price` 的表上 `price * 2` → 全欄 0；`NULL`、`TRUE`、`FALSE`、`PI` → 全欄 nil；`[nope] + 1` → 1；文件自己的範例 `NEW('prev') = LAG(B,1); NEW('adj') = prev + 1` 得到 `adj = [1 1 1]`；文件 `LN(E) → 1` 實際是取第 5 欄；賦值目標 `total = A + 1` 反而會落到名稱查表，左右規則不一致 | internal/ccl/ccl_compiler.go:151-160；ccl.go:20-25；internal/utils/utils.go:63-88；datatable_ccl.go:240-250；Docs/CCL.md:604, 855-862, 944 | `Bind` 先查 `colNameMap` 再嘗試 Excel 索引，索引超過欄數回錯而非 nil；`NULL`／`TRUE`／`FALSE` 加進關鍵字；修文件三處範例（T-11 同族） |
+| CCL-1 | ~~High~~ 已修正（越界回錯與關鍵字 batch 4；裸識別字只當索引 ccl-identifier-is-only-an-index，擁有者 2026-09-21 裁定沿用原設計，欄名表只用來寫錯誤訊息） | 任何純英文字母的識別字都先被當成 Excel 欄位索引，永遠不會落到欄位名稱查表；索引超出範圍時 `GetCol` 靜默回 nil。實測欄名 `price` 的表上 `price * 2` → 全欄 0；`NULL`、`TRUE`、`FALSE`、`PI` → 全欄 nil；`[nope] + 1` → 1；文件自己的範例 `NEW('prev') = LAG(B,1); NEW('adj') = prev + 1` 得到 `adj = [1 1 1]`；文件 `LN(E) → 1` 實際是取第 5 欄；賦值目標 `total = A + 1` 反而會落到名稱查表，左右規則不一致 | internal/ccl/ccl_compiler.go:151-160；ccl.go:20-25；internal/utils/utils.go:63-88；datatable_ccl.go:240-250；Docs/CCL.md:604, 855-862, 944 | `Bind` 先查 `colNameMap` 再嘗試 Excel 索引，索引超過欄數回錯而非 nil；`NULL`／`TRUE`／`FALSE` 加進關鍵字；修文件三處範例（T-11 同族） |
 | CCL-2 | ~~High~~ 已修正（batch 4） | `@` 直接當值時回傳的是 evaluator 重複使用的同一個 `row` slice，整欄所有 cell 共用同一底層陣列，最後全部顯示最後一列：`AddColUsingCCL("r","@")` 三列皆 `[30 3]`，`%p` 相同；`IF(A > 15, @, nil)` 第 2 列顯示 `[30 3]`。`ExecuteCCL` 兩條路徑同樣重用 `row` | ccl.go:45-47, 221, 236；datatable_ccl.go:260-282, 339-361 | `GetCurrentRow` 回傳複本 |
 | CCL-3 | ~~High~~ 已修正（batch 4） | 日期相減得到 `time.Duration`，但 `toFloat64` 不認識 `time.Duration`，`(A - B) > 0` 靜默回 `false`（三列全 false），`(A - B) / 86400` 報 `invalid operands`；`DAY(A - B)` 才正確 | internal/ccl/ccl_evaluator.go:477-479, 659-662；internal/ccl/stdlib.go:360-386 | `toFloat64` 加 `time.Duration` 分支，或比較遇到 Duration 對 number 時回錯而非 false |
 | CCL-4 | ~~High~~ 已修正（batch 4） | `NewMapContext` 用 `range map` 決定欄位順序，`A`／`B` 指到哪一欄是隨機的：同一份資料 20 次 `Evaluate("A")` 得到 1、2、3 三種值 | internal/ccl/map_context.go:24-37；engine/ccl/ccl.go:14-16 | 排序 key 或提供帶順序的建構子 |
@@ -668,7 +668,7 @@
 | IN-16 | [#338](https://github.com/HazelnutParadise/insyra/issues/338) |  |
 | IN-19 | [#339](https://github.com/HazelnutParadise/insyra/issues/339) |  |
 | IN-21 | [#340](https://github.com/HazelnutParadise/insyra/issues/340) |  |
-| CCL-1 | [#341](https://github.com/HazelnutParadise/insyra/issues/341) |  |
+| CCL-1 | [#341](https://github.com/HazelnutParadise/insyra/issues/341) | 已關閉（ccl-identifier-is-only-an-index） |
 | CCL-2 | [#342](https://github.com/HazelnutParadise/insyra/issues/342) |  |
 | CCL-3 | [#343](https://github.com/HazelnutParadise/insyra/issues/343) |  |
 | CCL-4 | [#344](https://github.com/HazelnutParadise/insyra/issues/344) |  |

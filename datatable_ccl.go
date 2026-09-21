@@ -242,19 +242,16 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 		}
 		targetColIdx = idx
 	} else {
-		// 欄位索引形式 A, B, C 或直接是欄位名稱
-		// 先嘗試作為索引解析
+		// 欄位索引形式 A, B, C。裸識別字兩側同一套規則，欄名一律寫成 ['name']。
 		idx, ok := ParseColIndex(target)
-		if ok && idx >= 0 && idx < len(dt.columns) {
-			targetColIdx = idx
-		} else {
-			// 嘗試作為欄位名稱
-			colIdx, ok := colNameMap[target]
-			if !ok {
-				return fmt.Errorf("assignment target column '%s' does not exist", target)
-			}
-			targetColIdx = colIdx
+		if !ok {
+			return ccl.NotAnIndexError(target, colNameMap)
 		}
+		if idx < 0 || idx >= len(dt.columns) {
+			letters, _ := CalcColIndex(idx)
+			return ccl.PastLastColumnError(target, letters, len(dt.columns), colNameMap)
+		}
+		targetColIdx = idx
 	}
 
 	// Bind the node first
@@ -262,7 +259,7 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 	if err != nil {
 		return err
 	}
-	if err := checkCCLColRange(boundNode, len(dt.columns)); err != nil {
+	if err := checkCCLColRange(boundNode, len(dt.columns), colNameMap); err != nil {
 		return err
 	}
 
@@ -346,7 +343,7 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 	if err != nil {
 		return err
 	}
-	if err := checkCCLColRange(boundNode, len(dt.columns)); err != nil {
+	if err := checkCCLColRange(boundNode, len(dt.columns), colNameMap); err != nil {
 		return err
 	}
 

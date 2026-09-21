@@ -585,6 +585,10 @@ dt.ExecuteCCL("['price'] = ['price'] * 1.1")
 // A, B, C ...        : Excel-style column index
 // [A], [B] ...       : bracketed column index
 // ['colName']        : column name (case-sensitive; names use quotes)
+//
+// A bare word is ALWAYS an index, never a name, on both sides of an
+// assignment. On a table with a column named price, "price * 2" and
+// "price = A" are errors that tell you to write ['price'].
 
 dt.AddColUsingCCL("profit", "['revenue'] - ['cost']")
 dt.AddColUsingCCL("mixed", "[A] * 2 + ['cost']")

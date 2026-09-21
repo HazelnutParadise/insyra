@@ -196,7 +196,7 @@ CCL supports the following data types:
    "null"              // Alias for nil
    ```
 
-   Keywords are never read as column references. Any other bare word is first tried as an Excel-style column index (`A`, `B`, ... `AA`); an index past the last column is an error, not a column of `nil`. Refer to a column by name with `['name']`.
+   Keywords are never read as column references. Every other bare word is an Excel-style column index (`A`, `B`, ... `AA`) and only that, on either side of an assignment. An index past the last column is an error rather than a column of `nil`, and a word that is not letters at all, such as `qty_1`, is an error too. A column name is always written `['name']`. When the table does have a column of the name you wrote, the error says so and tells you the bracketed form.
 
 ## Operators
 
@@ -477,6 +477,12 @@ A 0/1 indicator column can therefore be used directly: `A && B`.
 ## Column References
 
 CCL provides three ways to reference columns in your expressions:
+
+> **A bare word is an index, never a name.** `price * 2` reads `price` as
+> Excel column letters, not as the column called `price`. This keeps an
+> expression's meaning independent of what the columns happen to be called, so
+> renaming a column cannot silently change what an expression computes. Write
+> `['price']` for the column named `price`.
 
 > **Note on case.** Function names and Excel-style column indices ignore case:
 > `sum(a)`, `SUM(A)` and `Sum(a)` are the same expression, and so are `a + 1`

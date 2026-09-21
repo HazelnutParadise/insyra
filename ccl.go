@@ -215,7 +215,7 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 			err = &ccl.CompileError{Expr: expression, Offset: -1, Msg: err2.Error()}
 			return
 		}
-		if err2 := checkCCLColRange(boundAST, numCol); err2 != nil {
+		if err2 := checkCCLColRange(boundAST, numCol, colNameMap); err2 != nil {
 			err = &ccl.CompileError{Expr: expression, Offset: -1, Msg: err2.Error()}
 			return
 		}
@@ -307,11 +307,14 @@ func initCCLFunctions() {
 
 // checkCCLColRange rejects a bound expression that references an Excel-style
 // column past the last one, so `E + 1` on a three-column table is an error
-// rather than a column of nil.
-func checkCCLColRange(bound ccl.CCLNode, numCol int) error {
-	if maxIdx := ccl.MaxResolvedColIndex(bound); maxIdx >= numCol {
-		name, _ := utils.CalcColIndex(maxIdx)
-		return fmt.Errorf("column %s does not exist: the table has %d column(s)", name, numCol)
+// rather than a column of nil. The column names are passed so the failure can
+// offer `['name']` to someone who wrote a name where an index goes; they never
+// take part in resolving the reference.
+func checkCCLColRange(bound ccl.CCLNode, numCol int, colNameMap map[string]int) error {
+	word, index, found := ccl.FirstColPastEnd(bound, numCol)
+	if !found {
+		return nil
 	}
-	return nil
+	letters, _ := utils.CalcColIndex(index)
+	return ccl.PastLastColumnError(word, letters, numCol, colNameMap)
 }

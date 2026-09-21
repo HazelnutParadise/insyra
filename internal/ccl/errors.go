@@ -95,3 +95,25 @@ func AttachExpr(expr string, err error) error {
 	}
 	return &EvalError{Expr: expr, Row: -1, Err: err}
 }
+
+// NotAnIndexError reports a bare word that cannot be read as an Excel-style
+// column index. CCL resolves a bare word only as an index, so the column-name
+// map takes no part in resolving one. It appears here alone: a table that has
+// a column of that name gets a message saying how to write it, and an
+// expression means the same thing whatever the columns happen to be called.
+func NotAnIndexError(word string, colNameMap map[string]int) error {
+	if _, ok := colNameMap[word]; ok {
+		return fmt.Errorf("'%s' is not an Excel-style column index, and this table has a column named %s, so write ['%s']", word, word, word)
+	}
+	return fmt.Errorf("'%s' is not an Excel-style column index, and no column is named %s, so write ['name'] to refer to a column by name", word, word)
+}
+
+// PastLastColumnError reports a column reference beyond the last column. When
+// the word the reader wrote is also a column name, the message says how to
+// refer to that column instead, for the same reason as NotAnIndexError.
+func PastLastColumnError(word, letters string, numCol int, colNameMap map[string]int) error {
+	if _, ok := colNameMap[word]; ok {
+		return fmt.Errorf("'%s' reads as column index %s, past the last of %d column(s), and this table has a column named %s, so write ['%s']", word, letters, numCol, word, word)
+	}
+	return fmt.Errorf("column %s does not exist: the table has %d column(s)", letters, numCol)
+}
