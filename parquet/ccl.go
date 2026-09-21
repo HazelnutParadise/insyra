@@ -230,8 +230,9 @@ func (c *parquetContext) GetAllData() ([]any, error) {
 // applyBatchCCL applies CCL transformations to a single arrow.Record batch
 // resolveAssignTarget maps a CCL assignment target to an existing column name.
 // A named target is encoded by the parser as "'name'" (surrounded by single
-// quotes); a column-index target is the bare Excel letter (A, B, ..., AA).
-// Mirrors the resolution used by the DataTable CCL path (executeAssignment).
+// quotes); a bare target is a column letter (A, B, ..., AA) and nothing else,
+// the same rule the DataTable CCL path follows, so one script addresses the
+// same column whichever backend runs it.
 func resolveAssignTarget(target string, colNames []string) (string, bool) {
 	if len(target) >= 2 && strings.HasPrefix(target, "'") && strings.HasSuffix(target, "'") {
 		name := target[1 : len(target)-1]
@@ -245,12 +246,22 @@ func resolveAssignTarget(target string, colNames []string) (string, bool) {
 	if idx, ok := insyra.ParseColIndex(target); ok && idx >= 0 && idx < len(colNames) {
 		return colNames[idx], true
 	}
-	for _, c := range colNames {
-		if c == target {
-			return target, true
-		}
-	}
 	return "", false
+}
+
+// assignTargetError explains a target that resolved to no column, offering the
+// ['name'] form when the file does have a column of that name.
+func assignTargetError(target string, colNames []string) error {
+	names := make(map[string]int, len(colNames))
+	for index, name := range colNames {
+		names[name] = index
+	}
+	idx, ok := insyra.ParseColIndex(target)
+	if !ok {
+		return ccl.NotAnIndexError(target, names)
+	}
+	letters, _ := insyra.CalcColIndex(idx)
+	return ccl.PastLastColumnError(target, letters, len(colNames), names)
 }
 
 func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, compiledNodes []ccl.CCLNode) (arrow.Record, error) {
@@ -300,7 +311,7 @@ func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, c
 			// would write to key "'x'" and leave the real column untouched.
 			resolvedTarget, ok := resolveAssignTarget(target, colNames)
 			if !ok {
-				return nil, fmt.Errorf("assignment target %q does not resolve to an existing column", target)
+				return nil, assignTargetError(target, colNames)
 			}
 			expr := ccl.GetExpressionNode(node)
 

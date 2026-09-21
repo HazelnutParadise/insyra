@@ -134,6 +134,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `decimal.Decimal` 依數值大小排序，不是依數字文字的字典順序，所以含 9.5、10.2、100.0 的欄位會照這個順序排，而不是 10.2、100.0、9.5。與 `time.Time` 一樣，它對 `Mean`、`Sum` 與 `IsNumeric` 而言不是數值。
 
 - **BREAKING**：Parquet 的 `Binary`、`LargeBinary`、`FixedSizeBinary` 欄改為讀成 `[]byte`，不再是持有原始位元組的 `string`。當初用字串是因為 `DataList` 的格子放不了切片、而 `[]byte` 格子也不能用，這兩件事都已修好；字串形式留下一個真的缺陷：二進位欄與文字欄完全分不出來，Go 型別相同、值也相等，讀回來再寫出去還會讓二進位欄變成字串欄。顯示也是跟著資料而不是跟著欄位，同一欄第一列印 `'A-01'`、第二列印 `00ff41`。現在 `Show` 整欄以十六進位顯示，`Write` 把 `[]byte` 格子的欄位寫成 Arrow `Binary`，round trip 保住型別，JSON 匯出改為 base64 而不是被替換過的字串。原本對這種格子做 `.(string)` 斷言的呼叫端要改成 `.([]byte)`。
+- **BREAKING**：`ApplyCCL` 的賦值目標與 `DataTable` 的規則一致。裸目標只當欄位字母（`A`、`B`、... `AA`），過去在字母落到範圍外時會退回同名欄位，於是 `score = A * 2` 在有 `score` 欄的檔案上這邊成功、那邊失敗。請寫 `['score'] = A * 2`，而且檔案真的有同名欄位時，錯誤訊息會告訴你。
 
 ### `mkt`
 - 修正 `RFM` 遇到非數值金額格子時讓整個程序崩潰的問題，現在跳過該列並以警告指出列號。`RFM` 與 `CustomerActivityIndex` 的輸出列依客戶 ID 排序，過去依 Go map 順序輸出、每次執行都不同。

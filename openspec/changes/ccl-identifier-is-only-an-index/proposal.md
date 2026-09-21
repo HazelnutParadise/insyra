@@ -17,7 +17,9 @@ The owner ruled on 2026-09-21 that index-only resolution is the intended design,
 
 - **BREAKING**: a bare identifier resolves only as an Excel-style column index, on both sides of an assignment. `qty_1 * 2` and `price = …` become errors; the bracketed form `['qty_1']`, `['price']` is how a name is written, and it already works everywhere.
 - The error teaches the fix. The name map is still consulted, but only to write the message, never to resolve: when the table has a column of that name, the message says to write `['name']`. When it does not, the message stays what it was.
-- `Docs/CCL.md` drops "first tried as" and states the single rule; both changelogs carry the breaking entry; the `insyra` skill follows.
+- **BREAKING**: `parquet.ApplyCCL`'s assignment target carried the same fallback, with a comment saying it mirrored the DataTable path. It now does mirror it, so one script addresses the same column whichever backend runs it.
+- A bracketed reference whose contents are not letters, `[qty_1]`, fails where it is written instead of on row 0, with the same message.
+- `Docs/CCL.md` drops "first tried as" and states the single rule; both changelogs carry the breaking entries; the `insyra` skill follows.
 
 ## Capabilities
 
@@ -29,6 +31,6 @@ None.
 
 ## Impact
 
-- `internal/ccl/ccl_compiler.go` (`Bind`), `ccl.go` (`checkCCLColRange`), `datatable_ccl.go` (`executeAssignment`).
+- `internal/ccl/ccl_compiler.go` (`Bind`), `internal/ccl/errors.go`, `ccl.go` (`checkCCLColRange`), `datatable_ccl.go` (`executeAssignment`), `parquet/ccl.go` (`resolveAssignTarget`).
 - `Docs/CCL.md`, `CHANGELOG.md`, `CHANGELOG_TW.md`, `skills/insyra/`.
 - `api-review.md` CCL-1, `delivery-status.md`, issue #341.

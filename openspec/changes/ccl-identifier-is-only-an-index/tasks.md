@@ -10,6 +10,8 @@
 - [x] 2.1 `Bind` 的識別字分支只解析 Excel 索引，欄名表只拿來寫訊息。
 - [x] 2.2 `checkCCLColRange` 取得出界識別字的原文與欄名表，組出教學式訊息。
 - [x] 2.3 `executeAssignment` 的目標解析拿掉退回欄名那段。
+- [x] 2.4 `parquet` 的 `resolveAssignTarget` 同步，錯誤訊息比照。
+- [x] 2.5 `[qty_1]` 這種括號索引改在編譯階段失敗。
 
 ## 3. 文件與紀錄
 - [x] 3.1 `Docs/CCL.md` 改寫解析規則那兩處，範例檢查一遍。

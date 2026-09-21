@@ -17,9 +17,9 @@ import (
 // The whole CCL bridge — FilterWithCCL, ApplyCCL and the 17 parquetContext
 // methods behind them — had never been run by a test.
 
-// Column names here are deliberately longer than an Excel column reference and
-// are addressed as ['name'], because resolveAssignTarget reads a bare target as
-// a column *letter* before it tries it as a column *name*.
+// Column names here are addressed as ['name'], because a bare target is a
+// column letter and never a column name, the rule the DataTable CCL path
+// follows too.
 
 // fixture writes a four-column file and returns its path.
 //
@@ -674,6 +674,17 @@ func TestParquetContext_NoRecord(t *testing.T) {
 	}
 }
 
+func TestAssignTargetErrorOffersTheNameForm(t *testing.T) {
+	withName := assignTargetError("score", []string{"num", "score"}).Error()
+	if !strings.Contains(withName, "['score']") {
+		t.Errorf("a target that is also a column name should be told the bracketed form: %s", withName)
+	}
+	withoutName := assignTargetError("n1", []string{"num"}).Error()
+	if strings.Contains(withoutName, "['n1']") {
+		t.Errorf("no column is named n1, so nothing should point at it: %s", withoutName)
+	}
+}
+
 func TestResolveAssignTarget(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -686,14 +697,14 @@ func TestResolveAssignTarget(t *testing.T) {
 		{name: "quoted name that is not there", target: "'nope'", colNames: []string{"num", "score"}, want: "", ok: false},
 		{name: "column letter", target: "B", colNames: []string{"num", "score"}, want: "score", ok: true},
 		{name: "column letter past the end", target: "Z", colNames: []string{"num", "score"}, want: "", ok: false},
-		// "score" reads as a column reference too, but its index is far past the
-		// end, so it falls through to the name match.
-		{name: "bare name", target: "score", colNames: []string{"num", "score"}, want: "score", ok: true},
-		{name: "bare name with a digit", target: "n1", colNames: []string{"n1"}, want: "n1", ok: true},
+		// A bare target is a column letter and nothing else. "score" reads as a
+		// reference far past the end, and "n1" is not letters at all, so
+		// neither reaches the column that carries it as a name.
+		{name: "bare name", target: "score", colNames: []string{"num", "score"}, want: "", ok: false},
+		{name: "bare name with a digit", target: "n1", colNames: []string{"n1"}, want: "", ok: false},
 		{name: "bare name that is nowhere", target: "n1", colNames: []string{"num"}, want: "", ok: false},
-		// The trap: a bare target is read as a column *letter* before it is read
-		// as a column *name*. Here "B" is the name of column 0 and also the
-		// reference for column 1, and the reference wins.
+		// "B" is the name of column 0 and also the reference for column 1. The
+		// reference wins, which is why a name is written ['B'].
 		{name: "a name that is also an in-range letter", target: "B", colNames: []string{"B", "other"}, want: "other", ok: true},
 		// The quoted form is unambiguous and picks the column actually named "B".
 		{name: "the same name quoted", target: "'B'", colNames: []string{"B", "other"}, want: "B", ok: true},
