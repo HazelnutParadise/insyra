@@ -27,7 +27,7 @@ func runSortCommand(ctx *ExecContext, args []string) error {
 	if len(args) >= 3 {
 		desc, err = parseSortDirection(args[2])
 		if err != nil {
-			return fmt.Errorf("sort: %v", err)
+			return fmt.Errorf("sort: %w", err)
 		}
 	}
 	if len(args) > 3 {

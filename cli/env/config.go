@@ -114,7 +114,7 @@ func (m *Manager) UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
 	case "no-color", "noColor":
 		parsed, parseErr := parseConfigBool(value)
 		if parseErr != nil {
-			return GlobalConfig{}, fmt.Errorf("invalid value %q for no-color: %v", value, parseErr)
+			return GlobalConfig{}, fmt.Errorf("invalid value %q for no-color: %w", value, parseErr)
 		}
 		cfg.NoColor = parsed
 	case "accel-mode", "accelMode", "accel.mode":

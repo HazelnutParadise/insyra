@@ -199,7 +199,7 @@ func NearestShortlist(ctx context.Context, columns []Column, queries [][]float32
 
 	h, err := acquire()
 	if err != nil {
-		return nil, nil, nil, Cost{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, nil, nil, Cost{}, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	pipeline, bgLayout, err := h.shortlistPipeline()
 	if err != nil {
@@ -228,7 +228,7 @@ func NearestShortlist(ctx context.Context, columns []Column, queries [][]float32
 	mk := func(label string, size uint64, usage gowgpu.BufferUsage) (*gowgpu.Buffer, error) {
 		b, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{Label: label, Size: size, Usage: usage})
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrBufferTooLarge, err)
+			return nil, fmt.Errorf("%w: %w", ErrBufferTooLarge, err)
 		}
 		release = append(release, b)
 		return b, nil
@@ -355,7 +355,7 @@ func NearestShortlist(ctx context.Context, columns []Column, queries [][]float32
 	defer cancel()
 	if err := staging.Map(mapCtx, gowgpu.MapModeRead, 0, total); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(mapCtx.Err(), context.DeadlineExceeded) {
-			return nil, nil, nil, cost, fmt.Errorf("%w: %v", ErrReadbackTimeout, err)
+			return nil, nil, nil, cost, fmt.Errorf("%w: %w", ErrReadbackTimeout, err)
 		}
 		return nil, nil, nil, cost, fmt.Errorf("wgpu: map staging buffer: %w", err)
 	}
@@ -445,7 +445,7 @@ func (h *handle) shortlistPipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroup
 			Label: "accel-shortlist", WGSL: nearestShortlistWGSL,
 		})
 		if err != nil {
-			h.shortlistErr = fmt.Errorf("%w: %v", ErrShaderCompile, err)
+			h.shortlistErr = fmt.Errorf("%w: %w", ErrShaderCompile, err)
 			return
 		}
 		ro := &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage}
@@ -477,7 +477,7 @@ func (h *handle) shortlistPipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroup
 			Label: "accel-shortlist-pipeline", Layout: plLayout, Module: shader, EntryPoint: "main",
 		})
 		if err != nil {
-			h.shortlistErr = fmt.Errorf("%w: %v", ErrShaderCompile, err)
+			h.shortlistErr = fmt.Errorf("%w: %w", ErrShaderCompile, err)
 			return
 		}
 		h.shortlistBGLayout = bgLayout

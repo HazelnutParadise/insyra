@@ -156,7 +156,9 @@ func TestAFunctionsOwnErrorIsAResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a returned error was reported as a failure: %v", err)
 	}
-	if len(results[0]) != 2 || results[0][0] != 0 || results[0][1] != mine {
+	// Identity, not errors.Is: the slot must hold the very error the function
+	// returned, not one that merely wraps it.
+	if len(results[0]) != 2 || results[0][0] != 0 || results[0][1] != mine { //nolint:errorlint // identity is the property under test
 		t.Errorf("slot %v, want [0 mine]", results[0])
 	}
 }

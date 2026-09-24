@@ -88,7 +88,7 @@ func MatMul(ctx context.Context, a, b []float32, m, k, n int) ([]float32, Cost, 
 
 	h, err := acquire()
 	if err != nil {
-		return nil, Cost{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, Cost{}, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	pipeline, layout, err := h.matmulPipeline()
 	if err != nil {
@@ -107,7 +107,7 @@ func MatMul(ctx context.Context, a, b []float32, m, k, n int) ([]float32, Cost, 
 	makeBuffer := func(label string, size uint64, usage gowgpu.BufferUsage) (*gowgpu.Buffer, error) {
 		buffer, bufferErr := h.device.CreateBuffer(&gowgpu.BufferDescriptor{Label: label, Size: size, Usage: usage})
 		if bufferErr != nil {
-			return nil, fmt.Errorf("%w: create %s buffer: %v", ErrBufferTooLarge, label, bufferErr)
+			return nil, fmt.Errorf("%w: create %s buffer: %w", ErrBufferTooLarge, label, bufferErr)
 		}
 		release = append(release, buffer)
 		return buffer, nil
@@ -195,7 +195,7 @@ func MatMul(ctx context.Context, a, b []float32, m, k, n int) ([]float32, Cost, 
 	defer cancel()
 	readbackStart := time.Now()
 	if err := staging.Map(mapCtx, gowgpu.MapModeRead, 0, cBytes); err != nil {
-		return nil, cost, fmt.Errorf("%w: map matmul readback: %v", ErrReadbackTimeout, err)
+		return nil, cost, fmt.Errorf("%w: map matmul readback: %w", ErrReadbackTimeout, err)
 	}
 	mapped, err := staging.MappedRange(0, cBytes)
 	if err != nil {
@@ -220,7 +220,7 @@ func (h *handle) matmulPipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroupLay
 			Label: "accel-matmul", WGSL: matmulWGSL,
 		})
 		if err != nil {
-			h.matmulErr = fmt.Errorf("%w: %v", ErrShaderCompile, err)
+			h.matmulErr = fmt.Errorf("%w: %w", ErrShaderCompile, err)
 			return
 		}
 		readOnly := &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage}
@@ -250,7 +250,7 @@ func (h *handle) matmulPipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroupLay
 			Label: "accel-matmul-pipeline", Layout: pipelineLayout, Module: shader, EntryPoint: "main",
 		})
 		if err != nil {
-			h.matmulErr = fmt.Errorf("%w: %v", ErrShaderCompile, err)
+			h.matmulErr = fmt.Errorf("%w: %w", ErrShaderCompile, err)
 			return
 		}
 		h.matmulPipe = pipeline

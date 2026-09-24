@@ -117,7 +117,7 @@ func runMovAvgCommand(ctx *ExecContext, args []string) error {
 	}
 	result := dl.Clone().MovingAverage(window)
 	if err := result.PopErr(); err != nil {
-		return fmt.Errorf("movavg: %v", err)
+		return fmt.Errorf("movavg: %w", err)
 	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
@@ -139,7 +139,7 @@ func runExpSmoothCommand(ctx *ExecContext, args []string) error {
 	}
 	result := dl.Clone().ExponentialSmoothing(alpha)
 	if err := result.PopErr(); err != nil {
-		return fmt.Errorf("expsmooth: %v", err)
+		return fmt.Errorf("expsmooth: %w", err)
 	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
@@ -157,7 +157,7 @@ func runDiffCommand(ctx *ExecContext, args []string) error {
 	}
 	result := dl.Clone().Difference()
 	if err := result.PopErr(); err != nil {
-		return fmt.Errorf("diff: %v", err)
+		return fmt.Errorf("diff: %w", err)
 	}
 	if result.Len() == 0 {
 		return fmt.Errorf("diff: list %s needs at least 2 items", coreArgs[0])
@@ -216,7 +216,7 @@ func runDiffNCommand(ctx *ExecContext, args []string) error {
 	}
 	result := dl.Clone().Diff(periods)
 	if err := result.PopErr(); err != nil {
-		return fmt.Errorf("diffn: %v", err)
+		return fmt.Errorf("diffn: %w", err)
 	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
@@ -238,7 +238,7 @@ func runPctChangeCommand(ctx *ExecContext, args []string) error {
 	}
 	result := dl.Clone().PctChange(periods)
 	if err := result.PopErr(); err != nil {
-		return fmt.Errorf("pctchange: %v", err)
+		return fmt.Errorf("pctchange: %w", err)
 	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)

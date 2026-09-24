@@ -93,7 +93,7 @@ func (p *dlTransformProxy) rank(name string, ascending bool) (any, error) {
 	}
 	result := dl.Clone().Rank(ascending)
 	if err := result.PopErr(); err != nil {
-		return nil, fmt.Errorf("rank: %v", err)
+		return nil, fmt.Errorf("rank: %w", err)
 	}
 	return result, nil
 }
@@ -104,7 +104,7 @@ func (p *dlTransformProxy) normalize(name string) (any, error) {
 	}
 	result := dl.Clone().Normalize()
 	if err := result.PopErr(); err != nil {
-		return nil, fmt.Errorf("normalize: %v", err)
+		return nil, fmt.Errorf("normalize: %w", err)
 	}
 	return result, nil
 }
@@ -115,7 +115,7 @@ func (p *dlTransformProxy) standardize(name string) (any, error) {
 	}
 	result := dl.Clone().Standardize()
 	if err := result.PopErr(); err != nil {
-		return nil, fmt.Errorf("standardize: %v", err)
+		return nil, fmt.Errorf("standardize: %w", err)
 	}
 	return result, nil
 }

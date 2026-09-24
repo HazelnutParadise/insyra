@@ -148,7 +148,7 @@ func applySampleN(ctx *ExecContext, varName string, n int, opts sampleCommandOpt
 		}
 		result := v.Sample(n, opts.Replace, samplingOpts...)
 		if err := result.PopErr(); err != nil {
-			return nil, fmt.Errorf("sample: %v", err)
+			return nil, fmt.Errorf("sample: %w", err)
 		}
 		return result, nil
 	default:

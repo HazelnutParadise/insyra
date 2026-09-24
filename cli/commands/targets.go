@@ -66,7 +66,7 @@ func requireRowName(cmd string, table *insyra.DataTable, name string) error {
 // returned error, so a failed operation cannot be reported as a success.
 func checkTableErr(cmd string, table *insyra.DataTable) error {
 	if err := table.PopErr(); err != nil {
-		return fmt.Errorf("%s: %v", cmd, err)
+		return fmt.Errorf("%s: %w", cmd, err)
 	}
 	return nil
 }

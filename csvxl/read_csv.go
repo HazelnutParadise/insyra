@@ -25,7 +25,7 @@ func ReadCsvToString(filePath string, encoding ...string) (string, error) {
 	if useEncoding == Auto {
 		detected, err := insyra.DetectEncoding(filePath)
 		if err != nil {
-			return "", fmt.Errorf("failed to auto-detect encoding for %s: %v", filePath, err)
+			return "", fmt.Errorf("failed to auto-detect encoding for %s: %w", filePath, err)
 		}
 		useEncoding = detected
 		insyra.LogInfo("csvxl", "ReadCsvToString", "Auto-detected encoding %s for file %s", useEncoding, filePath)

@@ -507,7 +507,7 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 				// shift into a single nonsense slice repeated in every cell.
 				rows, isRowShaped, err := rowShapedColumn(arg, ctx, depth+1, functionDepth)
 				if err != nil {
-					return nil, fmt.Errorf("sequence function %s: %v", t.name, err)
+					return nil, fmt.Errorf("sequence function %s: %w", t.name, err)
 				}
 				if isRowShaped {
 					if !SequenceFunctionTakesRows(upper) {
@@ -518,7 +518,7 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 				}
 				colData, err := evaluateToColumn(arg, ctx, depth+1, functionDepth)
 				if err != nil {
-					return nil, fmt.Errorf("sequence function %s: %v", t.name, err)
+					return nil, fmt.Errorf("sequence function %s: %w", t.name, err)
 				}
 				seqArgs[i] = colData
 			}
@@ -555,7 +555,7 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 				// 聚合函數的參數必須是欄位引用或能產生整欄資料的表達式
 				colData, err := evaluateToColumn(arg, ctx, depth+1, functionDepth)
 				if err != nil {
-					return nil, fmt.Errorf("aggregate function %s: %v", t.name, err)
+					return nil, fmt.Errorf("aggregate function %s: %w", t.name, err)
 				}
 				aggArgs[i] = colData
 			}

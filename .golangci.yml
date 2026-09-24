@@ -1,6 +1,15 @@
 version: "2"
 
 linters:
+  # Beyond the default set: the five that watch for a resource left open and
+  # an error lost or hidden. gosec, unparam and noctx were measured and left
+  # off — gosec's 450 findings were mostly what a data library does on purpose.
+  enable:
+    - bodyclose
+    - errorlint
+    - nilerr
+    - rowserrcheck
+    - sqlclosecheck
   settings:
     errcheck:
       # fmt.Fprint* writes to display/terminal writers (Show, Summary, …)

@@ -128,7 +128,7 @@ func runTTestCommand(ctx *ExecContext, args []string) error {
 			var parseErr error
 			equalVariance, parseErr = parseEqualVariance(args[3])
 			if parseErr != nil {
-				return fmt.Errorf("ttest: %v", parseErr)
+				return fmt.Errorf("ttest: %w", parseErr)
 			}
 		}
 		result, err := stats.TwoSampleTTest(a, b, equalVariance)
@@ -186,7 +186,7 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 			var parseErr error
 			alternative, parseErr = parseAlternativeHypothesis(args[4])
 			if parseErr != nil {
-				return fmt.Errorf("%s", parseErr)
+				return fmt.Errorf("%w", parseErr)
 			}
 		}
 		result, err := stats.SingleSampleZTest(dl, mu, sigma, alternative, 0.95)
@@ -220,7 +220,7 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 			var parseErr error
 			alternative, parseErr = parseAlternativeHypothesis(args[5])
 			if parseErr != nil {
-				return fmt.Errorf("%s", parseErr)
+				return fmt.Errorf("%w", parseErr)
 			}
 		}
 		result, err := stats.TwoSampleZTest(a, b, s1, s2, alternative, 0.95)
