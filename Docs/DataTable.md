@@ -191,7 +191,7 @@ if err != nil {
 type CSVReadOptions struct {
     FirstColToRowNames bool
     FirstRowToColNames bool
-    Encoding           string // file input only; "" or "auto" auto-detects
+    Encoding           string // "" or "auto" detects from the first bytes; ignored for a string, which is UTF-8
     RawStrings         bool   // keep every cell as its original string; skip type inference
     AllowRaggedRows    bool   // pad short rows; keep long rows in extra columns
     TrimLeadingSpace   bool   // ignore leading spaces before fields and quotes
@@ -223,6 +223,35 @@ if err != nil {
     log.Fatal(err)
 }
 // dt cells are all strings: "0050", "00878", "600.855", ...
+```
+
+### ReadCSV / StreamCSV — from any source
+
+```go
+func ReadCSV(r io.Reader, opts CSVReadOptions) (*DataTable, error)
+func StreamCSV(r io.Reader, opts CSVReadOptions, batchSize int) iter.Seq2[*DataTable, error]
+```
+
+**Description:** Read CSV that is not a file on disk — an HTTP response body, a zip entry, an `embed.FS` file, bytes in memory — without writing it to a temporary file first. `ReadCSV` is the reader `ReadCSV_FileWithOptions` and `ReadCSV_StringWithOptions` use, so the same bytes give the same table whichever you call. With `Encoding` empty or `"auto"`, the encoding is detected from the first bytes of `r`.
+
+`StreamCSV` reads a batch at a time and holds only the current batch in memory, so it handles files larger than memory. Range over it; leaving the loop early stops reading `r`. With `FirstRowToColNames`, the header names the columns of every batch. Column types are inferred batch by batch, as pandas does for `read_csv(chunksize=…)`, so a column can come back as numbers in one batch and strings in another; set `RawStrings` to keep every batch as strings. A failure arrives once, as a nil table with the error, and ends the loop.
+
+**Example:**
+
+```go
+resp, err := http.Get("https://example.com/data.csv")
+if err != nil {
+    log.Fatal(err)
+}
+defer resp.Body.Close()
+
+for dt, err := range insyra.StreamCSV(resp.Body, insyra.CSVReadOptions{FirstRowToColNames: true}, 1000) {
+    if err != nil {
+        log.Fatal(err)
+    }
+    rows, _ := dt.Size()
+    fmt.Println("batch of", rows, "rows")
+}
 ```
 
 ### ReadJSON_File
@@ -257,11 +286,11 @@ if err != nil {
 func ReadJSON(data any) (*DataTable, error)
 ```
 
-**Description:** Reads JSON data (supports bytes, string, slice, map, or any JSON-compatible value) and loads it into a new DataTable.
+**Description:** Reads JSON data (supports bytes, string, an `io.Reader` such as an HTTP response body or an open file, slice, map, or any JSON-compatible value) and loads it into a new DataTable. A reader is read in full and decoded the same way as bytes.
 
 **Parameters:**
 
-- `data`: JSON input (e.g., []byte, string, []map[string]any, map[string]any, etc.)
+- `data`: JSON input (e.g., []byte, string, io.Reader, []map[string]any, map[string]any, etc.)
 
 **Returns:**
 
@@ -532,6 +561,15 @@ if err != nil {
 
 ## Data Saving
 
+
+### ReadExcel — from any source
+
+```go
+func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+```
+
+**Description:** Reads one sheet of a workbook that is not a file on disk — an upload, an HTTP response, a zip entry — the same way `ReadExcelSheet` reads a path, with the same limit on how far the workbook may expand while it is read.
+
 ### ToCSV
 
 ```go
@@ -577,6 +615,15 @@ if err != nil {
 }
 ```
 
+
+### WriteCSV — to any destination
+
+```go
+func (dt *DataTable) WriteCSV(w io.Writer, opts CSVWriteOptions) error
+```
+
+**Description:** Writes the table as CSV to any destination — an HTTP response, a zip entry, a buffer — with the same output `ToCSVWithOptions` writes to a file. `ToCSVWithOptions` uses it, writing through a temporary file that it renames into place.
+
 ### ToJSON
 
 ```go
@@ -602,6 +649,15 @@ if err != nil {
     log.Fatal(err)
 }
 ```
+
+
+### WriteJSON — to any destination
+
+```go
+func (dt *DataTable) WriteJSON(w io.Writer, useColNames bool) error
+```
+
+**Description:** Writes the table as JSON to any destination, with the same output `ToJSON` writes to a file. `ToJSON` uses it.
 
 ### ToJSON_Bytes
 

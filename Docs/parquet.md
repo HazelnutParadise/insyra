@@ -13,6 +13,7 @@ The `parquet` package provides read and write support for the Apache Parquet fil
   - [Read](#read)
   - [Write](#write)
   - [Stream](#stream)
+  - [ReadFrom, StreamFrom, WriteTo](#readfrom-streamfrom-writeto--from-and-to-any-source)
   - [ReadColumn](#readcolumn)
 - [CCL Support](#ccl-support)
   - [FilterWithCCL](#filterwithccl)
@@ -167,6 +168,27 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) it
 **Returns:**
 
 - `iter.Seq2[*insyra.DataTable, error]`: The batches, ready to range over.
+
+
+### ReadFrom, StreamFrom, WriteTo — from and to any source
+
+```go
+func ReadFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions) (*insyra.DataTable, error)
+func StreamFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions, batchSize int) iter.Seq2[*insyra.DataTable, error]
+func WriteTo(dt insyra.IDataTable, w io.Writer) error
+```
+
+**Description:** Read and write Parquet that is not a file on disk — an S3 object, an upload, bytes in memory. `Read`, `Stream` and `Write` call these, so a path and a source over the same bytes give the same result. Reading takes an `io.ReaderAt` and the total size rather than a plain `io.Reader`, because Parquet keeps its index at the end of the file and the reader has to seek to it; `*os.File`, `*bytes.Reader` and S3 range readers all qualify. `WriteTo` does not close `w`: the caller owns it.
+
+**Example:**
+
+```go
+data, _ := os.ReadFile("sales.parquet") // or bytes from anywhere
+dt, err := parquet.ReadFrom(ctx, bytes.NewReader(data), int64(len(data)), parquet.ReadOptions{})
+
+var buf bytes.Buffer
+err = parquet.WriteTo(dt, &buf)
+```
 
 ### ReadColumn
 

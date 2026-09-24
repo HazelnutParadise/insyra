@@ -97,7 +97,8 @@ func Slice2DToDataTable(data any) (*DataTable, error) {
 type CSVReadOptions struct {
 	FirstColToRowNames bool
 	FirstRowToColNames bool
-	// Encoding applies to file input only; "" or "auto" auto-detects.
+	// Encoding names the input's encoding; "" or "auto" detects it from the
+	// first bytes. A string is UTF-8 already, so the string readers ignore it.
 	Encoding string
 	// RawStrings keeps every cell as its original string and skips column
 	// type inference entirely. Use it for data that looks numeric but must

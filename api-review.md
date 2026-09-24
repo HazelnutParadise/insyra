@@ -92,7 +92,7 @@
 | C-6 | Low | `UTF8/Big5/Auto` 是裸 string 常數，而實際比對用 `strings.Contains`，任何字串都會被接受 | convert.go:22-26 | typed `Encoding` string 型別 |
 | C-7 | ~~Low~~ 已修正（batch 3） | 目錄用 `os.ModePerm`（0777）建立 | convert.go:143; convertDir.go:50 | 0755 |
 | C-8 | ~~Low~~ 已修正（不存在 sheet 回錯與 log 名稱：docs-hygiene-and-remaining-partials；自動補 `.csv`：csvxl-respects-file-extension，讀取端原路徑優先、寫出端尊重副檔名） | 路徑沒有 `.csv` 結尾就自動補；`ExcelToCsv` 的 `onlyContainSheets` 指到不存在的 sheet 靜默略過；`EachExcelToCsv` log 標錯函式名 | convert.go:44, 158-164; convertDir.go:62 | 不補副檔名（或改 doc）；找不到的 sheet 回錯；修 log |
-| C-10 | Med | 全套件只吃檔案路徑，沒有 `io.Reader`/`io.Writer` 版本：記憶體中的 CSV、HTTP 回應、`embed.FS` 都得先落地成檔案才能轉（準則 8、10） | 全套件 | 核心改成 Reader/Writer，路徑版當薄包裝 |
+| C-10 | ~~Med~~ 部分修正（reader-writer-entry-points：核心與 parquet 已有 Reader／Writer 入口；`csvxl` 是多檔轉單一活頁簿的形狀，經裁定不做） | 全套件只吃檔案路徑，沒有 `io.Reader`/`io.Writer` 版本：記憶體中的 CSV、HTTP 回應、`embed.FS` 都得先落地成檔案才能轉（準則 8、10） | 全套件 | 核心改成 Reader/Writer，路徑版當薄包裝 |
 | C-11 | Med | `CsvToExcel(csvFiles, sheetNames, ...)` 用兩個平行切片靠索引對位，錯一格就對到別的 sheet；`ExcelToCsv(…, csvNames, onlyContainSheets...)` 同樣問題（準則 4、8） | convert.go:31, 135 | `[]SheetSpec{Path, Sheet}` 一個切片 |
 | C-12 | Low | 命名不符 Go 慣例：`Csv` 應為 `CSV`；`EachCsvToOneExcel` 讀起來要想一下（「每個 CSV 到一個 Excel」）；doc comment 缺 Go 風格開頭（準則 3、9、E） | 全套件 | v1 前統一改名 |
 | C-9 | Low | 每次成功都以 Info 等級寫 log。這是跨套件模式（parquet 除外），要在 core 的 logger 審查時一併決定 library 該不該在成功路徑上 log | 全套件 | 待 core 決定 |
@@ -117,7 +117,7 @@
 | Q-4 | ~~Med~~ 已修正（batch 3） | 關閉資源的錯誤用標準庫 `log.Printf`，繞過 insyra `Config` 的 log level 與格式；其他套件都用 `insyra.LogWarning` 等 | api.go, internal.go, ccl.go 多處 | 改用 insyra logger |
 | Q-5 | ~~Low~~ 已修正（batch 3） | `ApplyCCL` doc 範例引用不存在的 `CCLFilterOptions{}` | ccl.go:573 | 修 doc |
 | Q-6 | Low | `FilterWithCCL` / `ApplyCCL` batchSize 寫死 1000，無法調 | ccl.go:456, 577 | 選項或常數說明 |
-| Q-8 | Med | 所有函式只吃路徑；Arrow reader 本來就吃 `io.ReaderAt`，卻沒有暴露 `ReadFrom(r io.ReaderAt, size)` / `WriteTo(w io.Writer)`，S3、HTTP、記憶體來源都得先落地（準則 8、10） | api.go 全檔 | 加 Reader/Writer 版本，路徑版包裝它 |
+| Q-8 | ~~Med~~ 已修正（reader-writer-entry-points：`ReadFrom`、`StreamFrom`、`WriteTo`，`Read`／`Stream`／`Write` 改為包裝） | 所有函式只吃路徑；Arrow reader 本來就吃 `io.ReaderAt`，卻沒有暴露 `ReadFrom(r io.ReaderAt, size)` / `WriteTo(w io.Writer)`，S3、HTTP、記憶體來源都得先落地（準則 8、10） | api.go 全檔 | 加 Reader/Writer 版本，路徑版包裝它 |
 | Q-9 | ~~Low~~ 已修正（parquet-stream-is-an-iterator：`Stream` 改回傳 `iter.Seq2`，不留舊簽名） | `Stream` 回傳兩個 channel 是 Go 1.23 之前的寫法；`iter.Seq2[*DataTable, error]` 讓 `for dt, err := range` 直接用，也自然解決 Q-7 的洩漏契約（準則 8） | api.go:246 | 改 `iter.Seq2`，舊簽名保留一版 |
 | Q-10 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials） | doc comment 是「Read: read …」冒號風格，不是 Go 的「Read reads …」；`FileInfo`、`ColumnInfo`、`RowGroupInfo` 無 doc（準則 E） | api.go | 補齊 |
 | Q-7 | ~~Low~~ 已修正（先由 docs-hygiene-and-remaining-partials 寫明契約，再由 parquet-stream-is-an-iterator 根治：離開迴圈即停止讀取，契約不再需要） | `Stream` 若消費者中途停止讀取又不 cancel ctx，producer goroutine 永久阻塞在 send；doc 沒寫「必須 drain 或 cancel」。記錄不會遺失（unbuffered channel，已推演 close 順序） | api.go:246-286 | doc 明講使用契約 |
@@ -137,7 +137,7 @@
 | K-8 | ~~Med~~ 已修正（batch 13）  | `AtomicDoAll(f func(), instances ...any)`：型別是 `any`，傳錯型別只 warning 然後「跳過不鎖」，呼叫端以為鎖住了其實在裸奔（準則 8、12） | atomic.go:109-131 | 定義 `type Lockable interface{ atomicActor() *core.AtomicActor }`，參數改 `...Lockable` |
 | K-9 | ~~Med~~ 已修正 | `ReadJSON_File` 直接 `json.Unmarshal` 不用 `UseNumber`，整數變 float64；`ReadJSON` 走 `unmarshalJSONRows` 保留 int64。同一個檔案從兩個入口讀，型別不同，大整數 ID 在 `ReadJSON_File` 會失真（準則 6、13） | read.go:410-431 vs 442-460 | `ReadJSON_File` 改成 `os.ReadFile` + `ReadJSON(bytes)` |
 | K-10 | ~~Med~~ 已修正（batch 3） | `DetectEncoding` 只看前 8KB，且 `utf8.Valid` 在多位元組字元被切在 8192 邊界時回 false，接著交給 chardet 可能判成別的編碼；chardet 回傳的名稱（`shift_jis`、`iso-8859-1`、`gb-18030`）csvxl 只認 big5/gb/utf-16，其餘靜默當 UTF-8 讀 | utils.go:279-322；csvxl/convert.go:213-222 | 邊界回退到最後一個完整 rune 再驗證；不支援的編碼回錯而非靜默 |
-| K-11 | Med | CSV 只有 `_File` 與 `_String` 兩種入口，沒有 `io.Reader` 版本；Excel、JSON 同樣只吃路徑。與 C-10、Q-8 同一問題 | read.go | 加 `ReadCSV(r io.Reader, opts)`，檔案與字串版包裝它 |
+| K-11 | ~~Med~~ 已修正（reader-writer-entry-points：`ReadCSV(r, opts)`、`StreamCSV`、`ReadJSON` 收 `io.Reader`、`ReadExcel(r, …)`，檔案版與字串版改為包裝；改名留給 #213） | CSV 只有 `_File` 與 `_String` 兩種入口，沒有 `io.Reader` 版本；Excel、JSON 同樣只吃路徑。與 C-10、Q-8 同一問題 | read.go | 加 `ReadCSV(r io.Reader, opts)`，檔案與字串版包裝它 |
 | K-12 | Med | `ToFloat64`、`ToFloat64Safe`、`ReadSlice2D` 用 `var` 匯出函式值：使用者可以在執行期覆寫（`insyra.ToFloat64 = ...`），godoc 也不會列在 Functions 區；`ReadSlice2D` 與 `Slice2DToDataTable` 是同一件事兩個名字（準則 2、6） | utils.go:22-23；read.go:22 | 改成 `func` 包裝；別名擇一標 Deprecated |
 | K-13 | Low | 命名不符 Go 慣例且與 golint 衝突：`ReadCSV_File`、`ReadCSV_String`、`ReadJSON_File`、`ToJSON_Bytes`、`ToJSON_String`、`Dangerously_TurnOffThreadSafety` 用底線；`GetDoesUseColoredOutput`、`GetDontPanicStatus` 疊字；`ParseColIndex`/`CalcColIndex` 一對函式動詞不對稱（準則 9） | config.go；read.go；utils.go:244-251 | v1 前統一：`ReadCSVFile`、`ColIndexToNumber`/`ColNumberToIndex`、`ColoredOutput()` |
 | K-14 | Low | `ReadCSV_File(path, bool, bool, encoding ...string)`、`ReadExcelSheet(path, sheet, bool, bool)` 兩個裸 bool 加 variadic；`_WithOptions` 版本已存在，舊簽名該退場。`ReadExcelSheet` 沒有 options 版，也沒有型別推斷（既有 follow-up） | read.go:115, 384 | 舊簽名標 Deprecated；加 `ReadExcelSheetWithOptions` 沿用 `CSVReadOptions` 的欄位 |
@@ -474,7 +474,7 @@
 | SEC-13 | ~~Low~~ 已修正（harden-limits-and-permissions） | 線上 PNG 備援（已 opt-in）仍用無 timeout 的 `http.Client{}` 並 `io.ReadAll` 無上限；chromedp 失敗時可能無限等 | plot/save_chart.go:115, 127 | `Timeout: 60s`；`io.LimitReader` |
 | SEC-14 | ~~Low~~ 已修正（gmaps-search-restored）：不再下載遠端設定，回應讀取有上限 | DF-1 細節：`GoogleMapsStores()` 執行期從個人 GitHub repo 拉 JSON，其中 `headers` 與三個 URL 直接套用到後續請求；`Search`／`getStoreName` 的 `io.ReadAll` 無上限 | datafetch/googleMapsCommentCrawler.go:70-71, 109-124, 337-354 | 併入 DF-1 |
 | SEC-15 | ~~Low~~ 已修正（harden-limits-and-permissions） | `os.MkdirAll(..., os.ModePerm)`（0777）用於 py 環境目錄與 GLPK 解壓目錄 | py/init.go:85, 113；py/py.go:31；lp/init.go:383, 415, 420 | 改 0o755 |
-| SEC-16 | Low（UnzipSizeLimit 已修正 harden-limits-and-permissions；CSV 串流入口屬 K-11 待決） | Excel 讀取沒設 `UnzipSizeLimit`（excelize 預設 16 GB），zip bomb 幾乎無保護；CSV 一律 `ReadAll` 進記憶體，無串流入口 | read.go:385；csvxl/convert.go:94, 136；csvxl/convertDir.go:50 | `excelize.Options{UnzipSizeLimit}` 可設定；CSV 補串流入口（與 K-11 同族） |
+| SEC-16 | ~~Low~~ 已修正（UnzipSizeLimit：harden-limits-and-permissions；CSV 串流入口：reader-writer-entry-points 的 `StreamCSV`） | Excel 讀取沒設 `UnzipSizeLimit`（excelize 預設 16 GB），zip bomb 幾乎無保護；CSV 一律 `ReadAll` 進記憶體，無串流入口 | read.go:385；csvxl/convert.go:94, 136；csvxl/convertDir.go:50 | `excelize.Options{UnzipSizeLimit}` 可設定；CSV 補串流入口（與 K-11 同族） |
 | SEC-17 | ~~Low~~ 已修正（harden-limits-and-permissions） | py IPC 伺服器：`Accept` 永久失敗時 `continue` 忙迴圈；socket 檔留在 `os.TempDir()` 不清；連線無讀取 deadline | py/pyresult.go:81, 96-103, 110-118 | `net.ErrClosed` 時 return；`SetDeadline`；結束時 `os.Remove` |
 | SEC-18 | ~~Low~~ 已修正（cli-message-and-help-fixes） | 每次呼叫重新 `regexp.MustCompile` | lp/lp.go:252-253, 271；lpgen/lingo.go:33-37, 130-134；datafetch/googleMapsCommentCrawler.go:131, 361, 369 | 提到套件層 `var` |
 | SEC-19 | ~~Low~~ 已修正（lp-pure-go-default）：`untar` 與解壓程式碼已刪除 | `untar` 在 `io.Copy` 失敗時 `outFile` 未關閉；tar/zip 解壓無大小上限；`TypeReg` 沒先 `MkdirAll(filepath.Dir)` | lp/init.go:387-392, 424-432 | `defer Close`；`io.CopyN` 上限；補 MkdirAll |
@@ -530,7 +530,7 @@
 | K-4 | [#207](https://github.com/HazelnutParadise/insyra/issues/207) |  |
 | K-7、QU-2 | [#208](https://github.com/HazelnutParadise/insyra/issues/208) |  |
 | K-8 | [#209](https://github.com/HazelnutParadise/insyra/issues/209) |  |
-| K-11、C-10、Q-8 | [#210](https://github.com/HazelnutParadise/insyra/issues/210) |  |
+| K-11、C-10、Q-8 | [#210](https://github.com/HazelnutParadise/insyra/issues/210) | 已關閉（reader-writer-entry-points；`csvxl` 經裁定不做，改名移到 #213） |
 | K-12 | [#211](https://github.com/HazelnutParadise/insyra/issues/211) |  |
 | K-13、C-12、I-4、DF-5 | [#212](https://github.com/HazelnutParadise/insyra/issues/212) |  |
 | K-14、D-8、E-6、E-7、PL-4、NN-3、C-2 | [#213](https://github.com/HazelnutParadise/insyra/issues/213) |  |
@@ -621,7 +621,7 @@
 | SEC-12 | [#291](https://github.com/HazelnutParadise/insyra/issues/291) |  |
 | SEC-13 | [#292](https://github.com/HazelnutParadise/insyra/issues/292) |  |
 | SEC-15 | [#293](https://github.com/HazelnutParadise/insyra/issues/293) |  |
-| SEC-16 | [#294](https://github.com/HazelnutParadise/insyra/issues/294) |  |
+| SEC-16 | [#294](https://github.com/HazelnutParadise/insyra/issues/294) | 已關閉（harden-limits-and-permissions、reader-writer-entry-points） |
 | SEC-17 | [#295](https://github.com/HazelnutParadise/insyra/issues/295) |  |
 | SEC-18 | [#296](https://github.com/HazelnutParadise/insyra/issues/296) |  |
 | SEC-20 | [#297](https://github.com/HazelnutParadise/insyra/issues/297) |  |

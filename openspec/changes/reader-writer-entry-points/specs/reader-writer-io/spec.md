@@ -29,5 +29,5 @@ CSV, JSON and Excel in `insyra`, and Parquet in `parquet`, SHALL each offer a re
 - **THEN** three tables arrive, of 10, 10 and 5 rows, each with the header's column names
 
 #### Scenario: Stopping early
-- **WHEN** the loop breaks after the first batch
-- **THEN** no more of the reader is consumed than the batches read so far require
+- **WHEN** the loop breaks after the first batch of a large input
+- **THEN** the rest of the input is not read

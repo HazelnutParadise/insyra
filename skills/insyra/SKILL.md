@@ -416,6 +416,15 @@ func main() {
     // automatically named columns. TrimLeadingSpace also accepts whitespace
     // before quoted fields. Both are opt-in; the zero value stays strict.
 
+    // Data that is not a file on disk (HTTP response, zip entry, embed.FS,
+    // bytes in memory) needs no temporary file: ReadCSV(r, opts) reads any
+    // io.Reader, ReadJSON accepts one, ReadExcel(r, sheet, …) reads a
+    // workbook, and dt.WriteCSV / dt.WriteJSON write to any io.Writer.
+    // For a CSV larger than memory, stream it a batch at a time:
+    //   for batch, err := range insyra.StreamCSV(r, opts, 1000) { … }
+    // parquet has the same pair: parquet.ReadFrom / StreamFrom take an
+    // io.ReaderAt and its size, parquet.WriteTo takes an io.Writer.
+
     // Quick console preview (first N rows)
     insyra.Show("preview", dt, 5)
 }
