@@ -513,7 +513,7 @@
 | RP-4 | ~~Med~~ 已修正（ci-hygiene；`-race` 在 ubuntu、覆蓋率在 macOS，兩者疊在同一條會讓 clustering 超過 10 分鐘逾時） | `test.yml` 沒有 `-race`、沒有覆蓋率、沒有獨立 `go vet` 步驟；三個 OS 都只跑 `go test -v ./...`，跨語言驗證在三個 OS 上都靜默 skip（已由 `reference-verification.yml` 補強，屬已知） | `.github/workflows/test.yml:20-25` | ubuntu leg 加 `-race`；加 `go vet ./...` 步驟 |
 | RP-5 | ~~Med~~ 已修正（ci-hygiene；`persist-credentials` 改成 `false`，只刪那一行不會有效果，因為預設就是 `true`） | `deploy-docs.yml` 用 `persist-credentials: true` 但實際用的是 `peaceiris/actions-gh-pages` 自帶 token；其餘 6 個 workflow 完全沒有 `permissions:` block，用 repo 預設權限 | `.github/workflows/deploy-docs.yml:19`；其他 workflow | 拿掉 `persist-credentials: true`；每個 workflow 補 `permissions: contents: read` |
 | RP-6 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials） | Action 版本沒有統一釘版：`checkout@v4`／`@v5`、`setup-go@v5`／`@v6` 混用；`golangci-lint-action` 寫 `version: latest`，lint 結果不可重現 | `.github/workflows/golangci-lint.yml:20` 等 | 統一 major 版本；`version` 改明確版號 |
-| RP-7 | Low | `clustering-parity.yml`、`knn-parity.yml`、`reference-verification.yml` 各自重複貼一模一樣的 Python/R 安裝步驟 | 三檔 `:20-31` 等段 | 抽成 composite action |
+| RP-7 | ~~Low~~ 已修正（one-reference-toolchain-setup：三個驗證 workflow 改用共用的 composite action `.github/actions/setup-reference-toolchains`，安裝內容不變） | `clustering-parity.yml`、`knn-parity.yml`、`reference-verification.yml` 各自重複貼一模一樣的 Python/R 安裝步驟 | 三檔 `:20-31` 等段 | 抽成 composite action |
 | RP-8 | ~~Low~~ 已修正（lint-catches-leaks-and-lost-errors：開 `nilerr`、`bodyclose`、`rowserrcheck`、`sqlclosecheck`、`errorlint`，清掉 61 處並修掉 `nilerr` 抓到的 env import 覆蓋 bug；`gosec`／`unparam`／`noctx` 實測後不開） | `.golangci.yml` 只啟用 5 個預設 linter，沒開 `gosec`、`unparam`、`bodyclose` 等；本專案有 SQL builder、chromedp 等外部輸入面 | `.golangci.yml` | 評估加開 `gosec`、`unparam` |
 | RP-9 | ~~Low~~ 已修正（`*.test` batch 4；三行舊命名 docs-hygiene-and-remaining-partials） | `.gitignore` 含過期項目 `/.insyra_py_env`、`/.insyra_py25a`、`/insyra_py25b`，目前 `py/const.go:12` 用 `.insyra_env/py25c_…`（已被 `.insyra_env/` 涵蓋） | `.gitignore`；`py/const.go:12` | 清掉三行舊命名 |
 | RP-14 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials：補 `stats`、`plotting` 兩份並列進 SKILL.md） | `skills/insyra/references/` 只有 3 份主題式檔案，`stats`、`plot`、`gplot`、`parquet`、`mkt`、`finance`、`lp`、`py`、`pd`、`parallel`、`accel` 沒有專屬深挖段落，覆蓋深度不一 | `skills/insyra/references/`；`skills/insyra/SKILL.md` | 為常用套件（`stats`、`plot`）補 reference 檔 |
@@ -607,7 +607,7 @@
 | RP-3 | [#277](https://github.com/HazelnutParadise/insyra/issues/277) |  |
 | RP-4 | [#278](https://github.com/HazelnutParadise/insyra/issues/278) |  |
 | RP-5 | [#279](https://github.com/HazelnutParadise/insyra/issues/279) |  |
-| RP-6、RP-7、RP-8 | [#280](https://github.com/HazelnutParadise/insyra/issues/280) |  |
+| RP-6、RP-7、RP-8 | [#280](https://github.com/HazelnutParadise/insyra/issues/280) | 已關閉（docs-hygiene-and-remaining-partials、one-reference-toolchain-setup、lint-catches-leaks-and-lost-errors） |
 | RP-9、TS-16 | [#281](https://github.com/HazelnutParadise/insyra/issues/281) |  |
 | RP-14 | [#282](https://github.com/HazelnutParadise/insyra/issues/282) |  |
 | SEC-1 | [#283](https://github.com/HazelnutParadise/insyra/issues/283) |  |

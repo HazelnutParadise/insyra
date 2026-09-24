@@ -2,9 +2,7 @@
 
 ## Purpose
 Defines what CI checks and where it runs: every Go file is gofmt-formatted, the Test workflow vets on every OS, runs the race detector on ubuntu and reports coverage from another leg, every workflow runs with least-privilege tokens, and every workflow that runs on dev also runs on 0.4.
-
 ## Requirements
-
 ### Requirement: Formatting is checked
 
 Every Go file in the repository SHALL be formatted as `gofmt` formats it, and the lint job SHALL fail on a file that is not.
@@ -36,3 +34,16 @@ Every workflow that runs on `dev` SHALL also run on `0.4`, the branch that carri
 #### Scenario: A push to 0.4
 - **WHEN** 推送到 `0.4`
 - **THEN** Test、GolangCI-Lint、Govulncheck 與參考對照的 workflow 都會執行
+
+### Requirement: The reference toolchains are set up in one place
+
+Every workflow that runs a cross-language comparison SHALL set up Python, R and their shared packages through the one composite action, and SHALL add only the packages it needs beyond that set.
+
+#### Scenario: A package the gates need is added
+- **WHEN** a Python or R package is added to the shared set
+- **THEN** the change is one edit, and every comparison workflow installs it
+
+#### Scenario: A workflow needs more than the shared set
+- **WHEN** a workflow needs packages the others do not
+- **THEN** it passes them to the action rather than repeating the setup
+
