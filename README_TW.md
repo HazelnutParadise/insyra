@@ -375,6 +375,23 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 
 有關 DataTable 方法和功能的完整列表，請參閱 **[DataTable 文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)**。
 
+## 精確小數
+
+數字必須精確的時候，像是金額、利率，或任何 `0.1 + 0.2` 一定要等於 `0.3` 的情境，請使用 [`github.com/TimLai666/go-decimal`](https://github.com/TimLai666/go-decimal)。這是 Insyra 圍繞設計的十進位型別：[`finance`](/Docs/finance.md) 每個函式的傳入與回傳都是它，Parquet 的 `Decimal128` 欄也會讀成它。
+
+```go
+import "github.com/TimLai666/go-decimal/decimal"
+
+ctx := decimal.Context{Scale: 2, Mode: decimal.RoundingModeHalfEven}
+prices := []decimal.Decimal{
+    decimal.MustParse(ctx, "19.99"),
+    decimal.MustParse(ctx, "5.01"),
+}
+dl := insyra.NewDataList(prices) // 每個價格一格
+```
+
+格子怎麼處理十進位（會依值排序，但 `Mean`、`Sum` 要先轉換才能用），以及為什麼選這個套件、與各替代方案當前版本的比較，請見 **[精確小數文件](/Docs/Decimal.md)**。
+
 ## 套件
 
 **Insyra** 還提供了多個擴展套件，每個都專注於數據分析的特定方面。

@@ -362,8 +362,8 @@ func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
 	}
 	var lenX, lenY int
 	var dataX, dataY []float64
-	dlx := dlX.(*insyra.DataList)
-	dly := dlY.(*insyra.DataList)
+	dlx := asDataList(dlX)
+	dly := asDataList(dlY)
 	insyra.AtomicDoAll(func() {
 		lenX = dlx.Len()
 		lenY = dly.Len()
@@ -395,8 +395,8 @@ func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) (*Correlat
 	if err := requireNumericPair(dlX, dlY); err != nil {
 		return nil, err
 	}
-	dlx := dlX.(*insyra.DataList)
-	dly := dlY.(*insyra.DataList)
+	dlx := asDataList(dlX)
+	dly := asDataList(dlY)
 	insyra.AtomicDoAll(func() {
 		lenX := dlx.Len()
 		lenY := dly.Len()
@@ -501,8 +501,8 @@ func pearsonCorrelation(dlX, dlY insyra.IDataList) (float64, error) {
 	var stdX, stdY float64
 	var cov float64
 	var err error
-	dlx := dlX.(*insyra.DataList)
-	dly := dlY.(*insyra.DataList)
+	dlx := asDataList(dlX)
+	dly := asDataList(dlY)
 	insyra.AtomicDoAll(func() {
 		cov, err = Covariance(dlx, dly)
 		stdX = dlx.Stdev()
@@ -521,8 +521,8 @@ func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, 
 	result := CorrelationResult{}
 	var corr, n float64
 	var err error
-	dlx := dlX.(*insyra.DataList)
-	dly := dlY.(*insyra.DataList)
+	dlx := asDataList(dlX)
+	dly := asDataList(dlY)
 	insyra.AtomicDoAll(func() {
 		corr, err = pearsonCorrelation(dlx, dly)
 		result.Statistic = corr
@@ -1048,8 +1048,8 @@ func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult,
 	var rankX, rankY insyra.IDataList
 	var rawX, rawY []float64
 	var n float64
-	dlx := dlX.(*insyra.DataList)
-	dly := dlY.(*insyra.DataList)
+	dlx := asDataList(dlX)
+	dly := asDataList(dlY)
 	insyra.AtomicDoAll(func() {
 		rankX = dlx.Rank()
 		rankY = dly.Rank()

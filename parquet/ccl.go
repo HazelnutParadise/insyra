@@ -2,8 +2,8 @@ package parquet
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -461,11 +461,30 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 		return nil, fmt.Errorf("failed to compile CCL expression: %w", err)
 	}
 
-	result := insyra.NewDataTable()
 	var colNames []string
+	// One slice per column, grown across every batch. Appending into
+	// result.GetColByNumber(i) per batch threw away everything past the first
+	// batch, because that method returns a copy of the column: a 2500-row file
+	// filtered on a condition every row satisfies came back with 1000 rows.
+	var kept [][]any
 	firstBatch := true
 
 	recChan, errChan := streamAsArrowRecord(ctx, path, ReadOptions{}, batchSize)
+
+	// build assembles the result once, on whichever path ends the stream, so an
+	// empty file and a filter that matched nothing produce the same shape.
+	build := func() *insyra.DataTable {
+		result := insyra.NewDataTable()
+		for i, name := range colNames {
+			dl := insyra.NewDataList()
+			dl.SetName(name)
+			if len(kept[i]) > 0 {
+				dl.Append(kept[i]...)
+			}
+			result.AppendCols(dl)
+		}
+		return result
+	}
 
 	for {
 		select {
@@ -476,10 +495,17 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 				return nil, err
 			}
 			// Stream finished, return result
-			return result, nil
+			return build(), nil
 		case rec, ok := <-recChan:
 			if !ok {
-				return result, nil
+				// The producer closes errChan before recChan, so by now errChan
+				// is closed too and this receive cannot block. Read it rather
+				// than letting the select above choose between two ready cases,
+				// which would drop an error reported after the last batch.
+				if err := <-errChan; err != nil {
+					return nil, err
+				}
+				return build(), nil
 			}
 
 			// Get column names from first batch
@@ -487,17 +513,12 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 				for i := 0; i < int(rec.NumCols()); i++ {
 					colNames = append(colNames, rec.Schema().Field(i).Name)
 				}
+				kept = make([][]any, len(colNames))
 				firstBatch = false
 			}
 
 			// Create context for this batch
 			pqCtx := newParquetContext(rec, colNames)
-
-			// Filter rows in this batch
-			filteredRows := make([][]any, int(rec.NumCols()))
-			for i := range filteredRows {
-				filteredRows[i] = make([]any, 0)
-			}
 
 			for rowIdx := 0; rowIdx < int(rec.NumRows()); rowIdx++ {
 				if err := pqCtx.SetRowIndex(rowIdx); err != nil {
@@ -528,39 +549,15 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 				}
 
 				if passes {
-					// Add this row to filtered results
-					for colIdx := 0; colIdx < int(rec.NumCols()); colIdx++ {
+					// Add this row to the filtered results
+					for colIdx := 0; colIdx < len(kept); colIdx++ {
 						cellVal, _ := pqCtx.GetCell(colIdx, rowIdx)
-						filteredRows[colIdx] = append(filteredRows[colIdx], cellVal)
+						kept[colIdx] = append(kept[colIdx], cellVal)
 					}
 				}
 			}
 
 			rec.Release()
-
-			// Append filtered rows to result
-			_, numCols := result.Size()
-			if numCols == 0 {
-				// First batch: create columns with names
-				for i := 0; i < len(filteredRows); i++ {
-					dl := insyra.NewDataList()
-					dl.SetName(colNames[i])
-					if len(filteredRows[i]) > 0 {
-						dl.Append(filteredRows[i]...)
-					}
-					result.AppendCols(dl)
-				}
-			} else {
-				// Subsequent batches: append to existing columns
-				for i := 0; i < len(filteredRows); i++ {
-					if len(filteredRows[i]) > 0 {
-						col := result.GetColByNumber(i)
-						if col != nil {
-							col.Append(filteredRows[i]...)
-						}
-					}
-				}
-			}
 		}
 	}
 }
@@ -570,7 +567,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 // Processing is done batch by batch to minimize memory usage.
 // cclScript can contain multiple statements separated by semicolons.
 //
-// Example: ApplyCCL(ctx, "input.parquet", "NEW('C') = ['A'] + ['B']; ['D'] = ['D'] * 2", CCLFilterOptions{})
+// Example: ApplyCCL(ctx, "input.parquet", "NEW('C') = ['A'] + ['B']; ['D'] = ['D'] * 2")
 //
 //	The input file will be overwritten.
 func ApplyCCL(ctx context.Context, path string, cclScript string) error {
@@ -589,11 +586,14 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 		return fmt.Errorf("failed to create temporary output file: %w", err)
 	}
 	defer func() {
-		if err := outFile.Close(); err != nil {
-			log.Printf("parquet: failed to close temporary file %s: %v", tmpPath, err)
+		// On the success path writer.Close() already closed this same fd (see
+		// finish below), so the second close reports "file already closed" —
+		// expected, not worth a warning, and it fired on every successful call.
+		if err := outFile.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
+			insyra.LogWarning("parquet", "close", "failed to close temporary file %s: %v", tmpPath, err)
 		}
 		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
-			log.Printf("parquet: failed to remove temporary file %s: %v", tmpPath, err)
+			insyra.LogWarning("parquet", "close", "failed to remove temporary file %s: %v", tmpPath, err)
 		}
 	}()
 
@@ -627,7 +627,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 		case <-ctx.Done():
 			if writer != nil {
 				if err := writer.Close(); err != nil {
-					log.Printf("parquet: failed to close writer on context done: %v", err)
+					insyra.LogWarning("parquet", "close", "failed to close writer on context done: %v", err)
 				}
 			}
 			return ctx.Err()
@@ -635,7 +635,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 			if err != nil {
 				if writer != nil {
 					if cerr := writer.Close(); cerr != nil {
-						log.Printf("parquet: failed to close writer: %v", cerr)
+						insyra.LogWarning("parquet", "close", "failed to close writer: %v", cerr)
 					}
 				}
 				return err
@@ -645,7 +645,19 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 
 		case rec, ok := <-recChan:
 			if !ok {
-				// recChan 關閉 = 串流成功結束（無緩衝 channel，此時所有 record 已消耗完）
+				// recChan 關閉 = 所有 record 已消耗完（無緩衝 channel）。但生產端是
+				// 先關 errChan 再關 recChan，兩者同時就緒時上面的 select 會隨機挑一
+				// 個，最後一批之後才回報的讀取錯誤會被蓋掉，接著 finish() 會把截斷的
+				// 暫存檔 rename 蓋掉原檔。改成在這裡先讀 errChan（此時必已關閉，不會
+				// 阻塞）：有錯就不收尾。
+				if err := <-errChan; err != nil {
+					if writer != nil {
+						if cerr := writer.Close(); cerr != nil {
+							insyra.LogWarning("parquet", "close", "failed to close writer: %v", cerr)
+						}
+					}
+					return err
+				}
 				return finish()
 			}
 
@@ -666,7 +678,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 				rec.Release()
 				if writer != nil {
 					if cerr := writer.Close(); cerr != nil {
-						log.Printf("parquet: failed to close writer: %v", cerr)
+						insyra.LogWarning("parquet", "close", "failed to close writer: %v", cerr)
 					}
 				}
 				return fmt.Errorf("failed to apply CCL: %w", err)
@@ -695,7 +707,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 
 			if err != nil {
 				if cerr := writer.Close(); cerr != nil {
-					log.Printf("parquet: failed to close writer: %v", cerr)
+					insyra.LogWarning("parquet", "close", "failed to close writer: %v", cerr)
 				}
 				return fmt.Errorf("failed to write batch: %w", err)
 			}

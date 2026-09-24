@@ -28,7 +28,9 @@ func runSortCommand(ctx *ExecContext, args []string) error {
 	selector := args[1]
 	desc := len(args) >= 3 && strings.EqualFold(args[2], "desc")
 
-	config := insyra.DataTableSortConfig{ColumnNumber: -1, Descending: desc}
+	// Set only the field the argument resolves to: a number next to a name
+	// would log a precedence warning on every sort by name.
+	config := insyra.DataTableSortConfig{Descending: desc}
 	if number, convErr := strconv.Atoi(selector); convErr == nil {
 		config.ColumnNumber = number
 	} else {

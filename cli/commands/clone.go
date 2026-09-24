@@ -27,5 +27,5 @@ func runCloneCommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintf(ctx.Output, "saved clone as %s\n", alias)
 		return nil
 	}
-	return fmt.Errorf("variable not found: %s", name)
+	return varTypeError(ctx, "clone", name)
 }

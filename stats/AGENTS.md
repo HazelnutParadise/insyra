@@ -179,6 +179,20 @@ x * x * x
 
 ---
 
+## 正式路徑不得呼叫其他語言
+
+`stats` 的每一個計算都是純 Go。R、Python 只在測試裡當參考答案（`testdata/` 的腳本由 `*_test.go` 執行），正式執行時機器上有沒有 R 或 Python 完全沒差，文件裡「mirrors `psych::fa`」這類說法指的是演算法移植。
+
+**禁止在非測試檔裡**：
+
+- import `os/exec`，或以任何方式啟動 `Rscript`、`python`、`uv` 等子程序來算統計量。
+- import `github.com/HazelnutParadise/insyra/py` 或 `pd`，把計算交給 Python。
+- 讀取 `testdata/` 或 `baseline_cache/` 的參考數值當結果。
+
+一個方法如果只能靠呼叫別的語言才算得出來，就先移植演算法，像 `internal/fa/` 對 psych、GPArotation、LAPACK 和 L-BFGS-B 做的那樣，再用參考實作驗證移植。`no_foreign_runtime_test.go` 會掃描所有非測試檔的 import 來守這條。
+
+---
+
 ## 新增統計方法的步驟
 
 1. **識別所需的統計學概念層**（p 值？SE？CI？效果量？）

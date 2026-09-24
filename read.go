@@ -406,29 +406,17 @@ func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames boo
 
 // ----- json -----
 
-// ReadJSON_File reads a JSON file and loads the data into a DataTable and returns it.
+// ReadJSON_File reads a JSON file and loads the data into a DataTable.
+// It decodes through the same path as ReadJSON, so numbers are typed the
+// same way from a file as from bytes: integer literals become int64 (large
+// integers keep full precision) and decimal literals become float64. A file
+// holding a single object loads as one row.
 func ReadJSON_File(filePath string) (*DataTable, error) {
-	dt := NewDataTable()
-
-	// 讀取檔案
 	buf, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
 	}
-
-	// 解析 JSON
-	var rows []map[string]any
-	err = json.Unmarshal(buf, &rows)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-
-	// 將資料加入 DataTable
-	for _, row := range rows {
-		dt.AppendRowsByColName(row)
-	}
-
-	return dt, nil
+	return ReadJSON(buf)
 }
 
 // unmarshalJSONRows decodes JSON bytes into row maps while preserving integer

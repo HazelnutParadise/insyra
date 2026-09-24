@@ -1351,9 +1351,17 @@ func prepareTableLayoutTypes(dt *DataTable, dataMap map[string][]any, colIndices
 // Anything unparseable sorts after the rest, by string, so the result stays
 // deterministic.
 func sortColIndices(indices []string) {
+	// A named column is keyed "AA(name)"; only the part before "(" is the
+	// column index, as Show's own sort treats it.
+	letters := func(key string) string {
+		if i := strings.Index(key, "("); i != -1 {
+			return key[:i]
+		}
+		return key
+	}
 	sort.Slice(indices, func(i, j int) bool {
-		a, aok := utils.ParseColIndex(indices[i])
-		b, bok := utils.ParseColIndex(indices[j])
+		a, aok := utils.ParseColIndex(letters(indices[i]))
+		b, bok := utils.ParseColIndex(letters(indices[j]))
 		switch {
 		case aok && bok:
 			return a < b

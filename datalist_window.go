@@ -19,6 +19,8 @@ import (
 func (dl *DataList) Shift(periods int, fill ...any) *DataList {
 	var fillVal any
 	if len(fill) > 0 {
+		// A Cell mark is left on: the result is built with NewDataList, which
+		// flattens a bare slice and stores a marked value whole.
 		fillVal = fill[0]
 	}
 	var result *DataList

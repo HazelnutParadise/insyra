@@ -2,6 +2,7 @@ package ccl
 
 import (
 	"fmt"
+	"sort"
 )
 
 // MapContext implements Context for a map of columns (map[string][]any).
@@ -14,22 +15,27 @@ type MapContext struct {
 	ColNames      []string       // To support index access
 }
 
-// NewMapContext creates a new MapContext from a map of columns.
+// NewMapContext creates a new MapContext from a map of columns. Columns are
+// ordered by name, so A refers to the alphabetically first column.
 func NewMapContext(data map[string][]any) (*MapContext, error) {
 	rows := 0
 	colNames := make([]string, 0, len(data))
 	colNameMap := make(map[string]int, len(data))
 
-	i := 0
-	for name, col := range data {
-		if rows == 0 {
+	// Excel-style indices (A, B, ...) follow the sorted column names, so the
+	// same map always yields the same layout; Go map iteration is random.
+	for name := range data {
+		colNames = append(colNames, name)
+	}
+	sort.Strings(colNames)
+	for i, name := range colNames {
+		col := data[name]
+		if i == 0 {
 			rows = len(col)
 		} else if len(col) != rows {
 			return nil, fmt.Errorf("column lengths mismatch: column '%s' has length %d, expected %d", name, len(col), rows)
 		}
-		colNames = append(colNames, name)
 		colNameMap[name] = i
-		i++
 	}
 
 	return &MapContext{

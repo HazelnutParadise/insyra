@@ -1,10 +1,13 @@
 // fa/lapack_dlagt.go
 //
 // dlagtf — LU factorization of an n-by-n tridiagonal matrix T - λI
-//          (with row interchanges via diagonal pivoting).
+//
+//	(with row interchanges via diagonal pivoting).
+//
 // dlagts — solve the system (T - λI) x = scaled y for y given the
-//          factor from dlagtf. Used by dstein for inverse-iteration
-//          eigenvector refinement.
+//
+//	factor from dlagtf. Used by dstein for inverse-iteration
+//	eigenvector refinement.
 //
 // Faithful translations of LAPACK 3.12.1 dlagtf.f and dlagts.f.
 package fa

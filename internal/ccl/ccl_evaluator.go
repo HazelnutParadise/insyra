@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -110,7 +111,7 @@ func IsNewColNode(n cclNode) bool {
 // IsRowDependent checks if the expression depends on the current row.
 func IsRowDependent(n cclNode) bool {
 	switch t := n.(type) {
-	case *cclNumberNode, *cclStringNode, *cclBooleanNode, *cclNilNode:
+	case *cclNumberNode, *cclStringNode, *cclBooleanNode, *cclNilNode, *cclFoldedValueNode:
 		return false
 	case *cclIdentifierNode, *cclColIndexNode, *cclColNameNode, *cclResolvedColNode, *cclAtNode, *cclRowIndexNode:
 		return true
@@ -148,11 +149,11 @@ func IsRowDependent(n cclNode) bool {
 		// Sequence functions (LAG, CUMSUM, ROLLING_MEAN, ...) consume whole
 		// columns and produce same-length output; they are evaluated once
 		// per expression, not per row.
-		if _, isSeq := sequenceFunctions[upper]; isSeq {
+		if IsSequenceFunction(upper) {
 			return false
 		}
 		// Aggregate functions are row-independent unless # appears in args.
-		if _, isAgg := aggregateFunctions[upper]; isAgg {
+		if _, isAgg := lookupAggregateFunction(upper); isAgg {
 			return containsRowIndex(t)
 		}
 		for _, arg := range t.args {
@@ -237,6 +238,8 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		return t.value, nil
 	case *cclNilNode:
 		return nil, nil
+	case *cclFoldedValueNode:
+		return t.value, nil
 	case *cclAtNode:
 		return ctx.GetCurrentRow(), nil
 	case *cclRowIndexNode:
@@ -282,32 +285,32 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			return evaluateWithCallDepth(t.args[2], ctx, depth+1, functionDepth)
 		}
 
-		if upper == "AND" {
+		if upper == "AND" || upper == "OR" {
+			// AND stops at the first false, OR at the first true, so an
+			// argument either of them skips is never evaluated. An argument
+			// they do evaluate and cannot read as a boolean is an error,
+			// matching the && and || operators: reading it as false made
+			// AND('abc', TRUE) answer the same thing a real comparison does.
 			functionDepth := callDepth + 1
-			for _, arg := range t.args {
+			for i, arg := range t.args {
 				val, err := evaluateWithCallDepth(arg, ctx, depth+1, functionDepth)
 				if err != nil {
 					return nil, err
 				}
-				if b, ok := toBool(val); !ok || !b {
+				b, ok := toBool(val)
+				if !ok {
+					return nil, fmt.Errorf("argument %d to %s cannot be converted to boolean: %v", i+1, upper, val)
+				}
+				if upper == "AND" && !b {
 					return false, nil
 				}
-			}
-			return true, nil
-		}
-
-		if upper == "OR" {
-			functionDepth := callDepth + 1
-			for _, arg := range t.args {
-				val, err := evaluateWithCallDepth(arg, ctx, depth+1, functionDepth)
-				if err != nil {
-					return nil, err
-				}
-				if b, ok := toBool(val); ok && b {
+				if upper == "OR" && b {
 					return true, nil
 				}
 			}
-			return false, nil
+			// No argument settled it: AND() and AND(TRUE) are true, OR() and
+			// OR(FALSE) are false. The argument count is not checked.
+			return upper == "AND", nil
 		}
 
 		// Sequence functions: whole-column input, same-length-column output.
@@ -315,7 +318,7 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		// returned []any is consumed directly by the assigner / cell broadcaster
 		// at the top level. Nested usage inside arithmetic is not supported
 		// in v1 and may produce undefined results.
-		if _, isSeq := sequenceFunctions[upper]; isSeq {
+		if IsSequenceFunction(upper) {
 			functionDepth := callDepth + 1
 			seqArgs := make([][]any, len(t.args))
 			for i, arg := range t.args {
@@ -329,7 +332,7 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		}
 
 		// 檢查是否為聚合函數
-		if _, isAgg := aggregateFunctions[upper]; isAgg {
+		if _, isAgg := lookupAggregateFunction(upper); isAgg {
 			functionDepth := callDepth + 1
 			// 如果是行相關的（包含 #），則將其視為普通函數評估（逐行聚合）
 			if containsRowIndex(t) {
@@ -452,6 +455,223 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 	return nil, fmt.Errorf("invalid node")
 }
 
+// FoldRowInvariantAggregates replaces every aggregate call whose answer cannot
+// change from row to row with that answer, so the per-row loop does not
+// recompute it. On 20,000 rows this is the difference between `A / SUM(A)`
+// taking two seconds and taking a millisecond: SUM(A) was summing the whole
+// column once per row.
+//
+// An aggregate that mentions `#` reads the current row and is left alone. So is
+// one whose evaluation fails: returning the tree unchanged lets the normal
+// per-row path raise the error where it always did, with the row it belongs to,
+// rather than moving the message somewhere the caller does not expect.
+func FoldRowInvariantAggregates(n cclNode, ctx Context) cclNode {
+	folded, _ := foldAggregates(n, ctx)
+	return folded
+}
+
+// foldAggregates returns the rewritten node and whether anything changed.
+func foldAggregates(n cclNode, ctx Context) (cclNode, bool) {
+	switch t := n.(type) {
+	case *funcCallNode:
+		upper := strings.ToUpper(t.name)
+		if _, isAgg := lookupAggregateFunction(upper); isAgg && !containsRowIndex(t) {
+			val, err := evaluateWithCallDepth(t, ctx, 0, 0)
+			if err != nil {
+				return n, false
+			}
+			// Only a scalar is safe to inline. A column-shaped result belongs
+			// to the sequence path, which spreads it across the rows itself.
+			if _, isSlice := val.([]any); isSlice {
+				return n, false
+			}
+			return literalNode(val), true
+		}
+		changed := false
+		args := make([]cclNode, len(t.args))
+		for i, arg := range t.args {
+			a, c := foldAggregates(arg, ctx)
+			args[i] = a
+			changed = changed || c
+		}
+		if !changed {
+			return n, false
+		}
+		return &funcCallNode{name: t.name, args: args}, true
+	case *cclBinaryOpNode:
+		// ':' resolves column references structurally; folding either side
+		// would turn `A:B` into numbers and change what it means.
+		if t.op == ":" {
+			return n, false
+		}
+		left, lc := foldAggregates(t.left, ctx)
+		right, rc := foldAggregates(t.right, ctx)
+		if !lc && !rc {
+			return n, false
+		}
+		return &cclBinaryOpNode{op: t.op, left: left, right: right}, true
+	case *cclFoldChainNode:
+		init, changed := foldAggregates(t.init, ctx)
+		operands := make([]cclNode, len(t.operands))
+		for i, operand := range t.operands {
+			o, c := foldAggregates(operand, ctx)
+			operands[i] = o
+			changed = changed || c
+		}
+		if !changed {
+			return n, false
+		}
+		return &cclFoldChainNode{init: init, ops: t.ops, operands: operands}, true
+	case *cclChainedComparisonNode:
+		changed := false
+		values := make([]cclNode, len(t.values))
+		for i, v := range t.values {
+			nv, c := foldAggregates(v, ctx)
+			values[i] = nv
+			changed = changed || c
+		}
+		if !changed {
+			return n, false
+		}
+		return &cclChainedComparisonNode{ops: t.ops, values: values}, true
+	case *cclAssignmentNode:
+		expr, changed := foldAggregates(t.expr, ctx)
+		if !changed {
+			return n, false
+		}
+		return &cclAssignmentNode{target: t.target, expr: expr}, true
+	case *cclNewColNode:
+		expr, changed := foldAggregates(t.expr, ctx)
+		if !changed {
+			return n, false
+		}
+		return &cclNewColNode{colName: t.colName, expr: expr}, true
+	}
+	return n, false
+}
+
+// literalNode wraps an already-computed value so the evaluator can read it back
+// without recomputing anything.
+func literalNode(v any) cclNode {
+	switch x := v.(type) {
+	case float64:
+		return &cclNumberNode{value: x}
+	case string:
+		return &cclStringNode{value: x}
+	case bool:
+		return &cclBooleanNode{value: x}
+	case nil:
+		return &cclNilNode{}
+	}
+	return &cclFoldedValueNode{value: v}
+}
+
+// clampedInt turns a character count, character position or digit count
+// into an int, clamping it to the int32 range first. A bare int(f) past the
+// int range differs by platform: amd64 gives the most negative int and arm64
+// the most positive, so MID('abc', 2, 10^300) was "" on amd64 and "bc" on
+// arm64. Clamped, a count past the end of a string means "to the end"
+// everywhere. NaN is no count at all.
+func clampedInt(f float64, what string) (int, error) {
+	if math.IsNaN(f) {
+		return 0, fmt.Errorf("%s must be a number, got NaN", what)
+	}
+	return int(max(min(f, math.MaxInt32), math.MinInt32)), nil
+}
+
+// durationOf converts f units into a Duration. time.Duration(f) is undefined
+// past ±2^63 nanoseconds (about 292 years) and for NaN, and the platforms
+// disagree there, so those report false instead.
+func durationOf(f float64, unit time.Duration) (time.Duration, bool) {
+	d := f * float64(unit)
+	if math.IsNaN(d) || d >= 1<<63 || d < -(1<<63) {
+		return 0, false
+	}
+	return time.Duration(d), true
+}
+
+// shiftDays adds a (possibly fractional) number of days to t without losing
+// anything below an hour. A shift past what a Duration holds, about 292
+// years, is refused rather than converted.
+func shiftDays(t time.Time, days float64) (any, error) {
+	return shiftByDays(t, days, days)
+}
+
+// subtractDays is shiftDays the other way. It exists so the error quotes the
+// operand the expression was written with: `B - 106752` subtracts 106,752
+// days, and saying "a shift of -106752 days" sends the reader looking for a
+// minus sign that is not in their expression.
+func subtractDays(t time.Time, days float64) (any, error) {
+	return shiftByDays(t, -days, days)
+}
+
+// shiftByDays moves t by days and names operand in the out-of-range error.
+func shiftByDays(t time.Time, days, operand float64) (any, error) {
+	d, ok := durationOf(days*24, time.Hour)
+	if !ok {
+		return nil, fmt.Errorf("a shift of %v days is out of range", operand)
+	}
+	return t.Add(d), nil
+}
+
+// rangeBound turns a row range bound into an int the way the range operator
+// always has, dropping a fraction. NaN, the infinities and values past the
+// int32 range are refused: int(f) is undefined past the int range, and amd64
+// and arm64 disagree there.
+func rangeBound(f float64, what string) (int, error) {
+	if math.IsNaN(f) || f > math.MaxInt32 || f < math.MinInt32 {
+		return 0, fmt.Errorf("row range %s %v is out of range", what, f)
+	}
+	return int(f), nil
+}
+
+// parseDateString reads the date layouts the evaluator accepts in a string
+// operand. It is the single place that decides whether a string is a date, so
+// that comparing against a number and arithmetic agree on the answer.
+func parseDateString(x string) (time.Time, bool) {
+	// Every layout below starts with a four-digit year, so a string that does
+	// not start with a digit cannot match any of them. Skipping the four
+	// time.Parse calls takes a 100k-row text column from 45ms to roughly what
+	// a numeric one costs.
+	if len(x) == 0 || x[0] < '0' || x[0] > '9' {
+		return time.Time{}, false
+	}
+	formats := []string{time.RFC3339, time.RFC3339Nano, "2006-01-02", "2006-01-02T15:04:05Z07:00"}
+	for _, f := range formats {
+		if t, err := time.Parse(f, x); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// isWordAgainstNumber reports whether a is a word and b a number. It is only
+// asked after toFloat64 failed on one of the two operands, and a number always
+// converts, so the string is one that does not read as a number.
+//
+// Two kinds of string are not words. A string parseDateString accepts is a
+// date: Docs/CCL.md says date strings are parsed as dates, and CSV and Excel
+// loads store whole date columns as strings, so `A > 0` over one of those must
+// answer the way the same dates held as time.Time do. The empty string is a
+// blank cell, not a word. Both returned false on v0.3.2 and keep doing so.
+func isWordAgainstNumber(a, b any) bool {
+	s, ok := a.(string)
+	if !ok {
+		return false
+	}
+	if s == "" {
+		return false
+	}
+	if _, isDate := parseDateString(s); isDate {
+		return false
+	}
+	switch b.(type) {
+	case float64, float32, int, int32, int64:
+		return true
+	}
+	return false
+}
+
 func applyOperator(op string, left, right any) (any, error) {
 	// Try to interpret date-like operands first (time.Time or parseable date strings)
 	parseTimeLike := func(v any) (time.Time, bool) {
@@ -459,12 +679,7 @@ func applyOperator(op string, left, right any) (any, error) {
 		case time.Time:
 			return x, true
 		case string:
-			formats := []string{time.RFC3339, time.RFC3339Nano, "2006-01-02", "2006-01-02T15:04:05Z07:00"}
-			for _, f := range formats {
-				if t, err := time.Parse(f, x); err == nil {
-					return t, true
-				}
-			}
+			return parseDateString(x)
 		}
 		return time.Time{}, false
 	}
@@ -499,9 +714,12 @@ func applyOperator(op string, left, right any) (any, error) {
 		if rf, ok := toFloat64(right); ok {
 			switch op {
 			case "+":
-				return lt.Add(time.Duration(rf*24.0) * time.Hour), nil
+				// Convert days straight to a Duration; multiplying an integer
+				// Duration by an hour first threw away everything under an
+				// hour, so A + 0.001 moved the timestamp not at all.
+				return shiftDays(lt, rf)
 			case "-":
-				return lt.Add(-time.Duration(rf*24.0) * time.Hour), nil
+				return subtractDays(lt, rf)
 			}
 		}
 	}
@@ -511,7 +729,7 @@ func applyOperator(op string, left, right any) (any, error) {
 		if lf, ok := toFloat64(left); ok {
 			switch op {
 			case "+":
-				return rt.Add(time.Duration(lf*24.0) * time.Hour), nil
+				return shiftDays(rt, lf)
 			case "-":
 				// number - date doesn't make sense
 				return nil, fmt.Errorf("invalid operands for -: %v, %v", left, right)
@@ -656,8 +874,13 @@ func applyOperator(op string, left, right any) (any, error) {
 		}
 	}
 
-	// 對於大小比較，如果不能轉換為數字，返回false
+	// 大小比較的非數值路徑。一邊是數字、另一邊是讀不成數字的字串時回錯，
+	// 這正是 Docs/CCL.md 一直寫的行為；其他組合（兩個字串、布林、日期、
+	// 時長等）維持回 false。
 	if op == ">" || op == "<" || op == ">=" || op == "<=" {
+		if isWordAgainstNumber(left, right) || isWordAgainstNumber(right, left) {
+			return nil, fmt.Errorf("invalid operands for %s: %v, %v (cannot be compared)", op, left, right)
+		}
 		return false, nil
 	}
 
@@ -667,8 +890,14 @@ func applyOperator(op string, left, right any) (any, error) {
 		lf, lok := toFloat64(left)
 		rf, rok := toFloat64(right)
 		if lok && rok {
-			start := int(lf)
-			end := int(rf)
+			start, err := rangeBound(lf, "start")
+			if err != nil {
+				return nil, err
+			}
+			end, err := rangeBound(rf, "end")
+			if err != nil {
+				return nil, err
+			}
 			// 支援負數索引
 			// 但這裡我們不知道總行數，所以無法在這裡處理負數索引轉換
 			// 負數索引轉換應該在 evaluateRowAccess 中處理
@@ -747,11 +976,16 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 			return nil, fmt.Errorf("raw row range cannot be used as a data source; use @.start:end instead")
 		}
 
-		// Return as single element slice? Or repeat?
-		// Aggregates usually ignore single values or treat as constant column?
-		// If we return []any{val}, SUM will be val.
-		// But if it's a column expression, it should be len(rows).
-		// Let's assume single value for now.
+		// A sequence function (LAG, CUMSUM, ...) already produced a whole
+		// column; hand it through so nesting keeps every row. Decide by the
+		// node, not by the length: a row read such as @.0 is one value even on
+		// a table whose column count equals its row count.
+		if fc, isCall := n.(*funcCallNode); isCall && IsSequenceFunction(fc.name) {
+			if col, ok := val.([]any); ok {
+				return col, nil
+			}
+		}
+		// Otherwise a scalar: aggregates see it as a one-element column.
 		return []any{val}, nil
 	}
 
@@ -760,13 +994,16 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 	rowCount := ctx.GetRowCount()
 	results := make([]any, rowCount)
 
-	// Save current row index to restore later
-	originalRowIdx := ctx.GetRowIndex()
-	defer func() {
-		if err := ctx.SetRowIndex(originalRowIdx); err != nil {
-			log.Printf("ccl: failed to restore row index: %v", err)
-		}
-	}()
+	// Save current row index to restore later. With no rows the loop below
+	// never moves it, and setting row 0 of an empty context would fail.
+	if rowCount > 0 {
+		originalRowIdx := ctx.GetRowIndex()
+		defer func() {
+			if err := ctx.SetRowIndex(originalRowIdx); err != nil {
+				log.Printf("ccl: failed to restore row index: %v", err)
+			}
+		}()
+	}
 
 	for i := 0; i < rowCount; i++ {
 		if err := ctx.SetRowIndex(i); err != nil {
@@ -936,6 +1173,44 @@ type RowRange struct {
 	End   int
 }
 
+// describeNode names an AST node the way the caller wrote it, for an error
+// message. Printing the node itself dumps a Go struct, pointers included.
+func describeNode(n cclNode) string {
+	switch t := n.(type) {
+	case *cclIdentifierNode:
+		return t.name
+	case *cclColIndexNode:
+		return "[" + t.index + "]"
+	case *cclColNameNode:
+		return "['" + t.name + "']"
+	case *cclResolvedColNode:
+		if t.name != "" {
+			return t.name
+		}
+		return fmt.Sprintf("column %d", t.index)
+	case *cclNumberNode:
+		return strconv.FormatFloat(t.value, 'g', -1, 64)
+	case *cclStringNode:
+		return "'" + t.value + "'"
+	case *cclBooleanNode:
+		return strconv.FormatBool(t.value)
+	case *cclNilNode:
+		return "nil"
+	case *cclFoldedValueNode:
+		return fmt.Sprint(t.value)
+	case *cclAtNode:
+		return "@"
+	case *cclRowIndexNode:
+		return "#"
+	case *funcCallNode:
+		return t.name + "(...)"
+	case *cclBinaryOpNode:
+		return describeNode(t.left) + " " + t.op + " " + describeNode(t.right)
+	default:
+		return "expression"
+	}
+}
+
 func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any, error) {
 	// 1. 嘗試解析為欄位範圍 (Column Range)
 	// 檢查左右是否為欄位引用
@@ -945,10 +1220,10 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 	if lIsCol && rIsCol {
 		// Check for invalid indices (-1) which resolveColumnIndex might return if not found but "looks like" a column
 		if lIdx == -1 {
-			return nil, fmt.Errorf("column not found: %v", left)
+			return nil, fmt.Errorf("column not found: %s", describeNode(left))
 		}
 		if rIdx == -1 {
-			return nil, fmt.Errorf("column not found: %v", right)
+			return nil, fmt.Errorf("column not found: %s", describeNode(right))
 		}
 
 		// Check bounds
@@ -981,8 +1256,14 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 	rf, rok := toFloat64(rVal)
 
 	if lok && rok {
-		lRowIdx := int(lf)
-		rRowIdx := int(rf)
+		lRowIdx, err := rangeBound(lf, "start")
+		if err != nil {
+			return nil, err
+		}
+		rRowIdx, err := rangeBound(rf, "end")
+		if err != nil {
+			return nil, err
+		}
 		rowCount := ctx.GetRowCount()
 		if lRowIdx < 0 || lRowIdx >= rowCount {
 			return nil, fmt.Errorf("row index %d out of range (total rows: %d)", lRowIdx, rowCount)
@@ -997,7 +1278,7 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 	// Helper to resolve row index from value (int/float or string)
 	resolveRowIdx := func(val any) (int, error) {
 		if f, ok := toFloat64(val); ok {
-			return int(f), nil
+			return rangeBound(f, "bound")
 		}
 		if s, ok := val.(string); ok {
 			return ctx.GetRowIndexByName(s)
@@ -1019,7 +1300,8 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 		return RowRange{Start: lRowIdx, End: rRowIdx}, nil
 	}
 
-	return nil, fmt.Errorf("invalid range operands: %v : %v", left, right)
+	// %v on the nodes printed the AST structs, pointers and all.
+	return nil, fmt.Errorf("invalid range operands: %s : %s", describeNode(left), describeNode(right))
 }
 
 func resolveColumnIndex(n cclNode, ctx Context) (int, bool) {

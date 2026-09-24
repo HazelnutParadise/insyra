@@ -87,3 +87,55 @@ func detectFileKind(path string) string {
 		return ""
 	}
 }
+
+// varTypeError produces the error for a command that accepts either a
+// DataTable or a DataList and matched neither. Reporting "variable not found"
+// for a variable that is right there but holds something else sends the caller
+// looking for a typo that is not there.
+func varTypeError(ctx *ExecContext, cmd, name string) error {
+	if ctx == nil || ctx.Vars == nil {
+		return fmt.Errorf("%s: variable not found: %s", cmd, name)
+	}
+	v, ok := ctx.Vars[name]
+	if !ok {
+		return fmt.Errorf("%s: variable not found: %s", cmd, name)
+	}
+	return fmt.Errorf("%s: %s holds a %T, which is neither a DataTable nor a DataList", cmd, name, v)
+}
+
+// parseFloatArg reads a numeric argument and reports a bad one the way the rest
+// of the CLI reports things. Returning strconv's own error handed the user
+// `strconv.ParseFloat: parsing "abc": invalid syntax`, which names neither the
+// command nor the argument.
+func parseFloatArg(cmd, field, raw string) (float64, error) {
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, wrapArgError(err, "%s: invalid %s %q, expected a number", cmd, field, raw)
+	}
+	return v, nil
+}
+
+// parseIntArg is parseFloatArg for a whole number.
+func parseIntArg(cmd, field, raw string) (int, error) {
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, wrapArgError(err, "%s: invalid %s %q, expected a whole number", cmd, field, raw)
+	}
+	return v, nil
+}
+
+// argError is a message naming the command and the argument that keeps the
+// error behind it reachable. The message leaves out strconv's own text, which
+// only repeats the input, while errors.Is(err, strconv.ErrSyntax) and
+// errors.As still see the cause, as they did when these errors used %w.
+type argError struct {
+	msg string
+	err error
+}
+
+func (e *argError) Error() string { return e.msg }
+func (e *argError) Unwrap() error { return e.err }
+
+func wrapArgError(err error, format string, args ...any) error {
+	return &argError{msg: fmt.Sprintf(format, args...), err: err}
+}

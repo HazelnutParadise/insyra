@@ -3,9 +3,11 @@ package repl
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/cli/commands"
 	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/HazelnutParadise/insyra/cli/style"
@@ -23,6 +25,11 @@ func Start(ctx *commands.ExecContext) error {
 	defer func() {
 		ctx.InREPL = false
 	}()
+	// The library itself prints nothing on import; the interactive REPL is the
+	// one place a banner belongs.
+	if ctx.Output != nil {
+		fmt.Fprintf(ctx.Output, "Welcome to Insyra %s (v%s)!\nOfficial website: https://insyra.hazelnut-paradise.com\n\n", insyra.VersionName, insyra.Version)
+	}
 	if ctx.EnvName == "" {
 		ctx.EnvName = "default"
 	}
@@ -44,15 +51,21 @@ func Start(ctx *commands.ExecContext) error {
 
 	historyFile := filepath.Join(ctx.EnvPath, "history.txt")
 	instance, err := readline.NewFromConfig(&readline.Config{
-		Prompt:          prompt(ctx.EnvName),
-		HistoryFile:     historyFile,
-		AutoComplete:    NewAutoCompleter(ctx),
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
+		Prompt:       prompt(ctx.EnvName),
+		HistoryFile:  historyFile,
+		AutoComplete: NewAutoCompleter(ctx),
+		// History is saved by hand below so a `db connect` line is masked
+		// before it reaches disk.
+		DisableAutoSaveHistory: true,
+		InterruptPrompt:        "^C",
+		EOFPrompt:              "exit",
 	})
 	if err != nil {
 		return err
 	}
+	// readline creates the file with the process umask; history can hold
+	// data paths and connection strings, so keep it private to the user.
+	_ = os.Chmod(historyFile, 0o600)
 	defer func() {
 		_ = instance.Close()
 	}()
@@ -70,6 +83,9 @@ func Start(ctx *commands.ExecContext) error {
 			return nil
 		}
 		trimmed := strings.TrimSpace(line)
+		if entry, ok := historyEntry(line); ok {
+			_ = instance.SaveToHistory(entry)
+		}
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
@@ -95,6 +111,19 @@ func Start(ctx *commands.ExecContext) error {
 			instance.SetPrompt(prompt(ctx.EnvName))
 		}
 	}
+}
+
+// historyEntry returns what an entered line adds to history.txt, with any
+// database password masked. Every non-empty line is saved, comments, exit and
+// lines without tokens included, as readline's automatic saving did before
+// history was saved by hand; the caller saves it before deciding what the line
+// does.
+func historyEntry(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return "", false
+	}
+	return commands.SanitizeHistoryLine(trimmed), true
 }
 
 func prompt(envName string) string {

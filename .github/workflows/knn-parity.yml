@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: ["main", "dev"]
 
+permissions:
+  contents: read
+
 jobs:
   knn-parity:
     name: Slow KNN parity gate
@@ -14,9 +17,9 @@ jobs:
     env:
       INSYRA_RUN_SLOW_KNN_PARITY: "1"
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version-file: go.mod
         cache-dependency-path: go.sum

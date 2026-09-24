@@ -232,6 +232,18 @@ pca_stats <- function(rows, n_components = NULL) {
 }
 
 factor_analysis_stats <- function(rows, extraction, rotation, scoring, nfactors) {
+  # psych::fa rotates from n.rotations = 20 starting points, nineteen of them
+  # drawn from R's random number generator, and seeds nothing itself. Unseeded,
+  # three runs on the same payload returned Phi up to 5.3e-5 apart while the
+  # loadings agreed to 3.5e-6, so a cached baseline depended on the session that
+  # built it. psych::principal uses one start and draws nothing.
+  #
+  # The seed makes the reference reproducible, not necessarily the start psych
+  # means to keep: psych 2.6.5's faRotations breaks a hyperplane tie with
+  # which(stats[best, "complexity"] == min(...)), a position within the tied
+  # subset rather than a start index, and computes a third tie-break on fit
+  # without assigning it.
+  set.seed(1L)
   suppressMessages(library(psych))
   suppressMessages(library(GPArotation))
 

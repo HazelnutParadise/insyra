@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/spf13/cobra"
@@ -24,6 +25,9 @@ type ExecContext struct {
 	// Manager don't get their writes redirected to the default ~/.insyra.
 	// Dispatch fills this with env.Default() if the caller left it nil.
 	Env *env.Manager
+
+	// scriptDepth counts nested `run` invocations (see maxScriptDepth).
+	scriptDepth int
 }
 
 type CommandHandler struct {
@@ -44,7 +48,37 @@ type CommandHandler struct {
 	Run                func(ctx *ExecContext, args []string) error
 }
 
+// Registry holds every registered command by name. Access it through
+// Register, Dispatch, and BuildCobraCommands, which take registryMu; reading
+// the map directly is not safe while another goroutine registers.
 var Registry = map[string]*CommandHandler{}
+
+var registryMu sync.RWMutex
+
+// LookupCommand returns the handler registered under name, taking the read
+// lock. Reading Registry directly is not safe while another goroutine
+// registers, which an embedder may do at any time.
+func LookupCommand(name string) (*CommandHandler, bool) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	h, ok := Registry[name]
+	return h, ok
+}
+
+// SnapshotRegistry returns the registered names in sorted order and the
+// handlers they point at, taken under the read lock.
+func SnapshotRegistry() ([]string, map[string]*CommandHandler) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	names := make([]string, 0, len(Registry))
+	handlers := make(map[string]*CommandHandler, len(Registry))
+	for name, h := range Registry {
+		names = append(names, name)
+		handlers[name] = h
+	}
+	sort.Strings(names)
+	return names, handlers
+}
 
 func Register(handler *CommandHandler) error {
 	if handler == nil {
@@ -56,6 +90,8 @@ func Register(handler *CommandHandler) error {
 	if handler.Run == nil {
 		return fmt.Errorf("handler run function is required")
 	}
+	registryMu.Lock()
+	defer registryMu.Unlock()
 	if _, exists := Registry[handler.Name]; exists {
 		return fmt.Errorf("command already registered: %s", handler.Name)
 	}
@@ -64,7 +100,9 @@ func Register(handler *CommandHandler) error {
 }
 
 func Dispatch(ctx *ExecContext, name string, args []string) error {
+	registryMu.RLock()
 	handler, ok := Registry[name]
+	registryMu.RUnlock()
 	if !ok {
 		return fmt.Errorf("unknown command: %s", name)
 	}
@@ -84,15 +122,19 @@ func Dispatch(ctx *ExecContext, name string, args []string) error {
 }
 
 func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
+	registryMu.RLock()
 	keys := make([]string, 0, len(Registry))
-	for name := range Registry {
+	handlers := make(map[string]*CommandHandler, len(Registry))
+	for name, h := range Registry {
 		keys = append(keys, name)
+		handlers[name] = h
 	}
+	registryMu.RUnlock()
 	sort.Strings(keys)
 
 	commands := make([]*cobra.Command, 0, len(keys))
 	for _, name := range keys {
-		handler := Registry[name]
+		handler := handlers[name]
 		localHandler := handler
 
 		use := localHandler.Usage
@@ -139,7 +181,7 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 					if mgr == nil {
 						mgr = env.Default()
 					}
-					_ = mgr.AppendHistory(envName, line)
+					_ = mgr.AppendHistory(envName, SanitizeHistoryLine(line))
 				}
 				return err
 			},

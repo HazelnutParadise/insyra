@@ -28,7 +28,7 @@ func ReinstallPyEnv() error {
 	}
 
 	// 重新創建目錄
-	if err := os.MkdirAll(absInstallDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(absInstallDir, 0o755); err != nil {
 		return fmt.Errorf("failed to recreate install directory: %w", err)
 	}
 

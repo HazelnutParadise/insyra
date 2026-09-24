@@ -26,6 +26,12 @@ const (
 type cclToken struct {
 	typ   cclTokenType
 	value string
+	// pos is the byte offset of this token in the expression it was read
+	// from, so an error can point at text the caller wrote. The tokenizer
+	// already reported byte offsets; the parser used to report an index into
+	// this slice under the same word "position", which pointed at nothing.
+	// The synthetic EOF token carries -1.
+	pos int
 }
 
 // CCLNode is the exported type alias for compiled CCL AST nodes.
@@ -39,10 +45,15 @@ type cclNode any
 type cclNumberNode struct{ value float64 }
 type cclStringNode struct{ value string }
 type cclIdentifierNode struct{ name string }
-type cclAtNode struct{}                     // @ 形式的節點
-type cclRowIndexNode struct{}               // # 形式的節點
-type cclBooleanNode struct{ value bool }    // 布林值節點
-type cclNilNode struct{}                    // nil 節點
+type cclAtNode struct{}                  // @ 形式的節點
+type cclRowIndexNode struct{}            // # 形式的節點
+type cclBooleanNode struct{ value bool } // 布林值節點
+type cclNilNode struct{}                 // nil 節點
+// cclFoldedValueNode carries a value that was computed before the row loop
+// began (see FoldRowInvariantAggregates) and has no other representation as a
+// literal — a time.Time from a date aggregate, for instance.
+type cclFoldedValueNode struct{ value any }
+
 type cclColIndexNode struct{ index string } // [A] 形式的欄位索引引用節點
 type cclColNameNode struct{ name string }   // ['colName'] 形式的欄位名稱引用節點
 type cclResolvedColNode struct {

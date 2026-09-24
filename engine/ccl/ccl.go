@@ -10,6 +10,19 @@ type MapContext = internalccl.MapContext
 type Func = internalccl.Func
 type AggFunc = internalccl.AggFunc
 
+// CompileError reports an expression that could not be compiled, carrying the
+// byte offset into the expression and the text at it. Match it with errors.As.
+type CompileError = internalccl.CompileError
+
+// EvalError reports a failure while evaluating a compiled expression, carrying
+// the row it happened on (-1 when the expression does not depend on the row)
+// and wrapping the cause. Match it with errors.As on an error that came out of
+// a DataTable — AddColUsingCCL, ExecuteCCL and their siblings attach the row
+// and the expression. Evaluate below returns the underlying error as it is,
+// because it evaluates one node against one context and has no statement or
+// row loop to name.
+type EvalError = internalccl.EvalError
+
 // NewMapContext creates a map-based CCL context.
 func NewMapContext(data map[string][]any) (*MapContext, error) {
 	return internalccl.NewMapContext(data)
@@ -23,6 +36,16 @@ func CompileExpression(expression string) (CCLNode, error) {
 // CompileMultiline compiles a multi-line CCL script into AST nodes.
 func CompileMultiline(script string) ([]CCLNode, error) {
 	return internalccl.CompileMultiline(script)
+}
+
+// CompiledStatement pairs a compiled statement with the source line it came
+// from, so a failure part-way through a script can say which line failed.
+type CompiledStatement = internalccl.CompiledStatement
+
+// CompileMultilineStatements compiles a script and keeps each statement's
+// source text alongside its AST.
+func CompileMultilineStatements(script string) ([]CompiledStatement, error) {
+	return internalccl.CompileMultilineStatements(script)
 }
 
 // Bind resolves column references to indices.

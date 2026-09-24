@@ -1,0 +1,45 @@
+# Proposal: factor-parity-compares-what-it-means
+
+## Why
+
+The strict factor-analysis parity suite (`INSYRA_STRICT_FACTOR_R_PARITY=1`) measures things a correct implementation is not obliged to reproduce, and trusts a cache that cannot tell which R produced it. Run on 2026-09-12 against baselines regenerated under psych 2.6.5 and GPArotation 2026.8.2, it failed 5,589 leaf sub-tests before `oblimin-honours-its-start` and 5,334 after, while the comment at `factorParityTol` describes ~595 on three adversarial datasets. Three causes, all in the suite rather than in the library:
+
+- **Rotation matrices, loadings and `Phi` are compared element by element.** A factor solution is defined up to the order and sign of its factors. Both sides sort factors and standardise signs, but psych's `rot.mat` is the matrix before that step, so a column swap or a sign flip shows as a difference of 2.0 — 1,311 of the failing leaves are `rotation_matrix`.
+- **A multimodal criterion is judged by which minimum R reached.** `simplimax`, `geomin` and `bentler` have several local minima (GPArotation's own vignette: simplimax found 16 on one dataset). psych now runs 20 unseeded random starts and picks by hyperplane count; we run 20 seeded starts and pick the lowest criterion. Where the two land in different minima the suite fails every rotation-dependent field, although the criterion value is the only thing that says which answer is better — and on the two simplimax cases where the new default differs from psych, ours is lower (0.1445 against 0.1599, 0.1657 against 0.2270).
+- **The baseline cache is keyed on script and payload only.** The 2026-08-01 cache answered for whatever psych produced it until moved aside; nothing in the key or the file records the R or Python package versions, so a stale reference passes as current without anyone knowing which R the numbers came from.
+
+## What Changes
+
+- `assertFactorAnalysisMatchesR` aligns our factors to R's once, from the loadings — the column permutation and signs that minimise `max|L_go − L_r|` — and applies that alignment to every factor-indexed field: loadings, structure, `Phi` and score covariance (both sides), scores, score coefficients, the rotation matrix, and the explained and cumulative proportions.
+- For a gradient-projection criterion, aligned loadings that still differ beyond the tolerance are judged by the criterion: `fa.Criterion` (new, exported from the internal package) evaluates the method's own `vgQ` at both loading matrices, with Varimax's Kaiser normalisation. Criterion values within a relative 1e-4 are the same minimum, and the factor-frame fields are then compared at `factorRotationTol`; a lower criterion than R's is a better answer and passes with both values logged; a higher one fails naming both. Promax has no criterion and stays element-wise.
+- The baseline cache key includes the reference toolchain's versions — for `Rscript` the R version and the psych, GPArotation and jsonlite versions; for `python` the interpreter and numpy, scipy and statsmodels versions — probed once per test process. Every existing cache entry is therefore regenerated on the next run, and a cache produced by one psych can no longer answer for another.
+- The comment at `factorParityTol` states what the suite reports after these changes, against the R it was run against, instead of a figure from 2026-05-03.
+
+## Capabilities
+
+### New Capabilities
+
+(none)
+
+### Modified Capabilities
+
+- `verification-integrity`: adds the requirements that a factor solution is compared up to factor order and sign, that a multimodal rotation is judged by its criterion value, and that a cached reference baseline is bound to the toolchain versions that produced it.
+
+## Impact
+
+- Test code only. `fa.Criterion` is new exported API on `stats/internal/fa`, reachable only inside `stats`; no library behaviour changes and there is no changelog entry.
+- The strict suite's failure count drops from 5,334 leaves to 1,672, written into the `factorParityTol` comment with what each part is: Promax (1,028), extraction-level drift on the adversarial datasets (~260), the anderson-rubin scoring combinations that fail before any field runs (99), rotations that run out of iterations on near-collinear data (50), and six simplimax combinations where twenty starts found a worse minimum than psych's twenty. A solution in the same minimum as psych's is compared at `factorRotationTol = 5e-3` rather than 2e-5, because the criterion's curvature is what fixes the loadings there (351 combinations, measured).
+- The first strict run after this change regenerates every R and Python baseline: about 18 minutes for the R side on this machine.
+- `TestFieldDiffAllFailingCombos` keeps its own element-wise diagnostics; it is a report, not a gate.
+
+## Backport to dev (0.3.x)
+
+Dev received all of the test changes and `stats/internal/fa/criterion.go`: the factor alignment applied to every factor-indexed field, the criterion judgement for gradient projection rotations, the toolchain versions in the baseline cache key, and the three always-run tests. The factor test files matched this change's pre-image, so the hunks applied unchanged. `verification-integrity` gains the three requirements.
+
+Adapted:
+- The `factorParityTol` comment says its 1,672-leaf breakdown was measured on the 0.4 line. This line keeps its own start list, a default of one start and oblimin always starting from the identity, so the strict suite reports a different count here.
+- The "lower minimum" scenario no longer quotes 0.4's twenty-start simplimax values; it states the rule.
+
+Left on 0.4:
+- The AGENTS.md hunk: it replaces a follow-up this line never had (`d53fa2b`) with a Promax follow-up measured against 0.4's rotations.
+- `delivery-status.md` edits.
