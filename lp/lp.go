@@ -19,13 +19,17 @@ import (
 // SolveFromFile solves an LP file with GLPK and sets a timeout in seconds.
 // Returns two DataTables: one with the parsed results and one with additional info.
 func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable) {
+	// Check the arguments before initGLPK: a call that is already wrong is no
+	// reason to go looking for — or install — a solver.
+	if len(timeoutSeconds) > 1 {
+		insyra.LogWarning("lp", "SolveFromFile", "Only one timeout can be set")
+		return nil, nil
+	}
+
 	initGLPK()
 	timeout := 0 * time.Second
 	if len(timeoutSeconds) == 1 {
 		timeout = time.Duration(timeoutSeconds[0]) * time.Second
-	} else if len(timeoutSeconds) > 1 {
-		insyra.LogWarning("lp", "SolveFromFile", "Only one timeout can be set")
-		return nil, nil
 	}
 
 	// Unique temporary file for GLPK output. A fixed "solution.txt" in the CWD
@@ -140,7 +144,7 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable,
 	// 創建臨時文件來存儲解決結果
 	tmpFile, err := os.CreateTemp("", "solution-*.txt")
 	if err != nil {
-		insyra.LogFatal("lp", "SolveModel", "Failed to create temporary file for solution: %v", err)
+		insyra.LogWarning("lp", "SolveModel", "Failed to create temporary file for solution: %v", err)
 		return nil, nil
 	}
 	defer func() { _ = os.Remove(tmpFile.Name()) }() // 確保在解決完成後刪除臨時文件
@@ -150,7 +154,7 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable,
 	// 上不是有效路徑，會導致 glpsol 失敗、SolveModel 只回傳錯誤資訊表。
 	lpFile, err := os.CreateTemp("", "model-*.lp")
 	if err != nil {
-		insyra.LogFatal("lp", "SolveModel", "Failed to create temporary LP file: %v", err)
+		insyra.LogWarning("lp", "SolveModel", "Failed to create temporary LP file: %v", err)
 		return nil, nil
 	}
 	defer func() { _ = os.Remove(lpFile.Name()) }()
@@ -228,23 +232,11 @@ func parseGLPKOutputFromFile(filePath string) *insyra.DataTable {
 
 // createAdditionalInfoDataTable stores additional info like execution time, status, and warnings
 func createAdditionalInfoDataTable(status string, executionTime float64, warnings, fullOutput, iterations, nodes string) *insyra.DataTable {
-	additionalInfo := map[string]any{
-		"Status":         status,
-		"Execution Time": fmt.Sprintf("%.2f seconds", executionTime),
-		"Warnings":       warnings,
-		"Full Output":    fullOutput,
-		"Iterations":     iterations,
-		"Nodes":          nodes,
-	}
+	// Fixed order: a map here made the row order differ between runs.
+	rowNames := []string{"Status", "Execution Time", "Warnings", "Full Output", "Iterations", "Nodes"}
+	values := []any{status, fmt.Sprintf("%.2f seconds", executionTime), warnings, fullOutput, iterations, nodes}
 
 	dataTable := insyra.NewDataTable()
-	rowNames := []string{}
-	values := []any{}
-
-	for name, value := range additionalInfo {
-		rowNames = append(rowNames, name)
-		values = append(values, value)
-	}
 
 	// Append results to a horizontal row
 	rowNameDl := insyra.NewDataList(rowNames)
@@ -256,16 +248,20 @@ func createAdditionalInfoDataTable(status string, executionTime float64, warning
 	return dataTable
 }
 
+// Compiled once: these ran through regexp.MustCompile on every call.
+var (
+	lpIterRe    = regexp.MustCompile(`\*\s+(\d+):`)
+	lpNodeRe    = regexp.MustCompile(`\+\s+(\d+):`)
+	lpWarningRe = regexp.MustCompile(`warning:.*`)
+)
+
 // extractIterationNodeCounts extracts iterations and node counts from the GLPK output file
 func extractIterationNodeCounts(output string) (string, string) {
 	iterations := ""
 	nodes := ""
 
-	iterRegex := regexp.MustCompile(`\*\s+(\d+):`)
-	nodeRegex := regexp.MustCompile(`\+\s+(\d+):`)
-
-	iterMatches := iterRegex.FindAllStringSubmatch(output, -1)
-	nodeMatches := nodeRegex.FindAllStringSubmatch(output, -1)
+	iterMatches := lpIterRe.FindAllStringSubmatch(output, -1)
+	nodeMatches := lpNodeRe.FindAllStringSubmatch(output, -1)
 
 	if len(iterMatches) > 0 {
 		iterations = iterMatches[len(iterMatches)-1][1]
@@ -280,8 +276,7 @@ func extractIterationNodeCounts(output string) (string, string) {
 // extractWarnings extracts warnings from the output
 func extractWarnings(output []byte) string {
 	warnings := []string{}
-	re := regexp.MustCompile(`warning:.*`)
-	matches := re.FindAllString(string(output), -1)
+	matches := lpWarningRe.FindAllString(string(output), -1)
 	warnings = append(warnings, matches...)
 	return strings.Join(warnings, "; ")
 }

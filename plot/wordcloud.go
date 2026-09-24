@@ -36,6 +36,10 @@ type WordCloudConfig struct {
 
 // CreateWordCloud generates and returns a *charts.WordCloud object based on WordCloudChartConfig.
 func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.WordCloud {
+	if isNilList(data) {
+		insyra.LogWarning("plot", "CreateWordCloud", "No data available for word cloud. Returning nil.")
+		return nil
+	}
 	wc := charts.NewWordCloud()
 
 	internal.SetBaseChartGlobalOptions(wc, internal.BaseChartConfig{

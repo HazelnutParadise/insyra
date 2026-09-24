@@ -89,6 +89,16 @@ func CreateHeatmapChart(config HeatmapChartConfig, data any) *plot.Plot {
 		insyra.LogWarning("gplot", "CreateHeatmapChart", "Empty data provided")
 		return nil
 	}
+	// gridData reports the column count from row 0 alone, and plotter.NewHeatMap
+	// reads that many values from every row, so a shorter row used to panic on an
+	// index out of range. Refuse the grid and say which row is short. A longer
+	// row is not a problem: the values past row 0's length are never read.
+	for i, row := range dataSlice {
+		if len(row) < len(dataSlice[0]) {
+			insyra.LogWarning("gplot", "CreateHeatmapChart", "Row %d has %d values, but row 0 has %d; no row may be shorter than row 0", i, len(row), len(dataSlice[0]))
+			return nil
+		}
+	}
 
 	// Create grid data
 	grid := &gridData{
@@ -99,7 +109,10 @@ func CreateHeatmapChart(config HeatmapChartConfig, data any) *plot.Plot {
 
 	// Set default values
 	colors := config.Colors
-	if colors == 0 {
+	// palette.Heat makes a slice of this length, so a negative count panicked
+	// with "makeslice: len out of range". Anything non-positive takes the
+	// default, the way 0 already did.
+	if colors <= 0 {
 		colors = 20
 	}
 	alpha := config.Alpha

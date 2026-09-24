@@ -25,10 +25,16 @@ func ReadCsvToString(filePath string, encoding ...string) (string, error) {
 	if useEncoding == Auto {
 		detected, err := insyra.DetectEncoding(filePath)
 		if err != nil {
-			return "", fmt.Errorf("failed to auto-detect encoding for %s: %v", filePath, err)
+			return "", fmt.Errorf("failed to auto-detect encoding for %s: %w", filePath, err)
 		}
 		useEncoding = detected
 		insyra.LogInfo("csvxl", "ReadCsvToString", "Auto-detected encoding %s for file %s", useEncoding, filePath)
+	}
+
+	// The content is promised as UTF-8, so an encoding nothing here decodes is
+	// an error rather than the file's raw bytes.
+	if err := csv.CheckDecodable(useEncoding); err != nil {
+		return "", fmt.Errorf("failed to read CSV file %s: %w", filePath, err)
 	}
 
 	result, err := csv.ReadCSVWithEncoding(file, useEncoding)

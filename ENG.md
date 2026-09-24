@@ -68,7 +68,7 @@ A pipeline step is a **fit function, not a configured object**. scikit-learn ref
 | Order-independence | permuting input rows fits an identical tree | `ml/decision_tree_test.go` |
 | Calibration | where a device wins, across 96 shapes | `accel/shapemap_test.go` |
 
-Cross-language tests **skip** without `Rscript` (jsonlite, cluster, dbscan) and `python` (numpy, scipy, statsmodels, sklearn, onnxruntime). Set **`INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1`** to turn every such skip into a failure naming what was missing and what went unverified; the `Reference Verification` workflow installs all of them and runs with it set. Without it the default is unchanged, so `go test ./...` still passes on a machine with none of them.
+Cross-language tests **skip** without `Rscript` (jsonlite, cluster, dbscan) and `python` (numpy, scipy, statsmodels, sklearn, onnxruntime, and cvxpy for the `quant` portfolio comparison). Set **`INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1`** to turn every such skip into a failure naming what was missing and what went unverified; the `Reference Verification` workflow installs all of them and runs with it set. Without it the default is unchanged, so `go test ./...` still passes on a machine with none of them.
 
 Every gate routes through `internal/reftest` so none can opt out of that switch. The one deliberate exception is a `psych::factor.scores` upstream bug, where R is present and broken rather than absent — failing there would fail on something nobody can install their way out of.
 
@@ -94,6 +94,14 @@ Values that cannot be read as a finite number are refused rather than converted,
 **The accumulator is the row nobody would guess.** Bit-exactness under a dispatcher that may move the CPU/device split point requires an accumulator that is **associative**, not merely deterministic — every regrouping of a floating-point sum is a different answer. Fixed point is associative. XGBoost removed its single-precision histogram option in 1.7 as "dangerous to use" and replaced it with `GradientPairInt64`; it arrived there because GPU atomics reorder and we arrive there because a dispatcher partitions, and it is the same fix.
 
 The test that makes this real: permuting 600 rows spanning magnitudes 10⁻³ to 10³ must fit a bit-identical tree. Floating-point accumulation cannot pass it.
+
+## Exact decimals
+
+An exact decimal anywhere in Insyra is a `github.com/TimLai666/go-decimal` `decimal.Decimal`. `finance` takes and returns it, `parquet` reads `Decimal128` and `Decimal256` as it, and the documentation recommends it to users for any value that has to stay exact. Do not introduce a second decimal type in a new package; a caller moving values between two of them pays a conversion and a rounding decision at every boundary.
+
+A decimal cell is not a number to core: `IsNumeric` and the numeric read path do not recognise it, the same treatment a `time.Time` cell gets, so `Mean` and `Sum` skip it and a caller converts first. Whether that should change is an open follow-up in `AGENTS.md`. Sorting does recognise it: `internal/algorithms` compares two decimals through `decimal.Cmp`, exactly, and ranks a decimal after numbers, strings and times when it meets another type. A decimal is not a map key (its `big.Int` holds a slice) and goes through `ToMapKey` like any other uncomparable value.
+
+The choice was checked against the current versions of the alternatives on 2026-09-13; the comparison and the reasons are in `Docs/Decimal.md`. The version is pinned in `go.mod` at v0.1.3. Re-check that comparison before changing the dependency, not the other way round.
 
 ## When a device may be used
 

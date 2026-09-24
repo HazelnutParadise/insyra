@@ -104,7 +104,7 @@ func MatMul(ctx context.Context, a, b []float32, m, k, n int) ([]float32, Cost, 
 			resource.Release()
 		}
 	}()
-	makeBuffer := func(label string, size uint64, usage gowgpu.BufferUsage) (*gowgpu.Buffer, error) {
+	makeBuffer := func(label string, size uint64, usage gputypes.BufferUsage) (*gowgpu.Buffer, error) {
 		buffer, bufferErr := h.device.CreateBuffer(&gowgpu.BufferDescriptor{Label: label, Size: size, Usage: usage})
 		if bufferErr != nil {
 			return nil, fmt.Errorf("%w: create %s buffer: %v", ErrBufferTooLarge, label, bufferErr)
@@ -228,7 +228,7 @@ func (h *handle) matmulPipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroupLay
 		uniform := &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform}
 		layout, err := h.device.CreateBindGroupLayout(&gowgpu.BindGroupLayoutDescriptor{
 			Label: "accel-matmul-bgl",
-			Entries: []gowgpu.BindGroupLayoutEntry{
+			Entries: []gputypes.BindGroupLayoutEntry{
 				{Binding: 0, Visibility: gowgpu.ShaderStageCompute, Buffer: readOnly},
 				{Binding: 1, Visibility: gowgpu.ShaderStageCompute, Buffer: readOnly},
 				{Binding: 2, Visibility: gowgpu.ShaderStageCompute, Buffer: storage},

@@ -14,7 +14,9 @@ import (
 // library caller, and the entry points are numerous enough that guarding each
 // one separately would drift.
 func TestClusteringEntryPointsRejectNilTables(t *testing.T) {
+	prev := insyra.Config.GetLogLevel()
 	insyra.Config.SetLogLevel(insyra.LogLevelFatal)
+	t.Cleanup(func() { insyra.Config.SetLogLevel(prev) })
 	var typedNil *insyra.DataTable
 
 	fitted, err := stats.KMeans(insyra.NewDataTable(

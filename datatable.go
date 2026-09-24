@@ -9,11 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra/internal/core"
 	"github.com/HazelnutParadise/insyra/internal/utils"
-	"github.com/HazelnutParadise/insyra/parallel"
 )
 
 // DataTable is the core data structure of Insyra for handling structured data.
@@ -44,6 +42,8 @@ type DataTable struct {
 	lastError *ErrorInfo
 }
 
+// NewDataTable creates a DataTable from the given columns, in order. A column
+// whose name collides with an earlier one is renamed with a numeric suffix.
 func NewDataTable(columns ...*DataList) *DataTable {
 	now := time.Now().Unix()
 	newTable := &DataTable{
@@ -155,7 +155,7 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable {
 	return dt
 }
 
-// AppendRowsByIndex appends rows to the DataTable, with each row represented by a map of column index and value.
+// AppendRowsByColIndex appends rows to the DataTable, with each row represented by a map of column index and value.
 // If the rows are shorter than the existing columns, nil values will be appended to match the length.
 // If the rows are longer than the existing columns, the existing columns will be extended with nil values.
 func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable {
@@ -164,7 +164,7 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
 		for i, rowData := range rowsData {
 			upperCaseRowData := make(map[string]any)
 			for colIndex, value := range rowData {
-				upperCaseRowData[strings.ToUpper(colIndex)] = value
+				upperCaseRowData[strings.ToUpper(colIndex)] = unwrapCell(value)
 			}
 			upperCaseRowsData[i] = upperCaseRowData
 		}
@@ -188,17 +188,17 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
 				colPos, ok := utils.ParseColIndex(colIndex)
 				LogDebug("DataTable", "AppendRowsByColIndex", "Handling column %s, colPos: %d, ok: %t", colIndex, colPos, ok)
 
-				if !ok || colPos < 0 || colPos >= len(dt.columns) {
-					// 如果該欄位不存在，新增該欄位
-					newCol := newEmptyDataList(maxLength)
-					dt.columns = append(dt.columns, newCol)
-					LogDebug("DataTable", "AppendRowsByColIndex", "Added new column %s at index %d", colIndex, len(dt.columns)-1)
+				if !ok || colPos < 0 {
+					dt.warn("AppendRowsByColIndex", "Invalid column index '%s', value skipped", colIndex)
+					continue
 				}
-
-				colPos, _ = utils.ParseColIndex(colIndex)
-				if colPos >= 0 && colPos < len(dt.columns) {
-					dt.columns[colPos].data = append(dt.columns[colPos].data, value)
+				// Grow the table up to and including the requested column so the
+				// value lands where the caller addressed it instead of being dropped.
+				for colPos >= len(dt.columns) {
+					dt.columns = append(dt.columns, newEmptyDataList(maxLength))
+					LogDebug("DataTable", "AppendRowsByColIndex", "Added new column at index %d for %s", len(dt.columns)-1, colIndex)
 				}
+				dt.columns[colPos].data = append(dt.columns[colPos].data, value)
 			}
 
 			// 確保所有欄位的長度一致
@@ -221,7 +221,15 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable 
 		for _, rowData := range rowsData {
 			maxLength := dt.getMaxColLength()
 
-			for colName, value := range rowData {
+			// Iterate keys in sorted order so new columns are added in a
+			// deterministic order; Go map iteration is randomized.
+			colNames := make([]string, 0, len(rowData))
+			for colName := range rowData {
+				colNames = append(colNames, colName)
+			}
+			sort.Strings(colNames)
+			for _, colName := range colNames {
+				value := unwrapCell(rowData[colName])
 				found := false
 				for i := 0; i < len(dt.columns); i++ {
 					if dt.columns[i].name == colName {
@@ -277,9 +285,20 @@ func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any {
 	return result
 }
 
+// GetElementByNumberIndex returns the cell at the given row and column numbers,
+// both 0-based. A negative index counts back from the end. An index outside the
+// table logs a warning, sets Err() and returns nil.
 func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any {
 	var result any
 	dt.AtomicDo(func(dt *DataTable) {
+		if columnIndex < 0 {
+			columnIndex += len(dt.columns)
+		}
+		if columnIndex < 0 || columnIndex >= len(dt.columns) {
+			dt.warn("GetElementByNumberIndex", "Column index is out of range, returning nil")
+			result = nil
+			return
+		}
 		if rowIndex < 0 {
 			rowIndex = len(dt.columns[columnIndex].data) + rowIndex
 		}
@@ -316,6 +335,10 @@ func (dt *DataTable) GetCol(index string) *DataList {
 	return result
 }
 
+// GetColByNumber returns a copy of the column at the given 0-based number. A
+// negative index counts back from the end. Out of range logs a warning, sets Err()
+// and returns nil. The result is a copy: appending to it does not change the
+// table.
 func (dt *DataTable) GetColByNumber(index int) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
@@ -334,6 +357,9 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 	return result
 }
 
+// GetColByName returns a copy of the column with the given name. When there is
+// none it logs a warning, sets Err() and returns nil. The result is a copy:
+// appending to it does not change the table.
 func (dt *DataTable) GetColByName(name string) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
@@ -380,6 +406,8 @@ func (dt *DataTable) GetRow(index int) *DataList {
 	return result
 }
 
+// GetRowByName returns the row with the given name as a DataList. When there is
+// none it logs a warning, sets Err() and returns nil.
 func (dt *DataTable) GetRowByName(name string) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
@@ -407,6 +435,7 @@ func (dt *DataTable) GetRowByName(name string) *DataList {
 
 // UpdateElement updates the element at the given row and column index.
 func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable {
+	value = unwrapCell(value)
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndex = strings.ToUpper(columnIndex)
 		colPos, ok := utils.ParseColIndex(columnIndex)
@@ -509,6 +538,10 @@ func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
 	columnIndex = strings.ToUpper(columnIndex)
 	dt.AtomicDo(func(dt *DataTable) {
 		column := dt.GetCol(columnIndex)
+		if column == nil {
+			dt.warn("SetColToRowNames", "Column '%s' not found, returning", columnIndex)
+			return
+		}
 		for i, value := range column.data {
 			if value != nil {
 				rowName := safeRowName(dt, conv.ToString(value))
@@ -527,6 +560,10 @@ func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
 func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		row := dt.GetRow(rowIndex)
+		if row == nil {
+			dt.warn("SetRowToColNames", "Row index %d is out of range, returning", rowIndex)
+			return
+		}
 		for i, value := range row.data {
 			if value != nil {
 				columnName := safeColName(dt, conv.ToString(value))
@@ -574,15 +611,24 @@ func (dt *DataTable) FindRowsIfContains(value any) []int {
 func (dt *DataTable) FindRowsIfContainsAll(values ...any) []int {
 	var result []int
 	dt.AtomicDo(func(dt *DataTable) {
+		matchers := valueMatchers(values)
+		for i, value := range values {
+			// This search has always compared with ==, under which a NaN
+			// never matches, unlike FindRowsIfContains. Integers now match
+			// by value here too; NaN keeps its old result.
+			if f, ok := unwrapCell(value).(float64); ok && math.IsNaN(f) {
+				matchers[i] = func(any) bool { return false }
+			}
+		}
 		// 檢查每一行是否包含所有指定的值
 		for rowIndex := 0; rowIndex < dt.getMaxColLength(); rowIndex++ {
 			foundAll := true
 
 			// 檢查該行中的所有列是否包含指定的值
-			for _, value := range values {
+			for _, matches := range matchers {
 				found := false
 				for _, column := range dt.columns {
-					if rowIndex < len(column.data) && column.data[rowIndex] == value {
+					if rowIndex < len(column.data) && matches(column.data[rowIndex]) {
 						found = true
 						break
 					}
@@ -653,7 +699,7 @@ func (dt *DataTable) FindColsIfContains(value any) []string {
 	var result []string
 	dt.AtomicDo(func(dt *DataTable) {
 		for i := range dt.columns {
-			if dt.columns[i].FindFirst(value) != nil {
+			if _, found := dt.columns[i].findFirstIndex(value); found {
 				if colName, ok := utils.CalcColIndex(i); ok {
 					result = append(result, colName)
 				}
@@ -671,7 +717,7 @@ func (dt *DataTable) FindColsIfContainsAll(values ...any) []string {
 			foundAll := true
 
 			for _, value := range values {
-				if dt.columns[i].FindFirst(value) == nil {
+				if _, found := dt.columns[i].findFirstIndex(value); !found {
 					foundAll = false
 					break
 				}
@@ -831,10 +877,7 @@ func (dt *DataTable) DropColsContainNumber() *DataTable {
 			containsNumber := false
 
 			for _, value := range column.data {
-				if _, isNumber := value.(int); isNumber {
-					containsNumber = true
-					break
-				} else if _, isNumber := value.(float64); isNumber {
+				if isBuiltinNumber(value) {
 					containsNumber = true
 					break
 				}
@@ -853,6 +896,17 @@ func (dt *DataTable) DropColsContainNumber() *DataTable {
 		dt.updateTimestamp()
 	})
 	return dt
+}
+
+// isBuiltinNumber reports whether v holds one of Go's built-in integer or float
+// types. A named numeric kind such as time.Duration is not a number here, the
+// same rule ClearNumbers uses.
+func isBuiltinNumber(v any) bool {
+	switch v.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return true
+	}
+	return false
 }
 
 // DropColsContainNil drops columns that contain nil elements.
@@ -918,21 +972,14 @@ func (dt *DataTable) DropColsContainNaN() *DataTable {
 // DropColsContain drops columns that contain the specified value.
 func (dt *DataTable) DropColsContain(value ...any) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
+		matchers := valueMatchers(value)
 		columnsToDelete := make([]int, 0)
 		for colIndex, column := range dt.columns {
 			containsValue := false
-			for _, v := range value {
-				if slices.Contains(column.data, v) {
+			for _, matches := range matchers {
+				if slices.ContainsFunc(column.data, matches) {
 					containsValue = true
 					break
-				}
-				if vFloat, ok := v.(float64); ok {
-					for _, dataValue := range column.data {
-						if dataFloat, ok := dataValue.(float64); ok && math.IsNaN(vFloat) && math.IsNaN(dataFloat) {
-							containsValue = true
-							break
-						}
-					}
 				}
 			}
 			if containsValue {
@@ -958,23 +1005,33 @@ func (dt *DataTable) DropColsContainExcelNA() *DataTable {
 // DropRowsByIndex drops rows by their indices.
 func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
-		sort.Ints(rowIndices) // 確保從最小索引開始刪除
-
-		for i, rowIndex := range rowIndices {
+		// Normalise negative indices against the ORIGINAL row count, drop
+		// out-of-range and duplicate entries, then delete from the highest
+		// index down so earlier deletions never shift a later target.
+		n := dt.getMaxColLength()
+		seen := make(map[int]struct{}, len(rowIndices))
+		targets := make([]int, 0, len(rowIndices))
+		for _, rowIndex := range rowIndices {
 			if rowIndex < 0 {
-				rowIndex = dt.getMaxColLength() + rowIndex
+				rowIndex += n
 			}
-			adjustedIndex := rowIndex - i // 因為每刪除一行，後續的行索引會變動
-			if adjustedIndex < 0 || adjustedIndex >= dt.getMaxColLength() {
+			if rowIndex < 0 || rowIndex >= n {
 				continue
 			}
+			if _, dup := seen[rowIndex]; dup {
+				continue
+			}
+			seen[rowIndex] = struct{}{}
+			targets = append(targets, rowIndex)
+		}
+		sort.Sort(sort.Reverse(sort.IntSlice(targets)))
+		for _, rowIndex := range targets {
 			for _, column := range dt.columns {
-				if adjustedIndex >= 0 && adjustedIndex < len(column.data) {
-					column.data = append(column.data[:adjustedIndex], column.data[adjustedIndex+1:]...)
+				if rowIndex < len(column.data) {
+					column.data = append(column.data[:rowIndex], column.data[rowIndex+1:]...)
 				}
 			}
-
-			dt.reindexRowNamesAfterRemoval(adjustedIndex)
+			dt.reindexRowNamesAfterRemoval(rowIndex)
 		}
 		dt.updateTimestamp()
 	})
@@ -1054,14 +1111,9 @@ func (dt *DataTable) DropRowsContainNumber() *DataTable {
 		for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
 			keepRow := true
 			for _, column := range dt.columns {
-				if rowIndex < len(column.data) {
-					if _, isNumber := column.data[rowIndex].(int); isNumber {
-						keepRow = false
-						break
-					} else if _, isNumber := column.data[rowIndex].(float64); isNumber {
-						keepRow = false
-						break
-					}
+				if rowIndex < len(column.data) && isBuiltinNumber(column.data[rowIndex]) {
+					keepRow = false
+					break
 				}
 			}
 			rowsToKeep[rowIndex] = keepRow
@@ -1180,28 +1232,13 @@ func (dt *DataTable) DropRowsContain(value ...any) *DataTable {
 		maxLength := dt.getMaxColLength()
 		rowsToKeep := make([]bool, maxLength)
 
-		hasNaNInValue := false
-		for _, v := range value {
-			if f, ok := v.(float64); ok && math.IsNaN(f) {
-				hasNaNInValue = true
-				break
-			}
-		}
-
+		matchers := valueMatchers(value)
 		for rowIndex := range maxLength {
 			keepRow := true
 			for _, column := range dt.columns {
-				if rowIndex < len(column.data) && slices.Contains(value, column.data[rowIndex]) {
+				if rowIndex < len(column.data) && matchesAny(matchers, column.data[rowIndex]) {
 					keepRow = false
 					break
-				}
-				if hasNaNInValue {
-					if rowIndex < len(column.data) {
-						if dataFloat, ok := column.data[rowIndex].(float64); ok && math.IsNaN(dataFloat) {
-							keepRow = false
-							break
-						}
-					}
 				}
 			}
 			rowsToKeep[rowIndex] = keepRow
@@ -1229,6 +1266,9 @@ func (dt *DataTable) DropRowsContainExcelNA() *DataTable {
 
 // ======================== Data ========================
 
+// Data returns every column's values, keyed by column name when the column has
+// one and by Excel-style index otherwise. Pass false to key by index throughout.
+// The slices share storage with the table, so copy one before changing it.
 func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 	var result map[string][]any
 	dt.AtomicDo(func(dt *DataTable) {
@@ -1271,12 +1311,11 @@ func (dt *DataTable) ToMap(useNamesAsKeys ...bool) map[string][]any {
 func (dt *DataTable) Count(value any) int {
 	var count float64
 	dt.AtomicDo(func(dt *DataTable) {
-		result := asyncutil.ParallelForEach(dt.columns, func(i int, column any) int {
-			return dt.columns[i].Count(value)
-		})
-		count = NewDataList(result).Sum()
+		for _, column := range dt.columns {
+			count += float64(column.Count(value))
+		}
 	})
-	return conv.ParseInt(count)
+	return int(count)
 }
 
 // Counter returns the number of occurrences of the given value in the DataTable.
@@ -1287,7 +1326,7 @@ func (dt *DataTable) Counter() map[any]int {
 		result = make(map[any]int)
 		for _, column := range dt.columns {
 			for _, value := range column.data {
-				result[value] += 1
+				result[ToMapKey(value)] += 1
 			}
 		}
 	})
@@ -1304,6 +1343,8 @@ func (dt *DataTable) Size() (numRows int, numCols int) {
 	return rows, cols
 }
 
+// NumRows returns the length of the longest column, which is how many rows the
+// table has when its columns are ragged.
 func (dt *DataTable) NumRows() int {
 	var numRows int
 	dt.AtomicDo(func(dt *DataTable) {
@@ -1312,6 +1353,7 @@ func (dt *DataTable) NumRows() int {
 	return numRows
 }
 
+// NumCols returns the number of columns.
 func (dt *DataTable) NumCols() int {
 	var numCols int
 	dt.AtomicDo(func(dt *DataTable) {
@@ -1325,10 +1367,18 @@ func (dt *DataTable) Mean() any {
 	var result any
 	dt.AtomicDo(func(dt *DataTable) {
 		var totalSum float64
-		rowNum, colNum := dt.getMaxColLength(), len(dt.columns)
-		totalCount := rowNum * colNum
+		totalCount := 0
 		for _, column := range dt.columns {
-			totalSum += column.Sum()
+			for _, v := range column.data {
+				if f, ok := ToFloat64Safe(v); ok {
+					totalSum += f
+					totalCount++
+				}
+			}
+		}
+		if totalCount == 0 {
+			result = math.NaN()
+			return
 		}
 		result = totalSum / float64(totalCount)
 	})
@@ -1361,10 +1411,14 @@ func (dt *DataTable) Transpose() *DataTable {
 
 		newDt.lastModifiedTimestamp.Store(dt.GetLastModifiedTimestamp())
 
-		for i, col := range dls {
+		for _, col := range dls {
 			newDt.AppendRowsFromDataList(col)
-			if name, ok := nameByIndex[i]; ok {
-				newDt.columns[i].name = name
+		}
+		// Every old row name becomes the name of the matching new column,
+		// independent of how many columns the old table had.
+		for rowIndex, name := range nameByIndex {
+			if rowIndex >= 0 && rowIndex < len(newDt.columns) {
+				newDt.columns[rowIndex].name = name
 			}
 		}
 
@@ -1387,13 +1441,10 @@ func (dt *DataTable) Clone() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		clonedColumns := make([]*DataList, len(dt.columns))
 		var clonedRowNames *core.BiIndex
-		parallel.GroupUp(func() {
-			for i, col := range dt.columns {
-				clonedColumns[i] = col.Clone()
-			}
-		}, func() {
-			clonedRowNames = dt.rowNames.Clone()
-		}).Run().AwaitResult()
+		for i, col := range dt.columns {
+			clonedColumns[i] = col.Clone()
+		}
+		clonedRowNames = dt.rowNames.Clone()
 
 		newDT = &DataTable{
 			columns:           clonedColumns,
@@ -1575,9 +1626,9 @@ func safeColName(dt *DataTable, name string) string {
 	return name
 }
 
-// containsSubstring 是一個輔助函數，用來檢查一個字符串是否包含子字符串
+// containsSubstring reports whether value contains substring.
 func containsSubstring(value string, substring string) bool {
-	return len(value) >= len(substring) && (value == substring || len(value) > len(substring) && (value[:len(substring)] == substring || containsSubstring(value[1:], substring)))
+	return strings.Contains(value, substring)
 }
 
 func (dt *DataTable) updateTimestamp() {
@@ -1588,10 +1639,13 @@ func (dt *DataTable) updateTimestamp() {
 	}
 }
 
+// GetCreationTimestamp returns when the table was created, as Unix seconds.
 func (dt *DataTable) GetCreationTimestamp() int64 {
 	return dt.creationTimestamp
 }
 
+// GetLastModifiedTimestamp returns when the table was last changed, as Unix
+// seconds. Two changes within the same second are indistinguishable.
 func (dt *DataTable) GetLastModifiedTimestamp() int64 {
 	return dt.lastModifiedTimestamp.Load()
 }
@@ -1617,14 +1671,44 @@ func (dt *DataTable) ClearErr() *DataTable {
 	return dt
 }
 
+// PopErr returns the error recorded on this DataTable and clears it, so a chain can
+// be checked and the table reused in one step. It returns nil when no error is
+// recorded.
+func (dt *DataTable) PopErr() *ErrorInfo {
+	err := dt.lastError
+	dt.lastError = nil
+	return err
+}
+
+// SetErr records an error on this DataTable the way insyra's own methods do: it
+// logs a warning and sets Err(), replacing any error recorded earlier. Wrapper
+// packages such as isr use it so their failures reach the caller the same way
+// the core's do.
+//
+// packageName and funcName identify the reporting call site (for example
+// "isr", "DT.From"); msg and args are formatted with fmt.Sprintf.
+func (dt *DataTable) SetErr(packageName, funcName, msg string, args ...any) *DataTable {
+	fullMsg := fmt.Sprintf(msg, args...)
+	LogWarning(packageName, funcName, "%s", fullMsg)
+	dt.setError(LogLevelWarning, packageName, funcName, fullMsg)
+	return dt
+}
+
 // setError is an internal method to record an error on the DataTable instance.
 func (dt *DataTable) setError(level LogLevel, packageName, funcName, message string) {
+	dt.setErrorCause(level, packageName, funcName, message, nil)
+}
+
+// setErrorCause is setError plus the underlying error, so errors.As can reach a
+// typed cause through Err().
+func (dt *DataTable) setErrorCause(level LogLevel, packageName, funcName, message string, cause error) {
 	dt.lastError = &ErrorInfo{
 		Level:       level,
 		PackageName: packageName,
 		FuncName:    funcName,
 		Message:     message,
 		Timestamp:   time.Now(),
+		Cause:       cause,
 	}
 }
 
@@ -1634,4 +1718,13 @@ func (dt *DataTable) warn(funcName, msg string, args ...any) {
 	fullMsg := fmt.Sprintf(msg, args...)
 	LogWarning("DataTable", funcName, "%s", fullMsg)
 	dt.setError(LogLevelWarning, "DataTable", funcName, fullMsg)
+}
+
+// warnErr is warn for a failure that is already an error value: it logs the
+// error's text as a warning and records it with the value kept as the cause,
+// so a caller can errors.As it through Err().
+func (dt *DataTable) warnErr(funcName string, err error) {
+	msg := err.Error()
+	LogWarning("DataTable", funcName, "%s", msg)
+	dt.setErrorCause(LogLevelWarning, "DataTable", funcName, msg, err)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/HazelnutParadise/insyra"
@@ -15,18 +14,21 @@ import (
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
 )
 
-// ReadOptions: The options for reading Parquet files
+// ReadOptions selects what a read covers. An empty field means everything.
 type ReadOptions struct {
 	Columns   []string // empty=all
 	RowGroups []int    // empty=all
 }
 
-// ReadColumnOptions: Only for ReadColumn (to avoid putting individual requirements into ReadOptions)
+// ReadColumnOptions are the options ReadColumn takes. They are separate from
+// ReadOptions so a limit that only makes sense for one column does not appear on
+// every read.
 type ReadColumnOptions struct {
 	RowGroups []int // empty=all
 	MaxValues int64 // 0=no limit; if exceeded, return error to avoid RAM explosion
 }
 
+// FileInfo is what Inspect reports about a file.
 type FileInfo struct {
 	NumRows      int64
 	NumRowGroups int
@@ -37,6 +39,7 @@ type FileInfo struct {
 	RowGroups    []RowGroupInfo
 }
 
+// ColumnInfo describes one column's schema.
 type ColumnInfo struct {
 	Name         string
 	PhysicalType string
@@ -44,13 +47,14 @@ type ColumnInfo struct {
 	Repetition   string
 }
 
+// RowGroupInfo describes one row group's size.
 type RowGroupInfo struct {
 	NumRows             int64
 	TotalByteSize       int64
 	TotalCompressedSize int64
 }
 
-// Inspect: inspect parquet file metadata
+// Inspect reads a Parquet file's metadata without reading any values.
 func Inspect(path string) (FileInfo, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -63,7 +67,7 @@ func Inspect(path string) (FileInfo, error) {
 			if errors.Is(err, os.ErrClosed) {
 				return
 			}
-			log.Printf("parquet: failed to close file %s: %v", path, err)
+			insyra.LogWarning("parquet", "close", "failed to close file %s: %v", path, err)
 		}
 	}()
 
@@ -73,7 +77,7 @@ func Inspect(path string) (FileInfo, error) {
 	}
 	defer func() {
 		if err := r.Close(); err != nil {
-			log.Printf("parquet: failed to close reader for %s: %v", path, err)
+			insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", path, err)
 		}
 	}()
 
@@ -127,24 +131,18 @@ func Inspect(path string) (FileInfo, error) {
 	return info, nil
 }
 
-// Write: write insyra.DataTable to parquet file
+// Write writes dt to path as a Parquet file, creating or truncating it. It
+// writes to path directly, so a failure part-way can leave an incomplete file
+// there.
 func Write(dt insyra.IDataTable, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			// NewFileWriter.Writer.Close() may already close the underlying file.
-			if errors.Is(err, os.ErrClosed) {
-				return
-			}
-			log.Printf("parquet: failed to close file %s: %v", path, err)
-		}
-	}()
 
 	arrowTable, err := dataTableToArrowTable(dt)
 	if err != nil {
+		_ = f.Close()
 		return err
 	}
 	defer arrowTable.Release()
@@ -153,18 +151,23 @@ func Write(dt insyra.IDataTable, path string) error {
 
 	writer, err := pqarrow.NewFileWriter(arrowTable.Schema(), f, parquet.NewWriterProperties(parquet.WithCreatedBy(createdBy)), pqarrow.DefaultWriterProps())
 	if err != nil {
+		_ = f.Close()
 		return err
 	}
-	defer func() {
-		if err := writer.Close(); err != nil {
-			log.Printf("parquet: failed to close writer for %s: %v", path, err)
-		}
-	}()
-
-	return writer.WriteTable(arrowTable, 1024*1024) // chunk size
+	if err := writer.WriteTable(arrowTable, 1024*1024); err != nil {
+		_ = writer.Close()
+		return err
+	}
+	// pqarrow.FileWriter.Close writes the footer and closes the underlying
+	// *os.File as well, so its error decides whether the file is readable.
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("parquet: failed to close writer: %w", err)
+	}
+	return nil
 }
 
-// Read: read parquet file into insyra.DataTable at once
+// Read reads a Parquet file into a DataTable in one go. For a file too large to
+// hold in memory, use Stream.
 func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -176,7 +179,7 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 			if errors.Is(err, os.ErrClosed) {
 				return
 			}
-			log.Printf("parquet: failed to close file %s: %v", path, err)
+			insyra.LogWarning("parquet", "close", "failed to close file %s: %v", path, err)
 		}
 	}()
 
@@ -186,7 +189,7 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 	}
 	defer func() {
 		if err := r.Close(); err != nil {
-			log.Printf("parquet: failed to close reader for %s: %v", path, err)
+			insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", path, err)
 		}
 	}()
 
@@ -236,13 +239,29 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 	for i := 0; i < int(arrowTable.NumCols()); i++ {
 		col := arrowTable.Column(i)
 		data := chunkedToSlice(col.Data())
-		dataTable.AppendCols(insyra.NewDataList(data).SetName(col.Name()))
+		// getVal already yields nil for a type it cannot represent; the reason
+		// has to be recorded here, where the column's name and type are known.
+		if !supportedArrowType(col.DataType()) {
+			dataTable.SetErr("parquet", "Read", unsupportedColumnMsg, col.Name(), col.DataType())
+		}
+		dataTable.AppendCols(newColumn(data, col.Name()))
 	}
 
 	return dataTable, nil
 }
 
-// Stream: streaming read parquet file, returning insyra.DataTable batches
+// Stream reads a Parquet file batch by batch, sending each batch as a DataTable.
+// The caller must either read dtChan to completion or cancel ctx. The channel
+// is unbuffered, so a consumer that stops part-way leaves the producing
+// goroutine parked on its next send for the life of the process. Ranging over
+// dtChan and then checking errChan does the right thing; breaking out of the
+// range does not unless ctx is cancelled:
+//
+//	ctx, cancel := context.WithCancel(context.Background())
+//	defer cancel()
+//	dtChan, errChan := parquet.Stream(ctx, path, parquet.ReadOptions{}, 1000)
+//	for dt := range dtChan { … }
+//	if err := <-errChan; err != nil { … }
 func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error) {
 	dtChan := make(chan *insyra.DataTable)
 	errChan := make(chan error, 1)
@@ -265,7 +284,15 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<
 				return // Stream finished or errored
 			case rec, ok := <-recChan:
 				if !ok {
-					return // Stream closed
+					// The reader closes its error channel before its record
+					// channel, so this receive cannot block. Read it rather than
+					// letting the select choose between two ready cases, which
+					// would drop an error reported after the last batch and end
+					// the stream as if the file had been read in full.
+					if err := <-internalErrChan; err != nil {
+						errChan <- err
+					}
+					return
 				}
 				dt := recordToDataTable(rec)
 				rec.Release()
@@ -283,12 +310,48 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<
 	return dtChan, errChan
 }
 
-// ReadColumn: read a single column's data from Parquet file.
-// Returns insyra.DataList.
+// ReadColumn reads a single column from a Parquet file into a DataList.
+// When opt.MaxValues > 0, the row count of the selected row groups (all when
+// none are selected) is taken from the file metadata first, and an error is
+// returned before any value is read if it exceeds the limit.
 func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnOptions) (*insyra.DataList, error) {
+	if opt.MaxValues > 0 {
+		n, err := selectedRowCount(path, opt.RowGroups)
+		if err != nil {
+			return nil, err
+		}
+		if n > opt.MaxValues {
+			return nil, fmt.Errorf("column %s holds %d values in the selected row groups, exceeding MaxValues %d", column, n, opt.MaxValues)
+		}
+	}
 	table, err := Read(ctx, path, ReadOptions{Columns: []string{column}, RowGroups: opt.RowGroups})
 	if err != nil {
 		return nil, err
 	}
-	return table.GetCol("A"), nil
+	list := table.GetCol("A")
+	// Err() lives on the table, and the caller only gets the list.
+	if e := table.Err(); e != nil {
+		list.SetErr("parquet", "ReadColumn", "%s", e.Message)
+	}
+	return list, nil
+}
+
+// selectedRowCount sums the row counts of the given row groups from the file
+// metadata, or of every row group when none are given.
+func selectedRowCount(path string, rowGroups []int) (int64, error) {
+	info, err := Inspect(path)
+	if err != nil {
+		return 0, err
+	}
+	if len(rowGroups) == 0 {
+		return info.NumRows, nil
+	}
+	var n int64
+	for _, rg := range rowGroups {
+		if rg < 0 || rg >= len(info.RowGroups) {
+			return 0, fmt.Errorf("row group %d out of range (file has %d)", rg, len(info.RowGroups))
+		}
+		n += info.RowGroups[rg].NumRows
+	}
+	return n, nil
 }

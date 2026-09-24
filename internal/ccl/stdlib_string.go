@@ -2,8 +2,10 @@ package ccl
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -34,9 +36,11 @@ func runeSlice(s string, start, length int) string {
 	if start >= n {
 		return ""
 	}
-	end := start + length
-	if end > n {
-		end = n
+	// length may be huge (MID('abc', 2, 10^300)); compare instead of adding
+	// so the end index cannot overflow.
+	end := n
+	if length < n-start {
+		end = start + length
 	}
 	return string(runes[start:end])
 }
@@ -95,7 +99,11 @@ func registerStringFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("LEFT: count arg must be a number, got %T", args[1])
 		}
-		return runeSlice(s, 0, int(n)), nil
+		count, err := clampedInt(n, "LEFT: count")
+		if err != nil {
+			return nil, err
+		}
+		return runeSlice(s, 0, count), nil
 	})
 
 	registerFunction("RIGHT", func(args ...any) (any, error) {
@@ -107,7 +115,10 @@ func registerStringFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("RIGHT: count arg must be a number, got %T", args[1])
 		}
-		count := int(n)
+		count, err := clampedInt(n, "RIGHT: count")
+		if err != nil {
+			return nil, err
+		}
 		if count <= 0 {
 			return "", nil
 		}
@@ -132,8 +143,15 @@ func registerStringFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("length arg must be a number, got %T", args[2])
 		}
-		startIdx := int(start) - 1 // convert to 0-based
-		return runeSlice(s, startIdx, int(length)), nil
+		first, err := clampedInt(start, "start")
+		if err != nil {
+			return nil, err
+		}
+		count, err := clampedInt(length, "length")
+		if err != nil {
+			return nil, err
+		}
+		return runeSlice(s, first-1, count), nil // start is 1-based
 	}
 	registerFunction("MID", func(args ...any) (any, error) {
 		v, err := mid(args...)
@@ -202,7 +220,7 @@ func registerStringFunctions() {
 		}
 		s := toString(args[0])
 		pat := toString(args[1])
-		re, err := regexp.Compile(pat)
+		re, err := compiledPattern(pat)
 		if err != nil {
 			return nil, fmt.Errorf("REGEX_MATCH: invalid pattern: %w", err)
 		}
@@ -218,10 +236,57 @@ func registerStringFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("REPEAT: count arg must be a number, got %T", args[1])
 		}
+		// int(n) on NaN, ±Inf or a value past the int64 range differs by
+		// platform, and strings.Repeat panics on a negative count. A fraction
+		// truncates toward zero, so a count between -1 and 0 is 0, as it was
+		// on v0.3.2.
+		if math.IsNaN(n) || n <= -1 || n >= 1<<63 {
+			return nil, fmt.Errorf("REPEAT: count must truncate to a non-negative integer within int64, got %v", args[1])
+		}
+		if s == "" {
+			return "", nil
+		}
 		count := int(n)
-		if count < 0 {
-			return nil, fmt.Errorf("REPEAT: negative count %d", count)
+		// strings.Repeat panics when the result's length overflows int.
+		if count > 0 && len(s) > math.MaxInt/count {
+			return nil, fmt.Errorf("REPEAT: a result of %d x %d bytes is too long", len(s), count)
 		}
 		return strings.Repeat(s, count), nil
 	})
+}
+
+// maxCachedPatterns bounds the compiled-pattern cache. A CCL pattern is almost
+// always a literal in the expression, so a handful of entries covers real use;
+// the cap exists because a pattern built from a column would otherwise add one
+// entry per row. When it is reached the cache is dropped whole rather than
+// evicted one at a time — at this size the difference does not pay for the
+// bookkeeping.
+const maxCachedPatterns = 256
+
+var (
+	patternMu    sync.Mutex
+	patternCache = map[string]*regexp.Regexp{}
+)
+
+// compiledPattern returns the compiled form of pat, compiling it at most once.
+// REGEX_MATCH used to compile per row: 106ms against CONTAINS's 15ms over
+// 100,000 rows.
+func compiledPattern(pat string) (*regexp.Regexp, error) {
+	patternMu.Lock()
+	re, ok := patternCache[pat]
+	patternMu.Unlock()
+	if ok {
+		return re, nil
+	}
+	re, err := regexp.Compile(pat)
+	if err != nil {
+		return nil, err
+	}
+	patternMu.Lock()
+	if len(patternCache) >= maxCachedPatterns {
+		patternCache = map[string]*regexp.Regexp{}
+	}
+	patternCache[pat] = re
+	patternMu.Unlock()
+	return re, nil
 }

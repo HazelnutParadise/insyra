@@ -202,9 +202,10 @@ func AtomicDoWithInit[T any](actor *AtomicActor, owner *T, f func(*T), initHook 
 		actor.holder.Store(0)
 		actor.mu.Unlock()
 	}()
-	if actor.closed.Load() {
-		return
-	}
+	// If the actor was closed while this goroutine waited for the mutex, still
+	// run f. Close means "stop locking from now on" (the pre-lock path above
+	// runs f inline for exactly that reason); dropping an operation that was
+	// already queued would silently lose the caller's write with no error.
 	f(owner)
 }
 
@@ -213,7 +214,11 @@ func AtomicDoWithInit[T any](actor *AtomicActor, owner *T, f func(*T), initHook 
 // deadlock-free way to operate on several instances atomically, replacing the
 // racy pattern of nesting AtomicDo on different instances. Actors may belong to
 // different groups; nil/closed actors and actors already held by this goroutine
-// are skipped, and duplicate pointers are de-duplicated.
+// are skipped, and duplicate pointers are de-duplicated. Called from inside an
+// AtomicDo on one of the actors, it locks the others while this goroutine keeps
+// holding that one, so two goroutines nesting it in mirror image (G1 holds a and
+// asks for b, G2 holds b and asks for a) can deadlock; call it from the
+// outermost level when that can happen.
 func AtomicDoN(actors []*AtomicActor, f func()) {
 	AtomicDoNWithInit(actors, nil, f)
 }
@@ -288,8 +293,10 @@ func AtomicDoNWithInit(actors []*AtomicActor, initHooks []func(), f func()) {
 	f()
 }
 
-// Close marks the actor as closed. Subsequent AtomicDo calls run inline
-// (no locking) so close-during-shutdown paths can't deadlock.
+// Close marks the actor as closed: later AtomicDo calls run inline instead of
+// locking, so a close-during-shutdown path cannot deadlock. Work that is
+// already queued on the mutex still runs — Close drops the locking, never the
+// operation.
 func (a *AtomicActor) Close() {
 	if a == nil {
 		return

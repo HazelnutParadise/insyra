@@ -40,7 +40,7 @@ Options specifically for the `ReadColumn` function.
 ```go
 type ReadColumnOptions struct {
     RowGroups []int // RowGroup indices to read; if empty, all RowGroups are read
-    MaxValues int64 // Maximum number of values to read; 0 means no limit. If exceeded, an error is returned to prevent memory overflow.
+    MaxValues int64 // Maximum number of values to read; 0 means no limit. The row count of the selected RowGroups is checked from the file metadata before any value is read; if it exceeds MaxValues an error naming both numbers is returned.
 }
 ```
 
@@ -98,13 +98,59 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 - `*insyra.DataTable`: Return value.
 - `error`: Error when the operation fails.
 
+**Column types:** the table below is what each Arrow column type in the file
+becomes in Go. A type that is not listed has no faithful Go representation, so
+its cells are read as `nil` and the reason, naming the column and the Arrow
+type, is recorded on the returned table's `Err()` and logged as a warning. When
+more than one column is affected, each is logged and `Err()` holds the last
+one. The rest of the file still reads normally, and `ReadOptions.Columns` can
+be used to skip such a column entirely.
+
+| Arrow column type | Go value |
+| --- | --- |
+| `Int8`, `Int16`, `Int32`, `Int64` | `int8`, `int16`, `int32`, `int64` |
+| `Uint8`, `Uint16`, `Uint32`, `Uint64` | `uint8`, `uint16`, `uint32`, `uint64` |
+| `Float32`, `Float64` | `float32`, `float64` |
+| `Bool` | `bool` |
+| `String`, `LargeString` | `string` |
+| `Binary`, `LargeBinary`, `FixedSizeBinary` | `[]byte`, so a binary column is never mistaken for a text one; `Show` prints each cell as hex, shortened for a value longer than 20 bytes (for example `30313233343536373839... (26 bytes)`) |
+| `Timestamp` | `time.Time` |
+| `Date32`, `Date64` | `time.Time` at UTC midnight |
+| `Decimal128`, `Decimal256` | `decimal.Decimal` ([go-decimal](https://github.com/TimLai666/go-decimal)), exact |
+| `Null` | `nil` in every cell, which is all such a column holds; no reason is recorded |
+| anything else | `nil`, with the reason on `Err()` |
+
+A `Decimal` keeps the file's own unscaled integer and scale, so nothing is
+rounded, and it sorts by value rather than by the text of its digits. Like a
+`time.Time`, it is not a number to `Mean`, `Sum` and the rest of the numeric
+path; convert it first if you need arithmetic. See [Exact Decimals](Decimal.md).
+
+A binary column exports to JSON as base64, which is what a `[]byte` becomes
+in JSON, so nothing is lost. `Write` still writes a column of `[]byte` cells
+as a string column holding Go's text for the slice, such as `[65 45 48 49]`,
+so a read-then-write round trip keeps neither the binary type nor the bytes.
+
+A dictionary-encoded column reads as the values it holds, in the Go type the
+table above gives their Arrow type, so a pandas `category` column of strings
+reads as strings. That holds whether the reader materialises the column or, for
+a file that stores its Arrow schema, hands it over as an Arrow dictionary. A
+dictionary whose values have no Go representation reads as `nil`, with the
+reason on `Err()`.
+
+`Stream` and `ReadColumn` read the same types the same way, and record the
+reason on each batch or on the returned list. `ReadColumn` selects a column by
+its Parquet leaf name, so a nested column (`List`, `Struct`, `Map`), whose leaf
+is not named after the field, cannot be selected by name: it reports that the
+column is not found. `FilterWithCCL` also sees `nil`
+for an unsupported column, but records no reason.
+
 ### Write
 
 ```go
 func Write(dt insyra.IDataTable, path string) error
 ```
 
-**Description:** Writes an `insyra.IDataTable` to a Parquet file.
+**Description:** Writes an `insyra.IDataTable` to a Parquet file. The file footer is written when the writer closes, so an error from that close is returned rather than only logged.
 
 **Parameters:**
 
@@ -141,7 +187,7 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<
 func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnOptions) (*insyra.DataList, error)
 ```
 
-**Description:** Reads data from a single column in a Parquet file, returning an `insyra.DataList`.
+**Description:** Reads data from a single column in a Parquet file, returning an `insyra.DataList`. When `opt.MaxValues > 0`, the row count of the selected row groups (all when none are selected) is taken from the metadata first and the call is refused before reading if it exceeds the limit.
 
 **Parameters:**
 
@@ -185,7 +231,8 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 
 **Returns:**
 
-- A new `DataTable` containing only rows that satisfy the filter condition
+- A new `DataTable` containing only rows that satisfy the filter condition, however large the file. When nothing matches, the table has the file's columns and no rows.
+- An error when the expression does not compile, when it cannot be evaluated against a row, or when the file cannot be read — including a read that fails part-way. A read failure is always reported as an error; a partial table is never returned in its place.
 - The original Parquet file is **not modified**
 
 **Example:**

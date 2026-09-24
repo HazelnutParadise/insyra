@@ -53,6 +53,12 @@ func LagrangeInterpolation(data []float64, x float64) (float64, error) {
 	if n < 2 {
 		return 0, ErrNotEnoughData
 	}
+	// A NaN x produces a NaN answer with no error, which is the same silent
+	// failure NearestNeighborInterpolation had.
+	if math.IsNaN(x) {
+		return 0, ErrOutOfBounds
+	}
+
 	result := 0.0
 	for i := 0; i < n; i++ {
 		term := data[i]
@@ -70,6 +76,13 @@ func NearestNeighborInterpolation(data []float64, x float64) (float64, error) {
 	if len(data) == 0 {
 		return 0, ErrOutOfBounds
 	}
+	// Every comparison against NaN is false, so a NaN x used to walk straight
+	// through the search and answer data[0] — or come out as NaN — while the
+	// other interpolations refused it.
+	if math.IsNaN(x) {
+		return 0, ErrOutOfBounds
+	}
+
 	closestIndex := 0
 	minDiff := math.Abs(x - 0)
 	for i := 1; i < len(data); i++ {
@@ -90,6 +103,12 @@ func NewtonInterpolation(data []float64, x float64) (float64, error) {
 	if n < 2 {
 		return 0, ErrNotEnoughData
 	}
+	// A NaN x produces a NaN answer with no error, which is the same silent
+	// failure NearestNeighborInterpolation had.
+	if math.IsNaN(x) {
+		return 0, ErrOutOfBounds
+	}
+
 	dividedDiff := make([]float64, n)
 	copy(dividedDiff, data)
 	for i := 1; i < n; i++ {
@@ -104,6 +123,20 @@ func NewtonInterpolation(data []float64, x float64) (float64, error) {
 	return result, nil
 }
 
+// HermiteInterpolation evaluates the Hermite interpolant of data and its
+// derivatives at x. The nodes are the indices 0, 1, ... len(data)-1, so the
+// result passes through every data[i] at x = i AND has slope derivatives[i]
+// there.
+//
+// It uses the standard basis
+//
+//	H_i(x)  = (1 - 2(x - x_i) L'_i(x_i)) L_i(x)^2
+//	Ĥ_i(x) = (x - x_i) L_i(x)^2
+//
+// where L_i is the Lagrange basis polynomial and L'_i(x_i) = Σ_{j≠i} 1/(x_i - x_j).
+// The earlier implementation used L_i itself instead of L_i squared and left
+// out the derivative correction factor, so it met none of the slope
+// conditions and was not a Hermite interpolant at all.
 func HermiteInterpolation(data []float64, derivatives []float64, x float64) (float64, error) {
 	n := len(data)
 	if n != len(derivatives) {
@@ -114,13 +147,21 @@ func HermiteInterpolation(data []float64, derivatives []float64, x float64) (flo
 	}
 	result := 0.0
 	for i := 0; i < n; i++ {
-		h := 1.0
+		xi := float64(i)
+		li := 1.0      // L_i(x)
+		lipAtXi := 0.0 // L'_i(x_i)
 		for j := 0; j < n; j++ {
-			if i != j {
-				h *= (x - float64(j)) / (float64(i) - float64(j))
+			if i == j {
+				continue
 			}
+			xj := float64(j)
+			li *= (x - xj) / (xi - xj)
+			lipAtXi += 1.0 / (xi - xj)
 		}
-		result += data[i]*h + derivatives[i]*h*(x-float64(i))
+		li2 := li * li
+		h := (1 - 2*(x-xi)*lipAtXi) * li2
+		hHat := (x - xi) * li2
+		result += data[i]*h + derivatives[i]*hHat
 	}
 	return result, nil
 }

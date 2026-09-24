@@ -91,7 +91,7 @@ func PMT(rate decimal.Decimal, nper int, pv, fv decimal.Decimal, timing PaymentT
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(pmt), nil
+	return o.finish(pmt)
 }
 
 // PV computes the present value of an annuity (or loan) given the
@@ -114,7 +114,7 @@ func PV(rate decimal.Decimal, nper int, pmt, fv decimal.Decimal, timing PaymentT
 	if isZero(rate) {
 		// PV + PMT*n + FV = 0  =>  PV = -(FV + PMT*n)
 		sum := decimal.Add(work, fv, decimal.Mul(work, pmt, nperD))
-		return o.outCtx().Normalize(neg(sum)), nil
+		return o.finish(neg(sum))
 	}
 
 	q, err := powInt(work, onePlus(work, rate), nper)
@@ -136,7 +136,7 @@ func PV(rate decimal.Decimal, nper int, pmt, fv decimal.Decimal, timing PaymentT
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(pv), nil
+	return o.finish(pv)
 }
 
 // FV computes the future value of an annuity given the periodic rate,
@@ -156,7 +156,7 @@ func FV(rate decimal.Decimal, nper int, pmt, pv decimal.Decimal, timing PaymentT
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(fv), nil
+	return o.finish(fv)
 }
 
 // NPER computes the number of periods required to satisfy the TVM
@@ -182,7 +182,7 @@ func NPER(rate, pmt, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Optio
 		if err != nil {
 			return decimal.Decimal{}, err
 		}
-		return o.outCtx().Normalize(n), nil
+		return o.finish(n)
 	}
 
 	// Solve q = (c - fv) / (pv + c), n = ln(q)/ln(1+r), where
@@ -217,7 +217,7 @@ func NPER(rate, pmt, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Optio
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	return o.outCtx().Normalize(n), nil
+	return o.finish(n)
 }
 
 // RATE solves for the periodic interest rate that satisfies the TVM
@@ -258,7 +258,7 @@ func RATE(nper int, pmt, pv, fv decimal.Decimal, timing PaymentTiming, guess dec
 			return decimal.Decimal{}, err
 		}
 		if absCmp(f, tol) <= 0 {
-			return o.outCtx().Normalize(r), nil
+			return o.finish(r)
 		}
 
 		fp, err := tvmResidual(work, decimal.Add(work, r, h), nper, pmt, pv, fv, timing)
@@ -285,7 +285,7 @@ func RATE(nper int, pmt, pv, fv decimal.Decimal, timing PaymentTiming, guess dec
 		r = decimal.Sub(work, r, delta)
 
 		if absCmp(delta, tol) <= 0 {
-			return o.outCtx().Normalize(r), nil
+			return o.finish(r)
 		}
 	}
 	return decimal.Decimal{}, fmt.Errorf("RATE did not converge in %d iterations", maxIter)

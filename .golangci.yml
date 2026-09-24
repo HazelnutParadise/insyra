@@ -10,3 +10,9 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+
+# gofmt runs as part of `golangci-lint run`, so the lint job fails on any
+# file gofmt would change.
+formatters:
+  enable:
+    - gofmt

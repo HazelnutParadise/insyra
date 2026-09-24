@@ -7,8 +7,10 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
@@ -17,6 +19,14 @@ import (
 type F64orRat interface {
 	float64 | *big.Rat
 }
+
+// The bounds of int64 as float64 values. 2^63 is the first value past the top
+// of the range and is exactly representable, so a float is convertible when it
+// is at least minInt64AsFloat and strictly below twoToThe63.
+const (
+	minInt64AsFloat = -9223372036854775808.0
+	twoToThe63      = 9223372036854775808.0
+)
 
 // ToFloat64 converts any numeric value to float64.
 func ToFloat64(v any) float64 {
@@ -46,8 +56,33 @@ func ToFloat64(v any) float64 {
 	case float64:
 		return v
 	default:
-		return 0
+		// A named type over a numeric kind — `type Celsius float64` — does not
+		// match any case above, but IsNumeric (which goes through reflection)
+		// calls it a number. One of the two had to be wrong about every
+		// user-defined numeric type; the reflect fallback is the same shape
+		// accel's projection settled on, and it only runs for values the type
+		// switch already missed.
+		f, _ := reflectToFloat64(v)
+		return f
 	}
+}
+
+// reflectToFloat64 converts a named type over a numeric kind. It reports false
+// for anything else, including nil.
+func reflectToFloat64(v any) (float64, bool) {
+	if v == nil {
+		return 0, false
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return float64(rv.Int()), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return float64(rv.Uint()), true
+	case reflect.Float32, reflect.Float64:
+		return rv.Float(), true
+	}
+	return 0, false
 }
 
 // ToFloat64Safe tries to convert any numeric value to float64 and returns a boolean indicating success.
@@ -56,7 +91,7 @@ func ToFloat64Safe(v any) (float64, bool) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		return ToFloat64(v), true
 	default:
-		return 0, false
+		return reflectToFloat64(v)
 	}
 }
 
@@ -65,8 +100,12 @@ func ParseColIndex(colIndex string) (colNumber int, ok bool) {
 	if len(colIndex) == 0 {
 		return -1, false
 	}
-	result := 0
-	// Process bytes directly to avoid allocation from strings.ToUpper
+	// Accumulate the 0-based index directly rather than the 1-based value and
+	// subtracting at the end: the largest index CalcColIndex can produce needs
+	// a 1-based value of maxInt+1, so the old form rejected its own output.
+	// Going straight to 0-based, z_next = z*26 + (v + 25).
+	const maxInt = int(^uint(0) >> 1)
+	z := 0
 	for i := 0; i < len(colIndex); i++ {
 		c := colIndex[i]
 		var v int
@@ -77,14 +116,17 @@ func ParseColIndex(colIndex string) (colNumber int, ok bool) {
 		} else {
 			return -1, false
 		}
-		// Overflow check: ensure result*26 + v fits into int
-		maxInt := int(^uint(0) >> 1)
-		if result > (maxInt-v)/26 {
+		if i == 0 {
+			z = v - 1
+			continue
+		}
+		step := v + 25
+		if z > (maxInt-step)/26 {
 			return -1, false
 		}
-		result = result*26 + v
+		z = z*26 + step
 	}
-	return result - 1, true
+	return z, true
 }
 
 func CalcColIndex(colNumber int) (colIndex string, ok bool) {
@@ -112,6 +154,11 @@ func CalcColIndex(colNumber int) (colIndex string, ok bool) {
 
 // TruncateString 截斷字符串到指定寬度，太長的字符串末尾加上省略號，使用 runewidth 計算字元寬度
 func TruncateString(s string, maxLength int) string {
+	// 負的寬度沒有意義，而且會讓下面的 rs[:maxLength] 以負邊界切片而 panic。
+	// 當成 0 處理，回傳空字串。
+	if maxLength < 0 {
+		maxLength = 0
+	}
 	// 總寬度小於等於限制，直接返回
 	if runewidth.StringWidth(s) <= maxLength {
 		return s
@@ -157,9 +204,13 @@ func FormatValue(value any) string {
 			return "-Inf"
 		}
 
-		// 針對整數值的浮點數使用整數格式
-		if v == float64(int(v)) {
-			return fmt.Sprintf("%d", int(v))
+		// 針對整數值的浮點數使用整數格式。int(v) 對超出範圍的浮點數在 Go 裡
+		// 沒有定義結果（amd64 得到 MinInt64，arm64 飽和到 MaxInt64），過去
+		// 2^63 在 Mac 上會印成 9223372036854775807，比實際值少 1，而在
+		// Linux／Windows 上印成指數形式。轉換前先確認落在 int64 範圍內：
+		// 上界寫成嚴格小於 2^63，因為 float64(math.MaxInt64) 會進位成 2^63。
+		if v >= minInt64AsFloat && v < twoToThe63 && v == math.Trunc(v) {
+			return fmt.Sprintf("%d", int64(v))
 		}
 
 		// 根據大小動態調整小數位數
@@ -170,7 +221,14 @@ func FormatValue(value any) string {
 		// 顯示數字，但不顯示尾部的零
 		s := fmt.Sprintf("%.4f", v)
 		s = strings.TrimRight(s, "0")
-		return strings.TrimRight(s, ".")
+		s = strings.TrimRight(s, ".")
+		// 四捨五入到小數第四位後，9999.99999 會變成 "10000"，把一個不是整數的
+		// 值顯示成整數。近似值帶著小數點還看得出是近似，整數不會，所以這種情況
+		// 改用完整表示法。
+		if !strings.ContainsAny(s, ".eE") {
+			return strconv.FormatFloat(v, 'f', -1, 64)
+		}
+		return s
 
 	case float32:
 		return FormatValue(float64(v))
@@ -185,6 +243,15 @@ func FormatValue(value any) string {
 		return "false"
 
 	case string:
+		// 不是合法的 UTF-8 就不是文字。把那些位元組加引號交給終端機，除了看不懂
+		// 之外還會讓整列歪掉：runewidth 把 NUL 算 0 欄寬、把非法位元組算成一個
+		// U+FFFD，而終端機實際畫幾欄由它自己決定，實測差一欄。改走 []byte 的
+		// 顯示方式，同一條「這是位元組不是文字」的規則，而且十六進位是 ASCII，
+		// 欄寬算得準。這個檢查要在多行判斷之前，因為位元組裡剛好有 0x0a 不代表
+		// 它是多行字串。
+		if !utf8.ValidString(v) {
+			return FormatValue([]byte(v))
+		}
 		// 如果是多行字符串，只顯示第一行
 		if strings.Contains(v, "\n") {
 			lines := strings.Split(v, "\n")
@@ -232,6 +299,20 @@ func FormatValue(value any) string {
 				return "{}"
 			}
 			return fmt.Sprintf("{...%d keys}", size)
+		}
+
+		// 值自己知道怎麼轉成文字就用它的文字。放在 struct 分支之前，因為
+		// 型別名稱對讀表格的人沒有用：一個從 Parquet 讀進來的十進位欄位
+		// 整欄印成 <decimal.Decimal>，值就看不見了。上面有專屬 case 的型別
+		// （time.Time 等）走不到這裡，行為不變。
+		// nil 指標要先排除：元素型別有值接收者 String() 時（例如 *time.Time），
+		// nil 指標也算 fmt.Stringer，但呼叫 String() 會 panic。交給 %v 印成
+		// <nil>，和過去一樣。
+		if kind == reflect.Pointer && rv.IsNil() {
+			return fmt.Sprintf("%v", value)
+		}
+		if s, ok := value.(fmt.Stringer); ok {
+			return s.String()
 		}
 
 		// 檢測是否是結構體
@@ -289,9 +370,18 @@ func convertTimestampToString(ts int64, goDateFormat string) string {
 		base := time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
 		t := base.AddDate(0, 0, int(ts))
 		return t.Format(goDateFormat)
-	} else if ts >= 1000000000000 && ts < 100000000000000 { // 13 digits, milliseconds
-		// Unix timestamp in milliseconds
-		t := time.Unix(0, ts*int64(time.Millisecond)).UTC()
+	} else if ts >= 1000000000000 && ts < 1000000000000000 { // 13-15 digits, milliseconds
+		// Unix timestamp in milliseconds. time.UnixMilli rather than
+		// time.Unix(0, ts*int64(time.Millisecond)): that multiplication
+		// overflows int64 above 9223372036854 ms (about 2262-04-11), which is
+		// well inside the range this branch accepts, and silently produced a
+		// different date.
+		t := time.UnixMilli(ts).UTC()
+		return t.Format(goDateFormat)
+	} else if ts >= 1000000000000000 && ts < 1000000000000000000 { // 16-18 digits, microseconds
+		// Without this window a 16-digit stamp was read as seconds, which put a
+		// 2023 date in the year 53872.
+		t := time.UnixMicro(ts).UTC()
 		return t.Format(goDateFormat)
 	} else if ts >= 1000000000000000000 { // 19 digits, nanoseconds
 		// Unix timestamp in nanoseconds
@@ -306,13 +396,29 @@ func convertTimestampToString(ts int64, goDateFormat string) string {
 
 // TryParseTime attempts to parse common date/time string formats and returns
 // the parsed time and true on success. Exported so other packages can reuse it.
+//
+// Both "-" and "/" date separators are accepted, with or without a time part
+// and with or without a zone; a layout that carries no zone is read as UTC.
+// Strings that are not dates (plain numbers, words) never match, so callers
+// such as CCL can use it to probe a value.
 func TryParseTime(str string) (time.Time, bool) {
+	// Longest first, so "2006-01-02 15:04:05" is not truncated by a shorter
+	// layout. Layouts without a zone are read as UTC (time.Parse's rule).
 	formats := []string{
-		time.RFC3339,
 		time.RFC3339Nano,
-		"2006-01-02",
-		"2006-01-02T15:04:05Z07:00",
+		time.RFC3339,
 		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02T15:04:05.999999999",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		"2006/01/02 15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02 15:04",
+		"2006/01/02 15:04",
+		"2006-01-02",
+		"2006/01/02",
 	}
 	for _, f := range formats {
 		if t, err := time.Parse(f, str); err == nil {

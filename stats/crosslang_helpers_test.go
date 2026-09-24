@@ -23,11 +23,14 @@ type crossLangBaseline map[string]any
 
 // ----- baseline cache + concurrency control -----
 //
-// Each baseline call is keyed by SHA256(scriptContent || exe || method ||
-// payloadJSON). Cached responses live under testdata/baseline_cache/<exe>/
-// <hash>.json. Editing the .R or .py script automatically invalidates every
-// cached entry derived from it because the script content participates in
-// the hash. Subprocess concurrency is capped to avoid swamping the OS with
+// Each baseline call is keyed by SHA256(exe || toolchain || method ||
+// scriptContent || payloadJSON), where toolchain is the interpreter and
+// package versions the exe reports (toolchainSignature). Cached responses
+// live under testdata/baseline_cache/<exe>/<hash>.json. Editing the .R or
+// .py script, or upgrading the reference packages, invalidates every cached
+// entry derived from them: a cache produced by one psych answered for
+// another until 2026-09-12, when nobody could say which R the numbers came
+// from. Subprocess concurrency is capped to avoid swamping the OS with
 // hundreds of simultaneous Rscript / python interpreters.
 
 var (
@@ -73,9 +76,36 @@ func loadScriptContent(scriptPath string) ([]byte, error) {
 	return data, nil
 }
 
-func baselineCacheKey(scriptContent []byte, exe, method string, payloadJSON []byte) string {
+// toolchainSignature is what the reference interpreter says about itself and
+// the packages the baseline scripts load, probed once per test process. A
+// probe that fails contributes its error, so a broken toolchain cannot alias
+// a working one.
+func toolchainSignature(exe string) string {
+	if v, ok := toolchainSignatureCache.Load(exe); ok {
+		return v.(string)
+	}
+	var cmd *exec.Cmd
+	if exe == "Rscript" {
+		cmd = exec.Command(exe, "-e", `cat(R.version.string, as.character(packageVersion("psych")), as.character(packageVersion("GPArotation")), as.character(packageVersion("jsonlite")), sep="|")`)
+	} else {
+		cmd = exec.Command(exe, "-c", "import sys, numpy, scipy, statsmodels\nprint(sys.version.split()[0], numpy.__version__, scipy.__version__, statsmodels.__version__, sep='|')")
+	}
+	out, err := cmd.CombinedOutput()
+	sig := strings.TrimSpace(string(out))
+	if err != nil {
+		sig = "probe-failed:" + err.Error() + ":" + sig
+	}
+	toolchainSignatureCache.Store(exe, sig)
+	return sig
+}
+
+var toolchainSignatureCache sync.Map
+
+func baselineCacheKey(scriptContent []byte, exe, toolchain, method string, payloadJSON []byte) string {
 	h := sha256.New()
 	h.Write([]byte(exe))
+	h.Write([]byte{0})
+	h.Write([]byte(toolchain))
 	h.Write([]byte{0})
 	h.Write([]byte(method))
 	h.Write([]byte{0})
@@ -190,7 +220,7 @@ func runBaselineScript(t *testing.T, exe, scriptPath, method string, payload any
 	if err != nil {
 		t.Fatalf("read baseline script %q failed: %v", scriptPath, err)
 	}
-	hash := baselineCacheKey(scriptContent, exe, method, raw)
+	hash := baselineCacheKey(scriptContent, exe, toolchainSignature(exe), method, raw)
 	cachePath := baselineCachePath(exe, hash)
 	if cached, ok := readBaselineCache(cachePath); ok {
 		return cached

@@ -74,6 +74,25 @@ func NewDataList(values ...any) *DataList
 - **Arrays** are kept as single elements (e.g., `[3]int{1, 2, 3}` remains as one element)
 - Nested slices are recursively flattened
 - Other types are preserved as-is
+- Wrap an argument in `insyra.Cell` to keep it whole, inline among ordinary
+  values. The cell holds the value at its own type; the mark is removed on the
+  way in and is never stored:
+
+```go
+insyra.NewDataList(insyra.Cell([]int{1, 2}), 3, "a")   // three cells
+insyra.NewDataList([]int{1, 2}, 3, "a")                // four cells
+```
+
+  `Append`, `Update`, `InsertAt`, the `Replace` and `Replace…With` methods,
+  `UpdateElement`, the row appenders and the `DataTable` replace methods
+  accept it too. Those never flatten, so it changes nothing there — it is
+  accepted so that writing it for consistency is not a trap. `Shift` is
+  different: it builds its result with `NewDataList`, so a slice given as its
+  fill value is flattened unless it is wrapped in `Cell`. On `[1, 2, 3]`,
+  `Shift(1, []int{7, 8})` gives `[7 8 1 2]`, while
+  `Shift(1, insyra.Cell([]int{7, 8}))` gives `[[7 8] 1 2]`. A search (`Count`, `FindAll`, …) with a marked value gives
+  the same answer as with the bare value. A slice in a cell is counted and
+  matched by its content.
 
 **Example:**
 
@@ -1999,6 +2018,8 @@ func (dl *DataList) HermiteInterpolation(x float64, derivatives []float64) float
 
 **Description:** Performs Hermite interpolation with derivatives for a given x value.
 
+The interpolant now satisfies its defining conditions: it passes through every value **and** matches every supplied derivative at the corresponding index. Earlier versions used the wrong basis and met neither.
+
 **Parameters:**
 
 - `x`: The x-value for interpolation
@@ -2052,6 +2073,8 @@ func (dl *DataList) ShowRangeTo(w io.Writer, startEnd ...any) // same output, wr
 
 **Description:** Displays DataList content within a specified range. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout.
 
+The end index is exclusive, and a negative end counts back from the end and stays exclusive — exactly like a Python slice, so `ShowRange(2, -1)` stops before the last item. Pass `nil` as the end to run all the way to the end.
+
 **Parameters:**
 
 - `startEnd`: Variable parameters for range specification
@@ -2072,6 +2095,7 @@ dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 dl.ShowRange(3)      // Show first 3 items
 dl.ShowRange(-3)     // Show last 3 items
 dl.ShowRange(2, 5)   // Show items from index 2 to 4
+dl.ShowRange(2, -1)  // Show items from index 2 up to but NOT including the last one
 dl.ShowRange(5, nil) // Show items from index 5 to end
 ```
 
@@ -2145,7 +2169,7 @@ dl.ShowTypesRange(2, nil) // Show types from index 2 to end
 func (dl *DataList) IsEqualTo(other *DataList) bool
 ```
 
-**Description:** Checks if the data content is equal to another DataList.
+**Description:** Checks if the data content is equal to another DataList. A cell Go cannot compare with `==` (such as a struct holding a slice) is compared by its type and content instead of panicking, so a copy holding the same content is equal; a scalar `NaN` is still unequal to `NaN`.
 
 **Parameters:**
 
@@ -2432,6 +2456,8 @@ timestamp := dl.GetLastModifiedTimestamp()
 
 ## Utility Methods
 
+**How a value is matched.** `Count`, `FindFirst`, `FindLast`, `FindAll`, the `Replace` methods and `DropAll` compare cells the same way. An integer matches an integer of the same value whatever their Go types, so `Count(2)` finds the `int64` 2s a CSV load produces. A float never matches an integer: search with `2.0` to find `2.0`. `NaN` matches `NaN`. `IsEqualTo` is stricter, because it asks whether two lists hold identical data: it compares cell by cell including the Go type, so `[1]` and `[int64(1)]` are not equal.
+
 ### Count
 
 ```go
@@ -2478,6 +2504,34 @@ func (dl *DataList) Counter() map[any]int
 dl := insyra.NewDataList(1, 2, 2, 3, 2, 4)
 counter := dl.Counter()
 // Returns: map[1:1 2:3 3:1 4:1]
+```
+
+**Values Go cannot use as a map key.** A cell holding a slice, a map, or
+anything containing one — a `[]byte` read from a SQL BLOB column, for
+instance — cannot be a key in the returned map. Such a value is keyed by an
+`insyra.UncomparableKey` standing in for it. Comparable values are still keyed
+by themselves, so `counter[1]` and `counter["a"]` work as before, and printing
+the whole map stays readable: a stand-in shows as its type with a shortened
+form of its content, such as `[]uint8(00ff41)`.
+
+**To read one value's count, use `Count`, not this map.** `Count` matches
+integers by value, where the map keys them by Go type: a CSV load stores
+integers as `int64`, so `counter[1]` finds nothing in a counter built from
+loaded data while `Count(1)` is right. `Count` also finds an uncomparable
+value, which is the whole reason the two now agree.
+
+```go
+n := dl.Count(someValue)
+```
+
+`insyra.ToMapKey(v)` builds the key. Use it when you index the counter yourself
+rather than asking about one value, and in any map, set or index of your own
+over cell values — indexing a map with a slice panics, and that is your own
+map operation, which no library can guard:
+
+```go
+counter := dl.Counter()
+n := counter[insyra.ToMapKey(blob)]
 ```
 
 ### FindFirst
@@ -2583,7 +2637,7 @@ dl.ReplaceFirst(2, 99)
 func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList
 ```
 
-**Description:** Replaces the last occurrence of a value with a new value.
+**Description:** Replaces the last occurrence of a value with a new value. Only cells equal to `oldValue` are candidates; a `NaN` cell matches only when `oldValue` is itself `NaN`.
 
 **Parameters:**
 
@@ -2629,7 +2683,7 @@ dl.ReplaceAll(2, 99)
 
 ## Error Handling
 
-Insyra provides both a global error buffer and instance-level error tracking for `DataList`. For fluent/chained operations, use the instance-level `Err()` method to check for errors after a chain and `ClearErr()` to clear them before continuing.
+Insyra provides both a global error buffer and instance-level error tracking for `DataList`. For fluent/chained operations, use the instance-level `Err()` method to check for errors after a chain, `PopErr()` to read and clear in one step, and `ClearErr()` to clear them before continuing.
 
 ### Instance-Level Error Checking
 
@@ -2645,6 +2699,11 @@ if err := dl.Err(); err != nil {
     // Handle the error
 }
 
+// Or read and clear in one step
+if err := dl.PopErr(); err != nil {
+    fmt.Printf("Error occurred: %s\n", err.Message)
+}
+
 // Clear the error for future operations and continue chaining
 dl.ClearErr()
 ```
@@ -2654,7 +2713,9 @@ dl.ClearErr()
 | Method                 | Description                                                                                     |
 | ---------------------- | ----------------------------------------------------------------------------------------------- |
 | `Err() *ErrorInfo`     | Returns the last error that occurred during a chained operation, or `nil` if no error occurred. |
+| `PopErr() *ErrorInfo`  | Returns the last error and clears it, so the list can be reused straight away.                  |
 | `ClearErr() *DataList` | Clears the last error and returns the DataList for continued chaining.                          |
+| `SetErr(pkg, fn, msg string, args ...any) *DataList` | Records an error the way insyra's own methods do: logs a warning and sets `Err()`, replacing any earlier error. Wrapper packages (such as `isr`) use it; application code rarely needs it. |
 
 > **Note:** `setError` is an internal helper used by methods to record the last error on the instance. Most chainable methods will call it when an operation fails.
 
@@ -2720,7 +2781,7 @@ insyra.AtomicDoAll(func() {
 }, a, b)
 ```
 
-`insyra.AtomicDoAll(f func(), instances ...any)` accepts any mix of `*DataList` / `*DataTable`; instances already held by the current goroutine, and duplicates, are handled automatically.
+`insyra.AtomicDoAll(f func(), instances ...any)` accepts any mix of `*DataList` / `*DataTable`; duplicates are handled automatically, and a nil instance is skipped instead of panicking. Instances the current goroutine already holds (it is inside that instance's `AtomicDo`) are skipped and the others are still locked. Two goroutines doing that in mirror image — one inside `a.AtomicDo` asking for `b`, the other inside `b.AtomicDo` asking for `a` — can wait on each other forever, so call it from the outermost level when that can happen.
 
 Guidelines
 

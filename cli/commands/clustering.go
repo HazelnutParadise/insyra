@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats"
@@ -159,31 +160,34 @@ func runSilhouetteCommand(ctx *ExecContext, args []string) error {
 
 func parseKMeansOptions(args []string) (stats.KMeansOptions, error) {
 	opts := stats.KMeansOptions{}
+	const supported = "nstart, itermax, seed"
 	for i := 0; i < len(args); i += 2 {
 		if i+1 >= len(args) {
-			return opts, fmt.Errorf("missing value for option %s", args[i])
+			return opts, fmt.Errorf("kmeans: option %q needs a value (supported: %s)", args[i], supported)
 		}
-		switch args[i] {
+		// Option keys are matched without regard to case, like every other
+		// option in the CLI; NSTART used to be an unknown option.
+		switch strings.ToLower(args[i]) {
 		case "nstart":
 			v, err := strconv.Atoi(args[i+1])
 			if err != nil {
-				return opts, fmt.Errorf("invalid nstart: %s", args[i+1])
+				return opts, fmt.Errorf("kmeans: invalid nstart %q, expected a whole number", args[i+1])
 			}
 			opts.NStart = v
 		case "itermax":
 			v, err := strconv.Atoi(args[i+1])
 			if err != nil {
-				return opts, fmt.Errorf("invalid itermax: %s", args[i+1])
+				return opts, fmt.Errorf("kmeans: invalid itermax %q, expected a whole number", args[i+1])
 			}
 			opts.IterMax = v
 		case "seed":
 			v, err := strconv.ParseInt(args[i+1], 10, 64)
 			if err != nil {
-				return opts, fmt.Errorf("invalid seed: %s", args[i+1])
+				return opts, fmt.Errorf("kmeans: invalid seed %q, expected a whole number", args[i+1])
 			}
 			opts.Seed = &v
 		default:
-			return opts, fmt.Errorf("unknown option: %s", args[i])
+			return opts, fmt.Errorf("kmeans: unknown option %q (supported: %s)", args[i], supported)
 		}
 	}
 	return opts, nil

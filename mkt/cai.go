@@ -1,6 +1,7 @@
 package mkt
 
 import (
+	"sort"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -63,13 +64,13 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 
 	dateFormat := caiConfig.DateFormat
 	if dateFormat == "" {
-		insyra.LogInfo("mkt", "CustomerActivityIndex", "DateFormat not specified, defaulting to YYYY-MM-DD")
+		insyra.LogDebug("mkt", "CustomerActivityIndex", "DateFormat not specified, defaulting to YYYY-MM-DD")
 		dateFormat = "YYYY-MM-DD" // 預設使用 ISO 8601 格式（大寫）
 	}
 
 	timeScale := caiConfig.TimeScale
 	if timeScale == "" {
-		insyra.LogInfo("mkt", "CustomerActivityIndex", "TimeScale not specified, defaulting to daily")
+		insyra.LogDebug("mkt", "CustomerActivityIndex", "TimeScale not specified, defaulting to daily")
 		timeScale = TimeScaleDaily // 預設使用每日時間尺度
 	}
 
@@ -171,7 +172,13 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 		insyra.NewDataList().SetName("WMLE"),
 		insyra.NewDataList().SetName("CAI"),
 	)
-	for customerID, mle := range customerMLEs {
+	customerIDs := make([]string, 0, len(customerMLEs))
+	for customerID := range customerMLEs {
+		customerIDs = append(customerIDs, customerID)
+	}
+	sort.Strings(customerIDs) // 可重現的輸出順序
+	for _, customerID := range customerIDs {
+		mle := customerMLEs[customerID]
 		wmle := customerWMLEs[customerID]
 		cai := (mle - wmle) / mle * 100 // 百分比表示
 		resultDT.AppendRowsByColName(map[string]any{
