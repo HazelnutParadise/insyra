@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"iter"
 	"os"
 
@@ -145,31 +146,14 @@ func Write(dt insyra.IDataTable, path string) error {
 	}
 	cleanup := func() { _ = os.Remove(tmpPath) }
 
-	arrowTable, err := dataTableToArrowTable(dt)
-	if err != nil {
+	if err := WriteTo(dt, f); err != nil {
 		_ = f.Close()
 		cleanup()
 		return err
 	}
-	defer arrowTable.Release()
-
-	createdBy := fmt.Sprintf("go-insyra v%s", insyra.Version)
-
-	writer, err := pqarrow.NewFileWriter(arrowTable.Schema(), f, parquet.NewWriterProperties(parquet.WithCreatedBy(createdBy)), pqarrow.DefaultWriterProps())
-	if err != nil {
-		_ = f.Close()
+	if err := f.Close(); err != nil {
 		cleanup()
-		return err
-	}
-	if err := writer.WriteTable(arrowTable, 1024*1024); err != nil {
-		_ = writer.Close()
-		cleanup()
-		return err
-	}
-	// pqarrow.FileWriter.Close closes the underlying *os.File as well.
-	if err := writer.Close(); err != nil {
-		cleanup()
-		return fmt.Errorf("parquet: failed to close writer: %w", err)
+		return fmt.Errorf("parquet: failed to close %s: %w", tmpPath, err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		cleanup()
@@ -177,6 +161,40 @@ func Write(dt insyra.IDataTable, path string) error {
 	}
 	return nil
 }
+
+// WriteTo writes dt as Parquet to any destination — an HTTP response, an S3
+// upload, a buffer — the same way Write writes a file. It does not close w:
+// the caller owns it.
+func WriteTo(dt insyra.IDataTable, w io.Writer) error {
+	arrowTable, err := dataTableToArrowTable(dt)
+	if err != nil {
+		return err
+	}
+	defer arrowTable.Release()
+
+	createdBy := fmt.Sprintf("go-insyra v%s", insyra.Version)
+
+	// The Parquet writer closes its sink when it is closed, if the sink is an
+	// io.Closer. Hiding Close keeps the caller's writer open.
+	writer, err := pqarrow.NewFileWriter(arrowTable.Schema(), writerOnly{w}, parquet.NewWriterProperties(parquet.WithCreatedBy(createdBy)), pqarrow.DefaultWriterProps())
+	if err != nil {
+		return err
+	}
+	if err := writer.WriteTable(arrowTable, 1024*1024); err != nil {
+		_ = writer.Close()
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("parquet: failed to close writer: %w", err)
+	}
+	return nil
+}
+
+// writerOnly exposes only Write, so a writer handed to WriteTo is never
+// closed on the caller's behalf.
+type writerOnly struct{ w io.Writer }
+
+func (o writerOnly) Write(p []byte) (int, error) { return o.w.Write(p) }
 
 // Read reads a Parquet file into a DataTable in one go. For a file too large to
 // hold in memory, use Stream.
@@ -194,14 +212,27 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 			insyra.LogWarning("parquet", "close", "failed to close file %s: %v", path, err)
 		}
 	}()
+	return readTableFrom(ctx, f, path, opt)
+}
 
-	r, err := file.NewParquetReader(f)
+// ReadFrom reads a Parquet file from any source with random access — an open
+// file, a *bytes.Reader, an S3 range reader — the same way Read reads a path.
+// Parquet keeps its index at the end of the file, so reading needs to seek:
+// hence an io.ReaderAt and the total size rather than a plain io.Reader.
+func ReadFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions) (*insyra.DataTable, error) {
+	return readTableFrom(ctx, io.NewSectionReader(r, 0, size), "the Parquet input", opt)
+}
+
+// readTableFrom is the one reader behind Read and ReadFrom. label names the
+// source in messages.
+func readTableFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string, opt ReadOptions) (*insyra.DataTable, error) {
+	r, err := file.NewParquetReader(src)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
 		if err := r.Close(); err != nil {
-			insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", path, err)
+			insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", label, err)
 		}
 	}()
 
@@ -276,12 +307,29 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 // stops the reader, so nothing is left running whether or not ctx is
 // cancelled. Cancelling ctx ends the sequence with the context's error.
 func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) iter.Seq2[*insyra.DataTable, error] {
+	return streamSeq(ctx, func(inner context.Context) (<-chan arrow.Record, <-chan error) {
+		return streamAsArrowRecord(inner, path, opt, batchSize)
+	})
+}
+
+// StreamFrom reads a Parquet file batch by batch from any source with random
+// access, the same way Stream reads a path; see ReadFrom for why it takes an
+// io.ReaderAt and the size.
+func StreamFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions, batchSize int) iter.Seq2[*insyra.DataTable, error] {
+	return streamSeq(ctx, func(inner context.Context) (<-chan arrow.Record, <-chan error) {
+		return streamArrowRecordsFrom(inner, io.NewSectionReader(r, 0, size), "the Parquet input", opt, batchSize, nil)
+	})
+}
+
+// streamSeq turns a record stream into the iterator Stream and StreamFrom
+// return. The reader answers to a context of its own, so returning from here
+// — the loop ended, or the caller broke out of it — stops the reader too.
+func streamSeq(ctx context.Context, start func(context.Context) (<-chan arrow.Record, <-chan error)) iter.Seq2[*insyra.DataTable, error] {
 	return func(yield func(*insyra.DataTable, error) bool) {
-		// The reader answers to this context, so returning from here — the
-		// loop ended, or the caller broke out of it — stops the reader too.
 		inner, cancel := context.WithCancel(ctx)
 		defer cancel()
-		dtChan, errChan := streamTables(inner, path, opt, batchSize)
+		recChan, recErrChan := start(inner)
+		dtChan, errChan := streamTables(inner, recChan, recErrChan)
 		for dt := range dtChan {
 			if !yield(dt, nil) {
 				return
@@ -295,15 +343,13 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) it
 
 // streamTables is the reader behind Stream: it sends each batch on dtChan and
 // the one error, if any, on errChan, and stops when ctx is cancelled.
-func streamTables(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error) {
+func streamTables(ctx context.Context, recChan <-chan arrow.Record, internalErrChan <-chan error) (<-chan *insyra.DataTable, <-chan error) {
 	dtChan := make(chan *insyra.DataTable)
 	errChan := make(chan error, 1)
 
 	go func() {
 		defer close(dtChan)
 		defer close(errChan)
-
-		recChan, internalErrChan := streamAsArrowRecord(ctx, path, opt, batchSize)
 
 		for {
 			select {

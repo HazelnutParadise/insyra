@@ -14,44 +14,59 @@ import (
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow/go/v17/parquet"
 	"github.com/apache/arrow/go/v17/parquet/file"
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
 )
 
 // streamAsArrowRecord：串流讀（可選欄、可選包），一批一批吐出 arrow.Record
 func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan arrow.Record, <-chan error) {
+	f, err := os.Open(path)
+	if err != nil {
+		recChan := make(chan arrow.Record)
+		errChan := make(chan error, 1)
+		errChan <- err
+		close(errChan)
+		close(recChan)
+		return recChan, errChan
+	}
+	return streamArrowRecordsFrom(ctx, f, path, opt, batchSize, func() {
+		if err := f.Close(); err != nil {
+			// Reader.Close() may already close the underlying file, the same
+			// way Read and Inspect allow for. Without this guard every
+			// successful Stream, FilterWithCCL and ApplyCCL logged a warning.
+			if errors.Is(err, os.ErrClosed) {
+				return
+			}
+			insyra.LogWarning("parquet", "close", "failed to close file %s: %v", path, err)
+		}
+	})
+}
+
+// streamArrowRecordsFrom streams record batches from any seekable source.
+// label names the source in messages, and done, when given, runs as the
+// reader finishes. The error channel is closed before the record channel,
+// which the consumers rely on to never trade a late error for a partial
+// result.
+func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string, opt ReadOptions, batchSize int, done func()) (<-chan arrow.Record, <-chan error) {
 	recChan := make(chan arrow.Record)
 	errChan := make(chan error, 1)
 
 	go func() {
 		defer close(recChan)
 		defer close(errChan)
-
-		f, err := os.Open(path)
-		if err != nil {
-			errChan <- err
-			return
+		if done != nil {
+			defer done()
 		}
-		defer func() {
-			if err := f.Close(); err != nil {
-				// Reader.Close() may already close the underlying file, the same
-				// way Read and Inspect allow for. Without this guard every
-				// successful Stream, FilterWithCCL and ApplyCCL logged a warning.
-				if errors.Is(err, os.ErrClosed) {
-					return
-				}
-				insyra.LogWarning("parquet", "close", "failed to close file %s: %v", path, err)
-			}
-		}()
 
-		r, err := file.NewParquetReader(f)
+		r, err := file.NewParquetReader(src)
 		if err != nil {
 			errChan <- err
 			return
 		}
 		defer func() {
 			if err := r.Close(); err != nil {
-				insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", path, err)
+				insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", label, err)
 			}
 		}()
 
