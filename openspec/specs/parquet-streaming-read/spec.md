@@ -2,9 +2,7 @@
 
 ## Purpose
 What the batch-by-batch read path guarantees to the caller: `FilterWithCCL` returns every matching row however large the file, `FilterWithCCL`, `ApplyCCL` and `Stream` report a read failure rather than handing back a partial answer, and a call that succeeds logs nothing. `parquet-read-column-limit` covers a different thing — `ReadColumn`'s `MaxValues` guard.
-
 ## Requirements
-
 ### Requirement: A streaming filter returns every matching row
 
 `parquet.FilterWithCCL` SHALL return every row of the file that satisfies the expression, whatever the file's size relative to the internal batch size. It SHALL NOT append into a value obtained from `DataTable.GetColByNumber`, which returns a copy.
@@ -32,3 +30,20 @@ What the batch-by-batch read path guarantees to the caller: `FilterWithCCL` retu
 #### Scenario: A successful filter
 - **WHEN** `FilterWithCCL` 正常完成
 - **THEN** 沒有 `failed to close file` 警告
+
+### Requirement: Stopping a stream early leaves nothing running
+
+`parquet.Stream` SHALL return an `iter.Seq2[*insyra.DataTable, error]`. Leaving the range loop before the last batch SHALL stop the reading goroutines without the caller cancelling anything. A read failure SHALL arrive once, as a nil table with the error, and end the sequence. Cancelling the context SHALL end the sequence with the context's error.
+
+#### Scenario: Break after the first batch
+- **WHEN** a caller ranges over a file of several batches and breaks after the first, without cancelling its context
+- **THEN** every goroutine the stream started has returned
+
+#### Scenario: Every batch
+- **WHEN** a caller ranges to the end
+- **THEN** it receives every row of the file and no error
+
+#### Scenario: A file that cannot be opened
+- **WHEN** the path does not exist
+- **THEN** the sequence yields one nil table with the error and ends
+
