@@ -1332,7 +1332,7 @@ converged, and when it did not, the rotation logs one warning naming the
 method, the number of starts and the iteration cap. A start that ran out of
 iterations is otherwise reported at debug level only, because it is not the
 answer. `MaxIter` governs extraction and is not passed to the rotation,
-which uses R's own defaults of `eps = 1e-5` and `maxit = 1000`.
+which always runs with `eps = 1e-5` and `maxit = 1000`.
 
 #### FactorAnalysisResult
 
