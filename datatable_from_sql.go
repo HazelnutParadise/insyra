@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"iter"
 	"reflect"
 	"strconv"
 	"strings"
@@ -95,84 +96,73 @@ func ReadSQLContext(ctx context.Context, db *gorm.DB, tableName string, options 
 	return dt, err
 }
 
-// ReadSQLChunk is a streamed slice of rows produced by ReadSQLStream. Exactly
-// one of Table or Err is set per chunk.
-type ReadSQLChunk struct {
-	Table *DataTable
-	Err   error
-}
-
-// ReadSQLStream reads a (potentially huge) query result in chunks, emitting
-// each chunk as a DataTable on the returned channel. The channel is closed
-// when the stream completes, when ctx is cancelled, or after a fatal error.
+// ReadSQLStream reads a (potentially huge) query result chunk by chunk. Range
+// over it:
+//
+//	for dt, err := range insyra.ReadSQLStream(ctx, db, "orders") {
+//		if err != nil {
+//			return err
+//		}
+//		// use dt
+//	}
+//
+// Each chunk arrives as a DataTable with a nil error. A failure — building or
+// running the query, scanning a row, or ctx being cancelled — arrives once, as
+// a nil table and the error, and ends the loop. The query runs when the loop
+// starts, and chunks are read in the caller's own goroutine, so leaving the
+// loop early closes the rows and returns the connection to the pool at once:
+// there is nothing left running and nothing to cancel.
 //
 // Chunk size is controlled by options[0].ChunkSize; zero means use the package
-// default (1000 rows). The reader goroutine respects ctx cancellation between
-// rows.
-//
-// IMPORTANT: the caller MUST either drain the channel to completion OR cancel
-// ctx when it stops reading early. The reader goroutine parks on its next send
-// once the channel buffer is full, and the underlying *sql.Rows / DB connection
-// is only released when the goroutine returns. Abandoning the range loop without
-// cancelling ctx therefore leaks a goroutine and a DB connection. The idiomatic
-// pattern is:
-//
-//	ctx, cancel := context.WithCancel(ctx)
-//	defer cancel()
-//	for chunk := range ReadSQLStream(ctx, db, table) { ... }
-func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (<-chan ReadSQLChunk, error) {
-	if db == nil {
-		return nil, fmt.Errorf("db cannot be nil")
-	}
+// default (1000 rows).
+func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) iter.Seq2[*DataTable, error] {
+	return func(yield func(*DataTable, error) bool) {
+		if db == nil {
+			yield(nil, fmt.Errorf("db cannot be nil"))
+			return
+		}
 
-	opts := normalizeReadSQLOptions(options)
-	chunkSize := opts.ChunkSize
-	if chunkSize <= 0 {
-		chunkSize = defaultStreamChunkSize
-	}
+		opts := normalizeReadSQLOptions(options)
+		chunkSize := opts.ChunkSize
+		if chunkSize <= 0 {
+			chunkSize = defaultStreamChunkSize
+		}
 
-	tx := db.WithContext(ctx)
-	query, params, err := buildReadSQLQuery(tx, tableName, opts)
-	if err != nil {
-		return nil, err
-	}
+		tx := db.WithContext(ctx)
+		query, params, err := buildReadSQLQuery(tx, tableName, opts)
+		if err != nil {
+			yield(nil, err)
+			return
+		}
 
-	LogDebug("core", "ReadSQLStream", "Executing SQL query: %s (chunkSize=%d)", query, chunkSize)
-	rows, err := tx.Raw(query, params...).Rows()
-	if err != nil {
-		return nil, fmt.Errorf("error executing query: %w", err)
-	}
-
-	out := make(chan ReadSQLChunk)
-	go func() {
-		defer close(out)
+		LogDebug("core", "ReadSQLStream", "Executing SQL query: %s (chunkSize=%d)", query, chunkSize)
+		rows, err := tx.Raw(query, params...).Rows()
+		if err != nil {
+			yield(nil, fmt.Errorf("error executing query: %w", err))
+			return
+		}
+		// However the loop ends — the last chunk, a failure, or the caller
+		// breaking out — the rows are closed and the connection goes back.
 		defer func() { _ = rows.Close() }()
+
 		for {
-			select {
-			case <-ctx.Done():
-				out <- ReadSQLChunk{Err: ctx.Err()}
+			if err := ctx.Err(); err != nil {
+				yield(nil, err)
 				return
-			default:
 			}
 			dt, done, err := scanRowsToDataTable(rows, opts, chunkSize)
 			if err != nil {
-				out <- ReadSQLChunk{Err: err}
+				yield(nil, err)
 				return
 			}
-			if dt != nil {
-				select {
-				case <-ctx.Done():
-					out <- ReadSQLChunk{Err: ctx.Err()}
-					return
-				case out <- ReadSQLChunk{Table: dt}:
-				}
+			if dt != nil && !yield(dt, nil) {
+				return
 			}
 			if done {
 				return
 			}
 		}
-	}()
-	return out, nil
+	}
 }
 
 // normalizeReadSQLOptions resolves option defaults and IndexCol / RowNameColumn

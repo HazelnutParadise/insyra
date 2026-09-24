@@ -215,7 +215,7 @@
 | E-6 | Low | `NewSimpleImputer(strategy, constant ...any)`：常數用 variadic 傳，數量錯誤要到 `Fit` 才報；`Scaler.Fit(dt, cols ...string)` cols 必填卻是 variadic，零個參數是執行期錯誤（準則 8） | datatable_simple_imputer.go:39；datatable_scale.go:169 | `NewConstantImputer(value)`；cols 改 `[]string` |
 | E-7 | Low | `DataTable.FillForward(limit int, cols …)` 與 `DataList.FillForward(limit ...int)` 簽名不對稱；`FillWithMean`／`FillWithMedian`／`FillByInterpolation` 對非數值欄靜默跳過（不 warn），pandas 會填所有欄（準則 6） | datatable_impute.go:41-96 | 對稱簽名；跳過時至少 warn |
 | E-8 | Low | `Show()` 預設印全部列，百萬列的表會灌爆終端（pandas 預設 60 列並省略中段）；`ShowRange(startEnd ...any)` 用 `any` 收 `(5)`、`(-5)`、`(2, 10)`、`(2, nil)` 四種形狀；`Show(label, object showable, …)` 的參數型別 `showable` 未匯出，使用者無法在自己的函式簽名引用（準則 4、8） | show.go:27-70, 713-750 | 預設 head/tail 截斷；`ShowRange(start, end int)` + `Head(n)`／`Tail(n)`；匯出 `Showable` |
-| E-9 | OK | 設計良好、可當範本：encode 三件組（options struct、typed policy enum、fitted encoder 有 `Transform`／`InverseTransform`／`Options()`、錯誤全部回 error、輸出欄名碰撞偵測）；四個 Scaler 共用仿射核心、`Params()` 可檢視、compile-time 介面檢查；`SimpleImputer` 明確不提供 InverseTransform 並寫出理由；`ToSQL` 的識別字引號與型別白名單；`ReadSQLStream` 把 goroutine／連線洩漏契約寫進 doc（parquet.Stream 應比照） | — | — |
+| E-9 | OK | 設計良好、可當範本：encode 三件組（options struct、typed policy enum、fitted encoder 有 `Transform`／`InverseTransform`／`Options()`、錯誤全部回 error、輸出欄名碰撞偵測）；四個 Scaler 共用仿射核心、`Params()` 可檢視、compile-time 介面檢查；`SimpleImputer` 明確不提供 InverseTransform 並寫出理由；`ToSQL` 的識別字引號與型別白名單；`ReadSQLStream` 把 goroutine／連線洩漏契約寫進 doc（**更正 2026-09-24**：該契約不成立，照做仍會洩漏，已由 sql-stream-is-an-iterator 改成 `iter.Seq2` 根治） | — | — |
 
 ### isr
 
@@ -1179,7 +1179,7 @@
 - [x] `func ReadJSON_File(filePath string) (*DataTable, error)` (read.go:410) — K-9 整數失真
 - [x] `func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)` (datatable_from_sql.go:65) — OK 委派；E-3
 - [x] `func ReadSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)` (datatable_from_sql.go:71) — OK；E-3、E-4
-- [x] `func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (<-chan ReadSQLChunk, error)` (datatable_from_sql.go:120) — OK 洩漏契約寫在 doc（範本）；E-3
+- [x] `func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (<-chan ReadSQLChunk, error)` (datatable_from_sql.go:120) — OK 洩漏契約寫在 doc（範本）；E-3。**更正 2026-09-24**：契約不成立，break 後 cancel 仍會卡在送出取消錯誤、握住連線；sql-stream-is-an-iterator 改成 `iter.Seq2`
 - [x] `func SetDefaultConfig()` (config.go:98) — OK；K-16 doc 錯；名稱 `Reset` 更貼切（Low）
 - [x] `func Show(label string, object showable, startEnd ...any)` (show.go:27) — E-8 showable 未匯出；variadic any
 - [x] `func Slice2DToDataTable(data any) (*DataTable, error)` (read.go:26) — OK；K-16 空切片回錯
@@ -1222,7 +1222,7 @@
 - [x] `type OrdinalEncodeOptions struct { Column string Order []any NewColumn string HandleNaN NaNPolicy Unknown UnknownPolicy KeepOriginal bool }` (datatable_encode.go:70) — OK（E-9）
 - [x] `type OrdinalEncoder struct { opts OrdinalEncodeOptions sourceRef string sourceName string encodedName string classes []any keyToID map[string]int }` (datatable_encode.go:114) — OK（E-9）
 - [x] `type PivotConfig struct { Index []string Columns string Values string AggFunc string Custom func(group *DataList) any FillNA any SortCols bool }` (datatable_pivot.go:26) — OK doc 完整；T-17 AggFunc 字串
-- [x] `type ReadSQLChunk struct { Table *DataTable Err error }` (datatable_from_sql.go:97) — OK：Table/Err 二擇一，doc 有寫
+- [x] `type ReadSQLChunk struct { Table *DataTable Err error }` (datatable_from_sql.go:97) — OK：Table/Err 二擇一，doc 有寫。已隨 sql-stream-is-an-iterator 移除
 - [x] `type ReadSQLOptions struct { RowNameColumn string IndexCol string Query string Params []any Columns []string Schema string Limit int Offset int WhereClause string OrderBy string ParseDates []string DType map[string]reflect.Type ChunkSize int }` (datatable_from_sql.go:19) — E-4 WhereClause 注入面；E-5 IndexCol 別名
 - [x] `type ResampleAgg struct { Col string Op AggregateOp As string }` (datatable_resample.go:21) — OK
 - [x] `type ResampleFreq int` (datatable_resample.go:10) — OK

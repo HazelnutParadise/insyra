@@ -123,15 +123,12 @@ func TestReadSQLStream_EmitsChunks(t *testing.T) {
 		require.NoError(t, db.Exec("INSERT INTO big (n) VALUES (?);", i).Error)
 	}
 
-	ch, err := ReadSQLStream(context.Background(), db, "big", ReadSQLOptions{ChunkSize: 10})
-	require.NoError(t, err)
-
 	totalRows := 0
 	chunkCount := 0
-	for chunk := range ch {
-		require.NoError(t, chunk.Err)
-		require.NotNil(t, chunk.Table)
-		r, _ := chunk.Table.Size()
+	for table, err := range ReadSQLStream(context.Background(), db, "big", ReadSQLOptions{ChunkSize: 10}) {
+		require.NoError(t, err)
+		require.NotNil(t, table)
+		r, _ := table.Size()
 		totalRows += r
 		chunkCount++
 	}
@@ -147,20 +144,47 @@ func TestReadSQLStream_StopsOnCancelledContext(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	ch, err := ReadSQLStream(ctx, db, "big", ReadSQLOptions{ChunkSize: 5})
+	defer cancel()
+
+	// Cancel after the first chunk; the next value is the context's error,
+	// and the loop ends there.
+	chunks := 0
+	var last error
+	for _, err := range ReadSQLStream(ctx, db, "big", ReadSQLOptions{ChunkSize: 5}) {
+		if err != nil {
+			last = err
+			continue
+		}
+		chunks++
+		cancel()
+	}
+	require.Equal(t, 1, chunks)
+	require.ErrorIs(t, last, context.Canceled)
+}
+
+func TestReadSQLStream_BreakingEarlyReleasesTheConnection(t *testing.T) {
+	db := newTestSQLite(t)
+	require.NoError(t, db.Exec("CREATE TABLE big (n INTEGER);").Error)
+	for i := 1; i <= 50; i++ {
+		require.NoError(t, db.Exec("INSERT INTO big (n) VALUES (?);", i).Error)
+	}
+	sqlDB, err := db.DB()
 	require.NoError(t, err)
 
-	// Read one chunk, then cancel and drain.
-	first, ok := <-ch
-	require.True(t, ok)
-	require.NoError(t, first.Err)
-	cancel()
-
-	for chunk := range ch {
-		// Remaining chunks may carry context.Canceled in Err, or the channel
-		// may simply close. Both outcomes are acceptable.
-		if chunk.Err != nil {
-			require.ErrorIs(t, chunk.Err, context.Canceled)
-		}
+	// No cancel anywhere: leaving the loop must be enough.
+	for _, err := range ReadSQLStream(context.Background(), db, "big", ReadSQLOptions{ChunkSize: 5}) {
+		require.NoError(t, err)
+		break
 	}
+	require.Zero(t, sqlDB.Stats().InUse, "the query's connection is still checked out after the loop ended")
+}
+
+func TestReadSQLStream_NilDBIsOneFailure(t *testing.T) {
+	yields := 0
+	for table, err := range ReadSQLStream(context.Background(), nil, "t") {
+		yields++
+		require.Nil(t, table)
+		require.Error(t, err)
+	}
+	require.Equal(t, 1, yields)
 }

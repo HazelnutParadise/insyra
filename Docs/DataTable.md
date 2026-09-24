@@ -415,14 +415,14 @@ if err != nil {
 ```go
 func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)
 func ReadSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)
-func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (<-chan ReadSQLChunk, error)
+func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) iter.Seq2[*DataTable, error]
 ```
 
 **Description:** Loads data from a database table or custom SQL query into a DataTable.
 
 - `ReadSQL` is the simple form. It is equivalent to `ReadSQLContext(context.Background(), ...)`.
 - `ReadSQLContext` is the context-aware variant. The query and row scanning run under `ctx`, so callers can cancel long-running reads.
-- `ReadSQLStream` reads a (potentially huge) result set in chunks, emitting each chunk as a `*DataTable` on the returned channel. The channel closes when the stream completes, when `ctx` is cancelled, or after a fatal error. Use this when the result set does not fit in memory.
+- `ReadSQLStream` reads a (potentially huge) result set in chunks. Range over it with `for dt, err := range insyra.ReadSQLStream(ctx, db, "orders")`: each chunk arrives as a `*DataTable` with a nil error, and a failure arrives once, as a nil table with the error, and ends the loop. The query runs when the loop starts and chunks are read in your own goroutine, so breaking out early closes the rows and returns the connection to the pool at once, with nothing to cancel. Use this when the result set does not fit in memory.
 
 **Parameters:**
 
@@ -434,19 +434,8 @@ func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options .
 **Returns:**
 
 - `*DataTable`: DataTable loaded with data (single-result functions)
-- `<-chan ReadSQLChunk`: Channel of streamed chunks (`ReadSQLStream`)
+- `iter.Seq2[*DataTable, error]`: The chunks, ready to range over (`ReadSQLStream`)
 - `error`: Error information, returns nil if successful
-
-**ReadSQLChunk:**
-
-```go
-type ReadSQLChunk struct {
-    Table *DataTable // populated on success
-    Err   error      // populated on failure or cancellation
-}
-```
-
-Exactly one of `Table` or `Err` is set per chunk.
 
 **ReadSQLOptions:**
 
