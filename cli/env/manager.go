@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -480,12 +481,21 @@ func (m *Manager) Import(inputPath, targetName string, force bool) (string, erro
 }
 
 func (m *Manager) isEnvironmentEmpty(name string) (bool, error) {
+	// This guards an overwrite, so it fails closed: a file that is missing
+	// holds nothing, but a file that is there and cannot be read might hold
+	// anything, and is reported rather than taken as empty.
 	state, err := m.LoadState(name)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, fmt.Errorf("cannot tell whether environment %s is empty: %w", name, err)
+	}
 	if err == nil && state != nil && len(state.Variables) > 0 {
 		return false, nil
 	}
 
 	history, err := m.ReadHistory(name)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, fmt.Errorf("cannot tell whether environment %s is empty: %w", name, err)
+	}
 	if err == nil && len(history) > 0 {
 		return false, nil
 	}
@@ -495,8 +505,11 @@ func (m *Manager) isEnvironmentEmpty(name string) (bool, error) {
 		return false, err
 	}
 	configBytes, err := os.ReadFile(filepath.Join(envPath, "config.json"))
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
 		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("cannot tell whether environment %s is empty: %w", name, err)
 	}
 
 	trimmed := strings.TrimSpace(string(configBytes))
