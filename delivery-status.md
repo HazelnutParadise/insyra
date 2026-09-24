@@ -68,6 +68,8 @@ Note for any host running the reference suites locally: the crosslang venv moved
 
 The `quant` portfolio comparison against cvxpy now runs in the `Reference Verification` workflow: it installs cvxpy and runs `TestPortfolioAgreesWithCVXPY` with strict mode on, so the comparison can no longer skip unseen.
 
+`nn`'s MNIST convergence tests and the five-checkpoint real-model parity run in the `Neural Network Data Gates` workflow when `nn/` changes: it fetches the data pinned by sha256 in `.github/nn-data-manifest.txt` and fails if any of the five tests skipped. The GPU gates stay manual. `TestSequentialMNISTConvergence` compares the Sequential run against the hand-written loop in the same process instead of against digits recorded on one machine.
+
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
 

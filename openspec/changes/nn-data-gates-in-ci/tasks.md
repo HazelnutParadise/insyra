@@ -11,6 +11,6 @@
 
 ## 3. 驗證與紀錄
 - [x] 3.1 以 workflow 的下載與校驗步驟在本機模擬一次：既有檔案略過、`.gz` 解壓、九個檔案校驗全數 OK。
-- [ ] 3.2 推上 `0.4` 後 workflow 通過，log 顯示五個測試實際執行並 PASS。
-- [ ] 3.3 `api-review.md` TS-5、`delivery-status.md`。
+- [x] 3.2 推上 `0.4` 後 workflow 通過，log 顯示五個測試實際執行並 PASS。
+- [x] 3.3 `api-review.md` TS-5、`delivery-status.md`。
 - [ ] 3.4 歸檔；在 #303 留言附證據並關閉。
