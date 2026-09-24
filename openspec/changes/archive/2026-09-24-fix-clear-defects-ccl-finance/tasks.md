@@ -7,4 +7,4 @@
 - [x] 2.4 `finance` 加上 `Options.finish`，所有結尾捨入改走它。
 - [x] 3.1 `go test ./...`、`golangci-lint run`。
 - [x] 3.2 `Docs/CCL.md`、兩份 CHANGELOG。
-- [ ] 3.3 關閉 #365、#366、#368；#248 留言說明只做了 panic 那部分。
+- [x] 3.3 關閉 #365、#366、#368；#248 留言說明只做了 panic 那部分。
