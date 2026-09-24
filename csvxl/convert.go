@@ -43,15 +43,16 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 	var failures []error
 	converted := 0
 
-	for idx, csvFile := range csvFiles {
-		if !strings.HasSuffix(csvFile, ".csv") {
-			csvFile += ".csv"
-		}
+	for idx, given := range csvFiles {
+		csvFile, fileErr := resolveCsvSource(given)
 
 		// 如果提供了自訂工作表名稱，則使用它，否則使用 CSV 檔案的名稱
 		sheetName := getSheetName(csvFile, sheetNames, idx)
 
-		records, fileErr := readCsvRecords(csvFile, encoding)
+		var records [][]string
+		if fileErr == nil {
+			records, fileErr = readCsvRecords(csvFile, encoding)
+		}
 		if fileErr == nil {
 			// 第一個成功的檔案沿用新工作簿的預設工作表，而不是另建一張
 			if converted == 0 {
@@ -114,15 +115,16 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 	var failures []error
 	appended := 0
 
-	for idx, csvFile := range csvFiles {
-		if !strings.HasSuffix(csvFile, ".csv") {
-			csvFile += ".csv"
-		}
+	for idx, given := range csvFiles {
+		csvFile, fileErr := resolveCsvSource(given)
 
 		// 如果提供了自訂工作表名稱，則使用它，否則使用 CSV 檔案的名稱
 		sheetName := getSheetName(csvFile, sheetNames, idx)
 
-		records, fileErr := readCsvRecords(csvFile, encoding)
+		var records [][]string
+		if fileErr == nil {
+			records, fileErr = readCsvRecords(csvFile, encoding)
+		}
 		if fileErr == nil {
 			if fileErr = replaceSheet(f, sheetName); fileErr != nil {
 				fileErr = fmt.Errorf("failed to create sheet %s for %s: %w", sheetName, csvFile, fileErr)
@@ -201,11 +203,7 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 		}
 		csvName := sheet + ".csv"
 		if len(csvNames) > idx && csvNames[idx] != "" {
-			if strings.HasSuffix(csvNames[idx], ".csv") {
-				csvName = csvNames[idx]
-			} else {
-				csvName = csvNames[idx] + ".csv"
-			}
+			csvName = csvOutputName(csvNames[idx])
 		}
 
 		outputCsv := filepath.Join(outputDir, csvName)
@@ -400,4 +398,36 @@ func getSheetName(csvFile string, sheetNames []string, idx int) string {
 		return sheetNames[idx]
 	}
 	return strings.TrimSuffix(filepath.Base(csvFile), filepath.Ext(csvFile))
+}
+
+// resolveCsvSource turns a path the caller gave into the file to read. The
+// path is used as written when it names a file, so a CSV called export.txt or
+// DATA.CSV is read as itself. Only when nothing is there, or a directory is,
+// is .csv appended as a convenience for a name whose extension was left off.
+func resolveCsvSource(given string) (string, error) {
+	if isRegularFile(given) {
+		return given, nil
+	}
+	if strings.EqualFold(filepath.Ext(given), ".csv") {
+		return given, fmt.Errorf("no CSV file at %q: %w", given, os.ErrNotExist)
+	}
+	withCsv := given + ".csv"
+	if isRegularFile(withCsv) {
+		return withCsv, nil
+	}
+	return given, fmt.Errorf("no CSV file at %q or %q: %w", given, withCsv, os.ErrNotExist)
+}
+
+func isRegularFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+// csvOutputName keeps a name the caller gave as written when it already has an
+// extension, of any case, and adds .csv only when it has none.
+func csvOutputName(name string) string {
+	if filepath.Ext(name) != "" {
+		return name
+	}
+	return name + ".csv"
 }

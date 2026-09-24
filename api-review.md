@@ -91,7 +91,7 @@
 | C-5 | ~~Low~~ 已修正（batch 3） | 錯誤用 `%v` 包裝，呼叫端無法 `errors.Is(err, os.ErrNotExist)`；`read_csv.go` 已用 `%w`，套件內不一致 | convert.go 全檔 | 改 `%w` |
 | C-6 | Low | `UTF8/Big5/Auto` 是裸 string 常數，而實際比對用 `strings.Contains`，任何字串都會被接受 | convert.go:22-26 | typed `Encoding` string 型別 |
 | C-7 | ~~Low~~ 已修正（batch 3） | 目錄用 `os.ModePerm`（0777）建立 | convert.go:143; convertDir.go:50 | 0755 |
-| C-8 | Low（部分已修正：docs-hygiene-and-remaining-partials 補上不存在 sheet 回錯與 log 名稱；自動補 `.csv` 待決策） | 路徑沒有 `.csv` 結尾就自動補；`ExcelToCsv` 的 `onlyContainSheets` 指到不存在的 sheet 靜默略過；`EachExcelToCsv` log 標錯函式名 | convert.go:44, 158-164; convertDir.go:62 | 不補副檔名（或改 doc）；找不到的 sheet 回錯；修 log |
+| C-8 | ~~Low~~ 已修正（不存在 sheet 回錯與 log 名稱：docs-hygiene-and-remaining-partials；自動補 `.csv`：csvxl-respects-file-extension，讀取端原路徑優先、寫出端尊重副檔名） | 路徑沒有 `.csv` 結尾就自動補；`ExcelToCsv` 的 `onlyContainSheets` 指到不存在的 sheet 靜默略過；`EachExcelToCsv` log 標錯函式名 | convert.go:44, 158-164; convertDir.go:62 | 不補副檔名（或改 doc）；找不到的 sheet 回錯；修 log |
 | C-10 | Med | 全套件只吃檔案路徑，沒有 `io.Reader`/`io.Writer` 版本：記憶體中的 CSV、HTTP 回應、`embed.FS` 都得先落地成檔案才能轉（準則 8、10） | 全套件 | 核心改成 Reader/Writer，路徑版當薄包裝 |
 | C-11 | Med | `CsvToExcel(csvFiles, sheetNames, ...)` 用兩個平行切片靠索引對位，錯一格就對到別的 sheet；`ExcelToCsv(…, csvNames, onlyContainSheets...)` 同樣問題（準則 4、8） | convert.go:31, 135 | `[]SheetSpec{Path, Sheet}` 一個切片 |
 | C-12 | Low | 命名不符 Go 慣例：`Csv` 應為 `CSV`；`EachCsvToOneExcel` 讀起來要想一下（「每個 CSV 到一個 Excel」）；doc comment 缺 Go 風格開頭（準則 3、9、E） | 全套件 | v1 前統一改名 |
@@ -595,7 +595,7 @@
 | NN-2 | [#266](https://github.com/HazelnutParadise/insyra/issues/266) |  |
 | C-1 | [#267](https://github.com/HazelnutParadise/insyra/issues/267) | 已關閉（csvxl-batch-failures） |
 | C-6 | [#268](https://github.com/HazelnutParadise/insyra/issues/268) |  |
-| C-8 | [#269](https://github.com/HazelnutParadise/insyra/issues/269) |  |
+| C-8 | [#269](https://github.com/HazelnutParadise/insyra/issues/269) | 已關閉（csvxl-respects-file-extension） |
 | C-11 | [#270](https://github.com/HazelnutParadise/insyra/issues/270) |  |
 | P-1、P-2、P-5、P-4 | [#271](https://github.com/HazelnutParadise/insyra/issues/271) | 已關閉（parallel-runs-and-worker-errors） |
 | Q-2、Q-6 | [#272](https://github.com/HazelnutParadise/insyra/issues/272) |  |

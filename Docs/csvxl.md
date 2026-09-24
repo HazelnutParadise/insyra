@@ -54,6 +54,13 @@ const (
 
 `Auto` is the default. If detection fails, the function returns an error and you should pass a specific encoding.
 
+## File names
+
+`csvxl` adds `.csv` as a convenience and never over a name you wrote.
+
+- **Reading** (`CsvToExcel`, `AppendCsvToExcel`): each path is opened as written when it names a file, so a CSV called `export.txt` or `DATA.CSV` is read as itself. Only when nothing is there, or a directory is, is `.csv` appended and tried, so `data` still reads `data.csv`. When both `x` and `x.csv` exist, `x` is read. When neither exists, the error names both paths it tried and `errors.Is(err, os.ErrNotExist)` holds.
+- **Writing** (`ExcelToCsv`'s `csvNames`): a name that already has an extension, of any case, is used as written, so `report.txt` stays `report.txt`. A name with no extension gets `.csv`.
+
 ## Main Functions
 
 ### `CsvToExcel`
@@ -68,7 +75,7 @@ Each CSV is read in full before its sheet is created. When a CSV cannot be read,
 
 **Parameters:**
 
-- `csvFiles`: File path to use. Type: `[]string`.
+- `csvFiles`: Paths of the CSV files, read as described in [File names](#file-names). Type: `[]string`.
 - `sheetNames`: Sheet name or list of sheet names. Type: `[]string`.
 - `output`: Output location or file name. Type: `string`.
 - `csvEncoding`: Variadic `string` values.
@@ -89,7 +96,7 @@ Each CSV is read in full before its sheet is replaced, so a CSV that cannot be r
 
 **Parameters:**
 
-- `csvFiles`: File path to use. Type: `[]string`.
+- `csvFiles`: Paths of the CSV files, read as described in [File names](#file-names). Type: `[]string`.
 - `sheetNames`: Sheet name or list of sheet names. Type: `[]string`.
 - `existingFile`: File path to use. Type: `string`.
 - `csvEncoding`: Variadic `string` values.
@@ -104,7 +111,7 @@ Each CSV is read in full before its sheet is replaced, so a CSV that cannot be r
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error
 ```
 
-Each sheet becomes `<outputDir>/<sheet>.csv` (or the matching `csvNames` entry). A sheet name that cannot be a single file name — it contains `/`, `\` or is `..` — is rejected with an error before any file is touched, because sheet names come from the workbook and could otherwise escape `outputDir`. Each CSV is read fully from the sheet first and written through a temporary file, so a failing sheet never truncates an existing CSV.
+Each sheet becomes `<outputDir>/<sheet>.csv`, or the matching `csvNames` entry named as described in [File names](#file-names). A sheet name that cannot be a single file name — it contains `/`, `\` or is `..` — is rejected with an error before any file is touched, because sheet names come from the workbook and could otherwise escape `outputDir`. Each CSV is read fully from the sheet first and written through a temporary file, so a failing sheet never truncates an existing CSV.
 
 A name in `onlyContainSheets` that the workbook does not have is an error naming the sheets it does have, rather than a sheet that quietly does not appear in the output.
 
