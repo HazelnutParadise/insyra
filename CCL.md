@@ -1,0 +1,1358 @@
+# Column Calculation Language (CCL)
+
+CCL (Column Calculation Language) is a specialized expression language in Insyra used for column calculations in DataTables. CCL provides a concise yet powerful way to define how to generate new columns based on existing data.
+
+## Table of Contents
+
+- [Execution Modes](#execution-modes)
+- [Basic Syntax](#basic-syntax)
+- [Assignment Syntax](#assignment-syntax)
+- [Creating New Columns](#creating-new-columns)
+- [Data Types](#data-types)
+- [Operators](#operators)
+- [Column References](#column-references)
+- [Functions](#functions)
+- [Sequence Functions](#sequence-functions)
+- [Conditional Expressions](#conditional-expressions)
+- [Chained Comparisons](#chained-comparisons)
+- [Custom Functions](#custom-functions)
+- [Examples](#examples)
+- [Best Practices](#best-practices)
+- [Performance](#performance)
+- [Limits](#limits)
+- [Troubleshooting](#troubleshooting)
+
+## Execution Modes
+
+CCL supports two execution modes:
+
+### 1. Expression Mode
+
+Expression mode evaluates a CCL expression and applies the result to a column. This mode **only supports pure expressions** (no assignment syntax or NEW function).
+
+> **Note:** If you attempt to use assignment syntax (`=`) or the `NEW()` function in Expression Mode, the operation will be rejected and an error will be logged. Use `ExecuteCCL` (Statement Mode) for these features.
+
+#### `AddColUsingCCL` - Add New Column
+
+Evaluates an expression and adds the result as a new column.
+
+```go
+// Evaluate expression and add result as new column "result"
+dt.AddColUsingCCL("result", "A + B * C")
+
+// ❌ This will be rejected (assignment syntax not allowed):
+dt.AddColUsingCCL("result", "B = A + 1")  // Error: assignment syntax not supported
+
+// ❌ This will be rejected (NEW function not allowed):
+dt.AddColUsingCCL("result", "NEW('col')")  // Error: NEW function not supported
+```
+
+#### `EditColByIndexUsingCCL` - Edit Column by Index
+
+Evaluates an expression and replaces the content of an existing column by its index (Excel-style: A, B, C, ..., AA, AB, ...).
+
+```go
+dt.EditColByIndexUsingCCL("A", "A * 10")      // Multiply first column by 10
+dt.EditColByIndexUsingCCL("B", "A + ['C']")   // Set second column to A + C
+
+// ❌ This will be rejected:
+dt.EditColByIndexUsingCCL("A", "B = A + 1")  // Error: assignment syntax not supported
+```
+
+#### `EditColByNameUsingCCL` - Edit Column by Name
+
+Evaluates an expression and replaces the content of an existing column by its name.
+
+```go
+dt.EditColByNameUsingCCL("price", "['price'] * 1.1")        // Increase price by 10%
+dt.EditColByNameUsingCCL("total", "['quantity'] * ['price']")
+
+// ❌ This will be rejected:
+dt.EditColByNameUsingCCL("price", "price = ['price'] * 1.1")  // Error: assignment syntax not supported
+```
+
+### 2. Statement Mode (`ExecuteCCL`)
+
+Executes CCL statements that can modify existing columns or create new ones. Supports:
+
+- Assignment syntax (`column = expression`)
+- NEW function for creating columns (`NEW('colName') = expression`)
+- Multiple statements separated by `;` or newline
+
+#### Sequential Execution and Data Consistency
+
+When executing multiple statements in a single `ExecuteCCL` call, statements are executed **sequentially**. Each statement sees the results of the previous statements.
+
+```go
+dt.ExecuteCCL(`
+    NEW('A_plus_1') = A + 1
+    NEW('TotalSum') = SUM(@) // This SUM will include the newly created 'A_plus_1'
+`)
+```
+
+**Data Snapshotting:**
+To ensure consistency during the evaluation of a _single_ statement, CCL uses a data snapshot. For example, in `NEW('B') = SUM(@)`, the `SUM(@)` calculation will not be affected by the values being written into `B` as it is being generated.
+
+## Basic Syntax
+
+CCL expressions consist of operators, functions, column references, and constants. These expressions are evaluated and applied to each row of a DataTable.
+
+Basic operation examples:
+
+```
+"A + B"         // Add column A and column B
+"A * 2"         // Multiply each value in column A by 2
+"(A + B) / C"   // Add columns A and B, then divide by column C
+```
+
+## Assignment Syntax
+
+In Statement Mode (`ExecuteCCL`), you can use assignment syntax to modify existing columns:
+
+```
+column = expression
+```
+
+### Column Index Assignment
+
+```go
+// Modify column A (first column)
+dt.ExecuteCCL("A = A * 2")
+
+// Modify column B using values from A and C
+dt.ExecuteCCL("B = A + C")
+```
+
+### Column Name Assignment
+
+Use `['colName']` syntax to assign by column name:
+
+```go
+dt.ExecuteCCL("['price'] = ['price'] * 1.1")  // Increase price by 10%
+dt.ExecuteCCL("['total'] = ['quantity'] * ['price']")
+```
+
+**Note**: Assignment to non-existent columns will result in an error. Use `NEW()` to create new columns.
+
+## Creating New Columns
+
+Use the `NEW()` function to create new columns in Statement Mode:
+
+```
+NEW('columnName') = expression
+```
+
+Examples:
+
+```go
+// Create a new column named "sum"
+dt.ExecuteCCL("NEW('sum') = A + B + C")
+
+// Create column with calculated values
+dt.ExecuteCCL("NEW('profit') = ['revenue'] - ['cost']")
+
+// Create column with conditional logic
+dt.ExecuteCCL("NEW('status') = IF(A > 100, 'High', 'Low')")
+```
+
+## Data Types
+
+CCL supports the following data types:
+
+1. **Numbers** - Integers and floating-point numbers, in plain or exponent form
+
+   ```
+   "42"      // Integer
+   "3.14"    // Floating-point number
+   "1e5"     // 100000
+   "1.5e-3"  // 0.0015
+   "2E+3"    // 2000
+   ```
+
+   An `e` is only part of a number when at least one digit follows it (after an
+   optional sign), so a column called `E` or `E1` still reads as a column. A
+   literal too large for a `float64` is an error rather than `+Inf`.
+
+2. **Strings** - Enclosed in single quotes
+
+   ```
+   "'Hello, World!'"   // String
+   "'123'"             // Numeric string
+   ```
+
+3. **Boolean Values** - `true` or `false` (case-insensitive: `TRUE`, `False` work too)
+
+   ```
+   "true"              // Boolean true
+   "false"             // Boolean false
+   ```
+
+4. **Nil/Null** - `nil` or `null` (case-insensitive: `NULL` works too)
+
+   ```
+   "nil"               // Nil value
+   "null"              // Alias for nil
+   ```
+
+   Keywords are never read as column references. Any other bare word is first tried as an Excel-style column index (`A`, `B`, ... `AA`); refer to a column by name with `['name']`.
+
+## Operators
+
+### Arithmetic Operators
+
+- `+` : Addition
+- `-` : Subtraction
+- `*` : Multiplication
+- `/` : Division
+- `%` : Remainder (same as `MOD`; `A % 0` is an error)
+- `^` : Exponentiation
+- `.` : Row access (e.g., `A.0`, `['Sales'].10`)
+- `:` : Range operator (e.g., `A:C` for column range, `1:5` for row range)
+- `#` : Current row index (0-based)
+
+```
+"A + B"         // Add column A and column B
+"A - B"         // Subtract column B from column A
+"A * B"         // Multiply column A by column B
+"A / B"         // Divide column A by column B
+"A ^ 2"         // Square the values in column A
+"A.0"           // Get the value of column A at the first row (index 0)
+"A.B"           // Get the value of column A at the row index specified by column B
+"A.#"           // Get the value of column A at the current row (same as just "A")
+"SUM(@.#)"      // Sum of all columns in the current row (Row Sum)
+"SUM(A:C)"      // Sum of columns A, B, and C
+"SUM([A]:[C])"  // Sum of columns A to C (explicit index syntax)
+"SUM(['Start']:['End'])" // Sum of columns from 'Start' to 'End'
+"A.(1:5)"       // Get values of column A from row 1 to 5 (returns a slice)
+"A.('Row1':'Row5')" // Get values of column A from row named 'Row1' to 'Row5'
+```
+
+> **Note on Bounds Checking:**
+> Both the row access operator (`.`) and the range operator (`:`) perform strict bounds checking. If an index is out of range (e.g., `A.100` when there are only 10 rows, or `A:Z` when there are only 3 columns), CCL will throw an error. Negative indices are not supported.
+
+### Range Expansion in Aggregate Functions
+
+When a range (column range or row range) is used inside an aggregate function (like `SUM`, `AVG`, `MIN`, `MAX`), it is automatically expanded into a flat list of values.
+
+- `SUM(A:C)`: Sums all values in columns A, B, and C.
+- `SUM(@.0:5)`: Sums all values in rows 0 through 5 across all columns.
+- `AVG(A.(0:10))`: Averages the first 11 values of column A.
+
+> **Note:** Raw row ranges like `SUM(0:5)` are not supported for data access. You must explicitly specify the target using the row access operator (e.g., `@.0:5` or `A.0:5`).
+
+### Comparison Operators
+
+- `>` : Greater than
+- `<` : Less than
+- `>=` : Greater than or equal to
+- `<=` : Less than or equal to
+- `==` : Equal to
+- `!=` : Not equal to
+
+```
+"A > B"      // Whether values in column A are greater than those in column B
+"A < 10"     // Whether values in column A are less than 10
+"A == B"     // Whether values in column A are equal to those in column B
+"A != B"     // Whether values in column A are not equal to those in column B
+"A == nil"   // Check if column A is nil
+```
+
+> **Note on Nil/Null:**
+>
+> - `== nil` or `== null` can be used to check for missing values.
+> - In arithmetic operations, `nil` is treated as `0`.
+> - In logical operations, `nil` is treated as `false`.
+
+### Logical Operators
+
+- `&&` : Logical AND (equivalent to `AND()` function)
+- `||` : Logical OR (equivalent to `OR()` function)
+
+```
+"A > 10 && B < 20"   // true if A > 10 AND B < 20
+"A > 10 || B > 10"   // true if A > 10 OR B > 10
+"(A > 0 && B > 0) || C"  // Combined logical operations
+```
+
+They read their operands exactly as `AND()` and `OR()` read their arguments — see [Boolean Operations](#boolean-operations) — and differ in one way: `AND()` and `OR()` stop at the argument that settles the answer, while `&&` and `||` evaluate both operands. So `AND(B != 0, A / B > 1)` guards the division and `B != 0 && A / B > 1` still reports it.
+
+### String Concatenation Operator
+
+- `&` : String concatenation (equivalent to `CONCAT()` function)
+
+```
+"A & B"          // Concatenate A and B (e.g., "Hello" & "World" = "HelloWorld")
+"A & '-' & B"    // Concatenate with separator (e.g., "Hello-World")
+"A & B & C"      // Chain multiple concatenations
+```
+
+### Operator Precedence
+
+Tightest binding at the top. Operators on the same row are evaluated left to right.
+
+| Operators                          | Notes                                                        |
+| ---------------------------------- | ------------------------------------------------------------ |
+| `:`                                | Range                                                         |
+| `.`                                | Row access                                                    |
+| `^`                                | Exponentiation, **left**-associative: `2^3^2` is `64`, not `512` |
+| `*` `/` `%`                        |                                                               |
+| `+` `-` `&`                        | Concatenation binds as tightly as addition: `'a' & 1 + 2` reads as `('a' & 1) + 2` and is an error; write `'a' & (1 + 2)` |
+| `==` `!=` `>` `<` `>=` `<=`        | Consecutive comparisons chain: `10 <= A <= 20`                |
+| `&&`                               |                                                               |
+| `\|\|`                             |                                                               |
+
+Unary minus binds tighter than `^`, as in Excel: **`-2^2` is `4`**, not `-4`. Write `0 - 2^2` for the other reading.
+
+## Type Coercion and Comparison Behavior
+
+CCL uses dynamic typing and performs automatic type coercion to handle operations between different data types. Understanding these behaviors is crucial for writing correct CCL expressions.
+
+### Numeric Comparison and Arithmetic
+
+When performing arithmetic operations or comparisons, CCL attempts to convert operands to numbers:
+
+```go
+// These are equivalent after type coercion
+"123" == 123        // true (string "123" is converted to number 123)
+"45.5" > 40         // true (string "45.5" is converted to number 45.5)
+"100" + 50          // 150 (string "100" is converted to number 100)
+```
+
+**Important Notes:**
+
+- If both operands can be converted to numbers, numeric comparison is used
+- String-to-number conversion follows standard parsing rules
+- Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
+- The comparison error applies to `>`, `<`, `>=` and `<=` between such a string and a number. `==` and `!=` do not raise it: a non-numeric string is simply not equal to a number, so `"hello" == 5` is `false`
+- Two kinds of string are not words and are not an error against a number. A string CCL reads as a date (see [Duration & Time Functions](#duration--time-functions)) is a date, so `A > 0` over a date column loaded from CSV or Excel compares as `false`, the same answer the dates give when held as `time.Time`. An empty string is a blank cell, and also compares as `false`
+
+```go
+// These will cause errors
+"abc" + 10          // Error: cannot convert "abc" to number
+"hello" > 5         // Error: cannot convert "hello" to number
+
+// These do not: they compare as false
+"2024-01-02" > 5    // false (a date, not a word)
+"" > 5              // false (a blank cell, not a word)
+```
+
+### String Concatenation
+
+The `&` operator always performs string concatenation by converting all operands to strings:
+
+```go
+"Hello" & " " & "World"     // "Hello World"
+"Price: " & 123             // "Price: 123" (number converted to string)
+"Value: " & 45.67           // "Value: 45.67"
+```
+
+**How a number becomes text.** `&`, `CONCAT`, `TOSTR`, `LEN`, `UPPER` and the
+other string functions render a number with Go's default formatting. For values
+of ordinary magnitude that is what you expect, but very large and very small
+`float64` values switch to scientific notation:
+
+```go
+"x" & 0.0000001             // "x1e-07", not "x0.0000001"
+LEN(1000000)                // 5 — the literal is a float64 and renders "1e+06"
+```
+
+A number that arrives **from a column** keeps the type it was stored as, so an
+integer column is unaffected: `LEN(A)` where `A` holds the integer `1000000` is
+`7`. A number written **in the expression** is always a `float64`, which is why
+the same value spelled as a literal can render differently. Use `TOSTR(x, fmt)`
+when the exact text matters.
+
+### Handling `nil` Values
+
+CCL has specific rules for handling `nil` values in different operations:
+
+#### Equality and Inequality
+
+```go
+nil == nil          // true (both are nil)
+nil == 0            // false (nil is not equal to 0)
+nil == ""           // false (nil is not equal to empty string)
+nil != 123          // true (nil is not equal to any non-nil value)
+```
+
+#### Comparison Operations
+
+```go
+nil > 10            // false (nil cannot be compared with numbers)
+nil < 5             // false
+nil >= 0            // false
+nil <= 100          // false
+```
+
+**Rule:** `nil` with any value in size comparison (`>`, `<`, `>=`, `<=`) always returns `false`.
+
+#### Arithmetic Operations
+
+```go
+nil + 10            // 10 (nil is treated as 0)
+5 - nil             // 5 (nil is treated as 0)
+nil * 3             // 0 (nil is treated as 0)
+10 / nil            // Error: division by zero (nil is treated as 0)
+```
+
+**Rule:** In arithmetic operations, `nil` is treated as `0`.
+
+#### String Concatenation with `nil`
+
+```go
+"Hello" & nil       // "Hello<nil>" (nil is converted to string "<nil>")
+nil & " World"      // "<nil> World"
+```
+
+### Boolean Operations
+
+`&&`, `||`, `IF`, `AND()`, `OR()` and `CASE()` read their condition through the same conversion, which accepts more than a bare boolean:
+
+| Value                                                   | Reads as        |
+| ------------------------------------------------------- | --------------- |
+| `true` / `false`                                        | itself          |
+| an `int`, `int32`, `int64`, `float32` or `float64`      | `false` if `0`  |
+| `'true'`, `'yes'`, `'1'` (any case, spaces trimmed)     | `true`          |
+| `'false'`, `'no'`, `'0'`, `''` (any case, spaces trimmed) | `false`       |
+| `nil`                                                   | `false`         |
+| any other value                                         | **error**       |
+
+```go
+true && false       // false
+true || false       // true
+1 && 0              // false (0 reads as false)
+'yes' && true       // true
+(A > 10) && (B < 20)    // Evaluate both conditions
+
+'abc' && true       // Error: 'abc' is not a boolean
+AND('abc', true)    // Error: the same word, reported the same way
+```
+
+A 0/1 indicator column can therefore be used directly: `A && B` and `AND(A, B)`.
+
+### Type Coercion Summary
+
+| Operation               | Left Type     | Right Type    | Behavior                                          |
+| ----------------------- | ------------- | ------------- | ------------------------------------------------- |
+| `+`, `-`, `*`, `/`, `^` | Number/String | Number/String | Convert both to numbers, then calculate           |
+| `>`, `<`, `>=`, `<=`    | Number/String | Number/String | Convert both to numbers, then compare; a string that is not a number, a date or empty against a number is an error |
+| `==`, `!=`              | Number/String | Number/String | Convert both to numbers if possible, then compare |
+| `==`, `!=`              | nil           | any           | Special nil handling (see above)                  |
+| `&`                     | any           | any           | Convert both to strings, then concatenate         |
+| `&&`, `\|\|`            | any           | any           | Read as boolean (see the table above)             |
+
+### Best Practices for Type Safety
+
+1. **Be explicit with types**: When dealing with mixed types, consider using conversion functions (if available) to make your intent clear.
+
+2. **Handle nil values carefully**: Always consider how `nil` values might affect your calculations:
+
+   ```go
+   // Good: Handle nil explicitly
+   "IF(A == nil, 0, A) + B"
+
+   // Risky: Relies on automatic nil-to-zero conversion
+   "A + B"  // What if A is nil?
+   ```
+
+3. **Avoid mixing types unnecessarily**: While CCL supports type coercion, it's clearer to work with consistent types when possible.
+
+4. **Test edge cases**: Test your CCL expressions with various input types, including `nil`, to ensure they behave as expected.
+
+## Column References
+
+CCL provides three ways to reference columns in your expressions:
+
+> **Note on case.** Function names and Excel-style column indices ignore case:
+> `sum(a)`, `SUM(A)` and `Sum(a)` are the same expression, and so are `a + 1`
+> and `A + 1`. Keywords do too (`true`, `TRUE`, `nil`, `NULL`).
+>
+> **Column *names* do not.** `['price']` and `['Price']` are different columns,
+> and asking for one that is not there is an error, not an empty column. This is
+> the one place in CCL where case matters, because a column name is data you
+> chose rather than syntax the language defines.
+
+### 1. Direct Column Index (Excel-style)
+
+The basic way to reference columns uses Excel-style letter identifiers:
+
+```
+"A"          // Reference to the first column
+"B"          // Reference to the second column
+"C"          // Reference to the third column
+```
+
+### 2. Bracket Column Index `[colIndex]`
+
+Use brackets with column letters to explicitly reference columns by their index. This is useful when column letters might conflict with function names or reserved words:
+
+```
+"[A]"        // Explicit reference to the first column
+"[B]"        // Explicit reference to the second column
+"[AA]"       // Reference to the 27th column
+```
+
+Example - avoiding conflicts:
+
+```go
+// If "A" might be confused with a function name, use [A] instead
+dt.AddColUsingCCL("result", "[A] + [B] * 2")
+```
+
+### 3. Bracket Column Name `['colName']`
+
+Use brackets with single-quoted strings to reference columns by their name. This is particularly useful when you have named columns:
+
+```
+"['Sales']"          // Reference to column named "Sales"
+"['Product Name']"   // Reference to column named "Product Name"
+"['price']"          // Reference to column named "price" (case-sensitive)
+```
+
+Example with named columns:
+
+```go
+dt := NewDataTable()
+dt.AppendCols(NewDataList(100, 200, 300), NewDataList(10, 20, 30))
+dt.SetColNames([]string{"revenue", "cost"})
+
+// Calculate profit using column names
+dt.AddColUsingCCL("profit", "['revenue'] - ['cost']")
+```
+
+### Mixed Syntax
+
+You can mix different reference styles in the same expression:
+
+```go
+// Using both column index and column name references
+dt.AddColUsingCCL("mixed", "[A] * 2 + ['cost']")
+
+// Using direct reference with bracket syntax
+dt.AddColUsingCCL("calc", "A + [B] + ['total']")
+```
+
+## Row Access and All-Column Reference
+
+CCL supports accessing specific rows and referencing all columns in a row.
+
+### Row Access Operator `.`
+
+The `.` operator allows you to access a specific row of a column. The left side is a column reference, and the right side is a row index (number) or a row name (string).
+
+```
+"A.0"                // Value of column A at the first row
+"['Sales'].10"       // Value of column "Sales" at the 11th row
+"B.'Jack'"           // Value of column B at the row named "Jack"
+```
+
+You can also use another column as the row index:
+
+```
+"A.B"                // Value of column A at the row index specified by the value in column B
+```
+
+### All-Column Reference `@`
+
+Used as a value, `@` yields a fresh copy of the current row (`[]any`) for every row, so a column built from `@` never aliases another row.
+
+The `@` symbol represents all columns in the current row. It is typically used with the row access operator to retrieve an entire row of data.
+
+```
+"@.0"                // All columns at the first row (returns a slice)
+"@.'Jack'"           // All columns at the row named "Jack"
+```
+
+When used in `NEW()` or assignment, `@.n` can be used to copy an entire row into a new column or modify an existing one.
+
+#### Total Table Reference
+
+When `@` is used as an argument to an **Aggregate Function** (like `SUM`, `AVG`, etc.), it represents **all numeric values in the entire table**.
+
+```
+"SUM(@)"             // Sum of all numeric values in the entire table
+"COUNT(@)"           // Count of all non-nil cells in the entire table
+```
+
+> **Performance Note:** Expressions like `A.0` or `@.0` are "row-independent" (they don't change based on the current row being evaluated). CCL optimizes these by evaluating them only once per execution.
+
+## Functions
+
+### IF Conditional Function
+
+```
+"IF(condition, valueIfTrue, valueIfFalse)"
+```
+
+Example:
+
+```
+"IF(A > 10, 'High', 'Low')"
+// Returns 'High' if the value in column A is greater than 10, otherwise returns 'Low'
+```
+
+### AND and OR Logical Functions
+
+```
+"AND(condition1, condition2, ...)"  // Returns true if all conditions are true
+"OR(condition1, condition2, ...)"   // Returns true if any condition is true
+```
+
+Both read their arguments as booleans exactly as `&&` and `||` do, and report an argument they cannot read: `AND('abc', true)` is an error, not `false`.
+
+Both also stop as soon as an argument settles the answer — `AND()` at the first false, `OR()` at the first true — and an argument they skip is never evaluated, so a guard works:
+
+```
+"AND(B != 0, A / B > 1)"   // rows where B is 0 give false; the division never runs
+```
+
+A skipped argument is not read either, so `AND(false, 'abc')` is `false` rather than an error.
+
+With no argument at all `AND()` is `true` and `OR()` is `false`, the identity of each operation; one argument answers as that argument reads.
+
+Examples:
+
+```
+"IF(AND(A > 0, B < 100), 'Valid', 'Invalid')"
+// Returns 'Valid' if A > 0 and B < 100, otherwise returns 'Invalid'
+
+"IF(OR(A > 90, B > 90), 'Excellent', 'Good')"
+// Returns 'Excellent' if A > 90 or B > 90, otherwise returns 'Good'
+```
+
+### CONCAT String Concatenation Function
+
+```
+"CONCAT(value1, value2, ...)"
+```
+
+Example:
+
+```
+"CONCAT(A, '-', B)"
+// Concatenates the value in column A, a hyphen, and the value in column B
+```
+
+### ISNA Missing Value Check Function
+
+```
+"ISNA(value)"
+```
+
+Example:
+
+```
+"IF(ISNA(A), 0, A)"
+// Returns 0 if the value in column A is a numeric NaN or the string "#N/A", otherwise returns the value in column A
+```
+
+> **Note:** `ISNA` handles numeric `NaN` and the string `"#N/A"`. It does **not** return true for `nil` values.
+
+### IFNA Function
+
+```
+"IFNA(value, valueIfNA)"
+```
+
+Example:
+
+```
+"IFNA(A, 0)"
+// Returns 0 if the value in column A is NaN or "#N/A", otherwise returns the value in column A
+```
+
+### CASE Multiple Condition Function
+
+```
+"CASE(condition1, result1, condition2, result2, ..., defaultValue)"
+```
+
+Example:
+
+```
+"CASE(A > 90, 'A', A > 80, 'B', A > 70, 'C', 'F')"
+// Returns 'A' if A > 90, 'B' if A > 80, 'C' if A > 70, otherwise returns 'F'
+```
+
+### Math Functions
+
+Standard scalar math functions. All accept any value coercible to a number; passing a non-coercible value returns a typed error.
+
+| Function | Description | Example |
+| --- | --- | --- |
+| `ABS(x)` | Absolute value | `ABS(-3.5)` → `3.5` |
+| `ROUND(x, n?)` | Round to `n` decimal places (default `0`); a `NaN` for `n` is an error | `ROUND(3.14159, 2)` → `3.14` |
+| `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
+| `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
+| `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
+| `MOD(a, b)` | Floating-point remainder of `a / b` | `MOD(10, 3)` → `1` |
+| `POW(base, exp)` | Power | `POW(2, 10)` → `1024` |
+| `SQRT(x)` | Square root (errors on negatives) | `SQRT(16)` → `4` |
+| `LN(x)` | Natural log | `LN(EXP(1))` → `1` |
+| `LOG(x, base?)` | `LOG(x)` defaults to base 10; otherwise log base `base` | `LOG(8, 2)` → `3` |
+| `LOG10(x)` | Base-10 log | `LOG10(100)` → `2` |
+| `EXP(x)` | e^x | `EXP(0)` → `1` |
+| `SIGN(x)` | -1, 0, or 1 | `SIGN(-7)` → `-1` |
+
+```go
+dt.AddColUsingCCL("tax", "ROUND(['price'] * 0.0825, 2)")
+dt.AddColUsingCCL("delta", "ABS(['actual'] - ['target'])")
+```
+
+### String Functions
+
+All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID`/`SUBSTR` slice by rune. A count or position past the end of the string means "to the end", so `MID('abc', 2, 10^300)` is `"bc"`, and a `NaN` count is an error.
+
+| Function | Description |
+| --- | --- |
+| `LEN(s)` | Number of Unicode characters |
+| `UPPER(s)` / `LOWER(s)` | Case conversion |
+| `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip ASCII whitespace from both / left / right |
+| `LEFT(s, n)` | First `n` characters |
+| `RIGHT(s, n)` | Last `n` characters |
+| `MID(s, start, length)` / `SUBSTR(...)` | Substring (1-based start, like Excel) |
+| `REPLACE(s, old, new)` | Replace all occurrences of `old` with `new` |
+| `FIND(needle, haystack)` | 1-based position of `needle`; `0` if not found |
+| `CONTAINS(s, sub)` / `STARTSWITH(s, p)` / `ENDSWITH(s, p)` | Boolean checks |
+| `REGEX_MATCH(s, pattern)` | Go regexp match |
+| `REPEAT(s, n)` | Repeat `s` `n` times. A fractional `n` truncates toward zero, so a count between -1 and 0 gives `""`. A count that is `NaN`, -1 or less, infinite or beyond `int64`, or a result too long for an `int`, is an error |
+
+```go
+// Email cleanup pipeline
+dt.ExecuteCCL(`
+    ['email'] = LOWER(TRIM(['email']))
+    NEW('domain') = MID(['email'], FIND('@', ['email']) + 1, LEN(['email']))
+    NEW('is_gift') = CONTAINS(LOWER(['description']), 'gift')
+`)
+```
+
+### Type-Conversion and Null Helpers
+
+| Function | Description |
+| --- | --- |
+| `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
+| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
+| `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
+| `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
+| `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
+
+`IFNULL` differs from the existing `IFNA`: `IFNA` only triggers on float `NaN` or the string `"#N/A"`, while `IFNULL` matches actual `nil` values.
+
+```go
+dt.AddColUsingCCL("price_num", "COALESCE(TONUM(['price_str']), 0)")
+dt.AddColUsingCCL("price_fmt", "TOSTR(['price'], '$%.2f')")
+```
+
+### Date Component & Arithmetic Functions
+
+These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers and operate on `time.Time` values (or strings parseable by Insyra's date parser).
+
+| Function | Description |
+| --- | --- |
+| `YEAR(d)` | Year as number |
+| `MONTH(d)` | Month 1–12 |
+| `DAYOFMONTH(d)` | Day 1–31 |
+| `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
+| `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
+| `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A fractional `n` truncates for `day`, `month` and `year`. A day, month or year count that is `NaN`, infinite or beyond `int64`, or more than about 292 years in hours, minutes or seconds, is an error |
+| `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
+
+```go
+dt.AddColUsingCCL("order_year", "YEAR(['order_date'])")
+dt.AddColUsingCCL("days_open", "DATEDIFF(['closed_at'], ['opened_at'], 'day')")
+dt.AddColUsingCCL("renew_at", "DATEADD(['signed_at'], 1, 'year')")
+dt.AddColUsingCCL("order_iso", "FORMAT_DATE(['order_date'], '2006-01-02')")
+```
+
+## Aggregate Functions
+
+Aggregate functions perform calculations on a set of values (a column, a row, or an expression) and return a single value. This value is then "broadcasted" to all rows in the resulting column (unless in row-wise mode).
+
+**Important Note on `nil` values:** All aggregate functions **automatically ignore `nil` values**. For example, `AVG` only divides the sum by the number of non-nil elements.
+
+## Duration & Time Functions
+
+CCL supports basic date and duration arithmetic and comparison. Key points:
+
+- Date strings (e.g., `"2006-01-02"`, RFC3339) are automatically parsed as `time.Time` when possible; parsed values are treated as date/time values.
+- `date - date` returns a `time.Duration` representing the difference between the two dates. Use `DAY(...)`, `HOUR(...)`, `MINUTE(...)`, or `SECOND(...)` to convert the result to numeric values.
+- `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days). A fraction keeps its hours and minutes: `0.5` moves the date 12 hours, `0.0625` 1 hour 30 minutes and `0.001` 86.4 seconds. The date moves by a duration, so a shift of more than about 292 years (106,751 days) either way is an error.
+- Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
+- If a string cannot be parsed as a date (or the operands are other unsupported types), operations fall back to their original behavior (numeric/string comparison or an error).
+
+### DAY / HOUR / MINUTE / SECOND
+
+- `DAY(x)`: accepts a `time.Duration`, a duration string (e.g., `"24h"`), or a numeric value (interpreted as seconds); returns days as `float64`.
+- `HOUR(x)`: returns hours as `float64`.
+- `MINUTE(x)`: returns minutes as `float64`.
+- `SECOND(x)`: returns seconds as `float64`.
+- For all four, a numeric value of more than about 292 years of seconds, either way, is an error rather than a wrapped-around number.
+
+Examples:
+
+```go
+// Given A and B are date/time columns
+// Calculate difference and express it in days/hours/minutes/seconds
+dt.AddColUsingCCL("diff", "A - B")                     // -> time.Duration
+dt.AddColUsingCCL("diff_days", "DAY(A - B)")           // -> float64 days
+dt.AddColUsingCCL("diff_hours", "HOUR(A - B)")         // -> float64 hours
+```
+
+### SUM
+
+Calculates the sum of all numeric values in the input.
+
+```
+"SUM(A)"             // Sum of all values in column A
+"SUM(A, B)"          // Sum of all values in columns A and B
+"SUM(@.0)"           // Sum of all values in the first row
+"SUM(A + B)"         // Sum of (A + B) for all rows
+"SUM(A.0, B.1, 10)"  // Sum of specific values and constants
+"SUM(@.#)"           // Sum of all columns in the current row (Row Sum)
+"SUM(@)"             // Sum of all numeric values in the entire table (Total Sum)
+```
+
+### AVG
+
+Calculates the mean of the numeric values in the input.
+
+```
+"AVG(A)"             // Mean of column A
+"AVG(A, B)"          // Mean over columns A and B together
+"AVG(@.#)"           // Mean of the current row
+"AVG(@)"             // Mean of every numeric value in the table
+"AVG(A.(0:9))"       // Mean of the first ten rows of A
+```
+
+**`AVG` is not `SUM` divided by `COUNT`.** `AVG` divides by how many values it
+could read as numbers; `COUNT` counts values that are not `nil`, including text.
+On a column holding `[10, nil, 30, "abc"]`, `SUM` is `40`, `COUNT` is `3`, and
+`AVG` is `20` — because the mean is taken over the two numbers, not over the
+three non-empty cells.
+
+### COUNT
+
+Calculates the count of non-nil (non-empty) values in the input.
+
+```
+"COUNT(A)"           // Count of non-nil values in column A
+"COUNT(A, B)"        // Count of non-nil values in columns A and B
+"COUNT(@.#)"         // Count of non-nil values in the current row
+"COUNT(@)"           // Count of all non-nil values in the entire table
+```
+
+### MAX
+
+Calculates the maximum value among all numeric values in the input.
+
+```
+"MAX(A)"             // Maximum value in column A
+"MAX(A, B)"          // Maximum value in columns A and B
+"MAX(@.#)"           // Maximum value in the current row
+"MAX(@)"             // Maximum value in the entire table
+```
+
+### MIN
+
+Calculates the minimum value among all numeric values in the input.
+
+```
+"MIN(A)"             // Minimum value in column A
+"MIN(A, B)"          // Minimum value in columns A and B
+"MIN(@.#)"           // Minimum value in the current row
+"MIN(@)"             // Minimum value in the entire tableW
+```
+
+### MEDIAN
+
+Calculates the median (50th percentile) of all numeric values in the input. For even-count inputs returns the mean of the two middle values.
+
+```
+"MEDIAN(A)"          // Median of column A
+"MEDIAN(@.#)"        // Median of the current row
+```
+
+### STDEV / STDEVP
+
+Sample standard deviation (`STDEV`, divides by `n-1`) and population standard deviation (`STDEVP`, divides by `n`). `STDEV` requires at least 2 numeric values; `STDEVP` requires at least 1.
+
+```
+"STDEV(A)"
+"STDEVP(@)"
+"(['price'] - AVG(['price'])) / STDEV(['price'])"   // z-score
+```
+
+### VAR / VARP
+
+Sample variance (`VAR`, divides by `n-1`) and population variance (`VARP`, divides by `n`). `VAR` requires at least 2 numeric values; `VARP` requires at least 1.
+
+```
+"VAR(A)"
+"VARP(@.#)"
+```
+
+## Row-wise Aggregation
+
+By default, aggregate functions calculate a single value for the entire table (or row/expression) and broadcast it to all rows. However, if you use the `#` (current row index) operator within the aggregate function's arguments, the function will switch to **row-wise mode**.
+
+In row-wise mode, the aggregate function is evaluated for each row independently.
+
+### Row Sum Example
+
+To calculate the sum of all columns for each row:
+
+```
+"NEW('row_total') = SUM(@.#)"
+```
+
+This is equivalent to manually adding all columns: `A + B + C + ...`.
+
+### Row Average Example
+
+To calculate the average of all columns for each row:
+
+```
+"NEW('row_avg') = AVG(@.#)"
+```
+
+### Row Count Example
+
+To count non-nil values in each row:
+
+```
+"NEW('row_count') = COUNT(@.#)"
+```
+
+## Sequence Functions
+
+Sequence functions take whole columns and return same-length columns. They fill the gap between scalar functions (one value in, one value out per row) and aggregate functions (whole column in, single scalar broadcast back) — examples include `LAG`, `CUMSUM`, and `ROLLING_MEAN`. Available in both expression mode (`AddColUsingCCL`) and statement mode (`ExecuteCCL`).
+
+| Function                | Equivalent Go                              | Notes |
+| ----------------------- | ------------------------------------------ | --- |
+| `LAG(col, n)`           | `col.Shift(n)`                             | Empty slots are `nil`. |
+| `LEAD(col, n)`          | `col.Shift(-n)`                            | |
+| `DIFF(col [, n])`       | `col.Diff(n)`                              | `n` defaults to 1. |
+| `PCT_CHANGE(col [, n])` | `col.PctChange(n)`                         | Divide-by-zero → `nil`. |
+| `CUMSUM(col)`           | `col.CumSum()`                             | pandas `skipna=True` semantics. |
+| `CUMPROD(col)`          | `col.CumProd()`                            | |
+| `CUMMAX(col)`           | `col.CumMax()`                             | |
+| `CUMMIN(col)`           | `col.CumMin()`                             | |
+| `ROLLING_SUM(col, w)`   | `col.Rolling({Window: w}).Sum()`           | Right-aligned, `MinObs = Window`. |
+| `ROLLING_MEAN(col, w)`  | `col.Rolling({Window: w}).Mean()`          | |
+| `ROLLING_MIN(col, w)`   | `col.Rolling({Window: w}).Min()`           | |
+| `ROLLING_MAX(col, w)`   | `col.Rolling({Window: w}).Max()`           | |
+| `ROLLING_STD(col, w)`   | `col.Rolling({Window: w}).Std()`           | Sample (n-1). |
+
+### Examples
+
+```go
+dt.ExecuteCCL(`
+    NEW('prev_price') = LAG(B, 1)
+    NEW('ret')        = PCT_CHANGE(B, 1)
+    NEW('cum_pnl')    = CUMSUM(D)
+    NEW('ma7')        = ROLLING_MEAN(B, 7)
+`)
+
+dt.AddColUsingCCL("rolling_via_name", "ROLLING_SUM(['price'], 2)")
+```
+
+### v1 limitation: top-level usage only
+
+Sequence functions are designed to be the **root** of an expression assigned to a new column, or an argument of another sequence or aggregate function: `LAG(LAG(A, 1), 1)`, `CUMSUM(DIFF(A))` and `SUM(LAG(A, 1))` keep every row. Combining them inside binary ops in a single expression — e.g. `LAG(B, 1) + 1` — is **undefined in v1**. Split into two statements instead:
+
+```go
+dt.ExecuteCCL(`
+    NEW('prev') = LAG(B, 1)
+    NEW('adj')  = ['prev'] + 1
+`)
+```
+
+The richer Go API (`DataList.Shift`, `DataTable.RollingCol`, `GroupedDataTable.*Col`) supports the same operations with group-aware variants and custom reducers — see [DataList.md](DataList.md#shift) and [DataTable.md](DataTable.md#window--sequence-transforms-shift--diff--pctchange--cum--rolling--expanding).
+
+## Conditional Expressions
+
+Conditional expressions are used in functions like IF, AND, OR, and CASE, returning boolean values (true or false).
+
+```
+"A > B"          // Whether values in column A are greater than those in column B
+"A == 10"        // Whether values in column A are equal to 10
+"A != B"         // Whether values in column A are not equal to those in column B
+```
+
+## Chained Comparisons
+
+CCL supports chained comparison operations, allowing concise syntax for range checks and multi-value comparisons. You can mix different comparison operators in a single chain.
+
+### Basic Range Checks
+
+```
+"1 < A < 10"     // Whether A is greater than 1 and less than 10
+"0 <= A <= 100"  // Whether A is between 0 and 100 (inclusive)
+"A <= B <= C"    // Check if three columns are in ascending order
+```
+
+### Mixed Operator Chains
+
+You can combine different comparison operators (`<`, `>`, `<=`, `>=`, `==`, `!=`) in the same chain:
+
+```
+"A == B > C"         // A equals B AND B is greater than C
+"A != B < C"         // A is not equal to B AND B is less than C
+"A == B > C < D"     // A equals B AND B > C AND C < D
+"A < B <= C < D"     // A < B AND B <= C AND C < D
+"C >= B >= A"        // C >= B AND B >= A (descending order check)
+```
+
+### Equivalence
+
+Chained comparisons are equivalent to using the AND operator:
+
+```
+"1 < A < 10"         // Equivalent to: AND(1 < A, A < 10)
+"A == B > C"         // Equivalent to: AND(A == B, B > C)
+"A < B <= C < D"     // Equivalent to: AND(A < B, B <= C, C < D)
+```
+
+## Custom Functions
+
+Register your own scalar function with `RegisterFunction` from `engine/ccl`. It
+receives the evaluated arguments and returns a value or an error; an error stops
+the expression the same way a built-in function's error does. Names are matched
+without regard to case, and registering is safe while other goroutines are
+evaluating.
+
+```go
+import (
+    "fmt"
+
+    ccl "github.com/HazelnutParadise/insyra/engine/ccl"
+)
+
+ccl.RegisterFunction("DOUBLE", func(args ...any) (any, error) {
+    if len(args) != 1 {
+        return nil, fmt.Errorf("DOUBLE takes 1 argument, got %d", len(args))
+    }
+    switch v := args[0].(type) {
+    case int:
+        return float64(v) * 2, nil
+    case float64:
+        return v * 2, nil
+    }
+    return nil, fmt.Errorf("DOUBLE: %v is not a number", args[0])
+})
+
+dt.AddColUsingCCL("twice", "DOUBLE(A)")
+```
+
+### Reading another table from inside a function
+
+A function runs while the CCL call holds the lock on the table it is
+evaluating, and on nothing else. If the function reads a different `DataTable`
+or `DataList` that another goroutine may be writing, the two race.
+
+Lock both tables from the outside, before the CCL call starts:
+
+```go
+insyra.AtomicDoAll(func() {
+    dt.AddColUsingCCL("ratio", "A / OTHERTOTAL()")
+}, dt, other)
+```
+
+`AtomicDoAll` takes both locks in a fixed order, so two goroutines doing this
+cannot wait on each other.
+
+Do not take the second lock from inside the function. Calling
+`AtomicDoAll(..., other)` there does stop the race, but it takes `other`'s lock
+while `dt`'s is already held. If another goroutine runs CCL on `other` with a
+function that locks `dt`, each ends up waiting for the other, and neither call
+ever returns.
+
+## Examples
+
+### Conditional Calculations
+
+```go
+// Age classification
+dt.AddColUsingCCL("age_group", "IF(A < 18, 'Minor', IF(A < 65, 'Adult', 'Senior'))")
+
+// Calculating discounts
+dt.AddColUsingCCL("discount", "IF(B > 1000, B * 0.15, B * 0.05)")
+
+// Multiple condition checking
+dt.AddColUsingCCL("status", "IF(AND(A >= 0, B <= 100), 'Valid', 'Invalid')")
+```
+
+### Mathematical Operations
+
+```go
+// Basic arithmetic
+dt.AddColUsingCCL("total", "A + B + C")
+dt.AddColUsingCCL("average", "(A + B + C) / 3")
+
+// Exponentiation
+dt.AddColUsingCCL("square", "A ^ 2")
+dt.AddColUsingCCL("cube", "A ^ 3")
+```
+
+### Date & Duration Examples
+
+```go
+// Date difference returns time.Duration; use DAY/HOUR/MINUTE/SECOND to convert
+// A and B are date/time columns
+dt.AddColUsingCCL("diff", "A - B")                     // -> time.Duration
+dt.AddColUsingCCL("diff_days", "DAY(A - B)")           // -> float64 days
+dt.AddColUsingCCL("prev_diff", "IF(#>0, A.(#-1) - A, NULL)") // uses IF short-circuiting to avoid row -1; NULL is the nil literal
+```
+
+### String Operations
+
+```go
+// String concatenation
+dt.AddColUsingCCL("full_name", "CONCAT(A, ' ', B)")
+
+// Conditional formatting
+dt.AddColUsingCCL("label", "CONCAT('ID-', A, ': ', IF(B > 50, 'Pass', 'Fail'))")
+```
+
+### Range Checks
+
+```go
+// Simple range
+dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
+
+// Multi-column order check
+dt.AddColUsingCCL("ascending", "IF(A <= B <= C, 'Ascending', 'Not Ascending')")
+```
+
+### Using ExecuteCCL for Complex Operations
+
+```go
+// Create a sales analysis table
+dt := NewDataTable(
+    NewDataList(100, 200, 150, 300).SetName("quantity"),
+    NewDataList(10.5, 20.0, 15.5, 25.0).SetName("price"),
+)
+
+// Execute multiple CCL statements
+dt.ExecuteCCL(`
+    NEW('revenue') = ['quantity'] * ['price']
+    NEW('tax') = ['revenue'] * 0.1
+    NEW('total') = ['revenue'] + ['tax']
+`)
+
+// Copy the first row of data to a new column
+dt.ExecuteCCL("NEW('FirstRowData') = @.0")
+
+// Access a specific row's value
+dt.ExecuteCCL("NEW('BaseValue') = A.0")
+
+// Use row names for access
+dt.ExecuteCCL("NEW('JackScore') = ['Score'].'Jack'")
+
+// Modify existing columns and create new ones
+dt.ExecuteCCL(`
+    ['price'] = ['price'] * 1.05
+    NEW('adjusted_revenue') = ['quantity'] * ['price']
+`)
+```
+
+## Best Practices
+
+1. **Choose the Right Mode**:
+
+   - Use `AddColUsingCCL` for simple calculations that add a single new column
+   - Use `ExecuteCCL` when you need to modify existing columns or perform multiple operations
+
+2. **Improve Readability**: Break complex expressions into multiple simple column calculations
+
+   ```go
+   // Using ExecuteCCL for step-by-step calculations:
+   dt.ExecuteCCL(`
+       NEW('subtotal') = ['quantity'] * ['price']
+       NEW('tax') = ['subtotal'] * 0.1
+       NEW('total') = ['subtotal'] + ['tax']
+   `)
+
+   // Rather than one complex expression:
+   dt.AddColUsingCCL("total", "['quantity'] * ['price'] * 1.1")
+   ```
+
+3. **Avoid Deep Nesting**: Deeply nested IF conditions are hard to maintain; consider using the CASE function
+
+   ```go
+   // Better practice:
+   dt.AddColUsingCCL("grade", "CASE(A >= 90, 'A', A >= 80, 'B', A >= 70, 'C', A >= 60, 'D', 'F')")
+
+   // Rather than:
+   dt.AddColUsingCCL("grade", "IF(A >= 90, 'A', IF(A >= 80, 'B', IF(A >= 70, 'C', IF(A >= 60, 'D', 'F'))))")
+   ```
+
+4. **Mind Data Types**: Ensure you compare values of compatible types; check for null values or strings in columns
+
+5. **Use Chained Comparisons**: For range checks, use chained comparisons to make expressions more concise
+
+6. **Use Column Names for Clarity**: When columns have meaningful names, use `['colName']` syntax for better readability
+
+   ```go
+   // More readable:
+   dt.ExecuteCCL("NEW('profit') = ['revenue'] - ['cost']")
+
+   // Less readable:
+   dt.ExecuteCCL("NEW('profit') = A - B")
+   ```
+
+## Performance
+
+CCL is optimized for high-performance batch processing. The formula is compiled (tokenized and parsed) only once, and the resulting AST (Abstract Syntax Tree) is reused for all rows.
+
+### Benchmark Results
+
+Test environment: 100,000 rows × 3 columns
+
+| Formula Type       | Example                                        | Time   | Per Row |
+| ------------------ | ---------------------------------------------- | ------ | ------- |
+| Simple arithmetic  | `A + B + C`                                    | ~32ms  | ~0.32μs |
+| Bracket syntax     | `[A] + ['colName'] + [C]`                      | ~43ms  | ~0.43μs |
+| With function      | `IF(A > 50000, 1, 0)`                          | ~59ms  | ~0.59μs |
+| Complex expression | `IF(AND(A > 10000, B < 150000), A * 2 + B, C)` | ~103ms | ~1.03μs |
+
+### Aggregates inside a per-row expression
+
+An aggregate whose answer is the same on every row — anything that does not
+mention `#` — is computed **once** before the rows are walked, not once per
+row. This matters a lot: on 20,000 rows, `A / SUM(A)` used to sum the whole
+column 20,000 times.
+
+| Expression | Before | Now |
+| --- | --- | --- |
+| `A / 1` (baseline) | 1.1 ms | 1.1 ms |
+| `A / SUM(A)` | 2.1 s | 1.0 ms |
+| `(A - AVG(A)) / STDEV(A)` | 6.2 s | 1.8 ms |
+
+An aggregate that *does* mention `#` reads the current row, so it stays
+per-row — `SUM(A.(0:#))` is a running total and cannot be hoisted. This applies
+to `AddColUsingCCL`, `EditColByIndexUsingCCL` and `EditColByNameUsingCCL`;
+`ExecuteCCL` statements still evaluate an aggregate per row.
+
+### Rolling windows
+
+`ROLLING_*` is **O(rows × window)** on purpose. A running accumulator would
+make it linear, but adding the entering value and subtracting the leaving one
+accumulates rounding error that recomputing the window does not have, so a long
+window over values of mixed magnitude would return a different number. Each
+window is still summed from scratch; what changed is that the column is
+converted out of `any` once instead of once per window per element.
+
+If a linear rolling sum matters more to you than matching the recomputed value,
+compute it with `DataList` methods rather than in CCL.
+
+### Performance Tips
+
+1. **Prefer simple expressions**: Arithmetic operations are faster than function calls
+2. **Minimize function nesting**: Each function call adds overhead
+3. **Use bracket syntax when needed**: `[A]` and `['name']` have minimal overhead compared to direct references
+4. **Batch operations**: Process all rows at once using `AddColUsingCCL` rather than row-by-row operations
+5. **A repeated pattern is compiled once**: `REGEX_MATCH` caches compiled patterns, so a literal pattern costs one compilation for the whole column
+
+## Limits
+
+To keep a single formula from exhausting the process stack, CCL bounds expression **nesting** depth at compile time. Both limits are 10000 — the same depth the evaluator supports — so no expression that could actually be evaluated is ever rejected:
+
+| Limit | What it bounds | Error message |
+| --- | --- | --- |
+| Nesting depth | Parentheses, nested function calls, unary operators | `expression too deeply nested (max 10000 levels)` |
+| Expression complexity | Overall depth of the compiled expression tree | `expression too complex: nesting depth exceeds max 10000` |
+
+Left-associative operator **chains** (`a + b + c + ...`, string concatenation runs, `&&`/`||` sequences) are *not* subject to these limits: the compiler flattens them into a constant-depth internal form and evaluates them iteratively, so chain length is bounded only by available memory. Semantics are unchanged — strict left-to-right evaluation, identical values and error behavior.
+
+Like all CCL compile errors, the limit errors are logged as warnings and surfaced via the table's `Err()` method; the DataTable is left unchanged.
+
+Note that compilation still tokenizes the input before rejecting it, so memory use is proportional to input size. If you expose CCL input to untrusted end users, cap the formula length at your application boundary as well.
+
+## Troubleshooting
+
+### Reading a CCL Error
+
+Every failure says which of two things went wrong, so the first question — is my formula malformed, or is my data? — is answered by the first word.
+
+**A compile failure** names the expression, the byte offset where the problem is, and the text at that offset:
+
+```
+cannot compile "(A B)" at offset 3 (near "B"): expected ')'
+```
+
+Offset 3 is a position in the string you wrote, so you can point at it. Some compile failures have no position — a column that does not exist, for instance — and then the offset is omitted.
+
+**An evaluation failure** names the row:
+
+```
+cannot evaluate "A / B" at row 1: division by zero
+```
+
+An expression that does not depend on the row is evaluated once, and reports no row rather than a misleading one. Inside `ExecuteCCL`, the expression named is the statement that failed, so a script of several lines says which one.
+
+Both are typed values, so a program can react to them:
+
+```go
+import (
+    "errors"
+    ccl "github.com/HazelnutParadise/insyra/engine/ccl"
+)
+
+dt.AddColUsingCCL("result", formula)
+
+var compileErr *ccl.CompileError
+var evalErr *ccl.EvalError
+if e := dt.Err(); e != nil {
+    switch {
+    case errors.As(e, &compileErr):
+        // compileErr.Expr, .Offset, .Near — the formula is wrong
+    case errors.As(e, &evalErr):
+        // evalErr.Row, errors.Unwrap(evalErr) — the data is wrong on that row
+    }
+}
+```
+
+### Common Issues
+
+1. **Assignment to Non-Existent Column**
+
+   - Error: `assignment target column 'X' does not exist`
+   - Solution: Use `NEW('X') = expression` to create new columns, not assignment syntax
+
+2. **Expression Evaluation Timeout**
+
+   - Simplify complex expressions
+   - Check if you have a very large dataset
+
+3. **Type Errors**
+
+   - Ensure all columns involved in operations have compatible data types
+   - Use conditional conversions for columns that may contain different types of data
+
+4. **Column Reference Errors**
+
+   - Verify that column references are correct (A, B, C...)
+   - For named columns, ensure the name is spelled correctly (case-sensitive)
+   - Check if referenced columns exist in the DataTable
+
+5. **Invalid Expressions**
+
+   - Check for matching parentheses
+   - Ensure function syntax is correct (e.g., IF requires three parameters)
+   - For `NEW()`, ensure the syntax is `NEW('name') = expression`
+
+6. **Edit Column Not Found**
+   - `EditColByNameUsingCCL`: Ensure the column name exists and is spelled correctly (case-sensitive)
+   - `EditColByIndexUsingCCL`: Ensure the column index is within range (A, B, C, ... for columns 1, 2, 3, ...)
+
+### Mode Selection Guide
+
+| Scenario                                 | Recommended Method                    |
+| ---------------------------------------- | ------------------------------------- |
+| Add single calculated column             | `AddColUsingCCL`                      |
+| Modify single column by index            | `EditColByIndexUsingCCL`              |
+| Modify single column by name             | `EditColByNameUsingCCL`               |
+| Modify existing column (statement style) | `ExecuteCCL` with assignment          |
+| Create multiple columns                  | `ExecuteCCL` with multiple `NEW()`    |
+| Complex multi-step calculation           | `ExecuteCCL` with multiple statements |

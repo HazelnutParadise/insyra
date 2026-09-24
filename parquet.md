@@ -1,0 +1,444 @@
+# [ parquet ] Package
+
+The `parquet` package provides read and write support for the Apache Parquet file format, deeply integrated with Insyra's `DataTable` and `DataList`.
+
+## Table of Contents
+
+- [Data Structures](#data-structures)
+  - [ReadOptions](#readoptions)
+  - [ReadColumnOptions](#readcolumnoptions)
+  - [FileInfo](#fileinfo)
+- [Main Functions](#main-functions)
+  - [Inspect](#inspect)
+  - [Read](#read)
+  - [Write](#write)
+  - [Stream](#stream)
+  - [ReadColumn](#readcolumn)
+- [CCL Support](#ccl-support)
+  - [FilterWithCCL](#filterwithccl)
+  - [ApplyCCL](#applyccl)
+  - [Type Constraints](#type-constraints)
+- [Examples](#examples)
+
+## Data Structures
+
+### ReadOptions
+
+Options for configuring Parquet file reading.
+
+```go
+type ReadOptions struct {
+    Columns   []string // Column names to read; if empty, all columns are read
+    RowGroups []int    // RowGroup indices to read; if empty, all RowGroups are read
+}
+```
+
+### ReadColumnOptions
+
+Options specifically for the `ReadColumn` function.
+
+```go
+type ReadColumnOptions struct {
+    RowGroups []int // RowGroup indices to read; if empty, all RowGroups are read
+    MaxValues int64 // Maximum number of values to read; 0 means no limit. The row count of the selected RowGroups is checked from the file metadata before any value is read; if it exceeds MaxValues an error naming both numbers is returned.
+}
+```
+
+### FileInfo
+
+Contains metadata information of a Parquet file.
+
+```go
+type FileInfo struct {
+    NumRows      int64             // Total number of rows
+    NumRowGroups int               // Number of RowGroups
+    Version      string            // Parquet version
+    CreatedBy    string            // Writer information
+    Metadata     map[string]string // Key-value metadata
+    Columns      []ColumnInfo      // Column information
+    RowGroups    []RowGroupInfo    // RowGroup information
+}
+```
+
+## Main Functions
+
+### Inspect
+
+```go
+func Inspect(path string) (FileInfo, error)
+```
+
+**Description:** Inspects the metadata of a Parquet file.
+
+**Parameters:**
+
+- `path`: File path to use. Type: `string`.
+
+**Returns:**
+
+- `FileInfo`: Return value.
+- `error`: Error when the operation fails.
+
+### Read
+
+```go
+func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable, error)
+```
+
+**Description:** Reads a Parquet file into an `insyra.DataTable` all at once.
+
+**Parameters:**
+
+- `ctx`: Context for cancellation or timeouts. Type: `context.Context`.
+- `path`: File path to use. Type: `string`.
+- `opt`: Input value for `opt`. Type: `ReadOptions`.
+
+**Returns:**
+
+- `*insyra.DataTable`: Return value.
+- `error`: Error when the operation fails.
+
+**Column types:** the table below is what each Arrow column type in the file
+becomes in Go. A type that is not listed has no faithful Go representation, so
+its cells are read as `nil` and the reason, naming the column and the Arrow
+type, is recorded on the returned table's `Err()` and logged as a warning. When
+more than one column is affected, each is logged and `Err()` holds the last
+one. The rest of the file still reads normally, and `ReadOptions.Columns` can
+be used to skip such a column entirely.
+
+| Arrow column type | Go value |
+| --- | --- |
+| `Int8`, `Int16`, `Int32`, `Int64` | `int8`, `int16`, `int32`, `int64` |
+| `Uint8`, `Uint16`, `Uint32`, `Uint64` | `uint8`, `uint16`, `uint32`, `uint64` |
+| `Float32`, `Float64` | `float32`, `float64` |
+| `Bool` | `bool` |
+| `String`, `LargeString` | `string` |
+| `Binary`, `LargeBinary`, `FixedSizeBinary` | `[]byte`, so a binary column is never mistaken for a text one; `Show` prints each cell as hex, shortened for a value longer than 20 bytes (for example `30313233343536373839... (26 bytes)`) |
+| `Timestamp` | `time.Time` |
+| `Date32`, `Date64` | `time.Time` at UTC midnight |
+| `Decimal128`, `Decimal256` | `decimal.Decimal` ([go-decimal](https://github.com/TimLai666/go-decimal)), exact |
+| `Null` | `nil` in every cell, which is all such a column holds; no reason is recorded |
+| anything else | `nil`, with the reason on `Err()` |
+
+A `Decimal` keeps the file's own unscaled integer and scale, so nothing is
+rounded, and it sorts by value rather than by the text of its digits. Like a
+`time.Time`, it is not a number to `Mean`, `Sum` and the rest of the numeric
+path; convert it first if you need arithmetic. See [Exact Decimals](Decimal.md).
+
+A binary column exports to JSON as base64, which is what a `[]byte` becomes
+in JSON, so nothing is lost. `Write` still writes a column of `[]byte` cells
+as a string column holding Go's text for the slice, such as `[65 45 48 49]`,
+so a read-then-write round trip keeps neither the binary type nor the bytes.
+
+A dictionary-encoded column reads as the values it holds, in the Go type the
+table above gives their Arrow type, so a pandas `category` column of strings
+reads as strings. That holds whether the reader materialises the column or, for
+a file that stores its Arrow schema, hands it over as an Arrow dictionary. A
+dictionary whose values have no Go representation reads as `nil`, with the
+reason on `Err()`.
+
+`Stream` and `ReadColumn` read the same types the same way, and record the
+reason on each batch or on the returned list. `ReadColumn` selects a column by
+its Parquet leaf name, so a nested column (`List`, `Struct`, `Map`), whose leaf
+is not named after the field, cannot be selected by name: it reports that the
+column is not found. `FilterWithCCL` also sees `nil`
+for an unsupported column, but records no reason.
+
+### Write
+
+```go
+func Write(dt insyra.IDataTable, path string) error
+```
+
+**Description:** Writes an `insyra.IDataTable` to a Parquet file. The file footer is written when the writer closes, so an error from that close is returned rather than only logged.
+
+**Parameters:**
+
+- `dt`: Input value for `dt`. Type: `insyra.IDataTable`.
+- `path`: File path to use. Type: `string`.
+
+**Returns:**
+
+- `error`: Error when the operation fails.
+
+### Stream
+
+```go
+func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error)
+```
+
+**Description:** Streams a Parquet file, returning a channel that receives `*insyra.DataTable` batches. Always read from the error channel to detect stream failures.
+
+**Parameters:**
+
+- `ctx`: Context for cancellation or timeouts. Type: `context.Context`.
+- `path`: File path to use. Type: `string`.
+- `opt`: Input value for `opt`. Type: `ReadOptions`.
+- `batchSize`: Input value for `batchSize`. Type: `int`.
+
+**Returns:**
+
+- `<-chan *insyra.DataTable`: Return value.
+- `<-chan error`: Return value.
+
+### ReadColumn
+
+```go
+func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnOptions) (*insyra.DataList, error)
+```
+
+**Description:** Reads data from a single column in a Parquet file, returning an `insyra.DataList`. When `opt.MaxValues > 0`, the row count of the selected row groups (all when none are selected) is taken from the metadata first and the call is refused before reading if it exceeds the limit.
+
+**Parameters:**
+
+- `ctx`: Context for cancellation or timeouts. Type: `context.Context`.
+- `path`: File path to use. Type: `string`.
+- `column`: Input value for `column`. Type: `string`.
+- `opt`: Input value for `opt`. Type: `ReadColumnOptions`.
+
+**Returns:**
+
+- `*insyra.DataList`: Return value.
+- `error`: Error when the operation fails.
+
+## CCL Support
+
+The `parquet` package provides CCL (Column Calculation Language) support for direct manipulation of Parquet files without loading the entire dataset into memory.
+
+> [!IMPORTANT]
+> **⚠️ Important Note on Type Constraints:**
+>
+> Due to the nature of Parquet format, **each column must have a consistent data type**. This means CCL operations in Parquet may behave differently from DataTable operations in the following ways:
+>
+> - When creating new columns or modifying existing ones, ensure that the resulting values maintain type consistency within each column
+> - Type coercion may occur automatically to maintain column type consistency
+> - Operations that would create mixed types in a column may result in errors or unexpected behavior
+> - This is a fundamental constraint of the Parquet format, not a limitation of the CCL implementation
+
+### FilterWithCCL
+
+```go
+func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra.DataTable, error)
+```
+
+**Description:** Applies a CCL filter expression to a Parquet file and returns filtered results as a `DataTable`. The filter expression should evaluate to a boolean value for each row.
+
+**Parameters:**
+
+- `ctx`: Context for cancellation
+- `path`: Path to the input Parquet file
+- `filterExpr`: CCL expression that evaluates to boolean (e.g., `"(A > 100) && (B == 'active')"`)
+
+**Returns:**
+
+- A new `DataTable` containing only rows that satisfy the filter condition, however large the file. When nothing matches, the table has the file's columns and no rows.
+- An error when the expression does not compile, when it cannot be evaluated against a row, or when the file cannot be read — including a read that fails part-way. A read failure is always reported as an error; a partial table is never returned in its place.
+- The original Parquet file is **not modified**
+
+**Example:**
+
+```go
+// Filter rows where column A > 100 and column B equals 'active'
+filtered, err := parquet.FilterWithCCL(ctx, "data.parquet", "(A > 100) && (B == 'active')")
+if err != nil {
+    panic(err)
+}
+filtered.Show()
+```
+
+### ApplyCCL
+
+```go
+func ApplyCCL(ctx context.Context, path string, cclScript string) error
+```
+
+**Description:** Applies CCL expressions directly to a Parquet file in streaming mode, processing data batch by batch to minimize memory usage. The CCL script can contain multiple statements separated by semicolons.
+
+**Parameters:**
+
+- `ctx`: Context for cancellation
+- `path`: Path to the Parquet file (will be modified in-place)
+- `cclScript`: CCL script containing one or more statements separated by `;` or newlines
+
+**Returns:**
+
+- `error`: Error when the operation fails.
+
+**Important:**
+
+- The input file **will be overwritten** with the transformed data (via a temporary file).
+- Processing is done in batches to handle large files efficiently.
+- Supports creating new columns with `NEW()`, but modifying existing columns may not work.
+
+**Example:**
+
+```go
+// Create a new column Sum as sum of Price1 and Price2
+err := parquet.ApplyCCL(ctx, "data.parquet", `
+    NEW('Sum') = ['Price1'] + ['Price2']
+`)
+if err != nil {
+    panic(err)
+}
+```
+
+### Type Constraints
+
+When using CCL with Parquet files, be aware of these type-related considerations:
+
+1. **Column Type Consistency**: Each column must maintain a single data type throughout. Mixed-type columns are not supported.
+
+2. **Type Inference**: When creating new columns with `NEW()`, the type is determined from the first batch of data processed.
+
+3. **Type Coercion**: Operations may automatically coerce types to maintain consistency. For example:
+
+   - Numeric operations on integer columns may produce float results
+   - String concatenation with numbers will convert numbers to strings
+
+4. **Differences from DataTable CCL**:
+   - DataTable allows more flexible type handling per cell
+   - Parquet enforces strict column-level typing
+   - Some CCL operations that work on DataTable may need adjustment for Parquet
+
+**Best Practices:**
+
+- Test CCL expressions on a small sample file first
+- Explicitly handle type conversions in your CCL expressions when needed
+- Be aware that aggregate functions must return consistent types
+
+## Examples
+
+### Reading a Parquet File
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "github.com/HazelnutParadise/insyra/parquet"
+)
+
+func main() {
+    ctx := context.Background()
+    dt, err := parquet.Read(ctx, "data.parquet", parquet.ReadOptions{})
+    if err != nil {
+        panic(err)
+    }
+    dt.Show()
+}
+```
+
+### Writing a Parquet File
+
+```go
+package main
+
+import (
+    "github.com/HazelnutParadise/insyra/isr"
+    "github.com/HazelnutParadise/insyra/parquet"
+)
+
+func main() {
+    dt := isr.DT.Of(isr.DLs{
+        isr.DL.Of(1, 2, 3).SetName("ID"),
+        isr.DL.Of("A", "B", "C").SetName("Name"),
+    })
+
+    err := parquet.Write(dt, "output.parquet")
+    if err != nil {
+     panic(err)
+    }
+}
+```
+
+### Streaming Read
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "github.com/HazelnutParadise/insyra/parquet"
+)
+
+func main() {
+    ctx := context.Background()
+    dtChan, errChan := parquet.Stream(ctx, "large_data.parquet", parquet.ReadOptions{}, 1000)
+
+    for {
+        select {
+        case dt, ok := <-dtChan:
+            if !ok {
+                return
+            }
+            numRows, _ := dt.Size()
+            fmt.Printf("Batch read, rows: %d\n", numRows)
+            dt.Show()
+        case err := <-errChan:
+            if err != nil {
+                panic(err)
+            }
+            return
+        }
+    }
+}
+```
+
+### Using CCL to Filter Data
+
+```go
+package main
+
+import (
+    "context"
+    "github.com/HazelnutParadise/insyra/parquet"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // Filter products with price > 100 and in_stock == true
+    filtered, err := parquet.FilterWithCCL(
+        ctx,
+        "products.parquet",
+        "(['price'] > 100) && (['in_stock'] == true)",
+    )
+    if err != nil {
+        panic(err)
+    }
+
+    filtered.Show()
+}
+```
+
+### Using CCL to Transform Data
+
+```go
+package main
+
+import (
+    "context"
+    "github.com/HazelnutParadise/insyra/parquet"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // Apply multiple CCL transformations:
+    // 1. Create a new column 'total' as price * quantity
+    // 2. Apply 10% discount to all prices
+    // 3. Update status based on stock level
+    err := parquet.ApplyCCL(ctx, "orders.parquet", `
+        NEW('total') = ['price'] * ['quantity']
+        NEW('new_price') = ['price'] * 0.9
+        NEW('status') = IF(['stock'] > 0, 'available', 'out_of_stock')
+    `)
+    if err != nil {
+        panic(err)
+    }
+
+    fmt.Println("Transformations applied successfully!")
+}
+```
