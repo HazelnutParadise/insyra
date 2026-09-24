@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"math"
 	"os"
 	"reflect"
@@ -142,6 +143,79 @@ func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, 
 // the encoding is detected from the first bytes of r.
 func ReadCSV(r io.Reader, opts CSVReadOptions) (*DataTable, error) {
 	return readCSVFrom(r, opts, "the CSV input")
+}
+
+// StreamCSV reads CSV from r a batch at a time. Range over it:
+//
+//	for dt, err := range insyra.StreamCSV(r, opts, 1000) {
+//		if err != nil {
+//			return err
+//		}
+//		// dt holds up to 1000 data rows
+//	}
+//
+// Each table holds at most batchSize data rows. With opts.FirstRowToColNames
+// the header row names the columns of every batch, not only the first.
+// Column types are inferred batch by batch, as pandas does for
+// read_csv(chunksize=…), so a column can be numbers in one batch and strings
+// in another; opts.RawStrings keeps every batch as strings. Only the rows of
+// the current batch are held in memory, and leaving the loop early stops
+// reading r. A failure arrives once, as a nil table and the error, and ends
+// the loop.
+func StreamCSV(r io.Reader, opts CSVReadOptions, batchSize int) iter.Seq2[*DataTable, error] {
+	return func(yield func(*DataTable, error) bool) {
+		if batchSize <= 0 {
+			yield(nil, fmt.Errorf("StreamCSV: batchSize must be positive, got %d", batchSize))
+			return
+		}
+		decoded, err := decodeCSVInput(r, opts.Encoding, "the CSV input")
+		if err != nil {
+			yield(nil, err)
+			return
+		}
+		reader := csv.NewReader(decoded)
+		reader.FieldsPerRecord = csvFieldsPerRecord(opts)
+		reader.TrimLeadingSpace = opts.TrimLeadingSpace
+
+		var header []string
+		first := true
+		batch := make([][]string, 0, batchSize)
+		emit := func() bool {
+			rows := batch
+			if header != nil {
+				rows = append([][]string{header}, batch...)
+			}
+			batch = make([][]string, 0, batchSize)
+			return yield(csvRowsToDataTable(rows, opts), nil)
+		}
+		for {
+			record, err := reader.Read()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				yield(nil, fmt.Errorf("failed to read CSV from the CSV input: %w", err))
+				return
+			}
+			if first {
+				first = false
+				if len(record) > 0 {
+					record[0] = strings.TrimPrefix(record[0], "\uFEFF")
+				}
+				if opts.FirstRowToColNames {
+					header = record
+					continue
+				}
+			}
+			batch = append(batch, record)
+			if len(batch) == batchSize && !emit() {
+				return
+			}
+		}
+		if len(batch) > 0 {
+			emit()
+		}
+	}
 }
 
 // readCSVFrom is the one CSV reader behind ReadCSV and the path and string

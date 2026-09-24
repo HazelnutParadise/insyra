@@ -95,3 +95,71 @@ func TestWriteCSVMatchesTheFileWriter(t *testing.T) {
 		t.Fatalf("WriteCSV wrote %q, the file holds %q", buf.String(), onDisk)
 	}
 }
+
+// countingReader counts how much of its input has been read.
+type countingReader struct {
+	r    *strings.Reader
+	read int
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.read += n
+	return n, err
+}
+
+func csvWithRows(n int) string {
+	var b strings.Builder
+	b.WriteString("id,value\n")
+	for i := 0; i < n; i++ {
+		b.WriteString("r")
+		b.WriteString(strings.Repeat("x", 3))
+		b.WriteString(",")
+		b.WriteString("42\n")
+	}
+	return b.String()
+}
+
+func TestStreamCSVYieldsEveryRowInBatches(t *testing.T) {
+	var sizes []int
+	for dt, err := range StreamCSV(strings.NewReader(csvWithRows(25)), CSVReadOptions{FirstRowToColNames: true}, 10) {
+		if err != nil {
+			t.Fatalf("StreamCSV: %v", err)
+		}
+		rows, _ := dt.Size()
+		sizes = append(sizes, rows)
+		if !reflect.DeepEqual(dt.ColNames(), []string{"id", "value"}) {
+			t.Fatalf("batch %d has columns %v, want the header's", len(sizes), dt.ColNames())
+		}
+	}
+	if !reflect.DeepEqual(sizes, []int{10, 10, 5}) {
+		t.Fatalf("batch sizes %v, want [10 10 5]", sizes)
+	}
+}
+
+func TestStreamCSVStopsReadingWhenTheLoopBreaks(t *testing.T) {
+	input := csvWithRows(200000)
+	counter := &countingReader{r: strings.NewReader(input)}
+	for _, err := range StreamCSV(counter, CSVReadOptions{FirstRowToColNames: true}, 100) {
+		if err != nil {
+			t.Fatalf("StreamCSV: %v", err)
+		}
+		break
+	}
+	if counter.read > len(input)/10 {
+		t.Fatalf("read %d of %d bytes after one batch of 100 rows", counter.read, len(input))
+	}
+}
+
+func TestStreamCSVRefusesANonPositiveBatchSize(t *testing.T) {
+	yields := 0
+	for dt, err := range StreamCSV(strings.NewReader(readerCSV), CSVReadOptions{}, 0) {
+		yields++
+		if dt != nil || err == nil {
+			t.Fatalf("got table %v and error %v, want only an error", dt, err)
+		}
+	}
+	if yields != 1 {
+		t.Fatalf("yielded %d times, want one failure", yields)
+	}
+}
