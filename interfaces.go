@@ -1,6 +1,10 @@
 package insyra
 
-import "gorm.io/gorm"
+import (
+	"io"
+
+	"gorm.io/gorm"
+)
 
 // IDataList defines the behavior expected from a DataList.
 type IDataList interface {
@@ -272,6 +276,7 @@ type IDataTable interface {
 	SwapRowsByName(rowName1 string, rowName2 string) *DataTable
 	// CSV
 	ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
+	WriteCSV(w io.Writer, opts CSVWriteOptions) error
 	// JSON
 	// ToJSON saves the DataTable as a JSON file.
 	// Parameters:
@@ -280,6 +285,7 @@ type IDataTable interface {
 	// Returns:
 	// - error: Error information, returns nil if successful
 	ToJSON(filePath string, useColNames bool) error
+	WriteJSON(w io.Writer, useColNames bool) error
 	// ToJSON_Bytes converts the DataTable to JSON format and returns it as a byte slice.
 	// Parameters:
 	// - useColNames: Whether to use column names as keys in JSON objects

@@ -498,6 +498,23 @@ func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames boo
 		return nil, fmt.Errorf("failed to open Excel file %s: %w", filePath, err)
 	}
 	defer func() { _ = f.Close() }()
+	return readExcelSheetFrom(f, sheetName, setFirstColToRowNames, setFirstRowToColNames)
+}
+
+// ReadExcel reads one sheet of an Excel workbook from any source — an HTTP
+// response body, a zip entry, bytes in memory — the same way ReadExcelSheet
+// reads a file, with the same limit on how far the workbook may expand.
+func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+	f, err := excelize.OpenReader(r, ExcelReadOptions())
+	if err != nil {
+		return nil, fmt.Errorf("failed to open Excel input: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	return readExcelSheetFrom(f, sheetName, setFirstColToRowNames, setFirstRowToColNames)
+}
+
+// readExcelSheetFrom is the sheet reader behind ReadExcelSheet and ReadExcel.
+func readExcelSheetFrom(f *excelize.File, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rows from sheet %s: %w", sheetName, err)
@@ -583,6 +600,18 @@ func ReadJSON(data any) (*DataTable, error) {
 		rows = r
 	case string:
 		r, err := unmarshalJSONRows([]byte(v))
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+		}
+		rows = r
+	case io.Reader:
+		// Any source — an HTTP response body, an open file, a zip entry — is
+		// read in full and decoded the same way as bytes.
+		b, err := io.ReadAll(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read JSON: %w", err)
+		}
+		r, err := unmarshalJSONRows(b)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}

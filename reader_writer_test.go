@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xuri/excelize/v2"
 	"golang.org/x/text/encoding/traditionalchinese"
 )
 
@@ -162,4 +163,71 @@ func TestStreamCSVRefusesANonPositiveBatchSize(t *testing.T) {
 	if yields != 1 {
 		t.Fatalf("yielded %d times, want one failure", yields)
 	}
+}
+
+const readerJSON = `[{"name":"apple","qty":3},{"name":"banana","qty":12}]`
+
+func TestReadJSONReadsFromAReader(t *testing.T) {
+	fromBytes, err := ReadJSON([]byte(readerJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromReader, err := ReadJSON(strings.NewReader(readerJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tablesEqual(t, "ReadJSON", fromReader, fromBytes)
+}
+
+func TestWriteJSONMatchesTheFileWriter(t *testing.T) {
+	dt, err := ReadJSON([]byte(readerJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "out.json")
+	if err := dt.ToJSON(path, true); err != nil {
+		t.Fatal(err)
+	}
+	onDisk, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := dt.WriteJSON(&buf, true); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buf.Bytes(), onDisk) {
+		t.Fatalf("WriteJSON wrote %q, the file holds %q", buf.String(), onDisk)
+	}
+}
+
+func TestReadExcelMatchesTheFileReader(t *testing.T) {
+	book := excelize.NewFile()
+	for r, row := range [][]any{{"name", "qty"}, {"apple", 3}, {"banana", 12}} {
+		for c, v := range row {
+			cell, _ := excelize.CoordinatesToCellName(c+1, r+1)
+			if err := book.SetCellValue("Sheet1", cell, v); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	path := filepath.Join(t.TempDir(), "book.xlsx")
+	if err := book.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	_ = book.Close()
+
+	fromFile, err := ReadExcelSheet(path, "Sheet1", false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromReader, err := ReadExcel(bytes.NewReader(content), "Sheet1", false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tablesEqual(t, "ReadExcel", fromReader, fromFile)
 }

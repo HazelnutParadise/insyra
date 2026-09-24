@@ -78,16 +78,22 @@ func (dt *DataTable) buildJSONRows(useColNames bool) []map[string]any {
 // Every row will be a JSON object with the column names as keys and the row values as values.
 // The function returns an error if the file cannot be created or the JSON data cannot be written to the file.
 func (dt *DataTable) ToJSON(filePath string, useColNames bool) error {
-	rows := dt.buildJSONRows(useColNames)
+	return writeFileAtomically(filePath, func(w io.Writer) error {
+		return dt.WriteJSON(w, useColNames)
+	})
+}
 
-	jsonData, err := json.MarshalIndent(rows, "", "  ")
+// WriteJSON writes the table as JSON to any destination — an HTTP response, a
+// zip entry, a buffer — the same way ToJSON writes a file. useColNames picks
+// column names as keys; otherwise the Excel-style indices (A, B, C...) are
+// used.
+func (dt *DataTable) WriteJSON(w io.Writer, useColNames bool) error {
+	jsonData, err := json.MarshalIndent(dt.buildJSONRows(useColNames), "", "  ")
 	if err != nil {
 		return err
 	}
-	return writeFileAtomically(filePath, func(w io.Writer) error {
-		_, err := w.Write(jsonData)
-		return err
-	})
+	_, err = w.Write(jsonData)
+	return err
 }
 
 // ToJSON_Bytes converts the DataTable to JSON format and returns it as a byte slice.
