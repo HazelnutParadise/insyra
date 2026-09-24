@@ -8,6 +8,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
+## v0.3.3
+
 ### Core
 
 - 修正整數排序失去精度。過去所有整數都經 float64 比較，任何兩個大於 2^53 的 `int64` 都會被視為相等，`Sort`、`SortBy`、`Pivot`、`Describe` 的 min/max 因此排錯。現在整數以精確方式比較，含混合有號／無號與超出 `int64` 的值。

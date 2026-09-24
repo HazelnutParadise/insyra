@@ -8,6 +8,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ## Unreleased
 
+## v0.3.3
+
 ### Core
 
 - Fixed ordering losing precision on integers. Every integer was compared through `float64`, so any two `int64` above 2^53 looked equal and `Sort`, `SortBy`, `Pivot` and `Describe`'s min/max ordered them wrongly. Integers now compare exactly, including mixed signed/unsigned and values past `int64`.
