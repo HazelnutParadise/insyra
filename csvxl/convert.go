@@ -409,13 +409,13 @@ func resolveCsvSource(given string) (string, error) {
 		return given, nil
 	}
 	if strings.EqualFold(filepath.Ext(given), ".csv") {
-		return given, fmt.Errorf("no CSV file at %q: %w", given, os.ErrNotExist)
+		return given, fmt.Errorf("no CSV file at \"%s\": %w", given, os.ErrNotExist)
 	}
 	withCsv := given + ".csv"
 	if isRegularFile(withCsv) {
 		return withCsv, nil
 	}
-	return given, fmt.Errorf("no CSV file at %q or %q: %w", given, withCsv, os.ErrNotExist)
+	return given, fmt.Errorf("no CSV file at \"%s\" or \"%s\": %w", given, withCsv, os.ErrNotExist)
 }
 
 func isRegularFile(path string) bool {

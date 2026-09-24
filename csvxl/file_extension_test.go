@@ -1,7 +1,6 @@
 package csvxl
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,9 +61,11 @@ func TestCsvToExcelNamesBothPathsWhenNeitherExists(t *testing.T) {
 	missing := filepath.Join(dir, "nope")
 	err := CsvToExcel([]string{missing}, nil, filepath.Join(dir, "out.xlsx"), UTF8)
 	require.Error(t, err)
-	// Quoted, so the bare path is not satisfied by being a prefix of the other.
-	require.Contains(t, err.Error(), fmt.Sprintf("%q", missing))
-	require.Contains(t, err.Error(), fmt.Sprintf("%q", missing+".csv"))
+	// Quoted, so the bare path is not satisfied by being a prefix of the
+	// other, and quoted by hand rather than with %q, which would double the
+	// backslashes of a Windows path.
+	require.Contains(t, err.Error(), `"`+missing+`"`)
+	require.Contains(t, err.Error(), `"`+missing+`.csv"`)
 }
 
 func TestAppendCsvToExcelReadsANameThatDoesNotEndInCsv(t *testing.T) {
