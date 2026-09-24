@@ -118,9 +118,9 @@
 | Q-5 | ~~Low~~ 已修正（batch 3） | `ApplyCCL` doc 範例引用不存在的 `CCLFilterOptions{}` | ccl.go:573 | 修 doc |
 | Q-6 | Low | `FilterWithCCL` / `ApplyCCL` batchSize 寫死 1000，無法調 | ccl.go:456, 577 | 選項或常數說明 |
 | Q-8 | Med | 所有函式只吃路徑；Arrow reader 本來就吃 `io.ReaderAt`，卻沒有暴露 `ReadFrom(r io.ReaderAt, size)` / `WriteTo(w io.Writer)`，S3、HTTP、記憶體來源都得先落地（準則 8、10） | api.go 全檔 | 加 Reader/Writer 版本，路徑版包裝它 |
-| Q-9 | Low | `Stream` 回傳兩個 channel 是 Go 1.23 之前的寫法；`iter.Seq2[*DataTable, error]` 讓 `for dt, err := range` 直接用，也自然解決 Q-7 的洩漏契約（準則 8） | api.go:246 | 改 `iter.Seq2`，舊簽名保留一版 |
+| Q-9 | ~~Low~~ 已修正（parquet-stream-is-an-iterator：`Stream` 改回傳 `iter.Seq2`，不留舊簽名） | `Stream` 回傳兩個 channel 是 Go 1.23 之前的寫法；`iter.Seq2[*DataTable, error]` 讓 `for dt, err := range` 直接用，也自然解決 Q-7 的洩漏契約（準則 8） | api.go:246 | 改 `iter.Seq2`，舊簽名保留一版 |
 | Q-10 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials） | doc comment 是「Read: read …」冒號風格，不是 Go 的「Read reads …」；`FileInfo`、`ColumnInfo`、`RowGroupInfo` 無 doc（準則 E） | api.go | 補齊 |
-| Q-7 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials：doc 寫明 drain 或 cancel 契約） | `Stream` 若消費者中途停止讀取又不 cancel ctx，producer goroutine 永久阻塞在 send；doc 沒寫「必須 drain 或 cancel」。記錄不會遺失（unbuffered channel，已推演 close 順序） | api.go:246-286 | doc 明講使用契約 |
+| Q-7 | ~~Low~~ 已修正（先由 docs-hygiene-and-remaining-partials 寫明契約，再由 parquet-stream-is-an-iterator 根治：離開迴圈即停止讀取，契約不再需要） | `Stream` 若消費者中途停止讀取又不 cancel ctx，producer goroutine 永久阻塞在 send；doc 沒寫「必須 drain 或 cancel」。記錄不會遺失（unbuffered channel，已推演 close 順序） | api.go:246-286 | doc 明講使用契約 |
 | Q-11 | ~~High~~ 已修正（parquet-foreign-column-types） | **Bug（已實測）**：`getVal` 的 `default` 回傳 `arr.String()`，也就是整個 array 的字串形式，忽略列索引 `i`，所以 reader 不認識的欄位型別整欄每一列都讀成同一串字，`Read` 回 nil error、`Err()` 也是 nil。`parquet.Write` 只寫得出七種 Arrow 型別，所以只在讀其他工具寫的檔案時發生。實測 Date32、Date64、Decimal128、uint64、Int16、Int8、Binary、List 八種中招；Dictionary 不受影響 | parquet/internal.go:200（修正前）；呼叫端 chunkedToSlice、recordToDataTable、parquetContext | 有忠實表示法的型別補進 switch（十進位用 go-decimal），其餘回 nil 並在 DataTable 記錄欄名與 Arrow 型別 |
 
 ### core — 基礎層（version, config, logger, error_buffer, atomic, interfaces, utils, read）
@@ -599,7 +599,7 @@
 | C-11 | [#270](https://github.com/HazelnutParadise/insyra/issues/270) |  |
 | P-1、P-2、P-5、P-4 | [#271](https://github.com/HazelnutParadise/insyra/issues/271) | 已關閉（parallel-runs-and-worker-errors） |
 | Q-2、Q-6 | [#272](https://github.com/HazelnutParadise/insyra/issues/272) |  |
-| Q-9、Q-7 | [#273](https://github.com/HazelnutParadise/insyra/issues/273) |  |
+| Q-9、Q-7 | [#273](https://github.com/HazelnutParadise/insyra/issues/273) | 已關閉（parquet-stream-is-an-iterator） |
 | Q-10 | [#274](https://github.com/HazelnutParadise/insyra/issues/274) |  |
 | Q-11 | [#371](https://github.com/HazelnutParadise/insyra/issues/371) | 已修正（parquet-foreign-column-types） |
 | RP-1 | [#275](https://github.com/HazelnutParadise/insyra/issues/275) |  |

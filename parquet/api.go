@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"os"
 
 	"github.com/HazelnutParadise/insyra"
@@ -261,19 +262,40 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 	return dataTable, nil
 }
 
-// Stream reads a Parquet file batch by batch, sending each batch as a DataTable.
-// The caller must either read dtChan to completion or cancel ctx. The channel
-// is unbuffered, so a consumer that stops part-way leaves the producing
-// goroutine parked on its next send for the life of the process. Ranging over
-// dtChan and then checking errChan does the right thing; breaking out of the
-// range does not unless ctx is cancelled:
+// Stream reads a Parquet file batch by batch. Range over it:
 //
-//	ctx, cancel := context.WithCancel(context.Background())
-//	defer cancel()
-//	dtChan, errChan := parquet.Stream(ctx, path, parquet.ReadOptions{}, 1000)
-//	for dt := range dtChan { … }
-//	if err := <-errChan; err != nil { … }
-func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error) {
+//	for dt, err := range parquet.Stream(ctx, path, parquet.ReadOptions{}, 1000) {
+//		if err != nil {
+//			return err
+//		}
+//		// use dt
+//	}
+//
+// Each batch arrives as a DataTable with a nil error. A failure arrives once,
+// as a nil table and the error, and ends the sequence. Leaving the loop early
+// stops the reader, so nothing is left running whether or not ctx is
+// cancelled. Cancelling ctx ends the sequence with the context's error.
+func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) iter.Seq2[*insyra.DataTable, error] {
+	return func(yield func(*insyra.DataTable, error) bool) {
+		// The reader answers to this context, so returning from here — the
+		// loop ended, or the caller broke out of it — stops the reader too.
+		inner, cancel := context.WithCancel(ctx)
+		defer cancel()
+		dtChan, errChan := streamTables(inner, path, opt, batchSize)
+		for dt := range dtChan {
+			if !yield(dt, nil) {
+				return
+			}
+		}
+		if err := <-errChan; err != nil {
+			yield(nil, err)
+		}
+	}
+}
+
+// streamTables is the reader behind Stream: it sends each batch on dtChan and
+// the one error, if any, on errChan, and stops when ctx is cancelled.
+func streamTables(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error) {
 	dtChan := make(chan *insyra.DataTable)
 	errChan := make(chan error, 1)
 

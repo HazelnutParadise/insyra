@@ -100,19 +100,18 @@ Process data chunk-by-chunk to keep memory predictable.
 
 ```go
 rowsSeen := 0
-batches, errs := parquet.Stream(ctx, "sales.parquet", parquet.ReadOptions{}, 2)
-for b := range batches {
+for b, err := range parquet.Stream(ctx, "sales.parquet", parquet.ReadOptions{}, 2) {
+	if err != nil {
+		log.Fatal(err)
+	}
 	r, _ := b.Size()
 	rowsSeen += r
-}
-if err := <-errs; err != nil {
-	log.Fatal(err)
 }
 fmt.Println("streamed rows:", rowsSeen)
 ```
 
 **Expected outcome**  
-Rows are processed in small chunks (`batchSize=2`).
+Rows are processed in small chunks (`batchSize=2`). Breaking out of the loop early is safe: it stops the reader.
 
 ## Step 5: Filter with CCL
 
@@ -186,11 +185,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	batches, errs := parquet.Stream(ctx, "sales.parquet", parquet.ReadOptions{}, 2)
-	for range batches {
-	}
-	if err := <-errs; err != nil {
-		log.Fatal(err)
+	for _, err := range parquet.Stream(ctx, "sales.parquet", parquet.ReadOptions{}, 2) {
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	filtered, err := parquet.FilterWithCCL(ctx, "sales.parquet", "['NetSales'] >= 1000")

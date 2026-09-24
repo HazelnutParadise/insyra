@@ -152,10 +152,10 @@ func Write(dt insyra.IDataTable, path string) error
 ### Stream
 
 ```go
-func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error)
+func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) iter.Seq2[*insyra.DataTable, error]
 ```
 
-**Description:** Streams a Parquet file, returning a channel that receives `*insyra.DataTable` batches. Always read from the error channel to detect stream failures.
+**Description:** Streams a Parquet file batch by batch. Range over the result with `for dt, err := range`: each batch arrives as a `*insyra.DataTable` with a nil error, and a failure arrives once, as a nil table with the error, and ends the loop. Breaking out of the loop early stops the reader, so nothing is left running and there is nothing to cancel. Cancelling `ctx` ends the loop with the context's error.
 
 **Parameters:**
 
@@ -166,8 +166,7 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<
 
 **Returns:**
 
-- `<-chan *insyra.DataTable`: Return value.
-- `<-chan error`: Return value.
+- `iter.Seq2[*insyra.DataTable, error]`: The batches, ready to range over.
 
 ### ReadColumn
 
@@ -348,28 +347,19 @@ package main
 import (
     "context"
     "fmt"
+
     "github.com/HazelnutParadise/insyra/parquet"
 )
 
 func main() {
     ctx := context.Background()
-    dtChan, errChan := parquet.Stream(ctx, "large_data.parquet", parquet.ReadOptions{}, 1000)
-
-    for {
-        select {
-        case dt, ok := <-dtChan:
-            if !ok {
-                return
-            }
-            numRows, _ := dt.Size()
-            fmt.Printf("Batch read, rows: %d\n", numRows)
-            dt.Show()
-        case err := <-errChan:
-            if err != nil {
-                panic(err)
-            }
+    for dt, err := range parquet.Stream(ctx, "large_data.parquet", parquet.ReadOptions{}, 1000) {
+        if err != nil {
+            fmt.Println("stream failed:", err)
             return
         }
+        numRows, _ := dt.Size()
+        fmt.Printf("Batch read, rows: %d\n", numRows)
     }
 }
 ```

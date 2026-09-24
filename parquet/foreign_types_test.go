@@ -350,9 +350,11 @@ func TestStreamReportsAnUnreadableColumn(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dtChan, errChan := Stream(ctx, listColumnFile(t), ReadOptions{}, 2)
 	batches := 0
-	for dt := range dtChan {
+	for dt, err := range Stream(ctx, listColumnFile(t), ReadOptions{}, 2) {
+		if err != nil {
+			t.Fatalf("Stream: %v", err)
+		}
 		batches++
 		if dt.Err() == nil {
 			t.Errorf("batch %d: an unreadable column was not reported", batches)
@@ -363,9 +365,6 @@ func TestStreamReportsAnUnreadableColumn(t *testing.T) {
 				t.Errorf("batch %d row %d: got %v (%T), want nil", batches, row, got, got)
 			}
 		}
-	}
-	if err := <-errChan; err != nil {
-		t.Fatalf("Stream: %v", err)
 	}
 	if batches == 0 {
 		t.Fatal("no batches")

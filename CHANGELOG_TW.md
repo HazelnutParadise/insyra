@@ -137,6 +137,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - **BREAKING**：Parquet 的 `Binary`、`LargeBinary`、`FixedSizeBinary` 欄改為讀成 `[]byte`，不再是持有原始位元組的 `string`。當初用字串是因為 `DataList` 的格子放不了切片、而 `[]byte` 格子也不能用，這兩件事都已修好；字串形式留下一個真的缺陷：二進位欄與文字欄完全分不出來，Go 型別相同、值也相等，讀回來再寫出去還會讓二進位欄變成字串欄。顯示也是跟著資料而不是跟著欄位，同一欄第一列印 `'A-01'`、第二列印 `00ff41`。現在 `Show` 整欄以十六進位顯示，`Write` 把 `[]byte` 格子的欄位寫成 Arrow `Binary`，round trip 保住型別，JSON 匯出改為 base64 而不是被替換過的字串。原本對這種格子做 `.(string)` 斷言的呼叫端要改成 `.([]byte)`。
 - **BREAKING**：`ApplyCCL` 的賦值目標與 `DataTable` 的規則一致。裸目標只當欄位字母（`A`、`B`、... `AA`），過去在字母落到範圍外時會退回同名欄位，於是 `score = A * 2` 在有 `score` 欄的檔案上這邊成功、那邊失敗。請寫 `['score'] = A * 2`，而且檔案真的有同名欄位時，錯誤訊息會告訴你。
+- **BREAKING**：`Stream` 改回傳 `iter.Seq2[*insyra.DataTable, error]`，不再回傳兩個 channel，用法變成 `for dt, err := range parquet.Stream(ctx, path, opt, 1000)`。迴圈中途離開會一併停止讀取。過去用 channel 時，呼叫端 break 出迴圈又沒 cancel context，負責讀檔的 goroutine 會卡在下一次送資料直到程式結束，而文件自己的範例還讓兩個 channel 互相競爭。每一批資料都帶 nil 錯誤；失敗只出現一次，以 nil 表格加錯誤的形式結束迴圈；cancel `ctx` 時以 context 的錯誤結束。
 
 ### `mkt`
 - 修正 `RFM` 遇到非數值金額格子時讓整個程序崩潰的問題，現在跳過該列並以警告指出列號。`RFM` 與 `CustomerActivityIndex` 的輸出列依客戶 ID 排序，過去依 Go map 順序輸出、每次執行都不同。
