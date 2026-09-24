@@ -293,15 +293,24 @@ func DetectEncoding(filePath string) (string, error) {
 	defer func() { _ = f.Close() }()
 
 	// Read a reasonably large sample to improve detection accuracy
-	buf := make([]byte, 8192)
-	n, err := f.Read(buf)
-	if err != nil && !errors.Is(err, io.EOF) {
+	buf := make([]byte, encodingSampleSize)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
 	}
-	if n == 0 {
-		return "", fmt.Errorf("empty file %s", filePath)
+	return detectEncodingOfSample(buf[:n], filePath)
+}
+
+// encodingSampleSize is how much of an input the encoding is judged from.
+const encodingSampleSize = 8192
+
+// detectEncodingOfSample names the encoding of the first bytes of an input.
+// source only labels the messages, so a file and a reader are judged by the
+// same rule.
+func detectEncodingOfSample(sample []byte, source string) (string, error) {
+	if len(sample) == 0 {
+		return "", fmt.Errorf("empty file %s", source)
 	}
-	sample := buf[:n]
 
 	// BOM checks. UTF-32's BOMs start with UTF-16's, so they must be tested
 	// first or every UTF-32LE file is reported as UTF-16LE.
@@ -334,7 +343,7 @@ func DetectEncoding(filePath string) (string, error) {
 	detector := chardet.NewTextDetector()
 	res, err := detector.DetectBest(sample)
 	if err != nil {
-		LogWarning("insyra", "DetectEncoding", "could not identify the encoding of %s (%v); assuming utf-8", filePath, err)
+		LogWarning("insyra", "DetectEncoding", "could not identify the encoding of %s (%v); assuming utf-8", source, err)
 		return "utf-8", nil
 	}
 

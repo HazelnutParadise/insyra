@@ -49,7 +49,7 @@ type CSVWriteOptions struct {
 // into place, so a failure never leaves a truncated file behind.
 func (dt *DataTable) ToCSVWithOptions(filePath string, opts CSVWriteOptions) error {
 	return writeFileAtomically(filePath, func(w io.Writer) error {
-		return dt.writeCSV(w, opts)
+		return dt.WriteCSV(w, opts)
 	})
 }
 
@@ -68,9 +68,11 @@ func sanitizeCSVFormula(s string) string {
 	return s
 }
 
-// writeCSV streams the table as CSV to w. Every write error, including the
-// one csv.Writer only reports at Flush, is returned.
-func (dt *DataTable) writeCSV(w io.Writer, opts CSVWriteOptions) error {
+// WriteCSV writes the table as CSV to any destination — an HTTP response, a
+// zip entry, a buffer — the same way ToCSVWithOptions writes a file. Every
+// write error, including the one csv.Writer only reports at Flush, is
+// returned.
+func (dt *DataTable) WriteCSV(w io.Writer, opts CSVWriteOptions) error {
 	setRowNamesToFirstCol := opts.SetRowNamesToFirstCol
 	setColNamesToFirstRow := opts.SetColNamesToFirstRow
 	// 寫入 UTF-8 BOM

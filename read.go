@@ -1,9 +1,12 @@
 package insyra
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/csv"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"reflect"
@@ -130,26 +133,57 @@ func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, 
 		return nil, err
 	}
 	defer func() { _ = file.Close() }()
+	return readCSVFrom(file, opts, filePath)
+}
 
-	useEncoding := strings.ToLower(opts.Encoding)
+// ReadCSV reads CSV from any source — an open file, an HTTP response body, a
+// zip entry, bytes in memory — into a DataTable, the same way
+// ReadCSV_FileWithOptions reads a file. When opts.Encoding is "" or "auto",
+// the encoding is detected from the first bytes of r.
+func ReadCSV(r io.Reader, opts CSVReadOptions) (*DataTable, error) {
+	return readCSVFrom(r, opts, "the CSV input")
+}
+
+// readCSVFrom is the one CSV reader behind ReadCSV and the path and string
+// versions. source names the input in messages.
+func readCSVFrom(r io.Reader, opts CSVReadOptions, source string) (*DataTable, error) {
+	decoded, err := decodeCSVInput(r, opts.Encoding, source)
+	if err != nil {
+		return nil, err
+	}
+	reader := csv.NewReader(decoded)
+	reader.FieldsPerRecord = csvFieldsPerRecord(opts)
+	reader.TrimLeadingSpace = opts.TrimLeadingSpace
+	rows, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CSV from %s: %w", source, err)
+	}
+	if len(rows) > 0 && len(rows[0]) > 0 {
+		rows[0][0] = strings.TrimPrefix(rows[0][0], "\uFEFF")
+	}
+	return csvRowsToDataTable(rows, opts), nil
+}
+
+// decodeCSVInput returns r decoded to UTF-8. An empty or "auto" encoding is
+// detected from r's first bytes, which are read ahead and then handed on, so
+// nothing is lost and r need not be seekable.
+func decodeCSVInput(r io.Reader, encoding string, source string) (io.Reader, error) {
+	useEncoding := strings.ToLower(encoding)
 	if useEncoding == "" || useEncoding == "auto" {
-		detected, err := DetectEncoding(filePath)
+		buffered := bufio.NewReaderSize(r, encodingSampleSize)
+		sample, err := buffered.Peek(encodingSampleSize)
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, bufio.ErrBufferFull) {
+			return nil, fmt.Errorf("failed to read %s: %w", source, err)
+		}
+		detected, err := detectEncodingOfSample(sample, source)
 		if err != nil {
-			return nil, fmt.Errorf("failed to auto-detect encoding for %s: %w", filePath, err)
+			return nil, fmt.Errorf("failed to auto-detect encoding for %s: %w", source, err)
 		}
 		useEncoding = detected
-		LogInfo("csvxl", "ReadCSV_File", "Auto-detected encoding %s for file %s", useEncoding, filePath)
+		LogInfo("insyra", "ReadCSV", "Auto-detected encoding %s for %s", useEncoding, source)
+		r = buffered
 	}
-
-	// Use internal CSV reader with encoding support. It returns parsed records
-	// directly so the file path applies the tolerance options in exactly one
-	// parse, matching ReadCSV_StringWithOptions.
-	rows, err := csvInternal.ReadCSVRecordsWithEncodingOptions(file, useEncoding, opts.AllowRaggedRows, opts.TrimLeadingSpace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read CSV file %s: %w", filePath, err)
-	}
-
-	return csvRowsToDataTable(rows, opts), nil
+	return csvInternal.DecodingReader(r, useEncoding)
 }
 
 // csvRowsToDataTable builds a DataTable from parsed CSV rows, applying the
@@ -363,19 +397,10 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 // ReadCSV_StringWithOptions loads a CSV string into a DataTable according to opts.
 // opts.Encoding is ignored: the input is already a Go string.
 func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTable, error) {
-	// Strip a leading UTF-8 BOM so the first header/cell is not corrupted
-	// (consistent with the file reader).
-	csvString = strings.TrimPrefix(csvString, string([]byte{0xEF, 0xBB, 0xBF}))
-
-	reader := csv.NewReader(strings.NewReader(csvString))
-	reader.FieldsPerRecord = csvFieldsPerRecord(opts)
-	reader.TrimLeadingSpace = opts.TrimLeadingSpace
-	rows, err := reader.ReadAll()
-	if err != nil {
-		return nil, err
-	}
-
-	return csvRowsToDataTable(rows, opts), nil
+	// A Go string is UTF-8 already, so there is nothing to detect; an empty
+	// string is an empty table rather than an undetectable encoding.
+	opts.Encoding = "utf-8"
+	return readCSVFrom(strings.NewReader(csvString), opts, "the CSV string")
 }
 
 // ----- excel -----
