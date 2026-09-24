@@ -225,7 +225,7 @@ func NearestShortlist(ctx context.Context, columns []Column, queries [][]float32
 			r.Release()
 		}
 	}()
-	mk := func(label string, size uint64, usage gowgpu.BufferUsage) (*gowgpu.Buffer, error) {
+	mk := func(label string, size uint64, usage gputypes.BufferUsage) (*gowgpu.Buffer, error) {
 		b, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{Label: label, Size: size, Usage: usage})
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrBufferTooLarge, err)
@@ -453,7 +453,7 @@ func (h *handle) shortlistPipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroup
 		uni := &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform}
 		bgLayout, err := h.device.CreateBindGroupLayout(&gowgpu.BindGroupLayoutDescriptor{
 			Label: "accel-shortlist-bgl",
-			Entries: []gowgpu.BindGroupLayoutEntry{
+			Entries: []gputypes.BindGroupLayoutEntry{
 				{Binding: 0, Visibility: gowgpu.ShaderStageCompute, Buffer: ro},
 				{Binding: 1, Visibility: gowgpu.ShaderStageCompute, Buffer: ro},
 				{Binding: 2, Visibility: gowgpu.ShaderStageCompute, Buffer: rw},

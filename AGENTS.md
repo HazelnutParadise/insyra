@@ -149,7 +149,7 @@ Dependencies move on their own schedule; ours is the release. **Before `dev` is 
 - Do it as its own change, ahead of the release commit, so a bump that misbehaves is visible on its own and can be reverted without touching the release.
 - Verify with `go build ./...`, `go test ./...` and `govulncheck ./...`.
 - **Never let a bump raise the `go` directive.** The minimum-Go promise to downstream users is a separate, explicit decision. Stop at the newest version that keeps the current directive.
-- Anything held back — its newest version needs a newer Go, or it breaks a tool CI depends on — goes into the Follow-ups below with the reason, the way the chromedp chain already is.
+- Anything held back — its newest version needs a newer Go, or it breaks a tool CI depends on — goes into the Follow-ups below with the reason, the way the modules held back by the Go 1.25 directive already are.
 
 Why this is a rule and not a habit: dependencies only moved when Dependabot filed an alert, which means the graph only moved once something was already broken, and the fix was taken under time pressure. Dependabot also reads the default branch, so an alert raised against a released version stays open until the next merge to `main` no matter how quickly it is fixed on `dev`.
 
@@ -379,8 +379,8 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: Decide whether Excel reads should run the same column inference by default (with the same opt-out), or stay raw; either way document the behavior in `Docs/DataTable.md`.
 - **Status**: pending
 
-### [2026-07-11] — chromedp chain left at pre-refresh versions (two independent blockers)
-- **Where**: `go.mod` — `chromedp v0.11.2`, `cdproto v0.0.0-20241208230723-d1c7de7e5dd2` (pulled in via `go-echarts/snapshot-chromedp`)
-- **What**: The 2026-07-11 dependency refresh could not move these. (1) `chromedp v0.15.0+` and newer `cdproto` require go >= 1.26, while the module's `go` directive stays on 1.25.x (minimum-Go promise to downstream users). (2) The newest go1.25-compatible version, `chromedp v0.14.2`, hard-requires `go-json-experiment/json`, whose generic-variadic code panics govulncheck's symbol-level scan ("got jsontext.Value, want variadic parameter of unnamed slice or string type" in x/tools go/ssa — still broken as of x/tools v0.48.0 / x/vuln v1.6.0), which would permanently break the Govulncheck CI workflow.
-- **Suggestion**: When raising the minimum Go version to 1.26, retry upgrading the whole chain and re-verify `govulncheck ./...` completes (the x/tools SSA bug may be fixed by then).
+### [2026-07-11] — dependencies held back by the Go 1.25 directive
+- **Where**: `go.mod`
+- **What**: the 2026-09-24 refresh left two groups below their newest versions. (1) The newest version of each of these declares `go 1.26`, so taking it would raise insyra's directive: `golang.org/x/crypto`, `exp`, `image`, `mod`, `net`, `oauth2`, `sync`, `sys`, `telemetry`, `term`, `text`, `time` and `tools`; `google.golang.org/api`; `google.golang.org/genproto` with its `googleapis/api` and `googleapis/rpc`; `github.com/googleapis/gax-go/v2`; `github.com/quic-go/quic-go`; `modernc.org/libc`; and `chromedp` from `v0.15.0` with the `cdproto` it needs. (2) `chromedp` stops at `v0.12.1`, below the newest Go-1.25 version `v0.14.2`, because from `v0.13.0` it requires `go-json-experiment/json`, and govulncheck panics on that package's generic variadics ("got jsontext.Value, want variadic parameter of unnamed slice or string type") when govulncheck itself is built with Go 1.25. Measured 2026-09-24: x/vuln v1.3.0 and v1.7.0 built with go1.25.14 both panic on it, and v1.7.0 built with go1.26.5 completes. The Vulnerability Scan job builds govulncheck with Go 1.25, so taking `v0.14.2` would break it.
+- **Suggestion**: when the minimum Go rises to 1.26, take group (1) and the whole chromedp chain together, and move the Vulnerability Scan job to Go 1.26 in the same change.
 - **Status**: pending
