@@ -565,12 +565,53 @@ func (t *Tape) Backward(loss *Tensor) error {
 	if len(loss.shape) != 0 {
 		return fmt.Errorf("backward requires a scalar loss, got shape %v", loss.shape)
 	}
-	grads := make(map[*Tensor]*Tensor)
 	initial, err := newFloat32Tensor(nil, []float32{1})
 	if err != nil {
 		return err
 	}
-	grads[loss] = initial
+	return t.backwardFrom(loss, initial)
+}
+
+// BackwardFrom runs the reverse pass starting from output, seeded with the
+// caller's upstream gradient. Unlike Backward, output need not be a scalar:
+// it may be any tensor produced by an operation recorded on this tape.
+// upstream must be float32 and shaped like output, and output must have been
+// produced by an operation on this tape; otherwise the pass is refused with
+// an error and no gradient changes. The upstream gradient is copied before
+// the pass, so accumulation never modifies the caller's tensor. Gradients
+// become visible through Grad and Parameter.Grad only after the whole pass
+// succeeds; a failing pass leaves them where the last successful pass left
+// them.
+func (t *Tape) BackwardFrom(output, upstream *Tensor) error {
+	if err := requireFloat32(output, "backward output"); err != nil {
+		return err
+	}
+	if err := requireFloat32(upstream, "backward upstream"); err != nil {
+		return err
+	}
+	if !sameShape(upstream.shape, output.shape) {
+		return fmt.Errorf("backward upstream shape %v does not match output shape %v", upstream.shape, output.shape)
+	}
+	produced := false
+	for _, op := range t.ops {
+		if op.output == output {
+			produced = true
+			break
+		}
+	}
+	if !produced {
+		return fmt.Errorf("backward output was not produced by an operation on this tape")
+	}
+	seed, err := copyTensor(upstream)
+	if err != nil {
+		return err
+	}
+	return t.backwardFrom(output, seed)
+}
+
+func (t *Tape) backwardFrom(output, seed *Tensor) error {
+	grads := make(map[*Tensor]*Tensor)
+	grads[output] = seed
 	for index := len(t.ops) - 1; index >= 0; index-- {
 		op := t.ops[index]
 		upstream := grads[op.output]
