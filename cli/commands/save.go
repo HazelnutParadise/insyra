@@ -105,6 +105,10 @@ func saveExcel(table *insyra.DataTable, path string, opts fileSaveOptions) error
 		IfSheetExists:         opts.IfExists,
 	})
 	if errors.Is(err, insyra.ErrSheetExists) {
+		if !opts.SheetSet {
+			// No name was given, so a new sheet may be what was meant.
+			return fmt.Errorf("save excel: %w; add \"sheet <name>\" to save it as a new sheet, or \"if-exists replace\" to overwrite that sheet (the other sheets are kept)", err)
+		}
 		return fmt.Errorf("save excel: %w; add \"if-exists replace\" to overwrite that sheet (the other sheets are kept)", err)
 	}
 	return err

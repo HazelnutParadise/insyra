@@ -333,3 +333,17 @@ func TestSave_CSV_RejectsSheetAndIfExists(t *testing.T) {
 		}
 	}
 }
+
+// Without a sheet name the caller may have meant a new sheet rather than an
+// overwrite, so the refusal offers both.
+func TestSave_Excel_UnnamedSheetRefusalOffersBothWays(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.xlsx")
+	ctx := excelSaveContext(t)
+	if err := runSaveCommand(ctx, []string{"t", path}); err != nil {
+		t.Fatalf("first save failed: %v", err)
+	}
+	err := runSaveCommand(ctx, []string{"t", path})
+	if err == nil || !strings.Contains(err.Error(), "sheet <name>") || !strings.Contains(err.Error(), "if-exists replace") {
+		t.Fatalf("expected a refusal offering sheet <name> and if-exists replace, got %v", err)
+	}
+}

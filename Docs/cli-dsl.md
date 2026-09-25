@@ -873,7 +873,7 @@ insyra regression poisson y x1 x2
 - **Variable not found**: use `vars` to inspect current environment variables.
 - **Variable type mismatch**: many commands require specific variable types (`DataTable` vs `DataList`).
 - **Excel load fails**: `load <file.xlsx> sheet <sheet-name> [headers true|false] [rownames true|false] [as <var>]` always requires `sheet <name>`.
-- **Excel save says the sheet already exists**: `save` never overwrites a sheet unless asked. Add `if-exists replace` to overwrite that one sheet (the others are kept), or pick another name with `sheet <name>`. `.xls` cannot be written; save as `.xlsx`.
+- **Excel save says the sheet already exists**: `save` never overwrites a sheet unless asked, and it does not pick another name such as `Sheet2` on its own. Add `if-exists replace` to overwrite that one sheet (the others are kept), or pick another name with `sheet <name>`. `.xls` cannot be written; save as `.xlsx`.
 - **Parquet option errors**:
   - `cols` and `rowgroups` must be followed by comma-separated values.
   - `rowgroups` must be non-negative integers.

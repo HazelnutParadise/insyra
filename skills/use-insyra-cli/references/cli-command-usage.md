@@ -537,7 +537,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 	- `bom true|false` — write a UTF-8 BOM (helps Excel for Windows open Chinese CSVs cleanly). Default `false`.
 	- JSON: only `headers` applies (controls whether values use column names as keys); `rownames`/`bom` are rejected.
 	- Excel (`.xlsx`, `.xlsm`): `headers` and `rownames` as for CSV; `bom` is rejected.
-		- `sheet <name>` — the sheet to write. Default `Sheet1`. The workbook's other sheets are kept.
+		- `sheet <name>` — the sheet to write. Default `Sheet1`, even when `Sheet1` exists (the save is then refused, never renamed to `Sheet2`). The workbook's other sheets are kept.
 		- `if-exists fail|replace` — what to do when that sheet already exists. Default `fail`: the save is refused and the file is untouched. `replace` overwrites only that sheet, in its original position.
 		- `.xls` (the legacy binary format) cannot be written; save as `.xlsx`.
 	- Parquet: file options are not supported (rejected).
