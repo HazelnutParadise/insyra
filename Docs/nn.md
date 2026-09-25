@@ -359,6 +359,10 @@ mean and variance are constants, while input, scale, and bias receive
 gradients. The autodiff tape also exposes training-mode BatchNorm, which
 normalizes with biased batch variance, updates running variance with the
 unbiased estimator, and differentiates through the batch statistics.
+`tape.BatchNormalizationTraining(input, scale, bias, runningMean,
+runningVariance, opts ...nn.BatchNormOptions)` (alias `BatchNormTraining`)
+takes the momentum and epsilon by name, `nn.BatchNormOptions{Momentum: 0.2}`;
+a zero field keeps torch's default (momentum 0.1, epsilon 1e-5).
 
 ## Layers and Sequential
 
