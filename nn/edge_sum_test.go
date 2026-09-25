@@ -2,6 +2,7 @@ package nn
 
 import (
 	"math"
+	"math/rand"
 	"runtime"
 	"slices"
 	"testing"
@@ -202,49 +203,91 @@ func TestEdgeSumMatchesDenseReference(t *testing.T) {
 	}
 }
 
-func TestEdgeSumFollowsTheFixedOrder(t *testing.T) {
+func TestEdgeSumMatchesExactOracle(t *testing.T) {
 	sources := []int{0, 1, 2, 3, 4, 5, 0, 1, 2, 0, 5, 5, 3, 1, 4}
 	targets := []int{1, 1, 1, 2, 2, 0, 0, 3, 3, 3, 3, 4, 4, 5, 5}
-	top, err := NewEdgeTopology(6, sources, targets)
+	fixedTopology, err := NewEdgeTopology(6, sources, targets)
 	if err != nil {
 		t.Fatalf("NewEdgeTopology: %v", err)
 	}
-	batch := [][]float32{
-		{0.15, -0.25, 0.33, -0.72, 0.9, -1.1},
-		{-0.4, 0.55, 0.77, -0.12, 0.31, 0.64},
-		{2.1, 1.5, -0.9, 0.47, -0.23, 3.3},
+	fixedWeights := []float32{0.7, -1.2, 2.3, 0.4, -3.1, 1.1, -0.6, 2.2, -1.7, 0.9, 1.6, -0.8, 2.5, -1.4, 0.3}
+	fixedValues := []float32{
+		0.15, -0.25, 0.33, -0.72, 0.9, -1.1,
+		-0.4, 0.55, 0.77, -0.12, 0.31, 0.64,
+		2.1, 1.5, -0.9, 0.47, -0.23, 3.3,
 	}
-	weights32 := []float32{0.7, -1.2, 2.3, 0.4, -3.1, 1.1, -0.6, 2.2, -1.7, 0.9, 1.6, -0.8, 2.5, -1.4, 0.3}
-	valuesF := make([]float32, 0, 18)
-	for b := 0; b < 3; b++ {
-		valuesF = append(valuesF, batch[b]...)
-	}
-	weights, err := NewFloat32Tensor([]int{len(sources)}, weights32)
-	if err != nil {
-		t.Fatalf("NewFloat32Tensor(weights): %v", err)
-	}
-	values, err := NewFloat32Tensor([]int{3, 6}, valuesF)
-	if err != nil {
-		t.Fatalf("NewFloat32Tensor(values): %v", err)
-	}
-	out, err := EdgeSum(top, weights, values)
-	if err != nil {
-		t.Fatalf("EdgeSum: %v", err)
-	}
-	if !slices.Equal(out.Shape(), []int{3, 6}) {
-		t.Fatalf("output shape = %v, want [3 6]", out.Shape())
-	}
-	got := out.Data()
-	for b := 0; b < 3; b++ {
-		for target := 0; target < 6; target++ {
-			acc := float32(0)
-			for e := 0; e < len(sources); e++ {
-				if targets[e] == target {
-					acc += float32(weights32[e] * valuesF[b*6+sources[e]])
+	checkFixed := func() {
+		t.Helper()
+		weights := mustTestTensor(t, []int{len(fixedWeights)}, fixedWeights)
+		values := mustTestTensor(t, []int{3, 6}, fixedValues)
+		out, err := EdgeSum(fixedTopology, weights, values)
+		if err != nil {
+			t.Fatalf("fixed graph: EdgeSum: %v", err)
+		}
+		if !slices.Equal(out.Shape(), []int{3, 6}) {
+			t.Fatalf("fixed graph: output shape = %v, want [3 6]", out.Shape())
+		}
+		for b := 0; b < 3; b++ {
+			for target := 0; target < 6; target++ {
+				var pairs [][2]float32
+				for e := range sources {
+					if targets[e] == target {
+						pairs = append(pairs, [2]float32{fixedWeights[e], fixedValues[b*6+sources[e]]})
+					}
+				}
+				got := math.Float32bits(out.Data()[b*6+target])
+				want := math.Float32bits(exactSumOracle(pairs))
+				if got != want {
+					t.Fatalf("fixed graph output[%d][%d]: bits = %#08x, want %#08x", b, target, got, want)
 				}
 			}
-			if got[b*6+target] != acc {
-				t.Fatalf("output[%d][%d] = %v, ascending-edge reference = %v", b, target, got[b*6+target], acc)
+		}
+	}
+	checkFixed()
+
+	const (
+		nodes       = 500
+		edges       = 20_000
+		targetNodes = 50
+		batch       = 2
+	)
+	r := rand.New(rand.NewSource(3))
+	randomSources := make([]int, edges)
+	randomTargets := make([]int, edges)
+	for e := range edges {
+		randomSources[e] = r.Intn(nodes)
+		randomTargets[e] = r.Intn(targetNodes)
+	}
+	randomWeights := make([]float32, edges)
+	for i := range randomWeights {
+		randomWeights[i] = float32(math.Ldexp(r.NormFloat64(), r.Intn(41)-20))
+	}
+	randomValues := make([]float32, batch*nodes)
+	for i := range randomValues {
+		randomValues[i] = float32(math.Ldexp(r.NormFloat64(), r.Intn(41)-20))
+	}
+	randomTopology, err := NewEdgeTopology(nodes, randomSources, randomTargets)
+	if err != nil {
+		t.Fatalf("random graph: NewEdgeTopology: %v", err)
+	}
+	randomWeightTensor := mustTestTensor(t, []int{edges}, randomWeights)
+	randomValueTensor := mustTestTensor(t, []int{batch, nodes}, randomValues)
+	randomOut, err := EdgeSum(randomTopology, randomWeightTensor, randomValueTensor)
+	if err != nil {
+		t.Fatalf("random graph: EdgeSum: %v", err)
+	}
+	for b := 0; b < batch; b++ {
+		for target := 0; target < nodes; target++ {
+			var pairs [][2]float32
+			for e := range edges {
+				if randomTargets[e] == target {
+					pairs = append(pairs, [2]float32{randomWeights[e], randomValues[b*nodes+randomSources[e]]})
+				}
+			}
+			got := math.Float32bits(randomOut.Data()[b*nodes+target])
+			want := math.Float32bits(exactSumOracle(pairs))
+			if got != want {
+				t.Fatalf("random graph output[%d][%d]: bits = %#08x, want %#08x", b, target, got, want)
 			}
 		}
 	}

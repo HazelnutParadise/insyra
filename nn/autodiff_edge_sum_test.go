@@ -2,11 +2,12 @@ package nn
 
 import (
 	"math"
+	"math/rand"
 	"strings"
 	"testing"
 )
 
-func TestTapeEdgeSumMatchesReferenceLoops(t *testing.T) {
+func TestTapeEdgeSumMatchesExactOracle(t *testing.T) {
 	sources := []int{0, 1, 2, 3, 4, 5, 0, 1, 2, 0, 5, 5, 3, 1, 4}
 	targets := []int{1, 1, 1, 2, 2, 0, 0, 3, 3, 3, 3, 4, 4, 5, 5}
 	top, err := NewEdgeTopology(6, sources, targets)
@@ -42,27 +43,6 @@ func TestTapeEdgeSumMatchesReferenceLoops(t *testing.T) {
 		t.Fatalf("BackwardFrom: %v", err)
 	}
 
-	wantV := make([]float32, 18)
-	for b := 0; b < 3; b++ {
-		for s := 0; s < 6; s++ {
-			acc := float32(0)
-			for e := 0; e < 15; e++ {
-				if sources[e] == s {
-					acc += float32(weightsF[e] * upstreamF[b*6+targets[e]])
-				}
-			}
-			wantV[b*6+s] = acc
-		}
-	}
-	wantW := make([]float32, 15)
-	for e := 0; e < 15; e++ {
-		acc := float32(0)
-		for b := 0; b < 3; b++ {
-			acc += float32(upstreamF[b*6+targets[e]] * valuesF[b*6+sources[e]])
-		}
-		wantW[e] = acc
-	}
-
 	gradV, err := tape.Grad(v)
 	if err != nil {
 		t.Fatal(err)
@@ -71,14 +51,133 @@ func TestTapeEdgeSumMatchesReferenceLoops(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index, want := range wantV {
-		if got := gradV.Data()[index]; got != want {
-			t.Fatalf("values gradient[%d] = %v, ascending-edge reference %v", index, got, want)
+	for b := 0; b < 3; b++ {
+		for s := 0; s < 6; s++ {
+			var pairs [][2]float32
+			for e := range sources {
+				if sources[e] == s {
+					pairs = append(pairs, [2]float32{weightsF[e], upstreamF[b*6+targets[e]]})
+				}
+			}
+			got := math.Float32bits(gradV.Data()[b*6+s])
+			want := math.Float32bits(exactSumOracle(pairs))
+			if got != want {
+				t.Fatalf("values gradient[%d][%d]: bits = %#08x, want %#08x", b, s, got, want)
+			}
 		}
 	}
-	for index, want := range wantW {
-		if got := gradW.Data()[index]; got != want {
-			t.Fatalf("weights gradient[%d] = %v, ascending-batch reference %v", index, got, want)
+	for e := range weightsF {
+		var pairs [][2]float32
+		for b := 0; b < 3; b++ {
+			pairs = append(pairs, [2]float32{upstreamF[b*6+targets[e]], valuesF[b*6+sources[e]]})
+		}
+		got := math.Float32bits(gradW.Data()[e])
+		want := math.Float32bits(exactSumOracle(pairs))
+		if got != want {
+			t.Fatalf("weights gradient[%d]: bits = %#08x, want %#08x", e, got, want)
+		}
+	}
+}
+
+func TestEdgeSumEdgeOrderDoesNotMatter(t *testing.T) {
+	sources := []int{0, 1, 2, 3, 4, 5, 0, 1, 2, 0, 5, 5, 3, 1, 4}
+	targets := []int{1, 1, 1, 2, 2, 0, 0, 3, 3, 3, 3, 4, 4, 5, 5}
+	weightsF := []float32{0.7, -1.2, 2.3, 0.4, -3.1, 1.1, -0.6, 2.2, -1.7, 0.9, 1.6, -0.8, 2.5, -1.4, 0.3}
+	valuesF := []float32{
+		0.15, -0.25, 0.33, -0.72, 0.9, -1.1,
+		-0.4, 0.55, 0.77, -0.12, 0.31, 0.64,
+		2.1, 1.5, -0.9, 0.47, -0.23, 3.3,
+	}
+	upstreamF := []float32{
+		0.3, -0.4, 0.8, 0.5, -0.7, 0.2,
+		0.1, 0.6, -0.9, 0.4, 0.2, -0.1,
+		0.7, -0.3, 0.9, 0.5, -0.2, 0.8,
+	}
+	order := rand.New(rand.NewSource(17)).Perm(len(sources))
+	permutedSources := make([]int, len(sources))
+	permutedTargets := make([]int, len(targets))
+	permutedWeights := make([]float32, len(weightsF))
+	for edge, original := range order {
+		permutedSources[edge] = sources[original]
+		permutedTargets[edge] = targets[original]
+		permutedWeights[edge] = weightsF[original]
+	}
+	originalTopology, err := NewEdgeTopology(6, sources, targets)
+	if err != nil {
+		t.Fatalf("original NewEdgeTopology: %v", err)
+	}
+	permutedTopology, err := NewEdgeTopology(6, permutedSources, permutedTargets)
+	if err != nil {
+		t.Fatalf("permuted NewEdgeTopology: %v", err)
+	}
+
+	runForward := func(topology *EdgeTopology, weightsData []float32) *Tensor {
+		t.Helper()
+		weights := mustTestTensor(t, []int{len(weightsData)}, weightsData)
+		values := mustTestTensor(t, []int{3, 6}, valuesF)
+		out, err := EdgeSum(topology, weights, values)
+		if err != nil {
+			t.Fatalf("EdgeSum: %v", err)
+		}
+		return out
+	}
+	originalForward := runForward(originalTopology, weightsF)
+	permutedForward := runForward(permutedTopology, permutedWeights)
+	for i := range originalForward.Data() {
+		got := math.Float32bits(permutedForward.Data()[i])
+		want := math.Float32bits(originalForward.Data()[i])
+		if got != want {
+			t.Fatalf("permuted forward[%d]: bits = %#08x, want %#08x", i, got, want)
+		}
+	}
+
+	type tapeGradients struct {
+		dValues  *Tensor
+		dWeights *Tensor
+	}
+	runTape := func(topology *EdgeTopology, weightsData []float32) tapeGradients {
+		t.Helper()
+		weights := mustTestTensor(t, []int{len(weightsData)}, weightsData)
+		values := mustTestTensor(t, []int{3, 6}, valuesF)
+		upstream := mustTestTensor(t, []int{3, 6}, upstreamF)
+		tape := NewTape()
+		if _, err := tape.Param(weights); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tape.Param(values); err != nil {
+			t.Fatal(err)
+		}
+		y, err := tape.EdgeSum(topology, weights, values)
+		if err != nil {
+			t.Fatalf("tape.EdgeSum: %v", err)
+		}
+		if err := tape.BackwardFrom(y, upstream); err != nil {
+			t.Fatalf("BackwardFrom: %v", err)
+		}
+		dValues, err := tape.Grad(values)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dWeights, err := tape.Grad(weights)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tapeGradients{dValues: dValues, dWeights: dWeights}
+	}
+	originalGradients := runTape(originalTopology, weightsF)
+	permutedGradients := runTape(permutedTopology, permutedWeights)
+	for i := range originalGradients.dValues.Data() {
+		got := math.Float32bits(permutedGradients.dValues.Data()[i])
+		want := math.Float32bits(originalGradients.dValues.Data()[i])
+		if got != want {
+			t.Fatalf("permuted values gradient[%d]: bits = %#08x, want %#08x", i, got, want)
+		}
+	}
+	for edge, original := range order {
+		got := math.Float32bits(permutedGradients.dWeights.Data()[edge])
+		want := math.Float32bits(originalGradients.dWeights.Data()[original])
+		if got != want {
+			t.Fatalf("permuted weights gradient[%d] maps to original edge %d: bits = %#08x, want %#08x", edge, original, got, want)
 		}
 	}
 }
