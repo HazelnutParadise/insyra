@@ -38,21 +38,7 @@ type CAPMResult struct {
 // is non-numeric or non-finite. Input values are read through numericSeries;
 // no cell is dropped or coerced to zero.
 func CAPM(asset, market insyra.IDataList, riskFreeRate float64) (*CAPMResult, error) {
-	if asset == nil {
-		return nil, fmt.Errorf("CAPM: asset is nil")
-	}
-	if market == nil {
-		return nil, fmt.Errorf("CAPM: market is nil")
-	}
-	if asset.Len() != market.Len() {
-		return nil, fmt.Errorf("CAPM: asset and market lengths differ (%d vs %d)", asset.Len(), market.Len())
-	}
-
-	assetValues, err := numericSeries(asset, "asset")
-	if err != nil {
-		return nil, err
-	}
-	marketValues, err := numericSeries(market, "market")
+	assetValues, marketValues, err := pairedSeries("CAPM", asset, market)
 	if err != nil {
 		return nil, err
 	}
@@ -71,25 +57,35 @@ func CAPM(asset, market insyra.IDataList, riskFreeRate float64) (*CAPMResult, er
 // is non-numeric or non-finite. Input values are read through numericSeries;
 // no cell is dropped or coerced to zero.
 func Beta(asset, market insyra.IDataList) (float64, error) {
-	if asset == nil {
-		return math.NaN(), fmt.Errorf("Beta: asset is nil")
-	}
-	if market == nil {
-		return math.NaN(), fmt.Errorf("Beta: market is nil")
-	}
-	if asset.Len() != market.Len() {
-		return math.NaN(), fmt.Errorf("Beta: asset and market lengths differ (%d vs %d)", asset.Len(), market.Len())
-	}
-
-	assetValues, err := numericSeries(asset, "asset")
-	if err != nil {
-		return math.NaN(), err
-	}
-	marketValues, err := numericSeries(market, "market")
+	assetValues, marketValues, err := pairedSeries("Beta", asset, market)
 	if err != nil {
 		return math.NaN(), err
 	}
 	return betaF64(assetValues, marketValues)
+}
+
+// pairedSeries reads an asset and a market series that must line up period by
+// period: both present, the same length, every cell a finite number. CAPM and
+// Beta share it so the two checks cannot drift apart.
+func pairedSeries(fn string, asset, market insyra.IDataList) ([]float64, []float64, error) {
+	if asset == nil {
+		return nil, nil, fmt.Errorf("%s: asset is nil", fn)
+	}
+	if market == nil {
+		return nil, nil, fmt.Errorf("%s: market is nil", fn)
+	}
+	if asset.Len() != market.Len() {
+		return nil, nil, fmt.Errorf("%s: asset and market lengths differ (%d vs %d)", fn, asset.Len(), market.Len())
+	}
+	assetValues, err := numericSeries(asset, "asset")
+	if err != nil {
+		return nil, nil, err
+	}
+	marketValues, err := numericSeries(market, "market")
+	if err != nil {
+		return nil, nil, err
+	}
+	return assetValues, marketValues, nil
 }
 
 func capmF64(asset, market []float64, rf float64) (*CAPMResult, error) {

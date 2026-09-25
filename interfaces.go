@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"context"
 	"io"
 
 	"gorm.io/gorm"
@@ -96,10 +97,17 @@ type IDataList interface {
 	Summary()
 
 	// Error handling (instance-level)
+	//
+	// ClearErr and SetErr are deliberately NOT listed. They return the
+	// receiver so a chain can continue, and a type that extends this one by
+	// embedding it (isr's tables and lists, or a caller's own) overrides them
+	// to return its own type. Listed here, they would make every such
+	// extension fail the interface and keep it out of stats, plot and Merge.
+	// They remain methods of the concrete type. Owner's ruling of 2026-09-26
+	// (#208); TestInterfacesListEveryMethod holds every other method to the
+	// list and names each exception with its reason.
 	Err() *ErrorInfo
 	PopErr() *ErrorInfo
-	SetErr(packageName, funcName, msg string, args ...any) *DataList
-	ClearErr() *DataList
 
 	// comparison
 	IsEqualTo(*DataList) bool
@@ -125,6 +133,28 @@ type IDataList interface {
 	NearestNeighborInterpolation(float64) float64
 	NewtonInterpolation(float64) float64
 	HermiteInterpolation(float64, []float64) float64
+
+	// Window and time series
+	CumSum() *DataList
+	CumProd() *DataList
+	CumMax() *DataList
+	CumMin() *DataList
+	Diff(periods int) *DataList
+	PctChange(periods int) *DataList
+	Shift(periods int, fill ...any) *DataList
+	Rolling(opts RollingOptions) *RollingDataList
+	Expanding(minObs int) *ExpandingDataList
+
+	// Output to any writer
+	ShowTo(w io.Writer)
+	ShowRangeTo(w io.Writer, startEnd ...any)
+	ShowHeadTo(w io.Writer, n int)
+	ShowTailTo(w io.Writer, n int)
+	ShowTypesTo(w io.Writer)
+	ShowTypesRangeTo(w io.Writer, startEnd ...any)
+	SummaryTo(w io.Writer)
+
+	Close()
 }
 
 // IDataTable defines the behavior expected from a DataTable.
@@ -239,10 +269,17 @@ type IDataTable interface {
 	Summary()
 
 	// Error handling (instance-level)
+	//
+	// ClearErr and SetErr are deliberately NOT listed. They return the
+	// receiver so a chain can continue, and a type that extends this one by
+	// embedding it (isr's tables and lists, or a caller's own) overrides them
+	// to return its own type. Listed here, they would make every such
+	// extension fail the interface and keep it out of stats, plot and Merge.
+	// They remain methods of the concrete type. Owner's ruling of 2026-09-26
+	// (#208); TestInterfacesListEveryMethod holds every other method to the
+	// list and names each exception with its reason.
 	Err() *ErrorInfo
 	PopErr() *ErrorInfo
-	SetErr(packageName, funcName, msg string, args ...any) *DataTable
-	ClearErr() *DataTable
 
 	// Operations
 	Transpose() *DataTable
@@ -361,4 +398,45 @@ type IDataTable interface {
 	ReplaceNilsInColByName(name string, newValue any, mode ...int) *DataTable
 	ReplaceNaNsAndNilsInCol(col any, newValue any, mode ...int) *DataTable
 	ReplaceNaNsAndNilsInColByName(name string, newValue any, mode ...int) *DataTable
+
+	// coreTable returns the *DataTable this value is or embeds, so Merge can
+	// take any type that extends the core table by embedding it.
+	coreTable() *DataTable
+
+	// Window and time series
+	CumSumCol(col any) *DataList
+	CumProdCol(col any) *DataList
+	CumMaxCol(col any) *DataList
+	CumMinCol(col any) *DataList
+	DiffCol(col any, periods int) *DataList
+	PctChangeCol(col any, periods int) *DataList
+	ShiftCol(col any, periods int, fill ...any) *DataList
+	RollingCol(col any, opts RollingOptions) *RollingDataList
+	ExpandingCol(col any, minObs int) *ExpandingDataList
+
+	// Reshaping and grouping. Pivot and Unpivot are left out for the same
+	// reason as ClearErr and SetErr above: isr overrides them with its
+	// short-syntax versions.
+	GroupBy(keyCols ...any) *GroupedDataTable
+	Counter() map[any]int
+
+	// CCL
+	ExecuteCCL(cclStatements string) (result *DataTable)
+	EditColByIndexUsingCCL(colIndex, cclFormula string) (result *DataTable)
+	EditColByNameUsingCCL(colName, cclFormula string) (result *DataTable)
+
+	GetColNameByIndex(index string) string
+	ToCSVWithOptions(filePath string, opts CSVWriteOptions) error
+	ToSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ToSQLOptions) error
+
+	// Output to any writer
+	ShowTo(w io.Writer)
+	ShowRangeTo(w io.Writer, startEnd ...any)
+	ShowHeadTo(w io.Writer, n int)
+	ShowTailTo(w io.Writer, n int)
+	ShowTypesTo(w io.Writer)
+	ShowTypesRangeTo(w io.Writer, startEnd ...any)
+	SummaryTo(w io.Writer)
+
+	Close()
 }

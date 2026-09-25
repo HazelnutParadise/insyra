@@ -52,9 +52,9 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 	var result *DataTable
 	var err error
 
-	o, castOK := other.(*DataTable)
-	if !castOK {
-		return nil, fmt.Errorf("%s: second table must be a *DataTable", keyType)
+	o := coreOf(other)
+	if o == nil {
+		return nil, fmt.Errorf("%s: the second table is nil", keyType)
 	}
 	d := dt
 	// Lock both tables together (deadlock-free) instead of nesting AtomicDo,
@@ -381,9 +381,9 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 }
 
 func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable, error) {
-	otherDT, ok := other.(*DataTable)
-	if !ok {
-		return nil, fmt.Errorf("other must be a *DataTable")
+	otherDT := coreOf(other)
+	if otherDT == nil {
+		return nil, fmt.Errorf("the second table is nil")
 	}
 
 	var result *DataTable
@@ -536,4 +536,17 @@ func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable
 		return nil, mergeErr
 	}
 	return result, nil
+}
+
+// coreTable returns the table itself. Through IDataTable it lets Merge reach
+// the *DataTable inside any type that extends the core table by embedding it,
+// since an embedded pointer's methods, this one included, come with it.
+func (dt *DataTable) coreTable() *DataTable { return dt }
+
+// coreOf returns the *DataTable other is or embeds, or nil when there is none.
+func coreOf(other IDataTable) *DataTable {
+	if other == nil {
+		return nil
+	}
+	return other.coreTable()
 }
