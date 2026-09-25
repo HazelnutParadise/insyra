@@ -96,6 +96,49 @@ func TestTanhFloat32FallsBackNearMidpoints(t *testing.T) {
 	t.Logf("tanh high-precision fallback count: %d", fallbackCount)
 }
 
+func TestTanhVJPRoundsEveryStep(t *testing.T) {
+	const count = 100000
+
+	r := rand.New(rand.NewSource(37))
+	outputData := make([]float32, count)
+	upstreamData := make([]float32, count)
+	want := make([]float32, count)
+	for index := range outputData {
+		y := float32(r.Float64()*2 - 1)
+		u := float32(math.Ldexp(r.NormFloat64(), r.Intn(41)-20))
+		outputData[index] = y
+		upstreamData[index] = u
+		s := float32(float64(y) * float64(y))
+		c := float32(1 - float64(s))
+		want[index] = float32(float64(u) * float64(c))
+	}
+
+	shape := []int{count}
+	output, err := newFloat32Tensor(shape, outputData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream, err := newFloat32Tensor(shape, upstreamData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gradient := tanhVJP(output, upstream)
+
+	mismatches := 0
+	firstMismatch := -1
+	for index := range want {
+		if math.Float32bits(gradient.data[index]) != math.Float32bits(want[index]) {
+			mismatches++
+			if firstMismatch == -1 {
+				firstMismatch = index
+			}
+		}
+	}
+	if mismatches != 0 {
+		t.Fatalf("tanhVJP mismatches: %d; first at index %d: result bits %#08x, want %#08x", mismatches, firstMismatch, math.Float32bits(gradient.data[firstMismatch]), math.Float32bits(want[firstMismatch]))
+	}
+}
+
 // tanhNeedsHighPrecisionForTest duplicates the fast-path decision so this
 // test does not depend on the implementation's private control flow.
 func tanhNeedsHighPrecisionForTest(x float32) bool {
