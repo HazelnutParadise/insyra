@@ -241,7 +241,8 @@ gradient; a separated softmax plus log-loss path is not provided. `SGD` applies
 one in-place `w -= learningRate * gradient` step to every tracked parameter.
 Gradients are float32 and are available through `Parameter.Grad()` or
 `Tape.Grad(parameter.Value())` after `Backward`; an unconnected tracked
-parameter receives a zero tensor. Exact-form GELU is differentiable; the tanh
+parameter receives a zero tensor. A `Backward` that returns an error publishes
+nothing: both keep returning what the last successful pass computed. Exact-form GELU is differentiable; the tanh
 approximation is refused by the tape until its VJP is covered.
 
 Adam keeps first and second moments per tracked parameter and applies one
@@ -270,6 +271,52 @@ for step := 0; step < 5; step++ {
 	if err := tape.AdamW(schedule.LR(step), 1e-2); err != nil { log.Fatal(err) }
 }
 ```
+
+### Custom operations
+
+An operation the tape does not provide, such as one computed by your own
+kernel, joins the tape through `Custom`. Compute the forward result yourself,
+then record it with the tensors it was computed from and its reverse rule:
+
+```go
+y, err := nn.Mul(w.Value(), x) // any float32 result computed outside the tape
+if err != nil { log.Fatal(err) }
+err = tape.Custom("scale", []*nn.Tensor{w.Value(), x}, y,
+	func(upstream *nn.Tensor) ([]*nn.Tensor, error) {
+		dw, err := nn.Mul(upstream, x)
+		if err != nil { return nil, err }
+		dx, err := nn.Mul(upstream, w.Value())
+		if err != nil { return nil, err }
+		return []*nn.Tensor{dw, dx}, nil
+	})
+if err != nil { log.Fatal(err) }
+```
+
+The reverse rule receives the gradient flowing into `y`, shaped like `y`, and
+returns one gradient per input in the same order, shaped like that input, or
+`nil` for an input that receives none. It does not have to be the derivative
+of the forward pass: a hard threshold can declare a smooth surrogate, and the
+tape propagates whatever the rule returns. Without `Custom`, a tensor computed
+outside the tape is disconnected from it, and its inputs silently receive a
+zero gradient.
+
+`Custom` refuses an empty name, a nil rule, a nil or non-float32 tensor, and an
+output that is also one of its inputs, and records nothing when it refuses.
+During `Backward`, a rule that returns an error, the wrong number of
+gradients, or a gradient of the wrong type or shape fails the pass with an
+error naming the operation.
+
+`BackwardFrom(output, upstream)` starts the reverse pass from any tensor an
+operation on the tape produced, seeded with an upstream gradient of the same
+shape, for a loss that is computed outside the tape:
+
+```go
+if err := tape.BackwardFrom(y, gradientOfY); err != nil { log.Fatal(err) }
+```
+
+For a scalar loss, `Backward(loss)` and `BackwardFrom(loss, one)` give the same
+gradients. `BackwardFrom` refuses an output the tape did not produce, where
+`Backward` would return zero gradients.
 
 ### Training toolkit
 
