@@ -351,12 +351,19 @@ memory grow with the number of edges and values, not with N².
 step above trains like any other tape graph. The step itself is yours to
 compose: `EdgeSum` does not assume an activation, a decay or a bias.
 
-The summation order is fixed: each node adds its incoming edges in ascending
-edge index, starting from zero, and every product is rounded to float32 before
-it is added. The result is therefore the same on every platform, and on a
-large graph every core shares the work without changing a bit of it. Without the
-rounding, arm64 fuses the multiply and the add into one instruction and
-produces different bits from amd64.
+Each output is the exact sum of its products, rounded once to the nearest
+float32 with ties to even. Nothing is rounded along the way, so the order of the
+edges, the order of the batch and the number of cores cannot change a bit of
+the result, on any platform, and it is the most accurate value a float32 can
+hold. A node whose products cancel exactly, or that has no incoming edge,
+gets `+0`. A NaN input, a zero times an infinity, or infinities of both signs
+give NaN; otherwise an infinite product gives that infinity. The gradients are
+exact sums by the same rule.
+
+Most sums are settled by adding the products in float64, where each product is
+exact, and checking that the error bound of that sum cannot reach the midpoint
+between two float32 values; only the sums that come too close are added again
+exactly in a wide integer register. The result is the same either way.
 
 ### Training toolkit
 
