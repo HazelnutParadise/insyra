@@ -9,7 +9,7 @@
 - [x] 2.2 `Tape.BackwardFrom`；`Backward` 改用同一段反向走訪
 
 ## 3. Docs and records
-- [ ] 3.1 `Docs/nn.md` 新增自訂運算一節，`skills/insyra/SKILL.md` 補上 `Custom` 與 `BackwardFrom`
-- [ ] 3.2 兩份 CHANGELOG 的 `` ### `nn` ``
-- [ ] 3.3 全套驗證：`go build`、`go vet`、`go test ./...`、`golangci-lint run`
-- [ ] 3.4 `openspec validate tape-custom-operations --strict`
+- [x] 3.1 `Docs/nn.md` 新增自訂運算一節，`skills/insyra/SKILL.md` 補上 `Custom` 與 `BackwardFrom`
+- [x] 3.2 兩份 CHANGELOG 的 `` ### `nn` ``
+- [x] 3.3 全套驗證：`go build`、`go vet`、`go test ./...`、`golangci-lint run`
+- [x] 3.4 `openspec validate tape-custom-operations --strict`
