@@ -24,6 +24,9 @@ const (
 type exactAccumulator struct {
 	digits  [exactSumDigits]int64
 	pending int // additions since the last normalize
+	nan     bool
+	posInf  bool
+	negInf  bool
 }
 
 // reset returns the accumulator to the empty total, so one accumulator can
@@ -33,14 +36,37 @@ func (a *exactAccumulator) reset() {
 		a.digits[i] = 0
 	}
 	a.pending = 0
+	a.nan = false
+	a.posInf = false
+	a.negInf = false
 }
 
-// addProduct adds the exact value of x*y. Both operands are finite, so the
-// product is M·2^k with M < 2^48 and -298 <= k <= 208, and it always lands
-// inside the register. Carries are deferred until exactSumNormalizeEvery
+// addProduct adds the exact value of x*y. For finite operands, the product is
+// M·2^k with M < 2^48 and -298 <= k <= 208, and it always lands inside the
+// register. Carries are deferred until exactSumNormalizeEvery
 // additions have piled up, which keeps the addition itself to three digit
 // updates.
 func (a *exactAccumulator) addProduct(x, y float32) {
+	if x != x || y != y {
+		a.nan = true
+		return
+	}
+
+	xInf := math.IsInf(float64(x), 0)
+	yInf := math.IsInf(float64(y), 0)
+	if xInf || yInf {
+		if x == 0 || y == 0 {
+			a.nan = true
+			return
+		}
+		if math.Signbit(float64(x)) != math.Signbit(float64(y)) {
+			a.negInf = true
+		} else {
+			a.posInf = true
+		}
+		return
+	}
+
 	nx, mx, ex := decodeFiniteFloat32(x)
 	ny, my, ey := decodeFiniteFloat32(y)
 	if mx == 0 || my == 0 {
@@ -109,6 +135,16 @@ func decodeFiniteFloat32(x float32) (negative bool, mant uint64, exp int) {
 // may read a total and keep adding to the same accumulator. A total that is
 // exactly zero, including an empty one, is +0.
 func (a *exactAccumulator) float32() float32 {
+	if a.nan || (a.posInf && a.negInf) {
+		return math.Float32frombits(0x7fc00000)
+	}
+	if a.posInf {
+		return math.Float32frombits(0x7f800000)
+	}
+	if a.negInf {
+		return math.Float32frombits(0xff800000)
+	}
+
 	work := *a
 	work.normalize()
 
