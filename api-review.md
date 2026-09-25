@@ -138,7 +138,7 @@
 | K-9 | ~~Med~~ 已修正 | `ReadJSON_File` 直接 `json.Unmarshal` 不用 `UseNumber`，整數變 float64；`ReadJSON` 走 `unmarshalJSONRows` 保留 int64。同一個檔案從兩個入口讀，型別不同，大整數 ID 在 `ReadJSON_File` 會失真（準則 6、13） | read.go:410-431 vs 442-460 | `ReadJSON_File` 改成 `os.ReadFile` + `ReadJSON(bytes)` |
 | K-10 | ~~Med~~ 已修正（batch 3） | `DetectEncoding` 只看前 8KB，且 `utf8.Valid` 在多位元組字元被切在 8192 邊界時回 false，接著交給 chardet 可能判成別的編碼；chardet 回傳的名稱（`shift_jis`、`iso-8859-1`、`gb-18030`）csvxl 只認 big5/gb/utf-16，其餘靜默當 UTF-8 讀 | utils.go:279-322；csvxl/convert.go:213-222 | 邊界回退到最後一個完整 rune 再驗證；不支援的編碼回錯而非靜默 |
 | K-11 | ~~Med~~ 已修正（reader-writer-entry-points：`ReadCSV(r, opts)`、`StreamCSV`、`ReadJSON` 收 `io.Reader`、`ReadExcel(r, …)`，檔案版與字串版改為包裝；改名留給 #213） | CSV 只有 `_File` 與 `_String` 兩種入口，沒有 `io.Reader` 版本；Excel、JSON 同樣只吃路徑。與 C-10、Q-8 同一問題 | read.go | 加 `ReadCSV(r io.Reader, opts)`，檔案與字串版包裝它 |
-| K-12 | Med | `ToFloat64`、`ToFloat64Safe`、`ReadSlice2D` 用 `var` 匯出函式值：使用者可以在執行期覆寫（`insyra.ToFloat64 = ...`），godoc 也不會列在 Functions 區；`ReadSlice2D` 與 `Slice2DToDataTable` 是同一件事兩個名字（準則 2、6） | utils.go:22-23；read.go:22 | 改成 `func` 包裝；別名擇一標 Deprecated |
+| K-12 | ~~Med~~ 已修正（exported-functions-are-functions：四個函式變數含 `mkt.CAI` 改成 `func`；保留 `ReadSlice2D`，`Slice2DToDataTable` 標 Deprecated、下一版移除；新增全模組掃描測試防止再出現） | `ToFloat64`、`ToFloat64Safe`、`ReadSlice2D` 用 `var` 匯出函式值：使用者可以在執行期覆寫（`insyra.ToFloat64 = ...`），godoc 也不會列在 Functions 區；`ReadSlice2D` 與 `Slice2DToDataTable` 是同一件事兩個名字（準則 2、6） | utils.go:22-23；read.go:22 | 改成 `func` 包裝；別名擇一標 Deprecated |
 | K-13 | Low | 命名不符 Go 慣例且與 golint 衝突：`ReadCSV_File`、`ReadCSV_String`、`ReadJSON_File`、`ToJSON_Bytes`、`ToJSON_String`、`Dangerously_TurnOffThreadSafety` 用底線；`GetDoesUseColoredOutput`、`GetDontPanicStatus` 疊字；`ParseColIndex`/`CalcColIndex` 一對函式動詞不對稱（準則 9） | config.go；read.go；utils.go:244-251 | v1 前統一：`ReadCSVFile`、`ColIndexToNumber`/`ColNumberToIndex`、`ColoredOutput()` |
 | K-14 | Low | `ReadCSV_File(path, bool, bool, encoding ...string)`、`ReadExcelSheet(path, sheet, bool, bool)` 兩個裸 bool 加 variadic；`_WithOptions` 版本已存在，舊簽名該退場。`ReadExcelSheet` 沒有 options 版，也沒有型別推斷（既有 follow-up） | read.go:115, 384 | 舊簽名標 Deprecated；加 `ReadExcelSheetWithOptions` 沿用 `CSVReadOptions` 的欄位 |
 | K-15 | Low | 核心套件匯出了與資料表無關的工具：`SqrtRat`、`PowRat`（repo 內無人用）、`SortTimes`（只有 mkt 用一次，`slices.SortFunc` 可替代）、`ProcessData` 回傳 `([]any, int)` 而 int 就是 `len()`、失敗時回 `nil, 0` 靠 log 通知。`F64orRat` 是 internal 介面的匯出別名（準則 1、2） | utils.go:43-87, 90-112, 255-264, 20 | `SqrtRat`/`PowRat`/`SortTimes` 移入 internal 或刪除；`ProcessData` 改回 `([]any, error)` |
@@ -263,7 +263,7 @@
 | --- | --- | --- | --- | --- |
 | MK-1 | ~~High~~ 已修正（batch 2） | **panic（已實測）**：`RFM` 用 `conv.ParseF64` 讀金額欄，遇到 `"abc"` 直接 panic 穿出 `AtomicDo`，整個程序崩潰。三個公開函式（`RFM`、`CustomerActivityIndex`、`BasketAnalysis`）失敗時只 `LogWarning` 後回 nil，沒有 error 回傳、沒有 `Err()`；欄名打錯時 `GetColIndexByName` 回空字串，之後每列 `GetElement(i, "")` 都是 nil，結果是「一張空表、零錯誤」（準則 11） | mkt/rfm.go:26-80, 100；cai.go:38-60；basket.go:38-56 | 三個函式改回 `(result, error)`；金額走 `ToFloat64Safe` 並指出列號 |
 | MK-2 | ~~Med~~ 已修正（batch 2） | 輸出列順序來自 Go map 迭代（`for customerID := range customerLastTradingDayMap`），每次執行 RFM／CAI 的列順序都不同，結果不可重現、無法 diff；`BasketAnalysis` 有排序（準則 13） | rfm.go:236；cai.go:180 | 依 CustomerID 排序輸出 |
-| MK-3 | ~~Med~~ 部分修正（one-column-selector）：三個 config 的八組 `ColIndex`／`ColName` 收成一個選擇器欄位；`DateFormat`、`NumGroups uint`、`CAI` 函式變數未處理 | 每個欄位都提供 `XxxColIndex` + `XxxColName` 兩個欄位（三個 config 共 8 對），「同時給時 index 優先」是把 T-11 的歧義寫進設定檔；`DateFormat` 用自訂的 `"YYYY-MM-DD"` 記法再轉 Go layout，`NumGroups uint`；`var CAI = CustomerActivityIndex` 是可被覆寫的函式變數（K-12）（準則 3、6、8） | mkt/rfm.go:12-22；cai.go:12-22；basket.go:12-17 | 只留一個欄位參照（名稱或索引擇一）；`CAI` 改 func |
+| MK-3 | ~~Med~~ 部分修正（one-column-selector）：三個 config 的八組 `ColIndex`／`ColName` 收成一個選擇器欄位；`CAI` 函式變數已由 exported-functions-are-functions 改成 `func`；`DateFormat`、`NumGroups uint` 未處理，也還沒有對應的 issue | 每個欄位都提供 `XxxColIndex` + `XxxColName` 兩個欄位（三個 config 共 8 對），「同時給時 index 優先」是把 T-11 的歧義寫進設定檔；`DateFormat` 用自訂的 `"YYYY-MM-DD"` 記法再轉 Go layout，`NumGroups uint`；`var CAI = CustomerActivityIndex` 是可被覆寫的函式變數（K-12）（準則 3、6、8） | mkt/rfm.go:12-22；cai.go:12-22；basket.go:12-17 | 只留一個欄位參照（名稱或索引擇一）；`CAI` 改 func |
 | MK-4 | ~~Low~~ 已修正（batch 3） | 預設值套用時以 Info 等級 log（DateFormat、TimeScale），噪音；用 `parallel.GroupUp`（P-4）與 `insyra.SortTimes`（K-15）；CAI 對每位客戶排序兩次 | rfm.go:60-70, 157；cai.go:66-73, 118 | 移除 log；直接迴圈 |
 
 ### finance
@@ -531,7 +531,7 @@
 | K-7、QU-2 | [#208](https://github.com/HazelnutParadise/insyra/issues/208) |  |
 | K-8 | [#209](https://github.com/HazelnutParadise/insyra/issues/209) |  |
 | K-11、C-10、Q-8 | [#210](https://github.com/HazelnutParadise/insyra/issues/210) | 已關閉（reader-writer-entry-points；`csvxl` 經裁定不做，改名移到 #213） |
-| K-12 | [#211](https://github.com/HazelnutParadise/insyra/issues/211) |  |
+| K-12 | [#211](https://github.com/HazelnutParadise/insyra/issues/211) | 已關閉（exported-functions-are-functions） |
 | K-13、C-12、I-4、DF-5 | [#212](https://github.com/HazelnutParadise/insyra/issues/212) |  |
 | K-14、D-8、E-6、E-7、PL-4、NN-3、C-2 | [#213](https://github.com/HazelnutParadise/insyra/issues/213) |  |
 | K-15 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) |  |

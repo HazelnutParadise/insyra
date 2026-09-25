@@ -253,6 +253,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-25] — remove `Slice2DToDataTable` one release after `ReadSlice2D` became its one name
+- **Where**: `read.go` (`Slice2DToDataTable`)
+- **What**: `exported-functions-are-functions` made `ReadSlice2D` the function that turns a 2D slice into a DataTable and left `Slice2DToDataTable` as a Deprecated wrapper, by the owner's ruling on #211 that each function has one name and the `Read*` family keeps it.
+- **Suggestion**: in the first release after the one that ships `exported-functions-are-functions`, delete `Slice2DToDataTable` and `TestSlice2DToDataTableMatchesReadSlice2D`, drop the deprecated-spelling note from `Docs/DataTable.md` and the warning in `skills/insyra/SKILL.md`, and add a BREAKING changelog entry. Do it in the same release as the `SetDontPanic` removal if they coincide.
+- **Status**: pending
+
 ### [2026-09-20] — `TestSequentialFitMNISTConvergence` still pins numbers recorded on one machine
 - **Where**: [nn/fit_mnist_test.go](nn/fit_mnist_test.go), the mean-loss and accuracy assertions
 - **What**: Fit's sugar-changes-nothing proof compares against the transcribed `0.347310`, `0.165883` and `0.9547` instead of against the hand-written loop it claims to reproduce. Its sibling `TestSequentialMNISTConvergence` failed exactly that way on `ubuntu-latest` on 2026-09-20 — `0.163855` recorded on arm64 against `0.163840` measured on amd64, while the two code paths still agreed with each other — and now runs the hand loop in the same process (`mnist-proof-compares-runs`). Fit's numbers happen to hold on both platforms measured so far, so nothing is red today.

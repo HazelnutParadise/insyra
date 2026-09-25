@@ -8,7 +8,7 @@ This page covers utility helpers in the main `insyra` package.
 func ToFloat64(v any) float64
 ```
 
-**Description:** Converts common numeric types to `float64`. Unsupported types return `0`.
+**Description:** Converts common numeric types to `float64`. Unsupported types return `0`, which cannot be told apart from a real zero; use `ToFloat64Safe` when that matters.
 
 **Parameters:**
 

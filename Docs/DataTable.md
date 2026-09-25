@@ -307,13 +307,13 @@ if err != nil {
 }
 ```
 
-### Slice2DToDataTable
+### ReadSlice2D
 
 ```go
-func Slice2DToDataTable(data any) (*DataTable, error)
+func ReadSlice2D(data any) (*DataTable, error)
 ```
 
-**Description:** Converts a 2D slice of any type into a DataTable. Supports various 2D array types including `[][]any`, `[][]int`, `[][]int64`, `[][]float32`, `[][]float64`, `[][]string`, and more.
+**Description:** Converts a 2D slice of any type into a DataTable, one inner slice per row. Supports various 2D array types including `[][]any`, `[][]int`, `[][]int64`, `[][]float32`, `[][]float64`, `[][]string`, and more.
 
 **Parameters:**
 
@@ -324,12 +324,11 @@ func Slice2DToDataTable(data any) (*DataTable, error)
 - `*DataTable`: New DataTable with converted data (nil if error occurs)
 - `error`: Error information, returns nil if successful
 
-**Alias:** `ReadSlice2D` — provided as a convenience alias for `Slice2DToDataTable`.
+**Deprecated spelling:** `Slice2DToDataTable` is the same function under its old name. It still works in this release, is marked Deprecated, and will be removed in the next one; replace it with `ReadSlice2D`.
 
-**Quick example using the alias:**
+**Quick example:**
 
 ```go
-// Using the alias
 dt, err := insyra.ReadSlice2D([][]any{
     {1, "Alice", 3.5},
     {2, "Bob", 4.0},
@@ -375,7 +374,7 @@ data1 := [][]any{
     {2, "Bob", 4.0},
     {3, "Charlie", 2.8},
 }
-dt1, err := insyra.Slice2DToDataTable(data1)
+dt1, err := insyra.ReadSlice2D(data1)
 if err != nil {
     log.Fatal(err)
 }
@@ -386,7 +385,7 @@ data2 := [][]int64{
     {4, 5, 6},
     {7, 8, 9},
 }
-dt2, err := insyra.Slice2DToDataTable(data2)
+dt2, err := insyra.ReadSlice2D(data2)
 if err != nil {
     log.Fatal(err)
 }
@@ -397,7 +396,7 @@ data3 := [][]float64{
     {4.4, 5.5, 6.6},
     {7.7, 8.8, 9.9},
 }
-dt3, err := insyra.Slice2DToDataTable(data3)
+dt3, err := insyra.ReadSlice2D(data3)
 if err != nil {
     log.Fatal(err)
 }
@@ -408,7 +407,7 @@ data4 := [][]string{
     {"Denver", "New York", "San Francisco"},
     {"Engineer", "Manager", "Developer"},
 }
-dt4, err := insyra.Slice2DToDataTable(data4)
+dt4, err := insyra.ReadSlice2D(data4)
 if err != nil {
     log.Fatal(err)
 }
@@ -419,7 +418,7 @@ data5 := [][]any{
     {2, "Bob"},              // Missing third column
     {3, "Charlie", 2.8, "Extra"}, // Extra column
 }
-dt5, err := insyra.Slice2DToDataTable(data5)
+dt5, err := insyra.ReadSlice2D(data5)
 if err != nil {
     log.Fatal(err)
 }
@@ -428,12 +427,12 @@ if err != nil {
 // Third row: {3, "Charlie", 2.8}
 
 // Example 6: Error handling
-_, err := insyra.Slice2DToDataTable(nil)
+_, err := insyra.ReadSlice2D(nil)
 if err != nil {
     fmt.Println(err) // Output: input data cannot be nil
 }
 
-_, err = insyra.Slice2DToDataTable([][]any{})
+_, err = insyra.ReadSlice2D([][]any{})
 if err != nil {
     fmt.Println(err) // Output: input data cannot be empty
 }

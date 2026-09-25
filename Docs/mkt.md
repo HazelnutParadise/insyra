@@ -166,10 +166,10 @@ The function calculates percentile-based scores for each metric and assigns cust
 
 ### CAI
 
-Alias for CustomerActivityIndex function.
+A short name for `CustomerActivityIndex`, with the same parameters and result.
 
 ```go
-var CAI = CustomerActivityIndex
+func CAI(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDataTable
 ```
 
 ### Customer Activity Index

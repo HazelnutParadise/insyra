@@ -425,6 +425,8 @@ func main() {
     //   for batch, err := range insyra.StreamCSV(r, opts, 1000) { … }
     // parquet has the same pair: parquet.ReadFrom / StreamFrom take an
     // io.ReaderAt and its size, parquet.WriteTo takes an io.Writer.
+    // Rows already in memory as a 2D slice: insyra.ReadSlice2D(rows).
+    // Slice2DToDataTable is its deprecated old name; do not use it.
 
     // Quick console preview (first N rows)
     insyra.Show("preview", dt, 5)

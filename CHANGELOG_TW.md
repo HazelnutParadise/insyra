@@ -74,6 +74,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 以另一個錯誤為原因的錯誤，現在用 `%w` 包住原因，而不是把它格式化成文字，所以 `errors.Is` 與 `errors.As` 能認出原因，例如偵測不到編碼的 CSV、失敗的 CCL 序列或聚合函數，以及 `csvxl`、`pd`、`datafetch` 過去把被包住的失敗寫成字串的地方。訊息文字不變。
 - 讀寫不再非得經過硬碟上的檔案。`ReadCSV(r io.Reader, opts)` 可以從任何來源讀 CSV，例如 HTTP 回應、壓縮檔裡的檔案、`embed.FS` 檔案或記憶體中的位元組，`Encoding` 留空時會從開頭的位元組偵測編碼；`ReadCSV_FileWithOptions` 與 `ReadCSV_StringWithOptions` 現在都呼叫它，同樣的位元組不論走哪個入口都得到同樣的表格。`StreamCSV(r, opts, batchSize)` 以 `for dt, err := range insyra.StreamCSV(...)` 一批一批讀 CSV，記憶體裡只放當下這一批；標題列會命名每一批的欄位，型別逐批推斷。`ReadJSON` 接受 `io.Reader`，`ReadExcel(r, sheet, …)` 從來源讀活頁簿並套用與 `ReadExcelSheet` 相同的解壓上限，`(*DataTable).WriteCSV` 與 `WriteJSON` 可寫到任何 `io.Writer`，`ToCSVWithOptions` 與 `ToJSON` 現在也透過它們寫檔。既有函式的簽名都沒有改變。
 - DataTable 現在可以寫成 Excel。`(*DataTable).ToExcel(path, ExcelWriteOptions)` 把表格寫成活頁簿裡的一張工作表，活頁簿其他工作表維持原樣，檔案不存在時會自動建立，所以一份報表可以一年放一張表。工作表已經存在時會回傳可用 `ErrSheetExists` 比對的錯誤，檔案完全不動；設定 `IfSheetExists: SheetExistsReplace` 才會取代那張表，而且保留它原本的位置。`Sheet` 預設為 `Sheet1`。數字、布林值與時間會存成 Excel 的原生值。`(*DataTable).WriteExcel(w, opts)` 可以把單一工作表的活頁簿寫到任何 `io.Writer`。
+- **BREAKING**：`ToFloat64`、`ToFloat64Safe` 與 `ReadSlice2D` 改成一般函式，不再是存著函式的變數。呼叫方式完全不變，只有對它們賦值會編譯失敗：以前 `insyra.ToFloat64Safe = …` 會換掉 `stats`、`ml`、`nn`、`quant` 與核心共用的轉換，讓整個程式的結果都跟著變。把二維 slice 轉成 DataTable 現在只有 `ReadSlice2D` 一個名字；`Slice2DToDataTable` 仍可使用，已標為 **Deprecated**，下一版移除。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
@@ -149,6 +150,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `mkt`
 - 修正 `RFM` 遇到非數值金額格子時讓整個程序崩潰的問題，現在跳過該列並以警告指出列號。`RFM` 與 `CustomerActivityIndex` 的輸出列依客戶 ID 排序，過去依 Go map 順序輸出、每次執行都不同。
 - `RFM` 與 `CustomerActivityIndex` 套用預設 `DateFormat`／`TimeScale` 的提示改為 Debug 等級而非 Info。
+- **BREAKING**：`CAI` 改成一般函式，不再是存著 `CustomerActivityIndex` 的變數。呼叫方式不變，只有對它賦值會編譯失敗。
 
 ### `finance`
 - `RoundUnnecessary` 在需要捨入時改為回報錯誤，不再 panic。這個模式的用途是得知結果放不進指定的小數位數，而它過去是用中止程序來達成：`NPV(0.03, []{0, 1}, Options{Scale: 2, Mode: RoundUnnecessary})` 會 panic。現在回傳帶著精確值的錯誤。其他捨入模式不變。
