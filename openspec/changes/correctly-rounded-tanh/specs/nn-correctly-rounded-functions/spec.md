@@ -10,11 +10,15 @@ Elementwise float32 functions whose results are correctly rounded — the true v
 
 #### Scenario: Every input
 - **WHEN** `nn.Tanh` is evaluated on all 2^32 float32 bit patterns
-- **THEN** every result equals the correctly rounded value from an independent high-precision oracle
+- **THEN** every result between the two analytic ranges equals the correctly rounded value from an independent high-precision oracle, and every result inside them equals its proven value
 
 #### Scenario: Inputs near a rounding boundary
-- **WHEN** the float64 `tanh` of an input lies close to the midpoint between two float32 values
-- **THEN** the result is decided by a high-precision evaluation, not by the float64 value
+- **WHEN** the float64 approximation for an input lies within `tanhSettleSteps` float64 steps of the midpoint between two float32 values
+- **THEN** the result comes from the table of those inputs, whose entries equal the oracle, not from the approximation
+
+#### Scenario: The approximation is the same on every platform
+- **WHEN** the fast path runs on any platform
+- **THEN** it computes the same float64 bits as on the platform where the exhaustive run measured its error, because it uses only IEEE 754 operations that are each rounded on their own
 
 ### Requirement: The tanh gradient is reproducible
 
