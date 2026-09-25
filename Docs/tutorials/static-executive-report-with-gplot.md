@@ -121,7 +121,7 @@ Persist report summary in tabular form.
 **Code**
 
 ```go
-if err := summary.ToCSV("exec_summary.csv", false, true, false); err != nil {
+if err := summary.ToCSV("exec_summary.csv"); err != nil {
 	log.Fatal(err)
 }
 ```
@@ -163,7 +163,7 @@ func main() {
 		insyra.NewDataList("RevenueMean", "CostMean", "MarginMean").SetName("Metric"),
 		insyra.NewDataList(monthlyRevenue.Mean(), monthlyCost.Mean(), margin.Mean()).SetName("Value"),
 	)
-	if err := summary.ToCSV("exec_summary.csv", false, true, false); err != nil {
+	if err := summary.ToCSV("exec_summary.csv"); err != nil {
 		log.Fatal(err)
 	}
 }

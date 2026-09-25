@@ -127,7 +127,7 @@ summary := insyra.NewDataTable(
 	insyra.NewDataList("RevenueTotal", "RevenueMean", "CustomerTotal", "CustomerMean").SetName("Metric"),
 	insyra.NewDataList(revenue.Sum(), revenue.Mean(), customers.Sum(), customers.Mean()).SetName("Value"),
 )
-if err := summary.ToCSV("kpi_summary.csv", false, true, false); err != nil {
+if err := summary.ToCSV("kpi_summary.csv"); err != nil {
 	log.Fatal(err)
 }
 ```
@@ -175,7 +175,7 @@ func main() {
 		insyra.NewDataList("RevenueTotal", "RevenueMean", "CustomerTotal", "CustomerMean").SetName("Metric"),
 		insyra.NewDataList(revenue.Sum(), revenue.Mean(), customers.Sum(), customers.Mean()).SetName("Value"),
 	)
-	if err := summary.ToCSV("kpi_summary.csv", false, true, false); err != nil {
+	if err := summary.ToCSV("kpi_summary.csv"); err != nil {
 		log.Fatal(err)
 	}
 }

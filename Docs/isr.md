@@ -63,10 +63,10 @@ type CSV struct {
 
 // CSV_inOpts structure
 type CSV_inOpts struct {
-    FirstCol2RowNames bool   // Treat the first column as row names
-    FirstRow2ColNames bool   // Treat the first row as column names
-    Encoding          string // Specify input file encoding (e.g., "big5", "utf-8"), Only for FilePath input
-    RawStrings        bool   // Keep every cell as its original string; skip column type inference
+    NoHeaderRow bool   // Treat the first row as data, not column names
+    HasRowNames bool   // Treat the first column as row names
+    Encoding    string // Specify input file encoding (e.g., "big5", "utf-8"), Only for FilePath input
+    RawStrings  bool   // Keep every cell as its original string; skip column type inference
 }
 
 // Examples:
@@ -96,8 +96,8 @@ type Excel struct {
 
 // Excel_inOpts structure for reading Excel files
 type Excel_inOpts struct {
-    FirstCol2RowNames bool // Treat the first column as row names
-    FirstRow2ColNames bool // Treat the first row as column names
+    NoHeaderRow bool // Treat the first row as data, not column names
+    HasRowNames bool // Treat the first column as row names
 }
 
 // Example:
@@ -105,8 +105,7 @@ excelFile := isr.Excel{
     FilePath:  "data.xlsx",
     SheetName: "Sheet1",
     InputOpts: isr.Excel_inOpts{
-        FirstCol2RowNames: true,
-        FirstRow2ColNames: true,
+        HasRowNames: true,
     },
 }
 ```
@@ -184,23 +183,18 @@ dataTable2 := isr.DT.From(jsonFromBytes)
 csvFromFile := isr.CSV{
     FilePath: "data.csv",
     InputOpts: isr.CSV_inOpts{
-        FirstCol2RowNames: true,
-        FirstRow2ColNames: true,
-        Encoding:          "big5", // Specify file encoding
+        HasRowNames: true,
+        Encoding:    "big5", // Specify file encoding
     },
     OutputOpts: isr.CSV_outOpts{
-        RowNames2FirstCol: true,
-        ColNames2FirstRow: true,
+        HasRowNames: true,
     },
 }
 
-// CSV from string
+// CSV from string — the zero-value InputOpts already reads the common case:
+// the first row names the columns, no column holds row names.
 csvFromString := isr.CSV{
     String: "name,age,city\nJohn,30,NYC\nJane,25,LA",
-    InputOpts: isr.CSV_inOpts{
-        FirstCol2RowNames: false,
-        FirstRow2ColNames: true,
-    },
 }
 
 // Use in DataTable creation
@@ -494,17 +488,13 @@ dataTable := isr.DT.From(isr.Cols{
 dataTable := isr.DT.From(isr.CSV{
     FilePath: "data.csv",
     InputOpts: isr.CSV_inOpts{
-        FirstCol2RowNames: true,
-        FirstRow2ColNames: true,
+        HasRowNames: true,
     },
 })
 
-// From CSV string
+// From CSV string — the zero-value InputOpts already reads the header row.
 dataTable := isr.DT.From(isr.CSV{
     String: "name,age,city\nJohn,30,NYC\nJane,25,LA",
-    InputOpts: isr.CSV_inOpts{
-        FirstRow2ColNames: true,
-    },
 })
 
 // From JSON file
@@ -523,8 +513,7 @@ dataTable := isr.DT.From(isr.Excel{
     FilePath:  "data.xlsx",
     SheetName: "Sheet1",
     InputOpts: isr.Excel_inOpts{
-        FirstCol2RowNames: true,
-        FirstRow2ColNames: true,
+        HasRowNames: true,
     },
 })
 ```

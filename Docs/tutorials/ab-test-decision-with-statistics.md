@@ -127,7 +127,7 @@ report := insyra.NewDataTable(
 	insyra.NewDataList("ControlMean", "VariantMean", "LiftPct", "PValue", "Decision").SetName("Metric"),
 	insyra.NewDataList(controlMean, variantMean, lift*100, tt.PValue, decision).SetName("Value"),
 )
-if err := report.ToCSV("ab_test_decision.csv", false, true, false); err != nil {
+if err := report.ToCSV("ab_test_decision.csv"); err != nil {
 	log.Fatal(err)
 }
 ```
@@ -180,7 +180,7 @@ func main() {
 		insyra.NewDataList("ControlMean", "VariantMean", "LiftPct", "PValue", "Decision").SetName("Metric"),
 		insyra.NewDataList(controlMean, variantMean, lift*100, tt.PValue, decision).SetName("Value"),
 	)
-	if err := report.ToCSV("ab_test_decision.csv", false, true, false); err != nil {
+	if err := report.ToCSV("ab_test_decision.csv"); err != nil {
 		log.Fatal(err)
 	}
 }

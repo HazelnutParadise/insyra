@@ -83,6 +83,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`NewSimpleImputer` 改成接受可省略的 `SimpleImputerOptions{Strategy, FillValue}`，取代 `(strategy, constant ...any)`。不給設定就用平均。`NewSimpleImputer(insyra.ImputeMedian)` 要改成 `NewSimpleImputer(insyra.SimpleImputerOptions{Strategy: insyra.ImputeMedian})`，`NewSimpleImputer(insyra.ImputeConstant, 7)` 要改成 `…{Strategy: insyra.ImputeConstant, FillValue: 7}`。
 - **BREAKING（行為，簽名不變）**：`SimpleImputer.Fit` 用平均或中位數時，只要選到的欄位不是數字欄就會失敗，錯誤會寫出欄位和它的資料型別，而且一欄都不學。以前會讓那一欄維持沒補，只在 `Params()[name].PassThrough` 記一筆，看起來像是 fit 成功了。`ScalerParams.PassThrough` 現在永遠是 false，已標為 **Deprecated**，下一版移除。
 - `ShowRange`、`ShowTypesRange` 與 `Show` 的範圍參數，遇到超過兩個值、第一個值不是 `int`、或結尾既不是 `int` 也不是 `nil` 時，會印出錯誤訊息；以前會忽略這些參數並顯示全部。DataList 與 DataTable 新增 `ShowHead(n)`、`ShowTail(n)`（以及 `ShowHeadTo`／`ShowTailTo`），是 `ShowRange(n)`、`ShowRange(-n)` 比較直白的寫法。
+- **BREAKING**：CSV 與 JSON 的讀寫函式各只剩一個名字，設定都放進一個可省略的設定包。`ReadCSVFile(path, opts...)` 與 `ReadCSVString(s, opts...)` 取代 `ReadCSV_File`／`ReadCSV_FileWithOptions` 和 `ReadCSV_String`／`ReadCSV_StringWithOptions`；`ReadJSONFile` 取代 `ReadJSON_File`；`ToJSONBytes`／`ToJSONString` 取代 `ToJSON_Bytes`／`ToJSON_String`。舊名字這一版仍可使用，意思不變，已標為 **Deprecated**，下一版移除。
+- **BREAKING**：`DataTable.ToCSV(path, opts ...CSVWriteOptions)` 取代 `ToCSV(path, rowNames, colNames, bom bool)`，舊寫法會編譯失敗；`ToCSVWithOptions` 標為 **Deprecated**。`dt.ToCSV(path, false, true, false)` 改成 `dt.ToCSV(path)`。`WriteCSV` 與 `ReadCSV` 的設定包改成可省略；`StreamCSV` 的批次大小移到設定包前面，`StreamCSV(r, opts, 1000)` 改成 `StreamCSV(r, 1000, opts)`。
+- **BREAKING**：所有設定包裡的標題列與列名欄位統一命名為 `NoHeaderRow` 與 `HasRowNames`，全部留空就代表最常見的檔案：第一列是欄名、沒有列名欄。`CSVReadOptions.FirstRowToColNames` 與 `CSVWriteOptions.SetColNamesToFirstRow` 改成意思相反的 `NoHeaderRow`；`FirstColToRowNames` 與 `SetRowNamesToFirstCol` 改成 `HasRowNames`；`ExcelWriteOptions` 同步改名，`ToSQLOptions.RowNames` 改成 `HasRowNames`。有設定舊欄位的程式會編譯失敗。**有傳設定包但沒寫標題列那一項的程式，現在讀寫時都會有標題列**：例如 `CSVReadOptions{Encoding: "big5"}` 以前會把第一列當成資料。`ReadExcelSheet` 與 `ReadExcel` 只改了參數名稱。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
@@ -193,6 +196,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。
 - `DT.From`、`Col`、`Row`、`Push`、`UseDL`、`UseDT` 遇到錯誤的輸入不再結束程式，改為回傳帶著錯誤、可繼續串接的物件：`t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`。`UseDL`／`UseDT` 也不再回傳 `nil`。
 - 修正 `DT.From(map[int]any{...})` 永遠產生空表格。鍵被直接轉成字串，`0` 變成 `"0"`，而 `AppendRowsByColIndex` 要的是 Excel 式的欄位索引，因此每個鍵都被拒絕。現在改用 `Row` 路徑相同的轉換，`0` 就是 A 欄。負數的鍵沒有對應欄位，會被回報。
+- **BREAKING**：`CSV_inOpts`、`CSV_outOpts`、`Excel_inOpts` 的標題列與列名欄位改成 `NoHeaderRow` 與 `HasRowNames`，跟核心的設定包一致。`FirstRow2ColNames: true` 現在是預設值，可以直接拿掉；`FirstRow2ColNames: false` 要改成 `NoHeaderRow: true`。型別名稱維持簡短的 `Opts` 寫法。
 
 ### `gplot`
 - **BREAKING**：`SaveChart` 檔案寫不出來時改為回傳 `error`，不再結束程式。既有呼叫要改成 `if err := gplot.SaveChart(...); err != nil { ... }` 或明確寫 `_ =`。

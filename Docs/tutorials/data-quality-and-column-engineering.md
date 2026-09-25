@@ -57,7 +57,7 @@ Load and preview the dataset before cleaning.
 **Code**
 
 ```go
-dt, err := insyra.ReadCSV_File("dq_raw.csv", false, true)
+dt, err := insyra.ReadCSVFile("dq_raw.csv")
 if err != nil {
 	log.Fatal(err)
 }
@@ -127,7 +127,7 @@ Persist the final table for downstream use.
 **Code**
 
 ```go
-if err := dt.ToCSV("dq_clean.csv", false, true, false); err != nil {
+if err := dt.ToCSV("dq_clean.csv"); err != nil {
 	log.Fatal(err)
 }
 ```
@@ -160,7 +160,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	dt, err := insyra.ReadCSV_File("dq_raw.csv", false, true)
+	dt, err := insyra.ReadCSVFile("dq_raw.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func main() {
 	dt.SortBy(insyra.DataTableSortConfig{Col: insyra.Name("NetSales"), Descending: true})
 	dt.ShowRange(5)
 
-	if err := dt.ToCSV("dq_clean.csv", false, true, false); err != nil {
+	if err := dt.ToCSV("dq_clean.csv"); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -52,7 +52,7 @@ C003,2025-01-20,260
 C003,2025-02-04,300
 C003,2025-02-25,340
 `
-dt, err := insyra.ReadCSV_String(csv, false, true)
+dt, err := insyra.ReadCSVString(csv)
 if err != nil {
 	log.Fatal(err)
 }
@@ -150,10 +150,10 @@ Save RFM and CAI tables for CRM workflows.
 **Code**
 
 ```go
-if err := rfm.ToCSV("customer_rfm.csv", false, true, false); err != nil {
+if err := rfm.ToCSV("customer_rfm.csv"); err != nil {
 	log.Fatal(err)
 }
-if err := cai.ToCSV("customer_cai.csv", false, true, false); err != nil {
+if err := cai.ToCSV("customer_cai.csv"); err != nil {
 	log.Fatal(err)
 }
 ```
@@ -187,7 +187,7 @@ C003,2025-01-20,260
 C003,2025-02-04,300
 C003,2025-02-25,340
 `
-	dt, err := insyra.ReadCSV_String(csv, false, true)
+	dt, err := insyra.ReadCSVString(csv)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -218,10 +218,10 @@ C003,2025-02-25,340
 	cai.SortBy(insyra.DataTableSortConfig{Col: insyra.Name("CAI"), Descending: false})
 	rfm.AddColUsingCCL("CampaignTag", "IF(['RFM_Score'] >= 12, 'VIP_Upsell', 'Nurture')")
 
-	if err := rfm.ToCSV("customer_rfm.csv", false, true, false); err != nil {
+	if err := rfm.ToCSV("customer_rfm.csv"); err != nil {
 		log.Fatal(err)
 	}
-	if err := cai.ToCSV("customer_cai.csv", false, true, false); err != nil {
+	if err := cai.ToCSV("customer_cai.csv"); err != nil {
 		log.Fatal(err)
 	}
 }

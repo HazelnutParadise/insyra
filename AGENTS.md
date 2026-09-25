@@ -264,6 +264,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-26] — remove the underscore reader and writer names one release after their replacements
+- **Where**: `read.go` (`ReadCSV_File`, `ReadCSV_FileWithOptions`, `ReadCSV_String`, `ReadCSV_StringWithOptions`, `ReadJSON_File`), `datatable_csv.go` (`ToCSVWithOptions`), `datatable_json.go` (`ToJSON_Bytes`, `ToJSON_String`) and the two JSON methods in `IDataTable`
+- **What**: `read-write-names` gave each reader and writer one name taking an optional options struct, by the owner's rulings on #213. The old names stay one release as Deprecated wrappers that keep their old meaning.
+- **Suggestion**: delete them in the same release as `Slice2DToDataTable` and `ScalerParams.PassThrough`, with the tests that pin their old meaning (`TestDeprecatedReadWriteNamesKeepTheirMeaning`, `TestReadCSV_StringLegacyNoHeaderMatchesNoHeaderRow`) and a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-09-26] — remove `ScalerParams.PassThrough` one release after it went dead
 - **Where**: `datatable_scale.go` (`ScalerParams.PassThrough`)
 - **What**: `imputer-refuses-unfillable-columns` made `SimpleImputer.Fit` refuse a selected column its mean or median cannot fill, by the owner's ruling on #213, so nothing sets the field any more. It stays one release, always false and Deprecated.

@@ -397,7 +397,7 @@ func main() {
     // Column-level type inference: all-integer columns load as int64 (large IDs
     // keep full precision), columns with any decimal as float64, others as string.
     // ReadJSON types integer JSON values as int64 the same way.
-    dt, err := insyra.ReadCSV_File("data.csv", false, true)
+    dt, err := insyra.ReadCSVFile("data.csv")
     if err != nil {
         log.Fatal(err)
     }
@@ -405,11 +405,10 @@ func main() {
     // RawStrings disables inference entirely — every cell stays its original
     // string (empty cells stay ""). Use for stock IDs ("0050" must not become
     // int64 50), tax IDs, or exact amounts you parse with go-decimal.
-    raw, err := insyra.ReadCSV_FileWithOptions("stocks.csv", insyra.CSVReadOptions{
-        FirstRowToColNames: true,
-        RawStrings:         true,
-        AllowRaggedRows:    true,
-        TrimLeadingSpace:   true,
+    raw, err := insyra.ReadCSVFile("stocks.csv", insyra.CSVReadOptions{
+        RawStrings:       true,
+        AllowRaggedRows:  true,
+        TrimLeadingSpace: true,
     })
     if err != nil {
         log.Fatal(err)
@@ -421,12 +420,12 @@ func main() {
     // before quoted fields. Both are opt-in; the zero value stays strict.
 
     // Data that is not a file on disk (HTTP response, zip entry, embed.FS,
-    // bytes in memory) needs no temporary file: ReadCSV(r, opts) reads any
+    // bytes in memory) needs no temporary file: ReadCSV(r, opts...) reads any
     // io.Reader, ReadJSON accepts one, ReadExcel(r, sheet, …) reads a
     // workbook, and dt.WriteCSV / dt.WriteJSON / dt.WriteExcel write to any
     // io.Writer.
     // For a CSV larger than memory, stream it a batch at a time:
-    //   for batch, err := range insyra.StreamCSV(r, opts, 1000) { … }
+    //   for batch, err := range insyra.StreamCSV(r, 1000) { … }
     // parquet has the same pair: parquet.ReadFrom / StreamFrom take an
     // io.ReaderAt and its size, parquet.WriteTo takes an io.Writer.
     // Rows already in memory as a 2D slice: insyra.ReadSlice2D(rows).
@@ -717,15 +716,16 @@ Column reference resolution (applies to `Index`, `Columns`, `Values`, `IDVars`, 
 ### 4) Export a DataTable to CSV or Excel
 
 ```go
-if err := dt.ToCSV("output.csv", false, true, false); err != nil {
+if err := dt.ToCSV("output.csv"); err != nil {
     log.Fatal(err)
 }
 
 // ToExcel writes ONE sheet and leaves the workbook's other sheets alone.
 // An existing sheet is refused (errors.Is(err, insyra.ErrSheetExists)) unless
 // IfSheetExists is insyra.SheetExistsReplace. Sheet "" means "Sheet1".
+// The header row is written by default; set NoHeaderRow to skip it.
 err := dt.ToExcel("report.xlsx", insyra.ExcelWriteOptions{
-    Sheet: "2025", SetColNamesToFirstRow: true,
+    Sheet: "2025",
 })
 ```
 

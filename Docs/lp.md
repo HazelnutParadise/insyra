@@ -129,7 +129,7 @@ func (s *Solution) ToDataTable() *insyra.DataTable
 **Description:** Returns a table with a `Variable` column and a `Value` column, one row per variable, in the order the variables first appear in the model. A solution without values gives a table with both columns, no rows, and a nil `Err()`.
 
 ```go
-_ = sol.ToDataTable().ToCSV("solution.csv", false, true, false)
+_ = sol.ToDataTable().ToCSV("solution.csv")
 ```
 
 ### Errors

@@ -129,8 +129,8 @@ if err != nil {
 corrMatrix.Show() // Display the correlation matrix
 pMatrix.Show()    // Display the p-value matrix
 fmt.Printf("Bartlett's test: chi-square=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
-corrMatrix.ToCSV("correlation_matrix.csv", true, true, true) // Export to CSV
-pMatrix.ToCSV("correlation_matrix_p.csv", true, true, true)  // Export p-values to CSV
+corrMatrix.ToCSV("correlation_matrix.csv", insyra.CSVWriteOptions{HasRowNames: true, IncludeBOM: true}) // Export to CSV
+pMatrix.ToCSV("correlation_matrix_p.csv", insyra.CSVWriteOptions{HasRowNames: true, IncludeBOM: true})  // Export p-values to CSV
 ```
 
 ### Correlation Matrix
@@ -163,8 +163,8 @@ if err != nil {
 }
 corrMatrix.Show() // Display the correlation matrix
 pMatrix.Show()    // Display the p-value matrix
-corrMatrix.ToCSV("correlation_matrix.csv", true, true, true) // Export to CSV
-pMatrix.ToCSV("correlation_matrix_p.csv", true, true, true)  // Export p-values to CSV
+corrMatrix.ToCSV("correlation_matrix.csv", insyra.CSVWriteOptions{HasRowNames: true, IncludeBOM: true}) // Export to CSV
+pMatrix.ToCSV("correlation_matrix_p.csv", insyra.CSVWriteOptions{HasRowNames: true, IncludeBOM: true})  // Export p-values to CSV
 ```
 
 ### Correlation

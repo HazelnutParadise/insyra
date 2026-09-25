@@ -146,8 +146,8 @@ Persist both enriched user table and KPI summary.
 **Code**
 
 ```go
-_ = enriched.ToCSV("py_enriched_users.csv", false, true, false)
-_ = summary.ToCSV("py_parallel_summary.csv", false, true, false)
+_ = enriched.ToCSV("py_enriched_users.csv")
+_ = summary.ToCSV("py_parallel_summary.csv")
 ```
 
 **Expected outcome**  
@@ -212,8 +212,8 @@ insyra.Return(df)
 		insyra.NewDataList(results[0][0], results[1][0], results[2][0]).SetName("Value"),
 	)
 
-	_ = enriched.ToCSV("py_enriched_users.csv", false, true, false)
-	_ = summary.ToCSV("py_parallel_summary.csv", false, true, false)
+	_ = enriched.ToCSV("py_enriched_users.csv")
+	_ = summary.ToCSV("py_parallel_summary.csv")
 }
 ```
 

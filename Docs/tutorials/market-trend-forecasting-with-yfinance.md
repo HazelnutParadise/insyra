@@ -70,7 +70,7 @@ if err != nil || prices == nil {
 2025-01-09,193.0
 `
 	_ = os.WriteFile("aapl_snapshot.csv", []byte(snapshot), 0644)
-	prices, err = insyra.ReadCSV_File("aapl_snapshot.csv", false, true)
+	prices, err = insyra.ReadCSVFile("aapl_snapshot.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -162,7 +162,7 @@ Save transformed dataset for further analysis.
 **Code**
 
 ```go
-if err := prices.ToCSV("aapl_enriched.csv", false, true, false); err != nil {
+if err := prices.ToCSV("aapl_enriched.csv"); err != nil {
 	log.Fatal(err)
 }
 ```
@@ -209,7 +209,7 @@ func main() {
 		if err := os.WriteFile("aapl_snapshot.csv", []byte(snapshot), 0644); err != nil {
 			log.Fatal(err)
 		}
-		prices, err = insyra.ReadCSV_File("aapl_snapshot.csv", false, true)
+		prices, err = insyra.ReadCSVFile("aapl_snapshot.csv")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -249,7 +249,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := prices.ToCSV("aapl_enriched.csv", false, true, false); err != nil {
+	if err := prices.ToCSV("aapl_enriched.csv"); err != nil {
 		log.Fatal(err)
 	}
 }

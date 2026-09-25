@@ -80,7 +80,7 @@ import (
 )
 
 func main() {
-	dt, err := insyra.ReadCSV_File("sales.csv", false, true)
+	dt, err := insyra.ReadCSVFile("sales.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -175,7 +175,7 @@ Save the transformed dataset to a new CSV for sharing or downstream use.
 **Code**
 
 ```go
-if err := dt.ToCSV("sales_enriched.csv", false, true, false); err != nil {
+if err := dt.ToCSV("sales_enriched.csv"); err != nil {
 	log.Fatal(err)
 }
 fmt.Println("Wrote sales_enriched.csv")
@@ -212,7 +212,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	dt, err := insyra.ReadCSV_File("sales.csv", false, true)
+	dt, err := insyra.ReadCSVFile("sales.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func main() {
 
 	dt.ShowRange(5)
 
-	if err := dt.ToCSV("sales_enriched.csv", false, true, false); err != nil {
+	if err := dt.ToCSV("sales_enriched.csv"); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("Wrote sales_enriched.csv")

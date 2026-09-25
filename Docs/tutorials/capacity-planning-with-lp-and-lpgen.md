@@ -123,8 +123,8 @@ Persist LP outputs for downstream workflows.
 **Code**
 
 ```go
-_ = solution.ToCSV("capacity_solution.csv", false, true, false)
-_ = summary.ToCSV("capacity_summary.csv", false, true, false)
+_ = solution.ToCSV("capacity_solution.csv")
+_ = summary.ToCSV("capacity_summary.csv")
 ```
 
 **Expected outcome**  
@@ -169,8 +169,8 @@ func main() {
 		insyra.NewDataList("CapacityPlan", "Optimal production under labor/machine constraints").SetName("Value"),
 	)
 
-	_ = solution.ToCSV("capacity_solution.csv", false, true, false)
-	_ = summary.ToCSV("capacity_summary.csv", false, true, false)
+	_ = solution.ToCSV("capacity_solution.csv")
+	_ = summary.ToCSV("capacity_summary.csv")
 }
 ```
 

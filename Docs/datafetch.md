@@ -153,7 +153,7 @@ func (r GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable
 ```go
 dt := reviews.ToDataTable()
 dt.Show()
-dt.ToCSV("reviews.csv", false, true, false)
+dt.ToCSV("reviews.csv")
 ```
 
 ## Data Types
@@ -275,7 +275,7 @@ func main() {
     dt.ShowRange(5)
 
     // Export to CSV
-    dt.ToCSV("apple_store_reviews.csv", false, true, false)
+    dt.ToCSV("apple_store_reviews.csv")
     fmt.Println("\nReviews exported to apple_store_reviews.csv")
 }
 ```

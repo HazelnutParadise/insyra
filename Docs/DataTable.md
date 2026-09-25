@@ -125,22 +125,20 @@ dt := insyra.NewDataTable(col1, col2)
 
 ## Data Loading
 
-### ReadCSV_File
+### ReadCSVFile
 
 ```go
-func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool, encoding ...string) (*DataTable, error)
+func ReadCSVFile(filePath string, opts ...CSVReadOptions) (*DataTable, error)
 ```
 
-**Description:** Reads a CSV file and loads the data into a new DataTable.
+**Description:** Reads a CSV file and loads the data into a new DataTable. With no options, the first row names the columns and the encoding is auto-detected; see `CSVReadOptions` below.
 
 Columns are typed with pandas-style, column-level inference: a column whose cells are all integers is loaded as `int64` (so large-integer columns such as 19-digit IDs keep full precision instead of being rounded through `float64` above 2^53); a column with any decimal value is loaded as `float64` (empty cells become `NaN`); any other column is kept as strings.
 
 **Parameters:**
 
 - `filePath`: CSV file path
-- `setFirstColToRowNames`: Whether to use the first column as row names
-- `setFirstRowToColNames`: Whether to use the first row as column names
-- `encoding`: Optional encoding (`"auto"` by default); pass `"utf-8"`, `"big5"`, etc.
+- `opts` (optional, at most one): `CSVReadOptions`; the zero value reads the common file
 
 **Returns:**
 
@@ -150,25 +148,32 @@ Columns are typed with pandas-style, column-level inference: a column whose cell
 **Example:**
 
 ```go
-dt, err := insyra.ReadCSV_File("data.csv", false, true)
+dt, err := insyra.ReadCSVFile("data.csv")
 if err != nil {
     log.Fatal(err)
 }
+
+// The file has no header row, and its first column holds row names.
+dt2, err := insyra.ReadCSVFile("data.csv", insyra.CSVReadOptions{
+    NoHeaderRow: true,
+    HasRowNames: true,
+})
 ```
 
-### ReadCSV_String
+Deprecated: `ReadCSV_File(filePath, hasRowNames, hasHeaderRow, encoding...)` and `ReadCSV_FileWithOptions(filePath, opts)` still work in this release and are removed in the next; use `ReadCSVFile`.
+
+### ReadCSVString
 
 ```go
-func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+func ReadCSVString(csvString string, opts ...CSVReadOptions) (*DataTable, error)
 ```
 
-**Description:** Reads CSV data from a string and loads it into a new DataTable.
+**Description:** Reads CSV data from a string and loads it into a new DataTable. With no options, the first row names the columns. `Encoding` is ignored: a Go string is UTF-8 already.
 
 **Parameters:**
 
 - `csvString`: CSV data as string
-- `setFirstColToRowNames`: Whether to use the first column as row names
-- `setFirstRowToColNames`: Whether to use the first row as column names
+- `opts` (optional, at most one): `CSVReadOptions`
 
 **Returns:**
 
@@ -179,29 +184,28 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 
 ```go
 csvData := "name,age,city\nJohn,30,NYC\nJane,25,LA"
-dt, err := insyra.ReadCSV_String(csvData, false, true)
+dt, err := insyra.ReadCSVString(csvData)
 if err != nil {
     log.Fatal(err)
 }
 ```
 
-### ReadCSV_FileWithOptions / ReadCSV_StringWithOptions
+Deprecated: `ReadCSV_String(csvString, hasRowNames, hasHeaderRow)` and `ReadCSV_StringWithOptions(csvString, opts)` still work in this release and are removed in the next; use `ReadCSVString`.
+
+### CSVReadOptions
 
 ```go
 type CSVReadOptions struct {
-    FirstColToRowNames bool
-    FirstRowToColNames bool
-    Encoding           string // "" or "auto" detects from the first bytes; ignored for a string, which is UTF-8
-    RawStrings         bool   // keep every cell as its original string; skip type inference
-    AllowRaggedRows    bool   // pad short rows; keep long rows in extra columns
-    TrimLeadingSpace   bool   // ignore leading spaces before fields and quotes
+    NoHeaderRow      bool   // the first row is data, not column names; false reads the header row
+    HasRowNames      bool   // the first column holds row names
+    Encoding         string // "" or "auto" detects from the first bytes; ignored for a string, which is UTF-8
+    RawStrings       bool   // keep every cell as its original string; skip type inference
+    AllowRaggedRows  bool   // pad short rows; keep long rows in extra columns
+    TrimLeadingSpace bool   // ignore leading spaces before fields and quotes
 }
-
-func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, error)
-func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTable, error)
 ```
 
-**Description:** Options-based variants of `ReadCSV_File` / `ReadCSV_String`. The zero value of `CSVReadOptions` behaves exactly like the legacy functions with both flags `false`.
+**Description:** Shared by `ReadCSVFile`, `ReadCSVString`, `ReadCSV` and `StreamCSV`. The zero value reads the common file: the first row names the columns, no column holds row names, and column types are inferred.
 
 Set `RawStrings: true` to disable column type inference entirely: every cell is kept as its original string and empty cells stay `""` (not `NaN`). Use this for data that looks numeric but must not be parsed as numbers — stock IDs (`0050` would otherwise become `int64` `50`, losing the leading zeros), tax IDs, phone numbers, zip codes, or exact monetary amounts you want to parse with a decimal type yourself. For those, use [`github.com/TimLai666/go-decimal`](https://github.com/TimLai666/go-decimal), the decimal type the rest of Insyra uses, so the parsed cells work with `finance` and with `Mean`, `Sum` and sorting; see [Exact Decimals](Decimal.md).
 
@@ -213,11 +217,10 @@ Set `TrimLeadingSpace: true` to ignore leading whitespace before fields, includi
 
 ```go
 csvData := "id,price\n0050,600.855\n00878,100.14"
-dt, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{
-    FirstRowToColNames: true,
-    RawStrings:         true,
-    AllowRaggedRows:    true,
-    TrimLeadingSpace:   true,
+dt, err := insyra.ReadCSVString(csvData, insyra.CSVReadOptions{
+    RawStrings:       true,
+    AllowRaggedRows:  true,
+    TrimLeadingSpace: true,
 })
 if err != nil {
     log.Fatal(err)
@@ -228,13 +231,13 @@ if err != nil {
 ### ReadCSV / StreamCSV — from any source
 
 ```go
-func ReadCSV(r io.Reader, opts CSVReadOptions) (*DataTable, error)
-func StreamCSV(r io.Reader, opts CSVReadOptions, batchSize int) iter.Seq2[*DataTable, error]
+func ReadCSV(r io.Reader, opts ...CSVReadOptions) (*DataTable, error)
+func StreamCSV(r io.Reader, batchSize int, opts ...CSVReadOptions) iter.Seq2[*DataTable, error]
 ```
 
-**Description:** Read CSV that is not a file on disk — an HTTP response body, a zip entry, an `embed.FS` file, bytes in memory — without writing it to a temporary file first. `ReadCSV` is the reader `ReadCSV_FileWithOptions` and `ReadCSV_StringWithOptions` use, so the same bytes give the same table whichever you call. With `Encoding` empty or `"auto"`, the encoding is detected from the first bytes of `r`.
+**Description:** Read CSV that is not a file on disk — an HTTP response body, a zip entry, an `embed.FS` file, bytes in memory — without writing it to a temporary file first. `ReadCSV` is the reader `ReadCSVFile` and `ReadCSVString` use, so the same bytes give the same table whichever you call. With `Encoding` empty or `"auto"`, the encoding is detected from the first bytes of `r`.
 
-`StreamCSV` reads a batch at a time and holds only the current batch in memory, so it handles files larger than memory. Range over it; leaving the loop early stops reading `r`. With `FirstRowToColNames`, the header names the columns of every batch. Column types are inferred batch by batch, as pandas does for `read_csv(chunksize=…)`, so a column can come back as numbers in one batch and strings in another; set `RawStrings` to keep every batch as strings. A failure arrives once, as a nil table with the error, and ends the loop.
+`StreamCSV` reads a batch at a time and holds only the current batch in memory, so it handles files larger than memory. Range over it; leaving the loop early stops reading `r`. Unless `opts.NoHeaderRow` is set, the header names the columns of every batch, not only the first. Column types are inferred batch by batch, as pandas does for `read_csv(chunksize=…)`, so a column can come back as numbers in one batch and strings in another; set `RawStrings` to keep every batch as strings. A failure arrives once, as a nil table with the error, and ends the loop.
 
 **Example:**
 
@@ -245,7 +248,7 @@ if err != nil {
 }
 defer resp.Body.Close()
 
-for dt, err := range insyra.StreamCSV(resp.Body, insyra.CSVReadOptions{FirstRowToColNames: true}, 1000) {
+for dt, err := range insyra.StreamCSV(resp.Body, 1000) {
     if err != nil {
         log.Fatal(err)
     }
@@ -254,10 +257,12 @@ for dt, err := range insyra.StreamCSV(resp.Body, insyra.CSVReadOptions{FirstRowT
 }
 ```
 
-### ReadJSON_File
+Deprecated: the batch size used to come after `opts` (`StreamCSV(r, opts, batchSize)`); it is now the second parameter (`StreamCSV(r, batchSize, opts)`), matching every other CSV reader's `opts ...CSVReadOptions` tail.
+
+### ReadJSONFile
 
 ```go
-func ReadJSON_File(filePath string) (*DataTable, error)
+func ReadJSONFile(filePath string) (*DataTable, error)
 ```
 
 **Description:** Reads a JSON file and loads the data into a new DataTable. JSON numbers are typed per value: an integer literal (`25`) becomes `int64` so large integers keep full precision, while a decimal literal (`25.5`, `25.0`) stays `float64` — matching Python's `json.loads` and consistent with `ReadCSV` loading integer columns as `int64`. It decodes through the same path as `ReadJSON`, so a file and its bytes always load identically; a file holding a single object loads as one row.
@@ -274,11 +279,13 @@ func ReadJSON_File(filePath string) (*DataTable, error)
 **Example:**
 
 ```go
-dt, err := insyra.ReadJSON_File("data.json")
+dt, err := insyra.ReadJSONFile("data.json")
 if err != nil {
     log.Fatal(err)
 }
 ```
+
+Deprecated: `ReadJSON_File` still works in this release and is removed in the next; use `ReadJSONFile`, which is the same function.
 
 ### ReadJSON
 
@@ -532,7 +539,7 @@ dt, err := insyra.ReadSQL(db, "events", insyra.ReadSQLOptions{
 ### ReadExcelSheet
 
 ```go
-func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+func ReadExcelSheet(filePath string, sheetName string, rowNames bool, headerRow bool) (*DataTable, error)
 ```
 
 **Description:** Reads a specific sheet from an Excel file and loads the data into a new DataTable.
@@ -541,8 +548,8 @@ func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames boo
 
 - `filePath`: The path to the Excel file.
 - `sheetName`: The name of the sheet to read.
-- `setFirstColToRowNames`: If `true`, the first column of the sheet will be used as the row names for the DataTable.
-- `setFirstRowToColNames`: If `true`, the first row of the sheet will be used as the column names for the DataTable.
+- `rowNames`: If `true`, the first column of the sheet will be used as the row names for the DataTable.
+- `headerRow`: If `true`, the first row of the sheet will be used as the column names for the DataTable.
 
 **Returns:**
 
@@ -561,7 +568,7 @@ if err != nil {
 ### ReadExcel — from any source
 
 ```go
-func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+func ReadExcel(r io.Reader, sheetName string, rowNames bool, headerRow bool) (*DataTable, error)
 ```
 
 **Description:** Reads one sheet of a workbook that is not a file on disk — an upload, an HTTP response, a zip entry — the same way `ReadExcelSheet` reads a path, with the same limit on how far the workbook may expand while it is read.
@@ -571,34 +578,26 @@ func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFir
 ### ToCSV
 
 ```go
-func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
-```
-
-**Description:** Saves the DataTable as a CSV file. `time.Time` cells are written in RFC 3339 form (with nanoseconds), which is the first layout `ParseDates` tries, so a table written here reads back as the same instants. Numbers are written by the same rule as `ToJSON`: a plain decimal from 0.000001 up to (not including) 1e21, exponent form outside, so a revenue of 1,500,000 is written `1500000` rather than `1.5e+06`. Read back, every number is the same value. The file is written to a temporary file in the same directory and renamed into place once every write succeeded, so a failure (disk full, closed pipe) returns an error and never leaves a truncated file at `filePath`. `ToJSON` follows the same rule.
-
-> **Opening the file in a spreadsheet:** a cell whose text begins with `=`, `+`, `-` or `@` is a formula to Excel, LibreOffice and Google Sheets, and they will execute it. `ToCSV` writes such a cell unchanged, so a round trip keeps the exact value. When the file is meant to be opened in a spreadsheet and the data is not wholly your own, write it with `ToCSVWithOptions` and `SanitizeFormulas: true`, which prefixes those cells with a single quote.
-
-### ToCSVWithOptions
-
-```go
-func (dt *DataTable) ToCSVWithOptions(filePath string, opts CSVWriteOptions) error
+func (dt *DataTable) ToCSV(filePath string, opts ...CSVWriteOptions) error
 
 type CSVWriteOptions struct {
-    SetRowNamesToFirstCol bool // write the row names as the first column
-    SetColNamesToFirstRow bool // write the column names as the first row
-    IncludeBOM            bool // write a UTF-8 byte-order mark
-    SanitizeFormulas      bool // prefix =, +, -, @ cells with a single quote
+    NoHeaderRow      bool // leave out the row of column names, which is written by default
+    HasRowNames      bool // write the row names as the first column
+    IncludeBOM       bool // write a UTF-8 byte-order mark
+    SanitizeFormulas bool // prefix =, +, -, @ cells with a single quote
 }
 ```
 
-**Description:** `ToCSV` with an options struct instead of positional flags. The zero value writes the data as-is. `SanitizeFormulas` is off by default because it changes the value written; see the note above.
+**Description:** Saves the DataTable as a CSV file. With no options, the column names are written as the first row and there are no row names. `time.Time` cells are written in RFC 3339 form (with nanoseconds), which is the first layout `ParseDates` tries, so a table written here reads back as the same instants. Numbers are written by the same rule as `ToJSON`: a plain decimal from 0.000001 up to (not including) 1e21, exponent form outside, so a revenue of 1,500,000 is written `1500000` rather than `1.5e+06`. Read back, every number is the same value. The file is written to a temporary file in the same directory and renamed into place once every write succeeded, so a failure (disk full, closed pipe) returns an error and never leaves a truncated file at `filePath`. `ToJSON` follows the same rule.
+
+`SanitizeFormulas` is off by default because it changes the value written: a table saved with it on and read back is not identical to the original.
+
+> **Opening the file in a spreadsheet:** a cell whose text begins with `=`, `+`, `-` or `@` is a formula to Excel, LibreOffice and Google Sheets, and they will execute it. `ToCSV` writes such a cell unchanged, so a round trip keeps the exact value. When the file is meant to be opened in a spreadsheet and the data is not wholly your own, pass `CSVWriteOptions{SanitizeFormulas: true}`, which prefixes those cells with a single quote.
 
 **Parameters:**
 
 - `filePath`: Output CSV file path
-- `setRowNamesToFirstCol`: Whether to include row names as the first column
-- `setColNamesToFirstRow`: Whether to include column names as the first row
-- `includeBOM`: Whether to include BOM (Byte Order Mark) in the file
+- `opts` (optional, at most one): `CSVWriteOptions`; the zero value writes the common file (header row, no row names, no BOM)
 
 **Returns:**
 
@@ -607,20 +606,24 @@ type CSVWriteOptions struct {
 **Example:**
 
 ```go
-err := dt.ToCSV("output.csv", false, true, false)
+err := dt.ToCSV("output.csv")
 if err != nil {
     log.Fatal(err)
 }
+
+// Row names as the first column, no header row.
+err = dt.ToCSV("output.csv", insyra.CSVWriteOptions{HasRowNames: true, NoHeaderRow: true})
 ```
 
+Deprecated: `ToCSVWithOptions(filePath, opts)` still works in this release and is removed in the next; use `ToCSV(filePath, opts)`, which is the same call. The old positional `ToCSV(filePath, rowNamesBool, colNamesBool, bomBool)` no longer exists — this is a breaking change from earlier releases.
 
 ### WriteCSV — to any destination
 
 ```go
-func (dt *DataTable) WriteCSV(w io.Writer, opts CSVWriteOptions) error
+func (dt *DataTable) WriteCSV(w io.Writer, opts ...CSVWriteOptions) error
 ```
 
-**Description:** Writes the table as CSV to any destination — an HTTP response, a zip entry, a buffer — with the same output `ToCSVWithOptions` writes to a file. `ToCSVWithOptions` uses it, writing through a temporary file that it renames into place.
+**Description:** Writes the table as CSV to any destination — an HTTP response, a zip entry, a buffer — with the same output `ToCSV` writes to a file. `ToCSV` uses it, writing through a temporary file that it renames into place.
 
 ### ToJSON
 
@@ -657,10 +660,10 @@ func (dt *DataTable) WriteJSON(w io.Writer, useColNames bool) error
 
 **Description:** Writes the table as JSON to any destination, with the same output `ToJSON` writes to a file. `ToJSON` uses it.
 
-### ToJSON_Bytes
+### ToJSONBytes
 
 ```go
-func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte
+func (dt *DataTable) ToJSONBytes(useColNames bool) []byte
 ```
 
 **Description:** Converts the DataTable to JSON format and returns as bytes.
@@ -676,14 +679,16 @@ func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte
 **Example:**
 
 ```go
-jsonData := dt.ToJSON_Bytes(true)
+jsonData := dt.ToJSONBytes(true)
 fmt.Println(string(jsonData))
 ```
 
-### ToJSON_String
+Deprecated: `ToJSON_Bytes` still works in this release and is removed in the next; use `ToJSONBytes`, which is the same method.
+
+### ToJSONString
 
 ```go
-func (dt *DataTable) ToJSON_String(useColNames bool) string
+func (dt *DataTable) ToJSONString(useColNames bool) string
 ```
 
 **Description:** Converts the DataTable to JSON format and returns it as a string.
@@ -699,9 +704,11 @@ func (dt *DataTable) ToJSON_String(useColNames bool) string
 **Example:**
 
 ```go
-jsonStr := dt.ToJSON_String(true)
+jsonStr := dt.ToJSONString(true)
 fmt.Println(jsonStr)
 ```
+
+Deprecated: `ToJSON_String` still works in this release and is removed in the next; use `ToJSONString`, which is the same method.
 
 ### ToExcel
 
@@ -709,14 +716,14 @@ fmt.Println(jsonStr)
 func (dt *DataTable) ToExcel(filePath string, opts ExcelWriteOptions) error
 
 type ExcelWriteOptions struct {
-    Sheet                 string            // sheet to write; "" means "Sheet1"
-    SetColNamesToFirstRow bool              // write the column names as the first row
-    SetRowNamesToFirstCol bool              // write the row names as the first column
-    IfSheetExists         SheetExistsPolicy // SheetExistsFail (default) or SheetExistsReplace
+    Sheet         string            // sheet to write; "" means "Sheet1"
+    NoHeaderRow   bool              // leave out the row of column names, which is written by default
+    HasRowNames   bool              // write the row names as the first column
+    IfSheetExists SheetExistsPolicy // SheetExistsFail (default) or SheetExistsReplace
 }
 ```
 
-**Description:** Writes the table as one sheet of the workbook at `filePath` and leaves every other sheet as it was. If the file does not exist, a new workbook is created. If the workbook lacks the sheet, the sheet is added after the existing ones.
+**Description:** Writes the table as one sheet of the workbook at `filePath` and leaves every other sheet as it was. With no other fields set, the column names are written as the first row and there are no row names. If the file does not exist, a new workbook is created. If the workbook lacks the sheet, the sheet is added after the existing ones.
 
 If the sheet already exists, the default is to refuse: the call returns an error matching `ErrSheetExists` and the file is not touched. With `IfSheetExists: SheetExistsReplace`, the old sheet is thrown away, formatting included, and the table is written in its place, in the same position among the other sheets. Formulas on other sheets that point at it by name then read the new values. Sheet names are matched the way Excel matches them, without regard to case, so `data` and `Data` are the same sheet.
 
@@ -725,7 +732,7 @@ Numbers, booleans and `time.Time` values are written as Excel values, not text, 
 **Example:** keep one sheet per year in a single report.
 
 ```go
-opts := insyra.ExcelWriteOptions{Sheet: "2025", SetColNamesToFirstRow: true}
+opts := insyra.ExcelWriteOptions{Sheet: "2025"}
 err := sales2025.ToExcel("report.xlsx", opts)
 if errors.Is(err, insyra.ErrSheetExists) {
     // 2025 is already there. Overwrite it on purpose; 2023 and 2024 stay.
@@ -799,7 +806,7 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 | Field | Type | Description |
 | --- | --- | --- |
 | `IfExists` | `SQLActionIfTableExists` | Behavior when the target table already exists. See enum values below. Default: `SQLActionIfTableExistsFail`. |
-| `RowNames` | `bool` | If true, include row names as a `row_name` column (default type `TEXT`). |
+| `HasRowNames` | `bool` | If true, include row names as a `row_name` column (default type `TEXT`). |
 | `ColumnTypes` | `map[string]string` | Explicit SQL column types per column, used instead of type inference. |
 | `Schema` | `string` | Optional schema (PostgreSQL) or database (MySQL) prefix. SQLite ignores this. The caller is responsible for any required quoting. |
 | `BatchSize` | `int` | Rows per multi-value `INSERT`. Zero means use the package default (500). |
@@ -1521,7 +1528,7 @@ leaves everything else a string, so a CSV date column needs this step before
 `Resample` will accept it:
 
 ```go
-dt, _ := insyra.ReadCSV_File("bars.csv", false, true)
+dt, _ := insyra.ReadCSVFile("bars.csv")
 dt.ParseDatesCols([]any{insyra.Name("Date")})
 monthly, err := dt.Resample(insyra.Name("Date"), insyra.ResampleMonthly,
     insyra.ResampleAgg{Col: insyra.Name("Close"), Op: insyra.OpLast},
