@@ -135,6 +135,59 @@ func TestCustomBetweenBuiltIns(t *testing.T) {
 	}
 }
 
+func TestCustomRefusesAnOutputAlreadyOnTheTape(t *testing.T) {
+	w := mustTestTensor(t, []int{1}, []float32{3})
+	x := mustTestTensor(t, []int{1}, []float32{2})
+	zero := mustTestTensor(t, []int{1}, []float32{0})
+
+	tape := NewTape()
+	param, err := tape.Param(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	customW := param.Value()
+	y, err := tape.Mul(customW, x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := len(tape.ops)
+	err = tape.Custom("dup", []*Tensor{customW, x}, y, func(upstream *Tensor) ([]*Tensor, error) {
+		dw, err := Mul(upstream, x)
+		if err != nil {
+			return nil, err
+		}
+		dx, err := Mul(upstream, customW)
+		if err != nil {
+			return nil, err
+		}
+		return []*Tensor{dw, dx}, nil
+	})
+	if err == nil {
+		t.Fatal("Custom(...) succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "dup") || !strings.Contains(err.Error(), "Mul") {
+		t.Fatalf("error %q does not name the operation and its producer", err)
+	}
+	if after := len(tape.ops); after != before {
+		t.Fatalf("Custom(...) recorded %d ops, want %d", after, before)
+	}
+
+	loss, err := tape.MSELoss(y, zero)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tape.Backward(loss); err != nil {
+		t.Fatal(err)
+	}
+	gradient, err := tape.Grad(customW)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gradient.data) != 1 || gradient.data[0] != 24 {
+		t.Fatalf("gradient = %v, want [24]", gradient.data)
+	}
+}
+
 func surrogateSigmoid(value float32) float32 {
 	sigmoid := 1 / (1 + float32(math.Exp(-float64(value))))
 	return sigmoid * (1 - sigmoid)
