@@ -182,6 +182,56 @@ func TestExactAccumulatorKnownValues(t *testing.T) {
 	})
 }
 
+func TestExactAccumulatorSpecialValues(t *testing.T) {
+	nan := float32(math.NaN())
+	posInf := float32(math.Inf(1))
+	negInf := float32(math.Inf(-1))
+	negZero := float32(math.Copysign(0, -1))
+
+	tests := []struct {
+		name  string
+		pairs [][2]float32
+		want  uint32
+	}{
+		{name: "NaN times one", pairs: [][2]float32{{nan, 1}}, want: 0x7fc00000},
+		{name: "one times NaN", pairs: [][2]float32{{1, nan}}, want: 0x7fc00000},
+		{name: "NaN times zero then positive infinity", pairs: [][2]float32{{nan, 0}, {posInf, 1}}, want: 0x7fc00000},
+		{name: "positive infinity times zero", pairs: [][2]float32{{posInf, 0}}, want: 0x7fc00000},
+		{name: "zero times negative infinity", pairs: [][2]float32{{0, negInf}}, want: 0x7fc00000},
+		{name: "positive infinity times negative zero", pairs: [][2]float32{{posInf, negZero}}, want: 0x7fc00000},
+		{name: "positive infinity times two", pairs: [][2]float32{{posInf, 2}}, want: 0x7f800000},
+		{name: "positive infinity times negative two", pairs: [][2]float32{{posInf, -2}}, want: 0xff800000},
+		{name: "negative infinity times negative two", pairs: [][2]float32{{negInf, -2}}, want: 0x7f800000},
+		{name: "infinities of both signs", pairs: [][2]float32{{posInf, 1}, {negInf, 1}}, want: 0x7fc00000},
+		{name: "infinity with finite products", pairs: [][2]float32{{posInf, 1}, {1e38, 10}, {-3, 1}}, want: 0x7f800000},
+		{name: "negative zero times one", pairs: [][2]float32{{negZero, 1}}, want: 0x00000000},
+		{name: "negative one times zero", pairs: [][2]float32{{-1, 0}}, want: 0x00000000},
+		{name: "negative zero times negative zero", pairs: [][2]float32{{negZero, negZero}}, want: 0x00000000},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var a exactAccumulator
+			for _, pair := range tc.pairs {
+				a.addProduct(pair[0], pair[1])
+			}
+			if got := math.Float32bits(a.float32()); got != tc.want {
+				t.Fatalf("bits = %#08x, want %#08x", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("reset clears special values", func(t *testing.T) {
+		var a exactAccumulator
+		a.addProduct(nan, 1)
+		a.reset()
+		a.addProduct(2, 3)
+		if got, want := math.Float32bits(a.float32()), math.Float32bits(float32(6)); got != want {
+			t.Fatalf("bits = %#08x, want %#08x", got, want)
+		}
+	})
+}
+
 func TestExactAccumulatorMatchesOracle(t *testing.T) {
 	r := rand.New(rand.NewSource(1))
 	for round := 0; round < 300; round++ {
