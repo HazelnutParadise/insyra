@@ -645,7 +645,7 @@ prices, err := stocks.DailyPricesAdjusted(
 if err != nil {
     log.Fatal(err)
 }
-returns := prices.PctChangeCol("AdjClose", 1).ClearNils()
+returns := prices.PctChangeCol(insyra.Name("AdjClose"), 1).ClearNils()
 ```
 
 - The factor is the exchange's own 除權息參考價 ÷ 除權息前收盤價, taken from `ExRights`, so it already includes rights and the tax-free portion and needs no dividend arithmetic.

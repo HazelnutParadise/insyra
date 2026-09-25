@@ -670,8 +670,8 @@ if err != nil {
     log.Fatal(err)
 }
 
-assetReturns := aligned.PctChangeCol("AdjClose", 1).ClearNils()       // asset
-marketReturns := aligned.PctChangeCol("AdjClose_other", 1).ClearNils() // index
+assetReturns := aligned.PctChangeCol(insyra.Name("AdjClose"), 1).ClearNils()       // asset
+marketReturns := aligned.PctChangeCol(insyra.Name("AdjClose_other"), 1).ClearNils() // index
 beta, err := quant.Beta(assetReturns, marketReturns)
 if err != nil {
     log.Fatal(err)

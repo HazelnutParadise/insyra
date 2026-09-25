@@ -46,26 +46,20 @@ Configuration structure for RFM analysis.
 
 ```go
 type RFMConfig struct {
-    CustomerIDColIndex string    // The column index(A, B, C, ...) of customer ID in the data table
-    CustomerIDColName  string    // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
-    TradingDayColIndex string    // The column index(A, B, C, ...) of trading day in the data table
-    TradingDayColName  string    // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
-    AmountColIndex     string    // The column index(A, B, C, ...) of amount in the data table
-    AmountColName      string    // The column name of amount in the data table (if both index and name are provided, index takes precedence)
-    NumGroups          uint      // The number of groups to divide the customers into
-    DateFormat         string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
-    TimeScale          TimeScale // The time scale for recency calculation (e.g., hourly, daily, weekly, monthly, yearly)
+    CustomerIDCol any       // The customer ID column: an Excel-style index string, insyra.Name(...), or an int position
+    TradingDayCol any       // The trading day column: an Excel-style index string, insyra.Name(...), or an int position
+    AmountCol     any       // The amount column: an Excel-style index string, insyra.Name(...), or an int position
+    NumGroups     uint      // The number of groups to divide the customers into
+    DateFormat    string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+    TimeScale     TimeScale // The time scale for recency calculation (e.g., hourly, daily, weekly, monthly, yearly)
 }
 ```
 
 **Fields:**
 
-- `CustomerIDColIndex`: Column index for customer ID (e.g., "A", "B", "C")
-- `CustomerIDColName`: Column name for customer ID (column index takes precedence if both are provided)
-- `TradingDayColIndex`: Column index for transaction date
-- `TradingDayColName`: Column name for transaction date (column index takes precedence if both are provided)
-- `AmountColIndex`: Column index for transaction amount
-- `AmountColName`: Column name for transaction amount (column index takes precedence if both are provided)
+- `CustomerIDCol`: Column selector for customer ID — an Excel-style index string (e.g. `"A"`), `insyra.Name("customer_id")`, or an int position
+- `TradingDayCol`: Column selector for transaction date
+- `AmountCol`: Column selector for transaction amount
 - `NumGroups`: Number of RFM score groups (typically 3-5)
 - `DateFormat`: Date format string using `YYYY`, `MM`, `DD` tokens (defaults to "YYYY-MM-DD" if empty)
 - `TimeScale`: Time scale for recency calculation (defaults to "daily" if empty)
@@ -76,21 +70,17 @@ Configuration structure for CAI (Customer Activity Index) analysis.
 
 ```go
 type CAIConfig struct {
-    CustomerIDColIndex string    // The column index(A, B, C, ...) of customer ID in the data table
-    CustomerIDColName  string    // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
-    TradingDayColIndex string    // The column index(A, B, C, ...) of trading day in the data table
-    TradingDayColName  string    // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
-    DateFormat         string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
-    TimeScale          TimeScale // The time scale for analysis (e.g., hourly, daily, weekly, monthly, yearly)
+    CustomerIDCol any       // The customer ID column: an Excel-style index string, insyra.Name(...), or an int position
+    TradingDayCol any       // The trading day column: an Excel-style index string, insyra.Name(...), or an int position
+    DateFormat    string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+    TimeScale     TimeScale // The time scale for analysis (e.g., hourly, daily, weekly, monthly, yearly)
 }
 ```
 
 **Fields:**
 
-- `CustomerIDColIndex`: Column index for customer ID (e.g., "A", "B", "C")
-- `CustomerIDColName`: Column name for customer ID (column index takes precedence if both are provided)
-- `TradingDayColIndex`: Column index for transaction date
-- `TradingDayColName`: Column name for transaction date (column index takes precedence if both are provided)
+- `CustomerIDCol`: Column selector for customer ID — an Excel-style index string (e.g. `"A"`), `insyra.Name("customer_id")`, or an int position
+- `TradingDayCol`: Column selector for transaction date
 - `DateFormat`: Date format string using `YYYY`, `MM`, `DD` tokens (defaults to "YYYY-MM-DD" if empty)
 - `TimeScale`: Time scale for analysis (defaults to "daily" if empty)
 
@@ -100,19 +90,15 @@ Configuration structure for market basket analysis. Input data should follow the
 
 ```go
 type BasketConfig struct {
-    OrderIDColIndex   string // The column index(A, B, C, ...) of order ID in the data table
-    OrderIDColName    string // The column name of order ID in the data table (if both index and name are provided, index takes precedence)
-    ProductIDColIndex string // The column index(A, B, C, ...) of product ID in the data table
-    ProductIDColName  string // The column name of product ID in the data table (if both index and name are provided, index takes precedence)
+    OrderIDCol   any // The order ID column: an Excel-style index string, insyra.Name(...), or an int position
+    ProductIDCol any // The product ID column: an Excel-style index string, insyra.Name(...), or an int position
 }
 ```
 
 **Fields:**
 
-- `OrderIDColIndex`: Column index for order ID (e.g., "A", "B", "C")
-- `OrderIDColName`: Column name for order ID (column index takes precedence if both are provided)
-- `ProductIDColIndex`: Column index for product ID
-- `ProductIDColName`: Column name for product ID (column index takes precedence if both are provided)
+- `OrderIDCol`: Column selector for order ID — an Excel-style index string (e.g. `"A"`), `insyra.Name("order_id")`, or an int position
+- `ProductIDCol`: Column selector for product ID
 
 ### BasketResult
 
@@ -333,16 +319,6 @@ config := mkt.RFMConfig{
 
 // For European date format
 config.DateFormat = "2006-01-02"  // ISO format
-
-// Mixed usage (index takes precedence if both are provided)
-config := mkt.RFMConfig{
-    CustomerIDCol: "A",           // This will be used
-    CustomerIDCol: insyra.Name("CustomerID"),  // Ignored
-    TradingDayCol: "B",
-    AmountCol: "C",
-    NumGroups:          5,
-    DateFormat:         "2006-01-02",
-}
 ```
 
 ### RFM Analysis with TimeScale
@@ -427,10 +403,10 @@ func main() {
     // Access individual CAI values
     numRows, _ := result.Size()
     for i := 0; i < numRows; i++ {
-        customerID := result.GetElement(i, "CustomerID")
-        cai := result.GetElement(i, "CAI")
-        mle := result.GetElement(i, "MLE")
-        wmle := result.GetElement(i, "WMLE")
+        customerID := result.GetElement(i, insyra.Name("CustomerID"))
+        cai := result.GetElement(i, insyra.Name("CAI"))
+        mle := result.GetElement(i, insyra.Name("MLE"))
+        wmle := result.GetElement(i, insyra.Name("WMLE"))
         fmt.Printf("Customer %s: CAI=%.3f, MLE=%.1f, WMLE=%.1f\n", customerID, cai, mle, wmle)
     }
 }

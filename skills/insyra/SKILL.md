@@ -225,12 +225,12 @@ dl.FillWithMedian()
 dl.FillWithMode()
 dl.FillByInterpolation(extrapolate ...bool)
 
-dt.FillForward(limit int, cols ...string)
-dt.FillBackward(limit int, cols ...string)
-dt.FillWithMean(cols ...string)
-dt.FillWithMedian(cols ...string)
-dt.FillWithMode(cols ...string)
-dt.FillByInterpolation(cols ...string)
+dt.FillForward(limit int, cols ...any)
+dt.FillBackward(limit int, cols ...any)
+dt.FillWithMean(cols ...any)
+dt.FillWithMedian(cols ...any)
+dt.FillWithMode(cols ...any)
+dt.FillByInterpolation(cols ...any)
 ```
 
 Notes:
@@ -243,7 +243,7 @@ table and transform later tables with the learned replacements:
 
 ```go
 imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
-trainClean, err := imputer.FitTransform(train, "Age", "Income")
+trainClean, err := imputer.FitTransform(train, insyra.Name("Age"), insyra.Name("Income"))
 if err != nil { log.Fatal(err) }
 
 testClean, err := imputer.Transform(test) // reuse training replacements
@@ -318,7 +318,7 @@ missing *target*.
 
 ```go
 encoded, enc, err := dt.OneHotEncode(insyra.OneHotOptions{
-    Columns:   []string{"plan", "region"},
+    Columns:   []any{insyra.Name("plan"), insyra.Name("region")},
     DropFirst: true,
     Unknown:   insyra.UnknownIgnore,
 })
@@ -330,7 +330,7 @@ _ = testEncoded
 _ = original
 
 labels, labelEnc, err := dt.LabelEncode(insyra.LabelEncodeOptions{
-    Column:    "segment",
+    Column:    insyra.Name("segment"),
     NewColumn: "segment_id",
     SortBy:    insyra.LabelSortByFrequency,
 })
@@ -341,7 +341,7 @@ _ = classes
 _ = values
 
 ranked, ordinalEnc, err := dt.OrdinalEncode(insyra.OrdinalEncodeOptions{
-    Column: "satisfaction",
+    Column: insyra.Name("satisfaction"),
     Order:  []any{"low", "medium", "high"},
 })
 _ = ranked
@@ -360,7 +360,7 @@ Feature scalers fit parameters on a training set and reuse them on a test set �
 
 ```go
 sc := insyra.NewStandardScaler() // or NewMinMaxScaler(0,1), NewRobustScaler(), NewMaxAbsScaler()
-trainScaled, err := sc.FitTransform(train, "Age", "Income")
+trainScaled, err := sc.FitTransform(train, insyra.Name("Age"), insyra.Name("Income"))
 if err != nil { log.Fatal(err) }
 
 testScaled, err := sc.Transform(test)          // reuse TRAIN mean/std — no re-fit
@@ -469,8 +469,9 @@ std := ewm.Std()
 `EWMOptions` requires exactly one of `Alpha`, `Span`, or `HalfLife`. `Adjust`
 and `Bias` follow pandas, gaps decay without resetting the accumulated state,
 and `MinObs` suppresses early output. Invalid decay options warn and return an
-empty result. For table columns use `EWMCol` with the same name-first,
-Excel-index fallback as `RollingCol`.
+empty result. For table columns use `EWMCol` with the same column selector as
+`RollingCol` (an Excel-style index string, `insyra.Name(...)`, or an int
+position).
 
 For calendar aggregation use `DataTable.Resample(timeCol, freq, aggs...)` with
 `ResampleWeekly`, `ResampleMonthly`, `ResampleQuarterly`, or `ResampleYearly`.
@@ -481,7 +482,7 @@ returned in period order. Missing columns, empty aggregations, unknown
 frequencies, and non-`time.Time` cells return errors.
 
 A CSV load leaves date columns as strings, so `Resample` rejects them. Convert
-first with `dt.ParseDatesCols([]string{"Date"})`, or `dl.ParseDates()` on a
+first with `dt.ParseDatesCols([]any{insyra.Name("Date")})`, or `dl.ParseDates()` on a
 single list. Both take optional Go layouts (`ParseDates("02/01/2006")`) and
 default to the ISO shapes `ReadSQLOptions.ParseDates` uses. Strings become UTC
 `time.Time`, existing `time.Time` values are kept, and anything unparsable
@@ -707,7 +708,7 @@ long, err := wide.Unpivot(insyra.UnpivotConfig{
 
 Recognised `AggFunc` strings: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `stdev`/`std`, `stdevp`/`stdp`, `var`, `varp`, `first`, `last`, `nunique`, `custom` (requires `Custom func(group *DataList) any`). When `AggFunc` is empty, duplicate `(Index, Columns)` combinations are an error. `Pivot` is essentially `GroupBy(Index..., Columns).Aggregate(Values, AggFunc)` with the columns key spread into headers — if you only need the grouped summary, prefer `GroupBy + Aggregate` directly.
 
-Column reference resolution (applies to `Index`, `Columns`, `Values`, `IDVars`, `ValueVars`): each token is matched against `column.name` first, then falls back to the Excel-style alphabetic index (`"A"` → column 0, `"AA"` → column 26). The first row of data is never consulted as a header — column names live only on `column.name`. Tokens matching neither produce an error surfaced via the returned table's `Err()`.
+Column reference resolution (applies to `Index`, `Columns`, `Values`, `IDVars`, `ValueVars`): each token is a column selector — a string is the Excel-style alphabetic index (`"A"` → column 0, `"AA"` → column 26), `insyra.Name(...)` is a column name compared exactly, and an int is a 0-based position. A bare string is never looked up as a name. The first row of data is never consulted as a header — column names live only on `column.name`. A token that resolves to no column produces an error surfaced via the returned table's `Err()`.
 
 ### 4) Export a DataTable to CSV or Excel
 

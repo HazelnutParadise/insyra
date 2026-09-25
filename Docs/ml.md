@@ -458,7 +458,7 @@ The root package's four scalers and three encoders already satisfy `ml.Transform
 
 ```go
 scaler := insyra.NewStandardScaler()
-if _, err := scaler.FitTransform(features, "age"); err != nil {
+if _, err := scaler.FitTransform(features, insyra.Name("age")); err != nil {
     log.Fatal(err)
 }
 
@@ -478,7 +478,7 @@ pipeline := ml.NewPipeline([]ml.Step{
         Name: "scale numeric",
         Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
             scaler := insyra.NewStandardScaler()
-            if err := scaler.Fit(x, "age", "income"); err != nil {
+            if err := scaler.Fit(x, insyra.Name("age"), insyra.Name("income")); err != nil {
                 return nil, err
             }
             return scaler, nil

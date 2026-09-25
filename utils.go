@@ -134,10 +134,10 @@ func PowRat(base *big.Rat, exponent int) *big.Rat {
 // Aggregate, which is type-safe, surfaces errors via Err(), and supports the
 // full AggregateOp set:
 //
-//	dt.GroupBy("factor").Aggregate(
-//	    insyra.AggregateConfig{SourceCol: "ind1", Op: insyra.OpMean},
-//	    insyra.AggregateConfig{SourceCol: "ind2", Op: insyra.OpMean},
-//	    insyra.AggregateConfig{SourceCol: "data", Op: insyra.OpMean},
+//	dt.GroupBy(insyra.Name("factor")).Aggregate(
+//	    insyra.AggregateConfig{SourceCol: insyra.Name("ind1"), Op: insyra.OpMean},
+//	    insyra.AggregateConfig{SourceCol: insyra.Name("ind2"), Op: insyra.OpMean},
+//	    insyra.AggregateConfig{SourceCol: insyra.Name("data"), Op: insyra.OpMean},
 //	)
 //
 // This function will be removed in a future release.

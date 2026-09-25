@@ -991,7 +991,7 @@ weighted := dt.GroupBy(insyra.Name("region"), insyra.Name("product")).Aggregate(
 ```go
 top := dt.
     FilterRows(func(_, _ string, x any) bool { return true /* ... */ }).
-    GroupBy("region").
+    GroupBy(insyra.Name("region")).
     Aggregate(insyra.AggregateConfig{SourceCol: insyra.Name("revenue"), Op: insyra.OpSum, As: "total"}).
     SortBy(insyra.DataTableSortConfig{Col: insyra.Name("total"), Descending: true})
 ```
@@ -1005,7 +1005,7 @@ func (dt *DataTable) Unpivot(cfg UnpivotConfig) (*DataTable, error)
 
 **Description:** `Pivot` reshapes long-form data into wide form (each unique value of `cfg.Columns` becomes a new column header, with cells filled from `cfg.Values` and rows keyed by `cfg.Index`). `Unpivot` is the inverse: each row is expanded into one output row per `ValueVar`, with the original column name written into the new `VarName` column and the cell value written into `ValueName`. Both methods return a fresh `*DataTable`; the receiver is not modified. On error the returned `*DataTable` is empty and carries the failure on its `Err()`, so chained calls remain safe.
 
-**Column reference resolution (applies to every column-name field below — `Index`, `Columns`, `Values`, `IDVars`, `ValueVars`):** each token is matched against `column.name` first; if no column has that name, it falls back to the Excel-style alphabetic index (`"A"` → column 0, `"B"` → column 1, ..., `"AA"` → column 26, ...). The first row of data is **never** consulted — column headers live only on `column.name` (set via `SetName`, `SetColNames`, CSV/Excel `firstRow2ColNames=true`, etc.). Tokens that match neither a name nor a valid alphabetic index are an error.
+**Column reference resolution (applies to every column field below — `Index`, `Columns`, `Values`, `IDVars`, `ValueVars`):** each token is a column selector (see [Column selectors](#column-selectors)) — a string is an Excel-style alphabetic index (`"A"` → column 0, `"B"` → column 1, ..., `"AA"` → column 26, ...), `Name("region")` is a column name compared exactly, and an int is a 0-based position. A bare string is never looked up as a name, and the first row of data is never consulted — column headers live only on `column.name` (set via `SetName`, `SetColNames`, CSV/Excel `firstRow2ColNames=true`, etc.). A token that resolves to no column is an error.
 
 **`PivotConfig` fields:**
 
@@ -1096,7 +1096,7 @@ Column references are column selectors (see [Column selectors](#column-selectors
 
 ```go
 type OneHotOptions struct {
-    Columns        []string
+    Columns        []any // each entry a column selector
     DropFirst      bool
     HandleNaN      NaNPolicy
     Unknown        UnknownPolicy
@@ -1107,7 +1107,7 @@ type OneHotOptions struct {
 }
 
 type LabelEncodeOptions struct {
-    Column       string
+    Column       any // a column selector
     NewColumn    string
     SortBy       LabelSort
     HandleNaN    NaNPolicy
@@ -1116,7 +1116,7 @@ type LabelEncodeOptions struct {
 }
 
 type OrdinalEncodeOptions struct {
-    Column       string
+    Column       any // a column selector
     Order        []any
     NewColumn    string
     HandleNaN    NaNPolicy
@@ -1163,7 +1163,7 @@ func main() {
     )
 
     encoded, enc, err := train.OneHotEncode(insyra.OneHotOptions{
-        Columns:   []string{"color"},
+        Columns:   []any{insyra.Name("color")},
         DropFirst: true,
         Unknown:   insyra.UnknownIgnore,
     })
@@ -1211,7 +1211,7 @@ func main() {
     )
 
     x, _, err := dt.OneHotEncode(insyra.OneHotOptions{
-        Columns:   []string{"plan"},
+        Columns:   []any{insyra.Name("plan")},
         DropFirst: true, // baseline = first-seen category ("basic")
     })
     if err != nil {
@@ -1305,7 +1305,7 @@ func main() {
 
     // Fit the scaler on the training set only.
     sc := insyra.NewStandardScaler()
-    trainScaled, err := sc.FitTransform(train, "Age", "Income")
+    trainScaled, err := sc.FitTransform(train, insyra.Name("Age"), insyra.Name("Income"))
     if err != nil {
         log.Fatal(err)
     }
@@ -1388,7 +1388,7 @@ func main() {
     )
 
     imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
-    if err := imputer.Fit(train, "income"); err != nil {
+    if err := imputer.Fit(train, insyra.Name("income")); err != nil {
         log.Fatal(err)
     }
     imputedTest, err := imputer.Transform(test) // nil becomes 20.0
@@ -1454,7 +1454,7 @@ const (
 )
 
 type ResampleAgg struct {
-    Col string
+    Col any // a column selector
     Op  AggregateOp
     As  string
 }
@@ -1512,7 +1512,7 @@ leaves everything else a string, so a CSV date column needs this step before
 
 ```go
 dt, _ := insyra.ReadCSV_File("bars.csv", false, true)
-dt.ParseDatesCols([]string{"Date"})
+dt.ParseDatesCols([]any{insyra.Name("Date")})
 monthly, err := dt.Resample(insyra.Name("Date"), insyra.ResampleMonthly,
     insyra.ResampleAgg{Col: insyra.Name("Close"), Op: insyra.OpLast},
 )
@@ -3238,7 +3238,7 @@ func (dt *DataTable) FillByInterpolation(cols ...any) *DataTable
 **Parameters:**
 
 - `limit`: Maximum consecutive values to fill for forward/backward fill. `0` means unlimited.
-- `cols` (optional): Column names or Excel-style indices to process.
+- `cols` (optional): Column selectors to process (see [Column selectors](#column-selectors)).
 
 **Returns:**
 
@@ -3247,8 +3247,8 @@ func (dt *DataTable) FillByInterpolation(cols ...any) *DataTable
 **Example:**
 
 ```go
-dt.FillWithMedian("revenue", "cost")
-dt.FillForward(2, "status")
+dt.FillWithMedian(insyra.Name("revenue"), insyra.Name("cost"))
+dt.FillForward(2, insyra.Name("status"))
 dt.FillByInterpolation() // all numeric columns
 ```
 
@@ -3359,7 +3359,7 @@ func (dt *DataTable) ReplaceInCol(col any, oldValue, newValue any, mode ...int) 
 
 **Parameters:**
 
-- `colIndex`: The index or name of the column.
+- `colIndex`: The column selector (see [Column selectors](#column-selectors)).
 - `oldValue`: The value to be replaced.
 - `newValue`: The value to replace with.
 - `mode` (optional):

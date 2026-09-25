@@ -28,8 +28,9 @@ result and records a warning.
 `Adjust` selects pandas' adjusted or recursive weighting, `Bias` selects the
 population or finite-sample weighted variance form, and `MinObs <= 0` means one
 valid observation. Gaps decay the state without resetting it. Invalid options
-warn and return an empty result. `DataTable.EWMCol` resolves the column by name
-first, then Excel-style index.
+warn and return an empty result. `DataTable.EWMCol` resolves the column through
+the same selector as the rest of the library: an Excel-style index string, an
+`insyra.Name(...)`, or an int position.
 
 ## DataTable
 
@@ -52,8 +53,8 @@ unknown frequencies, and non-`time.Time` values return errors.
 
 ```go
 // A CSV date column is a string; Resample needs time.Time.
-dt.ParseDatesCols([]string{"Date"})              // defaults: ISO layouts
-dt.ParseDatesCols([]string{"Date"}, "02/01/2006") // explicit layouts, tried in order
+dt.ParseDatesCols([]any{insyra.Name("Date")})              // defaults: ISO layouts
+dt.ParseDatesCols([]any{insyra.Name("Date")}, "02/01/2006") // explicit layouts, tried in order
 ```
 
 `DataList.ParseDates(layouts ...string)` is the single-column form. Both

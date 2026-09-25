@@ -116,16 +116,16 @@ excelFile := isr.Excel{
 ```go
 // Single row
 row := isr.Row{
-    "Name": "John",
-    "Age":  30,
-    "City": "NYC",
+    isr.Name("Name"): "John",
+    isr.Name("Age"):  30,
+    isr.Name("City"): "NYC",
 }
 
 // Multiple rows using Rows alias
 rows := isr.Rows{
-    {"Name": "John", "Age": 30},
-    {"Name": "Jane", "Age": 25},
-    {"Name": "Bob",  "Age": 35},
+    {isr.Name("Name"): "John", isr.Name("Age"): 30},
+    {isr.Name("Name"): "Jane", isr.Name("Age"): 25},
+    {isr.Name("Name"): "Bob",  isr.Name("Age"): 35},
 }
 ```
 
@@ -416,7 +416,7 @@ isr.DT.From(nil) *dt
 dataTable := isr.DT.Of(nil)
 
 // Create from various sources
-dataTable := isr.DT.Of(isr.Row{"Name": "John", "Age": 30})
+dataTable := isr.DT.Of(isr.Row{isr.Name("Name"): "John", isr.Name("Age"): 30})
 dataTable := isr.DT.Of(isr.DL.From("A", "B", "C"))
 ```
 
@@ -459,15 +459,15 @@ dataTable := isr.DT.From(isr.DLs{
 ```go
 // Create DataTable from row-oriented data
 dataTable := isr.DT.From(isr.Row{
-    "Name": "John",
-    "Age":  30,
-    "City": "NYC",
+    isr.Name("Name"): "John",
+    isr.Name("Age"):  30,
+    isr.Name("City"): "NYC",
 })
 
 // Multiple rows using Rows alias
 dataTable := isr.DT.From(isr.Rows{
-    {"Name": "John", "Age": 30},
-    {"Name": "Jane", "Age": 25},
+    {isr.Name("Name"): "John", isr.Name("Age"): 30},
+    {isr.Name("Name"): "Jane", isr.Name("Age"): 25},
 })
 ```
 
@@ -621,8 +621,8 @@ Row(row any) *dl
 ```go
 // Get column by index/name
 col := dataTable.Col(0)              // First column (returns *dl)
-col := dataTable.Col("Name")         // Column by string name
-col := dataTable.Col(isr.Name("ID")) // Column by Name type
+col := dataTable.Col("B")            // Column by Excel-style index
+col := dataTable.Col(isr.Name("ID")) // Column by name
 ```
 
 **Method:**
@@ -647,9 +647,9 @@ Col(col any) *dl
 
 ```go
 // Get element at row, column
-value := dataTable.At(0, 1)                    // Row 0, Column 1
-value := dataTable.At(0, "Name")               // Row 0, Column "Name"
-value := dataTable.At(isr.Name("ID"), "Name")  // Named row and column
+value := dataTable.At(0, 1)                              // Row 0, Column 1
+value := dataTable.At(0, isr.Name("Name"))               // Row 0, column named "Name"
+value := dataTable.At(isr.Name("ID"), isr.Name("Name"))  // Named row and column
 ```
 
 **Method:**
@@ -674,14 +674,15 @@ At(row any, col any) any
 
 ```go
 // Add new rows
-dataTable.Push(isr.Row{    "Name": "Bob",
-    "Age": 35,
+dataTable.Push(isr.Row{
+    isr.Name("Name"): "Bob",
+    isr.Name("Age"):  35,
 })
 
 // Add multiple rows using Rows alias
 dataTable.Push(isr.Rows{
-    {"Name": "Alice", "Age": 28},
-    {"Name": "Charlie", "Age": 42},
+    {isr.Name("Name"): "Alice", isr.Name("Age"): 28},
+    {isr.Name("Name"): "Charlie", isr.Name("Age"): 42},
 })
 
 // Add columns
@@ -777,9 +778,9 @@ CCL(cclStatements string) *dt
 ```go
 // Group rows by one or more key columns and apply aggregations.
 report := isr.DT.From(isr.Rows{
-    {"region": "east", "revenue": 100, "qty": 1},
-    {"region": "east", "revenue": 200, "qty": 2},
-    {"region": "west", "revenue": 50,  "qty": 3},
+    {isr.Name("region"): "east", isr.Name("revenue"): 100, isr.Name("qty"): 1},
+    {isr.Name("region"): "east", isr.Name("revenue"): 200, isr.Name("qty"): 2},
+    {isr.Name("region"): "west", isr.Name("revenue"): 50,  isr.Name("qty"): 3},
 }).GroupBy(isr.Name("region")).Aggregate(
     insyra.AggregateConfig{SourceCol: isr.Name("revenue"), Op: insyra.OpSum,  As: "total_rev"},
     insyra.AggregateConfig{SourceCol: isr.Name("qty"),     Op: insyra.OpMean, As: "avg_qty"},
@@ -797,7 +798,7 @@ GroupBy(keyCols ...any) *insyra.GroupedDataTable
 
 **Parameters:**
 
-- One or more column references (name or Excel-style index, e.g. `"A"`).
+- One or more column selectors: an Excel-style index string (e.g. `"A"`), `isr.Name(...)`, or an int position.
 
 **Returns:**
 
@@ -819,15 +820,15 @@ dataTable.Push(dataTable.ExpandingOn(isr.Name("price"), 1).Mean().SetName("emean
 **Methods:**
 
 ```go
-Shift(col string, periods int, fill ...any) *insyra.DataList
-Diff(col string, periods int) *insyra.DataList
-PctChange(col string, periods int) *insyra.DataList
-CumSum(col string) *insyra.DataList
-CumProd(col string) *insyra.DataList
-CumMax(col string) *insyra.DataList
-CumMin(col string) *insyra.DataList
-RollingOn(col string, r Rolling) *insyra.RollingDataList
-ExpandingOn(col string, minObs int) *insyra.ExpandingDataList
+Shift(col any, periods int, fill ...any) *insyra.DataList
+Diff(col any, periods int) *insyra.DataList
+PctChange(col any, periods int) *insyra.DataList
+CumSum(col any) *insyra.DataList
+CumProd(col any) *insyra.DataList
+CumMax(col any) *insyra.DataList
+CumMin(col any) *insyra.DataList
+RollingOn(col any, r Rolling) *insyra.RollingDataList
+ExpandingOn(col any, minObs int) *insyra.ExpandingDataList
 ```
 
 **Description:** Thin wrappers over `insyra.DataTable`'s `ShiftCol` / `DiffCol` / `PctChangeCol` / `Cum*Col` / `RollingCol` / `ExpandingCol`. Each scalar transform returns an `*insyra.DataList` ready to feed back into the table with `Push(...)`. `RollingOn` and `ExpandingOn` return builders; pick a reducer (`.Mean()`, `.Sum()`, `.Min()`, `.Max()`, `.Median()`, `.Std()`, `.Var()`, `.Apply(...)`, or `.Corr(...)`) to materialise the column.
@@ -845,7 +846,7 @@ type Rolling struct {
 
 **Parameters:**
 
-- `col`: column name or Excel-style index (e.g., `"price"`, `"B"`).
+- `col`: a column selector — an Excel-style index string (e.g. `"B"`), `isr.Name(...)` (e.g. `isr.Name("price")`), or an int position.
 - `periods`: lag distance for `Shift` / `Diff` / `PctChange` (negative on `Shift` = lead).
 - `fill` (optional, `Shift` only): value to put in empty slots; defaults to `nil`.
 - `r`: rolling options (see `isr.Rolling`).
@@ -875,7 +876,7 @@ namedValue := dataTable.At(isr.Name("User1"), isr.Name("Email"))
 result := isr.DT.From(isr.DLs{
     isr.DL.From("A", "B", "C"),
     isr.DL.From(1, 2, 3),
-}).Push(isr.Row{"A": "D", 1: 4}).At(3, 0) // Returns "D"
+}).Push(isr.Row{"A": "D", "B": 4}).At(3, 0) // Returns "D"
 
 // DataList chaining
 processed := isr.DL.From(1, 2, 3).Push(4, 5).At(4) // Returns 5
@@ -914,7 +915,7 @@ returns a usable object even when it fails, and the failure is recorded on
 that object. Nothing ever ends your program.
 
 ```go
-t := isr.DT.From(isr.CSV{FilePath: "sales.csv"}).Push(isr.Row{"total": 0})
+t := isr.DT.From(isr.CSV{FilePath: "sales.csv"}).Push(isr.Row{isr.Name("total"): 0})
 if err := t.PopErr(); err != nil {
     log.Printf("could not build the table: %v", err)
     return
@@ -957,13 +958,13 @@ chained := isr.DL.From(1).Push(2).At(1) // Method chaining
 dt := isr.DT.From(isr.DL.From("A", "B", "C"))
 
 // Access data
-row := dt.Row(0)                     // Get row
-col := dt.Col("Name")                // Get column
-value := dt.At(0, "Name")            // Get specific element
+row := dt.Row(0)                           // Get row
+col := dt.Col(isr.Name("Name"))             // Get column
+value := dt.At(0, isr.Name("Name"))         // Get specific element
 
 // Add data
-dt.Push(isr.Row{"Name": "John"})     // Add row
-dt.Push(isr.Col{0: "Value"})         // Add column
+dt.Push(isr.Row{isr.Name("Name"): "John"}) // Add row
+dt.Push(isr.Col{0: "Value"})               // Add column
 ```
 
 ### File and String Operations

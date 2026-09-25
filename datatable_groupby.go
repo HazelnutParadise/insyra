@@ -144,10 +144,11 @@ type GroupedDataTable struct {
 // the given key columns and returns an intermediate object that supports
 // Aggregate / AggregateAll / Count.
 //
-// Each entry in keyCols may be a column name or an Excel-style column index
-// ("A", "B", ..., "AA"). Lookups try the name first, then fall back to the
-// alphabetic index. Unknown columns are recorded on the parent DataTable's
-// Err() and Aggregate will return an empty DataTable.
+// Each entry in keyCols is a column selector: an Excel-style index string
+// ("A", "B", ..., "AA"), Name("region") for a column name, or an int
+// position. A string is never looked up as a name. Unknown columns are
+// recorded on the parent DataTable's Err() and Aggregate will return an empty
+// DataTable.
 //
 // Group order in the resulting DataTable follows the order in which each key
 // combination is first seen during a single linear scan of the input rows.
@@ -221,9 +222,6 @@ func (dt *DataTable) GroupBy(keyCols ...any) *GroupedDataTable {
 	return g
 }
 
-// resolveColForGroup matches a token to a DataTable column. It tries the
-// column name first, then the Excel-style index, and returns (colNumber,
-// displayLabel, ok). The label prefers the column's name when present.
 // resolveColForGroup resolves a column selector and returns the label the
 // output should carry for that column: its name when it has one, and otherwise
 // the way it was addressed.
@@ -458,9 +456,9 @@ func (g *GroupedDataTable) resolveConfig(cfg AggregateConfig) aggregateResolved 
 	return r
 }
 
-// lookupSnapshotCol resolves a token against the snapshot taken at GroupBy
-// time, returning (colNumber, displayLabel, ok). Order: name first, then
-// Excel-style index.
+// lookupSnapshotCol resolves a column selector against the snapshot taken at
+// GroupBy time, by the same rule as a live table, returning (colNumber,
+// displayLabel, ok).
 func (g *GroupedDataTable) lookupSnapshotCol(selector any) (int, string, bool) {
 	num, _, problem := lookupColIn(g.columnsSnapshot, selector)
 	if problem != "" {

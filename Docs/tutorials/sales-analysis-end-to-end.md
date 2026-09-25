@@ -127,7 +127,7 @@ Sort the table by `NetSales` descending to identify top transactions.
 
 ```go
 dt.SortBy(insyra.DataTableSortConfig{
-	ColumnName: "NetSales",
+	Col:        insyra.Name("NetSales"),
 	Descending: true,
 })
 
@@ -222,7 +222,7 @@ func main() {
 	dt.AddColUsingCCL("Profit", "['NetSales'] - ['Cost']")
 
 	dt.SortBy(insyra.DataTableSortConfig{
-		ColumnName: "NetSales",
+		Col:        insyra.Name("NetSales"),
 		Descending: true,
 	})
 

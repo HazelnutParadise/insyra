@@ -18,12 +18,11 @@ import (
 // Columns) combination appears in more than one input row, the duplicate
 // values are reduced via AggFunc.
 //
-// Column reference resolution: every column-name field below (Index, Columns,
-// Values) is matched against column.name first; if no column has that name,
-// it falls back to the Excel-style alphabetic index ("A" → column 0,
-// "B" → column 1, ..., "AA" → column 26). The first row of data is never
-// consulted. Tokens that match neither a name nor a valid alphabetic index
-// produce an error.
+// Column references: every column field below (Index, Columns, Values) is a
+// column selector. A string is an Excel-style index ("A" → column 0, "AA" →
+// column 26), Name("region") is a column name, and an int is a position. A
+// string is never looked up as a name, and the first row of data is never
+// consulted. A reference that resolves to no column produces an error.
 type PivotConfig struct {
 	// Index lists the columns kept as identifiers; their unique combinations
 	// form the row keys of the output. At least one entry is required. Each
@@ -63,12 +62,11 @@ type PivotConfig struct {
 
 // UnpivotConfig describes a wide-to-long reshape produced by (*DataTable).Unpivot.
 //
-// Column reference resolution: every column-name field below (IDVars,
-// ValueVars) is matched against column.name first; if no column has that
-// name, it falls back to the Excel-style alphabetic index ("A" → column 0,
-// "B" → column 1, ..., "AA" → column 26). The first row of data is never
-// consulted. Tokens that match neither a name nor a valid alphabetic index
-// produce an error.
+// Column references: every column field below (IDVars, ValueVars) is a column
+// selector. A string is an Excel-style index ("A" → column 0, "AA" → column
+// 26), Name("region") is a column name, and an int is a position. A string is
+// never looked up as a name, and the first row of data is never consulted. A
+// reference that resolves to no column produces an error.
 type UnpivotConfig struct {
 	// IDVars lists the columns kept as-is (identifier columns). Each entry is
 	// a column selector.

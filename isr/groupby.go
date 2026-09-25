@@ -6,8 +6,8 @@ import "github.com/HazelnutParadise/insyra"
 // matching the chain pattern of the rest of the isr package. Use it together
 // with insyra.AggregateConfig to do split-apply-combine:
 //
-//	report := dt.GroupBy("region").Aggregate(
-//	    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum},
+//	report := dt.GroupBy(isr.Name("region")).Aggregate(
+//	    insyra.AggregateConfig{SourceCol: isr.Name("revenue"), Op: insyra.OpSum},
 //	)
 func (t *dt) GroupBy(keyCols ...any) *insyra.GroupedDataTable {
 	return t.DataTable.GroupBy(keyCols...)
