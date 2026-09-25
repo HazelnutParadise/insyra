@@ -100,9 +100,9 @@ func TestEveryChartBuildsAndRenders(t *testing.T) {
 		}},
 		{name: "heatmap", build: func() Renderable {
 			return CreateHeatMap(HeatMapConfig{Title: "heatmap chart"},
-				HeatMapPoint("mon", "am", 1),
-				HeatMapPoint("tue", "pm", 2),
-				HeatMapMissingPoint("wed", "am"),
+				NewHeatMapPoint("mon", "am", 1),
+				NewHeatMapPoint("tue", "pm", 2),
+				NewHeatMapMissingPoint("wed", "am"),
 			)
 		}},
 		{name: "radar", build: func() Renderable {
@@ -211,13 +211,13 @@ func TestCreateHeatMap_Calendar(t *testing.T) {
 	quiet(t)
 
 	if c := CreateHeatMap(HeatMapConfig{UseCalendar: true},
-		HeatMapPoint("mon", "am", 1)); c != nil {
+		NewHeatMapPoint("mon", "am", 1)); c != nil {
 		t.Error("a calendar heat map with string x values returned a chart")
 	}
 
 	day := time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)
 	if c := CreateHeatMap(HeatMapConfig{UseCalendar: true},
-		HeatMapPoint(day, "am", 1)); c != nil {
+		NewHeatMapPoint(day, "am", 1)); c != nil {
 		t.Error("a calendar heat map with no calendar options returned a chart")
 	}
 }

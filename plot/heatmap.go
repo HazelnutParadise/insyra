@@ -12,9 +12,9 @@ import (
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
-// heapMapAxisValue constrains allowed axis types for strict generics.
-// We allow int, string, and time.Time.
-type heapMapAxisValue interface {
+// HeatMapAxis constrains the types a heat map axis may use: an int index, a
+// string label, or a time.Time for a calendar heat map.
+type HeatMapAxis interface {
 	int | string | time.Time
 }
 
@@ -46,29 +46,30 @@ type HeatMapConfig struct {
 	CalendarOpts *opts.Calendar
 }
 
-// heatMapPoint represents a single heatmap datum with constrained axis types.
-// X/Y types are enforced by generics; Value is a non-pointer and Valid indicates presence.
-// e.g. heatMapPoint[int,string] or heatMapPoint[time.Time, int]
-type heatMapPoint[X heapMapAxisValue, Y heapMapAxisValue] struct {
+// HeatMapPoint is one cell of a heat map, e.g. HeatMapPoint[int, string] or
+// HeatMapPoint[time.Time, int]. Value is the cell's value and Valid reports
+// whether it has one: a point that is not valid renders as "-". Build points
+// with NewHeatMapPoint and NewHeatMapMissingPoint.
+type HeatMapPoint[X HeatMapAxis, Y HeatMapAxis] struct {
 	X     X
 	Y     Y
 	Value float64
 	Valid bool
 }
 
-// HeatMapPoint creates a valid point with a numeric value.
-func HeatMapPoint[X heapMapAxisValue, Y heapMapAxisValue](x X, y Y, value float64) heatMapPoint[X, Y] {
-	return heatMapPoint[X, Y]{X: x, Y: y, Value: value, Valid: true}
+// NewHeatMapPoint creates a point with a value.
+func NewHeatMapPoint[X HeatMapAxis, Y HeatMapAxis](x X, y Y, value float64) HeatMapPoint[X, Y] {
+	return HeatMapPoint[X, Y]{X: x, Y: y, Value: value, Valid: true}
 }
 
-// HeatMapMissingPoint creates a point that is considered missing (renders as "-").
-func HeatMapMissingPoint[X heapMapAxisValue, Y heapMapAxisValue](x X, y Y) heatMapPoint[X, Y] {
-	return heatMapPoint[X, Y]{X: x, Y: y, Valid: false}
+// NewHeatMapMissingPoint creates a point with no value, rendered as "-".
+func NewHeatMapMissingPoint[X HeatMapAxis, Y HeatMapAxis](x X, y Y) HeatMapPoint[X, Y] {
+	return HeatMapPoint[X, Y]{X: x, Y: y, Valid: false}
 }
 
 // CreateHeatMap generates and returns a *charts.HeatMap object based on HeatmapConfig.
-// It accepts optional variadic heatMapPoint arguments which will be appended to `config.Data`.
-func CreateHeatMap[X heapMapAxisValue, Y heapMapAxisValue](config HeatMapConfig, points ...heatMapPoint[X, Y]) *charts.HeatMap {
+// It accepts optional variadic HeatMapPoint arguments which will be appended to `config.Data`.
+func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ...HeatMapPoint[X, Y]) *charts.HeatMap {
 	if len(points) == 0 {
 		insyra.LogWarning("plot.heatmap", "CreateHeatMap", "no data points provided; returning nil")
 		return nil
@@ -168,7 +169,7 @@ func CreateHeatMap[X heapMapAxisValue, Y heapMapAxisValue](config HeatMapConfig,
 
 // convertToHeatMapData converts the heatmap data into the format needed by go-echarts.
 // Handles axis types int, string and time.Time (time.Time formatted as YYYY-MM-DD).
-func convertToHeatMapData[X heapMapAxisValue, Y heapMapAxisValue](data []heatMapPoint[X, Y]) []opts.HeatMapData {
+func convertToHeatMapData[X HeatMapAxis, Y HeatMapAxis](data []HeatMapPoint[X, Y]) []opts.HeatMapData {
 	items := make([]opts.HeatMapData, 0, len(data))
 	for _, p := range data {
 		var x any
@@ -208,7 +209,7 @@ func convertToHeatMapData[X heapMapAxisValue, Y heapMapAxisValue](data []heatMap
 
 // convertToCalendarHeatMapData converts points to calendar style heatmap data where each item is [date, value]
 // X is formatted as YYYY-MM-DD if it's a time.Time; otherwise it's stringified.
-func convertToCalendarHeatMapData[X heapMapAxisValue, Y heapMapAxisValue](data []heatMapPoint[X, Y]) []opts.HeatMapData {
+func convertToCalendarHeatMapData[X HeatMapAxis, Y HeatMapAxis](data []HeatMapPoint[X, Y]) []opts.HeatMapData {
 	items := make([]opts.HeatMapData, 0, len(data))
 	for _, p := range data {
 		var date any
@@ -235,7 +236,7 @@ func convertToCalendarHeatMapData[X heapMapAxisValue, Y heapMapAxisValue](data [
 }
 
 // computeMinMax returns the min and max among numeric values in points. If no numeric values exist, returns 0 and 1.
-func computeMinMax[X heapMapAxisValue, Y heapMapAxisValue](data []heatMapPoint[X, Y]) (float64, float64) {
+func computeMinMax[X HeatMapAxis, Y HeatMapAxis](data []HeatMapPoint[X, Y]) (float64, float64) {
 	var minVal float64 = 0
 	var maxVal float64 = 1
 	found := false
