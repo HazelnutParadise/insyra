@@ -2504,6 +2504,25 @@ for i, name := range names {
 }
 ```
 
+### ColDataTypes
+
+```go
+func (dt *DataTable) ColDataTypes() []DataType
+```
+
+**Description:** Returns each column's `DataType` in column order, the way `ColNames` returns each column's name. See `DataList.DataType` for what each value means.
+
+**Example:**
+
+```go
+names := dt.ColNames()
+for i, t := range dt.ColDataTypes() {
+    if t == insyra.DataTypeNumber {
+        fmt.Println(names[i], "can be analysed")
+    }
+}
+```
+
 ### Headers
 
 ```go

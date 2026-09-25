@@ -154,6 +154,39 @@ dl := insyra.NewDataList(1, 2, 3)
 data := dl.Data() // []any{1, 2, 3}
 ```
 
+### DataType
+
+```go
+func (dl *DataList) DataType() DataType
+```
+
+**Description:** Returns what kind of values the list holds, so a program can check before it analyses: can this column be averaged, grouped as text, read as dates. Missing values (`nil`, `NaN`) are left out, so `[10, nil, 30]` is a number column.
+
+| Value | Meaning | Example |
+|---|---|---|
+| `DataTypeNumber` | every value is a number; integers, floats and decimals alike | `[10, 2.5, nil]` |
+| `DataTypeString` | every value is text; text that looks numeric, such as `"0050"`, stays text | `["Taipei", "Taichung"]` |
+| `DataTypeBool` | every value is `true` or `false` | `[true, false]` |
+| `DataTypeTime` | every value is a `time.Time` | a date column |
+| `DataTypeOther` | every value is one kind none of the above covers | `[]byte` blobs |
+| `DataTypeMixed` | values of more than one kind | `[1, "a", true]` |
+| `DataTypeEmpty` | no values, or only `nil` and `NaN` | `[nil, NaN]` |
+
+`String()` gives the name (`"number"`, `"mixed"`, ...). `ShowTypes` answers a different question: it prints the Go type of every cell (`int`, `float64`, `nil`), where `DataType` sums the column up in one word.
+
+**Example:**
+
+```go
+switch dl.DataType() {
+case insyra.DataTypeNumber:
+    dl.FillWithMean()
+case insyra.DataTypeString:
+    dl.FillWithMode()
+case insyra.DataTypeMixed:
+    fmt.Println("mixed column, clean it first")
+}
+```
+
 ### Len
 
 ```go
