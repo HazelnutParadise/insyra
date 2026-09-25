@@ -300,8 +300,9 @@ tape propagates whatever the rule returns. Without `Custom`, a tensor computed
 outside the tape is disconnected from it, and its inputs silently receive a
 zero gradient.
 
-`Custom` refuses an empty name, a nil rule, a nil or non-float32 tensor, and an
-output that is also one of its inputs, and records nothing when it refuses.
+`Custom` refuses an empty name, a nil rule, a nil or non-float32 tensor, an
+output that is also one of its inputs, and an output another operation on the
+tape already produced, and records nothing when it refuses.
 During `Backward`, a rule that returns an error, the wrong number of
 gradients, or a gradient of the wrong type or shape fails the pass with an
 error naming the operation.
