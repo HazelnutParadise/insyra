@@ -214,10 +214,12 @@ func TestTanhIsCorrectlyRoundedExhaustive(t *testing.T) {
 				if middleInput {
 					a := new(big.Float).SetPrec(64).SetFloat64(float64(magnitude))
 					reference := tanhOracleBig(a, 192)
-					referenceFloat, _ := reference.Float64()
-					relativeError := math.Abs(math.Abs(math.Tanh(float64(x)))-referenceFloat) / math.Ldexp(1, reference.MantExp(nil)-52)
-					if relativeError > localMaxError {
-						localMaxError = relativeError
+					t := new(big.Float).SetPrec(256).SetFloat64(math.Abs(math.Tanh(float64(x))))
+					diff := new(big.Float).SetPrec(256).Sub(t, reference)
+					ulp := math.Ldexp(1, reference.MantExp(nil)-53)
+					errorUlps, _ := new(big.Float).Quo(new(big.Float).Abs(diff), big.NewFloat(ulp)).Float64()
+					if errorUlps > localMaxError {
+						localMaxError = errorUlps
 					}
 				}
 			}
@@ -242,7 +244,7 @@ func TestTanhIsCorrectlyRoundedExhaustive(t *testing.T) {
 			fmt.Printf("  input=%#08x actual=%#08x expected=%#08x\n", example.input, example.actual, example.expected)
 		}
 	}
-	fmt.Printf("math.Tanh maximum middle error: %.17g float64 ulp\n", maxError)
+	fmt.Printf("math.Tanh maximum middle error: %.6g float64 ulp (against the exact value)\n", maxError)
 
 	totalMismatches := tiny.mismatches.Load() + large.mismatches.Load() + special.mismatches.Load() + middle.mismatches.Load()
 	if totalMismatches > 0 {
