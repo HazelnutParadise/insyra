@@ -6,4 +6,4 @@
 
 ## 2. 文件與紀錄
 - [x] 2.1 `Docs/DataList.md`、`Docs/DataTable.md`、`Docs/finance.md`、`Docs/nn.md`、`Docs/accel.md`、`Docs/plot.md`、`skills/insyra/SKILL.md`；兩份 CHANGELOG。
-- [ ] 2.2 全套驗證；`api-review.md`、`delivery-status.md`；歸檔、寫 Purpose；在 #213 回報這一批。
+- [x] 2.2 全套驗證；`api-review.md`、`delivery-status.md`；歸檔、寫 Purpose；在 #213 回報這一批。
