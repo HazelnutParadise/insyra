@@ -70,6 +70,12 @@ gradient. `tape.BackwardFrom(output, upstream)` starts the reverse pass from a
 non-scalar output with an explicit upstream gradient. A failed pass keeps the
 previous gradients.
 
+For a graph given as an edge list, build `graph, err := nn.NewEdgeTopology(nodes,
+sources, targets)` once and call `tape.EdgeSum(graph, weights, values)`: each
+node sums `weights[e]*values[source]` over its incoming edges, with `weights`
+float32 `[E]` and `values` float32 `[N]` or `[B, N]`, in O(E) instead of a dense
+`MatMul`. Compose the rest of a recurrent step (`Add`, `Tanh`) on the tape.
+
 The repository also has a verified convergence proof: a fixed-seed He-initialized
 `784 -> 128 -> 10` MLP trains shuffled 128-row MNIST minibatches with Adam at
 `1e-3`, reaching 95.84% test accuracy in two epochs on the local 60k/10k IDX
