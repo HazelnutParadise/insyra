@@ -139,8 +139,36 @@ func TestTanhVJPRoundsEveryStep(t *testing.T) {
 	}
 }
 
-// tanhNeedsHighPrecisionForTest duplicates the fast-path decision so this
-// test does not depend on the implementation's private control flow.
+// TestTanhFloat64SettlesAtMidpoints pins the integer midpoint test at the
+// float64 steps around one float32 midpoint, where the decision flips.
+func TestTanhFloat64SettlesAtMidpoints(t *testing.T) {
+	f := float32(0.75)
+	mid := (float64(f) + float64(math.Nextafter32(f, 1))) / 2
+	offsets := []int{0, 1, 1 << 13, (1 << 13) + 1, -(1 << 13), -((1 << 13) + 1)}
+
+	for _, k := range offsets {
+		bits := math.Float64bits(mid)
+		if k < 0 {
+			bits -= uint64(-k)
+		} else {
+			bits += uint64(k)
+		}
+		want := k > 1<<13 || k < -(1<<13)
+		if got := tanhFloat64Settles(math.Float64frombits(bits)); got != want {
+			t.Errorf("offset %d: bits %#016x, tanhFloat64Settles = %t, want %t", k, bits, got, want)
+		}
+	}
+
+	if got := tanhFloat64Settles(float64(f)); !got {
+		t.Errorf("tanhFloat64Settles(float64(0.75)) = %t, want true", got)
+	}
+	if got := tanhFloat64Settles(-mid); got {
+		t.Errorf("tanhFloat64Settles(-mid) = %t, want false", got)
+	}
+}
+
+// tanhNeedsHighPrecisionForTest reports whether tanhFloat32 sends x to its
+// high-precision path, by the same criterion tanhFloat32 applies.
 func tanhNeedsHighPrecisionForTest(x float32) bool {
 	if x != x || math.IsInf(float64(x), 0) {
 		return false
@@ -154,11 +182,5 @@ func tanhNeedsHighPrecisionForTest(x float32) bool {
 	}
 
 	t := math.Tanh(float64(x))
-	f := float32(t)
-	prev := math.Nextafter32(f, float32(math.Inf(-1)))
-	next := math.Nextafter32(f, float32(math.Inf(1)))
-	lo := (float64(f) + float64(prev)) / 2
-	hi := (float64(f) + float64(next)) / 2
-	margin := math.Abs(t) * 0x1p-40
-	return !(t-margin > lo && t+margin < hi)
+	return !tanhFloat64Settles(t)
 }

@@ -2,7 +2,7 @@
 
 ## Why
 
-M34 of #379. `ENG.md` defines a float32 result that may come from a device as the correctly rounded value of the exact operation, and M37 puts `tanh` on the device. `nn.Tanh` computes `float32(math.Tanh(float64(x)))`: `math.Tanh` has an error of a few float64 ulps, and rounding that to float32 is the correctly rounded `tanh(x)` except where the error carries the value across the midpoint between two float32 values. Those inputs also depend on the platform: Go compiles `math.Tanh` with fused multiply-adds on arm64 and not on amd64, and uses assembly on s390x.
+M34 of #379. `ENG.md` defines a float32 result that may come from a device as the correctly rounded value of the exact operation, and M37 puts `tanh` on the device. `nn.Tanh` computes `float32(math.Tanh(float64(x)))`: `math.Tanh` has an error of a few float64 ulps, and rounding that to float32 is the correctly rounded `tanh(x)` except where the error carries the value across the midpoint between two float32 values. Those inputs also depend on the platform: Go compiles `math.Tanh` with fused multiply-adds on arm64, and on amd64 only when built with `GOAMD64=v3` or above, and uses assembly on s390x.
 
 The gradient has a plain platform difference. `Tape.Tanh`'s reverse rule computes `upstream * (1 - y*y)`, which Go fuses on arm64 and not on amd64, so the same training step can produce different bits on the two.
 
