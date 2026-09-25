@@ -38,7 +38,7 @@ func TestACellThatKnowsItsOwnTextIsShownAsThatText(t *testing.T) {
 
 func TestExportingToJSONDoesNotDropAValueItCouldWrite(t *testing.T) {
 	dt := NewDataTable(NewDataList(printsItself{"10.50"}).SetName("price"))
-	got := dt.ToJSON_String(true)
+	got := dt.ToJSONString(true)
 	if strings.Contains(got, "{}") {
 		t.Errorf("the value was dropped: %s", got)
 	}
@@ -49,7 +49,7 @@ func TestExportingToJSONDoesNotDropAValueItCouldWrite(t *testing.T) {
 
 func TestAValueThatMarshalsItselfKeepsItsOwnForm(t *testing.T) {
 	dt := NewDataTable(NewDataList(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)).SetName("t"))
-	got := dt.ToJSON_String(true)
+	got := dt.ToJSONString(true)
 	if !strings.Contains(got, "2024-01-01T00:00:00Z") {
 		t.Errorf("time.Time lost its RFC 3339 form: %s", got)
 	}

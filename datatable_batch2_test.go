@@ -182,14 +182,14 @@ func TestToCSVTimeRoundTrip(t *testing.T) {
 	when := time.Date(2024, 1, 2, 3, 4, 5, 600, time.UTC)
 	dt := NewDataTable(NewDataList(when, when.Add(time.Hour)).SetName("t"))
 	p := filepath.Join(t.TempDir(), "t.csv")
-	if err := dt.ToCSV(p, false, true, false); err != nil {
+	if err := dt.ToCSV(p); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(p)
 	if !strings.Contains(string(raw), "2024-01-02T03:04:05") {
 		t.Fatalf("expected RFC3339 in file, got %q", raw)
 	}
-	back, err := ReadCSV_FileWithOptions(p, CSVReadOptions{FirstRowToColNames: true, RawStrings: true})
+	back, err := ReadCSVFile(p, CSVReadOptions{RawStrings: true})
 	if err != nil {
 		t.Fatal(err)
 	}

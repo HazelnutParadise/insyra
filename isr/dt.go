@@ -103,7 +103,7 @@ func (d dt) From(item any) *dt {
 		if val.FilePath == "" {
 			return failDT(&t, "DT.From", "Excel FilePath cannot be empty")
 		}
-		read, err := insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+		read, err := insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.HasRowNames, !val.InputOpts.NoHeaderRow)
 		if err != nil {
 			return failDT(&t, "DT.From", "%v", err)
 		}
@@ -111,18 +111,18 @@ func (d dt) From(item any) *dt {
 	case CSV:
 		var err error
 		opts := insyra.CSVReadOptions{
-			FirstColToRowNames: val.InputOpts.FirstCol2RowNames,
-			FirstRowToColNames: val.InputOpts.FirstRow2ColNames,
-			Encoding:           val.InputOpts.Encoding,
-			RawStrings:         val.InputOpts.RawStrings,
-			AllowRaggedRows:    val.InputOpts.AllowRaggedRows,
-			TrimLeadingSpace:   val.InputOpts.TrimLeadingSpace,
+			NoHeaderRow:      val.InputOpts.NoHeaderRow,
+			HasRowNames:      val.InputOpts.HasRowNames,
+			Encoding:         val.InputOpts.Encoding,
+			RawStrings:       val.InputOpts.RawStrings,
+			AllowRaggedRows:  val.InputOpts.AllowRaggedRows,
+			TrimLeadingSpace: val.InputOpts.TrimLeadingSpace,
 		}
 		var read *insyra.DataTable
 		if val.FilePath != "" {
-			read, err = insyra.ReadCSV_FileWithOptions(val.FilePath, opts)
+			read, err = insyra.ReadCSVFile(val.FilePath, opts)
 		} else {
-			read, err = insyra.ReadCSV_StringWithOptions(val.String, opts)
+			read, err = insyra.ReadCSVString(val.String, opts)
 		}
 		if err != nil {
 			return failDT(&t, "DT.From", "%v", err)
@@ -132,7 +132,7 @@ func (d dt) From(item any) *dt {
 		var err error
 		var read *insyra.DataTable
 		if val.FilePath != "" {
-			read, err = insyra.ReadJSON_File(val.FilePath)
+			read, err = insyra.ReadJSONFile(val.FilePath)
 		} else {
 			read, err = insyra.ReadJSON(val.Bytes)
 		}

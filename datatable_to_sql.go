@@ -20,8 +20,8 @@ const defaultBatchSize = 500
 
 type ToSQLOptions struct {
 	IfExists    SQLActionIfTableExists // SQLActionIfTableExistsFail (default), Replace, or Append
-	RowNames    bool
-	ColumnTypes map[string]string // 自訂型別
+	HasRowNames bool                   // write the row names as an extra column
+	ColumnTypes map[string]string      // 自訂型別
 
 	// Schema is an optional schema (PostgreSQL) or database (MySQL) name to
 	// prefix the table reference with. SQLite ignores this. The caller is
@@ -74,7 +74,7 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 		opts.BatchSize = defaultBatchSize
 	}
 
-	cols, rows := dt.collectRowsForSQL(opts.RowNames)
+	cols, rows := dt.collectRowsForSQL(opts.HasRowNames)
 	if len(rows) == 0 {
 		return fmt.Errorf("data is empty")
 	}
@@ -188,7 +188,7 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 			}
 			columnTypes[col] = inferSQLType(sample, dialect)
 		}
-		if opts.RowNames {
+		if opts.HasRowNames {
 			if _, ok := columnTypes["row_name"]; !ok {
 				columnTypes["row_name"] = textType(dialect)
 			}

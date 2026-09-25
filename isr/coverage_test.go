@@ -189,7 +189,7 @@ func TestDT_From_CSVFile(t *testing.T) {
 		t.Fatalf("writing the fixture: %v", err)
 	}
 
-	table := DT.From(CSV{FilePath: path, InputOpts: CSV_inOpts{FirstRow2ColNames: true}})
+	table := DT.From(CSV{FilePath: path, InputOpts: CSV_inOpts{}})
 	if table.Err() != nil {
 		t.Fatalf("reading the CSV: %v", table.Err())
 	}

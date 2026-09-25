@@ -96,29 +96,38 @@ func (dt *DataTable) WriteJSON(w io.Writer, useColNames bool) error {
 	return err
 }
 
-// ToJSON_Bytes converts the DataTable to JSON format and returns it as a byte slice.
-// The function accepts one parameter:
-// - useColName: if true, the column names will be used as keys in the JSON object, otherwise the column index(A, B, C...) will be used.
-// Every row will be a JSON object with the column names as keys and the row values as values.
-// The function returns the JSON data as a byte slice.
-func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte {
+// ToJSONBytes returns the DataTable as indented JSON: one object per row,
+// keyed by column name when useColNames is true and by the Excel-style column
+// index (A, B, C, ...) otherwise.
+func (dt *DataTable) ToJSONBytes(useColNames bool) []byte {
 	rows := dt.buildJSONRows(useColNames)
 
 	jsonData, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
-		dt.fail("ToJSON_Bytes", "%v", err)
+		dt.fail("ToJSONBytes", "%v", err)
 		return nil
 	}
 
 	return jsonData
 }
 
-// ToJSON_String converts the DataTable to JSON format and returns it as a string.
-// The function accepts one parameter:
-// - useColName: if true, the column names will be used as keys in the JSON object, otherwise the column index(A, B, C...) will be used.
-// Every row will be a JSON object with the column names as keys and the row values as values.
-// The function returns the JSON data as a string.
+// ToJSONString is ToJSONBytes as a string.
+func (dt *DataTable) ToJSONString(useColNames bool) string {
+	return string(dt.ToJSONBytes(useColNames))
+}
+
+// ToJSON_Bytes returns the DataTable as indented JSON.
+//
+// Deprecated: use ToJSONBytes, which is the same method. Removed in the
+// release after the one that deprecated it.
+func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte {
+	return dt.ToJSONBytes(useColNames)
+}
+
+// ToJSON_String returns the DataTable as indented JSON text.
+//
+// Deprecated: use ToJSONString, which is the same method. Removed in the
+// release after the one that deprecated it.
 func (dt *DataTable) ToJSON_String(useColNames bool) string {
-	jsonBytes := dt.ToJSON_Bytes(useColNames)
-	return string(jsonBytes)
+	return dt.ToJSONString(useColNames)
 }

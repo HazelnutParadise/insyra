@@ -36,10 +36,11 @@ const defaultExcelSheet = "Sheet1"
 type ExcelWriteOptions struct {
 	// Sheet is the sheet the table is written to. Empty means "Sheet1".
 	Sheet string
-	// SetColNamesToFirstRow writes the column names as the first row.
-	SetColNamesToFirstRow bool
-	// SetRowNamesToFirstCol writes the row names as the first column.
-	SetRowNamesToFirstCol bool
+	// NoHeaderRow leaves out the row of column names, which is written by
+	// default.
+	NoHeaderRow bool
+	// HasRowNames writes the row names as the first column.
+	HasRowNames bool
 	// IfSheetExists is what ToExcel does when the workbook already holds
 	// Sheet. WriteExcel always writes a new workbook and ignores it.
 	IfSheetExists SheetExistsPolicy
@@ -184,9 +185,9 @@ func (dt *DataTable) writeExcelRows(f *excelize.File, sheet string, opts ExcelWr
 	var rows [][]any
 	dt.AtomicDo(func(dt *DataTable) {
 		maxLength := dt.getMaxColLength()
-		if opts.SetColNamesToFirstRow {
+		if !opts.NoHeaderRow {
 			header := make([]any, 0, len(dt.columns)+1)
-			if opts.SetRowNamesToFirstCol {
+			if opts.HasRowNames {
 				header = append(header, nil)
 			}
 			for _, column := range dt.columns {
@@ -196,7 +197,7 @@ func (dt *DataTable) writeExcelRows(f *excelize.File, sheet string, opts ExcelWr
 		}
 		for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
 			record := make([]any, 0, len(dt.columns)+1)
-			if opts.SetRowNamesToFirstCol {
+			if opts.HasRowNames {
 				rowName, _ := dt.GetRowNameByIndex(rowIndex)
 				record = append(record, rowName)
 			}

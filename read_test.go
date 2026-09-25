@@ -214,8 +214,8 @@ func TestReadCSV_String(t *testing.T) {
 	dtt := isr.DT.From(isr.CSV{
 		String: csvData,
 		InputOpts: isr.CSV_inOpts{
-			FirstRow2ColNames: true,  // 第一行作為列名
-			FirstCol2RowNames: false, // 第一列作為行名
+			NoHeaderRow: false, // 第一行作為列名
+			HasRowNames: false, // 第一列作為行名
 		},
 	})
 	if dtt == nil {
@@ -280,9 +280,8 @@ func TestReadJSON(t *testing.T) {
 // and empty cells stay "" instead of becoming NaN.
 func TestReadCSV_StringWithOptions_RawStrings(t *testing.T) {
 	csvData := "股票代號,集保庫存,成交均價\n2330,1000,600.855\n0050,\"2,000\",100.14\n00878,1500,\n"
-	dt, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{
-		FirstRowToColNames: true,
-		RawStrings:         true,
+	dt, err := insyra.ReadCSVString(csvData, insyra.CSVReadOptions{
+		RawStrings: true,
 	})
 	if err != nil {
 		t.Fatalf("ReadCSV_StringWithOptions: %v", err)
@@ -314,11 +313,11 @@ func TestReadCSV_StringWithOptions_RawStrings(t *testing.T) {
 // column type inference.
 func TestReadCSV_WithOptions_ZeroValueMatchesLegacy(t *testing.T) {
 	csvData := "id,val,note\n0050,600.855,a\n2330,100.14,b\n"
-	legacy, err := insyra.ReadCSV_String(csvData, false, true)
+	legacy, err := insyra.ReadCSVString(csvData)
 	if err != nil {
 		t.Fatalf("ReadCSV_String: %v", err)
 	}
-	withOpts, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{FirstRowToColNames: true})
+	withOpts, err := insyra.ReadCSVString(csvData, insyra.CSVReadOptions{})
 	if err != nil {
 		t.Fatalf("ReadCSV_StringWithOptions: %v", err)
 	}
@@ -340,15 +339,18 @@ func TestReadCSV_WithOptions_ZeroValueMatchesLegacy(t *testing.T) {
 	}
 }
 
-func TestReadCSV_StringWithOptions_LiteralZeroValueMatchesLegacyDefaults(t *testing.T) {
+// The zero value of CSVReadOptions reads a header row since #213 was ruled on
+// 2026-09-25, so the deprecated ReadCSV_String(s, false, false), which reads
+// none, must equal NoHeaderRow: true.
+func TestReadCSV_StringLegacyNoHeaderMatchesNoHeaderRow(t *testing.T) {
 	csvData := "1,2\n3,4\n"
 	legacy, err := insyra.ReadCSV_String(csvData, false, false)
 	if err != nil {
 		t.Fatalf("ReadCSV_String: %v", err)
 	}
-	withOpts, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{})
+	withOpts, err := insyra.ReadCSVString(csvData, insyra.CSVReadOptions{NoHeaderRow: true})
 	if err != nil {
-		t.Fatalf("ReadCSV_StringWithOptions: %v", err)
+		t.Fatalf("ReadCSVString: %v", err)
 	}
 	if got, want := withOpts.ColNames(), legacy.ColNames(); len(got) != len(want) {
 		t.Fatalf("column count mismatch: options=%v legacy=%v", got, want)
@@ -377,9 +379,8 @@ func TestReadCSV_FileWithOptions_RawStrings(t *testing.T) {
 	if err := os.WriteFile(path, []byte("id,qty\n0050,1000\n00878,\n"), 0o644); err != nil {
 		t.Fatalf("write temp csv: %v", err)
 	}
-	dt, err := insyra.ReadCSV_FileWithOptions(path, insyra.CSVReadOptions{
-		FirstRowToColNames: true,
-		RawStrings:         true,
+	dt, err := insyra.ReadCSVFile(path, insyra.CSVReadOptions{
+		RawStrings: true,
 	})
 	if err != nil {
 		t.Fatalf("ReadCSV_FileWithOptions: %v", err)
@@ -397,8 +398,7 @@ func TestReadCSV_ISR_RawStrings(t *testing.T) {
 	dtt := isr.DT.From(isr.CSV{
 		String: "id,price\n0050,100.14\n",
 		InputOpts: isr.CSV_inOpts{
-			FirstRow2ColNames: true,
-			RawStrings:        true,
+			RawStrings: true,
 		},
 	})
 	if got := dtt.GetColByName("id").Data()[0]; got != "0050" {
@@ -478,11 +478,10 @@ func TestReadCSV_StringWithOptions_RaggedRows(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dt, err := insyra.ReadCSV_StringWithOptions(tc.csv, insyra.CSVReadOptions{
-				FirstColToRowNames: tc.rownames,
-				FirstRowToColNames: true,
-				RawStrings:         true,
-				AllowRaggedRows:    true,
+			dt, err := insyra.ReadCSVString(tc.csv, insyra.CSVReadOptions{
+				HasRowNames:     tc.rownames,
+				RawStrings:      true,
+				AllowRaggedRows: true,
 			})
 			if err != nil {
 				t.Fatalf("ReadCSV_StringWithOptions: %v", err)
@@ -501,12 +500,11 @@ func TestReadCSV_StringWithOptions_RaggedRows(t *testing.T) {
 
 func TestReadCSV_StringWithOptions_TrimLeadingSpace(t *testing.T) {
 	csvData := "id,name,amount\n2330, \"1,000\",600.86\n"
-	if _, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{}); err == nil {
+	if _, err := insyra.ReadCSVString(csvData, insyra.CSVReadOptions{}); err == nil {
 		t.Fatal("expected zero-value options to reject a space before a quote")
 	}
-	dt, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{
-		FirstRowToColNames: true,
-		TrimLeadingSpace:   true,
+	dt, err := insyra.ReadCSVString(csvData, insyra.CSVReadOptions{
+		TrimLeadingSpace: true,
 	})
 	if err != nil {
 		t.Fatalf("TrimLeadingSpace should parse quoted field: %v", err)
@@ -522,7 +520,7 @@ func TestReadCSV_StringWithOptions_ZeroValueRejectsRaggedRows(t *testing.T) {
 		"id,value\n1,2,\n",
 		"id,value\n1,2,extra\n",
 	} {
-		if _, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{}); err == nil {
+		if _, err := insyra.ReadCSVString(csvData, insyra.CSVReadOptions{}); err == nil {
 			t.Errorf("expected zero-value options to reject %q", csvData)
 		}
 	}
@@ -534,12 +532,11 @@ func TestReadCSV_FileAndStringWithOptions_RaggedRowsMatch(t *testing.T) {
 	// them as blank lines) exactly like the string path.
 	csvData := "id,name\n1, \"Alice\"\n\"\"\ntrailer\n   \n2,Bob,extra\n"
 	opts := insyra.CSVReadOptions{
-		FirstRowToColNames: true,
-		RawStrings:         true,
-		AllowRaggedRows:    true,
-		TrimLeadingSpace:   true,
+		RawStrings:       true,
+		AllowRaggedRows:  true,
+		TrimLeadingSpace: true,
 	}
-	fromString, err := insyra.ReadCSV_StringWithOptions(csvData, opts)
+	fromString, err := insyra.ReadCSVString(csvData, opts)
 	if err != nil {
 		t.Fatalf("ReadCSV_StringWithOptions: %v", err)
 	}
@@ -547,7 +544,7 @@ func TestReadCSV_FileAndStringWithOptions_RaggedRowsMatch(t *testing.T) {
 	if err := os.WriteFile(path, []byte(csvData), 0o644); err != nil {
 		t.Fatalf("write temp csv: %v", err)
 	}
-	fromFile, err := insyra.ReadCSV_FileWithOptions(path, opts)
+	fromFile, err := insyra.ReadCSVFile(path, opts)
 	if err != nil {
 		t.Fatalf("ReadCSV_FileWithOptions: %v", err)
 	}
@@ -585,11 +582,10 @@ func TestReadCSV_FileAndStringWithOptions_RaggedRowsMatch(t *testing.T) {
 func TestReadCSV_StringWithOptions_RaggedExtraColNameStableAcrossRowNames(t *testing.T) {
 	csvData := "label,value\nr1,10\nr2,20,extra\n"
 	for _, rownames := range []bool{false, true} {
-		dt, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{
-			FirstColToRowNames: rownames,
-			FirstRowToColNames: true,
-			RawStrings:         true,
-			AllowRaggedRows:    true,
+		dt, err := insyra.ReadCSVString(csvData, insyra.CSVReadOptions{
+			HasRowNames:     rownames,
+			RawStrings:      true,
+			AllowRaggedRows: true,
 		})
 		if err != nil {
 			t.Fatalf("rownames=%v: %v", rownames, err)
@@ -608,9 +604,8 @@ func TestReadCSV_StringWithOptions_RaggedExtraColNameStableAcrossRowNames(t *tes
 // becomes float64 with NaN once a short row pads it. Use RawStrings to keep
 // cells verbatim instead.
 func TestReadCSV_StringWithOptions_RaggedPaddingAffectsInference(t *testing.T) {
-	dt, err := insyra.ReadCSV_StringWithOptions("id,qty\n1,10\n2\n", insyra.CSVReadOptions{
-		FirstRowToColNames: true,
-		AllowRaggedRows:    true,
+	dt, err := insyra.ReadCSVString("id,qty\n1,10\n2\n", insyra.CSVReadOptions{
+		AllowRaggedRows: true,
 	})
 	if err != nil {
 		t.Fatalf("ReadCSV_StringWithOptions: %v", err)
@@ -636,8 +631,8 @@ func TestSlice2DToDataTableMatchesReadSlice2D(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ToJSON_String(true) != want.ToJSON_String(true) {
-		t.Fatalf("Slice2DToDataTable gave %s, ReadSlice2D gave %s", got.ToJSON_String(true), want.ToJSON_String(true))
+	if got.ToJSONString(true) != want.ToJSONString(true) {
+		t.Fatalf("Slice2DToDataTable gave %s, ReadSlice2D gave %s", got.ToJSONString(true), want.ToJSONString(true))
 	}
 	if _, err := insyra.Slice2DToDataTable(nil); err == nil {
 		t.Fatal("Slice2DToDataTable(nil) succeeded")

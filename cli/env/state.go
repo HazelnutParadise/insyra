@@ -159,7 +159,7 @@ func decodeEnvValue(v any) any {
 
 // serializedTable is the on-disk shape of a DataTable variable: columns in
 // order with their names, plus row names when any are set. Older state
-// files hold the table as a JSON string (ToJSON_String) and are still read.
+// files hold the table as a JSON string (ToJSONString) and are still read.
 type serializedTable struct {
 	Columns  []serializedColumn `json:"columns"`
 	RowNames []string           `json:"rowNames,omitempty"`

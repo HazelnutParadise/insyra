@@ -175,7 +175,7 @@ func TestToSQL_RowNamesPersistsRowNameColumn(t *testing.T) {
 	dt.SetRowNameByIndex(0, "alpha")
 	dt.SetRowNameByIndex(1, "beta")
 
-	require.NoError(t, dt.ToSQL(db, "with_rn", ToSQLOptions{RowNames: true}))
+	require.NoError(t, dt.ToSQL(db, "with_rn", ToSQLOptions{HasRowNames: true}))
 
 	type row struct {
 		Name  string

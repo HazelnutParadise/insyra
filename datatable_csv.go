@@ -2,32 +2,45 @@ package insyra
 
 import (
 	"encoding/csv"
+	"errors"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"io"
 	"strings"
 	"time"
 )
 
-// ToCSV converts the DataTable to CSV format and writes it to the provided file path.
-// The function accepts two parameters:
-// - filePath: the file path to write the CSV file to
-// - setRowNamesToFirstCol: if true, the first column will be used as row names
-// - setColNamesToFirstRow: if true, the first row will be used as column names
-func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error {
-	return dt.ToCSVWithOptions(filePath, CSVWriteOptions{
-		SetRowNamesToFirstCol: setRowNamesToFirstCol,
-		SetColNamesToFirstRow: setColNamesToFirstRow,
-		IncludeBOM:            includeBOM,
+// ToCSV writes the DataTable to a CSV file. With no options it writes the
+// column names as the first row and no row names; see CSVWriteOptions. The
+// data goes to a temporary file that is renamed into place, so a failure
+// never leaves a truncated file behind.
+func (dt *DataTable) ToCSV(filePath string, opts ...CSVWriteOptions) error {
+	o, err := oneCSVWriteOptions(opts)
+	if err != nil {
+		return err
+	}
+	return writeFileAtomically(filePath, func(w io.Writer) error {
+		return dt.WriteCSV(w, o)
 	})
 }
 
-// CSVWriteOptions controls how ToCSVWithOptions writes a table. The zero value
-// writes the data as-is, exactly like ToCSV(path, false, false, false).
+func oneCSVWriteOptions(opts []CSVWriteOptions) (CSVWriteOptions, error) {
+	if msg := extraOptional("CSVWriteOptions", len(opts)); msg != "" {
+		return CSVWriteOptions{}, errors.New(msg)
+	}
+	if len(opts) == 1 {
+		return opts[0], nil
+	}
+	return CSVWriteOptions{}, nil
+}
+
+// CSVWriteOptions controls how ToCSV and WriteCSV write a table. The zero
+// value writes the common file: the column names as the first row, no row
+// names, no byte-order mark, every value as it is.
 type CSVWriteOptions struct {
-	// SetRowNamesToFirstCol writes the row names as the first column.
-	SetRowNamesToFirstCol bool
-	// SetColNamesToFirstRow writes the column names as the first row.
-	SetColNamesToFirstRow bool
+	// NoHeaderRow leaves out the row of column names.
+	NoHeaderRow bool
+	// HasRowNames writes the row names as the first column.
+	HasRowNames bool
 	// IncludeBOM writes a UTF-8 byte-order mark, which some spreadsheet
 	// programs need to read the file as UTF-8.
 	IncludeBOM bool
@@ -44,13 +57,12 @@ type CSVWriteOptions struct {
 	SanitizeFormulas bool
 }
 
-// ToCSVWithOptions writes the DataTable as CSV using opts. See ToCSV for the
-// file-level guarantees: the data goes to a temporary file that is renamed
-// into place, so a failure never leaves a truncated file behind.
+// ToCSVWithOptions writes the DataTable as CSV using opts.
+//
+// Deprecated: use ToCSV(filePath, opts), which is the same call. Removed in
+// the release after the one that deprecated it.
 func (dt *DataTable) ToCSVWithOptions(filePath string, opts CSVWriteOptions) error {
-	return writeFileAtomically(filePath, func(w io.Writer) error {
-		return dt.WriteCSV(w, opts)
-	})
+	return dt.ToCSV(filePath, opts)
 }
 
 // sanitizeCSVFormula prefixes a value a spreadsheet would execute with a
@@ -69,12 +81,16 @@ func sanitizeCSVFormula(s string) string {
 }
 
 // WriteCSV writes the table as CSV to any destination — an HTTP response, a
-// zip entry, a buffer — the same way ToCSVWithOptions writes a file. Every
+// zip entry, a buffer — the same way ToCSV writes a file. Every
 // write error, including the one csv.Writer only reports at Flush, is
 // returned.
-func (dt *DataTable) WriteCSV(w io.Writer, opts CSVWriteOptions) error {
-	setRowNamesToFirstCol := opts.SetRowNamesToFirstCol
-	setColNamesToFirstRow := opts.SetColNamesToFirstRow
+func (dt *DataTable) WriteCSV(w io.Writer, options ...CSVWriteOptions) error {
+	opts, err := oneCSVWriteOptions(options)
+	if err != nil {
+		return err
+	}
+	setRowNamesToFirstCol := opts.HasRowNames
+	setColNamesToFirstRow := !opts.NoHeaderRow
 	// 寫入 UTF-8 BOM
 	if opts.IncludeBOM {
 		if _, err := w.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {

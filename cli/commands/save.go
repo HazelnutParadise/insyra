@@ -65,7 +65,7 @@ func runSaveCommand(ctx *ExecContext, args []string) error {
 	}
 	switch kind {
 	case "csv":
-		err = table.ToCSV(path, opts.RowNames, opts.Headers, opts.BOM)
+		err = table.ToCSV(path, insyra.CSVWriteOptions{NoHeaderRow: !opts.Headers, HasRowNames: opts.RowNames, IncludeBOM: opts.BOM})
 	case "json":
 		if opts.RowNamesSet || opts.BOMSet {
 			return fmt.Errorf("save json: only 'headers' is supported (controls whether values use column names as keys)")
@@ -99,10 +99,10 @@ func saveExcel(table *insyra.DataTable, path string, opts fileSaveOptions) error
 		return fmt.Errorf("save excel: 'bom' only applies to CSV files")
 	}
 	err := table.ToExcel(path, insyra.ExcelWriteOptions{
-		Sheet:                 opts.Sheet,
-		SetColNamesToFirstRow: opts.Headers,
-		SetRowNamesToFirstCol: opts.RowNames,
-		IfSheetExists:         opts.IfExists,
+		Sheet:         opts.Sheet,
+		NoHeaderRow:   !opts.Headers,
+		HasRowNames:   opts.RowNames,
+		IfSheetExists: opts.IfExists,
 	})
 	if errors.Is(err, insyra.ErrSheetExists) {
 		if !opts.SheetSet {

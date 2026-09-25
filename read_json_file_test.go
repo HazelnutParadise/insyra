@@ -14,7 +14,7 @@ func TestReadJSONFileKeepsLargeInt(t *testing.T) {
 	if err := os.WriteFile(p, []byte(`[{"id": 9007199254740993, "v": 1.5}]`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	dt, err := insyra.ReadJSON_File(p)
+	dt, err := insyra.ReadJSONFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestReadJSONFileMatchesReadJSON(t *testing.T) {
 	if err := os.WriteFile(p, body, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	fromFile, err := insyra.ReadJSON_File(p)
+	fromFile, err := insyra.ReadJSONFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestReadJSONFileSingleObject(t *testing.T) {
 	if err := os.WriteFile(p, []byte(`{"a": 1}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	dt, err := insyra.ReadJSON_File(p)
+	dt, err := insyra.ReadJSONFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}

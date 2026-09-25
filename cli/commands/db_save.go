@@ -88,12 +88,12 @@ func parseSaveSQLOptions(args []string) (insyra.ToSQLOptions, error) {
 			// the flag is consistent with `save <var> <file> rownames ...`.
 			if i+1 < len(args) {
 				if b, err := parseFlexBool(args[i+1]); err == nil {
-					opts.RowNames = b
+					opts.HasRowNames = b
 					i += 2
 					continue
 				}
 			}
-			opts.RowNames = true
+			opts.HasRowNames = true
 			i++
 		default:
 			return opts, fmt.Errorf("save sql: unknown option %q", args[i])

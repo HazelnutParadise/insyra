@@ -82,19 +82,19 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 			if opts.SheetSet {
 				return fmt.Errorf("load csv: 'sheet' is not valid for CSV files")
 			}
-			table, err = insyra.ReadCSV_FileWithOptions(path, insyra.CSVReadOptions{
-				FirstColToRowNames: opts.RowNames,
-				FirstRowToColNames: opts.Headers,
-				Encoding:           opts.Encoding,
-				RawStrings:         !opts.Infer,
-				AllowRaggedRows:    opts.Ragged,
-				TrimLeadingSpace:   opts.TrimSpace,
+			table, err = insyra.ReadCSVFile(path, insyra.CSVReadOptions{
+				NoHeaderRow:      !opts.Headers,
+				HasRowNames:      opts.RowNames,
+				Encoding:         opts.Encoding,
+				RawStrings:       !opts.Infer,
+				AllowRaggedRows:  opts.Ragged,
+				TrimLeadingSpace: opts.TrimSpace,
 			})
 		case "json":
 			if opts.HeadersSet || opts.RowNamesSet || opts.SheetSet || opts.Encoding != "" || opts.InferSet || opts.RaggedSet || opts.TrimSpaceSet {
 				return fmt.Errorf("load json: headers/rownames/sheet/encoding/infer/ragged/trimspace options are not supported for JSON")
 			}
-			table, err = insyra.ReadJSON_File(path)
+			table, err = insyra.ReadJSONFile(path)
 		case "excel":
 			if opts.Encoding != "" {
 				return fmt.Errorf("load excel: 'encoding' is not valid for Excel files")

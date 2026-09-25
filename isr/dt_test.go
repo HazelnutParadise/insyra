@@ -43,9 +43,8 @@ func TestDT_FromCSV_ToleranceOptions(t *testing.T) {
 	dt := DT.From(CSV{
 		String: "id,name\n1, \"Alice\"\ntrailer\n",
 		InputOpts: CSV_inOpts{
-			FirstRow2ColNames: true,
-			AllowRaggedRows:   true,
-			TrimLeadingSpace:  true,
+			AllowRaggedRows:  true,
+			TrimLeadingSpace: true,
 		},
 	})
 

@@ -50,7 +50,7 @@ func TestNumberTextInCSVRoundTrips(t *testing.T) {
 	values := []any{1500000.0, 0.00001, 12345.678, 1e-7, 1e21, -2500000.0}
 	dt := NewDataTable(NewDataList(values...).SetName("v"))
 	path := filepath.Join(t.TempDir(), "n.csv")
-	if err := dt.ToCSV(path, false, true, false); err != nil {
+	if err := dt.ToCSV(path); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(path)
@@ -62,7 +62,7 @@ func TestNumberTextInCSVRoundTrips(t *testing.T) {
 		t.Errorf("CSV =\n%s\nwant\n%s", raw, want)
 	}
 
-	back, err := ReadCSV_File(path, false, true)
+	back, err := ReadCSVFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}

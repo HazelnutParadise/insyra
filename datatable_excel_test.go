@@ -67,7 +67,7 @@ func sheetList(t *testing.T, path string) []string {
 
 func TestToExcelCreatesAWorkbook(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "new.xlsx")
-	if err := excelTestTable(1, 2).ToExcel(path, ExcelWriteOptions{SetColNamesToFirstRow: true}); err != nil {
+	if err := excelTestTable(1, 2).ToExcel(path, ExcelWriteOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if got := sheetList(t, path); !reflect.DeepEqual(got, []string{"Sheet1"}) {
@@ -117,7 +117,7 @@ func TestToExcelRefusesAnExistingSheetByDefault(t *testing.T) {
 func TestToExcelReplacesASheetInPlace(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "book.xlsx")
 	workbookWith(t, path, "2023", "2024", "2025")
-	err := excelTestTable(9).ToExcel(path, ExcelWriteOptions{Sheet: "2024", IfSheetExists: SheetExistsReplace})
+	err := excelTestTable(9).ToExcel(path, ExcelWriteOptions{Sheet: "2024", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestToExcelReplacesASheetInPlace(t *testing.T) {
 func TestToExcelReplacesTheOnlySheet(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "book.xlsx")
 	workbookWith(t, path, "only")
-	err := excelTestTable(3).ToExcel(path, ExcelWriteOptions{Sheet: "only", IfSheetExists: SheetExistsReplace})
+	err := excelTestTable(3).ToExcel(path, ExcelWriteOptions{Sheet: "only", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestToExcelReplacesTheOnlySheet(t *testing.T) {
 
 func TestWriteExcelWritesAWorkbook(t *testing.T) {
 	var buf bytes.Buffer
-	if err := excelTestTable(4, 5).WriteExcel(&buf, ExcelWriteOptions{Sheet: "data", SetColNamesToFirstRow: true}); err != nil {
+	if err := excelTestTable(4, 5).WriteExcel(&buf, ExcelWriteOptions{Sheet: "data"}); err != nil {
 		t.Fatal(err)
 	}
 	dt, err := ReadExcel(bytes.NewReader(buf.Bytes()), "data", false, true)
@@ -191,7 +191,7 @@ func TestToExcelReplaceKeepsFormulasOnOtherSheetsWorking(t *testing.T) {
 	}
 	_ = f.Close()
 
-	err = excelTestTable(10, 20, 30).ToExcel(path, ExcelWriteOptions{Sheet: "data", IfSheetExists: SheetExistsReplace})
+	err = excelTestTable(10, 20, 30).ToExcel(path, ExcelWriteOptions{Sheet: "data", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestToExcelWritesRowNamesBesideAHeader(t *testing.T) {
 		NewDataList("x").SetName("b"),
 	)
 	dt.SetRowNameByIndex(0, "r1")
-	err := dt.ToExcel(path, ExcelWriteOptions{SetColNamesToFirstRow: true, SetRowNamesToFirstCol: true})
+	err := dt.ToExcel(path, ExcelWriteOptions{HasRowNames: true})
 	if err != nil {
 		t.Fatal(err)
 	}

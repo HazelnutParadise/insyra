@@ -94,13 +94,18 @@ func ReadSlice2D(data any) (*DataTable, error) {
 
 // ----- csv -----
 
-// CSVReadOptions configures ReadCSV_FileWithOptions and ReadCSV_StringWithOptions.
-// The zero value reproduces the default behavior of ReadCSV_File/ReadCSV_String:
-// no row/column names taken from the data, auto-detected encoding, strict row
-// widths, no leading-space trimming, and column-level type inference enabled.
+// CSVReadOptions configures ReadCSVFile, ReadCSVString, ReadCSV and StreamCSV.
+// The zero value reads the common file: the first row names the columns, no
+// column holds row names, the encoding is detected, rows must all be the same
+// width, and each column's type is inferred.
 type CSVReadOptions struct {
-	FirstColToRowNames bool
-	FirstRowToColNames bool
+	// NoHeaderRow says the file has no header row: the first row is data and
+	// the columns are named A, B, C, ... Left false, the first row names the
+	// columns.
+	NoHeaderRow bool
+	// HasRowNames says the file's first column holds row names, which become
+	// the table's row names instead of a data column.
+	HasRowNames bool
 	// Encoding names the input's encoding; "" or "auto" detects it from the
 	// first bytes. A string is UTF-8 already, so the string readers ignore it.
 	Encoding string
@@ -119,12 +124,66 @@ type CSVReadOptions struct {
 	TrimLeadingSpace bool
 }
 
-// ReadCSV_File loads a CSV file into a DataTable, with options to set the first column as row names
-// and the first row as column names.
+// ReadCSVFile loads a CSV file into a DataTable. With no options the first
+// row names the columns and the encoding is detected; see CSVReadOptions.
+func ReadCSVFile(filePath string, opts ...CSVReadOptions) (*DataTable, error) {
+	o, err := oneCSVReadOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+	return readCSVFrom(file, o, filePath)
+}
+
+// ReadCSV reads CSV from any source — an open file, an HTTP response body, a
+// zip entry, bytes in memory — into a DataTable, the same way ReadCSVFile
+// reads a file. When the encoding is "" or "auto", it is detected from the
+// first bytes of r.
+func ReadCSV(r io.Reader, opts ...CSVReadOptions) (*DataTable, error) {
+	o, err := oneCSVReadOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	return readCSVFrom(r, o, "the CSV input")
+}
+
+// ReadCSVString loads CSV text into a DataTable. The encoding is ignored: a
+// Go string is UTF-8 already.
+func ReadCSVString(csvString string, opts ...CSVReadOptions) (*DataTable, error) {
+	o, err := oneCSVReadOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	// A Go string is UTF-8 already, so there is nothing to detect; an empty
+	// string is an empty table rather than an undetectable encoding.
+	o.Encoding = "utf-8"
+	return readCSVFrom(strings.NewReader(csvString), o, "the CSV string")
+}
+
+func oneCSVReadOptions(opts []CSVReadOptions) (CSVReadOptions, error) {
+	if msg := extraOptional("CSVReadOptions", len(opts)); msg != "" {
+		return CSVReadOptions{}, errors.New(msg)
+	}
+	if len(opts) == 1 {
+		return opts[0], nil
+	}
+	return CSVReadOptions{}, nil
+}
+
+// ReadCSV_File loads a CSV file; setFirstColToRowNames and
+// setFirstRowToColNames keep their old meaning.
+//
+// Deprecated: use ReadCSVFile, whose default already reads the header row:
+// ReadCSV_File(path, false, true) is ReadCSVFile(path). Removed in the
+// release after the one that deprecated it.
 func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool, encoding ...string) (*DataTable, error) {
 	opts := CSVReadOptions{
-		FirstColToRowNames: setFirstColToRowNames,
-		FirstRowToColNames: setFirstRowToColNames,
+		HasRowNames: setFirstColToRowNames,
+		NoHeaderRow: !setFirstRowToColNames,
 	}
 	if msg := extraOptional("encoding", len(encoding)); msg != "" {
 		return nil, errors.New(msg)
@@ -132,46 +191,41 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 	if len(encoding) > 0 {
 		opts.Encoding = encoding[0]
 	}
-	return ReadCSV_FileWithOptions(filePath, opts)
+	return ReadCSVFile(filePath, opts)
 }
 
 // ReadCSV_FileWithOptions loads a CSV file into a DataTable according to opts.
+//
+// Deprecated: use ReadCSVFile(filePath, opts), which is the same call.
+// Removed in the release after the one that deprecated it.
 func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = file.Close() }()
-	return readCSVFrom(file, opts, filePath)
-}
-
-// ReadCSV reads CSV from any source — an open file, an HTTP response body, a
-// zip entry, bytes in memory — into a DataTable, the same way
-// ReadCSV_FileWithOptions reads a file. When opts.Encoding is "" or "auto",
-// the encoding is detected from the first bytes of r.
-func ReadCSV(r io.Reader, opts CSVReadOptions) (*DataTable, error) {
-	return readCSVFrom(r, opts, "the CSV input")
+	return ReadCSVFile(filePath, opts)
 }
 
 // StreamCSV reads CSV from r a batch at a time. Range over it:
 //
-//	for dt, err := range insyra.StreamCSV(r, opts, 1000) {
+//	for dt, err := range insyra.StreamCSV(r, 1000, opts) {
 //		if err != nil {
 //			return err
 //		}
 //		// dt holds up to 1000 data rows
 //	}
 //
-// Each table holds at most batchSize data rows. With opts.FirstRowToColNames
-// the header row names the columns of every batch, not only the first.
+// Each table holds at most batchSize data rows. Unless opts.NoHeaderRow is
+// set, the header row names the columns of every batch, not only the first.
 // Column types are inferred batch by batch, as pandas does for
 // read_csv(chunksize=…), so a column can be numbers in one batch and strings
 // in another; opts.RawStrings keeps every batch as strings. Only the rows of
 // the current batch are held in memory, and leaving the loop early stops
 // reading r. A failure arrives once, as a nil table and the error, and ends
 // the loop.
-func StreamCSV(r io.Reader, opts CSVReadOptions, batchSize int) iter.Seq2[*DataTable, error] {
+func StreamCSV(r io.Reader, batchSize int, options ...CSVReadOptions) iter.Seq2[*DataTable, error] {
 	return func(yield func(*DataTable, error) bool) {
+		opts, err := oneCSVReadOptions(options)
+		if err != nil {
+			yield(nil, err)
+			return
+		}
 		if batchSize <= 0 {
 			yield(nil, fmt.Errorf("StreamCSV: batchSize must be positive, got %d", batchSize))
 			return
@@ -210,7 +264,7 @@ func StreamCSV(r io.Reader, opts CSVReadOptions, batchSize int) iter.Seq2[*DataT
 				if len(record) > 0 {
 					record[0] = strings.TrimPrefix(record[0], "\uFEFF")
 				}
-				if opts.FirstRowToColNames {
+				if !opts.NoHeaderRow {
 					header = record
 					continue
 				}
@@ -285,9 +339,9 @@ func csvRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 
 	// 處理第一行是否為欄名
 	startRow := 0
-	if opts.FirstRowToColNames {
+	if !opts.NoHeaderRow {
 		for i, colName := range rows[0] {
-			if opts.FirstColToRowNames && i == 0 {
+			if opts.HasRowNames && i == 0 {
 				// 第一欄是行名，不作為列名處理
 				continue
 			}
@@ -298,7 +352,7 @@ func csvRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 	} else {
 		// 如果沒有指定第一行作為列名，則動態生成列名
 		for i := range rows[0] {
-			if opts.FirstColToRowNames && i == 0 {
+			if opts.HasRowNames && i == 0 {
 				continue
 			}
 			column := &DataList{}
@@ -308,7 +362,7 @@ func csvRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 
 	// 處理資料行和是否將第一欄作為行名
 	for rowIndex, row := range rows[startRow:] {
-		if opts.FirstColToRowNames {
+		if opts.HasRowNames {
 			rowName := row[0]
 			_, _ = dt.rowNames.Set(rowIndex, safeRowName(dt, rowName))
 			row = row[1:] // 移除第一欄作為行名
@@ -349,9 +403,9 @@ func csvRaggedRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 	}
 
 	startRow := 0
-	if opts.FirstRowToColNames {
+	if !opts.NoHeaderRow {
 		for i, colName := range rows[0] {
-			if opts.FirstColToRowNames && i == 0 {
+			if opts.HasRowNames && i == 0 {
 				continue
 			}
 			dt.columns = append(dt.columns, &DataList{name: safeColName(dt, colName)})
@@ -359,7 +413,7 @@ func csvRaggedRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 		startRow = 1
 	} else {
 		for i := range rows[0] {
-			if opts.FirstColToRowNames && i == 0 {
+			if opts.HasRowNames && i == 0 {
 				continue
 			}
 			dt.columns = append(dt.columns, &DataList{})
@@ -369,7 +423,7 @@ func csvRaggedRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 	dataRows := rows[startRow:]
 	for rowIndex, row := range dataRows {
 		cells := row
-		if opts.FirstColToRowNames {
+		if opts.HasRowNames {
 			rowName := ""
 			if len(row) > 0 {
 				rowName = row[0]
@@ -383,10 +437,10 @@ func csvRaggedRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 		if len(cells) > len(dt.columns) {
 			for len(dt.columns) < len(cells) {
 				// Number extra columns by their ordinal in the file, so the
-				// name does not shift when FirstColToRowNames consumes the
+				// name does not shift when HasRowNames consumes the
 				// first field.
 				columnNumber := len(dt.columns) + 1
-				if opts.FirstColToRowNames {
+				if opts.HasRowNames {
 					columnNumber++
 				}
 				name := safeColName(dt, fmt.Sprintf("extra_%d", columnNumber))
@@ -469,20 +523,25 @@ func inferCSVColumnTypes(dt *DataTable) {
 	}
 }
 
+// ReadCSV_String loads CSV text; setFirstColToRowNames and
+// setFirstRowToColNames keep their old meaning.
+//
+// Deprecated: use ReadCSVString, whose default already reads the header row:
+// ReadCSV_String(s, false, true) is ReadCSVString(s). Removed in the release
+// after the one that deprecated it.
 func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
-	return ReadCSV_StringWithOptions(csvString, CSVReadOptions{
-		FirstColToRowNames: setFirstColToRowNames,
-		FirstRowToColNames: setFirstRowToColNames,
+	return ReadCSVString(csvString, CSVReadOptions{
+		HasRowNames: setFirstColToRowNames,
+		NoHeaderRow: !setFirstRowToColNames,
 	})
 }
 
-// ReadCSV_StringWithOptions loads a CSV string into a DataTable according to opts.
-// opts.Encoding is ignored: the input is already a Go string.
+// ReadCSV_StringWithOptions loads CSV text according to opts.
+//
+// Deprecated: use ReadCSVString(csvString, opts), which is the same call.
+// Removed in the release after the one that deprecated it.
 func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTable, error) {
-	// A Go string is UTF-8 already, so there is nothing to detect; an empty
-	// string is an empty table rather than an undetectable encoding.
-	opts.Encoding = "utf-8"
-	return readCSVFrom(strings.NewReader(csvString), opts, "the CSV string")
+	return ReadCSVString(csvString, opts)
 }
 
 // ----- excel -----
@@ -500,29 +559,29 @@ func ExcelReadOptions() excelize.Options {
 }
 
 // ReadExcelSheet reads a specific sheet from an Excel file and loads it into a DataTable.
-func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+func ReadExcelSheet(filePath string, sheetName string, rowNames bool, headerRow bool) (*DataTable, error) {
 	f, err := excelize.OpenFile(filePath, ExcelReadOptions())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Excel file %s: %w", filePath, err)
 	}
 	defer func() { _ = f.Close() }()
-	return readExcelSheetFrom(f, sheetName, setFirstColToRowNames, setFirstRowToColNames)
+	return readExcelSheetFrom(f, sheetName, rowNames, headerRow)
 }
 
 // ReadExcel reads one sheet of an Excel workbook from any source — an HTTP
 // response body, a zip entry, bytes in memory — the same way ReadExcelSheet
 // reads a file, with the same limit on how far the workbook may expand.
-func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+func ReadExcel(r io.Reader, sheetName string, rowNames bool, headerRow bool) (*DataTable, error) {
 	f, err := excelize.OpenReader(r, ExcelReadOptions())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Excel input: %w", err)
 	}
 	defer func() { _ = f.Close() }()
-	return readExcelSheetFrom(f, sheetName, setFirstColToRowNames, setFirstRowToColNames)
+	return readExcelSheetFrom(f, sheetName, rowNames, headerRow)
 }
 
 // readExcelSheetFrom is the sheet reader behind ReadExcelSheet and ReadExcel.
-func readExcelSheetFrom(f *excelize.File, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+func readExcelSheetFrom(f *excelize.File, sheetName string, rowNames bool, headerRow bool) (*DataTable, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rows from sheet %s: %w", sheetName, err)
@@ -531,10 +590,10 @@ func readExcelSheetFrom(f *excelize.File, sheetName string, setFirstColToRowName
 	if err != nil {
 		return nil, fmt.Errorf("failed when converting sheet %s to DataTable: %w", sheetName, err)
 	}
-	if setFirstColToRowNames {
+	if rowNames {
 		dt.SetColToRowNames("A")
 	}
-	if setFirstRowToColNames {
+	if headerRow {
 		dt.SetRowToColNames(0)
 	}
 	return dt, nil
@@ -542,12 +601,20 @@ func readExcelSheetFrom(f *excelize.File, sheetName string, setFirstColToRowName
 
 // ----- json -----
 
-// ReadJSON_File reads a JSON file and loads the data into a DataTable.
+// ReadJSON_File reads a JSON file.
+//
+// Deprecated: use ReadJSONFile, which is the same function. Removed in the
+// release after the one that deprecated it.
+func ReadJSON_File(filePath string) (*DataTable, error) {
+	return ReadJSONFile(filePath)
+}
+
+// ReadJSONFile reads a JSON file and loads the data into a DataTable.
 // It decodes through the same path as ReadJSON, so numbers are typed the
 // same way from a file as from bytes: integer literals become int64 (large
 // integers keep full precision) and decimal literals become float64. A file
 // holding a single object loads as one row.
-func ReadJSON_File(filePath string) (*DataTable, error) {
+func ReadJSONFile(filePath string) (*DataTable, error) {
 	buf, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)

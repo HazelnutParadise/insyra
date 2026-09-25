@@ -102,7 +102,7 @@ func TestTheMarkNeverReachesTheOutput(t *testing.T) {
 	dt := NewDataTable(dl.SetName("c"))
 	var buf bytes.Buffer
 	dl.ShowTo(&buf)
-	for _, out := range []string{dt.ToJSON_String(true), buf.String()} {
+	for _, out := range []string{dt.ToJSONString(true), buf.String()} {
 		if strings.Contains(out, "cellMarker") || strings.Contains(out, "insyra.cell") {
 			t.Errorf("the marker leaked into output: %s", out)
 		}

@@ -283,8 +283,8 @@ type IDataTable interface {
 	SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable
 	SwapRowsByName(rowName1 string, rowName2 string) *DataTable
 	// CSV
-	ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
-	WriteCSV(w io.Writer, opts CSVWriteOptions) error
+	ToCSV(filePath string, opts ...CSVWriteOptions) error
+	WriteCSV(w io.Writer, opts ...CSVWriteOptions) error
 	// JSON
 	// ToJSON saves the DataTable as a JSON file.
 	// Parameters:
@@ -294,6 +294,12 @@ type IDataTable interface {
 	// - error: Error information, returns nil if successful
 	ToJSON(filePath string, useColNames bool) error
 	WriteJSON(w io.Writer, useColNames bool) error
+	// ToJSONBytes converts the DataTable to JSON and returns it as bytes.
+	ToJSONBytes(useColNames bool) []byte
+	// ToJSONString converts the DataTable to JSON and returns it as a string.
+	ToJSONString(useColNames bool) string
+	// Deprecated: use ToJSONBytes.
+	//
 	// ToJSON_Bytes converts the DataTable to JSON format and returns it as a byte slice.
 	// Parameters:
 	// - useColNames: Whether to use column names as keys in JSON objects

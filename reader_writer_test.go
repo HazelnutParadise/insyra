@@ -33,8 +33,8 @@ func TestReadCSVMatchesTheFileReader(t *testing.T) {
 	if err := os.WriteFile(path, []byte(readerCSV), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	opts := CSVReadOptions{FirstRowToColNames: true}
-	fromFile, err := ReadCSV_FileWithOptions(path, opts)
+	opts := CSVReadOptions{}
+	fromFile, err := ReadCSVFile(path, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,8 +59,8 @@ func TestReadCSVDetectsEncodingOnAReader(t *testing.T) {
 	if err := os.WriteFile(path, []byte(big5), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	opts := CSVReadOptions{FirstRowToColNames: true}
-	fromFile, err := ReadCSV_FileWithOptions(path, opts)
+	opts := CSVReadOptions{}
+	fromFile, err := ReadCSVFile(path, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,13 +75,13 @@ func TestReadCSVDetectsEncodingOnAReader(t *testing.T) {
 }
 
 func TestWriteCSVMatchesTheFileWriter(t *testing.T) {
-	dt, err := ReadCSV_StringWithOptions(readerCSV, CSVReadOptions{FirstRowToColNames: true})
+	dt, err := ReadCSVString(readerCSV, CSVReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := CSVWriteOptions{SetColNamesToFirstRow: true}
+	opts := CSVWriteOptions{}
 	path := filepath.Join(t.TempDir(), "out.csv")
-	if err := dt.ToCSVWithOptions(path, opts); err != nil {
+	if err := dt.ToCSV(path, opts); err != nil {
 		t.Fatal(err)
 	}
 	onDisk, err := os.ReadFile(path)
@@ -123,7 +123,7 @@ func csvWithRows(n int) string {
 
 func TestStreamCSVYieldsEveryRowInBatches(t *testing.T) {
 	var sizes []int
-	for dt, err := range StreamCSV(strings.NewReader(csvWithRows(25)), CSVReadOptions{FirstRowToColNames: true}, 10) {
+	for dt, err := range StreamCSV(strings.NewReader(csvWithRows(25)), 10, CSVReadOptions{}) {
 		if err != nil {
 			t.Fatalf("StreamCSV: %v", err)
 		}
@@ -141,7 +141,7 @@ func TestStreamCSVYieldsEveryRowInBatches(t *testing.T) {
 func TestStreamCSVStopsReadingWhenTheLoopBreaks(t *testing.T) {
 	input := csvWithRows(200000)
 	counter := &countingReader{r: strings.NewReader(input)}
-	for _, err := range StreamCSV(counter, CSVReadOptions{FirstRowToColNames: true}, 100) {
+	for _, err := range StreamCSV(counter, 100, CSVReadOptions{}) {
 		if err != nil {
 			t.Fatalf("StreamCSV: %v", err)
 		}
@@ -154,7 +154,7 @@ func TestStreamCSVStopsReadingWhenTheLoopBreaks(t *testing.T) {
 
 func TestStreamCSVRefusesANonPositiveBatchSize(t *testing.T) {
 	yields := 0
-	for dt, err := range StreamCSV(strings.NewReader(readerCSV), CSVReadOptions{}, 0) {
+	for dt, err := range StreamCSV(strings.NewReader(readerCSV), 0, CSVReadOptions{}) {
 		yields++
 		if dt != nil || err == nil {
 			t.Fatalf("got table %v and error %v, want only an error", dt, err)

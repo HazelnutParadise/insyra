@@ -8,6 +8,6 @@ type Excel struct {
 }
 
 type Excel_inOpts struct {
-	FirstCol2RowNames bool
-	FirstRow2ColNames bool
+	NoHeaderRow bool // the first row is data, not column names
+	HasRowNames bool // the first column holds row names
 }

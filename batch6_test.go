@@ -21,7 +21,7 @@ func TestReadCSVRejectsUndecodableEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dt, err := ReadCSV_File(path, false, true)
+	dt, err := ReadCSVFile(path)
 	if err != nil {
 		// Refusing is acceptable; silently producing broken text is not.
 		return
@@ -90,7 +90,7 @@ func TestToCSVFormulaSanitization(t *testing.T) {
 	dir := t.TempDir()
 
 	plain := filepath.Join(dir, "plain.csv")
-	if err := dt.ToCSV(plain, false, true, false); err != nil {
+	if err := dt.ToCSV(plain); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(plain)
@@ -99,9 +99,8 @@ func TestToCSVFormulaSanitization(t *testing.T) {
 	}
 
 	safe := filepath.Join(dir, "safe.csv")
-	if err := dt.ToCSVWithOptions(safe, CSVWriteOptions{
-		SetColNamesToFirstRow: true,
-		SanitizeFormulas:      true,
+	if err := dt.ToCSV(safe, CSVWriteOptions{
+		SanitizeFormulas: true,
 	}); err != nil {
 		t.Fatal(err)
 	}

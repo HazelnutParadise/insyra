@@ -32,7 +32,7 @@ func TestToCSVAndToJSONAreAtomic(t *testing.T) {
 	dt := NewDataTable(NewDataList(1, 2, 3).SetName("a"))
 
 	missing := filepath.Join(dir, "no", "such", "dir", "x.csv")
-	if err := dt.ToCSV(missing, false, true, false); err == nil {
+	if err := dt.ToCSV(missing); err == nil {
 		t.Fatal("ToCSV into a missing directory returned nil")
 	}
 	if err := dt.ToJSON(filepath.Join(dir, "no", "x.json"), true); err == nil {
@@ -40,7 +40,7 @@ func TestToCSVAndToJSONAreAtomic(t *testing.T) {
 	}
 
 	csvPath := filepath.Join(dir, "ok.csv")
-	if err := dt.ToCSV(csvPath, false, true, false); err != nil {
+	if err := dt.ToCSV(csvPath); err != nil {
 		t.Fatal(err)
 	}
 	jsonPath := filepath.Join(dir, "ok.json")
