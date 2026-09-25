@@ -2,7 +2,6 @@
 
 ## Purpose
 整個函式庫只用一套方式指定欄位：裸字串是 Excel 式索引，`Name(...)` 是欄名，`int` 是位置。欄名只影響錯誤訊息、不參與解析，所以同一個呼叫在任何資料上都指向同一欄；核心存取器另外保留 `ByIndex`／`ByName`／`ByNumber` 的明講寫法，分析操作則靠選擇器本身表達。
-
 ## Requirements
 ### Requirement: One selector says which column
 
@@ -50,4 +49,18 @@ When a bare string resolves to an in-range index and the table also has a column
 
 - **WHEN** `GetColByIndex("price")` is called and `price` decodes past the last column
 - **THEN** it fails naming the index it decoded, without trying the name
+
+### Requirement: A fitter's failure on a column says why
+
+The scalers, the simple imputer and the one-hot, label and ordinal encoders SHALL report a column they cannot resolve with the same explanation every other selector gives, including the `Name(...)` form when the table has a column of that name.
+
+#### Scenario: A scaler given a name as a bare string
+
+- **WHEN** `NewStandardScaler().FitTransform(dt, "Age")` runs on a table with a column named `Age`
+- **THEN** it fails, and the error says to write `Name("Age")`
+
+#### Scenario: An encoder given a name as a bare string
+
+- **WHEN** `LabelEncode` is given `Column: "segment"` on a table with a column named `segment`
+- **THEN** it fails, and the error says to write `Name("segment")`
 

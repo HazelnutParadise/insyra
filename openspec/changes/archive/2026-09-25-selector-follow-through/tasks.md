@@ -10,4 +10,4 @@
 - [x] 2.3 兩份 CHANGELOG。
 
 ## 3. 驗證與紀錄
-- [ ] 3.1 全套驗證；`delivery-status.md`；歸檔。
+- [x] 3.1 全套驗證；`delivery-status.md`；歸檔。
