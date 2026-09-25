@@ -1,24 +1,30 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/parquet"
 )
 
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "save",
-		Usage:       "save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]",
+		Usage:       "save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]",
 		Description: "Save a DataTable variable to a file or SQL connection",
 		Forms: []string{
 			"save <var> <file.csv> [headers true|false] [rownames true|false] [bom true|false]",
 			"save <var> <file.json> [headers true|false]",
+			"save <var> <file.xlsx> [sheet <name>] [if-exists fail|replace] [headers true|false] [rownames true|false]",
 			"save <var> <file.parquet>",
 			"save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]",
 			"",
 			"File option defaults: headers=true, rownames=false, bom=false.",
+			"Excel writes one sheet (default Sheet1) and leaves the workbook's other sheets alone.",
+			"Excel if-exists default: fail, so an existing sheet is only overwritten with 'if-exists replace'.",
 			"Booleans accept true|false|yes|no|on|off|1|0.",
 			"SQL if-exists default: fail.",
 		},
@@ -27,6 +33,8 @@ func init() {
 			"insyra save matrix data.csv headers false",
 			"insyra save gdp out.csv rownames true",
 			"insyra save report data.csv bom true",
+			"insyra save sales2025 report.xlsx sheet 2025",
+			"insyra save sales2025 report.xlsx sheet 2025 if-exists replace",
 			"insyra save report sql main report_table if-exists replace batch 1000",
 		},
 		Run: runSaveCommand,
@@ -35,7 +43,7 @@ func init() {
 
 func runSaveCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [...]")
+		return fmt.Errorf("usage: save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [...]")
 	}
 	table, err := getDataTableVar(ctx, args[0])
 	if err != nil {
@@ -51,7 +59,11 @@ func runSaveCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	switch detectFileKind(path) {
+	kind := detectFileKind(path)
+	if kind != "excel" && (opts.SheetSet || opts.IfExistsSet) {
+		return fmt.Errorf("save: 'sheet' and 'if-exists' only apply to Excel files (.xlsx)")
+	}
+	switch kind {
 	case "csv":
 		err = table.ToCSV(path, opts.RowNames, opts.Headers, opts.BOM)
 	case "json":
@@ -59,6 +71,8 @@ func runSaveCommand(ctx *ExecContext, args []string) error {
 			return fmt.Errorf("save json: only 'headers' is supported (controls whether values use column names as keys)")
 		}
 		err = table.ToJSON(path, opts.Headers)
+	case "excel":
+		err = saveExcel(table, path, opts)
 	case "parquet":
 		if opts.HeadersSet || opts.RowNamesSet || opts.BOMSet {
 			return fmt.Errorf("save parquet: headers/rownames/bom options are not supported")
@@ -74,6 +88,28 @@ func runSaveCommand(ctx *ExecContext, args []string) error {
 	return nil
 }
 
+// saveExcel writes the table as one sheet of the workbook at path. Only the
+// named sheet is touched, and an existing one is overwritten only when the
+// caller said if-exists replace.
+func saveExcel(table *insyra.DataTable, path string, opts fileSaveOptions) error {
+	if strings.EqualFold(filepath.Ext(path), ".xls") {
+		return fmt.Errorf("save excel: .xls is the legacy binary format and cannot be written; save as .xlsx instead")
+	}
+	if opts.BOMSet {
+		return fmt.Errorf("save excel: 'bom' only applies to CSV files")
+	}
+	err := table.ToExcel(path, insyra.ExcelWriteOptions{
+		Sheet:                 opts.Sheet,
+		SetColNamesToFirstRow: opts.Headers,
+		SetRowNamesToFirstCol: opts.RowNames,
+		IfSheetExists:         opts.IfExists,
+	})
+	if errors.Is(err, insyra.ErrSheetExists) {
+		return fmt.Errorf("save excel: %w; add \"if-exists replace\" to overwrite that sheet (the other sheets are kept)", err)
+	}
+	return err
+}
+
 // fileSaveOptions captures the file-output toggles. The *Set flags let
 // format-specific code reject options that don't apply.
 type fileSaveOptions struct {
@@ -83,6 +119,10 @@ type fileSaveOptions struct {
 	RowNamesSet bool
 	BOM         bool
 	BOMSet      bool
+	Sheet       string
+	SheetSet    bool
+	IfExists    insyra.SheetExistsPolicy
+	IfExistsSet bool
 }
 
 func parseFileSaveOptions(args []string) (fileSaveOptions, error) {
@@ -132,8 +172,31 @@ func parseFileSaveOptions(args []string) (fileSaveOptions, error) {
 			opts.BOM = b
 			opts.BOMSet = true
 			i += 2
+		case "sheet":
+			v, err := next()
+			if err != nil {
+				return opts, err
+			}
+			opts.Sheet = v
+			opts.SheetSet = true
+			i += 2
+		case "if-exists", "ifexists":
+			v, err := next()
+			if err != nil {
+				return opts, err
+			}
+			switch strings.ToLower(v) {
+			case "fail":
+				opts.IfExists = insyra.SheetExistsFail
+			case "replace":
+				opts.IfExists = insyra.SheetExistsReplace
+			default:
+				return opts, fmt.Errorf("save: invalid if-exists %q (expected fail|replace)", v)
+			}
+			opts.IfExistsSet = true
+			i += 2
 		default:
-			return opts, fmt.Errorf("save: unknown option %q (supported: headers, rownames, bom)", args[i])
+			return opts, fmt.Errorf("save: unknown option %q (supported: headers, rownames, bom, sheet, if-exists)", args[i])
 		}
 	}
 	return opts, nil

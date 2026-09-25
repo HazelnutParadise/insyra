@@ -251,3 +251,85 @@ func mustWrite(t *testing.T, path, body string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+func excelSaveContext(t *testing.T) *ExecContext {
+	t.Helper()
+	ctx := newTestExecContext(t)
+	ctx.Vars["t"] = insyra.NewDataTable(insyra.NewDataList(1, 2).SetName("a"))
+	return ctx
+}
+
+func TestSave_Excel_WritesSheet1WithHeaders(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.xlsx")
+	ctx := excelSaveContext(t)
+	if err := runSaveCommand(ctx, []string{"t", path}); err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+	dt, err := insyra.ReadExcelSheet(path, "Sheet1", false, true)
+	if err != nil {
+		t.Fatalf("read back failed: %v", err)
+	}
+	rows, cols := dt.Size()
+	if rows != 2 || cols != 1 || dt.ColNames()[0] != "a" {
+		t.Fatalf("read back %dx%d with columns %v", rows, cols, dt.ColNames())
+	}
+}
+
+// A second save to the same sheet is refused and says how to overwrite it;
+// saying so replaces the sheet and keeps the others.
+func TestSave_Excel_SecondSaveNeedsIfExistsReplace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.xlsx")
+	ctx := excelSaveContext(t)
+	for _, sheet := range []string{"2024", "2025"} {
+		if err := runSaveCommand(ctx, []string{"t", path, "sheet", sheet}); err != nil {
+			t.Fatalf("save to sheet %s failed: %v", sheet, err)
+		}
+	}
+	err := runSaveCommand(ctx, []string{"t", path, "sheet", "2025"})
+	if err == nil || !strings.Contains(err.Error(), "if-exists replace") {
+		t.Fatalf("expected a refusal naming if-exists replace, got %v", err)
+	}
+	if err := runSaveCommand(ctx, []string{"t", path, "sheet", "2025", "if-exists", "replace"}); err != nil {
+		t.Fatalf("replace failed: %v", err)
+	}
+	if _, err := insyra.ReadExcelSheet(path, "2024", false, true); err != nil {
+		t.Fatalf("the other sheet did not survive: %v", err)
+	}
+}
+
+func TestSave_Excel_RejectsXls(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.xls")
+	err := runSaveCommand(excelSaveContext(t), []string{"t", path})
+	if err == nil || !strings.Contains(err.Error(), ".xlsx") {
+		t.Fatalf("expected .xls to be refused with a pointer to .xlsx, got %v", err)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("a refused save left a file behind: %v", statErr)
+	}
+}
+
+func TestSave_Excel_RejectsBOM(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.xlsx")
+	err := runSaveCommand(excelSaveContext(t), []string{"t", path, "bom", "true"})
+	if err == nil || !strings.Contains(err.Error(), "bom") {
+		t.Fatalf("expected bom to be refused for Excel, got %v", err)
+	}
+}
+
+func TestSave_Excel_RejectsBadIfExists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.xlsx")
+	err := runSaveCommand(excelSaveContext(t), []string{"t", path, "if-exists", "append"})
+	if err == nil || !strings.Contains(err.Error(), "fail|replace") {
+		t.Fatalf("expected if-exists append to be refused, got %v", err)
+	}
+}
+
+func TestSave_CSV_RejectsSheetAndIfExists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.csv")
+	for _, args := range [][]string{{"sheet", "s"}, {"if-exists", "replace"}} {
+		err := runSaveCommand(excelSaveContext(t), append([]string{"t", path}, args...))
+		if err == nil || !strings.Contains(err.Error(), args[0]) {
+			t.Fatalf("expected %s to be refused for CSV, got %v", args[0], err)
+		}
+	}
+}
