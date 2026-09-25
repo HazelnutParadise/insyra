@@ -17,21 +17,16 @@ func tanhFloat32(x float32) float32 {
 	if x != x {
 		return x
 	}
-	if math.IsInf(float64(x), 0) {
-		return float32(math.Copysign(1, float64(x)))
-	}
-
-	a := x
-	if a < 0 {
-		a = -a
-	}
-	if a < float32(math.Ldexp(1, -13)) {
+	// 0x39000000 is 2^-13, 0x41180000 is 9.5, and the comparison is on the
+	// bit patterns so it also catches +-Inf in the second range.
+	a := math.Float32bits(x) & 0x7fffffff
+	if a < 0x39000000 {
 		// For a = |x| < 2^-13, tanh(x) lies between x-x^3/3 and x. Since
 		// |x^3/3| = a^3/3 < a*2^-25 because a^2 < 2^-26, the true value is
 		// less than half the distance to the next float32 and rounds to x.
 		return x
 	}
-	if a >= 9.5 {
+	if a >= 0x41180000 {
 		// For a >= 9.5, 1-tanh(a)=2/(e^(2a)+1)<2e^(-19)<2^(-25).
 		// The latter is half the gap from 1 to its next float32, so the
 		// correctly rounded result is 1 with the sign of x.
@@ -39,20 +34,28 @@ func tanhFloat32(x float32) float32 {
 	}
 
 	t := math.Tanh(float64(x))
-	f := float32(t)
-	prev := math.Nextafter32(f, float32(math.Inf(-1)))
-	next := math.Nextafter32(f, float32(math.Inf(1)))
-	lo := (float64(f) + float64(prev)) / 2
-	hi := (float64(f) + float64(next)) / 2
-	margin := math.Abs(t) * 0x1p-40
-	if t-margin > lo && t+margin < hi {
-		// The sum of adjacent float32 values and its half are exact in
-		// float64. math.Tanh has error of a few float64 ulps (about 2^-51
-		// relative), while this margin is 2^11 times larger. With no
-		// midpoint in the interval, Ziv's method certifies float32(t).
-		return f
+	if tanhFloat64Settles(t) {
+		return float32(t)
 	}
 	return tanhHighPrecision(x)
+}
+
+// tanhFloat64Settles reports whether float32(t) is the correctly rounded tanh
+// when t is math.Tanh's float64 result for an input with 2^-13 <= |x| < 9.5.
+// There 2^-14 < |t| < 1, where every float32 is normal. Within one binade a
+// float32 step is 2^29 float64 steps, so the float32 midpoints in t's binade
+// are exactly the float64 values whose low 29 significand bits equal 1<<28,
+// and the only midpoint outside it that could be near, the one just below the
+// binade's lowest float32, is at least 2^27 float64 steps from any t in the
+// binade. low - 1<<28 therefore counts the float64 steps from t to the nearest
+// midpoint. math.Tanh stays within 1.31 float64 steps of the true value on
+// every float32 input (TestTanhIsCorrectlyRoundedExhaustive; the Cephes source
+// it is ported from reports a peak relative error of 2.5e-16), so when t is
+// more than 2^13 steps from every midpoint the true value rounds to the same
+// float32 as t. That is Ziv's method with an integer test.
+func tanhFloat64Settles(t float64) bool {
+	d := int64(math.Float64bits(t)&(1<<29-1)) - 1<<28
+	return d > 1<<13 || d < -(1<<13)
 }
 
 // tanhHighPrecision evaluates tanh with a range-reduced big.Float exponential
