@@ -11,6 +11,6 @@
 - [x] 2.2 `EdgeSum` 與兩個梯度改用累加器，換掉舊的固定順序測試
 
 ## 3. Records
-- [ ] 3.1 `BenchmarkEdgeSum` 前後對照，記進 `delivery-status.md`
-- [ ] 3.2 `Docs/nn.md`、兩份 CHANGELOG 的 `EdgeSum` 條目改寫
-- [ ] 3.3 全套驗證與 `openspec validate exact-edge-sum --strict`
+- [x] 3.1 `BenchmarkEdgeSum` 前後對照，記進 `delivery-status.md`
+- [x] 3.2 `Docs/nn.md`、兩份 CHANGELOG 的 `EdgeSum` 條目改寫
+- [x] 3.3 全套驗證與 `openspec validate exact-edge-sum --strict`
