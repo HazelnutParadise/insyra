@@ -382,7 +382,7 @@
 | CLI-18 | ~~Low~~ 已修正（cli-message-and-help-fixes） | `help` 表格 `%-12s`，`knn_neighbors`（13 字）錯位；`help` 直接讀 `Registry` 未取 `registryMu`；`read`、`env` 沒有 Forms／Examples（`env` 有 9 個子命令） | help.go:19, 39-48；read.go:6-11；env.go:10-16 | `%-14s`；上讀鎖；補 Forms |
 | CLI-19 | ~~Low~~ 已修正（cli-message-and-help-fixes） | `clone`／`replace`／`clean`／`fillna`／`count` 對「變數存在但型別不對」回報「variable not found」 | clone.go:30；replace.go:49；clean.go:63；fillna.go:110；stats_dl_extra.go:78 | 先判存在再 type switch，訊息區分 |
 | CLI-20 | Low | `exit`／`quit` 註冊為指令但只在 REPL 攔截；one-shot `insyra exit` 與 `.isr` 內的 `exit` 都是 no-op（實測 `run s2.isr` 含 `exit` 仍繼續執行）；cli-command-guide.md:19 給了 `insyra exit` 當範例 | exit.go:1-13；run.go:40；repl.go:82-84 | `run` 支援 `exit` 提前結束；或文件說明 |
-| CLI-21 | Low（部分已修正：docs-hygiene-and-remaining-partials 讓 `read` 對 `as` 給專屬訊息；`save` 加 excel 分支待決策） | `save` 不支援 `.xlsx`（實測 → `unsupported output file type`），但 `load` 能讀 excel、`convert` 能 csv→xlsx；`read <file> as x` 被 `load` 以「unknown option "as"」拒絕，訊息誤導 | save.go:54-69；read.go:18-19 | `save` 加 excel 分支；`read` 對 `as` 給專屬訊息 |
+| CLI-21 | ~~Low~~ 已修正（`read` 對 `as` 的專屬訊息：docs-hygiene-and-remaining-partials；`save` 寫 `.xlsx`：save-writes-excel-sheets，只動指定工作表，預設 `Sheet1`，已存在時預設拒絕、`if-exists replace` 才取代並保留位置，`.xls` 拒絕；函式庫新增 `ToExcel`／`WriteExcel`） | `save` 不支援 `.xlsx`（實測 → `unsupported output file type`），但 `load` 能讀 excel、`convert` 能 csv→xlsx；`read <file> as x` 被 `load` 以「unknown option "as"」拒絕，訊息誤導 | save.go:54-69；read.go:18-19 | `save` 加 excel 分支；`read` 對 `as` 給專屬訊息 |
 
 ### CCL 語言（第二輪，語意探測 120 餘條、fuzz 130 餘條、-race）
 
@@ -656,7 +656,7 @@
 | CLI-18 | [#326](https://github.com/HazelnutParadise/insyra/issues/326) |  |
 | CLI-19 | [#327](https://github.com/HazelnutParadise/insyra/issues/327) |  |
 | CLI-20 | [#328](https://github.com/HazelnutParadise/insyra/issues/328) |  |
-| CLI-21 | [#329](https://github.com/HazelnutParadise/insyra/issues/329) |  |
+| CLI-21 | [#329](https://github.com/HazelnutParadise/insyra/issues/329) | 已關閉（docs-hygiene-and-remaining-partials、save-writes-excel-sheets） |
 | IN-1 | [#330](https://github.com/HazelnutParadise/insyra/issues/330) |  |
 | IN-2 | [#331](https://github.com/HazelnutParadise/insyra/issues/331) |  |
 | IN-3 | [#332](https://github.com/HazelnutParadise/insyra/issues/332) |  |

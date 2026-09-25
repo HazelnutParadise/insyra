@@ -530,13 +530,18 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `save`
 - Description: Save a DataTable variable to a file or SQL connection
-- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]`
+- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]`
 - File options (CSV):
 	- `headers true|false` — write column names as the first row. Default `true`.
 	- `rownames true|false` — write row names as the first column. Default `false`.
 	- `bom true|false` — write a UTF-8 BOM (helps Excel for Windows open Chinese CSVs cleanly). Default `false`.
 	- JSON: only `headers` applies (controls whether values use column names as keys); `rownames`/`bom` are rejected.
+	- Excel (`.xlsx`, `.xlsm`): `headers` and `rownames` as for CSV; `bom` is rejected.
+		- `sheet <name>` — the sheet to write. Default `Sheet1`. The workbook's other sheets are kept.
+		- `if-exists fail|replace` — what to do when that sheet already exists. Default `fail`: the save is refused and the file is untouched. `replace` overwrites only that sheet, in its original position.
+		- `.xls` (the legacy binary format) cannot be written; save as `.xlsx`.
 	- Parquet: file options are not supported (rejected).
+	- `sheet` and `if-exists` are rejected for every file type other than Excel.
 	- Booleans accept `true|false|yes|no|on|off|1|0` (case-insensitive).
 - SQL options:
 	- `if-exists fail|replace|append` (default: `fail`)

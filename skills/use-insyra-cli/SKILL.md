@@ -159,6 +159,7 @@ insyra load report.xlsx sheet 2025 rownames true as t      # Excel needs `sheet`
 insyra save report data.csv bom true                       # UTF-8 BOM (Windows Excel)
 insyra save gdp out.csv rownames true                      # row names as first col
 insyra save matrix data.csv headers false                  # pure data dump
+insyra save sales2025 report.xlsx sheet 2025               # one sheet; other sheets kept; existing sheet needs `if-exists replace`
 
 # Group rows by key, aggregate columns (split-apply-combine)
 insyra load sales.csv as sales

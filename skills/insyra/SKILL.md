@@ -419,7 +419,8 @@ func main() {
     // Data that is not a file on disk (HTTP response, zip entry, embed.FS,
     // bytes in memory) needs no temporary file: ReadCSV(r, opts) reads any
     // io.Reader, ReadJSON accepts one, ReadExcel(r, sheet, …) reads a
-    // workbook, and dt.WriteCSV / dt.WriteJSON write to any io.Writer.
+    // workbook, and dt.WriteCSV / dt.WriteJSON / dt.WriteExcel write to any
+    // io.Writer.
     // For a CSV larger than memory, stream it a batch at a time:
     //   for batch, err := range insyra.StreamCSV(r, opts, 1000) { … }
     // parquet has the same pair: parquet.ReadFrom / StreamFrom take an
@@ -706,12 +707,19 @@ Recognised `AggFunc` strings: `sum`, `mean` (alias `avg`), `median`, `min`, `max
 
 Column reference resolution (applies to `Index`, `Columns`, `Values`, `IDVars`, `ValueVars`): each token is matched against `column.name` first, then falls back to the Excel-style alphabetic index (`"A"` → column 0, `"AA"` → column 26). The first row of data is never consulted as a header — column names live only on `column.name`. Tokens matching neither produce an error surfaced via the returned table's `Err()`.
 
-### 4) Export a DataTable to CSV
+### 4) Export a DataTable to CSV or Excel
 
 ```go
 if err := dt.ToCSV("output.csv", false, true, false); err != nil {
     log.Fatal(err)
 }
+
+// ToExcel writes ONE sheet and leaves the workbook's other sheets alone.
+// An existing sheet is refused (errors.Is(err, insyra.ErrSheetExists)) unless
+// IfSheetExists is insyra.SheetExistsReplace. Sheet "" means "Sheet1".
+err := dt.ToExcel("report.xlsx", insyra.ExcelWriteOptions{
+    Sheet: "2025", SetColNamesToFirstRow: true,
+})
 ```
 
 ### 5) Prefer isr syntactic sugar for new code

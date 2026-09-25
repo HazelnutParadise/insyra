@@ -559,9 +559,6 @@ if err != nil {
 }
 ```
 
-## Data Saving
-
-
 ### ReadExcel — from any source
 
 ```go
@@ -569,6 +566,8 @@ func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFir
 ```
 
 **Description:** Reads one sheet of a workbook that is not a file on disk — an upload, an HTTP response, a zip entry — the same way `ReadExcelSheet` reads a path, with the same limit on how far the workbook may expand while it is read.
+
+## Data Saving
 
 ### ToCSV
 
@@ -704,6 +703,45 @@ func (dt *DataTable) ToJSON_String(useColNames bool) string
 jsonStr := dt.ToJSON_String(true)
 fmt.Println(jsonStr)
 ```
+
+### ToExcel
+
+```go
+func (dt *DataTable) ToExcel(filePath string, opts ExcelWriteOptions) error
+
+type ExcelWriteOptions struct {
+    Sheet                 string            // sheet to write; "" means "Sheet1"
+    SetColNamesToFirstRow bool              // write the column names as the first row
+    SetRowNamesToFirstCol bool              // write the row names as the first column
+    IfSheetExists         SheetExistsPolicy // SheetExistsFail (default) or SheetExistsReplace
+}
+```
+
+**Description:** Writes the table as one sheet of the workbook at `filePath` and leaves every other sheet as it was. If the file does not exist, a new workbook is created. If the workbook lacks the sheet, the sheet is added after the existing ones.
+
+If the sheet already exists, the default is to refuse: the call returns an error matching `ErrSheetExists` and the file is not touched. With `IfSheetExists: SheetExistsReplace`, the old sheet is thrown away, formatting included, and the table is written in its place, in the same position among the other sheets. Formulas on other sheets that point at it by name then read the new values. Sheet names are matched the way Excel matches them, without regard to case, so `data` and `Data` are the same sheet.
+
+Numbers, booleans and `time.Time` values are written as Excel values, not text, so they sort and sum in a spreadsheet. A time keeps its wall-clock reading but not its time zone, because Excel does not store one. Anything else is written as the same text `ToCSV` would write. The workbook is written to a temporary file and renamed into place, so a failure never leaves a damaged workbook behind. The path must end in an extension Excel's current format uses (`.xlsx`, `.xlsm`, …); the legacy `.xls` format cannot be written.
+
+**Example:** keep one sheet per year in a single report.
+
+```go
+opts := insyra.ExcelWriteOptions{Sheet: "2025", SetColNamesToFirstRow: true}
+err := sales2025.ToExcel("report.xlsx", opts)
+if errors.Is(err, insyra.ErrSheetExists) {
+    // 2025 is already there. Overwrite it on purpose; 2023 and 2024 stay.
+    opts.IfSheetExists = insyra.SheetExistsReplace
+    err = sales2025.ToExcel("report.xlsx", opts)
+}
+```
+
+### WriteExcel — to any destination
+
+```go
+func (dt *DataTable) WriteExcel(w io.Writer, opts ExcelWriteOptions) error
+```
+
+**Description:** Writes the table as a new one-sheet workbook to any destination, such as an HTTP response, a zip entry or a buffer. The cells are written the same way `ToExcel` writes them. `IfSheetExists` is ignored, because the workbook is always new.
 
 ### ToMap
 

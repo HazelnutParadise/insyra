@@ -73,6 +73,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`ReadSQLStream` 改回傳 `iter.Seq2[*DataTable, error]`，用法是 `for dt, err := range insyra.ReadSQLStream(ctx, db, "orders")`，並移除 `ReadSQLChunk`。舊的 channel 版本只要呼叫端中途離開迴圈，就會漏掉一個 goroutine 和一條資料庫連線，**就算照文件說的 cancel context 也一樣**：讀取端的取消分支會把 context 的錯誤送到一個已經沒人在讀的 channel，然後一直卡在那裡直到程式結束，同時握著查詢結果不放。現在每一批都在呼叫端自己的 goroutine 裡讀，迴圈不管怎麼結束都會立刻關閉查詢結果。查詢改在迴圈開始時才執行，所以建立或執行查詢的失敗會成為迴圈的第一個值，而不是第二個回傳值。
 - 以另一個錯誤為原因的錯誤，現在用 `%w` 包住原因，而不是把它格式化成文字，所以 `errors.Is` 與 `errors.As` 能認出原因，例如偵測不到編碼的 CSV、失敗的 CCL 序列或聚合函數，以及 `csvxl`、`pd`、`datafetch` 過去把被包住的失敗寫成字串的地方。訊息文字不變。
 - 讀寫不再非得經過硬碟上的檔案。`ReadCSV(r io.Reader, opts)` 可以從任何來源讀 CSV，例如 HTTP 回應、壓縮檔裡的檔案、`embed.FS` 檔案或記憶體中的位元組，`Encoding` 留空時會從開頭的位元組偵測編碼；`ReadCSV_FileWithOptions` 與 `ReadCSV_StringWithOptions` 現在都呼叫它，同樣的位元組不論走哪個入口都得到同樣的表格。`StreamCSV(r, opts, batchSize)` 以 `for dt, err := range insyra.StreamCSV(...)` 一批一批讀 CSV，記憶體裡只放當下這一批；標題列會命名每一批的欄位，型別逐批推斷。`ReadJSON` 接受 `io.Reader`，`ReadExcel(r, sheet, …)` 從來源讀活頁簿並套用與 `ReadExcelSheet` 相同的解壓上限，`(*DataTable).WriteCSV` 與 `WriteJSON` 可寫到任何 `io.Writer`，`ToCSVWithOptions` 與 `ToJSON` 現在也透過它們寫檔。既有函式的簽名都沒有改變。
+- DataTable 現在可以寫成 Excel。`(*DataTable).ToExcel(path, ExcelWriteOptions)` 把表格寫成活頁簿裡的一張工作表，活頁簿其他工作表維持原樣，檔案不存在時會自動建立，所以一份報表可以一年放一張表。工作表已經存在時會回傳可用 `ErrSheetExists` 比對的錯誤，檔案完全不動；設定 `IfSheetExists: SheetExistsReplace` 才會取代那張表，而且保留它原本的位置。`Sheet` 預設為 `Sheet1`。數字、布林值與時間會存成 Excel 的原生值。`(*DataTable).WriteExcel(w, opts)` 可以把單一工作表的活頁簿寫到任何 `io.Writer`。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
@@ -99,6 +100,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `help` 的表格依最長的指令名稱對齊，`knn_neighbors` 不再把描述擠歪；`read` 與 `env` 補上 Forms 與 Examples——`env` 有九個子指令，過去一個都沒列。
 - `read sales.csv as x` 會告訴你該怎麼做，不再回答 `unknown option "as"`。`read` 只做預覽，內部自己補了一個別名，使用者再給一個就變成第二個 `as`，抱怨的地方完全不對。現在的訊息是「read only previews a file. Use `load sales.csv as <var>` to keep it」。
 - 修正 `insyra env import` 在沒有 `--force` 時，只要目標環境有檔案存在但讀不到，就會把非空的環境蓋掉。判斷目標是否為空的檢查把讀不到 `config.json` 當成「空的」，讀不到 `state.json` 與 `history.txt` 也一樣被忽略。檔案不存在仍然視為空；其他讀取失敗現在會停止匯入，並指出哪個環境無法確認。
+- `save` 可以存 Excel：`save <var> report.xlsx [sheet <名稱>] [if-exists fail|replace]`。它只寫一張工作表（預設 `Sheet1`），活頁簿其他工作表都會保留。存到已經存在的工作表會被拒絕，訊息會提示加上 `if-exists replace`。`.xls` 會被拒絕並提示改用 `.xlsx`，`sheet` 與 `if-exists` 用在其他檔案類型也會被拒絕。以前 `save … report.xlsx` 只會回報 `unsupported output file type`。
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外——也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。另外 `ml/mltest.RunConformance` 現在會判定「`Classes()` 回傳 nil」的實作不合格，而不是自己 panic——因為 `ml.Classifier` 是公開介面，函式庫外部的程式也能實作它。
 

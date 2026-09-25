@@ -375,6 +375,12 @@ save gdp out.csv rownames true
 
 # Pure data dump, no header row
 save matrix data.csv headers false
+
+# Excel: writes one sheet (default Sheet1); the workbook's other sheets are kept
+save sales2025 report.xlsx sheet 2025
+
+# The sheet already exists: saving again is refused unless you say to replace it
+save sales2025 report.xlsx sheet 2025 if-exists replace
 ```
 
 `read` is a quick previewer that forwards the same options to `load` (e.g. `read big5.csv encoding big5`).
@@ -803,7 +809,7 @@ Source policy:
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |
 | `sample` | `sample <var> <n>\|frac <frac>\|shuffle [replace true\|false] [seed N] [as <var>]` | Randomly sample or shuffle a DataList/DataTable |
-| `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames [true\|false]]` | Save a DataTable variable to a file or SQL connection |
+| `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] [sheet <name>] [if-exists fail\|replace] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames [true\|false]]` | Save a DataTable variable to a file or SQL connection |
 | `scale` | `scale fit std\|minmax\|robust\|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...> \| scale transform\|inverse <scalerVar> <tableVar> as <outVar>` | Fit a reusable feature scaler and transform/inverse tables with it |
 | `set` | `set <var> <row> <col> <value>` | Set single element in DataTable |
 | `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |
@@ -867,6 +873,7 @@ insyra regression poisson y x1 x2
 - **Variable not found**: use `vars` to inspect current environment variables.
 - **Variable type mismatch**: many commands require specific variable types (`DataTable` vs `DataList`).
 - **Excel load fails**: `load <file.xlsx> sheet <sheet-name> [headers true|false] [rownames true|false] [as <var>]` always requires `sheet <name>`.
+- **Excel save says the sheet already exists**: `save` never overwrites a sheet unless asked. Add `if-exists replace` to overwrite that one sheet (the others are kept), or pick another name with `sheet <name>`. `.xls` cannot be written; save as `.xlsx`.
 - **Parquet option errors**:
   - `cols` and `rowgroups` must be followed by comma-separated values.
   - `rowgroups` must be non-negative integers.
