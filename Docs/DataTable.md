@@ -1341,20 +1341,29 @@ const (
     ImputeConstant ImputationStrategy = "constant"
 )
 
-func NewSimpleImputer(strategy ImputationStrategy, constant ...any) *SimpleImputer
+type SimpleImputerOptions struct {
+    Strategy  ImputationStrategy // how each fill value is computed; empty means ImputeMean
+    FillValue any                // the value ImputeConstant fills with; nil for every other strategy
+}
+
+func NewSimpleImputer(opts ...SimpleImputerOptions) *SimpleImputer
 ```
 
-`SimpleImputer` fits one replacement value per selected column and reuses
-those values on later tables. Use it for training, validation, and production
+`SimpleImputer` learns a fill value once and fills many tables with it. It
+fits one replacement value per selected column and reuses those values on
+later tables. The name and the four strategies are scikit-learn's. With no
+options it fills with each column's mean; `ImputeConstant` needs `FillValue`,
+and giving `FillValue` to any other strategy is an error that `Fit` reports. Use it for training, validation, and production
 data so the statistics come from the training table only. `Transform` returns
 a new table and leaves the source unchanged. Columns not selected during
 `Fit` pass through unchanged. Missing values are `nil` or `NaN`.
 
 Mean and median require numeric observed values. If a selected column contains
-an observed non-numeric value, those strategies leave the column unchanged,
-matching `FillWithMean` and `FillWithMedian`. Mode supports mixed values and
-uses the first-occurring value to break ties. Constant requires exactly one
-constant argument. Every selected column must have at least one observed value
+an observed non-numeric value, those strategies mark the column pass-through
+(`Params()[name].PassThrough`) and leave it unchanged. This differs from the
+table's `FillWithMean` and `FillWithMedian`, which report a column you named
+and they cannot fill. Mode supports mixed values and uses the first-occurring
+value to break ties. Every selected column must have at least one observed value
 at fit time, and `Fit` reports the column name otherwise. `SimpleImputer` has no
 `InverseTransform` and is not an `insyra.Scaler`, because imputation cannot
 recover which cells were originally missing. That absence is deliberate rather
@@ -1387,7 +1396,7 @@ func main() {
         insyra.NewDataList(100.0, nil).SetName("income"),
     )
 
-    imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
+    imputer := insyra.NewSimpleImputer() // mean; or SimpleImputerOptions{Strategy: insyra.ImputeMedian}
     if err := imputer.Fit(train, insyra.Name("income")); err != nil {
         log.Fatal(err)
     }
@@ -3249,14 +3258,18 @@ func (dt *DataTable) FillBackward(limit int, cols ...any) *DataTable
 func (dt *DataTable) FillWithMean(cols ...any) *DataTable
 func (dt *DataTable) FillWithMedian(cols ...any) *DataTable
 func (dt *DataTable) FillWithMode(cols ...any) *DataTable
-func (dt *DataTable) FillByInterpolation(cols ...any) *DataTable
+func (dt *DataTable) FillByInterpolation(extrapolate bool, cols ...any) *DataTable
 ```
 
-**Description:** Fills `nil` and `math.NaN()` values column by column. When `cols` is omitted, all applicable columns are processed. Mean, median, and interpolation apply only to numeric columns; mode and forward/backward fill can apply to any selected column.
+**Description:** Fills `nil` and `math.NaN()` values column by column. Mean, median, and interpolation need a number column (see `ColDataTypes`); mode and forward/backward fill can apply to any column.
+
+- With `cols` omitted, every column is processed and a column that cannot be filled that way, such as a text column for the mean, is skipped: the call asked to fill what it can.
+- A column you name that cannot be filled, because it is not a number column or has no values at all, is recorded on `Err()` with the column and the reason, and the other named columns are still filled.
 
 **Parameters:**
 
 - `limit`: Maximum consecutive values to fill for forward/backward fill. `0` means unlimited.
+- `extrapolate`: For interpolation, also fill before the first and after the last observed value by extending the line, as `DataList.FillByInterpolation(true)` does.
 - `cols` (optional): Column selectors to process (see [Column selectors](#column-selectors)).
 
 **Returns:**
@@ -3268,7 +3281,7 @@ func (dt *DataTable) FillByInterpolation(cols ...any) *DataTable
 ```go
 dt.FillWithMedian(insyra.Name("revenue"), insyra.Name("cost"))
 dt.FillForward(2, insyra.Name("status"))
-dt.FillByInterpolation() // all numeric columns
+dt.FillByInterpolation(false) // all number columns, no extrapolation
 ```
 
 ### Replace
@@ -4304,7 +4317,7 @@ func (dt *DataTable) ShowRange(startEnd ...any)
 func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) // same output, written to w
 ```
 
-**Description:** Displays the DataTable with a specified range of rows. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout.
+**Description:** Displays the DataTable with a specified range of rows. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout. More than two values, a first value that is not an `int`, or an end that is neither an `int` nor `nil` prints an error line instead of the table; such arguments used to be ignored and every row shown. `ShowHead(n)` and `ShowTail(n)` are the plainer spellings of `ShowRange(n)` and `ShowRange(-n)`.
 
 **Parameters:**
 
@@ -4327,7 +4340,11 @@ dt.ShowRange(5)     // Show first 5 rows
 dt.ShowRange(-5)    // Show last 5 rows
 dt.ShowRange(2, 10) // Show rows 2-9
 dt.ShowRange(2, nil) // Show rows from index 2 to end
+dt.ShowHead(5)      // Same as ShowRange(5)
+dt.ShowTail(5)      // Same as ShowRange(-5)
 ```
+
+`ShowHead(n)` / `ShowHeadTo(w, n)` and `ShowTail(n)` / `ShowTailTo(w, n)` take a positive `n`; zero or a negative number prints an error line.
 
 ### ShowTypes
 

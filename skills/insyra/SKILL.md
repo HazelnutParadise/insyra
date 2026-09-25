@@ -232,19 +232,19 @@ dt.FillBackward(limit int, cols ...any)
 dt.FillWithMean(cols ...any)
 dt.FillWithMedian(cols ...any)
 dt.FillWithMode(cols ...any)
-dt.FillByInterpolation(cols ...any)
+dt.FillByInterpolation(extrapolate bool, cols ...any)
 ```
 
 Notes:
 - `limit` uses `0` or omitted as unlimited for forward/backward fill.
-- DataTable `mean`, `median`, and `interpolation` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
+- DataTable `mean`, `median`, and `interpolation` need a number column. With no `cols`, a column they cannot fill is skipped; a column you NAME that they cannot fill (text, mixed, or all missing) is recorded on `Err()` while the other named columns are still filled. `mode`, `ffill`, and `bfill` work with any column type.
 - `FillByInterpolation` fills gaps inside a sequence; it is distinct from `LinearInterpolation(x)`, which evaluates a y-value at a given x.
 
 For reusable, leakage-free preprocessing, fit `SimpleImputer` on the training
 table and transform later tables with the learned replacements:
 
 ```go
-imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
+imputer := insyra.NewSimpleImputer() // mean by default
 trainClean, err := imputer.FitTransform(train, insyra.Name("Age"), insyra.Name("Income"))
 if err != nil { log.Fatal(err) }
 
@@ -253,8 +253,10 @@ _ = trainClean
 _ = testClean
 ```
 
-Use `ImputeMean`, `ImputeMedian`, or `ImputeMode`, or use
-`NewSimpleImputer(insyra.ImputeConstant, value)` for a caller-supplied value.
+Choose a strategy with `insyra.SimpleImputerOptions{Strategy: insyra.ImputeMedian}`
+(or `ImputeMode`), or fill with a caller-supplied value through
+`insyra.SimpleImputerOptions{Strategy: insyra.ImputeConstant, FillValue: value}`;
+`FillValue` with any other strategy is an error `Fit` reports.
 Numeric strategies pass through observed non-numeric columns, selected
 all-missing columns refuse to fit, and `InverseTransform` is unsupported
 because imputation is lossy. Use the existing in-place `FillWith*` methods for

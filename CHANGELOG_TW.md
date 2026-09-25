@@ -78,6 +78,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 各種 scaler、`SimpleImputer`，以及 one-hot、label、ordinal 編碼器找不到欄位時，現在會跟其他欄位選擇器一樣說明原因。以前對有 `Age` 欄的表格呼叫 `NewStandardScaler().FitTransform(dt, "Age")`，只會回報 `column Age not found`，看起來像欄位不存在；現在會說明 `"Age"` 被當成 Excel 式欄位索引，並提示改寫成 `Name("Age")`。
 - **BREAKING（行為，簽名不變）**：結尾的選填參數最多只能給一個值。`DataList.Shift` 與 `DataTable.ShiftCol` 給兩個補值、`FillForward`／`FillBackward` 給兩個 limit、`FillByInterpolation` 給兩個旗標、`Sample`／`SampleFrac`／`Shuffle`／`TrainTestSplit` 給兩個 `SamplingOptions`、`Describe` 給兩個 `DescribeOptions`，以前都會默默用第一個、丟掉其他的；現在會記錄錯誤，而且不做任何改動。`Rank(true, false)` 以前會記錄錯誤但照樣排名，現在不會排名。`ReadSQL`、`ReadSQLContext`、`ReadSQLStream`、`ToSQL`、`ToSQLContext` 與 `ReadCSV_File` 收到第二個設定包或編碼時會回傳錯誤。
 - `DataList.DataType()` 與 `DataTable.ColDataTypes()` 讓程式能判斷一欄存的是什麼資料：`DataTypeNumber`、`DataTypeString`、`DataTypeBool`、`DataTypeTime`、`DataTypeOther`、`DataTypeMixed`，沒有任何值時是 `DataTypeEmpty`。缺值不算進去，整數和小數都算數字，看起來像數字的文字仍然是文字。以前只有 `ShowTypes` 能把每一格的 Go 型別印出來給人看；現在 `ShowTypes` 最上面會多一列 `DataType`，把同樣的總結放在每格型別的上方。
+- **BREAKING**：`DataTable.FillByInterpolation` 在欄位前面多了 `extrapolate bool`，跟 `FillForward` 把 limit 放在前面一樣，因為表格版本以前完全無法外插。`dt.FillByInterpolation(cols...)` 要改成 `dt.FillByInterpolation(false, cols...)`。
+- 表格的 `FillWithMean`、`FillWithMedian`、`FillByInterpolation`、`FillWithMode` 遇到你明確指定、卻補不了的欄位（數值補法遇到文字欄或混合欄，或整欄沒有任何值）時會記錄錯誤，寫出欄位與它的資料型別，其他指定的欄位照常補完。以前會默默跳過，讓人以為補好了。沒有指定欄位時，補不了的欄位仍然會跳過。
+- **BREAKING**：`NewSimpleImputer` 改成接受可省略的 `SimpleImputerOptions{Strategy, FillValue}`，取代 `(strategy, constant ...any)`。不給設定就用平均。`NewSimpleImputer(insyra.ImputeMedian)` 要改成 `NewSimpleImputer(insyra.SimpleImputerOptions{Strategy: insyra.ImputeMedian})`，`NewSimpleImputer(insyra.ImputeConstant, 7)` 要改成 `…{Strategy: insyra.ImputeConstant, FillValue: 7}`。
+- `ShowRange`、`ShowTypesRange` 與 `Show` 的範圍參數，遇到超過兩個值、第一個值不是 `int`、或結尾既不是 `int` 也不是 `nil` 時，會印出錯誤訊息；以前會忽略這些參數並顯示全部。DataList 與 DataTable 新增 `ShowHead(n)`、`ShowTail(n)`（以及 `ShowHeadTo`／`ShowTailTo`），是 `ShowRange(n)`、`ShowRange(-n)` 比較直白的寫法。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
@@ -105,6 +109,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `read sales.csv as x` 會告訴你該怎麼做，不再回答 `unknown option "as"`。`read` 只做預覽，內部自己補了一個別名，使用者再給一個就變成第二個 `as`，抱怨的地方完全不對。現在的訊息是「read only previews a file. Use `load sales.csv as <var>` to keep it」。
 - 修正 `insyra env import` 在沒有 `--force` 時，只要目標環境有檔案存在但讀不到，就會把非空的環境蓋掉。判斷目標是否為空的檢查把讀不到 `config.json` 當成「空的」，讀不到 `state.json` 與 `history.txt` 也一樣被忽略。檔案不存在仍然視為空；其他讀取失敗現在會停止匯入，並指出哪個環境無法確認。
 - `save` 可以存 Excel：`save <var> report.xlsx [sheet <名稱>] [if-exists fail|replace]`。它只寫一張工作表（預設 `Sheet1`），活頁簿其他工作表都會保留。存到已經存在的工作表會被拒絕，不會自動改名成 `Sheet2`；訊息會提示加上 `if-exists replace` 覆蓋，沒指定工作表時也會提示用 `sheet <名稱>` 另存一張。`.xls` 會被拒絕並提示改用 `.xlsx`，`sheet` 與 `if-exists` 用在其他檔案類型也會被拒絕。以前 `save … report.xlsx` 只會回報 `unsupported output file type`。
+- 表格的 `fillna` 現在會照 `extrapolate` 外插，以前這個選項會被丟掉。補值做不到要求的事時，指令會失敗且不存檔：`cols` 指定的欄位補不了、或對文字清單用 `mean`，以前都會被當成補好了存起來。
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外——也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。另外 `ml/mltest.RunConformance` 現在會判定「`Classes()` 回傳 nil」的實作不合格，而不是自己 panic——因為 `ml.Classifier` 是公開介面，函式庫外部的程式也能實作它。
 - **BREAKING（行為，簽名不變）**：`nn.NewTape` 最多只能給一個種子，給兩個時 `Param` 與 `Backward` 會回報錯誤，不再只用第一個。`Conv2D`、`MaxPool2D`、`AvgPool2D` 及對應的 `New…` 寫法給超過一個設定包時，以前會全部丟掉改用預設值建立；現在由 `Build` 回報錯誤。

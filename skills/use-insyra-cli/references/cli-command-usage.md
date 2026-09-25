@@ -251,6 +251,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 ## `fillna`
 - Description: Fill missing DataList/DataTable values
 - Usage: `fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [extrapolate yes|no] [missing nan|nil|both] [as <var>]`
+- `mean`/`median`/`interpolate` need a number column. Without `cols`, columns they cannot fill are skipped; a column named in `cols` that they cannot fill makes the command fail and saves nothing. A text list given `mean` fails the same way. `extrapolate` works for tables too.
 
 ## `fillnan`
 - Description: Fill NaN with mean (deprecated alias)

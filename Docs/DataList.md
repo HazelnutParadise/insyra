@@ -2116,6 +2116,8 @@ func (dl *DataList) ShowRangeTo(w io.Writer, startEnd ...any) // same output, wr
 
 The end index is exclusive, and a negative end counts back from the end and stays exclusive — exactly like a Python slice, so `ShowRange(2, -1)` stops before the last item. Pass `nil` as the end to run all the way to the end.
 
+More than two values, a first value that is not an `int`, or an end that is neither an `int` nor `nil` prints an error line instead of the list; such arguments used to be ignored and every item shown. `ShowHead(n)` / `ShowHeadTo(w, n)` and `ShowTail(n)` / `ShowTailTo(w, n)` are the plainer spellings of `ShowRange(n)` and `ShowRange(-n)`, and take a positive `n`.
+
 **Parameters:**
 
 - `startEnd`: Variable parameters for range specification
@@ -2136,6 +2138,8 @@ dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 dl.ShowRange(3)      // Show first 3 items
 dl.ShowRange(-3)     // Show last 3 items
 dl.ShowRange(2, 5)   // Show items from index 2 to 4
+dl.ShowHead(3)       // Same as ShowRange(3)
+dl.ShowTail(3)       // Same as ShowRange(-3)
 dl.ShowRange(2, -1)  // Show items from index 2 up to but NOT including the last one
 dl.ShowRange(5, nil) // Show items from index 5 to end
 ```

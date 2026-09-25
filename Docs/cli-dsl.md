@@ -693,7 +693,7 @@ fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [ex
 fillnan <var> mean [as <var>]   # deprecated; only fills NaN, mean only
 ```
 
-`fillna` clones the input (DataList or DataTable) and saves the filled result under `as <var>` or `$result`. `cols` filters which DataTable columns to touch (ignored for DataList). `limit` caps consecutive forward/backward fills; `extrapolate` controls whether interpolation fills leading/trailing gaps; `missing` selects which kind of missing to fill (default `both`). `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
+`fillna` clones the input (DataList or DataTable) and saves the filled result under `as <var>` or `$result`. `cols` filters which DataTable columns to touch (ignored for DataList). `limit` caps consecutive forward/backward fills; `extrapolate` controls whether interpolation fills leading/trailing gaps; `missing` selects which kind of missing to fill (default `both`). `mean`, `median`, and `interpolate` need a number column: with no `cols` a column they cannot fill is skipped, but a column named in `cols` that they cannot fill (text, mixed, or all missing) makes the command fail naming it, and nothing is saved. `mode`, `ffill`, and `bfill` work with any column type. `extrapolate` applies to tables as well as lists.
 
 `fillnan <var> mean` is a legacy alias kept for backward compatibility — it only fills NaN (leaves nil alone) and only supports the `mean` strategy. New code should use `fillna ... missing nan` instead.
 
