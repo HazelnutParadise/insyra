@@ -190,7 +190,7 @@ const exactSumHarnessWGSL = `
 @group(0) @binding(1) var<storage, read> xs: array<u32>;
 @group(0) @binding(2) var<storage, read> ys: array<u32>;
 @group(0) @binding(3) var<storage, read_write> outputs: array<u32>;
-struct HarnessParams { rows: u32, rowStride: u32, pad0: u32, pad1: u32, }
+struct HarnessParams { rows: u32, rowStride: u32, singleOnly: u32, pad1: u32, }
 @group(0) @binding(4) var<uniform> params: HarnessParams;
 
 @compute @workgroup_size(64, 1, 1)
@@ -207,6 +207,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     exact_clear(&odd);
     for (var k: u32 = start; k < end; k = k + 1u) {
         exact_add_product(&single, xs[k], ys[k]);
+    }
+    if (params.singleOnly == 1u) {
+        outputs[2u * row] = exact_round(single);
+        outputs[2u * row + 1u] = 0u;
+        return;
     }
     for (var j: u32 = 0u; j < end - start; j = j + 1u) {
         let k = end - 1u - j;
@@ -294,13 +299,6 @@ func exactSumUint32Bytes(values []uint32) []byte {
 }
 
 func runExactSumHarness(ctx context.Context, rows [][][2]uint32) (single, split []uint32, err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(rows) == 0 {
-		return []uint32{}, []uint32{}, nil
-	}
-
 	offsets := make([]uint32, len(rows)+1)
 	xs := make([]uint32, 0)
 	ys := make([]uint32, 0)
@@ -311,6 +309,24 @@ func runExactSumHarness(ctx context.Context, rows [][][2]uint32) (single, split 
 		}
 		offsets[i+1] = uint32(len(xs))
 	}
+
+	return runExactSumFlat(ctx, offsets, xs, ys, false)
+}
+
+// runExactSumFlat runs the exact-sum harness over already flattened rows. Row r
+// covers products [offsets[r], offsets[r+1]) of xs and ys, and there are
+// len(offsets)-1 rows. singleOnly asks for the single-register accumulation
+// alone, leaving the split output at zero, which is what the throughput
+// measurement wants so the device does only the work the CPU reference also
+// does.
+func runExactSumFlat(ctx context.Context, offsets, xs, ys []uint32, singleOnly bool) (single, split []uint32, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if len(offsets) < 2 {
+		return []uint32{}, []uint32{}, nil
+	}
+	rowCount := len(offsets) - 1
 
 	submitMu.Lock()
 	defer submitMu.Unlock()
@@ -324,7 +340,7 @@ func runExactSumHarness(ctx context.Context, rows [][][2]uint32) (single, split 
 		return nil, nil, fmt.Errorf("wgpu: exact-sum pipeline: %w", err)
 	}
 
-	outputBytes := exactSumBufferBytes(2 * len(rows))
+	outputBytes := exactSumBufferBytes(2 * rowCount)
 	release := make([]interface{ Release() }, 0, 8)
 	defer func() {
 		for i := len(release) - 1; i >= 0; i-- {
@@ -368,7 +384,7 @@ func runExactSumHarness(ctx context.Context, rows [][][2]uint32) (single, split 
 		return nil, nil, err
 	}
 
-	groups := (len(rows)-1)/64 + 1
+	groups := (rowCount-1)/64 + 1
 	x := groups
 	if x > maxWorkgroups {
 		x = maxWorkgroups
@@ -382,9 +398,13 @@ func runExactSumHarness(ctx context.Context, rows [][][2]uint32) (single, split 
 	}
 	rowStride := x * 64
 	paramsBytes := make([]byte, 16)
-	binary.LittleEndian.PutUint32(paramsBytes[0:], uint32(len(rows)))
+	binary.LittleEndian.PutUint32(paramsBytes[0:], uint32(rowCount))
 	binary.LittleEndian.PutUint32(paramsBytes[4:], uint32(rowStride))
-	binary.LittleEndian.PutUint32(paramsBytes[8:], 0)
+	if singleOnly {
+		binary.LittleEndian.PutUint32(paramsBytes[8:], 1)
+	} else {
+		binary.LittleEndian.PutUint32(paramsBytes[8:], 0)
+	}
 	binary.LittleEndian.PutUint32(paramsBytes[12:], 0)
 
 	if err := h.device.Queue().WriteBuffer(offsetsBuffer, 0, exactSumUint32Bytes(offsets)); err != nil {
@@ -453,7 +473,7 @@ func runExactSumHarness(ctx context.Context, rows [][][2]uint32) (single, split 
 		_ = staging.Unmap()
 		return nil, nil, fmt.Errorf("wgpu: exact-sum mapped range returned %d bytes, want %d", len(raw), outputBytes)
 	}
-	values := make([]uint32, 2*len(rows))
+	values := make([]uint32, 2*rowCount)
 	for i := range values {
 		values[i] = binary.LittleEndian.Uint32(raw[i*4:])
 	}
@@ -461,9 +481,9 @@ func runExactSumHarness(ctx context.Context, rows [][][2]uint32) (single, split 
 		return nil, nil, fmt.Errorf("wgpu: unmap exact-sum readback: %w", err)
 	}
 
-	single = make([]uint32, len(rows))
-	split = make([]uint32, len(rows))
-	for i := range rows {
+	single = make([]uint32, rowCount)
+	split = make([]uint32, rowCount)
+	for i := range rowCount {
 		single[i] = values[2*i]
 		split[i] = values[2*i+1]
 	}
