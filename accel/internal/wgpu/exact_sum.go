@@ -1,8 +1,14 @@
 package wgpu
 
-// exactSumWGSL provides the exact product-sum register used by device kernels.
-// Its values cross the boundary as bit patterns, and all arithmetic stays exact
-// in unsigned integers.
+// exactSumWGSL is a WGSL library, with no entry point, for the exact sum of
+// float32 products that nn's CPU accumulator computes (nn/exact_sum.go). A
+// register counts in units of 2^-298, like the CPU's, and holds 27 digits of
+// 24 bits in u32 with carries deferred for up to 64 additions. Float32 values
+// cross it as bit patterns and every operation is unsigned, so the result does
+// not depend on how a shader compiler treats floating point or signed
+// integers. Kernels prepend it to their own source. It uses no select():
+// gogpu/naga v0.19 writes a scalar select as an unparenthesized ternary in
+// Metal, which changes its meaning inside a larger expression.
 const exactSumWGSL = `
 const EXACT_MASK: u32 = 0xffffffu;
 const EXACT_FLAG_NAN: u32 = 1u;
@@ -23,11 +29,15 @@ fn exact_clear(r: ptr<function, ExactRegister>) {
 
 // Propagates every digit into the next one. The low digits then hold magnitudes
 // below 2^24, the top digit carries the sign, and explicit sign extension makes
-// subtraction of a whole negative limb exact.
+// subtraction of a whole negative limb exact. The carry is the signed value
+// arithmetic-shifted right by 24, with the high 8 bits sign-extended through
+// 0u - (v >> 31u), which is all ones when v is negative. It avoids select()
+// because gogpu/naga v0.19 writes a select used as an operand as an
+// unparenthesized ternary, which would re-associate the expression.
 fn exact_normalize(r: ptr<function, ExactRegister>) {
     for (var i: u32 = 0u; i < 26u; i = i + 1u) {
         let v = (*r).digits[i];
-        let carry = (v >> 24u) | select(0u, 0xffffff00u, (v & 0x80000000u) != 0u);
+        let carry = (v >> 24u) | ((0u - (v >> 31u)) << 8u);
         (*r).digits[i] = v & EXACT_MASK;
         (*r).digits[i + 1u] = (*r).digits[i + 1u] + carry;
     }
@@ -59,8 +69,14 @@ fn exact_add_product(r: ptr<function, ExactRegister>, x: u32, y: u32) {
         return;
     }
 
-    let mx = select(fx | 0x800000u, fx, ex == 0u);
-    let my = select(fy | 0x800000u, fy, ey == 0u);
+    var mx = fx;
+    if (ex != 0u) {
+        mx = fx | 0x800000u;
+    }
+    var my = fy;
+    if (ey != 0u) {
+        my = fy | 0x800000u;
+    }
     if (mx == 0u || my == 0u) {
         return;
     }
@@ -100,8 +116,9 @@ fn exact_add_product(r: ptr<function, ExactRegister>, x: u32, y: u32) {
 }
 
 // Normalizes both sides, adds their exact totals and special flags, then
-// normalizes the destination again. Splitting a total this way cannot change
-// its value or its eventual rounding.
+// normalizes the destination again. Both sides are normalized first so every
+// digit being added is below 2^24 and the sum stays far inside 2^31. Splitting a
+// total this way cannot change its value or its eventual rounding.
 fn exact_merge(r: ptr<function, ExactRegister>, other: ExactRegister) {
     exact_normalize(r);
     var o = other;
@@ -154,12 +171,18 @@ fn exact_round(r: ExactRegister) -> u32 {
         return 0u;
     }
 
-    var l = select(msb - 23u, 149u, msb < 172u);
+    var l: u32 = 149u;
+    if (msb >= 172u) {
+        l = msb - 23u;
+    }
     var kept: u32 = 0u;
     if (msb >= l) {
         let i = l / 24u;
         let o = l % 24u;
-        let hi = select(0u, w.digits[i + 1u], i + 1u < 27u);
+        var hi: u32 = 0u;
+        if (i + 1u < 27u) {
+            hi = w.digits[i + 1u];
+        }
         let n = msb - l + 1u;
         kept = ((w.digits[i] >> o) | (hi << (24u - o))) & ((1u << n) - 1u);
     }
