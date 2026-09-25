@@ -1,9 +1,13 @@
 package nn
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 	"math/rand"
+	"runtime"
+	"sort"
+	"sync"
 	"testing"
 )
 
@@ -217,4 +221,128 @@ func TestTanhHardCasesAreHardAndRight(t *testing.T) {
 			t.Errorf("input bits %#08x negated: tanhFloat32 result bits %#08x, want %#08x", a, got, negated)
 		}
 	}
+}
+
+// tanhFloat64GoldenHash is TestTanhFloat64IsTheSameEverywhere's hash of
+// tanhFloat64 over every positive float32 in [2^-13, 9.5), computed on the
+// darwin/arm64 machine where TestTanhIsCorrectlyRoundedExhaustive measured its
+// error. A platform that computes another value computes different bits.
+const tanhFloat64GoldenHash uint64 = 0x9b8d83bd1588cfdd
+
+func tanhMix64(z uint64) uint64 {
+	z ^= z >> 30
+	z *= 0xbf58476d1ce4e5b9
+	z ^= z >> 27
+	z *= 0x94d049bb133111eb
+	z ^= z >> 31
+	return z
+}
+
+// TestTanhFloat64IsTheSameEverywhere walks every input tanhFloat64 is
+// responsible for and pins what it computes two ways: the undecided inputs have
+// to be exactly tanhHardCases' keys, and every result's bits have to hash to
+// tanhFloat64GoldenHash. The exhaustive comparison is what measured the error
+// tanhSettleSteps rests on, and it does not run in CI, so without this a
+// platform computing other bits, or a change moving a result into or out of
+// tanhSettleSteps of a float32 midpoint, would not be caught until someone
+// reran the exhaustive run.
+func TestTanhFloat64IsTheSameEverywhere(t *testing.T) {
+	if testing.Short() {
+		t.Skip("walks all 135790592 positive float32 inputs in [2^-13, 9.5)")
+	}
+
+	// 0x39000000 is 2^-13 and 0x41180000 is 9.5, so the bit patterns in between
+	// are exactly the positive float32 inputs tanhFloat32 hands tanhFloat64.
+	const firstBits = uint32(0x39000000)
+	const lastBits = uint32(0x41180000)
+	const total = uint64(lastBits - firstBits)
+
+	workers := runtime.NumCPU()
+	chunk := total / uint64(workers)
+	remainder := total % uint64(workers)
+	hashes := make([]uint64, workers)
+	changedByWorker := make([]uint64, workers)
+	undecidedByWorker := make([][]uint32, workers)
+
+	var wg sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		start := uint64(firstBits) + uint64(worker)*chunk
+		end := start + chunk
+		if worker == workers-1 {
+			end += remainder
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Every worker keeps its own accumulator, its own count and its own
+			// undecided list, so the loop below never touches shared state and
+			// the result does not depend on how the ranges were split.
+			var hash, changes uint64
+			var undecided []uint32
+			for a := start; a < end; a++ {
+				x := math.Float32frombits(uint32(a))
+				value := tanhFloat64(float64(x))
+				hash += tanhMix64(a<<32 ^ math.Float64bits(value))
+				if !tanhFloat64Settles(value) {
+					undecided = append(undecided, uint32(a))
+				}
+				if math.Float32bits(float32(math.Tanh(float64(x)))) != math.Float32bits(tanhFloat32(x)) {
+					changes++
+				}
+			}
+			hashes[worker] = hash
+			changedByWorker[worker] = changes
+			undecidedByWorker[worker] = undecided
+		}()
+	}
+	wg.Wait()
+
+	var hash, changed uint64
+	var undecided []uint32
+	for _, h := range hashes {
+		hash += h
+	}
+	for _, c := range changedByWorker {
+		changed += c
+	}
+	for _, list := range undecidedByWorker {
+		undecided = append(undecided, list...)
+	}
+	sort.Slice(undecided, func(i, j int) bool { return undecided[i] < undecided[j] })
+
+	// tanhHardCases exists to answer exactly the inputs the fast path cannot
+	// decide, so the two sets have to match one for one in both directions.
+	keys := make([]uint32, 0, len(tanhHardCases))
+	for key := range tanhHardCases {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+
+	var unlisted, noLongerUndecided []string
+	i, j := 0, 0
+	for i < len(undecided) || j < len(keys) {
+		switch {
+		case j == len(keys) || (i < len(undecided) && undecided[i] < keys[j]):
+			unlisted = append(unlisted, fmt.Sprintf("%#08x", undecided[i]))
+			i++
+		case i == len(undecided) || keys[j] < undecided[i]:
+			noLongerUndecided = append(noLongerUndecided, fmt.Sprintf("%#08x", keys[j]))
+			j++
+		default:
+			i++
+			j++
+		}
+	}
+	if len(unlisted) > 0 || len(noLongerUndecided) > 0 {
+		t.Errorf("undecided but not in tanhHardCases: %v; in tanhHardCases but no longer undecided: %v; the inputs within %d float64 steps of a float32 midpoint changed; rerun INSYRA_EXHAUSTIVE_TESTS=1 go test -run TestTanhIsCorrectlyRoundedExhaustive ./nn/ and update tanhHardCases", unlisted, noLongerUndecided, tanhSettleSteps)
+	}
+
+	if hash != tanhFloat64GoldenHash {
+		t.Errorf("%s/%s: tanhFloat64's hash over %d inputs is %#016x, want %#016x: it computes different bits here than on the machine where its error was measured, so that measurement and tanhHardCases do not cover this platform; rerun the exhaustive comparison here", runtime.GOOS, runtime.GOARCH, total, hash, tanhFloat64GoldenHash)
+	}
+
+	// The last number counts the results that differ from float32(math.Tanh(x)),
+	// the tanh this replaced. math.Tanh's bits vary by platform, so it records
+	// how many middle-range results the change moved on the platform running it.
+	t.Logf("%s/%s: %d inputs, hash %#016x, %d undecided, %d of them change from float32(math.Tanh(x))", runtime.GOOS, runtime.GOARCH, total, hash, len(undecided), changed)
 }

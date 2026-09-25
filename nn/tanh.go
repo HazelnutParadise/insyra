@@ -27,8 +27,8 @@ var tanhHardCases = map[uint32]uint32{
 	0x40acb4d0: 0x3f7ffd50, // d=15
 }
 
-// Cody-Waite reduction constants for tanhFloat64. tanhLn2Hi keeps only the
-// leading 31 significand bits of ln(2), so its low 21 mantissa bits are zero
+// Cody-Waite reduction constants for tanhFloat64. tanhLn2Hi keeps the leading
+// 32 significant bits of ln(2) (31 stored), so its low 21 mantissa bits are zero
 // and every product with the k tanhFloat64 forms, which never exceeds 27, is
 // exact; tanhLn2Lo carries the rest.
 const (
@@ -87,9 +87,12 @@ func tanhFloat32(x float32) float32 {
 		y = hard
 	} else {
 		// The exhaustive comparison shows tanhHardCases covers every input the
-		// fast path cannot decide, so this arm is never reached. It stays so
-		// that changing tanhFloat64 without refilling the table still returns
-		// the correctly rounded answer.
+		// fast path cannot decide, so this arm is never reached today. It stays
+		// so that an input the table misses after a change to tanhFloat64 still
+		// gets the correctly rounded answer, as long as the changed tanhFloat64
+		// stays within tanhSettleSteps of the exact value.
+		// TestTanhFloat64IsTheSameEverywhere fails on any such change, which
+		// sends it back through the exhaustive run.
 		y = math.Float32bits(tanhHighPrecision(math.Float32frombits(a)))
 	}
 	return math.Float32frombits(y | bits&0x80000000)
@@ -113,10 +116,8 @@ func tanhMidpointSteps(t float64) int64 {
 // when t is tanhFloat64's result for an input with 2^-13 <= |x| < 9.5. The
 // margin it needs is tanhSettleSteps, and tanhFloat64's largest error over
 // every float32 input is measured by TestTanhIsCorrectlyRoundedExhaustive.
-// That measurement is a bound on every platform at once, because tanhFloat64
-// uses only IEEE 754 addition, subtraction, multiplication, division and
-// explicit conversions, which the Go specification requires to be rounded
-// individually, so the same input gives the same bits everywhere.
+// That measurement is a bound on every platform at once because tanhFloat64
+// returns the same bits everywhere, as its own comment explains.
 func tanhFloat64Settles(t float64) bool {
 	d := tanhMidpointSteps(t)
 	return d > tanhSettleSteps || d < -tanhSettleSteps
@@ -124,9 +125,8 @@ func tanhFloat64Settles(t float64) bool {
 
 // tanhExpm1Small returns expm1(u) for |u| up to about 0.35, which is the range
 // Cody-Waite reduction leaves tanhFloat64 in. The Taylor series through 1/15!
-// is evaluated in Estrin order, and every product carries an explicit float64
-// conversion, which the Go specification rounds on its own, so no two of them
-// can be fused.
+// is evaluated in Estrin order. Every product carries an explicit float64
+// conversion, so none can be fused into the addition that follows it.
 func tanhExpm1Small(u float64) float64 {
 	u2 := float64(u * u)
 	u4 := float64(u2 * u2)
@@ -154,17 +154,23 @@ func tanhExpm1Small(u float64) float64 {
 // which is Cody-Waite reduction, expm1(-2a) = 2^-k*expm1(-r) + (2^-k - 1).
 // The low bits of tanhLn2Hi are zero, so k*tanhLn2Hi is exact and r keeps the
 // full precision of z; 2^-k is a power of two, so both terms of that identity
-// are exact too and only the addition rounds, leaving tanhExpm1Small with the
-// only approximation in the expression.
+// are exact too and only the addition rounds. The approximations are
+// tanhExpm1Small's truncated series, the rounding of r, and
+// tanhLn2Hi+tanhLn2Lo's own distance from ln(2) of about 1.2e-26; the
+// exhaustive run measures their combined effect.
 //
-// Every product below carries an explicit float64 conversion, which the Go
-// specification requires to be rounded to float64 and therefore forbids
-// fusing with its neighbour, and the function otherwise uses only IEEE 754
-// addition, subtraction, multiplication and division. So the same input gives
-// the same float64 bits on every platform, unlike math.Tanh, whose arm64,
-// amd64 and s390x implementations each contract multiply-add differently. An
-// exhaustive comparison against the exact value on one machine therefore bounds
-// the error on all of them.
+// Every product that feeds an addition or subtraction carries an explicit
+// float64 conversion, and the Go specification forbids fusing a product across
+// such a conversion. Fusing a multiplication into an addition or subtraction is
+// the only floating-point fusion gc performs; the compiled code was checked to
+// hold no fused instruction for amd64 at GOAMD64 v1, v3 and v4, arm64 and wasm.
+// 2*a is left bare because it is exact. The function otherwise uses only IEEE
+// 754 addition, subtraction, multiplication and division, so the same input
+// gives the same float64 bits on every platform, which
+// TestTanhFloat64IsTheSameEverywhere checks on every platform CI runs. math.Tanh
+// does not: it fuses on arm64, picks an FMA path at run time on amd64 and is
+// assembly on s390x. An exhaustive comparison against the exact value on one
+// machine therefore bounds the error on all of them.
 func tanhFloat64(a float64) float64 {
 	z := 2 * a
 	k := int(float64(z*tanhInvLn2) + 0.5)
