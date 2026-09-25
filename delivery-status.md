@@ -62,7 +62,7 @@ The implementation has no code blocker. Acceptance still needs a multi-GPU host 
 `add-accel-execution-logging` is complete locally: stub probes verify one-time device and qualifying-fallback info lines, debug execution detail, caller-ineligible debug-only fallbacks, concurrent session safety, silenced info output, and strict validation. No hardware gate is needed. The multi-device hardware follow-up remains separate.
 
 ## Next Ticket
-`add-nn-sequential-fit` — the next independent visibility-pair change after execution logging. The multi-device parity and wall-clock item remains a standing hardware follow-up, not a blocker for this logging change.
+`nn-edge-sum` (#379, step 1 of 4): the CPU sparse edge-sum operation and its reverse rule, with a fixed summation order. Then a measurement of device against CPU with state resident on the device, which decides whether a device kernel is written; then the kernel, bit-identical to this CPU order; then resident state with export and import. `tape-custom-operations` (#375) is in PR #386.
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
