@@ -86,6 +86,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：CSV 與 JSON 的讀寫函式各只剩一個名字，設定都放進一個可省略的設定包。`ReadCSVFile(path, opts...)` 與 `ReadCSVString(s, opts...)` 取代 `ReadCSV_File`／`ReadCSV_FileWithOptions` 和 `ReadCSV_String`／`ReadCSV_StringWithOptions`；`ReadJSONFile` 取代 `ReadJSON_File`；`ToJSONBytes`／`ToJSONString` 取代 `ToJSON_Bytes`／`ToJSON_String`。舊名字這一版仍可使用，意思不變，已標為 **Deprecated**，下一版移除。
 - **BREAKING**：`DataTable.ToCSV(path, opts ...CSVWriteOptions)` 取代 `ToCSV(path, rowNames, colNames, bom bool)`，舊寫法會編譯失敗；`ToCSVWithOptions` 標為 **Deprecated**。`dt.ToCSV(path, false, true, false)` 改成 `dt.ToCSV(path)`。`WriteCSV` 與 `ReadCSV` 的設定包改成可省略；`StreamCSV` 的批次大小移到設定包前面，`StreamCSV(r, opts, 1000)` 改成 `StreamCSV(r, 1000, opts)`。
 - **BREAKING**：所有設定包裡的標題列與列名欄位統一命名為 `NoHeaderRow` 與 `HasRowNames`，全部留空就代表最常見的檔案：第一列是欄名、沒有列名欄。`CSVReadOptions.FirstRowToColNames` 與 `CSVWriteOptions.SetColNamesToFirstRow` 改成意思相反的 `NoHeaderRow`；`FirstColToRowNames` 與 `SetRowNamesToFirstCol` 改成 `HasRowNames`；`ExcelWriteOptions` 同步改名，`ToSQLOptions.RowNames` 改成 `HasRowNames`。有設定舊欄位的程式會編譯失敗。**有傳設定包但沒寫標題列那一項的程式，現在讀寫時都會有標題列**：例如 `CSVReadOptions{Encoding: "big5"}` 以前會把第一列當成資料。`ReadExcelSheet` 與 `ReadExcel` 只改了參數名稱。
+- **BREAKING（小）**：`IDataTable` 與 `IDataList` 現在列出 `*DataTable`、`*DataList` 的全部方法，以前分別少了 27 個和 17 個。例外是 `ClearErr`、`SetErr`、`Pivot`、`Unpivot`，刻意不列，因為內嵌核心型別的擴充型別會用自己的回傳型別改寫它們；拿介面型別的變數呼叫 `ClearErr()` 或 `SetErr()` 的程式要改用實際型別。內嵌 `*DataTable` 的型別現在能用在所有收表格的地方：`Merge` 以前只收純粹的 `*DataTable`。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
@@ -197,6 +198,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `DT.From`、`Col`、`Row`、`Push`、`UseDL`、`UseDT` 遇到錯誤的輸入不再結束程式，改為回傳帶著錯誤、可繼續串接的物件：`t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`。`UseDL`／`UseDT` 也不再回傳 `nil`。
 - 修正 `DT.From(map[int]any{...})` 永遠產生空表格。鍵被直接轉成字串，`0` 變成 `"0"`，而 `AppendRowsByColIndex` 要的是 Excel 式的欄位索引，因此每個鍵都被拒絕。現在改用 `Row` 路徑相同的轉換，`0` 就是 A 欄。負數的鍵沒有對應欄位，會被回報。
 - **BREAKING**：`CSV_inOpts`、`CSV_outOpts`、`Excel_inOpts` 的標題列與列名欄位改成 `NoHeaderRow` 與 `HasRowNames`，跟核心的設定包一致。`FirstRow2ColNames: true` 現在是預設值，可以直接拿掉；`FirstRow2ColNames: false` 要改成 `NoHeaderRow: true`。型別名稱維持簡短的 `Opts` 寫法。
+- isr 的表格與清單現在符合 `insyra.IDataTable` 與 `insyra.IDataList`，可以直接傳給 `stats`、`plot`、`mkt` 與 `Merge`：以前 `stats.PCA(isrTable)` 會編譯失敗，必須寫成 `isrTable.DataTable`。
 
 ### `gplot`
 - **BREAKING**：`SaveChart` 檔案寫不出來時改為回傳 `error`，不再結束程式。既有呼叫要改成 `if err := gplot.SaveChart(...); err != nil { ... }` 或明確寫 `_ =`。

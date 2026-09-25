@@ -88,6 +88,25 @@ type DataTable struct {
 - `lastModifiedTimestamp`: Unix timestamp when the table was last modified
 - `atomicActor`: Internal mutex + holder pair used by `AtomicDo` to serialise execution; same-goroutine re-entry runs inline without re-locking
 
+### Extending DataTable with your own type
+
+`IDataTable` and `IDataList` list every method of `*DataTable` and `*DataList`, and every function in the library that takes a table or a list takes one of these interfaces. You cannot implement them from scratch, since they carry a hidden method, but you can extend the core types by embedding them. The embedded pointer brings every method with it, so your type goes wherever a table goes, `Merge` included:
+
+```go
+type SalesTable struct {
+    *insyra.DataTable        // everything a DataTable does
+    Region string            // plus your own fields and methods
+}
+
+sales := SalesTable{DataTable: insyra.NewDataTable(/* ... */), Region: "north"}
+pca, err := stats.PCA(sales)                                          // works
+merged, err := other.Merge(sales, insyra.MergeDirectionVertical, insyra.MergeModeOuter) // works
+```
+
+You may add fields and methods. If you redefine a method the interface lists, keep its signature, or your type stops satisfying the interface. Four methods are left out of the interfaces for exactly that reason, so an extension may override them with its own return type: `ClearErr`, `SetErr`, `Pivot` and `Unpivot` (isr does, to keep its chains going). They remain methods of the concrete types. `isr`'s tables and lists are extensions of this kind, so they can be passed to `stats`, `plot` and `Merge` directly.
+
+Because nothing outside the module implements the interfaces, Insyra can add a method to them without breaking anyone's code.
+
 ### Naming Conventions
 
 - **Table Names**: Use snake-style Pascal case (e.g., `Factor_Loadings`, `Communalities`) to avoid spelling errors caused by spaces.

@@ -133,7 +133,7 @@
 | K-4 | Med | 全域錯誤 ring buffer（1536 筆）共 14 個匯出函式：`PopError`、`PopErrorInfo`、`PopErrorAndCallback`、`PopErrorByPackageName`、`PopErrorByFuncName`、`PeekError`、`GetAllErrors`、`GetErrorsByLevel`、`GetErrorsByPackage`、`PopAllErrors`、`HasError`、`HasErrorAboveLevel`、`GetErrorCount`、`ClearErrors`。全程序共用一個緩衝，多 goroutine 下拿到的是別人的錯；`PopError` 空緩衝回 `(LogLevelInfo, "")` 當哨兵，與 `PopErrorInfo` 回 nil 兩套語意並存。業界做法是回傳 error，實例層 `Err()` 已經有了（準則 1、6、10） | error_buffer.go 全檔 | 減到 `GetAllErrors`、`PopAllErrors`、`ClearErrors` 三個，其餘標 Deprecated；或整個 buffer 改為 opt-in |
 | K-5 | ~~Med~~ 已修正（batch 3） | `pushError` 對每筆錯誤 `go errHandlingFunc(...)`，goroutine 無上限且順序不保證；使用者的 handler 若慢或阻塞，每個 warning 就漏一個 goroutine | error_buffer.go:68-70 | 同步呼叫，或單一 consumer goroutine + 有界 channel |
 | K-6 | ~~Med~~ 已修正（batch 3） | `Config` 是 `*configStruct` 全域，型別未匯出：使用者無法在自己的函式簽名裡引用它，也不能建立第二份設定；`logLevel`、`coloredOutput`、`dontPanic`、`defaultErrHandlingFunc` 是裸欄位，`SetLogLevel` 與熱路徑 `GetLogLevel` 並行時是 data race（只有 threadSafe、acceleration 用了 atomic） | config.go:9-19, 36-70 | 匯出 `type Config struct`；四個欄位改 atomic 或加 mutex |
-| K-7 | Med | `IDataList` 含未匯出方法 `updateTimestamp()`，`IDataTable` 含 `getRowNameByIndex`、`getMaxColLength`、`updateTimestamp`：外部不可能實作，介面等同具體型別。但全 repo 71 個檔案用它當參數型別，回傳卻都是 `*DataList`/`*DataTable`。約 120 個方法的介面沒有抽象價值（「介面越大抽象越弱」，準則 1、8、10） | interfaces.go:6, 121 | 二選一：刪未匯出方法讓它可實作、並拆成小介面；或整個移除改用具體型別。這是 API 設計決策，需要你拍板 |
+| K-7 | ~~Med~~ 已處理（embeddable-sealed-interfaces：擁有者裁定維持封閉介面、子套件參數照用介面；介面補齊 27／17 個漏列方法，`ClearErr`／`SetErr`／`Pivot`／`Unpivot` 因 isr 以自己的簽名改寫而刻意不列並由測試記錄原因；內嵌核心型別的型別可傳入所有函式與 `Merge`） | `IDataList` 含未匯出方法 `updateTimestamp()`，`IDataTable` 含 `getRowNameByIndex`、`getMaxColLength`、`updateTimestamp`：外部不可能實作，介面等同具體型別。但全 repo 71 個檔案用它當參數型別，回傳卻都是 `*DataList`/`*DataTable`。約 120 個方法的介面沒有抽象價值（「介面越大抽象越弱」，準則 1、8、10） | interfaces.go:6, 121 | 二選一：刪未匯出方法讓它可實作、並拆成小介面；或整個移除改用具體型別。這是 API 設計決策，需要你拍板 |
 | K-8 | ~~Med~~ 已修正（batch 13）  | `AtomicDoAll(f func(), instances ...any)`：型別是 `any`，傳錯型別只 warning 然後「跳過不鎖」，呼叫端以為鎖住了其實在裸奔（準則 8、12） | atomic.go:109-131 | 定義 `type Lockable interface{ atomicActor() *core.AtomicActor }`，參數改 `...Lockable` |
 | K-9 | ~~Med~~ 已修正 | `ReadJSON_File` 直接 `json.Unmarshal` 不用 `UseNumber`，整數變 float64；`ReadJSON` 走 `unmarshalJSONRows` 保留 int64。同一個檔案從兩個入口讀，型別不同，大整數 ID 在 `ReadJSON_File` 會失真（準則 6、13） | read.go:410-431 vs 442-460 | `ReadJSON_File` 改成 `os.ReadFile` + `ReadJSON(bytes)` |
 | K-10 | ~~Med~~ 已修正（batch 3） | `DetectEncoding` 只看前 8KB，且 `utf8.Valid` 在多位元組字元被切在 8192 邊界時回 false，接著交給 chardet 可能判成別的編碼；chardet 回傳的名稱（`shift_jis`、`iso-8859-1`、`gb-18030`）csvxl 只認 big5/gb/utf-16，其餘靜默當 UTF-8 讀 | utils.go:279-322；csvxl/convert.go:213-222 | 邊界回退到最後一個完整 rune 再驗證；不支援的編碼回錯而非靜默 |
@@ -192,7 +192,7 @@
 | T-12 | Med（時間格式已修正 batch 2；JSON 部分待決） | `ToJSON_Bytes`／`ToJSON_String` 遇到 NaN 回 nil／空字串只設 Err（已實測），呼叫端拿到空 JSON 不會察覺；`ToCSV` 用 `%v` 輸出 `time.Time` 成 `2024-01-02 03:04:05 +0000 UTC`，`ParseDates` 預設 layout 讀不回來，CSV 往返壞掉（已實測）；`ToCSV(path, bool, bool, bool)` 三個裸 bool 且無 `io.Writer` 版本 | datatable_json.go:85-105；datatable_csv.go:13 | JSON 回 error；CSV 時間用 RFC3339；加 options struct 與 `WriteCSV(w io.Writer)` |
 | T-13 | Med | `Filter(func(row, col, value) bool)` 與 `FilterRows` 是「任一格子符合就留整列」，不是列謂詞。最常見的 `A > B` 這種跨欄條件無法表達，只能繞去 CCL；`FilterByCustomElement` 與 `Filter` 重複（準則 4、5） | datatable_filters.go:333-440 | 加 `FilterRowsWhere(func(row *DataList) bool)` |
 | T-14 | Med | `SetColNames` 給的名字比欄多時自動新增空欄（已實測），pandas 是長度不符即 raise；`AppendCols` 遇同名自動改成 `name_1` 不通知 | datatable_colname.go:163-185；datatable.go:69 | 長度不符回錯；同名至少 warn |
-| T-15 | Med（無名欄垂直合併已修正 fix-clear-defects-core；IDataTable 參數屬 K-7 待決） | `mergeVertical` 對沒有欄名的表（`NewDataTable(NewDataList(...))` 預設）判定「重複欄名 ""」而回錯，兩張無名表無法垂直合併（推論，未實測）；`Merge(other IDataTable, ...)` 內部立刻斷言 `*DataTable`，介面參數只是裝飾（K-7） | datatable_merge.go:31, 389-400 | 無名欄以位置對齊；參數改 `*DataTable` |
+| T-15 | ~~Med~~ 已修正（無名欄垂直合併：fix-clear-defects-core；`Merge` 內部寫死 `*DataTable`：embeddable-sealed-interfaces 改由隱藏方法取出內嵌的核心表格） | `mergeVertical` 對沒有欄名的表（`NewDataTable(NewDataList(...))` 預設）判定「重複欄名 ""」而回錯，兩張無名表無法垂直合併（推論，未實測）；`Merge(other IDataTable, ...)` 內部立刻斷言 `*DataTable`，介面參數只是裝飾（K-7） | datatable_merge.go:31, 389-400 | 無名欄以位置對齊；參數改 `*DataTable` |
 | T-16 | ~~Med~~ 已修正（batch 13）  | GroupBy 的 `columnsSnapshot` 是欄位指標的淺拷貝，`Aggregate` 在鎖外讀 `sourceCol.data`；父表被並行修改時是 data race（程式碼註解自己承認）。與 Rolling／EWM 深拷貝快照的做法不一致 | datatable_groupby.go:139-146 | 深拷貝或在 Aggregate 期間持鎖 |
 | T-17 | Med | 聚合相關 API 三種寫法：`Aggregate` 用 typed `AggregateOp`，`Pivot.AggFunc` 用字串（含 "avg"、"std" 別名），`Resample` 用 `AggregateOp`。GroupBy 的 key 把 `int 1` 與 `float64 1.0` 分成兩組（CSV 讀進來的 int64 與手動建的 float 會分家），pandas 視為同一組（準則 5、6） | datatable_pivot.go:44, 545-580；datatable_groupby.go:210 | Pivot 改收 `AggregateOp`；數值 key 正規化 |
 | T-18 | ~~Med~~ 已修正（batch 3） | 效能：`Count` 為了加總各欄用 `asyncutil.ParallelForEach` 再經 float64 `Sum` 轉回 int；`Clone` 用 `parallel.GroupUp` 跑兩件小事；`Map` 每格經 `originalCol.Get`（每格一次鎖）；`containsSubstring` 手寫遞迴，長字串遞迴深度等於字串長度，`strings.Contains` 就有 | datatable.go:1271-1282, 1384-1410, 1568-1571；datatable_map.go:30 | 直接迴圈；`strings.Contains` |
@@ -253,7 +253,7 @@
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | QU-1 | Low | enum 風格：`VaRMethod`、`OptionType`、`PortfolioObjective` 用 `uint8`，`stats` 用 string，core 用 int；同一個程式庫三種 enum 寫法，printf `%d` 出來的錯誤訊息（`unknown method 3`）也不如 string 可讀（準則 6、9） | quant/risk.go:16；options.go:11；portfolio.go:12 | 全庫統一為 typed int + `String()`，或 string |
-| QU-2 | Low | 參數型別 `insyra.IDataList`／`IDataTable`（K-7）；`CAPM`／`Beta` 先 `asset.Len()` 比長度再 `numericSeries`，nil 檢查與長度檢查在 `numericSeries` 之前重複實作（各函式自己寫一次） | quant/capm.go:40-70 | 改具體型別；長度檢查併入 helper |
+| QU-2 | ~~Low~~ 已修正（參數型別依 K-7 裁定維持介面；embeddable-sealed-interfaces 把 `CAPM`／`Beta` 重複的 nil 與長度檢查併成 `pairedSeries`） | 參數型別 `insyra.IDataList`／`IDataTable`（K-7）；`CAPM`／`Beta` 先 `asset.Len()` 比長度再 `numericSeries`，nil 檢查與長度檢查在 `numericSeries` 之前重複實作（各函式自己寫一次） | quant/capm.go:40-70 | 改具體型別；長度檢查併入 helper |
 | QU-3 | Low | `PercentileBands(paths, percentiles []float64)` 的百分位尺度要與 D-13（0..1 vs 0..100）一起統一；`WalkForward[P any]` 用索引區間回呼，使用者要自己切資料，沒有收 DataTable 的版本（準則 4） | quant/bootstrap.go:217；walkforward.go | 文件標明尺度；加 DataTable 版 |
 | QU-4 | OK | 範本等級：每個函式先 `numericSeries` 拒絕不可讀值並指出列號、全部回 error、doc 寫清單位（per-period vs annualized、calendar days）、`BootstrapConfig.Seed` 語意明確、`PortfolioConfig` 只預設容忍度其餘一律驗證、`Converged=false` 不當錯誤。其他套件應以此為準 | — | — |
 
@@ -528,7 +528,7 @@
 | K-1、I-1、PL-2 | [#205](https://github.com/HazelnutParadise/insyra/issues/205) |  |
 | K-3 | [#206](https://github.com/HazelnutParadise/insyra/issues/206) |  |
 | K-4 | [#207](https://github.com/HazelnutParadise/insyra/issues/207) |  |
-| K-7、QU-2 | [#208](https://github.com/HazelnutParadise/insyra/issues/208) |  |
+| K-7、QU-2 | [#208](https://github.com/HazelnutParadise/insyra/issues/208) | 已關閉（embeddable-sealed-interfaces） |
 | K-8 | [#209](https://github.com/HazelnutParadise/insyra/issues/209) |  |
 | K-11、C-10、Q-8 | [#210](https://github.com/HazelnutParadise/insyra/issues/210) | 已關閉（reader-writer-entry-points；`csvxl` 經裁定不做，改名移到 #213） |
 | K-12 | [#211](https://github.com/HazelnutParadise/insyra/issues/211) | 已關閉（exported-functions-are-functions） |
@@ -548,7 +548,7 @@
 | T-11、T-20、MK-3 | [#225](https://github.com/HazelnutParadise/insyra/issues/225) | 已關閉（one-column-selector；T-20 的 mode 魔數與 MK-3 的其餘項目另開） |
 | T-13 | [#226](https://github.com/HazelnutParadise/insyra/issues/226) |  |
 | T-14 | [#227](https://github.com/HazelnutParadise/insyra/issues/227) |  |
-| T-15 | [#228](https://github.com/HazelnutParadise/insyra/issues/228) |  |
+| T-15 | [#228](https://github.com/HazelnutParadise/insyra/issues/228) | 已關閉（fix-clear-defects-core、embeddable-sealed-interfaces） |
 | T-16 | [#229](https://github.com/HazelnutParadise/insyra/issues/229) |  |
 | T-17 | [#230](https://github.com/HazelnutParadise/insyra/issues/230) |  |
 | T-21 | [#231](https://github.com/HazelnutParadise/insyra/issues/231) |  |
