@@ -325,6 +325,167 @@ func TestExactSumHelpersMatchBitwiseReference(t *testing.T) {
 	}
 }
 
+// float64FastThenExact is the choice EdgeSum makes for one output: the fast
+// path's answer when it can prove the rounding, the exact accumulator's
+// otherwise.
+func float64FastThenExact(pairs [][2]float32) float32 {
+	var fast float64ProductSum
+	for _, p := range pairs {
+		fast.add(p[0], p[1])
+	}
+	if out, ok := fast.result(); ok {
+		return out
+	}
+	return exactSumOf(pairs)
+}
+
+func TestFloat64ProductSumAgreesWithExact(t *testing.T) {
+	r := rand.New(rand.NewSource(9))
+	accepted, rounds := 0, 0
+	for round := 0; round < 2000; round++ {
+		pairs := exactRandomPairs(r, 1+r.Intn(300))
+		if round%4 == 0 {
+			// Every group also arrives as (-x, y), so the float64 total loses
+			// each one to the pair beside it and only the small leftovers
+			// survive, while abs keeps every magnitude. The bound then dwarfs
+			// the total and the fast path has to refuse.
+			canceling := make([][2]float32, 0, 3*len(pairs))
+			for _, p := range pairs {
+				canceling = append(canceling, p, [2]float32{-p[0], p[1]}, [2]float32{exactPow2(-140), 1})
+			}
+			pairs = canceling
+		}
+		rounds++
+
+		var fast float64ProductSum
+		fast.reset()
+		for _, p := range pairs {
+			fast.add(p[0], p[1])
+		}
+		out, ok := fast.result()
+		if ok {
+			accepted++
+			if got, want := math.Float32bits(out), math.Float32bits(exactSumOf(pairs)); got != want {
+				t.Fatalf("round %d of %d pairs: fast path bits = %#08x, exact bits = %#08x", round, len(pairs), got, want)
+			}
+		}
+
+		if got, want := math.Float32bits(float64FastThenExact(pairs)), math.Float32bits(exactSumOracle(pairs)); got != want {
+			t.Fatalf("round %d of %d pairs: fast-then-exact bits = %#08x, oracle bits = %#08x", round, len(pairs), got, want)
+		}
+	}
+	t.Logf("fast path proved the rounding in %d of %d rounds (%.1f%%)", accepted, rounds, 100*float64(accepted)/float64(rounds))
+}
+
+func TestFloat64ProductSumRefusesNearMidpoints(t *testing.T) {
+	tests := []struct {
+		name  string
+		pairs [][2]float32
+	}{
+		{
+			name: "a float64 total sitting exactly on a midpoint",
+			pairs: [][2]float32{
+				{1, 1},
+				{exactPow2(-24), 1},
+				{exactPow2(-80), 1},
+			},
+		},
+		{
+			name: "the same total with the tiny term below it",
+			pairs: [][2]float32{
+				{1, 1},
+				{exactPow2(-24), 1},
+				{-exactPow2(-80), 1},
+			},
+		},
+		{
+			name: "a total that cancels to nothing",
+			pairs: [][2]float32{
+				{1, 1},
+				{-1, 1},
+			},
+		},
+		{
+			name: "the largest float32 plus a product too small to move it",
+			pairs: [][2]float32{
+				{math.MaxFloat32, 1},
+				{1, 1},
+			},
+		},
+		{
+			name: "a huge pair cancelling around a small one",
+			pairs: [][2]float32{
+				{float32(1e30), 1},
+				{float32(-1e30), 1},
+				{float32(1e-30), 1},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var fast float64ProductSum
+			fast.reset()
+			for _, p := range tc.pairs {
+				fast.add(p[0], p[1])
+			}
+			if out, ok := fast.result(); ok {
+				t.Fatalf("fast path accepted %#08x, want a refusal", math.Float32bits(out))
+			}
+			if got, want := math.Float32bits(float64FastThenExact(tc.pairs)), math.Float32bits(exactSumOracle(tc.pairs)); got != want {
+				t.Fatalf("bits = %#08x, want %#08x", got, want)
+			}
+		})
+	}
+}
+
+func TestFloat64ProductSumSingleProduct(t *testing.T) {
+	tests := []struct {
+		name string
+		pair [2]float32
+		want uint32
+	}{
+		{
+			name: "a quarter times three tenths",
+			pair: [2]float32{0.25, 0.3},
+			want: math.Float32bits(float32(0.25) * float32(0.3)),
+		},
+		{
+			name: "negative zero times one is positive zero",
+			pair: [2]float32{float32(math.Copysign(0, -1)), 1},
+			want: 0x00000000,
+		},
+		{
+			name: "the largest float32 times two overflows",
+			pair: [2]float32{math.MaxFloat32, 2},
+			want: 0x7f800000,
+		},
+		{
+			name: "the smallest subnormal times a half ties to even",
+			pair: [2]float32{math.Float32frombits(1), 0.5},
+			want: 0x00000000,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var fast float64ProductSum
+			fast.reset()
+			fast.add(tc.pair[0], tc.pair[1])
+			out, ok := fast.result()
+			if !ok {
+				t.Fatal("fast path refused a single product, want ok")
+			}
+			if got := math.Float32bits(out); got != tc.want {
+				t.Fatalf("bits = %#08x, want %#08x", got, tc.want)
+			}
+			if got, want := math.Float32bits(exactSumOf([][2]float32{tc.pair})), tc.want; got != want {
+				t.Fatalf("exact accumulator bits = %#08x, want %#08x", got, want)
+			}
+		})
+	}
+}
+
 var exactAccumulatorFloat32BenchmarkSink float32
 var exactAccumulatorAddProductBenchmarkSink int
 

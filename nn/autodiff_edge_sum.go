@@ -45,10 +45,22 @@ func edgeSumVJPWith(topology *EdgeTopology, weights, values, upstream *Tensor, b
 	}
 	parallelFor(batch*n, workers, func(start, end int) {
 		var acc exactAccumulator
+		var fast float64ProductSum
 		for i := start; i < end; i++ {
 			b, s := i/n, i%n
+			from := int(topology.sourceOffsets[s])
+			until := int(topology.sourceOffsets[s+1])
+			fast.reset()
+			for edgeIndex := from; edgeIndex < until; edgeIndex++ {
+				e := int(topology.sourceEdges[edgeIndex])
+				fast.add(weights.data[e], upstream.data[b*n+int(topology.targets[e])])
+			}
+			if out, ok := fast.result(); ok {
+				dValues.data[i] = out
+				continue
+			}
 			acc.reset()
-			for edgeIndex := int(topology.sourceOffsets[s]); edgeIndex < int(topology.sourceOffsets[s+1]); edgeIndex++ {
+			for edgeIndex := from; edgeIndex < until; edgeIndex++ {
 				e := int(topology.sourceEdges[edgeIndex])
 				acc.addProduct(weights.data[e], upstream.data[b*n+int(topology.targets[e])])
 			}
@@ -61,7 +73,16 @@ func edgeSumVJPWith(topology *EdgeTopology, weights, values, upstream *Tensor, b
 	}
 	parallelFor(topology.Edges(), workers, func(start, end int) {
 		var acc exactAccumulator
+		var fast float64ProductSum
 		for e := start; e < end; e++ {
+			fast.reset()
+			for b := 0; b < batch; b++ {
+				fast.add(upstream.data[b*n+int(topology.targets[e])], values.data[b*n+int(topology.sources[e])])
+			}
+			if out, ok := fast.result(); ok {
+				dWeights.data[e] = out
+				continue
+			}
 			acc.reset()
 			for b := 0; b < batch; b++ {
 				acc.addProduct(upstream.data[b*n+int(topology.targets[e])], values.data[b*n+int(topology.sources[e])])
