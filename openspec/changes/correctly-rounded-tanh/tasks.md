@@ -2,7 +2,7 @@
 
 ## 1. Oracle and measurement
 - [x] 1.1 `math/big` 的 tanh 參考答案，以 Python `decimal` 算出的 50 位數錨點驗證
-- [ ] 1.2 閘控的 2^32 全面比對測試；先對舊的 `nn.Tanh` 跑一次，記下不是正確捨入的輸入數量
+- [x] 1.2 閘控的 2^32 全面比對測試；先對舊的 `nn.Tanh` 跑一次，記下不是正確捨入的輸入數量
 
 ## 2. Implementation
 - [x] 2.1 正確捨入的 `tanh`：解析區間、float64 快速路徑加寬安全距離、256 位元後備
