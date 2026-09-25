@@ -254,6 +254,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-25] — device MatMul's bit-parity rests on behaviour WGSL does not promise
+- **Where**: `accel/internal/wgpu/matmul.go` (`matmulWGSL`), `accel/nn_matmul.go`, and the default-on hook in `nn/device_matmul_wiring.go`
+- **What**: `ENG.md` now defines a device float32 result as the correctly rounded value of the exact operation, computed in integers, because WGSL lets an implementation contract, reassociate and flush subnormals. Device MatMul predates that rule: it accumulates `acc + a*b` in `f32` and matches the CPU only because Metal and Go on arm64 both fuse (asserted with `==` on the M3). The same measurement for `EdgeSum` on 2026-09-25 showed Metal fusing exactly like arm64, so today's parity is real, but a conforming implementation that reassociated the loop or flushed a subnormal would break it, and amd64's CPU, which does not fuse, already disagrees with the device.
+- **Suggestion**: move MatMul to the exact rule — each output the correctly rounded exact dot product — on both CPU and device. That changes `nn.MatMul`'s results, which are released, so it waits for the owner; it also costs CPU time that has to be measured against M19's all-core baseline first.
+- **Status**: pending
+
 ### [2026-09-20] — `TestSequentialFitMNISTConvergence` still pins numbers recorded on one machine
 - **Where**: [nn/fit_mnist_test.go](nn/fit_mnist_test.go), the mean-loss and accuracy assertions
 - **What**: Fit's sugar-changes-nothing proof compares against the transcribed `0.347310`, `0.165883` and `0.9547` instead of against the hand-written loop it claims to reproduce. Its sibling `TestSequentialMNISTConvergence` failed exactly that way on `ubuntu-latest` on 2026-09-20 — `0.163855` recorded on arm64 against `0.163840` measured on amd64, while the two code paths still agreed with each other — and now runs the hand loop in the same process (`mnist-proof-compares-runs`). Fit's numbers happen to hold on both platforms measured so far, so nothing is red today.

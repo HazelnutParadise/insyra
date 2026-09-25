@@ -1,7 +1,7 @@
 # nn-edge-sum Specification
 
 ## Purpose
-A sparse edge-sum operation for graphs given as edge lists: each node sums its weighted incoming edges without a dense N×N matrix, with a reverse rule for the edge weights and the node values and a fixed summation order a device kernel can be held to.
+A sparse edge-sum operation for graphs given as edge lists: each node sums its weighted incoming edges without a dense N×N matrix, with a reverse rule for the edge weights and the node values. Every output and gradient is the correctly rounded exact sum of its products, which does not depend on how the work is split and which a device kernel can reproduce bit for bit.
 
 ## Requirements
 
@@ -23,39 +23,19 @@ A sparse edge-sum operation for graphs given as edge lists: each node sums its w
 
 #### Scenario: The three-edge example from #379
 - **WHEN** sources `[0, 1, 2]`, targets `[1, 2, 0]`, weights `[0.5, -1, 0.25]` and values `[0.1, 0.2, 0.3]`
-- **THEN** the output is `[0.25·0.3, 0.5·0.1, -1·0.2]` in float32
+- **THEN** the output is `[0.25·0.3, 0.5·0.1, -1·0.2]`, each product rounded once to float32
 
 #### Scenario: Repeated targets and negative weights
 - **WHEN** several edges share a target and some weights are negative
-- **THEN** the output agrees with a dense float64 product within float32 tolerance
+- **THEN** the output equals the exact sum of its products rounded once to float32
 
 #### Scenario: A large sparse graph
 - **WHEN** a graph has a million nodes and a handful of edges
 - **THEN** `EdgeSum` completes without allocating anything proportional to N²
 
-### Requirement: The summation order is fixed
-
-Each output SHALL be computed by starting from zero and adding the edges of its target in ascending edge index, with every product rounded to float32 before it is added. The result SHALL be bit-identical to that loop on every platform.
-
-#### Scenario: The same result as the reference loop
-- **WHEN** `EdgeSum` runs on a graph with repeated targets
-- **THEN** every output is bit-identical to the ascending-edge loop with explicitly rounded products
-
-### Requirement: The operation has a reverse rule on the tape
-
-`Tape.EdgeSum` SHALL record the operation so that the gradient of `values[..., s]` is the sum over edges with source `s`, in ascending edge index, of `weights[e]·upstream[..., targets[e]]`, and the gradient of `weights[e]` is the sum over the batch, in ascending batch index, of `upstream[b, targets[e]]·values[b, sources[e]]`, every product rounded to float32 before it is added.
-
-#### Scenario: Gradients against finite differences
-- **WHEN** `EdgeSum` feeds `Tanh` and a loss, and the gradients of `weights` and `values` are compared with central finite differences
-- **THEN** they agree within the tolerance the perturbation allows
-
-#### Scenario: Gradients against the reference loops
-- **WHEN** the tape's gradients are compared with the ascending-order loops above
-- **THEN** they are bit-identical
-
 ### Requirement: Large edge sums use every core without changing a bit
 
-`EdgeSum` and the two gradients of `Tape.EdgeSum` SHALL divide their output elements across cores when the work exceeds `nn`'s parallel threshold, with each output element computed by exactly one worker in the order the summation-order requirement fixes. The result SHALL be bit-identical whatever the number of workers.
+`EdgeSum` and the two gradients of `Tape.EdgeSum` SHALL divide their output elements across cores when the work exceeds `nn`'s parallel threshold. The result SHALL be bit-identical whatever the number of workers.
 
 #### Scenario: One worker and every worker agree
 - **WHEN** the forward pass and both gradients run on a graph large enough to use every core, once with one worker and once with every worker
@@ -67,12 +47,44 @@ Each output SHALL be computed by starting from zero and adding the edges of its 
 
 ### Requirement: A device edge sum is earned by measurement and matches the CPU bit for bit
 
-No production device kernel for `EdgeSum` SHALL exist until a recorded measurement shows the device faster than the all-core CPU at the measured sizes, with every upload and readback counted, and shows a kernel variant whose results are bit-identical to the CPU's contracted order. The measurement and its verdict SHALL be recorded in `delivery-status.md`.
+No production device kernel for `EdgeSum` SHALL exist until a recorded measurement shows the device faster than the all-core CPU at the measured sizes, with every upload and readback counted, and shows a kernel whose results are bit-identical to the CPU's. The measurement and its verdict SHALL be recorded in `delivery-status.md`.
 
 #### Scenario: The device is measured before a kernel is proposed
 - **WHEN** a device path for `EdgeSum` is proposed
-- **THEN** `delivery-status.md` already records device and all-core CPU times per size and the bit-for-bit comparison of each kernel variant against the CPU order
+- **THEN** `delivery-status.md` already records device and all-core CPU times per size and the bit-for-bit comparison of the kernel against the CPU
 
 #### Scenario: The device cannot match the CPU order
-- **WHEN** no kernel variant is bit-identical to the unfused CPU order
-- **THEN** no device path is wired, and the choice of order goes to the owner
+- **WHEN** a kernel is not bit-identical to the CPU's result
+- **THEN** no device path is wired
+
+### Requirement: Each output is the correctly rounded exact sum
+
+Each output of `EdgeSum` SHALL be the exact sum of its products `weights[e]·values[..., sources[e]]`, rounded once to the nearest float32 with ties to even, including subnormal results and overflow to infinity. The result SHALL NOT depend on the order of the edges, the order of the batch, or the number of workers. A NaN operand, a product of zero and infinity, or infinite products of both signs SHALL make the output NaN; otherwise an infinite product SHALL make the output that infinity. An output whose exact sum is zero, including one with no incoming edge, SHALL be `+0`.
+
+#### Scenario: Against an exact oracle
+- **WHEN** `EdgeSum` runs on random graphs with repeated targets and negative weights
+- **THEN** every output equals the `math/big` exact sum of its products rounded to float32
+
+#### Scenario: Cancellation
+- **WHEN** a node's products include `x`, `-x` and a value far smaller than `x`
+- **THEN** the output is that small value, not zero
+
+#### Scenario: Ties, subnormals and overflow
+- **WHEN** a node's exact sum lies exactly half-way between two float32 values, or below the smallest normal float32, or beyond the largest
+- **THEN** the output is the tie rounded to even, the correctly rounded subnormal, or the infinity round-to-nearest gives
+
+#### Scenario: Edge order does not matter
+- **WHEN** the same edges are given to `NewEdgeTopology` in a different order, with their weights permuted to match
+- **THEN** every output is bit-identical
+
+### Requirement: The reverse rule is the exact sum too
+
+`Tape.EdgeSum` SHALL record the operation so that the gradient of `values[..., s]` is the sum over edges with source `s` of `weights[e]·upstream[..., targets[e]]`, and the gradient of `weights[e]` is the sum over the batch of `upstream[b, targets[e]]·values[b, sources[e]]`, each gradient the correctly rounded exact sum of its products under the same rules as the forward pass.
+
+#### Scenario: Gradients against finite differences
+- **WHEN** `EdgeSum` feeds `Tanh` and a loss, and the gradients of `weights` and `values` are compared with central finite differences
+- **THEN** they agree within the tolerance the perturbation allows
+
+#### Scenario: Gradients against an exact oracle
+- **WHEN** the tape's gradients are compared with the `math/big` exact sums of their products rounded to float32
+- **THEN** they are bit-identical

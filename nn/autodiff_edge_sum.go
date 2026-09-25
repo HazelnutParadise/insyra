@@ -4,9 +4,13 @@ import "fmt"
 
 // EdgeSum runs EdgeSum and records its reverse rule. The gradient of
 // values[..., s] sums weights[e]*upstream[..., targets[e]] over the edges
-// leaving s in ascending edge index; the gradient of weights[e] sums
-// upstream[b, targets[e]]*values[b, sources[e]] over the batch in ascending
-// batch index. Every product is rounded to float32 before it is added.
+// leaving s; the gradient of weights[e] sums
+// upstream[b, targets[e]]*values[b, sources[e]] over the batch. The output and
+// every gradient are the exact sums of their products rounded once to the
+// nearest float32, with ties to even, so results do not depend on edge order, batch
+// order, or worker count. An exact zero is +0. A NaN operand, zero times
+// infinity, or infinite products of both signs produce NaN; otherwise an
+// infinite product determines the result.
 func (t *Tape) EdgeSum(topology *EdgeTopology, weights, values *Tensor) (*Tensor, error) {
 	output, err := EdgeSum(topology, weights, values)
 	if err != nil {
@@ -40,14 +44,27 @@ func edgeSumVJPWith(topology *EdgeTopology, weights, values, upstream *Tensor, b
 		return nil, err
 	}
 	parallelFor(batch*n, workers, func(start, end int) {
+		var acc exactAccumulator
+		var fast float64ProductSum
 		for i := start; i < end; i++ {
 			b, s := i/n, i%n
-			acc := float32(0)
-			for edgeIndex := int(topology.sourceOffsets[s]); edgeIndex < int(topology.sourceOffsets[s+1]); edgeIndex++ {
+			from := int(topology.sourceOffsets[s])
+			until := int(topology.sourceOffsets[s+1])
+			fast.reset()
+			for edgeIndex := from; edgeIndex < until; edgeIndex++ {
 				e := int(topology.sourceEdges[edgeIndex])
-				acc += float32(weights.data[e] * upstream.data[b*n+int(topology.targets[e])]) // explicit conversion: no fused multiply-add
+				fast.add(weights.data[e], upstream.data[b*n+int(topology.targets[e])])
 			}
-			dValues.data[i] = acc
+			if out, ok := fast.result(); ok {
+				dValues.data[i] = out
+				continue
+			}
+			acc.reset()
+			for edgeIndex := from; edgeIndex < until; edgeIndex++ {
+				e := int(topology.sourceEdges[edgeIndex])
+				acc.addProduct(weights.data[e], upstream.data[b*n+int(topology.targets[e])])
+			}
+			dValues.data[i] = acc.float32()
 		}
 	})
 	dWeights, err := newZeroFloat32Tensor([]int{topology.Edges()})
@@ -55,12 +72,22 @@ func edgeSumVJPWith(topology *EdgeTopology, weights, values, upstream *Tensor, b
 		return nil, err
 	}
 	parallelFor(topology.Edges(), workers, func(start, end int) {
+		var acc exactAccumulator
+		var fast float64ProductSum
 		for e := start; e < end; e++ {
-			acc := float32(0)
+			fast.reset()
 			for b := 0; b < batch; b++ {
-				acc += float32(upstream.data[b*n+int(topology.targets[e])] * values.data[b*n+int(topology.sources[e])]) // explicit conversion: no fused multiply-add
+				fast.add(upstream.data[b*n+int(topology.targets[e])], values.data[b*n+int(topology.sources[e])])
 			}
-			dWeights.data[e] = acc
+			if out, ok := fast.result(); ok {
+				dWeights.data[e] = out
+				continue
+			}
+			acc.reset()
+			for b := 0; b < batch; b++ {
+				acc.addProduct(upstream.data[b*n+int(topology.targets[e])], values.data[b*n+int(topology.sources[e])])
+			}
+			dWeights.data[e] = acc.float32()
 		}
 	})
 	return []*Tensor{dWeights, dValues}, nil

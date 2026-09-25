@@ -21,7 +21,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `Tape.Custom(name, inputs, output, vjp)`，把在 tape 外算出來的運算放上 tape：它的輸入會拿到反向規則回傳的梯度。以前在 tape 外算出的張量會讓它的輸入默默拿到零梯度。反向規則可以不是前向的導數，例如替硬門檻宣告一個平滑的替代梯度。`Custom` 會拒絕格式不對的宣告。反向規則回傳錯誤，或梯度的數量、型別、形狀不對時，`Backward` 會失敗並指出是哪個運算。（[issue #375](https://github.com/HazelnutParadise/insyra/issues/375)）
 - 新增 `Tape.BackwardFrom(output, upstream)`，可以從 tape 上任何運算產生的張量開始反向傳播，並帶入呼叫者給的、形狀相同的上游梯度。（[issue #375](https://github.com/HazelnutParadise/insyra/issues/375)）
 - 失敗的 `Backward` 不再讓 `Tape.Grad` 回傳算到一半的梯度：`Tape.Grad` 與 `Parameter.Grad` 都保留上一次成功的結果。
-- 新增 `NewEdgeTopology`、`EdgeSum` 與 `Tape.EdgeSum`，處理以邊列表表示的圖：每個節點加總自己收到的加權邊，成本只跟邊數和數值量成正比，不需要 N×N 的稠密矩陣，tape 也會算出邊權重和節點數值的梯度。數值可以是 `[N]` 或帶批次的 `[B, N]`。每個節點照邊的編號由小到大相加，每個乘積都先捨入成 float32，所以在每個平台上結果都一樣。大型圖會用滿所有核心，結果仍然不變。（[issue #379](https://github.com/HazelnutParadise/insyra/issues/379)）
+- 新增 `NewEdgeTopology`、`EdgeSum` 與 `Tape.EdgeSum`，處理以邊列表表示的圖：每個節點加總自己收到的加權邊，成本只跟邊數和數值量成正比，不需要 N×N 的稠密矩陣，tape 也會算出邊權重和節點數值的梯度。數值可以是 `[N]` 或帶批次的 `[B, N]`。每個輸出都是所有乘積的精確總和只捨入一次到最近的 float32，所以邊的順序和核心數量都改變不了結果，在每個平台上都一樣。大型圖會用滿所有核心。（[issue #379](https://github.com/HazelnutParadise/insyra/issues/379)）
 
 ## v0.3.3
 

@@ -92,11 +92,16 @@ func edgeSumWorkers(batch, nodes, edges int) int {
 }
 
 // EdgeSum returns out[..., t] = sum of weights[e]*values[..., sources[e]] over
-// every edge e whose target is t (zero for a node with no incoming edge).
+// every edge e whose target is t (+0 for a node with no incoming edge).
 // weights is float32 [E]; values is float32 [N] or [B, N]; the output has
-// the shape of values. Each output starts from zero and adds its edges in
-// ascending edge index, every product rounded to float32 before it is added,
-// so the result does not depend on the platform.
+// the shape of values. Each output is the exact sum of its products rounded
+// once to the nearest float32, with ties to even, so the result does not
+// depend on edge order, batch order, or worker count. An exact zero, including
+// a node with no incoming edge, is +0. A NaN operand, zero times infinity, or
+// infinite products of both signs produce NaN; otherwise an infinite product
+// determines the output. Each output is reached through a float64 fast path
+// whenever it can prove the rounding, and through the exact accumulator when
+// it cannot; the two answers are the same bits.
 func EdgeSum(topology *EdgeTopology, weights, values *Tensor) (*Tensor, error) {
 	if topology == nil {
 		return nil, fmt.Errorf("edge sum topology is nil")
@@ -132,14 +137,27 @@ func edgeSumForward(topology *EdgeTopology, weights, values *Tensor, batch, work
 	}
 	n := topology.Nodes()
 	parallelFor(batch*n, workers, func(start, end int) {
+		var acc exactAccumulator
+		var fast float64ProductSum
 		for i := start; i < end; i++ {
 			b, t := i/n, i%n
-			acc := float32(0)
-			for edgeIndex := int(topology.targetOffsets[t]); edgeIndex < int(topology.targetOffsets[t+1]); edgeIndex++ {
+			from := int(topology.targetOffsets[t])
+			until := int(topology.targetOffsets[t+1])
+			fast.reset()
+			for edgeIndex := from; edgeIndex < until; edgeIndex++ {
 				e := int(topology.targetEdges[edgeIndex])
-				acc += float32(weights.data[e] * values.data[b*n+int(topology.sources[e])]) // explicit conversion: no fused multiply-add
+				fast.add(weights.data[e], values.data[b*n+int(topology.sources[e])])
 			}
-			output.data[i] = acc
+			if out, ok := fast.result(); ok {
+				output.data[i] = out
+				continue
+			}
+			acc.reset()
+			for edgeIndex := from; edgeIndex < until; edgeIndex++ {
+				e := int(topology.targetEdges[edgeIndex])
+				acc.addProduct(weights.data[e], values.data[b*n+int(topology.sources[e])])
+			}
+			output.data[i] = acc.float32()
 		}
 	})
 	return output, nil
