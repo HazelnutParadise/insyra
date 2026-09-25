@@ -2,6 +2,7 @@ package nn
 
 import (
 	"math"
+	"math/big"
 	"math/rand"
 	"testing"
 )
@@ -27,14 +28,27 @@ func TestTanhHighPrecisionAgreesWithOracle(t *testing.T) {
 }
 
 // TestTanhFloat32AgreesWithOracleOnSamples checks all special and analytic
-// branches as well as the high-precision branch against the independent oracle.
+// branches against the independent oracle. The fast path is only sampled here;
+// the inputs it cannot decide on its own are the ones in tanhHardCases, and
+// TestTanhHardCasesAreHardAndRight and TestTanhIsCorrectlyRoundedExhaustive are
+// what cover those.
 func TestTanhFloat32AgreesWithOracleOnSamples(t *testing.T) {
 	rng := rand.New(rand.NewSource(31))
 	lower := float32(math.Ldexp(1, -13))
 	upper := float32(9.5)
+	inputs := make([]float32, 50000)
 
-	for index := 0; index < 50000; index++ {
-		x := math.Float32frombits(rng.Uint32())
+	for index := range inputs {
+		if index%2 == 0 {
+			inputs[index] = math.Float32frombits(rng.Uint32())
+			continue
+		}
+		// Half the samples are drawn log-uniformly over the same range, so the
+		// small magnitudes the uniform draw almost never reaches are covered.
+		inputs[index] = float32(math.Ldexp(1+rng.Float64(), rng.Intn(17)-13))
+	}
+
+	for index, x := range inputs {
 		actual := tanhFloat32(x)
 
 		if x != x {
@@ -67,33 +81,6 @@ func TestTanhFloat32AgreesWithOracleOnSamples(t *testing.T) {
 			t.Fatalf("sample %d: input bits %#08x, result bits %#08x, want %#08x", index, math.Float32bits(x), got, want)
 		}
 	}
-}
-
-// TestTanhFloat32FallsBackNearMidpoints proves that the conservative fast-path
-// test actually exercises the independent fallback and that every fallback
-// result still agrees with the oracle.
-func TestTanhFloat32FallsBackNearMidpoints(t *testing.T) {
-	const (
-		startBits uint32 = 0x3f000000
-		count            = 1 << 20
-	)
-	fallbackCount := 0
-	for offset := uint32(0); offset < count; offset++ {
-		x := math.Float32frombits(startBits + offset)
-		if !tanhNeedsHighPrecisionForTest(x) {
-			continue
-		}
-		fallbackCount++
-		got := math.Float32bits(tanhFloat32(x))
-		want := math.Float32bits(tanhOracle(x))
-		if got != want {
-			t.Fatalf("input bits %#08x: result bits %#08x, want %#08x", startBits+offset, got, want)
-		}
-	}
-	if fallbackCount == 0 {
-		t.Fatal("the midpoint scan found no high-precision fallbacks")
-	}
-	t.Logf("tanh high-precision fallback count: %d", fallbackCount)
 }
 
 func TestTanhVJPRoundsEveryStep(t *testing.T) {
@@ -144,7 +131,7 @@ func TestTanhVJPRoundsEveryStep(t *testing.T) {
 func TestTanhFloat64SettlesAtMidpoints(t *testing.T) {
 	f := float32(0.75)
 	mid := (float64(f) + float64(math.Nextafter32(f, 1))) / 2
-	offsets := []int{0, 1, 1 << 13, (1 << 13) + 1, -(1 << 13), -((1 << 13) + 1)}
+	offsets := []int{0, 1, tanhSettleSteps, tanhSettleSteps + 1, -tanhSettleSteps, -(tanhSettleSteps + 1)}
 
 	for _, k := range offsets {
 		bits := math.Float64bits(mid)
@@ -153,7 +140,7 @@ func TestTanhFloat64SettlesAtMidpoints(t *testing.T) {
 		} else {
 			bits += uint64(k)
 		}
-		want := k > 1<<13 || k < -(1<<13)
+		want := k > tanhSettleSteps || k < -tanhSettleSteps
 		if got := tanhFloat64Settles(math.Float64frombits(bits)); got != want {
 			t.Errorf("offset %d: bits %#016x, tanhFloat64Settles = %t, want %t", k, bits, got, want)
 		}
@@ -167,20 +154,61 @@ func TestTanhFloat64SettlesAtMidpoints(t *testing.T) {
 	}
 }
 
-// tanhNeedsHighPrecisionForTest reports whether tanhFloat32 sends x to its
-// high-precision path, by the same criterion tanhFloat32 applies.
-func tanhNeedsHighPrecisionForTest(x float32) bool {
-	if x != x || math.IsInf(float64(x), 0) {
-		return false
+// TestTanhFloat64IsAccurate measures tanhFloat64's distance from the exact
+// value in float64 steps over the inputs it is responsible for, so the
+// tanhSettleSteps margin rests on a measurement instead of an estimate.
+func TestTanhFloat64IsAccurate(t *testing.T) {
+	const margin = float64(tanhSettleSteps) / 2
+	r := rand.New(rand.NewSource(41))
+	var inputs []float32
+
+	for i := 0; i < 20000; i++ {
+		e := r.Intn(17) - 13
+		x := float32(math.Ldexp(1+r.Float64(), e))
+		if x < float32(math.Ldexp(1, -13)) || x >= 9.5 {
+			continue
+		}
+		inputs = append(inputs, x)
 	}
-	a := x
-	if a < 0 {
-		a = -a
+	for i := uint32(0); i < 4096; i++ {
+		inputs = append(inputs, math.Float32frombits(0x39000000+i))
 	}
-	if a < float32(math.Ldexp(1, -13)) || a >= 9.5 {
-		return false
+	for i := uint32(0); i < 4096; i++ {
+		inputs = append(inputs, math.Float32frombits(math.Float32bits(0.17)+i))
 	}
 
-	t := math.Tanh(float64(x))
-	return !tanhFloat64Settles(t)
+	maxSteps := 0.0
+	for _, x := range inputs {
+		reference := tanhOracleBig(new(big.Float).SetPrec(64).SetFloat64(float64(x)), 192)
+		got := new(big.Float).SetPrec(256).SetFloat64(tanhFloat64(float64(x)))
+		difference := new(big.Float).SetPrec(256).Abs(new(big.Float).SetPrec(256).Sub(got, reference))
+		ulp := math.Ldexp(1, reference.MantExp(nil)-53)
+		steps, _ := new(big.Float).SetPrec(256).Quo(difference, big.NewFloat(ulp)).Float64()
+		if steps >= margin {
+			t.Fatalf("input bits %#08x: error %.6g float64 steps, want < %g", math.Float32bits(x), steps, margin)
+		}
+		if steps > maxSteps {
+			maxSteps = steps
+		}
+	}
+	t.Logf("tanhFloat64 maximum error: %.6g float64 steps (margin %g)", maxSteps, margin)
+}
+
+// TestTanhHardCasesAreHardAndRight keeps tanhHardCases honest: every entry must
+// be an input the fast path cannot decide on its own, and must hold exactly the
+// result the high-precision fallback computes for it.
+func TestTanhHardCasesAreHardAndRight(t *testing.T) {
+	if len(tanhHardCases) == 0 {
+		t.Logf("tanhHardCases is empty: no float32 input has come within %d float64 steps of a midpoint", tanhSettleSteps)
+	}
+	for a, want := range tanhHardCases {
+		x := math.Float32frombits(a)
+		if tanhFloat64Settles(tanhFloat64(float64(x))) {
+			t.Errorf("input bits %#08x: tanhFloat64Settles = true, want false", a)
+			continue
+		}
+		if got := math.Float32bits(tanhOracle(x)); got != want {
+			t.Errorf("input bits %#08x: table result bits %#08x, want %#08x", a, got, want)
+		}
+	}
 }
