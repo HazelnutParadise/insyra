@@ -21,6 +21,9 @@ type Session struct {
 	// shared marks the process-wide session from Default. It never closes,
 	// because no single caller owns it.
 	shared bool
+	// configErr is set when NewSession was given more than one Config.
+	// NewSession has no error result, so Discover reports it.
+	configErr error
 }
 
 func Open(cfg Config) (*Session, error) {
@@ -33,7 +36,10 @@ func Open(cfg Config) (*Session, error) {
 
 func NewSession(cfgs ...Config) *Session {
 	cfg := DefaultConfig()
-	if len(cfgs) > 0 {
+	var configErr error
+	if len(cfgs) > 1 {
+		configErr = fmt.Errorf("accel: at most one Config may be given, got %d", len(cfgs))
+	} else if len(cfgs) == 1 {
 		cfg = normalizeConfig(cfgs[0])
 	}
 
@@ -49,9 +55,10 @@ func NewSession(cfgs ...Config) *Session {
 	}
 
 	return &Session{
-		cfg:     cfg,
-		cache:   newResidentCache(),
-		reports: []Report{baseReport},
+		cfg:       cfg,
+		cache:     newResidentCache(),
+		reports:   []Report{baseReport},
+		configErr: configErr,
 	}
 }
 

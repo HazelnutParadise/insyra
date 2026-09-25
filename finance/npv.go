@@ -19,7 +19,10 @@ func NPV(rate decimal.Decimal, cashflows []decimal.Decimal, opts ...Options) (de
 	if len(cashflows) == 0 {
 		return decimal.Decimal{}, errors.New("NPV: cashflows is empty")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	v, err := npvAt(work, rate, cashflows, 0)
 	if err != nil {
@@ -35,7 +38,10 @@ func NPVExcel(rate decimal.Decimal, cashflows []decimal.Decimal, opts ...Options
 	if len(cashflows) == 0 {
 		return decimal.Decimal{}, errors.New("NPV: cashflows is empty")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	v, err := npvAt(work, rate, cashflows, 1)
 	if err != nil {
@@ -58,7 +64,10 @@ func IRR(cashflows []decimal.Decimal, guess decimal.Decimal, opts ...Options) (d
 	if len(cashflows) < 2 {
 		return decimal.Decimal{}, errors.New("IRR: need at least 2 cashflows")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	r := guess

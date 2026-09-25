@@ -4,6 +4,10 @@ import "time"
 
 // Sample returns a new DataList containing n randomly selected elements.
 func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList {
+	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
+		dl.fail("Sample", "%s", msg)
+		return NewDataList()
+	}
 	var data []any
 	var name string
 	dl.AtomicDo(func(dl *DataList) {
@@ -40,6 +44,10 @@ func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptio
 
 // SampleFrac returns a new DataList containing frac of the elements.
 func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList {
+	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
+		dl.fail("SampleFrac", "%s", msg)
+		return NewDataList()
+	}
 	length := dl.Len()
 	if frac <= 0 || frac > 1 {
 		dl.fail("SampleFrac", "frac must be in (0, 1]")
@@ -54,6 +62,10 @@ func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...Sa
 
 // Shuffle returns a randomly reordered copy of the DataList.
 func (dl *DataList) Shuffle(options ...SamplingOptions) *DataList {
+	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
+		dl.fail("Shuffle", "%s", msg)
+		return NewDataList()
+	}
 	var data []any
 	var name string
 	dl.AtomicDo(func(dl *DataList) {

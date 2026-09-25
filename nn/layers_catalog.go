@@ -10,12 +10,18 @@ type conv2DLayer struct {
 	opts            ConvOptions
 	weight          *Parameter
 	bias            *Parameter
+	// err is set when the constructor was given more than one ConvOptions;
+	// Build reports it.
+	err error
 }
 
 // Conv2D creates a trainable NCHW convolution. Its weights use torch's
 // [out,in/groups,kh,kw] layout, so LoadWeights does not transpose them.
 // ConvOptions.NoBias omits the optional bias; the default includes it.
 func Conv2D(in, out, kernel int, options ...ConvOptions) Layer {
+	if len(options) > 1 {
+		return &conv2DLayer{in: in, out: out, kernel: kernel, err: fmt.Errorf("conv2d: at most one ConvOptions may be given, got %d", len(options))}
+	}
 	opts := ConvOptions{Group: 1}
 	if len(options) == 1 {
 		opts = options[0]
@@ -32,6 +38,9 @@ func NewConv2D(in, out, kernel int, options ...ConvOptions) Layer {
 }
 
 func (l *conv2DLayer) Build(t *Tape) error {
+	if l.err != nil {
+		return l.err
+	}
 	if l.in <= 0 || l.out <= 0 || l.kernel <= 0 {
 		return fmt.Errorf("conv2d dimensions must be positive, got %d -> %d with kernel %d", l.in, l.out, l.kernel)
 	}
@@ -134,6 +143,9 @@ type pool2DLayer struct {
 	kernel int
 	opts   PoolOptions
 	max    bool
+	// err is set when the constructor was given more than one PoolOptions;
+	// Build reports it.
+	err error
 }
 
 // MaxPool2D creates a max-pooling layer over NCHW tensors.
@@ -157,6 +169,11 @@ func NewAvgPool2D(kernel int, options ...PoolOptions) Layer {
 }
 
 func newPool2DLayer(kernel int, max bool, options ...PoolOptions) Layer {
+	if len(options) > 1 {
+		layer := &pool2DLayer{kernel: kernel, max: max}
+		layer.err = fmt.Errorf("%s: at most one PoolOptions may be given, got %d", layer.layerKind(), len(options))
+		return layer
+	}
 	opts := PoolOptions{}
 	if len(options) == 1 {
 		opts = options[0]
@@ -168,6 +185,9 @@ func newPool2DLayer(kernel int, max bool, options ...PoolOptions) Layer {
 }
 
 func (l *pool2DLayer) Build(*Tape) error {
+	if l.err != nil {
+		return l.err
+	}
 	if l.kernel <= 0 {
 		return fmt.Errorf("%s kernel must be positive, got %d", l.layerKind(), l.kernel)
 	}

@@ -112,21 +112,24 @@ type Options struct {
 	Mode RoundingMode
 }
 
-// resolveOpts collapses a variadic Options slice into one effective set
-// (last value wins) and fills in defaults. Each field's zero value is
-// treated as "use default", so partial Options literals work as expected.
-func resolveOpts(opts []Options) Options {
+// resolveOpts fills in the defaults for the optional trailing Options. Each
+// field's zero value means "use the default", so a partial Options literal
+// works as expected. More than one Options is an error: the caller meant one
+// of them, and picking either would silently drop the other.
+func resolveOpts(opts []Options) (Options, error) {
 	o := Options{Scale: DefaultScale, Mode: RoundHalfUp}
-	if len(opts) > 0 {
-		last := opts[len(opts)-1]
-		if last.Scale > 0 {
-			o.Scale = last.Scale
+	if len(opts) > 1 {
+		return o, fmt.Errorf("at most one Options may be given, got %d", len(opts))
+	}
+	if len(opts) == 1 {
+		if opts[0].Scale > 0 {
+			o.Scale = opts[0].Scale
 		}
-		if last.Mode != "" {
-			o.Mode = last.Mode
+		if opts[0].Mode != "" {
+			o.Mode = opts[0].Mode
 		}
 	}
-	return o
+	return o, nil
 }
 
 // outCtx returns the decimal.Context to apply to the final result.

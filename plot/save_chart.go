@@ -46,6 +46,9 @@ type Renderable interface {
 
 // SaveHTML 將圖表渲染並保存為 HTML 文件
 func SaveHTML(chart Renderable, path string, animation ...bool) error {
+	if len(animation) > 1 {
+		return fmt.Errorf("SaveHTML: at most one animation flag may be given, got %d", len(animation))
+	}
 	if len(animation) > 0 && !animation[0] {
 		disableAnimation(chart)
 	} else {

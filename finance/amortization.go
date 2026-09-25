@@ -27,7 +27,10 @@ func AmortizationSchedule(rate decimal.Decimal, nper int, pv, fv decimal.Decimal
 		return nil, err
 	}
 
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return nil, err
+	}
 	work := o.workCtx()
 
 	pmt, err := pmtInternal(work, rate, nper, pv, fv, timing)

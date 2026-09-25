@@ -15,7 +15,10 @@ func SLN(cost, salvage decimal.Decimal, life int, opts ...Options) (decimal.Deci
 	if life <= 0 {
 		return decimal.Decimal{}, errors.New("life must be positive")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	depreciable := decimal.Sub(work, cost, salvage)
 	v, err := decimal.Div(work, depreciable, decimal.NewFromInt64(work, int64(life)))
@@ -38,7 +41,10 @@ func SYD(cost, salvage decimal.Decimal, life, per int, opts ...Options) (decimal
 	if per < 1 || per > life {
 		return decimal.Decimal{}, errors.New("per must satisfy 1 <= per <= life")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	depreciable := decimal.Sub(work, cost, salvage)
@@ -72,7 +78,10 @@ func DDB(cost, salvage decimal.Decimal, life, per int, factor decimal.Decimal, o
 	if isZero(factor) {
 		return decimal.Decimal{}, errors.New("factor must be non-zero")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	rate, err := decimal.Div(work, factor, decimal.NewFromInt64(work, int64(life)))
@@ -121,7 +130,10 @@ func VDB(cost, salvage decimal.Decimal, life int, startPeriod, endPeriod, factor
 	if isZero(factor) {
 		return decimal.Decimal{}, errors.New("factor must be non-zero")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	zero := decimal.NewFromInt64(work, 0)
 	lifeDec := decimal.NewFromInt64(work, int64(life))

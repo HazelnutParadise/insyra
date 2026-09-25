@@ -93,7 +93,10 @@ func Price(settlement, maturity time.Time, rate, yld, redemption decimal.Decimal
 	if err := validateBondInputs(settlement, maturity, freq, basis); err != nil {
 		return decimal.Decimal{}, err
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	v, err := priceInternal(work, settlement, maturity, rate, yld, redemption, freq, basis)
@@ -214,7 +217,10 @@ func Yield(settlement, maturity time.Time, rate, pr, redemption decimal.Decimal,
 	if err := validateBondInputs(settlement, maturity, freq, basis); err != nil {
 		return decimal.Decimal{}, err
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	y := guess
@@ -280,7 +286,10 @@ func Duration(settlement, maturity time.Time, coupon, yld decimal.Decimal,
 	if err := validateBondInputs(settlement, maturity, freq, basis); err != nil {
 		return decimal.Decimal{}, err
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	v, err := durationInternal(work, settlement, maturity, coupon, yld, freq, basis)
 	if err != nil {
@@ -369,7 +378,10 @@ func MDuration(settlement, maturity time.Time, coupon, yld decimal.Decimal,
 	if err := validateBondInputs(settlement, maturity, freq, basis); err != nil {
 		return decimal.Decimal{}, err
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	d, err := durationInternal(work, settlement, maturity, coupon, yld, freq, basis)
@@ -407,7 +419,10 @@ func AccrInt(issue, firstInterest, settlement time.Time, rate, par decimal.Decim
 	if !settlement.After(issue) {
 		return decimal.Decimal{}, errors.New("settlement must be after issue")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	// ACCRINT = par · rate · year_fraction(start, settlement, basis).

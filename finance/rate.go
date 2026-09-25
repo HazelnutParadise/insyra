@@ -16,7 +16,10 @@ func EffectiveRate(nominal decimal.Decimal, periodsPerYear int, opts ...Options)
 	if periodsPerYear < 1 {
 		return decimal.Decimal{}, errors.New("periodsPerYear must be >= 1")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	m := decimal.NewFromInt64(work, int64(periodsPerYear))
@@ -43,7 +46,10 @@ func NominalRate(effective decimal.Decimal, periodsPerYear int, opts ...Options)
 	if periodsPerYear < 1 {
 		return decimal.Decimal{}, errors.New("periodsPerYear must be >= 1")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	m := decimal.NewFromInt64(work, int64(periodsPerYear))
@@ -67,7 +73,10 @@ func NominalRate(effective decimal.Decimal, periodsPerYear int, opts ...Options)
 // ContinuousFromAnnual converts an effective annual rate r into the
 // continuously compounded rate that yields the same growth, ln(1+r).
 func ContinuousFromAnnual(effective decimal.Decimal, opts ...Options) (decimal.Decimal, error) {
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	one := decimal.NewFromInt64(work, 1)
 	base := decimal.Add(work, one, effective)
@@ -81,7 +90,10 @@ func ContinuousFromAnnual(effective decimal.Decimal, opts ...Options) (decimal.D
 // AnnualFromContinuous converts a continuously compounded rate ρ into
 // the equivalent effective annual rate, exp(ρ) - 1.
 func AnnualFromContinuous(continuous decimal.Decimal, opts ...Options) (decimal.Decimal, error) {
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	one := decimal.NewFromInt64(work, 1)
 	v := decimal.Exp(work, continuous)

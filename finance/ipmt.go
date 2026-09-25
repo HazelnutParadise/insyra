@@ -21,7 +21,10 @@ func IPMT(rate decimal.Decimal, per, nper int, pv, fv decimal.Decimal, timing Pa
 		return decimal.Decimal{}, err
 	}
 
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	if timing == PaymentBegin && per == 1 {
@@ -60,7 +63,10 @@ func PPMT(rate decimal.Decimal, per, nper int, pv, fv decimal.Decimal, timing Pa
 		return decimal.Decimal{}, err
 	}
 
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	pmt, err := pmtInternal(work, rate, nper, pv, fv, timing)
@@ -117,7 +123,10 @@ func cumulate(rate decimal.Decimal, nper int, pv decimal.Decimal, startPeriod, e
 		return decimal.Decimal{}, err
 	}
 
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	zero := decimal.NewFromInt64(work, 0)
 

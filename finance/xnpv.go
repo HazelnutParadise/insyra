@@ -20,7 +20,10 @@ func XNPV(rate decimal.Decimal, values []decimal.Decimal, dates []time.Time, opt
 	if err := validateXLengths(values, dates); err != nil {
 		return decimal.Decimal{}, err
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	v, err := xnpvAt(work, rate, values, dates)
 	if err != nil {
@@ -37,7 +40,10 @@ func XIRR(values []decimal.Decimal, dates []time.Time, guess decimal.Decimal, op
 	if err := validateXLengths(values, dates); err != nil {
 		return decimal.Decimal{}, err
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	r := guess

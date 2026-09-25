@@ -15,6 +15,10 @@ type Tape struct {
 	marked map[*Tensor]*Parameter
 	grads  map[*Tensor]*Tensor
 	rng    *rand.Rand
+	// err is set when NewTape was given more than one seed. NewTape has no
+	// error result, so Param and Backward, which every training step calls,
+	// report it.
+	err error
 }
 
 // Parameter is a tensor marked for gradient retrieval and SGD updates.
@@ -53,21 +57,29 @@ type tapeOp struct {
 
 // NewTape creates an empty reverse-mode tape. Dropout uses the tape-owned RNG;
 // a seed makes masks reproducible, and the default seed is deterministic.
+// More than one seed is an error, reported by Param and Backward.
 func NewTape(seed ...int64) *Tape {
 	const defaultSeed = int64(1)
 	rngSeed := defaultSeed
-	if len(seed) > 0 {
+	var err error
+	if len(seed) > 1 {
+		err = fmt.Errorf("NewTape: at most one seed may be given, got %d", len(seed))
+	} else if len(seed) == 1 {
 		rngSeed = seed[0]
 	}
 	return &Tape{
 		marked: make(map[*Tensor]*Parameter),
 		grads:  make(map[*Tensor]*Tensor),
 		rng:    rand.New(rand.NewSource(rngSeed)),
+		err:    err,
 	}
 }
 
 // Param marks a float32 tensor for gradient retrieval and SGD updates.
 func (t *Tape) Param(value *Tensor) (*Parameter, error) {
+	if t.err != nil {
+		return nil, t.err
+	}
 	if err := requireFloat32(value, "parameter"); err != nil {
 		return nil, err
 	}
@@ -519,6 +531,9 @@ func (t *Tape) BCEWithLogitsLoss(logits, targets *Tensor) (*Tensor, error) {
 // Backward clears previous gradients and walks the recorded operations in
 // reverse order from a scalar loss.
 func (t *Tape) Backward(loss *Tensor) error {
+	if t.err != nil {
+		return t.err
+	}
 	if loss == nil {
 		return fmt.Errorf("backward loss is nil")
 	}

@@ -202,7 +202,8 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 			fetchingOptions.MaxWaitingInterval_Milliseconds = wait
 		}
 	} else if len(options) > 1 {
-		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Got too many options. Using default options.")
+		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "at most one GoogleMapsStoreReviewsFetchingOptions may be given, got %d", len(options))
+		return nil
 	}
 
 	token := ""

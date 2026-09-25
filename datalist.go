@@ -1073,6 +1073,10 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 // By default, it ranks in ascending order (smaller value gets smaller rank).
 // Pass false to rank in descending order.
 func (dl *DataList) Rank(ascending ...bool) *DataList {
+	if msg := extraOptional("ascending flag", len(ascending)); msg != "" {
+		dl.fail("Rank", "%s", msg)
+		return dl
+	}
 	var data []float64
 	var cells []any
 	isFailed := false
@@ -1097,9 +1101,6 @@ func (dl *DataList) Rank(ascending ...bool) *DataList {
 	ascendingOrder := true
 	if len(ascending) > 0 {
 		ascendingOrder = ascending[0]
-	}
-	if len(ascending) > 1 {
-		dl.fail("Rank", "Too many arguments, using only the first one")
 	}
 
 	// Missing cells (nil / NaN) rank NaN and do not take a rank position,

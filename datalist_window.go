@@ -17,6 +17,10 @@ import (
 // column type. When |periods| >= len(dl) the output is all-fill of the same
 // length.
 func (dl *DataList) Shift(periods int, fill ...any) *DataList {
+	if msg := extraOptional("fill value", len(fill)); msg != "" {
+		dl.fail("Shift", "%s", msg)
+		return dl
+	}
 	var fillVal any
 	if len(fill) > 0 {
 		fillVal = fill[0]

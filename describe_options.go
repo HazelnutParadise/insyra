@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -29,6 +30,9 @@ var defaultDescribePercentiles = []float64{0.25, 0.5, 0.75}
 func normalizeDescribeOptions(options []DescribeOptions) (describeConfig, error) {
 	cfg := describeConfig{
 		percentiles: append([]float64(nil), defaultDescribePercentiles...),
+	}
+	if msg := extraOptional("DescribeOptions", len(options)); msg != "" {
+		return cfg, errors.New(msg)
 	}
 	if len(options) > 0 {
 		opt := options[0]

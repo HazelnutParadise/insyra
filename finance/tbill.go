@@ -30,7 +30,10 @@ func TBillEq(settlement, maturity time.Time, discount decimal.Decimal, opts ...O
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	dsmDec := decimal.NewFromInt64(work, int64(dsm))
 
@@ -100,7 +103,10 @@ func TBillPrice(settlement, maturity time.Time, discount decimal.Decimal, opts .
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	dsmDec := decimal.NewFromInt64(work, int64(dsm))
@@ -130,7 +136,10 @@ func TBillYield(settlement, maturity time.Time, pr decimal.Decimal, opts ...Opti
 	if isZero(pr) {
 		return decimal.Decimal{}, errors.New("TBILLYIELD: price cannot be zero")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	dsmDec := decimal.NewFromInt64(work, int64(dsm))

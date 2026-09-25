@@ -69,6 +69,10 @@ func hasOnlyNumericObservedValues(dl *DataList) bool {
 
 // FillForward replaces missing values with the most recent non-missing value.
 func (dl *DataList) FillForward(limit ...int) *DataList {
+	if msg := extraOptional("limit", len(limit)); msg != "" {
+		dl.fail("FillForward", "%s", msg)
+		return dl
+	}
 	defer dl.updateTimestamp()
 	maxFill := imputeLimit(limit)
 	dl.AtomicDo(func(dl *DataList) {
@@ -95,6 +99,10 @@ func (dl *DataList) FillForward(limit ...int) *DataList {
 
 // FillBackward replaces missing values with the next non-missing value.
 func (dl *DataList) FillBackward(limit ...int) *DataList {
+	if msg := extraOptional("limit", len(limit)); msg != "" {
+		dl.fail("FillBackward", "%s", msg)
+		return dl
+	}
 	defer dl.updateTimestamp()
 	maxFill := imputeLimit(limit)
 	dl.AtomicDo(func(dl *DataList) {
@@ -225,6 +233,10 @@ func (dl *DataList) FillWithMode() *DataList {
 
 // FillByInterpolation fills missing sequence values by index, unlike LinearInterpolation which evaluates y at x.
 func (dl *DataList) FillByInterpolation(extrapolate ...bool) *DataList {
+	if msg := extraOptional("extrapolate flag", len(extrapolate)); msg != "" {
+		dl.fail("FillByInterpolation", "%s", msg)
+		return dl
+	}
 	defer dl.updateTimestamp()
 	shouldExtrapolate := len(extrapolate) > 0 && extrapolate[0]
 	dl.AtomicDo(func(dl *DataList) {

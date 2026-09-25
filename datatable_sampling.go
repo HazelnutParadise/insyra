@@ -140,6 +140,10 @@ func dataTableFromSampledRows(snap dataTableSamplingSnapshot, indices []int, suf
 
 // Sample returns a new DataTable containing n randomly selected rows.
 func (dt *DataTable) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable {
+	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
+		dt.fail("Sample", "%s", msg)
+		return NewDataTable()
+	}
 	snap := dt.snapshotForSampling()
 	if n <= 0 {
 		dt.fail("Sample", "n must be > 0")
@@ -161,6 +165,10 @@ func (dt *DataTable) Sample(n int, withReplacement bool, options ...SamplingOpti
 
 // SampleFrac returns a new DataTable containing frac of the rows.
 func (dt *DataTable) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable {
+	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
+		dt.fail("SampleFrac", "%s", msg)
+		return NewDataTable()
+	}
 	rows := dt.NumRows()
 	if frac <= 0 || frac > 1 {
 		dt.fail("SampleFrac", "frac must be in (0, 1]")
@@ -175,6 +183,10 @@ func (dt *DataTable) SampleFrac(frac float64, withReplacement bool, options ...S
 
 // Shuffle returns a new DataTable with rows randomly reordered.
 func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable {
+	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
+		dt.fail("Shuffle", "%s", msg)
+		return NewDataTable()
+	}
 	snap := dt.snapshotForSampling()
 	if snap.rows == 0 {
 		dt.warn("Shuffle", "DataTable is empty")
@@ -186,6 +198,10 @@ func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable {
 
 // TrainTestSplit splits the DataTable into train and test tables.
 func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable) {
+	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
+		dt.fail("TrainTestSplit", "%s", msg)
+		return NewDataTable(), NewDataTable()
+	}
 	snap := dt.snapshotForSampling()
 	if trainFrac <= 0 || trainFrac >= 1 {
 		dt.fail("TrainTestSplit", "trainFrac must be in (0, 1) so both train and test are non-empty")

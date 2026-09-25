@@ -23,7 +23,10 @@ func MIRR(cashflows []decimal.Decimal, financeRate, reinvestRate decimal.Decimal
 	if len(cashflows) < 2 {
 		return decimal.Decimal{}, errors.New("MIRR: need at least 2 cashflows")
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	one := decimal.NewFromInt64(work, 1)
 	zero := decimal.NewFromInt64(work, 0)

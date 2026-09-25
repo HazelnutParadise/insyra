@@ -3,6 +3,7 @@ package insyra
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"iter"
 	"reflect"
@@ -77,6 +78,9 @@ func ReadSQLContext(ctx context.Context, db *gorm.DB, tableName string, options 
 		return nil, fmt.Errorf("db cannot be nil")
 	}
 
+	if msg := extraOptional("ReadSQLOptions", len(options)); msg != "" {
+		return nil, errors.New(msg)
+	}
 	opts := normalizeReadSQLOptions(options)
 	tx := db.WithContext(ctx)
 
@@ -122,6 +126,10 @@ func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options .
 			return
 		}
 
+		if msg := extraOptional("ReadSQLOptions", len(options)); msg != "" {
+			yield(nil, errors.New(msg))
+			return
+		}
 		opts := normalizeReadSQLOptions(options)
 		chunkSize := opts.ChunkSize
 		if chunkSize <= 0 {

@@ -86,7 +86,10 @@ func PMT(rate decimal.Decimal, nper int, pv, fv decimal.Decimal, timing PaymentT
 	if err := validateTiming(timing); err != nil {
 		return decimal.Decimal{}, err
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	pmt, err := pmtInternal(o.workCtx(), rate, nper, pv, fv, timing)
 	if err != nil {
 		return decimal.Decimal{}, err
@@ -107,7 +110,10 @@ func PV(rate decimal.Decimal, nper int, pmt, fv decimal.Decimal, timing PaymentT
 		return decimal.Decimal{}, err
 	}
 
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 	nperD := decimal.NewFromInt64(work, int64(nper))
 
@@ -151,7 +157,10 @@ func FV(rate decimal.Decimal, nper int, pmt, pv decimal.Decimal, timing PaymentT
 	if err := validateTiming(timing); err != nil {
 		return decimal.Decimal{}, err
 	}
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	fv, err := fvInternal(o.workCtx(), rate, nper, pmt, pv, timing)
 	if err != nil {
 		return decimal.Decimal{}, err
@@ -169,7 +178,10 @@ func NPER(rate, pmt, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Optio
 		return decimal.Decimal{}, err
 	}
 
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	if isZero(rate) {
@@ -235,7 +247,10 @@ func RATE(nper int, pmt, pv, fv decimal.Decimal, timing PaymentTiming, guess dec
 		return decimal.Decimal{}, err
 	}
 
-	o := resolveOpts(opts)
+	o, err := resolveOpts(opts)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
 	work := o.workCtx()
 
 	r := guess

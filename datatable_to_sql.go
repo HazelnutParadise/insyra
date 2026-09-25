@@ -3,6 +3,7 @@ package insyra
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"maps"
 	"reflect"
@@ -62,6 +63,9 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 		return fmt.Errorf("db cannot be nil")
 	}
 
+	if msg := extraOptional("ToSQLOptions", len(options)); msg != "" {
+		return errors.New(msg)
+	}
 	var opts ToSQLOptions
 	if len(options) > 0 {
 		opts = options[0]

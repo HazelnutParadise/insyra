@@ -126,6 +126,9 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 		FirstColToRowNames: setFirstColToRowNames,
 		FirstRowToColNames: setFirstRowToColNames,
 	}
+	if msg := extraOptional("encoding", len(encoding)); msg != "" {
+		return nil, errors.New(msg)
+	}
 	if len(encoding) > 0 {
 		opts.Encoding = encoding[0]
 	}

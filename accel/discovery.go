@@ -44,6 +44,9 @@ func (s *Session) Discover() error {
 	if s.closed {
 		return errors.New("accel: session closed")
 	}
+	if s.configErr != nil {
+		return s.configErr
+	}
 	if s.cfg.Mode == ModeCPU {
 		s.setDiscoveryResult(nil, nil)
 		return nil
