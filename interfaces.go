@@ -298,6 +298,10 @@ type IDataTable interface {
 	// Returns:
 	// - string: JSON data as a string
 	ToJSON_String(useColNames bool) string
+	// ToExcel writes the DataTable as one sheet of the workbook at filePath,
+	// leaving the workbook's other sheets as they were.
+	ToExcel(filePath string, opts ExcelWriteOptions) error
+	WriteExcel(w io.Writer, opts ExcelWriteOptions) error
 
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 
