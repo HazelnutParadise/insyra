@@ -30,30 +30,38 @@ func edgeSumVJP(topology *EdgeTopology, weights, values, upstream *Tensor) ([]*T
 	if len(values.shape) == 2 {
 		batch = values.shape[0]
 	}
+	return edgeSumVJPWith(topology, weights, values, upstream, batch, edgeSumWorkers(batch, n, topology.Edges()))
+}
+
+func edgeSumVJPWith(topology *EdgeTopology, weights, values, upstream *Tensor, batch, workers int) ([]*Tensor, error) {
+	n := topology.Nodes()
 	dValues, err := newZeroFloat32Tensor(values.shape)
 	if err != nil {
 		return nil, err
 	}
-	for b := 0; b < batch; b++ {
-		for s := 0; s < n; s++ {
+	parallelFor(batch*n, workers, func(start, end int) {
+		for i := start; i < end; i++ {
+			b, s := i/n, i%n
 			acc := float32(0)
-			for i := int(topology.sourceOffsets[s]); i < int(topology.sourceOffsets[s+1]); i++ {
-				e := int(topology.sourceEdges[i])
+			for edgeIndex := int(topology.sourceOffsets[s]); edgeIndex < int(topology.sourceOffsets[s+1]); edgeIndex++ {
+				e := int(topology.sourceEdges[edgeIndex])
 				acc += float32(weights.data[e] * upstream.data[b*n+int(topology.targets[e])]) // explicit conversion: no fused multiply-add
 			}
-			dValues.data[b*n+s] = acc
+			dValues.data[i] = acc
 		}
-	}
+	})
 	dWeights, err := newZeroFloat32Tensor([]int{topology.Edges()})
 	if err != nil {
 		return nil, err
 	}
-	for e := 0; e < topology.Edges(); e++ {
-		acc := float32(0)
-		for b := 0; b < batch; b++ {
-			acc += float32(upstream.data[b*n+int(topology.targets[e])] * values.data[b*n+int(topology.sources[e])]) // explicit conversion: no fused multiply-add
+	parallelFor(topology.Edges(), workers, func(start, end int) {
+		for e := start; e < end; e++ {
+			acc := float32(0)
+			for b := 0; b < batch; b++ {
+				acc += float32(upstream.data[b*n+int(topology.targets[e])] * values.data[b*n+int(topology.sources[e])]) // explicit conversion: no fused multiply-add
+			}
+			dWeights.data[e] = acc
 		}
-		dWeights.data[e] = acc
-	}
+	})
 	return []*Tensor{dWeights, dValues}, nil
 }

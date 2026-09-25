@@ -86,6 +86,11 @@ func (g *EdgeTopology) Nodes() int { return g.nodes }
 // Edges returns the number of edges in the topology.
 func (g *EdgeTopology) Edges() int { return len(g.sources) }
 
+// edgeSumWorkers applies the shared MAC threshold to edge-sum work.
+func edgeSumWorkers(batch, nodes, edges int) int {
+	return parallelWorkerCountForMACs(batch, nodes+edges)
+}
+
 // EdgeSum returns out[..., t] = sum of weights[e]*values[..., sources[e]] over
 // every edge e whose target is t (zero for a node with no incoming edge).
 // weights is float32 [E]; values is float32 [N] or [B, N]; the output has
@@ -117,19 +122,25 @@ func EdgeSum(topology *EdgeTopology, weights, values *Tensor) (*Tensor, error) {
 		return nil, fmt.Errorf("edge sum values must have shape [%d] or [B, %d], got %v", n, n, values.shape)
 	}
 
+	return edgeSumForward(topology, weights, values, batch, edgeSumWorkers(batch, n, topology.Edges()))
+}
+
+func edgeSumForward(topology *EdgeTopology, weights, values *Tensor, batch, workers int) (*Tensor, error) {
 	output, err := newZeroFloat32Tensor(values.shape)
 	if err != nil {
 		return nil, err
 	}
-	for b := 0; b < batch; b++ {
-		for t := 0; t < n; t++ {
+	n := topology.Nodes()
+	parallelFor(batch*n, workers, func(start, end int) {
+		for i := start; i < end; i++ {
+			b, t := i/n, i%n
 			acc := float32(0)
-			for i := int(topology.targetOffsets[t]); i < int(topology.targetOffsets[t+1]); i++ {
-				e := int(topology.targetEdges[i])
+			for edgeIndex := int(topology.targetOffsets[t]); edgeIndex < int(topology.targetOffsets[t+1]); edgeIndex++ {
+				e := int(topology.targetEdges[edgeIndex])
 				acc += float32(weights.data[e] * values.data[b*n+int(topology.sources[e])]) // explicit conversion: no fused multiply-add
 			}
-			output.data[b*n+t] = acc
+			output.data[i] = acc
 		}
-	}
+	})
 	return output, nil
 }
