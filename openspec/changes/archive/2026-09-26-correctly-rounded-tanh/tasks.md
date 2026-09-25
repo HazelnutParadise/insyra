@@ -6,9 +6,9 @@
 
 ## 2. Implementation
 - [x] 2.1 正確捨入的 `tanh`：解析區間、每個平台逐位元相同的 float64 近似加安全距離、難捨入輸入對照表、從 128 位元起加倍的 `math/big` 後備
-- [ ] 2.2 全面比對通過（0 個不一致）
+- [x] 2.2 全面比對通過（0 個不一致）
 - [x] 2.3 `tanhVJP` 每一步明確捨入，不合併；對逐步參考逐位元相同
 
 ## 3. Records
 - [x] 3.1 `Docs/nn.md`、兩份 CHANGELOG（含改變的輸入數量）、`delivery-status.md`
-- [ ] 3.2 全套驗證與 `openspec validate correctly-rounded-tanh --strict`
+- [x] 3.2 全套驗證與 `openspec validate correctly-rounded-tanh --strict`
