@@ -22,7 +22,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `Tape.BackwardFrom(output, upstream)`，可以從 tape 上任何運算產生的張量開始反向傳播，並帶入呼叫者給的、形狀相同的上游梯度。（[issue #375](https://github.com/HazelnutParadise/insyra/issues/375)）
 - 失敗的 `Backward` 不再讓 `Tape.Grad` 回傳算到一半的梯度：`Tape.Grad` 與 `Parameter.Grad` 都保留上一次成功的結果。
 - 新增 `NewEdgeTopology`、`EdgeSum` 與 `Tape.EdgeSum`，處理以邊列表表示的圖：每個節點加總自己收到的加權邊，成本只跟邊數和數值量成正比，不需要 N×N 的稠密矩陣，tape 也會算出邊權重和節點數值的梯度。數值可以是 `[N]` 或帶批次的 `[B, N]`。每個輸出都是所有乘積的精確總和只捨入一次到最近的 float32，所以邊的順序和核心數量都改變不了結果，在每個平台上都一樣。大型圖會用滿所有核心。（[issue #379](https://github.com/HazelnutParadise/insyra/issues/379)）
-- `Tanh` 對每個輸入、在每個平台上都回傳正確捨入的值，也就是真正的 `tanh(x)` 只捨入一次到最近的 float32。以前是把 Go 的 `math.Tanh` 捨入成 float32，而它的 float64 結果並非每個平台都一樣（arm64 會合併乘加，s390x 用組合語言），所以只在那個結果剛好夠準的地方才正確。全部 2^32 個輸入都在 darwin/arm64 上比對過，那裡舊的結果原本就正確，所以沒有任何結果改變。
+- `Tanh` 對每個輸入、在每個平台上都回傳正確捨入的值，也就是真正的 `tanh(x)` 只捨入一次到最近的 float32。以前是把 Go 的 `math.Tanh` 捨入成 float32，而它的 float64 結果並非每個平台都一樣（在 arm64 會合併乘加，在 amd64 執行時依 CPU 選擇是否用 FMA，在 s390x 則是組合語言），所以只在那個結果剛好夠準的地方才正確。全部 2^32 個輸入都在 darwin/arm64 上比對過，那裡舊的結果原本就正確，所以沒有任何結果改變。
 - `Tape.Tanh` 的梯度每一步都捨入成 float32。以前 Go 編譯器在 arm64 上會把 `1 - y*y` 合併成一次乘加，在 amd64 上不會，同一個梯度在兩邊可能差最後一位。在 arm64 上，10 萬個隨機梯度有 24,892 個改變。現在每個平台上位元都相同。
 
 ## v0.3.3
