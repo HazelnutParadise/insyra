@@ -281,8 +281,8 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 ### [2026-09-19] — govulncheck fails on every branch: GO-2026-6452 wrongly lists excelize v2.11.0 as unfixed
 - **Where**: `go.mod` — `github.com/xuri/excelize/v2 v2.11.0`; the traces are `read.go` `ReadExcelSheet`, `csvxl` `replaceSheet` and `paddedSheetCells`
 - **What**: GO-2026-6452, "Panic via negative shared-string index", lists `Fixed in: N/A`, so `govulncheck ./...` exits 3 on every branch and the Vulnerability Scan job is red. The entry is wrong. Its source, GHSA-fx5j-qcqg-grpf, gives v2.11.0 as the patched version; the fix, commit 93f0b3c (qax-os/excelize#2331), is an ancestor of the v2.11.0 tag; and v2.11.0's `getValueFrom` checks `xlsxSI < 0`. Checked 2026-09-24. golang/vulndb#6510 reports it, with several duplicates, and is still open. GitHub's advisory database lists no advisory covering v2.11.0.
-- **Suggestion**: releases need a green `main`, so this blocks the next release until either golang/vulndb corrects the entry or the workflow excludes GO-2026-6452 with a comment linking golang/vulndb#6510, to be removed when the entry is fixed. The exclusion is the owner's call.
-- **Status**: pending
+- **Suggestion**: releases need a green `main`. The owner ruled on 2026-09-25 to wait for golang/vulndb to correct the entry rather than exclude it in the workflow, so the next release waits on golang/vulndb#6510. When the entry is fixed, rerun the Vulnerability Scan job on `dev` and delete this entry.
+- **Status**: pending (waiting on golang/vulndb#6510)
 
 ### [2026-09-17] — psych 2.6.5's `faRotations` tie-break picks a start that did not tie, and nobody upstream has been told
 - **Where**: upstream `psych::faRotations`; recorded on our side in [stats/testdata/crosslang_baseline.R](stats/testdata/crosslang_baseline.R) and in the comment at `factorParityTol` in [stats/factor_analysis_test.go](stats/factor_analysis_test.go)
