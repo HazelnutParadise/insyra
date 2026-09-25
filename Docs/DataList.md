@@ -2698,6 +2698,8 @@ dl.ReplaceAll(2, 99)
 
 Insyra never ends your program on a failure: the error is recorded on the instance and the call returns something usable. For fluent/chained operations, check `Err()` (or `PopErr()`) once at the end of the chain.
 
+A trailing optional parameter takes **at most one value**. `Shift`'s fill value, the `limit` of `FillForward`/`FillBackward`, the flag of `FillByInterpolation` and `Rank`, and the options struct of `Sample`, `SampleFrac`, `Shuffle` and `Describe` all stand for one optional value; passing two records an error and leaves the list as it was, where the extra value used to be dropped without a word.
+
 `Err()` is **sticky**: it holds the *first* failure until you clear it, so a
 long chain reports the root cause rather than whatever broke downstream.
 

@@ -4655,6 +4655,8 @@ Insyra never ends your program on a failure. Errors reach you two ways:
 `Err()` is **sticky**: it holds the *first* failure until you clear it, so a
 long chain reports the root cause rather than whatever broke downstream.
 
+A trailing optional parameter takes **at most one value**. Passing two options structs to `Sample`, `SampleFrac`, `Shuffle`, `TrainTestSplit`, `Describe` or `GroupBy(...).Describe`, or two fill values to `ShiftCol`, records an error instead of silently using the first; `ReadSQL`, `ReadSQLContext`, `ReadSQLStream`, `ToSQL` and `ToSQLContext` return an error for two options structs.
+
 Asking whether a value is present and getting "no" is an answer, not a
 failure: `FindFirst`, `FindLast`, `Count` and statistics over an empty list
 leave `Err()` alone. Addressing a column, row or index that is not there is

@@ -140,7 +140,7 @@ func SaveHTML(chart Renderable, path string, animation ...bool) error
 
 - `chart`: The chart object. Type: `Renderable`.
 - `path`: The file path to save the HTML. Type: `string`.
-- `animation`: Optional boolean to enable/disable animation (default: enabled).
+- `animation`: Optional boolean to enable/disable animation (default: enabled). At most one; passing two returns an error.
 
 **Returns:**
 

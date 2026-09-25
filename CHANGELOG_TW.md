@@ -76,6 +76,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - DataTable 現在可以寫成 Excel。`(*DataTable).ToExcel(path, ExcelWriteOptions)` 把表格寫成活頁簿裡的一張工作表，活頁簿其他工作表維持原樣，檔案不存在時會自動建立，所以一份報表可以一年放一張表。工作表已經存在時會回傳可用 `ErrSheetExists` 比對的錯誤，檔案完全不動；設定 `IfSheetExists: SheetExistsReplace` 才會取代那張表，而且保留它原本的位置。`Sheet` 預設為 `Sheet1`。數字、布林值與時間會存成 Excel 的原生值。`(*DataTable).WriteExcel(w, opts)` 可以把單一工作表的活頁簿寫到任何 `io.Writer`。
 - **BREAKING**：`ToFloat64`、`ToFloat64Safe` 與 `ReadSlice2D` 改成一般函式，不再是存著函式的變數。呼叫方式完全不變，只有對它們賦值會編譯失敗：以前 `insyra.ToFloat64Safe = …` 會換掉 `stats`、`ml`、`nn`、`quant` 與核心共用的轉換，讓整個程式的結果都跟著變。把二維 slice 轉成 DataTable 現在只有 `ReadSlice2D` 一個名字；`Slice2DToDataTable` 仍可使用，已標為 **Deprecated**，下一版移除。
 - 各種 scaler、`SimpleImputer`，以及 one-hot、label、ordinal 編碼器找不到欄位時，現在會跟其他欄位選擇器一樣說明原因。以前對有 `Age` 欄的表格呼叫 `NewStandardScaler().FitTransform(dt, "Age")`，只會回報 `column Age not found`，看起來像欄位不存在；現在會說明 `"Age"` 被當成 Excel 式欄位索引，並提示改寫成 `Name("Age")`。
+- **BREAKING（行為，簽名不變）**：結尾的選填參數最多只能給一個值。`DataList.Shift` 與 `DataTable.ShiftCol` 給兩個補值、`FillForward`／`FillBackward` 給兩個 limit、`FillByInterpolation` 給兩個旗標、`Sample`／`SampleFrac`／`Shuffle`／`TrainTestSplit` 給兩個 `SamplingOptions`、`Describe` 給兩個 `DescribeOptions`，以前都會默默用第一個、丟掉其他的；現在會記錄錯誤，而且不做任何改動。`Rank(true, false)` 以前會記錄錯誤但照樣排名，現在不會排名。`ReadSQL`、`ReadSQLContext`、`ReadSQLStream`、`ToSQL`、`ToSQLContext` 與 `ReadCSV_File` 收到第二個設定包或編碼時會回傳錯誤。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。
@@ -105,11 +106,13 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `save` 可以存 Excel：`save <var> report.xlsx [sheet <名稱>] [if-exists fail|replace]`。它只寫一張工作表（預設 `Sheet1`），活頁簿其他工作表都會保留。存到已經存在的工作表會被拒絕，不會自動改名成 `Sheet2`；訊息會提示加上 `if-exists replace` 覆蓋，沒指定工作表時也會提示用 `sheet <名稱>` 另存一張。`.xls` 會被拒絕並提示改用 `.xlsx`，`sheet` 與 `if-exists` 用在其他檔案類型也會被拒絕。以前 `save … report.xlsx` 只會回報 `unsupported output file type`。
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外——也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。另外 `ml/mltest.RunConformance` 現在會判定「`Classes()` 回傳 nil」的實作不合格，而不是自己 panic——因為 `ml.Classifier` 是公開介面，函式庫外部的程式也能實作它。
+- **BREAKING（行為，簽名不變）**：`nn.NewTape` 最多只能給一個種子，給兩個時 `Param` 與 `Backward` 會回報錯誤，不再只用第一個。`Conv2D`、`MaxPool2D`、`AvgPool2D` 及對應的 `New…` 寫法給超過一個設定包時，以前會全部丟掉改用預設值建立；現在由 `Build` 回報錯誤。
 
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。
 - Google Maps 爬蟲的 `Search` 恢復可用。Google 不再把店家 ID 放在爬蟲讀取的頁面裡，所以過去任何查詢都回傳空結果，也沒有警告。現在改讀 Maps 網頁本身請求的搜尋結果清單，一次請求就取得最多 20 家店和店名，不必再為每家店多開一個頁面，查不到時也會警告。`GoogleMapsStores()` 不再於執行期從 GitHub repo 下載端點與請求標頭，建立時不需要網路，也不會回傳 nil，每個請求都有 30 秒逾時。`GetReviews` 的進度改記在 debug log，不再印到標準輸出，`MaxWaitingInterval_Milliseconds` 剛好是 1000 時不再 panic，`SortBy` 或 `MaxWaitingInterval_Milliseconds` 為零時直接使用預設值，不再警告。`GetReviews` 也恢復可用。Google 會拒絕它原本送出的評論請求，Google 地圖對未登入的訪客也只顯示五則評論，所以現在改讀 Google 搜尋結果中評論視窗的評論頁：每頁 10 則，四種排序都能用，不需要登入（[#249](https://github.com/HazelnutParadise/insyra/issues/249)）。`ReviewDate` 改為 UTC 的發布日期（`YYYY-MM-DD`），`Content` 的 `<br>` 改為換行，`ReviewerState` 與 `ReviewerLevel` 則一律為空，因為新的評論頁不再提供。
 - `GoogleMapsStoreReview` 新增四個欄位，由 `GetReviews` 填入，`ToDataTable` 也會產生同名的欄：`ReviewID`、`Language`（評論的語言代碼，例如 `zh-Hant`，只給星等沒寫內容的評論則為空）、`ReviewerReviewCount`（評論者寫過幾則評論）與 `ReviewerPhotoCount`（評論者上傳過幾張相片）。
+- `GetReviews` 收到超過一個設定包時，會記錄問題並在發出任何請求前回傳 nil，不再改用預設設定抓取。
 
 ### `stats`
 - **BREAKING**：`Skewness` 與 `Kurtosis` 改為拒絕無法讀成有限數字的值，不再當成零，與 v0.3.1 起其他所有 `stats` 入口一致。它們是最後兩個還經由 `SliceToF64` 讀值的函式。錯誤訊息指出 `sample` 與從 1 起算的列號；全數值輸入的結果不變。
@@ -155,6 +158,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `finance`
 - `RoundUnnecessary` 在需要捨入時改為回報錯誤，不再 panic。這個模式的用途是得知結果放不進指定的小數位數，而它過去是用中止程序來達成：`NPV(0.03, []{0, 1}, Options{Scale: 2, Mode: RoundUnnecessary})` 會 panic。現在回傳帶著精確值的錯誤。其他捨入模式不變。
+- **BREAKING（行為，簽名不變）**：所有接受 `opts ...Options` 的函式收到超過一個 `Options` 時會回傳錯誤。以前是默默採用最後一個，跟函式庫其他地方相反。
 
 ### `lpgen`
 - LINGO 解析器遇到括號順序顛倒的宣告（`@BIN)X(;`）不再 panic。過去它取第一個 `(` 與第一個 `)` 而不檢查誰在前面，切片邊界反過來就會當掉；現在這種宣告會像其他讀不懂的行一樣被略過，模型的其餘部分照常解析。
@@ -174,6 +178,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `SavePNG` 在輸出路徑沒有副檔名時回傳錯誤，不再在快照套件裡 panic，該套件是以副檔名決定圖片格式的。
 
 - `SavePNG` 的線上備援（需自行開啟）現在 60 秒放棄，回應最多讀 64 MiB。過去用的是沒有 timeout 的 `http.Client{}`——伺服器接了連線然後不講話就會永遠等下去——以及對遠端回應無上限的 `io.ReadAll`。
+- `SaveHTML` 收到超過一個動畫旗標時會回傳錯誤，跟 `SavePNG` 對自己的選填旗標一樣，不再只讀第一個。
 ### `isr`
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。
 - `DT.From`、`Col`、`Row`、`Push`、`UseDL`、`UseDT` 遇到錯誤的輸入不再結束程式，改為回傳帶著錯誤、可繼續串接的物件：`t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`。`UseDL`／`UseDT` 也不再回傳 `nil`。
@@ -193,6 +198,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `parallel`
 - **BREAKING**：`Run` 改為回傳新的 `*RunningGroup`，等待時會回報失敗的函式。`ParallelGroup` 現在是一份可以重複使用的函式清單，只有 `Run` 方法，每次 `Run` 都是一次獨立的執行，結果各自存放。過去同一個 group 跑兩次會把所有函式重跑一遍、寫進同樣的結果欄位，兩個 `Run` 同時呼叫還會發生資料競爭。`RunningGroup` 只有 `AwaitResult` 與 `AwaitNoResult`，所以等待一個從沒啟動的 group 會直接編譯失敗，過去則是立刻回傳空結果。`AwaitResult` 改為回傳 `([][]any, error)`，`AwaitNoResult` 改為回傳 `error`。函式 panic 或傳入的值無法呼叫時，該格為 `nil`，並以帶有位置、panic 值與呼叫堆疊的 `*parallel.WorkerError` 回報。過去該格會放一個 `error`，和函式自己回傳的 error 分不出來；函式自己回傳的 error 現在就單純留在結果格裡。`GroupUp` 會複製傳入的參數。遷移方式：`results := g.Run().AwaitResult()` 改成 `results, err := g.Run().AwaitResult()`，宣告為 `*parallel.ParallelGroup` 並用來接 `Run()` 結果的變數，改成 `*parallel.RunningGroup`。
+
+### `accel`
+- `NewSession` 最多只能給一個 `Config`，給兩個時由 `Discover` 回報錯誤，不再只用第一個。
 
 ## v0.3.2
 

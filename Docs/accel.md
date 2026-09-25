@@ -6,7 +6,7 @@ The runtime executes on real hardware. A dataset is uploaded to a GPU, ranked by
 
 ## Current Scope
 
-- Session-scoped runtime entry: `Open(...)` / `NewSession(...)`
+- Session-scoped runtime entry: `Open(...)` / `NewSession(...)`. `NewSession` takes at most one `Config`; a session given two reports the error from `Discover`.
 - Runtime policy object: `Config`
 - Normalized runtime types: `Device`, `Report`, `Buffer`, `Dataset`
 - Backend discovery surface:

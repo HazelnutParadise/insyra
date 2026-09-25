@@ -73,7 +73,7 @@ const (
 
 ### Options
 
-Per-call precision and rounding configuration. Pass as the last (variadic) argument; omit it to accept the defaults.
+Per-call precision and rounding configuration. Pass as the last (variadic) argument; omit it to accept the defaults. Pass at most one: two `Options` return an error, where the last one used to win silently.
 
 ```go
 type Options struct {

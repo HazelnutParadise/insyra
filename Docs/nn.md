@@ -299,7 +299,8 @@ schedule after it, matching `torch.optim.lr_scheduler.CosineAnnealingLR`.
 scales every gradient when needed, and returns the pre-clip norm.
 
 Dropout is a training wrapper using the tape-owned seeded RNG. Use
-`nn.NewTape(seed)` when a reproducible mask is needed; kept values are scaled
+`nn.NewTape(seed)` when a reproducible mask is needed (one seed at most: a tape
+given two reports an error from `Param` and `Backward`); kept values are scaled
 by `1/(1-p)` and the backward pass uses that same mask:
 
 ```go
@@ -392,6 +393,8 @@ The catalog layers are:
 | `Dense(in, out)` | He-initialized affine layer; torch Linear weights transpose at load time |
 | `Conv2D(in, out, kernel, opts...)` | NCHW convolution with torch `[out,in/groups,kh,kw]` weights, padding, strides, dilations, groups, and optional bias |
 | `MaxPool2D` / `AvgPool2D` | NCHW pooling; omitted stride defaults to the kernel size, matching torch |
+
+Each layer constructor takes at most one options struct; a layer given two reports the error from `Build`, where every other invalid layer setting is reported.
 | `GlobalAvgPool` | Reduces spatial dimensions to `[N,C,1,1]` |
 | `BatchNorm2D(features)` | Batch statistics and running-stat updates in `Forward`; running statistics in `Predict` |
 | `LayerNorm(dims)` | Learned suffix normalization over an integer or shape slice |
