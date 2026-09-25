@@ -62,7 +62,7 @@ The implementation has no code blocker. Acceptance still needs a multi-GPU host 
 `add-accel-execution-logging` is complete locally: stub probes verify one-time device and qualifying-fallback info lines, debug execution detail, caller-ineligible debug-only fallbacks, concurrent session safety, silenced info output, and strict validation. No hardware gate is needed. The multi-device hardware follow-up remains separate.
 
 ## Next Ticket
-`nn-edge-sum` (#379, step 1 of 4): the CPU sparse edge-sum operation and its reverse rule, with a fixed summation order. Then a measurement of device against CPU with state resident on the device, which decides whether a device kernel is written; then the kernel, bit-identical to this CPU order; then resident state with export and import. `tape-custom-operations` (#375) is in PR #386.
+`nn-edge-sum` and `nn-edge-sum-all-cores` are done (#379, steps 1 and 2a). Next is the device measurement (step 2b): a prototype edge-sum kernel in `accel`'s test surface, not wired into `nn`, timed with transfers on every call against the all-core CPU recorded in the Decision Log, over the same sizes, and checked bit for bit against the CPU order. A device that loses there closes the kernel question unless keeping tensors on the device (step 2c, an `accel` architecture change the owner decides) is taken up. Then the kernel, if earned, and resident state with export and import.
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
@@ -74,6 +74,11 @@ golangci-lint also runs nilerr, bodyclose, rowserrcheck, sqlclosecheck and error
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: `EdgeSum` and its two gradients use every core above `nn`'s parallel threshold, bit-identical to one core, and that all-core CPU is the baseline #379's device measurement must beat.
+  rationale: measured on the 8-core M3 with `BenchmarkEdgeSum`, best of 5 runs of 5 iterations, random sources and targets, load average 5.7 at the start. All cores against one core: 2.5× forward at 10k nodes, 10 edges per node, B=1 (0.20 → 0.08 ms); 3.8× at 10k nodes, 100 edges, B=16 (28.8 → 7.6 ms); 3.1× at 100k nodes, 100 edges, B=16 (1,556 → 498 ms); 2.1× at 1M nodes, 10 edges, B=16 (1,643 → 781 ms). The reverse pass scales the same, 2.1–3.8×. Eight cores give at most 3.9× because the work is gathering values from scattered addresses, which is bound by memory, not arithmetic.
+  timestamp: 2026-09-25
+  impacted_ticket_ids: nn-edge-sum-all-cores, and the #379 device measurement that follows
 
 - decision: #379 is built as a general sparse edge-sum operation with its own reverse rule, not as a CoImNet-specific recurrent step. The caller composes the step on the tape from existing operations. Device results are bit-identical to the CPU reference, which a target-sorted edge order makes possible; if that costs too much performance, the owner discusses it before any tolerance is accepted. A device kernel is written only if measurement shows the device wins.
   rationale: PyTorch and TensorFlow offer the same building blocks (sparse-dense products, gather plus segment or scatter sums) rather than a recurrent-step operation, and both accept run-to-run differences on GPUs by default; insyra's device rule requires the device to change no numbers. The issue itself asks not to adopt a CoImNet-specific schema.
