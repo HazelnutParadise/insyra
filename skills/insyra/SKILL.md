@@ -62,6 +62,14 @@ Adam uses PyTorch defaults (`betas=(0.9, 0.999)`, `eps=1e-8`) and keeps state
 per parameter. Exact-form GELU is supported; the tanh approximation, AMSGrad,
 and device training are not.
 
+To put an operation the tape lacks on it, compute the float32 result yourself
+and record it with `tape.Custom(name, inputs, output, vjp)`; `vjp` gets the
+upstream gradient of `output` and returns one gradient per input, shaped like
+that input, or nil. A tensor computed outside the tape without `Custom` gets no
+gradient. `tape.BackwardFrom(output, upstream)` starts the reverse pass from a
+non-scalar output with an explicit upstream gradient. A failed pass keeps the
+previous gradients.
+
 The repository also has a verified convergence proof: a fixed-seed He-initialized
 `784 -> 128 -> 10` MLP trains shuffled 128-row MNIST minibatches with Adam at
 `1e-3`, reaching 95.84% test accuracy in two epochs on the local 60k/10k IDX

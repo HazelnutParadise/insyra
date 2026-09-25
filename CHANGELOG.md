@@ -16,6 +16,12 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Fixed `insyra env import` overwriting a non-empty environment without `--force` when one of its files existed but could not be read. The check that decides whether the target is empty took a failure to read `config.json` as "empty", and ignored failures to read `state.json` and `history.txt` the same way. A missing file still counts as empty; any other failure now stops the import and says which environment could not be checked.
 
+### `ml` and `nn`
+
+- Added `Tape.Custom(name, inputs, output, vjp)`, which puts an operation computed outside the tape on it: its inputs receive the gradients its reverse rule returns, where before a tensor computed outside the tape silently gave its inputs a zero gradient. The rule may differ from the forward derivative, such as a surrogate for a hard threshold. `Custom` refuses a malformed declaration, and a rule that returns an error or a gradient of the wrong count, type or shape fails `Backward` naming the operation. ([issue #375](https://github.com/HazelnutParadise/insyra/issues/375))
+- Added `Tape.BackwardFrom(output, upstream)`, which starts the reverse pass from any tensor an operation on the tape produced, seeded with an explicit upstream gradient of its shape. ([issue #375](https://github.com/HazelnutParadise/insyra/issues/375))
+- A `Backward` that fails no longer leaves `Tape.Grad` returning a half-built gradient: both `Tape.Grad` and `Parameter.Grad` keep what the last successful pass computed.
+
 ## v0.3.3
 
 ### Core

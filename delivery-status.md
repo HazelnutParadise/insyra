@@ -75,6 +75,16 @@ golangci-lint also runs nilerr, bodyclose, rowserrcheck, sqlclosecheck and error
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
 
+- decision: #379 is built as a general sparse edge-sum operation with its own reverse rule, not as a CoImNet-specific recurrent step. The caller composes the step on the tape from existing operations. Device results are bit-identical to the CPU reference, which a target-sorted edge order makes possible; if that costs too much performance, the owner discusses it before any tolerance is accepted. A device kernel is written only if measurement shows the device wins.
+  rationale: PyTorch and TensorFlow offer the same building blocks (sparse-dense products, gather plus segment or scatter sums) rather than a recurrent-step operation, and both accept run-to-run differences on GPUs by default; insyra's device rule requires the device to change no numbers. The issue itself asks not to adopt a CoImNet-specific schema.
+  timestamp: 2026-09-25
+  impacted_ticket_ids: tape-custom-operations, and the #379 changes that follow it
+
+- decision: #375 (custom tape operations) is part of 0.3.4 and goes first, ahead of #379.
+  rationale: #379's reverse rule can join a tape only through the hook #375 asks for.
+  timestamp: 2026-09-25
+  impacted_ticket_ids: tape-custom-operations
+
 - decision: `LeveneTest` and `BartlettTest` keep the sequential per-group read the input-refusal backport gave them, and the cost is recorded rather than recovered.
   rationale: measured on the 8-core M3, 8 groups of 200,000 values, best of 5 runs of 5 iterations. Levene 37.2 ms at 3bf0ae7e (parallel goroutines, no per-value check) against 121.5 ms at 1b996ac8 (sequential, every value validated); Bartlett 2.25 ms against 10.37 ms. Putting the per-group `testSeries` calls back on goroutines, measured on a patched copy, gives Levene 117.3 ms and Bartlett 4.37 ms — so for Levene parallelism is worth 4.2 ms of the 84.3 ms and the rest is the validation the refusal exists for, while for Bartlett it is worth 6.0 ms of the 8.1 ms and could be recovered. Neither is recovered now: the goroutines were removed so a nil group cannot end the process from inside one, and re-adding them is a change of its own with that question to answer first.
   timestamp: 2026-09-19
