@@ -77,7 +77,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`ToFloat64`、`ToFloat64Safe` 與 `ReadSlice2D` 改成一般函式，不再是存著函式的變數。呼叫方式完全不變，只有對它們賦值會編譯失敗：以前 `insyra.ToFloat64Safe = …` 會換掉 `stats`、`ml`、`nn`、`quant` 與核心共用的轉換，讓整個程式的結果都跟著變。把二維 slice 轉成 DataTable 現在只有 `ReadSlice2D` 一個名字；`Slice2DToDataTable` 仍可使用，已標為 **Deprecated**，下一版移除。
 - 各種 scaler、`SimpleImputer`，以及 one-hot、label、ordinal 編碼器找不到欄位時，現在會跟其他欄位選擇器一樣說明原因。以前對有 `Age` 欄的表格呼叫 `NewStandardScaler().FitTransform(dt, "Age")`，只會回報 `column Age not found`，看起來像欄位不存在；現在會說明 `"Age"` 被當成 Excel 式欄位索引，並提示改寫成 `Name("Age")`。
 - **BREAKING（行為，簽名不變）**：結尾的選填參數最多只能給一個值。`DataList.Shift` 與 `DataTable.ShiftCol` 給兩個補值、`FillForward`／`FillBackward` 給兩個 limit、`FillByInterpolation` 給兩個旗標、`Sample`／`SampleFrac`／`Shuffle`／`TrainTestSplit` 給兩個 `SamplingOptions`、`Describe` 給兩個 `DescribeOptions`，以前都會默默用第一個、丟掉其他的；現在會記錄錯誤，而且不做任何改動。`Rank(true, false)` 以前會記錄錯誤但照樣排名，現在不會排名。`ReadSQL`、`ReadSQLContext`、`ReadSQLStream`、`ToSQL`、`ToSQLContext` 與 `ReadCSV_File` 收到第二個設定包或編碼時會回傳錯誤。
-- `DataList.DataType()` 與 `DataTable.ColDataTypes()` 讓程式能判斷一欄存的是什麼資料：`DataTypeNumber`、`DataTypeString`、`DataTypeBool`、`DataTypeTime`、`DataTypeOther`、`DataTypeMixed`，沒有任何值時是 `DataTypeEmpty`。缺值不算進去，整數和小數都算數字，看起來像數字的文字仍然是文字。以前只有 `ShowTypes` 能把每一格的 Go 型別印出來給人看。
+- `DataList.DataType()` 與 `DataTable.ColDataTypes()` 讓程式能判斷一欄存的是什麼資料：`DataTypeNumber`、`DataTypeString`、`DataTypeBool`、`DataTypeTime`、`DataTypeOther`、`DataTypeMixed`，沒有任何值時是 `DataTypeEmpty`。缺值不算進去，整數和小數都算數字，看起來像數字的文字仍然是文字。以前只有 `ShowTypes` 能把每一格的 Go 型別印出來給人看；現在 `ShowTypes` 最上面會多一列 `DataType`，把同樣的總結放在每格型別的上方。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。

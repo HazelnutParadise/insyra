@@ -4336,7 +4336,17 @@ func (dt *DataTable) ShowTypes()
 func (dt *DataTable) ShowTypesTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the data types of each column. `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
+**Description:** Displays the Go type of every cell, column by column. The first row, `DataType`, sums each whole column up in one word (the values of `ColDataTypes()`), so the verdict sits above the detail it was judged from. `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
+
+```
+RowNames   A(price)  B(city)  C(notes)
+---------- --------- -------- ---------
+DataType   number    string   mixed
+---------- --------- -------- ---------
+0:         int       string   int
+1:         float64   nil      string
+2:         nil       string   nil
+```
 
 **Parameters:**
 

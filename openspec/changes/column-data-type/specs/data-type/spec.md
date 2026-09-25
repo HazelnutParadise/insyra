@@ -19,6 +19,11 @@
 - **WHEN** a list holds `1` and `"a"`
 - **THEN** its data type is `DataTypeMixed`
 
+#### Scenario: The type view states the verdict
+
+- **WHEN** `ShowTypes` prints a table whose columns are a number, a text and a mixed column
+- **THEN** its first row, `DataType`, reads `number`, `string` and `mixed` above the per-cell Go types
+
 #### Scenario: Only missing values
 
 - **WHEN** a list holds only `nil` and `NaN`

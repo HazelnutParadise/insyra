@@ -2147,7 +2147,7 @@ func (dl *DataList) ShowTypes()
 func (dl *DataList) ShowTypesTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the data types of each element in the DataList. `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
+**Description:** Displays the Go type of each element in the DataList, under a `DataType:` line that sums the whole list up in one word (the value of `DataType()`). `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
 
 **Parameters:**
 

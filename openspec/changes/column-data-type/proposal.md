@@ -7,6 +7,7 @@ Nothing lets a program ask what kind of values a column holds. `ShowTypes` print
 - New `DataType` with `DataTypeEmpty`, `DataTypeNumber`, `DataTypeString`, `DataTypeBool`, `DataTypeTime`, `DataTypeOther` and `DataTypeMixed`, and a `String()` giving `"number"`, `"mixed"`, ...
 - `(*DataList).DataType()` judges the list over its values with missing ones (`nil`, `NaN`) left out. Every int, uint and float width, a named type over one, and a decimal are all numbers; text that looks numeric stays text.
 - `(*DataTable).ColDataTypes()` returns each column's data type in column order, beside `ColNames()`.
+- `ShowTypes` opens with a `DataType` row (a `DataType:` line for a DataList) showing the same verdict above the per-cell Go types, which the owner asked for on seeing how the two differ.
 - The private classifiers are not rewritten in this change.
 
 ## Capabilities
