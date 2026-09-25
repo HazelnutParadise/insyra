@@ -13,6 +13,9 @@ func TestExactSumLibraryHoldsNoFloatingPoint(t *testing.T) {
 		if forbidden.MatchString(code) {
 			t.Fatalf("line %d contains a forbidden numeric type: %q", lineNumber+1, line)
 		}
+		if strings.Contains(code, "select(") {
+			t.Fatalf("line %d contains select(): gogpu/naga v0.19 writes a scalar select as an unparenthesized ternary in Metal, which changes its meaning inside a larger expression: %q", lineNumber+1, line)
+		}
 	}
 
 	required := []string{
