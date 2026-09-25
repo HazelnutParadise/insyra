@@ -7,4 +7,4 @@
 
 ## 2. 文件與紀錄
 - [x] 2.1 `Docs/DataList.md`、`Docs/DataTable.md`、`skills/insyra/SKILL.md`；兩份 CHANGELOG。
-- [ ] 2.2 全套驗證；`delivery-status.md`；歸檔、寫 Purpose。
+- [x] 2.2 全套驗證；`delivery-status.md`；歸檔、寫 Purpose。
