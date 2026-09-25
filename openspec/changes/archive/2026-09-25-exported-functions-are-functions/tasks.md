@@ -7,4 +7,4 @@
 ## 2. 文件與紀錄
 - [x] 2.1 `Docs/DataTable.md`、`Docs/mkt.md`、skills；兩份 CHANGELOG（Core、`mkt`）。
 - [x] 2.2 `AGENTS.md` 新增下一版移除 `Slice2DToDataTable` 的 follow-up。
-- [ ] 2.3 全套驗證；`api-review.md` K-12、`delivery-status.md`；歸檔、寫 Purpose；關 #211。
+- [x] 2.3 全套驗證；`api-review.md` K-12、`delivery-status.md`；歸檔、寫 Purpose；關 #211。
