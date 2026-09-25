@@ -7,7 +7,7 @@
 ## 2. Implementation
 - [x] 2.1 正確捨入的 `tanh`：解析區間、float64 快速路徑加寬安全距離、256 位元後備
 - [ ] 2.2 全面比對通過（0 個不一致）
-- [ ] 2.3 `tanhVJP` 每一步明確捨入，不合併；對逐步參考逐位元相同
+- [x] 2.3 `tanhVJP` 每一步明確捨入，不合併；對逐步參考逐位元相同
 
 ## 3. Records
 - [ ] 3.1 `Docs/nn.md`、兩份 CHANGELOG（含改變的輸入數量）、`delivery-status.md`
