@@ -99,7 +99,9 @@ func edgeSumWorkers(batch, nodes, edges int) int {
 // depend on edge order, batch order, or worker count. An exact zero, including
 // a node with no incoming edge, is +0. A NaN operand, zero times infinity, or
 // infinite products of both signs produce NaN; otherwise an infinite product
-// determines the output.
+// determines the output. Each output is reached through a float64 fast path
+// whenever it can prove the rounding, and through the exact accumulator when
+// it cannot; the two answers are the same bits.
 func EdgeSum(topology *EdgeTopology, weights, values *Tensor) (*Tensor, error) {
 	if topology == nil {
 		return nil, fmt.Errorf("edge sum topology is nil")
@@ -136,10 +138,22 @@ func edgeSumForward(topology *EdgeTopology, weights, values *Tensor, batch, work
 	n := topology.Nodes()
 	parallelFor(batch*n, workers, func(start, end int) {
 		var acc exactAccumulator
+		var fast float64ProductSum
 		for i := start; i < end; i++ {
 			b, t := i/n, i%n
+			from := int(topology.targetOffsets[t])
+			until := int(topology.targetOffsets[t+1])
+			fast.reset()
+			for edgeIndex := from; edgeIndex < until; edgeIndex++ {
+				e := int(topology.targetEdges[edgeIndex])
+				fast.add(weights.data[e], values.data[b*n+int(topology.sources[e])])
+			}
+			if out, ok := fast.result(); ok {
+				output.data[i] = out
+				continue
+			}
 			acc.reset()
-			for edgeIndex := int(topology.targetOffsets[t]); edgeIndex < int(topology.targetOffsets[t+1]); edgeIndex++ {
+			for edgeIndex := from; edgeIndex < until; edgeIndex++ {
 				e := int(topology.targetEdges[edgeIndex])
 				acc.addProduct(weights.data[e], values.data[b*n+int(topology.sources[e])])
 			}

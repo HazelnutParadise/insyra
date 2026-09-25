@@ -245,3 +245,96 @@ func exactSumSticky(d *[exactSumDigits]int64, lo int) bool {
 	}
 	return false
 }
+
+// float64ProductSum is the fast path for exact sums of float32 products. It
+// reaches the same answer as the exact accumulator, in floating point, and
+// falls back to it whenever it cannot prove its own.
+//
+// The product of two float32 values is exact in float64: 24 + 24 significand
+// bits fit in 53, and the product's exponent range (2^-298 to 2^256) sits
+// well inside float64's, so widening the operands multiplies without a
+// rounding. A float64 total therefore differs from the exact total only by the
+// rounding of its own additions, and recursive summation of n terms carries a
+// forward error of at most gamma(n-1)*sum|p| with gamma(k) = k*u/(1-k*u) and
+// u = 2^-53 (Higham, Accuracy and Stability of Numerical Algorithms, 2nd ed.,
+// §4.2). abs accumulates sum|p| the same way, so both halves of that bound
+// are available in floating point.
+//
+// result reads the float32 f the float64 total rounds to and asks where the
+// exact total can be. If the whole interval [S-B, S+B] the bound allows lies
+// strictly between the two midpoints that would round to a neighbouring
+// float32 instead, then every value in the interval rounds to f, so f is the
+// correctly rounded exact total. An interval holding no midpoint has one
+// answer; that is what makes the cheap path provable rather than merely close.
+// This is Ziv's method: a fast path behind a provable criterion, with the
+// exact accumulator behind it for the totals the criterion cannot settle.
+type float64ProductSum struct {
+	sum, abs float64
+	n        int
+}
+
+// reset returns the fast path to the empty total, so one can be reused for
+// the next output without reallocating.
+func (f *float64ProductSum) reset() {
+	f.sum = 0
+	f.abs = 0
+	f.n = 0
+}
+
+// add folds one product into the running totals. The widening makes x*y exact,
+// so only the two additions round, and both are the ones §4.2 bounds.
+func (f *float64ProductSum) add(x, y float32) {
+	p := float64(x) * float64(y)
+	f.sum += p
+	f.abs += math.Abs(p)
+	f.n++
+}
+
+// result returns the correctly rounded exact total of everything added, and
+// whether the fast path could prove it. A false second result means the
+// caller must reach for the exact accumulator: this is a performance
+// decision, never a difference in the answer. Non-finite totals refuse, as do
+// the totals whose sign of zero or overflow boundary the exact accumulator
+// owns.
+func (f *float64ProductSum) result() (float32, bool) {
+	if f.n == 0 {
+		return float32(0), true // an empty total is positive zero
+	}
+	if math.IsNaN(f.sum) || math.IsInf(f.sum, 0) || math.IsNaN(f.abs) || math.IsInf(f.abs, 0) {
+		return 0, false
+	}
+	if f.n == 1 {
+		// One product rounds nothing: the total is the exact value, and Go's
+		// float64 to float32 conversion rounds to nearest with ties to even
+		// across the whole range, subnormals and overflow included.
+		if f.sum == 0 {
+			return float32(0), true
+		}
+		return float32(f.sum), true
+	}
+
+	// The first term is four times gamma(n-1)*sum|p| with room to spare, so
+	// it covers that bound and the rounding abs itself carries; the second
+	// covers the rounding of the two comparisons below. Both hold for every
+	// n below 2^40, far more terms than any edge list holds.
+	bound := f.abs*float64(f.n)*0x1p-51 + math.Abs(f.sum)*0x1p-52
+
+	out := float32(f.sum)
+	if out == 0 || math.IsInf(float64(out), 0) || math.Abs(float64(out)) == math.MaxFloat32 {
+		// An exact zero's sign, and the edge where a total rounds to
+		// infinity, belong to the exact accumulator.
+		return 0, false
+	}
+
+	// The midpoints to the neighbours of out. Each is the average of two
+	// adjacent float32 values, whose sum needs 25 significand bits and is
+	// therefore exact in float64.
+	prev := math.Nextafter32(out, float32(math.Inf(-1)))
+	next := math.Nextafter32(out, float32(math.Inf(1)))
+	lo := (float64(out) + float64(prev)) / 2
+	hi := (float64(out) + float64(next)) / 2
+	if f.sum-bound > lo && f.sum+bound < hi {
+		return out, true
+	}
+	return 0, false
+}
