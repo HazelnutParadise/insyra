@@ -34,7 +34,6 @@ type simpleImputerColumn struct {
 	ref         any // original fit-time reference, retained for inspection/debugging
 	name        string
 	replacement any
-	passThrough bool
 }
 
 // SimpleImputerOptions configures NewSimpleImputer. Both settings decide how
@@ -86,7 +85,6 @@ func (i *SimpleImputer) Params() map[string]ScalerParams {
 			Column:      column.name,
 			Kind:        string(i.strategy),
 			Replacement: column.replacement,
-			PassThrough: column.passThrough,
 		}
 	}
 	return out
@@ -127,7 +125,7 @@ func (i *SimpleImputer) Fit(dt *DataTable, cols ...any) error {
 			if t.columns[idx].name != "" {
 				name = t.columns[idx].name
 			}
-			replacement, passThrough, deriveErr := i.deriveReplacement(name, t.columns[idx].data)
+			replacement, deriveErr := i.deriveReplacement(name, t.columns[idx].data)
 			if deriveErr != nil {
 				err = deriveErr
 				return
@@ -140,7 +138,6 @@ func (i *SimpleImputer) Fit(dt *DataTable, cols ...any) error {
 				ref:         fittedRef,
 				name:        name,
 				replacement: replacement,
-				passThrough: passThrough,
 			})
 		}
 	})
@@ -189,7 +186,7 @@ func (i *SimpleImputer) Transform(dt *DataTable) (*DataTable, error) {
 		outColumns := make([]*DataList, 0, len(t.columns))
 		for idx, source := range t.columns {
 			column, selected := byIndex[idx]
-			if !selected || column.passThrough {
+			if !selected {
 				outColumns = append(outColumns, source.Clone())
 				continue
 			}
@@ -230,12 +227,12 @@ func (i *SimpleImputer) validateConfiguration() error {
 	return nil
 }
 
-func (i *SimpleImputer) deriveReplacement(name string, data []any) (any, bool, error) {
+func (i *SimpleImputer) deriveReplacement(name string, data []any) (any, error) {
 	if i.strategy == ImputeConstant {
 		if !hasObservedValues(data) {
-			return nil, false, fmt.Errorf("SimpleImputer.Fit: column %q has no observed values", name)
+			return nil, fmt.Errorf("SimpleImputer.Fit: column %q has no observed values", name)
 		}
-		return i.constant, false, nil
+		return i.constant, nil
 	}
 
 	observed := make([]any, 0, len(data))
@@ -245,7 +242,7 @@ func (i *SimpleImputer) deriveReplacement(name string, data []any) (any, bool, e
 		}
 	}
 	if len(observed) == 0 {
-		return nil, false, fmt.Errorf("SimpleImputer.Fit: column %q has no observed values", name)
+		return nil, fmt.Errorf("SimpleImputer.Fit: column %q has no observed values", name)
 	}
 
 	switch i.strategy {
@@ -254,23 +251,25 @@ func (i *SimpleImputer) deriveReplacement(name string, data []any) (any, bool, e
 		for index, value := range observed {
 			converted, ok := ToFloat64Safe(value)
 			if !ok {
-				return nil, true, nil
+				// The caller selected this column, so leaving it unfilled
+				// would let the fit look complete when it is not.
+				return nil, fmt.Errorf("SimpleImputer.Fit: column %q holds %s values, and %s needs a number column; use ImputeMode or ImputeConstant for it", name, dataTypeOf(data), i.strategy)
 			}
 			values[index] = converted
 		}
 		if i.strategy == ImputeMean {
-			return meanOf(values), false, nil
+			return meanOf(values), nil
 		}
 		sort.Float64s(values)
 		middle := len(values) / 2
 		if len(values)%2 == 1 {
-			return values[middle], false, nil
+			return values[middle], nil
 		}
-		return (values[middle-1] + values[middle]) / 2, false, nil
+		return (values[middle-1] + values[middle]) / 2, nil
 	case ImputeMode:
-		return firstMode(observed), false, nil
+		return firstMode(observed), nil
 	default:
-		return nil, false, fmt.Errorf("SimpleImputer: unsupported strategy %q", i.strategy)
+		return nil, fmt.Errorf("SimpleImputer: unsupported strategy %q", i.strategy)
 	}
 }
 

@@ -67,7 +67,7 @@ func TestSimpleImputerParamsAndStrategies(t *testing.T) {
 		t.Fatal(err)
 	}
 	params := imputer.Params()
-	if params["mean"].Replacement != 3.0 || params["mean"].PassThrough {
+	if params["mean"].Replacement != 3.0 {
 		t.Fatalf("mean params = %#v", params["mean"])
 	}
 	if imputer.Kind() != "imputer-mean" {
@@ -91,32 +91,42 @@ func TestSimpleImputerParamsAndStrategies(t *testing.T) {
 	}
 }
 
-func TestSimpleImputerErrorsAndPassThrough(t *testing.T) {
+func TestSimpleImputerErrorsOnColumnsItCannotFill(t *testing.T) {
 	allMissing := NewDataTable(NewDataList(nil, math.NaN()).SetName("empty"))
 	if err := NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeMedian}).Fit(allMissing, Name("empty")); err == nil || !strings.Contains(err.Error(), `column "empty"`) {
 		t.Fatalf("all-missing error = %v", err)
 	}
 
-	text := NewDataTable(NewDataList("red", nil, "blue").SetName("color"))
-	imputer := NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeMean})
-	if err := imputer.Fit(text, Name("color")); err != nil {
-		t.Fatal(err)
+	// A column the caller selected and the strategy cannot fill is an error,
+	// as it is for the table fills: the owner ruled on 2026-09-26 (#213) that
+	// the old pass-through, reported only through Params, let a fit look
+	// complete when a selected column was never going to be filled.
+	train := NewDataTable(
+		NewDataList(10.0, nil, 30.0).SetName("income"),
+		NewDataList("red", nil, "blue").SetName("color"),
+	)
+	for _, strategy := range []ImputationStrategy{ImputeMean, ImputeMedian} {
+		imputer := NewSimpleImputer(SimpleImputerOptions{Strategy: strategy})
+		err := imputer.Fit(train, Name("income"), Name("color"))
+		if err == nil || !strings.Contains(err.Error(), `"color"`) || !strings.Contains(err.Error(), "string") {
+			t.Fatalf("%s over a text column: got %v, want an error naming color and its string values", strategy, err)
+		}
+		if _, err := imputer.Transform(train); err == nil {
+			t.Fatalf("%s: a failed fit left the imputer usable", strategy)
+		}
 	}
-	if !imputer.Params()["color"].PassThrough {
-		t.Fatal("numeric strategy should mark a mixed column as pass-through")
-	}
-	got, err := imputer.Transform(NewDataTable(
-		NewDataList("green", nil, "yellow").SetName("color"),
-		NewDataList(1, 2, 3).SetName("untouched"),
-	))
+
+	// Mode fills any kind of value, so a text column is fine there.
+	mode := NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeMode})
+	got, err := mode.FitTransform(train, Name("color"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got.GetColByName("color").Data(), []any{"green", nil, "yellow"}) {
-		t.Fatalf("pass-through values = %#v", got.GetColByName("color").Data())
+	if !reflect.DeepEqual(got.GetColByName("color").Data(), []any{"red", "red", "blue"}) {
+		t.Fatalf("mode over text = %#v", got.GetColByName("color").Data())
 	}
-	if !reflect.DeepEqual(got.GetColByName("untouched").Data(), []any{1, 2, 3}) {
-		t.Fatalf("unfitted values = %#v", got.GetColByName("untouched").Data())
+	if !reflect.DeepEqual(got.GetColByName("income").Data(), []any{10.0, nil, 30.0}) {
+		t.Fatalf("an unselected column changed: %#v", got.GetColByName("income").Data())
 	}
 }
 
