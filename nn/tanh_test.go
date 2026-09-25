@@ -199,7 +199,7 @@ func TestTanhFloat64IsAccurate(t *testing.T) {
 // result the high-precision fallback computes for it.
 func TestTanhHardCasesAreHardAndRight(t *testing.T) {
 	if len(tanhHardCases) == 0 {
-		t.Logf("tanhHardCases is empty: no float32 input has come within %d float64 steps of a midpoint", tanhSettleSteps)
+		t.Fatal("tanhHardCases is empty, but the exhaustive run lists four inputs the fast path cannot decide")
 	}
 	for a, want := range tanhHardCases {
 		x := math.Float32frombits(a)
@@ -208,7 +208,13 @@ func TestTanhHardCasesAreHardAndRight(t *testing.T) {
 			continue
 		}
 		if got := math.Float32bits(tanhOracle(x)); got != want {
-			t.Errorf("input bits %#08x: table result bits %#08x, want %#08x", a, got, want)
+			t.Errorf("input bits %#08x: oracle result bits %#08x, table holds %#08x", a, got, want)
+		}
+		if got := math.Float32bits(tanhFloat32(x)); got != want {
+			t.Errorf("input bits %#08x: tanhFloat32 result bits %#08x, want %#08x", a, got, want)
+		}
+		if got, negated := math.Float32bits(tanhFloat32(-x)), want|0x80000000; got != negated {
+			t.Errorf("input bits %#08x negated: tanhFloat32 result bits %#08x, want %#08x", a, got, negated)
 		}
 	}
 }

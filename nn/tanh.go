@@ -17,8 +17,15 @@ const tanhSettleSteps = 16
 
 // tanhHardCases holds the correctly rounded result for every |x| whose float64
 // tanh lies within tanhSettleSteps of a float32 midpoint, keyed and valued by
-// float32 bits. TestTanhIsCorrectlyRoundedExhaustive lists exactly these inputs.
-var tanhHardCases = map[uint32]uint32{}
+// float32 bits. TestTanhIsCorrectlyRoundedExhaustive lists exactly these inputs;
+// d is each one's distance from the midpoint in float64 steps, against a largest
+// tanhFloat64 error of 2.63 steps over every float32 input.
+var tanhHardCases = map[uint32]uint32{
+	0x3ac37de2: 0x3ac37dd9, // d=5
+	0x3cd41b91: 0x3cd40f70, // d=13
+	0x3eee0566: 0x3ede3cbe, // d=-9
+	0x40acb4d0: 0x3f7ffd50, // d=15
+}
 
 // Cody-Waite reduction constants for tanhFloat64. tanhLn2Hi keeps only the
 // leading 31 significand bits of ln(2), so its low 21 mantissa bits are zero
