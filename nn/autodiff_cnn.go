@@ -94,11 +94,22 @@ func (t *Tape) BatchNormalization(input, scale, bias, mean, variance *Tensor, ep
 	return output, nil
 }
 
+// BatchNormOptions configures training batch normalization. A zero field keeps
+// torch.nn.BatchNorm2d's default.
+type BatchNormOptions struct {
+	// Momentum weights the current batch when the running mean and variance
+	// are updated. Zero means the default, 0.1.
+	Momentum float32
+	// Epsilon is added to the variance before its square root. Zero means
+	// the default, 1e-5.
+	Epsilon float32
+}
+
 // BatchNormalizationTraining applies BatchNorm's training semantics. The
 // normalization uses the biased batch variance, while the running variance
-// update uses the unbiased estimator, matching torch.nn.BatchNorm2d.
-// options are [momentum, epsilon], with torch's defaults when omitted.
-func (t *Tape) BatchNormalizationTraining(input, scale, bias, runningMean, runningVariance *Tensor, options ...float32) (*Tensor, error) {
+// update uses the unbiased estimator, matching torch.nn.BatchNorm2d. With no
+// options it uses torch's defaults.
+func (t *Tape) BatchNormalizationTraining(input, scale, bias, runningMean, runningVariance *Tensor, options ...BatchNormOptions) (*Tensor, error) {
 	if t == nil {
 		return nil, fmt.Errorf("training batch normalization tape is nil")
 	}
@@ -173,20 +184,22 @@ func (t *Tape) BatchNormalizationTraining(input, scale, bias, runningMean, runni
 }
 
 // BatchNormTraining is a concise alias for BatchNormalizationTraining.
-func (t *Tape) BatchNormTraining(input, scale, bias, runningMean, runningVariance *Tensor, options ...float32) (*Tensor, error) {
+func (t *Tape) BatchNormTraining(input, scale, bias, runningMean, runningVariance *Tensor, options ...BatchNormOptions) (*Tensor, error) {
 	return t.BatchNormalizationTraining(input, scale, bias, runningMean, runningVariance, options...)
 }
 
-func batchNormalizationTrainingOptions(options []float32) (momentum, epsilon float32, err error) {
-	if len(options) > 2 {
-		return 0, 0, fmt.Errorf("training batch normalization accepts at most momentum and epsilon")
+func batchNormalizationTrainingOptions(options []BatchNormOptions) (momentum, epsilon float32, err error) {
+	if len(options) > 1 {
+		return 0, 0, fmt.Errorf("training batch normalization accepts at most one BatchNormOptions, got %d", len(options))
 	}
 	momentum, epsilon = 0.1, 1e-5
-	if len(options) >= 1 {
-		momentum = options[0]
-	}
-	if len(options) == 2 {
-		epsilon = options[1]
+	if len(options) == 1 {
+		if options[0].Momentum != 0 {
+			momentum = options[0].Momentum
+		}
+		if options[0].Epsilon != 0 {
+			epsilon = options[0].Epsilon
+		}
 	}
 	return momentum, epsilon, nil
 }

@@ -30,7 +30,7 @@ func TestBatchNormalizationTrainingVJPFiniteDifference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := tape.BatchNormalizationTraining(input, scale, bias, runningMean, runningVariance, 0.2, 1e-5)
+	output, err := tape.BatchNormalizationTraining(input, scale, bias, runningMean, runningVariance, BatchNormOptions{Momentum: 0.2, Epsilon: 1e-5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func batchNormTrainingLoss(t *testing.T, values map[string][]float32, upstream [
 	runningVariance := mustTestTensor(t, []int{2}, []float32{1.5, 0.75})
 	upstreamTensor := mustTestTensor(t, []int{2, 2, 2, 1}, upstream)
 	tape := NewTape()
-	output, err := tape.BatchNormalizationTraining(input, scale, bias, runningMean, runningVariance, 0.2, 1e-5)
+	output, err := tape.BatchNormalizationTraining(input, scale, bias, runningMean, runningVariance, BatchNormOptions{Momentum: 0.2, Epsilon: 1e-5})
 	if err != nil {
 		t.Fatal(err)
 	}

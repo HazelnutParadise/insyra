@@ -297,7 +297,7 @@ func (l *batchNorm2DLayer) Forward(t *Tape, x *Tensor) (*Tensor, error) {
 	if x == nil || x.dtype != DTypeFloat32 || len(x.shape) != 4 || x.shape[1] != l.features {
 		return nil, fmt.Errorf("batchnorm2d input shape %v, want [N %d H W] float32", shapeOf(x), l.features)
 	}
-	return t.BatchNormalizationTraining(x, l.weight.Value(), l.bias.Value(), l.runningMean, l.runningVariance, l.momentum, l.epsilon)
+	return t.BatchNormalizationTraining(x, l.weight.Value(), l.bias.Value(), l.runningMean, l.runningVariance, BatchNormOptions{Momentum: l.momentum, Epsilon: l.epsilon})
 }
 
 func (l *batchNorm2DLayer) PredictForward(x *Tensor) (*Tensor, error) {
