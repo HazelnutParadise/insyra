@@ -31,3 +31,7 @@ When the sheet already exists, `ToExcel` SHALL refuse with an error matching `Er
 #### Scenario: Saving twice
 - **WHEN** `save t out.xlsx sheet s` runs twice
 - **THEN** the second fails and says to add `if-exists replace`, and with it succeeds
+
+#### Scenario: Saving twice without naming a sheet
+- **WHEN** `save t out.xlsx` runs twice
+- **THEN** the second fails without renaming the sheet to `Sheet2`, and says to add `sheet <name>` for a new sheet or `if-exists replace` to overwrite `Sheet1`
