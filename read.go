@@ -20,14 +20,18 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// Alias for Slice2DToDataTable
-// Converts a 2D slice into a DataTable.
-// Supports various types like [][]any, [][]int, [][]float64, [][]string, etc.
-var ReadSlice2D = Slice2DToDataTable
-
-// Slice2DToDataTable converts a 2D slice of any type into a DataTable.
-// It supports various 2D array types such as [][]any, [][]int, [][]float64, [][]string, etc.
+// Slice2DToDataTable converts a 2D slice into a DataTable.
+//
+// Deprecated: use ReadSlice2D, which is the same function. This spelling is
+// removed in the release after the one that deprecated it.
 func Slice2DToDataTable(data any) (*DataTable, error) {
+	return ReadSlice2D(data)
+}
+
+// ReadSlice2D converts a 2D slice of any type into a DataTable, one inner
+// slice per row. It supports [][]any, [][]int, [][]float64, [][]string and
+// other 2D slice and array types.
+func ReadSlice2D(data any) (*DataTable, error) {
 	if data == nil {
 		return nil, fmt.Errorf("input data cannot be nil")
 	}

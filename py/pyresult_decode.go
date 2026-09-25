@@ -320,7 +320,7 @@ func dataTableFromRows(rows [][]any, colNames []string) (*insyra.DataTable, erro
 		return dt, nil
 	}
 
-	return insyra.Slice2DToDataTable(rows)
+	return insyra.ReadSlice2D(rows)
 }
 
 func normalizeSliceAny(raw any) ([]any, error) {

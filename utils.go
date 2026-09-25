@@ -20,8 +20,19 @@ import (
 
 type F64orRat = utils.F64orRat
 
-var ToFloat64 = utils.ToFloat64
-var ToFloat64Safe = utils.ToFloat64Safe
+// ToFloat64 converts a numeric value — any int, uint or float width, a named
+// type over one, or a decimal — to float64. A value it cannot convert gives
+// 0, which cannot be told apart from a real zero; use ToFloat64Safe when that
+// matters.
+func ToFloat64(v any) float64 {
+	return utils.ToFloat64(v)
+}
+
+// ToFloat64Safe converts a numeric value to float64 like ToFloat64, and
+// reports false instead of returning a made-up 0 when v is not a number.
+func ToFloat64Safe(v any) (float64, bool) {
+	return utils.ToFloat64Safe(v)
+}
 
 // SliceToF64 converts a []any to a []float64. Every numeric element (all int,
 // uint and float widths) is converted to its float64 value; genuinely

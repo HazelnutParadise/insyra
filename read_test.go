@@ -9,7 +9,7 @@ import (
 	"github.com/HazelnutParadise/insyra/isr"
 )
 
-func TestSlice2DToDataTable(t *testing.T) {
+func TestReadSlice2D(t *testing.T) {
 	// Test with [][]any
 	data := [][]any{
 		{1, "Alice", 3.5},
@@ -17,150 +17,150 @@ func TestSlice2DToDataTable(t *testing.T) {
 		{3, "Charlie", 2.8},
 	}
 
-	dt, err := insyra.Slice2DToDataTable(data)
+	dt, err := insyra.ReadSlice2D(data)
 	if err != nil {
-		t.Errorf("Slice2DToDataTable() returned error: %v", err)
+		t.Errorf("ReadSlice2D() returned error: %v", err)
 		return
 	}
 	if dt == nil {
-		t.Errorf("Slice2DToDataTable() returned nil DataTable")
+		t.Errorf("ReadSlice2D() returned nil DataTable")
 		return
 	}
 	dt.Show()
 	if len(dt.ColNames()) != 3 {
-		t.Errorf("Slice2DToDataTable() did not create the correct number of columns")
+		t.Errorf("ReadSlice2D() did not create the correct number of columns")
 		return
 	}
 	if dt.GetElement(1, "A") != 2 {
-		t.Errorf("Slice2DToDataTable() did not set the correct data, expected 2, got %v", dt.GetElement(1, "A"))
+		t.Errorf("ReadSlice2D() did not set the correct data, expected 2, got %v", dt.GetElement(1, "A"))
 		return
 	}
 	if dt.GetElement(0, "B") != "Alice" {
-		t.Errorf("Slice2DToDataTable() did not set the correct data, expected 'Alice', got '%s'", dt.GetElement(0, "B"))
+		t.Errorf("ReadSlice2D() did not set the correct data, expected 'Alice', got '%s'", dt.GetElement(0, "B"))
 		return
 	}
 	if dt.GetElement(2, "C") != 2.8 {
-		t.Errorf("Slice2DToDataTable() did not set the correct data, expected 2.8, got %v", dt.GetElement(2, "C"))
+		t.Errorf("ReadSlice2D() did not set the correct data, expected 2.8, got %v", dt.GetElement(2, "C"))
 		return
 	}
 }
 
 // Test with [][]int64
-func TestSlice2DToDataTable_Int64(t *testing.T) {
+func TestReadSlice2D_Int64(t *testing.T) {
 	data := [][]int64{
 		{1, 2, 3},
 		{4, 5, 6},
 		{7, 8, 9},
 	}
 
-	dt, err := insyra.Slice2DToDataTable(data)
+	dt, err := insyra.ReadSlice2D(data)
 	if err != nil {
-		t.Errorf("Slice2DToDataTable() with [][]int64 returned error: %v", err)
+		t.Errorf("ReadSlice2D() with [][]int64 returned error: %v", err)
 		return
 	}
 	if dt == nil {
-		t.Errorf("Slice2DToDataTable() with [][]int64 returned nil DataTable")
+		t.Errorf("ReadSlice2D() with [][]int64 returned nil DataTable")
 		return
 	}
 	dt.Show()
 	if len(dt.ColNames()) != 3 {
-		t.Errorf("Slice2DToDataTable() with [][]int64 did not create the correct number of columns")
+		t.Errorf("ReadSlice2D() with [][]int64 did not create the correct number of columns")
 		return
 	}
 	if dt.GetElement(1, "A") != int64(4) {
-		t.Errorf("Slice2DToDataTable() with [][]int64 expected int64(4), got %v", dt.GetElement(1, "A"))
+		t.Errorf("ReadSlice2D() with [][]int64 expected int64(4), got %v", dt.GetElement(1, "A"))
 		return
 	}
 }
 
 // Test with [][]float64
-func TestSlice2DToDataTable_Float64(t *testing.T) {
+func TestReadSlice2D_Float64(t *testing.T) {
 	data := [][]float64{
 		{1.1, 2.2, 3.3},
 		{4.4, 5.5, 6.6},
 		{7.7, 8.8, 9.9},
 	}
 
-	dt, err := insyra.Slice2DToDataTable(data)
+	dt, err := insyra.ReadSlice2D(data)
 	if err != nil {
-		t.Errorf("Slice2DToDataTable() with [][]float64 returned error: %v", err)
+		t.Errorf("ReadSlice2D() with [][]float64 returned error: %v", err)
 		return
 	}
 	if dt == nil {
-		t.Errorf("Slice2DToDataTable() with [][]float64 returned nil DataTable")
+		t.Errorf("ReadSlice2D() with [][]float64 returned nil DataTable")
 		return
 	}
 	dt.Show()
 	if len(dt.ColNames()) != 3 {
-		t.Errorf("Slice2DToDataTable() with [][]float64 did not create the correct number of columns")
+		t.Errorf("ReadSlice2D() with [][]float64 did not create the correct number of columns")
 		return
 	}
 	if dt.GetElement(0, "A") != 1.1 {
-		t.Errorf("Slice2DToDataTable() with [][]float64 expected 1.1, got %v", dt.GetElement(0, "A"))
+		t.Errorf("ReadSlice2D() with [][]float64 expected 1.1, got %v", dt.GetElement(0, "A"))
 		return
 	}
 }
 
 // Test with [][]string
-func TestSlice2DToDataTable_String(t *testing.T) {
+func TestReadSlice2D_String(t *testing.T) {
 	data := [][]string{
 		{"Alice", "Bob", "Charlie"},
 		{"Denver", "New York", "San Francisco"},
 		{"Engineer", "Manager", "Developer"},
 	}
 
-	dt, err := insyra.Slice2DToDataTable(data)
+	dt, err := insyra.ReadSlice2D(data)
 	if err != nil {
-		t.Errorf("Slice2DToDataTable() with [][]string returned error: %v", err)
+		t.Errorf("ReadSlice2D() with [][]string returned error: %v", err)
 		return
 	}
 	if dt == nil {
-		t.Errorf("Slice2DToDataTable() with [][]string returned nil DataTable")
+		t.Errorf("ReadSlice2D() with [][]string returned nil DataTable")
 		return
 	}
 	dt.Show()
 	if len(dt.ColNames()) != 3 {
-		t.Errorf("Slice2DToDataTable() with [][]string did not create the correct number of columns")
+		t.Errorf("ReadSlice2D() with [][]string did not create the correct number of columns")
 		return
 	}
 	if dt.GetElement(0, "A") != "Alice" {
-		t.Errorf("Slice2DToDataTable() with [][]string expected 'Alice', got %v", dt.GetElement(0, "A"))
+		t.Errorf("ReadSlice2D() with [][]string expected 'Alice', got %v", dt.GetElement(0, "A"))
 		return
 	}
 }
 
 // Test with inconsistent row lengths
-func TestSlice2DToDataTable_InconsistentLengths(t *testing.T) {
+func TestReadSlice2D_InconsistentLengths(t *testing.T) {
 	data := [][]any{
 		{1, "Alice", 3.5},
 		{2, "Bob"},                   // 少一列
 		{3, "Charlie", 2.8, "Extra"}, // 多一列
 	}
 
-	dt, err := insyra.Slice2DToDataTable(data)
+	dt, err := insyra.ReadSlice2D(data)
 	if err != nil {
-		t.Errorf("Slice2DToDataTable() with inconsistent lengths returned error: %v", err)
+		t.Errorf("ReadSlice2D() with inconsistent lengths returned error: %v", err)
 		return
 	}
 	if dt == nil {
-		t.Errorf("Slice2DToDataTable() with inconsistent lengths returned nil DataTable")
+		t.Errorf("ReadSlice2D() with inconsistent lengths returned nil DataTable")
 		return
 	}
 	dt.Show()
 	// 應該以第一行的列數為準
 	if len(dt.ColNames()) != 3 {
-		t.Errorf("Slice2DToDataTable() with inconsistent lengths expected 3 columns, got %d", len(dt.ColNames()))
+		t.Errorf("ReadSlice2D() with inconsistent lengths expected 3 columns, got %d", len(dt.ColNames()))
 		return
 	}
 	// 第二行的第三列應該是 nil
 	if dt.GetElement(1, "C") != nil {
-		t.Errorf("Slice2DToDataTable() with inconsistent lengths expected nil for missing cell, got %v", dt.GetElement(1, "C"))
+		t.Errorf("ReadSlice2D() with inconsistent lengths expected nil for missing cell, got %v", dt.GetElement(1, "C"))
 		return
 	}
 }
 
 // Test error cases
-func TestSlice2DToDataTable_ErrorCases(t *testing.T) {
+func TestReadSlice2D_ErrorCases(t *testing.T) {
 	tests := []struct {
 		name    string
 		data    any
@@ -195,15 +195,15 @@ func TestSlice2DToDataTable_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dt, err := insyra.Slice2DToDataTable(tt.data)
+			dt, err := insyra.ReadSlice2D(tt.data)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Slice2DToDataTable() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ReadSlice2D() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if !tt.wantErr && dt == nil {
-				t.Errorf("Slice2DToDataTable() returned nil DataTable when no error expected")
+				t.Errorf("ReadSlice2D() returned nil DataTable when no error expected")
 			}
 			if tt.wantErr && dt != nil {
-				t.Errorf("Slice2DToDataTable() returned DataTable when error was expected: %v", err)
+				t.Errorf("ReadSlice2D() returned DataTable when error was expected: %v", err)
 			}
 		})
 	}
@@ -621,5 +621,25 @@ func TestReadCSV_StringWithOptions_RaggedPaddingAffectsInference(t *testing.T) {
 	}
 	if v, ok := qty[1].(float64); !ok || !math.IsNaN(v) {
 		t.Errorf("expected NaN for padded cell, got %v (%T)", qty[1], qty[1])
+	}
+}
+
+// Slice2DToDataTable stays for one release as the deprecated spelling of
+// ReadSlice2D and must answer exactly as ReadSlice2D does.
+func TestSlice2DToDataTableMatchesReadSlice2D(t *testing.T) {
+	data := [][]any{{1, "Alice", 2.5}, {2, nil, 3.5}}
+	want, err := insyra.ReadSlice2D(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := insyra.Slice2DToDataTable(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ToJSON_String(true) != want.ToJSON_String(true) {
+		t.Fatalf("Slice2DToDataTable gave %s, ReadSlice2D gave %s", got.ToJSON_String(true), want.ToJSON_String(true))
+	}
+	if _, err := insyra.Slice2DToDataTable(nil); err == nil {
+		t.Fatal("Slice2DToDataTable(nil) succeeded")
 	}
 }

@@ -45,7 +45,7 @@ func (d dt) From(item any) *dt {
 	t := dt{DataTable: insyra.NewDataTable()}
 	switch val := item.(type) {
 	case [][]any, [][]int, [][]float64, [][]string, [][]bool, [][]uint, [][]int8, [][]int16, [][]int32, [][]int64, [][]uint8, [][]uint16, [][]uint32, [][]uint64, [][]float32, [][]complex64, [][]complex128, [][]uintptr:
-		converted, err := insyra.Slice2DToDataTable(val)
+		converted, err := insyra.ReadSlice2D(val)
 		if err != nil {
 			return failDT(&t, "DT.From", "%v", err)
 		}

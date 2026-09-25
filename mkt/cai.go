@@ -19,8 +19,10 @@ type CAIConfig struct {
 	TimeScale     TimeScale // The time scale for analysis (e.g., hourly, daily, weekly, monthly, yearly)
 }
 
-// CAI is an alias for CustomerActivityIndex.
-var CAI = CustomerActivityIndex
+// CAI is a short name for CustomerActivityIndex.
+func CAI(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDataTable {
+	return CustomerActivityIndex(dt, caiConfig)
+}
 
 // CustomerActivityIndex calculates the Customer Activity Index (CAI) for each customer based on their transaction history.
 // It returns a DataTable containing CustomerID, MLE, WMLE, and CAI for each customer.
