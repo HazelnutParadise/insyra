@@ -257,8 +257,8 @@ Choose a strategy with `insyra.SimpleImputerOptions{Strategy: insyra.ImputeMedia
 (or `ImputeMode`), or fill with a caller-supplied value through
 `insyra.SimpleImputerOptions{Strategy: insyra.ImputeConstant, FillValue: value}`;
 `FillValue` with any other strategy is an error `Fit` reports.
-Numeric strategies pass through observed non-numeric columns, selected
-all-missing columns refuse to fit, and `InverseTransform` is unsupported
+Numeric strategies REFUSE to fit a selected column that is not a number column
+(use `ImputeMode`/`ImputeConstant` there), selected all-missing columns refuse to fit, and `InverseTransform` is unsupported
 because imputation is lossy. Use the existing in-place `FillWith*` methods for
 one-off mutation instead of a reusable fitted transformer.
 

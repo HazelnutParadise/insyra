@@ -1358,11 +1358,12 @@ data so the statistics come from the training table only. `Transform` returns
 a new table and leaves the source unchanged. Columns not selected during
 `Fit` pass through unchanged. Missing values are `nil` or `NaN`.
 
-Mean and median require numeric observed values. If a selected column contains
-an observed non-numeric value, those strategies mark the column pass-through
-(`Params()[name].PassThrough`) and leave it unchanged. This differs from the
-table's `FillWithMean` and `FillWithMedian`, which report a column you named
-and they cannot fill. Mode supports mixed values and uses the first-occurring
+Mean and median require a number column. `Fit` fails if any selected column
+holds other values, naming the column and its data type, and learns nothing:
+you selected the column, so leaving it unfilled would make the fit look
+complete when it is not. The table's `FillWithMean` and `FillWithMedian` report
+a column you named and they cannot fill the same way. Use `ImputeMode` or
+`ImputeConstant` for a text column. Mode supports mixed values and uses the first-occurring
 value to break ties. Every selected column must have at least one observed value
 at fit time, and `Fit` reports the column name otherwise. `SimpleImputer` has no
 `InverseTransform` and is not an `insyra.Scaler`, because imputation cannot

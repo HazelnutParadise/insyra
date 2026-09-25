@@ -264,6 +264,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-26] — remove `ScalerParams.PassThrough` one release after it went dead
+- **Where**: `datatable_scale.go` (`ScalerParams.PassThrough`)
+- **What**: `imputer-refuses-unfillable-columns` made `SimpleImputer.Fit` refuse a selected column its mean or median cannot fill, by the owner's ruling on #213, so nothing sets the field any more. It stays one release, always false and Deprecated.
+- **Suggestion**: delete it in the same release as `Slice2DToDataTable`, with a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-09-25] — remove `Slice2DToDataTable` one release after `ReadSlice2D` became its one name
 - **Where**: `read.go` (`Slice2DToDataTable`)
 - **What**: `exported-functions-are-functions` made `ReadSlice2D` the function that turns a 2D slice into a DataTable and left `Slice2DToDataTable` as a Deprecated wrapper, by the owner's ruling on #211 that each function has one name and the `Read*` family keeps it.

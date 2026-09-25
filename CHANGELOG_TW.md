@@ -81,6 +81,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`DataTable.FillByInterpolation` 在欄位前面多了 `extrapolate bool`，跟 `FillForward` 把 limit 放在前面一樣，因為表格版本以前完全無法外插。`dt.FillByInterpolation(cols...)` 要改成 `dt.FillByInterpolation(false, cols...)`。
 - 表格的 `FillWithMean`、`FillWithMedian`、`FillByInterpolation`、`FillWithMode` 遇到你明確指定、卻補不了的欄位（數值補法遇到文字欄或混合欄，或整欄沒有任何值）時會記錄錯誤，寫出欄位與它的資料型別，其他指定的欄位照常補完。以前會默默跳過，讓人以為補好了。沒有指定欄位時，補不了的欄位仍然會跳過。
 - **BREAKING**：`NewSimpleImputer` 改成接受可省略的 `SimpleImputerOptions{Strategy, FillValue}`，取代 `(strategy, constant ...any)`。不給設定就用平均。`NewSimpleImputer(insyra.ImputeMedian)` 要改成 `NewSimpleImputer(insyra.SimpleImputerOptions{Strategy: insyra.ImputeMedian})`，`NewSimpleImputer(insyra.ImputeConstant, 7)` 要改成 `…{Strategy: insyra.ImputeConstant, FillValue: 7}`。
+- **BREAKING（行為，簽名不變）**：`SimpleImputer.Fit` 用平均或中位數時，只要選到的欄位不是數字欄就會失敗，錯誤會寫出欄位和它的資料型別，而且一欄都不學。以前會讓那一欄維持沒補，只在 `Params()[name].PassThrough` 記一筆，看起來像是 fit 成功了。`ScalerParams.PassThrough` 現在永遠是 false，已標為 **Deprecated**，下一版移除。
 - `ShowRange`、`ShowTypesRange` 與 `Show` 的範圍參數，遇到超過兩個值、第一個值不是 `int`、或結尾既不是 `int` 也不是 `nil` 時，會印出錯誤訊息；以前會忽略這些參數並顯示全部。DataList 與 DataTable 新增 `ShowHead(n)`、`ShowTail(n)`（以及 `ShowHeadTo`／`ShowTailTo`），是 `ShowRange(n)`、`ShowRange(-n)` 比較直白的寫法。
 
 ### CLI
