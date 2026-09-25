@@ -8,6 +8,14 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ## Unreleased
 
+### Core
+
+- Errors that carry another error as their cause now wrap it with `%w` instead of formatting it into text, so `errors.Is` and `errors.As` reach the cause. This covers reading a CSV whose encoding cannot be detected, reading an Excel sheet, CCL's `MID`, `SUBSTR`, `TONUM`, `VALUE`, `TOSTR` and `TEXT` and its sequence and aggregate functions, building a `pd` Series, and `lp`'s GLPK installation. The message text is unchanged.
+
+### CLI
+
+- Fixed `insyra env import` overwriting a non-empty environment without `--force` when one of its files existed but could not be read. The check that decides whether the target is empty took a failure to read `config.json` as "empty", and ignored failures to read `state.json` and `history.txt` the same way. A missing file still counts as empty; any other failure now stops the import and says which environment could not be checked.
+
 ## v0.3.3
 
 ### Core

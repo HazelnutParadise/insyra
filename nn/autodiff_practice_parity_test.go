@@ -171,7 +171,7 @@ func writeAutodiffPracticeWeights(t *testing.T, python, path string) error {
 	command.Stdout = &stdout
 	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
-		return fmt.Errorf("write autodiff practice weights: %v: %s", err, strings.TrimSpace(stderr.String()))
+		return fmt.Errorf("write autodiff practice weights: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return nil
 }

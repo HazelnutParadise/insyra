@@ -29,14 +29,14 @@ func registerTypeConversionFunctions() {
 	registerFunction("TONUM", func(args ...any) (any, error) {
 		v, err := tonum(args...)
 		if err != nil {
-			return nil, fmt.Errorf("TONUM %v", err)
+			return nil, fmt.Errorf("TONUM %w", err)
 		}
 		return v, nil
 	})
 	registerFunction("VALUE", func(args ...any) (any, error) {
 		v, err := tonum(args...)
 		if err != nil {
-			return nil, fmt.Errorf("VALUE %v", err)
+			return nil, fmt.Errorf("VALUE %w", err)
 		}
 		return v, nil
 	})
@@ -66,14 +66,14 @@ func registerTypeConversionFunctions() {
 	registerFunction("TOSTR", func(args ...any) (any, error) {
 		v, err := tostr(args...)
 		if err != nil {
-			return nil, fmt.Errorf("TOSTR %v", err)
+			return nil, fmt.Errorf("TOSTR %w", err)
 		}
 		return v, nil
 	})
 	registerFunction("TEXT", func(args ...any) (any, error) {
 		v, err := tostr(args...)
 		if err != nil {
-			return nil, fmt.Errorf("TEXT %v", err)
+			return nil, fmt.Errorf("TEXT %w", err)
 		}
 		return v, nil
 	})

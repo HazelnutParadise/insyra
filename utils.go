@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -286,7 +287,7 @@ func DetectEncoding(filePath string) (string, error) {
 	// Read a reasonably large sample to improve detection accuracy
 	buf := make([]byte, 8192)
 	n, err := f.Read(buf)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
 	}
 	if n == 0 {
