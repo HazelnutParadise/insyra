@@ -15,7 +15,7 @@ func TestSimpleImputerUsesTrainingReplacementOnNewTable(t *testing.T) {
 		NewDataList(100.0, math.NaN(), 200.0).SetName("value"),
 	)
 
-	imputer := NewSimpleImputer(ImputeMean)
+	imputer := NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeMean})
 	if err := imputer.Fit(training, Name("value")); err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestSimpleImputerFitTransformMatchesInPlaceMethods(t *testing.T) {
 			want := input.Clone()
 			test.inPlace(want)
 
-			got, err := NewSimpleImputer(test.strategy).FitTransform(input, Name("value"))
+			got, err := NewSimpleImputer(SimpleImputerOptions{Strategy: test.strategy}).FitTransform(input, Name("value"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -62,7 +62,7 @@ func TestSimpleImputerParamsAndStrategies(t *testing.T) {
 		NewDataList(10.0, nil, 20.0).SetName("constant"),
 	)
 
-	imputer := NewSimpleImputer(ImputeMean)
+	imputer := NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeMean})
 	if err := imputer.Fit(training, Name("mean")); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestSimpleImputerParamsAndStrategies(t *testing.T) {
 		t.Fatalf("kind = %q, want %q", imputer.Kind(), "imputer-mean")
 	}
 
-	constant := NewSimpleImputer(ImputeConstant, 7.0)
+	constant := NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeConstant, FillValue: 7.0})
 	constantInput := NewDataTable(NewDataList(10.0, nil, 20.0).SetName("constant"))
 	if err := constant.Fit(constantInput, Name("constant")); err != nil {
 		t.Fatal(err)
@@ -93,12 +93,12 @@ func TestSimpleImputerParamsAndStrategies(t *testing.T) {
 
 func TestSimpleImputerErrorsAndPassThrough(t *testing.T) {
 	allMissing := NewDataTable(NewDataList(nil, math.NaN()).SetName("empty"))
-	if err := NewSimpleImputer(ImputeMedian).Fit(allMissing, Name("empty")); err == nil || !strings.Contains(err.Error(), `column "empty"`) {
+	if err := NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeMedian}).Fit(allMissing, Name("empty")); err == nil || !strings.Contains(err.Error(), `column "empty"`) {
 		t.Fatalf("all-missing error = %v", err)
 	}
 
 	text := NewDataTable(NewDataList("red", nil, "blue").SetName("color"))
-	imputer := NewSimpleImputer(ImputeMean)
+	imputer := NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeMean})
 	if err := imputer.Fit(text, Name("color")); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestSimpleImputerSupportsScalerAndPipelineTransformer(t *testing.T) {
 // interface that asks for the method, so a caller probing for the capability by
 // type assertion would be told it is present and then refused at the call.
 func TestSimpleImputerDoesNotClaimReversibility(t *testing.T) {
-	var imputer any = NewSimpleImputer(ImputeMean)
+	var imputer any = NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeMean})
 
 	if _, ok := imputer.(interface {
 		InverseTransform(dt *DataTable) (*DataTable, error)

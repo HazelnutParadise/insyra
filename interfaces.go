@@ -106,6 +106,8 @@ type IDataList interface {
 	IsTheSameAs(*DataList) bool
 	Show()
 	ShowRange(startEnd ...any)
+	ShowHead(n int)
+	ShowTail(n int)
 	ShowTypes()
 	ShowTypesRange(startEnd ...any)
 
@@ -200,6 +202,8 @@ type IDataTable interface {
 	Show()
 	ShowTypes()
 	ShowRange(startEnd ...any)
+	ShowHead(n int)
+	ShowTail(n int)
 	ShowTypesRange(startEnd ...any)
 	// GetRowIndexByName returns the index of a row by its name.
 	// Returns -1 and false if the row name does not exist.
@@ -326,7 +330,7 @@ type IDataTable interface {
 	FillWithMean(...any) *DataTable
 	FillWithMedian(...any) *DataTable
 	FillWithMode(...any) *DataTable
-	FillByInterpolation(...any) *DataTable
+	FillByInterpolation(extrapolate bool, cols ...any) *DataTable
 
 	// Encoding
 	OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error)

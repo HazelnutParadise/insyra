@@ -26,7 +26,7 @@ func TestFittersTeachNameForABareColumnName(t *testing.T) {
 			return err
 		}},
 		{"SimpleImputer.Fit", `Name("Age")`, func() error {
-			return NewSimpleImputer(ImputeMean).Fit(table(), "Age")
+			return NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeMean}).Fit(table(), "Age")
 		}},
 		{"OneHotEncode", `Name("segment")`, func() error {
 			_, _, err := table().OneHotEncode(OneHotOptions{Columns: []any{"segment"}})

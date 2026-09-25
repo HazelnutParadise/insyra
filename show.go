@@ -67,6 +67,10 @@ func (dt *DataTable) ShowRange(startEnd ...any) {
 // ShowRangeTo displays the DataTable with a specified range of rows, writing to w.
 // It behaves identically to ShowRange but sends output to w instead of os.Stdout.
 func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) {
+	if problem := showRangeProblem(startEnd); problem != "" {
+		printShowProblem(w, "ShowRange", problem)
+		return
+	}
 	dt.AtomicDo(func(dt *DataTable) {
 
 		// Build data map without using Data() method to avoid deadlock
@@ -464,6 +468,10 @@ func (dt *DataTable) ShowTypesRange(startEnd ...any) {
 // ShowTypesRangeTo displays the data types of the DataTable within a specified range of rows, writing to w.
 // It behaves identically to ShowTypesRange but sends output to w instead of os.Stdout.
 func (dt *DataTable) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
+	if problem := showRangeProblem(startEnd); problem != "" {
+		printShowProblem(w, "ShowTypesRange", problem)
+		return
+	}
 	dt.AtomicDo(func(dt *DataTable) {
 
 		// Build data map without using Data() method to avoid deadlock
@@ -762,6 +770,10 @@ func (dl *DataList) ShowRangeTo(w io.Writer, startEnd ...any) {
 	// Safety check to prevent nil pointer
 	if dl == nil {
 		fmt.Fprintln(w, colorText("1;31", "ERROR: Unable to show a nil DataList"))
+		return
+	}
+	if problem := showRangeProblem(startEnd); problem != "" {
+		printShowProblem(w, "ShowRange", problem)
 		return
 	}
 
@@ -1087,6 +1099,10 @@ func (dl *DataList) ShowTypesRange(startEnd ...any) {
 func (dl *DataList) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
 	if dl == nil {
 		fmt.Fprintln(w, colorText("1;31", "ERROR: Unable to show types of a nil DataList"))
+		return
+	}
+	if problem := showRangeProblem(startEnd); problem != "" {
+		printShowProblem(w, "ShowTypesRange", problem)
 		return
 	}
 	dl.AtomicDo(func(dl *DataList) {

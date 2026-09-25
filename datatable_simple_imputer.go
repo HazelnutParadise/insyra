@@ -23,11 +23,11 @@ const (
 // those replacements, so applying it to validation or production data cannot
 // leak statistics from that data back into the transformation.
 type SimpleImputer struct {
-	strategy     ImputationStrategy
-	constant     any
-	constantArgs int
-	columns      []simpleImputerColumn
-	fitted       bool
+	strategy  ImputationStrategy
+	constant  any
+	configErr error
+	columns   []simpleImputerColumn
+	fitted    bool
 }
 
 type simpleImputerColumn struct {
@@ -37,20 +37,34 @@ type simpleImputerColumn struct {
 	passThrough bool
 }
 
-// NewSimpleImputer returns an unfitted imputer. A constant value is required
-// for ImputeConstant and must be omitted for every other strategy. Invalid
-// constructor arguments are reported by Fit, matching the error-returning
-// lifecycle of the existing Scaler interface.
-func NewSimpleImputer(strategy ImputationStrategy, constant ...any) *SimpleImputer {
-	var value any
-	if len(constant) == 1 {
-		value = constant[0]
+// SimpleImputerOptions configures NewSimpleImputer. Both settings decide how
+// the missing values are filled, so they travel together.
+type SimpleImputerOptions struct {
+	// Strategy is how each column's fill value is computed. Empty means
+	// ImputeMean, the same default as scikit-learn's SimpleImputer.
+	Strategy ImputationStrategy
+	// FillValue is the value ImputeConstant fills with. It is required for
+	// ImputeConstant and must be left nil for every other strategy.
+	FillValue any
+}
+
+// NewSimpleImputer returns an unfitted imputer: it learns one fill value per
+// column from the table it is fitted on and fills other tables with those
+// values, so a test set is filled with what the training set taught it. With
+// no options it fills with each column's mean. Invalid options are reported by
+// Fit, matching the error-returning lifecycle of the Scaler interface.
+func NewSimpleImputer(opts ...SimpleImputerOptions) *SimpleImputer {
+	if msg := extraOptional("SimpleImputerOptions", len(opts)); msg != "" {
+		return &SimpleImputer{strategy: ImputeMean, configErr: errors.New("SimpleImputer: " + msg)}
 	}
-	return &SimpleImputer{
-		strategy:     strategy,
-		constant:     value,
-		constantArgs: len(constant),
+	var o SimpleImputerOptions
+	if len(opts) == 1 {
+		o = opts[0]
 	}
+	if o.Strategy == "" {
+		o.Strategy = ImputeMean
+	}
+	return &SimpleImputer{strategy: o.Strategy, constant: o.FillValue}
 }
 
 // Kind reports the imputer family and configured strategy.
@@ -198,14 +212,17 @@ func (i *SimpleImputer) Transform(dt *DataTable) (*DataTable, error) {
 }
 
 func (i *SimpleImputer) validateConfiguration() error {
+	if i.configErr != nil {
+		return i.configErr
+	}
 	switch i.strategy {
 	case ImputeMean, ImputeMedian, ImputeMode:
-		if i.constantArgs != 0 {
-			return fmt.Errorf("SimpleImputer: strategy %q does not accept a constant value", i.strategy)
+		if i.constant != nil {
+			return fmt.Errorf("SimpleImputer: strategy %q does not use FillValue; leave it nil or use ImputeConstant", i.strategy)
 		}
 	case ImputeConstant:
-		if i.constantArgs != 1 {
-			return errors.New("SimpleImputer: constant strategy requires exactly one constant value")
+		if i.constant == nil {
+			return errors.New("SimpleImputer: ImputeConstant requires a FillValue")
 		}
 	default:
 		return fmt.Errorf("SimpleImputer: unsupported strategy %q", i.strategy)

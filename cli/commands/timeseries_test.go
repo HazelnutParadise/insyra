@@ -274,7 +274,14 @@ func TestFillNACommand_TableMedianCols(t *testing.T) {
 		},
 		Output: &bytes.Buffer{},
 	}
-	if err := runFillNACommand(ctx, []string{"t", "median", "cols", "num,text", "as", "filled"}); err != nil {
+	// Naming a text column for a median fill is an error since the owner's
+	// 2026-09-25 ruling on #213: it used to be skipped without a word, so the
+	// caller believed it filled.
+	err := runFillNACommand(ctx, []string{"t", "median", "cols", "num,text", "as", "filled"})
+	if err == nil || !strings.Contains(err.Error(), "text") {
+		t.Fatalf("naming a text column for a median fill: got %v, want an error naming it", err)
+	}
+	if err := runFillNACommand(ctx, []string{"t", "median", "cols", "num", "as", "filled"}); err != nil {
 		t.Fatalf("fillna median failed: %v", err)
 	}
 	result := resultDT(t, ctx, "filled")
@@ -282,7 +289,7 @@ func TestFillNACommand_TableMedianCols(t *testing.T) {
 		t.Errorf("fillna numeric col wrong: %v", result.GetColByName("num").Data())
 	}
 	if !approxEqualAny(result.GetColByName("text").Data(), []any{"x", nil, "z"}, 1e-9) {
-		t.Errorf("fillna string col should be skipped: %v", result.GetColByName("text").Data())
+		t.Errorf("fillna changed a column it was not asked to fill: %v", result.GetColByName("text").Data())
 	}
 }
 
@@ -551,5 +558,41 @@ func TestRollingHelpListsCovAndBeta(t *testing.T) {
 	joined := strings.Join(handler.Forms, "\n")
 	if !strings.Contains(joined, "cov <other>") || !strings.Contains(joined, "beta <other>") {
 		t.Errorf("rolling Forms should list cov and beta, got:\n%s", joined)
+	}
+}
+
+// The table path dropped extrapolate: the library's table interpolation could
+// not extrapolate at all.
+func TestFillNACommand_TableInterpolateExtrapolates(t *testing.T) {
+	ctx := newTestExecContext(t)
+	ctx.Vars["t"] = insyra.NewDataTable(insyra.NewDataList(nil, 2.0, 3.0, nil).SetName("x"))
+	if err := runFillNACommand(ctx, []string{"t", "interpolate", "extrapolate", "yes", "as", "filled"}); err != nil {
+		t.Fatalf("fillna interpolate failed: %v", err)
+	}
+	got := resultDT(t, ctx, "filled").GetColByName("x").Data()
+	if !approxEqualAny(got, []any{1.0, 2.0, 3.0, 4.0}, 1e-9) {
+		t.Errorf("fillna on a table did not extrapolate: %v", got)
+	}
+}
+
+// A fill that could not do what it was asked is an error, not a saved
+// variable that looks filled.
+func TestFillNACommand_ReportsAColumnItCannotFill(t *testing.T) {
+	ctx := newTestExecContext(t)
+	ctx.Vars["t"] = insyra.NewDataTable(
+		insyra.NewDataList(1.0, nil).SetName("price"),
+		insyra.NewDataList("a", nil).SetName("city"),
+	)
+	err := runFillNACommand(ctx, []string{"t", "mean", "cols", "B", "as", "filled"})
+	if err == nil || !strings.Contains(err.Error(), "city") {
+		t.Fatalf("got %v, want an error naming city", err)
+	}
+	if _, saved := ctx.Vars["filled"]; saved {
+		t.Error("the failed fill was saved")
+	}
+
+	ctx.Vars["l"] = insyra.NewDataList("a", nil)
+	if err := runFillNACommand(ctx, []string{"l", "mean", "as", "filled"}); err == nil {
+		t.Fatal("filling a text list with its mean was accepted")
 	}
 }

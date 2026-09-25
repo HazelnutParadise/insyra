@@ -116,6 +116,11 @@ func applyFillNAToList(dl *insyra.DataList, strategy string, opts fillNAOptions)
 	if err := runListStrategy(result, strategy, opts); err != nil {
 		return nil, err
 	}
+	// A fill that could not do what it was asked records why on the list;
+	// saving the result anyway would hand back a variable that looks filled.
+	if err := result.PopErr(); err != nil {
+		return nil, fmt.Errorf("fillna: %w", err)
+	}
 	restorePreservedDL(result, opts.Missing, preserved)
 	return result, nil
 }
@@ -124,6 +129,9 @@ func applyFillNAToTable(dt *insyra.DataTable, strategy string, opts fillNAOption
 	result := dt.Clone()
 	preserved := snapshotPreservedDT(result, opts.Cols, opts.Missing)
 	if err := runTableStrategy(result, strategy, opts); err != nil {
+		return nil, err
+	}
+	if err := checkTableErr("fillna", result); err != nil {
 		return nil, err
 	}
 	restorePreservedDT(result, opts.Missing, preserved)
@@ -166,7 +174,7 @@ func runTableStrategy(dt *insyra.DataTable, strategy string, opts fillNAOptions)
 	case "bfill":
 		dt.FillBackward(opts.Limit, cols...)
 	case "interpolate":
-		dt.FillByInterpolation(cols...)
+		dt.FillByInterpolation(opts.Extrapolate, cols...)
 	default:
 		return fmt.Errorf("fillna: unknown strategy %q (supported: mean, median, mode, ffill, bfill, interpolate)", strategy)
 	}

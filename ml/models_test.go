@@ -382,7 +382,7 @@ func TestRootScalersAndEncodersArePipelineTransformers(t *testing.T) {
 	}
 
 	imputationInput := insyra.NewDataTable(dataList([]any{1.0, nil, 3.0}, "value"))
-	imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
+	imputer := insyra.NewSimpleImputer()
 	if err := imputer.Fit(imputationInput, insyra.Name("value")); err != nil {
 		t.Fatal(err)
 	}

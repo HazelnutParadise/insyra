@@ -38,7 +38,7 @@ func TestDataTableEmptyColumnsDefaultToAllApplicable(t *testing.T) {
 		NewDataList("x", nil, "z").SetName("text"),
 	)
 
-	dt.FillByInterpolation()
+	dt.FillByInterpolation(false)
 
 	assertImputeData(t, dt.GetColByName("a"), []any{1.0, 2.0, 3.0})
 	assertImputeData(t, dt.GetColByName("b"), []any{10.0, 20.0, 30.0})
