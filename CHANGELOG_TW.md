@@ -145,6 +145,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ExcelToCsv` 遇到 `onlyContainSheets` 裡工作簿沒有的名稱會回報錯誤，並列出檔案實際有哪些工作表。名稱拼錯過去會被靜默略過，轉出來的檔案少了幾張，看起來卻像成功。
 - **BREAKING**：`CsvToExcel`、`AppendCsvToExcel` 與 `EachCsvToOneExcel` 會指出哪些 CSV 失敗，也不再留下損壞的工作表。過去錯誤只寫「2 files failed to convert」，每個失敗的檔案都在工作簿裡留下一張空工作表，`AppendCsvToExcel` 甚至先清空同名的既有工作表，才發現 CSV 讀不到，接著照樣存檔。現在每個 CSV 會先完整讀完，才建立或取代工作表。失敗的檔案不產生工作表，既有工作表保留原內容，其他檔案照常轉換並存檔。錯誤逐行列出每個失敗的檔案與原因，`errors.Is(err, os.ErrNotExist)` 也能用。Excel 不接受的工作表名稱現在只讓那個檔案失敗，過去會讓整個呼叫在存檔前就中止。全部失敗時，`CsvToExcel` 不寫出工作簿，`AppendCsvToExcel` 不改動檔案。
 - **BREAKING**：`ExcelToCsv` 的 `csvNames` 若已帶副檔名（不分大小寫）就照用，所以 `report.txt` 寫成 `report.txt`、`REPORT.CSV` 寫成 `REPORT.CSV`，過去會變成 `report.txt.csv` 與 `REPORT.CSV.csv`；沒有副檔名的名稱仍然補上 `.csv`。CLI 的 `convert` 跟著改，`insyra convert book.xlsx out.txt` 現在寫出 `out.txt`。讀取端 `CsvToExcel` 與 `AppendCsvToExcel` 先照原路徑開，原路徑不存在才補 `.csv`：名為 `export.txt`、`DATA.CSV` 或完全沒有副檔名的 CSV 過去都讀不到，因為任何不是以小寫 `.csv` 結尾的路徑都會被補上 `.csv`，現在都讀得到。過去讀得到的路徑全部照樣讀得到，唯一差別是 `x` 與 `x.csv` 同時存在時讀的是 `x`；兩個都不存在時，錯誤訊息會列出兩條試過的路徑。
+- 編碼參數給空字串，或任何大小寫的 `"auto"`，現在都代表自動偵測，跟核心的 CSV 讀取函式一致。以前空字串代表直接當成 UTF-8，`"AUTO"` 則會被當成不支援的編碼而報錯。
 
 ### `parquet`
 - 修正 `ReadColumnOptions.MaxValues` 完全沒有作用。`ReadColumn` 現在先從檔案 metadata 加總所選 row group 的列數，超過上限時在讀取任何資料前就拒絕，這才是該欄位文件寫的行為。
@@ -187,6 +188,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `SavePNG` 的線上備援（需自行開啟）現在 60 秒放棄，回應最多讀 64 MiB。過去用的是沒有 timeout 的 `http.Client{}`——伺服器接了連線然後不講話就會永遠等下去——以及對遠端回應無上限的 `io.ReadAll`。
 - `SaveHTML` 收到超過一個動畫旗標時會回傳錯誤，跟 `SavePNG` 對自己的選填旗標一樣，不再只讀第一個。
+- **BREAKING**：熱圖的點型別改成公開的 `HeatMapPoint[X, Y]`，型別限制改成公開的 `HeatMapAxis`（以前拼成 `heapMapAxisValue`，而且沒有公開）。現在可以在迴圈裡把點收集成 `[]plot.HeatMapPoint[int, int]`。建立點的函式改名為 `NewHeatMapPoint` 與 `NewHeatMapMissingPoint`，`HeatMapPoint(x, y, v)` 要改成 `NewHeatMapPoint(x, y, v)`。
 ### `isr`
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。
 - `DT.From`、`Col`、`Row`、`Push`、`UseDL`、`UseDT` 遇到錯誤的輸入不再結束程式，改為回傳帶著錯誤、可繼續串接的物件：`t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`。`UseDL`／`UseDT` 也不再回傳 `nil`。

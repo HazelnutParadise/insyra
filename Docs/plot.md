@@ -414,14 +414,32 @@ type HeatMapConfig struct {
 #### Creation
 
 ```go
-// heapMapAxisValue can be int | string | time.Time
-func CreateHeatMap[X heapMapAxisValue, Y heapMapAxisValue](config HeatMapConfig, points ...heatMapPoint[X, Y]) *charts.HeatMap
+// An axis is an int index, a string label, or a time.Time (calendar mode).
+type HeatMapAxis interface{ int | string | time.Time }
+
+// HeatMapPoint is one cell; Valid is false for a cell with no value ("-").
+type HeatMapPoint[X HeatMapAxis, Y HeatMapAxis] struct {
+    X, Y  ...
+    Value float64
+    Valid bool
+}
+
+func NewHeatMapPoint[X HeatMapAxis, Y HeatMapAxis](x X, y Y, value float64) HeatMapPoint[X, Y]
+func NewHeatMapMissingPoint[X HeatMapAxis, Y HeatMapAxis](x X, y Y) HeatMapPoint[X, Y]
+func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ...HeatMapPoint[X, Y]) *charts.HeatMap
 ```
 
-Helper functions:
+Because the point type is exported, points can be collected in a loop:
 
-- `HeatMapPoint(x, y, value)`
-- `HeatMapMissingPoint(x, y)`
+```go
+var points []plot.HeatMapPoint[int, int]
+for x := 0; x < 7; x++ {
+    for y := 0; y < 24; y++ {
+        points = append(points, plot.NewHeatMapPoint(x, y, counts[x][y]))
+    }
+}
+chart := plot.CreateHeatMap(plot.HeatMapConfig{Title: "Activity"}, points...)
+```
 
 ### 6. Radar Chart
 

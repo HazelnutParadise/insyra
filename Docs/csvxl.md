@@ -52,7 +52,7 @@ const (
 )
 ```
 
-`Auto` is the default. If detection fails, the function returns an error and you should pass a specific encoding.
+`Auto` is the default. An empty string and `"auto"` in any case (`"AUTO"`, `"Auto"`) also mean detection, as they do for the core CSV readers; an empty string used to mean UTF-8 taken as-is, and `"AUTO"` used to fail. If detection fails, the function returns an error and you should pass a specific encoding.
 
 ## File names
 

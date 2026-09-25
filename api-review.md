@@ -85,7 +85,7 @@
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | C-1 | ~~High~~ 已修正（csvxl-batch-failures）：採批次容錯，每個失敗的檔案帶檔名與原因回傳，失敗的檔案不留工作表，`AppendCsvToExcel` 先讀完 CSV 才取代同名工作表 | 單一 CSV 轉換失敗時只累加計數，錯誤內容丟棄；Excel 仍然存檔（含空 sheet），最後回傳「N files failed」。呼叫端不知道哪個檔、為什麼 | csvxl/convert.go:64-67, 116-119 | 用 `errors.Join` 帶檔名回傳每個失敗；或改成 fail-fast 不存檔。二選一要由你決定：批次容錯還是全有全無 |
-| C-2 | Med | `csvEncoding ...string` / `encoding ...string` 拿 variadic 當選填參數，傳兩個以上才在執行期報錯；未知編碼字串（如 `"latin1"`）靜默走 raw 讀取 | convert.go:31-37, 86-92; convertDir.go:16; read_csv.go:11 | 改成明確參數或 options struct；未知編碼回傳錯誤 |
+| C-2 | ~~Med~~ 已修正（多給本來就報錯、未知編碼本來就報錯；csvxl-encoding-like-core 讓空字串與任何大小寫的 `auto` 跟核心一樣代表偵測；單一選填的 `...string` 合乎 #213 規則，維持） | `csvEncoding ...string` / `encoding ...string` 拿 variadic 當選填參數，傳兩個以上才在執行期報錯；未知編碼字串（如 `"latin1"`）靜默走 raw 讀取 | convert.go:31-37, 86-92; convertDir.go:16; read_csv.go:11 | 改成明確參數或 options struct；未知編碼回傳錯誤 |
 | C-3 | ~~Med~~ 已修正 | `AppendCsvToExcel` doc 說「sheet 已存在會被覆寫」，但 excelize `NewSheet` 對既有名稱只回傳索引不清空（已查 v2.11.0 sheet.go:57-59），結果是新資料蓋在舊資料上，舊資料超出範圍的儲存格殘留 | convert.go:83-107 | 存在時先 `DeleteSheet` 再建，或改 doc 說明是合併 |
 | C-4 | ~~Med~~ 已修正 | `excelize.OpenFile` 回傳的 `*File` 從未 `Close()`：`AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv`（每個檔案各漏一次） | convert.go:94, 136; convertDir.go:38 | `defer f.Close()` |
 | C-5 | ~~Low~~ 已修正（batch 3） | 錯誤用 `%v` 包裝，呼叫端無法 `errors.Is(err, os.ErrNotExist)`；`read_csv.go` 已用 `%w`，套件內不一致 | convert.go 全檔 | 改 `%w` |
@@ -294,7 +294,7 @@
 | PL-1 | ~~High~~ 已修正（batch 3） | `SavePNG(chart, path, useOnlineServiceOnFail ...bool)` 的預設值是 **true**：本機 Chrome 渲染失敗時，會把整張圖（含使用者資料）送到「HazelnutParadise online service」，沒有明確 opt-in。生產環境的資料就這樣出境（準則 14） | plot/save_chart.go:61-67 | 預設 false，且在 doc 明講會上傳；或拆成 `SavePNGOnline` 獨立函式 |
 | PL-2 | ~~High~~ 已修正（make-errors-non-terminating） | `gplot.SaveChart(plt, filename)` 沒有 error 回傳，存檔失敗直接 `LogFatal` 結束程序（磁碟滿、路徑不存在都會）；尺寸寫死 8×4 英吋無法設定（K-1 實例） | gplot/save_chart.go:14-20 | 回 error；加 size 參數 |
 | PL-3 | Med | 14 個 `CreateXxxChart` 失敗回 nil + LogWarning，無 error；`gplot.CreateBarChart(config, data any)` 等用 `any` 收資料再 type switch；所有圖表經 `ToF64Slice` 讀值，非數值畫成 0（`convertDataTableToGrid` 註解直接寫 "use 0"）。這是 AGENTS follow-up 刻意保留的顯示路徑，但至少要在 doc 標明（準則 8、11、13） | plot/*.go；gplot/*.go | 回 `(chart, error)`；`data any` 改具名型別；doc 標明 0 代入 |
-| PL-4 | Low（部分修正：refuse-extra-optional-values 讓 `SaveHTML` 多給旗標報錯） | `SaveHTML(chart, path, animation ...bool)` variadic bool；`HeatMapPoint[X, Y]` 回傳未匯出的泛型型別；`Width`／`Height` 用 `"900px"` 字串；成功存檔 Info log（C-9） | plot/save_chart.go:39；heatmap.go:60-71 | options struct；匯出型別 |
+| PL-4 | ~~Low~~ 已修正（refuse-extra-optional-values 讓 `SaveHTML` 多給旗標報錯；plot-heatmap-point-type 公開 `HeatMapPoint`／`HeatMapAxis`；`Width`／`Height` 維持 CSS 字串以保留 `"100%"` 等寫法；存檔 Info log 屬 C-9） | Low（部分修正：refuse-extra-optional-values 讓 `SaveHTML` 多給旗標報錯） | `SaveHTML(chart, path, animation ...bool)` variadic bool；`HeatMapPoint[X, Y]` 回傳未匯出的泛型型別；`Width`／`Height` 用 `"900px"` 字串；成功存檔 Info log（C-9） | plot/save_chart.go:39；heatmap.go:60-71 | options struct；匯出型別 |
 
 ### py / pd
 

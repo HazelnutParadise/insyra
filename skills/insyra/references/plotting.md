@@ -32,7 +32,7 @@ err := plot.SaveHTML(chart, "revenue.html")
 | `CreateScatterChart(cfg, map[string][]ScatterPoint)` | named series of `{X, Y}` |
 | `CreatePieChart(cfg, items ...PieItem)` | `{Name, Value}` per slice |
 | `CreateBoxPlot(cfg, series ...BoxPlotSeries)` | each series holds `Data []IDataList`, one list per category |
-| `CreateHeatMap(cfg, points ...)` | built with `HeatMapPoint(x, y, v)` / `HeatMapMissingPoint(x, y)` |
+| `CreateHeatMap(cfg, points ...)` | built with `NewHeatMapPoint(x, y, v)` / `NewHeatMapMissingPoint(x, y)` (type `plot.HeatMapPoint[X, Y]`, so a `[]plot.HeatMapPoint[int, int]` can be built in a loop) |
 | `CreateRadarChart(cfg, []RadarSeries)` | `Values []float32`, one per indicator |
 | `CreateKlineChart(cfg, points ...KlinePoint)` | `{Date, Open, High, Low, Close}` |
 | `CreateFunnelChart(cfg, map[string]float64)` | stage → value |
