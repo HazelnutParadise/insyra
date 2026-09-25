@@ -5,8 +5,8 @@
 - [x] 1.2 `Tape.Custom` 與反向傳播時的檢查；失敗的 pass 保留上一次成功的梯度
 
 ## 2. Explicit upstream gradient
-- [ ] 2.1 先寫會失敗的測試：非純量輸出、`Backward(loss)` 與 `BackwardFrom(loss, 1)` 逐位元相同、不是這條 tape 產生的輸出、upstream 形狀不符
-- [ ] 2.2 `Tape.BackwardFrom`；`Backward` 改用同一段反向走訪
+- [x] 2.1 先寫會失敗的測試：非純量輸出、`Backward(loss)` 與 `BackwardFrom(loss, 1)` 逐位元相同、不是這條 tape 產生的輸出、upstream 形狀不符
+- [x] 2.2 `Tape.BackwardFrom`；`Backward` 改用同一段反向走訪
 
 ## 3. Docs and records
 - [ ] 3.1 `Docs/nn.md` 新增自訂運算一節，`skills/insyra/SKILL.md` 補上 `Custom` 與 `BackwardFrom`

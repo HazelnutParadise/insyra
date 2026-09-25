@@ -38,7 +38,7 @@ A `Backward` or `BackwardFrom` that returns an error SHALL leave every gradient 
 
 ### Requirement: The reverse pass can start from an explicit upstream gradient
 
-`Tape.BackwardFrom(output, upstream)` SHALL run the reverse pass from `output` seeded with `upstream`. `output` SHALL have been produced by an operation recorded on this tape, and `upstream` SHALL be float32 and shaped like `output`; otherwise it SHALL return an error. `Backward(loss)` SHALL give the same result as `BackwardFrom(loss, 1)`.
+`Tape.BackwardFrom(output, upstream)` SHALL run the reverse pass from `output` seeded with `upstream`. `output` SHALL have been produced by an operation recorded on this tape, and `upstream` SHALL be float32 and shaped like `output`; otherwise it SHALL return an error. For a loss produced by an operation on this tape, `Backward(loss)` SHALL give the same result as `BackwardFrom(loss, 1)`; `Backward` keeps returning zero gradients for a loss the tape did not produce.
 
 #### Scenario: A non-scalar output
 - **WHEN** `y = MatMul(x, W)` is recorded and `BackwardFrom(y, g)` is called with `g` shaped like `y`
