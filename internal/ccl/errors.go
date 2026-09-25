@@ -1,6 +1,9 @@
 package ccl
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // CompileError reports an expression that could not be turned into an AST, or
 // that could not be bound to a table. It carries where in the source text the
@@ -63,7 +66,8 @@ func asCompileError(expr string, err error) error {
 	if err == nil {
 		return nil
 	}
-	if ce, ok := err.(*CompileError); ok {
+	var ce *CompileError
+	if errors.As(err, &ce) {
 		if ce.Expr == "" {
 			ce.Expr = expr
 		}
@@ -81,17 +85,19 @@ func AttachExpr(expr string, err error) error {
 	if err == nil {
 		return nil
 	}
-	switch e := err.(type) {
-	case *EvalError:
-		if e.Expr == "" {
-			e.Expr = expr
+	var evalErr *EvalError
+	if errors.As(err, &evalErr) {
+		if evalErr.Expr == "" {
+			evalErr.Expr = expr
 		}
-		return e
-	case *CompileError:
-		if e.Expr == "" {
-			e.Expr = expr
+		return evalErr
+	}
+	var compileErr *CompileError
+	if errors.As(err, &compileErr) {
+		if compileErr.Expr == "" {
+			compileErr.Expr = expr
 		}
-		return e
+		return compileErr
 	}
 	return &EvalError{Expr: expr, Row: -1, Err: err}
 }

@@ -254,6 +254,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-20] — `TestSequentialFitMNISTConvergence` still pins numbers recorded on one machine
+- **Where**: [nn/fit_mnist_test.go](nn/fit_mnist_test.go), the mean-loss and accuracy assertions
+- **What**: Fit's sugar-changes-nothing proof compares against the transcribed `0.347310`, `0.165883` and `0.9547` instead of against the hand-written loop it claims to reproduce. Its sibling `TestSequentialMNISTConvergence` failed exactly that way on `ubuntu-latest` on 2026-09-20 — `0.163855` recorded on arm64 against `0.163840` measured on amd64, while the two code paths still agreed with each other — and now runs the hand loop in the same process (`mnist-proof-compares-runs`). Fit's numbers happen to hold on both platforms measured so far, so nothing is red today.
+- **Suggestion**: the same treatment. Run the documented hand loop inside the test and compare the two curves, keeping only bounds any platform meets. It costs one more MNIST run, about 30 seconds in CI. Worth doing the next time `nn`'s training path is touched, or sooner if a third platform disagrees.
+- **Status**: pending
+
 ### [2026-09-20] — `oblimin` ignores its starting point, so `Restarts` costs it N identical runs
 - **Where**: `stats/internal/fa/psych_faRotations.go`, the `"oblimin"` arm of the switch in `FaRotations`
 - **What**: every other method rotates from the start it was handed; oblimin builds its own identity matrix and rotates from that, ignoring the start entirely. The comment says the identity start is deliberate, "better SPSS compatibility than random starts". Measured on 2026-09-20 after `orthogonal-rotation-starts` landed here: over the 20 datasets of `stats/factor_analysis_test.go` and all four extractions, oblimin returns the `Restarts: 1` answer in all 240 combinations at `Restarts` 2, 5 and 20, while every other GPA method differs from its single-start answer in more than half of them. On the `noisyStructure` fixture, best of 5, `Restarts: 20` takes 74.6 ms to return the 2.6 ms answer. It matters more now than before: the starts oblimin is refusing used to include two oblique matrices and are now all legitimate.
@@ -270,12 +276,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `stats/ftest.go` `BartlettTest`, through `stats/distutil.go` `chiSquaredPValue`
 - **What**: Bartlett's `T` is a difference of logs, so for groups whose variances agree it lands at or just below zero by rounding. `chiSquaredPValue` passes it straight to `distuv.ChiSquared{K: df}.CDF`, which panics with `cephes: parameter out of bounds` for any negative argument — measured on 2026-09-19, `chiSquaredPValue(-1e-16, 1)` panics while `chiSquaredPValue(0, 1)` returns 1. Whether two identical groups panic therefore depends on the values: `{0.1, 0.2, 0.3}` twice returns statistic 0 and p 1, while `{-0.32329881667362437, -0.319580921043235, 0.9093452052941211, 0.9788142136474671}` twice panics. A random sweep over k=2..4 and n=2..40 hit it 5 times in 135 tries. Pre-existing: the same input panics identically on e6fbb53, so this is not a backport regression. `df <= 0` panics the same way (`chiSquaredPValue(1, 0)`), which `FriedmanTest`, `KruskalWallis`, `ChiSquareTest`, `PartialCorrelation` and `FactorAnalysis` also reach.
 - **Suggestion**: clamp in `chiSquaredPValue` — a negative `chi2` is a rounding artefact of a statistic that is zero, so returning 1 for it is the right answer, and a non-positive `df` should return NaN the way `tQuantile` already does. That changes a panic into a value for every caller at once, which needs deciding before it is done: it is a behaviour change, though the old behaviour was a panic.
-- **Status**: pending
-
-### [2026-09-19] — govulncheck fails on every branch: GO-2026-6452 wrongly lists excelize v2.11.0 as unfixed
-- **Where**: `go.mod` — `github.com/xuri/excelize/v2 v2.11.0`; the traces are `read.go` `ReadExcelSheet`, `csvxl` `replaceSheet` and `paddedSheetCells`
-- **What**: GO-2026-6452, "Panic via negative shared-string index", lists `Fixed in: N/A`, so `govulncheck ./...` exits 3 on every branch and the Vulnerability Scan job is red. The entry is wrong. Its source, GHSA-fx5j-qcqg-grpf, gives v2.11.0 as the patched version; the fix, commit 93f0b3c (qax-os/excelize#2331), is an ancestor of the v2.11.0 tag; and v2.11.0's `getValueFrom` checks `xlsxSI < 0`. Checked 2026-09-24. golang/vulndb#6510 reports it, with several duplicates, and is still open. GitHub's advisory database lists no advisory covering v2.11.0.
-- **Suggestion**: releases need a green `main`, so this blocks the next release until either golang/vulndb corrects the entry or the workflow excludes GO-2026-6452 with a comment linking golang/vulndb#6510, to be removed when the entry is fixed. The exclusion is the owner's call.
 - **Status**: pending
 
 ### [2026-09-17] — psych 2.6.5's `faRotations` tie-break picks a start that did not tie, and nobody upstream has been told

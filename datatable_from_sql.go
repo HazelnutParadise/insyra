@@ -138,7 +138,7 @@ func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options .
 	}
 
 	LogDebug("core", "ReadSQLStream", "Executing SQL query: %s (chunkSize=%d)", query, chunkSize)
-	rows, err := tx.Raw(query, params...).Rows()
+	rows, err := tx.Raw(query, params...).Rows() //nolint:rowserrcheck // scanRowsToDataTable checks rows.Err once Next is exhausted
 	if err != nil {
 		return nil, fmt.Errorf("error executing query: %w", err)
 	}

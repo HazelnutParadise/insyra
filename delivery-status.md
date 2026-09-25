@@ -68,6 +68,10 @@ Note for any host running the reference suites locally: the crosslang venv moved
 
 The `quant` portfolio comparison against cvxpy now runs in the `Reference Verification` workflow: it installs cvxpy and runs `TestPortfolioAgreesWithCVXPY` with strict mode on, so the comparison can no longer skip unseen.
 
+`nn`'s MNIST convergence tests and the five-checkpoint real-model parity run in the `Neural Network Data Gates` workflow when `nn/` changes: it fetches the data pinned by sha256 in `.github/nn-data-manifest.txt` and fails if any of the five tests skipped. The GPU gates stay manual. `TestSequentialMNISTConvergence` compares the Sequential run against the hand-written loop in the same process instead of against digits recorded on one machine.
+
+golangci-lint also runs nilerr, bodyclose, rowserrcheck, sqlclosecheck and errorlint, so an error formatted into another with `%v`, an unchecked `rows.Err` or an unclosed body fails the lint job. `clustering-parity`, `knn-parity` and `reference-verification` set up Python, R and their packages through one composite action, `.github/actions/setup-reference-toolchains`.
+
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
 

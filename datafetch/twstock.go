@@ -118,7 +118,7 @@ func (t *twStock) doJSON(rawURL string, output any) error {
 			lastErr = err
 		} else {
 			req.Header.Set("User-Agent", t.cfg.UserAgent)
-			resp, requestErr := t.client.Do(req)
+			resp, requestErr := t.client.Do(req) //nolint:bodyclose // readJSONResponse closes the body
 			if requestErr != nil {
 				lastErr = requestErr
 			} else {

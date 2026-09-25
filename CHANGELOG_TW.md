@@ -8,6 +8,14 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
+### Core
+
+- 以另一個錯誤為原因的錯誤，現在用 `%w` 包住原因，而不是把它格式化成文字，所以 `errors.Is` 與 `errors.As` 能認出原因。涵蓋的地方有：偵測不到編碼的 CSV、讀取 Excel 工作表、CCL 的 `MID`、`SUBSTR`、`TONUM`、`VALUE`、`TOSTR`、`TEXT` 與序列、聚合函數、建立 `pd` Series，以及 `lp` 安裝 GLPK。訊息文字不變。
+
+### CLI
+
+- 修正 `insyra env import` 在沒有 `--force` 時，只要目標環境有檔案存在但讀不到，就會把非空的環境蓋掉。判斷目標是否為空的檢查把讀不到 `config.json` 當成「空的」，讀不到 `state.json` 與 `history.txt` 也一樣被忽略。檔案不存在仍然視為空，其他讀取失敗現在會停止匯入，並指出哪個環境無法確認。
+
 ## v0.3.3
 
 ### Core

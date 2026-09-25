@@ -558,6 +558,11 @@ output range — 6e-5 relative — pure f32 reassociation noise). If the variabl
 unset or either file is absent, the gate skips and names
 `INSYRA_NN_REAL_MODELS_DIR`; it never accesses the network.
 
+CI runs this gate, and the MNIST convergence tests beside it, on every change
+under `nn/`. The files come from `.github/nn-data-manifest.txt`, which pins each
+one's source URL and sha256, so a local directory built from that manifest holds
+exactly the bytes CI compares against.
+
 ## Real-model smoke test
 
 For a manual smoke run against a local model, set

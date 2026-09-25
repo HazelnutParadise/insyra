@@ -31,25 +31,25 @@ func FromDataList(dl insyra.IDataList) (*Series, error) {
 	case "int":
 		gpds, err := gpdc.NewInt64SeriesFromData(int64List, nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create int Series: %v", err)
+			return nil, fmt.Errorf("failed to create int Series: %w", err)
 		}
 		return &Series{gpds}, nil
 	case "float":
 		gpds, err := gpdc.NewFloat64SeriesFromData(float64List, nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create float Series: %v", err)
+			return nil, fmt.Errorf("failed to create float Series: %w", err)
 		}
 		return &Series{gpds}, nil
 	case "string":
 		gpds, err := gpdc.NewStringSeriesFromData(stringList, nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create string Series: %v", err)
+			return nil, fmt.Errorf("failed to create string Series: %w", err)
 		}
 		return &Series{gpds}, nil
 	default:
 		gpds, err := gpdc.NewAnySeriesFromData(dl.Data(), nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create any Series: %v", err)
+			return nil, fmt.Errorf("failed to create any Series: %w", err)
 		}
 		return &Series{gpds}, nil
 	}

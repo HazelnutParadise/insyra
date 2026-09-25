@@ -74,6 +74,8 @@ Every gate routes through `internal/reftest` so none can opt out of that switch.
 
 This is not hypothetical tidiness. Until 2026-08-01 the `Clustering Parity` workflow installed `numpy scipy statsmodels` for a gate that imports `scipy, numpy, statsmodels, sklearn`; measured in a clean environment, that leaves `sklearn` missing, so the workflow dedicated to running the parity suite reported green while running none of it. The ONNX round trip had never executed anywhere, and hid two defects that made every exported model invalid.
 
+Two gates cannot be answered by installing a package. `nn`'s MNIST convergence and real-model parity need **data** the repository does not carry — 288MB of published checkpoints and 11MB of MNIST — so the `Neural Network Data Gates` workflow fetches them from the sources pinned by sha256 in `.github/nn-data-manifest.txt`, checks every file before testing, and fails when one of the five tests skipped rather than ran. It runs when `nn/` changes, because that is when they can start failing. The **GPU** gates (`INSYRA_ACCEL_GPU_TESTS=1` over `./accel/...` and `./nn/`) have no hosted runner to run on and stay manual: run them on a machine with a device before changing `accel` or the device path, and record what they measured in `delivery-status.md`.
+
 ## Precision contract
 
 `insyra/ml` does not have a precision. It has one contract assigned by role, and every model obeys the same one. Each row is sourced from what mainstream libraries actually do, read at source level.
