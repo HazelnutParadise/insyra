@@ -23,6 +23,13 @@ const (
 	Auto = "auto"
 )
 
+// isAutoEncoding reports whether an encoding argument asks for detection. It
+// reads "" and "auto" in any case the way the core CSV readers do, so the same
+// argument means the same thing in both packages.
+func isAutoEncoding(encoding string) bool {
+	return encoding == "" || strings.EqualFold(encoding, Auto)
+}
+
 // Convert multiple CSV files to an Excel file, supporting custom sheet names.
 // If the sheet name is not specified, the file name of the CSV file will be used.
 // If csvEncoding is not specified, auto-detection will be used.
@@ -329,7 +336,7 @@ func readCsvRecords(csvFile string, encoding string) ([][]string, error) {
 	defer func() { _ = file.Close() }()
 
 	// Auto-detect encoding if specified
-	if encoding == Auto {
+	if isAutoEncoding(encoding) {
 		detectedEncoding, err := insyra.DetectEncoding(csvFile)
 		if err != nil {
 			// Propagate the detection error instead of silently falling back

@@ -22,7 +22,7 @@ func ReadCsvToString(filePath string, encoding ...string) (string, error) {
 	}
 
 	useEncoding := encoding[0]
-	if useEncoding == Auto {
+	if isAutoEncoding(useEncoding) {
 		detected, err := insyra.DetectEncoding(filePath)
 		if err != nil {
 			return "", fmt.Errorf("failed to auto-detect encoding for %s: %w", filePath, err)
