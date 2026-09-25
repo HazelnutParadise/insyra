@@ -18,7 +18,7 @@ Elementwise float32 functions whose results are correctly rounded — the true v
 
 #### Scenario: The approximation is the same on every platform
 - **WHEN** the fast path runs on any platform
-- **THEN** it computes the same float64 bits as on the platform where the exhaustive run measured its error, because it uses only IEEE 754 operations that are each rounded on their own
+- **THEN** it computes the same float64 bits as on the platform where the exhaustive run measured its error: no product is fused into the operation after it, and a hash of the bits over every input between the analytic ranges is checked on every platform CI runs
 
 ### Requirement: The tanh gradient is reproducible
 
