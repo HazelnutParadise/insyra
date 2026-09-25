@@ -353,7 +353,8 @@ compose: `EdgeSum` does not assume an activation, a decay or a bias.
 
 The summation order is fixed: each node adds its incoming edges in ascending
 edge index, starting from zero, and every product is rounded to float32 before
-it is added. The result is therefore the same on every platform. Without the
+it is added. The result is therefore the same on every platform, and on a
+large graph every core shares the work without changing a bit of it. Without the
 rounding, arm64 fuses the multiply and the add into one instruction and
 produces different bits from amd64.
 
