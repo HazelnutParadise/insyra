@@ -1,10 +1,9 @@
 # ci-workflows Specification
 
 ## Purpose
-Defines what CI checks and how it runs: every Go file is gofmt-formatted, the Test workflow vets on every OS, runs the race detector on ubuntu and reports coverage from another leg, and every workflow runs with least-privilege tokens.
+Defines what CI checks and how it runs: every Go file is gofmt-formatted, the Test workflow vets on every OS, runs the race detector on ubuntu and reports coverage from another leg, every workflow runs with least-privilege tokens, and the reference toolchains are set up in one place.
 
 ## Requirements
-
 ### Requirement: Formatting is checked
 
 Every Go file in the repository SHALL be formatted as `gofmt` formats it, and the lint job SHALL fail on a file that is not.
@@ -28,3 +27,16 @@ Every workflow SHALL declare its token permissions, and a workflow that only rea
 #### Scenario: deploy-docs
 - **WHEN** deploy-docs 部署文件
 - **THEN** checkout 不保留憑證，推送改用 actions-gh-pages 自己的 token
+
+### Requirement: The reference toolchains are set up in one place
+
+Every workflow that runs a cross-language comparison SHALL set up Python, R and their shared packages through the one composite action, and SHALL add only the packages it needs beyond that set.
+
+#### Scenario: A package the gates need is added
+- **WHEN** a Python or R package is added to the shared set
+- **THEN** the change is one edit, and every comparison workflow installs it
+
+#### Scenario: A workflow needs more than the shared set
+- **WHEN** a workflow needs packages the others do not
+- **THEN** it passes them to the action rather than repeating the setup
+
