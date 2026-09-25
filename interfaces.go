@@ -62,6 +62,8 @@ type IDataList interface {
 	EWM(EWMOptions) *EWMDataList
 	MovingStdev(int) *DataList
 	Len() int
+	// DataType returns the kind of values the list holds, ignoring missing ones.
+	DataType() DataType
 	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
 	SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList
 	Shuffle(options ...SamplingOptions) *DataList
@@ -157,6 +159,8 @@ type IDataTable interface {
 	ColNamesToFirstRow() *DataTable
 	DropColNames() *DataTable
 	ColNames() []string
+	// ColDataTypes returns each column's DataType in column order.
+	ColDataTypes() []DataType
 	Headers() []string
 	SetColNames(colNames []string) *DataTable
 	SetHeaders(headers []string) *DataTable
