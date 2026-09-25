@@ -599,11 +599,24 @@ func (dt *DataTable) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
 			fmt.Fprintln(w)
 
 			// Print separator aligned to header widths
-			fmt.Fprint(w, strings.Repeat("-", maxRowNameWidth+2))
+			printTypeSeparator := func() {
+				fmt.Fprint(w, strings.Repeat("-", maxRowNameWidth+2))
+				for _, colIndex := range currentPageCols {
+					fmt.Fprint(w, " "+strings.Repeat("-", colWidths[colIndex]+1))
+				}
+				fmt.Fprintln(w)
+			}
+			printTypeSeparator()
+
+			// The DataType row sums each whole column up in one word, above
+			// the per-cell Go types it is judged from.
+			fmt.Fprint(w, colorText("1;33", runewidth.FillRight("DataType", maxRowNameWidth+2)))
 			for _, colIndex := range currentPageCols {
-				fmt.Fprint(w, " "+strings.Repeat("-", colWidths[colIndex]+1))
+				label := utils.TruncateString(dataTypeOf(dataMap[colIndex]).String(), colWidths[colIndex])
+				fmt.Fprint(w, " "+colorText("1;33", runewidth.FillRight(label, colWidths[colIndex]+1)))
 			}
 			fmt.Fprintln(w)
+			printTypeSeparator()
 			// Print row data for the specified range
 			selectedRowCount := end - start
 
@@ -1127,6 +1140,7 @@ func (dl *DataList) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
 			}
 			if start >= end {
 				fmt.Fprintf(w, "%s %s\n", colorText("1;33", title), colorText("3;33", fmt.Sprintf("(%d items)", total)))
+				fmt.Fprintln(w, colorText("1;33", "DataType: "+dataTypeOf(dl.data).String()))
 				fmt.Fprintln(w, strings.Repeat("=", min(width, 80)))
 				fmt.Fprintln(w, colorText("2;37", "(empty range)"))
 				return
@@ -1139,6 +1153,7 @@ func (dl *DataList) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
 			summary += fmt.Sprintf(" [showing items %d to %d]", start, end-1)
 		}
 		fmt.Fprintf(w, "%s %s\n", colorText("1;33", title), colorText("3;33", summary))
+		fmt.Fprintln(w, colorText("1;33", "DataType: "+dataTypeOf(dl.data).String()))
 		fmt.Fprintln(w, strings.Repeat("=", min(width, 80)))
 
 		// 無資料
