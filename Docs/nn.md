@@ -319,6 +319,44 @@ For a scalar loss, `Backward(loss)` and `BackwardFrom(loss, one)` give the same
 gradients. `BackwardFrom` refuses an output the tape did not produce, where
 `Backward` would return zero gradients.
 
+### Sparse edge sums
+
+A graph given as an edge list, such as a recurrent network with fixed sparse
+connections, does not need a dense N×N matrix. Build the topology once, then
+let each node sum its weighted incoming edges with `EdgeSum`:
+
+```go
+graph, err := nn.NewEdgeTopology(3, []int{0, 1, 2}, []int{1, 2, 0}) // edges 0→1, 1→2, 2→0
+if err != nil { log.Fatal(err) }
+weights, _ := nn.NewTensor([]int{3}, []float32{0.5, -1, 0.25})
+state, _ := nn.NewTensor([]int{3}, []float32{0.1, 0.2, 0.3})
+input, _ := nn.NewTensor([]int{3}, []float32{1, 0, 0})
+
+w, err := tape.Param(weights)
+if err != nil { log.Fatal(err) }
+incoming, err := tape.EdgeSum(graph, w.Value(), state) // [0.25·0.3, 0.5·0.1, -1·0.2]
+if err != nil { log.Fatal(err) }
+next, err := tape.Add(incoming, input)
+if err != nil { log.Fatal(err) }
+next, err = tape.Tanh(next) // one recurrent step: tanh(W·state + input)
+if err != nil { log.Fatal(err) }
+```
+
+`NewEdgeTopology(nodes, sources, targets)` checks every index, copies the
+slices, and never changes afterwards, so one topology can serve every step and
+every batch. `weights` has one float32 entry per edge; `values` is float32
+`[N]`, or `[B, N]` for a batch, and the output has the same shape. Work and
+memory grow with the number of edges and values, not with N².
+`Tape.EdgeSum` gives gradients for both the weights and the values, so the
+step above trains like any other tape graph. The step itself is yours to
+compose: `EdgeSum` does not assume an activation, a decay or a bias.
+
+The summation order is fixed: each node adds its incoming edges in ascending
+edge index, starting from zero, and every product is rounded to float32 before
+it is added. The result is therefore the same on every platform. Without the
+rounding, arm64 fuses the multiply and the add into one instruction and
+produces different bits from amd64.
+
 ### Training toolkit
 
 The tape also provides mean-reduced `MSELoss(pred, target)` and fused,

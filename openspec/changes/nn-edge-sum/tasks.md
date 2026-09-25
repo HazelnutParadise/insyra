@@ -9,7 +9,7 @@
 - [x] 2.2 `Tape.EdgeSum`
 
 ## 3. Docs and records
-- [ ] 3.1 `Docs/nn.md`、`skills/insyra/SKILL.md`
-- [ ] 3.2 兩份 CHANGELOG 的 `` ### `ml` and `nn` ``
-- [ ] 3.3 全套驗證：`go build`、`go vet`、`go test ./...`、`golangci-lint run`
-- [ ] 3.4 `openspec validate nn-edge-sum --strict`
+- [x] 3.1 `Docs/nn.md`、`skills/insyra/SKILL.md`
+- [x] 3.2 兩份 CHANGELOG 的 `` ### `ml` and `nn` ``
+- [x] 3.3 全套驗證：`go build`、`go vet`、`go test ./...`、`golangci-lint run`
+- [x] 3.4 `openspec validate nn-edge-sum --strict`
