@@ -181,9 +181,9 @@ func (s *scaler) Fit(dt *DataTable, cols ...any) error {
 	dt.AtomicDo(func(t *DataTable) {
 		seen := map[int]struct{}{}
 		for _, ref := range cols {
-			idx, label, ok := resolveEncodingColumn(t, ref)
-			if !ok {
-				err = fmt.Errorf("%sScaler.Fit: column %v not found", s.kind, ref)
+			idx, label, problem := resolveEncodingColumn(t, ref)
+			if problem != "" {
+				err = fmt.Errorf("%sScaler.Fit: %s", s.kind, problem)
 				return
 			}
 			if _, dup := seen[idx]; dup {
@@ -256,12 +256,12 @@ func (s *scaler) apply(dt *DataTable, inverse bool) (*DataTable, error) {
 	dt.AtomicDo(func(t *DataTable) {
 		colByIndex := map[int]*scalerColumn{}
 		for i := range s.cols {
-			idx, _, ok := resolveEncodingColumn(t, s.cols[i].ref)
-			if !ok {
+			idx, _, problem := resolveEncodingColumn(t, s.cols[i].ref)
+			if problem != "" {
 				if inverse {
 					continue
 				}
-				err = fmt.Errorf("%sScaler.%s: fitted column %v not found", s.kind, op, s.cols[i].ref)
+				err = fmt.Errorf("%sScaler.%s: fitted column: %s", s.kind, op, problem)
 				return
 			}
 			colByIndex[idx] = &s.cols[i]

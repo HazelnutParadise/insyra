@@ -98,9 +98,9 @@ func (i *SimpleImputer) Fit(dt *DataTable, cols ...any) error {
 	dt.AtomicDo(func(t *DataTable) {
 		seen := make(map[int]struct{}, len(cols))
 		for _, ref := range cols {
-			idx, label, ok := resolveEncodingColumn(t, ref)
-			if !ok {
-				err = fmt.Errorf("SimpleImputer.Fit: column %q not found", ref)
+			idx, label, problem := resolveEncodingColumn(t, ref)
+			if problem != "" {
+				err = fmt.Errorf("SimpleImputer.Fit: %s", problem)
 				return
 			}
 			if _, duplicate := seen[idx]; duplicate {
@@ -164,8 +164,8 @@ func (i *SimpleImputer) Transform(dt *DataTable) (*DataTable, error) {
 		byIndex := make(map[int]*simpleImputerColumn, len(i.columns))
 		for idx := range i.columns {
 			column := &i.columns[idx]
-			resolved, _, ok := resolveEncodingColumn(t, Name(column.name))
-			if !ok {
+			resolved, _, problem := resolveEncodingColumn(t, Name(column.name))
+			if problem != "" {
 				err = fmt.Errorf("SimpleImputer.Transform: fitted column %q not found", column.name)
 				return
 			}
