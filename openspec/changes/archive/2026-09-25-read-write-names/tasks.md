@@ -6,4 +6,4 @@
 
 ## 2. 文件與紀錄
 - [x] 2.1 `Docs/`、`skills/`、兩份 README；兩份 CHANGELOG；`AGENTS.md` follow-up。
-- [ ] 2.2 全套驗證；`api-review.md` K-14、`delivery-status.md`；歸檔、寫 Purpose；在 #213 回報並關閉。
+- [x] 2.2 全套驗證；`api-review.md` K-14、`delivery-status.md`；歸檔、寫 Purpose；在 #213 回報並關閉。

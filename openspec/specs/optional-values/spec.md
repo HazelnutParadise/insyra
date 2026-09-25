@@ -31,3 +31,21 @@ A function whose last parameter is a variadic standing for one optional value (`
 - **WHEN** training batch normalization runs with `BatchNormOptions{Epsilon: 1e-3}`
 - **THEN** momentum keeps its default of 0.1 and epsilon is 1e-3
 
+### Requirement: Heat map points have an exported type
+
+The heat map point type SHALL be exported as `HeatMapPoint[X, Y]` with the exported axis constraint `HeatMapAxis`, built by `NewHeatMapPoint` and `NewHeatMapMissingPoint`, so points can be collected in a slice outside the package.
+
+#### Scenario: Points built in a loop
+
+- **WHEN** a caller appends `NewHeatMapPoint(x, y, v)` results to a `[]HeatMapPoint[int, int]` and passes it to `CreateHeatMap`
+- **THEN** it compiles and produces a chart
+
+### Requirement: An encoding argument means the same in csvxl as in the core readers
+
+`csvxl`'s CSV readers SHALL detect the encoding when given an empty string or `"auto"` in any case, as the core CSV readers do.
+
+#### Scenario: Uppercase AUTO on a Big5 file
+
+- **WHEN** `ReadCsvToString(path, "AUTO")` reads a Big5 file
+- **THEN** the text is decoded from Big5 instead of the call failing
+
