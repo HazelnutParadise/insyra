@@ -2,7 +2,6 @@
 
 ## Purpose
 What a table-level fill does with a column it cannot fill: a column the caller named is reported, so a fill never looks done when it was not, while filling every column still skips what it cannot handle. Table interpolation extrapolates on request, as list interpolation does.
-
 ## Requirements
 ### Requirement: A named column a table fill cannot fill is an error
 
@@ -26,4 +25,13 @@ A table-level `FillWithMean`, `FillWithMedian`, `FillByInterpolation` or `FillWi
 
 - **WHEN** a column `[nil, 2, 3, nil]` is interpolated with `extrapolate` true
 - **THEN** it becomes `[1, 2, 3, 4]`
+
+### Requirement: A fitted imputer refuses a selected column it cannot fill
+
+`SimpleImputer.Fit` with the mean or median strategy SHALL fail when any selected column is not a number column, naming the column and its data type, and SHALL learn no column in that call.
+
+#### Scenario: A text column among the selected ones
+
+- **WHEN** `NewSimpleImputer().Fit(train, Name("income"), Name("color"))` runs and `color` holds text
+- **THEN** it returns an error naming `color` and its string values, and the imputer is not fitted
 
