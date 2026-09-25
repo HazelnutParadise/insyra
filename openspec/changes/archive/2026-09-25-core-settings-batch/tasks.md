@@ -6,4 +6,4 @@
 
 ## 2. 文件與紀錄
 - [x] 2.1 `Docs/DataTable.md`、`Docs/DataList.md`、`Docs/cli-dsl.md`、兩個 skills；兩份 CHANGELOG。
-- [ ] 2.2 全套驗證；`api-review.md`、`delivery-status.md`；歸檔、寫 Purpose；在 #213 回報。
+- [x] 2.2 全套驗證；`api-review.md`、`delivery-status.md`；歸檔、寫 Purpose；在 #213 回報。
