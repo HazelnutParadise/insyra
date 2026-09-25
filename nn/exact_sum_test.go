@@ -441,29 +441,34 @@ func TestFloat64ProductSumRefusesNearMidpoints(t *testing.T) {
 
 func TestFloat64ProductSumSingleProduct(t *testing.T) {
 	tests := []struct {
-		name string
-		pair [2]float32
-		want uint32
+		name   string
+		pair   [2]float32
+		want   uint32
+		fastOK bool
 	}{
 		{
-			name: "a quarter times three tenths",
-			pair: [2]float32{0.25, 0.3},
-			want: math.Float32bits(float32(0.25) * float32(0.3)),
+			name:   "a quarter times three tenths",
+			pair:   [2]float32{0.25, 0.3},
+			want:   math.Float32bits(float32(0.25) * float32(0.3)),
+			fastOK: true,
 		},
 		{
-			name: "negative zero times one is positive zero",
-			pair: [2]float32{float32(math.Copysign(0, -1)), 1},
-			want: 0x00000000,
+			name:   "negative zero times one is positive zero",
+			pair:   [2]float32{float32(math.Copysign(0, -1)), 1},
+			want:   0x00000000,
+			fastOK: true,
 		},
 		{
-			name: "the largest float32 times two overflows",
-			pair: [2]float32{math.MaxFloat32, 2},
-			want: 0x7f800000,
+			name:   "the largest float32 times two overflows",
+			pair:   [2]float32{math.MaxFloat32, 2},
+			want:   0x7f800000,
+			fastOK: false,
 		},
 		{
-			name: "the smallest subnormal times a half ties to even",
-			pair: [2]float32{math.Float32frombits(1), 0.5},
-			want: 0x00000000,
+			name:   "the smallest subnormal times a half ties to even",
+			pair:   [2]float32{math.Float32frombits(1), 0.5},
+			want:   0x00000000,
+			fastOK: true,
 		},
 	}
 
@@ -473,16 +478,119 @@ func TestFloat64ProductSumSingleProduct(t *testing.T) {
 			fast.reset()
 			fast.add(tc.pair[0], tc.pair[1])
 			out, ok := fast.result()
-			if !ok {
-				t.Fatal("fast path refused a single product, want ok")
-			}
-			if got := math.Float32bits(out); got != tc.want {
-				t.Fatalf("bits = %#08x, want %#08x", got, tc.want)
+			if tc.fastOK {
+				if !ok {
+					t.Fatal("fast path refused a single product, want ok")
+				}
+				if got := math.Float32bits(out); got != tc.want {
+					t.Fatalf("bits = %#08x, want %#08x", got, tc.want)
+				}
+			} else if ok {
+				t.Fatalf("fast path accepted an overflowing product, want it refused")
 			}
 			if got, want := math.Float32bits(exactSumOf([][2]float32{tc.pair})), tc.want; got != want {
 				t.Fatalf("exact accumulator bits = %#08x, want %#08x", got, want)
 			}
 		})
+	}
+}
+
+func TestExactSumWideExponentsAgreeWithOracle(t *testing.T) {
+	r := rand.New(rand.NewSource(17))
+	operand := func() float32 {
+		var value float32
+		switch r.Intn(3) {
+		case 0:
+			value = math.Float32frombits(uint32(r.Intn(1<<23-1) + 1))
+		case 1:
+			value = float32(math.Ldexp(r.Float64()+0.5, 100+r.Intn(28)))
+		default:
+			value = float32(math.Ldexp(r.NormFloat64(), r.Intn(121)-60))
+		}
+		if r.Intn(2) == 0 {
+			return -value
+		}
+		return value
+	}
+
+	for round := 0; round < 1000; round++ {
+		pairs := make([][2]float32, 1+r.Intn(200))
+		for i := range pairs {
+			pairs[i] = [2]float32{operand(), operand()}
+		}
+
+		want := math.Float32bits(exactSumOracle(pairs))
+		if got := math.Float32bits(float64FastThenExact(pairs)); got != want {
+			t.Fatalf("round %d of %d pairs: fast-then-exact bits = %#08x, oracle bits = %#08x", round, len(pairs), got, want)
+		}
+		if got := math.Float32bits(exactSumOf(pairs)); got != want {
+			t.Fatalf("round %d of %d pairs: exact accumulator bits = %#08x, oracle bits = %#08x", round, len(pairs), got, want)
+		}
+	}
+}
+
+func TestExactSumOverflowGoesToTheExactPath(t *testing.T) {
+	tests := []struct {
+		name  string
+		pairs [][2]float32
+		want  uint32
+	}{
+		{
+			name:  "one product overflows",
+			pairs: [][2]float32{{math.MaxFloat32, 2}},
+			want:  0x7f800000,
+		},
+		{
+			name: "two products overflow",
+			pairs: [][2]float32{
+				{math.MaxFloat32, 1},
+				{math.MaxFloat32, 1},
+			},
+			want: 0x7f800000,
+		},
+		{
+			name:  "one negative product overflows",
+			pairs: [][2]float32{{-math.MaxFloat32, 2}},
+			want:  0xff800000,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var fast float64ProductSum
+			for _, pair := range tc.pairs {
+				fast.add(pair[0], pair[1])
+			}
+			if _, ok := fast.result(); ok {
+				t.Fatal("fast path accepted an overflow")
+			}
+			if got := math.Float32bits(float64FastThenExact(tc.pairs)); got != tc.want {
+				t.Fatalf("fast-then-exact bits = %#08x, want %#08x", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExactAccumulatorAutomaticNormalize(t *testing.T) {
+	if testing.Short() {
+		t.Skip("automatic normalization exercises every pending addition")
+	}
+
+	var a exactAccumulator
+	for i := 0; i < exactSumNormalizeEvery+5; i++ {
+		a.addProduct(0.75, 1.5)
+		if i+1 == exactSumNormalizeEvery && a.pending != 0 {
+			t.Fatalf("pending after the automatic normalize = %d, want 0", a.pending)
+		}
+	}
+	for i := 0; i < exactSumNormalizeEvery+5; i++ {
+		a.addProduct(-0.75, 1.5)
+	}
+	a.addProduct(float32(math.Ldexp(1, -100)), 1)
+
+	want := float32(math.Ldexp(1, -100))
+	if got := a.float32(); got != want {
+		t.Fatalf("result = %v (%#08x), want %v (%#08x)", got, math.Float32bits(got), want, math.Float32bits(want))
 	}
 }
 

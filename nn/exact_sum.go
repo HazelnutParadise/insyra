@@ -214,8 +214,13 @@ func exactSumBit(d *[exactSumDigits]int64, k int) int {
 
 // exactSumWindow returns the n bits of a normalized total starting at bit lo
 // as one integer, with the bit at lo in the result's bit 0. float32 calls it
-// with nonnegative digits, lo >= 0, and 1 <= n <= 24, so the window spans at
-// most two 32-bit digits. A window starting outside the register reads as zero.
+// with nonnegative digits, lo >= 0, and n at most 24, so the window spans at
+// most two 32-bit digits. When the total is below 2^-149 (msb < 149), n can
+// be zero or negative. For negative n, Go's shift rule (a shift count >= 64
+// yields zero) makes the mask all ones; the bits at and above the retained
+// position are all zero, so the result is still zero, with the round bit and
+// sticky bit deciding rounding. A window starting outside the register reads as
+// zero.
 func exactSumWindow(d *[exactSumDigits]int64, lo, n int) uint64 {
 	i := lo / 32
 	if i >= exactSumDigits {
@@ -303,10 +308,16 @@ func (f *float64ProductSum) result() (float32, bool) {
 	if math.IsNaN(f.sum) || math.IsInf(f.sum, 0) || math.IsNaN(f.abs) || math.IsInf(f.abs, 0) {
 		return 0, false
 	}
+	// Go's specification makes an out-of-range floating-point conversion
+	// implementation-defined, so the exact accumulator handles the overflow
+	// interval with integer arithmetic.
+	if math.Abs(f.sum) > math.MaxFloat32 {
+		return 0, false
+	}
 	if f.n == 1 {
 		// One product rounds nothing: the total is the exact value, and Go's
 		// float64 to float32 conversion rounds to nearest with ties to even
-		// across the whole range, subnormals and overflow included.
+		// for subnormals; overflow was already handed to the exact accumulator.
 		if f.sum == 0 {
 			return float32(0), true
 		}
@@ -314,9 +325,10 @@ func (f *float64ProductSum) result() (float32, bool) {
 	}
 
 	// The first term is four times gamma(n-1)*sum|p| with room to spare, so
-	// it covers that bound and the rounding abs itself carries; the second
-	// covers the rounding of the two comparisons below. Both hold for every
-	// n below 2^40, far more terms than any edge list holds.
+	// it covers that bound and the rounding abs itself carries. The second term
+	// is extra safety margin: comparisons with the exact float64 midpoints are
+	// monotone, so rounding sum±bound cannot make an incorrect result pass. Both
+	// hold for every n below 2^40, far more terms than any edge list holds.
 	bound := f.abs*float64(f.n)*0x1p-51 + math.Abs(f.sum)*0x1p-52
 
 	out := float32(f.sum)
