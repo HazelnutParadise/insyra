@@ -49,6 +49,7 @@ type tapeOp struct {
 	inputs []*Tensor
 	output *Tensor
 	vjp    func(*Tensor) ([]*Tensor, error)
+	custom bool
 }
 
 // NewTape creates an empty reverse-mode tape. Dropout uses the tape-owned RNG;
@@ -516,8 +517,44 @@ func (t *Tape) BCEWithLogitsLoss(logits, targets *Tensor) (*Tensor, error) {
 	return loss, nil
 }
 
+// Custom records an operation whose forward result was computed outside the
+// tape. vjp receives the upstream gradient of output and returns one gradient
+// per input, or nil for an input that receives none. The declaration is
+// checked before anything is recorded: the name must be non-empty, vjp must be
+// non-nil, output and every input must be non-nil float32 tensors, and output
+// must not be one of its own inputs.
+func (t *Tape) Custom(name string, inputs []*Tensor, output *Tensor, vjp func(upstream *Tensor) ([]*Tensor, error)) error {
+	if name == "" {
+		return fmt.Errorf("tape custom operation needs a name")
+	}
+	if vjp == nil {
+		return fmt.Errorf("tape custom %s: vjp is nil", name)
+	}
+	if err := requireFloat32(output, "tape custom "+name+" output"); err != nil {
+		return err
+	}
+	for index, input := range inputs {
+		if err := requireFloat32(input, fmt.Sprintf("tape custom %s input %d", name, index)); err != nil {
+			return err
+		}
+		if input == output {
+			return fmt.Errorf("tape custom %s: output is also input %d", name, index)
+		}
+	}
+	t.ops = append(t.ops, tapeOp{
+		name:   name,
+		inputs: append([]*Tensor(nil), inputs...),
+		output: output,
+		vjp:    vjp,
+		custom: true,
+	})
+	return nil
+}
+
 // Backward clears previous gradients and walks the recorded operations in
-// reverse order from a scalar loss.
+// reverse order from a scalar loss. Gradients become visible through Grad and
+// Parameter.Grad only after the whole pass succeeds; a failing pass leaves
+// them where the last successful pass left them.
 func (t *Tape) Backward(loss *Tensor) error {
 	if loss == nil {
 		return fmt.Errorf("backward loss is nil")
@@ -528,15 +565,15 @@ func (t *Tape) Backward(loss *Tensor) error {
 	if len(loss.shape) != 0 {
 		return fmt.Errorf("backward requires a scalar loss, got shape %v", loss.shape)
 	}
-	t.grads = make(map[*Tensor]*Tensor)
+	grads := make(map[*Tensor]*Tensor)
 	initial, err := newFloat32Tensor(nil, []float32{1})
 	if err != nil {
 		return err
 	}
-	t.grads[loss] = initial
+	grads[loss] = initial
 	for index := len(t.ops) - 1; index >= 0; index-- {
 		op := t.ops[index]
-		upstream := t.grads[op.output]
+		upstream := grads[op.output]
 		if upstream == nil {
 			continue
 		}
@@ -554,11 +591,20 @@ func (t *Tape) Backward(loss *Tensor) error {
 			if gradient == nil {
 				continue
 			}
-			if err := addGradient(t.grads, op.inputs[inputIndex], gradient); err != nil {
+			if op.custom {
+				if err := requireFloat32(gradient, fmt.Sprintf("backward %s input %d gradient", op.name, inputIndex)); err != nil {
+					return err
+				}
+				if !sameShape(gradient.shape, op.inputs[inputIndex].shape) {
+					return fmt.Errorf("backward %s input %d: gradient shape %v does not match input shape %v", op.name, inputIndex, gradient.shape, op.inputs[inputIndex].shape)
+				}
+			}
+			if err := addGradient(grads, op.inputs[inputIndex], gradient); err != nil {
 				return fmt.Errorf("backward %s input %d: %w", op.name, inputIndex, err)
 			}
 		}
 	}
+	t.grads = grads
 	for value, parameter := range t.marked {
 		parameter.grad = t.grads[value]
 	}
