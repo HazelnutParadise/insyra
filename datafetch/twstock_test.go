@@ -132,10 +132,18 @@ func query(values ...string) url.Values {
 }
 
 func TestTWStockThrottle(t *testing.T) {
-	stock, transport := newFixtureTWStock(t, TWStockConfig{Interval: 20 * time.Millisecond})
+	const interval = 20 * time.Millisecond
+	stock, transport := newFixtureTWStock(t, TWStockConfig{Interval: interval})
 	key := fixtureKey("/v1/exchangeReport/STOCK_DAY_ALL", nil)
 	transport.addFixture(t, key, "twse_stock_day_all.json")
 	transport.addFixture(t, key, "twse_stock_day_all.json")
+	// The limiter spaces the scheduled starts of requests, and no request starts
+	// before its slot. The first slot is no earlier than start, so the second
+	// request cannot reach the transport before start+interval. Measuring from
+	// the first request's transport timestamp instead would count that request's
+	// own time between its slot and the transport, which the limiter does not
+	// control, and could come out a few microseconds short.
+	start := time.Now()
 	if _, err := stock.AllDailyQuotes(TWMarketTWSE); err != nil {
 		t.Fatalf("first AllDailyQuotes error: %v", err)
 	}
@@ -143,8 +151,11 @@ func TestTWStockThrottle(t *testing.T) {
 		t.Fatalf("second AllDailyQuotes error: %v", err)
 	}
 	times := transport.requestTimes()
-	if len(times) != 2 || times[1].Sub(times[0]) < 20*time.Millisecond {
-		t.Fatalf("request times = %v, want at least 20ms apart", times)
+	if len(times) != 2 {
+		t.Fatalf("the transport saw %d requests, want 2", len(times))
+	}
+	if gap := times[1].Sub(start); gap < interval {
+		t.Fatalf("the second request reached the transport %v after the first was scheduled, want at least %v", gap, interval)
 	}
 }
 

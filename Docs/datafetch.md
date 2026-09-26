@@ -326,7 +326,7 @@ Creates a stateful fetcher instance.
 | Field          | Type            | Description                                                                  | Default              |
 | :------------- | :-------------- | :--------------------------------------------------------------------------- | :------------------- |
 | `Timeout`      | `time.Duration` | Per-request timeout limit.                                                   | `15s`                |
-| `Interval`     | `time.Duration` | Minimum spacing between requests (for rate limiting). Set to `0` to disable. | `0`                  |
+| `Interval`     | `time.Duration` | Minimum spacing between the scheduled starts of successive requests (for rate limiting); no request starts before its scheduled time. Set to `0` to disable. | `0`                  |
 | `UserAgent`    | `string`        | HTTP User-Agent header.                                                      | (Default browser UA) |
 | `Retries`      | `int`           | Number of retry attempts on failure.                                         | `0`                  |
 | `RetryBackoff` | `time.Duration` | Base backoff duration between retries.                                       | `300ms`              |
@@ -457,7 +457,7 @@ func TWGeocoding(cfg TWGeocodingConfig) (*twGeocoder, error)
 | Field          | Type            | Description                                                            | Default             |
 | :------------- | :-------------- | :-------------------------------------------------------------------- | :------------------ |
 | `Timeout`      | `time.Duration` | Per-request timeout.                                                  | `15s`               |
-| `Interval`     | `time.Duration` | Minimum spacing between requests (client-side throttle). `0` = off.   | `0`                 |
+| `Interval`     | `time.Duration` | Minimum spacing between the scheduled starts of successive requests (client-side throttle); no request starts before its scheduled time. `0` = off. | `0`                 |
 | `UserAgent`    | `string`        | HTTP User-Agent header.                                               | (browser-like UA)   |
 | `Retries`      | `int`           | Retry attempts for **transient** failures (timeout / network).        | `0`                 |
 | `RetryBackoff` | `time.Duration` | Base backoff between retries (`backoff * (attempt+1)`).               | `300ms`             |
@@ -601,7 +601,7 @@ func TWStock(cfg TWStockConfig) (*twStock, error)
 | Field | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `Timeout` | `time.Duration` | `15s` | Per-request timeout. |
-| `Interval` | `time.Duration` | `0` | Minimum spacing between requests; `0` disables throttling. |
+| `Interval` | `time.Duration` | `0` | Minimum spacing between the scheduled starts of successive requests; no request starts before its scheduled time. `0` disables throttling. |
 | `UserAgent` | `string` | `insyra-datafetch/<version>` | HTTP User-Agent header. |
 | `Retries` | `int` | `0` | Retry attempts for HTTP, timeout, network, JSON, and exchange-payload errors. |
 | `RetryBackoff` | `time.Duration` | `300ms` | Base delay before a retry, multiplied by attempt number. |

@@ -6,8 +6,12 @@ import (
 	"time"
 )
 
-// IntervalLimiter ensures each allowed call is spaced by `interval`.
-// It serializes concurrent callers: they will line up and each gets its own slot.
+// IntervalLimiter spaces the scheduled starts of successive calls by interval.
+// Each call gets the next free slot, at least interval after the previous one,
+// and Wait does not return before that slot. What a caller does after Wait
+// returns is outside the guarantee, so two events it timestamps later can be a
+// little closer together than interval. Concurrent callers line up and each
+// gets its own slot.
 type IntervalLimiter struct {
 	mu          sync.Mutex
 	nextAllowed time.Time
