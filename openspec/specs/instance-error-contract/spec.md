@@ -2,7 +2,6 @@
 
 ## Purpose
 實例錯誤契約：`Err()` 黏住第一個錯誤、`PopErr()` 讀後即清，只有真正的失敗才被記錄。
-
 ## Requirements
 ### Requirement: Err() is sticky
 
@@ -27,4 +26,13 @@
 #### Scenario: Missing value keeps Err() clean
 - **WHEN** 對沒有該值的 list 呼叫 `FindFirst`
 - **THEN** 回傳 nil 且 `Err()` 為 nil
+
+### Requirement: Err answers on a nil receiver
+
+`Err()` on a nil `*DataList` or `*DataTable` SHALL return a new error naming the nil type instead of crashing. No other method SHALL be made safe on a nil receiver by this requirement.
+
+#### Scenario: A lookup that found nothing
+
+- **WHEN** `dt.GetCol(Name("missing"))` returns nil and `Err()` is called on the result
+- **THEN** it returns an error saying `nil DataList`
 
