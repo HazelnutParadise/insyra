@@ -8,11 +8,11 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "corr", Usage: "corr <x> <y> [pearson|kendall|spearman]", Description: "Correlation between two DataLists", Run: runCorrCommand})
-	_ = Register(&CommandHandler{Name: "corrmatrix", Usage: "corrmatrix <datatable> [pearson|kendall|spearman] [as <var>]", Description: "Correlation matrix for a DataTable", Run: runCorrMatrixCommand})
-	_ = Register(&CommandHandler{Name: "cov", Usage: "cov <x> <y>", Description: "Covariance between two DataLists", Run: runCovCommand})
-	_ = Register(&CommandHandler{Name: "skewness", Usage: "skewness <var>", Description: "Skewness of a DataList", Run: runSkewnessCommand})
-	_ = Register(&CommandHandler{Name: "kurtosis", Usage: "kurtosis <var>", Description: "Kurtosis of a DataList", Run: runKurtosisCommand})
+	_ = Register(&CommandHandler{Name: "corr", Args: MaxArgs(3), Usage: "corr <x> <y> [pearson|kendall|spearman]", Description: "Correlation between two DataLists", Run: runCorrCommand})
+	_ = Register(&CommandHandler{Name: "corrmatrix", Args: MaxArgs(2).WithAlias(), Usage: "corrmatrix <datatable> [pearson|kendall|spearman] [as <var>]", Description: "Correlation matrix for a DataTable", Run: runCorrMatrixCommand})
+	_ = Register(&CommandHandler{Name: "cov", Args: MaxArgs(2), Usage: "cov <x> <y>", Description: "Covariance between two DataLists", Run: runCovCommand})
+	_ = Register(&CommandHandler{Name: "skewness", Args: MaxArgs(1), Usage: "skewness <var>", Description: "Skewness of a DataList", Run: runSkewnessCommand})
+	_ = Register(&CommandHandler{Name: "kurtosis", Args: MaxArgs(1), Usage: "kurtosis <var>", Description: "Kurtosis of a DataList", Run: runKurtosisCommand})
 }
 
 func runCorrCommand(ctx *ExecContext, args []string) error {

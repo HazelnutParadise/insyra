@@ -9,6 +9,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "addrow",
+		Args:        OpenArgs(),
 		Usage:       "addrow <var> <values...>",
 		Description: "Add one row to DataTable",
 		// Values may be negative literals (-0.004), which Cobra would otherwise

@@ -10,6 +10,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "parsedates",
+		Args:        OpenArgs(),
 		Usage:       "parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]",
 		Description: "Convert date strings to time.Time in a DataList or DataTable columns",
 		Forms: []string{

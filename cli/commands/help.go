@@ -7,6 +7,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "help",
+		Args:        MaxArgs(1),
 		Usage:       "help [command]",
 		Description: "Show command help",
 		Run:         runHelpCommand,

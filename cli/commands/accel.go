@@ -20,6 +20,7 @@ const accelUsage = "accel <devices|cache|plan> [--mode auto|cpu|gpu|strict-gpu]"
 func init() {
 	_ = Register(&CommandHandler{
 		Name:               "accel",
+		Args:               OpenArgs(),
 		Usage:              accelUsage,
 		Description:        "Inspect acceleration backends, cache state, and planning reports",
 		DisableFlagParsing: false,

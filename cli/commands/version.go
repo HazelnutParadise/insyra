@@ -9,6 +9,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "version",
+		Args:        MaxArgs(0),
 		Usage:       "version",
 		Description: "Show insyra version",
 		Run: func(ctx *ExecContext, args []string) error {

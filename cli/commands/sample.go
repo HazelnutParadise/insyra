@@ -11,6 +11,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "sample",
+		Args:        OpenArgs(),
 		Usage:       "sample <var> <n>|frac <frac>|shuffle [replace true|false] [seed N] [as <var>]",
 		Description: "Randomly sample or shuffle a DataList/DataTable",
 		Forms: []string{

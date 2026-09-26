@@ -9,6 +9,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "vars",
+		Args:        MaxArgs(0),
 		Usage:       "vars",
 		Description: "List variables in current environment",
 		Run:         runVarsCommand,

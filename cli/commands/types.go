@@ -9,6 +9,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "types",
+		Args:        MaxArgs(1),
 		Usage:       "types <var>",
 		Description: "Show value types of DataTable/DataList",
 		Run:         runTypesCommand,

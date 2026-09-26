@@ -5,6 +5,7 @@ import "fmt"
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "clone",
+		Args:        MaxArgs(1).WithAlias(),
 		Usage:       "clone <var> [as <var>]",
 		Description: "Deep clone DataTable/DataList variable",
 		Run:         runCloneCommand,

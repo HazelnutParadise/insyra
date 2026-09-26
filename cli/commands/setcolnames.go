@@ -5,6 +5,7 @@ import "fmt"
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "setcolnames",
+		Args:        OpenArgs(),
 		Usage:       "setcolnames <var> <names...>",
 		Description: "Set DataTable column names",
 		Run:         runSetColNamesCommand,

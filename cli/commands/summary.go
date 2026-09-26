@@ -9,6 +9,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "summary",
+		Args:        MaxArgs(1),
 		Usage:       "summary <var>",
 		Description: "Show summary statistics",
 		Run:         runSummaryCommand,

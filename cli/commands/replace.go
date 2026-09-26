@@ -8,6 +8,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "replace",
+		Args:        MaxArgs(3),
 		Usage:       "replace <var> <old|nan|nil> <new>",
 		Description: "Replace values in DataTable/DataList",
 		Run:         runReplaceCommand,

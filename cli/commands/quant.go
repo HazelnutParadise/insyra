@@ -128,6 +128,7 @@ var quantForms = []quantForm{
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "quant",
+		Args:        OpenArgs(),
 		Usage:       "quant " + quantFormNames("|") + " ...",
 		Description: "Quantitative finance: performance, risk, exposure, factor and option analytics",
 		Forms:       quantFormLines(),

@@ -15,6 +15,7 @@ const resampleOps = "sum, mean (avg), median, min, max, count, countall, std (st
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "resample",
+		Args:        OpenArgs(),
 		Usage:       "resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [<col>:<op>[:<name>] ...] [as <var>]",
 		Description: "Aggregate a time-indexed DataTable into calendar periods",
 		Forms: []string{

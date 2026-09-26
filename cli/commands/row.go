@@ -10,6 +10,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "row",
+		Args:        MaxArgs(2).WithAlias(),
 		Usage:       "row <var> <index|name> [as <var>]",
 		Description: "Extract DataTable row as DataList",
 		Run:         runRowCommand,

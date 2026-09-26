@@ -231,6 +231,18 @@ Variable alias behavior:
 
 - Most creating/transform commands accept `as <var>`.
 - If `as <var>` is omitted on supported commands, result defaults to `$result`.
+- A command that stores nothing refuses `as <var>` rather than ignoring it.
+
+Extra arguments:
+
+- An argument a command does not take is an error. The command does not run, and the message names the argument and shows the usage, so a typo cannot look like it worked:
+
+```text
+> iqr x junk
+error: iqr: unexpected argument "junk"; usage: iqr <var>
+```
+
+- In a `.isr` script the line fails the same way and `run` moves on to the next line.
 
 Examples:
 

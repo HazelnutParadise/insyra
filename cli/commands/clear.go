@@ -5,6 +5,7 @@ import "fmt"
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "clear",
+		Args:        MaxArgs(0),
 		Usage:       "clear",
 		Description: "Clear terminal screen",
 		Run: func(ctx *ExecContext, args []string) error {

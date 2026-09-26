@@ -10,11 +10,11 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "kmeans", Usage: "kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]", Description: "K-means clustering", Run: runKMeansCommand})
-	_ = Register(&CommandHandler{Name: "hclust", Usage: "hclust <var> <method> [as <var>]", Description: "Hierarchical agglomerative clustering", Run: runHClustCommand})
-	_ = Register(&CommandHandler{Name: "cutree", Usage: "cutree <tree_var> k <n>|h <value> [as <var>]", Description: "Cut a hierarchical clustering tree", Run: runCutTreeCommand})
-	_ = Register(&CommandHandler{Name: "dbscan", Usage: "dbscan <var> <eps> <minpts> [as <var>]", Description: "Density-based clustering", Run: runDBSCANCommand})
-	_ = Register(&CommandHandler{Name: "silhouette", Usage: "silhouette <var> <labels_var> [as <var>]", Description: "Silhouette analysis", Run: runSilhouetteCommand})
+	_ = Register(&CommandHandler{Name: "kmeans", Args: OpenArgs(), Usage: "kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]", Description: "K-means clustering", Run: runKMeansCommand})
+	_ = Register(&CommandHandler{Name: "hclust", Args: MaxArgs(2).WithAlias(), Usage: "hclust <var> <method> [as <var>]", Description: "Hierarchical agglomerative clustering", Run: runHClustCommand})
+	_ = Register(&CommandHandler{Name: "cutree", Args: MaxArgs(3).WithAlias(), Usage: "cutree <tree_var> k <n>|h <value> [as <var>]", Description: "Cut a hierarchical clustering tree", Run: runCutTreeCommand})
+	_ = Register(&CommandHandler{Name: "dbscan", Args: MaxArgs(3).WithAlias(), Usage: "dbscan <var> <eps> <minpts> [as <var>]", Description: "Density-based clustering", Run: runDBSCANCommand})
+	_ = Register(&CommandHandler{Name: "silhouette", Args: MaxArgs(2).WithAlias(), Usage: "silhouette <var> <labels_var> [as <var>]", Description: "Silhouette analysis", Run: runSilhouetteCommand})
 }
 
 func runKMeansCommand(ctx *ExecContext, args []string) error {

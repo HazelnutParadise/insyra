@@ -12,6 +12,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "regression",
+		Args:        FormArgs(map[string]int{"linear": unlimited, "logistic": unlimited, "logit": unlimited, "poisson": unlimited, "poly": 4, "polynomial": 4, "exp": 3, "exponential": 3, "log": 3, "logarithmic": 3}).WithAlias(),
 		Usage:       "regression <type> <y> <x...> [as <var>]",
 		Description: "Regression analysis: linear/poly/exp/log/logistic/poisson",
 		Forms: []string{

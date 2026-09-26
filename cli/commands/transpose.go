@@ -5,6 +5,7 @@ import "fmt"
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "transpose",
+		Args:        MaxArgs(1).WithAlias(),
 		Usage:       "transpose <var> [as <var>]",
 		Description: "Transpose DataTable",
 		Run:         runTransposeCommand,

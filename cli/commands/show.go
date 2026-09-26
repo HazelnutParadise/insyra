@@ -12,6 +12,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:               "show",
+		Args:               MaxArgs(3),
 		Usage:              "show <var> [N] [M]",
 		Description:        "Display data with optional range (supports negative and _) ",
 		DisableFlagParsing: true,

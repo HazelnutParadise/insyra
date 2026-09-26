@@ -13,6 +13,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "save",
+		Args:        OpenArgs(),
 		Usage:       "save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [allowformulas true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]",
 		Description: "Save a DataTable variable to a file or SQL connection",
 		Forms: []string{

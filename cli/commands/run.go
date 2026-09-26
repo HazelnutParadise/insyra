@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "run", Usage: "run <script.isr>", Description: "Run DSL script file", Run: runScriptCommand})
+	_ = Register(&CommandHandler{Name: "run", Args: MaxArgs(1), Usage: "run <script.isr>", Description: "Run DSL script file", Run: runScriptCommand})
 }
 
 // maxScriptDepth bounds nested `run` calls so a script that runs itself

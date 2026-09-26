@@ -117,6 +117,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `save` 可以存 Excel：`save <var> report.xlsx [sheet <名稱>] [if-exists fail|replace]`。它只寫一張工作表（預設 `Sheet1`），活頁簿其他工作表都會保留。存到已經存在的工作表會被拒絕，不會自動改名成 `Sheet2`；訊息會提示加上 `if-exists replace` 覆蓋，沒指定工作表時也會提示用 `sheet <名稱>` 另存一張。`.xls` 會被拒絕並提示改用 `.xlsx`，`sheet` 與 `if-exists` 用在其他檔案類型也會被拒絕。以前 `save … report.xlsx` 只會回報 `unsupported output file type`。
 - 表格的 `fillna` 現在會照 `extrapolate` 外插，以前這個選項會被丟掉。補值做不到要求的事時，指令會失敗且不存檔：`cols` 指定的欄位補不了、或對文字清單用 `mean`，以前都會被當成補好了存起來。
 - `convert` 從 xlsx 轉 csv 時預設會防範公式注入，加上 `allowformulas true` 就原樣寫出，跟 `save` 一致。`convert` 看不懂的參數現在會報錯，不再默默忽略。
+- **BREAKING**：每個指令都會拒絕它用不到的參數。超過五十個指令，包括 `iqr`、`cov`、`corr`、`summary`、`get`、`find`、`transpose`、`ttest` 和 `version`，以前只讀自己需要的參數，多的直接丟掉，所以 `iqr x junk` 照樣印出答案，看起來像打對了，`find t 1 as found` 也什麼都沒存。現在指令不會執行，錯誤訊息會指出是哪個參數並附上用法：`iqr: unexpected argument "junk"; usage: iqr <var>`。只有會存結果的指令接受 `as <var>`。`.isr` 腳本裡這一行會失敗，`run` 接著執行下一行。
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外——也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。另外 `ml/mltest.RunConformance` 現在會判定「`Classes()` 回傳 nil」的實作不合格，而不是自己 panic——因為 `ml.Classifier` 是公開介面，函式庫外部的程式也能實作它。
 - **BREAKING（行為，簽名不變）**：`nn.NewTape` 最多只能給一個種子，給兩個時 `Param` 與 `Backward` 會回報錯誤，不再只用第一個。`Conv2D`、`MaxPool2D`、`AvgPool2D` 及對應的 `New…` 寫法給超過一個設定包時，以前會全部丟掉改用預設值建立；現在由 `Build` 回報錯誤。

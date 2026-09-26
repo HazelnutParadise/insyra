@@ -9,6 +9,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "sort",
+		Args:        MaxArgs(3),
 		Usage:       "sort <var> <col> [asc|desc]",
 		Description: "Sort DataTable by one column",
 		Run:         runSortCommand,

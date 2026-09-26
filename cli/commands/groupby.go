@@ -10,6 +10,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "groupby",
+		Args:        OpenArgs(),
 		Usage:       "groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]",
 		Description: "Group a DataTable and aggregate columns",
 		Forms: []string{

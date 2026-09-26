@@ -10,6 +10,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "pivot",
+		Args:        OpenArgs(),
 		Usage:       "pivot <var> index <col1[,col2,...]> columns <col> values <col> [agg <op>] [fillna <literal>] [sortcols true|false] [as <var>]",
 		Description: "Reshape long-form DataTable to wide form (long -> wide)",
 		Forms: []string{
@@ -31,6 +32,7 @@ func init() {
 
 	_ = Register(&CommandHandler{
 		Name:        "unpivot",
+		Args:        OpenArgs(),
 		Usage:       "unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true|false] [as <var>]",
 		Description: "Reshape wide-form DataTable to long form (wide -> long)",
 		Forms: []string{

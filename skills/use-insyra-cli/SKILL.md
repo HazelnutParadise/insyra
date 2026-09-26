@@ -79,6 +79,7 @@ Notes:
 - **First step on any unfamiliar command: run `insyra help <cmd>`.** Complex commands (`ttest`, `ztest`, `anova`, `ftest`, `chisq`, `regression`, `quant`, `fetch`, `plot`, `db`, `groupby`, `load`, `save`) include `Forms:` and `Examples:` blocks that show every sub-shape and a copy-paste-ready invocation. Use this before falling back to `references/cli-command-guide.md` — `help` reflects the live binary, references can drift.
 - `insyra help` (no args) lists all registered commands with one-line descriptions. Use it when you don't know the command name.
 - Prefer deterministic commands over ad-hoc manual REPL edits when reproducibility matters.
+- Every command refuses an argument it does not take (`unexpected argument "<token>"; usage: ...`) instead of ignoring it, and does not run. On that error, fix the call from the usage it prints; don't retry with the extra token moved around. `as <var>` is only accepted by commands that store a result.
 - For shell variables in PowerShell, remind users to quote names like `$result` as `"$result"`.
 - For environment restore:
   - `env import <file> [name] [--force]`

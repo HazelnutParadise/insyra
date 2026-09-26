@@ -265,6 +265,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-26] — CLI arguments a count cannot catch
+- **Where**: `cli/commands/` — `setrownames.go`, `show.go`, `fetch.go`, `knn.go`, `fillna.go`, `config.go`
+- **What**: `cli-declared-arg-limits` made every command refuse an argument past its declared count. Auditing the 117 commands for it turned up six places where the count is right and an argument is still accepted and dropped, measured on 2026-09-26: `setrownames t r1 … r6` on a four-row table reports success and drops `r5` and `r6`; `show` on a scaler variable or on `accel.devices` ignores `<start> <end>`; `fetch yahoo AAPL calendar extra` ignores `extra`, because the count is per source and only some yahoo methods take an argument; `knn_neighbors` accepts `weighting`, which its Usage does not list and nothing reads; `fillna x mean limit 1` accepts `limit`, and `extrapolate`, for strategies that do not use them; and `config log-level` fails with the usage `config [key] [value]`, which says a key alone is allowed. `exit` being a no-op in one-shot and scripts is tracked separately in #328.
+- **Suggestion**: each is a few lines in its own command: refuse the extra names, the range, the token, or the option, and make `config`'s Usage say `config [<key> <value>]` unless reading one key is wanted. They are independent, so they can go in one small change.
+- **Status**: pending
+
 ### [2026-09-26] — remove the underscore reader and writer names one release after their replacements
 - **Where**: `read.go` (`ReadCSV_File`, `ReadCSV_FileWithOptions`, `ReadCSV_String`, `ReadCSV_StringWithOptions`, `ReadJSON_File`), `datatable_csv.go` (`ToCSVWithOptions`), `datatable_json.go` (`ToJSON_Bytes`, `ToJSON_String`) and the two JSON methods in `IDataTable`
 - **What**: `read-write-names` gave each reader and writer one name taking an optional options struct, by the owner's rulings on #213. The old names stay one release as Deprecated wrappers that keep their old meaning.
@@ -336,12 +342,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Note (2026-09-12)**: `identify-uncomparable-cells` deliberately did not settle this. Comparable values are still keyed by themselves, so the split is exactly as it was.
 - **What**: since `match-integers-by-value`, every search, count, replace and drop matches integers by value, and GroupBy, Pivot and Merge already did (`encodeGroupKey` writes every integer as `i:<value>`). `Counter()` is the one place left that does not: it returns a `map[any]int` keyed by the stored value, so a column holding both `int(1)` and `int64(1)` reports two keys while `Count(1)` reports their total. A column only mixes the two when rows are added by hand to loaded data, for example Go literals appended to a CSV table.
 - **Suggestion**: merging them means the map key has to be one of the two stored values, which decides which literal a caller can index it with (`counter[1]` or `counter[int64(1)]`). Pick one rule, or document that `Counter` reports stored types, rather than leave it implicit.
-- **Status**: pending
-
-### [2026-09-11] — 53 CLI commands accept a trailing argument and ignore it
-- **Where**: `cli/commands/`, one `Run` function per command
-- **What**: cli/AGENTS.md says an argument a command does not understand is an error, because an ignored one makes a typo look like it worked. `cli-reject-ignored-args` fixed `accel` and the nine DataList statistics. An audit on 2026-09-11 that appended `junk` to a valid call found these still exit 0 and ignore it: `iqr`, `skewness`, `kurtosis`, `counter`, `quartile`, `percentile`, `count`, `cov`, `corr`, `corrmatrix`, `shape`, `types`, `summary`, `cols`, `rows`, `get`, `set`, `find`, `replace`, `swap`, `transpose`, `rename`, `drop`, `clone`, `reverse`, `normalize`, `standardize`, `parsenums`, `parsestrings`, `upper`, `lower`, `capitalize`, `cumsum`, `cumprod`, `cummax`, `cummin`, `diff`, `diffn`, `pctchange`, `movavg`, `expsmooth`, `ttest` (all three forms), `ztest single`, `ftest var`, `pca`, `dbscan`, `vars`, `history`, `version`, `help`, `config`, `run` and `exit`. `show`, `shift`, `rank` and `sort` already reject it. Commands that take a variable number of arguments (`newdl`, `addcol`, `dropcol`, …) were not audited.
-- **Suggestion**: declare each command's maximum argument count at registration and check it in one place, instead of fifty hand-written checks. The decision is the count for every command, including how `as <var>` and optional trailing arguments (`sort <var> <col> [asc|desc]`) are counted.
 - **Status**: pending
 
 ### [2026-09-07] — remove `Config.SetDontPanic` one release after `SetPanicOnError` shipped

@@ -5,11 +5,11 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "quartile", Usage: "quartile <var> <q>", Description: "DataList quartile", Run: runQuartileCommand})
-	_ = Register(&CommandHandler{Name: "iqr", Usage: "iqr <var>", Description: "DataList IQR", Run: runIQRCommand})
-	_ = Register(&CommandHandler{Name: "percentile", Usage: "percentile <var> <p>", Description: "DataList percentile", Run: runPercentileCommand})
-	_ = Register(&CommandHandler{Name: "count", Usage: "count <var> <value>", Description: "Count occurrences", Run: runCountCommand})
-	_ = Register(&CommandHandler{Name: "counter", Usage: "counter <var>", Description: "DataList frequency map", Run: runCounterCommand})
+	_ = Register(&CommandHandler{Name: "quartile", Args: MaxArgs(2), Usage: "quartile <var> <q>", Description: "DataList quartile", Run: runQuartileCommand})
+	_ = Register(&CommandHandler{Name: "iqr", Args: MaxArgs(1), Usage: "iqr <var>", Description: "DataList IQR", Run: runIQRCommand})
+	_ = Register(&CommandHandler{Name: "percentile", Args: MaxArgs(2), Usage: "percentile <var> <p>", Description: "DataList percentile", Run: runPercentileCommand})
+	_ = Register(&CommandHandler{Name: "count", Args: MaxArgs(2), Usage: "count <var> <value>", Description: "Count occurrences", Run: runCountCommand})
+	_ = Register(&CommandHandler{Name: "counter", Args: MaxArgs(1), Usage: "counter <var>", Description: "DataList frequency map", Run: runCounterCommand})
 }
 
 func runQuartileCommand(ctx *ExecContext, args []string) error {

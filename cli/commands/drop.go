@@ -5,6 +5,7 @@ import "fmt"
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "drop",
+		Args:        MaxArgs(1),
 		Usage:       "drop <var>",
 		Description: "Delete variable",
 		Run:         runDropCommand,

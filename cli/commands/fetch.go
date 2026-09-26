@@ -11,6 +11,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "fetch",
+		Args:        FormArgs(map[string]int{"yahoo": 4, "tw": 6}).WithAlias(),
 		Usage:       "fetch yahoo|tw ... [as <var>]",
 		Description: "Fetch external data",
 		Forms: append([]string{

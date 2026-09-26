@@ -11,6 +11,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "convert",
+		Args:        OpenArgs(),
 		Usage:       "convert <input> <output> [allowformulas true|false]",
 		Description: "Convert file formats (csv<->xlsx)",
 		Forms: []string{

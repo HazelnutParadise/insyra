@@ -9,6 +9,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "newdl",
+		Args:        OpenArgs(),
 		Usage:       "newdl <values...> [as <var>]",
 		Description: "Create DataList manually",
 		// Values may be negative literals (-0.004), which Cobra would otherwise

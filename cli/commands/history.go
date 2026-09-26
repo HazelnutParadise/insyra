@@ -7,6 +7,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "history",
+		Args:        MaxArgs(0),
 		Usage:       "history",
 		Description: "Show command history",
 		Run:         runHistoryCommand,

@@ -10,6 +10,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "encode",
+		Args:        OpenArgs(),
 		Usage:       "encode <var> onehot|label|ordinal ... [as <var>]",
 		Description: "One-shot categorical encoding for DataTable variables (encoder state is not persisted)",
 		Forms: []string{

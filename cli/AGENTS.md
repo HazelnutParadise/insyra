@@ -85,7 +85,16 @@ Conventions:
 
 ## Command registration
 
-Every command file has a `func init()` that calls `Register(&CommandHandler{...})` with `Name`, `Usage`, `Description`, `Run`. Don't bypass `Register` and don't mutate the registry from elsewhere.
+Every command file has a `func init()` that calls `Register(&CommandHandler{...})` with `Name`, `Usage`, `Description`, `Args`, `Run`. Don't bypass `Register` and don't mutate the registry from elsewhere.
+
+### Args: how many arguments the command takes
+
+`Args` is required; `TestEveryCommandDeclaresItsArguments` fails on a command without it. `Register` wraps `Run` so an argument past the declared count is refused before the command runs, with an error naming it and the Usage. Don't write a per-command "too many arguments" check.
+
+- `MaxArgs(n)` — at most `n` arguments. `iqr <var>` is `MaxArgs(1)`; an optional trailing argument counts, so `sort <var> <col> [asc|desc]` is `MaxArgs(3)`.
+- `.WithAlias()` — a trailing `as <var>` is allowed on top of the count. Add it only when the command stores its result; a command that stores nothing must refuse `as`.
+- `FormArgs(map[string]int{...})` — the first argument picks a form with its own count, which includes the form word: `ttest single <var> <mu>` is 3 and `ttest two <var1> <var2> [equal|unequal]` is 4. `FormArgsAt(i, ...)` when the form word is at position `i` (`clean <var> nan|outliers`). An unknown form is left for the command to report.
+- `OpenArgs()` — the command checks every argument itself: a list of values (`newdl`, `dropcol`) or a key/value option loop that already rejects an unknown key. Don't use it to skip counting a fixed-shape command.
 
 The `Usage` string is what the user sees in `insyra help <command>`. Keep it accurate and tight; if it gets long, separate the major shapes with `|` (see `load`, `save`).
 

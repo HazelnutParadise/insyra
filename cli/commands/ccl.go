@@ -6,8 +6,8 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "ccl", Usage: "ccl <var> <expression>", Description: "Execute CCL statements on DataTable", Run: runCCLCommand})
-	_ = Register(&CommandHandler{Name: "addcolccl", Usage: "addcolccl <var> <name> <expr>", Description: "Add DataTable column using CCL", Run: runAddColCCLCommand})
+	_ = Register(&CommandHandler{Name: "ccl", Args: OpenArgs(), Usage: "ccl <var> <expression>", Description: "Execute CCL statements on DataTable", Run: runCCLCommand})
+	_ = Register(&CommandHandler{Name: "addcolccl", Args: OpenArgs(), Usage: "addcolccl <var> <name> <expr>", Description: "Add DataTable column using CCL", Run: runAddColCCLCommand})
 }
 
 func runCCLCommand(ctx *ExecContext, args []string) error {

@@ -9,6 +9,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "newdt",
+		Args:        OpenArgs(),
 		Usage:       "newdt <dl_vars...> [as <var>]",
 		Description: "Create DataTable from DataList variables",
 		Run:         runNewDTCommand,

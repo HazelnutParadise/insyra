@@ -8,6 +8,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "droprow",
+		Args:        OpenArgs(),
 		Usage:       "droprow <var> <index|name...>",
 		Description: "Drop rows by index or name",
 		Run:         runDropRowCommand,

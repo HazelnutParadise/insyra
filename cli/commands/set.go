@@ -8,6 +8,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "set",
+		Args:        MaxArgs(4),
 		Usage:       "set <var> <row> <col> <value>",
 		Description: "Set single element in DataTable",
 		Run:         runSetCommand,

@@ -5,6 +5,7 @@ import "fmt"
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "find",
+		Args:        MaxArgs(2),
 		Usage:       "find <var> <value>",
 		Description: "Find rows containing value",
 		Run:         runFindCommand,

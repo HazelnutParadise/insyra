@@ -12,6 +12,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "fillna",
+		Args:        OpenArgs(),
 		Usage:       "fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [extrapolate yes|no] [missing nan|nil|both] [as <var>]",
 		Description: "Fill missing DataList/DataTable values",
 		Forms: []string{
@@ -32,6 +33,7 @@ func init() {
 	})
 	_ = Register(&CommandHandler{
 		Name:        "fillnan",
+		Args:        MaxArgs(2).WithAlias(),
 		Usage:       "fillnan <var> mean [as <var>]",
 		Description: "Fill NaN with mean (deprecated alias; prefer 'fillna ... missing nan')",
 		Run:         runFillNaNCommand,

@@ -8,6 +8,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "get",
+		Args:        MaxArgs(3),
 		Usage:       "get <var> <row> <col>",
 		Description: "Get single element from DataTable",
 		Run:         runGetCommand,

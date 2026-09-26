@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "pca", Usage: "pca <var> <n> [as <var>]", Description: "Principal component analysis", Run: runPCACommand})
+	_ = Register(&CommandHandler{Name: "pca", Args: MaxArgs(2).WithAlias(), Usage: "pca <var> <n> [as <var>]", Description: "Principal component analysis", Run: runPCACommand})
 }
 
 func runPCACommand(ctx *ExecContext, args []string) error {

@@ -5,6 +5,7 @@ import "fmt"
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "shape",
+		Args:        MaxArgs(1),
 		Usage:       "shape <var>",
 		Description: "Show shape of DataTable/DataList",
 		Run:         runShapeCommand,

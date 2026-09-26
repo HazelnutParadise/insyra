@@ -7,15 +7,15 @@ import (
 func init() {
 	registerScalarDLStat("sum", "sum <var>", "Sum of DataList", func(name string, dlAccessor func(string) (float64, error)) {})
 
-	_ = Register(&CommandHandler{Name: "sum", Usage: "sum <var>", Description: "DataList sum", Run: makeDLNumberPrinter("sum", func(dlName string, dl *floatStatProxy) (any, error) { return dl.sum(dlName) })})
-	_ = Register(&CommandHandler{Name: "mean", Usage: "mean <var>", Description: "DataList mean", Run: makeDLNumberPrinter("mean", func(dlName string, dl *floatStatProxy) (any, error) { return dl.mean(dlName) })})
-	_ = Register(&CommandHandler{Name: "median", Usage: "median <var>", Description: "DataList median", Run: makeDLNumberPrinter("median", func(dlName string, dl *floatStatProxy) (any, error) { return dl.median(dlName) })})
-	_ = Register(&CommandHandler{Name: "mode", Usage: "mode <var>", Description: "DataList mode", Run: makeDLNumberPrinter("mode", func(dlName string, dl *floatStatProxy) (any, error) { return dl.mode(dlName) })})
-	_ = Register(&CommandHandler{Name: "stdev", Usage: "stdev <var>", Description: "DataList standard deviation", Run: makeDLNumberPrinter("stdev", func(dlName string, dl *floatStatProxy) (any, error) { return dl.stdev(dlName) })})
-	_ = Register(&CommandHandler{Name: "var", Usage: "var <var>", Description: "DataList variance", Run: makeDLNumberPrinter("var", func(dlName string, dl *floatStatProxy) (any, error) { return dl.variance(dlName) })})
-	_ = Register(&CommandHandler{Name: "min", Usage: "min <var>", Description: "DataList minimum", Run: makeDLNumberPrinter("min", func(dlName string, dl *floatStatProxy) (any, error) { return dl.min(dlName) })})
-	_ = Register(&CommandHandler{Name: "max", Usage: "max <var>", Description: "DataList maximum", Run: makeDLNumberPrinter("max", func(dlName string, dl *floatStatProxy) (any, error) { return dl.max(dlName) })})
-	_ = Register(&CommandHandler{Name: "range", Usage: "range <var>", Description: "DataList range", Run: makeDLNumberPrinter("range", func(dlName string, dl *floatStatProxy) (any, error) { return dl.rangeVal(dlName) })})
+	_ = Register(&CommandHandler{Name: "sum", Args: MaxArgs(1), Usage: "sum <var>", Description: "DataList sum", Run: makeDLNumberPrinter("sum", func(dlName string, dl *floatStatProxy) (any, error) { return dl.sum(dlName) })})
+	_ = Register(&CommandHandler{Name: "mean", Args: MaxArgs(1), Usage: "mean <var>", Description: "DataList mean", Run: makeDLNumberPrinter("mean", func(dlName string, dl *floatStatProxy) (any, error) { return dl.mean(dlName) })})
+	_ = Register(&CommandHandler{Name: "median", Args: MaxArgs(1), Usage: "median <var>", Description: "DataList median", Run: makeDLNumberPrinter("median", func(dlName string, dl *floatStatProxy) (any, error) { return dl.median(dlName) })})
+	_ = Register(&CommandHandler{Name: "mode", Args: MaxArgs(1), Usage: "mode <var>", Description: "DataList mode", Run: makeDLNumberPrinter("mode", func(dlName string, dl *floatStatProxy) (any, error) { return dl.mode(dlName) })})
+	_ = Register(&CommandHandler{Name: "stdev", Args: MaxArgs(1), Usage: "stdev <var>", Description: "DataList standard deviation", Run: makeDLNumberPrinter("stdev", func(dlName string, dl *floatStatProxy) (any, error) { return dl.stdev(dlName) })})
+	_ = Register(&CommandHandler{Name: "var", Args: MaxArgs(1), Usage: "var <var>", Description: "DataList variance", Run: makeDLNumberPrinter("var", func(dlName string, dl *floatStatProxy) (any, error) { return dl.variance(dlName) })})
+	_ = Register(&CommandHandler{Name: "min", Args: MaxArgs(1), Usage: "min <var>", Description: "DataList minimum", Run: makeDLNumberPrinter("min", func(dlName string, dl *floatStatProxy) (any, error) { return dl.min(dlName) })})
+	_ = Register(&CommandHandler{Name: "max", Args: MaxArgs(1), Usage: "max <var>", Description: "DataList maximum", Run: makeDLNumberPrinter("max", func(dlName string, dl *floatStatProxy) (any, error) { return dl.max(dlName) })})
+	_ = Register(&CommandHandler{Name: "range", Args: MaxArgs(1), Usage: "range <var>", Description: "DataList range", Run: makeDLNumberPrinter("range", func(dlName string, dl *floatStatProxy) (any, error) { return dl.rangeVal(dlName) })})
 }
 
 type floatStatProxy struct {

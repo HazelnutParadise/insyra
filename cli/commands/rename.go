@@ -5,6 +5,7 @@ import "fmt"
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "rename",
+		Args:        MaxArgs(2),
 		Usage:       "rename <var> <new>",
 		Description: "Rename variable",
 		Run:         runRenameCommand,

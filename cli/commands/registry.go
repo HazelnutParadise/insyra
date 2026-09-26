@@ -45,7 +45,11 @@ type CommandHandler struct {
 	// the user can copy into a shell.
 	Examples           []string
 	DisableFlagParsing bool
-	Run                func(ctx *ExecContext, args []string) error
+	// Args declares how many arguments the command takes. Register wraps
+	// Run so an argument beyond it is refused before the command runs,
+	// instead of being silently ignored.
+	Args ArgLimit
+	Run  func(ctx *ExecContext, args []string) error
 }
 
 // Registry holds every registered command by name. Access it through
@@ -94,6 +98,13 @@ func Register(handler *CommandHandler) error {
 	defer registryMu.Unlock()
 	if _, exists := Registry[handler.Name]; exists {
 		return fmt.Errorf("command already registered: %s", handler.Name)
+	}
+	run, limit, name, usage := handler.Run, handler.Args, handler.Name, handler.Usage
+	handler.Run = func(ctx *ExecContext, args []string) error {
+		if err := limit.check(name, usage, args); err != nil {
+			return err
+		}
+		return run(ctx, args)
 	}
 	Registry[handler.Name] = handler
 	return nil

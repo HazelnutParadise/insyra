@@ -9,6 +9,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:               "env",
+		Args:               FormArgs(map[string]int{"create": 2, "list": 1, "open": 2, "info": 2, "delete": 2, "rename": 3, "export": 3, "clear": 3, "import": 4}),
 		Usage:              "env <create|list|open|clear|export|import|delete|rename|info> [args]",
 		Description:        "Environment management",
 		DisableFlagParsing: false,

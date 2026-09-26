@@ -8,6 +8,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "swap",
+		Args:        MaxArgs(4),
 		Usage:       "swap <var> col|row <a> <b>",
 		Description: "Swap DataTable columns or rows",
 		Run:         runSwapCommand,

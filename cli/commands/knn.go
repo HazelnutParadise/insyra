@@ -10,9 +10,9 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "knn_classify", Usage: "knn_classify <train_var> <labels_var> <test_var> <k> [weighting <uniform|distance>] [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]", Description: "K-nearest neighbors classification", Run: runKNNClassifyCommand})
-	_ = Register(&CommandHandler{Name: "knn_regress", Usage: "knn_regress <train_var> <targets_var> <test_var> <k> [weighting <uniform|distance>] [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]", Description: "K-nearest neighbors regression", Run: runKNNRegressCommand})
-	_ = Register(&CommandHandler{Name: "knn_neighbors", Usage: "knn_neighbors <train_var> <test_var> <k> [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]", Description: "K-nearest neighbors search", Run: runKNNNeighborsCommand})
+	_ = Register(&CommandHandler{Name: "knn_classify", Args: OpenArgs(), Usage: "knn_classify <train_var> <labels_var> <test_var> <k> [weighting <uniform|distance>] [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]", Description: "K-nearest neighbors classification", Run: runKNNClassifyCommand})
+	_ = Register(&CommandHandler{Name: "knn_regress", Args: OpenArgs(), Usage: "knn_regress <train_var> <targets_var> <test_var> <k> [weighting <uniform|distance>] [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]", Description: "K-nearest neighbors regression", Run: runKNNRegressCommand})
+	_ = Register(&CommandHandler{Name: "knn_neighbors", Args: OpenArgs(), Usage: "knn_neighbors <train_var> <test_var> <k> [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]", Description: "K-nearest neighbors search", Run: runKNNNeighborsCommand})
 }
 
 func runKNNClassifyCommand(ctx *ExecContext, args []string) error {

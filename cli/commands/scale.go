@@ -12,6 +12,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "scale",
+		Args:        OpenArgs(),
 		Usage:       "scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...> | scale transform|inverse <scalerVar> <tableVar> as <outVar>",
 		Description: "Fit a reusable feature scaler and transform tables with it",
 		Forms: []string{

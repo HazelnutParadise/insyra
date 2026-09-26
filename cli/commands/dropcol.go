@@ -8,6 +8,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "dropcol",
+		Args:        OpenArgs(),
 		Usage:       "dropcol <var> <name|index...>",
 		Description: "Drop columns by name or index",
 		Run:         runDropColCommand,

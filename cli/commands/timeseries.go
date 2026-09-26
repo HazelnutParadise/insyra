@@ -10,13 +10,14 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "movavg", Usage: "movavg <var> <window> [as <var>]", Description: "Moving average", Run: runMovAvgCommand})
-	_ = Register(&CommandHandler{Name: "expsmooth", Usage: "expsmooth <var> <alpha> [as <var>]", Description: "Exponential smoothing", Run: runExpSmoothCommand})
-	_ = Register(&CommandHandler{Name: "diff", Usage: "diff <var> [as <var>]", Description: "Difference (legacy, length n-1)", Run: runDiffCommand})
+	_ = Register(&CommandHandler{Name: "movavg", Args: MaxArgs(2).WithAlias(), Usage: "movavg <var> <window> [as <var>]", Description: "Moving average", Run: runMovAvgCommand})
+	_ = Register(&CommandHandler{Name: "expsmooth", Args: MaxArgs(2).WithAlias(), Usage: "expsmooth <var> <alpha> [as <var>]", Description: "Exponential smoothing", Run: runExpSmoothCommand})
+	_ = Register(&CommandHandler{Name: "diff", Args: MaxArgs(1).WithAlias(), Usage: "diff <var> [as <var>]", Description: "Difference (legacy, length n-1)", Run: runDiffCommand})
 	// `fillna` / `fillnan` are registered in fillna.go.
 
 	_ = Register(&CommandHandler{
 		Name:        "shift",
+		Args:        OpenArgs(),
 		Usage:       "shift <var> <periods> [fill <value>] [as <var>]",
 		Description: "Shift / lag / lead a DataList (positive = lag, negative = lead)",
 		Forms: []string{
@@ -32,6 +33,7 @@ func init() {
 	})
 	_ = Register(&CommandHandler{
 		Name:        "diffn",
+		Args:        MaxArgs(2).WithAlias(),
 		Usage:       "diffn <var> <periods> [as <var>]",
 		Description: "Backward difference, same-length output with leading nils (use diff for legacy length-n-1 behaviour)",
 		Examples: []string{
@@ -40,14 +42,15 @@ func init() {
 		},
 		Run: runDiffNCommand,
 	})
-	_ = Register(&CommandHandler{Name: "pctchange", Usage: "pctchange <var> <periods> [as <var>]", Description: "Percent change over `periods` rows", Run: runPctChangeCommand})
-	_ = Register(&CommandHandler{Name: "cumsum", Usage: "cumsum <var> [as <var>]", Description: "Running total", Run: runCumSumCommand})
-	_ = Register(&CommandHandler{Name: "cumprod", Usage: "cumprod <var> [as <var>]", Description: "Running product", Run: runCumProdCommand})
-	_ = Register(&CommandHandler{Name: "cummax", Usage: "cummax <var> [as <var>]", Description: "Running maximum (historical high)", Run: runCumMaxCommand})
-	_ = Register(&CommandHandler{Name: "cummin", Usage: "cummin <var> [as <var>]", Description: "Running minimum (historical low)", Run: runCumMinCommand})
+	_ = Register(&CommandHandler{Name: "pctchange", Args: MaxArgs(2).WithAlias(), Usage: "pctchange <var> <periods> [as <var>]", Description: "Percent change over `periods` rows", Run: runPctChangeCommand})
+	_ = Register(&CommandHandler{Name: "cumsum", Args: MaxArgs(1).WithAlias(), Usage: "cumsum <var> [as <var>]", Description: "Running total", Run: runCumSumCommand})
+	_ = Register(&CommandHandler{Name: "cumprod", Args: MaxArgs(1).WithAlias(), Usage: "cumprod <var> [as <var>]", Description: "Running product", Run: runCumProdCommand})
+	_ = Register(&CommandHandler{Name: "cummax", Args: MaxArgs(1).WithAlias(), Usage: "cummax <var> [as <var>]", Description: "Running maximum (historical high)", Run: runCumMaxCommand})
+	_ = Register(&CommandHandler{Name: "cummin", Args: MaxArgs(1).WithAlias(), Usage: "cummin <var> [as <var>]", Description: "Running minimum (historical low)", Run: runCumMinCommand})
 
 	_ = Register(&CommandHandler{
 		Name:        "rolling",
+		Args:        OpenArgs(),
 		Usage:       "rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]",
 		Description: "Rolling-window reduction over a DataList",
 		Forms: []string{
@@ -68,6 +71,7 @@ func init() {
 	})
 	_ = Register(&CommandHandler{
 		Name:        "ewm",
+		Args:        OpenArgs(),
 		Usage:       "ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]",
 		Description: "Exponentially weighted mean / variance / standard deviation over a DataList",
 		Forms: []string{
@@ -88,6 +92,7 @@ func init() {
 	})
 	_ = Register(&CommandHandler{
 		Name:        "expanding",
+		Args:        MaxArgs(3).WithAlias(),
 		Usage:       "expanding <var> <minobs> <reducer> [as <var>]",
 		Description: "Expanding-window reduction (in[0..=i]) over a DataList",
 		Forms: []string{

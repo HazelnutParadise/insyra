@@ -12,6 +12,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "describe",
+		Args:        OpenArgs(),
 		Usage:       "describe <var> [by <col1>[,<col2>...]] [all true|false] [percentiles <p1,p2,...>] [as <var>]",
 		Description: "Create a programmatic summary table",
 		Forms: []string{

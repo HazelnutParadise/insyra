@@ -8,6 +8,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "config",
+		Args:        MaxArgs(2),
 		Usage:       "config [key] [value]",
 		Description: "Read or update global CLI config",
 		Run:         runConfigCommand,

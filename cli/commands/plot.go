@@ -12,6 +12,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "plot",
+		Args:        MaxArgs(4),
 		Usage:       "plot <type> <var> [save <file>]",
 		Description: "Create charts from variables",
 		Forms: []string{

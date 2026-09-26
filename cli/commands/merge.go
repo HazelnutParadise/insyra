@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "merge", Usage: "merge <var1> <var2> <direction> <mode> [on <cols>] [as <var>]", Description: "Merge two DataTables", Run: runMergeCommand})
+	_ = Register(&CommandHandler{Name: "merge", Args: FormArgsAt(2, map[string]int{"horizontal": 7, "vertical": 4}).WithAlias(), Usage: "merge <var1> <var2> <direction> <mode> [on <cols>] [as <var>]", Description: "Merge two DataTables", Run: runMergeCommand})
 }
 
 func runMergeCommand(ctx *ExecContext, args []string) error {

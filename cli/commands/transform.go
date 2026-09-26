@@ -6,15 +6,15 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "rank", Usage: "rank <var> [asc|desc|true|false] [as <var>]", Description: "Rank DataList", Run: runRankCommand})
-	_ = Register(&CommandHandler{Name: "normalize", Usage: "normalize <var> [as <var>]", Description: "Normalize DataList", Run: runNormalizeCommand})
-	_ = Register(&CommandHandler{Name: "standardize", Usage: "standardize <var> [as <var>]", Description: "Standardize DataList", Run: runStandardizeCommand})
-	_ = Register(&CommandHandler{Name: "reverse", Usage: "reverse <var> [as <var>]", Description: "Reverse DataList", Run: runReverseCommand})
-	_ = Register(&CommandHandler{Name: "upper", Usage: "upper <var> [as <var>]", Description: "Uppercase DataList strings", Run: runUpperCommand})
-	_ = Register(&CommandHandler{Name: "lower", Usage: "lower <var> [as <var>]", Description: "Lowercase DataList strings", Run: runLowerCommand})
-	_ = Register(&CommandHandler{Name: "capitalize", Usage: "capitalize <var> [as <var>]", Description: "Capitalize DataList strings", Run: runCapitalizeCommand})
-	_ = Register(&CommandHandler{Name: "parsenums", Usage: "parsenums <var> [as <var>]", Description: "Parse DataList strings to numbers", Run: runParseNumsCommand})
-	_ = Register(&CommandHandler{Name: "parsestrings", Usage: "parsestrings <var> [as <var>]", Description: "Parse DataList numbers to strings", Run: runParseStringsCommand})
+	_ = Register(&CommandHandler{Name: "rank", Args: MaxArgs(2).WithAlias(), Usage: "rank <var> [asc|desc|true|false] [as <var>]", Description: "Rank DataList", Run: runRankCommand})
+	_ = Register(&CommandHandler{Name: "normalize", Args: MaxArgs(1).WithAlias(), Usage: "normalize <var> [as <var>]", Description: "Normalize DataList", Run: runNormalizeCommand})
+	_ = Register(&CommandHandler{Name: "standardize", Args: MaxArgs(1).WithAlias(), Usage: "standardize <var> [as <var>]", Description: "Standardize DataList", Run: runStandardizeCommand})
+	_ = Register(&CommandHandler{Name: "reverse", Args: MaxArgs(1).WithAlias(), Usage: "reverse <var> [as <var>]", Description: "Reverse DataList", Run: runReverseCommand})
+	_ = Register(&CommandHandler{Name: "upper", Args: MaxArgs(1).WithAlias(), Usage: "upper <var> [as <var>]", Description: "Uppercase DataList strings", Run: runUpperCommand})
+	_ = Register(&CommandHandler{Name: "lower", Args: MaxArgs(1).WithAlias(), Usage: "lower <var> [as <var>]", Description: "Lowercase DataList strings", Run: runLowerCommand})
+	_ = Register(&CommandHandler{Name: "capitalize", Args: MaxArgs(1).WithAlias(), Usage: "capitalize <var> [as <var>]", Description: "Capitalize DataList strings", Run: runCapitalizeCommand})
+	_ = Register(&CommandHandler{Name: "parsenums", Args: MaxArgs(1).WithAlias(), Usage: "parsenums <var> [as <var>]", Description: "Parse DataList strings to numbers", Run: runParseNumsCommand})
+	_ = Register(&CommandHandler{Name: "parsestrings", Args: MaxArgs(1).WithAlias(), Usage: "parsestrings <var> [as <var>]", Description: "Parse DataList numbers to strings", Run: runParseStringsCommand})
 }
 
 func runRankCommand(ctx *ExecContext, args []string) error {

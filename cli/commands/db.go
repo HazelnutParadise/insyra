@@ -9,6 +9,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "db",
+		Args:        FormArgs(map[string]int{"connect": unlimited, "list": 1, "ls": 1, "tables": 4, "disconnect": 2, "close": 2}),
 		Usage:       "db connect <name> <dsn> | db list | db tables <name> [schema <s>] | db disconnect <name>",
 		Description: "Manage named database connections (sqlite, mysql, postgres; pure-Go drivers)",
 		Forms: []string{

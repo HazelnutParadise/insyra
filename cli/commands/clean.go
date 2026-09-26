@@ -9,6 +9,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "clean",
+		Args:        FormArgsAt(1, map[string]int{"nan": 2, "nil": 2, "strings": 2, "outliers": 3}),
 		Usage:       "clean <var> nan|nil|strings|outliers [<stddev>]",
 		Description: "Clean values from DataTable/DataList",
 		Run:         runCleanCommand,

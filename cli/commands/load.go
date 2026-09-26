@@ -13,6 +13,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "load",
+		Args:        OpenArgs(),
 		Usage:       "load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query \"<sql>\" [...] [as <var>]",
 		Description: "Load data into a DataTable variable from a file, parquet, or SQL connection",
 		Forms: []string{

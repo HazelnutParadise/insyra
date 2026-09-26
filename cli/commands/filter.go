@@ -10,6 +10,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "filter",
+		Args:        OpenArgs(),
 		Usage:       "filter <var> <expr> [as <var>]",
 		Description: "Filter DataTable by CCL expression",
 		Run:         runFilterCommand,

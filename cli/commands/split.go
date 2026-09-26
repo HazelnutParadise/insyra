@@ -11,6 +11,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "split",
+		Args:        OpenArgs(),
 		Usage:       "split <var> train <frac> [shuffle true|false] [seed N] as <trainVar> <testVar>",
 		Description: "Split a DataTable into train and test tables",
 		Forms: []string{

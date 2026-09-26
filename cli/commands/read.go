@@ -8,6 +8,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "read",
+		Args:        OpenArgs(),
 		Usage:       "read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>]",
 		Description: "Quick preview a file without saving variable",
 		Forms: []string{

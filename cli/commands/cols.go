@@ -5,6 +5,7 @@ import "fmt"
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "cols",
+		Args:        MaxArgs(1),
 		Usage:       "cols <var>",
 		Description: "List DataTable column names",
 		Run:         runColsCommand,

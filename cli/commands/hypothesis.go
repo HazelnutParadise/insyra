@@ -11,6 +11,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "ttest",
+		Args:        FormArgs(map[string]int{"single": 3, "two": 4, "paired": 3}),
 		Usage:       "ttest single|two|paired ...",
 		Description: "T-test commands",
 		Forms: []string{
@@ -27,6 +28,7 @@ func init() {
 	})
 	_ = Register(&CommandHandler{
 		Name:        "ztest",
+		Args:        FormArgs(map[string]int{"single": 5, "two": 6}),
 		Usage:       "ztest single|two ...",
 		Description: "Z-test commands",
 		Forms: []string{
@@ -41,6 +43,7 @@ func init() {
 	})
 	_ = Register(&CommandHandler{
 		Name:        "anova",
+		Args:        OpenArgs(),
 		Usage:       "anova oneway|twoway|repeated ...",
 		Description: "ANOVA commands",
 		Forms: []string{
@@ -57,6 +60,7 @@ func init() {
 	})
 	_ = Register(&CommandHandler{
 		Name:        "ftest",
+		Args:        FormArgs(map[string]int{"var": 3, "levene": unlimited, "bartlett": unlimited}),
 		Usage:       "ftest var|levene|bartlett ...",
 		Description: "F-test commands",
 		Forms: []string{
@@ -73,6 +77,7 @@ func init() {
 	})
 	_ = Register(&CommandHandler{
 		Name:        "chisq",
+		Args:        FormArgs(map[string]int{"gof": unlimited, "indep": 3}),
 		Usage:       "chisq gof|indep ...",
 		Description: "Chi-square test commands",
 		Forms: []string{
