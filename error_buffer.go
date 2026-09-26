@@ -477,3 +477,18 @@ func PopErrorInfo(mode ErrPoppingMode) *ErrorInfo {
 		Timestamp:   e.timestamp,
 	}
 }
+
+// nilReceiverError is what Err() reports on a nil DataList or DataTable, such
+// as the one a lookup returns when it finds nothing. Asking what went wrong
+// must not crash; only Err() is guarded, so a nil still fails loudly on every
+// other method instead of travelling on unnoticed. Each call builds a new
+// value, so one caller changing it cannot change what the next is told.
+func nilReceiverError(kind string) *ErrorInfo {
+	return &ErrorInfo{
+		Level:       LogLevelError,
+		PackageName: "insyra",
+		FuncName:    "Err",
+		Message:     fmt.Sprintf("nil %s: the value does not exist, often because the lookup that produced it found nothing", kind),
+		Timestamp:   time.Now(),
+	}
+}

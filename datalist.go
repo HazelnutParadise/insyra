@@ -2168,6 +2168,9 @@ func (dl *DataList) SetName(newName string) *DataList {
 //	    // handle error
 //	}
 func (dl *DataList) Err() *ErrorInfo {
+	if dl == nil {
+		return nilReceiverError("DataList")
+	}
 	return dl.lastError
 }
 

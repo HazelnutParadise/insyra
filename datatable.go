@@ -1664,6 +1664,9 @@ func (dt *DataTable) GetLastModifiedTimestamp() int64 {
 //	    // handle error
 //	}
 func (dt *DataTable) Err() *ErrorInfo {
+	if dt == nil {
+		return nilReceiverError("DataTable")
+	}
 	return dt.lastError
 }
 
