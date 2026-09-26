@@ -242,7 +242,9 @@ one in-place `w -= learningRate * gradient` step to every tracked parameter.
 Gradients are float32 and are available through `Parameter.Grad()` or
 `Tape.Grad(parameter.Value())` after `Backward`; an unconnected tracked
 parameter receives a zero tensor. A `Backward` that returns an error publishes
-nothing: both keep returning what the last successful pass computed. Exact-form GELU is differentiable; the tanh
+nothing: both keep returning what the last successful pass computed.
+`Tape.Tanh`'s gradient rounds every step to float32 without fusing any two, so
+it is the same bits on every platform. Exact-form GELU is differentiable; the tanh
 approximation is refused by the tape until its VJP is covered.
 
 Adam keeps first and second moments per tracked parameter and applies one
@@ -581,7 +583,7 @@ in two epochs.
 | `Pad` | constant and reflect padding from attributes or initializer inputs; edge mode is refused |
 | `Add`, `Sub`, `Mul`, `Div`, `Pow` | float32 elementwise operations with broadcasting; shape arithmetic also supports int64 |
 | `Clip` | opset-11+ float32 clipping with optional scalar min/max inputs |
-| `Relu`, `LeakyRelu`, `Sigmoid`, `Tanh`, `Gelu`, `Erf`, `Sqrt`, `Exp`, `Ceil`, `Round` | elementwise activations and math; `LeakyRelu` defaults to alpha 0.01 and `Round` uses half-to-even |
+| `Relu`, `LeakyRelu`, `Sigmoid`, `Tanh`, `Gelu`, `Erf`, `Sqrt`, `Exp`, `Ceil`, `Round` | elementwise activations and math; `LeakyRelu` defaults to alpha 0.01, `Round` uses half-to-even, and `Tanh` is correctly rounded (the true value rounded once to the nearest float32) for every input on every platform |
 | `LayerNormalization` | suffix normalization with configurable axis and epsilon |
 | `ReduceMean` | reduction over one or more axes with optional keepdims |
 | `ReduceMin` | minimum reduction over one or more axes with optional keepdims |
