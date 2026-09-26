@@ -732,7 +732,7 @@ Source policy:
 | `cols` | `cols <var>` | List DataTable column names |
 | `completion` | `completion [command]` | Generate the autocompletion script for insyra for the specified shell. |
 | `config` | `config [key] [value]` | Read or update global CLI config |
-| `convert` | `convert <input> <output>` | Convert file formats (csv<->xlsx) |
+| `convert` | `convert <input> <output> [allowformulas true\|false]` | Convert file formats (csv<->xlsx) |
 | `corr` | `corr <x> <y> [pearson\|kendall\|spearman]` | Correlation between two DataLists |
 | `corrmatrix` | `corrmatrix <datatable> [pearson\|kendall\|spearman] [as <var>]` | Correlation matrix for a DataTable |
 | `count` | `count <var> <value>` | Count occurrences |

@@ -99,7 +99,8 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `convert`
 - Description: Convert file formats (csv<->xlsx)
-- Usage: `convert <input> <output>`
+- Usage: `convert <input> <output> [allowformulas true|false]`
+- xlsx->csv guards text a spreadsheet would run as a formula (`=`, `+`, `-`, `@`, not just a number) with a leading `'`; `allowformulas true` writes it exactly. Any other extra argument is an error.
 
 ## `corr`
 - Description: Correlation between two DataLists

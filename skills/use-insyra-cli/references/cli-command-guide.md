@@ -142,7 +142,7 @@ Organized by topic. Each Usage line is the command's own `insyra help <command>`
 
 ### `convert`
 - Description: Convert file formats (csv<->xlsx)
-- Usage: `convert <input> <output>`
+- Usage: `convert <input> <output> [allowformulas true|false]`
 - Example: `insyra convert input.csv output.xlsx`
 
 ## Database (sqlite / mysql / postgres, pure-Go drivers)

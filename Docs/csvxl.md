@@ -108,24 +108,36 @@ Each CSV is read in full before its sheet is replaced, so a CSV that cannot be r
 ### `ExcelToCsv`
 
 ```go
-func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error
+func ExcelToCsv(excelFile string, outputDir string, csvNames []string, opts ...ExcelToCsvOptions) error
+
+type ExcelToCsvOptions struct {
+    Sheets        []string // convert only these sheets; empty means every sheet
+    AllowFormulas bool     // write formula-like text as is (guarded by default)
+}
 ```
 
 Each sheet becomes `<outputDir>/<sheet>.csv`, or the matching `csvNames` entry named as described in [File names](#file-names). A sheet name that cannot be a single file name — it contains `/`, `\` or is `..` — is rejected with an error before any file is touched, because sheet names come from the workbook and could otherwise escape `outputDir`. Each CSV is read fully from the sheet first and written through a temporary file, so a failing sheet never truncates an existing CSV.
 
-A name in `onlyContainSheets` that the workbook does not have is an error naming the sheets it does have, rather than a sheet that quietly does not appear in the output.
+A name in `Sheets` that the workbook does not have is an error naming the sheets it does have, rather than a sheet that quietly does not appear in the output.
+
+**Formula guard (on by default):** text that is safe inside a workbook becomes a formula again once it is a CSV opened in Excel, LibreOffice or Google Sheets. So a cell whose text starts with `=`, `+`, `-` or `@` and is not only a number is written with a leading single quote (`=HYPERLINK(...)` becomes `'=HYPERLINK(...)`), as the core `ToCSV` does. Numbers such as `-5` are never changed. Set `AllowFormulas: true` when a program will read the CSV back and needs every value exactly.
 
 ```go
+csvxl.ExcelToCsv("report.xlsx", "out", nil) // every sheet, guarded
+csvxl.ExcelToCsv("report.xlsx", "out", nil, csvxl.ExcelToCsvOptions{
+    Sheets:        []string{"2024", "2025"},
+    AllowFormulas: true,
+})
 ```
 
-**Description:** Splits an Excel workbook into CSV files. Use `onlyContainSheets` to export selected sheets.
+**Description:** Splits an Excel workbook into CSV files. Use `Sheets` to export selected sheets.
 
 **Parameters:**
 
 - `excelFile`: File path to use. Type: `string`.
 - `outputDir`: Directory path to use. Type: `string`.
-- `csvNames`: CSV file path or CSV-related value. Type: `[]string`.
-- `onlyContainSheets`: Variadic `string` values.
+- `csvNames`: Output file names, one per converted sheet in order. Type: `[]string`.
+- `opts` (optional, at most one): `ExcelToCsvOptions`.
 
 **Returns:**
 
@@ -152,10 +164,10 @@ func EachCsvToOneExcel(dir string, output string, encoding ...string) error
 ### `EachExcelToCsv`
 
 ```go
-func EachExcelToCsv(dir string, outputDir string) error
+func EachExcelToCsv(dir string, outputDir string, opts ...ExcelToCsvOptions) error
 ```
 
-**Description:** Converts all `.xlsx` files in a directory into CSV files.
+**Description:** Converts all `.xlsx` files in a directory into CSV files, with the same formula guard and options as `ExcelToCsv`; `Sheets` applies to every file.
 
 **Parameters:**
 

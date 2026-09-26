@@ -115,6 +115,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 修正 `insyra env import` 在沒有 `--force` 時，只要目標環境有檔案存在但讀不到，就會把非空的環境蓋掉。判斷目標是否為空的檢查把讀不到 `config.json` 當成「空的」，讀不到 `state.json` 與 `history.txt` 也一樣被忽略。檔案不存在仍然視為空；其他讀取失敗現在會停止匯入，並指出哪個環境無法確認。
 - `save` 可以存 Excel：`save <var> report.xlsx [sheet <名稱>] [if-exists fail|replace]`。它只寫一張工作表（預設 `Sheet1`），活頁簿其他工作表都會保留。存到已經存在的工作表會被拒絕，不會自動改名成 `Sheet2`；訊息會提示加上 `if-exists replace` 覆蓋，沒指定工作表時也會提示用 `sheet <名稱>` 另存一張。`.xls` 會被拒絕並提示改用 `.xlsx`，`sheet` 與 `if-exists` 用在其他檔案類型也會被拒絕。以前 `save … report.xlsx` 只會回報 `unsupported output file type`。
 - 表格的 `fillna` 現在會照 `extrapolate` 外插，以前這個選項會被丟掉。補值做不到要求的事時，指令會失敗且不存檔：`cols` 指定的欄位補不了、或對文字清單用 `mean`，以前都會被當成補好了存起來。
+- `convert` 從 xlsx 轉 csv 時預設會防範公式注入，加上 `allowformulas true` 就原樣寫出，跟 `save` 一致。`convert` 看不懂的參數現在會報錯，不再默默忽略。
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外——也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。另外 `ml/mltest.RunConformance` 現在會判定「`Classes()` 回傳 nil」的實作不合格，而不是自己 panic——因為 `ml.Classifier` 是公開介面，函式庫外部的程式也能實作它。
 - **BREAKING（行為，簽名不變）**：`nn.NewTape` 最多只能給一個種子，給兩個時 `Param` 與 `Backward` 會回報錯誤，不再只用第一個。`Conv2D`、`MaxPool2D`、`AvgPool2D` 及對應的 `New…` 寫法給超過一個設定包時，以前會全部丟掉改用預設值建立；現在由 `Build` 回報錯誤。
@@ -150,6 +151,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`CsvToExcel`、`AppendCsvToExcel` 與 `EachCsvToOneExcel` 會指出哪些 CSV 失敗，也不再留下損壞的工作表。過去錯誤只寫「2 files failed to convert」，每個失敗的檔案都在工作簿裡留下一張空工作表，`AppendCsvToExcel` 甚至先清空同名的既有工作表，才發現 CSV 讀不到，接著照樣存檔。現在每個 CSV 會先完整讀完，才建立或取代工作表。失敗的檔案不產生工作表，既有工作表保留原內容，其他檔案照常轉換並存檔。錯誤逐行列出每個失敗的檔案與原因，`errors.Is(err, os.ErrNotExist)` 也能用。Excel 不接受的工作表名稱現在只讓那個檔案失敗，過去會讓整個呼叫在存檔前就中止。全部失敗時，`CsvToExcel` 不寫出工作簿，`AppendCsvToExcel` 不改動檔案。
 - **BREAKING**：`ExcelToCsv` 的 `csvNames` 若已帶副檔名（不分大小寫）就照用，所以 `report.txt` 寫成 `report.txt`、`REPORT.CSV` 寫成 `REPORT.CSV`，過去會變成 `report.txt.csv` 與 `REPORT.CSV.csv`；沒有副檔名的名稱仍然補上 `.csv`。CLI 的 `convert` 跟著改，`insyra convert book.xlsx out.txt` 現在寫出 `out.txt`。讀取端 `CsvToExcel` 與 `AppendCsvToExcel` 先照原路徑開，原路徑不存在才補 `.csv`：名為 `export.txt`、`DATA.CSV` 或完全沒有副檔名的 CSV 過去都讀不到，因為任何不是以小寫 `.csv` 結尾的路徑都會被補上 `.csv`，現在都讀得到。過去讀得到的路徑全部照樣讀得到，唯一差別是 `x` 與 `x.csv` 同時存在時讀的是 `x`；兩個都不存在時，錯誤訊息會列出兩條試過的路徑。
 - 編碼參數給空字串，或任何大小寫的 `"auto"`，現在都代表自動偵測，跟核心的 CSV 讀取函式一致。以前空字串代表直接當成 UTF-8，`"AUTO"` 則會被當成不支援的編碼而報錯。
+- **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 跟 `ToCSV` 一樣，預設會防範公式注入：在活頁簿裡安全的文字，轉成 CSV 再用試算表打開時會被當成公式。要原樣寫出就用 `ExcelToCsvOptions{AllowFormulas: true}`。挑選工作表的清單也移進同一個設定包：`ExcelToCsv(file, dir, names, "2024", "2025")` 改成 `ExcelToCsv(file, dir, names, csvxl.ExcelToCsvOptions{Sheets: []string{"2024", "2025"}})`。
 
 ### `parquet`
 - 修正 `ReadColumnOptions.MaxValues` 完全沒有作用。`ReadColumn` 現在先從檔案 metadata 加總所選 row group 的列數，超過上限時在讀取任何資料前就拒絕，這才是該欄位文件寫的行為。
