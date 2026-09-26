@@ -10,6 +10,10 @@ The `isr` package provides a simplified, method-chaining syntax for the `insyra`
 
 **Key Feature**: Full method chaining support
 
+**Recommended entry point**: new code should start here. The root `insyra` package is the implementation layer underneath, so it is where anything `isr` does not wrap is reached.
+
+**Not wrapped**: `isr` has no `Describe` of its own. A wrapper holds the root value, so `t.Describe()` and `dl.Describe()` still work — they resolve to `insyra.DataTable.Describe` and `insyra.DataList.Describe` and return a plain `*insyra.DataTable`, so the chain ends at the summary table.
+
 ## Quick Start
 
 ```go

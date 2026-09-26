@@ -125,6 +125,70 @@ const (
 )
 ```
 
+## Things to be careful about
+
+### A failed chart is `nil`, and saving a `nil` chart crashes
+
+No `Create...` function in this package returns an `error`. Twelve of the
+thirteen return `nil` and log the reason through `insyra.LogWarning` when they
+cannot build a chart — usually because the data is missing, or (for
+`CreateHeatMap`) because calendar mode was asked for without `time.Time` X
+values and a `CalendarOpts`. `CreateGaugeChart` takes a plain `float64` and has
+no such path, so it always returns a chart.
+
+The `nil` is worth checking for. A `nil` `*charts.Bar` still satisfies the
+`Renderable` interface, so `SaveHTML` and `SavePNG` accept it and then
+dereference it: passing one straight through panics with a nil pointer
+dereference rather than returning an error. Check the result before you save.
+
+```go
+chart := plot.CreateBarChart(config, data)
+if chart == nil {
+    // CreateBarChart already logged why
+    return
+}
+plot.SaveHTML(chart, "sales.html")
+```
+
+### A `nil` list among real lists is skipped, not fatal
+
+`CreateBarChart`, `CreateLineChart` and `CreateBoxPlot` read their data as
+`insyra.IDataList`, and every list goes through `AtomicDo`, which a nil
+dereferences. Rather than panic, a nil entry — either a nil interface or a nil
+`*insyra.DataList` inside one — is dropped with a warning naming its index, and
+the remaining lists are drawn. Only when nothing usable is left does the
+constructor return `nil`. For `CreateBoxPlot` a series whose lists were all nil
+is dropped as a whole, while a series with no lists to begin with is kept.
+`CreateWordCloud` takes a single list and has nothing to skip, so a nil there
+goes straight to a warning and a `nil` return.
+
+### `Title` and `Subtitle` are HTML-escaped
+
+go-echarts embeds the chart options inside a `<script>` block without HTML
+escaping, so text taken from user data could otherwise close the script and
+inject markup. Every one of the thirteen constructors passes `Title` and
+`Subtitle` through `html.EscapeString` before they reach that block, and the
+canvas still renders the text. A title of `</script><script>alert(1)</script>`
+is written to the file as `&lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;`.
+This covers those two fields only; axis names, series names and data values go
+into the options as given.
+
+### Some constructors write back into what you passed in
+
+Three of them do, in different ways, so it is worth knowing before you reuse a
+slice or a map across calls:
+
+- `CreateKlineChart` sorts the `KlinePoint` slice **in place** by date. Passing
+  `points...` reorders your own slice.
+- `CreateRadarChart` fills in `Color` on each element of the `series` slice you
+  pass, and adds a key to `config.MaxValues` for every indicator that has no
+  entry yet. The map is only touched if you supplied one; a `nil` `MaxValues`
+  is replaced only inside the function, so your config still reads as `nil`
+  afterwards.
+- `CreateBoxPlot` also assigns default colours, but the caller does not see it:
+  it copies each series into a fresh slice while dropping nil lists, and the
+  colour pass writes into that copy.
+
 ---
 
 ## Saving Charts
@@ -146,6 +210,16 @@ func SaveHTML(chart Renderable, path string, animation ...bool) error
 **Returns:**
 
 - `error`: Error when the operation fails.
+
+**Note:** the generated HTML is not reproducible across runs. go-echarts gives
+each chart object a random id — an 11-character string such as `ZNEYhPGqrFjX` —
+and writes it into the `id` attribute of the chart's `<div>` and into the names
+of the generated `goecharts_...` and `option_...` variables. Two charts built
+from the same config therefore produce two different files even though the
+option JSON is identical. Rendering the *same* chart object twice is stable,
+because the id is assigned when the chart is created, not when it is saved. So
+compare saved files by substring, or mask the id first, rather than with a
+byte-for-byte `==` across runs.
 
 ### Save PNG
 
@@ -514,6 +588,11 @@ func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *chart
 
 - `*charts.Funnel`: Return value.
 
+The data is a map, and the series is built by ranging over it, so the stage
+order in the emitted option JSON is whatever Go's map iteration happens to
+give, and it varies between calls in the same process. Build the `charts.Funnel`
+series yourself from an ordered slice if the order has to be fixed.
+
 ### 8. Gauge Chart
 
 ![Gauge Chart Example](./img/plot/gauge_example.png)
@@ -602,6 +681,11 @@ func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.Word
 **Returns:**
 
 - `*charts.WordCloud`: Return value.
+
+`data` is counted into a frequency map — each distinct value in the list is one
+word, weighted by how often it appears — and the series is built by ranging
+over that map, so the word order in the emitted option JSON varies between
+calls in the same process.
 
 ### 10. Sankey Chart
 

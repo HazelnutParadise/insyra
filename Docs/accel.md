@@ -112,7 +112,11 @@ release and remains pending the standing hardware-coverage follow-up.
 
 WGSL has no `f64`, and Apple GPUs have no double-precision hardware at all. A `float64` column therefore cannot run on the device at its own precision, and the runtime will not narrow it behind your back — a data-analysis library that silently changes your numbers is worse than one that declines to accelerate them.
 
-The surviving operation resolves that rather than trading it away: the device ranks in single precision, and the host settles the answer in `float64`. Narrowing happens inside, where it cannot reach the result, so no precision opt-in is needed and none is offered.
+The surviving operation resolves that rather than trading it away: the device ranks in single precision, and the host settles the answer in `float64`. Narrowing happens inside, where it cannot reach the result, so this operation needs no opt-in, and its result reports `PrecisionExact` whichever path produced it.
+
+`Precision` is the selector for the general case, and it is what the CLI's `accel --precision exact|float32` sets. `PrecisionExact` is the default — an empty `WorkloadEstimate.Precision` means it — and under it a `float64` or `int64` column is refused wherever the device would need it narrowed, with `precision-not-accepted` as the reason: the runtime does not narrow one unasked. `PrecisionFloat32` is the explicit choice that lets those columns be narrowed before upload, values above 2^24 losing precision, which is exactly what asking for it acknowledges.
+
+Nothing released reads that choice yet. `ExecuteNearestExact` sets its device precision itself, and it is the only operation the runtime ships, so a `float64` workload is answered exactly either way: passing `PrecisionFloat32` today changes no result and no fallback reason. The selector is what a future device operation that returns new `float64` values would have to read before narrowing anything, and the default is what keeps that from happening by accident.
 
 ## Operations
 

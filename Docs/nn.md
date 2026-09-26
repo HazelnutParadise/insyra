@@ -128,11 +128,12 @@ if err != nil {
 kernel := weights["layer.weight"]
 ```
 
-The loader validates the 8-byte header length, JSON entries, shape element
-counts, byte offsets, non-overlap, and complete contiguous coverage of the data
-region before materialising any tensor. The optional `__metadata__` entry is
-accepted as a string-to-string object and ignored. Malformed input returns an
-error naming the defect and tensor rather than panicking.
+The loader validates the 8-byte header length, JSON entries, a tensor name
+declared more than once, shape element counts, byte offsets, non-overlap, and
+complete contiguous coverage of the data region before materialising any
+tensor. The optional `__metadata__` entry is accepted as a string-to-string
+object and ignored. Malformed input returns an error naming the defect and
+tensor rather than panicking.
 
 The supported loading contract is:
 
@@ -231,8 +232,14 @@ The differentiable wrappers are `MatMul`, `Add`, `Relu`, `Sigmoid`, `Tanh`,
 `Gemm`, `Mul`, `Div`, `Softmax`, `LayerNormalization`, `Gelu`, `Erf`, `Sqrt`,
 `Pow`, `ReduceMean`, and the shape wrappers `Transpose`, `Reshape`, `Flatten`,
 `Squeeze`, `Unsqueeze`, `Slice`, `Concat`, and `Split`, together with the CNN
-wrappers `Conv`, `MaxPool`, `AveragePool`, `GlobalAveragePool`, and inference-
-mode `BatchNormalization`, plus training-mode `Dropout`. `Gemm` accepts alpha,
+wrappers `Conv`, `MaxPool`, `AveragePool`, `GlobalAveragePool`, inference-mode
+`BatchNormalization`, training-mode `BatchNormalizationTraining`, and
+training-mode `Dropout`. `Embedding` is a tape operation rather than a layer:
+it looks up rows of a `[vocab, dim]` table with int64 `[N]` or `[N,S]` indices
+and scatter-adds repeated indices into the gradient, while the catalog's
+`nn.Embedding(vocab, dim)` is the layer that builds such a table, and
+`EmbeddingLookup` is the same tape operation with the arguments the other way
+round. `Gemm` accepts alpha,
 beta, and transpose attributes. `SoftmaxCrossEntropy`
 takes logits
 with shape `[N, C]` and int64 labels with shape `[N]`, and returns one mean-loss
@@ -453,7 +460,10 @@ The standalone `BatchNormalization` kernel is inference-mode only: its running
 mean and variance are constants, while input, scale, and bias receive
 gradients. The autodiff tape also exposes training-mode BatchNorm, which
 normalizes with biased batch variance, updates running variance with the
-unbiased estimator, and differentiates through the batch statistics.
+unbiased estimator, and differentiates through the batch statistics. Its
+optional arguments are `[momentum, epsilon]` in that order, defaulting to
+torch's `0.1` and `1e-5`, and the running mean and variance tensors it is
+handed are updated in place.
 
 ## Layers and Sequential
 
@@ -461,6 +471,11 @@ The layer surface is training sugar over the same tape. It has one `Forward`
 method and no train/eval mode flag: `NewSequential` builds layers eagerly on a
 tape, `Forward` records the training path, and `Predict` uses a throwaway tape
 while structurally skipping layers marked `TrainingOnly`.
+
+A layer of your own implements the same three methods the catalog does:
+`Build(t *Tape) error` materialises its parameters on the tape it is handed,
+`Forward(t *Tape, x *Tensor) (*Tensor, error)` records the training path for
+one input, and `Parameters() []*Parameter` returns them in layer order.
 
 ```go
 tape := nn.NewTape(20260803)
@@ -485,7 +500,7 @@ The catalog layers are:
 
 | Layer | Behavior |
 | --- | --- |
-| `Dense(in, out)` | He-initialized affine layer; torch Linear weights transpose at load time |
+| `Dense(in, out)` | He-initialized affine layer whose bias starts at zero; torch Linear weights transpose at load time |
 | `Conv2D(in, out, kernel, opts...)` | NCHW convolution with torch `[out,in/groups,kh,kw]` weights, padding, strides, dilations, groups, and optional bias |
 | `MaxPool2D` / `AvgPool2D` | NCHW pooling; omitted stride defaults to the kernel size, matching torch |
 | `GlobalAvgPool` | Reduces spatial dimensions to `[N,C,1,1]` |
