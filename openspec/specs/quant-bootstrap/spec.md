@@ -4,6 +4,7 @@
 `quant` 的機率式預測：以 block bootstrap（moving block 或 stationary）對報酬序列整塊重抽樣，產生可由 seed 重現的模擬報酬與權益路徑，並以 R type-7 分位數在每個時點取百分位帶供扇形圖使用。輸入驗證採拒絕而非補零。
 
 ## Requirements
+
 ### Requirement: Block bootstrap resampling of a return series
 
 `quant` SHALL 提供 `BootstrapConfig{Horizon int; BlockSize int; Paths int; Seed uint64; Stationary bool}` 與 `BlockBootstrap(returns insyra.IDataList, cfg BootstrapConfig) (*BootstrapResult, error)`。`BootstrapResult` SHALL 包含 `Returns [][]float64`（`Paths` 列，每列 `Horizon` 個重抽樣的每期報酬）與 `Equity [][]float64`（`Paths` 列，每列 `Horizon+1` 個值，`Equity[p][0] == 1.0`，`Equity[p][t] == Equity[p][t-1] * (1 + Returns[p][t-1])`）。`Stationary` 為 false 時 SHALL 使用 moving block bootstrap：每個區塊長度固定為 `BlockSize`，起點在 `[0, n-BlockSize]` 內均勻抽取；為 true 時 SHALL 使用 stationary bootstrap：區塊長度服從平均為 `BlockSize` 的幾何分布，起點在 `[0, n)` 內均勻抽取，索引超出尾端時 SHALL 環狀接回序列開頭。
@@ -100,12 +101,11 @@
 - **WHEN** `percentiles` 含 101
 - **THEN** 回傳錯誤
 
-### Requirement: Docs, skills and changelogs describe the bootstrap API
+### Requirement: Docs and changelogs describe the bootstrap API
 
-`Docs/quant.md` SHALL 新增涵蓋 `BootstrapConfig`、`BlockBootstrap`、`BootstrapResult`、`PercentileBands` 的章節與扇形圖用法範例，並說明 seed 永遠生效、`BlockSize` 在兩種方法下的意義、以及區塊長度與樣本數的統計建議。`Docs/README.md`、`README.md`、`README_TW.md` 的 quant 列 SHALL 提及 bootstrap 路徑模擬。`skills/insyra/SKILL.md` SHALL 新增 quant 段落示範這兩個函式。`CHANGELOG.md` 與 `CHANGELOG_TW.md` 的 `## Unreleased` SHALL 各新增 `` ### `quant` `` 條目並連結 issue #199。
+`Docs/quant.md` SHALL 涵蓋 `BootstrapConfig`、`BlockBootstrap`、`BootstrapResult`、`PercentileBands` 的章節與扇形圖用法範例，並說明 seed 永遠生效、`BlockSize` 在兩種方法下的意義、以及區塊長度與樣本數的統計建議。`Docs/README.md`、`README.md`、`README_TW.md` 的 quant 列 SHALL 提及 bootstrap 路徑模擬。`CHANGELOG.md` 與 `CHANGELOG_TW.md` 的 `## Unreleased` SHALL 各新增 `` ### `quant` `` 條目並連結 issue #199。
 
 #### Scenario: Documentation set is complete
 
 - **WHEN** 變更完成
 - **THEN** 上述每個檔案都包含對應的新內容，英文與繁體中文版本同步
-

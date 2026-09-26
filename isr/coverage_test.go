@@ -21,11 +21,11 @@ func quietTest(t *testing.T) {
 	t.Cleanup(func() { insyra.Config.SetLogLevel(level) })
 }
 
-// The README calls isr the recommended entry point for new code, and it sat at
-// 44.2%: the whole DL surface except From, every selector on DT, two thirds of
-// DT.From's type switch, five of the window wrappers, Name(), and CCL had never
-// been called. This file is in-package because dt and dl are unexported, so an
-// external test cannot name them.
+// The README presents isr as the convenient way to write Insyra code, and it
+// sat at 44.2%: the whole DL surface except From, every selector on DT, two
+// thirds of DT.From's type switch, five of the window wrappers, Name(), and CCL
+// had never been called. This file is in-package because dt and dl are
+// unexported, so an external test cannot name them.
 
 func sampleDT() *dt {
 	return DT.From(DLs{

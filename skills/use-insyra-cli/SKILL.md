@@ -1,291 +1,48 @@
 ---
 name: use-insyra-cli
-description: Use when data operation or statistical analysis tasks do not need full program implementation, and the agent should operate Insyra through CLI/REPL, .isr scripts, or DSL workflows, including environment workflows, reproducible command pipelines, and command selection guidance.
+description: Use when a data operation or statistical analysis can be done without writing a full program, by driving Insyra through its CLI, REPL, `.isr` scripts or the Go DSL. Teaches when to use each mode, how sessions and environments behave, how to keep the work reproducible, and how to find the exact commands for the installed version from the binary and its docs. It deliberately does not list the commands.
 ---
 
-# Insyra CLI + .isr Script Skill
+# Insyra CLI, REPL and `.isr` scripts
 
-## Overview
+Insyra has one command language, and it runs four ways: one-shot (`insyra <command> ...`), the REPL (`insyra`), `.isr` scripts (`insyra run file.isr`), and Go code through `engine/dsl`. Reach for it when the task is analysis rather than a program: load a file, clean it, run a test or a model, save a result. That is often faster than writing a throwaway Python script.
 
-Use this skill for data operations or statistical analysis where the task should be solved with `insyra` CLI/REPL/.isr or DSL instead of writing full Go code directly.
+Write Go instead (the `insyra` skill) when the result has to be a program, run inside a service, or needs logic the commands cannot express. A common path is to prototype with commands and then port the working steps to Go.
 
-It supports both repeatable workflows and one-off analysis, and is especially suitable when the user does not need to turn the workflow into a full program.
+This skill does not list the commands, on purpose. The installed binary knows exactly which commands and options it has, and a list here would describe some other version.
 
-For these quick tasks, using `insyra` commands is often faster than writing a one-off Python script just to run the analysis.
+## Find commands in the binary, not in memory
 
-- **CLI mode**: one-shot commands (`insyra <command> ...`)
-- **REPL mode**: interactive session (`insyra`)
-- **Script mode**: execute `.isr` line-by-line (`insyra run script.isr`)
+- `insyra help` lists every command the installed binary has, with a one-line description.
+- `insyra help <command>` prints the command's usage line. Commands with several shapes also print `Forms:` and `Examples:`. Run it before any command you have not already checked in this session, and follow the usage line exactly: `[...]` is optional, `<...>` is a value you supply, `a|b` is a choice.
+- `insyra version` prints the installed release, for example `insyra v0.3.3 (Huashan)`. The user guide for that release is `Docs/cli-dsl.md` at the matching tag, `https://github.com/HazelnutParadise/insyra/blob/v0.3.3/Docs/cli-dsl.md`. It holds the full command index, the commands grouped by topic, worked workflows and the syntax rules. `go mod download -json github.com/HazelnutParadise/insyra@v0.3.3` prints the module's `Dir`, from the module cache when the release is already there (as it is after `go install`), and the same file is at `<Dir>/Docs/cli-dsl.md`.
+- When sources disagree, trust `insyra help`, then the command's source (`cli/commands/*.go` at that tag), then `Docs/cli-dsl.md`. Prose can drift; the registry the binary prints from cannot.
+- To find a command by what it does, read the `Command Groups` section of `Docs/cli-dsl.md`, or scan `insyra help`.
+- A command runs a library function, so the library's documentation explains its results. For example, `Docs/stats.md` gives a test's assumptions and the meaning of each field it reports. The `insyra` skill tells you how to find those pages.
 
-Official user-facing documentation:
+## How a session works
 
-- [CLI + DSL Guide](https://github.com/HazelnutParadise/insyra/blob/main/Docs/cli-dsl.md) (unified CLI + REPL + `.isr` + Go DSL guide)
-- Source of truth: prioritize the latest content in the linked document above.
+- **Everything is a named variable.** A command that creates or transforms data takes `as <var>`. Without it, the result goes to `$result`, which the next such command overwrites. Name everything you intend to use again.
+- **Variables live in an environment.** An environment keeps its variables in `~/.insyra/envs/<name>/state.json` and its history in `history.txt`. The environment is `default` unless you pass `--env <name>`, which must name an existing environment (`env create <name>` makes one). Inside the REPL or a script, `env open <name>` switches; run as a one-shot command it opens the REPL instead.
+- **A one-shot command reloads the environment from disk, and the round trip loses things.** `insyra newdl 1 2 3 as x` followed by a separate `insyra mean x` works. But a table comes back with its columns in alphabetical order and its dates as text, and a variable the file cannot hold, such as a fitted scaler, is gone. Column letters then point at different columns. Do multi-step work in the REPL or in a script, where variables stay in memory, and use separate one-shot commands only for independent steps.
+- **Connections do not persist.** A database connection made with `db connect` lives only in the running process. Reconnect at the top of every script or session that needs it.
+- **Scripts keep going after an error.** An `.isr` file holds one command per line. A line starting with `#` is a comment, but `#` later in a line is data. Quotes and backslash escapes work. A failing line is reported with its line number and the next line runs, so read the output instead of assuming the script succeeded.
+- **The Go DSL is the same language.** `engine/dsl` runs the same lines inside a program and saves state after each successful command. Unlike `run`, its `ExecuteFile` stops at the first failing line. Use it when a Go program should hand the user a scriptable surface.
 
-## Programmatic DSL API (inside Go code)
+## Principles
 
-Use `engine/dsl` public API when you want to execute DSL directly from your Go program without entering interactive REPL.
+1. **Choose the mode on purpose.** Explore in the REPL. Anything you will rerun or hand over belongs in an `.isr` script. Use one-shot commands for a single step in a shell pipeline, and `engine/dsl` to embed the language in a program. Ask if the user's intent is unclear.
+2. **Isolate the work.** Create an environment for each task, so you neither read nor overwrite someone's variables in `default`. `env export` hands the state over. Importing into an environment that already has variables, history or config needs `--force`, and that replaces what was there; treat it as destructive and confirm first.
+3. **Prefer reproducible steps to interactive fixes.** Results should come from commands someone can rerun, not from edits made by hand in the REPL. Keep the commands you ran, or write them as a script.
+4. **Look before you trust.** After every load or transform, `show` or `describe` the result. Check the shape, the column types, whether the header was read as data, and whether numbers arrived as text, before you analyse anything.
+5. **Read only what you need.** Some sources can be read in part, such as chosen columns and row groups of a Parquet file, or a query against a database. Check `insyra help load` before loading everything and filtering afterwards.
+6. **Save results explicitly, and say where.** Write files with `save`, write tables to a database with `save <var> sql ...`, and export the session with `env export`. Tell the user the path or table.
+7. **Mind the shell.** bash, zsh and PowerShell all expand `$result` inside double quotes or bare, so pass it in single quotes: `'$result'`. Quote any token that contains spaces.
+8. **Read errors, then check usage.** An error says what was wrong with the invocation, and a script prefixes it with the line number. Compare the invocation with `insyra help <command>` and fix it instead of retrying variations.
 
-```go
-package main
+## Workflow
 
-import (
-  "fmt"
-
-  "github.com/HazelnutParadise/insyra/cli/env"
-  "github.com/HazelnutParadise/insyra/engine/dsl"
-)
-
-func main() {
-  session, err := dsl.NewSession(env.Default(), "default", nil)
-  if err != nil {
-    panic(err)
-  }
-
-  if err := session.Execute("newdl 1 2 3 as x"); err != nil {
-    panic(err)
-  }
-  if err := session.Execute("mean x"); err != nil {
-    panic(err)
-  }
-
-  fmt.Println("vars:", len(session.Context().Vars))
-}
-```
-
-Notes:
-
-- `Execute` accepts the same DSL syntax as REPL / `.isr` lines.
-- `ExecuteFile` runs a `.isr` file directly in-process and returns line-numbered errors.
-- State/history are persisted after each successful command.
-- Empty line and `# comment` line are ignored.
-- Pass `env.NewManager("/path/to/root", "")` instead of `env.Default()` to store environments outside `~/.insyra` (e.g. for per-workspace embedding). The second argument renames the per-env subfolder ("" defaults to `"envs"`; e.g. `env.NewManager(workspace, "insights")` gives `<workspace>/insights/<env>/`). Each session is bound to its own Manager.
-
-## Agent workflow (recommended)
-
-0. **Verify syntax with `insyra help <cmd>` before running any command you're not 100% sure about.** Complex commands print `Forms:` and `Examples:` blocks; for simple ones you'll at least see the canonical Usage line.
-1. Confirm whether the user wants **REPL**, **one-shot CLI**, or **.isr script**.
-2. If isolation is needed, create/select environment first (`--env <name>` or `env open <name>`).
-3. Use `newdl/newdt/load/read` to prepare data.
-
-- For Parquet partial reads, prefer `load parquet <file> cols <c1,c2,...> rowgroups <i1,i2,...> [as <var>]`.
-- For SQL sources, open a named connection with `db connect <name> <dsn>` first, then `load sql <name> <table>` or `load sql <name> query "<SQL>" [params ...]`. Connections are session-scoped and need to be reopened in each new run.
-
-4. Apply transforms/stats/model/plot commands.
-5. Persist outputs (`save` for files, `save <var> sql <conn> <table>` for databases, `env export` for state bundles) and provide reproducible command history.
-
-## Runtime guardrails
-
-- **First step on any unfamiliar command: run `insyra help <cmd>`.** Complex commands (`ttest`, `ztest`, `anova`, `ftest`, `chisq`, `regression`, `quant`, `fetch`, `plot`, `db`, `groupby`, `load`, `save`) include `Forms:` and `Examples:` blocks that show every sub-shape and a copy-paste-ready invocation. Use this before falling back to `references/cli-command-guide.md` — `help` reflects the live binary, references can drift.
-- `insyra help` (no args) lists all registered commands with one-line descriptions. Use it when you don't know the command name.
-- Prefer deterministic commands over ad-hoc manual REPL edits when reproducibility matters.
-- For shell variables in PowerShell, remind users to quote names like `$result` as `"$result"`.
-- For environment restore:
-  - `env import <file> [name] [--force]`
-  - Import to a **non-empty** target fails unless `--force` is provided.
-
-## .isr script syntax (implemented by `run` command)
-
-`.isr` is a plain text command list executed line-by-line.
-
-Rules:
-
-- Empty lines are ignored.
-- Lines beginning with `#` are comments.
-- Tokens are split by spaces/tabs.
-- Single and double quotes are supported.
-- Backslash escapes are supported.
-- Parsing errors on a line do not stop the whole script; CLI reports line error and continues.
-
-Example:
-
-```bash
-# sample.isr
-newdl 1 2 3 4 5 as x
-mean x
-rank x as rx
-show rx
-```
-
-Run:
-
-```bash
-insyra run sample.isr
-```
-
-## Full CLI command catalog
-
-Use this as the authoritative command list for current repository state.
-
-See: `references/cli-commands.md`
-
-## How to use each command
-
-For **every command usage syntax** (one-by-one), use:
-
-- `references/cli-command-usage.md`
-- `references/cli-command-guide.md` (recommended: by-topic + one example per command)
-
-This file contains, for each command:
-
-- description
-- exact `Usage:` syntax (from `insyra help <command>`)
-- expanded full forms for shorthand commands such as `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `regression`, `quant`, `fetch`, and `plot`
-
-## Fast command templates
-
-```bash
-# Create isolated environment
-insyra env create exp1
-insyra --env exp1 newdl 10 20 30 as x
-insyra --env exp1 mean x
-
-# Export / import environment bundle
-insyra env export exp1 ./exp1.json
-insyra env import ./exp1.json exp1-copy --force
-
-# Run script in environment
-insyra --env exp1 run ./pipeline.isr
-
-# CSV / Excel: control headers and row names on read/write
-# Defaults: headers=true, rownames=false, infer=true, ragged=false, trimspace=false.
-# Booleans accept true|false|yes|no|on|off|1|0. ragged and trimspace are CSV-only.
-insyra load matrix.csv headers false as t                  # no header row
-insyra load gdp.csv rownames true as t                     # first column = row names
-insyra load legacy.csv encoding big5 as t                  # CSV-only encoding hint
-insyra load stocks.csv infer false as raw                  # CSV-only: no type inference, all cells stay strings
-insyra load inventory.csv ragged true trimspace true as inventory # tolerate uneven rows and spaces before quotes
-insyra load report.xlsx sheet 2025 rownames true as t      # Excel needs `sheet`
-insyra save report data.csv bom true                       # UTF-8 BOM (Windows Excel)
-insyra save gdp out.csv rownames true                      # row names as first col
-insyra save matrix data.csv headers false                  # pure data dump
-
-# Group rows by key, aggregate columns (split-apply-combine)
-insyra load sales.csv as sales
-insyra groupby sales by region agg revenue:sum:total_rev qty:mean as report
-insyra show report
-# Multi-key + count shorthand
-insyra groupby sales by region,product agg revenue:sum count as report2
-
-# Time series: exponentially weighted stats, paired rolling stats, calendar resampling
-insyra ewm price span 12 mean adjust yes as ema12          # decay: alpha | span | halflife (pick one)
-insyra ewm returns halflife 5 std minobs 3 as ewvol
-insyra rolling asset 20 beta benchmark minobs 10 as roll_beta   # cov/beta take a second DataList
-insyra fetch yahoo AAPL history as bars
-insyra resample bars Date monthly Open:first High:max Low:min Close:last:MonthClose Volume:sum as monthly_bars
-insyra load bars.csv as csv_bars
-insyra parsedates csv_bars cols Date as csv_bars                # CSV dates are strings until this runs
-insyra resample csv_bars Date monthly Close:last as monthly_close
-
-# Programmatic summaries that can be saved
-insyra describe sales all true as summary
-insyra describe sales by region percentiles 0.1,0.5,0.9 as region_summary
-insyra save region_summary region_summary.csv
-
-# One-shot categorical encoding for DataTable variables
-insyra encode sales onehot region,channel dropfirst true as x
-insyra encode sales label segment newcol segment_id sortby freq keeporiginal true as labeled
-insyra encode survey ordinal satisfaction order low,medium,high unknown error as ranked
-
-# Stateful feature scaling: fit on train, reuse on test (no leakage)
-insyra split sales train 0.8 as train test
-insyra scale fit std sc train cols Age,Income
-insyra scale transform sc train as train_scaled
-insyra scale transform sc test as test_scaled
-insyra scale inverse sc train_scaled as train_original
-
-# SQL: connect, list tables, load query, transform, write back, disconnect
-# Connections live for the current process only — reopen at the top of every session/script.
-insyra db connect main sqlite:./demo.db
-insyra db tables main
-insyra load sql main query "SELECT region, SUM(amount) total FROM orders WHERE year = ? GROUP BY region" params 2025 as totals
-insyra filter totals "['total'] > 10000" as top
-insyra save top sql main top_regions if-exists replace
-insyra db disconnect main
-
-# Clustering + silhouette
-insyra kmeans iris 3 seed 42 as labels
-insyra silhouette iris labels as widths
-
-# Regression models
-insyra regression logistic y x1 x2 as fit
-insyra regression poisson y x1 x2
-
-# Quant: returns-based risk metrics (series are per-period RETURNS, not prices)
-insyra col bars Close as price
-insyra pctchange price 1 as ret
-insyra clean ret nil                                        # pctchange leaves a leading nil
-insyra quant sharpe ret 252 rf 0.0001 as sharpe             # periods is required, never defaulted
-insyra quant sortino ret 252 mar 0.0002
-insyra quant var ret 0.95 as var95                          # default method is historical
-insyra quant cvar ret 0.95 parametric as cvar95
-insyra quant maxdd equity
-insyra quant calmar equity 365
-insyra quant drawdown equity as dd                          # DataList
-insyra quant capm asset market rf 0.0002 as capm            # one-row DataTable
-insyra quant factor asset factors as fm                     # one row per factor, plus fm_alpha
-insyra quant bs call 42 40 0.10 0.20 0.5 as opt             # price + greeks, one-row DataTable
-insyra quant iv call 4.759 42 40 0.10 0.5
-insyra quant portfolio rets maxsharpe rf 0.0001 as w         # DataTable of return columns; w + w_stats
-insyra quant frontier rets 20 min -0.2,-0.2 max 1,1 as f     # one row per point, one column per asset
-
-# Taiwan stocks (TWSE/TPEx), no API key; dates are YYYY-MM-DD, market defaults to auto
-insyra fetch tw 2330 adjprices 2026-01-01 2026-08-31 twse as tsmc   # adjusted: AdjClose has no ex-date fake loss
-insyra fetch tw 0050 adjprices 2026-01-01 2026-08-31 twse as market
-insyra col tsmc AdjClose as tsmc_px
-insyra col market AdjClose as market_px
-insyra pctchange tsmc_px 1 as tsmc_ret
-insyra pctchange market_px 1 as market_ret
-insyra clean tsmc_ret nil
-insyra clean market_ret nil
-insyra quant beta tsmc_ret market_ret as beta
-insyra fetch tw institutional 2026-08-15 twse as inst        # one trading day
-insyra fetch tw quotes twse as quotes                        # every listed code
-```
-
-`groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` produces a new DataTable with one row per unique key combination. Supported ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. The bare token `count` is shorthand for `:countall:count`.
-
-`ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]` returns a same-length DataList. Give exactly one decay keyword: `alpha` in `(0, 1]`, `span >= 1`, or `halflife > 0`. `adjust`/`bias` default to no, `minobs` to 1.
-
-`rolling` also accepts `cov <other>` and `beta <other>`, which consume the next token as a second DataList variable before the usual `minobs` / `center` / `as` options. `beta` is `Cov(var, other) / Var(other)` and yields nil on a flat benchmark window.
-
-`resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [...] [as <var>]` aggregates time-keyed rows into calendar periods, labelling each row with the period's final day and omitting empty periods. `op` uses the `groupby` operator names; `:name` renames the output column, and without it the source name is kept. `<timecol>` must hold real `time.Time` values — a CSV load leaves dates as strings and `resample` rejects them with a row-numbered error; run `parsedates` first.
-
-`parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]` converts date strings to `time.Time`. A DataList converts whole; a DataTable requires `cols` (names, or Excel indices like `A`) and errors without it. `layout` takes a Go reference layout and may be repeated — tried in order, first match wins; without it, common ISO shapes are tried. Cells no layout matches become nil, so `resample` reports them by row instead of silently accepting a half-converted column. The source variable is left untouched; the result goes to `as` or `$result`.
-
-`quant <form> ...` exposes the `quant` package: `sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`, `portfolio`, `frontier`. Series arguments are DataList variables holding per-period **returns** (or an equity curve for the drawdown forms) — passing prices produces a meaningless number, exactly as it would through the Go API. `periods`, `days`, and `confidence` are required positionals because the library refuses to invent an annualization factor; `rf`, `mar`, and `q` default to 0, and the VaR method defaults to `historical`. Scalar forms print `name=value` and store a `float64`; `capm` and `bs` store a one-row DataTable, `factor` stores one row per factor (`Factor, Exposure, StdErr, TValue, PValue`) plus a `<var>_alpha` table, and `drawdown` stores a DataList. `portfolio` and `frontier` are the two forms that take a **DataTable** of aligned per-period returns, one column per asset: `portfolio` stores an `Asset, Weight` table plus a one-row `<var>_stats`, and `frontier` stores one row per point with the fixed columns `ExpectedReturn, Variance, Volatility, SharpeRatio, Converged` followed by one weight column per asset. Their `min`/`max` options are comma-separated per-asset bounds in column order (default long-only `[0, 1]`, so a short position needs an explicit negative `min`), and a non-converged solve is reported as `converged=false` rather than as an error. Library errors come back verbatim behind a `quant <form>:` prefix.
-
-`fetch tw` reads the unauthenticated TWSE and TPEx daily datasets: `fetch tw <code> prices <from> <to> [market]`, `fetch tw <code> adjprices <from> <to> [market]`, `fetch tw exrights <from> <to> [market]`, `fetch tw institutional <date> [market]`, `fetch tw margin <date> [market]`, and `fetch tw quotes [market]`. Dates are `YYYY-MM-DD`; `market` is `twse`, `tpex`, or `auto` (the default). Build return series from `adjprices`/`AdjClose`, not `prices`/`Close` — the quoted price drops on an ex-dividend or ex-rights day without any loss to the holder. `adjprices` and `exrights` are TWSE-only, because TPEx publishes no dated ex-rights history; passing `tpex` returns an explicit error instead of an unadjusted table. Bad dates, `from` after `to`, and unknown markets are rejected before any request; library errors come back verbatim behind a `fetch tw:` prefix. Requests are spaced 300 ms apart with two retries — override with `insyra config fetch.tw.interval_ms <milliseconds>`.
-
-`describe <var> [by <col1>[,<col2>...]] [all true|false] [percentiles <p1,p2,...>] [as <var>]` creates a reusable summary DataTable. Without `as`, it saves to `$result`. `all true` includes non-numeric and mixed columns; `by` is DataTable-only and returns one row per group.
-
-`encode` is one-shot fit+transform only; it does not persist encoder state between CLI commands. For reusable train/test encoders, use the Go API.
-
-- `encode <var> onehot <col1[,col2,...]> [dropfirst true|false] [keeporiginal true|false] [nan category|error|skip] [unknown ignore|error|new] [prefix <p>] [sep <s>] [sortcats true|false] [as <var>]`
-- `encode <var> label <col> [newcol <name>] [sortby firstseen|lex|freq] [nan category|error|skip] [unknown ignore|error|new] [keeporiginal true|false] [as <var>]`
-- `encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]`
-
-`scale`, unlike `encode`, is **stateful**: `scale fit` stores a reusable scaler variable that `scale transform` / `scale inverse` apply, so you can fit on train and transform test with the same parameters. Scaler variables are session-only (not saved to a named environment). `minmax` defaults to `[0,1]` if `range` is omitted; `nil`/`NaN` are preserved and ignored when fitting; `show <scalerVar>` prints kind + fitted columns.
-
-- `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...>`
-- `scale transform <scalerVar> <tableVar> as <outVar>`
-- `scale inverse <scalerVar> <tableVar> as <outVar>`
-
-## Database (db) workflow notes
-
-- `db connect <name> <dsn>` registers a named connection in the current `ExecContext`. Pure-Go drivers cover sqlite, mysql, and postgres; passwords are masked in `db list` output.
-- DSN dialect prefix is required: `sqlite:`, `mysql:`, `postgres:` (or `postgresql:`). Both URL form (`mysql://...`) and native/libpq forms are accepted.
-- Connections are NOT persisted to the environment bundle — re-run `db connect` at the top of every session/script that needs SQL access.
-- `load sql <conn> <table>` accepts `where`, `order`, `limit`, `offset`, `cols`, `schema`, `indexcol`, `parsedates`. `load sql <conn> query "<SQL>"` supports only `params <v1> <v2> ...` (positional bind values, parsed as literals — no SQL injection from user-supplied values).
-- `save <var> sql <conn> <table>` accepts `if-exists fail|replace|append` (default `fail`), `batch N`, `schema <s>`, and the `rownames` flag.
-
-## Reference priority for agents
-
-When command behavior and docs conflict, trust in this order:
-
-1. `insyra help <cmd>` output (live binary; structured `Forms:` / `Examples:` for complex commands)
-2. `cli/commands/*.go` implementation (when you need to dig deeper than `help` exposes)
-3. `references/cli-command-guide.md` and `references/cli-command-usage.md` in this skill
-4. README and `Docs/cli-dsl.md`
-
-`help` and source code can never lie; markdown can drift between releases.
+1. Run `insyra version` and `insyra help`. Confirm the commands you plan to use exist.
+2. Choose the mode and the environment.
+3. Load, inspect, transform, analyse, save. Run `insyra help <command>` for each command you have not yet checked.
+4. Report the exact commands or the script you ran, and where every output went.

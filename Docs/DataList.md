@@ -50,6 +50,24 @@ type DataList struct {
 
 - **List Names**: Use snake-style Pascal case (e.g., `Factor_Loadings`, `Communalities`) to avoid spelling errors caused by spaces.
 
+### IDataList and IDataTable
+
+Many methods take an `IDataList` (or `IDataTable`) rather than a `*DataList`:
+
+```go
+func (dl *DataList) Concat(other IDataList) *DataList
+func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error)
+```
+
+In practice the argument is always a `*insyra.DataList` or
+`*insyra.DataTable`. Both interfaces declare an unexported method
+(`updateTimestamp()`) that is part of the interface, so **a type outside the
+`insyra` package cannot implement either one** — a third-party struct carrying
+every exported method still fails to satisfy `IDataList`. The interface is the
+parameter type for readability and to keep the signatures stable, not an
+extension point. If you have values of your own type, put them in a `*DataList`
+with `NewDataList` and pass that.
+
 ## Creating DataList
 
 ### NewDataList
@@ -792,6 +810,14 @@ dl := insyra.NewDataList(1.0, math.NaN(), 3.0, math.NaN(), 5.0)
 dl.FillNaNWithMean()
 // NaN values are replaced with mean (3.0)
 ```
+
+### FillWithMean
+
+```go
+func (dl *DataList) FillWithMean() *DataList
+```
+
+**Description:** Replaces `nil` and `math.NaN()` values in place with the mean of the observed numeric values, and returns the list for chaining. It leaves the list unchanged, with a warning, when there is no numeric value to average, or when the observed values are not all numeric, so a numeric mean is never written into a mixed or categorical column.
 
 ### Missing-Value Fill Methods
 
@@ -1691,6 +1717,32 @@ func (dl *DataList) Rolling(opts RollingOptions) *RollingDataList
 | `Cov(other *DataList)` | Sample covariance against `other` |
 | `Beta(other *DataList)` | Rolling beta, `Cov(src, other) / Var(other)` |
 
+The three paired reducers share the same rules:
+
+- The two lists are **aligned by index** and truncated to the shorter of the
+  two, so every position past the end of `other` is `nil`. The result keeps the
+  receiver's length — `[1 2 3 4 5]` against `[2 4 6]` gives
+  `[<nil> <nil> 1 <nil> <nil>]`.
+- Within a window, a position is **skipped** when either side is `nil` or
+  cannot be read as a number. A `NaN` is skipped too; a `±Inf` is not, so it
+  reaches the arithmetic and turns the result into `NaN`.
+- `Cov` and `Beta` use the **sample** covariance and the **sample** (n-1)
+  variance.
+- A window holding fewer than two valid pairs, or fewer than `MinObs`, emits
+  `nil`. `MinObs` defaults to `Window` when you leave it unset, so **a window
+  has to be completely valid by default** — set `MinObs` explicitly (at most
+  `Window`) to let the reducers work with a partly-missing window.
+
+`Beta` reads the receiver as the **asset** and `other` as the **benchmark**: it
+is `Cov(asset, benchmark) / Var(benchmark)`, so a beta above 1 means the asset
+moved more than the benchmark, and a beta of `0.5` means it moved half as much.
+Benchmark scale is *not* cancelled — doubling the benchmark halves the beta. A
+**flat** benchmark has zero variance, which leaves beta undefined, so the
+position is `nil`; `Cov` against the same flat benchmark is a plain `0`.
+Passing `other == nil` records `[WARNING] DataList.RollingBeta: other DataList
+is nil` on the receiving list and returns an **empty** result, not a
+`nil`-filled one. `MinObs` above `Window` is a warning and an empty result too.
+
 **Example:**
 
 ```go
@@ -1713,6 +1765,11 @@ corr := src.Rolling(insyra.RollingOptions{Window: 3}).Corr(y)
 cov := src.Rolling(insyra.RollingOptions{Window: 3}).Cov(y)
 beta := src.Rolling(insyra.RollingOptions{Window: 3}).Beta(y)
 ```
+
+`src` is `[1 2 3 4 5]` and `y` is `[2 4 6 8 10]`, so `y` is `2×src` and
+`beta` is `0.5` for every complete window — the two leading `nil`s are the
+positions whose 3-cell window runs off the front of the list. Swapping the
+arguments flips it: `y.Rolling(...).Beta(src)` is `2`.
 
 ### Exponentially weighted windows
 

@@ -29,15 +29,25 @@ func main() {
 
 ## Supported Chart Types
 
-| Chart Type | Function | Use Case |
-| ---------- | -------- | -------- |
-| Bar Chart | `CreateBarChart` | Comparing categories |
-| Histogram | `CreateHistogram` | Distribution analysis |
-| Line Chart | `CreateLineChart` | Trends over time |
-| Scatter Plot | `CreateScatterPlot` | Correlation analysis |
-| Step Chart | `CreateStepChart` | Discrete changes |
-| Function Plot | `CreateFunctionPlot` | Mathematical functions |
-| Heatmap | `CreateHeatmapChart` | Matrix visualization |
+Every `Create...` function here takes `data` as an `any` and type-switches on
+it, so the accepted types differ per chart and an unsupported one is a runtime
+`nil` rather than a compile error.
+
+| Chart Type | Function | Use Case | Accepts |
+| ---------- | -------- | -------- | ------- |
+| Bar Chart | `CreateBarChart` | Comparing categories | `[]float64`, `*insyra.DataList`, `insyra.IDataList` |
+| Histogram | `CreateHistogram` | Distribution analysis | `[]float64`, `*insyra.DataList`, `insyra.IDataList` |
+| Line Chart | `CreateLineChart` | Trends over time | `map[string][]float64`, `[]*insyra.DataList`, `[]insyra.IDataList` |
+| Scatter Plot | `CreateScatterPlot` | Correlation analysis | `map[string][][]float64`, `[]*insyra.DataList`, `[]insyra.IDataList` |
+| Step Chart | `CreateStepChart` | Discrete changes | `map[string][]float64`, `[]*insyra.DataList`, `[]insyra.IDataList` |
+| Function Plot | `CreateFunctionPlot` | Mathematical functions | `func(float64) float64` (its second argument, not a data structure) |
+| Heatmap | `CreateHeatmapChart` | Matrix visualization | `[][]float64`, `*insyra.DataTable`, `insyra.IDataTable` |
+
+The single-series charts take one list; the multi-series ones take a map or a
+slice of lists and read the series name from the map key or the list's name.
+Anything else — including a `[]insyra.IDataList` where the chart wants a single
+one, or a `[]*insyra.DataTable` where the heatmap wants a single one — is
+refused with a warning and a `nil` return.
 
 ## Saving Charts
 
@@ -45,7 +55,7 @@ func main() {
 func SaveChart(plt *plot.Plot, filename string)
 ```
 
-**Description:** Saves the chart to a file. The format is determined by the file extension.
+**Description:** Saves the chart to a file. The format is determined by the file extension. A chart that a `Create...` function refused to build is a `nil` `*plot.Plot`, which `SaveChart` cannot render — check for `nil` before saving.
 
 **Parameters:**
 
@@ -269,6 +279,17 @@ type FunctionPlotConfig struct {
 }
 ```
 
+`CreateFunctionPlot` samples the function to draw it, and the sample count is
+fixed at **100 points per unit of X range** — `int((XMax - XMin) * 100)`, with
+a floor of 2. Leaving both `XMin` and `XMax` at zero means the range `[-10, 10]`
+and 2,000 samples. Every other combination is your responsibility: `XMin: -1e6,
+XMax: 1e6` asks for 200,000,000 points. Nothing rejects that and nothing errors;
+the function is just evaluated once per point to work out the Y range and the
+plot then carries that many points, so a wide window turns into a very slow
+call rather than an error. Measured on an M3, a 200,000-point window took 2 ms
+and a 2,000,000-point window 14 ms. Keep the window to what the shape actually
+needs, and tighten it with `YMin`/`YMax` rather than widening `XMin`/`XMax`.
+
 **Example:**
 
 ```go
@@ -286,16 +307,15 @@ gplot.SaveChart(plt, "sine.png")
 
 // Custom function
 config2 := gplot.FunctionPlotConfig{
-    Title: "Quadratic Function",
-    XAxis: "x",
-    YAxis: "y",
-    Func: func(x float64) float64 {
-        return x*x - 4*x + 3
-    },
-    XMin: -2,
-    XMax: 6,
+    Title:     "Quadratic Function",
+    XAxisName: "x",
+    YAxisName: "y",
+    XMin:      -2,
+    XMax:      6,
 }
-plt2 := gplot.CreateFunctionPlot(config2)
+plt2 := gplot.CreateFunctionPlot(config2, func(x float64) float64 {
+    return x*x - 4*x + 3
+})
 gplot.SaveChart(plt2, "quadratic.png")
 ```
 
@@ -379,3 +399,20 @@ plt2 := gplot.CreateHeatmapChart(heatConfig, dt)
 - Choose appropriate bin counts for histograms (typically 10-30)
 - For publication, prefer SVG formats for vector graphics
 - Error bars should have the same length as the data
+
+## Things to be careful about
+
+### A series that does not match `XAxis` is dropped, and you still get a chart
+
+`CreateLineChart` and `CreateStepChart` check each series against the shared
+`XAxis` one at a time. A series whose length differs is skipped with a warning
+naming it, and the rest are drawn — the constructor still returns a chart. If
+every series is dropped, the result is not `nil`: it is a real `*plot.Plot`
+with axes and an empty drawing area, which saves to a perfectly valid file that
+shows nothing. When `XAxis` is left nil it is generated once for the whole
+chart, from the longest series for a map and from the first list otherwise, so
+a shorter series in the same map is what usually trips this.
+
+`CreateBarChart` treats a mismatched `ErrorBars` the same way: the lengths are
+compared, a warning names both, the error bars are left off, and the bars are
+drawn as usual.

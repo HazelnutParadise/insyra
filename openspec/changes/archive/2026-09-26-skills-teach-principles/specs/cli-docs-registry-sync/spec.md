@@ -1,9 +1,4 @@
-# cli-docs-registry-sync Specification
-
-## Purpose
-Keeps the CLI documentation true to the commands: every command's usage line in the three usage documents equals its `help` text, both topic lists name every command, and a command's `Usage` names every option it parses.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Every command is documented with its real usage
 
@@ -24,15 +19,3 @@ For every command in the CLI registry, `Docs/cli-dsl.md`'s command index SHALL h
 #### Scenario: A command is missing from a topic list
 - **WHEN** 新增的指令沒有出現在 `Docs/cli-dsl.md` 的 Command Groups
 - **THEN** 測試失敗並指出缺少哪個指令
-
-### Requirement: A command's Usage names every option it accepts
-
-A command's `Usage` string SHALL list every argument and option the command parses, and SHALL NOT mark a required argument as optional. A command's usage error SHALL show the same shape as its `Usage`.
-
-#### Scenario: A command that stores its result
-- **WHEN** 執行 `help pca` 或 `help regression`
-- **THEN** Usage 包含 `[as <var>]`
-
-#### Scenario: A required value
-- **WHEN** 執行 `help count`，或不帶參數執行 `count`
-- **THEN** Usage 與用法錯誤都寫成 `count <var> <value>`，不把 value 標成選填
