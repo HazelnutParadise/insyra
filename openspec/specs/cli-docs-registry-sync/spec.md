@@ -7,23 +7,23 @@ Keeps the CLI documentation true to the commands: every command's usage line in 
 
 ### Requirement: Every command is documented with its real usage
 
-For every command in the CLI registry, `Docs/cli-dsl.md`'s command index, `cli-command-usage.md` and `cli-command-guide.md` SHALL each have an entry whose usage line equals the command's `Usage` string. A documented entry that is not a registered command SHALL be allowed only for Cobra's `completion` and the guide's `load sql` and `save sql` sub-sections. A test SHALL enforce this and SHALL fail rather than pass when it parses implausibly few entries.
+For every command in the CLI registry, `Docs/cli-dsl.md`'s command index SHALL have an entry whose usage line equals the command's `Usage` string. A documented entry that is not a registered command SHALL be allowed only for Cobra's `completion`. A test SHALL enforce this and SHALL fail rather than pass when it parses implausibly few entries.
 
 #### Scenario: A command gains an option
-- **WHEN** 某個指令的 `Usage` 新增了一個選項，但文件沒有跟著改
-- **THEN** 測試失敗並指出是哪份文件的哪個指令
+- **WHEN** 某個指令的 `Usage` 新增了一個選項，但 `Docs/cli-dsl.md` 的指令索引沒有跟著改
+- **THEN** 測試失敗並指出是哪個指令
 
 #### Scenario: A command is added
-- **WHEN** 新增一個指令但沒有寫進三份文件
-- **THEN** 測試失敗並指出缺少的文件
+- **WHEN** 新增一個指令但沒有寫進 `Docs/cli-dsl.md` 的指令索引
+- **THEN** 測試失敗並指出缺少的指令
 
 ### Requirement: Every command appears in the topic lists
 
-`Docs/cli-dsl.md`'s command groups and `skills/use-insyra-cli/references/cli-commands.md` SHALL name every registered command. A test SHALL enforce this and SHALL fail rather than pass when it finds implausibly few names.
+`Docs/cli-dsl.md`'s command groups SHALL name every registered command. A test SHALL enforce this and SHALL fail rather than pass when it finds implausibly few names.
 
 #### Scenario: A command is missing from a topic list
-- **WHEN** 新增的指令沒有出現在 Command Groups 或 `cli-commands.md`
-- **THEN** 測試失敗並指出是哪一份清單缺少哪個指令
+- **WHEN** 新增的指令沒有出現在 `Docs/cli-dsl.md` 的 Command Groups
+- **THEN** 測試失敗並指出缺少哪個指令
 
 ### Requirement: A command's Usage names every option it accepts
 
