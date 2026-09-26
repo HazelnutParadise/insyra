@@ -131,10 +131,12 @@ func TestWait_CancelledCallRollsBackItsReservation(t *testing.T) {
 	}
 }
 
-// The whole point of the limiter is that two allowed calls are never closer
-// together than the interval — including around a cancelled caller, whose
-// rollback must not rewind past a slot someone else has already taken. This
-// asserts that invariant directly over a mix of cancelled and normal callers.
+// The whole point of the limiter is that the slots of two allowed calls are
+// never closer together than the interval — including around a cancelled
+// caller, whose rollback must not rewind past a slot someone else has already
+// taken. This asserts that invariant directly over a mix of cancelled and
+// normal callers. It asserts that through what a caller can observe: how late
+// the k-th allowed call returns.
 func TestWait_AllowedCallsAreNeverCloserThanTheInterval(t *testing.T) {
 	const interval = 40 * time.Millisecond
 	l := NewIntervalLimiter(interval)
@@ -144,6 +146,7 @@ func TestWait_AllowedCallsAreNeverCloserThanTheInterval(t *testing.T) {
 
 	cancelled, cancelAll := context.WithCancel(context.Background())
 
+	start := time.Now()
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
 		ctx := context.Background()
@@ -168,12 +171,14 @@ func TestWait_AllowedCallsAreNeverCloserThanTheInterval(t *testing.T) {
 		t.Fatalf("only %d callers were allowed through, want at least 4", len(allowed))
 	}
 	sort.Slice(allowed, func(i, j int) bool { return allowed[i].Before(allowed[j]) })
-	// The first allowed call sets the clock; each one after it must be a full
-	// interval later. Half the interval of slack absorbs scheduling jitter
-	// between the timer firing and the timestamp being taken.
-	for i := 1; i < len(allowed); i++ {
-		if gap := allowed[i].Sub(allowed[i-1]); gap < interval/2 {
-			t.Errorf("calls %d and %d were %v apart, want about %v", i-1, i, gap, interval)
+	// Each allowed call's slot is at least interval after the previous allowed
+	// call's slot, the first slot is no earlier than start, and no call returns
+	// before its slot. So the k-th allowed call to return, counting from 0,
+	// returned no earlier than start + k*interval. The bound holds however late
+	// the timestamps were taken, so it needs no slack.
+	for k, at := range allowed {
+		if elapsed := at.Sub(start); elapsed < time.Duration(k)*interval {
+			t.Errorf("allowed call %d returned %v after start, want at least %v", k, elapsed, time.Duration(k)*interval)
 		}
 	}
 }
