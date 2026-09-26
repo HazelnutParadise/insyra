@@ -31,7 +31,7 @@ List `<Dir>/Docs` first: older releases have fewer pages than this table.
 | `DataList.md` | one column of values: building it, reading cells, statistics, sorting, windows, missing values |
 | `DataTable.md` | tables: rows and columns, filtering, grouping, pivot, merge, encoding, scaling, reading and writing |
 | `CCL.md` | the column formula language: expression and statement modes, operators, functions, column references |
-| `isr.md` | the fluent syntax that is the recommended entry point for new code |
+| `isr.md` | the fluent syntax for convenient code, and what it costs |
 | `Configuration.md` | global settings: logging, error handling, thread safety, fatal errors |
 | `Decimal.md` | exact decimals for money and rates |
 | `stats.md` | tests, regression, correlation, ANOVA, PCA, factor analysis, clustering: assumptions and result fields |
@@ -52,7 +52,7 @@ List `<Dir>/Docs` first: older releases have fewer pages than this table.
 ## How to think in Insyra
 
 - **Two containers.** A `DataList` is one column of values, and a `DataTable` is a set of named columns. Almost every operation is a method on one of them, and the analysis packages (`stats`, `ml`, `quant` and the rest) take them as input. A cell can hold any Go value; `nil`, and `NaN` in a numeric column, mean missing.
-- **Two layers.** The root package is the implementation. `isr` wraps its types in a fluent syntax and is the preferred entry point for new code. `isr.UseDL` and `isr.UseDT` wrap a root value, and the wrapper embeds the root type, so the two layers mix freely.
+- **Two layers: `isr` for convenience, the root package for performance.** `isr` wraps the root types in a shorter, fluent syntax; use it where readable code matters more than speed. Use the root package where performance matters: some `isr` constructors convert or copy the data they are given, while a method called through the wrapper costs almost nothing extra. `isr.UseDL` and `isr.UseDT` wrap a root value, and the wrapper embeds the root type, so the two layers mix freely in one program.
 - **The suffix says what a method takes.** For columns, a method with no suffix (`GetCol`) or with `...ByIndex` takes an Excel-style letter (`"A"`, `"B"`, ..., `"AA"`), `...ByNumber` a position and `...ByName` a name. For rows, `...ByIndex` takes an integer. Some features try a column name first and a letter second. Read the doc comment of the method you call.
 - **Formulas for derived columns.** CCL is a small Excel-like language. Expression mode computes one column; statement mode assigns to columns and can create new ones.
 - **A pipeline of small, checked steps.** Read, look at what you read, clean, transform, analyse, then chart or export. Check each step's result before you build the next one on it.

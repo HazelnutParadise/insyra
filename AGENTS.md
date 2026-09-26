@@ -170,7 +170,7 @@ The root package defines everything central:
 
 | Package | Purpose |
 |---|---|
-| `isr/` | Syntax-sugar wrappers — **preferred entry point for new code** |
+| `isr/` | Syntax-sugar wrappers — **for convenient code; the root package for performance** |
 | `stats/` | Statistical tests (t-test, ANOVA, chi-square, PCA, regression, …) |
 | `plot/` | Interactive charts via go-echarts |
 | `gplot/` | Static publication charts via gonum/plot |
@@ -215,7 +215,7 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 - Thread safety is on by default via the actor model. `Config.Dangerously_TurnOffThreadSafety()` exists but is explicitly discouraged.
 - `AtomicDo` serializes access to ONE instance (same-instance nesting is safe, e.g. `Stdev`→`Var`). To read/operate on MULTIPLE instances atomically, use `insyra.AtomicDoAll(func(){...}, a, b, ...)` — it locks all given DataList/DataTable instances together in a deadlock-free order. Do NOT nest `AtomicDo` on a *different* instance inside a callback: that inner call runs WITHOUT locking the other instance and can race a concurrent mutation. (`engine/atomic.AtomicDoN([]*Actor, f)` is the same primitive for arbitrary user structs holding an `*atomic.Actor`.)
 - Error handling uses an instance-level `Err()` pattern rather than returning errors from every method (check `.Err()` after chained calls; `PopErr()` reads and clears it). Wrapper packages such as `isr` record their failures through the exported `SetErr(packageName, funcName, msg, args...)`.
-- The `isr` package is the recommended public API for new projects; the root `insyra` package is the implementation layer.
+- Use the `isr` package for convenient syntax and the root `insyra` package where performance matters: some `isr` constructors convert or copy their input (building a table from lists measured about 9x slower than `insyra.NewDataTable`), while methods called through the wrapper cost almost nothing extra.
 
 ## Docs, Changelog & Skills Must Stay in Sync
 

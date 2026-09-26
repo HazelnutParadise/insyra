@@ -10,7 +10,7 @@ The `isr` package provides a simplified, method-chaining syntax for the `insyra`
 
 **Key Feature**: Full method chaining support
 
-**Recommended entry point**: new code should start here. The root `insyra` package is the implementation layer underneath, so it is where anything `isr` does not wrap is reached.
+**When to use it**: `isr` is for convenient, readable code; the root `insyra` package is for performance. A method called through an `isr` wrapper costs almost nothing extra, but some `isr` constructors convert or copy the data they are given. Measured on an M3, building a table from eight 100,000-value lists took 15 ms and 110 MB with `DT.From(isr.DLs{...})` against 1.4–1.8 ms and 12.8 MB with `insyra.NewDataTable`, because `DT.From` copies every list. The two mix freely, so write most code with `isr` and switch a hot path to the root package. The root package is also where anything `isr` does not wrap is reached.
 
 **Not wrapped**: `isr` has no `Describe` of its own. A wrapper holds the root value, so `t.Describe()` and `dl.Describe()` still work — they resolve to `insyra.DataTable.Describe` and `insyra.DataList.Describe` and return a plain `*insyra.DataTable`, so the chain ends at the summary table.
 
