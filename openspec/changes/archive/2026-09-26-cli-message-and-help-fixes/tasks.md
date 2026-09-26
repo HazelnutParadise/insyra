@@ -8,4 +8,4 @@
 - [x] 2.3 九個 regexp 提到套件層。
 - [x] 3.1 測試；`go test ./...`、`go vet`、`golangci-lint run`。
 - [x] 3.2 兩份 CHANGELOG、`api-review.md`、`delivery-status.md`。
-- [ ] 3.3 關閉 #324、#326、#327、#296。
+- [x] 3.3 關閉 #324、#326、#327、#296。

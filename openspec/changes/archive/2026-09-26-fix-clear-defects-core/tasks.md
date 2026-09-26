@@ -22,4 +22,4 @@
 - [x] 5.1 `go test ./...`、`golangci-lint run`。
 - [x] 5.2 兩份 CHANGELOG。
 - [x] 5.3 `api-review.md` 與 `delivery-status.md`。
-- [ ] 5.4 關閉 #337、#338、#340；#228 留言說明只做了前半。
+- [x] 5.4 關閉 #337、#338、#340；#228 留言說明只做了前半。

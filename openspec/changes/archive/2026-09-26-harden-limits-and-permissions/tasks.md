@@ -9,4 +9,4 @@
 - [x] 2.5 IPC accept 迴圈、連線期限、socket 檔清理。
 - [x] 3.1 `go test ./...`、`go vet ./...`、`golangci-lint run`。
 - [x] 3.2 兩份 CHANGELOG、`api-review.md`、`delivery-status.md`。
-- [ ] 3.3 關閉 #291、#292、#293、#295、#297、#339；#294 留言說明只做了 UnzipSizeLimit。
+- [x] 3.3 關閉 #291、#292、#293、#295、#297、#339；#294 留言說明只做了 UnzipSizeLimit。

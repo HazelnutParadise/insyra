@@ -8,4 +8,4 @@
 - [x] 3.1 `go test ./...`、`golangci-lint run`。
 - [x] 3.2 `Docs/CCL.md`、兩份 CHANGELOG。
 - [x] 3.3 `api-review.md`、`delivery-status.md`。
-- [ ] 3.4 關閉 #365、#366、#368；#248 留言說明只做了 panic 那部分。
+- [x] 3.4 關閉 #365、#366、#368；#248 留言說明只做了 panic 那部分。
