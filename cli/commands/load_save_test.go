@@ -347,3 +347,29 @@ func TestSave_Excel_UnnamedSheetRefusalOffersBothWays(t *testing.T) {
 		t.Fatalf("expected a refusal offering sheet <name> and if-exists replace, got %v", err)
 	}
 }
+
+// The formula guard is on by default for CSV; allowformulas true writes the
+// text exactly, for a file that is read back by a program.
+func TestSave_CSV_GuardsFormulasByDefault(t *testing.T) {
+	dir := t.TempDir()
+	ctx := newTestExecContext(t)
+	ctx.Vars["t"] = insyra.NewDataTable(insyra.NewDataList("=1+1", -5).SetName("v"))
+
+	guarded := filepath.Join(dir, "guarded.csv")
+	if err := runSaveCommand(ctx, []string{"t", guarded}); err != nil {
+		t.Fatal(err)
+	}
+	if body, _ := os.ReadFile(guarded); string(body) != "v\n'=1+1\n-5\n" {
+		t.Fatalf("default save wrote %q", body)
+	}
+	raw := filepath.Join(dir, "raw.csv")
+	if err := runSaveCommand(ctx, []string{"t", raw, "allowformulas", "true"}); err != nil {
+		t.Fatal(err)
+	}
+	if body, _ := os.ReadFile(raw); string(body) != "v\n=1+1\n-5\n" {
+		t.Fatalf("allowformulas true wrote %q", body)
+	}
+	if err := runSaveCommand(ctx, []string{"t", filepath.Join(dir, "x.json"), "allowformulas", "true"}); err == nil {
+		t.Fatal("allowformulas was accepted for JSON")
+	}
+}

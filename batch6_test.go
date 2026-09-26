@@ -99,9 +99,7 @@ func TestToCSVFormulaSanitization(t *testing.T) {
 	}
 
 	safe := filepath.Join(dir, "safe.csv")
-	if err := dt.ToCSV(safe, CSVWriteOptions{
-		SanitizeFormulas: true,
-	}); err != nil {
+	if err := dt.ToCSV(safe); err != nil { // the guard is on by default
 		t.Fatal(err)
 	}
 	out := string(mustRead(t, safe))

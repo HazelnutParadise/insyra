@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -44,16 +45,19 @@ type CSVWriteOptions struct {
 	// IncludeBOM writes a UTF-8 byte-order mark, which some spreadsheet
 	// programs need to read the file as UTF-8.
 	IncludeBOM bool
-	// SanitizeFormulas guards against CSV formula injection: a spreadsheet
-	// opening the file executes a cell that begins with =, +, - or @, so a
-	// value that came from an untrusted source can run there. With this set,
-	// such a cell is prefixed with a single quote, which spreadsheets treat as
-	// "this is text".
+	// AllowFormulas writes text that a spreadsheet would run as a formula
+	// exactly as it is. By default such text is guarded: a spreadsheet opening
+	// the file runs a cell that begins with =, +, - or @, so a value from an
+	// untrusted source could execute there, and the guard prefixes it with a
+	// single quote, which spreadsheets read as "this is text". Numbers, and
+	// text that is only a number such as "-5" or "+886912345678", are never
+	// changed. Set AllowFormulas when the file is read back by a program and
+	// every value must come back exactly as it was written.
+	AllowFormulas bool
+	// SanitizeFormulas has no effect: the guard it turned on is the default.
 	//
-	// It is off by default because it changes the value written: a table saved
-	// with it on and read back is not identical to the original. Turn it on
-	// when the file is meant to be opened in a spreadsheet and the data is not
-	// wholly your own.
+	// Deprecated: remove it; set AllowFormulas to turn the guard off. The
+	// field is removed in the release after the one that deprecated it.
 	SanitizeFormulas bool
 }
 
@@ -65,9 +69,10 @@ func (dt *DataTable) ToCSVWithOptions(filePath string, opts CSVWriteOptions) err
 	return dt.ToCSV(filePath, opts)
 }
 
-// sanitizeCSVFormula prefixes a value a spreadsheet would execute with a
-// single quote. Only leading =, +, - and @ (and the whitespace a spreadsheet
-// skips before them) start a formula.
+// sanitizeCSVFormula prefixes text a spreadsheet would execute with a single
+// quote. Only leading =, +, - and @ (and the whitespace a spreadsheet skips
+// before them) start a formula, and text that is only a number is left
+// alone: a spreadsheet reads "-5" as the number it is and runs nothing.
 func sanitizeCSVFormula(s string) string {
 	trimmed := strings.TrimLeft(s, " \t\r\n")
 	if trimmed == "" {
@@ -75,6 +80,9 @@ func sanitizeCSVFormula(s string) string {
 	}
 	switch trimmed[0] {
 	case '=', '+', '-', '@':
+		if _, err := strconv.ParseFloat(strings.TrimSpace(trimmed), 64); err == nil {
+			return s
+		}
 		return "'" + s
 	}
 	return s
@@ -148,7 +156,9 @@ func (dt *DataTable) WriteCSV(w io.Writer, options ...CSVWriteOptions) error {
 						// Same rule as ToJSON: %v wrote 1,500,000 as
 						// "1.5e+06" while ToJSON wrote 1500000.
 						cell := utils.ValueText(value)
-						if opts.SanitizeFormulas {
+						// A number's text, like any text that is only a
+						// number, passes through: nothing runs.
+						if !opts.AllowFormulas {
 							cell = sanitizeCSVFormula(cell)
 						}
 						record = append(record, cell)

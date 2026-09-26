@@ -13,16 +13,17 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "save",
-		Usage:       "save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]",
+		Usage:       "save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [allowformulas true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]",
 		Description: "Save a DataTable variable to a file or SQL connection",
 		Forms: []string{
-			"save <var> <file.csv> [headers true|false] [rownames true|false] [bom true|false]",
+			"save <var> <file.csv> [headers true|false] [rownames true|false] [bom true|false] [allowformulas true|false]",
 			"save <var> <file.json> [headers true|false]",
 			"save <var> <file.xlsx> [sheet <name>] [if-exists fail|replace] [headers true|false] [rownames true|false]",
 			"save <var> <file.parquet>",
 			"save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]",
 			"",
-			"File option defaults: headers=true, rownames=false, bom=false.",
+			"File option defaults: headers=true, rownames=false, bom=false, allowformulas=false.",
+			"CSV guards text a spreadsheet would run as a formula (=, +, -, @) with a leading quote; allowformulas true writes it as is.",
 			"Excel writes one sheet (default Sheet1) and leaves the workbook's other sheets alone.",
 			"Excel if-exists default: fail, so an existing sheet is only overwritten with 'if-exists replace'.",
 			"Booleans accept true|false|yes|no|on|off|1|0.",
@@ -43,7 +44,7 @@ func init() {
 
 func runSaveCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [...]")
+		return fmt.Errorf("usage: save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [allowformulas true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [...]")
 	}
 	table, err := getDataTableVar(ctx, args[0])
 	if err != nil {
@@ -63,9 +64,12 @@ func runSaveCommand(ctx *ExecContext, args []string) error {
 	if kind != "excel" && (opts.SheetSet || opts.IfExistsSet) {
 		return fmt.Errorf("save: 'sheet' and 'if-exists' only apply to Excel files (.xlsx)")
 	}
+	if kind != "csv" && opts.AllowFormulasSet {
+		return fmt.Errorf("save: 'allowformulas' only applies to CSV files")
+	}
 	switch kind {
 	case "csv":
-		err = table.ToCSV(path, insyra.CSVWriteOptions{NoHeaderRow: !opts.Headers, HasRowNames: opts.RowNames, IncludeBOM: opts.BOM})
+		err = table.ToCSV(path, insyra.CSVWriteOptions{NoHeaderRow: !opts.Headers, HasRowNames: opts.RowNames, IncludeBOM: opts.BOM, AllowFormulas: opts.AllowFormulas})
 	case "json":
 		if opts.RowNamesSet || opts.BOMSet {
 			return fmt.Errorf("save json: only 'headers' is supported (controls whether values use column names as keys)")
@@ -123,10 +127,14 @@ type fileSaveOptions struct {
 	RowNamesSet bool
 	BOM         bool
 	BOMSet      bool
-	Sheet       string
-	SheetSet    bool
-	IfExists    insyra.SheetExistsPolicy
-	IfExistsSet bool
+	// AllowFormulas turns off the CSV formula guard, for a file read back by
+	// a program rather than opened in a spreadsheet.
+	AllowFormulas    bool
+	AllowFormulasSet bool
+	Sheet            string
+	SheetSet         bool
+	IfExists         insyra.SheetExistsPolicy
+	IfExistsSet      bool
 }
 
 func parseFileSaveOptions(args []string) (fileSaveOptions, error) {
@@ -164,6 +172,18 @@ func parseFileSaveOptions(args []string) (fileSaveOptions, error) {
 			opts.RowNames = b
 			opts.RowNamesSet = true
 			i += 2
+		case "allowformulas":
+			v, err := next()
+			if err != nil {
+				return opts, err
+			}
+			b, err := parseFlexBool(v)
+			if err != nil {
+				return opts, fmt.Errorf("save: invalid value for allowformulas: %w", err)
+			}
+			opts.AllowFormulas = b
+			opts.AllowFormulasSet = true
+			i += 2
 		case "bom":
 			v, err := next()
 			if err != nil {
@@ -200,7 +220,7 @@ func parseFileSaveOptions(args []string) (fileSaveOptions, error) {
 			opts.IfExistsSet = true
 			i += 2
 		default:
-			return opts, fmt.Errorf("save: unknown option %q (supported: headers, rownames, bom, sheet, if-exists)", args[i])
+			return opts, fmt.Errorf("save: unknown option %q (supported: headers, rownames, bom, allowformulas, sheet, if-exists)", args[i])
 		}
 	}
 	return opts, nil
