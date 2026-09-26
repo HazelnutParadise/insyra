@@ -600,18 +600,16 @@ func ReadExcel(r io.Reader, sheetName string, rowNames bool, headerRow bool) (*D
 func (dt *DataTable) ToCSV(filePath string, opts ...CSVWriteOptions) error
 
 type CSVWriteOptions struct {
-    NoHeaderRow      bool // leave out the row of column names, which is written by default
-    HasRowNames      bool // write the row names as the first column
-    IncludeBOM       bool // write a UTF-8 byte-order mark
-    SanitizeFormulas bool // prefix =, +, -, @ cells with a single quote
+    NoHeaderRow   bool // leave out the row of column names, which is written by default
+    HasRowNames   bool // write the row names as the first column
+    IncludeBOM    bool // write a UTF-8 byte-order mark
+    AllowFormulas bool // write text a spreadsheet would run as a formula as is (guarded by default)
 }
 ```
 
 **Description:** Saves the DataTable as a CSV file. With no options, the column names are written as the first row and there are no row names. `time.Time` cells are written in RFC 3339 form (with nanoseconds), which is the first layout `ParseDates` tries, so a table written here reads back as the same instants. Numbers are written by the same rule as `ToJSON`: a plain decimal from 0.000001 up to (not including) 1e21, exponent form outside, so a revenue of 1,500,000 is written `1500000` rather than `1.5e+06`. Read back, every number is the same value. The file is written to a temporary file in the same directory and renamed into place once every write succeeded, so a failure (disk full, closed pipe) returns an error and never leaves a truncated file at `filePath`. `ToJSON` follows the same rule.
 
-`SanitizeFormulas` is off by default because it changes the value written: a table saved with it on and read back is not identical to the original.
-
-> **Opening the file in a spreadsheet:** a cell whose text begins with `=`, `+`, `-` or `@` is a formula to Excel, LibreOffice and Google Sheets, and they will execute it. `ToCSV` writes such a cell unchanged, so a round trip keeps the exact value. When the file is meant to be opened in a spreadsheet and the data is not wholly your own, pass `CSVWriteOptions{SanitizeFormulas: true}`, which prefixes those cells with a single quote.
+> **Formula guard (on by default):** Excel, LibreOffice and Google Sheets run a cell whose text begins with `=`, `+`, `-` or `@` as a formula, so text from outside, a form answer such as `=HYPERLINK(...)`, could execute when someone opens the file. `ToCSV` therefore writes such text with a leading single quote, which a spreadsheet shows as plain text: `=1+1` is written `'=1+1`, `@SUM(A1)` is written `'@SUM(A1)`. Numbers, and text that is only a number such as `-5` or `+886912345678`, are never changed, since nothing runs. The quote is part of the file, so a program reading it back sees it; when the file is meant to be read back exactly, pass `CSVWriteOptions{AllowFormulas: true}`.
 
 **Parameters:**
 

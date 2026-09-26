@@ -128,7 +128,7 @@ Organized by topic. Each Usage line is the command's own `insyra help <command>`
 
 ### `save`
 - Description: Save a DataTable variable to a file or SQL connection
-- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]`
+- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [allowformulas true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]`
 - Defaults: `headers=true`, `rownames=false`, `bom=false`. Booleans accept `true|false|yes|no|on|off|1|0`.
 - Excel (`.xlsx`, `.xlsm`): writes one sheet (`sheet <name>`, default `Sheet1`) and keeps the workbook's other sheets. An existing sheet is refused unless `if-exists replace` is given. `.xls` cannot be written. `sheet` and `if-exists` are rejected for other file types.
 - Examples:

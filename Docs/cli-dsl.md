@@ -345,6 +345,7 @@ insyra --env demo run pipeline.isr
 - `ragged true|false` — read-side, CSV only. `ragged true` pads short rows with empty cells and keeps extra cells in automatically named columns. Padded cells count as empty for type inference (an otherwise-integer column becomes float with `NaN`); combine with `infer false` to keep cells verbatim. Default `false`, so uneven rows remain strict errors unless enabled.
 - `trimspace true|false` — read-side, CSV only. `trimspace true` ignores leading whitespace before fields, including before quoted fields. Default `false`.
 - `bom true|false` — save-side, write a UTF-8 BOM (helps Windows Excel open Chinese CSVs). Default `false`.
+- `allowformulas true|false` — save-side, CSV only. By default text a spreadsheet would run as a formula (starting with `=`, `+`, `-` or `@`, and not just a number) is written with a leading `'` so Excel shows it as text; `allowformulas true` writes it exactly, for a file a program will read back. Default `false`.
 
 Boolean values accept `true|false`, `yes|no`, `on|off`, `1|0` (case-insensitive).
 
@@ -809,7 +810,7 @@ Source policy:
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |
 | `sample` | `sample <var> <n>\|frac <frac>\|shuffle [replace true\|false] [seed N] [as <var>]` | Randomly sample or shuffle a DataList/DataTable |
-| `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] [sheet <name>] [if-exists fail\|replace] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames [true\|false]]` | Save a DataTable variable to a file or SQL connection |
+| `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] [allowformulas true\|false] [sheet <name>] [if-exists fail\|replace] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames [true\|false]]` | Save a DataTable variable to a file or SQL connection |
 | `scale` | `scale fit std\|minmax\|robust\|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...> \| scale transform\|inverse <scalerVar> <tableVar> as <outVar>` | Fit a reusable feature scaler and transform/inverse tables with it |
 | `set` | `set <var> <row> <col> <value>` | Set single element in DataTable |
 | `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |

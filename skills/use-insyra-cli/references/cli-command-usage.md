@@ -531,10 +531,11 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `save`
 - Description: Save a DataTable variable to a file or SQL connection
-- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]`
+- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] [allowformulas true|false] [sheet <name>] [if-exists fail|replace] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]`
 - File options (CSV):
 	- `headers true|false` — write column names as the first row. Default `true`.
 	- `rownames true|false` — write row names as the first column. Default `false`.
+	- `allowformulas true|false` — CSV only. Default `false`: text that a spreadsheet would run as a formula (`=`, `+`, `-`, `@`, not just a number) is written with a leading `'`. Use `true` when the file is read back by a program and must be exact.
 	- `bom true|false` — write a UTF-8 BOM (helps Excel for Windows open Chinese CSVs cleanly). Default `false`.
 	- JSON: only `headers` applies (controls whether values use column names as keys); `rownames`/`bom` are rejected.
 	- Excel (`.xlsx`, `.xlsm`): `headers` and `rownames` as for CSV; `bom` is rejected.

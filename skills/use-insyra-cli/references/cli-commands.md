@@ -39,7 +39,7 @@ Every registered command appears here, grouped by topic, and a test in `cli/comm
   - File options: `headers true|false` (default `true`), `rownames true|false` (default `false`), `encoding <enc>` (CSV only), `infer true|false`, `ragged true|false`, `trimspace true|false` (CSV only), `sheet <name>` (Excel)
 - `read` - Quick preview a file without saving variable (forwards the same file options as `load`)
 - `save` - Save a DataTable variable to a file or SQL connection
-  - File options: `headers true|false` (default `true`), `rownames true|false` (default `false`), `bom true|false` (default `false`, CSV only)
+  - File options: `headers true|false` (default `true`), `rownames true|false` (default `false`), `bom true|false` (default `false`, CSV only), `allowformulas true|false` (default `false`, CSV only: by default `=`/`+`/`-`/`@` text that is not just a number gets a leading `'` so Excel will not run it)
 - `convert` - Convert file formats (csv<->xlsx)
 
 ## Database (sqlite / mysql / postgres, pure-Go drivers)

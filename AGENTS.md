@@ -268,7 +268,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 ### [2026-09-26] — remove the underscore reader and writer names one release after their replacements
 - **Where**: `read.go` (`ReadCSV_File`, `ReadCSV_FileWithOptions`, `ReadCSV_String`, `ReadCSV_StringWithOptions`, `ReadJSON_File`), `datatable_csv.go` (`ToCSVWithOptions`), `datatable_json.go` (`ToJSON_Bytes`, `ToJSON_String`) and the two JSON methods in `IDataTable`
 - **What**: `read-write-names` gave each reader and writer one name taking an optional options struct, by the owner's rulings on #213. The old names stay one release as Deprecated wrappers that keep their old meaning.
-- **Suggestion**: delete them in the same release as `Slice2DToDataTable` and `ScalerParams.PassThrough`, with the tests that pin their old meaning (`TestDeprecatedReadWriteNamesKeepTheirMeaning`, `TestReadCSV_StringLegacyNoHeaderMatchesNoHeaderRow`) and a BREAKING changelog entry.
+- **Suggestion**: delete them, and `CSVWriteOptions.SanitizeFormulas` (a no-op since `csv-formula-guard-by-default` made the guard the default), in the same release as `Slice2DToDataTable` and `ScalerParams.PassThrough`, with the tests that pin their old meaning (`TestDeprecatedReadWriteNamesKeepTheirMeaning`, `TestReadCSV_StringLegacyNoHeaderMatchesNoHeaderRow`) and a BREAKING changelog entry.
 - **Status**: pending
 
 ### [2026-09-26] — remove `ScalerParams.PassThrough` one release after it went dead
