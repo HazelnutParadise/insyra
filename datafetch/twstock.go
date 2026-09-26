@@ -27,7 +27,9 @@ const (
 type TWStockConfig struct {
 	// Timeout is the per-request timeout. Default: 15s.
 	Timeout time.Duration
-	// Interval is the minimum spacing between requests. Zero disables throttling.
+	// Interval is the minimum spacing between the scheduled starts of successive
+	// requests; no request starts before its scheduled time. Zero disables
+	// throttling.
 	Interval time.Duration
 	// UserAgent is the HTTP User-Agent header.
 	UserAgent string

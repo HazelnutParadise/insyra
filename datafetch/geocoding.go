@@ -39,8 +39,9 @@ const (
 type TWGeocodingConfig struct {
 	// Timeout is the per-request timeout. Default: 15s.
 	Timeout time.Duration
-	// Interval is the minimum spacing between requests (client-side throttle).
-	// 0 disables throttling. Must be >= 0.
+	// Interval is the minimum spacing between the scheduled starts of successive
+	// requests (client-side throttle); no request starts before its scheduled
+	// time. 0 disables throttling. Must be >= 0.
 	Interval time.Duration
 	// UserAgent is the HTTP User-Agent header. Default: a browser-like UA.
 	UserAgent string

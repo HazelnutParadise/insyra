@@ -4,14 +4,15 @@
 `datafetch` 對證交所（TWSE）與櫃買中心（TPEx）免登入端點的客戶端：逐月分頁的個股日線、當日三大法人買賣超、融資融券餘額、全市場日行情，輸出型別化的 `DataTable`（民國日期轉 `time.Time`、佔位符轉 nil）；含節流、重試、`Auto` 市場 fallback，測試以錄製的 fixture 回放、live 存取需 opt-in。
 
 ## Requirements
+
 ### Requirement: TWStock client configuration and transport
 
-`datafetch` SHALL 提供 `TWStockConfig{Timeout, Interval, UserAgent string, Retries int, RetryBackoff time.Duration, Concurrency int}` 與 `TWStock(cfg TWStockConfig) (*twStock, error)`，零值欄位 SHALL 套用與 `YFinanceConfig.normalize` 相同型態的預設。每次請求 SHALL 遵守 `Interval` 節流；HTTP 非 2xx、逾時、JSON 解析失敗、或 payload `stat`／`tables` 表示無資料以外的錯誤 SHALL 依 `Retries` 與 `RetryBackoff` 重試後回錯。`TWMarket` SHALL 為 `TWMarketTWSE`、`TWMarketTPEx`、`TWMarketAuto`；`Auto` SHALL 先查 TWSE，收到「查無資料」時再查 TPEx。
+`datafetch` SHALL 提供 `TWStockConfig{Timeout, Interval, UserAgent string, Retries int, RetryBackoff time.Duration, Concurrency int}` 與 `TWStock(cfg TWStockConfig) (*twStock, error)`，零值欄位 SHALL 套用與 `YFinanceConfig.normalize` 相同型態的預設。每次請求 SHALL 遵守 `Interval` 節流：相鄰兩個請求排定的開始時間至少相隔 `Interval`，且每個請求都不會早於排定的時間開始。客戶端在排定之後、送出之前的處理時間不在這個保證之內。HTTP 非 2xx、逾時、JSON 解析失敗、或 payload `stat`／`tables` 表示無資料以外的錯誤 SHALL 依 `Retries` 與 `RetryBackoff` 重試後回錯。`TWMarket` SHALL 為 `TWMarketTWSE`、`TWMarketTPEx`、`TWMarketAuto`；`Auto` SHALL 先查 TWSE，收到「查無資料」時再查 TPEx。
 
 #### Scenario: Throttle is honoured
 
-- **WHEN** `Interval: 200ms`，連續發出兩個請求
-- **THEN** 第二個請求的送出時間距第一個至少 200ms
+- **WHEN** `Interval: 200ms`，在時間 t0 之後連續發出兩個請求
+- **THEN** 第二個請求不會在 t0 之後 200ms 以內送出
 
 #### Scenario: Retry then fail
 
@@ -69,4 +70,3 @@
 
 - **WHEN** 未設定 `INSYRA_RUN_LIVE_TWSTOCK`
 - **THEN** `go test ./datafetch/...` 不發出對 twse.com.tw 或 tpex.org.tw 的請求
-
