@@ -864,10 +864,16 @@ func sigmoidVJP(output, upstream *Tensor) *Tensor {
 	return gradient
 }
 
+// tanhVJP explicitly converts every step to float32. Go's specification guarantees
+// that these conversions round and cannot be fused with adjacent operations, so
+// every platform returns RN(upstream · RN(1 − RN(y·y))) under IEEE 754 reproducible
+// evaluation (§11).
 func tanhVJP(output, upstream *Tensor) *Tensor {
 	gradient, _ := newZeroFloat32Tensor(output.shape)
 	for index, value := range output.data {
-		gradient.data[index] = upstream.data[index] * (1 - value*value)
+		square := float32(value * value)
+		complement := float32(1 - square)
+		gradient.data[index] = float32(upstream.data[index] * complement)
 	}
 	return gradient
 }
