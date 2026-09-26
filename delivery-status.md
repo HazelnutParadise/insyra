@@ -19,7 +19,7 @@ None in flight. Nothing left can be picked up without the owner answering someth
 
 **No `severity:high` issue is open.** #208's K-7 (`IDataList`/`IDataTable` carrying unexported methods, so nothing outside the module can implement them) is the one that used to sit with them and still needs a ruling.
 
-**Awaiting a ruling:** #315 how CLI tokens name a column, what to do with two unmerged legacy branches (`copilot/fix-aa06638c-…`, `lingo-to-lp`), and the `AGENTS.md` follow-ups on a nil-receiver guard on `Err()`, the 53 CLI commands that still ignore a trailing argument, `Counter()` keeping `int(1)` and `int64(1)` apart.
+**Awaiting a ruling:** #315 how CLI tokens name a column, and the `AGENTS.md` follow-ups on a nil-receiver guard on `Err()`, the 53 CLI commands that still ignore a trailing argument, `Counter()` keeping `int(1)` and `int64(1)` apart.
 
 ## Latest Milestones
 - 2026-09-26 `csvxl-formula-guard`: `ExcelToCsv` and `EachExcelToCsv` guard formula-like text by default like the core writer, since a text cell that is safe in a workbook becomes a formula again in a CSV; `ExcelToCsvOptions{Sheets, AllowFormulas}` replaced the trailing sheet list, by the owner's choice, and the guard itself now lives once in `internal/csv`. CLI `convert` gained `allowformulas` and rejects arguments it does not understand.
@@ -119,6 +119,7 @@ An owner decision on the next fork taken, then that change's tests green under `
 Owner decision needed: pick from the decision-fork list above. Most of the remaining `severity:med` issues are API redesigns that need the same kind of decision. The test-coverage group (#304–#309) is finished. The decision-free backlog is empty and everything left needs a ruling. Both defects the review's own tests turned up are now closed.
 
 ## Decision Delta Since Previous Handoff
+- The two unmerged legacy branches stay as they are: `copilot/fix-aa06638c-…` (Copilot's LINGO `@SUM`/`@FOR` support, its PR #74 closed unmerged) and `lingo-to-lp` (an early LINGO lexer and processor from 2024). The owner ruled on 2026-09-26 to neither delete, archive nor revive them.
 - CSV output guards formula-like text by default; the owner chose protection over byte-exact round trips on 2026-09-26 (#285), once numbers and number-only text were exempt. A program that must read back exactly what it wrote sets `AllowFormulas`.
 - `finance.Zero` stays an exported variable: the owner ruled on 2026-09-26 (#248) that nobody reassigns it, and making it a function would rewrite every `finance.Zero` a caller has written. The two other halves of #248 were already fixed (the `RoundUnnecessary` panic, and the last-`Options`-wins rule, now an error).
 - An exported function in Insyra is declared with `func`, never held in a variable, and has one name. Where two names existed, the one in the `Read*` family stays: the owner chose `ReadSlice2D` over `Slice2DToDataTable` on 2026-09-25, with the other kept one release as Deprecated, the schedule `SetDontPanic` set (exported-functions-are-functions).
