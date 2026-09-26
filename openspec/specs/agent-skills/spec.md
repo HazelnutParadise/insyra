@@ -19,7 +19,7 @@ The agent skills distributed under `skills/` teach agents how to use Insyra: whe
 
 ### Requirement: Lookups start from the version in use
 
-Each skill SHALL direct an agent to documentation for the version the project or binary actually uses, before any other source. For the library, that is the module directory given by `go list -m -f '{{.Dir}}' github.com/HazelnutParadise/insyra`, with its `Docs/`, `go doc`, and the source and tests for that version. For the CLI, it is `insyra help` and `insyra help <command>`. Released documentation at the matching tag, the documentation site and pkg.go.dev SHALL come after.
+Each skill SHALL direct an agent to documentation for the version the project or binary actually uses, before any other source. For the library, that is the module directory that `go mod download -json github.com/HazelnutParadise/insyra` prints inside the project, with its `Docs/`, `go doc`, and the source and tests for that version. For the CLI, it is `insyra help` and `insyra help <command>`. Released documentation at the matching tag, the documentation site and pkg.go.dev SHALL come after.
 
 #### Scenario: A project pins an older release
 - **WHEN** the project's `go.mod` requires a release older than the skill

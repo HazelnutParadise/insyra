@@ -58,6 +58,13 @@ device dispatches do not pay for their transfer cost.
 Device errors and missing hardware fall back to the exact CPU result. The
 fallback is observable through `accel.Default().Report()`.
 
+When the device does run, its result equals the CPU's bit for bit on Apple
+Silicon, where Metal and Go on arm64 both fuse each multiply-add. That has been
+measured there; it is not something WebGPU promises. On amd64, whose CPU path
+does not fuse, the device and the CPU can differ in the last bits of a product,
+and other GPUs have not been measured. When results must be identical across
+machines, turn acceleration off as described below.
+
 Acceleration has two layers. The programmatic primary switch is
 `insyra.Config.SetAcceleration(false)`, which makes eligible `nn` MatMuls and
 the accelerator bridge stay on their exact CPU paths. It defaults to enabled

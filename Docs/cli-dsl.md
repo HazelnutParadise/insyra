@@ -174,7 +174,7 @@ insyra --log-level debug help
 
 These flags work in front of every command, including the ones that take raw values such as `newdl -1 2 3`.
 
-A flag is per invocation, but `config` is not. `config <key> <value>` writes to one file for the whole install, `~/.insyra/config.json`, which every environment reads — so a throttle interval or a color setting set in `scratch` is in force in `default` too. It is a file, not a process environment variable: nothing here reads `os.Getenv`, and a variable exported in your shell is invisible to the CLI. This is the one persistent setting the CLI owns, and it is distinct from the per-environment `envs/<name>/config.json` listed under [Environment Model](#environment-model), which `config` does not touch.
+A flag is per invocation, but `config` is not. `config <key> <value>` writes to one file for the whole install, `~/.insyra/config.json`, which every environment reads, so a setting made in `scratch` is in force in `default` too. Two keys are read today: `accel-mode` is the mode `accel` uses when no `--mode` is given (an explicit `--mode` wins, and with neither the mode is `auto`), and `fetch.tw.interval_ms` sets the throttle of `fetch tw`. A `noColor` key is stored but nothing reads it; turn color off with `--no-color` or the `NO_COLOR` environment variable. Config keys come only from that file, never from environment variables, although the CLI reads a few environment variables for other things: `NO_COLOR` and `TERM=dumb` turn colored output off, and the `INSYRA_ACCEL_*` variables described in [accel](accel.md) steer device discovery. The file is distinct from the per-environment `envs/<name>/config.json` listed under [Environment Model](#environment-model), which `config` does not touch.
 
 ## Environment Model
 
@@ -195,7 +195,7 @@ Each environment contains:
 Default behavior:
 
 - On first run, `default` environment is auto-created.
-- CLI commands restore env variables before execution.
+- CLI commands restore env variables before execution. That round trip goes through `state.json`, and it does not keep everything: a DataTable comes back with its columns in alphabetical order and its `time.Time` cells as strings, and a variable that `state.json` cannot hold, such as a fitted scaler, is gone at the next invocation. A REPL session or an `.isr` script keeps variables in memory between commands, so run multi-step work there rather than as separate one-shot commands.
 - REPL saves history and state continuously.
 - DSL session `Execute` saves state after successful command.
 - Variables that hold `NaN` or ±Inf (for example a CSV loaded with blank cells) are saved and restored intact.
@@ -526,7 +526,7 @@ ewm returns halflife 5 std minobs 3 as ewvol
 
 `rolling` additionally takes two paired reducers, each consuming a second DataList variable: `rolling <var> <window> cov <other> [...]` and `rolling <var> <window> beta <other> [...]`. `beta` is `Cov(var, other) / Var(other)`; a flat benchmark window yields nil.
 
-A window shorter than `minobs` has to be asked for explicitly. Omit `minobs` and it defaults to `window`, which means a `rolling ... 20` over 1,000 rows emits nil for the first 19 rows instead of computing from a partial window; `minobs 5` is what makes the first four rows real numbers. `minobs` above `window` is refused. `center yes` shifts the window to straddle each position the way pandas' `rolling(center=True)` does, so the first and last few rows are computed from a partial window rather than nil.
+A window shorter than `minobs` has to be asked for explicitly. Omit `minobs` and it defaults to `window`, which means a `rolling ... 20` over 1,000 rows emits nil for the first 19 rows instead of computing from a partial window; `minobs 5` is what makes the first four rows real numbers. `minobs` above `window` is not refused: it logs a warning and stores an empty result. `center yes` shifts the window to straddle each position the way pandas' `rolling(center=True)` does; with the default `minobs` the first and last few rows are still nil, and a smaller `minobs` is what fills them from a partial window.
 
 `expanding <var> <minobs> <reducer>` reduces over everything from row 1 to the current row. Its `minobs` is a required argument, and until that many valid observations have arrived the position is nil.
 
@@ -575,7 +575,7 @@ quant cvar ret 0.95 parametric as cvar95
 
 Each scalar form prints `name=value` and stores a `float64` under `as <var>` (or `$result`). `periods`, `days`, and `confidence` are required — the library refuses to guess an annualization factor, so there is no CLI-side default of 252. `rf`, `mar`, and `q` default to 0.
 
-A rejected argument is named in the error rather than left to be inferred: every message from this command starts with `quant <form>:` and then says what was wrong — an unknown form, a missing option value, a bad `method`, an asset count that does not match the table. Reading the prefix tells you which form refused the line.
+A rejected argument is named in the error rather than left to be inferred. An error inside a form starts with `quant <form>:` and then says what was wrong, such as a missing option value, a bad `method` or an asset count that does not match the table. An unknown form is reported as `quant: unknown form ...`, and a line with no form at all gets the usage line.
 
 `capm` and `bs` store a one-row DataTable; `factor` stores one row per factor plus `<var>_alpha`; `drawdown` stores a DataList.
 
@@ -876,6 +876,12 @@ save region_summary region_summary.csv
 
 Without `as`, the result is stored in `$result`. `all true` includes non-numeric and mixed columns. `by` is available for DataTable variables only.
 
+`describe`'s `percentiles` are fractions between 0 and 1 (`0.1,0.5,0.9`), and a value outside that range is refused. The DataList command `percentile <var> <p>` takes a percentage between 0 and 100 instead, so `percentile x 50` is the median.
+
+## Chi-square Command
+
+`chisq gof <var> [p1 p2 ...]` tests whether the values of a DataList occur in the given proportions, which default to equal. It counts the values itself: pass the raw observations, one per row (`red red blue green`), not a list of counts. A DataList of counts such as `10 20 30` is read as three labels seen once each. `chisq indep ...` is the test of independence; `insyra help chisq` shows its forms.
+
 ## Regression Forms
 
 The `regression` command supports:
@@ -896,10 +902,10 @@ insyra regression poisson y x1 x2
 
 ## Set Command
 
-`set <var> <row> <col> <value>` writes a single cell, and both coordinates are narrower than `get` accepts:
+`set <var> <row> <col> <value>` writes a single cell, and its coordinates are narrower than those of the commands that read:
 
-- `<row>` is a row **index**, not a row name. It must parse as a whole number, so the row-name form `get` and `row` accept is rejected here.
-- `<col>` is a column **letter**, the same Excel-style index the rest of the CLI uses — `A`, `B`, … `AA` — not a column name. `cols <var>` lists the names; the letter is the position in that list.
+- `<row>` is a row **index**, not a row name. It must parse as a whole number, like `get`'s; `row` is the command that also accepts a row name.
+- `<col>` is a column **letter**, an Excel-style index (`A`, `B`, … `AA`), not a column name or a number. `get` accepts a letter or a number, and `col` a name or a number. `cols <var>` lists the names; the letter is the position in that list.
 - `<value>` goes through the literal ladder, so a bare `2.5` stores a number rather than the text `2.5`.
 
 The write is verified: the cell is read back and, if it does not hold the value, the command fails with `set: update did not take effect for row <n>, col "<letter>" (does it exist?)` rather than reporting success on a row or column that was never there.

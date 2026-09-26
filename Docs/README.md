@@ -158,7 +158,7 @@ Changes are recorded in the repository, not on the docs site:
 - Next release: [CHANGELOG.md](https://github.com/HazelnutParadise/insyra/blob/main/CHANGELOG.md) · [繁體中文](https://github.com/HazelnutParadise/insyra/blob/main/CHANGELOG_TW.md)
 - Published releases: [GitHub Releases](https://github.com/HazelnutParadise/insyra/releases)
 
-This site documents the newest release. For the version a project actually uses, read the `Docs/` folder of that version's module (`go list -m -f '{{.Dir}}' github.com/HazelnutParadise/insyra` prints where it is), `go doc` its packages, or open the release on [pkg.go.dev](https://pkg.go.dev/github.com/HazelnutParadise/insyra).
+This site documents the newest release. For the version a project actually uses, read the `Docs/` folder of that version's module (inside the project, `go mod download -json github.com/HazelnutParadise/insyra` prints where it is as `Dir`), `go doc` its packages, or open the release on [pkg.go.dev](https://pkg.go.dev/github.com/HazelnutParadise/insyra).
 
 ### Requirements & Notes
 

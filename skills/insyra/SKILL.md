@@ -13,7 +13,7 @@ This skill does not list the API, on purpose. Insyra changes between releases, a
 
 Before writing a call, find its exact name, parameters and results in the version the project uses. Check in this order.
 
-1. **The project's own version.** Inside the project, `go list -m -f '{{.Dir}}' github.com/HazelnutParadise/insyra` prints the module directory of the version in `go.mod`.
+1. **The project's own version.** Inside the project, `go mod download -json github.com/HazelnutParadise/insyra` fetches the version in `go.mod` if it is not cached yet and prints its module directory as `Dir`. (`go list -m -f '{{.Dir}}' ...` prints the same path, but only once the module is downloaded; before that it prints nothing.)
    - `<Dir>/Docs/<page>.md` is the user documentation for exactly that version.
    - `go doc github.com/HazelnutParadise/insyra DataTable` and `go doc github.com/HazelnutParadise/insyra/stats` print signatures and doc comments. `go doc -all <package>` prints a whole package.
    - The source and the `_test.go` files in `<Dir>` show real calls and the behaviour they pin. `<Dir>/CHANGELOG.md` says what changed between releases.
@@ -23,6 +23,8 @@ Before writing a call, find its exact name, parameters and results in the versio
 If what you need is not there, say so. Offer plain Go or another library rather than an API you have not seen.
 
 ### Which page answers what
+
+List `<Dir>/Docs` first: older releases have fewer pages than this table.
 
 | Page in `Docs/` | Look here for |
 | --- | --- |
@@ -49,24 +51,27 @@ If what you need is not there, say so. Offer plain Go or another library rather 
 
 ## How to think in Insyra
 
-- **Two containers.** A `DataList` is one column of values, and a `DataTable` is a set of named columns. Almost every operation is a method on one of them, and the analysis packages (`stats`, `ml`, `quant` and the rest) take them as input. A cell can hold any Go value; `nil` means missing.
+- **Two containers.** A `DataList` is one column of values, and a `DataTable` is a set of named columns. Almost every operation is a method on one of them, and the analysis packages (`stats`, `ml`, `quant` and the rest) take them as input. A cell can hold any Go value; `nil`, and `NaN` in a numeric column, mean missing.
 - **Two layers.** The root package is the implementation. `isr` wraps its types in a fluent syntax and is the preferred entry point for new code. `isr.UseDL` and `isr.UseDT` wrap a root value, and the wrapper embeds the root type, so the two layers mix freely.
-- **Columns by letter, number or name.** A method without a suffix, such as `GetCol`, takes an Excel-style letter (`"A"`, `"B"`, ..., `"AA"`). The `...ByNumber` methods take a position and the `...ByName` methods a column name. Check which one you are calling.
+- **The suffix says what a method takes.** For columns, a method with no suffix (`GetCol`) or with `...ByIndex` takes an Excel-style letter (`"A"`, `"B"`, ..., `"AA"`), `...ByNumber` a position and `...ByName` a name. For rows, `...ByIndex` takes an integer. Some features try a column name first and a letter second. Read the doc comment of the method you call.
 - **Formulas for derived columns.** CCL is a small Excel-like language. Expression mode computes one column; statement mode assigns to columns and can create new ones.
 - **A pipeline of small, checked steps.** Read, look at what you read, clean, transform, analyse, then chart or export. Check each step's result before you build the next one on it.
 
 ## Conventions that hold across the library
 
-- **Errors are recorded on the instance.** Fluent methods on a `DataList` or `DataTable` do not return an error; they record it. After a chain, check `Err()`, or `PopErr()` to read and clear it. Functions in the analysis packages return an `error`; check it. Getting a table back does not prove the step worked.
-- **A fatal error ends the program by default.** A path that logs a fatal error exits the process under the default configuration; `gplot.SaveChart` did before 0.4. A long-running program should call `insyra.Config.SetDontPanic(true)` to log it instead (`Configuration.md`).
+- **Two ways to report an error.** Fluent methods on a `DataList` or `DataTable` record errors on the instance instead of returning them: after a chain, check `Err()`, or `PopErr()` to read and clear it. Methods that build something new (merging, pivoting, fitting an encoder, reading and writing files) and the functions of the analysis packages return an `error`; check it. Getting a table back does not prove the step worked.
+- **`Err()` is not an `error`.** It returns `*insyra.ErrorInfo`. Returning `dt.Err()` from a function declared to return `error` gives the caller a non-nil error that holds nil. Check `if e := dt.Err(); e != nil` before converting.
+- **A fatal error ends the program by default.** A path that logs a fatal error, such as `gplot.SaveChart` given a path it cannot write, exits the process under the default configuration. A long-running program should call `insyra.Config.SetDontPanic(true)` to log it instead (`Configuration.md`).
 - **Thread-safe by default.** Each instance serialises its own operations. Wrap a read-modify-write on one instance in `AtomicDo`. For several instances at once use `insyra.AtomicDoAll(fn, a, b, ...)`. Never call `b.AtomicDo` inside `a.AtomicDo`: the inner call does not lock `b`.
 - **A slice becomes many cells.** The constructors flatten slices, so `NewDataList([]int{1, 2})` holds two cells. Wrap a value that must stay whole, such as a `[]byte`, in `insyra.Cell(...)`.
-- **Text is never a zero.** A `DataList`'s own numeric methods skip a cell they cannot read and log a warning, which quietly changes the count. The statistics functions refuse it with an error. Convert or clean text columns before you compute on them.
+- **Clean before you compute.** A cell that is not a number is handled differently from one function to the next. `Mean` and its kind skip it with a warning, which quietly changes the count; the statistics functions refuse it with an error; some `DataList` methods, such as `Rank` and the smoothing and interpolation methods, read it as 0. `NaN` and `±Inf` pass through some statistics functions into the result. Convert text columns and clear `nil` and `NaN` values before you compute, instead of relying on how a function treats them.
 - **Money is exact.** Use `decimal.Decimal` from `github.com/TimLai666/go-decimal`, not `float64`. A decimal cell sorts by value but is not a number to `stats`; convert it explicitly before analysis (`Decimal.md`).
-- **A lookup that can miss returns a flag.** `GetRowIndexByName` and similar lookups return `(-1, false)` when nothing matches, and `-1` means "the last one" in other methods. Always check the flag.
+- **A lookup that can miss says so in different ways.** `GetRowIndexByName` returns `(-1, false)`, while other lookups return `-1`, an empty string or `nil` alone. `-1` also means "the last one" to the methods that take a position, so passing a missed lookup straight on reads the wrong element. Check the doc comment and handle the miss.
 - **Randomness takes a seed.** Functions that sample, shuffle or initialise take a seed or a random source. Set it whenever the result must be reproducible.
 - **Results are more than one number.** A test or a model returns a struct with estimates, statistics, p-values, intervals and diagnostics. Read the fields the question needs, and check the assumptions its page states.
-- **Acceleration does not change the answer.** GPU acceleration returns the CPU's result exactly and only changes the speed. A missing or failing GPU means the CPU does the work; it never means a different result.
+- **Fit on training data only.** Scalers, encoders and imputers are fitted once and then applied. Fit them on the training rows and reuse the fitted object on test rows, or information from the test rows leaks into the model.
+- **Prefer what `go doc` does not mark deprecated.** A deprecated function says what replaced it; use the replacement in new code.
+- **Acceleration is meant to change speed, not results.** A missing or failing GPU means the CPU does the work. Where a device result could differ from the CPU's, the operation's page says so; `nn.md` covers the matrix products `nn` sends to a GPU by default. When exact reproducibility across machines matters, read that page, or turn acceleration off with `insyra.Config.SetAcceleration(false)`.
 
 ## From a question to verified code
 
