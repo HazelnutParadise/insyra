@@ -28,15 +28,20 @@ func EachCsvToOneExcel(dir string, output string, encoding ...string) error {
 // EachExcelToCsv converts each Excel file in the given directory to CSV files.
 // The output CSV files will be saved in the given output directory.
 // The CSV files will be named as the Excel file name plus the sheet name plus ".csv",
-// for example, "ExcelFileName_SheetName.csv".
-func EachExcelToCsv(dir string, outputDir string) error {
+// for example, "ExcelFileName_SheetName.csv". The options work as they do for
+// ExcelToCsv; Sheets applies to every file.
+func EachExcelToCsv(dir string, outputDir string, options ...ExcelToCsvOptions) error {
+	opts, err := oneExcelToCsvOptions(options)
+	if err != nil {
+		return err
+	}
 	files, err := filepath.Glob(filepath.Join(dir, "*.xlsx"))
 	if err != nil {
 		return fmt.Errorf("failed to list Excel files in %s: %w", dir, err)
 	}
 
 	for _, excelFile := range files {
-		if err := excelFileToCsv(excelFile, outputDir); err != nil {
+		if err := excelFileToCsv(excelFile, outputDir, opts); err != nil {
 			return err
 		}
 	}
@@ -46,7 +51,7 @@ func EachExcelToCsv(dir string, outputDir string) error {
 
 // excelFileToCsv writes every sheet of one workbook as a CSV file and closes
 // the workbook before returning, on every path.
-func excelFileToCsv(excelFile, outputDir string) error {
+func excelFileToCsv(excelFile, outputDir string, opts ExcelToCsvOptions) error {
 	f, err := excelize.OpenFile(excelFile, insyra.ExcelReadOptions())
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
@@ -61,13 +66,16 @@ func excelFileToCsv(excelFile, outputDir string) error {
 		}
 	}
 
-	sheets := f.GetSheetList()
+	sheets, err := selectSheets(excelFile, f.GetSheetList(), opts.Sheets)
+	if err != nil {
+		return err
+	}
 	for _, sheet := range sheets {
 		if err := safeSheetFileName(sheet); err != nil {
 			return err
 		}
 		outputCsv := filepath.Join(outputDir, excelFileName+"_"+sheet+".csv")
-		if err := saveSheetAsCsv(f, sheet, outputCsv); err != nil {
+		if err := saveSheetAsCsv(f, sheet, outputCsv, opts.AllowFormulas); err != nil {
 			return fmt.Errorf("failed to save sheet %s as CSV: %w", sheet, err)
 		}
 	}

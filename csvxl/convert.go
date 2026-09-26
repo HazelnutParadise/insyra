@@ -162,9 +162,40 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 	return nil
 }
 
+// ExcelToCsvOptions configures ExcelToCsv and EachExcelToCsv. The zero value
+// converts every sheet and guards formula-like text.
+type ExcelToCsvOptions struct {
+	// Sheets limits the conversion to these sheets. Empty means every sheet.
+	// A name the workbook does not have is an error.
+	Sheets []string
+	// AllowFormulas writes text a spreadsheet would run as a formula exactly
+	// as it is. By default such text (starting with =, +, - or @, and not
+	// only a number) gets a leading single quote so a spreadsheet opening the
+	// CSV shows it instead of running it: text that was safe inside the
+	// workbook becomes a formula again once it is a CSV.
+	AllowFormulas bool
+}
+
+func oneExcelToCsvOptions(opts []ExcelToCsvOptions) (ExcelToCsvOptions, error) {
+	if len(opts) > 1 {
+		return ExcelToCsvOptions{}, fmt.Errorf("at most one ExcelToCsvOptions may be given, got %d", len(opts))
+	}
+	if len(opts) == 1 {
+		return opts[0], nil
+	}
+	return ExcelToCsvOptions{}, nil
+}
+
 // ExcelToCsv splits an Excel file into multiple CSV files, one per sheet.
-// If customNames is provided, it uses them as CSV filenames; otherwise, it uses the sheet names.
-func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error {
+// If csvNames is provided, it uses them as CSV filenames; otherwise, it uses
+// the sheet names. See ExcelToCsvOptions for choosing sheets and for the
+// formula guard.
+func ExcelToCsv(excelFile string, outputDir string, csvNames []string, options ...ExcelToCsvOptions) error {
+	opts, err := oneExcelToCsvOptions(options)
+	if err != nil {
+		return err
+	}
+	onlyContainSheets := opts.Sheets
 	f, err := excelize.OpenFile(excelFile, insyra.ExcelReadOptions())
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
@@ -180,27 +211,9 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 		}
 	}
 
-	sheetsInXlsx := f.GetSheetList()
-	// Determine the sheets to process. If `onlyContainSheets` is provided,
-	// filter it against `sheetsInXlsx` to only process existing sheets.
-	var sheetsToProcess []string
-	if len(onlyContainSheets) > 0 {
-		// A name that is not in the file used to be dropped without a word, so
-		// a typo produced a smaller conversion that looked like it had worked.
-		var missing []string
-		for _, s := range onlyContainSheets {
-			if sliceutil.Contains(sheetsInXlsx, s) {
-				sheetsToProcess = append(sheetsToProcess, s)
-			} else {
-				missing = append(missing, s)
-			}
-		}
-		if len(missing) > 0 {
-			return fmt.Errorf("sheet(s) %s are not in %s (it has %s)",
-				strings.Join(missing, ", "), excelFile, strings.Join(sheetsInXlsx, ", "))
-		}
-	} else {
-		sheetsToProcess = sheetsInXlsx
+	sheetsToProcess, err := selectSheets(excelFile, f.GetSheetList(), onlyContainSheets)
+	if err != nil {
+		return err
 	}
 
 	numSheets := len(sheetsToProcess)
@@ -214,7 +227,7 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 		}
 
 		outputCsv := filepath.Join(outputDir, csvName)
-		err := saveSheetAsCsv(f, sheet, outputCsv)
+		err := saveSheetAsCsv(f, sheet, outputCsv, opts.AllowFormulas)
 		if err != nil {
 			return fmt.Errorf("failed to save sheet %s as CSV: %w", sheet, err)
 		}
@@ -275,7 +288,7 @@ func safeSheetFileName(sheet string) error {
 // rows are read before the output is touched, and the CSV is written to a
 // temporary file that is renamed into place, so a bad sheet never truncates
 // an existing file.
-func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) error {
+func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string, allowFormulas bool) error {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return fmt.Errorf("failed to read rows from sheet %s: %w", sheetName, err)
@@ -297,6 +310,13 @@ func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) er
 			return fmt.Errorf("failed to check visibility of row %d in sheet %s: %w", rowIdx+1, sheetName, err)
 		}
 		if visible {
+			if !allowFormulas {
+				guarded := make([]string, len(row))
+				for i, cell := range row {
+					guarded[i] = insyracsv.GuardFormula(cell)
+				}
+				row = guarded
+			}
 			err := writer.Write(row)
 			if err != nil {
 				cleanup()
@@ -437,4 +457,27 @@ func csvOutputName(name string) string {
 		return name
 	}
 	return name + ".csv"
+}
+
+// selectSheets returns the sheets to convert: every sheet when wanted is
+// empty, otherwise the wanted ones. A wanted name the file does not have is
+// an error; it used to be dropped without a word, so a typo produced a
+// smaller conversion that looked like it had worked.
+func selectSheets(excelFile string, inFile, wanted []string) ([]string, error) {
+	if len(wanted) == 0 {
+		return inFile, nil
+	}
+	var selected, missing []string
+	for _, s := range wanted {
+		if sliceutil.Contains(inFile, s) {
+			selected = append(selected, s)
+		} else {
+			missing = append(missing, s)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("sheet(s) %s are not in %s (it has %s)",
+			strings.Join(missing, ", "), excelFile, strings.Join(inFile, ", "))
+	}
+	return selected, nil
 }

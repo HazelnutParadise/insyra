@@ -3,10 +3,9 @@ package insyra
 import (
 	"encoding/csv"
 	"errors"
+	csvInternal "github.com/HazelnutParadise/insyra/internal/csv"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"io"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -67,25 +66,6 @@ type CSVWriteOptions struct {
 // the release after the one that deprecated it.
 func (dt *DataTable) ToCSVWithOptions(filePath string, opts CSVWriteOptions) error {
 	return dt.ToCSV(filePath, opts)
-}
-
-// sanitizeCSVFormula prefixes text a spreadsheet would execute with a single
-// quote. Only leading =, +, - and @ (and the whitespace a spreadsheet skips
-// before them) start a formula, and text that is only a number is left
-// alone: a spreadsheet reads "-5" as the number it is and runs nothing.
-func sanitizeCSVFormula(s string) string {
-	trimmed := strings.TrimLeft(s, " \t\r\n")
-	if trimmed == "" {
-		return s
-	}
-	switch trimmed[0] {
-	case '=', '+', '-', '@':
-		if _, err := strconv.ParseFloat(strings.TrimSpace(trimmed), 64); err == nil {
-			return s
-		}
-		return "'" + s
-	}
-	return s
 }
 
 // WriteCSV writes the table as CSV to any destination — an HTTP response, a
@@ -159,7 +139,7 @@ func (dt *DataTable) WriteCSV(w io.Writer, options ...CSVWriteOptions) error {
 						// A number's text, like any text that is only a
 						// number, passes through: nothing runs.
 						if !opts.AllowFormulas {
-							cell = sanitizeCSVFormula(cell)
+							cell = csvInternal.GuardFormula(cell)
 						}
 						record = append(record, cell)
 					}
