@@ -219,7 +219,7 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 
 ## Docs, Changelog & Skills Must Stay in Sync
 
-Docs, the changelog, and skills are part of a change, not a follow-up. A feature is not done until these are updated in the **same** change.
+Docs and the changelog are part of a change, not a follow-up. A feature is not done until they are updated in the **same** change. The agent skills follow a different rule: they change only when what they teach does, as described below.
 
 **When adding a new package:**
 - Create its doc page `Docs/<pkg>.md` (follow an existing page such as [Docs/finance.md](Docs/finance.md) / [Docs/stats.md](Docs/stats.md) for structure).
@@ -229,7 +229,7 @@ Docs, the changelog, and skills are part of a change, not a follow-up. A feature
 
 **When adding or changing any feature (new or existing package):**
 - Update the relevant `Docs/*.md` page(s) to match the new/changed API.
-- Update the agent skills so they reflect the change: [skills/insyra/](skills/insyra/) (Go API usage — `SKILL.md` and `references/`), and [skills/use-insyra-cli/](skills/use-insyra-cli/) when CLI/DSL usage is affected.
+- API and command details belong in `Docs/` (and, for the CLI, in each command's `Usage`, `Forms` and `Examples`), never in the agent skills. The skills teach principles, the mental model and where to find documentation; update one only when a principle, a workflow or a documentation location changes. See [Agent Skills](#agent-skills).
 - When the change touches the CLI/REPL or the DSL, update the CLI (`cli/`) and its doc [Docs/cli-dsl.md](Docs/cli-dsl.md).
 
 **When the change is visible to someone using the library or the CLI:**
@@ -247,8 +247,10 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 ## Agent Skills
 
-[skills/insyra/](skills/insyra/) — for AI agents writing Go code using Insyra APIs.  
-[skills/use-insyra-cli/](skills/use-insyra-cli/) — for AI agents operating via the CLI/REPL or `.isr` scripts.
+[skills/insyra/](skills/insyra/) — for AI agents writing Go code with Insyra.  
+[skills/use-insyra-cli/](skills/use-insyra-cli/) — for AI agents working through the CLI, the REPL, `.isr` scripts or the Go DSL.
+
+A skill is installed into an agent's environment and outlives the version it came from, so it teaches what does not change between releases: when to reach for Insyra, how to think about it, the conventions that hold across it, how to verify a result, and how to find the exact API for the version in use (the module's own `Docs/`, `go doc`, `insyra help`). It does not list functions or commands, and it has no reference files that repeat `Docs/`. A detail a skill used to carry lives in `Docs/`; before removing anything from a skill, make sure `Docs/` holds it (`agent-skills` spec).
 
 ## Follow-ups
 
@@ -269,12 +271,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 ### [2026-09-20] — `oblimin` ignores its starting point, so `Restarts` costs it N identical runs
 - **Where**: `stats/internal/fa/psych_faRotations.go`, the `"oblimin"` arm of the switch in `FaRotations`
 - **What**: every other method rotates from the start it was handed; oblimin builds its own identity matrix and rotates from that, ignoring the start entirely. The comment says the identity start is deliberate, "better SPSS compatibility than random starts". Measured on 2026-09-20 after `orthogonal-rotation-starts` landed here: over the 20 datasets of `stats/factor_analysis_test.go` and all four extractions, oblimin returns the `Restarts: 1` answer in all 240 combinations at `Restarts` 2, 5 and 20, while every other GPA method differs from its single-start answer in more than half of them. On the `noisyStructure` fixture, best of 5, `Restarts: 20` takes 74.6 ms to return the 2.6 ms answer. It matters more now than before: the starts oblimin is refusing used to include two oblique matrices and are now all legitimate.
-- **Suggestion**: the decision is SPSS parity against an honest `Restarts`, not how to write it. Either let oblimin use the starts like everything else, which moves oblimin results for `Restarts > 1` and may move them away from SPSS, or keep the identity start and reject `Restarts > 1` for oblimin so the parameter stops claiming a search it does not run. `0.4` took the first (6c4fce1, which also pins that at `Delta` 0 oblimin then agrees with quartimin bit for bit); it is not on this line because it moves results with nothing in v0.3's documentation describing the move. `TestRestartsParameter` in `stats/verify_more_test.go` already covers oblimin and will pin whichever is chosen. `Docs/stats.md` and `skills/insyra/references/stats.md` state the current behaviour meanwhile.
+- **Suggestion**: the decision is SPSS parity against an honest `Restarts`, not how to write it. Either let oblimin use the starts like everything else, which moves oblimin results for `Restarts > 1` and may move them away from SPSS, or keep the identity start and reject `Restarts > 1` for oblimin so the parameter stops claiming a search it does not run. `0.4` took the first (6c4fce1, which also pins that at `Delta` 0 oblimin then agrees with quartimin bit for bit); it is not on this line because it moves results with nothing in v0.3's documentation describing the move. `TestRestartsParameter` in `stats/verify_more_test.go` already covers oblimin and will pin whichever is chosen. `Docs/stats.md` states the current behaviour meanwhile.
 - **Status**: pending
 
 ### [2026-09-19] — `gplot.SaveChart` still ends the program on a path it cannot write
 - **Where**: `gplot/save_chart.go:17`
-- **What**: it calls `insyra.LogFatal`, which under the default configuration is `log.Fatalf`, so a bad path ends the host program. Measured on 2026-09-19: a program calling `gplot.SaveChart(plt, "/no/such/dir/chart.png")` printed `<{[insyra - FATAL!]}> gplot.SaveChart: Failed to save chart: open /no/such/dir/chart.png: no such file or directory` and exited with status 1; the statement after the call never ran. `insyra.Config.SetDontPanic(true)` downgrades it to a log line, which is what `skills/insyra/references/plotting.md` already tells readers. The `error-philosophy` spec on this line covers `gplot` and `plot` chart *construction* and `plot.SavePNG`'s path check; it does not cover `gplot`'s saving, correctly, and no doc, skill or spec claims otherwise.
+- **What**: it calls `insyra.LogFatal`, which under the default configuration is `log.Fatalf`, so a bad path ends the host program. Measured on 2026-09-19: a program calling `gplot.SaveChart(plt, "/no/such/dir/chart.png")` printed `<{[insyra - FATAL!]}> gplot.SaveChart: Failed to save chart: open /no/such/dir/chart.png: no such file or directory` and exited with status 1; the statement after the call never ran. `insyra.Config.SetDontPanic(true)` downgrades it to a log line, which is what `Docs/gplot.md` and `Docs/Configuration.md` tell readers. The `error-philosophy` spec on this line covers `gplot` and `plot` chart *construction* and `plot.SavePNG`'s path check; it does not cover `gplot`'s saving, correctly, and no doc, skill or spec claims otherwise.
 - **Suggestion**: the fix is the error-returning `SaveChart`, which changes the signature and therefore stays on `0.4`. Nothing to do on the 0.3.x line but keep the documentation honest. When the two lines merge, this entry goes away with it.
 - **Status**: pending (0.4 carries the fix; recorded here so the gap is not mistaken for closed)
 
