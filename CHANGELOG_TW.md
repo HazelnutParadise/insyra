@@ -87,6 +87,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`DataTable.ToCSV(path, opts ...CSVWriteOptions)` 取代 `ToCSV(path, rowNames, colNames, bom bool)`，舊寫法會編譯失敗；`ToCSVWithOptions` 標為 **Deprecated**。`dt.ToCSV(path, false, true, false)` 改成 `dt.ToCSV(path)`。`WriteCSV` 與 `ReadCSV` 的設定包改成可省略；`StreamCSV` 的批次大小移到設定包前面，`StreamCSV(r, opts, 1000)` 改成 `StreamCSV(r, 1000, opts)`。
 - **BREAKING**：所有設定包裡的標題列與列名欄位統一命名為 `NoHeaderRow` 與 `HasRowNames`，全部留空就代表最常見的檔案：第一列是欄名、沒有列名欄。`CSVReadOptions.FirstRowToColNames` 與 `CSVWriteOptions.SetColNamesToFirstRow` 改成意思相反的 `NoHeaderRow`；`FirstColToRowNames` 與 `SetRowNamesToFirstCol` 改成 `HasRowNames`；`ExcelWriteOptions` 同步改名，`ToSQLOptions.RowNames` 改成 `HasRowNames`。有設定舊欄位的程式會編譯失敗。**有傳設定包但沒寫標題列那一項的程式，現在讀寫時都會有標題列**：例如 `CSVReadOptions{Encoding: "big5"}` 以前會把第一列當成資料。`ReadExcelSheet` 與 `ReadExcel` 只改了參數名稱。
 - **BREAKING（小）**：`IDataTable` 與 `IDataList` 現在列出 `*DataTable`、`*DataList` 的全部方法，以前分別少了 27 個和 17 個。例外是 `ClearErr`、`SetErr`、`Pivot`、`Unpivot`，刻意不列，因為內嵌核心型別的擴充型別會用自己的回傳型別改寫它們；拿介面型別的變數呼叫 `ClearErr()` 或 `SetErr()` 的程式要改用實際型別。內嵌 `*DataTable` 的型別現在能用在所有收表格的地方：`Merge` 以前只收純粹的 `*DataTable`。
+- 對 nil 的 `DataList` 或 `DataTable` 呼叫 `Err()`（例如 `GetCol` 找不到欄位時回傳的值），現在會回報 `nil DataList`／`nil DataTable`，不會讓程式當掉。只有 `Err()` 有這個保護：nil 的值呼叫其他方法仍會直接失敗，避免 nil 被默默往下傳。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。

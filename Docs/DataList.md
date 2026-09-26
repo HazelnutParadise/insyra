@@ -2740,6 +2740,11 @@ A trailing optional parameter takes **at most one value**. `Shift`'s fill value,
 `Err()` is **sticky**: it holds the *first* failure until you clear it, so a
 long chain reports the root cause rather than whatever broke downstream.
 
+`Err()` is safe on a nil list, such as the one `GetCol` returns for a column
+that is not there: it reports `nil DataList` instead of crashing. Every other
+method on a nil list still crashes, on purpose, so a nil cannot travel on
+unnoticed; check `Err()` right after a lookup.
+
 Asking whether a value is present and getting "no" is an answer, not a
 failure: `FindFirst`, `FindLast`, `Count` and statistics over an empty list
 leave `Err()` alone. Addressing a column, row or index that is not there is

@@ -4726,6 +4726,8 @@ Insyra never ends your program on a failure. Errors reach you two ways:
 `Err()` is **sticky**: it holds the *first* failure until you clear it, so a
 long chain reports the root cause rather than whatever broke downstream.
 
+`Err()` is safe on a nil table: it reports `nil DataTable` instead of crashing. Every other method on a nil table still crashes, on purpose, so a nil cannot travel on unnoticed.
+
 A trailing optional parameter takes **at most one value**. Passing two options structs to `Sample`, `SampleFrac`, `Shuffle`, `TrainTestSplit`, `Describe` or `GroupBy(...).Describe`, or two fill values to `ShiftCol`, records an error instead of silently using the first; `ReadSQL`, `ReadSQLContext`, `ReadSQLStream`, `ToSQL` and `ToSQLContext` return an error for two options structs.
 
 Asking whether a value is present and getting "no" is an answer, not a
