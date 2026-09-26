@@ -248,4 +248,5 @@ func main() {
 - Native discovery is best-effort. Env-driven stubs remain available for deterministic testing and non-GPU development.
 - Shared-memory devices can derive working-set budgets from host memory when native budget data is unavailable.
 - `accel devices`, `accel cache` and `accel plan` inspect the runtime; none of them executes anything. The command that did was removed with the operations it invoked.
+- `accel cache` is the one inspector that first projects the session's own DataList and DataTable variables into the device cache and only then renders the snapshot, so what it lists is the cache including the columns the CLI just loaded. `accel devices` and `accel plan` do not project anything.
 - Execution cost figures are only reported when something actually ran on a device.
