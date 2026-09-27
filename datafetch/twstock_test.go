@@ -131,12 +131,31 @@ func query(values ...string) url.Values {
 	return result
 }
 
+// slowFirstRequest holds the first request it forwards back by delay, the way a
+// first request that takes longer than the second to reach the transport does.
+type slowFirstRequest struct {
+	next  http.RoundTripper
+	delay time.Duration
+	once  sync.Once
+}
+
+func (s *slowFirstRequest) RoundTrip(req *http.Request) (*http.Response, error) {
+	s.once.Do(func() { time.Sleep(s.delay) })
+	return s.next.RoundTrip(req)
+}
+
 func TestTWStockThrottle(t *testing.T) {
 	const interval = 20 * time.Millisecond
 	stock, transport := newFixtureTWStock(t, TWStockConfig{Interval: interval})
 	key := fixtureKey("/v1/exchangeReport/STOCK_DAY_ALL", nil)
 	transport.addFixture(t, key, "twse_stock_day_all.json")
 	transport.addFixture(t, key, "twse_stock_day_all.json")
+	// Hold the first request back on its way to the transport. Two transport
+	// timestamps taken this way normally come out less than interval apart, the
+	// condition the old assertion flaked on, so the assertion below has to hold
+	// under it. The delay stays well short of interval, so the second request
+	// still has to wait for its slot and a missing throttle still fails.
+	stock.client.Transport = &slowFirstRequest{next: transport, delay: 5 * time.Millisecond}
 	// The limiter spaces the scheduled starts of requests, and no request starts
 	// before its slot. The first slot is no earlier than start, so the second
 	// request cannot reach the transport before start+interval. Measuring from
