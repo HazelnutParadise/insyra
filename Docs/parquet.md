@@ -130,9 +130,12 @@ A binary column exports to JSON as base64, which is what `encoding/json` does
 with a `[]byte`, so nothing is lost. Writing the table back to Parquet keeps
 it a binary column.
 
-Dictionary-encoded columns are not a special case: the reader materialises them
-as their underlying type, so a pandas `category` column of strings reads as
-strings.
+A dictionary-encoded column reads as the values it holds, in the Go type the
+table above gives their Arrow type, so a pandas `category` column of strings
+reads as strings. That holds whether the reader materialises the column or, for
+a file that stores its Arrow schema, hands it over as an Arrow dictionary. A
+dictionary whose values have no Go representation reads as `nil`, with the
+reason on `Err()`.
 
 ### Write
 
