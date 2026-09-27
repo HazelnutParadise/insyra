@@ -15,6 +15,10 @@
 - **WHEN** 執行 `db connect pg "host=h password=a b"`
 - **THEN** history.txt 記錄為 `db connect pg "host=h password=***"`，不含 `a b`，也不殘留 ` b`
 
+#### Scenario: An escaped quote or spaces around the equals sign
+- **WHEN** 執行 `db connect pg "host=h password='it\'s s3cr3tB' port=5"` 或 `db connect pg "host=h password = s3cr3tA port=5432"`
+- **THEN** history.txt 分別記錄為 `db connect pg "host=h password=*** port=5"` 與 `db connect pg "host=h password = *** port=5432"`，不含密碼的任何部分
+
 ### Requirement: Bound query parameters do not reach the log
 
 CLI 開啟資料庫連線 SHALL 關閉 gorm 的預設 logger。該 logger 在查詢失敗或過慢時會把綁定參數內插進訊息印出，`WHERE token = ?` 的值因此會出現在終端機與任何收集它的地方。
