@@ -62,6 +62,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 對 nil 的 `DataList` 或 `DataTable` 呼叫 `Err()`（例如 `GetCol` 找不到欄位時回傳的值），現在會回報 `nil DataList`／`nil DataTable`，不會讓程式當掉。只有 `Err()` 有這個保護：nil 的值呼叫其他方法仍會直接失敗，避免 nil 被默默往下傳。
 - **BREAKING**：`Counter()` 改以數值當整數的 key，一律用 `int`，跟 `Count` 一致。CSV 或 JSON 讀進來的整數是 `int64`，所以以前一欄有兩個 5，`counter[5]` 卻查到 0；一欄混了 `int64(5)` 和 Go 直接寫的 `5`，也會分成兩個 key，而 `Count(5)` 回報的是兩者合計。現在這兩種情況 `counter[5]` 都是 2。用 `int64(5)` 查 counter 的程式會查不到，要改寫成 `counter[5]` 或 `counter[insyra.ToMapKey(v)]`，把 key 斷言成 `int64` 的程式要改成 `int`。`ToMapKey` 會把任何寬度的整數轉成同一個 key。`int` 裝不下的整數保留 `uint64` 或 `int64`，小數和文字仍是各自的 key，跟 `Count` 一樣。
 - `StandardScaler`、`MinMaxScaler`、`RobustScaler` 與 `MaxAbsScaler` 實作了 `json.Marshaler` 與 `json.Unmarshaler`，已擬合的 scaler 可以存起來之後再用。用 `json.Unmarshal` 讀回同一型別後，轉換結果與原本完全相同：每個擬合欄都以欄名記住，沒有欄名的才記位置，NaN 參數讀回仍是 NaN。以前對 scaler 呼叫 `json.Marshal` 只會得到 `{}`。
+- CCL 的 `TOSTR` 遇到動詞是標點或非 ASCII 字母、又沒有值可填的格式，會像字母動詞一樣回傳錯誤：v0.3.3 的 `TOSTR(A, '%v %_')` 會把 `1 %!_(MISSING)` 寫進儲存格。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。

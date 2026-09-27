@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode/utf8"
 )
 
 // registerTypeConversionFunctions registers value coercion and null-handling
@@ -143,14 +144,19 @@ func fmtErrorMarker(s string, known ...string) string {
 		}
 	}
 	// %!<verb>( — the shape fmt uses for a verb that does not fit the value.
-	for i := 0; i+3 < len(s); i++ {
-		if s[i] == '%' && s[i+1] == '!' && s[i+3] == '(' {
-			c := s[i+2]
-			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
-				if m := s[i : i+4]; !fromCaller(m) {
-					return m
-				}
-			}
+	// The verb is any rune, a punctuation mark or a non-ASCII letter included:
+	// TOSTR(1, '%v %_') gets "1 %!_(MISSING)".
+	for i := 0; i+2 < len(s); i++ {
+		if s[i] != '%' || s[i+1] != '!' {
+			continue
+		}
+		verb, size := utf8.DecodeRuneInString(s[i+2:])
+		end := i + 2 + size
+		if verb == '(' || end >= len(s) || s[end] != '(' {
+			continue
+		}
+		if m := s[i : end+1]; !fromCaller(m) {
+			return m
 		}
 	}
 	return ""
