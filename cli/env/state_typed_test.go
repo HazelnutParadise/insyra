@@ -373,3 +373,48 @@ func TestRestoreKeepsUndecodableVariable(t *testing.T) {
 		t.Errorf("x data = %#v want %q", xVar.Data, "garbage")
 	}
 }
+
+// A kind this build does not know, such as one a newer release writes, is
+// kept as it was stored. Only the kinds earlier releases wrote ("DataTable",
+// "DataList" and "Raw") go through the legacy reader.
+func TestRestoreKeepsAnUnknownKind(t *testing.T) {
+	mgr := newStateTestManager(t)
+	envPath, err := mgr.ResolveEnvPath("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := `{
+  "variables": {
+    "fut": {"type": "frobnicator", "name": "F", "data": {"a": 1}},
+    "old": {"type": "Raw", "data": 3}
+  },
+  "lastAccess": "2026-01-01T00:00:00Z"
+}
+`
+	if err := os.WriteFile(filepath.Join(envPath, "state.json"), []byte(stored), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vars, err := mgr.RestoreVariables("default")
+	if err != nil {
+		t.Fatalf("RestoreVariables: %v", err)
+	}
+	if _, ok := vars["fut"].(unreadableVariable); !ok {
+		t.Errorf("fut = %T, want unreadableVariable", vars["fut"])
+	}
+	if got, ok := vars["old"].(int64); !ok || got != 3 {
+		t.Errorf("old = %#v, want int64(3) from the legacy reader", vars["old"])
+	}
+	if err := mgr.SaveState("default", vars); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	var file struct {
+		Variables map[string]SerializedVariable `json:"variables"`
+	}
+	if err := json.Unmarshal(readStateFile(t, mgr, "default"), &file); err != nil {
+		t.Fatalf("decoding state.json: %v", err)
+	}
+	fut := file.Variables["fut"]
+	if fut.Type != "frobnicator" || fut.Name != "F" {
+		t.Errorf("fut written back as type %q name %q, want frobnicator and F", fut.Type, fut.Name)
+	}
+}

@@ -167,7 +167,13 @@ func (m *Manager) RestoreVariables(envName string) (map[string]any, error) {
 	for key, serialized := range state.Variables {
 		value, ok, err := decodeVariable(serialized)
 		if !ok {
-			vars[key] = deserializeLegacyVariable(serialized)
+			if isLegacyKind(serialized.Type) {
+				vars[key] = deserializeLegacyVariable(serialized)
+			} else {
+				// A kind this build does not know, such as one a newer
+				// release writes, is kept as it was stored.
+				vars[key] = unreadableVariable{stored: serialized}
+			}
 			continue
 		}
 		if err != nil {
@@ -211,6 +217,16 @@ func decodeEnvValue(v any) any {
 // wrote: a "DataTable" (either as one JSON document string or as columns of
 // $float markers), a "DataList", or a "Raw" scalar. Nothing writes that layout
 // any more, so this is the only reader of it.
+// isLegacyKind reports whether a stored type is one an earlier release wrote,
+// which the legacy reader below understands.
+func isLegacyKind(kind string) bool {
+	switch kind {
+	case "DataTable", "DataList", "Raw":
+		return true
+	}
+	return false
+}
+
 func deserializeLegacyVariable(serialized SerializedVariable) any {
 	switch serialized.Type {
 	case "DataTable":
