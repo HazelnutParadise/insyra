@@ -46,20 +46,15 @@ func SingleSampleWilcoxon(data insyra.IDataList, mu float64, alt AlternativeHypo
 		return nil, err
 	}
 
-	var dataSlice []any
-	data.AtomicDo(func(dl *insyra.DataList) {
-		dataSlice = dl.Data()
-	})
-	if len(dataSlice) == 0 {
+	values, err := testSeries(data, "data")
+	if err != nil {
+		return nil, err
+	}
+	if len(values) == 0 {
 		return nil, errors.New("data is empty")
 	}
-
-	diffs := make([]float64, len(dataSlice))
-	for i, v := range dataSlice {
-		x, ok := insyra.ToFloat64Safe(v)
-		if !ok {
-			return nil, errors.New("invalid numeric value in data")
-		}
+	diffs := make([]float64, len(values))
+	for i, x := range values {
 		diffs[i] = x - mu
 	}
 
@@ -104,17 +99,17 @@ func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, co
 		return nil, inputErr
 	}
 
-	diffs := make([]float64, len(d1Slice))
-	for i := range d1Slice {
-		x, ok := insyra.ToFloat64Safe(d1Slice[i])
-		if !ok {
-			return nil, errors.New("invalid numeric value in data1")
-		}
-		y, ok := insyra.ToFloat64Safe(d2Slice[i])
-		if !ok {
-			return nil, errors.New("invalid numeric value in data2")
-		}
-		diffs[i] = x - y
+	values1, err := numericValues(d1Slice, "data1")
+	if err != nil {
+		return nil, err
+	}
+	values2, err := numericValues(d2Slice, "data2")
+	if err != nil {
+		return nil, err
+	}
+	diffs := make([]float64, len(values1))
+	for i := range len(values1) {
+		diffs[i] = values1[i] - values2[i]
 	}
 
 	return computeWilcoxon(diffs, alt, cl, 0)

@@ -26,6 +26,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `Tanh` 對每個輸入、在每個平台上都回傳正確捨入的值，也就是真正的 `tanh(x)` 只捨入一次到最近的 float32。以前是把 Go 的 `math.Tanh` 捨入成 float32，而它的 float64 結果並非每個平台都一樣（在 arm64 會合併乘加，在 amd64 執行時依 CPU 選擇是否用 FMA，在 s390x 則是組合語言），所以只在那個結果剛好夠準的地方才正確。全部 2^32 個輸入都在 darwin/arm64 上比對過，2^-13 到 9.5 之間的輸入也在 linux/amd64 與 windows/amd64 上比對過。這三個平台上舊的結果原本就正確，所以沒有任何結果改變。
 - `Tape.Tanh` 的梯度每一步都捨入成 float32。以前 Go 編譯器在 arm64 上會把 `1 - y*y` 合併成一次乘加，在 amd64 上不會，同一個梯度在兩邊可能差最後一位。在 arm64 上，10 萬個隨機梯度有 24,892 個改變。現在每個平台上位元都相同。
 
+### `stats`
+
+- `PairedTTest`、`SingleSampleWilcoxon`、`PairedWilcoxon`、`MannWhitneyU`、`OneWayANOVA`、`TwoWayANOVA`、`RepeatedMeasuresANOVA`、`KruskalWallis` 與 `FriedmanTest` 改為拒絕 `NaN` 或 `±Inf` 的格子，這正是 `stats` 文件一直對每個數值入口的描述。它們原本只檢查格子能不能轉成數字，所以這些值會進入計算，而且錯誤是 nil：`PairedTTest` 和三種 ANOVA 回傳 `NaN` 的統計量與 p 值，排序類檢定則回傳看起來正常的結果，因為 `NaN` 一樣會被排出名次。`KruskalWallis` 對 `[1, 2, NaN, 4]` 與 `[1, 2, 3, 4]` 回報 H = 0.54、p = 0.46。現在錯誤訊息和其他檢定一致，list 與位置都從 1 起算，例如 `group 2 contains a non-finite value at row 3: NaN`、`cell (A=2, B=1) contains a non-numeric value at row 2: <nil>` 與 `subject 2 contains a non-finite value at condition 2: NaN`，成對與雙樣本檢定則用 `data1` 或 `data2` 指出是哪個 list。以前的訊息是沒有位置的 `invalid numeric value in data1`，或從 0 起算的 `invalid data at group 0 index 2`。`LeveneTest` 與 `BartlettTest` 的組號也改從 1 起算（以前的 `group 1` 指的是第二組），空組、空格與條件數不符的受試者錯誤也一樣。`nil` 的 list（不論是否帶型別）會得到空 list 會得到的錯誤。`OneWayANOVA`、`KruskalWallis` 與 `FriedmanTest` 以前遇到它會讓整個程式結束，因為問題發生在 `recover` 接不到的 goroutine 裡，`TwoWayANOVA`、`RepeatedMeasuresANOVA` 與 `SingleSampleWilcoxon` 則會 panic。全為有限數值的輸入結果不變。CLI 的 `ttest paired`、`anova` 與 `ftest levene|bartlett` 指令會印出新的訊息。
+- 本身不是 `*insyra.DataList` 的 list（例如 `isr.DL` 建立的 list）現在會照原本存的樣子讀取。`stats` 以前會用 `NewDataList` 重建這種 list，而它會把一格 slice 拆成好幾個數字，所以 `SingleSampleTTest` 等會轉換輸入的函式把這一格算成多個觀察值，四格的 list 進到 `PairedTTest` 的長度檢查時也變成了五格。現在這一格會被拒絕，和同一格放在 `*insyra.DataList` 裡的結果一樣：`data contains a non-numeric value at row 4: [10 11]`。
+
 ## v0.3.3
 
 ### Core

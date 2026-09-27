@@ -81,46 +81,41 @@ depends on the family, and each family states which:
 | --- | --- |
 | Regression (linear, polynomial, exponential, logarithmic, logistic, Poisson, GLM) | refused, with an error naming the series and the row |
 | Correlation and covariance | refused, with an error naming the series and the row |
-| Clustering, PCA, KNN | refused |
-| t-tests (single, two-sample), z-tests, F-tests, Levene, Bartlett, skewness, kurtosis, moments | refused, with an error naming the series and the **one-based** row |
-| `PairedTTest`, Wilcoxon (single/paired), `MannWhitneyU` | refused, with an error naming the series but **no position** — and `NaN`/±Inf are **not** refused |
-| `OneWayANOVA`, `TwoWayANOVA`, `KruskalWallis`, `FriedmanTest` | refused, with an error naming a **zero-based** position — and `NaN`/±Inf are **not** refused |
-| Factor analysis | the whole observation is removed (listwise deletion) |
+| Hypothesis tests: t, z, F, Levene, Bartlett, Wilcoxon, Mann-Whitney U, one-way, two-way and repeated-measures ANOVA, Kruskal-Wallis, Friedman | refused, with an error naming the list and the position, both counted from one |
+| Skewness, kurtosis, moments | refused, with an error naming the series and the one-based row |
+| Clustering, and the features KNN reads | refused |
+| PCA, and the targets `KNNRegress` reads | a blank or text cell is refused, but `NaN` and `±Inf` are **not**: they reach the result, so `PCA` returns `NaN` eigenvalues and `KNNRegress` returns a `NaN` or infinite prediction, with a nil error |
+| Factor analysis | a `NaN` or `±Inf` removes the whole observation (listwise deletion); a blank or text cell is refused |
 | Decision trees in [`insyra/ml`](/Docs/ml.md) | a direction is learned per node for missing *features*; a missing *target* is refused |
 
-The shape of the refusal is measured behaviour, not intent, and the position it
-names is not always a row number you can paste into a spreadsheet:
+The functions below word a refusal the same way. A blank or text cell gives
+`<list> contains a non-numeric value at <position>: <value>`, and a `NaN` or
+`±Inf` gives `<list> contains a non-finite value at <position>: <value>`. The
+list and the position are both counted from one:
 
-| Function | Message on a blank or text cell | Position in it | Refuses `NaN`/±Inf? |
+| Function | The list is called | The position is a | Example |
 | --- | --- | --- | --- |
-| `SingleSampleTTest`, `SingleSampleZTest`, `CalculateMoment` | `data contains a non-numeric value at row 3: <nil>` | **one-based** row | yes — `data contains a non-finite value at row 3: NaN` |
-| `TwoSampleTTest`, `TwoSampleZTest`, `FTestForVarianceEquality` | `data1 contains a non-numeric value at row 3: <nil>` | **one-based** row | yes |
-| `LeveneTest`, `BartlettTest` | `group 0 contains a non-numeric value at row 3: <nil>` | **zero-based** group number, **one-based** row | yes |
-| `Skewness`, `Kurtosis` | `sample contains a non-numeric value at row 3: <nil>` | **one-based** row | yes |
-| `Correlation`, `Covariance` | `x contains a non-numeric value at row 3: <nil>` | **one-based** row | yes |
-| `PairedTTest`, `PairedWilcoxon` | `invalid numeric value in data1` | none | **no** |
-| `SingleSampleWilcoxon` | `invalid numeric value in data` | none | **no** |
-| `MannWhitneyU` | `invalid numeric value in data1` | none | **no** |
-| `OneWayANOVA` | `invalid data at group 0 index 2` | **zero-based** group and index | **no** |
-| `TwoWayANOVA` | `invalid data at cell (A=0, B=0) index 2` | **zero-based** A, B and index | **no** |
-| `KruskalWallis` | `invalid numeric value at group 0 index 2` | **zero-based** group and index | **no** |
-| `FriedmanTest` | `invalid numeric value at subject 0 condition 2` | **zero-based** subject and condition | **no** |
+| `SingleSampleTTest`, `SingleSampleZTest`, `SingleSampleWilcoxon`, `CalculateMoment` | `data` | row | `data contains a non-numeric value at row 3: <nil>` |
+| `TwoSampleTTest`, `TwoSampleZTest`, `FTestForVarianceEquality`, `PairedTTest`, `PairedWilcoxon`, `MannWhitneyU` | `data1` or `data2` | row | `data2 contains a non-finite value at row 3: NaN` |
+| `OneWayANOVA`, `KruskalWallis`, `LeveneTest`, `BartlettTest` | `group N`, the Nth list you passed | row | `group 2 contains a non-finite value at row 3: +Inf` |
+| `TwoWayANOVA` | `cell (A=a, B=b)`, the cell for level a of factor A and level b of factor B | row | `cell (A=2, B=1) contains a non-numeric value at row 2: x` |
+| `RepeatedMeasuresANOVA`, `FriedmanTest` | `subject N`, the Nth list you passed | condition, because each list holds one subject's conditions | `subject 2 contains a non-finite value at condition 2: NaN` |
+| `Skewness`, `Kurtosis` | `sample` | row | `sample contains a non-numeric value at row 3: <nil>` |
+| `Correlation`, `Covariance` | `x` or `y` | row | `x contains a non-numeric value at row 3: <nil>` |
 
-The last seven rows share one trap: they check only whether a cell reads as a
-number, so a `NaN` or a `±Inf` is accepted and carried into the arithmetic. The
-answer is then wrong in a way nothing flags. `PairedTTest` returns a `NaN`
-statistic and a `NaN` p-value with a **nil** error, and `OneWayANOVA` returns
-`F` and `P` as `NaN` with a nil error; the rank-based ones go further and
-produce an ordinary-looking finite answer, because ranking a `NaN` still yields
-a rank — `KruskalWallis` on `[1, 2, NaN, 4]` against `[1, 2, 3, 4]` returns
-`H = 0.54, p = 0.46` and no error. Check the statistic before reporting it.
+The other errors the hypothesis tests raise about a group, a cell or a subject
+count from one too: `group 2 is empty`, `empty cell at A=1, B=2`,
+`subject 2 has 2 observations, expected 3`. In the hypothesis tests, a `nil`
+list, typed or not, counts as an empty list and gets the error an empty one
+would.
 
-Because those families are the ones that will not tell you, clean the series
-before you analyse it. [`DataList.ClearNils`](DataList.md#clearnils) and
+To analyse data with gaps, remove them before the call.
+[`DataList.ClearNils`](DataList.md#clearnils) and
 [`DataList.ClearNaNs`](DataList.md#clearnans) drop `nil` and `float64` `NaN`
-cells, and `ClearNilsAndNaNs` does both; doing it first means none of the
-above fires. A blank or a text cell is still refused after clearing, so convert
-or remove those first.
+cells, and `ClearNilsAndNaNs` does both. Neither removes text or `±Inf`, so
+convert or remove those yourself. In a paired test or a repeated-measures
+design, remove the whole pair or the whole subject: clearing one list on its own
+leaves it shorter than the others, and the call is refused for the mismatch.
 
 Only Go numeric types convert. A string is refused even when it spells a
 number, so a table loaded without type inference has to be converted before it
@@ -385,7 +380,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TTestResult, error)
 ```
 
-**Description:** Compare means of paired/dependent samples.
+**Description:** Compare means of paired/dependent samples. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming `data1` or `data2` and the one-based row.
 
 **Parameters:**
 
@@ -751,7 +746,7 @@ fmt.Printf("p = %.4f\n", stats.NormCDF(crit)) // 0.9750
 func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)
 ```
 
-**Description:** Compare means across multiple independent groups.
+**Description:** Compare means across multiple independent groups. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the group and the row, both counted from one.
 
 **Parameters:**
 
@@ -767,7 +762,7 @@ func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)
 func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error)
 ```
 
-**Description:** Analyze effects of two factors and their interaction. Cells must be in row-major order: cell `i*factorBLevels + j` holds the data for `A=i, B=j`, so you pass exactly `factorALevels × factorBLevels` of them. Both level counts must be at least 2, and a level count below 2 or a cell count that is not their product fails with `invalid levels or cells`. There is no long-format entry point — reshape your data into cells yourself before calling this function.
+**Description:** Analyze effects of two factors and their interaction. Cells must be in row-major order: cell `i*factorBLevels + j` holds the data for `A=i, B=j`, so you pass exactly `factorALevels × factorBLevels` of them. Both level counts must be at least 2, and a level count below 2 or a cell count that is not their product fails with `invalid levels or cells`. There is no long-format entry point — reshape your data into cells yourself before calling this function. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the cell and the row. Errors count levels from one, so `cell (A=2, B=1)` is `cells[factorBLevels]`, the first level of B under the second level of A.
 
 **Parameters:**
 
@@ -858,7 +853,7 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, erro
 func LeveneTest(groups []insyra.IDataList) (*FTestResult, error)
 ```
 
-**Description:** Test equality of variances across multiple groups (robust). Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
+**Description:** Test equality of variances across multiple groups (robust). Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the group and the row, both counted from one, and is never counted in `n`.
 
 **Parameters:**
 
@@ -874,7 +869,7 @@ func LeveneTest(groups []insyra.IDataList) (*FTestResult, error)
 func BartlettTest(groups []insyra.IDataList) (*FTestResult, error)
 ```
 
-**Description:** Test equality of variances across multiple groups (assumes normality). Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
+**Description:** Test equality of variances across multiple groups (assumes normality). Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the group and the row, both counted from one, and is never counted in `n`.
 
 **Parameters:**
 
@@ -1033,7 +1028,9 @@ func SingleSampleWilcoxon(data insyra.IDataList, mu float64, alt AlternativeHypo
 **Description:** Tests whether the median of `data` equals `mu` (Wilcoxon
 signed-rank test on `data - mu`). Zero differences are dropped before
 ranking (R `wilcox.test` default zero-method). The CI is the
-Hodges-Lehmann pseudo-median interval on the `data` scale.
+Hodges-Lehmann pseudo-median interval on the `data` scale. Every
+observation must be a finite number: a blank, text, `NaN`, or `Inf` cell
+is refused with an error naming `data` and the one-based row.
 
 **Parameters:**
 
@@ -1054,7 +1051,9 @@ func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, co
 
 **Description:** Tests whether the median of `data1 - data2` equals 0.
 `data1` and `data2` must have the same length. CI is for the median
-paired difference.
+paired difference. Every observation must be a finite number: a blank,
+text, `NaN`, or `Inf` cell is refused with an error naming `data1` or
+`data2` and the one-based row.
 
 **Parameters:**
 
@@ -1074,7 +1073,9 @@ func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, conf
 
 **Description:** Wilcoxon-Mann-Whitney rank-sum test on two independent
 samples. `U1` is for `data1`, `U2 = n1·n2 − U1`; `Statistic` is
-`min(U1, U2)`. CI is the Hodges-Lehmann shift interval.
+`min(U1, U2)`. CI is the Hodges-Lehmann shift interval. Every
+observation must be a finite number: a blank, text, `NaN`, or `Inf` cell
+is refused with an error naming `data1` or `data2` and the one-based row.
 
 **Parameters:**
 
@@ -1094,6 +1095,9 @@ func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error)
 
 **Description:** Kruskal-Wallis H test on ≥ 2 independent samples.
 `Statistic` is the tie-corrected H referred to χ² with `k − 1` df.
+Every observation must be a finite number: a blank, text, `NaN`, or
+`Inf` cell is refused with an error naming the group and the row, both
+counted from one.
 
 **Parameters:**
 
@@ -1112,7 +1116,9 @@ func FriedmanTest(subjects ...insyra.IDataList) (*FriedmanTestResult, error)
 **Description:** Friedman test for repeated measures. Each `IDataList`
 is one subject's measurements across `k` conditions; all subjects must
 have the same length `k`. `Statistic` is the tie-corrected Q referred
-to χ² with `k − 1` df.
+to χ² with `k − 1` df. Every measurement must be a finite number: a
+blank, text, `NaN`, or `Inf` cell is refused with an error naming the
+subject and the condition, both counted from one.
 
 **Parameters:**
 
