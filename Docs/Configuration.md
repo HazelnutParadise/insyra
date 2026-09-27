@@ -67,6 +67,23 @@ handler := insyra.Config.GetDefaultErrHandlingFunc()
 
 The global buffer behind `GetAllErrors`, `PopAllErrors`, `HasError`, `GetErrorCount` and `ClearErrors` is a diagnostic log rather than an error-handling API: it holds up to `insyra.ErrorBufferCapacity` (1536) records from every goroutine and every object, and drops the oldest when full. Use it to see what a run did, and handle errors through `Err()`/`PopErr()` or a returned `error`. `PopError`, `PopErrorByPackageName`, `PopErrorByFuncName`, `PopErrorAndCallback`, `PeekError`, `GetErrorsByLevel`, `GetErrorsByPackage`, `PopErrorInfo` and `HasErrorAboveLevel` are deprecated for that reason.
 
+### Fatal errors
+
+A path with nothing left to do but give up records a fatal, and by default that ends the program. `LogFatal` logs through `log.Fatalf` unless panic protection is on, so the statements after the call never run, deferred functions do not run either, and the process exits with status 1. `SetDontPanic(true)` turns the same path into one logged line and a return:
+
+```go
+// Do this first in a program that must survive an error.
+insyra.Config.SetDontPanic(true)
+```
+
+A long-running program — a server, a REPL, a batch job that saves many files —
+should set it before doing any work, because the first fatal is the last
+statement the program reaches. The one path that reports a fatal today is
+`gplot.SaveChart` ([gplot/save_chart.go](../gplot/save_chart.go)): a chart path
+it cannot write, such as a missing directory or a permission failure, ends the
+program rather than returning, so a program that saves charts in a loop needs
+this on.
+
 ## Performance Configuration
 
 Fine-tune performance for your use case:

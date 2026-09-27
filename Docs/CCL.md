@@ -303,6 +303,43 @@ Tightest binding at the top. Operators on the same row are evaluated left to rig
 
 Unary minus binds tighter than `^`, as in Excel: **`-2^2` is `4`**, not `-4`. Write `0 - 2^2` for the other reading.
 
+### Combined Column and Row Ranges
+
+A column range and a row range can be combined into a block, and there are two
+spellings of it:
+
+```
+"(A:B).(1:3)"        // columns A..B, rows 1..3 — explicit grouping
+"A:B.(1:3)"          // the same thing
+"SUM(A:B.(1:3))"     // sum that block
+```
+
+Both parse to the same node and return the same values, so the parentheses are
+not required — they only say which part binds first. Since `:` binds tighter
+than `.`, a reader seeing `A:B.(1:3)` has to work out that the `:` groups the
+columns first anyway; the parentheses show it. Reach for them whenever a range
+is nested inside another range, an aggregate, or a longer expression:
+
+```
+"([A]:['Price']).(0:'Peter')"   // mixed index + name, both sides
+```
+
+Three things about the result are worth knowing:
+
+- **Row numbers are 0-based** here, as everywhere else in CCL — `(A:B).(1:3)`
+  is rows 1, 2 and 3, which is the *second* through *fourth* rows of a
+  five-row table. It is not rows 1 to 3 in the spreadsheet sense.
+- **Bounds are strict.** On a five-row table `(A:B).(1:5)` fails with
+  `row index 5 out of range (total rows: 5)`, and the same happens on
+  `(A:B).(0:5)` at the top end. Use `(0:4)` to mean "all five rows".
+- **The block does not depend on the current row.** Each output row receives the
+  whole block, so a five-row table gets the same three-by-two block in all five
+  rows. Wrap it in an aggregate (`SUM`, `AVG`, …) to collapse it to a value.
+
+A parenthesised column range is otherwise inert — `SUM(A:B)` and `SUM((A:B))`
+are the same number over a two-column table — so adding parentheses to a plain
+range never changes the result.
+
 ## Type Coercion and Comparison Behavior
 
 CCL uses dynamic typing and performs automatic type coercion to handle operations between different data types. Understanding these behaviors is crucial for writing correct CCL expressions.

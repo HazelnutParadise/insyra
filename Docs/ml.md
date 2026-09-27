@@ -207,6 +207,15 @@ labels from a model that reports probabilities — is served identically either
 way. scikit-learn's `score` carries a default metric on the estimator class;
 Go has nowhere to hang that, so the metric is an argument.
 
+Reach for the direct helpers — `Accuracy`, `RMSE`, `MAE`, `R2`, and the rest
+of the table above — only when you already hold the predictions. They take two
+data lists and nothing else, so every check `Score` makes is skipped: that the
+metric's kind matches what the model predicts, that a probability metric gets a
+`ProbaModel`, and that labels come from the argmax when the model reports
+probabilities. A bare `Accuracy` over two lists of measurements is a number
+about those lists. `Score` is a statement about the model, so it is the one to
+use when that is what is being asked.
+
 ### Writing your own metric
 
 `Metric` is four methods, and a metric written outside this package works the
@@ -330,9 +339,12 @@ KNN stores the training table because the underlying `stats.KNNClassify` and `st
 
 ## Decision trees
 
-`FitDecisionTreeClassifier` and `FitDecisionTreeRegressor` fit deterministic
-histogram trees. They return fitted models that implement `Model` and
-`Importances`; the classifier also implements `ProbaModel`.
+`FitDecisionTreeClassifier` and `FitDecisionTreeRegressor` are the choice when
+the fitted model itself has to be read — one tree, whose `Root` nodes and
+`LeafValues` say which feature splits on what, rather than an average over
+trees whose individual votes say little on their own. Both fit deterministic
+histogram trees and return models that implement `Model` and `Importances`; the
+classifier also implements `ProbaModel`.
 
 ```go
 tree, err := ml.FitDecisionTreeClassifier(trainX, trainY, ml.DecisionTreeOptions{
@@ -383,6 +395,18 @@ per-node random feature order, so deep trees on tiny nodes can legitimately
 differ between any two implementations.
 
 ## Ensembles
+
+For tabular classification and regression, an ensemble is worth considering
+before a single tree, and the two families here correct different errors. A
+random forest lowers variance: the trees disagree with each other, and
+averaging them cancels part of that disagreement, which is what helps when the
+answer moves with the rows a single tree happened to see. Gradient boosting
+lowers bias instead, fitting each stage to what the previous stages left
+unexplained, which is what helps when every tree is consistently a little
+wrong in the same direction. A forest reproduces itself from its seed, so
+refitting the same data with the same seed gives the same model; boosting is
+deterministic with no seed to manage, and its classifier is binary-only — a
+target with more than two classes is refused rather than approximated.
 
 Both ensemble families are built from the same histogram trees.
 

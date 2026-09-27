@@ -174,6 +174,8 @@ insyra --log-level debug help
 
 These flags work in front of every command, including the ones that take raw values such as `newdl -1 2 3`.
 
+A flag is per invocation, but `config` is not. `config <key> <value>` writes to one file for the whole install, `~/.insyra/config.json`, which every environment reads, so a setting made in `scratch` is in force in `default` too. Two keys are read today: `accel-mode` is the mode `accel` uses when no `--mode` is given (an explicit `--mode` wins, and with neither the mode is `auto`), and `fetch.tw.interval_ms` sets the throttle of `fetch tw`. A `noColor` key is stored but nothing reads it; turn color off with `--no-color` or the `NO_COLOR` environment variable. Config keys come only from that file, never from environment variables, although the CLI reads a few environment variables for other things: `NO_COLOR` and `TERM=dumb` turn colored output off, and the `INSYRA_ACCEL_*` variables described in [accel](accel.md) steer device discovery. The file is distinct from the per-environment `envs/<name>/config.json` listed under [Environment Model](#environment-model), which `config` does not touch.
+
 ## Environment Model
 
 An environment name is joined onto the environments directory, so a name that would resolve outside it (empty, absolute, or escaping through `..`, such as `../x`) is refused before any file is touched. Any other name, including one with spaces or non-ASCII letters, is accepted.
@@ -193,7 +195,7 @@ Each environment contains:
 Default behavior:
 
 - On first run, `default` environment is auto-created.
-- CLI commands restore env variables before execution.
+- CLI commands restore env variables before execution. That round trip goes through `state.json`, and it does not keep everything: a DataTable comes back with its columns in alphabetical order and its `time.Time` cells as strings, and a variable that `state.json` cannot hold, such as a fitted scaler, is gone at the next invocation. A REPL session or an `.isr` script keeps variables in memory between commands, so run multi-step work there rather than as separate one-shot commands.
 - REPL saves history and state continuously.
 - DSL session `Execute` saves state after successful command.
 - Variables that hold `NaN` or ±Inf (for example a CSV loaded with blank cells) are saved and restored intact.
@@ -247,6 +249,8 @@ Several commands accept **literal data values** as arguments — places where a 
 | anything else                          | `string` (as typed)        |
 
 The float row is dispatched by Go's `strconv.ParseFloat`, which is why `nan`, `inf`, and `infinity` are recognised as IEEE-754 special values rather than literal strings. **If you need the string `"nan"` itself, pick a different token** (e.g. `missing`) — quoting at the shell level only strips quotes before the command sees the argument, it does not promote the token back to a string.
+
+An integer token matches a cell of **any** Go integer type, so `count sales 2` finds the `2` in a CSV column that was read back as `int64`. A float token does not cross that line: `count sales 3.0` returns `0` on an integer column and only matches a cell that is itself a `float64`. `find` and `replace` use the same comparison, so a float token silently selects nothing there too.
 
 Commands whose arguments go through this ladder include (non-exhaustive):
 
@@ -339,6 +343,15 @@ insyra --env demo run pipeline.isr
 
 Boolean values accept `true|false`, `yes|no`, `on|off`, `1|0` (case-insensitive).
 
+The shared list above is the union, not what every format accepts. An option a format does not use is **rejected**, not ignored, so a typo or a pasted flag cannot pass silently:
+
+| Format | `load` / `read` options | `save` options |
+| --- | --- | --- |
+| CSV | `headers`, `rownames`, `encoding`, `infer`, `ragged`, `trimspace` | `headers`, `rownames`, `bom` |
+| Excel | `sheet` (required), `headers`, `rownames` | not a save target — `save` refuses an `.xlsx` path |
+| JSON | `headers` | `headers` |
+| Parquet | `cols`, `rowgroups` | none |
+
 ```text
 # Pure data matrix (no header, no row labels)
 load matrix.csv headers false as t
@@ -368,7 +381,7 @@ save gdp out.csv rownames true
 save matrix data.csv headers false
 ```
 
-`read` is a quick previewer that forwards the same options to `load` (e.g. `read big5.csv encoding big5`).
+`read` is a quick previewer that forwards the same options to `load` (e.g. `read big5.csv encoding big5`). It never stores a variable: `read` prints what it loaded and throws the table away, so it has no `as` form and an explicit `as <var>` is an error rather than a silent no-op. Use `load` when the preview should become a variable.
 
 ### B0. SQL workflow (load and save against a live DB)
 
@@ -393,7 +406,7 @@ db disconnect main
 
 `load sql <conn> <table>` accepts `where "<sql>"`, `order "<sql>"`, `limit N`, `offset N`, `cols "c1,c2"`, `schema <s>`, `indexcol <c>`, and `parsedates "c1,c2"`. `load sql <conn> query "<SQL>"` accepts only `params <v1> <v2> ...` (positional placeholders, parsed as literals).
 
-`save <var> sql <conn> <table>` accepts `if-exists fail|replace|append` (default `fail`), `batch N`, `schema <s>`, and the `rownames` flag (writes the DataTable row names as an extra column).
+`save <var> sql <conn> <table>` accepts `if-exists fail|replace|append` (default `fail`), `batch N`, `schema <s>`, and the `rownames` flag (writes the DataTable row names as an extra column). There `rownames` is the one option that may stand alone — `save t sql main tbl rownames` means `rownames true` — because a bare flag is the older spelling of that line. Every `save` to a **file** needs the value spelled out (`save t out.csv rownames true`); a trailing `rownames` there is read as an option missing its value and the command stops.
 
 DSN forms accepted by `db connect`:
 
@@ -404,6 +417,14 @@ DSN forms accepted by `db connect`:
 - `postgres:host=... user=... password=... dbname=...` (libpq KV form)
 
 Passwords are masked when listed with `db list`.
+
+Every DSN must name its dialect up front, because the first segment **is** the dialect: a bare path such as `./demo.db` is refused, and so is a dialect the CLI has no driver for. Matching is case-insensitive, and `postgresql` is accepted as a spelling of `postgres`.
+
+A connection name is unique in the process: `db connect main ...` twice is an error rather than a silent reconnect, so use `db disconnect main` first or pick another name.
+
+`db tables <name>` with no `schema` lists the connection's default schema — `current_schema()` on PostgreSQL, the current database on MySQL. Pass `schema <s>` to list another one.
+
+Connections live in the process that opened them. They are not written to `state.json` and not restored by `env open` or a later CLI invocation, so a script that opens a connection opens it in every run. Only variables, history, and the environment's own config file persist.
 
 ### B2. GroupBy aggregations
 
@@ -420,6 +441,8 @@ groupby sales by region,product agg revenue:sum count as report2
 
 The result is a fresh DataTable with one row per group; key columns appear first (in `by` order), aggregate columns next (in `agg` order).
 
+Two of the ops count differently, and mixing them up quietly changes a total. `<col>:count` counts only the cells that are **not** nil, while `<col>:countall` counts every row in the group. The bare `count` shorthand is `countall` — a row count, not a non-nil count — so `agg revenue:sum count` is a total of rows, and a column of empty cells makes the difference visible.
+
 ### B3. Pivot / Unpivot (long ↔ wide reshape)
 
 `pivot <var> index <col1[,col2,...]> columns <col> values <col> [agg <op>] [fillna <literal>] [sortcols true|false] [as <var>]` reshapes long-form data into wide form. The unique values of the `columns` column become new column headers; cells are filled from the `values` column; rows are keyed by the `index` columns.
@@ -432,7 +455,7 @@ show wide
 
 Supported `agg` ops match `groupby`: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count`, `countall`, `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. When `agg` is omitted and any `(index, columns)` pair has duplicates, the command errors.
 
-`unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true|false] [as <var>]` is the inverse: each input row is expanded into one output row per value column, with the source column name written to `varname` (default `variable`) and the cell value to `valuename` (default `value`). When `valuevars` is omitted it defaults to all non-`idvars` columns. `dropna true` skips rows whose value is nil or NaN.
+`unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true|false] [as <var>]` is the inverse: each input row is expanded into one output row per value column, with the source column name written to `varname` (default `variable`) and the cell value to `valuename` (default `value`). When `valuevars` is omitted it defaults to all non-`idvars` columns. `dropna true` skips rows whose value is nil or NaN. `varname` and `valuename` must differ: giving them the same name would ask one column to hold both, so the command refuses instead of picking one.
 
 ```text
 load survey.csv as survey
@@ -457,6 +480,14 @@ encode sales onehot region,channel dropfirst true as x
 encode sales label segment newcol segment_id sortby freq keeporiginal true as labeled
 encode survey ordinal satisfaction order low,medium,high unknown error as ranked
 ```
+
+The three forms produce different things, and the difference is what the numbers mean afterwards:
+
+- `onehot` replaces each source column with one `0`/`1` column per category, so the encoded table is wider than the input.
+- `label` replaces the column with a single column of **integer category ids** `0..n-1`. The ids are positional: `sortby firstseen|lex|freq` decides which category gets `0`.
+- `ordinal` likewise writes `0..n-1`, but the `order` list decides the positions, so `order low,medium,high` makes `low` the `0` rather than sorting it in by name.
+
+The `order` values in `ordinal` go through the literal ladder above, so a numeric list (`order 1,2,3`) encodes number categories and a quoted one encodes strings. A value in the column that `order` does not list is left unencoded as nil by default (`unknown ignore`); `unknown error` refuses the column instead. Unlike `onehot` and `label`, `ordinal` has no `unknown new`, because `order` alone decides the positions.
 
 ### B5. Feature scaling
 
@@ -485,7 +516,7 @@ scale inverse sc train_scaled as train_original
 
 ### B6. Exponential weighting and calendar resampling
 
-`ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]` computes an exponentially weighted statistic over a DataList. Exactly one decay keyword is given: `alpha` in `(0, 1]`, `span >= 1` (`alpha = 2 / (span + 1)`), or `halflife > 0`. `adjust` and `bias` default to no, `minobs` to 1. The result is a DataList of the same length as the input.
+`ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]` computes an exponentially weighted statistic over a DataList. Exactly one decay keyword is given: `alpha` in `(0, 1]`, `span >= 1` (`alpha = 2 / (span + 1)`), or `halflife > 0`. `adjust` and `bias` default to no, `minobs` to 1. The result is a DataList of the same length as the input, and every position that has not yet seen `minobs` valid observations comes back nil rather than a number computed from too little.
 
 ```text
 ewm price alpha 0.5 mean as ewma
@@ -495,9 +526,14 @@ ewm returns halflife 5 std minobs 3 as ewvol
 
 `rolling` additionally takes two paired reducers, each consuming a second DataList variable: `rolling <var> <window> cov <other> [...]` and `rolling <var> <window> beta <other> [...]`. `beta` is `Cov(var, other) / Var(other)`; a flat benchmark window yields nil.
 
+A window shorter than `minobs` has to be asked for explicitly. Omit `minobs` and it defaults to `window`, which means a `rolling ... 20` over 1,000 rows emits nil for the first 19 rows instead of computing from a partial window; `minobs 5` is what makes the first four rows real numbers. `minobs` above `window` is not refused: it logs a warning and stores an empty result. `center yes` shifts the window to straddle each position the way pandas' `rolling(center=True)` does; with the default `minobs` the first and last few rows are still nil, and a smaller `minobs` is what fills them from a partial window.
+
+`expanding <var> <minobs> <reducer>` reduces over everything from row 1 to the current row. Its `minobs` is a required argument, and until that many valid observations have arrived the position is nil.
+
 ```text
 rolling asset 20 cov benchmark as roll_cov
 rolling asset 20 beta benchmark minobs 10 as roll_beta
+expanding revenue 12 sum as ytd
 ```
 
 `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [...] [as <var>]` turns time-keyed rows into calendar-period aggregates. Each output row is labelled with the period's final calendar day, periods with no rows are omitted, and `op` accepts the same operator names as `groupby`. The optional third field renames the output column; without it the output keeps the source column name. Column names containing `:` cannot be written in this syntax.
@@ -510,7 +546,7 @@ show monthly_bars
 
 `<timecol>` must hold `time.Time` values; a column of date *strings* is rejected with a row-numbered error. A CSV load leaves date columns as strings, so convert the column with `parsedates` first (below), or start from a source that carries real timestamps such as `fetch yahoo <ticker> history`.
 
-`parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]` turns date strings into `time.Time`. On a DataList the whole list is converted; on a DataTable `cols` is required and names the columns to convert (by name, or by Excel index such as `A`). `layout` takes a Go reference layout and may be repeated — the layouts are tried in order and the first match wins. Without `layout`, common ISO shapes are tried (`2006-01-02`, `2006-01-02 15:04:05`, RFC 3339). A cell no layout matches becomes nil, so `resample` then reports it by row rather than converting half a column silently.
+`parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]` turns date strings into `time.Time`. On a DataList the whole list is converted; on a DataTable `cols` is required and names the columns to convert (by name, or by Excel index such as `A`). `layout` takes a Go reference layout and may be repeated — the layouts are tried in order and the first match wins. Without `layout`, common ISO shapes are tried (`2006-01-02`, `2006-01-02 15:04:05`, RFC 3339). A cell no layout matches becomes nil, so `resample` then reports it by row rather than converting half a column silently. A cell that is **already** a `time.Time` is left alone, location included, so a table from a source with real timestamps survives `parsedates` unchanged — which makes the command safe to run on a column that mixes loaded strings and fetched dates.
 
 ```text
 load bars.csv as bars
@@ -538,6 +574,8 @@ quant cvar ret 0.95 parametric as cvar95
 ```
 
 Each scalar form prints `name=value` and stores a `float64` under `as <var>` (or `$result`). `periods`, `days`, and `confidence` are required — the library refuses to guess an annualization factor, so there is no CLI-side default of 252. `rf`, `mar`, and `q` default to 0.
+
+A rejected argument is named in the error rather than left to be inferred. An error inside a form starts with `quant <form>:` and then says what was wrong, such as a missing option value, a bad `method` or an asset count that does not match the table. An unknown form is reported as `quant: unknown form ...`, and a line with no form at all gets the usage line.
 
 `capm` and `bs` store a one-row DataTable; `factor` stores one row per factor plus `<var>_alpha`; `drawdown` stores a DataList.
 
@@ -573,6 +611,10 @@ fetch tw quotes [twse|tpex|auto] [as <var>]
 ```
 
 Use `adjprices` for anything that becomes a return series: on an ex-dividend or ex-rights day the quoted price drops without any loss to the holder, so `Close` shows a fake loss that `AdjClose` removes. `adjprices` and `exrights` are TWSE-only — TPEx publishes no dated ex-rights history, so passing `tpex` returns an explicit error rather than a silently unadjusted table.
+
+A malformed line is caught before anything leaves the machine. The date pair, the `YYYY-MM-DD` shape, the market keyword, and a stock code in the wrong position are all checked first, so `fetch tw 2330 prices 2026-13-01 2026-01-01` or `fetch tw 2330 prices 2026-01-01 2026-08-31 nasdaq` fails with the CLI's own message and no request is sent. The throttle in the next paragraph therefore protects the exchange, not the parser.
+
+Errors from this command start with `fetch tw:`, or with `fetch tw <form>:` when a single form is at fault, so a failure in a long backfill script is attributable to `fetch tw` without reading the stack.
 
 Beta of TSMC against the 0050 market ETF, end to end:
 
@@ -678,7 +720,7 @@ fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [ex
 fillnan <var> mean [as <var>]   # deprecated; only fills NaN, mean only
 ```
 
-`fillna` clones the input (DataList or DataTable) and saves the filled result under `as <var>` or `$result`. `cols` filters which DataTable columns to touch (ignored for DataList). `limit` caps consecutive forward/backward fills; `extrapolate` controls whether interpolation fills leading/trailing gaps; `missing` selects which kind of missing to fill (default `both`). `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
+`fillna` clones the input (DataList or DataTable) and saves the filled result under `as <var>` or `$result`. `cols` filters which DataTable columns to touch (ignored for DataList). `limit` caps consecutive forward/backward fills — and `limit 0` means **no cap at all**, filling a gap as far as the data reaches, not "fill nothing". `extrapolate` controls whether interpolation fills leading/trailing gaps; `missing` selects which kind of missing to fill (default `both`). `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
 
 `fillnan <var> mean` is a legacy alias kept for backward compatibility — it only fills NaN (leaves nil alone) and only supports the `mean` strategy. New code should use `fillna ... missing nan` instead.
 
@@ -718,7 +760,7 @@ Source policy:
 | `config` | `config [key] [value]` | Read or update global CLI config |
 | `convert` | `convert <input> <output>` | Convert file formats (csv<->xlsx) |
 | `corr` | `corr <x> <y> [pearson\|kendall\|spearman]` | Correlation between two DataLists |
-| `corrmatrix` | `corrmatrix <datatable> [pearson\|kendall\|spearman] [as <var>]` | Correlation matrix for a DataTable |
+| `corrmatrix` | `corrmatrix <datatable> [pearson\|kendall\|spearman] [as <var>]` | Correlation matrix for a DataTable; also stores the matching p-value matrix as `<var>_p` |
 | `count` | `count <var> <value>` | Count occurrences |
 | `counter` | `counter <var>` | DataList frequency map |
 | `cov` | `cov <x> <y>` | Covariance between two DataLists |
@@ -834,6 +876,12 @@ save region_summary region_summary.csv
 
 Without `as`, the result is stored in `$result`. `all true` includes non-numeric and mixed columns. `by` is available for DataTable variables only.
 
+`describe`'s `percentiles` are fractions between 0 and 1 (`0.1,0.5,0.9`), and a value outside that range is refused. The DataList command `percentile <var> <p>` takes a percentage between 0 and 100 instead, so `percentile x 50` is the median.
+
+## Chi-square Command
+
+`chisq gof <var> [p1 p2 ...]` tests whether the values of a DataList occur in the given proportions, which default to equal. It counts the values itself: pass the raw observations, one per row (`red red blue green`), not a list of counts. A DataList of counts such as `10 20 30` is read as three labels seen once each. `chisq indep ...` is the test of independence; `insyra help chisq` shows its forms.
+
 ## Regression Forms
 
 The `regression` command supports:
@@ -850,6 +898,77 @@ Examples:
 ```bash
 insyra regression logistic y x1 x2 as fit
 insyra regression poisson y x1 x2
+```
+
+## Set Command
+
+`set <var> <row> <col> <value>` writes a single cell, and its coordinates are narrower than those of the commands that read:
+
+- `<row>` is a row **index**, not a row name. It must parse as a whole number, like `get`'s; `row` is the command that also accepts a row name.
+- `<col>` is a column **letter**, an Excel-style index (`A`, `B`, … `AA`), not a column name or a number. `get` accepts a letter or a number, and `col` a name or a number. `cols <var>` lists the names; the letter is the position in that list.
+- `<value>` goes through the literal ladder, so a bare `2.5` stores a number rather than the text `2.5`.
+
+The write is verified: the cell is read back and, if it does not hold the value, the command fails with `set: update did not take effect for row <n>, col "<letter>" (does it exist?)` rather than reporting success on a row or column that was never there.
+
+```bash
+cols sales               # names in order, so column 4 is D
+set sales 0 D 1234       # row 0, column D
+```
+
+## Merge Directions and Modes
+
+`merge <var1> <var2> <direction> <mode> [on <cols>] [as <var>]` joins two DataTables. `<direction>` is `horizontal` or `vertical`, and the two directions do not accept the same set of modes:
+
+| Direction | `inner` | `outer` | `left` | `right` |
+| --- | --- | --- | --- | --- |
+| `horizontal` (add columns) | keys in both tables | every key, left table's order first | left table's keys only | right table's keys only |
+| `vertical` (add rows) | columns both tables share | every column of both, stacked | same as `outer` | same as `outer` |
+
+So on a `vertical` merge the mode only has two behaviours: `inner` keeps the columns both tables have, and `outer`, `left`, and `right` all stack everything. A row-only merge has no "left rows only" to mean, which is why the last two are not refused but do what `outer` does — the row set of a vertical merge is fixed by the data.
+
+A `horizontal` merge keeps every left column and appends the right table's columns except the one it joined on, which arrives as the key the rows are already identified by. A right-hand column whose name already exists on the left is renamed with an `_other` suffix rather than overwriting the original.
+
+`on` is followed by one or two column names — one means the same name on both sides, two means `on <left> <right>`. Omit it and the tables join on **row names** instead, in which case no column is dropped. A name that is in neither table is reported by which table was missing it.
+
+```bash
+merge sales targets horizontal left on region as enriched
+merge sales_q1 sales_q2 vertical inner as both
+```
+
+## Plot Output Formats
+
+`plot <type> <var> [options...] [save <file>]` picks its format from the file extension, and the default is a file the browser can open:
+
+- `.png` (any case) writes a PNG image.
+- Any other extension — `.html` included — writes an interactive HTML chart.
+- With no `save <file>`, the chart goes to `<type>.html` in the working directory, e.g. `bar.html`.
+
+That `.png` is the only image path, so `save chart.jpeg` does not produce a JPEG: it writes HTML under a `.jpeg` name. For another image format, save a `.png` and convert it with an image tool; the CLI's `convert` only converts between CSV and Excel.
+
+## Cluster and Neighbour Result Variables
+
+`kmeans`, `dbscan`, `silhouette`, and the three `knn_*` commands store more than one variable. The primary one is the answer, and the rest arrive alongside it under `<alias>_`:
+
+| Command | `<alias>` | Also stored |
+| --- | --- | --- |
+| `kmeans <var> <k>` | cluster label per row | `_centers`, `_size` (rows per cluster), `_withinss`, `_totwithinss`, `_totss`, `_betweenss`, `_iter`, `_ifault` |
+| `dbscan <var> <eps> <minpts>` | cluster label per row | `_isseed` (which points were core points) |
+| `silhouette <var> <labels_var>` | silhouette width per row | `_avg` (the average width) |
+| `knn_classify <train> <labels> <test> <k>` | predicted label per test row | `_classes`, `_probs` |
+| `knn_regress <train> <targets> <test> <k>` | predicted value per test row | — |
+| `knn_neighbors <train> <test> <k>` | DataTable of neighbour indices | `_distances`, the matching distances |
+
+Without `as`, `alias` is `$result`, so the side variables land in `$result_centers` and so on.
+
+`kmeans` is the reason to look twice. `_withinss` against `_betweenss` says whether `k` is worth keeping, and `_ifault` says how the run ended: `0` is a clean finish, `2` means it used up `itermax` without converging — the answer is the best it had, not a converged one — and `4` means the Qtran step broke down. `_iter` is how many passes that took.
+
+`silhouette` takes the labels from a separate DataList variable, so the usual sequence is `kmeans` (or `dbscan`) into one variable and then `silhouette` that variable into another.
+
+```bash
+kmeans customers 3 as seg
+show seg_centers
+silhouette customers seg as sil
+show sil_avg
 ```
 
 ## Troubleshooting

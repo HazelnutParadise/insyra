@@ -111,7 +111,6 @@ Don't introduce a parallel `LongHelp string` or print extra help from inside `Ru
 Helpers in this list are imported across commands. A signature change to `parseAlias`, `parseFlexBool`, etc. means re-running `go test ./cli/...` and likely touching docs in:
 
 - [Docs/cli-dsl.md](../Docs/cli-dsl.md)
-- [skills/use-insyra-cli/SKILL.md](../skills/use-insyra-cli/SKILL.md)
-- [skills/use-insyra-cli/references/](../skills/use-insyra-cli/references/)
+- the command's own `Usage`, `Forms` and `Examples`, which `insyra help <command>` prints
 
-Keep these in sync — the skill references are the source of truth for AI agents using the CLI.
+Keep these in sync. `Docs/cli-dsl.md` and `help` are what AI agents read: [skills/use-insyra-cli/SKILL.md](../skills/use-insyra-cli/SKILL.md) teaches them to look there and lists no commands itself.

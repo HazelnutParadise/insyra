@@ -30,6 +30,47 @@ The stats package provides comprehensive statistical analysis functions:
 
 Most functions expect numeric data in `DataList`/`DataTable` and return `error` when inputs are invalid or computation fails. Always handle `err` at call sites.
 
+The error is always the **last** value a function returns, and a function that
+produces more than one thing returns the others before it — `CorrelationMatrix`
+hands back the coefficient table and the p-value table and then the error,
+`BartlettSphericity` hands back `chiSquare, pValue, df` and then the error.
+Take the values you need and check `err` last.
+
+A few functions return **no** error, because there is nothing that can fail:
+`NormCDF(x float64) float64`, `DefaultFactorAnalysisOptions()`, and
+`RegisterKNNDeviceSearcher(fn)` each return a bare value, and the two `Show()`
+methods (`ChiSquareTestResult.Show`, `FactorAnalysisResult.Show`) only print.
+Every other exported function in the package ends in `error`.
+
+`stats` never calls `LogFatal`, so nothing here ends your program the way
+`gplot.SaveChart` does on an unwritable path. When a function does return an
+error, the result pointer it hands back is `nil` — check `err` before touching
+the result, not after.
+
+### Choosing a test
+
+| Question | Function |
+| --- | --- |
+| Does this sample's mean differ from a known value? | `SingleSampleTTest(data, mu, confidenceLevel...)` |
+| Do two independent samples differ? | `TwoSampleTTest(data1, data2, equalVariance, confidenceLevel...)` |
+| Do two measurements of the same subjects differ? | `PairedTTest(data1, data2, confidenceLevel...)` |
+| The same questions with the population σ known | `SingleSampleZTest(data, mu, sigma, alternative, confidenceLevel)` / `TwoSampleZTest(data1, data2, sigma1, sigma2, alternative, confidenceLevel)` |
+| Do three or more groups differ? | `OneWayANOVA(groups...)` |
+| Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells...)` |
+| Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects...)` |
+| Are two categorical variables related? | `ChiSquareIndependenceTest(rowData, colData)` |
+| Does a distribution match the expected counts? | `ChiSquareGoodnessOfFit(input, p, rescaleP)` |
+| Do groups have equal variance? | `FTestForVarianceEquality(data1, data2)`, `LeveneTest(groups)`, `BartlettTest(groups)` |
+| The same questions without assuming normality | `SingleSampleWilcoxon`, `PairedWilcoxon`, `MannWhitneyU`, `KruskalWallis`, `FriedmanTest` |
+
+`confidenceLevel` is variadic on the t-tests and a required parameter on the
+z-tests. Leaving it out of a t-test uses 0.95; a value outside `(0, 1)` is an
+error either way, and the z-tests have no fallback. `alternative` on the z-tests
+is an `AlternativeHypothesis` with no default, so pass one explicitly. The last
+row is the fallback when a parametric assumption fails — see
+[Nonparametric Tests (Rank-Based)](#nonparametric-tests-rank-based) for the
+parametric → rank-based mapping and the decision flow.
+
 ### Values that are not numbers
 
 A value that cannot be read as a finite number — a missing value, a blank, text,
@@ -41,8 +82,45 @@ depends on the family, and each family states which:
 | Regression (linear, polynomial, exponential, logarithmic, logistic, Poisson, GLM) | refused, with an error naming the series and the row |
 | Correlation and covariance | refused, with an error naming the series and the row |
 | Clustering, PCA, KNN | refused |
+| t-tests (single, two-sample), z-tests, F-tests, Levene, Bartlett, skewness, kurtosis, moments | refused, with an error naming the series and the **one-based** row |
+| `PairedTTest`, Wilcoxon (single/paired), `MannWhitneyU` | refused, with an error naming the series but **no position** — and `NaN`/±Inf are **not** refused |
+| `OneWayANOVA`, `TwoWayANOVA`, `KruskalWallis`, `FriedmanTest` | refused, with an error naming a **zero-based** position — and `NaN`/±Inf are **not** refused |
 | Factor analysis | the whole observation is removed (listwise deletion) |
 | Decision trees in [`insyra/ml`](/Docs/ml.md) | a direction is learned per node for missing *features*; a missing *target* is refused |
+
+The shape of the refusal is measured behaviour, not intent, and the position it
+names is not always a row number you can paste into a spreadsheet:
+
+| Function | Message on a blank or text cell | Position in it | Refuses `NaN`/±Inf? |
+| --- | --- | --- | --- |
+| `SingleSampleTTest`, `SingleSampleZTest`, `CalculateMoment` | `data contains a non-numeric value at row 3: <nil>` | **one-based** row | yes — `data contains a non-finite value at row 3: NaN` |
+| `TwoSampleTTest`, `TwoSampleZTest`, `FTestForVarianceEquality` | `data1 contains a non-numeric value at row 3: <nil>` | **one-based** row | yes |
+| `LeveneTest`, `BartlettTest` | `group 0 contains a non-numeric value at row 3: <nil>` | **zero-based** group number, **one-based** row | yes |
+| `Skewness`, `Kurtosis` | `sample contains a non-numeric value at row 3: <nil>` | **one-based** row | yes |
+| `Correlation`, `Covariance` | `x contains a non-numeric value at row 3: <nil>` | **one-based** row | yes |
+| `PairedTTest`, `PairedWilcoxon` | `invalid numeric value in data1` | none | **no** |
+| `SingleSampleWilcoxon` | `invalid numeric value in data` | none | **no** |
+| `MannWhitneyU` | `invalid numeric value in data1` | none | **no** |
+| `OneWayANOVA` | `invalid data at group 0 index 2` | **zero-based** group and index | **no** |
+| `TwoWayANOVA` | `invalid data at cell (A=0, B=0) index 2` | **zero-based** A, B and index | **no** |
+| `KruskalWallis` | `invalid numeric value at group 0 index 2` | **zero-based** group and index | **no** |
+| `FriedmanTest` | `invalid numeric value at subject 0 condition 2` | **zero-based** subject and condition | **no** |
+
+The last seven rows share one trap: they check only whether a cell reads as a
+number, so a `NaN` or a `±Inf` is accepted and carried into the arithmetic. The
+answer is then wrong in a way nothing flags. `PairedTTest` returns a `NaN`
+statistic and a `NaN` p-value with a **nil** error, and `OneWayANOVA` returns
+`F` and `P` as `NaN` with a nil error; the rank-based ones go further and
+produce an ordinary-looking finite answer, because ranking a `NaN` still yields
+a rank — `KruskalWallis` on `[1, 2, NaN, 4]` against `[1, 2, 3, 4]` returns
+`H = 0.54, p = 0.46` and no error. Check the statistic before reporting it.
+
+Because those families are the ones that will not tell you, clean the series
+before you analyse it. [`DataList.ClearNils`](DataList.md#clearnils) and
+[`DataList.ClearNaNs`](DataList.md#clearnans) drop `nil` and `float64` `NaN`
+cells, and `ClearNilsAndNaNs` does both; doing it first means none of the
+above fires. A blank or a text cell is still refused after clearing, so convert
+or remove those first.
 
 Only Go numeric types convert. A string is refused even when it spells a
 number, so a table loaded without type inference has to be converted before it
@@ -449,7 +527,26 @@ type ChiSquareTestResult struct {
 }
 ```
 
-The `ContingencyTable` contains the observed frequencies and expected frequencies for each cell in the contingency table. For goodness of fit tests, it shows observed vs expected values for each category. For independence tests, it shows the full contingency table with observed and expected values for each combination of row and column categories.
+The `ContingencyTable` is a `DataTable` whose cells are **`[2]float64{observed, expected}`** — an array, not two separate numbers.
+
+- **Goodness of fit** — the input is a list of category *labels*, and the function counts how often each distinct label appears. The table is one column named `Observed_Expected` with one row per category, **sorted by label**; the category is the row's *name*, not a cell, so read it with `RowNames()`. Observed is that category's count and expected is `totalCount × p[i]`.
+- **Independence** — one column per column category, one row per row category, both in first-appearance order. The categories are again names: `ColNames()` and `RowNames()`.
+
+Two consequences when reading it:
+
+- The numeric helpers cannot read a cell. `Sum()` on such a column logs `DataList.Sum: Element [1 0.6] cannot be converted to float64, skipping.` for every cell, then returns `NaN` and leaves `[WARNING] DataList.Sum: No valid elements to compute sum` on the list. Iterate the column and index the array instead.
+- **`GetCol` is an index lookup first.** It upper-cases whatever you pass, tries it as an Excel-style column letter, and only then falls back to a name lookup — with the upper-cased string. Since these category names are not upper-case, `GetCol("Observed_Expected")` searches for `OBSERVED_EXPECTED`, warns `Column 'OBSERVED_EXPECTED' not found, returning nil`, and hands you a `nil` column. Use the index (`GetCol("A")`) or the exact-case name (`GetColByName("Observed_Expected")`).
+
+```go
+ct := res.ContingencyTable            // 3 rows x 1 col for a 3-category GoF
+col := ct.GetCol("A")                 // or ct.GetColByName("Observed_Expected")
+rows, _ := ct.Size()
+names := ct.RowNames()                // the categories
+for i := 0; i < rows; i++ {
+    pair := col.Get(i).([2]float64)   // the cell is an array
+    fmt.Printf("%s: observed=%v expected=%v\n", names[i], pair[0], pair[1])
+}
+```
 
 ##### Show Method
 
@@ -670,12 +767,12 @@ func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)
 func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error)
 ```
 
-**Description:** Analyze effects of two factors and their interaction.
+**Description:** Analyze effects of two factors and their interaction. Cells must be in row-major order: cell `i*factorBLevels + j` holds the data for `A=i, B=j`, so you pass exactly `factorALevels × factorBLevels` of them. Both level counts must be at least 2, and a level count below 2 or a cell count that is not their product fails with `invalid levels or cells`. There is no long-format entry point — reshape your data into cells yourself before calling this function.
 
 **Parameters:**
 
-- `factorALevels, factorBLevels`: Number of levels for each factor
-- `cells`: Data for each factor combination
+- `factorALevels, factorBLevels`: Number of levels for each factor (each ≥ 2)
+- `cells`: Data for each factor combination in row-major order (A-major, then B)
 
 **Returns:**
 

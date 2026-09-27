@@ -29,7 +29,7 @@
 
 > [!TIP]
 > `isr` 套件提供 **語法糖**！<br/>
-> 建議任何新專案使用 `isr` 套件取代直接呼叫 `insyra` 主套件包的寫法。<br/>
+> 要寫起來方便、好讀就用 `isr`，要效能就直接用 `insyra` 主套件，兩者可以在同一個程式裡混用。<br/>
 > 更多詳細資訊，請參閱 **[說明文件](/Docs/isr.md)**。
 
 > [!NOTE]
@@ -65,8 +65,8 @@ tape.AdamW(1e-3, 1e-2)
 
 這個 repo 內含兩份 **agent skill**：
 
-- [`skills/insyra`](skills/insyra)：協助 AI agent 在 Go 程式碼中使用 Insyra（DataList / DataTable 工作流、CCL 公式、常見檔案 I/O）。
-- [`skills/use-insyra-cli`](skills/use-insyra-cli)：教 agent 使用 Insyra CLI / REPL 與 `.isr` 腳本，包含環境工作流與完整指令參考。
+- [`skills/insyra`](skills/insyra)：教 AI agent 在 Go 程式碼中使用 Insyra：什麼時候該用、怎麼理解 DataList / DataTable、整個函式庫共通的慣例，以及怎麼查到專案所用版本的確切 API。
+- [`skills/use-insyra-cli`](skills/use-insyra-cli)：教 agent 透過 Insyra CLI、REPL、`.isr` 腳本與 Go DSL 工作：該選哪種模式、工作階段與環境怎麼運作、怎麼讓結果可重現，以及用 `insyra help` 查每個指令的確切用法。
 
 用以下指令安裝 skills：
 
@@ -398,7 +398,7 @@ dl := insyra.NewDataList(prices) // 每個價格一格
 
 | 套件 | 說明 |
 |---|---|
-| **[isr](/Docs/isr.md)** | Insyra 的語法糖，新專案建議的入口。 |
+| **[isr](/Docs/isr.md)** | Insyra 的語法糖，寫起來方便；要效能就用主套件。 |
 | **[stats](/Docs/stats.md)** | 資料分析統計函數：偏度、峰度、矩計算等。 |
 | **[ml](/Docs/ml.md)** | scikit-learn 風格的機器學習：回歸、樹、森林、梯度提升、pipeline 與模型選擇，對 scikit-learn 與 R 驗證，可匯出 ONNX。 |
 | **[nn](/Docs/nn.md)** | 純 Go 神經網路：跑通對 `onnxruntime` 驗證的真實 ONNX 模型、以 PyTorch 驗證的 tape 與層 API 訓練、SafeTensors 讀寫、GPU 加速 MatMul。 |
