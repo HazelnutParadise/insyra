@@ -24,7 +24,7 @@ type TTestResult struct {
 //   - data: The sample data to test
 //   - mu: The hypothesized population mean to compare against
 //   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
-//     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
+//     Must be strictly between 0 and 1; any other value is an error. Defaults to 0.95 when not provided.
 //
 // Constant data has no variance, so the t statistic is ±Inf when the mean
 // differs from mu and NaN when it equals it, with a p-value of 0 or NaN to
@@ -126,7 +126,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 //   - data1, data2: The two data groups to compare
 //   - equalVariance: Whether to assume equal variances between groups
 //   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
-//     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
+//     Must be strictly between 0 and 1; any other value is an error. Defaults to 0.95 when not provided.
 //
 // ** Verified using R **
 func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error) {
@@ -207,7 +207,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 // Parameters:
 //   - data1, data2: The paired data groups to compare (must have same length)
 //   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
-//     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
+//     Must be strictly between 0 and 1; any other value is an error. Defaults to 0.95 when not provided.
 //
 // ** Verified using R **
 func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TTestResult, error) {
