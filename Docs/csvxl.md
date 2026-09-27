@@ -36,9 +36,11 @@ func main() {
 
 ## Supported encodings
 
-Reading decodes UTF-8/ASCII, UTF-16 and UTF-32 (LE/BE, BOM-aware), Big5, GB18030/GBK/GB2312, Shift-JIS, ISO-2022-JP, EUC-JP, EUC-KR, every ISO-8859 part x/text ships, Windows-1250 through 1258, KOI8-R/U, IBM866 and Macintosh Roman — every charset the auto-detector can report, plus the usual aliases (`latin1`, `cp1252`, `sjis`, …). Separators and case do not matter: `ISO-8859-1`, `iso8859_1` and `ISO 8859 1` are the same.
+Reading decodes UTF-8/ASCII, UTF-16 and UTF-32 (LE/BE, BOM-aware), Big5, GB18030/GBK/GB2312, Shift-JIS, ISO-2022-JP, EUC-JP, EUC-KR, every ISO-8859 part x/text ships, Windows-1250 through 1258, KOI8-R/U, IBM866 and Macintosh Roman, plus the usual aliases (`latin1`, `cp1252`, `sjis`, …). Separators and case do not matter: `ISO-8859-1`, `iso8859_1` and `ISO 8859 1` are the same.
 
 Any other name is an error listing what is available. insyra will not copy bytes it cannot decode into a table, because the result would be cells that are not valid UTF-8 with nothing to say so.
+
+The auto-detector knows four charsets that have no decoder here: IBM420, IBM424, ISO-2022-KR and ISO-2022-CN. A file it identifies as IBM420 or IBM424 fails with the same error. ISO-2022-KR and ISO-2022-CN use only 7-bit bytes, so detection takes such a file for UTF-8, and its escape and shift codes reach the cells as they are; naming either encoding explicitly fails with the error instead.
 
 `Auto` detects the encoding from the file's first 8 KB. A UTF-32 byte-order mark is recognised before the UTF-16 one they share a prefix with, and a sample too short to identify falls back to UTF-8 with a warning rather than failing the read.
 

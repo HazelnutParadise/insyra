@@ -22,8 +22,9 @@ import (
 //
 // The keys are names with every separator removed (see normalizeEncodingName),
 // so "ISO-8859-1", "iso8859_1" and "ISO 8859 1" all land on the same entry.
-// Every charset the auto-detector can report is covered, plus the aliases
-// people actually type.
+// Every charset the auto-detector can report is covered except IBM420,
+// IBM424, ISO-2022-KR and ISO-2022-CN, which x/text cannot decode. The aliases
+// people actually type are here too.
 var decoders = map[string]encoding.Encoding{
 	// UTF-8 and its aliases: nothing to decode.
 	"":        nil,

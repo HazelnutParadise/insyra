@@ -307,6 +307,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: stop before running a command against an environment whose state could not be read, naming the file and the error, or move the unreadable file aside before saving over it. Either changes what a command does in a damaged environment, so decide which first.
 - **Status**: pending
 
+### [2026-09-27] — Auto reads an ISO-2022-KR or ISO-2022-CN file as UTF-8
+- **Where**: `utils.go` `DetectEncoding`, whose UTF-8 check runs before chardet is asked; `internal/csv/decoder.go` `decoders`
+- **What**: both encodings use only 7-bit bytes, so `DetectEncoding` accepts such a file as UTF-8 before chardet, which knows both, sees it. Measured on 2026-09-27: a 30-line Korean CSV written in ISO-2022-KR is detected as `utf-8`, and `csvxl.ReadCsvToString` returns its `ESC $ ) C` header and shift codes inside the cells with a nil error. x/text has no decoder for either, so naming the encoding fails with the unsupported-encoding error. `Docs/csvxl.md` states this.
+- **Suggestion**: look for the ISO-2022 designator escape before the UTF-8 check and refuse the file with the unsupported-encoding error, the way IBM420 and IBM424 are refused. Decoding them would need a decoder x/text does not ship; both are rare enough in CSV files that the refusal is enough.
+- **Status**: pending
+
 ### [2026-09-25] — device MatMul's bit-parity rests on behaviour WGSL does not promise
 - **Where**: `accel/internal/wgpu/matmul.go` (`matmulWGSL`), `accel/nn_matmul.go`, and the default-on hook in `nn/device_matmul_wiring.go`
 - **What**: `ENG.md` now defines a device float32 result as the correctly rounded value of the exact operation, computed in integers, because WGSL lets an implementation contract, reassociate and flush subnormals. Device MatMul predates that rule: it accumulates `acc + a*b` in `f32` and matches the CPU only because Metal and Go on arm64 both fuse (asserted with `==` on the M3). The same measurement for `EdgeSum` on 2026-09-25 showed Metal fusing exactly like arm64, so today's parity is real, but a conforming implementation that reassociated the loop or flushed a subnormal would break it, and amd64's CPU, which does not fuse, already disagrees with the device.

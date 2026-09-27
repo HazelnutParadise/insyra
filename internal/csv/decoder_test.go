@@ -8,7 +8,9 @@ import (
 )
 
 // Every charset the auto-detector (saintfish/chardet) can report must have a
-// decoder, or a file it identifies correctly still fails to load.
+// decoder, or a file it identifies correctly still fails to load. IBM420,
+// IBM424, ISO-2022-KR and ISO-2022-CN are the exceptions: x/text has no
+// decoder for them.
 func TestEveryDetectableCharsetDecodes(t *testing.T) {
 	detectable := []string{
 		"UTF-8", "UTF-16BE", "UTF-16LE", "UTF-32BE", "UTF-32LE",
