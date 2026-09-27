@@ -72,7 +72,7 @@ func LeveneTest(groups []insyra.IDataList) (*FTestResult, error) {
 	var allDiffs []float64
 	var groupLabels []int
 	for i := range groups {
-		values, err := testSeries(groups[i], fmt.Sprintf("group %d", i))
+		values, err := testSeries(groups[i], fmt.Sprintf("group %d", i+1))
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +102,7 @@ func BartlettTest(groups []insyra.IDataList) (*FTestResult, error) {
 	}
 	bx := make([]bartlettExtract, len(groups))
 	for i := range groups {
-		values, err := testSeries(groups[i], fmt.Sprintf("group %d", i))
+		values, err := testSeries(groups[i], fmt.Sprintf("group %d", i+1))
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +114,7 @@ func BartlettTest(groups []insyra.IDataList) (*FTestResult, error) {
 	var weight float64
 	for i, e := range bx {
 		if e.n < 2 || e.v <= 0 {
-			return nil, fmt.Errorf("group %d must have at least two observations and positive variance", i)
+			return nil, fmt.Errorf("group %d must have at least two observations and positive variance", i+1)
 		}
 		sumNMinus1 += e.n - 1
 		pooledLogVar += float64(e.n-1) * math.Log(e.v)

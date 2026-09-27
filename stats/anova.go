@@ -69,12 +69,18 @@ func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error) {
 	// no contention between them). The serial form's actor-entry chain
 	// dominated wall time at >2 groups — same fix as TwoWayANOVA.
 	groupsRaw := make([][]any, len(groups))
+	// Converted before any goroutine starts, so a nil list is refused as an
+	// empty group instead of crashing inside a goroutine.
+	lists := make([]*insyra.DataList, len(groups))
+	for i, g := range groups {
+		lists[i] = asDataList(g)
+	}
 	var extractWG sync.WaitGroup
 	for i := range groups {
 		extractWG.Add(1)
 		go func(i int) {
 			defer extractWG.Done()
-			groups[i].AtomicDo(func(gdl *insyra.DataList) {
+			lists[i].AtomicDo(func(gdl *insyra.DataList) {
 				groupsRaw[i] = gdl.Data()
 			})
 		}(i)
@@ -85,14 +91,15 @@ func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error) {
 	labels := make([]int, 0)
 	for i, groupData := range groupsRaw {
 		if len(groupData) == 0 {
-			return nil, fmt.Errorf("group %d is empty", i)
+			return nil, fmt.Errorf("group %d is empty", i+1)
 		}
-		for j, v := range groupData {
-			x, ok := insyra.ToFloat64Safe(v)
-			if !ok {
-				return nil, fmt.Errorf("invalid data at group %d index %d", i, j)
-			}
-			values = append(values, x)
+		start := len(values)
+		var err error
+		values, err = appendNumericValues(values, groupData, func() string { return fmt.Sprintf("group %d", i+1) }, "row")
+		if err != nil {
+			return nil, err
+		}
+		for range len(values) - start {
 			labels = append(labels, i)
 		}
 	}
@@ -124,7 +131,7 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 	cellsRaw := make([][]any, len(cells))
 	cellLens := make([]int, len(cells))
 	for c := range cells {
-		cells[c].AtomicDo(func(cdl *insyra.DataList) {
+		asDataList(cells[c]).AtomicDo(func(cdl *insyra.DataList) {
 			cellsRaw[c] = cdl.Data()
 			cellLens[c] = cdl.Len()
 		})
@@ -145,18 +152,18 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 			idx := i*factorBLevels + j
 			cellLen := cellLens[idx]
 			if cellLen == 0 {
-				return nil, fmt.Errorf("empty cell at A=%d, B=%d", i, j)
+				return nil, fmt.Errorf("empty cell at A=%d, B=%d", i+1, j+1)
 			}
 			cellData := cellsRaw[idx]
 			cellCounts[idx] = cellLen
 			cellOffsets[idx] = len(allValues)
+			var err error
+			allValues, err = appendNumericValues(allValues, cellData, func() string { return fmt.Sprintf("cell (A=%d, B=%d)", i+1, j+1) }, "row")
+			if err != nil {
+				return nil, err
+			}
 			var localSum float64
-			for k, v := range cellData {
-				value, ok := insyra.ToFloat64Safe(v)
-				if !ok {
-					return nil, fmt.Errorf("invalid data at cell (A=%d, B=%d) index %d", i, j, k)
-				}
-				allValues = append(allValues, value)
+			for _, value := range allValues[cellOffsets[idx]:] {
 				localSum += value
 			}
 			cellSums[idx] = localSum
@@ -254,10 +261,14 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) (*RepeatedMeasuresANOVA
 	if len(subjects) < 2 {
 		return nil, errors.New("at least two subjects are required")
 	}
-	conditionCount := subjects[0].Len()
-	for i, subj := range subjects {
-		if subj.Len() != conditionCount {
-			return nil, fmt.Errorf("inconsistent condition count at subject %d", i)
+	subjectsRaw := make([][]any, len(subjects))
+	for j, subj := range subjects {
+		subjectsRaw[j] = asDataList(subj).Data()
+	}
+	conditionCount := len(subjectsRaw[0])
+	for i, raw := range subjectsRaw {
+		if len(raw) != conditionCount {
+			return nil, fmt.Errorf("inconsistent condition count at subject %d", i+1)
 		}
 	}
 	if conditionCount < 2 {
@@ -268,12 +279,14 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) (*RepeatedMeasuresANOVA
 	for i := range data {
 		data[i] = make([]float64, len(subjects))
 	}
-	for j, subj := range subjects {
-		for i, v := range subj.Data() {
-			value, ok := insyra.ToFloat64Safe(v)
-			if !ok {
-				return nil, fmt.Errorf("invalid data at subject %d condition %d", j, i)
-			}
+	var subjectValues []float64
+	for j, raw := range subjectsRaw {
+		var err error
+		subjectValues, err = appendNumericValues(subjectValues[:0], raw, func() string { return fmt.Sprintf("subject %d", j+1) }, "condition")
+		if err != nil {
+			return nil, err
+		}
+		for i, value := range subjectValues {
 			data[i][j] = value
 		}
 	}
