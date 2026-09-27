@@ -1,9 +1,4 @@
-# cli-env-scalar-roundtrip Specification
-
-## Purpose
-CLI 環境的頂層純量變數在儲存與載入後保留 `float64`／`int64` 型別，不留成 `json.Number`。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Scalar variables keep their numeric type across save and load
 

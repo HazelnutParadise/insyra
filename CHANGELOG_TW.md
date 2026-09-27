@@ -11,11 +11,15 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### Core
 
 - 以另一個錯誤為原因的錯誤，現在用 `%w` 包住原因，而不是把它格式化成文字，所以 `errors.Is` 與 `errors.As` 能認出原因。涵蓋的地方有：偵測不到編碼的 CSV、讀取 Excel 工作表、CCL 的 `MID`、`SUBSTR`、`TONUM`、`VALUE`、`TOSTR`、`TEXT` 與序列、聚合函數、建立 `pd` Series，以及 `lp` 安裝 GLPK。訊息文字不變。
+- `StandardScaler`、`MinMaxScaler`、`RobustScaler` 與 `MaxAbsScaler` 實作了 `json.Marshaler` 與 `json.Unmarshaler`，已擬合的 scaler 可以存起來之後再用。用 `json.Unmarshal` 讀回同一型別後，轉換結果與原本完全相同，以欄字母擬合的欄也一樣，NaN 參數讀回仍是 NaN。以前對 scaler 呼叫 `json.Marshal` 只會得到 `{}`。
 
 ### CLI
 
 - 修正 `insyra env import` 在沒有 `--force` 時，只要目標環境有檔案存在但讀不到，就會把非空的環境蓋掉。判斷目標是否為空的檢查把讀不到 `config.json` 當成「空的」，讀不到 `state.json` 與 `history.txt` 也一樣被忽略。檔案不存在仍然視為空，其他讀取失敗現在會停止匯入，並指出哪個環境無法確認。
 - `accel` 不再檢查 `--precision`。這個旗標原本是用來選 `accel run` 的精度，v0.3.1 拿掉 `accel run` 之後，就沒有任何程式讀它。還在傳這個旗標的腳本照樣能跑，因為 `accel` 會略過用不到的參數，唯一的差別是 `--precision bogus` 這類無效的值不再報錯。Go 裡的 `accel.Precision` 設定不變。
+- 一次性命令不再改動它還原的變數。`state.json` 現在連同 Go 型別儲存每個變數：DataTable 保留欄位順序、欄名、列名與每一格的型別。`insyra load c.csv as t` 之後另外執行 `insyra cols t`，欄位會照檔案的順序列出，不再變成字母序，欄字母在每個命令裡也都指向同一欄。`parsedates` 轉成日期的欄，到了 `resample` 還是日期，CCL 日期相減得到的欄仍是 `time.Duration`，`3.0` 也仍是 `float64`，不會變成 `int64`。`scale fit` 擬合的 scaler 與 `hclust` 的樹也會保存，`scale transform` 與 `cutree` 可以分開執行。以前 scaler 會消失，`cutree` 也不接受讀回來的樹。
+- 環境無法保存的變數（例如 `regression` 的結果）會在儲存時印出一行 `warning:`，在 REPL 或腳本中每個變數只提示一次，不再無聲無息地被丟掉或變成 map。產生它的命令照常成功，其他變數照常保存。直接使用 `cli/env` 的 Go 程式可以用新增的 `Manager.SaveVariables` 取得同一份清單，`SaveState` 仍然只在檔案沒寫成時回傳錯誤。
+- 先前版本寫入的 `state.json` 仍可讀取，下次儲存時改寫成新格式。含 NaN 值的環境現在可以 `env export`，`env import` 也會完整保留超過 2^53 的整數。
 
 ### `ml` 與 `nn`
 

@@ -1,17 +1,4 @@
-# cli-session-robustness Specification
-
-## Purpose
-CLI 指令失敗不得讓 session 崩潰或損毀存檔；含 NaN 的變數可存回；根旗標與腳本行為一致。
-
-## Requirements
-
-### Requirement: A failed command never stores nil
-
-`col`／`row`／`movavg`／`expsmooth`／`diff` 找不到或算不出結果時 SHALL 回錯誤且 SHALL NOT 寫入變數；`SaveState` 遇到 typed nil SHALL 不 panic。
-
-#### Scenario: Unknown column
-- **WHEN** 執行 `col dt nope as c`
-- **THEN** 回錯誤且 `c` 不存在
+## MODIFIED Requirements
 
 ### Requirement: NaN survives persistence
 
@@ -32,11 +19,3 @@ CLI 指令失敗不得讓 session 崩潰或損毀存檔；含 NaN 的變數可�
 #### Scenario: Export an environment holding NaN
 - **WHEN** 環境中有值為 NaN 的純量變數，執行 `env export`
 - **THEN** 匯出成功
-
-### Requirement: Root flags and scripts
-
-`--env`／`--no-color`／`--log-level` 放在 `newdl`／`addcol`／`addrow`／`show` 前面 SHALL 生效。`run` 期間 `env open` SHALL 只切換環境；`run` 巢狀超過 16 層 SHALL 回錯誤。
-
-#### Scenario: Flags before newdl
-- **WHEN** 執行 `insyra --env e2 newdl 1 2 3 as ex`
-- **THEN** `ex` 有 3 個元素且只存在於 e2

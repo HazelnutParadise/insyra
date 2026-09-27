@@ -1,12 +1,14 @@
 package repl
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/stats"
 )
 
 func setupTempHome(t *testing.T) string {
@@ -272,5 +274,28 @@ func TestDSLSessionExecuteFileIncludesLineNumber(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "line 2") {
 		t.Fatalf("expected line number in error, got: %v", err)
+	}
+}
+
+func TestDSLSessionWarnsAboutUnsavedVariableOnce(t *testing.T) {
+	var out bytes.Buffer
+
+	session, err := NewDSLSession(env.NewManager(t.TempDir(), ""), "default", &out)
+	if err != nil {
+		t.Fatalf("failed to create session: %v", err)
+	}
+	// A variable the environment cannot store is reported, but the command that
+	// found it still succeeds.
+	session.Context().Vars["r"] = &stats.LinearRegressionResult{}
+
+	if err := session.Execute("vars"); err != nil {
+		t.Fatalf("first execute failed: %v", err)
+	}
+	if err := session.Execute("vars"); err != nil {
+		t.Fatalf("second execute failed: %v", err)
+	}
+
+	if got := strings.Count(out.String(), "warning:"); got != 1 {
+		t.Fatalf("warnings = %d, want 1; output:\n%s", got, out.String())
 	}
 }

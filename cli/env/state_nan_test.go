@@ -1,8 +1,6 @@
 package env
 
 import (
-	"bytes"
-	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
@@ -57,8 +55,9 @@ func TestSaveStateRoundTripsNaN(t *testing.T) {
 	}
 }
 
-// num reads a restored number regardless of whether the round trip typed
-// it int64 or float64 (whole floats come back as int64 today).
+// num reads a restored number regardless of whether it came back typed: the
+// legacy layout an earlier release wrote has no cell type, so a whole float
+// there comes back as int64.
 func num(v any) float64 {
 	switch t := v.(type) {
 	case int64:
@@ -74,56 +73,84 @@ func isNaN(v any) bool {
 	return ok && math.IsNaN(f)
 }
 
-// A table or list without NaN or ±Inf is written exactly as before: a
-// DataTable as its ToJSON_String document, a DataList as its cells, and
-// float32 cells keep their float32 encoding.
-func TestSaveStateKeepsLegacyLayoutWithoutSpecialFloats(t *testing.T) {
+// A state.json written by an earlier release still restores: a DataTable as
+// columns of $float marker objects, a DataList of markers, and Raw scalars that
+// are a marker, a whole number or a fractional one.
+func TestRestoreVariablesReadsLegacyNaNLayout(t *testing.T) {
 	mgr := NewManager(t.TempDir(), "envs")
 	if err := mgr.EnsureDefaultEnvironment(); err != nil {
 		t.Fatal(err)
-	}
-	dl := insyra.NewDataList(1, 2.5, float32(0.1), int64(1)<<60, "s", nil, true).SetName("L")
-	dt := insyra.NewDataTable(
-		insyra.NewDataList(1.0, float32(0.1), 3).SetName("v"),
-		insyra.NewDataList("a", "b", nil).SetName("k"),
-	).SetName("T")
-	raw := []any{1.5, float32(0.1), "x"}
-	vars := map[string]any{"dl": dl, "dt": dt, "raw": raw, "f": float32(0.1)}
-	if err := mgr.SaveState("default", vars); err != nil {
-		t.Fatalf("SaveState: %v", err)
 	}
 	envPath, err := mgr.ResolveEnvPath("default")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(filepath.Join(envPath, "state.json"))
+	old := `{
+  "variables": {
+    "dt": {
+      "type": "DataTable",
+      "name": "T",
+      "data": {
+        "columns": [
+          {"name": "v", "data": [1, {"$float": "NaN"}, 3]},
+          {"name": "k", "data": ["a", "b", "c"]}
+        ],
+        "rowNames": ["x", "y", "z"]
+      }
+    },
+    "dl": {
+      "type": "DataList",
+      "data": [1.5, {"$float": "+Inf"}, null]
+    },
+    "negInf": {"type": "Raw", "data": {"$float": "-Inf"}},
+    "whole": {"type": "Raw", "data": 7},
+    "frac": {"type": "Raw", "data": 1.25}
+  },
+  "lastAccess": "2026-01-01T00:00:00Z"
+}
+`
+	if err := os.WriteFile(filepath.Join(envPath, "state.json"), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vars, err := mgr.RestoreVariables("default")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var file struct {
-		Variables map[string]json.RawMessage `json:"variables"`
+
+	dt, ok := vars["dt"].(*insyra.DataTable)
+	if !ok {
+		t.Fatalf("dt restored as %T", vars["dt"])
 	}
-	if err := json.Unmarshal(b, &file); err != nil {
-		t.Fatal(err)
+	if dt.GetName() != "T" {
+		t.Errorf("dt name = %q want %q", dt.GetName(), "T")
 	}
-	legacy := map[string]SerializedVariable{
-		"dl":  {Type: "DataList", Name: "L", Data: dl.Data()},
-		"dt":  {Type: "DataTable", Name: "T", Data: dt.ToJSON_String(true)},
-		"raw": {Type: "Raw", Data: raw},
-		"f":   {Type: "Raw", Data: float32(0.1)},
+	if v := dt.GetColByName("v").Data(); len(v) != 3 || !isNaN(v[1]) {
+		t.Errorf("dt column v restored as %v, want a NaN at row 1", v)
 	}
-	for key, want := range legacy {
-		wantBytes, err := json.Marshal(want)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var got bytes.Buffer
-		if err := json.Compact(&got, file.Variables[key]); err != nil {
-			t.Fatal(err)
-		}
-		if got.String() != string(wantBytes) {
-			t.Errorf("%s written as %s, want the legacy %s", key, got.String(), wantBytes)
-		}
+	if k := dt.GetColByName("k").Data(); k[1] != "b" {
+		t.Errorf("dt column k restored as %v", k)
+	}
+	names := dt.RowNames()
+	if len(names) != 3 || names[0] != "x" || names[1] != "y" || names[2] != "z" {
+		t.Errorf("dt row names restored as %v want x, y, z", names)
+	}
+
+	dl, ok := vars["dl"].(*insyra.DataList)
+	if !ok {
+		t.Fatalf("dl restored as %T", vars["dl"])
+	}
+	if d := dl.Data(); len(d) != 3 || d[1] != math.Inf(1) || d[2] != nil {
+		t.Errorf("dl restored as %v, want +Inf at row 1 and nil at row 2", d)
+	}
+
+	if got, ok := vars["negInf"].(float64); !ok || got != math.Inf(-1) {
+		t.Errorf("negInf = %#v want float64(-Inf)", vars["negInf"])
+	}
+	if got, ok := vars["whole"].(int64); !ok || got != 7 {
+		t.Errorf("whole = %#v want int64(7)", vars["whole"])
+	}
+	if got, ok := vars["frac"].(float64); !ok || got != 1.25 {
+		t.Errorf("frac = %#v want float64(1.25)", vars["frac"])
 	}
 }
 

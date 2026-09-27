@@ -1,7 +1,6 @@
 package env
 
 import (
-	"encoding/json"
 	"testing"
 
 	insyra "github.com/HazelnutParadise/insyra"
@@ -69,7 +68,9 @@ func TestState_StringAndBoolUnchanged(t *testing.T) {
 	}
 }
 
-func TestState_DataListAndDataTableUnaffected(t *testing.T) {
+// Every cell of a list comes back at the Go type it was saved with, so a
+// command that type-asserts a cell after a restore sees what it wrote.
+func TestState_DataListAndDataTableKeepCellTypes(t *testing.T) {
 	dl := insyra.NewDataList(1, 2.5, "three")
 	dl.SetName("dl")
 	dt := insyra.NewDataTable(insyra.NewDataList(1, 2))
@@ -79,35 +80,60 @@ func TestState_DataListAndDataTableUnaffected(t *testing.T) {
 	if !ok {
 		t.Fatalf("dl = %T want *insyra.DataList", restored["dl"])
 	}
-	if got := list.Get(0); got != int64(1) {
-		t.Errorf("dl[0] = %#v want int64(1)", got)
+	if got, ok := list.Get(0).(int); !ok || got != 1 {
+		t.Errorf("dl[0] = %#v want int(1)", list.Get(0))
 	}
-	if got := list.Get(1); got != 2.5 {
-		t.Errorf("dl[1] = %#v want 2.5", got)
+	if got, ok := list.Get(1).(float64); !ok || got != 2.5 {
+		t.Errorf("dl[1] = %#v want float64(2.5)", list.Get(1))
+	}
+	if got, ok := list.Get(2).(string); !ok || got != "three" {
+		t.Errorf("dl[2] = %#v want string(\"three\")", list.Get(2))
 	}
 	if _, ok := restored["dt"].(*insyra.DataTable); !ok {
 		t.Fatalf("dt = %T want *insyra.DataTable", restored["dt"])
 	}
 }
 
-// LoadState is where the coercion happens, so the raw State must already carry
-// typed scalars for any caller that reads it directly.
-func TestLoadState_CoercesScalarsBeforeReturning(t *testing.T) {
+// LoadState types top-level scalars: one saved by this release comes back at
+// the Go type it was saved with; one written by an earlier release comes back
+// as int64 when it is an integer literal and float64 otherwise. Every other
+// variable keeps the form it has in the file; RestoreVariables turns those
+// into Go values.
+func TestLoadState_TypesScalars(t *testing.T) {
 	mgr := newStateTestManager(t)
-	if err := mgr.SaveState("default", map[string]any{"s": 1.25, "n": int64(7)}); err != nil {
+	dt := insyra.NewDataTable(insyra.NewDataList(1, 2))
+	if err := mgr.SaveState("default", map[string]any{"s": 1.25, "i": 7, "t": dt}); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 	state, err := mgr.LoadState("default")
 	if err != nil {
 		t.Fatalf("LoadState: %v", err)
 	}
-	if _, isNumber := state.Variables["s"].Data.(json.Number); isNumber {
-		t.Error("s should not come back as json.Number")
+
+	// s: float64 scalar
+	sVar := state.Variables["s"]
+	if sVar.Type != "scalar" {
+		t.Errorf("s type = %q want %q", sVar.Type, "scalar")
 	}
-	if got, ok := state.Variables["s"].Data.(float64); !ok || got != 1.25 {
-		t.Errorf("s = %#v want float64(1.25)", state.Variables["s"].Data)
+	if got, ok := sVar.Data.(float64); !ok || got != 1.25 {
+		t.Errorf("s data = %#v want float64(1.25)", sVar.Data)
 	}
-	if got, ok := state.Variables["n"].Data.(int64); !ok || got != 7 {
-		t.Errorf("n = %#v want int64(7)", state.Variables["n"].Data)
+
+	// i: int scalar (saved as int by Go)
+	iVar := state.Variables["i"]
+	if iVar.Type != "scalar" {
+		t.Errorf("i type = %q want %q", iVar.Type, "scalar")
+	}
+	if got, ok := iVar.Data.(int); !ok || got != 7 {
+		t.Errorf("i data = %#v want int(7)", iVar.Data)
+	}
+
+	// t: table variable keeps stored form
+	tVar := state.Variables["t"]
+	if tVar.Type != "table" {
+		t.Errorf("t type = %q want %q", tVar.Type, "table")
+	}
+	if _, ok := tVar.Data.(map[string]any); !ok {
+		t.Errorf("t data = %T want map[string]any", tVar.Data)
 	}
 }
