@@ -116,7 +116,7 @@ type ExcelToCsvOptions struct {
 }
 ```
 
-Each sheet becomes `<outputDir>/<sheet>.csv`, or the matching `csvNames` entry named as described in [File names](#file-names). A sheet name that cannot be a single file name — it contains `/`, `\` or is `..` — is rejected with an error before any file is touched, because sheet names come from the workbook and could otherwise escape `outputDir`. Each CSV is read fully from the sheet first and written through a temporary file, so a failing sheet never truncates an existing CSV.
+Each sheet becomes `<outputDir>/<sheet>.csv`, or the matching `csvNames` entry named as described in [File names](#file-names). The file name actually used is checked for each sheet before that sheet's CSV is written: a name containing `/` or `\`, or one that would not be a file directly inside `outputDir`, is rejected with an error, because sheet names come from the workbook and a `csvNames` entry comes from the caller, and either could otherwise escape `outputDir`. A sheet named `.` or `..` is an ordinary name and becomes `..csv` or `...csv`. Each CSV is read fully from the sheet first and written through a temporary file, so a failing sheet never truncates an existing CSV.
 
 A name in `Sheets` that the workbook does not have is an error naming the sheets it does have, rather than a sheet that quietly does not appear in the output.
 
