@@ -1029,7 +1029,7 @@ func (dt *DataTable) Unpivot(cfg UnpivotConfig) (*DataTable, error)
 
 **Description:** `Pivot` reshapes long-form data into wide form (each unique value of `cfg.Columns` becomes a new column header, with cells filled from `cfg.Values` and rows keyed by `cfg.Index`). `Unpivot` is the inverse: each row is expanded into one output row per `ValueVar`, with the original column name written into the new `VarName` column and the cell value written into `ValueName`. Both methods return a fresh `*DataTable`; the receiver is not modified. On error the returned `*DataTable` is empty and carries the failure on its `Err()`, so chained calls remain safe.
 
-**Column reference resolution (applies to every column field below — `Index`, `Columns`, `Values`, `IDVars`, `ValueVars`):** each token is a column selector (see [Column selectors](#column-selectors)) — a string is an Excel-style alphabetic index (`"A"` → column 0, `"B"` → column 1, ..., `"AA"` → column 26, ...), `Name("region")` is a column name compared exactly, and an int is a 0-based position. A bare string is never looked up as a name, and the first row of data is never consulted — column headers live only on `column.name` (set via `SetName`, `SetColNames`, CSV/Excel `firstRow2ColNames=true`, etc.). A token that resolves to no column is an error.
+**Column reference resolution (applies to every column field below — `Index`, `Columns`, `Values`, `IDVars`, `ValueVars`):** each token is a column selector (see [Column selectors](#column-selectors)) — a string is an Excel-style alphabetic index (`"A"` → column 0, `"B"` → column 1, ..., `"AA"` → column 26, ...), `Name("region")` is a column name compared exactly, and an int is a 0-based position. A bare string is never looked up as a name, and the first row of data is never consulted — column headers live only on `column.name` (set via `SetName`, `SetColNames`, or a CSV/Excel read without `NoHeaderRow`). A token that resolves to no column is an error.
 
 **`PivotConfig` fields:**
 
@@ -1397,6 +1397,8 @@ and giving `FillValue` to any other strategy is an error that `Fit` reports. Use
 data so the statistics come from the training table only. `Transform` returns
 a new table and leaves the source unchanged. Columns not selected during
 `Fit` pass through unchanged. Missing values are `nil` or `NaN`.
+`FitTransform(dt, cols...)` fits on `dt` and returns its filled copy in one
+call, like the scalers' method of the same name; `dt` itself is not changed.
 
 Mean and median require a number column. `Fit` fails if any selected column
 holds other values, naming the column and its data type, and learns nothing:
@@ -1517,8 +1519,10 @@ its final calendar day at midnight. Weekly periods run Monday through Sunday;
 monthly, quarterly, and yearly periods end on the corresponding calendar
 boundary. The output is sorted by `timeCol`, empty periods are omitted, and
 each label keeps the input `time.Time` value's location. The input row order
-does not affect the result. `ResampleAgg` reuses `AggregateOp`; an empty `As`
-keeps the source column name.
+does not affect the result. `ResampleAgg` reuses `AggregateOp`. An empty `As`
+names the output after the selector: `Name("Close")` gives `Close`, while the
+index `"B"` or the position `1` gives `B`, not the column's name. When two
+outputs would share a name, the later one gets a suffix such as `B_1`.
 
 ```go
 monthly, err := dt.Resample(insyra.Name("Date"), insyra.ResampleMonthly,
@@ -1552,8 +1556,8 @@ anything else becomes `nil`. With no `layouts`, the same ISO-style defaults
 `ReadSQLOptions.ParseDates` uses are tried; passing layouts replaces that list.
 
 Columns are column selectors (see [Column selectors](#column-selectors)). A column that does not
-exist records a warning (readable through `dt.Err()`) and is skipped, leaving
-the other named columns converted.
+exist is skipped and recorded as an error on `dt.Err()`; the other named
+columns are still converted.
 
 This is the conversion `ReadSQL`'s `ParseDates` option performs, available for
 tables loaded from anywhere else. CSV inference produces `int64`/`float64` and

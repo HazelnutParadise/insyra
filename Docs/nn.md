@@ -128,8 +128,8 @@ if err != nil {
 kernel := weights["layer.weight"]
 ```
 
-The loader validates the 8-byte header length, JSON entries, shape element
-counts, byte offsets, non-overlap, and complete contiguous coverage of the data
+The loader validates the 8-byte header length, JSON entries, a tensor name
+declared more than once, shape element counts, byte offsets, non-overlap, and complete contiguous coverage of the data
 region before materialising any tensor. The optional `__metadata__` entry is
 accepted as a string-to-string object and ignored. Malformed input returns an
 error naming the defect and tensor rather than panicking.
@@ -179,6 +179,16 @@ result, err := model.Fit(trainX, trainY, nn.FitConfig{
 if err != nil { log.Fatal(err) }
 _ = result.TrainLosses
 ```
+
+The optimizer selectors are `nn.SGD{Rate}`, `nn.SGDMomentum{Rate, Momentum}`,
+`nn.Adam{Rate}` and `nn.AdamW{Rate, WeightDecay}`, and each runs the tape method
+of the same name. The loss selectors are `nn.CrossEntropy{}`, `nn.MSE{}` and
+`nn.BCEWithLogits{}`, also spelled `SoftmaxCrossEntropy`, `MSELoss` and
+`BCEWithLogitsLoss`. `CrossEntropy` needs int64 targets and the other two need
+float32 targets, in `ValY` as well as `y`. `Fit` refuses a missing optimizer or
+loss, a rate, momentum or weight decay that is negative or not finite, an
+`Epochs` or `BatchSize` below 1, and `ValX` given without `ValY` or the other
+way round.
 
 `Seed` is always used as the source for `math/rand`'s `Perm` shuffle. Zero is
 a valid seed, not a request for time-based randomness. The same inputs,
@@ -246,6 +256,14 @@ nothing: both keep returning what the last successful pass computed.
 `Tape.Tanh`'s gradient rounds every step to float32 without fusing any two, so
 it is the same bits on every platform. Exact-form GELU is differentiable; the tanh
 approximation is refused by the tape until its VJP is covered.
+
+`Embedding` is also a tape operation. `tape.Embedding(table, indices)` looks up
+rows of a float32 `[vocab, dim]` table with int64 indices shaped `[N]` or
+`[N,S]`, returns `[N, dim]` or `[N, S, dim]`, and adds the gradient of every
+repeated index into the same table row. An index outside `[0, vocab)` is an
+error. `tape.EmbeddingLookup(indices, table)` is the same operation with the
+arguments in the order the layer's `Forward` takes them. The catalog's
+`nn.Embedding(vocab, dim)` is the layer that creates such a table and trains it.
 
 Adam keeps first and second moments per tracked parameter and applies one
 bias-corrected step with PyTorch's defaults (`betas=(0.9, 0.999)`, `eps=1e-8`):
@@ -440,6 +458,12 @@ for epoch := 0; epoch < 5; epoch++ {
 The repository's convergence proof keeps data loading and seeded initialization
 test-side, so `nn` does not add a public dataset or random-initialization API.
 
+The repository's MNIST tests hold this loop to two epochs: after the second
+epoch, accuracy on the 10,000 test images must be at least 95%, and the mean
+training loss must be below half of the first epoch's. On an Apple M3 the mean
+losses were 0.350281 and 0.163855; the last digits depend on the platform, and
+amd64 measured 0.163840 for the second epoch.
+
 AMSGrad and device training are not part of this API. The tape is intended for
 the fixed-weight CPU training path; the inference kernels and ONNX graph runner
 remain unchanged.
@@ -467,6 +491,11 @@ method and no train/eval mode flag: `NewSequential` builds layers eagerly on a
 tape, `Forward` records the training path, and `Predict` uses a throwaway tape
 while structurally skipping layers marked `TrainingOnly`.
 
+A layer of your own implements the same three methods as the catalog layers:
+`Build(t *Tape) error` creates its parameters on the tape it is given,
+`Forward(t *Tape, x *Tensor) (*Tensor, error)` records the training path for one
+input, and `Parameters() []*Parameter` returns its parameters in order.
+
 ```go
 tape := nn.NewTape(20260803)
 model, err := nn.NewSequential(
@@ -490,11 +519,9 @@ The catalog layers are:
 
 | Layer | Behavior |
 | --- | --- |
-| `Dense(in, out)` | He-initialized affine layer; torch Linear weights transpose at load time |
+| `Dense(in, out)` | He-initialized affine layer whose bias starts at zero; torch Linear weights transpose at load time |
 | `Conv2D(in, out, kernel, opts...)` | NCHW convolution with torch `[out,in/groups,kh,kw]` weights, padding, strides, dilations, groups, and optional bias |
 | `MaxPool2D` / `AvgPool2D` | NCHW pooling; omitted stride defaults to the kernel size, matching torch |
-
-Each layer constructor takes at most one options struct; a layer given two reports the error from `Build`, where every other invalid layer setting is reported.
 | `GlobalAvgPool` | Reduces spatial dimensions to `[N,C,1,1]` |
 | `BatchNorm2D(features)` | Batch statistics and running-stat updates in `Forward`; running statistics in `Predict` |
 | `LayerNorm(dims)` | Learned suffix normalization over an integer or shape slice |
@@ -502,6 +529,8 @@ Each layer constructor takes at most one options struct; a layer given two repor
 | `MultiHeadAttention(embed, heads)` | Mask-free batch-first self-attention over `[batch, sequence, embed]` |
 | `Residual(layers...)` | Adds the input to a composable sub-stack; inference honors nested `EvalLayer` paths |
 | `ReLU`, `NewSigmoid`, `NewTanh`, `NewGelu`, `Dropout`, `NewFlatten`, `Func` | Stateless, training-only, shape, or callback layers |
+
+Each layer constructor takes at most one options struct; a layer given two reports the error from `Build`, where every other invalid layer setting is reported.
 
 `MultiHeadAttention(embed, heads)` accepts and returns `[batch, sequence,
 embed]` tensors. It is self-attention only in v1: it has no attention mask,

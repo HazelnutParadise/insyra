@@ -31,15 +31,17 @@ func main() {
 
 ## Supported Chart Types
 
-| Chart Type | Function | Use Case |
-| ---------- | -------- | -------- |
-| Bar Chart | `CreateBarChart` | Comparing categories |
-| Histogram | `CreateHistogram` | Distribution analysis |
-| Line Chart | `CreateLineChart` | Trends over time |
-| Scatter Plot | `CreateScatterPlot` | Correlation analysis |
-| Step Chart | `CreateStepChart` | Discrete changes |
-| Function Plot | `CreateFunctionPlot` | Mathematical functions |
-| Heatmap | `CreateHeatmapChart` | Matrix visualization |
+| Chart Type | Function | Use Case | Accepts |
+| ---------- | -------- | -------- | ------- |
+| Bar Chart | `CreateBarChart` | Comparing categories | `[]float64`, `*insyra.DataList`, `insyra.IDataList` |
+| Histogram | `CreateHistogram` | Distribution analysis | `[]float64`, `*insyra.DataList`, `insyra.IDataList` |
+| Line Chart | `CreateLineChart` | Trends over time | `map[string][]float64`, `[]*insyra.DataList`, `[]insyra.IDataList` |
+| Scatter Plot | `CreateScatterPlot` | Correlation analysis | `map[string][][]float64`, `[]*insyra.DataList`, `[]insyra.IDataList` |
+| Step Chart | `CreateStepChart` | Discrete changes | `map[string][]float64`, `[]*insyra.DataList`, `[]insyra.IDataList` |
+| Function Plot | `CreateFunctionPlot` | Mathematical functions | its second argument, `func(float64) float64` |
+| Heatmap | `CreateHeatmapChart` | Matrix visualization | `[][]float64`, `*insyra.DataTable`, `insyra.IDataTable` |
+
+Every constructor except `CreateFunctionPlot` takes `data` as `any` and checks its type at run time, so a type the chart does not accept compiles, logs a warning, and returns `nil`. `CreateScatterPlot` reads each list as alternating x and y values and drops an odd last value with a warning.
 
 ## Saving Charts
 
@@ -47,7 +49,7 @@ func main() {
 func SaveChart(plt *plot.Plot, filename string) error
 ```
 
-**Description:** Saves the chart to a file. The format is determined by the file extension. A write failure (missing directory, no permission, disk full) is returned; it does not end the program.
+**Description:** Saves the chart to a file. The format is determined by the file extension. A write failure (missing directory, no permission, disk full) is returned; it does not end the program. A `nil` chart, which is what a `Create...` function returns when it cannot build one, is refused with an error rather than a panic, and so is a file extension outside the list below.
 
 **Parameters:**
 
@@ -124,7 +126,7 @@ type HistogramConfig struct {
     Title     string // Chart title
     XAxisName string // Optional: X-axis label
     YAxisName string // Optional: Y-axis label
-    Bins      int    // Number of bins
+    Bins      int    // Number of bins; zero or less uses 10
 }
 ```
 
@@ -271,6 +273,8 @@ type FunctionPlotConfig struct {
 }
 ```
 
+When `XMin` and `XMax` are both zero the range is `[-10, 10]`. When `YMin` and `YMax` are both zero, the Y range is taken from the sampled values. The function is sampled at 100 points per unit of X range, and at least 2, so the default range draws 2,000 points. A wide range is not refused. Its cost appears when the chart is saved, because every sample is drawn. Measured on an arm64 Mac on 2026-09-27, `SaveChart` took 0.5 s for a ±1,000 range (200,000 points), 9 s for ±10,000 and 92 s for ±100,000, while `CreateFunctionPlot` stayed under 0.1 s. A ±1e6 range is 200,000,000 points. Keep the X range to what the curve needs.
+
 **Example:**
 
 ```go
@@ -288,16 +292,15 @@ _ = gplot.SaveChart(plt, "sine.png")
 
 // Custom function
 config2 := gplot.FunctionPlotConfig{
-    Title: "Quadratic Function",
-    XAxis: "x",
-    YAxis: "y",
-    Func: func(x float64) float64 {
-        return x*x - 4*x + 3
-    },
-    XMin: -2,
-    XMax: 6,
+    Title:     "Quadratic Function",
+    XAxisName: "x",
+    YAxisName: "y",
+    XMin:      -2,
+    XMax:      6,
 }
-plt2 := gplot.CreateFunctionPlot(config2)
+plt2 := gplot.CreateFunctionPlot(config2, func(x float64) float64 {
+    return x*x - 4*x + 3
+})
 gplot.SaveChart(plt2, "quadratic.png")
 ```
 
@@ -374,6 +377,10 @@ heatConfig := gplot.HeatmapChartConfig{
 }
 plt2 := gplot.CreateHeatmapChart(heatConfig, dt)
 ```
+
+## A series whose length differs from `XAxis` is dropped
+
+`CreateLineChart` and `CreateStepChart` compare each series with `XAxis`. A series of a different length is skipped with a warning naming it, and the chart is still returned. If every series is dropped, you get a chart with axes and nothing drawn, and it saves without error. When `XAxis` is left out it is generated once: from the longest series for a map, and from the first list for a slice of lists. A shorter map series, or a list whose length differs from the first list, is the one dropped. `CreateBarChart` treats `ErrorBars` of the wrong length the same way: it logs a warning and draws the bars without error bars.
 
 ## Tips
 

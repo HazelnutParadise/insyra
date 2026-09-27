@@ -30,6 +30,31 @@ The stats package provides comprehensive statistical analysis functions:
 
 Most functions expect numeric data in `DataList`/`DataTable` and return `error` when inputs are invalid or computation fails. Always handle `err` at call sites.
 
+The error is the last value a function returns. A function that returns several values, such as `CorrelationMatrix` or `CorrelationAnalysis`, returns the others first. When a function returns an error, the result pointer it returns is `nil`, so check `err` before reading the result. Five return no error because they cannot fail: `NormCDF`, `DefaultFactorAnalysisOptions`, `RegisterKNNDeviceSearcher`, and the `Show` methods of `ChiSquareTestResult` and `FactorAnalysisResult`, which only print. `stats` reports its failures through the returned error. It never calls `LogFatal` and does not record on a table's or list's `Err()`. `FactorAnalysis` also logs a warning and carries on in a few cases it works around rather than refuses:
+
+- a `FixedK` above the number of variables is lowered to that number;
+- a Bartlett or Anderson-Rubin score with PCA extraction is computed as a regression score;
+- principal-axis factoring hits its iteration limit, or finds an ultra-Heywood case or an imaginary eigenvalue;
+- a rotation that converged from none of its starts returns the best of them.
+
+### Choosing a test
+
+| Question | Function |
+|---|---|
+| Does this sample's mean differ from a known value? | `SingleSampleTTest(data, mu, confidenceLevel...)` |
+| Do two independent samples differ? | `TwoSampleTTest(data1, data2, equalVariance, confidenceLevel...)` |
+| Do two measurements of the same subjects differ? | `PairedTTest(data1, data2, confidenceLevel...)` |
+| The same, with the population σ known | `SingleSampleZTest(data, mu, sigma, alternative, confidenceLevel)` / `TwoSampleZTest(data1, data2, sigma1, sigma2, alternative, confidenceLevel)` |
+| Do three or more groups differ? | `OneWayANOVA(groups...)` |
+| Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells...)` |
+| Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects...)` |
+| Are two categorical variables related? | `ChiSquareIndependenceTest(rowData, colData)` |
+| Does a distribution match the expected proportions? | `ChiSquareGoodnessOfFit(input, p, rescaleP)` |
+| Do groups have equal variance? | `FTestForVarianceEquality(data1, data2)`, `LeveneTest(groups)`, `BartlettTest(groups)` |
+| The same questions without assuming normality | `SingleSampleWilcoxon`, `PairedWilcoxon`, `MannWhitneyU`, `KruskalWallis`, `FriedmanTest` |
+
+`confidenceLevel` is an optional last argument on the t-tests and the Wilcoxon and Mann-Whitney tests, and a required one on the z-tests. Leaving it out uses 0.95, and a value outside (0, 1) is an error. `alternative` is an `AlternativeHypothesis` with no default. See [Nonparametric Tests (Rank-Based)](#nonparametric-tests-rank-based) for when to switch.
+
 ### Values that are not numbers
 
 A value that cannot be read as a finite number — a missing value, a blank, text,
@@ -109,7 +134,7 @@ type testResultBase struct {
 }
 
 type EffectSizeEntry struct {
-    Type  string  // "cohen_d", "hedges_g", etc.
+    Type  string  // "cohen_d" for the t- and z-tests; the rank-based types are listed under Nonparametric Result Types
     Value float64 // Effect size value
 }
 ```
@@ -388,6 +413,8 @@ if err != nil {
 fmt.Printf("t=%.4f, p=%.4f, mean diff=%.4f\n", result.Statistic, result.PValue, *result.MeanDiff)
 ```
 
+A sample with no spread has no standard error. The t-tests then return `+Inf` or `-Inf` as the statistic with a p-value of 0, or `NaN` for both when the mean equals `mu` exactly, and the error is nil. Check `Statistic` before reporting it.
+
 ---
 
 ## Z-Tests
@@ -423,6 +450,8 @@ type ZTestResult struct {
     N2    *int     // Second sample size (nil for single sample)
 }
 ```
+
+The t-tests report Cohen's d with its sign, negative when the first sample's mean is below `mu` or below the second sample's mean. The z-tests report its absolute value, matching the R output they are checked against, so their effect size carries no direction. Read the direction from `Statistic`.
 
 **Example**:
 
@@ -481,7 +510,22 @@ type ChiSquareTestResult struct {
 }
 ```
 
-The `ContingencyTable` contains the observed frequencies and expected frequencies for each cell in the contingency table. For goodness of fit tests, it shows observed vs expected values for each category. For independence tests, it shows the full contingency table with observed and expected values for each combination of row and column categories.
+The `ContingencyTable` is a `DataTable` whose cells are `[2]float64{observed, expected}`, one array per cell.
+
+- **Goodness of fit:** one column named `Observed_Expected`, and one row per category that occurs in `input`, sorted by label. The category is the row name, read with `RowNames()`. Expected is the total count times the matching value of `p`, and `p` is matched to the categories in that sorted order.
+- **Independence:** one column per column category and one row per row category, both sorted by label. The categories are the names, read with `ColNames()` and `RowNames()`.
+
+The numeric helpers cannot read these cells. `Sum()` on such a column logs a warning for every cell and returns `NaN`. Read the arrays directly:
+
+```go
+ct := res.ContingencyTable
+col := ct.GetCol("A") // or ct.GetCol(insyra.Name("Observed_Expected"))
+names := ct.RowNames()
+for i := 0; i < col.Len(); i++ {
+    pair := col.Get(i).([2]float64)
+    fmt.Printf("%s: observed=%v expected=%v\n", names[i], pair[0], pair[1])
+}
+```
 
 ##### Show Method
 
@@ -1322,7 +1366,8 @@ const (
 ```
 
 `FactorCountSpec.MaxFactors` caps the Kaiser-derived count. When
-`Method = Fixed`, `MaxFactors` is ignored and `FixedK` is used as-is.
+`Method = Fixed`, `MaxFactors` is ignored and `FixedK` is used, lowered to the
+number of variables (with a warning) when it is larger.
 
 #### FactorAnalysisOptions
 

@@ -211,6 +211,13 @@ treeWins, err := ml.Better(withTree, withLinear)  // smaller RMSE wins
 `Better` refuses two results from different metrics, and refuses a metric that
 declares `NoDirection` — the confusion matrix, whose result is not a scalar.
 
+`NoDirection` is only for a metric whose result is not a number. A metric that
+declares it and still returns a score other than `NaN` is refused:
+`CrossValidate`, `CrossValidateWeighted` and `Score` return an error saying a
+rankable score must declare whether higher or lower is better. `GridSearch`
+refuses a `NoDirection` metric before fitting anything, because such a metric
+cannot pick a winner.
+
 `ROCAUCMetric` treats the second of the model's classes as positive, ordered by
 the sorted distinct training labels. Which one that is does not affect the
 score: the two probability columns are complementary, so naming the other class
@@ -230,6 +237,15 @@ It runs the same compatibility check and the same prediction assembly
 labels from a model that reports probabilities — is served identically either
 way. scikit-learn's `score` carries a default metric on the estimator class;
 Go has nowhere to hang that, so the metric is an argument.
+
+The direct helpers in the table above (`Accuracy`, `RMSE`, `LogLoss` and the
+rest) take the true values and the predictions, a list for most of them and a
+probability table for `LogLoss` and `ROCAUC`, and never see the model. Use them
+when you already hold predictions. None of the checks `Score` makes run there:
+nothing confirms that the metric suits what the model predicts, that a
+probability metric was given probabilities from a `ProbaModel`, or that class
+labels come from the most probable class when the model reports probabilities.
+To score a model, call `Score`.
 
 ### Writing your own metric
 
@@ -455,6 +471,8 @@ projected, err := transformer.Transform(features)
 ## Existing scalers and encoders
 
 The root package's four scalers and three encoders already satisfy `ml.Transformer` and `ml.InverseTransformer`; no adapter is needed.
+
+`insyra.SimpleImputer` satisfies `ml.Transformer` too, so a fitted imputer can be a pipeline step with no adapter. It does not satisfy `ml.InverseTransformer`, because it has no `InverseTransform`; see [Fitted Missing-Value Imputation](/Docs/DataTable.md#fitted-missing-value-imputation).
 
 ```go
 scaler := insyra.NewStandardScaler()

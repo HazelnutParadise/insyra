@@ -833,6 +833,21 @@ dl.FillNaNWithMean()
 // NaN values are replaced with mean (3.0)
 ```
 
+### FillWithMean
+
+```go
+func (dl *DataList) FillWithMean() *DataList
+```
+
+**Description:** Replaces `nil` and `NaN` values in place with the mean of the observed values and returns the list for chaining. Every observed value must be a number. When one is text or another non-number, or when there is no number to average, as in an empty list or one holding only `nil` and `NaN`, the list is left as it was and the failure is recorded on `Err()`. A mean is therefore never written into a text or mixed column.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, nil, 3, math.NaN())
+dl.FillWithMean() // [1, 2, 3, 2]
+```
+
 ### Missing-Value Fill Methods
 
 ```go
@@ -1735,6 +1750,15 @@ func (dl *DataList) Rolling(opts RollingOptions) *RollingDataList
 | `Cov(other *DataList)` | Sample covariance against `other` |
 | `Beta(other *DataList)` | Rolling beta, `Cov(src, other) / Var(other)` |
 
+The three paired reducers share these rules:
+
+- The two lists are aligned by index and truncated to the shorter one, so every position past the end of `other` is `nil`, and the result keeps the receiver's length: `[1 2 3 4 5]` against `[2 4 6]` with `Window: 2` gives `[<nil> 1 1 <nil> <nil>]`.
+- Within a window, a position is skipped when either side is `nil`, `NaN`, or not a number. `±Inf` is not skipped, so it reaches the arithmetic and makes that window's result `NaN`.
+- `Cov` and `Beta` use the sample (n-1) covariance and variance.
+- A window with fewer than two valid pairs, or fewer than `MinObs`, gives `nil`. `MinObs` defaults to `Window`, so by default a window with any skipped position gives `nil`; set `MinObs` lower to let a partly missing window count.
+
+`Beta` reads the receiver as the asset and `other` as the benchmark, `Cov(asset, benchmark) / Var(benchmark)`: with `y` twice `src`, `src…Beta(y)` is `0.5` and `y…Beta(src)` is `2`. A flat benchmark has zero variance, so its beta is `nil`, while `Cov` against it is `0`. A `nil` `other` returns an empty list and records the error on the source list's `Err()`. `Rolling` itself records a `Window` below 1, a `MinObs` above `Window`, or `Weights` of the wrong length on the list's `Err()`, and every reducer then returns an empty list.
+
 **Example:**
 
 ```go
@@ -1784,8 +1808,8 @@ weighted population variance. `MinObs <= 0` means one observation.
 Available reducers are `Mean()`, `Var()`, and `Std()`. Each returns a
 same-length `*DataList`; nil and non-numeric cells are skipped without
 resetting the accumulated decay, and positions below `MinObs` are nil. An
-invalid or missing decay parameter records a warning and returns an empty
-result.
+invalid or missing decay parameter records the failure on the list's `Err()`,
+and every reducer returns an empty result.
 
 ```go
 prices := insyra.NewDataList(1, 2, 3, 4)

@@ -249,6 +249,18 @@ When a range (column range or row range) is used inside an aggregate function (l
 
 > **Note:** Raw row ranges like `SUM(0:5)` are not supported for data access. You must explicitly specify the target using the row access operator (e.g., `@.0:5` or `A.0:5`).
 
+### Combined Column and Row Ranges
+
+A column range and a row range combine into a block of cells, and both spellings give the same result: `"(A:B).(1:3)"` (columns A through B, rows 1 through 3), `"A:B.(1:3)"` (the same block), `"SUM((A:B).(1:3))"` (the sum of that block).
+
+The parentheses are optional because `:` binds tighter than `.`, but they show the grouping, so use them when a range sits inside an aggregate or a longer expression. Parentheses around a plain column range change nothing: `SUM((A:B))` equals `SUM(A:B)`.
+
+- Row numbers are 0-based, as everywhere in CCL, so `(A:B).(1:3)` is the second through fourth rows.
+- Bounds are strict. On a five-row table `(A:B).(1:5)` fails with `row index 5 out of range (total rows: 5)`; `(0:4)` is all five rows.
+- The block does not depend on the current row, so every row of the new column receives the same block. Wrap it in an aggregate to reduce it to one value.
+
+Either end of a range can be an index or a name, and both ends are included: `([A]:['Price']).(0:'Peter')` is the columns from A through `Price` and the rows from 0 through the row named `Peter`.
+
 ### Comparison Operators
 
 - `>` : Greater than
