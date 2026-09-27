@@ -677,9 +677,22 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 // anything below an hour. A shift past what a Duration holds, about 292
 // years, is refused rather than converted.
 func shiftDays(t time.Time, days float64) (any, error) {
+	return shiftByDays(t, days, days)
+}
+
+// subtractDays is shiftDays the other way. It exists so the error quotes the
+// operand the expression was written with: `B - 106752` subtracts 106,752
+// days, and saying "a shift of -106752 days" sends the reader looking for a
+// minus sign that is not in their expression.
+func subtractDays(t time.Time, days float64) (any, error) {
+	return shiftByDays(t, -days, days)
+}
+
+// shiftByDays moves t by days and names operand in the out-of-range error.
+func shiftByDays(t time.Time, days, operand float64) (any, error) {
 	d, ok := durationOf(days*24, time.Hour)
 	if !ok {
-		return nil, fmt.Errorf("a shift of %v days is out of range", days)
+		return nil, fmt.Errorf("a shift of %v days is out of range", operand)
 	}
 	return t.Add(d), nil
 }
@@ -926,7 +939,7 @@ func applyOperator(op string, left, right any) (any, error) {
 				// hour, so A + 0.001 moved the timestamp not at all.
 				return shiftDays(lt, rf)
 			case "-":
-				return shiftDays(lt, -rf)
+				return subtractDays(lt, rf)
 			}
 		}
 	}
