@@ -96,12 +96,16 @@ func truncateForDisplay(s string) string {
 // ToMapKey for a tally, a set, an index or a dedup over cell values, and to read
 // a Counter result.
 //
-// Integer widths are not merged, because a map keyed by Go values keeps
-// int(1) and int64(1) apart and this changes nothing about that. A CSV load
-// stores integers as int64, so ToMapKey(1) finds nothing in a map built from
-// loaded data. To ask how often one value appears, prefer Count(v), which
-// matches integers by value.
+// An integer is keyed by its value, as an int when int can hold it, so
+// ToMapKey(int64(5)), ToMapKey(uint8(5)) and the literal 5 are one key. That is
+// what lets counter[5] find the fives of a CSV load, which stores integers as
+// int64. Go compares map keys by type as well as value, so a counter indexed
+// directly with int64(5) finds nothing; index through ToMapKey, or ask Count(v),
+// which matches integers by value, when the width is not int.
 func ToMapKey(v any) any {
+	if k, ok := integerKey(v); ok {
+		return k
+	}
 	if comparableCell(v) {
 		return v
 	}
@@ -111,6 +115,26 @@ func ToMapKey(v any) any {
 		key.text = s.String()
 	}
 	return key
+}
+
+// integerKey is the key an integer counts under: its value as an int when int
+// can hold it, and otherwise as the int64 or uint64 that does. It follows the
+// rule valueMatcher applies to searches, so Counter and Count agree: widths
+// merge, and a negative value never meets an unsigned one.
+func integerKey(v any) (any, bool) {
+	s, u, signed, ok := integerParts(v)
+	switch {
+	case !ok:
+		return nil, false
+	case signed && s >= math.MinInt && s <= math.MaxInt:
+		return int(s), true
+	case signed:
+		return s, true
+	case u <= math.MaxInt:
+		return int(u), true
+	default:
+		return u, true
+	}
 }
 
 // comparableCell reports whether v can serve as a map key — which asks not

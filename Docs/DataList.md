@@ -2551,11 +2551,19 @@ counter := dl.Counter()
 // Returns: map[1:1 2:3 3:1 4:1]
 ```
 
+**Integers are keyed by value.** Every integer is keyed as an `int`, whatever
+width the cell holds, so `counter[5]` finds the fives of a CSV load, which
+stores integers as `int64`, and a column holding both `int64(5)` and `5`
+gives one key with a count of 2. An integer an `int` cannot hold, such as a
+`uint64` above `math.MaxInt64`, keeps a type that can: `uint64` when it is
+unsigned, `int64` when it is signed, which only happens on a 32-bit platform. Floats and text stay separate, as they do in `Count`: `5.0`
+and `"5"` are keys of their own.
+
 **Values Go cannot use as a map key.** A cell holding a slice, a map, or
 anything containing one — a `[]byte` read from a SQL BLOB column, for
 instance — cannot be a key in the returned map. Such a value is keyed by an
-`insyra.UncomparableKey` standing in for it. Comparable values are still keyed
-by themselves, so `counter[1]` and `counter["a"]` work as before, and printing
+`insyra.UncomparableKey` standing in for it. Other comparable values are still
+keyed by themselves, so `counter["a"]` and `counter[2.5]` work as before, and printing
 the whole map stays readable: a stand-in shows as its type with a shortened
 form of its content, such as `[]uint8(00ff41)`.
 
@@ -2564,20 +2572,21 @@ struct holding one. A `NaN` is comparable to Go but never equal to itself, so
 using one as a map key would make an entry nobody could read back: three
 `NaN`s in a column used to become three counts of one.
 
-**To read one value's count, use `Count`, not this map.** `Count` matches
-integers by value, where the map keys them by Go type: a CSV load stores
-integers as `int64`, so `counter[1]` finds nothing in a counter built from
-loaded data while `Count(1)` is right. `Count` also finds an uncomparable
-value, which is the whole reason the two now agree.
+**To read one value's count, `Count` is simplest.** It matches integers by
+value whatever their width, so `Count(5)` and `Count(int64(5))` are both
+right, and it finds an uncomparable value too, which is the reason the two
+agree.
 
 ```go
 n := dl.Count(someValue)
 ```
 
-`insyra.ToToMapKey(v)` builds the key. Use it when you index the counter yourself
-rather than asking about one value, and in any map, set or index of your own
-over cell values — indexing a map with a slice panics, and that is your own
-map operation, which no library can guard:
+`insyra.ToMapKey(v)` builds the key. Use it when you index the counter with a
+value that is not a plain literal, and in any map, set or index of your own
+over cell values. Go compares map keys by type as well as value, so
+`counter[int64(5)]` finds nothing, because the key is `int(5)`, while
+`counter[insyra.ToMapKey(int64(5))]` finds it. Indexing a map with a slice
+panics, and that is your own map operation, which no library can guard:
 
 ```go
 counter := dl.Counter()

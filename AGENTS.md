@@ -337,13 +337,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: keep continuing if that is the intended behaviour, but exit non-zero when any line failed (for example "script finished, 1 of 3 lines failed"), or add a stop-on-error option. Either way the exit code belongs in the docs.
 - **Status**: pending
 
-### [2026-09-11] — `Counter()` still keeps `int(1)` and `int64(1)` apart
-- **Where**: `datalist.go` `DataList.Counter`, `datatable.go` `DataTable.Counter`
-- **Note (2026-09-12)**: `identify-uncomparable-cells` deliberately did not settle this. Comparable values are still keyed by themselves, so the split is exactly as it was.
-- **What**: since `match-integers-by-value`, every search, count, replace and drop matches integers by value, and GroupBy, Pivot and Merge already did (`encodeGroupKey` writes every integer as `i:<value>`). `Counter()` is the one place left that does not: it returns a `map[any]int` keyed by the stored value, so a column holding both `int(1)` and `int64(1)` reports two keys while `Count(1)` reports their total. A column only mixes the two when rows are added by hand to loaded data, for example Go literals appended to a CSV table.
-- **Suggestion**: merging them means the map key has to be one of the two stored values, which decides which literal a caller can index it with (`counter[1]` or `counter[int64(1)]`). Pick one rule, or document that `Counter` reports stored types, rather than leave it implicit.
-- **Status**: pending
-
 ### [2026-09-07] — remove `Config.SetDontPanic` one release after `SetPanicOnError` shipped
 - **Where**: `config.go` (`SetDontPanic`, `GetDontPanicStatus`)
 - **What**: The library never terminates or panics by default. `LogFatal` records the error and returns; `Config.SetPanicOnError(true)` is the opt-in that turns any recorded error into a `panic` (never `os.Exit`). `SetDontPanic(v)` remains one release as a Deprecated alias for `SetPanicOnError(!v)` so existing callers keep compiling. Shipped in `make-errors-non-terminating` (2026-09-07).
