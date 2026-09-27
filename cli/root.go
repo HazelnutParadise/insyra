@@ -41,7 +41,7 @@ func NewRootCommand() *cobra.Command {
 			if execCtx.InREPL {
 				return nil
 			}
-			return execCtx.Env.SaveState(execCtx.EnvName, execCtx.Vars)
+			return commands.SaveEnvState(execCtx)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return repl.Start(execCtx)

@@ -1308,6 +1308,22 @@ func NewMaxAbsScaler() *MaxAbsScaler
 
 There is also a DataList-oriented counterpart (`DataListScaler`) on every scaler: `FitDataList`, `TransformDataList`, `FitTransformDataList`, `InverseTransformDataList`, each returning a new `*DataList`.
 
+**Saving a fitted scaler:** every scaler implements `json.Marshaler` and `json.Unmarshaler`, so a scaler fitted in one program can transform tables in another. The JSON holds the kind, the output range, and each fitted column with the selector it was fitted by, kept as the same kind: an Excel-style index, a `Name(...)`, or a position. Decode it into the type the scaler was created as. JSON from a different kind returns an error and leaves the receiver as it was. A parameter that is NaN or infinite, such as the mean of a column that held only missing values, is written as the string `"NaN"`, `"+Inf"` or `"-Inf"` and read back as that value.
+
+```go
+b, err := json.Marshal(sc) // sc is a fitted *insyra.StandardScaler
+if err != nil {
+    log.Fatal(err)
+}
+
+// Later, possibly in another process:
+restored := new(insyra.StandardScaler)
+if err := json.Unmarshal(b, restored); err != nil {
+    log.Fatal(err)
+}
+testScaled, err := restored.Transform(test) // same result as sc.Transform(test)
+```
+
 **Example — fit on train, transform test (no leakage):**
 
 ```go

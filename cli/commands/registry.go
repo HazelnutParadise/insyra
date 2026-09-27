@@ -29,6 +29,10 @@ type ExecContext struct {
 
 	// scriptDepth counts nested `run` invocations (see maxScriptDepth).
 	scriptDepth int
+
+	// unsavedWarned maps each variable SaveEnvState has reported as not saved
+	// to the Go type it held then, so a session reports it once.
+	unsavedWarned map[string]string
 }
 
 type CommandHandler struct {

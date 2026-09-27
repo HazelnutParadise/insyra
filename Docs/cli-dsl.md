@@ -156,6 +156,8 @@ mgr.Create("scratch")
 mgr.Export("scratch", "/tmp/backup.json")
 ```
 
+To save a map of variables yourself, `mgr.SaveVariables(name, vars)` writes every variable the environment can store and returns the ones it left out, each with its name, Go type and reason. `mgr.SaveState(name, vars)` saves the same way without the list. Both return an error only when the file could not be written.
+
 ## Global Flags
 
 Available on the root command:
@@ -195,14 +197,16 @@ Insyra persists state per environment under:
 
 Each environment contains:
 
-- `state.json`: serialized variables (`DataTable`, `DataList`, and raw values).
+- `state.json`: the environment's variables, each stored with its Go types.
 - `history.txt`: command history. A `db connect` line is stored with its password masked (`user:***@…`, `password=***`), and the file is created private to the user (mode 0600).
 - `config.json`: environment-local config payload.
 
 Default behavior:
 
 - On first run, `default` environment is auto-created.
-- CLI commands restore env variables before execution.
+- A one-shot command restores the environment's variables from `state.json` before it runs and saves them after, and the next command gets back what the previous one stored. A DataTable keeps its column order, its column and row names, and the Go type of every cell, so a column letter points at the same column in every command and a column `parsedates` turned into `time.Time` values is still one, as is a column of `time.Duration` values from a CCL date subtraction. DataLists and single values keep their types too: a `3.0` stays a `float64` and an `int` stays an `int`. A scaler fitted by `scale fit` and a tree built by `hclust` keep their fitted state, so `scale transform` and `cutree` can run as separate commands.
+- A variable the environment cannot store, such as a `regression` result, is left out when the environment is saved, and the save prints a warning such as `warning: r (*stats.LinearRegressionResult) was not saved to environment default: ...; it is gone when this process ends or another environment is opened`. The command that created it still succeeds. After a one-shot command the variable is gone. In the REPL or a script it lasts until the session ends or `env open` switches to another environment, and the warning appears once.
+- A `state.json` written by an earlier release still loads, and the next save rewrites it in the current layout. Column order or cell types that the earlier release had already lost are not recovered.
 - REPL saves history and state continuously.
 - DSL session `Execute` saves state after successful command.
 - Variables that hold `NaN` or ±Inf (for example a CSV loaded with blank cells) are saved and restored intact.
@@ -215,7 +219,7 @@ insyra env export exp1 ./exp1.json
 insyra env import ./exp1.json exp1-copy --force
 ```
 
-`env import` into a non-empty target fails unless `--force` is provided.
+`env import` into a non-empty target fails unless `--force` is provided. The export carries the variables as `state.json` stores them, so the imported environment restores the same values and types, including NaN and integers above 2^53.
 
 ## DSL Syntax Rules
 
@@ -505,7 +509,7 @@ encode survey ordinal satisfaction order low,medium,high unknown error as ranked
 
 ### B5. Feature scaling
 
-Unlike `encode`, `scale` is **stateful**: `scale fit` stores a reusable scaler variable, and `scale transform` / `scale inverse` apply that fitted scaler to any table. This lets you fit on a training set and transform a test set with the same parameters (no data leakage). Scaler variables live only for the session — they are not persisted to a named environment.
+Unlike `encode`, `scale` is **stateful**: `scale fit` stores a reusable scaler variable, and `scale transform` / `scale inverse` apply that fitted scaler to any table. This lets you fit on a training set and transform a test set with the same parameters (no data leakage). A fitted scaler is saved with the environment like any other variable, so `scale fit` and `scale transform` work as separate one-shot commands.
 
 ```text
 scale fit std <scalerVar> <tableVar> cols <c1,c2,...>

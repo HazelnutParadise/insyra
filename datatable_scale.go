@@ -1,9 +1,12 @@
 package insyra
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
+	"strings"
 )
 
 // ScalerParams reports the fitted parameters for a single scaled or imputed
@@ -315,53 +318,61 @@ func (s *scaler) applyColumn(c *scalerColumn, name string, data []any, inverse b
 	return dst, nil
 }
 
-// computeColumn turns a column's numeric values into fitted parameters and the
-// affine coefficients used by apply. Degenerate spreads set scale = 1.
+// computeColumn turns a column's numeric values into fitted parameters; the
+// affine coefficients apply needs are derived from them by setAffine.
 func (s *scaler) computeColumn(ref any, name string, vals []float64) scalerColumn {
 	c := scalerColumn{ref: ref, name: name}
 	c.params.Column = name
 	c.params.Kind = s.kind
-	c.gain = 1
-	c.offset = 0
 
 	switch s.kind {
 	case "standard":
 		mean := meanOf(vals)
-		std := sampleStdOf(vals, mean)
 		c.params.Mean = mean
-		c.params.Std = std
-		c.center = mean
-		c.scale = nonZero(std)
+		c.params.Std = sampleStdOf(vals, mean)
 	case "minmax":
 		min, max := minMaxOf(vals)
 		c.params.Min = min
 		c.params.Max = max
 		c.params.OutputMin = s.featureMin
 		c.params.OutputMax = s.featureMax
-		c.center = min
-		c.scale = nonZero(max - min)
-		c.gain = s.featureMax - s.featureMin
-		c.offset = s.featureMin
 	case "robust":
 		sorted := append([]float64(nil), vals...)
 		sort.Float64s(sorted)
-		q1 := quantileQuartile(sorted, 0.25)
-		median := quantileQuartile(sorted, 0.5)
-		q3 := quantileQuartile(sorted, 0.75)
-		iqr := q3 - q1
-		c.params.Median = median
-		c.params.Q1 = q1
-		c.params.Q3 = q3
-		c.params.IQR = iqr
-		c.center = median
-		c.scale = nonZero(iqr)
+		c.params.Q1 = quantileQuartile(sorted, 0.25)
+		c.params.Median = quantileQuartile(sorted, 0.5)
+		c.params.Q3 = quantileQuartile(sorted, 0.75)
+		c.params.IQR = c.params.Q3 - c.params.Q1
 	case "maxabs":
-		maxAbs := maxAbsOf(vals)
-		c.params.MaxAbs = maxAbs
-		c.center = 0
-		c.scale = nonZero(maxAbs)
+		c.params.MaxAbs = maxAbsOf(vals)
 	}
+	s.setAffine(&c)
 	return c
+}
+
+// setAffine derives the four affine coefficients apply uses from the column's
+// stored parameters, so a scaler rebuilt from JSON scales exactly like the one
+// that was fitted. Degenerate spreads set scale = 1.
+func (s *scaler) setAffine(c *scalerColumn) {
+	c.gain = 1
+	c.offset = 0
+
+	switch s.kind {
+	case "standard":
+		c.center = c.params.Mean
+		c.scale = nonZero(c.params.Std)
+	case "minmax":
+		c.center = c.params.Min
+		c.scale = nonZero(c.params.Max - c.params.Min)
+		c.gain = s.featureMax - s.featureMin
+		c.offset = s.featureMin
+	case "robust":
+		c.center = c.params.Median
+		c.scale = nonZero(c.params.IQR)
+	case "maxabs":
+		c.center = 0
+		c.scale = nonZero(c.params.MaxAbs)
+	}
 }
 
 // FitDataList learns scaling parameters from a single DataList.
@@ -513,6 +524,232 @@ func quantileQuartile(sorted []float64, p float64) float64 {
 	return quantileType7(sorted, p)
 }
 
+// jsonFloat is a float64 that survives encoding/json. Finite values are written
+// as the shortest decimal that reads back bit for bit; the values JSON has no
+// number for travel as their Go names.
+type jsonFloat float64
+
+func (f jsonFloat) MarshalJSON() ([]byte, error) {
+	switch v := float64(f); {
+	case math.IsNaN(v):
+		return []byte(`"NaN"`), nil
+	case math.IsInf(v, 1):
+		return []byte(`"+Inf"`), nil
+	case math.IsInf(v, -1):
+		return []byte(`"-Inf"`), nil
+	}
+	return []byte(strconv.FormatFloat(float64(f), 'g', -1, 64)), nil
+}
+
+func (f *jsonFloat) UnmarshalJSON(b []byte) error {
+	s := strings.TrimSpace(string(b))
+	if len(s) > 0 && s[0] == '"' {
+		switch s {
+		case `"NaN"`:
+			*f = jsonFloat(math.NaN())
+			return nil
+		case `"+Inf"`:
+			*f = jsonFloat(math.Inf(1))
+			return nil
+		case `"-Inf"`:
+			*f = jsonFloat(math.Inf(-1))
+			return nil
+		}
+		return fmt.Errorf("insyra: scaler JSON: %s is not a known non-finite value", s)
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return fmt.Errorf("insyra: scaler JSON: %s is not a number", s)
+	}
+	*f = jsonFloat(v)
+	return nil
+}
+
+// scalerJSON is the on-disk form of a fitted or unfitted scaler. The concrete
+// type is not recoverable from the fields alone, so kind is written out and
+// checked on the way back in.
+type scalerJSON struct {
+	Kind       string             `json:"kind"`
+	FeatureMin jsonFloat          `json:"featureMin"`
+	FeatureMax jsonFloat          `json:"featureMax"`
+	Fitted     bool               `json:"fitted"`
+	Columns    []scalerColumnJSON `json:"columns"`
+}
+
+// scalerRefJSON is a column selector in scaler JSON. Exactly one field is
+// set: an Excel-style index, a column name, or a 0-based position.
+type scalerRefJSON struct {
+	Index    *string `json:"index,omitempty"`
+	Name     *string `json:"name,omitempty"`
+	Position *int    `json:"position,omitempty"`
+}
+
+func encodeScalerRef(ref any) (scalerRefJSON, error) {
+	switch v := ref.(type) {
+	case string:
+		return scalerRefJSON{Index: &v}, nil
+	case NameSelector:
+		val := v.Value()
+		return scalerRefJSON{Name: &val}, nil
+	case int:
+		return scalerRefJSON{Position: &v}, nil
+	default:
+		return scalerRefJSON{}, fmt.Errorf("insyra: scaler JSON: cannot write a column selector of type %T", ref)
+	}
+}
+
+func decodeScalerRef(r scalerRefJSON) (any, error) {
+	count := 0
+	if r.Index != nil {
+		count++
+	}
+	if r.Name != nil {
+		count++
+	}
+	if r.Position != nil {
+		count++
+	}
+	if count != 1 {
+		return nil, fmt.Errorf("insyra: scaler JSON: a column reference needs exactly one of index, name or position")
+	}
+	if r.Index != nil {
+		return *r.Index, nil
+	}
+	if r.Name != nil {
+		return Name(*r.Name), nil
+	}
+	return *r.Position, nil
+}
+
+type scalerColumnJSON struct {
+	Ref       scalerRefJSON `json:"ref"`
+	Name      string        `json:"name"`
+	Mean      jsonFloat     `json:"mean"`
+	Std       jsonFloat     `json:"std"`
+	Min       jsonFloat     `json:"min"`
+	Max       jsonFloat     `json:"max"`
+	Median    jsonFloat     `json:"median"`
+	Q1        jsonFloat     `json:"q1"`
+	Q3        jsonFloat     `json:"q3"`
+	IQR       jsonFloat     `json:"iqr"`
+	MaxAbs    jsonFloat     `json:"maxAbs"`
+	OutputMin jsonFloat     `json:"outputMin"`
+	OutputMax jsonFloat     `json:"outputMax"`
+}
+
+// MarshalJSON writes the scaler's kind, its output range and the fitted
+// columns, so UnmarshalJSON on the same scaler type reads back one that
+// transforms identically.
+func (s *scaler) MarshalJSON() ([]byte, error) {
+	out := scalerJSON{
+		Kind:       s.kind,
+		FeatureMin: jsonFloat(s.featureMin),
+		FeatureMax: jsonFloat(s.featureMax),
+		Fitted:     s.fitted,
+		Columns:    make([]scalerColumnJSON, 0, len(s.cols)),
+	}
+	for _, c := range s.cols {
+		refJSON, err := encodeScalerRef(c.ref)
+		if err != nil {
+			return nil, err
+		}
+		out.Columns = append(out.Columns, scalerColumnJSON{
+			Ref:       refJSON,
+			Name:      c.name,
+			Mean:      jsonFloat(c.params.Mean),
+			Std:       jsonFloat(c.params.Std),
+			Min:       jsonFloat(c.params.Min),
+			Max:       jsonFloat(c.params.Max),
+			Median:    jsonFloat(c.params.Median),
+			Q1:        jsonFloat(c.params.Q1),
+			Q3:        jsonFloat(c.params.Q3),
+			IQR:       jsonFloat(c.params.IQR),
+			MaxAbs:    jsonFloat(c.params.MaxAbs),
+			OutputMin: jsonFloat(c.params.OutputMin),
+			OutputMax: jsonFloat(c.params.OutputMax),
+		})
+	}
+	return json.Marshal(out)
+}
+
+// unmarshalJSON reads what MarshalJSON wrote into a scaler of the given kind.
+// The receiver is left untouched unless everything decodes.
+func (s *scaler) unmarshalJSON(data []byte, kind string) error {
+	var in scalerJSON
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	if in.Kind != kind {
+		return fmt.Errorf("insyra: cannot read a %q scaler into a %s scaler", in.Kind, kind)
+	}
+	if in.Fitted != (len(in.Columns) > 0) {
+		return fmt.Errorf("insyra: scaler JSON: fitted=%v but %d columns", in.Fitted, len(in.Columns))
+	}
+
+	tmp := scaler{
+		kind:       kind,
+		featureMin: float64(in.FeatureMin),
+		featureMax: float64(in.FeatureMax),
+		fitted:     in.Fitted,
+	}
+	var cols []scalerColumn
+	for _, c := range in.Columns {
+		ref, err := decodeScalerRef(c.Ref)
+		if err != nil {
+			return err
+		}
+		col := scalerColumn{
+			ref:  ref,
+			name: c.Name,
+			params: ScalerParams{
+				Column: c.Name,
+				Kind:   kind,
+				Mean:   float64(c.Mean),
+				Std:    float64(c.Std),
+				Min:    float64(c.Min),
+				Max:    float64(c.Max),
+				Median: float64(c.Median),
+				Q1:     float64(c.Q1),
+				Q3:     float64(c.Q3),
+				IQR:    float64(c.IQR),
+				MaxAbs: float64(c.MaxAbs),
+
+				OutputMin: float64(c.OutputMin),
+				OutputMax: float64(c.OutputMax),
+			},
+		}
+		tmp.setAffine(&col)
+		cols = append(cols, col)
+	}
+	tmp.cols = cols
+	*s = tmp
+	return nil
+}
+
+// UnmarshalJSON reads a scaler written by MarshalJSON. It refuses JSON written
+// by another kind of scaler.
+func (s *StandardScaler) UnmarshalJSON(data []byte) error {
+	return s.unmarshalJSON(data, "standard")
+}
+
+// UnmarshalJSON reads a scaler written by MarshalJSON. It refuses JSON written
+// by another kind of scaler.
+func (s *MinMaxScaler) UnmarshalJSON(data []byte) error {
+	return s.unmarshalJSON(data, "minmax")
+}
+
+// UnmarshalJSON reads a scaler written by MarshalJSON. It refuses JSON written
+// by another kind of scaler.
+func (s *RobustScaler) UnmarshalJSON(data []byte) error {
+	return s.unmarshalJSON(data, "robust")
+}
+
+// UnmarshalJSON reads a scaler written by MarshalJSON. It refuses JSON written
+// by another kind of scaler.
+func (s *MaxAbsScaler) UnmarshalJSON(data []byte) error {
+	return s.unmarshalJSON(data, "maxabs")
+}
+
 // compile-time interface checks
 var (
 	_ Scaler = (*StandardScaler)(nil)
@@ -524,4 +761,13 @@ var (
 	_ DataListScaler = (*MinMaxScaler)(nil)
 	_ DataListScaler = (*RobustScaler)(nil)
 	_ DataListScaler = (*MaxAbsScaler)(nil)
+
+	_ json.Marshaler   = (*StandardScaler)(nil)
+	_ json.Unmarshaler = (*StandardScaler)(nil)
+	_ json.Marshaler   = (*MinMaxScaler)(nil)
+	_ json.Unmarshaler = (*MinMaxScaler)(nil)
+	_ json.Marshaler   = (*RobustScaler)(nil)
+	_ json.Unmarshaler = (*RobustScaler)(nil)
+	_ json.Marshaler   = (*MaxAbsScaler)(nil)
+	_ json.Unmarshaler = (*MaxAbsScaler)(nil)
 )

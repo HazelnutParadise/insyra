@@ -1,6 +1,7 @@
 package env
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -345,7 +346,7 @@ func (m *Manager) Export(name, outputPath string) error {
 		return err
 	}
 
-	state, err := m.LoadState(name)
+	state, err := m.readState(name)
 	if err != nil {
 		state = &State{Variables: map[string]SerializedVariable{}, LastAccess: ""}
 	}
@@ -385,13 +386,18 @@ func (m *Manager) Export(name, outputPath string) error {
 }
 
 func (m *Manager) Import(inputPath, targetName string, force bool) (string, error) {
-	bytes, err := os.ReadFile(inputPath)
+	raw, err := os.ReadFile(inputPath)
 	if err != nil {
 		return "", err
 	}
 
 	var payload ExportPayload
-	if err := json.Unmarshal(bytes, &payload); err != nil {
+	// Numbers stay json.Number through the decode, so an integer beyond 2^53 is
+	// written back out as the same literal instead of a float64 that has
+	// already lost it.
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&payload); err != nil {
 		return "", fmt.Errorf("invalid export payload: %w", err)
 	}
 
