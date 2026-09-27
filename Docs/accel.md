@@ -248,4 +248,6 @@ func main() {
 - Native discovery is best-effort. Env-driven stubs remain available for deterministic testing and non-GPU development.
 - Shared-memory devices can derive working-set budgets from host memory when native budget data is unavailable.
 - `accel devices`, `accel cache` and `accel plan` inspect the runtime; none of them executes anything. The command that did was removed with the operations it invoked.
+- `accel devices` prints one line per detected device, or `no accel devices detected` with the fallback reason. `accel cache` first loads the session's DataList and DataTable variables into the device cache and then lists what is resident. `accel devices` and `accel plan` load nothing.
+- The CLI mode comes from `--mode` when it is given, otherwise from `config accel-mode <auto|cpu|gpu|strict-gpu>` (`accel.mode` is accepted as the same key), and is `auto` when neither is set.
 - Execution cost figures are only reported when something actually ran on a device.
