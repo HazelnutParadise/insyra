@@ -1,11 +1,11 @@
 # date-parsing-coverage Specification
 
 ## Purpose
-常見時間字串版面的辨識範圍，以及不得誤判非日期。
+Which timestamp layouts `TryParseTime` recognises, how a layout without a zone is read, and which strings it must never take for a date.
 ## Requirements
 ### Requirement: Common timestamp layouts parse
 
-`TryParseTime` SHALL 接受 `2006-01-02 15:04:05`、`2006-01-02T15:04:05`、`2006-01-02 15:04` 與以 `/` 分隔的等價寫法；無時區的版面 SHALL 視為 UTC。非日期字串（純數字、單字、空字串）SHALL NOT 被視為日期。
+`TryParseTime` SHALL 接受 `2006-01-02 15:04:05`、`2006-01-02T15:04:05`、`2006-01-02 15:04`，以及以 `/` 分隔的 `2006/01/02 15:04:05`、`2006/01/02 15:04`、`2006/01/02`（`/` 分隔的日期與時間之間不接受 `T`）；無時區的版面 SHALL 視為 UTC。非日期字串（純數字、單字、空字串）SHALL NOT 被視為日期。
 
 #### Scenario: Zone-less timestamp
 - **WHEN** 解析 `"2024-01-02 03:04:05"`
