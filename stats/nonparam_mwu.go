@@ -64,21 +64,13 @@ func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, conf
 		return nil, inputErr
 	}
 
-	x := make([]float64, len(s1))
-	for i, v := range s1 {
-		f, ok := insyra.ToFloat64Safe(v)
-		if !ok {
-			return nil, errors.New("invalid numeric value in data1")
-		}
-		x[i] = f
+	x, err := numericValues(s1, "data1")
+	if err != nil {
+		return nil, err
 	}
-	y := make([]float64, len(s2))
-	for i, v := range s2 {
-		f, ok := insyra.ToFloat64Safe(v)
-		if !ok {
-			return nil, errors.New("invalid numeric value in data2")
-		}
-		y[i] = f
+	y, err := numericValues(s2, "data2")
+	if err != nil {
+		return nil, err
 	}
 	n1 := len(x)
 	n2 := len(y)

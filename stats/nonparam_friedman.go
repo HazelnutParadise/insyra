@@ -40,12 +40,18 @@ func FriedmanTest(subjects ...insyra.IDataList) (*FriedmanTestResult, error) {
 	}
 
 	subjectsRaw := make([][]any, n)
+	// Converted before any goroutine starts, so a nil list is refused as an
+	// empty subject instead of crashing inside a goroutine.
+	lists := make([]*insyra.DataList, n)
+	for i := range subjects {
+		lists[i] = asDataList(subjects[i])
+	}
 	var wg sync.WaitGroup
 	for i := range subjects {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			subjects[i].AtomicDo(func(dl *insyra.DataList) {
+			lists[i].AtomicDo(func(dl *insyra.DataList) {
 				subjectsRaw[i] = dl.Data()
 			})
 		}(i)
@@ -60,15 +66,11 @@ func FriedmanTest(subjects ...insyra.IDataList) (*FriedmanTestResult, error) {
 	rows := make([][]float64, n)
 	for i, raw := range subjectsRaw {
 		if len(raw) != k {
-			return nil, fmt.Errorf("subject %d has %d observations, expected %d", i, len(raw), k)
+			return nil, fmt.Errorf("subject %d has %d observations, expected %d", i+1, len(raw), k)
 		}
-		row := make([]float64, k)
-		for j, v := range raw {
-			x, ok := insyra.ToFloat64Safe(v)
-			if !ok {
-				return nil, fmt.Errorf("invalid numeric value at subject %d condition %d", i, j)
-			}
-			row[j] = x
+		row, err := appendNumericValues(make([]float64, 0, k), raw, func() string { return fmt.Sprintf("subject %d", i+1) }, "condition")
+		if err != nil {
+			return nil, err
 		}
 		rows[i] = row
 	}

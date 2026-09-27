@@ -38,12 +38,18 @@ func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error) {
 
 	// Pull data in parallel (each list is its own actor; no contention).
 	groupsRaw := make([][]any, len(groups))
+	// Converted before any goroutine starts, so a nil list is refused as an
+	// empty group instead of crashing inside a goroutine.
+	lists := make([]*insyra.DataList, len(groups))
+	for i, g := range groups {
+		lists[i] = asDataList(g)
+	}
 	var wg sync.WaitGroup
 	for i := range groups {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			groups[i].AtomicDo(func(dl *insyra.DataList) {
+			lists[i].AtomicDo(func(dl *insyra.DataList) {
 				groupsRaw[i] = dl.Data()
 			})
 		}(i)
@@ -54,14 +60,15 @@ func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error) {
 	labels := make([]int, 0)
 	for i, gd := range groupsRaw {
 		if len(gd) == 0 {
-			return nil, fmt.Errorf("group %d is empty", i)
+			return nil, fmt.Errorf("group %d is empty", i+1)
 		}
-		for j, v := range gd {
-			x, ok := insyra.ToFloat64Safe(v)
-			if !ok {
-				return nil, fmt.Errorf("invalid numeric value at group %d index %d", i, j)
-			}
-			values = append(values, x)
+		start := len(values)
+		var err error
+		values, err = appendNumericValues(values, gd, func() string { return fmt.Sprintf("group %d", i+1) }, "row")
+		if err != nil {
+			return nil, err
+		}
+		for range len(values) - start {
 			labels = append(labels, i)
 		}
 	}
@@ -87,7 +94,7 @@ func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error) {
 	rawH := 0.0
 	for i := range k {
 		if groupSize[i] == 0 {
-			return nil, fmt.Errorf("group %d is empty after rank assignment", i)
+			return nil, fmt.Errorf("group %d is empty after rank assignment", i+1)
 		}
 		rawH += groupSum[i] * groupSum[i] / float64(groupSize[i])
 	}
