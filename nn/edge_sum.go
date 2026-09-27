@@ -81,10 +81,20 @@ func NewEdgeTopology(nodes int, sources, targets []int) (*EdgeTopology, error) {
 }
 
 // Nodes returns the number of nodes in the topology.
-func (g *EdgeTopology) Nodes() int { return g.nodes }
+func (g *EdgeTopology) Nodes() int {
+	if g == nil {
+		return 0
+	}
+	return g.nodes
+}
 
 // Edges returns the number of edges in the topology.
-func (g *EdgeTopology) Edges() int { return len(g.sources) }
+func (g *EdgeTopology) Edges() int {
+	if g == nil {
+		return 0
+	}
+	return len(g.sources)
+}
 
 // edgeSumWorkers applies the shared MAC threshold to edge-sum work.
 func edgeSumWorkers(batch, nodes, edges int) int {

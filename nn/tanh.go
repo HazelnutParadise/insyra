@@ -191,6 +191,7 @@ func tanhHighPrecision(x float32) float32 {
 	z := new(big.Float).SetPrec(64).SetFloat64(float64(a))
 	z.Mul(z, big.NewFloat(2))
 
+	var last float32
 	for prec := uint(128); prec <= 4096; prec *= 2 {
 		w := prec + 64
 		z64, _ := z.Float64()
@@ -209,6 +210,7 @@ func tanhHighPrecision(x float32) float32 {
 		y := new(big.Float).SetPrec(prec).Sub(new(big.Float).SetPrec(prec).SetInt64(1), fraction)
 
 		f32, _ := y.Float32()
+		last = f32
 		prev := math.Nextafter32(f32, float32(math.Inf(-1)))
 		next := math.Nextafter32(f32, float32(math.Inf(1)))
 		fBig := new(big.Float).SetPrec(prec).SetFloat64(float64(f32))
@@ -227,7 +229,10 @@ func tanhHighPrecision(x float32) float32 {
 			return float32(math.Copysign(float64(f32), float64(x)))
 		}
 	}
-	panic("tanh of a nonzero float32 is transcendental, so it is never a float32 midpoint; this is unreachable")
+	// Not reached: tanh of a nonzero float32 is transcendental, so it is never
+	// a float32 midpoint, and 4096 bits settle every input (checked
+	// exhaustively). The library does not panic, so the last rounding stands.
+	return float32(math.Copysign(float64(last), float64(x)))
 }
 
 // expBig evaluates exp with the Taylor series through the first term whose

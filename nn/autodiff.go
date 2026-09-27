@@ -58,7 +58,7 @@ type tapeOp struct {
 
 // NewTape creates an empty reverse-mode tape. Dropout uses the tape-owned RNG;
 // a seed makes masks reproducible, and the default seed is deterministic.
-// More than one seed is an error, reported by Param and Backward.
+// More than one seed is an error, reported by Param, Backward and BackwardFrom.
 func NewTape(seed ...int64) *Tape {
 	const defaultSeed = int64(1)
 	rngSeed := defaultSeed
@@ -534,8 +534,10 @@ func (t *Tape) BCEWithLogitsLoss(logits, targets *Tensor) (*Tensor, error) {
 // per input, or nil for an input that receives none. The declaration is
 // checked before anything is recorded: the name must be non-empty, vjp must be
 // non-nil, output and every input must be non-nil float32 tensors, and output
-// must not be one of its own inputs, and output must not already be the output
-// of an operation on this tape.
+// must not be one of its own inputs, the output of an operation on this tape,
+// or the input of one: the reverse pass visits operations in reverse order, so
+// a reader recorded earlier would be visited after this operation and its
+// gradient would never reach this operation's inputs.
 func (t *Tape) Custom(name string, inputs []*Tensor, output *Tensor, vjp func(upstream *Tensor) ([]*Tensor, error)) error {
 	if name == "" {
 		return fmt.Errorf("tape custom operation needs a name")
@@ -557,6 +559,11 @@ func (t *Tape) Custom(name string, inputs []*Tensor, output *Tensor, vjp func(up
 	for _, op := range t.ops {
 		if op.output == output {
 			return fmt.Errorf("tape custom %s: output was already produced by %s", name, op.name)
+		}
+		for _, input := range op.inputs {
+			if input == output {
+				return fmt.Errorf("tape custom %s: output was already read by %s; record the custom operation before the operations that use its output", name, op.name)
+			}
 		}
 	}
 	t.ops = append(t.ops, tapeOp{
@@ -604,6 +611,9 @@ func (t *Tape) Backward(loss *Tensor) error {
 // succeeds; a failing pass leaves them where the last successful pass left
 // them.
 func (t *Tape) BackwardFrom(output, upstream *Tensor) error {
+	if t.err != nil {
+		return t.err
+	}
 	if err := requireFloat32(output, "backward output"); err != nil {
 		return err
 	}

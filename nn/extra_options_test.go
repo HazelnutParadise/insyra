@@ -37,3 +37,28 @@ func TestMoreThanOneOptionalValueIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// BackwardFrom reports the same tape error Backward does: a tape given two
+// seeds must not run a reverse pass either way.
+func TestBackwardFromRefusesATapeGivenTwoSeeds(t *testing.T) {
+	tape := NewTape(1, 2)
+	a, err := NewTensor([]int{1}, []float32{2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := NewTensor([]int{1}, []float32{3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	y, err := tape.Mul(a, b)
+	if err != nil {
+		t.Fatalf("Mul on the tape: %v", err)
+	}
+	upstream, err := NewTensor([]int{1}, []float32{1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tape.BackwardFrom(y, upstream); err == nil {
+		t.Error("a tape given two seeds ran BackwardFrom")
+	}
+}

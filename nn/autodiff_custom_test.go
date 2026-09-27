@@ -486,3 +486,40 @@ func equalFloat32Slices(left, right []float32) bool {
 	}
 	return true
 }
+
+// An output that an earlier operation already read is refused: the reverse
+// pass visits the custom operation before that reader, so the reader's
+// gradient would never reach the custom operation's inputs.
+func TestCustomRefusesAnOutputAnEarlierOperationRead(t *testing.T) {
+	a := mustTestTensor(t, []int{1}, []float32{2})
+	c := mustTestTensor(t, []int{1}, []float32{5})
+	tape := NewTape()
+	param, err := tape.Param(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	av := param.Value()
+	b := mustTestTensor(t, []int{1}, []float32{4}) // a*a, computed outside the tape
+	if _, err := tape.Mul(b, c); err != nil {
+		t.Fatal(err)
+	}
+	before := len(tape.ops)
+	err = tape.Custom("square", []*Tensor{av}, b, func(upstream *Tensor) ([]*Tensor, error) {
+		two := mustTestTensor(t, []int{1}, []float32{2})
+		g, err := Mul(upstream, two)
+		if err != nil {
+			return nil, err
+		}
+		g, err = Mul(g, av)
+		return []*Tensor{g}, err
+	})
+	if err == nil {
+		t.Fatal("Custom accepted an output an earlier operation had read")
+	}
+	if !strings.Contains(err.Error(), "square") || !strings.Contains(err.Error(), "Mul") {
+		t.Fatalf("error %q does not name the operation and the reader", err)
+	}
+	if after := len(tape.ops); after != before {
+		t.Fatalf("Custom recorded %d ops, want %d", after, before)
+	}
+}

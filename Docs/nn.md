@@ -321,8 +321,12 @@ outside the tape is disconnected from it, and its inputs silently receive a
 zero gradient.
 
 `Custom` refuses an empty name, a nil rule, a nil or non-float32 tensor, an
-output that is also one of its inputs, and an output another operation on the
-tape already produced, and records nothing when it refuses.
+output that is also one of its inputs, an output another operation on the tape
+already produced, and an output another operation already read, and records
+nothing when it refuses. The last rule sets the order: record the custom
+operation before the operations that use its output, because the reverse pass
+visits operations in reverse and a reader recorded earlier would be visited
+after it, leaving its gradient short.
 During `Backward`, a rule that returns an error, the wrong number of
 gradients, or a gradient of the wrong type or shape fails the pass with an
 error naming the operation.
