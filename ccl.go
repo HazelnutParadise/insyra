@@ -121,9 +121,9 @@ func (c *dataTableContext) GetColData(index int) ([]any, error) {
 	}
 	// A copy, not the snapshot itself: a registered aggregate or sequence
 	// function may sort or rewrite the slice it is given, and the rest of the
-	// expression still reads rows from tableData. Since applyCCLOnDataTable
-	// folds a row-invariant aggregate, this costs one copy per aggregate call
-	// rather than one per row.
+	// expression still reads rows from tableData. The expression methods fold
+	// a row-invariant aggregate, so there this costs one copy per aggregate;
+	// ExecuteCCL does not fold yet, and pays one copy per row.
 	res := make([]any, len(c.tableData[index]))
 	copy(res, c.tableData[index])
 	return res, nil
