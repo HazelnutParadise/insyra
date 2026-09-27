@@ -105,6 +105,8 @@ func TestTOSTR_BadFormatIsAnError(t *testing.T) {
 		{name: "no verb", expr: "TOSTR(1, '%')"},
 		{name: "too many verbs", expr: "TOSTR(1, '%d %d')"},
 		{name: "unknown verb", expr: "TOSTR(1, '%q%y')"},
+		// A real complaint is still found beside look-alike text in the value.
+		{name: "missing argument after marker-like text", expr: "TOSTR('(MISSING)', '%s %d')"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -131,6 +133,12 @@ func TestTOSTR_GoodFormats(t *testing.T) {
 		{expr: "TOSTR(1, '%v')", want: "1"},
 		// A literal percent is not a verb.
 		{expr: "TOSTR(50, '%.0f%%')", want: "50%"},
+		// Text that merely looks like fmt's complaint is not one: it was in
+		// the value or in the format before fmt ran.
+		{expr: "TOSTR('Item (MISSING)', '%s')", want: "Item (MISSING)"},
+		{expr: "TOSTR(3, 'n=%v (MISSING)')", want: "n=3 (MISSING)"},
+		{expr: "TOSTR('%!d(x)', '%s')", want: "%!d(x)"},
+		{expr: "TOSTR(1, '%v %%!(NOVERB)')", want: "1 %!(NOVERB)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.expr, func(t *testing.T) {
