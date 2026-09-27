@@ -2,6 +2,7 @@ package ccl
 
 import (
 	"math"
+	"runtime"
 	"testing"
 )
 
@@ -175,5 +176,27 @@ func TestCCLSeq_IsSequenceFunction(t *testing.T) {
 	}
 	if IsSequenceFunction("SUM") {
 		t.Error("SUM is an aggregate, not a sequence function")
+	}
+}
+
+// A window longer than the column cannot hold more values than the column
+// has, so its buffer is sized by the smaller of the two. Sizing it by the
+// window made ROLLING_MEAN(A, 1e9) on three rows allocate gigabytes.
+func TestRollingWindowBufferIsBoundedByTheColumn(t *testing.T) {
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	out, err := callSeq(t, "ROLLING_MEAN", []any{1.0, 2.0, 3.0}, []any{2147483647})
+	runtime.ReadMemStats(&after)
+	if err != nil {
+		t.Fatalf("ROLLING_MEAN: %v", err)
+	}
+	for i, v := range out {
+		if v != nil {
+			t.Errorf("row %d = %v, want nil for a window longer than the column", i, v)
+		}
+	}
+	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > 1<<20 {
+		t.Fatalf("a window of 2147483647 over 3 rows allocated %d bytes", alloc)
 	}
 }
