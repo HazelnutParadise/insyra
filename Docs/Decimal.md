@@ -23,11 +23,11 @@ dl := insyra.NewDataList(prices) // one cell per price
 
 ## How a Cell Treats a Decimal
 
-- **One decimal is one cell.** A `[]decimal.Decimal` passed to `NewDataList` gives one cell per value, like any slice; no wrapping is needed.
+- **One decimal is one cell.** A `[]decimal.Decimal` passed to `NewDataList` gives one cell per value, like any slice, and a single decimal needs no wrapping. Wrap the slice in `insyra.Cell(v)` only when the whole slice should sit in one cell.
 - **It is a number.** `Mean`, `Sum`, `Describe` and the `stats` package read it, and `IsNumeric` returns `true`.
 - **Sorting puts it among the numbers.** Two decimals compare exactly, so a difference beyond what a `float64` can hold is still seen; a decimal against a `float64` compares as floats.
 - **It displays and exports as its own text.** `Show`, `ToCSV` and `ToJSON` write `19.99`, not the value's internals.
-- **Searching finds it.** `Count(v)` and `FindAll(v)` match a decimal by value. A decimal cannot be a Go map key by itself, so build the key with `insyra.ToMapKey(v)` when you index a map of cell values, including the result of `Counter`.
+- **Searching matches the digits and the scale.** `Count(v)` and `FindAll(v)` find a decimal holding the same digits at the same scale, so `19.99` does not match `19.990`, and a `float64` never matches a decimal. A decimal cannot be a Go map key by itself, so build the key with `insyra.ToMapKey(v)` when you index a map of cell values, including the result of `Counter`.
 
 ---
 
@@ -55,7 +55,7 @@ The cells themselves always keep their exact value; the rounding happens only in
 
 ## Getting Decimals Into a Table
 
-- **From `finance`:** its functions return `decimal.Decimal`, and `finance.ScheduleTable` builds a table whose amount columns hold them.
+- **From `finance`:** its functions return `decimal.Decimal`, and `finance.ScheduleTable` builds a table whose `Payment`, `Interest`, `Principal` and `Balance` columns hold them.
 - **From Parquet:** a `Decimal128` or `Decimal256` column reads as `decimal.Decimal`, keeping the file's own digits and scale.
 - **From CSV:** column type inference loads a number with a fractional part as `float64`, which already loses exactness. Load the file with `CSVReadOptions{RawStrings: true}` so every cell stays the text it was, then parse the amount column with `decimal.Parse(ctx, s)`.
 
