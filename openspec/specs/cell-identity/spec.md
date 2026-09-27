@@ -75,11 +75,15 @@ Most cell values are things Go can compare and hash, so counting, searching and 
 
 ### Requirement: Identity descends into composite values
 
-編碼 SHALL 遞迴進入切片、陣列、map 與 struct 的元素，並對每個元素套用同一套型別規則。系統 SHALL NOT 讓型別不同但列印結果相同的巢狀值被視為同一個值。map 的編碼 SHALL 與其迭代順序無關。
+識別無法比較的值時，最外層的值 SHALL 以其 Go 型別加上內容識別。編碼 SHALL 遞迴進入切片、陣列、map 與 struct 的元素，巢狀元素 SHALL 以種類（整數、浮點數、字串、布林、切片或陣列、map、struct）與內容識別，SHALL NOT 納入其 Go 型別名稱：`[]any{T1{1}}` 與 `[]any{T2{1}}` 視為同一個值，`[]any{[]int{1}}` 與 `[]any{[]int64{1}}` 也是。種類不同的巢狀值，例如整數 `1` 與字串 `"1"`，SHALL 分開，分組與計數都是如此。map 的編碼 SHALL 與其迭代順序無關。
 
 #### Scenario: A nested integer and a nested string
 - **WHEN** 比較 `[]any{1}` 與 `[]any{"1"}`
 - **THEN** 兩者的識別不同，分組與計數都分開
+
+#### Scenario: Nested values of the same kind and content
+- **WHEN** 比較 `[]any{[]int{1}}` 與 `[]any{[]int64{1}}`
+- **THEN** 兩者的識別相同，計數為同一項
 
 #### Scenario: Grouping is unaffected for scalars
 - **WHEN** 以一般的字串、整數、浮點數、布林值分組
