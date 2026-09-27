@@ -16,6 +16,10 @@ Most cells hold a primitive the library knows how to render. Some hold a value i
 - **WHEN** 顯示一個沒有 `String()` 的 struct 值
 - **THEN** 仍然顯示 `<型別名>`
 
+#### Scenario: A nil pointer
+- **WHEN** 顯示一個 nil 指標，而它的元素型別有值接收者的 `String()`（例如 nil 的 `*time.Time`）
+- **THEN** 顯示 `<nil>`，不呼叫 `String()`、不 panic
+
 ### Requirement: Exporting to JSON does not drop a value it could write
 
 匯出 JSON 時，若某個值自己知道怎麼轉成文字，卻不知道怎麼序列化，系統 SHALL 寫出它的文字。系統 SHALL NOT 因為欄位未匯出就寫出空物件。已經實作 `json.Marshaler` 或 `encoding.TextMarshaler` 的型別 SHALL 維持原本的序列化方式。
