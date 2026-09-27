@@ -1,16 +1,20 @@
 # display-ordering Specification
 
 ## Purpose
-顯示路徑的欄位順序與範圍語意。
+`Show`、`ShowTypes` 與其他顯示路徑列出欄位的順序，以及 `ShowRange` 起訖索引的意思，不因欄位是否有名稱或超過 26 欄而改變。
 
 ## Requirements
 ### Requirement: Columns display in their real order
 
-`ShowTypes` 系列 SHALL 以欄位位置排序欄位，與 `Show` 一致；超過 26 欄時 SHALL NOT 出現 `A, AA, AB, B` 這種字串排序。
+`ShowTypes` 系列 SHALL 以欄位位置排序欄位，與 `Show` 一致；欄位有名稱時 SHALL 只以名稱前的欄位字母排序。超過 26 欄時 SHALL NOT 出現 `A, AA, AB, B` 這種字串排序。
 
 #### Scenario: 28 columns
 - **WHEN** 對 28 欄的表分別呼叫 `ShowRangeTo` 與 `ShowTypesRangeTo`
 - **THEN** 兩者的欄位標題順序相同
+
+#### Scenario: 28 named columns
+- **WHEN** 對 28 個都有名稱的欄位分別呼叫 `ShowRangeTo` 與 `ShowTypesRangeTo`
+- **THEN** 兩者的欄位標題順序相同，不會出現 `A(c0) AA(c26) AB(c27) B(c1)`
 
 ### Requirement: ShowRange's documented range matches the code
 
