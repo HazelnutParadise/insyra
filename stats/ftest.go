@@ -15,11 +15,7 @@ type FTestResult struct {
 
 // FTestForVarianceEquality performs an F-test for variance equality.
 func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, error) {
-	values1, err := testSeries(data1, "data1")
-	if err != nil {
-		return nil, err
-	}
-	values2, err := testSeries(data2, "data2")
+	values1, values2, err := testSeriesPair(data1, data2, "data1", "data2")
 	if err != nil {
 		return nil, err
 	}

@@ -16,6 +16,14 @@ The hypothesis tests and `CalculateMoment` refuse a cell they cannot read as a f
 - **WHEN** 既有測試的全數值輸入
 - **THEN** 既有測試不修改即通過
 
+### Requirement: Two-sample tests read both samples at one moment
+
+`TwoSampleTTest`、`TwoSampleZTest`、`FTestForVarianceEquality` 與 `PairedTTest` SHALL 在單一 `insyra.AtomicDoAll` 內同時取得兩個樣本的快照，再對快照做數值檢核；SHALL NOT 分兩次各自鎖定一個 list。
+
+#### Scenario: A writer resizes both samples together
+- **WHEN** 另一個 goroutine 在 `insyra.AtomicDoAll` 內把兩個 list 一起在 10 與 20 個觀察值之間切換，同時呼叫 `TwoSampleTTest(dl1, dl2, true)`
+- **THEN** 自由度只會是 18 或 38，不會出現混到兩個時點的 28
+
 ### Requirement: Paired, rank and ANOVA tests refuse unreadable cells
 
 `PairedTTest`、`SingleSampleWilcoxon`、`PairedWilcoxon`、`MannWhitneyU`、`OneWayANOVA`、`TwoWayANOVA`、`RepeatedMeasuresANOVA`、`KruskalWallis` 與 `FriedmanTest` SHALL 在計算前檢查每一格；任一格是 nil、文字或其他無法轉成數字的值時，SHALL 回傳 `<名稱> contains a non-numeric value at <位置>: <值>`，任一格是 `NaN`、`+Inf` 或 `-Inf` 時，SHALL 回傳 `<名稱> contains a non-finite value at <位置>: <值>`，SHALL NOT 回傳結果。nil 或帶型別的 nil list SHALL 視為空的 list，由函式原有的空樣本、空組、空格或受試者長度檢查回傳錯誤，SHALL NOT panic，也 SHALL NOT 讓程式結束。全為有限數值的輸入 SHALL 得到與變更前逐位元相同的結果。
