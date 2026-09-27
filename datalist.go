@@ -341,7 +341,6 @@ func (dl *DataList) Filter(filterFunc func(any) bool) *DataList {
 
 // ReplaceFirst replaces the first occurrence of oldValue with newValue.
 func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList {
-	oldValue, newValue = unwrapCell(oldValue), unwrapCell(newValue)
 	dl.AtomicDo(func(dl *DataList) {
 		dl.replaceFirst_notAtomic(oldValue, newValue)
 	})
@@ -350,7 +349,6 @@ func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList {
 
 // ReplaceLast replaces the last occurrence of oldValue with newValue.
 func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList {
-	oldValue, newValue = unwrapCell(oldValue), unwrapCell(newValue)
 	dl.AtomicDo(func(dl *DataList) {
 		dl.replaceLast_notAtomic(oldValue, newValue)
 	})
@@ -360,7 +358,6 @@ func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList {
 // ReplaceAll replaces all occurrences of oldValue with newValue in the DataList.
 // If oldValue is not found, no changes are made.
 func (dl *DataList) ReplaceAll(oldValue, newValue any) *DataList {
-	oldValue, newValue = unwrapCell(oldValue), unwrapCell(newValue)
 	dl.AtomicDo(func(dl *DataList) {
 		dl.replaceAll_notAtomic(oldValue, newValue)
 	})
@@ -403,6 +400,7 @@ func (dl *DataList) ReplaceNaNsWith(value any) *DataList {
 
 // ReplaceNilsWith replaces all nil values in the DataList with the specified value.
 func (dl *DataList) ReplaceNilsWith(value any) *DataList {
+	value = unwrapCell(value)
 	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
 		for i, v := range dl.data {

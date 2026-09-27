@@ -83,10 +83,15 @@ insyra.NewDataList(insyra.Cell([]int{1, 2}), 3, "a")   // three cells
 insyra.NewDataList([]int{1, 2}, 3, "a")                // four cells
 ```
 
-  `Append`, `Update`, `InsertAt`, the `Replace` methods, `UpdateElement` and
-  the row appenders accept it too. Those never flatten, so it changes nothing
-  there — it is accepted so that writing it for consistency is not a trap. A
-  slice in a cell is counted, matched, grouped and ordered by its content.
+  `Append`, `Update`, `InsertAt`, the `DataList` and `DataTable` `Replace`
+  methods, `UpdateElement` and the row appenders accept it too. Those never
+  flatten, so it changes nothing there — it is accepted so that writing it for
+  consistency is not a trap. `Shift` is different: it builds its result with
+  `NewDataList`, so a slice given as its fill value is flattened unless it is
+  wrapped in `Cell`. On `[1, 2, 3]`, `Shift(1, []int{7, 8})` gives
+  `[7 8 1 2]`, while `Shift(1, insyra.Cell([]int{7, 8}))` gives
+  `[[7 8] 1 2]`. A slice in a cell is counted, matched, grouped and ordered by
+  its content.
 
 **Example:**
 

@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"bytes"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -84,6 +85,78 @@ func TestEveryEntryPointUnwrapsTheMark(t *testing.T) {
 		dt.AppendRowsByColName(map[string]any{"c": Cell(v)})
 		assertHolds(t, dt.GetElementByNumberIndex(1, 0), v)
 	})
+	t.Run("ReplaceLast", func(t *testing.T) {
+		dl := NewDataList(1, 2)
+		dl.ReplaceLast(1, Cell(v))
+		assertHolds(t, dl.Get(0), v)
+	})
+
+	// Every replace-with and fill entry point stores a caller's value in a
+	// cell, so each has to unwrap it. The DataTable methods reach the DataList
+	// helpers directly, which is why the helpers unwrap and not only the
+	// public DataList methods.
+	t.Run("ReplaceNaNsWith", func(t *testing.T) {
+		dl := NewDataList(math.NaN())
+		dl.ReplaceNaNsWith(Cell(v))
+		assertHolds(t, dl.Get(0), v)
+	})
+	t.Run("ReplaceNilsWith", func(t *testing.T) {
+		dl := NewDataList(nil)
+		dl.ReplaceNilsWith(Cell(v))
+		assertHolds(t, dl.Get(0), v)
+	})
+	t.Run("ReplaceNaNsAndNilsWith", func(t *testing.T) {
+		dl := NewDataList(nil)
+		dl.ReplaceNaNsAndNilsWith(Cell(v))
+		assertHolds(t, dl.Get(0), v)
+	})
+	t.Run("Shift fill", func(t *testing.T) {
+		out := NewDataList(1, 2).Shift(1, Cell(v))
+		assertHolds(t, out.Get(0), v)
+	})
+
+	nanTable := func() *DataTable { return NewDataTable(NewDataList(math.NaN()).SetName("c")) }
+	nilTable := func() *DataTable { return NewDataTable(NewDataList(nil).SetName("c")) }
+	oneTable := func() *DataTable { return NewDataTable(NewDataList(1).SetName("c")) }
+	for _, c := range []struct {
+		name  string
+		table func() *DataTable
+		call  func(dt *DataTable)
+	}{
+		{"DataTable.Replace", oneTable, func(dt *DataTable) { dt.Replace(1, Cell(v)) }},
+		{"DataTable.ReplaceNaNsWith", nanTable, func(dt *DataTable) { dt.ReplaceNaNsWith(Cell(v)) }},
+		{"DataTable.ReplaceNilsWith", nilTable, func(dt *DataTable) { dt.ReplaceNilsWith(Cell(v)) }},
+		{"DataTable.ReplaceNaNsAndNilsWith", nilTable, func(dt *DataTable) { dt.ReplaceNaNsAndNilsWith(Cell(v)) }},
+		{"DataTable.ReplaceInRow", oneTable, func(dt *DataTable) { dt.ReplaceInRow(0, 1, Cell(v)) }},
+		{"DataTable.ReplaceNaNsInRow", nanTable, func(dt *DataTable) { dt.ReplaceNaNsInRow(0, Cell(v)) }},
+		{"DataTable.ReplaceNilsInRow", nilTable, func(dt *DataTable) { dt.ReplaceNilsInRow(0, Cell(v)) }},
+		{"DataTable.ReplaceNaNsAndNilsInRow", nilTable, func(dt *DataTable) { dt.ReplaceNaNsAndNilsInRow(0, Cell(v)) }},
+		{"DataTable.ReplaceInCol", oneTable, func(dt *DataTable) { dt.ReplaceInCol("A", 1, Cell(v)) }},
+		{"DataTable.ReplaceInColByName", oneTable, func(dt *DataTable) { dt.ReplaceInColByName("c", 1, Cell(v)) }},
+		{"DataTable.ReplaceNaNsInCol", nanTable, func(dt *DataTable) { dt.ReplaceNaNsInCol("A", Cell(v)) }},
+		{"DataTable.ReplaceNaNsInColByName", nanTable, func(dt *DataTable) { dt.ReplaceNaNsInColByName("c", Cell(v)) }},
+		{"DataTable.ReplaceNilsInCol", nilTable, func(dt *DataTable) { dt.ReplaceNilsInCol("A", Cell(v)) }},
+		{"DataTable.ReplaceNilsInColByName", nilTable, func(dt *DataTable) { dt.ReplaceNilsInColByName("c", Cell(v)) }},
+		{"DataTable.ReplaceNaNsAndNilsInCol", nilTable, func(dt *DataTable) { dt.ReplaceNaNsAndNilsInCol("A", Cell(v)) }},
+		{"DataTable.ReplaceNaNsAndNilsInColByName", nilTable, func(dt *DataTable) { dt.ReplaceNaNsAndNilsInColByName("c", Cell(v)) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dt := c.table()
+			c.call(dt)
+			assertHolds(t, dt.GetElementByNumberIndex(0, 0), v)
+		})
+	}
+}
+
+// The mark is removed once, whatever the entry point, so a doubly marked value
+// is stored the same way by Append and by a replace.
+func TestADoubleMarkIsUnwrappedOnceEverywhere(t *testing.T) {
+	v := []int{7, 8}
+	appended := NewDataList().Append(Cell(Cell(v))).Get(0)
+	replaced := NewDataList(1).ReplaceAll(1, Cell(Cell(v))).Get(0)
+	if !reflect.DeepEqual(appended, replaced) {
+		t.Errorf("Append stored %#v, ReplaceAll stored %#v", appended, replaced)
+	}
 }
 
 func TestSearchingWithTheMarkAgrees(t *testing.T) {
