@@ -83,3 +83,88 @@ func TestNonConcreteDataListMatchesConcrete(t *testing.T) {
 		t.Fatalf("FTestForVarianceEquality: got (%v, %v), want (%v, %v)", gotF.Statistic, gotF.PValue, wantF.Statistic, wantF.PValue)
 	}
 }
+
+// A wrapped list must keep a slice cell as one unreadable cell, the way a
+// concrete list already does, instead of flattening it into extra observations.
+func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
+	withSlice := func(values ...any) wrappedList {
+		w := wrappedList{insyra.NewDataList(values...)}
+		w.Append([]float64{10, 11})
+		return w
+	}
+	dl := insyra.NewDataList
+
+	cases := []struct {
+		name string
+		run  func() error
+		want string
+	}{
+		{
+			"SingleSampleTTest",
+			func() error { _, err := stats.SingleSampleTTest(withSlice(1.0, 2.0, 3.0), 0); return err },
+			"data contains a non-numeric value at row 4: [10 11]",
+		},
+		{
+			"PairedTTest",
+			func() error {
+				_, err := stats.PairedTTest(withSlice(1.0, 2.0, 3.0), dl(1.0, 2.0, 3.0, 4.0))
+				return err
+			},
+			"data1 contains a non-numeric value at row 4: [10 11]",
+		},
+		{
+			"SingleSampleWilcoxon",
+			func() error {
+				_, err := stats.SingleSampleWilcoxon(withSlice(1.0, 2.0, 3.0), 0, stats.TwoSided)
+				return err
+			},
+			"data contains a non-numeric value at row 4: [10 11]",
+		},
+		{
+			"OneWayANOVA",
+			func() error { _, err := stats.OneWayANOVA(withSlice(1.0, 2.0, 3.0), dl(4.0, 5.0, 6.0)); return err },
+			"group 1 contains a non-numeric value at row 4: [10 11]",
+		},
+		{
+			"KruskalWallis",
+			func() error { _, err := stats.KruskalWallis(withSlice(1.0, 2.0, 3.0), dl(4.0, 5.0, 6.0)); return err },
+			"group 1 contains a non-numeric value at row 4: [10 11]",
+		},
+		{
+			"TwoWayANOVA",
+			func() error {
+				_, err := stats.TwoWayANOVA(2, 2, withSlice(1.0, 2.0, 3.0), dl(3.0, 4.5), dl(5.0, 6.0), dl(7.0, 8.5))
+				return err
+			},
+			"cell (A=1, B=1) contains a non-numeric value at row 4: [10 11]",
+		},
+		{
+			"RepeatedMeasuresANOVA",
+			func() error {
+				_, err := stats.RepeatedMeasuresANOVA(dl(1.0, 2.0, 3.0), withSlice(2.0, 3.0))
+				return err
+			},
+			"subject 2 contains a non-numeric value at condition 3: [10 11]",
+		},
+		{
+			"FriedmanTest",
+			func() error {
+				_, err := stats.FriedmanTest(dl(1.0, 2.0, 3.0), withSlice(2.0, 3.0), dl(3.0, 1.0, 2.0))
+				return err
+			},
+			"subject 2 contains a non-numeric value at condition 3: [10 11]",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.run()
+			if err == nil {
+				t.Fatalf("%s: expected an error naming the slice cell, got nil", c.name)
+			}
+			if err.Error() != c.want {
+				t.Fatalf("%s:\n got %q\nwant %q", c.name, err.Error(), c.want)
+			}
+		})
+	}
+}

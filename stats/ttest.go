@@ -234,17 +234,17 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TT
 	// algorithm (numerically stable; replaces the previous parallel naive
 	// (sumSq - sum²/n)/(n-1) one-pass formula which suffers catastrophic
 	// cancellation when |meanDiff| is small relative to data magnitude).
+	values1, err := numericValues(data1Slice, "data1")
+	if err != nil {
+		return nil, err
+	}
+	values2, err := numericValues(data2Slice, "data2")
+	if err != nil {
+		return nil, err
+	}
 	diffs := make([]float64, n)
 	for i := range n {
-		x, ok := insyra.ToFloat64Safe(data1Slice[i])
-		if !ok {
-			return nil, errors.New("invalid numeric value in data1")
-		}
-		y, ok := insyra.ToFloat64Safe(data2Slice[i])
-		if !ok {
-			return nil, errors.New("invalid numeric value in data2")
-		}
-		diffs[i] = x - y
+		diffs[i] = values1[i] - values2[i]
 	}
 	meanDiff, varDiff := stat.MeanVariance(diffs, nil)
 	stddevDiff := math.Sqrt(varDiff)

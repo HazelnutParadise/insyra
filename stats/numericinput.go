@@ -22,22 +22,31 @@ import (
 // node, and factor analysis deletes the whole observation. Both are documented
 // treatments. Substituting a zero is not one.
 
+// appendNumericValues appends raw to dst as float64, refusing anything that
+// is not a finite number. label names the list in the error and is only
+// called when a cell is refused, so a caller looping over many groups does
+// not format a name it never prints. position names what the one-based index
+// counts: "row" for a list of observations, "condition" for one subject's
+// conditions in a repeated-measures design. On error the returned slice is nil.
+func appendNumericValues(dst []float64, raw []any, label func() string, position string) ([]float64, error) {
+	for i, value := range raw {
+		converted, ok := insyra.ToFloat64Safe(value)
+		if !ok {
+			return nil, fmt.Errorf("%s contains a non-numeric value at %s %d: %v", label(), position, i+1, value)
+		}
+		if math.IsNaN(converted) || math.IsInf(converted, 0) {
+			return nil, fmt.Errorf("%s contains a non-finite value at %s %d: %v", label(), position, i+1, converted)
+		}
+		dst = append(dst, converted)
+	}
+	return dst, nil
+}
+
 // numericValues converts raw values to float64, refusing anything that is not
 // a finite number. label names the column or series in the error, so the
 // caller can find the offending cell.
 func numericValues(raw []any, label string) ([]float64, error) {
-	out := make([]float64, len(raw))
-	for i, value := range raw {
-		converted, ok := insyra.ToFloat64Safe(value)
-		if !ok {
-			return nil, fmt.Errorf("%s contains a non-numeric value at row %d: %v", label, i+1, value)
-		}
-		if math.IsNaN(converted) || math.IsInf(converted, 0) {
-			return nil, fmt.Errorf("%s contains a non-finite value at row %d: %v", label, i+1, converted)
-		}
-		out[i] = converted
-	}
-	return out, nil
+	return appendNumericValues(make([]float64, 0, len(raw)), raw, func() string { return label }, "row")
 }
 
 // numericSlice reads a DataList under its actor and converts it with

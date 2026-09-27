@@ -1,7 +1,7 @@
 # cli-docs-registry-sync Specification
 
 ## Purpose
-Keeps the CLI documentation true to the commands: every command's usage line in the three usage documents equals its `help` text, both topic lists name every command, and a command's `Usage` names every option it parses.
+Keeps the CLI documentation true to the commands: every command's usage line in the command index of `Docs/cli-dsl.md` equals its `help` text, the command groups on the same page name every command, and a command's `Usage` names every option it parses.
 
 ## Requirements
 
