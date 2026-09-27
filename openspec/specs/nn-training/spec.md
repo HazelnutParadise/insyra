@@ -1,7 +1,7 @@
 # dl-training Specification
 
 ## Purpose
-TBD - created by archiving change add-dl-autodiff-mlp. Update Purpose after archive.
+Training in `nn`: the tape's gradients for the MLP, attention and CNN families checked against PyTorch, convergence on real data, the practitioner toolkit, layers composed with Sequential, persistence of what was trained, and operations computed outside the tape that join its reverse pass.
 
 ## Requirements
 

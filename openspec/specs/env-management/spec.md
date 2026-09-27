@@ -1,7 +1,7 @@
 # env-management Specification
 
 ## Purpose
-TBD - created by archiving change cli-repl. Update Purpose after archive.
+The CLI's named environments: creating, listing, opening, renaming, deleting and describing them, how their variables, history and config are stored and restored between commands, the default environment, and how a variable the environment cannot store is reported.
 
 ## Requirements
 

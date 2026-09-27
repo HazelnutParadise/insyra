@@ -1,7 +1,7 @@
 # core-preprocessing Specification
 
 ## Purpose
-TBD - created by archiving change add-fitted-imputer. Update Purpose after archive.
+Fitted preprocessing in the core package: an imputer that learns a fill value per column from training data and applies it to other tables, the strategies the in-place fills offer, its place in a pipeline like any transformer, and scalers that can be written to JSON and read back.
 
 ## Requirements
 

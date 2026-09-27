@@ -342,9 +342,9 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: (1) return the error so the command fails; (2) refuse `schema` on SQLite or document that it is accepted and has no effect; (3) give `ExecuteFile` the `run` tokenizer, or say how they differ; (4) rename the example's variable; (5) route the error line through the same colour check as the rest of the output. Each is small and independent.
 - **Status**: pending
 
-### [2026-09-27] — 39 main specs fail `openspec validate --specs --strict`
+### [2026-09-27] — 36 main specs fail `openspec validate --specs --strict`
 - **Where**: `openspec/specs/*/spec.md`, mostly the `## Purpose` section
-- **What**: on 2026-09-27 the strict run reports 39 failures of 135 specs on this branch, among them the seven `accel-*` specs, the five `ml-*` specs, `nn-inference`, `nn-training`, `changelog`, `cli-entry`, `command-registry`, `core-multilock-reentry` and `error-philosophy`. dev recorded 26 of its 101 on 2026-09-14. Nothing in CI runs the command.
+- **What**: on 2026-09-28 the strict run reports 36 failures of 136 specs on this branch, among them the seven `accel-*` specs, the five `ml-*` specs, `nn-inference`, `changelog`, `cli-entry`, `command-registry`, `core-multilock-reentry` and `error-philosophy`. dev recorded 26 of its 101 on 2026-09-14. Nothing in CI runs the command.
 - **Suggestion**: write each Purpose from its requirements as its own change, then add the strict run to the lint workflow so the count cannot climb again.
 - **Status**: pending
 
