@@ -130,8 +130,54 @@ func (c *DBConn) maskedDSN() string {
 	return maskDSNPassword(c.DSN)
 }
 
-// dsnKVPassword matches libpq / ODBC style "password=secret" (or pwd=) keys.
-var dsnKVPassword = regexp.MustCompile(`(?i)\b(password|pwd)=[^\s;]+`)
+// dsnKVPasswordKey matches the key of a libpq / ODBC style "password=secret"
+// (or pwd=) pair; maskKVPasswords decides where its value ends.
+var dsnKVPasswordKey = regexp.MustCompile(`(?i)\b(password|pwd)=`)
+
+// dsnNextKVKey matches the start of the next " key=" pair in a libpq DSN.
+var dsnNextKVKey = regexp.MustCompile(`\s+[A-Za-z_][A-Za-z0-9_]*=`)
+
+// maskKVPasswords replaces the value of every password= or pwd= pair with
+// "***". A value may be quoted ('a b', "a b" or {a b}); otherwise it runs to
+// the next ';', to a '"' closing a quoted DSN, or to the next " key=". A
+// value that stopped at the first space left the rest of a password containing
+// spaces in history.
+func maskKVPasswords(dsn string) string {
+	var b strings.Builder
+	rest := dsn
+	for {
+		loc := dsnKVPasswordKey.FindStringIndex(rest)
+		if loc == nil {
+			b.WriteString(rest)
+			return b.String()
+		}
+		b.WriteString(rest[:loc[1]])
+		b.WriteString("***")
+		rest = rest[loc[1]+kvValueLen(rest[loc[1]:]):]
+	}
+}
+
+// kvValueLen returns the length of the value at the start of s.
+func kvValueLen(s string) int {
+	if s == "" {
+		return 0
+	}
+	closers := map[byte]byte{'\'': '\'', '"': '"', '{': '}'}
+	if closer, quoted := closers[s[0]]; quoted {
+		if end := strings.IndexByte(s[1:], closer); end >= 0 {
+			return end + 2
+		}
+		return len(s)
+	}
+	end := len(s)
+	if i := strings.IndexAny(s, `;"`); i >= 0 {
+		end = i
+	}
+	if m := dsnNextKVKey.FindStringIndex(s[:end]); m != nil {
+		end = m[0]
+	}
+	return end
+}
 
 // SanitizeHistoryLine returns line with any database password masked, so a
 // `db connect <name> <dsn>` never lands in history.txt or an exported
@@ -151,9 +197,7 @@ func SanitizeHistoryLine(line string) string {
 }
 
 func maskDSNPassword(dsn string) string {
-	if dsnKVPassword.MatchString(dsn) {
-		dsn = dsnKVPassword.ReplaceAllString(dsn, "$1=***")
-	}
+	dsn = maskKVPasswords(dsn)
 	// URL-style: <scheme>://user:pass@host/...
 	if i := strings.Index(dsn, "://"); i > 0 {
 		head := dsn[:i+3]

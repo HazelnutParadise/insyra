@@ -198,7 +198,7 @@ Insyra persists state per environment under:
 Each environment contains:
 
 - `state.json`: the environment's variables, each stored with its Go types.
-- `history.txt`: command history. A `db connect` line is stored with its password masked (`user:***@…`, `password=***`), and the file is created private to the user (mode 0600).
+- `history.txt`: command history. A `db connect` line is stored with its password masked (`user:***@…`, `password=***`, including a quoted `password=` value or one containing spaces), and the file is created private to the user (mode 0600).
 - `config.json`: environment-local config payload.
 
 Default behavior:
