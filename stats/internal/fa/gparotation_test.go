@@ -546,8 +546,9 @@ func TestKaiserVarimaxWithRotationMatrix_SingleFactor(t *testing.T) {
 
 // Rotate is the package's own entry point over the two GPA families. With a
 // single start it is a plain orthogonal rotation and preserves communalities
-// exactly. It does NOT with the default of twenty restarts — see
-// TestRotate_RestartsBreakOrthogonality below.
+// exactly. The same invariant under more than one start, the default of twenty
+// included, is checked in rotation_starts_test.go, over every method and both
+// families.
 func TestRotate_SingleStartPreservesCommunalities(t *testing.T) {
 	for _, method := range []string{"varimax", "quartimax"} {
 		t.Run(method, func(t *testing.T) {
