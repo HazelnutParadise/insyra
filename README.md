@@ -65,8 +65,8 @@ tape.AdamW(1e-3, 1e-2)
 
 This repository includes **agent skills**:
 
-- [`skills/insyra`](skills/insyra): helps AI agents use Insyra in Go code (DataList/DataTable workflows, CCL formulas, and common file I/O helpers).
-- [`skills/use-insyra-cli`](skills/use-insyra-cli): teaches agents how to use Insyra CLI/REPL and `.isr` scripts, including environment workflows and full command reference.
+- [`skills/insyra`](skills/insyra): teaches AI agents to use Insyra in Go code: when to reach for it, how to think about DataList/DataTable, the conventions that hold across the library, and how to look up the exact API for the version a project uses.
+- [`skills/use-insyra-cli`](skills/use-insyra-cli): teaches agents to work through the Insyra CLI, REPL, `.isr` scripts and Go DSL: which mode to choose, how sessions and environments behave, how to keep work reproducible, and how to find each command's exact usage with `insyra help`.
 
 Install the skills with:
 

@@ -65,8 +65,8 @@ tape.AdamW(1e-3, 1e-2)
 
 這個 repo 內含兩份 **agent skill**：
 
-- [`skills/insyra`](skills/insyra)：協助 AI agent 在 Go 程式碼中使用 Insyra（DataList / DataTable 工作流、CCL 公式、常見檔案 I/O）。
-- [`skills/use-insyra-cli`](skills/use-insyra-cli)：教 agent 使用 Insyra CLI / REPL 與 `.isr` 腳本，包含環境工作流與完整指令參考。
+- [`skills/insyra`](skills/insyra)：教 AI agent 在 Go 程式碼中使用 Insyra：什麼時候該用、怎麼理解 DataList / DataTable、整個函式庫共通的慣例，以及怎麼查到專案所用版本的確切 API。
+- [`skills/use-insyra-cli`](skills/use-insyra-cli)：教 agent 透過 Insyra CLI、REPL、`.isr` 腳本與 Go DSL 工作：該選哪種模式、工作階段與環境怎麼運作、怎麼讓結果可重現，以及用 `insyra help` 查每個指令的確切用法。
 
 用以下指令安裝 skills：
 

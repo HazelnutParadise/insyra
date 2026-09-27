@@ -233,7 +233,7 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 
 ## Docs, Changelog & Skills Must Stay in Sync
 
-Docs, the changelog, and skills are part of a change, not a follow-up. A feature is not done until these are updated in the **same** change.
+Docs and the changelog are part of a change, not a follow-up. A feature is not done until they are updated in the **same** change. The agent skills follow a different rule: they change only when what they teach does, as described below.
 
 **When adding a new package:**
 - Create its doc page `Docs/<pkg>.md` (follow an existing page such as [Docs/finance.md](Docs/finance.md) / [Docs/stats.md](Docs/stats.md) for structure).
@@ -243,7 +243,7 @@ Docs, the changelog, and skills are part of a change, not a follow-up. A feature
 
 **When adding or changing any feature (new or existing package):**
 - Update the relevant `Docs/*.md` page(s) to match the new/changed API.
-- Update the agent skills so they reflect the change: [skills/insyra/](skills/insyra/) (Go API usage — `SKILL.md` and `references/`), and [skills/use-insyra-cli/](skills/use-insyra-cli/) when CLI/DSL usage is affected.
+- API and command details belong in `Docs/` (and, for the CLI, in each command's `Usage`, `Forms` and `Examples`), never in the agent skills. The skills teach principles, the mental model and where to find documentation; update one only when a principle, a workflow or a documentation location changes. See [Agent Skills](#agent-skills).
 - When the change touches the CLI/REPL or the DSL, update the CLI (`cli/`) and its doc [Docs/cli-dsl.md](Docs/cli-dsl.md).
 
 **When the change is visible to someone using the library or the CLI:**
@@ -261,8 +261,10 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 ## Agent Skills
 
-[skills/insyra/](skills/insyra/) — for AI agents writing Go code using Insyra APIs.  
-[skills/use-insyra-cli/](skills/use-insyra-cli/) — for AI agents operating via the CLI/REPL or `.isr` scripts.
+[skills/insyra/](skills/insyra/) — for AI agents writing Go code with Insyra.  
+[skills/use-insyra-cli/](skills/use-insyra-cli/) — for AI agents working through the CLI, the REPL, `.isr` scripts or the Go DSL.
+
+A skill is installed into an agent's environment and outlives the version it came from, so it teaches what does not change between releases: when to reach for Insyra, how to think about it, the conventions that hold across it, how to verify a result, and how to find the exact API for the version in use (the module's own `Docs/`, `go doc`, `insyra help`). It does not list functions or commands, and it has no reference files that repeat `Docs/`. A detail a skill used to carry lives in `Docs/`; before removing anything from a skill, make sure `Docs/` holds it (`agent-skills` spec).
 
 ## Follow-ups
 
@@ -289,7 +291,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 ### [2026-09-25] — remove `Slice2DToDataTable` one release after `ReadSlice2D` became its one name
 - **Where**: `read.go` (`Slice2DToDataTable`)
 - **What**: `exported-functions-are-functions` made `ReadSlice2D` the function that turns a 2D slice into a DataTable and left `Slice2DToDataTable` as a Deprecated wrapper, by the owner's ruling on #211 that each function has one name and the `Read*` family keeps it.
-- **Suggestion**: in the first release after the one that ships `exported-functions-are-functions`, delete `Slice2DToDataTable` and `TestSlice2DToDataTableMatchesReadSlice2D`, drop the deprecated-spelling note from `Docs/DataTable.md` and the warning in `skills/insyra/SKILL.md`, and add a BREAKING changelog entry. Do it in the same release as the `SetDontPanic` removal if they coincide.
+- **Suggestion**: in the first release after the one that ships `exported-functions-are-functions`, delete `Slice2DToDataTable` and `TestSlice2DToDataTableMatchesReadSlice2D`, drop the deprecated-spelling note from `Docs/DataTable.md`, and add a BREAKING changelog entry. Do it in the same release as the `SetDontPanic` removal if they coincide.
 - **Status**: pending
 
 ### [2026-09-27] — outside the hypothesis tests, `stats` still numbers some positions from zero, and two paths let `NaN` through
