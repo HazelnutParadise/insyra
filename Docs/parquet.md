@@ -113,7 +113,7 @@ entirely.
 | `Float32`, `Float64` | `float32`, `float64` |
 | `Bool` | `bool` |
 | `String`, `LargeString` | `string` |
-| `Binary`, `LargeBinary`, `FixedSizeBinary` | `[]byte`, so a binary column is never mistaken for a text one; `Show` prints the whole column as hex |
+| `Binary`, `LargeBinary`, `FixedSizeBinary` | `[]byte`, so a binary column is never mistaken for a text one; `Show` prints each cell as hex, shortened for a value longer than 20 bytes (for example `30313233343536373839... (26 bytes)`) |
 | `Timestamp` | `time.Time` |
 | `Date32`, `Date64` | `time.Time` at UTC midnight |
 | `Decimal128`, `Decimal256` | `decimal.Decimal` ([go-decimal](https://github.com/TimLai666/go-decimal)), exact |
@@ -200,7 +200,7 @@ err = parquet.WriteTo(dt, &buf)
 func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnOptions) (*insyra.DataList, error)
 ```
 
-**Description:** Reads data from a single column in a Parquet file, returning an `insyra.DataList`. When `opt.MaxValues > 0`, the row count of the selected row groups (all when none are selected) is taken from the metadata first and the call is refused before reading if it exceeds the limit.
+**Description:** Reads data from a single column in a Parquet file, returning an `insyra.DataList`. The column is selected by its Parquet leaf name, as `ReadOptions.Columns` selects them, so a nested column (`List`, `Struct`, `Map`), whose leaf is not named after the field, cannot be selected by name: the call reports that the column is not found. When `opt.MaxValues > 0`, the row count of the selected row groups (all when none are selected) is taken from the metadata first and the call is refused before reading if it exceeds the limit.
 
 **Parameters:**
 
