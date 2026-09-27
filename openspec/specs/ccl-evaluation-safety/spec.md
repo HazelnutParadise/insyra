@@ -43,11 +43,15 @@ CCL 求值安全契約：使用者運算式不得 panic、不得讓列互相別�
 
 ### Requirement: Nested sequence functions and bounded arguments
 
-序列函數作為另一個序列或聚合函數的引數 SHALL 保留整欄。位移、視窗、長度、重複次數超出合理範圍 SHALL 回錯誤，SHALL NOT panic；聚合與序列函數的 panic SHALL 被轉成錯誤。
+序列函數作為另一個序列或聚合函數的引數 SHALL 保留整欄；是否當成整欄 SHALL 由引數本身是否為序列函數呼叫決定，SHALL NOT 看結果長度是否剛好等於列數。位移、視窗、長度、重複次數超出合理範圍 SHALL 回錯誤，SHALL NOT panic；聚合與序列函數的 panic SHALL 被轉成錯誤。
 
 #### Scenario: Absurd shift
 - **WHEN** 求值 `LEAD(A, 10^300)`
 - **THEN** 回傳錯誤且程序不 panic
+
+#### Scenario: A row read on a square table
+- **WHEN** 在 3 欄 3 列的表上以已註冊、回傳引數長度的聚合求值 `ZZLEN(@.0)`
+- **THEN** 結果為 1，與 2 欄 3 列的表相同
 
 ### Requirement: Registry concurrency and NaN aggregation
 
