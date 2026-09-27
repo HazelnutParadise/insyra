@@ -794,7 +794,7 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 - Date strings (e.g., `"2006-01-02"`, RFC3339) are automatically parsed as `time.Time` when possible; parsed values are treated as date/time values.
 - A date difference (`A - B`) is a duration. In a numeric context it counts **seconds**, so `(A - B) > 0` and `(A - B) / 86400` work; `DAY(A - B)` converts it to days directly.
 - `date - date` returns a `time.Duration` representing the difference between the two dates. Use `DAY(...)`, `HOUR(...)`, `MINUTE(...)`, or `SECOND(...)` to convert the result to numeric values.
-- `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days). A fraction keeps its hours and minutes. The date moves by a duration, so a shift of more than about 292 years (106,751 days) either way is an error.
+- `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days). A fraction keeps its hours and minutes: `0.5` moves the date 12 hours, `0.0625` 1 hour 30 minutes and `0.001` 86.4 seconds. The date moves by a duration, so a shift of more than about 292 years (106,751 days) either way is an error.
 - Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
 - If a string cannot be parsed as a date (or the operands are other unsupported types), operations fall back to their original behavior (numeric/string comparison or an error).
 
@@ -1250,7 +1250,10 @@ column 20,000 times.
 | `(A - AVG(A)) / STDEV(A)` | 6.0 s | 2.1 ms |
 
 An aggregate that *does* mention `#` reads the current row, so it stays
-per-row — `SUM(A.(0:#))` is a running total and cannot be hoisted.
+per-row — `SUM(A.(0:#))` is a running total and cannot be hoisted. This
+applies to `AddColUsingCCL`, `EditColByIndexUsingCCL` and
+`EditColByNameUsingCCL`; `ExecuteCCL` statements still evaluate an aggregate
+per row.
 
 ### Rolling windows
 
