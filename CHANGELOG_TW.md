@@ -89,6 +89,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING（小）**：`IDataTable` 與 `IDataList` 現在列出 `*DataTable`、`*DataList` 的全部方法，以前分別少了 27 個和 17 個。例外是 `ClearErr`、`SetErr`、`Pivot`、`Unpivot`，刻意不列，因為內嵌核心型別的擴充型別會用自己的回傳型別改寫它們；拿介面型別的變數呼叫 `ClearErr()` 或 `SetErr()` 的程式要改用實際型別。內嵌 `*DataTable` 的型別現在能用在所有收表格的地方：`Merge` 以前只收純粹的 `*DataTable`。
 - 對 nil 的 `DataList` 或 `DataTable` 呼叫 `Err()`（例如 `GetCol` 找不到欄位時回傳的值），現在會回報 `nil DataList`／`nil DataTable`，不會讓程式當掉。只有 `Err()` 有這個保護：nil 的值呼叫其他方法仍會直接失敗，避免 nil 被默默往下傳。
 - **BREAKING**：`Counter()` 改以數值當整數的 key，一律用 `int`，跟 `Count` 一致。CSV 或 JSON 讀進來的整數是 `int64`，所以以前一欄有兩個 5，`counter[5]` 卻查到 0；一欄混了 `int64(5)` 和 Go 直接寫的 `5`，也會分成兩個 key，而 `Count(5)` 回報的是兩者合計。現在這兩種情況 `counter[5]` 都是 2。用 `int64(5)` 查 counter 的程式會查不到，要改寫成 `counter[5]` 或 `counter[insyra.ToMapKey(v)]`，把 key 斷言成 `int64` 的程式要改成 `int`。`ToMapKey` 會把任何寬度的整數轉成同一個 key。`int` 裝不下的整數保留 `uint64` 或 `int64`，小數和文字仍是各自的 key，跟 `Count` 一樣。
+- 上面的拒絕規則之下，v0.3.2 讀得到的編碼名稱仍然讀得到：`utf-8-sig` 與 `utf-8-bom` 讀成 UTF-8 並去掉開頭的位元組順序標記，`big5-hkscs`、`csbig5`、`cn-big5`、`x-x-big5` 讀成 Big5，`x-gbk`、`gb_2312-80`、`csgb2312`、`csiso58gb231280`、`chinese`、`iso-ir-58` 讀成 GBK。表外的名稱仍然回傳錯誤。
 
 ### CLI
 - 環境名稱改為驗證：只允許字母、數字、`.`、`_`、`-`（以字母或數字開頭，不得含 `..`）。過去名稱直接接在環境目錄後面，`../x` 會在目錄外建立或刪除資料夾。

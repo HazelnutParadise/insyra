@@ -5,6 +5,9 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/traditionalchinese"
 )
 
 // Every charset the auto-detector (saintfish/chardet) can report must have a
@@ -69,5 +72,53 @@ func TestUnknownEncodingIsRefused(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "klingon-1") || !strings.Contains(err.Error(), "utf8") {
 		t.Fatalf("error should name the input and the supported list: %v", err)
+	}
+}
+
+// v0.3.2 matched a name by substring, so these read there. Each is an alias
+// of a charset the table decodes, so it reads here too, in any case and with
+// any separators, and utf-8-sig drops the byte-order mark it is named for.
+func TestLegacyCharsetAliasesDecode(t *testing.T) {
+	const text = "名稱,值\n甲,1\n"
+	big5, err := traditionalchinese.Big5.NewEncoder().String(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gbk, err := simplifiedchinese.GBK.NewEncoder().String(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decode := func(t *testing.T, data, name string) string {
+		t.Helper()
+		r, err := DecodingReader(strings.NewReader(data), name)
+		if err != nil {
+			t.Fatalf("DecodingReader(%q): %v", name, err)
+		}
+		got, err := io.ReadAll(r)
+		if err != nil {
+			t.Fatalf("reading through %q: %v", name, err)
+		}
+		return string(got)
+	}
+	for _, c := range []struct {
+		data  string
+		names []string
+	}{
+		{big5, []string{"big5-hkscs", "BIG5-HKSCS", "csbig5", "cn-big5", "x-x-big5"}},
+		{gbk, []string{"x-gbk", "X-GBK", "gb_2312-80", "csgb2312", "csiso58gb231280", "chinese", "iso-ir-58"}},
+	} {
+		for _, name := range c.names {
+			if got := decode(t, c.data, name); got != text {
+				t.Errorf("%s: got %q, want %q", name, got, text)
+			}
+		}
+	}
+	for _, name := range []string{"utf-8-sig", "UTF-8-SIG", "utf-8-bom", "utf8_sig"} {
+		if got := decode(t, "\uFEFFa,b\n", name); got != "a,b\n" {
+			t.Errorf("%s with a byte-order mark: got %q, want %q", name, got, "a,b\n")
+		}
+		if got := decode(t, "a,b\n", name); got != "a,b\n" {
+			t.Errorf("%s without a byte-order mark: got %q, want %q", name, got, "a,b\n")
+		}
 	}
 }

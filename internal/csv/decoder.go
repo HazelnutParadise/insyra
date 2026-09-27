@@ -31,6 +31,10 @@ var decoders = map[string]encoding.Encoding{
 	"utf8":    nil,
 	"ascii":   nil,
 	"usascii": nil,
+	// utf-8-sig is Python's name for UTF-8 written with a byte-order mark;
+	// its decoder drops the mark.
+	"utf8sig": unicode.UTF8BOM,
+	"utf8bom": unicode.UTF8BOM,
 
 	// UTF-16 / UTF-32. UseBOM lets a byte-order mark override the assumed
 	// endianness, which is how these files are usually written.
@@ -42,20 +46,30 @@ var decoders = map[string]encoding.Encoding{
 	"utf32be": utf32.UTF32(utf32.BigEndian, utf32.UseBOM),
 
 	// CJK.
-	"big5":      traditionalchinese.Big5,
-	"gb18030":   simplifiedchinese.GB18030,
-	"gbk":       simplifiedchinese.GB18030,
-	"gb2312":    simplifiedchinese.GB18030,
-	"gb":        simplifiedchinese.GB18030,
-	"shiftjis":  japanese.ShiftJIS,
-	"sjis":      japanese.ShiftJIS,
-	"cp932":     japanese.ShiftJIS,
-	"ms932":     japanese.ShiftJIS,
-	"eucjp":     japanese.EUCJP,
-	"iso2022jp": japanese.ISO2022JP,
-	"euckr":     korean.EUCKR,
-	"cp949":     korean.EUCKR,
-	"ksc5601":   korean.EUCKR,
+	"big5":            traditionalchinese.Big5,
+	"big5hkscs":       traditionalchinese.Big5, // x/text's Big5 is WHATWG's, which carries the HKSCS additions
+	"csbig5":          traditionalchinese.Big5,
+	"cnbig5":          traditionalchinese.Big5,
+	"xxbig5":          traditionalchinese.Big5,
+	"gb18030":         simplifiedchinese.GB18030,
+	"gbk":             simplifiedchinese.GB18030,
+	"gb2312":          simplifiedchinese.GB18030,
+	"gb":              simplifiedchinese.GB18030,
+	"xgbk":            simplifiedchinese.GB18030,
+	"gb231280":        simplifiedchinese.GB18030,
+	"csgb2312":        simplifiedchinese.GB18030,
+	"chinese":         simplifiedchinese.GB18030,
+	"isoir58":         simplifiedchinese.GB18030,
+	"csiso58gb231280": simplifiedchinese.GB18030,
+	"shiftjis":        japanese.ShiftJIS,
+	"sjis":            japanese.ShiftJIS,
+	"cp932":           japanese.ShiftJIS,
+	"ms932":           japanese.ShiftJIS,
+	"eucjp":           japanese.EUCJP,
+	"iso2022jp":       japanese.ISO2022JP,
+	"euckr":           korean.EUCKR,
+	"cp949":           korean.EUCKR,
+	"ksc5601":         korean.EUCKR,
 
 	// Single-byte Western / Cyrillic / Greek / Hebrew / Arabic / Turkish.
 	"iso88591":    charmap.ISO8859_1,

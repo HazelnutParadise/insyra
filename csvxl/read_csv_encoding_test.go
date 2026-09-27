@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	"golang.org/x/text/encoding/traditionalchinese"
 )
 
 // An encoding nothing here decodes is an error naming it and what is
@@ -55,6 +56,28 @@ func TestReadCsvToStringRefusesADetectedEncodingItCannotDecode(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "ibm424_rtl") {
 		t.Fatalf("the error should name the detected encoding: %v", err)
+	}
+}
+
+// The names v0.3.2 read through its substring rules read through the public
+// reader too: they are aliases in the decoder table, not a fallback.
+func TestReadCsvToStringReadsLegacyAliases(t *testing.T) {
+	const text = "名稱,值\n甲,1\n"
+	big5, err := traditionalchinese.Big5.NewEncoder().String(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	big5Path := writeCSVBytes(t, []byte(big5))
+	for _, name := range []string{"big5-hkscs", "BIG5-HKSCS"} {
+		got, err := ReadCsvToString(big5Path, name)
+		if err != nil || got != text {
+			t.Errorf("ReadCsvToString(%s) = %q, %v; want %q", name, got, err, text)
+		}
+	}
+	bomPath := writeCSVBytes(t, append([]byte{0xEF, 0xBB, 0xBF}, "a,b\n1,2\n"...))
+	got, err := ReadCsvToString(bomPath, "utf-8-sig")
+	if err != nil || got != "a,b\n1,2\n" {
+		t.Errorf("ReadCsvToString(utf-8-sig) = %q, %v; want the text without its byte-order mark", got, err)
 	}
 }
 
