@@ -147,9 +147,10 @@ govulncheck ./...
 Dependencies move on their own schedule; ours is the release. **Before `dev` is merged into `main`, refresh every dependency to the newest version that leaves the `go` directive in `go.mod` unchanged.**
 
 - Do it as its own change, ahead of the release commit, so a bump that misbehaves is visible on its own and can be reverted without touching the release.
-- Verify with `go build ./...`, `go test ./...` and `govulncheck ./...`.
+- Verify with `go build ./...`, `go test ./...` and `govulncheck ./...`, and check every module in `go.mod` against GitHub's advisory database (`gh api graphql` with `securityVulnerabilities(ecosystem: GO, package: …)`).
+- **Never move a module into a vulnerable range.** Stop at the newest version outside every range.
 - **Never let a bump raise the `go` directive.** The minimum-Go promise to downstream users is a separate, explicit decision. Stop at the newest version that keeps the current directive.
-- Anything held back — its newest version needs a newer Go, or it breaks a tool CI depends on — goes into the Follow-ups below with the reason, the way the chromedp chain already is.
+- Anything held back — its newest version needs a newer Go, is inside an advisory, or breaks a tool CI depends on — goes into the Follow-ups below with the reason, the way the chromedp chain already is.
 
 Why this is a rule and not a habit: dependencies only moved when Dependabot filed an alert, which means the graph only moved once something was already broken, and the fix was taken under time pressure. Dependabot also reads the default branch, so an alert raised against a released version stays open until the next merge to `main` no matter how quickly it is fixed on `dev`.
 
@@ -436,8 +437,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-07-11] — chromedp chain left at pre-refresh versions (two independent blockers)
-- **Where**: `go.mod` — `chromedp v0.11.2`, `cdproto v0.0.0-20241208230723-d1c7de7e5dd2` (pulled in via `go-echarts/snapshot-chromedp`)
-- **What**: The 2026-07-11 dependency refresh could not move these. (1) `chromedp v0.15.0+` and newer `cdproto` require go >= 1.26, while the module's `go` directive stays on 1.25.x (minimum-Go promise to downstream users). (2) The newest go1.25-compatible version, `chromedp v0.14.2`, hard-requires `go-json-experiment/json`, whose generic-variadic code panics govulncheck's symbol-level scan ("got jsontext.Value, want variadic parameter of unnamed slice or string type" in x/tools go/ssa — still broken as of x/tools v0.48.0 / x/vuln v1.6.0), which would permanently break the Govulncheck CI workflow.
-- **Suggestion**: When raising the minimum Go version to 1.26, retry upgrading the whole chain and re-verify `govulncheck ./...` completes (the x/tools SSA bug may be fixed by then).
-- **Update (2026-09-13)**: `require-go-1-26` raised the `0.4` line's `go` directive to 1.26.8, so blocker (1) no longer applies there. `dev` stays on Go 1.25, so the chain stays held back on the 0.3.x line. Blocker (2) has not been re-checked.
-- **Status**: pending — retry on `0.4`
+- **Where**: `go.mod` — `chromedp v0.12.1`, `cdproto v0.0.0-20250120090109-d38428e4d9c8` (pulled in via `go-echarts/snapshot-chromedp`)
+- **What**: two blockers held the chain back. (1) `chromedp v0.15.0+` and newer `cdproto` require go >= 1.26; this line's directive is 1.26.8, so that one no longer applies here. (2) From `v0.13.0` chromedp requires `go-json-experiment/json`, whose generic variadics panic govulncheck's SSA pass ("got jsontext.Value, want variadic parameter of unnamed slice or string type"). Measured on dev on 2026-09-24: x/vuln v1.3.0 and v1.7.0 built with go1.25.14 both panic on it, and v1.7.0 built with go1.26.5 completes. This line's Vulnerability Scan job builds x/vuln v1.3.0 with Go 1.26.x, a combination nobody has measured. The chain moved to dev's `v0.12.1` when dev was merged in on 2026-09-27, the newest version below `go-json-experiment`.
+- **Suggestion**: at this line's next dependency refresh, take the whole chain to its newest version and run the Vulnerability Scan job's own govulncheck (v1.3.0 under Go 1.26.x) on it; if it panics, move the job to x/vuln v1.7.0 in the same change.
+- **Status**: pending
