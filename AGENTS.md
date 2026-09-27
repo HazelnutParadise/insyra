@@ -348,6 +348,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: (1) copy in the evaluator before it calls an aggregate or sequence function, so no context has to; (2) recover in `asDataList`, or look through an embedded pointer with reflection; (3) compute the median of the differences with a selection algorithm instead of materialising them.
 - **Status**: pending
 
+### [2026-09-28] — `nn` allocates from a size argument before anything checks it is sane
+- **Where**: `nn/edge_sum.go` `NewEdgeTopology`; `nn` tensor constructors given a shape
+- **What**: `NewEdgeTopology(nodes, nil, nil)` accepts any `nodes` up to `MaxInt32` and allocates four `int32` arrays of that length before any edge exists, about 32 GiB at the limit; `NewTensor` with a huge shape is the same kind of call. Running out of memory ends the process and cannot be recovered, against this line's rule that the library never ends the program. Found by the dev merge's review by reading the code; not run, to keep the machine up.
+- **Suggestion**: decide a policy for allocations sized by an argument: a documented cap with an error above it, or allocating in proportion to the data actually given (the edges) rather than to a count. Either applies to more of `nn` than this one constructor.
+- **Status**: pending
+
 ### [2026-09-27] — `AtomicDoAll` inside `AtomicDo` runs the other instances unlocked, so `AppendCols` inside a callback races
 - **Where**: `internal/core/atomic.go` (the inline trust-zone path of `AtomicDoN`), reached by any method that calls `AtomicDoAll` while its receiver is held, such as `DataTable.AppendCols`
 - **What**: 0.4 resolved an AB-BA deadlock (api-review IN-1) by running `AtomicDoAll` inline, without locking the other instances, when it is called inside an `AtomicDo`; `core-multilock-reentry` requires that. The cost is a data race. Measured on 2026-09-27 with `go test -race`: `dt.AtomicDo(func(t *DataTable) { t.AppendCols(col) })` in one goroutine and `col.Append(i)` in another report `DATA RACE` in three of three runs, the write at `datalist.go:108`. dev instead locks the other instances again (ddde3d45), which reopens the deadlock. The Key Conventions above tell callers to use `AtomicDoAll` from the outermost level, but a library method such as `AppendCols` calls it internally, so a caller who follows that rule and only calls `AppendCols` inside its own `AtomicDo` still runs unlocked without knowing.
