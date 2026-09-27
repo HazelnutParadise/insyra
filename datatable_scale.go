@@ -693,11 +693,19 @@ func (s *scaler) unmarshalJSON(data []byte, kind string) error {
 		fitted:     in.Fitted,
 	}
 	var cols []scalerColumn
+	seen := make(map[string]bool, len(in.Columns))
 	for _, c := range in.Columns {
 		ref, err := decodeScalerRef(c.Ref)
 		if err != nil {
 			return err
 		}
+		// Fit refuses a column selected twice, so a reference listed twice was
+		// not written by Fit, and reading it would keep only the last one.
+		key := fmt.Sprintf("%T:%v", ref, ref)
+		if seen[key] {
+			return fmt.Errorf("insyra: scaler JSON: column %v is listed twice", ref)
+		}
+		seen[key] = true
 		col := scalerColumn{
 			ref:  ref,
 			name: c.Name,

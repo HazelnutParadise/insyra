@@ -353,3 +353,28 @@ func TestScalerJSONRefusesAnEmptyReference(t *testing.T) {
 		t.Fatalf("receiver params changed: %+v, want empty", got.Params())
 	}
 }
+
+// Fit refuses a column selected twice, so JSON naming one column twice was not
+// written by Fit; reading it would keep only the last set of parameters.
+func TestScalerJSONRefusesAColumnListedTwice(t *testing.T) {
+	dt := NewDataTable(
+		NewDataList(1.0, 2.0, 3.0).SetName("a"),
+		NewDataList(4.0, 5.0, 6.0).SetName("b"),
+	)
+	sc := NewStandardScaler()
+	if err := sc.Fit(dt, Name("a"), Name("b")); err != nil {
+		t.Fatalf("Fit: %v", err)
+	}
+	data, err := json.Marshal(sc)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	twice := strings.Replace(string(data), `"ref":{"name":"b"}`, `"ref":{"name":"a"}`, 1)
+	if twice == string(data) {
+		t.Fatalf("the JSON did not hold the expected reference: %s", data)
+	}
+	restored := NewStandardScaler()
+	if err := json.Unmarshal([]byte(twice), restored); err == nil {
+		t.Fatal("JSON naming one column twice was accepted")
+	}
+}
