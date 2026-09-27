@@ -117,6 +117,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`ExcelToCsv` 的 `csvNames` 若已帶副檔名（不分大小寫）就照用，所以 `report.txt` 寫成 `report.txt`、`REPORT.CSV` 寫成 `REPORT.CSV`，過去會變成 `report.txt.csv` 與 `REPORT.CSV.csv`；沒有副檔名的名稱仍然補上 `.csv`。CLI 的 `convert` 跟著改，`insyra convert book.xlsx out.txt` 現在寫出 `out.txt`。讀取端 `CsvToExcel` 與 `AppendCsvToExcel` 先照原路徑開，原路徑不存在才補 `.csv`：名為 `export.txt`、`DATA.CSV` 或完全沒有副檔名的 CSV 過去都讀不到，因為任何不是以小寫 `.csv` 結尾的路徑都會被補上 `.csv`，現在都讀得到。過去讀得到的路徑全部照樣讀得到，唯一差別是 `x` 與 `x.csv` 同時存在時讀的是 `x`；兩個都不存在時，錯誤訊息會列出兩條試過的路徑。
 - 編碼參數給空字串，或任何大小寫的 `"auto"`，現在都代表自動偵測，跟核心的 CSV 讀取函式一致。以前空字串代表直接當成 UTF-8，`"AUTO"` 則會被當成不支援的編碼而報錯。
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 跟 `ToCSV` 一樣，預設會防範公式注入：在活頁簿裡安全的文字，轉成 CSV 再用試算表打開時會被當成公式。要原樣寫出就用 `ExcelToCsvOptions{AllowFormulas: true}`。挑選工作表的清單也移進同一個設定包：`ExcelToCsv(file, dir, names, "2024", "2025")` 改成 `ExcelToCsv(file, dir, names, csvxl.ExcelToCsvOptions{Sheets: []string{"2024", "2025"}})`。
+- **BREAKING（輸出）**：`AppendCsvToExcel` 改用全新的工作表取代既有的同名工作表，做法與 `DataTable.ToExcel` 相同，不再像 v0.3.3 那樣就地清空儲存格。就地清空只移除值與公式，列與儲存格上的其他東西都還在：新資料落在舊的隱藏列上，在 Excel 裡看不到，`ExcelToCsv` 讀回時也會跳過；舊的註解與超連結也留在新值上。舊工作表內容越多也越慢：取代一張有 2 萬個公式的工作表要 157 毫秒，現在是 6 毫秒。工作表仍保留原本的位置，作用中的工作表也不變，但舊工作表的欄寬、檢視與合併範圍不再保留。
 
 ### `parquet`
 - `Write` 先寫入暫存檔再 rename 到目標位置，中途失敗時不會留下截斷的 Parquet 檔。

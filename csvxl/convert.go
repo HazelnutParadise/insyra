@@ -12,6 +12,7 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 	"github.com/HazelnutParadise/insyra"
 	insyracsv "github.com/HazelnutParadise/insyra/internal/csv"
+	"github.com/HazelnutParadise/insyra/internal/excelsheet"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -239,12 +240,9 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, options .
 
 // ===============================
 
-// replaceSheet makes sheetName an empty sheet in f. An existing sheet is
-// cleared in place: every cell's value and formula is removed, while the sheet
-// keeps its place among the sheets and its sheet-level settings (column widths,
-// views, merged ranges). excelize.NewSheet alone would return the existing
-// sheet with its old cells in place, and deleting and recreating the sheet
-// would move it to the end and drop those settings.
+// replaceSheet makes sheetName an empty sheet in f: a new sheet, or the
+// existing one rebuilt in its place by excelsheet.Replace, so nothing of the
+// old sheet survives while it keeps its position among the sheets.
 func replaceSheet(f *excelize.File, sheetName string) error {
 	idx, err := f.GetSheetIndex(sheetName)
 	if err != nil {
@@ -254,57 +252,7 @@ func replaceSheet(f *excelize.File, sheetName string) error {
 		_, err = f.NewSheet(sheetName)
 		return err
 	}
-	// An empty pattern matches every cell the sheet stores, a formula-only one
-	// included, and lists only those. It needs each cell's address, so a sheet
-	// that leaves the r attribute out is walked row by row instead.
-	cells, err := f.SearchSheet(sheetName, "", true)
-	if err != nil {
-		if cells, err = paddedSheetCells(f, sheetName); err != nil {
-			return err
-		}
-	}
-	// SetCellValue with nil empties the value and removes the formula.
-	for _, cell := range cells {
-		if err := f.SetCellValue(sheetName, cell, nil); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// paddedSheetCells returns every position from column A to the last value or
-// formula of each row. Rows pads a row out to its last cell, so a row with a
-// value in XFD yields 16,384 positions; replaceSheet uses this only for a sheet
-// whose cells SearchSheet cannot address.
-func paddedSheetCells(f *excelize.File, sheetName string) ([]string, error) {
-	rows, err := f.Rows(sheetName)
-	if err != nil {
-		return nil, err
-	}
-	var cells []string
-	for row := 1; rows.Next(); row++ {
-		cols, err := rows.Columns(excelize.Options{RawCellValue: true})
-		if err != nil {
-			_ = rows.Close()
-			return nil, err
-		}
-		for col := range cols {
-			cell, err := excelize.CoordinatesToCellName(col+1, row)
-			if err != nil {
-				_ = rows.Close()
-				return nil, err
-			}
-			cells = append(cells, cell)
-		}
-	}
-	if err := rows.Error(); err != nil {
-		_ = rows.Close()
-		return nil, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	return cells, nil
+	return excelsheet.Replace(f, sheetName, idx)
 }
 
 // safeSheetCSVPath joins the CSV file name used for a sheet onto outputDir. A
