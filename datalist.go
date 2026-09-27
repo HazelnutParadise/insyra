@@ -623,9 +623,9 @@ func equalCell(a, b any) (eq bool) {
 // do, whatever their Go types: a CSV load stores int64 while a Go literal is
 // int, and comparing them with == made Count(2) return 0 on data that plainly
 // held 2. A negative value never matches an unsigned one, a float never
-// matches an integer, NaN matches NaN, and any other value compares the way
-// equalCell compares it. IsEqualTo and IsTheSameAs keep equalCell: they ask
-// whether two lists hold identical data, type included.
+// matches an integer, NaN matches NaN, and any other value matches a cell of
+// its own type the way equalCell compares them. IsEqualTo and IsTheSameAs keep
+// equalCell: they ask whether two lists hold identical data, type included.
 //
 // The test is chosen once per call from want. Choosing it again for every cell
 // made a million-cell Count of floats or strings three times slower.
@@ -675,8 +675,22 @@ func valueMatcher(want any) func(cell any) bool {
 			return ok && c == w
 		}
 	}
+	// Every other value. A cell of a different dynamic type never matches: ==
+	// says so for comparable values, and the encoding starts with the type for
+	// the rest. Checking the type first, and encoding a value Go cannot compare
+	// once per call rather than once per cell, keeps a search for a 64 KB
+	// []byte over a numeric column at a type check per cell.
+	wantType := reflect.TypeOf(want)
+	if !comparableCell(want) {
+		wantKey := encodeCell(want)
+		return func(cell any) bool {
+			cell = unwrapCell(cell)
+			return reflect.TypeOf(cell) == wantType && encodeCell(cell) == wantKey
+		}
+	}
 	return func(cell any) bool {
-		return equalCell(cell, want)
+		cell = unwrapCell(cell)
+		return reflect.TypeOf(cell) == wantType && equalCell(cell, want)
 	}
 }
 
