@@ -561,3 +561,21 @@ func TestSearchingForAnUncomparableValueDoesNotReencodeItPerCell(t *testing.T) {
 		t.Fatalf("searching took %v; the searched value is being re-encoded per cell", elapsed)
 	}
 }
+
+// A nested array and a nested slice with the same elements encode alike, and
+// that must not depend on their size: a slice past the inline limit was written
+// as a digest while an array never was, so the two stopped matching once the
+// elements grew.
+func TestNestedArrayAndSliceMatchAtAnySize(t *testing.T) {
+	for _, n := range []int{10, 200} {
+		big := make([]any, n)
+		for i := range big {
+			big[i] = i
+		}
+		asArray := []any{[2]any{big, big}}
+		asSlice := []any{[]any{big, big}}
+		if got, want := encodeCell(asArray), encodeCell(asSlice); got != want {
+			t.Errorf("n=%d: the array and the slice encode differently:\n%.120s\n%.120s", n, got, want)
+		}
+	}
+}
