@@ -90,6 +90,26 @@ func TestDetectEncodingBoundary(t *testing.T) {
 	}
 }
 
+// A file shorter than the sample holds every byte of itself, so an invalid tail
+// is invalid, not cut off: a Latin-1 file must not be judged UTF-8 by trimming
+// its last non-UTF-8 bytes away. The text is long enough for the detector to
+// name a charset, so the UTF-8 fallback for an undetectable sample does not
+// hide the answer.
+func TestDetectEncodingKeepsAnInvalidTailOfAShortFile(t *testing.T) {
+	text := strings.Repeat("The quick brown fox jumps over the lazy dog near the river bank.\n", 13) + "Jos\xe9\n"
+	p := filepath.Join(t.TempDir(), "latin1.csv")
+	if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	enc, err := DetectEncoding(p)
+	if err != nil {
+		t.Fatalf("DetectEncoding: %v", err)
+	}
+	if enc == "utf-8" {
+		t.Fatalf("a Latin-1 file of %d bytes was reported as utf-8", len(text))
+	}
+}
+
 func TestIsEqualToNaN(t *testing.T) {
 	dl := NewDataList(1.0, math.NaN(), "x")
 	if !dl.IsEqualTo(dl.Clone()) {
