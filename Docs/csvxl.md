@@ -90,7 +90,7 @@ Each CSV is read in full before its sheet is created. When a CSV cannot be read,
 func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error
 ```
 
-**Description:** Appends CSV files as new sheets. An existing sheet with the same name is deleted first and replaced in full, so nothing from the old sheet survives — including cells outside the range of the new CSV. This works even when it is the workbook's only sheet.
+**Description:** Appends CSV files as new sheets. An existing sheet with the same name is cleared in place before the CSV is written: every old cell value and formula is removed, including cells outside the range of the new CSV, while the sheet keeps its position among the sheets and its sheet-level settings such as column widths, views and merged ranges. This works even when it is the workbook's only sheet.
 
 Each CSV is read in full before its sheet is replaced, so a CSV that cannot be read leaves the existing sheet of that name as it was. The other files are still appended, and the error lists the files that failed in the same form as `CsvToExcel`. When every file fails, the workbook file is not rewritten.
 
