@@ -13,8 +13,10 @@ import (
 // turn p = 0.074 into p = 0.028 on [1, 2, nil, 3].
 
 // testSeries reads one series for a hypothesis test. label names it in errors.
+// The list goes through asDataList first, so any IDataList implementation is
+// accepted and a nil or typed nil list reads as empty instead of panicking.
 func testSeries(dl insyra.IDataList, label string) ([]float64, error) {
-	values, _, err := numericSlice(dl, label)
+	values, _, err := numericSlice(asDataList(dl), label)
 	return values, err
 }
 

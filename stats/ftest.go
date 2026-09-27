@@ -61,10 +61,8 @@ func LeveneTest(groups []insyra.IDataList) (*FTestResult, error) {
 		return nil, errors.New("at least two groups required")
 	}
 
-	// Per-group: pull median + raw []any in parallel. Each group is its own
-	// actor so per-group AtomicDo entries can run concurrently. Collapses
-	// the previously-serial actor-handshake chain (same fix pattern as
-	// OneWayANOVA / TwoWayANOVA).
+	// Each group is read through testSeries, so an unreadable cell is an
+	// error naming the group and its row.
 	var allDiffs []float64
 	var groupLabels []int
 	for i := range groups {
@@ -89,9 +87,8 @@ func BartlettTest(groups []insyra.IDataList) (*FTestResult, error) {
 		return nil, errors.New("at least two groups required")
 	}
 
-	// Per-group n + Var via parallel actor entries. Var() is the bulk of
-	// the work (two-pass sum + sumsq); doing it in parallel saves the
-	// serial actor-entry chain for ≥3 groups.
+	// Per-group n and sample variance, each group read through testSeries so
+	// an unreadable cell is an error naming the group and its row.
 	type bartlettExtract struct {
 		n int
 		v float64

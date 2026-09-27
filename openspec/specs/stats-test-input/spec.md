@@ -6,7 +6,7 @@ The hypothesis tests and `CalculateMoment` refuse a cell they cannot read as a f
 ## Requirements
 ### Requirement: Parametric tests refuse unreadable cells
 
-`SingleSampleTTest`、`TwoSampleTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`BartlettTest`、`LeveneTest` 與 `CalculateMoment` SHALL 經 `numericSlice` 讀取輸入；任一格非數值、nil、NaN 或 Inf 時 SHALL 回傳含標籤與列號的錯誤，SHALL NOT 把該格算進 n。全為有限數值的輸入 SHALL 得到與變更前逐位元相同的統計量。
+`SingleSampleTTest`、`TwoSampleTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`BartlettTest`、`LeveneTest` 與 `CalculateMoment` SHALL 經 `asDataList` 轉換後，以 `numericSlice` 讀取輸入；任一格非數值、nil、NaN 或 Inf 時 SHALL 回傳含標籤與列號的錯誤，SHALL NOT 把該格算進 n。nil 或帶型別的 nil list SHALL 回傳錯誤，SHALL NOT panic。全為有限數值的輸入 SHALL 得到與變更前逐位元相同的統計量。
 
 #### Scenario: Blank cell is refused
 - **WHEN** `SingleSampleTTest(NewDataList(1.0, 2.0, nil, 3.0), 0)`
@@ -15,6 +15,10 @@ The hypothesis tests and `CalculateMoment` refuse a cell they cannot read as a f
 #### Scenario: Clean input unchanged
 - **WHEN** 既有測試的全數值輸入
 - **THEN** 既有測試不修改即通過
+
+#### Scenario: A nil list
+- **WHEN** `SingleSampleTTest(nil, 0)` 或 `CalculateMoment((*insyra.DataList)(nil), 3, true)`
+- **THEN** 回傳錯誤，不 panic
 
 ### Requirement: Two-sample tests read both samples at one moment
 
