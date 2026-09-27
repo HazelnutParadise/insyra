@@ -2,16 +2,13 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
-
-	"github.com/HazelnutParadise/insyra"
 )
 
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "col",
 		Args:        MaxArgs(2).WithAlias(),
-		Usage:       "col <var> <name|index> [as <var>]",
+		Usage:       "col <var> <col> [as <var>]",
 		Description: "Extract DataTable column as DataList",
 		Run:         runColCommand,
 	})
@@ -20,23 +17,21 @@ func init() {
 func runColCommand(ctx *ExecContext, args []string) error {
 	coreArgs, alias := parseAlias(args)
 	if len(coreArgs) < 2 {
-		return fmt.Errorf("usage: col <var> <name|index> [as <var>]")
+		return fmt.Errorf("usage: col <var> <col> [as <var>]")
 	}
 	table, err := getDataTableVar(ctx, coreArgs[0])
 	if err != nil {
 		return err
 	}
-	selector := coreArgs[1]
+	pos, err := resolveColumnToken("col", table, coreArgs[1])
+	if err != nil {
+		return err
+	}
 	// Keep the concrete type: a nil *DataList stored in an `any` is not == nil,
 	// and SaveState would later dereference it.
-	var dl *insyra.DataList
-	if index, convErr := strconv.Atoi(selector); convErr == nil {
-		dl = table.GetColByNumber(index)
-	} else {
-		dl = table.GetColByName(selector)
-	}
+	dl := table.GetColByNumber(pos)
 	if dl == nil {
-		return fmt.Errorf("col: column not found: %s", selector)
+		return fmt.Errorf("col: column not found: %s", coreArgs[1])
 	}
 	ctx.Vars[alias] = dl
 	_, _ = fmt.Fprintf(ctx.Output, "saved column to %s\n", alias)

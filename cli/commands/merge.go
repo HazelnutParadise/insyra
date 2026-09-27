@@ -40,7 +40,32 @@ func runMergeCommand(ctx *ExecContext, args []string) error {
 		if len(coreArgs) == 5 {
 			return fmt.Errorf("merge: `on` needs at least one column name")
 		}
-		onColumns = append(onColumns, coreArgs[5:]...)
+		// Merge joins on names, so each token is resolved against its own
+		// table (the first against left, the second, or the same one, against
+		// right) and handed over as that column's name.
+		tables := []*insyra.DataTable{left, right}
+		for i, token := range coreArgs[5:] {
+			table := tables[min(i, 1)]
+			pos, err := resolveColumnToken("merge", table, token)
+			if err != nil {
+				return err
+			}
+			name := table.ColNames()[pos]
+			if name == "" {
+				return fmt.Errorf("merge: %s is an unnamed column; merge joins on a column name", token)
+			}
+			onColumns = append(onColumns, name)
+		}
+		if len(onColumns) == 1 {
+			// One token names the key in both tables.
+			pos, err := resolveColumnToken("merge", right, coreArgs[5])
+			if err != nil {
+				return err
+			}
+			if right.ColNames()[pos] != onColumns[0] {
+				return fmt.Errorf("merge: %s is %q in the first table but %q in the second; give both: on %s %s", coreArgs[5], onColumns[0], right.ColNames()[pos], onColumns[0], right.ColNames()[pos])
+			}
+		}
 	}
 	result, err := left.Merge(right, direction, mode, onColumns...)
 	if err != nil {

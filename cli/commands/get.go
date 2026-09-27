@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
 )
 
 func init() {
@@ -23,17 +22,14 @@ func runGetCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	row, err := strconv.Atoi(args[1])
+	row, err := resolveRowToken("get", table, args[1])
 	if err != nil {
-		return fmt.Errorf("invalid row index: %s", args[1])
+		return err
 	}
-	col := args[2]
-	var value any
-	if colNum, convErr := strconv.Atoi(col); convErr == nil {
-		value = table.GetElementByNumberIndex(row, colNum)
-	} else {
-		value = table.GetElement(row, col)
+	col, err := resolveColumnToken("get", table, args[2])
+	if err != nil {
+		return err
 	}
-	_, _ = fmt.Fprintf(ctx.Output, "%v\n", value)
+	_, _ = fmt.Fprintf(ctx.Output, "%v\n", table.GetElementByNumberIndex(row, col))
 	return nil
 }

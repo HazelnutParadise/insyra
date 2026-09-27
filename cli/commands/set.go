@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
 )
 
 func init() {
@@ -23,19 +22,20 @@ func runSetCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	row, err := strconv.Atoi(args[1])
+	row, err := resolveRowToken("set", table, args[1])
 	if err != nil {
-		return fmt.Errorf("invalid row index: %s", args[1])
+		return err
 	}
-	col := args[2]
+	col, err := resolveColumnToken("set", table, args[2])
+	if err != nil {
+		return err
+	}
 	value := parseLiteral(args[3])
 	table.UpdateElement(row, col, value)
-	// Verify the write took effect; UpdateElement is a silent no-op when the
-	// row/column does not resolve, so read back and surface a real error instead
-	// of always reporting success. (value comes from parseLiteral, so it is a
-	// comparable scalar.)
-	if got := table.GetElement(row, col); got != value {
-		return fmt.Errorf("set: update did not take effect for row %d, col %q (does it exist?)", row, col)
+	// Read the write back, so a write the table refused cannot be reported as
+	// done. (value comes from parseLiteral, so it is a comparable scalar.)
+	if got := table.GetElementByNumberIndex(row, col); got != value {
+		return fmt.Errorf("set: update did not take effect for row %s, col %s", args[1], args[2])
 	}
 	_, _ = fmt.Fprintln(ctx.Output, "updated")
 	return nil

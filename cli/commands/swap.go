@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
 )
 
 func init() {
@@ -29,37 +28,25 @@ func runSwapCommand(ctx *ExecContext, args []string) error {
 
 	switch dimension {
 	case "col":
-		if aIndex, errA := strconv.Atoi(a); errA == nil {
-			if bIndex, errB := strconv.Atoi(b); errB == nil {
-				table.SwapColsByNumber(aIndex, bIndex)
-			} else {
-				return fmt.Errorf("both col selectors must be numeric or both names")
-			}
-		} else {
-			if err := requireColumnName("swap", table, a); err != nil {
-				return err
-			}
-			if err := requireColumnName("swap", table, b); err != nil {
-				return err
-			}
-			table.SwapColsByName(a, b)
+		aPos, err := resolveColumnToken("swap", table, a)
+		if err != nil {
+			return err
 		}
+		bPos, err := resolveColumnToken("swap", table, b)
+		if err != nil {
+			return err
+		}
+		table.SwapColsByNumber(aPos, bPos)
 	case "row":
-		if aIndex, errA := strconv.Atoi(a); errA == nil {
-			if bIndex, errB := strconv.Atoi(b); errB == nil {
-				table.SwapRowsByIndex(aIndex, bIndex)
-			} else {
-				return fmt.Errorf("both row selectors must be numeric or both names")
-			}
-		} else {
-			if err := requireRowName("swap", table, a); err != nil {
-				return err
-			}
-			if err := requireRowName("swap", table, b); err != nil {
-				return err
-			}
-			table.SwapRowsByName(a, b)
+		aPos, err := resolveRowToken("swap", table, a)
+		if err != nil {
+			return err
 		}
+		bPos, err := resolveRowToken("swap", table, b)
+		if err != nil {
+			return err
+		}
+		table.SwapRowsByIndex(aPos, bPos)
 	default:
 		return fmt.Errorf("dimension must be col or row")
 	}

@@ -184,12 +184,12 @@ Organized by topic. Each Usage line is the command's own `insyra help <command>`
 
 ### `dropcol`
 - Description: Drop columns by name or index
-- Usage: `dropcol <var> <name|index...>`
+- Usage: `dropcol <var> <col...>`
 - Example: `insyra dropcol x 0`
 
 ### `droprow`
 - Description: Drop rows by index or name
-- Usage: `droprow <var> <index|name...>`
+- Usage: `droprow <var> <row...>`
 - Example: `insyra droprow x 0`
 
 ### `swap`
@@ -214,12 +214,12 @@ Organized by topic. Each Usage line is the command's own `insyra help <command>`
 
 ### `row`
 - Description: Extract DataTable row as DataList
-- Usage: `row <var> <index|name> [as <var>]`
+- Usage: `row <var> <row> [as <var>]`
 - Example: `insyra row x 0 as first_row`
 
 ### `col`
 - Description: Extract DataTable column as DataList
-- Usage: `col <var> <name|index> [as <var>]`
+- Usage: `col <var> <col> [as <var>]`
 - Example: `insyra col x 0 as first_col`
 
 ### `get`

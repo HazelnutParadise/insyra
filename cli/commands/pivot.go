@@ -82,10 +82,22 @@ func runPivotCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
+	index, err := colSelectors("pivot", table, opts.Index)
+	if err != nil {
+		return err
+	}
+	columns, err := colSelector("pivot", table, opts.Columns)
+	if err != nil {
+		return err
+	}
+	values, err := colSelector("pivot", table, opts.Values)
+	if err != nil {
+		return err
+	}
 	result, perr := table.Pivot(insyra.PivotConfig{
-		Index:    colSelectors(table, opts.Index),
-		Columns:  colSelector(table, opts.Columns),
-		Values:   colSelector(table, opts.Values),
+		Index:    index,
+		Columns:  columns,
+		Values:   values,
 		AggFunc:  opts.Agg,
 		FillNA:   opts.FillNA,
 		SortCols: opts.SortCols,
@@ -188,9 +200,17 @@ func runUnpivotCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
+	idVars, err := colSelectors("unpivot", table, opts.IDVars)
+	if err != nil {
+		return err
+	}
+	valueVars, err := colSelectors("unpivot", table, opts.ValueVars)
+	if err != nil {
+		return err
+	}
 	result, perr := table.Unpivot(insyra.UnpivotConfig{
-		IDVars:    colSelectors(table, opts.IDVars),
-		ValueVars: colSelectors(table, opts.ValueVars),
+		IDVars:    idVars,
+		ValueVars: valueVars,
 		VarName:   opts.VarName,
 		ValueName: opts.ValueName,
 		DropNA:    opts.DropNA,

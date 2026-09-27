@@ -244,6 +244,23 @@ error: iqr: unexpected argument "junk"; usage: iqr <var>
 
 - In a `.isr` script the line fails the same way and `run` moves on to the next line.
 
+Picking a column or a row:
+
+Every command that takes a column (`col`, `get`, `set`, `sort`, `swap`, `dropcol`, and column lists such as `fillna … cols`, `groupby … by`, `pivot`, `scale`, `merge … on`) reads the token the same way, and so does every command that takes a row (`row`, `get`, `set`, `swap row`, `droprow`). A bare token is read every way it can be:
+
+- digits are a 0-based number, and a negative one counts from the end (`0` is the first column, `-1` the last)
+- letters are an Excel-style index, for columns only (`A`, `B`, … `AA`), without regard to case
+- any token is also tried as a name, compared exactly
+
+If the readings that land all point at the same column, that column is used, so `price` works on a table that has a `price` column (as letters it is past the last column) and `2021` works on a table whose columns are years. If two readings point at different columns, the command stops and says how to pick one; it never guesses:
+
+```text
+> sort t a
+error: sort: "a" could mean index A (the column named "x", number 0) or the column named "a" (number 1); write index:a or name:a
+```
+
+Three prefixes pick one reading and are never ambiguous: `number:2`, `index:B` and `name:price`. Rows take `number:` and `name:`. In a `groupby` or `resample` spec the prefix stays on the column part: `name:price:sum`.
+
 Examples:
 
 ```text
@@ -740,7 +757,7 @@ Source policy:
 | `clean` | `clean <var> nan\|nil\|strings\|outliers [<stddev>]` | Clean values from DataTable/DataList |
 | `clear` | `clear` | Clear terminal screen |
 | `clone` | `clone <var> [as <var>]` | Deep clone DataTable/DataList variable |
-| `col` | `col <var> <name\|index> [as <var>]` | Extract DataTable column as DataList |
+| `col` | `col <var> <col> [as <var>]` | Extract DataTable column as DataList |
 | `cols` | `cols <var>` | List DataTable column names |
 | `completion` | `completion [command]` | Generate the autocompletion script for insyra for the specified shell. |
 | `config` | `config [key] [value]` | Read or update global CLI config |
@@ -759,8 +776,8 @@ Source policy:
 | `diff` | `diff <var> [as <var>]` | Difference (legacy, length n-1) |
 | `diffn` | `diffn <var> <periods> [as <var>]` | Backward difference, same-length output with leading nils |
 | `drop` | `drop <var>` | Delete variable |
-| `dropcol` | `dropcol <var> <name\|index...>` | Drop columns by name or index |
-| `droprow` | `droprow <var> <index\|name...>` | Drop rows by index or name |
+| `dropcol` | `dropcol <var> <col...>` | Drop columns by name or index |
+| `droprow` | `droprow <var> <row...>` | Drop rows by index or name |
 | `encode` | `encode <var> onehot\|label\|ordinal ... [as <var>]` | One-shot categorical encoding for DataTable variables |
 | `env` | `env <create\|list\|open\|clear\|export\|import\|delete\|rename\|info> [args]` | Environment management |
 | `ewm` | `ewm <var> alpha\|span\|halflife <value> mean\|var\|std [adjust yes\|no] [bias yes\|no] [minobs <n>] [as <var>]` | Exponentially weighted mean/var/std over a DataList |
@@ -818,7 +835,7 @@ Source policy:
 | `resample` | `resample <dt> <timecol> weekly\|monthly\|quarterly\|yearly <col>:<op>[:<name>] [<col>:<op>[:<name>] ...] [as <var>]` | Aggregate a time-indexed DataTable into calendar periods |
 | `reverse` | `reverse <var> [as <var>]` | Reverse DataList |
 | `rolling` | `rolling <var> <window> <reducer> [minobs <n>] [center yes\|no] [as <var>]` | Rolling-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var, or cov\|beta with a second DataList) |
-| `row` | `row <var> <index\|name> [as <var>]` | Extract DataTable row as DataList |
+| `row` | `row <var> <row> [as <var>]` | Extract DataTable row as DataList |
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |
 | `sample` | `sample <var> <n>\|frac <frac>\|shuffle [replace true\|false] [seed N] [as <var>]` | Randomly sample or shuffle a DataList/DataTable |

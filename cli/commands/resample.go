@@ -58,7 +58,11 @@ func runResampleCommand(ctx *ExecContext, args []string) error {
 		aggs = append(aggs, agg)
 	}
 
-	result, err := table.Resample(colSelector(table, timeCol), freq, aggs...)
+	timeSel, err := colSelector("resample", table, timeCol)
+	if err != nil {
+		return err
+	}
+	result, err := table.Resample(timeSel, freq, aggs...)
 	if err != nil {
 		return fmt.Errorf("resample: %w", err)
 	}
@@ -85,7 +89,7 @@ func parseResampleFreq(raw string) (insyra.ResampleFreq, error) {
 // containing ':' cannot be expressed in this syntax.
 func parseResampleSpec(table *insyra.DataTable, spec string) (insyra.ResampleAgg, error) {
 	var agg insyra.ResampleAgg
-	parts := strings.Split(spec, ":")
+	parts := splitColumnSpec(spec, -1)
 	if len(parts) < 2 || len(parts) > 3 {
 		return agg, fmt.Errorf("resample: invalid spec %q (expected <col>:<op>[:<name>])", spec)
 	}
@@ -93,7 +97,11 @@ func parseResampleSpec(table *insyra.DataTable, spec string) (insyra.ResampleAgg
 	if source == "" {
 		return agg, fmt.Errorf("resample: invalid spec %q (expected <col>:<op>[:<name>]): source column is required", spec)
 	}
-	agg.Col = colSelector(table, source)
+	sel, err := colSelector("resample", table, source)
+	if err != nil {
+		return agg, err
+	}
+	agg.Col = sel
 	op, err := parseAggregateOp(parts[1])
 	if err != nil {
 		return agg, fmt.Errorf("resample: invalid op in spec %q: %w (supported: %s)", spec, err, resampleOps)

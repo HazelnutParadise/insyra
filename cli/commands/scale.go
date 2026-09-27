@@ -92,7 +92,11 @@ func runScaleFit(ctx *ExecContext, args []string) error {
 		return fmt.Errorf("scale fit: range is only valid for minmax")
 	}
 
-	if err := scaler.Fit(table, colSelectors(table, cols)...); err != nil {
+	selectors, err := colSelectors("scale fit", table, cols)
+	if err != nil {
+		return err
+	}
+	if err := scaler.Fit(table, selectors...); err != nil {
 		return err
 	}
 	ctx.Vars[scalerVar] = scaler

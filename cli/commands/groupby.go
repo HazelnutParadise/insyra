@@ -72,7 +72,11 @@ func runGroupByCommand(ctx *ExecContext, args []string) error {
 		}
 		configs = append(configs, cfg)
 	}
-	result := table.GroupBy(colSelectors(table, keys)...).Aggregate(configs...)
+	keySelectors, err := colSelectors("groupby", table, keys)
+	if err != nil {
+		return err
+	}
+	result := table.GroupBy(keySelectors...).Aggregate(configs...)
 	if errInfo := table.Err(); errInfo != nil {
 		// Surface the parent-level error to the user. The result is still
 		// stored so they can inspect partial output.
@@ -101,13 +105,17 @@ func parseAggregateSpec(table *insyra.DataTable, spec string) (insyra.AggregateC
 		cfg.As = "count"
 		return cfg, nil
 	}
-	parts := strings.SplitN(spec, ":", 3)
+	parts := splitColumnSpec(spec, 3)
 	if len(parts) < 2 {
 		return cfg, fmt.Errorf("invalid aggregate spec %q (expected <col>:<op>[:<alias>])", spec)
 	}
 	source := strings.TrimSpace(parts[0])
 	if source != "" {
-		cfg.SourceCol = colSelector(table, source)
+		sel, err := colSelector("groupby", table, source)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.SourceCol = sel
 	}
 	op, err := parseAggregateOp(parts[1])
 	if err != nil {

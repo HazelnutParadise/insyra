@@ -44,10 +44,10 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		// A CLI token carries no type, so it is resolved against the table
-		// the same way the rest of the CLI resolves one.
 		for i, col := range opts.Columns {
-			opts.Columns[i] = colSelector(table, fmt.Sprint(col))
+			if opts.Columns[i], err = colSelector("encode", table, fmt.Sprint(col)); err != nil {
+				return err
+			}
 		}
 		result, _, err = table.OneHotEncode(opts)
 		if err != nil {
@@ -58,7 +58,9 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		opts.Column = colSelector(table, fmt.Sprint(opts.Column))
+		if opts.Column, err = colSelector("encode", table, fmt.Sprint(opts.Column)); err != nil {
+			return err
+		}
 		result, _, err = table.LabelEncode(opts)
 		if err != nil {
 			return err
@@ -68,7 +70,9 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		opts.Column = colSelector(table, fmt.Sprint(opts.Column))
+		if opts.Column, err = colSelector("encode", table, fmt.Sprint(opts.Column)); err != nil {
+			return err
+		}
 		result, _, err = table.OrdinalEncode(opts)
 		if err != nil {
 			return err

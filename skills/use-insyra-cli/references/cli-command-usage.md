@@ -87,7 +87,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `col`
 - Description: Extract DataTable column as DataList
-- Usage: `col <var> <name|index> [as <var>]`
+- Usage: `col <var> <col> [as <var>]`
 
 ## `cols`
 - Description: List DataTable column names
@@ -175,11 +175,11 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `dropcol`
 - Description: Drop columns by name or index
-- Usage: `dropcol <var> <name|index...>`
+- Usage: `dropcol <var> <col...>`
 
 ## `droprow`
 - Description: Drop rows by index or name
-- Usage: `droprow <var> <index|name...>`
+- Usage: `droprow <var> <row...>`
 
 ## `encode`
 - Description: One-shot categorical encoding for DataTable variables (encoder state is not persisted)
@@ -512,7 +512,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `row`
 - Description: Extract DataTable row as DataList
-- Usage: `row <var> <index|name> [as <var>]`
+- Usage: `row <var> <row> [as <var>]`
 
 ## `rows`
 - Description: List DataTable row names

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	insyra "github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/spf13/cobra"
 )
@@ -104,6 +105,7 @@ func Register(handler *CommandHandler) error {
 		if err := limit.check(name, usage, args); err != nil {
 			return err
 		}
+		clearStaleErrors(ctx)
 		return run(ctx, args)
 	}
 	Registry[handler.Name] = handler
@@ -209,4 +211,25 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 	}
 
 	return commands
+}
+
+// clearStaleErrors starts a command with no error recorded on any variable.
+// A list or table keeps its first error until someone clears it, so a command
+// that failed and reported its own message left the library's record behind,
+// and the next command that checked for one reported it as its own: after
+// `col t B` failed, a `sort t price` that had just succeeded failed with "no
+// column is named B". Each command reports its own failures, so an error left
+// from an earlier one has already been reported or was never this command's.
+func clearStaleErrors(ctx *ExecContext) {
+	if ctx == nil {
+		return
+	}
+	for _, v := range ctx.Vars {
+		switch typed := v.(type) {
+		case *insyra.DataTable:
+			typed.ClearErr()
+		case *insyra.DataList:
+			typed.ClearErr()
+		}
+	}
 }

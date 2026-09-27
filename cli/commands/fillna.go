@@ -129,8 +129,12 @@ func applyFillNAToList(dl *insyra.DataList, strategy string, opts fillNAOptions)
 
 func applyFillNAToTable(dt *insyra.DataTable, strategy string, opts fillNAOptions) (*insyra.DataTable, error) {
 	result := dt.Clone()
-	preserved := snapshotPreservedDT(result, opts.Cols, opts.Missing)
-	if err := runTableStrategy(result, strategy, opts); err != nil {
+	positions, err := resolveColumnTokens("fillna", result, opts.Cols)
+	if err != nil {
+		return nil, err
+	}
+	preserved := snapshotPreservedDT(result, positions, opts.Missing)
+	if err := runTableStrategy(result, strategy, opts, positions); err != nil {
 		return nil, err
 	}
 	if err := checkTableErr("fillna", result); err != nil {
@@ -160,10 +164,11 @@ func runListStrategy(dl *insyra.DataList, strategy string, opts fillNAOptions) e
 	return nil
 }
 
-func runTableStrategy(dt *insyra.DataTable, strategy string, opts fillNAOptions) error {
-	// A CLI token carries no type, so it resolves against the table the same
-	// way the rest of the CLI resolves one.
-	cols := colSelectors(dt, opts.Cols)
+func runTableStrategy(dt *insyra.DataTable, strategy string, opts fillNAOptions, positions []int) error {
+	cols := make([]any, len(positions))
+	for i, pos := range positions {
+		cols[i] = selectorAt(dt, pos)
+	}
 	switch strategy {
 	case "mean":
 		dt.FillWithMean(cols...)
@@ -219,17 +224,23 @@ func restorePreservedDL(dl *insyra.DataList, missing string, positions []int) {
 	}
 }
 
-func snapshotPreservedDT(dt *insyra.DataTable, cols []string, missing string) map[string][]int {
+// snapshotPreservedDT records, per column position, the cells a fill must
+// leave alone. Columns are addressed by position: a name can be empty or
+// shared, and looking one up by name records an error on the table when it
+// misses.
+func snapshotPreservedDT(dt *insyra.DataTable, cols []int, missing string) map[int][]int {
 	if missing != "nan" && missing != "nil" {
 		return nil
 	}
 	targets := cols
 	if len(targets) == 0 {
-		targets = dt.ColNames()
+		for i := range dt.NumCols() {
+			targets = append(targets, i)
+		}
 	}
-	preserved := map[string][]int{}
+	preserved := map[int][]int{}
 	for _, col := range targets {
-		dl := dt.GetColByName(col)
+		dl := dt.GetColByNumber(col)
 		if dl == nil {
 			continue
 		}
@@ -241,23 +252,16 @@ func snapshotPreservedDT(dt *insyra.DataTable, cols []string, missing string) ma
 	return preserved
 }
 
-func restorePreservedDT(dt *insyra.DataTable, missing string, preserved map[string][]int) {
-	if len(preserved) == 0 {
-		return
-	}
+func restorePreservedDT(dt *insyra.DataTable, missing string, preserved map[int][]int) {
 	for col, positions := range preserved {
-		dl := dt.GetColByName(col)
+		dl := dt.GetColByNumber(col)
 		if dl == nil {
 			continue
 		}
-		// GetColByName returns a CLONE, so mutating it in place is lost. Restore
-		// on the clone, then write it back into the live table.
+		// GetColByNumber returns a CLONE, so mutating it in place is lost.
+		// Restore on the clone, then write it back into the live table.
 		restorePreservedDL(dl, missing, positions)
-		idx := dt.GetColIndexByName(col)
-		if idx == "" {
-			continue
-		}
-		dt.UpdateCol(idx, dl)
+		dt.UpdateCol(col, dl)
 	}
 }
 

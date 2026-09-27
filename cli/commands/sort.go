@@ -35,15 +35,11 @@ func runSortCommand(ctx *ExecContext, args []string) error {
 		return fmt.Errorf("sort: unexpected argument %q (usage: sort <var> <col> [asc|desc])", args[3])
 	}
 
-	name, number, err := resolveColumn("sort", table, args[1])
+	col, err := resolveColumnToken("sort", table, args[1])
 	if err != nil {
 		return err
 	}
-	config := insyra.DataTableSortConfig{Col: insyra.Name(name), Descending: desc}
-	if name == "" {
-		config.Col = number
-	}
-	table.SortBy(config)
+	table.SortBy(insyra.DataTableSortConfig{Col: col, Descending: desc})
 	if err := checkTableErr("sort", table); err != nil {
 		return err
 	}
