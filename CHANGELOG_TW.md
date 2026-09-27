@@ -15,6 +15,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### CLI
 
 - 修正 `insyra env import` 在沒有 `--force` 時，只要目標環境有檔案存在但讀不到，就會把非空的環境蓋掉。判斷目標是否為空的檢查把讀不到 `config.json` 當成「空的」，讀不到 `state.json` 與 `history.txt` 也一樣被忽略。檔案不存在仍然視為空，其他讀取失敗現在會停止匯入，並指出哪個環境無法確認。
+- `accel` 不再檢查 `--precision`。這個旗標原本是用來選 `accel run` 的精度，v0.3.1 拿掉 `accel run` 之後，就沒有任何程式讀它。還在傳這個旗標的腳本照樣能跑，因為 `accel` 會略過用不到的參數，唯一的差別是 `--precision bogus` 這類無效的值不再報錯。Go 裡的 `accel.Precision` 設定不變。
 
 ### `ml` 與 `nn`
 

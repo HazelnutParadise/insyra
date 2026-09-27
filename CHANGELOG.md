@@ -15,6 +15,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### CLI
 
 - Fixed `insyra env import` overwriting a non-empty environment without `--force` when one of its files existed but could not be read. The check that decides whether the target is empty took a failure to read `config.json` as "empty", and ignored failures to read `state.json` and `history.txt` the same way. A missing file still counts as empty; any other failure now stops the import and says which environment could not be checked.
+- `accel` no longer checks `--precision`. The flag chose the precision of `accel run`, which v0.3.1 removed, and nothing has read it since. A script that still passes it keeps running, because `accel` ignores arguments it does not use; the only difference is that an invalid value such as `--precision bogus` is no longer an error. The `accel.Precision` setting in Go is unchanged.
 
 ### `ml` and `nn`
 
