@@ -70,7 +70,7 @@ func Start(ctx *commands.ExecContext) error {
 		_ = instance.Close()
 	}()
 	defer func() {
-		_ = ctx.Env.SaveState(ctx.EnvName, ctx.Vars)
+		_ = commands.SaveEnvState(ctx)
 	}()
 	defer commands.CloseAllDBConns(ctx)
 
@@ -105,7 +105,7 @@ func Start(ctx *commands.ExecContext) error {
 		// to HistoryFile (the same env history.txt), so an explicit append would
 		// write every command twice. The one-shot CLI path keeps its own
 		// AppendHistory since it does not go through readline.
-		_ = ctx.Env.SaveState(ctx.EnvName, ctx.Vars)
+		_ = commands.SaveEnvState(ctx)
 
 		if ctx.EnvName != "" {
 			instance.SetPrompt(prompt(ctx.EnvName))
