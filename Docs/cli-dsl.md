@@ -847,7 +847,7 @@ Source policy:
 | `newdl` | `newdl <values...> [as <var>]` | Create DataList manually |
 | `newdt` | `newdt <dl_vars...> [as <var>]` | Create DataTable from DataList variables |
 | `normalize` | `normalize <var> [as <var>]` | Normalize DataList |
-| `parsenums` | `parsenums <var> [as <var>]` | Parse DataList strings to numbers |
+| `parsenums` | `parsenums <var> [as <var>]` | Parse DataList strings to numbers, typed like a CSV column: `int64` when every number is an integer, otherwise `float64` with an empty string as `NaN` |
 | `parsedates` | `parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]` | Convert date strings to `time.Time` in a DataList or DataTable columns |
 | `parsestrings` | `parsestrings <var> [as <var>]` | Parse DataList numbers to strings |
 | `pca` | `pca <var> <n> [as <var>]` | Principal component analysis |

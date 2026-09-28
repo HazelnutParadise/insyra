@@ -775,8 +775,8 @@ func TestDataListParseNumbers(t *testing.T) {
 	dl := NewDataList("1", 2, "3", 8)
 	dl = dl.ParseNumbers()
 
-	if !reflect.DeepEqual(dl.Data(), []any{1.0, 2.0, 3.0, 8.0}) {
-		t.Errorf("Expected data %v, got %v", []any{1.0, 2.0, 3.0, 8.0}, dl.Data())
+	if !reflect.DeepEqual(dl.Data(), []any{int64(1), int64(2), int64(3), int64(8)}) {
+		t.Errorf("Expected data %v, got %v", []any{int64(1), int64(2), int64(3), int64(8)}, dl.Data())
 	}
 }
 

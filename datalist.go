@@ -6,6 +6,7 @@ import (
 	"math"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1181,11 +1182,14 @@ func (dl *DataList) Lower() *DataList {
 }
 
 // Capitalize capitalizes the first letter of each string element in the DataList.
+// It titles case using the language-neutral root rules (language.Und) and applies
+// no language-specific rule, so words such as Dutch "ij" and a Turkish dotted i
+// are cased the root way.
 func (dl *DataList) Capitalize() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		for i, v := range dl.data {
 			if str, ok := v.(string); ok {
-				dl.data[i] = cases.Title(language.English, cases.NoLower).String(strings.ToLower(str))
+				dl.data[i] = cases.Title(language.Und, cases.NoLower).String(strings.ToLower(str))
 			}
 		}
 		dl.updateTimestamp()
@@ -2019,25 +2023,128 @@ func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 
 // ======================== Conversion ========================
 
-// ParseNumbers attempts to parse all string elements in the DataList to numeric types.
-// If parsing fails, the element is left unchanged.
+// ParseNumbers reads every value it can as a number, applying the same rule
+// the CSV reader uses to infer a column's type: a column whose every cell is an
+// integer and none is blank becomes int64, and a column with any decimal or any
+// blank becomes float64 with a blank written as NaN. A string is trimmed before
+// it is read, and a value that is already a number counts towards the decision
+// the same way. Integers stay int64 so a large identifier is not rounded to the
+// nearest float64 above 2^53.
+//
+// A nil cell and a fixed-point decimal are left exactly as they are, without
+// being counted and without an error: neither is something this method reads.
+// A value it cannot read — text, a bool, a time, a slice — is also left
+// unchanged, and the whole set is reported in a single error naming how many
+// there were and where the first one is.
 func (dl *DataList) ParseNumbers() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
-		for i, v := range dl.data {
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						dl.fail("ParseNumbers", "Failed to parse %v to float64: %v, the element left unchanged", v, r)
-					}
-				}()
+		kinds := make([]parseNumberKind, len(dl.data))
+		ints := make([]int64, len(dl.data))
+		floats := make([]float64, len(dl.data))
 
-				dl.data[i] = conv.ParseF64(v)
-			}()
+		hasFloat, hasEmpty := false, false
+		unreadableCount, firstUnreadable := 0, -1
+
+		for i, v := range dl.data {
+			kinds[i], ints[i], floats[i] = classifyParseNumberCell(v, &hasFloat, &hasEmpty)
+			if kinds[i] == parseNumberUnreadable {
+				unreadableCount++
+				if firstUnreadable < 0 {
+					firstUnreadable = i
+				}
+			}
+		}
+
+		asFloat := hasFloat || hasEmpty
+		for i, kind := range kinds {
+			switch kind {
+			case parseNumberInt:
+				if asFloat {
+					dl.data[i] = float64(ints[i])
+				} else {
+					dl.data[i] = ints[i]
+				}
+			case parseNumberFloat:
+				dl.data[i] = floats[i]
+			case parseNumberEmpty:
+				dl.data[i] = math.NaN()
+			}
+		}
+
+		if unreadableCount > 0 {
+			first := dl.data[firstUnreadable]
+			if s, ok := first.(string); ok {
+				dl.fail("ParseNumbers", "%d value(s) could not be read as numbers and were left unchanged; the first is %q at row %d", unreadableCount, s, firstUnreadable+1)
+			} else {
+				dl.fail("ParseNumbers", "%d value(s) could not be read as numbers and were left unchanged; the first is a %T at row %d", unreadableCount, first, firstUnreadable+1)
+			}
 		}
 
 		dl.updateTimestamp()
 	})
 	return dl
+}
+
+// parseNumberKind says what ParseNumbers made of one cell: unchanged, read as
+// an int64, read as a float64, an empty cell that becomes NaN, or a value it
+// cannot read.
+type parseNumberKind int
+
+const (
+	parseNumberUntouched parseNumberKind = iota
+	parseNumberInt
+	parseNumberFloat
+	parseNumberEmpty
+	parseNumberUnreadable
+)
+
+// classifyParseNumberCell reads one cell under the CSV reader's rule, reporting
+// whether the list has seen a decimal or an empty cell on the way.
+func classifyParseNumberCell(v any, hasFloat, hasEmpty *bool) (parseNumberKind, int64, float64) {
+	if v == nil {
+		return parseNumberUntouched, 0, 0
+	}
+
+	if s, ok := v.(string); ok {
+		t := strings.TrimSpace(s)
+		if t == "" {
+			*hasEmpty = true
+			return parseNumberEmpty, 0, 0
+		}
+		if n, err := strconv.ParseInt(t, 10, 64); err == nil {
+			return parseNumberInt, n, 0
+		}
+		if f, err := strconv.ParseFloat(t, 64); err == nil {
+			*hasFloat = true
+			return parseNumberFloat, 0, f
+		}
+		return parseNumberUnreadable, 0, 0
+	}
+
+	// The kind, not the type, so a named numeric type such as
+	// `type Celsius float64` reads like the builtin it is built on.
+	switch rv := reflect.ValueOf(v); rv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return parseNumberInt, rv.Int(), 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		u := rv.Uint()
+		if u <= math.MaxInt64 {
+			return parseNumberInt, int64(u), 0
+		}
+		*hasFloat = true
+		return parseNumberFloat, 0, float64(u)
+	case reflect.Float32, reflect.Float64:
+		*hasFloat = true
+		return parseNumberFloat, 0, rv.Float()
+	}
+
+	// A fixed-point decimal is a number this rule does not name, so it is
+	// left alone rather than counted as a failure; anything else is a value
+	// ParseNumbers cannot read.
+	if IsNumeric(v) {
+		return parseNumberUntouched, 0, 0
+	}
+	return parseNumberUnreadable, 0, 0
 }
 
 // ParseStrings converts all elements in the DataList to strings.

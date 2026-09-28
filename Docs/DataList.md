@@ -1941,7 +1941,7 @@ dl.Lower()
 func (dl *DataList) Capitalize() *DataList
 ```
 
-**Description:** Capitalizes the first letter of each string element.
+**Description:** Capitalizes the first letter of each word of each string element and lowers the rest. It uses the language-neutral casing rules, with no language's special cases: Dutch `ijssel` becomes `Ijssel`, not `IJssel`, and Turkish `istanbul` becomes `Istanbul`, not `İstanbul`.
 
 **Parameters:**
 
@@ -2291,7 +2291,14 @@ isSame := dl1.IsTheSameAs(dl2) // true
 func (dl *DataList) ParseNumbers() *DataList
 ```
 
-**Description:** Converts all elements to numeric values where possible.
+**Description:** Converts the numbers written as text into numbers, choosing one type for all of them the way the CSV reader types a column:
+
+- When every number in the list is an integer and no string is empty, every number becomes `int64`, so an ID above 2^53 keeps every digit.
+- Otherwise every number becomes `float64`, and an empty string becomes `NaN`.
+
+Text is trimmed of surrounding white space first and read with `strconv.ParseInt` (base 10) or `strconv.ParseFloat`, the same calls the CSV reader uses. Values that are already numbers count too: an integer of any Go width counts as an integer, a float as a decimal, and all of them are converted to the chosen type. A decimal value is already a number and is left as it is, and so is `nil`. A string that is not a number, or a value such as a `bool` or a `time.Time`, is left unchanged; the call records one error on `Err()` saying how many values were left and which row held the first.
+
+For a list of strings with no unreadable value and no surrounding white space, the result is exactly what `ReadCSVFile` gives for the same column. The CSV reader differs in two ways: it trims white space only with `TrimLeadingSpace`, and one unreadable cell leaves its whole column as text.
 
 **Parameters:**
 
@@ -2304,9 +2311,14 @@ func (dl *DataList) ParseNumbers() *DataList
 **Example:**
 
 ```go
+ids := insyra.NewDataList("9007199254740993", "42")
+ids.ParseNumbers()
+// [9007199254740993 42], both int64
+
 dl := insyra.NewDataList("1", "2.5", "hello", "3")
 dl.ParseNumbers()
-// Converts "1" -> 1, "2.5" -> 2.5, "3" -> 3, "hello" remains unchanged
+// [1 2.5 hello 3]: "2.5" makes every number a float64, "hello" stays,
+// and dl.Err() reports that 1 value at row 3 could not be read
 ```
 
 ### ParseStrings
