@@ -46,7 +46,85 @@ type YFinanceConfig struct {
 	Concurrency int
 }
 
-type YFHistoryParams = models.HistoryParams
+// YFHistoryParams selects the bars History returns.
+type YFHistoryParams struct {
+	// Period is the range to fetch: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y,
+	// ytd or max.
+	Period string `json:"period,omitempty"`
+
+	// Interval is the bar size: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d,
+	// 1wk, 1mo or 3mo.
+	Interval string `json:"interval,omitempty"`
+
+	// Start and End bound the range by date instead of Period.
+	Start *time.Time `json:"start,omitempty"`
+	End   *time.Time `json:"end,omitempty"`
+
+	// PrePost includes pre- and post-market bars.
+	PrePost bool `json:"prepost,omitempty"`
+
+	// AutoAdjust adjusts open, high, low and close for splits and dividends.
+	AutoAdjust bool `json:"autoAdjust,omitempty"`
+
+	// Actions includes dividend and split events.
+	Actions bool `json:"actions,omitempty"`
+
+	// Repair repairs bad data, such as prices off by 100x and missing values.
+	Repair bool `json:"repair,omitempty"`
+
+	// RepairOptions chooses which repairs Repair applies. Nil applies all of
+	// them.
+	RepairOptions *YFRepairOptions `json:"repairOptions,omitempty"`
+
+	// KeepNA keeps rows whose values are missing.
+	KeepNA bool `json:"keepna,omitempty"`
+}
+
+// YFRepairOptions chooses which repairs YFHistoryParams.Repair applies.
+type YFRepairOptions struct {
+	// FixUnitMixups repairs prices off by 100x from a currency unit mix-up,
+	// such as dollars and cents or pounds and pence.
+	FixUnitMixups bool `json:"fixUnitMixups,omitempty"`
+
+	// FixZeroes repairs missing or zero prices.
+	FixZeroes bool `json:"fixZeroes,omitempty"`
+
+	// FixSplits repairs bad stock split adjustments.
+	FixSplits bool `json:"fixSplits,omitempty"`
+
+	// FixDividends repairs bad dividend adjustments.
+	FixDividends bool `json:"fixDividends,omitempty"`
+
+	// FixCapitalGains repairs capital gains counted twice, for ETFs and mutual
+	// funds.
+	FixCapitalGains bool `json:"fixCapitalGains,omitempty"`
+}
+
+// toModel converts p to go-yfinance's parameters, field by field, so that a
+// field go-yfinance renames fails to compile here.
+func (p YFHistoryParams) toModel() models.HistoryParams {
+	out := models.HistoryParams{
+		Period:     p.Period,
+		Interval:   p.Interval,
+		Start:      p.Start,
+		End:        p.End,
+		PrePost:    p.PrePost,
+		AutoAdjust: p.AutoAdjust,
+		Actions:    p.Actions,
+		Repair:     p.Repair,
+		KeepNA:     p.KeepNA,
+	}
+	if o := p.RepairOptions; o != nil {
+		out.RepairOptions = &models.RepairOptions{
+			FixUnitMixups:   o.FixUnitMixups,
+			FixZeroes:       o.FixZeroes,
+			FixSplits:       o.FixSplits,
+			FixDividends:    o.FixDividends,
+			FixCapitalGains: o.FixCapitalGains,
+		}
+	}
+	return out
+}
 
 // YFPeriod represents frequency values used for financial statements.
 // Accepted values: YFPeriodAnnual, YFPeriodYearly, YFPeriodQuarterly.
@@ -58,6 +136,30 @@ const (
 	YFPeriodYearly    YFPeriod = "yearly"
 	YFPeriodQuarterly YFPeriod = "quarterly"
 )
+
+// YFNewsTab selects which articles News returns.
+type YFNewsTab string
+
+const (
+	YFNewsTabNews          YFNewsTab = "news"           // news articles; the empty tab means this too
+	YFNewsTabAll           YFNewsTab = "all"            // news articles and press releases
+	YFNewsTabPressReleases YFNewsTab = "press releases" // press releases only
+)
+
+// toModel converts tab to go-yfinance's tab. A tab News does not know is an
+// error rather than news, which is what go-yfinance would fetch for it.
+func (tab YFNewsTab) toModel() (models.NewsTab, error) {
+	switch tab {
+	case "", YFNewsTabNews:
+		return models.NewsTabNews, nil
+	case YFNewsTabAll:
+		return models.NewsTabAll, nil
+	case YFNewsTabPressReleases:
+		return models.NewsTabPressReleases, nil
+	default:
+		return "", fmt.Errorf("yfinance: unknown news tab %q; use YFNewsTabNews, YFNewsTabAll or YFNewsTabPressReleases", string(tab))
+	}
+}
 
 func (cfg YFinanceConfig) normalize() (YFinanceConfig, error) {
 	out := cfg
@@ -292,7 +394,7 @@ func (t *YFTicker) History(params YFHistoryParams) (*insyra.DataTable, error) {
 			return nil, err
 		}
 
-		bars, err := tk.History(models.HistoryParams(params))
+		bars, err := tk.History(params.toModel())
 		if err == nil {
 			dt, err := insyra.ReadJSON(bars)
 			if err != nil {
@@ -491,9 +593,15 @@ func (t *YFTicker) OptionChain(date string) (*YFOptionChainTables, error) {
 	return buildOptionChainTables(t.symbol, date, chain)
 }
 
-// News fetches news articles for this ticker.
-func (t *YFTicker) News(count int, tab models.NewsTab) (*insyra.DataTable, error) {
+// News fetches up to count news articles for this ticker; count <= 0 means 10.
+// An empty tab means YFNewsTabNews, and a tab outside the three YFNewsTab
+// values is an error, returned before any request.
+func (t *YFTicker) News(count int, tab YFNewsTab) (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
+		return nil, err
+	}
+	modelTab, err := tab.toModel()
+	if err != nil {
 		return nil, err
 	}
 	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
@@ -502,7 +610,7 @@ func (t *YFTicker) News(count int, tab models.NewsTab) (*insyra.DataTable, error
 	}
 	defer tk.Close()
 
-	articles, err := tk.News(count, tab)
+	articles, err := tk.News(count, modelTab)
 	if err != nil {
 		return nil, err
 	}

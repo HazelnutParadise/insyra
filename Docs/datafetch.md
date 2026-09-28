@@ -348,10 +348,16 @@ After obtaining a ticker object via `yf.Ticker(symbol)`, the following methods a
 #### 1. History & Quotes
 
 - `History(params YFHistoryParams)`: Fetches historical OHLCV bars.
-  - **Key `YFHistoryParams` fields**:
-    - `Period`: Time range (e.g., `"1d", "5d", "1mo", "1y", "max"`).
-    - `Interval`: Data granularity (e.g., `"1m", "5m", "1d", "1wk"`).
-    - `Start`, `End`: Specific date range (format `YYYY-MM-DD`).
+  - **`YFHistoryParams` fields**:
+    - `Period`: Time range: `"1d"`, `"5d"`, `"1mo"`, `"3mo"`, `"6mo"`, `"1y"`, `"2y"`, `"5y"`, `"10y"`, `"ytd"` or `"max"`.
+    - `Interval`: Bar size: `"1m"`, `"2m"`, `"5m"`, `"15m"`, `"30m"`, `"60m"`, `"90m"`, `"1h"`, `"1d"`, `"5d"`, `"1wk"`, `"1mo"` or `"3mo"`.
+    - `Start`, `End` (`*time.Time`): A date range to fetch instead of `Period`.
+    - `PrePost`: Include pre- and post-market bars.
+    - `AutoAdjust`: Adjust open, high, low and close for splits and dividends.
+    - `Actions`: Include dividend and split events.
+    - `Repair`: Repair bad data, such as prices off by 100x and missing values. `RepairOptions` (`*YFRepairOptions`) chooses which repairs run through `FixUnitMixups`, `FixZeroes`, `FixSplits`, `FixDividends` and `FixCapitalGains`; `nil` runs all of them.
+    - `KeepNA`: Keep rows whose values are missing.
+  - `YFHistoryParams` and `YFRepairOptions` are declared by `datafetch` itself, so upgrading the go-yfinance backend does not change them.
 - `Quote()`: Fetches current quote summary.
 - `FastInfo()`: Returns quick statistics (Market Cap, Price, etc.).
 - `Info()`: Returns comprehensive company/security metadata.
@@ -381,14 +387,19 @@ These methods return a `*datafetch.YFFinancialStatementTables` structure contain
 - `OptionChain(date string)`: Fetches the option chain for a specific date.
   - Returns `*datafetch.YFOptionChainTables` containing: `Calls`, `Puts`, `Underlying` (as DataTables) and `Expiration` (as time.Time).
 
-#### 5. Holders & Insider Trading
+#### 5. News & Calendar
+
+- `News(count int, tab YFNewsTab)`: Up to `count` news articles (`count <= 0` means 10). `tab` is `YFNewsTabNews` for news articles, which the empty tab also means, `YFNewsTabAll` for articles and press releases, or `YFNewsTabPressReleases` for press releases only. Any other value is an error, returned before any request.
+- `Calendar()`: Upcoming earnings and dividend dates.
+
+#### 6. Holders & Insider Trading
 
 - `MajorHolders()`: Major holders percentages.
 - `InstitutionalHolders()`: Detailed list of institutional holders.
 - `MutualFundHolders()`: Detailed list of mutual fund holders.
 - `InsiderTransactions()`: Records of insider trading activities.
 
-#### 6. Analyst Estimates & Recommendations
+#### 7. Analyst Estimates & Recommendations
 
 - `Recommendations()`: Analyst rating suggestions.
 - `AnalystPriceTargets()`: Analyst price targets.
