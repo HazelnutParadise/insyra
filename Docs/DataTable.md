@@ -219,7 +219,7 @@ if err != nil {
 func ReadJSON(data any) (*DataTable, error)
 ```
 
-**Description:** Reads JSON data (supports bytes, string, slice, map, or any JSON-compatible value) and loads it into a new DataTable.
+**Description:** Reads JSON data (supports bytes, string, slice, map, or any JSON-compatible value) and loads it into a new DataTable. Bytes and strings are decoded the way `encoding/json` decodes them: input that is not valid JSON, such as a number with a leading zero (`01`) or a trailing comma, is an error; invalid UTF-8 inside a string becomes U+FFFD; and errors are worded as `encoding/json` words them. Numbers are typed as in `ReadJSON_File`; a number that is neither an `int64` nor a finite `float64`, such as `1e400`, is kept as the string it was written as, the way `ReadCSV` keeps the same text.
 
 **Parameters:**
 
@@ -568,7 +568,7 @@ if err != nil {
 func (dt *DataTable) ToJSON(filePath string, useColNames bool) error
 ```
 
-**Description:** Saves the DataTable as a JSON file.
+**Description:** Saves the DataTable as a JSON file. The bytes are exactly what `encoding/json.MarshalIndent` writes for the same rows with a two-space indent, so a small exponent is spelled `1e-7`.
 
 **Parameters:**
 
@@ -594,7 +594,7 @@ if err != nil {
 func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte
 ```
 
-**Description:** Converts the DataTable to JSON format and returns as bytes.
+**Description:** Converts the DataTable to JSON format and returns as bytes: the same bytes `ToJSON` writes.
 
 **Parameters:**
 
@@ -617,7 +617,7 @@ fmt.Println(string(jsonData))
 func (dt *DataTable) ToJSON_String(useColNames bool) string
 ```
 
-**Description:** Converts the DataTable to JSON format and returns it as a string.
+**Description:** Converts the DataTable to JSON format and returns it as a string: the same text `ToJSON` writes.
 
 **Parameters:**
 

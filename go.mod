@@ -145,7 +145,7 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-echarts/go-echarts/v2 v2.7.3
 	github.com/go-echarts/snapshot-chromedp v0.0.5
-	github.com/goccy/go-json v0.10.6
+	github.com/goccy/go-json v0.11.1
 	github.com/gogpu/gputypes v0.8.0
 	github.com/gogpu/wgpu v0.34.5
 	github.com/google/uuid v1.6.0

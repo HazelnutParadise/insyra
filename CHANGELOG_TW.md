@@ -14,6 +14,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `StandardScaler`、`MinMaxScaler`、`RobustScaler` 與 `MaxAbsScaler` 實作了 `json.Marshaler` 與 `json.Unmarshaler`，已擬合的 scaler 可以存起來之後再用。用 `json.Unmarshal` 讀回同一型別後，轉換結果與原本完全相同，以欄字母擬合的欄也一樣，NaN 參數讀回仍是 NaN。以前對 scaler 呼叫 `json.Marshal` 只會得到 `{}`。
 - CCL 的 `TOSTR` 遇到動詞是標點或非 ASCII 字母、又沒有值可填的格式，會像字母動詞一樣回傳錯誤：v0.3.3 的 `TOSTR(A, '%v %_')` 會把 `1 %!_(MISSING)` 寫進儲存格。
 - 內容相同的巢狀陣列與巢狀 slice，不論大小，對 `Count`、`Counter`、`Find` 與 `Replace` 系列方法，以及其他依值比對儲存格的查找，都是同一個值。v0.3.3 把大的巢狀 slice 寫成摘要、陣列則從不這樣做，所以內容超過約 1 KiB 後兩者就對不上了。
+- **BREAKING**：`ReadJSON` 與 `ReadJSON_File` 會拒收不合法的 JSON，例如開頭多一個 0 的數字（`{"a":01}`），以前會讀成 1。解碼方式現在和 `encoding/json` 一致：超出 `float64` 範圍的數字（例如 `1e400`）保留成原本的文字，和 `ReadCSV` 的做法相同，以前整次讀取會失敗；字串裡的無效 UTF-8 會換成 U+FFFD，不再原樣保留；錯誤訊息的寫法也和 `encoding/json` 相同。這些來自 `github.com/goccy/go-json` v0.11，所有使用 insyra 的程式都會跟著用到這個版本。
+- `ToJSON`、`ToJSON_Bytes` 與 `ToJSON_String` 輸出的內容和 `encoding/json.MarshalIndent` 完全相同。實測唯一的差別是很小的指數改寫成 `1e-7`，不再是 `1e-07`，數值不變。
+- JSON 讀寫變快了。一張 10 萬列、5 欄、JSON 約 14 MB 的表，`ToJSON_Bytes` 從 66 ms 降到 45 ms，`ReadJSON` 從 129 ms 降到 90 ms（Apple M3，取 5 次最快）。
 
 ### CLI
 
