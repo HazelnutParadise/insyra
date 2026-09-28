@@ -176,8 +176,18 @@ const (
 	tableNameFactorScores            = "FactorScores"
 )
 
-// Show prints everything in the FactorAnalysisResult
+// Show prints String to standard output. Given a row range, it instead shows
+// each of the result's tables through that range, the way DataTable.ShowRange
+// does, followed by the convergence fields.
 func (r *FactorAnalysisResult) Show(startEndRange ...any) {
+	if r == nil {
+		fmt.Println("<nil>")
+		return
+	}
+	if len(startEndRange) == 0 {
+		fmt.Println(r.String())
+		return
+	}
 	insyra.Show("Communalities", r.Communalities, startEndRange...)
 	insyra.Show(tableNameSamplingAdequacy, r.SamplingAdequacy, startEndRange...)
 	if r.BartlettTest != nil {

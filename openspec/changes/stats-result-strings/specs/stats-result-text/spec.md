@@ -2,7 +2,7 @@
 
 ### Requirement: Every stats result prints itself the same way
 
-`stats` 中每個名稱以 `Result` 結尾的匯出 struct 型別 SHALL 自己宣告 `String() string` 與 `Show()`（`FactorAnalysisResult` 為 `Show(startEndRange ...any)`），接收者為指標。內嵌 `FactorAnalysisResult` 的 `FactorModel` SHALL 透過內嵌取得兩者。`stats` 的測試 SHALL 解析套件原始碼，任何這類型別缺少自己的 `String` 或 `Show` 時失敗。
+`stats` 中每個名稱以 `Result` 結尾的匯出 struct 型別 SHALL 自己宣告 `String() string` 與 `Show()`（`FactorAnalysisResult` 為 `Show(startEndRange ...any)`），接收者為指標。內嵌 `FactorAnalysisResult` 的 `FactorModel` SHALL 自己宣告 `String()` 與 `Show(startEndRange ...any)`，交給內嵌的 `FactorAnalysisResult` 處理；透過內嵌取得的方法在 nil 的 `*FactorModel` 上會先解參考而 panic，所以不能只靠內嵌。`stats` 的測試 SHALL 解析套件原始碼，任何這類型別缺少自己的 `String` 或 `Show` 時失敗。
 
 `String()` 的內容 SHALL 為：
 
@@ -13,7 +13,7 @@
 - 切片與陣列寫在同一行，形如 `[a b c]`；多於 60 個元素時 SHALL 只寫前 20 個與後 5 個，中間以 `...` 隔開，並在後面註明元素總數。巢狀的 struct 寫成 `{Field: value, …}`。
 - 型別為表格（`insyra.IDataTable`）的欄位 SHALL 在欄位名稱那一行之下，以縮排的格線寫出列名、欄名與每一格；多於 60 列時 SHALL 只寫前 20 列與後 5 列，中間以 `...` 隔開。
 - 輸出 SHALL NOT 含 ANSI 色碼，也 SHALL NOT 依終端機寬度改變，同一個結果在任何環境得到相同的文字。
-- nil 接收者 SHALL 回傳 `<nil>`，SHALL NOT panic。
+- nil 接收者 SHALL 回傳 `<nil>`，SHALL NOT panic；`Show` 在 nil 接收者上 SHALL 印出 `<nil>`，有沒有給範圍都一樣。
 
 `Show()` SHALL 把 `String()` 加一個換行寫到標準輸出。`FactorAnalysisResult.Show` 沒有給範圍時 SHALL 同樣印出 `String()`；給了範圍時 SHALL 照舊以該範圍顯示每張表。
 

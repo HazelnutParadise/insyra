@@ -30,7 +30,7 @@ The stats package provides comprehensive statistical analysis functions:
 
 Most functions expect numeric data in `DataList`/`DataTable` and return `error` when inputs are invalid or computation fails. Always handle `err` at call sites.
 
-The error is the last value a function returns. A function that returns several values, such as `CorrelationMatrix` or `CorrelationAnalysis`, returns the others first. When a function returns an error, the result pointer it returns is `nil`, so check `err` before reading the result. Five return no error because they cannot fail: `NormCDF`, `DefaultFactorAnalysisOptions`, `RegisterKNNDeviceSearcher`, and the `Show` methods of `ChiSquareTestResult` and `FactorAnalysisResult`, which only print. `stats` reports its failures through the returned error. It never calls `LogFatal` and does not record on a table's or list's `Err()`. `FactorAnalysis` also logs a warning and carries on in a few cases it works around rather than refuses:
+The error is the last value a function returns. A function that returns several values, such as `CorrelationMatrix` or `CorrelationAnalysis`, returns the others first. When a function returns an error, the result pointer it returns is `nil`, so check `err` before reading the result. A few return no error because they cannot fail: `NormCDF`, `DefaultFactorAnalysisOptions`, `RegisterKNNDeviceSearcher`, and every result's `String` and `Show`, which only format and print. `stats` reports its failures through the returned error. It never calls `LogFatal` and does not record on a table's or list's `Err()`. `FactorAnalysis` also logs a warning and carries on in a few cases it works around rather than refuses:
 
 - a `FixedK` above the number of variables is lowered to that number;
 - a Bartlett or Anderson-Rubin score with PCA extraction is computed as a regression score;
@@ -160,6 +160,36 @@ if err != nil {
 for _, r := range []stats.HypothesisTestResult{tt, mw} {
     fmt.Printf("statistic=%.4f p=%.4f\n", r.Base().Statistic, r.Base().PValue)
 }
+```
+
+### Printing a result
+
+Every result type in `stats` has `String()` and `Show()`, so `fmt.Println(res)`, `log.Print(res)` and `res.Show()` all print the whole result, and `fmt.Fprintln(w, res)` writes it to any `io.Writer`, such as a file or an HTTP response. `Show()` prints exactly `String()` and a newline to standard output. Every result is laid out by the same rules:
+
+- The first line names the analysis, such as `t-test` or `Two-way ANOVA`.
+- Then comes one line per field, `  Name: value`, with the field's Go name, in the order the type declares them. The fields of the embedded `TestResult` come first.
+- A field that is `nil` does not apply to this result and is left out, so a one-sample t-test prints no `Mean2`.
+- Numbers are written the way insyra writes every number as text: a plain decimal from 0.000001 up to 1e21, so a sum of squares of 1,500,000 prints as `1500000`, and exponent form outside that range.
+- A list prints on its line in brackets. Past 60 values it shows the first 20 and the last 5 and says how many there are, the rule the table views follow.
+- A table field, such as `Observed` in a chi-square result or `Loadings` in a factor analysis, prints as a grid under its name, with row and column names, cut the same way past 60 rows.
+
+The text carries no colour codes and does not depend on the terminal, so it is the same in a log file and in a test.
+
+```go
+data := insyra.NewDataList(52.1, 58.3, 57.4, 51.3, 61.2, 42.8, 46.8)
+res, err := stats.SingleSampleTTest(data, 50)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(res)
+// t-test
+//   Statistic: 1.1410680515539608
+//   PValue: 0.2973295155479838
+//   DF: 6
+//   CI: [46.746620529715656 58.93909375599864]
+//   EffectSizes: [{Type: cohen_d, Value: 0.43128318477325844}]
+//   Mean: 52.84285714285715
+//   N: 7
 ```
 
 ### Alternative Hypothesis
@@ -605,7 +635,7 @@ Both tests are checked against R's `chisq.test` itself: the statistic, p-value, 
 func (r *ChiSquareTestResult) Show()
 ```
 
-**Description:** Prints the statistic, p-value and degrees of freedom, then the `Observed` and `Expected` tables.
+**Description:** Prints `String()`: the statistic, p-value and degrees of freedom, then the `Observed` and `Expected` tables as grids. See [Printing a result](#printing-a-result).
 
 **Example**:
 
@@ -1459,7 +1489,7 @@ res, err := stats.FactorAnalysis(dt, opt)
 if err != nil {
     log.Fatal(err)
 }
-res.Show()  // prints loadings, communalities, KMO, Bartlett, scores, ...
+res.Show()  // prints every field: loadings, communalities, KMO, Bartlett, scores, ...
 ```
 
 #### Factor Extraction Method
@@ -1641,8 +1671,11 @@ type BartlettTestResult struct {
 }
 ```
 
-`FactorModel` embeds `FactorAnalysisResult` and adds a `Show(...)` method that
-prints every output table.
+`FactorModel` embeds `FactorAnalysisResult`, so it prints like any other result
+(see [Printing a result](#printing-a-result)). `Show` also takes an optional row
+range, passed to each table's `ShowRange`: `res.Show(0, nil)` shows every row
+of every table, which is the way to see all the factor scores rather than the
+first 20 and last 5.
 
 #### KMO and Bartlett's Test
 

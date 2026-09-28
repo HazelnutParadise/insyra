@@ -26,18 +26,6 @@ type ChiSquareTestResult struct {
 	Expected *insyra.DataTable // expected counts under the null hypothesis
 }
 
-func (r *ChiSquareTestResult) Show() {
-	if r == nil {
-		fmt.Println("Chi-Square Test failed: cannot show results")
-		return
-	}
-	fmt.Printf("Chi-Square Test Statistic: %v\n", r.Statistic)
-	fmt.Printf("Chi-Square Test P-Value: %v\n", r.PValue)
-	fmt.Printf("Chi-Square Test Degrees of Freedom: %v\n", *r.DF)
-	insyra.Show("Observed", r.Observed)
-	insyra.Show("Expected", r.Expected)
-}
-
 // countTable builds a rows x cols table of counts from values laid out
 // row-major (values[i*cols+j] is row i, column j), naming the table, its
 // rows and its columns.
