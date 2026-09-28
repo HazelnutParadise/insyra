@@ -64,6 +64,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `StandardScaler`、`MinMaxScaler`、`RobustScaler` 與 `MaxAbsScaler` 實作了 `json.Marshaler` 與 `json.Unmarshaler`，已擬合的 scaler 可以存起來之後再用。用 `json.Unmarshal` 讀回同一型別後，轉換結果與原本完全相同：每個擬合欄都以欄名記住，沒有欄名的才記位置，NaN 參數讀回仍是 NaN。以前對 scaler 呼叫 `json.Marshal` 只會得到 `{}`。
 - CCL 的 `TOSTR` 遇到動詞是標點或非 ASCII 字母、又沒有值可填的格式，會像字母動詞一樣回傳錯誤：v0.3.3 的 `TOSTR(A, '%v %_')` 會把 `1 %!_(MISSING)` 寫進儲存格。
 - 內容相同的巢狀陣列與巢狀 slice，不論大小，對 `Count`、`Counter`、分組與合併都是同一個值。v0.3.3 把大的巢狀 slice 寫成摘要、陣列則從不這樣做，所以內容超過約 1 KiB 後兩者就對不上了。
+- **BREAKING**：`ProcessData` 改成回傳 `([]any, error)`，不再回傳 `([]any, int)`。原本的 int 只是切片長度，讀不了的值則回傳 `nil, 0` 並寫一行 log，呼叫端分不出這和空切片的差別。現在讀不了的型別、`nil` 和 nil 指標都會回傳錯誤，nil 的 `*DataList` 也不會再讓它當掉。`WeightedMean` 與 `WeightedMovingAverage` 遇到讀不了的權重，會回報成權重的問題（`weights: cannot read int: …`），不再當成長度不符。寫法改成 `values, err := insyra.ProcessData(x)`，長度用 `len(values)` 取得。
+- `SqrtRat`、`PowRat`、`SortTimes` 與 `F64orRat` 標為 **Deprecated**，下一版移除。insyra 本身沒有用到它們，每個函式的說明都寫了可以改用的 `math/big` 或 `slices` 寫法。移除前的這一版先修好兩個問題：`SqrtRat` 收到負數或 `nil` 會回傳 `nil`，不再 panic。`PowRat` 的指數是負數時會回傳倒數，以前 `PowRat(big.NewRat(2, 3), -2)` 會回傳 `1`。`PowRat(nil, n)` 以及 0 的負次方回傳 `nil`。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
@@ -109,6 +111,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `PairedTTest`、`SingleSampleWilcoxon`、`PairedWilcoxon`、`MannWhitneyU`、`OneWayANOVA`、`TwoWayANOVA`、`RepeatedMeasuresANOVA`、`KruskalWallis` 與 `FriedmanTest` 改為拒絕 `NaN` 或 `±Inf` 的格子，這正是 `stats` 文件一直對每個數值入口的描述。它們原本只檢查格子能不能轉成數字，所以這些值會進入計算，而且錯誤是 nil：`PairedTTest` 和三種 ANOVA 回傳 `NaN` 的統計量與 p 值，排序類檢定則回傳看起來正常的結果，因為 `NaN` 一樣會被排出名次。`KruskalWallis` 對 `[1, 2, NaN, 4]` 與 `[1, 2, 3, 4]` 回報 H = 0.54、p = 0.46。現在錯誤訊息和其他檢定一致，list 與位置都從 1 起算，例如 `group 2 contains a non-finite value at row 3: NaN`、`cell (A=2, B=1) contains a non-numeric value at row 2: <nil>` 與 `subject 2 contains a non-finite value at condition 2: NaN`，成對與雙樣本檢定則用 `data1` 或 `data2` 指出是哪個 list。以前的訊息是沒有位置的 `invalid numeric value in data1`，或從 0 起算的 `invalid data at group 0 index 2`。`LeveneTest` 與 `BartlettTest` 的組號也改從 1 起算（以前的 `group 1` 指的是第二組），空組、空格與條件數不符的受試者錯誤也一樣。`nil` 的 list（不論是否帶型別）會得到空 list 會得到的錯誤。`OneWayANOVA`、`KruskalWallis` 與 `FriedmanTest` 以前遇到它會讓整個程式結束，因為問題發生在 `recover` 接不到的 goroutine 裡，`TwoWayANOVA`、`RepeatedMeasuresANOVA` 與 `SingleSampleWilcoxon` 則會 panic。全為有限數值的輸入結果不變。CLI 的 `ttest paired`、`anova` 與 `ftest levene|bartlett` 指令會印出新的訊息。
 - 本身不是 `*insyra.DataList` 的 list（例如 `isr.DL` 建立的 list）現在會照原本存的樣子讀取。`stats` 以前會用 `NewDataList` 重建這種 list，而它會把一格 slice 拆成好幾個數字，所以 `SingleSampleTTest` 等會轉換輸入的函式把這一格算成多個觀察值，四格的 list 進到 `PairedTTest` 的長度檢查時也變成了五格。現在這一格會被拒絕，和同一格放在 `*insyra.DataList` 裡的結果一樣：`data contains a non-numeric value at row 4: [10 11]`。
 - `CutTreeByK` 與 `CutTreeByHeight` 遇到合併、高度與標籤數量對不上，或合併對象既不是葉節點也不是先前合併的樹時，改為回傳指出問題的錯誤。高度比合併少的樹以前會 panic；手動建立或從檔案還原的樹可能是任何形狀，而 CLI 現在會在一次性指令之間還原 `hclust` 的樹。
+- `Skewness` 與 `Kurtosis` 讀不了輸入時（包括 nil 的 `*DataList`），會回傳以 `sample:` 開頭的錯誤。以前 nil 的 list 會讓它們當掉，一般數字這類其他型別的值則被回報成 `empty data`。
 
 ### `csvxl`
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 會用 v0.3.3 檢查工作表名稱的同一套規則檢查 `csvNames` 指定的檔名：含路徑分隔符號、或不會直接落在輸出目錄內的檔名都會被拒絕，所以 `csvNames: []string{"sub/out.csv"}` 不再寫進子目錄。每張 CSV 先寫入暫存檔再 rename 到目標位置，寫入失敗時不會留下截斷的檔案。

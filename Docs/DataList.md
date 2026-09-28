@@ -1081,11 +1081,11 @@ func (dl *DataList) WeightedMean(weights any) float64
 
 **Parameters:**
 
-- `weights`: Weights as DataList or slice of float64
+- `weights`: Weights as a DataList, a slice or an array, one per value; read through [`ProcessData`](utils.md#processdata)
 
 **Returns:**
 
-- `float64`: Weighted mean
+- `float64`: Weighted mean. `NaN` when the list is empty, or when the weights cannot be read or do not match the list's length; the last two also set `Err()`.
 
 **Example:**
 
@@ -1459,11 +1459,11 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 **Parameters:**
 
 - `windowSize`: Size of the moving window
-- `weights`: Weights for the moving average
+- `weights`: Weights for the moving average, one per position in the window: a DataList, a slice or an array, read through [`ProcessData`](utils.md#processdata)
 
 **Returns:**
 
-- `*DataList`: New DataList with weighted moving averages
+- `*DataList`: New DataList with weighted moving averages. When the weights cannot be read or their count differs from `windowSize`, an empty DataList, with `Err()` set on it and on the receiver.
 
 **Example:**
 

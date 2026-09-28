@@ -577,7 +577,7 @@ func Skewness(sample any, method ...SkewnessMethod) (float64, error)
 
 **Parameters:**
 
-- `sample`: Data (any type convertible to float64 slice)
+- `sample`: A DataList, a slice or an array of numbers, read through [`insyra.ProcessData`](utils.md#processdata). Any other type, and a nil list, is an error prefixed `sample:`
 - `method`: Optional skewness calculation method (default: SkewnessG1)
 
 **Returns:**
@@ -607,7 +607,7 @@ func Kurtosis(data any, method ...KurtosisMethod) (float64, error)
 
 **Parameters:**
 
-- `data`: Data (any type convertible to float64 slice)
+- `data`: A DataList, a slice or an array of numbers, read through [`insyra.ProcessData`](utils.md#processdata). Any other type, and a nil list, is an error prefixed `sample:`
 - `method`: Optional kurtosis calculation method (default: KurtosisG2)
 
 **Returns:**

@@ -141,7 +141,7 @@
 | K-12 | ~~Med~~ 已修正（exported-functions-are-functions：四個函式變數含 `mkt.CAI` 改成 `func`；保留 `ReadSlice2D`，`Slice2DToDataTable` 標 Deprecated、下一版移除；新增全模組掃描測試防止再出現） | `ToFloat64`、`ToFloat64Safe`、`ReadSlice2D` 用 `var` 匯出函式值：使用者可以在執行期覆寫（`insyra.ToFloat64 = ...`），godoc 也不會列在 Functions 區；`ReadSlice2D` 與 `Slice2DToDataTable` 是同一件事兩個名字（準則 2、6） | utils.go:22-23；read.go:22 | 改成 `func` 包裝；別名擇一標 Deprecated |
 | K-13 | Low | 命名不符 Go 慣例且與 golint 衝突：`ReadCSV_File`、`ReadCSV_String`、`ReadJSON_File`、`ToJSON_Bytes`、`ToJSON_String`、`Dangerously_TurnOffThreadSafety` 用底線；`GetDoesUseColoredOutput`、`GetDontPanicStatus` 疊字；`ParseColIndex`/`CalcColIndex` 一對函式動詞不對稱（準則 9） | config.go；read.go；utils.go:244-251 | v1 前統一：`ReadCSVFile`、`ColIndexToNumber`/`ColNumberToIndex`、`ColoredOutput()` |
 | K-14 | ~~Low~~ 已修正（read-write-names：`ReadCSVFile`／`ReadCSVString`／`ReadJSONFile`／`ToJSONBytes`／`ToJSONString` 各一個名字、設定放可省略的設定包；`ToCSV(path, opts...)`；欄名／列名統一為 `NoHeaderRow`／`HasRowNames`，零值即常見檔案；舊名保留一版 Deprecated；`ReadExcelSheet` 只改參數名，因反轉位置 bool 會默默顛倒所有呼叫） | `ReadCSV_File(path, bool, bool, encoding ...string)`、`ReadExcelSheet(path, sheet, bool, bool)` 兩個裸 bool 加 variadic；`_WithOptions` 版本已存在，舊簽名該退場。`ReadExcelSheet` 沒有 options 版，也沒有型別推斷（既有 follow-up） | read.go:115, 384 | 舊簽名標 Deprecated；加 `ReadExcelSheetWithOptions` 沿用 `CSVReadOptions` 的欄位 |
-| K-15 | Low | 核心套件匯出了與資料表無關的工具：`SqrtRat`、`PowRat`（repo 內無人用）、`SortTimes`（只有 mkt 用一次，`slices.SortFunc` 可替代）、`ProcessData` 回傳 `([]any, int)` 而 int 就是 `len()`、失敗時回 `nil, 0` 靠 log 通知。`F64orRat` 是 internal 介面的匯出別名（準則 1、2） | utils.go:43-87, 90-112, 255-264, 20 | `SqrtRat`/`PowRat`/`SortTimes` 移入 internal 或刪除；`ProcessData` 改回 `([]any, error)` |
+| K-15 | ~~Low~~ 已修正（core-utils-cleanup） | 核心套件匯出了與資料表無關的工具：`SqrtRat`、`PowRat`（repo 內無人用）、`SortTimes`（只有 mkt 用一次，`slices.SortFunc` 可替代）、`ProcessData` 回傳 `([]any, int)` 而 int 就是 `len()`、失敗時回 `nil, 0` 靠 log 通知。`F64orRat` 是 internal 介面的匯出別名（準則 1、2） | utils.go:43-87, 90-112, 255-264, 20 | `SqrtRat`/`PowRat`/`SortTimes` 移入 internal 或刪除；`ProcessData` 改回 `([]any, error)` |
 | K-16 | ~~Low~~ 已修正（batch 3） | `atomic.go` 的 doc comment 是亂碼（`憒??典??蔭??`，來源檔曾以錯誤編碼存檔）；`SetDefaultConfig` 的 doc 寫成「DefaultConfig returns…」；`ReadCSV_FileWithOptions` 用 `"csvxl"` 當套件名寫 log（實際在 core）；`Slice2DToDataTable` 對空切片回錯而 pandas 允許空表（準則 5、E） | atomic.go:31, 37, 44, 49；config.go:97；read.go:139, 51 | 修文件；空切片回空表 |
 | K-18 | ~~Med~~ 已修正（batch 3） | `AppendRowsByColName` 直接 range map 新增欄位，Go map 迭代順序隨機，`ReadJSON`／`ReadJSON_File` 同一份 JSON 每次讀出的欄序不同（`TestReadJSONFileMatchesReadJSON` 隨機失敗）（準則 6、13） | datatable.go:222 | 欄名排序後新增 |
 | K-17 | Low | `LogInfo`/`LogWarning` 等四個 logger 函式是唯一的 log 出口，只能輸出到標準 `log`，不能接 `slog`/zap，也沒有 `io.Writer` 可設；成功路徑（Info）預設開啟，生產環境使用者要自己關（準則 14） | logger.go | 提供 `SetLogger(*slog.Logger)` 或 `SetOutput(io.Writer)`；預設等級改 Warning |
@@ -448,7 +448,7 @@
 | IN-14 | ~~Low~~ 已修正（fix-clear-defects-core） | `ConvertDateFormat` 逐序字串取代：`"MMM"`→`"011"`、`"Mon DD"`→`"1on 02"`；`hh` 對到 24 小時制、`A` 不支援 | internal/utils/utils.go:387-394 | 改 tokenizer |
 | IN-15 | Low | `AtomicDoAll(f, (*DataList)(nil))` 直接 nil deref panic；`nil any` 與 nil actor 會被跳過，型別化 nil 不會 | atomic.go:118 | `case *DataList: if v == nil { continue }`（K-8 相關） |
 | IN-16 | ~~Low~~ 已修正（fix-clear-defects-core） | `BiIndex.Set(id, name)` 當 name 已屬另一 id 時，舊 id 被刪但不進 freelist，成為永久空洞（`Len` 少 1）。公開 API 有 `safeRowName` 擋住，內部直接呼叫者會踩到 | internal/core/biindex.go:63 | `oldID` push 到 `freed`，或回 `false` 拒絕搶名 |
-| IN-17 | Low | `PowRat(base, -2)` 回 1（負指數被 `range` 靜默忽略）；`SqrtRat(-1)` panic，文件都沒說 | utils.go:90, 105 | 負指數取倒數或回錯；`SqrtRat` 負數回 nil 並註明（K-15 相關） |
+| IN-17 | ~~Low~~ 已修正（core-utils-cleanup） | `PowRat(base, -2)` 回 1（負指數被 `range` 靜默忽略）；`SqrtRat(-1)` panic，文件都沒說 | utils.go:90, 105 | 負指數取倒數或回錯；`SqrtRat` 負數回 nil 並註明（K-15 相關） |
 | IN-18 | ~~Low~~ 已修正（fix-clear-defects-core） | `IsNumeric(MyInt(3))` 為 true（反射），但 `ToFloat64Safe(MyInt(3))` 為 false，同一值一邊說是數字一邊轉不了 | utils.go:221-238；internal/utils/utils.go:20-49 | 兩邊統一 |
 | IN-19 | ~~Low~~ 已修正（harden-limits-and-permissions） | `ipc.WriteMessage` 不檢查 `maxMessageSize` 與 `len(b) > 2^32`（長度前綴截斷讓對端解框錯位）：寫 256MiB+1 成功、`ReadMessage` 回「exceeds maximum」 | py/internal/ipc/framing.go:34 | 寫入前檢查回錯 |
 | IN-20 | ~~Low~~ 已修正（batch 6） | `DetectEncoding`：`FF FE 00 00`（UTF-32LE BOM）判成 utf-16le；小樣本 Big5（4 bytes 中文）判成 iso-8859-1 讀出亂碼；小樣本 Latin-1 chardet 回「Charset not detected」導致 `ReadCSV_File` 整個失敗而非退回 utf-8 | utils.go:301, 322-330 | UTF-32 BOM 先判；chardet 失敗退回 utf-8 並記警告（SEC-5 相關） |
@@ -534,7 +534,7 @@
 | K-12 | [#211](https://github.com/HazelnutParadise/insyra/issues/211) | 已關閉（exported-functions-are-functions） |
 | K-13、C-12、I-4、DF-5 | [#212](https://github.com/HazelnutParadise/insyra/issues/212) |  |
 | K-14、D-8、E-6、E-7、PL-4、NN-3、C-2 | [#213](https://github.com/HazelnutParadise/insyra/issues/213) | 已關閉（refuse-extra-optional-values、column-data-type、core-settings-batch、imputer-refuses-unfillable-columns、nn-batchnorm-options、plot-heatmap-point-type、csvxl-encoding-like-core、read-write-names） |
-| K-15 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) |  |
+| K-15 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) | 已修正（core-utils-cleanup） |
 | K-17、C-9 | [#215](https://github.com/HazelnutParadise/insyra/issues/215) |  |
 | D-3 | [#216](https://github.com/HazelnutParadise/insyra/issues/216) |  |
 | D-5、D-6 | [#217](https://github.com/HazelnutParadise/insyra/issues/217) |  |
@@ -701,7 +701,7 @@
 | CCL-15 | [#234](https://github.com/HazelnutParadise/insyra/issues/234) | 補充留言 |
 | CCL-29 | [#259](https://github.com/HazelnutParadise/insyra/issues/259) | 補充留言 |
 | IN-15 | [#209](https://github.com/HazelnutParadise/insyra/issues/209) | 補充留言 |
-| IN-17 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) | 補充留言 |
+| IN-17 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) | 補充留言，已修正（core-utils-cleanup） |
 | SEC-9、SEC-19 | [#257](https://github.com/HazelnutParadise/insyra/issues/257) | 補充留言；已隨 #257 關閉（lp-pure-go-default） |
 | TS-15 | [#220](https://github.com/HazelnutParadise/insyra/issues/220) | 補充留言 |
 | IN-22 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) | 補充留言 |

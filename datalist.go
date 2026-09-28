@@ -896,11 +896,16 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 // The weights parameter should be a slice or a DataList of the same length as the window size.
 // Returns a new DataList containing the weighted moving average values.
 func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList {
-	weightsSlice, sliceLen := ProcessData(weights)
+	weightsSlice, weightsErr := ProcessData(weights)
 	var movingAvgData []float64
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
-		if windowSize <= 0 || windowSize > dl.Len() || sliceLen != windowSize {
+		if weightsErr != nil {
+			dl.fail("WeightedMovingAverage", "weights: %v", weightsErr)
+			isFailed = true
+			return
+		}
+		if windowSize <= 0 || windowSize > dl.Len() || len(weightsSlice) != windowSize {
 			dl.fail("WeightedMovingAverage", "Invalid window size or weights length")
 			isFailed = true
 			return
@@ -1351,14 +1356,22 @@ func (dl *DataList) Mean() float64 {
 // Returns math.NaN() if the DataList is empty, weights are invalid, or if no valid elements can be used.
 func (dl *DataList) WeightedMean(weights any) float64 {
 	var result float64
+	// Read the weights before locking dl: a DataList of weights has its own
+	// lock, which Data takes, and taking it inside dl's callback would read it
+	// unlocked.
+	weightsSlice, weightsErr := ProcessData(weights)
 	dl.AtomicDo(func(dl *DataList) {
 		if dl.Len() == 0 {
 			dl.warn("WeightedMean", "DataList is empty")
 			result = math.NaN()
 			return
 		}
-		weightsSlice, sliceLen := ProcessData(weights)
-		if sliceLen != len(dl.data) {
+		if weightsErr != nil {
+			dl.fail("WeightedMean", "weights: %v", weightsErr)
+			result = math.NaN()
+			return
+		}
+		if len(weightsSlice) != len(dl.data) {
 			dl.fail("WeightedMean", "Weights length does not match data length")
 			result = math.NaN()
 			return

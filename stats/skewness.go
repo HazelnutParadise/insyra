@@ -2,6 +2,7 @@ package stats
 
 import (
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
@@ -18,8 +19,11 @@ const (
 
 // Skewness calculates the skewness of a sample using the specified method.
 func Skewness(sample any, method ...SkewnessMethod) (float64, error) {
-	d, dLen := insyra.ProcessData(sample)
-	if dLen == 0 {
+	d, err := insyra.ProcessData(sample)
+	if err != nil {
+		return math.NaN(), fmt.Errorf("sample: %w", err)
+	}
+	if len(d) == 0 {
 		return math.NaN(), errors.New("empty data")
 	}
 

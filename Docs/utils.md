@@ -41,7 +41,7 @@ func ToFloat64Safe(v any) (float64, bool)
 func SliceToF64(data []any) []float64
 ```
 
-**Description:** Converts a slice of `any` values to a slice of `float64`. Currently only `float64` and `int` are converted; other types become `0`.
+**Description:** Converts a slice of `any` values to a slice of `float64`. Every numeric value, of any int, uint or float width, is converted; any other value becomes `0`.
 
 **Parameters:**
 
@@ -54,19 +54,27 @@ func SliceToF64(data []any) []float64
 ### ProcessData
 
 ```go
-func ProcessData(input any) ([]any, int)
+func ProcessData(input any) ([]any, error)
 ```
 
-**Description:** Normalizes input into a `[]any` and returns its length. Supports slices/arrays, `IDataList`, and pointers to those types. Unsupported types return `nil, 0`.
+**Description:** Reads `input` as a `[]any`: a slice or an array element by element, an `IDataList` by its values, and a pointer to a slice or an array by what it points to. An empty slice gives an empty, non-nil result. Any other type, a `nil` input and a nil pointer, a nil `*DataList` included, return an error and a nil slice.
 
 **Parameters:**
 
-- `input`: Input value for `input`. Type: `any`.
+- `input`: The values to read. Type: `any`.
 
 **Returns:**
 
-- `[]any`: Result slice. Type: `[]any`.
-- `int`: Computed value. Type: `int`.
+- `[]any`: The values, in order. Type: `[]any`.
+- `error`: Why `input` could not be read, or nil. Type: `error`.
+
+```go
+values, err := insyra.ProcessData([]float64{0.2, 0.3, 0.5})
+if err != nil {
+    // input was not a slice, an array or an IDataList
+}
+fmt.Println(len(values)) // 3
+```
 
 ### SqrtRat
 
@@ -74,15 +82,22 @@ func ProcessData(input any) ([]any, int)
 func SqrtRat(x *big.Rat) *big.Rat
 ```
 
-**Description:** Calculates the square root of a `*big.Rat` and returns the result as another `*big.Rat`.
+**Deprecated.** `SqrtRat` will be removed in the next release. Use `math/big` directly:
+
+```go
+f := new(big.Float).SetRat(x)
+root, _ := f.Sqrt(f).Rat(nil)
+```
+
+**Description:** Returns the square root of `x`, rounded to the precision of a `big.Float` holding `x`. Returns `nil` when `x` is `nil` or negative.
 
 **Parameters:**
 
-- `x`: Numeric parameter value. Type: `*big.Rat`.
+- `x`: The value to take the square root of. Type: `*big.Rat`.
 
 **Returns:**
 
-- `*big.Rat`: Return value. Type: `*big.Rat`.
+- `*big.Rat`: The square root, or `nil`. Type: `*big.Rat`.
 
 ### PowRat
 
@@ -90,16 +105,18 @@ func SqrtRat(x *big.Rat) *big.Rat
 func PowRat(base *big.Rat, exponent int) *big.Rat
 ```
 
-**Description:** Computes `base^exponent` for `*big.Rat` values.
+**Deprecated.** `PowRat` will be removed in the next release. Use `math/big` directly: raise `base.Num()` and `base.Denom()` with `big.Int.Exp` and combine them with `big.Rat.SetFrac`.
+
+**Description:** Returns `base` raised to `exponent` as a new value. A negative exponent gives the reciprocal of the positive power, so `PowRat(big.NewRat(2, 3), -2)` is `9/4`. Any base to the power 0 is 1. Returns `nil` when `base` is `nil`, or when `base` is 0 and `exponent` is negative, since 0 has no reciprocal.
 
 **Parameters:**
 
-- `base`: Input value for `base`. Type: `*big.Rat`.
-- `exponent`: Input value for `exponent`. Type: `int`.
+- `base`: The value to raise. Type: `*big.Rat`.
+- `exponent`: The power, which may be negative. Type: `int`.
 
 **Returns:**
 
-- `*big.Rat`: Return value. Type: `*big.Rat`.
+- `*big.Rat`: The power, or `nil`. Type: `*big.Rat`.
 
 ### ConvertLongDataToWide
 
@@ -191,11 +208,13 @@ func IsNumeric(v any) bool
 func SortTimes(times []time.Time)
 ```
 
-**Description:** Sorts a slice of `time.Time` in ascending order.
+**Deprecated.** `SortTimes` will be removed in the next release. Use `slices.SortFunc(times, time.Time.Compare)`.
+
+**Description:** Sorts a slice of `time.Time` in ascending order, in place.
 
 **Parameters:**
 
-- `times`: Input value for `times`. Type: `[]time.Time`.
+- `times`: The times to sort. Type: `[]time.Time`.
 
 **Returns:**
 
@@ -271,7 +290,6 @@ package main
 
 import (
     "fmt"
-    "math/big"
 
     "github.com/HazelnutParadise/insyra"
 )
@@ -281,8 +299,11 @@ func main() {
     f := insyra.ToFloat64(num)
     fmt.Println("Converted:", f)
 
-    rat := big.NewRat(16, 1)
-    sqrtRat := insyra.SqrtRat(rat)
-    fmt.Println("Square root:", sqrtRat)
+    values, err := insyra.ProcessData([]int{1, 2, 3})
+    if err != nil {
+        fmt.Println("cannot read:", err)
+        return
+    }
+    fmt.Println("Values:", values)
 }
 ```

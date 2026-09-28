@@ -1,6 +1,7 @@
 package mkt
 
 import (
+	"slices"
 	"sort"
 	"time"
 
@@ -128,7 +129,7 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 			continue // 少於4次交易無法計算CAI
 		}
 		// 先排序交易時間
-		insyra.SortTimes(times)
+		slices.SortFunc(times, time.Time.Compare)
 		intervals := calculateIntervals(times, timeScale)
 		customerTransactionsIntervals[customerID] = intervals
 	}

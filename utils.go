@@ -18,6 +18,10 @@ import (
 	"github.com/saintfish/chardet"
 )
 
+// F64orRat is a type constraint satisfied by float64 and *big.Rat.
+//
+// Deprecated: no insyra function uses F64orRat. It will be removed in the next
+// release.
 type F64orRat = utils.F64orRat
 
 // ToFloat64 converts a numeric value — any int, uint or float width, a named
@@ -49,77 +53,74 @@ func SliceToF64(input []any) []float64 {
 	return out
 }
 
-// ProcessData processes the input data and returns the data and the length of the data.
-// Returns nil and 0 if the data type is unsupported.
-// Supported data types are slices, IDataList, and pointers to these types.
-func ProcessData(input any) ([]any, int) {
-	var data []any
-
-	// 使用反射来处理数据类型
+// ProcessData reads input as a []any: a slice or an array element by element,
+// an IDataList by its values, and a pointer to a slice or an array by what it
+// points to. An empty slice gives an empty, non-nil result.
+//
+// Any other type, a nil input and a nil pointer are an error, with a nil
+// result.
+func ProcessData(input any) ([]any, error) {
+	if input == nil {
+		return nil, errors.New("input is nil")
+	}
 	value := reflect.ValueOf(input)
-
-	// 处理指针类型，获取指针指向的元素
+	if value.Kind() == reflect.Pointer && value.IsNil() {
+		return nil, fmt.Errorf("input is a nil %T", input)
+	}
+	if dl, ok := input.(IDataList); ok {
+		return dl.Data(), nil
+	}
 	if value.Kind() == reflect.Pointer {
 		value = value.Elem()
 	}
-
 	switch value.Kind() {
-	case reflect.Slice:
-		// 遍历切片中的每一个元素
+	case reflect.Slice, reflect.Array:
+		data := make([]any, value.Len())
 		for i := range value.Len() {
-			element := value.Index(i).Interface()
-			data = append(data, element)
+			data[i] = value.Index(i).Interface()
 		}
-	case reflect.Interface:
-		// 支持 IDataList 的断言
-		if dl, ok := input.(IDataList); ok {
-			data = dl.Data()
-		} else {
-			LogWarning("core", "ProcessData", "Unsupported data type %T, returning nil.", input)
-			return nil, 0
-		}
-	case reflect.Array:
-		// 如果需要支持数组类型，可以添加对 reflect.Array 的处理
-		for i := range value.Len() {
-			element := value.Index(i).Interface()
-			data = append(data, element)
-		}
-	default:
-		// 尝试类型断言为 IDataList
-		if dl, ok := input.(IDataList); ok {
-			data = dl.Data()
-		} else {
-			LogWarning("core", "ProcessData", "Unsupported data type %T, returning nil.", input)
-			return nil, 0
-		}
+		return data, nil
 	}
-
-	return data, len(data)
+	return nil, fmt.Errorf("cannot read %T: want a slice, an array or an IDataList", input)
 }
 
-// SqrtRat calculates the square root of a big.Rat.
-// 計算 big.Rat 的平方根
+// SqrtRat returns the square root of x, rounded to the precision of a
+// big.Float holding x. It returns nil when x is nil or negative.
+//
+// Deprecated: SqrtRat has nothing to do with data tables and will be removed
+// in the next release. Use math/big directly:
+//
+//	f := new(big.Float).SetRat(x)
+//	root, _ := f.Sqrt(f).Rat(nil)
 func SqrtRat(x *big.Rat) *big.Rat {
-	// 將 *big.Rat 轉換為 *big.Float
+	if x == nil || x.Sign() < 0 {
+		return nil
+	}
 	floatValue := new(big.Float).SetRat(x)
-
-	// 計算平方根
 	sqrtValue := new(big.Float).Sqrt(floatValue)
-
-	// 將 *big.Float 轉換為 *big.Rat
-	result := new(big.Rat)
-	sqrtXRat, _ := sqrtValue.Rat(result)
-	return sqrtXRat
+	result, _ := sqrtValue.Rat(nil)
+	return result
 }
 
-// PowRat calculates the power of a big.Rat.
-// 計算 big.Rat 的次方 (v^n)
+// PowRat returns base raised to exponent as a new value. A negative exponent
+// gives the reciprocal of the positive power, so PowRat(2/3, -2) is 9/4. Any
+// base to the power 0 is 1. It returns nil when base is nil, or when base is 0
+// and exponent is negative, since 0 has no reciprocal.
+//
+// Deprecated: PowRat has nothing to do with data tables and will be removed in
+// the next release. Use math/big directly: raise base.Num() and base.Denom()
+// with big.Int.Exp and combine them with big.Rat.SetFrac.
 func PowRat(base *big.Rat, exponent int) *big.Rat {
-	result := new(big.Rat).SetInt64(1) // 初始化為 1
-	for range exponent {
-		result.Mul(result, base) // result = result * base
+	if base == nil || (exponent < 0 && base.Sign() == 0) {
+		return nil
 	}
-	return result
+	n := new(big.Int).Abs(big.NewInt(int64(exponent)))
+	num := new(big.Int).Exp(base.Num(), n, nil)
+	den := new(big.Int).Exp(base.Denom(), n, nil)
+	if exponent < 0 {
+		num, den = den, num
+	}
+	return new(big.Rat).SetFrac(num, den)
 }
 
 // Deprecated: ConvertLongDataToWide is misleadingly named — it does not produce
@@ -272,6 +273,9 @@ func CalcColIndex(colNumber int) (colIndex string, ok bool) {
 
 // SortTimes sorts a slice of time.Time in ascending order.
 // It sorts the times directly in the provided slice.
+//
+// Deprecated: SortTimes has nothing to do with data tables and will be removed
+// in the next release. Use slices.SortFunc(times, time.Time.Compare).
 func SortTimes(times []time.Time) {
 	algorithms.ParallelSortStableFunc(times, func(a, b time.Time) int {
 		if a.Before(b) {

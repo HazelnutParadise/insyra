@@ -2,6 +2,7 @@ package stats
 
 import (
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
@@ -18,8 +19,11 @@ const (
 
 // Kurtosis calculates the kurtosis of the input data.
 func Kurtosis(data any, method ...KurtosisMethod) (float64, error) {
-	d, dLen := insyra.ProcessData(data)
-	if dLen == 0 {
+	d, err := insyra.ProcessData(data)
+	if err != nil {
+		return math.NaN(), fmt.Errorf("sample: %w", err)
+	}
+	if len(d) == 0 {
 		return math.NaN(), errors.New("empty data")
 	}
 	d64, err := numericValues(d, "sample")
