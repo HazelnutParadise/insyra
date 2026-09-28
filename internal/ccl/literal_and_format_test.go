@@ -107,6 +107,13 @@ func TestTOSTR_BadFormatIsAnError(t *testing.T) {
 		{name: "unknown verb", expr: "TOSTR(1, '%q%y')"},
 		// A real complaint is still found beside look-alike text in the value.
 		{name: "missing argument after marker-like text", expr: "TOSTR('(MISSING)', '%s %d')"},
+		// fmt writes %!<verb>( for any verb, a punctuation mark or a
+		// non-ASCII letter included.
+		{name: "missing argument for a punctuation verb", expr: "TOSTR(1, '%v %_')"},
+		{name: "missing argument for a bang verb", expr: "TOSTR(1, '%v %!')"},
+		{name: "missing argument for a non-ASCII verb", expr: "TOSTR(1, '%v %é')"},
+		{name: "wrong value for a parenthesis verb", expr: "TOSTR(1, '%(')"},
+		{name: "missing argument for a parenthesis verb", expr: "TOSTR(1, '%v %(')"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

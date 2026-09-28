@@ -12,6 +12,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Errors that carry another error as their cause now wrap it with `%w` instead of formatting it into text, so `errors.Is` and `errors.As` reach the cause. This covers reading a CSV whose encoding cannot be detected, reading an Excel sheet, CCL's `MID`, `SUBSTR`, `TONUM`, `VALUE`, `TOSTR` and `TEXT` and its sequence and aggregate functions, building a `pd` Series, and `lp`'s GLPK installation. The message text is unchanged.
 - `StandardScaler`, `MinMaxScaler`, `RobustScaler` and `MaxAbsScaler` implement `json.Marshaler` and `json.Unmarshaler`, so a fitted scaler can be saved and used again later. Read back with `json.Unmarshal` into the same type, it transforms tables exactly as the original does, including a column it was fitted by column letter, and NaN parameters come back as NaN. `json.Marshal` of a scaler used to produce `{}`.
+- CCL's `TOSTR` refuses a format whose verb is a punctuation mark or a non-ASCII letter and has no value left, as it already did for a letter: `TOSTR(A, '%v %_')` wrote `1 %!_(MISSING)` into the cell in v0.3.3.
 
 ### CLI
 

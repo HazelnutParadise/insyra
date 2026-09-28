@@ -12,6 +12,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - 以另一個錯誤為原因的錯誤，現在用 `%w` 包住原因，而不是把它格式化成文字，所以 `errors.Is` 與 `errors.As` 能認出原因。涵蓋的地方有：偵測不到編碼的 CSV、讀取 Excel 工作表、CCL 的 `MID`、`SUBSTR`、`TONUM`、`VALUE`、`TOSTR`、`TEXT` 與序列、聚合函數、建立 `pd` Series，以及 `lp` 安裝 GLPK。訊息文字不變。
 - `StandardScaler`、`MinMaxScaler`、`RobustScaler` 與 `MaxAbsScaler` 實作了 `json.Marshaler` 與 `json.Unmarshaler`，已擬合的 scaler 可以存起來之後再用。用 `json.Unmarshal` 讀回同一型別後，轉換結果與原本完全相同，以欄字母擬合的欄也一樣，NaN 參數讀回仍是 NaN。以前對 scaler 呼叫 `json.Marshal` 只會得到 `{}`。
+- CCL 的 `TOSTR` 遇到動詞是標點或非 ASCII 字母、又沒有值可填的格式，會像字母動詞一樣回傳錯誤：v0.3.3 的 `TOSTR(A, '%v %_')` 會把 `1 %!_(MISSING)` 寫進儲存格。
 
 ### CLI
 
