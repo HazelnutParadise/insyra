@@ -3327,6 +3327,15 @@ func (dt *DataTable) FillByInterpolation(extrapolate bool, cols ...any) *DataTab
 
 **Description:** Fills `nil` and `math.NaN()` values column by column. Mean, median, and interpolation need a number column (see `ColDataTypes`); mode and forward/backward fill can apply to any column.
 
+These methods treat `nil` and `NaN` alike. To fill one kind in a column and leave the other, replace that kind with a value computed from the column: `GetColByName` returns a copy, so it can be cleared freely.
+
+```go
+m := dt.GetColByName("price").ClearNilsAndNaNs().Mean()
+dt.ReplaceNilsInCol(insyra.Name("price"), m) // nil only; NaN stays
+```
+
+The other patterns, and the one case they do not cover (a `limit` on forward or backward fill), are in [DataList: Filling Only nil or Only NaN](DataList.md#filling-only-nil-or-only-nan).
+
 - With `cols` omitted, every column is processed and a column that cannot be filled that way, such as a text column for the mean, is skipped: the call asked to fill what it can.
 - A column you name that cannot be filled, because it is not a number column or has no values at all, is recorded on `Err()` with the column and the reason, and the other named columns are still filled.
 

@@ -850,7 +850,7 @@ func (dl *DataList) FillNaNWithMean() *DataList
 > dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())   // or .Median()
 > ```
 >
-> This gives the same values, leaves `nil` cells as they are, and also leaves the other numbers as they were instead of rewriting them as `float64`. When the list holds no number, `Mean()` is `NaN` and nothing changes, where this method records an error. [`FillWithMean`](#fillwithmean) fills `nil` cells too. See [Methods that look alike but differ](#methods-that-look-alike-but-differ).
+> This gives the same values, leaves `nil` cells as they are, and also leaves the other numbers as they were instead of rewriting them as `float64`. When the list holds no number, `Mean()` is `NaN` and nothing changes, where this method records an error. [`FillWithMean`](#fillwithmean) fills `nil` cells too. See [Filling Only nil or Only NaN](#filling-only-nil-or-only-nan) for the other kinds of fill, and [Methods that look alike but differ](#methods-that-look-alike-but-differ).
 
 **Parameters:**
 
@@ -915,6 +915,40 @@ labels := insyra.NewDataList("A", nil, "A", math.NaN())
 labels.FillWithMode()
 // labels now contains: ["A", "A", "A", "A"]
 ```
+
+### Filling Only nil or Only NaN
+
+Every `Fill*` method treats `nil` and `NaN` alike as missing. To fill one kind and leave the other as it is, there is no single call; combine the methods below.
+
+**With a fixed value**, use the `Replace*` method for that kind:
+
+```go
+dl.ReplaceNilsWith(0)  // nil only; NaN stays
+dl.ReplaceNaNsWith(0)  // NaN only; nil stays
+```
+
+**With the mean or median of the values that are there**, compute it on a copy with both kinds removed, then replace one kind with it:
+
+```go
+dl := insyra.NewDataList(1, nil, math.NaN(), 3)
+m := dl.Clone().ClearNilsAndNaNs().Mean() // 2; Clone first, because ClearNilsAndNaNs changes the list
+dl.Clone().ReplaceNilsWith(m)             // [1, 2, NaN, 3]
+dl.Clone().ReplaceNaNsWith(m)             // [1, nil, 2, 3]
+```
+
+Use `Median()` in place of `Mean()` for the median. When the list holds no number, `Mean()` returns `NaN`: check for it before calling `ReplaceNilsWith`, which would otherwise write `NaN` into the `nil` cells.
+
+**With `FillForward`, `FillBackward`, `FillWithMode` or `FillByInterpolation`**, fill both kinds, then put the other kind back where it was:
+
+```go
+nils := dl.FindAll(nil) // or dl.FindAll(math.NaN()) to keep the NaN cells instead
+dl.FillForward()
+for _, i := range nils {
+    dl.Update(i, nil)
+}
+```
+
+This gives the same values in the filled cells as filling that kind alone, with one exception: a `limit` on `FillForward` or `FillBackward` counts the other kind's cells too, so fewer cells of the kind you want are filled. The CLI's `fillna … missing nan|nil` handles that case by skipping the other kind (see [cli-dsl.md](cli-dsl.md)).
 
 ### ReplaceOutliers
 
