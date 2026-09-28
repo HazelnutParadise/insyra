@@ -7,6 +7,7 @@ DataList is a fundamental data structure in Insyra that provides a dynamic, gene
 - [Data Structure](#data-structure)
 - [Creating DataList](#creating-datalist)
 - [Data Access](#data-access)
+- [In Place or a New List](#in-place-or-a-new-list)
 - [Data Manipulation](#data-manipulation)
 - [Data Filtering](#data-filtering)
 - [Data Preprocessing](#data-preprocessing)
@@ -214,6 +215,34 @@ func (dl *DataList) Len() int
 dl := insyra.NewDataList(1, 2, 3, 4, 5)
 fmt.Println(dl.Len()) // 5
 ```
+
+## In Place or a New List
+
+A method that returns a `*DataList` either changes the list you call it on and returns that same list, so calls can be chained, or leaves the list alone and returns a new one. The name does not say which, so the two groups are listed here. Methods that return something other than a list (statistics, lookups, conversions to a slice or a table) never change the list, except `Pop`.
+
+**Changes the list and returns it:**
+
+- Adding and updating: `Append`, `AppendDataList`, `InsertAt`, `Update`
+- Replacing: `ReplaceFirst`, `ReplaceLast`, `ReplaceAll`, `ReplaceOutliers`, `ReplaceNaNsWith`, `ReplaceNilsWith`, `ReplaceNaNsAndNilsWith`
+- Removing: `Drop`, `DropAll`, `DropIfContains`, `Clear`, `ClearStrings`, `ClearNumbers`, `ClearNaNs`, `ClearNils`, `ClearNilsAndNaNs`, `ClearOutliers`
+- Rescaling and filling: `Normalize`, `Standardize`, `FillNaNWithMean`, `FillForward`, `FillBackward`, `FillWithMean`, `FillWithMedian`, `FillWithMode`, `FillByInterpolation`
+- Ordering: `Sort`, `Reverse`
+- Text and types: `Upper`, `Lower`, `Capitalize`, `ParseNumbers`, `ParseStrings`, `ParseDates`
+
+`Pop` also changes the list, and returns the value it removed. `SetName`, `SetErr` and `ClearErr` change only the list's name or error and return the list.
+
+**Leaves the list unchanged and returns a new list:**
+
+- Copying and combining: `Clone`, `Concat`
+- Selecting and mapping: `Filter`, `Map`, `Sample`, `SampleFrac`, `Shuffle`
+- Ranking: `Rank`
+- Sequence transforms: `Shift`, `Diff`, `PctChange`, `CumSum`, `CumProd`, `CumMax`, `CumMin`, `Difference`
+- Smoothing: `MovingAverage`, `WeightedMovingAverage`, `MovingStdev`, `ExponentialSmoothing`, `DoubleExponentialSmoothing`
+- Windows: the reducers of `Rolling`, `Expanding` and `EWM`. Those three methods take a copy of the list when they are called, so changing the list afterwards does not change what the reducers compute.
+
+The difference matters when a list is kept under two names. `b := a` does not copy: `b.Sort()` sorts `a` too. Use `b := a.Clone()` for a separate list.
+
+A column or row taken from a table is already a copy: `DataTable.GetCol`, `GetColByName`, `GetColByIndex`, `GetColByNumber`, `GetRow` and `GetRowByName` return a new list, so sorting or filling it does not change the table. Write it back with `UpdateCol` or `UpdateRow`.
 
 ## Data Manipulation
 
@@ -2799,9 +2828,12 @@ leave `Err()` alone. Addressing a column, row or index that is not there is
 different — the caller asserted it existed and the only other signal is a bare
 `nil` — so that is recorded, as is any invalid argument.
 
-A **transform** that computes a new list (`Normalize`, `MovingAverage`,
-`Diff`, `Rank`, …) never returns `nil`: on failure you get an empty, usable
-list carrying the error, so the next step in the chain cannot nil-dereference.
+A **transform** that computes a new list (`MovingAverage`, `Diff`, `Rank`, …)
+never returns `nil`: on failure you get an empty, usable list carrying the
+error, so the next step in the chain cannot nil-dereference. `Normalize`
+changes the list in place when it succeeds, but when it fails it also returns
+such an empty list rather than the list itself, so check `Err()` before
+writing `dl = dl.Normalize()`.
 A **lookup** (`GetColByName`, `GetRow`, …) still returns `nil` when the target
 is not there — that is its "not found" answer — so check it before chaining
 off the result.

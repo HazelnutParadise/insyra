@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-28] — five `DataList` transforms fail in a shape the others do not
+- **Where**: `datalist.go` `Normalize` and `Rank`; `datalist_window.go` `Shift`; `datalist_sampling.go` `Sample`, `SampleFrac` and `Shuffle`
+- **What**: the `chainable-never-nil` spec says a method returning `*DataList` that fails returns an empty list carrying the error, recorded on the receiver too. Classifying every `DataList` method for #218 on 2026-09-28 found five that do not, by reading the code (not run): `Sample`, `SampleFrac` and `Shuffle` return a bare `NewDataList()` on every failure, so the result's `Err()` is nil; `Rank` and `Shift` given two optional values return the receiver itself, so `r := dl.Shift(1, a, b)` hands back the unshifted list as if it were the shifted one; and `Normalize`, which changes the list in place, returns an empty list when it fails where every other in-place method returns the list, so `dl = dl.Normalize()` throws the data away on a failure. `Docs/DataList.md` states the `Normalize` behaviour meanwhile.
+- **Suggestion**: `failedResult()` for the first five and `return dl` for `Normalize`'s failures. Each changes what a failed call returns, so it belongs with a breaking batch on this line.
+- **Status**: pending
+
 ### [2026-09-28] — remove `SqrtRat`, `PowRat`, `SortTimes` and `F64orRat` one release after they were deprecated
 - **Where**: `utils.go`; the constraint behind `F64orRat` in `internal/utils/utils.go`
 - **What**: `core-utils-cleanup` deprecated the four (#214, K-15): none has anything to do with data tables and nothing in the module calls them. They stay one release, marked Deprecated, with `SqrtRat` and `PowRat` fixed so they no longer panic and `PowRat` computes negative powers.
