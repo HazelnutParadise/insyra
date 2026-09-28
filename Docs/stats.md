@@ -46,8 +46,8 @@ The error is the last value a function returns. A function that returns several 
 | Do two measurements of the same subjects differ? | `PairedTTest(data1, data2, opts...)` |
 | The same, with the population σ known | `SingleSampleZTest(data, mu, sigma, opts...)` / `TwoSampleZTest(data1, data2, sigma1, sigma2, opts...)` |
 | Do three or more groups differ? | `OneWayANOVA(groups)` |
-| Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells)` |
-| Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects)` |
+| Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells)`, or `TwoWayANOVAFromTable(dt, valueCol, factorACol, factorBCol)` for a table with one row per observation |
+| Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects)`, or `RepeatedMeasuresANOVAFromTable(dt, valueCol, conditionCol, subjectCol)` for a table with one row per observation |
 | Are two categorical variables related? | `ChiSquareIndependenceTest(rowData, colData)` |
 | Does a distribution match the expected proportions? | `ChiSquareGoodnessOfFit(input, p, rescaleP)`, with `p` keyed by category |
 | Do groups have equal variance? | `FTestForVarianceEquality(data1, data2)`, `LeveneTest(groups)`, `BartlettTest(groups)` |
@@ -84,6 +84,7 @@ list and the position are both counted from one:
 | `OneWayANOVA`, `KruskalWallis`, `LeveneTest`, `BartlettTest` | `group N`, the Nth list in the slice | row | `group 2 contains a non-finite value at row 3: +Inf` |
 | `TwoWayANOVA` | `cell (A=a, B=b)`, the cell for level a of factor A and level b of factor B | row | `cell (A=2, B=1) contains a non-numeric value at row 2: x` |
 | `RepeatedMeasuresANOVA`, `FriedmanTest` | `subject N`, the Nth list in the slice | condition, because each list holds one subject's conditions | `subject 2 contains a non-finite value at condition 2: NaN` |
+| `TwoWayANOVAFromTable`, `RepeatedMeasuresANOVAFromTable`, `FriedmanTestFromTable` | `value column <selector>`, the column the value selector picks | row of the table | `value column C contains a non-numeric value at row 4: x` |
 | `Skewness`, `Kurtosis` | `sample` | row | `sample contains a non-numeric value at row 3: <nil>` |
 | `Correlation`, `Covariance` | `x` or `y` | row | `x contains a non-numeric value at row 3: <nil>` |
 
@@ -819,7 +820,7 @@ func OneWayANOVA(groups []insyra.IDataList) (*OneWayANOVAResult, error)
 func TwoWayANOVA(factorALevels, factorBLevels int, cells []insyra.IDataList) (*TwoWayANOVAResult, error)
 ```
 
-**Description:** Analyze effects of two factors and their interaction. Cells must be in row-major order: cell `i*factorBLevels + j` holds the data for `A=i, B=j`, so you pass exactly `factorALevels × factorBLevels` of them. Both level counts must be at least 2, and a level count below 2 or a cell count that is not their product fails with `invalid levels or cells`. There is no long-format entry point — reshape your data into cells yourself before calling this function. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the cell and the row. Errors count levels from one, so `cell (A=2, B=1)` is `cells[factorBLevels]`, the first level of B under the second level of A.
+**Description:** Analyze effects of two factors and their interaction. Cells must be in row-major order: cell `i*factorBLevels + j` holds the data for `A=i, B=j`, so you pass exactly `factorALevels × factorBLevels` of them. Both level counts must be at least 2, and a level count below 2 or a cell count that is not their product fails with `invalid levels or cells`. For data with one row per observation, use [`TwoWayANOVAFromTable`](#two-way-anova-from-a-table), which builds the cells for you. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the cell and the row. Errors count levels from one, so `cell (A=2, B=1)` is `cells[factorBLevels]`, the first level of B under the second level of A.
 
 **Parameters:**
 
@@ -829,6 +830,81 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells []insyra.IDataList) (*T
 **Returns:**
 
 - `*TwoWayANOVAResult`: Return value.
+
+### Two Way ANOVA From a Table
+
+```go
+func TwoWayANOVAFromTable(dt insyra.IDataTable, valueCol, factorACol, factorBCol any) (*TwoWayANOVAResult, error)
+```
+
+**Description:** Two-way ANOVA on a long-format table, the shape R's `aov(value ~ A * B)` and pandas take: one row per observation, the measured value in one column and the level of each factor in another. The distinct values of a factor column are its levels. They are compared the way `insyra.ToMapKey` compares them, so an `int64` 1 read from a CSV and a Go literal `1` are one level, while `1.0` and `"1"` are levels of their own, as they are to `GroupBy`. The result is exactly what `TwoWayANOVA` returns for the same observations, with each factor's levels in the order they first appear in the table. The order of the levels and rows does not change the statistics.
+
+The table is not modified, and nothing is recorded on its `Err()`: a column that cannot be found is returned as an error, such as `value column: column Z does not exist, the table has 3 column(s)`. The lookup runs on a copy of the table and also writes that message to insyra's log.
+
+**Parameters:**
+
+- `dt`: The table, one row per observation
+- `valueCol`: The column holding the measured values
+- `factorACol, factorBCol`: The columns holding each observation's level of factor A and factor B
+
+Each column parameter is a column selector: an Excel-style index (`"C"`), `insyra.Name("score")`, or a 0-based position.
+
+**Errors:** a value that is not a finite number is refused as in the table above, with rows counted from one. A factor cell that is `nil` or `NaN` gives `factor A column <selector> has no level at row <row>` (or `factor B`). A factor with fewer than two levels gives `factor A has fewer than two levels`, and a combination of levels with no observations gives `no observations for A=<level>, B=<level>`.
+
+**Returns:**
+
+- `*TwoWayANOVAResult`: Return value.
+
+```go
+// score  drug     dose
+// 5.1    placebo  low
+// 6.2    placebo  high
+// ...
+res, err := stats.TwoWayANOVAFromTable(dt, insyra.Name("score"), insyra.Name("drug"), insyra.Name("dose"))
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("drug F=%.4f p=%.4f\n", res.FactorA.F, res.FactorA.P)
+```
+
+### Repeated Measures ANOVA
+
+```go
+func RepeatedMeasuresANOVA(subjects []insyra.IDataList) (*RepeatedMeasuresANOVAResult, error)
+```
+
+**Description:** Test whether the means of two or more conditions differ when every subject is measured under each of them. `subjects` holds one list per subject, and each list holds that subject's value under each condition, in the same condition order for every subject. At least two subjects and two conditions are required, and every subject must have the same number of conditions. Every measurement must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the subject and the condition, both counted from one. `Factor.EtaSquared` is classical η² (`SS_factor / SS_total`); see [Behavior Differences From R](#behavior-differences-from-r).
+
+**Parameters:**
+
+- `subjects`: One list per subject, each holding one value per condition
+
+**Returns:**
+
+- `*RepeatedMeasuresANOVAResult`: Return value.
+
+### Repeated Measures ANOVA From a Table
+
+```go
+func RepeatedMeasuresANOVAFromTable(dt insyra.IDataTable, valueCol, conditionCol, subjectCol any) (*RepeatedMeasuresANOVAResult, error)
+```
+
+**Description:** Repeated-measures ANOVA on a long-format table, the shape R's `aov(value ~ cond + Error(subj/cond))` takes: one row per measurement, with the value, the condition and the subject in three columns. Levels are compared as in [`TwoWayANOVAFromTable`](#two-way-anova-from-a-table). Every subject needs exactly one measurement under every condition. The result is exactly what `RepeatedMeasuresANOVA` returns for the same measurements, with the subjects and the conditions in the order they first appear in the table. The table is not modified, and nothing is recorded on its `Err()`.
+
+**Parameters:**
+
+- `dt`: The table, one row per measurement
+- `valueCol`: The column holding the measured values
+- `conditionCol`: The column holding each measurement's condition
+- `subjectCol`: The column holding each measurement's subject
+
+Each column parameter is a column selector: an Excel-style index, an `insyra.Name`, or a 0-based position.
+
+**Errors:** besides the refusals of `TwoWayANOVAFromTable` (a value that is not a finite number, and `condition column <selector> has no level at row <row>` or `subject column ...` for a `nil` or `NaN` cell), a subject measured twice under one condition gives `subject s2 has more than one observation for condition t1 (rows 3 and 5)`, a missing measurement gives `subject s3 has no observation for condition t2`, and fewer than two conditions or subjects gives `at least two conditions are required` or `at least two subjects are required`. Rows are counted from one. Nothing is dropped to make the design complete: remove an incomplete subject yourself before the call.
+
+**Returns:**
+
+- `*RepeatedMeasuresANOVAResult`: Return value.
 
 #### ANOVA Result Types
 
@@ -845,6 +921,13 @@ type TwoWayANOVAResult struct {
     Interaction ANOVAResultComponent
     Within      ANOVAResultComponent
     TotalSS     float64
+}
+
+type RepeatedMeasuresANOVAResult struct {
+    Factor  ANOVAResultComponent // the conditions
+    Subject ANOVAResultComponent // between subjects; F, P and EtaSquared are NaN
+    Within  ANOVAResultComponent // the residual; F, P and EtaSquared are NaN
+    TotalSS float64
 }
 
 type ANOVAResultComponent struct {
@@ -1177,6 +1260,23 @@ subject and the condition, both counted from one.
 **Parameters:**
 
 - `subjects`: One `IDataList` per subject (each length `k`). Type: `[]insyra.IDataList`.
+
+**Returns:**
+
+- `*FriedmanTestResult`: Return value.
+
+### Friedman From a Table
+
+```go
+func FriedmanTestFromTable(dt insyra.IDataTable, valueCol, conditionCol, subjectCol any) (*FriedmanTestResult, error)
+```
+
+**Description:** The Friedman test on a long-format table, the shape R's `friedman.test(value ~ cond | subj)` takes: one row per measurement, with the value, the condition and the subject in three columns. The table is read exactly as [`RepeatedMeasuresANOVAFromTable`](#repeated-measures-anova-from-a-table) reads it, with the same errors, and the result is exactly what `FriedmanTest` returns with the subjects and conditions in the order they first appear.
+
+**Parameters:**
+
+- `dt`: The table, one row per measurement
+- `valueCol`, `conditionCol`, `subjectCol`: Column selectors for the value, the condition and the subject
 
 **Returns:**
 
