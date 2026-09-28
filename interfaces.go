@@ -56,11 +56,14 @@ type IDataList interface {
 	FillWithMedian() *DataList
 	FillWithMode() *DataList
 	FillByInterpolation(extrapolate ...bool) *DataList
+	// Deprecated: use Rolling(...).Mean(); see DataList.MovingAverage.
 	MovingAverage(int) *DataList
+	// Deprecated: use Rolling(...).Mean() with Weights; see DataList.WeightedMovingAverage.
 	WeightedMovingAverage(int, []float64) *DataList
 	ExponentialSmoothing(float64) *DataList
 	DoubleExponentialSmoothing(float64, float64) *DataList
 	EWM(EWMOptions) *EWMDataList
+	// Deprecated: use Rolling(...).Std(); see DataList.MovingStdev.
 	MovingStdev(int) *DataList
 	Len() int
 	// DataType returns the kind of values the list holds, ignoring missing ones.
@@ -92,6 +95,7 @@ type IDataList interface {
 	Quartile(int) float64
 	IQR() float64
 	Percentile(float64) float64
+	// Deprecated: use Diff(1); see DataList.Difference.
 	Difference() *DataList
 	Describe(...DescribeOptions) *DataTable
 	Summary()

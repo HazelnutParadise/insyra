@@ -120,7 +120,8 @@ func runMovAvgCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	result := dl.Clone().MovingAverage(window)
+	// movavg keeps MovingAverage's shorter result until the method is removed.
+	result := dl.Clone().MovingAverage(window) // nolint:staticcheck
 	if err := result.PopErr(); err != nil {
 		return fmt.Errorf("movavg: %w", err)
 	}
@@ -160,7 +161,8 @@ func runDiffCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	result := dl.Clone().Difference()
+	// diff keeps Difference's length-n-1 result until the method is removed.
+	result := dl.Clone().Difference() // nolint:staticcheck
 	if err := result.PopErr(); err != nil {
 		return fmt.Errorf("diff: %w", err)
 	}

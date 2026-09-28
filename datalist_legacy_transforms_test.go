@@ -1,12 +1,13 @@
 package insyra
 
-// These tests pin the conclusion of #222: six older DataList methods look like
-// newer replacements, and on purely numeric input they produce the same numbers
-// over the positions both of them produce. They are not two names for one
-// function. They differ in result length, in what a nil or NaN cell does, in
-// which windows they emit, and in whether a call that cannot be done fails or
-// returns a usable answer. The differences are tabulated in
-// Docs/DataList.md under "Legacy transforms and their replacements".
+// These tests pin the conclusion of #222: six pairs of DataList methods give the
+// same numbers on purely numeric input over the positions both produce, but they
+// are not two names for one function. They differ in result length, in what a
+// nil or NaN cell does, in which windows they emit, and in whether a call that
+// cannot be done fails or returns a usable answer. Difference, MovingAverage,
+// MovingStdev and WeightedMovingAverage are deprecated and keep this behaviour
+// until they are removed. The differences are tabulated in Docs/DataList.md under
+// "Methods that look alike but differ".
 //
 // Every scenario below builds its own lists, because Err() is sticky and a list
 // that has recorded a failure cannot be reused.

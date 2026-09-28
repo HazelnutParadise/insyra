@@ -844,7 +844,7 @@ func (dl *DataList) FillNaNWithMean() *DataList
 
 > A cell that is neither numeric, `nil`, nor `NaN` makes the call fail: `Err()` is set, naming the row, and the list is left untouched. `nil` cells are left as they are, and every other number is rewritten as a `float64`.
 
-> **Deprecated:** Use [`FillWithMean`](#fillwithmean) instead, which also fills `nil` (not just `NaN`), leaves the other numbers as they were, and matches the other `Fill*` imputation methods. See [Legacy transforms and their replacements](#legacy-transforms-and-their-replacements).
+> **Deprecated:** Use [`FillWithMean`](#fillwithmean) instead, which also fills `nil` (not just `NaN`), leaves the other numbers as they were, and matches the other `Fill*` imputation methods. See [Methods that look alike but differ](#methods-that-look-alike-but-differ).
 
 **Parameters:**
 
@@ -1427,11 +1427,15 @@ ranksAsc := dl.Rank()      // default ascending
 ranksDesc := dl.Rank(false) // descending
 ```
 
-### Legacy transforms and their replacements
+### Methods that look alike but differ
 
-Six older methods look like duplicates of newer ones, and on a fully numeric series they give the same numbers over the positions both produce. They are not the same functions: each keeps its own length, its own handling of `nil` and `NaN`, and its own failures, and a test pins every row of this table. Use the newer method for anything that goes back into a table; it keeps the input's length and gives `nil` for a gap instead of failing.
+Six pairs of methods compute the same thing and give the same numbers on a fully numeric series, over the positions both produce. They are not two names for one function: each keeps its own output length, its own handling of `nil` and `NaN`, and its own failures, and a test pins every row of this table.
 
-| Older method | Newer method | Where they differ |
+`Difference`, `MovingAverage`, `MovingStdev` and `WeightedMovingAverage` are **Deprecated** and removed in the release after the one that deprecated them. Until then they behave exactly as described here, and the table is what changes when you move to the method beside them. `ExponentialSmoothing` is not deprecated, because `EWM` refuses `alpha = 0`. `FillNaNWithMean` has been Deprecated since v0.2.19.
+
+The method in the second column keeps the input's length and gives `nil` where a window has too few values, so its result lines up with the other columns of a table. The one in the first column gives only the positions it can compute, and most of them refuse a gap outright rather than skip it.
+
+| Method | Similar method | Where they differ |
 | --- | --- | --- |
 | `Difference()` | `Diff(1)` | Length `n-1` against `n` with a leading `nil`. A `nil` operand gives `NaN` against `nil`. A non-numeric cell fails the call against giving `nil`. Fewer than two values give an empty list against `[nil]`. |
 | `FillNaNWithMean()` | `FillWithMean()` | Fills `NaN` only and leaves `nil`, against both. Rewrites every other number as `float64`, against leaving it as it was. |
@@ -1450,7 +1454,7 @@ func (dl *DataList) Difference() *DataList
 
 **Description:** Calculates differences between consecutive elements. The output is one element **shorter** than the input (`out[i] = in[i+1] - in[i]`). A pair with a `nil` or `NaN` operand yields `NaN`; any other non-numeric cell makes the call fail, with `Err()` set and an empty list returned. A list of fewer than two values gives an empty list without an error.
 
-> For column-aligned use (same length as the input, leading `nil` instead of a shorter result) prefer [`Diff(1)`](#diff). The two differ in more than length; see [Legacy transforms and their replacements](#legacy-transforms-and-their-replacements).
+> **Deprecated:** use [`Diff(1)`](#diff), which keeps the input's length with a leading `nil`; on a fully numeric list `Diff(1).Data()[1:]` is this method's result. It gives `nil`, not `NaN` or a failure, for a `nil` or non-numeric operand; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in the release after the one that deprecated it.
 
 **Parameters:**
 
@@ -1474,7 +1478,9 @@ diff := dl.Difference()
 func (dl *DataList) MovingAverage(windowSize int) *DataList
 ```
 
-**Description:** Calculates moving average with specified window size. The result has `n - windowSize + 1` values, one per full window. Every cell must be a number: a `nil` or non-numeric cell makes the call fail, with `Err()` set and an empty list returned, and a `NaN` makes every window holding it `NaN`. A `windowSize` below 1 or above the length also fails. [`Rolling(...).Mean()`](#rolling) keeps the input's length and gives `nil` for a gap instead; see [Legacy transforms and their replacements](#legacy-transforms-and-their-replacements).
+**Description:** Calculates moving average with specified window size. The result has `n - windowSize + 1` values, one per full window. Every cell must be a number: a `nil` or non-numeric cell makes the call fail, with `Err()` set and an empty list returned, and a `NaN` makes every window holding it `NaN`. A `windowSize` below 1 or above the length also fails.
+
+> **Deprecated:** use [`Rolling(RollingOptions{Window: windowSize}).Mean()`](#rolling), which keeps the input's length with `windowSize-1` leading `nil`; on a fully numeric list its `Data()[windowSize-1:]` is this method's result. It gives `nil` for a window holding a gap instead of failing; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in the release after the one that deprecated it.
 
 **Parameters:**
 
@@ -1497,7 +1503,9 @@ ma := dl.MovingAverage(3) // 3-period moving average
 func (dl *DataList) WeightedMovingAverage(windowSize int, weights []float64) *DataList
 ```
 
-**Description:** Calculates weighted moving average with specified window size and weights. Each window's value is the weighted sum divided by the sum of the weights, so weights summing to zero give `±Inf` or `NaN`. The result has `n - windowSize + 1` values. A `nil` or non-numeric cell, a `windowSize` below 1 or above the length, or weights of the wrong length make the call fail, with `Err()` set and an empty list returned; a `NaN` makes every window holding it `NaN`. See [Legacy transforms and their replacements](#legacy-transforms-and-their-replacements) for how it differs from `Rolling` with `Weights`.
+**Description:** Calculates weighted moving average with specified window size and weights. Each window's value is the weighted sum divided by the sum of the weights, so weights summing to zero give `±Inf` or `NaN`. The result has `n - windowSize + 1` values. A `nil` or non-numeric cell, a `windowSize` below 1 or above the length, or weights of the wrong length make the call fail, with `Err()` set and an empty list returned; a `NaN` makes every window holding it `NaN`.
+
+> **Deprecated:** use [`Rolling(RollingOptions{Window: windowSize, Weights: weights}).Mean()`](#rolling), which keeps the input's length; on a fully numeric list its `Data()[windowSize-1:]` is this method's result. It gives `nil` for a window holding a gap and for weights summing to zero; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in the release after the one that deprecated it.
 
 **Parameters:**
 
@@ -1523,7 +1531,7 @@ func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList
 
 **Description:** Calculates exponential smoothing with specified smoothing factor: the first value is kept and each later one is `alpha*x + (1-alpha)*previous`.
 
-> Every cell must be a finite number. A `nil`, `NaN`, or non-numeric cell makes the call fail: `Err()` is set, naming the row, and nothing is substituted for it. [`EWM(EWMOptions{Alpha: alpha}).Mean()`](#exponentially-weighted-windows) carries the mean across a gap instead; see [Legacy transforms and their replacements](#legacy-transforms-and-their-replacements).
+> Every cell must be a finite number. A `nil`, `NaN`, or non-numeric cell makes the call fail: `Err()` is set, naming the row, and nothing is substituted for it. [`EWM(EWMOptions{Alpha: alpha}).Mean()`](#exponentially-weighted-windows) carries the mean across a gap instead; see [Methods that look alike but differ](#methods-that-look-alike-but-differ).
 
 **Parameters:**
 
@@ -1572,7 +1580,9 @@ smoothed := dl.DoubleExponentialSmoothing(0.3, 0.2)
 func (dl *DataList) MovingStdev(windowSize int) *DataList
 ```
 
-**Description:** Calculates the moving sample standard deviation with specified window size. The result has `n - windowSize + 1` values. A `nil` or non-numeric cell is skipped within its window, a window left with fewer than two numbers gives `NaN` (so a `windowSize` of 1 gives `NaN` everywhere), and a `NaN` makes every window holding it `NaN`. A `windowSize` below 1 or above the length makes the call fail. See [Legacy transforms and their replacements](#legacy-transforms-and-their-replacements) for how it differs from `Rolling(...).Std()`.
+**Description:** Calculates the moving sample standard deviation with specified window size. The result has `n - windowSize + 1` values. A `nil` or non-numeric cell is skipped within its window, a window left with fewer than two numbers gives `NaN` (so a `windowSize` of 1 gives `NaN` everywhere), and a `NaN` makes every window holding it `NaN`. A `windowSize` below 1 or above the length makes the call fail.
+
+> **Deprecated:** use [`Rolling(RollingOptions{Window: windowSize}).Std()`](#rolling), which keeps the input's length; on a fully numeric list its `Data()[windowSize-1:]` is this method's result. It gives `nil` where this method gives `NaN`, and skips a `NaN` this method lets through; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in the release after the one that deprecated it.
 
 **Parameters:**
 

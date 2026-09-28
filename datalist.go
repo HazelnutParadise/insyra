@@ -863,6 +863,12 @@ func (dl *DataList) FillNaNWithMean() *DataList {
 
 // MovingAverage calculates the moving average of the DataList using a specified window size.
 // Returns a new DataList containing the moving average values.
+//
+// Deprecated: use Rolling(RollingOptions{Window: windowSize}).Mean(), which
+// keeps the input's length with windowSize-1 leading nils, so on a fully
+// numeric list its Data()[windowSize-1:] is this method's result. It gives nil
+// for a window holding a nil or non-numeric cell instead of failing. Removed in
+// the release after the one that deprecated it.
 func (dl *DataList) MovingAverage(windowSize int) *DataList {
 	var movingAverageData []float64
 	isFailed := false
@@ -897,6 +903,12 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 // The weights parameter takes one weight per window position, as a []float64 of the same length as the
 // window size, the same type RollingOptions.Weights takes.
 // Returns a new DataList containing the weighted moving average values.
+//
+// Deprecated: use Rolling(RollingOptions{Window: windowSize, Weights: weights}).Mean(),
+// which keeps the input's length, so on a fully numeric list its
+// Data()[windowSize-1:] is this method's result. It gives nil for a window
+// holding a gap and for weights summing to zero, where this method fails or
+// divides by zero. Removed in the release after the one that deprecated it.
 func (dl *DataList) WeightedMovingAverage(windowSize int, weights []float64) *DataList {
 	var movingAvgData []float64
 	isFailed := false
@@ -1009,6 +1021,12 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 }
 
 // MovingStdev calculates the moving standard deviation for the DataList using a specified window size.
+//
+// Deprecated: use Rolling(RollingOptions{Window: windowSize}).Std(), which
+// keeps the input's length, so on a fully numeric list its
+// Data()[windowSize-1:] is this method's result. It gives nil where this method
+// gives NaN, and skips a NaN this method lets through. Removed in the release
+// after the one that deprecated it.
 func (dl *DataList) MovingStdev(windowSize int) *DataList {
 	var movingStdDevData []float64
 	isFailed := false
@@ -1909,9 +1927,10 @@ func (dl *DataList) Percentile(p float64) float64 {
 // DataList. The output is one element shorter than the input
 // (out[i] = in[i+1] - in[i]).
 //
-// For column-aligned use (same length as the input, leading nils) prefer
-// Diff(1) — it preserves length so the result can sit alongside other
-// columns in a DataTable. Difference is retained for backwards compatibility.
+// Deprecated: use Diff(1), which keeps the input's length with a leading nil,
+// so on a fully numeric list Diff(1).Data()[1:] is this method's result. It
+// gives nil, not NaN or a failure, for a nil or non-numeric operand. Removed in
+// the release after the one that deprecated it.
 func (dl *DataList) Difference() *DataList {
 	var result *DataList
 	dl.AtomicDo(func(dl *DataList) {
