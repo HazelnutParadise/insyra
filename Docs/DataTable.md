@@ -3746,17 +3746,17 @@ colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 ```
 
-**Description:** Filters the DataTable using a custom filter function. Keeps only rows where the filter function returns true for at least one cell. Every `Filter*` method returns a new table that owns its columns and row names; editing the result never touches the source, and a result with no match is an empty table.
+**Description:** Keeps a row when `filterFunc` returns `true` for **any one** of its cells. `filterFunc` is called cell by cell, so it cannot compare two cells of the same row; for a condition such as "price above cost", use [`FilterRowsWhere`](#filterrowswhere). Every `Filter*` method returns a new table that owns its columns and row names; editing the result never touches the source, and a result with no match is an empty table.
 
 **Parameters:**
 
-- `filterFunc`: Custom filter function that receives:
+- `filterFunc`: Called once per cell, until one cell of the row passes. It receives:
 
   - `rowIndex`: Row index (0-based)
-  - `columnIndex`: Column name
+  - `columnIndex`: The column's Excel-style letter (`"A"`, `"B"`, …), not its name
   - `value`: Cell value
 
-  Returns `true` to keep the cell/row, `false` to discard
+  Returns `true` to keep the row the cell belongs to.
 
 **Returns:**
 
@@ -3765,19 +3765,18 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 **Example:**
 
 ```go
-// Keep rows with non-nil values
+// Keep rows that have at least one non-nil cell
 filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
     return value != nil
 })
 
-// Keep rows where column "age" has values greater than 30
+// Keep rows whose column B holds a number greater than 30
 filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
-    if columnIndex == "age" {
-        if num, ok := value.(int); ok {
-            return num > 30
-        }
+    if columnIndex != "B" {
+        return false
     }
-    return false
+    num, ok := insyra.ToFloat64Safe(value)
+    return ok && num > 30
 })
 ```
 
@@ -3787,7 +3786,9 @@ filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 func (dt *DataTable) FilterByCustomElement(f func(value any) bool) *DataTable
 ```
 
-**Description:** Filters the DataTable based on a custom function applied to each element.
+**Deprecated.** `FilterByCustomElement` is `Filter` without the row and column arguments and returns exactly what `Filter` returns; it will be removed in the next release. Write `dt.Filter(func(_ int, _ string, value any) bool { return f(value) })` instead.
+
+**Description:** Keeps a row when `f` returns `true` for any one of its cells.
 
 **Parameters:**
 
@@ -3797,25 +3798,13 @@ func (dt *DataTable) FilterByCustomElement(f func(value any) bool) *DataTable
 
 - `*DataTable`: New filtered DataTable
 
-**Example:**
-
-```go
-// Filter to keep only numeric values greater than 10
-filtered := dt.FilterByCustomElement(func(value any) bool {
-    if num, ok := value.(float64); ok {
-        return num > 10
-    }
-    return false
-})
-```
-
 ### FilterRows
 
 ```go
 func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
 ```
 
-**Description:** Filters rows based on a custom function that checks each cell. Keeps only rows where the filter function returns true for at least one cell.
+**Description:** Keeps a row when `filterFunc` returns `true` for **any one** of its cells, like `Filter`, but hands `filterFunc` the column's name as well as its letter. It cannot compare two cells of the same row either; use [`FilterRowsWhere`](#filterrowswhere) for that.
 
 **Parameters:**
 
@@ -3836,14 +3825,44 @@ filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
     return x == 100
 })
 
-// Keep rows where column A value is greater than 25
-filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
-    return (colIndex == "A") && (x.(int) > 25)
+// Keep rows whose column A holds a number greater than 25
+filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
+    num, ok := insyra.ToFloat64Safe(x)
+    return colIndex == "A" && ok && num > 25
 })
 
-// Keep rows where column named "age" value is greater than 25
-filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
-    return (colName == "age") && (x.(int) > 25)
+// Keep rows whose column named "age" holds a number greater than 25
+filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
+    num, ok := insyra.ToFloat64Safe(x)
+    return colName == "age" && ok && num > 25
+})
+```
+
+### FilterRowsWhere
+
+```go
+func (dt *DataTable) FilterRowsWhere(keep func(row *DataList) bool) *DataTable
+```
+
+**Description:** Keeps the rows for which `keep` returns `true`, judging each row as a whole. `keep` is called once per row with a `DataList` holding the row's cells in column order, named with the row's name, so a condition can compare cells of the same row. The result keeps the table's name, the column names and the kept rows' names. The row handed to `keep` is a copy: changing it changes neither the table nor the result. A nil `keep` records an error on the table and returns an empty DataTable.
+
+**Parameters:**
+
+- `keep`: Called once per row. `row.Get(i)` is the cell in column `i` (0-based); look a position up by name with `GetColNumberByName`.
+
+**Returns:**
+
+- `*DataTable`: New DataTable with the kept rows
+
+**Example:**
+
+```go
+priceCol := dt.GetColNumberByName("price")
+costCol := dt.GetColNumberByName("cost")
+
+// Keep the rows sold at a loss
+losses := dt.FilterRowsWhere(func(row *insyra.DataList) bool {
+    return insyra.ToFloat64(row.Get(priceCol)) < insyra.ToFloat64(row.Get(costCol))
 })
 ```
 

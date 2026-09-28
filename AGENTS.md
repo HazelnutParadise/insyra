@@ -276,6 +276,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: delete them and the internal `F64orRat` in the same release as the other Deprecated removals, with `TestSqrtRatNegativeReturnsNil`, `TestPowRatNegativeExponent` and `TestSortTimes`, their sections in `Docs/utils.md`, and a BREAKING changelog entry.
 - **Status**: pending
 
+### [2026-09-28] — remove `FilterByCustomElement` one release after it was deprecated
+- **Where**: `datatable_filters.go`, `interfaces.go`
+- **What**: `filter-rows-where` deprecated it (#226, T-13) under the one-name rule: it returns exactly what `Filter` returns, as `TestFilterByCustomElementEqualsFilter` shows.
+- **Suggestion**: delete it, its line in `IDataTable`, `TestFilterByCustomElementEqualsFilter` and its section in `Docs/DataTable.md` in the same release as the other Deprecated removals, with a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-09-28] — cutting a tree accepts a node merged twice
 - **Where**: `stats/internal/clustering/cluster.go` `validateTree`
 - **What**: `validateTree` checks that every merge joins a leaf or an earlier merge, but not that each is used once. Measured on 2026-09-28 with three labels: merges `{-1,-2},{-1,-2}`, `{-1,-2},{1,1}` or `{-1,-1},{-2,1}` all pass, and `CutTreeByK(tree, 1)` returns `[1 1 2]`, two clusters where one was asked for, with no error. A hand-edited `state.json` reaches `cutree` this way. `dev` has the same check and records the same follow-up.

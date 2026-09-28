@@ -66,6 +66,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 內容相同的巢狀陣列與巢狀 slice，不論大小，對 `Count`、`Counter`、分組與合併都是同一個值。v0.3.3 把大的巢狀 slice 寫成摘要、陣列則從不這樣做，所以內容超過約 1 KiB 後兩者就對不上了。
 - **BREAKING**：`ProcessData` 改成回傳 `([]any, error)`，不再回傳 `([]any, int)`。原本的 int 只是切片長度，讀不了的值則回傳 `nil, 0` 並寫一行 log，呼叫端分不出這和空切片的差別。現在讀不了的型別、`nil` 和 nil 指標都會回傳錯誤，nil 的 `*DataList` 也不會再讓它當掉。`WeightedMean` 與 `WeightedMovingAverage` 遇到讀不了的權重，會回報成權重的問題（`weights: cannot read int: …`），不再當成長度不符。寫法改成 `values, err := insyra.ProcessData(x)`，長度用 `len(values)` 取得。
 - `SqrtRat`、`PowRat`、`SortTimes` 與 `F64orRat` 標為 **Deprecated**，下一版移除。insyra 本身沒有用到它們，每個函式的說明都寫了可以改用的 `math/big` 或 `slices` 寫法。移除前的這一版先修好兩個問題：`SqrtRat` 收到負數或 `nil` 會回傳 `nil`，不再 panic。`PowRat` 的指數是負數時會回傳倒數，以前 `PowRat(big.NewRat(2, 3), -2)` 會回傳 `1`。`PowRat(nil, n)` 以及 0 的負次方回傳 `nil`。
+- 新增 `DataTable.FilterRowsWhere(keep func(row *DataList) bool)`。`keep` 每次拿到一整列，回傳 true 的列會保留，所以條件可以比較同一列的兩個欄位，例如 `dt.FilterRowsWhere(func(row *insyra.DataList) bool { return insyra.ToFloat64(row.Get(0)) < insyra.ToFloat64(row.Get(1)) })`。`Filter` 與 `FilterRows` 是一格一格呼叫函式，只要有一格通過就保留整列，文件現在把這點寫清楚了。`Filter` 收到的欄位參數是 Excel 式的欄位字母，文件裡拿它和欄位名稱比較的範例永遠不會成立，已經改正。`FilterByCustomElement` 的結果和 `Filter` 完全相同，標為 **Deprecated**，請改用 `Filter`，下一版移除。`Filter` 與 `FilterRows` 的函式若在過程中替同一張表新增欄位，不會再因索引超出範圍而當掉。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
