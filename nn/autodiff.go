@@ -522,8 +522,10 @@ func (t *Tape) BCEWithLogitsLoss(logits, targets *Tensor) (*Tensor, error) {
 // per input, or nil for an input that receives none. The declaration is
 // checked before anything is recorded: the name must be non-empty, vjp must be
 // non-nil, output and every input must be non-nil float32 tensors, and output
-// must not be one of its own inputs, and output must not already be the output
-// of an operation on this tape.
+// must not be one of its own inputs, the output of an operation on this tape,
+// or the input of one: the reverse pass visits operations in reverse order, so
+// a reader recorded earlier would be visited after this operation and its
+// gradient would never reach this operation's inputs.
 func (t *Tape) Custom(name string, inputs []*Tensor, output *Tensor, vjp func(upstream *Tensor) ([]*Tensor, error)) error {
 	if name == "" {
 		return fmt.Errorf("tape custom operation needs a name")
@@ -545,6 +547,11 @@ func (t *Tape) Custom(name string, inputs []*Tensor, output *Tensor, vjp func(up
 	for _, op := range t.ops {
 		if op.output == output {
 			return fmt.Errorf("tape custom %s: output was already produced by %s", name, op.name)
+		}
+		for _, input := range op.inputs {
+			if input == output {
+				return fmt.Errorf("tape custom %s: output was already read by %s; record the custom operation before the operations that use its output", name, op.name)
+			}
 		}
 	}
 	t.ops = append(t.ops, tapeOp{

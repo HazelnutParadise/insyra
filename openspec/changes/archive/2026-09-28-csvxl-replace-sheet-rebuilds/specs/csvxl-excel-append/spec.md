@@ -1,18 +1,13 @@
-# csvxl-excel-append Specification
+# Spec Delta
 
-## Purpose
-Defines what `csvxl.AppendCsvToExcel` does when the target sheet already exists (rebuild it in its place, so nothing stored in the old sheet survives while what the workbook records about it, its position, hidden state and the active sheet, stays, and names and formulas elsewhere keep their sheets, even for a single-sheet workbook) and requires every workbook the package opens to be closed.
+## REMOVED Requirements
 
-## Requirements
+### Requirement: Appending to an existing sheet name replaces the sheet
 
-### Requirement: Every opened workbook is closed
+**Reason**: clearing the old sheet in place kept its hidden rows, comments and hyperlinks over the new data, and cost time in proportion to the old sheet's formulas.
+**Migration**: the requirement below replaces it; a replaced sheet no longer keeps the old sheet's column widths, views or merged ranges.
 
-`AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv` SHALL 在函式（或每個檔案的處理）結束時關閉以 `excelize.OpenFile` 開啟的工作簿，包含錯誤路徑。
-
-#### Scenario: Handles are released on the error path
-
-- **WHEN** `ExcelToCsv` 因輸出目錄無法建立而回錯
-- **THEN** 已開啟的工作簿仍被關閉（每個 `excelize.OpenFile` 緊接 `defer f.Close()`，以程式碼審查驗證）
+## ADDED Requirements
 
 ### Requirement: Appending to an existing sheet name rebuilds the sheet
 

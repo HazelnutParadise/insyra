@@ -256,6 +256,36 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-28] — scaler JSON with an empty column reference binds to an unnamed column
+- **Where**: `datatable_scale.go` `unmarshalJSON`, and `resolveEncodingColumn` in `datatable_preprocess.go`
+- **What**: `json.Unmarshal` accepts a fitted column whose `"ref"` is `""`, and `Transform` then resolves `""` by name, which matches the first column that has no name. Measured on 2026-09-28: a `StandardScaler` read from JSON holding one column with `"ref":""`, mean 1 and std 1, transformed the unnamed column A of a table from `[5, 7]` to `[4, 6]` with no error. `Fit` never writes an empty reference, because an unnamed column is remembered by its letter, so only JSON written by hand or by another program reaches this. `0.4` refuses an empty reference (`TestScalerJSONRefusesAnEmptyReference`), but as part of its typed reference format (`decodeScalerRef`), which this line does not have.
+- **Suggestion**: refuse an empty `"ref"` in `unmarshalJSON`, next to the check for a column listed twice, and leave the receiver as it was. The JSON format stays as it is.
+- **Status**: pending
+
+### [2026-09-28] — cutting a tree accepts a node merged twice
+- **Where**: `stats/internal/clustering/cluster.go` `validateTree`
+- **What**: `validateTree` checks that every merge joins a leaf or an earlier merge, but not that each is used once. Measured on 2026-09-28 with three labels: merges `{-1,-2},{-1,-2}`, `{-1,-2},{1,1}` or `{-1,-1},{-2,1}` all pass, and `CutTreeByK(tree, 1)` returns `[1 1 2]`, two clusters where one was asked for, with no error. A hand-edited `state.json` reaches `cutree` this way. Present before the port of `0.4`'s check, and on `0.4` too.
+- **Suggestion**: track which leaves and merges have been used and refuse an id seen a second time, a merge joining something with itself included.
+- **Status**: pending
+
+### [2026-09-28] — `AppendCsvToExcel` empties a sheet before it knows the CSV can be read
+- **Where**: `csvxl/convert.go` `AppendCsvToExcel`, which calls `replaceSheet` before `addCsvSheet`
+- **What**: when a CSV cannot be read, the sheet of that name has already been replaced, and the workbook is saved with it empty. Measured on 2026-09-28: `AppendCsvToExcel` returned `1 files failed to append` and the target sheet read back with no rows. The same on `origin/dev` before the rebuild was ported; v0.3.3 introduced it. `0.4` reads each CSV in full before replacing its sheet (71c168a8), as part of a breaking change to the error it returns.
+- **Suggestion**: read the CSV first and replace the sheet only when that succeeds, keeping this line's error text.
+- **Status**: pending
+
+### [2026-09-28] — two nested values whose strings contain the separators count as one
+- **Where**: `cell_identity.go` `encodeCell`, the string arm inside a nested value
+- **What**: a string inside a nested value is written without escaping the characters the encoding uses as separators. Measured on 2026-09-28: a list holding `Cell([]any{"a,s:b"})` and `Cell([]any{"a", "b"})` reports `Count([]any{"a", "b"})` 2 and a `Counter` of one entry. `0.4` tracks the same defect.
+- **Suggestion**: write a nested string length-prefixed or quoted, so no content can stand for a separator.
+- **Status**: pending
+
+### [2026-09-28] — a rebuilt sheet leaves its old comments, drawing and table parts in the file
+- **Where**: `csvxl/convert.go` `replaceSheet`, through excelize's `DeleteSheet`
+- **What**: `DeleteSheet` removes the worksheet and its relationships but not the parts they pointed to. Measured on 2026-09-28: after replacing a sheet that had a comment and a table, `xl/comments1.xml`, `xl/drawings/vmlDrawing1.vml` and `xl/tables/table1.xml` are still in the saved file and in `[Content_Types].xml`, referenced by nothing, so the old comment text is still inside the file; excelize also refuses a new table under the old table's name (`the same name table already exists`). Not checked in Excel or LibreOffice, neither of which was available. `0.4`'s `excelsheet.Replace` does the same.
+- **Suggestion**: open such a file in Excel and LibreOffice first. If either complains, or if leaving the old comment text in the file matters, remove the parts the old sheet's relationships pointed to before deleting it.
+- **Status**: pending
+
 ### [2026-09-27] — outside the hypothesis tests, `stats` still numbers some positions from zero, and two paths let `NaN` through
 - **Where**: the `predictor %d` label in `stats/regression_shared.go`; the `(index %d)` checks in `stats/regression.go`, `stats/regression_glm.go`, `stats/regression_poisson.go` and `stats/glm_irls.go`; `row %d column %d` and `column %d` in `stats/factor_analysis.go`; `columns %d and %d` in `stats/correlation.go`; `stats/pca.go`, which also reads cells with `ToFloat64Safe` alone; `stats/knn.go` `numericVectorFromDataList`
 - **What**: every hypothesis test now counts the list and the position from one (`hypothesis-tests-refuse-non-finite`). Elsewhere the old numbering is still there. Measured on 2026-09-27: `LinearRegression(y, x1, x2)` with a blank at row 3 of `x2` says `predictor 1 contains a non-numeric value at row 3: <nil>`, `LogarithmicRegression` with `x = -2` at row 2 says `(index 1)`, and `FactorAnalysis` with text at row 2 of its second column says `non-numeric value at row 1 column 1: x`. The correlation and PCA column numbers are zero-based in the code and were not measured. Separately, `PCA` and `KNNRegress`'s targets check only that a cell converts, so a `NaN` or `+Inf` reaches the result with a nil error: `PCA` returns `NaN` eigenvalues, and `KNNRegress` predicts `NaN` or `+Inf`. `Docs/stats.md` states the `PCA` and `KNNRegress` behaviour.

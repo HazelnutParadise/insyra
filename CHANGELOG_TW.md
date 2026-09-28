@@ -12,6 +12,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - 以另一個錯誤為原因的錯誤，現在用 `%w` 包住原因，而不是把它格式化成文字，所以 `errors.Is` 與 `errors.As` 能認出原因。涵蓋的地方有：偵測不到編碼的 CSV、讀取 Excel 工作表、CCL 的 `MID`、`SUBSTR`、`TONUM`、`VALUE`、`TOSTR`、`TEXT` 與序列、聚合函數、建立 `pd` Series，以及 `lp` 安裝 GLPK。訊息文字不變。
 - `StandardScaler`、`MinMaxScaler`、`RobustScaler` 與 `MaxAbsScaler` 實作了 `json.Marshaler` 與 `json.Unmarshaler`，已擬合的 scaler 可以存起來之後再用。用 `json.Unmarshal` 讀回同一型別後，轉換結果與原本完全相同，以欄字母擬合的欄也一樣，NaN 參數讀回仍是 NaN。以前對 scaler 呼叫 `json.Marshal` 只會得到 `{}`。
+- CCL 的 `TOSTR` 遇到動詞是標點或非 ASCII 字母、又沒有值可填的格式，會像字母動詞一樣回傳錯誤：v0.3.3 的 `TOSTR(A, '%v %_')` 會把 `1 %!_(MISSING)` 寫進儲存格。
+- 內容相同的巢狀陣列與巢狀 slice，不論大小，對 `Count`、`Counter`、`Find` 與 `Replace` 系列方法，以及其他依值比對儲存格的查找，都是同一個值。v0.3.3 把大的巢狀 slice 寫成摘要、陣列則從不這樣做，所以內容超過約 1 KiB 後兩者就對不上了。
 
 ### CLI
 
@@ -23,7 +25,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `ml` 與 `nn`
 
-- 新增 `Tape.Custom(name, inputs, output, vjp)`，把在 tape 外算出來的運算放上 tape：它的輸入會拿到反向規則回傳的梯度。以前在 tape 外算出的張量會讓它的輸入默默拿到零梯度。反向規則可以不是前向的導數，例如替硬門檻宣告一個平滑的替代梯度。`Custom` 會拒絕格式不對的宣告。反向規則回傳錯誤，或梯度的數量、型別、形狀不對時，`Backward` 會失敗並指出是哪個運算。（[issue #375](https://github.com/HazelnutParadise/insyra/issues/375)）
+- 新增 `Tape.Custom(name, inputs, output, vjp)`，把在 tape 外算出來的運算放上 tape：它的輸入會拿到反向規則回傳的梯度。以前在 tape 外算出的張量會讓它的輸入默默拿到零梯度。反向規則可以不是前向的導數，例如替硬門檻宣告一個平滑的替代梯度。`Custom` 會拒絕格式不對的宣告，包括先前記錄的運算已經讀過的輸出。反向規則回傳錯誤，或梯度的數量、型別、形狀不對時，`Backward` 會失敗並指出是哪個運算。（[issue #375](https://github.com/HazelnutParadise/insyra/issues/375)）
 - 新增 `Tape.BackwardFrom(output, upstream)`，可以從 tape 上任何運算產生的張量開始反向傳播，並帶入呼叫者給的、形狀相同的上游梯度。（[issue #375](https://github.com/HazelnutParadise/insyra/issues/375)）
 - 失敗的 `Backward` 不再讓 `Tape.Grad` 回傳算到一半的梯度：`Tape.Grad` 與 `Parameter.Grad` 都保留上一次成功的結果。
 - 新增 `NewEdgeTopology`、`EdgeSum` 與 `Tape.EdgeSum`，處理以邊列表表示的圖：每個節點加總自己收到的加權邊，成本只跟邊數和數值量成正比，不需要 N×N 的稠密矩陣，tape 也會算出邊權重和節點數值的梯度。數值可以是 `[N]` 或帶批次的 `[B, N]`。每個輸出都是所有乘積的精確總和只捨入一次到最近的 float32，所以邊的順序和核心數量都改變不了結果，在每個平台上都一樣。大型圖會用滿所有核心。（[issue #379](https://github.com/HazelnutParadise/insyra/issues/379)）
@@ -34,6 +36,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `PairedTTest`、`SingleSampleWilcoxon`、`PairedWilcoxon`、`MannWhitneyU`、`OneWayANOVA`、`TwoWayANOVA`、`RepeatedMeasuresANOVA`、`KruskalWallis` 與 `FriedmanTest` 改為拒絕 `NaN` 或 `±Inf` 的格子，這正是 `stats` 文件一直對每個數值入口的描述。它們原本只檢查格子能不能轉成數字，所以這些值會進入計算，而且錯誤是 nil：`PairedTTest` 和三種 ANOVA 回傳 `NaN` 的統計量與 p 值，排序類檢定則回傳看起來正常的結果，因為 `NaN` 一樣會被排出名次。`KruskalWallis` 對 `[1, 2, NaN, 4]` 與 `[1, 2, 3, 4]` 回報 H = 0.54、p = 0.46。現在錯誤訊息和其他檢定一致，list 與位置都從 1 起算，例如 `group 2 contains a non-finite value at row 3: NaN`、`cell (A=2, B=1) contains a non-numeric value at row 2: <nil>` 與 `subject 2 contains a non-finite value at condition 2: NaN`，成對與雙樣本檢定則用 `data1` 或 `data2` 指出是哪個 list。以前的訊息是沒有位置的 `invalid numeric value in data1`，或從 0 起算的 `invalid data at group 0 index 2`。`LeveneTest` 與 `BartlettTest` 的組號也改從 1 起算（以前的 `group 1` 指的是第二組），空組、空格與條件數不符的受試者錯誤也一樣。`nil` 的 list（不論是否帶型別）會得到空 list 會得到的錯誤。`OneWayANOVA`、`KruskalWallis` 與 `FriedmanTest` 以前遇到它會讓整個程式結束，因為問題發生在 `recover` 接不到的 goroutine 裡，`TwoWayANOVA`、`RepeatedMeasuresANOVA` 與 `SingleSampleWilcoxon` 則會 panic。全為有限數值的輸入結果不變。CLI 的 `ttest paired`、`anova` 與 `ftest levene|bartlett` 指令會印出新的訊息。
 - 本身不是 `*insyra.DataList` 的 list（例如 `isr.DL` 建立的 list）現在會照原本存的樣子讀取。`stats` 以前會用 `NewDataList` 重建這種 list，而它會把一格 slice 拆成好幾個數字，所以 `SingleSampleTTest` 等會轉換輸入的函式把這一格算成多個觀察值，四格的 list 進到 `PairedTTest` 的長度檢查時也變成了五格。現在這一格會被拒絕，和同一格放在 `*insyra.DataList` 裡的結果一樣：`data contains a non-numeric value at row 4: [10 11]`。
+- `CutTreeByK` 與 `CutTreeByHeight` 遇到合併、高度與標籤數量對不上，或合併對象既不是葉節點也不是先前合併的樹時，改為回傳指出問題的錯誤。高度比合併少的樹以前會 panic，而 CLI 現在會在一次性指令之間從 `state.json` 還原 `hclust` 的樹，所以手動改過的檔案就足以讓下一次 `cutree` 結束整個程式。
+
+### `csvxl`
+
+- **BREAKING（輸出）**：`AppendCsvToExcel` 改用全新的工作表取代既有的同名工作表，不再就地清空儲存格，所以 v0.3.3 會保留的舊工作表欄寬、檢視與合併範圍，附加之後就不在了，只屬於這張工作表的定義名稱也會一起消失。就地清空只移除值與公式，列與儲存格上的其他東西都還在，結果把資料藏了起來：把五列的 CSV 附加到第 2、3 列被隱藏的工作表上，新的第 2、3 列在 Excel 裡仍是隱藏的，`ExcelToCsv` 讀回時五列只剩三列，舊的註解與超連結也留在新值上。這次以資料能正確讀回為優先，不再保留舊工作表的格式。工作表仍保留原本的位置，原本隱藏的也維持隱藏，作用中的工作表不變，活頁簿其他地方的定義名稱與公式也都保留。名稱只差大小寫的工作表，現在會改用呼叫時給的名稱：附加到 `TARGET` 會把名為 `Target` 的工作表改名，v0.3.3 則維持原名。取代工作表的時間也不再隨舊工作表的內容變長：取代一張有 2 萬個公式的工作表原本要 106 毫秒，現在是 3 毫秒。
 
 ## v0.3.3
 
