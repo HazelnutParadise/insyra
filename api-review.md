@@ -198,7 +198,7 @@
 | T-18 | ~~Med~~ 已修正（batch 3） | 效能：`Count` 為了加總各欄用 `asyncutil.ParallelForEach` 再經 float64 `Sum` 轉回 int；`Clone` 用 `parallel.GroupUp` 跑兩件小事；`Map` 每格經 `originalCol.Get`（每格一次鎖）；`containsSubstring` 手寫遞迴，長字串遞迴深度等於字串長度，`strings.Contains` 就有 | datatable.go:1271-1282, 1384-1410, 1568-1571；datatable_map.go:30 | 直接迴圈；`strings.Contains` |
 | T-19 | ~~Med~~ 已修正（batch 3） | `FindColsIfContains`／`FindColsIfContainsAll` 用 `FindFirst != nil` 判斷，每個不含該值的欄都會觸發一次 warn 進 `Err()`（D-5 跨欄放大）；`FindRowsIfAllElementsContainSubstring` 把非字串格子視為「符合」，全數字的列會被當作符合（準則 13） | datatable.go:652-690, 626-650 | 內部用不設 Err 的查找；非字串視為不符 |
 | T-20 | Low（doc 部分已隨 one-column-selector 修正：`ReplaceInCol` 現在真的收「索引或名稱」；`mode` 魔數與 `isNilOrNaN` 未處理） | `replace` 系列的 `mode ...int` 用 0/1/-1 魔數當 variadic 選項；`ReplaceInCol` doc 說「index or name」實作只吃索引（T-11）；NaN 判定 InRow/InCol 只認 float64，表層版用 `isNilOrNaN` 認 float32（準則 8、E） | datatable_replace.go 全檔 | typed `ReplaceMode`；統一 `isNilOrNaN` |
-| T-21 | Low | 13 個 `FilterColsByColIndexGreaterThan…`／`FilterRowsByRowIndexLessThanOrEqualTo…` 長名方法做的是切片，pandas 是 `iloc[a:b]`；`Headers`／`SetHeaders` 是 `ColNames`／`SetColNames` 的別名；`Counter` 與 DataList 重複；`SimpleRandomSample` 已 Deprecated（準則 1） | datatable_filters.go；datatable_colname.go:159, 187 | 收斂成 `SliceRows(from, to)`／`SliceCols(from, to)`，舊的標 Deprecated |
+| T-21 | ~~Low~~ 部分修正（datatable-slicing：新增 `SliceRows`／`SliceCols`，十個索引切片方法與 `Headers`／`SetHeaders` 標 Deprecated；`DataTable.Counter` 會跨整張表計數，不是別名，是否移除待擁有者裁定） | 13 個 `FilterColsByColIndexGreaterThan…`／`FilterRowsByRowIndexLessThanOrEqualTo…` 長名方法做的是切片，pandas 是 `iloc[a:b]`；`Headers`／`SetHeaders` 是 `ColNames`／`SetColNames` 的別名；`Counter` 與 DataList 重複；`SimpleRandomSample` 已 Deprecated（準則 1） | datatable_filters.go；datatable_colname.go:159, 187 | 收斂成 `SliceRows(from, to)`／`SliceCols(from, to)`，舊的標 Deprecated |
 | T-22 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials） | 缺 doc：`NewDataTable`、`GetElementByNumberIndex`、`GetColByNumber`、`GetColByName`、`GetRowByName`、`NumRows`、`NumCols`、`Data`、`GetCreationTimestamp`、`GetLastModifiedTimestamp`、colname.go 前 6 個方法。`AppendRowsByColIndex` doc 標題寫成 `AppendRowsByIndex`；`ToJSON_Bytes` 的 Err 記成 `ToJSON_Byte`（準則 E） | 各檔 | 補 |
 | T-23 | ~~Low~~ 已修正（sortby-column-selection、sortby-empty-config-first-column）：沒指定欄的設定依第一欄排序並寫進文件（擁有者裁定，只有想排序的人才會呼叫 `SortBy`），找不到欄時報錯並指名 `SortBy`，多層排序全有全無，多個欄位同時給時依優先順序排序並警告 | `SortBy` 的 `DataTableSortConfig` 零值 `ColumnNumber: 0` 無法與「沒指定」區分，空 config 會默默用第 0 欄排序；找不到欄時只 `LogWarning` 不設 Err | datatable_sort.go:7-40 | `ColumnNumber` 改 `*int` 或加 `HasColumnNumber` |
 | T-24 | OK | 設計較好、可當範本的部分：`Resample` 回傳 `error`；`Pivot`／`Unpivot` 同時回 error 與設 `Err()`；`GroupBy`／`Aggregate` 的 options struct 與 `AggregateOp.String()`；`SamplingOptions` 有 seed；`SummaryTo(io.Writer)`；Rolling／EWM 的表層包裝。這些是 v1 API 該長的樣子 | — | — |
@@ -551,7 +551,7 @@
 | T-15 | [#228](https://github.com/HazelnutParadise/insyra/issues/228) | 已關閉（fix-clear-defects-core、embeddable-sealed-interfaces） |
 | T-16 | [#229](https://github.com/HazelnutParadise/insyra/issues/229) |  |
 | T-17 | [#230](https://github.com/HazelnutParadise/insyra/issues/230) |  |
-| T-21 | [#231](https://github.com/HazelnutParadise/insyra/issues/231) |  |
+| T-21 | [#231](https://github.com/HazelnutParadise/insyra/issues/231) | 部分修正（datatable-slicing）；`Counter` 待裁定 |
 | T-22 | [#232](https://github.com/HazelnutParadise/insyra/issues/232) |  |
 | T-23 | [#233](https://github.com/HazelnutParadise/insyra/issues/233) | 已修正（sortby-column-selection、sortby-empty-config-first-column） |
 | E-2 | [#234](https://github.com/HazelnutParadise/insyra/issues/234) |  |

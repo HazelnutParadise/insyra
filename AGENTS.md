@@ -276,10 +276,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: delete them and the internal `F64orRat` in the same release as the other Deprecated removals, with `TestSqrtRatNegativeReturnsNil`, `TestPowRatNegativeExponent` and `TestSortTimes`, their sections in `Docs/utils.md`, and a BREAKING changelog entry.
 - **Status**: pending
 
-### [2026-09-28] — remove `FilterByCustomElement` one release after it was deprecated
-- **Where**: `datatable_filters.go`, `interfaces.go`
-- **What**: `filter-rows-where` deprecated it (#226, T-13) under the one-name rule: it returns exactly what `Filter` returns, as `TestFilterByCustomElementEqualsFilter` shows.
-- **Suggestion**: delete it, its line in `IDataTable`, `TestFilterByCustomElementEqualsFilter` and its section in `Docs/DataTable.md` in the same release as the other Deprecated removals, with a BREAKING changelog entry.
+### [2026-09-28] — remove the deprecated `DataTable` filter and header names one release after they were deprecated
+- **Where**: `datatable_filters.go`, `datatable_colname.go`, `interfaces.go`
+- **What**: under the one-name rule, `filter-rows-where` deprecated `FilterByCustomElement` (#226, T-13), which returns exactly what `Filter` returns, and `datatable-slicing` deprecated the ten `FilterColsByColIndex…`/`FilterRowsByRowIndex…` methods in favour of `SliceCols`/`SliceRows`, and `Headers`/`SetHeaders` in favour of `ColNames`/`SetColNames` (#231, T-21).
+- **Suggestion**: delete the thirteen methods, their lines in `IDataTable`, the tests that pin their old meaning (`TestFilterByCustomElementEqualsFilter`, `TestDeprecatedIndexFiltersMatchSlices`, `TestDeprecatedColIndexFiltersDoNotPanicPastTheEnd`, `TestHeadersAreColNames`) and their sections in `Docs/DataTable.md` in the same release as the other Deprecated removals, with a BREAKING changelog entry.
 - **Status**: pending
 
 ### [2026-09-28] — cutting a tree accepts a node merged twice

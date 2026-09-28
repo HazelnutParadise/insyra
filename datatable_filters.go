@@ -8,9 +8,90 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
+// ==================== Slices ====================
+
+// SliceRows returns rows from through to-1 as a new DataTable, the way
+// s[from:to] slices a Go slice. The bounds are 0-based positions with
+// 0 <= from <= to <= NumRows(); from == to gives the table's columns with no
+// rows. The result keeps the table's name, the column names and the names of
+// the rows it holds, and owns its data. A bound outside that range records an
+// error on the table and returns an empty DataTable.
+func (dt *DataTable) SliceRows(from, to int) *DataTable {
+	var result *DataTable
+	dt.AtomicDo(func(dt *DataTable) {
+		numRows := dt.getMaxColLength()
+		if from < 0 || from > to || to > numRows {
+			dt.fail("SliceRows", "bounds [%d:%d] out of range for %d rows; want 0 <= from <= to <= %d", from, to, numRows, numRows)
+			return
+		}
+		cols := make([]*DataList, len(dt.columns))
+		for i, col := range dt.columns {
+			data := make([]any, to-from)
+			for r := from; r < to && r < len(col.data); r++ {
+				data[r-from] = col.data[r]
+			}
+			cols[i] = &DataList{data: data, name: col.name, creationTimestamp: col.creationTimestamp}
+			cols[i].lastModifiedTimestamp.Store(col.lastModifiedTimestamp.Load())
+		}
+		rows := make([]int, to-from)
+		for i := range rows {
+			rows[i] = from + i
+		}
+		result = &DataTable{
+			columns:           cols,
+			rowNames:          filterRowNames(dt.rowNames, rows),
+			name:              dt.name,
+			creationTimestamp: dt.creationTimestamp,
+		}
+		result.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+	})
+	if result == nil {
+		return NewDataTable()
+	}
+	return result
+}
+
+// SliceCols returns columns from through to-1 as a new DataTable, the way
+// s[from:to] slices a Go slice. The bounds are 0-based positions with
+// 0 <= from <= to <= NumCols(); from == to gives a table with no columns. The
+// result keeps every row, the row names and the table's name, and owns its
+// data. A bound outside that range records an error on the table and returns
+// an empty DataTable.
+func (dt *DataTable) SliceCols(from, to int) *DataTable {
+	var result *DataTable
+	dt.AtomicDo(func(dt *DataTable) {
+		numCols := len(dt.columns)
+		if from < 0 || from > to || to > numCols {
+			dt.fail("SliceCols", "bounds [%d:%d] out of range for %d columns; want 0 <= from <= to <= %d", from, to, numCols, numCols)
+			return
+		}
+		rowNames := core.NewBiIndex(0)
+		if from < to {
+			rowNames = cloneRowNames(dt.rowNames)
+		}
+		result = &DataTable{
+			columns:           cloneColumns(dt.columns[from:to]),
+			rowNames:          rowNames,
+			name:              dt.name,
+			creationTimestamp: dt.creationTimestamp,
+		}
+		result.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+	})
+	if result == nil {
+		return NewDataTable()
+	}
+	return result
+}
+
 // ==================== Col Index ====================
 
-// FilterColsByColIndexGreaterThan filters columns with index greater than the specified column.
+// FilterColsByColIndexGreaterThan keeps the columns after the one at
+// columnIndexLetter. An unreadable letter, the last column or one past it
+// gives an empty DataTable.
+//
+// Deprecated: use SliceCols(i+1, dt.NumCols()), where i is the column's
+// position; ParseColIndex turns a letter into one. SliceCols reports a bound
+// past the last column as an error instead of returning an empty table.
 func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *DataTable {
 	var newDt *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -34,7 +115,13 @@ func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *
 	return newDt
 }
 
-// FilterColsByColIndexGreaterThanOrEqualTo filters columns with index greater than or equal to the specified column.
+// FilterColsByColIndexGreaterThanOrEqualTo keeps the column at
+// columnIndexLetter and every column after it. An unreadable letter, or one
+// past the last column, gives an empty DataTable.
+//
+// Deprecated: use SliceCols(i, dt.NumCols()), where i is the column's
+// position; ParseColIndex turns a letter into one. SliceCols reports a bound
+// past the last column as an error instead of returning an empty table.
 func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -59,7 +146,12 @@ func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter 
 	return result
 }
 
-// FilterColsByColIndexEqualTo filters to only keep the column with the specified index.
+// FilterColsByColIndexEqualTo keeps only the column at columnIndexLetter. An
+// unreadable letter, or one past the last column, gives an empty DataTable.
+//
+// Deprecated: use SliceCols(i, i+1), where i is the column's position;
+// ParseColIndex turns a letter into one. To pick a column as a DataList, use
+// GetCol.
 func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -84,7 +176,13 @@ func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *Data
 	return result
 }
 
-// FilterColsByColIndexLessThan filters columns with index less than the specified column.
+// FilterColsByColIndexLessThan keeps the columns before the one at
+// columnIndexLetter; a letter past the last column keeps them all. An
+// unreadable letter, or column A, gives an empty DataTable.
+//
+// Deprecated: use SliceCols(0, i), where i is the column's position;
+// ParseColIndex turns a letter into one. SliceCols reports a bound past the
+// last column as an error.
 func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -95,7 +193,7 @@ func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *Dat
 			return
 		}
 
-		filteredCols := dt.columns[:colIdx]
+		filteredCols := dt.columns[:min(colIdx, len(dt.columns))]
 
 		newDt := &DataTable{
 			columns:           cloneColumns(filteredCols),
@@ -109,7 +207,13 @@ func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *Dat
 	return result
 }
 
-// FilterColsByColIndexLessThanOrEqualTo filters columns with index less than or equal to the specified column.
+// FilterColsByColIndexLessThanOrEqualTo keeps the column at
+// columnIndexLetter and every column before it; a letter past the last column
+// keeps them all. An unreadable letter gives an empty DataTable.
+//
+// Deprecated: use SliceCols(0, i+1), where i is the column's position;
+// ParseColIndex turns a letter into one. SliceCols reports a bound past the
+// last column as an error.
 func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -120,7 +224,7 @@ func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter str
 			return
 		}
 
-		filteredCols := dt.columns[:colIdx+1]
+		filteredCols := dt.columns[:min(colIdx+1, len(dt.columns))]
 
 		newDt := &DataTable{
 			columns:           cloneColumns(filteredCols),
@@ -191,35 +295,53 @@ func (dt *DataTable) FilterColsByColNameContains(substring string) *DataTable {
 
 // ==================== Row Index ====================
 
-// FilterRowsByRowIndexGreaterThan filters rows with index greater than the specified threshold.
+// FilterRowsByRowIndexGreaterThan keeps the rows after row threshold.
+//
+// Deprecated: use SliceRows(threshold+1, dt.NumRows()). SliceRows reports a
+// bound outside the table as an error; this method clamps it.
 func (dt *DataTable) FilterRowsByRowIndexGreaterThan(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex > threshold
 	})
 }
 
-// FilterRowsByRowIndexGreaterThanOrEqualTo filters rows with index greater than or equal to the specified threshold.
+// FilterRowsByRowIndexGreaterThanOrEqualTo keeps row threshold and the rows
+// after it.
+//
+// Deprecated: use SliceRows(threshold, dt.NumRows()). SliceRows reports a
+// bound outside the table as an error; this method clamps it.
 func (dt *DataTable) FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex >= threshold
 	})
 }
 
-// FilterRowsByRowIndexEqualTo filters to only keep the row with the specified index.
+// FilterRowsByRowIndexEqualTo keeps only row index.
+//
+// Deprecated: use SliceRows(index, index+1). SliceRows reports a row outside
+// the table as an error; this method returns no rows. To read one row as a
+// DataList, use GetRow.
 func (dt *DataTable) FilterRowsByRowIndexEqualTo(index int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex == index
 	})
 }
 
-// FilterRowsByRowIndexLessThan filters rows with index less than the specified threshold.
+// FilterRowsByRowIndexLessThan keeps the rows before row threshold.
+//
+// Deprecated: use SliceRows(0, threshold). SliceRows reports a bound outside
+// the table as an error; this method clamps it.
 func (dt *DataTable) FilterRowsByRowIndexLessThan(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex < threshold
 	})
 }
 
-// FilterRowsByRowIndexLessThanOrEqualTo filters rows with index less than or equal to the specified threshold.
+// FilterRowsByRowIndexLessThanOrEqualTo keeps row threshold and the rows
+// before it.
+//
+// Deprecated: use SliceRows(0, threshold+1). SliceRows reports a bound
+// outside the table as an error; this method clamps it.
 func (dt *DataTable) FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex <= threshold

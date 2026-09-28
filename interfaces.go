@@ -298,6 +298,8 @@ type IDataTable interface {
 	FilterByCustomElement(f func(value any) bool) *DataTable
 	FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
 	FilterRowsWhere(keep func(row *DataList) bool) *DataTable
+	SliceRows(from, to int) *DataTable
+	SliceCols(from, to int) *DataTable
 	FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable
 	FilterColsByColIndexGreaterThan(threshold string) *DataTable
 	FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
