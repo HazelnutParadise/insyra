@@ -112,6 +112,8 @@ func TestTOSTR_BadFormatIsAnError(t *testing.T) {
 		{name: "missing argument for a punctuation verb", expr: "TOSTR(1, '%v %_')"},
 		{name: "missing argument for a bang verb", expr: "TOSTR(1, '%v %!')"},
 		{name: "missing argument for a non-ASCII verb", expr: "TOSTR(1, '%v %é')"},
+		{name: "wrong value for a parenthesis verb", expr: "TOSTR(1, '%(')"},
+		{name: "missing argument for a parenthesis verb", expr: "TOSTR(1, '%v %(')"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

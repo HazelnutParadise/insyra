@@ -150,9 +150,9 @@ func fmtErrorMarker(s string, known ...string) string {
 		if s[i] != '%' || s[i+1] != '!' {
 			continue
 		}
-		verb, size := utf8.DecodeRuneInString(s[i+2:])
+		_, size := utf8.DecodeRuneInString(s[i+2:])
 		end := i + 2 + size
-		if verb == '(' || end >= len(s) || s[end] != '(' {
+		if end >= len(s) || s[end] != '(' {
 			continue
 		}
 		if m := s[i : end+1]; !fromCaller(m) {
