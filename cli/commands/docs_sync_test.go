@@ -7,11 +7,15 @@ import (
 	"testing"
 )
 
-// The CLI is documented in three hand-written places, and nothing compared
-// them with the commands: accel was missing from all three, read had lost two
-// options, plot still advertised options batch 7 removed. This compares every
-// registered command's Usage with each document, so the next drift fails here
-// instead of reaching someone reading the docs.
+// The CLI is documented in one hand-written place — the command index in
+// cli-dsl.md — and by each command's own Usage, which is what `insyra help
+// <cmd>` prints. Nothing compared them with the registry: back when the
+// commands were written down in three pages, accel was missing from all three,
+// read had lost two options, plot still advertised options batch 7 removed.
+// This compares every registered command's Usage with the index, so the next
+// drift fails here instead of reaching someone reading the docs. The agent
+// skills are deliberately not compared: they teach principles and point at
+// cli-dsl.md, and no longer carry a command list of their own to drift from.
 func TestCLIDocsMatchRegistry(t *testing.T) {
 	docs := []struct {
 		name   string
@@ -21,10 +25,6 @@ func TestCLIDocsMatchRegistry(t *testing.T) {
 	}{
 		{"Docs/cli-dsl.md command index", "../../Docs/cli-dsl.md", parseCommandIndex,
 			map[string]bool{"completion": true}}, // Cobra's own, not in the registry
-		{"cli-command-usage.md", "../../skills/use-insyra-cli/references/cli-command-usage.md",
-			sectionUsages("## "), nil},
-		{"cli-command-guide.md", "../../skills/use-insyra-cli/references/cli-command-guide.md",
-			sectionUsages("### "), map[string]bool{"load sql": true, "save sql": true}},
 	}
 
 	registryMu.RLock()
@@ -58,16 +58,16 @@ func TestCLIDocsMatchRegistry(t *testing.T) {
 	}
 }
 
-// Two more pages list the commands by topic, without usage lines: the command
-// groups in cli-dsl.md and the skill's cli-commands.md. A command missing from
-// them is invisible to anyone looking for it by topic, which is how accel went
-// unnoticed.
+// One page lists the commands by topic, without usage lines: the command
+// groups in cli-dsl.md. A command missing from it is invisible to anyone
+// looking for it by topic, which is how accel went unnoticed. The agent skills
+// are not checked: they no longer list commands, so there is nothing there to
+// find one by topic.
 func TestCLITopicListsNameEveryCommand(t *testing.T) {
 	pages := []struct {
 		name, path, section string
 	}{
 		{"Docs/cli-dsl.md command groups", "../../Docs/cli-dsl.md", "## Command Groups"},
-		{"cli-commands.md", "../../skills/use-insyra-cli/references/cli-commands.md", ""},
 	}
 
 	registryMu.RLock()
@@ -175,31 +175,4 @@ func splitTableRow(line string) []string {
 		cells = cells[1:]
 	}
 	return cells
-}
-
-// sectionUsages reads sections that start with "<hdr>`name`" (anything may
-// follow the name, such as "(deprecated)") and returns each section's
-// "- Usage:" line.
-func sectionUsages(hdr string) func(string) map[string]string {
-	head := regexp.MustCompile("(?m)^" + regexp.QuoteMeta(hdr) + "`([^`]+)`")
-	return func(doc string) map[string]string {
-		out := map[string]string{}
-		idx := head.FindAllStringSubmatchIndex(doc, -1)
-		for k, ix := range idx {
-			name := doc[ix[2]:ix[3]]
-			end := len(doc)
-			if k+1 < len(idx) {
-				end = idx[k+1][0]
-			}
-			usage := ""
-			for _, line := range strings.Split(doc[ix[1]:end], "\n") {
-				if strings.HasPrefix(line, "- Usage: ") {
-					usage = usageOf(strings.TrimPrefix(line, "- Usage: "))
-					break
-				}
-			}
-			out[name] = usage
-		}
-		return out
-	}
 }

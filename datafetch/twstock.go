@@ -2,7 +2,6 @@ package datafetch
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/datafetch/internal/limiter"
+	json "github.com/goccy/go-json"
 )
 
 const (
@@ -27,7 +27,9 @@ const (
 type TWStockConfig struct {
 	// Timeout is the per-request timeout. Default: 15s.
 	Timeout time.Duration
-	// Interval is the minimum spacing between requests. Zero disables throttling.
+	// Interval is the minimum spacing between the scheduled starts of successive
+	// requests; no request starts before its scheduled time. Zero disables
+	// throttling.
 	Interval time.Duration
 	// UserAgent is the HTTP User-Agent header.
 	UserAgent string
@@ -118,7 +120,7 @@ func (t *twStock) doJSON(rawURL string, output any) error {
 			lastErr = err
 		} else {
 			req.Header.Set("User-Agent", t.cfg.UserAgent)
-			resp, requestErr := t.client.Do(req)
+			resp, requestErr := t.client.Do(req) //nolint:bodyclose // readJSONResponse closes the body
 			if requestErr != nil {
 				lastErr = requestErr
 			} else {

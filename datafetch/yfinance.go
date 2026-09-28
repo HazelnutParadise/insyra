@@ -29,7 +29,7 @@ type YFinanceConfig struct {
 	// Timeout: 單次請求最多等待多久（避免卡死）
 	Timeout time.Duration
 
-	// Interval: 每次請求之間最少要隔多久（節流）
+	// Interval: 相鄰兩次請求排定的開始時間最少要隔多久（節流），請求不會早於排定時間開始
 	// 0 表示不節流
 	Interval time.Duration
 

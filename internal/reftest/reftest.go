@@ -70,5 +70,5 @@ func MissingOutput(t *testing.T, tool, verification string, cause error, output 
 		Missing(t, tool, verification, cause)
 		return
 	}
-	Missing(t, tool, verification, fmt.Errorf("%v: %s", cause, trimmed))
+	Missing(t, tool, verification, fmt.Errorf("%w: %s", cause, trimmed))
 }

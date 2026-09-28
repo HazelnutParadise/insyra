@@ -1,0 +1,20 @@
+# The data the nn gates need, pinned by content. `go test ./...` skips those
+# gates because nobody keeps 300MB of checkpoints in a checkout, so the
+# Neural Network Data Gates workflow fetches the files listed here and checks
+# every one against its sha256 before running the tests.
+#
+# Each line is: <sha256>  <path under the data directory>  <source URL>
+# A .gz source is decompressed after download. The model URLs name a commit or
+# a revision rather than a branch, so the bytes cannot move under the checksum.
+#
+# Docs/nn.md points a local run at this file as well.
+
+c0c3f76d93fa3fd6580652a45618618a220fced18babf65774ed169de0432ad5  models/mobilenetv2-12.onnx  https://github.com/onnx/models/raw/4f43949841cb55a0b98dc8fcd045431ccafd9f96/validated/vision/classification/mobilenet/model/mobilenetv2-12.onnx
+6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452  models/minilm-l6-v2.onnx  https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/onnx/model.onnx
+eb5017d1b80372eb0b58552655274698817ba2e774437e2c2d3c0a613d2e99bd  models/fcn-resnet50-12.onnx  https://github.com/onnx/models/raw/4f43949841cb55a0b98dc8fcd045431ccafd9f96/validated/vision/object_detection_segmentation/fcn/model/fcn-resnet50-12.onnx
+fa646dedade881243f8d5a2ceb7de2b93675b21fc24f7482894ac4851a9a0a47  models/mosaic-9.onnx  https://github.com/onnx/models/raw/4f43949841cb55a0b98dc8fcd045431ccafd9f96/validated/vision/style_transfer/fast_neural_style/model/mosaic-9.onnx
+f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521  models/tiny-yolov3-11.onnx  https://github.com/onnx/models/raw/4f43949841cb55a0b98dc8fcd045431ccafd9f96/validated/vision/object_detection_segmentation/tiny-yolov3/model/tiny-yolov3-11.onnx
+ba891046e6505d7aadcbbe25680a0738ad16aec93bde7f9b65e87a2fc25776db  mnist/train-images-idx3-ubyte  https://ossci-datasets.s3.amazonaws.com/mnist/train-images-idx3-ubyte.gz
+65a50cbbf4e906d70832878ad85ccda5333a97f0f4c3dd2ef09a8a9eef7101c5  mnist/train-labels-idx1-ubyte  https://ossci-datasets.s3.amazonaws.com/mnist/train-labels-idx1-ubyte.gz
+0fa7898d509279e482958e8ce81c8e77db3f2f8254e26661ceb7762c4d494ce7  mnist/t10k-images-idx3-ubyte  https://ossci-datasets.s3.amazonaws.com/mnist/t10k-images-idx3-ubyte.gz
+ff7bcfd416de33731a308c3f266cc351222c34898ecbeaf847f06e48f7ec33f2  mnist/t10k-labels-idx1-ubyte  https://ossci-datasets.s3.amazonaws.com/mnist/t10k-labels-idx1-ubyte.gz

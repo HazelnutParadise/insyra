@@ -28,8 +28,8 @@
 The **Insyra** library is a dynamic and versatile tool designed for managing and analyzing data in Go. It offers a rich set of features for data manipulation, statistical calculations, data visualization, and more, making it an essential toolkit for developers handling complex data structures.
 
 > [!TIP] 
-> `isr` package provides **Sytax Sugar**!<br/>
-> Any new project is recommended to use `isr` package instead of calling `insyra` main package directly.<br/>
+> `isr` package provides **Syntax Sugar**!<br/>
+> Use `isr` for convenient, readable code, and the `insyra` main package where performance matters. The two mix freely.<br/>
 > For more details, please refer to the **[Documentation](/Docs/isr.md)**.
 
 > [!NOTE]
@@ -65,8 +65,8 @@ tape.AdamW(1e-3, 1e-2)
 
 This repository includes **agent skills**:
 
-- [`skills/insyra`](skills/insyra): helps AI agents use Insyra in Go code (DataList/DataTable workflows, CCL formulas, and common file I/O helpers).
-- [`skills/use-insyra-cli`](skills/use-insyra-cli): teaches agents how to use Insyra CLI/REPL and `.isr` scripts, including environment workflows and full command reference.
+- [`skills/insyra`](skills/insyra): teaches AI agents to use Insyra in Go code: when to reach for it, how to think about DataList/DataTable, the conventions that hold across the library, and how to look up the exact API for the version a project uses.
+- [`skills/use-insyra-cli`](skills/use-insyra-cli): teaches agents to work through the Insyra CLI, REPL, `.isr` scripts and Go DSL: which mode to choose, how sessions and environments behave, how to keep work reproducible, and how to find each command's exact usage with `insyra help`.
 
 Install the skills with:
 
@@ -411,7 +411,7 @@ How a cell treats a decimal (it sorts by value, but `Mean` and `Sum` need it con
 
 | Package | Description |
 |---|---|
-| **[isr](/Docs/isr.md)** | Syntactic sugar over **Insyra** — the recommended entry point for new code. |
+| **[isr](/Docs/isr.md)** | Syntactic sugar over **Insyra** for convenient code; use the main package where performance matters. |
 | **[stats](/Docs/stats.md)** | Statistical functions for data analysis: skewness, kurtosis, moment calculations, and more. |
 | **[ml](/Docs/ml.md)** | scikit-learn-style machine learning: regressions, trees, forests, boosting, pipelines, and model selection, verified against scikit-learn and R, with ONNX export. |
 | **[nn](/Docs/nn.md)** | Pure-Go neural networks: runs real ONNX models verified against `onnxruntime`, trains with a PyTorch-verified tape and layer API, SafeTensors in/out, GPU-accelerated MatMul. |

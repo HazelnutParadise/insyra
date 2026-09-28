@@ -92,6 +92,7 @@ func TestToSQL_AppendModeAddsMissingColumnOnce(t *testing.T) {
 		require.NoError(t, rows.Scan(&v))
 		bs = append(bs, v)
 	}
+	require.NoError(t, rows.Err())
 	require.Equal(t, []string{"x", "y", "z"}, bs)
 }
 
@@ -119,6 +120,7 @@ func TestToSQL_AllNilColumnFallsBackToText(t *testing.T) {
 		require.NoError(t, rows.Scan(&cid, &name, &typeName, &notnull, &dfltValue, &pk))
 		types[name] = strings.ToUpper(typeName)
 	}
+	require.NoError(t, rows.Err())
 	require.Equal(t, "TEXT", types["b"])
 }
 
@@ -150,6 +152,7 @@ func TestToSQL_TimeAndBytesInference(t *testing.T) {
 		require.NoError(t, rows.Scan(&cid, &name, &typeName, &notnull, &dfltValue, &pk))
 		types[name] = strings.ToUpper(typeName)
 	}
+	require.NoError(t, rows.Err())
 	require.Equal(t, "DATETIME", types["ts"])
 	require.Equal(t, "BLOB", types["blob"])
 }
@@ -187,5 +190,6 @@ func TestToSQL_RowNamesPersistsRowNameColumn(t *testing.T) {
 		require.NoError(t, rows.Scan(&r.Name, &r.Value))
 		got = append(got, r)
 	}
+	require.NoError(t, rows.Err())
 	require.Equal(t, []row{{"alpha", 10}, {"beta", 20}}, got)
 }

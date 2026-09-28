@@ -4,6 +4,7 @@
 `csvxl` 與 `parquet` 的 I/O 錯誤處理契約：錯誤可 unwrap、目錄權限保守、`parquet.Write` 關閉錯誤不被吞掉、日誌走 Insyra logger。
 
 ## Requirements
+
 ### Requirement: csvxl errors unwrap and directories are 0755
 
 `csvxl` 的錯誤 SHALL 以 `%w` 包裝底層錯誤；`ExcelToCsv`／`EachExcelToCsv` 建立的目錄權限 SHALL 為 0755。
@@ -27,3 +28,27 @@
 #### Scenario: Successful write
 - **WHEN** `Write(dt, path)` 成功
 - **THEN** 回傳 nil，且 `Read` 可讀回同樣的資料
+
+### Requirement: Remote input is bounded
+
+讀取遠端回應 SHALL 經過大小上限，SHALL NOT 直接 `io.ReadAll`。發出的 HTTP 請求 SHALL 設定整體 timeout。
+
+#### Scenario: A reply larger than the cap
+- **WHEN** 線上渲染服務回傳超過上限的內容
+- **THEN** 回報錯誤，不把它寫進檔案，也不把它整個讀進記憶體
+
+### Requirement: Created directories are not world-writable
+
+程式庫建立的目錄 SHALL NOT 使用 `os.ModePerm`（0777）。
+
+#### Scenario: The Python environment directory
+- **WHEN** `py` 建立安裝目錄
+- **THEN** 權限是 0o755
+
+### Requirement: A framing layer refuses what it cannot read back
+
+`ipc.WriteMessage` SHALL 在寫入任何位元組之前拒絕超過 `maxMessageSize` 的訊息。寫入端接受的長度 SHALL 都在讀取端接受的範圍內。
+
+#### Scenario: An oversized payload
+- **WHEN** 寫入超過上限的訊息
+- **THEN** 回傳錯誤，且串流上沒有留下任何位元組

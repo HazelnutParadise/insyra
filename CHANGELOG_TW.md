@@ -8,6 +8,46 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
+## v0.3.4
+
+### Core
+
+- 以另一個錯誤為原因的錯誤，現在用 `%w` 包住原因，而不是把它格式化成文字，所以 `errors.Is` 與 `errors.As` 能認出原因。涵蓋的地方有：偵測不到編碼的 CSV、讀取 Excel 工作表、CCL 的 `MID`、`SUBSTR`、`TONUM`、`VALUE`、`TOSTR`、`TEXT` 與序列、聚合函數、建立 `pd` Series，以及 `lp` 安裝 GLPK。訊息文字不變。
+- `StandardScaler`、`MinMaxScaler`、`RobustScaler` 與 `MaxAbsScaler` 實作了 `json.Marshaler` 與 `json.Unmarshaler`，已擬合的 scaler 可以存起來之後再用。用 `json.Unmarshal` 讀回同一型別後，轉換結果與原本完全相同，以欄字母擬合的欄也一樣，NaN 參數讀回仍是 NaN。以前對 scaler 呼叫 `json.Marshal` 只會得到 `{}`。
+- CCL 的 `TOSTR` 遇到動詞是標點或非 ASCII 字母、又沒有值可填的格式，會像字母動詞一樣回傳錯誤：v0.3.3 的 `TOSTR(A, '%v %_')` 會把 `1 %!_(MISSING)` 寫進儲存格。
+- 內容相同的巢狀陣列與巢狀 slice，不論大小，對 `Count`、`Counter`、`Find` 與 `Replace` 系列方法，以及其他依值比對儲存格的查找，都是同一個值。v0.3.3 把大的巢狀 slice 寫成摘要、陣列則從不這樣做，所以內容超過約 1 KiB 後兩者就對不上了。
+- **BREAKING**：`ReadJSON` 與 `ReadJSON_File` 會拒收不合法的 JSON，例如開頭多一個 0 的數字（`{"a":01}`），以前會讀成 1。解碼方式現在和 `encoding/json` 一致：超出 `float64` 範圍的數字（例如 `1e400`）保留成原本的文字，和 `ReadCSV` 的做法相同，以前整次讀取會失敗；字串裡的無效 UTF-8 會換成 U+FFFD，不再原樣保留；錯誤訊息的寫法也和 `encoding/json` 相同。這些來自 `github.com/goccy/go-json` v0.11，所有使用 insyra 的程式都會跟著用到這個版本。
+- `ToJSON`、`ToJSON_Bytes` 與 `ToJSON_String` 輸出的內容和 `encoding/json.MarshalIndent` 完全相同。實測唯一的差別是很小的指數改寫成 `1e-7`，不再是 `1e-07`，數值不變。
+- JSON 讀寫變快了。一張 10 萬列、5 欄、JSON 約 14 MB 的表，`ToJSON_Bytes` 從 66 ms 降到 45 ms，`ReadJSON` 從 129 ms 降到 90 ms（Apple M3，取 5 次最快）。
+
+### CLI
+
+- 修正 `insyra env import` 在沒有 `--force` 時，只要目標環境有檔案存在但讀不到，就會把非空的環境蓋掉。判斷目標是否為空的檢查把讀不到 `config.json` 當成「空的」，讀不到 `state.json` 與 `history.txt` 也一樣被忽略。檔案不存在仍然視為空，其他讀取失敗現在會停止匯入，並指出哪個環境無法確認。
+- `accel` 不再檢查 `--precision`。這個旗標原本是用來選 `accel run` 的精度，v0.3.1 拿掉 `accel run` 之後，就沒有任何程式讀它。還在傳這個旗標的腳本照樣能跑，因為 `accel` 會略過用不到的參數，唯一的差別是 `--precision bogus` 這類無效的值不再報錯。Go 裡的 `accel.Precision` 設定不變。
+- 一次性命令不再改動它還原的變數。`state.json` 現在連同 Go 型別儲存每個變數：DataTable 保留欄位順序、欄名、列名與每一格的型別。`insyra load c.csv as t` 之後另外執行 `insyra cols t`，欄位會照檔案的順序列出，不再變成字母序，欄字母在每個命令裡也都指向同一欄。`parsedates` 轉成日期的欄，到了 `resample` 還是日期，CCL 日期相減得到的欄仍是 `time.Duration`，`3.0` 也仍是 `float64`，不會變成 `int64`。`scale fit` 擬合的 scaler 與 `hclust` 的樹也會保存，`scale transform` 與 `cutree` 可以分開執行。以前 scaler 會消失，`cutree` 也不接受讀回來的樹。
+- 環境無法保存的變數（例如 `regression` 的結果）會在儲存時印出一行 `warning:`，在 REPL 或腳本中每個變數只提示一次，不再無聲無息地被丟掉或變成 map。產生它的命令照常成功，其他變數照常保存。直接使用 `cli/env` 的 Go 程式可以用新增的 `Manager.SaveVariables` 取得同一份清單，`SaveState` 仍然只在檔案沒寫成時回傳錯誤。
+- 先前版本寫入的 `state.json` 仍可讀取，下次儲存時改寫成新格式。含 NaN 值的環境現在可以 `env export`，`env import` 也會完整保留超過 2^53 的整數。
+
+### `ml` 與 `nn`
+
+- 新增 `Tape.Custom(name, inputs, output, vjp)`，把在 tape 外算出來的運算放上 tape：它的輸入會拿到反向規則回傳的梯度。以前在 tape 外算出的張量會讓它的輸入默默拿到零梯度。反向規則可以不是前向的導數，例如替硬門檻宣告一個平滑的替代梯度。`Custom` 會拒絕格式不對的宣告，包括先前記錄的運算已經讀過的輸出。反向規則回傳錯誤，或梯度的數量、型別、形狀不對時，`Backward` 會失敗並指出是哪個運算。（[issue #375](https://github.com/HazelnutParadise/insyra/issues/375)）
+- 新增 `Tape.BackwardFrom(output, upstream)`，可以從 tape 上任何運算產生的張量開始反向傳播，並帶入呼叫者給的、形狀相同的上游梯度。（[issue #375](https://github.com/HazelnutParadise/insyra/issues/375)）
+- 失敗的 `Backward` 不再讓 `Tape.Grad` 回傳算到一半的梯度：`Tape.Grad` 與 `Parameter.Grad` 都保留上一次成功的結果。
+- 新增 `NewEdgeTopology`、`EdgeSum` 與 `Tape.EdgeSum`，處理以邊列表表示的圖：每個節點加總自己收到的加權邊，成本只跟邊數和數值量成正比，不需要 N×N 的稠密矩陣，tape 也會算出邊權重和節點數值的梯度。數值可以是 `[N]` 或帶批次的 `[B, N]`。每個輸出都是所有乘積的精確總和只捨入一次到最近的 float32，所以邊的順序和核心數量都改變不了結果，在每個平台上都一樣。大型圖會用滿所有核心。（[issue #379](https://github.com/HazelnutParadise/insyra/issues/379)）
+- `Tanh` 對每個輸入、在每個平台上都回傳正確捨入的值，也就是真正的 `tanh(x)` 只捨入一次到最近的 float32。以前是把 Go 的 `math.Tanh` 捨入成 float32，而它的 float64 結果並非每個平台都一樣（在 arm64 會合併乘加，在 amd64 執行時依 CPU 選擇是否用 FMA，在 s390x 則是組合語言），所以只在那個結果剛好夠準的地方才正確。全部 2^32 個輸入都在 darwin/arm64 上比對過，2^-13 到 9.5 之間的輸入也在 linux/amd64 與 windows/amd64 上比對過。這三個平台上舊的結果原本就正確，所以沒有任何結果改變。
+- `Tape.Tanh` 的梯度每一步都捨入成 float32。以前 Go 編譯器在 arm64 上會把 `1 - y*y` 合併成一次乘加，在 amd64 上不會，同一個梯度在兩邊可能差最後一位。在 arm64 上，10 萬個隨機梯度有 24,892 個改變。現在每個平台上位元都相同。
+
+### `stats`
+
+- `PairedTTest`、`SingleSampleWilcoxon`、`PairedWilcoxon`、`MannWhitneyU`、`OneWayANOVA`、`TwoWayANOVA`、`RepeatedMeasuresANOVA`、`KruskalWallis` 與 `FriedmanTest` 改為拒絕 `NaN` 或 `±Inf` 的格子，這正是 `stats` 文件一直對每個數值入口的描述。它們原本只檢查格子能不能轉成數字，所以這些值會進入計算，而且錯誤是 nil：`PairedTTest` 和三種 ANOVA 回傳 `NaN` 的統計量與 p 值，排序類檢定則回傳看起來正常的結果，因為 `NaN` 一樣會被排出名次。`KruskalWallis` 對 `[1, 2, NaN, 4]` 與 `[1, 2, 3, 4]` 回報 H = 0.54、p = 0.46。現在錯誤訊息和其他檢定一致，list 與位置都從 1 起算，例如 `group 2 contains a non-finite value at row 3: NaN`、`cell (A=2, B=1) contains a non-numeric value at row 2: <nil>` 與 `subject 2 contains a non-finite value at condition 2: NaN`，成對與雙樣本檢定則用 `data1` 或 `data2` 指出是哪個 list。以前的訊息是沒有位置的 `invalid numeric value in data1`，或從 0 起算的 `invalid data at group 0 index 2`。`LeveneTest` 與 `BartlettTest` 的組號也改從 1 起算（以前的 `group 1` 指的是第二組），空組、空格與條件數不符的受試者錯誤也一樣。`nil` 的 list（不論是否帶型別）會得到空 list 會得到的錯誤。`OneWayANOVA`、`KruskalWallis` 與 `FriedmanTest` 以前遇到它會讓整個程式結束，因為問題發生在 `recover` 接不到的 goroutine 裡，`TwoWayANOVA`、`RepeatedMeasuresANOVA` 與 `SingleSampleWilcoxon` 則會 panic。全為有限數值的輸入結果不變。CLI 的 `ttest paired`、`anova` 與 `ftest levene|bartlett` 指令會印出新的訊息。
+- 本身不是 `*insyra.DataList` 的 list（例如 `isr.DL` 建立的 list）現在會照原本存的樣子讀取。`stats` 以前會用 `NewDataList` 重建這種 list，而它會把一格 slice 拆成好幾個數字，所以 `SingleSampleTTest` 等會轉換輸入的函式把這一格算成多個觀察值，四格的 list 進到 `PairedTTest` 的長度檢查時也變成了五格。現在這一格會被拒絕，和同一格放在 `*insyra.DataList` 裡的結果一樣：`data contains a non-numeric value at row 4: [10 11]`。
+- `CutTreeByK` 與 `CutTreeByHeight` 遇到合併、高度與標籤數量對不上，或合併對象既不是葉節點也不是先前合併的樹時，改為回傳指出問題的錯誤。高度比合併少的樹以前會 panic，而 CLI 現在會在一次性指令之間從 `state.json` 還原 `hclust` 的樹，所以手動改過的檔案就足以讓下一次 `cutree` 結束整個程式。
+
+### `csvxl`
+
+- **BREAKING（輸出）**：`AppendCsvToExcel` 改用全新的工作表取代既有的同名工作表，不再就地清空儲存格，所以 v0.3.3 會保留的舊工作表欄寬、檢視與合併範圍，附加之後就不在了，只屬於這張工作表的定義名稱也會一起消失。就地清空只移除值與公式，列與儲存格上的其他東西都還在，結果把資料藏了起來：把五列的 CSV 附加到第 2、3 列被隱藏的工作表上，新的第 2、3 列在 Excel 裡仍是隱藏的，`ExcelToCsv` 讀回時五列只剩三列，舊的註解與超連結也留在新值上。這次以資料能正確讀回為優先，不再保留舊工作表的格式。工作表仍保留原本的位置，原本隱藏的也維持隱藏，作用中的工作表不變，活頁簿其他地方的定義名稱與公式也都保留。名稱只差大小寫的工作表，現在會改用呼叫時給的名稱：附加到 `TARGET` 會把名為 `Target` 的工作表改名，v0.3.3 則維持原名。取代工作表的時間也不再隨舊工作表的內容變長：取代一張有 2 萬個公式的工作表原本要 106 毫秒，現在是 3 毫秒。保留舊工作表格式的做法由 [#401](https://github.com/HazelnutParadise/insyra/issues/401) 追蹤。
+- 修正 `AppendCsvToExcel` 在 CSV 讀不到時把工作表清空。它先換掉工作表才讀 CSV，所以檔案不存在、編碼偵測不出來或 CSV 格式錯誤時，存回的活頁簿裡那張工作表是空的，呼叫只回報 `1 files failed to append`。現在會先把每個 CSV 完整讀完，讀不到的 CSV 不會動到它的工作表，原本沒有那張工作表時也不會多出一張空白的，同一次呼叫的其他 CSV 照樣附加。v0.3.3 也有這個問題。
+
 ## v0.3.3
 
 ### Core

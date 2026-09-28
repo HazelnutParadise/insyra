@@ -1,0 +1,109 @@
+# Runs the nn checks that need real data: MNIST convergence and parity against
+# five published ONNX checkpoints. `go test ./...` skips both, because nobody
+# keeps 300MB of models in a checkout — so without this job a skip and a pass
+# are the same output, and the training loop and the loader could rot unnoticed.
+#
+# The data is pinned by sha256 in .github/nn-data-manifest.txt and kept in the
+# actions cache between runs. A download that does not match its checksum fails
+# the job, and so does a gate that skipped instead of running.
+#
+# The GPU gates (INSYRA_ACCEL_GPU_TESTS) are deliberately not here: no hosted
+# runner has a GPU. They are run by hand, and ENG.md says where and how.
+
+name: Neural Network Data Gates
+
+on:
+  push:
+    branches: ["main", "dev", "0.4"]
+    paths:
+      - "nn/**"
+      - ".github/workflows/nn-data-gates.yml"
+      - ".github/nn-data-manifest.txt"
+  pull_request:
+    branches: ["main", "dev", "0.4"]
+    paths:
+      - "nn/**"
+      - ".github/workflows/nn-data-gates.yml"
+      - ".github/nn-data-manifest.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  data-gates:
+    name: MNIST convergence and real-model parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NN_DATA_DIR: ${{ github.workspace }}/.nn-data
+      INSYRA_REQUIRE_REFERENCE_TOOLCHAINS: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The real-model gate compares every output element against onnxruntime,
+      # so the reference runtime is as much a requirement as the checkpoints.
+      - name: Install the ONNX reference runtime
+        run: python -m pip install --upgrade pip numpy onnx onnxruntime
+
+      - name: Restore the pinned data
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.NN_DATA_DIR }}
+          key: nn-data-${{ hashFiles('.github/nn-data-manifest.txt') }}
+      # A stalled transfer is the failure mode these options exist for: without
+      # a speed floor curl waits forever on a connection that stopped sending.
+      - name: Download whatever the cache did not supply
+        run: |
+          set -euo pipefail
+          while read -r sum path url; do
+            case "$sum" in ''|'#'*) continue ;; esac
+            target="$NN_DATA_DIR/$path"
+            if [ -f "$target" ]; then
+              continue
+            fi
+            mkdir -p "$(dirname "$target")"
+            echo "fetching $path"
+            case "$url" in
+              *.gz)
+                curl -fsSL --retry 5 --retry-all-errors --speed-limit 10000 --speed-time 30 "$url" | gunzip -c > "$target"
+                ;;
+              *)
+                curl -fsSL --retry 5 --retry-all-errors --speed-limit 10000 --speed-time 30 -o "$target" "$url"
+                ;;
+            esac
+          done < .github/nn-data-manifest.txt
+      - name: Check every file against its checksum
+        run: |
+          set -euo pipefail
+          awk '!/^#/ && NF {print $1 "  " ENVIRON["NN_DATA_DIR"] "/" $2}' .github/nn-data-manifest.txt > checksums.txt
+          sha256sum -c checksums.txt
+
+      - name: MNIST convergence and real-model parity
+        env:
+          INSYRA_NN_MNIST_DIR: ${{ env.NN_DATA_DIR }}/mnist
+          INSYRA_NN_REAL_MODELS_DIR: ${{ env.NN_DATA_DIR }}/models
+        run: |
+          set -o pipefail
+          go test -count=1 -timeout 30m -v ./nn/ -run 'MNISTConvergence|RealModelParity' | tee gates.log
+      # Every gate here skips itself when its data is absent, so a passing run
+      # proves nothing until each test is seen to have run.
+      - name: Confirm every gate ran
+        run: |
+          set -euo pipefail
+          for name in TestMNISTConvergence TestSequentialMNISTConvergence \
+                      TestSequentialCNNCatalogMNISTConvergence \
+                      TestSequentialFitMNISTConvergence TestRealModelParity; do
+            if ! grep -q -- "--- PASS: $name" gates.log; then
+              echo "$name did not run; this job exists to make that impossible"
+              exit 1
+            fi
+          done

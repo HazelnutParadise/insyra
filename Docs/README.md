@@ -35,7 +35,7 @@ dt.Show()
 | Document      | Description                                                 |
 | ------------- | ----------------------------------------------------------- |
 | [CCL](CCL.md) | Column Calculation Language for DataTable column operations |
-| [isr](isr.md) | Syntax sugar for fluent, readable code                      |
+| [isr](isr.md) | Syntax sugar for fluent, readable code; use the root package where performance matters |
 | [cli-dsl](cli-dsl.md) | Unified guide for CLI, REPL, `.isr` scripts, and Go DSL sessions |
 
 #### Guided Tutorials
@@ -63,7 +63,7 @@ dt.Show()
 
 | Document          | Description                                             |
 | ----------------- | ------------------------------------------------------- |
-| [stats](stats.md) | Correlation, hypothesis testing, regression, ANOVA, PCA, clustering |
+| [stats](stats.md) | Correlation, hypothesis testing, regression, ANOVA, PCA, factor analysis, clustering |
 | [ml](ml.md)       | scikit-learn-style modeling: regressions, trees, forests, boosting, pipelines, cross-validation and grid search, with ONNX export |
 | [nn](nn.md)       | Pure-Go neural networks: ONNX inference and training, layers and autodiff, SafeTensors I/O, GPU-accelerated MatMul |
 
@@ -103,6 +103,7 @@ dt.Show()
 | [parallel](parallel.md) | Simple parallel execution of functions                      |
 | [utils](utils.md)       | Helper functions for type conversion and data processing    |
 | [pd](pd.md)             | Pandas-like DataFrame helpers and conversions               |
+| [engine](https://github.com/HazelnutParadise/insyra/blob/main/engine/README.md) | Insyra's tested internals re-exported for other projects: DSL sessions, `BiIndex`, `Ring`, `AtomicDo`, CCL compile and evaluate, sorting and comparison. Some of these structures are not safe for concurrent use; the page says which |
 
 ### Installation
 
@@ -156,6 +157,8 @@ Changes are recorded in the repository, not on the docs site:
 
 - Next release: [CHANGELOG.md](https://github.com/HazelnutParadise/insyra/blob/main/CHANGELOG.md) · [繁體中文](https://github.com/HazelnutParadise/insyra/blob/main/CHANGELOG_TW.md)
 - Published releases: [GitHub Releases](https://github.com/HazelnutParadise/insyra/releases)
+
+This site documents the newest release. For the version a project actually uses, read the `Docs/` folder of that version's module (inside the project, `go mod download -json github.com/HazelnutParadise/insyra` prints where it is as `Dir`), `go doc` its packages, or open the release on [pkg.go.dev](https://pkg.go.dev/github.com/HazelnutParadise/insyra).
 
 ### Requirements & Notes
 

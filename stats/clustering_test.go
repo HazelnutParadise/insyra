@@ -592,3 +592,49 @@ func TestSilhouette_R(t *testing.T) {
 		})
 	}
 }
+
+// A tree can come from outside the library: the CLI restores one from
+// state.json, and a caller can build one by hand. Cutting a malformed tree is
+// an error, never a panic.
+func TestCutTreeRefusesAMalformedTree(t *testing.T) {
+	good := func() *stats.HierarchicalResult {
+		return &stats.HierarchicalResult{
+			Merge:  [][2]int{{-1, -2}, {-3, 1}},
+			Height: []float64{1, 2},
+			Order:  []int{0, 1, 2},
+			Labels: []string{"a", "b", "c"},
+		}
+	}
+	if _, err := stats.CutTreeByK(good(), 2); err != nil {
+		t.Fatalf("a well-formed tree was refused: %v", err)
+	}
+	cases := map[string]func(*stats.HierarchicalResult){
+		"height shorter than merge": func(h *stats.HierarchicalResult) { h.Height = h.Height[:1] },
+		"no heights":                func(h *stats.HierarchicalResult) { h.Height = nil },
+		"too few merges":            func(h *stats.HierarchicalResult) { h.Merge = h.Merge[:1]; h.Height = h.Height[:1] },
+		"leaf out of range":         func(h *stats.HierarchicalResult) { h.Merge[0][0] = -4 },
+		"zero id":                   func(h *stats.HierarchicalResult) { h.Merge[0][1] = 0 },
+		"merge from the future":     func(h *stats.HierarchicalResult) { h.Merge[1][1] = 2 },
+	}
+	for name, breakIt := range cases {
+		t.Run(name, func(t *testing.T) {
+			for _, cut := range []func(*stats.HierarchicalResult) error{
+				func(h *stats.HierarchicalResult) error { _, err := stats.CutTreeByK(h, 1); return err },
+				func(h *stats.HierarchicalResult) error { _, err := stats.CutTreeByHeight(h, 1.5); return err },
+			} {
+				tree := good()
+				breakIt(tree)
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							t.Fatalf("panicked: %v", r)
+						}
+					}()
+					if err := cut(tree); err == nil {
+						t.Fatal("a malformed tree was accepted")
+					}
+				}()
+			}
+		})
+	}
+}

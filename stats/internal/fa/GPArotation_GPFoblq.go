@@ -312,7 +312,7 @@ func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, f
 	case "oblimin":
 		Gq, f, err := vgQOblimin(L, gamma)
 		if err != nil {
-			return nil, 0, "", fmt.Errorf("vgQOblimin failed: %v", err)
+			return nil, 0, "", fmt.Errorf("vgQOblimin failed: %w", err)
 		}
 		return Gq, f, "vgQ.oblimin", nil
 
@@ -335,7 +335,7 @@ func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, f
 	case "bentlerq":
 		Gq, f, _, err := vgQBentler(L)
 		if err != nil {
-			return nil, 0, "", fmt.Errorf("vgQBentler failed: %v", err)
+			return nil, 0, "", fmt.Errorf("vgQBentler failed: %w", err)
 		}
 		return Gq, f, "vgQ.bentler", nil
 

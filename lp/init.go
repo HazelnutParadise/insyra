@@ -6,6 +6,7 @@ import (
 	"archive/zip"
 	"cmp"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -288,19 +289,19 @@ func locateOrInstallGLPK_Win() (string, error) {
 	insyra.LogDebug("lp", "init", "Downloading GLPK from %s", downloadURL)
 
 	if err := downloadFile(zipPath, downloadURL); err != nil {
-		return "", fmt.Errorf("failed to download GLPK: %v", err)
+		return "", fmt.Errorf("failed to download GLPK: %w", err)
 	}
 
 	// 解壓縮
 	installDir := "C:\\glpk"
 	if err := unzip(zipPath, installDir); err != nil {
-		return "", fmt.Errorf("failed to unzip GLPK: %v", err)
+		return "", fmt.Errorf("failed to unzip GLPK: %w", err)
 	}
 
 	// 查找新安裝的 glpsol.exe
 	glpsolPath, err = findGLPKExecutable(installDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to find GLPK executable after installation: %v", err)
+		return "", fmt.Errorf("failed to find GLPK executable after installation: %w", err)
 	}
 
 	insyra.LogInfo("lp", "init", "GLPK installed successfully at %s", glpsolPath)
@@ -386,7 +387,7 @@ func untar(src string, dest string) error {
 
 	for {
 		header, err := tarReader.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break // 沒有更多文件了
 		}
 		if err != nil {

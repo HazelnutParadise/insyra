@@ -42,6 +42,110 @@ func TestNumericValuesRefusesEveryUnreadableForm(t *testing.T) {
 	}
 }
 
+// A list whose cells are not observations — one subject's conditions, say —
+// counts something other than rows, and "row 3" would point at the wrong axis
+// in a table laid out one subject per row. appendNumericValues says what its
+// one-based index counts, and appends rather than allocates a fresh slice so a
+// caller looping over many groups can fill one; numericValues keeps saying
+// "row", byte for byte.
+func TestAppendNumericValuesNamesThePositionAndAppends(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		raw   []any
+		label string
+		pos   string
+		want  string
+	}{
+		{
+			"a non-numeric cell",
+			[]any{1.0, nil},
+			"subject 2",
+			"condition",
+			"subject 2 contains a non-numeric value at condition 2: <nil>",
+		},
+		{
+			"a non-finite cell",
+			[]any{math.NaN()},
+			"subject 1",
+			"condition",
+			"subject 1 contains a non-finite value at condition 1: NaN",
+		},
+		{
+			"row position is the default",
+			[]any{1.0, "x"},
+			"group 3",
+			"row",
+			"group 3 contains a non-numeric value at row 2: x",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var err error
+			if tc.pos == "row" {
+				_, err = numericValues(tc.raw, tc.label)
+			} else {
+				label := tc.label
+				_, err = appendNumericValues(nil, tc.raw, func() string { return label }, tc.pos)
+			}
+			if err == nil {
+				t.Fatalf("%v was accepted", tc.raw)
+			}
+			if err.Error() != tc.want {
+				t.Fatalf("error %q, want %q", err.Error(), tc.want)
+			}
+		})
+	}
+}
+
+// A refused cell yields a nil slice, so a caller cannot mistake the values
+// appended before it for a complete group.
+func TestAppendNumericValuesReturnsNilOnRefusal(t *testing.T) {
+	values, err := appendNumericValues([]float64{7}, []any{1.0, nil}, func() string { return "subject 2" }, "condition")
+	if err == nil {
+		t.Fatalf("nil was accepted")
+	}
+	if want := "subject 2 contains a non-numeric value at condition 2: <nil>"; err.Error() != want {
+		t.Fatalf("error %q, want %q", err.Error(), want)
+	}
+	if values != nil {
+		t.Fatalf("slice %v came back beside the refusal", values)
+	}
+}
+
+// The label is built only when a cell is refused. A caller looping over many
+// groups formats a name per group; paying for it on every group that is clean
+// was the whole cost the append form removed.
+func TestAppendNumericValuesBuildsTheLabelOnlyOnRefusal(t *testing.T) {
+	calls := 0
+	label := func() string {
+		calls++
+		return "group 1"
+	}
+
+	values, err := appendNumericValues([]float64{9}, []any{1.0, int64(2)}, label, "row")
+	if err != nil {
+		t.Fatalf("clean input refused: %v", err)
+	}
+	want := []float64{9, 1, 2}
+	if len(values) != len(want) {
+		t.Fatalf("values %v, want %v", values, want)
+	}
+	for i := range want {
+		if values[i] != want[i] {
+			t.Fatalf("value %d = %v, want %v", i, values[i], want[i])
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("the label was built %d times for clean input", calls)
+	}
+
+	if _, err := appendNumericValues(nil, []any{1.0, "x"}, label, "row"); err == nil {
+		t.Fatalf("a text cell was accepted")
+	}
+	if calls != 1 {
+		t.Fatalf("the label was built %d times, want exactly 1", calls)
+	}
+}
+
 // Numeric Go types convert; a string does not, even one that looks like a
 // number. That is the rule `insyra.ToFloat64Safe` already enforced for
 // clustering, PCA and KNN — this change brings regression and correlation onto

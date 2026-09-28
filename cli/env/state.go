@@ -2,14 +2,15 @@ package env
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	json "github.com/goccy/go-json"
 )
 
 type SerializedVariable struct {
@@ -23,26 +24,48 @@ type State struct {
 	LastAccess string                        `json:"lastAccess"`
 }
 
-func (m *Manager) SaveState(envName string, vars map[string]any) error {
+// UnsavedVariable is a variable SaveVariables left out of state.json.
+type UnsavedVariable struct {
+	Name   string
+	Type   string // the Go type the variable held, as %T prints it
+	Reason string // why the environment cannot store it
+}
+
+// SaveVariables writes vars as envName's state.json and returns the variables
+// it left out because the environment cannot store them, sorted by name. The
+// error means the file was not written.
+func (m *Manager) SaveVariables(envName string, vars map[string]any) ([]UnsavedVariable, error) {
 	envPath, err := m.ResolveEnvPath(envName)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	state := State{
-		Variables:  map[string]SerializedVariable{},
-		LastAccess: time.Now().UTC().Format(time.RFC3339),
-	}
+	// Every variable is encoded and written out on its own, so one the
+	// environment cannot hold leaves the rest of the state alone and is
+	// reported instead of being dropped without a word.
+	stored := make(map[string]json.RawMessage, len(vars))
+	var unsaved []UnsavedVariable
 	for key, value := range vars {
-		// Scalers hold fitted state in unexported fields and cannot be
-		// round-tripped through JSON; they are session-only.
-		if _, ok := value.(insyra.Scaler); ok {
+		raw, err := marshalVariable(value)
+		if err != nil {
+			unsaved = append(unsaved, UnsavedVariable{
+				Name:   key,
+				Type:   fmt.Sprintf("%T", value),
+				Reason: err.Error(),
+			})
 			continue
 		}
-		state.Variables[key] = serializeVariable(value)
+		stored[key] = raw
 	}
-	payload, err := json.MarshalIndent(state, "", "  ")
+	document := struct {
+		Variables  map[string]json.RawMessage `json:"variables"`
+		LastAccess string                     `json:"lastAccess"`
+	}{
+		Variables:  stored,
+		LastAccess: time.Now().UTC().Format(time.RFC3339),
+	}
+	payload, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// Atomic write: write to a temp file then rename over state.json (rename is
 	// atomic on the same filesystem), so an interruption mid-write cannot leave a
@@ -50,12 +73,66 @@ func (m *Manager) SaveState(envName string, vars map[string]any) error {
 	finalPath := filepath.Join(envPath, "state.json")
 	tmpPath := finalPath + ".tmp"
 	if err := os.WriteFile(tmpPath, payload, 0o644); err != nil {
-		return err
+		return nil, err
 	}
-	return os.Rename(tmpPath, finalPath)
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		return nil, err
+	}
+	if len(unsaved) == 0 {
+		return nil, nil
+	}
+	sort.Slice(unsaved, func(i, j int) bool { return unsaved[i].Name < unsaved[j].Name })
+	return unsaved, nil
 }
 
+// SaveState writes vars as envName's state.json. A variable the environment
+// cannot store is left out; SaveVariables reports which. The error means the
+// file was not written.
+func (m *Manager) SaveState(envName string, vars map[string]any) error {
+	_, err := m.SaveVariables(envName, vars)
+	return err
+}
+
+// marshalVariable encodes value and writes the encoded form out, so that a
+// value the environment cannot encode and an encoded value the encoder cannot
+// write are the same failure to SaveState.
+func marshalVariable(value any) (json.RawMessage, error) {
+	encoded, err := encodeVariable(value)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(encoded)
+}
+
+// LoadState reads envName's state.json. Top-level scalars come back typed:
+// one saved by this release at the Go type it was saved with, one written by
+// an earlier release as int64 when it is an integer literal and float64
+// otherwise. Every other variable keeps the form it has in the file;
+// RestoreVariables turns those into Go values.
 func (m *Manager) LoadState(envName string) (*State, error) {
+	state, err := m.readState(envName)
+	if err != nil {
+		return nil, err
+	}
+	for key, sv := range state.Variables {
+		switch sv.Type {
+		case kindScalar:
+			if value, err := decodeStoredScalar(sv); err == nil {
+				sv.Data = value
+			}
+		case "DataTable", "DataList", kindTable, kindList, kindSlice, kindScaler, kindHClust:
+			// keep stored form as-is
+		default:
+			// legacy "Raw" and unknown kinds: apply legacy decoding
+			sv.Data = decodeEnvValue(sv.Data)
+		}
+		state.Variables[key] = sv
+	}
+	return state, nil
+}
+
+// readState reads envName's state.json as stored: numbers stay json.Number and nothing is converted.
+func (m *Manager) readState(envName string) (*State, error) {
 	envPath, err := m.ResolveEnvPath(envName)
 	if err != nil {
 		return nil, err
@@ -65,9 +142,6 @@ func (m *Manager) LoadState(envName string) (*State, error) {
 		return nil, err
 	}
 	var state State
-	// Decode numbers as json.Number so integer variables keep their int64 type
-	// (and large integers keep full precision) instead of collapsing to float64;
-	// they are typed below and, for DataList elements, when the list is restored.
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	if err := dec.Decode(&state); err != nil {
@@ -76,94 +150,53 @@ func (m *Manager) LoadState(envName string) (*State, error) {
 	if state.Variables == nil {
 		state.Variables = map[string]SerializedVariable{}
 	}
-	// Top-level scalars get the same numeric typing DataList elements get, so a
-	// saved float64 reloads as float64 and an int64 as int64 instead of staying
-	// a json.Number that no type assertion in a command will match.
-	for key, serialized := range state.Variables {
-		if serialized.Type == "DataList" || serialized.Type == "DataTable" {
-			continue
-		}
-		serialized.Data = decodeEnvValue(serialized.Data)
-		state.Variables[key] = serialized
-	}
 	return &state, nil
 }
 
+// RestoreVariables reads envName's variables back at the Go types they were
+// saved with. A variable in the layout earlier releases wrote is read by the
+// rules those releases used. A variable this build cannot decode is kept as an
+// unreadableVariable so the next save writes it back with its original type
+// and name intact.
 func (m *Manager) RestoreVariables(envName string) (map[string]any, error) {
-	state, err := m.LoadState(envName)
+	state, err := m.readState(envName)
 	if err != nil {
 		return nil, err
 	}
 	vars := make(map[string]any, len(state.Variables))
 	for key, serialized := range state.Variables {
-		vars[key] = deserializeVariable(serialized)
+		value, ok, err := decodeVariable(serialized)
+		if !ok {
+			if isLegacyKind(serialized.Type) {
+				vars[key] = deserializeLegacyVariable(serialized)
+			} else {
+				// A kind this build does not know, such as one a newer
+				// release writes, is kept as it was stored.
+				vars[key] = unreadableVariable{stored: serialized}
+			}
+			continue
+		}
+		if err != nil {
+			// The stored form becomes an unreadableVariable so the next save
+			// writes it back as it was, preserving its type and name.
+			vars[key] = unreadableVariable{stored: serialized}
+			continue
+		}
+		vars[key] = value
 	}
 	return vars, nil
 }
 
-// specialFloatKey marks a JSON object that stands in for a float64 JSON
-// cannot represent: {"$float": "NaN" | "+Inf" | "-Inf"}. CSV files with
-// blank cells load as NaN, so without this a table with one missing value
-// could not be saved at all.
+// specialFloatKey is how a file written by an earlier release spells a float64
+// JSON cannot represent: {"$float": "NaN" | "+Inf" | "-Inf"}. Nothing writes
+// that object any more; a current file stores the same three names as plain
+// strings under the cell's own type tag.
 const specialFloatKey = "$float"
 
-// encodeSpecialFloats replaces NaN and infinities (at any depth of []any)
-// with their marker objects so encoding/json accepts the value. Finite values
-// keep their type, so a value without NaN or ±Inf encodes exactly as before.
-func encodeSpecialFloats(v any) any {
-	switch t := v.(type) {
-	case float64:
-		return encodeSpecialFloat64(t)
-	case float32:
-		if f := float64(t); math.IsNaN(f) || math.IsInf(f, 0) {
-			return encodeSpecialFloat64(f)
-		}
-		return t
-	case []any:
-		out := make([]any, len(t))
-		for i, e := range t {
-			out[i] = encodeSpecialFloats(e)
-		}
-		return out
-	default:
-		return v
-	}
-}
-
-func encodeSpecialFloat64(f float64) any {
-	switch {
-	case math.IsNaN(f):
-		return map[string]any{specialFloatKey: "NaN"}
-	case math.IsInf(f, 1):
-		return map[string]any{specialFloatKey: "+Inf"}
-	case math.IsInf(f, -1):
-		return map[string]any{specialFloatKey: "-Inf"}
-	default:
-		return f
-	}
-}
-
-// hasSpecialFloat reports whether v (at any depth of []any) holds a NaN or an
-// infinity, the values encoding/json refuses.
-func hasSpecialFloat(v any) bool {
-	switch t := v.(type) {
-	case float64:
-		return math.IsNaN(t) || math.IsInf(t, 0)
-	case float32:
-		f := float64(t)
-		return math.IsNaN(f) || math.IsInf(f, 0)
-	case []any:
-		for _, e := range t {
-			if hasSpecialFloat(e) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// decodeEnvValue is the inverse of encodeSpecialFloats plus the json.Number
-// typing of coerceEnvNumber, applied to one cell.
+// decodeEnvValue reads one cell of a file written by an earlier release: a
+// $float marker object becomes the float64 it stands for, and a number is typed
+// by coerceEnvNumber. It reads the writing that release did, and nothing writes
+// that shape any more.
 func decodeEnvValue(v any) any {
 	if m, ok := v.(map[string]any); ok && len(m) == 1 {
 		if s, ok := m[specialFloatKey].(string); ok {
@@ -180,68 +213,21 @@ func decodeEnvValue(v any) any {
 	return coerceEnvNumber(v)
 }
 
-// serializedTable is the on-disk shape of a DataTable variable that holds a
-// NaN or an infinity: columns in order with their names, plus row names when
-// any are set. Every other table is still written as a JSON string
-// (ToJSON_String), and both layouts are read.
-type serializedTable struct {
-	Columns  []serializedColumn `json:"columns"`
-	RowNames []string           `json:"rowNames,omitempty"`
-}
-
-type serializedColumn struct {
-	Name string `json:"name"`
-	Data []any  `json:"data"`
-}
-
-// tableHasSpecialFloat reports whether any cell of table is a NaN or an
-// infinity.
-func tableHasSpecialFloat(table *insyra.DataTable) bool {
-	for i := 0; i < table.NumCols(); i++ {
-		if hasSpecialFloat(table.GetColByNumber(i).Data()) {
-			return true
-		}
+// isLegacyKind reports whether a stored type is one an earlier release wrote,
+// which the legacy reader below understands.
+func isLegacyKind(kind string) bool {
+	switch kind {
+	case "DataTable", "DataList", "Raw":
+		return true
 	}
 	return false
 }
 
-func serializeVariable(value any) SerializedVariable {
-	switch typed := value.(type) {
-	case *insyra.DataTable:
-		if typed == nil {
-			return SerializedVariable{Type: "Raw", Data: nil}
-		}
-		if !tableHasSpecialFloat(typed) {
-			return SerializedVariable{Type: "DataTable", Name: typed.GetName(), Data: typed.ToJSON_String(true)}
-		}
-		// ToJSON_String cannot encode NaN or ±Inf, so such a table is written
-		// column by column with marker objects instead.
-		st := serializedTable{}
-		for i := 0; i < typed.NumCols(); i++ {
-			col := typed.GetColByNumber(i)
-			st.Columns = append(st.Columns, serializedColumn{
-				Name: col.GetName(),
-				Data: encodeSpecialFloats(col.Data()).([]any),
-			})
-		}
-		for _, rn := range typed.RowNames() {
-			if rn != "" {
-				st.RowNames = typed.RowNames()
-				break
-			}
-		}
-		return SerializedVariable{Type: "DataTable", Name: typed.GetName(), Data: st}
-	case *insyra.DataList:
-		if typed == nil {
-			return SerializedVariable{Type: "Raw", Data: nil}
-		}
-		return SerializedVariable{Type: "DataList", Name: typed.GetName(), Data: encodeSpecialFloats(typed.Data())}
-	default:
-		return SerializedVariable{Type: "Raw", Data: encodeSpecialFloats(typed)}
-	}
-}
-
-func deserializeVariable(serialized SerializedVariable) any {
+// deserializeLegacyVariable reads a variable in the layout earlier releases
+// wrote: a "DataTable" (either as one JSON document string or as columns of
+// $float markers), a "DataList", or a "Raw" scalar. Nothing writes that layout
+// any more, so this is the only reader of it.
+func deserializeLegacyVariable(serialized SerializedVariable) any {
 	switch serialized.Type {
 	case "DataTable":
 		switch data := serialized.Data.(type) {
@@ -369,6 +355,10 @@ func (m *Manager) ReadHistory(envName string) ([]string, error) {
 
 func SaveState(envName string, vars map[string]any) error {
 	return defaultManager.SaveState(envName, vars)
+}
+
+func SaveVariables(envName string, vars map[string]any) ([]UnsavedVariable, error) {
+	return defaultManager.SaveVariables(envName, vars)
 }
 
 func LoadState(envName string) (*State, error) {

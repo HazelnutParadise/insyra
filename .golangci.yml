@@ -1,7 +1,41 @@
 version: "2"
 
 linters:
+  # Beyond the default set: the five that watch for a resource left open and
+  # an error lost or hidden. gosec, unparam and noctx were measured and left
+  # off — gosec's 450 findings were mostly what a data library does on purpose.
+  enable:
+    - bodyclose
+    - depguard
+    - errorlint
+    - nilerr
+    - rowserrcheck
+    - sqlclosecheck
   settings:
+    depguard:
+      rules:
+        # AGENTS.md "One JSON library": every non-test file reads and writes
+        # JSON through the library named there. Tests may use encoding/json as
+        # the independent reference insyra's output is checked against.
+        json:
+          # lax, so only the deny list below is enforced: an unlisted package
+          # is not an offence. strict would reject every import not on an
+          # allow list, which is not the rule.
+          list-mode: lax
+          files:
+            - "$all"
+            - "!$test"
+          deny:
+            - pkg: "encoding/json"
+              desc: "insyra reads and writes JSON through github.com/goccy/go-json; see AGENTS.md, One JSON library"
+            - pkg: "github.com/json-iterator/go"
+              desc: "insyra reads and writes JSON through github.com/goccy/go-json; see AGENTS.md, One JSON library"
+            - pkg: "github.com/bytedance/sonic"
+              desc: "insyra reads and writes JSON through github.com/goccy/go-json; see AGENTS.md, One JSON library"
+            - pkg: "github.com/segmentio/encoding"
+              desc: "insyra reads and writes JSON through github.com/goccy/go-json; see AGENTS.md, One JSON library"
+            - pkg: "github.com/go-json-experiment/json"
+              desc: "insyra reads and writes JSON through github.com/goccy/go-json; see AGENTS.md, One JSON library"
     errcheck:
       # fmt.Fprint* writes to display/terminal writers (Show, Summary, …)
       # where the error is not actionable. golangci-lint v1 excluded these

@@ -2,6 +2,7 @@ package accel
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -190,7 +191,7 @@ func TestProbeNativeCUDARespectsDiscoveryTimeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout to surface as unavailable probe")
 	}
-	if err != ErrNativeProbeUnavailable {
+	if !errors.Is(err, ErrNativeProbeUnavailable) {
 		t.Fatalf("expected native probe unavailable on timeout, got %v", err)
 	}
 	if time.Since(start) > 200*time.Millisecond {

@@ -23,22 +23,9 @@ jobs:
       with:
         go-version-file: go.mod
         cache-dependency-path: go.sum
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.12"
-    - name: Set up R
-      uses: r-lib/actions/setup-r@v2
-      with:
-        r-version: "release"
     - name: Install Go dependencies
       run: go mod download
-    # scikit-learn is in this list because requireCrossLangTools imports it.
-    # It was missing until 2026-08-01, so the gate failed and every test in
-    # this workflow skipped — the job reported green by running nothing.
-    - name: Install Python baseline dependencies
-      run: python -m pip install --upgrade pip numpy scipy statsmodels scikit-learn
-    - name: Install R baseline dependencies
-      run: Rscript -e "install.packages(c('jsonlite','cluster','dbscan'), repos='https://cloud.r-project.org')"
+    - name: Set up the reference toolchains
+      uses: ./.github/actions/setup-reference-toolchains
     - name: Run clustering parity suite
       run: go test -count=1 -timeout 25m ./stats -run "TestCrossLangClustering(Methods|GeneratedCorpus)"

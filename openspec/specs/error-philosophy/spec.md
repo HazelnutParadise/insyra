@@ -4,6 +4,7 @@
 在這條版本線上，下列路徑不得結束宿主程序或 panic：`isr` 包裝器、`gplot` 與 `plot` 的圖表建構（包括收到無法使用的輸入時）、`plot.SavePNG` 的輸出路徑檢查、`lpgen` 的 LINGO 解析、`lp` 的 GLPK 安裝與暫存檔、`py` 的 IPC 監聽，失敗時記錄警告後返回。v0.3.2 在 `Config.SetDontPanic(true)` 下能正常返回的呼叫，不論設定為何都回傳當時的值。
 
 ## Requirements
+
 ### Requirement: isr wrappers log and return the v0.3.2 values instead of exiting
 
 `isr` 的 `DT.From`、`Col`、`Row`、`Push`、`UseDL`、`UseDT` 遇到不支援的型別或讀檔失敗時 SHALL NOT 結束程序，SHALL 記錄警告，並不論 `SetDontPanic` 設定 SHALL 回傳 v0.3.2 在 `SetDontPanic(true)` 下的值：讀不到來源或型別不支援時包著 nil `DataTable`，選擇器型別不支援時包著 nil `DataList`，加不進去的 `Row`／`Col` 被略過、其餘照常加入。回傳的表格不是 nil 時 SHALL 在其 `Err()` 記錄錯誤。
@@ -67,3 +68,11 @@
 #### Scenario: A path with no extension
 - **WHEN** `plot.SavePNG(chart, "out")`
 - **THEN** 回傳說明缺少副檔名的錯誤，不 panic
+
+### Requirement: A rounding mode does not panic
+
+`finance` 的 `RoundUnnecessary` 在結果需要捨入時 SHALL 回傳錯誤，SHALL NOT panic。該模式的用途是得知捨入發生了，回報比中止程序更能達成這件事。
+
+#### Scenario: A result that has to be rounded
+- **WHEN** `NPV(0.03, []{0, 1}, Options{Scale: 2, Mode: RoundUnnecessary})`
+- **THEN** 回傳說明需要捨入的錯誤，程序繼續執行

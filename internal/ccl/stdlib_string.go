@@ -156,14 +156,14 @@ func registerStringFunctions() {
 	registerFunction("MID", func(args ...any) (any, error) {
 		v, err := mid(args...)
 		if err != nil {
-			return nil, fmt.Errorf("MID %v", err)
+			return nil, fmt.Errorf("MID %w", err)
 		}
 		return v, nil
 	})
 	registerFunction("SUBSTR", func(args ...any) (any, error) {
 		v, err := mid(args...)
 		if err != nil {
-			return nil, fmt.Errorf("SUBSTR %v", err)
+			return nil, fmt.Errorf("SUBSTR %w", err)
 		}
 		return v, nil
 	})

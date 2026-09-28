@@ -141,3 +141,19 @@ func TestRunAccelCommandRunPrintsShardPlanSummary(t *testing.T) {
 		t.Fatalf("expected assignment summary in output, got %q", rendered)
 	}
 }
+
+// --precision chose the precision of `accel run`, which v0.3.1 removed, and
+// nothing has read it since, so accel no longer parses it. A script that still
+// passes it keeps running, because accel ignores an argument it does not use.
+func TestRunAccelCommandIgnoresTheRetiredPrecisionFlag(t *testing.T) {
+	setupCommandHome(t)
+	ctx := newTestExecContext(t)
+	for _, args := range [][]string{
+		{"devices", "--mode", "cpu", "--precision", "float32"},
+		{"devices", "--mode", "cpu", "--precision", "bogus"},
+	} {
+		if err := runAccelCommand(ctx, args); err != nil {
+			t.Errorf("accel %s: %v", strings.Join(args, " "), err)
+		}
+	}
+}

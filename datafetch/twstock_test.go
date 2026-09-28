@@ -131,11 +131,38 @@ func query(values ...string) url.Values {
 	return result
 }
 
+// slowFirstRequest holds the first request it forwards back by delay, the way a
+// first request that takes longer than the second to reach the transport does.
+type slowFirstRequest struct {
+	next  http.RoundTripper
+	delay time.Duration
+	once  sync.Once
+}
+
+func (s *slowFirstRequest) RoundTrip(req *http.Request) (*http.Response, error) {
+	s.once.Do(func() { time.Sleep(s.delay) })
+	return s.next.RoundTrip(req)
+}
+
 func TestTWStockThrottle(t *testing.T) {
-	stock, transport := newFixtureTWStock(t, TWStockConfig{Interval: 20 * time.Millisecond})
+	const interval = 20 * time.Millisecond
+	stock, transport := newFixtureTWStock(t, TWStockConfig{Interval: interval})
 	key := fixtureKey("/v1/exchangeReport/STOCK_DAY_ALL", nil)
 	transport.addFixture(t, key, "twse_stock_day_all.json")
 	transport.addFixture(t, key, "twse_stock_day_all.json")
+	// Hold the first request back on its way to the transport. Two transport
+	// timestamps taken this way normally come out less than interval apart, the
+	// condition the old assertion flaked on, so the assertion below has to hold
+	// under it. The delay stays well short of interval, so the second request
+	// still has to wait for its slot and a missing throttle still fails.
+	stock.client.Transport = &slowFirstRequest{next: transport, delay: 5 * time.Millisecond}
+	// The limiter spaces the scheduled starts of requests, and no request starts
+	// before its slot. The first slot is no earlier than start, so the second
+	// request cannot reach the transport before start+interval. Measuring from
+	// the first request's transport timestamp instead would count that request's
+	// own time between its slot and the transport, which the limiter does not
+	// control, and could come out a few microseconds short.
+	start := time.Now()
 	if _, err := stock.AllDailyQuotes(TWMarketTWSE); err != nil {
 		t.Fatalf("first AllDailyQuotes error: %v", err)
 	}
@@ -143,8 +170,11 @@ func TestTWStockThrottle(t *testing.T) {
 		t.Fatalf("second AllDailyQuotes error: %v", err)
 	}
 	times := transport.requestTimes()
-	if len(times) != 2 || times[1].Sub(times[0]) < 20*time.Millisecond {
-		t.Fatalf("request times = %v, want at least 20ms apart", times)
+	if len(times) != 2 {
+		t.Fatalf("the transport saw %d requests, want 2", len(times))
+	}
+	if gap := times[1].Sub(start); gap < interval {
+		t.Fatalf("the second request reached the transport %v after the first was scheduled, want at least %v", gap, interval)
 	}
 }
 

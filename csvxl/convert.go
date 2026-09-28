@@ -105,12 +105,20 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 		// 如果提供了自訂工作表名稱，則使用它，否則使用 CSV 檔案的名稱
 		sheetName := getSheetName(csvFile, sheetNames, idx)
 
+		// Read the whole CSV before touching its sheet. A CSV that cannot be
+		// read is counted as failed and the workbook is saved anyway, so
+		// replacing the sheet first would leave it empty in the saved file.
+		records, err := readCsvRecords(csvFile, encoding)
+		if err != nil {
+			failedFiles++
+			continue
+		}
+
 		if err := replaceSheet(f, sheetName); err != nil {
 			return fmt.Errorf("failed to create new sheet %s: %w", sheetName, err)
 		}
 
-		err = addCsvSheet(f, sheetName, csvFile, encoding)
-		if err != nil {
+		if err := writeCsvRecords(f, sheetName, records); err != nil {
 			failedFiles++
 			continue
 		}
@@ -189,12 +197,15 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 
 // ===============================
 
-// replaceSheet makes sheetName an empty sheet in f. An existing sheet is
-// cleared in place: every cell's value and formula is removed, while the sheet
-// keeps its place among the sheets and its sheet-level settings (column widths,
-// views, merged ranges). excelize.NewSheet alone would return the existing
-// sheet with its old cells in place, and deleting and recreating the sheet
-// would move it to the end and drop those settings.
+// replaceSheet makes sheetName an empty sheet in f: a new sheet, or an existing
+// one of that name deleted and re-created, moved back to where it was, hidden
+// again if it was hidden, and given back the workbook's active sheet, so none of
+// the old sheet's cells, formulas, hidden rows, row heights, comments,
+// hyperlinks, column widths, views or merged ranges survives. excelize refuses
+// to delete a workbook's only sheet, so that case goes through a placeholder
+// sheet. Sheet names match without regard to case, as in Excel. Names defined
+// for a later sheet stay with that sheet; only the names belonging to the
+// replaced sheet are deleted with it.
 func replaceSheet(f *excelize.File, sheetName string) error {
 	idx, err := f.GetSheetIndex(sheetName)
 	if err != nil {
@@ -204,57 +215,63 @@ func replaceSheet(f *excelize.File, sheetName string) error {
 		_, err = f.NewSheet(sheetName)
 		return err
 	}
-	// An empty pattern matches every cell the sheet stores, a formula-only one
-	// included, and lists only those. It needs each cell's address, so a sheet
-	// that leaves the r attribute out is walked row by row instead.
-	cells, err := f.SearchSheet(sheetName, "", true)
-	if err != nil {
-		if cells, err = paddedSheetCells(f, sheetName); err != nil {
+	sheets := f.GetSheetList()
+	active := f.GetSheetName(f.GetActiveSheetIndex())
+	next := ""
+	if idx+1 < len(sheets) {
+		next = sheets[idx+1]
+	}
+	// Whether the sheet is hidden is recorded in the workbook, not in the
+	// sheet, so it is kept like the sheet's position.
+	state := ""
+	if wb := f.WorkBook; wb != nil && idx < len(wb.Sheets.Sheet) {
+		state = wb.Sheets.Sheet[idx].State
+	}
+	placeholder := ""
+	if f.SheetCount == 1 {
+		placeholder = "__insyra_placeholder__"
+		if _, err := f.NewSheet(placeholder); err != nil {
 			return err
 		}
 	}
-	// SetCellValue with nil empties the value and removes the formula.
-	for _, cell := range cells {
-		if err := f.SetCellValue(sheetName, cell, nil); err != nil {
+	if err := f.DeleteSheet(sheetName); err != nil {
+		return err
+	}
+	if _, err := f.NewSheet(sheetName); err != nil {
+		return err
+	}
+	if placeholder != "" {
+		if err := f.DeleteSheet(placeholder); err != nil {
 			return err
 		}
 	}
-	return nil
-}
-
-// paddedSheetCells returns every position from column A to the last value or
-// formula of each row. Rows pads a row out to its last cell, so a row with a
-// value in XFD yields 16,384 positions; replaceSheet uses this only for a sheet
-// whose cells SearchSheet cannot address.
-func paddedSheetCells(f *excelize.File, sheetName string) ([]string, error) {
-	rows, err := f.Rows(sheetName)
-	if err != nil {
-		return nil, err
-	}
-	var cells []string
-	for row := 1; rows.Next(); row++ {
-		cols, err := rows.Columns(excelize.Options{RawCellValue: true})
-		if err != nil {
-			_ = rows.Close()
-			return nil, err
+	if next != "" {
+		if err := f.MoveSheet(sheetName, next); err != nil {
+			return err
 		}
-		for col := range cols {
-			cell, err := excelize.CoordinatesToCellName(col+1, row)
-			if err != nil {
-				_ = rows.Close()
-				return nil, err
+		// DeleteSheet moves every name defined for a later sheet down one
+		// index, and MoveSheet does not move it back, so each of those names
+		// would now belong to the sheet before its own. The rebuilt sheet is
+		// back at idx with no names of its own, so every sheet-scoped name at
+		// idx or above belongs one sheet further on.
+		if wb := f.WorkBook; wb != nil && wb.DefinedNames != nil {
+			for i := range wb.DefinedNames.DefinedName {
+				if id := wb.DefinedNames.DefinedName[i].LocalSheetID; id != nil && *id >= idx {
+					shifted := *id + 1
+					wb.DefinedNames.DefinedName[i].LocalSheetID = &shifted
+				}
 			}
-			cells = append(cells, cell)
 		}
 	}
-	if err := rows.Error(); err != nil {
-		_ = rows.Close()
-		return nil, err
+	if wb := f.WorkBook; state != "" && wb != nil && idx < len(wb.Sheets.Sheet) {
+		wb.Sheets.Sheet[idx].State = state
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
+	activeIdx, err := f.GetSheetIndex(active)
+	if err != nil {
+		return err
 	}
-	return cells, nil
+	f.SetActiveSheet(activeIdx)
+	return nil
 }
 
 // safeSheetCSVPath joins a CSV file name made from a sheet name onto outputDir.
@@ -310,9 +327,21 @@ func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) er
 
 // 私有函數：將 CSV 數據加入 Excel 的指定工作表，並處理非 UTF-8 編碼
 func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) error {
+	records, err := readCsvRecords(csvFile, encoding)
+	if err != nil {
+		return err
+	}
+	return writeCsvRecords(f, sheetName, records)
+}
+
+// readCsvRecords reads the CSV file at csvFile in full and returns its records,
+// detecting the encoding when encoding is Auto and trimming a UTF-8 BOM off the
+// first field. Every step that can fail happens here, so a caller that has not
+// yet touched its workbook can decide what an unreadable CSV costs.
+func readCsvRecords(csvFile string, encoding string) ([][]string, error) {
 	file, err := os.Open(csvFile)
 	if err != nil {
-		return fmt.Errorf("failed to open CSV file %s: %w", csvFile, err)
+		return nil, fmt.Errorf("failed to open CSV file %s: %w", csvFile, err)
 	}
 	defer func() { _ = file.Close() }()
 
@@ -323,7 +352,7 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 		detectedEncoding, err := insyra.DetectEncoding(csvFile)
 		if err != nil {
 			// Propagate the detection error instead of silently falling back
-			return fmt.Errorf("failed to auto-detect encoding for %s: %w", csvFile, err)
+			return nil, fmt.Errorf("failed to auto-detect encoding for %s: %w", csvFile, err)
 		}
 		encoding = strings.ToLower(detectedEncoding)
 		insyra.LogInfo("csvxl", "addCsvSheet", "Auto-detected encoding %s for file %s", encoding, csvFile)
@@ -331,13 +360,13 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 
 	// Ensure we start reading from the beginning of the file
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek file %s: %w", csvFile, err)
+		return nil, fmt.Errorf("failed to seek file %s: %w", csvFile, err)
 	}
 
 	csvReader := csv.NewReader(insyracsv.DecodingReader(file, encoding))
 	records, err = csvReader.ReadAll()
 	if err != nil {
-		return fmt.Errorf("failed to read CSV file %s: %w", csvFile, err)
+		return nil, fmt.Errorf("failed to read CSV file %s: %w", csvFile, err)
 	}
 
 	// Trim UTF-8 BOM if present
@@ -345,6 +374,13 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 		records[0][0] = strings.TrimPrefix(records[0][0], "\uFEFF")
 	}
 
+	return records, nil
+}
+
+// writeCsvRecords writes records into sheetName, the first field of the first
+// record in A1, each further field one column to the right and each further
+// record one row down.
+func writeCsvRecords(f *excelize.File, sheetName string, records [][]string) error {
 	for rowIdx, record := range records {
 		for colIdx, cell := range record {
 			cellAddr, _ := excelize.CoordinatesToCellName(colIdx+1, rowIdx+1)

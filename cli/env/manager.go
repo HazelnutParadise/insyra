@@ -1,15 +1,18 @@
 package env
 
 import (
-	"encoding/json"
+	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	json "github.com/goccy/go-json"
 )
 
 const (
@@ -341,7 +344,7 @@ func (m *Manager) Export(name, outputPath string) error {
 		return err
 	}
 
-	state, err := m.LoadState(name)
+	state, err := m.readState(name)
 	if err != nil {
 		state = &State{Variables: map[string]SerializedVariable{}, LastAccess: ""}
 	}
@@ -381,13 +384,18 @@ func (m *Manager) Export(name, outputPath string) error {
 }
 
 func (m *Manager) Import(inputPath, targetName string, force bool) (string, error) {
-	bytes, err := os.ReadFile(inputPath)
+	raw, err := os.ReadFile(inputPath)
 	if err != nil {
 		return "", err
 	}
 
 	var payload ExportPayload
-	if err := json.Unmarshal(bytes, &payload); err != nil {
+	// Numbers stay json.Number through the decode, so an integer beyond 2^53 is
+	// written back out as the same literal instead of a float64 that has
+	// already lost it.
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&payload); err != nil {
 		return "", fmt.Errorf("invalid export payload: %w", err)
 	}
 
@@ -477,12 +485,21 @@ func (m *Manager) Import(inputPath, targetName string, force bool) (string, erro
 }
 
 func (m *Manager) isEnvironmentEmpty(name string) (bool, error) {
+	// This guards an overwrite, so it fails closed: a file that is missing
+	// holds nothing, but a file that is there and cannot be read might hold
+	// anything, and is reported rather than taken as empty.
 	state, err := m.LoadState(name)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, fmt.Errorf("cannot tell whether environment %s is empty: %w", name, err)
+	}
 	if err == nil && state != nil && len(state.Variables) > 0 {
 		return false, nil
 	}
 
 	history, err := m.ReadHistory(name)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, fmt.Errorf("cannot tell whether environment %s is empty: %w", name, err)
+	}
 	if err == nil && len(history) > 0 {
 		return false, nil
 	}
@@ -492,8 +509,11 @@ func (m *Manager) isEnvironmentEmpty(name string) (bool, error) {
 		return false, err
 	}
 	configBytes, err := os.ReadFile(filepath.Join(envPath, "config.json"))
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
 		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("cannot tell whether environment %s is empty: %w", name, err)
 	}
 
 	trimmed := strings.TrimSpace(string(configBytes))

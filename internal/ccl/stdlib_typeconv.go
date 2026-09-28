@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode/utf8"
 )
 
 // registerTypeConversionFunctions registers value coercion and null-handling
@@ -29,14 +30,14 @@ func registerTypeConversionFunctions() {
 	registerFunction("TONUM", func(args ...any) (any, error) {
 		v, err := tonum(args...)
 		if err != nil {
-			return nil, fmt.Errorf("TONUM %v", err)
+			return nil, fmt.Errorf("TONUM %w", err)
 		}
 		return v, nil
 	})
 	registerFunction("VALUE", func(args ...any) (any, error) {
 		v, err := tonum(args...)
 		if err != nil {
-			return nil, fmt.Errorf("VALUE %v", err)
+			return nil, fmt.Errorf("VALUE %w", err)
 		}
 		return v, nil
 	})
@@ -66,14 +67,14 @@ func registerTypeConversionFunctions() {
 	registerFunction("TOSTR", func(args ...any) (any, error) {
 		v, err := tostr(args...)
 		if err != nil {
-			return nil, fmt.Errorf("TOSTR %v", err)
+			return nil, fmt.Errorf("TOSTR %w", err)
 		}
 		return v, nil
 	})
 	registerFunction("TEXT", func(args ...any) (any, error) {
 		v, err := tostr(args...)
 		if err != nil {
-			return nil, fmt.Errorf("TEXT %v", err)
+			return nil, fmt.Errorf("TEXT %w", err)
 		}
 		return v, nil
 	})
@@ -143,14 +144,19 @@ func fmtErrorMarker(s string, known ...string) string {
 		}
 	}
 	// %!<verb>( — the shape fmt uses for a verb that does not fit the value.
-	for i := 0; i+3 < len(s); i++ {
-		if s[i] == '%' && s[i+1] == '!' && s[i+3] == '(' {
-			c := s[i+2]
-			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
-				if m := s[i : i+4]; !fromCaller(m) {
-					return m
-				}
-			}
+	// The verb is any rune, a punctuation mark or a non-ASCII letter included:
+	// TOSTR(1, '%v %_') gets "1 %!_(MISSING)".
+	for i := 0; i+2 < len(s); i++ {
+		if s[i] != '%' || s[i+1] != '!' {
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(s[i+2:])
+		end := i + 2 + size
+		if end >= len(s) || s[end] != '(' {
+			continue
+		}
+		if m := s[i : end+1]; !fromCaller(m) {
+			return m
 		}
 	}
 	return ""

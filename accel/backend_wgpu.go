@@ -135,11 +135,11 @@ func wgpuShortlist(ctx context.Context, req ExecuteRequest) (ExecuteResponse, er
 func translateWGPUError(err error) error {
 	switch {
 	case errors.Is(err, wgpu.ErrShaderCompile):
-		return fmt.Errorf("%w: %v", ErrShaderCompile, err)
+		return fmt.Errorf("%w: %w", ErrShaderCompile, err)
 	case errors.Is(err, wgpu.ErrBufferTooLarge):
-		return fmt.Errorf("%w: %v", ErrBufferTooLarge, err)
+		return fmt.Errorf("%w: %w", ErrBufferTooLarge, err)
 	case errors.Is(err, wgpu.ErrReadbackTimeout):
-		return fmt.Errorf("%w: %v", ErrReadbackTimeout, err)
+		return fmt.Errorf("%w: %w", ErrReadbackTimeout, err)
 	default:
 		return err
 	}

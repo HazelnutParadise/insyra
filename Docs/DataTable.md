@@ -219,7 +219,7 @@ if err != nil {
 func ReadJSON(data any) (*DataTable, error)
 ```
 
-**Description:** Reads JSON data (supports bytes, string, slice, map, or any JSON-compatible value) and loads it into a new DataTable.
+**Description:** Reads JSON data (supports bytes, string, slice, map, or any JSON-compatible value) and loads it into a new DataTable. Bytes and strings are decoded the way `encoding/json` decodes them: input that is not valid JSON, such as a number with a leading zero (`01`) or a trailing comma, is an error; invalid UTF-8 inside a string becomes U+FFFD; and errors are worded as `encoding/json` words them. Numbers are typed as in `ReadJSON_File`; a number that is neither an `int64` nor a finite `float64`, such as `1e400`, is kept as the string it was written as, the way `ReadCSV` keeps the same text.
 
 **Parameters:**
 
@@ -568,7 +568,7 @@ if err != nil {
 func (dt *DataTable) ToJSON(filePath string, useColNames bool) error
 ```
 
-**Description:** Saves the DataTable as a JSON file.
+**Description:** Saves the DataTable as a JSON file. The bytes are exactly what `encoding/json.MarshalIndent` writes for the same rows with a two-space indent, so a small exponent is spelled `1e-7`.
 
 **Parameters:**
 
@@ -594,7 +594,7 @@ if err != nil {
 func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte
 ```
 
-**Description:** Converts the DataTable to JSON format and returns as bytes.
+**Description:** Converts the DataTable to JSON format and returns as bytes: the same bytes `ToJSON` writes.
 
 **Parameters:**
 
@@ -617,7 +617,7 @@ fmt.Println(string(jsonData))
 func (dt *DataTable) ToJSON_String(useColNames bool) string
 ```
 
-**Description:** Converts the DataTable to JSON format and returns it as a string.
+**Description:** Converts the DataTable to JSON format and returns it as a string: the same text `ToJSON` writes.
 
 **Parameters:**
 
@@ -1173,6 +1173,22 @@ func NewMaxAbsScaler() *MaxAbsScaler
 `Params()` returns the fitted parameters keyed by column name (`Mean`/`Std`, `Min`/`Max`/`OutputMin`/`OutputMax`, `Median`/`Q1`/`Q3`/`IQR`, or `MaxAbs` depending on the kind).
 
 There is also a DataList-oriented counterpart (`DataListScaler`) on every scaler: `FitDataList`, `TransformDataList`, `FitTransformDataList`, `InverseTransformDataList`, each returning a new `*DataList`.
+
+**Saving a fitted scaler:** every scaler implements `json.Marshaler` and `json.Unmarshaler`, so a scaler fitted in one program can transform tables in another. The JSON holds the kind, the output range, and each fitted column, remembered by its name, or by its column letter when it has no name, whichever selector it was fitted by; a table the scaler transforms later must name those columns the same way. A column listed twice is refused. Decode it into the type the scaler was created as. JSON from a different kind returns an error and leaves the receiver as it was. A parameter that is NaN or infinite, such as the mean of a column that held only missing values, is written as the string `"NaN"`, `"+Inf"` or `"-Inf"` and read back as that value.
+
+```go
+b, err := json.Marshal(sc) // sc is a fitted *insyra.StandardScaler
+if err != nil {
+    log.Fatal(err)
+}
+
+// Later, possibly in another process:
+restored := new(insyra.StandardScaler)
+if err := json.Unmarshal(b, restored); err != nil {
+    log.Fatal(err)
+}
+testScaled, err := restored.Transform(test) // same result as sc.Transform(test)
+```
 
 **Example — fit on train, transform test (no leakage):**
 

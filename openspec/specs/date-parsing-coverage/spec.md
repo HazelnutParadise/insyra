@@ -4,6 +4,7 @@
 `TryParseTime` 對常見時間字串版面的辨識範圍：無時區的版面視為 UTC，非日期字串不得被誤判為日期。
 
 ## Requirements
+
 ### Requirement: Common timestamp layouts parse
 
 `TryParseTime` SHALL 接受 `2006-01-02 15:04:05`、`2006-01-02T15:04:05`、`2006-01-02 15:04`，以及以 `/` 分隔的 `2006/01/02 15:04:05`、`2006/01/02 15:04`、`2006/01/02`（`/` 分隔的日期與時間之間不接受 `T`）；無時區的版面 SHALL 視為 UTC。非日期字串（純數字、單字、空字串）SHALL NOT 被視為日期。
@@ -20,3 +21,10 @@
 - **WHEN** `ConvertToDateString(int64(99999999999999), layout)`
 - **THEN** 得到 5138 年的日期，而不是溢位後的 2216 年
 
+### Requirement: Every timestamp magnitude reads as the unit it is
+
+整數時間戳 SHALL 依位數判讀為 Excel 序號、秒、毫秒、微秒或奈秒，各區間之間 SHALL NOT 留下空隙。16 到 18 位 SHALL 讀為微秒。
+
+#### Scenario: A microsecond timestamp
+- **WHEN** `ConvertToDateString(int64(1700000000000000), layout)`
+- **THEN** 得到 2023 年的日期，而不是把它當秒算出的 53872 年

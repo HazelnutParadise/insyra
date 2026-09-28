@@ -4,6 +4,7 @@
 Pins the documented semantics of `DropRowsByIndex` (negative and duplicate indices), `Transpose` (all row names carried over) and `AppendRowsByColIndex` (the table grows to the addressed column).
 
 ## Requirements
+
 ### Requirement: DropRowsByIndex normalises and de-duplicates
 
 `DropRowsByIndex` SHALL 先把負索引換算成正索引、去除重複與越界者，再由大到小刪除。
@@ -35,3 +36,11 @@ Pins the documented semantics of `DropRowsByIndex` (negative and duplicate indic
 #### Scenario: Invalid column index
 - **WHEN** 單欄表呼叫 `AppendRowsByColIndex(map[string]any{"1": 42})`
 - **THEN** 表仍為 1 欄，`Err()` 非 nil
+
+### Requirement: Unnamed columns merge by position
+
+垂直合併 SHALL 以名稱對齊有名稱的欄位，以「在無名欄中的位置」對齊沒有名稱的欄位。空字串 SHALL NOT 被視為重複的名稱。
+
+#### Scenario: Two tables built without column names
+- **WHEN** 兩張以 `NewDataTable(NewDataList(...), NewDataList(...))` 建立的表垂直合併
+- **THEN** 合併成功，兩欄各自依位置接起來，而不是回報「重複欄名 ""」
