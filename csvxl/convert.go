@@ -105,12 +105,20 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 		// 如果提供了自訂工作表名稱，則使用它，否則使用 CSV 檔案的名稱
 		sheetName := getSheetName(csvFile, sheetNames, idx)
 
+		// Read the whole CSV before touching its sheet. A CSV that cannot be
+		// read is counted as failed and the workbook is saved anyway, so
+		// replacing the sheet first would leave it empty in the saved file.
+		records, err := readCsvRecords(csvFile, encoding)
+		if err != nil {
+			failedFiles++
+			continue
+		}
+
 		if err := replaceSheet(f, sheetName); err != nil {
 			return fmt.Errorf("failed to create new sheet %s: %w", sheetName, err)
 		}
 
-		err = addCsvSheet(f, sheetName, csvFile, encoding)
-		if err != nil {
+		if err := writeCsvRecords(f, sheetName, records); err != nil {
 			failedFiles++
 			continue
 		}
@@ -319,9 +327,21 @@ func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) er
 
 // 私有函數：將 CSV 數據加入 Excel 的指定工作表，並處理非 UTF-8 編碼
 func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) error {
+	records, err := readCsvRecords(csvFile, encoding)
+	if err != nil {
+		return err
+	}
+	return writeCsvRecords(f, sheetName, records)
+}
+
+// readCsvRecords reads the CSV file at csvFile in full and returns its records,
+// detecting the encoding when encoding is Auto and trimming a UTF-8 BOM off the
+// first field. Every step that can fail happens here, so a caller that has not
+// yet touched its workbook can decide what an unreadable CSV costs.
+func readCsvRecords(csvFile string, encoding string) ([][]string, error) {
 	file, err := os.Open(csvFile)
 	if err != nil {
-		return fmt.Errorf("failed to open CSV file %s: %w", csvFile, err)
+		return nil, fmt.Errorf("failed to open CSV file %s: %w", csvFile, err)
 	}
 	defer func() { _ = file.Close() }()
 
@@ -332,7 +352,7 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 		detectedEncoding, err := insyra.DetectEncoding(csvFile)
 		if err != nil {
 			// Propagate the detection error instead of silently falling back
-			return fmt.Errorf("failed to auto-detect encoding for %s: %w", csvFile, err)
+			return nil, fmt.Errorf("failed to auto-detect encoding for %s: %w", csvFile, err)
 		}
 		encoding = strings.ToLower(detectedEncoding)
 		insyra.LogInfo("csvxl", "addCsvSheet", "Auto-detected encoding %s for file %s", encoding, csvFile)
@@ -340,13 +360,13 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 
 	// Ensure we start reading from the beginning of the file
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek file %s: %w", csvFile, err)
+		return nil, fmt.Errorf("failed to seek file %s: %w", csvFile, err)
 	}
 
 	csvReader := csv.NewReader(insyracsv.DecodingReader(file, encoding))
 	records, err = csvReader.ReadAll()
 	if err != nil {
-		return fmt.Errorf("failed to read CSV file %s: %w", csvFile, err)
+		return nil, fmt.Errorf("failed to read CSV file %s: %w", csvFile, err)
 	}
 
 	// Trim UTF-8 BOM if present
@@ -354,6 +374,13 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 		records[0][0] = strings.TrimPrefix(records[0][0], "\uFEFF")
 	}
 
+	return records, nil
+}
+
+// writeCsvRecords writes records into sheetName, the first field of the first
+// record in A1, each further field one column to the right and each further
+// record one row down.
+func writeCsvRecords(f *excelize.File, sheetName string, records [][]string) error {
 	for rowIdx, record := range records {
 		for colIdx, cell := range record {
 			cellAddr, _ := excelize.CoordinatesToCellName(colIdx+1, rowIdx+1)

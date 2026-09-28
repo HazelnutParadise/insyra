@@ -388,3 +388,73 @@ func TestAppendCsvToExcelKeepsAHiddenSheetHidden(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, [][]string{{"z"}, {"9"}}, rows)
 }
+
+// A CSV that cannot be read must leave its sheet as it was. The workbook is
+// saved whatever the call did, so a sheet emptied before the read came back
+// empty in the file, and whatever it held was gone.
+func TestAppendCsvToExcelLeavesTheSheetWhenTheCsvIsMissing(t *testing.T) {
+	dir := t.TempDir()
+	data := writeCSV(t, dir, "data.csv", "a,b\n1,2\n3,4")
+	xlsx := filepath.Join(dir, "out.xlsx")
+	require.NoError(t, CsvToExcel([]string{data}, nil, xlsx, UTF8))
+	before := sheetRows(t, xlsx, "data")
+	require.Len(t, before, 3)
+
+	missing := filepath.Join(dir, "missing.csv")
+	err := AppendCsvToExcel([]string{missing}, []string{"data"}, xlsx, UTF8)
+	require.EqualError(t, err, "1 files failed to append")
+	require.Equal(t, before, sheetRows(t, xlsx, "data"), "a CSV that could not be read must not empty the sheet")
+}
+
+// The same, for a CSV whose content csv.Reader refuses: the read fails after
+// the records have started, and that must be as harmless as a missing file.
+func TestAppendCsvToExcelLeavesTheSheetWhenTheCsvIsInvalid(t *testing.T) {
+	dir := t.TempDir()
+	data := writeCSV(t, dir, "data.csv", "a,b\n1,2\n3,4")
+	xlsx := filepath.Join(dir, "out.xlsx")
+	require.NoError(t, CsvToExcel([]string{data}, nil, xlsx, UTF8))
+	before := sheetRows(t, xlsx, "data")
+	require.Len(t, before, 3)
+
+	broken := writeCSV(t, dir, "broken.csv", "a,b\n\"unterminated,1\n")
+	err := AppendCsvToExcel([]string{broken}, []string{"data"}, xlsx, UTF8)
+	require.EqualError(t, err, "1 files failed to append")
+	require.Equal(t, before, sheetRows(t, xlsx, "data"), "a CSV that could not be parsed must not empty the sheet")
+}
+
+// One unreadable CSV must not cost the others theirs: the readable one is
+// still appended and the unreadable one keeps its content.
+func TestAppendCsvToExcelAppendsTheRestWhenOneCsvFails(t *testing.T) {
+	dir := t.TempDir()
+	good := writeCSV(t, dir, "good.csv", "a\n1\n2")
+	bad := writeCSV(t, dir, "bad.csv", "b\n3\n4")
+	xlsx := filepath.Join(dir, "out.xlsx")
+	require.NoError(t, CsvToExcel([]string{good, bad}, []string{"good", "bad"}, xlsx, UTF8))
+	badBefore := sheetRows(t, xlsx, "bad")
+	require.Len(t, badBefore, 3)
+
+	fresh := writeCSV(t, dir, "fresh.csv", "a\n9")
+	missing := filepath.Join(dir, "missing.csv")
+	err := AppendCsvToExcel([]string{fresh, missing}, []string{"good", "bad"}, xlsx, UTF8)
+	require.EqualError(t, err, "1 files failed to append")
+	require.Equal(t, [][]string{{"a"}, {"9"}}, sheetRows(t, xlsx, "good"), "the readable CSV must still be appended")
+	require.Equal(t, badBefore, sheetRows(t, xlsx, "bad"), "the unreadable CSV must leave its sheet alone")
+}
+
+// A CSV that cannot be read gets no sheet either: before the fix the call
+// created an empty one under the CSV's sheet name and saved it.
+func TestAppendCsvToExcelAddsNoSheetWhenTheCsvIsMissing(t *testing.T) {
+	dir := t.TempDir()
+	data := writeCSV(t, dir, "data.csv", "a,b\n1,2")
+	xlsx := filepath.Join(dir, "out.xlsx")
+	require.NoError(t, CsvToExcel([]string{data}, nil, xlsx, UTF8))
+
+	missing := filepath.Join(dir, "missing.csv")
+	err := AppendCsvToExcel([]string{missing}, []string{"extra"}, xlsx, UTF8)
+	require.EqualError(t, err, "1 files failed to append")
+
+	f, err := excelize.OpenFile(xlsx)
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+	require.Equal(t, []string{"data"}, f.GetSheetList())
+}

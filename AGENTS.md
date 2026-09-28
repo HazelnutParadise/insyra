@@ -275,12 +275,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: track which leaves and merges have been used and refuse an id seen a second time, a merge joining something with itself included.
 - **Status**: pending
 
-### [2026-09-28] — `AppendCsvToExcel` empties a sheet before it knows the CSV can be read
-- **Where**: `csvxl/convert.go` `AppendCsvToExcel`, which calls `replaceSheet` before `addCsvSheet`
-- **What**: when a CSV cannot be read, the sheet of that name has already been replaced, and the workbook is saved with it empty. Measured on 2026-09-28: `AppendCsvToExcel` returned `1 files failed to append` and the target sheet read back with no rows. The same on `origin/dev` before the rebuild was ported; v0.3.3 introduced it. `0.4` reads each CSV in full before replacing its sheet (71c168a8), as part of a breaking change to the error it returns.
-- **Suggestion**: read the CSV first and replace the sheet only when that succeeds, keeping this line's error text.
-- **Status**: pending
-
 ### [2026-09-28] — two nested values whose strings contain the separators count as one
 - **Where**: `cell_identity.go` `encodeCell`, the string arm inside a nested value
 - **What**: a string inside a nested value is written without escaping the characters the encoding uses as separators. Measured on 2026-09-28: a list holding `Cell([]any{"a,s:b"})` and `Cell([]any{"a", "b"})` reports `Count([]any{"a", "b"})` 2 and a `Counter` of one entry. `0.4` tracks the same defect.
