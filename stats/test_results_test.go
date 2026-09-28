@@ -26,7 +26,7 @@ func TestBaseReturnsTheEmbeddedResult(t *testing.T) {
 	a := insyra.NewDataList(55.1, 49.3, 58.2, 61.9, 47.3, 51.0)
 	b := insyra.NewDataList(46.9, 41.2, 45.7, 49.8, 44.0, 47.6)
 
-	res, err := stats.TwoSampleTTest(a, b, false)
+	res, err := stats.TwoSampleTTest(a, b)
 	if err != nil {
 		t.Fatalf("TwoSampleTTest: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestTTestNilFieldsFollowTheRule(t *testing.T) {
 		t.Errorf("single-sample MeanDiff = %v, want nil", *single.MeanDiff)
 	}
 
-	two, err := stats.TwoSampleTTest(x, y, false)
+	two, err := stats.TwoSampleTTest(x, y)
 	if err != nil {
 		t.Fatalf("TwoSampleTTest: %v", err)
 	}

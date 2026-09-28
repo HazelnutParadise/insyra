@@ -68,7 +68,7 @@ func TestTwoSampleTTestReadsBothSamplesAtOneMoment(t *testing.T) {
 
 	torn := make(map[float64]int)
 	for range pairAtomicityIterations {
-		res, err := TwoSampleTTest(dl1, dl2, true)
+		res, err := TwoSampleTTest(dl1, dl2, TTestOptions{EqualVariance: true})
 		if err != nil {
 			t.Fatalf("TwoSampleTTest: %v", err)
 		}

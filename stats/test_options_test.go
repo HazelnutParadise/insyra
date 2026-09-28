@@ -390,7 +390,7 @@ func TestTTestOptionsConfidenceLevelErrors(t *testing.T) {
 	x := insyra.NewDataList(52.1, 58.3, 57.4, 51.3, 61.2, 42.8, 46.8)
 	y := insyra.NewDataList(48.0, 55.0, 53.2, 50.1, 57.3, 40.2, 45.5)
 
-	got, err := stats.TwoSampleTTest(x, y, false, stats.TTestOptions{ConfidenceLevel: math.NaN()})
+	got, err := stats.TwoSampleTTest(x, y, stats.TTestOptions{ConfidenceLevel: math.NaN()})
 	if got != nil {
 		t.Errorf("result must be nil on error, got %+v", got)
 	}
@@ -506,5 +506,71 @@ func TestFactorAnalysisRunsWithoutOptions(t *testing.T) {
 	}
 	if want := "at most one stats.FactorAnalysisOptions may be given, got 2"; err.Error() != want {
 		t.Errorf("error: got %q, want %q", err.Error(), want)
+	}
+}
+
+// The two-sample t-test takes its variance assumption in TTestOptions. Leaving
+// the field out has to mean exactly what spelling it out false means, and the
+// default has to be Welch's test, as R's t.test defaults to it.
+func TestTwoSampleTTestDefaultsToWelch(t *testing.T) {
+	x := insyra.NewDataList(55.1, 49.3, 58.2, 61.9, 47.3, 51.0, 53.8, 59.7)
+	y := insyra.NewDataList(46.9, 41.2, 45.7, 49.8, 44.0, 47.6, 46.5, 43.9, 50.2)
+
+	got, err := stats.TwoSampleTTest(x, y)
+	if err != nil {
+		t.Fatalf("TwoSampleTTest without options: %v", err)
+	}
+	// R 4.6.1: t.test(x, y)
+	if want := 4.03179446342583; math.Abs(got.Statistic-want) > 1e-9 {
+		t.Errorf("Statistic: got %.17g, want %.17g", got.Statistic, want)
+	}
+	if got.DF == nil {
+		t.Fatal("DF is nil")
+	}
+	if want := 10.70275033671886; math.Abs(*got.DF-want) > 1e-9 {
+		t.Errorf("DF: got %.17g, want %.17g", *got.DF, want)
+	}
+	if want := 0.00208702339328; math.Abs(got.PValue-want) > 1e-9 {
+		t.Errorf("PValue: got %.17g, want %.17g", got.PValue, want)
+	}
+
+	explicit, err := stats.TwoSampleTTest(x, y, stats.TTestOptions{EqualVariance: false})
+	if err != nil {
+		t.Fatalf("TwoSampleTTest with EqualVariance: false: %v", err)
+	}
+	if got.Statistic != explicit.Statistic {
+		t.Errorf("Statistic: got %.17g, want %.17g", got.Statistic, explicit.Statistic)
+	}
+	if *got.DF != *explicit.DF {
+		t.Errorf("DF: got %.17g, want %.17g", *got.DF, *explicit.DF)
+	}
+	if got.PValue != explicit.PValue {
+		t.Errorf("PValue: got %.17g, want %.17g", got.PValue, explicit.PValue)
+	}
+	if got.CI[0] != explicit.CI[0] || got.CI[1] != explicit.CI[1] {
+		t.Errorf("CI: got %v, want %v", got.CI, explicit.CI)
+	}
+}
+
+func TestTwoSampleTTestEqualVarianceOnRequest(t *testing.T) {
+	x := insyra.NewDataList(55.1, 49.3, 58.2, 61.9, 47.3, 51.0, 53.8, 59.7)
+	y := insyra.NewDataList(46.9, 41.2, 45.7, 49.8, 44.0, 47.6, 46.5, 43.9, 50.2)
+
+	got, err := stats.TwoSampleTTest(x, y, stats.TTestOptions{EqualVariance: true})
+	if err != nil {
+		t.Fatalf("TwoSampleTTest with EqualVariance: true: %v", err)
+	}
+	// R 4.6.1: t.test(x, y, var.equal = TRUE)
+	if want := 4.16693760749; math.Abs(got.Statistic-want) > 1e-9 {
+		t.Errorf("Statistic: got %.17g, want %.17g", got.Statistic, want)
+	}
+	if got.DF == nil {
+		t.Fatal("DF is nil")
+	}
+	if *got.DF != 15 {
+		t.Errorf("DF: got %.17g, want 15", *got.DF)
+	}
+	if want := 0.000826315295455; math.Abs(got.PValue-want) > 1e-9 {
+		t.Errorf("PValue: got %.17g, want %.17g", got.PValue, want)
 	}
 }

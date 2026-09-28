@@ -98,6 +98,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `pivot … agg <op>` 改用 `groupby` 與 `resample` 的方式讀取 op，和文件原本的描述一致。只有 `pivot` 接受、文件也從未提過的 `agg average` 現在會被拒絕，`agg custom` 也一樣，它原本就會失敗，因為 CLI 無法傳入函式。
 - `rolling` 遇到程式庫拒絕的視窗設定時會回報錯誤，不存任何變數：以前 `rolling x 0 mean` 與 `rolling x 2 mean minobs 3` 會印出 `saved as $result` 並存一個空的 list。`ewm` 改為回報程式庫的錯誤，不再從結果長度推斷是否失敗。
 - `parsenums` 跟著 `ParseNumbers` 改變：數字全是整數的 list 會轉成 `int64`，不再是 `float64`。
+- **BREAKING**：`ttest two <var1> <var2>` 沒有加 `equal` 或 `unequal` 時，改為執行函式庫預設的 Welch t 檢定，不再假設兩組變異數相等。要得到以前的結果，請加上 `equal`；`help ttest` 會列出預設值。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。
@@ -130,6 +131,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `FactorAnalysis` 的設定改為可省略的 `opts ...FactorAnalysisOptions`，`FactorAnalysis(dt)` 會直接使用 `DefaultFactorAnalysisOptions` 的預設值。傳入一個設定值的既有呼叫不用改；把 `stats.FactorAnalysis` 存進舊函式型別變數的程式則要改型別。
 - 每個假設檢定的結果都公開了彼此共用的部分。存放 `Statistic`、`PValue`、`DF`、`CI` 與 `EffectSizes` 的結構匯出為 `TestResult`，新增的介面 `HypothesisTestResult` 只有一個方法 `Base() *TestResult`，`TTestResult`、`ZTestResult`、`FTestResult`、`ChiSquareTestResult`、`CorrelationResult`、`WilcoxonTestResult`、`MannWhitneyUResult`、`KruskalWallisResult` 與 `FriedmanTestResult` 都符合它。現在同一個函式或同一個 slice 可以同時接收 t 檢定、Mann-Whitney U 檢定和卡方檢定的結果，用 `r.Base().PValue` 讀取；這個結構以前沒有匯出，所以根本沒有型別可以寫進參數。`r.PValue` 這類欄位存取不變。
 - **BREAKING**：只有部分檢定會填的結果欄位一律改成指標，不適用時為 `nil`；每個檢定都會填的欄位則是一般值。原本同一件事有的用指標、有的用 `NaN`、有的用 0 表示。`TTestResult.Mean` 改成 `float64`，和 `ZTestResult.Mean` 一樣；`PairedTTest` 以往把 `Mean`、`Mean2`、`N2` 留成 `nil`，現在分別填入 `data1` 與 `data2` 的平均數及成對數。`WilcoxonTestResult.Z` 與 `MannWhitneyUResult.Z` 改成 `*float64`，走精確分布時為 `nil`，不再是 `NaN`。`FTestResult.DF2` 改成 `*float64`，`BartlettTest` 的 `DF2` 為 `nil`；它以前回報 0，而 0 是可能被拿去代入 F 分布的數字。t 檢定的 `*r.Mean` 要改寫成 `r.Mean`，讀 `Z`、`DF2` 的地方改成 `*r.Z`、`*r.DF2`。把 `r.Z` 或 `r.DF2` 直接交給 `fmt` 仍然能編譯，但印出來的會是指標。各檢定回報的數值全部不變。
+- **BREAKING**：`TwoSampleTTest` 的變異數假設改放在 `TTestOptions` 的 `EqualVariance`，不設定就執行 Welch t 檢定，和 R `t.test` 的預設相同。位置參數 `equalVariance bool` 已移除：`TwoSampleTTest(a, b, false)` 改成 `TwoSampleTTest(a, b)`，`TwoSampleTTest(a, b, true)` 改成 `TwoSampleTTest(a, b, stats.TTestOptions{EqualVariance: true})`。bool 放不進設定值的位置，所以舊寫法會直接編譯失敗，不會默默改變意思；改寫後的呼叫結果和以前相同。兩組變異數真的相等時，Welch 檢定和 Student 檢定的結果幾乎一樣；不相等時 Welch 仍然可靠，所以不設定時用它。
 
 ### `csvxl`
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 會用 v0.3.3 檢查工作表名稱的同一套規則檢查 `csvNames` 指定的檔名：含路徑分隔符號、或不會直接落在輸出目錄內的檔名都會被拒絕，所以 `csvNames: []string{"sub/out.csv"}` 不再寫進子目錄。每張 CSV 先寫入暫存檔再 rename 到目標位置，寫入失敗時不會留下截斷的檔案。

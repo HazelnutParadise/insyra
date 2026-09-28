@@ -13,8 +13,11 @@ func TestParametricTestsRefuseBlankCells(t *testing.T) {
 	clean := insyra.NewDataList(2.0, 4.0, 9.0, 1.0)
 	cases := map[string]func() error{
 		"SingleSampleTTest": func() error { _, err := stats.SingleSampleTTest(blank, 0); return err },
-		"TwoSampleTTest":    func() error { _, err := stats.TwoSampleTTest(blank, clean, true); return err },
-		"TwoSampleTTest2":   func() error { _, err := stats.TwoSampleTTest(clean, blank, false); return err },
+		"TwoSampleTTest": func() error {
+			_, err := stats.TwoSampleTTest(blank, clean, stats.TTestOptions{EqualVariance: true})
+			return err
+		},
+		"TwoSampleTTest2": func() error { _, err := stats.TwoSampleTTest(clean, blank); return err },
 		"SingleSampleZTest": func() error {
 			_, err := stats.SingleSampleZTest(blank, 0, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95})
 			return err
@@ -55,7 +58,10 @@ func TestParametricTestsRefuseNilLists(t *testing.T) {
 	cases := map[string]func() error{
 		"SingleSampleTTest nil":       func() error { _, err := stats.SingleSampleTTest(nil, 0); return err },
 		"SingleSampleTTest typed nil": func() error { _, err := stats.SingleSampleTTest(typed, 0); return err },
-		"TwoSampleTTest nil":          func() error { _, err := stats.TwoSampleTTest(nil, clean, true); return err },
+		"TwoSampleTTest nil": func() error {
+			_, err := stats.TwoSampleTTest(nil, clean, stats.TTestOptions{EqualVariance: true})
+			return err
+		},
 		"SingleSampleZTest nil": func() error {
 			_, err := stats.SingleSampleZTest(nil, 0, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95})
 			return err

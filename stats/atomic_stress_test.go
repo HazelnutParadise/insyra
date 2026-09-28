@@ -52,8 +52,8 @@ func TestStress_TwoSampleStatsNoRace(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				for i := 0; i < iters; i++ {
-					_, _ = TwoSampleTTest(a, b, true, TTestOptions{ConfidenceLevel: 0.95})
-					_, _ = TwoSampleTTest(a, b, false)
+					_, _ = TwoSampleTTest(a, b, TTestOptions{EqualVariance: true, ConfidenceLevel: 0.95})
+					_, _ = TwoSampleTTest(a, b)
 					_, _ = PairedTTest(a, b)
 					_, _ = TwoSampleZTest(a, b, 1, 1, ZTestOptions{Alternative: TwoSided, ConfidenceLevel: 0.95})
 					_, _ = FTestForVarianceEquality(a, b)

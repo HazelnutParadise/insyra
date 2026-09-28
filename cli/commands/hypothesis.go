@@ -16,7 +16,7 @@ func init() {
 		Description: "T-test commands",
 		Forms: []string{
 			"ttest single <var> <mu>                     one-sample, against population mean mu",
-			"ttest two <var1> <var2> [equal|unequal]     two-sample (default: equal variances)",
+			"ttest two <var1> <var2> [equal|unequal]     two-sample (default: unequal, Welch's test)",
 			"ttest paired <var1> <var2>                  paired on matched samples",
 		},
 		Examples: []string{
@@ -128,7 +128,7 @@ func runTTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		equalVariance := true
+		equalVariance := false
 		if len(args) >= 4 {
 			var parseErr error
 			equalVariance, parseErr = parseEqualVariance(args[3])
@@ -136,7 +136,7 @@ func runTTestCommand(ctx *ExecContext, args []string) error {
 				return fmt.Errorf("ttest: %w", parseErr)
 			}
 		}
-		result, err := stats.TwoSampleTTest(a, b, equalVariance)
+		result, err := stats.TwoSampleTTest(a, b, stats.TTestOptions{EqualVariance: equalVariance})
 		if err != nil {
 			return fmt.Errorf("ttest failed: %w", err)
 		}

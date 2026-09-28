@@ -586,7 +586,7 @@ func TestTwoSampleTTest_R(t *testing.T) {
 			}
 			d1 := insyra.NewDataList(c.data1)
 			d2 := insyra.NewDataList(c.data2)
-			r, err := stats.TwoSampleTTest(d1, d2, c.equalVar, stats.TTestOptions{ConfidenceLevel: cl})
+			r, err := stats.TwoSampleTTest(d1, d2, stats.TTestOptions{EqualVariance: c.equalVar, ConfidenceLevel: cl})
 			if err != nil {
 				t.Fatalf("TwoSampleTTest error: %v", err)
 			}

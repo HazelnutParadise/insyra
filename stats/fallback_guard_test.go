@@ -122,7 +122,6 @@ func TestHypothesisTestsRejectInvalidConfidenceLevel(t *testing.T) {
 	if _, err := stats.TwoSampleTTest(
 		insyra.NewDataList([]float64{1, 2, 3}),
 		insyra.NewDataList([]float64{2, 3, 4}),
-		false,
 		stats.TTestOptions{ConfidenceLevel: -0.5},
 	); err == nil {
 		t.Fatalf("expected two-sample t-test to reject invalid confidence level")

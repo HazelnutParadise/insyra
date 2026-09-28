@@ -139,7 +139,7 @@ func TestCrossLangTwoSampleTTest(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := stats.TwoSampleTTest(dataListFromFloat64(tc.x), dataListFromFloat64(tc.y), tc.equalVar, stats.TTestOptions{ConfidenceLevel: tc.cl})
+			got, err := stats.TwoSampleTTest(dataListFromFloat64(tc.x), dataListFromFloat64(tc.y), stats.TTestOptions{EqualVariance: tc.equalVar, ConfidenceLevel: tc.cl})
 			if err != nil {
 				t.Fatalf("TwoSampleTTest error: %v", err)
 			}
@@ -245,6 +245,9 @@ func TestCrossLangTTestAlternative(t *testing.T) {
 			for _, cl := range levels {
 				t.Run(fmt.Sprintf("%s/%s/%g", k.name, string(alt), cl), func(t *testing.T) {
 					opts := stats.TTestOptions{Alternative: alt, ConfidenceLevel: cl}
+					if k.kind == "two" {
+						opts.EqualVariance = k.equalVar
+					}
 
 					var got *stats.TTestResult
 					var err error
@@ -252,7 +255,7 @@ func TestCrossLangTTestAlternative(t *testing.T) {
 					case "single":
 						got, err = stats.SingleSampleTTest(dataListFromFloat64(k.x), k.mu, opts)
 					case "two":
-						got, err = stats.TwoSampleTTest(dataListFromFloat64(k.x), dataListFromFloat64(k.y), k.equalVar, opts)
+						got, err = stats.TwoSampleTTest(dataListFromFloat64(k.x), dataListFromFloat64(k.y), opts)
 					case "paired":
 						got, err = stats.PairedTTest(dataListFromFloat64(k.x), dataListFromFloat64(k.y), opts)
 					default:

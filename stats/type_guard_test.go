@@ -25,11 +25,14 @@ func TestNilInterfaceInputsDoNotPanic(t *testing.T) {
 			_, err := stats.PairedWilcoxon(good, nil, stats.WilcoxonOptions{Alternative: stats.TwoSided})
 			return err
 		},
-		"ExponentialReg":           func() error { _, err := stats.ExponentialRegression(nil, good); return err },
-		"LogarithmicReg":           func() error { _, err := stats.LogarithmicRegression(good, nil); return err },
-		"PolynomialReg":            func() error { _, err := stats.PolynomialRegression(nil, good, 2); return err },
-		"TwoSampleTTest":           func() error { _, err := stats.TwoSampleTTest(nil, good, true); return err },
-		"TwoSampleTTest typed nil": func() error { _, err := stats.TwoSampleTTest(good, typedNil, false); return err },
+		"ExponentialReg": func() error { _, err := stats.ExponentialRegression(nil, good); return err },
+		"LogarithmicReg": func() error { _, err := stats.LogarithmicRegression(good, nil); return err },
+		"PolynomialReg":  func() error { _, err := stats.PolynomialRegression(nil, good, 2); return err },
+		"TwoSampleTTest": func() error {
+			_, err := stats.TwoSampleTTest(nil, good, stats.TTestOptions{EqualVariance: true})
+			return err
+		},
+		"TwoSampleTTest typed nil": func() error { _, err := stats.TwoSampleTTest(good, typedNil); return err },
 		"TwoSampleZTest": func() error {
 			_, err := stats.TwoSampleZTest(good, nil, 1, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95})
 			return err
@@ -56,11 +59,11 @@ func TestNonConcreteDataListMatchesConcrete(t *testing.T) {
 	wa := wrappedList{insyra.NewDataList(a.Data()...)}
 	wb := wrappedList{insyra.NewDataList(b.Data()...)}
 
-	wantT, err := stats.TwoSampleTTest(a, b, false)
+	wantT, err := stats.TwoSampleTTest(a, b)
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotT, err := stats.TwoSampleTTest(wa, wb, false)
+	gotT, err := stats.TwoSampleTTest(wa, wb)
 	if err != nil {
 		t.Fatal(err)
 	}

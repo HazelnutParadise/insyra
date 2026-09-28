@@ -42,7 +42,7 @@ The error is the last value a function returns. A function that returns several 
 | Question | Function |
 |---|---|
 | Does this sample's mean differ from a known value? | `SingleSampleTTest(data, mu, opts...)` |
-| Do two independent samples differ? | `TwoSampleTTest(data1, data2, equalVariance, opts...)` |
+| Do two independent samples differ? | `TwoSampleTTest(data1, data2, opts...)` |
 | Do two measurements of the same subjects differ? | `PairedTTest(data1, data2, opts...)` |
 | The same, with the population σ known | `SingleSampleZTest(data, mu, sigma, opts...)` / `TwoSampleZTest(data1, data2, sigma1, sigma2, opts...)` |
 | Do three or more groups differ? | `OneWayANOVA(groups)` |
@@ -148,7 +148,7 @@ type HypothesisTestResult interface {
 `TTestResult`, `ZTestResult`, `FTestResult`, `ChiSquareTestResult`, `CorrelationResult`, `WilcoxonTestResult`, `MannWhitneyUResult`, `KruskalWallisResult` and `FriedmanTestResult` all satisfy `HypothesisTestResult`, so one function or one slice can take any of them. `Base()` returns the embedded `TestResult` itself, not a copy.
 
 ```go
-tt, err := stats.TwoSampleTTest(control, variant, false)
+tt, err := stats.TwoSampleTTest(control, variant)
 if err != nil {
     log.Fatal(err)
 }
@@ -180,14 +180,16 @@ The t-, z-, Wilcoxon and Mann-Whitney tests take their alternative hypothesis an
 type TTestOptions struct {
     Alternative     AlternativeHypothesis // TwoSided, Greater or Less; empty means TwoSided
     ConfidenceLevel float64               // strictly between 0 and 1; 0 means 0.95
+    EqualVariance   bool                  // TwoSampleTTest only: true pools the variances (Student); false is Welch
 }
 ```
 
-`ZTestOptions`, `WilcoxonOptions` and `MannWhitneyUOptions` have the same two fields. The t-tests take `TTestOptions`, the z-tests `ZTestOptions`, `SingleSampleWilcoxon` and `PairedWilcoxon` take `WilcoxonOptions`, and `MannWhitneyU` takes `MannWhitneyUOptions`.
+`ZTestOptions`, `WilcoxonOptions` and `MannWhitneyUOptions` have the same first two fields; `EqualVariance` belongs to the t-tests alone, and only `TwoSampleTTest` reads it. The t-tests take `TTestOptions`, the z-tests `ZTestOptions`, `SingleSampleWilcoxon` and `PairedWilcoxon` take `WilcoxonOptions`, and `MannWhitneyU` takes `MannWhitneyUOptions`.
 
 - `Greater` tests whether the first sample lies above the hypothesised value or the second sample, and `Less` whether it lies below. A one-sided test reports a one-sided interval: `[lower, +Inf]` for `Greater`, `[-Inf, upper]` for `Less`.
 - An alternative other than the three constants, a level outside (0, 1) other than 0, `NaN` included, and a second options value are errors, and no result is returned. The messages read `alternative must be two-sided, greater or less, got "sideways"`, `confidence level must be strictly between 0 and 1, got 1.5` and `at most one stats.TTestOptions may be given, got 2`.
-- `mu`, the z-tests' `sigma`, `sigma1` and `sigma2`, and `TwoSampleTTest`'s `equalVariance` are ordinary required arguments.
+- Leaving `EqualVariance` out runs Welch's t-test, which does not assume the two variances are equal, as R's `t.test` does by default. Set it to `true` for Student's pooled-variance test.
+- `mu` and the z-tests' `sigma`, `sigma1` and `sigma2` are ordinary required arguments.
 
 ```go
 // Is the mean above 50? One-sided, with a 90% lower bound.
@@ -394,7 +396,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, opts ...TTestOptions) 
 ### Two Sample T-Test
 
 ```go
-func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, opts ...TTestOptions) (*TTestResult, error)
+func TwoSampleTTest(data1, data2 insyra.IDataList, opts ...TTestOptions) (*TTestResult, error)
 ```
 
 **Description:** Compare means of two independent samples. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
@@ -402,8 +404,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, opts ...T
 **Parameters:**
 
 - `data1, data2`: Two independent samples
-- `equalVariance`: true for pooled variance, false for Welch's t-test
-- `opts`: Optional `TTestOptions`, at most one. `Greater` tests whether `data1`'s mean is above `data2`'s.
+- `opts`: Optional `TTestOptions`, at most one. Without it, or with `EqualVariance` false, this is Welch's t-test, with the Welch-Satterthwaite degrees of freedom; `EqualVariance: true` gives Student's pooled-variance test with `n1 + n2 - 2` degrees of freedom. `Greater` tests whether `data1`'s mean is above `data2`'s.
 
 **Returns:**
 
@@ -450,7 +451,7 @@ if err != nil {
 fmt.Printf("t=%.4f, p=%.4f, df=%.0f\n", result.Statistic, result.PValue, *result.DF)
 
 // Two sample t-test
-result, err = stats.TwoSampleTTest(group1, group2, true)
+result, err = stats.TwoSampleTTest(group1, group2) // Welch's test
 if err != nil {
     log.Fatal(err)
 }

@@ -21,6 +21,10 @@ type TTestOptions struct {
 	// ConfidenceLevel is the level of the confidence interval, strictly
 	// between 0 and 1. Zero means 0.95.
 	ConfidenceLevel float64
+	// EqualVariance, read by TwoSampleTTest only, pools the two variances
+	// (Student's t-test). The zero value runs Welch's test, which does not
+	// assume the variances are equal, as R's t.test does by default.
+	EqualVariance bool
 }
 
 type TTestResult struct {
@@ -143,15 +147,19 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, opts ...TTestOptions) 
 // TwoSampleTTest performs a two-sample t-test comparing the means of two independent groups.
 // Parameters:
 //   - data1, data2: The two data groups to compare
-//   - equalVariance: Whether to assume equal variances between groups
 //   - opts: (Optional) A single TTestOptions holding the alternative hypothesis
 //     and the confidence level of the confidence interval. At most one may be
 //     given; its zero value means a two-sided test at a 95% confidence level.
 //     A one-sided alternative gives R's t.test p-value and a one-sided bound on
 //     mean1 - mean2 whose other end is +Inf (Greater) or -Inf (Less).
 //
+// Without options, or with EqualVariance false, it runs Welch's test: the
+// unpooled standard error and Welch-Satterthwaite degrees of freedom. With
+// EqualVariance: true it runs Student's pooled-variance test with n1 + n2 - 2
+// degrees of freedom.
+//
 // ** Verified using R **
-func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, opts ...TTestOptions) (*TTestResult, error) {
+func TwoSampleTTest(data1, data2 insyra.IDataList, opts ...TTestOptions) (*TTestResult, error) {
 	o, err := oneOptions(opts)
 	if err != nil {
 		return nil, err
@@ -160,6 +168,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, opts ...T
 	if err != nil {
 		return nil, err
 	}
+	equalVariance := o.EqualVariance
 
 	values1, values2, err := testSeriesPair(data1, data2, "data1", "data2")
 	if err != nil {

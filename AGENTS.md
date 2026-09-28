@@ -300,12 +300,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: assert `WallTime >= 0` and check placement through `FallbackReason` alone, or give the fake backend a measurable delay. Whether `WallTime` 0 is an acceptable report for a real device is the question to settle first.
 - **Status**: pending
 
-### [2026-09-28] — `TwoSampleTTest`'s `equalVariance` is the one t-test setting still passed by position
-- **Where**: `stats/ttest.go` `TwoSampleTTest(data1, data2, equalVariance bool, opts ...TTestOptions)`; `cli/commands/hypothesis.go` `ttest two`, which defaults to equal variances
-- **What**: `stats-test-settings` moved the alternative and the confidence level into `TTestOptions` but left `equalVariance` a required bool. Welch's test stays valid when the variances are equal, so it could have a safe default, but the references disagree on which: R's `t.test` defaults to Welch (`var.equal = FALSE`) and SciPy's `ttest_ind` to Student (`equal_var=True`), and the CLI's `ttest two` defaults to equal variances. Picking one is a user-visible default, so it was asked on #240 instead of decided.
-- **Suggestion**: an `EqualVariance bool` field in `TTestOptions` whose zero value is Welch's test, as in R, with the positional bool removed; the CLI's default then follows. Waiting for the owner's answer on #240.
-- **Status**: pending (owner decision)
-
 ### [2026-09-28] — a two-sided t or z p-value in the far tail rounds to 0, below the one-sided one
 - **Where**: `stats/distutil.go` `tTwoTailedPValue` and the `TwoSided` arm of `zPValue`, both `2 * (1 - F(|x|))`; `stats/ztest.go`'s `sigma` checks
 - **What**: the subtraction loses every digit once the p-value falls near 1e-16, so the two-sided p-value comes out 0 or too small, while the one-sided p-values `stats-test-settings` added use `F(-t)` and stay exact. Measured on 2026-09-28 with 40 observations cycling through 10.0 to 10.4: against `mu` 9.8, t = 17.66, the two-sided p-value is 0 where R's `t.test` gives 3.31e-20, and `Greater` gives 1.656e-20, matching R; against 9.9 the two-sided value is 4.44e-16 where R gives 5.10e-16. A two-sided p-value below the one-sided one is impossible. Separately, `SingleSampleZTest(x, 10, math.NaN())` returns a `NaN` statistic, p-value and interval with a nil error, because `sigma <= 0` is false for `NaN`; `TwoSampleZTest`'s sigmas and both tests' `mu` are not checked either.

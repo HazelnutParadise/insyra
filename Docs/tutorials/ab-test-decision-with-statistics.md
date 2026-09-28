@@ -52,7 +52,7 @@ Test whether conversion means differ between groups.
 **Code**
 
 ```go
-tt, err := stats.TwoSampleTTest(control, variant, false)
+tt, err := stats.TwoSampleTTest(control, variant)
 if err != nil {
 	log.Fatal(err)
 }
@@ -153,7 +153,7 @@ func main() {
 	variant := insyra.NewDataList(0.10, 0.11, 0.09, 0.12, 0.10, 0.11, 0.10)
 	spend := insyra.NewDataList(120, 130, 110, 150, 140, 135, 145)
 
-	tt, err := stats.TwoSampleTTest(control, variant, false)
+	tt, err := stats.TwoSampleTTest(control, variant)
 	if err != nil {
 		log.Fatal(err)
 	}
