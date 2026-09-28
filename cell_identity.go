@@ -260,17 +260,23 @@ func writeContainer(b *strings.Builder, rv reflect.Value, depth int, path []cell
 	}
 	var inner strings.Builder
 	lowest := writeElems(&inner, rv, depth, path, memo)
-	text := inner.String()
-	if len(text) > maxInlineCellBytes {
-		sum := sha256.Sum256([]byte(text))
-		text = "h:" + hex.EncodeToString(sum[:])
-	}
+	text := inlineOrDigest(inner.String())
 	b.WriteString(text)
 	if lowest < own {
 		return lowest
 	}
 	memo[key] = text
 	return noCellRef
+}
+
+// inlineOrDigest returns a nested container's text, or its digest when the
+// text is longer than maxInlineCellBytes.
+func inlineOrDigest(text string) string {
+	if len(text) > maxInlineCellBytes {
+		sum := sha256.Sum256([]byte(text))
+		return "h:" + hex.EncodeToString(sum[:])
+	}
+	return text
 }
 
 // holdsContainer reports whether an element of the slice or map rv may be, or
@@ -434,6 +440,14 @@ func writeCellValue(b *strings.Builder, rv reflect.Value, depth int, path []cell
 		}
 		if rv.Kind() == reflect.Slice && rv.Len() > 0 {
 			return writeContainer(b, rv, depth, path, memo)
+		}
+		if rv.Kind() == reflect.Array && rv.Len() > 0 && depth > 0 && holdsContainer(rv) {
+			// An array has no address to memoize on, but it follows the same
+			// inline limit as a slice, so the two encode alike at any size.
+			var inner strings.Builder
+			lowest := writeSliceElems(&inner, rv, depth, path, memo)
+			b.WriteString(inlineOrDigest(inner.String()))
+			return lowest
 		}
 		return writeSliceElems(b, rv, depth, path, memo)
 
