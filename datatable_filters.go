@@ -51,26 +51,44 @@ func (dt *DataTable) SliceRows(from, to int) *DataTable {
 	return result
 }
 
-// SliceCols returns columns from through to-1 as a new DataTable, the way
-// s[from:to] slices a Go slice. The bounds are 0-based positions with
-// 0 <= from <= to <= NumCols(); from == to gives a table with no columns. The
-// result keeps every row, the row names and the table's name, and owns its
-// data. A bound outside that range records an error on the table and returns
-// an empty DataTable.
-func (dt *DataTable) SliceCols(from, to int) *DataTable {
+// SliceCols returns the columns from from up to, but not including, to as a
+// new DataTable, the way s[from:to] slices a Go slice.
+//
+// Each bound is a column selector: an Excel-style letter ("B"), a Name
+// (Name("price")) or an int position. The three spellings of one column are
+// the same bound, so SliceCols("B", "D"), SliceCols(1, 3) and, where those
+// columns are named b and d, SliceCols(Name("b"), Name("d")) all give columns
+// B and C. An int may be negative, counting from the end, and may be
+// NumCols(), one past the last column. nil is the first column for from and
+// one past the last for to, so SliceCols("C", nil) runs to the end. from == to
+// gives a table with no columns.
+//
+// The result keeps every row, the row names and the table's name, and owns
+// its data. A bound that picks no column, lies outside the table, or comes
+// after the other records an error on the table and returns an empty
+// DataTable.
+func (dt *DataTable) SliceCols(from, to any) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		numCols := len(dt.columns)
-		if from < 0 || from > to || to > numCols {
-			dt.fail("SliceCols", "bounds [%d:%d] out of range for %d columns; want 0 <= from <= to <= %d", from, to, numCols, numCols)
+		start, ok := dt.sliceColBound(from, 0)
+		if !ok {
+			return
+		}
+		end, ok := dt.sliceColBound(to, numCols)
+		if !ok {
+			return
+		}
+		if start > end {
+			dt.fail("SliceCols", "from %v (column %d) comes after to %v (column %d)", from, start, to, end)
 			return
 		}
 		rowNames := core.NewBiIndex(0)
-		if from < to {
+		if start < end {
 			rowNames = cloneRowNames(dt.rowNames)
 		}
 		result = &DataTable{
-			columns:           cloneColumns(dt.columns[from:to]),
+			columns:           cloneColumns(dt.columns[start:end]),
 			rowNames:          rowNames,
 			name:              dt.name,
 			creationTimestamp: dt.creationTimestamp,
@@ -83,15 +101,38 @@ func (dt *DataTable) SliceCols(from, to int) *DataTable {
 	return result
 }
 
+// sliceColBound turns one bound of SliceCols into a position from 0 to the
+// column count. nil gives ifNil. An int is a slice bound, so the column count
+// itself is allowed; a letter or a Name picks a column through the one
+// selector rule. The table must already be locked.
+func (dt *DataTable) sliceColBound(bound any, ifNil int) (int, bool) {
+	numCols := len(dt.columns)
+	switch v := bound.(type) {
+	case nil:
+		return ifNil, true
+	case int:
+		position := v
+		if position < 0 {
+			position += numCols
+		}
+		if position < 0 || position > numCols {
+			dt.fail("SliceCols", "bound %d is out of range for %d columns; an int bound runs from %d to %d", v, numCols, -numCols, numCols)
+			return 0, false
+		}
+		return position, true
+	}
+	return dt.resolveColSelector("SliceCols", bound)
+}
+
 // ==================== Col Index ====================
 
 // FilterColsByColIndexGreaterThan keeps the columns after the one at
 // columnIndexLetter. An unreadable letter, the last column or one past it
 // gives an empty DataTable.
 //
-// Deprecated: use SliceCols(i+1, dt.NumCols()), where i is the column's
-// position; ParseColIndex turns a letter into one. SliceCols reports a bound
-// past the last column as an error instead of returning an empty table.
+// Deprecated: use SliceCols(i+1, nil), where i is the column's position;
+// ParseColIndex turns a letter into one. SliceCols reports a bound past the
+// last column as an error instead of returning an empty table.
 func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *DataTable {
 	var newDt *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -119,9 +160,9 @@ func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *
 // columnIndexLetter and every column after it. An unreadable letter, or one
 // past the last column, gives an empty DataTable.
 //
-// Deprecated: use SliceCols(i, dt.NumCols()), where i is the column's
-// position; ParseColIndex turns a letter into one. SliceCols reports a bound
-// past the last column as an error instead of returning an empty table.
+// Deprecated: use SliceCols(columnIndexLetter, nil). SliceCols reports a
+// letter past the last column as an error instead of returning an empty
+// table.
 func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -149,9 +190,9 @@ func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter 
 // FilterColsByColIndexEqualTo keeps only the column at columnIndexLetter. An
 // unreadable letter, or one past the last column, gives an empty DataTable.
 //
-// Deprecated: use SliceCols(i, i+1), where i is the column's position;
-// ParseColIndex turns a letter into one. To pick a column as a DataList, use
-// GetCol.
+// Deprecated: use SliceCols(columnIndexLetter, i+1), where i is the column's
+// position; ParseColIndex turns a letter into one. To pick a column as a
+// DataList, use GetCol.
 func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -180,9 +221,8 @@ func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *Data
 // columnIndexLetter; a letter past the last column keeps them all. An
 // unreadable letter, or column A, gives an empty DataTable.
 //
-// Deprecated: use SliceCols(0, i), where i is the column's position;
-// ParseColIndex turns a letter into one. SliceCols reports a bound past the
-// last column as an error.
+// Deprecated: use SliceCols(nil, columnIndexLetter). SliceCols reports a
+// letter past the last column as an error.
 func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -211,7 +251,7 @@ func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *Dat
 // columnIndexLetter and every column before it; a letter past the last column
 // keeps them all. An unreadable letter gives an empty DataTable.
 //
-// Deprecated: use SliceCols(0, i+1), where i is the column's position;
+// Deprecated: use SliceCols(nil, i+1), where i is the column's position;
 // ParseColIndex turns a letter into one. SliceCols reports a bound past the
 // last column as an error.
 func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter string) *DataTable {

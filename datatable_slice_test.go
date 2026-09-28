@@ -74,6 +74,61 @@ func TestSliceCols(t *testing.T) {
 	}
 }
 
+// SliceCols takes each bound as a column selector: an Excel-style letter, a
+// Name or an int position. The three spellings of one column are one bound,
+// so the range means the same whichever is used, and it stays half-open like
+// a Go slice. nil is the start or the end; an int may be negative, counting
+// from the end, or the column count, one past the last.
+func TestSliceColsTakesColumnSelectors(t *testing.T) {
+	dt := sliceFixture()
+	check := func(what string, got *DataTable, cols []string) {
+		t.Helper()
+		if !reflect.DeepEqual(got.ColNames(), cols) {
+			t.Errorf("%s has columns %v, want %v", what, got.ColNames(), cols)
+		}
+		if got.NumCols() > 0 && got.NumRows() != dt.NumRows() {
+			t.Errorf("%s has %d rows, want %d", what, got.NumRows(), dt.NumRows())
+		}
+	}
+	check(`SliceCols(1, 3)`, dt.SliceCols(1, 3), []string{"b", "c"})
+	check(`SliceCols("B", "D")`, dt.SliceCols("B", "D"), []string{"b", "c"})
+	check(`SliceCols(Name("b"), Name("d"))`, dt.SliceCols(Name("b"), Name("d")), []string{"b", "c"})
+	check(`SliceCols("b", -1)`, dt.SliceCols("b", -1), []string{"b", "c"})
+	check(`SliceCols(1, Name("d"))`, dt.SliceCols(1, Name("d")), []string{"b", "c"})
+	check(`SliceCols("C", nil)`, dt.SliceCols("C", nil), []string{"c", "d"})
+	check(`SliceCols(nil, "C")`, dt.SliceCols(nil, "C"), []string{"a", "b"})
+	check(`SliceCols(nil, nil)`, dt.SliceCols(nil, nil), []string{"a", "b", "c", "d"})
+	check(`SliceCols(-2, 4)`, dt.SliceCols(-2, 4), []string{"c", "d"})
+	check(`SliceCols(Name("c"), "C")`, dt.SliceCols(Name("c"), "C"), []string{})
+	if e := dt.Err(); e != nil {
+		t.Fatalf("selector bounds recorded %v", e)
+	}
+}
+
+func TestSliceColsRefusesWhatItCannotRead(t *testing.T) {
+	for _, c := range []struct {
+		from, to any
+		want     string
+	}{
+		{Name("nope"), nil, "no column is named nope"},
+		{"A", "Z", "column Z does not exist"},
+		{0, 5, "out of range"},
+		{-5, nil, "out of range"},
+		{1.5, nil, "float64"},
+		{"C", "B", "after"},
+	} {
+		dt := sliceFixture()
+		got := dt.SliceCols(c.from, c.to)
+		if got == nil || got.NumCols() != 0 {
+			t.Errorf("SliceCols(%v, %v) returned %v, want an empty table", c.from, c.to, got)
+		}
+		e := dt.Err()
+		if e == nil || e.FuncName != "SliceCols" || !strings.Contains(e.Message, c.want) {
+			t.Errorf("SliceCols(%v, %v) recorded %v, want an error containing %q", c.from, c.to, e, c.want)
+		}
+	}
+}
+
 // A bound outside 0 <= from <= to <= length is an error, as in a Go slice
 // expression, reported on the table rather than by panicking.
 func TestSliceOutOfRange(t *testing.T) {
@@ -81,13 +136,14 @@ func TestSliceOutOfRange(t *testing.T) {
 		name     string
 		from, to int
 		rows     bool
+		want     string
 	}{
-		{"SliceRows", -1, 2, true},
-		{"SliceRows", 3, 2, true},
-		{"SliceRows", 0, 6, true},
-		{"SliceCols", -1, 1, false},
-		{"SliceCols", 2, 1, false},
-		{"SliceCols", 0, 5, false},
+		{"SliceRows", -1, 2, true, "out of range"},
+		{"SliceRows", 3, 2, true, "out of range"},
+		{"SliceRows", 0, 6, true, "out of range"},
+		{"SliceCols", -5, 1, false, "out of range"},
+		{"SliceCols", 2, 1, false, "comes after"},
+		{"SliceCols", 0, 5, false, "out of range"},
 	} {
 		dt := sliceFixture()
 		var got *DataTable
@@ -103,8 +159,8 @@ func TestSliceOutOfRange(t *testing.T) {
 			t.Errorf("%s(%d, %d) returned %d x %d, want an empty table", c.name, c.from, c.to, got.NumRows(), got.NumCols())
 		}
 		e := dt.Err()
-		if e == nil || e.FuncName != c.name || !strings.Contains(e.Message, "out of range") {
-			t.Errorf("%s(%d, %d) recorded %v, want an out-of-range error", c.name, c.from, c.to, e)
+		if e == nil || e.FuncName != c.name || !strings.Contains(e.Message, c.want) {
+			t.Errorf("%s(%d, %d) recorded %v, want an error containing %q", c.name, c.from, c.to, e, c.want)
 		}
 	}
 }
@@ -142,9 +198,11 @@ func TestDeprecatedIndexFiltersMatchSlices(t *testing.T) {
 			same("ColIndexGreaterThan "+letter, dt.FilterColsByColIndexGreaterThan(letter), dt.SliceCols(i+1, nCols))
 		}
 		same("ColIndexGreaterThanOrEqualTo "+letter, dt.FilterColsByColIndexGreaterThanOrEqualTo(letter), dt.SliceCols(i, nCols))
+		same("ColIndexGreaterThanOrEqualTo by letter "+letter, dt.FilterColsByColIndexGreaterThanOrEqualTo(letter), dt.SliceCols(letter, nil))
 		same("ColIndexEqualTo "+letter, dt.FilterColsByColIndexEqualTo(letter), dt.SliceCols(i, i+1))
 		if i > 0 {
 			same("ColIndexLessThan "+letter, dt.FilterColsByColIndexLessThan(letter), dt.SliceCols(0, i))
+			same("ColIndexLessThan by letter "+letter, dt.FilterColsByColIndexLessThan(letter), dt.SliceCols(nil, letter))
 		}
 		same("ColIndexLessThanOrEqualTo "+letter, dt.FilterColsByColIndexLessThanOrEqualTo(letter), dt.SliceCols(0, i+1))
 	}

@@ -3750,7 +3750,7 @@ colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 
 ## Slicing
 
-`SliceRows` and `SliceCols` take a contiguous range of rows or columns, by position, the way `s[from:to]` slices a Go slice: `from` is included, `to` is not, and `0 <= from <= to <= length`. A bound outside that range is an error recorded on the table, and the result is an empty DataTable. Both return a new table that owns its data.
+`SliceRows` and `SliceCols` take a contiguous range of rows or columns the way `s[from:to]` slices a Go slice: `from` is included and `to` is not. `SliceRows` takes positions with `0 <= from <= to <= NumRows()`. `SliceCols` takes each bound as a [column selector](#column-selectors), a letter, a `Name` or an int, so `"B"`, `Name("price")` and `1` can each mark where the range starts or stops. A bound the method cannot use is an error recorded on the table, and the result is an empty DataTable. Both return a new table that owns its data.
 
 ### SliceRows
 
@@ -3782,15 +3782,19 @@ if err := dt.Err(); err != nil {
 ### SliceCols
 
 ```go
-func (dt *DataTable) SliceCols(from, to int) *DataTable
+func (dt *DataTable) SliceCols(from, to any) *DataTable
 ```
 
-**Description:** Returns columns `from` through `to-1`, with `0 <= from <= to <= NumCols()`. The result keeps every row, the row names and the table's name. To start from a column letter, turn it into a position with `ParseColIndex`.
+**Description:** Returns the columns from `from` up to, but not including, `to`. The result keeps every row, the row names and the table's name.
+
+Each bound is a column selector, and the three spellings of one column are the same bound: on a table whose columns are named `a`, `b`, `c`, `d`, the calls `SliceCols("B", "D")`, `SliceCols(1, 3)` and `SliceCols(insyra.Name("b"), insyra.Name("d"))` all return columns B and C. The end stays excluded whichever spelling is used, as in any Go slice, so ranges that meet do not overlap: `SliceCols(nil, "C")` and `SliceCols("C", nil)` split a table in two.
 
 **Parameters:**
 
-- `from`: Position of the first column to keep (0-based)
-- `to`: Position one past the last column to keep
+- `from`: The first column to keep: a letter, a `Name`, or an int position; `nil` for the first column.
+- `to`: The column to stop before, in the same forms; `nil` to run to the last column. An int bound may be negative, counting from the end, and may be `NumCols()`, one past the last column.
+
+A bound that picks no column (an unknown name, a letter past the last column, an int outside `-NumCols()` to `NumCols()`), a value of another type, or a `from` that comes after `to` records an error on the table and returns an empty DataTable. `from` and `to` picking the same column gives a table with no columns.
 
 **Returns:**
 
@@ -3799,9 +3803,10 @@ func (dt *DataTable) SliceCols(from, to int) *DataTable
 **Example:**
 
 ```go
-b, _ := insyra.ParseColIndex("B")
-fromB := dt.SliceCols(b, dt.NumCols()) // columns B, C, D, ...
-firstTwo := dt.SliceCols(0, 2)        // columns A and B
+fromB := dt.SliceCols("B", nil)                                  // columns B, C, D, ...
+firstTwo := dt.SliceCols(nil, "C")                               // columns A and B
+between := dt.SliceCols(insyra.Name("open"), insyra.Name("volume")) // from open up to, not including, volume
+lastTwo := dt.SliceCols(-2, nil)                                 // the last two columns
 ```
 
 ## Filtering
@@ -4000,7 +4005,7 @@ filtered := dt.FilterColsByColNameEqualTo("age")
 func (dt *DataTable) FilterColsByColIndexGreaterThan(threshold string) *DataTable
 ```
 
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(i+1, dt.NumCols())`, where `i` is the column's position (`ParseColIndex` turns a letter into one). `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
+**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(i+1, nil)`, where `i` is the column's position (`ParseColIndex` turns a letter into one). `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
 
 **Description:** Filters columns by index greater than the specified threshold.
 
@@ -4024,7 +4029,7 @@ filtered := dt.FilterColsByColIndexGreaterThan("B") // Columns C, D, E...
 func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
 ```
 
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(i, dt.NumCols())`, where `i` is the column's position (`ParseColIndex` turns a letter into one). `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
+**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(threshold, nil)`: `FilterColsByColIndexGreaterThanOrEqualTo("B")` is `SliceCols("B", nil)`. `SliceCols` reports a letter past the last column as an error, where this method returns an empty table.
 
 **Description:** Filters columns by index greater than or equal to the specified threshold.
 
@@ -4048,7 +4053,7 @@ filtered := dt.FilterColsByColIndexGreaterThanOrEqualTo("B") // Columns B, C, D.
 func (dt *DataTable) FilterColsByColIndexLessThan(threshold string) *DataTable
 ```
 
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(0, i)`, where `i` is the column's position (`ParseColIndex` turns a letter into one). A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
+**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(nil, threshold)`: `FilterColsByColIndexLessThan("C")` is `SliceCols(nil, "C")`. A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
 
 **Description:** Filters columns by index less than the specified threshold.
 
@@ -4072,7 +4077,7 @@ filtered := dt.FilterColsByColIndexLessThan("C") // Columns A, B
 func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable
 ```
 
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(0, i+1)`, where `i` is the column's position (`ParseColIndex` turns a letter into one). A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
+**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(nil, i+1)`, where `i` is the column's position (`ParseColIndex` turns a letter into one). A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
 
 **Description:** Filters columns by index less than or equal to the specified threshold.
 
@@ -4096,7 +4101,7 @@ filtered := dt.FilterColsByColIndexLessThanOrEqualTo("C") // Columns A, B, C
 func (dt *DataTable) FilterColsByColIndexEqualTo(index string) *DataTable
 ```
 
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(i, i+1)`, where `i` is the column's position (`ParseColIndex` turns a letter into one), or `GetCol` to read the column as a DataList. `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
+**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(index, i+1)`, where `i` is the column's position (`ParseColIndex` turns a letter into one), or `GetCol` to read the column as a DataList. `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
 
 **Description:** Filters columns by exact index match.
 

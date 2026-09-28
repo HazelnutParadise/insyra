@@ -299,7 +299,7 @@ type IDataTable interface {
 	FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
 	FilterRowsWhere(keep func(row *DataList) bool) *DataTable
 	SliceRows(from, to int) *DataTable
-	SliceCols(from, to int) *DataTable
+	SliceCols(from, to any) *DataTable
 	FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable
 	FilterColsByColIndexGreaterThan(threshold string) *DataTable
 	FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
