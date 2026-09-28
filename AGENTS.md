@@ -288,6 +288,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: create a missing table the way Replace now works, through a staging table renamed to the target (a rename to a taken name fails, so a table created meanwhile is not overwritten). Added columns cannot be taken back once the ALTER commits; decide whether to check the whole write before the ALTER, or accept and document it. Verify both against a real MySQL before changing them, and add an integration test gated on a MySQL DSN in the environment: the Replace path of `sql-replace-keeps-old-table` was reasoned from the MySQL manual and tested only on SQLite through the same code, and whether TiDB, which gorm also names `mysql`, runs a multi-table `RENAME TABLE` atomically is not known.
 - **Status**: pending
 
+### [2026-09-28] — `TestMultiDeviceDispatchMergesRangesAndReportsPlacement` fails on Windows when a shard finishes within one clock tick
+- **Where**: `accel/multi_device_test.go`, the `assignment.WallTime <= 0` check; `accel/exact.go` sets `WallTime` from `time.Since`
+- **What**: the Test workflow on 5226d0e5, a commit that only moved OpenSpec files, failed on `windows-latest` alone with `assignment did not report successful placement and wall time: … WallTime:0`, and a re-run of the same job was requested. The same test passed on Windows for the four commits pushed before it and on macOS and Linux every time. The likely cause, not verified on a Windows machine, is that the test's fake backend finishes a shard within one tick of the Windows clock, so `time.Since` returns 0.
+- **Suggestion**: assert `WallTime >= 0` and check placement through `FallbackReason` alone, or give the fake backend a measurable delay. Whether `WallTime` 0 is an acceptable report for a real device is the question to settle first.
+- **Status**: pending
+
 ### [2026-09-28] — cutting a tree accepts a node merged twice
 - **Where**: `stats/internal/clustering/cluster.go` `validateTree`
 - **What**: `validateTree` checks that every merge joins a leaf or an earlier merge, but not that each is used once. Measured on 2026-09-28 with three labels: merges `{-1,-2},{-1,-2}`, `{-1,-2},{1,1}` or `{-1,-1},{-2,1}` all pass, and `CutTreeByK(tree, 1)` returns `[1 1 2]`, two clusters where one was asked for, with no error. A hand-edited `state.json` reaches `cutree` this way. `dev` has the same check and records the same follow-up.
