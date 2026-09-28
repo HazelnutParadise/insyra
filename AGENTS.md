@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-28] — remove the deprecated `datafetch` names one release after they were deprecated
+- **Where**: `datafetch/yfinance.go` (`YFPeriodYearly`), `datafetch/googleMapsCommentCrawler.go` (`SortByRelevance`, `SortByNewest`, `SortByHighestRating`, `SortByLowestRating`, `GoogleMapsStoreReviewsFetchingOptions.MaxWaitingInterval_Milliseconds`), `datafetch/geocoding.go` (`ReverseTableByColName`)
+- **What**: `datafetch-naming-cleanup` deprecated them under the one-name rule of #211 (DF-5, filed under #212), keeping each one's value and meaning for one release.
+- **Suggestion**: delete them in the same release as the other Deprecated removals, with their rows in `TestDeprecatedDatafetchNamesSayWhatReplacedThem` and `TestDeprecatedDatafetchNamesKeepTheirValues`, the both-fields check in `GetReviews`, the tests that still use the old names (`TestGetReviewsAtTheMinimumWaitingInterval`, `TestGetReviewsZeroOptionsAreDefaults`, `TestGetReviewsRefusesBothWaitingFields`, `TestReverseTableIndexVsName`, `TestReverseTableInvalidColumn` and the `ReverseTableByColName` case of `TestReverseTableTakesColumnSelectors`), their notes in `Docs/datafetch.md`, and a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-09-28] — remove `stats.Diag` one release after it was deprecated
 - **Where**: `stats/diag.go`, `stats/diag_test.go` (`TestDiag`, `TestDiagDeprecatedKeepsMeaning`, `TestDiagNoLongerPanics`), and the `Diag (Deprecated)` section of `Docs/stats.md`
 - **What**: `diag-typed-functions` deprecated `Diag(x any, dims ...int) (any, error)` under the one-name rule (#245, ST-9), in favour of `DiagOf`, `DiagMatrix`, `DiagMatrixSize` and `IdentityMatrix`. Nothing else in the module calls it.

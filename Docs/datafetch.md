@@ -114,8 +114,8 @@ reviews := crawler.GetReviews(store.ID, 1)
 
 // With options
 options := datafetch.GoogleMapsStoreReviewsFetchingOptions{
-    SortBy:                          datafetch.SortByNewest,
-    MaxWaitingInterval_Milliseconds: 3000,
+    SortBy:             datafetch.GoogleMapsStoreReviewSortByNewest,
+    MaxWaitingInterval: 3 * time.Second,
 }
 reviews := crawler.GetReviews(store.ID, 20, options)
 ```
@@ -197,14 +197,16 @@ Configuration for review fetching.
 ```go
 type GoogleMapsStoreReviewsFetchingOptions struct {
     SortBy                          GoogleMapsStoreReviewSortBy
-    MaxWaitingInterval_Milliseconds uint
+    MaxWaitingInterval              time.Duration
+    MaxWaitingInterval_Milliseconds uint // Deprecated: use MaxWaitingInterval
 }
 ```
 
 **Fields:**
 
 - `SortBy`: How to sort reviews. Zero means by relevance.
-- `MaxWaitingInterval_Milliseconds`: Maximum wait time between requests (helps avoid rate limiting). Each wait is random between 1000 and this value, so it must be at least 1000. Zero means 5000.
+- `MaxWaitingInterval`: The longest wait between two review pages, which helps avoid rate limiting. Each wait is random between one second and this value, so it must be at least one second; a smaller value is replaced by the default with a warning. Zero means 5 seconds.
+- `MaxWaitingInterval_Milliseconds`: **Deprecated.** The same limit counted in milliseconds, removed in the release after the one that deprecated it. Setting it together with `MaxWaitingInterval` is an error: `GetReviews` returns `nil` with a warning before any request.
 
 ### GoogleMapsStoreReviewSortBy
 
@@ -212,12 +214,14 @@ Review sorting options.
 
 ```go
 const (
-    SortByRelevance     GoogleMapsStoreReviewSortBy = 1 // Most relevant first (default)
-    SortByNewest        GoogleMapsStoreReviewSortBy = 2 // Most recent first
-    SortByHighestRating GoogleMapsStoreReviewSortBy = 3 // 5-star reviews first
-    SortByLowestRating  GoogleMapsStoreReviewSortBy = 4 // 1-star reviews first
+    GoogleMapsStoreReviewSortByRelevance     GoogleMapsStoreReviewSortBy = 1 // Most relevant first (default)
+    GoogleMapsStoreReviewSortByNewest        GoogleMapsStoreReviewSortBy = 2 // Most recent first
+    GoogleMapsStoreReviewSortByHighestRating GoogleMapsStoreReviewSortBy = 3 // 5-star reviews first
+    GoogleMapsStoreReviewSortByLowestRating  GoogleMapsStoreReviewSortBy = 4 // 1-star reviews first
 )
 ```
+
+`SortByRelevance`, `SortByNewest`, `SortByHighestRating` and `SortByLowestRating` are deprecated constants with the same values, removed in the release after the one that deprecated them.
 
 ## Notes
 
@@ -226,7 +230,7 @@ const (
 - Every request times out after 30 seconds. Progress is logged at debug level.
 - Review fetching requires a stable internet connection.
 - Large review counts may take longer to fetch.
-- Use `MaxWaitingInterval_Milliseconds` to control request pacing.
+- Use `MaxWaitingInterval` to control request pacing.
 - Store IDs are in the format `0x...:0x...`.
 
 ## Complete Example
@@ -237,6 +241,8 @@ package main
 import (
     "fmt"
     "log"
+    "time"
+
     "github.com/HazelnutParadise/insyra/datafetch"
 )
 
@@ -257,8 +263,8 @@ func main() {
 
     // Fetch reviews for the first store with custom options
     options := datafetch.GoogleMapsStoreReviewsFetchingOptions{
-        SortBy:                          datafetch.SortByNewest,
-        MaxWaitingInterval_Milliseconds: 2000,
+        SortBy:             datafetch.GoogleMapsStoreReviewSortByNewest,
+        MaxWaitingInterval: 2 * time.Second,
     }
 
     reviews := crawler.GetReviews(stores[0].ID, 2, options)
@@ -380,6 +386,8 @@ These methods return a `*datafetch.YFFinancialStatementTables` structure contain
 
 - `datafetch.YFPeriodAnnual` (Default)
 - `datafetch.YFPeriodQuarterly`
+
+`datafetch.YFPeriodYearly` is deprecated: it fetches the same statements as `YFPeriodAnnual` but labels the tables `yearly`, and it is removed in the release after the one that deprecated it.
 
 #### 4. Options & Derivatives
 
@@ -507,12 +515,11 @@ Batch methods reverse-geocode many coordinates and return an `*insyra.DataTable`
 // Two parallel DataLists.
 func (g *TWGeocodingClient) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error)
 
-// A DataTable's columns, addressed by Excel-style index ("A", "B", ...).
-func (g *TWGeocodingClient) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error)
-
-// A DataTable's columns, addressed by name.
-func (g *TWGeocodingClient) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error)
+// A DataTable's columns, each given as a column selector.
+func (g *TWGeocodingClient) ReverseTable(dt *insyra.DataTable, latCol, lngCol any) (*insyra.DataTable, error)
 ```
+
+`ReverseTable` picks each column the way every Insyra method does: a string is an Excel-style index (`"A"`, `"B"`, ...), `insyra.Name("lat")` is a column name, and an int is a 0-based position, counting from the end when negative. A bare string is never read as a name, so `ReverseTable(dt, "lat", "lng")` is an error, returned before any request, that tells you to write `insyra.Name("lat")`. `ReverseTableByColName(dt, "lat", "lng")` is deprecated; it is the same call as `ReverseTable(dt, insyra.Name("lat"), insyra.Name("lng"))` and is removed in the release after the one that deprecated it.
 
 Batch semantics tuned for the 15/hour quota:
 - **De-duplication** — identical `(lat, lng)` pairs cost at most one request.
@@ -524,7 +531,7 @@ g, _ := datafetch.TWGeocoding(datafetch.TWGeocodingConfig{
     Cache: datafetch.NewFileGeocodeCache("geocache.json"),
 })
 
-enriched, err := g.ReverseTableByColName(dt, "lat", "lng")
+enriched, err := g.ReverseTable(dt, insyra.Name("lat"), insyra.Name("lng"))
 if rl := (*datafetch.RateLimitError)(nil); errors.As(err, &rl) {
     fmt.Printf("quota hit; resolved rows kept, resets at %s\n", rl.ResetAt)
 }

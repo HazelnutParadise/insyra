@@ -46,6 +46,9 @@ const (
 	// the name at 11.
 	gmapsSearchResults = 64
 
+	// gmapsDefaultMaxWait is the longest wait between review pages when the caller sets none.
+	gmapsDefaultMaxWait = 5 * time.Second
+
 	gmapsUserAgent       = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 	gmapsRequestTimeout  = 30 * time.Second
 	gmapsMaxResponseSize = 64 << 20
@@ -78,23 +81,47 @@ type GoogleMapsStoreReviews []GoogleMapsStoreReview
 // GoogleMapsStoreReviewsFetchingOptions is a struct for options when fetching reviews.
 // A zero field means its default.
 type GoogleMapsStoreReviewsFetchingOptions struct {
+	// SortBy is the order of the reviews. Zero means
+	// GoogleMapsStoreReviewSortByRelevance.
 	SortBy GoogleMapsStoreReviewSortBy
-	// MaxWaitingInterval_Milliseconds is the maximum waiting interval in milliseconds between requests.
-	// It must be at least 1000; zero means 5000.
+
+	// MaxWaitingInterval is the longest wait between two review pages. Each
+	// wait is random between one second and this value, so it must be at least
+	// one second; zero means 5 seconds.
+	MaxWaitingInterval time.Duration
+
+	// Deprecated: use MaxWaitingInterval, which is the same limit as a
+	// time.Duration. This field counts milliseconds, and setting both fields is
+	// an error. Removed in the release after the one that deprecated it.
 	MaxWaitingInterval_Milliseconds uint
 }
 
+// GoogleMapsStoreReviewSortBy is the order GetReviews asks Google for.
 type GoogleMapsStoreReviewSortBy uint8
 
 const (
-	// SortByRelevance 按相關性排序
-	SortByRelevance GoogleMapsStoreReviewSortBy = 1
-	// SortByNewest 按最新排序
-	SortByNewest GoogleMapsStoreReviewSortBy = 2
-	// SortByRating 按評分排序
-	SortByHighestRating GoogleMapsStoreReviewSortBy = 3
-	// SortByLowestRating 按最低評分排序
-	SortByLowestRating GoogleMapsStoreReviewSortBy = 4
+	GoogleMapsStoreReviewSortByRelevance     GoogleMapsStoreReviewSortBy = 1 // most relevant first, the default
+	GoogleMapsStoreReviewSortByNewest        GoogleMapsStoreReviewSortBy = 2 // most recent first
+	GoogleMapsStoreReviewSortByHighestRating GoogleMapsStoreReviewSortBy = 3 // highest rating first
+	GoogleMapsStoreReviewSortByLowestRating  GoogleMapsStoreReviewSortBy = 4 // lowest rating first
+)
+
+const (
+	// Deprecated: use GoogleMapsStoreReviewSortByRelevance. Removed in the
+	// release after the one that deprecated it.
+	SortByRelevance = GoogleMapsStoreReviewSortByRelevance
+
+	// Deprecated: use GoogleMapsStoreReviewSortByNewest. Removed in the release
+	// after the one that deprecated it.
+	SortByNewest = GoogleMapsStoreReviewSortByNewest
+
+	// Deprecated: use GoogleMapsStoreReviewSortByHighestRating. Removed in the
+	// release after the one that deprecated it.
+	SortByHighestRating = GoogleMapsStoreReviewSortByHighestRating
+
+	// Deprecated: use GoogleMapsStoreReviewSortByLowestRating. Removed in the
+	// release after the one that deprecated it.
+	SortByLowestRating = GoogleMapsStoreReviewSortByLowestRating
 )
 
 // GoogleMapsStoresClient searches Google Maps for stores and fetches their
@@ -202,21 +229,29 @@ func (c *GoogleMapsStoresClient) GetReviews(storeId string, pageCount int, optio
 		return nil
 	}
 	fetchingOptions := GoogleMapsStoreReviewsFetchingOptions{
-		SortBy:                          SortByRelevance,
-		MaxWaitingInterval_Milliseconds: 5000,
+		SortBy:             GoogleMapsStoreReviewSortByRelevance,
+		MaxWaitingInterval: gmapsDefaultMaxWait,
 	}
 	if len(options) == 1 {
 		// A zero field keeps its default; only a value that is set and out of
 		// range is worth a warning.
-		if sortBy := options[0].SortBy; sortBy > SortByLowestRating {
+		if sortBy := options[0].SortBy; sortBy > GoogleMapsStoreReviewSortByLowestRating {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "SortBy is invalid. Using default value.")
 		} else if sortBy != 0 {
 			fetchingOptions.SortBy = sortBy
 		}
-		if wait := options[0].MaxWaitingInterval_Milliseconds; wait != 0 && wait < 1000 {
+		wait := options[0].MaxWaitingInterval
+		if options[0].MaxWaitingInterval_Milliseconds != 0 {
+			if wait != 0 {
+				insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "set MaxWaitingInterval only; the deprecated MaxWaitingInterval_Milliseconds cannot be combined with it. Returning nil.")
+				return nil
+			}
+			wait = time.Duration(options[0].MaxWaitingInterval_Milliseconds) * time.Millisecond
+		}
+		if wait != 0 && wait < time.Second {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "MaxWaitingInterval is too small. Using default value.")
 		} else if wait != 0 {
-			fetchingOptions.MaxWaitingInterval_Milliseconds = wait
+			fetchingOptions.MaxWaitingInterval = wait
 		}
 	} else if len(options) > 1 {
 		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "at most one GoogleMapsStoreReviewsFetchingOptions may be given, got %d", len(options))
@@ -247,12 +282,11 @@ func (c *GoogleMapsStoresClient) GetReviews(storeId string, pageCount int, optio
 			break
 		}
 
-		// 隨機等待 1 秒到 MaxWaitingInterval，防止被 Google 封鎖。上限剛好是 1000
-		// 時只有一種等待時間，rand.IntN 的參數仍須大於零。
-		maxWait := int(fetchingOptions.MaxWaitingInterval_Milliseconds)
-		waitTime := 1000 + rand.IntN(maxWait-1000+1)
-		insyra.LogDebug("datafetch", "GoogleMapsStores.GetReviews", "waiting %.1fs before fetching the next page", float64(waitTime)/1000)
-		time.Sleep(time.Duration(waitTime) * time.Millisecond)
+		// 隨機等待 1 秒到 MaxWaitingInterval，防止被 Google 封鎖。上限剛好是 1 秒時只有一種等待時間，rand.Int64N 的參數仍須大於零。
+		maxWait := fetchingOptions.MaxWaitingInterval
+		waitTime := time.Second + time.Duration(rand.Int64N(int64(maxWait-time.Second)+1))
+		insyra.LogDebug("datafetch", "GoogleMapsStores.GetReviews", "waiting %.1fs before fetching the next page", waitTime.Seconds())
+		time.Sleep(waitTime)
 	}
 
 	return reviews

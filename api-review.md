@@ -283,7 +283,7 @@
 | DF-2 | Med | 所有抓取方法都沒有 `context.Context`：`DailyPrices(code, from, to, market)`、`History(params)`、`Reverse(lat, lng)`、`ReverseTable(...)`；限流器內部用 `context.Background()`。跑到一半的批次抓取無法取消，也無法接 HTTP handler 的 ctx（準則 8、12） | twstock.go:110-113, 193；yfinance.go:275；geocoding.go:166-430 | 每個方法加 ctx 版本（`DailyPricesContext`）或直接改簽名 |
 | DF-3 | ~~Med~~ 已修正（datafetch-exported-types） | 建構子回傳未匯出型別：`TWStock() (*twStock, error)`、`YFinance() (*yahooFinance, error)`、`Ticker() *ticker`、`TWGeocoding() (*twGeocoder, error)`、`GoogleMapsStores() *googleMapsStoreCrawler`。使用者無法在自己的 struct 或函式簽名宣告這些型別（I-2 同族） | twstock.go:94；yfinance.go:108, 251；geocoding.go:150 | 匯出型別或定義介面 |
 | DF-4 | Med（型別部分已修正（datafetch-own-yfinance-types）：`YFHistoryParams`、`YFRepairOptions`、`YFNewsTab` 改為 datafetch 自有型別；User-Agent 待擁有者裁定） | 第三方型別直接進公開簽名：`YFHistoryParams = models.HistoryParams`、`News(count int, tab models.NewsTab)` 洩漏 `wnjoon/go-yfinance` 的型別，該套件改版即 breaking；yfinance 預設 User-Agent 偽裝成 Chrome 117（服務條款風險，至少要在 Docs 標明）（準則 8、10、14） | yfinance.go:23, 49, 491 | 自有 `YFHistoryParams` struct 轉接；UA 改為誠實識別並讓使用者自行覆寫 |
-| DF-5 | Low | `YFPeriodAnnual` 與 `YFPeriodYearly` 兩個值同義；`MaxWaitingInterval_Milliseconds uint` 底線命名且應為 `time.Duration`；`ReverseTable(dt, latCol, lngCol)` 與 `ReverseTableByColName` 是 T-11 的索引／名稱雙入口；`SortByRelevance` 等常數沒有型別前綴，與 `TWMarketXxx`／`YFPeriodXxx` 風格不一致（準則 1、6、9） | yfinance.go:57-59；googleMapsCommentCrawler.go:38-53；geocoding.go:410-425 | 刪同義值；用 Duration；統一前綴 |
+| DF-5 | ~~Low~~ 已修正（datafetch-naming-cleanup） | `YFPeriodAnnual` 與 `YFPeriodYearly` 兩個值同義；`MaxWaitingInterval_Milliseconds uint` 底線命名且應為 `time.Duration`；`ReverseTable(dt, latCol, lngCol)` 與 `ReverseTableByColName` 是 T-11 的索引／名稱雙入口；`SortByRelevance` 等常數沒有型別前綴，與 `TWMarketXxx`／`YFPeriodXxx` 風格不一致（準則 1、6、9） | yfinance.go:57-59；googleMapsCommentCrawler.go:38-53；geocoding.go:410-425 | 刪同義值；用 Duration；統一前綴 |
 | DF-6 | ~~Low~~ 已修正（batch 2） | `fileGeocodeCache.Set` 每次都把整個 map 序列化重寫檔案，非原子（無 tmp+rename），中途中斷會把快取檔寫壞，之後以空快取重來（doc 有寫「corrupt → empty」但這是可避免的）；`persist` 錯誤只 warn | geocoding.go:601-636 | tmp+rename；或改 append-only |
 | DF-7 | OK | TWStock 與 TWGeocoding 是範本：config `normalize()` 驗證並回 error、零值可用、sentinel error 用 `errors.Is`、`RateLimitError` 帶 `Unwrap` 與 `ResetAt`、`GeocodeCache` 介面明講並行安全與快取語意、回應體用 `LimitReader` 防爆 | — | — |
 
@@ -532,7 +532,7 @@
 | K-8 | [#209](https://github.com/HazelnutParadise/insyra/issues/209) |  |
 | K-11、C-10、Q-8 | [#210](https://github.com/HazelnutParadise/insyra/issues/210) | 已關閉（reader-writer-entry-points；`csvxl` 經裁定不做，改名移到 #213） |
 | K-12 | [#211](https://github.com/HazelnutParadise/insyra/issues/211) | 已關閉（exported-functions-are-functions） |
-| K-13、C-12、I-4、DF-5 | [#212](https://github.com/HazelnutParadise/insyra/issues/212) |  |
+| K-13、C-12、I-4、DF-5 | [#212](https://github.com/HazelnutParadise/insyra/issues/212) | DF-5 已修正（datafetch-naming-cleanup） |
 | K-14、D-8、E-6、E-7、PL-4、NN-3、C-2 | [#213](https://github.com/HazelnutParadise/insyra/issues/213) | 已關閉（refuse-extra-optional-values、column-data-type、core-settings-batch、imputer-refuses-unfillable-columns、nn-batchnorm-options、plot-heatmap-point-type、csvxl-encoding-like-core、read-write-names） |
 | K-15 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) | 已修正（core-utils-cleanup） |
 | K-17、C-9 | [#215](https://github.com/HazelnutParadise/insyra/issues/215) |  |

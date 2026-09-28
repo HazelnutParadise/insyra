@@ -425,10 +425,13 @@ func (g *TWGeocodingClient) ReverseCols(lat, lng *insyra.DataList) (*insyra.Data
 	return dt, nil
 }
 
-// ReverseTable reverse-geocodes the given DataTable's latitude/longitude columns,
-// addressed by Excel-style column index ("A", "B", ...). See ReverseCols for the
-// output shape and batch semantics.
-func (g *TWGeocodingClient) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error) {
+// ReverseTable reverse-geocodes a DataTable's latitude and longitude columns.
+// Each column is given as the library's column selector: a string is an
+// Excel-style index ("A", "B", ...), insyra.Name("lat") is a column name, and an
+// int is a 0-based position, counting from the end when negative. A column
+// that does not resolve is an error, returned before any request. See
+// ReverseCols for the output shape and batch semantics.
+func (g *TWGeocodingClient) ReverseTable(dt *insyra.DataTable, latCol, lngCol any) (*insyra.DataTable, error) {
 	if err := g.usable(); err != nil {
 		return nil, err
 	}
@@ -436,29 +439,46 @@ func (g *TWGeocodingClient) ReverseTable(dt *insyra.DataTable, latCol, lngCol st
 		return nil, errors.New("datafetch: ReverseTable requires a non-nil DataTable")
 	}
 	lat := dt.GetCol(latCol)
+	if lat == nil {
+		return nil, reverseTableColumnError("latitude", latCol)
+	}
 	lng := dt.GetCol(lngCol)
-	if lat == nil || lng == nil {
-		return nil, fmt.Errorf("datafetch: ReverseTable could not resolve columns %q / %q", latCol, lngCol)
+	if lng == nil {
+		return nil, reverseTableColumnError("longitude", lngCol)
 	}
 	return g.ReverseCols(lat, lng)
 }
 
-// ReverseTableByColName reverse-geocodes the given DataTable's latitude/longitude
-// columns, addressed by column name. See ReverseCols for the output shape and
-// batch semantics.
+// reverseTableColumnError says which of ReverseTable's columns did not
+// resolve. A bare string is the likely mistake, so its message says how to
+// write a name.
+func reverseTableColumnError(which string, selector any) error {
+	if s, ok := selector.(string); ok {
+		return fmt.Errorf("datafetch: ReverseTable found no %s column at index %q; a string is an Excel-style index, so write insyra.Name(%q) for a column name", which, s, s)
+	}
+	return fmt.Errorf("datafetch: ReverseTable found no %s column for %s", which, describeColSelector(selector))
+}
+
+// describeColSelector writes a column selector the way a caller writes it.
+func describeColSelector(selector any) string {
+	switch v := selector.(type) {
+	case insyra.NameSelector:
+		return fmt.Sprintf("insyra.Name(%q)", v.Value())
+	case string:
+		return strconv.Quote(v)
+	default:
+		return fmt.Sprintf("%v", selector)
+	}
+}
+
+// ReverseTableByColName reverse-geocodes the columns named latColName and
+// lngColName.
+//
+// Deprecated: use ReverseTable(dt, insyra.Name(latColName), insyra.Name(lngColName)),
+// which is the same call. Removed in the release after the one that
+// deprecated it.
 func (g *TWGeocodingClient) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error) {
-	if err := g.usable(); err != nil {
-		return nil, err
-	}
-	if dt == nil {
-		return nil, errors.New("datafetch: ReverseTableByColName requires a non-nil DataTable")
-	}
-	lat := dt.GetColByName(latColName)
-	lng := dt.GetColByName(lngColName)
-	if lat == nil || lng == nil {
-		return nil, fmt.Errorf("datafetch: ReverseTableByColName could not resolve columns %q / %q", latColName, lngColName)
-	}
-	return g.ReverseCols(lat, lng)
+	return g.ReverseTable(dt, insyra.Name(latColName), insyra.Name(lngColName))
 }
 
 // ---- helpers ----

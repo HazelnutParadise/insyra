@@ -126,14 +126,19 @@ func (p YFHistoryParams) toModel() models.HistoryParams {
 	return out
 }
 
-// YFPeriod represents frequency values used for financial statements.
-// Accepted values: YFPeriodAnnual, YFPeriodYearly, YFPeriodQuarterly.
-// When empty or unrecognized, it defaults to YFPeriodAnnual.
+// YFPeriod selects the frequency of a financial statement: YFPeriodAnnual or
+// YFPeriodQuarterly. The empty value means YFPeriodAnnual, and a value
+// go-yfinance does not accept comes back as an error.
 type YFPeriod string
 
 const (
-	YFPeriodAnnual    YFPeriod = "annual"
-	YFPeriodYearly    YFPeriod = "yearly"
+	YFPeriodAnnual YFPeriod = "annual"
+
+	// Deprecated: use YFPeriodAnnual, which fetches the same statements. This
+	// spelling labels the tables it returns "yearly" rather than "annual".
+	// Removed in the release after the one that deprecated it.
+	YFPeriodYearly YFPeriod = "yearly"
+
 	YFPeriodQuarterly YFPeriod = "quarterly"
 )
 
