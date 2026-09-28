@@ -1182,7 +1182,7 @@ func (dl *DataList) Lower() *DataList {
 }
 
 // Capitalize capitalizes the first letter of each string element in the DataList.
-// It titles case using the language-neutral root rules (language.Und) and applies
+// It title-cases each word using the language-neutral root rules (language.Und) and applies
 // no language-specific rule, so words such as Dutch "ij" and a Turkish dotted i
 // are cased the root way.
 func (dl *DataList) Capitalize() *DataList {
