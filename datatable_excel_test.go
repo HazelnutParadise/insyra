@@ -239,3 +239,73 @@ func TestToExcelRefusesANonWorkbookExtension(t *testing.T) {
 		t.Fatalf("a refused save left a file behind: %v", err)
 	}
 }
+
+// Replacing a sheet is a delete and a rebuild, so a name defined for a later
+// sheet and the state of the sheet itself must both survive it.
+func TestToExcelReplaceKeepsOtherSheetsNamesAndHiddenState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "book.xlsx")
+	f := excelize.NewFile()
+	if err := f.SetSheetName("Sheet1", "First"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.NewSheet("Data"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.NewSheet("Last"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetCellValue("Last", "B2", 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetCellFormula("Last", "C1", "Rate*10"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetDefinedName(&excelize.DefinedName{Name: "Rate", Scope: "Last", RefersTo: "Last!$B$2"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetSheetVisible("Data", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	err := excelTestTable(9).ToExcel(path, ExcelWriteOptions{Sheet: "Data", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f, err = excelize.OpenFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	scopes := map[string]string{}
+	for _, dn := range f.GetDefinedName() {
+		scopes[dn.Name] = dn.Scope
+	}
+	if scopes["Rate"] != "Last" {
+		t.Fatalf("name Rate has scope %q, want Last", scopes["Rate"])
+	}
+	got, err := f.CalcCellValue("Last", "C1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "70" {
+		t.Fatalf("Last!C1 reads %q, want 70", got)
+	}
+	visible, err := f.GetSheetVisible("Data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if visible {
+		t.Fatal("Data is visible, want hidden")
+	}
+	if list := f.GetSheetList(); !reflect.DeepEqual(list, []string{"First", "Data", "Last"}) {
+		t.Fatalf("sheets %v, want First, Data, Last", list)
+	}
+	if cells := sheetCells(t, path, "Data"); !reflect.DeepEqual(cells, [][]string{{"9"}}) {
+		t.Fatalf("Data holds %v, want 9", cells)
+	}
+}

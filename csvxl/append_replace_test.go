@@ -63,9 +63,8 @@ func TestAppendCsvToExcelReplacesOnlySheet(t *testing.T) {
 	require.Equal(t, [][]string{{"a"}, {"9"}}, rows)
 }
 
-// Replacing a sheet keeps the sheet itself: its place among the sheets and its
-// sheet-level settings, such as a column width, as v0.3.2 kept them. Only the
-// old cells go.
+// Replacing a sheet keeps its place among the sheets and leaves the active
+// sheet as it was, and none of the old cells or formulas survive.
 func TestAppendCsvToExcelKeepsTheReplacedSheetsPosition(t *testing.T) {
 	dir := t.TempDir()
 	first := writeCSV(t, dir, "First.csv", "f\n1")
@@ -300,4 +299,90 @@ func TestAppendCsvToExcelReplacesASheetWithoutCellAddresses(t *testing.T) {
 	small := writeCSV(t, dir, "small.csv", "z\n9")
 	require.NoError(t, AppendCsvToExcel([]string{small}, []string{"Target"}, xlsx, UTF8))
 	require.Equal(t, [][]string{{"z"}, {"9"}}, sheetRows(t, xlsx, "Target"), "stale cells must not survive")
+}
+
+// excelize's DeleteSheet moves a name defined for a later sheet down one index
+// and moving the rebuilt sheet back does not move it back.
+func TestAppendCsvToExcelKeepsTheNamesOfTheSheetsAfterIt(t *testing.T) {
+	dir := t.TempDir()
+	xlsx := filepath.Join(dir, "out.xlsx")
+
+	f := excelize.NewFile()
+	require.NoError(t, f.SetSheetName("Sheet1", "First"))
+	_, err := f.NewSheet("Target")
+	require.NoError(t, err)
+	_, err = f.NewSheet("Last")
+	require.NoError(t, err)
+	_, err = f.NewSheet("Tail")
+	require.NoError(t, err)
+	require.NoError(t, f.SetCellValue("Last", "B2", 7))
+	require.NoError(t, f.SetCellFormula("Last", "C1", "Rate*10"))
+	require.NoError(t, f.SetDefinedName(&excelize.DefinedName{Name: "Rate", Scope: "Last", RefersTo: "Last!$B$2"}))
+	require.NoError(t, f.SetDefinedName(&excelize.DefinedName{Name: "TailName", Scope: "Tail", RefersTo: "Tail!$A$1"}))
+	require.NoError(t, f.SetDefinedName(&excelize.DefinedName{Name: "Book", RefersTo: "Last!$B$2"}))
+	require.NoError(t, f.SetDefinedName(&excelize.DefinedName{Name: "Own", Scope: "Target", RefersTo: "Target!$A$1"}))
+	require.NoError(t, f.SaveAs(xlsx))
+	require.NoError(t, f.Close())
+
+	small := writeCSV(t, dir, "small.csv", "z\n9")
+	require.NoError(t, AppendCsvToExcel([]string{small}, []string{"Target"}, xlsx, UTF8))
+
+	f, err = excelize.OpenFile(xlsx)
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+	scopes := map[string]string{}
+	for _, dn := range f.GetDefinedName() {
+		scopes[dn.Name] = dn.Scope
+	}
+	require.Equal(t, "Last", scopes["Rate"], "a name defined for a later sheet must stay with it")
+	require.Equal(t, "Tail", scopes["TailName"], "a name defined for the last sheet must stay with it")
+	require.Equal(t, "Workbook", scopes["Book"], "a workbook-scoped name must stay workbook-scoped")
+	require.NotContains(t, scopes, "Own", "a name belonging to the replaced sheet goes with it")
+	got, err := f.CalcCellValue("Last", "C1")
+	require.NoError(t, err)
+	require.Equal(t, "70", got)
+	require.Equal(t, []string{"First", "Target", "Last", "Tail"}, f.GetSheetList(), "the sheet must keep its position")
+}
+
+// Whether a sheet is hidden lives in the workbook rather than in the sheet, so
+// a sheet replaced by deleting and re-creating it comes back visible.
+func TestAppendCsvToExcelKeepsAHiddenSheetHidden(t *testing.T) {
+	dir := t.TempDir()
+	xlsx := filepath.Join(dir, "out.xlsx")
+
+	f := excelize.NewFile()
+	require.NoError(t, f.SetSheetName("Sheet1", "Dashboard"))
+	_, err := f.NewSheet("Data")
+	require.NoError(t, err)
+	_, err = f.NewSheet("Secret")
+	require.NoError(t, err)
+	require.NoError(t, f.SetSheetVisible("Data", false))
+	require.NoError(t, f.SetSheetVisible("Secret", false, true))
+	require.NoError(t, f.SaveAs(xlsx))
+	require.NoError(t, f.Close())
+
+	small := writeCSV(t, dir, "small.csv", "z\n9")
+	require.NoError(t, AppendCsvToExcel([]string{small, small}, []string{"Data", "Secret"}, xlsx, UTF8))
+
+	f, err = excelize.OpenFile(xlsx)
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+	require.Equal(t, []string{"Dashboard", "Data", "Secret"}, f.GetSheetList(), "the sheets must keep their positions")
+	require.NotNil(t, f.WorkBook, "the workbook must be read")
+	states := map[string]string{}
+	for _, s := range f.WorkBook.Sheets.Sheet {
+		states[s.Name] = s.State
+	}
+	require.Equal(t, "hidden", states["Data"], "a hidden sheet must be hidden again")
+	require.Equal(t, "veryHidden", states["Secret"], "a veryHidden sheet must be veryHidden again")
+	visible, err := f.GetSheetVisible("Data")
+	require.NoError(t, err)
+	require.False(t, visible, "Data must not be visible")
+	visible, err = f.GetSheetVisible("Secret")
+	require.NoError(t, err)
+	require.False(t, visible, "Secret must not be visible")
+	require.Equal(t, "Dashboard", f.GetSheetName(f.GetActiveSheetIndex()), "the active sheet must not change")
+	rows, err := f.GetRows("Data")
+	require.NoError(t, err)
+	require.Equal(t, [][]string{{"z"}, {"9"}}, rows)
 }
