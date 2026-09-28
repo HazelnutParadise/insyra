@@ -101,6 +101,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `rolling` 遇到程式庫拒絕的視窗設定時會回報錯誤，不存任何變數：以前 `rolling x 0 mean` 與 `rolling x 2 mean minobs 3` 會印出 `saved as $result` 並存一個空的 list。`ewm` 改為回報程式庫的錯誤，不再從結果長度推斷是否失敗。
 - `parsenums` 跟著 `ParseNumbers` 改變：數字全是整數的 list 會轉成 `int64`，不再是 `float64`。
 - **BREAKING**：`ttest two <var1> <var2>` 沒有加 `equal` 或 `unequal` 時，改為執行函式庫預設的 Welch t 檢定，不再假設兩組變異數相等。要得到以前的結果，請加上 `equal`；`help ttest` 會列出預設值。
+- `fillna … ffill|bfill … missing nan|nil` 不再把另一種缺值算進 `limit`。以前這個命令會先把兩種缺值一起補、再把另一種放回去，所以另一種缺值的格子會佔用 `limit` 的名額：`fillna x ffill limit 1 missing nan` 對 `[1, nil, NaN]` 會讓那個 `NaN` 補不到。現在會跳過這些格子，結果是 `[1, nil, 1]`。沒有 `limit` 時，以及 `mean`、`median`、`mode`、`interpolate` 的結果都不變。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。

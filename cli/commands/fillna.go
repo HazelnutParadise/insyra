@@ -112,7 +112,57 @@ func runFillNACommand(ctx *ExecContext, args []string) error {
 	return varTypeError(ctx, "fillna", coreArgs[0])
 }
 
+// fillSkippingOtherKind runs ffill or bfill (missing nan or nil) on one kind of
+// missing cell alone. Cells of the other kind are taken out, the rest is
+// filled, and they are put back where they were, so they are not filled, give
+// no value to copy and do not count toward limit. Filling them and restoring
+// them afterwards, as the other strategies do, would still let them use up
+// limit.
+func fillSkippingOtherKind(dl *insyra.DataList, strategy string, opts fillNAOptions) (*insyra.DataList, error) {
+	skip := snapshotPreservedDL(dl, opts.Missing)
+	data := dl.Data()
+
+	kept := make([]any, 0, len(data)-len(skip))
+	next := 0
+	for i, v := range data {
+		if next < len(skip) && skip[next] == i {
+			next++
+			continue
+		}
+		kept = append(kept, v)
+	}
+	// Append rather than NewDataList(kept...), which would flatten a slice cell.
+	compact := insyra.NewDataList().Append(kept...)
+	switch strategy {
+	case "ffill":
+		compact.FillForward(opts.Limit)
+	case "bfill":
+		compact.FillBackward(opts.Limit)
+	}
+	if err := compact.PopErr(); err != nil {
+		return nil, fmt.Errorf("fillna: %w", err)
+	}
+
+	filled := compact.Data()
+	rebuilt := make([]any, len(data))
+	next = 0
+	taken := 0
+	for i, v := range data {
+		if next < len(skip) && skip[next] == i {
+			next++
+			rebuilt[i] = v
+			continue
+		}
+		rebuilt[i] = filled[taken]
+		taken++
+	}
+	return insyra.NewDataList().Append(rebuilt...).SetName(dl.GetName()), nil
+}
+
 func applyFillNAToList(dl *insyra.DataList, strategy string, opts fillNAOptions) (*insyra.DataList, error) {
+	if (strategy == "ffill" || strategy == "bfill") && (opts.Missing == "nan" || opts.Missing == "nil") {
+		return fillSkippingOtherKind(dl.Clone(), strategy, opts)
+	}
 	result := dl.Clone()
 	preserved := snapshotPreservedDL(result, opts.Missing)
 	if err := runListStrategy(result, strategy, opts); err != nil {
@@ -132,6 +182,26 @@ func applyFillNAToTable(dt *insyra.DataTable, strategy string, opts fillNAOption
 	positions, err := resolveColumnTokens("fillna", result, opts.Cols)
 	if err != nil {
 		return nil, err
+	}
+	if (strategy == "ffill" || strategy == "bfill") && (opts.Missing == "nan" || opts.Missing == "nil") {
+		targets := positions
+		if len(targets) == 0 {
+			for i := range result.NumCols() {
+				targets = append(targets, i)
+			}
+		}
+		for _, pos := range targets {
+			// GetColByNumber returns a copy, so the filled column is written back.
+			filled, err := fillSkippingOtherKind(result.GetColByNumber(pos), strategy, opts)
+			if err != nil {
+				return nil, err
+			}
+			result.UpdateCol(pos, filled)
+		}
+		if err := checkTableErr("fillna", result); err != nil {
+			return nil, err
+		}
+		return result, nil
 	}
 	preserved := snapshotPreservedDT(result, positions, opts.Missing)
 	if err := runTableStrategy(result, strategy, opts, positions); err != nil {

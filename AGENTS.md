@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-28] — the CLI tests' `approxEqualAny` passes a `NaN` where a number is expected
+- **Where**: `cli/commands/timeseries_test.go` `approxEqualAny`, used by 21 assertions there and one in `quant_test.go`
+- **What**: it compares two numeric cells with `math.Abs(got-want) > tol`, which is false whenever either side is `NaN`, so a result holding `NaN` where the test expects `1` counts as equal. Found on 2026-09-28 while writing `nan-only-fill-path`: the old `fillna … ffill limit 1 missing nan` returned `[1 <nil> NaN]`, and a test checking it against `[1 <nil> 1]` with this helper passed; the new tests use their own `fillCellsEqual` instead. Whether any existing assertion hides a wrong `NaN` today was not checked.
+- **Suggestion**: treat `NaN` as equal only to `NaN` in `approxEqualAny`, run the CLI tests, and look at whatever then fails before changing any expectation.
+- **Status**: pending
+
 ### [2026-09-28] — remove `Difference`, `MovingAverage`, `MovingStdev` and `WeightedMovingAverage` one release after they were deprecated
 - **Where**: `datalist.go`, their lines in `IDataList` (`interfaces.go`), `cli/commands/timeseries.go` (`movavg`, `diff`), and the tests that call them (`datalist_legacy_transforms_test.go`, `datalist_legacy_smoothing_test.go`, `datalist_deprecated_test.go`, `datalist_test.go`, `datalist_numeric_test.go`, `chainable_nil_test.go`, `instance_error_test.go`, `error_philosophy_test.go`)
 - **What**: `deprecate-look-alike-window-methods` deprecated the four by the owner's ruling on #222 (2026-09-28), keeping their behaviour for one release instead of turning them into aliases of `Diff(1)` and `Rolling(...)`, which would have changed their results under the same name. The CLI's `movavg` and `diff` still call them.

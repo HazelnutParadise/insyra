@@ -626,3 +626,84 @@ func TestRollingCommand_MinObsAboveWindowIsAnError(t *testing.T) {
 		t.Error("the failed rolling was saved")
 	}
 }
+
+// fillCellsEqual reports whether got holds exactly want, cell by cell: nil
+// matches only nil, a NaN in want matches only a NaN, and every other cell must
+// be equal. approxEqualAny cannot tell these cases apart, because a NaN in got
+// passes its tolerance check against any number.
+func fillCellsEqual(got, want []any) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if w, ok := want[i].(float64); ok && math.IsNaN(w) {
+			if g, ok := got[i].(float64); !ok || !math.IsNaN(g) {
+				return false
+			}
+			continue
+		}
+		if !reflect.DeepEqual(got[i], want[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// With missing nan, a nil is neither filled nor counted toward limit, so the
+// NaN after it is still the first cell of its gap.
+func TestFillNACommand_MissingNaNLimitSkipsNil(t *testing.T) {
+	ctx := newWindowCtx(1.0, nil, math.NaN())
+	if err := runFillNACommand(ctx, []string{"x", "ffill", "limit", "1", "missing", "nan", "as", "f"}); err != nil {
+		t.Fatalf("fillna ffill limit 1 missing nan failed: %v", err)
+	}
+	got := resultDL(t, ctx, "f").Data()
+	if !fillCellsEqual(got, []any{1.0, nil, 1.0}) {
+		t.Errorf("got %v, want [1 <nil> 1]", got)
+	}
+}
+
+func TestFillNACommand_MissingNilLimitSkipsNaN(t *testing.T) {
+	ctx := newWindowCtx(nil, math.NaN(), 5.0)
+	if err := runFillNACommand(ctx, []string{"x", "bfill", "limit", "1", "missing", "nil", "as", "f"}); err != nil {
+		t.Fatalf("fillna bfill limit 1 missing nil failed: %v", err)
+	}
+	got := resultDL(t, ctx, "f").Data()
+	if !fillCellsEqual(got, []any{5.0, math.NaN(), 5.0}) {
+		t.Errorf("got %v, want [5 NaN 5]", got)
+	}
+}
+
+// A nil between two NaNs does not end their gap, so limit 1 fills only the
+// first of them.
+func TestFillNACommand_MissingNaNLimitCountsOnlyNaN(t *testing.T) {
+	ctx := newWindowCtx(1.0, math.NaN(), nil, math.NaN())
+	if err := runFillNACommand(ctx, []string{"x", "ffill", "limit", "1", "missing", "nan", "as", "f"}); err != nil {
+		t.Fatalf("fillna ffill limit 1 missing nan failed: %v", err)
+	}
+	got := resultDL(t, ctx, "f").Data()
+	if !fillCellsEqual(got, []any{1.0, 1.0, nil, math.NaN()}) {
+		t.Errorf("got %v, want [1 1 <nil> NaN]", got)
+	}
+}
+
+func TestFillNACommand_TableMissingNaNLimitSkipsNil(t *testing.T) {
+	ctx := &ExecContext{
+		Vars: map[string]any{
+			"t": insyra.NewDataTable(
+				insyra.NewDataList(1.0, nil, math.NaN()).SetName("v"),
+				insyra.NewDataList("a", nil, "c").SetName("w"),
+			),
+		},
+		Output: &bytes.Buffer{},
+	}
+	if err := runFillNACommand(ctx, []string{"t", "ffill", "cols", "name:v", "limit", "1", "missing", "nan", "as", "f"}); err != nil {
+		t.Fatalf("fillna ffill on a table failed: %v", err)
+	}
+	result := resultDT(t, ctx, "f")
+	if got := result.GetColByName("v").Data(); !fillCellsEqual(got, []any{1.0, nil, 1.0}) {
+		t.Errorf("column v: got %v, want [1 <nil> 1]", got)
+	}
+	if got := result.GetColByName("w").Data(); !fillCellsEqual(got, []any{"a", nil, "c"}) {
+		t.Errorf("fillna changed a column it was not asked to fill: %v", got)
+	}
+}
