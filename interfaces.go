@@ -57,7 +57,7 @@ type IDataList interface {
 	FillWithMode() *DataList
 	FillByInterpolation(extrapolate ...bool) *DataList
 	MovingAverage(int) *DataList
-	WeightedMovingAverage(int, any) *DataList
+	WeightedMovingAverage(int, []float64) *DataList
 	ExponentialSmoothing(float64) *DataList
 	DoubleExponentialSmoothing(float64, float64) *DataList
 	EWM(EWMOptions) *EWMDataList
@@ -79,7 +79,7 @@ type IDataList interface {
 	Max() float64
 	Min() float64
 	Mean() float64
-	WeightedMean(weights any) float64
+	WeightedMean(weights []float64) float64
 	GMean() float64
 	Median() float64
 	Mode() []float64

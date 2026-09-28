@@ -616,7 +616,7 @@ func TestDataListMean(t *testing.T) {
 // 測試 WeightedMean 函數
 func TestDataListWeightedMean(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
-	weights := NewDataList(1, 2, 3, 4)
+	weights := []float64{1, 2, 3, 4}
 	mean := dl.WeightedMean(weights)
 
 	if !float64Equal(mean, 3) {

@@ -161,7 +161,7 @@
 | D-7 | Med | 原地修改與回傳新 list 從名稱看不出來。原地：`Sort`、`Reverse`、`Normalize`、`Standardize`、`Clear*`、`Replace*`、`Fill*`、`Upper/Lower/Capitalize`、`Parse*`、`Drop*`。新 list：`Filter`、`Map`、`Concat`、`Rank`、`Shift/Diff/PctChange/Cum*`、`MovingAverage`、`Sample`、`Shuffle`。pandas 預設回新物件；使用者對 `GetCol` 拿到的欄位做 `Sort()` 會不會動到表，要看 DataTable 段（準則 5、6） | 全 DataList | 文件明列兩類；長期考慮 `Sorted()`/`SortInPlace()` 命名或全部回新 list |
 | D-8 | ~~Med~~ 已修正（refuse-extra-optional-values 讓多給一律報錯；core-settings-batch 依 #213 裁定定案：`Sort`／`Rank`／`FillForward`／`Shift` 的單一選填參數合規則；`Sample` 的放回與否無安全預設、維持必填；`Describe`／`Sample` 的設定包維持；`ShowRange` 嚴格化並新增 `ShowHead`／`ShowTail`） | variadic 冒充選填參數：`Sort(ascending ...bool)`、`Rank(ascending ...bool)`、`FillForward/FillBackward(limit ...int)`、`FillByInterpolation(extrapolate ...bool)`、`Shift(periods, fill ...any)`、`Sample(..., options ...SamplingOptions)`、`Describe(options ...DescribeOptions)`。`Sort` 多傳一個參數只在執行期 warn。同一型別上 `Rolling(RollingOptions)`、`EWM(EWMOptions)` 已是 options struct，新舊並存（準則 8） | 各函式 | 新 API 一律 options struct；舊的標 Deprecated |
 | D-9 | ~~Med~~ 已修正（batch 3） | 效能：`ClearNaNs`/`ClearNils`/`ClearOutliers` 在迴圈裡 `append(data[:i], data[i+1:]...)`，O(n²)；`DropAll`/`ClearStrings` 為一次線性掃描開 NumCPU 個 goroutine，10 個元素也開，且 `ClearStrings` 留著「此處之後尚未提升性能」註解；`Data()` 每次整份複製，`Get(i)` 每個元素取一次 actor lock，沒有 iterator。逐元素走訪一個 DataList 要嘛 n 次鎖、要嘛全複製（準則 8、12；Go 1.23 `iter.Seq` 是標準做法） | datalist.go:479-571, 615-731, 41-48, 148 | 單趟過濾；加 `All() iter.Seq2[int, any]` |
-| D-10 | Med | `WeightedMean(weights any)`、`WeightedMovingAverage(w int, weights any)` 收 `any` 再用 `ProcessData` 猜型別；`RollingOptions.Weights []float64` 是型別化的。同一件事兩種簽名（準則 8） | datalist.go:880, 1292 | 改 `[]float64` |
+| D-10 | ~~Med~~ 已修正（weights-take-float64） | `WeightedMean(weights any)`、`WeightedMovingAverage(w int, weights any)` 收 `any` 再用 `ProcessData` 猜型別；`RollingOptions.Weights []float64` 是型別化的。同一件事兩種簽名（準則 8） | datalist.go:880, 1292 | 改 `[]float64` |
 | D-11 | ~~Med~~ 已修正（batch 3） | 相等語意有三套：`IsEqualTo`/`FindAll`/`Count`/`ReplaceAll` 用 `==`（NaN 永不相等，已實測 `IsEqualTo` 自己的 Clone 為 false；元素不可比較時 panic）；`Counter()` 用 map key（同樣 panic）；`FillWithMode` 用 `reflect.DeepEqual`（O(n²)）。`FindAll` 有特判 NaN，`IsEqualTo` 沒有（準則 6、13） | datalist.go:1892-1918, 191-199；datalist_impute.go:182 | 一個套件內部 `equalAny` 統一 NaN 與不可比較型別的處理 |
 | D-12 | Med | 時間戳用 Unix 秒：`GetCreationTimestamp() int64`、`updateTimestamp` 同一秒內多次修改看不出來、`IsTheSameAs` 比秒級時間戳，同一秒建立的兩個 list 會被判「相同」。業界回 `time.Time`（準則 10） | datalist.go:2064-2087, 1920 | 改 `time.Time`（或 UnixNano）；`IsTheSameAs` 語意重新定義 |
 | D-13 | Med | 同一個概念三種尺度：`Quartile(q int)` 用 1..3 魔數、`Percentile(p)` 用 0..100、`DescribeOptions.Percentiles` 用 0..1（pandas `quantile` 用 0..1）。`Mode()` 全部頻率相同時回 nil，pandas 回全部值（準則 5、6） | datalist.go:1735, 1816, 1431；describe_options.go:13 | 加 `Quantile(p float64)` 0..1 為主 API；`Mode` 行為寫進文件或對齊 pandas |
@@ -539,7 +539,7 @@
 | D-3 | [#216](https://github.com/HazelnutParadise/insyra/issues/216) |  |
 | D-5、D-6 | [#217](https://github.com/HazelnutParadise/insyra/issues/217) |  |
 | D-7 | [#218](https://github.com/HazelnutParadise/insyra/issues/218) |  |
-| D-10 | [#219](https://github.com/HazelnutParadise/insyra/issues/219) |  |
+| D-10 | [#219](https://github.com/HazelnutParadise/insyra/issues/219) | 已關閉（weights-take-float64） |
 | D-12 | [#220](https://github.com/HazelnutParadise/insyra/issues/220) |  |
 | D-13、QU-3 | [#221](https://github.com/HazelnutParadise/insyra/issues/221) |  |
 | D-14 | [#222](https://github.com/HazelnutParadise/insyra/issues/222) |  |

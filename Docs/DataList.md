@@ -1074,25 +1074,24 @@ mean := dl.Mean() // 3.0
 ### WeightedMean
 
 ```go
-func (dl *DataList) WeightedMean(weights any) float64
+func (dl *DataList) WeightedMean(weights []float64) float64
 ```
 
-**Description:** Calculates the weighted mean using provided weights.
+**Description:** Calculates the weighted mean using provided weights. An element that is not a number is skipped together with its weight.
 
 **Parameters:**
 
-- `weights`: Weights as a DataList, a slice or an array, one per value; read through [`ProcessData`](utils.md#processdata)
+- `weights`: One weight per element, as a `[]float64` (the type `RollingOptions.Weights` takes). Weights held in a `DataList` have to be converted first.
 
 **Returns:**
 
-- `float64`: Weighted mean. `NaN` when the list is empty, or when the weights cannot be read or do not match the list's length; the last two also set `Err()`.
+- `float64`: Weighted mean. `NaN` for an empty list, for a list with no numeric element, or when the weights of the numeric elements sum to zero. Weights of the wrong length record an error on `Err()` and return `NaN`.
 
 **Example:**
 
 ```go
 dl := insyra.NewDataList(1, 2, 3, 4, 5)
-weights := insyra.NewDataList(0.1, 0.2, 0.3, 0.2, 0.2)
-wmean := dl.WeightedMean(weights)
+wmean := dl.WeightedMean([]float64{0.1, 0.2, 0.3, 0.2, 0.2})
 ```
 
 ### GMean
@@ -1451,7 +1450,7 @@ ma := dl.MovingAverage(3) // 3-period moving average
 ### WeightedMovingAverage
 
 ```go
-func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
+func (dl *DataList) WeightedMovingAverage(windowSize int, weights []float64) *DataList
 ```
 
 **Description:** Calculates weighted moving average with specified window size and weights.
@@ -1459,18 +1458,17 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 **Parameters:**
 
 - `windowSize`: Size of the moving window
-- `weights`: Weights for the moving average, one per position in the window: a DataList, a slice or an array, read through [`ProcessData`](utils.md#processdata)
+- `weights`: One weight per window position, oldest first, as a `[]float64` (the type `RollingOptions.Weights` takes). Its length must equal `windowSize`.
 
 **Returns:**
 
-- `*DataList`: New DataList with weighted moving averages. When the weights cannot be read or their count differs from `windowSize`, an empty DataList, with `Err()` set on it and on the receiver.
+- `*DataList`: New DataList with weighted moving averages. When the number of weights differs from `windowSize`, an empty DataList, with `Err()` set on it and on the receiver.
 
 **Example:**
 
 ```go
 dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-weights := insyra.NewDataList(0.5, 0.3, 0.2)
-wma := dl.WeightedMovingAverage(3, weights)
+wma := dl.WeightedMovingAverage(3, []float64{0.2, 0.3, 0.5})
 ```
 
 ### ExponentialSmoothing

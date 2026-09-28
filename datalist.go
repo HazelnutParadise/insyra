@@ -893,19 +893,14 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 }
 
 // WeightedMovingAverage applies a weighted moving average to the DataList with a given window size.
-// The weights parameter should be a slice or a DataList of the same length as the window size.
+// The weights parameter takes one weight per window position, as a []float64 of the same length as the
+// window size, the same type RollingOptions.Weights takes.
 // Returns a new DataList containing the weighted moving average values.
-func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList {
-	weightsSlice, weightsErr := ProcessData(weights)
+func (dl *DataList) WeightedMovingAverage(windowSize int, weights []float64) *DataList {
 	var movingAvgData []float64
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
-		if weightsErr != nil {
-			dl.fail("WeightedMovingAverage", "weights: %v", weightsErr)
-			isFailed = true
-			return
-		}
-		if windowSize <= 0 || windowSize > dl.Len() || len(weightsSlice) != windowSize {
+		if windowSize <= 0 || windowSize > dl.Len() || len(weights) != windowSize {
 			dl.fail("WeightedMovingAverage", "Invalid window size or weights length")
 			isFailed = true
 			return
@@ -913,16 +908,8 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 
 		// 計算權重總和，避免直接除以 windowSize
 		weightsSum := 0.0
-		weightVals := make([]float64, len(weightsSlice))
-		for idx, w := range weightsSlice {
-			wf, ok := ToFloat64Safe(w)
-			if !ok {
-				dl.fail("WeightedMovingAverage", "Weight %v is not numeric, aborting", w)
-				isFailed = true
-				return
-			}
-			weightVals[idx] = wf
-			weightsSum += wf
+		for _, w := range weights {
+			weightsSum += w
 		}
 
 		movingAvgData = make([]float64, len(dl.data)-windowSize+1)
@@ -936,7 +923,7 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 					isFailed = true
 					return
 				}
-				sum += wv * weightVals[j]
+				sum += wv * weights[j]
 			}
 			movingAvgData[i] = sum / weightsSum // 使用權重總和
 		}
@@ -1352,26 +1339,17 @@ func (dl *DataList) Mean() float64 {
 }
 
 // WeightedMean calculates the weighted mean of the DataList using the provided weights.
-// The weights parameter should be a slice or a DataList of the same length as the DataList.
+// The weights parameter takes one weight per element, as a []float64 of the same length as the DataList.
 // Returns math.NaN() if the DataList is empty, weights are invalid, or if no valid elements can be used.
-func (dl *DataList) WeightedMean(weights any) float64 {
+func (dl *DataList) WeightedMean(weights []float64) float64 {
 	var result float64
-	// Read the weights before locking dl: a DataList of weights has its own
-	// lock, which Data takes, and taking it inside dl's callback would read it
-	// unlocked.
-	weightsSlice, weightsErr := ProcessData(weights)
 	dl.AtomicDo(func(dl *DataList) {
 		if dl.Len() == 0 {
 			dl.warn("WeightedMean", "DataList is empty")
 			result = math.NaN()
 			return
 		}
-		if weightsErr != nil {
-			dl.fail("WeightedMean", "weights: %v", weightsErr)
-			result = math.NaN()
-			return
-		}
-		if len(weightsSlice) != len(dl.data) {
+		if len(weights) != len(dl.data) {
 			dl.fail("WeightedMean", "Weights length does not match data length")
 			result = math.NaN()
 			return
@@ -1382,16 +1360,12 @@ func (dl *DataList) WeightedMean(weights any) float64 {
 		validElements := 0
 
 		for i, v := range dl.data {
-			vfloat, ok1 := ToFloat64Safe(v)
-			wfloat, ok2 := ToFloat64Safe(weightsSlice[i])
-			if !ok1 {
+			vfloat, ok := ToFloat64Safe(v)
+			if !ok {
 				dl.warn("WeightedMean", "Data element at index %d cannot be converted to float64, skipping", i)
 				continue
 			}
-			if !ok2 {
-				dl.warn("WeightedMean", "Weight at index %d cannot be converted to float64, skipping", i)
-				continue
-			}
+			wfloat := weights[i]
 			weightedSum += vfloat * wfloat
 			totalWeight += wfloat
 			validElements++

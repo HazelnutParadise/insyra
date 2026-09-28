@@ -1,10 +1,8 @@
 package insyra_test
 
 import (
-	"math"
 	"math/big"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -106,27 +104,6 @@ func TestProcessDataRefusesWhatItCannotRead(t *testing.T) {
 		if got != nil {
 			t.Errorf("ProcessData(%#v) returned data %#v alongside its error", input, got)
 		}
-	}
-}
-
-// The weighted methods pass ProcessData's error on: weights they cannot read
-// are reported as such, not as a length mismatch.
-func TestWeightedMethodsReportUnreadableWeights(t *testing.T) {
-	dl := insyra.NewDataList(1.0, 2.0, 3.0)
-	if got := dl.WeightedMean(42); !math.IsNaN(got) {
-		t.Errorf("WeightedMean(42) = %v, want NaN", got)
-	}
-	if e := dl.PopErr(); e == nil || !strings.Contains(e.Message, "weights: cannot read int") {
-		t.Errorf("WeightedMean(42) recorded %v, want the weights error", e)
-	}
-	if got := dl.WeightedMovingAverage(2, "ab"); got == nil || got.Len() != 0 {
-		t.Errorf("WeightedMovingAverage with string weights = %v, want an empty list", got)
-	}
-	if e := dl.PopErr(); e == nil || !strings.Contains(e.Message, "weights: cannot read string") {
-		t.Errorf("WeightedMovingAverage recorded %v, want the weights error", e)
-	}
-	if got := dl.WeightedMean(insyra.NewDataList(1, 1, 2)); got != 2.25 {
-		t.Errorf("WeightedMean with a DataList of weights = %v, want 2.25", got)
 	}
 }
 
