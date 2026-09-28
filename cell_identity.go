@@ -194,7 +194,7 @@ func encodeCell(v any) string {
 		}
 		return "b:0"
 	case int, int8, int16, int32, int64,
-		uint, uint8, uint16, uint32, uint64:
+		uint, uint8, uint16, uint32, uint64, uintptr:
 		return fmt.Sprintf("i:%v", v)
 	case float32, float64:
 		return encodeCellFloat(toFloatForKey(v))

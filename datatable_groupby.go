@@ -291,7 +291,7 @@ func encodeGroupKey(values []any) string {
 				fmt.Fprintf(&b, "f:%v", f)
 			}
 		case int, int8, int16, int32, int64,
-			uint, uint8, uint16, uint32, uint64:
+			uint, uint8, uint16, uint32, uint64, uintptr:
 			fmt.Fprintf(&b, "i:%v", v)
 		default:
 			// Through encodeCell so a composite value descends: %v alone wrote
@@ -567,7 +567,7 @@ func uniqueKey(v any) string {
 		}
 		return "b:0"
 	case int, int8, int16, int32, int64,
-		uint, uint8, uint16, uint32, uint64:
+		uint, uint8, uint16, uint32, uint64, uintptr:
 		return fmt.Sprintf("i:%v", v)
 	case float32, float64:
 		f, _ := utils.ToFloat64Safe(v)

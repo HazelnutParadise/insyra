@@ -946,7 +946,7 @@ func (g *GroupedDataTable) Count() *DataTable
 func (g *GroupedDataTable) Describe(options ...DescribeOptions) *DataTable
 ```
 
-**Description:** Splits the DataTable into groups by one or more key columns and applies aggregate functions to each group ("split-apply-combine"). The result is a new DataTable with one row per unique key combination — key columns first (in `GroupBy` order), then the aggregate columns (in `Aggregate` order). Group order in the output follows the order in which each key combination is first seen during a single linear scan; `nil` keys form their own group, and `int(1)` is kept distinct from the string `"1"`.
+**Description:** Splits the DataTable into groups by one or more key columns and applies aggregate functions to each group ("split-apply-combine"). The result is a new DataTable with one row per unique key combination — key columns first (in `GroupBy` order), then the aggregate columns (in `Aggregate` order). Group order in the output follows the order in which each key combination is first seen during a single linear scan; `nil` keys form their own group. A key compares by value within its kind: every integer width (`int`, `int8` … `int64`, `uint` … `uint64`, `uintptr`) is one kind, so the `int64(1)` a CSV load produces and a Go literal `1` fall in one group; `float32` and `float64` are another kind; text is a third. An integer never shares a group with a float or a string of the same value, so `1`, `1.0` and `"1"` are three groups. `Pivot`, `Merge` keys and `OpNUnique` follow the same rule.
 
 **`AggregateConfig` fields:**
 
