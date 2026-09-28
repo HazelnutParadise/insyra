@@ -95,7 +95,7 @@ func TestCrossLangSingleSampleTTest(t *testing.T) {
 			pCI := baselineFloatSlice(t, pb, "ci")
 			assertCloseToBoth(t, "ci.low", got.CI[0], rCI[0], pCI[0], 1e-7)
 			assertCloseToBoth(t, "ci.high", got.CI[1], rCI[1], pCI[1], 1e-7)
-			assertCloseToBoth(t, "mean", *got.Mean, baselineFloat(t, rb, "mean"), baselineFloat(t, pb, "mean"), 1e-10)
+			assertCloseToBoth(t, "mean", got.Mean, baselineFloat(t, rb, "mean"), baselineFloat(t, pb, "mean"), 1e-10)
 			assertCloseToBoth(t, "effect", got.EffectSizes[0].Value, baselineFloat(t, rb, "effect"), baselineFloat(t, pb, "effect"), 1e-8)
 			if got.N != len(tc.x) {
 				t.Fatalf("n mismatch: got=%d want=%d", got.N, len(tc.x))
@@ -157,7 +157,7 @@ func TestCrossLangTwoSampleTTest(t *testing.T) {
 			pCI := baselineFloatSlice(t, pb, "ci")
 			assertCloseToBoth(t, "ci.low", got.CI[0], rCI[0], pCI[0], 1e-7)
 			assertCloseToBoth(t, "ci.high", got.CI[1], rCI[1], pCI[1], 1e-7)
-			assertCloseToBoth(t, "mean1", *got.Mean, baselineFloat(t, rb, "mean1"), baselineFloat(t, pb, "mean1"), 1e-10)
+			assertCloseToBoth(t, "mean1", got.Mean, baselineFloat(t, rb, "mean1"), baselineFloat(t, pb, "mean1"), 1e-10)
 			assertCloseToBoth(t, "mean2", *got.Mean2, baselineFloat(t, rb, "mean2"), baselineFloat(t, pb, "mean2"), 1e-10)
 			assertCloseToBoth(t, "effect", got.EffectSizes[0].Value, baselineFloat(t, rb, "effect"), baselineFloat(t, pb, "effect"), 1e-7)
 			if got.N != len(tc.x) {
@@ -649,7 +649,7 @@ func TestCrossLangFTests(t *testing.T) {
 				assertCloseToBoth(t, "f", got.Statistic, baselineFloat(t, rb, "stat"), baselineFloat(t, pb, "stat"), 1e-8)
 				assertCloseToBoth(t, "p", got.PValue, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-8)
 				assertCloseToBoth(t, "df1", *got.DF, baselineFloat(t, rb, "df1"), baselineFloat(t, pb, "df1"), 1e-8)
-				assertCloseToBoth(t, "df2", got.DF2, baselineFloat(t, rb, "df2"), baselineFloat(t, pb, "df2"), 1e-8)
+				assertCloseToBoth(t, "df2", *got.DF2, baselineFloat(t, rb, "df2"), baselineFloat(t, pb, "df2"), 1e-8)
 			})
 		}
 	})
@@ -679,7 +679,7 @@ func TestCrossLangFTests(t *testing.T) {
 				assertCloseToBoth(t, "f", got.Statistic, baselineFloat(t, rb, "stat"), baselineFloat(t, pb, "stat"), 1e-8)
 				assertCloseToBoth(t, "p", got.PValue, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-8)
 				assertCloseToBoth(t, "df1", *got.DF, baselineFloat(t, rb, "df1"), baselineFloat(t, pb, "df1"), 1e-8)
-				assertCloseToBoth(t, "df2", got.DF2, baselineFloat(t, rb, "df2"), baselineFloat(t, pb, "df2"), 1e-8)
+				assertCloseToBoth(t, "df2", *got.DF2, baselineFloat(t, rb, "df2"), baselineFloat(t, pb, "df2"), 1e-8)
 			})
 		}
 	})
@@ -737,7 +737,7 @@ func TestCrossLangFTests(t *testing.T) {
 				assertCloseToBoth(t, "f", got.Statistic, baselineFloat(t, rb, "stat"), baselineFloat(t, pb, "stat"), 1e-10)
 				assertCloseToBoth(t, "p", got.PValue, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-10)
 				assertCloseToBoth(t, "df1", *got.DF, baselineFloat(t, rb, "df1"), baselineFloat(t, pb, "df1"), 1e-10)
-				assertCloseToBoth(t, "df2", got.DF2, baselineFloat(t, rb, "df2"), baselineFloat(t, pb, "df2"), 1e-10)
+				assertCloseToBoth(t, "df2", *got.DF2, baselineFloat(t, rb, "df2"), baselineFloat(t, pb, "df2"), 1e-10)
 			})
 		}
 	})
@@ -766,7 +766,7 @@ func TestCrossLangFTests(t *testing.T) {
 				assertCloseToBoth(t, "f", got.Statistic, baselineFloat(t, rb, "stat"), baselineFloat(t, pb, "stat"), 1e-10)
 				assertCloseToBoth(t, "p", got.PValue, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-10)
 				assertCloseToBoth(t, "df1", *got.DF, baselineFloat(t, rb, "df1"), baselineFloat(t, pb, "df1"), 1e-10)
-				assertCloseToBoth(t, "df2", got.DF2, baselineFloat(t, rb, "df2"), baselineFloat(t, pb, "df2"), 1e-10)
+				assertCloseToBoth(t, "df2", *got.DF2, baselineFloat(t, rb, "df2"), baselineFloat(t, pb, "df2"), 1e-10)
 			})
 		}
 	})

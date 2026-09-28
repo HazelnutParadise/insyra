@@ -33,12 +33,12 @@ type WilcoxonOptions struct {
 // EffectSizes contains the matched-pairs rank-biserial correlation.
 //
 // The asymptotic z and Method ("exact" vs "asymptotic") report which
-// distributional path produced the p-value. For exact mode Z is NaN.
+// distributional path produced the p-value. For exact mode Z is nil.
 type WilcoxonTestResult struct {
-	testResultBase
-	Z          float64 // standardized z (asymptotic path); NaN for exact
-	Method     string  // "exact" or "asymptotic"
-	NEffective int     // number of nonzero |d_i| used (zeros dropped under "wilcox")
+	TestResult
+	Z          *float64 // standardized z on the asymptotic path; nil when no z was computed (exact path, or Method "undefined")
+	Method     string   // "exact" or "asymptotic"
+	NEffective int      // number of nonzero |d_i| used (zeros dropped under "wilcox")
 }
 
 // SingleSampleWilcoxon tests whether the median of `data` equals `mu`,
@@ -48,7 +48,7 @@ type WilcoxonTestResult struct {
 //
 // Zero differences are dropped before ranking (R's wilcox.test default
 // zero-method = "wilcox"); for tied |d_i| values (after dropping zeros) the
-// asymptotic z with continuity correction is used. Otherwise n_eff <= 50 uses
+// asymptotic z with continuity correction is used. Otherwise n_eff < 50 uses
 // the exact distribution.
 //
 // ** Verified using R **
@@ -151,14 +151,14 @@ func computeWilcoxon(diffs []float64, alt AlternativeHypothesis, cl float64, ciO
 		// statistic is undefined. Mirror SciPy's behaviour of returning NaN.
 		nanCIVal := [2]float64{math.NaN(), math.NaN()}
 		return &WilcoxonTestResult{
-			testResultBase: testResultBase{
+			TestResult: TestResult{
 				Statistic:   math.NaN(),
 				PValue:      math.NaN(),
 				DF:          nil,
 				CI:          &nanCIVal,
 				EffectSizes: []EffectSizeEntry{{Type: "rank_biserial", Value: math.NaN()}},
 			},
-			Z:          math.NaN(),
+			Z:          nil,
 			Method:     "undefined",
 			NEffective: 0,
 		}, nil
@@ -168,7 +168,9 @@ func computeWilcoxon(diffs []float64, alt AlternativeHypothesis, cl float64, ciO
 	// Exact path matches R wilcox.test: untied and n_eff < 50.
 	useExact := !hasTies && nEff < 50
 
-	var pValue, zVal float64
+	var pValue float64
+	// zPtr stays nil on the exact path, which computes no z.
+	var zPtr *float64
 	var method string
 	muW := float64(nEff*(nEff+1)) / 4.0
 	// Asymptotic variance with tie correction:
@@ -182,7 +184,6 @@ func computeWilcoxon(diffs []float64, alt AlternativeHypothesis, cl float64, ciO
 
 	if useExact {
 		pValue = wilcoxonSignedRankExactPValue(wPlus, nEff, alt)
-		zVal = math.NaN()
 		method = "exact"
 	} else {
 		// Continuity correction sign depends on alternative.
@@ -199,8 +200,9 @@ func computeWilcoxon(diffs []float64, alt AlternativeHypothesis, cl float64, ciO
 		case Less:
 			correction = -0.5
 		}
-		zVal = (wPlus - muW - correction) / sigmaW
+		zVal := (wPlus - muW - correction) / sigmaW
 		pValue = zPValue(zVal, alt)
+		zPtr = &zVal
 		method = "asymptotic"
 	}
 
@@ -240,14 +242,14 @@ func computeWilcoxon(diffs []float64, alt AlternativeHypothesis, cl float64, ciO
 	rRB := rankBiserialMatched(wPlus, nEff)
 
 	res := &WilcoxonTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic:   wPlus,
 			PValue:      pValue,
 			DF:          nil,
 			CI:          ciPtr,
 			EffectSizes: []EffectSizeEntry{{Type: "rank_biserial", Value: rRB}},
 		},
-		Z:          zVal,
+		Z:          zPtr,
 		Method:     method,
 		NEffective: nEff,
 	}

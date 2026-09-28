@@ -274,7 +274,7 @@ func TestSingleSampleTTest_R(t *testing.T) {
 			if !tEqualOrNaNInf(r.CI[1], c.ciHi, tolCI) {
 				t.Errorf("ci_hi: got %.17g, want %.17g (Δ=%g)", r.CI[1], c.ciHi, math.Abs(r.CI[1]-c.ciHi))
 			}
-			if r.Mean == nil || !tEqualOrNaNInf(*r.Mean, c.mean, tolStat) {
+			if !tEqualOrNaNInf(r.Mean, c.mean, tolStat) {
 				t.Errorf("mean: got %v, want %.17g", r.Mean, c.mean)
 			}
 			if r.N != c.n {
@@ -321,7 +321,7 @@ func TestSingleSampleTTest_ConstantData(t *testing.T) {
 		if r.CI[0] != 50 || r.CI[1] != 50 {
 			t.Errorf("CI: got %v, want [50,50]", r.CI)
 		}
-		if r.Mean == nil || *r.Mean != 50 {
+		if r.Mean != 50 {
 			t.Errorf("mean: got %v, want 50", r.Mean)
 		}
 		if len(r.EffectSizes) != 1 || r.EffectSizes[0].Value != 0 {
@@ -608,7 +608,7 @@ func TestTwoSampleTTest_R(t *testing.T) {
 			if !tEqualOrNaNInf(r.CI[1], c.ciHi, tolCI) {
 				t.Errorf("ci_hi: got %.17g, want %.17g (Δ=%g)", r.CI[1], c.ciHi, math.Abs(r.CI[1]-c.ciHi))
 			}
-			if r.Mean == nil || !tEqualOrNaNInf(*r.Mean, c.mean1, tolStat) {
+			if !tEqualOrNaNInf(r.Mean, c.mean1, tolStat) {
 				t.Errorf("mean1: got %v, want %.17g", r.Mean, c.mean1)
 			}
 			if r.Mean2 == nil || !tEqualOrNaNInf(*r.Mean2, c.mean2, tolStat) {
@@ -742,14 +742,20 @@ func TestPairedTTest_R(t *testing.T) {
 			if r.N != c.n {
 				t.Errorf("n: got %d, want %d", r.N, c.n)
 			}
-			if r.Mean != nil {
-				t.Errorf("Mean should be nil for paired, got %v", *r.Mean)
+			// The paired test reports both group means and the pair count, so
+			// Mean2 and N2 are filled and the two means must account for the
+			// mean difference already pinned above.
+			if r.Mean2 == nil {
+				t.Error("Mean2 = nil, want the second group's mean")
+			}
+			if r.N2 == nil || *r.N2 != c.n {
+				t.Errorf("n2: got %v, want %d", r.N2, c.n)
 			}
 			if r.Mean2 != nil {
-				t.Errorf("Mean2 should be nil for paired, got %v", *r.Mean2)
-			}
-			if r.N2 != nil {
-				t.Errorf("N2 should be nil for paired, got %v", *r.N2)
+				got := r.Mean - *r.Mean2
+				if math.Abs(got-c.meanDiff) > 1e-9*math.Max(1, math.Abs(c.meanDiff)) {
+					t.Errorf("mean1 - mean2: got %.17g, want %.17g", got, c.meanDiff)
+				}
 			}
 			if len(r.EffectSizes) != 1 || r.EffectSizes[0].Type != "cohen_d" {
 				t.Fatalf("expected one cohen_d effect size, got %+v", r.EffectSizes)

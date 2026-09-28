@@ -64,8 +64,8 @@ func TestFTestForVarianceEquality_R(t *testing.T) {
 			if r.DF == nil || *r.DF != expDF1 {
 				t.Errorf("DF1: got %v, want %v", r.DF, expDF1)
 			}
-			if r.DF2 != expDF2 {
-				t.Errorf("DF2: got %v, want %v", r.DF2, expDF2)
+			if *r.DF2 != expDF2 {
+				t.Errorf("DF2: got %v, want %v", *r.DF2, expDF2)
 			}
 		})
 	}
@@ -132,8 +132,8 @@ func TestLeveneTest_R(t *testing.T) {
 			if r.DF == nil || *r.DF != expDF1 {
 				t.Errorf("DF1: got %v, want %v", r.DF, expDF1)
 			}
-			if r.DF2 != expDF2 {
-				t.Errorf("DF2: got %v, want %v", r.DF2, expDF2)
+			if *r.DF2 != expDF2 {
+				t.Errorf("DF2: got %v, want %v", *r.DF2, expDF2)
 			}
 		})
 	}
@@ -235,8 +235,8 @@ func TestFTestForRegression_R(t *testing.T) {
 			if r.DF == nil || *r.DF != float64(c.df1) {
 				t.Errorf("DF1: got %v, want %d", r.DF, c.df1)
 			}
-			if r.DF2 != float64(c.df2) {
-				t.Errorf("DF2: got %v, want %d", r.DF2, c.df2)
+			if *r.DF2 != float64(c.df2) {
+				t.Errorf("DF2: got %v, want %d", *r.DF2, c.df2)
 			}
 		})
 	}
@@ -291,8 +291,8 @@ func TestFTestForNestedModels_R(t *testing.T) {
 			if r.DF == nil || *r.DF != expDF1 {
 				t.Errorf("DF1: got %v, want %v", r.DF, expDF1)
 			}
-			if r.DF2 != expDF2 {
-				t.Errorf("DF2: got %v, want %v", r.DF2, expDF2)
+			if *r.DF2 != expDF2 {
+				t.Errorf("DF2: got %v, want %v", *r.DF2, expDF2)
 			}
 		})
 	}

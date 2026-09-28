@@ -17,7 +17,6 @@
 package stats_test
 
 import (
-	"math"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -119,9 +118,9 @@ func TestCrossLangWilcoxonPaired(t *testing.T) {
 			}
 
 			if got.Method == "asymptotic" {
-				assertCloseToBoth(t, "z", got.Z, baselineFloat(t, rb, "z"), baselineFloat(t, pb, "z"), 1e-8)
-			} else if !math.IsNaN(got.Z) {
-				t.Errorf("z should be NaN in exact mode, got %v", got.Z)
+				assertCloseToBoth(t, "z", *got.Z, baselineFloat(t, rb, "z"), baselineFloat(t, pb, "z"), 1e-8)
+			} else if got.Z != nil {
+				t.Errorf("z should be nil in exact mode, got %v", *got.Z)
 			}
 
 			// Exact CI: bit-identical across Go / R / Python (index-based on
@@ -189,7 +188,7 @@ func TestCrossLangWilcoxonSingle(t *testing.T) {
 			}
 
 			if got.Method == "asymptotic" {
-				assertCloseToBoth(t, "z", got.Z, baselineFloat(t, rb, "z"), baselineFloat(t, pb, "z"), 1e-8)
+				assertCloseToBoth(t, "z", *got.Z, baselineFloat(t, rb, "z"), baselineFloat(t, pb, "z"), 1e-8)
 			}
 
 			// Exact CI: bit-identical across Go / R / Python (index-based on
@@ -268,7 +267,7 @@ func TestCrossLangMannWhitneyU(t *testing.T) {
 				t.Errorf("method mismatch go=%q r=%q", got.Method, rMethod)
 			}
 			if got.Method == "asymptotic" {
-				assertCloseToBoth(t, "z", got.Z, baselineFloat(t, rb, "z"), baselineFloat(t, pb, "z"), 1e-8)
+				assertCloseToBoth(t, "z", *got.Z, baselineFloat(t, rb, "z"), baselineFloat(t, pb, "z"), 1e-8)
 			}
 
 			// Exact CI: bit-identical across Go / R / Python (index-based on

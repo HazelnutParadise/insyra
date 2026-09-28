@@ -124,18 +124,40 @@ For clustering APIs, Insyra uses an R-oriented result shape and cross-language v
 
 ### Common Result Structure
 
+Every hypothesis test's result embeds `TestResult`, so the fields below read directly on any result (`r.PValue`). A field that only some tests fill is a pointer, `nil` when it does not apply to the test that produced the result.
+
 ```go
-type testResultBase struct {
-    Statistic   float64           // Test statistic value
-    PValue      float64           // P-value
-    DF          *float64          // Degrees of freedom (nil if not applicable)
-    CI          *[2]float64       // Confidence interval (nil if not calculated)
-    EffectSizes []EffectSizeEntry // Effect size measures
+type TestResult struct {
+    Statistic   float64           // the test statistic (t, z, F, χ², U, W+, H, Q, …)
+    PValue      float64           // p-value under the test's alternative hypothesis
+    DF          *float64          // degrees of freedom; nil if the test has none
+    CI          *[2]float64       // confidence interval; nil if the test reports none
+    EffectSizes []EffectSizeEntry // effect sizes
 }
 
 type EffectSizeEntry struct {
     Type  string  // "cohen_d" for the t- and z-tests; the rank-based types are listed under Nonparametric Result Types
     Value float64 // Effect size value
+}
+
+type HypothesisTestResult interface {
+    Base() *TestResult
+}
+```
+
+`TTestResult`, `ZTestResult`, `FTestResult`, `ChiSquareTestResult`, `CorrelationResult`, `WilcoxonTestResult`, `MannWhitneyUResult`, `KruskalWallisResult` and `FriedmanTestResult` all satisfy `HypothesisTestResult`, so one function or one slice can take any of them. `Base()` returns the embedded `TestResult` itself, not a copy.
+
+```go
+tt, err := stats.TwoSampleTTest(control, variant, false)
+if err != nil {
+    log.Fatal(err)
+}
+mw, err := stats.MannWhitneyU(control, variant)
+if err != nil {
+    log.Fatal(err)
+}
+for _, r := range []stats.HypothesisTestResult{tt, mw} {
+    fmt.Printf("statistic=%.4f p=%.4f\n", r.Base().Statistic, r.Base().PValue)
 }
 ```
 
@@ -285,7 +307,7 @@ const (
 
 ```go
 type CorrelationResult struct {
-    testResultBase // Statistic = correlation coefficient, PValue = significance
+    TestResult // Statistic = correlation coefficient, PValue = significance
 }
 ```
 
@@ -408,12 +430,12 @@ func PairedTTest(data1, data2 insyra.IDataList, opts ...TTestOptions) (*TTestRes
 
 ```go
 type TTestResult struct {
-    testResultBase
-    Mean     *float64 // Mean of first group
-    Mean2    *float64 // Mean of second group (nil for single sample)
-    MeanDiff *float64 // Mean difference (paired t-test only)
-    N        int      // Sample size of first group
-    N2       *int     // Sample size of second group (nil for single/paired)
+    TestResult
+    Mean     float64  // mean of data (one-sample) or data1
+    Mean2    *float64 // mean of data2; nil for the one-sample test
+    MeanDiff *float64 // mean of data1 - data2 over the pairs; nil except for the paired test
+    N        int      // size of data or data1; the number of pairs for the paired test
+    N2       *int     // size of data2; nil for the one-sample test
 }
 ```
 
@@ -489,7 +511,7 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, opts 
 
 ```go
 type ZTestResult struct {
-    testResultBase
+    TestResult
     Mean  float64  // Sample mean
     Mean2 *float64 // Second sample mean (nil for single sample)
     N     int      // Sample size
@@ -551,7 +573,7 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTes
 
 ```go
 type ChiSquareTestResult struct {
-    testResultBase           // Statistic = chi-square statistic
+    TestResult               // Statistic = chi-square statistic
     ContingencyTable *insyra.DataTable // Contingency table with observed and expected values
 }
 ```
@@ -948,8 +970,8 @@ func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) (*
 
 ```go
 type FTestResult struct {
-    testResultBase
-    DF2 float64 // Second degrees of freedom
+    TestResult
+    DF2 *float64 // second degrees of freedom; nil for BartlettTest, whose chi-square statistic has one
 }
 ```
 
@@ -1047,7 +1069,7 @@ Each test auto-selects its p-value path, matching R `wilcox.test` /
 
 `WilcoxonTestResult.Method` / `MannWhitneyUResult.Method` report
 `"exact"` or `"asymptotic"`; `Z` is populated only on the asymptotic
-path (and is `NaN` for exact).
+path (and is `nil` when no z was computed).
 
 ### Single Sample Wilcoxon
 
@@ -1159,28 +1181,28 @@ subject and the condition, both counted from one.
 
 ```go
 type WilcoxonTestResult struct {
-    testResultBase             // Statistic = W+ ; DF nil ; CI = Hodges-Lehmann ; EffectSizes: rank_biserial
-    Z          float64         // asymptotic z (NaN for exact)
+    TestResult                 // Statistic = W+ ; DF nil ; CI = Hodges-Lehmann ; EffectSizes: rank_biserial
+    Z          *float64        // asymptotic z; nil on the exact path, or when every difference is zero
     Method     string          // "exact" | "asymptotic"
     NEffective int             // nonzero |d_i| used (zeros dropped)
 }
 
 type MannWhitneyUResult struct {
-    testResultBase             // Statistic = min(U1,U2) ; DF nil ; CI = HL shift ; EffectSizes: rank_biserial, cles_a12
+    TestResult                 // Statistic = min(U1,U2) ; DF nil ; CI = HL shift ; EffectSizes: rank_biserial, cles_a12
     U1     float64
     U2     float64
-    Z      float64             // asymptotic z (NaN for exact)
+    Z      *float64            // asymptotic z (NaN when every value is tied); nil on the exact path
     Method string              // "exact" | "asymptotic"
 }
 
 type KruskalWallisResult struct {
-    testResultBase             // Statistic = H (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: epsilon_squared
+    TestResult                 // Statistic = H (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: epsilon_squared
     NTotal       int
     GroupRankSum []float64      // rank sum per group, input order
 }
 
 type FriedmanTestResult struct {
-    testResultBase             // Statistic = Q (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: kendalls_w
+    TestResult                 // Statistic = Q (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: kendalls_w
     NSubjects   int
     KConditions int
 }

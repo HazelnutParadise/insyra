@@ -24,12 +24,12 @@ type TTestOptions struct {
 }
 
 type TTestResult struct {
-	testResultBase
-	Mean     *float64 // mean of the first group (or the only group)
-	Mean2    *float64 // mean of the second group (nil if not applicable)
-	MeanDiff *float64 // mean difference (only for paired t-test)
-	N        int      // sample size of the first group (or the only group or paired group)
-	N2       *int     // sample size of the second group (nil if not applicable)
+	TestResult
+	Mean     float64  // mean of data (one-sample) or data1
+	Mean2    *float64 // mean of data2; nil for the one-sample test
+	MeanDiff *float64 // mean of data1 − data2 over the pairs; nil except for the paired test
+	N        int      // size of data or data1; the number of pairs for the paired test
+	N2       *int     // size of data2; nil for the one-sample test
 }
 
 // SingleSampleTTest performs a one-sample t-test comparing the sample mean to a known population mean.
@@ -94,14 +94,14 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, opts ...TTestOptions) 
 			pValue = math.NaN()
 			effectSizes := cohenDEffectSizes(effectSize)
 			return &TTestResult{
-				testResultBase: testResultBase{
+				TestResult: TestResult{
 					Statistic:   tValue,
 					PValue:      pValue,
 					DF:          &df,
 					CI:          ci,
 					EffectSizes: effectSizes,
 				},
-				Mean: &mean,
+				Mean: mean,
 				N:    n,
 			}, nil
 
@@ -111,14 +111,14 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, opts ...TTestOptions) 
 			pValue = tPValue(tValue, df, alt)
 			effectSizes := cohenDEffectSizes(effectSize)
 			return &TTestResult{
-				testResultBase: testResultBase{
+				TestResult: TestResult{
 					Statistic:   tValue,
 					PValue:      pValue,
 					DF:          &df,
 					CI:          ci,
 					EffectSizes: effectSizes,
 				},
-				Mean: &mean,
+				Mean: mean,
 				N:    n,
 			}, nil
 		}
@@ -128,14 +128,14 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, opts ...TTestOptions) 
 	effectSizes := cohenDEffectSizes(effectSize)
 
 	return &TTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic:   tValue,
 			PValue:      pValue,
 			DF:          &df,
 			CI:          ci,
 			EffectSizes: effectSizes,
 		},
-		Mean: &mean,
+		Mean: mean,
 		N:    n,
 	}, nil
 }
@@ -212,14 +212,14 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, opts ...T
 	effectSizes := cohenDEffectSizes(effectSize)
 
 	return &TTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic:   tValue,
 			PValue:      pValue,
 			DF:          &df,
 			CI:          ci,
 			EffectSizes: effectSizes,
 		},
-		Mean:  &mean1,
+		Mean:  mean1,
 		Mean2: &mean2,
 		N:     n1,
 		N2:    &n2,
@@ -284,6 +284,12 @@ func PairedTTest(data1, data2 insyra.IDataList, opts ...TTestOptions) (*TTestRes
 	meanDiff, varDiff := stat.MeanVariance(diffs, nil)
 	stddevDiff := math.Sqrt(varDiff)
 
+	// Each group mean and the pair count, so the paired result carries the
+	// same two means and sizes the two-sample one does.
+	mean1 := meanOfF64(values1)
+	mean2 := meanOfF64(values2)
+	n2 := n
+
 	nFloat := float64(n)
 	standardError := sampleSE(stddevDiff, nFloat)
 	tValue := meanDiff / standardError
@@ -305,14 +311,17 @@ func PairedTTest(data1, data2 insyra.IDataList, opts ...TTestOptions) (*TTestRes
 	effectSizes := cohenDEffectSizes(effectSize)
 
 	return &TTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic:   tValue,
 			PValue:      pValue,
 			DF:          &df,
 			CI:          ci,
 			EffectSizes: effectSizes,
 		},
+		Mean:     mean1,
+		Mean2:    &mean2,
 		MeanDiff: &meanDiff,
 		N:        n,
+		N2:       &n2,
 	}, nil
 }

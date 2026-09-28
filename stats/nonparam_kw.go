@@ -20,7 +20,7 @@ import (
 // Statistic = H (tie-corrected); DF = k-1 (number of groups minus 1);
 // CI is unused (nil); EffectSizes contains the rank-based epsilon^2.
 type KruskalWallisResult struct {
-	testResultBase
+	TestResult
 	NTotal       int
 	GroupRankSum []float64 // sum of ranks per group, in input order
 }
@@ -115,7 +115,7 @@ func KruskalWallis(groups []insyra.IDataList) (*KruskalWallisResult, error) {
 	eps2 := epsilonSquaredKW(H, n)
 
 	return &KruskalWallisResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic:   H,
 			PValue:      pValue,
 			DF:          &df,

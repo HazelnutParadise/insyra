@@ -12,7 +12,7 @@ import (
 )
 
 type ChiSquareTestResult struct {
-	testResultBase
+	TestResult
 
 	// a DataTable representing the contingency table([2]float64{observed, expected})
 	ContingencyTable *insyra.DataTable
@@ -47,7 +47,7 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 
 	float64DF := float64(df)
 	return &ChiSquareTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: chiSquare,
 			PValue:    pValue,
 			DF:        &float64DF,

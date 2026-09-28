@@ -18,7 +18,7 @@ type ZTestOptions struct {
 }
 
 type ZTestResult struct {
-	testResultBase
+	TestResult
 	Mean  float64  // mean of the first group (or the only group)
 	Mean2 *float64 // mean of the second group (nil if not applicable)
 	N     int      // sample size of the first group (or the only group)
@@ -72,7 +72,7 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, opts ..
 	ci := ciByAlternative(mean, marginOfError, alternative)
 
 	return &ZTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic:   zValue,
 			PValue:      pValue,
 			DF:          nil,
@@ -148,7 +148,7 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, opts 
 	ci := ciByAlternative(meanDiff, marginOfError, alternative)
 
 	return &ZTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic:   zValue,
 			PValue:      pValue,
 			DF:          nil,

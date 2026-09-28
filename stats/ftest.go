@@ -9,8 +9,8 @@ import (
 )
 
 type FTestResult struct {
-	testResultBase
-	DF2 float64 // degree of freedom for the second group
+	TestResult
+	DF2 *float64 // second degrees of freedom; nil for BartlettTest, whose chi-square statistic has one
 }
 
 // FTestForVarianceEquality performs an F-test for variance equality.
@@ -45,12 +45,12 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, erro
 	pValue := fTwoTailedPValue(fValue, df1, df2)
 
 	return &FTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: fValue,
 			PValue:    pValue,
 			DF:        &df1,
 		},
-		DF2: df2,
+		DF2: &df2,
 	}, nil
 }
 
@@ -137,12 +137,11 @@ func BartlettTest(groups []insyra.IDataList) (*FTestResult, error) {
 	pValue := chiSquaredPValue(chiSquared, df)
 
 	return &FTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: chiSquared,
 			PValue:    pValue,
 			DF:        &df,
 		},
-		DF2: 0,
 	}, nil
 }
 
@@ -161,12 +160,12 @@ func FTestForRegression(ssr, sse float64, df1, df2 int) (*FTestResult, error) {
 	df1f := float64(df1)
 	df2f := float64(df2)
 	return &FTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: fValue,
 			PValue:    pValue,
 			DF:        &df1f,
 		},
-		DF2: df2f,
+		DF2: &df2f,
 	}, nil
 }
 
@@ -188,12 +187,12 @@ func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) (*
 	df1f := float64(numeratorDF)
 	df2f := float64(denominatorDF)
 	return &FTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: fValue,
 			PValue:    pValue,
 			DF:        &df1f,
 		},
-		DF2: df2f,
+		DF2: &df2f,
 	}, nil
 }
 
@@ -206,11 +205,11 @@ func oneWayANOVAForLevene(values []float64, labels []int, k int) (*FTestResult, 
 	df1 := float64(stats.DFB)
 	df2 := float64(stats.DFW)
 	return &FTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: stats.F,
 			PValue:    stats.P,
 			DF:        &df1,
 		},
-		DF2: df2,
+		DF2: &df2,
 	}, nil
 }

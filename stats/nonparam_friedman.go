@@ -21,7 +21,7 @@ import (
 // minus 1); CI is unused (nil); EffectSizes contains Kendall's W coefficient
 // of concordance.
 type FriedmanTestResult struct {
-	testResultBase
+	TestResult
 	NSubjects   int
 	KConditions int
 }
@@ -118,7 +118,7 @@ func FriedmanTest(subjects []insyra.IDataList) (*FriedmanTestResult, error) {
 	W := kendallsW(Q, n, k)
 
 	return &FriedmanTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic:   Q,
 			PValue:      pValue,
 			DF:          &df,

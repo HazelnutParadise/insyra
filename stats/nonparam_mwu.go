@@ -32,11 +32,11 @@ type MannWhitneyUOptions struct {
 // Statistic = min(U1, U2). EffectSizes contains rank-biserial r_rb and
 // CLES A12. CI is the Hodges-Lehmann shift CI at the requested level.
 type MannWhitneyUResult struct {
-	testResultBase
+	TestResult
 	U1     float64
 	U2     float64
-	Z      float64 // standardized z (asymptotic path); NaN for exact
-	Method string  // "exact" or "asymptotic"
+	Z      *float64 // standardized z on the asymptotic path (NaN when every value is tied); nil on the exact path
+	Method string   // "exact" or "asymptotic"
 }
 
 // MannWhitneyU performs the Wilcoxon-Mann-Whitney rank-sum test on two
@@ -47,8 +47,8 @@ type MannWhitneyUResult struct {
 // 95% Hodges-Lehmann shift interval.
 //
 // When neither sample contains ties (in the combined ranking) and both
-// n1, n2 <= 25, the exact distribution is used; otherwise the asymptotic
-// normal with continuity correction and tie adjustment.
+// n1 < 50 and n2 < 50, the exact distribution is used; otherwise the
+// asymptotic normal with continuity correction and tie adjustment.
 //
 // ** Verified using R **
 func MannWhitneyU(data1, data2 insyra.IDataList, opts ...MannWhitneyUOptions) (*MannWhitneyUResult, error) {
@@ -113,11 +113,14 @@ func MannWhitneyU(data1, data2 insyra.IDataList, opts ...MannWhitneyUOptions) (*
 	sigma2 := n1n2 * (float64(N) + 1) / 12.0 * tieFactor
 	sigmaU := math.Sqrt(sigma2)
 
-	var pValue, zVal float64
+	var pValue float64
+	// zPtr stays nil on the exact path, which computes no z. On the
+	// asymptotic path it points at a value that is NaN when sigmaU == 0,
+	// because the standardization is then undefined.
+	var zPtr *float64
 	var method string
 	if useExact {
 		pValue = mannWhitneyUExactPValue(u1, n1, n2, alt)
-		zVal = math.NaN()
 		method = "exact"
 	} else {
 		var correction float64
@@ -133,13 +136,14 @@ func MannWhitneyU(data1, data2 insyra.IDataList, opts ...MannWhitneyUOptions) (*
 		case Less:
 			correction = -0.5
 		}
-		if sigmaU == 0 {
-			zVal = math.NaN()
-			pValue = math.NaN()
-		} else {
+		zVal := math.NaN()
+		if sigmaU != 0 {
 			zVal = (u1 - muU - correction) / sigmaU
 			pValue = zPValue(zVal, alt)
+		} else {
+			pValue = math.NaN()
 		}
+		zPtr = &zVal
 		method = "asymptotic"
 	}
 
@@ -161,7 +165,7 @@ func MannWhitneyU(data1, data2 insyra.IDataList, opts ...MannWhitneyUOptions) (*
 
 	stat := math.Min(u1, u2)
 	return &MannWhitneyUResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: stat,
 			PValue:    pValue,
 			DF:        nil,
@@ -173,7 +177,7 @@ func MannWhitneyU(data1, data2 insyra.IDataList, opts ...MannWhitneyUOptions) (*
 		},
 		U1:     u1,
 		U2:     u2,
-		Z:      zVal,
+		Z:      zPtr,
 		Method: method,
 	}, nil
 }

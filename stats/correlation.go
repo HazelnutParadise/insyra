@@ -382,7 +382,7 @@ func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
 }
 
 type CorrelationResult struct {
-	testResultBase
+	TestResult
 }
 
 // Correlation calculates correlation between two IDataLists.

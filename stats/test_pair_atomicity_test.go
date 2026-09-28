@@ -116,7 +116,7 @@ func TestFTestForVarianceEqualityReadsBothSamplesAtOneMoment(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FTestForVarianceEquality: %v", err)
 		}
-		if *res.DF != res.DF2 {
+		if *res.DF != *res.DF2 {
 			torn++
 		}
 	}

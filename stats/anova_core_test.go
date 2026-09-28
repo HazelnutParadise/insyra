@@ -84,7 +84,7 @@ func TestLeveneUsesSharedOneWayCore(t *testing.T) {
 	if levene.DF == nil || !coreAlmostEqual(*levene.DF, float64(core.DFB), 1e-12) {
 		t.Fatalf("Levene DF1 mismatch: got %v want %v", levene.DF, core.DFB)
 	}
-	if !coreAlmostEqual(levene.DF2, float64(core.DFW), 1e-12) {
+	if !coreAlmostEqual(*levene.DF2, float64(core.DFW), 1e-12) {
 		t.Fatalf("Levene DF2 mismatch: got %v want %v", levene.DF2, core.DFW)
 	}
 }

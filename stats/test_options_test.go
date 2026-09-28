@@ -347,8 +347,8 @@ func TestTTestOptionsZeroValueMatchesTwoSidedAt95(t *testing.T) {
 	if got.CI[1] != want.CI[1] {
 		t.Errorf("CI[1]: got %v, want %v", got.CI[1], want.CI[1])
 	}
-	if *got.Mean != *want.Mean {
-		t.Errorf("Mean: got %v, want %v", *got.Mean, *want.Mean)
+	if got.Mean != want.Mean {
+		t.Errorf("Mean: got %v, want %v", got.Mean, want.Mean)
 	}
 	if len(got.EffectSizes) != 1 || len(want.EffectSizes) != 1 {
 		t.Fatalf("expected one effect size each, got %+v and %+v", got.EffectSizes, want.EffectSizes)
