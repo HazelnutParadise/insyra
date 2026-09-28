@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode/utf8"
 )
 
 // registerTypeConversionFunctions registers value coercion and null-handling
@@ -58,7 +59,7 @@ func registerTypeConversionFunctions() {
 		// fmt writes its own complaint into the string when the verb does not
 		// match the value — TOSTR(1.5, '%d') gave "%!d(float64=1.5)" — and that
 		// went straight into the cell. Report it instead.
-		if marker := fmtErrorMarker(out); marker != "" {
+		if marker := fmtErrorMarker(out, format, fmt.Sprint(args[0])); marker != "" {
 			return nil, fmt.Errorf("format %q does not fit %T: %s", format, args[0], marker)
 		}
 		return out, nil
@@ -121,23 +122,41 @@ func registerTypeConversionFunctions() {
 }
 
 // fmtErrorMarker reports the first formatting-error marker fmt left in s, or ""
-// when there is none. fmt writes these and nothing else does, so their presence
-// means the format and the value did not match. A value that itself contains a
-// marker-shaped substring would be a false positive; that is far rarer than
-// writing Go's error text into a column.
-func fmtErrorMarker(s string) string {
-	for _, m := range []string{"%!(NOVERB)", "%!(EXTRA ", "(MISSING)", "%!(BADPREC)", "%!(BADWIDTH)"} {
-		if strings.Contains(s, m) {
+// when there is none. fmt writes these, so their presence means the format and
+// the value did not match. A marker that already appears in one of known, the
+// format or the value's own text, was put there by the caller rather than by
+// fmt and is not reported: TOSTR('Item (MISSING)', '%s') is fine.
+//
+// A bare "(MISSING)" is not a marker: fmt writes it only as "%!<verb>(MISSING)",
+// which the verb scan below already finds.
+func fmtErrorMarker(s string, known ...string) string {
+	fromCaller := func(m string) bool {
+		for _, k := range known {
+			if strings.Contains(k, m) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, m := range []string{"%!(NOVERB)", "%!(EXTRA ", "%!(BADPREC)", "%!(BADWIDTH)"} {
+		if strings.Contains(s, m) && !fromCaller(m) {
 			return m
 		}
 	}
 	// %!<verb>( — the shape fmt uses for a verb that does not fit the value.
-	for i := 0; i+3 < len(s); i++ {
-		if s[i] == '%' && s[i+1] == '!' && s[i+3] == '(' {
-			c := s[i+2]
-			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
-				return s[i : i+4]
-			}
+	// The verb is any rune, a punctuation mark or a non-ASCII letter included:
+	// TOSTR(1, '%v %_') gets "1 %!_(MISSING)".
+	for i := 0; i+2 < len(s); i++ {
+		if s[i] != '%' || s[i+1] != '!' {
+			continue
+		}
+		verb, size := utf8.DecodeRuneInString(s[i+2:])
+		end := i + 2 + size
+		if verb == '(' || end >= len(s) || s[end] != '(' {
+			continue
+		}
+		if m := s[i : end+1]; !fromCaller(m) {
+			return m
 		}
 	}
 	return ""

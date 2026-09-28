@@ -30,6 +30,31 @@ The stats package provides comprehensive statistical analysis functions:
 
 Most functions expect numeric data in `DataList`/`DataTable` and return `error` when inputs are invalid or computation fails. Always handle `err` at call sites.
 
+The error is the last value a function returns. A function that returns several values, such as `CorrelationMatrix` or `CorrelationAnalysis`, returns the others first. When a function returns an error, the result pointer it returns is `nil`, so check `err` before reading the result. Five return no error because they cannot fail: `NormCDF`, `DefaultFactorAnalysisOptions`, `RegisterKNNDeviceSearcher`, and the `Show` methods of `ChiSquareTestResult` and `FactorAnalysisResult`, which only print. `stats` reports its failures through the returned error. It never calls `LogFatal` and does not record on a table's or list's `Err()`. `FactorAnalysis` also logs a warning and carries on in a few cases it works around rather than refuses:
+
+- a `FixedK` above the number of variables is lowered to that number;
+- a Bartlett or Anderson-Rubin score with PCA extraction is computed as a regression score;
+- principal-axis factoring hits its iteration limit, or finds an ultra-Heywood case or an imaginary eigenvalue;
+- a rotation that converged from none of its starts returns the best of them.
+
+### Choosing a test
+
+| Question | Function |
+|---|---|
+| Does this sample's mean differ from a known value? | `SingleSampleTTest(data, mu, confidenceLevel...)` |
+| Do two independent samples differ? | `TwoSampleTTest(data1, data2, equalVariance, confidenceLevel...)` |
+| Do two measurements of the same subjects differ? | `PairedTTest(data1, data2, confidenceLevel...)` |
+| The same, with the population σ known | `SingleSampleZTest(data, mu, sigma, alternative, confidenceLevel)` / `TwoSampleZTest(data1, data2, sigma1, sigma2, alternative, confidenceLevel)` |
+| Do three or more groups differ? | `OneWayANOVA(groups...)` |
+| Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells...)` |
+| Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects...)` |
+| Are two categorical variables related? | `ChiSquareIndependenceTest(rowData, colData)` |
+| Does a distribution match the expected proportions? | `ChiSquareGoodnessOfFit(input, p, rescaleP)` |
+| Do groups have equal variance? | `FTestForVarianceEquality(data1, data2)`, `LeveneTest(groups)`, `BartlettTest(groups)` |
+| The same questions without assuming normality | `SingleSampleWilcoxon`, `PairedWilcoxon`, `MannWhitneyU`, `KruskalWallis`, `FriedmanTest` |
+
+`confidenceLevel` is an optional last argument on the t-tests and the Wilcoxon and Mann-Whitney tests, and a required one on the z-tests. Leaving it out uses 0.95, and a value outside (0, 1) is an error. `alternative` is an `AlternativeHypothesis` with no default. See [Nonparametric Tests (Rank-Based)](#nonparametric-tests-rank-based) for when to switch.
+
 ### Values that are not numbers
 
 A value that cannot be read as a finite number — a missing value, a blank, text,
@@ -40,9 +65,41 @@ depends on the family, and each family states which:
 | --- | --- |
 | Regression (linear, polynomial, exponential, logarithmic, logistic, Poisson, GLM) | refused, with an error naming the series and the row |
 | Correlation and covariance | refused, with an error naming the series and the row |
-| Clustering, PCA, KNN | refused |
-| Factor analysis | the whole observation is removed (listwise deletion) |
+| Hypothesis tests: t, z, F, Levene, Bartlett, Wilcoxon, Mann-Whitney U, one-way, two-way and repeated-measures ANOVA, Kruskal-Wallis, Friedman | refused, with an error naming the list and the position, both counted from one |
+| Skewness, kurtosis, moments | refused, with an error naming the series and the one-based row |
+| Clustering, and the features KNN reads | refused |
+| PCA, and the targets `KNNRegress` reads | a blank or text cell is refused, but `NaN` and `±Inf` are **not**: they reach the result, so `PCA` returns `NaN` eigenvalues and `KNNRegress` returns a `NaN` or infinite prediction, with a nil error |
+| Factor analysis | a `NaN` or `±Inf` removes the whole observation (listwise deletion); a blank or text cell is refused |
 | Decision trees in [`insyra/ml`](/Docs/ml.md) | a direction is learned per node for missing *features*; a missing *target* is refused |
+
+The functions below word a refusal the same way. A blank or text cell gives
+`<list> contains a non-numeric value at <position>: <value>`, and a `NaN` or
+`±Inf` gives `<list> contains a non-finite value at <position>: <value>`. The
+list and the position are both counted from one:
+
+| Function | The list is called | The position is a | Example |
+| --- | --- | --- | --- |
+| `SingleSampleTTest`, `SingleSampleZTest`, `SingleSampleWilcoxon`, `CalculateMoment` | `data` | row | `data contains a non-numeric value at row 3: <nil>` |
+| `TwoSampleTTest`, `TwoSampleZTest`, `FTestForVarianceEquality`, `PairedTTest`, `PairedWilcoxon`, `MannWhitneyU` | `data1` or `data2` | row | `data2 contains a non-finite value at row 3: NaN` |
+| `OneWayANOVA`, `KruskalWallis`, `LeveneTest`, `BartlettTest` | `group N`, the Nth list you passed | row | `group 2 contains a non-finite value at row 3: +Inf` |
+| `TwoWayANOVA` | `cell (A=a, B=b)`, the cell for level a of factor A and level b of factor B | row | `cell (A=2, B=1) contains a non-numeric value at row 2: x` |
+| `RepeatedMeasuresANOVA`, `FriedmanTest` | `subject N`, the Nth list you passed | condition, because each list holds one subject's conditions | `subject 2 contains a non-finite value at condition 2: NaN` |
+| `Skewness`, `Kurtosis` | `sample` | row | `sample contains a non-numeric value at row 3: <nil>` |
+| `Correlation`, `Covariance` | `x` or `y` | row | `x contains a non-numeric value at row 3: <nil>` |
+
+The other errors the hypothesis tests raise about a group, a cell or a subject
+count from one too: `group 2 is empty`, `empty cell at A=1, B=2`,
+`subject 2 has 2 observations, expected 3`. In the hypothesis tests, a `nil`
+list, typed or not, counts as an empty list and gets the error an empty one
+would.
+
+To analyse data with gaps, remove them before the call.
+[`DataList.ClearNils`](DataList.md#clearnils) and
+[`DataList.ClearNaNs`](DataList.md#clearnans) drop `nil` and `float64` `NaN`
+cells, and `ClearNilsAndNaNs` does both. Neither removes text or `±Inf`, so
+convert or remove those yourself. In a paired test or a repeated-measures
+design, remove the whole pair or the whole subject: clearing one list on its own
+leaves it shorter than the others, and the call is refused for the mismatch.
 
 Only Go numeric types convert. A string is refused even when it spells a
 number, so a table loaded without type inference has to be converted before it
@@ -77,7 +134,7 @@ type testResultBase struct {
 }
 
 type EffectSizeEntry struct {
-    Type  string  // "cohen_d", "hedges_g", etc.
+    Type  string  // "cohen_d" for the t- and z-tests; the rank-based types are listed under Nonparametric Result Types
     Value float64 // Effect size value
 }
 ```
@@ -307,7 +364,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TTestResult, error)
 ```
 
-**Description:** Compare means of paired/dependent samples.
+**Description:** Compare means of paired/dependent samples. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming `data1` or `data2` and the one-based row.
 
 **Parameters:**
 
@@ -356,6 +413,8 @@ if err != nil {
 fmt.Printf("t=%.4f, p=%.4f, mean diff=%.4f\n", result.Statistic, result.PValue, *result.MeanDiff)
 ```
 
+A sample with no spread has no standard error. The t-tests then return `+Inf` or `-Inf` as the statistic with a p-value of 0, or `NaN` for both when the mean equals `mu` exactly, and the error is nil. Check `Statistic` before reporting it.
+
 ---
 
 ## Z-Tests
@@ -391,6 +450,8 @@ type ZTestResult struct {
     N2    *int     // Second sample size (nil for single sample)
 }
 ```
+
+The t-tests report Cohen's d with its sign, negative when the first sample's mean is below `mu` or below the second sample's mean. The z-tests report its absolute value, matching the R output they are checked against, so their effect size carries no direction. Read the direction from `Statistic`.
 
 **Example**:
 
@@ -449,7 +510,22 @@ type ChiSquareTestResult struct {
 }
 ```
 
-The `ContingencyTable` contains the observed frequencies and expected frequencies for each cell in the contingency table. For goodness of fit tests, it shows observed vs expected values for each category. For independence tests, it shows the full contingency table with observed and expected values for each combination of row and column categories.
+The `ContingencyTable` is a `DataTable` whose cells are `[2]float64{observed, expected}`, one array per cell.
+
+- **Goodness of fit:** one column named `Observed_Expected`, and one row per category that occurs in `input`, sorted by label. The category is the row name, read with `RowNames()`. Expected is the total count times the matching value of `p`, and `p` is matched to the categories in that sorted order.
+- **Independence:** one column per column category and one row per row category, both sorted by label. The categories are the names, read with `ColNames()` and `RowNames()`.
+
+The numeric helpers cannot read these cells. `Sum()` on such a column logs a warning for every cell and returns `NaN`. Read the arrays directly:
+
+```go
+ct := res.ContingencyTable
+col := ct.GetCol("A") // or ct.GetCol(insyra.Name("Observed_Expected"))
+names := ct.RowNames()
+for i := 0; i < col.Len(); i++ {
+    pair := col.Get(i).([2]float64)
+    fmt.Printf("%s: observed=%v expected=%v\n", names[i], pair[0], pair[1])
+}
+```
 
 ##### Show Method
 
@@ -654,7 +730,7 @@ fmt.Printf("p = %.4f\n", stats.NormCDF(crit)) // 0.9750
 func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)
 ```
 
-**Description:** Compare means across multiple independent groups.
+**Description:** Compare means across multiple independent groups. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the group and the row, both counted from one.
 
 **Parameters:**
 
@@ -670,7 +746,7 @@ func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)
 func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error)
 ```
 
-**Description:** Analyze effects of two factors and their interaction.
+**Description:** Analyze effects of two factors and their interaction. Cells must be in row-major order: cell `i*factorBLevels + j` holds the data for `A=i, B=j`, so you pass exactly `factorALevels × factorBLevels` of them. Both level counts must be at least 2, and a level count below 2 or a cell count that is not their product fails with `invalid levels or cells`. There is no long-format entry point — reshape your data into cells yourself before calling this function. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the cell and the row. Errors count levels from one, so `cell (A=2, B=1)` is `cells[factorBLevels]`, the first level of B under the second level of A.
 
 **Parameters:**
 
@@ -761,7 +837,7 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, erro
 func LeveneTest(groups []insyra.IDataList) (*FTestResult, error)
 ```
 
-**Description:** Test equality of variances across multiple groups (robust). Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
+**Description:** Test equality of variances across multiple groups (robust). Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the group and the row, both counted from one, and is never counted in `n`.
 
 **Parameters:**
 
@@ -777,7 +853,7 @@ func LeveneTest(groups []insyra.IDataList) (*FTestResult, error)
 func BartlettTest(groups []insyra.IDataList) (*FTestResult, error)
 ```
 
-**Description:** Test equality of variances across multiple groups (assumes normality). Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
+**Description:** Test equality of variances across multiple groups (assumes normality). Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the group and the row, both counted from one, and is never counted in `n`.
 
 **Parameters:**
 
@@ -936,7 +1012,9 @@ func SingleSampleWilcoxon(data insyra.IDataList, mu float64, alt AlternativeHypo
 **Description:** Tests whether the median of `data` equals `mu` (Wilcoxon
 signed-rank test on `data - mu`). Zero differences are dropped before
 ranking (R `wilcox.test` default zero-method). The CI is the
-Hodges-Lehmann pseudo-median interval on the `data` scale.
+Hodges-Lehmann pseudo-median interval on the `data` scale. Every
+observation must be a finite number: a blank, text, `NaN`, or `Inf` cell
+is refused with an error naming `data` and the one-based row.
 
 **Parameters:**
 
@@ -957,7 +1035,9 @@ func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, co
 
 **Description:** Tests whether the median of `data1 - data2` equals 0.
 `data1` and `data2` must have the same length. CI is for the median
-paired difference.
+paired difference. Every observation must be a finite number: a blank,
+text, `NaN`, or `Inf` cell is refused with an error naming `data1` or
+`data2` and the one-based row.
 
 **Parameters:**
 
@@ -977,7 +1057,9 @@ func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, conf
 
 **Description:** Wilcoxon-Mann-Whitney rank-sum test on two independent
 samples. `U1` is for `data1`, `U2 = n1·n2 − U1`; `Statistic` is
-`min(U1, U2)`. CI is the Hodges-Lehmann shift interval.
+`min(U1, U2)`. CI is the Hodges-Lehmann shift interval. Every
+observation must be a finite number: a blank, text, `NaN`, or `Inf` cell
+is refused with an error naming `data1` or `data2` and the one-based row.
 
 **Parameters:**
 
@@ -997,6 +1079,9 @@ func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error)
 
 **Description:** Kruskal-Wallis H test on ≥ 2 independent samples.
 `Statistic` is the tie-corrected H referred to χ² with `k − 1` df.
+Every observation must be a finite number: a blank, text, `NaN`, or
+`Inf` cell is refused with an error naming the group and the row, both
+counted from one.
 
 **Parameters:**
 
@@ -1015,7 +1100,9 @@ func FriedmanTest(subjects ...insyra.IDataList) (*FriedmanTestResult, error)
 **Description:** Friedman test for repeated measures. Each `IDataList`
 is one subject's measurements across `k` conditions; all subjects must
 have the same length `k`. `Statistic` is the tie-corrected Q referred
-to χ² with `k − 1` df.
+to χ² with `k − 1` df. Every measurement must be a finite number: a
+blank, text, `NaN`, or `Inf` cell is refused with an error naming the
+subject and the condition, both counted from one.
 
 **Parameters:**
 
@@ -1279,7 +1366,8 @@ const (
 ```
 
 `FactorCountSpec.MaxFactors` caps the Kaiser-derived count. When
-`Method = Fixed`, `MaxFactors` is ignored and `FixedK` is used as-is.
+`Method = Fixed`, `MaxFactors` is ignored and `FixedK` is used, lowered to the
+number of variables (with a warning) when it is larger.
 
 #### FactorAnalysisOptions
 
@@ -2231,7 +2319,7 @@ For detailed mathematical formulas, refer to the [e1071 documentation](https://c
 
 ### Confidence Levels
 
-Most functions accept optional confidence levels. If not specified or invalid (outside 0-1 range), the default confidence level of 0.95 (95%) is used.
+Most functions accept an optional confidence level, which defaults to 0.95 (95%). Where it is passed as an argument, as the t-, z- and Wilcoxon tests take it, a value outside (0, 1) is an error. Where it is an options field, such as `ConfidenceLevel` in the GLM, logistic and Poisson regression options, 0 means unset and any value outside (0, 1) falls back to 0.95.
 
 ### Confidence Intervals for Regression Analysis
 
@@ -2289,8 +2377,10 @@ kinds of check exist:
   the reference live on the same inputs, and the `TestCrossLang*` tests compare.
   They skip when Rscript or Python is absent; `INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1`
   turns that skip into a failure.
-- **Pinned**: a `*_reference.R` script produced the numbers once under R 4.5.1
-  and the corresponding `*_test.go` carries them.
+- **Pinned**: a `*_reference.R` script produced the numbers once and the
+  corresponding `*_test.go` carries them. Seven of the ten scripts name R 4.5.1;
+  `ttest_reference.R`, `clustering_reference.R` and `km_dbscan_reference.R` name
+  no version.
 
 "formula" means the script recomputes the statistic in plain R or NumPy/SciPy
 (`pt`, `pf`, `pchisq`, `pnorm`, ranks) instead of calling the library function
@@ -2299,16 +2389,16 @@ handling is not exercised.
 
 | Method | R | Python | Pinned R output | Tolerance |
 | --- | --- | --- | --- | --- |
-| t-tests (single, two-sample incl. Welch, paired) | formula | formula (`scipy.stats.t`) | `t.test` | 1e-8 statistic, 1e-7 p, 1e-10 CI; pinned 1e-12 |
-| z-tests | formula | formula | formula (`pnorm`/`qnorm`; `BSDA::z.test` is the equivalent, not called) | as t-tests |
+| t-tests (single, two-sample incl. Welch, paired) | formula | formula (`scipy.stats.t`) | `t.test` | statistic and p 1e-8 (two-sample 1e-7), CI 1e-7, means 1e-10; pinned 1e-12, CI 1e-10 |
+| z-tests | formula | formula | formula (`pnorm`/`qnorm`; `BSDA::z.test` is the equivalent, not called) | statistic and p 1e-8, CI 1e-7, means 1e-10; pinned 1e-12, CI 1e-10 |
 | Chi-square goodness of fit, independence | formula (`pchisq`) | formula | formula (`chisq.test` not called) | 1e-8; pinned 1e-12 |
-| One-way, two-way, repeated-measures ANOVA | formula | formula | `aov` (two-way: Type I SS, balanced designs only) | 1e-8, two-way 1e-7; pinned 1e-10 |
+| One-way, two-way, repeated-measures ANOVA | formula | formula | `aov` (two-way: Type I SS, balanced designs only) | 1e-8, two-way and repeated-measures 1e-7; pinned 1e-10 |
 | F-test for variance equality | formula (`pf`) | formula | formula (`var.test` not called) | 1e-8; pinned 1e-12 |
 | Levene | one-way ANOVA on \|x − median\| by formula | formula | `aov` on \|x − median\| (`car::leveneTest` not called) | 1e-8 |
 | Bartlett | formula | formula | `bartlett.test` | 1e-8; pinned 1e-12 |
 | F-test for regression, nested models | formula | formula | formula | 1e-10 |
 | Skewness, kurtosis, moments | formula | formula | formula | 1e-10; pinned 1e-12 |
-| Pearson correlation | `cor`, t and p by formula | `numpy.corrcoef`, formula | `cor`, formula (`cor.test` not called) | statistic and p 1e-8, CI 1e-7; pinned 1e-12 |
+| Pearson correlation | `cor`, t and p by formula | `numpy.corrcoef`, formula | `cor`, formula (`cor.test` not called) | statistic and p 1e-8, CI 1e-7; pinned 1e-12, CI 1e-10 |
 | Spearman correlation | `cor.test(method = "spearman")` for p, `cor` for rho | a port of R's `prho` | `cor`, `cor.test` for p | as Pearson |
 | Kendall correlation | `cor(method = "kendall")`, p by an exact enumeration for n ≤ 7 and the normal approximation above | `scipy.stats.kendalltau` for tau, the same p | `cor`, the same p | as Pearson |
 | Covariance | `cov` | `numpy.cov` | `cov` | 1e-10 |
@@ -2316,17 +2406,17 @@ handling is not exercised.
 | Wilcoxon (single, paired), Mann-Whitney U | `wilcox.test(conf.int = TRUE)` | `scipy.stats.wilcoxon`, `mannwhitneyu` for p; the statistic from ranks | R examples pinned in `nonparam_wilcoxon_test.go` | 1e-9 exact, 1e-8 asymptotic; asymptotic CI 0.1 |
 | Kruskal-Wallis, Friedman | `kruskal.test`, `friedman.test` | `scipy.stats.kruskal`, `friedmanchisquare` | R examples pinned | 1e-9 |
 | PCA | formula (`scale`, `eigen`) | formula (`numpy.linalg.eigh`) | `prcomp(center = TRUE, scale = TRUE)` | eigenvalues 1e-6, components 1e-5; pinned 1e-9 |
-| Factor analysis | `psych::fa`, `psych::principal`, `psych::smc`, `psych::KMO`, `psych::cortest.bartlett`; rotations through GPArotation | — | — | 2e-5 per element. Factor frames are compared up to order and sign, a gradient-projection rotation by its criterion value (5e-3 within the same minimum). Opt-in with `INSYRA_STRICT_FACTOR_R_PARITY=1`; the known remainder is itemised at `factorParityTol` in `factor_analysis_test.go` |
+| Factor analysis | `psych::fa`, `psych::principal`, `psych::smc`, `psych::KMO`, `psych::cortest.bartlett`; rotations through GPArotation | — | — | 2e-5 per element. Factor frames are compared up to order and sign, a gradient-projection rotation by whether the loadings say it is the same solution (1e-2), with the rotation-invariant L·Φ·L' and S·L' held to 2e-5 and W·L' to 1e-4; a solution in a different minimum passes when its criterion value is at or below psych's. Opt-in with `INSYRA_STRICT_FACTOR_R_PARITY=1`; the known remainder is itemised at `factorParityTol` in `factor_analysis_test.go` |
 | KMeans | `stats::kmeans` (Hartigan-Wong, seeded) | a port of Hartigan-Wong driven by a port of R's RNG | `kmeans(nstart = 50)` | exact clusters, 1e-10 SS and centres; pinned 1e-9 |
 | `KMeans.Assign` | formula | — | — | exact assignments, 1e-10 distances |
 | Hierarchical clustering, cut tree | `hclust(dist())`, `cutree`, seven linkages incl. ward.D2, centroid, median | hand-written Lance-Williams | `hclust` | exact merges and labels, 1e-10 heights; pinned 1e-12 |
 | DBSCAN | `dbscan::dbscan`, `dbscan::is.corepoint` | hand-written | `dbscan::dbscan` | exact |
 | Silhouette | `cluster::silhouette` | hand-written | formula | 1e-10; pinned 1e-12 |
 | KNN classification, regression, neighbour search | formula (Euclidean sort, vote, weighting) | formula | hand-computed | exact labels and indices, 1e-10 values |
-| Linear, polynomial regression | formula (OLS on the design matrix); `lm` for predictions | `statsmodels.OLS` | `lm` | 1e-6, SE 1e-5; pinned 1e-9 |
+| Linear, polynomial regression | formula (OLS on the design matrix); `lm` for predictions | `statsmodels.OLS` | `lm` | 1e-6, t 1e-5; pinned 1e-9 |
 | Exponential, logarithmic regression | formula on the log-transformed data; `lm` for predictions | `statsmodels.OLS` | `lm(log(y) ~ x)`, `lm(y ~ log(x))` | 1e-6, t 1e-5 |
 | Logistic, Poisson, generic GLM | `glm` (`confint.default`, `logLik`, `BIC`, `predict`) | `statsmodels.GLM` | — | 1e-6, SE/z/CI 1e-5 |
-| Weighted linear regression | — | `statsmodels.WLS` | — | 1e-8 |
+| Weighted linear regression | — | `statsmodels.WLS` | — | 1e-8, t 1e-6, R² 1e-10 |
 | Ridge, Lasso | — | `sklearn.linear_model.Ridge(solver = "cholesky")`, `Lasso` | — | 1e-8; Lasso 1e-6 with the zero coefficients required to match |
 | NormCDF, NormPPF, Diag | — | — | — | hand-written expected values only |
 
@@ -2344,10 +2434,12 @@ Three things the table makes visible:
 ## Behavior Differences From R
 
 The numerical output of insyra's `stats` package agrees with the references
-above to within the tolerances listed — 1e-12 on the pinned outputs of
-`t.test`, `aov`, `bartlett.test`, `prcomp`, `kmeans`, `dbscan`, `hclust`, `lm`
-and `cor.test`, and to the same R formulas where the canonical function is not
-called (chi-square, `var.test`, median-centered `car::leveneTest`) — with the
+above to within the tolerances listed. On the pinned outputs that is 1e-12 for
+`bartlett.test` and `hclust` and for the statistics and p-values of `t.test` and
+`cor.test` (1e-10 on their intervals), 1e-10 for `aov`, 1e-9 for `prcomp`,
+`kmeans` and `lm`, and an exact match for `dbscan`. Where the canonical function
+is not called (chi-square, `var.test`, median-centered `car::leveneTest`), the
+comparison is against the same R formulas. This holds with the
 single semantic exception below. Discrete outputs (DF, cluster IDs, hclust
 merge structure) match exactly.
 

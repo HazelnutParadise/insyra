@@ -677,9 +677,22 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 // anything below an hour. A shift past what a Duration holds, about 292
 // years, is refused rather than converted.
 func shiftDays(t time.Time, days float64) (any, error) {
+	return shiftByDays(t, days, days)
+}
+
+// subtractDays is shiftDays the other way. It exists so the error quotes the
+// operand the expression was written with: `B - 106752` subtracts 106,752
+// days, and saying "a shift of -106752 days" sends the reader looking for a
+// minus sign that is not in their expression.
+func subtractDays(t time.Time, days float64) (any, error) {
+	return shiftByDays(t, -days, days)
+}
+
+// shiftByDays moves t by days and names operand in the out-of-range error.
+func shiftByDays(t time.Time, days, operand float64) (any, error) {
 	d, ok := durationOf(days*24, time.Hour)
 	if !ok {
-		return nil, fmt.Errorf("a shift of %v days is out of range", days)
+		return nil, fmt.Errorf("a shift of %v days is out of range", operand)
 	}
 	return t.Add(d), nil
 }
@@ -926,7 +939,7 @@ func applyOperator(op string, left, right any) (any, error) {
 				// hour, so A + 0.001 moved the timestamp not at all.
 				return shiftDays(lt, rf)
 			case "-":
-				return shiftDays(lt, -rf)
+				return subtractDays(lt, rf)
 			}
 		}
 	}
@@ -1219,9 +1232,13 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 		}
 
 		// A sequence function (LAG, CUMSUM, ...) already produced a whole
-		// column; hand it through so nesting keeps every row.
-		if col, ok := val.([]any); ok && len(col) == ctx.GetRowCount() {
-			return col, nil
+		// column; hand it through so nesting keeps every row. Decide by the
+		// node, not by the length: a row read such as @.0 is one value even on
+		// a table whose column count equals its row count.
+		if fc, isCall := n.(*funcCallNode); isCall && IsSequenceFunction(fc.name) {
+			if col, ok := val.([]any); ok {
+				return col, nil
+			}
 		}
 		// Otherwise a scalar: aggregates see it as a one-element column.
 		return []any{val}, nil
@@ -1232,13 +1249,16 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 	rowCount := ctx.GetRowCount()
 	results := make([]any, rowCount)
 
-	// Save current row index to restore later
-	originalRowIdx := ctx.GetRowIndex()
-	defer func() {
-		if err := ctx.SetRowIndex(originalRowIdx); err != nil {
-			log.Printf("ccl: failed to restore row index: %v", err)
-		}
-	}()
+	// Save current row index to restore later. With no rows the loop below
+	// never moves it, and setting row 0 of an empty context would fail.
+	if rowCount > 0 {
+		originalRowIdx := ctx.GetRowIndex()
+		defer func() {
+			if err := ctx.SetRowIndex(originalRowIdx); err != nil {
+				log.Printf("ccl: failed to restore row index: %v", err)
+			}
+		}()
+	}
 
 	for i := 0; i < rowCount; i++ {
 		if err := ctx.SetRowIndex(i); err != nil {

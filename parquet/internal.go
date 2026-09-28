@@ -233,8 +233,13 @@ func supportedArrowType(dt arrow.DataType) bool {
 		arrow.STRING, arrow.LARGE_STRING,
 		arrow.BINARY, arrow.LARGE_BINARY, arrow.FIXED_SIZE_BINARY,
 		arrow.TIMESTAMP, arrow.DATE32, arrow.DATE64,
-		arrow.DECIMAL128, arrow.DECIMAL256:
+		arrow.DECIMAL128, arrow.DECIMAL256,
+		arrow.NULL:
 		return true
+	case arrow.DICTIONARY:
+		// A dictionary is read through its values, so it is as readable as
+		// they are.
+		return supportedArrowType(dt.(*arrow.DictionaryType).ValueType)
 	}
 	return false
 }
@@ -303,6 +308,21 @@ func getVal(arr arrow.Array, i int) any {
 	case *array.Decimal256:
 		n := a.Value(i).BigInt()
 		return decimal.NewFromScaledInt(n, a.DataType().(*arrow.Decimal256Type).Scale)
+	case *array.Null:
+		// Every cell of a null-typed column is null, and nil is exactly that.
+		return nil
+	case *array.Dictionary:
+		// A file that stores its Arrow schema hands a dictionary column over
+		// as indices into a values array; the cell is the value its index
+		// points to. A null index or a null value is nil.
+		if a.IsNull(i) {
+			return nil
+		}
+		values, idx := a.Dictionary(), a.GetValueIndex(i)
+		if values.IsNull(idx) {
+			return nil
+		}
+		return getVal(values, idx)
 	default:
 		return nil
 	}

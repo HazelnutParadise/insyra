@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	gsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -109,6 +110,125 @@ func TestSelfReferentialValueDoesNotExhaustTheStack(t *testing.T) {
 	// A fatal stack overflow cannot be recovered, so reaching the next line at
 	// all is the assertion.
 	_ = encodeCell(cyclic)
+}
+
+// A value that refers to itself more than once used to double its work at every
+// level down to the depth limit, so counting it never finished. A reference
+// back to a container still being encoded is written as a marker instead.
+func TestSelfReferentialValueIsEncodedPromptly(t *testing.T) {
+	s := []any{nil, nil}
+	s[0] = s
+	s[1] = s
+	m := map[string]any{}
+	m["a"] = m
+	m["b"] = m
+
+	done := make(chan map[any]int, 1)
+	go func() { done <- NewDataList(Cell(s), Cell(s), Cell(m)).Counter() }()
+	select {
+	case counter := <-done:
+		if got := counter[ToMapKey(s)]; got != 2 {
+			t.Errorf("Counter[s] = %d, want 2", got)
+		}
+		if got := counter[ToMapKey(m)]; got != 1 {
+			t.Errorf("Counter[m] = %d, want 1", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Counter on a value that refers to itself twice did not finish")
+	}
+
+	// Distinct cyclic values are told apart, the same content is the same
+	// value, and the answer does not change between calls.
+	a := []any{nil, 1}
+	a[0] = a
+	b := []any{nil, 2}
+	b[0] = b
+	c := []any{nil, 1}
+	c[0] = c
+	if encodeCell(a) == encodeCell(b) {
+		t.Error("cyclic values with different content encode alike")
+	}
+	if encodeCell(a) != encodeCell(c) {
+		t.Error("cyclic values with the same content encode differently")
+	}
+	if first, again := encodeCell(a), encodeCell(a); first != again {
+		t.Error("the encoding of a cyclic value changed between calls")
+	}
+	if got := NewDataList(Cell(a), Cell(b), Cell(c)).Count(a); got != 2 {
+		t.Errorf("Count(a) = %d, want 2", got)
+	}
+}
+
+// A value that shares a sub-value without containing itself, built as
+// x = []any{x, x} over and over, has 2^depth paths through it, and encoding
+// every path took 675 ms at depth 22 and never finished at depth 40. Its
+// identity must still come from its content, whether or not the content is
+// shared.
+func TestSharedSubValueIsEncodedPromptly(t *testing.T) {
+	shared := func(depth, leaf int) any {
+		var x any = leaf
+		for range depth {
+			x = []any{x, x}
+		}
+		return x
+	}
+	var unshared func(depth int) any
+	unshared = func(depth int) any {
+		if depth == 0 {
+			return 1
+		}
+		return []any{unshared(depth - 1), unshared(depth - 1)}
+	}
+
+	// Each level of []any is two levels of encoding, a slice and the interface
+	// holding it, so depth 30 is the deepest whose leaves the encoder still
+	// reads and depth 40 is cut short by maxCellEncodeDepth.
+	for _, depth := range []int{30, 40} {
+		x, y, other := shared(depth, 1), shared(depth, 1), shared(depth, 2)
+		type result struct {
+			count   int
+			elapsed time.Duration
+		}
+		done := make(chan result, 1)
+		go func() {
+			start := time.Now()
+			n := NewDataList(Cell(x), Cell(y), Cell(other)).Count(x)
+			done <- result{n, time.Since(start)}
+		}()
+		select {
+		case r := <-done:
+			want := 2 // x and y, not other
+			if depth > 30 {
+				want = 3 // beyond the limit the leaves are not read
+			}
+			if r.count != want {
+				t.Errorf("depth %d: Count(x) = %d, want %d", depth, r.count, want)
+			}
+			if r.elapsed > 100*time.Millisecond {
+				t.Errorf("depth %d: Count took %v, want under 100ms", depth, r.elapsed)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("depth %d: Count on a value sharing its sub-values did not finish", depth)
+		}
+	}
+
+	// Sharing does not change identity: the same content built without
+	// sharing is the same value, and one different leaf is a different value.
+	tree := unshared(12)
+	if encodeCell(tree) != encodeCell(shared(12, 1)) {
+		t.Error("the same content encodes differently with and without sharing")
+	}
+	if first, again := encodeCell(tree), encodeCell(tree); first != again {
+		t.Error("the encoding of a large nested value changed between calls")
+	}
+	node := tree.([]any)
+	for range 11 {
+		node = node[1].([]any)
+	}
+	node[1] = 2
+	if encodeCell(tree) == encodeCell(shared(12, 1)) {
+		t.Error("values differing in one deep leaf encode alike")
+	}
 }
 
 func TestComparableValuesAreStillKeyedByThemselves(t *testing.T) {
@@ -407,3 +527,55 @@ type zzLongStringer struct{ v []int }
 // The slice field is what makes it uncomparable, and it is read so the
 // field is not dead.
 func (l zzLongStringer) String() string { return strings.Repeat("x", 200-len(l.v)) }
+
+// Searching for a value Go cannot compare over a column of other types costs
+// about a type check per cell. The searched value used to be encoded again for
+// every cell, so a 64 KB []byte over 20,000 int64 cells took seconds.
+func TestSearchingForAnUncomparableValueDoesNotReencodeItPerCell(t *testing.T) {
+	restoreConfig(t)
+	Config.SetLogLevel(LogLevelFatal)
+	cells := make([]any, 20000)
+	for i := range cells {
+		cells[i] = int64(i)
+	}
+	blob := make([]byte, 64<<10)
+	blob[0] = 1
+	cells[7] = Cell(append([]byte(nil), blob...))
+	dl := NewDataList(cells...)
+	dt := NewDataTable(NewDataList(cells...))
+
+	start := time.Now()
+	found := dl.FindAll(blob)
+	count := dl.Count(blob)
+	dt.DropRowsContain(blob)
+	elapsed := time.Since(start)
+	t.Logf("FindAll + Count + DropRowsContain with a 64 KB []byte over 20,000 cells: %v", elapsed)
+
+	if len(found) != 1 || found[0] != 7 || count != 1 {
+		t.Fatalf("FindAll = %v, Count = %d; want [7] and 1", found, count)
+	}
+	if dt.NumRows() != 19999 {
+		t.Fatalf("DropRowsContain left %d rows, want 19999", dt.NumRows())
+	}
+	if elapsed > time.Second {
+		t.Fatalf("searching took %v; the searched value is being re-encoded per cell", elapsed)
+	}
+}
+
+// A nested array and a nested slice with the same elements encode alike, and
+// that must not depend on their size: a slice past the inline limit was written
+// as a digest while an array never was, so the two stopped matching once the
+// elements grew.
+func TestNestedArrayAndSliceMatchAtAnySize(t *testing.T) {
+	for _, n := range []int{10, 200} {
+		big := make([]any, n)
+		for i := range big {
+			big[i] = i
+		}
+		asArray := []any{[2]any{big, big}}
+		asSlice := []any{[]any{big, big}}
+		if got, want := encodeCell(asArray), encodeCell(asSlice); got != want {
+			t.Errorf("n=%d: the array and the slice encode differently:\n%.120s\n%.120s", n, got, want)
+		}
+	}
+}

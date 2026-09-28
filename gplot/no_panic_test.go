@@ -20,7 +20,9 @@ import (
 func TestCreateBarChart_NoXAxisNumbersTheBars(t *testing.T) {
 	quietFatal(t)
 
-	plt := CreateBarChart(BarChartConfig{}, []float64{1, 2, 3})
+	// Values far from 1..3, so neither axis would print a tick "3" on its own:
+	// the unlabelled numeric x axis runs 0..2 and the y axis counts in hundreds.
+	plt := CreateBarChart(BarChartConfig{}, []float64{100, 200, 300})
 	if plt == nil {
 		t.Fatal("CreateBarChart returned nil for valid data with no labels")
 	}

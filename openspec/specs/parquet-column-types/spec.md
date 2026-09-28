@@ -14,11 +14,15 @@ A Parquet file written by another tool carries column types this library never w
 
 ### Requirement: Every Arrow type with a faithful Go representation gets one
 
-以下 Arrow 型別 SHALL 讀成對應的 Go 值：`Date32` 與 `Date64` 讀成 `time.Time`；`Int8`、`Int16`、`Uint8`、`Uint16`、`Uint32`、`Uint64` 讀成同名的 Go 整數型別；`Binary`、`LargeBinary`、`FixedSizeBinary` 讀成 `[]byte`；`LargeString` 讀成 `string`；`Decimal128` 與 `Decimal256` 讀成保留原始係數與 scale 的十進位值。轉換 SHALL NOT 捨入或改變數值。二進位欄位的格子 SHALL NOT 與文字欄位的格子無法區分。
+以下 Arrow 型別 SHALL 讀成對應的 Go 值：`Date32` 與 `Date64` 讀成 `time.Time`；`Int8`、`Int16`、`Uint8`、`Uint16`、`Uint32`、`Uint64` 讀成同名的 Go 整數型別；`Binary`、`LargeBinary`、`FixedSizeBinary` 讀成 `[]byte`；`LargeString` 讀成 `string`；`Null` 讀成 `nil`，這種欄位本來就只有 null，不算讀不了；`Decimal128` 與 `Decimal256` 讀成保留原始係數與 scale 的十進位值。轉換 SHALL NOT 捨入或改變數值。二進位欄位的格子 SHALL NOT 與文字欄位的格子無法區分。
 
 #### Scenario: A date column written by another tool
 - **WHEN** 讀取 `Date32` 或 `Date64` 欄位
 - **THEN** 每一格是對應日期的 `time.Time`
+
+#### Scenario: A null-typed column
+- **WHEN** 讀取 Arrow 型別為 `Null` 的欄位
+- **THEN** 每一格為 `nil`，且 `Err()` 不記錄這一欄的原因
 
 #### Scenario: A decimal column
 - **WHEN** 讀取 `Decimal128` 欄位
@@ -32,6 +36,14 @@ A Parquet file written by another tool carries column types this library never w
 - **WHEN** 同一份檔案同時有 `Binary` 欄與 `String` 欄，且內容相同
 - **THEN** 兩者的格子型別不同，分辨得出哪一欄是二進位
 - **AND** 二進位欄的位元組完整保留，整欄以十六進位顯示，不因某一列剛好是合法 UTF-8 而改變顯示方式
+
+### Requirement: A dictionary column reads as its values
+
+Dictionary 欄位 SHALL 讀成每一列索引所指的值，型別與直接讀取該值型別時相同；該列索引或所指的值為 null 時 SHALL 讀成 `nil`。檔案保存了 Arrow schema、reader 拿到的是 Arrow dictionary 時也 SHALL 如此。值型別沒有對應表示法時，SHALL 比照該型別讀成 `nil` 並記錄原因。
+
+#### Scenario: A dictionary of strings stored with its schema
+- **WHEN** 以 pqarrow 保存 Arrow schema 寫入 `dictionary<values=utf8, indices=int32>` 欄位，內容為 `x`、`y`、null、`x`
+- **THEN** 讀回 `"x"`、`"y"`、`nil`、`"x"`，且 `Err()` 為 nil
 
 ### Requirement: A column that cannot be read says so
 

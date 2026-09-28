@@ -124,6 +124,37 @@ const (
 )
 ```
 
+## Things to be careful about
+
+### A chart that cannot be built is `nil`
+
+No `Create...` function in this package returns an `error`. When one cannot build a chart, usually because it was given no data, it logs the reason as a warning and returns `nil`. `CreateGaugeChart` is the exception: it takes a plain `float64` and always returns a chart.
+
+A `nil` chart still satisfies `Renderable`, so `SaveHTML` and `SavePNG` accept it, and today they panic with a nil pointer dereference instead of returning an error. Check the result before saving:
+
+```go
+chart := plot.CreateBarChart(config, data)
+if chart == nil {
+    return // CreateBarChart already logged why
+}
+err := plot.SaveHTML(chart, "sales.html")
+```
+
+### A `nil` list among real lists is skipped
+
+`CreateBarChart`, `CreateLineChart` and `CreateBoxPlot` drop a `nil` list, whether a nil interface or a nil `*insyra.DataList`. They log a warning naming its position and draw the rest, and they return `nil` only when no list is left. In `CreateBoxPlot`, a series left with no lists is dropped, including a series given no lists at all; when no series is left, the result is `nil`. `CreateWordCloud` takes one list, so a `nil` list there returns `nil`.
+
+### Two constructors write into what you pass
+
+- `CreateKlineChart` sorts its points by date in place. Called as `CreateKlineChart(cfg, points...)`, it reorders your `points` slice.
+- `CreateRadarChart` fills in an empty `Color` on each element of the `series` slice you pass, and adds an entry to `config.MaxValues` for every indicator that has none. Your map is changed only when you supplied one; a `nil` `MaxValues` stays `nil` in your config.
+
+`CreateBoxPlot` also assigns default colours, but to its own copy of the series, so your slice is unchanged.
+
+### `Title` and `Subtitle` are HTML-escaped
+
+go-echarts writes the chart options into a `<script>` block without escaping HTML, so text taken from user data could close that block and inject markup. Every constructor passes `Title` and `Subtitle` through `html.EscapeString` first. A title of `</script><script>alert(1)</script>` is written to the file as `&lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;`, and the chart still shows the text. Only these two fields are escaped; axis names, series names and data values are written as given.
+
 ---
 
 ## Saving Charts
@@ -145,6 +176,8 @@ func SaveHTML(chart Renderable, path string, animation ...bool) error
 **Returns:**
 
 - `error`: Error when the operation fails.
+
+**Note:** two charts built from the same config produce different HTML files. go-echarts gives each chart object a random 12-character id when the chart is created and writes it into the page, including the `id` of the chart's `<div>`. Saving the same chart object twice gives identical files. Compare saved files by substring, or mask the id, rather than byte for byte.
 
 ### Save PNG
 
@@ -527,6 +560,8 @@ func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *chart
 
 - `*charts.Funnel`: Return value.
 
+The stages come from a map and the series is built by ranging over it, so the order of the stages in the generated chart options changes from call to call.
+
 ### 8. Gauge Chart
 
 ![Gauge Chart Example](./img/plot/gauge_example.png)
@@ -616,6 +651,8 @@ func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.Word
 
 - `*charts.WordCloud`: Return value.
 
+Each distinct value in `data` is one word, weighted by how many times it appears. The words are collected in a map, so their order in the generated chart options changes from call to call.
+
 ### 10. Sankey Chart
 
 ![Sankey Chart Example](./img/plot/sankey_example.png)
@@ -696,6 +733,8 @@ type BoxPlotConfig struct {
     YAxisFormatter   string
 }
 ```
+
+Each series' `Data` holds one list per category: the first list is the first box on the X axis. Without `XAxis` the categories are named `Category 1`, `Category 2`, and so on. Every series is cut to the number of lists in the shortest series, and to the length of `XAxis` when that is shorter.
 
 #### Creation
 

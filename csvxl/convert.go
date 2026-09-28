@@ -12,6 +12,7 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 	"github.com/HazelnutParadise/insyra"
 	insyracsv "github.com/HazelnutParadise/insyra/internal/csv"
+	"github.com/HazelnutParadise/insyra/internal/excelsheet"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -218,16 +219,16 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, options .
 
 	numSheets := len(sheetsToProcess)
 	for idx, sheet := range sheetsToProcess {
-		if err := safeSheetFileName(sheet); err != nil {
-			return err
-		}
 		csvName := sheet + ".csv"
 		if len(csvNames) > idx && csvNames[idx] != "" {
 			csvName = csvOutputName(csvNames[idx])
 		}
 
-		outputCsv := filepath.Join(outputDir, csvName)
-		err := saveSheetAsCsv(f, sheet, outputCsv, opts.AllowFormulas)
+		outputCsv, err := safeSheetCSVPath(outputDir, sheet, csvName)
+		if err != nil {
+			return err
+		}
+		err = saveSheetAsCsv(f, sheet, outputCsv, opts.AllowFormulas)
 		if err != nil {
 			return fmt.Errorf("failed to save sheet %s as CSV: %w", sheet, err)
 		}
@@ -239,49 +240,33 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, options .
 
 // ===============================
 
-// replaceSheet makes sheetName an empty sheet in f. An existing sheet of that
-// name is deleted first so nothing from it survives; excelize.NewSheet alone
-// would return the existing sheet and leave its cells in place. excelize
-// refuses to delete a workbook's only sheet, so in that case a placeholder is
-// created first and removed once the new sheet exists.
+// replaceSheet makes sheetName an empty sheet in f: a new sheet, or the
+// existing one rebuilt in its place by excelsheet.Replace, so nothing of the
+// old sheet survives while it keeps its position among the sheets.
 func replaceSheet(f *excelize.File, sheetName string) error {
 	idx, err := f.GetSheetIndex(sheetName)
 	if err != nil {
 		return err
 	}
-	if idx != -1 {
-		placeholder := ""
-		if f.SheetCount == 1 {
-			placeholder = "__insyra_placeholder__"
-			if _, err := f.NewSheet(placeholder); err != nil {
-				return err
-			}
-		}
-		if err := f.DeleteSheet(sheetName); err != nil {
-			return err
-		}
-		if _, err := f.NewSheet(sheetName); err != nil {
-			return err
-		}
-		if placeholder != "" {
-			return f.DeleteSheet(placeholder)
-		}
-		return nil
+	if idx == -1 {
+		_, err = f.NewSheet(sheetName)
+		return err
 	}
-	_, err = f.NewSheet(sheetName)
-	return err
+	return excelsheet.Replace(f, sheetName, idx)
 }
 
-// safeSheetFileName returns the sheet name if it can be used as a single
-// path element under the output directory, or an error. A workbook's
-// sheet names come from workbook.xml and are attacker-controlled, so
-// "../x" or "a/b" must never be joined onto outputDir.
-func safeSheetFileName(sheet string) error {
-	if sheet == "" || sheet == "." || sheet == ".." ||
-		strings.ContainsAny(sheet, `/\`) || filepath.Base(sheet) != sheet {
-		return fmt.Errorf("sheet name %q cannot be used as a file name", sheet)
+// safeSheetCSVPath joins the CSV file name used for a sheet onto outputDir. A
+// workbook's sheet names come from workbook.xml and are attacker-controlled, so
+// the name actually used, the sheet name plus ".csv" or the caller's csvNames
+// entry, is refused when it holds a path separator or when the joined path
+// would not be a file directly inside outputDir. Any other name is an ordinary
+// file name: a sheet named "." or ".." becomes "..csv" or "...csv".
+func safeSheetCSVPath(outputDir, sheet, fileName string) (string, error) {
+	path := filepath.Join(outputDir, fileName)
+	if fileName == "" || strings.ContainsAny(fileName, `/\`) || filepath.Dir(path) != filepath.Clean(outputDir) {
+		return "", fmt.Errorf("sheet name %q cannot be used as a file name: %q", sheet, fileName)
 	}
-	return nil
+	return path, nil
 }
 
 // saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file. The

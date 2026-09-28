@@ -128,8 +128,8 @@ if err != nil {
 kernel := weights["layer.weight"]
 ```
 
-The loader validates the 8-byte header length, JSON entries, shape element
-counts, byte offsets, non-overlap, and complete contiguous coverage of the data
+The loader validates the 8-byte header length, JSON entries, a tensor name
+declared more than once, shape element counts, byte offsets, non-overlap, and complete contiguous coverage of the data
 region before materialising any tensor. The optional `__metadata__` entry is
 accepted as a string-to-string object and ignored. Malformed input returns an
 error naming the defect and tensor rather than panicking.
@@ -179,6 +179,16 @@ result, err := model.Fit(trainX, trainY, nn.FitConfig{
 if err != nil { log.Fatal(err) }
 _ = result.TrainLosses
 ```
+
+The optimizer selectors are `nn.SGD{Rate}`, `nn.SGDMomentum{Rate, Momentum}`,
+`nn.Adam{Rate}` and `nn.AdamW{Rate, WeightDecay}`, and each runs the tape method
+of the same name. The loss selectors are `nn.CrossEntropy{}`, `nn.MSE{}` and
+`nn.BCEWithLogits{}`, also spelled `SoftmaxCrossEntropy`, `MSELoss` and
+`BCEWithLogitsLoss`. `CrossEntropy` needs int64 targets and the other two need
+float32 targets, in `ValY` as well as `y`. `Fit` refuses a missing optimizer or
+loss, a rate, momentum or weight decay that is negative or not finite, an
+`Epochs` or `BatchSize` below 1, and `ValX` given without `ValY` or the other
+way round.
 
 `Seed` is always used as the source for `math/rand`'s `Perm` shuffle. Zero is
 a valid seed, not a request for time-based randomness. The same inputs,
@@ -241,8 +251,19 @@ gradient; a separated softmax plus log-loss path is not provided. `SGD` applies
 one in-place `w -= learningRate * gradient` step to every tracked parameter.
 Gradients are float32 and are available through `Parameter.Grad()` or
 `Tape.Grad(parameter.Value())` after `Backward`; an unconnected tracked
-parameter receives a zero tensor. Exact-form GELU is differentiable; the tanh
+parameter receives a zero tensor. A `Backward` that returns an error publishes
+nothing: both keep returning what the last successful pass computed.
+`Tape.Tanh`'s gradient rounds every step to float32 without fusing any two, so
+it is the same bits on every platform. Exact-form GELU is differentiable; the tanh
 approximation is refused by the tape until its VJP is covered.
+
+`Embedding` is also a tape operation. `tape.Embedding(table, indices)` looks up
+rows of a float32 `[vocab, dim]` table with int64 indices shaped `[N]` or
+`[N,S]`, returns `[N, dim]` or `[N, S, dim]`, and adds the gradient of every
+repeated index into the same table row. An index outside `[0, vocab)` is an
+error. `tape.EmbeddingLookup(indices, table)` is the same operation with the
+arguments in the order the layer's `Forward` takes them. The catalog's
+`nn.Embedding(vocab, dim)` is the layer that creates such a table and trains it.
 
 Adam keeps first and second moments per tracked parameter and applies one
 bias-corrected step with PyTorch's defaults (`betas=(0.9, 0.999)`, `eps=1e-8`):
@@ -270,6 +291,103 @@ for step := 0; step < 5; step++ {
 	if err := tape.AdamW(schedule.LR(step), 1e-2); err != nil { log.Fatal(err) }
 }
 ```
+
+### Custom operations
+
+An operation the tape does not provide, such as one computed by your own
+kernel, joins the tape through `Custom`. Compute the forward result yourself,
+then record it with the tensors it was computed from and its reverse rule:
+
+```go
+y, err := nn.Mul(w.Value(), x) // any float32 result computed outside the tape
+if err != nil { log.Fatal(err) }
+err = tape.Custom("scale", []*nn.Tensor{w.Value(), x}, y,
+	func(upstream *nn.Tensor) ([]*nn.Tensor, error) {
+		dw, err := nn.Mul(upstream, x)
+		if err != nil { return nil, err }
+		dx, err := nn.Mul(upstream, w.Value())
+		if err != nil { return nil, err }
+		return []*nn.Tensor{dw, dx}, nil
+	})
+if err != nil { log.Fatal(err) }
+```
+
+The reverse rule receives the gradient flowing into `y`, shaped like `y`, and
+returns one gradient per input in the same order, shaped like that input, or
+`nil` for an input that receives none. It does not have to be the derivative
+of the forward pass: a hard threshold can declare a smooth surrogate, and the
+tape propagates whatever the rule returns. Without `Custom`, a tensor computed
+outside the tape is disconnected from it, and its inputs silently receive a
+zero gradient.
+
+`Custom` refuses an empty name, a nil rule, a nil or non-float32 tensor, an
+output that is also one of its inputs, an output another operation on the tape
+already produced, and an output another operation already read, and records
+nothing when it refuses. The last rule sets the order: record the custom
+operation before the operations that use its output, because the reverse pass
+visits operations in reverse and a reader recorded earlier would be visited
+after it, leaving its gradient short.
+During `Backward`, a rule that returns an error, the wrong number of
+gradients, or a gradient of the wrong type or shape fails the pass with an
+error naming the operation.
+
+`BackwardFrom(output, upstream)` starts the reverse pass from any tensor an
+operation on the tape produced, seeded with an upstream gradient of the same
+shape, for a loss that is computed outside the tape:
+
+```go
+if err := tape.BackwardFrom(y, gradientOfY); err != nil { log.Fatal(err) }
+```
+
+For a scalar loss, `Backward(loss)` and `BackwardFrom(loss, one)` give the same
+gradients. `BackwardFrom` refuses an output the tape did not produce, where
+`Backward` would return zero gradients.
+
+### Sparse edge sums
+
+A graph given as an edge list, such as a recurrent network with fixed sparse
+connections, does not need a dense N×N matrix. Build the topology once, then
+let each node sum its weighted incoming edges with `EdgeSum`:
+
+```go
+graph, err := nn.NewEdgeTopology(3, []int{0, 1, 2}, []int{1, 2, 0}) // edges 0→1, 1→2, 2→0
+if err != nil { log.Fatal(err) }
+weights, _ := nn.NewTensor([]int{3}, []float32{0.5, -1, 0.25})
+state, _ := nn.NewTensor([]int{3}, []float32{0.1, 0.2, 0.3})
+input, _ := nn.NewTensor([]int{3}, []float32{1, 0, 0})
+
+w, err := tape.Param(weights)
+if err != nil { log.Fatal(err) }
+incoming, err := tape.EdgeSum(graph, w.Value(), state) // [0.25·0.3, 0.5·0.1, -1·0.2]
+if err != nil { log.Fatal(err) }
+next, err := tape.Add(incoming, input)
+if err != nil { log.Fatal(err) }
+next, err = tape.Tanh(next) // one recurrent step: tanh(W·state + input)
+if err != nil { log.Fatal(err) }
+```
+
+`NewEdgeTopology(nodes, sources, targets)` checks every index, copies the
+slices, and never changes afterwards, so one topology can serve every step and
+every batch. `weights` has one float32 entry per edge; `values` is float32
+`[N]`, or `[B, N]` for a batch, and the output has the same shape. Work and
+memory grow with the number of edges and values, not with N².
+`Tape.EdgeSum` gives gradients for both the weights and the values, so the
+step above trains like any other tape graph. The step itself is yours to
+compose: `EdgeSum` does not assume an activation, a decay or a bias.
+
+Each output is the exact sum of its products, rounded once to the nearest
+float32 with ties to even. Nothing is rounded along the way, so the order of the
+edges, the order of the batch and the number of cores cannot change a bit of
+the result, on any platform, and it is the most accurate value a float32 can
+hold. A node whose products cancel exactly, or that has no incoming edge,
+gets `+0`. A NaN input, a zero times an infinity, or infinities of both signs
+give NaN; otherwise an infinite product gives that infinity. The gradients are
+exact sums by the same rule.
+
+Most sums are settled by adding the products in float64, where each product is
+exact, and checking that the error bound of that sum cannot reach the midpoint
+between two float32 values; only the sums that come too close are added again
+exactly in a wide integer register. The result is the same either way.
 
 ### Training toolkit
 
@@ -344,6 +462,12 @@ for epoch := 0; epoch < 5; epoch++ {
 The repository's convergence proof keeps data loading and seeded initialization
 test-side, so `nn` does not add a public dataset or random-initialization API.
 
+The repository's MNIST tests hold this loop to two epochs: after the second
+epoch, accuracy on the 10,000 test images must be at least 95%, and the mean
+training loss must be below half of the first epoch's. On an Apple M3 the mean
+losses were 0.350281 and 0.163855; the last digits depend on the platform, and
+amd64 measured 0.163840 for the second epoch.
+
 AMSGrad and device training are not part of this API. The tape is intended for
 the fixed-weight CPU training path; the inference kernels and ONNX graph runner
 remain unchanged.
@@ -371,6 +495,11 @@ method and no train/eval mode flag: `NewSequential` builds layers eagerly on a
 tape, `Forward` records the training path, and `Predict` uses a throwaway tape
 while structurally skipping layers marked `TrainingOnly`.
 
+A layer of your own implements the same three methods as the catalog layers:
+`Build(t *Tape) error` creates its parameters on the tape it is given,
+`Forward(t *Tape, x *Tensor) (*Tensor, error)` records the training path for one
+input, and `Parameters() []*Parameter` returns its parameters in order.
+
 ```go
 tape := nn.NewTape(20260803)
 model, err := nn.NewSequential(
@@ -394,11 +523,9 @@ The catalog layers are:
 
 | Layer | Behavior |
 | --- | --- |
-| `Dense(in, out)` | He-initialized affine layer; torch Linear weights transpose at load time |
+| `Dense(in, out)` | He-initialized affine layer whose bias starts at zero; torch Linear weights transpose at load time |
 | `Conv2D(in, out, kernel, opts...)` | NCHW convolution with torch `[out,in/groups,kh,kw]` weights, padding, strides, dilations, groups, and optional bias |
 | `MaxPool2D` / `AvgPool2D` | NCHW pooling; omitted stride defaults to the kernel size, matching torch |
-
-Each layer constructor takes at most one options struct; a layer given two reports the error from `Build`, where every other invalid layer setting is reported.
 | `GlobalAvgPool` | Reduces spatial dimensions to `[N,C,1,1]` |
 | `BatchNorm2D(features)` | Batch statistics and running-stat updates in `Forward`; running statistics in `Predict` |
 | `LayerNorm(dims)` | Learned suffix normalization over an integer or shape slice |
@@ -406,6 +533,8 @@ Each layer constructor takes at most one options struct; a layer given two repor
 | `MultiHeadAttention(embed, heads)` | Mask-free batch-first self-attention over `[batch, sequence, embed]` |
 | `Residual(layers...)` | Adds the input to a composable sub-stack; inference honors nested `EvalLayer` paths |
 | `ReLU`, `NewSigmoid`, `NewTanh`, `NewGelu`, `Dropout`, `NewFlatten`, `Func` | Stateless, training-only, shape, or callback layers |
+
+Each layer constructor takes at most one options struct; a layer given two reports the error from `Build`, where every other invalid layer setting is reported.
 
 `MultiHeadAttention(embed, heads)` accepts and returns `[batch, sequence,
 embed]` tensors. It is self-attention only in v1: it has no attention mask,
@@ -494,7 +623,7 @@ in two epochs.
 | `Pad` | constant and reflect padding from attributes or initializer inputs; edge mode is refused |
 | `Add`, `Sub`, `Mul`, `Div`, `Pow` | float32 elementwise operations with broadcasting; shape arithmetic also supports int64 |
 | `Clip` | opset-11+ float32 clipping with optional scalar min/max inputs |
-| `Relu`, `LeakyRelu`, `Sigmoid`, `Tanh`, `Gelu`, `Erf`, `Sqrt`, `Exp`, `Ceil`, `Round` | elementwise activations and math; `LeakyRelu` defaults to alpha 0.01 and `Round` uses half-to-even |
+| `Relu`, `LeakyRelu`, `Sigmoid`, `Tanh`, `Gelu`, `Erf`, `Sqrt`, `Exp`, `Ceil`, `Round` | elementwise activations and math; `LeakyRelu` defaults to alpha 0.01, `Round` uses half-to-even, and `Tanh` is correctly rounded (the true value rounded once to the nearest float32) for every input on every platform |
 | `LayerNormalization` | suffix normalization with configurable axis and epsilon |
 | `ReduceMean` | reduction over one or more axes with optional keepdims |
 | `ReduceMin` | minimum reduction over one or more axes with optional keepdims |

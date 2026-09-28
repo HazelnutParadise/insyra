@@ -138,3 +138,25 @@ func TestExecuteCCLNamesTheFailingStatement(t *testing.T) {
 		t.Errorf("EvalError.Row = %d, want 1", ee.Row)
 	}
 }
+
+// Err() is a nil *ErrorInfo after a successful call. Handed to errors.As it is
+// a non-nil error interface holding a nil pointer, and errors.As calls Unwrap
+// on it; a value-receiver Unwrap dereferenced nil and panicked, so the
+// documented errors.As(dt.Err(), &compileErr) crashed on every formula that
+// worked.
+func TestErrorsAsOnASuccessfulTablesErrDoesNotPanic(t *testing.T) {
+	dt := NewDataTable(NewDataList(1, 2))
+	dt.AddColUsingCCL("B", "A + 1")
+	if dt.Err() != nil {
+		t.Fatalf("the formula failed: %v", dt.Err())
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("errors.As on a successful table's Err() panicked: %v", r)
+		}
+	}()
+	var compileErr *ccl.CompileError
+	if errors.As(dt.Err(), &compileErr) {
+		t.Error("errors.As matched a successful table's Err()")
+	}
+}

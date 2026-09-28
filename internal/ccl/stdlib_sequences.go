@@ -276,8 +276,9 @@ func seqRollingReduce(col []any, window int, fn func(vals []float64) any) []any 
 	}
 
 	// One buffer for every window instead of one allocation per window. None
-	// of the reducers keeps the slice, so reusing it is safe.
-	vals := make([]float64, 0, window)
+	// of the reducers keeps the slice, so reusing it is safe. A window cannot
+	// hold more values than the column has.
+	vals := make([]float64, 0, min(window, n))
 	for i := range n {
 		lo := max(i-window+1, 0)
 		vals = vals[:0]

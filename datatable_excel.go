@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"time"
 
+	"github.com/HazelnutParadise/insyra/internal/excelsheet"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/xuri/excelize/v2"
 )
@@ -84,7 +85,7 @@ func (dt *DataTable) ToExcel(path string, opts ExcelWriteOptions) error {
 		case opts.IfSheetExists != SheetExistsReplace:
 			return fmt.Errorf("%w: %s in %s", ErrSheetExists, f.GetSheetName(idx), path)
 		default:
-			if err := replaceSheetInPlace(f, sheet, idx); err != nil {
+			if err := excelsheet.Replace(f, sheet, idx); err != nil {
 				return fmt.Errorf("failed to replace sheet %s: %w", sheet, err)
 			}
 		}
@@ -136,48 +137,6 @@ func openOrNewWorkbook(path, sheet string) (*excelize.File, bool, error) {
 		return nil, false, fmt.Errorf("failed to name sheet %s: %w", sheet, err)
 	}
 	return f, true, nil
-}
-
-// replaceSheetInPlace empties the sheet at idx by deleting and re-creating it,
-// then moves it back to where it was and restores the active sheet. excelize
-// refuses to delete a workbook's only sheet, so that case goes through a
-// placeholder. Sheet names match without regard to case, as in Excel.
-func replaceSheetInPlace(f *excelize.File, sheet string, idx int) error {
-	sheets := f.GetSheetList()
-	active := f.GetSheetName(f.GetActiveSheetIndex())
-	next := ""
-	if idx+1 < len(sheets) {
-		next = sheets[idx+1]
-	}
-	placeholder := ""
-	if f.SheetCount == 1 {
-		placeholder = "__insyra_placeholder__"
-		if _, err := f.NewSheet(placeholder); err != nil {
-			return err
-		}
-	}
-	if err := f.DeleteSheet(sheet); err != nil {
-		return err
-	}
-	if _, err := f.NewSheet(sheet); err != nil {
-		return err
-	}
-	if placeholder != "" {
-		if err := f.DeleteSheet(placeholder); err != nil {
-			return err
-		}
-	}
-	if next != "" {
-		if err := f.MoveSheet(sheet, next); err != nil {
-			return err
-		}
-	}
-	activeIdx, err := f.GetSheetIndex(active)
-	if err != nil {
-		return err
-	}
-	f.SetActiveSheet(activeIdx)
-	return nil
 }
 
 // writeExcelRows writes the table into sheet, which must be empty.

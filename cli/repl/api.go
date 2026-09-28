@@ -79,7 +79,7 @@ func (session *DSLSession) Execute(line string) error {
 	}
 
 	_ = session.ctx.Env.AppendHistory(session.ctx.EnvName, commands.SanitizeHistoryLine(trimmed))
-	return session.ctx.Env.SaveState(session.ctx.EnvName, session.ctx.Vars)
+	return commands.SaveEnvState(session.ctx)
 }
 
 func (session *DSLSession) Context() *commands.ExecContext {

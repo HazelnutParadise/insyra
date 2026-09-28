@@ -147,9 +147,10 @@ govulncheck ./...
 Dependencies move on their own schedule; ours is the release. **Before `dev` is merged into `main`, refresh every dependency to the newest version that leaves the `go` directive in `go.mod` unchanged.**
 
 - Do it as its own change, ahead of the release commit, so a bump that misbehaves is visible on its own and can be reverted without touching the release.
-- Verify with `go build ./...`, `go test ./...` and `govulncheck ./...`.
+- Verify with `go build ./...`, `go test ./...` and `govulncheck ./...`, and check every module in `go.mod` against GitHub's advisory database (`gh api graphql` with `securityVulnerabilities(ecosystem: GO, package: …)`).
+- **Never move a module into a vulnerable range.** Stop at the newest version outside every range.
 - **Never let a bump raise the `go` directive.** The minimum-Go promise to downstream users is a separate, explicit decision. Stop at the newest version that keeps the current directive.
-- Anything held back — its newest version needs a newer Go, or it breaks a tool CI depends on — goes into the Follow-ups below with the reason, the way the chromedp chain already is.
+- Anything held back — its newest version needs a newer Go, is inside an advisory, or breaks a tool CI depends on — goes into the Follow-ups below with the reason, the way the chromedp chain already is.
 
 Why this is a rule and not a habit: dependencies only moved when Dependabot filed an alert, which means the graph only moved once something was already broken, and the fix was taken under time pressure. Dependabot also reads the default branch, so an alert raised against a released version stays open until the next merge to `main` no matter how quickly it is fixed on `dev`.
 
@@ -169,7 +170,7 @@ The root package defines everything central:
 
 | Package | Purpose |
 |---|---|
-| `isr/` | Syntax-sugar wrappers — **preferred entry point for new code** |
+| `isr/` | Syntax-sugar wrappers — **for convenient code; the root package for performance** |
 | `stats/` | Statistical tests (t-test, ANOVA, chi-square, PCA, regression, …) |
 | `plot/` | Interactive charts via go-echarts |
 | `gplot/` | Static publication charts via gonum/plot |
@@ -216,7 +217,7 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 - **The library never terminates or panics by default.** `LogFatal` records and returns; `Config.SetPanicOnError(true)` is the opt-in that turns any recorded error into a recoverable `panic`. Never call `os.Exit` or `panic` from library code — record the error and return something usable.
 - **Two error shapes, no others.** An ordinary function returns `(T, error)`. A chainable method (`DataList`, `DataTable`, `isr`) returns a usable receiver or result and records the error on it — never `nil`. `TestChainableMethodsNeverReturnNil` in the root package enforces the second half across the whole module: it parses every non-test file and fails on a method that returns its receiver's type with no `error` result and a literal `return nil`. Inside those types use `fail(...)` for a call that could not do what it was asked — a bad argument, an unreadable cell, a mutation that could not be applied, or addressing a column/row/index that is not there — and `warn(...)` for a normal outcome: searching for a value and not finding it, an empty input, a value skipped by a documented convention. `warn` must not touch `Err()`. Because `Err()` is sticky, a public method that reports its own failure must look things up through the silent internal helpers (`colSilently`, `colByNameSilently`, `rowSilently`, `findFirstIndex`), or the inner lookup records first and the error points at an internal step instead of the call the user made.
 - Error handling uses an instance-level `Err()` pattern rather than returning errors from every method. `Err()` is **sticky**: it keeps the first failure until `ClearErr()` or `PopErr()`, so a chain is checked once at the end and reports the root cause. Wrapper packages record through the exported `SetErr(packageName, funcName, msg, args...)`.
-- The `isr` package is the recommended public API for new projects; the root `insyra` package is the implementation layer.
+- Use the `isr` package for convenient syntax and the root `insyra` package where performance matters: some `isr` constructors convert or copy their input (building a table from lists measured about 9x slower than `insyra.NewDataTable`), while methods called through the wrapper cost almost nothing extra.
 - **The interfaces are sealed but embeddable.** `IDataList` and `IDataTable` carry a hidden method, so nothing outside the module implements them from scratch, and that is what lets a method be added to them without breaking anyone. A type that embeds `*DataList`/`*DataTable` inherits every method, the hidden ones included, so it satisfies them and goes wherever a list or table goes; `Merge` reaches the embedded table through the hidden `coreTable()`. The interfaces list every exported method of the concrete types, except the ones an extension in this module overrides with its own signature: `ClearErr`, `SetErr` (isr returns its own type to keep chaining) and `Pivot`, `Unpivot` (isr's short-syntax versions). `TestInterfacesListEveryMethod` enforces the rule and names each exception with its reason; a new exception needs its reason written there. Sub-packages take the interfaces as parameter types. Ruled by the owner on 2026-09-26 (#208).
 - **A file's header row and row names have one spelling each.** Every options struct that reads or writes a table names them `NoHeaderRow` (the file has no header row) and `HasRowNames` (the file's first column holds row names), for reading and writing alike: the name describes the file, not the action, and the zero value is the common file, with column names and without row names. They replace `FirstRowToColNames`/`SetColNamesToFirstRow`/`FirstRow2ColNames`/`ColNames2FirstRow` and their row-name counterparts, and `ToSQLOptions.RowNames`; `RowNames` alone was rejected because `dt.RowNames()` returns the names themselves. A bool passed directly keeps its meaning and is only renamed (`headerRow`, `rowNames`): flipping a positional bool would silently invert every existing call. Ruled by the owner on 2026-09-25 (#213).
 - **How a function takes settings.** Ruled by the owner on 2026-09-25 while deciding #213. First sort each setting into one of two kinds; the test is whether you would write it in the methods section of a report.
@@ -232,7 +233,7 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 
 ## Docs, Changelog & Skills Must Stay in Sync
 
-Docs, the changelog, and skills are part of a change, not a follow-up. A feature is not done until these are updated in the **same** change.
+Docs and the changelog are part of a change, not a follow-up. A feature is not done until they are updated in the **same** change. The agent skills follow a different rule: they change only when what they teach does, as described below.
 
 **When adding a new package:**
 - Create its doc page `Docs/<pkg>.md` (follow an existing page such as [Docs/finance.md](Docs/finance.md) / [Docs/stats.md](Docs/stats.md) for structure).
@@ -242,7 +243,7 @@ Docs, the changelog, and skills are part of a change, not a follow-up. A feature
 
 **When adding or changing any feature (new or existing package):**
 - Update the relevant `Docs/*.md` page(s) to match the new/changed API.
-- Update the agent skills so they reflect the change: [skills/insyra/](skills/insyra/) (Go API usage — `SKILL.md` and `references/`), and [skills/use-insyra-cli/](skills/use-insyra-cli/) when CLI/DSL usage is affected.
+- API and command details belong in `Docs/` (and, for the CLI, in each command's `Usage`, `Forms` and `Examples`), never in the agent skills. The skills teach principles, the mental model and where to find documentation; update one only when a principle, a workflow or a documentation location changes. See [Agent Skills](#agent-skills).
 - When the change touches the CLI/REPL or the DSL, update the CLI (`cli/`) and its doc [Docs/cli-dsl.md](Docs/cli-dsl.md).
 
 **When the change is visible to someone using the library or the CLI:**
@@ -252,14 +253,18 @@ Docs, the changelog, and skills are part of a change, not a follow-up. A feature
 - Skip the entry when nothing user-visible changed: internal refactors, tests, formatting, assets, dependency bumps with no behavioral effect, and OpenSpec bookkeeping.
 - At release time, rename `## Unreleased` to the version number in both files and open a fresh empty `## Unreleased` above it.
 - Also at release time, bump `Version` in [version.go](version.go) in the same change — the startup banner and the CLI `version` command read it, and it does not follow the changelog on its own (v0.3.1 nearly shipped with the banner still saying v0.3.0; it was caught at the PR, not by any check).
+- Archive every OpenSpec change whose work is in the release on `dev` before the release branch is cut. `openspec/changes/` on the release branch holds only work that is not in it.
+- Release only when every CI check is green, on the release PR and on the `main` merge commit it produces. A red check blocks the release until it is fixed or excluded by its own change, including one that fails on every branch.
 - A release is always named with both the series name and the version number — "Huashan v0.3.1", never a bare "v0.3.1" — in the GitHub Release title and anywhere else the release is announced. The series name comes from `VersionName` in [version.go](version.go) and changes only when a new series starts.
 
 Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`) and Traditional-Chinese ([README_TW.md](README_TW.md), [CHANGELOG_TW.md](CHANGELOG_TW.md)) docs in lockstep — never update one side without the other.
 
 ## Agent Skills
 
-[skills/insyra/](skills/insyra/) — for AI agents writing Go code using Insyra APIs.  
-[skills/use-insyra-cli/](skills/use-insyra-cli/) — for AI agents operating via the CLI/REPL or `.isr` scripts.
+[skills/insyra/](skills/insyra/) — for AI agents writing Go code with Insyra.  
+[skills/use-insyra-cli/](skills/use-insyra-cli/) — for AI agents working through the CLI, the REPL, `.isr` scripts or the Go DSL.
+
+A skill is installed into an agent's environment and outlives the version it came from, so it teaches what does not change between releases: when to reach for Insyra, how to think about it, the conventions that hold across it, how to verify a result, and how to find the exact API for the version in use (the module's own `Docs/`, `go doc`, `insyra help`). It does not list functions or commands, and it has no reference files that repeat `Docs/`. A detail a skill used to carry lives in `Docs/`; before removing anything from a skill, make sure `Docs/` holds it (`agent-skills` spec).
 
 ## Follow-ups
 
@@ -286,7 +291,103 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 ### [2026-09-25] — remove `Slice2DToDataTable` one release after `ReadSlice2D` became its one name
 - **Where**: `read.go` (`Slice2DToDataTable`)
 - **What**: `exported-functions-are-functions` made `ReadSlice2D` the function that turns a 2D slice into a DataTable and left `Slice2DToDataTable` as a Deprecated wrapper, by the owner's ruling on #211 that each function has one name and the `Read*` family keeps it.
-- **Suggestion**: in the first release after the one that ships `exported-functions-are-functions`, delete `Slice2DToDataTable` and `TestSlice2DToDataTableMatchesReadSlice2D`, drop the deprecated-spelling note from `Docs/DataTable.md` and the warning in `skills/insyra/SKILL.md`, and add a BREAKING changelog entry. Do it in the same release as the `SetDontPanic` removal if they coincide.
+- **Suggestion**: in the first release after the one that ships `exported-functions-are-functions`, delete `Slice2DToDataTable` and `TestSlice2DToDataTableMatchesReadSlice2D`, drop the deprecated-spelling note from `Docs/DataTable.md`, and add a BREAKING changelog entry. Do it in the same release as the `SetDontPanic` removal if they coincide.
+- **Status**: pending
+
+### [2026-09-27] — outside the hypothesis tests, `stats` still numbers some positions from zero, and two paths let `NaN` through
+- **Where**: the `predictor %d` label in `stats/regression_shared.go`; the `(index %d)` checks in `stats/regression.go`, `stats/regression_glm.go`, `stats/regression_poisson.go` and `stats/glm_irls.go`; `row %d column %d` and `column %d` in `stats/factor_analysis.go`; `columns %d and %d` in `stats/correlation.go`; `stats/pca.go`, which also reads cells with `ToFloat64Safe` alone; `stats/knn.go` `numericVectorFromDataList`
+- **What**: every hypothesis test now counts the list and the position from one (`hypothesis-tests-refuse-non-finite`). Elsewhere the old numbering is still there. Measured on 2026-09-27: `LinearRegression(y, x1, x2)` with a blank at row 3 of `x2` says `predictor 1 contains a non-numeric value at row 3: <nil>`, `LogarithmicRegression` with `x = -2` at row 2 says `(index 1)`, and `FactorAnalysis` with text at row 2 of its second column says `non-numeric value at row 1 column 1: x`. The correlation and PCA column numbers are zero-based in the code and were not measured. Separately, `PCA` and `KNNRegress`'s targets check only that a cell converts, so a `NaN` or `+Inf` reaches the result with a nil error: `PCA` returns `NaN` eigenvalues, and `KNNRegress` predicts `NaN` or `+Inf`. `Docs/stats.md` states the `PCA` and `KNNRegress` behaviour.
+- **Suggestion**: number every position from one, and read `PCA` and `numericVectorFromDataList` through `numericValues`. Both change what callers see, the error text in one case and an error where a result came back in the other, so decide first whether they go on 0.3.x the way the hypothesis tests did. That change rested on the documentation already saying such a value is never used.
+- **Status**: pending
+
+### [2026-09-27] — two one-shot commands on one environment lose one command's variables
+- **Where**: `cli/env/state.go` `SaveVariables` (the save every command ends with) and `RestoreVariables` (the load it starts with)
+- **What**: each command reads the whole `state.json`, runs, and writes the whole file back through the same `state.json.tmp` path. Two `insyra` commands against one environment at the same time each save their own copy, so the later rename wins and the variables the other command created are gone; if both write the temporary file at once, one rename can also fail. Found by the review of `cli-env-typed-state` on 2026-09-27, by reading the code; not reproduced. It predates that change, which did not alter the read-modify-write.
+- **Suggestion**: a per-environment lock file held from restore to save, or a unique temporary name per writer plus a check that the file has not changed since it was read. The lock serialises commands, which a user running commands in parallel may not expect, so decide which.
+- **Status**: pending
+
+### [2026-09-27] — an unreadable `state.json` is overwritten by the next command
+- **Where**: `cli/root.go` `openEnvironment`, `cli/repl/repl.go` `Start`, `cli/repl/api.go` `NewDSLSession`, and `env open` in `cli/commands/env.go`
+- **What**: when `RestoreVariables` fails, the first three start from an empty variable map without saying so, and the save after the next command writes that map over the file, so every variable in the environment is lost. Measured on 2026-09-27 with the CLI built from `dev` at 550cf94: after `newdl 1 2 3 as x`, truncating `state.json` mid-object and running `newdl 9 as y` left a `state.json` holding only `y`. `env open` fails differently, going by its code: when the opened environment's state cannot be read, it keeps the previous environment's variables, and the next save writes them into the environment just opened. `cli-env-typed-state` does not make this more likely, because a file it writes always decodes, but it does not change it.
+- **Suggestion**: stop before running a command against an environment whose state could not be read, naming the file and the error, or move the unreadable file aside before saving over it. Either changes what a command does in a damaged environment, so decide which first.
+- **Status**: pending
+
+### [2026-09-27] — Auto reads an ISO-2022-KR or ISO-2022-CN file as UTF-8
+- **Where**: `utils.go` `DetectEncoding`, whose UTF-8 check runs before chardet is asked; `internal/csv/decoder.go` `decoders`
+- **What**: both encodings use only 7-bit bytes, so `DetectEncoding` accepts such a file as UTF-8 before chardet, which knows both, sees it. Measured on 2026-09-27: a 30-line Korean CSV written in ISO-2022-KR is detected as `utf-8`, and `csvxl.ReadCsvToString` returns its `ESC $ ) C` header and shift codes inside the cells with a nil error. x/text has no decoder for either, so naming the encoding fails with the unsupported-encoding error. `Docs/csvxl.md` states this.
+- **Suggestion**: look for the ISO-2022 designator escape before the UTF-8 check and refuse the file with the unsupported-encoding error, the way IBM420 and IBM424 are refused. Decoding them would need a decoder x/text does not ship; both are rare enough in CSV files that the refusal is enough.
+- **Status**: pending
+
+### [2026-09-28] — two nested values whose strings contain the separators count as one
+- **Where**: `cell_identity.go`, the string arm of `writeCellValue`
+- **What**: a string inside a nested value is written without escaping the characters the encoding uses as separators, so different values can encode alike. Measured on 2026-09-28: a list holding `[]any{"a,s:b"}` and `[]any{"a", "b"}` reports `Count([]any{"a", "b"})` 2 and a `Counter` of one entry; grouping, pivoting and merging key on the same encoding. Present on `origin/0.4` before the dev merge. Separately, an array or a struct shared through interfaces is still encoded once per path, so a hand-built value of `[2]any{x, x}` nested 20 levels deep takes about 200 ms and 31 levels about a minute; slices and maps are memoized.
+- **Suggestion**: write each string with a length prefix (`s<len>:`), which makes any content unambiguous, and give arrays and structs the same work bound slices have. The first changes every key a nested string produces, so group keys and `Counter` keys for such values change once.
+- **Status**: pending
+
+### [2026-09-28] — what the typed `state.json` codec still accepts badly
+- **Where**: `cli/env/state.go`, `cli/env/variable_codec.go`, `cli/env/cell_codec.go`
+- **What**: found by the review of the dev merge, each measured on 2026-09-28. (1) A variable, column, row or table name that is not valid UTF-8 (a Big5 `.isr` script) is written with U+FFFD in its place, so two such column names come back as `��` and `��_1`, and two such variable names collide in the file and one is lost without `SaveVariables` reporting it. Cell contents are safe, because non-UTF-8 text in a cell is base64-encoded. (2) Decoding has no depth limit while encoding refuses a cell nested more than 64 levels, so a table read from a hand-edited or imported file is dropped, with a warning, at the next save. (3) Restoring a table whose file lists thousands of columns under one name is cubic in that count (2,000 columns: 8.4 s), and every one-shot command restores the whole environment. (4) A variable that could not be decoded is kept, but its reason is dropped: `vars` prints the internal type `env.unreadableVariable` and a command using it says only that it is not a DataTable.
+- **Suggestion**: (1) report a name that is not valid UTF-8 as unsaved, or encode names the way cells are; (2) apply the encoder's depth limit when decoding and keep such a variable unreadable; (3) refuse duplicate column names when decoding, since no table the library builds has them; (4) keep the decode error on the unreadable variable and print it.
+- **Status**: pending
+
+### [2026-09-28] — `db connect` history masking leaves part of some passwords
+- **Where**: `cli/commands/db_conn.go` `maskKVPasswords`, `maskDSNPassword`
+- **What**: measured on 2026-09-28. In a key=value DSN, an unquoted value ends at a space for libpq and pgx, but the mask stops at `;` or `"`, so `password=ab;cd port=5` is written to `history.txt` as `password=***;cd port=5`. In a URL or a MySQL native DSN the mask takes the first `@`, while the drivers take the last, so `u:p@ss@h` is written as `u:***@ss@h`. The history file is private to the user (0600), but `env export` writes it into a file anyone may be sent. The first gap came with the masking dev added (677f6c53); the second was there before.
+- **Suggestion**: choose the end of a value by dialect, `;` only for the ODBC-style `sqlserver` form, and take the last `@` before the host in the URL and MySQL forms. Add each measured case to the masking tests.
+- **Status**: pending
+
+### [2026-09-28] — a fitted scaler saved by dev cannot be read on this line
+- **Where**: `datatable_scale.go` `scalerRefJSON`, `decodeScalerRef`
+- **What**: dev writes a scaler's column reference as a plain string (`"ref":"a"`), the selector as the caller gave it. This line writes an object (`{"name":"a"}` or `{"position":0}`) and refuses a string: `cannot unmarshal string into … scalerRefJSON`. In the CLI such a variable is kept but unusable. The scaler JSON is unreleased on both lines, so nothing breaks today; it does if a 0.3.x release ships it before 0.4.
+- **Suggestion**: if a 0.3.x release ships scaler JSON first, read a plain string here the way that release resolved it, or mark the change BREAKING in 0.4's release note. Decide before the next 0.3.x release.
+- **Status**: pending
+
+### [2026-09-28] — three smaller things the dev merge's review measured
+- **Where**: `internal/ccl/map_context.go` `MapContext.GetColData`; `stats/asdatalist.go`; `stats/nonparam_mwu.go` (the Hodges-Lehmann estimate)
+- **What**: measured on 2026-09-28, all present before the merge. (1) `engine/ccl`'s `MapContext` hands a registered aggregate the caller's own slice; an aggregate that sorts it in place changes the caller's map and the rest of the expression (`ZZSORTFIRST(A) + A.0` gives 2 instead of 4). `dataTableContext` copies. (2) `asDataList` turns a nil `*DataList` into an empty list but not a nil value of a type that embeds one, so `TwoSampleTTest(x, (*W)(nil))` still panics. (3) `MannWhitneyU` allocates all n1·n2 pairwise differences for its estimate; two groups of six million values panic with `makeslice: cap out of range`, and smaller ones run out of memory first.
+- **Suggestion**: (1) copy in the evaluator before it calls an aggregate or sequence function, so no context has to; (2) recover in `asDataList`, or look through an embedded pointer with reflection; (3) compute the median of the differences with a selection algorithm instead of materialising them.
+- **Status**: pending
+
+### [2026-09-28] — `nn` allocates from a size argument before anything checks it is sane
+- **Where**: `nn/edge_sum.go` `NewEdgeTopology`; `nn` tensor constructors given a shape
+- **What**: `NewEdgeTopology(nodes, nil, nil)` accepts any `nodes` up to `MaxInt32` and allocates four `int32` arrays of that length before any edge exists, about 32 GiB at the limit; `NewTensor` with a huge shape is the same kind of call. Running out of memory ends the process and cannot be recovered, against this line's rule that the library never ends the program. Found by the dev merge's review by reading the code; not run, to keep the machine up.
+- **Suggestion**: decide a policy for allocations sized by an argument: a documented cap with an error above it, or allocating in proportion to the data actually given (the edges) rather than to a count. Either applies to more of `nn` than this one constructor.
+- **Status**: pending
+
+### [2026-09-27] — `AtomicDoAll` inside `AtomicDo` runs the other instances unlocked, so `AppendCols` inside a callback races
+- **Where**: `internal/core/atomic.go` (the inline trust-zone path of `AtomicDoN`), reached by any method that calls `AtomicDoAll` while its receiver is held, such as `DataTable.AppendCols`
+- **What**: 0.4 resolved an AB-BA deadlock (api-review IN-1) by running `AtomicDoAll` inline, without locking the other instances, when it is called inside an `AtomicDo`; `core-multilock-reentry` requires that. The cost is a data race. Measured on 2026-09-27 with `go test -race`: `dt.AtomicDo(func(t *DataTable) { t.AppendCols(col) })` in one goroutine and `col.Append(i)` in another report `DATA RACE` in three of three runs, the write at `datalist.go:108`. dev instead locks the other instances again (ddde3d45), which reopens the deadlock. The Key Conventions above tell callers to use `AtomicDoAll` from the outermost level, but a library method such as `AppendCols` calls it internally, so a caller who follows that rule and only calls `AppendCols` inside its own `AtomicDo` still runs unlocked without knowing.
+- **Suggestion**: this changes a specified concurrency contract, so it needs the owner. Three ways out: keep the inline path and document that `AtomicDoAll` inside a callback does not lock (and fix the Key Conventions line); lock the others in the global order with a try-lock and fail the call with an error when one is busy; or make methods such as `AppendCols` copy the other instance under its own lock before entering the receiver's callback, so no library method nests at all.
+- **Status**: pending (owner decision)
+
+### [2026-09-27] — three ways a value on its way out still panics
+- **Where**: `datatable_json.go` `jsonCell`; `parquet/ccl.go` `buildArrowRecord` and `buildArrowArray`; `plot/save_chart.go` `SaveHTML` and `SavePNG`
+- **What**: `jsonCell` asks a cell for `fmt.Stringer` before it checks for a nil pointer, the defect 91e39e7c fixed for `Show`. Measured on 2026-09-27: `ToJSONString` on a table holding a nil `*T`, where `T` has a value-receiver `String`, panics with `value method … called using nil *T pointer`. Separately, `parquet.ApplyCCL` rebuilds every column with the original schema's type but builds only `INT64`, `FLOAT64`, `BOOL` and `STRING` arrays, so any other column type panics in `array.NewRecord`: measured on 2026-09-27, a file `parquet.Write` wrote from a table with a `time.Time` column panics with `arrow/array: column "c" type mismatch: got=utf8, want=timestamp[ns, tz=UTC]`, and a `[]byte` or `Date32` column fails the same way. The original file is left alone; the caller gets a panic instead of an error, against this line's rule that the library never ends the program. Third, every `plot.Create...` function returns `nil` when it cannot build a chart, and a `nil` chart still satisfies `Renderable`: measured on 2026-09-27, `plot.SaveHTML((*charts.Bar)(nil), path)` panics with a nil pointer dereference, and `SavePNG` does the same. `Docs/plot.md` tells callers to check for `nil` meanwhile.
+- **Suggestion**: in `jsonCell`, check for a nil pointer before `fmt.Stringer`, as `internal/utils` now does. In `ApplyCCL`, build each untouched column from its original array, or refuse a file with a column type the builder does not handle with an error before anything is read. In `SaveHTML` and `SavePNG`, return an error for a nil chart, the way `gplot.SaveChart` already does, and change the note in `Docs/plot.md`.
+- **Status**: pending
+
+### [2026-09-27] — smaller defects the dev merge's review found on this line
+- **Where**: `plot/boxplot.go` `CreateBoxPlot`; `csvxl/convert.go` `saveSheetAsCsv`; `internal/ccl/stdlib_string.go` `REPEAT`; `ccl.go` `applyCCLOnDataTable`
+- **What**: measured on 2026-09-27. (1) `CreateBoxPlot` drops a series whose `Data` is empty with no warning, and given only such a series returns nil with the warning "No series provided in BoxPlotConfig.Series", although one was. (2) `saveSheetAsCsv` returns without its `cleanup()` when `GetRowVisible` fails (line 345), leaving the hidden `.<name>.*.tmp` file and its descriptor; every other error path cleans up. excelize only fails there for a row or sheet `GetRows` has just read, so it is hard to reach. (3) `REPEAT('', 100000000)` is refused with "result would exceed 67108864 bytes" although its result is empty. (4) `ExecuteCCL` evaluates a row-invariant aggregate on every row: on a 10,000-row column `NEW('C') = A / SUM(A)` took 535 ms where `AddColUsingCCL` with `A / SUM(A)` took 0.5 ms. Since the dev merge each of those evaluations also copies the column (`GetColData`), about 1.8 times slower again on 20,000 rows; folding removes both. `Docs/CCL.md` and the `ccl-performance` spec state the limit.
+- **Suggestion**: (1) warn naming each dropped series and say "no series has any data"; (2) call `cleanup()` on that path; (3) return an empty string before the size check when the input is empty; (4) fold aggregates in statement mode the way expression mode does, measured before and after. Each is small and independent.
+- **Status**: pending
+
+### [2026-09-27] — CLI corners the skill audit measured
+- **Where**: `cli/commands/timeseries.go` (`rolling`); `cli/commands/db.go` `db tables`; `cli/commands/run.go` against `cli/repl/repl.go`'s tokenizer; `cli/commands/hypothesis.go`; the `error:` line printer
+- **What**: measured on 2026-09-27 with the CLI built from this branch. (1) `rolling … minobs` larger than the window logs an error, stores an empty DataList, prints `saved as` and exits 0, where `Docs/cli-dsl.md` says a command that cannot do what it was asked fails. (2) `db tables <conn> schema x` on SQLite accepts and ignores `schema`, against the rule that an argument a command does not use is refused. (3) `run` treats a backslash as an escape only before a quote or a backslash, while the REPL and `Session.ExecuteFile` treat it as escaping any character, so a Windows path in a `.isr` file reads differently under the two, although `Docs/cli-dsl.md` says they differ only in error handling. (4) `help chisq`'s example names its input `counts`, while `chisq gof` wants raw observations. (5) With `NO_COLOR=1` set, the `error:` line is still printed in colour.
+- **Suggestion**: (1) return the error so the command fails; (2) refuse `schema` on SQLite or document that it is accepted and has no effect; (3) give `ExecuteFile` the `run` tokenizer, or say how they differ; (4) rename the example's variable; (5) route the error line through the same colour check as the rest of the output. Each is small and independent.
+- **Status**: pending
+
+### [2026-09-27] — 36 main specs fail `openspec validate --specs --strict`
+- **Where**: `openspec/specs/*/spec.md`, mostly the `## Purpose` section
+- **What**: on 2026-09-28 the strict run reports 36 failures of 136 specs on this branch, among them the seven `accel-*` specs, the five `ml-*` specs, `nn-inference`, `changelog`, `cli-entry`, `command-registry`, `core-multilock-reentry` and `error-philosophy`. dev recorded 26 of its 101 on 2026-09-14. Nothing in CI runs the command.
+- **Suggestion**: write each Purpose from its requirements as its own change, then add the strict run to the lint workflow so the count cannot climb again.
+- **Status**: pending
+
+### [2026-09-25] — device MatMul's bit-parity rests on behaviour WGSL does not promise
+- **Where**: `accel/internal/wgpu/matmul.go` (`matmulWGSL`), `accel/nn_matmul.go`, and the default-on hook in `nn/device_matmul_wiring.go`
+- **What**: `ENG.md` now defines a device float32 result as the correctly rounded value of the exact operation, computed in integers, because WGSL lets an implementation contract, reassociate and flush subnormals. Device MatMul predates that rule: it accumulates `acc + a*b` in `f32` and matches the CPU only because Metal and Go on arm64 both fuse (asserted with `==` on the M3). The same measurement for `EdgeSum` on 2026-09-25 showed Metal fusing exactly like arm64, so today's parity is real, but a conforming implementation that reassociated the loop or flushed a subnormal would break it, and amd64's CPU, which does not fuse, already disagrees with the device.
+- **Suggestion**: move MatMul to the exact rule — each output the correctly rounded exact dot product — on both CPU and device. That changes `nn.MatMul`'s results, which are released, so it waits for the owner; it also costs CPU time that has to be measured against M19's all-core baseline first.
 - **Status**: pending
 
 ### [2026-09-20] — `TestSequentialFitMNISTConvergence` still pins numbers recorded on one machine
@@ -295,10 +396,34 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: the same treatment. Run the documented hand loop inside the test and compare the two curves, keeping only bounds any platform meets. It costs one more MNIST run, about 30 seconds in CI. Worth doing the next time `nn`'s training path is touched, or sooner if a third platform disagrees.
 - **Status**: pending
 
+### [2026-09-19] — `BartlettTest` panics when the group variances come out equal
+- **Where**: `stats/ftest.go` `BartlettTest`, through `stats/distutil.go` `chiSquaredPValue`
+- **What**: Bartlett's `T` is a difference of logs, so for groups whose variances agree it lands at or just below zero by rounding. `chiSquaredPValue` passes it straight to `distuv.ChiSquared{K: df}.CDF`, which panics with `cephes: parameter out of bounds` for any negative argument. Measured on this line on 2026-09-27: `chiSquaredPValue(-1e-16, 1)` panics while `chiSquaredPValue(0, 1)` returns 1. Whether two identical groups panic therefore depends on the values: `{0.1, 0.2, 0.3}` twice returns statistic 0 and p 1, while `{-0.32329881667362437, -0.319580921043235, 0.9093452052941211, 0.9788142136474671}` twice panics. `df <= 0` panics the same way (`chiSquaredPValue(1, 0)`), which `FriedmanTest`, `KruskalWallis`, `ChiSquareTest`, `PartialCorrelation` and `FactorAnalysis` also reach. `KruskalWallis` and `FriedmanTest` reach it on finite data too, when every value is equal: `KruskalWallis` on four all-zero groups of sizes 24, 4, 27 and 11, and `FriedmanTest` on 21 subjects with 7 conditions each, all zero, both panic with `cephes: parameter out of bounds`.
+- **Suggestion**: clamp in `chiSquaredPValue`. A negative `chi2` is a rounding artefact of a statistic that is zero, so returning 1 for it is the right answer, and a non-positive `df` should return NaN the way `tQuantile` already does. That changes a panic into a value for every caller at once, which needs deciding before it is done: it is a behaviour change, though the old behaviour was a panic.
+- **Status**: pending
+
 ### [2026-09-17] — psych 2.6.5's `faRotations` tie-break picks a start that did not tie, and nobody upstream has been told
 - **Where**: upstream `psych::faRotations`; recorded on our side in [stats/testdata/crosslang_baseline.R](stats/testdata/crosslang_baseline.R) and in the comment at `factorParityTol` in [stats/factor_analysis_test.go](stats/factor_analysis_test.go)
 - **What**: when several rotation starts tie on the highest hyperplane count, psych breaks the tie by applying `which()` to the tied rows alone and then uses that result as a start number. `which()` returns a position within the subset, so with starts 1 and 3 tied and start 3 the simpler one, psych selects start 2, which never tied. The fit comparison that follows is computed and never assigned, so it has no effect. Our port selects by criterion value and does not share the defect; the only thing that depends on it is which solution psych's own baselines record.
 - **Suggestion**: report it to the maintainer. There is no GitHub route: psych declares no `BugReports` URL, `revelle` has no psych repository, and `cran/psych` is a read-only mirror with issues disabled, so the only channel is the maintainer address in `DESCRIPTION` (`revelle@northwestern.edu`). A report needs the reproduction (hyperplane `c(.5,.4,.5,.3)` with complexity `c(1.3,1.0,1.1,1.0)` selects 2, not 3) and the fix — index back into the tied set at both steps, and assign the fit step. Sending it goes out under the owner's name, so it waits for the owner.
+- **Status**: pending
+
+### [2026-09-14] — `stats` functions outside the input guard still crash on a nil list
+- **Where**: `stats/numericinput.go` `numericSlice`, reached from goroutines in `stats/regression_shared.go` `gatherRegressionInputs`; `Correlation` and `Covariance`, which reach `numericSlice` through `requireNumericPair`; and the functions that call `AtomicDo` or `Data` on an argument without converting it: `LogisticRegression`, `ChiSquareGoodnessOfFit`, `ChiSquareIndependenceTest`, `Silhouette`'s labels, `KNNClassify`'s labels, `KNNRegress`'s targets, `Skewness`, `Kurtosis`
+- **What**: `numericSlice` checks only for a nil interface, so a typed nil `*DataList` reaches `AtomicDo` and panics, and `gatherRegressionInputs` calls it from goroutines it starts itself. Measured on this line on 2026-09-27: `LinearRegression(x, typedNil)`, `PoissonRegression(typedNil, x)`, `WeightedLinearRegression` with a typed nil in any argument and `LassoRegression(typedNil, …)` end the process with a nil-pointer panic that no caller can recover, and every other function named above panics in the caller's goroutine on a typed nil. The hypothesis tests are not on this list: they convert every argument through `asDataList` before any goroutine starts, so a nil list there gets the error an empty one gets.
+- **Suggestion**: convert the remaining entry points through `asDataList`, or add a typed-nil check to `numericSlice` so the goroutines in `gatherRegressionInputs` get an error back instead of panicking, then widen `stats-input-type-guard` to name them. Decide first whether a nil list is an error or an empty sample. The hypothesis tests did not need that decision, because every one of them already refused an empty list.
+- **Status**: pending
+
+### [2026-09-14] — two deeply nested values with different leaves count as one
+- **Where**: `cell_identity.go` `maxCellEncodeDepth` and the interface arm of `writeCellValue`
+- **What**: a `[]any` level spends two encoding levels (the slice and the interface inside it), so a value nested more than 32 `[]any` deep reaches the limit of 64. Past it an interface is written as its type with no address, so two such values that differ only in their deepest leaf encode alike. Measured on this line on 2026-09-27: a list holding a depth-40 value with leaf 1 and two with leaf 2 reports `Count` 3 for either, while the same list at depth 30 reports 1 and 2. Grouping, pivoting and merging key on the same encoding. The answer is silently wrong.
+- **Suggestion**: at the limit, unwrap the interface and write the address of the value inside it, which is what the comment above `maxCellEncodeDepth` says already happens.
+- **Status**: pending
+
+### [2026-09-14] — `DataList.Shift` and `Rolling.Apply` flatten a slice cell
+- **Where**: `datalist_window.go` `Shift` and `RollingDataList.Apply`
+- **What**: both build their result through `NewDataList`, which flattens every slice. Measured on this line on 2026-09-27: `Append([]byte{1, 2}, 3)` then `Shift(0)` gives `[1 2 3]`, three cells for two, and on a four-row list `Rolling(RollingOptions{Window: 2}).Apply` with a function returning `[]float64{1, 2}` gives seven cells, `[<nil> 1 2 1 2 1 2]`.
+- **Suggestion**: build the result with `Append`, or wrap each cell with `Cell`. The length and cells of the result change for lists holding slices, which this line can take.
 - **Status**: pending
 
 ### [2026-09-12] — a bare `[]byte` still flattens in the constructors
@@ -380,8 +505,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-07-11] — chromedp chain left at pre-refresh versions (two independent blockers)
-- **Where**: `go.mod` — `chromedp v0.11.2`, `cdproto v0.0.0-20241208230723-d1c7de7e5dd2` (pulled in via `go-echarts/snapshot-chromedp`)
-- **What**: The 2026-07-11 dependency refresh could not move these. (1) `chromedp v0.15.0+` and newer `cdproto` require go >= 1.26, while the module's `go` directive stays on 1.25.x (minimum-Go promise to downstream users). (2) The newest go1.25-compatible version, `chromedp v0.14.2`, hard-requires `go-json-experiment/json`, whose generic-variadic code panics govulncheck's symbol-level scan ("got jsontext.Value, want variadic parameter of unnamed slice or string type" in x/tools go/ssa — still broken as of x/tools v0.48.0 / x/vuln v1.6.0), which would permanently break the Govulncheck CI workflow.
-- **Suggestion**: When raising the minimum Go version to 1.26, retry upgrading the whole chain and re-verify `govulncheck ./...` completes (the x/tools SSA bug may be fixed by then).
-- **Update (2026-09-13)**: `require-go-1-26` raised the `0.4` line's `go` directive to 1.26.8, so blocker (1) no longer applies there. `dev` stays on Go 1.25, so the chain stays held back on the 0.3.x line. Blocker (2) has not been re-checked.
-- **Status**: pending — retry on `0.4`
+- **Where**: `go.mod` — `chromedp v0.12.1`, `cdproto v0.0.0-20250120090109-d38428e4d9c8` (pulled in via `go-echarts/snapshot-chromedp`)
+- **What**: two blockers held the chain back. (1) `chromedp v0.15.0+` and newer `cdproto` require go >= 1.26; this line's directive is 1.26.8, so that one no longer applies here. (2) From `v0.13.0` chromedp requires `go-json-experiment/json`, whose generic variadics panic govulncheck's SSA pass ("got jsontext.Value, want variadic parameter of unnamed slice or string type"). Measured on dev on 2026-09-24: x/vuln v1.3.0 and v1.7.0 built with go1.25.14 both panic on it, and v1.7.0 built with go1.26.5 completes. This line's Vulnerability Scan job builds x/vuln v1.3.0 with Go 1.26.x, a combination nobody has measured. The chain moved to dev's `v0.12.1` when dev was merged in on 2026-09-27, the newest version below `go-json-experiment`.
+- **Suggestion**: at this line's next dependency refresh, take the whole chain to its newest version and run the Vulnerability Scan job's own govulncheck (v1.3.0 under Go 1.26.x) on it; if it panics, move the job to x/vuln v1.7.0 in the same change.
+- **Status**: pending

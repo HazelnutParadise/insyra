@@ -119,11 +119,14 @@ func (c *dataTableContext) GetColData(index int) ([]any, error) {
 	if index < 0 || index >= len(c.tableData) {
 		return nil, fmt.Errorf("column index %d out of range", index)
 	}
-	// tableData is already a snapshot taken for this evaluation and nothing
-	// writes to it, so handing back the slice is safe. Copying here cost one
-	// full column copy per aggregate call, which before the folding above
-	// meant one per row.
-	return c.tableData[index], nil
+	// A copy, not the snapshot itself: a registered aggregate or sequence
+	// function may sort or rewrite the slice it is given, and the rest of the
+	// expression still reads rows from tableData. The expression methods fold
+	// a row-invariant aggregate, so there this costs one copy per aggregate;
+	// ExecuteCCL does not fold yet, and pays one copy per row.
+	res := make([]any, len(c.tableData[index]))
+	copy(res, c.tableData[index])
+	return res, nil
 }
 
 func (c *dataTableContext) GetColDataByName(name string) ([]any, error) {
@@ -242,7 +245,10 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 		// An aggregate that does not read the current row has the same answer
 		// on every row, so compute it once here instead of once per row. On
 		// 20,000 rows `A / SUM(A)` went from two seconds to a millisecond.
-		boundAST = ccl.FoldRowInvariantAggregates(boundAST, ctx)
+		// A table with no rows evaluates nothing, so it folds nothing either.
+		if numRow > 0 {
+			boundAST = ccl.FoldRowInvariantAggregates(boundAST, ctx)
+		}
 
 		if ccl.IsRowDependent(ccl.GetExpressionNode(boundAST)) {
 			for i := range numRow {

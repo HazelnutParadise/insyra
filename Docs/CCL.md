@@ -249,6 +249,18 @@ When a range (column range or row range) is used inside an aggregate function (l
 
 > **Note:** Raw row ranges like `SUM(0:5)` are not supported for data access. You must explicitly specify the target using the row access operator (e.g., `@.0:5` or `A.0:5`).
 
+### Combined Column and Row Ranges
+
+A column range and a row range combine into a block of cells, and both spellings give the same result: `"(A:B).(1:3)"` (columns A through B, rows 1 through 3), `"A:B.(1:3)"` (the same block), `"SUM((A:B).(1:3))"` (the sum of that block).
+
+The parentheses are optional because `:` binds tighter than `.`, but they show the grouping, so use them when a range sits inside an aggregate or a longer expression. Parentheses around a plain column range change nothing: `SUM((A:B))` equals `SUM(A:B)`.
+
+- Row numbers are 0-based, as everywhere in CCL, so `(A:B).(1:3)` is the second through fourth rows.
+- Bounds are strict. On a five-row table `(A:B).(1:5)` fails with `row index 5 out of range (total rows: 5)`; `(0:4)` is all five rows.
+- The block does not depend on the current row, so every row of the new column receives the same block. Wrap it in an aggregate to reduce it to one value.
+
+Either end of a range can be an index or a name, and both ends are included: `([A]:['Price']).(0:'Peter')` is the columns from A through `Price` and the rows from 0 through the row named `Peter`.
+
 ### Comparison Operators
 
 - `>` : Greater than
@@ -347,8 +359,8 @@ When performing arithmetic operations or comparisons, CCL attempts to convert op
 
 ```go
 // These will cause errors
-"abc" + 10          // Error: cannot convert "abc" to number
-"hello" > 5         // Error: cannot convert "hello" to number
+"abc" + 10          // Error: invalid operands for +: abc, 10
+"hello" > 5         // Error: invalid operands for >: hello, 5 (cannot be compared)
 ```
 
 ### String Concatenation
@@ -748,7 +760,7 @@ dt.ExecuteCCL(`
 | Function | Description |
 | --- | --- |
 | `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
-| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)` |
+| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
@@ -794,7 +806,7 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 - Date strings (e.g., `"2006-01-02"`, RFC3339) are automatically parsed as `time.Time` when possible; parsed values are treated as date/time values.
 - A date difference (`A - B`) is a duration. In a numeric context it counts **seconds**, so `(A - B) > 0` and `(A - B) / 86400` work; `DAY(A - B)` converts it to days directly.
 - `date - date` returns a `time.Duration` representing the difference between the two dates. Use `DAY(...)`, `HOUR(...)`, `MINUTE(...)`, or `SECOND(...)` to convert the result to numeric values.
-- `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days). A fraction keeps its hours and minutes. The date moves by a duration, so a shift of more than about 292 years (106,751 days) either way is an error.
+- `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days). A fraction keeps its hours and minutes: `0.5` moves the date 12 hours, `0.0625` 1 hour 30 minutes and `0.001` 86.4 seconds. The date moves by a duration, so a shift of more than about 292 years (106,751 days) either way is an error.
 - Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
 - If a string cannot be parsed as a date (or the operands are other unsupported types), operations fall back to their original behavior (numeric/string comparison or an error).
 
@@ -1250,7 +1262,10 @@ column 20,000 times.
 | `(A - AVG(A)) / STDEV(A)` | 6.0 s | 2.1 ms |
 
 An aggregate that *does* mention `#` reads the current row, so it stays
-per-row — `SUM(A.(0:#))` is a running total and cannot be hoisted.
+per-row — `SUM(A.(0:#))` is a running total and cannot be hoisted. This
+applies to `AddColUsingCCL`, `EditColByIndexUsingCCL` and
+`EditColByNameUsingCCL`; `ExecuteCCL` statements still evaluate an aggregate
+per row.
 
 ### Rolling windows
 
@@ -1354,11 +1369,13 @@ dt.AddColUsingCCL("result", formula)
 
 var compileErr *ccl.CompileError
 var evalErr *ccl.EvalError
-switch {
-case errors.As(dt.Err(), &compileErr):
-    // compileErr.Expr, .Offset, .Near — the formula is wrong
-case errors.As(dt.Err(), &evalErr):
-    // evalErr.Row, errors.Unwrap(evalErr) — the data is wrong on that row
+if e := dt.Err(); e != nil {
+    switch {
+    case errors.As(e, &compileErr):
+        // compileErr.Expr, .Offset, .Near — the formula is wrong
+    case errors.As(e, &evalErr):
+        // evalErr.Row, errors.Unwrap(evalErr) — the data is wrong on that row
+    }
 }
 ```
 

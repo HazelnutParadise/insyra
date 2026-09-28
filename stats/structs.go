@@ -9,6 +9,6 @@ type testResultBase struct {
 }
 
 type EffectSizeEntry struct {
-	Type  string  // "cohen_d", "hedges_g", "glass_delta", etc.
+	Type  string  // "cohen_d" for the t- and z-tests; the rank-based tests use their own types
 	Value float64 // Effect size value
 }

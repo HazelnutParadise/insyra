@@ -66,7 +66,7 @@ const (
 	Round05Up RoundingMode = "05up"
 	// RoundUnnecessary asserts that no rounding will be required. If
 	// an operation under this mode has to discard a non-zero residue,
-	// it panics with decimal.ErrRoundingNecessary.
+	// it returns an error carrying the exact value.
 	RoundUnnecessary RoundingMode = "unnecessary"
 )
 

@@ -1,0 +1,174 @@
+package nn
+
+import (
+	"fmt"
+	"math"
+)
+
+// EdgeTopology is an immutable directed edge list over a fixed number of
+// nodes: edge e runs from sources[e] to targets[e]. It is built once by
+// NewEdgeTopology and never changes, so it can be shared between calls.
+type EdgeTopology struct {
+	nodes         int
+	sources       []int32
+	targets       []int32
+	targetOffsets []int32 // len nodes+1; edges into node t are targetEdges[targetOffsets[t]:targetOffsets[t+1]]
+	targetEdges   []int32 // edge indices grouped by target, ascending within each target
+	sourceOffsets []int32 // same layout, grouped by source
+	sourceEdges   []int32
+}
+
+// NewEdgeTopology builds an immutable edge topology over nodes nodes: edge e
+// runs from sources[e] to targets[e]. It validates every index, copies the
+// input slices, and precomputes the edges grouped by target and by source.
+func NewEdgeTopology(nodes int, sources, targets []int) (*EdgeTopology, error) {
+	if nodes <= 0 {
+		return nil, fmt.Errorf("edge topology needs at least one node, got %d", nodes)
+	}
+	if nodes > math.MaxInt32 {
+		return nil, fmt.Errorf("edge topology supports at most %d nodes, got %d", math.MaxInt32, nodes)
+	}
+	if len(sources) != len(targets) {
+		return nil, fmt.Errorf("edge topology has %d sources and %d targets", len(sources), len(targets))
+	}
+	if len(sources) > math.MaxInt32 {
+		return nil, fmt.Errorf("edge topology supports at most %d edges, got %d", math.MaxInt32, len(sources))
+	}
+	for e := 0; e < len(sources); e++ {
+		if sources[e] < 0 || sources[e] >= nodes {
+			return nil, fmt.Errorf("edge %d source %d is outside [0, %d)", e, sources[e], nodes)
+		}
+		if targets[e] < 0 || targets[e] >= nodes {
+			return nil, fmt.Errorf("edge %d target %d is outside [0, %d)", e, targets[e], nodes)
+		}
+	}
+
+	top := &EdgeTopology{nodes: nodes}
+	edges := len(sources)
+	top.sources = make([]int32, edges)
+	top.targets = make([]int32, edges)
+	for e := 0; e < edges; e++ {
+		top.sources[e] = int32(sources[e])
+		top.targets[e] = int32(targets[e])
+	}
+
+	top.targetOffsets = make([]int32, nodes+1)
+	top.sourceOffsets = make([]int32, nodes+1)
+	for e := 0; e < edges; e++ {
+		top.targetOffsets[top.targets[e]+1]++
+		top.sourceOffsets[top.sources[e]+1]++
+	}
+	for n := 0; n < nodes; n++ {
+		top.targetOffsets[n+1] += top.targetOffsets[n]
+		top.sourceOffsets[n+1] += top.sourceOffsets[n]
+	}
+
+	top.targetEdges = make([]int32, edges)
+	top.sourceEdges = make([]int32, edges)
+	nextTarget := make([]int32, nodes)
+	nextSource := make([]int32, nodes)
+	copy(nextTarget, top.targetOffsets[:nodes])
+	copy(nextSource, top.sourceOffsets[:nodes])
+	for e := 0; e < edges; e++ {
+		t := top.targets[e]
+		top.targetEdges[nextTarget[t]] = int32(e)
+		nextTarget[t]++
+		s := top.sources[e]
+		top.sourceEdges[nextSource[s]] = int32(e)
+		nextSource[s]++
+	}
+	return top, nil
+}
+
+// Nodes returns the number of nodes in the topology.
+func (g *EdgeTopology) Nodes() int {
+	if g == nil {
+		return 0
+	}
+	return g.nodes
+}
+
+// Edges returns the number of edges in the topology.
+func (g *EdgeTopology) Edges() int {
+	if g == nil {
+		return 0
+	}
+	return len(g.sources)
+}
+
+// edgeSumWorkers applies the shared MAC threshold to edge-sum work.
+func edgeSumWorkers(batch, nodes, edges int) int {
+	return parallelWorkerCountForMACs(batch, nodes+edges)
+}
+
+// EdgeSum returns out[..., t] = sum of weights[e]*values[..., sources[e]] over
+// every edge e whose target is t (+0 for a node with no incoming edge).
+// weights is float32 [E]; values is float32 [N] or [B, N]; the output has
+// the shape of values. Each output is the exact sum of its products rounded
+// once to the nearest float32, with ties to even, so the result does not
+// depend on edge order, batch order, or worker count. An exact zero, including
+// a node with no incoming edge, is +0. A NaN operand, zero times infinity, or
+// infinite products of both signs produce NaN; otherwise an infinite product
+// determines the output. Each output is reached through a float64 fast path
+// whenever it can prove the rounding, and through the exact accumulator when
+// it cannot; the two answers are the same bits.
+func EdgeSum(topology *EdgeTopology, weights, values *Tensor) (*Tensor, error) {
+	if topology == nil {
+		return nil, fmt.Errorf("edge sum topology is nil")
+	}
+	if err := requireFloat32(weights, "edge sum weights"); err != nil {
+		return nil, err
+	}
+	if err := requireFloat32(values, "edge sum values"); err != nil {
+		return nil, err
+	}
+	edges := topology.Edges()
+	if len(weights.shape) != 1 || weights.shape[0] != edges {
+		return nil, fmt.Errorf("edge sum weights must have shape [%d], got %v", edges, weights.shape)
+	}
+	n := topology.Nodes()
+	batch := 1
+	valuesOK := len(values.shape) == 1 && values.shape[0] == n
+	if len(values.shape) == 2 && values.shape[1] == n && values.shape[0] >= 0 {
+		valuesOK = true
+		batch = values.shape[0]
+	}
+	if !valuesOK {
+		return nil, fmt.Errorf("edge sum values must have shape [%d] or [B, %d], got %v", n, n, values.shape)
+	}
+
+	return edgeSumForward(topology, weights, values, batch, edgeSumWorkers(batch, n, topology.Edges()))
+}
+
+func edgeSumForward(topology *EdgeTopology, weights, values *Tensor, batch, workers int) (*Tensor, error) {
+	output, err := newZeroFloat32Tensor(values.shape)
+	if err != nil {
+		return nil, err
+	}
+	n := topology.Nodes()
+	parallelFor(batch*n, workers, func(start, end int) {
+		var acc exactAccumulator
+		var fast float64ProductSum
+		for i := start; i < end; i++ {
+			b, t := i/n, i%n
+			from := int(topology.targetOffsets[t])
+			until := int(topology.targetOffsets[t+1])
+			fast.reset()
+			for edgeIndex := from; edgeIndex < until; edgeIndex++ {
+				e := int(topology.targetEdges[edgeIndex])
+				fast.add(weights.data[e], values.data[b*n+int(topology.sources[e])])
+			}
+			if out, ok := fast.result(); ok {
+				output.data[i] = out
+				continue
+			}
+			acc.reset()
+			for edgeIndex := from; edgeIndex < until; edgeIndex++ {
+				e := int(topology.targetEdges[edgeIndex])
+				acc.addProduct(weights.data[e], values.data[b*n+int(topology.sources[e])])
+			}
+			output.data[i] = acc.float32()
+		}
+	})
+	return output, nil
+}

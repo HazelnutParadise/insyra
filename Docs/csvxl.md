@@ -36,9 +36,11 @@ func main() {
 
 ## Supported encodings
 
-Reading decodes UTF-8/ASCII, UTF-16 and UTF-32 (LE/BE, BOM-aware), Big5, GB18030/GBK/GB2312, Shift-JIS, ISO-2022-JP, EUC-JP, EUC-KR, every ISO-8859 part x/text ships, Windows-1250 through 1258, KOI8-R/U, IBM866 and Macintosh Roman — every charset the auto-detector can report, plus the usual aliases (`latin1`, `cp1252`, `sjis`, …). Separators and case do not matter: `ISO-8859-1`, `iso8859_1` and `ISO 8859 1` are the same.
+Reading decodes UTF-8/ASCII, UTF-16 and UTF-32 (LE/BE, BOM-aware), Big5, GB18030/GBK/GB2312, Shift-JIS, ISO-2022-JP, EUC-JP, EUC-KR, every ISO-8859 part x/text ships, Windows-1250 through 1258, KOI8-R/U, IBM866 and Macintosh Roman, plus the usual aliases (`latin1`, `cp1252`, `sjis`, `big5-hkscs`, `x-gbk`, `gb_2312-80`, …). `utf-8-sig` and `utf-8-bom` read as UTF-8 and drop a leading byte-order mark. Separators and case do not matter: `ISO-8859-1`, `iso8859_1` and `ISO 8859 1` are the same.
 
 Any other name is an error listing what is available. insyra will not copy bytes it cannot decode into a table, because the result would be cells that are not valid UTF-8 with nothing to say so.
+
+The auto-detector knows four charsets that have no decoder here: IBM420, IBM424, ISO-2022-KR and ISO-2022-CN. A file it identifies as IBM420 or IBM424 fails with the same error. ISO-2022-KR and ISO-2022-CN use only 7-bit bytes, so detection takes such a file for UTF-8, and its escape and shift codes reach the cells as they are; naming either encoding explicitly fails with the error instead.
 
 `Auto` detects the encoding from the file's first 8 KB. A UTF-32 byte-order mark is recognised before the UTF-16 one they share a prefix with, and a sample too short to identify falls back to UTF-8 with a warning rather than failing the read.
 
@@ -90,7 +92,7 @@ Each CSV is read in full before its sheet is created. When a CSV cannot be read,
 func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error
 ```
 
-**Description:** Appends CSV files as new sheets. An existing sheet with the same name is deleted first and replaced in full, so nothing from the old sheet survives — including cells outside the range of the new CSV. This works even when it is the workbook's only sheet.
+**Description:** Appends CSV files as new sheets. An existing sheet with the same name is replaced by a fresh sheet before the CSV is written, in the same way `DataTable.ToExcel` replaces a sheet: it keeps its position among the sheets and the active sheet stays the same, and nothing else of the old sheet survives, neither its cells and formulas nor its hidden rows, row heights, comments, hyperlinks, column widths, views or merged ranges. This works even when it is the workbook's only sheet.
 
 Each CSV is read in full before its sheet is replaced, so a CSV that cannot be read leaves the existing sheet of that name as it was. The other files are still appended, and the error lists the files that failed in the same form as `CsvToExcel`. When every file fails, the workbook file is not rewritten.
 
@@ -116,7 +118,7 @@ type ExcelToCsvOptions struct {
 }
 ```
 
-Each sheet becomes `<outputDir>/<sheet>.csv`, or the matching `csvNames` entry named as described in [File names](#file-names). A sheet name that cannot be a single file name — it contains `/`, `\` or is `..` — is rejected with an error before any file is touched, because sheet names come from the workbook and could otherwise escape `outputDir`. Each CSV is read fully from the sheet first and written through a temporary file, so a failing sheet never truncates an existing CSV.
+Each sheet becomes `<outputDir>/<sheet>.csv`, or the matching `csvNames` entry named as described in [File names](#file-names). The file name actually used is checked for each sheet before that sheet's CSV is written: a name containing `/` or `\`, or one that would not be a file directly inside `outputDir`, is rejected with an error, because sheet names come from the workbook and a `csvNames` entry comes from the caller, and either could otherwise escape `outputDir`. A sheet named `.` or `..` is an ordinary name and becomes `..csv` or `...csv`. Each CSV is read fully from the sheet first and written through a temporary file, so a failing sheet never truncates an existing CSV.
 
 A name in `Sheets` that the workbook does not have is an error naming the sheets it does have, rather than a sheet that quietly does not appear in the output.
 

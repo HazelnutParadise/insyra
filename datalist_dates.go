@@ -37,8 +37,8 @@ func (dl *DataList) ParseDates(layouts ...string) *DataList {
 
 // ParseDatesCols applies ParseDates to the named columns in place and returns
 // the DataTable so calls can be chained. Columns may be named or given as
-// Excel-style indices ("A", "B", …); a column that does not exist records a
-// warning and is skipped, leaving the rest of the table converted.
+// Excel-style indices ("A", "B", …); a column that does not exist is skipped
+// and recorded as an error on Err(), leaving the rest of the table converted.
 //
 // This is the conversion `load sql … parsedates` performs, exposed for tables
 // that came from anywhere else — a CSV date column, for instance, which

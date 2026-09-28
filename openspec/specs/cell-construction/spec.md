@@ -30,6 +30,10 @@ Passing a slice to a list constructor is ambiguous: it can mean "these are my va
 - **THEN** 結果與 `Count(x)` 相同
 
 #### Scenario: Updating and replacing
-- **WHEN** 以被標記的值呼叫 `Update`、`InsertAt`、`ReplaceAll` 或 `UpdateElement`
+- **WHEN** 以被標記的值呼叫 `Update`、`InsertAt`、`ReplaceAll`、`ReplaceNilsWith`、`Shift` 的填補值、`UpdateElement`、`DataTable.Replace`，或 `DataTable` 任一 `Replace…InRow`、`Replace…InCol` 方法
 - **THEN** 格子中存放的是原值，不是標記
+
+#### Scenario: A doubly marked value
+- **WHEN** 以 `Cell(Cell(x))` 呼叫 `Append` 與 `ReplaceAll`
+- **THEN** 兩者都只取下一層標記，存進格子的值相同
 

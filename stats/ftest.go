@@ -15,11 +15,7 @@ type FTestResult struct {
 
 // FTestForVarianceEquality performs an F-test for variance equality.
 func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, error) {
-	values1, err := testSeries(data1, "data1")
-	if err != nil {
-		return nil, err
-	}
-	values2, err := testSeries(data2, "data2")
+	values1, values2, err := testSeriesPair(data1, data2, "data1", "data2")
 	if err != nil {
 		return nil, err
 	}
@@ -65,14 +61,12 @@ func LeveneTest(groups []insyra.IDataList) (*FTestResult, error) {
 		return nil, errors.New("at least two groups required")
 	}
 
-	// Per-group: pull median + raw []any in parallel. Each group is its own
-	// actor so per-group AtomicDo entries can run concurrently. Collapses
-	// the previously-serial actor-handshake chain (same fix pattern as
-	// OneWayANOVA / TwoWayANOVA).
+	// Each group is read through testSeries, so an unreadable cell is an
+	// error naming the group and its row.
 	var allDiffs []float64
 	var groupLabels []int
 	for i := range groups {
-		values, err := testSeries(groups[i], fmt.Sprintf("group %d", i))
+		values, err := testSeries(groups[i], fmt.Sprintf("group %d", i+1))
 		if err != nil {
 			return nil, err
 		}
@@ -93,16 +87,15 @@ func BartlettTest(groups []insyra.IDataList) (*FTestResult, error) {
 		return nil, errors.New("at least two groups required")
 	}
 
-	// Per-group n + Var via parallel actor entries. Var() is the bulk of
-	// the work (two-pass sum + sumsq); doing it in parallel saves the
-	// serial actor-entry chain for ≥3 groups.
+	// Per-group n and sample variance, each group read through testSeries so
+	// an unreadable cell is an error naming the group and its row.
 	type bartlettExtract struct {
 		n int
 		v float64
 	}
 	bx := make([]bartlettExtract, len(groups))
 	for i := range groups {
-		values, err := testSeries(groups[i], fmt.Sprintf("group %d", i))
+		values, err := testSeries(groups[i], fmt.Sprintf("group %d", i+1))
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +107,7 @@ func BartlettTest(groups []insyra.IDataList) (*FTestResult, error) {
 	var weight float64
 	for i, e := range bx {
 		if e.n < 2 || e.v <= 0 {
-			return nil, fmt.Errorf("group %d must have at least two observations and positive variance", i)
+			return nil, fmt.Errorf("group %d must have at least two observations and positive variance", i+1)
 		}
 		sumNMinus1 += e.n - 1
 		pooledLogVar += float64(e.n-1) * math.Log(e.v)

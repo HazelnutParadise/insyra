@@ -48,3 +48,7 @@ Compile and evaluation failures SHALL be values of exported types carrying the e
 #### Scenario: Reacting to a compile failure
 - **WHEN** `AddColUsingCCL` 因為運算式無法編譯而失敗
 - **THEN** `errors.As(dt.Err(), &compileErr)` 為真，且 `compileErr.Expr` 是原始運算式
+
+#### Scenario: errors.As after a call that succeeded
+- **WHEN** 公式成功，`dt.Err()` 為 nil 的 `*ErrorInfo`，再呼叫 `errors.As(dt.Err(), &compileErr)`
+- **THEN** 回傳 false，不 panic

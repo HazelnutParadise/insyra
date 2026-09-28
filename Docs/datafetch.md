@@ -134,19 +134,19 @@ func (r GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable
 
 **Returns:**
 
-- `*insyra.DataTable`: Table containing review data with columns:
+- `*insyra.DataTable`: Table containing review data, one row per review. The columns are ordered by name, in this order:
+  - `Content`: Review text
+  - `Language`: The review's language code, such as `zh-Hant`. Empty for a review with only a star rating, which has no text
+  - `Rating`: Star rating (1-5)
+  - `ReviewDate`: The date the review was posted, in UTC, as `YYYY-MM-DD`
+  - `ReviewID`: The review's own ID, useful for dropping repeats when merging pages fetched in different sort orders
+  - `ReviewTime`: Time description as Google shows it, in Traditional Chinese (e.g., "2 個月前")
   - `Reviewer`: Reviewer's display name
   - `ReviewerID`: Unique reviewer identifier
-  - `ReviewerState`: Always empty; Google's review pages no longer include it
   - `ReviewerLevel`: Always 0; Google's review pages no longer include it
-  - `ReviewTime`: Time description as Google shows it, in Traditional Chinese (e.g., "2 個月前")
-  - `ReviewDate`: The date the review was posted, in UTC, as `YYYY-MM-DD`
-  - `Content`: Review text
-  - `Rating`: Star rating (1-5)
-  - `ReviewID`: The review's own ID, useful for dropping repeats when merging pages fetched in different sort orders
-  - `Language`: The review's language code, such as `zh-Hant`. Empty for a review with only a star rating, which has no text
-  - `ReviewerReviewCount`: How many reviews the reviewer has written
   - `ReviewerPhotoCount`: How many photos the reviewer has posted
+  - `ReviewerReviewCount`: How many reviews the reviewer has written
+  - `ReviewerState`: Always empty; Google's review pages no longer include it
 
 **Example:**
 

@@ -17,8 +17,14 @@ Most cell values are things Go can compare and hash, so counting, searching and 
 - **THEN** 一樣不 panic，並以型別與內容識別
 
 #### Scenario: A self-referential value
-- **WHEN** 格子值是一個包含自己的切片
-- **THEN** 編碼在固定深度停止，不會耗盡堆疊
+- **WHEN** 格子值是一個包含自己的切片或 map，即使在多個位置都指回自己（例如 `s[0] = s; s[1] = s`）
+- **THEN** 指回正在編碼中的切片或 map 時寫成回指標記而不再展開，`Counter` 立即完成，不會耗盡堆疊
+- **AND** 內容不同的兩個循環值識別不同，內容相同的識別相同，每次結果一致
+
+#### Scenario: A value that shares its sub-values
+- **WHEN** 格子值層層共用同一個子值但不包含自己（例如重複 30 次 `x = []any{x, x}`）
+- **THEN** 同一次編碼中已寫過的切片或 map 直接沿用結果，過長的巢狀編碼改寫成其內容的 SHA-256 摘要，`Count` 立即完成
+- **AND** 分別建立、內容相同的兩個值識別相同，不論子值有沒有共用；葉值不同的識別不同
 
 ### Requirement: Counting and searching give the same answer
 
@@ -69,11 +75,15 @@ Most cell values are things Go can compare and hash, so counting, searching and 
 
 ### Requirement: Identity descends into composite values
 
-編碼 SHALL 遞迴進入切片、陣列、map 與 struct 的元素，並對每個元素套用同一套型別規則。系統 SHALL NOT 讓型別不同但列印結果相同的巢狀值被視為同一個值。map 的編碼 SHALL 與其迭代順序無關。
+識別無法比較的值時，最外層的值 SHALL 以其 Go 型別加上內容識別。編碼 SHALL 遞迴進入切片、陣列、map 與 struct 的元素，巢狀元素 SHALL 以種類（整數、浮點數、字串、布林、切片或陣列、map、struct）與內容識別，SHALL NOT 納入其 Go 型別名稱：`[]any{T1{1}}` 與 `[]any{T2{1}}` 視為同一個值，`[]any{[]int{1}}` 與 `[]any{[]int64{1}}` 也是。種類不同的巢狀值，例如整數 `1` 與字串 `"1"`，SHALL 分開，分組與計數都是如此。map 的編碼 SHALL 與其迭代順序無關。
 
 #### Scenario: A nested integer and a nested string
 - **WHEN** 比較 `[]any{1}` 與 `[]any{"1"}`
 - **THEN** 兩者的識別不同，分組與計數都分開
+
+#### Scenario: Nested values of the same kind and content
+- **WHEN** 比較 `[]any{[]int{1}}` 與 `[]any{[]int64{1}}`
+- **THEN** 兩者的識別相同，計數為同一項
 
 #### Scenario: Grouping is unaffected for scalars
 - **WHEN** 以一般的字串、整數、浮點數、布林值分組

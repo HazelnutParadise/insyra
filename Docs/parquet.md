@@ -113,10 +113,11 @@ entirely.
 | `Float32`, `Float64` | `float32`, `float64` |
 | `Bool` | `bool` |
 | `String`, `LargeString` | `string` |
-| `Binary`, `LargeBinary`, `FixedSizeBinary` | `[]byte`, so a binary column is never mistaken for a text one; `Show` prints the whole column as hex |
+| `Binary`, `LargeBinary`, `FixedSizeBinary` | `[]byte`, so a binary column is never mistaken for a text one; `Show` prints each cell as hex, shortened for a value longer than 20 bytes (for example `30313233343536373839... (26 bytes)`) |
 | `Timestamp` | `time.Time` |
 | `Date32`, `Date64` | `time.Time` at UTC midnight |
 | `Decimal128`, `Decimal256` | `decimal.Decimal` ([go-decimal](https://github.com/TimLai666/go-decimal)), exact |
+| `Null` | `nil` in every cell, which is all such a column holds; no reason is recorded |
 | anything else | `nil`, with the reason on `Err()` |
 
 A `Decimal` keeps the file's own unscaled integer and scale, so nothing is
@@ -129,9 +130,12 @@ A binary column exports to JSON as base64, which is what `encoding/json` does
 with a `[]byte`, so nothing is lost. Writing the table back to Parquet keeps
 it a binary column.
 
-Dictionary-encoded columns are not a special case: the reader materialises them
-as their underlying type, so a pandas `category` column of strings reads as
-strings.
+A dictionary-encoded column reads as the values it holds, in the Go type the
+table above gives their Arrow type, so a pandas `category` column of strings
+reads as strings. That holds whether the reader materialises the column or, for
+a file that stores its Arrow schema, hands it over as an Arrow dictionary. A
+dictionary whose values have no Go representation reads as `nil`, with the
+reason on `Err()`.
 
 ### Write
 
@@ -196,7 +200,7 @@ err = parquet.WriteTo(dt, &buf)
 func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnOptions) (*insyra.DataList, error)
 ```
 
-**Description:** Reads data from a single column in a Parquet file, returning an `insyra.DataList`. When `opt.MaxValues > 0`, the row count of the selected row groups (all when none are selected) is taken from the metadata first and the call is refused before reading if it exceeds the limit.
+**Description:** Reads data from a single column in a Parquet file, returning an `insyra.DataList`. The column is selected by its Parquet leaf name, as `ReadOptions.Columns` selects them, so a nested column (`List`, `Struct`, `Map`), whose leaf is not named after the field, cannot be selected by name: the call reports that the column is not found. When `opt.MaxValues > 0`, the row count of the selected row groups (all when none are selected) is taken from the metadata first and the call is refused before reading if it exceeds the limit.
 
 **Parameters:**
 
