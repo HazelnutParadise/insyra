@@ -1,10 +1,8 @@
 # value-matching Specification
 
 ## Purpose
-Defines how the library decides that a cell holds the value being looked for: integers match by value across Go integer types, a float never matches an integer, NaN matches NaN, encoder categories follow the same integer rule, and whole-list comparison stays type-strict.
-
+Defines how the library decides that a cell holds the value being looked for: integers match by value across Go integer types, a float never matches an integer, NaN matches NaN, encoder categories and group keys follow the same integer rule, and whole-list comparison stays type-strict.
 ## Requirements
-
 ### Requirement: Integers match by value across Go integer types
 
 When the library looks for a value in a DataList or DataTable, whether counting, finding, replacing or dropping by value, a cell holding an integer SHALL match a searched integer of equal value regardless of their Go integer types. A negative signed integer SHALL NOT match any unsigned integer. A floating-point value SHALL NOT match an integer. A float64 NaN SHALL match a float64 NaN.
@@ -40,3 +38,18 @@ The one-hot, label and ordinal encoders SHALL treat integer categories of equal 
 #### Scenario: int versus int64 lists
 - **WHEN** 呼叫 `NewDataList(1).IsEqualTo(NewDataList(int64(1)))`
 - **THEN** 回傳 false
+
+### Requirement: Group keys compare integers by value
+
+`GroupBy`, `Pivot`, `Merge` keys and `OpNUnique` SHALL put integers of equal value in one group whatever their Go width: `int`, `int8` through `int64`, `uint` through `uint64` and `uintptr`. `float32` and `float64` values SHALL group by value among themselves. An integer SHALL NOT share a group with a float or a string of the same value.
+
+#### Scenario: Eleven widths and two floats
+
+- **WHEN** a column holds the value 1 in each of the eleven integer widths, as `float64` and as `float32`, and as the string `"1"`, and is grouped
+- **THEN** there are three groups, of sizes 11, 2 and 1
+
+#### Scenario: A distinct count
+
+- **WHEN** `OpNUnique` runs over `1`, `int64(1)`, `uintptr(1)`, `1.0` and `"1"`
+- **THEN** it returns 3
+
