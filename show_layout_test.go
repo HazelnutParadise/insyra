@@ -44,17 +44,17 @@ func TestShowRangeMeasuresOnlyShownRows(t *testing.T) {
 	}
 }
 
-// The default view of a long table prints the first 20 and last 5 rows. A
-// row between them is measured no more than it is printed.
+// The default view of a table longer than 60 rows prints the first 20 and
+// last 5. A row between them is measured no more than it is printed.
 func TestShowMeasuresOnlyTheRowsItPrints(t *testing.T) {
-	wide, narrow := showLayoutPair(30, 22)
+	wide, narrow := showLayoutPair(70, 40)
 	var a, b bytes.Buffer
 	wide.ShowTo(&a)
 	narrow.ShowTo(&b)
 	if a.String() != b.String() {
 		t.Fatalf("a hidden row changed Show:\n%s\nversus\n%s", a.String(), b.String())
 	}
-	if !strings.Contains(a.String(), "t19") || !strings.Contains(a.String(), "t25") || strings.Contains(a.String(), "t22") {
+	if !strings.Contains(a.String(), "t19") || !strings.Contains(a.String(), "t65") || strings.Contains(a.String(), "t40") {
 		t.Fatalf("Show printed the wrong rows:\n%s", a.String())
 	}
 }
@@ -119,4 +119,74 @@ func BenchmarkShowTypesRangeFiveOfAMillionRows(b *testing.B) {
 	for b.Loop() {
 		dt.ShowTypesRangeTo(io.Discard, 5)
 	}
+}
+
+func showRowsFixture(n int) ([]any, *DataTable, *DataList) {
+	values := make([]any, n)
+	for i := range values {
+		values[i] = fmt.Sprintf("v%d", i)
+	}
+	return values, NewDataTable(NewDataList(values...).SetName("s")), NewDataList(values...)
+}
+
+// A view with no range prints up to 60 rows whole, and past 60 the first 20
+// and the last 5, by the owner's ruling of 2026-09-28 on #236. The cut was at
+// 25 rows. The same rule holds for a table and a list, for values and types.
+func TestShowPrintsUpToSixtyRowsWhole(t *testing.T) {
+	for _, n := range []int{60, 61} {
+		_, dt, dl := showRowsFixture(n)
+		views := map[string]func(*bytes.Buffer){
+			"DataTable.Show":      func(b *bytes.Buffer) { dt.ShowTo(b) },
+			"DataList.Show":       func(b *bytes.Buffer) { dl.ShowTo(b) },
+			"DataTable.ShowTypes": func(b *bytes.Buffer) { dt.ShowTypesTo(b) },
+			"DataList.ShowTypes":  func(b *bytes.Buffer) { dl.ShowTypesTo(b) },
+		}
+		for name, show := range views {
+			var b bytes.Buffer
+			show(&b)
+			out := stripANSI(b.String())
+			truncated := strings.Contains(out, "Displaying")
+			if n == 60 && truncated {
+				t.Errorf("%s truncated a %d-row view:\n%s", name, n, out)
+			}
+			if n == 61 && !truncated {
+				t.Errorf("%s printed all %d rows, want the first 20 and last 5:\n%s", name, n, out)
+			}
+			// Rows 19 and 56 are printed either way; row 20 only when whole.
+			for _, row := range []int{19, 56} {
+				if !showsRow(out, row) {
+					t.Errorf("%s of %d rows is missing row %d", name, n, row)
+				}
+			}
+			if showsRow(out, 20) != (n == 60) {
+				t.Errorf("%s of %d rows: row 20 printed = %v", name, n, showsRow(out, 20))
+			}
+		}
+	}
+}
+
+// stripANSI drops the colour codes the display adds.
+func stripANSI(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == 0x1b {
+			for i < len(s) && s[i] != 'm' {
+				i++
+			}
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// showsRow reports whether a row's label starts a line of the output: "20: "
+// in a table view, "20 " in a list view.
+func showsRow(out string, row int) bool {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, fmt.Sprintf("%d: ", row)) || strings.HasPrefix(line, fmt.Sprintf("%-6d ", row)) {
+			return true
+		}
+	}
+	return false
 }

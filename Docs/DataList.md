@@ -2158,7 +2158,7 @@ func (dl *DataList) Show()
 func (dl *DataList) ShowTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays DataList content in a clean, colored linear format. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
+**Description:** Displays DataList content in a clean, colored linear format. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout. A list of up to 60 items prints whole; a longer one prints its first 20 and last 5 items.
 
 **Parameters:**
 
@@ -2192,7 +2192,7 @@ More than two values, a first value that is not an `int`, or an end that is neit
 **Parameters:**
 
 - `startEnd`: Variable parameters for range specification
-  - No parameters: the whole list, as `Show` prints it: a list of more than 25 items prints its first 20 and last 5
+  - No parameters: the whole list, as `Show` prints it: a list of more than 60 items prints its first 20 and last 5
   - Single positive integer (n): shows first n items
   - Single negative integer (-n): shows last n items
   - Two parameters (start, end): shows items from start to end (exclusive)
@@ -2257,7 +2257,7 @@ func (dl *DataList) ShowTypesRangeTo(w io.Writer, startEnd ...any) // same outpu
 **Parameters:**
 
 - `startEnd`: Variable parameters for range specification (same as ShowRange)
-  - No parameters: the whole list, as `Show` prints it: a list of more than 25 items prints its first 20 and last 5
+  - No parameters: the whole list, as `Show` prints it: a list of more than 60 items prints its first 20 and last 5
   - Single positive integer (n): shows first n items
   - Single negative integer (-n): shows last n items
   - Two parameters (start, end): shows items from start to end (exclusive)

@@ -52,13 +52,14 @@ func (dt *DataTable) ShowTo(w io.Writer) {
 
 // ShowRange displays the DataTable with a specified range of rows.
 // startEnd is an optional parameter that can be [start, end] to specify the range of rows to display.
-// if startEnd is not provided, all rows will be displayed.
+// if startEnd is not provided, a table of up to 60 rows is displayed whole,
+// and a longer one shows its first 20 and last 5 rows.
 // if only one value is provided, there are two behaviors:
 // - if positive, it shows the first N rows (e.g., ShowRange(5) shows first 5 rows)
 // - if negative, it shows the last N rows (e.g., ShowRange(-5) shows last 5 rows)
 // For two parameters [start, end], it shows rows from index start (inclusive) to index end (exclusive).
 // If end is nil, it shows rows from index start to the end of the table.
-// Example: dt.ShowRange() - shows all rows
+// Example: dt.ShowRange() - shows the table (first 20 and last 5 rows past 60)
 // Example: dt.ShowRange(5) - shows the first 5 rows
 // Example: dt.ShowRange(-5) - shows the last 5 rows
 // Example: dt.ShowRange(2, 10) - shows rows with indices 2 to 9 (not including 10)
@@ -452,13 +453,14 @@ func (dt *DataTable) ShowTypesTo(w io.Writer) {
 
 // ShowTypesRange displays the data types of each element in the DataTable within a specified range of rows.
 // startEnd is an optional parameter that can be [start, end] to specify the range of rows to display.
-// if startEnd is not provided, all rows will be displayed.
+// if startEnd is not provided, a table of up to 60 rows is displayed whole,
+// and a longer one shows its first 20 and last 5 rows.
 // if only one value is provided, there are two behaviors:
 // - if positive, it shows the first N rows (e.g., ShowTypesRange(5) shows first 5 rows)
 // - if negative, it shows the last N rows (e.g., ShowTypesRange(-5) shows last 5 rows)
 // For two parameters [start, end], it shows rows from index start (inclusive) to index end (exclusive).
 // If end is nil, it shows rows from index start to the end of the table.
-// Example: dt.ShowTypesRange() - shows all rows
+// Example: dt.ShowTypesRange() - shows the table (first 20 and last 5 rows past 60)
 // Example: dt.ShowTypesRange(5) - shows the first 5 rows
 // Example: dt.ShowTypesRange(-5) - shows the last 5 rows
 // Example: dt.ShowTypesRange(2, 10) - shows rows with indices 2 to 9 (not including 10)
@@ -743,13 +745,14 @@ func (dl *DataList) ShowTo(w io.Writer) {
 // ShowRange displays the content of DataList within a specified range in a clean linear format.
 // It adapts to terminal width and always displays in a linear format, not as a table.
 // startEnd is an optional parameter that can be [start, end] to specify the range of items to display.
-// if startEnd is not provided, all items will be displayed.
+// if startEnd is not provided, a list of up to 60 items is displayed whole,
+// and a longer one shows its first 20 and last 5 items.
 // if only one value is provided, there are two behaviors:
 // - if positive, it shows the first N items (e.g., ShowRange(5) shows first 5 items)
 // - if negative, it shows the last N items (e.g., ShowRange(-5) shows last 5 items)
 // For two parameters [start, end], it shows items from index start (inclusive) to index end (exclusive).
 // If end is nil, it shows items from index start to the end of the list.
-// Example: dl.ShowRange() - shows all items
+// Example: dl.ShowRange() - shows the list (first 20 and last 5 items past 60)
 // Example: dl.ShowRange(5) - shows the first 5 items
 // Example: dl.ShowRange(-5) - shows the last 5 items
 // Example: dl.ShowRange(2, 10) - shows items with indices 2 to 9 (not including 10)
@@ -928,7 +931,7 @@ func (dl *DataList) ShowRangeTo(w io.Writer, startEnd ...any) {
 
 		// Calculate how many items to display in the range
 		selectedItems := end - start
-		maxDisplay := 25
+		maxDisplay := showWholeUpTo
 
 		// Check if range was explicitly specified
 		explicitRangeSpecified := len(startEnd) > 0
@@ -1206,7 +1209,7 @@ func (dl *DataList) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
 		// 計算範圍內項目數
 		totalItems := end - start
 		explicit := len(startEnd) > 0
-		const maxShow = 25
+		maxShow := showWholeUpTo
 		showAll := explicit || totalItems <= maxShow
 		firstCount := totalItems
 		if !showAll {
@@ -1270,11 +1273,16 @@ func max(a, b int) int {
 	return b
 }
 
+// showWholeUpTo is the longest view that Show, ShowRange and ShowTypesRange
+// print whole when no range is given, for a table and a list alike. A longer
+// one prints its first 20 and last 5 rows.
+const showWholeUpTo = 60
+
 // tableViewTruncates reports whether a table view of rows [start, end) prints
-// only its first 20 and last 5 rows: it does when there are more than 25 and
-// the caller asked for no range.
+// only its first 20 and last 5 rows: it does when there are more than
+// showWholeUpTo and the caller asked for no range.
 func tableViewTruncates(start, end int, explicitRange bool) bool {
-	return end-start > 25 && !explicitRange
+	return end-start > showWholeUpTo && !explicitRange
 }
 
 // shownTableRows lists the rows a table view of [start, end) prints, in order.

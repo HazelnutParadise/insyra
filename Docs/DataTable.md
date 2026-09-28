@@ -4458,7 +4458,7 @@ func (dt *DataTable) Show()
 func (dt *DataTable) ShowTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the DataTable content in the console. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`). A table of more than 25 rows prints its first 20 and last 5 rows with a `...` line between them; the summary line above the table still covers every row. Column widths fit the rows that are printed.
+**Description:** Displays the DataTable content in the console. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`). A table of up to 60 rows prints whole; a longer one prints its first 20 and last 5 rows with a `...` line between them; the summary line above the table still covers every row. Column widths fit the rows that are printed.
 
 **Parameters:**
 
@@ -4486,7 +4486,7 @@ func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) // same output, w
 **Parameters:**
 
 - `startEnd`: Optional parameters to specify the range of rows to display:
-  - No parameters: the whole table, as `Show` prints it: a table of more than 25 rows prints its first 20 and last 5 rows
+  - No parameters: the whole table, as `Show` prints it: a table of more than 60 rows prints its first 20 and last 5 rows
   - One positive value: shows first N rows (e.g., ShowRange(5) shows first 5 rows)
   - One negative value: shows last N rows (e.g., ShowRange(-5) shows last 5 rows)
   - Two values [start, end]: shows rows from index start (inclusive) to index end (exclusive)
@@ -4499,7 +4499,7 @@ func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) // same output, w
 **Example:**
 
 ```go
-dt.ShowRange()      // Show the whole table (first 20 and last 5 rows past 25)
+dt.ShowRange()      // Show the whole table (first 20 and last 5 rows past 60)
 dt.ShowRange(5)     // Show first 5 rows
 dt.ShowRange(-5)    // Show last 5 rows
 dt.ShowRange(2, 10) // Show rows 2-9

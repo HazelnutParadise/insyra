@@ -214,7 +214,7 @@
 | E-5 | ~~Low~~ 已修正（batch 3） | 選項重複與過時註解：`ReadSQLOptions.IndexCol` 是 `RowNameColumn` 的別名；`ToSQLOptions.IfExists` 註解寫 `"fail", "replace", "append"` 字串但型別是 int enum；`SQLActionIfTableExistsFail` 命名冗長（準則 1、E） | datatable_from_sql.go:500-509；datatable_to_sql.go:20-43 | 留一個；修註解；enum 改 `TableExistsFail` |
 | E-6 | ~~Low~~ 已修正（core-settings-batch：`NewSimpleImputer(opts ...SimpleImputerOptions)`，預設平均、`FillValue` 錯配由 `Fit` 回報；`Scaler.Fit` 的 `cols` 是必填清單，維持 variadic） | `NewSimpleImputer(strategy, constant ...any)`：常數用 variadic 傳，數量錯誤要到 `Fit` 才報；`Scaler.Fit(dt, cols ...string)` cols 必填卻是 variadic，零個參數是執行期錯誤（準則 8） | datatable_simple_imputer.go:39；datatable_scale.go:169 | `NewConstantImputer(value)`；cols 改 `[]string` |
 | E-7 | ~~Low~~ 已修正（core-settings-batch：指定的欄補不了就報錯、未指定時跳過；`DataTable.FillByInterpolation(extrapolate, cols...)` 可外插；`FillForward` 表格版 `limit` 必填是因為後面接欄位清單，屬刻意） | `DataTable.FillForward(limit int, cols …)` 與 `DataList.FillForward(limit ...int)` 簽名不對稱；`FillWithMean`／`FillWithMedian`／`FillByInterpolation` 對非數值欄靜默跳過（不 warn），pandas 會填所有欄（準則 6） | datatable_impute.go:41-96 | 對稱簽名；跳過時至少 warn |
-| E-8 | ~~Low~~ 部分修正（show-measures-shown-rows：匯出 `Showable`；`Show()` 其實自 323ec68d（2025-05-19）起就只印前 20 列與後 5 列，是文件寫錯，已改正；預設是否改成更短的截斷待擁有者裁定；`ShowRange` 參數已由 core-settings-batch 處理） | `Show()` 預設印全部列，百萬列的表會灌爆終端（pandas 預設 60 列並省略中段）；`ShowRange(startEnd ...any)` 用 `any` 收 `(5)`、`(-5)`、`(2, 10)`、`(2, nil)` 四種形狀；`Show(label, object showable, …)` 的參數型別 `showable` 未匯出，使用者無法在自己的函式簽名引用（準則 4、8） | show.go:27-70, 713-750 | 預設 head/tail 截斷；`ShowRange(start, end int)` + `Head(n)`／`Tail(n)`；匯出 `Showable` |
+| E-8 | ~~Low~~ 已修正（show-measures-shown-rows 匯出 `Showable`；`Show()` 其實自 323ec68d（2025-05-19）起超過 25 列就只印前 20 列與後 5 列，文件寫錯；show-whole-up-to-60-rows 依擁有者 2026-09-28 裁定改為 60 列以內全部印出、超過印前 20 與後 5；`ShowRange` 參數已由 core-settings-batch 處理） | `Show()` 預設印全部列，百萬列的表會灌爆終端（pandas 預設 60 列並省略中段）；`ShowRange(startEnd ...any)` 用 `any` 收 `(5)`、`(-5)`、`(2, 10)`、`(2, nil)` 四種形狀；`Show(label, object showable, …)` 的參數型別 `showable` 未匯出，使用者無法在自己的函式簽名引用（準則 4、8） | show.go:27-70, 713-750 | 預設 head/tail 截斷；`ShowRange(start, end int)` + `Head(n)`／`Tail(n)`；匯出 `Showable` |
 | E-9 | OK | 設計良好、可當範本：encode 三件組（options struct、typed policy enum、fitted encoder 有 `Transform`／`InverseTransform`／`Options()`、錯誤全部回 error、輸出欄名碰撞偵測）；四個 Scaler 共用仿射核心、`Params()` 可檢視、compile-time 介面檢查；`SimpleImputer` 明確不提供 InverseTransform 並寫出理由；`ToSQL` 的識別字引號與型別白名單；`ReadSQLStream` 把 goroutine／連線洩漏契約寫進 doc（**更正 2026-09-24**：該契約不成立，照做仍會洩漏，已由 sql-stream-is-an-iterator 改成 `iter.Seq2` 根治） | — | — |
 
 ### isr
@@ -556,7 +556,7 @@
 | T-23 | [#233](https://github.com/HazelnutParadise/insyra/issues/233) | 已修正（sortby-column-selection、sortby-empty-config-first-column） |
 | E-2 | [#234](https://github.com/HazelnutParadise/insyra/issues/234) |  |
 | E-3 | [#235](https://github.com/HazelnutParadise/insyra/issues/235) |  |
-| E-8 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) | 部分修正（show-measures-shown-rows）；預設截斷待裁定 |
+| E-8 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) | 已修正（show-measures-shown-rows、show-whole-up-to-60-rows） |
 | I-2 | [#237](https://github.com/HazelnutParadise/insyra/issues/237) |  |
 | I-3 | [#238](https://github.com/HazelnutParadise/insyra/issues/238) |  |
 | I-5 | [#239](https://github.com/HazelnutParadise/insyra/issues/239) |  |
