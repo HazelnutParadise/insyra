@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-28] — remove `stats.Diag` one release after it was deprecated
+- **Where**: `stats/diag.go`, `stats/diag_test.go` (`TestDiag`, `TestDiagDeprecatedKeepsMeaning`, `TestDiagNoLongerPanics`), and the `Diag (Deprecated)` section of `Docs/stats.md`
+- **What**: `diag-typed-functions` deprecated `Diag(x any, dims ...int) (any, error)` under the one-name rule (#245, ST-9), in favour of `DiagOf`, `DiagMatrix`, `DiagMatrixSize` and `IdentityMatrix`. Nothing else in the module calls it.
+- **Suggestion**: delete it, its tests and its section in the same release as the other Deprecated removals, with a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-09-28] — the CLI tests' `approxEqualAny` passes a `NaN` where a number is expected
 - **Where**: `cli/commands/timeseries_test.go` `approxEqualAny`, used by 21 assertions there and one in `quant_test.go`
 - **What**: it compares two numeric cells with `math.Abs(got-want) > tol`, which is false whenever either side is `NaN`, so a result holding `NaN` where the test expects `1` counts as equal. Found on 2026-09-28 while writing `nan-only-fill-path`: the old `fillna … ffill limit 1 missing nan` returned `[1 <nil> NaN]`, and a test checking it against `[1 <nil> 1]` with this helper passed; the new tests use their own `fillCellsEqual` instead. Whether any existing assertion hides a wrong `NaN` today was not checked.

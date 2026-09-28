@@ -2314,60 +2314,85 @@ These methods provide point predictions only; R's `predict.lm` and
 
 ## Matrix Operations
 
-### Diag
+Four functions build or read a diagonal. Each takes and returns one type, and none panics: a size below 1, an empty slice and a nil matrix are errors.
+
+### DiagOf
+
+```go
+func DiagOf(m mat.Matrix) ([]float64, error)
+```
+
+**Description:** Returns the main diagonal of `m`, `m[i][i]` for `i` up to the smaller of its row and column counts. Any gonum matrix works, including `*mat.Dense` and `*mat.SymDense`.
+
+### DiagMatrix
+
+```go
+func DiagMatrix(v []float64) (*mat.Dense, error)
+```
+
+**Description:** Returns the `len(v)`×`len(v)` matrix with `v` on its diagonal and zeros elsewhere.
+
+### DiagMatrixSize
+
+```go
+func DiagMatrixSize(v []float64, nrow, ncol int) (*mat.Dense, error)
+```
+
+**Description:** Returns an `nrow`×`ncol` matrix whose diagonal starts with `v` and is zero past the end of `v`; every other entry is zero. A `v` of ones gives a rectangular identity. A `v` longer than the diagonal is an error rather than being cut short.
+
+### IdentityMatrix
+
+```go
+func IdentityMatrix(n int) (*mat.Dense, error)
+```
+
+**Description:** Returns the `n`×`n` identity matrix.
+
+**Examples**:
+
+```go
+m := mat.NewDense(2, 3, []float64{1, 2, 3, 4, 5, 6})
+d, err := stats.DiagOf(m) // [1 5]
+if err != nil {
+    log.Fatal(err)
+}
+
+sq, err := stats.DiagMatrix([]float64{1, 2, 3}) // 3x3, 1 2 3 on the diagonal
+if err != nil {
+    log.Fatal(err)
+}
+
+rect, err := stats.DiagMatrixSize([]float64{1, 1}, 2, 3) // [[1 0 0] [0 1 0]]
+if err != nil {
+    log.Fatal(err)
+}
+
+id, err := stats.IdentityMatrix(3)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(d, mat.Formatted(sq), mat.Formatted(rect), mat.Formatted(id))
+```
+
+### Diag (Deprecated)
 
 ```go
 func Diag(x any, dims ...int) (any, error)
 ```
 
-**Description:** Create diagonal matrices or extract diagonal elements from matrices, mimicking R's `diag()` function.
+**Deprecated:** `Diag` took and returned `any`, so every caller had to type-assert the result. It keeps its old meaning for this release and is removed in the next. A size below 1, such as `Diag(0)` or `Diag([]float64{})`, is an error; it used to panic. Replace each call with the typed function:
 
-**Parameters:**
+| `Diag` call | Replacement |
+| --- | --- |
+| `Diag(m)` | `DiagOf(m)` |
+| `Diag(v)` | `DiagMatrix(v)` |
+| `Diag(v, n)` | `DiagMatrixSize(v, n, n)` |
+| `Diag(v, nrow, ncol)` | `DiagMatrixSize(v, nrow, ncol)` |
+| `Diag(n)` | `IdentityMatrix(n)` |
+| `Diag(nil)` | `IdentityMatrix(1)` |
+| `Diag(nil, nrow, ncol)` | `DiagMatrixSize(ones, nrow, ncol)`, with `ones` holding `min(nrow, ncol)` ones |
 
-- `x`: Input value of various types:
-  - `*mat.Dense`: Extract diagonal elements as `[]float64`
-  - `[]float64`: Create diagonal matrix from slice
-  - `int` or `float64`: Create identity matrix of specified size
-  - `nil`: Create identity matrix (default 1x1)
-- `dims`: Optional dimensions (0, 1, or 2 values):
-  - No dims: Use default sizing based on input
-  - 1 dim: Set nrow = ncol = dim[0]
-  - 2 dims: Set nrow = dim[0], ncol = dim[1]
-
-**Returns:**
-
-- When extracting: `[]float64` containing diagonal elements
-- When creating: `*mat.Dense` diagonal or identity matrix
-
-**Examples**:
-
-```go
-// Extract diagonal from matrix
-matrix := mat.NewDense(3, 3, []float64{1, 2, 3, 4, 5, 6, 7, 8, 9})
-diagonal, err := Diag(matrix) // Returns []float64{1, 5, 9}
-if err != nil {
-    log.Fatal(err)
-}
-
-// Create diagonal matrix from slice
-values := []float64{1, 2, 3}
-diagMatrix, err := Diag(values) // Returns 3x3 diagonal matrix
-if err != nil {
-    log.Fatal(err)
-}
-
-// Create identity matrix
-identity, err := Diag(3) // Returns 3x3 identity matrix
-if err != nil {
-    log.Fatal(err)
-}
-
-// Create rectangular identity matrix
-rectIdentity, err := Diag(nil, 2, 3) // Returns 2x3 matrix with diagonal 1s
-if err != nil {
-    log.Fatal(err)
-}
-```
+`DiagMatrixSize` refuses a `v` longer than the diagonal, where `Diag(v, nrow, ncol)` cut it short.
 
 ---
 
