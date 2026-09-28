@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -67,12 +66,13 @@ func NewHeatMapMissingPoint[X HeatMapAxis, Y HeatMapAxis](x X, y Y) HeatMapPoint
 	return HeatMapPoint[X, Y]{X: x, Y: y, Valid: false}
 }
 
-// CreateHeatMap generates and returns a *charts.HeatMap object based on HeatmapConfig.
-// It accepts optional variadic HeatMapPoint arguments which will be appended to `config.Data`.
-func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ...HeatMapPoint[X, Y]) *charts.HeatMap {
+// CreateHeatMap draws a heat map of points, one cell per point.
+//
+// It returns a nil chart and an error when no point is given, and, with
+// UseCalendar set, when a point's X is not a time.Time or CalendarOpts is nil.
+func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ...HeatMapPoint[X, Y]) (*charts.HeatMap, error) {
 	if len(points) == 0 {
-		insyra.LogWarning("plot.heatmap", "CreateHeatMap", "no data points provided; returning nil")
-		return nil
+		return nil, chartError("CreateHeatMap", "no points to draw")
 	}
 	hm := charts.NewHeatMap()
 
@@ -110,13 +110,11 @@ func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ..
 			case time.Time:
 				// ok
 			default:
-				insyra.LogError("plot", "CreateHeatMap", "calendar mode requires X axis values to be time.Time, got %T", p.X)
-				return nil
+				return nil, chartError("CreateHeatMap", "calendar mode requires X axis values to be time.Time, got %T", p.X)
 			}
 		}
 		if config.CalendarOpts == nil {
-			insyra.LogError("plot", "CreateHeatMap", "calendar mode requires CalendarOpts to be set")
-			return nil
+			return nil, chartError("CreateHeatMap", "calendar mode requires CalendarOpts to be set")
 		}
 		if config.CalendarOpts.ItemStyle == nil {
 			config.CalendarOpts.ItemStyle = &opts.ItemStyle{BorderWidth: 0.5}
@@ -135,7 +133,7 @@ func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ..
 		)
 
 		hm.AddCalendar(config.CalendarOpts).AddSeries("heatmap calendar", convertToCalendarHeatMapData[X, Y](points), charts.WithCoordinateSystem("calendar"))
-		return hm
+		return hm, nil
 	}
 
 	// Regular grid heatmap
@@ -164,7 +162,7 @@ func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ..
 
 	// Add heatmap data
 	hm.SetXAxis(config.XAxis).AddSeries("heatmap", convertToHeatMapData[X, Y](points))
-	return hm
+	return hm, nil
 }
 
 // convertToHeatMapData converts the heatmap data into the format needed by go-echarts.

@@ -48,10 +48,15 @@ Visualize revenue and cost trends together.
 **Code**
 
 ```go
-line := gplot.CreateLineChart(gplot.LineChartConfig{
+line, err := gplot.CreateLineChart(gplot.LineChartConfig{
 	Title: "Revenue vs Cost Trend",
-}, []insyra.IDataList{monthlyRevenue, monthlyCost})
-gplot.SaveChart(line, "exec_trend.png")
+}, monthlyRevenue, monthlyCost)
+if err != nil {
+	log.Fatal(err)
+}
+if err := gplot.SaveChart(line, "exec_trend.png"); err != nil {
+	log.Fatal(err)
+}
 ```
 
 **Expected outcome**  
@@ -66,11 +71,16 @@ Compare monthly gross margin in bar format.
 
 ```go
 margin := insyra.NewDataList(4.1, 4.4, 4.7, 5.2, 5.8, 6.1).SetName("GrossMargin_M")
-bar := gplot.CreateBarChart(gplot.BarChartConfig{
+bar, err := gplot.CreateBarChart(gplot.BarChartConfig{
 	Title: "Gross Margin by Month",
 	XAxis: []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun"},
 }, margin)
-gplot.SaveChart(bar, "exec_margin.png")
+if err != nil {
+	log.Fatal(err)
+}
+if err := gplot.SaveChart(bar, "exec_margin.png"); err != nil {
+	log.Fatal(err)
+}
 ```
 
 **Expected outcome**  
@@ -85,11 +95,16 @@ Inspect the distribution of transaction values.
 
 ```go
 txn := insyra.NewDataList(120, 180, 200, 210, 260, 310, 340, 360, 390, 420).SetName("TxnValue")
-hist := gplot.CreateHistogram(gplot.HistogramConfig{
+hist, err := gplot.CreateHistogram(gplot.HistogramConfig{
 	Title: "Transaction Distribution",
 	Bins:  6,
 }, txn)
-gplot.SaveChart(hist, "exec_distribution.png")
+if err != nil {
+	log.Fatal(err)
+}
+if err := gplot.SaveChart(hist, "exec_distribution.png"); err != nil {
+	log.Fatal(err)
+}
 ```
 
 **Expected outcome**  
@@ -147,17 +162,32 @@ func main() {
 	margin := insyra.NewDataList(4.1, 4.4, 4.7, 5.2, 5.8, 6.1).SetName("GrossMargin_M")
 	txn := insyra.NewDataList(120, 180, 200, 210, 260, 310, 340, 360, 390, 420).SetName("TxnValue")
 
-	line := gplot.CreateLineChart(gplot.LineChartConfig{Title: "Revenue vs Cost Trend"}, []insyra.IDataList{monthlyRevenue, monthlyCost})
-	gplot.SaveChart(line, "exec_trend.png")
+	line, err := gplot.CreateLineChart(gplot.LineChartConfig{Title: "Revenue vs Cost Trend"}, monthlyRevenue, monthlyCost)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := gplot.SaveChart(line, "exec_trend.png"); err != nil {
+		log.Fatal(err)
+	}
 
-	bar := gplot.CreateBarChart(gplot.BarChartConfig{
+	bar, err := gplot.CreateBarChart(gplot.BarChartConfig{
 		Title: "Gross Margin by Month",
 		XAxis: []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun"},
 	}, margin)
-	gplot.SaveChart(bar, "exec_margin.png")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := gplot.SaveChart(bar, "exec_margin.png"); err != nil {
+		log.Fatal(err)
+	}
 
-	hist := gplot.CreateHistogram(gplot.HistogramConfig{Title: "Transaction Distribution", Bins: 6}, txn)
-	gplot.SaveChart(hist, "exec_distribution.png")
+	hist, err := gplot.CreateHistogram(gplot.HistogramConfig{Title: "Transaction Distribution", Bins: 6}, txn)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := gplot.SaveChart(hist, "exec_distribution.png"); err != nil {
+		log.Fatal(err)
+	}
 
 	summary := insyra.NewDataTable(
 		insyra.NewDataList("RevenueMean", "CostMean", "MarginMean").SetName("Metric"),

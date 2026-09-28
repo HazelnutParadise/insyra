@@ -3,6 +3,7 @@
 package gplot
 
 import (
+	"fmt"
 	"image/color"
 
 	"github.com/HazelnutParadise/insyra"
@@ -19,9 +20,44 @@ type ScatterPlotConfig struct {
 	YAxisName string // Optional: Y-axis name.
 }
 
-// CreateScatterPlot generates and returns a plot.Plot object based on ScatterPlotConfig.
-// The Data field can be of type map[string][]float64, []*insyra.DataList, or []insyra.IDataList.
-func CreateScatterPlot(config ScatterPlotConfig, data any) *plot.Plot {
+// ScatterSeries is one set of points for CreateScatterPlot: point i is
+// (X[i], Y[i]), and Name labels the series in the legend. Two columns of a
+// table are one series: ScatterSeries{Name: "s", X: dt.GetColByName("x"),
+// Y: dt.GetColByName("y")}.
+type ScatterSeries struct {
+	Name string
+	X    insyra.IDataList
+	Y    insyra.IDataList
+}
+
+// CreateScatterPlot draws one set of points per series.
+//
+// It returns a nil chart and an error when no series is given, when a series
+// has a nil X or Y, or when a series' X and Y differ in length. A series with
+// no points, or with a NaN or an infinity, is skipped with a warning naming
+// it; when that leaves nothing to draw, it returns an error naming each series
+// and why.
+//
+// The values are read through DataList.ToF64Slice: a number, a fixed-point
+// decimal included, is drawn as its value, and any other cell, whether nil,
+// text (a numeric string such as "2" included) or a bool, is drawn as 0.
+func CreateScatterPlot(config ScatterPlotConfig, series ...ScatterSeries) (*plot.Plot, error) {
+	if len(series) == 0 {
+		return nil, chartError("CreateScatterPlot", "no data to draw")
+	}
+	// Each list is read once, so the lengths checked are the lengths drawn.
+	xs := make([][]float64, len(series))
+	ys := make([][]float64, len(series))
+	for i, s := range series {
+		if isNilList(s.X) || isNilList(s.Y) {
+			return nil, chartError("CreateScatterPlot", "series %d (%q) needs both X and Y", i, s.Name)
+		}
+		xs[i], ys[i] = readValues(s.X), readValues(s.Y)
+		if len(xs[i]) != len(ys[i]) {
+			return nil, chartError("CreateScatterPlot", "series %d (%q) has %d X values and %d Y values", i, s.Name, len(xs[i]), len(ys[i]))
+		}
+	}
+
 	// Create a new plot.
 	plt := plot.New()
 
@@ -30,85 +66,32 @@ func CreateScatterPlot(config ScatterPlotConfig, data any) *plot.Plot {
 	plt.X.Label.Text = config.XAxisName
 	plt.Y.Label.Text = config.YAxisName
 
-	// Handle different types of Data
-	switch data := data.(type) {
-	case map[string][][]float64:
-		// If Data is map[string][][]float64
-		i := 0
-		for seriesName, xyPairs := range data {
-			addScatterSeries(plt, seriesName, xyPairs, i)
-			i++
+	var skipped []string
+	for i, s := range series {
+		if err := addScatterSeries(plt, s.Name, xs[i], ys[i], i); err != nil {
+			skipped = append(skipped, err.Error())
 		}
-	case []*insyra.DataList:
-		// If Data is []*insyra.DataList
-		for i, dataList := range data {
-			xyPairs := convertDataListToXYPairs(dataList)
-			addScatterSeries(plt, dataList.GetName(), xyPairs, i)
-		}
-
-	case []insyra.IDataList:
-		// If Data is []insyra.IDataList
-		for i, dataList := range data {
-			xyPairs := convertIDataListToXYPairs(dataList)
-			addScatterSeries(plt, dataList.GetName(), xyPairs, i)
-		}
-	default:
-		insyra.LogWarning("gplot", "CreateScatterPlot", "Unsupported Data type: %T\n", data)
-		return nil
 	}
-
-	return plt
+	if err := finishSeries("CreateScatterPlot", len(series), skipped); err != nil {
+		return nil, err
+	}
+	return plt, nil
 }
 
-// convertDataListToXYPairs converts a DataList to [][]float64 (X, Y pairs).
-// Assumes the DataList contains alternating X and Y values or pairs of values.
-func convertDataListToXYPairs(dataList *insyra.DataList) [][]float64 {
-	values := dataList.ToF64Slice()
-	if len(values)%2 != 0 {
-		insyra.LogWarning("gplot", "convertDataListToXYPairs", "DataList %s has odd number of values, last value will be ignored", dataList.GetName())
-		values = values[:len(values)-1]
+// addScatterSeries adds one series to the plot, or says why it cannot.
+func addScatterSeries(plt *plot.Plot, seriesName string, xs, ys []float64, index int) error {
+	if len(xs) == 0 {
+		return fmt.Errorf("series %q has no points", seriesName)
+	}
+	scatterData := make(plotter.XYs, len(xs))
+	for i := range xs {
+		scatterData[i].X = xs[i]
+		scatterData[i].Y = ys[i]
 	}
 
-	xyPairs := make([][]float64, len(values)/2)
-	for i := 0; i < len(values); i += 2 {
-		xyPairs[i/2] = []float64{values[i], values[i+1]}
-	}
-	return xyPairs
-}
-
-// convertIDataListToXYPairs converts an IDataList to [][]float64 (X, Y pairs).
-func convertIDataListToXYPairs(dataList insyra.IDataList) [][]float64 {
-	values := dataList.ToF64Slice()
-	if len(values)%2 != 0 {
-		insyra.LogWarning("gplot", "convertIDataListToXYPairs", "DataList %s has odd number of values, last value will be ignored", dataList.GetName())
-		values = values[:len(values)-1]
-	}
-
-	xyPairs := make([][]float64, len(values)/2)
-	for i := 0; i < len(values); i += 2 {
-		xyPairs[i/2] = []float64{values[i], values[i+1]}
-	}
-	return xyPairs
-}
-
-// addScatterSeries is a helper function to add a scatter series to the plot.
-func addScatterSeries(plt *plot.Plot, seriesName string, xyPairs [][]float64, index int) {
-	// Convert xyPairs to plotter.XYs
-	scatterData := make(plotter.XYs, len(xyPairs))
-	for i, pair := range xyPairs {
-		if len(pair) != 2 {
-			insyra.LogWarning("gplot", "addScatterSeries", "Invalid data point at index %d for series %s: expected [X, Y], got %v", i, seriesName, pair)
-			continue
-		}
-		scatterData[i].X = pair[0]
-		scatterData[i].Y = pair[1]
-	}
-
-	// Create the scatter plot
 	scatter, err := plotter.NewScatter(scatterData)
 	if err != nil {
-		insyra.LogWarning("gplot", "addScatterSeries", "Failed to create scatter plot for series %s: %v", seriesName, err)
-		return
+		return fmt.Errorf("series %q cannot be drawn: %w", seriesName, err)
 	}
 
 	// Set different colors and shapes for each series
@@ -139,4 +122,5 @@ func addScatterSeries(plt *plot.Plot, seriesName string, xyPairs [][]float64, in
 	// Add the scatter plot to the chart
 	plt.Add(scatter)
 	plt.Legend.Add(seriesName, scatter)
+	return nil
 }

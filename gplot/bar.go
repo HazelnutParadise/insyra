@@ -21,9 +21,35 @@ type BarChartConfig struct {
 	ErrorBars []float64 // Optional: Error bar values for each bar. If provided, must match the length of Data.
 }
 
-// CreateBarChart generates and returns a plot.Plot object based on BarChartConfig.
-// The Data field can be of type []float64, *insyra.DataList, or insyra.IDataList.
-func CreateBarChart(config BarChartConfig, data any) *plot.Plot {
+// CreateBarChart draws one bar per value in data. A plain slice is passed as
+// insyra.NewDataList(values).
+//
+// The values are read through DataList.ToF64Slice: a number, a fixed-point
+// decimal included, is drawn as its value, and any other cell, whether nil,
+// text (a numeric string such as "2" included) or a bool, is drawn as 0.
+//
+// It returns a nil chart and an error when data is nil or empty, or holds a
+// NaN or an infinity. ErrorBars of the wrong length are dropped with a warning
+// and the bars are still drawn.
+func CreateBarChart(config BarChartConfig, data insyra.IDataList) (*plot.Plot, error) {
+	if isNilList(data) {
+		return nil, chartError("CreateBarChart", "no data to draw")
+	}
+	values := readValues(data)
+	if len(values) == 0 {
+		return nil, chartError("CreateBarChart", "the data list is empty")
+	}
+
+	barWidth := config.BarWidth
+	if barWidth == 0 {
+		barWidth = 20 // Default bar width
+	}
+
+	bars, err := plotter.NewBarChart(plotter.Values(values), vg.Points(barWidth))
+	if err != nil {
+		return nil, chartError("CreateBarChart", "cannot draw the bars: %w", err)
+	}
+
 	// Create a new plot.
 	plt := plot.New()
 
@@ -31,36 +57,6 @@ func CreateBarChart(config BarChartConfig, data any) *plot.Plot {
 	plt.Title.Text = config.Title
 	plt.X.Label.Text = config.XAxisName
 	plt.Y.Label.Text = config.YAxisName
-
-	var values []float64
-
-	// Determine the type of Data and handle it accordingly
-	switch data := data.(type) {
-	case []float64:
-		values = data
-	case *insyra.DataList:
-		values = data.ToF64Slice()
-	case insyra.IDataList:
-		values = data.ToF64Slice()
-	default:
-		insyra.LogWarning("gplot", "CreateBarChart", "Unsupported Data type: %T\n", data)
-		return nil
-	}
-
-	// Create a Bar plot with the processed values.
-	barData := make(plotter.Values, len(values))
-	copy(barData, values)
-
-	barWidth := config.BarWidth
-	if barWidth == 0 {
-		barWidth = 20 // Default bar width
-	}
-
-	bars, err := plotter.NewBarChart(barData, vg.Points(barWidth))
-	if err != nil {
-		insyra.LogWarning("gplot", "CreateBarChart", "failed to create bar chart: %v", err)
-		return nil
-	}
 
 	// Set axis labels (categories). gonum's NominalX indexes names[0] with no
 	// length check, so an empty XAxis — which is what a zero-value config has —
@@ -97,7 +93,7 @@ func CreateBarChart(config BarChartConfig, data any) *plot.Plot {
 		}
 	}
 
-	return plt
+	return plt, nil
 }
 
 // barErrorData implements the XYer and YErrorer interfaces for bar chart error bars

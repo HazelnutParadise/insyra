@@ -51,14 +51,17 @@ Generate an interactive line chart for revenue trend.
 **Code**
 
 ```go
-revLine := plot.CreateLineChart(plot.LineChartConfig{
+revLine, err := plot.CreateLineChart(plot.LineChartConfig{
 	Title: "Monthly Revenue Trend",
 	XAxis: months,
 }, revenue)
+if err != nil {
+	log.Fatal(err)
+}
 ```
 
 **Expected outcome**  
-A `*charts.Line` chart object is created.
+A `*charts.Line` chart object is created, and `err` is `nil`.
 
 ## Step 3: Create customer bar chart
 
@@ -68,14 +71,17 @@ Generate an interactive bar chart for acquisition.
 **Code**
 
 ```go
-custBar := plot.CreateBarChart(plot.BarChartConfig{
+custBar, err := plot.CreateBarChart(plot.BarChartConfig{
 	Title: "Monthly New Customers",
 	XAxis: months,
 }, customers)
+if err != nil {
+	log.Fatal(err)
+}
 ```
 
 **Expected outcome**  
-A `*charts.Bar` chart object is created.
+A `*charts.Bar` chart object is created, and `err` is `nil`.
 
 ## Step 4: Save interactive HTML files
 
@@ -152,14 +158,20 @@ func main() {
 	revenue := insyra.NewDataList(12000, 13200, 14100, 15300, 16000, 17200).SetName("Revenue")
 	customers := insyra.NewDataList(220, 245, 260, 280, 295, 320).SetName("NewCustomers")
 
-	revLine := plot.CreateLineChart(plot.LineChartConfig{
+	revLine, err := plot.CreateLineChart(plot.LineChartConfig{
 		Title: "Monthly Revenue Trend",
 		XAxis: months,
 	}, revenue)
-	custBar := plot.CreateBarChart(plot.BarChartConfig{
+	if err != nil {
+		log.Fatal(err)
+	}
+	custBar, err := plot.CreateBarChart(plot.BarChartConfig{
 		Title: "Monthly New Customers",
 		XAxis: months,
 	}, customers)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	if err := plot.SaveHTML(revLine, "kpi_revenue.html"); err != nil {
 		log.Fatal(err)

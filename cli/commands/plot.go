@@ -53,25 +53,24 @@ func runPlotCommand(ctx *ExecContext, args []string) error {
 		if makeErr != nil {
 			return makeErr
 		}
-		chart = insyraplot.CreateLineChart(insyraplot.LineChartConfig{Title: "Line Chart"}, series...)
+		chart, err = insyraplot.CreateLineChart(insyraplot.LineChartConfig{Title: "Line Chart"}, series...)
 	case "bar":
 		series, makeErr := extractPlotSeries(value)
 		if makeErr != nil {
 			return makeErr
 		}
-		chart = insyraplot.CreateBarChart(insyraplot.BarChartConfig{Title: "Bar Chart"}, series...)
+		chart, err = insyraplot.CreateBarChart(insyraplot.BarChartConfig{Title: "Bar Chart"}, series...)
 	case "scatter":
 		scatterData, makeErr := extractScatterSeries(value)
 		if makeErr != nil {
 			return makeErr
 		}
-		chart = insyraplot.CreateScatterChart(insyraplot.ScatterChartConfig{Title: "Scatter Chart"}, scatterData)
+		chart, err = insyraplot.CreateScatterChart(insyraplot.ScatterChartConfig{Title: "Scatter Chart"}, scatterData)
 	default:
 		return fmt.Errorf("unsupported plot type: %s", plotType)
 	}
-
-	if chart == nil {
-		return fmt.Errorf("failed to create chart")
+	if err != nil {
+		return err
 	}
 
 	ext := strings.ToLower(filepath.Ext(savePath))

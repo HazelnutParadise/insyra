@@ -102,6 +102,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `parsenums` 跟著 `ParseNumbers` 改變：數字全是整數的 list 會轉成 `int64`，不再是 `float64`。
 - **BREAKING**：`ttest two <var1> <var2>` 沒有加 `equal` 或 `unequal` 時，改為執行函式庫預設的 Welch t 檢定，不再假設兩組變異數相等。要得到以前的結果，請加上 `equal`；`help ttest` 會列出預設值。
 - `fillna … ffill|bfill … missing nan|nil` 不再把另一種缺值算進 `limit`。以前這個命令會先把兩種缺值一起補、再把另一種放回去，所以另一種缺值的格子會佔用 `limit` 的名額：`fillna x ffill limit 1 missing nan` 對 `[1, nil, NaN]` 會讓那個 `NaN` 補不到。現在會跳過這些格子，結果是 `[1, nil, 1]`。沒有 `limit` 時，以及 `mean`、`median`、`mode`、`interpolate` 的結果都不變。
+- `plot` 無法建立圖表時會說明原因，例如沒有任何欄的表格會回報 `plot: CreateLineChart: no data to draw`，不再只說 `failed to create chart`。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。
@@ -167,9 +168,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `plot`
 - **BREAKING**：`SavePNG` 預設不再退回線上渲染服務。不傳第三個參數（或傳 `false`）時，本機 Chrome／Chromium 渲染失敗會回傳錯誤；傳 `true` 才允許退回線上服務，該服務會把圖表連同資料上傳到 `server3.hazelnut-paradise.com`。過去的預設會在沒有詢問的情況下把使用者資料送出主機。
-- **BREAKING（行為改變，簽章不變）**：`CreateRadarChart` 未提供 indicators 時回傳 `nil` 並記錄錯誤，v0.3.3 則是記錄警告並回傳沒有 indicators 的圖表。
+- **BREAKING**：`CreateRadarChart` 既沒有 `Indicators` 也沒有 `MaxValues` 時回傳錯誤；v0.3.3 則是記錄警告並回傳沒有 indicators 的圖表。
 - `SaveHTML` 收到超過一個動畫旗標時會回傳錯誤，跟 `SavePNG` 對自己的選填旗標一樣，不再只讀第一個。
 - **BREAKING**：熱圖的點型別改成公開的 `HeatMapPoint[X, Y]`，型別限制改成公開的 `HeatMapAxis`（以前拼成 `heapMapAxisValue`，而且沒有公開）。現在可以在迴圈裡把點收集成 `[]plot.HeatMapPoint[int, int]`。建立點的函式改名為 `NewHeatMapPoint` 與 `NewHeatMapMissingPoint`，`HeatMapPoint(x, y, v)` 要改成 `NewHeatMapPoint(x, y, v)`。
+- **BREAKING**：每個 `Create...` 函式都改為回傳圖表與 `error`：`chart, err := plot.CreateBarChart(config, data)`。無法建立圖表時（通常是沒有給資料），會回傳 `nil` 圖表與開頭是函式名稱的錯誤，例如 `plot: CreateBarChart: no data to draw`；v0.3.3 則是記錄警告後回傳 `nil`。這種失敗不會再另外寫進紀錄。`CreateGaugeChart` 不會失敗，錯誤一律是 `nil`，保留這個回傳值是為了讓每個建構函式的呼叫方式都一樣。
+- `CreateBoxPlot` 丟掉沒有資料清單的系列時，會在警告裡指出是哪一個系列；全部都被丟掉時，錯誤會說沒有任何系列有資料。v0.3.3 明明收到了系列，警告卻寫「no series provided」。
 
 ### `isr`
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。
@@ -180,7 +183,12 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `gplot`
 - **BREAKING**：`SaveChart` 檔案寫不出來時改為回傳 `error`，不再結束程式。既有呼叫要改成 `if err := gplot.SaveChart(...); err != nil { ... }` 或明確寫 `_ =`。
-- **BREAKING（行為改變，簽章不變）**：`CreateHeatmapChart` 遇到比第 0 列長的列也會拒絕，與原本拒絕較短的列一樣，指出第一個長度不同的列並回傳 `nil`。v0.3.3 會照常繪製，忽略多出來的值。
+- **BREAKING**：每個 `Create...` 函式都改為回傳圖表與 `error`。無法建立圖表時，會回傳 `nil` 圖表與開頭是函式名稱的錯誤，例如 `gplot: CreateBarChart: the data list is empty`，不再只記錄警告並回傳 `nil`。
+- **BREAKING**：建構函式改收 insyra 自己的型別，不再收 `any`，傳錯型別會在編譯時就失敗，不會等到執行時才回傳 `nil`。`CreateBarChart` 與 `CreateHistogram` 收 `insyra.IDataList`，`CreateLineChart` 與 `CreateStepChart` 收 `...insyra.IDataList`，`CreateHeatmapChart` 收 `insyra.IDataTable`，`CreateScatterPlot` 收 `...gplot.ScatterSeries`。`[]float64` 請改傳 `insyra.NewDataList(values)`；`map[string][]float64` 的每一筆改傳 `insyra.NewDataList(v).SetName(name)`；`[][]float64` 改傳 `insyra.ReadSlice2D(grid)` 產生的表格，比第一列短的列會補上 `nil`，畫成 0，比第一列長的列則會丟掉超出的值。以前用 map 傳入時，各系列的顏色與虛線樣式依 map 的走訪順序決定，每次執行都可能不同。
+- **BREAKING**：散佈圖的一個系列改成兩個清單 `ScatterSeries{Name, X, Y}`；v0.3.3 把一個清單當成 x、y 交錯排列的值，多出來的最後一個值直接丟掉。`X` 與 `Y` 長度不同時會回傳錯誤，並指出是哪個系列。
+- **BREAKING（行為改變）**：`CreateLineChart`、`CreateStepChart` 與 `CreateScatterPlot` 一個系列都畫不出來時會回傳錯誤，錯誤裡會逐一寫出每個系列和畫不出來的原因；v0.3.3 會回傳一張什麼都沒畫、存檔也不會出錯的圖。其他系列畫得出來時，被略過的系列（長度和 `XAxis` 不同、是空的、含有 `NaN` 或無限大，或一個點都沒有）仍會在警告裡指名。
+- **BREAKING（行為改變）**：`CreateHistogram` 拒絕 `NaN` 與無限大，`CreateHeatmapChart` 拒絕無限大以及只有 `NaN` 的表格，`CreateFunctionPlot` 拒絕不是有限值的 `XMin`、`XMax`、`YMin`、`YMax`，都會回傳指出是哪個值的錯誤。v0.3.3 遇到這些值時，依圖表與平台不同，有的會 panic，有的會卡住，有的會畫出錯誤的圖。熱圖裡夾在數字之間的 `NaN` 仍然畫成空白格。
+- `CreateHeatmapChart` 能讀所有數值型別，`int8`、`int16` 或無號整數的欄位會畫出原本的值，不再全部畫成 0。它讀取儲存格的方式也和其他 `gplot` 圖表一致：不是數字的儲存格一律畫成 0，數字字串也一樣。
 
 ### `py`
 - `PipInstall` 與 `PipUninstall` 拒絕以 `-` 開頭的依賴名稱，並在名稱前加上 `--`。呼叫端的字串過去是以單一 argv 交給 `uv pip install`，所以 `--requirement=/path` 會讓 uv 去讀那個檔案並安裝裡面列的東西。

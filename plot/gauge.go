@@ -23,8 +23,11 @@ type GaugeChartConfig struct {
 	SeriesName string // series name
 }
 
-// CreateGaugeChart generates and returns a *charts.Gauge object
-func CreateGaugeChart(config GaugeChartConfig, value float64) *charts.Gauge {
+// CreateGaugeChart draws a gauge showing value.
+//
+// The error is always nil. The gauge returns one so that every constructor in
+// this package has the same shape.
+func CreateGaugeChart(config GaugeChartConfig, value float64) (*charts.Gauge, error) {
 	gauge := charts.NewGauge()
 
 	internal.SetBaseChartGlobalOptions(gauge, internal.BaseChartConfig{
@@ -44,5 +47,5 @@ func CreateGaugeChart(config GaugeChartConfig, value float64) *charts.Gauge {
 		{Name: config.SeriesName, Value: value},
 	})
 
-	return gauge
+	return gauge, nil
 }

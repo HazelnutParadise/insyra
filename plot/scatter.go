@@ -3,7 +3,6 @@ package plot
 import (
 	"sort"
 
-	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -47,11 +46,12 @@ type ScatterChartConfig struct {
 	SymbolSize       int           // Optional: Size of the scatter points. Default is 10.
 }
 
-// CreateScatterChart generates and returns a *charts.Scatter object based on ScatterChartConfig.
-func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoint) *charts.Scatter {
+// CreateScatterChart draws one series per map entry, named after its key, in
+// the keys' sorted order. It returns a nil chart and an error when data is
+// empty.
+func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoint) (*charts.Scatter, error) {
 	if len(data) == 0 {
-		insyra.LogWarning("plot", "CreateScatterChart", "No data available for scatter chart. Returning nil.")
-		return nil
+		return nil, chartError("CreateScatterChart", "no data to draw")
 	}
 	scatter := charts.NewScatter()
 
@@ -149,7 +149,7 @@ func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoin
 	// 設置標籤
 	internal.SetShowLabels(scatter, config.ShowLabels, string(config.LabelPos), string(LabelPositionRight))
 
-	return scatter
+	return scatter, nil
 }
 
 // convertToScatterData 將 []Point 轉換為 []opts.ScatterData

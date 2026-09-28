@@ -16,8 +16,8 @@ func TestHeatMapPointsCanBeCollected(t *testing.T) {
 	if len(points) != 5 || !points[0].Valid || points[4].Valid {
 		t.Fatalf("points = %+v", points)
 	}
-	if chart := CreateHeatMap(HeatMapConfig{Title: "loop"}, points...); chart == nil {
-		t.Fatal("CreateHeatMap returned nil for collected points")
+	if chart, err := CreateHeatMap(HeatMapConfig{Title: "loop"}, points...); err != nil || chart == nil {
+		t.Fatalf("CreateHeatMap(collected points) = %v, %v", chart, err)
 	}
 }
 

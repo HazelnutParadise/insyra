@@ -143,9 +143,12 @@ Generate an HTML chart for stakeholder review.
 
 ```go
 closeDL.SetName("Close")
-line := plot.CreateLineChart(plot.LineChartConfig{
+line, err := plot.CreateLineChart(plot.LineChartConfig{
 	Title: "AAPL Close Trend",
 }, closeDL)
+if err != nil {
+	log.Fatal(err)
+}
 if err := plot.SaveHTML(line, "aapl_trend.html"); err != nil {
 	log.Fatal(err)
 }
@@ -244,7 +247,10 @@ func main() {
 	fmt.Printf("slope=%.6f r2=%.4f\n", lr.Slope, lr.RSquared)
 
 	closeDL.SetName("Close")
-	line := plot.CreateLineChart(plot.LineChartConfig{Title: "AAPL Close Trend"}, closeDL)
+	line, err := plot.CreateLineChart(plot.LineChartConfig{Title: "AAPL Close Trend"}, closeDL)
+	if err != nil {
+		log.Fatal(err)
+	}
 	if err := plot.SaveHTML(line, "aapl_trend.html"); err != nil {
 		log.Fatal(err)
 	}

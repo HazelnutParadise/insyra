@@ -3,7 +3,6 @@
 package plot
 
 import (
-	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -32,11 +31,11 @@ type SankeyChartConfig struct {
 	ShowLabels bool     // Whether to display labels
 }
 
-// CreateSankeyChart generates and returns a *charts.Sankey object based on SankeyChartConfig.
-func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) *charts.Sankey {
+// CreateSankeyChart draws a Sankey diagram of links between config.Nodes. It
+// returns a nil chart and an error when no link is given.
+func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) (*charts.Sankey, error) {
 	if len(links) == 0 {
-		insyra.LogWarning("plot", "CreateSankeyChart", "No link data available for sankey chart. Returning nil.")
-		return nil
+		return nil, chartError("CreateSankeyChart", "no links to draw")
 	}
 	sankey := charts.NewSankey()
 
@@ -80,5 +79,5 @@ func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) *charts.Sa
 			}),
 		)
 
-	return sankey
+	return sankey, nil
 }

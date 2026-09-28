@@ -3,7 +3,6 @@
 package plot
 
 import (
-	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -48,11 +47,11 @@ type ThemeRiverChartConfig struct {
 	AxisMax  *float64           // Optional: max value for value/log axes
 }
 
-// CreateThemeRiverChart create and return *charts.ThemeRiver object
-func CreateThemeRiverChart(config ThemeRiverChartConfig, data ...ThemeRiverData) *charts.ThemeRiver {
+// CreateThemeRiverChart draws a theme river of data, one stream per Name. It
+// returns a nil chart and an error when no data is given.
+func CreateThemeRiverChart(config ThemeRiverChartConfig, data ...ThemeRiverData) (*charts.ThemeRiver, error) {
 	if len(data) == 0 {
-		insyra.LogWarning("plot", "CreateThemeRiverChart", "No data available for theme river chart. Returning nil.")
-		return nil
+		return nil, chartError("CreateThemeRiverChart", "no data to draw")
 	}
 	themeRiver := charts.NewThemeRiver()
 
@@ -105,7 +104,7 @@ func CreateThemeRiverChart(config ThemeRiverChartConfig, data ...ThemeRiverData)
 	// 添加數據系列
 	themeRiver.AddSeries("themeRiver", convertedData)
 
-	return themeRiver
+	return themeRiver, nil
 }
 
 // convertToThemeRiverData 將 []ThemeRiverData 轉換為 []opts.ThemeRiverData 格式

@@ -12,6 +12,8 @@ import (
 // error-philosophy says no insyra package panics under the default config.
 // These four paths did. Every one is ordinary bad input, not something exotic:
 // a zero-value config, a nil function, a ragged grid, a negative count.
+// gplot takes tables now, which the table pads, but a ragged [][]float64
+// reaches it through ReadSlice2D, so that path is still exercised.
 
 // A zero-value BarChartConfig is the first thing anyone writes, and XAxis is
 // the only field on it the documentation does not mark optional. It used to
@@ -22,9 +24,9 @@ func TestCreateBarChart_NoXAxisNumbersTheBars(t *testing.T) {
 
 	// Values far from 1..3, so neither axis would print a tick "3" on its own:
 	// the unlabelled numeric x axis runs 0..2 and the y axis counts in hundreds.
-	plt := CreateBarChart(BarChartConfig{}, []float64{100, 200, 300})
-	if plt == nil {
-		t.Fatal("CreateBarChart returned nil for valid data with no labels")
+	plt, err := CreateBarChart(BarChartConfig{}, insyra.NewDataList(100, 200, 300))
+	if err != nil {
+		t.Fatalf("CreateBarChart refused valid data with no labels: %v", err)
 	}
 
 	// The generated labels reach the axis, so the rendered chart carries them.
@@ -52,9 +54,9 @@ func TestCreateBarChart_NoXAxisMatchesTheDataLength(t *testing.T) {
 		for i := range values {
 			values[i] = float64(i + 1)
 		}
-		plt := CreateBarChart(BarChartConfig{}, values)
-		if plt == nil {
-			t.Fatalf("%d bars gave no chart", n)
+		plt, err := CreateBarChart(BarChartConfig{}, insyra.NewDataList(values))
+		if err != nil {
+			t.Fatalf("%d bars gave no chart: %v", n, err)
 		}
 		if err := SaveChart(plt, filepath.Join(t.TempDir(), "bar.png")); err != nil {
 			t.Fatalf("%d bars: %v", n, err)
@@ -65,12 +67,12 @@ func TestCreateBarChart_NoXAxisMatchesTheDataLength(t *testing.T) {
 func TestCreateFunctionPlot_NilFunction(t *testing.T) {
 	quietFatal(t)
 
-	if plt := CreateFunctionPlot(FunctionPlotConfig{}, nil); plt != nil {
-		t.Error("CreateFunctionPlot returned a chart for a nil function")
+	if plt, err := CreateFunctionPlot(FunctionPlotConfig{}, nil); plt != nil || err == nil {
+		t.Error("CreateFunctionPlot did not refuse a nil function")
 	}
 	// A chart with explicit Y bounds takes a different path to the same call.
-	if plt := CreateFunctionPlot(FunctionPlotConfig{YMin: -1, YMax: 1}, nil); plt != nil {
-		t.Error("CreateFunctionPlot returned a chart for a nil function with Y bounds")
+	if plt, err := CreateFunctionPlot(FunctionPlotConfig{YMin: -1, YMax: 1}, nil); plt != nil || err == nil {
+		t.Error("CreateFunctionPlot did not refuse a nil function with Y bounds")
 	}
 }
 
@@ -87,9 +89,18 @@ func TestCreateHeatmapChart_RaggedGrid(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if plt := CreateHeatmapChart(HeatmapChartConfig{}, tt.grid); plt != nil {
-				t.Error("CreateHeatmapChart returned a chart for a ragged grid")
+			dt, err := insyra.ReadSlice2D(tt.grid)
+			if err != nil {
+				t.Fatalf("ReadSlice2D: %v", err)
 			}
+			// ReadSlice2D pads a row shorter than the first with nil and drops
+			// what a longer row holds past the first row's length (an AGENTS.md
+			// follow-up), so the table is rectangular and the chart builds.
+			plt, err := CreateHeatmapChart(HeatmapChartConfig{}, dt)
+			if err != nil {
+				t.Fatalf("CreateHeatmapChart: %v", err)
+			}
+			mustSave(t, plt, "heat.png")
 		})
 	}
 }
@@ -97,11 +108,11 @@ func TestCreateHeatmapChart_RaggedGrid(t *testing.T) {
 func TestCreateHeatmapChart_NonPositiveColors(t *testing.T) {
 	quietFatal(t)
 
-	grid := [][]float64{{1, 2}, {3, 4}}
+	grid := insyra.NewDataTable(insyra.NewDataList(1, 3), insyra.NewDataList(2, 4))
 	for _, colors := range []int{-1, -100} {
-		plt := CreateHeatmapChart(HeatmapChartConfig{Colors: colors}, grid)
-		if plt == nil {
-			t.Fatalf("Colors=%d gave no chart", colors)
+		plt, err := CreateHeatmapChart(HeatmapChartConfig{Colors: colors}, grid)
+		if err != nil {
+			t.Fatalf("Colors=%d gave no chart: %v", colors, err)
 		}
 		if err := SaveChart(plt, filepath.Join(t.TempDir(), "heat.png")); err != nil {
 			t.Fatalf("Colors=%d: the chart cannot be saved: %v", colors, err)
@@ -117,6 +128,10 @@ func TestCreateHeatmapChart_RaggedDataTable(t *testing.T) {
 		insyra.NewDataList(1.0, 2.0),
 		insyra.NewDataList(3.0),
 	)
-	// Whatever this converts to, it must not panic.
-	_ = CreateHeatmapChart(HeatmapChartConfig{}, dt)
+	// The table pads the shorter column with nil, which is drawn as 0.
+	plt, err := CreateHeatmapChart(HeatmapChartConfig{}, dt)
+	if err != nil {
+		t.Fatalf("CreateHeatmapChart: %v", err)
+	}
+	mustSave(t, plt, "heat.png")
 }

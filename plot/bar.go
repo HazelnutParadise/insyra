@@ -36,12 +36,23 @@ type BarChartConfig struct {
 	LabelPos         LabelPosition // Optional: Use const LabelPositionXXX.
 }
 
-// CreateBarChart generates and returns a *charts.Bar object based on BarChartConfig.
-func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar {
+// CreateBarChart draws one bar series per list, named after the list.
+//
+// It returns a nil chart and an error when no list is left to draw: none was
+// given, or every one was nil. A nil list among real ones is skipped with a
+// warning and the others are drawn.
+//
+// Before drawing, every cell is read as text to choose the Y axis. While every
+// cell's text parses as a number, the axis is numeric and the values are read
+// through DataList.ToF64Slice, which does not parse text: a numeric or empty
+// string is drawn as 0. One cell whose text does not parse, such as a word, a
+// bool, or nil (whose text is "<nil>"), turns the Y axis into categories: each
+// distinct text becomes a category, and every cell, the numbers included, is
+// drawn at its category's position.
+func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*charts.Bar, error) {
 	data = nonNilLists("CreateBarChart", data)
 	if len(data) == 0 {
-		insyra.LogWarning("plot", "CreateBarChart", "No data available for bar chart. Returning nil.")
-		return nil
+		return nil, chartError("CreateBarChart", "no data to draw")
 	}
 	bar := charts.NewBar()
 
@@ -108,7 +119,7 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar
 		string(LabelPositionTop),
 	)
 
-	return bar
+	return bar, nil
 }
 
 // convertToBarDataFloat 將 []float64 轉換為 []opts.BarData

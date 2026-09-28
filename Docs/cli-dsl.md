@@ -977,6 +977,10 @@ merge sales_q1 sales_q2 vertical inner as both
 
 `plot <type> <var> [save <file>]` writes the chart to a file and prints the path. Without `save`, the file is `<type>.html` in the working directory, for example `bar.html`. A path ending in `.png`, in any letter case, produces a PNG image. Any other extension produces an interactive HTML chart under that name, so `save chart.jpg` still writes HTML. PNG output is rendered by a local Chrome or Chromium. When neither is installed the command fails, and the CLI does not fall back to an online renderer.
 
+`line` and `bar` take a DataList, drawn as one series, or a DataTable, drawn as one series per column. `scatter` takes a DataTable and draws its first column against its second. A table with no columns fails with the chart package's reason, for example `plot: CreateLineChart: no data to draw`.
+
+No chart type refuses a cell that is not a number, and the types treat one differently. `scatter` draws every such cell as 0: `nil`, a word and a numeric string such as `"2"` alike. In `line` and `bar`, the Y axis stays numeric only while every cell's text parses as a number. One cell whose text does not, such as a word or `nil` (which prints as `<nil>`), turns the Y axis into categories, and every value, the numbers included, is drawn at its category's position. On a numeric axis, a numeric string such as `"2"` is drawn as 0. Before plotting, convert a DataList of numeric text with `parsenums` and remove `nil` cells with `clean <var> nil`. [plot.md](plot.md) describes the same behaviour for the Go API.
+
 ## Troubleshooting
 
 - **Unknown command**: run `insyra help` to list commands, then `insyra help <command>` for usage.

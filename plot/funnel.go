@@ -3,7 +3,6 @@
 package plot
 
 import (
-	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -25,12 +24,11 @@ type FunnelChartConfig struct {
 	LabelPos   LabelPosition // Optional: Use const LabelPositionXXX.
 }
 
-// CreateFunnelChart generates a funnel chart based on the provided configuration.
-// The data parameter is a map where keys are category names and values are their corresponding values.
-func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *charts.Funnel {
+// CreateFunnelChart draws a funnel chart. The data parameter maps each stage's
+// name to its value. It returns a nil chart and an error when data is empty.
+func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) (*charts.Funnel, error) {
 	if len(data) == 0 {
-		insyra.LogWarning("plot", "CreateFunnelChart", "No data available for funnel chart. Returning nil.")
-		return nil
+		return nil, chartError("CreateFunnelChart", "no data to draw")
 	}
 	funnel := charts.NewFunnel()
 
@@ -66,5 +64,5 @@ func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *chart
 		string(LabelPositionInside),
 	)
 
-	return funnel
+	return funnel, nil
 }

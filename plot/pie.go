@@ -1,7 +1,6 @@
 package plot
 
 import (
-	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -35,12 +34,11 @@ type PieChartConfig struct {
 	Center      []string // Optional: Center position, for example: ["50%", "50%"].
 }
 
-// CreatePieChart generates and returns a *charts.Pie object based on PieChartConfig.
-func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie {
-	// 檢查數據是否為空
+// CreatePieChart draws a pie chart with one slice per item. It returns a nil
+// chart and an error when no item is given.
+func CreatePieChart(config PieChartConfig, data ...PieItem) (*charts.Pie, error) {
 	if len(data) == 0 {
-		insyra.LogWarning("plot", "CreatePieChart", "Data is empty, cannot create pie chart. Returning nil.")
-		return nil
+		return nil, chartError("CreatePieChart", "no items to draw")
 	}
 	pie := charts.NewPie()
 
@@ -96,7 +94,7 @@ func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie {
 		}),
 	)
 
-	return pie
+	return pie, nil
 }
 
 // convertToPieData 將 []PieItem 轉換為 []opts.PieData

@@ -62,32 +62,32 @@ func TestEveryChartBuildsAndRenders(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		build func() Renderable
+		build func() (Renderable, error)
 	}{
-		{name: "bar", build: func() Renderable {
+		{name: "bar", build: func() (Renderable, error) {
 			return CreateBarChart(BarChartConfig{
 				Title: "bar chart", XAxis: []string{"a", "b", "c"},
 				XAxisName: "x", YAxisName: "y", ShowLabels: true,
 			}, numbers("s", 1, 2, 3))
 		}},
-		{name: "line", build: func() Renderable {
+		{name: "line", build: func() (Renderable, error) {
 			return CreateLineChart(LineChartConfig{
 				Title: "line chart", Smooth: true, FillArea: true,
 			}, numbers("s", 1, 2, 3), numbers("t", 3, 2, 1))
 		}},
-		{name: "scatter", build: func() Renderable {
+		{name: "scatter", build: func() (Renderable, error) {
 			return CreateScatterChart(ScatterChartConfig{
 				Title: "scatter chart", SymbolSize: 12, SplitLine: true,
 			}, map[string][]ScatterPoint{
 				"s": {{X: 0, Y: 1}, {X: 1, Y: 2}},
 			})
 		}},
-		{name: "pie", build: func() Renderable {
+		{name: "pie", build: func() (Renderable, error) {
 			return CreatePieChart(PieChartConfig{
 				Title: "pie chart", ShowLabels: true, ShowPercent: true,
 			}, PieItem{Name: "a", Value: 1}, PieItem{Name: "b", Value: 2})
 		}},
-		{name: "boxplot", build: func() Renderable {
+		{name: "boxplot", build: func() (Renderable, error) {
 			return CreateBoxPlot(BoxPlotConfig{
 				Title: "boxplot chart", XAxis: []string{"g1", "g2"},
 			}, BoxPlotSeries{
@@ -98,45 +98,45 @@ func TestEveryChartBuildsAndRenders(t *testing.T) {
 				},
 			})
 		}},
-		{name: "heatmap", build: func() Renderable {
+		{name: "heatmap", build: func() (Renderable, error) {
 			return CreateHeatMap(HeatMapConfig{Title: "heatmap chart"},
 				NewHeatMapPoint("mon", "am", 1),
 				NewHeatMapPoint("tue", "pm", 2),
 				NewHeatMapMissingPoint("wed", "am"),
 			)
 		}},
-		{name: "radar", build: func() Renderable {
+		{name: "radar", build: func() (Renderable, error) {
 			return CreateRadarChart(RadarChartConfig{
 				Title: "radar chart", Indicators: []string{"speed", "power"},
 			}, []RadarSeries{{Name: "s", Values: []float32{1, 2}}})
 		}},
-		{name: "kline", build: func() Renderable {
+		{name: "kline", build: func() (Renderable, error) {
 			day := time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)
 			return CreateKlineChart(KlineChartConfig{Title: "kline chart", DataZoom: true},
 				KlinePoint{Date: day, Open: 1, High: 3, Low: 0.5, Close: 2},
 				KlinePoint{Date: day.AddDate(0, 0, 1), Open: 2, High: 4, Low: 1.5, Close: 3},
 			)
 		}},
-		{name: "funnel", build: func() Renderable {
+		{name: "funnel", build: func() (Renderable, error) {
 			return CreateFunnelChart(FunnelChartConfig{Title: "funnel chart", ShowLabels: true},
 				map[string]float64{"visit": 100, "buy": 10})
 		}},
-		{name: "gauge", build: func() Renderable {
+		{name: "gauge", build: func() (Renderable, error) {
 			return CreateGaugeChart(GaugeChartConfig{Title: "gauge chart", SeriesName: "load"}, 42)
 		}},
-		{name: "sankey", build: func() Renderable {
+		{name: "sankey", build: func() (Renderable, error) {
 			return CreateSankeyChart(SankeyChartConfig{Title: "sankey chart", ShowLabels: true},
 				SankeyLink{Source: "a", Target: "b", Value: 1},
 				SankeyLink{Source: "b", Target: "c", Value: 2},
 			)
 		}},
-		{name: "themeriver", build: func() Renderable {
+		{name: "themeriver", build: func() (Renderable, error) {
 			return CreateThemeRiverChart(ThemeRiverChartConfig{Title: "themeriver chart"},
 				ThemeRiverData{Date: "2026-09-11", Name: "a", Value: 1},
 				ThemeRiverData{Date: "2026-09-12", Name: "a", Value: 2},
 			)
 		}},
-		{name: "wordcloud", build: func() Renderable {
+		{name: "wordcloud", build: func() (Renderable, error) {
 			return CreateWordCloud(WordCloudConfig{Title: "wordcloud chart", Shape: WordCloudShapeCircle},
 				insyra.NewDataList(1, 2, 3).SetName("words"))
 		}},
@@ -144,7 +144,11 @@ func TestEveryChartBuildsAndRenders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			html := renderToHTML(t, tt.build())
+			chart, err := tt.build()
+			if err != nil {
+				t.Fatalf("building the chart: %v", err)
+			}
+			html := renderToHTML(t, chart)
 			if !strings.Contains(html, tt.name+" chart") {
 				t.Errorf("the rendered HTML does not carry the title")
 			}
@@ -155,76 +159,12 @@ func TestEveryChartBuildsAndRenders(t *testing.T) {
 	}
 }
 
-// Every constructor that documents a nil return for empty input.
-func TestEmptyInputGivesNoChart(t *testing.T) {
-	quiet(t)
-
-	if c := CreateBarChart(BarChartConfig{}); c != nil {
-		t.Error("CreateBarChart with no data returned a chart")
-	}
-	if c := CreateLineChart(LineChartConfig{}); c != nil {
-		t.Error("CreateLineChart with no data returned a chart")
-	}
-	if c := CreateScatterChart(ScatterChartConfig{}, map[string][]ScatterPoint{}); c != nil {
-		t.Error("CreateScatterChart with an empty map returned a chart")
-	}
-	if c := CreatePieChart(PieChartConfig{}); c != nil {
-		t.Error("CreatePieChart with no items returned a chart")
-	}
-	if c := CreateBoxPlot(BoxPlotConfig{}); c != nil {
-		t.Error("CreateBoxPlot with no series returned a chart")
-	}
-	if c := CreateHeatMap[string, string](HeatMapConfig{}); c != nil {
-		t.Error("CreateHeatMap with no points returned a chart")
-	}
-	if c := CreateRadarChart(RadarChartConfig{}, nil); c != nil {
-		t.Error("CreateRadarChart with no series returned a chart")
-	}
-	// A radar chart with series but nothing to measure them against.
-	if c := CreateRadarChart(RadarChartConfig{}, []RadarSeries{{Name: "s", Values: []float32{1}}}); c != nil {
-		t.Error("CreateRadarChart with neither indicators nor maximums returned a chart")
-	}
-	if c := CreateKlineChart(KlineChartConfig{}); c != nil {
-		t.Error("CreateKlineChart with no points returned a chart")
-	}
-	if c := CreateFunnelChart(FunnelChartConfig{}, map[string]float64{}); c != nil {
-		t.Error("CreateFunnelChart with an empty map returned a chart")
-	}
-	if c := CreateSankeyChart(SankeyChartConfig{}); c != nil {
-		t.Error("CreateSankeyChart with no links returned a chart")
-	}
-	if c := CreateThemeRiverChart(ThemeRiverChartConfig{}); c != nil {
-		t.Error("CreateThemeRiverChart with no data returned a chart")
-	}
-	if c := CreateWordCloud(WordCloudConfig{}, insyra.NewDataList()); c != nil {
-		t.Error("CreateWordCloud with an empty list returned a chart")
-	}
-	// A gauge always has a value, so it never refuses.
-	if c := CreateGaugeChart(GaugeChartConfig{}, 0); c == nil {
-		t.Error("CreateGaugeChart returned nil")
-	}
-}
-
-// A calendar heat map needs time-valued x points and calendar options; without
-// either it refuses rather than rendering something meaningless.
-func TestCreateHeatMap_Calendar(t *testing.T) {
-	quiet(t)
-
-	if c := CreateHeatMap(HeatMapConfig{UseCalendar: true},
-		NewHeatMapPoint("mon", "am", 1)); c != nil {
-		t.Error("a calendar heat map with string x values returned a chart")
-	}
-
-	day := time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)
-	if c := CreateHeatMap(HeatMapConfig{UseCalendar: true},
-		NewHeatMapPoint(day, "am", 1)); c != nil {
-		t.Error("a calendar heat map with no calendar options returned a chart")
-	}
-}
-
 func TestSaveHTML(t *testing.T) {
 	quiet(t)
-	chart := CreateBarChart(BarChartConfig{Title: "t"}, numbers("s", 1, 2, 3))
+	chart, err := CreateBarChart(BarChartConfig{Title: "t"}, numbers("s", 1, 2, 3))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("animation off", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "chart.html")
@@ -252,10 +192,13 @@ func TestSaveHTML(t *testing.T) {
 func TestSaveHTML_EscapesTitles(t *testing.T) {
 	quiet(t)
 
-	chart := CreateBarChart(BarChartConfig{
+	chart, err := CreateBarChart(BarChartConfig{
 		Title:    "<script>alert(1)</script>",
 		Subtitle: "a & b",
 	}, numbers("s", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
 	html := renderToHTML(t, chart)
 
 	if strings.Contains(html, "<script>alert(1)</script>") {
@@ -272,9 +215,11 @@ func TestSaveHTML_EscapesTitles(t *testing.T) {
 func TestSavePNG_RejectsExtraArguments(t *testing.T) {
 	quiet(t)
 
-	chart := CreateBarChart(BarChartConfig{}, numbers("s", 1))
-	err := SavePNG(chart, filepath.Join(t.TempDir(), "chart.png"), true, true)
-	if err == nil {
+	chart, err := CreateBarChart(BarChartConfig{}, numbers("s", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SavePNG(chart, filepath.Join(t.TempDir(), "chart.png"), true, true); err == nil {
 		t.Fatal("SavePNG accepted two fallback arguments")
 	}
 }

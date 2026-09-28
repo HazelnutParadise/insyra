@@ -41,22 +41,43 @@ type BoxPlotConfig struct {
 	YAxisFormatter   string   // Optional: label formatter for Y axis, e.g. "{value}°C".
 }
 
-// CreateBoxPlot generates and returns a *charts.BoxPlot object
-func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlot {
+// CreateBoxPlot draws one box per list in each series: the minimum, the three
+// quartiles and the maximum of the list.
+//
+// A nil list inside a series is skipped with a warning, and so is a series
+// left with no lists, including one given none. It returns a nil chart and an
+// error when no series is given, or when none has a list to draw.
+//
+// The five numbers are computed from the cells that are Go numbers; every
+// other cell, a numeric string such as "5" included, is left out. The Y axis
+// is chosen the way CreateBarChart chooses it: one cell whose text is not a
+// number (nil prints as "<nil>") makes it a category axis of the cells' texts,
+// while the boxes keep their numeric values, so the boxes and the axis labels
+// no longer agree.
+func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) (*charts.BoxPlot, error) {
+	if len(series) == 0 {
+		return nil, chartError("CreateBoxPlot", "no series given")
+	}
 	// Drop nil lists inside each series, then drop a series left with nothing.
+	// The dropped series are named only when a chart comes back; otherwise the
+	// error is the whole report.
 	kept := make([]BoxPlotSeries, 0, len(series))
-	for _, s := range series {
+	var dropped []int
+	for i, s := range series {
 		s.Data = nonNilLists("CreateBoxPlot", s.Data)
 		if len(s.Data) == 0 {
+			dropped = append(dropped, i)
 			continue
 		}
 		kept = append(kept, s)
 	}
-	series = kept
-	if len(series) == 0 {
-		insyra.LogWarning("plot", "CreateBoxPlot", "no series provided in BoxPlotConfig.Series; returning nil")
-		return nil
+	if len(kept) == 0 {
+		return nil, chartError("CreateBoxPlot", "no series has any data")
 	}
+	for _, i := range dropped {
+		insyra.LogWarning("plot", "CreateBoxPlot", "series %d (%q) has no data lists; skipping it", i, series[i].Name)
+	}
+	series = kept
 	boxPlot := charts.NewBoxPlot()
 
 	internal.SetBaseChartGlobalOptions(boxPlot, internal.BaseChartConfig{
@@ -161,7 +182,7 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlo
 		}),
 	)
 
-	return boxPlot
+	return boxPlot, nil
 }
 
 // createBoxPlotData generates the five-number summary (Min, Q1, Q2, Q3, Max)

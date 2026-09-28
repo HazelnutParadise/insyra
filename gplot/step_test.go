@@ -9,12 +9,6 @@ import (
 )
 
 func TestCreateStepChart(t *testing.T) {
-	// Test with map[string][]float64
-	data := map[string][]float64{
-		"Series1": {1, 2, 3, 4, 5},
-		"Series2": {2, 4, 3, 5, 4},
-	}
-
 	config := StepChartConfig{
 		Title:     "Test Step Chart",
 		XAxisName: "X Axis",
@@ -22,16 +16,20 @@ func TestCreateStepChart(t *testing.T) {
 		StepStyle: "post",
 	}
 
-	plt := CreateStepChart(config, data)
-	if plt == nil {
-		t.Error("Expected non-nil plot for map[string][]float64 data")
+	plt, err := CreateStepChart(config,
+		insyra.NewDataList(1, 2, 3, 4, 5).SetName("Series1"),
+		insyra.NewDataList(2, 4, 3, 5, 4).SetName("Series2"),
+	)
+	if err != nil || plt == nil {
+		t.Errorf("CreateStepChart = %v, %v; want a chart", plt, err)
 	}
 }
 
-func TestCreateStepChartWithDataList(t *testing.T) {
-	// Test with []*insyra.DataList
-	dl1 := insyra.NewDataList(1, 2, 3, 4, 5).SetName("Series1")
-	dl2 := insyra.NewDataList(2, 4, 3, 5, 4).SetName("Series2")
+func TestCreateStepChartWithIDataLists(t *testing.T) {
+	lists := []insyra.IDataList{
+		insyra.NewDataList(1, 2, 3, 4, 5).SetName("Series1"),
+		insyra.NewDataList(2, 4, 3, 5, 4).SetName("Series2"),
+	}
 
 	config := StepChartConfig{
 		Title:     "Test Step Chart with DataList",
@@ -40,56 +38,37 @@ func TestCreateStepChartWithDataList(t *testing.T) {
 		StepStyle: "mid",
 	}
 
-	plt := CreateStepChart(config, []*insyra.DataList{dl1, dl2})
-	if plt == nil {
-		t.Error("Expected non-nil plot for []*insyra.DataList data")
+	plt, err := CreateStepChart(config, lists...)
+	if err != nil || plt == nil {
+		t.Errorf("CreateStepChart = %v, %v; want a chart", plt, err)
 	}
 }
 
 func TestCreateStepChartWithCustomXAxis(t *testing.T) {
-	data := map[string][]float64{
-		"Series1": {1, 2, 3, 4, 5},
-	}
-
-	xAxis := []float64{0, 1, 2, 3, 4}
-
 	config := StepChartConfig{
 		Title:     "Test Step Chart with Custom X Axis",
-		XAxis:     xAxis,
+		XAxis:     []float64{0, 1, 2, 3, 4},
 		XAxisName: "X Axis",
 		YAxisName: "Y Axis",
 		StepStyle: "pre",
 	}
 
-	plt := CreateStepChart(config, data)
-	if plt == nil {
-		t.Error("Expected non-nil plot with custom X axis")
+	plt, err := CreateStepChart(config, insyra.NewDataList(1, 2, 3, 4, 5).SetName("Series1"))
+	if err != nil || plt == nil {
+		t.Errorf("CreateStepChart = %v, %v; want a chart with the custom X axis", plt, err)
 	}
 }
 
 func TestCreateStepChartWithInvalidStepStyle(t *testing.T) {
-	data := map[string][]float64{
-		"Series1": {1, 2, 3, 4, 5},
-	}
+	quietFatal(t)
 
 	config := StepChartConfig{
 		Title:     "Test Step Chart with Invalid Step Style",
 		StepStyle: "invalid",
 	}
 
-	plt := CreateStepChart(config, data)
-	if plt == nil {
-		t.Error("Expected non-nil plot even with invalid step style (should default to post)")
-	}
-}
-
-func TestCreateStepChartWithUnsupportedDataType(t *testing.T) {
-	config := StepChartConfig{
-		Title: "Test Step Chart with Unsupported Data",
-	}
-
-	plt := CreateStepChart(config, "unsupported")
-	if plt != nil {
-		t.Error("Expected nil plot for unsupported data type")
+	plt, err := CreateStepChart(config, insyra.NewDataList(1, 2, 3, 4, 5).SetName("Series1"))
+	if err != nil || plt == nil {
+		t.Errorf("CreateStepChart = %v, %v; an unknown step style should fall back to post", plt, err)
 	}
 }

@@ -293,7 +293,7 @@
 | --- | --- | --- | --- | --- |
 | PL-1 | ~~High~~ 已修正（batch 3） | `SavePNG(chart, path, useOnlineServiceOnFail ...bool)` 的預設值是 **true**：本機 Chrome 渲染失敗時，會把整張圖（含使用者資料）送到「HazelnutParadise online service」，沒有明確 opt-in。生產環境的資料就這樣出境（準則 14） | plot/save_chart.go:61-67 | 預設 false，且在 doc 明講會上傳；或拆成 `SavePNGOnline` 獨立函式 |
 | PL-2 | ~~High~~ 已修正（make-errors-non-terminating） | `gplot.SaveChart(plt, filename)` 沒有 error 回傳，存檔失敗直接 `LogFatal` 結束程序（磁碟滿、路徑不存在都會）；尺寸寫死 8×4 英吋無法設定（K-1 實例） | gplot/save_chart.go:14-20 | 回 error；加 size 參數 |
-| PL-3 | Med | 14 個 `CreateXxxChart` 失敗回 nil + LogWarning，無 error；`gplot.CreateBarChart(config, data any)` 等用 `any` 收資料再 type switch；所有圖表經 `ToF64Slice` 讀值，非數值畫成 0（`convertDataTableToGrid` 註解直接寫 "use 0"）。這是 AGENTS follow-up 刻意保留的顯示路徑，但至少要在 doc 標明（準則 8、11、13） | plot/*.go；gplot/*.go | 回 `(chart, error)`；`data any` 改具名型別；doc 標明 0 代入 |
+| PL-3 | ~~Med~~ 已修正（chart-constructors-return-errors） | 14 個 `CreateXxxChart` 失敗回 nil + LogWarning，無 error；`gplot.CreateBarChart(config, data any)` 等用 `any` 收資料再 type switch；所有圖表經 `ToF64Slice` 讀值，非數值畫成 0（`convertDataTableToGrid` 註解直接寫 "use 0"）。這是 AGENTS follow-up 刻意保留的顯示路徑，但至少要在 doc 標明（準則 8、11、13） | plot/*.go；gplot/*.go | 回 `(chart, error)`；`data any` 改具名型別；doc 標明 0 代入 |
 | PL-4 | ~~Low~~ 已修正（refuse-extra-optional-values 讓 `SaveHTML` 多給旗標報錯；plot-heatmap-point-type 公開 `HeatMapPoint`／`HeatMapAxis`；`Width`／`Height` 維持 CSS 字串以保留 `"100%"` 等寫法；存檔 Info log 屬 C-9） | Low（部分修正：refuse-extra-optional-values 讓 `SaveHTML` 多給旗標報錯） | `SaveHTML(chart, path, animation ...bool)` variadic bool；`HeatMapPoint[X, Y]` 回傳未匯出的泛型型別；`Width`／`Height` 用 `"900px"` 字串；成功存檔 Info log（C-9） | plot/save_chart.go:39；heatmap.go:60-71 | options struct；匯出型別 |
 
 ### py / pd
@@ -578,7 +578,7 @@
 | DF-2 | [#250](https://github.com/HazelnutParadise/insyra/issues/250) |  |
 | DF-3 | [#251](https://github.com/HazelnutParadise/insyra/issues/251) |  |
 | DF-4 | [#252](https://github.com/HazelnutParadise/insyra/issues/252) |  |
-| PL-3 | [#253](https://github.com/HazelnutParadise/insyra/issues/253) |  |
+| PL-3 | [#253](https://github.com/HazelnutParadise/insyra/issues/253) | 已關閉（chart-constructors-return-errors） |
 | PY-1 | [#254](https://github.com/HazelnutParadise/insyra/issues/254) |  |
 | PY-2 | [#255](https://github.com/HazelnutParadise/insyra/issues/255) |  |
 | PD-1 | [#256](https://github.com/HazelnutParadise/insyra/issues/256) |  |

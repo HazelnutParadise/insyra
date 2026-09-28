@@ -13,7 +13,12 @@ go get github.com/HazelnutParadise/insyra/gplot
 ```go
 package main
 
-import "github.com/HazelnutParadise/insyra/gplot"
+import (
+    "log"
+
+    "github.com/HazelnutParadise/insyra"
+    "github.com/HazelnutParadise/insyra/gplot"
+)
 
 func main() {
     // Create a simple bar chart
@@ -21,8 +26,11 @@ func main() {
         Title: "Monthly Sales",
         XAxis: []string{"Jan", "Feb", "Mar", "Apr"},
     }
-    data := []float64{100, 150, 120, 180}
-    plt := gplot.CreateBarChart(config, data)
+    data := insyra.NewDataList(100, 150, 120, 180)
+    plt, err := gplot.CreateBarChart(config, data)
+    if err != nil {
+        log.Fatal(err)
+    }
     if err := gplot.SaveChart(plt, "sales.png"); err != nil {
         log.Fatal(err)
     }
@@ -31,17 +39,34 @@ func main() {
 
 ## Supported Chart Types
 
-| Chart Type | Function | Use Case | Accepts |
-| ---------- | -------- | -------- | ------- |
-| Bar Chart | `CreateBarChart` | Comparing categories | `[]float64`, `*insyra.DataList`, `insyra.IDataList` |
-| Histogram | `CreateHistogram` | Distribution analysis | `[]float64`, `*insyra.DataList`, `insyra.IDataList` |
-| Line Chart | `CreateLineChart` | Trends over time | `map[string][]float64`, `[]*insyra.DataList`, `[]insyra.IDataList` |
-| Scatter Plot | `CreateScatterPlot` | Correlation analysis | `map[string][][]float64`, `[]*insyra.DataList`, `[]insyra.IDataList` |
-| Step Chart | `CreateStepChart` | Discrete changes | `map[string][]float64`, `[]*insyra.DataList`, `[]insyra.IDataList` |
-| Function Plot | `CreateFunctionPlot` | Mathematical functions | its second argument, `func(float64) float64` |
-| Heatmap | `CreateHeatmapChart` | Matrix visualization | `[][]float64`, `*insyra.DataTable`, `insyra.IDataTable` |
+| Chart Type | Function | Use Case | Data |
+| ---------- | -------- | -------- | ---- |
+| Bar Chart | `CreateBarChart` | Comparing categories | `insyra.IDataList` |
+| Histogram | `CreateHistogram` | Distribution analysis | `insyra.IDataList` |
+| Line Chart | `CreateLineChart` | Trends over time | `...insyra.IDataList` |
+| Scatter Plot | `CreateScatterPlot` | Correlation analysis | `...gplot.ScatterSeries` |
+| Step Chart | `CreateStepChart` | Discrete changes | `...insyra.IDataList` |
+| Function Plot | `CreateFunctionPlot` | Mathematical functions | `func(float64) float64` |
+| Heatmap | `CreateHeatmapChart` | Matrix visualization | `insyra.IDataTable` |
 
-Every constructor except `CreateFunctionPlot` takes `data` as `any` and checks its type at run time, so a type the chart does not accept compiles, logs a warning, and returns `nil`. `CreateScatterPlot` reads each list as alternating x and y values and drops an odd last value with a warning.
+Every constructor returns the chart and an `error`. When it cannot build a chart, it returns a `nil` chart and an error that starts with the function's name, such as `gplot: CreateBarChart: the data list is empty`. A failing call logs nothing, so reporting the error is up to you. Each chart's section lists what it refuses.
+
+### From plain slices
+
+The data types are insyra's own, checked by the compiler. Values you hold in plain Go slices are passed like this:
+
+| You have | Pass |
+| -------- | ---- |
+| a `[]float64` | `insyra.NewDataList(values)` |
+| named series for a line or step chart | one `insyra.NewDataList(values).SetName("City A")` per series |
+| x and y values for a scatter plot | `gplot.ScatterSeries{Name: "s", X: insyra.NewDataList(xs), Y: insyra.NewDataList(ys)}` |
+| a `[][]float64` grid | the table from `insyra.ReadSlice2D(grid)`, one inner slice per row. It takes the number of columns from the first row: a shorter row is padded with `nil`, drawn as 0, and a longer row loses its extra values without a warning, so check that the rows agree first. |
+
+### A cell that is not a number is drawn as 0
+
+Every chart reads its values through `DataList.ToF64Slice`, and the heat map reads each column of the table the same way. A number, a fixed-point decimal included, is drawn as its value. Any other cell is drawn as 0: `nil`, text, a numeric string such as `"2"`, and a `bool`. `NewDataList(1, "2", nil, "abc")` is drawn as the bars 1, 0, 0 and 0, with no warning. Clean a column before charting it: `ParseNumbers` turns numeric text into numbers, and `ClearNilsAndNaNs` removes `nil` and `NaN` cells.
+
+A `NaN` or an infinity is not drawn as 0. The bar chart and the histogram refuse it with an error, and the line, step and scatter charts skip the series that holds it, with a warning. The heat map refuses an infinity and a table of `NaN` alone, and draws a `NaN` among numbers as an empty cell.
 
 ## Saving Charts
 
@@ -49,7 +74,7 @@ Every constructor except `CreateFunctionPlot` takes `data` as `any` and checks i
 func SaveChart(plt *plot.Plot, filename string) error
 ```
 
-**Description:** Saves the chart to a file. The format is determined by the file extension. A write failure (missing directory, no permission, disk full) is returned; it does not end the program. A `nil` chart, which is what a `Create...` function returns when it cannot build one, is refused with an error rather than a panic, and so is a file extension outside the list below.
+**Description:** Saves the chart to a file. The format is determined by the file extension. A write failure (missing directory, no permission, disk full) is returned; it does not end the program. A `nil` chart, which is what a `Create...` function returns alongside its error, is refused with an error rather than a panic, and so is a file extension outside the list below.
 
 **Parameters:**
 
@@ -75,6 +100,8 @@ if err := gplot.SaveChart(plt, "chart.png"); err != nil {
 Creates a bar chart for comparing values across categories.
 
 ```go
+func CreateBarChart(config BarChartConfig, data insyra.IDataList) (*plot.Plot, error)
+
 type BarChartConfig struct {
     Title     string    // Chart title
     XAxis     []string  // Optional: category labels; omitted, the bars are numbered 1, 2, 3, ...
@@ -84,6 +111,8 @@ type BarChartConfig struct {
     ErrorBars []float64 // Optional: Error bar values (if provided, must match data length)
 }
 ```
+
+Returns an error when `data` is `nil` or empty, or holds a `NaN` or an infinity.
 
 **Example:**
 
@@ -95,8 +124,11 @@ config := gplot.BarChartConfig{
     YAxisName: "Revenue ($K)",
     BarWidth:  25,
 }
-data := []float64{250, 300, 280, 350}
-plt := gplot.CreateBarChart(config, data)
+data := insyra.NewDataList(250, 300, 280, 350)
+plt, err := gplot.CreateBarChart(config, data)
+if err != nil {
+    log.Fatal(err)
+}
 _ = gplot.SaveChart(plt, "revenue.png")
 ```
 
@@ -110,8 +142,11 @@ config := gplot.BarChartConfig{
     XAxis:     []string{"A", "B", "C", "D"},
     ErrorBars: []float64{0.5, 0.8, 0.6, 0.9},
 }
-data := []float64{5.2, 7.8, 6.4, 9.1}
-plt := gplot.CreateBarChart(config, data)
+data := insyra.NewDataList(5.2, 7.8, 6.4, 9.1)
+plt, err := gplot.CreateBarChart(config, data)
+if err != nil {
+    log.Fatal(err)
+}
 _ = gplot.SaveChart(plt, "experiment.png")
 ```
 
@@ -122,6 +157,8 @@ _ = gplot.SaveChart(plt, "experiment.png")
 Creates a histogram to visualize data distribution.
 
 ```go
+func CreateHistogram(config HistogramConfig, data insyra.IDataList) (*plot.Plot, error)
+
 type HistogramConfig struct {
     Title     string // Chart title
     XAxisName string // Optional: X-axis label
@@ -130,15 +167,17 @@ type HistogramConfig struct {
 }
 ```
 
+Returns an error when `data` is `nil` or empty, or holds a `NaN` or an infinity, which no bin can hold.
+
 **Example:**
 
 ```go
 import "math/rand"
 
 // Generate sample data
-data := make([]float64, 1000)
-for i := range data {
-    data[i] = rand.NormFloat64()*15 + 100 // Normal distribution
+values := make([]float64, 1000)
+for i := range values {
+    values[i] = rand.NormFloat64()*15 + 100 // Normal distribution
 }
 
 config := gplot.HistogramConfig{
@@ -147,7 +186,10 @@ config := gplot.HistogramConfig{
     YAxisName: "Frequency",
     Bins:      20,
 }
-plt := gplot.CreateHistogram(config, data)
+plt, err := gplot.CreateHistogram(config, insyra.NewDataList(values))
+if err != nil {
+    log.Fatal(err)
+}
 _ = gplot.SaveChart(plt, "distribution.png")
 ```
 
@@ -155,9 +197,11 @@ _ = gplot.SaveChart(plt, "distribution.png")
 
 ### Line Chart
 
-Creates a line chart for visualizing trends.
+Creates a line chart for visualizing trends. Each list is one line, named after the list in the legend.
 
 ```go
+func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*plot.Plot, error)
+
 type LineChartConfig struct {
     Title     string    // Chart title
     XAxis     []float64 // X-axis data
@@ -165,6 +209,8 @@ type LineChartConfig struct {
     YAxisName string    // Optional: Y-axis label
 }
 ```
+
+Returns an error when no list is given, every list is `nil`, or no series can be drawn; that error names each series and why (see [A series that cannot be drawn is skipped](#a-series-that-cannot-be-drawn-is-skipped)). A `nil` list among real ones is skipped with a warning.
 
 **Example:**
 
@@ -174,11 +220,13 @@ config := gplot.LineChartConfig{
     XAxisName: "Day",
     YAxisName: "Temperature (C)",
 }
-data := map[string][]float64{
-    "City A": {22, 24, 23, 25, 26},
-    "City B": {18, 19, 20, 21, 22},
+plt, err := gplot.CreateLineChart(config,
+    insyra.NewDataList(22, 24, 23, 25, 26).SetName("City A"),
+    insyra.NewDataList(18, 19, 20, 21, 22).SetName("City B"),
+)
+if err != nil {
+    log.Fatal(err)
 }
-plt := gplot.CreateLineChart(config, data)
 _ = gplot.SaveChart(plt, "temperature.png")
 ```
 
@@ -189,40 +237,57 @@ _ = gplot.SaveChart(plt, "temperature.png")
 Creates a scatter plot for correlation analysis.
 
 ```go
+func CreateScatterPlot(config ScatterPlotConfig, series ...ScatterSeries) (*plot.Plot, error)
+
 type ScatterPlotConfig struct {
     Title     string // Chart title
     XAxisName string // Optional: X-axis label
     YAxisName string // Optional: Y-axis label
 }
+
+// ScatterSeries is one set of points: point i is (X[i], Y[i]).
+type ScatterSeries struct {
+    Name string           // Label in the legend
+    X    insyra.IDataList // X coordinates
+    Y    insyra.IDataList // Y coordinates
+}
 ```
 
-**Data format:** For `map[string][][]float64`, each series is a slice of `[x, y]` coordinate pairs.
+Two columns of a table make one series. Returns an error when no series is given, when a series has a `nil` `X` or `Y`, or when a series' `X` and `Y` differ in length. The error names the series. A series with no points, or with a `NaN` or an infinity, is skipped with a warning, and when no series can be drawn the call returns an error naming each series and why.
 
 **Example:**
 
 ```go
 config := gplot.ScatterPlotConfig{
-    Title: "Height vs Weight",
+    Title:     "Height vs Weight",
     XAxisName: "Height (cm)",
     YAxisName: "Weight (kg)",
 }
-data := map[string][][]float64{
-    "Male": {
-        {170, 70}, {175, 75}, {180, 80}, {168, 68}, {185, 85},
+male := insyra.NewDataTable(
+    insyra.NewDataList(170, 175, 180, 168, 185).SetName("height"),
+    insyra.NewDataList(70, 75, 80, 68, 85).SetName("weight"),
+)
+plt, err := gplot.CreateScatterPlot(config,
+    gplot.ScatterSeries{Name: "Male", X: male.GetColByName("height"), Y: male.GetColByName("weight")},
+    gplot.ScatterSeries{
+        Name: "Female",
+        X:    insyra.NewDataList(160, 165, 158, 170, 163),
+        Y:    insyra.NewDataList(55, 60, 52, 65, 58),
     },
-    "Female": {
-        {160, 55}, {165, 60}, {158, 52}, {170, 65}, {163, 58},
-    },
+)
+if err != nil {
+    log.Fatal(err)
 }
-plt := gplot.CreateScatterPlot(config, data)
 _ = gplot.SaveChart(plt, "height_weight.png")
 ```
 
 ### Step Chart
 
-Creates a step chart for data that changes at discrete intervals.
+Creates a step chart for data that changes at discrete intervals. Each list is one step line, named after the list in the legend.
 
 ```go
+func CreateStepChart(config StepChartConfig, data ...insyra.IDataList) (*plot.Plot, error)
+
 type StepChartConfig struct {
     Title     string    // Chart title
     XAxis     []float64 // X-axis data
@@ -231,6 +296,8 @@ type StepChartConfig struct {
     StepStyle string    // Optional: "pre", "mid", or "post" (default: "post")
 }
 ```
+
+Returns an error in the same cases as `CreateLineChart`. An unknown `StepStyle` is replaced by `"post"` with a warning.
 
 **Step Styles:**
 
@@ -248,10 +315,10 @@ config := gplot.StepChartConfig{
     YAxisName: "Price ($)",
     StepStyle: "post",
 }
-data := map[string][]float64{
-    "Stock A": {100, 102, 101, 105, 103},
+plt, err := gplot.CreateStepChart(config, insyra.NewDataList(100, 102, 101, 105, 103).SetName("Stock A"))
+if err != nil {
+    log.Fatal(err)
 }
-plt := gplot.CreateStepChart(config, data)
 _ = gplot.SaveChart(plt, "stock.png")
 ```
 
@@ -262,6 +329,8 @@ _ = gplot.SaveChart(plt, "stock.png")
 Plots mathematical functions.
 
 ```go
+func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) float64) (*plot.Plot, error)
+
 type FunctionPlotConfig struct {
     Title     string  // Chart title
     XAxisName string  // X-axis label
@@ -273,7 +342,7 @@ type FunctionPlotConfig struct {
 }
 ```
 
-When `XMin` and `XMax` are both zero the range is `[-10, 10]`. When `YMin` and `YMax` are both zero, the Y range is taken from the sampled values. The function is sampled at 100 points per unit of X range, and at least 2, so the default range draws 2,000 points. A wide range is not refused. Its cost appears when the chart is saved, because every sample is drawn. Measured on an arm64 Mac on 2026-09-27, `SaveChart` took 0.5 s for a ±1,000 range (200,000 points), 9 s for ±10,000 and 92 s for ±100,000, while `CreateFunctionPlot` stayed under 0.1 s. A ±1e6 range is 200,000,000 points. Keep the X range to what the curve needs.
+Returns an error when `function` is `nil`, or when `XMin`, `XMax`, `YMin` or `YMax` is a `NaN` or an infinity: an infinite range would ask for an unbounded number of samples. When `XMin` and `XMax` are both zero the range is `[-10, 10]`. When `YMin` and `YMax` are both zero, the Y range is taken from the sampled values. The function is sampled at 100 points per unit of X range, and at least 2, so the default range draws 2,000 points. A wide range is not refused. Its cost appears when the chart is saved, because every sample is drawn. Measured on an arm64 Mac on 2026-09-27, `SaveChart` took 0.5 s for a ±1,000 range (200,000 points), 9 s for ±10,000 and 92 s for ±100,000, while `CreateFunctionPlot` stayed under 0.1 s. A ±1e6 range is 200,000,000 points. Keep the X range to what the curve needs.
 
 **Example:**
 
@@ -287,7 +356,10 @@ config := gplot.FunctionPlotConfig{
     XMin:  -2 * math.Pi,
     XMax:  2 * math.Pi,
 }
-plt := gplot.CreateFunctionPlot(config, math.Sin)
+plt, err := gplot.CreateFunctionPlot(config, math.Sin)
+if err != nil {
+    log.Fatal(err)
+}
 _ = gplot.SaveChart(plt, "sine.png")
 
 // Custom function
@@ -298,19 +370,24 @@ config2 := gplot.FunctionPlotConfig{
     XMin:      -2,
     XMax:      6,
 }
-plt2 := gplot.CreateFunctionPlot(config2, func(x float64) float64 {
+plt2, err := gplot.CreateFunctionPlot(config2, func(x float64) float64 {
     return x*x - 4*x + 3
 })
-gplot.SaveChart(plt2, "quadratic.png")
+if err != nil {
+    log.Fatal(err)
+}
+_ = gplot.SaveChart(plt2, "quadratic.png")
 ```
 
 ![function_example](./img/gplot_function_example.png)
 
 ### Heatmap
 
-Creates a heatmap for matrix visualization.
+Creates a heatmap for matrix visualization. Row *i* of the table is row *i* of the grid, and column *j* is column *j*.
 
 ```go
+func CreateHeatmapChart(config HeatmapChartConfig, data insyra.IDataTable) (*plot.Plot, error)
+
 type HeatmapChartConfig struct {
     Title     string    // Chart title
     XAxis     []float64 // Optional: X-axis coordinates
@@ -322,18 +399,19 @@ type HeatmapChartConfig struct {
 }
 ```
 
-Every row of the data must hold the same number of values. A ragged grid is
-refused: the error names the first row whose length differs, and the function
-returns `nil`.
+Returns an error when `data` is `nil`, has no rows or no columns, holds an infinity, or holds nothing but `NaN`; the error names the first infinite cell by its row and column, counted from 0. A `NaN` among numbers is drawn as an empty cell. A table keeps its columns the same length by padding a shorter one with `nil`, and that padding is drawn as 0.
 
 **Example:**
 
 ```go
-// Create correlation matrix data
-data := [][]float64{
+// A correlation matrix as a grid, one inner slice per row
+grid, err := insyra.ReadSlice2D([][]float64{
     {1.0, 0.8, 0.3},
     {0.8, 1.0, 0.5},
     {0.3, 0.5, 1.0},
+})
+if err != nil {
+    log.Fatal(err)
 }
 
 config := gplot.HeatmapChartConfig{
@@ -342,45 +420,20 @@ config := gplot.HeatmapChartConfig{
     YAxis:  []float64{0, 1, 2},
     Colors: 20,
 }
-plt := gplot.CreateHeatmapChart(config, data)
+plt, err := gplot.CreateHeatmapChart(config, grid)
+if err != nil {
+    log.Fatal(err)
+}
 _ = gplot.SaveChart(plt, "correlation.png")
 ```
 
+The table returned by `stats.CorrelationMatrix` can be passed as it is.
+
 ![heatmap_example](./img/gplot_heatmap_example.png)
 
-## Using with DataList and DataTable
+## A series that cannot be drawn is skipped
 
-All chart types support Insyra data structures:
-
-```go
-import (
-    "github.com/HazelnutParadise/insyra"
-    "github.com/HazelnutParadise/insyra/gplot"
-)
-
-// Using DataList for bar chart
-dl := insyra.NewDataList(100, 150, 120, 180)
-config := gplot.BarChartConfig{
-    Title: "Sales Data",
-    XAxis: []string{"Q1", "Q2", "Q3", "Q4"},
-}
-plt := gplot.CreateBarChart(config, dl)
-
-// Using DataTable for heatmap
-dt := insyra.NewDataTable(
-    insyra.NewDataList(1.0, 0.8, 0.3),
-    insyra.NewDataList(0.8, 1.0, 0.5),
-    insyra.NewDataList(0.3, 0.5, 1.0),
-)
-heatConfig := gplot.HeatmapChartConfig{
-    Title: "Correlation Matrix",
-}
-plt2 := gplot.CreateHeatmapChart(heatConfig, dt)
-```
-
-## A series whose length differs from `XAxis` is dropped
-
-`CreateLineChart` and `CreateStepChart` compare each series with `XAxis`. A series of a different length is skipped with a warning naming it, and the chart is still returned. If every series is dropped, you get a chart with axes and nothing drawn, and it saves without error. When `XAxis` is left out it is generated once: from the longest series for a map, and from the first list for a slice of lists. A shorter map series, or a list whose length differs from the first list, is the one dropped. `CreateBarChart` treats `ErrorBars` of the wrong length the same way: it logs a warning and draws the bars without error bars.
+`CreateLineChart` and `CreateStepChart` compare each series with `XAxis`. A series of a different length is skipped with a warning naming it, and so is an empty series and one holding a `NaN` or an infinity; the chart is still returned with the series that could be drawn. When `XAxis` is left out, it is generated from the first list's length, so a list whose length differs from the first is the one dropped. `CreateScatterPlot` skips a series with no points or with a `NaN` or an infinity the same way. When no series can be drawn at all, each of the three returns an error instead of an empty chart. The error names every series and why, for example `gplot: CreateLineChart: no series could be drawn: series "two" has 2 values but XAxis has 3`, and nothing is logged. `CreateBarChart` treats `ErrorBars` of the wrong length as a warning too: it draws the bars without error bars.
 
 ## Tips
 

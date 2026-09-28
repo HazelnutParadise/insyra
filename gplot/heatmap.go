@@ -3,6 +3,8 @@
 package gplot
 
 import (
+	"math"
+
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/palette"
@@ -56,9 +58,45 @@ func (g *gridData) Y(r int) float64 {
 	return float64(r)
 }
 
-// CreateHeatmapChart generates and returns a plot.Plot object based on HeatmapChartConfig.
-// The Data field can be of type [][]float64, *insyra.DataTable, or insyra.IDataTable.
-func CreateHeatmapChart(config HeatmapChartConfig, data any) *plot.Plot {
+// CreateHeatmapChart draws data as a grid of coloured cells: row i of the
+// table is row i of the grid and column j is column j. A [][]float64 grid is
+// passed as insyra.ReadSlice2D(grid).
+//
+// Each column is read through DataList.ToF64Slice: a number, a fixed-point
+// decimal included, is drawn as its value, and any other cell, whether nil,
+// text (a numeric string such as "2" included) or a bool, is drawn as 0. A
+// column shorter than the others is padded with nil by the table, so its
+// missing cells are drawn as 0 too.
+//
+// It returns a nil chart and an error when data is nil, has no rows or no
+// columns, holds an infinity, or holds nothing but NaN. A NaN among numbers is
+// drawn as an empty cell.
+func CreateHeatmapChart(config HeatmapChartConfig, data insyra.IDataTable) (*plot.Plot, error) {
+	if isNilTable(data) {
+		return nil, chartError("CreateHeatmapChart", "no data to draw")
+	}
+	dataSlice := tableToGrid(data)
+	if len(dataSlice) == 0 {
+		return nil, chartError("CreateHeatmapChart", "the table is empty")
+	}
+	// gonum builds the colour scale from the grid's range when the chart is
+	// saved: an infinity there panicked on amd64, and a grid of NaN alone
+	// panicked on every platform.
+	anyNumber := false
+	for i, row := range dataSlice {
+		for j, v := range row {
+			if math.IsInf(v, 0) {
+				return nil, chartError("CreateHeatmapChart", "the cell at row %d, column %d is %v, which no colour can show", i, j, v)
+			}
+			if !math.IsNaN(v) {
+				anyNumber = true
+			}
+		}
+	}
+	if !anyNumber {
+		return nil, chartError("CreateHeatmapChart", "every cell is NaN; there is nothing to colour")
+	}
+
 	// Create a new plot.
 	plt := plot.New()
 
@@ -66,38 +104,6 @@ func CreateHeatmapChart(config HeatmapChartConfig, data any) *plot.Plot {
 	plt.Title.Text = config.Title
 	plt.X.Label.Text = config.XAxisName
 	plt.Y.Label.Text = config.YAxisName
-
-	var dataSlice [][]float64
-
-	// Determine the type of Data and handle it accordingly
-	switch d := data.(type) {
-	case [][]float64:
-		dataSlice = d
-	case *insyra.DataTable:
-		// Convert DataTable to [][]float64
-		dataSlice = convertDataTableToGrid(d)
-	case insyra.IDataTable:
-		// Convert IDataTable to [][]float64
-		dataSlice = convertIDataTableToGrid(d)
-	default:
-		insyra.LogWarning("gplot", "CreateHeatmapChart", "Unsupported Data type: %T\n", data)
-		return nil
-	}
-
-	// Validate data
-	if len(dataSlice) == 0 || len(dataSlice[0]) == 0 {
-		insyra.LogWarning("gplot", "CreateHeatmapChart", "Empty data provided")
-		return nil
-	}
-	// gridData reports the column count from row 0 alone, and plotter.NewHeatMap
-	// reads the whole grid through it, so a shorter row used to panic on an
-	// index out of range. Refuse the grid and say which row disagrees.
-	for i, row := range dataSlice {
-		if len(row) != len(dataSlice[0]) {
-			insyra.LogWarning("gplot", "CreateHeatmapChart", "Row %d has %d values, but row 0 has %d; every row must be the same length", i, len(row), len(dataSlice[0]))
-			return nil
-		}
-	}
 
 	// Create grid data
 	grid := &gridData{
@@ -128,96 +134,29 @@ func CreateHeatmapChart(config HeatmapChartConfig, data any) *plot.Plot {
 	// Add heatmap to plot
 	plt.Add(hm)
 
-	return plt
+	return plt, nil
 }
 
-// convertDataTableToGrid converts a DataTable to [][]float64 for heatmap use.
-func convertDataTableToGrid(dt *insyra.DataTable) [][]float64 {
-	var data [][]float64
-	isFailed := false
-	dt.AtomicDo(func(dt *insyra.DataTable) {
-		rows, cols := dt.Size()
-
+// tableToGrid reads dt into rows of float64, each column through ToF64Slice,
+// so the heat map reads a cell the way every other gplot chart does. It
+// returns nil for a table with no rows or no columns.
+func tableToGrid(dt insyra.IDataTable) [][]float64 {
+	var grid [][]float64
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		rows, cols := t.Size()
 		if rows == 0 || cols == 0 {
-			isFailed = true
 			return
 		}
-
-		data = make([][]float64, rows)
-		for i := range rows {
-			data[i] = make([]float64, cols)
-			for j := 0; j < cols; j++ {
-				val := dt.GetElementByNumberIndex(i, j)
-				if val != nil {
-					switch v := val.(type) {
-					case float64:
-						data[i][j] = v
-					case float32:
-						data[i][j] = float64(v)
-					case int:
-						data[i][j] = float64(v)
-					case int32:
-						data[i][j] = float64(v)
-					case int64:
-						data[i][j] = float64(v)
-					default:
-						// For non-numeric values, use 0
-						data[i][j] = 0.0
-					}
-				} else {
-					data[i][j] = 0.0
-				}
+		grid = make([][]float64, rows)
+		for i := range grid {
+			grid[i] = make([]float64, cols)
+		}
+		for j := 0; j < cols; j++ {
+			col := t.GetColByNumber(j).ToF64Slice()
+			for i := 0; i < rows && i < len(col); i++ {
+				grid[i][j] = col[i]
 			}
 		}
 	})
-	if isFailed {
-		return nil
-	}
-	return data
-}
-
-// convertIDataTableToGrid converts an IDataTable to [][]float64 for heatmap use.
-func convertIDataTableToGrid(dt insyra.IDataTable) [][]float64 {
-	var data [][]float64
-	isFailed := false
-	dt.AtomicDo(func(dt *insyra.DataTable) {
-		rows, cols := dt.Size()
-
-		if rows == 0 || cols == 0 {
-			isFailed = true
-			return
-		}
-
-		data = make([][]float64, rows)
-		for i := 0; i < rows; i++ {
-			data[i] = make([]float64, cols)
-			for j := 0; j < cols; j++ {
-				val := dt.GetElementByNumberIndex(i, j)
-				if val != nil {
-					switch v := val.(type) {
-					case float64:
-						data[i][j] = v
-					case float32:
-						data[i][j] = float64(v)
-					case int:
-						data[i][j] = float64(v)
-					case int32:
-						data[i][j] = float64(v)
-					case int64:
-						data[i][j] = float64(v)
-					default:
-						// For non-numeric values, use 0
-						data[i][j] = 0.0
-					}
-				} else {
-					data[i][j] = 0.0
-				}
-			}
-		}
-	})
-	if isFailed {
-		return nil
-	}
-
-	return data
+	return grid
 }

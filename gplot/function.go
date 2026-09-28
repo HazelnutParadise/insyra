@@ -3,7 +3,6 @@ package gplot
 import (
 	"math"
 
-	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
 )
@@ -19,14 +18,25 @@ type FunctionPlotConfig struct {
 	YMax      float64 // Maximum value of Y (optional).
 }
 
-// CreateFunctionPlot generates and returns a plot.Plot object based on FunctionPlotConfig.
-func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) float64) *plot.Plot {
+// CreateFunctionPlot draws function over the X range in config. It returns a
+// nil chart and an error when function is nil, or when XMin, XMax, YMin or
+// YMax is a NaN or an infinity.
+func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) float64) (*plot.Plot, error) {
 	// There is nothing to sample without a function, and calling one that is nil
 	// panics. Refuse it the way every other constructor here refuses input it
 	// cannot plot.
 	if function == nil {
-		insyra.LogWarning("gplot", "CreateFunctionPlot", "No function provided")
-		return nil
+		return nil, chartError("CreateFunctionPlot", "no function to draw")
+	}
+	// An infinite X range asks for an unbounded number of samples, and a NaN
+	// bound hangs the axis when the chart is saved.
+	for _, bound := range []struct {
+		name  string
+		value float64
+	}{{"XMin", config.XMin}, {"XMax", config.XMax}, {"YMin", config.YMin}, {"YMax", config.YMax}} {
+		if math.IsNaN(bound.value) || math.IsInf(bound.value, 0) {
+			return nil, chartError("CreateFunctionPlot", "%s is %v; the bounds must be finite", bound.name, bound.value)
+		}
 	}
 
 	// 如果沒有設置 X 軸範圍，則默認使用 [-10, 10]
@@ -76,7 +86,7 @@ func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) floa
 	plt.X.Min = config.XMin
 	plt.X.Max = config.XMax
 
-	return plt
+	return plt, nil
 }
 
 // calculateSamples dynamically calculates an appropriate number of samples based on the X-axis range.

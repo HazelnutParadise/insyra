@@ -34,11 +34,16 @@ type RadarSeries struct {
 	Color  string    // optional
 }
 
-// CreateRadarChart 使用 `RadarChartConfig`（包含 `Indicators` 與 `MaxValues`）及一或多個 `RadarSeries` 生成並返回 *charts.Radar 對象
-func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Radar {
+// CreateRadarChart draws one polygon per series against the indicators in
+// config. The indicators are config.Indicators, or the sorted keys of
+// config.MaxValues when Indicators is empty.
+//
+// It returns a nil chart and an error when series is empty, or when config has
+// neither Indicators nor MaxValues. A MaxValues key that is not an indicator
+// is ignored with a warning.
+func CreateRadarChart(config RadarChartConfig, series []RadarSeries) (*charts.Radar, error) {
 	if len(series) == 0 {
-		insyra.LogWarning("plot", "CreateRadarChart", "No series data available for radar chart. Returning nil.")
-		return nil
+		return nil, chartError("CreateRadarChart", "no series to draw")
 	}
 	radar := charts.NewRadar()
 
@@ -64,8 +69,7 @@ func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Rad
 			}
 			sort.Strings(indicators) // 保證穩定順序
 		} else {
-			insyra.LogError("plot", "CreateRadarChart", "Indicators must be provided in RadarChartConfig when passing series directly")
-			return nil
+			return nil, chartError("CreateRadarChart", "RadarChartConfig needs Indicators or MaxValues to measure the series against")
 		}
 	}
 
@@ -137,7 +141,7 @@ func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Rad
 		}
 	}
 
-	return radar
+	return radar, nil
 }
 
 // calculateMaxValueFromSeries 計算指標（由 index 指定）在多個 RadarSeries 中的最大值，用於不使用 RadarDataset 的情況

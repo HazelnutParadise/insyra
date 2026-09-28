@@ -19,6 +19,8 @@ go get github.com/HazelnutParadise/insyra/plot
 package main
 
 import (
+    "log"
+
     "github.com/HazelnutParadise/insyra"
     "github.com/HazelnutParadise/insyra/plot"
 )
@@ -34,11 +36,18 @@ func main() {
     }
 
     // Create and save chart
-    chart := plot.CreateBarChart(config, sales)
-    plot.SaveHTML(chart, "sales.html")
+    chart, err := plot.CreateBarChart(config, sales)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if err := plot.SaveHTML(chart, "sales.html"); err != nil {
+        log.Fatal(err)
+    }
 
     // Or save as PNG (requires Chrome/Chromium)
-    plot.SavePNG(chart, "sales.png")
+    if err := plot.SavePNG(chart, "sales.png"); err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
@@ -126,23 +135,36 @@ const (
 
 ## Things to be careful about
 
-### A chart that cannot be built is `nil`
+### A chart that cannot be built is an error
 
-No `Create...` function in this package returns an `error`. When one cannot build a chart, usually because it was given no data, it logs the reason as a warning and returns `nil`. `CreateGaugeChart` is the exception: it takes a plain `float64` and always returns a chart.
+Every `Create...` function returns the chart and an `error`. When one cannot build a chart, usually because it was given no data, it returns a `nil` chart and an error that starts with the function's name, such as `plot: CreateBarChart: no data to draw`. A failing call logs nothing, so reporting the error is up to you. Each constructor's section below lists what it refuses. `CreateGaugeChart` takes a plain `float64` and cannot fail. Its error is always `nil`, and it returns one so that every constructor is called the same way.
 
-A `nil` chart still satisfies `Renderable`, so `SaveHTML` and `SavePNG` accept it, and today they panic with a nil pointer dereference instead of returning an error. Check the result before saving:
+Check the error before saving. `SaveHTML` and `SavePNG` do not check for a `nil` chart and panic with a nil pointer dereference when given one:
 
 ```go
-chart := plot.CreateBarChart(config, data)
-if chart == nil {
-    return // CreateBarChart already logged why
+chart, err := plot.CreateBarChart(config, data)
+if err != nil {
+    return err
 }
-err := plot.SaveHTML(chart, "sales.html")
+err = plot.SaveHTML(chart, "sales.html")
 ```
 
 ### A `nil` list among real lists is skipped
 
-`CreateBarChart`, `CreateLineChart` and `CreateBoxPlot` drop a `nil` list, whether a nil interface or a nil `*insyra.DataList`. They log a warning naming its position and draw the rest, and they return `nil` only when no list is left. In `CreateBoxPlot`, a series left with no lists is dropped, including a series given no lists at all; when no series is left, the result is `nil`. `CreateWordCloud` takes one list, so a `nil` list there returns `nil`.
+`CreateBarChart`, `CreateLineChart` and `CreateBoxPlot` drop a `nil` list, whether a nil interface or a nil `*insyra.DataList`. They log a warning naming its position and draw the rest. When no list is left, the call returns an error and logs nothing. `CreateBoxPlot` also drops a series left with no lists, including one given no lists at all, with a warning naming the series. When no series is left, the result is an error saying that no series has any data. `CreateWordCloud` takes one list, so a `nil` list there is an error.
+
+An empty list is not refused. The bar and line charts draw it as an empty series and return the chart.
+
+### How a cell that is not a number is drawn
+
+`CreateBarChart`, `CreateLineChart` and `CreateBoxPlot` read `insyra.IDataList` values, and none of them refuses a cell that is not a number. What each one does with such a cell, measured on 2026-09-28:
+
+- **The Y axis is chosen from the cells' text.** While every cell's text parses as a number, the Y axis is numeric. A single cell whose text does not parse, such as a word, a `bool`, or `nil` (whose text is `<nil>`), turns the Y axis of the bar and line charts into categories. Each distinct text becomes a category, and every cell, the numbers included, is drawn at its category's position. `NewDataList(1, "abc", 3)` gives a Y axis labelled `1`, `abc`, `3`, with the bars at 0, 1 and 2.
+- **On a numeric axis, a string is drawn as 0.** The values are read through `DataList.ToF64Slice`, which does not parse text, so `NewDataList(1, "2", 3)` is drawn as 1, 0, 3.
+- **The box plot leaves such cells out.** Its five numbers come from the cells that are Go numbers, so `"5"`, `"abc"` and `nil` are ignored. Its Y axis is chosen from the text all the same, so one text cell makes it a category axis whose labels no longer match the boxes.
+- **A `NaN` or an infinity leaves the page blank.** In any chart, bar values, pie slices or a gauge value alike, go-echarts cannot encode such a value and does not report the failure. `SaveHTML` writes a page with no chart on it and returns no error. A box plot list with no number in it, empty or all text, has a `NaN` summary and blanks the page the same way.
+
+Clean a column before charting it rather than relying on any of this: `ParseNumbers` turns numeric text into numbers, and `ClearNilsAndNaNs` removes `nil` and `NaN` cells.
 
 ### Two constructors write into what you pass
 
@@ -238,10 +260,10 @@ type BarChartConfig struct {
 #### Creation
 
 ```go
-func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar
+func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*charts.Bar, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws one bar series per list, named after the list. A `nil` list among real ones is skipped with a warning. A cell that is not a number is drawn as described in [How a cell that is not a number is drawn](#how-a-cell-that-is-not-a-number-is-drawn).
 
 **Parameters:**
 
@@ -250,7 +272,8 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar
 
 **Returns:**
 
-- `*charts.Bar`: Return value.
+- `*charts.Bar`: the chart, or `nil` when the error is non-nil.
+- `error`: non-nil, with a `nil` chart, when no list is given, or every one is `nil`.
 
 ### 2. Line Chart
 
@@ -291,10 +314,10 @@ type LineChartConfig struct {
 #### Creation
 
 ```go
-func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.Line
+func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*charts.Line, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws one line per list, named after the list. A `nil` list among real ones is skipped with a warning. A cell that is not a number is drawn as described in [How a cell that is not a number is drawn](#how-a-cell-that-is-not-a-number-is-drawn).
 
 **Parameters:**
 
@@ -303,7 +326,8 @@ func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.L
 
 **Returns:**
 
-- `*charts.Line`: Return value.
+- `*charts.Line`: the chart, or `nil` when the error is non-nil.
+- `error`: non-nil, with a `nil` chart, when no list is given, or every one is `nil`.
 
 ### 3. Scatter Chart
 
@@ -352,10 +376,10 @@ type ScatterChartConfig struct {
 #### Creation
 
 ```go
-func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoint) *charts.Scatter
+func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoint) (*charts.Scatter, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws one series per map entry, named after its key. The series are added in the keys' sorted order, so their colours and symbols are the same on every run.
 
 **Parameters:**
 
@@ -364,7 +388,8 @@ func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoin
 
 **Returns:**
 
-- `*charts.Scatter`: Return value.
+- `*charts.Scatter`: the chart, or `nil` when the error is non-nil.
+- `error`: non-nil, with a `nil` chart, when `data` is empty.
 
 ### 4. Pie Chart
 
@@ -402,10 +427,10 @@ type PieChartConfig struct {
 #### Creation
 
 ```go
-func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie
+func CreatePieChart(config PieChartConfig, data ...PieItem) (*charts.Pie, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws one slice per item.
 
 **Parameters:**
 
@@ -414,7 +439,8 @@ func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie
 
 **Returns:**
 
-- `*charts.Pie`: Return value.
+- `*charts.Pie`: the chart, or `nil` when the error is non-nil.
+- `error`: non-nil, with a `nil` chart, when no item is given.
 
 ### 5. HeatMap
 
@@ -459,8 +485,10 @@ type HeatMapPoint[X HeatMapAxis, Y HeatMapAxis] struct {
 
 func NewHeatMapPoint[X HeatMapAxis, Y HeatMapAxis](x X, y Y, value float64) HeatMapPoint[X, Y]
 func NewHeatMapMissingPoint[X HeatMapAxis, Y HeatMapAxis](x X, y Y) HeatMapPoint[X, Y]
-func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ...HeatMapPoint[X, Y]) *charts.HeatMap
+func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ...HeatMapPoint[X, Y]) (*charts.HeatMap, error)
 ```
+
+`CreateHeatMap` returns a `nil` chart and an error when no point is given. With `UseCalendar` set, it also does so when a point's `X` is not a `time.Time` or `CalendarOpts` is `nil`.
 
 Because the point type is exported, points can be collected in a loop:
 
@@ -471,7 +499,7 @@ for x := 0; x < 7; x++ {
         points = append(points, plot.NewHeatMapPoint(x, y, counts[x][y]))
     }
 }
-chart := plot.CreateHeatMap(plot.HeatMapConfig{Title: "Activity"}, points...)
+chart, err := plot.CreateHeatMap(plot.HeatMapConfig{Title: "Activity"}, points...)
 ```
 
 ### 6. Radar Chart
@@ -506,10 +534,10 @@ type RadarSeries struct {
 #### Creation
 
 ```go
-func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Radar
+func CreateRadarChart(config RadarChartConfig, series []RadarSeries) (*charts.Radar, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws one polygon per series against the indicators: `config.Indicators`, or the sorted keys of `config.MaxValues` when `Indicators` is empty. A `MaxValues` key that is not an indicator is ignored with a warning.
 
 **Parameters:**
 
@@ -518,7 +546,8 @@ func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Rad
 
 **Returns:**
 
-- `*charts.Radar`: Return value.
+- `*charts.Radar`: the chart, or `nil` when the error is non-nil.
+- `error`: non-nil, with a `nil` chart, when `series` is empty, or `config` has neither `Indicators` nor `MaxValues`.
 
 ### 7. Funnel Chart
 
@@ -546,10 +575,10 @@ type FunnelChartConfig struct {
 #### Creation
 
 ```go
-func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *charts.Funnel
+func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) (*charts.Funnel, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws a funnel. `data` maps each stage's name to its value.
 
 **Parameters:**
 
@@ -558,7 +587,8 @@ func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *chart
 
 **Returns:**
 
-- `*charts.Funnel`: Return value.
+- `*charts.Funnel`: the chart, or `nil` when the error is non-nil.
+- `error`: non-nil, with a `nil` chart, when `data` is empty.
 
 The stages come from a map and the series is built by ranging over it, so the order of the stages in the generated chart options changes from call to call.
 
@@ -587,10 +617,10 @@ type GaugeChartConfig struct {
 #### Creation
 
 ```go
-func CreateGaugeChart(config GaugeChartConfig, value float64) *charts.Gauge
+func CreateGaugeChart(config GaugeChartConfig, value float64) (*charts.Gauge, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws a gauge showing `value`.
 
 **Parameters:**
 
@@ -599,7 +629,8 @@ func CreateGaugeChart(config GaugeChartConfig, value float64) *charts.Gauge
 
 **Returns:**
 
-- `*charts.Gauge`: Return value.
+- `*charts.Gauge`: the chart.
+- `error`: always `nil`. The gauge returns one so that every constructor has the same shape.
 
 ### 9. WordCloud
 
@@ -637,10 +668,10 @@ type WordCloudConfig struct {
 #### Creation
 
 ```go
-func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.WordCloud
+func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) (*charts.WordCloud, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws each distinct value in `data` as a word, sized by how many times it occurs. A value that is not a string is shown as its text.
 
 **Parameters:**
 
@@ -649,7 +680,8 @@ func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.Word
 
 **Returns:**
 
-- `*charts.WordCloud`: Return value.
+- `*charts.WordCloud`: the chart, or `nil` when the error is non-nil.
+- `error`: non-nil, with a `nil` chart, when `data` is `nil` or empty.
 
 Each distinct value in `data` is one word, weighted by how many times it appears. The words are collected in a map, so their order in the generated chart options changes from call to call.
 
@@ -685,10 +717,10 @@ type SankeyChartConfig struct {
 #### Creation
 
 ```go
-func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) *charts.Sankey
+func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) (*charts.Sankey, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws a Sankey diagram of the links between `config.Nodes`.
 
 **Parameters:**
 
@@ -697,7 +729,8 @@ func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) *charts.Sa
 
 **Returns:**
 
-- `*charts.Sankey`: Return value.
+- `*charts.Sankey`: the chart, or `nil` when the error is non-nil.
+- `error`: non-nil, with a `nil` chart, when no link is given.
 
 ### 11. BoxPlot
 
@@ -739,10 +772,10 @@ Each series' `Data` holds one list per category: the first list is the first box
 #### Creation
 
 ```go
-func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlot
+func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) (*charts.BoxPlot, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws one box per list in each series: the minimum, the three quartiles and the maximum of the cells that are Go numbers. A `nil` list is skipped with a warning, and so is a series left with no lists. For cells that are not numbers, see [How a cell that is not a number is drawn](#how-a-cell-that-is-not-a-number-is-drawn).
 
 **Parameters:**
 
@@ -751,7 +784,8 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlo
 
 **Returns:**
 
-- `*charts.BoxPlot`: Return value.
+- `*charts.BoxPlot`: the chart, or `nil` when the error is non-nil.
+- `error`: non-nil, with a `nil` chart, when no series is given, or no series has a list to draw.
 
 ### 12. K-Line Chart
 
@@ -785,10 +819,10 @@ type KlineChartConfig struct {
 #### Creation
 
 ```go
-func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) *charts.Kline
+func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) (*charts.Kline, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws a candlestick chart of the points in date order. It sorts `klinePoints` in place.
 
 **Parameters:**
 
@@ -797,7 +831,8 @@ func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) *chart
 
 **Returns:**
 
-- `*charts.Kline`: Return value.
+- `*charts.Kline`: the chart, or `nil` when the error is non-nil.
+- `error`: non-nil, with a `nil` chart, when no point is given.
 
 ### 13. ThemeRiver Chart
 
@@ -839,10 +874,10 @@ type ThemeRiverChartConfig struct {
 #### Creation
 
 ```go
-func CreateThemeRiverChart(config ThemeRiverChartConfig, data ...ThemeRiverData) *charts.ThemeRiver
+func CreateThemeRiverChart(config ThemeRiverChartConfig, data ...ThemeRiverData) (*charts.ThemeRiver, error)
 ```
 
-**Description:** Use when you need this function.
+**Description:** Draws a theme river with one stream per `Name`.
 
 **Parameters:**
 
@@ -851,4 +886,5 @@ func CreateThemeRiverChart(config ThemeRiverChartConfig, data ...ThemeRiverData)
 
 **Returns:**
 
-- `*charts.ThemeRiver`: Return value.
+- `*charts.ThemeRiver`: the chart, or `nil` when the error is non-nil.
+- `error`: non-nil, with a `nil` chart, when no data is given.

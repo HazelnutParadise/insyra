@@ -3,12 +3,9 @@
 package gplot
 
 import (
-	"image/color"
-
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
-	"gonum.org/v1/plot/vg"
 )
 
 // StepChartConfig defines the configuration for a multi-series step chart.
@@ -20,18 +17,22 @@ type StepChartConfig struct {
 	StepStyle string    // Optional: Step style - "pre", "mid", "post". Default is "post".
 }
 
-// CreateStepChart generates and returns a plot.Plot object based on StepChartConfig.
-// The Data field can be of type map[string][]float64, []*insyra.DataList, or []insyra.IDataList.
-func CreateStepChart(config StepChartConfig, data any) *plot.Plot {
-	// Create a new plot.
-	plt := plot.New()
-
-	// Set chart title and axis labels.
-	plt.Title.Text = config.Title
-	plt.X.Label.Text = config.XAxisName
-	plt.Y.Label.Text = config.YAxisName
-
-	// Determine step style
+// CreateStepChart draws one step line per list, named after the list. A plain
+// slice is passed as insyra.NewDataList(values).SetName("name").
+// config.StepStyle is "pre", "mid" or "post" (the default); any other value is
+// replaced by "post" with a warning.
+//
+// When config.XAxis is nil, it is 0, 1, 2, ... up to the first list's length.
+// A list whose length differs from XAxis, that is empty, or that holds a NaN
+// or an infinity is skipped with a warning naming it, and so is a nil list
+// among real ones. It returns a nil chart and an error when no list is given,
+// every one is nil, or none of them can be drawn; that error names each list
+// and why.
+//
+// The values are read through DataList.ToF64Slice: a number, a fixed-point
+// decimal included, is drawn as its value, and any other cell, whether nil,
+// text (a numeric string such as "2" included) or a bool, is drawn as 0.
+func CreateStepChart(config StepChartConfig, data ...insyra.IDataList) (*plot.Plot, error) {
 	var stepKind plotter.StepKind
 	switch config.StepStyle {
 	case "pre":
@@ -44,96 +45,5 @@ func CreateStepChart(config StepChartConfig, data any) *plot.Plot {
 		insyra.LogWarning("gplot", "CreateStepChart", "Unknown StepStyle: %s, using PostStep", config.StepStyle)
 		stepKind = plotter.PostStep
 	}
-
-	// Handle different types of Data
-	switch data := data.(type) {
-	case map[string][]float64:
-		if config.XAxis == nil {
-			config.XAxis = autoGenerateXAxis(data)
-		}
-		// If Data is map[string][]float64
-		i := 0
-		for seriesName, values := range data {
-			addStepSeries(plt, seriesName, values, config.XAxis, nil, i, stepKind)
-			i++
-		}
-	case []*insyra.DataList:
-		if config.XAxis == nil {
-			config.XAxis = autoGenerateXAxisForDataList(data)
-		}
-		for i, dataList := range data {
-			addStepSeries(plt, dataList.GetName(), dataList.ToF64Slice(), config.XAxis, nil, i, stepKind)
-		}
-
-	case []insyra.IDataList:
-		if config.XAxis == nil {
-			config.XAxis = autoGenerateXAxisForIDataList(data)
-		}
-		for i, dataList := range data {
-			addStepSeries(plt, dataList.GetName(), dataList.ToF64Slice(), config.XAxis, nil, i, stepKind)
-		}
-	default:
-		insyra.LogWarning("gplot", "CreateStepChart", "Unsupported Data type: %T\n", data)
-		return nil
-	}
-
-	return plt
-}
-
-// addStepSeries is a helper function to add a step series to the plot.
-func addStepSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []float64, colors []color.Color, index int, stepKind plotter.StepKind) {
-	// Check if X-axis and Data lengths match
-	if len(xAxis) != len(values) {
-		insyra.LogWarning("gplot", "addStepSeries", "Length of XAxis and Data for series %s do not match", seriesName)
-		return
-	}
-
-	// Prepare the points for the step plot
-	stepData := make(plotter.XYs, len(xAxis))
-	for j := range xAxis {
-		stepData[j].X = xAxis[j]
-		stepData[j].Y = values[j]
-	}
-
-	// Create the line plot with step style
-	line, err := plotter.NewLine(stepData)
-	if err != nil {
-		insyra.LogError("gplot", "addStepSeries", "failed to build the step line for series %s: %v", seriesName, err)
-		return
-	}
-
-	// Set the step style
-	line.StepStyle = stepKind
-
-	// Apply color if provided
-	if len(colors) > index {
-		line.Color = colors[index]
-	}
-
-	// Set different line styles for each series
-	switch index % 5 {
-	case 0:
-		// 實線
-		line.LineStyle = plotter.DefaultLineStyle
-	case 1:
-		// 長虛線
-		line.LineStyle = plotter.DefaultLineStyle
-		line.Dashes = []vg.Length{vg.Points(8), vg.Points(4)}
-	case 2:
-		// 點線
-		line.LineStyle = plotter.DefaultLineStyle
-		line.Dashes = []vg.Length{vg.Points(2), vg.Points(2)}
-	case 3:
-		// 短虛線
-		line.LineStyle = plotter.DefaultLineStyle
-		line.Dashes = []vg.Length{vg.Points(4), vg.Points(2)}
-	case 4:
-		// 交替虛線和實線
-		line.LineStyle = plotter.DefaultLineStyle
-		line.Dashes = []vg.Length{vg.Points(6), vg.Points(2), vg.Points(1), vg.Points(2)}
-	}
-
-	// Add the step plot to the chart
-	plt.Add(line)
-	plt.Legend.Add(seriesName, line)
+	return drawLines("CreateStepChart", config.Title, config.XAxis, config.XAxisName, config.YAxisName, stepKind, data)
 }

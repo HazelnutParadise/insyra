@@ -3,7 +3,8 @@
 package gplot
 
 import (
-	"image/color"
+	"fmt"
+	"strings"
 
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/plot"
@@ -19,119 +20,87 @@ type LineChartConfig struct {
 	YAxisName string    // Optional: Y-axis name.
 }
 
-// CreateLineChart generates and returns a plot.Plot object based on LineChartConfig.
-// The Data field can be of type map[string][]float64, []*insyra.DataList, or []insyra.IDataList.
-func CreateLineChart(config LineChartConfig, data any) *plot.Plot {
-	// Create a new plot.
+// CreateLineChart draws one line per list, named after the list. A plain
+// slice is passed as insyra.NewDataList(values).SetName("name").
+//
+// When config.XAxis is nil, it is 0, 1, 2, ... up to the first list's length.
+// A list whose length differs from XAxis, that is empty, or that holds a NaN
+// or an infinity is skipped with a warning naming it, and so is a nil list
+// among real ones. It returns a nil chart and an error when no list is given,
+// every one is nil, or none of them can be drawn; that error names each list
+// and why.
+//
+// The values are read through DataList.ToF64Slice: a number, a fixed-point
+// decimal included, is drawn as its value, and any other cell, whether nil,
+// text (a numeric string such as "2" included) or a bool, is drawn as 0.
+func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*plot.Plot, error) {
+	return drawLines("CreateLineChart", config.Title, config.XAxis, config.XAxisName, config.YAxisName, plotter.NoStep, data)
+}
+
+// drawLines builds a line or step chart; stepKind is plotter.NoStep for a line.
+func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName string, stepKind plotter.StepKind, data []insyra.IDataList) (*plot.Plot, error) {
+	data = nonNilLists(funcName, data)
+	if len(data) == 0 {
+		return nil, chartError(funcName, "no data to draw")
+	}
+
 	plt := plot.New()
+	plt.Title.Text = title
+	plt.X.Label.Text = xAxisName
+	plt.Y.Label.Text = yAxisName
 
-	// Set chart title and axis labels.
-	plt.Title.Text = config.Title
-	plt.X.Label.Text = config.XAxisName
-	plt.Y.Label.Text = config.YAxisName
-
-	// Handle different types of Data
-	switch data := data.(type) {
-	case map[string][]float64:
-		if config.XAxis == nil {
-			config.XAxis = autoGenerateXAxis(data)
+	if xAxis == nil {
+		xAxis = make([]float64, data[0].Len())
+		for i := range xAxis {
+			xAxis[i] = float64(i)
 		}
-		// If Data is map[string][]float64
-		i := 0
-		for seriesName, values := range data {
-			addLineSeries(plt, seriesName, values, config.XAxis, nil, i)
-			i++
-		}
-	case []*insyra.DataList:
-		if config.XAxis == nil {
-			config.XAxis = autoGenerateXAxisForDataList(data)
-		}
-		for i, dataList := range data {
-			addLineSeries(plt, dataList.GetName(), dataList.ToF64Slice(), config.XAxis, nil, i)
-		}
-
-	case []insyra.IDataList:
-		if config.XAxis == nil {
-			config.XAxis = autoGenerateXAxisForIDataList(data)
-		}
-		for i, dataList := range data {
-			addLineSeries(plt, dataList.GetName(), dataList.ToF64Slice(), config.XAxis, nil, i)
-		}
-	default:
-		insyra.LogWarning("gplot", "CreateLineChart", "Unsupported Data type: %T\n", data)
-		return nil
 	}
 
-	return plt
+	var skipped []string
+	for i, dl := range data {
+		if err := addLineSeries(plt, dl.GetName(), readValues(dl), xAxis, i, stepKind); err != nil {
+			skipped = append(skipped, err.Error())
+		}
+	}
+	if err := finishSeries(funcName, len(data), skipped); err != nil {
+		return nil, err
+	}
+	return plt, nil
 }
 
-// Helper function to auto-generate X-axis for map[string][]float64
-func autoGenerateXAxis(data map[string][]float64) []float64 {
-	var maxLen int
-	for _, values := range data {
-		if len(values) > maxLen {
-			maxLen = len(values)
-		}
+// finishSeries reports the series a chart skipped. When every one was
+// skipped, the error names each and why, and nothing is logged; otherwise
+// each is named in a warning and the chart stands.
+func finishSeries(funcName string, total int, skipped []string) error {
+	if len(skipped) == total {
+		return chartError(funcName, "no series could be drawn: %s", strings.Join(skipped, "; "))
 	}
-	xAxis := make([]float64, maxLen)
-	for i := range xAxis {
-		xAxis[i] = float64(i)
+	for _, reason := range skipped {
+		insyra.LogWarning("gplot", funcName, "%s; skipping it", reason)
 	}
-	return xAxis
+	return nil
 }
 
-// Helper function to auto-generate X-axis for []*insyra.DataList
-func autoGenerateXAxisForDataList(data []*insyra.DataList) []float64 {
-	if len(data) == 0 {
-		return nil
-	}
-	maxLen := len(data[0].ToF64Slice())
-	xAxis := make([]float64, maxLen)
-	for i := range xAxis {
-		xAxis[i] = float64(i)
-	}
-	return xAxis
-}
-
-// Helper function to auto-generate X-axis for []insyra.IDataList
-func autoGenerateXAxisForIDataList(data []insyra.IDataList) []float64 {
-	if len(data) == 0 {
-		return nil
-	}
-	maxLen := len(data[0].ToF64Slice())
-	xAxis := make([]float64, maxLen)
-	for i := range xAxis {
-		xAxis[i] = float64(i)
-	}
-	return xAxis
-}
-
-// addLineSeries is a helper function to add a line series to the plot.
-func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []float64, colors []color.Color, index int) {
-	// Check if X-axis and Data lengths match
+// addLineSeries adds one series to the plot, or says why it cannot.
+func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []float64, index int, stepKind plotter.StepKind) error {
 	if len(xAxis) != len(values) {
-		insyra.LogWarning("gplot", "addLineSeries", "Length of XAxis and Data for series %s do not match", seriesName)
-		return
+		return fmt.Errorf("series %q has %d values but XAxis has %d", seriesName, len(values), len(xAxis))
+	}
+	if len(values) == 0 {
+		return fmt.Errorf("series %q has no values", seriesName)
 	}
 
-	// Prepare the points for the line plot
 	lineData := make(plotter.XYs, len(xAxis))
 	for j := range xAxis {
 		lineData[j].X = xAxis[j]
 		lineData[j].Y = values[j]
 	}
 
-	// Create the line plot
 	line, err := plotter.NewLine(lineData)
 	if err != nil {
-		insyra.LogError("gplot", "addLineSeries", "failed to build the line for series %s: %v", seriesName, err)
-		return
+		return fmt.Errorf("series %q cannot be drawn: %w", seriesName, err)
 	}
-
-	// Apply color if provided
-	if len(colors) > index {
-		line.Color = colors[index]
-	}
+	line.StepStyle = stepKind
 
 	// Set different line styles for each series
 	switch index % 5 {
@@ -156,7 +125,7 @@ func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []
 		line.Dashes = []vg.Length{vg.Points(6), vg.Points(2), vg.Points(1), vg.Points(2)}
 	}
 
-	// Add the line plot to the chart
 	plt.Add(line)
 	plt.Legend.Add(seriesName, line)
+	return nil
 }

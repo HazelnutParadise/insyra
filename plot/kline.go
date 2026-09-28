@@ -7,7 +7,6 @@ import (
 
 	"time"
 
-	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -38,11 +37,12 @@ type KlineChartConfig struct {
 	DataZoom   bool // Turn on/off data zoom
 }
 
-// CreateKlineChart generates and returns a *charts.Kline object.
-func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) *charts.Kline {
+// CreateKlineChart draws a candlestick chart of klinePoints in date order.
+// It sorts klinePoints in place, so a slice passed as points... is reordered.
+// It returns a nil chart and an error when no point is given.
+func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) (*charts.Kline, error) {
 	if len(klinePoints) == 0 {
-		insyra.LogWarning("plot", "CreateKlineChart", "No data available for kline chart. Returning nil.")
-		return nil
+		return nil, chartError("CreateKlineChart", "no points to draw")
 	}
 	klineChart := charts.NewKLine()
 
@@ -116,5 +116,5 @@ func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) *chart
 	// Set X axis and add series data
 	klineChart.SetXAxis(xAxis).AddSeries("Kline", series)
 
-	return klineChart
+	return klineChart, nil
 }

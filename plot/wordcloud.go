@@ -34,11 +34,12 @@ type WordCloudConfig struct {
 	SizeRange []float32      // Optional: Size range for the words, e.g., [14, 80].
 }
 
-// CreateWordCloud generates and returns a *charts.WordCloud object based on WordCloudChartConfig.
-func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.WordCloud {
+// CreateWordCloud draws each distinct value in data as a word, sized by how
+// many times it occurs. A value that is not a string is shown as its text. It
+// returns a nil chart and an error when data is nil or empty.
+func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) (*charts.WordCloud, error) {
 	if isNilList(data) {
-		insyra.LogWarning("plot", "CreateWordCloud", "No data available for word cloud. Returning nil.")
-		return nil
+		return nil, chartError("CreateWordCloud", "no data to draw")
 	}
 	wc := charts.NewWordCloud()
 
@@ -75,8 +76,7 @@ func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.Word
 		}
 	})
 	if isEmpty {
-		insyra.LogWarning("plot", "CreateWordCloud", "No data available for word cloud chart. Returning nil.")
-		return nil
+		return nil, chartError("CreateWordCloud", "the data list is empty")
 	}
 
 	// Add series data to word cloud
@@ -89,7 +89,7 @@ func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.Word
 				}),
 		)
 
-	return wc
+	return wc, nil
 }
 
 // convertToWordCloudData converts map[string]float32 to []opts.WordCloudData.

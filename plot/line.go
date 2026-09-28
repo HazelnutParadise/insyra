@@ -41,12 +41,23 @@ type LineChartConfig struct {
 	FillArea   bool     // Optional: Fill the area under the lines.
 }
 
-// CreateLineChart generates and returns a *charts.Line object based on LineChartConfig.
-func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.Line {
+// CreateLineChart draws one line per list, named after the list.
+//
+// It returns a nil chart and an error when no list is left to draw: none was
+// given, or every one was nil. A nil list among real ones is skipped with a
+// warning and the others are drawn.
+//
+// Before drawing, every cell is read as text to choose the Y axis. While every
+// cell's text parses as a number, the axis is numeric and the values are read
+// through DataList.ToF64Slice, which does not parse text: a numeric or empty
+// string is drawn as 0. One cell whose text does not parse, such as a word, a
+// bool, or nil (whose text is "<nil>"), turns the Y axis into categories: each
+// distinct text becomes a category, and every cell, the numbers included, is
+// drawn at its category's position.
+func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*charts.Line, error) {
 	data = nonNilLists("CreateLineChart", data)
 	if len(data) == 0 {
-		insyra.LogWarning("plot", "CreateLineChart", "No data available for line chart. Returning nil.")
-		return nil
+		return nil, chartError("CreateLineChart", "no data to draw")
 	}
 	line := charts.NewLine()
 
@@ -141,5 +152,5 @@ func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.L
 		)
 	}
 
-	return line
+	return line, nil
 }

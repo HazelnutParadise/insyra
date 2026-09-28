@@ -35,7 +35,19 @@ func mustSave(t *testing.T, plt *gonumplot.Plot, filename string) {
 	}
 }
 
-func TestCreateBarChart_RendersEveryInputForm(t *testing.T) {
+// built fails the test when a constructor returns an error, and hands back
+// the chart: mustSave(t, built(t)(CreateBarChart(...)), "bar.png").
+func built(t *testing.T) func(*gonumplot.Plot, error) *gonumplot.Plot {
+	return func(plt *gonumplot.Plot, err error) *gonumplot.Plot {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("building the chart: %v", err)
+		}
+		return plt
+	}
+}
+
+func TestCreateBarChart_Renders(t *testing.T) {
 	quietFatal(t)
 
 	config := BarChartConfig{
@@ -45,84 +57,45 @@ func TestCreateBarChart_RendersEveryInputForm(t *testing.T) {
 		YAxisName: "y",
 		BarWidth:  15,
 	}
+	data := insyra.NewDataList(1.0, 2.0, 3.0)
 
-	t.Run("float slice", func(t *testing.T) {
-		mustSave(t, CreateBarChart(config, []float64{1, 2, 3}), "bar.png")
-	})
 	t.Run("DataList", func(t *testing.T) {
-		mustSave(t, CreateBarChart(config, insyra.NewDataList(1.0, 2.0, 3.0)), "bar.png")
-	})
-	t.Run("IDataList", func(t *testing.T) {
-		var dl insyra.IDataList = insyra.NewDataList(1.0, 2.0, 3.0)
-		mustSave(t, CreateBarChart(config, dl), "bar.png")
+		mustSave(t, built(t)(CreateBarChart(config, data)), "bar.png")
 	})
 	t.Run("with error bars", func(t *testing.T) {
 		c := config
 		c.ErrorBars = []float64{0.1, 0.2, 0.3}
-		mustSave(t, CreateBarChart(c, []float64{1, 2, 3}), "bar.png")
+		mustSave(t, built(t)(CreateBarChart(c, data)), "bar.png")
 	})
 	// Error bars of the wrong length are dropped with a warning; the chart is
 	// still built rather than refused.
 	t.Run("error bars of the wrong length", func(t *testing.T) {
 		c := config
 		c.ErrorBars = []float64{0.1}
-		mustSave(t, CreateBarChart(c, []float64{1, 2, 3}), "bar.png")
+		mustSave(t, built(t)(CreateBarChart(c, data)), "bar.png")
 	})
 }
 
-func TestCreateBarChart_RefusesWhatItCannotPlot(t *testing.T) {
-	quietFatal(t)
-
-	config := BarChartConfig{XAxis: []string{"a", "b"}}
-	tests := []struct {
-		name string
-		data any
-	}{
-		{name: "unsupported type", data: "not data"},
-		{name: "empty slice", data: []float64{}},
-		{name: "NaN", data: []float64{1, math.NaN()}},
-		{name: "infinity", data: []float64{1, math.Inf(1)}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if plt := CreateBarChart(config, tt.data); plt != nil {
-				t.Errorf("CreateBarChart returned a chart for %v", tt.data)
-			}
-		})
-	}
-}
-
-func TestCreateLineChart_RendersEveryInputForm(t *testing.T) {
+func TestCreateLineChart_Renders(t *testing.T) {
 	quietFatal(t)
 
 	config := LineChartConfig{Title: "lines", XAxisName: "x", YAxisName: "y"}
 
-	t.Run("map of series", func(t *testing.T) {
-		mustSave(t, CreateLineChart(config, map[string][]float64{
-			"one": {1, 2, 3},
-			"two": {3, 2, 1},
-		}), "line.png")
-	})
-	t.Run("DataLists", func(t *testing.T) {
-		mustSave(t, CreateLineChart(config, []*insyra.DataList{
+	t.Run("several lists", func(t *testing.T) {
+		mustSave(t, built(t)(CreateLineChart(config,
 			insyra.NewDataList(1.0, 2.0, 3.0).SetName("one"),
 			insyra.NewDataList(3.0, 2.0, 1.0).SetName("two"),
-		}), "line.png")
+		)), "line.png")
 	})
-	t.Run("IDataLists", func(t *testing.T) {
-		mustSave(t, CreateLineChart(config, []insyra.IDataList{
-			insyra.NewDataList(1.0, 2.0, 3.0).SetName("one"),
-		}), "line.png")
+	t.Run("a slice of lists", func(t *testing.T) {
+		lists := []insyra.IDataList{insyra.NewDataList(1.0, 2.0, 3.0).SetName("one")}
+		mustSave(t, built(t)(CreateLineChart(config, lists...)), "line.png")
 	})
 	t.Run("explicit x axis", func(t *testing.T) {
 		c := config
 		c.XAxis = []float64{10, 20, 30}
-		mustSave(t, CreateLineChart(c, map[string][]float64{"one": {1, 2, 3}}), "line.png")
+		mustSave(t, built(t)(CreateLineChart(c, insyra.NewDataList(1, 2, 3).SetName("one"))), "line.png")
 	})
-
-	if plt := CreateLineChart(config, "not data"); plt != nil {
-		t.Error("CreateLineChart returned a chart for an unsupported type")
-	}
 }
 
 // A series whose length does not match the x axis is skipped, and the chart is
@@ -131,10 +104,10 @@ func TestCreateLineChart_SkipsAMismatchedSeries(t *testing.T) {
 	quietFatal(t)
 
 	config := LineChartConfig{XAxis: []float64{1, 2, 3}}
-	plt := CreateLineChart(config, map[string][]float64{
-		"good": {1, 2, 3},
-		"bad":  {1, 2},
-	})
+	plt := built(t)(CreateLineChart(config,
+		insyra.NewDataList(1, 2, 3).SetName("good"),
+		insyra.NewDataList(1, 2).SetName("bad"),
+	))
 	mustSave(t, plt, "line.png")
 }
 
@@ -143,132 +116,106 @@ func TestCreateStepChart_RendersEveryStyle(t *testing.T) {
 
 	for _, style := range []string{"pre", "mid", "post", "", "nonsense"} {
 		t.Run("style "+style, func(t *testing.T) {
-			plt := CreateStepChart(StepChartConfig{
+			plt := built(t)(CreateStepChart(StepChartConfig{
 				Title:     "steps",
 				StepStyle: style,
-			}, map[string][]float64{"one": {1, 3, 2}})
+			}, insyra.NewDataList(1, 3, 2).SetName("one")))
 			mustSave(t, plt, "step.png")
 		})
 	}
 }
 
-func TestCreateScatterPlot_RendersEveryInputForm(t *testing.T) {
+func TestCreateScatterPlot_Renders(t *testing.T) {
 	quietFatal(t)
 
 	config := ScatterPlotConfig{Title: "scatter", XAxisName: "x", YAxisName: "y"}
 
-	t.Run("map of point pairs", func(t *testing.T) {
-		mustSave(t, CreateScatterPlot(config, map[string][][]float64{
-			"one": {{0, 1}, {1, 2}, {2, 4}},
-		}), "scatter.png")
+	t.Run("one series", func(t *testing.T) {
+		mustSave(t, built(t)(CreateScatterPlot(config, ScatterSeries{
+			Name: "one",
+			X:    insyra.NewDataList(0, 1, 2),
+			Y:    insyra.NewDataList(1, 2, 4),
+		})), "scatter.png")
 	})
-	// A flat DataList is read as alternating x and y values.
-	t.Run("DataLists", func(t *testing.T) {
-		mustSave(t, CreateScatterPlot(config, []*insyra.DataList{
-			insyra.NewDataList(0.0, 1.0, 1.0, 2.0, 2.0, 4.0).SetName("one"),
-		}), "scatter.png")
+	t.Run("several series", func(t *testing.T) {
+		mustSave(t, built(t)(CreateScatterPlot(config,
+			ScatterSeries{Name: "one", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, 2)},
+			ScatterSeries{Name: "two", X: insyra.NewDataList(2, 3), Y: insyra.NewDataList(4, 1)},
+		)), "scatter.png")
 	})
-	// An odd trailing value has no partner and is dropped.
-	t.Run("odd number of values", func(t *testing.T) {
-		mustSave(t, CreateScatterPlot(config, []*insyra.DataList{
-			insyra.NewDataList(0.0, 1.0, 1.0).SetName("one"),
-		}), "scatter.png")
+	// A series with no points is skipped; the others are drawn.
+	t.Run("an empty series beside a real one", func(t *testing.T) {
+		mustSave(t, built(t)(CreateScatterPlot(config,
+			ScatterSeries{Name: "empty", X: insyra.NewDataList(), Y: insyra.NewDataList()},
+			ScatterSeries{Name: "one", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, 2)},
+		)), "scatter.png")
 	})
-	t.Run("IDataLists", func(t *testing.T) {
-		mustSave(t, CreateScatterPlot(config, []insyra.IDataList{
-			insyra.NewDataList(0.0, 1.0, 1.0, 2.0).SetName("one"),
-		}), "scatter.png")
-	})
-
-	if plt := CreateScatterPlot(config, 42); plt != nil {
-		t.Error("CreateScatterPlot returned a chart for an unsupported type")
-	}
 }
 
 func TestCreateHistogram_RendersAndDefaultsBins(t *testing.T) {
 	quietFatal(t)
 
-	data := []float64{1, 2, 2, 3, 3, 3, 4, 5}
+	data := insyra.NewDataList(1, 2, 2, 3, 3, 3, 4, 5)
 
 	t.Run("default bins", func(t *testing.T) {
-		mustSave(t, CreateHistogram(HistogramConfig{Title: "hist"}, data), "hist.png")
+		mustSave(t, built(t)(CreateHistogram(HistogramConfig{Title: "hist"}, data)), "hist.png")
 	})
 	t.Run("explicit bins", func(t *testing.T) {
-		mustSave(t, CreateHistogram(HistogramConfig{Bins: 3}, data), "hist.png")
+		mustSave(t, built(t)(CreateHistogram(HistogramConfig{Bins: 3}, data)), "hist.png")
 	})
-	t.Run("DataList", func(t *testing.T) {
-		mustSave(t, CreateHistogram(HistogramConfig{}, insyra.NewDataList(1.0, 2.0, 3.0)), "hist.png")
-	})
-
-	if plt := CreateHistogram(HistogramConfig{}, "not data"); plt != nil {
-		t.Error("CreateHistogram returned a chart for an unsupported type")
-	}
 }
 
 func TestCreateFunctionPlot_Renders(t *testing.T) {
 	quietFatal(t)
 
 	t.Run("default range", func(t *testing.T) {
-		mustSave(t, CreateFunctionPlot(FunctionPlotConfig{Title: "f"}, func(x float64) float64 {
+		mustSave(t, built(t)(CreateFunctionPlot(FunctionPlotConfig{Title: "f"}, func(x float64) float64 {
 			return x * x
-		}), "func.png")
+		})), "func.png")
 	})
 	t.Run("explicit ranges", func(t *testing.T) {
-		mustSave(t, CreateFunctionPlot(FunctionPlotConfig{
+		mustSave(t, built(t)(CreateFunctionPlot(FunctionPlotConfig{
 			XMin: -2, XMax: 2, YMin: -1, YMax: 5,
 			XAxisName: "x", YAxisName: "y",
-		}, math.Sin), "func.png")
+		}, math.Sin)), "func.png")
 	})
 }
 
 func TestCreateHeatmapChart_Renders(t *testing.T) {
 	quietFatal(t)
 
-	grid := [][]float64{{1, 2, 3}, {4, 5, 6}}
+	table := insyra.NewDataTable(
+		insyra.NewDataList(1.0, 4.0),
+		insyra.NewDataList(2.0, 5.0),
+		insyra.NewDataList(3.0, 6.0),
+	)
 
-	t.Run("float grid", func(t *testing.T) {
-		mustSave(t, CreateHeatmapChart(HeatmapChartConfig{Title: "heat"}, grid), "heat.png")
+	t.Run("table", func(t *testing.T) {
+		mustSave(t, built(t)(CreateHeatmapChart(HeatmapChartConfig{Title: "heat"}, table)), "heat.png")
 	})
 	t.Run("with axes and colours", func(t *testing.T) {
-		mustSave(t, CreateHeatmapChart(HeatmapChartConfig{
+		mustSave(t, built(t)(CreateHeatmapChart(HeatmapChartConfig{
 			XAxis:  []float64{0, 1, 2},
 			YAxis:  []float64{0, 1},
 			Colors: 5,
 			Alpha:  0.5,
-		}, grid), "heat.png")
+		}, table)), "heat.png")
 	})
-	t.Run("DataTable", func(t *testing.T) {
-		dt := insyra.NewDataTable(
-			insyra.NewDataList(1.0, 4.0),
-			insyra.NewDataList(2.0, 5.0),
-		)
-		mustSave(t, CreateHeatmapChart(HeatmapChartConfig{}, dt), "heat.png")
+	// The documented way to draw a [][]float64 grid.
+	t.Run("grid through ReadSlice2D", func(t *testing.T) {
+		dt, err := insyra.ReadSlice2D([][]float64{{1, 2, 3}, {4, 5, 6}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		mustSave(t, built(t)(CreateHeatmapChart(HeatmapChartConfig{}, dt)), "heat.png")
 	})
-
-	for _, tt := range []struct {
-		name string
-		data any
-	}{
-		{name: "unsupported type", data: "not data"},
-		{name: "empty grid", data: [][]float64{}},
-		{name: "empty first row", data: [][]float64{{}}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			if plt := CreateHeatmapChart(HeatmapChartConfig{}, tt.data); plt != nil {
-				t.Errorf("CreateHeatmapChart returned a chart for %v", tt.data)
-			}
-		})
-	}
 }
 
 // The extension chooses the writer. Only SaveChart's own error path had a test.
 func TestSaveChart_Formats(t *testing.T) {
 	quietFatal(t)
 
-	plt := CreateBarChart(BarChartConfig{XAxis: []string{"a", "b"}}, []float64{1, 2})
-	if plt == nil {
-		t.Fatal("CreateBarChart returned nil")
-	}
+	plt := built(t)(CreateBarChart(BarChartConfig{XAxis: []string{"a", "b"}}, insyra.NewDataList(1, 2)))
 
 	dir := t.TempDir()
 	for _, ext := range []string{"png", "svg", "pdf", "jpg", "tif"} {
@@ -303,7 +250,7 @@ func TestSaveChart_NilChart(t *testing.T) {
 func TestSaveChart_UnsupportedFormat(t *testing.T) {
 	quietFatal(t)
 
-	plt := CreateBarChart(BarChartConfig{XAxis: []string{"a"}}, []float64{1})
+	plt := built(t)(CreateBarChart(BarChartConfig{XAxis: []string{"a"}}, insyra.NewDataList(1)))
 	err := SaveChart(plt, filepath.Join(t.TempDir(), "chart.bmp"))
 	if err == nil {
 		t.Fatal("SaveChart returned no error for an unsupported extension")

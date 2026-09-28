@@ -25,12 +25,12 @@ func quietFatal(t *testing.T) {
 func TestSaveChartReturnsError(t *testing.T) {
 	quietFatal(t)
 
-	plt := CreateBarChart(BarChartConfig{
+	plt, err := CreateBarChart(BarChartConfig{
 		Title: "t",
 		XAxis: []string{"a", "b"},
-	}, []float64{1, 2})
-	if plt == nil {
-		t.Fatal("CreateBarChart returned nil for valid input")
+	}, insyra.NewDataList(1, 2))
+	if err != nil {
+		t.Fatalf("CreateBarChart refused valid input: %v", err)
 	}
 
 	ok := filepath.Join(t.TempDir(), "chart.png")
@@ -38,7 +38,7 @@ func TestSaveChartReturnsError(t *testing.T) {
 		t.Fatalf("SaveChart failed for a writable path: %v", err)
 	}
 
-	err := SaveChart(plt, filepath.Join(t.TempDir(), "no", "such", "dir", "chart.png"))
+	err = SaveChart(plt, filepath.Join(t.TempDir(), "no", "such", "dir", "chart.png"))
 	if err == nil {
 		t.Fatal("SaveChart returned nil for an unwritable path")
 	}
@@ -56,7 +56,7 @@ func TestCreateHistogramZeroConfigDoesNotPanic(t *testing.T) {
 			t.Fatalf("CreateHistogram panicked: %v", r)
 		}
 	}()
-	if plt := CreateHistogram(HistogramConfig{}, insyra.NewDataList(1.0, 2.0, 3.0)); plt == nil {
-		t.Fatal("CreateHistogram returned nil for a zero-value config; it should pick a default bin count")
+	if _, err := CreateHistogram(HistogramConfig{}, insyra.NewDataList(1.0, 2.0, 3.0)); err != nil {
+		t.Fatalf("CreateHistogram refused a zero-value config (%v); it should pick a default bin count", err)
 	}
 }
