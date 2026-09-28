@@ -1,12 +1,13 @@
 package env
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	json "github.com/goccy/go-json"
 )
 
 // defaultFetchTWIntervalMS is the minimum spacing `fetch tw` puts between

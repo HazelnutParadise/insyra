@@ -2,7 +2,6 @@ package datafetch
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/datafetch/internal/limiter"
+	json "github.com/goccy/go-json"
 )
 
 const (

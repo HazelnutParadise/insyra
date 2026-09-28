@@ -1,12 +1,13 @@
 package insyra
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
 	"strconv"
 	"strings"
+
+	json "github.com/goccy/go-json"
 )
 
 // ScalerParams reports the fitted parameters for a single scaled or imputed
