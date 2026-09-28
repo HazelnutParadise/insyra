@@ -4,6 +4,7 @@
 How a DataTable is written into an Excel workbook, from the library and from the CLI's `save`. A workbook holds sheets the table never came from, so a save writes only the sheet it names and never removes or overwrites another one without being asked.
 
 ## Requirements
+
 ### Requirement: A save touches only its own sheet
 
 `ToExcel` SHALL write the table as the sheet named in its options, `Sheet1` when none is given. It SHALL create the workbook when the path does not exist, add the sheet when the workbook lacks it, and leave every other sheet as it was.
@@ -18,7 +19,7 @@ How a DataTable is written into an Excel workbook, from the library and from the
 
 ### Requirement: An existing sheet is replaced only when asked
 
-When the sheet already exists, `ToExcel` SHALL refuse with an error matching `ErrSheetExists` and leave the file unchanged, unless `IfSheetExists` is `SheetExistsReplace`, in which case it SHALL replace that sheet's contents in the sheet's original position.
+When the sheet already exists, `ToExcel` SHALL refuse with an error matching `ErrSheetExists` and leave the file unchanged, unless `IfSheetExists` is `SheetExistsReplace`, in which case it SHALL replace that sheet's contents in the sheet's original position. A replaced sheet SHALL stay hidden when it was hidden, and every defined name and formula elsewhere in the workbook SHALL keep the sheet it belonged to.
 
 #### Scenario: Saving over a sheet by default
 - **WHEN** the sheet exists and `IfSheetExists` is left at its zero value
@@ -27,6 +28,10 @@ When the sheet already exists, `ToExcel` SHALL refuse with an error matching `Er
 #### Scenario: Replacing a sheet
 - **WHEN** the sheet exists and `IfSheetExists` is `SheetExistsReplace`
 - **THEN** the sheet holds only the new table, the other sheets are unchanged, and the sheet order is unchanged
+
+#### Scenario: Replacing a hidden sheet before a sheet with its own names
+- **WHEN** the workbook holds `First`, a hidden `Data` and `Last`, `Last` defines `Rate` for itself as `Last!$B$2` holding 7 with `Last!C1 = Rate*10`, and a table is saved over `Data` with `SheetExistsReplace`
+- **THEN** `Data` is still hidden, `Rate` still belongs to `Last`, and `Last!C1` calculates 70
 
 ### Requirement: The CLI saves Excel with the same rule
 
@@ -39,4 +44,3 @@ When the sheet already exists, `ToExcel` SHALL refuse with an error matching `Er
 #### Scenario: Saving twice without naming a sheet
 - **WHEN** `save t out.xlsx` runs twice
 - **THEN** the second fails without renaming the sheet to `Sheet2`, and says to add `sheet <name>` for a new sheet or `if-exists replace` to overwrite `Sheet1`
-
