@@ -1,8 +1,9 @@
 package commands
 
 import (
-	"encoding/json"
 	"fmt"
+
+	json "github.com/goccy/go-json"
 )
 
 func init() {

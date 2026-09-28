@@ -1,7 +1,6 @@
 package env
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -10,6 +9,7 @@ import (
 	insyra "github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats"
 	"github.com/TimLai666/go-decimal/decimal"
+	json "github.com/goccy/go-json"
 )
 
 // unreadableVariable holds a stored variable this build could not decode, such

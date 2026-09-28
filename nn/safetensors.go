@@ -3,11 +3,13 @@ package nn
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"sort"
+
+	json "github.com/goccy/go-json"
 )
 
 // LoadSafeTensors reads a SafeTensors file into named tensors. The optional
@@ -308,7 +310,7 @@ func parseSafeTensorHeader(header []byte) ([]safeTensorEntry, error) {
 		return nil, fmt.Errorf("invalid safetensors JSON header: object is not closed")
 	}
 	var extra json.RawMessage
-	if err := decoder.Decode(&extra); err != io.EOF {
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err == nil {
 			return nil, fmt.Errorf("invalid safetensors JSON header: trailing JSON value")
 		}

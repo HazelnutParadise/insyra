@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
+
+	json "github.com/goccy/go-json"
 )
 
 var runProbeCommand = func(name string, args ...string) ([]byte, error) {

@@ -2,7 +2,6 @@ package env
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	json "github.com/goccy/go-json"
 )
 
 type SerializedVariable struct {

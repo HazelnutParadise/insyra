@@ -2,7 +2,6 @@ package env
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -12,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/TimLai666/go-decimal/decimal"
+	json "github.com/goccy/go-json"
 )
 
 // jsonNumberPattern is the JSON number grammar. encoding/json writes a
