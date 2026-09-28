@@ -298,19 +298,19 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `read.go` `ReadSlice2D`, which takes the column count from the first row
 - **What**: measured on 2026-09-28: `ReadSlice2D([][]float64{{1}, {2, 3}})` returns a 2×1 table and a nil error; the `3` is gone, with no warning and nothing on `Err()`. A shorter row is padded with `nil`, which is fine. `chart-constructors-return-errors` made `gplot.CreateHeatmapChart` take a table and points `[][]float64` callers at `ReadSlice2D`, so a ragged grid that the heat map refused before is now silently cut. `Docs/gplot.md` and the changelog state it.
 - **Suggestion**: size the table from the longest row and pad every shorter one, or refuse a row longer than the first with an error naming it. Either changes what a core function returns, so it is its own change.
-- **Status**: pending
+- **Status**: pending, tracked in [#410](https://github.com/HazelnutParadise/insyra/issues/410)
 
 ### [2026-09-28] — two ways a chart constructor still panics on caller input
 - **Where**: `plot/wordcloud.go` `CreateWordCloud`, the `map[any]float32` it counts in; `isNilList` in `plot/input.go` and `gplot/input.go`
 - **What**: measured on 2026-09-28 by the review of `chart-constructors-return-errors`, both present before it. (1) `CreateWordCloud` on a list holding a slice cell (`dl.Append([]int{1, 2})`, or a `Cell([]byte{…})`) panics with `hash of unhashable type []int`, because the cell itself is the map key. (2) `isNilList` recognises only a nil `*insyra.DataList`, so a value of a type that embeds a nil one, such as `isr.DL`, passes and panics with a nil pointer dereference in `plot.CreateBarChart`, `plot.CreateWordCloud`, `gplot.CreateBarChart` and `gplot.CreateLineChart`. `stats` has the same gap (`asDataList`, in the follow-up on three smaller things the dev merge's review measured).
 - **Suggestion**: (1) count by the text the chart shows, which merges `1` and `"1"` into one word, or by `encodeCell`, which keeps them apart; decide which a word cloud means. (2) one exported helper in the core that recognises a nil list behind an embedding, used by `plot`, `gplot` and `stats` alike.
-- **Status**: pending
+- **Status**: pending, tracked in [#411](https://github.com/HazelnutParadise/insyra/issues/411) (word cloud) and [#412](https://github.com/HazelnutParadise/insyra/issues/412) (nil wrapper)
 
 ### [2026-09-28] — a `NaN` or an infinity leaves a `plot` chart blank with no error
 - **Where**: every `plot` constructor, through go-echarts' `charts/base.go` `JSONNotEscaped` (`_ = enc.Encode(obj)`), which `SaveHTML` and `SavePNG` reach when they render
 - **What**: `encoding/json` refuses `NaN` and ±Inf, and go-echarts drops that error, so none of the chart's options are written. Measured on 2026-09-28: a bar chart of `NewDataList(1.0, math.NaN())` or `NewDataList(1.0, math.Inf(1))`, a pie with a `NaN` slice and a gauge with a `NaN` value all render a page with no `series` in it, while the constructor, `Render` and `SaveHTML` return no error. A box plot reaches the same state from valid input: a list that is empty or all text has a `NaN` five-number summary, measured by the review of `chart-constructors-return-errors` with one such list beside a normal one. `CreateGaugeChart`'s error is always nil. `Docs/plot.md` states the behaviour. Found while measuring for `chart-constructors-return-errors`.
 - **Suggestion**: per chart type, either refuse a non-finite value with the error the constructors now return, or draw it as a gap, the way `CreateHeatMap` already writes a missing point as `"-"`. A gap keeps a chart of data with a few holes; refusing is simpler and matches `gplot`'s bar chart, which refuses `NaN`. Either changes what a call returns, so it is its own change.
-- **Status**: pending
+- **Status**: pending, tracked in [#409](https://github.com/HazelnutParadise/insyra/issues/409)
 
 ### [2026-09-28] — remove `Difference`, `MovingAverage`, `MovingStdev` and `WeightedMovingAverage` one release after they were deprecated
 - **Where**: `datalist.go`, their lines in `IDataList` (`interfaces.go`), `cli/commands/timeseries.go` (`movavg`, `diff`), and the tests that call them (`datalist_legacy_transforms_test.go`, `datalist_legacy_smoothing_test.go`, `datalist_deprecated_test.go`, `datalist_test.go`, `datalist_numeric_test.go`, `chainable_nil_test.go`, `instance_error_test.go`, `error_philosophy_test.go`)
