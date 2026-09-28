@@ -270,6 +270,18 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-28] — cutting a tree accepts a node merged twice
+- **Where**: `stats/internal/clustering/cluster.go` `validateTree`
+- **What**: `validateTree` checks that every merge joins a leaf or an earlier merge, but not that each is used once. Measured on 2026-09-28 with three labels: merges `{-1,-2},{-1,-2}`, `{-1,-2},{1,1}` or `{-1,-1},{-2,1}` all pass, and `CutTreeByK(tree, 1)` returns `[1 1 2]`, two clusters where one was asked for, with no error. A hand-edited `state.json` reaches `cutree` this way. `dev` has the same check and records the same follow-up.
+- **Suggestion**: track which leaves and merges have been used and refuse an id seen a second time, a merge joining something with itself included.
+- **Status**: pending
+
+### [2026-09-28] — a rebuilt sheet leaves its old comments, drawing and table parts in the file
+- **Where**: `internal/excelsheet/replace.go` `Replace`, through excelize's `DeleteSheet`; reached by `csvxl.AppendCsvToExcel` and `DataTable.ToExcel` with `SheetExistsReplace`
+- **What**: `DeleteSheet` removes the worksheet and its relationships but not the parts they pointed to. Measured on 2026-09-28: after replacing a sheet that had a comment and a table, `xl/comments1.xml`, `xl/drawings/vmlDrawing1.vml` and `xl/tables/table1.xml` are still in the saved file and in `[Content_Types].xml`, referenced by nothing, so the old comment text is still inside the file; excelize also refuses a new table under the old table's name (`the same name table already exists`). Not checked in Excel or LibreOffice, neither of which was available. `dev` records the same follow-up.
+- **Suggestion**: open such a file in Excel and LibreOffice first. If either complains, or if leaving the old comment text in the file matters, remove the parts the old sheet's relationships pointed to before deleting it.
+- **Status**: pending
+
 ### [2026-09-26] — CLI arguments a count cannot catch
 - **Where**: `cli/commands/` — `setrownames.go`, `show.go`, `fetch.go`, `knn.go`, `fillna.go`, `config.go`
 - **What**: `cli-declared-arg-limits` made every command refuse an argument past its declared count. Auditing the 117 commands for it turned up six places where the count is right and an argument is still accepted and dropped, measured on 2026-09-26: `setrownames t r1 … r6` on a four-row table reports success and drops `r5` and `r6`; `show` on a scaler variable or on `accel.devices` ignores `<start> <end>`; `fetch yahoo AAPL calendar extra` ignores `extra`, because the count is per source and only some yahoo methods take an argument; `knn_neighbors` accepts `weighting`, which its Usage does not list and nothing reads; `fillna x mean limit 1` accepts `limit`, and `extrapolate`, for strategies that do not use them; and `config log-level` fails with the usage `config [key] [value]`, which says a key alone is allowed. `exit` being a no-op in one-shot and scripts is tracked separately in #328.
