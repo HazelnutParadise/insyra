@@ -9,7 +9,7 @@
 - **WHEN** `SliceRows(1, 3)` is called on a five-row table whose rows 1 and 2 are named `one` and `two`
 - **THEN** the result holds those two rows, named `one` and `two`, with every column and the table's name
 
-#### Scenario: Two middle columns, three spellings
+#### Scenario: Two middle columns
 
 - **WHEN** `SliceCols(1, 3)`, `SliceCols("B", "D")` and `SliceCols(Name("b"), Name("d"))` are called on a four-column table whose columns are named `a` to `d`
 - **THEN** each result holds columns B and C with every row and the row names
