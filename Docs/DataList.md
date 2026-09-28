@@ -2150,7 +2150,7 @@ More than two values, a first value that is not an `int`, or an end that is neit
 **Parameters:**
 
 - `startEnd`: Variable parameters for range specification
-  - No parameters: shows all items
+  - No parameters: the whole list, as `Show` prints it: a list of more than 25 items prints its first 20 and last 5
   - Single positive integer (n): shows first n items
   - Single negative integer (-n): shows last n items
   - Two parameters (start, end): shows items from start to end (exclusive)
@@ -2215,7 +2215,7 @@ func (dl *DataList) ShowTypesRangeTo(w io.Writer, startEnd ...any) // same outpu
 **Parameters:**
 
 - `startEnd`: Variable parameters for range specification (same as ShowRange)
-  - No parameters: shows all items
+  - No parameters: the whole list, as `Show` prints it: a list of more than 25 items prints its first 20 and last 5
   - Single positive integer (n): shows first n items
   - Single negative integer (-n): shows last n items
   - Two parameters (start, end): shows items from start to end (exclusive)

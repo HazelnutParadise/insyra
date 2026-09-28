@@ -214,7 +214,7 @@
 | E-5 | ~~Low~~ 已修正（batch 3） | 選項重複與過時註解：`ReadSQLOptions.IndexCol` 是 `RowNameColumn` 的別名；`ToSQLOptions.IfExists` 註解寫 `"fail", "replace", "append"` 字串但型別是 int enum；`SQLActionIfTableExistsFail` 命名冗長（準則 1、E） | datatable_from_sql.go:500-509；datatable_to_sql.go:20-43 | 留一個；修註解；enum 改 `TableExistsFail` |
 | E-6 | ~~Low~~ 已修正（core-settings-batch：`NewSimpleImputer(opts ...SimpleImputerOptions)`，預設平均、`FillValue` 錯配由 `Fit` 回報；`Scaler.Fit` 的 `cols` 是必填清單，維持 variadic） | `NewSimpleImputer(strategy, constant ...any)`：常數用 variadic 傳，數量錯誤要到 `Fit` 才報；`Scaler.Fit(dt, cols ...string)` cols 必填卻是 variadic，零個參數是執行期錯誤（準則 8） | datatable_simple_imputer.go:39；datatable_scale.go:169 | `NewConstantImputer(value)`；cols 改 `[]string` |
 | E-7 | ~~Low~~ 已修正（core-settings-batch：指定的欄補不了就報錯、未指定時跳過；`DataTable.FillByInterpolation(extrapolate, cols...)` 可外插；`FillForward` 表格版 `limit` 必填是因為後面接欄位清單，屬刻意） | `DataTable.FillForward(limit int, cols …)` 與 `DataList.FillForward(limit ...int)` 簽名不對稱；`FillWithMean`／`FillWithMedian`／`FillByInterpolation` 對非數值欄靜默跳過（不 warn），pandas 會填所有欄（準則 6） | datatable_impute.go:41-96 | 對稱簽名；跳過時至少 warn |
-| E-8 | Low | `Show()` 預設印全部列，百萬列的表會灌爆終端（pandas 預設 60 列並省略中段）；`ShowRange(startEnd ...any)` 用 `any` 收 `(5)`、`(-5)`、`(2, 10)`、`(2, nil)` 四種形狀；`Show(label, object showable, …)` 的參數型別 `showable` 未匯出，使用者無法在自己的函式簽名引用（準則 4、8） | show.go:27-70, 713-750 | 預設 head/tail 截斷；`ShowRange(start, end int)` + `Head(n)`／`Tail(n)`；匯出 `Showable` |
+| E-8 | ~~Low~~ 部分修正（show-measures-shown-rows：匯出 `Showable`；`Show()` 其實自 323ec68d（2025-05-19）起就只印前 20 列與後 5 列，是文件寫錯，已改正；預設是否改成更短的截斷待擁有者裁定；`ShowRange` 參數已由 core-settings-batch 處理） | `Show()` 預設印全部列，百萬列的表會灌爆終端（pandas 預設 60 列並省略中段）；`ShowRange(startEnd ...any)` 用 `any` 收 `(5)`、`(-5)`、`(2, 10)`、`(2, nil)` 四種形狀；`Show(label, object showable, …)` 的參數型別 `showable` 未匯出，使用者無法在自己的函式簽名引用（準則 4、8） | show.go:27-70, 713-750 | 預設 head/tail 截斷；`ShowRange(start, end int)` + `Head(n)`／`Tail(n)`；匯出 `Showable` |
 | E-9 | OK | 設計良好、可當範本：encode 三件組（options struct、typed policy enum、fitted encoder 有 `Transform`／`InverseTransform`／`Options()`、錯誤全部回 error、輸出欄名碰撞偵測）；四個 Scaler 共用仿射核心、`Params()` 可檢視、compile-time 介面檢查；`SimpleImputer` 明確不提供 InverseTransform 並寫出理由；`ToSQL` 的識別字引號與型別白名單；`ReadSQLStream` 把 goroutine／連線洩漏契約寫進 doc（**更正 2026-09-24**：該契約不成立，照做仍會洩漏，已由 sql-stream-is-an-iterator 改成 `iter.Seq2` 根治） | — | — |
 
 ### isr
@@ -453,7 +453,7 @@
 | IN-19 | ~~Low~~ 已修正（harden-limits-and-permissions） | `ipc.WriteMessage` 不檢查 `maxMessageSize` 與 `len(b) > 2^32`（長度前綴截斷讓對端解框錯位）：寫 256MiB+1 成功、`ReadMessage` 回「exceeds maximum」 | py/internal/ipc/framing.go:34 | 寫入前檢查回錯 |
 | IN-20 | ~~Low~~ 已修正（batch 6） | `DetectEncoding`：`FF FE 00 00`（UTF-32LE BOM）判成 utf-16le；小樣本 Big5（4 bytes 中文）判成 iso-8859-1 讀出亂碼；小樣本 Latin-1 chardet 回「Charset not detected」導致 `ReadCSV_File` 整個失敗而非退回 utf-8 | utils.go:301, 322-330 | UTF-32 BOM 先判；chardet 失敗退回 utf-8 並記警告（SEC-5 相關） |
 | IN-21 | ~~Low~~ 已修正（fix-clear-defects-core） | `NearestNeighborInterpolation(x=NaN)` 靜默回 `data[0]`；`Linear`／`Quadratic` 對 NaN 回 `ErrOutOfBounds`，不一致 | internal/algorithms/interpolation.go:74 | 開頭 `IsNaN` 回 `ErrOutOfBounds` |
-| IN-22 | Low | `Show(5)` 對 1M×3 表花 475ms：`prepareTableLayout` 對每個 cell 跑 `FormatValue` 計寬度，不看顯示範圍 | show.go:1241 | 只對要顯示的列計寬（E-8 相關） |
+| IN-22 | ~~Low~~ 已修正（show-measures-shown-rows：只量要印的列，`ShowRange(5)` 在 1M×3 表上從 279–437 ms 降到約 40 µs） | `Show(5)` 對 1M×3 表花 475ms：`prepareTableLayout` 對每個 cell 跑 `FormatValue` 計寬度，不看顯示範圍 | show.go:1241 | 只對要顯示的列計寬（E-8 相關） |
 
 ### 安全與強韌性（第二輪，跨套件；含 -race 全套件結果）
 
@@ -556,7 +556,7 @@
 | T-23 | [#233](https://github.com/HazelnutParadise/insyra/issues/233) | 已修正（sortby-column-selection、sortby-empty-config-first-column） |
 | E-2 | [#234](https://github.com/HazelnutParadise/insyra/issues/234) |  |
 | E-3 | [#235](https://github.com/HazelnutParadise/insyra/issues/235) |  |
-| E-8 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) |  |
+| E-8 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) | 部分修正（show-measures-shown-rows）；預設截斷待裁定 |
 | I-2 | [#237](https://github.com/HazelnutParadise/insyra/issues/237) |  |
 | I-3 | [#238](https://github.com/HazelnutParadise/insyra/issues/238) |  |
 | I-5 | [#239](https://github.com/HazelnutParadise/insyra/issues/239) |  |
@@ -704,7 +704,7 @@
 | IN-17 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) | 補充留言，已修正（core-utils-cleanup） |
 | SEC-9、SEC-19 | [#257](https://github.com/HazelnutParadise/insyra/issues/257) | 補充留言；已隨 #257 關閉（lp-pure-go-default） |
 | TS-15 | [#220](https://github.com/HazelnutParadise/insyra/issues/220) | 補充留言 |
-| IN-22 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) | 補充留言 |
+| IN-22 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) | 補充留言，已修正（show-measures-shown-rows） |
 | CLI-6 | [#225](https://github.com/HazelnutParadise/insyra/issues/225) | 補充留言 |
 | IN-7 | [#207](https://github.com/HazelnutParadise/insyra/issues/207) | 補充留言 |
 

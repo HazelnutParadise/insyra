@@ -223,15 +223,27 @@ func SortTimes(times []time.Time)
 ### Show
 
 ```go
-func Show(label string, object showable, startEnd ...any)
+func Show(label string, object Showable, startEnd ...any)
+
+type Showable interface {
+    ShowRange(startEnd ...any)
+}
 ```
 
-**Description:** Displays a labeled preview of any structure that implements `ShowRange` (e.g., `DataTable` or `DataList`). The `startEnd` arguments behave the same as `ShowRange`.
+**Description:** Displays a labeled preview of any structure that implements `ShowRange` (e.g., `DataTable`, `DataList` or the `isr` wrappers). The `startEnd` arguments behave the same as `ShowRange`. `Showable` is exported, so a function of your own can take anything `Show` takes:
+
+```go
+func preview(items map[string]insyra.Showable) {
+    for label, item := range items {
+        insyra.Show(label, item, 5)
+    }
+}
+```
 
 **Parameters:**
 
 - `label`: Input value for `label`. Type: `string`.
-- `object`: Input value for `object`. Type: `showable`.
+- `object`: What to show. Type: `Showable`.
 - `startEnd`: Input value for `startEnd`. Type: `...any`.
 
 **Returns:**

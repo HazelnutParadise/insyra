@@ -18,13 +18,16 @@ import (
 	"golang.org/x/term"
 )
 
-type showable interface {
+// Showable is what Show takes: anything with a ShowRange method, such as a
+// DataTable, a DataList or the isr wrappers. Name it to accept any of them in
+// a function of your own.
+type Showable interface {
 	ShowRange(startEnd ...any)
 }
 
-// Show displays the content of any showable object with a label.
+// Show displays the content of any Showable object with a label.
 // Automatically deals with nil objects.
-func Show(label string, object showable, startEnd ...any) {
+func Show(label string, object Showable, startEnd ...any) {
 	if object == nil {
 		fmt.Printf("%s: %s\n\n", label, colorText("2;37", "(nil)"))
 		return
@@ -183,8 +186,12 @@ func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) {
 			fmt.Fprintln(w, colorText("2;37", "(empty)"))
 			return
 		}
-		// Compute table layout (column widths, row names, and max row name width)
-		colWidths, rowNames, maxRowNameWidth := prepareTableLayout(dt, dataMap, colIndices, width)
+		// Only the rows that will be printed are measured: formatting every
+		// cell of a large table to size a five-row view made ShowRange(5) on a
+		// million rows as slow as printing all of them.
+		truncate := tableViewTruncates(start, end, len(startEnd) > 0)
+		shown := shownTableRows(start, end, truncate)
+		colWidths, rowNames, maxRowNameWidth := prepareTableLayout(dt, dataMap, colIndices, width, shown)
 
 		// Try to display some basic statistics for the visible range
 		if end-start > 0 && colCount > 0 {
@@ -306,11 +313,9 @@ func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) {
 			// Print row data for the specified range
 			selectedRowCount := end - start
 
-			// Check if range was explicitly specified
-			explicitRangeSpecified := len(startEnd) > 0
 			// If there are too many rows in the selected range, only show first 20 and last 5
 			// UNLESS a range was explicitly specified by the user
-			if selectedRowCount > 25 && !explicitRangeSpecified {
+			if truncate {
 				// Show first 20 rows
 				printRowsColored(w, dataMap, start, start+20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
 
@@ -343,12 +348,9 @@ func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) {
 }
 
 // Print specified range of rows (with color)
-func printRowsColored(w io.Writer, dataMap map[string][]any, start, end int, rowNames []string, maxRowNameWidth int, colIndices []string, colWidths map[string]int) {
+func printRowsColored(w io.Writer, dataMap map[string][]any, start, end int, rowNames map[int]string, maxRowNameWidth int, colIndices []string, colWidths map[string]int) {
 	for rowIndex := start; rowIndex < end; rowIndex++ {
-		rowName := ""
-		if rowIndex < len(rowNames) {
-			rowName = rowNames[rowIndex]
-		}
+		rowName := rowNames[rowIndex]
 		// Print row name with proper alignment
 		rowLabel := runewidth.FillRight(utils.TruncateString(rowName, maxRowNameWidth), maxRowNameWidth+2)
 		fmt.Fprint(w, colorText("1;37", rowLabel))
@@ -566,8 +568,10 @@ func (dt *DataTable) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
 			return
 		}
 
-		// Compute layout for type display (column widths, row names, and max row name width)
-		colWidths, rowNames, maxRowNameWidth := prepareTableLayoutTypes(dt, dataMap, colIndices, width)
+		// Compute layout for type display from the rows that will be printed.
+		truncate := tableViewTruncates(start, end, len(startEnd) > 0)
+		shown := shownTableRows(start, end, truncate)
+		colWidths, rowNames, maxRowNameWidth := prepareTableLayoutTypes(dt, dataMap, colIndices, width, shown)
 
 		// Dynamically adjust the number of columns to display based on current window width
 		// We'll calculate pages adaptively
@@ -628,12 +632,9 @@ func (dt *DataTable) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
 			// Print row data for the specified range
 			selectedRowCount := end - start
 
-			// Check if range was explicitly specified
-			explicitRangeSpecified := len(startEnd) > 0
-
 			// If there are too many rows in the selected range, only show first 20 and last 5
 			// UNLESS a range was explicitly specified by the user
-			if selectedRowCount > 25 && !explicitRangeSpecified {
+			if truncate {
 				// Show first 20 rows
 				printTypeRows(w, dataMap, start, start+20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
 
@@ -666,12 +667,9 @@ func (dt *DataTable) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
 }
 
 // Print specified range of rows (type information)
-func printTypeRows(w io.Writer, dataMap map[string][]any, start, end int, rowNames []string, maxRowNameWidth int, colIndices []string, colWidths map[string]int) {
+func printTypeRows(w io.Writer, dataMap map[string][]any, start, end int, rowNames map[int]string, maxRowNameWidth int, colIndices []string, colWidths map[string]int) {
 	for rowIndex := start; rowIndex < end; rowIndex++ {
-		rowName := ""
-		if rowIndex < len(rowNames) {
-			rowName = rowNames[rowIndex]
-		}
+		rowName := rowNames[rowIndex]
 		// Use light gray color for row names with proper alignment using runewidth
 		rowLabel := runewidth.FillRight(utils.TruncateString(rowName, maxRowNameWidth), maxRowNameWidth+2)
 		fmt.Fprint(w, colorText("1;37", rowLabel))
@@ -1272,107 +1270,107 @@ func max(a, b int) int {
 	return b
 }
 
-// prepareTableLayout 计算每个列的宽度、行名列表及最大行名宽度
-func prepareTableLayout(dt *DataTable, dataMap map[string][]any, colIndices []string, terminalWidth int) (map[string]int, []string, int) {
-	// 计算行名及最大行名宽度
-	totalRows := dt.getMaxColLength()
-	rowNames := make([]string, totalRows)
-	maxRowName := runewidth.StringWidth("RowNames")
-	for i := 0; i < totalRows; i++ {
-		name, _ := dt.getRowNameByIndex(i)
-		label := fmt.Sprintf("%d: %s", i, name)
-		rowNames[i] = label
-		if w := runewidth.StringWidth(label); w > maxRowName {
-			maxRowName = w
+// tableViewTruncates reports whether a table view of rows [start, end) prints
+// only its first 20 and last 5 rows: it does when there are more than 25 and
+// the caller asked for no range.
+func tableViewTruncates(start, end int, explicitRange bool) bool {
+	return end-start > 25 && !explicitRange
+}
+
+// shownTableRows lists the rows a table view of [start, end) prints, in order.
+func shownTableRows(start, end int, truncate bool) []int {
+	var rows []int
+	add := func(from, to int) {
+		for r := from; r < to; r++ {
+			rows = append(rows, r)
 		}
 	}
-	// 限制行名宽度不超过25
-	if maxRowName > 25 {
-		maxRowName = 25
+	if truncate {
+		add(start, start+20)
+		add(end-5, end)
+	} else {
+		add(start, end)
 	}
+	return rows
+}
 
-	// 计算每个列的最大宽度
+// shownRowLabels builds the row labels of the rows a view prints and the
+// width of the widest, at least that of the "RowNames" header and at most 25.
+func shownRowLabels(dt *DataTable, rows []int) (map[int]string, int) {
+	labels := make(map[int]string, len(rows))
+	maxWidth := runewidth.StringWidth("RowNames")
+	for _, r := range rows {
+		name, _ := dt.getRowNameByIndex(r)
+		label := fmt.Sprintf("%d: %s", r, name)
+		labels[r] = label
+		if w := runewidth.StringWidth(label); w > maxWidth {
+			maxWidth = w
+		}
+	}
+	return labels, min(maxWidth, 25)
+}
+
+// prepareTableLayout computes each column's width and the row labels from the
+// rows the view prints.
+func prepareTableLayout(dt *DataTable, dataMap map[string][]any, colIndices []string, terminalWidth int, rows []int) (map[string]int, map[int]string, int) {
+	rowNames, maxRowName := shownRowLabels(dt, rows)
+
 	colWidths := make(map[string]int, len(colIndices))
-	maxColWidthAllowed := terminalWidth - maxRowName - 5
-	if maxColWidthAllowed < 20 {
-		maxColWidthAllowed = 20
-	}
-
+	maxColWidthAllowed := max(terminalWidth-maxRowName-5, 20)
 	for _, idx := range colIndices {
 		width := runewidth.StringWidth(idx)
-		for _, v := range dataMap[idx] {
-			s := utils.FormatValue(v)
-			if w := runewidth.StringWidth(s); w > width {
+		col := dataMap[idx]
+		for _, r := range rows {
+			if r >= len(col) {
+				continue
+			}
+			if w := runewidth.StringWidth(utils.FormatValue(col[r])); w > width {
 				width = w
 			}
 		}
-		// 限制列宽不超过允许的最大宽度
-		if width > maxColWidthAllowed {
-			width = maxColWidthAllowed
-		}
-		colWidths[idx] = width
+		colWidths[idx] = min(width, maxColWidthAllowed)
 	}
 
 	return colWidths, rowNames, maxRowName
 }
 
-// prepareTableLayoutTypes 计算 ShowTypesRange 使用的列宽、行名列表及最大行名宽度
-func prepareTableLayoutTypes(dt *DataTable, dataMap map[string][]any, colIndices []string, terminalWidth int) (map[string]int, []string, int) {
-	// 计算行名及最大行名宽度
-	total := dt.getMaxColLength()
-	rowNames := make([]string, total)
-	maxName := runewidth.StringWidth("RowNames")
-	for i := 0; i < total; i++ {
-		name, _ := dt.getRowNameByIndex(i)
-		label := fmt.Sprintf("%d: %s", i, name)
-		rowNames[i] = label
-		if w := runewidth.StringWidth(label); w > maxName {
-			maxName = w
-		}
+// typeLabel is the type description ShowTypesRange prints for a cell.
+func typeLabel(v any) string {
+	if v == nil {
+		return "nil"
 	}
-	if maxName > 25 {
-		maxName = 25
+	switch val := v.(type) {
+	case []any:
+		return fmt.Sprintf("[]any(len=%d)", len(val))
+	case []string:
+		return fmt.Sprintf("[]string(len=%d)", len(val))
+	case map[string]any:
+		return fmt.Sprintf("map[string]any(len=%d)", len(val))
+	case time.Time:
+		return "time.Time"
 	}
+	return reflect.TypeOf(v).String()
+}
 
-	// 计算每个列的最大宽度（以类型字符串宽度为根据）
+// prepareTableLayoutTypes computes the column widths ShowTypesRange uses, from
+// the type descriptions of the rows the view prints.
+func prepareTableLayoutTypes(dt *DataTable, dataMap map[string][]any, colIndices []string, terminalWidth int, rows []int) (map[string]int, map[int]string, int) {
+	rowNames, maxName := shownRowLabels(dt, rows)
+
 	colWidths := make(map[string]int, len(colIndices))
-	maxColWidthAllowed := terminalWidth - maxName - 5
-	if maxColWidthAllowed < 20 {
-		maxColWidthAllowed = 20
-	}
-
+	maxColWidthAllowed := max(terminalWidth-maxName-5, 20)
 	for _, idx := range colIndices {
-		// 初始宽度为列名宽度
 		width := runewidth.StringWidth(idx)
-		// 遍历每个单元格，计算类型字符串或特殊标记宽度
-		for _, v := range dataMap[idx] {
-			var s string
-			if v == nil {
-				s = "nil"
-			} else {
-				// 获取类型字符串或特殊描述
-				switch val := v.(type) {
-				case []any:
-					s = fmt.Sprintf("[]any(len=%d)", len(val))
-				case []string:
-					s = fmt.Sprintf("[]string(len=%d)", len(val))
-				case map[string]any:
-					s = fmt.Sprintf("map[string]any(len=%d)", len(val))
-				case time.Time:
-					s = "time.Time"
-				default:
-					s = reflect.TypeOf(v).String()
-				}
+		col := dataMap[idx]
+		for _, r := range rows {
+			if r >= len(col) {
+				continue
 			}
-			if w := runewidth.StringWidth(s); w > width {
+			if w := runewidth.StringWidth(typeLabel(col[r])); w > width {
 				width = w
 			}
 		}
-		// 限制列宽不超过允许的最大宽度
-		if width > maxColWidthAllowed {
-			width = maxColWidthAllowed
-		}
-		colWidths[idx] = width
+		colWidths[idx] = min(width, maxColWidthAllowed)
 	}
 
 	return colWidths, rowNames, maxName
