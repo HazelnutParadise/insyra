@@ -124,13 +124,16 @@ func TWStock(cfg TWStockConfig) (*TWStockClient, error) {
 	}, nil
 }
 
-func (t *TWStockClient) doJSON(rawURL string, output any) error {
+func (t *TWStockClient) doJSON(ctx context.Context, rawURL string, output any) error {
 	var lastErr error
 	for attempt := 0; attempt <= t.cfg.Retries; attempt++ {
-		if err := t.limiter.Wait(context.Background()); err != nil {
+		if err := contextErr(ctx); err != nil {
 			return err
 		}
-		req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+		if err := t.limiter.Wait(ctx); err != nil {
+			return err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
 			lastErr = err
 		} else {
@@ -153,8 +156,13 @@ func (t *TWStockClient) doJSON(rawURL string, output any) error {
 		if lastErr == nil {
 			return nil
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if attempt < t.cfg.Retries {
-			t.sleepBackoff(attempt)
+			if err := t.sleepBackoff(ctx, attempt); err != nil {
+				return err
+			}
 		}
 	}
 	return lastErr
@@ -176,10 +184,11 @@ func readJSONResponse(resp *http.Response, output any) error {
 	return nil
 }
 
-func (t *TWStockClient) sleepBackoff(attempt int) {
-	if t.cfg.RetryBackoff > 0 {
-		time.Sleep(t.cfg.RetryBackoff * time.Duration(attempt+1))
+func (t *TWStockClient) sleepBackoff(ctx context.Context, attempt int) error {
+	if t.cfg.RetryBackoff <= 0 {
+		return nil
 	}
+	return sleepContext(ctx, t.cfg.RetryBackoff*time.Duration(attempt+1))
 }
 
 func requestURL(base, path string, values url.Values) string {
@@ -207,18 +216,30 @@ type dailyPriceRecord struct {
 	transactions     any
 }
 
+// DailyPrices returns code's daily prices for the inclusive [from, to]
+// range, sorted by date. It is DailyPricesContext with context.Background().
 func (t *TWStockClient) DailyPrices(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error) {
+	return t.DailyPricesContext(context.Background(), code, from, to, market)
+}
+
+// DailyPricesContext is DailyPrices with a context. The limiter wait, each
+// request and each retry backoff stop when ctx is done, and the call then
+// returns ctx.Err() without sending another request.
+func (t *TWStockClient) DailyPricesContext(ctx context.Context, code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error) {
 	if err := t.usable(); err != nil {
 		return nil, err
 	}
-	rows, err := t.dailyPriceRows("DailyPrices", code, from, to, market)
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := t.dailyPriceRows(ctx, "DailyPrices", code, from, to, market)
 	if err != nil {
 		return nil, err
 	}
 	return dailyPriceTable(rows), nil
 }
 
-func (t *TWStockClient) dailyPriceRows(method, code string, from, to time.Time, market TWMarket) ([]dailyPriceRecord, error) {
+func (t *TWStockClient) dailyPriceRows(ctx context.Context, method, code string, from, to time.Time, market TWMarket) ([]dailyPriceRecord, error) {
 	code = strings.TrimSpace(code)
 	if code == "" {
 		return nil, fmt.Errorf("datafetch: %s requires a non-empty code", method)
@@ -235,7 +256,10 @@ func (t *TWStockClient) dailyPriceRows(method, code string, from, to time.Time, 
 	rows := make([]dailyPriceRecord, 0)
 	month := time.Date(from.Year(), from.Month(), 1, 0, 0, 0, 0, time.UTC)
 	for !month.After(to) {
-		monthly, err := t.dailyPricesMonth(code, month, market)
+		if err := contextErr(ctx); err != nil {
+			return nil, err
+		}
+		monthly, err := t.dailyPricesMonth(ctx, code, month, market)
 		if err != nil && !errors.Is(err, errTWStockNoData) {
 			return nil, err
 		}
@@ -250,18 +274,18 @@ func (t *TWStockClient) dailyPriceRows(method, code string, from, to time.Time, 
 	return rows, nil
 }
 
-func (t *TWStockClient) dailyPricesMonth(code string, month time.Time, market TWMarket) ([]dailyPriceRecord, error) {
+func (t *TWStockClient) dailyPricesMonth(ctx context.Context, code string, month time.Time, market TWMarket) ([]dailyPriceRecord, error) {
 	if market == TWMarketAuto {
-		rows, err := t.dailyPricesMonth(code, month, TWMarketTWSE)
+		rows, err := t.dailyPricesMonth(ctx, code, month, TWMarketTWSE)
 		if !errors.Is(err, errTWStockNoData) {
 			return rows, err
 		}
-		return t.dailyPricesMonth(code, month, TWMarketTPEx)
+		return t.dailyPricesMonth(ctx, code, month, TWMarketTPEx)
 	}
 	var response twStockResponse
 	if market == TWMarketTWSE {
 		values := url.Values{"date": {month.Format("20060102")}, "stockNo": {code}, "response": {"json"}}
-		if err := t.doJSON(requestURL(t.twseBaseURL, "/rwd/zh/afterTrading/STOCK_DAY", values), &response); err != nil {
+		if err := t.doJSON(ctx, requestURL(t.twseBaseURL, "/rwd/zh/afterTrading/STOCK_DAY", values), &response); err != nil {
 			return nil, err
 		}
 		if err := responseStatus(response.Stat); err != nil {
@@ -278,7 +302,7 @@ func (t *TWStockClient) dailyPricesMonth(code string, month time.Time, market TW
 	}
 
 	values := url.Values{"code": {code}, "date": {month.Format("2006/01/02")}, "response": {"json"}}
-	if err := t.doJSON(requestURL(t.tpexBaseURL, "/www/zh-tw/afterTrading/tradingStock", values), &response); err != nil {
+	if err := t.doJSON(ctx, requestURL(t.tpexBaseURL, "/www/zh-tw/afterTrading/tradingStock", values), &response); err != nil {
 		return nil, err
 	}
 	if err := responseStatus(response.Stat); err != nil {
@@ -377,9 +401,20 @@ var errTPExExRightsUnsupported = errors.New("datafetch: TPEx ex-rights not suppo
 
 // ExRights returns the exchange's ex-rights/ex-dividend reference table for the
 // inclusive [from, to] range, sorted by Date then Code. AdjFactor is the
-// exchange's own reference price divided by the prior close.
+// exchange's own reference price divided by the prior close. It is
+// ExRightsContext with context.Background().
 func (t *TWStockClient) ExRights(from, to time.Time, market TWMarket) (*insyra.DataTable, error) {
+	return t.ExRightsContext(context.Background(), from, to, market)
+}
+
+// ExRightsContext is ExRights with a context. The limiter wait, each request
+// and each retry backoff stop when ctx is done, and the call then returns
+// ctx.Err() without sending another request.
+func (t *TWStockClient) ExRightsContext(ctx context.Context, from, to time.Time, market TWMarket) (*insyra.DataTable, error) {
 	if err := t.usable(); err != nil {
+		return nil, err
+	}
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
 	if !validMarket(market) {
@@ -391,23 +426,26 @@ func (t *TWStockClient) ExRights(from, to time.Time, market TWMarket) (*insyra.D
 	if market == TWMarketTPEx {
 		return nil, errTPExExRightsUnsupported
 	}
-	rows, err := t.exRightsRows(normalizeDate(from), normalizeDate(to))
+	rows, err := t.exRightsRows(ctx, normalizeDate(from), normalizeDate(to))
 	if err != nil {
 		return nil, err
 	}
 	return exRightsTable(rows), nil
 }
 
-func (t *TWStockClient) exRightsRows(from, to time.Time) ([]exRightsRecord, error) {
+func (t *TWStockClient) exRightsRows(ctx context.Context, from, to time.Time) ([]exRightsRecord, error) {
 	rows := make([]exRightsRecord, 0)
 	for start := from; !start.After(to); {
+		if err := contextErr(ctx); err != nil {
+			return nil, err
+		}
 		// The server-side range cap is undocumented; one-year slices are
 		// verified to return and keep the request count bounded.
 		end := start.AddDate(1, 0, -1)
 		if end.After(to) {
 			end = to
 		}
-		slice, err := t.exRightsSlice(start, end)
+		slice, err := t.exRightsSlice(ctx, start, end)
 		if err != nil {
 			return nil, err
 		}
@@ -427,10 +465,10 @@ func (t *TWStockClient) exRightsRows(from, to time.Time) ([]exRightsRecord, erro
 	return rows, nil
 }
 
-func (t *TWStockClient) exRightsSlice(start, end time.Time) ([]exRightsRecord, error) {
+func (t *TWStockClient) exRightsSlice(ctx context.Context, start, end time.Time) ([]exRightsRecord, error) {
 	values := url.Values{"startDate": {start.Format("20060102")}, "endDate": {end.Format("20060102")}, "response": {"json"}}
 	var response twStockResponse
-	if err := t.doJSON(requestURL(t.twseBaseURL, "/rwd/zh/exRight/TWT49U", values), &response); err != nil {
+	if err := t.doJSON(ctx, requestURL(t.twseBaseURL, "/rwd/zh/exRight/TWT49U", values), &response); err != nil {
 		if errors.Is(err, errTWStockNoData) {
 			return nil, nil
 		}
@@ -511,15 +549,26 @@ func exRightsTable(rows []exRightsRecord) *insyra.DataTable {
 // factor and the adjusted OHLC prices. Every bar strictly before an ex-date in
 // [from, to] is multiplied by that ex-date's factor, so the last bar keeps the
 // quoted price and a return across an ex-date is the true holder return.
-// Distributions after to are not applied.
+// Distributions after to are not applied. It is DailyPricesAdjustedContext with
+// context.Background().
 func (t *TWStockClient) DailyPricesAdjusted(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error) {
+	return t.DailyPricesAdjustedContext(context.Background(), code, from, to, market)
+}
+
+// DailyPricesAdjustedContext is DailyPricesAdjusted with a context. The limiter
+// wait, each request and each retry backoff stop when ctx is done, and the call
+// then returns ctx.Err() without sending another request.
+func (t *TWStockClient) DailyPricesAdjustedContext(ctx context.Context, code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error) {
 	if err := t.usable(); err != nil {
+		return nil, err
+	}
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
 	if market == TWMarketTPEx {
 		return nil, errTPExExRightsUnsupported
 	}
-	rows, err := t.dailyPriceRows("DailyPricesAdjusted", code, from, to, market)
+	rows, err := t.dailyPriceRows(ctx, "DailyPricesAdjusted", code, from, to, market)
 	if err != nil {
 		return nil, err
 	}
@@ -530,7 +579,7 @@ func (t *TWStockClient) DailyPricesAdjusted(code string, from, to time.Time, mar
 			return nil, errTPExExRightsUnsupported
 		}
 	}
-	events, err := t.exRightsRows(normalizeDate(from), normalizeDate(to))
+	events, err := t.exRightsRows(ctx, normalizeDate(from), normalizeDate(to))
 	if err != nil {
 		return nil, err
 	}
@@ -611,34 +660,45 @@ type institutionalRecord struct {
 }
 
 // InstitutionalTrades returns the day's foreign-investor, investment-trust,
-// dealer, and total net trades for each security.
+// dealer, and total net trades for each security. It is
+// InstitutionalTradesContext with context.Background().
 func (t *TWStockClient) InstitutionalTrades(date time.Time, market TWMarket) (*insyra.DataTable, error) {
+	return t.InstitutionalTradesContext(context.Background(), date, market)
+}
+
+// InstitutionalTradesContext is InstitutionalTrades with a context. The limiter
+// wait, each request and each retry backoff stop when ctx is done, and the call
+// then returns ctx.Err() without sending another request.
+func (t *TWStockClient) InstitutionalTradesContext(ctx context.Context, date time.Time, market TWMarket) (*insyra.DataTable, error) {
 	if err := t.usable(); err != nil {
+		return nil, err
+	}
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
 	date = normalizeDate(date)
 	if !validMarket(market) {
 		return nil, fmt.Errorf("datafetch: unsupported market %q", market)
 	}
-	rows, err := t.institutionalRows(date, market)
+	rows, err := t.institutionalRows(ctx, date, market)
 	if err != nil && !errors.Is(err, errTWStockNoData) {
 		return nil, err
 	}
 	return institutionalTable(rows), nil
 }
 
-func (t *TWStockClient) institutionalRows(date time.Time, market TWMarket) ([]institutionalRecord, error) {
+func (t *TWStockClient) institutionalRows(ctx context.Context, date time.Time, market TWMarket) ([]institutionalRecord, error) {
 	if market == TWMarketAuto {
-		rows, err := t.institutionalRows(date, TWMarketTWSE)
+		rows, err := t.institutionalRows(ctx, date, TWMarketTWSE)
 		if !errors.Is(err, errTWStockNoData) {
 			return rows, err
 		}
-		return t.institutionalRows(date, TWMarketTPEx)
+		return t.institutionalRows(ctx, date, TWMarketTPEx)
 	}
 	var response twStockResponse
 	if market == TWMarketTWSE {
 		values := url.Values{"date": {date.Format("20060102")}, "selectType": {"ALL"}, "response": {"json"}}
-		if err := t.doJSON(requestURL(t.twseBaseURL, "/rwd/zh/fund/T86", values), &response); err != nil {
+		if err := t.doJSON(ctx, requestURL(t.twseBaseURL, "/rwd/zh/fund/T86", values), &response); err != nil {
 			return nil, err
 		}
 		if err := responseStatus(response.Stat); err != nil {
@@ -655,7 +715,7 @@ func (t *TWStockClient) institutionalRows(date time.Time, market TWMarket) ([]in
 	}
 
 	values := url.Values{"date": {date.Format("2006/01/02")}, "response": {"json"}, "type": {"Daily"}}
-	if err := t.doJSON(requestURL(t.tpexBaseURL, "/www/zh-tw/insti/dailyTrade", values), &response); err != nil {
+	if err := t.doJSON(ctx, requestURL(t.tpexBaseURL, "/www/zh-tw/insti/dailyTrade", values), &response); err != nil {
 		return nil, err
 	}
 	if err := responseStatus(response.Stat); err != nil {
@@ -748,34 +808,45 @@ type marginRecord struct {
 	date, code, name, marginBalance, shortBalance any
 }
 
-// MarginBalance returns the day's margin-buy and short-sale balances by security.
+// MarginBalance returns the day's margin-buy and short-sale balances by
+// security. It is MarginBalanceContext with context.Background().
 func (t *TWStockClient) MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error) {
+	return t.MarginBalanceContext(context.Background(), date, market)
+}
+
+// MarginBalanceContext is MarginBalance with a context. The limiter wait, each
+// request and each retry backoff stop when ctx is done, and the call then
+// returns ctx.Err() without sending another request.
+func (t *TWStockClient) MarginBalanceContext(ctx context.Context, date time.Time, market TWMarket) (*insyra.DataTable, error) {
 	if err := t.usable(); err != nil {
+		return nil, err
+	}
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
 	date = normalizeDate(date)
 	if !validMarket(market) {
 		return nil, fmt.Errorf("datafetch: unsupported market %q", market)
 	}
-	rows, err := t.marginRows(date, market)
+	rows, err := t.marginRows(ctx, date, market)
 	if err != nil && !errors.Is(err, errTWStockNoData) {
 		return nil, err
 	}
 	return marginTable(rows), nil
 }
 
-func (t *TWStockClient) marginRows(date time.Time, market TWMarket) ([]marginRecord, error) {
+func (t *TWStockClient) marginRows(ctx context.Context, date time.Time, market TWMarket) ([]marginRecord, error) {
 	if market == TWMarketAuto {
-		rows, err := t.marginRows(date, TWMarketTWSE)
+		rows, err := t.marginRows(ctx, date, TWMarketTWSE)
 		if !errors.Is(err, errTWStockNoData) {
 			return rows, err
 		}
-		return t.marginRows(date, TWMarketTPEx)
+		return t.marginRows(ctx, date, TWMarketTPEx)
 	}
 	var response twStockResponse
 	if market == TWMarketTWSE {
 		values := url.Values{"date": {date.Format("20060102")}, "selectType": {"ALL"}, "response": {"json"}}
-		if err := t.doJSON(requestURL(t.twseBaseURL, "/rwd/zh/marginTrading/MI_MARGN", values), &response); err != nil {
+		if err := t.doJSON(ctx, requestURL(t.twseBaseURL, "/rwd/zh/marginTrading/MI_MARGN", values), &response); err != nil {
 			return nil, err
 		}
 		if err := responseStatus(response.Stat); err != nil {
@@ -788,7 +859,7 @@ func (t *TWStockClient) marginRows(date time.Time, market TWMarket) ([]marginRec
 	}
 
 	values := url.Values{"date": {date.Format("2006/01/02")}, "response": {"json"}}
-	if err := t.doJSON(requestURL(t.tpexBaseURL, "/www/zh-tw/margin/balance", values), &response); err != nil {
+	if err := t.doJSON(ctx, requestURL(t.tpexBaseURL, "/www/zh-tw/margin/balance", values), &response); err != nil {
 		return nil, err
 	}
 	if err := responseStatus(response.Stat); err != nil {
@@ -879,32 +950,43 @@ type quoteRecord struct {
 	close, change, transactions       any
 }
 
-// AllDailyQuotes returns the latest full-market daily quote table from an exchange.
+// AllDailyQuotes returns the latest full-market daily quote table from an
+// exchange. It is AllDailyQuotesContext with context.Background().
 func (t *TWStockClient) AllDailyQuotes(market TWMarket) (*insyra.DataTable, error) {
+	return t.AllDailyQuotesContext(context.Background(), market)
+}
+
+// AllDailyQuotesContext is AllDailyQuotes with a context. The limiter wait, each
+// request and each retry backoff stop when ctx is done, and the call then
+// returns ctx.Err() without sending another request.
+func (t *TWStockClient) AllDailyQuotesContext(ctx context.Context, market TWMarket) (*insyra.DataTable, error) {
 	if err := t.usable(); err != nil {
+		return nil, err
+	}
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
 	if !validMarket(market) {
 		return nil, fmt.Errorf("datafetch: unsupported market %q", market)
 	}
-	rows, err := t.quoteRows(market)
+	rows, err := t.quoteRows(ctx, market)
 	if err != nil && !errors.Is(err, errTWStockNoData) {
 		return nil, err
 	}
 	return quoteTable(rows), nil
 }
 
-func (t *TWStockClient) quoteRows(market TWMarket) ([]quoteRecord, error) {
+func (t *TWStockClient) quoteRows(ctx context.Context, market TWMarket) ([]quoteRecord, error) {
 	if market == TWMarketAuto {
-		rows, err := t.quoteRows(TWMarketTWSE)
+		rows, err := t.quoteRows(ctx, TWMarketTWSE)
 		if !errors.Is(err, errTWStockNoData) {
 			return rows, err
 		}
-		return t.quoteRows(TWMarketTPEx)
+		return t.quoteRows(ctx, TWMarketTPEx)
 	}
 	if market == TWMarketTWSE {
 		var response []map[string]string
-		if err := t.doJSON(requestURL(t.twseOpenAPIBaseURL, "/v1/exchangeReport/STOCK_DAY_ALL", nil), &response); err != nil {
+		if err := t.doJSON(ctx, requestURL(t.twseOpenAPIBaseURL, "/v1/exchangeReport/STOCK_DAY_ALL", nil), &response); err != nil {
 			return nil, err
 		}
 		if len(response) == 0 {
@@ -914,7 +996,7 @@ func (t *TWStockClient) quoteRows(market TWMarket) ([]quoteRecord, error) {
 	}
 
 	var response []map[string]string
-	if err := t.doJSON(requestURL(t.tpexOpenAPIBaseURL, "/openapi/v1/tpex_mainboard_daily_close_quotes", nil), &response); err != nil {
+	if err := t.doJSON(ctx, requestURL(t.tpexOpenAPIBaseURL, "/openapi/v1/tpex_mainboard_daily_close_quotes", nil), &response); err != nil {
 		return nil, err
 	}
 	if len(response) == 0 {

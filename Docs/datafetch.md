@@ -120,6 +120,26 @@ options := datafetch.GoogleMapsStoreReviewsFetchingOptions{
 reviews := crawler.GetReviews(store.ID, 20, options)
 ```
 
+### SearchContext and GetReviewsContext
+
+```go
+func (c *GoogleMapsStoresClient) SearchContext(ctx context.Context, query string) []GoogleMapsStoreData
+func (c *GoogleMapsStoresClient) GetReviewsContext(ctx context.Context, storeID string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews
+```
+
+**Description:** `Search` and `GetReviews` with a `context.Context`; the plain methods call them with `context.Background()`. When `ctx` is done, the request in flight or the wait between review pages stops at once, and the method returns `nil` with a warning, the way it reports any other failure. Check `ctx.Err()` to tell a cancellation from a failed request. A `nil` context is refused the same way.
+
+**Example:**
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+defer cancel()
+reviews := crawler.GetReviewsContext(ctx, store.ID, 0)
+if reviews == nil && ctx.Err() != nil {
+    fmt.Println("stopped:", ctx.Err())
+}
+```
+
 ### ToDataTable
 
 ```go
@@ -418,6 +438,21 @@ These methods return a `*datafetch.YFFinancialStatementTables` structure contain
 
 ---
 
+### Cancellation
+
+Every ticker method that requests data has a `...Context` form taking a `context.Context` first, such as `HistoryContext(ctx, params)`, `QuoteContext(ctx)`, `OptionChainContext(ctx, date)` and `NewsContext(ctx, count, tab)`; the plain method calls it with `context.Background()`. `Earnings`, `Sustainability`, `FundsData` and `TopHoldings` send no request and have none.
+
+When the context is done, the method returns `ctx.Err()` at once, so `errors.Is(err, context.Canceled)` or `errors.Is(err, context.DeadlineExceeded)` tells a cancellation from a failure. A call whose context is already done sends nothing, and `History` and `Quote` stop waiting for the `Interval` throttle or a retry backoff. Once a call has started, though, the Yahoo Finance backend offers no way to stop it, and one call can make several requests: a cookie, a crumb, then the data. Such a call is abandoned rather than interrupted. It runs to its end in the background and may still send its remaining requests, each limited only by the backend's own timeout, which a stalled connection can outlast, and its result is discarded. Until it ends it keeps using the client, so a later call on the same client may have to wait for it. A `nil` context is an error.
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+history, err := yf.Ticker("AAPL").HistoryContext(ctx, datafetch.YFHistoryParams{Period: "1y", Interval: "1d"})
+if errors.Is(err, context.DeadlineExceeded) {
+    // Yahoo did not answer within five seconds.
+}
+```
+
 ### Notes & Limitations
 
 1. **Rate Limiting**: Frequent requests may lead to temporary IP blocks by Yahoo Finance. Use the `Interval` setting in `YFinanceConfig` to mitigate this.
@@ -538,6 +573,21 @@ if rl := (*datafetch.RateLimitError)(nil); errors.As(err, &rl) {
 enriched.Show()
 ```
 
+### Cancellation
+
+`ReverseContext`, `ReverseColsContext` and `ReverseTableContext` take a `context.Context` first; `Reverse`, `ReverseCols` and `ReverseTable` call them with `context.Background()`. When the context is done, the `Interval` throttle, the request in flight and any retry backoff stop at once, and the call returns `ctx.Err()`. A request the caller's deadline cut off is not retried, and is reported as `context.DeadlineExceeded` rather than `ErrGeocodeTimeout`, which means the service did not answer within `Timeout`.
+
+A batch stopped part-way keeps what it resolved, the same way it does when the quota runs out: the table comes back with every row resolved so far, the rest of the valid coordinates marked `pending`, and `ctx.Err()`. No request is sent after the context is done, so the rows already paid for are not lost and the batch can be resumed from the `pending` rows. A `nil` context is an error.
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+enriched, err := g.ReverseTableContext(ctx, dt, insyra.Name("lat"), insyra.Name("lng"))
+if errors.Is(err, context.DeadlineExceeded) {
+    // enriched holds the rows resolved in time; the rest are "pending".
+}
+```
+
 ### Optional Caching
 
 Since village boundaries are effectively static, results are highly cacheable. A cache stores only **definitive** outcomes (successful results and `not_found`), never transient failures, so nothing wrong is ever served.
@@ -637,6 +687,8 @@ InstitutionalTrades(date time.Time, market TWMarket) (*insyra.DataTable, error)
 MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)
 AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)
 ```
+
+Each method has a `...Context` form taking a `context.Context` first, such as `DailyPricesContext(ctx, code, from, to, market)`; the plain method calls it with `context.Background()`. When the context is done, the `Interval` throttle, the request in flight and any retry backoff stop at once, and the call returns `ctx.Err()` without sending another request, so a long backfill can be stopped between two monthly requests. A `nil` context is an error.
 
 `DailyPrices` requests one month at a time, filters to the inclusive `[from, to]` range, and sorts by `Date` ascending.
 

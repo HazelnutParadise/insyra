@@ -57,12 +57,24 @@ func TestGetReviewsRefusesBothWaitingFields(t *testing.T) {
 func TestGetReviewsReplacesAWaitUnderOneSecond(t *testing.T) {
 	logged := captureGmapsWarnings(t)
 	posted := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	server, _ := reviewServer(t, map[string]string{"": reviewPage(t, "", reviewRecord(5, "", posted, "A", "", ""))})
+	server, requests := reviewServer(t, map[string]string{
+		"":       reviewPage(t, "page-2", reviewRecord(5, "", posted, "A", "", "")),
+		"page-2": reviewPage(t, "", reviewRecord(4, "", posted, "B", "", "")),
+	})
 
-	reviews := crawlerFor(server).GetReviews("0x1:0x2", 1, GoogleMapsStoreReviewsFetchingOptions{MaxWaitingInterval: 500 * time.Millisecond})
+	// Two pages, so the wait between them runs: a limit kept at 500ms would
+	// make it negative.
+	start := time.Now()
+	reviews := crawlerFor(server).GetReviews("0x1:0x2", 2, GoogleMapsStoreReviewsFetchingOptions{MaxWaitingInterval: 500 * time.Millisecond})
 
-	if len(reviews) != 1 {
-		t.Errorf("got %d reviews, want 1", len(reviews))
+	if len(reviews) != 2 {
+		t.Errorf("got %d reviews over two pages, want 2", len(reviews))
+	}
+	if n := len(requests()); n != 2 {
+		t.Errorf("sent %d requests, want 2", n)
+	}
+	if elapsed := time.Since(start); elapsed < time.Second {
+		t.Errorf("waited %v between pages; the default limit waits at least 1s", elapsed)
 	}
 	if !strings.Contains(logged.String(), "too small") {
 		t.Errorf("the warning %q does not say the limit is too small", logged.String())

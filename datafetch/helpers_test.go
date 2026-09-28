@@ -1,6 +1,7 @@
 package datafetch
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -114,7 +115,9 @@ func TestSleepBackoff(t *testing.T) {
 	// A zero or negative backoff means no waiting at all.
 	y := &YFinanceClient{cfg: YFinanceConfig{RetryBackoff: 0}}
 	start := time.Now()
-	y.sleepBackoff(3)
+	if err := y.sleepBackoff(context.Background(), 3); err != nil {
+		t.Fatal(err)
+	}
 	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
 		t.Errorf("a zero backoff waited %v", elapsed)
 	}
@@ -122,8 +125,23 @@ func TestSleepBackoff(t *testing.T) {
 	// Otherwise the wait grows with the attempt number.
 	y = &YFinanceClient{cfg: YFinanceConfig{RetryBackoff: 20 * time.Millisecond}}
 	start = time.Now()
-	y.sleepBackoff(1) // the second attempt waits two units
+	if err := y.sleepBackoff(context.Background(), 1); err != nil { // the second attempt waits two units
+		t.Fatal(err)
+	}
 	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
 		t.Errorf("attempt 1 waited %v, want at least two backoff units", elapsed)
+	}
+
+	// A cancelled context stops the wait immediately.
+	y = &YFinanceClient{cfg: YFinanceConfig{RetryBackoff: 10 * time.Second}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start = time.Now()
+	err := y.sleepBackoff(ctx, 0)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("got %v, want context.Canceled", err)
+	}
+	if elapsed := time.Since(start); elapsed > 1*time.Second {
+		t.Errorf("returned after %v; the context was already cancelled", elapsed)
 	}
 }

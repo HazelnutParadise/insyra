@@ -9,6 +9,7 @@ package datafetch
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"html"
 	"io"
@@ -159,9 +160,21 @@ func (c *GoogleMapsStoresClient) usable() bool {
 // Search searches Google Maps for stores matching storeName and returns up to
 // 20 of them, in Google's order. It returns nil when the request fails or no
 // store comes back, and logs a warning saying which.
+// It is SearchContext with context.Background().
 func (c *GoogleMapsStoresClient) Search(storeName string) []GoogleMapsStoreData {
+	return c.SearchContext(context.Background(), storeName)
+}
+
+// SearchContext is Search with a context. When ctx is done the request
+// stops, and SearchContext returns nil with a warning, as for any other
+// failure.
+func (c *GoogleMapsStoresClient) SearchContext(ctx context.Context, storeName string) []GoogleMapsStoreData {
 	if !c.usable() {
 		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "the GoogleMapsStoresClient was not created with GoogleMapsStores. Returning nil.")
+		return nil
+	}
+	if err := contextErr(ctx); err != nil {
+		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "%v. Returning nil.", err)
 		return nil
 	}
 	params := url.Values{}
@@ -171,7 +184,7 @@ func (c *GoogleMapsStoresClient) Search(storeName string) []GoogleMapsStoreData 
 	params.Set("q", storeName)
 	params.Set("pb", gmapsSearchPB)
 
-	body, err := c.get(c.storeSearchUrl + "?" + params.Encode())
+	body, err := c.get(ctx, c.storeSearchUrl+"?"+params.Encode())
 	if err != nil {
 		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Failed to search: %v. Returning nil.", err)
 		return nil
@@ -223,9 +236,21 @@ func parseGoogleMapsSearch(body []byte) ([]GoogleMapsStoreData, error) {
 //
 // ReviewerState and ReviewerLevel are always empty: the review pages no longer
 // carry a reviewer's status line or guide level.
+// It is GetReviewsContext with context.Background().
 func (c *GoogleMapsStoresClient) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews {
+	return c.GetReviewsContext(context.Background(), storeId, pageCount, options...)
+}
+
+// GetReviewsContext is GetReviews with a context. When ctx is done, the
+// request or the wait between pages stops, and GetReviewsContext returns nil
+// with a warning, as for any other failure.
+func (c *GoogleMapsStoresClient) GetReviewsContext(ctx context.Context, storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews {
 	if !c.usable() {
 		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "the GoogleMapsStoresClient was not created with GoogleMapsStores. Returning nil.")
+		return nil
+	}
+	if err := contextErr(ctx); err != nil {
+		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "%v. Returning nil.", err)
 		return nil
 	}
 	fetchingOptions := GoogleMapsStoreReviewsFetchingOptions{
@@ -264,7 +289,7 @@ func (c *GoogleMapsStoresClient) GetReviews(storeId string, pageCount int, optio
 	for page := 1; pageCount == 0 || page <= pageCount; page++ {
 		insyra.LogDebug("datafetch", "GoogleMapsStores.GetReviews", "fetching reviews on page %d", page)
 
-		body, err := c.get(c.storeReviewUrl + "?" + gmapsReviewQuery(storeId, fetchingOptions.SortBy, token))
+		body, err := c.get(ctx, c.storeReviewUrl+"?"+gmapsReviewQuery(storeId, fetchingOptions.SortBy, token))
 		if err != nil {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to fetch reviews: %v. Returning nil.", err)
 			return nil
@@ -286,7 +311,10 @@ func (c *GoogleMapsStoresClient) GetReviews(storeId string, pageCount int, optio
 		maxWait := fetchingOptions.MaxWaitingInterval
 		waitTime := time.Second + time.Duration(rand.Int64N(int64(maxWait-time.Second)+1))
 		insyra.LogDebug("datafetch", "GoogleMapsStores.GetReviews", "waiting %.1fs before fetching the next page", waitTime.Seconds())
-		time.Sleep(waitTime)
+		if err := sleepContext(ctx, waitTime); err != nil {
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "stopped while waiting for the next page: %v. Returning nil.", err)
+			return nil
+		}
 	}
 
 	return reviews
@@ -397,8 +425,8 @@ func (reviews GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable {
 
 // get sends a GET request with the crawler's headers and returns the body of
 // a 200 response, read up to gmapsMaxResponseSize.
-func (c *GoogleMapsStoresClient) get(rawURL string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+func (c *GoogleMapsStoresClient) get(ctx context.Context, rawURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

@@ -178,8 +178,20 @@ func TWGeocoding(cfg TWGeocodingConfig) (*TWGeocodingClient, error) {
 // Reverse resolves a single coordinate to its Taiwan administrative region.
 // It returns ErrGeocodeNotFound when the point is outside any village, a
 // *RateLimitError when the quota is exhausted, and ErrGeocodeTimeout on timeout.
+// It is ReverseContext with context.Background().
 func (g *TWGeocodingClient) Reverse(lat, lng float64) (*ReverseGeocodeResult, error) {
+	return g.ReverseContext(context.Background(), lat, lng)
+}
+
+// ReverseContext is Reverse with a context. The limiter wait, the request and
+// each retry backoff stop when ctx is done, and the call then returns
+// ctx.Err(); a request ended by ctx is not retried or reported as
+// ErrGeocodeTimeout.
+func (g *TWGeocodingClient) ReverseContext(ctx context.Context, lat, lng float64) (*ReverseGeocodeResult, error) {
 	if err := g.usable(); err != nil {
+		return nil, err
+	}
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
 	key := geocodeCacheKey(lat, lng)
@@ -196,16 +208,22 @@ func (g *TWGeocodingClient) Reverse(lat, lng float64) (*ReverseGeocodeResult, er
 
 	var lastErr error
 	for attempt := 0; attempt <= g.cfg.Retries; attempt++ {
-		if err := g.limiter.Wait(context.Background()); err != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := g.limiter.Wait(ctx); err != nil {
 			return nil, err
 		}
 
-		res, err := g.doReverse(lat, lng)
+		res, err := g.doReverse(ctx, lat, lng)
 		if err == nil {
 			if g.cache != nil {
 				g.cache.Set(key, res)
 			}
 			return res, nil
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
 		}
 
 		lastErr = err
@@ -219,15 +237,17 @@ func (g *TWGeocodingClient) Reverse(lat, lng float64) (*ReverseGeocodeResult, er
 			return nil, err
 		}
 		if attempt < g.cfg.Retries {
-			g.sleepBackoff(attempt)
+			if err := g.sleepBackoff(ctx, attempt); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return nil, lastErr
 }
 
 // doReverse performs one HTTP request without retry/cache logic.
-func (g *TWGeocodingClient) doReverse(lat, lng float64) (*ReverseGeocodeResult, error) {
-	req, err := http.NewRequest(http.MethodGet, g.cfg.BaseURL, nil)
+func (g *TWGeocodingClient) doReverse(ctx context.Context, lat, lng float64) (*ReverseGeocodeResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.cfg.BaseURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -284,11 +304,11 @@ func (g *TWGeocodingClient) doReverse(lat, lng float64) (*ReverseGeocodeResult, 
 	}
 }
 
-func (g *TWGeocodingClient) sleepBackoff(attempt int) {
+func (g *TWGeocodingClient) sleepBackoff(ctx context.Context, attempt int) error {
 	if g.cfg.RetryBackoff <= 0 {
-		return
+		return nil
 	}
-	time.Sleep(g.cfg.RetryBackoff * time.Duration(attempt+1))
+	return sleepContext(ctx, g.cfg.RetryBackoff*time.Duration(attempt+1))
 }
 
 // ReverseCols reverse-geocodes parallel latitude/longitude lists and returns a
@@ -297,9 +317,21 @@ func (g *TWGeocodingClient) sleepBackoff(attempt int) {
 // point costs at most one request. Per-row failures are tolerated. If the quota
 // is exhausted mid-batch, the already-resolved rows are returned together with a
 // *RateLimitError, and the remaining rows are marked "pending".
+// It is ReverseColsContext with context.Background().
 func (g *TWGeocodingClient) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error) {
+	return g.ReverseColsContext(context.Background(), lat, lng)
+}
+
+// ReverseColsContext is ReverseCols with a context. When ctx is done part-way,
+// it returns the rows resolved so far, marks the rest pending and returns
+// ctx.Err(), as it does when the quota runs out; no request is sent after
+// ctx is done.
+func (g *TWGeocodingClient) ReverseColsContext(ctx context.Context, lat, lng *insyra.DataList) (*insyra.DataTable, error) {
 	if err := g.usable(); err != nil {
 		return nil, err
+	}
+	if ctx == nil {
+		return nil, errNilContext
 	}
 	if lat == nil || lng == nil {
 		return nil, errors.New("datafetch: ReverseCols requires non-nil lat and lng lists")
@@ -354,6 +386,7 @@ func (g *TWGeocodingClient) ReverseCols(lat, lng *insyra.DataList) (*insyra.Data
 
 	seen := make(map[string]batchOutcome)
 	var rateErr *RateLimitError
+	var ctxErr error
 	halted := false
 
 	for i := range n {
@@ -379,7 +412,20 @@ func (g *TWGeocodingClient) ReverseCols(lat, lng *insyra.DataList) (*insyra.Data
 			continue
 		}
 
-		res, err := g.Reverse(latF, lngF)
+		if err := ctx.Err(); err != nil {
+			ctxErr = err
+			halted = true
+			statusVals[i] = geocodeStatusPending
+			continue
+		}
+
+		res, err := g.ReverseContext(ctx, latF, lngF)
+		if err != nil && ctx.Err() != nil {
+			ctxErr = ctx.Err()
+			halted = true
+			statusVals[i] = geocodeStatusPending
+			continue
+		}
 		switch {
 		case err == nil:
 			outcome := batchOutcome{res: res, status: geocodeStatusOK}
@@ -422,6 +468,9 @@ func (g *TWGeocodingClient) ReverseCols(lat, lng *insyra.DataList) (*insyra.Data
 	if rateErr != nil {
 		return dt, rateErr
 	}
+	if ctxErr != nil {
+		return dt, ctxErr
+	}
 	return dt, nil
 }
 
@@ -431,7 +480,13 @@ func (g *TWGeocodingClient) ReverseCols(lat, lng *insyra.DataList) (*insyra.Data
 // int is a 0-based position, counting from the end when negative. A column
 // that does not resolve is an error, returned before any request. See
 // ReverseCols for the output shape and batch semantics.
+// It is ReverseTableContext with context.Background().
 func (g *TWGeocodingClient) ReverseTable(dt *insyra.DataTable, latCol, lngCol any) (*insyra.DataTable, error) {
+	return g.ReverseTableContext(context.Background(), dt, latCol, lngCol)
+}
+
+// ReverseTableContext is ReverseTable with a context; see ReverseColsContext.
+func (g *TWGeocodingClient) ReverseTableContext(ctx context.Context, dt *insyra.DataTable, latCol, lngCol any) (*insyra.DataTable, error) {
 	if err := g.usable(); err != nil {
 		return nil, err
 	}
@@ -446,7 +501,7 @@ func (g *TWGeocodingClient) ReverseTable(dt *insyra.DataTable, latCol, lngCol an
 	if lng == nil {
 		return nil, reverseTableColumnError("longitude", lngCol)
 	}
-	return g.ReverseCols(lat, lng)
+	return g.ReverseColsContext(ctx, lat, lng)
 }
 
 // reverseTableColumnError says which of ReverseTable's columns did not

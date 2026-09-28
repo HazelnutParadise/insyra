@@ -270,6 +270,24 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-28] — a `YFinanceConfig.Timeout` under one second becomes 15 seconds
+- **Where**: `datafetch/yfinance.go` `YFinance`, `secs := int(normalized.Timeout / time.Second)`
+- **What**: the timeout is handed to go-yfinance in whole seconds, so `Timeout: 500 * time.Millisecond` becomes 0, and CycleTLS v1.0.30 treats 0 as unset and uses 15 seconds (`clientBuilder` in its `client.go`). Found by the review of `datafetch-context` and read from the code; not run against Yahoo. `TestYFinanceTimeoutSeconds` pins the truncation of 1.5s to 1s but has no case below one second.
+- **Suggestion**: round a positive timeout up to at least one second, or refuse a timeout under one second in `normalize`, since the backend cannot express it. Either changes what a caller gets, so it needs a changelog entry.
+- **Status**: pending
+
+### [2026-09-28] — an abandoned Yahoo Finance call may make later calls on the same client wait
+- **Where**: `datafetch/yfinance.go` `runYF`, and go-yfinance v1.7.0's `client.Get` (holds the client's read lock for the whole request) and `SetCookies` (takes the write lock; every call's new `AuthManager` reaches it)
+- **What**: when a Context method abandons a call that is stuck, for example in a TLS handshake, the call keeps the read lock. The next call on the same client fetches cookies again and blocks in `SetCookies` behind it, and every other `Get` queues behind that writer. The review of `datafetch-context` reproduced the lock order with go-yfinance's own `Client` against a local listener that stalls the handshake (`SetCookies` and a later `Get` still blocked after 5s), but not end to end, which needs Yahoo to answer the cookie request. `Docs/datafetch.md` states that a later call may have to wait.
+- **Suggestion**: verify end to end with a proxy that stalls one connection (toxiproxy or similar). If it holds, the choices are a client per call, which costs the cookie and crumb requests every time, or waiting for the call instead of abandoning it, which gives up returning promptly; decide with the owner.
+- **Status**: pending
+
+### [2026-09-28] — only `History` and `Quote` honour `YFinanceConfig.Interval` and `Retries`
+- **Where**: `datafetch/yfinance.go`, the 24 `YFTicker` methods built on `tickerTable` and `tickerValue` rather than `withRetries`
+- **What**: `YFinanceConfig` documents `Interval` as the spacing between requests and `Retries` as the number of retries, and `Docs/datafetch.md` says the same, but only `History` and `Quote` wait for the limiter, retry a rate limit or a timeout, and turn go-yfinance's errors into `ErrRateLimited`, `ErrTimeout` and `ErrInvalidSymbol`. `Info`, `Dividends`, `OptionChain` and the rest send their request at once and return go-yfinance's error as it is, so `errors.Is(err, ErrRateLimited)` never matches them. Found by reading the code while adding the Context forms (`datafetch-context`), which kept this behaviour; not run against Yahoo.
+- **Suggestion**: send every request through `withRetries`, which already has the limiter, the classification and the backoff. It changes the timing and the error values of those 24 methods, so it goes in a change of its own with a changelog entry.
+- **Status**: pending
+
 ### [2026-09-28] — the long-format `stats` entry points log a column they cannot find
 - **Where**: `stats/long_format.go` `readLongFormat`, which resolves each column with `GetCol` on a `Clone()` of the caller's table
 - **What**: `stats` has no way to resolve a column selector without side effects: `GetCol` records the failure on the table's sticky `Err()`, so `long-format-entry-points` resolves on a copy and returns the copy's message as the error. The caller's `Err()` stays nil, but the failed lookup still writes its message to insyra's log. Measured on 2026-09-28: `TwoWayANOVAFromTable(dt, "Z", …)` on a three-column table returns `value column: column Z does not exist, the table has 3 column(s)` and also logs `[insyra - Error] DataTable.GetCol: column Z does not exist, the table has 3 column(s)`. `Docs/stats.md` states it. The copy also costs a full clone of the table.
