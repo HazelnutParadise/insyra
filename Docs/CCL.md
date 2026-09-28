@@ -365,8 +365,8 @@ When performing arithmetic operations or comparisons, CCL attempts to convert op
 
 ```go
 // These will cause errors
-"abc" + 10          // Error: cannot convert "abc" to number
-"hello" > 5         // Error: cannot convert "hello" to number
+"abc" + 10          // Error: invalid operands for +: abc, 10
+"hello" > 5         // Error: invalid operands for >: hello, 5 (cannot be compared)
 
 // These do not: they compare as false
 "2024-01-02" > 5    // false (a date, not a word)

@@ -2320,7 +2320,7 @@ For detailed mathematical formulas, refer to the [e1071 documentation](https://c
 
 ### Confidence Levels
 
-Most functions accept optional confidence levels. If not specified or invalid (outside 0-1 range), the default confidence level of 0.95 (95%) is used.
+Most functions accept an optional confidence level, which defaults to 0.95 (95%). Where it is passed as an argument, as the t-, z- and Wilcoxon tests take it, a value outside (0, 1) is an error. Where it is an options field, such as `ConfidenceLevel` in the GLM, logistic and Poisson regression options, 0 means unset and any value outside (0, 1) falls back to 0.95.
 
 ### Confidence Intervals for Regression Analysis
 
