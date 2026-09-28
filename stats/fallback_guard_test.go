@@ -92,7 +92,7 @@ func TestChiSquareRejectsUndefinedInputs(t *testing.T) {
 	if _, err := stats.ChiSquareGoodnessOfFit(insyra.NewDataList(), nil, false); err == nil {
 		t.Fatalf("expected goodness-of-fit to reject empty input")
 	}
-	if _, err := stats.ChiSquareGoodnessOfFit(insyra.NewDataList("a", "b"), []float64{0.2, 0.2}, false); err == nil {
+	if _, err := stats.ChiSquareGoodnessOfFit(insyra.NewDataList("a", "b"), map[string]float64{"a": 0.2, "b": 0.2}, false); err == nil {
 		t.Fatalf("expected goodness-of-fit to reject probabilities that do not sum to 1")
 	}
 	if _, err := stats.ChiSquareIndependenceTest(insyra.NewDataList("a", "a"), insyra.NewDataList("x", "y")); err == nil {

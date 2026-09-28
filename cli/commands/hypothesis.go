@@ -81,12 +81,12 @@ func init() {
 		Usage:       "chisq gof|indep ...",
 		Description: "Chi-square test commands",
 		Forms: []string{
-			"chisq gof <var> [p1 p2 ...]                  goodness-of-fit; expected proportions default to uniform",
+			"chisq gof <var> [label=p ...]                goodness-of-fit; each proportion names its category, uniform when none are given",
 			"chisq indep <rowVar> <colVar>                independence test on contingency table",
 		},
 		Examples: []string{
-			"insyra chisq gof counts",
-			"insyra chisq gof counts 0.25 0.25 0.5",
+			"insyra chisq gof colors",
+			"insyra chisq gof colors red=0.5 green=0.3 blue=0.2",
 			"insyra chisq indep gender preference",
 		},
 		Run: runChiSqCommand,
@@ -365,19 +365,30 @@ func runChiSqCommand(ctx *ExecContext, args []string) error {
 	switch strings.ToLower(args[0]) {
 	case "gof":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: chisq gof <var> [p1 p2 ...]")
+			return fmt.Errorf("usage: chisq gof <var> [label=p ...]")
 		}
 		dl, err := getDataListVar(ctx, args[1])
 		if err != nil {
 			return err
 		}
-		probabilities := make([]float64, 0, len(args)-2)
-		for _, raw := range args[2:] {
-			value, parseErr := parseFloatArg("chisq", "value", raw)
-			if parseErr != nil {
-				return parseErr
+		var probabilities map[string]float64
+		if len(args) > 2 {
+			probabilities = make(map[string]float64, len(args)-2)
+			for _, raw := range args[2:] {
+				eq := strings.LastIndex(raw, "=")
+				if eq < 0 {
+					return fmt.Errorf(`chisq gof: expected label=proportion, got %q`, raw)
+				}
+				label := raw[:eq]
+				value, parseErr := parseFloatArg("chisq", "proportion", raw[eq+1:])
+				if parseErr != nil {
+					return parseErr
+				}
+				if _, exists := probabilities[label]; exists {
+					return fmt.Errorf(`chisq gof: category %q is given twice`, label)
+				}
+				probabilities[label] = value
 			}
-			probabilities = append(probabilities, value)
 		}
 		result, err := stats.ChiSquareGoodnessOfFit(dl, probabilities, true)
 		if err != nil {

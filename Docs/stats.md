@@ -49,7 +49,7 @@ The error is the last value a function returns. A function that returns several 
 | Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells)` |
 | Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects)` |
 | Are two categorical variables related? | `ChiSquareIndependenceTest(rowData, colData)` |
-| Does a distribution match the expected proportions? | `ChiSquareGoodnessOfFit(input, p, rescaleP)` |
+| Does a distribution match the expected proportions? | `ChiSquareGoodnessOfFit(input, p, rescaleP)`, with `p` keyed by category |
 | Do groups have equal variance? | `FTestForVarianceEquality(data1, data2)`, `LeveneTest(groups)`, `BartlettTest(groups)` |
 | The same questions without assuming normality | `SingleSampleWilcoxon`, `PairedWilcoxon`, `MannWhitneyU`, `KruskalWallis`, `FriedmanTest` |
 
@@ -539,16 +539,18 @@ fmt.Printf("z=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 ### Chi-Square Goodness of Fit
 
 ```go
-func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) (*ChiSquareTestResult, error)
+func ChiSquareGoodnessOfFit(input insyra.IDataList, p map[string]float64, rescaleP bool) (*ChiSquareTestResult, error)
 ```
 
-**Description:** Test if observed categorical data matches expected distribution.
+**Description:** Test whether the categories in `input` occur in the expected proportions. `input` holds the raw observations, one value per observation; each value's text, with surrounding spaces removed, is its category. The text is what `fmt.Sprint` gives, so `1.0` has the label `1` and `nil` the label `<nil>`.
 
 **Parameters:**
 
-- `input`: Categorical data (e.g., ["A", "B", "A"])
-- `p`: Expected probabilities (nil for uniform distribution)
-- `rescaleP`: Whether to rescale probabilities to sum to 1
+- `input`: The observations, e.g. `"red", "blue", "red"`
+- `p`: The expected probability of each category, keyed by its label. `nil` or an empty map means every category is equally likely.
+- `rescaleP`: Rescale the probabilities to sum to 1. Without it they must already sum to 1.
+
+Every category in `input` needs a key in `p`, and every key has to be a category in `input`. A key that matches no category is an error, `p names category "Blue", which does not occur in input`, which is how a misspelled label is caught; a category without a key is an error too, `p has no probability for category "blue"`. So a category that never occurs in `input` cannot be part of the test. The order of `input` does not matter, and `p` is not modified.
 
 **Returns:**
 
@@ -560,7 +562,7 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTestResult, error)
 ```
 
-**Description:** Test independence between two categorical variables.
+**Description:** Test independence between two categorical variables, given as two lists of the same length with one observation per position. No continuity correction is applied, so a 2×2 table matches R's `chisq.test(..., correct = FALSE)`.
 
 **Parameters:**
 
@@ -574,27 +576,27 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTes
 
 ```go
 type ChiSquareTestResult struct {
-    TestResult               // Statistic = chi-square statistic
-    ContingencyTable *insyra.DataTable // Contingency table with observed and expected values
+    TestResult                  // Statistic = chi-square statistic
+    Observed *insyra.DataTable  // observed counts
+    Expected *insyra.DataTable  // expected counts under the null hypothesis
 }
 ```
 
-The `ContingencyTable` is a `DataTable` whose cells are `[2]float64{observed, expected}`, one array per cell.
+`Observed` and `Expected` have the same rows and columns, and every cell is a `float64`, so `Sum`, `Show` and the rest of the library read them like any other table.
 
-- **Goodness of fit:** one column named `Observed_Expected`, and one row per category that occurs in `input`, sorted by label. The category is the row name, read with `RowNames()`. Expected is the total count times the matching value of `p`, and `p` is matched to the categories in that sorted order.
-- **Independence:** one column per column category and one row per row category, both sorted by label. The categories are the names, read with `ColNames()` and `RowNames()`.
-
-The numeric helpers cannot read these cells. `Sum()` on such a column logs a warning for every cell and returns `NaN`. Read the arrays directly:
+- **Goodness of fit:** one row per category that occurs in `input`, sorted by label, with the category as the row name. `Observed` has one column named `Observed`, `Expected` one named `Expected`. An expected count is the total count times the category's probability.
+- **Independence:** one row per row category and one column per column category, both sorted by label and named by them, read with `RowNames()` and `ColNames()`.
 
 ```go
-ct := res.ContingencyTable
-col := ct.GetCol("A") // or ct.GetCol(insyra.Name("Observed_Expected"))
-names := ct.RowNames()
-for i := 0; i < col.Len(); i++ {
-    pair := col.Get(i).([2]float64)
-    fmt.Printf("%s: observed=%v expected=%v\n", names[i], pair[0], pair[1])
+names := res.Observed.RowNames()
+observed := res.Observed.GetColByNumber(0)
+expected := res.Expected.GetColByNumber(0)
+for i, name := range names {
+    fmt.Printf("%s: observed=%v expected=%v\n", name, observed.Get(i), expected.Get(i))
 }
 ```
+
+Both tests are checked against R's `chisq.test` itself: the statistic, p-value, degrees of freedom and both tables.
 
 ##### Show Method
 
@@ -602,34 +604,36 @@ for i := 0; i < col.Len(); i++ {
 func (r *ChiSquareTestResult) Show()
 ```
 
-**Description:** Displays the chi-square test results including the test statistic, p-value, degrees of freedom, and the contingency table.
-
-**Parameters:**
-
-- None.
-
-**Returns:**
-
-- None.
+**Description:** Prints the statistic, p-value and degrees of freedom, then the `Observed` and `Expected` tables.
 
 **Example**:
 
 ```go
-// Goodness of fit test with categorical data
-categoricalData := insyra.NewDataList("A", "B", "A", "C", "A", "B")
-p := []float64{0.5, 0.3, 0.2} // Expected probabilities for A, B, C
-result, err := stats.ChiSquareGoodnessOfFit(categoricalData, p, true)
+// Goodness of fit: is each color equally likely to be chosen?
+colors := insyra.NewDataList("red", "blue", "red", "green", "red", "blue")
+gof, err := stats.ChiSquareGoodnessOfFit(colors, nil, false)
 if err != nil {
     log.Fatal(err)
 }
-result.Show() // Display complete test results
+gof.Show()
 
-// Independence test
-result, err = stats.ChiSquareIndependenceTest(rowData, colData)
+// Goodness of fit against named proportions
+gof, err = stats.ChiSquareGoodnessOfFit(colors, map[string]float64{
+    "red": 0.5, "green": 0.2, "blue": 0.3,
+}, false)
 if err != nil {
     log.Fatal(err)
 }
-result.Show() // Display complete test results with contingency table
+fmt.Printf("chi2=%.4f p=%.4f\n", gof.Statistic, gof.PValue)
+
+// Independence of two categorical variables
+gender := insyra.NewDataList("M", "M", "F", "F", "M", "F")
+answer := insyra.NewDataList("yes", "no", "yes", "yes", "no", "yes")
+ind, err := stats.ChiSquareIndependenceTest(gender, answer)
+if err != nil {
+    log.Fatal(err)
+}
+ind.Show()
 ```
 
 ---
@@ -2469,9 +2473,9 @@ kinds of check exist:
   They skip when Rscript or Python is absent; `INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1`
   turns that skip into a failure.
 - **Pinned**: a `*_reference.R` script produced the numbers once and the
-  corresponding `*_test.go` carries them. Seven of the ten scripts name R 4.5.1;
-  `ttest_reference.R`, `clustering_reference.R` and `km_dbscan_reference.R` name
-  no version.
+  corresponding `*_test.go` carries them. Seven of the eleven scripts name R 4.5.1 and
+  `chisq_test_reference.R` R 4.6.1; `ttest_reference.R`, `clustering_reference.R`
+  and `km_dbscan_reference.R` name no version.
 
 "formula" means the script recomputes the statistic in plain R or NumPy/SciPy
 (`pt`, `pf`, `pchisq`, `pnorm`, ranks) instead of calling the library function
@@ -2482,7 +2486,7 @@ handling is not exercised.
 | --- | --- | --- | --- | --- |
 | t-tests (single, two-sample incl. Welch, paired) | formula | formula (`scipy.stats.t`) | `t.test` | statistic and p 1e-8 (two-sample 1e-7), CI 1e-7, means 1e-10; pinned 1e-12, CI 1e-10 |
 | z-tests | formula | formula | formula (`pnorm`/`qnorm`; `BSDA::z.test` is the equivalent, not called) | statistic and p 1e-8, CI 1e-7, means 1e-10; pinned 1e-12, CI 1e-10 |
-| Chi-square goodness of fit, independence | formula (`pchisq`) | formula | formula (`chisq.test` not called) | 1e-8; pinned 1e-12 |
+| Chi-square goodness of fit, independence | formula (`pchisq`) | formula | `chisq.test` (`correct = FALSE` for independence), and a formula script | 1e-8; pinned 1e-12 |
 | One-way, two-way, repeated-measures ANOVA | formula | formula | `aov` (two-way: Type I SS, balanced designs only) | 1e-8, two-way and repeated-measures 1e-7; pinned 1e-10 |
 | F-test for variance equality | formula (`pf`) | formula | formula (`var.test` not called) | 1e-8; pinned 1e-12 |
 | Levene | one-way ANOVA on \|x − median\| by formula | formula | `aov` on \|x − median\| (`car::leveneTest` not called) | 1e-8 |
@@ -2529,7 +2533,7 @@ above to within the tolerances listed. On the pinned outputs that is 1e-12 for
 `bartlett.test` and `hclust` and for the statistics and p-values of `t.test` and
 `cor.test` (1e-10 on their intervals), 1e-10 for `aov`, 1e-9 for `prcomp`,
 `kmeans` and `lm`, and an exact match for `dbscan`. Where the canonical function
-is not called (chi-square, `var.test`, median-centered `car::leveneTest`), the
+is not called (`var.test`, median-centered `car::leveneTest`), the
 comparison is against the same R formulas. This holds with the
 single semantic exception below. Discrete outputs (DF, cluster IDs, hclust
 merge structure) match exactly.

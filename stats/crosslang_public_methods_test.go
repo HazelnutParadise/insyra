@@ -3,6 +3,7 @@ package stats_test
 import (
 	"fmt"
 	"math"
+	"sort"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -46,21 +47,28 @@ func tableToFloatMatrix(dt *insyra.DataTable) [][]float64 {
 	return out
 }
 
-func contingencyToObservedExpectedMatrices(t *testing.T, dt *insyra.DataTable) ([][]float64, [][]float64) {
+func contingencyToObservedExpectedMatrices(t *testing.T, observed, expected *insyra.DataTable) ([][]float64, [][]float64) {
 	t.Helper()
-	rows, cols := dt.Size()
-	observed := make([][]float64, rows)
-	expected := make([][]float64, rows)
+	rows, cols := observed.Size()
+	gotObserved := make([][]float64, rows)
+	gotExpected := make([][]float64, rows)
 	for i := 0; i < rows; i++ {
-		observed[i] = make([]float64, cols)
-		expected[i] = make([]float64, cols)
+		gotObserved[i] = make([]float64, cols)
+		gotExpected[i] = make([]float64, cols)
 		for j := 0; j < cols; j++ {
-			obs, exp := toObservedExpectedPair(t, dt.GetElementByNumberIndex(i, j))
-			observed[i][j] = obs
-			expected[i][j] = exp
+			v, ok := observed.GetElementByNumberIndex(i, j).(float64)
+			if !ok {
+				t.Fatalf("observed[%d][%d] not float64: %T", i, j, observed.GetElementByNumberIndex(i, j))
+			}
+			gotObserved[i][j] = v
+			v, ok = expected.GetElementByNumberIndex(i, j).(float64)
+			if !ok {
+				t.Fatalf("expected[%d][%d] not float64: %T", i, j, expected.GetElementByNumberIndex(i, j))
+			}
+			gotExpected[i][j] = v
 		}
 	}
-	return observed, expected
+	return gotObserved, gotExpected
 }
 
 func TestCrossLangSingleSampleTTest(t *testing.T) {
@@ -400,7 +408,7 @@ func TestCrossLangChiSquareGoodnessOfFit(t *testing.T) {
 	cases := []struct {
 		name    string
 		values  []string
-		p       []float64
+		p       []float64 // in sorted label order, for the R/Python payload
 		rescale bool
 	}{
 		{name: "uniform_nil_p", values: []string{"A", "A", "B", "C", "C", "C", "B", "A"}, p: nil, rescale: false},
@@ -411,7 +419,29 @@ func TestCrossLangChiSquareGoodnessOfFit(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dl := insyra.NewDataList(tc.values)
-			got, err := stats.ChiSquareGoodnessOfFit(dl, tc.p, tc.rescale)
+
+			// Build the map from sorted unique labels of tc.values
+			var pMap map[string]float64
+			if tc.p != nil {
+				// Get unique sorted labels
+				seen := make(map[string]bool)
+				for _, v := range tc.values {
+					seen[v] = true
+				}
+				labels := make([]string, 0, len(seen))
+				for k := range seen {
+					labels = append(labels, k)
+				}
+				sort.Strings(labels)
+				pMap = make(map[string]float64, len(labels))
+				for i, label := range labels {
+					if i < len(tc.p) {
+						pMap[label] = tc.p[i]
+					}
+				}
+			}
+
+			got, err := stats.ChiSquareGoodnessOfFit(dl, pMap, tc.rescale)
 			if err != nil {
 				t.Fatalf("ChiSquareGoodnessOfFit error: %v", err)
 			}
@@ -424,7 +454,7 @@ func TestCrossLangChiSquareGoodnessOfFit(t *testing.T) {
 			assertCloseToBoth(t, "p", got.PValue, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-8)
 			assertCloseToBoth(t, "df", *got.DF, baselineFloat(t, rb, "df"), baselineFloat(t, pb, "df"), 1e-8)
 
-			gotObserved, gotExpected := contingencyToObservedExpectedMatrices(t, got.ContingencyTable)
+			gotObserved, gotExpected := contingencyToObservedExpectedMatrices(t, got.Observed, got.Expected)
 			rObserved := baselineFloatSlice(t, rb, "observed")
 			pObserved := baselineFloatSlice(t, pb, "observed")
 			rExpected := baselineFloatSlice(t, rb, "expected")
@@ -467,7 +497,7 @@ func TestCrossLangChiSquareIndependence(t *testing.T) {
 			assertCloseToBoth(t, "p", got.PValue, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-8)
 			assertCloseToBoth(t, "df", *got.DF, baselineFloat(t, rb, "df"), baselineFloat(t, pb, "df"), 1e-8)
 
-			gotObserved, gotExpected := contingencyToObservedExpectedMatrices(t, got.ContingencyTable)
+			gotObserved, gotExpected := contingencyToObservedExpectedMatrices(t, got.Observed, got.Expected)
 			rObserved := baselineFloatMatrix(t, rb, "observed")
 			pObserved := baselineFloatMatrix(t, pb, "observed")
 			rExpected := baselineFloatMatrix(t, rb, "expected")

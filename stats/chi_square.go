@@ -11,11 +11,19 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
+// ChiSquareTestResult holds the result of a chi-square test.
+//
+// Observed and Expected have the same rows and columns and hold float64
+// counts. For a goodness-of-fit test they have one row per category that
+// occurs in the input, sorted by label and named by it, and one column,
+// named Observed and Expected respectively. For an independence test they
+// have one row per row category and one column per column category, both
+// sorted by label and named by them.
 type ChiSquareTestResult struct {
 	TestResult
 
-	// a DataTable representing the contingency table([2]float64{observed, expected})
-	ContingencyTable *insyra.DataTable
+	Observed *insyra.DataTable // observed counts
+	Expected *insyra.DataTable // expected counts under the null hypothesis
 }
 
 func (r *ChiSquareTestResult) Show() {
@@ -26,7 +34,31 @@ func (r *ChiSquareTestResult) Show() {
 	fmt.Printf("Chi-Square Test Statistic: %v\n", r.Statistic)
 	fmt.Printf("Chi-Square Test P-Value: %v\n", r.PValue)
 	fmt.Printf("Chi-Square Test Degrees of Freedom: %v\n", *r.DF)
-	insyra.Show("Contingency Table([2]float64{observed, expected})", r.ContingencyTable)
+	insyra.Show("Observed", r.Observed)
+	insyra.Show("Expected", r.Expected)
+}
+
+// countTable builds a rows x cols table of counts from values laid out
+// row-major (values[i*cols+j] is row i, column j), naming the table, its
+// rows and its columns.
+func countTable(name string, values []float64, rowNames, colNames []string) *insyra.DataTable {
+	rows := len(rowNames)
+	cols := len(colNames)
+	columns := make([]*insyra.DataList, cols)
+	for j := range cols {
+		col := insyra.NewDataList()
+		for i := range rows {
+			col.Append(values[i*cols+j])
+		}
+		col.SetName(colNames[j])
+		columns[j] = col
+	}
+	dt := insyra.NewDataTable(columns...)
+	for i := range rows {
+		dt.SetRowNameByIndex(i, rowNames[i])
+	}
+	dt.SetName(name)
+	return dt
 }
 
 // calculateChiSquare calculates the chi-square statistic and related results.
@@ -55,18 +87,24 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 	}, nil
 }
 
-// ChiSquareGoodnessOfFit performs a one-dimensional chi-square goodness of fit test.
+// ChiSquareGoodnessOfFit performs a one-dimensional chi-square goodness-of-fit
+// test.
 //
-// input: A DataList containing categorical data (e.g., ["A", "B", "A"]).
-// p: Expected probabilities (e.g., []float64{0.5, 0.5}). If nil, assumes uniform distribution.
+// input holds the raw observations (e.g. ["A", "B", "A"]); each value's text,
+// with surrounding spaces removed, is its category, and the categories name
+// the rows of the result's tables.
+// The text is what fmt.Sprint gives, so 1.0 has the label "1" and nil the label "<nil>".
 //
-//	IMPORTANT: p is matched positionally to the observed categories after they are
-//	sorted in lexicographic (string) order — NOT the order they appear in the input.
-//	Order p to match sort.Strings of the distinct category labels. Categories with
-//	zero observations do not appear and cannot be assigned a probability.
+// p holds the expected probability of each category, keyed by that label. Nil
+// or an empty map means every category is equally likely. Every category in
+// input needs a key, and every key has to be a category in input: a key that
+// matches no category is an error, which is how a misspelled label is caught.
+// A category that never occurs in input therefore cannot be part of the test.
+// p is not modified.
 //
-// rescaleP: Whether to rescale p to sum to 1. p is not mutated (a copy is used).
-func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) (*ChiSquareTestResult, error) {
+// rescaleP rescales the probabilities to sum to 1; without it they must
+// already sum to 1.
+func ChiSquareGoodnessOfFit(input insyra.IDataList, p map[string]float64, rescaleP bool) (*ChiSquareTestResult, error) {
 	// 計算類別頻率
 	data := input.Data()
 	if len(data) == 0 {
@@ -89,24 +127,39 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 		observed = append(observed, categoryFreq[k])
 	}
 
-	var expected []float64
-	var df int
-
+	var probs []float64
 	if len(p) == 0 {
-		p = make([]float64, len(observed))
-		for i := range p {
-			p[i] = 1.0 / float64(len(observed))
+		probs = make([]float64, len(observed))
+		for i := range probs {
+			probs[i] = 1.0 / float64(len(observed))
 		}
-	} else if len(p) != len(observed) {
-		return nil, errors.New("length of p does not match number of categories")
 	} else {
-		// Defensive copy so the rescaleP normalization below does not mutate the
-		// caller's slice in place.
-		p = append([]float64(nil), p...)
+		// First, check for keys in p that don't match any category in input.
+		// Sort p's keys for deterministic error reporting.
+		pKeys := make([]string, 0, len(p))
+		for k := range p {
+			pKeys = append(pKeys, k)
+		}
+		sort.Strings(pKeys)
+		for _, k := range pKeys {
+			if _, ok := categoryFreq[k]; !ok {
+				return nil, fmt.Errorf("p names category %q, which does not occur in input", k)
+			}
+		}
+
+		// Then, build probs in categoryKeys order, checking for missing keys.
+		probs = make([]float64, len(categoryKeys))
+		for i, c := range categoryKeys {
+			val, ok := p[c]
+			if !ok {
+				return nil, fmt.Errorf("p has no probability for category %q", c)
+			}
+			probs[i] = val
+		}
 	}
 
 	sumP := 0.0
-	for _, val := range p {
+	for _, val := range probs {
 		if val < 0 || math.IsNaN(val) || math.IsInf(val, 0) {
 			return nil, errors.New("probabilities must be finite and non-negative")
 		}
@@ -116,8 +169,8 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 		return nil, errors.New("probabilities must sum to a positive value")
 	}
 	if rescaleP {
-		for i := range p {
-			p[i] /= sumP
+		for i := range probs {
+			probs[i] /= sumP
 		}
 	} else if math.Abs(sumP-1) > 1e-12 {
 		return nil, errors.New("probabilities must sum to 1 unless rescaleP is true")
@@ -128,32 +181,19 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 		totalObserved += val
 	}
 
-	expected = make([]float64, len(observed))
+	expected := make([]float64, len(observed))
 	for i := range observed {
-		expected[i] = totalObserved * p[i]
+		expected[i] = totalObserved * probs[i]
 	}
 
-	df = len(observed) - 1
+	df := len(observed) - 1
 	result, err := calculateChiSquare(observed, expected, df)
 	if err != nil {
 		return nil, err
 	}
 
-	// 創建 ContingencyTable 作為單列表格
-	contingencyTable := insyra.NewDataTable()
-	col := insyra.NewDataList()
-	for i := range observed {
-		col.Append([2]float64{observed[i], expected[i]})
-	}
-	contingencyTable.AppendCols(col)
-	contingencyTable.SetColNameByNumber(0, "Observed_Expected")
-
-	// 設置行名稱為類別
-	for i, key := range categoryKeys {
-		contingencyTable.SetRowNameByIndex(i, key)
-	}
-
-	result.ContingencyTable = contingencyTable.SetName("Contingency_Table")
+	result.Observed = countTable("Observed", observed, categoryKeys, []string{"Observed"})
+	result.Expected = countTable("Expected", expected, categoryKeys, []string{"Expected"})
 	return result, nil
 }
 
@@ -267,29 +307,7 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTes
 		return nil, err
 	}
 
-	// 創建 ContingencyTable
-	contingencyTable := insyra.NewDataTable()
-	for j := range cols {
-
-		col := insyra.NewDataList()
-		for i := range rows {
-			obs := observed[i*cols+j]
-			exp := expected[i*cols+j]
-			col.Append([2]float64{obs, exp})
-		}
-		contingencyTable.AppendCols(col)
-	}
-
-	// 設置列名稱
-	for j, colKey := range colKeys {
-		contingencyTable.SetColNameByNumber(j, colKey)
-	}
-
-	// 設置行名稱
-	for i, rowKey := range rowKeys {
-		contingencyTable.SetRowNameByIndex(i, rowKey)
-	}
-
-	result.ContingencyTable = contingencyTable.SetName("Contingency_Table")
+	result.Observed = countTable("Observed", observed, rowKeys, colKeys)
+	result.Expected = countTable("Expected", expected, rowKeys, colKeys)
 	return result, nil
 }

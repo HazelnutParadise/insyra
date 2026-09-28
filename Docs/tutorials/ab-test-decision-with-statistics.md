@@ -194,8 +194,7 @@ func main() {
 insyra newdl 0.08 0.09 0.07 0.10 0.09 0.08 0.09 as control
 insyra newdl 0.10 0.11 0.09 0.12 0.10 0.11 0.10 as variant
 insyra ttest two control variant unequal
-insyra ztest two control variant 0.02
-insyra chisq gof variant 0.1,0.1,0.1,0.1,0.1,0.1,0.4
+insyra ztest two control variant 0.02 0.02
 ```
 
 ### `.isr` script
@@ -204,7 +203,7 @@ insyra chisq gof variant 0.1,0.1,0.1,0.1,0.1,0.1,0.4
 newdl 0.08 0.09 0.07 0.10 0.09 0.08 0.09 as control
 newdl 0.10 0.11 0.09 0.12 0.10 0.11 0.10 as variant
 ttest two control variant unequal
-ztest two control variant 0.02
+ztest two control variant 0.02 0.02
 ```
 
 ## Where to go next

@@ -621,39 +621,6 @@ func assertIntRowsEqualToBoth(t *testing.T, label string, got, rWant, pyWant [][
 	}
 }
 
-func toObservedExpectedPair(t *testing.T, value any) (float64, float64) {
-	t.Helper()
-	switch v := value.(type) {
-	case [2]float64:
-		return v[0], v[1]
-	case []float64:
-		if len(v) != 2 {
-			t.Fatalf("expected []float64 length=2, got %d", len(v))
-		}
-		return v[0], v[1]
-	case [2]any:
-		a, okA := toFloat64FromAny(v[0])
-		b, okB := toFloat64FromAny(v[1])
-		if !okA || !okB {
-			t.Fatalf("expected numeric [2]any pair, got %T with values %#v", value, value)
-		}
-		return a, b
-	case []any:
-		if len(v) != 2 {
-			t.Fatalf("expected []any length=2, got %d", len(v))
-		}
-		a, okA := toFloat64FromAny(v[0])
-		b, okB := toFloat64FromAny(v[1])
-		if !okA || !okB {
-			t.Fatalf("expected numeric []any pair, got %T with values %#v", value, value)
-		}
-		return a, b
-	default:
-		t.Fatalf("expected observed/expected pair cell, got %T (%#v)", value, value)
-		return math.NaN(), math.NaN()
-	}
-}
-
 func toFloat64FromAny(v any) (float64, bool) {
 	switch x := v.(type) {
 	case float64:
