@@ -97,7 +97,11 @@ const (
 	SortByLowestRating GoogleMapsStoreReviewSortBy = 4
 )
 
-type googleMapsStoreCrawler struct {
+// GoogleMapsStoresClient searches Google Maps for stores and fetches their
+// reviews. Create one with GoogleMapsStores. A client that did not come
+// from GoogleMapsStores, such as a zero value, returns nil from Search
+// and GetReviews with a warning.
+type GoogleMapsStoresClient struct {
 	client         *http.Client
 	headers        map[string]string
 	storeSearchUrl string
@@ -111,8 +115,8 @@ type GoogleMapsStoreData struct {
 
 // GoogleMapsStores returns a crawler for Google Maps store data. It needs no
 // network access and never returns nil.
-func GoogleMapsStores() *googleMapsStoreCrawler {
-	return &googleMapsStoreCrawler{
+func GoogleMapsStores() *GoogleMapsStoresClient {
+	return &GoogleMapsStoresClient{
 		client:         &http.Client{Timeout: gmapsRequestTimeout},
 		headers:        map[string]string{"User-Agent": gmapsUserAgent},
 		storeSearchUrl: gmapsSearchURL,
@@ -120,10 +124,19 @@ func GoogleMapsStores() *googleMapsStoreCrawler {
 	}
 }
 
+// usable reports whether c came from GoogleMapsStores.
+func (c *GoogleMapsStoresClient) usable() bool {
+	return c != nil && c.client != nil
+}
+
 // Search searches Google Maps for stores matching storeName and returns up to
 // 20 of them, in Google's order. It returns nil when the request fails or no
 // store comes back, and logs a warning saying which.
-func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData {
+func (c *GoogleMapsStoresClient) Search(storeName string) []GoogleMapsStoreData {
+	if !c.usable() {
+		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "the GoogleMapsStoresClient was not created with GoogleMapsStores. Returning nil.")
+		return nil
+	}
 	params := url.Values{}
 	params.Set("tbm", "map")
 	params.Set("hl", "zh-TW")
@@ -183,7 +196,11 @@ func parseGoogleMapsSearch(body []byte) ([]GoogleMapsStoreData, error) {
 //
 // ReviewerState and ReviewerLevel are always empty: the review pages no longer
 // carry a reviewer's status line or guide level.
-func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews {
+func (c *GoogleMapsStoresClient) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews {
+	if !c.usable() {
+		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "the GoogleMapsStoresClient was not created with GoogleMapsStores. Returning nil.")
+		return nil
+	}
 	fetchingOptions := GoogleMapsStoreReviewsFetchingOptions{
 		SortBy:                          SortByRelevance,
 		MaxWaitingInterval_Milliseconds: 5000,
@@ -346,7 +363,7 @@ func (reviews GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable {
 
 // get sends a GET request with the crawler's headers and returns the body of
 // a 200 response, read up to gmapsMaxResponseSize.
-func (c *googleMapsStoreCrawler) get(rawURL string) ([]byte, error) {
+func (c *GoogleMapsStoresClient) get(rawURL string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

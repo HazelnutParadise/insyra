@@ -112,7 +112,7 @@ func TestNormalizeDateColumns_UnparseableCell(t *testing.T) {
 
 func TestSleepBackoff(t *testing.T) {
 	// A zero or negative backoff means no waiting at all.
-	y := &yahooFinance{cfg: YFinanceConfig{RetryBackoff: 0}}
+	y := &YFinanceClient{cfg: YFinanceConfig{RetryBackoff: 0}}
 	start := time.Now()
 	y.sleepBackoff(3)
 	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
@@ -120,7 +120,7 @@ func TestSleepBackoff(t *testing.T) {
 	}
 
 	// Otherwise the wait grows with the attempt number.
-	y = &yahooFinance{cfg: YFinanceConfig{RetryBackoff: 20 * time.Millisecond}}
+	y = &YFinanceClient{cfg: YFinanceConfig{RetryBackoff: 20 * time.Millisecond}}
 	start = time.Now()
 	y.sleepBackoff(1) // the second attempt waits two units
 	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {

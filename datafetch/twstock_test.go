@@ -108,7 +108,7 @@ func fixtureKey(path string, query url.Values) string {
 	return path + "?" + query.Encode()
 }
 
-func newFixtureTWStock(t *testing.T, cfg TWStockConfig) (*twStock, *fixtureTransport) {
+func newFixtureTWStock(t *testing.T, cfg TWStockConfig) (*TWStockClient, *fixtureTransport) {
 	t.Helper()
 	stock, err := TWStock(cfg)
 	if err != nil {

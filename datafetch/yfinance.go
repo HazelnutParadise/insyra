@@ -93,9 +93,10 @@ func (cfg YFinanceConfig) normalize() (YFinanceConfig, error) {
 	return out, nil
 }
 
-// yahooFinance is a stateful fetcher.
-// Each instance has its own interval limiter.
-type yahooFinance struct {
+// YFinanceClient fetches Yahoo Finance data. Each client has its own request
+// limiter. Create one with YFinance. A client that did not come from YFinance,
+// such as a zero value, returns an error from every method.
+type YFinanceClient struct {
 	cfg     YFinanceConfig
 	client  *yfclient.Client
 	limiter *limiter.IntervalLimiter
@@ -105,7 +106,7 @@ type yahooFinance struct {
 }
 
 // YFinance creates a YahooFinance fetcher using a config struct (no WithXxx in public API).
-func YFinance(cfg YFinanceConfig) (*yahooFinance, error) {
+func YFinance(cfg YFinanceConfig) (*YFinanceClient, error) {
 	normalized, err := cfg.normalize()
 	if err != nil {
 		return nil, err
@@ -121,7 +122,7 @@ func YFinance(cfg YFinanceConfig) (*yahooFinance, error) {
 		return nil, err
 	}
 
-	yf := &yahooFinance{
+	yf := &YFinanceClient{
 		cfg:            normalized,
 		client:         c,
 		limiter:        limiter.NewIntervalLimiter(normalized.Interval),
@@ -129,7 +130,7 @@ func YFinance(cfg YFinanceConfig) (*yahooFinance, error) {
 	}
 
 	// ensure resources are cleaned up automatically when yf is garbage-collected
-	runtime.SetFinalizer(yf, func(y *yahooFinance) { y.close() })
+	runtime.SetFinalizer(yf, func(y *YFinanceClient) { y.close() })
 
 	return yf, nil
 }
@@ -137,7 +138,7 @@ func YFinance(cfg YFinanceConfig) (*yahooFinance, error) {
 // lifecycle (internal)
 // close closes underlying resources. It is unexported because resources are
 // managed automatically; callers do not need to call this directly.
-func (y *yahooFinance) close() {
+func (y *YFinanceClient) close() {
 	if y == nil || y.client == nil {
 		return
 	}
@@ -148,11 +149,11 @@ func (y *yahooFinance) close() {
 // NOTE: previously there was a helper newTicker; calls are inlined below
 // to avoid an extra indirection and keep client checks local.
 
-func (y *yahooFinance) beforeRequest() error {
+func (y *YFinanceClient) beforeRequest() error {
 	return y.limiter.Wait(context.Background())
 }
 
-func (y *yahooFinance) sleepBackoff(attempt int) {
+func (y *YFinanceClient) sleepBackoff(attempt int) {
 	// attempt: 0,1,2...
 	if y.cfg.RetryBackoff <= 0 {
 		return
@@ -233,46 +234,49 @@ func normalizeDateColumns(dt *insyra.DataTable) *insyra.DataTable {
 // Quote fetches quote data for a symbol and returns the library's native quote struct.
 // Uses instance timeout and retries; callers don't need to pass a context.
 // Note: low-level convenience methods like Quote/History/MultiHistory
-// were removed from `yahooFinance` to keep a smaller surface API.
-// Use `y.Ticker(symbol)` and the returned `ticker` methods instead.
+// were removed from `YFinanceClient` to keep a smaller surface API.
+// Use `y.Ticker(symbol)` and the returned `YFTicker` methods instead.
 
 // High-level Python-like API
 
-// ticker wraps a symbol and provides methods similar to python yfinance's Ticker.
-type ticker struct {
-	yf     *yahooFinance
+// YFTicker is a handle on one symbol, bound to the YFinanceClient that made it,
+// with methods similar to Python yfinance's Ticker. Get one from
+// (*YFinanceClient).Ticker. A ticker that did not come from a YFinanceClient
+// made by YFinance, such as a zero value, returns an error from every method.
+type YFTicker struct {
+	yf     *YFinanceClient
 	symbol string
 	err    error
 }
 
-// Ticker returns a ticker bound to this yahooFinance instance.
+// Ticker returns a YFTicker bound to this YFinanceClient instance.
 // The ticker does not manage the lifecycle of the underlying client; resources
 // are automatically cleaned up when the fetcher is no longer referenced.
-func (y *yahooFinance) Ticker(symbol string) *ticker {
+func (y *YFinanceClient) Ticker(symbol string) *YFTicker {
 	if y == nil {
-		return &ticker{err: errors.New("yfinance: yahooFinance is nil")}
+		return &YFTicker{err: errors.New("yfinance: YFinanceClient is nil; create one with YFinance")}
 	}
-	return &ticker{yf: y, symbol: symbol}
+	return &YFTicker{yf: y, symbol: symbol}
 }
 
-func (t *ticker) checkError() error {
+func (t *YFTicker) checkError() error {
 	if t == nil {
-		return errors.New("yfinance: ticker is nil")
+		return errors.New("yfinance: YFTicker is nil; get one from a YFinanceClient made by YFinance")
 	}
 	if t.err != nil {
 		return t.err
 	}
 	if t.yf == nil {
-		return errors.New("yfinance: yahooFinance is nil")
+		return errors.New("yfinance: YFTicker was not created by (*YFinanceClient).Ticker; create a client with YFinance")
 	}
 	if t.yf.client == nil {
-		return errors.New("yfinance: client is nil")
+		return errors.New("yfinance: YFinanceClient was not created with YFinance")
 	}
 	return nil
 }
 
 // History returns historical OHLCV bars as an insyra.DataTable.
-func (t *ticker) History(params YFHistoryParams) (*insyra.DataTable, error) {
+func (t *YFTicker) History(params YFHistoryParams) (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -311,7 +315,7 @@ func (t *ticker) History(params YFHistoryParams) (*insyra.DataTable, error) {
 }
 
 // Quote returns quote information for the ticker as an insyra.DataTable.
-func (t *ticker) Quote() (*insyra.DataTable, error) {
+func (t *YFTicker) Quote() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -350,7 +354,7 @@ func (t *ticker) Quote() (*insyra.DataTable, error) {
 }
 
 // Info returns metadata for the ticker as a DataTable.
-func (t *ticker) Info() (*insyra.DataTable, error) {
+func (t *YFTicker) Info() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -374,7 +378,7 @@ func (t *ticker) Info() (*insyra.DataTable, error) {
 }
 
 // Dividends returns dividends history for the ticker as a DataTable.
-func (t *ticker) Dividends() (*insyra.DataTable, error) {
+func (t *YFTicker) Dividends() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -398,7 +402,7 @@ func (t *ticker) Dividends() (*insyra.DataTable, error) {
 }
 
 // Splits returns stock splits history for the ticker as a DataTable.
-func (t *ticker) Splits() (*insyra.DataTable, error) {
+func (t *YFTicker) Splits() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -422,7 +426,7 @@ func (t *ticker) Splits() (*insyra.DataTable, error) {
 }
 
 // Actions returns corporate actions (dividends + splits) as a DataTable.
-func (t *ticker) Actions() (*insyra.DataTable, error) {
+func (t *YFTicker) Actions() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -446,7 +450,7 @@ func (t *ticker) Actions() (*insyra.DataTable, error) {
 }
 
 // Options returns the list of option expiration dates (like `Ticker.options`).
-func (t *ticker) Options() (*insyra.DataTable, error) {
+func (t *YFTicker) Options() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -470,7 +474,7 @@ func (t *ticker) Options() (*insyra.DataTable, error) {
 }
 
 // OptionChain returns option chain data split into calls/puts/underlying tables.
-func (t *ticker) OptionChain(date string) (*YFOptionChainTables, error) {
+func (t *YFTicker) OptionChain(date string) (*YFOptionChainTables, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -488,7 +492,7 @@ func (t *ticker) OptionChain(date string) (*YFOptionChainTables, error) {
 }
 
 // News fetches news articles for this ticker.
-func (t *ticker) News(count int, tab models.NewsTab) (*insyra.DataTable, error) {
+func (t *YFTicker) News(count int, tab models.NewsTab) (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -512,7 +516,7 @@ func (t *ticker) News(count int, tab models.NewsTab) (*insyra.DataTable, error) 
 }
 
 // Calendar returns upcoming calendar events (earnings, dividends) for the ticker.
-func (t *ticker) Calendar() (*insyra.DataTable, error) {
+func (t *YFTicker) Calendar() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -537,7 +541,7 @@ func (t *ticker) Calendar() (*insyra.DataTable, error) {
 
 // Financials: IncomeStatement / BalanceSheet / CashFlow
 // IncomeStatement returns multi-table statements (values/items/meta).
-func (t *ticker) IncomeStatement(freq YFPeriod) (*YFFinancialStatementTables, error) {
+func (t *YFTicker) IncomeStatement(freq YFPeriod) (*YFFinancialStatementTables, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -555,7 +559,7 @@ func (t *ticker) IncomeStatement(freq YFPeriod) (*YFFinancialStatementTables, er
 }
 
 // BalanceSheet returns multi-table statements (values/items/meta).
-func (t *ticker) BalanceSheet(freq YFPeriod) (*YFFinancialStatementTables, error) {
+func (t *YFTicker) BalanceSheet(freq YFPeriod) (*YFFinancialStatementTables, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -573,7 +577,7 @@ func (t *ticker) BalanceSheet(freq YFPeriod) (*YFFinancialStatementTables, error
 }
 
 // CashFlow returns multi-table statements (values/items/meta).
-func (t *ticker) CashFlow(freq YFPeriod) (*YFFinancialStatementTables, error) {
+func (t *YFTicker) CashFlow(freq YFPeriod) (*YFFinancialStatementTables, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -591,7 +595,7 @@ func (t *ticker) CashFlow(freq YFPeriod) (*YFFinancialStatementTables, error) {
 }
 
 // Holders
-func (t *ticker) MajorHolders() (*insyra.DataTable, error) {
+func (t *YFTicker) MajorHolders() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -614,7 +618,7 @@ func (t *ticker) MajorHolders() (*insyra.DataTable, error) {
 	return dt, nil
 }
 
-func (t *ticker) InstitutionalHolders() (*insyra.DataTable, error) {
+func (t *YFTicker) InstitutionalHolders() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -637,7 +641,7 @@ func (t *ticker) InstitutionalHolders() (*insyra.DataTable, error) {
 	return dt, nil
 }
 
-func (t *ticker) MutualFundHolders() (*insyra.DataTable, error) {
+func (t *YFTicker) MutualFundHolders() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -660,7 +664,7 @@ func (t *ticker) MutualFundHolders() (*insyra.DataTable, error) {
 	return dt, nil
 }
 
-func (t *ticker) InsiderTransactions() (*insyra.DataTable, error) {
+func (t *YFTicker) InsiderTransactions() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -684,7 +688,7 @@ func (t *ticker) InsiderTransactions() (*insyra.DataTable, error) {
 }
 
 // FastInfo returns a quick summary as DataTable.
-func (t *ticker) FastInfo() (*insyra.DataTable, error) {
+func (t *YFTicker) FastInfo() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -709,7 +713,7 @@ func (t *ticker) FastInfo() (*insyra.DataTable, error) {
 
 // Earnings returns earnings report data for the ticker.
 // Note: not implemented because underlying go-yfinance version does not expose this method.
-func (t *ticker) Earnings() (*insyra.DataTable, error) {
+func (t *YFTicker) Earnings() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -717,7 +721,7 @@ func (t *ticker) Earnings() (*insyra.DataTable, error) {
 }
 
 // EarningsEstimate returns earnings estimates as a DataTable.
-func (t *ticker) EarningsEstimate() (*insyra.DataTable, error) {
+func (t *YFTicker) EarningsEstimate() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -741,7 +745,7 @@ func (t *ticker) EarningsEstimate() (*insyra.DataTable, error) {
 }
 
 // EarningsHistory returns historical earnings data as a DataTable.
-func (t *ticker) EarningsHistory() (*insyra.DataTable, error) {
+func (t *YFTicker) EarningsHistory() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -765,7 +769,7 @@ func (t *ticker) EarningsHistory() (*insyra.DataTable, error) {
 }
 
 // EPSTrend returns EPS trend data as a DataTable.
-func (t *ticker) EPSTrend() (*insyra.DataTable, error) {
+func (t *YFTicker) EPSTrend() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -789,7 +793,7 @@ func (t *ticker) EPSTrend() (*insyra.DataTable, error) {
 }
 
 // EPSRevisions returns EPS revisions data as a DataTable.
-func (t *ticker) EPSRevisions() (*insyra.DataTable, error) {
+func (t *YFTicker) EPSRevisions() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -812,7 +816,7 @@ func (t *ticker) EPSRevisions() (*insyra.DataTable, error) {
 }
 
 // Recommendations returns analyst recommendations as a DataTable.
-func (t *ticker) Recommendations() (*insyra.DataTable, error) {
+func (t *YFTicker) Recommendations() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -835,7 +839,7 @@ func (t *ticker) Recommendations() (*insyra.DataTable, error) {
 }
 
 // AnalystPriceTargets returns analyst price targets as a DataTable.
-func (t *ticker) AnalystPriceTargets() (*insyra.DataTable, error) {
+func (t *YFTicker) AnalystPriceTargets() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -858,7 +862,7 @@ func (t *ticker) AnalystPriceTargets() (*insyra.DataTable, error) {
 }
 
 // RevenueEstimate returns revenue estimates as a DataTable.
-func (t *ticker) RevenueEstimate() (*insyra.DataTable, error) {
+func (t *YFTicker) RevenueEstimate() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -882,7 +886,7 @@ func (t *ticker) RevenueEstimate() (*insyra.DataTable, error) {
 
 // Sustainability returns sustainability data as a DataTable.
 // Note: not implemented because underlying go-yfinance version does not expose this method.
-func (t *ticker) Sustainability() (*insyra.DataTable, error) {
+func (t *YFTicker) Sustainability() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -890,7 +894,7 @@ func (t *ticker) Sustainability() (*insyra.DataTable, error) {
 }
 
 // GrowthEstimates returns growth estimates as a DataTable.
-func (t *ticker) GrowthEstimates() (*insyra.DataTable, error) {
+func (t *YFTicker) GrowthEstimates() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -914,7 +918,7 @@ func (t *ticker) GrowthEstimates() (*insyra.DataTable, error) {
 
 // FundsData returns fund-related data for ETFs/mutual funds.
 // Note: not implemented because underlying go-yfinance version does not expose this method.
-func (t *ticker) FundsData() (*insyra.DataTable, error) {
+func (t *YFTicker) FundsData() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -923,7 +927,7 @@ func (t *ticker) FundsData() (*insyra.DataTable, error) {
 
 // TopHoldings returns top holdings for a fund as a DataTable.
 // Note: not implemented because underlying go-yfinance version does not expose this method.
-func (t *ticker) TopHoldings() (*insyra.DataTable, error) {
+func (t *YFTicker) TopHoldings() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}

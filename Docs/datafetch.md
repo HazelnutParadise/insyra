@@ -44,7 +44,7 @@ func main() {
 ### GoogleMapsStores
 
 ```go
-func GoogleMapsStores() *googleMapsStoreCrawler
+func GoogleMapsStores() *GoogleMapsStoresClient
 ```
 
 **Description:** Creates a new Google Maps store crawler instance.
@@ -55,7 +55,7 @@ func GoogleMapsStores() *googleMapsStoreCrawler
 
 **Returns:**
 
-- A crawler instance (unexported type). Creating it needs no network access, and it is never `nil`.
+- A `*GoogleMapsStoresClient`. Creating it needs no network access, and it is never `nil`. The type can be named in your own structs and signatures, but its zero value is not a working client: `Search` and `GetReviews` on a `GoogleMapsStoresClient` that did not come from `GoogleMapsStores` send nothing and return `nil` with a warning.
 
 **Example:**
 
@@ -66,7 +66,7 @@ crawler := datafetch.GoogleMapsStores()
 ### Search
 
 ```go
-func (c *googleMapsStoreCrawler) Search(query string) []GoogleMapsStoreData
+func (c *GoogleMapsStoresClient) Search(query string) []GoogleMapsStoreData
 ```
 
 **Description:** Searches for stores by name or keyword.
@@ -91,7 +91,7 @@ for _, store := range stores {
 ### GetReviews
 
 ```go
-func (c *googleMapsStoreCrawler) GetReviews(storeID string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews
+func (c *GoogleMapsStoresClient) GetReviews(storeID string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews
 ```
 
 **Description:** Fetches reviews for a specific store, 10 per page, from the review window Google Search shows for the store. No sign-in is needed.
@@ -316,10 +316,10 @@ func main() {
 #### YFinance
 
 ```go
-func YFinance(cfg YFinanceConfig) (*yahooFinance, error)
+func YFinance(cfg YFinanceConfig) (*YFinanceClient, error)
 ```
 
-Creates a stateful fetcher instance.
+Creates a stateful fetcher, a `*YFinanceClient`. The type can be named in your own structs and signatures; a `YFinanceClient` or `YFTicker` that did not come from `YFinance` and `Ticker`, such as a zero value, returns an error from every method instead of fetching.
 
 **YFinanceConfig Fields:**
 
@@ -334,10 +334,10 @@ Creates a stateful fetcher instance.
 #### Ticker
 
 ```go
-func (y *yahooFinance) Ticker(symbol string) *ticker
+func (y *YFinanceClient) Ticker(symbol string) *YFTicker
 ```
 
-Returns a ticker object bound to the fetcher instance. This method is designed to support chained calls (e.g., `yf.Ticker("AAPL").History(...)`). Any errors encountered during initialization or method calls are returned by the subsequent action methods.
+Returns a `*YFTicker` bound to the fetcher. This method is designed to support chained calls (e.g., `yf.Ticker("AAPL").History(...)`). Any errors encountered during initialization or method calls are returned by the subsequent action methods.
 
 ---
 
@@ -449,7 +449,7 @@ func main() {
 ### Initialization & Configuration
 
 ```go
-func TWGeocoding(cfg TWGeocodingConfig) (*twGeocoder, error)
+func TWGeocoding(cfg TWGeocodingConfig) (*TWGeocodingClient, error)
 ```
 
 **`TWGeocodingConfig` fields:**
@@ -464,12 +464,12 @@ func TWGeocoding(cfg TWGeocodingConfig) (*twGeocoder, error)
 | `BaseURL`      | `string`        | Endpoint override (for mocks/tests or a future paid/self-hosted tier).| Official endpoint   |
 | `Cache`        | `GeocodeCache`  | Optional result cache. `nil` disables caching.                        | `nil`               |
 
-Invalid values (negative `Interval` / `Retries` / `RetryBackoff`) return an error.
+Invalid values (negative `Interval` / `Retries` / `RetryBackoff`) return an error. The returned `*TWGeocodingClient` can be named in your own structs and signatures; a `TWGeocodingClient` that did not come from `TWGeocoding`, such as a zero value, returns an error from every method instead of sending a request.
 
 ### Single Lookup
 
 ```go
-func (g *twGeocoder) Reverse(lat, lng float64) (*ReverseGeocodeResult, error)
+func (g *TWGeocodingClient) Reverse(lat, lng float64) (*ReverseGeocodeResult, error)
 ```
 
 Returns a typed `*ReverseGeocodeResult`; `ErrGeocodeNotFound` when the point is outside any village; a `*RateLimitError` when the quota is exhausted; `ErrGeocodeTimeout` on timeout.
@@ -494,13 +494,13 @@ Batch methods reverse-geocode many coordinates and return an `*insyra.DataTable`
 
 ```go
 // Two parallel DataLists.
-func (g *twGeocoder) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error)
+func (g *TWGeocodingClient) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error)
 
 // A DataTable's columns, addressed by Excel-style index ("A", "B", ...).
-func (g *twGeocoder) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error)
+func (g *TWGeocodingClient) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error)
 
 // A DataTable's columns, addressed by name.
-func (g *twGeocoder) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error)
+func (g *TWGeocodingClient) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error)
 ```
 
 Batch semantics tuned for the 15/hour quota:
@@ -595,7 +595,7 @@ Use `TWMarketTWSE`, `TWMarketTPEx`, or `TWMarketAuto`. `Auto` tries TWSE first a
 ### Configuration
 
 ```go
-func TWStock(cfg TWStockConfig) (*twStock, error)
+func TWStock(cfg TWStockConfig) (*TWStockClient, error)
 ```
 
 | Field | Type | Default | Description |
@@ -607,7 +607,7 @@ func TWStock(cfg TWStockConfig) (*twStock, error)
 | `RetryBackoff` | `time.Duration` | `300ms` | Base delay before a retry, multiplied by attempt number. |
 | `Concurrency` | `int` | `6` | Normalized concurrency setting reserved for batched fetch extensions. |
 
-Negative `Interval`, `Retries`, `RetryBackoff`, or `Concurrency` values return an error. Non-2xx responses, invalid JSON, and exchange errors are never silently swallowed.
+Negative `Interval`, `Retries`, `RetryBackoff`, or `Concurrency` values return an error. Non-2xx responses, invalid JSON, and exchange errors are never silently swallowed. The returned `*TWStockClient` can be named in your own structs and signatures; a `TWStockClient` that did not come from `TWStock`, such as a zero value, returns an error from every method instead of sending a request.
 
 ### Methods and columns
 
