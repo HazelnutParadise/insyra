@@ -24,11 +24,10 @@ type LineChartConfig struct {
 // slice is passed as insyra.NewDataList(values).SetName("name").
 //
 // When config.XAxis is nil, it is 0, 1, 2, ... up to the first list's length.
-// A list whose length differs from XAxis, that is empty, or that holds a NaN
-// or an infinity is skipped with a warning naming it, and so is a nil list
-// among real ones. It returns a nil chart and an error when no list is given,
-// every one is nil, or none of them can be drawn; that error names each list
-// and why.
+// It returns a nil chart and an error when no list is given, every one is
+// nil, or any list cannot be drawn: its length differs from XAxis, it is
+// empty, or it holds a NaN or an infinity. That error names each such list and
+// why. A nil list among real ones is skipped with a warning.
 //
 // The values are read through DataList.ToF64Slice: a number, a fixed-point
 // decimal included, is drawn as its value, and any other cell, whether nil,
@@ -56,29 +55,26 @@ func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName str
 		}
 	}
 
-	var skipped []string
+	var failed []string
 	for i, dl := range data {
 		if err := addLineSeries(plt, dl.GetName(), readValues(dl), xAxis, i, stepKind); err != nil {
-			skipped = append(skipped, err.Error())
+			failed = append(failed, err.Error())
 		}
 	}
-	if err := finishSeries(funcName, len(data), skipped); err != nil {
+	if err := seriesError(funcName, failed); err != nil {
 		return nil, err
 	}
 	return plt, nil
 }
 
-// finishSeries reports the series a chart skipped. When every one was
-// skipped, the error names each and why, and nothing is logged; otherwise
-// each is named in a warning and the chart stands.
-func finishSeries(funcName string, total int, skipped []string) error {
-	if len(skipped) == total {
-		return chartError(funcName, "no series could be drawn: %s", strings.Join(skipped, "; "))
+// seriesError is the error for a chart that could not draw every series it
+// was given, naming each and why, or nil when every series was drawn. A chart
+// missing a series is not returned: the caller asked for all of them.
+func seriesError(funcName string, failed []string) error {
+	if len(failed) == 0 {
+		return nil
 	}
-	for _, reason := range skipped {
-		insyra.LogWarning("gplot", funcName, "%s; skipping it", reason)
-	}
-	return nil
+	return chartError(funcName, "cannot draw every series: %s", strings.Join(failed, "; "))
 }
 
 // addLineSeries adds one series to the plot, or says why it cannot.

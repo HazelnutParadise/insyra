@@ -95,19 +95,19 @@ func TestConstructorsReturnAnErrorForWhatTheyCannotDraw(t *testing.T) {
 		}, "no data"},
 		{"line whose every series has the wrong length", "CreateLineChart", func() (*gonumplot.Plot, error) {
 			return CreateLineChart(LineChartConfig{XAxis: []float64{1, 2, 3}}, two)
-		}, `no series could be drawn: series "two" has 2 values but XAxis has 3`},
+		}, `cannot draw every series: series "two" has 2 values but XAxis has 3`},
 		{"line whose only list is empty", "CreateLineChart", func() (*gonumplot.Plot, error) {
 			return CreateLineChart(LineChartConfig{}, insyra.NewDataList().SetName("empty"))
 		}, `series "empty" has no values`},
 		{"line whose only series holds NaN", "CreateLineChart", func() (*gonumplot.Plot, error) {
 			return CreateLineChart(LineChartConfig{}, withNaN)
-		}, "no series could be drawn"},
+		}, "cannot draw every series"},
 		{"step with no lists", "CreateStepChart", func() (*gonumplot.Plot, error) {
 			return CreateStepChart(StepChartConfig{})
 		}, "no data"},
 		{"step whose every series has the wrong length", "CreateStepChart", func() (*gonumplot.Plot, error) {
 			return CreateStepChart(StepChartConfig{XAxis: []float64{1, 2, 3}}, two)
-		}, "no series could be drawn"},
+		}, "cannot draw every series"},
 		{"scatter with no series", "CreateScatterPlot", func() (*gonumplot.Plot, error) {
 			return CreateScatterPlot(ScatterPlotConfig{})
 		}, "no data"},
@@ -122,7 +122,7 @@ func TestConstructorsReturnAnErrorForWhatTheyCannotDraw(t *testing.T) {
 		}, "3"},
 		{"scatter whose only series holds NaN", "CreateScatterPlot", func() (*gonumplot.Plot, error) {
 			return CreateScatterPlot(ScatterPlotConfig{}, ScatterSeries{Name: "s", X: three, Y: withNaN})
-		}, `no series could be drawn: series "s" cannot be drawn`},
+		}, `cannot draw every series: series "s" cannot be drawn`},
 		{"scatter whose only series has no points", "CreateScatterPlot", func() (*gonumplot.Plot, error) {
 			return CreateScatterPlot(ScatterPlotConfig{}, ScatterSeries{Name: "s", X: insyra.NewDataList(), Y: insyra.NewDataList()})
 		}, `series "s" has no points`},
@@ -191,26 +191,67 @@ func TestHeatmapDrawsANaNAmongNumbers(t *testing.T) {
 	mustSave(t, plt, "heat.png")
 }
 
-// Line and step drop a series they cannot draw and still return the chart when
-// another one is drawn, naming what they dropped.
-func TestOneDrawableSeriesIsEnough(t *testing.T) {
+// gplot-refuses-partial-charts: a line, step or scatter chart that cannot draw
+// every series it was given returns an error naming each such series, instead
+// of a chart missing them. Nothing is logged for them.
+func TestAnySeriesThatCannotBeDrawnFailsTheChart(t *testing.T) {
 	quietFatal(t)
 
 	three := insyra.NewDataList(1.0, 2.0, 3.0).SetName("three")
-	two := insyra.NewDataList(1.0, 2.0).SetName("two")
+
+	tests := []struct {
+		name string
+		call func() (*gonumplot.Plot, error)
+		want []string
+	}{
+		{"line: one series of two has the wrong length", func() (*gonumplot.Plot, error) {
+			return CreateLineChart(LineChartConfig{XAxis: []float64{1, 2, 3}}, three, insyra.NewDataList(1.0, 2.0).SetName("b"))
+		}, []string{`series "b" has 2 values but XAxis has 3`}},
+		{"step: an empty series and a NaN series beside a good one", func() (*gonumplot.Plot, error) {
+			return CreateStepChart(StepChartConfig{}, three,
+				insyra.NewDataList().SetName("empty"),
+				insyra.NewDataList(1.0, math.NaN(), 3.0).SetName("nan"))
+		}, []string{`series "empty" has 0 values but XAxis has 3`, `series "nan" cannot be drawn`}},
+		{"scatter: an empty series beside a real one", func() (*gonumplot.Plot, error) {
+			return CreateScatterPlot(ScatterPlotConfig{},
+				ScatterSeries{Name: "one", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, 2)},
+				ScatterSeries{Name: "empty", X: insyra.NewDataList(), Y: insyra.NewDataList()})
+		}, []string{`series "empty" has no points`}},
+		{"scatter: a NaN series beside a real one", func() (*gonumplot.Plot, error) {
+			return CreateScatterPlot(ScatterPlotConfig{},
+				ScatterSeries{Name: "one", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, 2)},
+				ScatterSeries{Name: "nan", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, math.NaN())})
+		}, []string{`series "nan" cannot be drawn`}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			insyra.ClearErrors()
+			plt, err := tt.call()
+			if err == nil {
+				t.Fatal("a chart missing a series came back with no error")
+			}
+			if plt != nil {
+				t.Error("a chart came back together with the error")
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not say %q", err, want)
+				}
+			}
+			if recs := insyra.GetAllErrors(); len(recs) != 0 {
+				t.Errorf("the failure was also logged: %+v", recs)
+			}
+		})
+	}
+}
+
+// A nil list is missing input, not a series that failed to draw: it is still
+// dropped with a warning, the way plot drops one.
+func TestANilListAmongRealOnesIsStillDropped(t *testing.T) {
+	quietFatal(t)
 
 	insyra.ClearErrors()
-	plt, err := CreateLineChart(LineChartConfig{XAxis: []float64{1, 2, 3}}, three, two)
-	if err != nil {
-		t.Fatalf("CreateLineChart: %v", err)
-	}
-	mustSave(t, plt, "line.png")
-	if !loggedWarning(`"two"`) {
-		t.Error("no warning names the dropped series")
-	}
-
-	insyra.ClearErrors()
-	plt, err = CreateStepChart(StepChartConfig{}, nil, three)
+	plt, err := CreateStepChart(StepChartConfig{}, nil, insyra.NewDataList(1.0, 2.0, 3.0).SetName("three"))
 	if err != nil {
 		t.Fatalf("CreateStepChart: %v", err)
 	}

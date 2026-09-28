@@ -195,7 +195,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：每個 `Create...` 函式都改為回傳圖表與 `error`。無法建立圖表時，會回傳 `nil` 圖表與開頭是函式名稱的錯誤，例如 `gplot: CreateBarChart: the data list is empty`，不再只記錄警告並回傳 `nil`。
 - **BREAKING**：建構函式改收 insyra 自己的型別，不再收 `any`，傳錯型別會在編譯時就失敗，不會等到執行時才回傳 `nil`。`CreateBarChart` 與 `CreateHistogram` 收 `insyra.IDataList`，`CreateLineChart` 與 `CreateStepChart` 收 `...insyra.IDataList`，`CreateHeatmapChart` 收 `insyra.IDataTable`，`CreateScatterPlot` 收 `...gplot.ScatterSeries`。`[]float64` 請改傳 `insyra.NewDataList(values)`；`map[string][]float64` 的每一筆改傳 `insyra.NewDataList(v).SetName(name)`；`[][]float64` 改傳 `insyra.ReadSlice2D(grid)` 產生的表格，比第一列短的列會補上 `nil`，畫成 0，比第一列長的列則會丟掉超出的值。以前用 map 傳入時，各系列的顏色與虛線樣式依 map 的走訪順序決定，每次執行都可能不同。
 - **BREAKING**：散佈圖的一個系列改成兩個清單 `ScatterSeries{Name, X, Y}`；v0.3.3 把一個清單當成 x、y 交錯排列的值，多出來的最後一個值直接丟掉。`X` 與 `Y` 長度不同時會回傳錯誤，並指出是哪個系列。
-- **BREAKING（行為改變）**：`CreateLineChart`、`CreateStepChart` 與 `CreateScatterPlot` 一個系列都畫不出來時會回傳錯誤，錯誤裡會逐一寫出每個系列和畫不出來的原因；v0.3.3 會回傳一張什麼都沒畫、存檔也不會出錯的圖。其他系列畫得出來時，被略過的系列（長度和 `XAxis` 不同、是空的、含有 `NaN` 或無限大，或一個點都沒有）仍會在警告裡指名。
+- **BREAKING（行為改變）**：`CreateLineChart`、`CreateStepChart` 與 `CreateScatterPlot` 要嘛畫出所有系列，要嘛回傳錯誤。折線圖或階梯圖的系列長度和 `XAxis` 不同、系列是空的，或含有 `NaN` 或無限大，都會讓呼叫回傳 `nil` 圖表與錯誤，錯誤裡逐一寫出每個畫不出來的系列和原因。v0.3.3 會略過這種系列並記一則警告，把其他系列照樣畫出來；全部都被略過時，則回傳一張什麼都沒畫的圖。混在真實清單中的 `nil` 清單仍然只記警告並略過。
 - **BREAKING（行為改變）**：`CreateHistogram` 拒絕 `NaN` 與無限大，`CreateHeatmapChart` 拒絕無限大以及只有 `NaN` 的表格，`CreateFunctionPlot` 拒絕不是有限值的 `XMin`、`XMax`、`YMin`、`YMax`，都會回傳指出是哪個值的錯誤。v0.3.3 遇到這些值時，依圖表與平台不同，有的會 panic，有的會卡住，有的會畫出錯誤的圖。熱圖裡夾在數字之間的 `NaN` 仍然畫成空白格。
 - `CreateHeatmapChart` 能讀所有數值型別，`int8`、`int16` 或無號整數的欄位會畫出原本的值，不再全部畫成 0。它讀取儲存格的方式也和其他 `gplot` 圖表一致：不是數字的儲存格一律畫成 0，數字字串也一樣。
 

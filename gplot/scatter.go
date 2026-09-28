@@ -33,10 +33,9 @@ type ScatterSeries struct {
 // CreateScatterPlot draws one set of points per series.
 //
 // It returns a nil chart and an error when no series is given, when a series
-// has a nil X or Y, or when a series' X and Y differ in length. A series with
-// no points, or with a NaN or an infinity, is skipped with a warning naming
-// it; when that leaves nothing to draw, it returns an error naming each series
-// and why.
+// has a nil X or Y, when a series' X and Y differ in length, or when a series
+// cannot be drawn because it has no points or holds a NaN or an infinity. The
+// error names the series and why.
 //
 // The values are read through DataList.ToF64Slice: a number, a fixed-point
 // decimal included, is drawn as its value, and any other cell, whether nil,
@@ -66,13 +65,13 @@ func CreateScatterPlot(config ScatterPlotConfig, series ...ScatterSeries) (*plot
 	plt.X.Label.Text = config.XAxisName
 	plt.Y.Label.Text = config.YAxisName
 
-	var skipped []string
+	var failed []string
 	for i, s := range series {
 		if err := addScatterSeries(plt, s.Name, xs[i], ys[i], i); err != nil {
-			skipped = append(skipped, err.Error())
+			failed = append(failed, err.Error())
 		}
 	}
-	if err := finishSeries("CreateScatterPlot", len(series), skipped); err != nil {
+	if err := seriesError("CreateScatterPlot", failed); err != nil {
 		return nil, err
 	}
 	return plt, nil

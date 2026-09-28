@@ -98,19 +98,6 @@ func TestCreateLineChart_Renders(t *testing.T) {
 	})
 }
 
-// A series whose length does not match the x axis is skipped, and the chart is
-// still returned. Rendering it proves the skip leaves the plot in one piece.
-func TestCreateLineChart_SkipsAMismatchedSeries(t *testing.T) {
-	quietFatal(t)
-
-	config := LineChartConfig{XAxis: []float64{1, 2, 3}}
-	plt := built(t)(CreateLineChart(config,
-		insyra.NewDataList(1, 2, 3).SetName("good"),
-		insyra.NewDataList(1, 2).SetName("bad"),
-	))
-	mustSave(t, plt, "line.png")
-}
-
 func TestCreateStepChart_RendersEveryStyle(t *testing.T) {
 	quietFatal(t)
 
@@ -141,13 +128,6 @@ func TestCreateScatterPlot_Renders(t *testing.T) {
 		mustSave(t, built(t)(CreateScatterPlot(config,
 			ScatterSeries{Name: "one", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, 2)},
 			ScatterSeries{Name: "two", X: insyra.NewDataList(2, 3), Y: insyra.NewDataList(4, 1)},
-		)), "scatter.png")
-	})
-	// A series with no points is skipped; the others are drawn.
-	t.Run("an empty series beside a real one", func(t *testing.T) {
-		mustSave(t, built(t)(CreateScatterPlot(config,
-			ScatterSeries{Name: "empty", X: insyra.NewDataList(), Y: insyra.NewDataList()},
-			ScatterSeries{Name: "one", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, 2)},
 		)), "scatter.png")
 	})
 }

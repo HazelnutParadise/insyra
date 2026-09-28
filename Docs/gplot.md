@@ -66,7 +66,7 @@ The data types are insyra's own, checked by the compiler. Values you hold in pla
 
 Every chart reads its values through `DataList.ToF64Slice`, and the heat map reads each column of the table the same way. A number, a fixed-point decimal included, is drawn as its value. Any other cell is drawn as 0: `nil`, text, a numeric string such as `"2"`, and a `bool`. `NewDataList(1, "2", nil, "abc")` is drawn as the bars 1, 0, 0 and 0, with no warning. Clean a column before charting it: `ParseNumbers` turns numeric text into numbers, and `ClearNilsAndNaNs` removes `nil` and `NaN` cells.
 
-A `NaN` or an infinity is not drawn as 0. The bar chart and the histogram refuse it with an error, and the line, step and scatter charts skip the series that holds it, with a warning. The heat map refuses an infinity and a table of `NaN` alone, and draws a `NaN` among numbers as an empty cell.
+A `NaN` or an infinity is not drawn as 0. The bar chart, the histogram, and the line, step and scatter charts refuse it with an error. The heat map refuses an infinity and a table of `NaN` alone, and draws a `NaN` among numbers as an empty cell.
 
 ## Saving Charts
 
@@ -210,7 +210,7 @@ type LineChartConfig struct {
 }
 ```
 
-Returns an error when no list is given, every list is `nil`, or no series can be drawn; that error names each series and why (see [A series that cannot be drawn is skipped](#a-series-that-cannot-be-drawn-is-skipped)). A `nil` list among real ones is skipped with a warning.
+Returns an error when no list is given, every list is `nil`, or any series cannot be drawn; that error names each such series and why (see [A series that cannot be drawn fails the chart](#a-series-that-cannot-be-drawn-fails-the-chart)). A `nil` list among real ones is skipped with a warning.
 
 **Example:**
 
@@ -253,7 +253,7 @@ type ScatterSeries struct {
 }
 ```
 
-Two columns of a table make one series. Returns an error when no series is given, when a series has a `nil` `X` or `Y`, or when a series' `X` and `Y` differ in length. The error names the series. A series with no points, or with a `NaN` or an infinity, is skipped with a warning, and when no series can be drawn the call returns an error naming each series and why.
+Two columns of a table make one series. Returns an error when no series is given, when a series has a `nil` `X` or `Y`, when a series' `X` and `Y` differ in length, or when a series has no points or holds a `NaN` or an infinity. The error names the series and why.
 
 **Example:**
 
@@ -431,9 +431,11 @@ The table returned by `stats.CorrelationMatrix` can be passed as it is.
 
 ![heatmap_example](./img/gplot_heatmap_example.png)
 
-## A series that cannot be drawn is skipped
+## A series that cannot be drawn fails the chart
 
-`CreateLineChart` and `CreateStepChart` compare each series with `XAxis`. A series of a different length is skipped with a warning naming it, and so is an empty series and one holding a `NaN` or an infinity; the chart is still returned with the series that could be drawn. When `XAxis` is left out, it is generated from the first list's length, so a list whose length differs from the first is the one dropped. `CreateScatterPlot` skips a series with no points or with a `NaN` or an infinity the same way. When no series can be drawn at all, each of the three returns an error instead of an empty chart. The error names every series and why, for example `gplot: CreateLineChart: no series could be drawn: series "two" has 2 values but XAxis has 3`, and nothing is logged. `CreateBarChart` treats `ErrorBars` of the wrong length as a warning too: it draws the bars without error bars.
+`CreateLineChart`, `CreateStepChart` and `CreateScatterPlot` draw every series they are given, or none. A line or step series whose length differs from `XAxis`, an empty series, and a series holding a `NaN` or an infinity each make the call return a `nil` chart and an error, so a chart never comes back missing a series you asked for. When `XAxis` is left out, it is generated from the first list's length, so every other list has to match the first. The error names every series that failed and why, for example `gplot: CreateLineChart: cannot draw every series: series "two" has 2 values but XAxis has 3`, and nothing is logged.
+
+A `nil` list among real ones is different: it is missing input rather than a series, so the line and step charts drop it with a warning and draw the rest. `CreateBarChart` treats `ErrorBars` of the wrong length as a warning too: it draws the bars without error bars.
 
 ## Tips
 

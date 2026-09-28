@@ -23,11 +23,10 @@ type StepChartConfig struct {
 // replaced by "post" with a warning.
 //
 // When config.XAxis is nil, it is 0, 1, 2, ... up to the first list's length.
-// A list whose length differs from XAxis, that is empty, or that holds a NaN
-// or an infinity is skipped with a warning naming it, and so is a nil list
-// among real ones. It returns a nil chart and an error when no list is given,
-// every one is nil, or none of them can be drawn; that error names each list
-// and why.
+// It returns a nil chart and an error when no list is given, every one is
+// nil, or any list cannot be drawn: its length differs from XAxis, it is
+// empty, or it holds a NaN or an infinity. That error names each such list and
+// why. A nil list among real ones is skipped with a warning.
 //
 // The values are read through DataList.ToF64Slice: a number, a fixed-point
 // decimal included, is drawn as its value, and any other cell, whether nil,
