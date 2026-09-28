@@ -55,10 +55,10 @@ Previous batch: `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#1
 | M33 | Edge sums are exact | planning | done | `EdgeSum` and both gradients return the correctly rounded exact sum of their products, equal to a `math/big` oracle on random, cancelling, subnormal, overflowing, NaN/Inf and signed-zero inputs, with the CPU cost against the previous fixed-order version measured |
 | M34 | `Tanh` is correctly rounded | planning | done | `nn.Tanh` equals the correctly rounded `tanh` on all 2^32 float32 inputs, checked exhaustively against a high-precision oracle, and the number of inputs that changed is recorded |
 | M35 | Device arithmetic is exact | planning | done | a WGSL library that decodes float32 bit patterns, forms exact products, accumulates them in integer limbs and rounds once to nearest-even returns the CPU's bits on adversarial and random inputs on the M3 |
-| M36 | `EdgeSum` runs on the device | planning | pending | production kernels for `EdgeSum` and both gradients, built on M35, that read their inputs from and write their results to device buffers, equal to the CPU bit for bit, with kernel time measured on a ladder against the all-core CPU; `nn` uses them through M38's device tensors, never with a per-call upload |
-| M37 | `Tanh` runs on the device | planning | pending | the device `tanh`, in integer arithmetic, equals `nn.Tanh` on all 2^32 inputs |
-| M38 | Tensors stay on the device | planning | pending | `nn` tensors carry the device they live on; `To` and `ToHost` move them explicitly; operations with device kernels, `EdgeSum` and its gradients first, keep their results there, others run on the host with a report, strict mode refuses; one tape differentiates across devices; a recurrent step's speed on the device is measured against the all-core CPU |
-| M39 | Device state survives a restart | planning | pending | device-resident tensors export and import with version, shape, dtype and topology checked before anything is written; a new process continues to the same next step bit for bit |
+| M36 | `EdgeSum` runs on the device | planning | pending (v0.3.5) | production kernels for `EdgeSum` and both gradients, built on M35, that read their inputs from and write their results to device buffers, equal to the CPU bit for bit, with kernel time measured on a ladder against the all-core CPU; `nn` uses them through M38's device tensors, never with a per-call upload |
+| M37 | `Tanh` runs on the device | planning | pending (v0.3.5) | the device `tanh`, in integer arithmetic, equals `nn.Tanh` on all 2^32 inputs |
+| M38 | Tensors stay on the device | planning | pending (v0.3.5) | `nn` tensors carry the device they live on; `To` and `ToHost` move them explicitly; operations with device kernels, `EdgeSum` and its gradients first, keep their results there, others run on the host with a report, strict mode refuses; one tape differentiates across devices; a recurrent step's speed on the device is measured against the all-core CPU |
+| M39 | Device state survives a restart | planning | pending (v0.3.5) | device-resident tensors export and import with version, shape, dtype and topology checked before anything is written; a new process continues to the same next step bit for bit |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
@@ -69,7 +69,7 @@ The implementation has no code blocker. Acceptance still needs a multi-GPU host 
 M36: device kernels for `EdgeSum` and both gradients, on inputs already on the device, return `nn.EdgeSum`'s and the tape's bits, and their kernel time is recorded on a ladder against the all-core CPU.
 
 ## Next Ticket
-M36, not yet proposed: the device `EdgeSum` kernels on resident inputs. Comment on #379 first, because M35's measurement moves `nn` wiring from M36 to M38. Then M37 through M39 in order; M33 to M35 are done.
+M36, not yet proposed: the device `EdgeSum` kernels on resident inputs, for v0.3.5. Then M37 through M39 in order. M33 to M35 are done and ship in v0.3.4.
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
@@ -81,6 +81,21 @@ golangci-lint also runs nilerr, bodyclose, rowserrcheck, sqlclosecheck and error
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: Huashan v0.3.4 ships #379's CPU half: `EdgeSum` and its gradients exact (M33) and `Tanh` correctly rounded (M34). M35's device library is in the code but internal, with no public caller. M36 to M39 move to v0.3.5, in the same order and with the same acceptance.
+  rationale: The CPU half is done and verified and changes `Tape.Tanh`'s gradients, so it is worth releasing. The device half is four milestones, and M38 reworks `nn`'s tensor model; finished fixes should not wait for it. The owner approved on 2026-09-28, and the split is announced on #379.
+  timestamp: 2026-09-28
+  impacted_ticket_ids: M36, M37, M38, M39
+
+- decision: A dependency update that changes what insyra returns lands as its own change, not inside the pre-release refresh. `goccy/go-json` v0.11 is the first: the refresh held it at v0.10.6, and `take-go-json-v0-11` takes it for v0.3.4 with the behaviour it changes pinned against `encoding/json`.
+  rationale: Measured against v0.10.6, v0.11.1 changes `ToJSON`'s spelling of small exponents and what `ReadJSON` accepts, so it needs its own tests and changelog entry. It is also faster on insyra's paths: `ToJSON_Bytes` 66 → 45 ms, `ReadJSON` 129 → 90 ms on a 14 MB table. The owner chose on 2026-09-28 to ship it in v0.3.4, knowing it was released the day before. Recorded in `AGENTS.md` and the `dependency-vulnerability-floor` spec (refresh-deps-for-0-3-4, #403).
+  timestamp: 2026-09-28
+  impacted_ticket_ids: refresh-deps-for-0-3-4, take-go-json-v0-11
+
+- decision: Every non-test file reads and writes JSON through one library, currently `github.com/goccy/go-json`; `depguard` fails on `encoding/json` or another JSON library outside tests. A library measured faster on `BenchmarkJSONPaths` that passes every `json-codec-conformance` test replaces it everywhere in one change.
+  rationale: Two libraries disagreed: before go-json v0.11 the same small number was `1e-07` on one path and `1e-7` on the other. The owner decided on 2026-09-28 on one library, the fastest that behaves like `encoding/json`. The conformance spec and the committed benchmark make both halves of that checkable (one-json-library, #406).
+  timestamp: 2026-09-28
+  impacted_ticket_ids: one-json-library
 
 - decision: Device kernels do their exact arithmetic with the register in `accel/internal/wgpu/exact_sum.go` (M35): 27 digits of 24 bits in `u32`, carries deferred for 64 additions, unsigned operations only, and no `select()`. A device `EdgeSum` pays only when its inputs already live on the device. So M36 builds the kernels against device buffers, `nn` reaches them through M38's device tensors, and nothing uploads per call.
   rationale: Parity on the M3 covered 3,420 rows and 289,766 products: random data, every float32 bit pattern, cancellation, ties, the subnormal and overflow boundaries, NaN and infinities, 5,000-product rows, and borrows through every digit. Every output equals the `math/big` oracle and `nn.EdgeSum` bit for bit, both from one register and from two registers merged. The first device run caught gogpu/naga v0.19 writing a scalar `select()` that is an operand as an unparenthesized ternary in Metal. A direct repro returns `0xffffff00` where WGSL gives `0xffffffff`; reported as gogpu/naga#95. Throughput covered 10M products, best of 5 after a warm-up, all 8 cores for the CPU. The whole device call (upload, dispatch, readback) takes 27.6–39.1 ms, against 3.4–6.0 ms for `nn.EdgeSum`. The same call with every row emptied uploads the same 80 MB and takes 25.0–33.1 ms. That leaves 2.6–6.0 ms for the kernel itself, 1.7–3.9 G products/s, the CPU's speed or better. About 85% of the device's time is the transfer; the exact arithmetic is not the cost. Even an upload several times faster would at best break even per call. The harness reads each row's products contiguously, while `EdgeSum` gathers values through its sources; #389 measured that gather as the f32 prototype's main cost, so M36 measures its own kernels.
@@ -270,12 +285,13 @@ Deltas that still change what someone would do. The standing technical decisions
 ## Source Links
 - [ENG.md](ENG.md) — architecture, test seams, the precision contract, standing assumptions. Read before changing any of them.
 - [AGENTS.md](AGENTS.md) — the operating contract, including the acceleration rules and the open follow-ups.
-- [openspec/changes/archive/](openspec/changes/archive/) — 41 archived changes, each holding its own proposal, spec deltas and tasks.
+- [openspec/changes/archive/](openspec/changes/archive/) — 179 archived changes, each holding its own proposal, spec deltas and tasks.
 - [openspec/specs/](openspec/specs/) — the current capability specs, which reflect the code as it stands.
 - [Docs/accel.md](Docs/accel.md), [Docs/ml.md](Docs/ml.md) — the user-facing surfaces.
-- Open issues: [#190](https://github.com/HazelnutParadise/insyra/issues/190) KNN algorithm selection, [#191](https://github.com/HazelnutParadise/insyra/issues/191) CCL recursion-depth overhead.
+- Open issues: [#379](https://github.com/HazelnutParadise/insyra/issues/379) device operations and state lifecycle (M36–M39), [#401](https://github.com/HazelnutParadise/insyra/issues/401) keeping a replaced sheet's formatting in `AppendCsvToExcel`, [#203](https://github.com/HazelnutParadise/insyra/issues/203) `x/crypto` advisories held by the Go 1.25 directive.
 
 ## Handoff Notes
+- **Release handoff (2026-09-28).** Huashan v0.3.4 is cut from `dev` on `release/v0.3.4`: the #379 CPU half, the 0.4 review fixes ported so far, the skills rewrite, the csvxl append fixes, the dependency refresh (#403), go-json v0.11 (#405) and one JSON library everywhere (#406). Blockers: none in code; the merge to `main`, the tag and the GitHub Release wait for the owner. Next verifiable output after the release: M36. `delivery-status.md` changed (this note, the #379 split, the refresh rule); `AGENTS.md` changed in #403 to #406, not here.
 - **Execution logging handoff (2026-08-05).** Current phase: `insyra/nn` phase 2 with the independent acceleration visibility pair active. Blockers: no code or hardware blocker for logging; the existing multi-GPU and non-Apple coverage follow-ups remain unchanged. Next verifiable output: archive `add-accel-execution-logging` after merge, then the independent `add-nn-sequential-fit` gate; next OpenSpec change: `add-nn-sequential-fit`. Decision delta: session flags announce first real device use and first qualifying fallback once, with per-execution detail through the root logger at debug. Source links: [change proposal](openspec/changes/add-accel-execution-logging/proposal.md), [change spec](openspec/changes/add-accel-execution-logging/specs/accel-observability/spec.md), [accel docs](Docs/accel.md), [acceleration contract](AGENTS.md). `delivery-status.md` changed: yes. `AGENTS.md` changed: no.
 - **M17 wiring handoff.** `make-dl-device-matmul-default` now contains the default-on `nn` hook, exported `accel.DeviceMatMul`, production WGSL MatMul, CPU fallback tests, a hardware parity gate, and the runnable floor ladder. `INSYRA_ACCEL_DISABLE_WGPU=1` and `nn.RegisterDeviceMatMul(nil)` are the two switches. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **M18 training handoff.** `add-dl-cnn-gradients` adds direct-loop Conv, pooling, and inference-mode BatchNormalization VJPs, ungated finite-difference coverage, and a gated PyTorch SafeTensors CNN one-step parity test. The full `./dl/` suite passed with the moved reference venv. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
