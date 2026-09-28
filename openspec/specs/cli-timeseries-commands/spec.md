@@ -4,6 +4,7 @@
 CLI／REPL／DSL 的時間序列命令：`ewm`（alpha／span／halflife 三選一，adjust、bias、minobs 選項）、`rolling` 的配對 reducer `cov <other>` 與 `beta <other>`、`resample`（以 `<col>:<op>[:<name>]` 重用 `groupby` 運算子把時間鍵表彙總成週／月／季／年）。
 
 ## Requirements
+
 ### Requirement: ewm command
 
 CLI SHALL 提供 `ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]`。`<var>` SHALL 為 `DataList`；衰減關鍵字三選一並帶數值；reducer 三選一；`adjust`、`bias` 預設 no，`minobs` 預設 0（交由函式庫處理）。結果 SHALL 為等長 `DataList`，存到 `as <var>`，未指定時存到 `$result`，與 `rolling` 相同。不合法的衰減值、未知 reducer、未知選項、非 `DataList` 變數 SHALL 回傳含 `ewm:` 前綴的錯誤。
@@ -56,3 +57,14 @@ CLI SHALL 提供 `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:
 - **WHEN** `Date` 欄為字串
 - **THEN** 回傳含函式庫列號訊息的錯誤
 
+### Requirement: A failed window reducer is an error
+
+`rolling`、`ewm` 與 `expanding` 的 reducer 結果帶有錯誤時，命令 SHALL 回傳含命令名稱前綴與該錯誤的錯誤，SHALL NOT 存任何變數，也 SHALL NOT 印出 `saved as`。`ewm` SHALL 依結果的錯誤判斷失敗，SHALL NOT 以結果長度推斷。
+
+#### Scenario: A window of zero
+- **WHEN** 變數 `x` 為 `[1, 2, 3]`，執行 `rolling x 0 mean as m`
+- **THEN** 回傳以 `rolling:` 開頭的錯誤，`m` 不存在
+
+#### Scenario: MinObs above the window
+- **WHEN** 執行 `rolling x 2 mean minobs 3 as m`
+- **THEN** 回傳錯誤，`m` 不存在

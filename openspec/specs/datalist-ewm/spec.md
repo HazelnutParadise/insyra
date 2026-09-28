@@ -4,9 +4,10 @@
 `DataList` 的指數加權統計：以 `Alpha`／`Span`／`HalfLife` 三選一指定衰減，`Adjust`、`Bias`、`MinObs` 語意與 pandas `Series.ewm` 相同，由 pandas 產生的 fixture 釘住結果；`DataTable.EWMCol` 為欄位版。
 
 ## Requirements
+
 ### Requirement: Exponentially weighted mean, variance, and standard deviation
 
-`DataList` SHALL 提供 `EWM(opts EWMOptions) *EWMDataList`，`EWMDataList` SHALL 提供 `Mean()`、`Var()`、`Std()` 三個 reducer，各回傳與來源等長的 `*DataList`。`EWMOptions{Alpha, Span, HalfLife float64; Adjust bool; Bias bool; MinObs int}` SHALL 恰好指定 `Alpha`（`0 < Alpha <= 1`）、`Span`（`>= 1`）、`HalfLife`（`> 0`）三者之一，換算與 pandas 相同：`alpha = 2/(span+1)`、`alpha = 1 − exp(ln 0.5 / halflife)`。`Adjust`、`Bias` 的語意 SHALL 與 pandas `Series.ewm(adjust=…).var(bias=…)` 相同；`MinObs <= 0` 視為 1。非數值或 nil 的格子 SHALL 被略過且不重置權重累積，有效觀察數未達 `MinObs` 的位置輸出 nil。`DataTable` SHALL 提供 `EWMCol(col string, opts EWMOptions) *EWMDataList`，欄位參照規則與 `RollingCol` 相同。
+`DataList` SHALL 提供 `EWM(opts EWMOptions) *EWMDataList`，`EWMDataList` SHALL 提供 `Mean()`、`Var()`、`Std()` 三個 reducer，各回傳與來源等長的 `*DataList`。`EWMOptions{Alpha, Span, HalfLife float64; Adjust bool; Bias bool; MinObs int}` SHALL 恰好指定 `Alpha`（`0 < Alpha <= 1`）、`Span`（`>= 1`）、`HalfLife`（`> 0`）三者之一，換算與 pandas 相同：`alpha = 2/(span+1)`、`alpha = 1 − exp(ln 0.5 / halflife)`。`Adjust`、`Bias` 的語意 SHALL 與 pandas `Series.ewm(adjust=…).var(bias=…)` 相同；`MinObs <= 0` 視為 1。非數值或 nil 的格子 SHALL 被略過且不重置權重累積，有效觀察數未達 `MinObs` 的位置輸出 nil。`DataTable` SHALL 提供 `EWMCol(col string, opts EWMOptions) *EWMDataList`，欄位參照規則與 `RollingCol` 相同。衰減參數不合法時，`EWM` SHALL 在來源 list 記錄錯誤，所有 reducer SHALL 回傳長度 0、帶著該錯誤的 `DataList`。
 
 #### Scenario: Matches pandas on the fixture corpus
 
@@ -16,7 +17,7 @@
 #### Scenario: Exactly one decay parameter
 
 - **WHEN** `EWMOptions` 未指定任何衰減參數，或同時指定兩個以上
-- **THEN** `EWM` 發出 warning，所有 reducer 回傳空的 `DataList`，不 panic
+- **THEN** `EWM` 在來源 list 記錄錯誤，所有 reducer 回傳長度 0、`Err()` 為該錯誤的 `DataList`，不 panic
 
 #### Scenario: Adjust false is the recursive form
 
@@ -36,4 +37,3 @@
 
 - **WHEN** 套件編譯
 - **THEN** `*DataList` 與 `*DataTable` 仍分別滿足 `IDataList` 與 `IDataTable`
-

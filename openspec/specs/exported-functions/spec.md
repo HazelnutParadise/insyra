@@ -2,7 +2,9 @@
 
 ## Purpose
 How Insyra exports its functions. A function a caller can reach is declared with `func`, so nobody can swap out the implementation the library itself calls, and it has one name, so a reader never wonders whether two spellings differ.
+
 ## Requirements
+
 ### Requirement: An exported function is a function declaration
 
 No exported package-level variable in the module SHALL hold a function literal or a function declared in the module. Each such function SHALL be exported with `func`, so a caller cannot replace it and the documentation lists it among functions.
@@ -34,8 +36,9 @@ No exported package-level variable in the module SHALL hold a function literal o
 
 #### Scenario: The functions that read weights and samples through it
 
-- **WHEN** `WeightedMean(42)` is called on a list, or `stats.Skewness` on a nil `*DataList`
-- **THEN** `WeightedMean` returns `NaN` and records an error naming the weights, and `Skewness` returns an error prefixed `sample:`, neither crashing nor reporting `empty data`
+- **WHEN** `stats.Skewness` is called on a nil `*DataList`
+- **THEN** it returns an error prefixed `sample:`, neither crashing nor reporting `empty data`
+- **AND** `WeightedMean` and `WeightedMovingAverage` no longer read their weights through `ProcessData`: they take a `[]float64`, so weights it could not read do not compile
 
 ### Requirement: The big.Rat helpers never panic
 
@@ -50,4 +53,3 @@ No exported package-level variable in the module SHALL hold a function literal o
 
 - **WHEN** a caller asks `PowRat(big.NewRat(2, 3), -2)`
 - **THEN** it returns 9/4
-
