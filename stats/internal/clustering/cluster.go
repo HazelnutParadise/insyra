@@ -2,6 +2,7 @@ package clustering
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -941,6 +942,29 @@ func hierarchicalNNChain(data [][]float64, labels []string, method string) (*Hie
 	}, nil
 }
 
+// validateTree checks the shape a cut relies on, because a tree can come from
+// outside this package (the CLI restores one from a file): n labels, n-1
+// merges with a height each, and every merge joining a leaf (-1 … -n) or an
+// earlier merge (1 … its own step).
+func validateTree(tree *HierarchicalResult) error {
+	n := len(tree.Labels)
+	if len(tree.Merge) != n-1 {
+		return fmt.Errorf("tree has %d labels and %d merges; a tree of n observations has n-1 merges", n, len(tree.Merge))
+	}
+	if len(tree.Height) != len(tree.Merge) {
+		return fmt.Errorf("tree has %d merges and %d heights; each merge needs one height", len(tree.Merge), len(tree.Height))
+	}
+	for step, row := range tree.Merge {
+		for _, id := range row {
+			if (id < 0 && -id <= n) || (id > 0 && id <= step) {
+				continue
+			}
+			return fmt.Errorf("merge %d joins %d, which is neither a leaf (-1 to -%d) nor an earlier merge (1 to %d)", step+1, id, n, step)
+		}
+	}
+	return nil
+}
+
 func CutTreeByK(tree *HierarchicalResult, k int) ([]int, error) {
 	n := len(tree.Labels)
 	if n == 0 {
@@ -961,6 +985,9 @@ func CutTreeByHeight(tree *HierarchicalResult, h float64) ([]int, error) {
 }
 
 func cutTree(tree *HierarchicalResult, include func(step int, height float64) bool) ([]int, error) {
+	if err := validateTree(tree); err != nil {
+		return nil, err
+	}
 	n := len(tree.Labels)
 	parent := make([]int, n)
 	for i := range n {
