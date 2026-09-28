@@ -2,7 +2,9 @@
 
 ## Purpose
 錯誤哲學：程式庫預設不結束、不中斷宿主程序；要 fail-fast 由呼叫端明確開啟。
+
 ## Requirements
+
 ### Requirement: The library never terminates the host process
 
 任何 insyra 套件在預設設定下 SHALL NOT 呼叫 `os.Exit`，SHALL NOT panic。`LogFatal` SHALL 記錄錯誤後返回。
@@ -27,21 +29,25 @@
 - **WHEN** 比較四個等級
 - **THEN** `LogLevelDebug < LogLevelInfo < LogLevelWarning < LogLevelError < LogLevelFatal`
 
-### Requirement: A constructor given input it cannot use reports it and returns nil
+### Requirement: A constructor given input it cannot use returns an error
 
-繪圖套件的每一個 `CreateXxx` SHALL NOT panic，無論設定結構是零值、必填欄位為空、資料列長度不一致、數量參數為負，或資料清單元素為 nil。無法繪製時 SHALL 記錄原因並回傳 nil；仍可繪製時 SHALL 回傳可用的圖表。
+繪圖套件的每一個 `CreateXxx` SHALL NOT panic，無論設定結構是零值、必填欄位為空、資料表是空的、數量參數為負，或資料清單元素為 nil。無法繪製時 SHALL 回傳 nil 圖表與說明原因的錯誤；仍可繪製時 SHALL 回傳可用的圖表與 nil 錯誤。
 
 #### Scenario: A zero-value bar chart config
-- **WHEN** `gplot.CreateBarChart(BarChartConfig{}, []float64{1, 2})`
-- **THEN** 回傳可存檔的圖表，不 panic
+- **WHEN** `gplot.CreateBarChart(BarChartConfig{}, insyra.NewDataList(1, 2))`
+- **THEN** 回傳可存檔的圖表與 nil 錯誤，不 panic
 
 #### Scenario: A ragged heat map grid
-- **WHEN** `gplot.CreateHeatmapChart(cfg, [][]float64{{1,2,3},{4}})`
-- **THEN** 記錄哪一列長度不同並回傳 nil，不 panic
+- **WHEN** `gplot.CreateHeatmapChart(cfg, insyra.NewDataTable(insyra.NewDataList(1.0, 2.0), insyra.NewDataList(3.0)))`，兩欄長度不同
+- **THEN** 回傳圖表與 nil 錯誤，較短一欄補上的空格畫成 0，不 panic
+
+#### Scenario: An empty table for a heat map
+- **WHEN** `gplot.CreateHeatmapChart(cfg, insyra.NewDataTable())`
+- **THEN** 回傳 nil 圖表與錯誤，不 panic
 
 #### Scenario: A nil data list
 - **WHEN** `plot.CreateBarChart(cfg, nil)`
-- **THEN** 回傳 nil，不 panic
+- **THEN** 回傳 nil 圖表與錯誤，不 panic
 
 ### Requirement: A parser given malformed input skips what it cannot read
 
@@ -74,4 +80,3 @@
 #### Scenario: A result that has to be rounded
 - **WHEN** `NPV(0.03, []{0, 1}, Options{Scale: 2, Mode: RoundUnnecessary})`
 - **THEN** 回傳說明需要捨入的錯誤，程序繼續執行
-

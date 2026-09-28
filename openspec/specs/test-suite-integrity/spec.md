@@ -2,7 +2,9 @@
 
 ## Purpose
 測試必須有斷言，參考對照必須有 workflow 執行，文件承諾的行為與函式庫賴以運作的基礎型別必須有測試釘住，需要外部工具的套件其不需要該工具的部分也必須測得到。
+
 ## Requirements
+
 ### Requirement: Tests assert, and reference comparisons run
 
 `datalist_test.go` 中的 DataList 轉換測試 SHALL 有真實斷言；因子分析邊界測試 SHALL 斷言預期結果；`reference-verification.yml` 的 scikit-learn 步驟 SHALL 同時匹配 `AgainstScikitLearn` 與 `MatchesScikitLearnPredictions`；repo SHALL NOT 追蹤 `*.test` 二進位檔。
@@ -57,11 +59,11 @@
 
 ### Requirement: A chart is tested by rendering it
 
-繪圖套件的每一個 `CreateXxx` SHALL 由測試產生實際輸出檔（`gplot` 存成圖檔、`plot` 存成 HTML）並斷言檔案非空，而不是只斷言回傳值不是 nil。文件寫明「輸入不足時回傳 nil」的情況 SHALL 也各有一個測試。
+繪圖套件的每一個 `CreateXxx` SHALL 由測試產生實際輸出檔（`gplot` 存成圖檔、`plot` 存成 HTML）並斷言檔案非空，而不是只斷言回傳的錯誤是 nil。文件寫明會回傳錯誤的每一種輸入 SHALL 也各有一個測試，斷言錯誤不為 nil 且圖表為 nil。
 
 #### Scenario: A chart that builds but cannot render
 - **WHEN** 某個 `CreateXxx` 回傳的圖表無法寫出檔案
-- **THEN** 該圖表的測試失敗，即使建構本身沒有回傳 nil
+- **THEN** 該圖表的測試失敗，即使建構本身沒有回傳錯誤
 
 ### Requirement: A ported numerical routine is tested against its own mathematics
 
@@ -74,4 +76,3 @@
 #### Scenario: An orthogonal rotation that is not orthogonal
 - **WHEN** `GPForth` 回傳的旋轉矩陣不滿足 T'T = I
 - **THEN** 測試失敗，因為旋轉後的載荷已經不代表同一個模型
-
