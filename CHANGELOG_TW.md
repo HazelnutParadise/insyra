@@ -95,6 +95,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 環境無法保存的變數（例如 `regression` 的結果）會在儲存時印出一行 `warning:`，在 REPL 或腳本中每個變數只提示一次，不再無聲無息地被丟掉或變成 map。產生它的命令照常成功，其他變數照常保存。直接使用 `cli/env` 的 Go 程式可以用新增的 `Manager.SaveVariables` 取得同一份清單，`SaveState` 仍然只在檔案沒寫成時回傳錯誤。
 - 先前版本寫入的 `state.json` 仍可讀取，下次儲存時改寫成新格式。含 NaN 值的環境現在可以 `env export`，`env import` 也會完整保留超過 2^53 的整數。
 - `pivot … agg <op>` 改用 `groupby` 與 `resample` 的方式讀取 op，和文件原本的描述一致。只有 `pivot` 接受、文件也從未提過的 `agg average` 現在會被拒絕，`agg custom` 也一樣，它原本就會失敗，因為 CLI 無法傳入函式。
+- `parsenums` 跟著 `ParseNumbers` 改變：數字全是整數的 list 會轉成 `int64`，不再是 `float64`。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。
