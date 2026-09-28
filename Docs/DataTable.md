@@ -806,7 +806,10 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 
 **Behavior:**
 
-- All database operations (CREATE TABLE, ALTER TABLE, INSERT, etc.) are executed inside a single database transaction. If any step fails, the transaction is rolled back and no partial changes are committed.
+- On SQLite and PostgreSQL every statement (CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT) runs in one transaction. If any step fails, the transaction is rolled back and the database is left as it was.
+- MySQL commits every CREATE, ALTER, DROP and RENAME statement on its own, ending any transaction it is in (MySQL Reference Manual, [Statements That Cause an Implicit Commit](https://dev.mysql.com/doc/refman/8.4/en/implicit-commit.html)), so a transaction cannot undo them there:
+  - `SQLActionIfTableExistsReplace` writes the rows into a new staging table named `insyra_new_<random>`, then puts it in place with one `RENAME TABLE` statement, which MySQL runs atomically, and drops the old table. A write that fails, or is cancelled, drops the staging table and leaves the old table as it was. The staging table and the renamed old table have names of their own, so the account needs the CREATE, INSERT, ALTER and DROP privileges on the database, not only on the table being replaced; without them the call fails before anything changes. A table that another table references by foreign key is refused, also before anything changes, because the rename would move that reference to the old copy. If the old copy cannot be dropped after the swap, the call returns an error naming `insyra_old_<random>`, which still holds the old rows, while the target already holds the new ones. When the table does not exist, Replace creates it; if another session creates it meanwhile, the call fails with `already exists` instead of dropping that table.
+  - A table created because it did not exist, and columns added in append mode, are committed before the rows are written, and the rows after them are committed batch by batch. A write that fails there can leave the new table, the added columns and the batches written before the failure. Appending to a table that already has every column runs in one transaction.
 - Rows are inserted with **batched multi-value INSERTs**. The default batch size is 500 rows; tune via `ToSQLOptions.BatchSize`. Note that `BatchSize × column-count` must stay below the driver's bind-parameter limit (PostgreSQL/MySQL: 65535).
 - When `IfExists` is set to append mode, `ToSQL` fetches the existing table's columns once and adds any missing ones via `ALTER TABLE` before inserting (no per-row schema introspection).
 - Type inference samples the first non-nil value in each column. Recognized types include `time.Time` (→ `DATETIME`/`TIMESTAMP`), `[]byte` (→ `BLOB`/`BYTEA`), `sql.Null*` (unwraps the underlying value), and pointers (dereferenced). All-nil columns fall back to `TEXT`.
@@ -832,12 +835,12 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 **SQLActionIfTableExists values:**
 
 - `SQLActionIfTableExistsFail` — return an error if the table exists (default)
-- `SQLActionIfTableExistsReplace` — drop and recreate the table
+- `SQLActionIfTableExistsReplace` — replace the table with one holding only the new rows. SQLite and PostgreSQL drop and recreate it inside the transaction; MySQL writes a staging table and renames it in (see Behavior)
 - `SQLActionIfTableExistsAppend` — keep the table and append rows, adding missing columns if needed
 
 **Returns:**
 
-- `error`: Error information, returns nil if successful; if any DDL/DML step fails, an error is returned and the entire operation is rolled back.
+- `error`: Error information, returns nil if successful. What a failure leaves behind depends on the database; see Behavior.
 
 **Examples:**
 

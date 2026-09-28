@@ -479,7 +479,7 @@
 | SEC-18 | ~~Low~~ 已修正（cli-message-and-help-fixes） | 每次呼叫重新 `regexp.MustCompile` | lp/lp.go:252-253, 271；lpgen/lingo.go:33-37, 130-134；datafetch/googleMapsCommentCrawler.go:131, 361, 369 | 提到套件層 `var` |
 | SEC-19 | ~~Low~~ 已修正（lp-pure-go-default）：`untar` 與解壓程式碼已刪除 | `untar` 在 `io.Copy` 失敗時 `outFile` 未關閉；tar/zip 解壓無大小上限；`TypeReg` 沒先 `MkdirAll(filepath.Dir)` | lp/init.go:387-392, 424-432 | `defer Close`；`io.CopyN` 上限；補 MkdirAll |
 | SEC-20 | ~~Low~~ 已修正（harden-limits-and-permissions） | `PipInstall(dep)` 把使用者字串當單一 argv 交給 `uv pip install`，`--requirement=/path` 可安裝任意需求檔 | py/py.go:305, 323 | 拒絕 `-` 開頭或加 `--` |
-| SEC-21 | Med（未實測，依 MySQL 文件推論） | MySQL 上 `IfExists: Replace` 的 `DROP TABLE` 在 `db.Transaction` 內，但 MySQL DDL 隱式 commit，後續 INSERT 失敗（例如 `BatchSize × 欄數 > 65535`）時舊表已無法還原 | datatable_to_sql.go:213 | Replace 改「建新表 → 寫入 → RENAME 交換 → DROP 舊表」 |
+| SEC-21 | ~~Med~~ 已修正（sql-replace-keeps-old-table：MySQL 上改為寫入暫存表再以一道 `RENAME TABLE` 換上；依 MySQL 手冊推論，未在 MySQL 實測，流程在 SQLite 上以同一路徑測試） | MySQL 上 `IfExists: Replace` 的 `DROP TABLE` 在 `db.Transaction` 內，但 MySQL DDL 隱式 commit，後續 INSERT 失敗（例如 `BatchSize × 欄數 > 65535`）時舊表已無法還原 | datatable_to_sql.go:213 | Replace 改「建新表 → 寫入 → RENAME 交換 → DROP 舊表」 |
 
 ### 測試品質（第二輪，覆蓋率與 CI 實際執行面）
 
@@ -625,7 +625,7 @@
 | SEC-17 | [#295](https://github.com/HazelnutParadise/insyra/issues/295) |  |
 | SEC-18 | [#296](https://github.com/HazelnutParadise/insyra/issues/296) |  |
 | SEC-20 | [#297](https://github.com/HazelnutParadise/insyra/issues/297) |  |
-| SEC-21 | [#298](https://github.com/HazelnutParadise/insyra/issues/298) |  |
+| SEC-21 | [#298](https://github.com/HazelnutParadise/insyra/issues/298) | 已修正（sql-replace-keeps-old-table） |
 | TS-1 | [#299](https://github.com/HazelnutParadise/insyra/issues/299) |  |
 | TS-2 | [#300](https://github.com/HazelnutParadise/insyra/issues/300) |  |
 | TS-3 | [#301](https://github.com/HazelnutParadise/insyra/issues/301) |  |

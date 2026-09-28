@@ -2,7 +2,9 @@ package insyra
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -38,8 +40,17 @@ type ToSQLOptions struct {
 type SQLActionIfTableExists int
 
 const (
+	// SQLActionIfTableExistsFail returns an error when the table exists.
 	SQLActionIfTableExistsFail SQLActionIfTableExists = iota
+	// SQLActionIfTableExistsReplace replaces the table with one holding only
+	// the new rows. A write that fails leaves the old table as it was: on
+	// SQLite and PostgreSQL the drop and recreate run in one transaction, and
+	// on MySQL, whose DDL commits on its own, the rows go into a staging
+	// table that RENAME TABLE puts in place. On MySQL a table that another
+	// table references by foreign key is refused.
 	SQLActionIfTableExistsReplace
+	// SQLActionIfTableExistsAppend keeps the table, adds any missing columns
+	// and appends the rows.
 	SQLActionIfTableExistsAppend
 )
 
@@ -70,10 +81,20 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 	if len(options) > 0 {
 		opts = options[0]
 	}
+	return dt.toSQL(ctx, db, tableName, opts, db.Name() == "mysql")
+}
+
+// toSQL writes the table with options already resolved. replaceByRename
+// chooses how IfExists Replace swaps out an existing table: MySQL commits
+// every DDL statement at once, so a DROP inside a transaction cannot be
+// rolled back, and there the new rows go into a staging table that a rename
+// puts in place. SQLite and PostgreSQL run DDL inside a transaction, where
+// dropping and recreating is already undone by a failed write, and a rename
+// would carry the views that read the table over to the old copy.
+func (dt *DataTable) toSQL(ctx context.Context, db *gorm.DB, tableName string, opts ToSQLOptions, replaceByRename bool) error {
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = defaultBatchSize
 	}
-
 	cols, rows := dt.collectRowsForSQL(opts.HasRowNames)
 	if len(rows) == 0 {
 		return fmt.Errorf("data is empty")
@@ -81,6 +102,19 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 
 	fullName := qualifiedTableName(opts.Schema, tableName)
 	tx := db.WithContext(ctx)
+	if opts.IfExists == SQLActionIfTableExistsReplace && replaceByRename {
+		exists, err := tableExists(tx, tx.Name(), opts.Schema, tableName)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return replaceThroughStagingTable(tx, fullName, tableName, opts.Schema, cols, rows, opts)
+		}
+		// Nothing to replace, so the table is created. Should another session
+		// create it before the transaction below looks again, refuse rather
+		// than fall back to dropping it, which is what this path avoids.
+		opts.IfExists = SQLActionIfTableExistsFail
+	}
 	return saveRowsToDB(tx, fullName, tableName, opts.Schema, cols, rows, opts)
 }
 
@@ -169,40 +203,14 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 	return db.Transaction(func(tx *gorm.DB) error {
 		dialect := tx.Name()
 
-		// Resolve column types: caller-provided overrides take precedence;
-		// otherwise infer from the first non-nil sample in each column.
-		columnTypes := make(map[string]string, len(cols))
-		if len(opts.ColumnTypes) > 0 {
-			maps.Copy(columnTypes, opts.ColumnTypes)
-		}
-		for ci, col := range cols {
-			if _, ok := columnTypes[col]; ok {
-				continue
-			}
-			var sample any
-			for _, row := range rows {
-				if row[ci] != nil {
-					sample = row[ci]
-					break
-				}
-			}
-			columnTypes[col] = inferSQLType(sample, dialect)
-		}
-		if opts.HasRowNames {
-			if _, ok := columnTypes["row_name"]; !ok {
-				columnTypes["row_name"] = textType(dialect)
-			}
-		}
-
 		// All identifiers below are quoted per-dialect to prevent SQL injection
 		// through table/schema/column names (which may originate from untrusted
 		// CSV/JSON headers), and column types are validated against a whitelist.
-		quotedTable := quoteQualifiedName(dialect, schema, plainTable)
-		for _, c := range cols {
-			if err := validateSQLType(columnTypes[c]); err != nil {
-				return err
-			}
+		columnTypes, err := resolveSQLColumnTypes(dialect, cols, rows, opts)
+		if err != nil {
+			return err
 		}
+		quotedTable := quoteQualifiedName(dialect, schema, plainTable)
 
 		exists, err := tableExists(tx, dialect, schema, plainTable)
 		if err != nil {
@@ -224,11 +232,7 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 		}
 
 		if !exists {
-			colDefs := make([]string, 0, len(cols))
-			for _, c := range cols {
-				colDefs = append(colDefs, fmt.Sprintf("%s %s", quoteSQLIdent(dialect, c), columnTypes[c]))
-			}
-			createSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s);", quotedTable, strings.Join(colDefs, ", "))
+			createSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s);", quotedTable, sqlColumnDefs(dialect, cols, columnTypes))
 			if err := tx.Exec(createSQL).Error; err != nil {
 				return err
 			}
@@ -261,32 +265,245 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 			}
 		}
 
-		// Batched multi-value INSERT. Table and column identifiers are quoted
-		// (squirrel emits them verbatim); only VALUES are parameterized.
-		quotedCols := make([]string, len(cols))
-		for i, c := range cols {
-			quotedCols[i] = quoteSQLIdent(dialect, c)
-		}
-		ph := placeholderFormat(dialect)
-		for start := 0; start < len(rows); start += opts.BatchSize {
-			end := start + opts.BatchSize
-			if end > len(rows) {
-				end = len(rows)
-			}
-			builder := sq.Insert(quotedTable).PlaceholderFormat(ph).Columns(quotedCols...)
-			for _, row := range rows[start:end] {
-				builder = builder.Values(row...)
-			}
-			sqlStr, args, err := builder.ToSql()
-			if err != nil {
-				return err
-			}
-			if err := tx.Exec(sqlStr, args...).Error; err != nil {
-				return err
-			}
-		}
-		return nil
+		return insertSQLRows(tx, dialect, quotedTable, cols, rows, opts.BatchSize)
 	})
+}
+
+// resolveSQLColumnTypes gives every column its SQL type: the caller's
+// ColumnTypes first, otherwise one inferred from the column's first non-nil
+// value. Every type is checked against the safe character set.
+func resolveSQLColumnTypes(dialect string, cols []string, rows [][]any, opts ToSQLOptions) (map[string]string, error) {
+	columnTypes := make(map[string]string, len(cols))
+	if len(opts.ColumnTypes) > 0 {
+		maps.Copy(columnTypes, opts.ColumnTypes)
+	}
+	for ci, col := range cols {
+		if _, ok := columnTypes[col]; ok {
+			continue
+		}
+		var sample any
+		for _, row := range rows {
+			if row[ci] != nil {
+				sample = row[ci]
+				break
+			}
+		}
+		columnTypes[col] = inferSQLType(sample, dialect)
+	}
+	if opts.HasRowNames {
+		if _, ok := columnTypes["row_name"]; !ok {
+			columnTypes["row_name"] = textType(dialect)
+		}
+	}
+	for _, c := range cols {
+		if err := validateSQLType(columnTypes[c]); err != nil {
+			return nil, err
+		}
+	}
+	return columnTypes, nil
+}
+
+// sqlColumnDefs is the column list of a CREATE TABLE.
+func sqlColumnDefs(dialect string, cols []string, columnTypes map[string]string) string {
+	colDefs := make([]string, 0, len(cols))
+	for _, c := range cols {
+		colDefs = append(colDefs, fmt.Sprintf("%s %s", quoteSQLIdent(dialect, c), columnTypes[c]))
+	}
+	return strings.Join(colDefs, ", ")
+}
+
+// insertSQLRows writes rows with batched multi-value INSERTs. Table and column
+// identifiers are quoted (squirrel emits them verbatim); only VALUES are
+// parameterized.
+func insertSQLRows(tx *gorm.DB, dialect, quotedTable string, cols []string, rows [][]any, batchSize int) error {
+	quotedCols := make([]string, len(cols))
+	for i, c := range cols {
+		quotedCols[i] = quoteSQLIdent(dialect, c)
+	}
+	ph := placeholderFormat(dialect)
+	for start := 0; start < len(rows); start += batchSize {
+		end := min(start+batchSize, len(rows))
+		builder := sq.Insert(quotedTable).PlaceholderFormat(ph).Columns(quotedCols...)
+		for _, row := range rows[start:end] {
+			builder = builder.Values(row...)
+		}
+		sqlStr, args, err := builder.ToSql()
+		if err != nil {
+			return err
+		}
+		if err := tx.Exec(sqlStr, args...).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// stagingCleanupTimeout bounds each statement that cleans up after a staged
+// replace. The cleanup outlives the caller's context, so that cancelling the
+// write does not leave the staging table behind, but it must not wait without
+// end on a lock that an interrupted INSERT still holds.
+const stagingCleanupTimeout = 30 * time.Second
+
+// replaceThroughStagingTable replaces an existing table without ever leaving
+// the caller without it, for a database whose DDL commits on its own.
+//
+// A table that another table references by foreign key is refused before
+// anything changes: a rename would move that reference to the old copy. The
+// rows then go into a new staging table, inside a transaction of their own.
+// Only once they are all written does a rename put the staging table under the
+// target's name and the old table under a backup name, which is then dropped.
+// A failure before the rename drops the staging table and leaves the target
+// untouched.
+func replaceThroughStagingTable(db *gorm.DB, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
+	dialect := db.Name()
+	columnTypes, err := resolveSQLColumnTypes(dialect, cols, rows, opts)
+	if err != nil {
+		return err
+	}
+	referrer, err := tableReferencedBy(db, dialect, schema, plainTable)
+	if err != nil {
+		return err
+	}
+	if referrer != "" {
+		return fmt.Errorf("table %s is referenced by a foreign key from %s, and replacing it would leave that reference on the old copy; nothing was changed: drop the constraint first, or append", fullName, referrer)
+	}
+	var random [8]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return fmt.Errorf("naming the staging table: %w", err)
+	}
+	suffix := hex.EncodeToString(random[:])
+	staging, backup := "insyra_new_"+suffix, "insyra_old_"+suffix
+	quotedStaging := quoteQualifiedName(dialect, schema, staging)
+
+	// cleanup runs one statement with a context the caller cannot cancel.
+	base := context.WithoutCancel(db.Statement.Context)
+	cleanup := func(run func(tx *gorm.DB) error) error {
+		ctx, cancel := context.WithTimeout(base, stagingCleanupTimeout)
+		defer cancel()
+		return run(db.WithContext(ctx))
+	}
+	dropStaging := func(cause error) error {
+		if err := cleanup(func(tx *gorm.DB) error {
+			return tx.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", quotedStaging)).Error
+		}); err != nil {
+			return errors.Join(cause, fmt.Errorf("could not drop the staging table %s: %w", qualifiedTableName(schema, staging), err))
+		}
+		return cause
+	}
+
+	createSQL := fmt.Sprintf("CREATE TABLE %s (%s);", quotedStaging, sqlColumnDefs(dialect, cols, columnTypes))
+	if err := db.Exec(createSQL).Error; err != nil {
+		// Nothing was created, so there is nothing to drop.
+		return fmt.Errorf("creating the staging table %s: %w (replacing a table on MySQL creates tables under new names, which needs the CREATE, INSERT, ALTER and DROP privileges on the database)",
+			qualifiedTableName(schema, staging), err)
+	}
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		return insertSQLRows(tx, dialect, quotedStaging, cols, rows, opts.BatchSize)
+	}); err != nil {
+		return dropStaging(err)
+	}
+
+	stmts := renameSwapStatements(dialect, schema, plainTable, staging, backup)
+	var swapErr error
+	if len(stmts) == 1 {
+		// MySQL's RENAME TABLE is atomic on its own and commits on its own,
+		// so a transaction around it would only add a COMMIT that can fail
+		// after the rename has happened.
+		swapErr = db.Exec(stmts[0]).Error
+	} else {
+		// Two statements: one transaction, so a failed second one undoes
+		// the first.
+		swapErr = db.Transaction(func(tx *gorm.DB) error {
+			for _, stmt := range stmts {
+				if err := tx.Exec(stmt).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+	if swapErr != nil {
+		// The rename may have run even though no answer came back, over a
+		// dropped connection or a context cancelled at that moment. Look.
+		var swapped bool
+		checkErr := cleanup(func(tx *gorm.DB) error {
+			var err error
+			swapped, err = renameSwapHappened(tx, dialect, schema, staging, backup)
+			return err
+		})
+		if checkErr != nil {
+			return errors.Join(fmt.Errorf("replacing table %s: %w", fullName, swapErr),
+				fmt.Errorf("could not check whether the rename happened: %w; if %s exists, it holds the old rows and %s holds the new ones, otherwise %s holds the new rows",
+					checkErr, qualifiedTableName(schema, backup), fullName, qualifiedTableName(schema, staging)))
+		}
+		if !swapped {
+			return dropStaging(fmt.Errorf("replacing table %s: %w", fullName, swapErr))
+		}
+	}
+	if err := cleanup(func(tx *gorm.DB) error {
+		return tx.Exec(fmt.Sprintf("DROP TABLE %s;", quoteQualifiedName(dialect, schema, backup))).Error
+	}); err != nil {
+		return fmt.Errorf("table %s now holds the new rows, but its previous contents remain in %s, which could not be dropped: %w",
+			fullName, qualifiedTableName(schema, backup), err)
+	}
+	return nil
+}
+
+// renameSwapHappened reports whether the rename of a staged replace took
+// effect: the staging table is gone and the backup exists.
+func renameSwapHappened(db *gorm.DB, dialect, schema, staging, backup string) (bool, error) {
+	stagingLeft, err := tableExists(db, dialect, schema, staging)
+	if err != nil {
+		return false, err
+	}
+	backupMade, err := tableExists(db, dialect, schema, backup)
+	if err != nil {
+		return false, err
+	}
+	return !stagingLeft && backupMade, nil
+}
+
+// tableReferencedBy names a table, other than table itself, that references
+// table by foreign key, or returns "" when none does or the dialect is one the
+// staged replace does not run on.
+func tableReferencedBy(db *gorm.DB, dialect, schema, table string) (string, error) {
+	var names []string
+	var q *gorm.DB
+	switch dialect {
+	case "mysql":
+		const refs = "SELECT TABLE_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE REFERENCED_TABLE_NAME = ? AND NOT (TABLE_NAME = REFERENCED_TABLE_NAME AND CONSTRAINT_SCHEMA = UNIQUE_CONSTRAINT_SCHEMA) AND UNIQUE_CONSTRAINT_SCHEMA = "
+		if schema != "" {
+			q = db.Raw(refs+"? LIMIT 1", table, schema)
+		} else {
+			q = db.Raw(refs+"(SELECT DATABASE()) LIMIT 1", table)
+		}
+	case "sqlite":
+		q = db.Raw(`SELECT m.name FROM sqlite_master AS m JOIN pragma_foreign_key_list(m.name) AS f WHERE m.type = 'table' AND f."table" = ? COLLATE NOCASE AND m.name <> ? COLLATE NOCASE LIMIT 1`, table, table)
+	default:
+		return "", nil
+	}
+	if err := q.Scan(&names).Error; err != nil {
+		return "", err
+	}
+	if len(names) == 0 {
+		return "", nil
+	}
+	return names[0], nil
+}
+
+// renameSwapStatements puts staging under the name table and table under the
+// name backup. MySQL does it in one RENAME TABLE statement, which it runs
+// atomically, so no session sees a moment with no table under the name.
+// Elsewhere it is two ALTER TABLE statements.
+func renameSwapStatements(dialect, schema, table, staging, backup string) []string {
+	q := func(name string) string { return quoteQualifiedName(dialect, schema, name) }
+	if dialect == "mysql" {
+		return []string{fmt.Sprintf("RENAME TABLE %s TO %s, %s TO %s", q(table), q(backup), q(staging), q(table))}
+	}
+	return []string{
+		fmt.Sprintf("ALTER TABLE %s RENAME TO %s", q(table), quoteSQLIdent(dialect, backup)),
+		fmt.Sprintf("ALTER TABLE %s RENAME TO %s", q(staging), quoteSQLIdent(dialect, table)),
+	}
 }
 
 func placeholderFormat(dialect string) sq.PlaceholderFormat {
