@@ -22,11 +22,12 @@ type EWMDataList struct {
 	opts    EWMOptions
 	alpha   float64
 	parent  *DataList
-	err     string
+	err     *ErrorInfo
 }
 
 // EWM builds an exponentially weighted view over dl. Invalid decay options
-// emit a warning and make every reducer return an empty DataList.
+// record an error on dl and make every reducer return an empty DataList
+// carrying it.
 func (dl *DataList) EWM(opts EWMOptions) *EWMDataList {
 	e := &EWMDataList{opts: opts, parent: dl}
 	if opts.MinObs <= 0 {
@@ -44,32 +45,34 @@ func (dl *DataList) EWM(opts EWMOptions) *EWMDataList {
 		decayCount++
 	}
 	if decayCount != 1 {
-		e.err = "EWM: exactly one of Alpha, Span, or HalfLife must be specified"
-		dl.fail("EWM", "%s", e.err)
+		dl.fail("EWM", "exactly one of Alpha, Span, or HalfLife must be specified")
+		e.err = dl.Err()
 		return e
 	}
 
+	var msg string
 	switch {
 	case opts.Alpha != 0:
 		if math.IsNaN(opts.Alpha) || math.IsInf(opts.Alpha, 0) || opts.Alpha <= 0 || opts.Alpha > 1 {
-			e.err = "EWM: Alpha must be in (0, 1]"
+			msg = "Alpha must be in (0, 1]"
 		}
 		e.alpha = opts.Alpha
 	case opts.Span != 0:
 		if math.IsNaN(opts.Span) || math.IsInf(opts.Span, 0) || opts.Span < 1 {
-			e.err = "EWM: Span must be >= 1"
+			msg = "Span must be >= 1"
 		} else {
 			e.alpha = 2 / (opts.Span + 1)
 		}
 	case opts.HalfLife != 0:
 		if math.IsNaN(opts.HalfLife) || math.IsInf(opts.HalfLife, 0) || opts.HalfLife <= 0 {
-			e.err = "EWM: HalfLife must be > 0"
+			msg = "HalfLife must be > 0"
 		} else {
 			e.alpha = 1 - math.Exp(math.Log(0.5)/opts.HalfLife)
 		}
 	}
-	if e.err != "" {
-		dl.fail("EWM", "%s", e.err)
+	if msg != "" {
+		dl.fail("EWM", "%s", msg)
+		e.err = dl.Err()
 		return e
 	}
 
@@ -108,10 +111,8 @@ func (e *EWMDataList) Std() *DataList {
 }
 
 func (e *EWMDataList) result(values []any) *DataList {
-	if e.err != "" {
-		out := NewDataList()
-		out.name = e.srcName
-		return out
+	if e.err != nil {
+		return emptyWindowResult(e.srcName, e.err)
 	}
 	out := NewDataList(values...)
 	out.name = e.srcName
@@ -122,7 +123,7 @@ func (e *EWMDataList) result(values []any) *DataList {
 // emitted value in place but still decay the accumulated weights, matching
 // pandas' default ignore_na=false behavior.
 func (e *EWMDataList) compute() ([]any, []any) {
-	if e.err != "" {
+	if e.err != nil {
 		return []any{}, []any{}
 	}
 	means := make([]any, len(e.srcData))

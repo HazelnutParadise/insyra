@@ -74,6 +74,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ToSQL` 使用 `IfExists: SQLActionIfTableExistsReplace` 時，MySQL 上寫入失敗不會再弄丟舊表。MySQL 的 `DROP TABLE` 一執行就會提交，即使放在交易裡也一樣，所以之後的 `INSERT` 一旦失敗（例如超過 65,535 個參數上限），舊表和新資料都不見了。現在 MySQL 上的 Replace 會先把資料寫進暫存表（`insyra_new_<亂數>`），再用一道 `RENAME TABLE` 換上，最後刪掉舊表。寫入失敗或被取消時，會刪掉暫存表，舊表維持原狀。暫存表有自己的名稱，所以 MySQL 上的 Replace 現在需要整個資料庫的 CREATE、INSERT、ALTER、DROP 權限，只有那張表的權限不夠。被其他表以外鍵參照的表也會被拒絕。這兩種情況都會在改動任何東西之前就失敗。SQLite 與 PostgreSQL 的 DDL 可以放在交易裡，仍在同一個交易中刪除再重建。`ToSQL` 文件也不再宣稱每種資料庫的每道語句失敗時都會復原：在 MySQL 上，因為不存在而新建的表，以及 append 模式新增的欄位，在寫入失敗後會留下來。
 - **BREAKING**：`DataList.WeightedMean` 與 `WeightedMovingAverage` 的權重改收 `[]float64`，跟 `RollingOptions.Weights` 用同一個型別。以前收 `any`，執行時才判斷傳進來的是 slice、陣列還是 `DataList`，其他型別一律當成空的權重，最後以「長度不符」報錯，看不出真正的問題是型別。傳 `[]float64` 的程式不用改；傳 `DataList`、`[]int` 或 `[]any` 的程式會編譯失敗，要先把權重轉成 `[]float64`。計算結果不變。
 - **BREAKING**：`DataList.ParseNumbers` 改用 CSV 讀檔判斷欄位型別的規則。list 裡的數字全是整數、也沒有空字串時，全部轉成 `int64`；否則全部轉成 `float64`，空字串變成 `NaN`。以前一律轉成 `float64`，所以 `"9007199254740993"` 會變成 `9007199254740992`，`NewDataList("1", 2).ParseNumbers()` 得到 `[1.0 2.0]`，現在則是 `int64`。list 裡原本就是數字的值也一起判斷、轉成同一種型別。`nil` 保持原樣，不再被當成失敗；不是數字的文字與 `bool` 之類的值保持原樣，並合併成一筆錯誤，說明有幾個值沒轉、第一個在第幾列，以前是每個值各記一次。
+- 視窗類轉換無法執行時，回傳的 list 會帶著原因。`Rolling` 的 `Window` 小於 1、`MinObs` 大於 `Window` 或 `Weights` 長度不對，`EWM` 沒有恰好指定一個衰減參數，`Apply(nil)`，以及 `Corr`、`Cov`、`Beta` 傳入 `nil` 的 list，以前回傳的空 list 的 `Err()` 是 `nil`，現在會帶著錯誤。`DataTable.RollingCol` 與 `EWMCol` 是在欄位的副本上計算，所以選項不合法時，錯誤只記在副本上，呼叫端手上沒有任何東西記到；現在表格也會記錄。`ShiftCol`、`DiffCol`、`PctChangeCol`、四個 `Cum*Col` 與三個視窗 builder 遇到不存在的欄位時，回傳帶著表格錯誤的空 list。分組轉換遇到不合法的參數（`RollingCol` 的 `Window: 0`、`DiffCol` 的 `periods` 為 0、`ShiftCol` 給兩個填補值）時，以前會回傳整欄 `nil` 且什麼都沒記錄；現在 `.As` 會在表格記錄錯誤，並回傳帶著錯誤的空 list。失敗的結果仍是空的，不會變成整欄 `nil`，因為合法的視窗觀察值不足時也會回傳整欄 `nil`。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
@@ -95,6 +96,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 環境無法保存的變數（例如 `regression` 的結果）會在儲存時印出一行 `warning:`，在 REPL 或腳本中每個變數只提示一次，不再無聲無息地被丟掉或變成 map。產生它的命令照常成功，其他變數照常保存。直接使用 `cli/env` 的 Go 程式可以用新增的 `Manager.SaveVariables` 取得同一份清單，`SaveState` 仍然只在檔案沒寫成時回傳錯誤。
 - 先前版本寫入的 `state.json` 仍可讀取，下次儲存時改寫成新格式。含 NaN 值的環境現在可以 `env export`，`env import` 也會完整保留超過 2^53 的整數。
 - `pivot … agg <op>` 改用 `groupby` 與 `resample` 的方式讀取 op，和文件原本的描述一致。只有 `pivot` 接受、文件也從未提過的 `agg average` 現在會被拒絕，`agg custom` 也一樣，它原本就會失敗，因為 CLI 無法傳入函式。
+- `rolling` 遇到程式庫拒絕的視窗設定時會回報錯誤，不存任何變數：以前 `rolling x 0 mean` 與 `rolling x 2 mean minobs 3` 會印出 `saved as $result` 並存一個空的 list。`ewm` 改為回報程式庫的錯誤，不再從結果長度推斷是否失敗。
 - `parsenums` 跟著 `ParseNumbers` 改變：數字全是整數的 list 會轉成 `int64`，不再是 `float64`。
 
 ### `ml` 與 `nn`

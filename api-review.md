@@ -169,7 +169,7 @@
 | D-15 | Low（Update 函式名已修正 batch 3；命名傳遞待決） | 小行為不一致：`InsertAt` 越界改成 append（pandas raise）；`Update` 的 Err 記成 `ReplaceAtIndex`（函式名錯）；`Sample`/`Shuffle` 把結果改名 `name_Sampled`/`name_Shuffled`，`Filter`/`Concat` 丟掉名稱，`Shift/Diff/Cum*` 保留名稱。名稱傳遞規則沒有一致（準則 6、7） | datalist.go:221, 203；datalist_sampling.go | 統一：衍生 list 一律沿用原名 |
 | D-16 | ~~Low~~ 已修正（parse-numbers-types-like-csv：套用 CSV 讀檔的欄位型別規則，全為整數時保留 `int64`；`Capitalize` 改用 `language.Und`，x/text 對英文本來就沒有特別規則，輸出不變） | `ParseNumbers` 把所有元素轉成 float64，int64 大於 2^53 會失真，與 CSV 讀入保留 int64 的決策矛盾；`Capitalize` 寫死 `language.English`（準則 13） | datalist.go:1977, 1132 | 整數保留整數；語言由參數決定或用 `language.Und` |
 | D-17 | ~~Low~~ 已修正（batch 3） | 文件：`Len` 無 doc；`ToF64Slice` doc 重複一行且沒寫「非數值變 0」（既有 follow-up）；`MovingStdev` doc 寫 `MovingStdDev`；`Drop` doc 寫「Returns an error」但回傳 `*DataList`；`Rolling*`/`EWM*` 的 doc 是本套件寫得最完整的，其餘應比照（準則 E） | datalist.go:606, 2015-2019, 982, 456 | 修 |
-| D-18 | Low | Rolling/EWM/Expanding 選項無效時，reducer 回傳「空 list」而不是「同長度全 nil」。使用者把結果 `AppendCols` 進表會因長度不符再錯一次，離真正原因更遠（準則 7） | datalist_window.go:301-306；datalist_ewm.go:107-115 | 回同長度全 nil |
+| D-18 | ~~Low~~ 已修正（window-failures-carry-the-error：依既有慣例「失敗回傳帶著錯誤的空 list」修正，未採用「同長度全 nil」，因為合法視窗觀察值不足時也回傳整列 nil，兩者會分不出來。實測原本的空 list 沒帶錯誤；`RollingCol`／`EWMCol` 的選項錯誤只記在欄位副本上，表格與結果都看不到；分組轉換的參數錯誤會變成整欄 nil。三者一併修正，CLI `rolling`／`ewm` 改為回報錯誤） | Rolling/EWM/Expanding 選項無效時，reducer 回傳「空 list」而不是「同長度全 nil」。使用者把結果 `AppendCols` 進表會因長度不符再錯一次，離真正原因更遠（準則 7） | datalist_window.go:301-306；datalist_ewm.go:107-115 | 回同長度全 nil |
 | D-19 | ~~Med~~ 已修正（batch 3） | `init.go` 在 import 時就以 Info 印出「Welcome to Insyra」橫幅，且用 `LogInfo("", "", …)`。程式庫不得在 import 時輸出（準則 14；併入 K-17 的 logger 決策） | init.go:7 | 移除橫幅，改由 CLI 自己印 |
 
 ### core — DataTable 第一批（datatable.go、colname/rowname/name/colindex、swap/sort/map/json/csv、summary/describe、filters、replace、sampling、window、resample、groupby、pivot、merge）
@@ -544,7 +544,7 @@
 | D-13、QU-3 | [#221](https://github.com/HazelnutParadise/insyra/issues/221) |  |
 | D-14 | [#222](https://github.com/HazelnutParadise/insyra/issues/222) |  |
 | D-16 | [#223](https://github.com/HazelnutParadise/insyra/issues/223) | 已關閉（parse-numbers-types-like-csv） |
-| D-18 | [#224](https://github.com/HazelnutParadise/insyra/issues/224) |  |
+| D-18 | [#224](https://github.com/HazelnutParadise/insyra/issues/224) | 已關閉（window-failures-carry-the-error） |
 | T-11、T-20、MK-3 | [#225](https://github.com/HazelnutParadise/insyra/issues/225) | 已關閉（one-column-selector；T-20 的 mode 魔數與 MK-3 的其餘項目另開） |
 | T-13 | [#226](https://github.com/HazelnutParadise/insyra/issues/226) | 已修正（filter-rows-where） |
 | T-14 | [#227](https://github.com/HazelnutParadise/insyra/issues/227) |  |

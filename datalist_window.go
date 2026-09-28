@@ -214,7 +214,7 @@ type RollingDataList struct {
 	srcName string
 	opts    RollingOptions
 	parent  *DataList
-	err     string
+	err     *ErrorInfo
 }
 
 // Rolling builds a rolling-window view over dl. The returned RollingDataList
@@ -223,20 +223,20 @@ type RollingDataList struct {
 func (dl *DataList) Rolling(opts RollingOptions) *RollingDataList {
 	r := &RollingDataList{opts: opts, parent: dl}
 	if opts.Window <= 0 {
-		r.err = "Rolling: Window must be > 0"
-		dl.fail("Rolling", "%s", r.err)
+		dl.fail("Rolling", "Window must be > 0")
+		r.err = dl.Err()
 		return r
 	}
 	if opts.MinObs <= 0 {
 		r.opts.MinObs = opts.Window
 	} else if opts.MinObs > opts.Window {
-		r.err = "Rolling: MinObs cannot exceed Window"
-		dl.fail("Rolling", "%s", r.err)
+		dl.fail("Rolling", "MinObs cannot exceed Window")
+		r.err = dl.Err()
 		return r
 	}
 	if len(opts.Weights) > 0 && len(opts.Weights) != opts.Window {
-		r.err = "Rolling: Weights length must equal Window"
-		dl.fail("Rolling", "%s", r.err)
+		dl.fail("Rolling", "Weights length must equal Window")
+		r.err = dl.Err()
 		return r
 	}
 	dl.AtomicDo(func(dl *DataList) {
@@ -301,15 +301,23 @@ func (r *RollingDataList) collect(i, lo, hi int) (vals []float64, weights []floa
 	return vals, weights
 }
 
+// emptyWindowResult is what a reducer returns when its view could not be
+// built or the reducer was misused: an empty list carrying err, the way
+// failedResult does for the other transforms.
+func emptyWindowResult(name string, err *ErrorInfo) *DataList {
+	out := NewDataList()
+	out.name = name
+	out.lastError = err
+	return out
+}
+
 // reduce applies fn to every position 0..n-1 and produces a same-length
 // DataList. fn receives the (already-validated, numeric) window values plus
 // matching weights (nil when not configured). When fewer than MinObs values
 // are present, nil is emitted at that position.
 func (r *RollingDataList) reduce(fn func(vals, weights []float64) any) *DataList {
-	if r.err != "" {
-		out := NewDataList()
-		out.name = r.srcName
-		return out
+	if r.err != nil {
+		return emptyWindowResult(r.srcName, r.err)
 	}
 	n := len(r.srcData)
 	out := make([]any, n)
@@ -437,16 +445,12 @@ func (r *RollingDataList) Var() *DataList {
 // counted on numeric values, but the slice passed to fn covers the full
 // in-range window including nils.
 func (r *RollingDataList) Apply(fn func(window []any) any) *DataList {
-	if r.err != "" {
-		out := NewDataList()
-		out.name = r.srcName
-		return out
+	if r.err != nil {
+		return emptyWindowResult(r.srcName, r.err)
 	}
 	if fn == nil {
 		r.parent.fail("RollingApply", "fn must not be nil")
-		out := NewDataList()
-		out.name = r.srcName
-		return out
+		return emptyWindowResult(r.srcName, r.parent.Err())
 	}
 	n := len(r.srcData)
 	out := make([]any, n)
@@ -474,18 +478,16 @@ func (r *RollingDataList) Apply(fn func(window []any) any) *DataList {
 // pairWindow applies a paired rolling reducer to r and other. The two
 // DataLists are aligned by index and truncated to the shorter sequence.
 func (r *RollingDataList) pairWindow(other *DataList, operation string, reducer func(xs, ys []float64) any) *DataList {
-	if r.err != "" {
-		out := NewDataList()
-		out.name = r.srcName
-		return out
+	if r.err != nil {
+		return emptyWindowResult(r.srcName, r.err)
 	}
 	if other == nil {
+		var parentErr *ErrorInfo
 		if r.parent != nil {
 			r.parent.fail(operation, "other DataList is nil")
+			parentErr = r.parent.Err()
 		}
-		out := NewDataList()
-		out.name = r.srcName
-		return out
+		return emptyWindowResult(r.srcName, parentErr)
 	}
 	var otherData []any
 	other.AtomicDo(func(o *DataList) {
@@ -567,7 +569,7 @@ type ExpandingDataList struct {
 	srcName string
 	minObs  int
 	parent  *DataList
-	err     string
+	err     *ErrorInfo
 }
 
 // Expanding builds an expanding-window view over dl. MinObs <= 0 defaults to 1.
@@ -585,10 +587,8 @@ func (dl *DataList) Expanding(minObs int) *ExpandingDataList {
 }
 
 func (e *ExpandingDataList) reduce(fn func(vals []float64) any) *DataList {
-	if e.err != "" {
-		out := NewDataList()
-		out.name = e.srcName
-		return out
+	if e.err != nil {
+		return emptyWindowResult(e.srcName, e.err)
 	}
 	n := len(e.srcData)
 	out := make([]any, n)

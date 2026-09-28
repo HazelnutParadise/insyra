@@ -1,7 +1,6 @@
 package insyra
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -16,8 +15,8 @@ func TestDataList_EWM_InvalidDecayParameters(t *testing.T) {
 		if got == nil || got.Len() != 0 {
 			t.Errorf("invalid options returned %v, want empty DataList", got)
 		}
-		if err := dl.Err(); err == nil || !strings.Contains(err.Message, "EWM") {
-			t.Errorf("invalid options Err = %v, want EWM warning", err)
+		if err := dl.Err(); err == nil || err.FuncName != "EWM" {
+			t.Errorf("invalid options Err = %v, want an error from EWM", err)
 		}
 	}
 }

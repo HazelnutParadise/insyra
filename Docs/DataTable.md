@@ -1476,7 +1476,7 @@ The scalar transforms (`ShiftCol` / `DiffCol` / `PctChangeCol` / `Cum*Col`) retu
 
 **Missing-value behaviour:** edge positions (e.g. the first row of `ShiftCol(_, 1)` or partial windows below `MinObs`) emit `nil`. `Shift` works on any column type (including strings / bools); the rest coerce numerically and emit `nil` for cells that aren't numeric.
 
-**Errors:** When `col` cannot be resolved, the method records a warning on `dt.Err()` and returns an empty `*DataList`.
+**Errors:** When `col` cannot be resolved, the method records the error on `dt.Err()` and returns an empty `*DataList` carrying it; for `RollingCol`, `ExpandingCol` and `EWMCol`, every reducer returns that empty list. An invalid option to `RollingCol` or `EWMCol` (a `Window` below 1, no decay parameter, …) is recorded on `dt.Err()` too, and every reducer returns an empty list carrying it, although the computation runs on a copy of the column.
 
 **Examples:**
 
@@ -1595,6 +1595,8 @@ func (t *GroupedColumnTransform) As(name string) *DataList
 **Description:** Same operations as above, but scoped to each group independently. Each method returns a builder whose terminal call `.As(name)` materialises a single `*DataList` aligned to the **parent's original row order**. Internally, each group is transformed in isolation and the results are scattered back to the rows that contributed to that group, so the output sits naturally beside the source column.
 
 For `RollingCol` / `ExpandingCol`, the builder exposes the same reducers as the ungrouped form, each of which returns a `*GroupedColumnTransform` ready for `.As`.
+
+**Errors:** When the column or the grouping cannot be resolved, or an argument is invalid (a `Window` below 1, `periods` of 0 for `DiffCol`, two fill values for `ShiftCol`), `.As` records the error on the table's `Err()` and returns an empty `*DataList` carrying it, rather than a column of `nil`.
 
 **Example — panel data lag/rolling per id:**
 

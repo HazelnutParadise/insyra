@@ -596,3 +596,33 @@ func TestFillNACommand_ReportsAColumnItCannotFill(t *testing.T) {
 		t.Fatal("filling a text list with its mean was accepted")
 	}
 }
+
+// A rolling window the library refused is an error, not a saved variable
+// holding an empty list.
+func TestRollingCommand_InvalidWindowIsAnError(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"x": namedList("x", 1, 2, 3)})
+	err := runRollingCommand(ctx, []string{"x", "0", "mean", "as", "m"})
+	if err == nil {
+		t.Fatal("rolling with a zero window was accepted")
+	}
+	if !strings.HasPrefix(err.Error(), "rolling: ") {
+		t.Errorf("error %q does not name the command", err.Error())
+	}
+	if _, saved := ctx.Vars["m"]; saved {
+		t.Error("the failed rolling was saved")
+	}
+}
+
+func TestRollingCommand_MinObsAboveWindowIsAnError(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"x": namedList("x", 1, 2, 3)})
+	err := runRollingCommand(ctx, []string{"x", "2", "mean", "minobs", "3", "as", "m"})
+	if err == nil {
+		t.Fatal("rolling with minobs above the window was accepted")
+	}
+	if !strings.HasPrefix(err.Error(), "rolling: ") {
+		t.Errorf("error %q does not name the command", err.Error())
+	}
+	if _, saved := ctx.Vars["m"]; saved {
+		t.Error("the failed rolling was saved")
+	}
+}

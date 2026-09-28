@@ -371,6 +371,9 @@ func runRollingCommand(ctx *ExecContext, args []string) error {
 	default:
 		return fmt.Errorf("rolling: unknown reducer %q (supported: sum, mean, min, max, median, std, var, cov <other>, beta <other>)", coreArgs[2])
 	}
+	if err := result.PopErr(); err != nil {
+		return fmt.Errorf("rolling: %w", err)
+	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
 	return nil
@@ -500,8 +503,8 @@ func runEWMCommand(ctx *ExecContext, args []string) error {
 	default:
 		return fmt.Errorf("ewm: unknown reducer %q (supported: mean, var, std)", coreArgs[3])
 	}
-	if result.Len() != dl.Len() {
-		return fmt.Errorf("ewm: invalid options (alpha %v, span %v, halflife %v)", opts.Alpha, opts.Span, opts.HalfLife)
+	if err := result.PopErr(); err != nil {
+		return fmt.Errorf("ewm: %w", err)
 	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
