@@ -40,3 +40,11 @@ No exported function, method, type, field, variable or constant declared in `dat
 #### Scenario: The empty tab
 - **WHEN** 以空字串的分頁轉換成 go-yfinance 的分頁
 - **THEN** 結果是 news 分頁
+
+### Requirement: One statement frequency has one name
+
+`YFPeriodAnnual` SHALL be the name for annual statements. `YFPeriodYearly` SHALL remain for one release as a Deprecated constant with its value `"yearly"`, whose doc comment names `YFPeriodAnnual`, so a table fetched with it keeps its `yearly` label until the constant is removed.
+
+#### Scenario: The deprecated synonym
+- **WHEN** 讀取 `YFPeriodYearly` 的 doc comment 與值
+- **THEN** 有指名 `YFPeriodAnnual` 的 `Deprecated:` 段落，值仍為 `"yearly"`

@@ -2,7 +2,9 @@
 
 ## Purpose
 定義 `datafetch` 的 Google Maps 爬蟲送出什麼請求、怎麼讀回應、失敗時怎麼回報：建立爬蟲不下載遠端設定，搜尋一次取得店家 ID 與名稱，評論以翻頁代碼每頁 10 則取得並對應到欄位，請求有逾時，抓評論的選項零值即預設且不會 panic。
+
 ## Requirements
+
 ### Requirement: Search reads the Maps result list
 
 `Search` SHALL 以一次請求取得 Google 地圖搜尋結果清單，回傳店家的 feature ID 與名稱，SHALL 保留 Google 的順序，SHALL 略過重複的店家與沒有 feature ID 的項目。沒有取得任何店家時 SHALL 回傳 nil 並記錄警告，說明回應格式可能已改變。請求失敗時 SHALL 回傳 nil 並在警告中寫出原因。
@@ -29,15 +31,27 @@
 
 ### Requirement: Review fetching options and progress
 
-`GetReviews` SHALL 把 `SortBy` 或 `MaxWaitingInterval_Milliseconds` 的零值視為預設值且不記錄警告，SHALL 在等待上限剛好為 1000 毫秒時正常翻頁而不 panic，且 SHALL NOT 把進度印到標準輸出。
+`GetReviews` SHALL 把 `SortBy`、`MaxWaitingInterval` 或已 Deprecated 的 `MaxWaitingInterval_Milliseconds` 的零值視為預設值且不記錄警告，等待上限的預設為 5 秒。`MaxWaitingInterval` 或 `MaxWaitingInterval_Milliseconds` 設定為小於一秒的非零值時，SHALL 記錄警告並改用預設值。兩個等待欄位都設定時，SHALL 記錄警告並在發出任何請求前回傳 nil。每兩頁之間的等待 SHALL 是一秒到等待上限之間的隨機時間，等待上限剛好為一秒時 SHALL 正常翻頁而不 panic，且 SHALL NOT 把進度印到標準輸出。
 
 #### Scenario: The minimum waiting interval
 - **WHEN** 以 `MaxWaitingInterval_Milliseconds: 1000` 抓取兩頁
 - **THEN** 兩頁都取得，兩頁之間至少等待一秒，不 panic
 
+#### Scenario: The minimum waiting interval as a duration
+- **WHEN** 以 `MaxWaitingInterval: time.Second` 抓取兩頁
+- **THEN** 兩頁都取得，兩頁之間至少等待一秒，沒有警告
+
 #### Scenario: Setting only one option
-- **WHEN** 只設定 `SortBy`，或只設定 `MaxWaitingInterval_Milliseconds`
+- **WHEN** 只設定 `SortBy`，或只設定 `MaxWaitingInterval`，或只設定 `MaxWaitingInterval_Milliseconds`
 - **THEN** 沒有警告，未設定的欄位使用預設值
+
+#### Scenario: Both waiting fields set
+- **WHEN** 同時設定 `MaxWaitingInterval: 2 * time.Second` 與 `MaxWaitingInterval_Milliseconds: 2000`
+- **THEN** 回傳 nil，記錄警告，且沒有發出請求
+
+#### Scenario: A waiting interval under one second
+- **WHEN** 以 `MaxWaitingInterval: 500 * time.Millisecond` 抓取一頁
+- **THEN** 記錄等待上限太小的警告，仍取得那一頁
 
 ### Requirement: GetReviews walks the review pages with a page token
 
@@ -83,3 +97,10 @@
 - **WHEN** 把含這四個欄位的評論轉成 DataTable
 - **THEN** 表格有 `ReviewID`、`Language`、`ReviewerReviewCount`、`ReviewerPhotoCount` 四欄，值與欄位相同
 
+### Requirement: Review sort orders carry their type's name
+
+The review sort orders SHALL be `GoogleMapsStoreReviewSortByRelevance` (1), `GoogleMapsStoreReviewSortByNewest` (2), `GoogleMapsStoreReviewSortByHighestRating` (3) and `GoogleMapsStoreReviewSortByLowestRating` (4). `SortByRelevance`, `SortByNewest`, `SortByHighestRating` and `SortByLowestRating` SHALL remain for one release as Deprecated constants with the same values, each doc comment naming its replacement.
+
+#### Scenario: The old names keep their values
+- **WHEN** 比較四個舊常數與對應的新常數
+- **THEN** 數值相同，舊常數的 doc comment 有指名新常數的 `Deprecated:` 段落
