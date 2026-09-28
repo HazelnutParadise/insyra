@@ -2,6 +2,7 @@ package commands
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	insyra "github.com/HazelnutParadise/insyra"
@@ -216,5 +217,37 @@ func TestRunUnpivotCommand_UnknownOption(t *testing.T) {
 	})
 	if err == nil {
 		t.Errorf("expected error for unknown option")
+	}
+}
+
+// The CLI reads the aggregate name with the parser groupby and resample use,
+// and hands Pivot the typed op, so the three commands accept the same names.
+// "custom", which the CLI cannot supply a function for, and "average", which
+// only pivot used to take, are refused as unknown ops.
+func TestRunPivotCommand_AggNames(t *testing.T) {
+	for _, c := range []struct {
+		agg  string
+		want float64
+	}{
+		{"sum", 15}, {"mean", 7.5}, {"avg", 7.5}, {"MAX", 10}, {"count", 2}, {"stddev", 3.5355339059327378},
+	} {
+		ctx := newTestExecContext(t)
+		ctx.Vars["sales"] = pivotDuplicateTestTable()
+		if err := runPivotCommand(ctx, []string{"sales", "index", "region", "columns", "product", "values", "sales", "agg", c.agg, "as", "wide"}); err != nil {
+			t.Errorf("agg %s: %v", c.agg, err)
+			continue
+		}
+		colA := ctx.Vars["wide"].(*insyra.DataTable).GetColByName("A").Data()
+		if got, _ := insyra.ToFloat64Safe(colA[0]); got != c.want {
+			t.Errorf("agg %s: APAC.A = %v, want %v", c.agg, colA[0], c.want)
+		}
+	}
+	for _, bad := range []string{"custom", "average", "wat"} {
+		ctx := newTestExecContext(t)
+		ctx.Vars["sales"] = pivotDuplicateTestTable()
+		err := runPivotCommand(ctx, []string{"sales", "index", "region", "columns", "product", "values", "sales", "agg", bad})
+		if err == nil || !strings.Contains(err.Error(), "unknown aggregate op") {
+			t.Errorf("agg %s: error = %v, want unknown aggregate op", bad, err)
+		}
 	}
 }

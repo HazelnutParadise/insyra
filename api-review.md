@@ -194,7 +194,7 @@
 | T-14 | Med | `SetColNames` 給的名字比欄多時自動新增空欄（已實測），pandas 是長度不符即 raise；`AppendCols` 遇同名自動改成 `name_1` 不通知 | datatable_colname.go:163-185；datatable.go:69 | 長度不符回錯；同名至少 warn |
 | T-15 | ~~Med~~ 已修正（無名欄垂直合併：fix-clear-defects-core；`Merge` 內部寫死 `*DataTable`：embeddable-sealed-interfaces 改由隱藏方法取出內嵌的核心表格） | `mergeVertical` 對沒有欄名的表（`NewDataTable(NewDataList(...))` 預設）判定「重複欄名 ""」而回錯，兩張無名表無法垂直合併（推論，未實測）；`Merge(other IDataTable, ...)` 內部立刻斷言 `*DataTable`，介面參數只是裝飾（K-7） | datatable_merge.go:31, 389-400 | 無名欄以位置對齊；參數改 `*DataTable` |
 | T-16 | ~~Med~~ 已修正（batch 13）  | GroupBy 的 `columnsSnapshot` 是欄位指標的淺拷貝，`Aggregate` 在鎖外讀 `sourceCol.data`；父表被並行修改時是 data race（程式碼註解自己承認）。與 Rolling／EWM 深拷貝快照的做法不一致 | datatable_groupby.go:139-146 | 深拷貝或在 Aggregate 期間持鎖 |
-| T-17 | Med | 聚合相關 API 三種寫法：`Aggregate` 用 typed `AggregateOp`，`Pivot.AggFunc` 用字串（含 "avg"、"std" 別名），`Resample` 用 `AggregateOp`。GroupBy 的 key 把 `int 1` 與 `float64 1.0` 分成兩組（CSV 讀進來的 int64 與手動建的 float 會分家），pandas 視為同一組（準則 5、6） | datatable_pivot.go:44, 545-580；datatable_groupby.go:210 | Pivot 改收 `AggregateOp`；數值 key 正規化 |
+| T-17 | ~~Med~~ 已修正（pivot-takes-aggregate-op：`PivotConfig.AggFunc` 改收 `*AggregateOp`；group-keys-integers-by-value：各整數寬度依數值分組、補上 `uintptr`，`int 1` 與 `float64 1.0` 依擁有者裁定維持兩組） | 聚合相關 API 三種寫法：`Aggregate` 用 typed `AggregateOp`，`Pivot.AggFunc` 用字串（含 "avg"、"std" 別名），`Resample` 用 `AggregateOp`。GroupBy 的 key 把 `int 1` 與 `float64 1.0` 分成兩組（CSV 讀進來的 int64 與手動建的 float 會分家），pandas 視為同一組（準則 5、6） | datatable_pivot.go:44, 545-580；datatable_groupby.go:210 | Pivot 改收 `AggregateOp`；數值 key 正規化 |
 | T-18 | ~~Med~~ 已修正（batch 3） | 效能：`Count` 為了加總各欄用 `asyncutil.ParallelForEach` 再經 float64 `Sum` 轉回 int；`Clone` 用 `parallel.GroupUp` 跑兩件小事；`Map` 每格經 `originalCol.Get`（每格一次鎖）；`containsSubstring` 手寫遞迴，長字串遞迴深度等於字串長度，`strings.Contains` 就有 | datatable.go:1271-1282, 1384-1410, 1568-1571；datatable_map.go:30 | 直接迴圈；`strings.Contains` |
 | T-19 | ~~Med~~ 已修正（batch 3） | `FindColsIfContains`／`FindColsIfContainsAll` 用 `FindFirst != nil` 判斷，每個不含該值的欄都會觸發一次 warn 進 `Err()`（D-5 跨欄放大）；`FindRowsIfAllElementsContainSubstring` 把非字串格子視為「符合」，全數字的列會被當作符合（準則 13） | datatable.go:652-690, 626-650 | 內部用不設 Err 的查找；非字串視為不符 |
 | T-20 | Low（doc 部分已隨 one-column-selector 修正：`ReplaceInCol` 現在真的收「索引或名稱」；`mode` 魔數與 `isNilOrNaN` 未處理） | `replace` 系列的 `mode ...int` 用 0/1/-1 魔數當 variadic 選項；`ReplaceInCol` doc 說「index or name」實作只吃索引（T-11）；NaN 判定 InRow/InCol 只認 float64，表層版用 `isNilOrNaN` 認 float32（準則 8、E） | datatable_replace.go 全檔 | typed `ReplaceMode`；統一 `isNilOrNaN` |
@@ -550,7 +550,7 @@
 | T-14 | [#227](https://github.com/HazelnutParadise/insyra/issues/227) |  |
 | T-15 | [#228](https://github.com/HazelnutParadise/insyra/issues/228) | 已關閉（fix-clear-defects-core、embeddable-sealed-interfaces） |
 | T-16 | [#229](https://github.com/HazelnutParadise/insyra/issues/229) |  |
-| T-17 | [#230](https://github.com/HazelnutParadise/insyra/issues/230) |  |
+| T-17 | [#230](https://github.com/HazelnutParadise/insyra/issues/230) | 已修正（pivot-takes-aggregate-op、group-keys-integers-by-value） |
 | T-21 | [#231](https://github.com/HazelnutParadise/insyra/issues/231) | 部分修正（datatable-slicing）；`Counter` 待裁定 |
 | T-22 | [#232](https://github.com/HazelnutParadise/insyra/issues/232) |  |
 | T-23 | [#233](https://github.com/HazelnutParadise/insyra/issues/233) | 已修正（sortby-column-selection、sortby-empty-config-first-column） |

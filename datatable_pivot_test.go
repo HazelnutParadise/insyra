@@ -73,7 +73,7 @@ func TestPivot_AggSum(t *testing.T) {
 		Index:   []any{Name("region")},
 		Columns: Name("product"),
 		Values:  Name("sales"),
-		AggFunc: "sum",
+		AggFunc: new(OpSum),
 		FillNA:  0,
 	})
 	if err != nil {
@@ -91,7 +91,7 @@ func TestPivot_AggMean(t *testing.T) {
 		Index:   []any{Name("region")},
 		Columns: Name("product"),
 		Values:  Name("sales"),
-		AggFunc: "mean",
+		AggFunc: new(OpMean),
 	})
 	if err != nil {
 		t.Fatalf("Pivot failed: %v", err)
@@ -108,7 +108,7 @@ func TestPivot_AggCount(t *testing.T) {
 		Index:   []any{Name("region")},
 		Columns: Name("product"),
 		Values:  Name("sales"),
-		AggFunc: "count",
+		AggFunc: new(OpCount),
 		FillNA:  0,
 	})
 	if err != nil {
@@ -126,7 +126,7 @@ func TestPivot_AggCustom(t *testing.T) {
 		Index:   []any{Name("region")},
 		Columns: Name("product"),
 		Values:  Name("sales"),
-		AggFunc: "custom",
+		AggFunc: new(OpCustom),
 		Custom: func(group *DataList) any {
 			return group.Max()
 		},
@@ -265,7 +265,7 @@ func TestPivot_CustomMissingFuncErrors(t *testing.T) {
 		Index:   []any{Name("region")},
 		Columns: Name("product"),
 		Values:  Name("sales"),
-		AggFunc: "custom",
+		AggFunc: new(OpCustom),
 	}); err == nil {
 		t.Errorf("expected error when AggFunc=custom but Custom is nil")
 	}
@@ -277,7 +277,7 @@ func TestPivot_UnknownAggFuncErrors(t *testing.T) {
 		Index:   []any{Name("region")},
 		Columns: Name("product"),
 		Values:  Name("sales"),
-		AggFunc: "wat",
+		AggFunc: new(AggregateOp(99)),
 	}); err == nil {
 		t.Errorf("expected error for unknown AggFunc")
 	}
@@ -538,5 +538,38 @@ func TestPivotUnpivot_RoundTrip(t *testing.T) {
 	}
 	if got, _ := ToFloat64Safe(colB[1]); got != 40 {
 		t.Errorf("round-trip B[1] = %v, want 40", colB[1])
+	}
+}
+
+// A nil AggFunc is the unset value: duplicates are refused, as an empty
+// string used to mean. OpSum is AggregateOp's zero value, so a plain
+// AggregateOp field could not have told "sum" from "not set".
+func TestPivot_AggFuncUnsetRefusesDuplicatesButOpSumSums(t *testing.T) {
+	dt := pivotDuplicateLongTable()
+	cfg := PivotConfig{Index: []any{Name("region")}, Columns: Name("product"), Values: Name("sales")}
+	if _, err := dt.Pivot(cfg); err == nil {
+		t.Fatal("nil AggFunc accepted duplicate (Index, Columns) rows")
+	}
+	cfg.AggFunc = new(OpSum)
+	wide, err := dt.Pivot(cfg)
+	if err != nil {
+		t.Fatalf("OpSum: %v", err)
+	}
+	if got, _ := ToFloat64Safe(wide.GetColByName("A").Data()[0]); got != 15 {
+		t.Errorf("APAC.A = %v, want 15", got)
+	}
+}
+
+// Every AggregateOp Aggregate knows is accepted by Pivot, including the ones
+// the old string names spelled with aliases.
+func TestPivot_AcceptsEveryAggregateOp(t *testing.T) {
+	dt := pivotDuplicateLongTable()
+	for op := OpSum; op <= OpNUnique; op++ {
+		if _, err := dt.Pivot(PivotConfig{
+			Index: []any{Name("region")}, Columns: Name("product"), Values: Name("sales"),
+			AggFunc: new(op), FillNA: 0,
+		}); err != nil {
+			t.Errorf("AggFunc %s: %v", op, err)
+		}
 	}
 }

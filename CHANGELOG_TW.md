@@ -68,6 +68,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `SqrtRat`、`PowRat`、`SortTimes` 與 `F64orRat` 標為 **Deprecated**，下一版移除。insyra 本身沒有用到它們，每個函式的說明都寫了可以改用的 `math/big` 或 `slices` 寫法。移除前的這一版先修好兩個問題：`SqrtRat` 收到負數或 `nil` 會回傳 `nil`，不再 panic。`PowRat` 的指數是負數時會回傳倒數，以前 `PowRat(big.NewRat(2, 3), -2)` 會回傳 `1`。`PowRat(nil, n)` 以及 0 的負次方回傳 `nil`。
 - 新增 `DataTable.FilterRowsWhere(keep func(row *DataList) bool)`。`keep` 每次拿到一整列，回傳 true 的列會保留，所以條件可以比較同一列的兩個欄位，例如 `dt.FilterRowsWhere(func(row *insyra.DataList) bool { return insyra.ToFloat64(row.Get(0)) < insyra.ToFloat64(row.Get(1)) })`。`Filter` 與 `FilterRows` 是一格一格呼叫函式，只要有一格通過就保留整列，文件現在把這點寫清楚了。`Filter` 收到的欄位參數是 Excel 式的欄位字母，文件裡拿它和欄位名稱比較的範例永遠不會成立，已經改正。`FilterByCustomElement` 的結果和 `Filter` 完全相同，標為 **Deprecated**，請改用 `Filter`，下一版移除。`Filter` 與 `FilterRows` 的函式若在過程中替同一張表新增欄位，不會再因索引超出範圍而當掉。
 - 新增 `DataTable.SliceRows(from, to)` 與 `SliceCols(from, to)`，依位置取出一段連續的列或欄，規則和 Go 的 `s[from:to]` 一樣：從 0 起算，包含 `from`，不含 `to`。範圍超出表格時會記錄錯誤並回傳空表，不會 panic。以前用篩選名稱做這件事的十個方法，也就是 `FilterColsByColIndex…` 與 `FilterRowsByRowIndex…` 加上 `GreaterThan`、`GreaterThanOrEqualTo`、`EqualTo`、`LessThan`、`LessThanOrEqualTo`，標為 **Deprecated**，下一版移除，每個方法的說明都寫了對應的切片寫法。它們的結果不變，只有 `FilterColsByColIndexLessThan` 與 `…LessThanOrEqualTo` 收到超過最後一欄的字母時，會保留所有欄位，以前會 panic。`Headers` 與 `SetHeaders` 標為 **Deprecated**，請改用 `ColNames` 與 `SetColNames`。
+- **BREAKING**：`PivotConfig.AggFunc` 改收 `Aggregate` 與 `Resample` 使用的 `AggregateOp`，型別是指標：寫成 `AggFunc: new(insyra.OpSum)`，不再寫 `AggFunc: "sum"`。`nil` 仍代表不彙總，所以 `(Index, Columns)` 重複的列會回傳錯誤。之所以用指標，是因為 `OpSum` 是 `AggregateOp` 的零值，一般的 `AggregateOp` 欄位無法表達「沒有設定」。字串別名（`"avg"`、`"std"`、`"average"` 等）隨字串一起取消，打錯的 op 現在無法編譯。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
@@ -88,6 +89,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 一次性命令不再改動它還原的變數。`state.json` 現在連同 Go 型別儲存每個變數：DataTable 保留欄位順序、欄名、列名與每一格的型別。`insyra load c.csv as t` 之後另外執行 `insyra cols t`，欄位會照檔案的順序列出，不再變成字母序，欄字母在每個命令裡也都指向同一欄。`parsedates` 轉成日期的欄，到了 `resample` 還是日期，CCL 日期相減得到的欄仍是 `time.Duration`，`3.0` 也仍是 `float64`，不會變成 `int64`。`scale fit` 擬合的 scaler 與 `hclust` 的樹也會保存，`scale transform` 與 `cutree` 可以分開執行。以前 scaler 會消失，`cutree` 也不接受讀回來的樹。
 - 環境無法保存的變數（例如 `regression` 的結果）會在儲存時印出一行 `warning:`，在 REPL 或腳本中每個變數只提示一次，不再無聲無息地被丟掉或變成 map。產生它的命令照常成功，其他變數照常保存。直接使用 `cli/env` 的 Go 程式可以用新增的 `Manager.SaveVariables` 取得同一份清單，`SaveState` 仍然只在檔案沒寫成時回傳錯誤。
 - 先前版本寫入的 `state.json` 仍可讀取，下次儲存時改寫成新格式。含 NaN 值的環境現在可以 `env export`，`env import` 也會完整保留超過 2^53 的整數。
+- `pivot … agg <op>` 改用 `groupby` 與 `resample` 的方式讀取 op，和文件原本的描述一致。只有 `pivot` 接受、文件也從未提過的 `agg average` 現在會被拒絕，`agg custom` 也一樣，它原本就會失敗，因為 CLI 無法傳入函式。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。
@@ -155,6 +157,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING（行為改變，簽章不變）**：`DT.From`、`Col`、`Row`、`UseDL`、`UseDT` 失敗時回傳帶著錯誤、可繼續串接的物件，錯誤記在 `Err()` 上，區塊語法不會因失敗而中斷：`t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`。v0.3.3 回傳的是包著 `nil` 表格或 list 的 `DT`／`DL`，所以 `t.DataTable == nil` 這類檢查不會再成立。
 - **BREAKING**：`CSV_inOpts`、`CSV_outOpts`、`Excel_inOpts` 的標題列與列名欄位改成 `NoHeaderRow` 與 `HasRowNames`，跟核心的設定包一致。`FirstRow2ColNames: true` 現在是預設值，可以直接拿掉；`FirstRow2ColNames: false` 要改成 `NoHeaderRow: true`。型別名稱維持簡短的 `Opts` 寫法。
 - isr 的表格與清單現在符合 `insyra.IDataTable` 與 `insyra.IDataList`，可以直接傳給 `stats`、`plot`、`mkt` 與 `Merge`：以前 `stats.PCA(isrTable)` 會編譯失敗，必須寫成 `isrTable.DataTable`。
+- **BREAKING**：`isr.Pivot.Agg` 改為 `*insyra.AggregateOp`，和 `PivotConfig.AggFunc` 一致：`Agg: "sum"` 要改寫成 `Agg: new(insyra.OpSum)`。
 
 ### `gplot`
 - **BREAKING**：`SaveChart` 檔案寫不出來時改為回傳 `error`，不再結束程式。既有呼叫要改成 `if err := gplot.SaveChart(...); err != nil { ... }` 或明確寫 `_ =`。

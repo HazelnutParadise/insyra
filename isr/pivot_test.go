@@ -56,7 +56,7 @@ func TestDT_Pivot_AggSum(t *testing.T) {
 		Index:   []any{insyra.Name("region")},
 		Columns: insyra.Name("product"),
 		Values:  insyra.Name("sales"),
-		Agg:     "sum",
+		Agg:     new(insyra.OpSum),
 		FillNA:  0,
 	})
 	assert.Nil(t, wide.Err())

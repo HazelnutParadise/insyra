@@ -5,7 +5,6 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"math"
 	"sort"
-	"strings"
 
 	"github.com/HazelnutParadise/insyra/internal/algorithms"
 )
@@ -38,15 +37,15 @@ type PivotConfig struct {
 	// cells. Required. Takes a column selector.
 	Values any
 
-	// AggFunc is the aggregator applied when an (Index, Columns) combination
-	// occurs more than once. Recognised names: "sum", "mean" (alias "avg"),
-	// "median", "min", "max", "count" (non-nil), "countall" (group size),
-	// "stdev" (alias "std"), "stdevp" (alias "stdp"), "var", "varp", "first",
-	// "last", "nunique", "custom" (requires Custom). When empty, Pivot
+	// AggFunc is the aggregation applied when an (Index, Columns)
+	// combination occurs more than once: any AggregateOp, the type Aggregate
+	// and Resample take, written as new(insyra.OpSum). When nil, Pivot
 	// returns an error if any (Index, Columns) combination has duplicates.
-	AggFunc string
+	// It is a pointer because OpSum is AggregateOp's zero value, so a plain
+	// field could not tell "sum" from "not set".
+	AggFunc *AggregateOp
 
-	// Custom is required when AggFunc == "custom". It receives the values
+	// Custom is required when AggFunc is OpCustom. It receives the values
 	// belonging to the (Index, Columns) cell as a *DataList in original row
 	// order, including nil entries.
 	Custom func(group *DataList) any
@@ -110,16 +109,16 @@ func (dt *DataTable) Pivot(cfg PivotConfig) (*DataTable, error) {
 	}
 
 	var aggOp AggregateOp
-	aggSet := false
-	if cfg.AggFunc != "" {
-		op, ok := parseAggOpName(cfg.AggFunc)
-		if !ok {
-			return failPivot(out, fmt.Sprintf("unknown AggFunc %q", cfg.AggFunc))
+	aggSet := cfg.AggFunc != nil
+	if aggSet {
+		aggOp = *cfg.AggFunc
+		// OpCustom is the last AggregateOp; anything past it was converted
+		// from an int and names no aggregation.
+		if aggOp < OpSum || aggOp > OpCustom {
+			return failPivot(out, fmt.Sprintf("unknown AggFunc %s", aggOp))
 		}
-		aggOp = op
-		aggSet = true
 		if aggOp == OpCustom && cfg.Custom == nil {
-			return failPivot(out, fmt.Sprintf("AggFunc %q requires Custom func", cfg.AggFunc))
+			return failPivot(out, "AggFunc OpCustom requires Custom func")
 		}
 	}
 
@@ -531,44 +530,6 @@ func applyAggregateOp(op AggregateOp, sub *DataList, custom func(*DataList) any,
 		return custom(sub)
 	}
 	return nil
-}
-
-// parseAggOpName resolves a canonical aggregate name (and common aliases)
-// to an AggregateOp. Returns (OpSum, false) for unrecognised names.
-func parseAggOpName(s string) (AggregateOp, bool) {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "sum":
-		return OpSum, true
-	case "mean", "avg", "average":
-		return OpMean, true
-	case "median":
-		return OpMedian, true
-	case "min":
-		return OpMin, true
-	case "max":
-		return OpMax, true
-	case "count":
-		return OpCount, true
-	case "countall":
-		return OpCountAll, true
-	case "std", "stdev", "stddev":
-		return OpStdev, true
-	case "stdp", "stdevp", "stddevp":
-		return OpStdevP, true
-	case "var", "variance":
-		return OpVar, true
-	case "varp":
-		return OpVarP, true
-	case "first":
-		return OpFirst, true
-	case "last":
-		return OpLast, true
-	case "nunique":
-		return OpNUnique, true
-	case "custom":
-		return OpCustom, true
-	}
-	return OpSum, false
 }
 
 // pivotColLabel renders a Columns key value as the new output column name.

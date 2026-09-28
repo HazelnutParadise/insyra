@@ -4,12 +4,14 @@ import "github.com/HazelnutParadise/insyra"
 
 // Pivot is the isr-style argument struct for (*DataTable).Pivot. Field names
 // mirror insyra.PivotConfig but use a shorter Agg field for ergonomics in
-// chained calls. See insyra.PivotConfig for full semantics.
+// chained calls: Agg is PivotConfig.AggFunc, written as new(insyra.OpSum) and
+// nil to refuse duplicate (Index, Columns) rows. See insyra.PivotConfig for
+// full semantics.
 type Pivot struct {
 	Index    []any
 	Columns  any
 	Values   any
-	Agg      string
+	Agg      *insyra.AggregateOp
 	Custom   func(group *insyra.DataList) any
 	FillNA   any
 	SortCols bool

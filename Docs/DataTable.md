@@ -1037,8 +1037,8 @@ func (dt *DataTable) Unpivot(cfg UnpivotConfig) (*DataTable, error)
 - `Index`: Identifier columns; their unique combinations form output rows. At least one required. Each entry follows the resolution rule above.
 - `Columns`: Column whose unique values become new column headers. Required. Same resolution rule.
 - `Values`: Column supplying cell values. Required. Same resolution rule.
-- `AggFunc`: Aggregator applied when an `(Index, Columns)` pair has duplicates. Recognised: `"sum"`, `"mean"` (alias `"avg"`), `"median"`, `"min"`, `"max"`, `"count"` (non-nil), `"countall"` (group size), `"stdev"` (alias `"std"`), `"stdevp"` (alias `"stdp"`), `"var"`, `"varp"`, `"first"`, `"last"`, `"nunique"`, `"custom"`. When empty, duplicate `(Index, Columns)` combinations are an error.
-- `Custom`: Required when `AggFunc == "custom"`. Receives the cell's values as a `*DataList` in original row order, including nil entries.
+- `AggFunc`: Aggregation applied when an `(Index, Columns)` pair has duplicates: a `*AggregateOp`, the op type `Aggregate` and `Resample` take (see [Supported `AggregateOp`](#groupby)), written `new(insyra.OpSum)`. When `nil`, duplicate `(Index, Columns)` combinations are an error. It is a pointer because `OpSum` is `AggregateOp`'s zero value, so a plain field could not tell "sum" from "not set". A value outside the `AggregateOp` constants is an error.
+- `Custom`: Required when `AggFunc` is `OpCustom`. Receives the cell's values as a `*DataList` in original row order, including nil entries.
 - `FillNA`: Value placed in cells whose `(Index, Columns)` combination is absent (or whose aggregated value is nil). Default `nil`.
 - `SortCols`: When `true`, generated columns are emitted in sorted order of the key value; when `false` (default), first-seen order is preserved.
 
@@ -1064,7 +1064,7 @@ wide, err := dt.Pivot(insyra.PivotConfig{
     Index:    []any{insyra.Name("region")},
     Columns:  insyra.Name("product"),
     Values:   insyra.Name("sales"),
-    AggFunc:  "sum",  // optional; required if (region, product) has duplicates
+    AggFunc:  new(insyra.OpSum), // optional; required if (region, product) has duplicates
     FillNA:   0,
     SortCols: true,
 })

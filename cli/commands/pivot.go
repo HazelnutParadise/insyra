@@ -53,7 +53,7 @@ type pivotOptions struct {
 	Index    []string
 	Columns  string
 	Values   string
-	Agg      string
+	Agg      *insyra.AggregateOp
 	FillNA   any
 	SortCols bool
 }
@@ -147,7 +147,11 @@ func parsePivotOptions(args []string) (pivotOptions, error) {
 			if err != nil {
 				return opts, err
 			}
-			opts.Agg = v
+			op, err := parseAggregateOp(v)
+			if err != nil {
+				return opts, fmt.Errorf("pivot: %w", err)
+			}
+			opts.Agg = &op
 			i += 2
 		case "fillna":
 			v, err := next()
