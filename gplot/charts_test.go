@@ -67,13 +67,6 @@ func TestCreateBarChart_Renders(t *testing.T) {
 		c.ErrorBars = []float64{0.1, 0.2, 0.3}
 		mustSave(t, built(t)(CreateBarChart(c, data)), "bar.png")
 	})
-	// Error bars of the wrong length are dropped with a warning; the chart is
-	// still built rather than refused.
-	t.Run("error bars of the wrong length", func(t *testing.T) {
-		c := config
-		c.ErrorBars = []float64{0.1}
-		mustSave(t, built(t)(CreateBarChart(c, data)), "bar.png")
-	})
 }
 
 func TestCreateLineChart_Renders(t *testing.T) {
@@ -101,7 +94,7 @@ func TestCreateLineChart_Renders(t *testing.T) {
 func TestCreateStepChart_RendersEveryStyle(t *testing.T) {
 	quietFatal(t)
 
-	for _, style := range []string{"pre", "mid", "post", "", "nonsense"} {
+	for _, style := range []string{"pre", "mid", "post", ""} {
 		t.Run("style "+style, func(t *testing.T) {
 			plt := built(t)(CreateStepChart(StepChartConfig{
 				Title:     "steps",

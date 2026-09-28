@@ -75,6 +75,12 @@ func TestConstructorsReturnAnErrorForWhatTheyCannotDraw(t *testing.T) {
 		{"bar with infinity", "CreateBarChart", func() (*gonumplot.Plot, error) {
 			return CreateBarChart(BarChartConfig{}, insyra.NewDataList(1.0, math.Inf(1)))
 		}, ""},
+		{"bar with error bars of the wrong length", "CreateBarChart", func() (*gonumplot.Plot, error) {
+			return CreateBarChart(BarChartConfig{ErrorBars: []float64{0.1}}, three)
+		}, "ErrorBars has 1 values but the data has 3"},
+		{"bar with a NaN error bar", "CreateBarChart", func() (*gonumplot.Plot, error) {
+			return CreateBarChart(BarChartConfig{ErrorBars: []float64{0.1, math.NaN(), 0.3}}, three)
+		}, "cannot draw the error bars"},
 		{"histogram with a nil list", "CreateHistogram", func() (*gonumplot.Plot, error) {
 			return CreateHistogram(HistogramConfig{}, nil)
 		}, "no data"},
@@ -102,6 +108,9 @@ func TestConstructorsReturnAnErrorForWhatTheyCannotDraw(t *testing.T) {
 		{"line whose only series holds NaN", "CreateLineChart", func() (*gonumplot.Plot, error) {
 			return CreateLineChart(LineChartConfig{}, withNaN)
 		}, "cannot draw every series"},
+		{"step with an unknown StepStyle", "CreateStepChart", func() (*gonumplot.Plot, error) {
+			return CreateStepChart(StepChartConfig{StepStyle: "pr"}, three)
+		}, `unknown StepStyle "pr"`},
 		{"step with no lists", "CreateStepChart", func() (*gonumplot.Plot, error) {
 			return CreateStepChart(StepChartConfig{})
 		}, "no data"},

@@ -112,7 +112,7 @@ type BarChartConfig struct {
 }
 ```
 
-Returns an error when `data` is `nil` or empty, or holds a `NaN` or an infinity.
+Returns an error when `data` is `nil` or empty, or holds a `NaN` or an infinity. With `ErrorBars` set, it also returns an error when their number differs from the number of bars or one of them is a `NaN` or an infinity, instead of drawing the bars without them.
 
 **Example:**
 
@@ -297,7 +297,7 @@ type StepChartConfig struct {
 }
 ```
 
-Returns an error in the same cases as `CreateLineChart`. An unknown `StepStyle` is replaced by `"post"` with a warning.
+Returns an error in the same cases as `CreateLineChart`, and when `StepStyle` is anything other than `"pre"`, `"mid"`, `"post"` or empty, so a misspelled style is reported instead of being drawn as `"post"`.
 
 **Step Styles:**
 
@@ -435,11 +435,10 @@ The table returned by `stats.CorrelationMatrix` can be passed as it is.
 
 `CreateLineChart`, `CreateStepChart` and `CreateScatterPlot` draw every series they are given, or none. A line or step series whose length differs from `XAxis`, an empty series, and a series holding a `NaN` or an infinity each make the call return a `nil` chart and an error, so a chart never comes back missing a series you asked for. When `XAxis` is left out, it is generated from the first list's length, so every other list has to match the first. The error names every series that failed and why, for example `gplot: CreateLineChart: cannot draw every series: series "two" has 2 values but XAxis has 3`, and nothing is logged.
 
-A `nil` list among real ones is different: it is missing input rather than a series, so the line and step charts drop it with a warning and draw the rest. `CreateBarChart` treats `ErrorBars` of the wrong length as a warning too: it draws the bars without error bars.
+A `nil` list among real ones is different: it is missing input rather than a series, so the line and step charts drop it with a warning and draw the rest. It is the only case in `gplot` that is reported as a warning rather than an error.
 
 ## Tips
 
 - Use meaningful titles and axis labels for better readability
 - Choose appropriate bin counts for histograms (typically 10-30)
 - For publication, prefer SVG formats for vector graphics
-- Error bars should have the same length as the data

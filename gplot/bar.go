@@ -29,8 +29,8 @@ type BarChartConfig struct {
 // text (a numeric string such as "2" included) or a bool, is drawn as 0.
 //
 // It returns a nil chart and an error when data is nil or empty, or holds a
-// NaN or an infinity. ErrorBars of the wrong length are dropped with a warning
-// and the bars are still drawn.
+// NaN or an infinity, and when config.ErrorBars is given but its length
+// differs from the data's or it holds a NaN or an infinity.
 func CreateBarChart(config BarChartConfig, data insyra.IDataList) (*plot.Plot, error) {
 	if isNilList(data) {
 		return nil, chartError("CreateBarChart", "no data to draw")
@@ -48,6 +48,19 @@ func CreateBarChart(config BarChartConfig, data insyra.IDataList) (*plot.Plot, e
 	bars, err := plotter.NewBarChart(plotter.Values(values), vg.Points(barWidth))
 	if err != nil {
 		return nil, chartError("CreateBarChart", "cannot draw the bars: %w", err)
+	}
+
+	// Error bars that were asked for are drawn, or the call fails: a chart
+	// without them would look complete while missing what was requested.
+	var errBars *plotter.YErrorBars
+	if len(config.ErrorBars) > 0 {
+		if len(config.ErrorBars) != len(values) {
+			return nil, chartError("CreateBarChart", "ErrorBars has %d values but the data has %d", len(config.ErrorBars), len(values))
+		}
+		errBars, err = plotter.NewYErrorBars(&barErrorData{values: values, errorBars: config.ErrorBars})
+		if err != nil {
+			return nil, chartError("CreateBarChart", "cannot draw the error bars: %w", err)
+		}
 	}
 
 	// Create a new plot.
@@ -72,25 +85,8 @@ func CreateBarChart(config BarChartConfig, data insyra.IDataList) (*plot.Plot, e
 	plt.NominalX(labels...)
 
 	plt.Add(bars)
-
-	// Add error bars if provided
-	if len(config.ErrorBars) > 0 {
-		if len(config.ErrorBars) != len(values) {
-			insyra.LogWarning("gplot", "CreateBarChart", "ErrorBars length (%d) does not match Data length (%d)", len(config.ErrorBars), len(values))
-		} else {
-			// Create a custom XYError data structure for error bars
-			errData := &barErrorData{
-				values:    values,
-				errorBars: config.ErrorBars,
-			}
-
-			errBars, err := plotter.NewYErrorBars(errData)
-			if err != nil {
-				insyra.LogWarning("gplot", "CreateBarChart", "failed to create error bars: %v", err)
-			} else {
-				plt.Add(errBars)
-			}
-		}
+	if errBars != nil {
+		plt.Add(errBars)
 	}
 
 	return plt, nil

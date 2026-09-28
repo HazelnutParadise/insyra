@@ -198,6 +198,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING（行為改變）**：`CreateLineChart`、`CreateStepChart` 與 `CreateScatterPlot` 要嘛畫出所有系列，要嘛回傳錯誤。折線圖或階梯圖的系列長度和 `XAxis` 不同、系列是空的，或含有 `NaN` 或無限大，都會讓呼叫回傳 `nil` 圖表與錯誤，錯誤裡逐一寫出每個畫不出來的系列和原因。v0.3.3 會略過這種系列並記一則警告，把其他系列照樣畫出來；全部都被略過時，則回傳一張什麼都沒畫的圖。混在真實清單中的 `nil` 清單仍然只記警告並略過。
 - **BREAKING（行為改變）**：`CreateHistogram` 拒絕 `NaN` 與無限大，`CreateHeatmapChart` 拒絕無限大以及只有 `NaN` 的表格，`CreateFunctionPlot` 拒絕不是有限值的 `XMin`、`XMax`、`YMin`、`YMax`，都會回傳指出是哪個值的錯誤。v0.3.3 遇到這些值時，依圖表與平台不同，有的會 panic，有的會卡住，有的會畫出錯誤的圖。熱圖裡夾在數字之間的 `NaN` 仍然畫成空白格。
 - `CreateHeatmapChart` 能讀所有數值型別，`int8`、`int16` 或無號整數的欄位會畫出原本的值，不再全部畫成 0。它讀取儲存格的方式也和其他 `gplot` 圖表一致：不是數字的儲存格一律畫成 0，數字字串也一樣。
+- **BREAKING（行為改變）**：`gplot` 做不到的設定改為回傳錯誤，不再只記警告。`CreateStepChart` 遇到不是 `"pre"`、`"mid"`、`"post"` 也不是空字串的 `StepStyle` 會回傳錯誤；v0.3.3 會把拼錯的 `"pr"` 當成 `"post"` 畫出來。`CreateBarChart` 的 `ErrorBars` 數量和長條數不同，或含有 `NaN` 或無限大時，也會回傳錯誤；v0.3.3 會畫出沒有誤差線的長條圖。
 
 ### `py`
 - `PipInstall` 與 `PipUninstall` 拒絕以 `-` 開頭的依賴名稱，並在名稱前加上 `--`。呼叫端的字串過去是以單一 argv 交給 `uv pip install`，所以 `--requirement=/path` 會讓 uv 去讀那個檔案並安裝裡面列的東西。

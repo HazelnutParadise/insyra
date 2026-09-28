@@ -19,8 +19,8 @@ type StepChartConfig struct {
 
 // CreateStepChart draws one step line per list, named after the list. A plain
 // slice is passed as insyra.NewDataList(values).SetName("name").
-// config.StepStyle is "pre", "mid" or "post" (the default); any other value is
-// replaced by "post" with a warning.
+// config.StepStyle is "pre", "mid" or "post" (the default when empty); any
+// other value is an error, so a misspelled style is not drawn as "post".
 //
 // When config.XAxis is nil, it is 0, 1, 2, ... up to the first list's length.
 // It returns a nil chart and an error when no list is given, every one is
@@ -41,8 +41,7 @@ func CreateStepChart(config StepChartConfig, data ...insyra.IDataList) (*plot.Pl
 	case "post", "":
 		stepKind = plotter.PostStep
 	default:
-		insyra.LogWarning("gplot", "CreateStepChart", "Unknown StepStyle: %s, using PostStep", config.StepStyle)
-		stepKind = plotter.PostStep
+		return nil, chartError("CreateStepChart", "unknown StepStyle %q; use \"pre\", \"mid\" or \"post\"", config.StepStyle)
 	}
 	return drawLines("CreateStepChart", config.Title, config.XAxis, config.XAxisName, config.YAxisName, stepKind, data)
 }

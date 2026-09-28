@@ -68,7 +68,7 @@ func TestCreateStepChartWithInvalidStepStyle(t *testing.T) {
 	}
 
 	plt, err := CreateStepChart(config, insyra.NewDataList(1, 2, 3, 4, 5).SetName("Series1"))
-	if err != nil || plt == nil {
-		t.Errorf("CreateStepChart = %v, %v; an unknown step style should fall back to post", plt, err)
+	if err == nil || plt != nil {
+		t.Errorf("CreateStepChart = %v, %v; an unknown step style should be an error, not a fallback to post", plt, err)
 	}
 }
