@@ -63,6 +63,12 @@ func approxEqualAny(got, want []any, tol float64) bool {
 		gf, gok := insyra.ToFloat64Safe(got[i])
 		wf, wok := insyra.ToFloat64Safe(want[i])
 		if gok && wok {
+			if math.IsNaN(gf) && math.IsNaN(wf) {
+				continue
+			}
+			if math.IsNaN(gf) || math.IsNaN(wf) {
+				return false
+			}
 			if math.Abs(gf-wf) > tol {
 				return false
 			}
@@ -627,28 +633,6 @@ func TestRollingCommand_MinObsAboveWindowIsAnError(t *testing.T) {
 	}
 }
 
-// fillCellsEqual reports whether got holds exactly want, cell by cell: nil
-// matches only nil, a NaN in want matches only a NaN, and every other cell must
-// be equal. approxEqualAny cannot tell these cases apart, because a NaN in got
-// passes its tolerance check against any number.
-func fillCellsEqual(got, want []any) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for i := range want {
-		if w, ok := want[i].(float64); ok && math.IsNaN(w) {
-			if g, ok := got[i].(float64); !ok || !math.IsNaN(g) {
-				return false
-			}
-			continue
-		}
-		if !reflect.DeepEqual(got[i], want[i]) {
-			return false
-		}
-	}
-	return true
-}
-
 // With missing nan, a nil is neither filled nor counted toward limit, so the
 // NaN after it is still the first cell of its gap.
 func TestFillNACommand_MissingNaNLimitSkipsNil(t *testing.T) {
@@ -657,7 +641,7 @@ func TestFillNACommand_MissingNaNLimitSkipsNil(t *testing.T) {
 		t.Fatalf("fillna ffill limit 1 missing nan failed: %v", err)
 	}
 	got := resultDL(t, ctx, "f").Data()
-	if !fillCellsEqual(got, []any{1.0, nil, 1.0}) {
+	if !approxEqualAny(got, []any{1.0, nil, 1.0}, 1e-9) {
 		t.Errorf("got %v, want [1 <nil> 1]", got)
 	}
 }
@@ -668,7 +652,7 @@ func TestFillNACommand_MissingNilLimitSkipsNaN(t *testing.T) {
 		t.Fatalf("fillna bfill limit 1 missing nil failed: %v", err)
 	}
 	got := resultDL(t, ctx, "f").Data()
-	if !fillCellsEqual(got, []any{5.0, math.NaN(), 5.0}) {
+	if !approxEqualAny(got, []any{5.0, math.NaN(), 5.0}, 1e-9) {
 		t.Errorf("got %v, want [5 NaN 5]", got)
 	}
 }
@@ -681,7 +665,7 @@ func TestFillNACommand_MissingNaNLimitCountsOnlyNaN(t *testing.T) {
 		t.Fatalf("fillna ffill limit 1 missing nan failed: %v", err)
 	}
 	got := resultDL(t, ctx, "f").Data()
-	if !fillCellsEqual(got, []any{1.0, 1.0, nil, math.NaN()}) {
+	if !approxEqualAny(got, []any{1.0, 1.0, nil, math.NaN()}, 1e-9) {
 		t.Errorf("got %v, want [1 1 <nil> NaN]", got)
 	}
 }
@@ -700,10 +684,27 @@ func TestFillNACommand_TableMissingNaNLimitSkipsNil(t *testing.T) {
 		t.Fatalf("fillna ffill on a table failed: %v", err)
 	}
 	result := resultDT(t, ctx, "f")
-	if got := result.GetColByName("v").Data(); !fillCellsEqual(got, []any{1.0, nil, 1.0}) {
+	if got := result.GetColByName("v").Data(); !approxEqualAny(got, []any{1.0, nil, 1.0}, 1e-9) {
 		t.Errorf("column v: got %v, want [1 <nil> 1]", got)
 	}
-	if got := result.GetColByName("w").Data(); !fillCellsEqual(got, []any{"a", nil, "c"}) {
+	if got := result.GetColByName("w").Data(); !approxEqualAny(got, []any{"a", nil, "c"}, 1e-9) {
 		t.Errorf("fillna changed a column it was not asked to fill: %v", got)
+	}
+}
+
+// A NaN matches only a NaN, so a command that returns NaN where a number is
+// expected fails every assertion built on approxEqualAny.
+func TestApproxEqualAnyTreatsNaNOnlyAsNaN(t *testing.T) {
+	if approxEqualAny([]any{math.NaN()}, []any{1.0}, 1e-9) {
+		t.Error("got NaN, want 1: reported equal")
+	}
+	if approxEqualAny([]any{1.0}, []any{math.NaN()}, 1e-9) {
+		t.Error("got 1, want NaN: reported equal")
+	}
+	if !approxEqualAny([]any{math.NaN()}, []any{math.NaN()}, 1e-9) {
+		t.Error("got NaN, want NaN: reported unequal")
+	}
+	if !approxEqualAny([]any{1.0, nil}, []any{1.0 + 1e-12, nil}, 1e-9) {
+		t.Error("values within tolerance: reported unequal")
 	}
 }

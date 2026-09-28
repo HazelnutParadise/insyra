@@ -294,12 +294,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: delete it, its tests and its section in the same release as the other Deprecated removals, with a BREAKING changelog entry.
 - **Status**: pending
 
-### [2026-09-28] — the CLI tests' `approxEqualAny` passes a `NaN` where a number is expected
-- **Where**: `cli/commands/timeseries_test.go` `approxEqualAny`, used by 21 assertions there and one in `quant_test.go`
-- **What**: it compares two numeric cells with `math.Abs(got-want) > tol`, which is false whenever either side is `NaN`, so a result holding `NaN` where the test expects `1` counts as equal. Found on 2026-09-28 while writing `nan-only-fill-path`: the old `fillna … ffill limit 1 missing nan` returned `[1 <nil> NaN]`, and a test checking it against `[1 <nil> 1]` with this helper passed; the new tests use their own `fillCellsEqual` instead. Whether any existing assertion hides a wrong `NaN` today was not checked.
-- **Suggestion**: treat `NaN` as equal only to `NaN` in `approxEqualAny`, run the CLI tests, and look at whatever then fails before changing any expectation.
-- **Status**: pending
-
 ### [2026-09-28] — `ReadSlice2D` drops what a row longer than the first holds
 - **Where**: `read.go` `ReadSlice2D`, which takes the column count from the first row
 - **What**: measured on 2026-09-28: `ReadSlice2D([][]float64{{1}, {2, 3}})` returns a 2×1 table and a nil error; the `3` is gone, with no warning and nothing on `Err()`. A shorter row is padded with `nil`, which is fine. `chart-constructors-return-errors` made `gplot.CreateHeatmapChart` take a table and points `[][]float64` callers at `ReadSlice2D`, so a ragged grid that the heat map refused before is now silently cut. `Docs/gplot.md` and the changelog state it.
