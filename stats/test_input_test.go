@@ -15,8 +15,14 @@ func TestParametricTestsRefuseBlankCells(t *testing.T) {
 		"SingleSampleTTest": func() error { _, err := stats.SingleSampleTTest(blank, 0); return err },
 		"TwoSampleTTest":    func() error { _, err := stats.TwoSampleTTest(blank, clean, true); return err },
 		"TwoSampleTTest2":   func() error { _, err := stats.TwoSampleTTest(clean, blank, false); return err },
-		"SingleSampleZTest": func() error { _, err := stats.SingleSampleZTest(blank, 0, 1, stats.TwoSided, 0.95); return err },
-		"TwoSampleZTest":    func() error { _, err := stats.TwoSampleZTest(blank, clean, 1, 1, stats.TwoSided, 0.95); return err },
+		"SingleSampleZTest": func() error {
+			_, err := stats.SingleSampleZTest(blank, 0, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95})
+			return err
+		},
+		"TwoSampleZTest": func() error {
+			_, err := stats.TwoSampleZTest(blank, clean, 1, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95})
+			return err
+		},
 		"FTestForVarianceEquality": func() error {
 			_, err := stats.FTestForVarianceEquality(blank, clean)
 			return err
@@ -51,11 +57,11 @@ func TestParametricTestsRefuseNilLists(t *testing.T) {
 		"SingleSampleTTest typed nil": func() error { _, err := stats.SingleSampleTTest(typed, 0); return err },
 		"TwoSampleTTest nil":          func() error { _, err := stats.TwoSampleTTest(nil, clean, true); return err },
 		"SingleSampleZTest nil": func() error {
-			_, err := stats.SingleSampleZTest(nil, 0, 1, stats.TwoSided, 0.95)
+			_, err := stats.SingleSampleZTest(nil, 0, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95})
 			return err
 		},
 		"TwoSampleZTest typed nil": func() error {
-			_, err := stats.TwoSampleZTest(typed, clean, 1, 1, stats.TwoSided, 0.95)
+			_, err := stats.TwoSampleZTest(typed, clean, 1, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95})
 			return err
 		},
 		"FTestForVarianceEquality nil": func() error { _, err := stats.FTestForVarianceEquality(clean, nil); return err },

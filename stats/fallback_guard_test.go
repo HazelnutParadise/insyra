@@ -101,7 +101,7 @@ func TestChiSquareRejectsUndefinedInputs(t *testing.T) {
 }
 
 func TestZTestRejectsInvalidAlternative(t *testing.T) {
-	if _, err := stats.SingleSampleZTest(insyra.NewDataList([]float64{1, 2, 3}), 0, 1, stats.AlternativeHypothesis("bad"), 0.95); err == nil {
+	if _, err := stats.SingleSampleZTest(insyra.NewDataList([]float64{1, 2, 3}), 0, 1, stats.ZTestOptions{Alternative: stats.AlternativeHypothesis("bad"), ConfidenceLevel: 0.95}); err == nil {
 		t.Fatalf("expected single-sample z-test to reject invalid alternative")
 	}
 	if _, err := stats.TwoSampleZTest(
@@ -109,26 +109,25 @@ func TestZTestRejectsInvalidAlternative(t *testing.T) {
 		insyra.NewDataList([]float64{2, 3, 4}),
 		1,
 		1,
-		stats.AlternativeHypothesis("bad"),
-		0.95,
+		stats.ZTestOptions{Alternative: stats.AlternativeHypothesis("bad"), ConfidenceLevel: 0.95},
 	); err == nil {
 		t.Fatalf("expected two-sample z-test to reject invalid alternative")
 	}
 }
 
 func TestHypothesisTestsRejectInvalidConfidenceLevel(t *testing.T) {
-	if _, err := stats.SingleSampleTTest(insyra.NewDataList([]float64{1, 2, 3}), 0, 1.2); err == nil {
+	if _, err := stats.SingleSampleTTest(insyra.NewDataList([]float64{1, 2, 3}), 0, stats.TTestOptions{ConfidenceLevel: 1.2}); err == nil {
 		t.Fatalf("expected t-test to reject invalid confidence level")
 	}
 	if _, err := stats.TwoSampleTTest(
 		insyra.NewDataList([]float64{1, 2, 3}),
 		insyra.NewDataList([]float64{2, 3, 4}),
 		false,
-		0,
+		stats.TTestOptions{ConfidenceLevel: -0.5},
 	); err == nil {
 		t.Fatalf("expected two-sample t-test to reject invalid confidence level")
 	}
-	if _, err := stats.SingleSampleZTest(insyra.NewDataList([]float64{1, 2, 3}), 0, 1, stats.TwoSided, 1); err == nil {
+	if _, err := stats.SingleSampleZTest(insyra.NewDataList([]float64{1, 2, 3}), 0, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 1}); err == nil {
 		t.Fatalf("expected z-test to reject invalid confidence level")
 	}
 }

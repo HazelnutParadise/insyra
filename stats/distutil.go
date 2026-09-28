@@ -14,6 +14,21 @@ func tTwoTailedPValue(t, df float64) float64 {
 	return 2 * (1 - dist.CDF(math.Abs(t)))
 }
 
+// tPValue returns the p-value of a Student-t statistic under alt.
+func tPValue(t, df float64, alt AlternativeHypothesis) float64 {
+	switch alt {
+	case TwoSided:
+		return tTwoTailedPValue(t, df)
+	case Greater:
+		// The symmetric CDF, so 1 - F(t) never cancels away in the tail.
+		return tCDF(-t, df)
+	case Less:
+		return tCDF(t, df)
+	default:
+		return math.NaN()
+	}
+}
+
 func tCDF(t, df float64) float64 {
 	if df <= 0 {
 		return math.NaN()

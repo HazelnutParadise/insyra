@@ -826,6 +826,24 @@ if (method == "single_t") {
   tcrit <- qt(1 - (1 - cl) / 2, n - 1)
   ci <- c(md - tcrit * se, md + tcrit * se)
   out <- list(stat = t, p = p, df = as.double(n - 1), ci = ci, mean_diff = md, effect = abs(md) / sd_d)
+} else if (method == "t_test") {
+  x <- as.double(unlist(payload$x))
+  alt <- as.character(payload$alt)
+  cl <- as.double(payload$cl)
+  kind <- as.character(payload$kind)
+  # The Go constant is spelled "two-sided"; t.test spells it "two.sided" and
+  # match.arg() refuses anything else, so translate the wire value here.
+  r_alt <- if (alt == "two-sided") "two.sided" else alt
+  if (kind == "single") {
+    r <- t.test(x, mu = as.double(payload$mu), alternative = r_alt, conf.level = cl)
+  } else if (kind == "paired") {
+    y <- as.double(unlist(payload$y))
+    r <- t.test(x, y, paired = TRUE, alternative = r_alt, conf.level = cl)
+  } else {
+    y <- as.double(unlist(payload$y))
+    r <- t.test(x, y, var.equal = isTRUE(payload$equal_var), alternative = r_alt, conf.level = cl)
+  }
+  out <- list(stat = unname(r$statistic), p = r$p.value, df = unname(r$parameter), ci = as.double(r$conf.int))
 } else if (method == "single_z") {
   x <- as.double(unlist(payload$x))
   mu <- as.double(payload$mu)

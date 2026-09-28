@@ -55,6 +55,12 @@ func tMarginOfError(confidenceLevel, df, standardError float64) float64 {
 	return tQuantile(1-(1-confidenceLevel)/2, df) * standardError
 }
 
+// tMarginOfErrorOneSided returns the margin of a one-sided t confidence
+// bound at the given level: qt(cl, df) · SE.
+func tMarginOfErrorOneSided(confidenceLevel, df, standardError float64) float64 {
+	return tQuantile(confidenceLevel, df) * standardError
+}
+
 // zMarginOfError returns the half-width of a *two-sided* z confidence interval.
 // One-sided alternatives need zMarginOfErrorOneSided (different quantile).
 func zMarginOfError(confidenceLevel, standardError float64) float64 {

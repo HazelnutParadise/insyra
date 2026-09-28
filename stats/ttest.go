@@ -10,6 +10,19 @@ import (
 	"gonum.org/v1/gonum/stat"
 )
 
+// TTestOptions holds the settings SingleSampleTTest, TwoSampleTTest and
+// PairedTTest take. The zero value is a two-sided test with a 95%
+// confidence interval.
+type TTestOptions struct {
+	// Alternative is TwoSided, Greater or Less. Greater tests whether the
+	// mean (or the difference of means, or the mean difference) is above
+	// the hypothesised value. Empty means TwoSided.
+	Alternative AlternativeHypothesis
+	// ConfidenceLevel is the level of the confidence interval, strictly
+	// between 0 and 1. Zero means 0.95.
+	ConfidenceLevel float64
+}
+
 type TTestResult struct {
 	testResultBase
 	Mean     *float64 // mean of the first group (or the only group)
@@ -23,19 +36,32 @@ type TTestResult struct {
 // Parameters:
 //   - data: The sample data to test
 //   - mu: The hypothesized population mean to compare against
-//   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
-//     Must be strictly between 0 and 1; any other value is an error. Defaults to 0.95 when not provided.
+//   - opts: (Optional) A single TTestOptions holding the alternative hypothesis
+//     and the confidence level of the confidence interval. At most one may be
+//     given; its zero value means a two-sided test at a 95% confidence level.
+//     A one-sided alternative gives R's t.test p-value and a one-sided bound
+//     whose other end is +Inf (Greater) or -Inf (Less).
 //
 // Constant data has no variance, so the t statistic is ±Inf when the mean
-// differs from mu and NaN when it equals it, with a p-value of 0 or NaN to
-// match. That is the arithmetic, not a failure, and no error is returned —
-// check the statistic before reporting it.
+// differs from mu and NaN when it equals it, with a p-value that follows the
+// alternative (0 or 1 at ±Inf, NaN when the mean equals mu) to match. That is
+// the arithmetic, not a failure, and no error is returned — check the
+// statistic before reporting it.
 //
 // The effect sizes carry their sign, unlike the z-tests', which report the
 // absolute value to match the R output their reference tests are pinned to.
 //
 // ** Verified using R **
-func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error) {
+func SingleSampleTTest(data insyra.IDataList, mu float64, opts ...TTestOptions) (*TTestResult, error) {
+	o, err := oneOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	alt, cl, err := resolveTestSettings(o.Alternative, o.ConfidenceLevel)
+	if err != nil {
+		return nil, err
+	}
+
 	values, err := testSeries(data, "data")
 	if err != nil {
 		return nil, err
@@ -50,22 +76,15 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 	standardError := sampleSE(stddev, float64(n))
 	tValue := (mean - mu) / standardError
 	df := float64(n - 1)
-	pValue := tTwoTailedPValue(tValue, df)
+	pValue := tPValue(tValue, df, alt)
 
-	var rawCL float64
-	if len(confidenceLevel) > 0 {
-		if len(confidenceLevel) > 1 {
-			return nil, errors.New("confidenceLevel accepts at most one value")
-		}
-		rawCL = confidenceLevel[0]
-		if rawCL <= 0 || rawCL >= 1 {
-			return nil, errors.New("confidenceLevel must be between 0 and 1")
-		}
+	var marginOfError float64
+	if alt == TwoSided {
+		marginOfError = tMarginOfError(cl, df, standardError)
+	} else {
+		marginOfError = tMarginOfErrorOneSided(cl, df, standardError)
 	}
-	cl := resolveConfidenceLevel(rawCL)
-
-	marginOfError := tMarginOfError(cl, df, standardError)
-	ci := symmetricCI(mean, marginOfError)
+	ci := ciByAlternative(mean, marginOfError, alt)
 
 	// Handle constant data (stddev == 0)
 	if stddev == 0 {
@@ -89,7 +108,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 		} else {
 			effectSize := math.Inf(int(math.Copysign(1, mean-mu)))
 			tValue = math.Inf(int(math.Copysign(1, mean-mu)))
-			pValue = 0
+			pValue = tPValue(tValue, df, alt)
 			effectSizes := cohenDEffectSizes(effectSize)
 			return &TTestResult{
 				testResultBase: testResultBase{
@@ -125,11 +144,23 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 // Parameters:
 //   - data1, data2: The two data groups to compare
 //   - equalVariance: Whether to assume equal variances between groups
-//   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
-//     Must be strictly between 0 and 1; any other value is an error. Defaults to 0.95 when not provided.
+//   - opts: (Optional) A single TTestOptions holding the alternative hypothesis
+//     and the confidence level of the confidence interval. At most one may be
+//     given; its zero value means a two-sided test at a 95% confidence level.
+//     A one-sided alternative gives R's t.test p-value and a one-sided bound on
+//     mean1 - mean2 whose other end is +Inf (Greater) or -Inf (Less).
 //
 // ** Verified using R **
-func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error) {
+func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, opts ...TTestOptions) (*TTestResult, error) {
+	o, err := oneOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	alt, cl, err := resolveTestSettings(o.Alternative, o.ConfidenceLevel)
+	if err != nil {
+		return nil, err
+	}
+
 	values1, values2, err := testSeriesPair(data1, data2, "data1", "data2")
 	if err != nil {
 		return nil, err
@@ -161,22 +192,15 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 		df = welchDF(var1, var2, n1Float, n2Float)
 	}
 	tValue := meanDiff / standardError
-	pValue := tTwoTailedPValue(tValue, df)
+	pValue := tPValue(tValue, df, alt)
 
-	var rawCL float64
-	if len(confidenceLevel) > 0 {
-		if len(confidenceLevel) > 1 {
-			return nil, errors.New("confidenceLevel accepts at most one value")
-		}
-		rawCL = confidenceLevel[0]
-		if rawCL <= 0 || rawCL >= 1 {
-			return nil, errors.New("confidenceLevel must be between 0 and 1")
-		}
+	var marginOfError float64
+	if alt == TwoSided {
+		marginOfError = tMarginOfError(cl, df, standardError)
+	} else {
+		marginOfError = tMarginOfErrorOneSided(cl, df, standardError)
 	}
-	cl := resolveConfidenceLevel(rawCL)
-
-	marginOfError := tMarginOfError(cl, df, standardError)
-	ci := symmetricCI(meanDiff, marginOfError)
+	ci := ciByAlternative(meanDiff, marginOfError, alt)
 
 	var effectSize float64
 	if equalVariance {
@@ -206,13 +230,24 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 // The data must be paired observations (same subjects measured twice).
 // Parameters:
 //   - data1, data2: The paired data groups to compare (must have same length)
-//   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
-//     Must be strictly between 0 and 1; any other value is an error. Defaults to 0.95 when not provided.
+//   - opts: (Optional) A single TTestOptions holding the alternative hypothesis
+//     and the confidence level of the confidence interval. At most one may be
+//     given; its zero value means a two-sided test at a 95% confidence level.
+//     A one-sided alternative gives R's t.test p-value and a one-sided bound on
+//     the mean difference whose other end is +Inf (Greater) or -Inf (Less).
 //
 // ** Verified using R **
-func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TTestResult, error) {
+func PairedTTest(data1, data2 insyra.IDataList, opts ...TTestOptions) (*TTestResult, error) {
+	o, err := oneOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	alt, cl, err := resolveTestSettings(o.Alternative, o.ConfidenceLevel)
+	if err != nil {
+		return nil, err
+	}
+
 	var n int
-	var err error
 	var data1Slice, data2Slice []any
 	dl1 := asDataList(data1)
 	dl2 := asDataList(data2)
@@ -253,22 +288,15 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TT
 	standardError := sampleSE(stddevDiff, nFloat)
 	tValue := meanDiff / standardError
 	df := nFloat - 1
-	pValue := tTwoTailedPValue(tValue, df)
+	pValue := tPValue(tValue, df, alt)
 
-	var rawCL float64
-	if len(confidenceLevel) > 0 {
-		if len(confidenceLevel) > 1 {
-			return nil, errors.New("confidenceLevel accepts at most one value")
-		}
-		rawCL = confidenceLevel[0]
-		if rawCL <= 0 || rawCL >= 1 {
-			return nil, errors.New("confidenceLevel must be between 0 and 1")
-		}
+	var marginOfError float64
+	if alt == TwoSided {
+		marginOfError = tMarginOfError(cl, df, standardError)
+	} else {
+		marginOfError = tMarginOfErrorOneSided(cl, df, standardError)
 	}
-	cl := resolveConfidenceLevel(rawCL)
-
-	marginOfError := tMarginOfError(cl, df, standardError)
-	ci := symmetricCI(meanDiff, marginOfError)
+	ci := ciByAlternative(meanDiff, marginOfError, alt)
 
 	// Cohen's d_z for paired data, sign-preserving (matches single & two-sample
 	// Cohen's d in this same file — previously this used math.Abs which

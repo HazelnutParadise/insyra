@@ -52,13 +52,13 @@ func TestStress_TwoSampleStatsNoRace(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				for i := 0; i < iters; i++ {
-					_, _ = TwoSampleTTest(a, b, true, 0.95)
+					_, _ = TwoSampleTTest(a, b, true, TTestOptions{ConfidenceLevel: 0.95})
 					_, _ = TwoSampleTTest(a, b, false)
 					_, _ = PairedTTest(a, b)
-					_, _ = TwoSampleZTest(a, b, 1, 1, TwoSided, 0.95)
+					_, _ = TwoSampleZTest(a, b, 1, 1, ZTestOptions{Alternative: TwoSided, ConfidenceLevel: 0.95})
 					_, _ = FTestForVarianceEquality(a, b)
-					_, _ = MannWhitneyU(a, b, TwoSided)
-					_, _ = PairedWilcoxon(a, b, TwoSided)
+					_, _ = MannWhitneyU(a, b, MannWhitneyUOptions{Alternative: TwoSided})
+					_, _ = PairedWilcoxon(a, b, WilcoxonOptions{Alternative: TwoSided})
 					_, _ = Correlation(a, b, PearsonCorrelation)
 					_, _ = Covariance(a, b)
 					_, _ = ExponentialRegression(b, a)

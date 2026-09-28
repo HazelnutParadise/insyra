@@ -34,6 +34,7 @@ Layer 1 — 樣本統計原語
 Layer 2 — 統計推斷原語
   mathutil.go   信賴區間、信賴水準、效果量、eta²、F-ratio、
                 相關係數轉換（correlationToT、Fisher z-transform）
+  test_options.go  檢定設定：最多一個設定值、對立假設與信賴水準的讀取
 
 Layer 3 — 回歸原語
   olsutil.go    OLS 係數求解、殘差/R²、SE/t/p 推斷、CI 建構
@@ -55,6 +56,7 @@ Layer 4 — 對外統計方法（公開 API）
 | 你需要的 | 使用函數 |
 |---|---|
 | Student's t 雙尾 p 值 | `tTwoTailedPValue(t, df float64)` |
+| Student's t p 值（含方向） | `tPValue(t, df float64, alt AlternativeHypothesis)` |
 | Student's t 單尾 CDF | `tCDF(t, df float64)` |
 | Student's t 臨界值 | `tQuantile(p, df float64)` |
 | 標準常態 p 值（含方向） | `zPValue(z float64, alt AlternativeHypothesis)` |
@@ -79,9 +81,12 @@ Layer 4 — 對外統計方法（公開 API）
 | 你需要的 | 使用函數 |
 |---|---|
 | 驗證並取得信賴水準 | `resolveConfidenceLevel(cl float64)` |
+| 假設檢定的對立假設與信賴水準（空值取預設、超出範圍回錯誤） | `resolveTestSettings(alt AlternativeHypothesis, cl float64)`（test_options.go） |
+| 最後一個 `opts ...T` 取出唯一的值（多給回錯誤） | `oneOptions[T any](opts []T)`（test_options.go） |
 | 對稱信賴區間 | `symmetricCI(center, margin float64)` |
 | 兩端 NaN 的 CI | `nanCI()` |
 | t 誤差邊界 critT × SE | `tMarginOfError(cl, df, se float64)` |
+| 單尾 t 誤差邊界 qt(cl) × SE | `tMarginOfErrorOneSided(cl, df, se float64)` |
 | z 誤差邊界 critZ × SE | `zMarginOfError(cl, se float64)` |
 | Cohen's d 效果量切片 | `cohenDEffectSizes(d float64)` |
 | Eta-squared η² | `etaSquared(ssEffect, ssError float64)` |
@@ -165,8 +170,9 @@ cohenDEffectSizes(d)
 // ❌ 禁止：inline 信賴水準驗證
 if cl <= 0 || cl >= 1 { cl = defaultConfidenceLevel }
 
-// ✅ 應該使用
+// ✅ 應該使用（假設檢定用 resolveTestSettings，超出範圍回錯誤）
 cl = resolveConfidenceLevel(cl)
+alt, cl, err := resolveTestSettings(o.Alternative, o.ConfidenceLevel)
 
 // ❌ 禁止：用 math.Pow 算整數次方（特別是 2、3）
 math.Pow(x, 2)

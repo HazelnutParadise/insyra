@@ -87,7 +87,7 @@ func TestCrossLangWilcoxonPaired(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			x := dataListFromFloat64(tc.x)
 			y := dataListFromFloat64(tc.y)
-			got, err := stats.PairedWilcoxon(x, y, tc.alt, tc.cl)
+			got, err := stats.PairedWilcoxon(x, y, stats.WilcoxonOptions{Alternative: tc.alt, ConfidenceLevel: tc.cl})
 			if err != nil {
 				t.Fatalf("PairedWilcoxon error: %v", err)
 			}
@@ -163,7 +163,7 @@ func TestCrossLangWilcoxonSingle(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := stats.SingleSampleWilcoxon(dataListFromFloat64(tc.x), tc.mu, tc.alt, tc.cl)
+			got, err := stats.SingleSampleWilcoxon(dataListFromFloat64(tc.x), tc.mu, stats.WilcoxonOptions{Alternative: tc.alt, ConfidenceLevel: tc.cl})
 			if err != nil {
 				t.Fatalf("SingleSampleWilcoxon error: %v", err)
 			}
@@ -244,7 +244,7 @@ func TestCrossLangMannWhitneyU(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := stats.MannWhitneyU(dataListFromFloat64(tc.x), dataListFromFloat64(tc.y), tc.alt, tc.cl)
+			got, err := stats.MannWhitneyU(dataListFromFloat64(tc.x), dataListFromFloat64(tc.y), stats.MannWhitneyUOptions{Alternative: tc.alt, ConfidenceLevel: tc.cl})
 			if err != nil {
 				t.Fatalf("MannWhitneyU error: %v", err)
 			}
@@ -331,7 +331,7 @@ func TestCrossLangKruskalWallis(t *testing.T) {
 			for i, g := range tc.groups {
 				groupLists[i] = dataListFromFloat64(g)
 			}
-			got, err := stats.KruskalWallis(groupLists...)
+			got, err := stats.KruskalWallis(groupLists)
 			if err != nil {
 				t.Fatalf("KruskalWallis error: %v", err)
 			}
@@ -396,7 +396,7 @@ func TestCrossLangFriedman(t *testing.T) {
 			for i, s := range tc.subjects {
 				subjectLists[i] = dataListFromFloat64(s)
 			}
-			got, err := stats.FriedmanTest(subjectLists...)
+			got, err := stats.FriedmanTest(subjectLists)
 			if err != nil {
 				t.Fatalf("FriedmanTest error: %v", err)
 			}

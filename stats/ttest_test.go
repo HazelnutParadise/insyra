@@ -255,7 +255,7 @@ func TestSingleSampleTTest_R(t *testing.T) {
 				cl = 0.95
 			}
 			dl := insyra.NewDataList(c.data)
-			r, err := stats.SingleSampleTTest(dl, c.mu, cl)
+			r, err := stats.SingleSampleTTest(dl, c.mu, stats.TTestOptions{ConfidenceLevel: cl})
 			if err != nil {
 				t.Fatalf("SingleSampleTTest error: %v", err)
 			}
@@ -305,7 +305,7 @@ func TestSingleSampleTTest_ConstantData(t *testing.T) {
 
 	t.Run("data_equals_mu_constant", func(t *testing.T) {
 		dl := insyra.NewDataList([]float64{50, 50, 50, 50, 50})
-		r, err := stats.SingleSampleTTest(dl, 50, 0.95)
+		r, err := stats.SingleSampleTTest(dl, 50, stats.TTestOptions{ConfidenceLevel: 0.95})
 		if err != nil {
 			t.Fatalf("error: %v", err)
 		}
@@ -331,7 +331,7 @@ func TestSingleSampleTTest_ConstantData(t *testing.T) {
 
 	t.Run("constant_data_not_equal_mu", func(t *testing.T) {
 		dl := insyra.NewDataList([]float64{10, 10, 10})
-		r, err := stats.SingleSampleTTest(dl, 5, 0.95)
+		r, err := stats.SingleSampleTTest(dl, 5, stats.TTestOptions{ConfidenceLevel: 0.95})
 		if err != nil {
 			t.Fatalf("error: %v", err)
 		}
@@ -586,7 +586,7 @@ func TestTwoSampleTTest_R(t *testing.T) {
 			}
 			d1 := insyra.NewDataList(c.data1)
 			d2 := insyra.NewDataList(c.data2)
-			r, err := stats.TwoSampleTTest(d1, d2, c.equalVar, cl)
+			r, err := stats.TwoSampleTTest(d1, d2, c.equalVar, stats.TTestOptions{ConfidenceLevel: cl})
 			if err != nil {
 				t.Fatalf("TwoSampleTTest error: %v", err)
 			}
@@ -717,7 +717,7 @@ func TestPairedTTest_R(t *testing.T) {
 			}
 			d1 := insyra.NewDataList(c.data1)
 			d2 := insyra.NewDataList(c.data2)
-			r, err := stats.PairedTTest(d1, d2, cl)
+			r, err := stats.PairedTTest(d1, d2, stats.TTestOptions{ConfidenceLevel: cl})
 			if err != nil {
 				t.Fatalf("PairedTTest error: %v", err)
 			}
@@ -771,13 +771,13 @@ func TestPairedTTest_R(t *testing.T) {
 func TestPairedTTest_MixedNumericTypes(t *testing.T) {
 	intA := insyra.NewDataList(10, 12, 14, 13, 11)
 	floatB := insyra.NewDataList(8.0, 9.0, 12.5, 10.0, 9.5)
-	got, err := stats.PairedTTest(intA, floatB, 0.95)
+	got, err := stats.PairedTTest(intA, floatB, stats.TTestOptions{ConfidenceLevel: 0.95})
 	if err != nil {
 		t.Fatalf("PairedTTest with int elements: %v", err)
 	}
 
 	baseA := insyra.NewDataList(10.0, 12.0, 14.0, 13.0, 11.0)
-	want, err := stats.PairedTTest(baseA, floatB, 0.95)
+	want, err := stats.PairedTTest(baseA, floatB, stats.TTestOptions{ConfidenceLevel: 0.95})
 	if err != nil {
 		t.Fatalf("PairedTTest float64 baseline: %v", err)
 	}
@@ -805,7 +805,7 @@ func TestPairedTTest_NonNumericElement(t *testing.T) {
 func TestPairedTTest_AllZeroDiff(t *testing.T) {
 	a := insyra.NewDataList([]float64{5, 5, 5, 5})
 	b := insyra.NewDataList([]float64{5, 5, 5, 5})
-	r, err := stats.PairedTTest(a, b, 0.95)
+	r, err := stats.PairedTTest(a, b, stats.TTestOptions{ConfidenceLevel: 0.95})
 	if err != nil {
 		t.Fatalf("PairedTTest error: %v", err)
 	}

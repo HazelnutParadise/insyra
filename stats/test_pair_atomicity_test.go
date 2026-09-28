@@ -90,7 +90,7 @@ func TestTwoSampleZTestReadsBothSamplesAtOneMoment(t *testing.T) {
 
 	torn := 0
 	for range pairAtomicityIterations {
-		res, err := TwoSampleZTest(dl1, dl2, 2, 4, TwoSided, 0.95)
+		res, err := TwoSampleZTest(dl1, dl2, 2, 4, ZTestOptions{Alternative: TwoSided, ConfidenceLevel: 0.95})
 		if err != nil {
 			t.Fatalf("TwoSampleZTest: %v", err)
 		}

@@ -59,32 +59,46 @@ func TestPairedAndOneSampleTestsRefuseUnreadableCells(t *testing.T) {
 				},
 				{
 					"PairedWilcoxon data1",
-					func() (bool, error) { r, err := stats.PairedWilcoxon(bad, clean, stats.TwoSided); return r == nil, err },
+					func() (bool, error) {
+						r, err := stats.PairedWilcoxon(bad, clean, stats.WilcoxonOptions{Alternative: stats.TwoSided})
+						return r == nil, err
+					},
 					want("data1"),
 					"PairedWilcoxon",
 				},
 				{
 					"PairedWilcoxon data2",
-					func() (bool, error) { r, err := stats.PairedWilcoxon(clean, bad, stats.TwoSided); return r == nil, err },
+					func() (bool, error) {
+						r, err := stats.PairedWilcoxon(clean, bad, stats.WilcoxonOptions{Alternative: stats.TwoSided})
+						return r == nil, err
+					},
 					want("data2"),
 					"PairedWilcoxon",
 				},
 				{
 					"MannWhitneyU data1",
-					func() (bool, error) { r, err := stats.MannWhitneyU(bad, clean, stats.TwoSided); return r == nil, err },
+					func() (bool, error) {
+						r, err := stats.MannWhitneyU(bad, clean, stats.MannWhitneyUOptions{Alternative: stats.TwoSided})
+						return r == nil, err
+					},
 					want("data1"),
 					"MannWhitneyU",
 				},
 				{
 					"MannWhitneyU data2",
-					func() (bool, error) { r, err := stats.MannWhitneyU(clean, bad, stats.TwoSided); return r == nil, err },
+					func() (bool, error) {
+						r, err := stats.MannWhitneyU(clean, bad, stats.MannWhitneyUOptions{Alternative: stats.TwoSided})
+						return r == nil, err
+					},
 					want("data2"),
 					"MannWhitneyU",
 				},
 				{
 					"SingleSampleWilcoxon",
 					func() (bool, error) {
-						r, err := stats.SingleSampleWilcoxon(insyra.NewDataList(1.0, 2.0, tc.bad, 4.0, 6.0), 0, stats.TwoSided)
+						r, err := stats.SingleSampleWilcoxon(
+							insyra.NewDataList(1.0, 2.0, tc.bad, 4.0, 6.0), 0,
+							stats.WilcoxonOptions{Alternative: stats.TwoSided})
 						return r == nil, err
 					},
 					want("data"),
@@ -124,10 +138,22 @@ func TestPairedAndOneSampleTestsRefuseNilLists(t *testing.T) {
 	}{
 		{"PairedTTest typed-nil data2", func() error { _, err := stats.PairedTTest(clean, typedNil); return err }},
 		{"PairedTTest nil data1", func() error { _, err := stats.PairedTTest(nil, clean); return err }},
-		{"PairedWilcoxon typed-nil data1", func() error { _, err := stats.PairedWilcoxon(typedNil, clean, stats.TwoSided); return err }},
-		{"MannWhitneyU nil data2", func() error { _, err := stats.MannWhitneyU(clean, nil, stats.TwoSided); return err }},
-		{"SingleSampleWilcoxon typed-nil", func() error { _, err := stats.SingleSampleWilcoxon(typedNil, 0, stats.TwoSided); return err }},
-		{"SingleSampleWilcoxon nil", func() error { _, err := stats.SingleSampleWilcoxon(nil, 0, stats.TwoSided); return err }},
+		{"PairedWilcoxon typed-nil data1", func() error {
+			_, err := stats.PairedWilcoxon(typedNil, clean, stats.WilcoxonOptions{Alternative: stats.TwoSided})
+			return err
+		}},
+		{"MannWhitneyU nil data2", func() error {
+			_, err := stats.MannWhitneyU(clean, nil, stats.MannWhitneyUOptions{Alternative: stats.TwoSided})
+			return err
+		}},
+		{"SingleSampleWilcoxon typed-nil", func() error {
+			_, err := stats.SingleSampleWilcoxon(typedNil, 0, stats.WilcoxonOptions{Alternative: stats.TwoSided})
+			return err
+		}},
+		{"SingleSampleWilcoxon nil", func() error {
+			_, err := stats.SingleSampleWilcoxon(nil, 0, stats.WilcoxonOptions{Alternative: stats.TwoSided})
+			return err
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			defer func() {
@@ -181,7 +207,7 @@ func TestANOVAFamilyRefusesUnreadableCells(t *testing.T) {
 				{
 					"OneWayANOVA",
 					func() (bool, error) {
-						r, err := stats.OneWayANOVA(dl(1.0, 2.0, 3.0), dl(4.0, 5.0, tc.bad), dl(7.0, 8.0, 9.5))
+						r, err := stats.OneWayANOVA([]insyra.IDataList{dl(1.0, 2.0, 3.0), dl(4.0, 5.0, tc.bad), dl(7.0, 8.0, 9.5)})
 						return r == nil, err
 					},
 					want("group 2", "row", 3),
@@ -189,7 +215,7 @@ func TestANOVAFamilyRefusesUnreadableCells(t *testing.T) {
 				{
 					"TwoWayANOVA",
 					func() (bool, error) {
-						r, err := stats.TwoWayANOVA(2, 2, dl(1.0, 2.0), dl(3.0, 4.5), dl(5.0, tc.bad), dl(7.0, 8.5))
+						r, err := stats.TwoWayANOVA(2, 2, []insyra.IDataList{dl(1.0, 2.0), dl(3.0, 4.5), dl(5.0, tc.bad), dl(7.0, 8.5)})
 						return r == nil, err
 					},
 					want("cell (A=2, B=1)", "row", 2),
@@ -197,7 +223,7 @@ func TestANOVAFamilyRefusesUnreadableCells(t *testing.T) {
 				{
 					"RepeatedMeasuresANOVA",
 					func() (bool, error) {
-						r, err := stats.RepeatedMeasuresANOVA(dl(1.0, 2.0, 3.5), dl(2.0, tc.bad, 4.0), dl(3.0, 4.5, 6.0))
+						r, err := stats.RepeatedMeasuresANOVA([]insyra.IDataList{dl(1.0, 2.0, 3.5), dl(2.0, tc.bad, 4.0), dl(3.0, 4.5, 6.0)})
 						return r == nil, err
 					},
 					want("subject 2", "condition", 2),
@@ -234,7 +260,7 @@ func TestANOVAFamilyNumbersPositionsFromOne(t *testing.T) {
 		{
 			"OneWayANOVA empty group",
 			func() (bool, error) {
-				r, err := stats.OneWayANOVA(dl(1.0, 2.0), dl())
+				r, err := stats.OneWayANOVA([]insyra.IDataList{dl(1.0, 2.0), dl()})
 				return r == nil, err
 			},
 			"group 2 is empty",
@@ -242,7 +268,7 @@ func TestANOVAFamilyNumbersPositionsFromOne(t *testing.T) {
 		{
 			"TwoWayANOVA empty cell A=1 B=1",
 			func() (bool, error) {
-				r, err := stats.TwoWayANOVA(2, 2, dl(), dl(3.0, 4.5), dl(5.0, 6.0), dl(7.0, 8.5))
+				r, err := stats.TwoWayANOVA(2, 2, []insyra.IDataList{dl(), dl(3.0, 4.5), dl(5.0, 6.0), dl(7.0, 8.5)})
 				return r == nil, err
 			},
 			"empty cell at A=1, B=1",
@@ -250,7 +276,7 @@ func TestANOVAFamilyNumbersPositionsFromOne(t *testing.T) {
 		{
 			"TwoWayANOVA empty cell A=1 B=2",
 			func() (bool, error) {
-				r, err := stats.TwoWayANOVA(2, 2, dl(1.0, 2.0), dl(), dl(5.0, 6.0), dl(7.0, 8.5))
+				r, err := stats.TwoWayANOVA(2, 2, []insyra.IDataList{dl(1.0, 2.0), dl(), dl(5.0, 6.0), dl(7.0, 8.5)})
 				return r == nil, err
 			},
 			"empty cell at A=1, B=2",
@@ -258,7 +284,7 @@ func TestANOVAFamilyNumbersPositionsFromOne(t *testing.T) {
 		{
 			"RepeatedMeasuresANOVA inconsistent subject",
 			func() (bool, error) {
-				r, err := stats.RepeatedMeasuresANOVA(dl(1.0, 2.0, 3.0), dl(1.0, 2.0))
+				r, err := stats.RepeatedMeasuresANOVA([]insyra.IDataList{dl(1.0, 2.0, 3.0), dl(1.0, 2.0)})
 				return r == nil, err
 			},
 			"inconsistent condition count at subject 2",
@@ -296,25 +322,28 @@ func TestANOVAFamilyRefusesNilLists(t *testing.T) {
 	}{
 		{
 			"OneWayANOVA typed-nil group",
-			func() error { _, err := stats.OneWayANOVA(dl(1.0, 2.0), typedNil); return err },
+			func() error { _, err := stats.OneWayANOVA([]insyra.IDataList{dl(1.0, 2.0), typedNil}); return err },
 			"group 2 is empty",
 		},
 		{
 			"OneWayANOVA nil group",
-			func() error { _, err := stats.OneWayANOVA(nil, dl(1.0, 2.0)); return err },
+			func() error { _, err := stats.OneWayANOVA([]insyra.IDataList{nil, dl(1.0, 2.0)}); return err },
 			"group 1 is empty",
 		},
 		{
 			"TwoWayANOVA typed-nil cell",
 			func() error {
-				_, err := stats.TwoWayANOVA(2, 2, dl(1.0, 2.0), typedNil, dl(1.0, 2.0), dl(3.0, 4.0))
+				_, err := stats.TwoWayANOVA(2, 2, []insyra.IDataList{dl(1.0, 2.0), typedNil, dl(1.0, 2.0), dl(3.0, 4.0)})
 				return err
 			},
 			"empty cell at A=1, B=2",
 		},
 		{
 			"RepeatedMeasuresANOVA typed-nil subject",
-			func() error { _, err := stats.RepeatedMeasuresANOVA(dl(1.0, 2.0), typedNil); return err },
+			func() error {
+				_, err := stats.RepeatedMeasuresANOVA([]insyra.IDataList{dl(1.0, 2.0), typedNil})
+				return err
+			},
 			"inconsistent condition count at subject 2",
 		},
 	} {
@@ -374,7 +403,7 @@ func TestRankAndVarianceTestsRefuseUnreadableCells(t *testing.T) {
 				{
 					"KruskalWallis group 1",
 					func() (bool, error) {
-						r, err := stats.KruskalWallis(dl(1.0, 2.0, bad, 4.0), dl(1.0, 2.0, 3.0, 4.0))
+						r, err := stats.KruskalWallis([]insyra.IDataList{dl(1.0, 2.0, bad, 4.0), dl(1.0, 2.0, 3.0, 4.0)})
 						return r == nil, err
 					},
 					want("group 1", "row", 3),
@@ -382,7 +411,7 @@ func TestRankAndVarianceTestsRefuseUnreadableCells(t *testing.T) {
 				{
 					"KruskalWallis group 2",
 					func() (bool, error) {
-						r, err := stats.KruskalWallis(dl(1.0, 2.0, 3.0, 4.0), dl(1.0, bad, 3.0, 4.0))
+						r, err := stats.KruskalWallis([]insyra.IDataList{dl(1.0, 2.0, 3.0, 4.0), dl(1.0, bad, 3.0, 4.0)})
 						return r == nil, err
 					},
 					want("group 2", "row", 2),
@@ -390,8 +419,8 @@ func TestRankAndVarianceTestsRefuseUnreadableCells(t *testing.T) {
 				{
 					"FriedmanTest subject 2",
 					func() (bool, error) {
-						r, err := stats.FriedmanTest(
-							dl(1.0, 2.0, 3.0), dl(2.0, bad, 1.0), dl(3.0, 1.0, 2.0), dl(1.0, 3.0, 2.0))
+						r, err := stats.FriedmanTest([]insyra.IDataList{
+							dl(1.0, 2.0, 3.0), dl(2.0, bad, 1.0), dl(3.0, 1.0, 2.0), dl(1.0, 3.0, 2.0)})
 						return r == nil, err
 					},
 					want("subject 2", "condition", 2),
@@ -445,7 +474,7 @@ func TestRankAndVarianceTestsNumberPositionsFromOne(t *testing.T) {
 		{
 			"KruskalWallis empty group",
 			func() (bool, error) {
-				r, err := stats.KruskalWallis(dl(1.0, 2.0), dl())
+				r, err := stats.KruskalWallis([]insyra.IDataList{dl(1.0, 2.0), dl()})
 				return r == nil, err
 			},
 			"group 2 is empty",
@@ -453,7 +482,7 @@ func TestRankAndVarianceTestsNumberPositionsFromOne(t *testing.T) {
 		{
 			"FriedmanTest inconsistent subject",
 			func() (bool, error) {
-				r, err := stats.FriedmanTest(dl(1.0, 2.0, 3.0), dl(2.0, 1.0))
+				r, err := stats.FriedmanTest([]insyra.IDataList{dl(1.0, 2.0, 3.0), dl(2.0, 1.0)})
 				return r == nil, err
 			},
 			"subject 2 has 2 observations, expected 3",
@@ -500,22 +529,22 @@ func TestRankTestsRefuseNilLists(t *testing.T) {
 	}{
 		{
 			"KruskalWallis typed-nil group",
-			func() error { _, err := stats.KruskalWallis(dl(1.0, 2.0), typedNil); return err },
+			func() error { _, err := stats.KruskalWallis([]insyra.IDataList{dl(1.0, 2.0), typedNil}); return err },
 			"group 2 is empty",
 		},
 		{
 			"KruskalWallis nil group",
-			func() error { _, err := stats.KruskalWallis(nil, dl(1.0, 2.0)); return err },
+			func() error { _, err := stats.KruskalWallis([]insyra.IDataList{nil, dl(1.0, 2.0)}); return err },
 			"group 1 is empty",
 		},
 		{
 			"FriedmanTest typed-nil subject",
-			func() error { _, err := stats.FriedmanTest(dl(1.0, 2.0), typedNil); return err },
+			func() error { _, err := stats.FriedmanTest([]insyra.IDataList{dl(1.0, 2.0), typedNil}); return err },
 			"subject 2 has 0 observations, expected 2",
 		},
 		{
 			"FriedmanTest nil subject",
-			func() error { _, err := stats.FriedmanTest(typedNil, dl(1.0, 2.0)); return err },
+			func() error { _, err := stats.FriedmanTest([]insyra.IDataList{typedNil, dl(1.0, 2.0)}); return err },
 			"each subject must have at least two conditions",
 		},
 	} {

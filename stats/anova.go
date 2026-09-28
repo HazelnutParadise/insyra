@@ -60,7 +60,9 @@ func newANOVABetweenComponent(ssEffect float64, dfEffect int, ssWithin float64, 
 	return newANOVAComponent(ssEffect, dfEffect, f, p, eta)
 }
 
-func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error) {
+// OneWayANOVA tests whether the means of two or more groups differ.
+// groups holds one IDataList per group.
+func OneWayANOVA(groups []insyra.IDataList) (*OneWayANOVAResult, error) {
 	if len(groups) < 2 {
 		return nil, errors.New("at least two groups are required")
 	}
@@ -116,7 +118,10 @@ func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error) {
 	}, nil
 }
 
-func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error) {
+// TwoWayANOVA tests the effect of two factors and their interaction on the
+// mean. cells holds factorALevels*factorBLevels lists in row-major order,
+// cells[i*factorBLevels+j] being level i+1 of A crossed with level j+1 of B.
+func TwoWayANOVA(factorALevels, factorBLevels int, cells []insyra.IDataList) (*TwoWayANOVAResult, error) {
 	if factorALevels < 2 || factorBLevels < 2 || len(cells) != factorALevels*factorBLevels {
 		return nil, errors.New("invalid levels or cells")
 	}
@@ -257,7 +262,10 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 	}, nil
 }
 
-func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) (*RepeatedMeasuresANOVAResult, error) {
+// RepeatedMeasuresANOVA tests whether the means of two or more conditions
+// differ, with every subject measured under each of them. subjects holds one
+// IDataList per subject, holding that subject's value under each condition.
+func RepeatedMeasuresANOVA(subjects []insyra.IDataList) (*RepeatedMeasuresANOVAResult, error) {
 	if len(subjects) < 2 {
 		return nil, errors.New("at least two subjects are required")
 	}

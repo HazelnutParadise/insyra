@@ -225,7 +225,10 @@ func TestSingleSampleZTest_R(t *testing.T) {
 				cl = 0.95
 			}
 			dl := insyra.NewDataList(c.data)
-			r, err := stats.SingleSampleZTest(dl, c.mu, c.sigma, c.alternative, cl)
+			r, err := stats.SingleSampleZTest(dl, c.mu, c.sigma, stats.ZTestOptions{
+				Alternative:     c.alternative,
+				ConfidenceLevel: cl,
+			})
 			if err != nil {
 				t.Fatalf("error: %v", err)
 			}
@@ -413,7 +416,10 @@ func TestTwoSampleZTest_R(t *testing.T) {
 			}
 			d1 := insyra.NewDataList(c.data1)
 			d2 := insyra.NewDataList(c.data2)
-			r, err := stats.TwoSampleZTest(d1, d2, c.sigma1, c.sigma2, c.alternative, cl)
+			r, err := stats.TwoSampleZTest(d1, d2, c.sigma1, c.sigma2, stats.ZTestOptions{
+				Alternative:     c.alternative,
+				ConfidenceLevel: cl,
+			})
 			if err != nil {
 				t.Fatalf("error: %v", err)
 			}
@@ -457,27 +463,41 @@ func TestTwoSampleZTest_R(t *testing.T) {
 // Error-path coverage.
 func TestZTest_InvalidInputs(t *testing.T) {
 	dl := insyra.NewDataList([]float64{1, 2, 3})
-	if _, err := stats.SingleSampleZTest(dl, 0, 0, stats.TwoSided, 0.95); err == nil {
+	if _, err := stats.SingleSampleZTest(dl, 0, 0, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95}); err == nil {
 		t.Error("expected error for sigma=0")
 	}
-	if _, err := stats.SingleSampleZTest(dl, 0, -1, stats.TwoSided, 0.95); err == nil {
+	if _, err := stats.SingleSampleZTest(dl, 0, -1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95}); err == nil {
 		t.Error("expected error for sigma<0")
 	}
-	if _, err := stats.SingleSampleZTest(dl, 0, 1, stats.AlternativeHypothesis("bogus"), 0.95); err == nil {
+	if _, err := stats.SingleSampleZTest(dl, 0, 1, stats.ZTestOptions{Alternative: stats.AlternativeHypothesis("bogus"), ConfidenceLevel: 0.95}); err == nil {
 		t.Error("expected error for unknown alternative")
 	}
-	if _, err := stats.SingleSampleZTest(dl, 0, 1, stats.TwoSided, 0); err == nil {
-		t.Error("expected error for cl=0")
+	if _, err := stats.SingleSampleZTest(dl, 0, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: -0.1}); err == nil {
+		t.Error("expected error for a negative confidence level")
 	}
-	if _, err := stats.SingleSampleZTest(dl, 0, 1, stats.TwoSided, 1); err == nil {
+	if _, err := stats.SingleSampleZTest(dl, 0, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 1}); err == nil {
 		t.Error("expected error for cl=1")
 	}
 
+	// A zero confidence level now means the default, not an error, and has to
+	// give the same interval as spelling 0.95 out.
+	zeroCL, err := stats.SingleSampleZTest(dl, 0, 1, stats.ZTestOptions{})
+	if err != nil {
+		t.Fatalf("expected the zero value of the options to be usable: %v", err)
+	}
+	explicitCL, err := stats.SingleSampleZTest(dl, 0, 1, stats.ZTestOptions{ConfidenceLevel: 0.95})
+	if err != nil {
+		t.Fatalf("SingleSampleZTest with cl=0.95: %v", err)
+	}
+	if zeroCL.CI[0] != explicitCL.CI[0] || zeroCL.CI[1] != explicitCL.CI[1] {
+		t.Errorf("cl=0 must give the 0.95 interval: got %v, want %v", *zeroCL.CI, *explicitCL.CI)
+	}
+
 	dl2 := insyra.NewDataList([]float64{1, 2, 3})
-	if _, err := stats.TwoSampleZTest(dl, dl2, 0, 1, stats.TwoSided, 0.95); err == nil {
+	if _, err := stats.TwoSampleZTest(dl, dl2, 0, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95}); err == nil {
 		t.Error("expected error for sigma1=0")
 	}
-	if _, err := stats.TwoSampleZTest(dl, dl2, 1, -1, stats.TwoSided, 0.95); err == nil {
+	if _, err := stats.TwoSampleZTest(dl, dl2, 1, -1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95}); err == nil {
 		t.Error("expected error for sigma2<0")
 	}
 }

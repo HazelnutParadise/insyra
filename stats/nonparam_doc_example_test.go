@@ -15,7 +15,7 @@ func TestDocTutorialNonparametricProgram(t *testing.T) {
 	variantA := insyra.NewDataList(4, 5, 3, 4, 5, 4, 3, 5)
 	variantB := insyra.NewDataList(2, 3, 3, 2, 4, 3, 2, 3, 2)
 
-	w, err := stats.PairedWilcoxon(before, after, stats.Less)
+	w, err := stats.PairedWilcoxon(before, after, stats.WilcoxonOptions{Alternative: stats.Less})
 	if err != nil {
 		t.Fatalf("PairedWilcoxon: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestDocTutorialNonparametricProgram(t *testing.T) {
 		t.Errorf("Wilcoxon p out of range: %v", w.PValue)
 	}
 
-	u, err := stats.MannWhitneyU(variantA, variantB, stats.TwoSided)
+	u, err := stats.MannWhitneyU(variantA, variantB, stats.MannWhitneyUOptions{Alternative: stats.TwoSided})
 	if err != nil {
 		t.Fatalf("MannWhitneyU: %v", err)
 	}
@@ -43,11 +43,11 @@ func TestDocTutorialNonparametricProgram(t *testing.T) {
 		t.Errorf("U1+U2 should equal n1*n2=72, got %v", u.U1+u.U2)
 	}
 
-	kw, err := stats.KruskalWallis(
+	kw, err := stats.KruskalWallis([]insyra.IDataList{
 		insyra.NewDataList(3, 4, 2, 3, 4, 3),
 		insyra.NewDataList(4, 5, 4, 5, 4, 5),
 		insyra.NewDataList(2, 3, 2, 3, 2, 3),
-	)
+	})
 	if err != nil {
 		t.Fatalf("KruskalWallis: %v", err)
 	}
@@ -61,13 +61,13 @@ func TestDocTutorialNonparametricProgram(t *testing.T) {
 		t.Errorf("KW group/total wrong: rs=%v total=%d", kw.GroupRankSum, kw.NTotal)
 	}
 
-	fr, err := stats.FriedmanTest(
+	fr, err := stats.FriedmanTest([]insyra.IDataList{
 		insyra.NewDataList(3, 4, 2),
 		insyra.NewDataList(4, 5, 3),
 		insyra.NewDataList(2, 4, 2),
 		insyra.NewDataList(3, 5, 3),
 		insyra.NewDataList(4, 5, 2),
-	)
+	})
 	if err != nil {
 		t.Fatalf("FriedmanTest: %v", err)
 	}
@@ -83,7 +83,8 @@ func TestDocTutorialNonparametricProgram(t *testing.T) {
 
 	// Single-sample Wilcoxon from the stats.md example block.
 	ss, err := stats.SingleSampleWilcoxon(
-		insyra.NewDataList(3.0, 4, 2, 5, 3, 4, 2, 3), 2.5, stats.Greater)
+		insyra.NewDataList(3.0, 4, 2, 5, 3, 4, 2, 3), 2.5,
+		stats.WilcoxonOptions{Alternative: stats.Greater})
 	if err != nil {
 		t.Fatalf("SingleSampleWilcoxon: %v", err)
 	}

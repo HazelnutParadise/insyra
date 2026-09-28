@@ -343,12 +343,17 @@ const (
 // Main Function
 // -------------------------
 
-// FactorAnalysis performs factor analysis on a DataTable.
-func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorModel, error) {
+// FactorAnalysis performs factor analysis on a DataTable. opts is an
+// optional FactorAnalysisOptions (at most one); without it, or with a zero
+// field, the defaults DefaultFactorAnalysisOptions returns are used.
+func FactorAnalysis(dt insyra.IDataTable, opts ...FactorAnalysisOptions) (*FactorModel, error) {
 	if dt == nil {
 		return nil, errors.New("nil DataTable")
 	}
-	var err error
+	opt, err := oneOptions(opts)
+	if err != nil {
+		return nil, err
+	}
 	opt, err = normalizeFactorAnalysisOptions(opt)
 	if err != nil {
 		return nil, err

@@ -15,6 +15,17 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
+// WilcoxonOptions holds the settings SingleSampleWilcoxon and
+// PairedWilcoxon take. The zero value is a two-sided test with a 95%
+// Hodges-Lehmann confidence interval.
+type WilcoxonOptions struct {
+	// Alternative is TwoSided, Greater or Less. Empty means TwoSided.
+	Alternative AlternativeHypothesis
+	// ConfidenceLevel is the level of the Hodges-Lehmann interval,
+	// strictly between 0 and 1. Zero means 0.95.
+	ConfidenceLevel float64
+}
+
 // WilcoxonTestResult holds the result of a Wilcoxon signed-rank test.
 //
 // Statistic = W+ (sum of positive ranks); DF is unused (nil); CI is the
@@ -31,17 +42,22 @@ type WilcoxonTestResult struct {
 }
 
 // SingleSampleWilcoxon tests whether the median of `data` equals `mu`,
-// using the Wilcoxon signed-rank test on (data - mu).
+// using the Wilcoxon signed-rank test on (data - mu). opts is an optional
+// WilcoxonOptions and at most one may be given, its zero value meaning a
+// two-sided test with a 95% Hodges-Lehmann interval.
 //
-// confidenceLevel is the level for the Hodges-Lehmann pseudo-median CI
-// (default 0.95). Zero differences are dropped before ranking (R's
-// wilcox.test default zero-method = "wilcox"); for tied |d_i| values
-// (after dropping zeros) the asymptotic z with continuity correction is
-// used. Otherwise n_eff <= 50 uses the exact distribution.
+// Zero differences are dropped before ranking (R's wilcox.test default
+// zero-method = "wilcox"); for tied |d_i| values (after dropping zeros) the
+// asymptotic z with continuity correction is used. Otherwise n_eff <= 50 uses
+// the exact distribution.
 //
 // ** Verified using R **
-func SingleSampleWilcoxon(data insyra.IDataList, mu float64, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error) {
-	cl, err := resolveOptionalConfidenceLevel(confidenceLevel)
+func SingleSampleWilcoxon(data insyra.IDataList, mu float64, opts ...WilcoxonOptions) (*WilcoxonTestResult, error) {
+	o, err := oneOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	alt, cl, err := resolveTestSettings(o.Alternative, o.ConfidenceLevel)
 	if err != nil {
 		return nil, err
 	}
@@ -66,15 +82,20 @@ func SingleSampleWilcoxon(data insyra.IDataList, mu float64, alt AlternativeHypo
 }
 
 // PairedWilcoxon tests whether the median of (data1 - data2) equals 0,
-// using the Wilcoxon signed-rank test on the paired differences.
+// using the Wilcoxon signed-rank test on the paired differences. opts is an
+// optional WilcoxonOptions and at most one may be given, its zero value
+// meaning a two-sided test with a 95% Hodges-Lehmann interval.
 //
-// confidenceLevel is the level for the Hodges-Lehmann pseudo-median CI of
-// the median paired difference (default 0.95). data1 and data2 must have
-// the same length. See SingleSampleWilcoxon for tie / zero handling.
+// data1 and data2 must have the same length. See SingleSampleWilcoxon for
+// tie / zero handling.
 //
 // ** Verified using R **
-func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error) {
-	cl, err := resolveOptionalConfidenceLevel(confidenceLevel)
+func PairedWilcoxon(data1, data2 insyra.IDataList, opts ...WilcoxonOptions) (*WilcoxonTestResult, error) {
+	o, err := oneOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	alt, cl, err := resolveTestSettings(o.Alternative, o.ConfidenceLevel)
 	if err != nil {
 		return nil, err
 	}
@@ -113,23 +134,6 @@ func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, co
 	}
 
 	return computeWilcoxon(diffs, alt, cl, 0)
-}
-
-// resolveOptionalConfidenceLevel mirrors the validation used by
-// SingleSampleTTest / PairedTTest for the variadic confidenceLevel parameter:
-// at most one value, in (0, 1). Missing → defaults to 0.95.
-func resolveOptionalConfidenceLevel(cl []float64) (float64, error) {
-	var raw float64
-	if len(cl) > 0 {
-		if len(cl) > 1 {
-			return 0, errors.New("confidenceLevel accepts at most one value")
-		}
-		raw = cl[0]
-		if raw <= 0 || raw >= 1 {
-			return 0, errors.New("confidenceLevel must be between 0 and 1")
-		}
-	}
-	return resolveConfidenceLevel(raw), nil
 }
 
 // computeWilcoxon runs the signed-rank test on a vector of differences,

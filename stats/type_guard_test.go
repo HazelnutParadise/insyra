@@ -14,17 +14,26 @@ func TestNilInterfaceInputsDoNotPanic(t *testing.T) {
 	good := insyra.NewDataList(1.0, 2.0, 3.0, 4.0)
 	var typedNil *insyra.DataList
 	calls := map[string]func() error{
-		"Correlation":              func() error { _, err := stats.Correlation(nil, good, stats.PearsonCorrelation); return err },
-		"Covariance":               func() error { _, err := stats.Covariance(good, nil); return err },
-		"PairedTTest":              func() error { _, err := stats.PairedTTest(nil, good); return err },
-		"MannWhitneyU":             func() error { _, err := stats.MannWhitneyU(nil, good, stats.TwoSided); return err },
-		"PairedWilcoxon":           func() error { _, err := stats.PairedWilcoxon(good, nil, stats.TwoSided); return err },
+		"Correlation": func() error { _, err := stats.Correlation(nil, good, stats.PearsonCorrelation); return err },
+		"Covariance":  func() error { _, err := stats.Covariance(good, nil); return err },
+		"PairedTTest": func() error { _, err := stats.PairedTTest(nil, good); return err },
+		"MannWhitneyU": func() error {
+			_, err := stats.MannWhitneyU(nil, good, stats.MannWhitneyUOptions{Alternative: stats.TwoSided})
+			return err
+		},
+		"PairedWilcoxon": func() error {
+			_, err := stats.PairedWilcoxon(good, nil, stats.WilcoxonOptions{Alternative: stats.TwoSided})
+			return err
+		},
 		"ExponentialReg":           func() error { _, err := stats.ExponentialRegression(nil, good); return err },
 		"LogarithmicReg":           func() error { _, err := stats.LogarithmicRegression(good, nil); return err },
 		"PolynomialReg":            func() error { _, err := stats.PolynomialRegression(nil, good, 2); return err },
 		"TwoSampleTTest":           func() error { _, err := stats.TwoSampleTTest(nil, good, true); return err },
 		"TwoSampleTTest typed nil": func() error { _, err := stats.TwoSampleTTest(good, typedNil, false); return err },
-		"TwoSampleZTest":           func() error { _, err := stats.TwoSampleZTest(good, nil, 1, 1, stats.TwoSided, 0.95); return err },
+		"TwoSampleZTest": func() error {
+			_, err := stats.TwoSampleZTest(good, nil, 1, 1, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95})
+			return err
+		},
 		"FTestForVarianceEquality": func() error { _, err := stats.FTestForVarianceEquality(nil, good); return err },
 	}
 	for name, f := range calls {
@@ -59,11 +68,11 @@ func TestNonConcreteDataListMatchesConcrete(t *testing.T) {
 		t.Fatalf("TwoSampleTTest: got (%v, %v), want (%v, %v)", gotT.Statistic, gotT.PValue, wantT.Statistic, wantT.PValue)
 	}
 
-	wantZ, err := stats.TwoSampleZTest(a, b, 1.5, 1.5, stats.TwoSided, 0.95)
+	wantZ, err := stats.TwoSampleZTest(a, b, 1.5, 1.5, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95})
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotZ, err := stats.TwoSampleZTest(wa, wb, 1.5, 1.5, stats.TwoSided, 0.95)
+	gotZ, err := stats.TwoSampleZTest(wa, wb, 1.5, 1.5, stats.ZTestOptions{Alternative: stats.TwoSided, ConfidenceLevel: 0.95})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,25 +124,34 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 		{
 			"SingleSampleWilcoxon",
 			func() error {
-				_, err := stats.SingleSampleWilcoxon(withSlice(1.0, 2.0, 3.0), 0, stats.TwoSided)
+				_, err := stats.SingleSampleWilcoxon(
+					withSlice(1.0, 2.0, 3.0), 0,
+					stats.WilcoxonOptions{Alternative: stats.TwoSided},
+				)
 				return err
 			},
 			"data contains a non-numeric value at row 4: [10 11]",
 		},
 		{
 			"OneWayANOVA",
-			func() error { _, err := stats.OneWayANOVA(withSlice(1.0, 2.0, 3.0), dl(4.0, 5.0, 6.0)); return err },
+			func() error {
+				_, err := stats.OneWayANOVA([]insyra.IDataList{withSlice(1.0, 2.0, 3.0), dl(4.0, 5.0, 6.0)})
+				return err
+			},
 			"group 1 contains a non-numeric value at row 4: [10 11]",
 		},
 		{
 			"KruskalWallis",
-			func() error { _, err := stats.KruskalWallis(withSlice(1.0, 2.0, 3.0), dl(4.0, 5.0, 6.0)); return err },
+			func() error {
+				_, err := stats.KruskalWallis([]insyra.IDataList{withSlice(1.0, 2.0, 3.0), dl(4.0, 5.0, 6.0)})
+				return err
+			},
 			"group 1 contains a non-numeric value at row 4: [10 11]",
 		},
 		{
 			"TwoWayANOVA",
 			func() error {
-				_, err := stats.TwoWayANOVA(2, 2, withSlice(1.0, 2.0, 3.0), dl(3.0, 4.5), dl(5.0, 6.0), dl(7.0, 8.5))
+				_, err := stats.TwoWayANOVA(2, 2, []insyra.IDataList{withSlice(1.0, 2.0, 3.0), dl(3.0, 4.5), dl(5.0, 6.0), dl(7.0, 8.5)})
 				return err
 			},
 			"cell (A=1, B=1) contains a non-numeric value at row 4: [10 11]",
@@ -141,7 +159,7 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 		{
 			"RepeatedMeasuresANOVA",
 			func() error {
-				_, err := stats.RepeatedMeasuresANOVA(dl(1.0, 2.0, 3.0), withSlice(2.0, 3.0))
+				_, err := stats.RepeatedMeasuresANOVA([]insyra.IDataList{dl(1.0, 2.0, 3.0), withSlice(2.0, 3.0)})
 				return err
 			},
 			"subject 2 contains a non-numeric value at condition 3: [10 11]",
@@ -149,7 +167,7 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 		{
 			"FriedmanTest",
 			func() error {
-				_, err := stats.FriedmanTest(dl(1.0, 2.0, 3.0), withSlice(2.0, 3.0), dl(3.0, 1.0, 2.0))
+				_, err := stats.FriedmanTest([]insyra.IDataList{dl(1.0, 2.0, 3.0), withSlice(2.0, 3.0), dl(3.0, 1.0, 2.0)})
 				return err
 			},
 			"subject 2 contains a non-numeric value at condition 3: [10 11]",

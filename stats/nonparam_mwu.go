@@ -16,6 +16,17 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
+// MannWhitneyUOptions holds the settings MannWhitneyU takes. The zero value
+// is a two-sided test with a 95% Hodges-Lehmann shift interval.
+type MannWhitneyUOptions struct {
+	// Alternative is TwoSided, Greater or Less, stated for data1. Empty
+	// means TwoSided.
+	Alternative AlternativeHypothesis
+	// ConfidenceLevel is the level of the Hodges-Lehmann shift interval,
+	// strictly between 0 and 1. Zero means 0.95.
+	ConfidenceLevel float64
+}
+
 // MannWhitneyUResult holds the result of a Mann-Whitney U test.
 //
 // Statistic = min(U1, U2). EffectSizes contains rank-biserial r_rb and
@@ -31,19 +42,21 @@ type MannWhitneyUResult struct {
 // MannWhitneyU performs the Wilcoxon-Mann-Whitney rank-sum test on two
 // independent samples. Returns U1 (for data1) and U2 (for data2); the
 // statistic field is min(U1, U2). The p-value is the alt-adjusted exact
-// or asymptotic p-value for U1.
+// or asymptotic p-value for U1. opts is an optional MannWhitneyUOptions and
+// at most one may be given, its zero value meaning a two-sided test with a
+// 95% Hodges-Lehmann shift interval.
 //
-// confidenceLevel is the level for the Hodges-Lehmann shift CI (default
-// 0.95). When neither sample contains ties (in the combined ranking) and
-// both n1, n2 <= 25, the exact distribution is used; otherwise the
-// asymptotic normal with continuity correction and tie adjustment.
+// When neither sample contains ties (in the combined ranking) and both
+// n1, n2 <= 25, the exact distribution is used; otherwise the asymptotic
+// normal with continuity correction and tie adjustment.
 //
 // ** Verified using R **
-func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*MannWhitneyUResult, error) {
-	if !isValidAlt(alt) {
-		return nil, errors.New("invalid alternative hypothesis")
+func MannWhitneyU(data1, data2 insyra.IDataList, opts ...MannWhitneyUOptions) (*MannWhitneyUResult, error) {
+	o, err := oneOptions(opts)
+	if err != nil {
+		return nil, err
 	}
-	cl, err := resolveOptionalConfidenceLevel(confidenceLevel)
+	alt, cl, err := resolveTestSettings(o.Alternative, o.ConfidenceLevel)
 	if err != nil {
 		return nil, err
 	}

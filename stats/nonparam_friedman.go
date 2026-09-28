@@ -26,14 +26,14 @@ type FriedmanTestResult struct {
 	KConditions int
 }
 
-// FriedmanTest performs the Friedman test on repeated measures. Each
-// IDataList represents one subject's measurements across k conditions
+// FriedmanTest performs the Friedman test on repeated measures. Each element
+// of subjects represents one subject's measurements across k conditions
 // (all lists must have the same length k). Ranks are assigned per
 // subject (within each row); the Q statistic is tie-corrected and
 // referred to chi^2 with k-1 degrees of freedom.
 //
 // ** Verified using R **
-func FriedmanTest(subjects ...insyra.IDataList) (*FriedmanTestResult, error) {
+func FriedmanTest(subjects []insyra.IDataList) (*FriedmanTestResult, error) {
 	n := len(subjects)
 	if n < 2 {
 		return nil, errors.New("at least two subjects are required")

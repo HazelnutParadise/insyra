@@ -41,19 +41,19 @@ The error is the last value a function returns. A function that returns several 
 
 | Question | Function |
 |---|---|
-| Does this sample's mean differ from a known value? | `SingleSampleTTest(data, mu, confidenceLevel...)` |
-| Do two independent samples differ? | `TwoSampleTTest(data1, data2, equalVariance, confidenceLevel...)` |
-| Do two measurements of the same subjects differ? | `PairedTTest(data1, data2, confidenceLevel...)` |
-| The same, with the population σ known | `SingleSampleZTest(data, mu, sigma, alternative, confidenceLevel)` / `TwoSampleZTest(data1, data2, sigma1, sigma2, alternative, confidenceLevel)` |
-| Do three or more groups differ? | `OneWayANOVA(groups...)` |
-| Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells...)` |
-| Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects...)` |
+| Does this sample's mean differ from a known value? | `SingleSampleTTest(data, mu, opts...)` |
+| Do two independent samples differ? | `TwoSampleTTest(data1, data2, equalVariance, opts...)` |
+| Do two measurements of the same subjects differ? | `PairedTTest(data1, data2, opts...)` |
+| The same, with the population σ known | `SingleSampleZTest(data, mu, sigma, opts...)` / `TwoSampleZTest(data1, data2, sigma1, sigma2, opts...)` |
+| Do three or more groups differ? | `OneWayANOVA(groups)` |
+| Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells)` |
+| Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects)` |
 | Are two categorical variables related? | `ChiSquareIndependenceTest(rowData, colData)` |
 | Does a distribution match the expected proportions? | `ChiSquareGoodnessOfFit(input, p, rescaleP)` |
 | Do groups have equal variance? | `FTestForVarianceEquality(data1, data2)`, `LeveneTest(groups)`, `BartlettTest(groups)` |
 | The same questions without assuming normality | `SingleSampleWilcoxon`, `PairedWilcoxon`, `MannWhitneyU`, `KruskalWallis`, `FriedmanTest` |
 
-`confidenceLevel` is an optional last argument on the t-tests and the Wilcoxon and Mann-Whitney tests, and a required one on the z-tests. Leaving it out uses 0.95, and a value outside (0, 1) is an error. `alternative` is an `AlternativeHypothesis` with no default. See [Nonparametric Tests (Rank-Based)](#nonparametric-tests-rank-based) for when to switch.
+The t-, z-, Wilcoxon and Mann-Whitney tests take their alternative hypothesis and confidence level in an optional options value as the last argument: `TTestOptions`, `ZTestOptions`, `WilcoxonOptions` or `MannWhitneyUOptions`. Leaving it out runs a two-sided test with a 95% interval; see [Test Settings](#test-settings). The tests that compare several groups take them as one `[]insyra.IDataList`. See [Nonparametric Tests (Rank-Based)](#nonparametric-tests-rank-based) for when to switch.
 
 ### Values that are not numbers
 
@@ -81,9 +81,9 @@ list and the position are both counted from one:
 | --- | --- | --- | --- |
 | `SingleSampleTTest`, `SingleSampleZTest`, `SingleSampleWilcoxon`, `CalculateMoment` | `data` | row | `data contains a non-numeric value at row 3: <nil>` |
 | `TwoSampleTTest`, `TwoSampleZTest`, `FTestForVarianceEquality`, `PairedTTest`, `PairedWilcoxon`, `MannWhitneyU` | `data1` or `data2` | row | `data2 contains a non-finite value at row 3: NaN` |
-| `OneWayANOVA`, `KruskalWallis`, `LeveneTest`, `BartlettTest` | `group N`, the Nth list you passed | row | `group 2 contains a non-finite value at row 3: +Inf` |
+| `OneWayANOVA`, `KruskalWallis`, `LeveneTest`, `BartlettTest` | `group N`, the Nth list in the slice | row | `group 2 contains a non-finite value at row 3: +Inf` |
 | `TwoWayANOVA` | `cell (A=a, B=b)`, the cell for level a of factor A and level b of factor B | row | `cell (A=2, B=1) contains a non-numeric value at row 2: x` |
-| `RepeatedMeasuresANOVA`, `FriedmanTest` | `subject N`, the Nth list you passed | condition, because each list holds one subject's conditions | `subject 2 contains a non-finite value at condition 2: NaN` |
+| `RepeatedMeasuresANOVA`, `FriedmanTest` | `subject N`, the Nth list in the slice | condition, because each list holds one subject's conditions | `subject 2 contains a non-finite value at condition 2: NaN` |
 | `Skewness`, `Kurtosis` | `sample` | row | `sample contains a non-numeric value at row 3: <nil>` |
 | `Correlation`, `Covariance` | `x` or `y` | row | `x contains a non-numeric value at row 3: <nil>` |
 
@@ -148,6 +148,35 @@ const (
     Greater  AlternativeHypothesis = "greater"
     Less     AlternativeHypothesis = "less"
 )
+```
+
+### Test Settings
+
+The t-, z-, Wilcoxon and Mann-Whitney tests take their alternative hypothesis and confidence level in an options value passed as the last argument. Leave it out for a two-sided test with a 95% interval.
+
+```go
+type TTestOptions struct {
+    Alternative     AlternativeHypothesis // TwoSided, Greater or Less; empty means TwoSided
+    ConfidenceLevel float64               // strictly between 0 and 1; 0 means 0.95
+}
+```
+
+`ZTestOptions`, `WilcoxonOptions` and `MannWhitneyUOptions` have the same two fields. The t-tests take `TTestOptions`, the z-tests `ZTestOptions`, `SingleSampleWilcoxon` and `PairedWilcoxon` take `WilcoxonOptions`, and `MannWhitneyU` takes `MannWhitneyUOptions`.
+
+- `Greater` tests whether the first sample lies above the hypothesised value or the second sample, and `Less` whether it lies below. A one-sided test reports a one-sided interval: `[lower, +Inf]` for `Greater`, `[-Inf, upper]` for `Less`.
+- An alternative other than the three constants, a level outside (0, 1) other than 0, `NaN` included, and a second options value are errors, and no result is returned. The messages read `alternative must be two-sided, greater or less, got "sideways"`, `confidence level must be strictly between 0 and 1, got 1.5` and `at most one stats.TTestOptions may be given, got 2`.
+- `mu`, the z-tests' `sigma`, `sigma1` and `sigma2`, and `TwoSampleTTest`'s `equalVariance` are ordinary required arguments.
+
+```go
+// Is the mean above 50? One-sided, with a 90% lower bound.
+res, err := stats.SingleSampleTTest(data, 50, stats.TTestOptions{
+    Alternative:     stats.Greater,
+    ConfidenceLevel: 0.9,
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("t=%.4f p=%.4f lower bound=%.4f\n", res.Statistic, res.PValue, res.CI[0])
 ```
 
 ---
@@ -325,7 +354,7 @@ fmt.Printf("Bartlett's test: chi-square=%.4f, p=%.4f, df=%d\n", chiSquare, pValu
 ### Single Sample T-Test
 
 ```go
-func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error)
+func SingleSampleTTest(data insyra.IDataList, mu float64, opts ...TTestOptions) (*TTestResult, error)
 ```
 
 **Description:** Test if sample mean differs from hypothesized population mean. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
@@ -334,7 +363,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 
 - `data`: Sample data (minimum 2 elements)
 - `mu`: Hypothesized population mean
-- `confidenceLevel`: Confidence level (0 < confidenceLevel < 1, default 0.95)
+- `opts`: Optional `TTestOptions`, at most one: the alternative hypothesis (default two-sided) and the confidence level (default 0.95). See [Test Settings](#test-settings).
 
 **Returns:**
 
@@ -343,7 +372,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 ### Two Sample T-Test
 
 ```go
-func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error)
+func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, opts ...TTestOptions) (*TTestResult, error)
 ```
 
 **Description:** Compare means of two independent samples. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
@@ -352,7 +381,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 
 - `data1, data2`: Two independent samples
 - `equalVariance`: true for pooled variance, false for Welch's t-test
-- `confidenceLevel`: Optional confidence level (default 0.95)
+- `opts`: Optional `TTestOptions`, at most one. `Greater` tests whether `data1`'s mean is above `data2`'s.
 
 **Returns:**
 
@@ -361,7 +390,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 ### Paired T-Test
 
 ```go
-func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TTestResult, error)
+func PairedTTest(data1, data2 insyra.IDataList, opts ...TTestOptions) (*TTestResult, error)
 ```
 
 **Description:** Compare means of paired/dependent samples. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming `data1` or `data2` and the one-based row.
@@ -369,7 +398,7 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TT
 **Parameters:**
 
 - `data1, data2`: Paired samples (must have same length)
-- `confidenceLevel`: Optional confidence level (default 0.95)
+- `opts`: Optional `TTestOptions`, at most one. `Greater` tests whether the mean of `data1 - data2` is above 0.
 
 **Returns:**
 
@@ -392,28 +421,28 @@ type TTestResult struct {
 
 ```go
 // Single sample t-test
-result, err := stats.SingleSampleTTest(data, 100.0, 0.95)
+result, err := stats.SingleSampleTTest(data, 100.0)
 if err != nil {
     log.Fatal(err)
 }
 fmt.Printf("t=%.4f, p=%.4f, df=%.0f\n", result.Statistic, result.PValue, *result.DF)
 
 // Two sample t-test
-result, err = stats.TwoSampleTTest(group1, group2, true, 0.95)
+result, err = stats.TwoSampleTTest(group1, group2, true)
 if err != nil {
     log.Fatal(err)
 }
 fmt.Printf("t=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 
-// Paired t-test
-result, err = stats.PairedTTest(before, after, 0.95)
+// Paired t-test, one-sided: did the scores go down from before to after?
+result, err = stats.PairedTTest(before, after, stats.TTestOptions{Alternative: stats.Greater})
 if err != nil {
     log.Fatal(err)
 }
 fmt.Printf("t=%.4f, p=%.4f, mean diff=%.4f\n", result.Statistic, result.PValue, *result.MeanDiff)
 ```
 
-A sample with no spread has no standard error. The t-tests then return `+Inf` or `-Inf` as the statistic with a p-value of 0, or `NaN` for both when the mean equals `mu` exactly, and the error is nil. Check `Statistic` before reporting it.
+A sample with no spread has no standard error. The t-tests then return `+Inf` or `-Inf` as the statistic, with a p-value of 0 for a two-sided test and 0 or 1 for a one-sided one, depending on whether the difference lies in the direction tested. When the mean equals `mu` exactly, both are `NaN`, and so are the p-value and the degrees of freedom of a Welch test on two samples with no spread. The error is nil in every case. Check `Statistic` before reporting it.
 
 ---
 
@@ -422,7 +451,7 @@ A sample with no spread has no standard error. The t-tests then return `+Inf` or
 ### Single Sample Z-Test
 
 ```go
-func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error)
+func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, opts ...ZTestOptions) (*ZTestResult, error)
 ```
 
 **Description:** Test sample mean against population mean when population standard deviation is known. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
@@ -432,8 +461,25 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 - `data`: Sample data
 - `mu`: Hypothesized population mean
 - `sigma`: Known population standard deviation (must be > 0)
-- `alternative`: Type of alternative hypothesis
-- `confidenceLevel`: Confidence level (0 < confidenceLevel < 1)
+- `opts`: Optional `ZTestOptions`, at most one: the alternative hypothesis (default two-sided) and the confidence level (default 0.95). See [Test Settings](#test-settings).
+
+**Returns:**
+
+- `*ZTestResult`: Return value.
+
+### Two Sample Z-Test
+
+```go
+func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, opts ...ZTestOptions) (*ZTestResult, error)
+```
+
+**Description:** Compare the means of two independent samples when both population standard deviations are known. The interval is for `mean(data1) - mean(data2)`. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming `data1` or `data2` and the one-based row.
+
+**Parameters:**
+
+- `data1, data2`: Two independent samples
+- `sigma1, sigma2`: Known population standard deviations (both must be > 0)
+- `opts`: Optional `ZTestOptions`, at most one. `Greater` tests whether `data1`'s mean is above `data2`'s.
 
 **Returns:**
 
@@ -456,7 +502,7 @@ The t-tests report Cohen's d with its sign, negative when the first sample's mea
 **Example**:
 
 ```go
-result, err := stats.SingleSampleZTest(data, 100.0, 15.0, stats.TwoSided, 0.95)
+result, err := stats.SingleSampleZTest(data, 100.0, 15.0)
 if err != nil {
     log.Fatal(err)
 }
@@ -727,14 +773,14 @@ fmt.Printf("p = %.4f\n", stats.NormCDF(crit)) // 0.9750
 ### One Way ANOVA
 
 ```go
-func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)
+func OneWayANOVA(groups []insyra.IDataList) (*OneWayANOVAResult, error)
 ```
 
 **Description:** Compare means across multiple independent groups. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the group and the row, both counted from one.
 
 **Parameters:**
 
-- `groups`: Variable number of data groups (minimum 2 groups)
+- `groups`: One list per group, at least two
 
 **Returns:**
 
@@ -743,7 +789,7 @@ func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)
 ### Two Way ANOVA
 
 ```go
-func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error)
+func TwoWayANOVA(factorALevels, factorBLevels int, cells []insyra.IDataList) (*TwoWayANOVAResult, error)
 ```
 
 **Description:** Analyze effects of two factors and their interaction. Cells must be in row-major order: cell `i*factorBLevels + j` holds the data for `A=i, B=j`, so you pass exactly `factorALevels × factorBLevels` of them. Both level counts must be at least 2, and a level count below 2 or a cell count that is not their product fails with `invalid levels or cells`. There is no long-format entry point — reshape your data into cells yourself before calling this function. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the cell and the row. Errors count levels from one, so `cell (A=2, B=1)` is `cells[factorBLevels]`, the first level of B under the second level of A.
@@ -751,7 +797,7 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 **Parameters:**
 
 - `factorALevels, factorBLevels`: Number of levels for each factor
-- `cells`: Data for each factor combination
+- `cells`: One list per factor combination, `factorALevels × factorBLevels` of them in row-major order
 
 **Returns:**
 
@@ -790,7 +836,7 @@ type ANOVAResultComponent struct {
 group1 := insyra.NewDataList(4, 5, 6)
 group2 := insyra.NewDataList(7, 8, 9)
 group3 := insyra.NewDataList(1, 2, 3)
-result, err := stats.OneWayANOVA(group1, group2, group3)
+result, err := stats.OneWayANOVA([]insyra.IDataList{group1, group2, group3})
 if err != nil {
     log.Fatal(err)
 }
@@ -803,11 +849,11 @@ cells := []insyra.IDataList{
     insyra.NewDataList(7, 8, 9),  // A2B1
     insyra.NewDataList(10, 11, 12), // A2B2
 }
-result, err = stats.TwoWayANOVA(2, 2, cells...)
+twoWay, err := stats.TwoWayANOVA(2, 2, cells)
 if err != nil {
     log.Fatal(err)
 }
-fmt.Printf("Factor A F=%.4f, p=%.4f\n", result.FactorA.F, result.FactorA.P)
+fmt.Printf("Factor A F=%.4f, p=%.4f\n", twoWay.FactorA.F, twoWay.FactorA.P)
 ```
 
 ---
@@ -1006,7 +1052,7 @@ path (and is `NaN` for exact).
 ### Single Sample Wilcoxon
 
 ```go
-func SingleSampleWilcoxon(data insyra.IDataList, mu float64, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error)
+func SingleSampleWilcoxon(data insyra.IDataList, mu float64, opts ...WilcoxonOptions) (*WilcoxonTestResult, error)
 ```
 
 **Description:** Tests whether the median of `data` equals `mu` (Wilcoxon
@@ -1020,8 +1066,7 @@ is refused with an error naming `data` and the one-based row.
 
 - `data`: Sample. Type: `insyra.IDataList`.
 - `mu`: Hypothesized median.
-- `alt`: `stats.TwoSided` / `stats.Greater` / `stats.Less`.
-- `confidenceLevel`: Optional, default `0.95`. Range `(0, 1)`.
+- `opts`: Optional `WilcoxonOptions`, at most one: the alternative hypothesis (default two-sided) and the level of the Hodges-Lehmann interval (default 0.95). See [Test Settings](#test-settings).
 
 **Returns:**
 
@@ -1030,7 +1075,7 @@ is refused with an error naming `data` and the one-based row.
 ### Paired Wilcoxon
 
 ```go
-func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error)
+func PairedWilcoxon(data1, data2 insyra.IDataList, opts ...WilcoxonOptions) (*WilcoxonTestResult, error)
 ```
 
 **Description:** Tests whether the median of `data1 - data2` equals 0.
@@ -1042,8 +1087,7 @@ text, `NaN`, or `Inf` cell is refused with an error naming `data1` or
 **Parameters:**
 
 - `data1`, `data2`: Paired samples. Type: `insyra.IDataList`.
-- `alt`: Alternative hypothesis.
-- `confidenceLevel`: Optional, default `0.95`.
+- `opts`: Optional `WilcoxonOptions`, at most one. `Greater` tests whether the median of `data1 - data2` is above 0.
 
 **Returns:**
 
@@ -1052,7 +1096,7 @@ text, `NaN`, or `Inf` cell is refused with an error naming `data1` or
 ### Mann-Whitney U
 
 ```go
-func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*MannWhitneyUResult, error)
+func MannWhitneyU(data1, data2 insyra.IDataList, opts ...MannWhitneyUOptions) (*MannWhitneyUResult, error)
 ```
 
 **Description:** Wilcoxon-Mann-Whitney rank-sum test on two independent
@@ -1064,8 +1108,7 @@ is refused with an error naming `data1` or `data2` and the one-based row.
 **Parameters:**
 
 - `data1`, `data2`: Independent samples. Type: `insyra.IDataList`.
-- `alt`: Alternative hypothesis (direction applies to `data1`).
-- `confidenceLevel`: Optional, default `0.95`.
+- `opts`: Optional `MannWhitneyUOptions`, at most one. The alternative is stated for `data1`: `Greater` tests whether `data1` tends to be larger.
 
 **Returns:**
 
@@ -1074,7 +1117,7 @@ is refused with an error naming `data1` or `data2` and the one-based row.
 ### Kruskal-Wallis
 
 ```go
-func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error)
+func KruskalWallis(groups []insyra.IDataList) (*KruskalWallisResult, error)
 ```
 
 **Description:** Kruskal-Wallis H test on ≥ 2 independent samples.
@@ -1085,7 +1128,7 @@ counted from one.
 
 **Parameters:**
 
-- `groups`: Two or more independent samples. Type: `...insyra.IDataList`.
+- `groups`: Two or more independent samples, one list each. Type: `[]insyra.IDataList`.
 
 **Returns:**
 
@@ -1094,7 +1137,7 @@ counted from one.
 ### Friedman
 
 ```go
-func FriedmanTest(subjects ...insyra.IDataList) (*FriedmanTestResult, error)
+func FriedmanTest(subjects []insyra.IDataList) (*FriedmanTestResult, error)
 ```
 
 **Description:** Friedman test for repeated measures. Each `IDataList`
@@ -1106,7 +1149,7 @@ subject and the condition, both counted from one.
 
 **Parameters:**
 
-- `subjects`: One `IDataList` per subject (each length `k`). Type: `...insyra.IDataList`.
+- `subjects`: One `IDataList` per subject (each length `k`). Type: `[]insyra.IDataList`.
 
 **Returns:**
 
@@ -1153,7 +1196,7 @@ Mann-Whitney only), `epsilon_squared` (Kruskal-Wallis), `kendalls_w`
 // Likert satisfaction, normality not assumed: paired Wilcoxon
 before := insyra.NewDataList(3, 4, 2, 5, 3, 4, 2, 3)
 after := insyra.NewDataList(4, 5, 4, 5, 4, 5, 3, 4)
-w, err := stats.PairedWilcoxon(before, after, stats.Less)
+w, err := stats.PairedWilcoxon(before, after, stats.WilcoxonOptions{Alternative: stats.Less})
 if err != nil {
     log.Fatal(err)
 }
@@ -1163,7 +1206,7 @@ fmt.Printf("W+=%.1f p=%.4f method=%s r_rb=%.3f\n",
 // Two independent groups, heavy-tailed: Mann-Whitney U
 a := insyra.NewDataList(15, 18, 22, 11, 30, 14, 26, 25)
 b := insyra.NewDataList(10, 9, 13, 17, 7, 12, 19, 8, 20)
-u, err := stats.MannWhitneyU(a, b, stats.TwoSided)
+u, err := stats.MannWhitneyU(a, b)
 if err != nil {
     log.Fatal(err)
 }
@@ -1171,7 +1214,7 @@ fmt.Printf("U1=%.1f U2=%.1f p=%.4f CI=[%.3f, %.3f]\n",
     u.U1, u.U2, u.PValue, u.CI[0], u.CI[1])
 
 // k independent groups: Kruskal-Wallis
-kw, err := stats.KruskalWallis(group1, group2, group3)
+kw, err := stats.KruskalWallis([]insyra.IDataList{group1, group2, group3})
 if err != nil {
     log.Fatal(err)
 }
@@ -1179,7 +1222,7 @@ fmt.Printf("H=%.4f df=%.0f p=%.4f eps2=%.3f\n",
     kw.Statistic, *kw.DF, kw.PValue, kw.EffectSizes[0].Value)
 
 // k repeated conditions: Friedman (one IDataList per subject)
-fr, err := stats.FriedmanTest(subj1, subj2, subj3, subj4, subj5)
+fr, err := stats.FriedmanTest([]insyra.IDataList{subj1, subj2, subj3, subj4, subj5})
 if err != nil {
     log.Fatal(err)
 }
@@ -1258,7 +1301,7 @@ with their full set of rotations and scoring methods.
 ### FactorAnalysis
 
 ```go
-func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorModel, error)
+func FactorAnalysis(dt insyra.IDataTable, opts ...FactorAnalysisOptions) (*FactorModel, error)
 ```
 
 **Description:** Extract `k` latent factors from a data table, optionally
@@ -1269,7 +1312,7 @@ are listwise-deleted.
 **Parameters:**
 
 - `dt`: Input data table (n × p)
-- `opt`: `FactorAnalysisOptions` controlling extraction, rotation, scoring, and convergence
+- `opts`: Optional `FactorAnalysisOptions`, at most one, controlling extraction, rotation, scoring, and convergence. Without it, or for a field left at zero, the defaults `DefaultFactorAnalysisOptions()` returns are used, which follow `psych::fa`.
 
 **Returns:**
 
@@ -2319,7 +2362,7 @@ For detailed mathematical formulas, refer to the [e1071 documentation](https://c
 
 ### Confidence Levels
 
-Most functions accept an optional confidence level, which defaults to 0.95 (95%). Where it is passed as an argument, as the t-, z- and Wilcoxon tests take it, a value outside (0, 1) is an error. Where it is an options field, such as `ConfidenceLevel` in the GLM, logistic and Poisson regression options, 0 means unset and any value outside (0, 1) falls back to 0.95.
+Most functions accept an optional confidence level, which defaults to 0.95 (95%). The hypothesis tests take it as `ConfidenceLevel` in their options (see [Test Settings](#test-settings)): 0 means 0.95, and any other value outside (0, 1), `NaN` included, is an error. The GLM, logistic and Poisson regression options also read 0 as 0.95, but fall back to 0.95 for any other value outside (0, 1) instead of refusing it.
 
 ### Confidence Intervals for Regression Analysis
 

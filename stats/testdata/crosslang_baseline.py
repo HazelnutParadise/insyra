@@ -1237,6 +1237,21 @@ def main():
         tcrit = st.t.ppf(1 - (1 - cl) / 2, n - 1)
         ci = [mean_diff - tcrit * se, mean_diff + tcrit * se]
         out = {"stat": t, "p": p, "df": float(n - 1), "ci": ci, "mean_diff": mean_diff, "effect": abs(mean_diff) / sd}
+    elif method == "t_test":
+        x = np.array(payload["x"], dtype=float)
+        alt = payload["alt"]
+        cl = float(payload["cl"])
+        kind = payload["kind"]
+        if kind == "single":
+            r = st.ttest_1samp(x, popmean=float(payload["mu"]), alternative=alt)
+        elif kind == "paired":
+            y = np.array(payload["y"], dtype=float)
+            r = st.ttest_rel(x, y, alternative=alt)
+        else:
+            y = np.array(payload["y"], dtype=float)
+            r = st.ttest_ind(x, y, equal_var=bool(payload["equal_var"]), alternative=alt)
+        ci = r.confidence_interval(confidence_level=cl)
+        out = {"stat": float(r.statistic), "p": float(r.pvalue), "df": float(r.df), "ci": [float(ci.low), float(ci.high)]}
     elif method == "single_z":
         x = np.array(payload["x"], dtype=float)
         mu = float(payload["mu"])

@@ -79,7 +79,7 @@ func TestCrossLangSingleSampleTTest(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := stats.SingleSampleTTest(dataListFromFloat64(tc.x), tc.mu, tc.cl)
+			got, err := stats.SingleSampleTTest(dataListFromFloat64(tc.x), tc.mu, stats.TTestOptions{ConfidenceLevel: tc.cl})
 			if err != nil {
 				t.Fatalf("SingleSampleTTest error: %v", err)
 			}
@@ -139,7 +139,7 @@ func TestCrossLangTwoSampleTTest(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := stats.TwoSampleTTest(dataListFromFloat64(tc.x), dataListFromFloat64(tc.y), tc.equalVar, tc.cl)
+			got, err := stats.TwoSampleTTest(dataListFromFloat64(tc.x), dataListFromFloat64(tc.y), tc.equalVar, stats.TTestOptions{ConfidenceLevel: tc.cl})
 			if err != nil {
 				t.Fatalf("TwoSampleTTest error: %v", err)
 			}
@@ -186,7 +186,7 @@ func TestCrossLangPairedTTest(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := stats.PairedTTest(dataListFromFloat64(tc.x), dataListFromFloat64(tc.y), tc.cl)
+			got, err := stats.PairedTTest(dataListFromFloat64(tc.x), dataListFromFloat64(tc.y), stats.TTestOptions{ConfidenceLevel: tc.cl})
 			if err != nil {
 				t.Fatalf("PairedTTest error: %v", err)
 			}
@@ -211,6 +211,88 @@ func TestCrossLangPairedTTest(t *testing.T) {
 	}
 }
 
+// TestCrossLangTTestAlternative checks the t-tests' alternative hypotheses and
+// their one-sided confidence bounds against R's t.test and SciPy. The one-sided
+// p-value and the infinite end of the interval are the parts of a t-test that
+// this package derives itself, so they are the parts worth comparing against
+// the reference implementations.
+func TestCrossLangTTestAlternative(t *testing.T) {
+	requireCrossLangTools(t)
+
+	singleX := []float64{52.1, 58.3, 57.4, 51.3, 61.2, 42.8, 46.8}
+	singleY := []float64{48.0, 55.0, 53.2, 50.1, 57.3, 40.2, 45.5}
+	twoX := []float64{55.1, 49.3, 58.2, 61.9, 47.3, 51.0, 53.8, 59.7}
+	twoY := []float64{46.9, 41.2, 45.7, 49.8, 44.0, 47.6, 46.5, 43.9, 50.2}
+
+	kinds := []struct {
+		name     string
+		kind     string
+		x, y     []float64
+		mu       float64
+		equalVar bool
+	}{
+		{name: "single", kind: "single", x: singleX, mu: 50},
+		{name: "two_equal_var", kind: "two", x: twoX, y: twoY, equalVar: true},
+		{name: "two_welch", kind: "two", x: twoX, y: twoY, equalVar: false},
+		{name: "paired", kind: "paired", x: singleX, y: singleY},
+	}
+
+	alts := []stats.AlternativeHypothesis{stats.TwoSided, stats.Greater, stats.Less}
+	levels := []float64{0.95, 0.9}
+
+	for _, k := range kinds {
+		for _, alt := range alts {
+			for _, cl := range levels {
+				t.Run(fmt.Sprintf("%s/%s/%g", k.name, string(alt), cl), func(t *testing.T) {
+					opts := stats.TTestOptions{Alternative: alt, ConfidenceLevel: cl}
+
+					var got *stats.TTestResult
+					var err error
+					switch k.kind {
+					case "single":
+						got, err = stats.SingleSampleTTest(dataListFromFloat64(k.x), k.mu, opts)
+					case "two":
+						got, err = stats.TwoSampleTTest(dataListFromFloat64(k.x), dataListFromFloat64(k.y), k.equalVar, opts)
+					case "paired":
+						got, err = stats.PairedTTest(dataListFromFloat64(k.x), dataListFromFloat64(k.y), opts)
+					default:
+						t.Fatalf("unknown kind %q", k.kind)
+					}
+					if err != nil {
+						t.Fatalf("%s error: %v", k.name, err)
+					}
+
+					payload := map[string]any{
+						"kind": k.kind,
+						"x":    k.x,
+						"alt":  string(alt),
+						"cl":   cl,
+					}
+					switch k.kind {
+					case "single":
+						payload["mu"] = k.mu
+					case "two":
+						payload["y"] = k.y
+						payload["equal_var"] = k.equalVar
+					case "paired":
+						payload["y"] = k.y
+					}
+					rb := runRBaseline(t, "t_test", payload)
+					pb := runPythonBaseline(t, "t_test", payload)
+
+					assertCloseToBoth(t, "t", got.Statistic, baselineFloat(t, rb, "stat"), baselineFloat(t, pb, "stat"), 1e-8)
+					assertCloseToBoth(t, "p", got.PValue, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-8)
+					assertCloseToBoth(t, "df", *got.DF, baselineFloat(t, rb, "df"), baselineFloat(t, pb, "df"), 1e-8)
+					rCI := baselineFloatSlice(t, rb, "ci")
+					pCI := baselineFloatSlice(t, pb, "ci")
+					assertCloseToBoth(t, "ci.low", got.CI[0], rCI[0], pCI[0], 1e-7)
+					assertCloseToBoth(t, "ci.high", got.CI[1], rCI[1], pCI[1], 1e-7)
+				})
+			}
+		}
+	}
+}
+
 func TestCrossLangSingleSampleZTest(t *testing.T) {
 	requireCrossLangTools(t)
 
@@ -229,7 +311,7 @@ func TestCrossLangSingleSampleZTest(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := stats.SingleSampleZTest(dataListFromFloat64(tc.x), tc.mu, tc.sigma, tc.alt, tc.cl)
+			got, err := stats.SingleSampleZTest(dataListFromFloat64(tc.x), tc.mu, tc.sigma, stats.ZTestOptions{Alternative: tc.alt, ConfidenceLevel: tc.cl})
 			if err != nil {
 				t.Fatalf("SingleSampleZTest error: %v", err)
 			}
@@ -280,7 +362,7 @@ func TestCrossLangTwoSampleZTest(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := stats.TwoSampleZTest(dataListFromFloat64(tc.x), dataListFromFloat64(tc.y), tc.s1, tc.s2, tc.alt, tc.cl)
+			got, err := stats.TwoSampleZTest(dataListFromFloat64(tc.x), dataListFromFloat64(tc.y), tc.s1, tc.s2, stats.ZTestOptions{Alternative: tc.alt, ConfidenceLevel: tc.cl})
 			if err != nil {
 				t.Fatalf("TwoSampleZTest error: %v", err)
 			}
@@ -411,7 +493,7 @@ func TestCrossLangOneWayANOVA(t *testing.T) {
 			for _, g := range tc.groups {
 				args = append(args, dataListFromFloat64(g))
 			}
-			got, err := stats.OneWayANOVA(args...)
+			got, err := stats.OneWayANOVA(args)
 			if err != nil {
 				t.Fatalf("OneWayANOVA error: %v", err)
 			}
@@ -463,7 +545,7 @@ func TestCrossLangTwoWayANOVA(t *testing.T) {
 			for _, c := range tc.cells {
 				args = append(args, dataListFromFloat64(c))
 			}
-			got, err := stats.TwoWayANOVA(tc.aLevels, tc.bLevels, args...)
+			got, err := stats.TwoWayANOVA(tc.aLevels, tc.bLevels, args)
 			if err != nil {
 				t.Fatalf("TwoWayANOVA error: %v", err)
 			}
@@ -514,7 +596,7 @@ func TestCrossLangRepeatedMeasuresANOVA(t *testing.T) {
 			for _, s := range tc.subjects {
 				args = append(args, dataListFromFloat64(s))
 			}
-			got, err := stats.RepeatedMeasuresANOVA(args...)
+			got, err := stats.RepeatedMeasuresANOVA(args)
 			if err != nil {
 				t.Fatalf("RepeatedMeasuresANOVA error: %v", err)
 			}

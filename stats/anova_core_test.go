@@ -12,7 +12,7 @@ func TestOneWayANOVACoreMatchesPublic(t *testing.T) {
 	g2 := insyra.NewDataList([]float64{20, 19, 21, 22})
 	g3 := insyra.NewDataList([]float64{30, 29, 28, 32})
 
-	public, err := OneWayANOVA(g1, g2, g3)
+	public, err := OneWayANOVA([]insyra.IDataList{g1, g2, g3})
 	if err != nil {
 		t.Fatalf("OneWayANOVA returned error: %v", err)
 	}

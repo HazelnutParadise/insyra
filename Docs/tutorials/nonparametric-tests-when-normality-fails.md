@@ -75,7 +75,7 @@ Test whether satisfaction increased after the change (one-sided).
 **Code**
 
 ```go
-w, err := stats.PairedWilcoxon(before, after, stats.Less)
+w, err := stats.PairedWilcoxon(before, after, stats.WilcoxonOptions{Alternative: stats.Less})
 if err != nil {
 	log.Fatal(err)
 }
@@ -95,7 +95,7 @@ Compare two independent variants without assuming normality.
 **Code**
 
 ```go
-u, err := stats.MannWhitneyU(variantA, variantB, stats.TwoSided)
+u, err := stats.MannWhitneyU(variantA, variantB)
 if err != nil {
 	log.Fatal(err)
 }
@@ -119,7 +119,7 @@ layout1 := insyra.NewDataList(3, 4, 2, 3, 4, 3)
 layout2 := insyra.NewDataList(4, 5, 4, 5, 4, 5)
 layout3 := insyra.NewDataList(2, 3, 2, 3, 2, 3)
 
-kw, err := stats.KruskalWallis(layout1, layout2, layout3)
+kw, err := stats.KruskalWallis([]insyra.IDataList{layout1, layout2, layout3})
 if err != nil {
 	log.Fatal(err)
 }
@@ -139,13 +139,13 @@ Same panelists rated all three layouts — use repeated-measures rank test.
 
 ```go
 // One IDataList per subject; each has k=3 condition scores.
-fr, err := stats.FriedmanTest(
+fr, err := stats.FriedmanTest([]insyra.IDataList{
 	insyra.NewDataList(3, 4, 2),
 	insyra.NewDataList(4, 5, 3),
 	insyra.NewDataList(2, 4, 2),
 	insyra.NewDataList(3, 5, 3),
 	insyra.NewDataList(4, 5, 2),
-)
+})
 if err != nil {
 	log.Fatal(err)
 }
@@ -193,29 +193,29 @@ func main() {
 	variantA := insyra.NewDataList(4, 5, 3, 4, 5, 4, 3, 5)
 	variantB := insyra.NewDataList(2, 3, 3, 2, 4, 3, 2, 3, 2)
 
-	w, err := stats.PairedWilcoxon(before, after, stats.Less)
+	w, err := stats.PairedWilcoxon(before, after, stats.WilcoxonOptions{Alternative: stats.Less})
 	if err != nil {
 		log.Fatal(err)
 	}
-	u, err := stats.MannWhitneyU(variantA, variantB, stats.TwoSided)
+	u, err := stats.MannWhitneyU(variantA, variantB)
 	if err != nil {
 		log.Fatal(err)
 	}
-	kw, err := stats.KruskalWallis(
+	kw, err := stats.KruskalWallis([]insyra.IDataList{
 		insyra.NewDataList(3, 4, 2, 3, 4, 3),
 		insyra.NewDataList(4, 5, 4, 5, 4, 5),
 		insyra.NewDataList(2, 3, 2, 3, 2, 3),
-	)
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	fr, err := stats.FriedmanTest(
+	fr, err := stats.FriedmanTest([]insyra.IDataList{
 		insyra.NewDataList(3, 4, 2),
 		insyra.NewDataList(4, 5, 3),
 		insyra.NewDataList(2, 4, 2),
 		insyra.NewDataList(3, 5, 3),
 		insyra.NewDataList(4, 5, 2),
-	)
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -16,7 +16,7 @@ func TestKruskalWallis_RExample(t *testing.T) {
 	g1 := insyra.NewDataList(2.9, 3.0, 2.5, 2.6, 3.2)
 	g2 := insyra.NewDataList(3.8, 2.7, 4.0, 2.4)
 	g3 := insyra.NewDataList(2.8, 3.4, 3.7, 2.2, 2.0)
-	res, err := stats.KruskalWallis(g1, g2, g3)
+	res, err := stats.KruskalWallis([]insyra.IDataList{g1, g2, g3})
 	if err != nil {
 		t.Fatalf("KruskalWallis error: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestFriedman_RExample(t *testing.T) {
 		insyra.NewDataList(5.25, 5.15, 5.00),
 		insyra.NewDataList(5.85, 5.80, 5.70),
 	}
-	res, err := stats.FriedmanTest(subjects...)
+	res, err := stats.FriedmanTest(subjects)
 	if err != nil {
 		t.Fatalf("FriedmanTest error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestMannWhitneyU_RExactExample(t *testing.T) {
 	//   conf.int = [1, 14]
 	x := insyra.NewDataList(15.0, 18, 22, 11, 30, 14, 26, 25)
 	y := insyra.NewDataList(10.0, 9, 13, 17, 7, 12, 19, 8, 20)
-	res, err := stats.MannWhitneyU(x, y, stats.TwoSided)
+	res, err := stats.MannWhitneyU(x, y, stats.MannWhitneyUOptions{Alternative: stats.TwoSided})
 	if err != nil {
 		t.Fatalf("MannWhitneyU error: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestPairedWilcoxon_RExactExample(t *testing.T) {
 	x := insyra.NewDataList(1.83, 0.50, 1.62, 2.48, 1.68, 1.88, 1.55, 3.06, 1.30)
 	y := insyra.NewDataList(0.878, 0.647, 0.598, 2.05, 1.06, 1.29, 1.06, 3.14, 1.29)
 
-	res, err := stats.PairedWilcoxon(x, y, stats.TwoSided)
+	res, err := stats.PairedWilcoxon(x, y, stats.WilcoxonOptions{Alternative: stats.TwoSided})
 	if err != nil {
 		t.Fatalf("PairedWilcoxon error: %v", err)
 	}

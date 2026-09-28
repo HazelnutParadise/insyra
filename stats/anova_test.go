@@ -196,7 +196,7 @@ func TestOneWayANOVA_R(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			r, err := stats.OneWayANOVA(owDLs(c.groups...)...)
+			r, err := stats.OneWayANOVA(owDLs(c.groups...))
 			if err != nil {
 				t.Fatalf("OneWayANOVA error: %v", err)
 			}
@@ -248,10 +248,10 @@ func TestOneWayANOVA_R(t *testing.T) {
 }
 
 func TestOneWayANOVA_Errors(t *testing.T) {
-	if _, err := stats.OneWayANOVA(insyra.NewDataList([]float64{1, 2, 3})); err == nil {
+	if _, err := stats.OneWayANOVA([]insyra.IDataList{insyra.NewDataList([]float64{1, 2, 3})}); err == nil {
 		t.Error("expected error for fewer than two groups")
 	}
-	if _, err := stats.OneWayANOVA(insyra.NewDataList([]float64{}), insyra.NewDataList([]float64{1, 2})); err == nil {
+	if _, err := stats.OneWayANOVA([]insyra.IDataList{insyra.NewDataList([]float64{}), insyra.NewDataList([]float64{1, 2})}); err == nil {
 		t.Error("expected error for empty group")
 	}
 }
@@ -306,7 +306,7 @@ func TestTwoWayANOVA_R(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			r, err := stats.TwoWayANOVA(c.aLevels, c.bLevels, owDLs(c.cells...)...)
+			r, err := stats.TwoWayANOVA(c.aLevels, c.bLevels, owDLs(c.cells...))
 			if err != nil {
 				t.Fatalf("TwoWayANOVA error: %v", err)
 			}
@@ -352,13 +352,13 @@ func TestTwoWayANOVA_R(t *testing.T) {
 
 func TestTwoWayANOVA_Errors(t *testing.T) {
 	c := insyra.NewDataList([]float64{1, 2})
-	if _, err := stats.TwoWayANOVA(1, 2, c, c); err == nil {
+	if _, err := stats.TwoWayANOVA(1, 2, []insyra.IDataList{c, c}); err == nil {
 		t.Error("expected error for aLevels<2")
 	}
-	if _, err := stats.TwoWayANOVA(2, 1, c, c); err == nil {
+	if _, err := stats.TwoWayANOVA(2, 1, []insyra.IDataList{c, c}); err == nil {
 		t.Error("expected error for bLevels<2")
 	}
-	if _, err := stats.TwoWayANOVA(2, 2, c, c, c); err == nil {
+	if _, err := stats.TwoWayANOVA(2, 2, []insyra.IDataList{c, c, c}); err == nil {
 		t.Error("expected error for cell count mismatch")
 	}
 }
@@ -407,7 +407,7 @@ func TestRepeatedMeasuresANOVA_R(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			r, err := stats.RepeatedMeasuresANOVA(owDLs(c.subjects...)...)
+			r, err := stats.RepeatedMeasuresANOVA(owDLs(c.subjects...))
 			if err != nil {
 				t.Fatalf("RepeatedMeasuresANOVA error: %v", err)
 			}
@@ -437,17 +437,17 @@ func TestRepeatedMeasuresANOVA_R(t *testing.T) {
 }
 
 func TestRepeatedMeasuresANOVA_Errors(t *testing.T) {
-	if _, err := stats.RepeatedMeasuresANOVA(insyra.NewDataList([]float64{1, 2})); err == nil {
+	if _, err := stats.RepeatedMeasuresANOVA([]insyra.IDataList{insyra.NewDataList([]float64{1, 2})}); err == nil {
 		t.Error("expected error for fewer than two subjects")
 	}
-	if _, err := stats.RepeatedMeasuresANOVA(
+	if _, err := stats.RepeatedMeasuresANOVA([]insyra.IDataList{
 		insyra.NewDataList([]float64{1, 2}),
-		insyra.NewDataList([]float64{1, 2, 3})); err == nil {
+		insyra.NewDataList([]float64{1, 2, 3})}); err == nil {
 		t.Error("expected error for inconsistent condition counts")
 	}
-	if _, err := stats.RepeatedMeasuresANOVA(
+	if _, err := stats.RepeatedMeasuresANOVA([]insyra.IDataList{
 		insyra.NewDataList([]float64{1}),
-		insyra.NewDataList([]float64{2})); err == nil {
+		insyra.NewDataList([]float64{2})}); err == nil {
 		t.Error("expected error for fewer than two conditions")
 	}
 }

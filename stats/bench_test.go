@@ -278,7 +278,7 @@ func BenchmarkTwoWayANOVA(b *testing.B) {
 	}
 	b.ResetTimer()
 	for b.Loop() {
-		_, err := TwoWayANOVA(A, B, cells...)
+		_, err := TwoWayANOVA(A, B, cells)
 		if err != nil {
 			b.Fatal(err)
 		}

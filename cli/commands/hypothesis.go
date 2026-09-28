@@ -194,7 +194,7 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 				return fmt.Errorf("%w", parseErr)
 			}
 		}
-		result, err := stats.SingleSampleZTest(dl, mu, sigma, alternative, 0.95)
+		result, err := stats.SingleSampleZTest(dl, mu, sigma, stats.ZTestOptions{Alternative: alternative})
 		if err != nil {
 			return fmt.Errorf("ztest failed: %w", err)
 		}
@@ -228,7 +228,7 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 				return fmt.Errorf("%w", parseErr)
 			}
 		}
-		result, err := stats.TwoSampleZTest(a, b, s1, s2, alternative, 0.95)
+		result, err := stats.TwoSampleZTest(a, b, s1, s2, stats.ZTestOptions{Alternative: alternative})
 		if err != nil {
 			return fmt.Errorf("ztest failed: %w", err)
 		}
@@ -252,7 +252,7 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result, err := stats.OneWayANOVA(groups...)
+		result, err := stats.OneWayANOVA(groups)
 		if err != nil {
 			return fmt.Errorf("anova failed: %w", err)
 		}
@@ -277,7 +277,7 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		if len(cells) != aLevels*bLevels {
 			return fmt.Errorf("twoway requires exactly %d cells", aLevels*bLevels)
 		}
-		result, err := stats.TwoWayANOVA(aLevels, bLevels, cells...)
+		result, err := stats.TwoWayANOVA(aLevels, bLevels, cells)
 		if err != nil {
 			return fmt.Errorf("anova failed: %w", err)
 		}
@@ -291,7 +291,7 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result, err := stats.RepeatedMeasuresANOVA(subjects...)
+		result, err := stats.RepeatedMeasuresANOVA(subjects)
 		if err != nil {
 			return fmt.Errorf("anova failed: %w", err)
 		}

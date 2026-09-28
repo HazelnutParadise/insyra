@@ -26,12 +26,12 @@ type KruskalWallisResult struct {
 }
 
 // KruskalWallis performs the Kruskal-Wallis H test on >= 2 independent
-// samples. Ranks are assigned with mid-rank ties; H is tie-corrected
-// (divided by 1 - Σ(t^3-t)/(N^3-N)) so the asymptotic chi^2 p-value uses
-// the same construction as R kruskal.test.
+// samples, one per element of groups. Ranks are assigned with mid-rank ties; H
+// is tie-corrected (divided by 1 - Σ(t^3-t)/(N^3-N)) so the asymptotic chi^2
+// p-value uses the same construction as R kruskal.test.
 //
 // ** Verified using R **
-func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error) {
+func KruskalWallis(groups []insyra.IDataList) (*KruskalWallisResult, error) {
 	if len(groups) < 2 {
 		return nil, errors.New("at least two groups are required")
 	}
