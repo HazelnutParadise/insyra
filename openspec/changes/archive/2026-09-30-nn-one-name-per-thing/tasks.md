@@ -20,4 +20,4 @@
 
 ## 4. Verification
 
-- [ ] 4.1 gofmt、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate nn-one-name-per-thing --strict`
+- [x] 4.1 gofmt、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate nn-one-name-per-thing --strict`

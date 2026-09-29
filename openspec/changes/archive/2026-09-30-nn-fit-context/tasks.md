@@ -19,4 +19,4 @@
 
 ## 4. Verification
 
-- [ ] 4.1 gofmt、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate nn-fit-context --strict`
+- [x] 4.1 gofmt、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate nn-fit-context --strict`

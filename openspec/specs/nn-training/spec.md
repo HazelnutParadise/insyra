@@ -386,3 +386,31 @@ A `Backward` or `BackwardFrom` that returns an error SHALL leave every gradient 
 #### Scenario: An output the tape did not produce
 - **WHEN** `BackwardFrom` is given a tensor no recorded operation produced
 - **THEN** it returns an error instead of zero gradients
+
+### Requirement: A layer and a loss have one name each
+
+The layer constructors SHALL be `Dense`, `ReLU`, `NewSigmoid`, `NewTanh`, `NewGelu`, `Dropout`, `NewFlatten`, `Func`, `Conv2D`, `MaxPool2D`, `AvgPool2D`, `GlobalAvgPool`, `BatchNorm2D`, `LayerNorm`, `Embedding`, `MultiHeadAttention` and `Residual`; the `New` prefix SHALL appear only where the bare name is a kernel function. `NewDense`, `NewReLU`, `NewDropout`, `NewFunc`, `NewMultiHeadAttention`, `NewConv2D`, `NewMaxPool2D`, `NewAvgPool2D`, `NewGlobalAvgPool`, `NewBatchNorm2D`, `NewLayerNorm` and `NewEmbedding` SHALL remain for one release as Deprecated constructors that build the same layer as their bare name. The `FitConfig.Loss` selectors SHALL be `CrossEntropy`, `MSE` and `BCEWithLogits`; `SoftmaxCrossEntropy`, `MSELoss` and `BCEWithLogitsLoss` SHALL remain for one release as Deprecated aliases of them. Each Deprecated doc comment SHALL name its replacement.
+
+#### Scenario: A deprecated twin builds the same layer
+- **WHEN** 以同一個種子分別用 `NewDense(3, 4)` 與 `Dense(3, 4)` 建立 `Sequential`
+- **THEN** 參數的形狀、順序與數值相同；`NewDense` 的 doc comment 有指名 `Dense` 的 `Deprecated:` 段落
+
+#### Scenario: A deprecated loss alias trains the same way
+- **WHEN** 以同一個種子分別用 `nn.MSELoss{}` 與 `nn.MSE{}` 執行 `Fit`
+- **THEN** 每個 epoch 的訓練損失相同
+
+### Requirement: LayerNorm takes a typed size
+
+`LayerNorm(dim int)` SHALL build a layer normalizing the last dimension, of size `dim`, and `LayerNormShape(dims []int)` SHALL build one normalizing the trailing `len(dims)` dimensions, copying `dims`. A non-positive size or an empty shape SHALL be reported by `Build`, and so by `NewSequential` naming the layer. `NewLayerNorm(dims interface{})` SHALL remain for one release as a Deprecated constructor naming both, building `LayerNorm` for an `int`, `LayerNormShape` for a `[]int`, and for any other value the layer it built before this change.
+
+#### Scenario: A multi-dimensional normalized shape
+- **WHEN** 以 `LayerNormShape([]int{2, 3})` 建立層，之後修改傳入的 slice，再對 `[N, 2, 3]` 的輸入做 forward
+- **THEN** 權重與偏差的形狀是 `[2 3]`，結果與改動前 `LayerNorm([]int{2, 3})` 相同，修改 slice 不影響層
+
+#### Scenario: A size that cannot be normalized
+- **WHEN** 以 `LayerNorm(0)` 或 `LayerNormShape(nil)` 建立 `Sequential`
+- **THEN** `NewSequential` 回傳指出該層的錯誤
+
+#### Scenario: The deprecated constructor keeps its meaning
+- **WHEN** 以 `4`、`[]int{2, 3}` 與 `int64(4)` 呼叫 `NewLayerNorm`
+- **THEN** 前兩者分別與 `LayerNorm(4)`、`LayerNormShape([]int{2, 3})` 相同，第三者與改動前一樣在 `Build` 時回傳錯誤

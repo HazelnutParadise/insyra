@@ -19,4 +19,4 @@
 
 ## 4. Verification
 
-- [ ] 4.1 gofmt、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate ml-one-onnx-export-name --strict`
+- [x] 4.1 gofmt、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate ml-one-onnx-export-name --strict`
