@@ -92,7 +92,7 @@ func TestPCAUsesFittedProjectionAndColumnNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fit PCA: %v", err)
 	}
-	transformer := fitted.(*ml.PCATransformer)
+	transformer := fitted
 	got, err := transformer.Transform(features.table)
 	if err != nil {
 		t.Fatalf("transform: %v", err)
@@ -138,7 +138,7 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	linearModel := linear.(*ml.LinearModel)
+	linearModel := linear
 	if !bitwiseEqual(linearModel.Result, directLinear) {
 		t.Fatal("linear result changed by wrapper")
 	}
@@ -154,7 +154,7 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	polynomialModel := polynomial.(*ml.PolynomialModel)
+	polynomialModel := polynomial
 	if !bitwiseEqual(polynomialModel.Result, directPolynomial) {
 		t.Fatal("polynomial result changed by wrapper")
 	}
@@ -169,7 +169,7 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	exponentialModel := exponential.(*ml.ExponentialModel)
+	exponentialModel := exponential
 	if !bitwiseEqual(exponentialModel.Result, directExponential) {
 		t.Fatal("exponential result changed by wrapper")
 	}
@@ -184,7 +184,7 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logarithmicModel := logarithmic.(*ml.LogarithmicModel)
+	logarithmicModel := logarithmic
 	if !bitwiseEqual(logarithmicModel.Result, directLogarithmic) {
 		t.Fatal("logarithmic result changed by wrapper")
 	}
@@ -200,7 +200,7 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logisticModel := logistic.(*ml.LogisticModel)
+	logisticModel := logistic
 	if !bitwiseEqual(logisticModel.Result, directLogistic) {
 		t.Fatal("logistic result changed by wrapper")
 	}
@@ -227,7 +227,7 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	poissonModel := poisson.(*ml.PoissonModel)
+	poissonModel := poisson
 	if !bitwiseEqual(poissonModel.Result, directPoisson) {
 		t.Fatal("poisson result changed by wrapper")
 	}
@@ -242,7 +242,7 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	glmModel := glm.(*ml.GLMModel)
+	glmModel := glm
 	if !bitwiseEqual(glmModel.Result, directGLM) {
 		t.Fatal("GLM result changed by wrapper")
 	}
@@ -258,7 +258,7 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	kmeansModel := kmeans.(*ml.KMeansModel)
+	kmeansModel := kmeans
 	if !bitwiseEqual(kmeansModel.Result, directKMeans) {
 		t.Fatal("KMeans result changed by wrapper")
 	}
@@ -286,7 +286,7 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bitwiseEqual(knnClassifier.(*ml.KNNClassifier).Result, directKNNClassifier) {
+	if !bitwiseEqual(knnClassifier.Result, directKNNClassifier) {
 		t.Fatal("KNN classifier result changed by wrapper")
 	}
 	knnClassifierPrediction, err := knnClassifier.Predict(features.table)
@@ -312,7 +312,7 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bitwiseEqual(knnRegressor.(*ml.KNNRegressor).Result, directKNNRegressor) {
+	if !bitwiseEqual(knnRegressor.Result, directKNNRegressor) {
 		t.Fatal("KNN regressor result changed by wrapper")
 	}
 	knnRegressorPrediction, err := knnRegressor.Predict(features.table)

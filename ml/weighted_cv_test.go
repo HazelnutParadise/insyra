@@ -99,7 +99,9 @@ func TestWeightedCrossValidationRefusals(t *testing.T) {
 	}
 
 	// An estimator without the weighted fitter: refused, not silently unweighted.
-	unweighted := ml.Estimator{Name: "plain", Fit: ml.FitLinearRegression}
+	unweighted := ml.Estimator{Name: "plain", Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+		return ml.FitLinearRegression(x, y)
+	}}
 	_, err := ml.CrossValidateWeighted(x, y, insyra.NewDataList(good...), unweighted, 4, ml.RMSEMetric{})
 	if err == nil {
 		t.Fatal("an estimator without FitWeighted was fitted")

@@ -336,6 +336,15 @@ func (m *GradientBoostingRegressor) Predict(dt *insyra.DataTable) (*insyra.DataL
 	return insyra.NewDataList(values...), nil
 }
 
+// Features reports the columns the model was fitted on, in fitting order.
+// It returns nil for a nil model.
+func (m *GradientBoostingRegressor) Features() []string {
+	if m == nil {
+		return nil
+	}
+	return m.modelBase.Features()
+}
+
 func (m *GradientBoostingRegressor) FeatureImportances() []float64 {
 	if m == nil {
 		return nil
@@ -396,6 +405,15 @@ func (m *GradientBoostingClassifier) Classes() *insyra.DataList {
 		return noClasses("ml", "gradient-boosting classifier is not fitted")
 	}
 	return m.classes.Clone()
+}
+
+// Features reports the columns the model was fitted on, in fitting order.
+// It returns nil for a nil model.
+func (m *GradientBoostingClassifier) Features() []string {
+	if m == nil {
+		return nil
+	}
+	return m.modelBase.Features()
 }
 
 func (m *GradientBoostingClassifier) FeatureImportances() []float64 {

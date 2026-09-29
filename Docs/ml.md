@@ -30,6 +30,19 @@ type Transformer interface {
 
 `Step` and `Estimator` store fit functions. Configuration can be captured by a closure, so a caller can fit the same step repeatedly without cloning or reflection.
 
+Every `Fit*` function returns its own type, such as `*ml.LinearModel` or `*ml.DecisionTreeClassifier`, and that type implements the interfaces above that apply to it. `Estimator.Fit` returns a `Model` and `Step.Fit` a `Transformer`, so a `Fit*` function goes into an estimator or a step through a closure:
+
+```go
+ml.Estimator{
+    Name: "linear",
+    Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+        return ml.FitLinearRegression(x, y)
+    },
+}
+```
+
+When the fit inside such a closure fails, the `Model` it returns holds a nil pointer and is not itself `nil`. Check the error, not the model. Every method of a model type is safe to call on a nil model and returns an error or an empty value, so a missed check fails with an error instead of a panic.
+
 ### `Classes()`
 
 A model that predicts one of a known set of labels implements `Classifier`, which adds one method:
@@ -82,7 +95,9 @@ result, err := ml.CrossValidate(
     target,
     ml.Estimator{
         Name: "linear",
-        Fit:  ml.FitLinearRegression,
+        Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+            return ml.FitLinearRegression(x, y)
+        },
     },
     5,
     ml.RMSEMetric{},
@@ -353,7 +368,17 @@ FitGradientBoostingClassifier
 FitGradientBoostingRegressor
 ```
 
-The regression, clustering, and KNN wrappers expose their underlying `stats` result through an exported `Result` field. The options types in `ml` are aliases of the corresponding `stats` options types.
+The regression, clustering, and KNN wrappers expose their underlying `stats` result through an exported `Result` field. Each function returns its own type, so the field is read straight off what it returns:
+
+```go
+model, err := ml.FitLinearRegression(features, target)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(model.Result.Coefficients) // model is *ml.LinearModel
+```
+
+The options types in `ml` are aliases of the corresponding `stats` options types.
 
 `FitWeightedLinearRegression` takes one strictly positive weight per training
 row. To cross-validate it, use `CrossValidateWeighted`, which subsets the
@@ -458,7 +483,7 @@ approximated; use a random forest for more than two classes.
 
 ## PCA transformation
 
-`FitPCA` returns a `Transformer`. It applies the fitted `Center`, `Scale`, and component loadings to new tables and returns columns named `PC1`, `PC2`, and so on.
+`FitPCA` returns a `*PCATransformer`, which implements `Transformer`. It applies the fitted `Center`, `Scale`, and component loadings to new tables and returns columns named `PC1`, `PC2`, and so on.
 
 ```go
 transformer, err := ml.FitPCA(features, 2)
@@ -504,7 +529,9 @@ pipeline := ml.NewPipeline([]ml.Step{
     },
 }, ml.Estimator{
     Name: "linear",
-    Fit: ml.FitLinearRegression,
+    Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+        return ml.FitLinearRegression(x, y)
+    },
 })
 
 model, err := pipeline.Fit(trainFeatures, target)

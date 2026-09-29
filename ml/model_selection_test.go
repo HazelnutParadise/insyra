@@ -180,7 +180,9 @@ func TestCrossValidateReportsFailingFold(t *testing.T) {
 func TestCrossValidateRefusesMismatchedMetric(t *testing.T) {
 	x := insyra.NewDataTable(insyra.NewDataList(1, 2, 3, 4, 5, 6).SetName("x"))
 	y := insyra.NewDataList(0, 0, 1, 1, 0, 1)
-	_, err := ml.CrossValidate(x, y, ml.Estimator{Name: "linear", Fit: ml.FitLinearRegression}, 3, ml.AccuracyMetric{}, insyra.SamplingOptions{UseSeed: true, Seed: 1})
+	_, err := ml.CrossValidate(x, y, ml.Estimator{Name: "linear", Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+		return ml.FitLinearRegression(x, y)
+	}}, 3, ml.AccuracyMetric{}, insyra.SamplingOptions{UseSeed: true, Seed: 1})
 	if err == nil || !strings.Contains(err.Error(), "classification model") {
 		t.Fatalf("error = %v, want classification mismatch", err)
 	}

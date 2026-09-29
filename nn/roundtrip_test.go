@@ -132,7 +132,9 @@ func TestMLPipelineExportReadsBackAndReproducesItself(t *testing.T) {
 			}
 			return scaler, nil
 		}},
-	}, ml.Estimator{Name: "linear", Fit: ml.FitLinearRegression})
+	}, ml.Estimator{Name: "linear", Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+		return ml.FitLinearRegression(x, y)
+	}})
 	model, err := pipeline.Fit(features, regressionTarget)
 	if err != nil {
 		t.Fatal(err)

@@ -117,6 +117,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `NewEdgeTopology`、`EdgeSum` 與 `Tape.EdgeSum`，處理以邊列表表示的圖：每個節點加總自己收到的加權邊，成本只跟邊數和數值量成正比，不需要 N×N 的稠密矩陣，tape 也會算出邊權重和節點數值的梯度。數值可以是 `[N]` 或帶批次的 `[B, N]`。每個輸出都是所有乘積的精確總和只捨入一次到最近的 float32，所以邊的順序和核心數量都改變不了結果，在每個平台上都一樣。大型圖會用滿所有核心。（[issue #379](https://github.com/HazelnutParadise/insyra/issues/379)）
 - `Tanh` 對每個輸入、在每個平台上都回傳正確捨入的值，也就是真正的 `tanh(x)` 只捨入一次到最近的 float32。以前是把 Go 的 `math.Tanh` 捨入成 float32，而它的 float64 結果並非每個平台都一樣（在 arm64 會合併乘加，在 amd64 執行時依 CPU 選擇是否用 FMA，在 s390x 則是組合語言），所以只在那個結果剛好夠準的地方才正確。全部 2^32 個輸入都在 darwin/arm64 上比對過，2^-13 到 9.5 之間的輸入也在 linux/amd64 與 windows/amd64 上比對過。這三個平台上舊的結果原本就正確，所以沒有任何結果改變。
 - `Tape.Tanh` 的梯度每一步都捨入成 float32。以前 Go 編譯器在 arm64 上會把 `1 - y*y` 合併成一次乘加，在 amd64 上不會，同一個梯度在兩邊可能差最後一位。在 arm64 上，10 萬個隨機梯度有 24,892 個改變。現在每個平台上位元都相同。
+- **BREAKING**：`ml` 的每個 `Fit*` 函式都回傳自己的型別。包裝 `stats` 的十四個函式原本回傳 `Model`、`ProbaModel` 或 `Transformer`，要讀 fit 出來的 `Result` 得先做型別斷言；現在 `FitLinearRegression` 回傳 `*ml.LinearModel`、`FitLogisticRegression` 回傳 `*ml.LogisticModel`、`FitPCA` 回傳 `*ml.PCATransformer`，其餘依此類推，和樹模型與整體模型的函式一致。把結果指派給介面變數的程式照常編譯；`Estimator` 裡的 `Fit: ml.FitLinearRegression` 則不能編譯，因為函式值的回傳型別必須完全相同，請改寫成 `Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) { return ml.FitLinearRegression(x, y) }`。（[issue #263](https://github.com/HazelnutParadise/insyra/issues/263)）
+- `ml` 的 `Fit*` 函式回傳的每種型別，模型是 nil 時每個方法都能安全呼叫：`Features` 回傳 nil，`Predict`、`ExportONNX` 等方法回傳錯誤。在宣告回傳 `ml.Model` 的 closure 裡 fit 失敗時，拿到的是裝著 nil 指標、本身卻不是 nil 的介面，以前對它呼叫 `Features`、`Predict` 或 `ExportONNX` 會 panic，`ml.ExportONNX(w, (*ml.LinearModel)(nil))` 也會。
 
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。

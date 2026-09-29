@@ -944,6 +944,15 @@ func (m *DecisionTreeClassifier) PredictProba(dt *insyra.DataTable) (*insyra.Dat
 	return probabilityTable(m.classes, byClass), nil
 }
 
+// Features reports the columns the model was fitted on, in fitting order.
+// It returns nil for a nil model.
+func (m *DecisionTreeClassifier) Features() []string {
+	if m == nil {
+		return nil
+	}
+	return m.modelBase.Features()
+}
+
 func (m *DecisionTreeClassifier) FeatureImportances() []float64 {
 	if m == nil {
 		return nil
@@ -977,6 +986,15 @@ func (m *DecisionTreeRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList,
 		values[i] = leaf.Value
 	}
 	return insyra.NewDataList(values...), nil
+}
+
+// Features reports the columns the model was fitted on, in fitting order.
+// It returns nil for a nil model.
+func (m *DecisionTreeRegressor) Features() []string {
+	if m == nil {
+		return nil
+	}
+	return m.modelBase.Features()
 }
 
 func (m *DecisionTreeRegressor) FeatureImportances() []float64 {

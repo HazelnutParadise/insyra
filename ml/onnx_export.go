@@ -188,6 +188,9 @@ func (b *onnxBuilder) addOutput(name string, dtype int32, shape []int64) {
 }
 
 func buildONNXModel(fitted any) (*onnxModelProto, error) {
+	if fitted == nil || isNilPointer(fitted) {
+		return nil, errors.New("ml: ONNX export model is nil")
+	}
 	switch model := fitted.(type) {
 	case *fittedPipeline:
 		return buildPipelineONNX(model)

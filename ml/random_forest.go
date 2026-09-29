@@ -260,6 +260,15 @@ func (m *RandomForestClassifier) Classes() *insyra.DataList {
 	return m.classes.Clone()
 }
 
+// Features reports the columns the model was fitted on, in fitting order.
+// It returns nil for a nil model.
+func (m *RandomForestClassifier) Features() []string {
+	if m == nil {
+		return nil
+	}
+	return m.modelBase.Features()
+}
+
 func (m *RandomForestClassifier) FeatureImportances() []float64 {
 	if m == nil {
 		return nil
@@ -284,6 +293,15 @@ func (m *RandomForestRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList,
 		values[row] = total / float64(len(m.trees))
 	}
 	return insyra.NewDataList(values...), nil
+}
+
+// Features reports the columns the model was fitted on, in fitting order.
+// It returns nil for a nil model.
+func (m *RandomForestRegressor) Features() []string {
+	if m == nil {
+		return nil
+	}
+	return m.modelBase.Features()
 }
 
 func (m *RandomForestRegressor) FeatureImportances() []float64 {
