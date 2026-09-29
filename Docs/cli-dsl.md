@@ -747,7 +747,7 @@ High-level command map:
 - **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `fillnan` (deprecated), `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `parsedates`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
-- **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `friedman`, `ftest`, `chisq`, `plot`, `fetch`
+- **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `friedman`, `wilcoxon`, `mannwhitney`, `kruskal`, `ftest`, `chisq`, `plot`, `fetch`
 - **Quant**: `quant` (`sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`, `portfolio`, `frontier`)
 - **Acceleration**: `accel` (`devices`, `cache`, `plan`)
 
@@ -835,9 +835,11 @@ Source policy:
 | `knn_regress` | `knn_regress <train_var> <targets_var> <test_var> <k> [weighting <uniform\|distance>] [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors regression |
 | `knn_neighbors` | `knn_neighbors <train_var> <test_var> <k> [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors search |
 | `kmeans` | `kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]` | K-means clustering |
+| `kruskal` | `kruskal <group1> <group2> [groupN]` | Kruskal-Wallis test across groups |
 | `kurtosis` | `kurtosis <var>` | Kurtosis of a DataList |
 | `load` | `load <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [ragged true\|false] [trimspace true\|false] [sheet <name>] \| load parquet <file> [...] \| load sql <conn> <table>\|query "<sql>" [...] [as <var>]` | Load data into a DataTable variable from a file, parquet, or SQL connection |
 | `lower` | `lower <var> [as <var>]` | Lowercase DataList strings |
+| `mannwhitney` | `mannwhitney <var1> <var2> [two-sided\|greater\|less]` | Mann-Whitney U test for two independent samples |
 | `max` | `max <var>` | DataList maximum |
 | `mean` | `mean <var>` | DataList mean |
 | `median` | `median <var>` | DataList median |
@@ -899,6 +901,7 @@ Source policy:
 | `var` | `var <var>` | DataList variance |
 | `vars` | `vars` | List variables in current environment |
 | `version` | `version` | Show insyra version |
+| `wilcoxon` | `wilcoxon single\|paired ...` | Wilcoxon signed-rank tests |
 | `ztest` | `ztest single\|two ...` | Z-test commands |
 
 ## Describe Command
@@ -937,6 +940,20 @@ insyra anova twoway scores score drug dose
 A command takes the table form when its first argument after the mode is a DataTable variable, and the list form otherwise, so `anova twoway 2 3 c11 c12 …` and `anova repeated s1 s2 s3` work as before. Each column is picked by the same token rule as every other command: a number, an Excel-style letter or a name, with `number:`, `index:` and `name:` to force one reading. The distinct values of a factor, condition or subject column are its levels. A blank or `NaN` level, a value that is not a number, a combination of levels with no rows, and a subject with no row, or two rows, for a condition are refused with the row or the levels named. The output is the same line the list form prints (`FA=… pA=… FB=… pB=…`, `F=… p=…`); `friedman` prints `Q=… df=… p=…`.
 
 `friedman <subject1> <subject2> [subjectN]` is the list form: one DataList per subject, holding that subject's values in the same condition order, as `anova repeated` takes them.
+
+## Rank Tests
+
+When the data are not close to normal, the rank-based tests replace the t-tests and the one-way ANOVA:
+
+```bash
+wilcoxon single <var> <mu> [two-sided|greater|less]       # instead of ttest single
+wilcoxon paired <var1> <var2> [two-sided|greater|less]    # instead of ttest paired
+mannwhitney <var1> <var2> [two-sided|greater|less]        # instead of ttest two
+kruskal <group1> <group2> [groupN]                        # instead of anova oneway
+friedman <table> <value> <condition> <subject>            # instead of anova repeated
+```
+
+The alternative is read the way `ztest` reads it and is two-sided when left out; `greater` for `mannwhitney` and `wilcoxon paired` is stated for the first list. `wilcoxon` prints `W=… p=…` (W+ is the sum of the positive ranks), `mannwhitney` prints `U=… p=…` (the smaller of U1 and U2), and `kruskal` prints `H=… df=… p=…`. Each value has to be a number; a blank, text, `NaN` or `Inf` is refused. [stats](stats.md#nonparametric-tests-rank-based) describes when each test applies and how its p-value is computed.
 
 ## Chi-square Command
 
