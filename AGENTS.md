@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-29] — try an honest User-Agent against Yahoo before changing the Yahoo Finance default
+- **Where**: `datafetch/yfinance.go` `defaultYFUserAgent`; go-yfinance v1.7.0's `defaultJA3` in `pkg/client/client.go`
+- **What**: the owner ruled on 2026-09-29 (#252) to document the client's browser identity first, which `Docs/datafetch.md` now does, and to decide on the default after measuring. The default is a fixed Chrome 117 `User-Agent`, and go-yfinance opens every connection with Chrome's TLS fingerprint whatever the header says, so an honest header alone would pair an insyra name with Chrome's fingerprint. Whether Yahoo answers an honest `User-Agent` has not been tried.
+- **Suggestion**: add an opt-in live test like `datafetch/twstock_live_test.go` and run it against Yahoo for a while with an honest header. If Yahoo answers, make it the default, the way `TWStock` sends `insyra-datafetch/<version>`, and decide whether to expose go-yfinance's `WithJA3` too. If it does not, replace the stale Chrome 117 string with go-yfinance's own rotation (`RandomUserAgent`). Either changes a default, so it needs a changelog entry.
+- **Status**: pending
+
 ### [2026-09-28] — a `YFinanceConfig.Timeout` under one second becomes 15 seconds
 - **Where**: `datafetch/yfinance.go` `YFinance`, `secs := int(normalized.Timeout / time.Second)`
 - **What**: the timeout is handed to go-yfinance in whole seconds, so `Timeout: 500 * time.Millisecond` becomes 0, and CycleTLS v1.0.30 treats 0 as unset and uses 15 seconds (`clientBuilder` in its `client.go`). Found by the review of `datafetch-context` and read from the code; not run against Yahoo. `TestYFinanceTimeoutSeconds` pins the truncation of 1.5s to 1s but has no case below one second.

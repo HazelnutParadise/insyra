@@ -353,7 +353,7 @@ Creates a stateful fetcher, a `*YFinanceClient`. The type can be named in your o
 | :------------- | :-------------- | :--------------------------------------------------------------------------- | :------------------- |
 | `Timeout`      | `time.Duration` | Per-request timeout limit.                                                   | `15s`                |
 | `Interval`     | `time.Duration` | Minimum spacing between the scheduled starts of successive requests (for rate limiting); no request starts before its scheduled time. Set to `0` to disable. | `0`                  |
-| `UserAgent`    | `string`        | HTTP User-Agent header.                                                      | (Default browser UA) |
+| `UserAgent`    | `string`        | HTTP User-Agent header. See [How the client identifies itself](#how-the-client-identifies-itself). | Chrome 117 on Windows |
 | `Retries`      | `int`           | Number of retry attempts on failure.                                         | `0`                  |
 | `RetryBackoff` | `time.Duration` | Base backoff duration between retries.                                       | `300ms`              |
 
@@ -461,6 +461,15 @@ if errors.Is(err, context.DeadlineExceeded) {
    - `Earnings()` (Full earnings reports)
    - `Sustainability()` (ESG scores)
    - `FundsData()`, `TopHoldings()` (Fund-specific data)
+
+### How the client identifies itself
+
+By default the Yahoo Finance client presents itself to Yahoo as a web browser, in two ways:
+
+- It sends the `User-Agent` header of Chrome 117 on Windows.
+- The go-yfinance backend opens every connection with Chrome's TLS fingerprint, whatever the header says.
+
+Yahoo's terms of service apply to how you use the data. To send a different header, set `YFinanceConfig.UserAgent`; the TLS fingerprint cannot be changed through `datafetch`.
 
 ## Taiwan Reverse Geocoding (TWGeocoding)
 
