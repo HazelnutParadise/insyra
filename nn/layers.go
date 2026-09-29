@@ -51,7 +51,9 @@ func Dense(in, out int) Layer {
 	return &denseLayer{in: in, out: out}
 }
 
-// NewDense is the constructor-style spelling of Dense.
+// NewDense builds the same layer as Dense.
+//
+// Deprecated: use Dense. Removed in the release after the one that deprecated it.
 func NewDense(in, out int) Layer { return Dense(in, out) }
 
 func (l *denseLayer) Build(t *Tape) error {
@@ -145,7 +147,9 @@ func ReLU() Layer {
 	return &activationLayer{kind: "ReLU", forward: func(t *Tape, x *Tensor) (*Tensor, error) { return t.Relu(x) }}
 }
 
-// NewReLU is the constructor-style spelling of ReLU.
+// NewReLU builds the same layer as ReLU.
+//
+// Deprecated: use ReLU. Removed in the release after the one that deprecated it.
 func NewReLU() Layer { return ReLU() }
 
 // NewSigmoid creates a differentiable sigmoid activation layer.
@@ -170,7 +174,9 @@ type dropoutLayer struct {
 // Dropout creates an inverted training-only dropout layer. Predict skips it.
 func Dropout(p float32) Layer { return &dropoutLayer{p: p} }
 
-// NewDropout is the constructor-style spelling of Dropout.
+// NewDropout builds the same layer as Dropout.
+//
+// Deprecated: use Dropout. Removed in the release after the one that deprecated it.
 func NewDropout(p float32) Layer { return Dropout(p) }
 
 func (l *dropoutLayer) Build(*Tape) error {
@@ -213,7 +219,9 @@ type funcLayer struct {
 // composite blocks that are not a catalogued layer.
 func Func(fn func(*Tape, *Tensor) (*Tensor, error)) Layer { return &funcLayer{fn: fn} }
 
-// NewFunc is the constructor-style spelling of Func.
+// NewFunc builds the same layer as Func.
+//
+// Deprecated: use Func. Removed in the release after the one that deprecated it.
 func NewFunc(fn func(*Tape, *Tensor) (*Tensor, error)) Layer { return Func(fn) }
 
 func (l *funcLayer) Build(*Tape) error {

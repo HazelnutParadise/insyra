@@ -15,7 +15,7 @@ func TestBackwardFromNonScalarOutput(t *testing.T) {
 		0.5, -0.2, 0.3, 0.1,
 		-0.4, 0.6, 0.2, -0.7,
 	})
-	upstreamBefore := g.Data()
+	upstreamBefore := float32Values(t, g)
 
 	tape := NewTape()
 	W = mustTapeParameter(t, tape, W)
@@ -32,7 +32,7 @@ func TestBackwardFromNonScalarOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	xData := x.Data()
+	xData := float32Values(t, x)
 	xtData := make([]float32, 3*2)
 	for row := 0; row < 2; row++ {
 		for col := 0; col < 3; col++ {
@@ -48,7 +48,7 @@ func TestBackwardFromNonScalarOutput(t *testing.T) {
 		t.Fatalf("W gradient = %v, want %v", gradient.data, want.data)
 	}
 
-	upstreamAfter := g.Data()
+	upstreamAfter := float32Values(t, g)
 	if len(upstreamAfter) != len(upstreamBefore) {
 		t.Fatalf("upstream length changed: %d to %d", len(upstreamBefore), len(upstreamAfter))
 	}

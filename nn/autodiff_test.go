@@ -106,11 +106,11 @@ func TestAutodiffSGD(t *testing.T) {
 	if gradient == nil {
 		t.Fatal("Grad returned nil")
 	}
-	before := parameter.Data()
+	before := float32Values(t, parameter)
 	if err := tape.SGD(0.1); err != nil {
 		t.Fatalf("SGD: %v", err)
 	}
-	after := parameter.Data()
+	after := float32Values(t, parameter)
 	for index := range after {
 		want := before[index] - 0.1*gradient.data[index]
 		if after[index] != want {

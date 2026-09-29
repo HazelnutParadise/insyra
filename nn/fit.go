@@ -156,9 +156,19 @@ func (BCEWithLogits) fitLoss(tape *Tape, prediction, target *Tensor) (*Tensor, e
 	return tape.BCEWithLogitsLoss(prediction, target)
 }
 
-// These aliases keep selector names close to the corresponding tape methods.
+// SoftmaxCrossEntropy is the same loss selector as CrossEntropy.
+//
+// Deprecated: use CrossEntropy. Removed in the release after the one that deprecated it.
 type SoftmaxCrossEntropy = CrossEntropy
+
+// MSELoss is the same loss selector as MSE.
+//
+// Deprecated: use MSE. Removed in the release after the one that deprecated it.
 type MSELoss = MSE
+
+// BCEWithLogitsLoss is the same loss selector as BCEWithLogits.
+//
+// Deprecated: use BCEWithLogits. Removed in the release after the one that deprecated it.
 type BCEWithLogitsLoss = BCEWithLogits
 
 // FitConfig controls one complete Sequential training run.

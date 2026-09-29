@@ -76,7 +76,7 @@ func TestLoadSafeTensorsToleratesMetadataAndLoadsExactValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSafeTensors: %v", err)
 	}
-	if got := tensors["weights"].Data(); !reflect.DeepEqual(got, []float32{1.5, -2.5}) {
+	if got := float32Values(t, tensors["weights"]); !reflect.DeepEqual(got, []float32{1.5, -2.5}) {
 		t.Fatalf("weights = %v, want [1.5 -2.5]", got)
 	}
 	indices, err := tensors["indices"].Int64Data()
@@ -149,10 +149,10 @@ func TestLoadSafeTensorsReferenceRoundTrip(t *testing.T) {
 		switch expected.dtype {
 		case DTypeFloat32:
 			if referenceValues, ok := reference[name]; ok {
-				assertSafeTensorReference(t, name, got.Data(), referenceValues)
+				assertSafeTensorReference(t, name, float32Values(t, got), referenceValues)
 				continue
 			}
-			if values := got.Data(); !reflect.DeepEqual(values, expected.f32) {
+			if values := float32Values(t, got); !reflect.DeepEqual(values, expected.f32) {
 				t.Fatalf("tensor %q values = %v, want %v", name, values, expected.f32)
 			}
 		case DTypeInt64:

@@ -87,7 +87,11 @@ func exactSumEdgeCPUReference(t *testing.T, rows [][][2]uint32) []float32 {
 	if err != nil {
 		t.Fatalf("nn.EdgeSum: %v", err)
 	}
-	return result.Data()
+	resultValues, err := result.Float32Data()
+	if err != nil {
+		t.Fatalf("Float32Data: %v", err)
+	}
+	return resultValues
 }
 
 // TestExactSumDeviceMatchesEdgeSum holds the device exact-sum harness to

@@ -150,7 +150,10 @@ func measurementMatmulCPU(shape matmulMeasurementShape, a, b []float32) ([]float
 		}
 		if attempt == 0 || elapsed < bestDuration {
 			bestDuration = elapsed
-			bestResult = result.Data()
+			bestResult, err = result.Float32Data()
+			if err != nil {
+				return nil, 0, fmt.Errorf("Float32Data: %w", err)
+			}
 		}
 	}
 	return bestResult, float64(bestDuration) / float64(time.Millisecond), nil

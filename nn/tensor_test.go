@@ -8,9 +8,9 @@ import (
 
 func TestTensorCarriesDTypeAndRowMajorLayout(t *testing.T) {
 	input := []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
-	tensor, err := NewTensorWithDType(DTypeFloat32, []int{2, 3, 4}, input)
+	tensor, err := NewTensor([]int{2, 3, 4}, input)
 	if err != nil {
-		t.Fatalf("NewTensorWithDType: %v", err)
+		t.Fatalf("NewTensor: %v", err)
 	}
 
 	if tensor.DType() != DTypeFloat32 {
@@ -29,9 +29,9 @@ func TestTensorCarriesDTypeAndRowMajorLayout(t *testing.T) {
 	input[0] = 99
 	shape := tensor.Shape()
 	shape[0] = 99
-	data := tensor.Data()
+	data := float32Values(t, tensor)
 	data[0] = 99
-	if tensor.Data()[0] != 1 || tensor.Shape()[0] != 2 {
+	if float32Values(t, tensor)[0] != 1 || tensor.Shape()[0] != 2 {
 		t.Fatal("tensor exposed mutable storage")
 	}
 }
@@ -63,8 +63,8 @@ func TestBroadcastBinaryUsesNumpyTrailingDimensions(t *testing.T) {
 	if !slices.Equal(got.Shape(), []int{2, 3}) {
 		t.Fatalf("result shape = %v, want [2 3]", got.Shape())
 	}
-	if want := []float32{11, 22, 33, 14, 25, 36}; !slices.Equal(got.Data(), want) {
-		t.Fatalf("result data = %v, want %v", got.Data(), want)
+	if want := []float32{11, 22, 33, 14, 25, 36}; !slices.Equal(float32Values(t, got), want) {
+		t.Fatalf("result data = %v, want %v", float32Values(t, got), want)
 	}
 }
 
@@ -82,8 +82,8 @@ func TestBroadcastBinarySupportsScalars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("broadcastBinary: %v", err)
 	}
-	if want := []float32{0.5, 1, 1.5, 2}; !slices.Equal(got.Data(), want) {
-		t.Fatalf("result data = %v, want %v", got.Data(), want)
+	if want := []float32{0.5, 1, 1.5, 2}; !slices.Equal(float32Values(t, got), want) {
+		t.Fatalf("result data = %v, want %v", float32Values(t, got), want)
 	}
 }
 

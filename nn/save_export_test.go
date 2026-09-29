@@ -20,7 +20,7 @@ import (
 var saveExportFixtureScript string
 
 func TestSaveSafeTensorsRoundTripIsDeterministic(t *testing.T) {
-	weights, err := NewFloat32Tensor([]int{2, 2}, []float32{math.Float32frombits(0x7fc00001), -2.5, 0, 4.25})
+	weights, err := NewTensor([]int{2, 2}, []float32{math.Float32frombits(0x7fc00001), -2.5, 0, 4.25})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestSaveSafeTensorsRoundTripIsDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	scalar, err := NewFloat32Tensor(nil, []float32{3.5})
+	scalar, err := NewTensor(nil, []float32{3.5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestSaveSafeTensorsRoundTripIsDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSafeTensors: %v", err)
 	}
-	if got := loaded["z.weight"].Data(); len(got) != 4 || math.Float32bits(got[0]) != 0x7fc00001 || !reflect.DeepEqual(got[1:], []float32{-2.5, 0, 4.25}) {
+	if got := float32Values(t, loaded["z.weight"]); len(got) != 4 || math.Float32bits(got[0]) != 0x7fc00001 || !reflect.DeepEqual(got[1:], []float32{-2.5, 0, 4.25}) {
 		t.Fatalf("loaded weights = %#v", got)
 	}
 	gotIndices, err := loaded["a.indices"].Int64Data()
@@ -63,7 +63,7 @@ func TestSaveSafeTensorsRoundTripIsDeterministic(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(gotMask, []bool{true, false, true, false}) {
 		t.Fatalf("loaded mask = %v, err %v", gotMask, err)
 	}
-	if got := loaded["scalar"]; got == nil || len(got.Shape()) != 0 || !reflect.DeepEqual(got.Data(), []float32{3.5}) {
+	if got := loaded["scalar"]; got == nil || len(got.Shape()) != 0 || !reflect.DeepEqual(float32Values(t, got), []float32{3.5}) {
 		t.Fatalf("loaded scalar = %#v", got)
 	}
 }
@@ -115,8 +115,8 @@ func TestSequentialSaveWeightsUsesTorchNamesAndLinearLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got.Data(), want.Data()) {
-		t.Fatalf("reloaded prediction = %v, want %v", got.Data(), want.Data())
+	if !reflect.DeepEqual(float32Values(t, got), float32Values(t, want)) {
+		t.Fatalf("reloaded prediction = %v, want %v", float32Values(t, got), float32Values(t, want))
 	}
 }
 
@@ -208,8 +208,8 @@ func assertSequentialONNXRoundTrip(t *testing.T, model *Sequential, input *Tenso
 	if !reflect.DeepEqual(got.Shape(), want.Shape()) {
 		t.Fatalf("output shape = %v, want %v", got.Shape(), want.Shape())
 	}
-	if !reflect.DeepEqual(got.Data(), want.Data()) {
-		t.Fatalf("output = %v, want %v", got.Data(), want.Data())
+	if !reflect.DeepEqual(float32Values(t, got), float32Values(t, want)) {
+		t.Fatalf("output = %v, want %v", float32Values(t, got), float32Values(t, want))
 	}
 }
 
@@ -300,8 +300,8 @@ func TestSequentialExportONNXRoundsTripThroughONNXRuntime(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(gotMap["output"].Data(), want.Data()) {
-				t.Fatalf("nn output = %v, want %v", gotMap["output"].Data(), want.Data())
+			if !reflect.DeepEqual(float32Values(t, gotMap["output"]), float32Values(t, want)) {
+				t.Fatalf("nn output = %v, want %v", float32Values(t, gotMap["output"]), float32Values(t, want))
 			}
 		})
 	}

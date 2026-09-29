@@ -140,7 +140,7 @@ func runPracticeTrajectory(t *testing.T, weights map[string]*Tensor, update func
 		}
 		values := make(map[string][]float32, len(parameters))
 		for _, name := range strings.Fields(practiceParameterNames) {
-			values[name] = parameters[name].Value().Data()
+			values[name] = float32Values(t, parameters[name].Value())
 		}
 		trajectory = append(trajectory, practiceTrajectoryStep{rate: rate, loss: loss.data[0], parameters: values})
 	}

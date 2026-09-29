@@ -121,7 +121,10 @@ func edgeSumTimingCPU(topology *nn.EdgeTopology, weights, values *nn.Tensor) ([]
 	if err != nil {
 		return nil, 0, err
 	}
-	want := result.Data()
+	want, err := result.Float32Data()
+	if err != nil {
+		return nil, 0, fmt.Errorf("Float32Data: %w", err)
+	}
 
 	var best time.Duration
 	for attempt := 0; attempt < 5; attempt++ {

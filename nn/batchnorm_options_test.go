@@ -21,7 +21,7 @@ func TestBatchNormTrainingTakesNamedOptions(t *testing.T) {
 		if err != nil {
 			return nil, nil, err
 		}
-		return out.Data(), mean.Data(), nil
+		return float32Values(t, out), float32Values(t, mean), nil
 	}
 
 	_, defaultMean, err := run()

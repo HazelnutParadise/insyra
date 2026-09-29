@@ -165,9 +165,14 @@ type PoolOptions struct {
 	StorageOrder    int
 }
 
-// MaxPoolOptions and AveragePoolOptions are descriptive aliases for callers
-// that want to name the operator-specific option type at a call site.
+// MaxPoolOptions is the same type as PoolOptions.
+//
+// Deprecated: use PoolOptions. Removed in the release after the one that deprecated it.
 type MaxPoolOptions = PoolOptions
+
+// AveragePoolOptions is the same type as PoolOptions.
+//
+// Deprecated: use PoolOptions. Removed in the release after the one that deprecated it.
 type AveragePoolOptions = PoolOptions
 
 // ResizeOptions controls the ONNX Resize coordinate and interpolation
