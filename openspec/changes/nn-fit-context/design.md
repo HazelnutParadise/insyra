@@ -18,5 +18,6 @@ The parameters are updated in place by every optimizer step, so after a cancella
 
 - Cancelling from `Progress` after epoch 1 of 3 returns `context.Canceled`, a result with one epoch, and parameters bit-identical to a `Fit` with `Epochs: 1` and the same seed.
 - A `Func` layer that cancels during the forward pass of batch 2 sees no batch 3: the run returns `context.Canceled` with no finished epoch, after exactly two forward passes.
+- A `Func` layer that cancels during the last batch of epoch 2 stops the run before that epoch's validation and `Progress`: one epoch is reported. A cancel in the last epoch's `Progress` returns the whole result and no error.
 - A context cancelled before the call leaves every parameter unchanged, calls `Progress` never, and returns an empty result; an expired deadline returns `context.DeadlineExceeded`; a nil context is an error.
 - The existing `Fit` tests, the MNIST convergence proof and its parity with the hand-written loop keep passing unchanged, since `Fit` is `FitContext` with a context that is never done.

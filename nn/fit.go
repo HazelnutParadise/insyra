@@ -218,7 +218,9 @@ func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error) {
 // done, FitContext returns ctx.Err() together with a FitResult listing only
 // the epochs that finished, their validation and Progress call included. The
 // model keeps every optimizer step taken before the check, including the
-// steps of an epoch that did not finish. A context that is already done when
+// steps of an epoch that did not finish. A run whose every epoch finished
+// returns its result and no error, even if the context was cancelled during
+// the last epoch's Progress call. A context that is already done when
 // FitContext is called changes nothing. A nil context is an error.
 func (s *Sequential) FitContext(ctx context.Context, x, y *Tensor, cfg FitConfig) (*FitResult, error) {
 	if s == nil {

@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-30] — `Float32Data` on an int64 tensor says the dtype "is not implemented"
+- **Where**: `nn/tensor.go` `Float32Data`, `Int64Data`, `StringData`, `BoolData`, through `unsupportedDTypeError`
+- **What**: each accessor reports a tensor of another dtype with the error meant for a dtype `nn` cannot hold: measured on 2026-09-30, `Float32Data` on an int64 tensor returns `dtype int64 is not implemented`, although int64 tensors are fully supported. `nn-one-name-per-thing` made `Float32Data` the one float32 accessor, so more callers now meet this message. Found by the review of that change.
+- **Suggestion**: have the four accessors say what the tensor holds and what was asked for, such as `tensor is int64, not float32`, and keep `unsupportedDTypeError` for constructors and loaders refusing a dtype. It changes an error message only.
+- **Status**: pending
+
 ### [2026-09-30] — remove the deprecated `nn` names one release after they were deprecated
 - **Where**: `nn/layers.go`, `nn/layers_catalog.go`, `nn/layers_attention.go` (the twelve `New…` twins: `NewDense`, `NewReLU`, `NewDropout`, `NewFunc`, `NewMultiHeadAttention`, `NewConv2D`, `NewMaxPool2D`, `NewAvgPool2D`, `NewGlobalAvgPool`, `NewBatchNorm2D`, `NewLayerNorm`, `NewEmbedding`), `nn/fit.go` (`SoftmaxCrossEntropy`, `MSELoss`, `BCEWithLogitsLoss`), `nn/protocol.go` (`Classifier`, `Regressor`), `nn/kernels.go` (`MaxPoolOptions`, `AveragePoolOptions`), `nn/tensor.go` (`DataType`, `Float32`, `Float16`, `Float64`, `NewFloat32Tensor`, `NewTensorWithDType`, `Tensor.Data`)
 - **What**: `nn-one-name-per-thing` deprecated them under the one-name rule of #211 (NN-1, #265), keeping each one's meaning for one release; `nn-layernorm-typed-constructors` made `NewLayerNorm(interface{})` build `LayerNorm` or `LayerNormShape`.
@@ -278,7 +284,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-09-30] — three more second names in `nn` and `ml`
 - **Where**: `nn/autodiff_cnn.go` `Tape.BatchNormTraining` ("a concise alias for BatchNormalizationTraining"); `nn/autodiff_catalog.go` `Tape.EmbeddingLookup` (`Tape.Embedding` with its two arguments swapped); `ml/pipeline.go` `TransformColumns` ("the functional spelling of NewColumnTransformer", returning the `Transformer` interface where `NewColumnTransformer` returns `*ColumnTransformer`)
-- **What**: found while doing NN-1 and ML-2 under the one-name rule of #211. The review had marked all three OK, so they were not in #264 or #265 and were left alone.
+- **What**: found while doing NN-1 and ML-2 under the one-name rule of #211. The review did not list any of them as a second name (it marked `EmbeddingLookup` and `TransformColumns` OK and filed `BatchNormTraining` under NN-3 for its positional options), so they were not in #264 or #265 and were left alone.
 - **Suggestion**: deprecate the second name of each the way `nn-one-name-per-thing` did: keep `BatchNormalizationTraining` (the ONNX operator name the tape records), `Embedding` (the torch argument order, table first) and `NewColumnTransformer` (the concrete return, as ML-1 asked of every constructor).
 - **Status**: pending
 

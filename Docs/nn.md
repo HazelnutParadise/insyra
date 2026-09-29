@@ -231,8 +231,11 @@ done, `FitContext` returns `ctx.Err()`, so `errors.Is(err, context.Canceled)`
 or `errors.Is(err, context.DeadlineExceeded)` tells a stop from a failure,
 together with a `FitResult` listing the epochs that finished. The model keeps
 every optimizer step taken before the stop, including the steps of an epoch
-that did not finish. A context that is already done changes nothing, and a nil
-context is an error.
+that did not finish. An epoch counts as finished once its batches, its
+validation and its `Progress` call have run, so a run whose every epoch
+finished returns its whole result and no error, even if the context was
+cancelled during the last `Progress` call. A context that is already done
+changes nothing, and a nil context is an error.
 
 Cancelling from `Progress` stops before the next epoch's first batch, so the
 model is exactly what a run of that many epochs would have produced:

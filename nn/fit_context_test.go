@@ -166,3 +166,50 @@ func TestFitContextRefusesANilContext(t *testing.T) {
 		t.Error("a nil context changed the model")
 	}
 }
+
+// The check after an epoch's last batch stops the run before that epoch's
+// validation and Progress call, so the epoch is not reported.
+func TestFitContextStopsAfterAnEpochsLastBatch(t *testing.T) {
+	input, target := fitContextData(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	forwards := 0
+	counter := Func(func(_ *Tape, x *Tensor) (*Tensor, error) {
+		forwards++
+		if forwards == 6 { // the last of epoch 2's three batches
+			cancel()
+		}
+		return x, nil
+	})
+	model := fitContextModel(t, Dense(2, 4), counter, ReLU(), Dense(4, 2))
+	progressCalls := 0
+	result, err := model.FitContext(ctx, input, target, FitConfig{
+		Epochs: 3, BatchSize: 3, Seed: 77, Optimizer: SGD{Rate: 0.1}, Loss: CrossEntropy{}, Quiet: true,
+		Progress: func(FitEpoch) { progressCalls++ },
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if forwards != 6 || result == nil || len(result.Epochs) != 1 || progressCalls != 1 {
+		t.Fatalf("forwards = %d, result = %+v, Progress calls = %d; want 6 forward passes and only epoch 1 reported", forwards, result, progressCalls)
+	}
+}
+
+// A run whose every epoch finished has nothing left to stop: cancelling in
+// the last epoch's Progress call returns the whole result and no error.
+func TestFitContextFinishedRunIgnoresALateCancel(t *testing.T) {
+	input, target := fitContextData(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result, err := fitContextModel(t).FitContext(ctx, input, target, FitConfig{
+		Epochs: 2, BatchSize: 3, Seed: 77, Optimizer: SGD{Rate: 0.1}, Loss: CrossEntropy{}, Quiet: true,
+		Progress: func(epoch FitEpoch) {
+			if epoch.Epoch == 2 {
+				cancel()
+			}
+		},
+	})
+	if err != nil || result == nil || len(result.Epochs) != 2 {
+		t.Fatalf("FitContext = %+v, %v; want both epochs and no error", result, err)
+	}
+}
