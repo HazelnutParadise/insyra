@@ -19,8 +19,9 @@ const (
 
 // ExportONNX writes a fitted model as a standard ONNX ModelProto. The model
 // is built completely before w is touched, so unsupported models never leave
-// a partial file behind.
-func ExportONNX(w io.Writer, fitted any) error {
+// a partial file behind. A nil model, or one holding a nil pointer, is an
+// error.
+func ExportONNX(w io.Writer, fitted Model) error {
 	if w == nil {
 		return errors.New("ml: ONNX export writer is nil")
 	}
@@ -39,9 +40,19 @@ func ExportONNX(w io.Writer, fitted any) error {
 	return nil
 }
 
-// WriteONNX is an explicit synonym for ExportONNX for callers that prefer a
-// verb describing the destination.
-func WriteONNX(w io.Writer, fitted any) error { return ExportONNX(w, fitted) }
+// WriteONNX writes a fitted model the way ExportONNX does.
+//
+// Deprecated: use ExportONNX, which takes a Model. WriteONNX keeps its any
+// parameter until it is removed: a Model is exported by ExportONNX and any
+// other value is refused. Removed in the release after the one that
+// deprecated it.
+func WriteONNX(w io.Writer, fitted any) error {
+	model, ok := fitted.(Model)
+	if !ok && fitted != nil {
+		return fmt.Errorf("ml: ONNX export does not support %T", fitted)
+	}
+	return ExportONNX(w, model)
+}
 
 func (m *LinearModel) ExportONNX(w io.Writer) error { return ExportONNX(w, m) }
 func (m *RidgeModel) ExportONNX(w io.Writer) error  { return ExportONNX(w, m) }

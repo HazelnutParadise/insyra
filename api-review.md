@@ -341,7 +341,7 @@
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | ML-1 | ~~Low~~ 已修正（ml-fit-returns-concrete-types） | `Fit*` 回傳型別不一致：線性／GLM／KNN／KMeans 回介面 `Model`／`ProbaModel`／`Transformer`，樹模型回具體 `*DecisionTreeClassifier`。使用者要拿 `LinearModel.Result` 得先型別斷言，違反「回傳具體型別」慣例，且同一套件兩種做法（準則 6、8） | ml/models.go:110-340；decision_tree.go:83, 102；random_forest.go:55, 70 | 全部回具體型別（它們都實作介面） |
-| ML-2 | Low | 重複命名：`ExportONNX(w, fitted any)` 與 `WriteONNX(w, fitted any)` 同一件事、參數是 `any`；`DecisionTreeClassifierOptions`／`DecisionTreeRegressorOptions` 是 `DecisionTreeOptions` 的別名；`Accuracy()` 等函式與 `AccuracyMetric{}` 型別兩套（可接受為便利函式）；`Fit…(x, y, opts ...Options)` variadic（D-8）（準則 1） | onnx_export.go:23, 44；decision_tree.go:34-35 | 留一個名字；別名標 Deprecated |
+| ML-2 | ~~Low~~ 已修正（ml-one-onnx-export-name；`Accuracy()` 等便利函式與 `AccuracyMetric{}` 維持，`opts ...Options` 合乎 #213 規則） | 重複命名：`ExportONNX(w, fitted any)` 與 `WriteONNX(w, fitted any)` 同一件事、參數是 `any`；`DecisionTreeClassifierOptions`／`DecisionTreeRegressorOptions` 是 `DecisionTreeOptions` 的別名；`Accuracy()` 等函式與 `AccuracyMetric{}` 型別兩套（可接受為便利函式）；`Fit…(x, y, opts ...Options)` variadic（D-8）（準則 1） | onnx_export.go:23, 44；decision_tree.go:34-35 | 留一個名字；別名標 Deprecated |
 | ML-3 | OK | 介面切得小且可組合（`Model`／`Classifier`／`ProbaModel`／`Importances`／`Clusterer`／`Exporter`／`TransformedFeatures`），每個介面的 doc 說明「為什麼要有它」；`Metric.Direction` 與 `Better` 讓比較不會選錯邊；`GridSearch` 保證同一組 fold、回報 seed、贏家重新 fit；`Estimator`／`Step` 用閉包取代 sklearn 的 clone 反射，是有記錄的設計決策；`fittedPipeline*` 五個未匯出包裝型別只為保留能力介面，對外不可見：OK | — | — |
 
 ### nn
@@ -590,7 +590,7 @@
 | CL-3 | [#261](https://github.com/HazelnutParadise/insyra/issues/261) |  |
 | AC-1 | [#262](https://github.com/HazelnutParadise/insyra/issues/262) |  |
 | ML-1 | [#263](https://github.com/HazelnutParadise/insyra/issues/263) | 已修正（ml-fit-returns-concrete-types） |
-| ML-2 | [#264](https://github.com/HazelnutParadise/insyra/issues/264) |  |
+| ML-2 | [#264](https://github.com/HazelnutParadise/insyra/issues/264) | 已修正（ml-one-onnx-export-name） |
 | NN-1 | [#265](https://github.com/HazelnutParadise/insyra/issues/265) |  |
 | NN-2 | [#266](https://github.com/HazelnutParadise/insyra/issues/266) |  |
 | C-1 | [#267](https://github.com/HazelnutParadise/insyra/issues/267) | 已關閉（csvxl-batch-failures） |

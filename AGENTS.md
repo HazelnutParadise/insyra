@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-30] — remove the deprecated `ml` names one release after they were deprecated
+- **Where**: `ml/onnx_export.go` (`WriteONNX`), `ml/decision_tree.go` (`DecisionTreeClassifierOptions`, `DecisionTreeRegressorOptions`)
+- **What**: `ml-one-onnx-export-name` deprecated them under the one-name rule of #211 (ML-2, #264), keeping each one's meaning for one release.
+- **Suggestion**: delete them in the same release as the other Deprecated removals, with `TestDeprecatedMLNamesSayWhatReplacedThem`, `TestWriteONNXKeepsItsMeaning` and `TestDeprecatedTreeOptionsAreTheSameType` in `ml/onnx_one_name_test.go` (keep the `ExportONNX` half of the last two), their notes in `Docs/ml.md`, and a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-09-30] — remove the `Csv` spellings of the `csvxl` functions one release after they were deprecated
 - **Where**: `csvxl/convert.go`, `csvxl/convertDir.go`, `csvxl/read_csv.go`
 - **What**: `csvxl-go-names` renamed `CsvToExcel`, `AppendCsvToExcel`, `ExcelToCsv`, `ExcelToCsvOptions`, `EachCsvToOneExcel`, `EachExcelToCsv` and `ReadCsvToString` to `CSVToExcel`, `AppendCSVToExcel`, `ExcelToCSV`, `ExcelToCSVOptions`, `CSVDirToExcel`, `ExcelDirToCSV` and `ReadCSVToString` (the C-12 part of #212). The old names stay one release as Deprecated wrappers and a type alias.

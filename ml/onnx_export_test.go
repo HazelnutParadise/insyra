@@ -33,7 +33,7 @@ func TestONNXExportWritesSupportedModels(t *testing.T) {
 
 	for _, tc := range []struct {
 		name  string
-		model any
+		model ml.Model
 		kind  string
 	}{
 		{name: "linear", model: linear, kind: "LinearRegressor"},

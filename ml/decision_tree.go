@@ -29,9 +29,16 @@ type DecisionTreeOptions struct {
 	CategoricalFeatures []string
 }
 
-// DecisionTreeClassifierOptions and DecisionTreeRegressorOptions are aliases
-// kept for callers that prefer a model-specific option name.
+// DecisionTreeClassifierOptions is the same type as DecisionTreeOptions.
+//
+// Deprecated: use DecisionTreeOptions, which both tree functions take.
+// Removed in the release after the one that deprecated it.
 type DecisionTreeClassifierOptions = DecisionTreeOptions
+
+// DecisionTreeRegressorOptions is the same type as DecisionTreeOptions.
+//
+// Deprecated: use DecisionTreeOptions, which both tree functions take.
+// Removed in the release after the one that deprecated it.
 type DecisionTreeRegressorOptions = DecisionTreeOptions
 
 // DecisionTreeNode is one fitted node. A leaf has IsLeaf set and reports its
