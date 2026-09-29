@@ -3,10 +3,9 @@ package lpgen
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
-	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 type LPModel struct {
@@ -113,17 +112,15 @@ func (lp *LPModel) WriteLP(w io.Writer) error {
 	return err
 }
 
-// GenerateLPFile saves the model as a CPLEX LP file. A failure is logged as a
-// warning.
-func (lp *LPModel) GenerateLPFile(filename string) {
-	file, err := os.Create(filename)
-	if err != nil {
-		insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to create LP file: %v", err)
-		return
+// GenerateLPFile saves the model as a CPLEX LP file, with exactly the text
+// WriteLP writes. It writes to a temporary file in the same directory that
+// replaces filename only once the whole model is written, so a failed call
+// leaves no file behind and an existing file at filename unchanged. It returns
+// an error when the file cannot be created or written, or when WriteLP refuses
+// the objective type.
+func (lp *LPModel) GenerateLPFile(filename string) error {
+	if err := utils.WriteFileAtomically(filename, lp.WriteLP); err != nil {
+		return fmt.Errorf("failed to save LP file %s: %w", filename, err)
 	}
-	defer func() { _ = file.Close() }()
-
-	if err := lp.WriteLP(file); err != nil {
-		insyra.LogWarning("lpgen", "GenerateLPFile", "%v, returning", err)
-	}
+	return nil
 }

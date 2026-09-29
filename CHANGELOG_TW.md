@@ -178,6 +178,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `lpgen`
 - 新增 `LPModel.WriteLP(io.Writer) error`，把 `GenerateLPFile` 存檔的同一份 CPLEX LP 文字寫進任何 writer，遇到不認識的目標型別時回傳錯誤。`GenerateLPFile` 改為透過它寫檔，輸出內容不變。
+- **BREAKING**：`GenerateLPFile` 改為回傳 `error`，不再只記錄警告：檔案建立或寫入失敗、目標型別不是 minimize 或 maximize 時都會回傳錯誤。它先寫進暫存檔，整個模型寫完才取代目標檔，所以存檔失敗時不會留下檔案，也不會再毀掉既有的檔案。v0.3.3 會先清空既有檔案才檢查目標型別，最後檔案裡只剩開頭兩行說明文字。存檔方式與 `ToCSV` 相同：寫出權限為 0644 的新檔取代舊檔，所以既有檔案的權限不會保留，路徑若是符號連結，會被換成一般檔案，不會寫進連結指向的檔案。當作一般敘述呼叫的寫法仍可編譯，請記得檢查新的回傳值。
+- `ParseLingo(text)` 與 `ParseLingoFile(path)` 讀取 LINGO 模型，回傳 `(*LPModel, error)`：檔案打不開或讀不了、某一行長達 64 KiB 以上，都會回傳錯誤，檔案不存在時可用 `errors.Is` 比對 `fs.ErrNotExist`。讀出的模型與舊函式相同。`ParseLingoModel_str` 與 `ParseLingoModel_txt` 標為 **Deprecated**，下一版移除。移除前，失敗時照舊回傳 `nil` 並記錄警告。
 
 ### `lp`
 - **BREAKING**：`lp` 改用以 Go 撰寫的求解器 [go-milp](https://github.com/daniel-sullivan/go-milp) 求解，不需要另外安裝任何程式。函式庫不再下載、編譯或安裝 GLPK，也不再修改程序的 `PATH`。`SolveFromFile(path, seconds)` 與 `SolveModel(model, seconds)` 由 `SolveFile(path, opts)` 與 `Solve(model, opts)` 取代，回傳 `(*lp.Solution, error)`。解答帶有 `Status`（`StatusOptimal`、`StatusFeasible`、`StatusInfeasible`、`StatusUnbounded` 或 `StatusStopped`）、`Objective` 與 `Values`。`Values` 是以完整精度讀出的 `map[string]float64`，舊版結果表放的則是 GLPK 報告的逐行文字。模型無解或無界時回傳對應的狀態，error 為 nil。回傳 error 表示沒有解答，可用 `errors.Is` 比對 `ErrInvalidModel`、`ErrEngineUnavailable` 或 `ErrSolverFailed`。`Options.TimeLimit` 的型別是 `time.Duration`。附加資訊表已移除，原本的執行時間、節點數與輸出改由 `Solution.Elapsed`、`Nodes` 與 `Log` 提供，`Solution.ToDataTable()` 則回傳 `Variable`／`Value` 兩欄的表。要繼續用 GLPK 求解，請先安裝（`Docs/lp.md` 列有各系統的安裝指令），再傳入 `lp.Options{Engine: lp.EngineGLPK}`，`lp` 會從 `GLPK_PATH` 或 `PATH` 找 `glpsol`。遷移範例：`result, info := lp.SolveModel(model, 10)` 改成 `sol, err := lp.Solve(model, lp.Options{TimeLimit: 10 * time.Second})`。

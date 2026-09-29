@@ -270,6 +270,18 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-30] — the LINGO parser drops statements it does not read, with no error
+- **Where**: `lpgen/lingo.go` `parseLingo`
+- **What**: `ParseLingo` now returns an error, but only for text it cannot read at all. A statement it does not recognise is still dropped without a word. Measured on 2026-09-30: `ParseLingo("MODEL:\nMIN= X1 + X2\nEND")`, whose only statement lacks its closing `;`, returns an empty model and a nil error, and `@FREE(X);`, `@BND(0, X, 10);` and `@GIN(Y);` are dropped, so a free variable becomes non-negative once the model is written as LP, a bound disappears and a general-integer variable becomes continuous. `TestParseLingoModel_str_EdgeCases` pins the dropped unterminated statement as by design. Whether LINGO's `Display Model` output contains `@FREE`, `@BND` or `@GIN` was not checked, because no copy of LINGO was available.
+- **Suggestion**: now that the parser has an error return, refuse a statement left without its `;` and any statement it does not recognise, naming it, rather than solving a different model, and support `@FREE`, `@BND` and `@GIN` if LINGO's output uses them. Both change what the parser returns for text it accepts today, so decide first.
+- **Status**: pending
+
+### [2026-09-30] — remove `ParseLingoModel_str` and `ParseLingoModel_txt` one release after they were deprecated
+- **Where**: `lpgen/lingo.go`
+- **What**: `lpgen-reports-errors` gave the LINGO parser the names `ParseLingo` and `ParseLingoFile`, which return an error (#258, LP-3). The old names stay one release as Deprecated wrappers that still return `nil` and log a warning on failure.
+- **Suggestion**: delete them in the same release as the other Deprecated removals, with `TestDeprecatedLingoNamesSayWhatReplacedThem` and the old-name checks in `lpgen/lingo_errors_test.go`. Move the tests in `lpgen/lpgen_test.go` and `lpgen/no_panic_test.go` that still call them to the new names, drop their section from `Docs/lpgen.md`, and add a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-09-30] — `FilterWithCCL` and `ApplyCCL` answer per batch of 1,000 rows, and sequence functions do not work there
 - **Where**: `parquet/ccl.go` (`FilterWithCCL`, `ApplyCCL`, `applyBatchCCL`, `parquetContext`)
 - **What**: each 1,000-row batch is evaluated through its own `parquetContext`, so anything that reads beyond the current row sees only its batch. Measured on 2026-09-30 on a column `A` holding 1 to 2,500: `A > AVG(A)` keeps the 1,250 rows from 501 (the whole column gives the rows from 1,251), `SUM(A) > 1000000` keeps the 1,500 rows from 1,001, `MAX(A) == A` keeps 1,000, 2,000 and 2,500, `# == 0` and `A == A.0` keep 1, 1,001 and 2,001, and `ApplyCCL(ctx, path, "NEW('i') = #")` restarts at 0 every 1,000 rows. Sequence functions are not evaluated per row at all: `NEW('c') = CUMSUM(A)` and `NEW('c') = LAG(A, 1)` write the whole batch's sequence as text into every cell, and a filter comparing one keeps no rows, where `AddColUsingCCL` on the loaded table gives each row its own value. `parquet-write-options` stated this in `Docs/parquet.md` and kept the batch size fixed; it changed no results.

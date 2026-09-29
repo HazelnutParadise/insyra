@@ -55,11 +55,13 @@ Persist model text for versioning and review.
 **Code**
 
 ```go
-model.GenerateLPFile("capacity_plan.lp")
+if err := model.GenerateLPFile("capacity_plan.lp"); err != nil {
+	log.Fatal(err)
+}
 ```
 
 **Expected outcome**  
-`capacity_plan.lp` is generated.
+`capacity_plan.lp` is generated. A failed save returns an error and leaves any earlier `capacity_plan.lp` as it was.
 
 ## Step 3: Solve the LP model
 
@@ -152,7 +154,9 @@ func main() {
 	model.AddConstraint("3 x1 + 2 x2 <= 180")
 	model.AddBound("0 <= x1 <= 80")
 	model.AddBound("0 <= x2 <= 70")
-	model.GenerateLPFile("capacity_plan.lp")
+	if err := model.GenerateLPFile("capacity_plan.lp"); err != nil {
+		log.Fatal(err)
+	}
 
 	sol, err := lp.Solve(model, lp.Options{TimeLimit: 30 * time.Second})
 	if err != nil {

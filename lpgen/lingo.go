@@ -2,6 +2,8 @@ package lpgen
 
 import (
 	"bufio"
+	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -9,18 +11,10 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-// ParseLingoModel_txt parse lingo model from txt file.
-// It turns LINGO model to standard lp model.
-// Go to `LINGO > Generate > Display Model` in LINGO to get the model.
-func ParseLingoModel_txt(filePath string) *LPModel {
-	// 讀取文件
-	file, err := os.Open(filePath)
-	if err != nil {
-		insyra.LogWarning("lpgen", "ParseLingoModel_txt", "%s", err.Error())
-		return nil
-	}
-	defer func() { _ = file.Close() }()
-
+// parseLingo reads a LINGO model from r and turns it into an LPModel. It skips
+// whatever it does not recognise, so a model that is read but not understood
+// comes back without an error; only text r cannot yield is one.
+func parseLingo(r io.Reader) (*LPModel, error) {
 	// 初始化 LPModel
 	model := &LPModel{
 		Constraints: make([]string, 0),
@@ -34,7 +28,7 @@ func ParseLingoModel_txt(filePath string) *LPModel {
 	var isFirstLine = true
 
 	// 逐行讀取文件
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
@@ -100,104 +94,69 @@ func ParseLingoModel_txt(filePath string) *LPModel {
 	}
 
 	if err := scanner.Err(); err != nil {
-		insyra.LogWarning("lpgen", "ParseLingoModel_txt", "%s", err.Error())
-		return nil
+		return nil, err
 	}
 
-	return model
+	return model, nil
 }
 
-// ParseLingoModel_str parse lingo model from string.
-// It turns LINGO model to standard lp model.
-// Go to `LINGO > Generate > Display Model` in LINGO to get the model.
+// ParseLingo reads a LINGO model from text and turns it into an LPModel. The
+// text is what LINGO shows under LINGO > Generate > Display Model. Text that
+// cannot be read, such as a line of 64 KiB or more, is an error.
+func ParseLingo(model string) (*LPModel, error) {
+	lp, err := parseLingo(strings.NewReader(model))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read LINGO model: %w", err)
+	}
+	return lp, nil
+}
+
+// ParseLingoFile reads a LINGO model from the file at path, the way ParseLingo
+// reads it from text. A file that cannot be opened or read is an error; a
+// missing file matches fs.ErrNotExist.
+func ParseLingoFile(path string) (*LPModel, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open LINGO model: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	lp, err := parseLingo(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read LINGO model %s: %w", path, err)
+	}
+	return lp, nil
+}
+
+// ParseLingoModel_str reads a LINGO model from text, or returns nil and logs a
+// warning when the text cannot be read.
+//
+// Deprecated: use ParseLingo, which returns the failure as an error. Removed
+// in the release after the one that deprecated it.
 func ParseLingoModel_str(modelStr string) *LPModel {
-	// 初始化 LPModel
-	model := &LPModel{
-		Constraints: make([]string, 0),
-		Bounds:      make([]string, 0),
-		BinaryVars:  make([]string, 0),
-		IntegerVars: make([]string, 0),
-	}
-
-	// 用於累積多行表達式
-	var currentExpr strings.Builder
-	var isFirstLine = true
-
-	// 將字串分割成行
-	scanner := bufio.NewScanner(strings.NewReader(modelStr))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// 跳過不必要的行
-		if line == "MODEL:" || len(line) == 0 || line == "END" {
-			continue
-		}
-
-		// 移除方括號和內部數字
-		line = lingoRowLabelRe.ReplaceAllString(line, "")
-		line = strings.TrimSpace(line)
-
-		// 累積當前行到表達式
-		if !isFirstLine && line != "" {
-			if !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "+") {
-				currentExpr.WriteString(" ")
-			}
-		}
-		currentExpr.WriteString(line)
-		isFirstLine = false
-
-		// 如果行尾沒有分號，繼續累積下一行
-		if !strings.HasSuffix(line, ";") {
-			continue
-		}
-
-		// 獲取完整表達式並清理
-		expr := currentExpr.String()
-		expr = strings.TrimSpace(expr)
-		expr = strings.TrimSuffix(expr, ";")
-		currentExpr.Reset()
-		isFirstLine = true
-
-		// 清理表達式格式
-		expr = lingoMultiplyRe.ReplaceAllString(expr, " ")
-		expr = lingoMissingSpaceRe.ReplaceAllString(expr, `$1 $2`)
-		expr = lingoSciNotationRe.ReplaceAllString(expr, `$1$2$3`)
-		expr = lingoSpaceRe.ReplaceAllString(expr, " ")
-
-		// 判斷和處理目標函數
-		if strings.HasPrefix(strings.ToUpper(expr), "MIN=") || strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
-			objType := "Minimize"
-			if strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
-				objType = "Maximize"
-			}
-			content := strings.TrimSpace(strings.SplitN(expr, "=", 2)[1])
-			model.ObjectiveType = objType
-			model.Objective = content
-		} else if strings.HasPrefix(strings.ToUpper(expr), "@BIN") {
-			// 處理 Binary 變數宣告
-			lingo_handleVariableDeclarations(expr, "@BIN", &model.BinaryVars)
-		} else if strings.HasPrefix(strings.ToUpper(expr), "@INT") {
-			// 處理 Integer 變數宣告
-			lingo_handleVariableDeclarations(expr, "@INT", &model.IntegerVars)
-		} else if strings.ContainsAny(expr, "<=>=") {
-			// 處理 Bounds 和 Constraints：以「變數項數量」判斷，而非 +/- 字元。
-			if lingoIsBound(expr) {
-				model.Bounds = append(model.Bounds, expr)
-			} else {
-				model.Constraints = append(model.Constraints, expr)
-			}
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
+	model, err := ParseLingo(modelStr)
+	if err != nil {
 		insyra.LogWarning("lpgen", "ParseLingoModel_str", "%s", err.Error())
 		return nil
 	}
-
 	return model
 }
 
-// Compiled once: both parsers rebuilt these five on every call.
+// ParseLingoModel_txt reads a LINGO model from a file, or returns nil and logs
+// a warning when the file cannot be opened or read.
+//
+// Deprecated: use ParseLingoFile, which returns the failure as an error.
+// Removed in the release after the one that deprecated it.
+func ParseLingoModel_txt(filePath string) *LPModel {
+	model, err := ParseLingoFile(filePath)
+	if err != nil {
+		insyra.LogWarning("lpgen", "ParseLingoModel_txt", "%s", err.Error())
+		return nil
+	}
+	return model
+}
+
+// Compiled once: the parser rebuilt these five on every call.
 var (
 	lingoRowLabelRe     = regexp.MustCompile(`^\[\_\d+\]\s*`)
 	lingoMultiplyRe     = regexp.MustCompile(`\s*\*\s*`)

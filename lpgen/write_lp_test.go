@@ -19,7 +19,9 @@ func TestWriteLPMatchesGenerateLPFile(t *testing.T) {
 		AddBinaryVar("y")
 
 	path := filepath.Join(t.TempDir(), "model.lp")
-	m.GenerateLPFile(path)
+	if err := m.GenerateLPFile(path); err != nil {
+		t.Fatalf("GenerateLPFile: %v", err)
+	}
 	file, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

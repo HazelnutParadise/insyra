@@ -149,10 +149,10 @@ fmt.Print(buf.String())
 ### Generate LP File
 
 ```go
-func (lp *LPModel) GenerateLPFile(filename string)
+func (lp *LPModel) GenerateLPFile(filename string) error
 ```
 
-**Description:** Generates an LP file based on the current model and saves it to disk.
+**Description:** Saves the model to disk as a CPLEX LP file, with exactly the text `WriteLP` writes. The text goes to a temporary file in the same directory, which replaces `filename` only once everything has been written, so a failed call leaves no file behind and an existing file at `filename` keeps its content. The file is saved the way `DataTable.ToCSV` saves one: as a new file with mode 0644 that takes the old one's place, so an existing file's permissions are not kept, a symbolic link at `filename` is replaced rather than followed, and the directory has to be writable.
 
 **Parameters:**
 
@@ -160,7 +160,7 @@ func (lp *LPModel) GenerateLPFile(filename string)
 
 **Returns:**
 
-- None.
+- `error`: `nil` when the file was saved. Otherwise the reason: the file could not be created or written, or the objective type is not one `WriteLP` accepts. Nothing is logged in its place, so check it.
 
 The function writes the model data to the LP file in the following format:
 
@@ -193,7 +193,9 @@ lpModel.AddIntegerVar("x1")
 lpModel.AddBinaryVar("x2")
 
 // Generate LP file
-lpModel.GenerateLPFile("my_model.lp")
+if err := lpModel.GenerateLPFile("my_model.lp"); err != nil {
+    log.Fatal(err)
+}
 ```
 
 This example defines a simple linear programming model with two variables and constraints, and saves it as an LP file named `my_model.lp`.
@@ -202,34 +204,48 @@ This example defines a simple linear programming model with two variables and co
 
 The `lpgen` package also supports **LINGO**, which is a popular optimization software.
 
-### Parse LINGO Model from Text File
+### Parse LINGO Model from Text
 
 ```go
-func ParseLingoModel_txt(filePath string) *LPModel
+func ParseLingo(model string) (*LPModel, error)
 ```
 
-**Description:** Parses a LINGO model from a text file and converts it to a standard LP model. Use `LINGO > Generate > Display Model` to export the model.
+**Description:** Parses a LINGO model from text and converts it to a standard LP model. Use `LINGO > Generate > Display Model` in LINGO to get the text.
 
 **Parameters:**
 
-- `filePath`: Path to the LINGO model text file. Type: `string`.
+- `model`: LINGO model content. Type: `string`.
 
 **Returns:**
 
-- `*LPModel`: Parsed LP model. Type: `*LPModel`.
+- `*LPModel`: Parsed LP model, or `nil` when the text cannot be read.
+- `error`: `nil`, or the reason the text could not be read, such as a line of 64 KiB or more.
 
-### Parse LINGO Model from String
+### Parse LINGO Model from File
 
 ```go
-func ParseLingoModel_str(modelStr string) *LPModel
+func ParseLingoFile(path string) (*LPModel, error)
 ```
 
-**Description:** Parses a LINGO model from a string and converts it to a standard LP model. Use `LINGO > Generate > Display Model` to export the model.
+**Description:** Parses a LINGO model from a file, the way `ParseLingo` parses it from text, so the same text gives the same model either way.
 
 **Parameters:**
 
-- `modelStr`: LINGO model content as a string. Type: `string`.
+- `path`: Path to the LINGO model text file. Type: `string`.
 
 **Returns:**
 
-- `*LPModel`: Parsed LP model. Type: `*LPModel`.
+- `*LPModel`: Parsed LP model, or `nil` when the file cannot be opened or read.
+- `error`: `nil`, or the reason. A missing file matches `fs.ErrNotExist` with `errors.Is`.
+
+```go
+model, err := lpgen.ParseLingoFile("model.lng")
+if err != nil {
+    log.Fatal(err)
+}
+sol, err := lp.Solve(model, lp.Options{})
+```
+
+### Deprecated LINGO names
+
+`ParseLingoModel_str(modelStr string) *LPModel` and `ParseLingoModel_txt(filePath string) *LPModel` are the old names of `ParseLingo` and `ParseLingoFile`. They read the same model, but report a failure only by returning `nil` and logging a warning. They are **Deprecated** and will be removed in the release after the one that deprecated them.
