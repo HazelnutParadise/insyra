@@ -224,6 +224,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING（行為改變）**：Python 環境改為釘版並經過驗證。不再用 uv 的安裝腳本安裝 uv，也不再使用 `PATH` 上的 `uv`：第一次執行時會從 GitHub release 下載 uv 0.12.20，以 release 公布的 SHA-256 核對壓縮檔，存放在 `.insyra_env/`。Python 固定為 CPython 3.12.14，一律使用 uv 下載並驗證過的版本；過去是當下最新的 `3.12.*`，或機器上已有的 Python。12 個套件釘在確切版本，連同所有相依套件，從記錄了每個檔案雜湊值的 lock 檔安裝；過去每個套件都裝當下的最新版。舊版 insyra 建好的環境會在第一次執行時調整到這些版本，原本較新的套件可能因此降版；用 `PipInstall` 加裝的套件會保留，除非 Python 版本不同。版本記錄在 `py/environment/`，升級方式寫在 `Docs/py.md`。
 - 環境準備中途失敗時，下一次呼叫會重新準備。過去在第一步之前就先標記為準備完成，下一次呼叫會直接使用建到一半的環境。傳給 `RunCodeContext` 等 `…Context` 函式的 context 現在也涵蓋第一次使用時的環境準備，準備環境時也不再往標準輸出印進度條。
 - `ReinstallPyEnv` 執行期間會持有環境準備的鎖，文件也寫明它一直以來的行為：先刪掉整個 `.insyra_env/py25c_<os>_<arch>` 目錄（包含用 `PipInstall` 加裝的套件），再重新建立環境。
+- 新增 `Run[T](ctx, code, args...)`：執行 Python 程式碼，並把傳給 `insyra.Return` 的值依 `RunCode` 的綁定規則解碼成 `T` 回傳。`dt, err := py.Run[*insyra.DataTable](ctx, code)` 取代了先宣告變數、再傳位址的寫法。`$v1`、`$v2`… 依 `RunCodef` 的方式由 `args` 代入。
+- 新增 `PipInstallContext` 與 `PipUninstallContext`，傳入的 context 涵蓋環境準備與 `uv pip` 指令；`PipInstall` 與 `PipUninstall` 以 `context.Background()` 呼叫它們。
+- `RunCodeWithTimeout` 標為 **Deprecated**：它就是用 `context.WithTimeout` 建 context 再呼叫 `RunCodeContext`，請改呼叫後者。它保留原本的意義，下一個版本移除。
+- 傳 `nil` context 給 `Run` 或任何 `…Context` 函式會回傳錯誤。過去會讓 `exec.CommandContext` 在執行器啟動的 goroutine 裡 panic，整個程式因此結束。已經結束的 context 會在啟動任何東西之前回傳 `ctx.Err()`。
+- Python 行程失敗時（回傳值之前就崩潰，或因 context 結束被終止），呼叫會回傳這個失敗；context 結束時回傳 `ctx.Err()`。過去約有一半機率回傳 nil 錯誤且沒有結果，因為執行器同時看到失敗與行程結束，隨機挑了其中一個。Python 在行程失敗前已經送回的結果仍會回傳。
 
 ### `pd`
 - **BREAKING（行為改變）**：`FromDataList` 遇到空的 list 會回傳空的 `Series`，也就是長度 0、`any` 型別的 gpandas series，和 pandas 的 `pd.Series([])` 一樣。過去會回傳 `empty DataList` 錯誤。`nil` list 仍然回傳錯誤。

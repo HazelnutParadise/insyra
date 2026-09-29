@@ -43,16 +43,27 @@ func waitForResult(executionID string, processDone <-chan struct{}, execErr <-ch
 	for {
 		select {
 		case err := <-execErr:
-			// Python執行失敗（非正常退出），使用系統執行錯誤
-			resultStore.Delete(executionID)
-			return [2]any{nil, err.Error()}
-		case <-processDone:
-			// Python 進程已正常結束。結果由 handleIPCConnection 在 Python 送出
-			// ack 前就已 Store（Store happens-before 進程結束、也就在 processDone
-			// 關閉之前），因此這裡做最後一次讀取即可拿到剛送達的結果，避免把它刪掉後
-			// 永久空轉。沒有結果則回傳空值而非繼續迴圈。
+			// A result Python delivered before the process failed still
+			// counts, for instance when its context ended between the two.
 			if result, exists := resultStore.LoadAndDelete(executionID); exists {
 				return result.([2]any)
+			}
+			return [2]any{nil, err.Error()}
+		case <-processDone:
+			// handleIPCConnection stores a result before it acknowledges it,
+			// and Python exits only after the acknowledgement, so a result
+			// that was delivered is in the store by now.
+			if result, exists := resultStore.LoadAndDelete(executionID); exists {
+				return result.([2]any)
+			}
+			// A process that failed reported its error before processDone
+			// closed, so the error is already waiting. select may still pick
+			// this case, and the failure would pass for a run that returned
+			// nothing.
+			select {
+			case err := <-execErr:
+				return [2]any{nil, err.Error()}
+			default:
 			}
 			return [2]any{nil, nil}
 		default:

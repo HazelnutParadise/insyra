@@ -40,6 +40,48 @@ func ReinstallPyEnv() error
 
 ## Functions
 
+### Run
+
+```go
+func Run[T any](ctx context.Context, code string, args ...any) (T, error)
+```
+
+**Description:** Runs the Python code and returns the value it passes to `insyra.Return`, decoded into a `T`. You name the type at the call and there is no variable to declare and pass by address; the value is still matched against `T` when it comes back, so a result of another shape is an error then. `T` follows the same rules `out` does for `RunCode`: `*insyra.DataTable` or `*insyra.DataList` for a DataFrame or a Series, and a struct, map, slice or scalar through JSON. `$v1`, `$v2`, … in the code are replaced from `args` as `RunCodef` replaces them. `T` cannot be `insyra.DataTable` or `insyra.DataList` itself, which cannot be copied: use `*insyra.DataTable` or `*insyra.DataList`. `Run` refuses the value types before it starts Python.
+
+**Parameters:**
+
+- `ctx` (`context.Context`): bounds the environment setup on first use and the Python process. Cancelling it stops the process, and `Run` returns `ctx.Err()`. A `nil` context is an error.
+- `code` (string): the Python code, optionally with `$v1`, `$v2`, … placeholders.
+- `args` (`...any`): the values for the placeholders.
+
+**Returns:**
+
+- `T`: the decoded result, or `T`'s zero value when the run or the decoding fails.
+- `error`: non-nil when execution or decoding failed.
+
+#### Example
+
+```go
+type Summary struct {
+    Mean float64 `json:"mean"`
+    N    int     `json:"n"`
+}
+
+s, err := py.Run[Summary](ctx, `
+import statistics
+data = $v1
+insyra.Return({"mean": statistics.mean(data), "n": len(data)})
+`, []float64{1, 2, 3, 4})
+if err != nil {
+    return err
+}
+fmt.Println(s.Mean, s.N) // 2.5 4
+
+dt, err := py.Run[*insyra.DataTable](ctx, `insyra.Return(pd.DataFrame({"a": [1, 2], "b": [3, 4]}))`)
+```
+
+---
+
 ### Run Code
 
 ```go
@@ -180,14 +222,19 @@ The `py` package provides context-aware variants that accept a `context.Context`
 #### Functions
 
 ```go
+func Run[T any](ctx context.Context, code string, args ...any) (T, error)
 func RunCodeContext(ctx context.Context, out any, code string) error
 func RunCodefContext(ctx context.Context, out any, code string, args ...any) error
 func RunFileContext(ctx context.Context, out any, filepath string) error
 func RunFilefContext(ctx context.Context, out any, filepath string, args ...any) error
+func PipInstallContext(ctx context.Context, dep string) error
+func PipUninstallContext(ctx context.Context, dep string) error
 
-// Convenience helper:
+// Deprecated: use RunCodeContext with context.WithTimeout.
 func RunCodeWithTimeout(timeout time.Duration, out any, code string) error
 ```
+
+The plain functions (`RunCode`, `RunCodef`, `RunFile`, `RunFilef`, `PipInstall`, `PipUninstall`) call these with `context.Background()`. `RunCodeWithTimeout` is `RunCodeContext` with a context from `context.WithTimeout`; it is deprecated and will be removed in the release after the one that deprecated it.
 
 **Parameters:**
 
@@ -196,14 +243,17 @@ func RunCodeWithTimeout(timeout time.Duration, out any, code string) error
 
 **Returns:**
 
-- `error`: Non-nil when execution failed; if execution was canceled via the provided `ctx`, the function returns `ctx.Err()` (typically `context.Canceled` for manual cancellation or `context.DeadlineExceeded` for timeouts). Use `errors.Is` to check for these.
+- `error`: Non-nil when execution failed; if execution was canceled via the provided `ctx`, the function returns `ctx.Err()` (typically `context.Canceled` for manual cancellation or `context.DeadlineExceeded` for timeouts). Use `errors.Is` to check for these. A context that is already done returns `ctx.Err()` before anything starts, and a `nil` context is an error rather than a panic.
 
 #### Examples
 
-Timeout (convenience):
+Timeout:
 
 ```go
-err := py.RunCodeWithTimeout(1*time.Second, nil, `
+ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+defer cancel()
+
+err := py.RunCodeContext(ctx, nil, `
 import time
 time.sleep(10)
 insyra.Return({"ok": True})
@@ -238,7 +288,7 @@ if errors.Is(err, context.Canceled) {
 
 #### Notes
 
-- The context-aware functions use `exec.CommandContext` under the hood. When the context is done, the underlying Python process is killed and the function returns `ctx.Err()`.
+- The context-aware functions use `exec.CommandContext` under the hood. When the context is done, the underlying Python process, or the `uv pip` command of `PipInstallContext` and `PipUninstallContext`, is killed and the function returns `ctx.Err()`.
 
 - Note: initialization errors are now propagated to callers. The Python environment initializer `pyEnvInit()` no longer calls fatal logging to terminate the process; instead it returns an `error` when initialization fails (for example: failing to download or verify uv, or uv failing to build the environment). Callers of py functions (e.g., `RunCode`, `RunFile`, `RunCodeContext`, `PipInstall`, `PipList`, `PipFreeze`, etc.) will return that initialization `error` — be sure to check and handle the returned `error` in your code.
 - For platform-specific process group / child-process cleanup semantics, consider the platform behavior; if you need robust group termination, let us know and we can add process-group management to the runner.
@@ -247,9 +297,10 @@ if errors.Is(err, context.Canceled) {
 
 ```go
 func PipInstall(dep string) error
+func PipInstallContext(ctx context.Context, dep string) error
 ```
 
-**Description:** This function installs Python dependencies using uv pip. It executes the install command and returns an `error` if the installation fails. It does not terminate the program; callers should handle the error.
+**Description:** This function installs Python dependencies using uv pip. It executes the install command and returns an `error` if the installation fails. It does not terminate the program; callers should handle the error. `PipInstallContext` takes a context that bounds the environment setup and the install; `PipInstall` uses `context.Background()`. Cancelling it stops `uv pip install` where it is, which can leave the package half installed: install it again, or use `ReinstallPyEnv`.
 
 **Parameters:**
 
@@ -263,9 +314,10 @@ func PipInstall(dep string) error
 
 ```go
 func PipUninstall(dep string) error
+func PipUninstallContext(ctx context.Context, dep string) error
 ```
 
-**Description:** This function uninstalls Python dependencies using uv pip. It returns an `error` if the uninstallation fails; callers should handle the error. It does not terminate the program.
+**Description:** This function uninstalls Python dependencies using uv pip. It returns an `error` if the uninstallation fails; callers should handle the error. It does not terminate the program. `PipUninstallContext` takes a context that bounds the environment setup and the uninstall; `PipUninstall` uses `context.Background()`.
 
 **Parameters:**
 

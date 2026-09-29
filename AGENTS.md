@@ -270,6 +270,30 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-30] — `py` placeholder substitution lets one argument inject code through another
+- **Where**: `py/py.go` `replacePlaceholders`, used by `RunCodef`, `RunFilef`, their `Context` forms and `Run`
+- **What**: placeholders are replaced one after another with `strings.ReplaceAll` over the whole text, so each pass also rewrites the values earlier passes inserted, and `$v1` also matches the start of `$v10`. Measured by the adversarial review of `py-typed-run` on 2026-09-30: `replacePlaceholders("title = $v1\nlabel = $v2", "$v2", "+__import__('os').system('id')+")` produced `title = ""+__import__('os').system('id')+""`, valid Python that runs a command, and `a = $v10` with ten arguments became `a = 10`. A program that passes two pieces of user text as arguments can be made to run code. It predates that change; PY-2 in `api-review.md` called the substitution injection-safe, which does not hold.
+- **Suggestion**: replace in one pass over the original template, matching `\$v([0-9]+)` by its whole number, and test both cases. The result changes only for templates that hit these two defects, but it is a security fix and wants a changelog entry.
+- **Status**: pending
+
+### [2026-09-30] — a `py` result bound into a struct with a `DataTable` or `DataList` field skips JSON decoding
+- **Where**: `py/pyresult_decode.go` `bindPyResult`, the reflection lookup meant for the `isr` wrapper types
+- **What**: any struct with a field named `DataTable` or `DataList` of insyra's pointer type is taken for an `isr` wrapper: the whole result is decoded as a table or list into that field and JSON decoding never runs. Measured by the adversarial review of `py-typed-run` on 2026-09-30: ``Run[struct{DataTable *insyra.DataTable `json:"table"`; Score float64 `json:"score"`}]`` on `{"table": …, "score": 7}` returned `Score` 0 with a nil error, and the table held the whole answer with columns `[score table]`. It predates that change and applies to `RunCode` as well.
+- **Suggestion**: take the wrapper path only for an embedded (anonymous) field, which is how the `isr` types hold their list or table, and let every other struct decode through JSON.
+- **Status**: pending
+
+### [2026-09-30] — an empty DataFrame returned from Python comes back with its columns renamed
+- **Where**: `py/pyresult_decode.go`, the empty-table path of the DataFrame payload decoding
+- **What**: the empty path names the columns and then `SetColNames` runs again, and `safeColName` sees each column's own name as taken. Measured by the adversarial review of `py-typed-run` on 2026-09-30: `Run[*insyra.DataTable]` on `{"data": [], "columns": ["a", "b"]}` gave a 0×2 table named `[a_1 b_1]`. A filter that matches no rows returns such a frame. It predates that change.
+- **Suggestion**: skip the second `SetColNames` when the empty path has already named the columns, and test a 0-row frame.
+- **Status**: pending
+
+### [2026-09-30] — remove `py.RunCodeWithTimeout` one release after it was deprecated
+- **Where**: `py/py.go`, `TestRunCodeWithTimeoutKeepsItsMeaning` in `py/run_test.go`, and its mentions in `Docs/py.md`
+- **What**: `py-typed-run` deprecated it under the one-name rule of #211 (PY-2, #255), keeping its meaning for one release: it is `RunCodeContext` with a context from `context.WithTimeout`.
+- **Suggestion**: delete it, its test and its mentions in `Docs/py.md` in the same release as the other Deprecated removals, with a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-09-30] — a Python result holding `NaN` or an infinity comes back as `nil` with no error
 - **Where**: `insyra.Return` in `py/builtin.go` (`json.dumps` with its default `allow_nan=True`), and `handleIPCConnection` in `py/pyresult.go`
 - **What**: Python's `json.dumps` writes `NaN`, `Infinity` and `-Infinity`, which are not JSON, so go-json refuses the message. The handler logs `Unmarshal error: invalid character 'N' looking for beginning of value` and closes the connection without an acknowledgement; `_read_msg` takes the closed connection as the end, the script marks its result sent and exits 0, and the runner, finding no result, returns `nil` with a nil error. Measured on 2026-09-30 with the pinned environment on macOS arm64: `RunCode(&dt, "insyra.Return(pd.DataFrame({'a': [1.0, float('nan')]}))")` returned a nil error and a nil `*DataTable`, and `RunCode(&v, "insyra.Return(float('nan'))")` set `v` to `nil` with a nil error. A DataFrame with a missing value is ordinary data, so results are lost without a word. Found by the adversarial review of `py-ipc-server-errors`; it predates that change.
