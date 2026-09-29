@@ -53,11 +53,11 @@ func runConvertCommand(ctx *ExecContext, args []string) error {
 		if allowFormulasSet {
 			return fmt.Errorf("convert: 'allowformulas' only applies to xlsx->csv")
 		}
-		if err := csvxl.CsvToExcel([]string{input}, nil, output); err != nil {
+		if err := csvxl.CSVToExcel([]string{input}, nil, output); err != nil {
 			return err
 		}
 	case (inExt == ".xlsx" || inExt == ".xlsm") && outExt == ".csv":
-		if err := csvxl.ExcelToCsv(input, filepath.Dir(output), []string{filepath.Base(output)}, csvxl.ExcelToCsvOptions{AllowFormulas: allowFormulas}); err != nil {
+		if err := csvxl.ExcelToCSV(input, filepath.Dir(output), []string{filepath.Base(output)}, csvxl.ExcelToCSVOptions{AllowFormulas: allowFormulas}); err != nil {
 			return err
 		}
 	default:

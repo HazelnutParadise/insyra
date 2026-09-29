@@ -12,7 +12,7 @@ import (
 // convert xlsx->csv guards formula-like text by default, like save; the
 // option turns the guard off, and an argument convert does not understand is
 // an error instead of being ignored.
-func TestConvert_ExcelToCsvGuardsFormulasByDefault(t *testing.T) {
+func TestConvert_ExcelToCSVGuardsFormulasByDefault(t *testing.T) {
 	dir := t.TempDir()
 	xlsx := filepath.Join(dir, "in.xlsx")
 	f := excelize.NewFile()

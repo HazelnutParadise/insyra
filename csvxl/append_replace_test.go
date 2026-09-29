@@ -31,28 +31,28 @@ func sheetRows(t *testing.T, xlsx, sheet string) [][]string {
 	return rows
 }
 
-func TestAppendCsvToExcelReplacesExistingSheet(t *testing.T) {
+func TestAppendCSVToExcelReplacesExistingSheet(t *testing.T) {
 	dir := t.TempDir()
 	big := writeCSV(t, dir, "data.csv", "a,b\n1,2\n3,4\n5,6")
 	other := writeCSV(t, dir, "other.csv", "x\n1")
 	xlsx := filepath.Join(dir, "out.xlsx")
-	require.NoError(t, CsvToExcel([]string{big, other}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]string{big, other}, nil, xlsx, UTF8))
 	require.Len(t, sheetRows(t, xlsx, "data"), 4)
 
 	small := writeCSV(t, dir, "small.csv", "a\n9")
-	require.NoError(t, AppendCsvToExcel([]string{small}, []string{"data"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"data"}, xlsx, UTF8))
 	rows := sheetRows(t, xlsx, "data")
 	require.Equal(t, [][]string{{"a"}, {"9"}}, rows, "stale cells must not survive")
 }
 
-func TestAppendCsvToExcelReplacesOnlySheet(t *testing.T) {
+func TestAppendCSVToExcelReplacesOnlySheet(t *testing.T) {
 	dir := t.TempDir()
 	big := writeCSV(t, dir, "data.csv", "a,b\n1,2\n3,4")
 	xlsx := filepath.Join(dir, "out.xlsx")
-	require.NoError(t, CsvToExcel([]string{big}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]string{big}, nil, xlsx, UTF8))
 
 	small := writeCSV(t, dir, "small.csv", "a\n9")
-	require.NoError(t, AppendCsvToExcel([]string{small}, []string{"data"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"data"}, xlsx, UTF8))
 
 	f, err := excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -65,13 +65,13 @@ func TestAppendCsvToExcelReplacesOnlySheet(t *testing.T) {
 
 // Replacing a sheet keeps its place among the sheets and leaves the active
 // sheet as it was, and none of the old cells or formulas survive.
-func TestAppendCsvToExcelKeepsTheReplacedSheetsPosition(t *testing.T) {
+func TestAppendCSVToExcelKeepsTheReplacedSheetsPosition(t *testing.T) {
 	dir := t.TempDir()
 	first := writeCSV(t, dir, "First.csv", "f\n1")
 	target := writeCSV(t, dir, "Target.csv", "a,b,c\n1,2,3\n4,5,6")
 	last := writeCSV(t, dir, "Last.csv", "l\n1")
 	xlsx := filepath.Join(dir, "out.xlsx")
-	require.NoError(t, CsvToExcel([]string{first, target, last}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]string{first, target, last}, nil, xlsx, UTF8))
 
 	f, err := excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -84,7 +84,7 @@ func TestAppendCsvToExcelKeepsTheReplacedSheetsPosition(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	small := writeCSV(t, dir, "small.csv", "z\n9")
-	require.NoError(t, AppendCsvToExcel([]string{small}, []string{"Target"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"Target"}, xlsx, UTF8))
 
 	f, err = excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -102,11 +102,11 @@ func TestAppendCsvToExcelKeepsTheReplacedSheetsPosition(t *testing.T) {
 // Clearing values and formulas left everything else a row or a cell carries:
 // a new row landing on an old hidden row was invisible in Excel and skipped
 // when the sheet was read back, and old comments and links sat on new values.
-func TestAppendCsvToExcelLeavesNothingOfTheOldSheet(t *testing.T) {
+func TestAppendCSVToExcelLeavesNothingOfTheOldSheet(t *testing.T) {
 	dir := t.TempDir()
 	target := writeCSV(t, dir, "Target.csv", "a,b\n1,2\n3,4\n5,6")
 	xlsx := filepath.Join(dir, "out.xlsx")
-	require.NoError(t, CsvToExcel([]string{target}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]string{target}, nil, xlsx, UTF8))
 
 	f, err := excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestAppendCsvToExcelLeavesNothingOfTheOldSheet(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	fresh := writeCSV(t, dir, "fresh.csv", "h\nr1\nr2\nr3\nr4")
-	require.NoError(t, AppendCsvToExcel([]string{fresh}, []string{"Target"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]string{fresh}, []string{"Target"}, xlsx, UTF8))
 
 	f, err = excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -144,17 +144,17 @@ func TestAppendCsvToExcelLeavesNothingOfTheOldSheet(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	out := t.TempDir()
-	require.NoError(t, ExcelToCsv(xlsx, out, nil))
+	require.NoError(t, ExcelToCSV(xlsx, out, nil))
 	back, err := os.ReadFile(filepath.Join(out, "Target.csv"))
 	require.NoError(t, err)
 	require.Equal(t, "h\nr1\nr2\nr3\nr4\n", string(back), "every row must read back")
 }
 
-func TestAppendCsvToExcelReplacesTheOnlySheetWithAFreshOne(t *testing.T) {
+func TestAppendCSVToExcelReplacesTheOnlySheetWithAFreshOne(t *testing.T) {
 	dir := t.TempDir()
 	big := writeCSV(t, dir, "data.csv", "a,b\n1,2\n3,4")
 	xlsx := filepath.Join(dir, "out.xlsx")
-	require.NoError(t, CsvToExcel([]string{big}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]string{big}, nil, xlsx, UTF8))
 
 	f, err := excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -163,7 +163,7 @@ func TestAppendCsvToExcelReplacesTheOnlySheetWithAFreshOne(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	small := writeCSV(t, dir, "small.csv", "a\n9")
-	require.NoError(t, AppendCsvToExcel([]string{small}, []string{"data"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"data"}, xlsx, UTF8))
 
 	f, err = excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -214,7 +214,7 @@ func measure(fn func()) (time.Duration, uint64) {
 // whatever the old sheet held. Clearing it cell by cell made a sheet with a
 // value in XFD cost 16,384 cell writes per row: 1.2 s and 2.9 GB against
 // v0.3.2's 160 ms and 657 MB.
-func TestAppendCsvToExcelClearsAFarRightSheetCheaply(t *testing.T) {
+func TestAppendCSVToExcelClearsAFarRightSheetCheaply(t *testing.T) {
 	dir := t.TempDir()
 	small := writeCSV(t, dir, "small.csv", "z\n9")
 	baseline := filepath.Join(dir, "baseline.xlsx")
@@ -222,7 +222,7 @@ func TestAppendCsvToExcelClearsAFarRightSheetCheaply(t *testing.T) {
 	farRightWorkbook(t, baseline)
 	farRightWorkbook(t, replaced)
 
-	// What v0.3.2's AppendCsvToExcel did with an existing sheet: write the CSV
+	// What v0.3.2's AppendCSVToExcel did with an existing sheet: write the CSV
 	// over it and save, clearing nothing.
 	baseTime, baseAlloc := measure(func() {
 		f, err := excelize.OpenFile(baseline)
@@ -236,9 +236,9 @@ func TestAppendCsvToExcelClearsAFarRightSheetCheaply(t *testing.T) {
 		require.NoError(t, f.Close())
 	})
 	gotTime, gotAlloc := measure(func() {
-		require.NoError(t, AppendCsvToExcel([]string{small}, []string{"Target"}, replaced, UTF8))
+		require.NoError(t, AppendCSVToExcel([]string{small}, []string{"Target"}, replaced, UTF8))
 	})
-	t.Logf("v0.3.2 path: %v, %.1f MB; AppendCsvToExcel: %v, %.1f MB",
+	t.Logf("v0.3.2 path: %v, %.1f MB; AppendCSVToExcel: %v, %.1f MB",
 		baseTime, float64(baseAlloc)/1e6, gotTime, float64(gotAlloc)/1e6)
 	require.LessOrEqual(t, gotAlloc, 2*baseAlloc, "clearing the sheet allocated more than twice what v0.3.2 did")
 	require.LessOrEqual(t, gotTime, 4*baseTime, "clearing the sheet took more than four times what v0.3.2 did")
@@ -256,7 +256,7 @@ func TestAppendCsvToExcelClearsAFarRightSheetCheaply(t *testing.T) {
 
 // A cell or row element may leave out its r attribute, and excelize reads such
 // a sheet in order. Replacing it must still leave nothing of the old sheet.
-func TestAppendCsvToExcelReplacesASheetWithoutCellAddresses(t *testing.T) {
+func TestAppendCSVToExcelReplacesASheetWithoutCellAddresses(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.xlsx")
 	f := excelize.NewFile()
@@ -297,13 +297,13 @@ func TestAppendCsvToExcelReplacesASheetWithoutCellAddresses(t *testing.T) {
 	require.True(t, stripped, "the Target sheet was not found in the package")
 
 	small := writeCSV(t, dir, "small.csv", "z\n9")
-	require.NoError(t, AppendCsvToExcel([]string{small}, []string{"Target"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"Target"}, xlsx, UTF8))
 	require.Equal(t, [][]string{{"z"}, {"9"}}, sheetRows(t, xlsx, "Target"), "stale cells must not survive")
 }
 
 // excelize's DeleteSheet moves a name defined for a later sheet down one index
 // and moving the rebuilt sheet back does not move it back.
-func TestAppendCsvToExcelKeepsTheNamesOfTheSheetsAfterIt(t *testing.T) {
+func TestAppendCSVToExcelKeepsTheNamesOfTheSheetsAfterIt(t *testing.T) {
 	dir := t.TempDir()
 	xlsx := filepath.Join(dir, "out.xlsx")
 
@@ -325,7 +325,7 @@ func TestAppendCsvToExcelKeepsTheNamesOfTheSheetsAfterIt(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	small := writeCSV(t, dir, "small.csv", "z\n9")
-	require.NoError(t, AppendCsvToExcel([]string{small}, []string{"Target"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"Target"}, xlsx, UTF8))
 
 	f, err = excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -346,7 +346,7 @@ func TestAppendCsvToExcelKeepsTheNamesOfTheSheetsAfterIt(t *testing.T) {
 
 // Whether a sheet is hidden lives in the workbook rather than in the sheet, so
 // a sheet replaced by deleting and re-creating it comes back visible.
-func TestAppendCsvToExcelKeepsAHiddenSheetHidden(t *testing.T) {
+func TestAppendCSVToExcelKeepsAHiddenSheetHidden(t *testing.T) {
 	dir := t.TempDir()
 	xlsx := filepath.Join(dir, "out.xlsx")
 
@@ -362,7 +362,7 @@ func TestAppendCsvToExcelKeepsAHiddenSheetHidden(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	small := writeCSV(t, dir, "small.csv", "z\n9")
-	require.NoError(t, AppendCsvToExcel([]string{small, small}, []string{"Data", "Secret"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]string{small, small}, []string{"Data", "Secret"}, xlsx, UTF8))
 
 	f, err = excelize.OpenFile(xlsx)
 	require.NoError(t, err)

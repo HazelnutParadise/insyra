@@ -12,11 +12,11 @@ import (
 
 // An encoding nothing here decodes is an error naming it and what is
 // supported, never the file's raw bytes.
-func TestReadCsvToStringRefusesAnEncodingItCannotDecode(t *testing.T) {
+func TestReadCSVToStringRefusesAnEncodingItCannotDecode(t *testing.T) {
 	path := writeCSVBytes(t, []byte("a,b\n1,2\n"))
-	got, err := ReadCsvToString(path, "klingon-1")
+	got, err := ReadCSVToString(path, "klingon-1")
 	if err == nil {
-		t.Fatalf("ReadCsvToString(klingon-1) = %q with no error", got)
+		t.Fatalf("ReadCSVToString(klingon-1) = %q with no error", got)
 	}
 	if !strings.Contains(err.Error(), "klingon-1") || !strings.Contains(err.Error(), "utf8") {
 		t.Fatalf("the error should name the encoding and what is supported: %v", err)
@@ -35,7 +35,7 @@ var ibm424Trigrams = []uint32{
 // The same holds for an encoding Auto detects but cannot decode. The sample is
 // built from the detector's own IBM424 trigrams; the 0xFF bytes keep it from
 // passing as UTF-8, which DetectEncoding checks first.
-func TestReadCsvToStringRefusesADetectedEncodingItCannotDecode(t *testing.T) {
+func TestReadCSVToStringRefusesADetectedEncodingItCannotDecode(t *testing.T) {
 	var sample []byte
 	for range 20 {
 		for i, n := range ibm424Trigrams {
@@ -50,9 +50,9 @@ func TestReadCsvToStringRefusesADetectedEncodingItCannotDecode(t *testing.T) {
 	if err != nil || detected != "ibm424_rtl" {
 		t.Fatalf("the sample should be detected as ibm424_rtl, got %q (%v)", detected, err)
 	}
-	got, err := ReadCsvToString(path)
+	got, err := ReadCSVToString(path)
 	if err == nil {
-		t.Fatalf("ReadCsvToString(auto) returned %d bytes with no error", len(got))
+		t.Fatalf("ReadCSVToString(auto) returned %d bytes with no error", len(got))
 	}
 	if !strings.Contains(err.Error(), "ibm424_rtl") {
 		t.Fatalf("the error should name the detected encoding: %v", err)
@@ -61,7 +61,7 @@ func TestReadCsvToStringRefusesADetectedEncodingItCannotDecode(t *testing.T) {
 
 // The names v0.3.2 read through its substring rules read through the public
 // reader too: they are aliases in the decoder table, not a fallback.
-func TestReadCsvToStringReadsLegacyAliases(t *testing.T) {
+func TestReadCSVToStringReadsLegacyAliases(t *testing.T) {
 	const text = "名稱,值\n甲,1\n"
 	big5, err := traditionalchinese.Big5.NewEncoder().String(text)
 	if err != nil {
@@ -69,15 +69,15 @@ func TestReadCsvToStringReadsLegacyAliases(t *testing.T) {
 	}
 	big5Path := writeCSVBytes(t, []byte(big5))
 	for _, name := range []string{"big5-hkscs", "BIG5-HKSCS"} {
-		got, err := ReadCsvToString(big5Path, name)
+		got, err := ReadCSVToString(big5Path, name)
 		if err != nil || got != text {
-			t.Errorf("ReadCsvToString(%s) = %q, %v; want %q", name, got, err, text)
+			t.Errorf("ReadCSVToString(%s) = %q, %v; want %q", name, got, err, text)
 		}
 	}
 	bomPath := writeCSVBytes(t, append([]byte{0xEF, 0xBB, 0xBF}, "a,b\n1,2\n"...))
-	got, err := ReadCsvToString(bomPath, "utf-8-sig")
+	got, err := ReadCSVToString(bomPath, "utf-8-sig")
 	if err != nil || got != "a,b\n1,2\n" {
-		t.Errorf("ReadCsvToString(utf-8-sig) = %q, %v; want the text without its byte-order mark", got, err)
+		t.Errorf("ReadCSVToString(utf-8-sig) = %q, %v; want the text without its byte-order mark", got, err)
 	}
 }
 

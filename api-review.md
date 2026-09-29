@@ -89,12 +89,12 @@
 | C-3 | ~~Med~~ 已修正 | `AppendCsvToExcel` doc 說「sheet 已存在會被覆寫」，但 excelize `NewSheet` 對既有名稱只回傳索引不清空（已查 v2.11.0 sheet.go:57-59），結果是新資料蓋在舊資料上，舊資料超出範圍的儲存格殘留 | convert.go:83-107 | 存在時先 `DeleteSheet` 再建，或改 doc 說明是合併 |
 | C-4 | ~~Med~~ 已修正 | `excelize.OpenFile` 回傳的 `*File` 從未 `Close()`：`AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv`（每個檔案各漏一次） | convert.go:94, 136; convertDir.go:38 | `defer f.Close()` |
 | C-5 | ~~Low~~ 已修正（batch 3） | 錯誤用 `%v` 包裝，呼叫端無法 `errors.Is(err, os.ErrNotExist)`；`read_csv.go` 已用 `%w`，套件內不一致 | convert.go 全檔 | 改 `%w` |
-| C-6 | Low | `UTF8/Big5/Auto` 是裸 string 常數，而實際比對用 `strings.Contains`，任何字串都會被接受 | convert.go:22-26 | typed `Encoding` string 型別 |
+| C-6 | ~~Low~~ 已修正（fix-api-review-batch-6、csvxl-encoding-like-core、csvxl-go-names） | `UTF8/Big5/Auto` 是裸 string 常數，而實際比對用 `strings.Contains`，任何字串都會被接受 | convert.go:22-26 | typed `Encoding` string 型別 |
 | C-7 | ~~Low~~ 已修正（batch 3） | 目錄用 `os.ModePerm`（0777）建立 | convert.go:143; convertDir.go:50 | 0755 |
 | C-8 | ~~Low~~ 已修正（不存在 sheet 回錯與 log 名稱：docs-hygiene-and-remaining-partials；自動補 `.csv`：csvxl-respects-file-extension，讀取端原路徑優先、寫出端尊重副檔名） | 路徑沒有 `.csv` 結尾就自動補；`ExcelToCsv` 的 `onlyContainSheets` 指到不存在的 sheet 靜默略過；`EachExcelToCsv` log 標錯函式名 | convert.go:44, 158-164; convertDir.go:62 | 不補副檔名（或改 doc）；找不到的 sheet 回錯；修 log |
 | C-10 | ~~Med~~ 部分修正（reader-writer-entry-points：核心與 parquet 已有 Reader／Writer 入口；`csvxl` 是多檔轉單一活頁簿的形狀，經裁定不做） | 全套件只吃檔案路徑，沒有 `io.Reader`/`io.Writer` 版本：記憶體中的 CSV、HTTP 回應、`embed.FS` 都得先落地成檔案才能轉（準則 8、10） | 全套件 | 核心改成 Reader/Writer，路徑版當薄包裝 |
 | C-11 | Med | `CsvToExcel(csvFiles, sheetNames, ...)` 用兩個平行切片靠索引對位，錯一格就對到別的 sheet；`ExcelToCsv(…, csvNames, onlyContainSheets...)` 同樣問題（準則 4、8） | convert.go:31, 135 | `[]SheetSpec{Path, Sheet}` 一個切片 |
-| C-12 | Low | 命名不符 Go 慣例：`Csv` 應為 `CSV`；`EachCsvToOneExcel` 讀起來要想一下（「每個 CSV 到一個 Excel」）；doc comment 缺 Go 風格開頭（準則 3、9、E） | 全套件 | v1 前統一改名 |
+| C-12 | ~~Low~~ 已修正（csvxl-go-names） | 命名不符 Go 慣例：`Csv` 應為 `CSV`；`EachCsvToOneExcel` 讀起來要想一下（「每個 CSV 到一個 Excel」）；doc comment 缺 Go 風格開頭（準則 3、9、E） | 全套件 | v1 前統一改名 |
 | C-9 | Low | 每次成功都以 Info 等級寫 log。這是跨套件模式（parquet 除外），要在 core 的 logger 審查時一併決定 library 該不該在成功路徑上 log | 全套件 | 待 core 決定 |
 
 ### parallel
@@ -532,7 +532,7 @@
 | K-8 | [#209](https://github.com/HazelnutParadise/insyra/issues/209) |  |
 | K-11、C-10、Q-8 | [#210](https://github.com/HazelnutParadise/insyra/issues/210) | 已關閉（reader-writer-entry-points；`csvxl` 經裁定不做，改名移到 #213） |
 | K-12 | [#211](https://github.com/HazelnutParadise/insyra/issues/211) | 已關閉（exported-functions-are-functions） |
-| K-13、C-12、I-4、DF-5 | [#212](https://github.com/HazelnutParadise/insyra/issues/212) | DF-5 已修正（datafetch-naming-cleanup） |
+| K-13、C-12、I-4、DF-5 | [#212](https://github.com/HazelnutParadise/insyra/issues/212) | DF-5 已修正（datafetch-naming-cleanup）；C-12 已修正（csvxl-go-names） |
 | K-14、D-8、E-6、E-7、PL-4、NN-3、C-2 | [#213](https://github.com/HazelnutParadise/insyra/issues/213) | 已關閉（refuse-extra-optional-values、column-data-type、core-settings-batch、imputer-refuses-unfillable-columns、nn-batchnorm-options、plot-heatmap-point-type、csvxl-encoding-like-core、read-write-names） |
 | K-15 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) | 已修正（core-utils-cleanup） |
 | K-17、C-9 | [#215](https://github.com/HazelnutParadise/insyra/issues/215) |  |
@@ -594,7 +594,7 @@
 | NN-1 | [#265](https://github.com/HazelnutParadise/insyra/issues/265) |  |
 | NN-2 | [#266](https://github.com/HazelnutParadise/insyra/issues/266) |  |
 | C-1 | [#267](https://github.com/HazelnutParadise/insyra/issues/267) | 已關閉（csvxl-batch-failures） |
-| C-6 | [#268](https://github.com/HazelnutParadise/insyra/issues/268) |  |
+| C-6 | [#268](https://github.com/HazelnutParadise/insyra/issues/268) | 已關閉（fix-api-review-batch-6、csvxl-encoding-like-core、csvxl-go-names） |
 | C-8 | [#269](https://github.com/HazelnutParadise/insyra/issues/269) | 已關閉（csvxl-respects-file-extension） |
 | C-11 | [#270](https://github.com/HazelnutParadise/insyra/issues/270) |  |
 | P-1、P-2、P-5、P-4 | [#271](https://github.com/HazelnutParadise/insyra/issues/271) | 已關閉（parallel-runs-and-worker-errors） |

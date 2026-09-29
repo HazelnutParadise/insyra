@@ -29,16 +29,16 @@ func TestEncodingNamesMeanWhatTheCoreReadersMean(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"", "AUTO", "Auto"} {
-		got, err := ReadCsvToString(path, name)
+		got, err := ReadCSVToString(path, name)
 		if err != nil {
-			t.Fatalf("ReadCsvToString(%q): %v", name, err)
+			t.Fatalf("ReadCSVToString(%q): %v", name, err)
 		}
 		if !strings.Contains(got, "台北") {
-			t.Fatalf("ReadCsvToString(%q) did not detect Big5: %q", name, got)
+			t.Fatalf("ReadCSVToString(%q) did not detect Big5: %q", name, got)
 		}
 		out := filepath.Join(t.TempDir(), "out.xlsx")
-		if err := CsvToExcel([]string{path}, []string{"s"}, out, name); err != nil {
-			t.Fatalf("CsvToExcel(%q): %v", name, err)
+		if err := CSVToExcel([]string{path}, []string{"s"}, out, name); err != nil {
+			t.Fatalf("CSVToExcel(%q): %v", name, err)
 		}
 	}
 }

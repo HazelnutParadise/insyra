@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-30] — remove the `Csv` spellings of the `csvxl` functions one release after they were deprecated
+- **Where**: `csvxl/convert.go`, `csvxl/convertDir.go`, `csvxl/read_csv.go`
+- **What**: `csvxl-go-names` renamed `CsvToExcel`, `AppendCsvToExcel`, `ExcelToCsv`, `ExcelToCsvOptions`, `EachCsvToOneExcel`, `EachExcelToCsv` and `ReadCsvToString` to `CSVToExcel`, `AppendCSVToExcel`, `ExcelToCSV`, `ExcelToCSVOptions`, `CSVDirToExcel`, `ExcelDirToCSV` and `ReadCSVToString` (the C-12 part of #212). The old names stay one release as Deprecated wrappers and a type alias.
+- **Suggestion**: delete them in the same release as the other Deprecated removals, with `TestDeprecatedCSVXLNamesSayWhatReplacedThem`, `TestDeprecatedCSVXLNamesGiveTheSameWorkbook`, the deprecated-names table in `Docs/csvxl.md`, and a BREAKING changelog entry. The `csvxl-*`, `csv-formula-guard`, `io-error-hygiene` and `optional-values` specs under `openspec/specs/` still name the old spellings. Move them to the new names in the same change.
+- **Status**: pending
+
 ### [2026-09-30] — the LINGO parser drops statements it does not read, with no error
 - **Where**: `lpgen/lingo.go` `parseLingo`
 - **What**: `ParseLingo` now returns an error, but only for text it cannot read at all. A statement it does not recognise is still dropped without a word. Measured on 2026-09-30: `ParseLingo("MODEL:\nMIN= X1 + X2\nEND")`, whose only statement lacks its closing `;`, returns an empty model and a nil error, and `@FREE(X);`, `@BND(0, X, 10);` and `@GIN(Y);` are dropped, so a free variable becomes non-negative once the model is written as LP, a bound disappears and a general-integer variable becomes continuous. `TestParseLingoModel_str_EdgeCases` pins the dropped unterminated statement as by design. Whether LINGO's `Display Model` output contains `@FREE`, `@BND` or `@GIN` was not checked, because no copy of LINGO was available.
@@ -415,7 +421,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-09-28] — a rebuilt sheet leaves its old comments, drawing and table parts in the file
-- **Where**: `internal/excelsheet/replace.go` `Replace`, through excelize's `DeleteSheet`; reached by `csvxl.AppendCsvToExcel` and `DataTable.ToExcel` with `SheetExistsReplace`
+- **Where**: `internal/excelsheet/replace.go` `Replace`, through excelize's `DeleteSheet`; reached by `csvxl.AppendCSVToExcel` and `DataTable.ToExcel` with `SheetExistsReplace`
 - **What**: `DeleteSheet` removes the worksheet and its relationships but not the parts they pointed to. Measured on 2026-09-28: after replacing a sheet that had a comment and a table, `xl/comments1.xml`, `xl/drawings/vmlDrawing1.vml` and `xl/tables/table1.xml` are still in the saved file and in `[Content_Types].xml`, referenced by nothing, so the old comment text is still inside the file; excelize also refuses a new table under the old table's name (`the same name table already exists`). Not checked in Excel or LibreOffice, neither of which was available. `dev` records the same follow-up.
 - **Suggestion**: open such a file in Excel and LibreOffice first. If either complains, or if leaving the old comment text in the file matters, remove the parts the old sheet's relationships pointed to before deleting it.
 - **Status**: pending
@@ -464,7 +470,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-09-27] — Auto reads an ISO-2022-KR or ISO-2022-CN file as UTF-8
 - **Where**: `utils.go` `DetectEncoding`, whose UTF-8 check runs before chardet is asked; `internal/csv/decoder.go` `decoders`
-- **What**: both encodings use only 7-bit bytes, so `DetectEncoding` accepts such a file as UTF-8 before chardet, which knows both, sees it. Measured on 2026-09-27: a 30-line Korean CSV written in ISO-2022-KR is detected as `utf-8`, and `csvxl.ReadCsvToString` returns its `ESC $ ) C` header and shift codes inside the cells with a nil error. x/text has no decoder for either, so naming the encoding fails with the unsupported-encoding error. `Docs/csvxl.md` states this.
+- **What**: both encodings use only 7-bit bytes, so `DetectEncoding` accepts such a file as UTF-8 before chardet, which knows both, sees it. Measured on 2026-09-27: a 30-line Korean CSV written in ISO-2022-KR is detected as `utf-8`, and `csvxl.ReadCSVToString` returns its `ESC $ ) C` header and shift codes inside the cells with a nil error. x/text has no decoder for either, so naming the encoding fails with the unsupported-encoding error. `Docs/csvxl.md` states this.
 - **Suggestion**: look for the ISO-2022 designator escape before the UTF-8 check and refuse the file with the unsupported-encoding error, the way IBM420 and IBM424 are refused. Decoding them would need a decoder x/text does not ship; both are rare enough in CSV files that the refusal is enough.
 - **Status**: pending
 

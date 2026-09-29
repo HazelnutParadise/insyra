@@ -19,11 +19,11 @@ func firstCell(t *testing.T, dir, source string) string {
 	t.Helper()
 	out := filepath.Join(dir, "out.xlsx")
 	_ = os.Remove(out)
-	require.NoError(t, CsvToExcel([]string{source}, []string{"s"}, out, UTF8))
+	require.NoError(t, CSVToExcel([]string{source}, []string{"s"}, out, UTF8))
 	return sheetRows(t, out, "s")[0][0]
 }
 
-func TestCsvToExcelReadsANameThatDoesNotEndInCsv(t *testing.T) {
+func TestCSVToExcelReadsANameThatDoesNotEndInCsv(t *testing.T) {
 	for _, name := range []string{"export.txt", "DATA.CSV", "plain"} {
 		dir := t.TempDir()
 		writeCSV(t, dir, name, name+"\n1\n")
@@ -31,7 +31,7 @@ func TestCsvToExcelReadsANameThatDoesNotEndInCsv(t *testing.T) {
 	}
 }
 
-func TestCsvToExcelAddsCsvWhenThePathIsNotThere(t *testing.T) {
+func TestCSVToExcelAddsCsvWhenThePathIsNotThere(t *testing.T) {
 	for _, c := range []struct{ given, onDisk string }{
 		{"data", "data.csv"},
 		{"export.txt", "export.txt.csv"},
@@ -42,24 +42,24 @@ func TestCsvToExcelAddsCsvWhenThePathIsNotThere(t *testing.T) {
 	}
 }
 
-func TestCsvToExcelReadsThePathAsWrittenWhenBothExist(t *testing.T) {
+func TestCSVToExcelReadsThePathAsWrittenWhenBothExist(t *testing.T) {
 	dir := t.TempDir()
 	writeCSV(t, dir, "x", "literal\n1\n")
 	writeCSV(t, dir, "x.csv", "added\n1\n")
 	require.Equal(t, "literal", firstCell(t, dir, filepath.Join(dir, "x")))
 }
 
-func TestCsvToExcelSkipsADirectoryOfTheSameName(t *testing.T) {
+func TestCSVToExcelSkipsADirectoryOfTheSameName(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "data"), 0o755))
 	writeCSV(t, dir, "data.csv", "file\n1\n")
 	require.Equal(t, "file", firstCell(t, dir, filepath.Join(dir, "data")))
 }
 
-func TestCsvToExcelNamesBothPathsWhenNeitherExists(t *testing.T) {
+func TestCSVToExcelNamesBothPathsWhenNeitherExists(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "nope")
-	err := CsvToExcel([]string{missing}, nil, filepath.Join(dir, "out.xlsx"), UTF8)
+	err := CSVToExcel([]string{missing}, nil, filepath.Join(dir, "out.xlsx"), UTF8)
 	require.Error(t, err)
 	// Quoted, so the bare path is not satisfied by being a prefix of the
 	// other, and quoted by hand rather than with %q, which would double the
@@ -68,25 +68,25 @@ func TestCsvToExcelNamesBothPathsWhenNeitherExists(t *testing.T) {
 	require.Contains(t, err.Error(), `"`+missing+`.csv"`)
 }
 
-func TestAppendCsvToExcelReadsANameThatDoesNotEndInCsv(t *testing.T) {
+func TestAppendCSVToExcelReadsANameThatDoesNotEndInCsv(t *testing.T) {
 	dir := t.TempDir()
 	base := writeCSV(t, dir, "base.csv", "a\n1\n")
 	xlsx := filepath.Join(dir, "book.xlsx")
-	require.NoError(t, CsvToExcel([]string{base}, []string{"base"}, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]string{base}, []string{"base"}, xlsx, UTF8))
 
 	source := writeCSV(t, dir, "export.txt", "appended\n1\n")
-	require.NoError(t, AppendCsvToExcel([]string{source}, []string{"more"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]string{source}, []string{"more"}, xlsx, UTF8))
 	require.Equal(t, "appended", sheetRows(t, xlsx, "more")[0][0])
 }
 
-func TestExcelToCsvKeepsTheExtensionItWasGiven(t *testing.T) {
+func TestExcelToCSVKeepsTheExtensionItWasGiven(t *testing.T) {
 	dir := t.TempDir()
 	source := writeCSV(t, dir, "src.csv", "a\n1\n")
 	xlsx := filepath.Join(dir, "book.xlsx")
-	require.NoError(t, CsvToExcel([]string{source, source, source}, []string{"one", "two", "three"}, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]string{source, source, source}, []string{"one", "two", "three"}, xlsx, UTF8))
 
 	outDir := t.TempDir()
-	require.NoError(t, ExcelToCsv(xlsx, outDir, []string{"report.txt", "REPORT.CSV", "bare"}))
+	require.NoError(t, ExcelToCSV(xlsx, outDir, []string{"report.txt", "REPORT.CSV", "bare"}))
 
 	entries, err := os.ReadDir(outDir)
 	require.NoError(t, err)

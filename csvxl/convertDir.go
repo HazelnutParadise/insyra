@@ -10,10 +10,10 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// EachCsvToOneExcel converts each CSV file in the given directory to an Excel file.
-// The output Excel file will be saved in the given output path.
-// If encoding is not specified, auto-detection will be used.
-func EachCsvToOneExcel(dir string, output string, encoding ...string) error {
+// CSVDirToExcel converts every CSV file directly inside dir, those whose name
+// ends in ".csv", into one Excel workbook saved at output, one sheet per file
+// named after the file. encoding works as it does for CSVToExcel.
+func CSVDirToExcel(dir string, output string, encoding ...string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*.csv"))
 	if err != nil {
 		return fmt.Errorf("failed to list CSV files in %s: %w", dir, err)
@@ -22,16 +22,23 @@ func EachCsvToOneExcel(dir string, output string, encoding ...string) error {
 	var csvFiles []string
 	csvFiles = append(csvFiles, files...)
 
-	return CsvToExcel(csvFiles, nil, output, encoding...)
+	return CSVToExcel(csvFiles, nil, output, encoding...)
 }
 
-// EachExcelToCsv converts each Excel file in the given directory to CSV files.
-// The output CSV files will be saved in the given output directory.
-// The CSV files will be named as the Excel file name plus the sheet name plus ".csv",
-// for example, "ExcelFileName_SheetName.csv". The options work as they do for
-// ExcelToCsv; Sheets applies to every file.
-func EachExcelToCsv(dir string, outputDir string, options ...ExcelToCsvOptions) error {
-	opts, err := oneExcelToCsvOptions(options)
+// EachCsvToOneExcel converts every CSV file in a directory into one workbook.
+//
+// Deprecated: use CSVDirToExcel, which is the same function. Removed in the
+// release after the one that deprecated it.
+func EachCsvToOneExcel(dir string, output string, encoding ...string) error {
+	return CSVDirToExcel(dir, output, encoding...)
+}
+
+// ExcelDirToCSV writes every sheet of every Excel workbook directly inside
+// dir, those whose name ends in ".xlsx", as CSV files in outputDir. Each file
+// is named after its workbook and sheet, as in "Book_Sheet.csv". The options
+// work as they do for ExcelToCSV; Sheets applies to every workbook.
+func ExcelDirToCSV(dir string, outputDir string, options ...ExcelToCSVOptions) error {
+	opts, err := oneExcelToCSVOptions(options)
 	if err != nil {
 		return err
 	}
@@ -49,9 +56,17 @@ func EachExcelToCsv(dir string, outputDir string, options ...ExcelToCsvOptions) 
 	return nil
 }
 
+// EachExcelToCsv writes every sheet of every workbook in a directory as CSV.
+//
+// Deprecated: use ExcelDirToCSV, which is the same function. Removed in the
+// release after the one that deprecated it.
+func EachExcelToCsv(dir string, outputDir string, options ...ExcelToCsvOptions) error {
+	return ExcelDirToCSV(dir, outputDir, options...)
+}
+
 // excelFileToCsv writes every sheet of one workbook as a CSV file and closes
 // the workbook before returning, on every path.
-func excelFileToCsv(excelFile, outputDir string, opts ExcelToCsvOptions) error {
+func excelFileToCsv(excelFile, outputDir string, opts ExcelToCSVOptions) error {
 	f, err := excelize.OpenFile(excelFile, insyra.ExcelReadOptions())
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)

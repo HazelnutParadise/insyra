@@ -64,7 +64,7 @@ func TestDetectEncoding(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestCsvToExcelWithAutoDetection(t *testing.T) {
+func TestCSVToExcelWithAutoDetection(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create test CSV files
@@ -81,7 +81,7 @@ func TestCsvToExcelWithAutoDetection(t *testing.T) {
 	// Test auto-detection (default behavior)
 	outputFile := filepath.Join(tempDir, "output_auto.xlsx")
 	// Use explicit UTF-8 to avoid flakiness from charset detection in CI
-	err = CsvToExcel([]string{csvFile1, csvFile2}, nil, outputFile, UTF8)
+	err = CSVToExcel([]string{csvFile1, csvFile2}, nil, outputFile, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file was created
@@ -90,7 +90,7 @@ func TestCsvToExcelWithAutoDetection(t *testing.T) {
 
 	// Test explicit auto encoding (also force UTF-8 for determinism)
 	outputFile2 := filepath.Join(tempDir, "output_explicit_auto.xlsx")
-	err = CsvToExcel([]string{csvFile1, csvFile2}, nil, outputFile2, UTF8)
+	err = CSVToExcel([]string{csvFile1, csvFile2}, nil, outputFile2, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file was created
@@ -99,7 +99,7 @@ func TestCsvToExcelWithAutoDetection(t *testing.T) {
 
 	// Test explicit UTF-8 encoding
 	outputFile3 := filepath.Join(tempDir, "output_utf8.xlsx")
-	err = CsvToExcel([]string{csvFile1, csvFile2}, nil, outputFile3, UTF8)
+	err = CSVToExcel([]string{csvFile1, csvFile2}, nil, outputFile3, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file was created
@@ -107,7 +107,7 @@ func TestCsvToExcelWithAutoDetection(t *testing.T) {
 	assert.NoError(t, err, "Excel file should be created with explicit UTF-8 encoding")
 }
 
-func TestAppendCsvToExcelWithAutoDetection(t *testing.T) {
+func TestAppendCSVToExcelWithAutoDetection(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create an initial CSV and Excel file
@@ -117,7 +117,7 @@ func TestAppendCsvToExcelWithAutoDetection(t *testing.T) {
 	require.NoError(t, err)
 
 	outputFile := filepath.Join(tempDir, "append_test.xlsx")
-	err = CsvToExcel([]string{csvFile1}, nil, outputFile, UTF8)
+	err = CSVToExcel([]string{csvFile1}, nil, outputFile, UTF8)
 	require.NoError(t, err)
 
 	// Create additional CSV file to append
@@ -127,7 +127,7 @@ func TestAppendCsvToExcelWithAutoDetection(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test appending with explicit UTF-8
-	err = AppendCsvToExcel([]string{csvFile2}, nil, outputFile, UTF8)
+	err = AppendCSVToExcel([]string{csvFile2}, nil, outputFile, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file still exists
@@ -140,7 +140,7 @@ func TestAppendCsvToExcelWithAutoDetection(t *testing.T) {
 	err = os.WriteFile(csvFile3, []byte(csvContent3), 0644)
 	require.NoError(t, err)
 
-	err = AppendCsvToExcel([]string{csvFile3}, nil, outputFile, UTF8)
+	err = AppendCSVToExcel([]string{csvFile3}, nil, outputFile, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file still exists
@@ -148,7 +148,7 @@ func TestAppendCsvToExcelWithAutoDetection(t *testing.T) {
 	assert.NoError(t, err, "Excel file should exist after second append")
 }
 
-func TestEachCsvToOneExcelWithAutoDetection(t *testing.T) {
+func TestCSVDirToExcelWithAutoDetection(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create multiple CSV files in a directory
@@ -164,7 +164,7 @@ func TestEachCsvToOneExcelWithAutoDetection(t *testing.T) {
 
 	// Test converting all CSV files in directory with explicit encoding
 	outputFile := filepath.Join(tempDir, "directory_output.xlsx")
-	err = EachCsvToOneExcel(tempDir, outputFile, UTF8)
+	err = CSVDirToExcel(tempDir, outputFile, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file was created
@@ -173,7 +173,7 @@ func TestEachCsvToOneExcelWithAutoDetection(t *testing.T) {
 
 	// Test with explicit UTF-8 encoding
 	outputFile2 := filepath.Join(tempDir, "directory_output_explicit.xlsx")
-	err = EachCsvToOneExcel(tempDir, outputFile2, UTF8)
+	err = CSVDirToExcel(tempDir, outputFile2, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file was created
@@ -188,7 +188,7 @@ func TestEncodingConstants(t *testing.T) {
 	assert.Equal(t, "auto", Auto)
 }
 
-func TestExcelToCsvWithFilteredRows(t *testing.T) {
+func TestExcelToCSVWithFilteredRows(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Create an Excel file with some rows
@@ -222,7 +222,7 @@ func TestExcelToCsvWithFilteredRows(t *testing.T) {
 
 	// Convert to CSV
 	outputDir := filepath.Join(tempDir, "output")
-	err = ExcelToCsv(excelFile, outputDir, nil)
+	err = ExcelToCSV(excelFile, outputDir, nil)
 	require.NoError(t, err)
 	// Check the CSV file
 	csvFile := filepath.Join(outputDir, "Sheet1.csv")

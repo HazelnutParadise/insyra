@@ -9,7 +9,7 @@ import (
 )
 
 // Text that is safe inside a workbook becomes a formula again once it is a
-// CSV opened in a spreadsheet, so ExcelToCsv guards it by default, as the
+// CSV opened in a spreadsheet, so ExcelToCSV guards it by default, as the
 // core CSV writer does (owner's ruling of 2026-09-26, #285).
 func guardWorkbook(t *testing.T, dir string) string {
 	t.Helper()
@@ -42,12 +42,12 @@ func readFile(t *testing.T, path string) string {
 	return string(b)
 }
 
-func TestExcelToCsvGuardsFormulasByDefault(t *testing.T) {
+func TestExcelToCSVGuardsFormulasByDefault(t *testing.T) {
 	dir := t.TempDir()
 	xlsx := guardWorkbook(t, dir)
 
 	out := filepath.Join(dir, "guarded")
-	if err := ExcelToCsv(xlsx, out, nil); err != nil {
+	if err := ExcelToCSV(xlsx, out, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(out, "Sheet1.csv")); got != "'=1+1\n-5\n'@x\nhello\n" {
@@ -58,7 +58,7 @@ func TestExcelToCsvGuardsFormulasByDefault(t *testing.T) {
 	}
 
 	raw := filepath.Join(dir, "raw")
-	if err := ExcelToCsv(xlsx, raw, nil, ExcelToCsvOptions{Sheets: []string{"Sheet1"}, AllowFormulas: true}); err != nil {
+	if err := ExcelToCSV(xlsx, raw, nil, ExcelToCSVOptions{Sheets: []string{"Sheet1"}, AllowFormulas: true}); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(raw, "Sheet1.csv")); got != "=1+1\n-5\n@x\nhello\n" {
@@ -67,23 +67,23 @@ func TestExcelToCsvGuardsFormulasByDefault(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(raw, "Other.csv")); !os.IsNotExist(err) {
 		t.Fatalf("Sheets did not limit the conversion: %v", err)
 	}
-	if err := ExcelToCsv(xlsx, raw, nil, ExcelToCsvOptions{}, ExcelToCsvOptions{}); err == nil {
+	if err := ExcelToCSV(xlsx, raw, nil, ExcelToCSVOptions{}, ExcelToCSVOptions{}); err == nil {
 		t.Fatal("two options structs were accepted")
 	}
 }
 
-func TestEachExcelToCsvGuardsFormulasByDefault(t *testing.T) {
+func TestExcelDirToCSVGuardsFormulasByDefault(t *testing.T) {
 	dir := t.TempDir()
 	guardWorkbook(t, dir)
 	out := filepath.Join(dir, "out")
-	if err := EachExcelToCsv(dir, out); err != nil {
+	if err := ExcelDirToCSV(dir, out); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(out, "in_Sheet1.csv")); got != "'=1+1\n-5\n'@x\nhello\n" {
 		t.Fatalf("guarded CSV %q", got)
 	}
 	raw := filepath.Join(dir, "raw")
-	if err := EachExcelToCsv(dir, raw, ExcelToCsvOptions{AllowFormulas: true}); err != nil {
+	if err := ExcelDirToCSV(dir, raw, ExcelToCSVOptions{AllowFormulas: true}); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(raw, "in_Sheet1.csv")); got != "=1+1\n-5\n@x\nhello\n" {

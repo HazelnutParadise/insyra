@@ -28,7 +28,7 @@ import (
 
 func main() {
     csvFiles := []string{"file1.csv", "file2.csv"}
-    if err := csvxl.CsvToExcel(csvFiles, nil, "output.xlsx"); err != nil {
+    if err := csvxl.CSVToExcel(csvFiles, nil, "output.xlsx"); err != nil {
         log.Fatal(err)
     }
 }
@@ -54,21 +54,23 @@ const (
 )
 ```
 
+They are plain strings, and any name listed under [Supported encodings](#supported-encodings) can be passed instead, such as `"windows-1252"`. A name no decoder handles is an error naming it, and no workbook is written for it.
+
 `Auto` is the default. An empty string and `"auto"` in any case (`"AUTO"`, `"Auto"`) also mean detection, as they do for the core CSV readers; an empty string used to mean UTF-8 taken as-is, and `"AUTO"` used to fail. If detection fails, the function returns an error and you should pass a specific encoding.
 
 ## File names
 
 `csvxl` adds `.csv` as a convenience and never over a name you wrote.
 
-- **Reading** (`CsvToExcel`, `AppendCsvToExcel`): each path is opened as written when it names a file, so a CSV called `export.txt` or `DATA.CSV` is read as itself. Only when nothing is there, or a directory is, is `.csv` appended and tried, so `data` still reads `data.csv`. When both `x` and `x.csv` exist, `x` is read. When neither exists, the error names both paths it tried and `errors.Is(err, os.ErrNotExist)` holds.
-- **Writing** (`ExcelToCsv`'s `csvNames`): a name that already has an extension, of any case, is used as written, so `report.txt` stays `report.txt`. A name with no extension gets `.csv`.
+- **Reading** (`CSVToExcel`, `AppendCSVToExcel`): each path is opened as written when it names a file, so a CSV called `export.txt` or `DATA.CSV` is read as itself. Only when nothing is there, or a directory is, is `.csv` appended and tried, so `data` still reads `data.csv`. When both `x` and `x.csv` exist, `x` is read. When neither exists, the error names both paths it tried and `errors.Is(err, os.ErrNotExist)` holds.
+- **Writing** (`ExcelToCSV`'s `csvNames`): a name that already has an extension, of any case, is used as written, so `report.txt` stays `report.txt`. A name with no extension gets `.csv`.
 
 ## Main Functions
 
-### `CsvToExcel`
+### `CSVToExcel`
 
 ```go
-func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error
+func CSVToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error
 ```
 
 **Description:** Converts multiple CSV files into a new Excel workbook. If `sheetNames` is empty, filenames are used.
@@ -86,15 +88,15 @@ Each CSV is read in full before its sheet is created. When a CSV cannot be read,
 
 - `error`: Error when the operation fails.
 
-### `AppendCsvToExcel`
+### `AppendCSVToExcel`
 
 ```go
-func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error
+func AppendCSVToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error
 ```
 
 **Description:** Appends CSV files as new sheets. An existing sheet with the same name is replaced by a fresh sheet before the CSV is written, in the same way `DataTable.ToExcel` replaces a sheet. What the workbook records about the sheet stays: its position among the sheets, whether it is hidden, and which sheet is active. Names and formulas elsewhere in the workbook are kept, including those that refer to it. Nothing stored in the old sheet itself survives: its cells and formulas, hidden rows, row heights, comments, hyperlinks, column widths, views and merged ranges all go, and so do the names defined for that sheet alone. The sheet name is matched without regard to case and the replaced sheet takes the name as given, so appending to `TARGET` renames a sheet called `Target`. This works even when it is the workbook's only sheet.
 
-Each CSV is read in full before its sheet is replaced, so a CSV that cannot be read leaves the existing sheet of that name as it was. The other files are still appended, and the error lists the files that failed in the same form as `CsvToExcel`. When every file fails, the workbook file is not rewritten.
+Each CSV is read in full before its sheet is replaced, so a CSV that cannot be read leaves the existing sheet of that name as it was. The other files are still appended, and the error lists the files that failed in the same form as `CSVToExcel`. When every file fails, the workbook file is not rewritten.
 
 **Parameters:**
 
@@ -107,12 +109,12 @@ Each CSV is read in full before its sheet is replaced, so a CSV that cannot be r
 
 - `error`: Error when the operation fails.
 
-### `ExcelToCsv`
+### `ExcelToCSV`
 
 ```go
-func ExcelToCsv(excelFile string, outputDir string, csvNames []string, opts ...ExcelToCsvOptions) error
+func ExcelToCSV(excelFile string, outputDir string, csvNames []string, opts ...ExcelToCSVOptions) error
 
-type ExcelToCsvOptions struct {
+type ExcelToCSVOptions struct {
     Sheets        []string // convert only these sheets; empty means every sheet
     AllowFormulas bool     // write formula-like text as is (guarded by default)
 }
@@ -125,8 +127,8 @@ A name in `Sheets` that the workbook does not have is an error naming the sheets
 **Formula guard (on by default):** text that is safe inside a workbook becomes a formula again once it is a CSV opened in Excel, LibreOffice or Google Sheets. So a cell whose text starts with `=`, `+`, `-` or `@` and is not only a number is written with a leading single quote (`=HYPERLINK(...)` becomes `'=HYPERLINK(...)`), as the core `ToCSV` does. Numbers such as `-5` are never changed. Set `AllowFormulas: true` when a program will read the CSV back and needs every value exactly.
 
 ```go
-csvxl.ExcelToCsv("report.xlsx", "out", nil) // every sheet, guarded
-csvxl.ExcelToCsv("report.xlsx", "out", nil, csvxl.ExcelToCsvOptions{
+csvxl.ExcelToCSV("report.xlsx", "out", nil) // every sheet, guarded
+csvxl.ExcelToCSV("report.xlsx", "out", nil, csvxl.ExcelToCSVOptions{
     Sheets:        []string{"2024", "2025"},
     AllowFormulas: true,
 })
@@ -139,19 +141,19 @@ csvxl.ExcelToCsv("report.xlsx", "out", nil, csvxl.ExcelToCsvOptions{
 - `excelFile`: File path to use. Type: `string`.
 - `outputDir`: Directory path to use. Type: `string`.
 - `csvNames`: Output file names, one per converted sheet in order. Type: `[]string`.
-- `opts` (optional, at most one): `ExcelToCsvOptions`.
+- `opts` (optional, at most one): `ExcelToCSVOptions`.
 
 **Returns:**
 
 - `error`: Error when the operation fails.
 
-### `EachCsvToOneExcel`
+### `CSVDirToExcel`
 
 ```go
-func EachCsvToOneExcel(dir string, output string, encoding ...string) error
+func CSVDirToExcel(dir string, output string, encoding ...string) error
 ```
 
-**Description:** Converts all CSV files in a directory into a single Excel workbook through `CsvToExcel`, so a file that fails is skipped and reported the same way.
+**Description:** Converts every CSV file directly inside `dir`, those whose name ends in `.csv`, into one Excel workbook, one sheet per file named after the file. It goes through `CSVToExcel`, so a file that fails is skipped and reported the same way.
 
 **Parameters:**
 
@@ -163,13 +165,13 @@ func EachCsvToOneExcel(dir string, output string, encoding ...string) error
 
 - `error`: Error when the operation fails.
 
-### `EachExcelToCsv`
+### `ExcelDirToCSV`
 
 ```go
-func EachExcelToCsv(dir string, outputDir string, opts ...ExcelToCsvOptions) error
+func ExcelDirToCSV(dir string, outputDir string, opts ...ExcelToCSVOptions) error
 ```
 
-**Description:** Converts all `.xlsx` files in a directory into CSV files, with the same formula guard and options as `ExcelToCsv`; `Sheets` applies to every file.
+**Description:** Converts every sheet of every `.xlsx` file directly inside `dir` into CSV files named `<workbook>_<sheet>.csv`, with the same formula guard and options as `ExcelToCSV`. `Sheets` applies to every file.
 
 **Parameters:**
 
@@ -180,13 +182,13 @@ func EachExcelToCsv(dir string, outputDir string, opts ...ExcelToCsvOptions) err
 
 - `error`: Error when the operation fails.
 
-### `ReadCsvToString`
+### `ReadCSVToString`
 
 ```go
-func ReadCsvToString(filePath string, encoding ...string) (string, error)
+func ReadCSVToString(filePath string, encoding ...string) (string, error)
 ```
 
-**Description:** Reads a CSV file and returns UTF-8 content.
+**Description:** Reads a CSV file and returns its content as UTF-8 CSV text. The encoding is detected when it is left out.
 
 **Parameters:**
 
@@ -214,6 +216,20 @@ func insyra.DetectEncoding(csvFile string) (string, error)
 
 - `string`: Return value.
 - `error`: Error when the operation fails.
+
+## Deprecated names
+
+The functions used to be spelled with `Csv`, which Go's naming convention writes `CSV`, like every other package in insyra does. The old names still work and do exactly what the new ones do, but they are **Deprecated** and will be removed in the release after the one that deprecated them.
+
+| Deprecated | Use |
+| --- | --- |
+| `CsvToExcel` | `CSVToExcel` |
+| `AppendCsvToExcel` | `AppendCSVToExcel` |
+| `ExcelToCsv` | `ExcelToCSV` |
+| `ExcelToCsvOptions` | `ExcelToCSVOptions` (the same type) |
+| `EachCsvToOneExcel` | `CSVDirToExcel` |
+| `EachExcelToCsv` | `ExcelDirToCSV` |
+| `ReadCsvToString` | `ReadCSVToString` |
 
 ## Errors
 

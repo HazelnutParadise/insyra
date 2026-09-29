@@ -158,6 +158,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 編碼參數給空字串，或任何大小寫的 `"auto"`，現在都代表自動偵測，跟核心的 CSV 讀取函式一致。以前空字串代表直接當成 UTF-8，`"AUTO"` 則會被當成不支援的編碼而報錯。
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 跟 `ToCSV` 一樣，預設會防範公式注入：在活頁簿裡安全的文字，轉成 CSV 再用試算表打開時會被當成公式。要原樣寫出就用 `ExcelToCsvOptions{AllowFormulas: true}`。挑選工作表的清單也移進同一個設定包：`ExcelToCsv(file, dir, names, "2024", "2025")` 改成 `ExcelToCsv(file, dir, names, csvxl.ExcelToCsvOptions{Sheets: []string{"2024", "2025"}})`。
 - **BREAKING（輸出）**：`AppendCsvToExcel` 改用全新的工作表取代既有的同名工作表，做法與 `DataTable.ToExcel` 相同，不再像 v0.3.3 那樣就地清空儲存格。就地清空只移除值與公式，列與儲存格上的其他東西都還在：新資料落在舊的隱藏列上，在 Excel 裡看不到，`ExcelToCsv` 讀回時也會跳過；舊的註解與超連結也留在新值上。舊工作表內容越多也越慢：取代一張有 2 萬個公式的工作表要 157 毫秒，現在是 6 毫秒。工作表仍保留原本的位置，原本隱藏的也維持隱藏，作用中的工作表不變，活頁簿其他地方的定義名稱與公式也都保留，但舊工作表的欄寬、檢視與合併範圍不再保留，只屬於這張工作表的定義名稱也會一起消失。名稱只差大小寫的工作表，現在會改用呼叫時給的名稱：附加到 `TARGET` 會把名為 `Target` 的工作表改名，v0.3.3 則維持原名。
+- 函式名稱改成 Go 對縮寫的寫法，與 insyra 其他套件一致：`CSVToExcel`、`AppendCSVToExcel`、`ExcelToCSV` 與 `ExcelToCSVOptions`、`ReadCSVToString`，處理整個目錄的兩個函式則是 `CSVDirToExcel` 與 `ExcelDirToCSV`。舊名稱 `CsvToExcel`、`AppendCsvToExcel`、`ExcelToCsv`、`ExcelToCsvOptions`、`EachCsvToOneExcel`、`EachExcelToCsv` 與 `ReadCsvToString` 的行為與新名稱完全相同，標為 **Deprecated**，下一版移除。CLI 的 `convert` 不受影響。
+- `CSVToExcel` 與 `AppendCSVToExcel` 會先檢查編碼名稱才讀檔，解碼表裡沒有的名稱會回傳一個指出該名稱的錯誤。過去要讀到 CSV 時才會發現：沒有任何檔案時（例如 `CSVDirToExcel` 遇到空目錄），不存在的編碼照樣被接受並寫出工作簿。有好幾個檔案時，同一個錯誤會每個檔案重複一次。
 
 ### `parquet`
 - `Write` 先寫入暫存檔再 rename 到目標位置，中途失敗時不會留下截斷的 Parquet 檔。

@@ -8,7 +8,10 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/csv"
 )
 
-func ReadCsvToString(filePath string, encoding ...string) (string, error) {
+// ReadCSVToString reads the CSV file at filePath and returns its content as
+// UTF-8 CSV text. encoding is the file's encoding, detected when it is left
+// out or is "" or "auto"; a name no decoder handles is an error.
+func ReadCSVToString(filePath string, encoding ...string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open CSV file %s: %w", filePath, err)
@@ -28,7 +31,7 @@ func ReadCsvToString(filePath string, encoding ...string) (string, error) {
 			return "", fmt.Errorf("failed to auto-detect encoding for %s: %w", filePath, err)
 		}
 		useEncoding = detected
-		insyra.LogInfo("csvxl", "ReadCsvToString", "Auto-detected encoding %s for file %s", useEncoding, filePath)
+		insyra.LogInfo("csvxl", "ReadCSVToString", "Auto-detected encoding %s for file %s", useEncoding, filePath)
 	}
 
 	result, err := csv.ReadCSVWithEncoding(file, useEncoding)
@@ -37,4 +40,12 @@ func ReadCsvToString(filePath string, encoding ...string) (string, error) {
 	}
 
 	return result, nil
+}
+
+// ReadCsvToString reads a CSV file as UTF-8 CSV text.
+//
+// Deprecated: use ReadCSVToString, which is the same function. Removed in the
+// release after the one that deprecated it.
+func ReadCsvToString(filePath string, encoding ...string) (string, error) {
+	return ReadCSVToString(filePath, encoding...)
 }

@@ -17,10 +17,17 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// CsvEncoding Options
+// UTF8, Big5 and Auto are common values for the encoding argument of
+// CSVToExcel, AppendCSVToExcel, CSVDirToExcel and ReadCSVToString. Any name
+// the core CSV readers accept works as well, and a name no decoder handles is
+// an error.
 const (
+	// UTF8 reads a file as UTF-8.
 	UTF8 = "utf-8"
+	// Big5 reads a file as Big5 (Traditional Chinese).
 	Big5 = "big5"
+	// Auto detects the encoding of each file. It is the default, and "" means
+	// the same.
 	Auto = "auto"
 )
 
@@ -31,19 +38,36 @@ func isAutoEncoding(encoding string) bool {
 	return encoding == "" || strings.EqualFold(encoding, Auto)
 }
 
-// Convert multiple CSV files to an Excel file, supporting custom sheet names.
-// If the sheet name is not specified, the file name of the CSV file will be used.
-// If csvEncoding is not specified, auto-detection will be used.
+// checkEncoding refuses an encoding no decoder handles before any file is
+// read, so the error names it once and an empty file list does not hide it.
+// Detection ("" and "auto" in any case) is always accepted.
+func checkEncoding(encoding string) error {
+	if isAutoEncoding(encoding) {
+		return nil
+	}
+	// DecodingReader refuses a name it has no decoder for before it reads
+	// anything, so an empty reader is enough to ask it.
+	_, err := insyracsv.DecodingReader(strings.NewReader(""), encoding)
+	return err
+}
+
+// CSVToExcel converts CSV files into one Excel workbook, one sheet per file,
+// and saves it at output. sheetNames[i] names the sheet of csvFiles[i]; a
+// missing or empty name uses the CSV file's name without its extension.
+// csvEncoding is the files' encoding, detected when it is left out.
 //
 // A CSV that cannot be read, or whose sheet cannot be created, gets no sheet,
 // and the other files are still converted. The returned error lists every
 // file that failed. When every file fails, no workbook is written.
-func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error {
+func CSVToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error {
 	encoding := Auto // Default to auto-detection
 	if len(csvEncoding) == 1 {
 		encoding = csvEncoding[0]
 	} else if len(csvEncoding) > 1 {
 		return fmt.Errorf("too many arguments for csvEncoding")
+	}
+	if err := checkEncoding(encoding); err != nil {
+		return err
 	}
 
 	f := excelize.NewFile()
@@ -90,28 +114,41 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 		return fmt.Errorf("failed to save Excel file %s: %w", output, err)
 	}
 
-	insyra.LogInfo("csvxl", "CsvToExcel", "Converted %d of %d CSV files to Excel file %s.", converted, len(csvFiles), output)
+	insyra.LogInfo("csvxl", "CSVToExcel", "Converted %d of %d CSV files to Excel file %s.", converted, len(csvFiles), output)
 	if len(failures) > 0 {
 		return batchError("convert", failures, len(csvFiles))
 	}
 	return nil
 }
 
-// Append CSV files to an existing Excel file, supporting custom sheet names.
-// If the sheet name is not specified, the file name of the CSV file will be used.
-// If the sheet is exists, it will be overwritten.
-// If csvEncoding is not specified, auto-detection will be used.
+// CsvToExcel converts CSV files into one Excel workbook.
+//
+// Deprecated: use CSVToExcel, which is the same function. Removed in the
+// release after the one that deprecated it.
+func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error {
+	return CSVToExcel(csvFiles, sheetNames, output, csvEncoding...)
+}
+
+// AppendCSVToExcel writes CSV files into the existing Excel workbook at
+// existingFile, one sheet per file, and saves it in place. sheetNames[i]
+// names the sheet of csvFiles[i]; a missing or empty name uses the CSV file's
+// name without its extension. A sheet that already has that name is replaced
+// by a fresh one in the same position. csvEncoding is the files' encoding,
+// detected when it is left out.
 //
 // A CSV is read in full before its sheet is replaced, so a CSV that cannot be
 // read leaves the sheet of the same name as it was, and the other files are
 // still appended. The returned error lists every file that failed. When every
 // file fails, the workbook is not rewritten.
-func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error {
+func AppendCSVToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error {
 	encoding := Auto // Default to auto-detection
 	if len(csvEncoding) == 1 {
 		encoding = csvEncoding[0]
 	} else if len(csvEncoding) > 1 {
 		return fmt.Errorf("too many arguments for csvEncoding")
+	}
+	if err := checkEncoding(encoding); err != nil {
+		return err
 	}
 
 	f, err := excelize.OpenFile(existingFile, insyra.ExcelReadOptions())
@@ -156,16 +193,24 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 		return fmt.Errorf("failed to save Excel file %s: %w", existingFile, err)
 	}
 
-	insyra.LogInfo("csvxl", "AppendCsvToExcel", "Appended %d of %d CSV files to Excel file %s.", appended, len(csvFiles), existingFile)
+	insyra.LogInfo("csvxl", "AppendCSVToExcel", "Appended %d of %d CSV files to Excel file %s.", appended, len(csvFiles), existingFile)
 	if len(failures) > 0 {
 		return batchError("append", failures, len(csvFiles))
 	}
 	return nil
 }
 
-// ExcelToCsvOptions configures ExcelToCsv and EachExcelToCsv. The zero value
+// AppendCsvToExcel writes CSV files into an existing Excel workbook.
+//
+// Deprecated: use AppendCSVToExcel, which is the same function. Removed in the
+// release after the one that deprecated it.
+func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error {
+	return AppendCSVToExcel(csvFiles, sheetNames, existingFile, csvEncoding...)
+}
+
+// ExcelToCSVOptions configures ExcelToCSV and ExcelDirToCSV. The zero value
 // converts every sheet and guards formula-like text.
-type ExcelToCsvOptions struct {
+type ExcelToCSVOptions struct {
 	// Sheets limits the conversion to these sheets. Empty means every sheet.
 	// A name the workbook does not have is an error.
 	Sheets []string
@@ -177,22 +222,28 @@ type ExcelToCsvOptions struct {
 	AllowFormulas bool
 }
 
-func oneExcelToCsvOptions(opts []ExcelToCsvOptions) (ExcelToCsvOptions, error) {
+// ExcelToCsvOptions is the old name of ExcelToCSVOptions.
+//
+// Deprecated: use ExcelToCSVOptions, which is the same type. Removed in the
+// release after the one that deprecated it.
+type ExcelToCsvOptions = ExcelToCSVOptions
+
+func oneExcelToCSVOptions(opts []ExcelToCSVOptions) (ExcelToCSVOptions, error) {
 	if len(opts) > 1 {
-		return ExcelToCsvOptions{}, fmt.Errorf("at most one ExcelToCsvOptions may be given, got %d", len(opts))
+		return ExcelToCSVOptions{}, fmt.Errorf("at most one ExcelToCSVOptions may be given, got %d", len(opts))
 	}
 	if len(opts) == 1 {
 		return opts[0], nil
 	}
-	return ExcelToCsvOptions{}, nil
+	return ExcelToCSVOptions{}, nil
 }
 
-// ExcelToCsv splits an Excel file into multiple CSV files, one per sheet.
-// If csvNames is provided, it uses them as CSV filenames; otherwise, it uses
-// the sheet names. See ExcelToCsvOptions for choosing sheets and for the
-// formula guard.
-func ExcelToCsv(excelFile string, outputDir string, csvNames []string, options ...ExcelToCsvOptions) error {
-	opts, err := oneExcelToCsvOptions(options)
+// ExcelToCSV writes each sheet of the workbook at excelFile as a CSV file in
+// outputDir. csvNames[i] names the file of the i-th converted sheet; a missing
+// or empty name uses the sheet's name plus ".csv". See ExcelToCSVOptions for
+// choosing sheets and for the formula guard.
+func ExcelToCSV(excelFile string, outputDir string, csvNames []string, options ...ExcelToCSVOptions) error {
+	opts, err := oneExcelToCSVOptions(options)
 	if err != nil {
 		return err
 	}
@@ -234,8 +285,16 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, options .
 		}
 	}
 
-	insyra.LogInfo("csvxl", "ExcelToCsv", "Successfully converted %d sheets to CSV files in %s.", numSheets, outputDir)
+	insyra.LogInfo("csvxl", "ExcelToCSV", "Successfully converted %d sheets to CSV files in %s.", numSheets, outputDir)
 	return nil
+}
+
+// ExcelToCsv writes each sheet of a workbook as a CSV file.
+//
+// Deprecated: use ExcelToCSV, which is the same function. Removed in the
+// release after the one that deprecated it.
+func ExcelToCsv(excelFile string, outputDir string, csvNames []string, options ...ExcelToCsvOptions) error {
+	return ExcelToCSV(excelFile, outputDir, csvNames, options...)
 }
 
 // ===============================
