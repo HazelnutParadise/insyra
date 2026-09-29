@@ -213,7 +213,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `py`
 - `PipInstall` and `PipUninstall` refuse a dependency name starting with `-`, and pass `--` before it. The caller's string went to `uv pip install` as one argv, so `--requirement=/path` made uv read that file and install whatever it listed.
-- The IPC server no longer spins on a failing listener, sets a ten-minute deadline on each connection, and removes its socket file from the temp directory when the process ends. A permanently failing `Accept` used to print a warning per iteration for the life of the process.
+- The IPC server no longer spins on a failing listener and sets a ten-minute deadline on each connection. A permanently failing `Accept` used to print a warning per iteration for the life of the process.
+- The IPC server that carries results back from Python opens when a `Run…` call needs it and closes when the last call running at the same time finishes, which on Unix removes its socket file from the temp directory; v0.3.x left one there after every program that ran Python. When it cannot open, for example because the temp directory's path is too long for a Unix socket, the call returns an error that wraps the cause before it prepares the environment or starts Python, and the next call tries again. v0.3.x logged a warning, ran Python anyway and returned `exit status 1`. A server whose accept loop fails now closes, so the run in flight returns an error; it used to stay open, and a Python process that connected afterwards waited for an acknowledgement forever.
 
 ### `pd`
 - **BREAKING (behaviour)**: `FromDataList` turns an empty list into an empty `Series`, an `any`-typed gpandas series of length 0, which is what pandas gives for `pd.Series([])`. It used to return the error `empty DataList`. A `nil` list is still an error.

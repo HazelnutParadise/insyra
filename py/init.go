@@ -20,17 +20,13 @@ func init() {}
 // applyHideWindow moved to internal utils; use utils.ApplyHideWindow(cmd) instead.
 
 var isPyEnvInit = false
-var pyInitMu sync.Mutex       // serializes pyEnvInit against concurrent RunCode calls
-var serverStartOnce sync.Once // starts the IPC server exactly once
+var pyInitMu sync.Mutex // serializes pyEnvInit against concurrent RunCode calls
 
 // 主要邏輯
 // 使用uv管理Python環境
 func pyEnvInit() error {
-	// Start the IPC server exactly once, and serialize the environment-init
-	// check/set so concurrent RunCode calls do not race on the shared flags.
-	serverStartOnce.Do(func() {
-		go startServer()
-	})
+	// Serialize the environment-init check/set so concurrent RunCode calls do
+	// not race on the shared flags.
 	pyInitMu.Lock()
 	defer pyInitMu.Unlock()
 	if isPyEnvInit {

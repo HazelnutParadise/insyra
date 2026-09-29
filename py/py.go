@@ -51,9 +51,6 @@ func ReinstallPyEnv() error {
 
 // Run the Python file and bind the result to the provided struct pointer.
 func RunFile(out any, filePath string) error {
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -65,9 +62,6 @@ func RunFile(out any, filePath string) error {
 // Run the Python file with the given Golang variables and bind the result to the provided struct pointer.
 // The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
 func RunFilef(out any, filePath string, args ...any) error {
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -93,6 +87,11 @@ func RunCodef(out any, code string, args ...any) error {
 
 // runPythonCode executes the Python code and binds the result to the provided struct pointer.
 func runPythonCode(out any, code string) error {
+	addr, err := acquireIPCServer()
+	if err != nil {
+		return err
+	}
+	defer releaseIPCServer()
 	if err := pyEnvInit(); err != nil {
 		return err
 	}
@@ -100,7 +99,7 @@ func runPythonCode(out any, code string) error {
 	// 生成執行ID
 	executionID := generateExecutionID()
 
-	code = generateDefaultPyCode(executionID) + fmt.Sprintf(`
+	code = generateDefaultPyCode(executionID, addr) + fmt.Sprintf(`
 try:
 %v
 except Exception as e:
@@ -183,9 +182,6 @@ func RunCodefContext(ctx context.Context, out any, code string, args ...any) err
 
 // Run the Python file and bind the result to the provided struct pointer, with context.
 func RunFileContext(ctx context.Context, out any, filePath string) error {
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -196,9 +192,6 @@ func RunFileContext(ctx context.Context, out any, filePath string) error {
 
 // Run the Python file with the given Golang variables and bind the result to the provided struct pointer, with context.
 func RunFilefContext(ctx context.Context, out any, filePath string, args ...any) error {
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -223,6 +216,11 @@ func RunCodeWithTimeout(timeout time.Duration, out any, code string) error {
 // runPythonCodeContext executes the Python code and binds the result to the provided struct pointer.
 // It behaves like runPythonCode but uses the provided Context so callers can cancel the execution.
 func runPythonCodeContext(ctx context.Context, out any, code string) error {
+	addr, err := acquireIPCServer()
+	if err != nil {
+		return err
+	}
+	defer releaseIPCServer()
 	if err := pyEnvInit(); err != nil {
 		return err
 	}
@@ -230,7 +228,7 @@ func runPythonCodeContext(ctx context.Context, out any, code string) error {
 	// 生成執行ID
 	executionID := generateExecutionID()
 
-	code = generateDefaultPyCode(executionID) + fmt.Sprintf(`
+	code = generateDefaultPyCode(executionID, addr) + fmt.Sprintf(`
 try:
 %v
 except Exception as e:
@@ -447,15 +445,13 @@ func createTempPythonScript(code string) (string, func(), error) {
 	return scriptPath, cleanup, nil
 }
 
-func generateDefaultPyCode(executionID string) string {
+func generateDefaultPyCode(executionID, addr string) string {
 	imports := ""
 	for imps := range pyDependencies {
 		if imps != "" {
 			imports += fmt.Sprintf("%s\n", imps)
 		}
 	}
-	// Get IPC address (waits for server if needed)
-	addr := getIPCAddress()
 	return fmt.Sprintf(`
 %v
 import sys

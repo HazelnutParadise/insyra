@@ -213,7 +213,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `py`
 - `PipInstall` 與 `PipUninstall` 拒絕以 `-` 開頭的依賴名稱，並在名稱前加上 `--`。呼叫端的字串過去是以單一 argv 交給 `uv pip install`，所以 `--requirement=/path` 會讓 uv 去讀那個檔案並安裝裡面列的東西。
-- IPC 伺服器不再在監聽器持續失敗時空轉，每條連線設十分鐘期限，行程結束時會把暫存目錄裡的 socket 檔移除。過去 `Accept` 持續失敗會在行程的餘生每次迭代印一行警告。
+- IPC 伺服器不再在監聽器持續失敗時空轉，每條連線設十分鐘期限。過去 `Accept` 持續失敗會在行程的餘生每次迭代印一行警告。
+- 把 Python 結果傳回 Go 的 IPC 伺服器，改成在 `Run…` 呼叫需要時才開啟，同時執行的最後一個呼叫結束時關閉；在 Unix 上關閉時會一併刪掉暫存目錄裡的 socket 檔，v0.3.x 每個執行過 Python 的程式都會留下一個。伺服器開不起來時（例如暫存目錄的路徑太長，放不下 Unix socket），呼叫會在準備環境、啟動 Python 之前回傳包住原因的錯誤，下一次呼叫會再試一次。v0.3.x 只記一則警告，照樣啟動 Python，最後回傳 `exit status 1`。伺服器接受連線失敗時現在會關閉，正在執行的呼叫會回傳錯誤；過去伺服器仍然開著，之後連進來的 Python 會永遠等不到回覆。
 
 ### `pd`
 - **BREAKING（行為改變）**：`FromDataList` 遇到空的 list 會回傳空的 `Series`，也就是長度 0、`any` 型別的 gpandas series，和 pandas 的 `pd.Series([])` 一樣。過去會回傳 `empty DataList` 錯誤。`nil` list 仍然回傳錯誤。

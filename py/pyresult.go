@@ -18,9 +18,13 @@ import (
 
 var (
 	resultStore sync.Map // map[string][2]any
-	ipcAddress  string
-	serverReady = make(chan struct{})
-	serverOnce  sync.Once
+
+	// The IPC server is shared by the runs in flight and closed when the last
+	// of them finishes. Closing a Unix listener removes its socket file.
+	serverMu    sync.Mutex
+	serverLn    net.Listener
+	serverAddr  string
+	serverUsers int
 )
 
 // 生成唯一的執行ID
@@ -69,77 +73,6 @@ func waitForResult(executionID string, processDone <-chan struct{}, execErr <-ch
 // timeout to set, not the framing layer's.
 const ipcConnDeadline = 10 * time.Minute
 
-// 啟動 IPC 伺服器來接收 Python 回傳的複雜資料結構
-func startServer() {
-	serverOnce.Do(func() {
-		// Generate IPC address
-		if runtime.GOOS == "windows" {
-			// Use a random suffix for the pipe name
-			randBytes := make([]byte, 8)
-			if _, err := rand.Read(randBytes); err != nil {
-				insyra.LogWarning("py", "startServer", "rand.Read failed: %v", err)
-			}
-			ipcAddress = fmt.Sprintf(`\\.\pipe\insyra_ipc_%x`, randBytes)
-		} else {
-			// Use a temp file for unix socket
-			randBytes := make([]byte, 8)
-			if _, err := rand.Read(randBytes); err != nil {
-				insyra.LogWarning("py", "startServer", "rand.Read failed: %v", err)
-			}
-			ipcAddress = filepath.Join(os.TempDir(), fmt.Sprintf("insyra_ipc_%x.sock", randBytes))
-			// Ensure it doesn't exist
-			if rerr := os.Remove(ipcAddress); rerr != nil && !os.IsNotExist(rerr) {
-				insyra.LogWarning("py", "startServer", "failed to remove leftover ipc socket: %v", rerr)
-			}
-		}
-
-		ln, err := ipc.Listen(ipcAddress)
-		if err != nil {
-			// A library must not end the caller's process: record the failure
-			// and leave the server down. Calls that need it then fail with a
-			// recorded error instead of dereferencing a nil listener.
-			insyra.LogError("py", "startServer", "Failed to start IPC server on %s: %v", ipcAddress, err)
-			close(serverReady)
-			return
-		}
-		// insyra.LogInfo("py", "init", "Insyra IPC server listening on %s", ipcAddress)
-
-		// Signal that the server is ready
-		close(serverReady)
-
-		// Clean up the socket file when the process ends. Without this every
-		// run leaves one behind in os.TempDir().
-		if runtime.GOOS != "windows" {
-			addr := ipcAddress
-			runtime.AddCleanup(&serverOnce, func(path string) {
-				_ = os.Remove(path)
-			}, addr)
-		}
-
-		// Accept loop
-		go func() {
-			for {
-				conn, err := ln.Accept()
-				if err != nil {
-					// A listener that is closed, or permanently broken, makes
-					// Accept fail every time. `continue` then spun a warning
-					// per iteration for the life of the process.
-					if errors.Is(err, net.ErrClosed) {
-						return
-					}
-					var ne net.Error
-					if errors.As(err, &ne) && ne.Timeout() {
-						continue
-					}
-					insyra.LogError("py", "server", "IPC accept failed, stopping the listener: %v", err)
-					return
-				}
-				go handleIPCConnection(conn)
-			}
-		}()
-	})
-}
-
 func handleIPCConnection(conn net.Conn) {
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
@@ -184,8 +117,85 @@ func handleIPCConnection(conn net.Conn) {
 	}
 }
 
-// getIPCAddress returns the IPC address, waiting for the server to start if necessary.
-func getIPCAddress() string {
-	<-serverReady
-	return ipcAddress
+// newIPCAddress returns a fresh random address: a named pipe on Windows, a
+// socket file in os.TempDir() elsewhere.
+func newIPCAddress() string {
+	randBytes := make([]byte, 8)
+	if _, err := rand.Read(randBytes); err != nil {
+		insyra.LogWarning("py", "newIPCAddress", "rand.Read failed: %v", err)
+	}
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf(`\\.\pipe\insyra_ipc_%x`, randBytes)
+	}
+	addr := filepath.Join(os.TempDir(), fmt.Sprintf("insyra_ipc_%x.sock", randBytes))
+	if rerr := os.Remove(addr); rerr != nil && !os.IsNotExist(rerr) {
+		insyra.LogWarning("py", "newIPCAddress", "failed to remove leftover ipc socket: %v", rerr)
+	}
+	return addr
+}
+
+// acquireIPCServer returns the address of the IPC server that carries results
+// back from Python, opening the server when no run is using it. A server that
+// cannot open is an error, and the next call tries again. Every successful
+// call must be matched by one releaseIPCServer.
+func acquireIPCServer() (string, error) {
+	serverMu.Lock()
+	defer serverMu.Unlock()
+	if serverUsers == 0 {
+		addr := newIPCAddress()
+		ln, err := ipc.Listen(addr)
+		if err != nil {
+			return "", fmt.Errorf("py: failed to start the IPC server on %s: %w", addr, err)
+		}
+		serverLn, serverAddr = ln, addr
+		go acceptIPC(ln)
+	}
+	serverUsers++
+	return serverAddr, nil
+}
+
+// releaseIPCServer ends one run's use of the IPC server and closes the server
+// when no run is left.
+func releaseIPCServer() {
+	serverMu.Lock()
+	defer serverMu.Unlock()
+	if serverUsers == 0 {
+		return
+	}
+	serverUsers--
+	if serverUsers > 0 {
+		return
+	}
+	if err := serverLn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		insyra.LogWarning("py", "server", "failed to close the IPC server: %v", err)
+	}
+	serverLn, serverAddr = nil, ""
+}
+
+// acceptIPC hands each connection on ln to handleIPCConnection until ln is
+// closed or fails.
+func acceptIPC(ln net.Listener) {
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			// A listener that is closed, or permanently broken, makes
+			// Accept fail every time. `continue` then spun a warning
+			// per iteration for the life of the process.
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				continue
+			}
+			insyra.LogError("py", "server", "IPC accept failed, stopping the listener: %v", err)
+			// Close it too: a listener left open still queues connections,
+			// and the Python process behind one would wait for an
+			// acknowledgement nobody sends. Closed, its connect fails and
+			// the run returns an error.
+			_ = ln.Close()
+			return
+		}
+		go handleIPCConnection(conn)
+	}
 }

@@ -354,6 +354,8 @@ func main() {
 
 The `py` package supports concurrent execution of Python code. Multiple goroutines can call `RunCode`, `RunCodef`, `RunFile`, and `RunFilef` simultaneously without interference. Each execution gets a unique ID and processes independently.
 
+Python sends the value passed to `insyra.Return` back over a local IPC server: a Unix socket file in the temp directory (`os.TempDir()`), or a named pipe on Windows. The server opens when a call needs it and closes when the last call running at the same time finishes, so the socket file exists only while a call is in progress, the first call's environment setup included. If the server cannot open, for example because the temp directory's path is too long for a Unix socket, the call returns an error that wraps the cause (`errors.Is(err, syscall.EINVAL)` for that case) before it prepares the environment or starts Python, and the next call tries again.
+
 ## Automatic Type Conversion
 
 When passing Go variables to Python code using `RunCodef` or `RunFilef`, certain Insyra types are automatically converted to their Python equivalents:
