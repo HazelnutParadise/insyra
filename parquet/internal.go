@@ -362,7 +362,11 @@ func recordToDataTable(rec arrow.Record) *insyra.DataTable {
 	return dataTable
 }
 
-func dataTableToArrowTable(dt insyra.IDataTable) (arrow.Table, error) {
+// dataTableToArrowTable converts dt into an Arrow table. ctx is checked once
+// per column, so a caller that gives up part-way through a wide table releases
+// the columns already built instead of leaving them behind, and returns ctx's
+// error.
+func dataTableToArrowTable(ctx context.Context, dt insyra.IDataTable) (arrow.Table, error) {
 	mem := memory.DefaultAllocator
 	numRows, numCols := dt.Size()
 
@@ -370,6 +374,14 @@ func dataTableToArrowTable(dt insyra.IDataTable) (arrow.Table, error) {
 	columns := make([]arrow.Column, numCols)
 
 	for i := range numCols {
+		if err := ctx.Err(); err != nil {
+			// The columns built so far are never handed to a table, so they are
+			// released here; the ones not reached yet were never built.
+			for j := range i {
+				columns[j].Release()
+			}
+			return nil, err
+		}
 		col := dt.GetColByNumber(i)
 		colName := dt.GetColNameByNumber(i)
 		data := col.Data()

@@ -19,7 +19,7 @@ func writeRows(t *testing.T, n int, rowGroupSize int64) string {
 		vals[i] = float64(i)
 	}
 	dt := insyra.NewDataTable(insyra.NewDataList(vals...).SetName("a"))
-	tbl, err := dataTableToArrowTable(dt)
+	tbl, err := dataTableToArrowTable(context.Background(), dt)
 	if err != nil {
 		t.Fatal(err)
 	}

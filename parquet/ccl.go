@@ -455,6 +455,13 @@ func buildArrowArray(mem memory.Allocator, data []any, dtype arrow.DataType) (ar
 	}
 }
 
+// cclBatchSize is how many rows FilterWithCCL and ApplyCCL read and evaluate
+// at a time. It is not a setting: each batch is evaluated on its own, so an
+// expression that reads beyond the current row, such as AVG(A), the row index
+// # or A.0, sees only its batch, and a different size would change the rows
+// FilterWithCCL keeps and the values ApplyCCL writes.
+const cclBatchSize = 1000
+
 // FilterWithCCL applies a CCL filter expression to a parquet file and returns filtered results.
 // The filter expression should evaluate to boolean for each row.
 //
@@ -464,8 +471,6 @@ func buildArrowArray(mem memory.Allocator, data []any, dtype arrow.DataType) (ar
 //
 //	Will not modify the original parquet file.
 func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra.DataTable, error) {
-	batchSize := 1000
-
 	// Compile CCL expression once
 	compiledExpr, err := ccl.CompileExpression(filterExpr)
 	if err != nil {
@@ -480,7 +485,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 	var kept [][]any
 	firstBatch := true
 
-	recChan, errChan := streamAsArrowRecord(ctx, path, ReadOptions{}, batchSize)
+	recChan, errChan := streamAsArrowRecord(ctx, path, ReadOptions{}, cclBatchSize)
 
 	// build assembles the result once, on whichever path ends the stream, so an
 	// empty file and a filter that matched nothing produce the same shape.
@@ -582,8 +587,6 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 //
 //	The input file will be overwritten.
 func ApplyCCL(ctx context.Context, path string, cclScript string) error {
-	batchSize := 1000
-
 	// Compile CCL statements once
 	compiledNodes, err := ccl.CompileMultiline(cclScript)
 	if err != nil {
@@ -614,7 +617,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 	firstBatch := true
 
 	// Stream through input file (now safe since we write to tmpPath)
-	recChan, errChan := streamAsArrowRecord(ctx, path, ReadOptions{}, batchSize)
+	recChan, errChan := streamAsArrowRecord(ctx, path, ReadOptions{}, cclBatchSize)
 
 	// finish 統一處理串流成功結束時的收尾，供兩個完成路徑（errChan 關閉、recChan 關閉）共用。
 	finish := func() error {

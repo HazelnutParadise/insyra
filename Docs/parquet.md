@@ -7,15 +7,18 @@ The `parquet` package provides read and write support for the Apache Parquet fil
 - [Data Structures](#data-structures)
   - [ReadOptions](#readoptions)
   - [ReadColumnOptions](#readcolumnoptions)
+  - [WriteOptions and Compression](#writeoptions-and-compression)
   - [FileInfo](#fileinfo)
 - [Main Functions](#main-functions)
   - [Inspect](#inspect)
   - [Read](#read)
   - [Write](#write)
+  - [WriteContext, WriteToContext](#writecontext-writetocontext)
   - [Stream](#stream)
   - [ReadFrom, StreamFrom, WriteTo](#readfrom-streamfrom-writeto--from-and-to-any-source)
   - [ReadColumn](#readcolumn)
 - [CCL Support](#ccl-support)
+  - [Batches of 1,000 rows](#batches-of-1000-rows)
   - [FilterWithCCL](#filterwithccl)
   - [ApplyCCL](#applyccl)
   - [Type Constraints](#type-constraints)
@@ -44,6 +47,29 @@ type ReadColumnOptions struct {
     MaxValues int64 // Maximum number of values to read; 0 means no limit. The row count of the selected RowGroups is checked from the file metadata before any value is read; if it exceeds MaxValues an error naming both numbers is returned.
 }
 ```
+
+### WriteOptions and Compression
+
+Settings for `Write`, `WriteTo`, `WriteContext` and `WriteToContext`. The zero value writes what `Write` always wrote: uncompressed, with up to 1,048,576 rows in a row group.
+
+```go
+type WriteOptions struct {
+    Compression  Compression // Codec for every column, CompressionNone when unset
+    RowGroupSize int         // Most rows in one row group, 1,048,576 when 0
+}
+
+type Compression int
+
+const (
+    CompressionNone   Compression = iota // uncompressed (the zero value)
+    CompressionSnappy
+    CompressionGzip
+    CompressionBrotli
+    CompressionZstd
+)
+```
+
+`RowGroupSize` sets how the file is split into row groups, the units a reader can skip with `ReadOptions.RowGroups`. The Arrow writer insyra uses caps a row group at 67,108,864 rows, so a larger value writes groups of that size. A negative `RowGroupSize`, a `Compression` that is not one of the constants above, or more than one `WriteOptions` is an error, returned before anything is written.
 
 ### FileInfo
 
@@ -140,19 +166,36 @@ reason on `Err()`.
 ### Write
 
 ```go
-func Write(dt insyra.IDataTable, path string) error
+func Write(dt insyra.IDataTable, path string, opts ...WriteOptions) error
 ```
 
-**Description:** Writes an `insyra.IDataTable` to a Parquet file. The data goes to a sibling temporary file that is renamed into place, so a failure part-way never leaves a truncated file at `path`.
+**Description:** Writes an `insyra.IDataTable` to a Parquet file. The data goes to a temporary file with a name of its own in the same directory, which is renamed into place, so a failure part-way never leaves a truncated file at `path`, and two writes to the same path at once never mix their bytes. `Write` is `WriteContext` with `context.Background()`.
 
 **Parameters:**
 
 - `dt`: Input value for `dt`. Type: `insyra.IDataTable`.
 - `path`: File path to use. Type: `string`.
+- `opts`: Optional. Compression and row group size, described under [WriteOptions](#writeoptions-and-compression). At most one.
 
 **Returns:**
 
 - `error`: Error when the operation fails.
+
+```go
+err := parquet.Write(dt, "sales.parquet", parquet.WriteOptions{
+    Compression:  parquet.CompressionZstd,
+    RowGroupSize: 100_000,
+})
+```
+
+### WriteContext, WriteToContext
+
+```go
+func WriteContext(ctx context.Context, dt insyra.IDataTable, path string, opts ...WriteOptions) error
+func WriteToContext(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error
+```
+
+**Description:** `Write` and `WriteTo` with a context, so a large write can be cancelled or given a deadline. The context is checked before the table is converted, between columns while converting, and before each row group, and `WriteContext` checks it once more before the finished file replaces `path`. A cancelled call returns the context's error. `WriteContext` then leaves the file at `path` as it was. `WriteToContext` stops without writing the Parquet footer, so what already reached `w` is not a readable file. A row group that has started is finished before the next check, so a smaller `RowGroupSize` makes a write stop sooner. A nil `ctx` is an error.
 
 ### Stream
 
@@ -179,10 +222,10 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) it
 ```go
 func ReadFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions) (*insyra.DataTable, error)
 func StreamFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions, batchSize int) iter.Seq2[*insyra.DataTable, error]
-func WriteTo(dt insyra.IDataTable, w io.Writer) error
+func WriteTo(dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error
 ```
 
-**Description:** Read and write Parquet that is not a file on disk — an S3 object, an upload, bytes in memory. `Read`, `Stream` and `Write` call these, so a path and a source over the same bytes give the same result. Reading takes an `io.ReaderAt` and the total size rather than a plain `io.Reader`, because Parquet keeps its index at the end of the file and the reader has to seek to it; `*os.File`, `*bytes.Reader` and S3 range readers all qualify. `WriteTo` does not close `w`: the caller owns it.
+**Description:** Read and write Parquet that is not a file on disk — an S3 object, an upload, bytes in memory. `Read`, `Stream` and `Write` call these, so a path and a source over the same bytes give the same result. Reading takes an `io.ReaderAt` and the total size rather than a plain `io.Reader`, because Parquet keeps its index at the end of the file and the reader has to seek to it; `*os.File`, `*bytes.Reader` and S3 range readers all qualify. `WriteTo` takes the same `WriteOptions` as `Write`, and does not close `w`: the caller owns it.
 
 **Example:**
 
@@ -227,6 +270,20 @@ The `parquet` package provides CCL (Column Calculation Language) support for dir
 > - Type coercion may occur automatically to maintain column type consistency
 > - Operations that would create mixed types in a column may result in errors or unexpected behavior
 > - This is a fundamental constraint of the Parquet format, not a limitation of the CCL implementation
+
+### Batches of 1,000 rows
+
+`FilterWithCCL` and `ApplyCCL` read the file 1,000 rows at a time and evaluate each batch on its own, so they never hold more than one batch of the file for evaluation, however large it is. An expression that looks only at the current row, such as `(A > 100) && (B == 'active')`, gives the same answer as on a loaded table. An expression that reads beyond the current row sees only its own batch:
+
+- an aggregate such as `AVG(A)`, `SUM(A)` or `MAX(A)` is computed over the batch, not the column;
+- the row index `#` counts from 0 in every batch;
+- a reference to a fixed row, such as `A.0`, names that row of the batch.
+
+For example, on a file whose column `A` holds 1 to 2,500, `FilterWithCCL(ctx, path, "A > AVG(A)")` keeps the 1,250 rows from 501 on, because each batch compares against its own average (500.5, 1,500.5 and 2,250.5), and `"# == 0"` keeps rows 1, 1,001 and 2,001. The same filter on the whole column keeps the 1,250 rows from 1,251. The batch size is fixed rather than a setting because a different size would change these answers.
+
+A sequence function such as `LAG`, `LEAD`, `CUMSUM` or `ROLLING_MEAN` does not work here at all: it is not evaluated row by row, so `ApplyCCL(ctx, path, "NEW('c') = CUMSUM(A)")` writes the whole batch's sequence, as text, into every cell of `c`, and a filter compares the whole sequence rather than the row's value, so `CUMSUM(A) == A` keeps no rows.
+
+When an expression needs the whole column or a sequence function, load the file with `Read` and use the `DataTable` CCL methods, such as `AddColUsingCCL` and `ExecuteCCL`.
 
 ### FilterWithCCL
 

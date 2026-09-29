@@ -165,6 +165,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`ApplyCCL` 的賦值目標與 `DataTable` 的規則一致。裸目標只當欄位字母（`A`、`B`、... `AA`），過去在字母落到範圍外時會退回同名欄位，於是 `score = A * 2` 在有 `score` 欄的檔案上這邊成功、那邊失敗。請寫 `['score'] = A * 2`，而且檔案真的有同名欄位時，錯誤訊息會告訴你。
 - **BREAKING**：`Stream` 改回傳 `iter.Seq2[*insyra.DataTable, error]`，不再回傳兩個 channel，用法變成 `for dt, err := range parquet.Stream(ctx, path, opt, 1000)`。迴圈中途離開會一併停止讀取。過去用 channel 時，呼叫端 break 出迴圈又沒 cancel context，負責讀檔的 goroutine 會卡在下一次送資料直到程式結束，而文件自己的範例還讓兩個 channel 互相競爭。每一批資料都帶 nil 錯誤；失敗只出現一次，以 nil 表格加錯誤的形式結束迴圈；cancel `ctx` 時以 context 的錯誤結束。
 - `ReadFrom(ctx, r io.ReaderAt, size, opt)`、`StreamFrom(ctx, r, size, opt, batchSize)` 與 `WriteTo(dt, w io.Writer)` 可以讀寫不在硬碟上的 Parquet，例如 S3 物件或記憶體中的位元組；`Read`、`Stream`、`Write` 現在都呼叫它們。讀取需要 `io.ReaderAt` 與大小，因為 Parquet 把索引放在檔案結尾。`WriteTo` 不會關閉呼叫端給的 writer。
+- `Write` 與 `WriteTo` 可以多給一個 `WriteOptions`：`Compression`（預設 `CompressionNone`，另有 `CompressionSnappy`、`CompressionGzip`、`CompressionBrotli`、`CompressionZstd`）與 `RowGroupSize`，也就是每個 row group 最多幾列（預設 1,048,576）。不給設定時，寫出的檔案與過去逐位元組相同。未知的壓縮格式、負的 row group 大小或給了兩個設定包，都會在寫入任何東西之前回傳錯誤。`WriteContext` 與 `WriteToContext` 接受 `context.Context`，取消時會在欄與欄、row group 與 row group 之間停下。`WriteContext` 取消後，原路徑上的檔案維持原樣。傳入 nil context 會回傳錯誤，不會 panic。
+- `Docs/parquet.md` 補上 `FilterWithCCL` 與 `ApplyCCL` 一直以來的做法：每次讀 1,000 列、每批各自計算，所以 `AVG(A)` 這類彙總、列索引 `#`、`A.0` 這類固定列參照都只看得到目前這一批，`CUMSUM` 這類序列函式在這裡則完全無法使用。例如某欄是 1 到 2,500 時，`A > AVG(A)` 保留的是 501 以後的列，而不是 1,251 以後。批次大小維持固定，因為改變大小就會改變這些結果。運算式需要整欄時，請先用 `Read` 讀進來。
+- `Write` 改用名稱各自不同的暫存檔，不再用固定的 `<path>.tmp`。用固定名稱時，同時對同一路徑寫兩次會共用同一個暫存檔：一邊可能在改名時失敗，另一邊卻回報成功，留下混著兩邊位元組的檔案；呼叫端自己放在 `<path>.tmp` 的檔案也會被覆寫後刪掉。
 
 ### `mkt`
 - **BREAKING**：`CAI` 改成一般函式，不再是存著 `CustomerActivityIndex` 的變數。呼叫方式不變，只有對它賦值會編譯失敗。

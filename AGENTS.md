@@ -270,6 +270,24 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-30] — `FilterWithCCL` and `ApplyCCL` answer per batch of 1,000 rows, and sequence functions do not work there
+- **Where**: `parquet/ccl.go` (`FilterWithCCL`, `ApplyCCL`, `applyBatchCCL`, `parquetContext`)
+- **What**: each 1,000-row batch is evaluated through its own `parquetContext`, so anything that reads beyond the current row sees only its batch. Measured on 2026-09-30 on a column `A` holding 1 to 2,500: `A > AVG(A)` keeps the 1,250 rows from 501 (the whole column gives the rows from 1,251), `SUM(A) > 1000000` keeps the 1,500 rows from 1,001, `MAX(A) == A` keeps 1,000, 2,000 and 2,500, `# == 0` and `A == A.0` keep 1, 1,001 and 2,001, and `ApplyCCL(ctx, path, "NEW('i') = #")` restarts at 0 every 1,000 rows. Sequence functions are not evaluated per row at all: `NEW('c') = CUMSUM(A)` and `NEW('c') = LAG(A, 1)` write the whole batch's sequence as text into every cell, and a filter comparing one keeps no rows, where `AddColUsingCCL` on the loaded table gives each row its own value. `parquet-write-options` stated this in `Docs/parquet.md` and kept the batch size fixed; it changed no results.
+- **Suggestion**: refuse, before reading anything, an expression that reads beyond the current row (aggregates, sequence functions, `#`, fixed-row references and row ranges), with an error pointing to `Read` plus the `DataTable` CCL methods. The parser already knows these node kinds, so it is cheap, and it turns silently wrong answers into errors. Whole-column answers (a first pass for aggregates, state carried across batches for sequence functions) are the alternative and much larger. Either changes what these calls return, so decide which.
+- **Status**: pending
+
+### [2026-09-30] — `ApplyCCL` rewrites a file uncompressed and in 1,000-row row groups
+- **Where**: `parquet/ccl.go` `ApplyCCL`, where it creates its `pqarrow.FileWriter` with nil properties and writes one record per batch
+- **What**: the file `ApplyCCL` writes back keeps nothing of how the original was laid out. Measured on 2026-09-30: a 2,500-row file written with `CompressionZstd` in one row group came back from `ApplyCCL(ctx, path, "NEW('b') = ['id'] * 2")` uncompressed, in row groups of 1,000, 1,000 and 500. A Snappy or Zstd file several times its compressed size grows by that factor on disk.
+- **Suggestion**: read the source's codec from its metadata and write with it, or give `ApplyCCL` the `WriteOptions` that `Write` takes. Either changes the bytes `ApplyCCL` writes, so decide which. While there, move it off its fixed `<path>.tmp` the way `parquet-write-options` moved `Write`, where two writers to one path mixed their bytes. `ApplyCCL` uses the same pattern, going by its code, and was not measured.
+- **Status**: pending
+
+### [2026-09-30] — reading a Parquet file whose pages and footer disagree panics
+- **Where**: `parquet/api.go` `readTableFrom`, behind `Read` and `ReadFrom`, inside Arrow's reader
+- **What**: a file whose data pages come from one write and whose footer comes from another makes `ReadFrom` panic with a nil pointer dereference instead of returning an error, against this line's rule that the library never panics. Measured on 2026-09-30: laying the first k bytes of a 1,000-row file over a 3,000-row file, for k from 100 upward in steps of 53, panicked in 169 of 655 cases. Two concurrent `Write` calls sharing the old fixed `<path>.tmp` produced exactly such files; `parquet-write-options` stopped that, but a file damaged elsewhere reaches the same code. `Stream` and `ReadColumn` were not measured.
+- **Suggestion**: recover around the Arrow read calls and return the panic as an error naming the file, then check whether `Stream`'s reading goroutine needs the same.
+- **Status**: pending
+
 ### [2026-09-29] — try an honest User-Agent against Yahoo before changing the Yahoo Finance default
 - **Where**: `datafetch/yfinance.go` `defaultYFUserAgent`; go-yfinance v1.7.0's `defaultJA3` in `pkg/client/client.go`
 - **What**: the owner ruled on 2026-09-29 (#252) to document the client's browser identity first, which `Docs/datafetch.md` now does, and to decide on the default after measuring. The default is a fixed Chrome 117 `User-Agent`, and go-yfinance opens every connection with Chrome's TLS fingerprint whatever the header says, so an honest header alone would pair an insyra name with Chrome's fingerprint. Whether Yahoo answers an honest `User-Agent` has not been tried.

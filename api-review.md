@@ -112,11 +112,11 @@
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | Q-1 | ~~High~~ 已修正 | `ReadColumnOptions.MaxValues` doc 承諾「超過就回錯避免記憶體爆掉」，但整個套件沒有任何地方讀這個欄位（grep 只命中宣告處）。使用者以為有保護，其實沒有 | parquet/api.go:25-28, 288 | 實作它，或刪掉欄位 |
-| Q-2 | Med | `Write(dt, path)` 沒有 ctx、沒有選項；壓縮方式與 chunk size（1Mi）寫死。`Read` 有 ctx，`Write` 沒有，不對稱 | api.go:131-166 | 加 `WriteOptions`（可先空）與 ctx |
+| Q-2 | ~~Med~~ 已修正（parquet-write-options） | `Write(dt, path)` 沒有 ctx、沒有選項；壓縮方式與 chunk size（1Mi）寫死。`Read` 有 ctx，`Write` 沒有，不對稱 | api.go:131-166 | 加 `WriteOptions`（可先空）與 ctx |
 | Q-3 | ~~Med~~ 已修正（batch 3） | `Write` 直接開目標路徑寫，中途失敗留下半個檔案；同套件 `ApplyCCL` 已做 tmp+rename 原子替換，做法不一致 | api.go:132 vs ccl.go:591-621 | Write 也走 tmp+rename |
 | Q-4 | ~~Med~~ 已修正（batch 3） | 關閉資源的錯誤用標準庫 `log.Printf`，繞過 insyra `Config` 的 log level 與格式；其他套件都用 `insyra.LogWarning` 等 | api.go, internal.go, ccl.go 多處 | 改用 insyra logger |
 | Q-5 | ~~Low~~ 已修正（batch 3） | `ApplyCCL` doc 範例引用不存在的 `CCLFilterOptions{}` | ccl.go:573 | 修 doc |
-| Q-6 | Low | `FilterWithCCL` / `ApplyCCL` batchSize 寫死 1000，無法調 | ccl.go:456, 577 | 選項或常數說明 |
+| Q-6 | ~~Low~~ 已修正（parquet-write-options；批次大小維持固定，文件寫明原因） | `FilterWithCCL` / `ApplyCCL` batchSize 寫死 1000，無法調 | ccl.go:456, 577 | 選項或常數說明 |
 | Q-8 | ~~Med~~ 已修正（reader-writer-entry-points：`ReadFrom`、`StreamFrom`、`WriteTo`，`Read`／`Stream`／`Write` 改為包裝） | 所有函式只吃路徑；Arrow reader 本來就吃 `io.ReaderAt`，卻沒有暴露 `ReadFrom(r io.ReaderAt, size)` / `WriteTo(w io.Writer)`，S3、HTTP、記憶體來源都得先落地（準則 8、10） | api.go 全檔 | 加 Reader/Writer 版本，路徑版包裝它 |
 | Q-9 | ~~Low~~ 已修正（parquet-stream-is-an-iterator：`Stream` 改回傳 `iter.Seq2`，不留舊簽名） | `Stream` 回傳兩個 channel 是 Go 1.23 之前的寫法；`iter.Seq2[*DataTable, error]` 讓 `for dt, err := range` 直接用，也自然解決 Q-7 的洩漏契約（準則 8） | api.go:246 | 改 `iter.Seq2`，舊簽名保留一版 |
 | Q-10 | ~~Low~~ 已修正（docs-hygiene-and-remaining-partials） | doc comment 是「Read: read …」冒號風格，不是 Go 的「Read reads …」；`FileInfo`、`ColumnInfo`、`RowGroupInfo` 無 doc（準則 E） | api.go | 補齊 |
@@ -598,7 +598,7 @@
 | C-8 | [#269](https://github.com/HazelnutParadise/insyra/issues/269) | 已關閉（csvxl-respects-file-extension） |
 | C-11 | [#270](https://github.com/HazelnutParadise/insyra/issues/270) |  |
 | P-1、P-2、P-5、P-4 | [#271](https://github.com/HazelnutParadise/insyra/issues/271) | 已關閉（parallel-runs-and-worker-errors） |
-| Q-2、Q-6 | [#272](https://github.com/HazelnutParadise/insyra/issues/272) |  |
+| Q-2、Q-6 | [#272](https://github.com/HazelnutParadise/insyra/issues/272) | 已關閉（parquet-write-options） |
 | Q-9、Q-7 | [#273](https://github.com/HazelnutParadise/insyra/issues/273) | 已關閉（parquet-stream-is-an-iterator） |
 | Q-10 | [#274](https://github.com/HazelnutParadise/insyra/issues/274) |  |
 | Q-11 | [#371](https://github.com/HazelnutParadise/insyra/issues/371) | 已修正（parquet-foreign-column-types） |

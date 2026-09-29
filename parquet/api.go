@@ -9,9 +9,11 @@ import (
 	"os"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/parquet"
+	"github.com/apache/arrow/go/v17/parquet/compress"
 	"github.com/apache/arrow/go/v17/parquet/file"
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
 )
@@ -133,40 +135,156 @@ func Inspect(path string) (FileInfo, error) {
 	return info, nil
 }
 
-// Write writes dt to path as a Parquet file. It writes to a sibling temporary
-// file and renames it into place, so a failure part-way never leaves a truncated
-// file at path.
-func Write(dt insyra.IDataTable, path string) error {
-	// Write to a sibling temp file and rename so a failure part-way never
-	// leaves a truncated file at path (same shape as ApplyCCL).
-	tmpPath := path + ".tmp"
-	f, err := os.Create(tmpPath)
-	if err != nil {
-		return err
-	}
-	cleanup := func() { _ = os.Remove(tmpPath) }
+// errNilContext is what WriteContext and WriteToContext return for a nil
+// context, where the standard library would panic.
+var errNilContext = errors.New("parquet: nil context")
 
-	if err := WriteTo(dt, f); err != nil {
-		_ = f.Close()
-		cleanup()
+// Compression is the codec the writers compress every column with.
+type Compression int
+
+const (
+	// CompressionNone stores the data uncompressed. It is the zero value, and
+	// what Write wrote before it took options.
+	CompressionNone Compression = iota
+	// CompressionSnappy compresses with Snappy.
+	CompressionSnappy
+	// CompressionGzip compresses with gzip.
+	CompressionGzip
+	// CompressionBrotli compresses with Brotli.
+	CompressionBrotli
+	// CompressionZstd compresses with Zstandard.
+	CompressionZstd
+)
+
+// defaultRowGroupSize is the most rows in one row group when
+// WriteOptions.RowGroupSize is zero, and what Write always used before it
+// took options.
+const defaultRowGroupSize = 1024 * 1024
+
+// WriteOptions are the settings of Write and WriteTo. The zero value writes
+// what Write wrote before it took options: uncompressed, with up to 1,048,576
+// rows in one row group.
+type WriteOptions struct {
+	// Compression is the codec for every column. The zero value is
+	// CompressionNone.
+	Compression Compression
+	// RowGroupSize is the most rows one row group holds; zero means
+	// 1,048,576. The Arrow writer caps a row group at 67,108,864 rows
+	// (parquet.DefaultMaxRowGroupLen), so a larger value writes groups of that
+	// size. A negative value is an error.
+	RowGroupSize int
+}
+
+// resolveWriteOptions reads the settings of Write and WriteTo. More than one
+// pack is an error rather than a silent first-wins, so a call that passes two
+// says what it did. An empty pack means the zero value, which is what Write
+// used before it took settings.
+func resolveWriteOptions(opts []WriteOptions) (compress.Compression, int64, error) {
+	if len(opts) > 1 {
+		return compress.Codecs.Uncompressed, 0, fmt.Errorf("parquet: at most one WriteOptions may be given, got %d", len(opts))
+	}
+	var opt WriteOptions
+	if len(opts) == 1 {
+		opt = opts[0]
+	}
+
+	var codec compress.Compression
+	switch opt.Compression {
+	case CompressionNone:
+		codec = compress.Codecs.Uncompressed
+	case CompressionSnappy:
+		codec = compress.Codecs.Snappy
+	case CompressionGzip:
+		codec = compress.Codecs.Gzip
+	case CompressionBrotli:
+		codec = compress.Codecs.Brotli
+	case CompressionZstd:
+		codec = compress.Codecs.Zstd
+	default:
+		return compress.Codecs.Uncompressed, 0, fmt.Errorf("parquet: unknown Compression %d", opt.Compression)
+	}
+
+	rowGroupSize := int64(opt.RowGroupSize)
+	if opt.RowGroupSize < 0 {
+		return codec, 0, fmt.Errorf("parquet: RowGroupSize must not be negative, got %d", opt.RowGroupSize)
+	}
+	if rowGroupSize == 0 {
+		rowGroupSize = defaultRowGroupSize
+	}
+	// The Arrow writer caps a row group at DefaultMaxRowGroupLen, as its
+	// WriteTable does, so a caller asking for more gets the cap.
+	if rowGroupSize > parquet.DefaultMaxRowGroupLen {
+		rowGroupSize = parquet.DefaultMaxRowGroupLen
+	}
+	return codec, rowGroupSize, nil
+}
+
+// Write writes dt to path as a Parquet file. It writes to a temporary file of
+// its own in the same directory and renames it into place, so a failure
+// part-way never leaves a truncated file at path, and two writes to the same
+// path never mix their bytes. opts are the settings WriteOptions describes; at
+// most one may be given. Write is WriteContext with context.Background().
+func Write(dt insyra.IDataTable, path string, opts ...WriteOptions) error {
+	return WriteContext(context.Background(), dt, path, opts...)
+}
+
+// WriteContext is Write with a context. ctx is checked before the table is
+// converted, between columns while converting, before each row group and
+// before the finished file replaces path; once it is done, WriteContext
+// returns ctx's error and leaves the file at path as it was. A nil ctx is an
+// error.
+func WriteContext(ctx context.Context, dt insyra.IDataTable, path string, opts ...WriteOptions) error {
+	if ctx == nil {
+		return errNilContext
+	}
+	// The settings and ctx are checked before the temporary file is created,
+	// so refusing either leaves nothing on disk.
+	if _, _, err := resolveWriteOptions(opts); err != nil {
 		return err
 	}
-	if err := f.Close(); err != nil {
-		cleanup()
-		return fmt.Errorf("parquet: failed to close %s: %w", tmpPath, err)
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		cleanup()
-		return fmt.Errorf("parquet: failed to replace %s: %w", path, err)
-	}
-	return nil
+	// The temporary file has a name of its own in path's directory and is
+	// renamed into place only when the callback returns nil, so a failure or a
+	// cancelled ctx leaves the file at path as it was, and two writes to one
+	// path cannot mix their bytes.
+	return utils.WriteFileAtomically(path, func(w io.Writer) error {
+		if err := WriteToContext(ctx, dt, w, opts...); err != nil {
+			return err
+		}
+		// A context done after the last byte still keeps the finished file
+		// out of path.
+		return ctx.Err()
+	})
 }
 
 // WriteTo writes dt as Parquet to any destination — an HTTP response, an S3
 // upload, a buffer — the same way Write writes a file. It does not close w:
-// the caller owns it.
-func WriteTo(dt insyra.IDataTable, w io.Writer) error {
-	arrowTable, err := dataTableToArrowTable(dt)
+// the caller owns it. opts work as they do for Write. WriteTo is WriteToContext
+// with context.Background().
+func WriteTo(dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error {
+	return WriteToContext(context.Background(), dt, w, opts...)
+}
+
+// WriteToContext is WriteTo with a context, checked as WriteContext checks it.
+// Once ctx is done it returns ctx's error without writing the Parquet footer,
+// so what already reached w is not a readable file. A nil ctx is an error.
+func WriteToContext(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error {
+	if ctx == nil {
+		return errNilContext
+	}
+	codec, rowGroupSize, err := resolveWriteOptions(opts)
+	if err != nil {
+		return err
+	}
+	// Checked before the conversion, so a context that is already done writes
+	// nothing at all rather than an empty file.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	arrowTable, err := dataTableToArrowTable(ctx, dt)
 	if err != nil {
 		return err
 	}
@@ -176,13 +294,45 @@ func WriteTo(dt insyra.IDataTable, w io.Writer) error {
 
 	// The Parquet writer closes its sink when it is closed, if the sink is an
 	// io.Closer. Hiding Close keeps the caller's writer open.
-	writer, err := pqarrow.NewFileWriter(arrowTable.Schema(), writerOnly{w}, parquet.NewWriterProperties(parquet.WithCreatedBy(createdBy)), pqarrow.DefaultWriterProps())
+	writer, err := pqarrow.NewFileWriter(arrowTable.Schema(), writerOnly{w}, parquet.NewWriterProperties(parquet.WithCreatedBy(createdBy), parquet.WithCompression(codec)), pqarrow.DefaultWriterProps())
 	if err != nil {
 		return err
 	}
-	if err := writer.WriteTable(arrowTable, 1024*1024); err != nil {
-		_ = writer.Close()
-		return err
+
+	// The row groups are written here rather than through WriteTable so ctx
+	// can be checked between them. The loop is the one WriteTable runs, so an
+	// unset WriteOptions writes the same bytes as before.
+	writeRowGroup := func(offset, size int64) error {
+		writer.NewRowGroup()
+		for i := 0; i < int(arrowTable.NumCols()); i++ {
+			if err := writer.WriteColumnChunked(arrowTable.Column(i).Data(), offset, size); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	rows := arrowTable.NumRows()
+	if rows == 0 {
+		// Arrow's WriteTable writes one empty row group for an empty table.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := writeRowGroup(0, 0); err != nil {
+			_ = writer.Close()
+			return err
+		}
+	}
+	for offset := int64(0); offset < rows; offset += rowGroupSize {
+		// Returning without closing the writer is deliberate: Close writes the
+		// footer, and a file with a footer is a readable one, so a caller that
+		// kept what reached w would read a short table as if it were whole.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := writeRowGroup(offset, min(rowGroupSize, rows-offset)); err != nil {
+			_ = writer.Close()
+			return err
+		}
 	}
 	if err := writer.Close(); err != nil {
 		return fmt.Errorf("parquet: failed to close writer: %w", err)
