@@ -272,8 +272,8 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-09-30] — remove the deprecated `nn` names one release after they were deprecated
 - **Where**: `nn/layers.go`, `nn/layers_catalog.go`, `nn/layers_attention.go` (the twelve `New…` twins: `NewDense`, `NewReLU`, `NewDropout`, `NewFunc`, `NewMultiHeadAttention`, `NewConv2D`, `NewMaxPool2D`, `NewAvgPool2D`, `NewGlobalAvgPool`, `NewBatchNorm2D`, `NewLayerNorm`, `NewEmbedding`), `nn/fit.go` (`SoftmaxCrossEntropy`, `MSELoss`, `BCEWithLogitsLoss`), `nn/protocol.go` (`Classifier`, `Regressor`), `nn/kernels.go` (`MaxPoolOptions`, `AveragePoolOptions`), `nn/tensor.go` (`DataType`, `Float32`, `Float16`, `Float64`, `NewFloat32Tensor`, `NewTensorWithDType`, `Tensor.Data`)
-- **What**: `nn-one-name-per-thing` deprecated them under the one-name rule of #211 (NN-1, #265), keeping each one's meaning for one release.
-- **Suggestion**: delete them in the same release as the other Deprecated removals, with `nn/deprecated_names_test.go` (keep its check that the remaining names are not deprecated), `TestTensorRejectsUnsupportedDTypeByName` in `nn/tensor_test.go`, their notes in `Docs/nn.md`, and a BREAKING changelog entry.
+- **What**: `nn-one-name-per-thing` deprecated them under the one-name rule of #211 (NN-1, #265), keeping each one's meaning for one release; `nn-layernorm-typed-constructors` made `NewLayerNorm(interface{})` build `LayerNorm` or `LayerNormShape`.
+- **Suggestion**: delete them in the same release as the other Deprecated removals, with `nn/deprecated_names_test.go` (keep its check that the remaining names are not deprecated), `TestDeprecatedNewLayerNormKeepsItsMeaning` in `nn/layernorm_typed_test.go`, `TestTensorRejectsUnsupportedDTypeByName` in `nn/tensor_test.go`, their notes in `Docs/nn.md`, and a BREAKING changelog entry.
 - **Status**: pending
 
 ### [2026-09-30] — three more second names in `nn` and `ml`

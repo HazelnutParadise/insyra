@@ -550,7 +550,7 @@ The catalog layers are:
 | `MaxPool2D` / `AvgPool2D` | NCHW pooling; omitted stride defaults to the kernel size, matching torch |
 | `GlobalAvgPool` | Reduces spatial dimensions to `[N,C,1,1]` |
 | `BatchNorm2D(features)` | Batch statistics and running-stat updates in `Forward`; running statistics in `Predict` |
-| `LayerNorm(dims)` | Learned suffix normalization over an integer or shape slice |
+| `LayerNorm(dim)`, `LayerNormShape(dims)` | Learned normalization over the last dimension, of size `dim`, or over the trailing dimensions given by `dims` (torch's `normalized_shape`) |
 | `Embedding(vocab, dim)` | Int64 `[N]` or `[N,S]` lookup with scatter-add gradients |
 | `MultiHeadAttention(embed, heads)` | Mask-free batch-first self-attention over `[batch, sequence, embed]` |
 | `Residual(layers...)` | Adds the input to a composable sub-stack; inference honors nested `EvalLayer` paths |

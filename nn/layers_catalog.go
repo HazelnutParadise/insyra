@@ -343,26 +343,35 @@ type layerNormLayer struct {
 	weight, bias *Parameter
 }
 
-// LayerNorm normalizes the last dimension and applies learned affine values.
-// dims may be an int or a []int normalized shape, matching torch's accepted
-// forms.
-func LayerNorm(dims interface{}) Layer {
-	var shape []int
-	switch value := dims.(type) {
-	case int:
-		shape = []int{value}
-	case []int:
-		shape = append([]int(nil), value...)
-	default:
-		shape = []int{0}
-	}
-	return &layerNormLayer{dims: shape, epsilon: 1e-5}
+// LayerNorm normalizes the last dimension, of size dim, and applies learned
+// affine values, as torch.nn.LayerNorm(dim) does. LayerNormShape normalizes
+// several trailing dimensions.
+func LayerNorm(dim int) Layer {
+	return &layerNormLayer{dims: []int{dim}, epsilon: 1e-5}
 }
 
-// NewLayerNorm builds the same layer as LayerNorm.
+// LayerNormShape normalizes the trailing len(dims) dimensions and applies
+// learned affine values of that shape, as torch.nn.LayerNorm does when given
+// a normalized_shape list. dims is copied.
+func LayerNormShape(dims []int) Layer {
+	return &layerNormLayer{dims: append([]int(nil), dims...), epsilon: 1e-5}
+}
+
+// NewLayerNorm builds LayerNorm for an int and LayerNormShape for a []int. Any
+// other value builds a layer whose Build reports a dimension of 0.
 //
-// Deprecated: use LayerNorm. Removed in the release after the one that deprecated it.
-func NewLayerNorm(dims interface{}) Layer { return LayerNorm(dims) }
+// Deprecated: use LayerNorm for one size or LayerNormShape for a shape.
+// Removed in the release after the one that deprecated it.
+func NewLayerNorm(dims interface{}) Layer {
+	switch value := dims.(type) {
+	case int:
+		return LayerNorm(value)
+	case []int:
+		return LayerNormShape(value)
+	default:
+		return &layerNormLayer{dims: []int{0}, epsilon: 1e-5}
+	}
+}
 
 func (l *layerNormLayer) Build(t *Tape) error {
 	if len(l.dims) == 0 {
