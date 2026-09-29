@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-30] — `TestConcurrentWritesToOnePathDoNotMix` fails now and then on Windows
+- **Where**: `parquet/write_context_test.go` `TestConcurrentWritesToOnePathDoNotMix`, and the `os.Rename(tmpPath, path)` in `internal/utils/atomic_file.go` that every atomic writer shares
+- **What**: two goroutines write the same path 20 times each, and the test wants every `Write` to return nil. On the Windows leg of CI run 36614147428 (commit d4d9ba98, which changed only OpenSpec files) one `Write` returned `rename …\.shared.parquet.3079983382.tmp …\shared.parquet: Access is denied.` and the test failed; the same code passed on the commits before and after it. On Windows a rename that replaces a file can be refused while another rename or an open handle holds the destination, so the promise holds on Unix but not there. It came in with `parquet-write-options` (d7a79a1e) and failed once in the 8 `Test` runs on `0.4` since. Found while pushing the `py` changes; not reproduced, because no Windows host was available.
+- **Suggestion**: decide what a write racing another write to the same path promises on Windows. Either retry the rename a few times on `ERROR_ACCESS_DENIED` and `ERROR_SHARING_VIOLATION` in `internal/utils`, which would cover every writer, or let the test accept a rename error on Windows while still requiring the file to be one writer's whole table.
+- **Status**: pending
+
 ### [2026-09-30] — `py` placeholder substitution lets one argument inject code through another
 - **Where**: `py/py.go` `replacePlaceholders`, used by `RunCodef`, `RunFilef`, their `Context` forms and `Run`
 - **What**: placeholders are replaced one after another with `strings.ReplaceAll` over the whole text, so each pass also rewrites the values earlier passes inserted, and `$v1` also matches the start of `$v10`. Measured by the adversarial review of `py-typed-run` on 2026-09-30: `replacePlaceholders("title = $v1\nlabel = $v2", "$v2", "+__import__('os').system('id')+")` produced `title = ""+__import__('os').system('id')+""`, valid Python that runs a command, and `a = $v10` with ten arguments became `a = 10`. A program that passes two pieces of user text as arguments can be made to run code. It predates that change; PY-2 in `api-review.md` called the substitution injection-safe, which does not hold.
