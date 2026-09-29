@@ -573,7 +573,7 @@ fmt.Printf("z=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p map[string]float64, rescaleP bool) (*ChiSquareTestResult, error)
 ```
 
-**Description:** Test whether the categories in `input` occur in the expected proportions. `input` holds the raw observations, one value per observation; each value's text, with surrounding spaces removed, is its category. The text is what `fmt.Sprint` gives, so `1.0` has the label `1` and `nil` the label `<nil>`.
+**Description:** Test whether the categories in `input` occur in the expected proportions. `input` holds the raw observations, one value per observation; each value's text, with surrounding spaces removed, is its category. The text follows the rule insyra uses for all text output, the one `ToStringSlice` follows: `1500000.0` has the label `1500000`, `1.0` the label `1`, and `nil` the label `<nil>`. The categories of `ChiSquareIndependenceTest` are named the same way.
 
 **Parameters:**
 

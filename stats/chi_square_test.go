@@ -714,3 +714,54 @@ func TestChiSquareGoodnessOfFitNumericLabels(t *testing.T) {
 		t.Errorf("wrong error: got %q, want %q", err.Error(), `p names category "1.0", which does not occur in input`)
 	}
 }
+
+// TestChiSquareLabelsFollowNumberText tests that category labels follow the
+// library's number-text rule (ValueText), not fmt.Sprintf("%v").
+func TestChiSquareLabelsFollowNumberText(t *testing.T) {
+	// Goodness-of-fit: large float and small float should not use exponent notation
+	dl := insyra.NewDataList(1500000.0, 2.0, 1500000.0, 0.00001)
+	p := map[string]float64{"1500000": 0.5, "2": 0.25, "0.00001": 0.25}
+	r, err := stats.ChiSquareGoodnessOfFit(dl, p, true)
+	if err != nil {
+		t.Fatalf("expected success with ValueText labels, got error: %v", err)
+	}
+	// Row names sorted as text
+	wantRows := []string{"0.00001", "1500000", "2"}
+	if !sliceEqual(r.Observed.RowNames(), wantRows) {
+		t.Errorf("GOF row names: got %v, want %v", r.Observed.RowNames(), wantRows)
+	}
+
+	// p with old fmt.Sprintf labels should fail
+	pBad := map[string]float64{"1.5e+06": 0.5, "2": 0.25, "0.00001": 0.25}
+	r, err = stats.ChiSquareGoodnessOfFit(dl, pBad, true)
+	if r != nil {
+		t.Errorf("expected nil result for fmt.Sprintf labels, got %v", r)
+	}
+	if err == nil || err.Error() != `p names category "1.5e+06", which does not occur in input` {
+		t.Errorf("wrong error: got %q, want %q", err, `p names category "1.5e+06", which does not occur in input`)
+	}
+
+	// Independence test: row labels should use ValueText
+	rows := insyra.NewDataList(1500000.0, 1500000.0, 2.0, 2.0)
+	cols := insyra.NewDataList("x", "y", "x", "y")
+	r, err = stats.ChiSquareIndependenceTest(rows, cols)
+	if err != nil {
+		t.Fatalf("independence test error: %v", err)
+	}
+	wantIndepRows := []string{"1500000", "2"}
+	if !sliceEqual(r.Observed.RowNames(), wantIndepRows) {
+		t.Errorf("independence row names: got %v, want %v", r.Observed.RowNames(), wantIndepRows)
+	}
+
+	// Unchanged labels: strings, ints, nil should work as before
+	dl2 := insyra.NewDataList("a", int64(3), 1.0, nil)
+	// No p provided -> uniform, all categories included
+	r, err = stats.ChiSquareGoodnessOfFit(dl2, nil, false)
+	if err != nil {
+		t.Fatalf("unchanged labels error: %v", err)
+	}
+	wantUnchanged := []string{"1", "3", "<nil>", "a"} // sorted as text
+	if !sliceEqual(r.Observed.RowNames(), wantUnchanged) {
+		t.Errorf("unchanged labels row names: got %v, want %v", r.Observed.RowNames(), wantUnchanged)
+	}
+}

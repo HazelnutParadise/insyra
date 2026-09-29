@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // ChiSquareTestResult holds the result of a chi-square test.
@@ -81,7 +81,9 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 // input holds the raw observations (e.g. ["A", "B", "A"]); each value's text,
 // with surrounding spaces removed, is its category, and the categories name
 // the rows of the result's tables.
-// The text is what fmt.Sprint gives, so 1.0 has the label "1" and nil the label "<nil>".
+// The text follows the rule insyra uses for all text output, the one
+// DataList.ToStringSlice follows: 1500000.0 has the label "1500000", 1.0
+// the label "1", and nil the label "<nil>".
 //
 // p holds the expected probability of each category, keyed by that label. Nil
 // or an empty map means every category is equally likely. Every category in
@@ -100,7 +102,7 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p map[string]float64, rescal
 	}
 	categoryFreq := make(map[string]float64)
 	for _, v := range data {
-		s := strings.TrimSpace(conv.ToString(v))
+		s := strings.TrimSpace(utils.ValueText(v))
 		categoryFreq[s]++
 	}
 
@@ -187,8 +189,14 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p map[string]float64, rescal
 
 // ChiSquareIndependenceTest performs a chi-square test of independence.
 func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTestResult, error) {
-	rowVals := rowData.Data()
-	colVals := colData.Data()
+	rowDL := asDataList(rowData)
+	colDL := asDataList(colData)
+
+	var rowVals, colVals []any
+	insyra.AtomicDoAll(func() {
+		rowVals = rowDL.Data()
+		colVals = colDL.Data()
+	}, rowDL, colDL)
 
 	if len(rowVals) == 0 || len(colVals) == 0 {
 		return nil, errors.New("input DataLists cannot be empty")
@@ -217,7 +225,7 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTes
 	rowIdx := make([]int, n)
 	colIdx := make([]int, n)
 	for i := range n {
-		rs := strings.TrimSpace(conv.ToString(rowVals[i]))
+		rs := strings.TrimSpace(utils.ValueText(rowVals[i]))
 		if v, ok := rowDisc[rs]; ok {
 			rowIdx[i] = v
 		} else {
@@ -226,7 +234,7 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTes
 			rowList = append(rowList, rs)
 			rowIdx[i] = v
 		}
-		cs := strings.TrimSpace(conv.ToString(colVals[i]))
+		cs := strings.TrimSpace(utils.ValueText(colVals[i]))
 		if v, ok := colDisc[cs]; ok {
 			colIdx[i] = v
 		} else {
