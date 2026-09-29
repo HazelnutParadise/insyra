@@ -220,7 +220,39 @@ validation loss when configured, elapsed time, and rows per second. Set
 `Quiet: true` to suppress that line, or use `Progress: func(nn.FitEpoch) {}`
 for custom reporting; `Quiet` does not suppress the callback. Fit v1 does not
 include schedules, early stopping, checkpointing, datasets, or `DataTable`
-integration.
+integration; a caller can still stop a run from `Progress`, as below.
+
+#### Stopping a run
+
+`FitContext(ctx, x, y, cfg)` is `Fit` under a `context.Context`, and `Fit`
+calls it with `context.Background()`. The context is checked before every
+batch, and after each epoch's last batch, before its validation. When it is
+done, `FitContext` returns `ctx.Err()`, so `errors.Is(err, context.Canceled)`
+or `errors.Is(err, context.DeadlineExceeded)` tells a stop from a failure,
+together with a `FitResult` listing the epochs that finished. The model keeps
+every optimizer step taken before the stop, including the steps of an epoch
+that did not finish. A context that is already done changes nothing, and a nil
+context is an error.
+
+Cancelling from `Progress` stops before the next epoch's first batch, so the
+model is exactly what a run of that many epochs would have produced:
+
+```go
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+best := math.Inf(1)
+cfg.Progress = func(epoch nn.FitEpoch) {
+	if epoch.HasValLoss && epoch.ValLoss >= best {
+		cancel() // validation stopped improving
+	}
+	best = math.Min(best, epoch.ValLoss)
+}
+result, err := model.FitContext(ctx, trainX, trainY, cfg)
+if err != nil && !errors.Is(err, context.Canceled) {
+	log.Fatal(err)
+}
+fmt.Println(len(result.Epochs), "epochs ran")
+```
 
 Validation calls `Predict`, so `TrainingOnly` layers such as Dropout are
 structurally excluded from validation just as they are from inference.

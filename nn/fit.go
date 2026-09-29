@@ -1,6 +1,7 @@
 package nn
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -206,13 +207,28 @@ type FitResult struct {
 }
 
 // Fit trains the Sequential using the existing tape forward, loss, backward,
-// and optimizer methods. It is intentionally a thin, deterministic loop.
+// and optimizer methods. It is intentionally a thin, deterministic loop, and
+// it is FitContext with context.Background().
 func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error) {
+	return s.FitContext(context.Background(), x, y, cfg)
+}
+
+// FitContext is Fit under ctx. The context is checked before every batch and
+// once more after each epoch's last batch, before its validation. When it is
+// done, FitContext returns ctx.Err() together with a FitResult listing only
+// the epochs that finished, their validation and Progress call included. The
+// model keeps every optimizer step taken before the check, including the
+// steps of an epoch that did not finish. A context that is already done when
+// FitContext is called changes nothing. A nil context is an error.
+func (s *Sequential) FitContext(ctx context.Context, x, y *Tensor, cfg FitConfig) (*FitResult, error) {
 	if s == nil {
 		return nil, fmt.Errorf("fit sequential is nil")
 	}
 	if s.tape == nil {
 		return nil, fmt.Errorf("fit sequential tape is nil")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("fit context is nil")
 	}
 	if err := validateFitConfig(x, y, cfg); err != nil {
 		return nil, err
@@ -224,6 +240,9 @@ func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error) {
 		if err := validateFitRows(cfg.ValX, cfg.ValY, "validation"); err != nil {
 			return nil, err
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return &FitResult{}, err
 	}
 
 	// Keep the model's tape and parameter registry so optimizer state survives
@@ -242,6 +261,10 @@ func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error) {
 		var lossTotal float64
 		batchCount := 0
 		for start := 0; start < rows; start += cfg.BatchSize {
+			if err := ctx.Err(); err != nil {
+				result.Elapsed = time.Since(runStarted)
+				return result, err
+			}
 			end := start + cfg.BatchSize
 			if end > rows {
 				end = rows
@@ -275,6 +298,11 @@ func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error) {
 			}
 			lossTotal += float64(loss.data[0])
 			batchCount++
+		}
+
+		if err := ctx.Err(); err != nil {
+			result.Elapsed = time.Since(runStarted)
+			return result, err
 		}
 
 		progress := FitEpoch{
