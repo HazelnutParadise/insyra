@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-30] — concurrent Python runs on Windows may find no pipe instance to connect to
+- **Where**: `py/pyresult.go` `acceptIPC`, and `insyra._connect_ipc` in `py/builtin.go`
+- **What**: go-winio creates a server pipe instance only when `Accept` is called (`makeConnectedServerPipe` in `listenerRoutine`, go-winio v0.6.2 `pipe.go`), so between one connection being accepted and the next `Accept`, no instance may be waiting. The Python side opens the pipe with `open()` once and does not retry, so a run whose `insyra.Return` lands in that window could fail with `ERROR_PIPE_BUSY`. Found by the adversarial review of `py-ipc-server-errors` on 2026-09-30 by reading the code; not reproduced, because no Windows host was available. It predates that change.
+- **Suggestion**: run many concurrent `RunCode("insyra.Return(1)")` calls on Windows first. If they fail, retry the open in `_connect_ipc` a few times with a short sleep.
+- **Status**: pending
+
 ### [2026-09-30] — `Float32Data` on an int64 tensor says the dtype "is not implemented"
 - **Where**: `nn/tensor.go` `Float32Data`, `Int64Data`, `StringData`, `BoolData`, through `unsupportedDTypeError`
 - **What**: each accessor reports a tensor of another dtype with the error meant for a dtype `nn` cannot hold: measured on 2026-09-30, `Float32Data` on an int64 tensor returns `dtype int64 is not implemented`, although int64 tensors are fully supported. `nn-one-name-per-thing` made `Float32Data` the one float32 accessor, so more callers now meet this message. Found by the review of that change.
