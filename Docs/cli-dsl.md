@@ -747,7 +747,7 @@ High-level command map:
 - **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `fillnan` (deprecated), `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `parsedates`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
-- **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
+- **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `friedman`, `ftest`, `chisq`, `plot`, `fetch`
 - **Quant**: `quant` (`sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`, `portfolio`, `frontier`)
 - **Acceleration**: `accel` (`devices`, `cache`, `plan`)
 
@@ -824,6 +824,7 @@ Source policy:
 | `fillnan` | `fillnan <var> mean [as <var>]` | Fill NaN with mean (deprecated alias) |
 | `filter` | `filter <var> <expr> [as <var>]` | Filter DataTable by CCL expression |
 | `find` | `find <var> <value>` | Find rows containing value |
+| `friedman` | `friedman <table> <value> <condition> <subject> \| friedman <subject1> <subject2> [subjectN]` | Friedman rank test for repeated measures |
 | `ftest` | `ftest var\|levene\|bartlett ...` | F-test commands |
 | `get` | `get <var> <row> <col>` | Get single element from DataTable |
 | `groupby` | `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` | Group a DataTable and aggregate columns (split-apply-combine) |
@@ -915,6 +916,27 @@ save region_summary region_summary.csv
 Without `as`, the result is stored in `$result`. `all true` includes non-numeric and mixed columns. `by` is available for DataTable variables only.
 
 `describe`'s `percentiles` are fractions from 0 to 1 (`0.1,0.5,0.9`), and a value outside that range is refused. `percentile <var> <p>` takes a percentage from 0 to 100 instead: `percentile x 50` is the median, and `percentile x 0.5` is the 0.5th percentile. `quartile`, `percentile` and `describe` use R's type-7 quantile, the default in R, NumPy and pandas, so their results agree (see [DataList](DataList.md)).
+
+## ANOVA and Friedman on a Table
+
+Data loaded from a file usually has one row per observation: the measured value in one column and the group, condition or subject in others. `anova twoway`, `anova repeated` and `friedman` run on such a table directly:
+
+```bash
+anova twoway <table> <value> <factorA> <factorB>
+anova repeated <table> <value> <condition> <subject>
+friedman <table> <value> <condition> <subject>
+```
+
+For example, with a CSV holding `score`, `drug` and `dose` columns:
+
+```bash
+insyra load trial.csv as scores
+insyra anova twoway scores score drug dose
+```
+
+A command takes the table form when its first argument after the mode is a DataTable variable, and the list form otherwise, so `anova twoway 2 3 c11 c12 …` and `anova repeated s1 s2 s3` work as before. Each column is picked by the same token rule as every other command: a number, an Excel-style letter or a name, with `number:`, `index:` and `name:` to force one reading. The distinct values of a factor, condition or subject column are its levels. A blank or `NaN` level, a value that is not a number, a combination of levels with no rows, and a subject with no row, or two rows, for a condition are refused with the row or the levels named. The output is the same line the list form prints (`FA=… pA=… FB=… pB=…`, `F=… p=…`); `friedman` prints `Q=… df=… p=…`.
+
+`friedman <subject1> <subject2> [subjectN]` is the list form: one DataList per subject, holding that subject's values in the same condition order, as `anova repeated` takes them.
 
 ## Chi-square Command
 

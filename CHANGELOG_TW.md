@@ -104,6 +104,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `fillna … ffill|bfill … missing nan|nil` 不再把另一種缺值算進 `limit`。以前這個命令會先把兩種缺值一起補、再把另一種放回去，所以另一種缺值的格子會佔用 `limit` 的名額：`fillna x ffill limit 1 missing nan` 對 `[1, nil, NaN]` 會讓那個 `NaN` 補不到。現在會跳過這些格子，結果是 `[1, nil, 1]`。沒有 `limit` 時，以及 `mean`、`median`、`mode`、`interpolate` 的結果都不變。
 - `plot` 無法建立圖表時會說明原因，例如沒有任何欄的表格會回報 `plot: CreateLineChart: no data to draw`，不再只說 `failed to create chart`。
 - **BREAKING**：`chisq gof` 的每個比例都要寫出所屬類別，例如 `chisq gof colors red=0.5 green=0.3 blue=0.2`。以前只寫數字，會照類別名稱排序後的順序對位，和 `ChiSquareGoodnessOfFit` 一樣容易對錯。現在只寫數字會回傳錯誤，錯誤訊息會附上新的寫法。
+- `anova twoway`、`anova repeated` 與新的 `friedman` 指令可以直接對每列一個觀察值的表格執行，也就是讀進來的 CSV 通常的樣子：`anova twoway scores score drug dose`、`anova repeated trial value visit patient`、`friedman trial value visit patient`。第一個參數是 DataTable 變數時就走這個形式；參數是 DataList 變數時，`anova twoway` 與 `anova repeated` 的行為和以前完全一樣，`friedman s1 s2 s3` 則是每位受試者一個 list。欄位照一般的 token 規則指定。`friedman` 會印出 `Q`、自由度與 p 值，CLI 以前沒有 Friedman 檢定。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。

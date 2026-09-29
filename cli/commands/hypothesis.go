@@ -2,11 +2,16 @@ package commands
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats"
 )
+
+// friedmanUsage is the friedman command's usage line, shared by its
+// registration and its error for no arguments.
+const friedmanUsage = "friedman <table> <value> <condition> <subject> | friedman <subject1> <subject2> [subjectN]"
 
 func init() {
 	_ = Register(&CommandHandler{
@@ -49,12 +54,16 @@ func init() {
 		Forms: []string{
 			"anova oneway <group1> <group2> [group3...]                  one-way ANOVA across groups",
 			"anova twoway <aLevels> <bLevels> <cell1> <cell2> ...        two-way ANOVA; cell count must equal aLevels*bLevels",
+			"anova twoway <table> <value> <factorA> <factorB>            two-way ANOVA on a table with one row per observation",
 			"anova repeated <subject1> <subject2> [subjectN]             repeated-measures ANOVA",
+			"anova repeated <table> <value> <condition> <subject>        repeated-measures ANOVA on a table with one row per measurement",
 		},
 		Examples: []string{
 			"insyra anova oneway g1 g2 g3",
 			"insyra anova twoway 2 3 c11 c12 c13 c21 c22 c23",
+			"insyra anova twoway scores score drug dose",
 			"insyra anova repeated s1 s2 s3",
+			"insyra anova repeated trial value visit patient",
 		},
 		Run: runAnovaCommand,
 	})
@@ -90,6 +99,21 @@ func init() {
 			"insyra chisq indep gender preference",
 		},
 		Run: runChiSqCommand,
+	})
+	_ = Register(&CommandHandler{
+		Name:        "friedman",
+		Args:        OpenArgs(),
+		Usage:       friedmanUsage,
+		Description: "Friedman rank test for repeated measures",
+		Forms: []string{
+			"friedman <table> <value> <condition> <subject>    one row per measurement",
+			"friedman <subject1> <subject2> [subjectN]         one DataList per subject, its values in condition order",
+		},
+		Examples: []string{
+			"insyra friedman trial value visit patient",
+			"insyra friedman s1 s2 s3 s4",
+		},
+		Run: runFriedmanCommand,
 	})
 }
 
@@ -259,6 +283,23 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintf(ctx.Output, "F=%v p=%v\n", result.Factor.F, result.Factor.P)
 		return nil
 	case "twoway":
+		if len(args) >= 2 {
+			if table := tableVar(ctx, args[1]); table != nil {
+				if len(args) != 5 {
+					return fmt.Errorf("usage: anova twoway <table> <value> <factorA> <factorB>")
+				}
+				selectors, err := colSelectors("anova", table, args[2:5])
+				if err != nil {
+					return err
+				}
+				result, err := stats.TwoWayANOVAFromTable(table, selectors[0], selectors[1], selectors[2])
+				if err != nil {
+					return fmt.Errorf("anova failed: %w", err)
+				}
+				_, _ = fmt.Fprintf(ctx.Output, "FA=%v pA=%v FB=%v pB=%v\n", result.FactorA.F, result.FactorA.P, result.FactorB.F, result.FactorB.P)
+				return nil
+			}
+		}
 		if len(args) < 4 {
 			return fmt.Errorf("usage: anova twoway <aLevels> <bLevels> <cell1> <cell2> [cellN]")
 		}
@@ -284,6 +325,23 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintf(ctx.Output, "FA=%v pA=%v FB=%v pB=%v\n", result.FactorA.F, result.FactorA.P, result.FactorB.F, result.FactorB.P)
 		return nil
 	case "repeated":
+		if len(args) >= 2 {
+			if table := tableVar(ctx, args[1]); table != nil {
+				if len(args) != 5 {
+					return fmt.Errorf("usage: anova repeated <table> <value> <condition> <subject>")
+				}
+				selectors, err := colSelectors("anova", table, args[2:5])
+				if err != nil {
+					return err
+				}
+				result, err := stats.RepeatedMeasuresANOVAFromTable(table, selectors[0], selectors[1], selectors[2])
+				if err != nil {
+					return fmt.Errorf("anova failed: %w", err)
+				}
+				_, _ = fmt.Fprintf(ctx.Output, "F=%v p=%v\n", result.Factor.F, result.Factor.P)
+				return nil
+			}
+		}
 		if len(args) < 3 {
 			return fmt.Errorf("usage: anova repeated <subject1> <subject2> [subjectN]")
 		}
@@ -448,6 +506,14 @@ func parseEqualVariance(raw string) (bool, error) {
 	}
 }
 
+// tableVar returns the DataTable a variable holds, or nil when the variable
+// does not exist or holds something else, so a command can pick its table
+// form by the type of its first argument.
+func tableVar(ctx *ExecContext, name string) *insyra.DataTable {
+	table, _ := ctx.Vars[name].(*insyra.DataTable)
+	return table
+}
+
 func getDataListGroups(ctx *ExecContext, names []string) ([]insyra.IDataList, error) {
 	groups := make([]insyra.IDataList, 0, len(names))
 	for _, name := range names {
@@ -458,4 +524,47 @@ func getDataListGroups(ctx *ExecContext, names []string) ([]insyra.IDataList, er
 		groups = append(groups, dl)
 	}
 	return groups, nil
+}
+
+func runFriedmanCommand(ctx *ExecContext, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: %s", friedmanUsage)
+	}
+	if table := tableVar(ctx, args[0]); table != nil {
+		if len(args) != 4 {
+			return fmt.Errorf("usage: friedman <table> <value> <condition> <subject>")
+		}
+		selectors, err := colSelectors("friedman", table, args[1:4])
+		if err != nil {
+			return err
+		}
+		result, err := stats.FriedmanTestFromTable(table, selectors[0], selectors[1], selectors[2])
+		if err != nil {
+			return fmt.Errorf("friedman failed: %w", err)
+		}
+		printFriedman(ctx, result)
+		return nil
+	}
+	if len(args) < 2 {
+		return fmt.Errorf("usage: friedman <subject1> <subject2> [subjectN]")
+	}
+	subjects, err := getDataListGroups(ctx, args)
+	if err != nil {
+		return err
+	}
+	result, err := stats.FriedmanTest(subjects)
+	if err != nil {
+		return fmt.Errorf("friedman failed: %w", err)
+	}
+	printFriedman(ctx, result)
+	return nil
+}
+
+// printFriedman writes a Friedman result the way the command prints it.
+func printFriedman(ctx *ExecContext, result *stats.FriedmanTestResult) {
+	df := math.NaN()
+	if result.DF != nil {
+		df = *result.DF
+	}
+	_, _ = fmt.Fprintf(ctx.Output, "Q=%v df=%v p=%v\n", result.Statistic, df, result.PValue)
 }
