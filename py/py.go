@@ -18,33 +18,23 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
-// reinstall the Python environment
+// ReinstallPyEnv deletes the environment directory, .insyra_env/py25c_<os>_<arch>
+// under the working directory, with everything in it, packages installed with
+// PipInstall included, and builds it again from the pinned versions. The
+// pinned uv, kept beside that directory, is not downloaded again.
 func ReinstallPyEnv() error {
+	pyInitMu.Lock()
+	defer pyInitMu.Unlock()
 	insyra.LogInfo("py", "reinstall", "Reinstalling Python environment...")
-
-	// 清空安裝目錄
+	// Not ready from here on: a delete that fails part-way must leave the
+	// next call to build the environment again, not to run what is left.
+	isPyEnvInit = false
 	if err := os.RemoveAll(absInstallDir); err != nil {
 		return fmt.Errorf("failed to remove install directory: %w", err)
 	}
-
-	// 重新創建目錄
-	if err := os.MkdirAll(absInstallDir, 0o755); err != nil {
-		return fmt.Errorf("failed to recreate install directory: %w", err)
+	if err := prepareEnvironmentLocked(context.Background()); err != nil {
+		return err
 	}
-
-	// 重置初始化標誌，強制重新初始化
-	isPyEnvInit = false
-
-	// 重新設置環境
-	if err := setupUvEnvironment(); err != nil {
-		return fmt.Errorf("failed to setup uv environment: %w", err)
-	}
-
-	// 重新安裝依賴
-	if err := installDependenciesUv(absInstallDir); err != nil {
-		return fmt.Errorf("failed to install dependencies: %w", err)
-	}
-
 	insyra.LogInfo("py", "reinstall", "Python environment reinstalled successfully!")
 	return nil
 }
@@ -92,7 +82,7 @@ func runPythonCode(out any, code string) error {
 		return err
 	}
 	defer releaseIPCServer()
-	if err := pyEnvInit(); err != nil {
+	if err := pyEnvInit(context.Background()); err != nil {
 		return err
 	}
 
@@ -221,7 +211,7 @@ func runPythonCodeContext(ctx context.Context, out any, code string) error {
 		return err
 	}
 	defer releaseIPCServer()
-	if err := pyEnvInit(); err != nil {
+	if err := pyEnvInit(ctx); err != nil {
 		return err
 	}
 
@@ -314,11 +304,11 @@ func PipInstall(dep string) error {
 	if err := checkDependencyName(dep); err != nil {
 		return fmt.Errorf("PipInstall: %w", err)
 	}
-	if err := pyEnvInit(); err != nil {
+	if err := pyEnvInit(context.Background()); err != nil {
 		return err
 	}
 	// The "--" stops uv reading anything after it as an option.
-	pythonCmd := exec.Command("uv", "pip", "install", "--python", pyPath, "--", dep)
+	pythonCmd := exec.Command(uvPath, "pip", "install", "--python", pyPath, "--", dep)
 	pythonCmd.Dir = absInstallDir
 	var stdout, stderr bytes.Buffer
 	pythonCmd.Stdout = &stdout
@@ -336,10 +326,10 @@ func PipUninstall(dep string) error {
 	if err := checkDependencyName(dep); err != nil {
 		return fmt.Errorf("PipUninstall: %w", err)
 	}
-	if err := pyEnvInit(); err != nil {
+	if err := pyEnvInit(context.Background()); err != nil {
 		return err
 	}
-	pythonCmd := exec.Command("uv", "pip", "uninstall", "--python", pyPath, "--", dep)
+	pythonCmd := exec.Command(uvPath, "pip", "uninstall", "--python", pyPath, "--", dep)
 	pythonCmd.Dir = absInstallDir
 	var stdout, stderr bytes.Buffer
 	pythonCmd.Stdout = &stdout
@@ -355,11 +345,11 @@ func PipUninstall(dep string) error {
 // PipList returns a map of installed package names to their versions for the Python environment managed by uv.
 // It runs `uv pip list --format=json --python <pyPath>` and parses the JSON output.
 func PipList() (map[string]string, error) {
-	if err := pyEnvInit(); err != nil {
+	if err := pyEnvInit(context.Background()); err != nil {
 		return nil, err
 	}
 
-	cmd := exec.Command("uv", "pip", "list", "--format=json", "--python", pyPath)
+	cmd := exec.Command(uvPath, "pip", "list", "--format=json", "--python", pyPath)
 	cmd.Dir = absInstallDir
 
 	var stdout, stderr bytes.Buffer
@@ -391,11 +381,11 @@ func PipList() (map[string]string, error) {
 
 // PipFreeze returns the lines produced by `uv pip freeze --python <pyPath>` (one line per package, e.g. package==version).
 func PipFreeze() ([]string, error) {
-	if err := pyEnvInit(); err != nil {
+	if err := pyEnvInit(context.Background()); err != nil {
 		return nil, err
 	}
 
-	cmd := exec.Command("uv", "pip", "freeze", "--python", pyPath)
+	cmd := exec.Command(uvPath, "pip", "freeze", "--python", pyPath)
 	cmd.Dir = absInstallDir
 
 	var stdout, stderr bytes.Buffer

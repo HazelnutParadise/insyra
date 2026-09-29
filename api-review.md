@@ -300,7 +300,7 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| PY-1 | Med（IPC 綁定失敗已修正：py-ipc-server-errors） | 第一次呼叫 `RunCode` 會靜默下載 uv、Python 與相依套件到安裝目錄（網路 + 磁碟副作用藏在一個看起來純計算的函式後面）；IPC server 綁定失敗走 `LogFatal`（K-1）；`ReinstallPyEnv` 會 `os.RemoveAll` 整個安裝目錄 | py/init.go:28-60；py/pyresult.go:92；py/py.go:22-50 | 提供顯式 `Setup(ctx)`，`RunCode` 未安裝時回錯；Fatal 改 error |
+| PY-1 | Med（IPC 綁定失敗已修正：py-ipc-server-errors；`ReinstallPyEnv` 的文件：py-pinned-environment；顯式 `Setup` 待裁定） | 第一次呼叫 `RunCode` 會靜默下載 uv、Python 與相依套件到安裝目錄（網路 + 磁碟副作用藏在一個看起來純計算的函式後面）；IPC server 綁定失敗走 `LogFatal`（K-1）；`ReinstallPyEnv` 會 `os.RemoveAll` 整個安裝目錄 | py/init.go:28-60；py/pyresult.go:92；py/py.go:22-50 | 提供顯式 `Setup(ctx)`，`RunCode` 未安裝時回錯；Fatal 改 error |
 | PY-2 | Low | `RunCode(out any, code string)` 用 `any` 承接 JSON 綁定，可用泛型 `Run[T](ctx, code) (T, error)`；`$v1` 佔位字串替換有做 JSON 轉義（注入已處理：OK）；`PipInstall`／`PipUninstall` 無 ctx；`RunCodeWithTimeout(timeout, out, code)` 與 `RunCodeContext` 兩套 | py/py.go:53-220, 301-380 | 泛型版；統一 ctx |
 | PD-1 | ~~Low~~ 已修正（pd-empty-series） | `pd` 是 `apoplexi24/gpandas` 的薄包裝，`DataFrame` 內嵌第三方型別、`FromGPandasDataFrame` 直接收第三方型別（FI-1 同族）；`FromDataList` 對空 list 回錯（pandas 允許空 Series） | pd/dataframe.go:12-16, 251；pd/series.go:14-20 | 文件標明依賴；空 list 回空 Series |
 
@@ -468,7 +468,7 @@
 | SEC-7 | ~~Med~~ 已修正（batch 4） | `ToCSV`／`ToJSON` 非原子寫入，失敗留下半截檔：實測 512 KiB RAM disk 寫 1 MB 表，`ToCSV` 回 ENOSPC 但留下 376,832 bytes 殘檔；`ToJSON` 留 0 byte 檔。parquet、cli/env、geocode cache 已是 tmp+rename | datatable_csv.go:16；datatable_json.go:66 | 比照 parquet：寫 `*.tmp` 成功後 `os.Rename` |
 | SEC-8 | ~~Med~~ 已修正（make-errors-non-terminating） | 函式庫路徑內 `os.Exit`（K-1 的新呼叫點清單）：GLPK 下載／解壓／編譯失敗 `lp/init.go:151,156,162,195,203,211,219`、Windows 初始化 `:127`、`SolveModel` 建暫存檔失敗 `lp/lp.go:143,150`、py IPC socket 監聽失敗 `py/pyresult.go:88` | logger.go:20-24 及上述 | 改回傳 error；併入 K-1 |
 | SEC-9 | ~~Med~~ 已修正（lp-pure-go-default）：下載、解壓與編譯的程式碼已刪除；GLPK 引擎的暫存檔改用 `os.MkdirTemp` | LP-1 新細節：暫存路徑可預測且 `os.Create` 跟隨 symlink：下載到固定 `os.TempDir()/glpk.tar.gz`、解壓到 `os.TempDir()/glpk` 後在該目錄執行 `./configure && make`，共用主機上他人可預佔或放 symlink；無 checksum／簽章；Windows 走 SourceForge `latest/download` 未釘版且跟隨任意轉址；`http.Get` 無 timeout | lp/init.go:145-147, 199, 265-268, 320, 330 | `os.MkdirTemp`／`CreateTemp`；釘版本比對 SHA-256；`http.Client{Timeout}` + `CheckRedirect` 白名單；安裝改成明確 `lp.Install()` |
-| SEC-10 | Med | py 環境安裝鏈未釘版本、無驗證：`curl -LsSf https://astral.sh/uv/install.sh \| sh` 與 PowerShell `irm \| iex` 直接執行遠端腳本；`pythonVersion = "3.12.*"`；13 個 Python 套件 `uv pip install <name>` 抓最新版，每台機器版本不同 | py/init.go:152-167；py/const.go:11, 19-33 | 釘 uv 版本並比對 hash；套件 `name==version` 或 `uv sync` + `uv.lock` |
+| SEC-10 | ~~Med~~ 已修正（py-pinned-environment） | py 環境安裝鏈未釘版本、無驗證：`curl -LsSf https://astral.sh/uv/install.sh \| sh` 與 PowerShell `irm \| iex` 直接執行遠端腳本；`pythonVersion = "3.12.*"`；13 個 Python 套件 `uv pip install <name>` 抓最新版，每台機器版本不同 | py/init.go:152-167；py/const.go:11, 19-33 | 釘 uv 版本並比對 hash；套件 `name==version` 或 `uv sync` + `uv.lock` |
 | SEC-11 | ~~Med~~ 已修正（batch 4） | 資料庫密碼明文落地：readline `HistoryFile` 把 `db connect x postgres://user:PASS@…` 整行寫進 `history.txt`（0644）；`env export` 把整份 history 放進匯出檔；`maskDSNPassword` 只處理 `://` 與 `user:pass@`，libpq KV 形式 `password=secret` 不遮罩 | cli/repl/repl.go:51；cli/env/state.go:161-176；cli/env/manager.go:355-371；cli/commands/db_conn.go:118-150 | 寫 history 前先 `maskDSNPassword`；補 KV 形式遮罩；history.txt 改 0600；Docs 建議用環境變數／`~/.pgpass` |
 | SEC-12 | ~~Low~~ 已修正（harden-limits-and-permissions） | SQL 參數值進入日誌：gorm 預設 logger 在錯誤與慢查詢時把綁定參數內嵌印出，實測 `ReadSQL(Query: "… token = ?", Params: {"SECRET"})` 失敗時 stderr 出現完整值；`LogDebug` 印含 WhereClause 字面值的查詢 | datatable_from_sql.go:87, 140；cli/commands/db_conn.go:38-42 | CLI 開連線設 `logger.Silent` 或 `ParameterizedQueries: true` |
 | SEC-13 | ~~Low~~ 已修正（harden-limits-and-permissions） | 線上 PNG 備援（已 opt-in）仍用無 timeout 的 `http.Client{}` 並 `io.ReadAll` 無上限；chromedp 失敗時可能無限等 | plot/save_chart.go:115, 127 | `Timeout: 60s`；`io.LimitReader` |
@@ -579,7 +579,7 @@
 | DF-3 | [#251](https://github.com/HazelnutParadise/insyra/issues/251) | 已修正（datafetch-exported-types） |
 | DF-4 | [#252](https://github.com/HazelnutParadise/insyra/issues/252) | 已修正（datafetch-own-yfinance-types；User-Agent 寫入文件，實測見 `AGENTS.md` follow-up） |
 | PL-3 | [#253](https://github.com/HazelnutParadise/insyra/issues/253) | 已關閉（chart-constructors-return-errors） |
-| PY-1 | [#254](https://github.com/HazelnutParadise/insyra/issues/254) | IPC 部分已修正（py-ipc-server-errors），顯式 Setup 待裁定 |
+| PY-1 | [#254](https://github.com/HazelnutParadise/insyra/issues/254) | IPC 部分與 `ReinstallPyEnv` 文件已修正（py-ipc-server-errors、py-pinned-environment），顯式 Setup 待裁定 |
 | PY-2 | [#255](https://github.com/HazelnutParadise/insyra/issues/255) |  |
 | PD-1 | [#256](https://github.com/HazelnutParadise/insyra/issues/256) | 已修正（pd-empty-series） |
 | LP-1 | [#257](https://github.com/HazelnutParadise/insyra/issues/257) | 已關閉（lp-pure-go-default） |
@@ -616,7 +616,7 @@
 | SEC-4 | [#286](https://github.com/HazelnutParadise/insyra/issues/286) |  |
 | SEC-5、IN-20 | [#287](https://github.com/HazelnutParadise/insyra/issues/287) |  |
 | SEC-6 | [#288](https://github.com/HazelnutParadise/insyra/issues/288) |  |
-| SEC-10 | [#289](https://github.com/HazelnutParadise/insyra/issues/289) |  |
+| SEC-10 | [#289](https://github.com/HazelnutParadise/insyra/issues/289) | 已修正（py-pinned-environment） |
 | SEC-11、CLI-4 | [#290](https://github.com/HazelnutParadise/insyra/issues/290) |  |
 | SEC-12 | [#291](https://github.com/HazelnutParadise/insyra/issues/291) |  |
 | SEC-13 | [#292](https://github.com/HazelnutParadise/insyra/issues/292) |  |

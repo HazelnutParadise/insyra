@@ -1,0 +1,23 @@
+# The Python environment the insyra py package builds on first use.
+# Every version is pinned. Docs/py.md, "Pinned versions", says how to bump them.
+[project]
+name = "insyra-py-env"
+version = "0"
+requires-python = "==3.12.14"
+dependencies = [
+    "beautifulsoup4==4.15.0",
+    "matplotlib==3.11.2",
+    "numpy==2.5.3",
+    "pandas==3.0.6",
+    "plotly==7.1.0",
+    "polars==1.44.2",
+    "requests==2.34.2",
+    "scikit-learn==1.9.1",
+    "scipy==1.18.1",
+    "seaborn==0.13.2",
+    "spacy==3.8.16",
+    "statsmodels==0.15.0",
+]
+
+[tool.uv]
+required-version = "==0.12.20"

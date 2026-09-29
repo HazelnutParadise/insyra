@@ -8,14 +8,13 @@ import (
 )
 
 var (
-	pythonVersion = "3.12.*"
-	installDir    = filepath.Join(".insyra_env", "py25c_"+runtime.GOOS+"_"+runtime.GOARCH)
+	installDir = filepath.Join(".insyra_env", "py25c_"+runtime.GOOS+"_"+runtime.GOARCH)
 )
 
 var (
-	// uvInstallCmd     []string
 	absInstallDir, _ = filepath.Abs(installDir)
-	pyPath           string // 將在pyEnvInit中設置
+	pyPath           string // the environment's interpreter, set by pyEnvInit
+	uvPath           string // the pinned uv, set by pyEnvInit
 	pyDependencies   = map[string]string{
 		"import requests":                   "requests",       // HTTP requests
 		"import json":                       "",               // JSON data processing (built-in module)

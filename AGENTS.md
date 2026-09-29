@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-30] — a Python result holding `NaN` or an infinity comes back as `nil` with no error
+- **Where**: `insyra.Return` in `py/builtin.go` (`json.dumps` with its default `allow_nan=True`), and `handleIPCConnection` in `py/pyresult.go`
+- **What**: Python's `json.dumps` writes `NaN`, `Infinity` and `-Infinity`, which are not JSON, so go-json refuses the message. The handler logs `Unmarshal error: invalid character 'N' looking for beginning of value` and closes the connection without an acknowledgement; `_read_msg` takes the closed connection as the end, the script marks its result sent and exits 0, and the runner, finding no result, returns `nil` with a nil error. Measured on 2026-09-30 with the pinned environment on macOS arm64: `RunCode(&dt, "insyra.Return(pd.DataFrame({'a': [1.0, float('nan')]}))")` returned a nil error and a nil `*DataTable`, and `RunCode(&v, "insyra.Return(float('nan'))")` set `v` to `nil` with a nil error. A DataFrame with a missing value is ordinary data, so results are lost without a word. Found by the adversarial review of `py-ipc-server-errors`; it predates that change.
+- **Suggestion**: on the Python side, write `NaN` and the infinities as something the Go side can decode; on the Go side, answer a message it cannot decode with an error the Python side raises, so the run fails instead of returning nothing. Decide first whether a `NaN` comes back as `nil` or as `math.NaN()`, since insyra's lists hold either.
+- **Status**: pending
+
 ### [2026-09-30] — concurrent Python runs on Windows may find no pipe instance to connect to
 - **Where**: `py/pyresult.go` `acceptIPC`, and `insyra._connect_ipc` in `py/builtin.go`
 - **What**: go-winio creates a server pipe instance only when `Accept` is called (`makeConnectedServerPipe` in `listenerRoutine`, go-winio v0.6.2 `pipe.go`), so between one connection being accepted and the next `Accept`, no instance may be waiting. The Python side opens the pipe with `open()` once and does not retry, so a run whose `insyra.Return` lands in that window could fail with `ERROR_PIPE_BUSY`. Found by the adversarial review of `py-ipc-server-errors` on 2026-09-30 by reading the code; not reproduced, because no Windows host was available. It predates that change.

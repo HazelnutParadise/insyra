@@ -4,16 +4,37 @@ The `py` package allows Go programs to execute Python code and exchange variable
 
 On first use it:
 
-- Installs `uv` if missing
-- Creates a virtual environment under `.insyra_env/py<version_code>_<os>_<arch>`
-- Installs a preset dependency list (e.g., `numpy`, `pandas`, `polars`, `matplotlib`, `seaborn`, `scikit-learn`)
+- Downloads the pinned [uv](https://github.com/astral-sh/uv) release for your platform from GitHub, checks it against the SHA-256 the release publishes, and keeps it in `.insyra_env/uv-<version>_<os>_<arch>/` under the working directory. It does not run uv's install script or use a `uv` already on your `PATH`.
+- Has that uv build a virtual environment in `.insyra_env/py25c_<os>_<arch>` with the pinned CPython, a build uv downloads and verifies itself, and the pinned packages (`numpy`, `pandas`, `polars`, `matplotlib`, `seaborn`, `scikit-learn`, …) at the exact versions in the lock file, downloaded from the PyPI URLs the lock records and checked against the hashes recorded there, whatever index your own uv configuration names.
 
-This setup requires network access and may take a while the first time.
+This setup needs network access and takes a while the first time. A setup that fails is run again by the next call, and the context passed to a `…Context` function also bounds it: cancelling the context stops a download or an install in progress, or a wait for another call's setup to finish.
+
+uv keeps the CPython build and its download cache in its usual per-user directories (on macOS and Linux `~/.local/share/uv/python` and `~/.cache/uv`, unless `UV_PYTHON_INSTALL_DIR` or `UV_CACHE_DIR` say otherwise), so deleting `.insyra_env` does not remove them. The setup ignores `UV_PYTHON_PREFERENCE` and lets uv download Python whatever `UV_PYTHON_DOWNLOADS` says, because the environment always runs the pinned, uv-managed CPython; your other uv settings, such as a proxy or certificates, still apply.
+
+On Windows on arm64, PyPI has no prebuilt wheels of `blis` (a dependency of spaCy) or `statsmodels` at the pinned versions, so uv builds those two from source there. That needs a C compiler, and the packages their build uses are not pinned or hash-checked.
+
+Later runs find a marker file in the environment directory and start without calling uv. When an insyra upgrade changes the pinned versions, the first run afterwards brings the environment to them: each pinned package moves to its pinned version, and packages you added with `PipInstall` stay, unless the Python version changed, in which case uv builds the virtual environment again.
+
+### Pinned versions
+
+Every version the environment uses is recorded in [`py/environment/`](https://github.com/HazelnutParadise/insyra/tree/main/py/environment):
+
+- `pyproject.toml` pins uv (`[tool.uv] required-version`), Python (`requires-python`) and each package (`name==version`).
+- `uv.lock` records the resolution of those packages and everything they depend on, with the SHA-256 of every file.
+- `uv-sha256.sum` is the `sha256.sum` file the uv release publishes, unchanged; the downloaded uv archive is checked against it.
+
+To bump them:
+
+1. For a new uv, replace `uv-sha256.sum` with that release's `sha256.sum`, downloaded from `https://github.com/astral-sh/uv/releases/download/<version>/sha256.sum` and left unchanged, and set `required-version = "==<version>"` in `pyproject.toml`.
+2. For a new Python, set `requires-python = "==<x.y.z>"` to a CPython patch uv offers on every supported platform; `uv python list --all-versions --all-platforms --all-arches --only-downloads` lists them.
+3. Set each package to the version you want as `name==version`. Every package the Python preamble imports (`pyDependencies` in `py/const.go`) must be pinned, and nothing else.
+4. Run `uv lock` in `py/environment/` with the pinned uv version, with `UV_NO_CONFIG=1` and none of `UV_INDEX_URL`, `UV_DEFAULT_INDEX` or `UV_EXCLUDE_NEWER` set, so the lock takes every file from PyPI.
+5. Run `go test ./py/`, which fails when the three files disagree, when the lock takes a package from anywhere but PyPI, or when a supported platform lacks a wheel the lock had before, and `INSYRA_PY_E2E=1 go test ./py/ -run TestPinnedEnvironmentEndToEnd`, which builds the environment from nothing in a temporary directory and runs Python in it.
 
 ### Environment Utilities
 
 ```go
-// Reinstall the managed Python environment
+// Delete the managed Python environment and build it again from the pinned versions
 func ReinstallPyEnv() error
 ```
 
@@ -219,7 +240,7 @@ if errors.Is(err, context.Canceled) {
 
 - The context-aware functions use `exec.CommandContext` under the hood. When the context is done, the underlying Python process is killed and the function returns `ctx.Err()`.
 
-- Note: initialization errors are now propagated to callers. The Python environment initializer `pyEnvInit()` no longer calls fatal logging to terminate the process; instead it returns an `error` when initialization fails (for example: failing to ensure `uv` is installed, failing to prepare the install directory, failing to set up the uv environment, or failing to install dependencies). Callers of py functions (e.g., `RunCode`, `RunFile`, `RunCodeContext`, `PipInstall`, `PipList`, `PipFreeze`, etc.) will return that initialization `error` — be sure to check and handle the returned `error` in your code.
+- Note: initialization errors are now propagated to callers. The Python environment initializer `pyEnvInit()` no longer calls fatal logging to terminate the process; instead it returns an `error` when initialization fails (for example: failing to download or verify uv, or uv failing to build the environment). Callers of py functions (e.g., `RunCode`, `RunFile`, `RunCodeContext`, `PipInstall`, `PipList`, `PipFreeze`, etc.) will return that initialization `error` — be sure to check and handle the returned `error` in your code.
 - For platform-specific process group / child-process cleanup semantics, consider the platform behavior; if you need robust group termination, let us know and we can add process-group management to the runner.
 
 ### Install Python Dependency
@@ -320,7 +341,7 @@ if err != nil {
 func ReinstallPyEnv() error
 ```
 
-**Description:** This function completely reinstalls the Python environment by removing the existing virtual environment and reinstalling all dependencies. Useful when you want to reset the Python environment, update dependencies, or fix environment-related issues.
+**Description:** This function deletes the whole environment directory, `.insyra_env/py25c_<os>_<arch>` under the working directory, with everything in it, the packages you installed with `PipInstall` included, and builds the environment again from the pinned versions. The pinned uv, kept beside that directory, is not downloaded again. Use it to reset an environment that no longer works.
 
 **Parameters:**
 
@@ -478,8 +499,8 @@ insyra.Return({"execution_id": insyra.execution_id, "data": "some data"})
 
 ## Pre-installed Dependencies
 
-- **Python Environment**: Insyra installs a managed environment under `.insyra_env/py<version_code>_<os>_<arch>` (project root).
-- **Python Libraries**: Insyra installs and imports the following libraries by default:
+- **Python Environment**: Insyra installs a managed environment under `.insyra_env/py25c_<os>_<arch>` in the working directory, running the pinned CPython.
+- **Python Libraries**: Insyra installs the following libraries at the versions pinned in `py/environment/pyproject.toml` (see [Pinned versions](#pinned-versions)) and imports them at the start of every script:
 
 ```go
 pyDependencies   = map[string]string{
