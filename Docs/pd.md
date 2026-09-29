@@ -20,14 +20,19 @@ The `pd` package is a small interoperability layer between Insyra's `DataTable` 
 import "github.com/HazelnutParadise/insyra/pd"
 ```
 
-You will also need `gpandas` as a dependency; the package imports `github.com/apoplexi24/gpandas` internally.
+`pd` is built on [gpandas](https://github.com/apoplexi24/gpandas) (`github.com/apoplexi24/gpandas`), a separate Go module that `go get` fetches along with insyra, at the version insyra's `go.mod` requires. `pd`'s two types are gpandas types with insyra's converters added:
+
+- `pd.DataFrame` embeds `*dataframe.DataFrame` from `github.com/apoplexi24/gpandas/dataframe`.
+- `pd.Series` embeds `collection.Series` from `github.com/apoplexi24/gpandas/utils/collection`.
+
+Every method you call on them other than `ToDataTable` and `ToDataList` is gpandas's, so what it does and its signature follow gpandas and can change when insyra moves to a newer gpandas version. `FromGPandasDataFrame` and `FromGPandasSeries` take gpandas values, so code that calls them imports gpandas itself.
 
 > [!NOTE]
 > For the full `gpandas` API reference and usage examples, please see: https://gpandas.apoplexi.com/docs/
 
 ## Primary Types & Functions
 
-- `type DataFrame struct { *gpdf.DataFrame }` — wrapper around `gpandas.DataFrame`.
+- `type DataFrame struct { *dataframe.DataFrame }` — embeds gpandas's `*dataframe.DataFrame` (`github.com/apoplexi24/gpandas/dataframe`).
 
 - `func FromDataTable(dt insyra.IDataTable) (*DataFrame, error)`
   - Converts an object implementing `insyra.IDataTable` into a `pd.DataFrame`.
@@ -38,18 +43,18 @@ You will also need `gpandas` as a dependency; the package imports `github.com/ap
   - Converts a wrapped `gpandas.DataFrame` back to an `insyra.DataTable`.
   - Column order and values are preserved. Index becomes row names when present.
 
-- `func FromGPandasDataFrame(df *gpdf.DataFrame) (*DataFrame, error)`
-  - Wraps an existing `gpandas.DataFrame` into `pd.DataFrame`.
+- `func FromGPandasDataFrame(df *dataframe.DataFrame) (*DataFrame, error)`
+  - Wraps a data frame built with gpandas into `pd.DataFrame`. A `nil` data frame is an error.
 
-- `type Series struct { gpdc.Series }` — wrapper around `gpandas` collection `Series`.
+- `type Series struct { collection.Series }` — embeds gpandas's `collection.Series` interface (`github.com/apoplexi24/gpandas/utils/collection`).
 
 - `func FromDataList(dl insyra.IDataList) (*Series, error)`
   - Creates a `pd.Series` from an `insyra.DataList`.
   - Infers element type across the list: `int` (normalized to `int64`), `float` (`float64`), or `string`. If types are mixed or unknown, falls back to `any`.
-  - Returns an error for `nil` or empty `DataList`.
+  - An empty `DataList` gives an empty `any`-typed `Series` (length 0), as pandas gives an empty Series of dtype `object` for `pd.Series([])`. A `nil` `DataList` is an error.
 
-- `func FromGPandasSeries(gpds gpdc.Series) (*Series, error)`
-  - Wraps an existing `gpandas` series into `pd.Series`.
+- `func FromGPandasSeries(gpds collection.Series) (*Series, error)`
+  - Wraps a series built with gpandas into `pd.Series`. A `nil` series is an error.
 
 - `func (s *Series) ToDataList() (*insyra.DataList, error)`
   - Converts a `pd.Series` back to an `insyra.DataList`, copying values and preserving `nil`s.
@@ -94,5 +99,5 @@ if err != nil {
 
 - `pd.FromDataList` inspects elements in the `DataList` and returns a `Series` of one of: `int` (normalized to `int64`), `float` (`float64`), `string`, or `any` (when mixed/unrecognized).
 - Mixed element types produce an `any`-typed series.
-- `pd.FromDataList` returns an error for `nil` or empty `DataList`.
+- `pd.FromDataList` turns an empty `DataList` into an empty `any`-typed `Series` and returns an error for a `nil` one.
 - `nil` values inside a `DataList` are preserved when converting to a `Series` and back via `ToDataList()`.

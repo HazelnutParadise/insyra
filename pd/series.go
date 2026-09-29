@@ -7,23 +7,30 @@ import (
 	gpdc "github.com/apoplexi24/gpandas/utils/collection"
 )
 
+// Series wraps a gpandas series. It embeds collection.Series from
+// github.com/apoplexi24/gpandas/utils/collection, so every method called on a
+// Series other than ToDataList is gpandas's, at the gpandas version insyra's
+// go.mod requires.
 type Series struct {
 	gpdc.Series
 }
 
+// FromDataList converts an insyra list into a Series. A list whose elements
+// are all Go signed integers (int through int64) becomes an int64 series, all
+// float32 or float64 values a float64 series, all strings a string series,
+// and anything else, an empty list included, an any-typed series (pandas'
+// object dtype). A nil list is an error.
 func FromDataList(dl insyra.IDataList) (*Series, error) {
 	if dl == nil {
 		return nil, fmt.Errorf("nil DataList")
-	}
-	if dl.Len() == 0 {
-		return nil, fmt.Errorf("empty DataList")
 	}
 
 	listType := ""
 	int64List := []int64{}
 	float64List := []float64{}
 	stringList := []string{}
-	for _, val := range dl.Data() {
+	data := dl.Data()
+	for _, val := range data {
 		tryAppendValue(val, &listType, &int64List, &float64List, &stringList)
 	}
 
@@ -47,7 +54,7 @@ func FromDataList(dl insyra.IDataList) (*Series, error) {
 		}
 		return &Series{gpds}, nil
 	default:
-		gpds, err := gpdc.NewAnySeriesFromData(dl.Data(), nil)
+		gpds, err := gpdc.NewAnySeriesFromData(data, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create any Series: %w", err)
 		}
@@ -118,6 +125,8 @@ func tryAppendValue(val any, listType *string, int64List *[]int64, float64List *
 	}
 }
 
+// FromGPandasSeries wraps a series built with gpandas
+// (github.com/apoplexi24/gpandas/utils/collection). A nil series is an error.
 func FromGPandasSeries(gpds gpdc.Series) (*Series, error) {
 	if gpds == nil {
 		return nil, fmt.Errorf("nil gpandas Series")

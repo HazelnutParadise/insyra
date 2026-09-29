@@ -8,8 +8,10 @@ import (
 	gpdf "github.com/apoplexi24/gpandas/dataframe"
 )
 
-// DataFrame is a thin wrapper around gpandas.DataFrame providing helpers to convert
-// to/from Insyra's DataTable and expose a pandas-like API mapped to gpandas.
+// DataFrame wraps a gpandas data frame. It embeds *dataframe.DataFrame from
+// github.com/apoplexi24/gpandas/dataframe, so every method called on a
+// DataFrame other than ToDataTable is gpandas's, at the gpandas version
+// insyra's go.mod requires.
 type DataFrame struct {
 	*gpdf.DataFrame
 }
@@ -251,7 +253,8 @@ func convertValuesToType(vals []any, typ string) []any {
 	return out
 }
 
-// FromGPandasDataFrame helper to wrap an existing gpandas.DataFrame.
+// FromGPandasDataFrame wraps a data frame built with gpandas
+// (github.com/apoplexi24/gpandas/dataframe). A nil data frame is an error.
 func FromGPandasDataFrame(df *gpdf.DataFrame) (*DataFrame, error) {
 	if df == nil {
 		return nil, fmt.Errorf("nil gpandas DataFrame")

@@ -215,6 +215,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `PipInstall` 與 `PipUninstall` 拒絕以 `-` 開頭的依賴名稱，並在名稱前加上 `--`。呼叫端的字串過去是以單一 argv 交給 `uv pip install`，所以 `--requirement=/path` 會讓 uv 去讀那個檔案並安裝裡面列的東西。
 - IPC 伺服器不再在監聽器持續失敗時空轉，每條連線設十分鐘期限，行程結束時會把暫存目錄裡的 socket 檔移除。過去 `Accept` 持續失敗會在行程的餘生每次迭代印一行警告。
 
+### `pd`
+- **BREAKING（行為改變）**：`FromDataList` 遇到空的 list 會回傳空的 `Series`，也就是長度 0、`any` 型別的 gpandas series，和 pandas 的 `pd.Series([])` 一樣。過去會回傳 `empty DataList` 錯誤。`nil` list 仍然回傳錯誤。
+
 ### `parallel`
 - **BREAKING**：`Run` 改為回傳新的 `*RunningGroup`，等待時會回報失敗的函式。`ParallelGroup` 現在是一份可以重複使用的函式清單，只有 `Run` 方法，每次 `Run` 都是一次獨立的執行，結果各自存放。過去同一個 group 跑兩次會把所有函式重跑一遍、寫進同樣的結果欄位，兩個 `Run` 同時呼叫還會發生資料競爭。`RunningGroup` 只有 `AwaitResult` 與 `AwaitNoResult`，所以等待一個從沒啟動的 group 會直接編譯失敗，過去則是立刻回傳空結果。`AwaitResult` 改為回傳 `([][]any, error)`，`AwaitNoResult` 改為回傳 `error`。函式 panic 或傳入的值無法呼叫時，該格為 `nil`，並以帶有位置、panic 值與呼叫堆疊的 `*parallel.WorkerError` 回報。過去該格會放一個 `error`，和函式自己回傳的 error 分不出來；函式自己回傳的 error 現在就單純留在結果格裡。`GroupUp` 會複製傳入的參數。遷移方式：`results := g.Run().AwaitResult()` 改成 `results, err := g.Run().AwaitResult()`，宣告為 `*parallel.ParallelGroup` 並用來接 `Run()` 結果的變數，改成 `*parallel.RunningGroup`。
 

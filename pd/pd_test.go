@@ -1,6 +1,7 @@
 package pd
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -87,5 +88,41 @@ func TestSeriesFromDataList(t *testing.T) {
 	}
 	if anySeries.Len() != 3 {
 		t.Fatalf("unexpected any Series length: %d", anySeries.Len())
+	}
+}
+
+// PD-1 of #256: pandas builds an empty Series from an empty list, with dtype
+// object. FromDataList returned the error "empty DataList" instead.
+func TestFromDataListEmptyIsAnEmptySeries(t *testing.T) {
+	s, err := FromDataList(insyra.NewDataList())
+	if err != nil {
+		t.Fatalf("FromDataList on an empty list: %v", err)
+	}
+	if s == nil || s.Series == nil {
+		t.Fatal("FromDataList returned no series for an empty list")
+	}
+	if s.Len() != 0 {
+		t.Errorf("Len() = %d, want 0", s.Len())
+	}
+	if want := reflect.TypeOf((*any)(nil)).Elem(); s.DType() != want {
+		t.Errorf("DType() = %v, want %v", s.DType(), want)
+	}
+
+	dl, err := s.ToDataList()
+	if err != nil {
+		t.Fatalf("ToDataList on the empty series: %v", err)
+	}
+	if dl.Len() != 0 {
+		t.Errorf("the list back has %d elements, want 0", dl.Len())
+	}
+}
+
+func TestFromDataListNilIsAnError(t *testing.T) {
+	s, err := FromDataList(nil)
+	if err == nil {
+		t.Fatal("FromDataList(nil) returned no error")
+	}
+	if s != nil {
+		t.Errorf("FromDataList(nil) returned a series: %v", s)
 	}
 }
