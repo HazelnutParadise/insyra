@@ -93,7 +93,9 @@ func (o AdamW) fitOptimizerValidate() error {
 
 func (o AdamW) fitOptimizerStep(tape *Tape) error { return tape.AdamW(o.Rate, o.WeightDecay) }
 
-// LossSpec selects one of the losses already implemented by Tape.
+// LossSpec selects the loss Fit trains with: CrossEntropy, MSE or
+// BCEWithLogits, or a CustomLoss the caller computes on the tape. Its methods
+// are unexported, so CustomLoss is how a caller supplies any other loss.
 type LossSpec interface {
 	fitLossName() string
 	fitLossValidate(*Tensor, *Tensor) error
@@ -155,6 +157,73 @@ func (BCEWithLogits) fitLossValidate(prediction, target *Tensor) error {
 
 func (BCEWithLogits) fitLoss(tape *Tape, prediction, target *Tensor) (*Tensor, error) {
 	return tape.BCEWithLogitsLoss(prediction, target)
+}
+
+// CustomLoss selects a loss the caller computes on the tape.
+//
+// Loss is required. It returns the batch's loss as a float32 scalar computed
+// with operations on tape, so the reverse pass reaches the parameters.
+// Validate is optional: when set, Fit calls it before Loss on every batch and
+// on the validation set, where the built-in losses check their targets. Name
+// labels the loss in Fit's errors; empty means "CustomLoss".
+type CustomLoss struct {
+	Name     string
+	Loss     func(tape *Tape, prediction, target *Tensor) (*Tensor, error)
+	Validate func(prediction, target *Tensor) error
+}
+
+func (l CustomLoss) fitLossName() string {
+	if l.Name == "" {
+		return "CustomLoss"
+	}
+	return l.Name
+}
+
+// fitLossConfigError reports a CustomLoss that cannot run, so Fit refuses it
+// before any batch.
+func (l CustomLoss) fitLossConfigError() error {
+	if l.Loss == nil {
+		return fmt.Errorf("fit config Loss %s has no Loss function", l.fitLossName())
+	}
+	return nil
+}
+
+func (l CustomLoss) fitLossValidate(prediction, target *Tensor) error {
+	if l.Validate == nil {
+		return nil
+	}
+	return l.Validate(prediction, target)
+}
+
+func (l CustomLoss) fitLoss(tape *Tape, prediction, target *Tensor) (*Tensor, error) {
+	if err := l.fitLossConfigError(); err != nil {
+		return nil, err
+	}
+	loss, err := l.Loss(tape, prediction, target)
+	if err != nil {
+		return nil, err
+	}
+	name := l.fitLossName()
+	if loss == nil {
+		return nil, fmt.Errorf("loss %s returned no tensor", name)
+	}
+	if loss.dtype != DTypeFloat32 || len(loss.shape) != 0 {
+		return nil, fmt.Errorf("loss %s must return a float32 scalar, got %s with shape %v", name, loss.dtype, loss.shape)
+	}
+	if !producedOnTape(tape, loss) {
+		return nil, fmt.Errorf("loss %s returned a tensor no operation on the tape produced, so no gradient would reach the parameters", name)
+	}
+	return loss, nil
+}
+
+// producedOnTape reports whether an operation recorded on tape produced output.
+func producedOnTape(tape *Tape, output *Tensor) bool {
+	for _, op := range tape.ops {
+		if op.output == output {
+			return true
+		}
+	}
+	return false
 }
 
 // SoftmaxCrossEntropy is the same loss selector as CrossEntropy.
@@ -365,6 +434,11 @@ func validateFitConfig(x, y *Tensor, cfg FitConfig) error {
 	}
 	if isNilFitInterface(cfg.Loss) {
 		return fmt.Errorf("fit config Loss is required")
+	}
+	if checked, ok := cfg.Loss.(interface{ fitLossConfigError() error }); ok {
+		if err := checked.fitLossConfigError(); err != nil {
+			return err
+		}
 	}
 	if x == nil {
 		return fmt.Errorf("fit config x is nil")

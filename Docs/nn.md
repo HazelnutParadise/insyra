@@ -212,6 +212,38 @@ loss, a rate, momentum or weight decay that is negative or not finite, an
 `Epochs` or `BatchSize` below 1, and `ValX` given without `ValY` or the other
 way round.
 
+For any other objective, `nn.CustomLoss` takes a function that computes the
+loss on the tape:
+
+```go
+half, _ := nn.NewTensor(nil, []float32{0.5})
+result, err := model.Fit(trainX, trainY, nn.FitConfig{
+	Epochs: 5, BatchSize: 128, Optimizer: nn.Adam{Rate: 1e-3},
+	Loss: nn.CustomLoss{
+		Name: "half-mse",
+		Loss: func(tape *nn.Tape, prediction, target *nn.Tensor) (*nn.Tensor, error) {
+			mse, err := tape.MSELoss(prediction, target)
+			if err != nil {
+				return nil, err
+			}
+			return tape.Mul(mse, half)
+		},
+	},
+})
+```
+
+`Loss` is required and must return a float32 scalar produced by operations on
+the tape it is given, so the reverse pass reaches the parameters; an operation
+the tape lacks can join it through `Tape.Custom`. `Fit` refuses a
+`CustomLoss` without `Loss` before any batch, and returns an error for a
+result that is nil, not a float32 scalar, or computed outside the tape, which
+would otherwise train on a gradient of zero. `Validate`, optional, checks a
+batch's prediction and target before `Loss` runs, on every training batch and
+on the validation set, the way the built-in losses check their target dtypes;
+a custom loss gets no other target check. `Name` labels the loss in `Fit`'s
+errors and defaults to `CustomLoss`. Optimizers have no such adapter: a
+parameter's value cannot be written from outside the package.
+
 `Seed` is always used as the source for `math/rand`'s `Perm` shuffle. Zero is
 a valid seed, not a request for time-based randomness. The same inputs,
 configuration, and seed reproduce the same parameter trajectory. Each epoch
