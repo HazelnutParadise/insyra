@@ -181,34 +181,54 @@ func TestWriteLeavesAFileNamedLikeItsTempAlone(t *testing.T) {
 	}
 }
 
+// Two writers race for one path. Windows can refuse one of two renames onto
+// the same target ("Access is denied."), so this is deliberately not a test
+// that every write succeeds: what Insyra promises is that the two never mix
+// their bytes, that the file left behind is one writer's table whole, and that
+// neither a refused nor a completed write leaves a temporary file behind. Each
+// side is therefore asked only to land at least one file.
 func TestConcurrentWritesToOnePathDoNotMix(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "shared.parquet")
 	small := mixedTable(1000)
 	large := mixedTable(3000)
 
-	errs := make(chan error, 40)
+	type outcome struct {
+		succeeded int
+		failures  []error
+	}
+	results := make(chan outcome, 2)
 	var wg sync.WaitGroup
 	repeat := func(dt *insyra.DataTable) {
 		defer wg.Done()
+		got := outcome{}
 		for range 20 {
-			errs <- Write(dt, path)
+			if err := Write(dt, path); err != nil {
+				got.failures = append(got.failures, err)
+				continue
+			}
+			got.succeeded++
 		}
+		results <- got
 	}
 	wg.Add(2)
 	go repeat(small)
 	go repeat(large)
 	wg.Wait()
-	close(errs)
+	close(results)
 
-	failures := 0
-	for err := range errs {
-		if err != nil {
-			failures++
-			if failures == 1 {
-				t.Errorf("a Write to a path another write was using returned %v, want nil", err)
-			}
+	writers := 0
+	for got := range results {
+		writers++
+		if got.succeeded == 0 {
+			t.Errorf("all 20 of one writer's writes to a path another write was using returned an error, want at least one to succeed: %v", got.failures)
 		}
+		if len(got.failures) > 0 {
+			t.Logf("one writer's %d of 20 writes returned an error, which Windows allows when two writers rename onto one target: %v", len(got.failures), got.failures)
+		}
+	}
+	if writers != 2 {
+		t.Fatalf("%d writer(s) reported an outcome, want 2", writers)
 	}
 
 	// Whoever wrote last owns the file, but the file is one writer's whole

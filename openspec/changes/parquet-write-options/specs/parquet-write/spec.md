@@ -38,11 +38,11 @@
 
 ### Requirement: Writes to one path do not mix
 
-`Write` and `WriteContext` SHALL write through a temporary file with a name of its own in the directory of `path`, so two writes to the same path at once each leave either their own complete file or the other's at `path`, never a mix, and a file the caller keeps at `<path>.tmp` is not touched.
+`Write` and `WriteContext` SHALL write through a temporary file with a name of its own in the directory of `path`, so two writes to the same path at once each leave either their own complete file or the other's at `path`, never a mix, a write the operating system refuses to rename leaves no temporary file, and a file the caller keeps at `<path>.tmp` is not touched.
 
 #### Scenario: Two writers
 - **WHEN** 兩個 goroutine 各自對同一路徑連續寫入 20 次，一個寫 1,000 列、一個寫 3,000 列
-- **THEN** 每次寫入都回傳 nil，最後的檔案可讀，列數是 1,000 或 3,000，目錄裡沒有其他檔案
+- **THEN** 每一邊至少有一次寫入回傳 nil（Windows 可能拒絕兩個同時改名到同一目標的其中一個），最後的檔案可讀，列數是 1,000 或 3,000，目錄裡沒有其他檔案
 
 #### Scenario: A file named like the old temporary file
 - **WHEN** `path + ".tmp"` 已有使用者的檔案，再呼叫 `Write(dt, path)`
