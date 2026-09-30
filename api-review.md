@@ -300,7 +300,7 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| PY-1 | Med（IPC 綁定失敗已修正：py-ipc-server-errors；`ReinstallPyEnv` 的文件：py-pinned-environment；顯式 `Setup` 待裁定） | 第一次呼叫 `RunCode` 會靜默下載 uv、Python 與相依套件到安裝目錄（網路 + 磁碟副作用藏在一個看起來純計算的函式後面）；IPC server 綁定失敗走 `LogFatal`（K-1）；`ReinstallPyEnv` 會 `os.RemoveAll` 整個安裝目錄 | py/init.go:28-60；py/pyresult.go:92；py/py.go:22-50 | 提供顯式 `Setup(ctx)`，`RunCode` 未安裝時回錯；Fatal 改 error |
+| PY-1 | ~~Med~~ 已修正（py-ipc-server-errors、py-pinned-environment、py-explicit-setup；依擁有者裁定維持首次使用時自動準備，另加選用的 `Setup(ctx)`） | 第一次呼叫 `RunCode` 會靜默下載 uv、Python 與相依套件到安裝目錄（網路 + 磁碟副作用藏在一個看起來純計算的函式後面）；IPC server 綁定失敗走 `LogFatal`（K-1）；`ReinstallPyEnv` 會 `os.RemoveAll` 整個安裝目錄 | py/init.go:28-60；py/pyresult.go:92；py/py.go:22-50 | 提供顯式 `Setup(ctx)`，`RunCode` 未安裝時回錯；Fatal 改 error |
 | PY-2 | ~~Low~~ 已修正（py-typed-run）；「注入已處理」並不成立，見 `AGENTS.md` follow-up「佔位字元替換」 | `RunCode(out any, code string)` 用 `any` 承接 JSON 綁定，可用泛型 `Run[T](ctx, code) (T, error)`；`$v1` 佔位字串替換有做 JSON 轉義（注入已處理：OK）；`PipInstall`／`PipUninstall` 無 ctx；`RunCodeWithTimeout(timeout, out, code)` 與 `RunCodeContext` 兩套 | py/py.go:53-220, 301-380 | 泛型版；統一 ctx |
 | PD-1 | ~~Low~~ 已修正（pd-empty-series） | `pd` 是 `apoplexi24/gpandas` 的薄包裝，`DataFrame` 內嵌第三方型別、`FromGPandasDataFrame` 直接收第三方型別（FI-1 同族）；`FromDataList` 對空 list 回錯（pandas 允許空 Series） | pd/dataframe.go:12-16, 251；pd/series.go:14-20 | 文件標明依賴；空 list 回空 Series |
 
@@ -579,7 +579,7 @@
 | DF-3 | [#251](https://github.com/HazelnutParadise/insyra/issues/251) | 已修正（datafetch-exported-types） |
 | DF-4 | [#252](https://github.com/HazelnutParadise/insyra/issues/252) | 已修正（datafetch-own-yfinance-types；User-Agent 寫入文件，實測見 `AGENTS.md` follow-up） |
 | PL-3 | [#253](https://github.com/HazelnutParadise/insyra/issues/253) | 已關閉（chart-constructors-return-errors） |
-| PY-1 | [#254](https://github.com/HazelnutParadise/insyra/issues/254) | IPC 部分與 `ReinstallPyEnv` 文件已修正（py-ipc-server-errors、py-pinned-environment），顯式 Setup 待裁定 |
+| PY-1 | [#254](https://github.com/HazelnutParadise/insyra/issues/254) | 已修正（py-ipc-server-errors、py-pinned-environment、py-explicit-setup） |
 | PY-2 | [#255](https://github.com/HazelnutParadise/insyra/issues/255) | 已修正（py-typed-run） |
 | PD-1 | [#256](https://github.com/HazelnutParadise/insyra/issues/256) | 已修正（pd-empty-series） |
 | LP-1 | [#257](https://github.com/HazelnutParadise/insyra/issues/257) | 已關閉（lp-pure-go-default） |

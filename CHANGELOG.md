@@ -230,6 +230,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `RunCodeWithTimeout` is **Deprecated**: it is `RunCodeContext` with a context from `context.WithTimeout`, which is what to call instead. It keeps its meaning and will be removed in the next release.
 - A `nil` context given to `Run` or any `…Context` function is an error. It used to make `exec.CommandContext` panic in a goroutine the runner had started, which ended the program. A context that is already done returns `ctx.Err()` before anything starts.
 - A run whose Python process fails, because it crashed before returning a value or was killed when its context ended, returns that failure, or `ctx.Err()` when the context ended. About half the time it used to return a nil error and no result, because the runner saw the failure and the process's exit at the same moment and picked one at random. A result Python delivered before the process failed still comes back.
+- `Setup(ctx)` prepares the Python environment when you choose, such as at start-up, instead of as a side effect of the first `RunCode` or `PipInstall`. It is optional: without it, the first call still prepares the environment. The context bounds the downloads, and on an environment that is already prepared `Setup` returns at once without running uv.
 
 ### `pd`
 - **BREAKING (behaviour)**: `FromDataList` turns an empty list into an empty `Series`, an `any`-typed gpandas series of length 0, which is what pandas gives for `pd.Series([])`. It used to return the error `empty DataList`. A `nil` list is still an error.

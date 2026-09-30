@@ -230,6 +230,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `RunCodeWithTimeout` 標為 **Deprecated**：它就是用 `context.WithTimeout` 建 context 再呼叫 `RunCodeContext`，請改呼叫後者。它保留原本的意義，下一個版本移除。
 - 傳 `nil` context 給 `Run` 或任何 `…Context` 函式會回傳錯誤。過去會讓 `exec.CommandContext` 在執行器啟動的 goroutine 裡 panic，整個程式因此結束。已經結束的 context 會在啟動任何東西之前回傳 `ctx.Err()`。
 - Python 行程失敗時（回傳值之前就崩潰，或因 context 結束被終止），呼叫會回傳這個失敗；context 結束時回傳 `ctx.Err()`。過去約有一半機率回傳 nil 錯誤且沒有結果，因為執行器同時看到失敗與行程結束，隨機挑了其中一個。Python 在行程失敗前已經送回的結果仍會回傳。
+- 新增 `Setup(ctx)`：讓你自己決定何時準備 Python 環境（例如程式啟動時），不必等到第一次呼叫 `RunCode` 或 `PipInstall` 時才順帶進行。這是選用的，不呼叫的話，第一次呼叫仍會照常準備環境。context 涵蓋所有下載；環境已經準備好時，`Setup` 會立即回傳，不會執行 uv。
 
 ### `pd`
 - **BREAKING（行為改變）**：`FromDataList` 遇到空的 list 會回傳空的 `Series`，也就是長度 0、`any` 型別的 gpandas series，和 pandas 的 `pd.Series([])` 一樣。過去會回傳 `empty DataList` 錯誤。`nil` list 仍然回傳錯誤。

@@ -40,6 +40,21 @@ func ReinstallPyEnv() error {
 	return nil
 }
 
+// Setup prepares the Python environment now instead of on first use: it
+// downloads and verifies the pinned uv if it is missing and has uv bring the
+// environment directory to the pinned versions, as the first RunCode,
+// PipInstall or other call would. Calling it is optional; call it at start-up
+// to fail there rather than on a first request, and to bound the downloads
+// with ctx. On an environment that is already prepared it returns nil without
+// running uv. A nil ctx is an error, and a ctx that is already done returns
+// ctx.Err() before anything starts.
+func Setup(ctx context.Context) error {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	return pyEnvInit(ctx)
+}
+
 // errNilContext is what a Context form returns for a nil context, where
 // exec.CommandContext would panic.
 var errNilContext = errors.New("py: nil context")

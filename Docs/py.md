@@ -9,6 +9,8 @@ On first use it:
 
 This setup needs network access and takes a while the first time. A setup that fails is run again by the next call, and the context passed to a `…Context` function also bounds it: cancelling the context stops a download or an install in progress, or a wait for another call's setup to finish.
 
+To choose when this happens, call `py.Setup(ctx)` yourself, for example when a server starts, so a network failure shows up there instead of on its first request. Calling it is optional: without it, the first call prepares the environment as described above.
+
 uv keeps the CPython build and its download cache in its usual per-user directories (on macOS and Linux `~/.local/share/uv/python` and `~/.cache/uv`, unless `UV_PYTHON_INSTALL_DIR` or `UV_CACHE_DIR` say otherwise), so deleting `.insyra_env` does not remove them. The setup ignores `UV_PYTHON_PREFERENCE` and lets uv download Python whatever `UV_PYTHON_DOWNLOADS` says, because the environment always runs the pinned, uv-managed CPython; your other uv settings, such as a proxy or certificates, still apply.
 
 On Windows on arm64, PyPI has no prebuilt wheels of `blis` (a dependency of spaCy) or `statsmodels` at the pinned versions, so uv builds those two from source there. That needs a C compiler, and the packages their build uses are not pinned or hash-checked.
@@ -34,6 +36,9 @@ To bump them:
 ### Environment Utilities
 
 ```go
+// Prepare the managed Python environment now instead of on first use (optional)
+func Setup(ctx context.Context) error
+
 // Delete the managed Python environment and build it again from the pinned versions
 func ReinstallPyEnv() error
 ```
@@ -384,6 +389,32 @@ if err != nil {
     for _, l := range lines {
         fmt.Println(l)
     }
+}
+```
+
+### Prepare the Python Environment
+
+```go
+func Setup(ctx context.Context) error
+```
+
+**Description:** Prepares the managed Python environment now: it downloads and verifies the pinned uv if it is missing, and has uv bring `.insyra_env/py25c_<os>_<arch>` to the pinned versions, which is what the first `RunCode`, `PipInstall` or other call would otherwise do. Calling it is optional. Call it at start-up to fail there rather than on a first request, and to bound the downloads with a context. On an environment that is already prepared it returns `nil` without running uv, so calling it on every start costs little.
+
+**Parameters:**
+
+- `ctx` (`context.Context`): bounds the uv download, the sync, and the wait for a setup another call has already started. A `nil` context is an error, and a context that is already done returns `ctx.Err()` before anything starts.
+
+**Returns:**
+
+- `error`: Non-nil if the environment could not be prepared. A setup that fails is not marked ready, so `Setup` or the next call tries again.
+
+#### Example
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+defer cancel()
+if err := py.Setup(ctx); err != nil {
+    log.Fatalf("preparing the Python environment: %v", err)
 }
 ```
 
