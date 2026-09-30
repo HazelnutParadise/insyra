@@ -16,4 +16,4 @@
 
 ## 4. Verification
 
-- [ ] 4.1 gofmt、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate nn-custom-loss --strict`
+- [x] 4.1 gofmt、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate nn-custom-loss --strict`
