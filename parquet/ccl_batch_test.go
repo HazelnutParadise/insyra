@@ -9,10 +9,10 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-// These tests pin how cclBatchSize is used: each batch is evaluated on its
-// own, so an expression that reads more than the current row sees only that
-// batch. The size itself is not a tuning knob — changing it would change the
-// rows FilterWithCCL keeps and the values ApplyCCL writes.
+// These tests pin what cclBatchSize does not change: the parts of an
+// expression that read beyond the current row are computed over the whole
+// file before any batch is evaluated, so FilterWithCCL and ApplyCCL give the
+// answer the loaded table gives whatever the batch size.
 
 // writeCounting writes a one-column file counting up from 1 to n and returns
 // its path.
@@ -30,13 +30,13 @@ func writeCounting(t *testing.T, n int) string {
 	return path
 }
 
-func TestFilterWithCCLEvaluatesAnAggregatePerBatch(t *testing.T) {
+func TestFilterWithCCLComputesAnAggregateOverTheFile(t *testing.T) {
 	path := writeCounting(t, 2500)
 
-	// 2500 rows arrive as three batches of 1000, 1000 and 500. Each batch is
-	// compared against its own average — 500.5, 1500.5 and 2250.5 — so half of
-	// every batch is kept, not half of the table. The same filter evaluated over
-	// the whole table would compare against 1250.5 and keep values from 1251 on.
+	// 2500 rows arrive as three batches of 1000, 1000 and 500, but AVG(A) is
+	// computed over the file before any row is compared with it, so every row
+	// is compared against 1250.5 and everything from 1251 on is kept — the same
+	// answer the loaded table gives, rather than half of each batch.
 	res, err := FilterWithCCL(context.Background(), path, "A > AVG(A)")
 	if err != nil {
 		t.Fatalf("FilterWithCCL: %v", err)
@@ -44,31 +44,31 @@ func TestFilterWithCCLEvaluatesAnAggregatePerBatch(t *testing.T) {
 
 	rows, _ := res.Size()
 	if rows != 1250 {
-		t.Fatalf("rows = %d, want 1250 (half of each batch)", rows)
+		t.Fatalf("rows = %d, want 1250 (everything above the file's average of 1250.5)", rows)
 	}
 
 	got := fmt.Sprint(res.GetColByNumber(0).Get(0))
-	if got != "501" {
-		t.Fatalf("first kept value = %s, want \"501\" (first value of the first batch above its average)", got)
+	if got != "1251" {
+		t.Fatalf("first kept value = %s, want \"1251\" (the first value above the file's average)", got)
 	}
 }
 
-func TestFilterWithCCLRowIndexRestartsEachBatch(t *testing.T) {
+func TestFilterWithCCLRowIndexIsTheFileRow(t *testing.T) {
 	path := writeCounting(t, 2500)
 
-	// The row index restarts at zero in every batch, so "# == 0" keeps the
-	// first row of each of the three batches.
+	// # is the row's position in the file, not in the batch it arrived in, so
+	// "# == 0" keeps the file's first row and no other.
 	res, err := FilterWithCCL(context.Background(), path, "# == 0")
 	if err != nil {
 		t.Fatalf("FilterWithCCL: %v", err)
 	}
 
 	rows, _ := res.Size()
-	if rows != 3 {
-		t.Fatalf("rows = %d, want 3 (one per batch)", rows)
+	if rows != 1 {
+		t.Fatalf("rows = %d, want 1 (the file's first row)", rows)
 	}
 
-	want := []string{"1", "1001", "2001"}
+	want := []string{"1"}
 	got := res.GetColByNumber(0).Data()
 	if len(got) != len(want) {
 		t.Fatalf("kept %d values, want %d", len(got), len(want))
@@ -80,11 +80,12 @@ func TestFilterWithCCLRowIndexRestartsEachBatch(t *testing.T) {
 	}
 }
 
-func TestApplyCCLRowIndexRestartsEachBatch(t *testing.T) {
+func TestApplyCCLRowIndexIsTheFileRow(t *testing.T) {
 	path := writeCounting(t, 2500)
 
-	// The written column restarts at zero in every batch, so the value at file
-	// position 1000 is 0 again rather than 1000.
+	// # is the row's position in the file, so the written column counts up
+	// across the batches: the value at file position 1000 is 1000, not 0 again
+	// because a batch started there.
 	if err := ApplyCCL(context.Background(), path, "NEW('i') = #"); err != nil {
 		t.Fatalf("ApplyCCL: %v", err)
 	}
@@ -103,7 +104,7 @@ func TestApplyCCLRowIndexRestartsEachBatch(t *testing.T) {
 		t.Fatalf("column \"i\" holds %d values, want 2500", len(data))
 	}
 
-	for i, want := range map[int]string{999: "999", 1000: "0", 1001: "1"} {
+	for i, want := range map[int]string{999: "999", 1000: "1000", 1001: "1001"} {
 		if got := fmt.Sprint(data[i]); got != want {
 			t.Fatalf("column \"i\" value %d = %s, want %q", i, got, want)
 		}

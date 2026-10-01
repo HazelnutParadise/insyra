@@ -273,17 +273,33 @@ The `parquet` package provides CCL (Column Calculation Language) support for dir
 
 ### Batches of 1,000 rows
 
-`FilterWithCCL` and `ApplyCCL` read the file 1,000 rows at a time and evaluate each batch on its own, so they never hold more than one batch of the file for evaluation, however large it is. An expression that looks only at the current row, such as `(A > 100) && (B == 'active')`, gives the same answer as on a loaded table. An expression that reads beyond the current row sees only its own batch:
+`FilterWithCCL` and `ApplyCCL` read the file 1,000 rows at a time and give the answer the same expression gives on the file loaded with `Read`:
 
-- an aggregate such as `AVG(A)`, `SUM(A)` or `MAX(A)` is computed over the batch, not the column;
-- the row index `#` counts from 0 in every batch;
-- a reference to a fixed row, such as `A.0`, names that row of the batch.
+- an aggregate such as `AVG(A)`, `SUM(A:C)` or `STDEV(A - 1)` is computed over the whole file;
+- the row index `#` is the row's position in the file, counted from 0;
+- a reference to a fixed row or range of rows, such as `A.0`, `@.1500` or `A.0:1999`, reads those rows of the file.
 
-For example, on a file whose column `A` holds 1 to 2,500, `FilterWithCCL(ctx, path, "A > AVG(A)")` keeps the 1,250 rows from 501 on, because each batch compares against its own average (500.5, 1,500.5 and 2,250.5), and `"# == 0"` keeps rows 1, 1,001 and 2,001. The same filter on the whole column keeps the 1,250 rows from 1,251. The batch size is fixed rather than a setting because a different size would change these answers.
+For example, on a file whose column `A` holds 1 to 2,500, `FilterWithCCL(ctx, path, "A > AVG(A)")` keeps the 1,250 rows from 1,251 on, and `"# == 0"` keeps the first row only. In `ApplyCCL`, each statement sees the file as the statements before it leave it, so `NEW('c') = A - AVG(A); NEW('d') = ['c'] / SUM(['c'])` divides by the sum of the new column.
 
-A sequence function such as `LAG`, `LEAD`, `CUMSUM` or `ROLLING_MEAN` does not work here at all: it is not evaluated row by row, so `ApplyCCL(ctx, path, "NEW('c') = CUMSUM(A)")` writes the whole batch's sequence, as text, into every cell of `c`, and a filter compares the whole sequence rather than the row's value, so `CUMSUM(A) == A` keeps no rows.
+The aggregates computed this way are `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`, `VAR`, `VARP`, `STDEV` and `STDEVP`. Before any row is evaluated, the file is read again for them, keeping only running totals, so memory still holds one batch at a time:
 
-When an expression needs the whole column or a sequence function, load the file with `Read` and use the `DataTable` CCL methods, such as `AddColUsingCCL` and `ExecuteCCL`.
+- each extra read feeds one argument of an aggregate, and each column of a range or of `@` is an argument of its own;
+- `VAR`, `VARP`, `STDEV` and `STDEVP` read each argument twice;
+- aggregates side by side share their reads, and an aggregate inside another waits for the inner one;
+- fixed rows take a read of their own, separate from the aggregates', and one more when they sit inside an aggregate or another fixed row; the rows they name are kept in memory, so `A.0:1999` holds 2,000 rows.
+
+`A > AVG(A)` reads the file twice in all, `A > STDEV(A)` and `A > AVG(A - AVG(A))` three times. An expression that needs none of this is read once, as before. In `ApplyCCL`, every extra read for a statement applies the statements before it to each batch again.
+
+A part that cannot be computed, such as `STDEV(A)` over a single value or `A.5000` in a file of 2,500 rows, fails only the rows that reach it, as it does on a loaded table: `IF(COUNT(A) >= 2, A > STDEV(A), TRUE)` keeps every row of a one-row file.
+
+These are refused with an error naming them, before any row is evaluated and, in `ApplyCCL`, before anything is written, even when the file has no rows:
+
+- a sequence function such as `LAG`, `LEAD`, `CUMSUM` or `ROLLING_MEAN`;
+- `MEDIAN`, or an aggregate registered with `RegisterAggregateFunction` from `engine/ccl`, including one registered under a built-in name, computed over the file; one whose arguments use `#` is computed row by row and works;
+- a column range inside an expression an aggregate is computed over, such as `COUNT(IF(A > 0, A:B, 0))`; a range given to the aggregate directly, as in `SUM(A:B)`, works;
+- a row reference computed from the current row, such as `A.(# - 1)`.
+
+For these, load the file with `Read` and use the `DataTable` CCL methods, such as `AddColUsingCCL` and `ExecuteCCL`.
 
 ### FilterWithCCL
 
@@ -302,7 +318,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 **Returns:**
 
 - A new `DataTable` containing only rows that satisfy the filter condition, however large the file. When nothing matches, the table has the file's columns and no rows.
-- An error when the expression does not compile, when it cannot be evaluated against a row, or when the file cannot be read — including a read that fails part-way. A read failure is always reported as an error; a partial table is never returned in its place.
+- An error when the expression does not compile, when it holds a part that cannot be computed over the file (see [Batches of 1,000 rows](#batches-of-1000-rows)), when it cannot be evaluated against a row, or when the file cannot be read — including a read that fails part-way. A read failure is always reported as an error; a partial table is never returned in its place.
 - The original Parquet file is **not modified**
 
 **Example:**
@@ -341,7 +357,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteO
 - Without `opts`, the file keeps its layout: each column is written with the codec it had, a column the script adds takes the codec of the first column, and row groups are as large as the original's largest one. A 200,000-row Zstd file with one column added used to come back uncompressed in 200 row groups, from 1.7 MB to 9.3 MB.
 - With one `WriteOptions`, every column is written with its `Compression` and row groups of its `RowGroupSize`. More than one, or one `Write` would refuse, is an error before the file is read.
 - Processing is done in batches to handle large files efficiently. Building a row group larger than a batch holds that row group of the output in memory until it is full.
-- Supports creating new columns with `NEW()`, but modifying existing columns may not work.
+- Each statement sees the file as the statements before it leave it, the way `ExecuteCCL` does on a table: a column an earlier `NEW()` created, or an earlier assignment such as `['A'] = A * 2` replaced, reads its new values. A statement that cannot be computed over the file (see [Batches of 1,000 rows](#batches-of-1000-rows)) is refused before anything is written.
 
 **Example:**
 

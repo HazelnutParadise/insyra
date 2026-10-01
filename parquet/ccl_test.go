@@ -418,7 +418,7 @@ func newTestContext(t *testing.T) *parquetContext {
 	t.Helper()
 	rec := record(t)
 	t.Cleanup(rec.Release)
-	return newParquetContext(rec, []string{"num", "score", "label", "flag"})
+	return newParquetContext(rec, []string{"num", "score", "label", "flag"}, 0)
 }
 
 // GetCol and GetColByName read the current row; the rest read the record.
@@ -646,7 +646,7 @@ func TestParquetContext_RowNamesAreNotSupported(t *testing.T) {
 // Every accessor has to survive a context built with no record at all, because
 // that is what an empty batch produces.
 func TestParquetContext_NoRecord(t *testing.T) {
-	c := newParquetContext(nil, []string{"num"})
+	c := newParquetContext(nil, []string{"num"}, 0)
 
 	if got := c.GetColCount(); got != 0 {
 		t.Errorf("GetColCount: got %d, want 0", got)

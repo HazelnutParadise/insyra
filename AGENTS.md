@@ -270,6 +270,24 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-02] — `ApplyCCL` writes a missing value in a column it creates as 0
+- **Where**: `parquet/ccl.go` `buildArrowRecord`, the `arrow.Field` it builds for a column the script adds
+- **What**: the field is built without `Nullable: true`, so the writer drops the column's nulls and the builder's zero takes their place. Measured on 2026-10-02: on a file whose `A` is `[1, nil, 3]`, `ApplyCCL(ctx, path, "NEW('c') = A")` writes `c` as `[1, 0, 3]`, with a nil error. Any `NEW` column holding a missing value loses it, silently. It predates `parquet-ccl-whole-file-aggregates`, whose worker found it.
+- **Suggestion**: build the new column's field as nullable, and test a `NEW` column with a missing value read back through `Read`. It changes the bytes `ApplyCCL` writes, so it needs a changelog entry; take it before the next release.
+- **Status**: pending
+
+### [2026-10-02] — four more things `ApplyCCL` and `FilterWithCCL` do that a loaded table does not
+- **Where**: `parquet/ccl.go` (`parquetContext.GetCurrentRow`, `applyStatements`, `FilterWithCCL`, `ApplyCCL`)
+- **What**: measured by the adversarial review of `parquet-ccl-whole-file-aggregates` on 2026-10-02, all present before it. (1) `NEW('r') = @` writes the batch's last row into every cell of the batch, because `GetCurrentRow` hands out the context's own slice, which the next row overwrites; on a loaded table each row gets its own. (2) A bare identifier such as `MAX(S)` finds a column named `S` by name, because the parquet path neither binds the expression nor checks column letters, where `AddColUsingCCL` refuses it. (3) `NEW('c') = 1; NEW('c') = 2` writes two columns named `c`, both holding 2. (4) A `NEW` column takes its type from the first batch, so a later batch whose values have another type fails with a schema mismatch.
+- **Suggestion**: (1) return a copy from `GetCurrentRow`; (2) bind and check the expression against the file's column names before reading, as the table path does; (3) do what `ExecuteCCL` does with a taken name, after checking what that is; (4) document it, or settle the type from every batch first. Each changes what a call returns, so they want a change of their own.
+- **Status**: pending
+
+### [2026-10-02] — `@.N` past the end of a table is a row of nils, not an error
+- **Where**: `ccl.go` `dataTableContext.GetRowAt`
+- **What**: it refuses only a negative row, so a row at or past the end reads as a row of nils. Measured on 2026-10-02: on a three-row table, `AddColUsingCCL("x", "COUNT(@.5000)")` gives 0 in every row with a nil error, while `A.5000` fails. `FilterWithCCL` and `ApplyCCL` refuse such a row, so the two paths now disagree on it.
+- **Suggestion**: refuse a row at or past the end in `GetRowAt` with the error `GetCell` gives. It turns a silent answer into an error.
+- **Status**: pending
+
 ### [2026-10-01] — a pandas DataFrame with a column named `name` comes back named after that column
 - **Where**: `insyra._normalize_result` in `py/builtin.go`, the `getattr(result, "name", None)` of the pandas DataFrame branch
 - **What**: pandas returns a column as an attribute, so for a DataFrame holding a column `name` the `getattr` finds the column, and its printed form becomes the table's name. Measured on 2026-10-01 with the pinned environment on macOS arm64: `RunCode(&dt, "insyra.Return(pd.DataFrame({'name': ['x', 'y'], 'v': [1, 2]}))")` gave a table named `"0    x\n1    y\nName: name, dtype: str"`. `Docs/py.md` says `DataFrame.name`, when set, becomes the table's name. Found by the adversarial review of `py-nested-table-results`; it predates that change, which sends nested DataFrames through the same branch.
@@ -354,11 +372,11 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: delete them in the same release as the other Deprecated removals, with `TestDeprecatedLingoNamesSayWhatReplacedThem` and the old-name checks in `lpgen/lingo_errors_test.go`. Move the tests in `lpgen/lpgen_test.go` and `lpgen/no_panic_test.go` that still call them to the new names, drop their section from `Docs/lpgen.md`, and add a BREAKING changelog entry.
 - **Status**: pending
 
-### [2026-09-30] — `FilterWithCCL` and `ApplyCCL` answer per batch of 1,000 rows, and sequence functions do not work there
-- **Where**: `parquet/ccl.go` (`FilterWithCCL`, `ApplyCCL`, `applyBatchCCL`, `parquetContext`)
-- **What**: each 1,000-row batch is evaluated through its own `parquetContext`, so anything that reads beyond the current row sees only its batch. Measured on 2026-09-30 on a column `A` holding 1 to 2,500: `A > AVG(A)` keeps the 1,250 rows from 501 (the whole column gives the rows from 1,251), `SUM(A) > 1000000` keeps the 1,500 rows from 1,001, `MAX(A) == A` keeps 1,000, 2,000 and 2,500, `# == 0` and `A == A.0` keep 1, 1,001 and 2,001, and `ApplyCCL(ctx, path, "NEW('i') = #")` restarts at 0 every 1,000 rows. Sequence functions are not evaluated per row at all: `NEW('c') = CUMSUM(A)` and `NEW('c') = LAG(A, 1)` write the whole batch's sequence as text into every cell, and a filter comparing one keeps no rows, where `AddColUsingCCL` on the loaded table gives each row its own value. `parquet-write-options` stated this in `Docs/parquet.md` and kept the batch size fixed; it changed no results.
-- **Suggestion**: refuse, before reading anything, an expression that reads beyond the current row (aggregates, sequence functions, `#`, fixed-row references and row ranges), with an error pointing to `Read` plus the `DataTable` CCL methods. The parser already knows these node kinds, so it is cheap, and it turns silently wrong answers into errors. Whole-column answers (a first pass for aggregates, state carried across batches for sequence functions) are the alternative and much larger. Either changes what these calls return, so decide which.
-- **Status**: pending
+### [2026-09-30] — `FilterWithCCL` and `ApplyCCL` refuse sequence functions, `MEDIAN`, registered functions and computed row references
+- **Where**: `parquet/ccl.go` (`FilterWithCCL`, `ApplyCCL`), `internal/ccl/stream_resolve.go` (`ResolveWholeTable`, `refuseUnsupportedParts`)
+- **What**: both functions read the file 1,000 rows at a time. `parquet-ccl-whole-file-aggregates` made the built-in aggregates other than `MEDIAN`, the row index `#` and fixed-row references give the answer the loaded table gives, without holding whole columns. What it could not compute that way it refuses with an error before anything is evaluated or written: a sequence function (`LAG`, `LEAD`, `DIFF`, `PCT_CHANGE`, `CUMSUM`, `CUMPROD`, `CUMMAX`, `CUMMIN`, `ROLLING_*`, or one a caller registered), `MEDIAN`, an aggregate a caller registered, and a row reference computed from the current row such as `A.(# - 1)`. Before that change they returned an answer per batch without a word, and a sequence function wrote the whole batch's sequence as text into every cell.
+- **Suggestion**: the owner chose on 2026-10-01 to compute these without loading whole files, in two more changes. First, stream the built-in sequence functions at the top of a `NEW` or an assignment, carrying state across batches: the last rows of the previous batch for `LAG`, `DIFF`, `PCT_CHANGE` and `ROLLING_*`, the first rows of the next for `LEAD`, and the running value for the cumulative functions; a sequence function nested in another expression stays refused. Second, compute `MEDIAN`, caller-registered functions and computed row references by loading only the columns they read into a whole-column context and evaluating them with the ordinary evaluator.
+- **Status**: pending (owner ruled 2026-10-01)
 
 ### [2026-09-29] — try an honest User-Agent against Yahoo before changing the Yahoo Finance default
 - **Where**: `datafetch/yfinance.go` `defaultYFUserAgent`; go-yfinance v1.7.0's `defaultJA3` in `pkg/client/client.go`
