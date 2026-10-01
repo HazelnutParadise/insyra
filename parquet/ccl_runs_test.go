@@ -227,7 +227,7 @@ func TestPipelinePassesRunsThroughEveryStage(t *testing.T) {
 		t.Fatalf("compiling the script: %v", err)
 	}
 
-	p, err := newPipeline(nodes, 6, []string{"A"})
+	p, err := newPipeline(nodes, 6, []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("newPipeline: %v", err)
 	}
@@ -349,7 +349,7 @@ func TestPipelineAddsANewColumnToAnEmptyRun(t *testing.T) {
 		{name: "names only", empty: cclRun{names: []string{"A"}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			p, err := newPipeline(nodes, 3, []string{"A"})
+			p, err := newPipeline(nodes, 3, []string{"A"}, nil)
 			if err != nil {
 				t.Fatalf("newPipeline: %v", err)
 			}

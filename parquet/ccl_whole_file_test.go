@@ -1,10 +1,8 @@
 package parquet
 
 import (
-	"bytes"
 	"context"
 	"math"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,7 +15,8 @@ import (
 // current row — an aggregate, the row index #, a fixed row — used to be answered
 // one batch at a time. These tests hold its answer to the one the same
 // expression gives on the file loaded with Read and evaluated on the table, cell
-// by cell, and pin the expressions that cannot be computed over the file yet.
+// by cell, and the ones that need whole columns to the answer or the error the
+// table gives them.
 
 const (
 	// wholeFileRows is how many rows writeWholeFileFixture holds: cclBatchSize,
@@ -323,34 +322,11 @@ func TestApplyCCLStatementsSeeEarlierStatements(t *testing.T) {
 	}
 }
 
-func TestApplyCCLRefusesWhatItCannotComputeYet(t *testing.T) {
-	path := writeWholeFileFixture(t)
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("reading the fixture: %v", err)
-	}
-
-	// A statement FilterWithCCL would refuse is refused here too, and it is
-	// refused before anything is written, so the file is left as it was. MEDIAN,
-	// where CUMSUM was before it: a sequence function that is the whole right
-	// hand side is computed batch by batch now.
-	const script = "NEW('c') = MEDIAN(A)"
-	err = ApplyCCL(context.Background(), path, script)
-	if err == nil {
-		t.Fatalf("ApplyCCL(%q) wrote the file instead of refusing it", script)
-	}
-	if !strings.Contains(err.Error(), "MEDIAN") {
-		t.Errorf("error %q does not name %q", err, "MEDIAN")
-	}
-
-	after, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatalf("reading the fixture back: %v", readErr)
-	}
-	if !bytes.Equal(before, after) {
-		t.Errorf("the file changed (%d bytes before, %d after) although the script was refused",
-			len(before), len(after))
-	}
+// TestApplyCCLComputesAMedianLikeTheTable holds a median, which has no form that
+// keeps a running total, to what the loaded table gives: it is computed over the
+// column it reads, and the file is written with the answer.
+func TestApplyCCLComputesAMedianLikeTheTable(t *testing.T) {
+	appliedAndCompared(t, "NEW('c') = MEDIAN(A)", "c")
 }
 
 // TestCCLErrorsNameTheFileRow holds the row an error names to the file's row:
@@ -386,28 +362,53 @@ func TestCCLErrorsNameTheFileRow(t *testing.T) {
 	}
 }
 
-func TestFilterWithCCLRefusesWhatItCannotComputeYet(t *testing.T) {
+// TestFilterWithCCLGivesTheTablesAnswerForWholeColumnParts holds the filters
+// that read beyond the current row in a way no running total answers — a median,
+// a sequence function inside a comparison, a row computed from the current one —
+// to the loaded table: the rows it keeps, or the error it fails with.
+func TestFilterWithCCLGivesTheTablesAnswerForWholeColumnParts(t *testing.T) {
 	path := writeWholeFileFixture(t)
 
 	tests := []struct {
 		expr string
-		want string
+		// wantErr is empty when the loaded table computes the expression, and
+		// otherwise the words the table's own error holds.
+		wantErr string
 	}{
-		{expr: "A > MEDIAN(A)", want: "MEDIAN"},
-		{expr: "LAG(A, 1) > 0", want: "LAG"},
-		{expr: "A > A.(# - 1)", want: "row reference"},
+		{expr: "A > MEDIAN(A)"},
+		{expr: "LAG(A, 1) > 0", wantErr: "invalid operands"},
+		{expr: "A > A.(# - 1)", wantErr: "row index -1 out of range"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.expr, func(t *testing.T) {
+			if tt.wantErr == "" {
+				want := expectedFilter(t, path, tt.expr)
+				res, err := FilterWithCCL(context.Background(), path, tt.expr)
+				if err != nil {
+					t.Fatalf("FilterWithCCL(%q): %v", tt.expr, err)
+				}
+				sameRows(t, filteredRows(t, res), want)
+				return
+			}
+
+			dt, err := Read(context.Background(), path, ReadOptions{})
+			if err != nil {
+				t.Fatalf("Read(%s): %v", path, err)
+			}
+			dt.AddColUsingCCL("__keep", tt.expr)
+			if dt.Err() == nil || !strings.Contains(dt.Err().Error(), tt.wantErr) {
+				t.Fatalf("AddColUsingCCL(%q) on the loaded table: error %v, want one holding %q", tt.expr, dt.Err(), tt.wantErr)
+			}
+
 			res, err := FilterWithCCL(context.Background(), path, tt.expr)
 			if err == nil {
-				t.Fatalf("FilterWithCCL(%q) kept %d rows instead of refusing it", tt.expr, len(filteredRows(t, res)))
+				t.Fatalf("FilterWithCCL(%q) kept %d rows where the loaded table fails", tt.expr, len(filteredRows(t, res)))
 			}
 			if res != nil {
 				t.Errorf("FilterWithCCL(%q) returned a table as well as the error", tt.expr)
 			}
-			if !strings.Contains(err.Error(), tt.want) {
-				t.Errorf("error %q does not name %q", err, tt.want)
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error %.200q does not hold %q, which the table's does", err, tt.wantErr)
 			}
 		})
 	}

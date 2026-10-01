@@ -297,14 +297,14 @@ A sequence function, `LAG`, `LEAD`, `DIFF`, `PCT_CHANGE`, `CUMSUM`, `CUMPROD`, `
 
 A part that cannot be computed, such as `STDEV(A)` over a single value or `A.5000` in a file of 2,500 rows, fails only the rows that reach it, as it does on a loaded table: `IF(COUNT(A) >= 2, A > STDEV(A), TRUE)` keeps every row of a one-row file.
 
-These are refused with an error naming them, before any row is evaluated and, in `ApplyCCL`, before anything is written, even when the file has no rows:
+Anything else that reads beyond the current row is computed by reading the whole of the columns the expression reads, and only those, into memory, and evaluating the expression the way `AddColUsingCCL` and `ExecuteCCL` do on a loaded table, so its answer is the table's, and it fails where the table fails, for the same reason:
 
-- a sequence function anywhere else: inside an expression such as `CUMSUM(A) + 1`, which fails on a loaded table too, or inside another sequence function or an aggregate, such as `LAG(CUMSUM(A), 1)` or `SUM(CUMSUM(A))`, which a loaded table answers;
-- `MEDIAN`, or an aggregate registered with `RegisterAggregateFunction` from `engine/ccl`, including one registered under a built-in name, computed over the file; one whose arguments use `#` is computed row by row and works;
-- a column range inside an expression an aggregate is computed over, such as `COUNT(IF(A > 0, A:B, 0))`; a range given to the aggregate directly, as in `SUM(A:B)`, works;
-- a row reference computed from the current row, such as `A.(# - 1)`.
+- `MEDIAN`, or an aggregate registered with `RegisterAggregateFunction` from `engine/ccl`, including one registered under a built-in name;
+- a row reference computed from the current row, such as `A.(# - 1)`;
+- a column range inside an expression an aggregate is computed over, such as `COUNT(IF(A > 0, A:B, 0))`;
+- a sequence function anywhere but as the whole expression: inside another sequence function or an aggregate, such as `LAG(CUMSUM(A), 1)` or `SUM(CUMSUM(A))`, or inside another expression, such as `CUMSUM(A) + 1`, which fails here as it fails on a loaded table.
 
-For these, load the file with `Read` and use the `DataTable` CCL methods, such as `AddColUsingCCL` and `ExecuteCCL`.
+`A > MEDIAN(A)` on a file with ten columns holds column `A`, whole, and nothing else. `@` reads every column, so such an expression that uses `@` holds the whole file. It costs one more read of the file. In `ApplyCCL`, such a statement is computed before the file is written, against the file as the statements before it leave it, and the column it writes is held until the file is written.
 
 ### FilterWithCCL
 
@@ -323,7 +323,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 **Returns:**
 
 - A new `DataTable` containing only rows that satisfy the filter condition, however large the file. When nothing matches, the table has the file's columns and no rows.
-- An error when the expression does not compile, when it holds a part that cannot be computed over the file (see [Batches of 1,000 rows](#batches-of-1000-rows)), when it cannot be evaluated against a row, or when the file cannot be read — including a read that fails part-way. A read failure is always reported as an error; a partial table is never returned in its place.
+- An error when the expression does not compile, names a column the file does not have, cannot be evaluated against a row, or when the file cannot be read — including a read that fails part-way. A read failure is always reported as an error; a partial table is never returned in its place.
 - The original Parquet file is **not modified**
 
 **Example:**
@@ -362,7 +362,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteO
 - Without `opts`, the file keeps its layout: each column is written with the codec it had, a column the script adds takes the codec of the first column, and row groups are as large as the original's largest one. A 200,000-row Zstd file with one column added used to come back uncompressed in 200 row groups, from 1.7 MB to 9.3 MB.
 - With one `WriteOptions`, every column is written with its `Compression` and row groups of its `RowGroupSize`. More than one, or one `Write` would refuse, is an error before the file is read.
 - Processing is done in batches to handle large files efficiently. Building a row group larger than a batch holds that row group of the output in memory until it is full. Until every column a statement writes has shown a value, the rows written so far also wait in memory, at most one row group of them, so their types can be settled.
-- Each statement sees the file as the statements before it leave it, the way `ExecuteCCL` does on a table: a column an earlier `NEW()` created, or an earlier assignment such as `['A'] = A * 2` replaced, reads its new values. A statement that cannot be computed over the file (see [Batches of 1,000 rows](#batches-of-1000-rows)) is refused before anything is written.
+- Each statement sees the file as the statements before it leave it, the way `ExecuteCCL` does on a table: a column an earlier `NEW()` created, or an earlier assignment such as `['A'] = A * 2` replaced, reads its new values. A statement that has to hold whole columns (see [Batches of 1,000 rows](#batches-of-1000-rows)) is computed before anything is written, so an error in it leaves the file as it was.
 
 **Example:**
 

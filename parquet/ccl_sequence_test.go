@@ -14,8 +14,8 @@ import (
 // A sequence function reads rows the batch after the current one has not
 // arrived with, so FilterWithCCL and ApplyCCL used to refuse every one of them.
 // The tests below hold the streamed answer to the one the same expression gives
-// on the file loaded with Read, and pin the placements that still have no
-// answer.
+// on the file loaded with Read, and the placements a stream cannot reach to the
+// answer, or the error, the loaded table gives them.
 
 // applySequenceScripts are the scripts whose whole right-hand side is a sequence
 // function, which ApplyCCL has to answer as the loaded table answers them: a
@@ -76,55 +76,75 @@ func TestFilterWithCCLStreamsSequences(t *testing.T) {
 	}
 }
 
-// TestCCLRefusesASequenceInsideAnExpression pins the placement a stream cannot
-// reach: one stream would have to feed another, so it is refused before the
-// file is read into a result and, for ApplyCCL, before anything is written.
-func TestCCLRefusesASequenceInsideAnExpression(t *testing.T) {
-	t.Run("FilterWithCCL refuses a sequence inside a comparison", func(t *testing.T) {
+// TestCCLGivesTheTablesAnswerForASequenceInsideAnExpression holds the placement a
+// stream cannot reach, one sequence function feeding another expression, to the
+// loaded table: it is computed over the whole of the column it reads, so the
+// answer is the table's, and so is the error where the table fails. A failing
+// script leaves the file as it was.
+func TestCCLGivesTheTablesAnswerForASequenceInsideAnExpression(t *testing.T) {
+	t.Run("FilterWithCCL fails on a sequence inside a comparison as the table does", func(t *testing.T) {
 		const expr = "CUMSUM(A) > 10"
 		path := writeWholeFileFixture(t)
 
+		dt, err := Read(context.Background(), path, ReadOptions{})
+		if err != nil {
+			t.Fatalf("Read(%s): %v", path, err)
+		}
+		dt.AddColUsingCCL("__keep", expr)
+		if dt.Err() == nil || !strings.Contains(dt.Err().Error(), "invalid operands") {
+			t.Fatalf("AddColUsingCCL(%q) on the loaded table: error %v, want one holding %q", expr, dt.Err(), "invalid operands")
+		}
+
 		res, err := FilterWithCCL(context.Background(), path, expr)
 		if err == nil {
-			t.Fatalf("FilterWithCCL(%q) kept %d rows instead of refusing it", expr, len(filteredRows(t, res)))
+			t.Fatalf("FilterWithCCL(%q) kept %d rows where the loaded table fails", expr, len(filteredRows(t, res)))
 		}
 		if res != nil {
 			t.Errorf("FilterWithCCL(%q) returned a table as well as the error", expr)
 		}
-		if !strings.Contains(err.Error(), "CUMSUM") {
-			t.Errorf("error %q does not name %q", err, "CUMSUM")
+		if !strings.Contains(err.Error(), "invalid operands") {
+			t.Errorf("error %.200q does not hold %q, which the table's does", err, "invalid operands")
 		}
 	})
 
-	for _, script := range []string{
-		"NEW('c') = CUMSUM(A) + 1",
-		"NEW('c') = SUM(CUMSUM(A))",
-	} {
-		t.Run("ApplyCCL refuses "+script, func(t *testing.T) {
-			path := writeWholeFileFixture(t)
-			before, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("reading the fixture: %v", err)
-			}
+	t.Run("ApplyCCL fails on a sequence inside an expression as the table does", func(t *testing.T) {
+		const script = "NEW('c') = CUMSUM(A) + 1"
+		path := writeWholeFileFixture(t)
+		before, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("reading the fixture: %v", err)
+		}
 
-			err = ApplyCCL(context.Background(), path, script)
-			if err == nil {
-				t.Fatalf("ApplyCCL(%q) wrote the file instead of refusing it", script)
-			}
-			if !strings.Contains(err.Error(), "CUMSUM") {
-				t.Errorf("error %q does not name %q", err, "CUMSUM")
-			}
+		dt, err := Read(context.Background(), path, ReadOptions{})
+		if err != nil {
+			t.Fatalf("Read(%s): %v", path, err)
+		}
+		dt.ExecuteCCL(script)
+		if dt.Err() == nil || !strings.Contains(dt.Err().Error(), "invalid operands") {
+			t.Fatalf("ExecuteCCL(%q) on the loaded table: error %v, want one holding %q", script, dt.Err(), "invalid operands")
+		}
 
-			after, readErr := os.ReadFile(path)
-			if readErr != nil {
-				t.Fatalf("reading the fixture back: %v", readErr)
-			}
-			if !bytes.Equal(before, after) {
-				t.Errorf("the file changed (%d bytes before, %d after) although the script was refused",
-					len(before), len(after))
-			}
-		})
-	}
+		err = ApplyCCL(context.Background(), path, script)
+		if err == nil {
+			t.Fatalf("ApplyCCL(%q) wrote the file where the loaded table fails", script)
+		}
+		if !strings.Contains(err.Error(), "invalid operands") {
+			t.Errorf("error %.200q does not hold %q, which the table's does", err, "invalid operands")
+		}
+
+		after, readErr := os.ReadFile(path)
+		if readErr != nil {
+			t.Fatalf("reading the fixture back: %v", readErr)
+		}
+		if !bytes.Equal(before, after) {
+			t.Errorf("the file changed (%d bytes before, %d after) although the script failed",
+				len(before), len(after))
+		}
+	})
+
+	t.Run("ApplyCCL computes an aggregate of a sequence as the table does", func(t *testing.T) {
+		appliedAndCompared(t, "NEW('c') = SUM(CUMSUM(A))", "c")
+	})
 }
 
 // TestApplyCCLWritesANewColumnsMissingValues holds a column a script creates
