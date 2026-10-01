@@ -112,7 +112,7 @@ func Inspect(path string) (FileInfo, error)
 func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable, error)
 ```
 
-**Description:** Reads a Parquet file into an `insyra.DataTable` all at once.
+**Description:** Reads a Parquet file into an `insyra.DataTable` all at once. A file the Arrow reader cannot make sense of, such as one whose data pages and footer came from different writes, is an error saying it is not a readable Parquet file, never a panic. The same holds for `ReadFrom`, `ReadColumn`, `Inspect`, `Stream`, `StreamFrom`, `FilterWithCCL` and `ApplyCCL`, and `ApplyCCL` then leaves the file as it was.
 
 **Parameters:**
 

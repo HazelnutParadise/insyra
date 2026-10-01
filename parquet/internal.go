@@ -58,6 +58,19 @@ func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, lab
 		if done != nil {
 			defer done()
 		}
+		// A panic in this goroutine would take the whole process down, and it
+		// cannot be recovered by the caller reading these channels. It runs
+		// before the channels close, so the error reaches the consumer; the
+		// select's default keeps it from blocking on a channel that already
+		// holds an error.
+		defer func() {
+			if r := recover(); r != nil {
+				select {
+				case errChan <- unreadableFile(label, r):
+				default:
+				}
+			}
+		}()
 
 		r, err := file.NewParquetReader(src)
 		if err != nil {

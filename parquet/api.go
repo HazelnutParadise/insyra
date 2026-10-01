@@ -58,8 +58,22 @@ type RowGroupInfo struct {
 	TotalCompressedSize int64
 }
 
+// unreadableFile turns a panic inside the Arrow reader into the error the
+// readers return for a file they cannot make sense of. A file whose data pages
+// and footer come from different writes makes Arrow dereference a nil pointer,
+// and this library never lets a panic reach its caller.
+func unreadableFile(label string, r any) error {
+	return fmt.Errorf("parquet: %s is not a readable Parquet file: %v", label, r)
+}
+
 // Inspect reads a Parquet file's metadata without reading any values.
-func Inspect(path string) (FileInfo, error) {
+func Inspect(path string) (info FileInfo, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			info, err = FileInfo{}, unreadableFile(path, r)
+		}
+	}()
+
 	f, err := os.Open(path)
 	if err != nil {
 		return FileInfo{}, err
@@ -103,7 +117,7 @@ func Inspect(path string) (FileInfo, error) {
 		createdBy = wv.App
 	}
 
-	info := FileInfo{
+	info = FileInfo{
 		NumRows:      r.NumRows(),
 		NumRowGroups: r.NumRowGroups(),
 		Version:      metadata.Version().String(),
@@ -375,7 +389,13 @@ func ReadFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions) (
 
 // readTableFrom is the one reader behind Read and ReadFrom. label names the
 // source in messages.
-func readTableFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string, opt ReadOptions) (*insyra.DataTable, error) {
+func readTableFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string, opt ReadOptions) (dt *insyra.DataTable, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			dt, err = nil, unreadableFile(label, r)
+		}
+	}()
+
 	r, err := file.NewParquetReader(src)
 	if err != nil {
 		return nil, err

@@ -360,12 +360,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: read the source's codec from its metadata and write with it, or give `ApplyCCL` the `WriteOptions` that `Write` takes. Either changes the bytes `ApplyCCL` writes, so decide which. While there, move it off its fixed `<path>.tmp` the way `parquet-write-options` moved `Write`, where two writers to one path mixed their bytes. `ApplyCCL` uses the same pattern, going by its code, and was not measured.
 - **Status**: pending
 
-### [2026-09-30] — reading a Parquet file whose pages and footer disagree panics
-- **Where**: `parquet/api.go` `readTableFrom`, behind `Read` and `ReadFrom`, inside Arrow's reader
-- **What**: a file whose data pages come from one write and whose footer comes from another makes `ReadFrom` panic with a nil pointer dereference instead of returning an error, against this line's rule that the library never panics. Measured on 2026-09-30: laying the first k bytes of a 1,000-row file over a 3,000-row file, for k from 100 upward in steps of 53, panicked in 169 of 655 cases. Two concurrent `Write` calls sharing the old fixed `<path>.tmp` produced exactly such files; `parquet-write-options` stopped that, but a file damaged elsewhere reaches the same code. `Stream` and `ReadColumn` were not measured.
-- **Suggestion**: recover around the Arrow read calls and return the panic as an error naming the file, then check whether `Stream`'s reading goroutine needs the same.
-- **Status**: pending
-
 ### [2026-09-29] — try an honest User-Agent against Yahoo before changing the Yahoo Finance default
 - **Where**: `datafetch/yfinance.go` `defaultYFUserAgent`; go-yfinance v1.7.0's `defaultJA3` in `pkg/client/client.go`
 - **What**: the owner ruled on 2026-09-29 (#252) to document the client's browser identity first, which `Docs/datafetch.md` now does, and to decide on the default after measuring. The default is a fixed Chrome 117 `User-Agent`, and go-yfinance opens every connection with Chrome's TLS fingerprint whatever the header says, so an honest header alone would pair an insyra name with Chrome's fingerprint. Whether Yahoo answers an honest `User-Agent` has not been tried.
