@@ -4,15 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/ccl"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow/go/v17/parquet"
+	"github.com/apache/arrow/go/v17/parquet/compress"
+	"github.com/apache/arrow/go/v17/parquet/file"
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
 )
 
@@ -485,6 +490,11 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 	var kept [][]any
 	firstBatch := true
 
+	// The reader stops when this call returns, so an early return cannot leave
+	// it blocked on a batch nobody reads, holding the file open.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	recChan, errChan := streamAsArrowRecord(ctx, path, ReadOptions{}, cclBatchSize)
 
 	// build assembles the result once, on whichever path ends the stream, so an
@@ -578,153 +588,219 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 	}
 }
 
-// ApplyCCL applies CCL expressions directly to parquet file in streaming mode.
-// This function operates directly on parquet files without loading into DataTable.
-// Processing is done batch by batch to minimize memory usage.
-// cclScript can contain multiple statements separated by semicolons.
+// cclOutputLayout is how ApplyCCL writes the file back: the codec of each
+// column the source has, by its path in the schema, the codec for a column the
+// script adds, and the most rows one row group holds.
+type cclOutputLayout struct {
+	codecs       map[string]compress.Compression
+	defaultCodec compress.Compression
+	rowGroupSize int64
+}
+
+// errNothingToWrite tells ApplyCCL that the input had no rows, so the original
+// is kept rather than replaced by an empty file.
+var errNothingToWrite = errors.New("parquet: nothing to write")
+
+// sourceLayout reads the layout of the file at path: the codec of each of its
+// columns from the first row group, the first column's codec for a column the
+// script adds, and the largest row group's row count. A file with no row groups
+// has nothing to keep, so it gets the defaults Write uses.
+func sourceLayout(path string) (layout cclOutputLayout, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			layout, err = cclOutputLayout{}, unreadableFile(path, r)
+		}
+	}()
+
+	f, err := os.Open(path)
+	if err != nil {
+		return cclOutputLayout{}, err
+	}
+	defer func() { _ = f.Close() }()
+
+	r, err := file.NewParquetReader(f)
+	if err != nil {
+		return cclOutputLayout{}, err
+	}
+	defer func() { _ = r.Close() }()
+
+	if r.NumRowGroups() == 0 {
+		return cclOutputLayout{
+			codecs:       map[string]compress.Compression{},
+			defaultCodec: compress.Codecs.Uncompressed,
+			rowGroupSize: defaultRowGroupSize,
+		}, nil
+	}
+
+	md := r.MetaData()
+	layout = cclOutputLayout{
+		codecs:       make(map[string]compress.Compression),
+		rowGroupSize: 1,
+	}
+	for i := 0; i < r.NumRowGroups(); i++ {
+		layout.rowGroupSize = max(layout.rowGroupSize, md.RowGroup(i).NumRows())
+	}
+	first := md.RowGroup(0)
+	for i := 0; i < first.NumColumns(); i++ {
+		chunk, err := first.ColumnChunk(i)
+		if err != nil {
+			return cclOutputLayout{}, err
+		}
+		layout.codecs[chunk.PathInSchema().String()] = chunk.Compression()
+		if i == 0 {
+			layout.defaultCodec = chunk.Compression()
+		}
+	}
+	return layout, nil
+}
+
+// ApplyCCL applies CCL statements to a Parquet file and writes the result back
+// to the same path. cclScript can hold several statements separated by
+// semicolons or new lines, for example NEW('C') = ['A'] + ['B'].
 //
-// Example: ApplyCCL(ctx, "input.parquet", "NEW('C') = ['A'] + ['B']; ['D'] = ['D'] * 2")
-//
-//	The input file will be overwritten.
-func ApplyCCL(ctx context.Context, path string, cclScript string) error {
+// The file is read and written batch by batch; see cclBatchSize for what that
+// means for an expression. It is written back with the codec each column had
+// and row groups as large as the original's largest one, and a column the
+// script adds takes the first column's codec. One opts replaces both, as Write
+// uses it. The new file goes to a temporary file of its own and replaces path
+// only when it is complete, so a failure leaves the original as it was; an
+// input with no rows leaves it untouched too.
+func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteOptions) error {
+	// The layout is settled before anything is read or written, so settings
+	// Write would refuse, or a file whose layout cannot be read, leave the file
+	// as it was.
+	var layout cclOutputLayout
+	if len(opts) > 0 {
+		codec, size, err := resolveWriteOptions(opts)
+		if err != nil {
+			return err
+		}
+		layout = cclOutputLayout{codecs: nil, defaultCodec: codec, rowGroupSize: size}
+	} else {
+		var err error
+		layout, err = sourceLayout(path)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Compile CCL statements once
 	compiledNodes, err := ccl.CompileMultiline(cclScript)
 	if err != nil {
 		return fmt.Errorf("failed to compile CCL script: %w", err)
 	}
 
-	// Create temporary output file
-	tmpPath := path + ".tmp"
-	outFile, err := os.Create(tmpPath)
-	if err != nil {
-		return fmt.Errorf("failed to create temporary output file: %w", err)
-	}
-	defer func() {
-		// On the success path writer.Close() already closed this same fd (see
-		// finish below), so the second close reports "file already closed" —
-		// expected, not worth a warning, and it fired on every successful call.
-		if err := outFile.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
-			insyra.LogWarning("parquet", "close", "failed to close temporary file %s: %v", tmpPath, err)
-		}
-		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
-			insyra.LogWarning("parquet", "close", "failed to remove temporary file %s: %v", tmpPath, err)
-		}
-	}()
+	err = utils.WriteFileAtomically(path, func(w io.Writer) error {
+		var writer *pqarrow.FileWriter
+		var colNames []string
+		firstBatch := true
 
-	var writer *pqarrow.FileWriter
-	var resultSchema *arrow.Schema
-	var colNames []string
-	firstBatch := true
+		// Stream through the input file. It is safe to replace it afterwards
+		// because the output goes to a temporary file of its own.
+		// The reader stops when this call returns, so an early return cannot
+		// leave it blocked on a batch nobody reads, holding the file open.
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
 
-	// Stream through input file (now safe since we write to tmpPath)
-	recChan, errChan := streamAsArrowRecord(ctx, path, ReadOptions{}, cclBatchSize)
+		recChan, errChan := streamAsArrowRecord(ctx, path, ReadOptions{}, cclBatchSize)
 
-	// finish 統一處理串流成功結束時的收尾，供兩個完成路徑（errChan 關閉、recChan 關閉）共用。
-	finish := func() error {
-		if writer == nil {
-			// 沒有任何 record batch（輸入為空）：不可用 0-byte 暫存檔覆蓋原檔，保留原檔不動。
+		// Every way out below that is not a clean end returns without closing
+		// writer: the temporary file is thrown away, so it needs no footer.
+		finish := func() error {
+			if writer == nil {
+				// No record batch at all (the input is empty): keep the original
+				// rather than replace it with an empty file.
+				return errNothingToWrite
+			}
+			// writer wraps w in writerOnly, so closing it writes the footer and
+			// leaves the file for WriteFileAtomically to close and rename.
+			if err := writer.Close(); err != nil {
+				return fmt.Errorf("failed to close writer: %w", err)
+			}
 			return nil
 		}
-		// pqarrow.FileWriter.Close() 會一併關閉底層 *os.File，因此關閉 writer 後
-		// 不可再呼叫 outFile.Close()（會 double-close 失敗並阻斷後續 rename）。
-		if err := writer.Close(); err != nil {
-			return fmt.Errorf("failed to close writer: %w", err)
-		}
-		if err := os.Rename(tmpPath, path); err != nil {
-			return fmt.Errorf("failed to replace original file: %w", err)
-		}
-		return nil
-	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			if writer != nil {
-				if err := writer.Close(); err != nil {
-					insyra.LogWarning("parquet", "close", "failed to close writer on context done: %v", err)
-				}
-			}
-			return ctx.Err()
-		case err := <-errChan:
-			if err != nil {
-				if writer != nil {
-					if cerr := writer.Close(); cerr != nil {
-						insyra.LogWarning("parquet", "close", "failed to close writer: %v", cerr)
-					}
-				}
-				return err
-			}
-			// errChan 關閉且無錯誤 = 串流成功結束
-			return finish()
-
-		case rec, ok := <-recChan:
-			if !ok {
-				// recChan 關閉 = 所有 record 已消耗完（無緩衝 channel）。但生產端是
-				// 先關 errChan 再關 recChan，兩者同時就緒時上面的 select 會隨機挑一
-				// 個，最後一批之後才回報的讀取錯誤會被蓋掉，接著 finish() 會把截斷的
-				// 暫存檔 rename 蓋掉原檔。改成在這裡先讀 errChan（此時必已關閉，不會
-				// 阻塞）：有錯就不收尾。
-				if err := <-errChan; err != nil {
-					if writer != nil {
-						if cerr := writer.Close(); cerr != nil {
-							insyra.LogWarning("parquet", "close", "failed to close writer: %v", cerr)
-						}
-					}
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case err := <-errChan:
+				if err != nil {
 					return err
 				}
+				// errChan closed without an error = the stream ended well.
 				return finish()
-			}
 
-			// Get column names from first batch
-			if firstBatch {
-				for i := 0; i < int(rec.NumCols()); i++ {
-					colNames = append(colNames, rec.Schema().Field(i).Name)
-				}
-				firstBatch = false
-			}
-
-			// Create context for this batch
-			pqCtx := newParquetContext(rec, colNames)
-
-			// Apply CCL transformations to this batch
-			transformedRec, err := applyBatchCCL(rec, pqCtx, colNames, compiledNodes)
-			if err != nil {
-				rec.Release()
-				if writer != nil {
-					if cerr := writer.Close(); cerr != nil {
-						insyra.LogWarning("parquet", "close", "failed to close writer: %v", cerr)
+			case rec, ok := <-recChan:
+				if !ok {
+					// recChan closed = every record has been consumed (it is
+					// unbuffered). The producer closes errChan before recChan, and
+					// when both are ready the select above picks one at random, so
+					// a read error reported after the last batch could be lost and
+					// finish() would then replace the original with a truncated
+					// file. Read errChan here first (it is closed by now, so this
+					// cannot block): an error means no finishing.
+					if err := <-errChan; err != nil {
+						return err
 					}
+					return finish()
 				}
-				return fmt.Errorf("failed to apply CCL: %w", err)
-			}
 
-			// Initialize writer with schema from first transformed batch
-			if writer == nil {
-				resultSchema = transformedRec.Schema()
-				writer, err = pqarrow.NewFileWriter(
-					resultSchema,
-					outFile,
-					nil,
-					pqarrow.DefaultWriterProps(),
-				)
+				// Get column names from first batch
+				if firstBatch {
+					for i := 0; i < int(rec.NumCols()); i++ {
+						colNames = append(colNames, rec.Schema().Field(i).Name)
+					}
+					firstBatch = false
+				}
+
+				// Create context for this batch
+				pqCtx := newParquetContext(rec, colNames)
+
+				// Apply CCL transformations to this batch
+				transformedRec, err := applyBatchCCL(rec, pqCtx, colNames, compiledNodes)
 				if err != nil {
 					rec.Release()
-					transformedRec.Release()
-					return fmt.Errorf("failed to create parquet writer: %w", err)
+					return fmt.Errorf("failed to apply CCL: %w", err)
 				}
-			}
 
-			// Write transformed batch
-			err = writer.Write(transformedRec)
-			rec.Release()
-			transformedRec.Release()
-
-			if err != nil {
-				if cerr := writer.Close(); cerr != nil {
-					insyra.LogWarning("parquet", "close", "failed to close writer: %v", cerr)
+				// Initialize writer with schema from first transformed batch
+				if writer == nil {
+					props := []parquet.WriterProperty{
+						parquet.WithCreatedBy(fmt.Sprintf("go-insyra v%s", insyra.Version)),
+						parquet.WithCompression(layout.defaultCodec),
+						parquet.WithMaxRowGroupLength(layout.rowGroupSize),
+					}
+					for name, codec := range layout.codecs {
+						props = append(props, parquet.WithCompressionFor(name, codec))
+					}
+					writer, err = pqarrow.NewFileWriter(
+						transformedRec.Schema(),
+						writerOnly{w},
+						parquet.NewWriterProperties(props...),
+						pqarrow.DefaultWriterProps(),
+					)
+					if err != nil {
+						rec.Release()
+						transformedRec.Release()
+						return fmt.Errorf("failed to create parquet writer: %w", err)
+					}
 				}
-				return fmt.Errorf("failed to write batch: %w", err)
+
+				// Write transformed batch. Buffered, so a row group keeps filling
+				// across batches until it holds layout.rowGroupSize rows.
+				err = writer.WriteBuffered(transformedRec)
+				rec.Release()
+				transformedRec.Release()
+
+				if err != nil {
+					return fmt.Errorf("failed to write batch: %w", err)
+				}
 			}
 		}
+	})
+	if errors.Is(err, errNothingToWrite) {
+		return nil
 	}
+	return err
 }

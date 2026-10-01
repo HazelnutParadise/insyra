@@ -354,12 +354,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: refuse, before reading anything, an expression that reads beyond the current row (aggregates, sequence functions, `#`, fixed-row references and row ranges), with an error pointing to `Read` plus the `DataTable` CCL methods. The parser already knows these node kinds, so it is cheap, and it turns silently wrong answers into errors. Whole-column answers (a first pass for aggregates, state carried across batches for sequence functions) are the alternative and much larger. Either changes what these calls return, so decide which.
 - **Status**: pending
 
-### [2026-09-30] — `ApplyCCL` rewrites a file uncompressed and in 1,000-row row groups
-- **Where**: `parquet/ccl.go` `ApplyCCL`, where it creates its `pqarrow.FileWriter` with nil properties and writes one record per batch
-- **What**: the file `ApplyCCL` writes back keeps nothing of how the original was laid out. Measured on 2026-09-30: a 2,500-row file written with `CompressionZstd` in one row group came back from `ApplyCCL(ctx, path, "NEW('b') = ['id'] * 2")` uncompressed, in row groups of 1,000, 1,000 and 500. A Snappy or Zstd file several times its compressed size grows by that factor on disk.
-- **Suggestion**: read the source's codec from its metadata and write with it, or give `ApplyCCL` the `WriteOptions` that `Write` takes. Either changes the bytes `ApplyCCL` writes, so decide which. While there, move it off its fixed `<path>.tmp` the way `parquet-write-options` moved `Write`, where two writers to one path mixed their bytes. `ApplyCCL` uses the same pattern, going by its code, and was not measured.
-- **Status**: pending
-
 ### [2026-09-29] — try an honest User-Agent against Yahoo before changing the Yahoo Finance default
 - **Where**: `datafetch/yfinance.go` `defaultYFUserAgent`; go-yfinance v1.7.0's `defaultJA3` in `pkg/client/client.go`
 - **What**: the owner ruled on 2026-09-29 (#252) to document the client's browser identity first, which `Docs/datafetch.md` now does, and to decide on the default after measuring. The default is a fixed Chrome 117 `User-Agent`, and go-yfinance opens every connection with Chrome's TLS fingerprint whatever the header says, so an honest header alone would pair an insyra name with Chrome's fingerprint. Whether Yahoo answers an honest `User-Agent` has not been tried.

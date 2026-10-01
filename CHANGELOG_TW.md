@@ -178,6 +178,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `Docs/parquet.md` 補上 `FilterWithCCL` 與 `ApplyCCL` 一直以來的做法：每次讀 1,000 列、每批各自計算，所以 `AVG(A)` 這類彙總、列索引 `#`、`A.0` 這類固定列參照都只看得到目前這一批，`CUMSUM` 這類序列函式在這裡則完全無法使用。例如某欄是 1 到 2,500 時，`A > AVG(A)` 保留的是 501 以後的列，而不是 1,251 以後。批次大小維持固定，因為改變大小就會改變這些結果。運算式需要整欄時，請先用 `Read` 讀進來。
 - `Write` 改用名稱各自不同的暫存檔，不再用固定的 `<path>.tmp`。用固定名稱時，同時對同一路徑寫兩次會共用同一個暫存檔：一邊可能在改名時失敗，另一邊卻回報成功，留下混著兩邊位元組的檔案；呼叫端自己放在 `<path>.tmp` 的檔案也會被覆寫後刪掉。
 - `Read`、`ReadFrom`、`ReadColumn`、`Inspect`、`Stream`、`StreamFrom`、`FilterWithCCL` 與 `ApplyCCL` 遇到 Arrow 讀取器無法解讀的檔案時，會回傳錯誤說明它不是可讀的 Parquet 檔，不再讓讀取器的 panic 直接傳到你的程式。資料頁與 footer 來自不同次寫入的檔案，在試過的 655 個裡有 169 個會讓 `ReadFrom` 因 nil pointer 而 panic。`ApplyCCL` 遇到這種檔案時不會改動原檔。
+- `ApplyCCL` 改寫檔案時，會沿用每一欄原本的壓縮格式，row group 也維持原檔最大的那一組的大小；腳本新增的欄位則採用第一欄的壓縮格式。過去一律寫成未壓縮、每 1,000 列一組：一個 20 萬列、用 Zstd 壓縮的檔案加一欄後，從 1.7 MB 變成 9.3 MB，分成 200 組。也可以像 `Write` 一樣傳入 `WriteOptions` 自行指定這兩項。另外改用名稱各自不同的暫存檔，不再用 `<path>.tmp`，所以使用者放在那個名稱的檔案不會被動到。
+- `FilterWithCCL` 與 `ApplyCCL` 因錯誤提早返回時，會停止讀檔。過去負責讀檔的 goroutine 會卡在送下一批資料，檔案也一直開著，直到 context 結束為止；用 `context.Background()` 的話，就是一直到程式結束。
 
 ### `mkt`
 - **BREAKING**：`CAI` 改成一般函式，不再是存著 `CustomerActivityIndex` 的變數。呼叫方式不變，只有對它賦值會編譯失敗。

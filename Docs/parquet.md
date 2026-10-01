@@ -319,7 +319,7 @@ filtered.Show()
 ### ApplyCCL
 
 ```go
-func ApplyCCL(ctx context.Context, path string, cclScript string) error
+func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteOptions) error
 ```
 
 **Description:** Applies CCL expressions directly to a Parquet file in streaming mode, processing data batch by batch to minimize memory usage. The CCL script can contain multiple statements separated by semicolons.
@@ -329,6 +329,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error
 - `ctx`: Context for cancellation
 - `path`: Path to the Parquet file (will be modified in-place)
 - `cclScript`: CCL script containing one or more statements separated by `;` or newlines
+- `opts`: Optional, at most one. The compression and row group size to write with, as `Write` uses them; see [WriteOptions](#writeoptions-and-compression). Without it the file keeps its own.
 
 **Returns:**
 
@@ -336,8 +337,10 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error
 
 **Important:**
 
-- The input file **will be overwritten** with the transformed data (via a temporary file).
-- Processing is done in batches to handle large files efficiently.
+- The input file **will be overwritten** with the transformed data. The new file goes to a temporary file with a name of its own in the same directory and replaces the original only once it is complete, so a failure leaves the original as it was. An input with no rows leaves it untouched.
+- Without `opts`, the file keeps its layout: each column is written with the codec it had, a column the script adds takes the codec of the first column, and row groups are as large as the original's largest one. A 200,000-row Zstd file with one column added used to come back uncompressed in 200 row groups, from 1.7 MB to 9.3 MB.
+- With one `WriteOptions`, every column is written with its `Compression` and row groups of its `RowGroupSize`. More than one, or one `Write` would refuse, is an error before the file is read.
+- Processing is done in batches to handle large files efficiently. Building a row group larger than a batch holds that row group of the output in memory until it is full.
 - Supports creating new columns with `NEW()`, but modifying existing columns may not work.
 
 **Example:**
