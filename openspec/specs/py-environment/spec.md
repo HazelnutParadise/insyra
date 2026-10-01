@@ -29,7 +29,7 @@ The Python environment SHALL be built with the uv version pinned in `py/environm
 
 ### Requirement: The environment follows the pins
 
-The setup SHALL write the embedded `pyproject.toml` and `uv.lock` into the environment directory and run `uv sync --frozen --inexact --managed-python --python <pinned version>` there, with `UV_PROJECT_ENVIRONMENT` set to the directory's `.venv`, `UV_PYTHON_DOWNLOADS` set to `automatic`, and any `UV_PYTHON_PREFERENCE` of the caller removed. After a successful sync it SHALL record the pin set's fingerprint in a marker file; a later setup whose marker matches and whose interpreter exists SHALL run no uv command. A setup whose marker is missing or different SHALL sync again, so an environment built by an older insyra, or before a bump, is brought to the pins while keeping packages installed with `PipInstall`. A setup that fails SHALL NOT mark the environment ready or write the marker, and the next call SHALL run it again.
+The setup SHALL write the embedded `pyproject.toml` and `uv.lock` into the environment directory and run `uv sync --frozen --inexact --managed-python --python <pinned version>` there, with `UV_PROJECT_ENVIRONMENT` set to the directory's `.venv`, `UV_PYTHON_DOWNLOADS` set to `automatic`, and any `UV_PYTHON_PREFERENCE` of the caller removed. After a successful sync it SHALL record the pin set's fingerprint in a marker file; a later setup whose marker matches and whose interpreter exists SHALL run no uv command. A setup whose marker is missing or different SHALL sync again, so an environment synced to other package pins of the same Python is brought to the pins while keeping packages installed with `PipInstall`. A setup that fails SHALL NOT mark the environment ready or write the marker, and the next call SHALL run it again.
 
 #### Scenario: First setup
 - **WHEN** the environment directory is empty
@@ -61,7 +61,7 @@ The setup SHALL write the embedded `pyproject.toml` and `uv.lock` into the envir
 
 ### Requirement: ReinstallPyEnv deletes the environment directory
 
-`ReinstallPyEnv` SHALL hold the setup lock, mark the environment not ready, delete `.insyra_env/py25c_<os>_<arch>` under the working directory with everything in it, packages installed with `PipInstall` included, and build it again from the pins. It SHALL keep the uv executable, which lives outside that directory. Its doc comment and `Docs/py.md` SHALL say what it deletes.
+`ReinstallPyEnv` SHALL hold the setup lock, mark the environment not ready, delete the environment directory, `.insyra_env/py26a_<os>_<arch>` under the working directory, with everything in it, packages installed with `PipInstall` included, and build it again from the pins. It SHALL keep the uv executable, which lives outside that directory. Its doc comment and `Docs/py.md` SHALL say what it deletes.
 
 #### Scenario: The delete fails part-way
 - **WHEN** part of the environment directory cannot be deleted
@@ -90,4 +90,16 @@ The setup SHALL write the embedded `pyproject.toml` and `uv.lock` into the envir
 #### Scenario: Nil or finished context
 - **WHEN** `Setup` is called with a nil context, or with a cancelled one on an environment that was never prepared
 - **THEN** it returns `errNilContext` or `context.Canceled`, and the environment directory is not touched
+
+### Requirement: The environment directory is named for its Python
+
+The environment directory SHALL be `.insyra_env/<code>_<os>_<arch>` under the working directory, where the code is `py<two-digit year><letter>` and SHALL change whenever the pinned Python version changes: the letter is `a` for the year's first new code, `b` for the second. `py/const.go` SHALL hold the code (`envDirCode`) and the Python version it was given for (`envDirPython`), and a test SHALL fail when the pinned Python differs from `envDirPython`. A change of package versions alone SHALL keep the code. The code for CPython 3.12.14 SHALL be `py26a`. insyra SHALL NOT delete the directory of an earlier code.
+
+#### Scenario: The current directory
+- **WHEN** the environment is prepared with CPython 3.12.14 pinned
+- **THEN** it is built in `.insyra_env/py26a_<os>_<arch>`
+
+#### Scenario: A Python bump without a new code
+- **WHEN** `requires-python` in `py/environment/pyproject.toml` is changed and `envDirPython` is not
+- **THEN** `go test ./py/` fails, naming both versions and asking for a new directory code
 
