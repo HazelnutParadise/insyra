@@ -270,6 +270,24 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-01] — a pandas DataFrame with a column named `name` comes back named after that column
+- **Where**: `insyra._normalize_result` in `py/builtin.go`, the `getattr(result, "name", None)` of the pandas DataFrame branch
+- **What**: pandas returns a column as an attribute, so for a DataFrame holding a column `name` the `getattr` finds the column, and its printed form becomes the table's name. Measured on 2026-10-01 with the pinned environment on macOS arm64: `RunCode(&dt, "insyra.Return(pd.DataFrame({'name': ['x', 'y'], 'v': [1, 2]}))")` gave a table named `"0    x\n1    y\nName: name, dtype: str"`. `Docs/py.md` says `DataFrame.name`, when set, becomes the table's name. Found by the adversarial review of `py-nested-table-results`; it predates that change, which sends nested DataFrames through the same branch.
+- **Suggestion**: read the name only when it is not a column, for example `None if "name" in result.columns else getattr(result, "name", None)`, and check it in the gated end-to-end test. polars has no attribute access to columns, so its branch is not affected.
+- **Status**: pending
+
+### [2026-10-01] — an integer above 2^53 in a Python result loses its last digits
+- **Where**: `handleIPCConnection` in `py/pyresult.go`, which decodes each message with `json.Unmarshal` into `map[string]any`
+- **What**: every JSON number becomes a `float64` there, before the result reaches the type it is bound into, so an integer above 2^53 is rounded whatever that type is. Measured by the review of `py-nested-table-results` on 2026-10-01 by decoding the message the way the handler does: `9007199254740993` came back as `9007199254740992`, into an `int64` field too. A database id or a nanosecond timestamp returned from Python is that large. The same step drops the order of an object's keys, so of two keys that differ only in case, the later in sorted order wins rather than the later in the text. Both predate that change.
+- **Suggestion**: decode the message with go-json's `UseNumber`, and turn a `json.Number` back into an `int64` or a `float64` where a result is bound into `any` or a table, so a value that fits neither loses nothing. Check what the table decoders do with a `json.Number` cell before switching.
+- **Status**: pending
+
+### [2026-10-01] — renaming a column to the name it already has adds a suffix
+- **Where**: `datatable.go` `safeColName`, through `SetColNames`, `SetColNameByIndex`, `SetColNameByNumber` and `ChangeColName` in `datatable_colname.go` and `SetRowToColNames` in `datatable.go`
+- **What**: `safeColName` counts the column being renamed among the names that are taken, so a column given its own name, or a name another column gives up in the same call, gets a suffix. Measured on 2026-10-01: on a table with columns `a` and `b`, `SetColNames([]string{"a", "b"})` gives `[a_1 b_1]` and `SetColNames([]string{"b", "a"})` gives `[b_1 a]`, with a nil `Err()`; the other four setters were read, not run. Their doc comments say that only a name *another* column has gets a suffix. `py-nested-table-results` stepped around it on the empty-DataFrame path, where it showed; `SetColNames` also has the defect of #227 (T-14).
+- **Suggestion**: check a renamed column's new name against the other columns only, and in `SetColNames`, which replaces every name, only against the names given earlier in the same call. It changes what these return when the new names are already in the table, so it fits with #227.
+- **Status**: pending
+
 ### [2026-09-30] — on Windows, a write racing another write to the same path can fail with `Access is denied.`
 - **Where**: the `os.Rename(tmpPath, path)` in `internal/utils/atomic_file.go` that every atomic writer shares (`parquet.Write`, `lpgen.GenerateLPFile`, `ToCSV`, `ToJSON`, `ToExcel`)
 - **What**: when two goroutines rename their temporary files onto the same target at once, Windows can refuse one rename. It showed on the Windows leg of CI twice on 2026-09-30 (run 36614147428 on d4d9ba98, and the run on 86822acd), as `rename …\.shared.parquet.<n>.tmp …\shared.parquet: Access is denied.`, from `TestConcurrentWritesToOnePathDoNotMix`, which then required every `Write` to succeed. The refused write returns that error and removes its temporary file, and the file at the path is the other writer's whole table, so nothing is lost or mixed. 3d0e62dc made the test ask for that instead: each writer lands at least one file, the final file is one writer's whole table and no temporary file is left.
@@ -280,18 +298,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `py/py.go` `replacePlaceholders`, used by `RunCodef`, `RunFilef`, their `Context` forms and `Run`
 - **What**: placeholders are replaced one after another with `strings.ReplaceAll` over the whole text, so each pass also rewrites the values earlier passes inserted, and `$v1` also matches the start of `$v10`. Measured by the adversarial review of `py-typed-run` on 2026-09-30: `replacePlaceholders("title = $v1\nlabel = $v2", "$v2", "+__import__('os').system('id')+")` produced `title = ""+__import__('os').system('id')+""`, valid Python that runs a command, and `a = $v10` with ten arguments became `a = 10`. A program that passes two pieces of user text as arguments can be made to run code. It predates that change; PY-2 in `api-review.md` called the substitution injection-safe, which does not hold.
 - **Suggestion**: replace in one pass over the original template, matching `\$v([0-9]+)` by its whole number, and test both cases. The result changes only for templates that hit these two defects, but it is a security fix and wants a changelog entry.
-- **Status**: pending
-
-### [2026-09-30] — a `py` result bound into a struct with a `DataTable` or `DataList` field skips JSON decoding
-- **Where**: `py/pyresult_decode.go` `bindPyResult`, the reflection lookup meant for the `isr` wrapper types
-- **What**: any struct with a field named `DataTable` or `DataList` of insyra's pointer type is taken for an `isr` wrapper: the whole result is decoded as a table or list into that field and JSON decoding never runs. Measured by the adversarial review of `py-typed-run` on 2026-09-30: ``Run[struct{DataTable *insyra.DataTable `json:"table"`; Score float64 `json:"score"`}]`` on `{"table": …, "score": 7}` returned `Score` 0 with a nil error, and the table held the whole answer with columns `[score table]`. It predates that change and applies to `RunCode` as well.
-- **Suggestion**: take the wrapper path only for an embedded (anonymous) field, which is how the `isr` types hold their list or table, and let every other struct decode through JSON.
-- **Status**: pending
-
-### [2026-09-30] — an empty DataFrame returned from Python comes back with its columns renamed
-- **Where**: `py/pyresult_decode.go`, the empty-table path of the DataFrame payload decoding
-- **What**: the empty path names the columns and then `SetColNames` runs again, and `safeColName` sees each column's own name as taken. Measured by the adversarial review of `py-typed-run` on 2026-09-30: `Run[*insyra.DataTable]` on `{"data": [], "columns": ["a", "b"]}` gave a 0×2 table named `[a_1 b_1]`. A filter that matches no rows returns such a frame. It predates that change.
-- **Suggestion**: skip the second `SetColNames` when the empty path has already named the columns, and test a 0-row frame.
 - **Status**: pending
 
 ### [2026-09-30] — remove `py.RunCodeWithTimeout` one release after it was deprecated

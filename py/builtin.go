@@ -88,6 +88,16 @@ class insyra:
 		return result
 
 	@staticmethod
+	def _encode_default(value):
+		# json.dumps calls this only for an object it cannot write itself, so a
+		# DataFrame or Series inside a dict or list is sent as its payload at no
+		# cost to plain values.
+		normalized = insyra._normalize_result(value)
+		if normalized is value:
+			raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+		return normalized
+
+	@staticmethod
 	def _connect_ipc():
 		addr = insyra.ipc_address
 		# Try AF_UNIX if available (Linux/macOS/Windows+Py3.9)
@@ -135,7 +145,7 @@ class insyra:
 		
 		try:
 			f = insyra._connect_ipc()
-			insyra._write_msg(f, json.dumps(payload).encode('utf-8'))
+			insyra._write_msg(f, json.dumps(payload, default=insyra._encode_default).encode('utf-8'))
 			# Wait for ack
 			insyra._read_msg(f)
 			f.close()

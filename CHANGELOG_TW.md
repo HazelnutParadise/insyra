@@ -234,6 +234,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 傳 `nil` context 給 `Run` 或任何 `…Context` 函式會回傳錯誤。過去會讓 `exec.CommandContext` 在執行器啟動的 goroutine 裡 panic，整個程式因此結束。已經結束的 context 會在啟動任何東西之前回傳 `ctx.Err()`。
 - Python 行程失敗時（回傳值之前就崩潰，或因 context 結束被終止），呼叫會回傳這個失敗；context 結束時回傳 `ctx.Err()`。過去約有一半機率回傳 nil 錯誤且沒有結果，因為執行器同時看到失敗與行程結束，隨機挑了其中一個。Python 在行程失敗前已經送回的結果仍會回傳。
 - 新增 `Setup(ctx)`：讓你自己決定何時準備 Python 環境（例如程式啟動時），不必等到第一次呼叫 `RunCode` 或 `PipInstall` 時才順帶進行。這是選用的，不呼叫的話，第一次呼叫仍會照常準備環境。context 涵蓋所有下載；環境已經準備好時，`Setup` 會立即回傳，不會執行 uv。
+- 結果裡的表格與清單現在會解碼成表格與清單。`insyra.Return` 會把 dict、list、tuple 裡的 DataFrame 與 Series 轉成表格或清單的格式；過去 `json.dumps` 會失敗，錯誤是 `Object of type DataFrame is not JSON serializable`。型別是 `*insyra.DataTable`、`*insyra.DataList`、`insyra.IDataTable` 或 `insyra.IDataList` 的 struct 欄位、map 值、slice 或 array 元素，會解碼成表格或清單；過去走 JSON 解碼只會得到空表。這類型別的其他部分，解碼方式和 `encoding/json` 完全相同。struct 裡只是名稱叫 `DataTable` 或 `DataList` 的一般欄位，現在逐欄解碼；過去整個結果都被塞進那個欄位，其他欄位維持零值。內嵌的 `*insyra.DataTable` 或 `*insyra.DataList` 比照內嵌 struct 的規則：有 tag 就是該名稱的欄位；沒有 tag 就拿到整個值，例如 `isr` 的型別，現在放在 slice 或 map 裡也一樣。旁邊還有其他欄位時，只有 DataFrame、Series 或 list 會交給它，dict 則交給那些欄位。`isr` 型別收到另一種值（例如清單收到 DataFrame）會回傳錯誤；過去會直接忽略，也不報錯。`isr` 指標收到 `None` 時會設為 nil，和 JSON 的 null 一樣。
+- 空的 DataFrame 回傳時保留欄名；過去欄名會被改成 `a_1`、`b_1` 之類的名稱。
 
 ### `pd`
 - **BREAKING（行為改變）**：`FromDataList` 遇到空的 list 會回傳空的 `Series`，也就是長度 0、`any` 型別的 gpandas series，和 pandas 的 `pd.Series([])` 一樣。過去會回傳 `empty DataList` 錯誤。`nil` list 仍然回傳錯誤。

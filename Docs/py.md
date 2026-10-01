@@ -491,6 +491,24 @@ When `out` is a `DataTable` or `DataList` pointer, `insyra.Return` recognizes co
 - **dict** -> `*insyra.DataTable` (single row, keys become column names)
 - **list of dict** -> `*insyra.DataTable` (multiple rows, keys become column names)
 
+An empty DataFrame, such as the result of a filter that matched no rows, comes back as a table with no rows and the DataFrame's column names.
+
+### Tables and lists inside a result
+
+A table or a list can also sit inside the value you return. `insyra.Return` turns a DataFrame or Series anywhere inside a dict, list or tuple into the payload it sends for one at the top level. On the Go side, when the type you decode into has a `*insyra.DataTable`, `*insyra.DataList`, `insyra.IDataTable` or `insyra.IDataList` in a struct field, a map value, a slice or array element or behind a pointer, that part is decoded as a table or a list, replacing what it held, and everything else exactly as `encoding/json` decodes it: struct fields are matched by their `json` tag or Go name, an exact match before one that ignores case, with its rules for embedded structs, `-` and `,string`; map keys can be strings, integers or a type with `UnmarshalText`; decoding into a value that already holds something keeps what the result leaves out; and `None` sets a pointer, slice, map or interface to nil and leaves a struct as it is. A type with its own `UnmarshalJSON` or `UnmarshalText` decodes itself.
+
+```go
+type Scored struct {
+    Table *insyra.DataTable `json:"table"`
+    Score float64           `json:"score"`
+}
+s, err := py.Run[Scored](ctx, `insyra.Return({"table": df, "score": 7})`)
+
+splits, err := py.Run[map[string]*insyra.DataTable](ctx, `insyra.Return({"train": train, "test": test})`)
+```
+
+An embedded `*insyra.DataTable` or `*insyra.DataList` follows the rule for an embedded struct. Without a tag it is decoded from the whole value around it, as the `isr` types (`struct{ *insyra.DataTable }`) are, at the top of the result or inside it, and a value of the other kind, such as a DataFrame for an `isr` list, is an error. Beside other fields it takes the value only when Python sent a DataFrame, a Series or a list; a dict is then the struct's own object and goes to its other fields. With a tag it is a field under that name, so ``struct{ *insyra.DataTable `json:"table"`; Score float64 }`` reads the table from the key `table`. An embedded `insyra.IDataTable` or `insyra.IDataList` is a field named after its type, as an embedded interface is in `encoding/json`. A field that is only named `DataTable` is decoded as that field, like any other.
+
 ### Example: DataFrame -> DataTable
 
 ```go

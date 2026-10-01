@@ -236,6 +236,30 @@ func TestPinnedEnvironmentEndToEnd(t *testing.T) {
 		t.Errorf("the DataFrame came back %d x %d, want 2 x 2", rows, cols)
 	}
 
+	// A DataFrame inside a dict used to fail in json.dumps on the Python side.
+	type scored struct {
+		Table *insyra.DataTable `json:"table"`
+		Score float64           `json:"score"`
+	}
+	got, err := Run[scored](ctx, `insyra.Return({"table": pd.DataFrame({"a": [1, 2], "b": [3.5, 4.5]}), "score": 7})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Table == nil || got.Score != 7 {
+		t.Fatalf("a dict holding a DataFrame came back as %+v", got)
+	}
+	if rows, cols := got.Table.Size(); rows != 2 || cols != 2 {
+		t.Errorf("the nested DataFrame came back %d x %d, want 2 x 2", rows, cols)
+	}
+
+	empty, err := Run[*insyra.DataTable](ctx, `insyra.Return(pd.DataFrame(columns=["a", "b"]))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names := empty.ColNames(); len(names) != 2 || names[0] != "a" || names[1] != "b" {
+		t.Errorf("an empty DataFrame came back with columns %q, want a and b", names)
+	}
+
 	var version string
 	if err := RunCodeContext(ctx, &version, "import platform\ninsyra.Return(platform.python_version())"); err != nil {
 		t.Fatal(err)
