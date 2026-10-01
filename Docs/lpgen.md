@@ -212,6 +212,21 @@ func ParseLingo(model string) (*LPModel, error)
 
 **Description:** Parses a LINGO model from text and converts it to a standard LP model. Use `LINGO > Generate > Display Model` in LINGO to get the text.
 
+It reads these statements, each ending with `;`:
+
+| LINGO | Becomes |
+| --- | --- |
+| `MIN= ...` or `MAX= ...` | the objective |
+| a relation with one bare variable against numbers, such as `X >= 1` or `0 <= X <= 10` | a bound |
+| any other relation, such as `3 X + Y <= 10` | a constraint |
+| `@BIN(x)` | a binary variable |
+| `@INT(x)` or `@GIN(x)` | a general integer variable |
+| `@FREE(x)` | the bound `x free`, so `x` may be negative |
+| `@BND(l, x, u)` with numbers `l` and `u` | the bound `l <= x <= u` |
+| a statement starting with `!` | a comment, skipped |
+
+Anything else is an error that gives the line the statement starts on and the statement itself, and so is a declaration whose variable cannot be read and a last statement left without its `;`. A model is never returned with part of it missing.
+
 **Parameters:**
 
 - `model`: LINGO model content. Type: `string`.
@@ -219,7 +234,7 @@ func ParseLingo(model string) (*LPModel, error)
 **Returns:**
 
 - `*LPModel`: Parsed LP model, or `nil` when the text cannot be read.
-- `error`: `nil`, or the reason the text could not be read, such as a line of 64 KiB or more.
+- `error`: `nil`, or the reason: a statement it does not read, as described above, or text that cannot be read at all, such as a line of 64 KiB or more.
 
 ### Parse LINGO Model from File
 
@@ -227,7 +242,7 @@ func ParseLingo(model string) (*LPModel, error)
 func ParseLingoFile(path string) (*LPModel, error)
 ```
 
-**Description:** Parses a LINGO model from a file, the way `ParseLingo` parses it from text, so the same text gives the same model either way.
+**Description:** Parses a LINGO model from a file, the way `ParseLingo` parses it from text, so the same text gives the same model, or the same error, either way.
 
 **Parameters:**
 
@@ -248,4 +263,4 @@ sol, err := lp.Solve(model, lp.Options{})
 
 ### Deprecated LINGO names
 
-`ParseLingoModel_str(modelStr string) *LPModel` and `ParseLingoModel_txt(filePath string) *LPModel` are the old names of `ParseLingo` and `ParseLingoFile`. They read the same model, but report a failure only by returning `nil` and logging a warning. They are **Deprecated** and will be removed in the release after the one that deprecated them.
+`ParseLingoModel_str(modelStr string) *LPModel` and `ParseLingoModel_txt(filePath string) *LPModel` are the old names of `ParseLingo` and `ParseLingoFile`. They do not refuse a statement they do not read: they drop it, as they always have, including `@GIN`, `@FREE` and `@BND`, and report only text they cannot read at all, by returning `nil` and logging a warning. They are **Deprecated** and will be removed in the release after the one that deprecated them.

@@ -342,12 +342,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: delete them in the same release as the other Deprecated removals, with `TestDeprecatedCSVXLNamesSayWhatReplacedThem`, `TestDeprecatedCSVXLNamesGiveTheSameWorkbook`, the deprecated-names table in `Docs/csvxl.md`, and a BREAKING changelog entry. The `csvxl-*`, `csv-formula-guard`, `io-error-hygiene` and `optional-values` specs under `openspec/specs/` still name the old spellings. Move them to the new names in the same change.
 - **Status**: pending
 
-### [2026-09-30] — the LINGO parser drops statements it does not read, with no error
-- **Where**: `lpgen/lingo.go` `parseLingo`
-- **What**: `ParseLingo` now returns an error, but only for text it cannot read at all. A statement it does not recognise is still dropped without a word. Measured on 2026-09-30: `ParseLingo("MODEL:\nMIN= X1 + X2\nEND")`, whose only statement lacks its closing `;`, returns an empty model and a nil error, and `@FREE(X);`, `@BND(0, X, 10);` and `@GIN(Y);` are dropped, so a free variable becomes non-negative once the model is written as LP, a bound disappears and a general-integer variable becomes continuous. `TestParseLingoModel_str_EdgeCases` pins the dropped unterminated statement as by design. Whether LINGO's `Display Model` output contains `@FREE`, `@BND` or `@GIN` was not checked, because no copy of LINGO was available.
-- **Suggestion**: now that the parser has an error return, refuse a statement left without its `;` and any statement it does not recognise, naming it, rather than solving a different model, and support `@FREE`, `@BND` and `@GIN` if LINGO's output uses them. Both change what the parser returns for text it accepts today, so decide first.
-- **Status**: pending
-
 ### [2026-09-30] — remove `ParseLingoModel_str` and `ParseLingoModel_txt` one release after they were deprecated
 - **Where**: `lpgen/lingo.go`
 - **What**: `lpgen-reports-errors` gave the LINGO parser the names `ParseLingo` and `ParseLingoFile`, which return an error (#258, LP-3). The old names stay one release as Deprecated wrappers that still return `nil` and log a warning on failure.
