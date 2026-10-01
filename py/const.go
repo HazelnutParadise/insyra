@@ -7,8 +7,18 @@ import (
 	"runtime"
 )
 
+// envDirCode names the environment directory. It changes whenever the pinned
+// Python version does, as py<two-digit year><letter>: a for the year's first
+// new code, b for the second. A change of package versions alone keeps it,
+// and the environment is synced in place.
+const envDirCode = "py26a"
+
+// envDirPython is the Python version envDirCode was given for. A test fails
+// when the pinned Python differs, so a Python bump cannot keep the directory.
+const envDirPython = "3.12.14"
+
 var (
-	installDir = filepath.Join(".insyra_env", "py25c_"+runtime.GOOS+"_"+runtime.GOARCH)
+	installDir = filepath.Join(".insyra_env", envDirCode+"_"+runtime.GOOS+"_"+runtime.GOARCH)
 )
 
 var (

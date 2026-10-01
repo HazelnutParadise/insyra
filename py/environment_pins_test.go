@@ -2,7 +2,9 @@ package py
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -205,5 +207,25 @@ func TestLockHasAWheelForEverySupportedPlatform(t *testing.T) {
 				t.Errorf("%s now has a %s wheel; take it off knownSourceBuilds and the note in Docs/py.md", pkg, platform)
 			}
 		}
+	}
+}
+
+// The environment directory is named for the Python it runs, as
+// py<two-digit year><letter>: a new Python version gets a new directory, so
+// an environment never switches Python in place. py25b became py25c when the
+// Python spec changed on 2025-10-19, and py25c became py26a with 3.12.14.
+func TestTheEnvironmentDirectoryIsNamedForThePinnedPython(t *testing.T) {
+	python, err := pinnedPythonVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if python != envDirPython {
+		t.Errorf("the pinned Python is %s, but the directory code %s was given for %s; give the environment directory a new code (py<two-digit year><letter>) in py/const.go and set envDirPython to %s", python, envDirCode, envDirPython, python)
+	}
+	if !regexp.MustCompile(`^py[0-9]{2}[a-z]$`).MatchString(envDirCode) {
+		t.Errorf("the directory code %q is not py<two-digit year><letter>", envDirCode)
+	}
+	if want := envDirCode + "_" + runtime.GOOS + "_" + runtime.GOARCH; filepath.Base(installDir) != want {
+		t.Errorf("the environment directory is %s, want %s", installDir, want)
 	}
 }

@@ -19,7 +19,7 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
-// ReinstallPyEnv deletes the environment directory, .insyra_env/py25c_<os>_<arch>
+// ReinstallPyEnv deletes the environment directory, .insyra_env/py26a_<os>_<arch>
 // under the working directory, with everything in it, packages installed with
 // PipInstall included, and builds it again from the pinned versions. The
 // pinned uv, kept beside that directory, is not downloaded again.
