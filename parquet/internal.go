@@ -434,6 +434,88 @@ func dataTableToArrowTable(ctx context.Context, dt insyra.IDataTable) (arrow.Tab
 	return table, nil
 }
 
+// columnKinds is which kinds of value a column holds, kept apart from the type
+// it decides so that a caller with several batches of the same column can feed
+// all of them in and read one answer, which is what ApplyCCL needs when a
+// column's type is settled from a file rather than from one batch.
+type columnKinds struct {
+	hasInt, hasFloat, hasString, hasBool, hasTime, hasBytes, hasOther bool
+
+	// lossyInt64 says a value has been added that an int64 cannot hold without
+	// loss: a float that is not a whole number, one outside int64's range, or a
+	// number of a type that is not one. The flags above cannot say that on their
+	// own, because hasFloat is just as true of 1.5 as of 2, which is what lets
+	// ApplyCCL keep an int64 column written into with whole numbers and widen it
+	// for anything else.
+	lossyInt64 bool
+
+	// lossyFloat64 says an integer has been added that a float64 cannot hold
+	// exactly: one of magnitude above 2^53, whatever Go type it arrived as. A
+	// float64 holds every integer up to there and skips some past it, so one
+	// written into a float64 column comes back as a neighbour of itself, a number
+	// nobody wrote. A float needs no flag: it is a float64 already.
+	lossyFloat64 bool
+}
+
+// add records one batch of a column's values. A value it does not know is
+// counted as hasOther, which is what makes the column's answer String, the one
+// type every value can be written as.
+func (k *columnKinds) add(data []any) {
+	for _, v := range data {
+		if v == nil {
+			continue
+		}
+		if exceedsInt64Loss(v) {
+			k.lossyInt64 = true
+		}
+		if exceedsFloat64Loss(v) {
+			k.lossyFloat64 = true
+		}
+		switch v.(type) {
+		case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
+			k.hasInt = true
+		case float64, float32:
+			k.hasFloat = true
+		case string:
+			k.hasString = true
+		case bool:
+			k.hasBool = true
+		case time.Time:
+			k.hasTime = true
+		case []byte:
+			k.hasBytes = true
+		default:
+			k.hasOther = true
+		}
+	}
+}
+
+// arrowType is the Arrow type the kinds answer, under the same rules
+// inferArrowType applies to one batch.
+func (k *columnKinds) arrowType() arrow.DataType {
+	numeric := k.hasInt || k.hasFloat
+	switch {
+	// A column of nothing but byte slices round-trips as binary. Mixed with
+	// anything else it falls through to String, which conv.ToString can
+	// represent for every value.
+	case k.hasBytes && !k.hasString && !k.hasOther && !numeric && !k.hasBool && !k.hasTime:
+		return arrow.BinaryTypes.Binary
+	case k.hasString || k.hasOther || k.hasBytes:
+		return arrow.BinaryTypes.String
+	case k.hasBool && !numeric && !k.hasTime:
+		return arrow.FixedWidthTypes.Boolean
+	case k.hasTime && !numeric && !k.hasBool:
+		return arrow.FixedWidthTypes.Timestamp_ns
+	case k.hasFloat && !k.hasBool && !k.hasTime:
+		return arrow.PrimitiveTypes.Float64
+	case k.hasInt && !k.hasBool && !k.hasTime:
+		return arrow.PrimitiveTypes.Int64
+	default:
+		// mixed incompatible kinds (bool+numeric, time+numeric, ...) or all nil
+		return arrow.BinaryTypes.String
+	}
+}
+
 // inferArrowType scans ALL values in a column (not just the first non-nil one)
 // so a mixed column does not panic or silently truncate on Write:
 //   - a column mixing ints and floats is promoted to Float64 (no truncation);
@@ -441,49 +523,9 @@ func dataTableToArrowTable(ctx context.Context, dt insyra.IDataTable) (arrow.Tab
 //     time+number), falls back to String, which conv.ToString can represent for
 //     every value.
 func inferArrowType(data []any) arrow.DataType {
-	var hasInt, hasFloat, hasString, hasBool, hasTime, hasBytes, hasOther bool
-	for _, v := range data {
-		if v == nil {
-			continue
-		}
-		switch v.(type) {
-		case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
-			hasInt = true
-		case float64, float32:
-			hasFloat = true
-		case string:
-			hasString = true
-		case bool:
-			hasBool = true
-		case time.Time:
-			hasTime = true
-		case []byte:
-			hasBytes = true
-		default:
-			hasOther = true
-		}
-	}
-	numeric := hasInt || hasFloat
-	switch {
-	// A column of nothing but byte slices round-trips as binary. Mixed with
-	// anything else it falls through to String, which conv.ToString can
-	// represent for every value.
-	case hasBytes && !hasString && !hasOther && !numeric && !hasBool && !hasTime:
-		return arrow.BinaryTypes.Binary
-	case hasString || hasOther || hasBytes:
-		return arrow.BinaryTypes.String
-	case hasBool && !numeric && !hasTime:
-		return arrow.FixedWidthTypes.Boolean
-	case hasTime && !numeric && !hasBool:
-		return arrow.FixedWidthTypes.Timestamp_ns
-	case hasFloat && !hasBool && !hasTime:
-		return arrow.PrimitiveTypes.Float64
-	case hasInt && !hasBool && !hasTime:
-		return arrow.PrimitiveTypes.Int64
-	default:
-		// mixed incompatible kinds (bool+numeric, time+numeric, ...) or all nil
-		return arrow.BinaryTypes.String
-	}
+	var kinds columnKinds
+	kinds.add(data)
+	return kinds.arrowType()
 }
 
 func appendValue(b array.Builder, v any) {

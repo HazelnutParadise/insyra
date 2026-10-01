@@ -311,7 +311,7 @@ func TestResolveRefusesOnAnEmptyTable(t *testing.T) {
 		expr string
 		want string
 	}{
-		{"LAG(A, 1)", "LAG"},
+		{"LAG(A, 1) + 1", "LAG"},
 		{"MEDIAN(A)", "MEDIAN"},
 		{"A.(# - 1)", "row reference"},
 		{"COUNT(IF(A > 0, A:B, 0))", "column range"},
@@ -392,7 +392,7 @@ func TestResolveRefusesWhatItCannotCompute(t *testing.T) {
 		expr string
 		want string
 	}{
-		{"LAG(A, 1)", "LAG"},
+		{"LAG(A, 1) + 1", "LAG"},
 		{"MEDIAN(A)", "MEDIAN"},
 		{"A.(# - 1)", "row reference"},
 	} {
@@ -424,15 +424,88 @@ func TestResolveEmptyTable(t *testing.T) {
 	}
 	batches := splitIntoBatches(t, data, 4)
 	passes := 0
-	resolved, err := ResolveWholeTable(node, 0, []string{"A", "B"}, batchesOf(batches, &passes))
-	if err != nil {
+	if _, err := ResolveWholeTable(node, 0, []string{"A", "B"}, batchesOf(batches, &passes)); err != nil {
 		t.Fatalf("empty table: %v", err)
-	}
-	if resolved != node {
-		t.Errorf("empty table: returned %T, want the node it was given", resolved)
 	}
 	if passes != 0 {
 		t.Errorf("empty table: read the table %d times, want 0", passes)
+	}
+}
+
+// TestResolveComputesAggregatesOnAnEmptyTable holds a table with no rows to the
+// answers the whole table gives: an aggregate is computed over no values, and a
+// fixed row is past the end, so the part that cannot be answered fails where it
+// is evaluated and nowhere else. It is computed, not skipped: an expression that
+// needs the aggregate's value before there is a row to evaluate it on, such as a
+// sequence function's period, must get that value.
+func TestResolveComputesAggregatesOnAnEmptyTable(t *testing.T) {
+	colNames := []string{"A", "B"}
+	// Rows that are not the table's: totalRows says there are none, so reading
+	// them would be a pass the empty table never needs.
+	data := streamTestData()
+
+	t.Run("a sequence function's period is an aggregate", func(t *testing.T) {
+		node, err := CompileExpression("LAG(A, COUNT(A))")
+		if err != nil {
+			t.Fatal(err)
+		}
+		passes := 0
+		resolved, err := ResolveWholeTable(node, 0, colNames, batchesOf(splitIntoBatches(t, data, 4), &passes))
+		if err != nil {
+			t.Fatalf("empty table: %v", err)
+		}
+		if passes != 0 {
+			t.Errorf("empty table: read the table %d times, want 0", passes)
+		}
+		if _, ok, err := NewTopSequence(resolved, 0, colNames); err != nil || !ok {
+			t.Fatalf("NewTopSequence on the resolved expression = (ok %v, err %v), want a sequence and no error", ok, err)
+		}
+	})
+
+	info := &tableInfoContext{totalRows: 0, colNames: colNames}
+	for _, tt := range []struct {
+		expr string
+		want any
+		// fails is the reason a part that cannot be computed over no rows gives.
+		fails string
+	}{
+		{expr: "COUNT(A)", want: 0.0},
+		{expr: "SUM(A)", want: 0.0},
+		{expr: "MAX(A)", want: nil},
+		{expr: "VAR(A)", fails: "at least 2 numeric values"},
+		{expr: "A.17", fails: "out of range"},
+	} {
+		t.Run(tt.expr, func(t *testing.T) {
+			node, err := CompileExpression(tt.expr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			passes := 0
+			resolved, err := ResolveWholeTable(node, 0, colNames, batchesOf(splitIntoBatches(t, data, 4), &passes))
+			if err != nil {
+				t.Fatalf("empty table: %v", err)
+			}
+			if passes != 0 {
+				t.Errorf("empty table: read the table %d times, want 0", passes)
+			}
+			got, err := evaluateWithCallDepth(resolved, info, 0, 0)
+			if tt.fails != "" {
+				if err == nil {
+					t.Fatalf("%s evaluated to %v, want the error of a part that cannot be computed", tt.expr, got)
+				}
+				// The part's own reason, not the one an unresolved part gives.
+				if !strings.Contains(err.Error(), tt.fails) {
+					t.Errorf("%s: %v, want a reason containing %q", tt.expr, err, tt.fails)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("%s: %v", tt.expr, err)
+			}
+			if got != tt.want {
+				t.Errorf("%s = %v (%T), want %v (%T)", tt.expr, got, got, tt.want, tt.want)
+			}
+		})
 	}
 }
 

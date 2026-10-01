@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
@@ -23,104 +26,149 @@ import (
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
 )
 
-// parquetContext implements ccl.Context for direct parquet file operations
-type parquetContext struct {
-	// Current record batch
-	record arrow.Record
+// cclRun is a run of consecutive rows of the file, held as one slice of Go
+// values per column; offset is the file position of its first row.
+type cclRun struct {
+	offset int
+	names  []string
+	cols   [][]any
+}
 
-	// Column metadata
+// rows returns how many rows r holds.
+func (r cclRun) rows() int {
+	if len(r.cols) == 0 {
+		return 0
+	}
+	return len(r.cols[0])
+}
+
+// runFromRecord reads rec into a run starting at offset, a null as nil and
+// every other cell through getVal, named names. The values it holds are Go
+// values of their own, so a run outlives the record's buffers.
+func runFromRecord(rec arrow.Record, names []string, offset int) cclRun {
+	cols := make([][]any, rec.NumCols())
+	for i := range cols {
+		col := rec.Column(i)
+		data := make([]any, col.Len())
+		for j := range data {
+			if col.IsNull(j) {
+				continue
+			}
+			data[j] = getVal(col, j)
+		}
+		cols[i] = data
+	}
+	return cclRun{offset: offset, names: names, cols: cols}
+}
+
+// parquetContext implements ccl.Context for direct parquet file operations. It
+// holds its rows as columns of Go values, so a statement writes into the shape
+// the next one reads instead of into an override beside it.
+type parquetContext struct {
+	// Column metadata, and the values of each column: one entry for a column
+	// the file had, one for a column a NEW statement created and one for a
+	// column an assignment replaced.
 	colNames   []string
 	colNameMap map[string]int
+	cols       [][]any
+
+	// How many rows the columns hold
+	rows int
 
 	// Current row info
 	rowIndex   int
 	currentRow []any
 
-	// Where this batch's first row sits in the file
+	// Where this run's first row sits in the file
 	offset int
 
-	// written holds the values a statement before this one wrote, by column
-	// position: a column it replaced, or one a NEW statement created past the
-	// record's own columns. A column with no entry is read from record.
-	written map[int][]any
+	// hasData is false for a context built from no record at all, which is what
+	// an empty batch is: it reports no record available rather than an empty
+	// one.
+	hasData bool
 }
 
-func newParquetContext(record arrow.Record, colNames []string, offset int) *parquetContext {
-	colNameMap := make(map[string]int)
-	for i, name := range colNames {
+// newRunContext returns a context over r. The outer slices are copied, so what
+// a statement writes does not change the run the caller handed over.
+func newRunContext(r cclRun) *parquetContext {
+	names := slices.Clone(r.names)
+	colNameMap := make(map[string]int, len(names))
+	for i, name := range names {
 		colNameMap[name] = i
 	}
+	cols := slices.Clone(r.cols)
 
 	ctx := &parquetContext{
-		record:     record,
-		colNames:   colNames,
+		colNames:   names,
 		colNameMap: colNameMap,
-		rowIndex:   0,
-		currentRow: make([]any, len(colNames)),
-		offset:     offset,
+		cols:       cols,
+		rows:       r.rows(),
+		offset:     r.offset,
+		hasData:    true,
+		currentRow: make([]any, len(cols)),
 	}
-
-	// Initialize current row
-	if record != nil && record.NumRows() > 0 {
-		ctx.updateCurrentRow()
-	}
-
+	ctx.updateCurrentRow()
 	return ctx
 }
 
+// newParquetContext returns a context over record, whose first row sits at
+// offset in the file. A nil record gives the context of an empty batch.
+func newParquetContext(record arrow.Record, colNames []string, offset int) *parquetContext {
+	if record == nil {
+		colNameMap := make(map[string]int, len(colNames))
+		for i, name := range colNames {
+			colNameMap[name] = i
+		}
+		return &parquetContext{
+			colNames:   colNames,
+			colNameMap: colNameMap,
+			currentRow: make([]any, len(colNames)),
+			offset:     offset,
+		}
+	}
+	return newRunContext(runFromRecord(record, colNames, offset))
+}
+
+// run returns the rows the context holds, with the columns the statements run
+// through it so far have written.
+func (c *parquetContext) run() cclRun {
+	return cclRun{offset: c.offset, names: c.colNames, cols: c.cols}
+}
+
 func (c *parquetContext) updateCurrentRow() {
-	if c.record == nil || c.rowIndex >= int(c.record.NumRows()) {
+	if c.rowIndex >= c.rows {
 		return
 	}
 
-	for i := range c.colNames {
-		c.currentRow[i] = c.cell(i, c.rowIndex)
-	}
-}
-
-// cell is the value at rowIndex of the column at colIndex, which is what a
-// statement before this one wrote when there is one, and the record's own value
-// otherwise. It covers a column past the record's columns, which only a NEW
-// statement creates and which therefore always has an entry in written.
-func (c *parquetContext) cell(colIndex, rowIndex int) any {
-	if data, ok := c.written[colIndex]; ok {
-		if rowIndex < len(data) {
-			return data[rowIndex]
+	for i := range c.currentRow {
+		c.currentRow[i] = nil
+		if i < len(c.cols) && c.rowIndex < len(c.cols[i]) {
+			c.currentRow[i] = c.cols[i][c.rowIndex]
 		}
-		return nil
 	}
-	if colIndex >= int(c.record.NumCols()) {
-		return nil
-	}
-	col := c.record.Column(colIndex)
-	if col.IsNull(rowIndex) {
-		return nil
-	}
-	return getVal(col, rowIndex)
 }
 
 // addColumn registers a column a NEW statement created, so the statements
 // after it read it the way they read a column the file had.
 func (c *parquetContext) addColumn(name string, data []any) {
 	index := len(c.colNames)
-	// Clip, so the append always gives a new array: colNames is the caller's
-	// slice, and writing into its spare capacity would change what it holds.
+	// Clip, so the append always gives a new array: colNames may be a run's
+	// own slice, and writing into its spare capacity would change what it holds.
 	c.colNames = append(slices.Clip(c.colNames), name)
 	c.colNameMap[name] = index
+	c.cols = append(slices.Clip(c.cols), data)
 	c.currentRow = append(c.currentRow, nil)
-	c.setColumn(index, data)
+	c.updateCurrentRow()
 }
 
 // setColumn records the values an assignment wrote to the column at index, so
 // the statements after it read those values instead of the file's.
 func (c *parquetContext) setColumn(index int, data []any) {
-	if c.written == nil {
-		c.written = make(map[int][]any)
+	if index < 0 || index >= len(c.cols) {
+		return
 	}
-	c.written[index] = data
-	if c.record != nil && c.rowIndex < int(c.record.NumRows()) {
-		c.updateCurrentRow()
-	}
+	c.cols[index] = data
+	c.updateCurrentRow()
 }
 
 func (c *parquetContext) GetCol(index int) any {
@@ -146,7 +194,7 @@ func (c *parquetContext) GetRowIndex() int {
 }
 
 // GlobalRowIndex is the current row's position in the file, which is what #
-// means; the batch's other methods work on its own rows.
+// means; the run's other methods work on its own rows.
 func (c *parquetContext) GlobalRowIndex() int { return c.offset + c.rowIndex }
 
 func (c *parquetContext) GetCurrentRow() any {
@@ -154,17 +202,20 @@ func (c *parquetContext) GetCurrentRow() any {
 }
 
 func (c *parquetContext) GetCell(colIndex, rowIndex int) (any, error) {
-	if c.record == nil {
+	if !c.hasData {
 		return nil, fmt.Errorf("no record available")
 	}
 	if colIndex < 0 || colIndex >= c.GetColCount() {
 		return nil, fmt.Errorf("column index %d out of range", colIndex)
 	}
-	if rowIndex < 0 || rowIndex >= int(c.record.NumRows()) {
+	if rowIndex < 0 || rowIndex >= c.rows {
 		return nil, fmt.Errorf("row index %d out of range", rowIndex)
 	}
+	if rowIndex >= len(c.cols[colIndex]) {
+		return nil, nil
+	}
 
-	return c.cell(colIndex, rowIndex), nil
+	return c.cols[colIndex][rowIndex], nil
 }
 
 func (c *parquetContext) GetCellByName(colName string, rowIndex int) (any, error) {
@@ -176,16 +227,18 @@ func (c *parquetContext) GetCellByName(colName string, rowIndex int) (any, error
 }
 
 func (c *parquetContext) GetRowAt(rowIndex int) (any, error) {
-	if c.record == nil {
+	if !c.hasData {
 		return nil, fmt.Errorf("no record available")
 	}
-	if rowIndex < 0 || rowIndex >= int(c.record.NumRows()) {
+	if rowIndex < 0 || rowIndex >= c.rows {
 		return nil, fmt.Errorf("row index %d out of range", rowIndex)
 	}
 
 	row := make([]any, c.GetColCount())
 	for i := range row {
-		row[i] = c.cell(i, rowIndex)
+		if i < len(c.cols) && rowIndex < len(c.cols[i]) {
+			row[i] = c.cols[i][rowIndex]
+		}
 	}
 	return row, nil
 }
@@ -203,25 +256,24 @@ func (c *parquetContext) GetColIndexByName(colName string) (int, error) {
 }
 
 func (c *parquetContext) GetColCount() int {
-	if c.record == nil {
+	if !c.hasData {
 		return 0
 	}
-	// A column a statement before this one created is past the record's own.
-	return max(len(c.colNames), int(c.record.NumCols()))
+	return len(c.cols)
 }
 
 func (c *parquetContext) GetRowCount() int {
-	if c.record == nil {
+	if !c.hasData {
 		return 0
 	}
-	return int(c.record.NumRows())
+	return c.rows
 }
 
 func (c *parquetContext) SetRowIndex(index int) error {
-	if c.record == nil {
+	if !c.hasData {
 		return fmt.Errorf("no record available")
 	}
-	if index < 0 || index >= int(c.record.NumRows()) {
+	if index < 0 || index >= c.rows {
 		return fmt.Errorf("row index %d out of range", index)
 	}
 	c.rowIndex = index
@@ -230,7 +282,7 @@ func (c *parquetContext) SetRowIndex(index int) error {
 }
 
 func (c *parquetContext) GetColData(index int) ([]any, error) {
-	if c.record == nil {
+	if !c.hasData {
 		return nil, fmt.Errorf("no record available")
 	}
 	if index < 0 || index >= c.GetColCount() {
@@ -238,16 +290,7 @@ func (c *parquetContext) GetColData(index int) ([]any, error) {
 	}
 
 	// A copy, so the caller cannot change what the next statement reads.
-	if data, ok := c.written[index]; ok {
-		return slices.Clone(data), nil
-	}
-
-	col := c.record.Column(index)
-	result := make([]any, col.Len())
-	for i := range result {
-		result[i] = c.cell(index, i)
-	}
-	return result, nil
+	return slices.Clone(c.cols[index]), nil
 }
 
 func (c *parquetContext) GetColDataByName(name string) ([]any, error) {
@@ -259,17 +302,17 @@ func (c *parquetContext) GetColDataByName(name string) ([]any, error) {
 }
 
 func (c *parquetContext) GetAllData() ([]any, error) {
-	if c.record == nil {
+	if !c.hasData {
 		return nil, fmt.Errorf("no record available")
 	}
 
 	var allData []any
-	totalSize := int(c.record.NumCols() * c.record.NumRows())
+	totalSize := len(c.cols) * c.rows
 	allData = make([]any, 0, totalSize)
 
-	// As many columns as the context reports, not as many as the record holds:
-	// a column a statement before this one created is past the record's own,
-	// and the other accessors here read it as well.
+	// As many columns as the context reports, not as many as the file had: a
+	// column a statement before this one created is beside them, and the other
+	// accessors here read it as well.
 	for i := 0; i < c.GetColCount(); i++ {
 		colData, err := c.GetColData(i)
 		if err != nil {
@@ -332,179 +375,808 @@ func assignTargetError(target string, colNames []string) error {
 	return ccl.PastLastColumnError(target, letters, len(colNames), names)
 }
 
-// applyStatements runs nodes, in order, over the batch pqCtx holds. Each
-// statement reads what the ones before it wrote, through pqCtx. It returns the
-// batch's columns as the statements leave them and their names in order.
-func applyStatements(pqCtx *parquetContext, colNames []string, nodes []ccl.CCLNode, totalRows int) (map[string][]any, []string, error) {
+// applyStatement runs one statement over every row pqCtx holds and writes its
+// result into pqCtx: a NEW adds a column, an assignment replaces one, and any
+// other statement writes nothing, the way ExecuteCCL leaves it alone. The
+// columns and the names the statements run through the context are its own, so
+// each one sees what the ones before it wrote.
+func applyStatement(pqCtx *parquetContext, node ccl.CCLNode, totalRows int) error {
 	numRows := pqCtx.GetRowCount()
 
-	// Build column name map
-	colNameMap := make(map[string]int)
-	for i, name := range colNames {
-		colNameMap[name] = i
+	// Check if it's a new column creation
+	if newColName, expr, isNew := ccl.GetNewColInfo(node); isNew {
+		// Create new column. An expression that does not vary from row to
+		// row is computed once, and a value as long as the file is spread
+		// over the rows the way a loaded table spreads it.
+		rowInvariant := !ccl.IsRowDependent(expr)
+		newColData := make([]any, numRows)
+		for rowIdx := 0; rowIdx < numRows; rowIdx++ {
+			if err := pqCtx.SetRowIndex(rowIdx); err != nil {
+				return fmt.Errorf("failed to set row index %d: %w", rowIdx, err)
+			}
+			val, err := ccl.Evaluate(expr, pqCtx)
+			if err != nil {
+				return fmt.Errorf("error evaluating NEW column '%s' at row %d: %w", newColName, pqCtx.GlobalRowIndex(), err)
+			}
+			newColData[rowIdx] = rowOf(val, rowInvariant, totalRows, pqCtx.GlobalRowIndex())
+		}
+		// The next statement reads this column through the context, which now
+		// knows it as one of the file's own.
+		pqCtx.addColumn(newColName, newColData)
+		return nil
 	}
 
-	// Prepare result columns - start with copies of existing columns
-	resultCols := make(map[string][]any, len(colNames)+len(nodes))
-	for i, colName := range colNames {
-		colData, err := pqCtx.GetColData(i)
-		if err != nil {
-			return nil, nil, err
-		}
-		resultCols[colName] = colData
+	target, isAssignment := ccl.GetAssignmentTarget(node)
+	if !isAssignment {
+		// A statement that is neither a NEW nor an assignment writes nothing,
+		// the way ExecuteCCL leaves it alone, so there is nothing to do here
+		// and nothing for the caller to build a column from.
+		return nil
 	}
 
-	// Process each CCL statement
-	for _, node := range nodes {
-		// Check if it's a new column creation
-		if newColName, expr, isNew := ccl.GetNewColInfo(node); isNew {
-			// Create new column. An expression that does not vary from row to
-			// row is computed once, and a value as long as the file is spread
-			// over the rows the way a loaded table spreads it.
-			rowInvariant := !ccl.IsRowDependent(expr)
-			newColData := make([]any, numRows)
-			for rowIdx := 0; rowIdx < numRows; rowIdx++ {
-				if err := pqCtx.SetRowIndex(rowIdx); err != nil {
-					return nil, nil, fmt.Errorf("failed to set row index %d: %w", rowIdx, err)
-				}
-				val, err := ccl.Evaluate(expr, pqCtx)
-				if err != nil {
-					return nil, nil, fmt.Errorf("error evaluating NEW column '%s' at row %d: %w", newColName, pqCtx.GlobalRowIndex(), err)
-				}
-				newColData[rowIdx] = rowOf(val, rowInvariant, totalRows, pqCtx.GlobalRowIndex())
-			}
-			resultCols[newColName] = newColData
-			colNames = append(colNames, newColName)
-			colNameMap[newColName] = len(colNames) - 1
-			// The next statement reads this column through the context, which
-			// so far only knows the columns the file had.
-			pqCtx.addColumn(newColName, newColData)
-			continue
-		}
+	// Assignment to existing column.
+	// The parser encodes a named target ['x'] as "'x'" (quoted) and a
+	// column-index target A/B/... as the bare letter. Resolve it to the
+	// actual column name of the context; otherwise ['x'] = ... would leave the
+	// real column untouched.
+	resolvedTarget, ok := resolveAssignTarget(target, pqCtx.colNames)
+	if !ok {
+		return assignTargetError(target, pqCtx.colNames)
+	}
+	expr := ccl.GetExpressionNode(node)
 
-		target, isAssignment := ccl.GetAssignmentTarget(node)
-		if !isAssignment {
-			// A statement that is neither a NEW nor an assignment writes nothing,
-			// the way ExecuteCCL leaves it alone, so there is nothing to do here
-			// and nothing for the caller to build a column from.
-			continue
-		}
-
-		// Assignment to existing column.
-		// The parser encodes a named target ['x'] as "'x'" (quoted) and a
-		// column-index target A/B/... as the bare letter. Resolve it to the
-		// actual column name used as the resultCols key; otherwise ['x'] = ...
-		// would write to key "'x'" and leave the real column untouched.
-		resolvedTarget, ok := resolveAssignTarget(target, colNames)
-		if !ok {
-			return nil, nil, assignTargetError(target, colNames)
-		}
-		expr := ccl.GetExpressionNode(node)
-
-		// Check if expression depends on row
-		if ccl.IsRowDependent(expr) {
-			// Evaluate per row
-			updatedCol := make([]any, numRows)
-			for rowIdx := 0; rowIdx < numRows; rowIdx++ {
-				if err := pqCtx.SetRowIndex(rowIdx); err != nil {
-					return nil, nil, fmt.Errorf("failed to set row index %d: %w", rowIdx, err)
-				}
-				val, err := ccl.Evaluate(expr, pqCtx)
-				if err != nil {
-					return nil, nil, fmt.Errorf("error evaluating assignment to '%s' at row %d: %w", target, pqCtx.GlobalRowIndex(), err)
-				}
-				updatedCol[rowIdx] = val
-			}
-			resultCols[resolvedTarget] = updatedCol
-			// The next statement reads this column through the context,
-			// which so far only knows what the file and the NEW statements
-			// hold.
-			pqCtx.setColumn(colNameMap[resolvedTarget], updatedCol)
-			continue
-		}
-
-		// Constant expression - evaluate once. A value as long as the file is
-		// spread over the rows the way a loaded table spreads it.
-		if err := pqCtx.SetRowIndex(0); err != nil {
-			return nil, nil, fmt.Errorf("failed to set row index to 0: %w", err)
-		}
-		val, err := ccl.Evaluate(expr, pqCtx)
-		if err != nil {
-			return nil, nil, fmt.Errorf("error evaluating assignment to '%s': %w", target, err)
-		}
-		offset := pqCtx.offset
+	// Check if expression depends on row
+	if ccl.IsRowDependent(expr) {
+		// Evaluate per row
 		updatedCol := make([]any, numRows)
-		for i := range updatedCol {
-			updatedCol[i] = rowOf(val, true, totalRows, offset+i)
+		for rowIdx := 0; rowIdx < numRows; rowIdx++ {
+			if err := pqCtx.SetRowIndex(rowIdx); err != nil {
+				return fmt.Errorf("failed to set row index %d: %w", rowIdx, err)
+			}
+			val, err := ccl.Evaluate(expr, pqCtx)
+			if err != nil {
+				return fmt.Errorf("error evaluating assignment to '%s' at row %d: %w", target, pqCtx.GlobalRowIndex(), err)
+			}
+			updatedCol[rowIdx] = val
 		}
-		resultCols[resolvedTarget] = updatedCol
-		pqCtx.setColumn(colNameMap[resolvedTarget], updatedCol)
+		// The next statement reads this column through the context, which now
+		// holds what was written instead of what the file had.
+		pqCtx.setColumn(pqCtx.colNameMap[resolvedTarget], updatedCol)
+		return nil
 	}
 
-	return resultCols, colNames, nil
+	// Constant expression - evaluate once. A value as long as the file is
+	// spread over the rows the way a loaded table spreads it.
+	if err := pqCtx.SetRowIndex(0); err != nil {
+		return fmt.Errorf("failed to set row index to 0: %w", err)
+	}
+	val, err := ccl.Evaluate(expr, pqCtx)
+	if err != nil {
+		return fmt.Errorf("error evaluating assignment to '%s': %w", target, err)
+	}
+	offset := pqCtx.offset
+	updatedCol := make([]any, numRows)
+	for i := range updatedCol {
+		updatedCol[i] = rowOf(val, true, totalRows, offset+i)
+	}
+	pqCtx.setColumn(pqCtx.colNameMap[resolvedTarget], updatedCol)
+	return nil
 }
 
-// applyBatchCCL applies the CCL statements to one arrow.Record batch and builds
-// the record the batch leaves behind, for ApplyCCL to write. The statements
-// themselves run in applyStatements, which a caller that does not write the
-// batch out uses on its own.
-func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, compiledNodes []ccl.CCLNode, totalRows int) (arrow.Record, error) {
-	resultCols, appliedNames, err := applyStatements(pqCtx, colNames, compiledNodes, totalRows)
+// cclStage is one statement of an ApplyCCL script. push takes the next run of
+// rows and returns the rows it has finished, in order; flush returns what it
+// still holds once the file has ended.
+type cclStage interface {
+	push(r cclRun) ([]cclRun, error)
+	flush() ([]cclRun, error)
+}
+
+// statementStage runs a statement that finishes every row at once.
+type statementStage struct {
+	node      ccl.CCLNode
+	totalRows int
+}
+
+// push runs the statement over r and hands on the rows it wrote. A run with no
+// rows has nothing for a statement to read, so none is evaluated, but the columns
+// it hands on are the ones a run with rows would have: a column a NEW statement
+// creates is still a column of the run afterwards, an empty one, or the stages
+// after this one would see a different set of columns than they do for every
+// other run and have nothing to write into.
+func (s *statementStage) push(r cclRun) ([]cclRun, error) {
+	if r.rows() == 0 {
+		cols := fullColumns(r)
+		if newName, _, isNew := ccl.GetNewColInfo(s.node); isNew {
+			// Clip, so the append always gives a new array: names may be a run's own
+			// slice, and writing into its spare capacity would change what it holds.
+			r = cclRun{
+				offset: r.offset,
+				names:  append(slices.Clip(r.names), newName),
+				cols:   append(cols, []any{}),
+			}
+			return []cclRun{r}, nil
+		}
+		// An assignment replaces a column that is there already, and any other
+		// statement writes nothing.
+		return []cclRun{{offset: r.offset, names: r.names, cols: cols}}, nil
+	}
+	ctx := newRunContext(r)
+	if err := applyStatement(ctx, s.node, s.totalRows); err != nil {
+		return nil, err
+	}
+	return []cclRun{ctx.run()}, nil
+}
+
+// flush returns nothing: every row this stage was given is finished.
+func (s *statementStage) flush() ([]cclRun, error) {
+	return nil, nil
+}
+
+// cclPipeline runs its stages in order: the rows a stage finishes go on to the
+// next one, and the rows leaving the last one are the result.
+type cclPipeline []cclStage
+
+// push runs one run through every stage, in order.
+func (p cclPipeline) push(r cclRun) ([]cclRun, error) {
+	runs := []cclRun{r}
+	for _, stage := range p {
+		next := make([]cclRun, 0, len(runs))
+		for _, in := range runs {
+			out, err := stage.push(in)
+			if err != nil {
+				return nil, err
+			}
+			next = append(next, out...)
+		}
+		runs = next
+	}
+	return runs, nil
+}
+
+// flush finishes what the stages still hold: each stage is given the runs the
+// stages before it held back and is flushed itself, in order, so every row the
+// file held leaves the pipeline exactly once.
+func (p cclPipeline) flush() ([]cclRun, error) {
+	var runs []cclRun
+	for _, stage := range p {
+		next := make([]cclRun, 0, len(runs)+1)
+		for _, in := range runs {
+			out, err := stage.push(in)
+			if err != nil {
+				return nil, err
+			}
+			next = append(next, out...)
+		}
+		held, err := stage.flush()
+		if err != nil {
+			return nil, err
+		}
+		runs = append(next, held...)
+	}
+	return runs, nil
+}
+
+// sequenceStage runs a statement whose whole right-hand side is a built-in
+// sequence function. The function reads rows the batch after the current one has
+// not arrived with, so the rows whose values are not settled yet are held until
+// the values they wait for come, and handed on in file order. Only the history
+// the function itself reads crosses a batch boundary: the rows being held are
+// the ones the function asked to look ahead over.
+type sequenceStage struct {
+	seq *ccl.TopSequence
+
+	// newName is the column a NEW statement creates, and target the position an
+	// assignment replaces. The answers go there.
+	newName string
+	target  int
+
+	// pending holds the rows the sequence has not answered yet, in file order,
+	// as the batches they arrived in. They stay the batches they were read as:
+	// the rows are handed on as they are, each batch keeping its own columns and
+	// its own row count, so a run is never copied to join two batches together.
+	pending []cclRun
+}
+
+// push answers the rows the sequence has every value for and holds the rest
+// until the next push or the flush. Only the rows just pushed are handed to the
+// sequence, which keeps the rows it is still waiting on itself; the rows the
+// stage holds are here to know which rows the answers it gives back belong to.
+func (s *sequenceStage) push(r cclRun) ([]cclRun, error) {
+	if r.rows() == 0 {
+		// A run with no rows has nothing for a sequence to read, but the
+		// column it writes into is still a column of the run afterwards, or the
+		// stages after this one would see a different set of columns than the
+		// stages before it.
+		return []cclRun{s.write(r, nil)}, nil
+	}
+
+	values, err := s.seq.Push(newRunContext(r))
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert result columns to arrow.Record
-	return buildArrowRecord(resultCols, appliedNames, rec.Schema())
+	// The rows just pushed join the rows still waiting at the back of the queue,
+	// so the answers the stream gives back can be taken off the front in file
+	// order.
+	s.pending = append(s.pending, r)
+	if len(values) > 0 {
+		// The stream answers in row order, so the rows it has answered are the
+		// first ones it was given, oldest batch first, and the rest wait for the
+		// values after them.
+		answered, _ := s.take(len(values))
+		return s.answer(answered, values), nil
+	}
+	return nil, nil
 }
 
-// buildArrowRecord constructs an arrow.Record from column data
-func buildArrowRecord(cols map[string][]any, colNames []string, originalSchema *arrow.Schema) (arrow.Record, error) {
-	mem := memory.DefaultAllocator
+// flush answers the rows still held: the file has ended, so the values a
+// look-ahead was waiting for will not arrive, and the function answers them the
+// way it answers them on the whole column.
+func (s *sequenceStage) flush() ([]cclRun, error) {
+	held, rows := s.take(-1)
+	if rows == 0 {
+		return nil, nil
+	}
+	values, err := s.seq.Flush()
+	if err != nil {
+		return nil, err
+	}
+	if len(values) != rows {
+		return nil, fmt.Errorf("a sequence function answered %d of the %d rows it was still holding",
+			len(values), rows)
+	}
+	return s.answer(held, values), nil
+}
 
-	// Build schema for result
+// take removes rows rows from the front of what the stage holds, or everything
+// when rows is negative, and returns them in file order. The runs it returns are
+// the runs it held: a count that does not reach the end of a batch takes that
+// batch's share of the columns with it, which is what a run of part of a batch
+// is.
+func (s *sequenceStage) take(rows int) (taken []cclRun, count int) {
+	held := s.pending
+	s.pending = nil
+	for i, r := range held {
+		if rows >= 0 && count+r.rows() > rows {
+			// This batch holds rows past the count asked for, so it is split: what
+			// was asked for is taken and what was not goes back to the front, with
+			// the batches behind it still in file order.
+			at := rows - count
+			if at > 0 {
+				taken = append(taken, headRun(r, at))
+			}
+			if kept := tailRun(r, at); kept.rows() > 0 {
+				s.pending = append(s.pending, kept)
+			}
+			s.pending = append(s.pending, held[i+1:]...)
+			return taken, rows
+		}
+		taken = append(taken, r)
+		count += r.rows()
+		if rows >= 0 && count == rows {
+			s.pending = append(s.pending, held[i+1:]...)
+			return taken, count
+		}
+	}
+	return taken, count
+}
+
+// answer puts the values a sequence answered into the rows they belong to, which
+// may span several batches, and hands those rows on in file order.
+func (s *sequenceStage) answer(rows []cclRun, values []any) []cclRun {
+	out := make([]cclRun, 0, len(rows))
+	at := 0
+	for _, r := range rows {
+		out = append(out, s.write(r, values[at:at+r.rows()]))
+		at += r.rows()
+	}
+	return out
+}
+
+// write puts the values a sequence answered into a run: a NEW statement's column
+// is added and an assignment's target is replaced, so the statement after this
+// one reads the answers as columns of its own.
+func (s *sequenceStage) write(r cclRun, values []any) cclRun {
+	cols := fullColumns(r)
+	if s.target >= 0 {
+		cols[s.target] = values
+		return cclRun{offset: r.offset, names: r.names, cols: cols}
+	}
+	// Clip, so the append always gives a new array: names may be a run's own
+	// slice, and writing into its spare capacity would change what it holds.
+	return cclRun{
+		offset: r.offset,
+		names:  append(slices.Clip(r.names), s.newName),
+		cols:   append(cols, values),
+	}
+}
+
+// fullColumns returns a copy of r's columns with one column for every name r
+// has. A run of no rows may know its names and hold no columns at all (tailRun
+// makes one), and every stage that writes into a column by its position needs the
+// column to be there.
+func fullColumns(r cclRun) [][]any {
+	cols := slices.Clone(r.cols)
+	for len(cols) < len(r.names) {
+		cols = append(cols, []any{})
+	}
+	return cols
+}
+
+// headRun returns the first rows of r, which still starts where r starts.
+func headRun(r cclRun, rows int) cclRun {
+	if rows >= r.rows() {
+		return r
+	}
+	cols := make([][]any, len(r.cols))
+	for i, col := range r.cols {
+		cols[i] = col[:rows]
+	}
+	return cclRun{offset: r.offset, names: r.names, cols: cols}
+}
+
+// tailRun returns the rows of r from rows onwards, which start that many rows
+// further into the file. A run of no rows keeps its names, because the columns
+// are the same however many rows there are.
+func tailRun(r cclRun, rows int) cclRun {
+	if rows <= 0 {
+		return r
+	}
+	if rows >= r.rows() {
+		return cclRun{names: r.names}
+	}
+	cols := make([][]any, len(r.cols))
+	for i, col := range r.cols {
+		cols[i] = col[rows:]
+	}
+	return cclRun{offset: r.offset + rows, names: r.names, cols: cols}
+}
+
+// newPipeline builds the stages for the statements nodes, which have been
+// resolved for a table of totalRows rows whose columns are colNames. Every
+// statement is a stage of its own, so the rows one writes reach the next one
+// whatever order they finish in, and a statement is built against the columns
+// the statements before it leave behind.
+func newPipeline(nodes []ccl.CCLNode, totalRows int, colNames []string) (cclPipeline, error) {
+	names := slices.Clone(colNames)
+	p := make(cclPipeline, 0, len(nodes))
+	for _, node := range nodes {
+		stage, err := newStatementStage(node, totalRows, names)
+		if err != nil {
+			return nil, err
+		}
+		p = append(p, stage)
+		if newName, _, isNew := ccl.GetNewColInfo(node); isNew {
+			names = append(names, newName)
+		}
+	}
+	return p, nil
+}
+
+// newStatementStage returns the stage that runs one statement over the runs a
+// file arrives in. A statement whose whole right-hand side is a built-in
+// sequence function is a sequenceStage, which settles the rows the sequence has
+// every value for and holds the rest back; every other statement is a
+// statementStage, which finishes every row of the run it is given.
+func newStatementStage(node ccl.CCLNode, totalRows int, names []string) (cclStage, error) {
+	newName, _, isNew := ccl.GetNewColInfo(node)
+	target := -1
+	if !isNew {
+		rawTarget, isAssignment := ccl.GetAssignmentTarget(node)
+		if !isAssignment {
+			// A statement that is neither a NEW nor an assignment writes
+			// nothing, the way ExecuteCCL leaves it alone, so there is no column
+			// for a sequence to answer into. It is run the ordinary way, over
+			// the rows of the run, and what it answers is left alone too.
+			return &statementStage{node: node, totalRows: totalRows}, nil
+		}
+		// The target is resolved here rather than per run, so a target that
+		// names no column is refused before the file is read.
+		resolved, ok := resolveAssignTarget(rawTarget, names)
+		if !ok {
+			return nil, assignTargetError(rawTarget, names)
+		}
+		target = slices.Index(names, resolved)
+	}
+
+	seq, isSequence, err := ccl.NewTopSequence(ccl.GetExpressionNode(node), totalRows, names)
+	if err != nil {
+		return nil, err
+	}
+	if !isSequence {
+		return &statementStage{node: node, totalRows: totalRows}, nil
+	}
+	return &sequenceStage{seq: seq, newName: newName, target: target}, nil
+}
+
+// exceedsInt64Loss reports whether v is a value an int64 cannot hold without
+// loss: a float that is not a whole number, one outside int64's range, or a
+// number of a type that is not one. A nil is a missing value, which every type
+// holds as a null, so it is never lossy.
+func exceedsInt64Loss(v any) bool {
+	switch n := v.(type) {
+	case int, int8, int16, int32, int64, uint8, uint16, uint32:
+		return false
+	case uint:
+		// As wide as an int on the platforms this runs on, so a uint above
+		// int64's maximum is a value an int64 cannot hold.
+		return uint64(n) > math.MaxInt64
+	case uint64:
+		return n > math.MaxInt64
+	case float64:
+		return !isInt64WholeFloat(n)
+	case float32:
+		// A float32 widens to float64 exactly, so the float64 answer is the one.
+		return !isInt64WholeFloat(float64(n))
+	default:
+		return true
+	}
+}
+
+// int64MinAsFloat and int64LimitAsFloat are int64's own bounds as float64s, which
+// is the only way they are exactly representable: math.MaxInt64 rounds up to the
+// limit, so a float64 test written with it would admit a value int64 cannot hold.
+const (
+	int64MinAsFloat   = -9223372036854775808.0
+	int64LimitAsFloat = 9223372036854775808.0
+)
+
+// isInt64WholeFloat reports whether f is a finite whole number inside int64's
+// range, which is what int64(v) would then hold without loss. The upper bound is
+// exclusive: int64 stops one below 2^63.
+func isInt64WholeFloat(f float64) bool {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return false
+	}
+	return f == math.Trunc(f) && f >= int64MinAsFloat && f < int64LimitAsFloat
+}
+
+// float64ExactInteger is the largest magnitude up to which a float64 holds every
+// integer: its significand is 53 bits wide, so past 2^53 it holds every second
+// integer, then every fourth, and an integer between them rounds to a neighbour.
+const float64ExactInteger = 1 << 53
+
+// exceedsFloat64Loss reports whether v is an integer a float64 cannot hold
+// exactly: one of magnitude above 2^53. Every other value is not this function's
+// business: a float is a float64 already (a float32 widens to one exactly), a nil
+// is a null, and a value of another kind is held or refused by the kind flags.
+func exceedsFloat64Loss(v any) bool {
+	switch n := v.(type) {
+	case int:
+		return int64(n) > float64ExactInteger || int64(n) < -float64ExactInteger
+	case int64:
+		return n > float64ExactInteger || n < -float64ExactInteger
+	case uint:
+		return uint64(n) > float64ExactInteger
+	case uint64:
+		return n > float64ExactInteger
+	default:
+		// int8 to int32 and uint8 to uint32 are within 2^32.
+		return false
+	}
+}
+
+// holdsNoValue reports whether kinds has seen no value at all: every value that
+// is not a missing one sets one of the kind flags, so a column with none set has
+// held nothing but missing values, or nothing.
+func holdsNoValue(kinds *columnKinds) bool {
+	return !kinds.hasInt && !kinds.hasFloat && !kinds.hasString && !kinds.hasBool &&
+		!kinds.hasTime && !kinds.hasBytes && !kinds.hasOther
+}
+
+// holdsEveryValue reports whether every value recorded in kinds so far can be
+// held by dtype without loss, which is what lets a column the file had keep its
+// own type. A column holding nothing but missing values holds every type: there
+// is no value of another kind, and a missing value is a null whatever the type.
+//
+// Only the types ApplyCCL builds an array of answer. Any other type is refused,
+// so a column the file declared at a type this builder cannot rebuild is written
+// the way Write would write it rather than kept.
+func holdsEveryValue(kinds *columnKinds, dtype arrow.DataType) bool {
+	if kinds == nil || dtype == nil {
+		return false
+	}
+	if holdsNoValue(kinds) {
+		return true
+	}
+
+	// Each arm is the kind the type holds and nothing else: a column of mixed
+	// kinds is written as the type Write gives it, because there is no type this
+	// builder holds every one of them in.
+	switch dtype.ID() {
+	case arrow.INT64:
+		// Any whole number an int64 holds, whatever Go type it arrived as.
+		return !kinds.lossyInt64
+	case arrow.FLOAT64:
+		// Any float, and the integers a float64 holds exactly: one past 2^53 would
+		// come back as a neighbour of itself.
+		return !kinds.hasString && !kinds.hasBool && !kinds.hasTime && !kinds.hasBytes && !kinds.hasOther &&
+			!kinds.lossyFloat64
+	case arrow.STRING:
+		return !kinds.hasInt && !kinds.hasFloat && !kinds.hasBool && !kinds.hasTime && !kinds.hasBytes && !kinds.hasOther
+	case arrow.BOOL:
+		return kinds.hasBool && !kinds.hasInt && !kinds.hasFloat && !kinds.hasString &&
+			!kinds.hasTime && !kinds.hasBytes && !kinds.hasOther
+	case arrow.TIMESTAMP:
+		return kinds.hasTime && !kinds.hasInt && !kinds.hasFloat && !kinds.hasString &&
+			!kinds.hasBool && !kinds.hasBytes && !kinds.hasOther
+	case arrow.BINARY:
+		return kinds.hasBytes && !kinds.hasInt && !kinds.hasFloat && !kinds.hasString &&
+			!kinds.hasBool && !kinds.hasTime && !kinds.hasOther
+	default:
+		return false
+	}
+}
+
+// writtenType is the type a column a statement writes is written as. A column the
+// file had keeps its own type, original, when every value written into it can be
+// held by that type without loss; otherwise, and for a column the script creates
+// (original nil), it takes the type Write would give its values.
+func writtenType(original arrow.DataType, kinds *columnKinds) arrow.DataType {
+	if original != nil && holdsEveryValue(kinds, original) {
+		return original
+	}
+	return kinds.arrowType()
+}
+
+// originalField returns the field the file gave the column named name, and false
+// for a column the file did not have, which is every column a script creates and
+// every one a stage added without the script naming it.
+func originalField(schema *arrow.Schema, name string) (arrow.Field, bool) {
+	if schema == nil {
+		return arrow.Field{}, false
+	}
+	if idx := schema.FieldIndices(name); len(idx) > 0 {
+		return schema.Field(idx[0]), true
+	}
+	return arrow.Field{}, false
+}
+
+// writtenField is the field a column the script writes is written with. A column
+// keeping the file's own type keeps the file's own field with it — its unit, its
+// time zone and its metadata — and only nullability is turned on, because a value
+// expression is nil wherever it has no answer, which for a look-ahead is the rows
+// before its window is full. A column written as another type is a field of its
+// own, since the file's field would describe a type the column no longer has.
+func writtenField(name string, dtype arrow.DataType, original arrow.Field, hasOriginal bool) arrow.Field {
+	if hasOriginal && arrow.TypeEqual(dtype, original.Type) {
+		original.Nullable = true
+		return original
+	}
+	return arrow.Field{Name: name, Type: dtype, Nullable: true}
+}
+
+// writtenColumns returns the names of the columns the script writes, in the
+// order it first writes each one: a column a statement creates and a column a
+// statement assigns to both count, because both have their values decided by the
+// script. names is the columns the file came with.
+//
+// A column the script writes takes the type its values answer, except that a
+// column the file had keeps the file's own type while every value written into it
+// is one that type holds; either way its field can hold a missing value: a value
+// expression is nil wherever it has no answer, which for a look-ahead is the rows
+// before its window is full. A column the script does not write is none of the
+// script's business and keeps the field the file gave it, nullability included.
+func writtenColumns(nodes []ccl.CCLNode, names []string) []string {
+	running := slices.Clone(names)
+	var written []string
+	seen := make(map[string]bool, len(running))
+	note := func(name string) {
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		written = append(written, name)
+	}
+	for _, node := range nodes {
+		newName, _, isNew := ccl.GetNewColInfo(node)
+		if isNew {
+			note(newName)
+			running = append(running, newName)
+			continue
+		}
+		rawTarget, isAssignment := ccl.GetAssignmentTarget(node)
+		if !isAssignment {
+			// A statement that is neither a NEW nor an assignment writes
+			// nothing, the way ExecuteCCL leaves it alone.
+			continue
+		}
+		// Resolved the way the stage resolves its target, against the columns
+		// the statements before it leave behind. A target naming no column was
+		// refused when the stage was built, so it is not this function's error
+		// to report again.
+		if resolved, ok := resolveAssignTarget(rawTarget, running); ok {
+			note(resolved)
+		}
+	}
+	return written
+}
+
+// cclOutputSchema builds the schema the written file has: a column the script
+// writes is a nullable field of the type given in writtenTypes, or of the type
+// writtenType settles from the values the column has held (kinds) when
+// writtenTypes has none, and a column it does not write keeps the field it came
+// with.
+//
+// The written types are the type of the values of the whole file, so a column
+// whose first rows are missing or of one kind and whose later rows are of another
+// is written as the type all of them answer, which is what Write gives the same
+// column. A column the file had and whose every value its own type holds is the
+// one exception: it keeps the file's type and the file's field, and only its
+// nullability is turned on.
+func cclOutputSchema(colNames []string, written []string, writtenTypes map[string]arrow.DataType, kinds map[string]*columnKinds, originalSchema *arrow.Schema) *arrow.Schema {
+	isWritten := make(map[string]bool, len(written))
+	for _, name := range written {
+		isWritten[name] = true
+	}
+	// A column that held nothing at all is a column of missing values, which is
+	// what a kinds nobody added to is.
+	kindsOf := func(name string) *columnKinds {
+		if k := kinds[name]; k != nil {
+			return k
+		}
+		return &columnKinds{}
+	}
+
 	fields := make([]arrow.Field, 0, len(colNames))
 	for _, colName := range colNames {
-		// Try to find field in original schema
-		fieldIdx := originalSchema.FieldIndices(colName)
-		if len(fieldIdx) > 0 {
-			fields = append(fields, originalSchema.Field(fieldIdx[0]))
-		} else {
-			// New column - infer type from data
-			colData := cols[colName]
-			fields = append(fields, arrow.Field{
-				Name: colName,
-				Type: inferArrowType(colData),
-			})
+		if isWritten[colName] {
+			original, hasOriginal := originalField(originalSchema, colName)
+			dtype := writtenTypes[colName]
+			if dtype == nil {
+				dtype = writtenType(original.Type, kindsOf(colName))
+			}
+			fields = append(fields, writtenField(colName, dtype, original, hasOriginal))
+			continue
 		}
-	}
-
-	schema := arrow.NewSchema(fields, nil)
-
-	// Build arrays
-	arrays := make([]arrow.Array, len(colNames))
-	for i, colName := range colNames {
-		colData := cols[colName]
-		arr, err := buildArrowArray(mem, colData, fields[i].Type)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build array for column '%s': %w", colName, err)
+		if field, ok := originalField(originalSchema, colName); ok {
+			fields = append(fields, field)
+			continue
 		}
-		arrays[i] = arr
+		// A column neither the file nor writtenColumns knows, which a stage added
+		// without the script naming it: its own values are all there is to write it
+		// from.
+		fields = append(fields, arrow.Field{
+			Name:     colName,
+			Type:     kindsOf(colName).arrowType(),
+			Nullable: true,
+		})
 	}
-
-	return array.NewRecord(schema, arrays, int64(len(cols[colNames[0]]))), nil
+	return arrow.NewSchema(fields, nil)
 }
 
-// buildArrowArray constructs an arrow.Array from Go slice
-func buildArrowArray(mem memory.Allocator, data []any, dtype arrow.DataType) (arrow.Array, error) {
+// runValues returns the values of every column of r, the column names naming
+// them. The slices are the run's own, which nothing it is handed to writes to.
+func runValues(r cclRun) map[string][]any {
+	values := make(map[string][]any, len(r.names))
+	for i, name := range r.names {
+		if i < len(r.cols) {
+			values[name] = r.cols[i]
+		}
+	}
+	return values
+}
+
+// buildArrowRecord constructs an arrow.Record from the values of the runs that
+// have left the pipeline, in the schema the file is written with. No rows is
+// errNothingToWrite, so an input with none leaves the original alone.
+//
+// schema holds one field per column in colNames, in that order, with each
+// column's type already settled: a column the script writes takes the type its
+// values answer, and a column it does not write keeps the field the file gave
+// it. Every array is checked against its field before the record is built, so a
+// type that does not match is an error here rather than a panic inside Arrow.
+func buildArrowRecord(values map[string][]any, colNames []string, schema *arrow.Schema) (rec arrow.Record, err error) {
+	mem := memory.DefaultAllocator
+
+	if len(colNames) == 0 {
+		return nil, errNothingToWrite
+	}
+	rows := len(values[colNames[0]])
+	for _, colName := range colNames {
+		if len(values[colName]) != rows {
+			return nil, fmt.Errorf("column %q holds %d values, column %q holds %d",
+				colNames[0], rows, colName, len(values[colName]))
+		}
+	}
+	if rows == 0 {
+		return nil, errNothingToWrite
+	}
+
+	arrays := make([]arrow.Array, 0, len(colNames))
+	defer func() {
+		// An error after a builder finished leaves the arrays already built
+		// holding their buffers, so they are released here rather than by a
+		// caller that only sees the error.
+		if err != nil {
+			for _, arr := range arrays {
+				arr.Release()
+			}
+		}
+	}()
+
+	for i, colName := range colNames {
+		field := schema.Field(i)
+		if field.Type.ID() == arrow.EXTENSION {
+			// A column the file gave an extension type for: the extension's
+			// storage type is what a value can be written as, and the field
+			// keeps the extension, so the file comes back holding the type it
+			// had. Write builds every array with the plain type and never
+			// reaches this arm.
+			storage := field.Type
+			if ext, ok := field.Type.(arrow.ExtensionType); ok {
+				storage = ext.StorageType()
+			}
+			arr, err := buildArrowArray(mem, colName, values[colName], storage)
+			if err != nil {
+				return nil, err
+			}
+			if !arrow.TypeEqual(arr.DataType(), storage) {
+				err = fmt.Errorf("column %q built a %s array, its field is %s",
+					colName, arr.DataType(), field.Type)
+				arr.Release()
+				return nil, err
+			}
+			arrays = append(arrays, arr)
+			continue
+		}
+
+		arr, err := buildArrowArray(mem, colName, values[colName], field.Type)
+		if err != nil {
+			return nil, err
+		}
+		if !arrow.TypeEqual(arr.DataType(), field.Type) {
+			err = fmt.Errorf("column %q built a %s array, its field is %s",
+				colName, arr.DataType(), field.Type)
+			arr.Release()
+			return nil, err
+		}
+		arrays = append(arrays, arr)
+	}
+
+	rec = array.NewRecord(schema, arrays, int64(rows))
+	for _, arr := range arrays {
+		arr.Release()
+	}
+	return rec, nil
+}
+
+// buildArrowArray constructs an arrow.Array of dtype from the values of one
+// column. A missing value is written as a null whatever the column's type, and a
+// value that does not convert to that type is an error: the file is left alone
+// rather than holding a number that says something else.
+//
+// A type the builder has no builder for, such as a date32 column a file outside
+// Write was written with, is an error naming the column and its type. Write's
+// own inferArrowType never answers such a type, so this is a column of a file
+// ApplyCCL did not write, not one of its own.
+func buildArrowArray(mem memory.Allocator, name string, data []any, dtype arrow.DataType) (arr arrow.Array, err error) {
+	defer func() {
+		// conv reports a value it cannot read by panicking, which is the one
+		// thing a library call must not do to the program calling it. The
+		// column and its type are named here, because that is what says which
+		// value of which column the file refuses to hold.
+		if r := recover(); r != nil {
+			arr = nil
+			err = fmt.Errorf("cannot write column %q as %s: %v", name, dtype, r)
+		}
+	}()
+
 	switch dtype.ID() {
 	case arrow.INT64:
 		builder := array.NewInt64Builder(mem)
 		defer builder.Release()
 		for _, v := range data {
-			if v == nil {
+			switch n := v.(type) {
+			case nil:
 				builder.AppendNull()
-			} else {
+			case float64:
+				// A whole number inside int64's range: the type was settled with
+				// holdsEveryValue, which refused a fraction and a value out of
+				// range, so int64(n) is the value itself and not a truncation of
+				// one the way conv.ParseInt would be.
+				builder.Append(int64(n))
+			default:
 				builder.Append(int64(conv.ParseInt(v)))
 			}
 		}
@@ -546,18 +1218,51 @@ func buildArrowArray(mem memory.Allocator, data []any, dtype arrow.DataType) (ar
 		}
 		return builder.NewArray(), nil
 
-	default:
-		// Fallback to string
-		builder := array.NewStringBuilder(mem)
+	case arrow.BINARY:
+		// Same answer as Write's appendValue: a byte slice is written as
+		// itself, anything else as its text.
+		builder := array.NewBinaryBuilder(mem, dtype.(arrow.BinaryDataType))
 		defer builder.Release()
 		for _, v := range data {
 			if v == nil {
 				builder.AppendNull()
-			} else {
-				builder.Append(conv.ToString(v))
+				continue
+			}
+			b, ok := v.([]byte)
+			if !ok {
+				b = []byte(conv.ToString(v))
+			}
+			builder.Append(b)
+		}
+		return builder.NewArray(), nil
+
+	case arrow.TIMESTAMP:
+		// A timestamp is written at the unit the column's own type says, which is
+		// the only way the file comes back holding the instant it held before. A
+		// value that is not a time is a missing value here, the same answer
+		// Write's appendValue gives it.
+		tt := dtype.(*arrow.TimestampType)
+		builder := array.NewTimestampBuilder(mem, tt)
+		defer builder.Release()
+		for _, v := range data {
+			t, ok := v.(time.Time)
+			switch {
+			case v == nil, !ok:
+				builder.AppendNull()
+			default:
+				ts, convErr := arrow.TimestampFromTime(t, tt.Unit)
+				if convErr != nil {
+					return nil, fmt.Errorf("cannot write %v into column %q as %s: %w",
+						v, name, dtype, convErr)
+				}
+				builder.Append(ts)
 			}
 		}
 		return builder.NewArray(), nil
+
+	default:
+		return nil, fmt.Errorf("cannot write column %q as %s: ApplyCCL builds no array of that type",
+			name, dtype)
 	}
 }
 
@@ -567,45 +1272,47 @@ func buildArrowArray(mem memory.Allocator, data []any, dtype arrow.DataType) (ar
 // so the size changes how much is held in memory, not the answer.
 const cclBatchSize = 1000
 
-// cclFileInfo returns the row count and the column names of the file at path,
-// as the batches FilterWithCCL and ApplyCCL read will name them.
-func cclFileInfo(path string) (totalRows int, colNames []string, err error) {
+// cclFileInfo returns the row count, the column names and the schema of the
+// file at path, as the batches FilterWithCCL and ApplyCCL read will name them.
+// The schema is what a column the script does not write keeps: its own field,
+// nullability and all, so an unchanged column comes back as the file had it.
+func cclFileInfo(path string) (totalRows int, colNames []string, schema *arrow.Schema, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			totalRows, colNames, err = 0, nil, unreadableFile(path, r)
+			totalRows, colNames, schema, err = 0, nil, nil, unreadableFile(path, r)
 		}
 	}()
 
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, nil, err
 	}
 	defer func() { _ = f.Close() }()
 
 	r, err := file.NewParquetReader(f)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, nil, err
 	}
 	defer func() { _ = r.Close() }()
 
 	fr, err := pqarrow.NewFileReader(r, pqarrow.ArrowReadProperties{}, memory.DefaultAllocator)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, nil, err
 	}
 
-	schema, err := fr.Schema()
+	schema, err = fr.Schema()
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, nil, err
 	}
 	colNames = make([]string, len(schema.Fields()))
 	for i, field := range schema.Fields() {
 		colNames[i] = field.Name
 	}
-	return int(r.NumRows()), colNames, nil
+	return int(r.NumRows()), colNames, schema, nil
 }
 
 // forEachRecord reads the file at path batch by batch and calls fn with every
-// record, in order. The reader stops when it returns, and fn must not keep rec
+// record, in order. The reader stops when fn returns, and fn must not keep rec
 // after it returns.
 func forEachRecord(ctx context.Context, path string, fn func(rec arrow.Record) error) error {
 	// The reader stops when this call returns, so an early return cannot leave
@@ -644,53 +1351,101 @@ func forEachRecord(ctx context.Context, path string, fn func(rec arrow.Record) e
 	}
 }
 
-// cclBatches reads the file at path for ccl.ResolveWholeTable: each call is one
-// pass, and every batch knows where its rows start in the file.
-func cclBatches(ctx context.Context, path string, colNames []string) ccl.Batches {
-	return func(yield func(ccl.GlobalRowContext) error) error {
-		offset := 0
-		return forEachRecord(ctx, path, func(rec arrow.Record) error {
-			// The whole rows the resolver keeps out of a batch are copied out
-			// of it while yield runs, so rec can be released right after.
-			if err := yield(newParquetContext(rec, colNames, offset)); err != nil {
-				return err
-			}
-			offset += int(rec.NumRows())
-			return nil
-		})
-	}
-}
-
 // appliedBatches reads the file at path for ccl.ResolveWholeTable as the
-// statements before the one being resolved leave it: each batch has had prior
+// statements before the one being resolved leave it: each run has had prior
 // applied to it, so a statement reading a column an earlier one created or
 // replaced sees that column. The context handed to the resolver is the very one
 // the row-by-row pass evaluates those statements through, so a value a statement
 // writes is the one every later statement reads; a record rebuilt from the file
 // would round a written value through the column's own parquet type instead, and
 // a column the script creates would take its type from the first batch only.
+// With no prior statement every run is the file's own rows, which is what
+// resolving the first statement needs.
 func appliedBatches(ctx context.Context, path string, colNames []string, prior []ccl.CCLNode, totalRows int) ccl.Batches {
 	return func(yield func(ccl.GlobalRowContext) error) error {
-		offset := 0
-		return forEachRecord(ctx, path, func(rec arrow.Record) error {
-			// applyStatements appends the columns a NEW statement creates to
-			// the names it is given, so it gets a copy of its own.
-			pqCtx := newParquetContext(rec, slices.Clone(colNames), offset)
-			if len(prior) > 0 {
-				if _, _, err := applyStatements(pqCtx, slices.Clone(colNames), prior, totalRows); err != nil {
+		// A stage holds what it has not finished, so the pipeline is built for
+		// this pass rather than shared between them. The file's own columns
+		// come first, and a statement creating one adds the next, which is the
+		// order the statements before this one leave them in.
+		pipeline, err := newPipeline(prior, totalRows, colNames)
+		if err != nil {
+			return err
+		}
+
+		// A run holds Go values of its own, so the resolver may keep the
+		// context it is given for longer than the record it was read from.
+		hand := func(runs []cclRun) error {
+			for _, run := range runs {
+				if err := yield(newRunContext(run)); err != nil {
 					return err
 				}
 			}
+			return nil
+		}
 
-			// The whole rows the resolver keeps out of a batch are copied out
-			// of it while yield runs, so rec can be released right after.
-			if err := yield(pqCtx); err != nil {
+		offset := 0
+		if err := forEachRecord(ctx, path, func(rec arrow.Record) error {
+			run := runFromRecord(rec, colNames, offset)
+			offset += int(rec.NumRows())
+			runs, err := pipeline.push(run)
+			if err != nil {
 				return err
 			}
-			offset += int(rec.NumRows())
-			return nil
-		})
+			return hand(runs)
+		}); err != nil {
+			return err
+		}
+
+		// The file has ended, so whatever the stages still hold is finished
+		// now; otherwise those rows would never reach the resolver.
+		runs, err := pipeline.flush()
+		if err != nil {
+			return err
+		}
+		return hand(runs)
 	}
+}
+
+// filterColumnName is the column a streamed filter writes its decisions into, so
+// the rows a sequence has not settled yet are held back with the rows they are
+// waiting for and handed on in the same shape every other stage hands rows on.
+const filterColumnName = "\x00filter"
+
+// passesFilter reports whether a row a filter decided on is a row to keep: a
+// boolean is its own answer, a number keeps the row when it is not zero, and
+// anything else keeps the row when it is there at all. Both filter paths ask
+// the same question, so both ask it here.
+func passesFilter(val any) bool {
+	switch v := val.(type) {
+	case bool:
+		return v
+	case float64:
+		return v != 0
+	case int:
+		return v != 0
+	case int64:
+		return v != 0
+	default:
+		return val != nil
+	}
+}
+
+// eachRun reads the file at path cclBatchSize rows at a time and calls fn with
+// every run of consecutive rows, in order, with the file position of its first
+// row. The reading is forEachRecord's, so there is one stream of records in the
+// file rather than two copies of the same loop to keep in step, and the reader
+// stops when this call returns, so an early return cannot leave it blocked on a
+// batch nobody reads, holding the file open.
+func eachRun(ctx context.Context, path string, colNames []string, fn func(r cclRun) error) error {
+	offset := 0
+	return forEachRecord(ctx, path, func(rec arrow.Record) error {
+		// A run holds Go values of its own, so it outlives the record it was read
+		// from: forEachRecord releases the record once this call returns, and fn
+		// may well have kept the run.
+		run := runFromRecord(rec, colNames, offset)
+		offset += int(rec.NumRows())
+		return fn(run)
+	})
 }
 
 // FilterWithCCL applies a CCL filter expression to a parquet file and returns filtered results.
@@ -704,12 +1459,15 @@ func appliedBatches(ctx context.Context, path string, colNames []string, prior [
 //
 // The file is read cclBatchSize rows at a time, and the answer is the one the
 // same expression gives on the loaded table: an aggregate is computed over the
-// whole file, # is the row's position in the file, and a fixed row such as A.0
-// is that row of the file. Computing those parts reads the file again before
-// the rows are evaluated. MEDIAN, an aggregate registered with
-// RegisterAggregateFunction, a sequence function such as LAG or CUMSUM, and a
-// row reference computed from the current row such as A.(# - 1) are refused
-// with an error before any row is evaluated.
+// whole file, # is the row's position in the file, a fixed row such as A.0 is
+// that row of the file, and a built-in sequence function that is the whole
+// expression — LAG, LEAD, DIFF, PCT_CHANGE, a cumulative one or a ROLLING_* one
+// — is streamed, holding the rows whose values need rows of a later batch.
+// Computing the whole-file parts reads the file again before the rows are
+// evaluated. MEDIAN, an aggregate registered with RegisterAggregateFunction, a
+// sequence function inside a larger expression, a sequence function a caller
+// registered, and a row reference computed from the current row such as
+// A.(# - 1) are refused with an error before any row is evaluated.
 func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra.DataTable, error) {
 	// Compile CCL expression once
 	compiledExpr, err := ccl.CompileExpression(filterExpr)
@@ -722,11 +1480,11 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 	// file's shape is read first: an expression that needs nothing beyond the
 	// current row costs no extra pass, and a row or column the expression names
 	// is checked against the file rather than against a batch.
-	totalRows, colNames, err := cclFileInfo(path)
+	totalRows, colNames, _, err := cclFileInfo(path)
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := ccl.ResolveWholeTable(compiledExpr, totalRows, colNames, cclBatches(ctx, path, colNames))
+	resolved, err := ccl.ResolveWholeTable(compiledExpr, totalRows, colNames, appliedBatches(ctx, path, colNames, nil, 0))
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate CCL expression: %w", err)
 	}
@@ -736,105 +1494,100 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 	// batch, because that method returns a copy of the column: a 2500-row file
 	// filtered on a condition every row satisfies came back with 1000 rows.
 	kept := make([][]any, len(colNames))
+	keep := func(r cclRun, decisions []any) {
+		for rowIdx, val := range decisions {
+			if !passesFilter(val) {
+				continue
+			}
+			// Add this row to the filtered results
+			for colIdx := range kept {
+				kept[colIdx] = append(kept[colIdx], r.cols[colIdx][rowIdx])
+			}
+		}
+	}
 
-	// The reader stops when this call returns, so an early return cannot leave
-	// it blocked on a batch nobody reads, holding the file open.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	seq, isSequence, err := ccl.NewTopSequence(resolved, totalRows, colNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate CCL expression: %w", err)
+	}
 
-	recChan, errChan := streamAsArrowRecord(ctx, path, ReadOptions{}, cclBatchSize)
+	if isSequence {
+		// The filter is one sequence function, which reads rows the batch after
+		// the current one has not arrived with, so its decisions are streamed
+		// through a stage that holds the rows it has not settled yet. The
+		// decisions are written into a column of their own, which is the last
+		// column of every run that leaves the stage.
+		stage := &sequenceStage{seq: seq, newName: filterColumnName, target: -1}
+		take := func(runs []cclRun) {
+			for _, run := range runs {
+				keep(run, run.cols[len(colNames)])
+			}
+		}
+		if err := eachRun(ctx, path, colNames, func(r cclRun) error {
+			out, err := stage.push(r)
+			if err != nil {
+				// The rows are named as the range of the file they are, both ends
+				// included: which of them the sequence was asked about is the
+				// stage's own business, and it has not said.
+				return fmt.Errorf("error evaluating CCL in rows %d to %d: %w",
+					r.offset, r.offset+r.rows()-1, err)
+			}
+			take(out)
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+		// The file has ended, so the rows the sequence held back are decided now.
+		tail, err := stage.flush()
+		if err != nil {
+			return nil, fmt.Errorf("error evaluating CCL: %w", err)
+		}
+		take(tail)
+	} else {
+		// Every other filter is answered over each batch as it arrives. A value
+		// that does not vary from row to row and is a slice as long as the file
+		// is spread over the rows, the way a loaded table spreads it: the
+		// filter keeps the rows their own element keeps.
+		rowInvariant := !ccl.IsRowDependent(resolved)
+		if err := eachRun(ctx, path, colNames, func(r cclRun) error {
+			pqCtx := newRunContext(r)
+			decisions := make([]any, r.rows())
+			for rowIdx := range decisions {
+				if err := pqCtx.SetRowIndex(rowIdx); err != nil {
+					return fmt.Errorf("failed to set row index %d: %w", rowIdx, err)
+				}
+				val, err := ccl.Evaluate(resolved, pqCtx)
+				if err != nil {
+					return fmt.Errorf("error evaluating CCL at row %d: %w", r.offset+rowIdx, err)
+				}
+				decisions[rowIdx] = rowOf(val, rowInvariant, totalRows, r.offset+rowIdx)
+			}
+			keep(r, decisions)
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	}
 
 	// build assembles the result once, on whichever path ends the stream, so an
 	// empty file and a filter that matched nothing produce the same shape.
-	build := func() *insyra.DataTable {
+	if len(kept[0]) == 0 {
 		result := insyra.NewDataTable()
-		for i, name := range colNames {
+		for _, name := range colNames {
 			dl := insyra.NewDataList()
 			dl.SetName(name)
-			if len(kept[i]) > 0 {
-				dl.Append(kept[i]...)
-			}
 			result.AppendCols(dl)
 		}
-		return result
+		return result, nil
 	}
-
-	// Where the batch being evaluated starts in the file, which is what # is
-	// counted from.
-	offset := 0
-
-	// A value that does not vary from row to row and is a slice as long as the
-	// file is spread over the rows, the way a loaded table spreads it: the
-	// filter keeps the rows their own element keeps.
-	rowInvariant := !ccl.IsRowDependent(resolved)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case err := <-errChan:
-			if err != nil {
-				return nil, err
-			}
-			// Stream finished, return result
-			return build(), nil
-		case rec, ok := <-recChan:
-			if !ok {
-				// The producer closes errChan before recChan, so by now errChan
-				// is closed too and this receive cannot block. Read it rather
-				// than letting the select above choose between two ready cases,
-				// which would drop an error reported after the last batch.
-				if err := <-errChan; err != nil {
-					return nil, err
-				}
-				return build(), nil
-			}
-
-			// Create context for this batch
-			pqCtx := newParquetContext(rec, colNames, offset)
-
-			for rowIdx := 0; rowIdx < int(rec.NumRows()); rowIdx++ {
-				if err := pqCtx.SetRowIndex(rowIdx); err != nil {
-					rec.Release()
-					return nil, fmt.Errorf("failed to set row index %d: %w", rowIdx, err)
-				}
-
-				// Evaluate filter expression
-				val, err := ccl.Evaluate(resolved, pqCtx)
-				if err != nil {
-					rec.Release()
-					return nil, fmt.Errorf("error evaluating CCL at row %d: %w", offset+rowIdx, err)
-				}
-				val = rowOf(val, rowInvariant, totalRows, offset+rowIdx)
-
-				// Check if row passes filter
-				passes := false
-				switch v := val.(type) {
-				case bool:
-					passes = v
-				case float64:
-					passes = v != 0
-				case int:
-					passes = v != 0
-				case int64:
-					passes = v != 0
-				default:
-					passes = val != nil
-				}
-
-				if passes {
-					// Add this row to the filtered results
-					for colIdx := 0; colIdx < len(kept); colIdx++ {
-						cellVal, _ := pqCtx.GetCell(colIdx, rowIdx)
-						kept[colIdx] = append(kept[colIdx], cellVal)
-					}
-				}
-			}
-
-			offset += int(rec.NumRows())
-			rec.Release()
-		}
+	result := insyra.NewDataTable()
+	for i, name := range colNames {
+		dl := insyra.NewDataList()
+		dl.SetName(name)
+		dl.Append(kept[i]...)
+		result.AppendCols(dl)
 	}
+	return result, nil
 }
 
 // cclOutputLayout is how ApplyCCL writes the file back: the codec of each
@@ -946,7 +1699,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteO
 	// leave it, one statement at a time, because a statement can read a column
 	// an earlier one created. This happens before anything is written, so a
 	// statement that cannot be computed leaves the original alone.
-	totalRows, colNames, err := cclFileInfo(path)
+	totalRows, colNames, fileSchema, err := cclFileInfo(path)
 	if err != nil {
 		return err
 	}
@@ -974,124 +1727,388 @@ func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteO
 		}
 	}
 
-	err = utils.WriteFileAtomically(path, func(w io.Writer) error {
-		var writer *pqarrow.FileWriter
-		var batchColNames []string
-		firstBatch := true
-		offset := 0
-
-		// Stream through the input file. It is safe to replace it afterwards
-		// because the output goes to a temporary file of its own.
-		// The reader stops when this call returns, so an early return cannot
-		// leave it blocked on a batch nobody reads, holding the file open.
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
-		recChan, errChan := streamAsArrowRecord(ctx, path, ReadOptions{}, cclBatchSize)
-
-		// Every way out below that is not a clean end returns without closing
-		// writer: the temporary file is thrown away, so it needs no footer.
-		finish := func() error {
-			if writer == nil {
-				// No record batch at all (the input is empty): keep the original
-				// rather than replace it with an empty file.
-				return errNothingToWrite
-			}
-			// writer wraps w in writerOnly, so closing it writes the footer and
-			// leaves the file for WriteFileAtomically to close and rename.
-			if err := writer.Close(); err != nil {
-				return fmt.Errorf("failed to close writer: %w", err)
-			}
-			return nil
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case err := <-errChan:
-				if err != nil {
-					return err
-				}
-				// errChan closed without an error = the stream ended well.
-				return finish()
-
-			case rec, ok := <-recChan:
-				if !ok {
-					// recChan closed = every record has been consumed (it is
-					// unbuffered). The producer closes errChan before recChan, and
-					// when both are ready the select above picks one at random, so
-					// a read error reported after the last batch could be lost and
-					// finish() would then replace the original with a truncated
-					// file. Read errChan here first (it is closed by now, so this
-					// cannot block): an error means no finishing.
-					if err := <-errChan; err != nil {
-						return err
-					}
-					return finish()
-				}
-
-				// Get column names from first batch
-				if firstBatch {
-					for i := 0; i < int(rec.NumCols()); i++ {
-						batchColNames = append(batchColNames, rec.Schema().Field(i).Name)
-					}
-					firstBatch = false
-				}
-
-				// Create context for this batch, carrying where the batch
-				// starts in the file so # is the file's row and an error names
-				// the row the user can look up.
-				pqCtx := newParquetContext(rec, batchColNames, offset)
-
-				// Apply CCL transformations to this batch. applyBatchCCL
-				// appends the columns a NEW statement creates to the names it
-				// is given, so it gets a copy of its own.
-				transformedRec, err := applyBatchCCL(rec, pqCtx, slices.Clone(batchColNames), resolved, totalRows)
-				if err != nil {
-					rec.Release()
-					return fmt.Errorf("failed to apply CCL: %w", err)
-				}
-
-				// Initialize writer with schema from first transformed batch
-				if writer == nil {
-					props := []parquet.WriterProperty{
-						parquet.WithCreatedBy(fmt.Sprintf("go-insyra v%s", insyra.Version)),
-						parquet.WithCompression(layout.defaultCodec),
-						parquet.WithMaxRowGroupLength(layout.rowGroupSize),
-					}
-					for name, codec := range layout.codecs {
-						props = append(props, parquet.WithCompressionFor(name, codec))
-					}
-					writer, err = pqarrow.NewFileWriter(
-						transformedRec.Schema(),
-						writerOnly{w},
-						parquet.NewWriterProperties(props...),
-						pqarrow.DefaultWriterProps(),
-					)
-					if err != nil {
-						rec.Release()
-						transformedRec.Release()
-						return fmt.Errorf("failed to create parquet writer: %w", err)
-					}
-				}
-
-				// Write transformed batch. Buffered, so a row group keeps filling
-				// across batches until it holds layout.rowGroupSize rows.
-				err = writer.WriteBuffered(transformedRec)
-				rec.Release()
-				transformedRec.Release()
-
-				if err != nil {
-					return fmt.Errorf("failed to write batch: %w", err)
-				}
-
-				offset += int(rec.NumRows())
-			}
-		}
-	})
+	// The file is written from the values the script gives the columns it
+	// writes. Those values are settled from the whole file rather than from the
+	// first batch, because a column can hold one kind of value in the first rows
+	// and another further on: a number in the rows a look-ahead has an answer
+	// for and missing values before them, a whole number where a later row
+	// divides into a fraction, or a word beside a number. The first pass settles
+	// each type from the values the column has held up to the point every column
+	// has shown one, and says so when later values ask for another type; the
+	// file it was writing is thrown away untouched, the types are settled from
+	// every value, and the file is written once more.
+	err = writeApplied(ctx, path, resolved, totalRows, colNames, fileSchema, layout, nil)
 	if errors.Is(err, errNothingToWrite) {
 		return nil
 	}
-	return err
+	if !errors.Is(err, errRetype) {
+		return err
+	}
+
+	writtenTypes, err := writtenColumnTypes(ctx, path, resolved, totalRows, colNames, fileSchema)
+	if err != nil {
+		return err
+	}
+	if err := writeApplied(ctx, path, resolved, totalRows, colNames, fileSchema, layout, writtenTypes); err != nil {
+		if errors.Is(err, errNothingToWrite) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// errRetype says a column the script writes holds a value of another type than
+// the schema it was written with, which is what the type of a column settled
+// from the first rows looks like once later rows hold another kind of value. It
+// is not a failure of the script: the file has to be read again to settle the
+// type from every value, and written once more.
+var errRetype = errors.New("parquet: a written column holds a value of another type")
+
+// writeApplied runs the resolved statements over the file at path and writes the
+// result back to it, with writtenTypes as the type of each column the script
+// writes. Written types of nil let the values settle them, which is what the first
+// pass does: see appliedWriter. A column that later turns out to hold a value of
+// another type is errRetype rather than a file holding values of a type they are
+// not.
+//
+// The new file goes to a temporary file of its own and replaces path only when
+// it is complete, so a failure at any point leaves the original as it was, and
+// an input with no rows leaves it untouched too.
+func writeApplied(ctx context.Context, path string, resolved []ccl.CCLNode, totalRows int, colNames []string, fileSchema *arrow.Schema, layout cclOutputLayout, writtenTypes map[string]arrow.DataType) error {
+	return utils.WriteFileAtomically(path, func(w io.Writer) error {
+		// Each statement is a stage of the pipeline, so the rows a stage finishes
+		// go on to the next statement and only the rows leaving the last one are
+		// written. A stage is built for this pass, because a stage holds what it
+		// has not finished.
+		pipeline, err := newPipeline(resolved, totalRows, colNames)
+		if err != nil {
+			return fmt.Errorf("failed to apply CCL: %w", err)
+		}
+		out := newAppliedWriter(w, writtenColumns(resolved, colNames), writtenTypes, fileSchema, layout)
+
+		// Stream through the input file. It is safe to replace it afterwards
+		// because the output goes to a temporary file of its own.
+		if err := eachRun(ctx, path, colNames, func(r cclRun) error {
+			// Run the rows through every statement, in order, and write what the
+			// last one finished.
+			runs, err := pipeline.push(r)
+			if err != nil {
+				return fmt.Errorf("failed to apply CCL: %w", err)
+			}
+			for _, run := range runs {
+				if err := out.add(run); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		// The file has ended, so the rows a stage held back leave the pipeline
+		// now; skipping them would drop them from the output.
+		runs, err := pipeline.flush()
+		if err != nil {
+			return err
+		}
+		for _, run := range runs {
+			if err := out.add(run); err != nil {
+				return err
+			}
+		}
+		return out.finish()
+	})
+}
+
+// appliedWriter writes the runs that leave ApplyCCL's pipeline into one parquet
+// file, and settles the type of each column the script writes from the values it
+// has held.
+//
+// A column's type cannot be read off the first rows alone: a look-ahead leaves a
+// column missing until its window is full, and a value of another kind can come
+// at any row. So the runs wait, as Go values, only until every column the script
+// writes has shown a value, a row group's worth of rows has arrived, or the file
+// has ended; the types are then settled from everything held, the writer is
+// created and the waiting runs are written. From then on a run is turned into a
+// record and written as it arrives, and the writer fills its row groups by
+// itself. What every later run holds is added to what the columns have held
+// from the start, and a column whose type that changes is errRetype: nothing
+// already written can change, so the file is thrown away and written again with
+// the types the whole file settles. A run that holds only missing values adds
+// nothing, so it never asks for that.
+type appliedWriter struct {
+	w            io.Writer
+	written      []string
+	writtenTypes map[string]arrow.DataType
+	fileSchema   *arrow.Schema
+	layout       cclOutputLayout
+
+	// kinds is what each column whose type is settled from its values has held,
+	// from the file's first row to the last one added: every column the script
+	// writes, and one no statement named and the file did not have. Not read when
+	// writtenTypes settled the types already.
+	kinds map[string]*columnKinds
+
+	// staged is the runs waiting for the types to be settled, and stagedRows how
+	// many rows they hold.
+	staged     []cclRun
+	stagedRows int
+
+	// schema is the file's schema, settled once the first run is written, and
+	// writer the file writer made from it.
+	schema *arrow.Schema
+	writer *pqarrow.FileWriter
+}
+
+// newAppliedWriter returns a writer of the file at w. written is the columns the
+// script writes, and writtenTypes the types the whole file settled for them, or
+// nil when the first rows are to settle them.
+func newAppliedWriter(w io.Writer, written []string, writtenTypes map[string]arrow.DataType, fileSchema *arrow.Schema, layout cclOutputLayout) *appliedWriter {
+	kinds := make(map[string]*columnKinds, len(written))
+	for _, name := range written {
+		kinds[name] = &columnKinds{}
+	}
+	return &appliedWriter{
+		w:            w,
+		written:      written,
+		writtenTypes: writtenTypes,
+		fileSchema:   fileSchema,
+		layout:       layout,
+		kinds:        kinds,
+	}
+}
+
+// observe adds the values of one run to what each column whose type is settled
+// from its values has held. A column the script does not write and the file has
+// is not one of them: it keeps the field the file gave it.
+func (a *appliedWriter) observe(values map[string][]any) {
+	for name, col := range values {
+		k, tracked := a.kinds[name]
+		if !tracked {
+			if _, inFile := originalField(a.fileSchema, name); inFile {
+				continue
+			}
+			k = &columnKinds{}
+			a.kinds[name] = k
+		}
+		k.add(col)
+	}
+}
+
+// ready reports whether the runs waiting can be written: the types are settled
+// already, or every column the script writes has held a value, or the waiting
+// rows fill a row group, which is as much as the writer holds anyway.
+func (a *appliedWriter) ready() bool {
+	if a.writtenTypes != nil || int64(a.stagedRows) >= a.layout.rowGroupSize {
+		return true
+	}
+	for _, name := range a.written {
+		if holdsNoValue(a.kinds[name]) {
+			return false
+		}
+	}
+	return true
+}
+
+// add takes the next run leaving the pipeline. A run with no rows has nothing to
+// write.
+func (a *appliedWriter) add(r cclRun) error {
+	if r.rows() == 0 {
+		return nil
+	}
+	values := runValues(r)
+
+	if a.schema == nil {
+		a.observe(values)
+		a.staged = append(a.staged, r)
+		a.stagedRows += r.rows()
+		if !a.ready() {
+			return nil
+		}
+		return a.settle()
+	}
+
+	// A type that was settled from every value of the file has nothing left to
+	// compare; the values of this run are part of what settled it.
+	if a.writtenTypes == nil {
+		a.observe(values)
+		if err := agreesWithOutputSchema(r.names, a.written, a.kinds, a.schema, a.fileSchema); err != nil {
+			return err
+		}
+	}
+	return a.write(r, values)
+}
+
+// settle settles the file's schema from what the waiting runs hold and writes
+// them, one run at a time.
+func (a *appliedWriter) settle() error {
+	staged := a.staged
+	a.staged, a.stagedRows = nil, 0
+	a.schema = cclOutputSchema(staged[0].names, a.written, a.writtenTypes, a.kinds, a.fileSchema)
+	for _, r := range staged {
+		if err := a.write(r, runValues(r)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// write turns one run into a record of the settled schema and writes it. The
+// writer is created from the first record, so every later one is written as the
+// same columns in the same order.
+func (a *appliedWriter) write(r cclRun, values map[string][]any) error {
+	rec, err := buildArrowRecord(values, r.names, a.schema)
+	if err != nil {
+		return fmt.Errorf("failed to apply CCL: %w", err)
+	}
+	defer rec.Release()
+
+	if a.writer == nil {
+		props := []parquet.WriterProperty{
+			parquet.WithCreatedBy(fmt.Sprintf("go-insyra v%s", insyra.Version)),
+			parquet.WithCompression(a.layout.defaultCodec),
+			parquet.WithMaxRowGroupLength(a.layout.rowGroupSize),
+		}
+		for name, codec := range a.layout.codecs {
+			props = append(props, parquet.WithCompressionFor(name, codec))
+		}
+		// The Arrow schema is stored in the file, which is the only place a column's
+		// time zone lives: parquet itself knows only whether an instant is in UTC.
+		// Without it every zoned column the file had would come back as UTC.
+		a.writer, err = pqarrow.NewFileWriter(
+			rec.Schema(),
+			writerOnly{a.w},
+			parquet.NewWriterProperties(props...),
+			pqarrow.NewArrowWriterProperties(pqarrow.WithStoreSchema()),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create parquet writer: %w", err)
+		}
+	}
+
+	// Buffered, so a row group keeps filling across records until it holds
+	// layout.rowGroupSize rows.
+	if err := a.writer.WriteBuffered(rec); err != nil {
+		return fmt.Errorf("failed to write batch: %w", err)
+	}
+	return nil
+}
+
+// finish writes what still waits, now that the file has ended, and closes the
+// file. An input with no rows at all is errNothingToWrite.
+func (a *appliedWriter) finish() error {
+	if a.schema == nil && len(a.staged) > 0 {
+		if err := a.settle(); err != nil {
+			return err
+		}
+	}
+	if a.writer == nil {
+		// No rows at all (the input is empty): keep the original rather than
+		// replace it with an empty file.
+		return errNothingToWrite
+	}
+	// writer wraps w in writerOnly, so closing it writes the footer and leaves
+	// the file for WriteFileAtomically to close and rename.
+	if err := a.writer.Close(); err != nil {
+		return fmt.Errorf("failed to close writer: %w", err)
+	}
+	return nil
+}
+
+// agreesWithOutputSchema reports whether every column the script writes still
+// asks for the type it was written with, given everything it has held since the
+// file's first row, and errRetype for the first one that does not.
+//
+// kinds is cumulative, so a run that holds only missing values changes nothing
+// and a run that holds another kind of value changes the type it asks for. A
+// column whose type is the same after every run has had that type for every
+// value in the file. fileSchema is what the type of a column is settled against,
+// so this settles it the way cclOutputSchema did.
+func agreesWithOutputSchema(colNames []string, written []string, kinds map[string]*columnKinds, schema, fileSchema *arrow.Schema) error {
+	for _, name := range written {
+		idx := slices.Index(colNames, name)
+		if idx < 0 {
+			continue
+		}
+		original, _ := originalField(fileSchema, name)
+		got := writtenType(original.Type, kinds[name])
+		fieldType := schema.Field(idx).Type
+		if !arrow.TypeEqual(got, fieldType) {
+			return fmt.Errorf("%w: column %q is %s, written as %s", errRetype, name, got, fieldType)
+		}
+	}
+	return nil
+}
+
+// writtenColumnTypesCalls counts the times the types of the written columns had to
+// be settled from the whole file, which is a second read of it. A file whose types
+// the first pass settles correctly never needs one, and the tests hold ApplyCCL to
+// that.
+var writtenColumnTypesCalls atomic.Int64
+
+// writtenColumnTypes settles the type of every column the script writes from the
+// values it gives it over the whole file, which is what Write would infer from
+// the table the script leaves — except that a column the file had and whose every
+// value its own type holds keeps that type, which is writtenType's rule again.
+// Nothing is written, so a file whose values cannot be computed leaves it as it
+// was.
+func writtenColumnTypes(ctx context.Context, path string, resolved []ccl.CCLNode, totalRows int, colNames []string, fileSchema *arrow.Schema) (map[string]arrow.DataType, error) {
+	writtenColumnTypesCalls.Add(1)
+	written := writtenColumns(resolved, colNames)
+	if len(written) == 0 {
+		return nil, nil
+	}
+	kinds := make(map[string]*columnKinds, len(written))
+	for _, name := range written {
+		kinds[name] = &columnKinds{}
+	}
+
+	pipeline, err := newPipeline(resolved, totalRows, colNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply CCL: %w", err)
+	}
+
+	// add records what one record's rows are for every column the script writes,
+	// and reports whether every one of those columns is in it.
+	add := func(names []string, values map[string][]any) {
+		for _, name := range written {
+			idx := slices.Index(names, name)
+			if idx < 0 {
+				continue
+			}
+			kinds[name].add(values[name])
+		}
+	}
+	// There are no stages to answer to here, so a value is a missing value; what
+	// is settled is which kinds of value the script gives the column, and a nil
+	// is one no batch holds.
+	hand := func(runs []cclRun) {
+		for _, run := range runs {
+			add(run.names, runValues(run))
+		}
+	}
+
+	if err := eachRun(ctx, path, colNames, func(r cclRun) error {
+		runs, err := pipeline.push(r)
+		if err != nil {
+			return fmt.Errorf("failed to apply CCL: %w", err)
+		}
+		hand(runs)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	runs, err := pipeline.flush()
+	if err != nil {
+		return nil, err
+	}
+	hand(runs)
+
+	types := make(map[string]arrow.DataType, len(written))
+	for name, k := range kinds {
+		original, _ := originalField(fileSchema, name)
+		types[name] = writtenType(original.Type, k)
+	}
+	return types, nil
 }

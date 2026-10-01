@@ -123,6 +123,33 @@ func rowShapedColumn(arg cclNode, ctx Context, depth, callDepth int) (rows []any
 	return rows, true, nil
 }
 
+// sequenceColumn reads one argument of the sequence function name over every
+// row of ctx: a whole row per element for '@' or a column range, which only
+// LAG and LEAD accept, and the argument's value per row otherwise. The
+// evaluator builds a call's arguments with it, and TopSequence.Push reads a
+// batch's column argument the same way the evaluator reads the whole table's.
+func sequenceColumn(name string, arg cclNode, ctx Context, depth, callDepth int) ([]any, error) {
+	// A row-shaped argument — '@' or a column range — is one row
+	// per element, not one value per element. evaluateToColumn
+	// flattens both into the whole table, which LAG would then
+	// shift into a single nonsense slice repeated in every cell.
+	rows, isRowShaped, err := rowShapedColumn(arg, ctx, depth, callDepth)
+	if err != nil {
+		return nil, fmt.Errorf("sequence function %s: %w", name, err)
+	}
+	if isRowShaped {
+		if !SequenceFunctionTakesRows(strings.ToUpper(name)) {
+			return nil, fmt.Errorf("sequence function %s needs numbers, and %s is a whole row; only LAG and LEAD accept one", name, describeRowShaped(arg))
+		}
+		return rows, nil
+	}
+	colData, err := evaluateToColumn(arg, ctx, depth, callDepth)
+	if err != nil {
+		return nil, fmt.Errorf("sequence function %s: %w", name, err)
+	}
+	return colData, nil
+}
+
 // rowSliceAt returns row rowIdx restricted to the columns in cr.
 func rowSliceAt(cr ColumnRange, rowIdx int, ctx Context) ([]any, error) {
 	out := make([]any, 0, cr.End-cr.Start+1)
@@ -509,26 +536,11 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			functionDepth := callDepth + 1
 			seqArgs := make([][]any, len(t.args))
 			for i, arg := range t.args {
-				// A row-shaped argument — '@' or a column range — is one row
-				// per element, not one value per element. evaluateToColumn
-				// flattens both into the whole table, which LAG would then
-				// shift into a single nonsense slice repeated in every cell.
-				rows, isRowShaped, err := rowShapedColumn(arg, ctx, depth+1, functionDepth)
+				column, err := sequenceColumn(t.name, arg, ctx, depth+1, functionDepth)
 				if err != nil {
-					return nil, fmt.Errorf("sequence function %s: %w", t.name, err)
+					return nil, err
 				}
-				if isRowShaped {
-					if !SequenceFunctionTakesRows(upper) {
-						return nil, fmt.Errorf("sequence function %s needs numbers, and %s is a whole row; only LAG and LEAD accept one", t.name, describeRowShaped(arg))
-					}
-					seqArgs[i] = rows
-					continue
-				}
-				colData, err := evaluateToColumn(arg, ctx, depth+1, functionDepth)
-				if err != nil {
-					return nil, fmt.Errorf("sequence function %s: %w", t.name, err)
-				}
-				seqArgs[i] = colData
+				seqArgs[i] = column
 			}
 			return callSequenceFunction(t.name, seqArgs)
 		}

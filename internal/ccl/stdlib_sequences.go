@@ -72,31 +72,110 @@ func scalarInt(arg []any, fnName, paramName string) (int, error) {
 }
 
 // =============================================================================
+// Windowed sequences: LAG, LEAD, DIFF, PCT_CHANGE and ROLLING_*
+// =============================================================================
+
+// windowedSequence computes a sequence function for the positions from up to, not
+// including, to of col, given the params after the column as the function reads
+// them, and returns to - from outputs. A position reads the rows of the whole col
+// whatever from is, so its output is the one the function gives it on the whole
+// column. The params have the length the function's own argument check lets
+// through.
+type windowedSequence func(col []any, params [][]any, from, to int) ([]any, error)
+
+// windowedSequences computes each windowed sequence function from a position
+// onwards, given its params as the function reads them; the functions and their
+// streams both go through it, so the two run one piece of arithmetic and cannot
+// drift apart. The table also holds the params' meaning: how a param is read and
+// which values of it are refused.
+var windowedSequences = map[string]windowedSequence{
+	"LAG":          windowedShift("LAG", 1),
+	"LEAD":         windowedShift("LEAD", -1),
+	"DIFF":         windowedChange("DIFF", diffRange),
+	"PCT_CHANGE":   windowedChange("PCT_CHANGE", pctChangeRange),
+	"ROLLING_SUM":  windowedRolling("ROLLING_SUM", rollingSum),
+	"ROLLING_MEAN": windowedRolling("ROLLING_MEAN", rollingMean),
+	"ROLLING_MIN":  windowedRolling("ROLLING_MIN", rollingMin),
+	"ROLLING_MAX":  windowedRolling("ROLLING_MAX", rollingMax),
+	"ROLLING_STD":  windowedRolling("ROLLING_STD", rollingStd),
+}
+
+// windowedShift is LAG for a direction of 1 and LEAD for -1: LEAD is the shift by
+// the negative of the periods it is given.
+func windowedShift(name string, direction int) windowedSequence {
+	return func(col []any, params [][]any, from, to int) ([]any, error) {
+		periods, err := scalarInt(params[0], name, "periods")
+		if err != nil {
+			return nil, err
+		}
+		return shiftRange(col, direction*periods, from, to), nil
+	}
+}
+
+// windowedChange is DIFF or PCT_CHANGE, which take an optional periods that
+// defaults to 1 and must be positive.
+func windowedChange(name string, compute func(col []any, periods, from, to int) []any) windowedSequence {
+	return func(col []any, params [][]any, from, to int) ([]any, error) {
+		periods := 1
+		if len(params) > 0 {
+			p, err := scalarInt(params[0], name, "periods")
+			if err != nil {
+				return nil, err
+			}
+			periods = p
+		}
+		if periods <= 0 {
+			return nil, fmt.Errorf("%s: periods must be > 0, got %d", name, periods)
+		}
+		return compute(col, periods, from, to), nil
+	}
+}
+
+// windowedRolling is one of the ROLLING_* functions: the window is its one param
+// and fn reduces the values of a complete window.
+func windowedRolling(name string, fn func(vals []float64) any) windowedSequence {
+	return func(col []any, params [][]any, from, to int) ([]any, error) {
+		window, err := scalarInt(params[0], name, "window")
+		if err != nil {
+			return nil, err
+		}
+		if window <= 0 {
+			return nil, fmt.Errorf("%s: window must be > 0, got %d", name, window)
+		}
+		return rollingReduceRange(col, window, from, to, fn), nil
+	}
+}
+
+// =============================================================================
 // LAG / LEAD (Shift)
 // =============================================================================
 
-func seqShiftImpl(col []any, periods int) []any {
+// shiftRange returns the outputs of a shift by periods for positions from up
+// to, not including, to: out[i-from] is col[i-periods] when that index is inside
+// col, nil otherwise. A shift of the whole column is
+// shiftRange(col, periods, 0, len(col)).
+func shiftRange(col []any, periods, from, to int) []any {
 	n := len(col)
-	out := make([]any, n)
+	out := make([]any, to-from)
 	switch {
 	case periods == 0:
-		copy(out, col)
+		copy(out, col[from:to])
 	case periods > 0:
-		for i := range n {
+		for i := from; i < to; i++ {
 			if i < periods {
-				out[i] = nil
+				out[i-from] = nil
 			} else {
-				out[i] = col[i-periods]
+				out[i-from] = col[i-periods]
 			}
 		}
 	default:
 		k := -periods
-		for i := range n {
+		for i := from; i < to; i++ {
 			src := i + k
 			if src >= n {
-				out[i] = nil
+				out[i-from] = nil
 			} else {
-				out[i] = col[src]
+				out[i-from] = col[src]
 			}
 		}
 	}
@@ -107,288 +186,294 @@ func seqLag(args ...[]any) ([]any, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("LAG requires 2 arguments (column, periods)")
 	}
-	periods, err := scalarInt(args[1], "LAG", "periods")
-	if err != nil {
-		return nil, err
-	}
-	return seqShiftImpl(args[0], periods), nil
+	return windowedSequences["LAG"](args[0], args[1:], 0, len(args[0]))
 }
 
 func seqLead(args ...[]any) ([]any, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("LEAD requires 2 arguments (column, periods)")
 	}
-	periods, err := scalarInt(args[1], "LEAD", "periods")
-	if err != nil {
-		return nil, err
-	}
-	return seqShiftImpl(args[0], -periods), nil
+	return windowedSequences["LEAD"](args[0], args[1:], 0, len(args[0]))
 }
 
 // =============================================================================
 // DIFF / PCT_CHANGE
 // =============================================================================
 
-func seqDiff(args ...[]any) ([]any, error) {
-	if len(args) < 1 || len(args) > 2 {
-		return nil, fmt.Errorf("DIFF requires 1 or 2 arguments (column, periods=1)")
-	}
-	periods := 1
-	if len(args) == 2 {
-		p, err := scalarInt(args[1], "DIFF", "periods")
-		if err != nil {
-			return nil, err
-		}
-		periods = p
-	}
-	if periods <= 0 {
-		return nil, fmt.Errorf("DIFF: periods must be > 0, got %d", periods)
-	}
-	col := args[0]
-	n := len(col)
-	out := make([]any, n)
-	for i := range n {
+// diffRange and pctChangeRange return the outputs of DIFF and PCT_CHANGE for
+// positions from up to, not including, to, in the way shiftRange does for a
+// shift: out[i-from] is what the function gives position i on the whole column.
+func diffRange(col []any, periods, from, to int) []any {
+	out := make([]any, to-from)
+	for i := from; i < to; i++ {
 		if i < periods {
-			out[i] = nil
+			out[i-from] = nil
 			continue
 		}
 		a, okA := toFloat64(col[i])
 		b, okB := toFloat64(col[i-periods])
 		if !okA || !okB {
-			out[i] = nil
+			out[i-from] = nil
 			continue
 		}
-		out[i] = a - b
+		out[i-from] = a - b
 	}
-	return out, nil
+	return out
+}
+
+func pctChangeRange(col []any, periods, from, to int) []any {
+	out := make([]any, to-from)
+	for i := from; i < to; i++ {
+		if i < periods {
+			out[i-from] = nil
+			continue
+		}
+		a, okA := toFloat64(col[i])
+		b, okB := toFloat64(col[i-periods])
+		if !okA || !okB || b == 0 || math.IsNaN(b) {
+			out[i-from] = nil
+			continue
+		}
+		out[i-from] = (a - b) / b
+	}
+	return out
+}
+
+func seqDiff(args ...[]any) ([]any, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return nil, fmt.Errorf("DIFF requires 1 or 2 arguments (column, periods=1)")
+	}
+	return windowedSequences["DIFF"](args[0], args[1:], 0, len(args[0]))
 }
 
 func seqPctChange(args ...[]any) ([]any, error) {
 	if len(args) < 1 || len(args) > 2 {
 		return nil, fmt.Errorf("PCT_CHANGE requires 1 or 2 arguments (column, periods=1)")
 	}
-	periods := 1
-	if len(args) == 2 {
-		p, err := scalarInt(args[1], "PCT_CHANGE", "periods")
-		if err != nil {
-			return nil, err
-		}
-		periods = p
-	}
-	if periods <= 0 {
-		return nil, fmt.Errorf("PCT_CHANGE: periods must be > 0, got %d", periods)
-	}
-	col := args[0]
-	n := len(col)
-	out := make([]any, n)
-	for i := range n {
-		if i < periods {
-			out[i] = nil
-			continue
-		}
-		a, okA := toFloat64(col[i])
-		b, okB := toFloat64(col[i-periods])
-		if !okA || !okB || b == 0 || math.IsNaN(b) {
-			out[i] = nil
-			continue
-		}
-		out[i] = (a - b) / b
-	}
-	return out, nil
+	return windowedSequences["PCT_CHANGE"](args[0], args[1:], 0, len(args[0]))
 }
 
 // =============================================================================
 // CUMSUM / CUMPROD / CUMMAX / CUMMIN
 // =============================================================================
 
-func seqCumImpl(col []any, initial float64, seedFromFirst bool, combine func(acc, v float64) float64) []any {
+// cumulativeSequences holds how each cumulative function starts and combines,
+// read both by the function and by its stream so the two cannot drift apart.
+var cumulativeSequences = map[string]struct {
+	initial       float64
+	seedFromFirst bool
+	combine       func(acc, v float64) float64
+}{
+	"CUMSUM":  {initial: 0, seedFromFirst: false, combine: func(a, v float64) float64 { return a + v }},
+	"CUMPROD": {initial: 1, seedFromFirst: false, combine: func(a, v float64) float64 { return a * v }},
+	"CUMMAX":  {initial: 0, seedFromFirst: true, combine: math.Max},
+	"CUMMIN":  {initial: 0, seedFromFirst: true, combine: math.Min},
+}
+
+// cumAccumulator is the running state of CUMSUM, CUMPROD, CUMMAX and CUMMIN,
+// shared by the functions and their streams so both run one loop. The state is
+// the accumulator itself rather than the last value it produced: a running sum
+// that reached NaN through +Inf and -Inf answers NaN for every row after it, and
+// read back as a missing value it would start from the initial again.
+type cumAccumulator struct {
+	acc     float64
+	seeded  bool
+	combine func(acc, v float64) float64
+}
+
+// feed runs the accumulator over col and returns an output per value. A value
+// that is not a number, or is NaN, leaves the running value alone and answers
+// nothing for its row, exactly as the whole-column form does.
+func (c *cumAccumulator) feed(col []any) []any {
 	n := len(col)
 	out := make([]any, n)
-	acc := initial
-	seeded := !seedFromFirst
 	for i := range n {
 		v, ok := toFloat64(col[i])
 		if !ok || math.IsNaN(v) {
 			out[i] = nil
 			continue
 		}
-		if !seeded {
-			acc = v
-			seeded = true
+		if !c.seeded {
+			c.acc = v
+			c.seeded = true
 		} else {
-			acc = combine(acc, v)
+			c.acc = c.combine(c.acc, v)
 		}
-		out[i] = acc
+		out[i] = c.acc
 	}
 	return out
+}
+
+func seqCumImpl(col []any, initial float64, seedFromFirst bool, combine func(acc, v float64) float64) []any {
+	return (&cumAccumulator{acc: initial, seeded: !seedFromFirst, combine: combine}).feed(col)
 }
 
 func seqCumSum(args ...[]any) ([]any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("CUMSUM requires 1 argument")
 	}
-	return seqCumImpl(args[0], 0, false, func(a, v float64) float64 { return a + v }), nil
+	spec := cumulativeSequences["CUMSUM"]
+	return seqCumImpl(args[0], spec.initial, spec.seedFromFirst, spec.combine), nil
 }
 
 func seqCumProd(args ...[]any) ([]any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("CUMPROD requires 1 argument")
 	}
-	return seqCumImpl(args[0], 1, false, func(a, v float64) float64 { return a * v }), nil
+	spec := cumulativeSequences["CUMPROD"]
+	return seqCumImpl(args[0], spec.initial, spec.seedFromFirst, spec.combine), nil
 }
 
 func seqCumMax(args ...[]any) ([]any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("CUMMAX requires 1 argument")
 	}
-	return seqCumImpl(args[0], 0, true, math.Max), nil
+	spec := cumulativeSequences["CUMMAX"]
+	return seqCumImpl(args[0], spec.initial, spec.seedFromFirst, spec.combine), nil
 }
 
 func seqCumMin(args ...[]any) ([]any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("CUMMIN requires 1 argument")
 	}
-	return seqCumImpl(args[0], 0, true, math.Min), nil
+	spec := cumulativeSequences["CUMMIN"]
+	return seqCumImpl(args[0], spec.initial, spec.seedFromFirst, spec.combine), nil
 }
 
 // =============================================================================
 // ROLLING_* (window-aligned right, MinObs = Window)
 // =============================================================================
 
-func seqRollingReduce(col []any, window int, fn func(vals []float64) any) []any {
-	n := len(col)
-	out := make([]any, n)
+// rollingReduceRange reduces the window of each position from up to, not
+// including, to: the window of position i is col[max(i-window+1, 0)..i], as it is
+// for the whole column, and out[i-from] is nil unless the window holds window
+// usable numbers. fn is handed those numbers in order and must not keep the
+// slice.
+func rollingReduceRange(col []any, window, from, to int, fn func(vals []float64) any) []any {
+	out := make([]any, to-from)
 
-	// Convert the column once. Each element used to be pulled out of its
-	// interface once per window it appeared in: at 100,000 rows and a window
-	// of 5,000 that is 500 million unboxings of 100,000 distinct values. The
-	// slice handed to fn holds the same values in the same order, so every
-	// result is bit-identical — this takes the constant factor, not the
-	// arithmetic.
-	nums := make([]float64, n)
-	usable := make([]bool, n)
-	for i, v := range col {
-		f, ok := toFloat64(v)
+	// Convert the column once, from the first row any window here reaches. Each
+	// element used to be pulled out of its interface once per window it appeared
+	// in: at 100,000 rows and a window of 5,000 that is 500 million unboxings of
+	// 100,000 distinct values. The slice handed to fn holds the same values in the
+	// same order, so every result is bit-identical: this takes the constant
+	// factor, not the arithmetic.
+	base := max(from-window+1, 0)
+	nums := make([]float64, to-base)
+	usable := make([]bool, to-base)
+	for i := base; i < to; i++ {
+		f, ok := toFloat64(col[i])
 		if ok && !math.IsNaN(f) {
-			nums[i] = f
-			usable[i] = true
+			nums[i-base] = f
+			usable[i-base] = true
 		}
 	}
 
 	// One buffer for every window instead of one allocation per window. None
 	// of the reducers keeps the slice, so reusing it is safe. A window cannot
-	// hold more values than the column has.
-	vals := make([]float64, 0, min(window, n))
-	for i := range n {
+	// hold more values than the rows converted.
+	vals := make([]float64, 0, min(window, to-base))
+	for i := from; i < to; i++ {
 		lo := max(i-window+1, 0)
 		vals = vals[:0]
 		for j := lo; j <= i; j++ {
-			if usable[j] {
-				vals = append(vals, nums[j])
+			if usable[j-base] {
+				vals = append(vals, nums[j-base])
 			}
 		}
 		if len(vals) < window {
-			out[i] = nil
+			out[i-from] = nil
 			continue
 		}
-		out[i] = fn(vals)
+		out[i-from] = fn(vals)
 	}
 	return out
 }
 
-func rollingArgs(name string, args [][]any) (col []any, window int, err error) {
-	if len(args) != 2 {
-		return nil, 0, fmt.Errorf("%s requires 2 arguments (column, window)", name)
+func rollingSum(vals []float64) any {
+	var s float64
+	for _, v := range vals {
+		s += v
 	}
-	w, err := scalarInt(args[1], name, "window")
-	if err != nil {
-		return nil, 0, err
+	return s
+}
+
+func rollingMean(vals []float64) any {
+	var s float64
+	for _, v := range vals {
+		s += v
 	}
-	if w <= 0 {
-		return nil, 0, fmt.Errorf("%s: window must be > 0, got %d", name, w)
+	return s / float64(len(vals))
+}
+
+func rollingMin(vals []float64) any {
+	m := vals[0]
+	for _, v := range vals[1:] {
+		if v < m {
+			m = v
+		}
 	}
-	return args[0], w, nil
+	return m
+}
+
+func rollingMax(vals []float64) any {
+	m := vals[0]
+	for _, v := range vals[1:] {
+		if v > m {
+			m = v
+		}
+	}
+	return m
+}
+
+func rollingStd(vals []float64) any {
+	if len(vals) < 2 {
+		return nil
+	}
+	var sum float64
+	for _, v := range vals {
+		sum += v
+	}
+	mean := sum / float64(len(vals))
+	var ss float64
+	for _, v := range vals {
+		d := v - mean
+		ss += d * d
+	}
+	return math.Sqrt(ss / float64(len(vals)-1))
 }
 
 func seqRollingSum(args ...[]any) ([]any, error) {
-	col, w, err := rollingArgs("ROLLING_SUM", args)
-	if err != nil {
-		return nil, err
+	if len(args) != 2 {
+		return nil, fmt.Errorf("ROLLING_SUM requires 2 arguments (column, window)")
 	}
-	return seqRollingReduce(col, w, func(vals []float64) any {
-		var s float64
-		for _, v := range vals {
-			s += v
-		}
-		return s
-	}), nil
+	return windowedSequences["ROLLING_SUM"](args[0], args[1:], 0, len(args[0]))
 }
 
 func seqRollingMean(args ...[]any) ([]any, error) {
-	col, w, err := rollingArgs("ROLLING_MEAN", args)
-	if err != nil {
-		return nil, err
+	if len(args) != 2 {
+		return nil, fmt.Errorf("ROLLING_MEAN requires 2 arguments (column, window)")
 	}
-	return seqRollingReduce(col, w, func(vals []float64) any {
-		var s float64
-		for _, v := range vals {
-			s += v
-		}
-		return s / float64(len(vals))
-	}), nil
+	return windowedSequences["ROLLING_MEAN"](args[0], args[1:], 0, len(args[0]))
 }
 
 func seqRollingMin(args ...[]any) ([]any, error) {
-	col, w, err := rollingArgs("ROLLING_MIN", args)
-	if err != nil {
-		return nil, err
+	if len(args) != 2 {
+		return nil, fmt.Errorf("ROLLING_MIN requires 2 arguments (column, window)")
 	}
-	return seqRollingReduce(col, w, func(vals []float64) any {
-		m := vals[0]
-		for _, v := range vals[1:] {
-			if v < m {
-				m = v
-			}
-		}
-		return m
-	}), nil
+	return windowedSequences["ROLLING_MIN"](args[0], args[1:], 0, len(args[0]))
 }
 
 func seqRollingMax(args ...[]any) ([]any, error) {
-	col, w, err := rollingArgs("ROLLING_MAX", args)
-	if err != nil {
-		return nil, err
+	if len(args) != 2 {
+		return nil, fmt.Errorf("ROLLING_MAX requires 2 arguments (column, window)")
 	}
-	return seqRollingReduce(col, w, func(vals []float64) any {
-		m := vals[0]
-		for _, v := range vals[1:] {
-			if v > m {
-				m = v
-			}
-		}
-		return m
-	}), nil
+	return windowedSequences["ROLLING_MAX"](args[0], args[1:], 0, len(args[0]))
 }
 
 func seqRollingStd(args ...[]any) ([]any, error) {
-	col, w, err := rollingArgs("ROLLING_STD", args)
-	if err != nil {
-		return nil, err
+	if len(args) != 2 {
+		return nil, fmt.Errorf("ROLLING_STD requires 2 arguments (column, window)")
 	}
-	return seqRollingReduce(col, w, func(vals []float64) any {
-		if len(vals) < 2 {
-			return nil
-		}
-		var sum float64
-		for _, v := range vals {
-			sum += v
-		}
-		mean := sum / float64(len(vals))
-		var ss float64
-		for _, v := range vals {
-			d := v - mean
-			ss += d * d
-		}
-		return math.Sqrt(ss / float64(len(vals)-1))
-	}), nil
+	return windowedSequences["ROLLING_STD"](args[0], args[1:], 0, len(args[0]))
 }

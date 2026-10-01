@@ -331,13 +331,16 @@ func TestApplyCCLRefusesWhatItCannotComputeYet(t *testing.T) {
 	}
 
 	// A statement FilterWithCCL would refuse is refused here too, and it is
-	// refused before anything is written, so the file is left as it was.
-	err = ApplyCCL(context.Background(), path, "NEW('c') = CUMSUM(A)")
+	// refused before anything is written, so the file is left as it was. MEDIAN,
+	// where CUMSUM was before it: a sequence function that is the whole right
+	// hand side is computed batch by batch now.
+	const script = "NEW('c') = MEDIAN(A)"
+	err = ApplyCCL(context.Background(), path, script)
 	if err == nil {
-		t.Fatalf("ApplyCCL(%q) wrote the file instead of refusing it", "NEW('c') = CUMSUM(A)")
+		t.Fatalf("ApplyCCL(%q) wrote the file instead of refusing it", script)
 	}
-	if !strings.Contains(err.Error(), "CUMSUM") {
-		t.Errorf("error %q does not name %q", err, "CUMSUM")
+	if !strings.Contains(err.Error(), "MEDIAN") {
+		t.Errorf("error %q does not name %q", err, "MEDIAN")
 	}
 
 	after, readErr := os.ReadFile(path)
@@ -475,9 +478,9 @@ var laterStatementScripts = []struct {
 	script string
 	column string
 }{
-	// B is written back with the file's own int64 type, so B/2 is truncated to
-	// the file; only u, which the second statement computes from the values the
-	// first one wrote, is compared.
+	// Only u and t, which the second statement computes from the values the
+	// first one wrote, are compared; TestApplyCCLWritesWhatWriteWouldWrite
+	// covers how B itself is written.
 	{script: "['B'] = B / 2; NEW('u') = B.1 - B", column: "u"},
 	{script: "['B'] = B / 2; NEW('t') = B - AVG(B)", column: "t"},
 	{script: "NEW('c') = IF(MOD(#, 1000) == 0, TRUE, A); NEW('d') = SUM(['c'])", column: "d"},

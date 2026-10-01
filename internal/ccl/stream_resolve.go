@@ -12,6 +12,9 @@ import (
 // where the previous batch's ended. It returns yield's error, or its own.
 type Batches func(yield func(batch GlobalRowContext) error) error
 
+// noBatches is the table with no rows: every pass over it gives nothing.
+func noBatches(yield func(batch GlobalRowContext) error) error { return nil }
+
 // cclFailedPartNode stands for a whole-table part that could not be computed.
 // Evaluating it returns that error, so only a row that reaches the part fails,
 // the way the part fails on the whole table only where it is evaluated.
@@ -30,6 +33,14 @@ type failedPart struct{ err error }
 // anything is read — an empty table included, since a table with no rows is no
 // reason to accept an expression batched reading cannot answer.
 //
+// A table with no rows is resolved the way every other is, over no rows:
+// batches is not read, and each part takes the value it has over nothing. An
+// aggregate is computed over no values (COUNT and SUM are 0, MAX is nil, VAR is
+// a part that fails) and a fixed row is past the end of the table, so it fails
+// where it is evaluated. That matters although no row will be evaluated: an
+// expression that needs a part's value before there is a row to evaluate it on,
+// such as the period of a sequence function in LAG(A, COUNT(A)), gets it here.
+//
 // A part is whole-table when its value cannot change from row to row: an
 // aggregate call whose arguments do not mention `#`, and a row access whose
 // row operand is not row-dependent (`A.0`, `@.3`, `A:C.5`, `A.3:20`). `X.#`
@@ -42,12 +53,23 @@ type failedPart struct{ err error }
 // row past the end of the table — becomes a node that raises that error where
 // it is evaluated, so only the rows that reach it fail, the way the whole
 // table answers them.
+//
+// A sequence function is not a part and is not resolved: it stands for a column
+// of the table's own length, which no fixed value can stand for. One that is
+// the whole expression, or the whole right-hand side of a NEW or an
+// assignment, is left standing for NewTopSequence, which computes it batch by
+// batch from the batches it is fed. Anywhere else it has no answer, because a
+// sequence function reads rows the batch after it has not arrived with.
 func ResolveWholeTable(n CCLNode, totalRows int, colNames []string, batches Batches) (CCLNode, error) {
-	if err := refuseUnsupportedParts(n); err != nil {
+	if err := refuseUnsupportedParts(n, GetExpressionNode(n)); err != nil {
 		return nil, err
 	}
 	if totalRows == 0 {
-		return n, nil
+		// There is nothing to read, and the parts are still computed over no rows:
+		// what an aggregate or a fixed row is then is a value or an error of its
+		// own, and a caller that needs it before any row exists has no row to get
+		// it from.
+		batches = noBatches
 	}
 
 	current := n
@@ -93,13 +115,18 @@ func ResolveWholeTable(n CCLNode, totalRows int, colNames []string, batches Batc
 }
 
 // refuseUnsupportedParts names the parts ResolveWholeTable cannot compute yet,
-// before anything is read.
-func refuseUnsupportedParts(n cclNode) error {
+// before anything is read. top is the node whose value is the expression's own:
+// n itself, or the expression of a NEW or an assignment. A sequence function
+// standing there is left standing, because NewTopSequence computes it batch by
+// batch; a name it cannot stream is refused there instead, where it can say
+// why. The same call anywhere else has no answer at all, because a sequence
+// function reads rows the batch after it has not arrived with.
+func refuseUnsupportedParts(n cclNode, top cclNode) error {
 	switch t := n.(type) {
 	case *funcCallNode:
 		upper := strings.ToUpper(t.name)
-		if IsSequenceFunction(upper) {
-			return fmt.Errorf("sequence function %s is not supported when the table is read in batches", upper)
+		if IsSequenceFunction(upper) && n != top {
+			return fmt.Errorf("sequence function %s inside an expression is not supported when the table is read in batches", upper)
 		}
 		if _, isAgg := lookupAggregateFunction(upper); isAgg && len(t.args) > 0 && !containsRowIndex(t) {
 			if _, streams := NewStreamingAggregate(upper); !streams {
@@ -121,7 +148,7 @@ func refuseUnsupportedParts(n cclNode) error {
 		}
 	}
 	for _, child := range childNodes(n) {
-		if err := refuseUnsupportedParts(child); err != nil {
+		if err := refuseUnsupportedParts(child, top); err != nil {
 			return err
 		}
 	}
