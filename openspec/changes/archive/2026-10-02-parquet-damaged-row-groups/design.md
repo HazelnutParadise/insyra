@@ -12,7 +12,7 @@ The footer's row counts are read before any value and do not depend on the pages
 
 ### 2. Not an Arrow upgrade
 
-apache/arrow-go v18.8.0, the newest release, still breaks out of `ReadRecords` without checking the error, so moving off `arrow/go/v17` would not fix this. Reporting it upstream is an outward action and waits for the owner; the count check stays useful either way.
+Correction, 2026-10-03: this was read from the loop alone. arrow-go v18.0.0 and later return `rr.Err()` at the end of `ReadRecords` (apache/arrow#43860), and a damaged file read on v18.0.0 through v18.8.0 fails with the page header error, so moving off `arrow/go/v17` fixes the upstream half. The count check stays useful either way.
 
 ## Risks
 
