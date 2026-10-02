@@ -136,14 +136,17 @@ func readArrowTable(t *testing.T, path string) arrow.Table {
 	}
 	tbl, err := fr.ReadTable(context.Background())
 	if err != nil {
+		_ = r.Close()
 		t.Fatalf("reading %s as Arrow: %v", path, err)
 	}
-	// The Parquet reader owns f and closes it, so only it is closed here.
-	t.Cleanup(func() {
-		if err := r.Close(); err != nil {
-			t.Errorf("closing the Parquet reader of %s: %v", path, err)
-		}
-	})
+	// The table holds its own copy of the rows, so the file is closed before
+	// returning: Windows refuses to replace a file that is still open, and the
+	// callers rewrite this one with ApplyCCL. The Parquet reader owns f and
+	// closes it, so only it is closed here.
+	if err := r.Close(); err != nil {
+		tbl.Release()
+		t.Fatalf("closing the Parquet reader of %s: %v", path, err)
+	}
 	return tbl
 }
 
