@@ -517,13 +517,13 @@ func writeDateColumnFixture(t *testing.T) string {
 // reaches, so ApplyCCL itself is held to refusing it and leaving the file alone.
 func TestApplyCCLRefusesAValueItCannotWriteWithoutPanicking(t *testing.T) {
 	t.Run("a column type the builder does not build", func(t *testing.T) {
-		arr, err := buildArrowArray(memory.DefaultAllocator, "d", []any{time.Now()}, arrow.FixedWidthTypes.Date32)
+		arr, err := buildArrowArray(memory.DefaultAllocator, "d", []any{time.Now()}, arrow.ListOf(arrow.PrimitiveTypes.Int64))
 		if err == nil {
 			got := arr.DataType()
 			arr.Release()
-			t.Fatalf("buildArrowArray built a %s array for a date32 column", got)
+			t.Fatalf("buildArrowArray built a %s array for a list column", got)
 		}
-		if !strings.Contains(err.Error(), `"d"`) || !strings.Contains(err.Error(), "date32") {
+		if !strings.Contains(err.Error(), `"d"`) || !strings.Contains(err.Error(), "list") {
 			t.Errorf("error %q names neither the column nor its type", err)
 		}
 	})
@@ -550,38 +550,32 @@ func TestApplyCCLRefusesAValueItCannotWriteWithoutPanicking(t *testing.T) {
 		}
 	})
 
-	t.Run("ApplyCCL leaves the file alone", func(t *testing.T) {
+	t.Run("ApplyCCL writes back a column it does not write", func(t *testing.T) {
+		// A column no statement writes is written back from the file's own data,
+		// so a type the builder does not build is no reason to refuse the file.
 		const script = "NEW('n') = 1"
 
 		path := writeDateColumnFixture(t)
-		before, err := os.ReadFile(path)
+		want, err := Read(context.Background(), path, ReadOptions{})
 		if err != nil {
 			t.Fatalf("reading the fixture: %v", err)
 		}
-
-		err = ApplyCCL(context.Background(), path, script)
-		if err == nil {
-			t.Fatalf("ApplyCCL(%q) wrote the file instead of refusing the column type", script)
+		if err := ApplyCCL(context.Background(), path, script); err != nil {
+			t.Fatalf("ApplyCCL(%q): %v", script, err)
 		}
-		if !strings.Contains(err.Error(), `"d"`) {
-			t.Errorf("error %q does not name the column it cannot write", err)
+		got, err := Read(context.Background(), path, ReadOptions{})
+		if err != nil {
+			t.Fatalf("reading the file back: %v", err)
 		}
-
-		after, readErr := os.ReadFile(path)
-		if readErr != nil {
-			t.Fatalf("reading the fixture back: %v", readErr)
+		wantD, gotD := want.GetColByName("d").Data(), got.GetColByName("d").Data()
+		if len(gotD) != len(wantD) {
+			t.Fatalf("ApplyCCL(%q) column \"d\" holds %d values, want %d", script, len(gotD), len(wantD))
 		}
-		if !bytes.Equal(before, after) {
-			t.Errorf("the file changed (%d bytes before, %d after) although the script was refused",
-				len(before), len(after))
-		}
-		entries, readErr := os.ReadDir(filepath.Dir(path))
-		if readErr != nil {
-			t.Fatalf("reading the fixture's directory: %v", readErr)
-		}
-		for _, entry := range entries {
-			if strings.HasSuffix(entry.Name(), ".tmp") {
-				t.Errorf("ApplyCCL(%q) left %s behind", script, entry.Name())
+		for i, w := range wantD {
+			wt, wok := w.(time.Time)
+			gt, gok := gotD[i].(time.Time)
+			if wok != gok || (wok && !gt.Equal(wt)) || (!wok && gotD[i] != w) {
+				t.Fatalf("ApplyCCL(%q) column \"d\" row %d = %v (%T), want %v (%T)", script, i, gotD[i], gotD[i], w, w)
 			}
 		}
 	})

@@ -32,6 +32,12 @@ type cclRun struct {
 	offset int
 	names  []string
 	cols   [][]any
+
+	// arrays holds, for each column that still has the values the file gave it,
+	// the Arrow array they came from, aligned with cols; nil for a column a
+	// statement created or replaced, and for every column of a run that did not
+	// come from the file. It may be shorter than names.
+	arrays []arrow.Array
 }
 
 // rows returns how many rows r holds.
@@ -44,11 +50,16 @@ func (r cclRun) rows() int {
 
 // runFromRecord reads rec into a run starting at offset, a null as nil and
 // every other cell through getVal, named names. The values it holds are Go
-// values of their own, so a run outlives the record's buffers.
+// values of their own, so a run outlives the record's buffers, and each column
+// keeps the array it was read from, retained, so the writer can put a column
+// nothing wrote back into the file unchanged.
 func runFromRecord(rec arrow.Record, names []string, offset int) cclRun {
 	cols := make([][]any, rec.NumCols())
+	arrays := make([]arrow.Array, rec.NumCols())
 	for i := range cols {
 		col := rec.Column(i)
+		arrays[i] = col
+		col.Retain()
 		data := make([]any, col.Len())
 		for j := range data {
 			if col.IsNull(j) {
@@ -58,7 +69,7 @@ func runFromRecord(rec arrow.Record, names []string, offset int) cclRun {
 		}
 		cols[i] = data
 	}
-	return cclRun{offset: offset, names: names, cols: cols}
+	return cclRun{offset: offset, names: names, cols: cols, arrays: arrays}
 }
 
 // parquetContext implements ccl.Context for direct parquet file operations. It
@@ -71,6 +82,11 @@ type parquetContext struct {
 	colNames   []string
 	colNameMap map[string]int
 	cols       [][]any
+
+	// arrays holds the array of the file each column still has, in step with
+	// cols: nil for a column a statement created or replaced, and for a context
+	// built from no record at all.
+	arrays []arrow.Array
 
 	// How many rows the columns hold
 	rows int
@@ -107,6 +123,7 @@ func newRunContext(r cclRun) *parquetContext {
 		colNames:   names,
 		colNameMap: colNameMap,
 		cols:       cols,
+		arrays:     runArrays(r),
 		rows:       r.rows(),
 		offset:     r.offset,
 		hasData:    true,
@@ -178,7 +195,7 @@ func (c *parquetContext) notRead(index int) error {
 // run returns the rows the context holds, with the columns the statements run
 // through it so far have written.
 func (c *parquetContext) run() cclRun {
-	return cclRun{offset: c.offset, names: c.colNames, cols: c.cols}
+	return cclRun{offset: c.offset, names: c.colNames, cols: c.cols, arrays: c.arrays}
 }
 
 func (c *parquetContext) updateCurrentRow() {
@@ -207,6 +224,12 @@ func (c *parquetContext) addColumn(name string, data []any) {
 	c.colNames = append(slices.Clip(c.colNames), name)
 	c.colNameMap[name] = index
 	c.cols = append(slices.Clip(c.cols), data)
+	// One entry per name, so the columns after the new one are where they were
+	// and the new one has no array of the file's: its values are what it is
+	// written from.
+	arrays := make([]arrow.Array, len(c.colNames))
+	copy(arrays, c.arrays)
+	c.arrays = arrays
 	if c.loaded != nil {
 		// A column a statement wrote holds all of its values.
 		c.loaded = append(slices.Clip(c.loaded), true)
@@ -222,6 +245,11 @@ func (c *parquetContext) setColumn(index int, data []any) {
 		return
 	}
 	c.cols[index] = data
+	if index < len(c.arrays) {
+		// The column no longer holds the file's values, so the array of those is
+		// not what it is written from.
+		c.arrays[index] = nil
+	}
 	if c.loaded != nil {
 		c.loaded[index] = true
 	}
@@ -608,6 +636,7 @@ type statementStage struct {
 func (s *statementStage) push(r cclRun) ([]cclRun, error) {
 	if r.rows() == 0 {
 		cols := fullColumns(r)
+		arrays := runArrays(r)
 		if newName, _, isNew := ccl.GetNewColInfo(s.node); isNew {
 			// Clip, so the append always gives a new array: names may be a run's own
 			// slice, and writing into its spare capacity would change what it holds.
@@ -615,12 +644,13 @@ func (s *statementStage) push(r cclRun) ([]cclRun, error) {
 				offset: r.offset,
 				names:  append(slices.Clip(r.names), newName),
 				cols:   append(cols, []any{}),
+				arrays: append(arrays, nil),
 			}
 			return []cclRun{r}, nil
 		}
 		// An assignment replaces a column that is there already, and any other
 		// statement writes nothing.
-		return []cclRun{{offset: r.offset, names: r.names, cols: cols}}, nil
+		return []cclRun{{offset: r.offset, names: r.names, cols: cols, arrays: arrays}}, nil
 	}
 	runCtx := newRunContext(r)
 	// A stage is not handed the caller's context: it works on the one run it was
@@ -694,9 +724,11 @@ func (s *wholeColumnStage) push(r cclRun) ([]cclRun, error) {
 	part := s.values[r.offset:end:end]
 
 	cols := fullColumns(r)
+	arrays := runArrays(r)
 	if s.target >= 0 {
 		cols[s.target] = part
-		return []cclRun{{offset: r.offset, names: r.names, cols: cols}}, nil
+		arrays[s.target] = nil
+		return []cclRun{{offset: r.offset, names: r.names, cols: cols, arrays: arrays}}, nil
 	}
 	// Clip, so the append always gives a new array: names may be a run's own
 	// slice, and writing into its spare capacity would change what it holds.
@@ -704,6 +736,7 @@ func (s *wholeColumnStage) push(r cclRun) ([]cclRun, error) {
 		offset: r.offset,
 		names:  append(slices.Clip(r.names), s.newName),
 		cols:   append(cols, part),
+		arrays: append(arrays, nil),
 	}}, nil
 }
 
@@ -878,9 +911,11 @@ func (s *sequenceStage) answer(rows []cclRun, values []any) []cclRun {
 // one reads the answers as columns of its own.
 func (s *sequenceStage) write(r cclRun, values []any) cclRun {
 	cols := fullColumns(r)
+	arrays := runArrays(r)
 	if s.target >= 0 {
 		cols[s.target] = values
-		return cclRun{offset: r.offset, names: r.names, cols: cols}
+		arrays[s.target] = nil
+		return cclRun{offset: r.offset, names: r.names, cols: cols, arrays: arrays}
 	}
 	// Clip, so the append always gives a new array: names may be a run's own
 	// slice, and writing into its spare capacity would change what it holds.
@@ -888,6 +923,7 @@ func (s *sequenceStage) write(r cclRun, values []any) cclRun {
 		offset: r.offset,
 		names:  append(slices.Clip(r.names), s.newName),
 		cols:   append(cols, values),
+		arrays: append(arrays, nil),
 	}
 }
 
@@ -903,6 +939,16 @@ func fullColumns(r cclRun) [][]any {
 	return cols
 }
 
+// runArrays returns a copy of r's arrays with one entry, possibly nil, for every
+// name r has, the way fullColumns does for its values.
+func runArrays(r cclRun) []arrow.Array {
+	arrays := slices.Clone(r.arrays)
+	for len(arrays) < len(r.names) {
+		arrays = append(arrays, nil)
+	}
+	return arrays
+}
+
 // headRun returns the first rows of r, which still starts where r starts.
 func headRun(r cclRun, rows int) cclRun {
 	if rows >= r.rows() {
@@ -912,12 +958,19 @@ func headRun(r cclRun, rows int) cclRun {
 	for i, col := range r.cols {
 		cols[i] = col[:rows]
 	}
-	return cclRun{offset: r.offset, names: r.names, cols: cols}
+	arrays := make([]arrow.Array, len(r.arrays))
+	for i, arr := range r.arrays {
+		if arr != nil {
+			arrays[i] = array.NewSlice(arr, 0, int64(rows))
+		}
+	}
+	return cclRun{offset: r.offset, names: r.names, cols: cols, arrays: arrays}
 }
 
 // tailRun returns the rows of r from rows onwards, which start that many rows
 // further into the file. A run of no rows keeps its names, because the columns
-// are the same however many rows there are.
+// are the same however many rows there are, and no arrays: it has no rows of the
+// file's own to keep.
 func tailRun(r cclRun, rows int) cclRun {
 	if rows <= 0 {
 		return r
@@ -929,7 +982,13 @@ func tailRun(r cclRun, rows int) cclRun {
 	for i, col := range r.cols {
 		cols[i] = col[rows:]
 	}
-	return cclRun{offset: r.offset + rows, names: r.names, cols: cols}
+	arrays := make([]arrow.Array, len(r.arrays))
+	for i, arr := range r.arrays {
+		if arr != nil {
+			arrays[i] = array.NewSlice(arr, int64(rows), int64(r.rows()))
+		}
+	}
+	return cclRun{offset: r.offset + rows, names: r.names, cols: cols, arrays: arrays}
 }
 
 // newPipeline builds the stages for the statements nodes, which have been
@@ -1064,6 +1123,333 @@ func exceedsFloat64Loss(v any) bool {
 	}
 }
 
+// narrowTypes is a set of the types narrower than int64 and float64 that a column
+// the file had can keep when a statement assigns to it: the integer widths below
+// 64 bits, uint64, float32, and the two date types. columnKinds keeps, for each,
+// whether a value has been added that the type cannot hold.
+type narrowTypes uint16
+
+const (
+	narrowInt8 narrowTypes = 1 << iota
+	narrowInt16
+	narrowInt32
+	narrowUint8
+	narrowUint16
+	narrowUint32
+	narrowUint64
+	narrowFloat32
+	narrowDate32
+	narrowDate64
+
+	narrowWholeNumbers = narrowInt8 | narrowInt16 | narrowInt32 | narrowUint8 | narrowUint16 | narrowUint32 | narrowUint64
+	narrowDates        = narrowDate32 | narrowDate64
+	narrowEvery        = narrowWholeNumbers | narrowFloat32 | narrowDates
+)
+
+// narrowTypeOf returns the narrow type the Arrow type id names, and zero for a
+// type that is not one.
+func narrowTypeOf(id arrow.Type) narrowTypes {
+	switch id {
+	case arrow.INT8:
+		return narrowInt8
+	case arrow.INT16:
+		return narrowInt16
+	case arrow.INT32:
+		return narrowInt32
+	case arrow.UINT8:
+		return narrowUint8
+	case arrow.UINT16:
+		return narrowUint16
+	case arrow.UINT32:
+		return narrowUint32
+	case arrow.UINT64:
+		return narrowUint64
+	case arrow.FLOAT32:
+		return narrowFloat32
+	case arrow.DATE32:
+		return narrowDate32
+	case arrow.DATE64:
+		return narrowDate64
+	default:
+		return 0
+	}
+}
+
+// wholeNumber is a whole number as a sign and a magnitude, which holds every
+// value of every Go integer type, int64's smallest and uint64's largest included:
+// no one of int64 and uint64 holds both.
+type wholeNumber struct {
+	negative  bool
+	magnitude uint64
+}
+
+// wholeBounds is the largest magnitude an integer type holds on each side of
+// zero.
+type wholeBounds struct {
+	negative, positive uint64
+}
+
+// The bounds of the integer types narrower than int64. An unsigned type holds no
+// negative magnitude, and a zero is never negative, so its negative bound of zero
+// refuses exactly the values below zero.
+var (
+	boundsInt8   = wholeBounds{negative: 1 << 7, positive: 1<<7 - 1}
+	boundsInt16  = wholeBounds{negative: 1 << 15, positive: 1<<15 - 1}
+	boundsInt32  = wholeBounds{negative: 1 << 31, positive: 1<<31 - 1}
+	boundsUint8  = wholeBounds{positive: math.MaxUint8}
+	boundsUint16 = wholeBounds{positive: math.MaxUint16}
+	boundsUint32 = wholeBounds{positive: math.MaxUint32}
+	boundsUint64 = wholeBounds{positive: math.MaxUint64}
+)
+
+// wholeTypes lists the integer types of narrowTypes with their bounds.
+var wholeTypes = [...]struct {
+	bit    narrowTypes
+	bounds wholeBounds
+}{
+	{narrowInt8, boundsInt8},
+	{narrowInt16, boundsInt16},
+	{narrowInt32, boundsInt32},
+	{narrowUint8, boundsUint8},
+	{narrowUint16, boundsUint16},
+	{narrowUint32, boundsUint32},
+	{narrowUint64, boundsUint64},
+}
+
+// fits reports whether w is within bounds.
+func (w wholeNumber) fits(bounds wholeBounds) bool {
+	if w.negative {
+		return w.magnitude <= bounds.negative
+	}
+	return w.magnitude <= bounds.positive
+}
+
+// signed returns w as an int64, which is w itself for a number a signed type
+// narrower than int64 holds.
+func (w wholeNumber) signed() int64 {
+	if w.negative {
+		return -int64(w.magnitude)
+	}
+	return int64(w.magnitude)
+}
+
+// lost returns the integer types of narrowTypes that w is outside of, leaving out
+// the ones in known: the caller has a value outside of those already, and asks
+// only about the rest.
+func (w wholeNumber) lost(known narrowTypes) narrowTypes {
+	var lost narrowTypes
+	for i := range wholeTypes {
+		t := &wholeTypes[i]
+		if known&t.bit == 0 && !w.fits(t.bounds) {
+			lost |= t.bit
+		}
+	}
+	return lost
+}
+
+// wholeNumberOf returns v as a whole number when it is one: a Go integer of any
+// type, or a float that is finite and has no fraction and is smaller than 2^64 in
+// magnitude. Anything else, a text, a boolean, a time, a float with a fraction, a
+// NaN or an infinity, is not.
+func wholeNumberOf(v any) (wholeNumber, bool) {
+	switch n := v.(type) {
+	case int:
+		return wholeOfInt(int64(n)), true
+	case int8:
+		return wholeOfInt(int64(n)), true
+	case int16:
+		return wholeOfInt(int64(n)), true
+	case int32:
+		return wholeOfInt(int64(n)), true
+	case int64:
+		return wholeOfInt(n), true
+	case uint:
+		return wholeNumber{magnitude: uint64(n)}, true
+	case uint8:
+		return wholeNumber{magnitude: uint64(n)}, true
+	case uint16:
+		return wholeNumber{magnitude: uint64(n)}, true
+	case uint32:
+		return wholeNumber{magnitude: uint64(n)}, true
+	case uint64:
+		return wholeNumber{magnitude: n}, true
+	case float64:
+		return wholeOfFloat(n)
+	case float32:
+		// A float32 widens to float64 exactly.
+		return wholeOfFloat(float64(n))
+	default:
+		return wholeNumber{}, false
+	}
+}
+
+func wholeOfInt(n int64) wholeNumber {
+	if n < 0 {
+		// Written so that int64's smallest value, whose negation overflows, has
+		// its magnitude.
+		return wholeNumber{negative: true, magnitude: uint64(-(n + 1)) + 1}
+	}
+	return wholeNumber{magnitude: uint64(n)}
+}
+
+// float64Limit64 is 2^64, the first magnitude a uint64 cannot hold, exactly as a
+// float64.
+const float64Limit64 = 1 << 64
+
+func wholeOfFloat(f float64) (wholeNumber, bool) {
+	if math.IsNaN(f) || math.IsInf(f, 0) || f != math.Trunc(f) || math.Abs(f) >= float64Limit64 {
+		return wholeNumber{}, false
+	}
+	// A zero, either sign, is no negative number.
+	return wholeNumber{negative: f < 0, magnitude: uint64(math.Abs(f))}, true
+}
+
+// float32ExactInteger is the largest magnitude up to which a float32 holds every
+// integer: its significand is 24 bits wide.
+const float32ExactInteger = 1 << 24
+
+// exactInFloat32 reports whether a float32 holds w exactly, which it does up to
+// 2^24 in magnitude.
+func (w wholeNumber) exactInFloat32() bool {
+	return w.magnitude <= float32ExactInteger
+}
+
+// float32Of returns v as the float32 that holds it without loss, and false for a
+// value no float32 holds: a float64 that is not a float32 once rounded to one, an
+// integer past 2^24 in magnitude, or a value that is not a number. A NaN and the
+// infinities are held, and a float32 is its own.
+func float32Of(v any) (float32, bool) {
+	switch n := v.(type) {
+	case float32:
+		return n, true
+	case float64:
+		if math.IsNaN(n) || math.IsInf(n, 0) {
+			return float32(n), true
+		}
+		// Past the largest float32 the conversion would be an infinity, which is
+		// not the number, and Go leaves an out of range conversion unspecified.
+		if math.Abs(n) > math.MaxFloat32 {
+			return 0, false
+		}
+		f := float32(n)
+		return f, float64(f) == n
+	}
+	w, ok := wholeNumberOf(v)
+	if !ok || !w.exactInFloat32() {
+		return 0, false
+	}
+	if w.negative {
+		return -float32(w.magnitude), true
+	}
+	return float32(w.magnitude), true
+}
+
+// secondsPerDay is the length of a day in a Unix timestamp, which counts no leap
+// seconds.
+const secondsPerDay = 24 * 60 * 60
+
+// utcMidnight returns v as a time when it is exactly midnight UTC, in whatever
+// zone it was given, and false for any other value.
+func utcMidnight(v any) (time.Time, bool) {
+	t, ok := v.(time.Time)
+	if !ok {
+		return time.Time{}, false
+	}
+	return t, t.Nanosecond() == 0 && t.Unix()%secondsPerDay == 0
+}
+
+// date32Of returns v as the date32 that holds it without loss: a time at midnight
+// UTC whose day number an int32 holds.
+func date32Of(v any) (arrow.Date32, bool) {
+	t, ok := utcMidnight(v)
+	if !ok {
+		return 0, false
+	}
+	if days := t.Unix() / secondsPerDay; days < math.MinInt32 || days > math.MaxInt32 {
+		return 0, false
+	}
+	return arrow.Date32FromTime(t), true
+}
+
+// date64Of returns v as the date64 that holds it without loss: a time at midnight
+// UTC, which a date64 holds as the milliseconds from the epoch to that midnight,
+// so long as an int64 holds them.
+func date64Of(v any) (arrow.Date64, bool) {
+	t, ok := utcMidnight(v)
+	if !ok {
+		return 0, false
+	}
+	if sec := t.Unix(); sec < math.MinInt64/1000 || sec > math.MaxInt64/1000 {
+		return 0, false
+	}
+	return arrow.Date64FromTime(t), true
+}
+
+// narrowLossOf returns the narrow types v is a value outside of, leaving out some
+// of those in known: the caller has a value outside of them already, and is not
+// asking about them again. A nil is a missing value, which every type holds as a
+// null, so it is the caller's to skip. It answers with the same rules the builders
+// convert by, so a value it says a type holds is a value that type's builder
+// writes as itself.
+//
+// It runs for every value of every column Write infers a type from, so the two
+// integer types a table holds nearly always are answered first and by one switch.
+func narrowLossOf(v any, known narrowTypes) narrowTypes {
+	switch x := v.(type) {
+	case int64:
+		return integerLoss(wholeOfInt(x), known)
+	case int:
+		return integerLoss(wholeOfInt(int64(x)), known)
+	case float64:
+		lost := narrowDates | floatLoss(x, known)
+		if known&narrowFloat32 == 0 {
+			if _, ok := float32Of(x); !ok {
+				lost |= narrowFloat32
+			}
+		}
+		return lost
+	case float32:
+		// A float32 is a float32 already.
+		return narrowDates | floatLoss(float64(x), known)
+	case int8, int16, int32, uint, uint8, uint16, uint32, uint64:
+		w, _ := wholeNumberOf(v)
+		return integerLoss(w, known)
+	case time.Time:
+		lost := narrowWholeNumbers | narrowFloat32
+		if known&narrowDate32 == 0 {
+			if _, ok := date32Of(x); !ok {
+				lost |= narrowDate32
+			}
+		}
+		if known&narrowDate64 == 0 {
+			if _, ok := date64Of(x); !ok {
+				lost |= narrowDate64
+			}
+		}
+		return lost
+	default:
+		return narrowEvery
+	}
+}
+
+// integerLoss returns the narrow types a Go integer w is a value outside of.
+func integerLoss(w wholeNumber, known narrowTypes) narrowTypes {
+	lost := narrowDates | w.lost(known)
+	if !w.exactInFloat32() {
+		lost |= narrowFloat32
+	}
+	return lost
+}
+
+// floatLoss returns the integer types a float f is a value outside of: all of them
+// unless it is a whole number.
+func floatLoss(f float64, known narrowTypes) narrowTypes {
+	if w, ok := wholeOfFloat(f); ok {
+		return w.lost(known)
+	}
+	return narrowWholeNumbers
+}
+
 // holdsNoValue reports whether kinds has seen no value at all: every value that
 // is not a missing one sets one of the kind flags, so a column with none set has
 // held nothing but missing values, or nothing.
@@ -1111,6 +1497,17 @@ func holdsEveryValue(kinds *columnKinds, dtype arrow.DataType) bool {
 	case arrow.BINARY:
 		return kinds.hasBytes && !kinds.hasInt && !kinds.hasFloat && !kinds.hasString &&
 			!kinds.hasBool && !kinds.hasTime && !kinds.hasOther
+	case arrow.INT8, arrow.INT16, arrow.INT32, arrow.UINT8, arrow.UINT16, arrow.UINT32, arrow.UINT64, arrow.FLOAT32:
+		// Numbers and nothing else, every one of them a value this type holds: a
+		// whole number inside its range from any Go integer or a whole float, and
+		// for a float32 a float that survives the trip through it.
+		return !kinds.hasString && !kinds.hasBool && !kinds.hasTime && !kinds.hasBytes && !kinds.hasOther &&
+			kinds.lossyNarrow&narrowTypeOf(dtype.ID()) == 0
+	case arrow.DATE32, arrow.DATE64:
+		// Times and nothing else, every one of them at midnight UTC.
+		return kinds.hasTime && !kinds.hasInt && !kinds.hasFloat && !kinds.hasString &&
+			!kinds.hasBool && !kinds.hasBytes && !kinds.hasOther &&
+			kinds.lossyNarrow&narrowTypeOf(dtype.ID()) == 0
 	default:
 		return false
 	}
@@ -1274,7 +1671,13 @@ func runValues(r cclRun) map[string][]any {
 // values answer, and a column it does not write keeps the field the file gave
 // it. Every array is checked against its field before the record is built, so a
 // type that does not match is an error here rather than a panic inside Arrow.
-func buildArrowRecord(values map[string][]any, colNames []string, schema *arrow.Schema) (rec arrow.Record, err error) {
+//
+// arrays holds the file's own array for every column that still has it, in step
+// with colNames, possibly shorter and possibly nil in places. A column whose
+// array is the one its field describes is written from that array rather than
+// from the Go values, so it comes back as the file had it whatever its type: a
+// list, a struct or a decimal at its own scale never passed through Go at all.
+func buildArrowRecord(values map[string][]any, colNames []string, arrays []arrow.Array, schema *arrow.Schema) (rec arrow.Record, err error) {
 	mem := memory.DefaultAllocator
 
 	if len(colNames) == 0 {
@@ -1291,13 +1694,13 @@ func buildArrowRecord(values map[string][]any, colNames []string, schema *arrow.
 		return nil, errNothingToWrite
 	}
 
-	arrays := make([]arrow.Array, 0, len(colNames))
+	built := make([]arrow.Array, 0, len(colNames))
 	defer func() {
 		// An error after a builder finished leaves the arrays already built
 		// holding their buffers, so they are released here rather than by a
 		// caller that only sees the error.
 		if err != nil {
-			for _, arr := range arrays {
+			for _, arr := range built {
 				arr.Release()
 			}
 		}
@@ -1305,6 +1708,17 @@ func buildArrowRecord(values map[string][]any, colNames []string, schema *arrow.
 
 	for i, colName := range colNames {
 		field := schema.Field(i)
+		// The file's own array, where there is one and it is the array of this
+		// column's rows: a run holds an array exactly as long as it holds values
+		// of that column, so a length that does not match is a run that does not
+		// describe the same rows as its values, and the values are what the
+		// column is written from then.
+		if i < len(arrays) && arrays[i] != nil && arrays[i].Len() == rows &&
+			arrow.TypeEqual(arrays[i].DataType(), field.Type) {
+			arrays[i].Retain()
+			built = append(built, arrays[i])
+			continue
+		}
 		if field.Type.ID() == arrow.EXTENSION {
 			// A column the file gave an extension type for: the extension's
 			// storage type is what a value can be written as, and the field
@@ -1315,9 +1729,9 @@ func buildArrowRecord(values map[string][]any, colNames []string, schema *arrow.
 			if ext, ok := field.Type.(arrow.ExtensionType); ok {
 				storage = ext.StorageType()
 			}
-			arr, err := buildArrowArray(mem, colName, values[colName], storage)
-			if err != nil {
-				return nil, err
+			arr, buildErr := buildArrowArray(mem, colName, values[colName], storage)
+			if buildErr != nil {
+				return nil, buildErr
 			}
 			if !arrow.TypeEqual(arr.DataType(), storage) {
 				err = fmt.Errorf("column %q built a %s array, its field is %s",
@@ -1325,13 +1739,13 @@ func buildArrowRecord(values map[string][]any, colNames []string, schema *arrow.
 				arr.Release()
 				return nil, err
 			}
-			arrays = append(arrays, arr)
+			built = append(built, arr)
 			continue
 		}
 
-		arr, err := buildArrowArray(mem, colName, values[colName], field.Type)
-		if err != nil {
-			return nil, err
+		arr, buildErr := buildArrowArray(mem, colName, values[colName], field.Type)
+		if buildErr != nil {
+			return nil, buildErr
 		}
 		if !arrow.TypeEqual(arr.DataType(), field.Type) {
 			err = fmt.Errorf("column %q built a %s array, its field is %s",
@@ -1339,11 +1753,11 @@ func buildArrowRecord(values map[string][]any, colNames []string, schema *arrow.
 			arr.Release()
 			return nil, err
 		}
-		arrays = append(arrays, arr)
+		built = append(built, arr)
 	}
 
-	rec = array.NewRecord(schema, arrays, int64(rows))
-	for _, arr := range arrays {
+	rec = array.NewRecord(schema, built, int64(rows))
+	for _, arr := range built {
 		arr.Release()
 	}
 	return rec, nil
@@ -1354,7 +1768,7 @@ func buildArrowRecord(values map[string][]any, colNames []string, schema *arrow.
 // value that does not convert to that type is an error: the file is left alone
 // rather than holding a number that says something else.
 //
-// A type the builder has no builder for, such as a date32 column a file outside
+// A type the builder has no builder for, such as a list column a file outside
 // Write was written with, is an error naming the column and its type. Write's
 // own inferArrowType never answers such a type, so this is a column of a file
 // ApplyCCL did not write, not one of its own.
@@ -1468,10 +1882,110 @@ func buildArrowArray(mem memory.Allocator, name string, data []any, dtype arrow.
 		}
 		return builder.NewArray(), nil
 
+	case arrow.INT8:
+		return buildWholeArray(name, data, dtype, array.NewInt8Builder(mem), boundsInt8,
+			func(w wholeNumber) int8 { return int8(w.signed()) })
+	case arrow.INT16:
+		return buildWholeArray(name, data, dtype, array.NewInt16Builder(mem), boundsInt16,
+			func(w wholeNumber) int16 { return int16(w.signed()) })
+	case arrow.INT32:
+		return buildWholeArray(name, data, dtype, array.NewInt32Builder(mem), boundsInt32,
+			func(w wholeNumber) int32 { return int32(w.signed()) })
+	case arrow.UINT8:
+		return buildWholeArray(name, data, dtype, array.NewUint8Builder(mem), boundsUint8,
+			func(w wholeNumber) uint8 { return uint8(w.magnitude) })
+	case arrow.UINT16:
+		return buildWholeArray(name, data, dtype, array.NewUint16Builder(mem), boundsUint16,
+			func(w wholeNumber) uint16 { return uint16(w.magnitude) })
+	case arrow.UINT32:
+		return buildWholeArray(name, data, dtype, array.NewUint32Builder(mem), boundsUint32,
+			func(w wholeNumber) uint32 { return uint32(w.magnitude) })
+	case arrow.UINT64:
+		return buildWholeArray(name, data, dtype, array.NewUint64Builder(mem), boundsUint64,
+			func(w wholeNumber) uint64 { return w.magnitude })
+
+	case arrow.FLOAT32:
+		builder := array.NewFloat32Builder(mem)
+		defer builder.Release()
+		for _, v := range data {
+			if v == nil {
+				builder.AppendNull()
+				continue
+			}
+			f, ok := float32Of(v)
+			if !ok {
+				return nil, cannotHoldError(v, name, dtype, "a float32 holds no such number")
+			}
+			builder.Append(f)
+		}
+		return builder.NewArray(), nil
+
+	case arrow.DATE32:
+		builder := array.NewDate32Builder(mem)
+		defer builder.Release()
+		for _, v := range data {
+			if v == nil {
+				builder.AppendNull()
+				continue
+			}
+			d, ok := date32Of(v)
+			if !ok {
+				return nil, cannotHoldError(v, name, dtype, "a date32 holds only a time at midnight UTC")
+			}
+			builder.Append(d)
+		}
+		return builder.NewArray(), nil
+
+	case arrow.DATE64:
+		builder := array.NewDate64Builder(mem)
+		defer builder.Release()
+		for _, v := range data {
+			if v == nil {
+				builder.AppendNull()
+				continue
+			}
+			d, ok := date64Of(v)
+			if !ok {
+				return nil, cannotHoldError(v, name, dtype, "a date64 holds only a time at midnight UTC")
+			}
+			builder.Append(d)
+		}
+		return builder.NewArray(), nil
+
 	default:
 		return nil, fmt.Errorf("cannot write column %q as %s: ApplyCCL builds no array of that type",
 			name, dtype)
 	}
+}
+
+// cannotHoldError is the error for a value a column's type does not hold as it
+// is, which is written as nothing rather than as another value: a conversion
+// would wrap it around, cut its fraction or round it.
+func cannotHoldError(v any, name string, dtype arrow.DataType, reason string) error {
+	return fmt.Errorf("cannot write %v into column %q as %s: %s", v, name, dtype, reason)
+}
+
+// buildWholeArray builds the array of an integer type narrower than int64 from the
+// values of one column: each is a whole number inside bounds, from any Go integer
+// or a whole float, and a missing value is a null. A value that is not one is an
+// error, since the type was settled with holdsEveryValue, which refused it.
+func buildWholeArray[T any, B interface {
+	array.Builder
+	Append(T)
+}](name string, data []any, dtype arrow.DataType, builder B, bounds wholeBounds, convert func(wholeNumber) T) (arrow.Array, error) {
+	defer builder.Release()
+	for _, v := range data {
+		if v == nil {
+			builder.AppendNull()
+			continue
+		}
+		w, ok := wholeNumberOf(v)
+		if !ok || !w.fits(bounds) {
+			return nil, cannotHoldError(v, name, dtype, fmt.Sprintf("it is not a whole number %s holds", dtype))
+		}
+		builder.Append(convert(w))
+	}
+	return builder.NewArray(), nil
 }
 
 // cclBatchSize is how many rows FilterWithCCL and ApplyCCL read at a time.
@@ -2422,7 +2936,7 @@ func (a *appliedWriter) settle() error {
 // writer is created from the first record, so every later one is written as the
 // same columns in the same order.
 func (a *appliedWriter) write(r cclRun, values map[string][]any) error {
-	rec, err := buildArrowRecord(values, r.names, a.schema)
+	rec, err := buildArrowRecord(values, r.names, runArrays(r), a.schema)
 	if err != nil {
 		return fmt.Errorf("failed to apply CCL: %w", err)
 	}

@@ -491,6 +491,15 @@ type columnKinds struct {
 	// written into a float64 column comes back as a neighbour of itself, a number
 	// nobody wrote. A float needs no flag: it is a float64 already.
 	lossyFloat64 bool
+
+	// lossyNarrow says, for each type narrower than int64 and float64 that a column
+	// the file had can keep, that a value has been added which that type cannot
+	// hold: a whole number outside an integer type's range, a number with a
+	// fraction for an integer type, a float that does not survive the trip through
+	// float32, a time that is not midnight UTC for a date, and any value of another
+	// kind. Like lossyInt64 it does not change the type Write gives the column; it
+	// is what lets ApplyCCL keep the file's own type.
+	lossyNarrow narrowTypes
 }
 
 // add records one batch of a column's values. A value it does not know is
@@ -506,6 +515,9 @@ func (k *columnKinds) add(data []any) {
 		}
 		if exceedsFloat64Loss(v) {
 			k.lossyFloat64 = true
+		}
+		if k.lossyNarrow != narrowEvery {
+			k.lossyNarrow |= narrowLossOf(v, k.lossyNarrow)
 		}
 		switch v.(type) {
 		case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
