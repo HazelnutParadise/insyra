@@ -2,7 +2,7 @@
 
 ### Requirement: ApplyCCL writes back an unwritten column exactly
 
-`ApplyCCL` SHALL write a column no statement writes back with the type and the values the file gave it, whatever its Arrow type, including integer and float widths other than 64 bits, dates, decimals, large strings, lists and structs, and SHALL NOT fail because the file holds a column of such a type. A column a statement assigns SHALL keep its type, `int8` to `int64`, the unsigned widths, `float32`, `float64`, `Date32` and `Date64` included, when every value written into it can be held by that type without loss.
+`ApplyCCL` SHALL write a column no statement writes back with the type and the values the file gave it, whatever its Arrow type, including integer and float widths other than 64 bits, dates, decimals, large strings, lists and structs, and SHALL NOT fail because the file has such a column. A column a statement assigns SHALL keep its type, `int8` to `int64`, the unsigned widths, `float32`, `float64`, `Date32` and `Date64` included, when that type holds every value written into it exactly.
 
 #### Scenario: A file with columns of many types
 - **WHEN** 對一個含 `int32`、`float32`、`Date32`、`decimal128(10, 2)`、`large_string`、`list<int64>` 欄位的檔案執行 `ApplyCCL(ctx, path, "NEW('n') = 1")`
