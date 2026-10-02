@@ -354,6 +354,8 @@ When performing arithmetic operations or comparisons, CCL attempts to convert op
 **Important Notes:**
 
 - If both operands can be converted to numbers, numeric comparison is used
+- A cell of any Go numeric type is a number: `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32` and `float64`. This holds everywhere a number is read, in arithmetic, comparisons, conditions, function arguments, aggregates and row indices, so an `int16` or `uint8` column, which `parquet.Read` gives for such a column of a file, works like any other
+- An integer larger than 2^53 (9,007,199,254,740,992) is read as the nearest `float64`, so its last digits are lost: `int64` and `uint64` values that large compare equal to their neighbours
 - String-to-number conversion follows standard parsing rules
 - Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
 
@@ -585,6 +587,8 @@ You can also use another column as the row index:
 "A.B"                // Value of column A at the row index specified by the value in column B
 ```
 
+The row index can be held as any Go numeric type, and it must be a whole number whatever the type, so a `float32` of `1.5` is an error.
+
 ### All-Column Reference `@`
 
 Used as a value, `@` yields a fresh copy of the current row (`[]any`) for every row, so a column built from `@` never aliases another row.
@@ -669,7 +673,7 @@ Example:
 // Returns 0 if the value in column A is a numeric NaN or the string "#N/A", otherwise returns the value in column A
 ```
 
-> **Note:** `ISNA` handles numeric `NaN` and the string `"#N/A"`. It does **not** return true for `nil` values.
+> **Note:** `ISNA` handles numeric `NaN`, `float64` or `float32`, and the string `"#N/A"`. It does **not** return true for `nil` values.
 
 ### IFNA Function
 

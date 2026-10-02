@@ -482,9 +482,9 @@ func TestApplyCCLKeepsANarrowAssignedType(t *testing.T) {
 			},
 		},
 		{
-			// The operands are int32s: CCL does no arithmetic on an int16 cell, so the
-			// int16 column is assigned numbers computed from another column. 999 *
-			// 1000 is past int16's range, so the column is not an int16 any more.
+			// The operands are int32s, nulls among them, which CCL reads as 0.
+			// 999 * 1000 is past int16's range, so the column is not an int16 any
+			// more.
 			script: "['i16'] = ['i32'] * 1000",
 			column: "i16",
 			want:   arrow.PrimitiveTypes.Float64,
@@ -507,6 +507,28 @@ func TestApplyCCLKeepsANarrowAssignedType(t *testing.T) {
 						return -1, true
 					}
 					return int16(i%1000) - 1, true
+				})
+			},
+		},
+		{
+			// The column's own int16 cells are numbers to CCL, and 299 * 1000 is
+			// past int16's range.
+			script: "['i16'] = ['i16'] * 1000",
+			column: "i16",
+			want:   arrow.PrimitiveTypes.Float64,
+			check: func(t *testing.T, arr arrow.Array) {
+				checkColumn[float64, *array.Float64](t, arr, func(i int) (float64, bool) {
+					return float64(i%300) * 1000, true
+				})
+			},
+		},
+		{
+			script: "['i16'] = ['i16'] - 1",
+			column: "i16",
+			want:   arrow.PrimitiveTypes.Int16,
+			check: func(t *testing.T, arr arrow.Array) {
+				checkColumn[int16, *array.Int16](t, arr, func(i int) (int16, bool) {
+					return int16(i%300) - 1, true
 				})
 			},
 		},

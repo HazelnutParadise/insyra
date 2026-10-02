@@ -408,7 +408,7 @@ func fixedRowIndices(row cclNode, info *tableInfoContext) ([]int, error) {
 			indices = append(indices, i)
 		}
 		return indices, nil
-	case float64:
+	case float64, float32, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		idx, err := wholeIndex(value, "row index")
 		if err != nil {
 			return nil, err

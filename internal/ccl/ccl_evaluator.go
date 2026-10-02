@@ -1329,7 +1329,7 @@ func evaluateRowAccess(left, right cclNode, ctx Context, depth, callDepth int) (
 				rowIndices = append(rowIndices, i)
 			}
 		}
-	case float64:
+	case float64, float32, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		idx, err := wholeIndex(v, "row index")
 		if err != nil {
 			return nil, err

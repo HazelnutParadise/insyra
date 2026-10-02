@@ -270,12 +270,6 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-10-02] — CCL does no arithmetic on an `int8`, `int16` or unsigned cell, and its aggregates skip them without a word
-- **Where**: `internal/ccl/stdlib.go` `toFloat64`, which knows `int`, `int32`, `int64`, `float32` and `float64` and no other integer type; every arithmetic operator and every aggregate reads numbers through it
-- **What**: measured on 2026-10-02 on a loaded table: `AddColUsingCCL("x", "A * 2")` fails with `invalid operands for *: 3, 2` when `A` holds an `int8`, `int16`, `uint8`, `uint16`, `uint32` or `uint64`, and on a column `[int16(3), int16(4), uint8(5)]` `SUM(A)` gives 0 and `MAX(A)` nil with no error while `COUNT(A)` gives 3. `parquet.Read` returns such cells for a file's `int8`, `int16` and unsigned columns, which DuckDB and Spark write, so CCL over them, on a table or through `FilterWithCCL` and `ApplyCCL`, fails or answers wrong. Found while making `ApplyCCL` keep every column type.
-- **Suggestion**: give `toFloat64` every Go integer type (a `uint64` above 2^53 converts to the nearest float, as an `int64` does), test the arithmetic operators and each aggregate over each type, and add a changelog entry: aggregates that answered 0 or nil will answer the column's value.
-- **Status**: pending — silent wrong answers, take it next
-
 ### [2026-10-02] — `Write` panics on a `uint64` above the `int64` range
 - **Where**: `parquet/internal.go` `appendValue`, through `conv.ParseInt`
 - **What**: measured by the second review of `parquet-ccl-streamed-sequences` on 2026-10-02: writing a table holding a `uint64` greater than `math.MaxInt64` panics with `ParseInt: value out of range`, against the rule that the library never panics. It predates that change.
