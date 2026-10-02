@@ -276,11 +276,11 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: write such a column as `uint64`, or refuse the value with an error naming the column; decide which, since an `int64` column cannot hold it.
 - **Status**: pending
 
-### [2026-10-02] — a damaged row group after the first is read as the end of the file, and `ApplyCCL` then overwrites the file with what came before it
-- **Where**: `parquet/internal.go` `streamAsArrowRecord`, `parquet/api.go` `readTableFrom`, `parquet/ccl.go` `FilterWithCCL` and `ApplyCCL`
-- **What**: measured by the adversarial review of `parquet-ccl-streamed-sequences` on 2026-10-02, on a 3,000-row uncompressed file written with `RowGroupSize: 1000` whose third row group's page header was damaged: `Read` and `FilterWithCCL` return 2,000 rows with a nil error, and `ApplyCCL` replaces the file with those 2,000 rows, so the last 1,000 are lost for good. It predates that change.
-- **Suggestion**: compare the rows read with the row count in the file's metadata (`cclFileInfo` already reads it) before `ApplyCCL` replaces the file and before `FilterWithCCL` and `Read` return, and fail when they differ. Find out first why the Arrow reader ends the stream without an error.
-- **Status**: pending — data loss, take it first
+### [2026-10-02] — report upstream that Arrow's record reader takes an undecodable page for the end of a row group
+- **Where**: apache/arrow-go `parquet/file/record_reader.go` `(*recordReader).ReadRecords`, the `if !rr.HasNext() { break }` in its loop; the same code is in `arrow/go/v17`, which this module uses, and in arrow-go v18.8.0
+- **What**: when a page header cannot be decoded, the page reader records `parquet: deserializing page header failed`, but `ReadRecords` breaks out of its loop without checking the column reader's error and returns a nil error. `pqarrow`'s record reader then reports `io.EOF`, and `ReadRowGroups` returns a short table, so every caller reads a damaged file as a shorter, intact one. Measured on 2026-10-02 on a 3,000-row file with its third row group's first page header overwritten: 2,000 rows, no error. `parquet-damaged-row-groups` guards this package by comparing the rows read with the metadata's count.
+- **Suggestion**: report it to apache/arrow-go with that reproduction and the fix (return the column reader's `Err()` when `HasNext` is false and it is not nil). Filing it goes out under the owner's name, so it waits for the owner.
+- **Status**: pending (owner decision)
 
 ### [2026-10-02] — a damaged Snappy page ends the process
 - **Where**: `parquet/api.go` and `parquet/internal.go`, the `Parallel: true` read properties

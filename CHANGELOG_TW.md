@@ -184,6 +184,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 序列函式 `LAG`、`LEAD`、`DIFF`、`PCT_CHANGE`、`CUMSUM`、`CUMPROD`、`CUMMAX`、`CUMMIN` 與 `ROLLING_*` 是整個篩選運算式，或是 `NEW`、賦值的整個右邊時，`FilterWithCCL` 與 `ApplyCCL` 會以整個檔案計算：`NEW('c') = CUMSUM(A)` 寫出的是整個檔案的累計和。過去每一批各自算出序列，再以文字寫進那一批的每一格。序列函式本身不會多讀檔案，記憶體只留跨批需要的部分：位移或視窗往回需要的值、累計函式的累計值，以及 `LEAD(x, n)` 往後的 `n` 列。
 - **BREAKING**：`ApplyCCL` 寫出被賦值的欄時，新值若都能用原本的型別無損表示就保留原型別，否則就和腳本新建的欄一樣，用 `Write` 依整欄的值會給的型別；每個被敘述寫入的欄都標成可為 null。過去小數賦值到整數欄會被截斷，`['B'] = B / 2` 把 3.5 寫成 3，現在會把該欄放寬成 `float64`。`NEW` 建立的欄只看前 1,000 列決定型別，所以前面全是缺值的欄（例如 `ROLLING_MEAN(A, 1500)`）會被寫成文字，之後出現別種型別的值則以 schema 不符的錯誤中止。新欄的缺值會寫成 0，`[1, nil, 3]` 的欄跑 `NEW('c') = A` 會得到 `[1, 0, 3]`。檔案裡的 `time.Time` 或 `[]byte` 欄，或無法轉換的值，會讓 `ApplyCCL` panic。現在檔案裡有無法寫出的型別（例如 `int32`、`float32`、decimal 或 `Date32`）時會回傳錯誤，原檔不變。
 - `ApplyCCL` 的 `NEW('r') = @` 讓每一列寫入自己那一列的值。過去每批 1,000 列裡的每一格，寫入的都是該批最後一列。
+- 檔案中某個 row group 損壞時，`Read`、`ReadFrom`、`ReadColumn`、`Stream`、`StreamFrom`、`FilterWithCCL` 與 `ApplyCCL` 會回傳錯誤，說明兩邊的列數與哪些 row group 沒能完整讀出。Arrow 讀取器會把解不開的頁標頭當成那個 row group 的結尾，接著讀下一組，所以過去它們會不報錯地回傳其他組的列，`ApplyCCL` 還會用這些列覆寫原檔：以每組 1,000 列存成 3,000 列的檔案，第三組損壞時最後 1,000 列就此遺失，第二組損壞時中間 1,000 列被悄悄略過。現在 `ApplyCCL` 遇到這種檔案不會改動它。
 
 ### `mkt`
 - **BREAKING**：`CAI` 改成一般函式，不再是存著 `CustomerActivityIndex` 的變數。呼叫方式不變，只有對它賦值會編譯失敗。

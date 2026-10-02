@@ -111,6 +111,24 @@ func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, lab
 			}
 		}
 
+		// The footer holds each row group's row count before any page is read, so
+		// it says whether the records that come out are all of what was asked
+		// for. An index out of range is left to GetRecordReader, which reports
+		// it better, so the comparison below is skipped when one is there or
+		// when no row group was selected at all, which leaves no row group to
+		// name.
+		counts := make([]int64, len(rowGroups))
+		var want int64
+		countable := len(rowGroups) > 0
+		for i, rg := range rowGroups {
+			if rg < 0 || rg >= r.NumRowGroups() {
+				countable = false
+				break
+			}
+			counts[i] = r.MetaData().RowGroup(rg).NumRows()
+			want += counts[i]
+		}
+
 		rr, err := fr.GetRecordReader(ctx, colIndices, rowGroups)
 		if err != nil {
 			errChan <- err
@@ -118,9 +136,11 @@ func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, lab
 		}
 		defer rr.Release()
 
+		var read int64
 		for rr.Next() {
 			rec := rr.Record()
 			rec.Retain()
+			read += rec.NumRows()
 			select {
 			case <-ctx.Done():
 				rec.Release()
@@ -131,6 +151,22 @@ func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, lab
 		}
 		if rr.Err() != nil && !errors.Is(rr.Err(), io.EOF) {
 			errChan <- rr.Err()
+			return
+		}
+		// Arrow answers a page header it cannot decode as the end of the row
+		// group, and pqarrow answers the empty batch that leaves as io.EOF, so
+		// the rows the footer promised are the only sign the file was damaged.
+		if countable && read != want {
+			// Build colIndices for shortRowGroups (empty means all columns)
+			cols := colIndices
+			if len(cols) == 0 {
+				schema := r.MetaData().Schema
+				cols = make([]int, schema.NumColumns())
+				for i := 0; i < schema.NumColumns(); i++ {
+					cols[i] = i
+				}
+			}
+			errChan <- damagedFile(label, read, want, shortRowGroups(ctx, fr, cols, rowGroups, counts))
 		}
 	}()
 

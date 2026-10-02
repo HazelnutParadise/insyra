@@ -66,6 +66,14 @@ func unreadableFile(label string, r any) error {
 	return fmt.Errorf("parquet: %s is not a readable Parquet file: %v", label, r)
 }
 
+// damagedFile is the error for a file that read a different number of rows than
+// its metadata holds. Arrow reads a page it cannot decode as the end of its row
+// group and goes on with the next one, so the count is the only sign of it, and
+// groups are the row groups that did not read in full.
+func damagedFile(label string, read, want int64, groups []int) error {
+	return fmt.Errorf("parquet: %s is damaged: its metadata holds %d rows in the row groups read, but %d were read; row groups %v did not read in full", label, want, read, groups)
+}
+
 // Inspect reads a Parquet file's metadata without reading any values.
 func Inspect(path string) (info FileInfo, err error) {
 	defer func() {
@@ -440,10 +448,41 @@ func readTableFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string
 		}
 	}
 
+	// The footer holds each row group's row count before any page is read, so
+	// it says whether the table that comes back is all of what was asked for.
+	// An index out of range is left to ReadRowGroups, which reports it better,
+	// so the comparison below is skipped when one is there or when no row group
+	// was selected at all, which leaves no row group to name.
+	counts := make([]int64, len(rowGroups))
+	var want int64
+	countable := len(rowGroups) > 0
+	for i, rg := range rowGroups {
+		if rg < 0 || rg >= r.NumRowGroups() {
+			countable = false
+			break
+		}
+		counts[i] = r.MetaData().RowGroup(rg).NumRows()
+		want += counts[i]
+	}
+
 	var arrowTable arrow.Table
 	arrowTable, err = fr.ReadRowGroups(ctx, colIndices, rowGroups)
 	if err != nil {
 		return nil, err
+	}
+	if countable && arrowTable.NumRows() != want {
+		// Read before releasing: the table's own fields do not outlive it.
+		read := arrowTable.NumRows()
+		arrowTable.Release()
+		colIdx := colIndices
+		if len(colIdx) == 0 {
+			schema := r.MetaData().Schema
+			colIdx = make([]int, schema.NumColumns())
+			for i := 0; i < schema.NumColumns(); i++ {
+				colIdx[i] = i
+			}
+		}
+		return nil, damagedFile(label, read, want, shortRowGroups(ctx, fr, colIdx, rowGroups, counts))
 	}
 	defer arrowTable.Release()
 
@@ -583,6 +622,27 @@ func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnO
 		list.SetErr("parquet", "ReadColumn", "%s", e.Message)
 	}
 	return list, nil
+}
+
+// shortRowGroups reads each of rowGroups on its own and returns those whose row
+// count differs from counts, the metadata's, in order. It runs only once a read
+// has come up short, to name the damaged row groups.
+func shortRowGroups(ctx context.Context, fr *pqarrow.FileReader, colIndices []int, rowGroups []int, counts []int64) []int {
+	var res []int
+	for i, rg := range rowGroups {
+		t, err := fr.ReadRowGroups(ctx, colIndices, []int{rg})
+		if err != nil {
+			res = append(res, rg)
+			continue
+		}
+		if t.NumRows() != counts[i] {
+			t.Release()
+			res = append(res, rg)
+			continue
+		}
+		t.Release()
+	}
+	return res
 }
 
 // selectedRowCount sums the row counts of the given row groups from the file
