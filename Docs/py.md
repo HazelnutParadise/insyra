@@ -146,6 +146,8 @@ func RunCodef(out any, code string, args ...any) error
 
 In the Python code template, use `$v1`, `$v2`, `$v3`, etc. as placeholders for the arguments passed to the function.
 
+Each placeholder is replaced from the template as you wrote it, in one pass. Text an argument puts into the script is not read again, so an argument holding `$v2` stays the text `$v2`. A placeholder is read by its whole number: `$v10` is the tenth argument. One with no argument at its position, or written with a leading zero such as `$v01`, is left in the script as written. Only the arguments the template uses are converted, and one that cannot be written as a Python value, such as `math.NaN()`, or a slice or map holding it, makes the call return an error that names its placeholder. Python does not start in that case.
+
 #### Example
 
 ```go
