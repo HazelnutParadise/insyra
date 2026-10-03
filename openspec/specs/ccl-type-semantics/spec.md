@@ -2,9 +2,7 @@
 
 ## Purpose
 CCL never produces a value for an operation it cannot perform. Values that have no common ordering are an error rather than a silent false, an index that is not a whole number is an error rather than a truncation, a cell of every Go numeric type is a number, and the evaluator's internal representations never reach a cell.
-
 ## Requirements
-
 ### Requirement: Strings have an ordering
 
 When neither operand of `<`, `>`, `<=` or `>=` converts to a number and both are strings, CCL SHALL compare them lexicographically. When one operand converts to a number and the other is a string that does not, CCL SHALL return an error. `nil` compared for size against any value SHALL remain false, as documented.
@@ -132,3 +130,76 @@ CCL SHALL read a cell of every Go integer type (`int`, `int8`, `int16`, `int32`,
 #### Scenario: A float32 NaN is missing
 - **WHEN** 欄 `A` 存 `float32(NaN)`，求值 `ISNA(A)` 與 `IFNA(A, 0)`
 - **THEN** 分別得到 true 與 0
+
+### Requirement: Duration functions refuse a date
+
+`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL convert a `time.Duration`, a string `time.ParseDuration` accepts, or a number of seconds, to days, hours, minutes or seconds. A `time.Time` value or a string Insyra's date parser reads as a date SHALL be an error that says the function converts a duration and names the function that gives the corresponding part of a date: `DAYOFMONTH(x)` for `DAY`, and `TONUM(FORMAT_DATE(x, '15'))`, `TONUM(FORMAT_DATE(x, '04'))` and `TONUM(FORMAT_DATE(x, '05'))` for `HOUR`, `MINUTE` and `SECOND`.
+
+#### Scenario: A date string reaches DAY
+- **WHEN** 求值 `DAY('2024-01-02T06:00:00Z')`
+- **THEN** 回傳錯誤，訊息說明 `DAY` 換算的是時間長度，並提到 `DAYOFMONTH(`
+
+#### Scenario: A date column reaches HOUR
+- **WHEN** 欄 `A` 存 `time.Time` 2024-01-02 06:30:15 UTC，逐列求值 `HOUR(A)`
+- **THEN** 回傳錯誤，訊息提到 `FORMAT_DATE(` 與 `'15'`
+
+#### Scenario: The replacement gives the Excel part
+- **WHEN** 欄 `A` 存 `'2024-01-02T06:30:15Z'`，求值 `DAYOFMONTH(A)`、`TONUM(FORMAT_DATE(A, '15'))`、`TONUM(FORMAT_DATE(A, '04'))`、`TONUM(FORMAT_DATE(A, '05'))`
+- **THEN** 分別得到 2、6、30、15
+
+#### Scenario: Durations still convert
+- **WHEN** 求值 `DAY(A - B)`（A 為 2024-01-03 12:00、B 為 2024-01-02 00:00）、`DAY('36h')`、`MINUTE('90s')`、`HOUR(7200)`
+- **THEN** 分別得到 1.5、1.5、1.5、2，不回傳錯誤
+
+### Requirement: A doubled quote inside a literal is one quote
+
+A string literal SHALL be enclosed in single or double quotes. Inside it, the enclosing quote character written twice SHALL stand for one such character, and the other quote character SHALL stand for itself. A bracketed column name SHALL follow the same rule. A backslash SHALL be an ordinary character. Splitting a statement-mode script into statements SHALL treat a doubled quote as part of the literal, so a `;` or a line break inside the literal does not end the statement.
+
+#### Scenario: Single-quoted literal holding a single quote
+- **WHEN** 求值 `'it''s'`
+- **THEN** 得到字串 `it's`
+
+#### Scenario: Double-quoted literal holding double quotes
+- **WHEN** 求值 `"say ""hi"""`
+- **THEN** 得到字串 `say "hi"`
+
+#### Scenario: A literal that is one quote
+- **WHEN** 求值 `''''`
+- **THEN** 得到字串 `'`
+
+#### Scenario: Bracketed column name with a quote
+- **WHEN** 表格有名為 `O'Brien` 的欄，求值 `['O''Brien']`
+- **THEN** 得到該欄的值
+
+#### Scenario: A backslash does not escape
+- **WHEN** 編譯 `'it\'s'`
+- **THEN** 回傳 `unclosed string` 錯誤
+
+#### Scenario: Statement splitting keeps the literal whole
+- **WHEN** 以 statement mode 編譯 `NEW('x') = 'a;b''c` 換行 `d'` 換行 `NEW('it''s') = 1`
+- **THEN** 得到兩個敘述，第一個的字串是 `a;b'c` 換行 `d`，第二個建立名為 `it's` 的欄
+
+### Requirement: DATEADD by months stops at the month's end
+
+`DATEADD(d, n, 'month')` and `DATEADD(d, n, 'year')` SHALL move `d` by `n` months or `n` years and keep its day of the month, and SHALL give the target month's last day when that month has fewer days, as Excel's `EDATE` and pandas' `DateOffset` do. The time of day and the time zone of `d` SHALL be kept.
+
+#### Scenario: One month after January 31 in a leap year
+- **WHEN** 求值 `DATEADD('2024-01-31', 1, 'month')`
+- **THEN** 得到 2024-02-29
+
+#### Scenario: Backwards into a short month
+- **WHEN** 求值 `DATEADD('2024-03-31', -1, 'month')`
+- **THEN** 得到 2024-02-29
+
+#### Scenario: One year after February 29
+- **WHEN** 求值 `DATEADD('2024-02-29', 1, 'year')`
+- **THEN** 得到 2025-02-28
+
+#### Scenario: The time of day is kept
+- **WHEN** 求值 `DATEADD('2024-05-31 10:30:15', 1, 'month')`
+- **THEN** 得到 2024-06-30 10:30:15
+
+#### Scenario: Days are not months
+- **WHEN** 求值 `DATEADD('2024-01-31', 31, 'day')`
+- **THEN** 得到 2024-03-02
+
