@@ -59,10 +59,19 @@ func registerTypeConversionFunctions() {
 		// fmt writes its own complaint into the string when the verb does not
 		// match the value — TOSTR(1.5, '%d') gave "%!d(float64=1.5)" — and that
 		// went straight into the cell. Report it instead.
-		if marker := fmtErrorMarker(out, format, fmt.Sprint(args[0])); marker != "" {
-			return nil, fmt.Errorf("format %q does not fit %T: %s", format, args[0], marker)
+		marker := fmtErrorMarker(out, format, fmt.Sprint(args[0]))
+		if marker == "" {
+			return out, nil
 		}
-		return out, nil
+		// An integer under a float verb, TOSTR(50, '%.1f'), is formatted as
+		// the float64 it equals.
+		if i, ok := exactInt(args[0]); ok {
+			f := float64(i)
+			if out := fmt.Sprintf(format, f); fmtErrorMarker(out, format, fmt.Sprint(f)) == "" {
+				return out, nil
+			}
+		}
+		return nil, fmt.Errorf("format %q does not fit %T: %s", format, args[0], marker)
 	}
 	registerFunction("TOSTR", func(args ...any) (any, error) {
 		v, err := tostr(args...)

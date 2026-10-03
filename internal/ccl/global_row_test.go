@@ -73,9 +73,9 @@ func TestRowIndexIsTheGlobalRowInABatch(t *testing.T) {
 			if err != nil {
 				t.Fatalf("# at global row %d: %v", global, err)
 			}
-			if got != float64(global) {
+			if got != int64(global) {
 				t.Errorf("# at global row %d (batch offset %d, local row %d) = %v (%T), want %v",
-					global, batch.offset, local, got, got, float64(global))
+					global, batch.offset, local, got, got, int64(global))
 			}
 
 			got, err = Evaluate(cellAtRow, batch)
@@ -111,7 +111,7 @@ func TestRowIndexOfAPlainContextIsUnchanged(t *testing.T) {
 		if err != nil {
 			t.Fatalf("# at row %d: %v", row, err)
 		}
-		if want := float64(ctx.GetRowIndex()); got != want {
+		if want := int64(ctx.GetRowIndex()); got != want {
 			t.Errorf("# at row %d = %v (%T), want %v", row, got, got, want)
 		}
 	}

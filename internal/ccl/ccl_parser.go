@@ -262,6 +262,10 @@ func (p *parser) parsePrimary() (cclNode, error) {
 	tok := p.current()
 	switch tok.typ {
 	case tNUMBER:
+		if n, ok := integerLiteral(tok.value); ok {
+			p.advance()
+			return n, nil
+		}
 		p.advance()
 		// The error used to be dropped, so a literal too large for a float64
 		// became +Inf and every row carried an infinity nobody asked for.
@@ -341,6 +345,14 @@ func (p *parser) parsePrimary() (cclNode, error) {
 		// Handle unary operators
 		if tok.value == "-" {
 			p.advance()
+			// -9223372036854775808 is an int64 although its digits alone are
+			// not, so a negative integer literal is read with its sign.
+			if next := p.current(); next.typ == tNUMBER {
+				if n, ok := integerLiteral("-" + next.value); ok {
+					p.advance()
+					return n, nil
+				}
+			}
 			node, err := p.parsePrimary()
 			if err != nil {
 				return nil, err
@@ -350,8 +362,9 @@ func (p *parser) parsePrimary() (cclNode, error) {
 				numNode.value = -numNode.value
 				return numNode, nil
 			}
-			// Otherwise, treat as 0 - node
-			return &cclBinaryOpNode{op: "-", left: &cclNumberNode{value: 0}, right: node}, nil
+			// Otherwise, treat as 0 - node. An integer 0, so that minus an
+			// integer stays an integer.
+			return &cclBinaryOpNode{op: "-", left: &cclIntegerNode{value: 0}, right: node}, nil
 		}
 		if tok.value == "+" {
 			p.advance()
@@ -412,4 +425,20 @@ func checkExpressionMode(tokens []cclToken) error {
 		}
 	}
 	return nil
+}
+
+// integerLiteral reads a number literal written as digits alone, with an
+// optional leading minus, as an int64. A literal with a decimal point or an
+// exponent, or one past the int64 range, is not an integer literal and is
+// read as a float64.
+func integerLiteral(text string) (*cclIntegerNode, bool) {
+	digits := strings.TrimPrefix(text, "-")
+	if digits == "" || strings.IndexFunc(digits, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+		return nil, false
+	}
+	n, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		return nil, false
+	}
+	return &cclIntegerNode{value: n}, true
 }

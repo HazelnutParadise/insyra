@@ -89,8 +89,8 @@ func TestScientificNotationDoesNotSwallowIdentifiers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if got != 8.0 {
-		t.Errorf("got %v, want 8", got)
+	if got != int64(8) {
+		t.Errorf("got %v (%T), want int64 8", got, got)
 	}
 }
 

@@ -407,7 +407,7 @@
 | CCL-18 | ~~Med~~ 已修正（batch 10） | 聚合函數放在逐列運算式裡會每列重算整欄並 copy 整欄：20k 列 `A / 1` 1.9ms、`A / SUM(A)` 3.3s、文件 776 行的 z-score `(A - AVG(A)) / STDEV(A)` 10.0s；100k 列估計 4 分鐘以上 | internal/ccl/ccl_evaluator.go:356-365, 758-797；ccl.go:112-122；Docs/CCL.md:776 | 不含 `#` 的聚合子樹在迴圈外先算一次（常數摺疊）；`GetColData` 不要每次 copy |
 | CCL-19 | ~~Med~~ 已修正（batch 8） | `%` 運算子已實作（`10 % 3` → 1、`A % 0` → `modulo by zero`），文件運算子清單沒有它 | internal/ccl/ccl_evaluator.go:602-608；Docs/CCL.md:191-200 | 補文件 |
 | CCL-20 | ~~Med~~ 已修正（batch 8） | 日期加小數天數先乘 24 再轉 `time.Duration` 才乘 `Hour`，小於 1 小時的部分被截掉：`A + 0.001` 完全沒變，`A + 0.5` 才有效 | internal/ccl/ccl_evaluator.go:502, 504, 514 | `time.Duration(rf * 24 * float64(time.Hour))` |
-| CCL-21 | Med（文件已寫明 float64 與 2^53 的限制；保留整數路徑會改變所有整數運算結果的型別，待擁有者決定） | 所有算術都經 float64：`int64(9007199254740993) + 0` → `9.007199254740992e+15`；整數欄任何運算後整欄變 float64（`A * 1`）。文件未提 | internal/ccl/stdlib.go:360-386；ccl_evaluator.go:584-626 | 至少文件寫明；長期保留整數路徑（與 D-16、IN-3 同根） |
+| CCL-21 | ~~Med~~ 已修正（ccl-exact-integer-arithmetic）：擁有者 2026-10-04 決定 0.4 保持整數精確；整數字面值為 `int64`，兩個整數的 `+ - * %`、比較、`SUM/MIN/MAX/MOD` 與 `#` 都以 `int64` 計算，溢位報錯 | 所有算術都經 float64：`int64(9007199254740993) + 0` → `9.007199254740992e+15`；整數欄任何運算後整欄變 float64（`A * 1`）。文件未提 | internal/ccl/stdlib.go:360-386；ccl_evaluator.go:584-626 | 至少文件寫明；長期保留整數路徑（與 D-16、IN-3 同根） |
 | CCL-22 | ~~Med~~ 已修正（ccl-duration-functions-refuse-dates）：日期傳入 `DAY/HOUR/MINUTE/SECOND` 時報錯並指出 `DAYOFMONTH` 或 `TONUM(FORMAT_DATE(x, ...))`；Docs/CCL.md 加上與 Excel 的對照表 | `DAY()` 名稱撞 Excel 的 DAY（取日）但語意是「時長轉天數」：`DAY('2024-01-02T06:00:00Z')` → 0.25、`DAY(A)` 數字欄 → 0.000116（當秒）。日期字串走這條分支的行為文件沒寫 | internal/ccl/stdlib.go:229-255；Docs/CCL.md:696-701 | 日期字串進 `DAY/HOUR/MINUTE/SECOND` 時報錯並提示 `DAYOFMONTH`；文件加對照表 |
 | CCL-23 | ~~Med~~ 已修正（batch 8） | 內部型別漏到資料裡：`AddColUsingCCL("r", "A:B")` 每個 cell 是 `ccl.ColumnRange{0 1}`；`engine/ccl` 沒匯出 `ColumnRange`／`RowRange`，使用者無法型別斷言 | internal/ccl/ccl_evaluator.go:927-936；ccl.go:268-277；engine/ccl/ccl.go:5-11 | 頂層結果是 Range 型別時回錯 |
 | CCL-24 | ~~Med~~ 已修正（batch 8） | `AND()`／`OR()` 零或一個引數被接受（`AND()` → true、`OR()` → false）；`AND('abc', true)` 靜默回 false，但 `'abc' && true` 報錯。evaluator 特判路徑繞過 `stdlib.go` 註冊函數的引數檢查，那些檢查是死碼 | internal/ccl/ccl_evaluator.go:285-311 vs stdlib.go:37-78 | 特判路徑補同樣檢查，或刪死碼 |
@@ -685,7 +685,7 @@
 | CCL-18、CCL-38 | [#355](https://github.com/HazelnutParadise/insyra/issues/355) |  |
 | CCL-19、CCL-34、CCL-35、CCL-37 | [#356](https://github.com/HazelnutParadise/insyra/issues/356) |  |
 | CCL-20 | [#357](https://github.com/HazelnutParadise/insyra/issues/357) |  |
-| CCL-21 | [#358](https://github.com/HazelnutParadise/insyra/issues/358) | 文件已補；整數路徑待擁有者決定 |
+| CCL-21 | [#358](https://github.com/HazelnutParadise/insyra/issues/358) | 已修正（ccl-exact-integer-arithmetic） |
 | CCL-22 | [#359](https://github.com/HazelnutParadise/insyra/issues/359) | 已修正（ccl-duration-functions-refuse-dates） |
 | CCL-23、CCL-39 | [#360](https://github.com/HazelnutParadise/insyra/issues/360) |  |
 | CCL-24 | [#361](https://github.com/HazelnutParadise/insyra/issues/361) |  |

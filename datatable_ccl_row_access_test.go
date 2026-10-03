@@ -19,7 +19,7 @@ func TestDataTable_ExecuteCCL_RowAccess(t *testing.T) {
 	// B[1] = 1 + 2 = 3
 	// B[2] = 1 + 3 = 4
 	// B[3] = 1 + 4 = 5
-	expected := []any{float64(2), float64(3), float64(4), float64(5)}
+	expected := []any{int64(2), int64(3), int64(4), int64(5)}
 	colB := dt.GetColByName("B")
 	for i, v := range colB.Data() {
 		if v != expected[i] {
@@ -45,7 +45,7 @@ func TestDataTable_ExecuteCCL_RowAccessWithName(t *testing.T) {
 	// B[1] = 2 + 2 = 4
 	// B[2] = 2 + 3 = 5
 	// B[3] = 2 + 4 = 6
-	expected := []any{float64(3), float64(4), float64(5), float64(6)}
+	expected := []any{int64(3), int64(4), int64(5), int64(6)}
 	colB := dt.GetColByName("B")
 	for i, v := range colB.Data() {
 		if v != expected[i] {

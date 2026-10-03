@@ -165,12 +165,22 @@ CCL supports the following data types:
 1. **Numbers** - Integers and floating-point numbers, in plain or exponent form
 
    ```
-   "42"      // Integer
-   "3.14"    // Floating-point number
-   "1e5"     // 100000
+   "42"      // Integer: int64
+   "-7"      // Integer: int64
+   "3.14"    // Floating-point number: float64
+   "42.0"    // float64, because it has a decimal point
+   "1e5"     // float64 100000
    "1.5e-3"  // 0.0015
-   "2E+3"    // 2000
+   "2E+3"    // float64 2000
    ```
+
+   A literal written as digits alone, such as `42` or `-7`, is an `int64`,
+   so `A + 1` on an integer column stays an integer column (see
+   [Numeric Comparison and Arithmetic](#numeric-comparison-and-arithmetic)).
+   A literal with a decimal point or an exponent is a `float64`, and so is a
+   whole number past the `int64` range. Write `0.0` rather than `0` where a
+   `float64` is wanted: `COALESCE(TONUM(A), 0)` puts an integer `0` in the rows
+   it fills, next to the `float64` values `TONUM` gives.
 
    An `e` is only part of a number when at least one digit follows it (after an
    optional sign), so a column called `E` or `E1` still reads as a column. A
@@ -222,7 +232,7 @@ CCL supports the following data types:
 - `^` : Exponentiation
 - `.` : Row access (e.g., `A.0`, `['Sales'].10`)
 - `:` : Range operator (e.g., `A:C` for column range, `1:5` for row range)
-- `#` : Current row index (0-based)
+- `#` : Current row index (0-based), an `int64`
 
 ```
 "A + B"         // Add column A and column B
@@ -367,8 +377,10 @@ When performing arithmetic operations or comparisons, CCL attempts to convert op
 
 - If both operands can be converted to numbers, numeric comparison is used
 - A cell of any Go numeric type is a number: `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32` and `float64`. This holds everywhere a number is read, in arithmetic, comparisons, conditions, function arguments, aggregates and row indices, so an `int16` or `uint8` column, which `parquet.Read` gives for such a column of a file, works like any other
-- **All arithmetic is done in `float64`.** Every arithmetic operator, every math function and every aggregate turns its operands into `float64` and gives a `float64` back, whatever the column held. So an integer column comes out of any arithmetic as a `float64` column, even `A * 1` or `A + 0`, while a bare `A`, which does no arithmetic, keeps the cells as they were. A `float64` holds every integer up to 2^53 (9,007,199,254,740,992) exactly, so below that the value is right and only its type changes
-- An integer larger than 2^53 is read as the nearest `float64`, so its last digits are lost: `int64` and `uint64` values that large compare equal to their neighbours, and arithmetic on them is off by the same amount. On a column holding `int64(9007199254740993)`, `A + 0` gives `9007199254740992` and `SUM(A)` is off as well. Keep such values, IDs for example, out of arithmetic; copy or compare them through a bare column reference in Go code instead
+- **Integers stay integers.** When both operands are integers, of any Go integer type, `+`, `-`, `*`, `%` and unary minus compute in `int64` and give an `int64`, and `==`, `!=`, `<`, `>`, `<=`, `>=` compare them exactly. So `A * 1` on an integer column is an `int64` column, and `int64(9007199254740993) + 0` is `9007199254740993`. `SUM`, `MIN` and `MAX` give an `int64` when every value they use is an integer, and `MOD` follows `%`. In arithmetic a `nil` next to an integer is an integer `0`
+- **An integer result `int64` cannot hold is an error**, never a wrapped-around number: `9223372036854775807 + 1` fails with `integer overflow`. Write one operand with a decimal point, `A * 1.0`, to compute in `float64` instead
+- **Everything else is `float64`, as before.** `/` and `^` always give a `float64` (`7 / 2` is `3.5`, `6 / 3` is `2.0`, `2 ^ 3` is `8.0`), and so do `AVG`, `MEDIAN`, the variance family, `COUNT`, the math functions other than `MOD`, the sequence functions, and any operation with a `float64`, a numeric string or a boolean on either side. A `float64` holds every integer up to 2^53 (9,007,199,254,740,992) exactly; past that, an integer that meets a `float64`, such as `A + 0.5`, is read as the nearest `float64` and loses its last digits. A `uint64` above the `int64` range is always read that way
+- Each row follows these rules on its own values, so a column whose cells mix integers and decimals gives a column that mixes `int64` and `float64` results
 - String-to-number conversion follows standard parsing rules
 - Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
 
@@ -436,7 +448,7 @@ nil * 3             // 0 (nil is treated as 0)
 10 / nil            // Error: division by zero (nil is treated as 0)
 ```
 
-**Rule:** In arithmetic operations, `nil` is treated as `0`.
+**Rule:** In arithmetic operations, `nil` is treated as `0`: an integer `0` next to an integer, so `nil + 10` is the `int64` `10`, and a `float64` `0` otherwise.
 
 #### String Concatenation with `nil`
 
@@ -474,7 +486,8 @@ A 0/1 indicator column can therefore be used directly: `A && B`.
 
 | Operation               | Left Type     | Right Type    | Behavior                                          |
 | ----------------------- | ------------- | ------------- | ------------------------------------------------- |
-| `+`, `-`, `*`, `/`, `^` | Number/String | Number/String | Convert both to numbers, then calculate           |
+| `+`, `-`, `*`, `%`      | Integer       | Integer       | Calculate in `int64`; an overflow is an error     |
+| `+`, `-`, `*`, `/`, `^` | Number/String | Number/String | Convert both to numbers, then calculate in `float64` |
 | `>`, `<`, `>=`, `<=`    | Number/String | Number/String | Convert both to numbers, then compare             |
 | `>`, `<`, `>=`, `<=`    | String        | String        | Compare as text when neither reads as a number    |
 | `>`, `<`, `>=`, `<=`    | Number        | Non-numeric string | Error                                        |
@@ -731,7 +744,7 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
 | `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
 | `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
-| `MOD(a, b)` | Floating-point remainder of `a / b` | `MOD(10, 3)` → `1` |
+| `MOD(a, b)` | Remainder of `a / b`, with the sign of `a`; an `int64` when both are integers, otherwise a `float64` | `MOD(10, 3)` → `1`, `MOD(7.5, 2)` → `1.5` |
 | `POW(base, exp)` | Power | `POW(2, 10)` → `1024` |
 | `SQRT(x)` | Square root (errors on negatives) | `SQRT(16)` → `4` |
 | `LN(x)` | Natural log | `LN(EXP(1))` → `1` |
@@ -777,7 +790,7 @@ dt.ExecuteCCL(`
 | Function | Description |
 | --- | --- |
 | `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
-| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
+| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). An integer under a float verb is formatted as the `float64` it equals, so `TOSTR(50, '%.1f')` is `"50.0"`, and `%d` formats it as itself. A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
@@ -785,7 +798,7 @@ dt.ExecuteCCL(`
 `IFNULL` differs from the existing `IFNA`: `IFNA` only triggers on float `NaN` or the string `"#N/A"`, while `IFNULL` matches actual `nil` values.
 
 ```go
-dt.AddColUsingCCL("price_num", "COALESCE(TONUM(['price_str']), 0)")
+dt.AddColUsingCCL("price_num", "COALESCE(TONUM(['price_str']), 0.0)") // 0.0 keeps the column float64
 dt.AddColUsingCCL("price_fmt", "TOSTR(['price'], '$%.2f')")
 ```
 
@@ -850,7 +863,7 @@ dt.AddColUsingCCL("diff_hours", "HOUR(A - B)")         // -> float64 hours
 
 ### SUM
 
-Calculates the sum of all numeric values in the input.
+Calculates the sum of all numeric values in the input. When every value it uses is an integer the sum is an exact `int64`, and a sum past the `int64` range is an error; otherwise it is a `float64`.
 
 ```
 "SUM(A)"             // Sum of all values in column A
@@ -893,7 +906,7 @@ Calculates the count of non-nil (non-empty) values in the input.
 
 ### MAX
 
-Calculates the maximum value among all numeric values in the input.
+Calculates the maximum value among all numeric values in the input: an `int64` when every value it uses is an integer, otherwise a `float64`.
 
 ```
 "MAX(A)"             // Maximum value in column A
@@ -904,7 +917,7 @@ Calculates the maximum value among all numeric values in the input.
 
 ### MIN
 
-Calculates the minimum value among all numeric values in the input.
+Calculates the minimum value among all numeric values in the input: an `int64` when every value it uses is an integer, otherwise a `float64`.
 
 ```
 "MIN(A)"             // Minimum value in column A
@@ -991,7 +1004,7 @@ CCL looks like an Excel formula, and most functions that share a name with an Ex
 | `TRIM(s)` | `TRIM(s)` | CCL strips the ends only; Excel also turns each run of spaces inside the text into one space |
 | `FIND(find, within)` | `FIND(needle, haystack)` | Not found is `0` in CCL and an error in Excel. CCL has no start position argument |
 | `TEXT(value, format)` | `TEXT(x, fmt)` | The format is a Go `fmt` verb such as `'%.2f'`, not an Excel format code such as `"0.00"` |
-| Whole numbers | `float64` | CCL computes in `float64`, so an integer column comes out of arithmetic as `float64`, and an integer above 2^53 loses its last digits (see [Numeric Comparison and Arithmetic](#numeric-comparison-and-arithmetic)). Excel also stores numbers as doubles, but has no integer cells to lose |
+| Numbers | `int64` and `float64` | Excel stores every number as a double. CCL keeps integers as `int64` through `+`, `-`, `*`, `%`, `SUM`, `MIN` and `MAX`, so `7 % 3` is the integer `1`, an integer past 2^53 keeps every digit, and a result past the `int64` range is an error. `/` and `^` give a `float64` (see [Numeric Comparison and Arithmetic](#numeric-comparison-and-arithmetic)) |
 
 ## Sequence Functions
 

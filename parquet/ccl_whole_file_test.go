@@ -143,6 +143,14 @@ func sameCell(got, want any) bool {
 		}
 		return math.Float64bits(g) == math.Float64bits(w)
 	case int64:
+		// A Parquet column holds one type. An integer CCL wrote into a float64
+		// column of the file is stored as the float64 it equals, which is the
+		// type rule TestApplyCCLKeepsANarrowAssignedType pins; the value still
+		// has to be exactly the same.
+		if g, ok := got.(float64); ok {
+			// The range check keeps int64(g) defined on every platform.
+			return g >= -(1<<63) && g < 1<<63 && int64(g) == w
+		}
 		g, ok := got.(int64)
 		return ok && g == w
 	default:

@@ -18,7 +18,7 @@ func TestDataTable_ExecuteCCL_Assignment(t *testing.T) {
 	dt.ExecuteCCL("B = A + C")
 
 	// 驗證結果
-	expected := []any{float64(101), float64(202), float64(303), float64(404)}
+	expected := []any{int64(101), int64(202), int64(303), int64(404)}
 	colB := dt.GetColByName("B")
 	if colB == nil {
 		t.Fatal("Column B not found")
@@ -41,7 +41,7 @@ func TestDataTable_ExecuteCCL_AssignmentWithColIndex(t *testing.T) {
 	dt.ExecuteCCL("A = A * 2")
 
 	// 驗證結果
-	expected := []any{float64(2), float64(4), float64(6), float64(8)}
+	expected := []any{int64(2), int64(4), int64(6), int64(8)}
 	colA := dt.GetColByNumber(0)
 	if colA == nil {
 		t.Fatal("Column A (index 0) not found")
@@ -64,7 +64,7 @@ func TestDataTable_ExecuteCCL_NewColumn(t *testing.T) {
 	dt.ExecuteCCL("NEW('Sum') = A + B")
 
 	// 驗證結果
-	expected := []any{float64(11), float64(22), float64(33), float64(44)}
+	expected := []any{int64(11), int64(22), int64(33), int64(44)}
 	colSum := dt.GetColByName("Sum")
 	if colSum == nil {
 		t.Fatal("Column Sum not found")
@@ -91,7 +91,7 @@ func TestDataTable_ExecuteCCL_MultilineStatements(t *testing.T) {
 	`)
 
 	// 驗證 A 列被修改
-	expectedA := []any{float64(10), float64(20), float64(30), float64(40)}
+	expectedA := []any{int64(10), int64(20), int64(30), int64(40)}
 	colA := dt.GetColByName("Ai")
 	for i, v := range colA.Data() {
 		if v != expectedA[i] {
@@ -100,7 +100,7 @@ func TestDataTable_ExecuteCCL_MultilineStatements(t *testing.T) {
 	}
 
 	// 驗證 D 列被創建 (D = A + B + C, A已經是修改後的值)
-	expectedD := []any{float64(120), float64(240), float64(360), float64(480)}
+	expectedD := []any{int64(120), int64(240), int64(360), int64(480)}
 	colD := dt.GetColByName("D")
 	if colD == nil {
 		t.Fatal("Column D not found")
@@ -123,7 +123,7 @@ func TestDataTable_ExecuteCCL_MultilineWithSemicolon(t *testing.T) {
 	dt.ExecuteCCL("A = A + 1; NEW('Z') = A * B")
 
 	// 驗證 A 列（第一列，索引為 A）被修改
-	expectedA := []any{float64(2), float64(3), float64(4)}
+	expectedA := []any{int64(2), int64(3), int64(4)}
 	colA := dt.GetColByNumber(0)
 	for i, v := range colA.Data() {
 		if v != expectedA[i] {
@@ -132,7 +132,7 @@ func TestDataTable_ExecuteCCL_MultilineWithSemicolon(t *testing.T) {
 	}
 
 	// 驗證 Z 列被創建 (Z = A * B, A已經是修改後的值, B是第二列)
-	expectedZ := []any{float64(10), float64(18), float64(28)}
+	expectedZ := []any{int64(10), int64(18), int64(28)}
 	colZ := dt.GetColByName("Z")
 	if colZ == nil {
 		t.Fatal("Column Z not found")
@@ -155,7 +155,7 @@ func TestDataTable_ExecuteCCL_AssignmentWithColName(t *testing.T) {
 	dt.ExecuteCCL("['price'] = ['price'] * ['quantity']")
 
 	// 驗證結果
-	expected := []any{float64(2), float64(6), float64(12)}
+	expected := []any{int64(2), int64(6), int64(12)}
 	colPrice := dt.GetColByName("price")
 	for i, v := range colPrice.Data() {
 		if v != expected[i] {
@@ -192,7 +192,7 @@ func TestDataTable_EditColByIndexUsingCCL(t *testing.T) {
 	dt.EditColByIndexUsingCCL("A", "A * 10")
 
 	// 驗證結果
-	expected := []any{float64(10), float64(20), float64(30), float64(40)}
+	expected := []any{int64(10), int64(20), int64(30), int64(40)}
 	colA := dt.GetColByNumber(0)
 	if colA == nil {
 		t.Fatal("Column A (index 0) not found")
@@ -216,7 +216,7 @@ func TestDataTable_EditColByIndexUsingCCL_WithOtherCols(t *testing.T) {
 	dt.EditColByIndexUsingCCL("B", "A + ['C']")
 
 	// 驗證結果 B = A + C
-	expected := []any{float64(101), float64(202), float64(303)}
+	expected := []any{int64(101), int64(202), int64(303)}
 	colB := dt.GetColByNumber(1)
 	for i, v := range colB.Data() {
 		if v != expected[i] {
@@ -236,7 +236,7 @@ func TestDataTable_EditColByNameUsingCCL(t *testing.T) {
 	dt.EditColByNameUsingCCL("price", "['price'] * 2")
 
 	// 驗證結果
-	expected := []any{float64(10), float64(20), float64(30), float64(40)}
+	expected := []any{int64(10), int64(20), int64(30), int64(40)}
 	colPrice := dt.GetColByName("price")
 	if colPrice == nil {
 		t.Fatal("Column 'price' not found")
@@ -271,6 +271,8 @@ func TestDataTable_EditColByNameUsingCCL_WithCondition(t *testing.T) {
 		case float64:
 			got = val
 		case int:
+			got = float64(val)
+		case int64:
 			got = float64(val)
 		default:
 			t.Errorf("Row %d: unexpected type %T", i, v)
@@ -647,7 +649,7 @@ func TestDataTable_CCL_LongChainFormula(t *testing.T) {
 	if colX == nil {
 		t.Fatal("column 'X' not found")
 	}
-	if got := colX.Data()[0]; got != float64(terms+1) {
-		t.Errorf("ExecuteCCL long chain: got %v, want %v", got, float64(terms+1))
+	if got := colX.Data()[0]; got != int64(terms+1) {
+		t.Errorf("ExecuteCCL long chain: got %v (%T), want int64 %v", got, got, terms+1)
 	}
 }

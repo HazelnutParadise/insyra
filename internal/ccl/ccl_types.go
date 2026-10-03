@@ -43,6 +43,7 @@ type CCLNode = cclNode
 // 子樹會漏掉深度檢查與欄位綁定。
 type cclNode any
 type cclNumberNode struct{ value float64 }
+type cclIntegerNode struct{ value int64 } // a whole-number literal that fits int64
 type cclStringNode struct{ value string }
 type cclIdentifierNode struct{ name string }
 type cclAtNode struct{}                  // @ 形式的節點

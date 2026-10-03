@@ -91,12 +91,12 @@ func TestCCLRangeConsumersUnchanged(t *testing.T) {
 	)
 	for _, tc := range []struct {
 		expr string
-		want float64
+		want any
 	}{
-		{"SUM(A:C)", 2331},
-		{"SUM((A:C).(2:5))", 1998},
-		{"SUM(A.(0:1))", 3},
-		{"COUNT((A:C).(2:5))", 12},
+		{"SUM(A:C)", int64(2331)},
+		{"SUM((A:C).(2:5))", int64(1998)},
+		{"SUM(A.(0:1))", int64(3)},
+		{"COUNT((A:C).(2:5))", 12.0},
 	} {
 		table := dt.Clone()
 		table.AddColUsingCCL("r", tc.expr)

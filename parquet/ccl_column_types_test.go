@@ -482,18 +482,18 @@ func TestApplyCCLKeepsANarrowAssignedType(t *testing.T) {
 			},
 		},
 		{
-			// The operands are int32s, nulls among them, which CCL reads as 0.
-			// 999 * 1000 is past int16's range, so the column is not an int16 any
-			// more.
+			// The operands are int32s, nulls among them, which CCL reads as an
+			// integer 0. 999 * 1000 is past int16's range, so the column is not an
+			// int16 any more; every value is an integer, so it is an int64.
 			script: "['i16'] = ['i32'] * 1000",
 			column: "i16",
-			want:   arrow.PrimitiveTypes.Float64,
+			want:   arrow.PrimitiveTypes.Int64,
 			check: func(t *testing.T, arr arrow.Array) {
-				checkColumn[float64, *array.Float64](t, arr, func(i int) (float64, bool) {
+				checkColumn[int64, *array.Int64](t, arr, func(i int) (int64, bool) {
 					if i%7 == 0 {
 						return 0, true
 					}
-					return float64(i%1000) * 1000, true
+					return int64(i%1000) * 1000, true
 				})
 			},
 		},
@@ -512,13 +512,13 @@ func TestApplyCCLKeepsANarrowAssignedType(t *testing.T) {
 		},
 		{
 			// The column's own int16 cells are numbers to CCL, and 299 * 1000 is
-			// past int16's range.
+			// past int16's range. Integers stay integers, so it widens to int64.
 			script: "['i16'] = ['i16'] * 1000",
 			column: "i16",
-			want:   arrow.PrimitiveTypes.Float64,
+			want:   arrow.PrimitiveTypes.Int64,
 			check: func(t *testing.T, arr arrow.Array) {
-				checkColumn[float64, *array.Float64](t, arr, func(i int) (float64, bool) {
-					return float64(i%300) * 1000, true
+				checkColumn[int64, *array.Int64](t, arr, func(i int) (int64, bool) {
+					return int64(i%300) * 1000, true
 				})
 			},
 		},
@@ -549,9 +549,9 @@ func TestApplyCCLKeepsANarrowAssignedType(t *testing.T) {
 			// the whole file.
 			script: "['i16'] = IF(# < 1500, 1, 40000)",
 			column: "i16",
-			want:   arrow.PrimitiveTypes.Float64,
+			want:   arrow.PrimitiveTypes.Int64,
 			check: func(t *testing.T, arr arrow.Array) {
-				checkColumn[float64, *array.Float64](t, arr, func(i int) (float64, bool) {
+				checkColumn[int64, *array.Int64](t, arr, func(i int) (int64, bool) {
 					if i < 1500 {
 						return 1, true
 					}

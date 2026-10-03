@@ -101,11 +101,16 @@ func RegisterStandardFunctions() {
 			return 0.0, nil
 		}
 		var sum float64
+		exact := newIntegerAggregate("SUM")
 		forEachValue(args, func(val any) {
 			if f, ok := toFloat64(val); ok && !math.IsNaN(f) {
 				sum += f
+				exact.add(val)
 			}
 		})
+		if res, ok, err := exact.result(); ok {
+			return res, err
+		}
 		return sum, nil
 	})
 
@@ -143,8 +148,10 @@ func RegisterStandardFunctions() {
 		}
 		maxVal := -math.MaxFloat64
 		found := false
+		exact := newIntegerAggregate("MAX")
 		forEachValue(args, func(val any) {
-			if f, ok := toFloat64(val); ok {
+			if f, ok := toFloat64(val); ok && !math.IsNaN(f) {
+				exact.add(val)
 				if f > maxVal {
 					maxVal = f
 					found = true
@@ -153,6 +160,9 @@ func RegisterStandardFunctions() {
 		})
 		if !found {
 			return nil, nil
+		}
+		if res, ok, err := exact.result(); ok {
+			return res, err
 		}
 		return maxVal, nil
 	})
@@ -163,8 +173,10 @@ func RegisterStandardFunctions() {
 		}
 		minVal := math.MaxFloat64
 		found := false
+		exact := newIntegerAggregate("MIN")
 		forEachValue(args, func(val any) {
-			if f, ok := toFloat64(val); ok {
+			if f, ok := toFloat64(val); ok && !math.IsNaN(f) {
+				exact.add(val)
 				if f < minVal {
 					minVal = f
 					found = true
@@ -173,6 +185,9 @@ func RegisterStandardFunctions() {
 		})
 		if !found {
 			return nil, nil
+		}
+		if res, ok, err := exact.result(); ok {
+			return res, err
 		}
 		return minVal, nil
 	})

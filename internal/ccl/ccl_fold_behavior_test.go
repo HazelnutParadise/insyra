@@ -223,13 +223,13 @@ func TestFoldChain_GoldenValues(t *testing.T) {
 		expr string
 		want any
 	}{
-		{"1+2+3+4", 10.0},
-		{"10-2-3", 5.0},
+		{"1+2+3+4", int64(10)},
+		{"10-2-3", int64(5)},
 		{"100/5/2", 10.0},
 		{"2^3^2", 64.0}, // (2^3)^2, NOT 2^(3^2)=512
-		{"2*3*4", 24.0},
-		{"1+2*3+4", 11.0},
-		{"10-2*3-1", 3.0},
+		{"2*3*4", int64(24)},
+		{"1+2*3+4", int64(11)},
+		{"10-2*3-1", int64(3)},
 		{"true && true && false", false},
 		{"false || false || true", true},
 		{"true && false || true", true}, // (true&&false)||true

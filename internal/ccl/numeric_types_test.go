@@ -78,10 +78,11 @@ func TestNarrowIntegerAggregates(t *testing.T) {
 	}
 }
 
-// TestUint64PastExactFloats pins that a uint64 above 2^53 is read as the
-// nearest float64, the way an int64 that large already is.
+// TestUint64PastExactFloats pins that a uint64 above 2^53 stays exact in
+// integer arithmetic, the way an int64 that large does (ccl-exact-integer-
+// arithmetic); before that both were read as the nearest float64.
 func TestUint64PastExactFloats(t *testing.T) {
-	want := fmt.Sprint(float64(1 << 53))
+	want := "9007199254740993"
 	for _, v := range []any{uint64(1<<53 + 1), int64(1<<53 + 1)} {
 		t.Run(fmt.Sprintf("%T", v), func(t *testing.T) {
 			ctx := mapCtx(t, map[string][]any{"A": {v}})

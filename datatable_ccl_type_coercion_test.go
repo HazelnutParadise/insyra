@@ -31,10 +31,11 @@ func TestCCL_NumericStringComparison(t *testing.T) {
 			expected: []any{float64(150), float64(100), float64(75), float64(60)},
 		},
 		{
+			// A numeric string goes through float64; an integer stays one.
 			name:     "Mixed string and number multiplication",
 			colData:  []any{"10", 20, "30", 40},
 			cclExpr:  "A * 2",
-			expected: []any{float64(20), float64(40), float64(60), float64(80)},
+			expected: []any{float64(20), int64(40), float64(60), int64(80)},
 		},
 	}
 
@@ -100,28 +101,28 @@ func TestCCL_NilHandling(t *testing.T) {
 			colA:     []any{nil, 10, 20, nil},
 			colB:     []any{10, 10, 10, 10},
 			cclExpr:  "A + B",
-			expected: []any{float64(10), float64(20), float64(30), float64(10)},
+			expected: []any{int64(10), int64(20), int64(30), int64(10)},
 		},
 		{
 			name:     "nil in subtraction (treated as 0)",
 			colA:     []any{nil, 50, 30, nil},
 			colB:     []any{5, 5, 5, 5},
 			cclExpr:  "A - B",
-			expected: []any{float64(-5), float64(45), float64(25), float64(-5)},
+			expected: []any{int64(-5), int64(45), int64(25), int64(-5)},
 		},
 		{
 			name:     "nil in multiplication (treated as 0)",
 			colA:     []any{nil, 5, 10, nil},
 			colB:     []any{3, 3, 3, 3},
 			cclExpr:  "A * B",
-			expected: []any{float64(0), float64(15), float64(30), float64(0)},
+			expected: []any{int64(0), int64(15), int64(30), int64(0)},
 		},
 		{
 			name:     "Number minus nil (nil treated as 0)",
 			colA:     []any{10, 20, 30, 40},
 			colB:     []any{nil, nil, nil, nil},
 			cclExpr:  "A - B",
-			expected: []any{float64(10), float64(20), float64(30), float64(40)},
+			expected: []any{int64(10), int64(20), int64(30), int64(40)},
 		},
 	}
 

@@ -267,7 +267,7 @@ The `parquet` package provides CCL (Column Calculation Language) support for dir
 > A Parquet column holds one type, while a `DataTable` column can hold values of any kind. `ApplyCCL` settles the type of every column a statement writes so that no value is lost:
 >
 > - a column the file had keeps its type when every value written into it fits, such as whole numbers in an integer column; a fraction widens an integer column to `float64` rather than being cut off;
-> - a column the script creates, or a column whose new values do not fit its type, takes the type `Write` gives a table's column: CCL computes numbers as `float64`, and a column mixing text, numbers or booleans is text, so its values read back as strings;
+> - a column the script creates, or a column whose new values do not fit its type, takes the type `Write` gives a table's column: CCL keeps arithmetic on integers as `int64` and computes the rest as `float64`, a column mixing integers and `float64` values is `float64`, and a column mixing text, numbers or booleans is text, so its values read back as strings;
 > - see [Type Constraints](#type-constraints) for the rest.
 
 ### Batches of 1,000 rows

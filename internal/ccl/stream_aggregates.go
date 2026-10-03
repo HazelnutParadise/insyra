@@ -42,6 +42,8 @@ type streamingAggregate struct {
 	ss   float64
 	mean float64
 
+	exact integerAggregate // SUM, MIN and MAX of integers
+
 	pass int
 }
 
@@ -60,7 +62,7 @@ func NewStreamingAggregate(name string) (StreamingAggregate, bool) {
 	default:
 		return nil, false
 	}
-	s := &streamingAggregate{kind: kind}
+	s := &streamingAggregate{kind: kind, exact: newIntegerAggregate(kind)}
 	switch kind {
 	case "MAX":
 		s.maxVal = -math.MaxFloat64
@@ -100,6 +102,7 @@ func (s *streamingAggregate) Add(values []any) {
 		forEachValue([][]any{values}, func(val any) {
 			if f, ok := toFloat64(val); ok && !math.IsNaN(f) {
 				s.sum += f
+				s.exact.add(val)
 			}
 		})
 	case "AVG":
@@ -116,7 +119,8 @@ func (s *streamingAggregate) Add(values []any) {
 		})
 	case "MAX":
 		forEachValue([][]any{values}, func(val any) {
-			if f, ok := toFloat64(val); ok {
+			if f, ok := toFloat64(val); ok && !math.IsNaN(f) {
+				s.exact.add(val)
 				if f > s.maxVal {
 					s.maxVal = f
 					s.found = true
@@ -125,7 +129,8 @@ func (s *streamingAggregate) Add(values []any) {
 		})
 	case "MIN":
 		forEachValue([][]any{values}, func(val any) {
-			if f, ok := toFloat64(val); ok {
+			if f, ok := toFloat64(val); ok && !math.IsNaN(f) {
+				s.exact.add(val)
 				if f < s.minVal {
 					s.minVal = f
 					s.found = true
@@ -154,6 +159,9 @@ func (s *streamingAggregate) Add(values []any) {
 func (s *streamingAggregate) Result() (any, error) {
 	switch s.kind {
 	case "SUM":
+		if res, ok, err := s.exact.result(); ok {
+			return res, err
+		}
 		return s.sum, nil
 	case "AVG":
 		if s.count == 0 {
@@ -166,10 +174,16 @@ func (s *streamingAggregate) Result() (any, error) {
 		if !s.found {
 			return nil, nil
 		}
+		if res, ok, err := s.exact.result(); ok {
+			return res, err
+		}
 		return s.maxVal, nil
 	case "MIN":
 		if !s.found {
 			return nil, nil
+		}
+		if res, ok, err := s.exact.result(); ok {
+			return res, err
 		}
 		return s.minVal, nil
 	case "VAR":

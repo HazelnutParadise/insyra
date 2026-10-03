@@ -108,8 +108,8 @@ func feedStreamingAggregate(name string, args [][]any, batch int) (any, error) {
 }
 
 // sameStreamingResult reports whether the streaming form answered exactly what
-// the aggregate function answered: the same error message, or the same value
-// down to the last bit of its float64.
+// the aggregate function answered: the same error message, the same int64, or
+// the same value down to the last bit of its float64.
 func sameStreamingResult(want any, wantErr error, got any, gotErr error) bool {
 	if (wantErr == nil) != (gotErr == nil) {
 		return false
@@ -119,6 +119,10 @@ func sameStreamingResult(want any, wantErr error, got any, gotErr error) bool {
 	}
 	if want == nil || got == nil {
 		return want == nil && got == nil
+	}
+	if wi, ok := want.(int64); ok {
+		gi, ok := got.(int64)
+		return ok && wi == gi
 	}
 	wf, wok := want.(float64)
 	gf, gok := got.(float64)

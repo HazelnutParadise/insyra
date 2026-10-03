@@ -61,10 +61,10 @@ func TestExecuteCCLLaterStatementsSeeEarlierOnes(t *testing.T) {
 	if err := dt.PopErr(); err != nil {
 		t.Fatal(err)
 	}
-	if got := dt.GetColByName("price").Data(); !slices.Equal(got, []any{20.0, 40.0, 60.0}) {
+	if got := dt.GetColByName("price").Data(); !slices.Equal(got, []any{int64(20), int64(40), int64(60)}) {
 		t.Errorf("price = %v, want the doubled values committed", got)
 	}
-	if got := dt.GetColByName("d").Data(); !slices.Equal(got, []any{21.0, 41.0, 61.0}) {
+	if got := dt.GetColByName("d").Data(); !slices.Equal(got, []any{int64(21), int64(41), int64(61)}) {
 		t.Errorf("d = %v, want it computed from the updated A", got)
 	}
 }

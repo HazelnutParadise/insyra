@@ -71,8 +71,8 @@ func TestCompileExpression_LongChainsCompileAndEvaluate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("long chain failed to evaluate: %v", err)
 	}
-	if got != float64(terms+1) {
-		t.Errorf("long chain evaluated to %v, want %v", got, float64(terms+1))
+	if got != int64(terms+1) {
+		t.Errorf("long chain evaluated to %v (%T), want int64 %v", got, got, terms+1)
 	}
 }
 

@@ -19,8 +19,8 @@ func TestDataTable_ExecuteCCL_AggregateFunctions(t *testing.T) {
 		t.Fatal("Column sum_A not found")
 	}
 	for i := 0; i < 3; i++ {
-		if colSumA.Get(i) != 6.0 {
-			t.Errorf("Expected 6.0 at row %d, got %v", i, colSumA.Get(i))
+		if colSumA.Get(i) != int64(6) {
+			t.Errorf("Expected int64 6 at row %d, got %v", i, colSumA.Get(i))
 		}
 	}
 
@@ -56,11 +56,11 @@ func TestDataTable_ExecuteCCL_AggregateFunctions(t *testing.T) {
 		t.Fatal("Column max_A or min_B not found")
 	}
 	for i := 0; i < 3; i++ {
-		if colMaxA.Get(i) != 3.0 {
-			t.Errorf("Expected 3.0 at row %d, got %v", i, colMaxA.Get(i))
+		if colMaxA.Get(i) != int64(3) {
+			t.Errorf("Expected int64 3 at row %d, got %v", i, colMaxA.Get(i))
 		}
-		if colMinB.Get(i) != 10.0 {
-			t.Errorf("Expected 10.0 at row %d, got %v", i, colMinB.Get(i))
+		if colMinB.Get(i) != int64(10) {
+			t.Errorf("Expected int64 10 at row %d, got %v", i, colMinB.Get(i))
 		}
 	}
 }
@@ -80,8 +80,8 @@ func TestDataTable_ExecuteCCL_AggregateFunctions_Advanced(t *testing.T) {
 		t.Fatal("Column row_sum not found")
 	}
 	for i := 0; i < 3; i++ {
-		if colRowSum.Get(i) != 11.0 {
-			t.Errorf("Expected 11.0 at row %d, got %v", i, colRowSum.Get(i))
+		if colRowSum.Get(i) != int64(11) {
+			t.Errorf("Expected int64 11 at row %d, got %v", i, colRowSum.Get(i))
 		}
 	}
 
@@ -92,8 +92,8 @@ func TestDataTable_ExecuteCCL_AggregateFunctions_Advanced(t *testing.T) {
 		t.Fatal("Column spec_sum not found")
 	}
 	for i := 0; i < 3; i++ {
-		if colSpecSum.Get(i) != 21.0 {
-			t.Errorf("Expected 21.0 at row %d, got %v", i, colSpecSum.Get(i))
+		if colSpecSum.Get(i) != int64(21) {
+			t.Errorf("Expected int64 21 at row %d, got %v", i, colSpecSum.Get(i))
 		}
 	}
 
@@ -104,8 +104,8 @@ func TestDataTable_ExecuteCCL_AggregateFunctions_Advanced(t *testing.T) {
 		t.Fatal("Column expr_sum not found")
 	}
 	for i := 0; i < 3; i++ {
-		if colExprSum.Get(i) != 66.0 {
-			t.Errorf("Expected 66.0 at row %d, got %v", i, colExprSum.Get(i))
+		if colExprSum.Get(i) != int64(66) {
+			t.Errorf("Expected int64 66 at row %d, got %v", i, colExprSum.Get(i))
 		}
 	}
 
@@ -122,7 +122,7 @@ func TestDataTable_ExecuteCCL_AggregateFunctions_Advanced(t *testing.T) {
 	if colRowSums == nil {
 		t.Fatal("Column row_sums not found")
 	}
-	expectedSums := []float64{11.0, 22.0, 33.0}
+	expectedSums := []int64{11, 22, 33}
 	for i := 0; i < 3; i++ {
 		if colRowSums.Get(i) != expectedSums[i] {
 			t.Errorf("Expected %v at row %d, got %v", expectedSums[i], i, colRowSums.Get(i))

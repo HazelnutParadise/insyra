@@ -435,7 +435,7 @@ func TestDT_CCL(t *testing.T) {
 	if col == nil {
 		t.Fatal("CCL did not create column C")
 	}
-	if got, want := col.Data(), []any{11.0, 22.0, 33.0}; !reflect.DeepEqual(got, want) {
+	if got, want := col.Data(), []any{int64(11), int64(22), int64(33)}; !reflect.DeepEqual(got, want) {
 		t.Errorf("C: got %v, want %v", got, want)
 	}
 }

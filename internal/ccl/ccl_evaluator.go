@@ -180,6 +180,8 @@ func describeNode(n cclNode) string {
 		return fmt.Sprintf("column %d", t.index)
 	case *cclNumberNode:
 		return strconv.FormatFloat(t.value, 'g', -1, 64)
+	case *cclIntegerNode:
+		return strconv.FormatInt(t.value, 10)
 	case *cclStringNode:
 		return "'" + t.value + "'"
 	case *cclBooleanNode:
@@ -287,7 +289,7 @@ func IsNewColNode(n cclNode) bool {
 // IsRowDependent checks if the expression depends on the current row.
 func IsRowDependent(n cclNode) bool {
 	switch t := n.(type) {
-	case *cclNumberNode, *cclStringNode, *cclBooleanNode, *cclNilNode, *cclFoldedValueNode, *cclFailedPartNode:
+	case *cclNumberNode, *cclIntegerNode, *cclStringNode, *cclBooleanNode, *cclNilNode, *cclFoldedValueNode, *cclFailedPartNode:
 		return false
 	case *cclIdentifierNode, *cclColIndexNode, *cclColNameNode, *cclResolvedColNode, *cclAtNode, *cclRowIndexNode:
 		return true
@@ -411,6 +413,8 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 	switch t := n.(type) {
 	case *cclNumberNode:
 		return t.value, nil
+	case *cclIntegerNode:
+		return t.value, nil
 	case *cclStringNode:
 		return t.value, nil
 	case *cclBooleanNode:
@@ -428,9 +432,9 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		return ctx.GetCurrentRow(), nil
 	case *cclRowIndexNode:
 		if g, ok := ctx.(GlobalRowContext); ok {
-			return float64(g.GlobalRowIndex()), nil
+			return int64(g.GlobalRowIndex()), nil
 		}
-		return float64(ctx.GetRowIndex()), nil
+		return int64(ctx.GetRowIndex()), nil
 	case *cclIdentifierNode:
 		idx, ok := utils.ParseColIndex(t.name)
 		if !ok {
@@ -818,6 +822,8 @@ func literalNode(v any) cclNode {
 	switch x := v.(type) {
 	case float64:
 		return &cclNumberNode{value: x}
+	case int64:
+		return &cclIntegerNode{value: x}
 	case string:
 		return &cclStringNode{value: x}
 	case bool:
@@ -975,6 +981,11 @@ func applyOperator(op string, left, right any) (any, error) {
 				return nil, fmt.Errorf("invalid operands for -: %v, %v", left, right)
 			}
 		}
+	}
+
+	// Two integers stay integers.
+	if res, ok, err := applyIntegerOperator(op, left, right); ok {
+		return res, err
 	}
 
 	// 特殊情況處理：其中一方為nil

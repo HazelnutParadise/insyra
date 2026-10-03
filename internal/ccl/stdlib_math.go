@@ -92,6 +92,10 @@ func registerMathFunctions() {
 		if b == 0 {
 			return nil, fmt.Errorf("MOD: division by zero")
 		}
+		// Integers give an integer, by the rule the % operator follows.
+		if res, ok, err := applyIntegerOperator("%", args[0], args[1]); ok {
+			return res, err
+		}
 		return math.Mod(a, b), nil
 	})
 

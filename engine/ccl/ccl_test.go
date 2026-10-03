@@ -43,8 +43,8 @@ func TestCompileBindAndEvaluate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if got != 11.0 {
-		t.Errorf("A + B on row 0: got %v (%T), want 11", got, got)
+	if got != int64(11) {
+		t.Errorf("A + B on row 0: got %v (%T), want int64 11", got, got)
 	}
 
 	if err := ctx.SetRowIndex(2); err != nil {
@@ -54,8 +54,8 @@ func TestCompileBindAndEvaluate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate on row 2: %v", err)
 	}
-	if got != 33.0 {
-		t.Errorf("A + B on row 2: got %v, want 33", got)
+	if got != int64(33) {
+		t.Errorf("A + B on row 2: got %v (%T), want int64 33", got, got)
 	}
 }
 
