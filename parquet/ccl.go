@@ -17,13 +17,13 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/ccl"
 	"github.com/HazelnutParadise/insyra/internal/utils"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/apache/arrow/go/v17/parquet"
-	"github.com/apache/arrow/go/v17/parquet/compress"
-	"github.com/apache/arrow/go/v17/parquet/file"
-	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet"
+	"github.com/apache/arrow-go/v18/parquet/compress"
+	"github.com/apache/arrow-go/v18/parquet/file"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
 
 // cclRun is a run of consecutive rows of the file, held as one slice of Go
@@ -53,7 +53,7 @@ func (r cclRun) rows() int {
 // values of their own, so a run outlives the record's buffers, and each column
 // keeps the array it was read from, retained, so the writer can put a column
 // nothing wrote back into the file unchanged.
-func runFromRecord(rec arrow.Record, names []string, offset int) cclRun {
+func runFromRecord(rec arrow.RecordBatch, names []string, offset int) cclRun {
 	cols := make([][]any, rec.NumCols())
 	arrays := make([]arrow.Array, rec.NumCols())
 	for i := range cols {
@@ -135,7 +135,7 @@ func newRunContext(r cclRun) *parquetContext {
 
 // newParquetContext returns a context over record, whose first row sits at
 // offset in the file. A nil record gives the context of an empty batch.
-func newParquetContext(record arrow.Record, colNames []string, offset int) *parquetContext {
+func newParquetContext(record arrow.RecordBatch, colNames []string, offset int) *parquetContext {
 	if record == nil {
 		colNameMap := make(map[string]int, len(colNames))
 		for i, name := range colNames {
@@ -1662,7 +1662,7 @@ func runValues(r cclRun) map[string][]any {
 	return values
 }
 
-// buildArrowRecord constructs an arrow.Record from the values of the runs that
+// buildArrowRecord constructs an arrow.RecordBatch from the values of the runs that
 // have left the pipeline, in the schema the file is written with. No rows is
 // errNothingToWrite, so an input with none leaves the original alone.
 //
@@ -1677,7 +1677,7 @@ func runValues(r cclRun) map[string][]any {
 // array is the one its field describes is written from that array rather than
 // from the Go values, so it comes back as the file had it whatever its type: a
 // list, a struct or a decimal at its own scale never passed through Go at all.
-func buildArrowRecord(values map[string][]any, colNames []string, arrays []arrow.Array, schema *arrow.Schema) (rec arrow.Record, err error) {
+func buildArrowRecord(values map[string][]any, colNames []string, arrays []arrow.Array, schema *arrow.Schema) (rec arrow.RecordBatch, err error) {
 	mem := memory.DefaultAllocator
 
 	if len(colNames) == 0 {
@@ -1756,7 +1756,7 @@ func buildArrowRecord(values map[string][]any, colNames []string, arrays []arrow
 		built = append(built, arr)
 	}
 
-	rec = array.NewRecord(schema, built, int64(rows))
+	rec = array.NewRecordBatch(schema, built, int64(rows))
 	for _, arr := range built {
 		arr.Release()
 	}
@@ -2036,7 +2036,7 @@ func cclFileInfo(path string) (totalRows int, colNames []string, schema *arrow.S
 // forEachRecord reads the file at path batch by batch and calls fn with every
 // record, in order. The reader stops when fn returns, and fn must not keep rec
 // after it returns.
-func forEachRecord(ctx context.Context, path string, fn func(rec arrow.Record) error) error {
+func forEachRecord(ctx context.Context, path string, fn func(rec arrow.RecordBatch) error) error {
 	// The reader stops when this call returns, so an early return cannot leave
 	// it blocked on a batch nobody reads, holding the file open.
 	ctx, cancel := context.WithCancel(ctx)
@@ -2107,7 +2107,7 @@ func appliedBatches(ctx context.Context, path string, colNames []string, prior [
 		}
 
 		offset := 0
-		if err := forEachRecord(ctx, path, func(rec arrow.Record) error {
+		if err := forEachRecord(ctx, path, func(rec arrow.RecordBatch) error {
 			run := runFromRecord(rec, colNames, offset)
 			offset += int(rec.NumRows())
 			runs, err := pipeline.push(run)
@@ -2343,7 +2343,7 @@ func passesFilter(val any) bool {
 // batch nobody reads, holding the file open.
 func eachRun(ctx context.Context, path string, colNames []string, fn func(r cclRun) error) error {
 	offset := 0
-	return forEachRecord(ctx, path, func(rec arrow.Record) error {
+	return forEachRecord(ctx, path, func(rec arrow.RecordBatch) error {
 		// A run holds Go values of its own, so it outlives the record it was read
 		// from: forEachRecord releases the record once this call returns, and fn
 		// may well have kept the run.

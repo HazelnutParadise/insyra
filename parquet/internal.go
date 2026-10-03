@@ -11,19 +11,19 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 	"github.com/TimLai666/go-decimal/decimal"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/apache/arrow/go/v17/parquet"
-	"github.com/apache/arrow/go/v17/parquet/file"
-	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet"
+	"github.com/apache/arrow-go/v18/parquet/file"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
 
-// streamAsArrowRecord：串流讀（可選欄、可選包），一批一批吐出 arrow.Record
-func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan arrow.Record, <-chan error) {
+// streamAsArrowRecord：串流讀（可選欄、可選包），一批一批吐出 arrow.RecordBatch
+func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan arrow.RecordBatch, <-chan error) {
 	f, err := os.Open(path)
 	if err != nil {
-		recChan := make(chan arrow.Record)
+		recChan := make(chan arrow.RecordBatch)
 		errChan := make(chan error, 1)
 		errChan <- err
 		close(errChan)
@@ -48,8 +48,8 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 // reader finishes. The error channel is closed before the record channel,
 // which the consumers rely on to never trade a late error for a partial
 // result.
-func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string, opt ReadOptions, batchSize int, done func()) (<-chan arrow.Record, <-chan error) {
-	recChan := make(chan arrow.Record)
+func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string, opt ReadOptions, batchSize int, done func()) (<-chan arrow.RecordBatch, <-chan error) {
+	recChan := make(chan arrow.RecordBatch)
 	errChan := make(chan error, 1)
 
 	go func() {
@@ -138,7 +138,7 @@ func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, lab
 
 		var read int64
 		for rr.Next() {
-			rec := rr.Record()
+			rec := rr.RecordBatch()
 			rec.Retain()
 			read += rec.NumRows()
 			select {
@@ -149,23 +149,23 @@ func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, lab
 			case recChan <- rec:
 			}
 		}
+		// shortRowGroups reads the same columns again; none selected means all.
+		cols := colIndices
+		if len(cols) == 0 {
+			schema := r.MetaData().Schema
+			cols = make([]int, schema.NumColumns())
+			for i := 0; i < schema.NumColumns(); i++ {
+				cols[i] = i
+			}
+		}
 		if rr.Err() != nil && !errors.Is(rr.Err(), io.EOF) {
-			errChan <- rr.Err()
+			errChan <- readerFailed(ctx, label, rr.Err(), fr, cols, rowGroups, counts, countable)
 			return
 		}
-		// Arrow answers a page header it cannot decode as the end of the row
-		// group, and pqarrow answers the empty batch that leaves as io.EOF, so
-		// the rows the footer promised are the only sign the file was damaged.
+		// A reader that answers a page it cannot decode with no error at all is
+		// still caught here: the rows the footer promised are what says the file
+		// was damaged.
 		if countable && read != want {
-			// Build colIndices for shortRowGroups (empty means all columns)
-			cols := colIndices
-			if len(cols) == 0 {
-				schema := r.MetaData().Schema
-				cols = make([]int, schema.NumColumns())
-				for i := 0; i < schema.NumColumns(); i++ {
-					cols[i] = i
-				}
-			}
 			errChan <- damagedFile(label, read, want, shortRowGroups(ctx, fr, cols, rowGroups, counts))
 		}
 	}()
@@ -390,7 +390,7 @@ func newColumn(data any, name string) *insyra.DataList {
 	return insyra.NewDataList(data).SetName(name)
 }
 
-func recordToDataTable(rec arrow.Record) *insyra.DataTable {
+func recordToDataTable(rec arrow.RecordBatch) *insyra.DataTable {
 	dataTable := insyra.NewDataTable()
 	if rec == nil {
 		return dataTable

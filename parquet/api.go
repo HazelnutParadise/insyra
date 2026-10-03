@@ -10,12 +10,12 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/utils"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/apache/arrow/go/v17/parquet"
-	"github.com/apache/arrow/go/v17/parquet/compress"
-	"github.com/apache/arrow/go/v17/parquet/file"
-	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet"
+	"github.com/apache/arrow-go/v18/parquet/compress"
+	"github.com/apache/arrow-go/v18/parquet/file"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
 
 // ReadOptions selects what a read covers. An empty field means everything.
@@ -67,11 +67,35 @@ func unreadableFile(label string, r any) error {
 }
 
 // damagedFile is the error for a file that read a different number of rows than
-// its metadata holds. Arrow reads a page it cannot decode as the end of its row
-// group and goes on with the next one, so the count is the only sign of it, and
-// groups are the row groups that did not read in full.
+// its metadata holds. It is the second line of defence: a page Arrow cannot
+// decode is an error of the read itself, which readerFailed names, so this one
+// is for a reader that answers with no error at all. groups are the row groups
+// that did not read in full.
 func damagedFile(label string, read, want int64, groups []int) error {
 	return fmt.Errorf("parquet: %s is damaged: its metadata holds %d rows in the row groups read, but %d were read; row groups %v did not read in full", label, want, read, groups)
+}
+
+// readerFailed is the error for a read the Arrow reader itself failed. When
+// the caller's context was cancelled or ran out, err is returned as it is: the
+// read was stopped, not the file found damaged. Only ctx can say so: the
+// parallel reader joins a context.Canceled of its own into the error of a
+// damaged page, so the error itself cannot. Otherwise each row group is read
+// again on its own, and when some do not read in full the error names the file
+// and those row groups and wraps err; when none can be named, err is returned
+// as it is. countable is false when rowGroups holds an index outside the file,
+// which ReadRowGroups reports better itself.
+func readerFailed(ctx context.Context, label string, err error, fr *pqarrow.FileReader, colIndices []int, rowGroups []int, counts []int64, countable bool) error {
+	if ctx.Err() != nil {
+		return err
+	}
+	if !countable {
+		return err
+	}
+	groups := shortRowGroups(ctx, fr, colIndices, rowGroups, counts)
+	if len(groups) == 0 {
+		return err
+	}
+	return fmt.Errorf("parquet: %s is damaged: row groups %v did not read in full: %w", label, groups, err)
 }
 
 // Inspect reads a Parquet file's metadata without reading any values.
@@ -468,7 +492,7 @@ func readTableFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string
 	var arrowTable arrow.Table
 	arrowTable, err = fr.ReadRowGroups(ctx, colIndices, rowGroups)
 	if err != nil {
-		return nil, err
+		return nil, readerFailed(ctx, label, err, fr, colIndices, rowGroups, counts, countable)
 	}
 	if countable && arrowTable.NumRows() != want {
 		// Read before releasing: the table's own fields do not outlive it.
@@ -516,7 +540,7 @@ func readTableFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string
 // stops the reader, so nothing is left running whether or not ctx is
 // cancelled. Cancelling ctx ends the sequence with the context's error.
 func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) iter.Seq2[*insyra.DataTable, error] {
-	return streamSeq(ctx, func(inner context.Context) (<-chan arrow.Record, <-chan error) {
+	return streamSeq(ctx, func(inner context.Context) (<-chan arrow.RecordBatch, <-chan error) {
 		return streamAsArrowRecord(inner, path, opt, batchSize)
 	})
 }
@@ -525,7 +549,7 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) it
 // access, the same way Stream reads a path; see ReadFrom for why it takes an
 // io.ReaderAt and the size.
 func StreamFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions, batchSize int) iter.Seq2[*insyra.DataTable, error] {
-	return streamSeq(ctx, func(inner context.Context) (<-chan arrow.Record, <-chan error) {
+	return streamSeq(ctx, func(inner context.Context) (<-chan arrow.RecordBatch, <-chan error) {
 		return streamArrowRecordsFrom(inner, io.NewSectionReader(r, 0, size), "the Parquet input", opt, batchSize, nil)
 	})
 }
@@ -533,7 +557,7 @@ func StreamFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions,
 // streamSeq turns a record stream into the iterator Stream and StreamFrom
 // return. The reader answers to a context of its own, so returning from here
 // — the loop ended, or the caller broke out of it — stops the reader too.
-func streamSeq(ctx context.Context, start func(context.Context) (<-chan arrow.Record, <-chan error)) iter.Seq2[*insyra.DataTable, error] {
+func streamSeq(ctx context.Context, start func(context.Context) (<-chan arrow.RecordBatch, <-chan error)) iter.Seq2[*insyra.DataTable, error] {
 	return func(yield func(*insyra.DataTable, error) bool) {
 		inner, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -552,7 +576,7 @@ func streamSeq(ctx context.Context, start func(context.Context) (<-chan arrow.Re
 
 // streamTables is the reader behind Stream: it sends each batch on dtChan and
 // the one error, if any, on errChan, and stops when ctx is cancelled.
-func streamTables(ctx context.Context, recChan <-chan arrow.Record, internalErrChan <-chan error) (<-chan *insyra.DataTable, <-chan error) {
+func streamTables(ctx context.Context, recChan <-chan arrow.RecordBatch, internalErrChan <-chan error) (<-chan *insyra.DataTable, <-chan error) {
 	dtChan := make(chan *insyra.DataTable)
 	errChan := make(chan error, 1)
 

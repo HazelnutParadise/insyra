@@ -54,9 +54,10 @@ func noPanic(t *testing.T, what string, f func()) {
 }
 
 // TestReadFromNeverPanicsOnADamagedFile walks k over the shorter file and reads
-// what comes out. Arrow's reader dereferences a nil pointer on some of these
-// offsets; every one of them has to come back as a table or an error, and at
-// least one as an error naming the file.
+// what comes out. Arrow's reader returns an error on these offsets instead of
+// dereferencing a nil pointer, so every one of them has to come back as a table
+// or an error, and at least one as an error that says what is wrong with the
+// file.
 func TestReadFromNeverPanicsOnADamagedFile(t *testing.T) {
 	short, _ := damagedFiles(t)
 	ctx := context.Background()
@@ -75,7 +76,10 @@ func TestReadFromNeverPanicsOnADamagedFile(t *testing.T) {
 			continue
 		}
 		errs++
-		if strings.Contains(err.Error(), "not a readable Parquet file") {
+		// Either the file cannot be read at all or it reads damaged: both say
+		// what is wrong with it rather than passing Arrow's bare message on.
+		if strings.Contains(err.Error(), "not a readable Parquet file") ||
+			strings.Contains(err.Error(), "is damaged") {
 			named++
 			continue
 		}
@@ -87,7 +91,7 @@ func TestReadFromNeverPanicsOnADamagedFile(t *testing.T) {
 		t.Fatalf("no offset made ReadFrom return an error, out of %d read", cases)
 	}
 	if named == 0 {
-		t.Error("no error said the file is not a readable Parquet file")
+		t.Error("no error said what is wrong with the file")
 	}
 }
 

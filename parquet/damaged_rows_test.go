@@ -11,15 +11,14 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/apache/arrow/go/v17/parquet/file"
+	"github.com/apache/arrow-go/v18/parquet/file"
 )
 
-// A Parquet file whose data page header is damaged reads as if it ended before
-// that row group: Arrow records the page it cannot decode, then reports the end
-// of the row group without asking for that error, and pqarrow turns the empty
-// batch into io.EOF. Every reader here therefore compares what it read with the
-// row count the footer holds for the row groups it was asked for, and says the
-// file is damaged when the two differ.
+// A Parquet file whose data page header is damaged is a file Arrow's reader
+// reports an error for, and every reader here has to name the file and the row
+// groups that did not read in full rather than pass the reader's bare message
+// on. The row count the footer holds is the other half of the defence: it is
+// what catches a page a reader answers with no error at all.
 
 // writeDamagedFile writes a 3,000-row file of one column with three row groups
 // and overwrites the first eight bytes of row group damage's first data page,
@@ -79,9 +78,13 @@ func writeDamagedFile(t *testing.T, damage int) string {
 	return path
 }
 
-// checkDamaged asserts err says the file is damaged, that its metadata holds
-// 3,000 rows and that it names row group where, and that no table came back
+// checkDamaged asserts err says the file is damaged, that it names row group
+// where, that it wraps the error Arrow reported, and that no table came back
 // with it.
+//
+// The row counts the other half of the message carries are not asked for: when
+// Arrow reports the damaged page itself there is no rows-read count to report,
+// because the read stopped rather than coming up short.
 func checkDamaged(t *testing.T, what string, err error, dt *insyra.DataTable, where string) {
 	t.Helper()
 	if err == nil {
@@ -90,10 +93,13 @@ func checkDamaged(t *testing.T, what string, err error, dt *insyra.DataTable, wh
 	}
 	msg := err.Error()
 	t.Logf("%s: %v", what, err)
-	for _, want := range []string{"is damaged", "3000", "row groups " + where} {
+	for _, want := range []string{"is damaged", "row groups " + where} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("%s returned %q, want it to mention %q", what, msg, want)
 		}
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("%s returned %q, want it to wrap the error Arrow reported", what, msg)
 	}
 	if dt != nil {
 		t.Errorf("%s returned a %d-row table with the error %v", what, dt.NumRows(), err)
@@ -101,16 +107,17 @@ func checkDamaged(t *testing.T, what string, err error, dt *insyra.DataTable, wh
 }
 
 // TestReadRefusesADamagedRowGroup puts one damaged row group through every
-// reader. Arrow's own answer is a short read with no error, so each of them has
-// to say the file is damaged instead, and ApplyCCL has to leave the file alone.
+// reader. Arrow reports the page it cannot decode as an error of the read, so
+// each reader has to name the file and the row group that did not read in full
+// and keep Arrow's error inside its own, and ApplyCCL has to leave the file
+// alone.
 func TestReadRefusesADamagedRowGroup(t *testing.T) {
 	ctx := context.Background()
 	for _, damage := range []int{2, 1} {
 		t.Run(fmt.Sprintf("row group %d", damage), func(t *testing.T) {
 			path := writeDamagedFile(t, damage)
-			// Arrow reads a page it cannot decode as the end of its row
-			// group and goes on with the next one, so the groups that did not
-			// read in full are named explicitly.
+			// Arrow names no row group itself, so each reader reads the row
+			// groups one at a time to find which ones did not read in full.
 			where := fmt.Sprintf("[%d]", damage)
 
 			dt, err := Read(ctx, path, ReadOptions{})
@@ -220,5 +227,28 @@ func TestReadsAroundADamagedMiddleRowGroup(t *testing.T) {
 	}
 	if row1001 := dt.GetElement(1000, "A"); row1001 != float64(2001) { // 1-based 1001 is index 1000
 		t.Errorf("row 1001 holds %v (%T), want 2001", row1001, row1001)
+	}
+}
+
+// TestReadOnACancelledContextIsNotDamage reads a damaged file with a context
+// that is already cancelled. The read was stopped, not the file found damaged,
+// so the context's own error is what comes back: the reader's parallel shards
+// join a context.Canceled of their own into the error of the damaged page, which
+// is why the caller's context is the only thing that can tell the two apart.
+func TestReadOnACancelledContextIsNotDamage(t *testing.T) {
+	path := writeDamagedFile(t, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	dt, err := Read(ctx, path, ReadOptions{})
+	if err == nil {
+		t.Fatalf("Read returned %d rows and no error on a cancelled context", dt.NumRows())
+	}
+	t.Logf("Read: %v", err)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Read returned %v, want an error that is context.Canceled", err)
+	}
+	if strings.Contains(err.Error(), "is damaged") {
+		t.Errorf("Read returned %v, want a cancelled context not reported as damage", err)
 	}
 }
