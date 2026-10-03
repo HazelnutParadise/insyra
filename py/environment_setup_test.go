@@ -274,6 +274,25 @@ func TestPinnedEnvironmentEndToEnd(t *testing.T) {
 		t.Errorf("an integer too large for a float64 gave %v, %v; want an error", got, err)
 	}
 
+	// A column called name was taken for the DataFrame's name.
+	nameColumn, err := Run[*insyra.DataTable](ctx, `insyra.Return(pd.DataFrame({"name": ["x", "y"], "v": [1, 2]}))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names := nameColumn.ColNames(); nameColumn.GetName() != "" || len(names) != 2 || names[0] != "name" || names[1] != "v" {
+		t.Errorf("a DataFrame with a column called name came back named %q with columns %q", nameColumn.GetName(), names)
+	}
+	nameSet, err := Run[*insyra.DataTable](ctx, `
+df = pd.DataFrame({"v": [1, 2]})
+df.name = "scores"
+insyra.Return(df)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nameSet.GetName() != "scores" {
+		t.Errorf("a DataFrame named scores came back named %q", nameSet.GetName())
+	}
+
 	var version string
 	if err := RunCodeContext(ctx, &version, "import platform\ninsyra.Return(platform.python_version())"); err != nil {
 		t.Fatal(err)

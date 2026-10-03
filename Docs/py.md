@@ -480,7 +480,7 @@ When `out` is a `DataTable` or `DataList` pointer, `insyra.Return` recognizes co
 - **pandas.DataFrame** -> `*insyra.DataTable`
   - Columns become `ColNames`.
   - Index becomes `RowNames` (converted to strings).
-  - `DataFrame.name` (if set) becomes `DataTable.Name`.
+  - `DataFrame.name` (if set) becomes `DataTable.Name`. A column called `name` is not taken for it, so such a DataFrame comes back with no table name.
 - **polars.DataFrame** -> `*insyra.DataTable`
   - Columns become `ColNames`.
   - Polars has no index; row names are not set.
