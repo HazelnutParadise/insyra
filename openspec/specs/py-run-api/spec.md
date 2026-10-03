@@ -73,7 +73,7 @@ When the Python process exits with an error before it returns a value, whether i
 
 ### Requirement: Tables and lists inside a result are decoded as tables and lists
 
-When the type a result is decoded into holds `*insyra.DataTable`, `*insyra.DataList`, `insyra.IDataTable` or `insyra.IDataList` below its top level, in a struct field, a map value, a slice or array element, or behind a pointer, `RunCode`, `Run` and the other runners SHALL decode each such part with the table or list decoder, and every other part as `encoding/json` decodes it: struct fields matched and hidden by its rules, including its rules for embedded structs, `-` and `,string`; map keys of string kind, integer kind or with `UnmarshalText`; a value that already holds something keeping what the result leaves out; and `None` setting a pointer, slice, map or interface to nil and leaving a struct as it is. A type that implements `json.Unmarshaler` or `encoding.TextUnmarshaler`, or that holds no table or list, SHALL be decoded through JSON as before. An embedded `*insyra.DataTable` or `*insyra.DataList` SHALL follow the rule for an embedded struct: with a tag it is a field under that name, and without one it is decoded from the whole value, at any depth of the result, and a value it cannot decode SHALL be an error. Beside other fields it SHALL take the whole value only when that value is a table or list as `insyra.Return` marks one, or an array; an object without that mark SHALL be decoded into the other fields. An embedded `insyra.IDataTable` or `insyra.IDataList` SHALL be a field named after its type, as an embedded interface is in `encoding/json`. Decoding SHALL never end the program, whatever the result type.
+When the type a result is decoded into holds `*insyra.DataTable`, `*insyra.DataList`, `insyra.IDataTable` or `insyra.IDataList` below its top level, in a struct field, a map value, a slice or array element, or behind a pointer, `RunCode`, `Run` and the other runners SHALL decode each such part with the table or list decoder, and every other part as `encoding/json` decodes it: struct fields matched and hidden by its rules, including its rules for embedded structs, `-` and `,string`; map keys of string kind, integer kind or with `UnmarshalText`; a value that already holds something keeping what the result leaves out; and `None` setting a pointer, slice, map or interface to nil and leaving a struct as it is. A type that holds an `any` SHALL be decoded the same way: an `any` SHALL take the decoded value, or, when it already holds a non-nil pointer and the value is not `None`, SHALL be decoded into what the pointer points to, as in `encoding/json`. An integer field SHALL take a number only when its type holds it; a number it cannot hold, or one with a fraction, SHALL be an error. A type that implements `json.Unmarshaler` or `encoding.TextUnmarshaler`, or that holds no table, list or `any`, SHALL be decoded through JSON as before, unless the result holds a number JSON would wrap around in an integer field. An embedded `*insyra.DataTable` or `*insyra.DataList` SHALL follow the rule for an embedded struct: with a tag it is a field under that name, and without one it is decoded from the whole value, at any depth of the result, and a value it cannot decode SHALL be an error. Beside other fields it SHALL take the whole value only when that value is a table or list as `insyra.Return` marks one, or an array; an object without that mark SHALL be decoded into the other fields. An embedded `insyra.IDataTable` or `insyra.IDataList` SHALL be a field named after its type, as an embedded interface is in `encoding/json`. Decoding SHALL never end the program, whatever the result type.
 
 `insyra.Return` SHALL turn a pandas or polars DataFrame or Series anywhere inside a dict, list or tuple into the payload it sends for one at the top level.
 
@@ -116,6 +116,14 @@ When the type a result is decoded into holds `*insyra.DataTable`, `*insyra.DataL
 #### Scenario: A dict holding a DataFrame from Python
 - **WHEN** the code runs `insyra.Return({"table": df, "score": 7})` in the real environment
 - **THEN** the call succeeds and the table arrives as a table
+
+#### Scenario: An any holding a pointer
+- **WHEN** the result type is a struct whose `any` field already holds a pointer to a struct, and Python returns an object for that field
+- **THEN** the object is decoded into the struct the pointer points to, and the field still holds the pointer
+
+#### Scenario: An integer the field cannot hold
+- **WHEN** Python returns `2**63` and the result type is `int64`, or `2**64` and it is `uint64`
+- **THEN** the call returns an error naming the type, instead of a number wrapped around
 
 ### Requirement: An empty DataFrame keeps its column names
 
@@ -196,4 +204,28 @@ When `insyra.Return` sends a pandas DataFrame, the table SHALL take the DataFram
 #### Scenario: A name set on the DataFrame
 - **WHEN** Python sets `df.name = "scores"` on a DataFrame without a column called `name` and returns it
 - **THEN** the table is named `scores`
+
+### Requirement: An integer in a result keeps every digit
+
+The runners SHALL decode an integer in the value Python passes to `insyra.Return` without changing it. An integer above 2^53 in magnitude SHALL come back as an `int64`, or as a `uint64` when it is above the `int64` range, wherever the result type holds an `any`, a table cell or a list cell. An integer within ±2^53 and a float SHALL come back as a float64 there, as before. Bound into an integer field, an integer SHALL be exact whenever the field's type holds it. An integer beyond 64 bits SHALL come back as the nearest float64. `insyra.Return` SHALL convert each column of a pandas or polars DataFrame on its own, so an integer column beside a float one is sent as integers.
+
+#### Scenario: A large id into an int64
+- **WHEN** Python returns `2**53 + 1` and the result type is `int64`
+- **THEN** the result is 9007199254740993
+
+#### Scenario: A large id into any
+- **WHEN** Python returns `{"id": 2**53 + 1, "n": 3}` and the result type is `map[string]any`
+- **THEN** `id` is the `int64` 9007199254740993 and `n` is the float64 3
+
+#### Scenario: A DataFrame of ids
+- **WHEN** Python returns a DataFrame whose column `id` holds `2**53 + 1` and `2**63 - 1`, and the result type is `*insyra.DataTable`
+- **THEN** the cells are the `int64` values 9007199254740993 and 9223372036854775807
+
+#### Scenario: A DataFrame of ids and floats
+- **WHEN** Python returns a pandas or polars DataFrame with an integer column `id` holding `2**53 + 1` beside a float column `x`
+- **THEN** the `id` cell is the `int64` 9007199254740993 and the `x` cells are float64
+
+#### Scenario: Above the int64 range
+- **WHEN** Python returns `2**64 - 1` and the result type is `any`
+- **THEN** the result is the `uint64` 18446744073709551615
 
