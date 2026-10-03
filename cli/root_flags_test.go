@@ -11,8 +11,8 @@ import (
 // apply, instead of being swallowed as data.
 func TestRootFlagsBeforeRawArgCommand(t *testing.T) {
 	base := t.TempDir()
-	env.SetBasePath(base)
-	t.Cleanup(func() { env.SetBasePath("") })
+	env.Default().SetBasePath(base)
+	t.Cleanup(func() { env.Default().SetBasePath("") })
 
 	if err := env.Default().Create("e2"); err != nil {
 		t.Fatal(err)

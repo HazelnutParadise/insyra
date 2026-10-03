@@ -158,6 +158,8 @@ mgr.Export("scratch", "/tmp/backup.json")
 
 To save a map of variables yourself, `mgr.SaveVariables(name, vars)` writes every variable the environment can store and returns the ones it left out, each with its name, Go type and reason. `mgr.SaveState(name, vars)` saves the same way without the list. Both return an error only when the file could not be written.
 
+Every operation is a method on a `Manager`. The package-level functions of the same names (`env.Create`, `env.SaveState`, `env.SetBasePath` and the rest) only call the method on `env.Default()`; they are **Deprecated** and are removed in the next release. Call `env.Default().Create(name)` instead.
+
 ## Global Flags
 
 Available on the root command:

@@ -15,7 +15,7 @@ func setupTempHome(t *testing.T) string {
 	t.Setenv("HOME", home)
 	t.Setenv("HOMEDRIVE", "")
 	t.Setenv("HOMEPATH", "")
-	t.Cleanup(func() { env.SetBasePath("") })
+	t.Cleanup(func() { env.Default().SetBasePath("") })
 	return home
 }
 

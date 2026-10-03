@@ -100,6 +100,10 @@ Every command file has a `func init()` that calls `Register(&CommandHandler{...}
 
 The `Usage` string is what the user sees in `insyra help <command>`. Keep it accurate and tight; if it gets long, separate the major shapes with `|` (see `load`, `save`).
 
+### Flags: what the one-shot form takes on top of its arguments
+
+A command whose one-shot form takes a flag (`env import ... --force`, `accel ... --mode gpu`) declares it in `Flags` with a `CommandFlag`. `BuildCobraCommands` registers it with Cobra and hands it to `Run` as arguments, the way the REPL and scripts pass it, so `Run` parses it in one place. Set `Form` when the flag belongs to one form only, and `TakesValue` when it takes a value. Don't special-case a command by name in `BuildCobraCommands`.
+
 ### Forms and Examples (optional but expected for complex commands)
 
 `CommandHandler` has two optional `[]string` fields rendered by `help <cmd>` under "Forms:" and "Examples:" headers. Use them — don't stuff everything into `Usage` or write your own help-printing path.

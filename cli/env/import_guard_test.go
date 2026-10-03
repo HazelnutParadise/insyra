@@ -13,14 +13,14 @@ import (
 // exportOne writes an export of a one-variable environment and returns its path.
 func exportOne(t *testing.T) string {
 	t.Helper()
-	if err := Create("source"); err != nil {
+	if err := Default().Create("source"); err != nil {
 		t.Fatalf("create source: %v", err)
 	}
-	if err := SaveState("source", map[string]any{"new": 1}); err != nil {
+	if err := Default().SaveState("source", map[string]any{"new": 1}); err != nil {
 		t.Fatalf("save source: %v", err)
 	}
 	out := filepath.Join(t.TempDir(), "source-export.json")
-	if err := Export("source", out); err != nil {
+	if err := Default().Export("source", out); err != nil {
 		t.Fatalf("export source: %v", err)
 	}
 	return out
@@ -33,10 +33,10 @@ func TestImportRefusesATargetItCannotRead(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			setupTempHome(t)
 			exportFile := exportOne(t)
-			if err := Create("target"); err != nil {
+			if err := Default().Create("target"); err != nil {
 				t.Fatalf("create target: %v", err)
 			}
-			envPath, err := ResolveEnvPath("target")
+			envPath, err := Default().ResolveEnvPath("target")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,7 +53,7 @@ func TestImportRefusesATargetItCannotRead(t *testing.T) {
 			if err == nil {
 				t.Fatalf("the guard answered empty=%v with no error for a target whose %s could not be read", empty, name)
 			}
-			if _, err := Import(exportFile, "target", false); err == nil {
+			if _, err := Default().Import(exportFile, "target", false); err == nil {
 				t.Fatalf("import without --force went ahead although %s could not be read", name)
 			}
 		})
@@ -63,10 +63,10 @@ func TestImportRefusesATargetItCannotRead(t *testing.T) {
 func TestImportFillsATargetWithNothingInIt(t *testing.T) {
 	setupTempHome(t)
 	exportFile := exportOne(t)
-	if err := Create("target"); err != nil {
+	if err := Default().Create("target"); err != nil {
 		t.Fatalf("create target: %v", err)
 	}
-	if _, err := Import(exportFile, "target", false); err != nil {
+	if _, err := Default().Import(exportFile, "target", false); err != nil {
 		t.Fatalf("import into an empty target without --force: %v", err)
 	}
 }

@@ -5,7 +5,7 @@ import "testing"
 func TestGlobalConfigDefaultsAndUpdatesAccelMode(t *testing.T) {
 	setupTempHome(t)
 
-	cfg, err := LoadGlobalConfig()
+	cfg, err := Default().LoadGlobalConfig()
 	if err != nil {
 		t.Fatalf("load global config failed: %v", err)
 	}
@@ -13,7 +13,7 @@ func TestGlobalConfigDefaultsAndUpdatesAccelMode(t *testing.T) {
 		t.Fatalf("expected default accel mode auto, got %q", cfg.AccelMode)
 	}
 
-	updated, err := UpdateGlobalConfig("accel.mode", "strict-gpu")
+	updated, err := Default().UpdateGlobalConfig("accel.mode", "strict-gpu")
 	if err != nil {
 		t.Fatalf("update global config failed: %v", err)
 	}

@@ -24,6 +24,7 @@ func init() {
 		Usage:              accelUsage,
 		Description:        "Inspect acceleration backends, cache state, and planning reports",
 		DisableFlagParsing: false,
+		Flags:              []CommandFlag{{Name: "mode", Usage: "Acceleration mode: auto|cpu|gpu|strict-gpu", TakesValue: true}},
 		Run:                runAccelCommand,
 	})
 }
@@ -34,7 +35,7 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 	}
 
 	action := strings.ToLower(args[0])
-	parsed, err := accelConfigFromArgs(args[1:])
+	parsed, err := accelConfigFromArgs(ctx, args[1:])
 	if err != nil {
 		return err
 	}
@@ -82,7 +83,9 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 	}
 }
 
-func accelConfigFromArgs(args []string) (accelArgs, error) {
+// accelConfigFromArgs reads accel's options. A mode not given on the command
+// line comes from the global config of the session's environment manager.
+func accelConfigFromArgs(ctx *ExecContext, args []string) (accelArgs, error) {
 	parsed := accelArgs{cfg: accelpkg.Config{}}
 	explicitMode := ""
 	for idx := 0; idx < len(args); idx++ {
@@ -98,7 +101,11 @@ func accelConfigFromArgs(args []string) (accelArgs, error) {
 		}
 	}
 
-	mode, err := resolveAccelMode(explicitMode)
+	mgr := clienv.Default()
+	if ctx != nil && ctx.Env != nil {
+		mgr = ctx.Env
+	}
+	mode, err := resolveAccelMode(mgr, explicitMode)
 	if err != nil {
 		return parsed, err
 	}
@@ -106,10 +113,10 @@ func accelConfigFromArgs(args []string) (accelArgs, error) {
 	return parsed, nil
 }
 
-func resolveAccelMode(explicit string) (accelpkg.Mode, error) {
+func resolveAccelMode(mgr *clienv.Manager, explicit string) (accelpkg.Mode, error) {
 	raw := strings.TrimSpace(strings.ToLower(explicit))
 	if raw == "" {
-		cfg, err := clienv.LoadGlobalConfig()
+		cfg, err := mgr.LoadGlobalConfig()
 		if err != nil {
 			return "", err
 		}

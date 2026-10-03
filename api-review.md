@@ -325,7 +325,7 @@
 | --- | --- | --- | --- | --- |
 | CL-1 | ~~Med~~ 已修正（batch 2） | 環境名稱直接 `filepath.Join(envsPath, name)`，只檢查非空：`Create("../../tmp/x")`、`Delete("../something")` 會在 envs 目錄之外建立或刪除目錄。CLI 使用者是自己的機器風險低，但 `engine/dsl` 讓程式嵌入 DSL session、環境名稱可能來自外部輸入（準則 14） | cli/env/manager.go:130-138, 180-230 | 名稱限制為 `[A-Za-z0-9_-]+`，拒絕路徑分隔符 |
 | CL-2 | Med（Registry 鎖已修正 batch 3；DSN 明文待決） | `commands.Registry` 是匯出的全域 map，`Register` 寫入無鎖、`Dispatch` 讀取無鎖，並行註冊是 data race；`ExecContext` 全部欄位公開可改；`DBConn.DSN` 以明文保存連線字串含密碼（doc 說顯示時遮罩，但值本身在記憶體與任何序列化路徑都是明文）（準則 12、14） | cli/commands/registry.go:47-64；db_conn.go:15-20 | Registry 改私有 + `sync.RWMutex`；DSN 只存遮罩後版本 |
-| CL-3 | Low | `cli/env` 每個 `Manager` 方法都有一個同名的套件層包裝函式（`env.Create` → `Default().Create`），60 個匯出符號有 27 個是重複；`State.LastAccess string` 而非 `time.Time`；`BuildCobraCommands` 以命令名稱字串（`"env"`、`"accel"`）硬編特殊旗標；`NewAutoCompleter` 回傳第三方 `readline.AutoCompleter`（準則 1、8） | cli/env/manager.go:520-540；state.go:20；commands/registry.go:100-150 | 移除包裝函式（或只留 Default()）；LastAccess 改 time.Time |
+| CL-3 | Low（套件層包裝函式標 Deprecated、`BuildCobraCommands` 的特殊旗標改由命令註冊時宣告，由 cli-env-one-name 修正；`State.LastAccess` 型別留待 dev 的 cli/env 修改合併後再做；`NewAutoCompleter` 的第三方型別維持不動） | `cli/env` 每個 `Manager` 方法都有一個同名的套件層包裝函式（`env.Create` → `Default().Create`），60 個匯出符號有 27 個是重複；`State.LastAccess string` 而非 `time.Time`；`BuildCobraCommands` 以命令名稱字串（`"env"`、`"accel"`）硬編特殊旗標；`NewAutoCompleter` 回傳第三方 `readline.AutoCompleter`（準則 1、8） | cli/env/manager.go:520-540；state.go:20；commands/registry.go:100-150 | 移除包裝函式（或只留 Default()）；LastAccess 改 time.Time |
 | CL-4 | OK | `Manager` 有鎖、`SaveState` 用 tmp+rename 原子寫入（parquet.Write 與 geocode cache 應比照）、`DSLSession` 對嵌入者的 Manager 隔離說明清楚 | — | — |
 
 ### accel

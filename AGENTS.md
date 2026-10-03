@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-03] — remove the package-level functions of `cli/env` one release after they were deprecated
+- **Where**: the package-level wrappers at the end of `cli/env/manager.go`, `cli/env/config.go` and `cli/env/state.go`, `cli/env/deprecated_wrappers_test.go`, and the note under "Custom environment storage location" in `Docs/cli-dsl.md`
+- **What**: `cli-env-one-name` deprecated all 26 under the one-name rule of #211 (#261, CL-3): each only calls the same method on `Default()`.
+- **Suggestion**: delete them, the test file and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry. `ConfigKeys` and `Default` are not wrappers and stay.
+- **Status**: pending
+
 ### [2026-10-03] — remove `engine/ccl.ResetEvalDepth` and `ResetFuncCallDepth` one release after they were deprecated
 - **Where**: `engine/ccl/ccl.go`, `TestResetDepthsAreNoOps` in `engine/ccl/ccl_test.go` and `TestNoOpResetsAreDeprecated` in `engine/ccl/registry_contract_test.go`, and their note in `engine/README.md`
 - **What**: `engine-ccl-registry-contract` deprecated them (#259, EN-1): they have done nothing since recursion depth moved onto the call stack in #191.

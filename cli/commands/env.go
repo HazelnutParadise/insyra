@@ -13,6 +13,10 @@ func init() {
 		Usage:              "env <create|list|open|clear|export|import|delete|rename|info> [args]",
 		Description:        "Environment management",
 		DisableFlagParsing: false,
+		Flags: []CommandFlag{
+			{Name: "keep-history", Usage: "With 'env clear', keep command history", Form: "clear"},
+			{Name: "force", Usage: "With 'env import', overwrite non-empty target environment", Form: "import"},
+		},
 		Forms: []string{
 			"env create <name>                      make a new environment",
 			"env list                               list every environment",

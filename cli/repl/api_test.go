@@ -18,7 +18,7 @@ func setupTempHome(t *testing.T) string {
 	t.Setenv("HOME", home)
 	t.Setenv("HOMEDRIVE", "")
 	t.Setenv("HOMEPATH", "")
-	t.Cleanup(func() { env.SetBasePath("") })
+	t.Cleanup(func() { env.Default().SetBasePath("") })
 	return home
 }
 
@@ -197,7 +197,7 @@ func TestDSLSessionExecutePersistsStateAndHistory(t *testing.T) {
 		t.Fatalf("expected variable x in session vars")
 	}
 
-	state, err := env.LoadState("default")
+	state, err := env.Default().LoadState("default")
 	if err != nil {
 		t.Fatalf("failed to load saved state: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestDSLSessionExecutePersistsStateAndHistory(t *testing.T) {
 		t.Fatalf("expected variable x in persisted state")
 	}
 
-	history, err := env.ReadHistory("default")
+	history, err := env.Default().ReadHistory("default")
 	if err != nil {
 		t.Fatalf("failed to read history: %v", err)
 	}

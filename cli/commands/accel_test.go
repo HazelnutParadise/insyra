@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/cli/env"
 )
 
 func setupCommandHome(t *testing.T) {
@@ -139,5 +140,35 @@ func TestRunAccelCommandRunPrintsShardPlanSummary(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "assignments=") {
 		t.Fatalf("expected assignment summary in output, got %q", rendered)
+	}
+}
+
+// accel reads its default mode from the session's own environment manager, as
+// every other command reads its storage: an embedder that gives a session its
+// own Manager must not have accel read ~/.insyra instead.
+func TestAccelModeComesFromTheSessionManager(t *testing.T) {
+	setupCommandHome(t)
+	if _, err := env.Default().UpdateGlobalConfig("accel-mode", "gpu"); err != nil {
+		t.Fatal(err)
+	}
+	mgr := env.NewManager(t.TempDir(), "")
+	if _, err := mgr.UpdateGlobalConfig("accel-mode", "cpu"); err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := accelConfigFromArgs(&ExecContext{Env: mgr}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.cfg.Mode != "cpu" {
+		t.Errorf("mode from the session's manager: got %q, want cpu", parsed.cfg.Mode)
+	}
+
+	parsed, err = accelConfigFromArgs(&ExecContext{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.cfg.Mode != "gpu" {
+		t.Errorf("mode with no manager: got %q, want the default manager's gpu", parsed.cfg.Mode)
 	}
 }
