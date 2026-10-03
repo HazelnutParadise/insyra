@@ -107,7 +107,8 @@ func registerDateTimeFunctions() {
 	})
 
 	// DATEADD(d, n, unit) returns d shifted by n units. Supports the same
-	// unit set as DATEDIFF plus "month"/"year" via time.AddDate.
+	// unit set as DATEDIFF plus "month"/"year", which stop at the last day of
+	// a month that is too short, as Excel's EDATE does.
 	registerFunction("DATEADD", func(args ...any) (any, error) {
 		if len(args) != 3 {
 			return nil, fmt.Errorf("DATEADD requires 3 arguments (d, n, unit)")
@@ -142,9 +143,9 @@ func registerDateTimeFunctions() {
 		case "second", "seconds":
 			return addDuration(t, n, time.Second, args[1], unit)
 		case "month", "months":
-			return t.AddDate(0, int(n), 0), nil
+			return addMonths(t, 0, int(n)), nil
 		case "year", "years":
-			return t.AddDate(int(n), 0, 0), nil
+			return addMonths(t, int(n), 0), nil
 		default:
 			return nil, fmt.Errorf("DATEADD: unknown unit %q", unit)
 		}
@@ -166,6 +167,20 @@ func registerDateTimeFunctions() {
 		}
 		return t.Format(layout), nil
 	})
+}
+
+// addMonths shifts t by years and months, keeping its day unless the target
+// month is shorter, in which case the result is that month's last day:
+// January 31 plus one month is February 29 in 2024. time.AddDate would carry
+// the missing days into the next month and give March 2. Excel's EDATE and
+// pandas' DateOffset both stop at the month's end.
+func addMonths(t time.Time, years, months int) time.Time {
+	// The month is worked out in UTC, where no clock change can move it.
+	first := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(years, months, 0)
+	// Day 0 of the next month is the last day of this one.
+	last := time.Date(first.Year(), first.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	hour, minute, sec := t.Clock()
+	return time.Date(first.Year(), first.Month(), min(t.Day(), last), hour, minute, sec, t.Nanosecond(), t.Location())
 }
 
 // addDuration shifts t by n units of a clock unit, refusing a shift a Duration

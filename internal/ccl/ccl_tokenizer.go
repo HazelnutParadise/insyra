@@ -110,17 +110,12 @@ func tokenize(input string) ([]cclToken, error) {
 				i++
 			}
 		case ch == '"' || ch == '\'':
-			quoteChar := ch // 保存當前引號字符
-			i++
-			start := i
-			for i < len(input) && input[i] != quoteChar {
-				i++
+			value, end, ok := scanQuoted(input, i)
+			if !ok {
+				return nil, &CompileError{Expr: input, Offset: tokStart, Near: string(ch), Msg: "unclosed string"}
 			}
-			if i >= len(input) {
-				return nil, &CompileError{Expr: input, Offset: tokStart, Near: string(quoteChar), Msg: "unclosed string"}
-			}
-			tokens = append(tokens, cclToken{pos: tokStart, typ: tSTRING, value: input[start:i]})
-			i++
+			tokens = append(tokens, cclToken{pos: tokStart, typ: tSTRING, value: value})
+			i = end
 		case ch == '(':
 			tokens = append(tokens, cclToken{pos: tokStart, typ: tLPAREN, value: "("})
 			i++
@@ -174,17 +169,11 @@ func tokenize(input string) ([]cclToken, error) {
 
 			// 檢查是否為 ['colName'] 形式（帶引號的欄位名稱）
 			if input[i] == '\'' || input[i] == '"' {
-				quoteChar := input[i]
-				i++ // 跳過引號
-				start := i
-				for i < len(input) && input[i] != quoteChar {
-					i++
-				}
-				if i >= len(input) {
+				colName, end, ok := scanQuoted(input, i)
+				if !ok {
 					return nil, fmt.Errorf("unclosed string in bracket column reference")
 				}
-				colName := input[start:i]
-				i++ // 跳過結束引號
+				i = end
 
 				// 期望 ']'
 				if i >= len(input) || input[i] != ']' {
@@ -226,6 +215,37 @@ func tokenize(input string) ([]cclToken, error) {
 	}
 	tokens = append(tokens, cclToken{pos: -1, typ: tEOF})
 	return tokens, nil
+}
+
+// scanQuoted reads the quoted text that opens at input[open] and returns its
+// content and the index just past the closing quote. As in Excel, the quote
+// character written twice inside the text stands for one:
+//
+//	'it''s'       is  it's
+//	"say ""hi"""  is  say "hi"
+//
+// ok is false when the text is never closed.
+func scanQuoted(input string, open int) (value string, end int, ok bool) {
+	quote := input[open]
+	var sb strings.Builder
+	start := open + 1
+	for i := start; i < len(input); i++ {
+		if input[i] != quote {
+			continue
+		}
+		if i+1 < len(input) && input[i+1] == quote {
+			sb.WriteString(input[start : i+1])
+			i++
+			start = i + 1
+			continue
+		}
+		if sb.Len() == 0 {
+			return input[start:i], i + 1, true
+		}
+		sb.WriteString(input[start:i])
+		return sb.String(), i + 1, true
+	}
+	return "", len(input), false
 }
 
 // runeStart snaps a byte offset back to the first byte of the character that

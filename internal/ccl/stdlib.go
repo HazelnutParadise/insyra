@@ -177,123 +177,59 @@ func RegisterStandardFunctions() {
 		return minVal, nil
 	})
 
-	// Duration helpers: convert time.Duration (or parsable duration string / numeric seconds) to units
-	registerFunction("DAY", func(args ...any) (any, error) {
-		if len(args) != 1 {
-			return nil, fmt.Errorf("DAY requires 1 argument")
-		}
-		val := args[0]
-		var d time.Duration
-		switch x := val.(type) {
-		case time.Duration:
-			d = x
-		case string:
-			if pd, err := time.ParseDuration(x); err == nil {
-				d = pd
-			} else if t, ok := utils.TryParseTime(x); ok {
-				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
-			} else {
-				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)
-			}
-		default:
-			if f, ok := toFloat64(val); ok {
-				// treat numeric as seconds
-				if d, ok = durationOf(f, time.Second); !ok {
-					return nil, fmt.Errorf("DAY: %v seconds is out of range", f)
-				}
-			} else {
-				return nil, fmt.Errorf("unsupported type for DAY: %T", val)
-			}
-		}
-		return d.Hours() / 24.0, nil
-	})
+	// Duration helpers: convert a time.Duration, a duration string or a
+	// number of seconds to a unit.
+	registerFunction("DAY", durationIn("DAY", "days", func(d time.Duration) float64 { return d.Hours() / 24.0 },
+		"day of the month", "DAYOFMONTH(x)"))
+	registerFunction("HOUR", durationIn("HOUR", "hours", time.Duration.Hours,
+		"hour", "TONUM(FORMAT_DATE(x, '15'))"))
+	registerFunction("MINUTE", durationIn("MINUTE", "minutes", time.Duration.Minutes,
+		"minute", "TONUM(FORMAT_DATE(x, '04'))"))
+	registerFunction("SECOND", durationIn("SECOND", "seconds", time.Duration.Seconds,
+		"second", "TONUM(FORMAT_DATE(x, '05'))"))
+}
 
-	registerFunction("HOUR", func(args ...any) (any, error) {
+// durationIn builds DAY, HOUR, MINUTE or SECOND: the argument as a number of
+// units. Excel's functions of these names take a part of a date instead, so a
+// date is refused with a pointer to the function that does that, rather than
+// read as the time since midnight.
+func durationIn(name, units string, in func(time.Duration) float64, part, partFunc string) func(args ...any) (any, error) {
+	refuseDate := func() error {
+		return fmt.Errorf("%s converts a duration to %s and was given a date; for the %s of a date x, use %s",
+			name, units, part, partFunc)
+	}
+	return func(args ...any) (any, error) {
 		if len(args) != 1 {
-			return nil, fmt.Errorf("HOUR requires 1 argument")
+			return nil, fmt.Errorf("%s requires 1 argument", name)
 		}
-		val := args[0]
 		var d time.Duration
-		switch x := val.(type) {
+		switch x := args[0].(type) {
 		case time.Duration:
 			d = x
+		case time.Time:
+			return nil, refuseDate()
 		case string:
-			if pd, err := time.ParseDuration(x); err == nil {
+			pd, err := time.ParseDuration(x)
+			if err == nil {
 				d = pd
-			} else if t, ok := utils.TryParseTime(x); ok {
-				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
-			} else {
-				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)
+				break
 			}
+			if _, ok := utils.TryParseTime(x); ok {
+				return nil, refuseDate()
+			}
+			return nil, fmt.Errorf("%s: cannot parse %q as a duration", name, x)
 		default:
-			if f, ok := toFloat64(val); ok {
-				if d, ok = durationOf(f, time.Second); !ok {
-					return nil, fmt.Errorf("HOUR: %v seconds is out of range", f)
-				}
-			} else {
-				return nil, fmt.Errorf("unsupported type for HOUR: %T", val)
+			f, ok := toFloat64(x)
+			if !ok {
+				return nil, fmt.Errorf("unsupported type for %s: %T", name, x)
+			}
+			// A number is a count of seconds.
+			if d, ok = durationOf(f, time.Second); !ok {
+				return nil, fmt.Errorf("%s: %v seconds is out of range", name, f)
 			}
 		}
-		return d.Hours(), nil
-	})
-
-	registerFunction("MINUTE", func(args ...any) (any, error) {
-		if len(args) != 1 {
-			return nil, fmt.Errorf("MINUTE requires 1 argument")
-		}
-		val := args[0]
-		var d time.Duration
-		switch x := val.(type) {
-		case time.Duration:
-			d = x
-		case string:
-			if pd, err := time.ParseDuration(x); err == nil {
-				d = pd
-			} else if t, ok := utils.TryParseTime(x); ok {
-				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
-			} else {
-				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)
-			}
-		default:
-			if f, ok := toFloat64(val); ok {
-				if d, ok = durationOf(f, time.Second); !ok {
-					return nil, fmt.Errorf("MINUTE: %v seconds is out of range", f)
-				}
-			} else {
-				return nil, fmt.Errorf("unsupported type for MINUTE: %T", val)
-			}
-		}
-		return d.Minutes(), nil
-	})
-
-	registerFunction("SECOND", func(args ...any) (any, error) {
-		if len(args) != 1 {
-			return nil, fmt.Errorf("SECOND requires 1 argument")
-		}
-		val := args[0]
-		var d time.Duration
-		switch x := val.(type) {
-		case time.Duration:
-			d = x
-		case string:
-			if pd, err := time.ParseDuration(x); err == nil {
-				d = pd
-			} else if t, ok := utils.TryParseTime(x); ok {
-				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
-			} else {
-				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)
-			}
-		default:
-			if f, ok := toFloat64(val); ok {
-				if d, ok = durationOf(f, time.Second); !ok {
-					return nil, fmt.Errorf("SECOND: %v seconds is out of range", f)
-				}
-			} else {
-				return nil, fmt.Errorf("unsupported type for SECOND: %T", val)
-			}
-		}
-		return d.Seconds(), nil
-	})
+		return in(d), nil
+	}
 }
 
 // Helper for aggregate functions

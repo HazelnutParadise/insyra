@@ -12,6 +12,7 @@ CCL (Column Calculation Language) is a specialized expression language in Insyra
 - [Operators](#operators)
 - [Column References](#column-references)
 - [Functions](#functions)
+- [Differences from Excel](#differences-from-excel)
 - [Sequence Functions](#sequence-functions)
 - [Conditional Expressions](#conditional-expressions)
 - [Chained Comparisons](#chained-comparisons)
@@ -175,12 +176,23 @@ CCL supports the following data types:
    optional sign), so a column called `E` or `E1` still reads as a column. A
    literal too large for a `float64` is an error rather than `+Inf`.
 
-2. **Strings** - Enclosed in single quotes
+2. **Strings** - Enclosed in single or double quotes
 
    ```
    "'Hello, World!'"   // String
    "'123'"             // Numeric string
+   `"Hello"`           // Double quotes work the same way
+   "'it''s'"           // it's
+   `"say ""hi"""`      // say "hi"
    ```
+
+   As in Excel, the quote character written twice inside a literal stands for
+   one: `'it''s'` is `it's` and `"say ""hi"""` is `say "hi"`. The other kind of
+   quote needs nothing, so `"it's"` and `'say "hi"'` work as written. A
+   backslash is an ordinary character, so `'C:\data'` is the text `C:\data` and
+   `'it\'s'` is an unclosed string. Bracketed column names follow the same rule:
+   `['O''Brien']` is the column `O'Brien`. In statement mode a `;` or a line
+   break inside a literal does not end the statement.
 
 3. **Boolean Values** - `true` or `false` (case-insensitive: `TRUE`, `False` work too)
 
@@ -355,7 +367,8 @@ When performing arithmetic operations or comparisons, CCL attempts to convert op
 
 - If both operands can be converted to numbers, numeric comparison is used
 - A cell of any Go numeric type is a number: `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32` and `float64`. This holds everywhere a number is read, in arithmetic, comparisons, conditions, function arguments, aggregates and row indices, so an `int16` or `uint8` column, which `parquet.Read` gives for such a column of a file, works like any other
-- An integer larger than 2^53 (9,007,199,254,740,992) is read as the nearest `float64`, so its last digits are lost: `int64` and `uint64` values that large compare equal to their neighbours
+- **All arithmetic is done in `float64`.** Every arithmetic operator, every math function and every aggregate turns its operands into `float64` and gives a `float64` back, whatever the column held. So an integer column comes out of any arithmetic as a `float64` column, even `A * 1` or `A + 0`, while a bare `A`, which does no arithmetic, keeps the cells as they were. A `float64` holds every integer up to 2^53 (9,007,199,254,740,992) exactly, so below that the value is right and only its type changes
+- An integer larger than 2^53 is read as the nearest `float64`, so its last digits are lost: `int64` and `uint64` values that large compare equal to their neighbours, and arithmetic on them is off by the same amount. On a column holding `int64(9007199254740993)`, `A + 0` gives `9007199254740992` and `SUM(A)` is off as well. Keep such values, IDs for example, out of arithmetic; copy or compare them through a bare column reference in Go code instead
 - String-to-number conversion follows standard parsing rules
 - Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
 
@@ -536,7 +549,7 @@ dt.AddColUsingCCL("result", "[A] + [B] * 2")
 
 ### 3. Bracket Column Name `['colName']`
 
-Use brackets with single-quoted strings to reference columns by their name. This is particularly useful when you have named columns:
+Use brackets with a quoted name, in single or double quotes, to reference columns by their name. This is particularly useful when you have named columns. A quote inside the name is written twice, as in a string literal: `['O''Brien']`.
 
 ```
 "['Sales']"          // Reference to column named "Sales"
@@ -778,7 +791,7 @@ dt.AddColUsingCCL("price_fmt", "TOSTR(['price'], '$%.2f')")
 
 ### Date Component & Arithmetic Functions
 
-These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers and operate on `time.Time` values (or strings parseable by Insyra's date parser).
+These operate on `time.Time` values (or strings parseable by Insyra's date parser). They are what to use for a part of a date: `DAY`/`HOUR`/`MINUTE`/`SECOND` convert durations and refuse a date (see [below](#day--hour--minute--second)).
 
 | Function | Description |
 | --- | --- |
@@ -787,7 +800,7 @@ These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers an
 | `DAYOFMONTH(d)` | Day 1–31 |
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
-| `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A fractional `n` truncates for `day`, `month` and `year`. More than 2,147,483,647 days, months or years, or more than about 292 years in hours, minutes or seconds, is an error |
+| `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A `month` or `year` shift keeps the day of the month, and stops at the last day of a month that does not have it, as Excel's `EDATE` does: `DATEADD('2024-01-31', 1, 'month')` is `2024-02-29` and `DATEADD('2024-02-29', 1, 'year')` is `2025-02-28`. The time of day and the time zone are kept. A fractional `n` truncates for `day`, `month` and `year`. More than 2,147,483,647 days, months or years, or more than about 292 years in hours, minutes or seconds, is an error |
 | `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
 
 ```go
@@ -816,11 +829,14 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 
 ### DAY / HOUR / MINUTE / SECOND
 
+These convert a **duration** to a number of units. They are not Excel's `DAY`, `HOUR`, `MINUTE` and `SECOND`, which take a part of a date.
+
 - `DAY(x)`: accepts a `time.Duration`, a duration string (e.g., `"24h"`), or a numeric value (interpreted as seconds); returns days as `float64`.
 - `HOUR(x)`: returns hours as `float64`.
 - `MINUTE(x)`: returns minutes as `float64`.
 - `SECOND(x)`: returns seconds as `float64`.
 - For all four, a numeric value of more than about 292 years of seconds, either way, is an error rather than a wrapped-around number.
+- A date, a `time.Time` value or a string such as `'2024-01-02'` or `'2024-01-02T06:30:00Z'`, is an error that names the function to use instead: `DAYOFMONTH(x)` for the day of the month, and `TONUM(FORMAT_DATE(x, '15'))`, `TONUM(FORMAT_DATE(x, '04'))` and `TONUM(FORMAT_DATE(x, '05'))` for the hour, minute and second.
 
 Examples:
 
@@ -956,6 +972,26 @@ To count non-nil values in each row:
 ```
 "NEW('row_count') = COUNT(@.#)"
 ```
+
+## Differences from Excel
+
+CCL looks like an Excel formula, and most functions that share a name with an Excel function behave like it. These do not, or have a different name in CCL:
+
+| Excel | CCL | Difference |
+| --- | --- | --- |
+| `DAY(date)` | `DAYOFMONTH(d)` | CCL's `DAY(x)` converts a duration to days and refuses a date |
+| `HOUR(date)` / `MINUTE(date)` / `SECOND(date)` | `TONUM(FORMAT_DATE(d, '15'))` / `'04'` / `'05'` | CCL's `HOUR`, `MINUTE` and `SECOND` convert a duration to hours, minutes and seconds and refuse a date |
+| `WEEKDAY(date)` | `WEEKDAY(d) + 1` | CCL counts Sunday as 0 through Saturday as 6; Excel's default counts Sunday as 1 through Saturday as 7 |
+| `EDATE(date, months)` | `DATEADD(d, n, 'month')` | Same month-end rule. CCL keeps the time of day, and returns a date rather than a serial number |
+| `DATEDIF(start, end, unit)` | `DATEDIFF(d1, d2, unit)` | CCL gives `d1 - d2`, with a fraction and a sign, in `'day'`, `'hour'`, `'minute'` or `'second'`. Excel gives whole units from `start` to `end` and is an error when `start` is later |
+| `AVERAGE(...)` | `AVG(...)` | Different name |
+| `COUNT(...)` | `COUNT(...)` | CCL counts every value that is not `nil`, text included, like Excel's `COUNTA`. Excel's `COUNT` counts numbers only |
+| `MAX(...)` / `MIN(...)` | `MAX(...)` / `MIN(...)` | With no number to compare, CCL gives `nil`; Excel gives `0` |
+| `MOD(a, b)` | `MOD(a, b)` | CCL's result has the sign of `a`, Excel's the sign of `b`: `MOD(-7, 3)` is `-1` in CCL and `2` in Excel |
+| `TRIM(s)` | `TRIM(s)` | CCL strips the ends only; Excel also turns each run of spaces inside the text into one space |
+| `FIND(find, within)` | `FIND(needle, haystack)` | Not found is `0` in CCL and an error in Excel. CCL has no start position argument |
+| `TEXT(value, format)` | `TEXT(x, fmt)` | The format is a Go `fmt` verb such as `'%.2f'`, not an Excel format code such as `"0.00"` |
+| Whole numbers | `float64` | CCL computes in `float64`, so an integer column comes out of arithmetic as `float64`, and an integer above 2^53 loses its last digits (see [Numeric Comparison and Arithmetic](#numeric-comparison-and-arithmetic)). Excel also stores numbers as doubles, but has no integer cells to lose |
 
 ## Sequence Functions
 

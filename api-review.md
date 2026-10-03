@@ -407,19 +407,19 @@
 | CCL-18 | ~~Med~~ 已修正（batch 10） | 聚合函數放在逐列運算式裡會每列重算整欄並 copy 整欄：20k 列 `A / 1` 1.9ms、`A / SUM(A)` 3.3s、文件 776 行的 z-score `(A - AVG(A)) / STDEV(A)` 10.0s；100k 列估計 4 分鐘以上 | internal/ccl/ccl_evaluator.go:356-365, 758-797；ccl.go:112-122；Docs/CCL.md:776 | 不含 `#` 的聚合子樹在迴圈外先算一次（常數摺疊）；`GetColData` 不要每次 copy |
 | CCL-19 | ~~Med~~ 已修正（batch 8） | `%` 運算子已實作（`10 % 3` → 1、`A % 0` → `modulo by zero`），文件運算子清單沒有它 | internal/ccl/ccl_evaluator.go:602-608；Docs/CCL.md:191-200 | 補文件 |
 | CCL-20 | ~~Med~~ 已修正（batch 8） | 日期加小數天數先乘 24 再轉 `time.Duration` 才乘 `Hour`，小於 1 小時的部分被截掉：`A + 0.001` 完全沒變，`A + 0.5` 才有效 | internal/ccl/ccl_evaluator.go:502, 504, 514 | `time.Duration(rf * 24 * float64(time.Hour))` |
-| CCL-21 | Med | 所有算術都經 float64：`int64(9007199254740993) + 0` → `9.007199254740992e+15`；整數欄任何運算後整欄變 float64（`A * 1`）。文件未提 | internal/ccl/stdlib.go:360-386；ccl_evaluator.go:584-626 | 至少文件寫明；長期保留整數路徑（與 D-16、IN-3 同根） |
-| CCL-22 | Med | `DAY()` 名稱撞 Excel 的 DAY（取日）但語意是「時長轉天數」：`DAY('2024-01-02T06:00:00Z')` → 0.25、`DAY(A)` 數字欄 → 0.000116（當秒）。日期字串走這條分支的行為文件沒寫 | internal/ccl/stdlib.go:229-255；Docs/CCL.md:696-701 | 日期字串進 `DAY/HOUR/MINUTE/SECOND` 時報錯並提示 `DAYOFMONTH`；文件加對照表 |
+| CCL-21 | Med（文件已寫明 float64 與 2^53 的限制；保留整數路徑會改變所有整數運算結果的型別，待擁有者決定） | 所有算術都經 float64：`int64(9007199254740993) + 0` → `9.007199254740992e+15`；整數欄任何運算後整欄變 float64（`A * 1`）。文件未提 | internal/ccl/stdlib.go:360-386；ccl_evaluator.go:584-626 | 至少文件寫明；長期保留整數路徑（與 D-16、IN-3 同根） |
+| CCL-22 | ~~Med~~ 已修正（ccl-duration-functions-refuse-dates）：日期傳入 `DAY/HOUR/MINUTE/SECOND` 時報錯並指出 `DAYOFMONTH` 或 `TONUM(FORMAT_DATE(x, ...))`；Docs/CCL.md 加上與 Excel 的對照表 | `DAY()` 名稱撞 Excel 的 DAY（取日）但語意是「時長轉天數」：`DAY('2024-01-02T06:00:00Z')` → 0.25、`DAY(A)` 數字欄 → 0.000116（當秒）。日期字串走這條分支的行為文件沒寫 | internal/ccl/stdlib.go:229-255；Docs/CCL.md:696-701 | 日期字串進 `DAY/HOUR/MINUTE/SECOND` 時報錯並提示 `DAYOFMONTH`；文件加對照表 |
 | CCL-23 | ~~Med~~ 已修正（batch 8） | 內部型別漏到資料裡：`AddColUsingCCL("r", "A:B")` 每個 cell 是 `ccl.ColumnRange{0 1}`；`engine/ccl` 沒匯出 `ColumnRange`／`RowRange`，使用者無法型別斷言 | internal/ccl/ccl_evaluator.go:927-936；ccl.go:268-277；engine/ccl/ccl.go:5-11 | 頂層結果是 Range 型別時回錯 |
 | CCL-24 | ~~Med~~ 已修正（batch 8） | `AND()`／`OR()` 零或一個引數被接受（`AND()` → true、`OR()` → false）；`AND('abc', true)` 靜默回 false，但 `'abc' && true` 報錯。evaluator 特判路徑繞過 `stdlib.go` 註冊函數的引數檢查，那些檢查是死碼 | internal/ccl/ccl_evaluator.go:285-311 vs stdlib.go:37-78 | 特判路徑補同樣檢查，或刪死碼 |
 | CCL-25 | ~~Med~~ 已修正（batch 8） | 小數索引／視窗靜默截斷：`A.(1.7)` → 第 1 列、`ROLLING_MEAN(A, 2.9)` → 視窗 2；`A.(POW(-8,1/3))`（NaN）→ 第 0 列（arm64 `int(NaN)=0`，amd64 會是 MinInt 而報錯，跨平台結果不同） | internal/ccl/ccl_evaluator.go:820-821, 984-985；stdlib_sequences.go:43 | 要求 `f == math.Trunc(f)` 且非 NaN／Inf |
 | CCL-26 | ~~Med~~ 已修正（batch 13，文件；鎖定方式經 -race 與互鎖實測）  | 註冊函數內存取「另一張表」走 trust-zone 內聯路徑不上鎖：`-race` 實測 `A + OTHERSUM()` 與另一 goroutine 對 other 表 `AppendCols` 併發 → DATA RACE（datatable.go:335）。文件沒警告 | internal/core/atomic.go:186-196；internal/ccl/ccl_functions.go:78 | 文件明列自訂函數不可碰其他表，需用 `AtomicDoAll`（IN-1 相關） |
-| CCL-27 | Med | 字串字面值沒有跳脫語法：`'it\'s'` → `unclosed string`；雙引號可用但文件 168 行只寫單引號。同時含兩種引號的字串寫不出來 | internal/ccl/ccl_tokenizer.go:106-117；Docs/CCL.md:168-173 | 支援 `\'`、`\"`、`\\`（`CompileMultiline` 切割同步） |
+| CCL-27 | ~~Med~~ 已修正（ccl-doubled-quote-escape）：依 Excel 以連寫兩個引號表示一個引號（`'it''s'`），不採反斜線；中括號欄名與 `CompileMultiline` 切割同步 | 字串字面值沒有跳脫語法：`'it\'s'` → `unclosed string`；雙引號可用但文件 168 行只寫單引號。同時含兩種引號的字串寫不出來 | internal/ccl/ccl_tokenizer.go:106-117；Docs/CCL.md:168-173 | 支援 `\'`、`\"`、`\\`（`CompileMultiline` 切割同步） |
 | CCL-28 | Med（VAR／STDEV 的錯誤契約有文件與測試釘住，待決） | 聚合函數對「值不夠」處理不一致：`STDEV(A.(0:0))` 整欄報錯，`MEDIAN(A.(1:1))` 靜默整欄 nil，`MAX` 無值回 nil | internal/ccl/stdlib_aggregates.go:25-36, 63-103；stdlib.go:188-226 | 統一並寫文件 |
 | CCL-29 | ~~Med~~ 已修正（engine-ccl-registry-contract；`EvaluationResult`、`MapContext` 型別別名的部分併入 EN-1 待決定） | EN-1 補充：`engine/ccl` 匯出 `Func`／`AggFunc` 與 `RegisterFunction`／`RegisterAggregateFunction`，但沒有 `SeqFunc`／`RegisterSequenceFunction`；`ResetEvalDepth`／`ResetFuncCallDepth` 是空函數；`EvaluationResult`、`MapContext`（含 CCL-4）以型別別名直接暴露 | engine/ccl/ccl.go:5-11, 88-97；internal/ccl/ccl_functions.go:31-34 | 補 `RegisterSequenceFunction`；no-op 標 Deprecated（併入 EN-1） |
 | CCL-30 | ~~Low~~ 已修正（batch 8） | `-2^2` → 4、`-A^2` → 100（一元負號綁得比 `^` 緊，與 Excel 同但與數學慣例不同）；`2^3^2` → 64（左結合）。文件未提 | internal/ccl/ccl_parser.go:349-364, 205 | 文件寫明 |
 | CCL-31 | ~~Low~~ 已修正（fix-clear-defects-ccl-finance） | 數字字面值溢位靜默成 `+Inf`（`ParseFloat` 錯誤被 `_` 丟掉）；`1e5` 字面值不支援（tokenize 成 `1` 與識別字 `e5`），但 `VALUE('1e3')` 可以 | internal/ccl/ccl_parser.go:337；ccl_tokenizer.go:45-78 | 檢查 `ParseFloat` 錯誤；決定是否支援科學記號 |
 | CCL-32 | ~~Low~~ 已修正（fix-clear-defects-ccl-finance） | `TOSTR(1.5, '%d')` → `"%!d(float64=1.5)"`、`TOSTR(1,'%')` → `"%!(NOVERB)…"` 靜默寫進資料 | internal/ccl/stdlib_typeconv.go:52-56 | 格式化後檢查 `%!` 前綴回錯，或限制動詞 |
-| CCL-33 | Low（極大 n 溢位已由 ccl-portable-integer-arguments 修正，月底正規化仍待決定） | `DATEADD('2024-01-31', 1, 'month')` → `2024-03-02`（Go `AddDate` 正規化，Excel `EDATE` 是 2/29）；`DATEADD(d, 10^300, 'year')` 溢位繞回 2022 年 | internal/ccl/stdlib_datetime.go:128-138 | 文件寫明或月底夾住；限制 n 範圍 |
+| CCL-33 | ~~Low~~ 已修正（極大 n 溢位由 ccl-portable-integer-arguments 修正；月底由 ccl-dateadd-clamps-month-end 改為停在該月最後一天，與 Excel `EDATE`、pandas `DateOffset` 相同） | `DATEADD('2024-01-31', 1, 'month')` → `2024-03-02`（Go `AddDate` 正規化，Excel `EDATE` 是 2/29）；`DATEADD(d, 10^300, 'year')` 溢位繞回 2022 年 | internal/ccl/stdlib_datetime.go:128-138 | 文件寫明或月底夾住；限制 n 範圍 |
 | CCL-34 | ~~Low~~ 已修正（batch 11，文件） | 函數名與 Excel 欄位索引大小寫不分（`sum(a)` 可用），`['name']` 區分大小寫；文件只提後者 | internal/ccl/ccl_functions.go:40；internal/utils/utils.go:73-76；Docs/CCL.md:436 | 文件寫明 |
 | CCL-35 | ~~Low~~ 已修正（batch 11 補文件；batch 12 統一數字轉文字的規則） | 字串函數對數字直接 `fmt.Sprint`：`LEN(A)`（int 10）→ 2、`LEN(123.0)` → 3 | internal/ccl/stdlib_string.go:12-20 | 文件寫明 |
 | CCL-36 | ~~Low~~ 已修正（batch 9） | 非 ASCII 識別字錯誤訊息是位元組層級：`中文 + 1` → `unexpected character '¸' at position 1` | internal/ccl/ccl_tokenizer.go:14-30, 202-207 | tokenizer 改以 rune 走訪 |
@@ -685,16 +685,16 @@
 | CCL-18、CCL-38 | [#355](https://github.com/HazelnutParadise/insyra/issues/355) |  |
 | CCL-19、CCL-34、CCL-35、CCL-37 | [#356](https://github.com/HazelnutParadise/insyra/issues/356) |  |
 | CCL-20 | [#357](https://github.com/HazelnutParadise/insyra/issues/357) |  |
-| CCL-21 | [#358](https://github.com/HazelnutParadise/insyra/issues/358) |  |
-| CCL-22 | [#359](https://github.com/HazelnutParadise/insyra/issues/359) |  |
+| CCL-21 | [#358](https://github.com/HazelnutParadise/insyra/issues/358) | 文件已補；整數路徑待擁有者決定 |
+| CCL-22 | [#359](https://github.com/HazelnutParadise/insyra/issues/359) | 已修正（ccl-duration-functions-refuse-dates） |
 | CCL-23、CCL-39 | [#360](https://github.com/HazelnutParadise/insyra/issues/360) |  |
 | CCL-24 | [#361](https://github.com/HazelnutParadise/insyra/issues/361) |  |
 | CCL-25 | [#362](https://github.com/HazelnutParadise/insyra/issues/362) |  |
 | CCL-26 | [#363](https://github.com/HazelnutParadise/insyra/issues/363) |  |
-| CCL-27 | [#364](https://github.com/HazelnutParadise/insyra/issues/364) |  |
+| CCL-27 | [#364](https://github.com/HazelnutParadise/insyra/issues/364) | 已修正（ccl-doubled-quote-escape） |
 | CCL-31 | [#365](https://github.com/HazelnutParadise/insyra/issues/365) |  |
 | CCL-32 | [#366](https://github.com/HazelnutParadise/insyra/issues/366) |  |
-| CCL-33 | [#367](https://github.com/HazelnutParadise/insyra/issues/367) |  |
+| CCL-33 | [#367](https://github.com/HazelnutParadise/insyra/issues/367) | 已修正（ccl-portable-integer-arguments、ccl-dateadd-clamps-month-end） |
 | CCL-36 | [#368](https://github.com/HazelnutParadise/insyra/issues/368) | 已關閉（batch 9 就修好了，2026-09-12 驗證並補回歸測試） |
 | SEC-8 | [#205](https://github.com/HazelnutParadise/insyra/issues/205) | 補充留言 |
 | SEC-14 | [#249](https://github.com/HazelnutParadise/insyra/issues/249) | 補充留言，已修正（gmaps-search-restored） |

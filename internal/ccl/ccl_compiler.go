@@ -115,7 +115,9 @@ func CompileMultiline(script string) ([]CCLNode, error) {
 }
 
 // splitStatements breaks a script into statements on ';' and newlines, leaving
-// separators inside string literals alone.
+// separators inside string literals alone. A doubled quote, which the
+// tokenizer reads as one quote inside the literal, closes the literal here and
+// opens it again at once, so the two agree on where every literal ends.
 func splitStatements(script string) []string {
 	// Split by ; or newline
 	// We need a more robust splitter that respects strings, but for now simple split is used
