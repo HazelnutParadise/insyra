@@ -299,6 +299,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: refuse a row at or past the end in `GetRowAt` with the error `GetCell` gives. It turns a silent answer into an error.
 - **Status**: pending
 
+### [2026-10-03] — three smaller things the review of `py-results-keep-nan` measured
+- **Where**: `decodeResultMessage`, `markNonFinite` and `restoreNumbers` in `py/pyresult.go`; the `reflect.Interface` case of `assignResult` in `py/pyresult_decode.go`
+- **What**: measured on 2026-10-03 by the adversarial review of `py-results-keep-nan`, all new behaviour rather than regressions, since such messages failed outright before. (1) A message holding one NaN takes the slower path: on a 95 MB message of 500,000 rows by 10 columns it took 1.54 to 2.09 s and allocated 866 to 1,104 MB, against 513 ms and 341 MB without a NaN. Part of it is `markNonFinite` turning every number into a string to check its range; the check itself is needed, because go-json refuses a number too large for a float64 even with `UseNumber`, with a message quoting all of it. (2) Text `json.dumps` never writes is read as numbers: `-NaN` gives `-0`, `1Infinity` gives `11`, `NaN1` gives `0`, an uppercase `1E0` gives `+Inf`, and the slower path accepts data after the message, where the fast path refuses it. `insyra.Return` cannot produce any of these. (3) An `any` that already holds a pointer is replaced by the decoded map when the value holds a NaN, where a value without one is decoded into the pointer.
+- **Suggestion**: (1) check the range only of a number token long enough to overflow, such as one over 300 characters or with an exponent, so ordinary numbers are copied without allocating; (2) refuse a NaN or an infinity name followed by a digit or a letter, a minus sign before `NaN`, and data after the message; (3) decode into the value an `any` already holds when it is a pointer, as JSON does.
+- **Status**: pending
+
 ### [2026-10-01] — a pandas DataFrame with a column named `name` comes back named after that column
 - **Where**: `insyra._normalize_result` in `py/builtin.go`, the `getattr(result, "name", None)` of the pandas DataFrame branch
 - **What**: pandas returns a column as an attribute, so for a DataFrame holding a column `name` the `getattr` finds the column, and its printed form becomes the table's name. Measured on 2026-10-01 with the pinned environment on macOS arm64: `RunCode(&dt, "insyra.Return(pd.DataFrame({'name': ['x', 'y'], 'v': [1, 2]}))")` gave a table named `"0    x\n1    y\nName: name, dtype: str"`. `Docs/py.md` says `DataFrame.name`, when set, becomes the table's name. Found by the adversarial review of `py-nested-table-results`; it predates that change, which sends nested DataFrames through the same branch.
@@ -306,9 +312,9 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-10-01] — an integer above 2^53 in a Python result loses its last digits
-- **Where**: `handleIPCConnection` in `py/pyresult.go`, which decodes each message with `json.Unmarshal` into `map[string]any`
-- **What**: every JSON number becomes a `float64` there, before the result reaches the type it is bound into, so an integer above 2^53 is rounded whatever that type is. Measured by the review of `py-nested-table-results` on 2026-10-01 by decoding the message the way the handler does: `9007199254740993` came back as `9007199254740992`, into an `int64` field too. A database id or a nanosecond timestamp returned from Python is that large. The same step drops the order of an object's keys, so of two keys that differ only in case, the later in sorted order wins rather than the later in the text. Both predate that change.
-- **Suggestion**: decode the message with go-json's `UseNumber`, and turn a `json.Number` back into an `int64` or a `float64` where a result is bound into `any` or a table, so a value that fits neither loses nothing. Check what the table decoders do with a `json.Number` cell before switching.
+- **Where**: `decodeResultMessage` in `py/pyresult.go`, which decodes each message into `map[string]any` with `json.Unmarshal`, or with `UseNumber` and `restoreNumbers` when a message holds a NaN or an infinity
+- **What**: every JSON number becomes a `float64` there, before the result reaches the type it is bound into, so an integer above 2^53 is rounded whatever that type is. Measured by the review of `py-nested-table-results` on 2026-10-01 by decoding the message the way the handler does: `9007199254740993` came back as `9007199254740992`, into an `int64` field too. A database id or a nanosecond timestamp returned from Python is that large. An integer beyond the range of a float64, such as `10**400`, is an error since `py-results-keep-nan`; one inside it is still rounded. The same step drops the order of an object's keys, so of two keys that differ only in case, the later in sorted order wins rather than the later in the text. Both predate that change.
+- **Suggestion**: decode every message with go-json's `UseNumber`, as `decodeResultMessage` already does for one holding a NaN, and turn a `json.Number` back into an `int64` or a `float64` where a result is bound into `any` or a table, so a value that fits neither loses nothing. Check what the table decoders do with a `json.Number` cell before switching.
 - **Status**: pending
 
 ### [2026-10-01] — renaming a column to the name it already has adds a suffix
@@ -327,12 +333,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `py/py.go`, `TestRunCodeWithTimeoutKeepsItsMeaning` in `py/run_test.go`, and its mentions in `Docs/py.md`
 - **What**: `py-typed-run` deprecated it under the one-name rule of #211 (PY-2, #255), keeping its meaning for one release: it is `RunCodeContext` with a context from `context.WithTimeout`.
 - **Suggestion**: delete it, its test and its mentions in `Docs/py.md` in the same release as the other Deprecated removals, with a BREAKING changelog entry.
-- **Status**: pending
-
-### [2026-09-30] — a Python result holding `NaN` or an infinity comes back as `nil` with no error
-- **Where**: `insyra.Return` in `py/builtin.go` (`json.dumps` with its default `allow_nan=True`), and `handleIPCConnection` in `py/pyresult.go`
-- **What**: Python's `json.dumps` writes `NaN`, `Infinity` and `-Infinity`, which are not JSON, so go-json refuses the message. The handler logs `Unmarshal error: invalid character 'N' looking for beginning of value` and closes the connection without an acknowledgement; `_read_msg` takes the closed connection as the end, the script marks its result sent and exits 0, and the runner, finding no result, returns `nil` with a nil error. Measured on 2026-09-30 with the pinned environment on macOS arm64: `RunCode(&dt, "insyra.Return(pd.DataFrame({'a': [1.0, float('nan')]}))")` returned a nil error and a nil `*DataTable`, and `RunCode(&v, "insyra.Return(float('nan'))")` set `v` to `nil` with a nil error. A DataFrame with a missing value is ordinary data, so results are lost without a word. Found by the adversarial review of `py-ipc-server-errors`; it predates that change.
-- **Suggestion**: on the Python side, write `NaN` and the infinities as something the Go side can decode; on the Go side, answer a message it cannot decode with an error the Python side raises, so the run fails instead of returning nothing. Decide first whether a `NaN` comes back as `nil` or as `math.NaN()`, since insyra's lists hold either.
 - **Status**: pending
 
 ### [2026-09-30] — concurrent Python runs on Windows may find no pipe instance to connect to

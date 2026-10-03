@@ -3,9 +3,11 @@ package py
 import (
 	"context"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -258,6 +260,18 @@ func TestPinnedEnvironmentEndToEnd(t *testing.T) {
 	}
 	if names := empty.ColNames(); len(names) != 2 || names[0] != "a" || names[1] != "b" {
 		t.Errorf("an empty DataFrame came back with columns %q, want a and b", names)
+	}
+
+	// A NaN or an infinity in a result came back as nil with no error.
+	withNaN, err := Run[*insyra.DataTable](ctx, `insyra.Return(pd.DataFrame({"a": [1.0, float("nan")], "b": [float("inf"), -float("inf")]}))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withNaN == nil || !math.IsNaN(asFloat(withNaN.GetElementByNumberIndex(1, 0))) || !math.IsInf(asFloat(withNaN.GetElementByNumberIndex(0, 1)), 1) || !math.IsInf(asFloat(withNaN.GetElementByNumberIndex(1, 1)), -1) {
+		t.Errorf("a DataFrame with a NaN and infinities came back as %v", withNaN)
+	}
+	if got, err := Run[any](ctx, `insyra.Return(10**400)`); err == nil || !strings.Contains(err.Error(), "float64") {
+		t.Errorf("an integer too large for a float64 gave %v, %v; want an error", got, err)
 	}
 
 	var version string

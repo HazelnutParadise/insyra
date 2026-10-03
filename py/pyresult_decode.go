@@ -3,8 +3,10 @@ package py
 import (
 	"cmp"
 	"encoding"
+	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"reflect"
 	"slices"
 	"strconv"
@@ -86,6 +88,11 @@ func bindPyResult(out any, result any) error {
 
 	jsonData, err := json.Marshal(result)
 	if err != nil {
+		// JSON has no NaN or infinity, which Python sends for a float that is
+		// one, so such a result is set part by part instead.
+		if rv := reflect.ValueOf(out); rv.Kind() == reflect.Pointer && !rv.IsNil() && isNonFinite(err) {
+			return decodeInto(rv.Elem(), result)
+		}
 		return fmt.Errorf("failed to marshal result: %w", err)
 	}
 	if err := json.Unmarshal(jsonData, out); err != nil {
@@ -525,8 +532,13 @@ func assignResult(dst reflect.Value, src any) error {
 	}
 	// A struct reached through an embedded unexported field cannot be set as
 	// a whole, but its exported fields can, so it is decoded field by field.
+	// So is a value holding a NaN or an infinity, which JSON cannot carry,
+	// unless its type decodes itself.
 	if dst.CanSet() && !holdsTableOrList(t) {
-		return assignJSON(dst, src)
+		err := assignJSON(dst, src)
+		if err == nil || !isNonFinite(err) || decodesItself(t) {
+			return err
+		}
 	}
 	switch t.Kind() {
 	case reflect.Pointer:
@@ -626,6 +638,23 @@ func assignResult(dst reflect.Value, src any) error {
 			return fmt.Errorf("expected an object for %s, got %T", t, src)
 		}
 		return assignStruct(dst, entries)
+	case reflect.Float32, reflect.Float64:
+		if f, ok := src.(float64); ok {
+			dst.SetFloat(f)
+			return nil
+		}
+	case reflect.Interface:
+		if t.NumMethod() == 0 {
+			if src == nil {
+				dst.SetZero()
+			} else {
+				dst.Set(reflect.ValueOf(src))
+			}
+			return nil
+		}
+	}
+	if f, ok := src.(float64); ok && (math.IsNaN(f) || math.IsInf(f, 0)) {
+		return fmt.Errorf("cannot decode %v into %s", f, t)
 	}
 	return assignJSON(dst, src)
 }
@@ -789,6 +818,12 @@ func assignJSON(dst reflect.Value, src any) error {
 		return fmt.Errorf("failed to unmarshal result: %w", err)
 	}
 	return nil
+}
+
+// isNonFinite reports whether err is JSON refusing a NaN or an infinity.
+func isNonFinite(err error) bool {
+	var unsupported *json.UnsupportedValueError
+	return errors.As(err, &unsupported)
 }
 
 // jsonField is a struct field encoding/json decodes.

@@ -495,6 +495,10 @@ When `out` is a `DataTable` or `DataList` pointer, `insyra.Return` recognizes co
 
 An empty DataFrame, such as the result of a filter that matched no rows, comes back as a table with no rows and the DataFrame's column names.
 
+A NaN, `inf` or `-inf` in the result, such as a missing value in a DataFrame, comes back as `math.NaN()`, `math.Inf(1)` or `math.Inf(-1)`: in a table or list cell, a float field, a slice, array or map value, or anything decoded into `any`. Python's `None` comes back as `nil`, so `ClearNaNs`, `ClearNils` and the other methods that tell the two apart work on the result as on any other list. A NaN for a type that cannot hold one, such as `int`, is an error.
+
+A result the Go side cannot read, such as an integer too large for a float64 (`10**400`), makes the call return an error that says why, and `insyra.Return` raises in Python. Code that catches that exception and returns another value gets that value back instead.
+
 ### Tables and lists inside a result
 
 A table or a list can also sit inside the value you return. `insyra.Return` turns a DataFrame or Series anywhere inside a dict, list or tuple into the payload it sends for one at the top level. On the Go side, when the type you decode into has a `*insyra.DataTable`, `*insyra.DataList`, `insyra.IDataTable` or `insyra.IDataList` in a struct field, a map value, a slice or array element or behind a pointer, that part is decoded as a table or a list, replacing what it held, and everything else exactly as `encoding/json` decodes it: struct fields are matched by their `json` tag or Go name, an exact match before one that ignores case, with its rules for embedded structs, `-` and `,string`; map keys can be strings, integers or a type with `UnmarshalText`; decoding into a value that already holds something keeps what the result leaves out; and `None` sets a pointer, slice, map or interface to nil and leaves a struct as it is. A type with its own `UnmarshalJSON` or `UnmarshalText` decodes itself.

@@ -146,9 +146,15 @@ class insyra:
 		try:
 			f = insyra._connect_ipc()
 			insyra._write_msg(f, json.dumps(payload, default=insyra._encode_default).encode('utf-8'))
-			# Wait for ack
-			insyra._read_msg(f)
+			# The Go side answers whether it could read the result; no answer
+			# means it could not.
+			ack = insyra._read_msg(f)
 			f.close()
+			if ack is None:
+				raise Exception("the Go side closed the connection without acknowledging the result")
+			reply = json.loads(ack)
+			if reply.get("status") != "ok":
+				raise Exception(reply.get("error") or "the Go side could not read the result")
 		except Exception as e:
 			sys.stderr.write(f"IPC failed: {e}\n")
 			sys.stderr.flush()

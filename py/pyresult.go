@@ -1,13 +1,17 @@
 package py
 
 import (
+	"bytes"
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +22,12 @@ import (
 
 var (
 	resultStore sync.Map // map[string][2]any
+
+	// refusedStore keeps why the result a run sent could not be read. It is
+	// the run's error only if the run ends without delivering another one:
+	// Python can catch the error insyra.Return raises and return something
+	// else.
+	refusedStore sync.Map // map[string]string
 
 	// The IPC server is shared by the runs in flight and closed when the last
 	// of them finishes. Closing a Unix listener removes its socket file.
@@ -40,6 +50,7 @@ func generateExecutionID() string {
 
 // 等待並獲取指定ID的結果，當Python進程結束時自動返回nil
 func waitForResult(executionID string, processDone <-chan struct{}, execErr <-chan error) [2]any {
+	defer refusedStore.Delete(executionID)
 	for {
 		select {
 		case err := <-execErr:
@@ -48,6 +59,11 @@ func waitForResult(executionID string, processDone <-chan struct{}, execErr <-ch
 			if result, exists := resultStore.LoadAndDelete(executionID); exists {
 				return result.([2]any)
 			}
+			// insyra.Return raises when the Go side refuses its result, which
+			// fails the process; the refusal says why.
+			if reason, refused := refusedStore.Load(executionID); refused {
+				return [2]any{nil, reason}
+			}
 			return [2]any{nil, err.Error()}
 		case <-processDone:
 			// handleIPCConnection stores a result before it acknowledges it,
@@ -55,6 +71,9 @@ func waitForResult(executionID string, processDone <-chan struct{}, execErr <-ch
 			// that was delivered is in the store by now.
 			if result, exists := resultStore.LoadAndDelete(executionID); exists {
 				return result.([2]any)
+			}
+			if reason, refused := refusedStore.Load(executionID); refused {
+				return [2]any{nil, reason}
 			}
 			// A process that failed reported its error before processDone
 			// closed, so the error is already waiting. select may still pick
@@ -104,28 +123,20 @@ func handleIPCConnection(conn net.Conn) {
 		return
 	}
 
-	// Parse request
-	var requestData struct {
-		ExecutionID string `json:"execution_id"`
-		Data        [2]any `json:"data"`
-	}
-	if err := json.Unmarshal(msg, &requestData); err != nil {
-		insyra.LogWarning("py", "server", "Unmarshal error: %v", err)
+	m, err := decodeResultMessage(msg)
+	if err != nil {
+		reason := fmt.Sprintf("py: the result Python sent could not be read: %v", err)
+		if id := runIDOf(msg); id != "" {
+			// The run returns this error if nothing else arrives.
+			refusedStore.Store(id, reason)
+		} else {
+			insyra.LogWarning("py", "server", "%s", reason)
+		}
+		writeReply(conn, map[string]string{"status": "error", "error": reason})
 		return
 	}
-
-	// Store result
-	resultStore.Store(requestData.ExecutionID, requestData.Data)
-
-	// Send response
-	resp, merr := json.Marshal(map[string]string{"status": "ok"})
-	if merr != nil {
-		insyra.LogWarning("py", "server", "json marshal response failed: %v", merr)
-		return
-	}
-	if werr := ipc.WriteMessage(conn, resp); werr != nil {
-		insyra.LogWarning("py", "server", "WriteMessage error: %v", werr)
-	}
+	resultStore.Store(m.ExecutionID, m.Data)
+	writeReply(conn, map[string]string{"status": "ok"})
 }
 
 // newIPCAddress returns a fresh random address: a named pipe on Windows, a
@@ -209,4 +220,178 @@ func acceptIPC(ln net.Listener) {
 		}
 		go handleIPCConnection(conn)
 	}
+}
+
+// writeReply answers insyra.Return, which raises unless the status is ok.
+func writeReply(conn net.Conn, reply map[string]string) {
+	resp, err := json.Marshal(reply)
+	if err != nil {
+		insyra.LogWarning("py", "server", "json marshal response failed: %v", err)
+		return
+	}
+	if err := ipc.WriteMessage(conn, resp); err != nil {
+		insyra.LogWarning("py", "server", "WriteMessage error: %v", err)
+	}
+}
+
+// resultMessage is the message insyra.Return sends: the run's ID and its
+// [result, error] pair.
+type resultMessage struct {
+	ExecutionID string `json:"execution_id"`
+	Data        [2]any `json:"data"`
+}
+
+// Python writes a float's exponent with a lowercase e, so these numbers never
+// appear in what it sends and can stand in for the names it writes for a NaN
+// and an infinity.
+const (
+	nanMark = "0E0"
+	infMark = "1E0"
+)
+
+var (
+	nanName = []byte("NaN")
+	infName = []byte("Infinity")
+)
+
+// decodeResultMessage decodes a message from insyra.Return. Python's
+// json.dumps writes a NaN or an infinity as NaN, Infinity or -Infinity, which
+// JSON does not have, so a message the JSON decoder refuses is read again with
+// those names marked and its numbers kept as text, and the marks are turned
+// back into float64 values. A message without them decodes as it always has.
+func decodeResultMessage(msg []byte) (resultMessage, error) {
+	var m resultMessage
+	if err := json.Unmarshal(msg, &m); err == nil {
+		return m, nil
+	}
+	marked, err := markNonFinite(msg)
+	if err != nil {
+		return resultMessage{}, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(marked))
+	dec.UseNumber()
+	m = resultMessage{}
+	if err := dec.Decode(&m); err != nil {
+		return resultMessage{}, err
+	}
+	for i, v := range m.Data {
+		restored, err := restoreNumbers(v)
+		if err != nil {
+			return resultMessage{}, err
+		}
+		m.Data[i] = restored
+	}
+	return m, nil
+}
+
+// markNonFinite replaces the names Python writes outside strings for a NaN
+// and an infinity with nanMark and infMark. The minus sign of -Infinity stays
+// in front of its mark. A number too large for a float64, which go-json would
+// refuse with a message quoting all of it, is an error saying so.
+func markNonFinite(msg []byte) ([]byte, error) {
+	out := make([]byte, 0, len(msg))
+	inString := false
+	for i := 0; i < len(msg); i++ {
+		c := msg[i]
+		switch {
+		case inString:
+			out = append(out, c)
+			if c == '\\' && i+1 < len(msg) {
+				i++
+				out = append(out, msg[i])
+			} else if c == '"' {
+				inString = false
+			}
+		case c == '"':
+			inString = true
+			out = append(out, c)
+		case bytes.HasPrefix(msg[i:], nanName):
+			out = append(out, nanMark...)
+			i += len(nanName) - 1
+		case bytes.HasPrefix(msg[i:], infName):
+			out = append(out, infMark...)
+			i += len(infName) - 1
+		case c == '-' || (c >= '0' && c <= '9'):
+			end := i + 1
+			for end < len(msg) && strings.IndexByte("0123456789.eE+-", msg[end]) >= 0 {
+				end++
+			}
+			number := string(msg[i:end])
+			if _, err := strconv.ParseFloat(number, 64); errors.Is(err, strconv.ErrRange) {
+				return nil, numberTooLarge(number)
+			}
+			out = append(out, number...)
+			i = end - 1
+		default:
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// numberTooLarge reports a number a float64 cannot hold, such as Python's
+// 10**400, with its text shortened.
+func numberTooLarge(text string) error {
+	if len(text) > 30 {
+		text = text[:30] + "…"
+	}
+	return fmt.Errorf("the number %s does not fit in a float64", text)
+}
+
+// restoreNumbers turns the json.Number values decodeResultMessage reads into
+// the float64 values the JSON decoder gives, and the marks into NaN and the
+// infinities.
+func restoreNumbers(v any) (any, error) {
+	switch x := v.(type) {
+	case json.Number:
+		switch x {
+		case nanMark:
+			return math.NaN(), nil
+		case infMark:
+			return math.Inf(1), nil
+		case "-" + infMark:
+			return math.Inf(-1), nil
+		}
+		f, err := strconv.ParseFloat(string(x), 64)
+		if err != nil {
+			return nil, numberTooLarge(string(x))
+		}
+		return f, nil
+	case []any:
+		for i, e := range x {
+			restored, err := restoreNumbers(e)
+			if err != nil {
+				return nil, err
+			}
+			x[i] = restored
+		}
+	case map[string]any:
+		for k, e := range x {
+			restored, err := restoreNumbers(e)
+			if err != nil {
+				return nil, err
+			}
+			x[k] = restored
+		}
+	}
+	return v, nil
+}
+
+// runIDOf finds the run's ID at the start of a message that could not be
+// decoded, where insyra.Return writes it. It returns "" when it is not there.
+func runIDOf(msg []byte) string {
+	rest, ok := bytes.CutPrefix(msg, []byte(`{"execution_id": "`))
+	if !ok {
+		return ""
+	}
+	id, _, ok := bytes.Cut(rest, []byte(`"`))
+	if !ok || len(id) == 0 {
+		return ""
+	}
+	for _, c := range id {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return ""
+		}
+	}
+	return string(id)
 }

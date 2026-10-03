@@ -25,8 +25,10 @@ const fakeUVLogEnv = "INSYRA_PY_TEST_FAKE_UV_LOG"
 // fakePythonEnv, when set, makes the test binary act as the environment's
 // Python. It reads the execution ID and the IPC address from the script it is
 // given and answers the way the value says: "result:<JSON>" returns the JSON
-// value, "error:<text>" returns an error, "script" returns the script itself,
-// and "sleep" waits to be killed.
+// value, "pyjson:<text>" returns the text as it is, the way Python's json.dumps
+// writes NaN and the infinities, "error:<text>" returns an error, "script"
+// returns the script itself, and "sleep" waits to be killed. It fails, as
+// insyra.Return raises, unless the Go side acknowledges the result.
 const fakePythonEnv = "INSYRA_PY_TEST_FAKE_PYTHON"
 
 var (
@@ -108,7 +110,12 @@ func fakePython(mode string, args []string) int {
 		return 3
 	}
 	var result, pyErr any
+	var msg []byte
 	switch {
+	case strings.HasPrefix(mode, "pyjson:"):
+		// Sent as it is: Python's json.dumps writes NaN, Infinity and
+		// -Infinity, which encoding/json would refuse to marshal.
+		msg = []byte(`{"execution_id": "` + string(id[1]) + `", "data": [` + strings.TrimPrefix(mode, "pyjson:") + `, null]}`)
 	case strings.HasPrefix(mode, "result:"):
 		result = json.RawMessage(strings.TrimPrefix(mode, "result:"))
 	case strings.HasPrefix(mode, "error:"):
@@ -119,10 +126,12 @@ func fakePython(mode string, args []string) int {
 		fmt.Fprintln(os.Stderr, "fake python: unknown mode", mode)
 		return 3
 	}
-	msg, err := json.Marshal(map[string]any{"execution_id": string(id[1]), "data": []any{result, pyErr}})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 3
+	if msg == nil {
+		msg, err = json.Marshal(map[string]any{"execution_id": string(id[1]), "data": []any{result, pyErr}})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 3
+		}
 	}
 	conn, err := ipc.Dial(string(addr[1]))
 	if err != nil {
@@ -134,9 +143,19 @@ func fakePython(mode string, args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 3
 	}
-	if _, err := ipc.ReadMessage(conn); err != nil {
+	reply, err := ipc.ReadMessage(conn)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 3
+	}
+	// insyra.Return raises unless the Go side says it read the result.
+	var ack struct {
+		Status string `json:"status"`
+		Error  string `json:"error"`
+	}
+	if err := json.Unmarshal(reply, &ack); err != nil || ack.Status != "ok" {
+		fmt.Fprintln(os.Stderr, "fake python: the Go side refused the result:", ack.Error)
+		return 1
 	}
 	return 0
 }
