@@ -245,6 +245,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 空的 DataFrame 回傳時保留欄名；過去欄名會被改成 `a_1`、`b_1` 之類的名稱。
 - 結果裡的 NaN 或無限大會解碼成 `math.NaN()`、`math.Inf(1)` 或 `math.Inf(-1)`。Python 的 `json.dumps` 會把它們寫成 `NaN`、`Infinity`、`-Infinity`，go-json 不接受，過去整個呼叫會回傳 `nil`，也不報錯：DataFrame 裡只要有一個缺值，拿回來的就是 nil。`None` 跟以前一樣解碼成 `nil`。因為其他原因讀不了的結果（例如 float64 放不下的 `10**400`），現在也會回傳錯誤並說明原因，過去同樣會變成 `nil`。Go 端拒收結果或沒有回應時，`insyra.Return` 會在 Python 裡 raise。
 - 有一欄叫 `name` 的 pandas DataFrame，回傳後不會有表名。pandas 會把欄位當成屬性回傳，過去表名會變成那一欄印出來的內容。用 `df.name = "scores"` 設定的名稱一樣會成為表名。
+- **BREAKING（行為改變）**：結果裡超過 2^53 的整數會保留每一位數。過去每個數字都會解成 float64，而 float64 存不下超過 2^53 的每一個整數，所以 `2**53 + 1` 回來會變成 `9007199254740992`，連 `int64` 欄位也一樣。現在這種整數在表格或清單的格子、`any` 裡會回成 `int64`（超出 `int64` 範圍時是 `uint64`），不再是那個 float64，放進整數欄位也完全精確。±2^53 以內的整數跟以前一樣是 float64。pandas 與 polars 的 DataFrame 改成逐欄轉換後送出，id 欄旁邊有小數欄時，整數不會在 Python 那邊就被轉成小數。整數欄位放不下的數字（例如 `int64` 收到 `2**63`）會回傳錯誤，過去 go-json 遇到 19、20 位數的數字會默默繞成錯的值。
 - `RunCodef`、`RunFilef`、它們的 `Context` 版本和 `Run` 的參數，不會再變成 Python 程式碼。過去佔位字元是一個參數接一個參數、對整份程式碼輪流替換，後面的參數替換時，也會改到前面參數插進去的文字：傳入 `$v2` 和 `+__import__('os').system('id')+` 兩段文字，就會執行那個指令。`$v1` 也會吃掉 `$v10` 的開頭。JSON 寫不出來的值（例如 `[]any{文字, math.NaN()}`）會照 Go 的格式原樣寫進程式碼，裡面的文字就成了程式碼。現在佔位字元只在原本的模板裡找一次，依完整編號替換，也只轉換模板用到的參數。寫不成 Python 值的參數，會在 Python 啟動前回傳錯誤，並註明是哪個佔位字元。含有 NaN 或無限大的 `[]float64` 也一樣，過去會寫成 Python 不認得的 `NaN` 或 `+Inf`。
 
 ### `pd`

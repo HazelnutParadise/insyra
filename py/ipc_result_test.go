@@ -50,7 +50,7 @@ func TestDecodeResultMessageReadsPythonsNonFiniteFloats(t *testing.T) {
 }
 
 func TestDecodeResultMessageLeavesOrdinaryMessagesAlone(t *testing.T) {
-	msg := `{"execution_id": "ab12", "data": [{"n": 0.1, "big": 12345678901234567890, "t": true, "l": [null, "x"]}, "boom"]}`
+	msg := `{"execution_id": "ab12", "data": [{"n": 0.1, "edge": 9007199254740992, "t": true, "l": [null, "x"]}, "boom"]}`
 	m, err := decodeResultMessage([]byte(msg))
 	if err != nil {
 		t.Fatal(err)
@@ -197,6 +197,51 @@ func TestARefusalIsTheErrorWhenNothingElseArrives(t *testing.T) {
 	for _, id := range []string{"feed04", "feed05"} {
 		if _, left := refusedStore.Load(id); left {
 			t.Errorf("the refusal for %s was left behind", id)
+		}
+	}
+}
+
+// The review of py-nested-table-results measured 2^53 + 1 coming back as 2^53:
+// every number was decoded into a float64, which does not hold every integer
+// past 2^53.
+func TestAnIntegerAboveTwoToThe53KeepsEveryDigit(t *testing.T) {
+	msg := `{"execution_id": "a1", "data": [[9007199254740993, -9007199254740993, 9223372036854775807, -9223372036854775808, 18446744073709551615, 9007199254740992, 3, 0.5, 1e+20, 9007199254740993.0, 100000000000000000000000], null]}`
+	m, err := decodeResultMessage([]byte(msg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := m.Data[0].([]any)
+	want := []any{int64(9007199254740993), int64(-9007199254740993), int64(9223372036854775807), int64(-9223372036854775808), uint64(18446744073709551615), float64(9007199254740992), float64(3), 0.5, 1e+20, float64(9007199254740993.0), 1e23}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %#v\nwant %#v", got, want)
+	}
+}
+
+// Digits in a string are not a number and change nothing.
+func TestLongDigitsInAStringChangeNothing(t *testing.T) {
+	m, err := decodeResultMessage([]byte(`{"execution_id": "a1", "data": [{"s": "12345678901234567890", "n": 2}, null]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := m.Data[0].(map[string]any)
+	if got["s"] != "12345678901234567890" || got["n"] != float64(2) {
+		t.Errorf("got %#v", got)
+	}
+}
+
+// A decimal's digits do not send a message the longer way: Python prints most
+// floats with sixteen or seventeen of them.
+func TestOnlyALongIntegerTakesTheLongerDecoding(t *testing.T) {
+	for msg, want := range map[string]bool{
+		`[0.8444218515250481, 1.2345678901234567e+20, 12345678901234567.5, 3]`: false,
+		`[9007199254740993]`:       true,
+		`[-9007199254740993]`:      true,
+		`["12345678901234567890"]`: false,
+		`{"s": "a\"12345678901234567890", "n": 9007199254740993}`: true,
+		`["\\", 9007199254740993]`:                                true,
+	} {
+		if got := hasLongInteger([]byte(msg)); got != want {
+			t.Errorf("hasLongInteger(%s) = %v, want %v", msg, got, want)
 		}
 	}
 }

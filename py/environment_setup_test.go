@@ -293,6 +293,31 @@ insyra.Return(df)`)
 		t.Errorf("a DataFrame named scores came back named %q", nameSet.GetName())
 	}
 
+	// An integer above 2^53 came back with its last digits changed.
+	if id, err := Run[int64](ctx, `insyra.Return(2**53 + 1)`); err != nil || id != 9007199254740993 {
+		t.Errorf("2**53 + 1 came back as %d, %v", id, err)
+	}
+	ids, err := Run[*insyra.DataTable](ctx, `insyra.Return(pd.DataFrame({"id": [2**53 + 1, 2**63 - 1]}))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a, b := ids.GetElementByNumberIndex(0, 0), ids.GetElementByNumberIndex(1, 0); a != any(int64(9007199254740993)) || b != any(int64(math.MaxInt64)) {
+		t.Errorf("a DataFrame of ids came back as %#v and %#v", a, b)
+	}
+	if small, err := Run[any](ctx, `insyra.Return(3)`); err != nil || small != any(3.0) {
+		t.Errorf("3 came back as %#v, %v; want the float64 it has always been", small, err)
+	}
+
+	// pandas turned an integer column beside a float one into floats before
+	// sending it, which rounded a large id.
+	mixed, err := Run[*insyra.DataTable](ctx, `insyra.Return(pd.DataFrame({"id": [2**53 + 1, 2], "x": [0.5, 1.5]}))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a, b := mixed.GetElementByNumberIndex(0, 0), mixed.GetElementByNumberIndex(0, 1); a != any(int64(9007199254740993)) || b != any(0.5) {
+		t.Errorf("a DataFrame of ids and floats came back with %#v and %#v", a, b)
+	}
+
 	var version string
 	if err := RunCodeContext(ctx, &version, "import platform\ninsyra.Return(platform.python_version())"); err != nil {
 		t.Fatal(err)

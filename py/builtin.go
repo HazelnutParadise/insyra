@@ -38,6 +38,21 @@ class insyra:
 	_TYPE_SERIES = "%s"
 
 	@staticmethod
+	def _pandas_rows(df):
+		# Each column is converted on its own: to_numpy on the whole frame
+		# turns an integer column beside a float one into floats first, which
+		# rounds a large id.
+		if len(df.columns) == 0:
+			return df.to_numpy().tolist()
+		return [list(row) for row in zip(*(df.iloc[:, i].to_numpy().tolist() for i in range(len(df.columns))))]
+
+	@staticmethod
+	def _polars_rows(df):
+		if df.width == 0:
+			return df.to_numpy().tolist()
+		return [list(row) for row in zip(*(s.to_numpy().tolist() for s in df.get_columns()))]
+
+	@staticmethod
 	def _normalize_result(result):
 		if result is None:
 			return None
@@ -45,7 +60,7 @@ class insyra:
 		if isinstance(result, pd.DataFrame):
 			payload = {
 				insyra._TYPE_KEY: insyra._TYPE_DATATABLE,
-				insyra._DATA_KEY: result.to_numpy().tolist(),
+				insyra._DATA_KEY: insyra._pandas_rows(result),
 				insyra._COLUMNS_KEY: [str(c) for c in result.columns],
 				insyra._INDEX_KEY: [str(i) for i in result.index],
 			}
@@ -69,7 +84,7 @@ class insyra:
 		if isinstance(result, pl.DataFrame):
 			payload = {
 				insyra._TYPE_KEY: insyra._TYPE_DATATABLE,
-				insyra._DATA_KEY: result.to_numpy().tolist(),
+				insyra._DATA_KEY: insyra._polars_rows(result),
 				insyra._COLUMNS_KEY: [str(c) for c in result.columns],
 			}
 			name_value = getattr(result, "name", None)

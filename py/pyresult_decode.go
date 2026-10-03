@@ -80,9 +80,10 @@ func bindPyResult(out any, result any) error {
 	}
 
 	// A table or a list in out's type, whether an isr wrapper's or one below
-	// the top level, would come out of JSON empty, so such a type is decoded
-	// part by part.
-	if rv := reflect.ValueOf(out); rv.Kind() == reflect.Pointer && !rv.IsNil() && holdsTableOrList(rv.Elem().Type()) {
+	// the top level, would come out of JSON empty, and an empty interface
+	// would round a large integer, so such a type is decoded part by part. So
+	// is a result holding a number go-json would wrap around in an integer.
+	if rv := reflect.ValueOf(out); rv.Kind() == reflect.Pointer && !rv.IsNil() && (decodedPartByPart(rv.Elem().Type()) || holdsWideNumber(result)) {
 		return decodeInto(rv.Elem(), result)
 	}
 
@@ -467,21 +468,22 @@ func decodesItself(t reflect.Type) bool {
 
 var holdsCache sync.Map // reflect.Type -> bool
 
-// holdsTableOrList reports whether t is a table or a list, or holds one where
-// encoding/json would decode it: in a struct field, a map value, a slice or
-// array element, or behind a pointer. JSON cannot decode those parts, so a
-// type that holds one is decoded by assignResult.
-func holdsTableOrList(t reflect.Type) bool {
+// decodedPartByPart reports whether t is, or holds where encoding/json would
+// decode it (a struct field, a map value, a slice or array element, or behind
+// a pointer), a table, a list or an empty interface. JSON cannot decode a table
+// or a list, and would give an empty interface a float64 for an integer a
+// float64 rounds, so a type with any of them is decoded by assignResult.
+func decodedPartByPart(t reflect.Type) bool {
 	if holds, ok := holdsCache.Load(t); ok {
 		return holds.(bool)
 	}
-	holds := holdsTableOrListIn(t, map[reflect.Type]bool{})
+	holds := decodedPartByPartIn(t, map[reflect.Type]bool{})
 	holdsCache.Store(t, holds)
 	return holds
 }
 
-func holdsTableOrListIn(t reflect.Type, seen map[reflect.Type]bool) bool {
-	if isTableOrList(t) {
+func decodedPartByPartIn(t reflect.Type, seen map[reflect.Type]bool) bool {
+	if isTableOrList(t) || (t.Kind() == reflect.Interface && t.NumMethod() == 0) {
 		return true
 	}
 	if seen[t] || decodesItself(t) {
@@ -490,16 +492,16 @@ func holdsTableOrListIn(t reflect.Type, seen map[reflect.Type]bool) bool {
 	seen[t] = true
 	switch t.Kind() {
 	case reflect.Pointer, reflect.Slice, reflect.Array:
-		return holdsTableOrListIn(t.Elem(), seen)
+		return decodedPartByPartIn(t.Elem(), seen)
 	case reflect.Map:
-		return validMapKey(t.Key()) && holdsTableOrListIn(t.Elem(), seen)
+		return validMapKey(t.Key()) && decodedPartByPartIn(t.Elem(), seen)
 	case reflect.Struct:
 		fields := cachedFields(t)
 		if len(fields.whole) > 0 {
 			return true
 		}
 		for _, f := range fields.list {
-			if holdsTableOrListIn(f.typ, seen) {
+			if decodedPartByPartIn(f.typ, seen) {
 				return true
 			}
 		}
@@ -530,11 +532,16 @@ func assignResult(dst reflect.Value, src any) error {
 	if !dst.CanSet() && t.Kind() != reflect.Struct {
 		return fmt.Errorf("cannot set a value of type %s", t)
 	}
+	if t.Kind() >= reflect.Int && t.Kind() <= reflect.Uintptr && !decodesItself(t) {
+		if handled, err := setInteger(dst, src); handled {
+			return err
+		}
+	}
 	// A struct reached through an embedded unexported field cannot be set as
 	// a whole, but its exported fields can, so it is decoded field by field.
 	// So is a value holding a NaN or an infinity, which JSON cannot carry,
 	// unless its type decodes itself.
-	if dst.CanSet() && !holdsTableOrList(t) {
+	if dst.CanSet() && !decodedPartByPart(t) && !holdsWideNumber(src) {
 		err := assignJSON(dst, src)
 		if err == nil || !isNonFinite(err) || decodesItself(t) {
 			return err
@@ -645,6 +652,11 @@ func assignResult(dst reflect.Value, src any) error {
 		}
 	case reflect.Interface:
 		if t.NumMethod() == 0 {
+			// An interface holding a non-nil pointer is decoded into what the
+			// pointer points to, as encoding/json does.
+			if e := dst.Elem(); src != nil && e.Kind() == reflect.Pointer && !e.IsNil() {
+				return assignResult(e.Elem(), src)
+			}
 			if src == nil {
 				dst.SetZero()
 			} else {
@@ -1049,4 +1061,73 @@ func hasTagOption(opts, option string) bool {
 // strings.EqualFold holds for them, as encoding/json's foldName does.
 func foldName(name string) string {
 	return strings.Map(func(r rune) rune { return unicode.ToUpper(unicode.ToLower(r)) }, name)
+}
+
+// holdsWideNumber reports whether v holds a number go-json would wrap around
+// when decoding it into an integer, since it checks neither a nineteen- nor a
+// twenty-digit number: a uint64, or a float64 of 2^63 or more in magnitude.
+func holdsWideNumber(v any) bool {
+	switch x := v.(type) {
+	case uint64:
+		return true
+	case float64:
+		return x >= 1<<63 || x <= -(1<<63)
+	case []any:
+		for _, e := range x {
+			if holdsWideNumber(e) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, e := range x {
+			if holdsWideNumber(e) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// setInteger sets the integer dst from a decoded number, with the range check
+// go-json leaves out. It reports false for a value that is not a number, which
+// JSON then decodes. A number dst cannot hold, or one with a fraction, is an
+// error.
+func setInteger(dst reflect.Value, src any) (bool, error) {
+	t := dst.Type()
+	signed := t.Kind() <= reflect.Int64
+	switch x := src.(type) {
+	case int64:
+		if signed && !dst.OverflowInt(x) {
+			dst.SetInt(x)
+			return true, nil
+		}
+		if !signed && x >= 0 && !dst.OverflowUint(uint64(x)) {
+			dst.SetUint(uint64(x))
+			return true, nil
+		}
+	case uint64:
+		if signed && x <= math.MaxInt64 && !dst.OverflowInt(int64(x)) {
+			dst.SetInt(int64(x))
+			return true, nil
+		}
+		if !signed && !dst.OverflowUint(x) {
+			dst.SetUint(x)
+			return true, nil
+		}
+	case float64:
+		if x != math.Trunc(x) {
+			return true, fmt.Errorf("cannot decode %v into %s", x, t)
+		}
+		if signed && x >= -(1<<63) && x < 1<<63 && !dst.OverflowInt(int64(x)) {
+			dst.SetInt(int64(x))
+			return true, nil
+		}
+		if !signed && x >= 0 && x < 1<<64 && !dst.OverflowUint(uint64(x)) {
+			dst.SetUint(uint64(x))
+			return true, nil
+		}
+	default:
+		return false, nil
+	}
+	return true, fmt.Errorf("cannot decode %v into %s", src, t)
 }

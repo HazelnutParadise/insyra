@@ -256,13 +256,17 @@ var (
 
 // decodeResultMessage decodes a message from insyra.Return. Python's
 // json.dumps writes a NaN or an infinity as NaN, Infinity or -Infinity, which
-// JSON does not have, so a message the JSON decoder refuses is read again with
-// those names marked and its numbers kept as text, and the marks are turned
-// back into float64 values. A message without them decodes as it always has.
+// JSON does not have, and writes an integer above 2^53 in full, which a
+// float64 would round. So a message the JSON decoder refuses, or one with
+// digits enough for such an integer, is read again with those names marked
+// and its numbers kept as text, and restoreNumbers turns the numbers back. A
+// message with neither decodes as it always has.
 func decodeResultMessage(msg []byte) (resultMessage, error) {
 	var m resultMessage
-	if err := json.Unmarshal(msg, &m); err == nil {
-		return m, nil
+	if !hasLongInteger(msg) {
+		if err := json.Unmarshal(msg, &m); err == nil {
+			return m, nil
+		}
 	}
 	marked, err := markNonFinite(msg)
 	if err != nil {
@@ -339,8 +343,8 @@ func numberTooLarge(text string) error {
 }
 
 // restoreNumbers turns the json.Number values decodeResultMessage reads into
-// the float64 values the JSON decoder gives, and the marks into NaN and the
-// infinities.
+// the float64 values the JSON decoder gives, except an integer a float64
+// would round, and the marks into NaN and the infinities.
 func restoreNumbers(v any) (any, error) {
 	switch x := v.(type) {
 	case json.Number:
@@ -351,6 +355,9 @@ func restoreNumbers(v any) (any, error) {
 			return math.Inf(1), nil
 		case "-" + infMark:
 			return math.Inf(-1), nil
+		}
+		if n, ok := exactInteger(string(x)); ok {
+			return n, nil
 		}
 		f, err := strconv.ParseFloat(string(x), 64)
 		if err != nil {
@@ -394,4 +401,62 @@ func runIDOf(msg []byte) string {
 		}
 	}
 	return string(id)
+}
+
+// maxExactInteger is 2^53, past which a float64 no longer holds every integer.
+const maxExactInteger = 1 << 53
+
+// hasLongInteger reports whether msg may hold an integer above 2^53: sixteen
+// digits or more in a row, outside a string, that are neither the fraction of
+// a decimal nor the part before its point or exponent, since Python writes an
+// int with neither. Without one, every number in msg is exact as a float64.
+func hasLongInteger(msg []byte) bool {
+	inString := false
+	for i := 0; i < len(msg); i++ {
+		c := msg[i]
+		switch {
+		case inString:
+			switch c {
+			case '\\':
+				i++
+			case '"':
+				inString = false
+			}
+		case c == '"':
+			inString = true
+		case c >= '0' && c <= '9':
+			start := i
+			for i < len(msg) && msg[i] >= '0' && msg[i] <= '9' {
+				i++
+			}
+			fraction := start > 0 && msg[start-1] == '.'
+			mantissa := i < len(msg) && (msg[i] == '.' || msg[i] == 'e' || msg[i] == 'E')
+			if i-start >= 16 && !fraction && !mantissa {
+				return true
+			}
+			i--
+		}
+	}
+	return false
+}
+
+// exactInteger returns an integer Python wrote that a float64 would round: one
+// above 2^53 in magnitude, as an int64, or as a uint64 above the int64 range.
+// Python writes an int with no decimal point or exponent and a float always
+// with one, so a float is never taken for an int. An integer beyond 64 bits is
+// left to be read as a float64.
+func exactInteger(text string) (any, bool) {
+	if strings.ContainsAny(text, ".eE") {
+		return nil, false
+	}
+	if n, err := strconv.ParseInt(text, 10, 64); err == nil {
+		if n > maxExactInteger || n < -maxExactInteger {
+			return n, true
+		}
+		return nil, false
+	}
+	if n, err := strconv.ParseUint(text, 10, 64); err == nil {
+		return n, true
+	}
+	return nil, false
 }
