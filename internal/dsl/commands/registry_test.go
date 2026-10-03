@@ -49,28 +49,3 @@ func TestRegisterRejectsDuplicate(t *testing.T) {
 		t.Fatalf("expected duplicate register to fail")
 	}
 }
-
-func TestBuildCobraCommands(t *testing.T) {
-	oldRegistry := Registry
-	Registry = map[string]*CommandHandler{}
-	defer func() { Registry = oldRegistry }()
-
-	if err := Register(&CommandHandler{Name: "show", Usage: "show <var>", DisableFlagParsing: true, Run: func(ctx *ExecContext, args []string) error { return nil }}); err != nil {
-		t.Fatalf("register show failed: %v", err)
-	}
-	if err := Register(&CommandHandler{Name: "help", Usage: "help", Run: func(ctx *ExecContext, args []string) error { return nil }}); err != nil {
-		t.Fatalf("register help failed: %v", err)
-	}
-
-	commands := BuildCobraCommands(&ExecContext{Vars: map[string]any{}})
-	if len(commands) != 2 {
-		t.Fatalf("expected 2 cobra commands, got %d", len(commands))
-	}
-
-	if commands[0].Name() != "help" || commands[1].Name() != "show" {
-		t.Fatalf("commands should be sorted by name, got %s then %s", commands[0].Name(), commands[1].Name())
-	}
-	if !commands[1].DisableFlagParsing {
-		t.Fatalf("show command should keep DisableFlagParsing=true")
-	}
-}

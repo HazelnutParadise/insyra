@@ -5,12 +5,10 @@ import (
 	"io"
 	"os"
 	"sort"
-	"strings"
 	"sync"
 
 	insyra "github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/cli/env"
-	"github.com/spf13/cobra"
+	"github.com/HazelnutParadise/insyra/internal/dsl/env"
 )
 
 type ExecContext struct {
@@ -55,8 +53,9 @@ type CommandHandler struct {
 	// instead of being silently ignored.
 	Args ArgLimit
 	// Flags lists the flags the one-shot form `insyra <command> ...` takes.
-	// The shell parses them; each one that is set reaches Run as arguments,
-	// the way the REPL and scripts pass them, so Run reads them in one place.
+	// cli/commands.BuildCobraCommands registers them with the shell, and each
+	// one that is set reaches Run as arguments, the way the REPL and scripts
+	// pass them, so Run reads them in one place.
 	Flags []CommandFlag
 	Run   func(ctx *ExecContext, args []string) error
 }
@@ -78,37 +77,10 @@ type CommandFlag struct {
 	Form string
 }
 
-// define adds the flag to cmd.
-func (f CommandFlag) define(cmd *cobra.Command) {
-	if f.TakesValue {
-		cmd.Flags().String(f.Name, "", f.Usage)
-		return
-	}
-	cmd.Flags().Bool(f.Name, false, f.Usage)
-}
-
-// appendTo returns args with the flag appended when it is set and applies to
-// the form args name.
-func (f CommandFlag) appendTo(cmd *cobra.Command, args, runArgs []string) []string {
-	if f.Form != "" && (len(args) == 0 || !strings.EqualFold(args[0], f.Form)) {
-		return runArgs
-	}
-	if f.TakesValue {
-		value, err := cmd.Flags().GetString(f.Name)
-		if err == nil && strings.TrimSpace(value) != "" {
-			runArgs = append(runArgs, "--"+f.Name, value)
-		}
-		return runArgs
-	}
-	if set, err := cmd.Flags().GetBool(f.Name); err == nil && set {
-		runArgs = append(runArgs, "--"+f.Name)
-	}
-	return runArgs
-}
-
 // Registry holds every registered command by name. Access it through
-// Register, Dispatch, and BuildCobraCommands, which take registryMu; reading
-// the map directly is not safe while another goroutine registers.
+// Register, Dispatch, LookupCommand and SnapshotRegistry, which take
+// registryMu; reading the map directly is not safe while another goroutine
+// registers.
 var Registry = map[string]*CommandHandler{}
 
 var registryMu sync.RWMutex
@@ -195,66 +167,6 @@ func Dispatch(ctx *ExecContext, name string, args []string) error {
 		ctx.Env = env.Default()
 	}
 	return handler.Run(ctx, args)
-}
-
-func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
-	registryMu.RLock()
-	keys := make([]string, 0, len(Registry))
-	handlers := make(map[string]*CommandHandler, len(Registry))
-	for name, h := range Registry {
-		keys = append(keys, name)
-		handlers[name] = h
-	}
-	registryMu.RUnlock()
-	sort.Strings(keys)
-
-	commands := make([]*cobra.Command, 0, len(keys))
-	for _, name := range keys {
-		handler := handlers[name]
-		localHandler := handler
-
-		use := localHandler.Usage
-		if use == "" {
-			use = localHandler.Name
-		}
-
-		commands = append(commands, &cobra.Command{
-			Use:                use,
-			Aliases:            localHandler.Aliases,
-			Short:              localHandler.Description,
-			DisableFlagParsing: localHandler.DisableFlagParsing,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				runArgs := args
-				for _, flag := range localHandler.Flags {
-					runArgs = flag.appendTo(cmd, args, runArgs)
-				}
-				err := Dispatch(ctx, localHandler.Name, runArgs)
-				envName := ctx.EnvName
-				if envName == "" {
-					envName = "default"
-				}
-				if localHandler.Name != "history" {
-					line := localHandler.Name
-					if len(runArgs) > 0 {
-						line += " " + strings.Join(runArgs, " ")
-					}
-					mgr := ctx.Env
-					if mgr == nil {
-						mgr = env.Default()
-					}
-					_ = mgr.AppendHistory(envName, SanitizeHistoryLine(line))
-				}
-				return err
-			},
-		})
-
-		created := commands[len(commands)-1]
-		for _, flag := range localHandler.Flags {
-			flag.define(created)
-		}
-	}
-
-	return commands
 }
 
 // clearStaleErrors starts a command with no error recorded on any variable.

@@ -13,11 +13,10 @@ import (
 // method on Default(). #261 (CL-3): under the one-name rule of #211 each stays
 // for one release, Deprecated in favour of Default().<Name>.
 var deprecatedWrappers = map[string][]string{
-	"manager.go": {"SetBasePath", "BasePath", "EnvsPath", "ResolveEnvPath", "EnsureDefaultEnvironment",
+	"env.go": {"SetBasePath", "BasePath", "EnvsPath", "ResolveEnvPath", "EnsureDefaultEnvironment",
 		"EnsureBaseStructure", "Exists", "Create", "Open", "Delete", "Clear", "Rename", "List", "Info",
-		"Export", "Import"},
-	"config.go": {"GlobalConfigPath", "LoadGlobalConfig", "SaveGlobalConfig", "UpdateGlobalConfig"},
-	"state.go":  {"SaveState", "SaveVariables", "LoadState", "RestoreVariables", "AppendHistory", "ReadHistory"},
+		"Export", "Import", "GlobalConfigPath", "LoadGlobalConfig", "SaveGlobalConfig", "UpdateGlobalConfig",
+		"SaveState", "SaveVariables", "LoadState", "RestoreVariables", "AppendHistory", "ReadHistory"},
 }
 
 func TestPackageLevelWrappersAreDeprecated(t *testing.T) {

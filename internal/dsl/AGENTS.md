@@ -1,15 +1,18 @@
-# AGENTS.md (cli/)
+# AGENTS.md (internal/dsl/)
 
-Guidance for working in `cli/`. The top-level [AGENTS.md](../AGENTS.md) covers the wider repo; this file focuses on **shared helpers and patterns inside `cli/`** so you don't reinvent them.
+Guidance for working on the command language: `internal/dsl/` and the `cli/` packages built on it. The top-level [AGENTS.md](../../AGENTS.md) covers the wider repo; this file focuses on **shared helpers and patterns inside `internal/dsl/commands/`** so you don't reinvent them.
 
 > Rule of thumb: before writing a parser, lookup, or registration helper, check the lists below. If it's already here, use it. If you're tempted to write a near-duplicate, refactor the existing one instead.
 
 ## Where things live
 
-- `cli/commands/` — every DSL/CLI command (one file per command or per closely-related group)
-- `cli/repl/` — interactive prompt, line editing, completion
-- `cli/env/` — named environment persistence (`~/.insyra/envs/<name>/`)
-- `cli/style/` — terminal styling primitives
+- `internal/dsl/commands/` — every DSL/CLI command (one file per command or per closely-related group) and the registry
+- `internal/dsl/env/` — named environment persistence (`~/.insyra/envs/<name>/`)
+- `internal/dsl/style/` — terminal styling primitives
+- `internal/dsl/` — the session `engine/dsl` exposes, and the tokenizer every mode shares
+- `cli/` — the Cobra shell (`cli/commands/cobra.go` builds it from the registry), the REPL (`cli/repl/`), and the public names `cli/commands`, `cli/env` and `cli/style` give the internal packages
+
+Nothing under `internal/dsl/` imports `cli/`, Cobra or readline; `TestEngineDSLDoesNotDependOnTheCLI` in `engine/dsl` fails when something does. Shell-only code goes in `cli/`.
 
 ## Always-reuse helpers (commands/helpers.go)
 
@@ -38,8 +41,8 @@ Don't construct an `ExecContext` literal in a new test file — re-export or imp
 
 Not every "true/false" string is an option flag. These are deliberately not unified with `parseFlexBool`:
 
-- `filter.toBool` ([cli/commands/filter.go](commands/filter.go)) — value-level truthiness for CCL filtering. Accepts `""`, `nil`, `null`, numeric coercion, etc. Different domain (cell value), different rules.
-- `rank` direction ([cli/commands/transform.go](commands/transform.go)) — domain enum (`asc`/`desc`/`ascending`/`descending`) with `true`/`false` as legacy aliases. Don't widen this to `yes/on/1` — direction words are first-class, the bool aliases are a courtesy.
+- `filter.toBool` ([internal/dsl/commands/filter.go](commands/filter.go)) — value-level truthiness for CCL filtering. Accepts `""`, `nil`, `null`, numeric coercion, etc. Different domain (cell value), different rules.
+- `rank` direction ([internal/dsl/commands/transform.go](commands/transform.go)) — domain enum (`asc`/`desc`/`ascending`/`descending`) with `true`/`false` as legacy aliases. Don't widen this to `yes/on/1` — direction words are first-class, the bool aliases are a courtesy.
 
 If you add a new "looks like a bool" argument, ask: is it a CLI option flag (use `parseFlexBool`), a typed data literal (use `parseLiteral`), or a domain enum (write a small focused switch)?
 
@@ -102,7 +105,7 @@ The `Usage` string is what the user sees in `insyra help <command>`. Keep it acc
 
 ### Flags: what the one-shot form takes on top of its arguments
 
-A command whose one-shot form takes a flag (`env import ... --force`, `accel ... --mode gpu`) declares it in `Flags` with a `CommandFlag`. `BuildCobraCommands` registers it with Cobra and hands it to `Run` as arguments, the way the REPL and scripts pass it, so `Run` parses it in one place. Set `Form` when the flag belongs to one form only, and `TakesValue` when it takes a value. Don't special-case a command by name in `BuildCobraCommands`.
+A command whose one-shot form takes a flag (`env import ... --force`, `accel ... --mode gpu`) declares it in `Flags` with a `CommandFlag`. `BuildCobraCommands` in `cli/commands` registers it with Cobra and hands it to `Run` as arguments, the way the REPL and scripts pass it, so `Run` parses it in one place. Set `Form` when the flag belongs to one form only, and `TakesValue` when it takes a value. Don't special-case a command by name in `BuildCobraCommands`.
 
 ### Forms and Examples (optional but expected for complex commands)
 
@@ -123,9 +126,9 @@ Don't introduce a parallel `LongHelp string` or print extra help from inside `Ru
 
 ## When you change a shared helper
 
-Helpers in this list are imported across commands. A signature change to `parseAlias`, `parseFlexBool`, etc. means re-running `go test ./cli/...` and likely touching docs in:
+Helpers in this list are imported across commands. A signature change to `parseAlias`, `parseFlexBool`, etc. means re-running `go test ./internal/dsl/... ./cli/...` and likely touching docs in:
 
-- [Docs/cli-dsl.md](../Docs/cli-dsl.md)
+- [Docs/cli-dsl.md](../../Docs/cli-dsl.md)
 - the command's own `Usage`, `Forms` and `Examples`, which `insyra help <command>` prints
 
-Keep these in sync. `Docs/cli-dsl.md` and `help` are what AI agents read: [skills/use-insyra-cli/SKILL.md](../skills/use-insyra-cli/SKILL.md) teaches them to look there and lists no commands itself.
+Keep these in sync. `Docs/cli-dsl.md` and `help` are what AI agents read: [skills/use-insyra-cli/SKILL.md](../../skills/use-insyra-cli/SKILL.md) teaches them to look there and lists no commands itself.

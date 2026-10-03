@@ -117,6 +117,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `cli/env` 的套件層函式標為 **Deprecated**，請改用它們實際呼叫的 `Manager` 方法：`env.Create(name)` 就是 `env.Default().Create(name)`，`SetBasePath`、`BasePath`、`EnvsPath`、`ResolveEnvPath`、`EnsureDefaultEnvironment`、`EnsureBaseStructure`、`Exists`、`Open`、`Delete`、`Clear`、`Rename`、`List`、`Info`、`Export`、`Import`、`GlobalConfigPath`、`LoadGlobalConfig`、`SaveGlobalConfig`、`UpdateGlobalConfig`、`SaveState`、`SaveVariables`、`LoadState`、`RestoreVariables`、`AppendHistory` 與 `ReadHistory` 也一樣。在下一版移除之前都還能用。
 - 透過 `cli/commands` 註冊的命令，改在新的 `CommandHandler.Flags` 欄位宣告單次執行時接受的旗標。`insyra env clear --keep-history`、`env import --force` 與 `accel --mode` 用起來和以前一樣；以前殼層是靠命令名稱認出這些旗標，所以嵌入程式自己註冊的命令沒辦法有自己的旗標。
 - 透過 DSL session 執行的 `accel`，現在從該 session 自己的環境管理器讀取預設模式。以前不管 session 用的是哪個 `Manager`，它都去讀 `~/.insyra/config.json` 的 `accel-mode`，所以自訂環境根目錄的嵌入程式拿到的是 CLI 的設定。
+- 匯入 `engine/dsl` 不再把 CLI 一起拉進來。它以前匯入 `cli/env` 與 `cli/repl`，再經由它們拉進 `cli/commands`、Cobra 殼層與 REPL 用的 readline，所以只想在 Go 程式裡執行 DSL 指令，也得把這些全部編進去。命令語言現在放在 `internal/dsl`（命令與其登錄表、環境、輸出樣式和 session），`engine/dsl` 與 `insyra` 命令都匯入它。`engine/dsl` 匯出的 API 沒有改變，`cli/commands`、`cli/env` 與 `cli/style` 原有的匯出名稱也都保留，改成同一批型別與函式的別名和包裝；`cli/env` 與 `cli/style` 不會拉進 Cobra 或 readline。
+- `cli/repl.DSLSession` 與 `NewDSLSession` 標為 **Deprecated**，請改用 `engine/dsl` 的 `Session` 與 `NewSession`，兩者是同一個型別、同一個函式。下一版會移除。
+- **BREAKING**：把新的 map 指定給 `cli/commands.Registry`，不再會替換命令登錄表；這個變數存的是登錄表本身的 map，`Register`、`Dispatch` 與殼層都讀它。請用 `Register` 註冊命令。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。

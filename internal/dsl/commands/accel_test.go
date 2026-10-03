@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	insyra "github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/internal/dsl/env"
 )
 
 func setupCommandHome(t *testing.T) {

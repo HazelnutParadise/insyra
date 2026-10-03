@@ -23,7 +23,7 @@ func TestCLIDocsMatchRegistry(t *testing.T) {
 		parse  func(string) map[string]string
 		extras map[string]bool
 	}{
-		{"Docs/cli-dsl.md command index", "../../Docs/cli-dsl.md", parseCommandIndex,
+		{"Docs/cli-dsl.md command index", "../../../Docs/cli-dsl.md", parseCommandIndex,
 			map[string]bool{"completion": true}}, // Cobra's own, not in the registry
 	}
 
@@ -67,7 +67,7 @@ func TestCLITopicListsNameEveryCommand(t *testing.T) {
 	pages := []struct {
 		name, path, section string
 	}{
-		{"Docs/cli-dsl.md command groups", "../../Docs/cli-dsl.md", "## Command Groups"},
+		{"Docs/cli-dsl.md command groups", "../../../Docs/cli-dsl.md", "## Command Groups"},
 	}
 
 	registryMu.RLock()

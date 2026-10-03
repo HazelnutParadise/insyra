@@ -25,20 +25,22 @@ The `engine` package re-exports some of Insyra's core data structures and algori
 
 ### DSL Session
 
-`DSL Session` re-exports the programmatic Insyra CLI DSL session API, allowing external packages to execute DSL commands or `.isr` files directly from Go code.
+`DSL Session` runs the Insyra command language from Go, allowing external packages to execute DSL commands or `.isr` files directly from Go code. It builds on nothing from the CLI: importing `engine/dsl` does not pull in `cli/`, the Cobra shell or the REPL's line editor.
 
 **Package:** `engine/dsl`.
 
 ```go
-type Session = repl.DSLSession
-func NewSession(envName string, output io.Writer) (*Session, error)
+type Session
+func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, error)
 ```
+
+`mgr` comes from `github.com/HazelnutParadise/insyra/cli/env`: `env.Default()` for the standard `~/.insyra` root, or `env.NewManager(basePath, envsDirName)` for another one. `cli/env` does not pull in the shell or the REPL either.
 
 Key methods on `Session`:
 
 - `Execute(line string) error` — execute one DSL command line.
 - `ExecuteFile(path string) error` — execute a `.isr` script file with line-numbered errors.
-- `Context() *commands.ExecContext` — access the underlying execution context/variables.
+- `Context() *commands.ExecContext` — access the underlying execution context/variables (`commands` is `github.com/HazelnutParadise/insyra/cli/commands`).
 
 Example:
 
@@ -46,11 +48,12 @@ Example:
 package main
 
 import (
+    "github.com/HazelnutParadise/insyra/cli/env"
     "github.com/HazelnutParadise/insyra/engine/dsl"
 )
 
 func main() {
-    s, _ := dsl.NewSession("default", nil)
+    s, _ := dsl.NewSession(env.Default(), "default", nil)
     _ = s.Execute("newdl 1 2 3 as x")
     _ = s.Execute("mean x")
 }

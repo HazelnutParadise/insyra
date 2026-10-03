@@ -38,7 +38,7 @@ Trivial edits (typos, formatting, comment/doc-only touch-ups) may skip OpenSpec.
 When in doubt, propose a change. The docs/changelog/skills-in-sync rule below
 still applies to whatever the change touches.
 
-`CLAUDE.md` (and `cli/CLAUDE.md`, `stats/CLAUDE.md`) are `@AGENTS.md` includes,
+`CLAUDE.md` (and `internal/dsl/CLAUDE.md`, `stats/CLAUDE.md`) are `@AGENTS.md` includes,
 so this policy applies to every agent tool that reads either file.
 
 ## Acceleration (`accel`) Operating Contract
@@ -188,10 +188,12 @@ The root package defines everything central:
 ### CLI (`cli/`)
 
 Built with Cobra. Entry point: [cmd/insyra/main.go](cmd/insyra/main.go) → `cli.Execute()`.
-- `cli/commands/` — individual subcommand implementations
-- `cli/repl/` — interactive REPL and DSL session (`engine/dsl` exposes `DSLSession` for programmatic use)
-- `cli/env/` — named environment management (variable persistence between sessions)
-- `cli/style/` — terminal styling
+- `cli/commands/` — the public names of the command registry, and `BuildCobraCommands`, which builds the shell from it
+- `cli/repl/` — interactive REPL and tab completion
+- `cli/env/` — public names of named environment management (variable persistence between sessions)
+- `cli/style/` — public names of the terminal styling
+
+The command language itself is not in `cli/`: `internal/dsl/commands/` holds every command and the registry, `internal/dsl/env/` and `internal/dsl/style/` the environments and styling, and `internal/dsl/` the session `engine/dsl` exposes. `engine/dsl` must not depend on `cli/`, Cobra or readline (`TestEngineDSLDoesNotDependOnTheCLI`); [internal/dsl/AGENTS.md](internal/dsl/AGENTS.md) has the rules for writing commands.
 
 ### Internal packages (`internal/`)
 
@@ -244,7 +246,7 @@ Docs and the changelog are part of a change, not a follow-up. A feature is not d
 **When adding or changing any feature (new or existing package):**
 - Update the relevant `Docs/*.md` page(s) to match the new/changed API.
 - API and command details belong in `Docs/` (and, for the CLI, in each command's `Usage`, `Forms` and `Examples`), never in the agent skills. The skills teach principles, the mental model and where to find documentation; update one only when a principle, a workflow or a documentation location changes. See [Agent Skills](#agent-skills).
-- When the change touches the CLI/REPL or the DSL, update the CLI (`cli/`) and its doc [Docs/cli-dsl.md](Docs/cli-dsl.md).
+- When the change touches the CLI/REPL or the DSL, update the CLI (`cli/`, `internal/dsl/`) and its doc [Docs/cli-dsl.md](Docs/cli-dsl.md).
 
 **When the change is visible to someone using the library or the CLI:**
 - Add an entry under `## Unreleased` in **both** [CHANGELOG.md](CHANGELOG.md) and [CHANGELOG_TW.md](CHANGELOG_TW.md), in the same change. Under the OpenSpec workflow this belongs in the change's own `tasks.md` — never as a follow-up, and never written from memory at release time.
@@ -270,8 +272,14 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-03] — remove `cli/repl.DSLSession` and `NewDSLSession` one release after they were deprecated
+- **Where**: `cli/repl/session.go`, `cli/repl/session_test.go`, and the note under "Go DSL Session API" in `Docs/cli-dsl.md`
+- **What**: `dsl-outside-cli` deprecated them under the one-name rule of #211 (#260, EN-2): they are the same type and function as `engine/dsl`'s `Session` and `NewSession`.
+- **Suggestion**: delete both files and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-10-03] — remove the package-level functions of `cli/env` one release after they were deprecated
-- **Where**: the package-level wrappers at the end of `cli/env/manager.go`, `cli/env/config.go` and `cli/env/state.go`, `cli/env/deprecated_wrappers_test.go`, and the note under "Custom environment storage location" in `Docs/cli-dsl.md`
+- **Where**: the package-level wrappers at the end of `cli/env/env.go`, `cli/env/deprecated_wrappers_test.go`, and the note under "Custom environment storage location" in `Docs/cli-dsl.md`
 - **What**: `cli-env-one-name` deprecated all 26 under the one-name rule of #211 (#261, CL-3): each only calls the same method on `Default()`.
 - **Suggestion**: delete them, the test file and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry. `ConfigKeys` and `Default` are not wrappers and stay.
 - **Status**: pending
@@ -433,7 +441,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending, tracked in [#409](https://github.com/HazelnutParadise/insyra/issues/409)
 
 ### [2026-09-28] — remove `Difference`, `MovingAverage`, `MovingStdev` and `WeightedMovingAverage` one release after they were deprecated
-- **Where**: `datalist.go`, their lines in `IDataList` (`interfaces.go`), `cli/commands/timeseries.go` (`movavg`, `diff`), and the tests that call them (`datalist_legacy_transforms_test.go`, `datalist_legacy_smoothing_test.go`, `datalist_deprecated_test.go`, `datalist_test.go`, `datalist_numeric_test.go`, `chainable_nil_test.go`, `instance_error_test.go`, `error_philosophy_test.go`)
+- **Where**: `datalist.go`, their lines in `IDataList` (`interfaces.go`), `internal/dsl/commands/timeseries.go` (`movavg`, `diff`), and the tests that call them (`datalist_legacy_transforms_test.go`, `datalist_legacy_smoothing_test.go`, `datalist_deprecated_test.go`, `datalist_test.go`, `datalist_numeric_test.go`, `chainable_nil_test.go`, `instance_error_test.go`, `error_philosophy_test.go`)
 - **What**: `deprecate-look-alike-window-methods` deprecated the four by the owner's ruling on #222 (2026-09-28), keeping their behaviour for one release instead of turning them into aliases of `Diff(1)` and `Rolling(...)`, which would have changed their results under the same name. The CLI's `movavg` and `diff` still call them.
 - **Suggestion**: delete the four and their `IDataList` lines, drop their rows from the characterization tests and from the table in `Docs/DataList.md`, and add a BREAKING changelog entry, in the same release as the other Deprecated removals. Decide first what `movavg` and `diff` become: reproduce their current output from `Rolling(...).Mean()` and `Diff(1)` by dropping the leading `nil` positions, or deprecate them in favour of `rolling … mean` and `diffn` the way `fillnan` points at `fillna`.
 - **Status**: pending
@@ -493,7 +501,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-09-26] — CLI arguments a count cannot catch
-- **Where**: `cli/commands/` — `setrownames.go`, `show.go`, `fetch.go`, `knn.go`, `fillna.go`, `config.go`
+- **Where**: `internal/dsl/commands/` — `setrownames.go`, `show.go`, `fetch.go`, `knn.go`, `fillna.go`, `config.go`
 - **What**: `cli-declared-arg-limits` made every command refuse an argument past its declared count. Auditing the 117 commands for it turned up six places where the count is right and an argument is still accepted and dropped, measured on 2026-09-26: `setrownames t r1 … r6` on a four-row table reports success and drops `r5` and `r6`; `show` on a scaler variable or on `accel.devices` ignores `<start> <end>`; `fetch yahoo AAPL calendar extra` ignores `extra`, because the count is per source and only some yahoo methods take an argument; `knn_neighbors` accepts `weighting`, which its Usage does not list and nothing reads; `fillna x mean limit 1` accepts `limit`, and `extrapolate`, for strategies that do not use them; and `config log-level` fails with the usage `config [key] [value]`, which says a key alone is allowed. `exit` being a no-op in one-shot and scripts is tracked separately in #328.
 - **Suggestion**: each is a few lines in its own command: refuse the extra names, the range, the token, or the option, and make `config`'s Usage say `config [<key> <value>]` unless reading one key is wanted. They are independent, so they can go in one small change.
 - **Status**: pending
@@ -523,13 +531,13 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-09-27] — two one-shot commands on one environment lose one command's variables
-- **Where**: `cli/env/state.go` `SaveVariables` (the save every command ends with) and `RestoreVariables` (the load it starts with)
+- **Where**: `internal/dsl/env/state.go` `SaveVariables` (the save every command ends with) and `RestoreVariables` (the load it starts with)
 - **What**: each command reads the whole `state.json`, runs, and writes the whole file back through the same `state.json.tmp` path. Two `insyra` commands against one environment at the same time each save their own copy, so the later rename wins and the variables the other command created are gone; if both write the temporary file at once, one rename can also fail. Found by the review of `cli-env-typed-state` on 2026-09-27, by reading the code; not reproduced. It predates that change, which did not alter the read-modify-write.
 - **Suggestion**: a per-environment lock file held from restore to save, or a unique temporary name per writer plus a check that the file has not changed since it was read. The lock serialises commands, which a user running commands in parallel may not expect, so decide which.
 - **Status**: pending
 
 ### [2026-09-27] — an unreadable `state.json` is overwritten by the next command
-- **Where**: `cli/root.go` `openEnvironment`, `cli/repl/repl.go` `Start`, `cli/repl/api.go` `NewDSLSession`, and `env open` in `cli/commands/env.go`
+- **Where**: `cli/root.go` `openEnvironment`, `cli/repl/repl.go` `Start`, `internal/dsl/session.go` `NewSession`, and `env open` in `internal/dsl/commands/env.go`
 - **What**: when `RestoreVariables` fails, the first three start from an empty variable map without saying so, and the save after the next command writes that map over the file, so every variable in the environment is lost. Measured on 2026-09-27 with the CLI built from `dev` at 550cf94: after `newdl 1 2 3 as x`, truncating `state.json` mid-object and running `newdl 9 as y` left a `state.json` holding only `y`. `env open` fails differently, going by its code: when the opened environment's state cannot be read, it keeps the previous environment's variables, and the next save writes them into the environment just opened. `cli-env-typed-state` does not make this more likely, because a file it writes always decodes, but it does not change it.
 - **Suggestion**: stop before running a command against an environment whose state could not be read, naming the file and the error, or move the unreadable file aside before saving over it. Either changes what a command does in a damaged environment, so decide which first.
 - **Status**: pending
@@ -547,13 +555,13 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-09-28] — what the typed `state.json` codec still accepts badly
-- **Where**: `cli/env/state.go`, `cli/env/variable_codec.go`, `cli/env/cell_codec.go`
+- **Where**: `internal/dsl/env/state.go`, `internal/dsl/env/variable_codec.go`, `internal/dsl/env/cell_codec.go`
 - **What**: found by the review of the dev merge, each measured on 2026-09-28. (1) A variable, column, row or table name that is not valid UTF-8 (a Big5 `.isr` script) is written with U+FFFD in its place, so two such column names come back as `��` and `��_1`, and two such variable names collide in the file and one is lost without `SaveVariables` reporting it. Cell contents are safe, because non-UTF-8 text in a cell is base64-encoded. (2) Decoding has no depth limit while encoding refuses a cell nested more than 64 levels, so a table read from a hand-edited or imported file is dropped, with a warning, at the next save. (3) Restoring a table whose file lists thousands of columns under one name is cubic in that count (2,000 columns: 8.4 s), and every one-shot command restores the whole environment. (4) A variable that could not be decoded is kept, but its reason is dropped: `vars` prints the internal type `env.unreadableVariable` and a command using it says only that it is not a DataTable.
 - **Suggestion**: (1) report a name that is not valid UTF-8 as unsaved, or encode names the way cells are; (2) apply the encoder's depth limit when decoding and keep such a variable unreadable; (3) refuse duplicate column names when decoding, since no table the library builds has them; (4) keep the decode error on the unreadable variable and print it.
 - **Status**: pending
 
 ### [2026-09-28] — `db connect` history masking leaves part of some passwords
-- **Where**: `cli/commands/db_conn.go` `maskKVPasswords`, `maskDSNPassword`
+- **Where**: `internal/dsl/commands/db_conn.go` `maskKVPasswords`, `maskDSNPassword`
 - **What**: measured on 2026-09-28. In a key=value DSN, an unquoted value ends at a space for libpq and pgx, but the mask stops at `;` or `"`, so `password=ab;cd port=5` is written to `history.txt` as `password=***;cd port=5`. In a URL or a MySQL native DSN the mask takes the first `@`, while the drivers take the last, so `u:p@ss@h` is written as `u:***@ss@h`. The history file is private to the user (0600), but `env export` writes it into a file anyone may be sent. The first gap came with the masking dev added (677f6c53); the second was there before.
 - **Suggestion**: choose the end of a value by dialect, `;` only for the ODBC-style `sqlserver` form, and take the last `@` before the host in the URL and MySQL forms. Add each measured case to the masking tests.
 - **Status**: pending
@@ -595,7 +603,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-09-27] — CLI corners the skill audit measured
-- **Where**: `cli/commands/timeseries.go` (`rolling`); `cli/commands/db.go` `db tables`; `cli/commands/run.go` against `cli/repl/repl.go`'s tokenizer; `cli/commands/hypothesis.go`; the `error:` line printer
+- **Where**: `internal/dsl/commands/timeseries.go` (`rolling`); `internal/dsl/commands/db.go` `db tables`; `internal/dsl/commands/run.go` against `internal/dsl/tokenize.go`; `internal/dsl/commands/hypothesis.go`; the `error:` line printer
 - **What**: measured on 2026-09-27 with the CLI built from this branch. (1) `rolling … minobs` larger than the window logs an error, stores an empty DataList, prints `saved as` and exits 0, where `Docs/cli-dsl.md` says a command that cannot do what it was asked fails. (2) `db tables <conn> schema x` on SQLite accepts and ignores `schema`, against the rule that an argument a command does not use is refused. (3) `run` treats a backslash as an escape only before a quote or a backslash, while the REPL and `Session.ExecuteFile` treat it as escaping any character, so a Windows path in a `.isr` file reads differently under the two, although `Docs/cli-dsl.md` says they differ only in error handling. (4) With `NO_COLOR=1` set, the `error:` line is still printed in colour.
 - **Suggestion**: (1) return the error so the command fails; (2) refuse `schema` on SQLite or document that it is accepted and has no effect; (3) give `ExecuteFile` the `run` tokenizer, or say how they differ; (4) route the error line through the same colour check as the rest of the output. Each is small and independent.
 - **Status**: pending
@@ -679,7 +687,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-09-11] — `insyra run` exits 0 when a line fails
-- **Where**: `cli/commands/run.go`, the loop that prints `line N: <error>` and moves on
+- **Where**: `internal/dsl/commands/run.go`, the loop that prints `line N: <error>` and moves on
 - **What**: `Docs/cli-dsl.md` says `run` continues after a failing line, and it does, but it then prints `script complete` and exits 0, so a shell script or CI job running `insyra run job.isr` cannot tell that a step failed. Measured on 2026-09-11: a script whose third line was rejected exited 0. The Go `Session.ExecuteFile` stops at the first error and returns it.
 - **Suggestion**: keep continuing if that is the intended behaviour, but exit non-zero when any line failed (for example "script finished, 1 of 3 lines failed"), or add a stop-on-error option. Either way the exit code belongs in the docs.
 - **Status**: pending
@@ -703,7 +711,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: single-device correctness verified; multi-GPU wall clock and non-Apple parity remain pending
 
 ### [2026-08-01] — `ToF64Slice` still fabricates zeros for 54 callers outside `stats`
-- **Where**: `datalist.go` `ToF64Slice`, and its callers in `plot/`, `gplot/`, `cli/`
+- **Where**: `datalist.go` `ToF64Slice`, and its callers in `plot/`, `gplot/`, `internal/dsl/`
 - **What**: it routes every value through `insyra.ToFloat64`, which has no failure channel and yields `0` for anything it cannot parse, then returns a full-length slice — so a caller cannot tell a real zero from a value that was never read. `stats` was moved off it on 2026-08-01 after a blank among six observations was measured moving a Pearson coefficient from 0.9992 to 0.9879. `quant` followed on 2026-09-05 (`fix-quant-legacy-numeric-input`): its last five call sites — `SharpeRatio`, `MaxDrawdown`, `AnnualizedReturn`, `DeflatedSharpeRatio`, and `PBO`'s column loop — now read through `numericSeries`, so the whole package refuses an unreadable cell instead of zeroing it. On 2026-09-05 (`fix-api-review-batch-1`) `DataList.Rank`, `ExponentialSmoothing`, `DoubleExponentialSmoothing`, the six `*Interpolation` methods, and `stats.Skewness`/`Kurtosis` (which used the sibling `SliceToF64`) were moved off it as well, through the new `numericCells` read path. The remaining callers were left deliberately: they are display and reporting paths, where a fabricated zero shows up as a point on a chart rather than inside a coefficient.
 - **Suggestion**: leave them, but decide rather than drift. The method's doc comment says a cell it cannot read becomes 0, and `chart-constructors-return-errors` wrote down what each chart does with one (`Docs/plot.md`, `Docs/gplot.md`, `Docs/cli-dsl.md`): `gplot` draws it as 0, while `plot`'s bar and line charts turn the Y axis into categories. A new numeric analysis must not use it.
 - **Status**: pending

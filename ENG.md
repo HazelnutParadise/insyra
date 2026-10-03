@@ -29,6 +29,8 @@ device layer would have to move to a package with no insyra dependency
 before the root could reach it directly.
 ```
 
+The command language runs the same way from the shell and from Go, so it sits below both: `internal/dsl/` holds the commands, the registry, environments and the session; `cli/` (the Cobra shell, the REPL, readline) and `engine/dsl` (the Go entry point) both import it. Dependency direction: `cli -> internal/dsl` and `engine/dsl -> internal/dsl`, never `engine -> cli`. `TestEngineDSLDoesNotDependOnTheCLI` holds the line with `go list -deps`. The public names a Go program spells (`cli/env.Manager`, `cli/commands.ExecContext`) are aliases in thin `cli/` packages that pull in neither Cobra nor readline, apart from `cli/commands`, which also builds the shell.
+
 `ml` wraps `stats` rather than reimplementing it, so the R-validated numerics are inherited rather than duplicated. `accel` is reachable only through `allpkgs` or a direct import; nothing in `stats` or the root package calls it.
 
 ## Data flow

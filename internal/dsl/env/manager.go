@@ -74,14 +74,6 @@ var defaultManager = &Manager{}
 // <UserHomeDir>/.insyra unless Default().SetBasePath moves it.
 func Default() *Manager { return defaultManager }
 
-// SetBasePath overrides the default Manager's root. Pass "" to restore the
-// default <UserHomeDir>/.insyra. This only affects Default(); per-session
-// Managers created via NewManager are unaffected.
-//
-// Deprecated: use Default().SetBasePath instead. Removed in the release after
-// the one that deprecated it.
-func SetBasePath(path string) { defaultManager.SetBasePath(path) }
-
 // SetBasePath updates this Manager's root. Pass "" to fall back to the
 // default <UserHomeDir>/.insyra. Safe to call before opening or creating
 // any environment; not safe to change while an environment is in use.
@@ -551,99 +543,4 @@ func writeDefaultFiles(envPath string) error {
 		return err
 	}
 	return nil
-}
-
-// Package-level wrappers around the default Manager, one per Manager method.
-// Each is Deprecated in favour of calling the method on Default().
-
-// BasePath calls Default().BasePath.
-//
-// Deprecated: use Default().BasePath instead. Removed in the release after
-// the one that deprecated it.
-func BasePath() (string, error) { return defaultManager.BasePath() }
-
-// EnvsPath calls Default().EnvsPath.
-//
-// Deprecated: use Default().EnvsPath instead. Removed in the release after
-// the one that deprecated it.
-func EnvsPath() (string, error) { return defaultManager.EnvsPath() }
-
-// ResolveEnvPath calls Default().ResolveEnvPath.
-//
-// Deprecated: use Default().ResolveEnvPath instead. Removed in the release after
-// the one that deprecated it.
-func ResolveEnvPath(name string) (string, error) { return defaultManager.ResolveEnvPath(name) }
-
-// EnsureDefaultEnvironment calls Default().EnsureDefaultEnvironment.
-//
-// Deprecated: use Default().EnsureDefaultEnvironment instead. Removed in the release after
-// the one that deprecated it.
-func EnsureDefaultEnvironment() error { return defaultManager.EnsureDefaultEnvironment() }
-
-// EnsureBaseStructure calls Default().EnsureBaseStructure.
-//
-// Deprecated: use Default().EnsureBaseStructure instead. Removed in the release after
-// the one that deprecated it.
-func EnsureBaseStructure() error { return defaultManager.EnsureBaseStructure() }
-
-// Exists calls Default().Exists.
-//
-// Deprecated: use Default().Exists instead. Removed in the release after
-// the one that deprecated it.
-func Exists(name string) bool { return defaultManager.Exists(name) }
-
-// Create calls Default().Create.
-//
-// Deprecated: use Default().Create instead. Removed in the release after
-// the one that deprecated it.
-func Create(name string) error { return defaultManager.Create(name) }
-
-// Open calls Default().Open.
-//
-// Deprecated: use Default().Open instead. Removed in the release after
-// the one that deprecated it.
-func Open(name string) (string, error) { return defaultManager.Open(name) }
-
-// Delete calls Default().Delete.
-//
-// Deprecated: use Default().Delete instead. Removed in the release after
-// the one that deprecated it.
-func Delete(name string) error { return defaultManager.Delete(name) }
-
-// Clear calls Default().Clear.
-//
-// Deprecated: use Default().Clear instead. Removed in the release after
-// the one that deprecated it.
-func Clear(name string, keepHistory bool) error { return defaultManager.Clear(name, keepHistory) }
-
-// Rename calls Default().Rename.
-//
-// Deprecated: use Default().Rename instead. Removed in the release after
-// the one that deprecated it.
-func Rename(oldName, newName string) error { return defaultManager.Rename(oldName, newName) }
-
-// List calls Default().List.
-//
-// Deprecated: use Default().List instead. Removed in the release after
-// the one that deprecated it.
-func List() ([]EnvironmentInfo, error) { return defaultManager.List() }
-
-// Info calls Default().Info.
-//
-// Deprecated: use Default().Info instead. Removed in the release after
-// the one that deprecated it.
-func Info(name string) (EnvironmentInfo, error) { return defaultManager.Info(name) }
-
-// Export calls Default().Export.
-//
-// Deprecated: use Default().Export instead. Removed in the release after
-// the one that deprecated it.
-func Export(name, outputPath string) error { return defaultManager.Export(name, outputPath) }
-
-// Import calls Default().Import.
-//
-// Deprecated: use Default().Import instead. Removed in the release after
-// the one that deprecated it.
-func Import(inputPath, targetName string, force bool) (string, error) {
-	return defaultManager.Import(inputPath, targetName, force)
 }

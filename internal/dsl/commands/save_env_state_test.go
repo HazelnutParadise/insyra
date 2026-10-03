@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/internal/dsl/env"
 	"github.com/HazelnutParadise/insyra/stats"
 )
 

@@ -8,7 +8,7 @@ import (
 
 	insyra "github.com/HazelnutParadise/insyra"
 	accelpkg "github.com/HazelnutParadise/insyra/accel"
-	clienv "github.com/HazelnutParadise/insyra/cli/env"
+	clienv "github.com/HazelnutParadise/insyra/internal/dsl/env"
 )
 
 type accelArgs struct {

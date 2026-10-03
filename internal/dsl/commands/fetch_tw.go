@@ -6,8 +6,8 @@ import (
 	"time"
 
 	insyra "github.com/HazelnutParadise/insyra"
-	clienv "github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/HazelnutParadise/insyra/datafetch"
+	clienv "github.com/HazelnutParadise/insyra/internal/dsl/env"
 )
 
 const (

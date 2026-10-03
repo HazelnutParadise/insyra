@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/internal/dsl/env"
 )
 
 // tableCtx returns a context holding a three-column table `dt` and a list `x`.
@@ -139,23 +139,23 @@ func TestAccelUsageMatchesTheCommand(t *testing.T) {
 	}
 }
 
-// accel registers the one flag it reads, --mode, so one-shot mode and the REPL
-// accept the same arguments and Cobra rejects anything else before it runs.
+// accel declares the one flag it reads, --mode, so one-shot mode and the REPL
+// accept the same arguments and the shell rejects anything else before it runs.
 func TestAccelFlagsAreRegistered(t *testing.T) {
-	ctx := newTestExecContext(t)
-	for _, cmd := range BuildCobraCommands(ctx) {
-		if cmd.Name() != "accel" {
-			continue
-		}
-		if cmd.Flags().Lookup("mode") == nil {
-			t.Error("accel does not register --mode")
-		}
-		if cmd.Flags().Lookup("precision") != nil {
-			t.Error("accel registers --precision, which nothing reads")
-		}
-		return
+	h, ok := LookupCommand("accel")
+	if !ok {
+		t.Fatal("accel is not registered")
 	}
-	t.Fatal("accel command not built")
+	declared := map[string]bool{}
+	for _, f := range h.Flags {
+		declared[f.Name] = true
+	}
+	if !declared["mode"] {
+		t.Error("accel does not declare --mode")
+	}
+	if declared["precision"] {
+		t.Error("accel declares --precision, which nothing reads")
+	}
 }
 
 // CLI-13: an argument the command does not understand must be reported, not

@@ -1,4 +1,4 @@
-package repl
+package dsl
 
 import (
 	"bufio"
@@ -8,20 +8,20 @@ import (
 	"os"
 	"strings"
 
-	"github.com/HazelnutParadise/insyra/cli/commands"
-	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/internal/dsl/commands"
+	"github.com/HazelnutParadise/insyra/internal/dsl/env"
 )
 
-type DSLSession struct {
+type Session struct {
 	ctx *commands.ExecContext
 }
 
-// NewDSLSession creates a DSL session bound to mgr's environment storage.
+// NewSession creates a DSL session bound to mgr's environment storage.
 //
 // mgr must be non-nil — pass env.Default() to use the standard
 // <UserHomeDir>/.insyra root, or env.NewManager(path) for a custom one.
 // envName "" defaults to "default". output nil silently discards.
-func NewDSLSession(mgr *env.Manager, envName string, output io.Writer) (*DSLSession, error) {
+func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, error) {
 	if mgr == nil {
 		return nil, errors.New("dsl: env manager is required (pass env.Default() or env.NewManager(path))")
 	}
@@ -48,7 +48,7 @@ func NewDSLSession(mgr *env.Manager, envName string, output io.Writer) (*DSLSess
 		output = io.Discard
 	}
 
-	return &DSLSession{
+	return &Session{
 		ctx: &commands.ExecContext{
 			EnvName: envName,
 			EnvPath: envPath,
@@ -59,7 +59,7 @@ func NewDSLSession(mgr *env.Manager, envName string, output io.Writer) (*DSLSess
 	}, nil
 }
 
-func (session *DSLSession) Execute(line string) error {
+func (session *Session) Execute(line string) error {
 	if session == nil || session.ctx == nil {
 		return fmt.Errorf("dsl session is nil")
 	}
@@ -69,7 +69,7 @@ func (session *DSLSession) Execute(line string) error {
 		return nil
 	}
 
-	tokens := tokenize(trimmed)
+	tokens := Tokenize(trimmed)
 	if len(tokens) == 0 {
 		return nil
 	}
@@ -82,14 +82,14 @@ func (session *DSLSession) Execute(line string) error {
 	return commands.SaveEnvState(session.ctx)
 }
 
-func (session *DSLSession) Context() *commands.ExecContext {
+func (session *Session) Context() *commands.ExecContext {
 	if session == nil {
 		return nil
 	}
 	return session.ctx
 }
 
-func (session *DSLSession) ExecuteFile(path string) error {
+func (session *Session) ExecuteFile(path string) error {
 	if session == nil || session.ctx == nil {
 		return fmt.Errorf("dsl session is nil")
 	}

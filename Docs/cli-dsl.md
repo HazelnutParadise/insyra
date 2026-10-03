@@ -33,7 +33,7 @@ Insyra uses one command system across CLI, REPL, scripts, and Go DSL sessions.
 - **Script mode** (`run`) executes line-by-line commands from a `.isr` text file.
 - **Go DSL API** (`engine/dsl`) lets you execute the same command language inside Go code.
 
-All modes share the same command registry (`cli/commands`), variable model (`map[string]any` in execution context), and environment persistence under `~/.insyra`.
+All modes share the same command registry (`cli/commands` from Go code), variable model (`map[string]any` in execution context), and environment persistence under `~/.insyra`. The commands themselves are implemented in `internal/dsl/commands`, outside `cli/`, so a Go program using `engine/dsl` does not pull in the shell or the REPL.
 
 ## Installation
 
@@ -113,6 +113,8 @@ func main() {
 ```
 
 `Execute` accepts the same DSL syntax as REPL and `.isr`.
+
+`Session` and `NewSession` used to be reachable as `DSLSession` and `NewDSLSession` from `cli/repl` too. Those names are **Deprecated** and are removed in the next release; use `engine/dsl`.
 
 #### Custom environment storage location
 
@@ -779,7 +781,7 @@ Source policy:
 
 - Registry commands: `go run ./cmd/insyra help` and `go run ./cmd/insyra help <command>`.
 - Cobra built-in command noted explicitly: `completion`.
-- The Usage column is each command's own `help` text, and `TestCLIDocsMatchRegistry` in `cli/commands` fails when a row stops matching. Where a Usage shortens a command's shapes to `...`, `help <command>` lists them in full.
+- The Usage column is each command's own `help` text, and `TestCLIDocsMatchRegistry` in `internal/dsl/commands` fails when a row stops matching. Where a Usage shortens a command's shapes to `...`, `help <command>` lists them in full.
 
 | Command | Usage | Description |
 | --- | --- | --- |

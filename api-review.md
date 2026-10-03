@@ -317,7 +317,7 @@
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | EN-1 | Med（no-op 標 Deprecated、登錄表並行行為寫明並改為一次完成，由 engine-ccl-registry-contract 修正；移除 AST 型別別名會拿掉公開 API，待擁有者決定） | `engine/ccl` 把 `internal/ccl` 的 AST（`CCLNode`、`Context`、`EvaluationResult`、`MapContext`）用型別別名整個公開，編譯器內部結構從此成為相容性承諾；`RegisterFunction`／`RegisterAggregateFunction` 是程序全域登錄表，無移除、無並行安全說明；`ResetEvalDepth`／`ResetFuncCallDepth` 已是 no-op 但沒標 Deprecated（準則 2、10） | engine/ccl/ccl.go | 只公開 `Compile`＋`Evaluate`＋`Register*`；no-op 標 Deprecated |
-| EN-2 | Low | `engine/dsl` 引入 `cli/env` 與 `cli/repl`：程式庫層的 engine 依賴 CLI 層，方向反了；`engine/atomic`、`biindex`、`ring` 是 internal 型別的別名再匯出，doc 說 Ring 非並行安全，OK | engine/dsl/dsl.go:3-8 | DSL session 實作搬到非 cli 套件，cli 依賴它 |
+| EN-2 | ~~Low~~ 已修正（dsl-outside-cli） | `engine/dsl` 引入 `cli/env` 與 `cli/repl`：程式庫層的 engine 依賴 CLI 層，方向反了；`engine/atomic`、`biindex`、`ring` 是 internal 型別的別名再匯出，doc 說 Ring 非並行安全，OK | engine/dsl/dsl.go:3-8 | DSL session 實作搬到非 cli 套件，cli 依賴它 |
 
 ### cli（Go 層 API：cli、cli/commands、cli/env、cli/repl、cli/style）
 

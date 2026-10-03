@@ -3,7 +3,7 @@ package commands
 import (
 	"fmt"
 
-	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/internal/dsl/env"
 )
 
 // SaveEnvState saves ctx.Vars to the environment ctx.EnvName. A variable the

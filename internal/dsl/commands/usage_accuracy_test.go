@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"unicode"
-
-	"github.com/spf13/cobra"
 )
 
 // help prints a command's Usage, so a Usage that leaves out an option the
@@ -48,17 +46,12 @@ func TestUsageNamesWhatTheCommandParses(t *testing.T) {
 }
 
 // A flag a command parses has to be named where `help` shows the command, in
-// its Usage or its Forms, and, unless the command turns Cobra's flag parsing
-// off, Cobra has to know it too, or the shell rejects as an unknown flag what a
-// script accepts. accel parsed --precision with neither for as long as it had
+// its Usage or its Forms, and, unless the command turns the shell's flag
+// parsing off, declared in its Flags, or the shell rejects as an unknown flag
+// what a script accepts. accel parsed --precision with neither for as long as it had
 // it. The flags are read from each command's source, so a new one fails here
 // without anyone listing it.
 func TestParsedFlagsAreDocumentedAndReachTheShell(t *testing.T) {
-	shell := map[string]*cobra.Command{}
-	for _, c := range BuildCobraCommands(newTestExecContext(t)) {
-		shell[c.Name()] = c
-	}
-
 	paths, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
@@ -125,8 +118,8 @@ func TestParsedFlagsAreDocumentedAndReachTheShell(t *testing.T) {
 			if h.DisableFlagParsing {
 				continue
 			}
-			if c := shell[name]; c == nil || c.Flags().Lookup(strings.TrimPrefix(flag, "--")) == nil {
-				t.Errorf("%s parses %s, but Cobra does not know it, so the shell rejects it as an unknown flag", name, flag)
+			if !slices.ContainsFunc(h.Flags, func(f CommandFlag) bool { return f.Name == strings.TrimPrefix(flag, "--") }) {
+				t.Errorf("%s parses %s, but does not declare it in Flags, so the shell rejects it as an unknown flag", name, flag)
 			}
 		}
 	}

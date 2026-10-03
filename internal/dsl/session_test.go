@@ -1,4 +1,4 @@
-package repl
+package dsl
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/internal/dsl/env"
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
@@ -22,21 +22,21 @@ func setupTempHome(t *testing.T) string {
 	return home
 }
 
-func TestNewDSLSessionRequiresManager(t *testing.T) {
-	if _, err := NewDSLSession(nil, "default", nil); err == nil {
+func TestNewSessionRequiresManager(t *testing.T) {
+	if _, err := NewSession(nil, "default", nil); err == nil {
 		t.Fatalf("expected error when manager is nil")
 	}
 }
 
-func TestNewDSLSessionWithCustomManager(t *testing.T) {
+func TestNewSessionWithCustomManager(t *testing.T) {
 	setupTempHome(t)
 
 	workspace := filepath.Join(t.TempDir(), "workspace", ".idensyra")
 	mgr := env.NewManager(workspace, "")
 
-	session, err := NewDSLSession(mgr, "default", nil)
+	session, err := NewSession(mgr, "default", nil)
 	if err != nil {
-		t.Fatalf("NewDSLSession with custom manager failed: %v", err)
+		t.Fatalf("NewSession with custom manager failed: %v", err)
 	}
 
 	expected := filepath.Join(workspace, "envs", "default")
@@ -54,15 +54,15 @@ func TestNewDSLSessionWithCustomManager(t *testing.T) {
 	}
 }
 
-func TestNewDSLSessionWithCustomEnvsDirName(t *testing.T) {
+func TestNewSessionWithCustomEnvsDirName(t *testing.T) {
 	setupTempHome(t)
 
 	workspace := filepath.Join(t.TempDir(), "workspace", ".idensyra")
 	mgr := env.NewManager(workspace, "insights")
 
-	session, err := NewDSLSession(mgr, "default", nil)
+	session, err := NewSession(mgr, "default", nil)
 	if err != nil {
-		t.Fatalf("NewDSLSession with custom envs dir failed: %v", err)
+		t.Fatalf("NewSession with custom envs dir failed: %v", err)
 	}
 
 	expected := filepath.Join(workspace, "insights", "default")
@@ -91,11 +91,11 @@ func TestTwoSessionsWithDifferentManagersDoNotInterfere(t *testing.T) {
 	mgrA := env.NewManager(wsA, "")
 	mgrB := env.NewManager(wsB, "")
 
-	sessionA, err := NewDSLSession(mgrA, "default", nil)
+	sessionA, err := NewSession(mgrA, "default", nil)
 	if err != nil {
 		t.Fatalf("create sessionA: %v", err)
 	}
-	sessionB, err := NewDSLSession(mgrB, "default", nil)
+	sessionB, err := NewSession(mgrB, "default", nil)
 	if err != nil {
 		t.Fatalf("create sessionB: %v", err)
 	}
@@ -147,12 +147,12 @@ func TestTwoSessionsWithDifferentManagersDoNotInterfere(t *testing.T) {
 	}
 }
 
-func TestNewDSLSessionWithDefaultManager(t *testing.T) {
+func TestNewSessionWithDefaultManager(t *testing.T) {
 	home := setupTempHome(t)
 
-	session, err := NewDSLSession(env.Default(), "default", nil)
+	session, err := NewSession(env.Default(), "default", nil)
 	if err != nil {
-		t.Fatalf("NewDSLSession failed: %v", err)
+		t.Fatalf("NewSession failed: %v", err)
 	}
 
 	expected := filepath.Join(home, ".insyra", "envs", "default")
@@ -161,10 +161,10 @@ func TestNewDSLSessionWithDefaultManager(t *testing.T) {
 	}
 }
 
-func TestNewDSLSessionDefaultEnvironment(t *testing.T) {
+func TestNewSessionDefaultEnvironment(t *testing.T) {
 	home := setupTempHome(t)
 
-	session, err := NewDSLSession(env.Default(), "", nil)
+	session, err := NewSession(env.Default(), "", nil)
 	if err != nil {
 		t.Fatalf("failed to create session: %v", err)
 	}
@@ -181,10 +181,10 @@ func TestNewDSLSessionDefaultEnvironment(t *testing.T) {
 	}
 }
 
-func TestDSLSessionExecutePersistsStateAndHistory(t *testing.T) {
+func TestSessionExecutePersistsStateAndHistory(t *testing.T) {
 	setupTempHome(t)
 
-	session, err := NewDSLSession(env.Default(), "default", nil)
+	session, err := NewSession(env.Default(), "default", nil)
 	if err != nil {
 		t.Fatalf("failed to create session: %v", err)
 	}
@@ -214,10 +214,10 @@ func TestDSLSessionExecutePersistsStateAndHistory(t *testing.T) {
 	}
 }
 
-func TestDSLSessionExecuteCommentAndUnknownCommand(t *testing.T) {
+func TestSessionExecuteCommentAndUnknownCommand(t *testing.T) {
 	setupTempHome(t)
 
-	session, err := NewDSLSession(env.Default(), "default", nil)
+	session, err := NewSession(env.Default(), "default", nil)
 	if err != nil {
 		t.Fatalf("failed to create session: %v", err)
 	}
@@ -231,10 +231,10 @@ func TestDSLSessionExecuteCommentAndUnknownCommand(t *testing.T) {
 	}
 }
 
-func TestDSLSessionExecuteFile(t *testing.T) {
+func TestSessionExecuteFile(t *testing.T) {
 	setupTempHome(t)
 
-	session, err := NewDSLSession(env.Default(), "default", nil)
+	session, err := NewSession(env.Default(), "default", nil)
 	if err != nil {
 		t.Fatalf("failed to create session: %v", err)
 	}
@@ -254,10 +254,10 @@ func TestDSLSessionExecuteFile(t *testing.T) {
 	}
 }
 
-func TestDSLSessionExecuteFileIncludesLineNumber(t *testing.T) {
+func TestSessionExecuteFileIncludesLineNumber(t *testing.T) {
 	setupTempHome(t)
 
-	session, err := NewDSLSession(env.Default(), "default", nil)
+	session, err := NewSession(env.Default(), "default", nil)
 	if err != nil {
 		t.Fatalf("failed to create session: %v", err)
 	}
@@ -277,10 +277,10 @@ func TestDSLSessionExecuteFileIncludesLineNumber(t *testing.T) {
 	}
 }
 
-func TestDSLSessionWarnsAboutUnsavedVariableOnce(t *testing.T) {
+func TestSessionWarnsAboutUnsavedVariableOnce(t *testing.T) {
 	var out bytes.Buffer
 
-	session, err := NewDSLSession(env.NewManager(t.TempDir(), ""), "default", &out)
+	session, err := NewSession(env.NewManager(t.TempDir(), ""), "default", &out)
 	if err != nil {
 		t.Fatalf("failed to create session: %v", err)
 	}

@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/internal/dsl/env"
 )
 
 // CLI-1: a selector that matches nothing is an error and stores nothing.
@@ -155,43 +154,5 @@ func TestSanitizeHistoryLineMasksEscapedAndSpacedPasswords(t *testing.T) {
 		if got := SanitizeHistoryLine(line); got != line {
 			t.Errorf("a line that is not db connect changed: %q -> %q", line, got)
 		}
-	}
-}
-
-// CLI-4: the one-shot dispatcher path writes the sanitized line.
-func TestDispatchHistoryIsSanitized(t *testing.T) {
-	base := t.TempDir()
-	mgr := env.NewManager(base, "envs")
-	if err := mgr.EnsureDefaultEnvironment(); err != nil {
-		t.Fatal(err)
-	}
-	ctx := newTestExecContext(t)
-	ctx.Env = mgr
-	ctx.EnvName = "default"
-	cmds := BuildCobraCommands(ctx)
-	for _, c := range cmds {
-		if c.Name() == "db" {
-			_ = c.RunE(c, []string{"connect", "bad", "mysql://alice:S3cretPW@127.0.0.1:1/db"})
-		}
-	}
-	lines, err := mgr.ReadHistory("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	joined := strings.Join(lines, "\n")
-	if strings.Contains(joined, "S3cretPW") {
-		t.Fatalf("history contains the password: %q", joined)
-	}
-	if !strings.Contains(joined, "db connect bad") {
-		t.Fatalf("history lost the command: %q", joined)
-	}
-	info, err := os.Stat(filepath.Join(base, "envs", "default", "history.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Windows has no POSIX permission bits: Go reports a writable file there
-	// as 0666 whatever mode it was created with, so the check means nothing.
-	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm&0o077 != 0 {
-		t.Fatalf("history.txt is group/world readable: %o", perm)
 	}
 }

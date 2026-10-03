@@ -138,35 +138,6 @@ func (m *Manager) UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
 	return cfg, nil
 }
 
-// Package-level wrappers around the default Manager. Each is Deprecated in
-// favour of calling the method on Default().
-
-// GlobalConfigPath calls Default().GlobalConfigPath.
-//
-// Deprecated: use Default().GlobalConfigPath instead. Removed in the release after
-// the one that deprecated it.
-func GlobalConfigPath() (string, error) { return defaultManager.GlobalConfigPath() }
-
-// LoadGlobalConfig calls Default().LoadGlobalConfig.
-//
-// Deprecated: use Default().LoadGlobalConfig instead. Removed in the release after
-// the one that deprecated it.
-func LoadGlobalConfig() (GlobalConfig, error) { return defaultManager.LoadGlobalConfig() }
-
-// SaveGlobalConfig calls Default().SaveGlobalConfig.
-//
-// Deprecated: use Default().SaveGlobalConfig instead. Removed in the release after
-// the one that deprecated it.
-func SaveGlobalConfig(cfg GlobalConfig) error { return defaultManager.SaveGlobalConfig(cfg) }
-
-// UpdateGlobalConfig calls Default().UpdateGlobalConfig.
-//
-// Deprecated: use Default().UpdateGlobalConfig instead. Removed in the release after
-// the one that deprecated it.
-func UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
-	return defaultManager.UpdateGlobalConfig(key, value)
-}
-
 // The accepted values for the enumerated settings. A key or a value the CLI
 // does not understand is refused rather than written to disk: a typo that
 // persists is worse than one that is rejected.

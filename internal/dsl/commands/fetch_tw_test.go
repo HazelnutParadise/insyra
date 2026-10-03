@@ -8,8 +8,8 @@ import (
 	"time"
 
 	insyra "github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/HazelnutParadise/insyra/datafetch"
+	"github.com/HazelnutParadise/insyra/internal/dsl/env"
 )
 
 // ===========================================================================

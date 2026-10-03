@@ -11,6 +11,7 @@ import (
 	"github.com/HazelnutParadise/insyra/cli/commands"
 	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/HazelnutParadise/insyra/cli/style"
+	"github.com/HazelnutParadise/insyra/internal/dsl"
 	"github.com/ergochat/readline"
 )
 
@@ -92,7 +93,7 @@ func Start(ctx *commands.ExecContext) error {
 		if trimmed == "exit" || trimmed == "quit" {
 			return nil
 		}
-		tokens := tokenize(trimmed)
+		tokens := dsl.Tokenize(trimmed)
 		if len(tokens) == 0 {
 			continue
 		}
@@ -128,50 +129,4 @@ func historyEntry(line string) (string, bool) {
 
 func prompt(envName string) string {
 	return fmt.Sprintf("insyra [%s] > ", envName)
-}
-
-func tokenize(input string) []string {
-	result := []string{}
-	var builder strings.Builder
-	quote := rune(0)
-	escaped := false
-
-	flush := func() {
-		if builder.Len() == 0 {
-			return
-		}
-		result = append(result, builder.String())
-		builder.Reset()
-	}
-
-	for _, ch := range input {
-		if escaped {
-			builder.WriteRune(ch)
-			escaped = false
-			continue
-		}
-		if ch == '\\' {
-			escaped = true
-			continue
-		}
-		if quote != 0 {
-			if ch == quote {
-				quote = 0
-				continue
-			}
-			builder.WriteRune(ch)
-			continue
-		}
-		if ch == '"' || ch == '\'' {
-			quote = ch
-			continue
-		}
-		if ch == ' ' || ch == '\t' {
-			flush()
-			continue
-		}
-		builder.WriteRune(ch)
-	}
-	flush()
-	return result
 }

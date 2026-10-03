@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/HazelnutParadise/insyra/cli/style"
+	"github.com/HazelnutParadise/insyra/internal/dsl/style"
 )
 
 func init() {
