@@ -249,6 +249,7 @@ func EvaluateStatement(node CCLNode, ctx Context) (*EvaluationResult, error)
 // Function registration
 func RegisterFunction(name string, fn func(...any) (any, error))
 func RegisterAggregateFunction(name string, fn func(...[]any) (any, error))
+func RegisterSequenceFunction(name string, fn func(...[]any) ([]any, error))
 func RegisterStandardFunctions()
 
 // MapContext for quick testing
@@ -260,7 +261,10 @@ Key notes (see `internal/ccl` and `Docs/CCL.md` for full details):
 - `CompileExpression` / `CompileMultiline` compile CCL text into AST nodes (`CCLNode`).
 - `Evaluate` evaluates an expression node for the current row in a `ccl.Context`.
 - `EvaluateStatement` returns an `EvaluationResult` (assignment / new column metadata) but does **not** apply changes to higher-level data structures — DataTable applies assignments at a higher level.
-- Call `ccl.RegisterStandardFunctions()` (from the `engine/ccl` subpackage) once to register built-in scalar and aggregate functions (e.g., `IF`, `SUM`, `AVG`, `CONCAT`). Registration is package-global (stored in `internal/ccl`'s function maps), so once registered all implementations of the `ccl.Context` interface can use these functions. It is recommended to call this at startup (e.g., in `main` or `init`) and protect with `sync.Once` if there is any chance of concurrent registration.
+- Call `ccl.RegisterStandardFunctions()` (from the `engine/ccl` subpackage) once to register the built-in functions (e.g., `SUM`, `AVG`, `CONCAT`) when your program does not import the `insyra` package, whose import already registers them. Calling it again puts every built-in back and replaces a function you registered under a built-in's name.
+- `RegisterFunction` adds a scalar function (one value per argument in, one value out, called per row), `RegisterAggregateFunction` an aggregate (whole columns in, one value out), and `RegisterSequenceFunction` a sequence function (whole columns in, a column of the same length out, like `LAG` or `CUMSUM`).
+- There is one function registry for the whole process, shared by every `DataTable`, the parquet CCL functions, the CLI and `engine/ccl`. Registering and evaluating are safe from any number of goroutines, and each registration takes effect as a whole. An expression evaluated while a registration is under way may call the old function for some rows and the new one for later rows, so register before evaluating when that matters. Names are matched in any letter case; registering a name again replaces it, a built-in's included, and there is no way to remove one.
+- `ResetEvalDepth` and `ResetFuncCallDepth` are Deprecated: they do nothing, and are removed in the next release.
 - `MapContext` (see `internal/ccl/map_context.go`) implements `Context` for a `map[string][]any` and is useful for tests and quick experiments.
 
 Examples:

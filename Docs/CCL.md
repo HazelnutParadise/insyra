@@ -1053,9 +1053,27 @@ Chained comparisons are equivalent to using the AND operator:
 
 Register your own scalar function with `RegisterFunction` from `engine/ccl`. It
 receives the evaluated arguments and returns a value or an error; an error stops
-the expression the same way a built-in function's error does. Names are matched
-without regard to case, and registering is safe while other goroutines are
-evaluating.
+the expression the same way a built-in function's error does.
+
+`engine/ccl` registers three kinds of function:
+
+| Function | Takes | Returns | Like |
+| --- | --- | --- | --- |
+| `RegisterFunction` | one value per argument, called for each row | one value | `ROUND` |
+| `RegisterAggregateFunction` | whole columns | one value, which every row receives | `SUM` |
+| `RegisterSequenceFunction` | whole columns | a column of the same length, of which each row receives its own cell | `CUMSUM` |
+
+There is one registry for the whole process. Every `DataTable`, the parquet CCL
+functions, the CLI and `engine/ccl` read it, so a function registered once is
+available to all of them. Registering and evaluating are safe from any number of
+goroutines, and each registration takes effect as a whole. An expression that
+is evaluated while a registration is under way may call the old function for
+some rows and the new one for later rows, so register your functions before you
+evaluate when that matters. Names are matched in any letter case. Registering a
+name again replaces the function, a built-in's included, and there is no way to
+remove one. A function registered under a built-in's name, such as `SUM`, is
+yours from then on: nothing in insyra computes that name with the built-in's
+arithmetic any more.
 
 ```go
 import (

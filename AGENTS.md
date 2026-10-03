@@ -270,6 +270,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-03] — remove `engine/ccl.ResetEvalDepth` and `ResetFuncCallDepth` one release after they were deprecated
+- **Where**: `engine/ccl/ccl.go`, `TestResetDepthsAreNoOps` in `engine/ccl/ccl_test.go` and `TestNoOpResetsAreDeprecated` in `engine/ccl/registry_contract_test.go`, and their note in `engine/README.md`
+- **What**: `engine-ccl-registry-contract` deprecated them (#259, EN-1): they have done nothing since recursion depth moved onto the call stack in #191.
+- **Suggestion**: delete them, the two tests and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-10-02] — `Write` panics on a `uint64` above the `int64` range
 - **Where**: `parquet/internal.go` `appendValue`, through `conv.ParseInt`
 - **What**: measured by the second review of `parquet-ccl-streamed-sequences` on 2026-10-02: writing a table holding a `uint64` greater than `math.MaxInt64` panics with `ParseInt: value out of range`, against the rule that the library never panics. It predates that change.

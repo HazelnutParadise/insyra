@@ -78,6 +78,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING（只影響顯示）**：`Show`，以及沒有給範圍的 `ShowRange` 與 `ShowTypesRange`，表格或 list 在 60 列以內會全部印出，以前是超過 25 列就截斷。超過 60 列時仍印前 20 列與最後 5 列，中間以 `...` 省略。pandas 也是 60 列以內全部印出，只是超過後改印頭尾各 5 列。會解析 26 到 60 列輸出內容的程式，現在會看到所有列。文件以前說 `ShowRange()` 會印出所有列，但超過 25 列時從來不是這樣，現在寫明了實際規則。
 - `DataList.Difference`、`MovingAverage`、`MovingStdev` 與 `WeightedMovingAverage` 標為 **Deprecated**，下一版移除，在那之前行為不變。對應的方法是 `Diff(1)`、`Rolling(RollingOptions{Window: w}).Mean()`、`Rolling(...).Std()` 與 `Rolling(RollingOptions{Window: w, Weights: ws}).Mean()`，但不能直接替換：它們的結果和輸入一樣長，前面補 `nil`（五個值做 `MovingAverage(3)` 得到三格，`Rolling` 得到五格），遇到空值時給 `nil`，舊方法則是直接失敗或回傳 `NaN`。資料全是數字時，新方法結果的 `Data()[w-1:]` 就是舊方法的結果。完整差異列在 `Docs/DataList.md` 的「Methods that look alike but differ」。`ExponentialSmoothing` 不標 Deprecated，因為 `EWM` 不接受 `alpha = 0`。
 - CCL 把每一種 Go 整數型別與 `float32` 的格子都當成數字。`int8`、`int16` 與無號整數欄（`parquet.Read` 讀到檔案裡這類欄位時給的就是這些型別）過去不被 CCL 當成數字：`SUM` 回 0、`MAX` 回 `nil`、`A == 1` 回 false，全都不報錯，而 `A * 2`、`IF(A, 'y', 'n')` 與 `ROUND(A, 2)` 會失敗。`A.B` 也接受存成 `int32`、`int64`、`float32` 或其他整數型別的列號，過去會被拒絕；`ISNA` 與 `IFNA` 也把 `float32` 的 NaN 當成缺值。
+- `engine/ccl` 可以註冊序列函式了：用 `RegisterSequenceFunction(name, fn)` 搭配新的 `SeqFunc` 型別，加入一個吃整欄、回傳同樣長度一欄的函式，就像 `LAG`、`CUMSUM` 那樣。以前從模組外只能註冊純量函式與彙總函式。註冊函式的說明也寫清楚函式登錄表的行為：整個程式共用同一份，可以從任意多個 goroutine 同時使用，名稱不分大小寫，同名再註冊一次就會取代原本的函式。用內建函式的名稱註冊彙總或序列函式時，函式和「這是使用者的函式」的標記現在會一起更新，同一時間進行的求值不會看到你的函式卻仍當成內建函式來算。
+- `engine/ccl.ResetEvalDepth` 與 `ResetFuncCallDepth` 標為 **Deprecated**。自從 CCL 把遞迴深度放在呼叫堆疊上，它們就什麼也不做，下一版會移除，請直接刪掉這些呼叫。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。

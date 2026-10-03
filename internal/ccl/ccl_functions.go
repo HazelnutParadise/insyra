@@ -42,25 +42,28 @@ func RegisterFunction(name string, fn Func) {
 
 // RegisterAggregateFunction registers a custom aggregate function for CCL evaluation.
 // The name is remembered as the caller's, so that the built-in streaming forms
-// stand down for it: whatever arithmetic is registered is the caller's.
+// stand down for it: whatever arithmetic is registered is the caller's. The
+// function and the mark change under one lock, so no reader sees one without
+// the other.
 func RegisterAggregateFunction(name string, fn AggFunc) {
-	registerAggregateFunction(name, fn)
-
 	registryMu.Lock()
 	defer registryMu.Unlock()
-	userAggregates[strings.ToUpper(name)] = true
+	key := strings.ToUpper(name)
+	aggregateFunctions[key] = fn
+	userAggregates[key] = true
 }
 
 // RegisterSequenceFunction registers a custom sequence function (whole-column
 // input, same-length-column output) for CCL evaluation. The name is remembered as
 // the caller's, so that the built-in streaming forms stand down for it: whatever
-// arithmetic is registered is the caller's.
+// arithmetic is registered is the caller's. The function and the mark change
+// under one lock, as in RegisterAggregateFunction.
 func RegisterSequenceFunction(name string, fn SeqFunc) {
-	registerSequenceFunction(name, fn)
-
 	registryMu.Lock()
 	defer registryMu.Unlock()
-	userSequences[strings.ToUpper(name)] = true
+	key := strings.ToUpper(name)
+	sequenceFunctions[key] = fn
+	userSequences[key] = true
 }
 
 func registerFunction(name string, fn Func) {

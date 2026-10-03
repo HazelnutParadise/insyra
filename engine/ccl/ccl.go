@@ -1,3 +1,17 @@
+// Package ccl compiles and evaluates CCL expressions outside a DataTable, and
+// registers the functions CCL calls.
+//
+// # The function registry
+//
+// CCL has one registry of functions for the whole process. Every DataTable, the
+// parquet CCL functions, the CLI and this package read the same one, so a
+// function registered here is available to all of them. Registration and
+// evaluation are safe from every goroutine: each registration takes effect as a
+// whole, and evaluating an expression never sees a half-made entry. An
+// expression evaluated while a registration is under way may still call the old
+// function for some rows and the new one for later rows, so register before you
+// evaluate when that matters. Names are matched in any letter case. There is no
+// way to remove a function; registering a name again replaces it.
 package ccl
 
 import internalccl "github.com/HazelnutParadise/insyra/internal/ccl"
@@ -9,6 +23,10 @@ type EvaluationResult = internalccl.EvaluationResult
 type MapContext = internalccl.MapContext
 type Func = internalccl.Func
 type AggFunc = internalccl.AggFunc
+
+// SeqFunc is the signature of a sequence function: it takes whole columns and
+// returns a column of the same length, the way LAG, CUMSUM and ROLLING_MEAN do.
+type SeqFunc = internalccl.SeqFunc
 
 // CompileError reports an expression that could not be compiled, carrying the
 // byte offset into the expression and the text at it. Match it with errors.As.
@@ -93,28 +111,58 @@ func IsRowDependent(n CCLNode) bool {
 	return internalccl.IsRowDependent(n)
 }
 
-// RegisterStandardFunctions registers the built-in CCL functions.
+// RegisterStandardFunctions registers the built-in CCL functions. Importing the
+// insyra package already does this. Calling it again puts every built-in back,
+// and it replaces a function a caller registered under a built-in's name.
 func RegisterStandardFunctions() {
 	internalccl.RegisterStandardFunctions()
 }
 
-// RegisterFunction registers a custom scalar function.
+// RegisterFunction registers a custom scalar function: one value per argument
+// in, one value out, called once for each row. The registry is shared by every
+// goroutine and every DataTable in the process; the name is matched in any letter
+// case, and a later registration under the same name replaces this one,
+// including a built-in's. A panic inside fn is returned as an error from the
+// evaluation that called it.
 func RegisterFunction(name string, fn Func) {
 	internalccl.RegisterFunction(name, fn)
 }
 
-// RegisterAggregateFunction registers a custom aggregate function.
+// RegisterAggregateFunction registers a custom aggregate function: whole
+// columns in, one value out, which every row receives. The registry is shared by
+// every goroutine and every DataTable in the process; the name is matched in any
+// letter case, and a later registration under the same name replaces this one,
+// including a built-in's. A function registered under a built-in's name, such as
+// SUM, is the caller's from then on: nothing in insyra computes that name with
+// the built-in's arithmetic any more, so parquet's FilterWithCCL and ApplyCCL
+// compute it over the whole column instead of batch by batch.
 func RegisterAggregateFunction(name string, fn AggFunc) {
 	internalccl.RegisterAggregateFunction(name, fn)
 }
 
-// ResetEvalDepth is a no-op kept for API compatibility. Recursion depth is
-// threaded on the call stack since thread-ccl-eval-depth (issue #191), so
-// there is no global state left to reset.
+// RegisterSequenceFunction registers a custom sequence function: whole columns
+// in, a column of the same length out, of which each row receives its own cell.
+// The registry is shared by every goroutine and every DataTable in the process;
+// the name is matched in any letter case, and a later registration under the
+// same name replaces this one, including a built-in's. A function registered
+// under a built-in's name, such as CUMSUM, is the caller's from then on: nothing
+// in insyra computes that name with the built-in's arithmetic any more.
+func RegisterSequenceFunction(name string, fn SeqFunc) {
+	internalccl.RegisterSequenceFunction(name, fn)
+}
+
+// ResetEvalDepth does nothing. Recursion depth has been threaded on the call
+// stack since thread-ccl-eval-depth (issue #191), so there is no global state
+// left to reset.
+//
+// Deprecated: it does nothing; remove the call. Removed in the release after the
+// one that deprecated it.
 func ResetEvalDepth() {
 }
 
-// ResetFuncCallDepth is a no-op kept for API compatibility, for the same
-// reason as ResetEvalDepth.
+// ResetFuncCallDepth does nothing, for the same reason as ResetEvalDepth.
+//
+// Deprecated: it does nothing; remove the call. Removed in the release after the
+// one that deprecated it.
 func ResetFuncCallDepth() {
 }
