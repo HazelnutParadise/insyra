@@ -43,8 +43,8 @@ func TestRootFlagsBeforeRawArgCommand(t *testing.T) {
 // One-shot `env delete default --force` reaches the command with its flag.
 func TestOneShotEnvDeleteDefaultPassesForce(t *testing.T) {
 	base := t.TempDir()
-	env.SetBasePath(base)
-	t.Cleanup(func() { env.SetBasePath("") })
+	env.Default().SetBasePath(base)
+	t.Cleanup(func() { env.Default().SetBasePath("") })
 	if err := env.Default().EnsureDefaultEnvironment(); err != nil {
 		t.Fatal(err)
 	}
