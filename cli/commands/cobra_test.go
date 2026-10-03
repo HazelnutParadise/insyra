@@ -282,6 +282,9 @@ func TestEnvAndAccelOneShotFlagsAsBefore(t *testing.T) {
 		{[]string{"env", "CLEAR", "a", "--keep-history"}, []string{"CLEAR", "a", "--keep-history"}},
 		{[]string{"env", "clear", "a"}, []string{"clear", "a"}},
 		{[]string{"env", "import", "f.json", "t", "--force"}, []string{"import", "f.json", "t", "--force"}},
+		// cli-overwrite-and-delete-documented: --force also lets env delete
+		// remove the default environment.
+		{[]string{"env", "delete", "default", "--force"}, []string{"delete", "default", "--force"}},
 		{[]string{"env", "clear", "a", "--force"}, []string{"clear", "a"}},
 		{[]string{"env", "import", "f.json", "--keep-history"}, []string{"import", "f.json"}},
 		{[]string{"accel", "devices", "--mode", "cpu"}, []string{"devices", "--mode", "cpu"}},
@@ -301,7 +304,7 @@ func TestEnvAndAccelOneShotFlagsAsBefore(t *testing.T) {
 	root, _ := recordingRoot(t, envHandler, accelHandler)
 	usages := map[[2]string]string{
 		{"env", "keep-history"}: "With 'env clear', keep command history",
-		{"env", "force"}:        "With 'env import', overwrite non-empty target environment",
+		{"env", "force"}:        "With 'env import', replace a non-empty target environment; with 'env delete', allow deleting default",
 		{"accel", "mode"}:       "Acceleration mode: auto|cpu|gpu|strict-gpu",
 	}
 	for key, usage := range usages {
@@ -342,5 +345,13 @@ func TestBuildCobraCommandsNamesNoCommand(t *testing.T) {
 	}
 	if found == 0 {
 		t.Fatal("no functions found in cobra.go")
+	}
+}
+
+func TestAFlagFormListsSeveralWords(t *testing.T) {
+	for form, want := range map[string]bool{"import": true, "DELETE": true, "clear": false, "import|delete": false, "": false} {
+		if got := formListed("import|delete", form); got != want {
+			t.Errorf("formListed(import|delete, %q) = %v, want %v", form, got, want)
+		}
 	}
 }

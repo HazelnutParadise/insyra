@@ -66,6 +66,17 @@ func buildCobraCommands(ctx *ExecContext, names []string, handlers map[string]*C
 	return built
 }
 
+// formListed reports whether form is one of the words in a flag's Form, which
+// separates several with |, as in a Usage line.
+func formListed(forms, form string) bool {
+	for _, word := range strings.Split(forms, "|") {
+		if strings.EqualFold(form, word) {
+			return true
+		}
+	}
+	return false
+}
+
 // defineFlag adds flag to cmd.
 func defineFlag(cmd *cobra.Command, flag CommandFlag) {
 	if flag.TakesValue {
@@ -78,7 +89,7 @@ func defineFlag(cmd *cobra.Command, flag CommandFlag) {
 // appendFlag returns runArgs with flag appended when it is set and applies to
 // the form args name.
 func appendFlag(cmd *cobra.Command, flag CommandFlag, args, runArgs []string) []string {
-	if flag.Form != "" && (len(args) == 0 || !strings.EqualFold(args[0], flag.Form)) {
+	if flag.Form != "" && (len(args) == 0 || !formListed(flag.Form, args[0])) {
 		return runArgs
 	}
 	if flag.TakesValue {

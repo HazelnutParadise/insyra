@@ -23,6 +23,7 @@ func init() {
 			"save <var> <file.parquet>",
 			"save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]",
 			"",
+			"Saving to a CSV, JSON or Parquet file that exists replaces it, without asking.",
 			"File option defaults: headers=true, rownames=false, bom=false, allowformulas=false.",
 			"CSV guards text a spreadsheet would run as a formula (=, +, -, @) with a leading quote; allowformulas true writes it as is.",
 			"Excel writes one sheet (default Sheet1) and leaves the workbook's other sheets alone.",

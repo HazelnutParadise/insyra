@@ -9,25 +9,26 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:               "env",
-		Args:               FormArgs(map[string]int{"create": 2, "list": 1, "open": 2, "info": 2, "delete": 2, "rename": 3, "export": 3, "clear": 3, "import": 4}),
+		Args:               FormArgs(map[string]int{"create": 2, "list": 1, "open": 2, "info": 2, "delete": 3, "rename": 3, "export": 3, "clear": 3, "import": 4}),
 		Usage:              "env <create|list|open|clear|export|import|delete|rename|info> [args]",
 		Description:        "Environment management",
 		DisableFlagParsing: false,
 		Flags: []CommandFlag{
 			{Name: "keep-history", Usage: "With 'env clear', keep command history", Form: "clear"},
-			{Name: "force", Usage: "With 'env import', overwrite non-empty target environment", Form: "import"},
+			{Name: "force", Usage: "With 'env import', replace a non-empty target environment; with 'env delete', allow deleting default", Form: "import|delete"},
 		},
 		Forms: []string{
 			"env create <name>                      make a new environment",
 			"env list                               list every environment",
-			"env open <name>                        switch to one",
+			"env open <name>                        switch to one; replaces the session's variables",
 			"env info [name]                        show where it lives and what is in it",
-			"env clear [name] [--keep-history]      drop its variables",
+			"env clear [name] [--keep-history]      drop its variables, and its history unless --keep-history",
 			"env rename <old> <new>                 rename one",
-			"env delete <name>                      remove one (not the current one)",
+			"env delete <name> [--force]            remove one with its history, without asking",
+			"                                       (not the current one; default needs --force)",
 			"",
-			"env export [name] <file>               write it to a file",
-			"env import <file> [name] [--force]     read one back; --force overwrites",
+			"env export [name] <file>               write it to a file; replaces <file> if it exists",
+			"env import <file> [name] [--force]     read one back; --force replaces a target that is not empty",
 		},
 		Examples: []string{
 			"insyra env create analysis",
@@ -140,16 +141,22 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintf(ctx.Output, "imported environment from %s -> %s\n", in, name)
 		return nil
 	case "delete":
-		if len(args) < 2 {
-			return fmt.Errorf("usage: env delete <name>")
-		}
-		if args[1] == ctx.EnvName {
-			return fmt.Errorf("cannot delete current environment: %s", args[1])
-		}
-		if err := ctx.Env.Delete(args[1]); err != nil {
+		name, force, err := parseEnvDeleteArgs(args[1:])
+		if err != nil {
 			return err
 		}
-		_, _ = fmt.Fprintf(ctx.Output, "deleted environment: %s\n", args[1])
+		if name == ctx.EnvName {
+			return fmt.Errorf("cannot delete current environment: %s", name)
+		}
+		// default is the environment every command opens when --env is not
+		// given, so deleting it by mistake loses the most.
+		if name == "default" && !force {
+			return fmt.Errorf("env delete: default is the environment insyra opens when --env is not given; deleting it loses its variables and history, and it comes back empty on the next command. Add --force to delete it")
+		}
+		if err := ctx.Env.Delete(name); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(ctx.Output, "deleted environment: %s\n", name)
 		return nil
 	case "rename":
 		if len(args) < 3 {
@@ -214,6 +221,29 @@ func parseEnvClearArgs(ctx *ExecContext, args []string) (string, bool, error) {
 	}
 
 	return name, keepHistory, nil
+}
+
+func parseEnvDeleteArgs(args []string) (string, bool, error) {
+	name := ""
+	force := false
+	for _, arg := range args {
+		switch arg {
+		case "--force":
+			force = true
+		default:
+			if strings.HasPrefix(arg, "--") {
+				return "", false, fmt.Errorf("unknown flag for env delete: %s", arg)
+			}
+			if name != "" {
+				return "", false, fmt.Errorf("usage: env delete <name> [--force]")
+			}
+			name = arg
+		}
+	}
+	if name == "" {
+		return "", false, fmt.Errorf("usage: env delete <name> [--force]")
+	}
+	return name, force, nil
 }
 
 func parseEnvExportArgs(ctx *ExecContext, args []string) (string, string, error) {

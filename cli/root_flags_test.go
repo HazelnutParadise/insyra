@@ -39,3 +39,34 @@ func TestRootFlagsBeforeRawArgCommand(t *testing.T) {
 		}
 	}
 }
+
+// One-shot `env delete default --force` reaches the command with its flag.
+func TestOneShotEnvDeleteDefaultPassesForce(t *testing.T) {
+	base := t.TempDir()
+	env.SetBasePath(base)
+	t.Cleanup(func() { env.SetBasePath("") })
+	if err := env.Default().EnsureDefaultEnvironment(); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.Default().Create("work"); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"--env", "work", "env", "delete", "default"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("env delete default without --force succeeded")
+	}
+	if !env.Default().Exists("default") {
+		t.Fatal("default was deleted without --force")
+	}
+
+	cmd = NewRootCommand()
+	cmd.SetArgs([]string{"--env", "work", "env", "delete", "default", "--force"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("env delete default --force: %v", err)
+	}
+	if env.Default().Exists("default") {
+		t.Fatal("default is still there after --force")
+	}
+}

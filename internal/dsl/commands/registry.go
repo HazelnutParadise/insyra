@@ -72,8 +72,9 @@ type CommandFlag struct {
 	// is a switch (--force), handed to Run when it is set.
 	TakesValue bool
 	// Form, when set, hands the flag to Run only when the command's first
-	// argument is this word, in any letter case: --force is for `env import`
-	// and is dropped from any other env form.
+	// argument is this word, in any letter case: --keep-history is for
+	// `env clear` and is dropped from any other env form. Several words are
+	// separated by |, as in a Usage line: --force is for "import|delete".
 	Form string
 }
 

@@ -19,6 +19,9 @@ func init() {
 			"plot line <var> [save <file>]                line chart",
 			"plot bar <var> [save <file>]                 bar chart",
 			"plot scatter <var> [save <file>]             scatter chart",
+			"",
+			"Without save, the chart is written to <type>.html in the working directory.",
+			"Either way, plot replaces a file that exists under that name, without asking.",
 		},
 		Examples: []string{
 			"insyra plot line series",

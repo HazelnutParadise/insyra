@@ -344,6 +344,18 @@ insyra env import ./exp1.json exp1-copy --force
 
 `env import` into a non-empty target fails unless `--force` is provided. The export carries the variables as `state.json` stores them, so the imported environment restores the same values and types, including NaN and integers above 2^53.
 
+### Commands that replace or remove data
+
+None of these asks before it acts, so a script or a one-shot command never stops to wait for an answer. Export an environment first if you may want it back.
+
+- `env delete <name>` removes the environment's directory: its variables, its history and its config. It refuses the environment in use. It also refuses `default`, the environment every command opens when `--env` is not given, unless you add `--force`; a deleted `default` comes back empty on the next command.
+- `env clear [name]` drops every variable, and empties the history too unless you add `--keep-history`.
+- `env open <name>`, inside the REPL or a script, replaces the session's variables with the opened environment's. The current environment was saved after the last command, but a variable it could not store, such as a `regression` result, is gone.
+- `env export [name] <file>` replaces `<file>` if it exists.
+- `env import <file> [name] --force` replaces the target environment's variables, history and config.
+- `save <var> <file>` to a CSV, JSON or Parquet file replaces the file if it exists. Excel is the exception: `save` writes one sheet, keeps the others, and replaces an existing sheet only with `if-exists replace`. `save … sql` replaces a table only with `if-exists replace`.
+- `plot` replaces its output file if it exists, including `<type>.html` in the working directory when no `save <file>` is given.
+
 ## DSL Syntax Rules
 
 `.isr` and REPL/DSL line parsing rules:
@@ -1137,7 +1149,7 @@ merge sales_q1 sales_q2 vertical inner as both
 
 ## Plot Output
 
-`plot <type> <var> [save <file>]` writes the chart to a file and prints the path. Without `save`, the file is `<type>.html` in the working directory, for example `bar.html`. A path ending in `.png`, in any letter case, produces a PNG image. Any other extension produces an interactive HTML chart under that name, so `save chart.jpg` still writes HTML. PNG output is rendered by a local Chrome or Chromium. When neither is installed the command fails, and the CLI does not fall back to an online renderer.
+`plot <type> <var> [save <file>]` writes the chart to a file and prints the path. Without `save`, the file is `<type>.html` in the working directory, for example `bar.html`. A file that already exists under that name is replaced without asking, so a second `plot bar` overwrites the first chart; pass `save <file>` to keep both. A path ending in `.png`, in any letter case, produces a PNG image. Any other extension produces an interactive HTML chart under that name, so `save chart.jpg` still writes HTML. PNG output is rendered by a local Chrome or Chromium. When neither is installed the command fails, and the CLI does not fall back to an online renderer.
 
 `line` and `bar` take a DataList, drawn as one series, or a DataTable, drawn as one series per column. `scatter` takes a DataTable and draws its first column against its second. A table with no columns fails with the chart package's reason, for example `plot: CreateLineChart: no data to draw`.
 
