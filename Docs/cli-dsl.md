@@ -1114,7 +1114,7 @@ insyra regression poisson y x1 x2
 
 ## Extra Result Variables
 
-Several commands store more than one variable. The name given with `as` (or `$result`) holds the main result, and the others are stored beside it under that name plus a suffix:
+Several commands store more than one variable. The name given with `as` (or `$result`) holds the main result, and the others are stored beside it under that name plus a suffix. Each one replaces a variable already under that name, so `kmeans t 3 as km` replaces any `km_size` you had; the command's output names every variable it stored, as in `stored km (labels) and km_centers, km_size, …`.
 
 | Command | `<var>` | Also stored |
 | --- | --- | --- |
@@ -1126,8 +1126,15 @@ Several commands store more than one variable. The name given with `as` (or `$re
 | `knn_neighbors` | indices of the nearest training rows, one row per test row (DataTable) | `<var>_distances` (DataTable) |
 | `corrmatrix` | correlation matrix (DataTable) | `<var>_p`, the p-values (DataTable) |
 | `pca` | components (DataTable) | `<var>_eigenvalues`, `<var>_explained_variance` |
+| `quant factor` | one row per factor: exposure, standard error, t and p (DataTable) | `<var>_alpha`, the same columns for the intercept (DataTable) |
+| `quant portfolio` | `Asset, Weight` (DataTable) | `<var>_stats`, one row of expected return, variance, volatility, Sharpe ratio, iterations and convergence (DataTable) |
 
 Without `as`, the names start with `$result`, as in `$result_centers`. The extra variables are saved with the environment like any other. `silhouette <var> <labels_var>` reads its labels from a DataList, such as the one `kmeans` or `dbscan` stored. `show` displays only DataTables, DataLists and scalers fitted by `scale fit`, so a number or a plain list such as `<var>_avg`, `<var>_size` or `<var>_ifault` appears in `vars` but `show` refuses it.
+
+Two results are neither a table nor a list, and `show` refuses both:
+
+- `hclust … as <var>` stores a tree. It is saved with the environment like a table, so `cutree <var> k <n>` works in a later one-shot command too. `cutree` is the only command that reads it.
+- `regression … as <var>` stores the fitted model. The command prints its headline figures (R², AIC and so on) when it runs. The environment cannot store the model, so it lives only for the session: a one-shot command prints a `warning:` line and the variable is gone afterwards, while in the REPL or a script it lasts until the session ends or `env open` switches environment. No command reads it except `vars`, which lists it.
 
 ## Merge Directions and Modes
 

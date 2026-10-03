@@ -31,6 +31,6 @@ func runPCACommand(ctx *ExecContext, args []string) error {
 	ctx.Vars[alias] = result.Components
 	ctx.Vars[alias+"_eigenvalues"] = result.Eigenvalues
 	ctx.Vars[alias+"_explained_variance"] = result.ExplainedVariance
-	_, _ = fmt.Fprintf(ctx.Output, "stored %s (components)\n", alias)
+	_, _ = fmt.Fprintf(ctx.Output, "stored %s (components) and %s\n", alias, alsoStored(alias, "eigenvalues", "explained_variance"))
 	return nil
 }

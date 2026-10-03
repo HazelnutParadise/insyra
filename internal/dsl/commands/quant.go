@@ -466,6 +466,7 @@ func runQuantFactorModel(ctx *ExecContext, form *quantForm, args []string, alias
 	for i, name := range result.FactorNames {
 		_, _ = fmt.Fprintf(ctx.Output, "%s exposure=%v t=%v p=%v\n", name, result.Exposures[i], result.TValues[i], result.PValues[i])
 	}
+	_, _ = fmt.Fprintf(ctx.Output, "stored %s and %s\n", alias, alsoStored(alias, "alpha"))
 	return nil
 }
 
@@ -605,6 +606,7 @@ func runQuantPortfolio(ctx *ExecContext, form *quantForm, args []string, alias s
 	}
 	_, _ = fmt.Fprintf(ctx.Output, "return=%v vol=%v sharpe=%v iterations=%d converged=%t\n",
 		result.ExpectedReturn, result.Volatility, result.SharpeRatio, result.Iterations, result.Converged)
+	_, _ = fmt.Fprintf(ctx.Output, "stored %s and %s\n", alias, alsoStored(alias, "stats"))
 	return nil
 }
 

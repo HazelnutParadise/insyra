@@ -139,3 +139,14 @@ func (e *argError) Unwrap() error { return e.err }
 func wrapArgError(err error, format string, args ...any) error {
 	return &argError{msg: fmt.Sprintf(format, args...), err: err}
 }
+
+// alsoStored names the variables a command stores beside its main result,
+// alias plus each suffix, for the command's success line. Each one replaces any
+// variable already under that name, so the line says which.
+func alsoStored(alias string, suffixes ...string) string {
+	names := make([]string, len(suffixes))
+	for i, suffix := range suffixes {
+		names[i] = alias + "_" + suffix
+	}
+	return strings.Join(names, ", ")
+}
