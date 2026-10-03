@@ -2,11 +2,13 @@ package dsl
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/HazelnutParadise/insyra/internal/dsl/commands"
 	"github.com/HazelnutParadise/insyra/internal/dsl/env"
 	"github.com/HazelnutParadise/insyra/stats"
 )
@@ -297,5 +299,41 @@ func TestSessionWarnsAboutUnsavedVariableOnce(t *testing.T) {
 
 	if got := strings.Count(out.String(), "warning:"); got != 1 {
 		t.Fatalf("warnings = %d, want 1; output:\n%s", got, out.String())
+	}
+}
+
+// ExecuteFile ran every line after an exit (#328).
+func TestDSLSessionExecuteFileStopsAtExit(t *testing.T) {
+	for _, word := range []string{"exit", "quit"} {
+		session, err := NewSession(env.NewManager(t.TempDir(), ""), "default", nil)
+		if err != nil {
+			t.Fatalf("failed to create session: %v", err)
+		}
+		scriptPath := filepath.Join(t.TempDir(), "s.isr")
+		if err := os.WriteFile(scriptPath, []byte("newdl 1 as a\n"+word+"\nnewdl 2 as b\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := session.ExecuteFile(scriptPath); err != nil {
+			t.Fatalf("%s: ExecuteFile returned %v", word, err)
+		}
+		if _, ok := session.Context().Vars["a"]; !ok {
+			t.Errorf("%s: the line before it did not run", word)
+		}
+		if _, ok := session.Context().Vars["b"]; ok {
+			t.Errorf("%s: the line after it ran", word)
+		}
+	}
+}
+
+// A single Execute("exit") has nothing to end, and says so in a way an
+// embedder can test for.
+func TestDSLSessionExecuteExitWrapsErrExit(t *testing.T) {
+	session, err := NewSession(env.NewManager(t.TempDir(), ""), "default", nil)
+	if err != nil {
+		t.Fatalf("failed to create session: %v", err)
+	}
+	err = session.Execute("exit")
+	if !errors.Is(err, commands.ErrExit) {
+		t.Fatalf("Execute(exit) = %v, want an error wrapping commands.ErrExit", err)
 	}
 }

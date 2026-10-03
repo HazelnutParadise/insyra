@@ -116,6 +116,10 @@ func (session *Session) ExecuteFile(path string) error {
 		lineNumber++
 		line := scanner.Text()
 		if err := session.Execute(line); err != nil {
+			// An exit line ends the file, the way it ends a script under run.
+			if errors.Is(err, commands.ErrExit) {
+				return nil
+			}
 			return fmt.Errorf("line %d: %w", lineNumber, err)
 		}
 	}

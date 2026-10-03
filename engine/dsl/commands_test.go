@@ -101,3 +101,23 @@ func TestARegisteredCommandsErrorReachesTheCaller(t *testing.T) {
 	var _ CommandFlag
 	var _ ArgLimit
 }
+
+// A program reading lines from its user ends its loop on exit by testing the
+// error against ErrExit, with nothing imported but engine/dsl.
+func TestExecuteExitWrapsErrExit(t *testing.T) {
+	session, err := NewSession(NewManager(t.TempDir(), ""), "default", nil)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	for _, word := range []string{"exit", "quit"} {
+		if err := session.Execute(word); !errors.Is(err, ErrExit) {
+			t.Errorf("Execute(%q) = %v, want an error wrapping ErrExit", word, err)
+		}
+	}
+	if err := session.Execute("newdl 1 as x"); errors.Is(err, ErrExit) || err != nil {
+		t.Errorf("Execute(newdl) = %v", err)
+	}
+	if !strings.Contains(fmt.Sprint(ErrExit), "exit") {
+		t.Errorf("ErrExit reads %q", ErrExit)
+	}
+}

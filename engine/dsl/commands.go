@@ -50,3 +50,9 @@ func FormArgsAt(at int, forms map[string]int) ArgLimit { return commands.FormArg
 
 // OpenArgs declares that the command checks every argument itself.
 func OpenArgs() ArgLimit { return commands.OpenArgs() }
+
+// ErrExit is wrapped by every error `exit` (or `quit`) returns. A single
+// Session.Execute("exit") has nothing to end and returns such an error, so a
+// program reading lines from its user can end its own loop with
+// errors.Is(err, dsl.ErrExit). Session.ExecuteFile stops at an exit line.
+var ErrExit = commands.ErrExit

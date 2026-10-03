@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,6 +13,10 @@ import (
 func init() {
 	_ = Register(&CommandHandler{Name: "run", Args: MaxArgs(1), Usage: "run <script.isr>", Description: "Run DSL script file", Run: runScriptCommand})
 }
+
+// errScriptExited is what a nested run returns after an exit line, so the
+// script that ran it stops too without reporting the exit again.
+var errScriptExited = fmt.Errorf("script ended by %w", ErrExit)
 
 // maxScriptDepth bounds nested `run` calls so a script that runs itself
 // (directly or through another script) stops instead of recursing forever.
@@ -55,6 +60,19 @@ func runScriptCommand(ctx *ExecContext, args []string) error {
 			continue
 		}
 		if err := Dispatch(ctx, tokens[0], tokens[1:]); err != nil {
+			if errors.Is(err, ErrExit) {
+				// Only the script whose own line was exit reports it; a script
+				// that ran it stops without a second message.
+				if !errors.Is(err, errScriptExited) {
+					_, _ = fmt.Fprintf(ctx.Output, "script ended by exit at line %d\n", lineNumber)
+				}
+				// exit ends every script in a chain of run lines, and the
+				// outermost run succeeds, so the REPL or the shell goes on.
+				if ctx.scriptDepth > 1 {
+					return errScriptExited
+				}
+				return nil
+			}
 			_, _ = fmt.Fprintf(ctx.Output, "%s\n", style.ErrorText(fmt.Sprintf("line %d: %v", lineNumber, err)))
 		}
 	}

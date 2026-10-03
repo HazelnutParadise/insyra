@@ -91,15 +91,15 @@ func Start(ctx *enginedsl.ExecContext) error {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		if trimmed == "exit" || trimmed == "quit" {
-			return nil
-		}
 		tokens := dsl.Tokenize(trimmed)
 		if len(tokens) == 0 {
 			continue
 		}
 
 		if err := commands.Dispatch(ctx, tokens[0], tokens[1:]); err != nil {
+			if errors.Is(err, enginedsl.ErrExit) {
+				return nil
+			}
 			_, _ = fmt.Fprintln(instance.Stderr(), style.ErrorText(err.Error()))
 		}
 

@@ -148,9 +148,7 @@ func Register(handler *CommandHandler) error {
 }
 
 func Dispatch(ctx *ExecContext, name string, args []string) error {
-	registryMu.RLock()
-	handler, ok := Registry[name]
-	registryMu.RUnlock()
+	handler, ok := lookupByNameOrAlias(name)
 	if !ok {
 		return fmt.Errorf("unknown command: %s", name)
 	}
@@ -167,6 +165,24 @@ func Dispatch(ctx *ExecContext, name string, args []string) error {
 		ctx.Env = env.Default()
 	}
 	return handler.Run(ctx, args)
+}
+
+// lookupByNameOrAlias finds the handler registered under name or listing it
+// among its Aliases, as Cobra does for one-shot commands.
+func lookupByNameOrAlias(name string) (*CommandHandler, bool) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	if handler, ok := Registry[name]; ok {
+		return handler, true
+	}
+	for _, handler := range Registry {
+		for _, alias := range handler.Aliases {
+			if alias == name {
+				return handler, true
+			}
+		}
+	}
+	return nil, false
 }
 
 // clearStaleErrors starts a command with no error recorded on any variable.

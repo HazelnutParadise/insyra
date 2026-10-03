@@ -73,7 +73,7 @@ REPL prompt format:
 insyra [env-name] >
 ```
 
-Empty lines and `# comment` lines are ignored.
+Empty lines and `# comment` lines are ignored. `exit` or `quit` ends the REPL.
 
 ### 3. Script Mode (`.isr`)
 
@@ -81,7 +81,9 @@ Empty lines and `# comment` lines are ignored.
 insyra run pipeline.isr
 ```
 
-Each non-empty, non-comment line is tokenized and dispatched as a command.
+Each non-empty, non-comment line is tokenized and dispatched as a command. An `exit` or `quit` line ends the script there: the lines after it do not run, and `run` prints `script ended by exit at line N` instead of `script complete`. When one script runs another with `run`, an `exit` in the inner script stops both, and control goes back to whoever ran the outer one: the shell, the REPL prompt, or the Go program.
+
+A one-shot `insyra exit` has nothing to end, so it fails with an error saying that `exit` only ends the REPL or a script, and exits non-zero.
 
 ### 4. Go DSL Session API
 
@@ -111,7 +113,7 @@ func main() {
 }
 ```
 
-`Execute` accepts the same DSL syntax as REPL and `.isr`.
+`Execute` accepts the same DSL syntax as REPL and `.isr`. A single `Execute("exit")` returns an error wrapping `dsl.ErrExit`, so a program that reads lines from its user can end its own loop with `errors.Is(err, dsl.ErrExit)`.
 
 `Session` and `NewSession` used to be reachable as `DSLSession` and `NewDSLSession` from `cli/repl` too. Those names are **Deprecated** and are removed in the next release; use `engine/dsl`.
 
@@ -455,12 +457,14 @@ insyra shift x 1 fill -- -1
 
 - Executes line-by-line.
 - On line error, prints `line N: <error>` and **continues**.
-- Finishes with `script complete`.
+- Stops at an `exit` or `quit` line and prints `script ended by exit at line N`.
+- Otherwise finishes with `script complete`.
 
 ### Go `Session.ExecuteFile`
 
 - Executes line-by-line.
 - On first error, returns `line N: <error>` and **stops**.
+- Stops at an `exit` or `quit` line and returns nil.
 - Caller decides retry/fallback behavior.
 
 Use `run` for tolerant batch execution and `ExecuteFile` for fail-fast programmatic control.
@@ -935,7 +939,7 @@ Source policy:
 | `encode` | `encode <var> onehot\|label\|ordinal ... [as <var>]` | One-shot categorical encoding for DataTable variables |
 | `env` | `env <create\|list\|open\|clear\|export\|import\|delete\|rename\|info> [args]` | Environment management |
 | `ewm` | `ewm <var> alpha\|span\|halflife <value> mean\|var\|std [adjust yes\|no] [bias yes\|no] [minobs <n>] [as <var>]` | Exponentially weighted mean/var/std over a DataList |
-| `exit` | `exit` | Exit REPL |
+| `exit` | `exit` | End the REPL or the running script (alias `quit`) |
 | `expanding` | `expanding <var> <minobs> <reducer> [as <var>]` | Expanding-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
 | `expsmooth` | `expsmooth <var> <alpha> [as <var>]` | Exponential smoothing |
 | `fetch` | `fetch yahoo\|tw ... [as <var>]` | Fetch external data |
