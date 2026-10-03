@@ -1,0 +1,74 @@
+# Builds the Python environment the py package installs on Windows on arm64,
+# the one supported platform where part of it is compiled from source, every
+# time something that decides that build changes. A full build downloads the
+# whole environment and compiles blis and statsmodels, so it runs only for
+# those files.
+
+name: Python Environment (Windows arm64)
+
+on:
+  push:
+    branches: [ "main", "dev", "0.4" ]
+    paths:
+      - "py/environment/**"
+      - "py/environment.go"
+      - "py/init.go"
+      - "py/const.go"
+      - "py/environment_build_test.go"
+      - "py/environment_pins_test.go"
+      - "py/environment_setup_test.go"
+      - ".github/workflows/py-environment-windows-arm64.yml"
+  pull_request:
+    branches: [ "main", "dev", "0.4" ]
+    paths:
+      - "py/environment/**"
+      - "py/environment.go"
+      - "py/init.go"
+      - "py/const.go"
+      - "py/environment_build_test.go"
+      - "py/environment_pins_test.go"
+      - "py/environment_setup_test.go"
+      - ".github/workflows/py-environment-windows-arm64.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build on Windows arm64
+    runs-on: windows-11-arm
+    timeout-minutes: 120
+    env:
+      INSYRA_PY_E2E: "1"
+    steps:
+    - uses: actions/checkout@v5
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache-dependency-path: go.sum
+    # Builds the environment from nothing through the py package, as a user's
+    # first call does, and runs Python in it.
+    - name: Build the environment and run Python
+      run: |
+        set -o pipefail
+        go test ./py/ -run '^TestPinnedEnvironmentEndToEnd$' -count=1 -v -timeout 60m | tee e2e.log
+    # Builds blis and statsmodels again with uv's log on and an empty cache,
+    # and fails if a build installed a tool the build constraints do not pin.
+    - name: Check every build tool is pinned
+      run: |
+        set -o pipefail
+        go test ./py/ -run '^TestSourceBuildsUseOnlyPinnedTools$' -count=1 -v -timeout 60m | tee build-check.log
+    # Both tests skip themselves without INSYRA_PY_E2E, and a -run pattern
+    # that matches nothing passes, so a green run proves nothing until each
+    # test is seen to have passed.
+    - name: Confirm both tests ran
+      run: |
+        set -euo pipefail
+        grep -q -- '--- PASS: TestPinnedEnvironmentEndToEnd' e2e.log || { echo "TestPinnedEnvironmentEndToEnd did not run"; exit 1; }
+        grep -q -- '--- PASS: TestSourceBuildsUseOnlyPinnedTools' build-check.log || { echo "TestSourceBuildsUseOnlyPinnedTools did not run"; exit 1; }
