@@ -270,12 +270,6 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-10-04] — on musl Linux, uv would build three packages from source with tools nothing pins
-- **Where**: `py/environment/uv.lock`; `wheelPlatforms` and `knownSourceBuilds` in `py/environment_pins_test.go`
-- **What**: the pinned uv is the static musl build so that it runs on any Linux, and on a musl host such as Alpine it runs a musl CPython, which installs only musllinux wheels. Read from the lock on 2026-10-04 by the review of `py-pin-source-build-tools`: it has no musllinux CPython 3.12 wheel of `scikit-learn` 1.9.1 on either architecture, nor of `matplotlib` 3.11.2 or `statsmodels` 0.15.0 on aarch64, so uv would build those from source there, with build tools no build constraint names. The wheel test does not notice, because its Linux patterns accept a manylinux wheel. Not run on a musl host.
-- **Suggestion**: decide whether musl Linux is a supported host. If it is, give the wheel test musl patterns, list the three packages in `knownSourceBuilds` for those platforms, extend the build constraints and the bump steps in `Docs/py.md` to them, and build there in CI, for example in an Alpine container. If it is not, say so in `Docs/py.md`.
-- **Status**: pending (owner decision)
-
 ### [2026-10-03] — remove the package-level functions of `cli/env` one release after they were deprecated
 - **Where**: the package-level wrappers at the end of `cli/env/manager.go`, `cli/env/config.go` and `cli/env/state.go`, `cli/env/deprecated_wrappers_test.go`, and the note under "Custom environment storage location" in `Docs/cli-dsl.md`
 - **What**: `cli-env-one-name` deprecated all 26 under the one-name rule of #211 (#261, CL-3): each only calls the same method on `Default()`.

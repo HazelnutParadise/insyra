@@ -1,0 +1,75 @@
+# Builds the Python environment on musl Linux, in an Alpine container, where
+# uv runs a musl CPython and compiles the packages PyPI has no musllinux wheel
+# of. On amd64 and arm64 it runs the end-to-end test, and the check that every
+# tool those builds install is one the build constraints pin. Each run
+# compiles up to three packages, so it runs only for the files that decide
+# them.
+#
+# The tests run through docker on the host rather than in a job container, so
+# that actions/checkout runs on the host on both architectures.
+
+name: Python on musl Linux
+
+on:
+  push:
+    branches: [ "main", "dev", "0.4" ]
+    paths:
+      - "py/environment/**"
+      - "py/environment.go"
+      - "py/init.go"
+      - "py/const.go"
+      - "py/environment_build_test.go"
+      - "py/environment_pins_test.go"
+      - "py/environment_setup_test.go"
+      - ".github/workflows/py-musl.yml"
+  pull_request:
+    branches: [ "main", "dev", "0.4" ]
+    paths:
+      - "py/environment/**"
+      - "py/environment.go"
+      - "py/init.go"
+      - "py/const.go"
+      - "py/environment_build_test.go"
+      - "py/environment_pins_test.go"
+      - "py/environment_setup_test.go"
+      - ".github/workflows/py-musl.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The Go release go.mod names, on Alpine. build-base is the C and C++
+  # compiler Docs/py.md asks musl users to install; ninja and patchelf are
+  # left out on purpose, so meson-python asks for them and the build
+  # constraints have to cover them.
+  GO_IMAGE: golang:1.26.8-alpine
+
+jobs:
+  alpine:
+    name: ${{ matrix.test }} on Alpine (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        test: [TestPinnedEnvironmentEndToEnd, TestSourceBuildsUseOnlyPinnedTools]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 100
+    steps:
+    - uses: actions/checkout@v5
+    - name: Run ${{ matrix.test }}
+      run: |
+        set -o pipefail
+        docker run --rm -v "$PWD:/src" -w /src -e INSYRA_PY_E2E=1 "$GO_IMAGE" \
+          sh -c 'apk add --no-cache build-base >/dev/null && go test ./py/ -run "^${{ matrix.test }}$" -count=1 -v -timeout 85m' | tee test.log
+    # Both tests skip themselves without INSYRA_PY_E2E, the build check also
+    # where it finds no musl, and a -run pattern that matches nothing passes,
+    # so a green run proves nothing until the test is seen to have passed.
+    - name: Confirm the test ran
+      run: |
+        grep -q -- '--- PASS: ${{ matrix.test }}' test.log || { echo "${{ matrix.test }} did not run"; exit 1; }

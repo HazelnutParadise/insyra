@@ -169,12 +169,16 @@ var (
 	// wheelPlatforms matches the wheel platform tags each supported platform
 	// installs.
 	wheelPlatforms = map[string]*regexp.Regexp{
-		"darwin/amd64":  regexp.MustCompile(`macosx_[0-9_]+_(x86_64|intel|universal2)\.whl$`),
-		"darwin/arm64":  regexp.MustCompile(`macosx_[0-9_]+_(arm64|universal2)\.whl$`),
-		"linux/amd64":   regexp.MustCompile(`linux[0-9_]*_x86_64\.whl$`),
-		"linux/arm64":   regexp.MustCompile(`linux[0-9_]*_aarch64\.whl$`),
-		"windows/amd64": regexp.MustCompile(`win_amd64\.whl$`),
-		"windows/arm64": regexp.MustCompile(`win_arm64\.whl$`),
+		"darwin/amd64": regexp.MustCompile(`macosx_[0-9_]+_(x86_64|intel|universal2)\.whl$`),
+		"darwin/arm64": regexp.MustCompile(`macosx_[0-9_]+_(arm64|universal2)\.whl$`),
+		"linux/amd64":  regexp.MustCompile(`manylinux[0-9_]*_x86_64\.whl$`),
+		"linux/arm64":  regexp.MustCompile(`manylinux[0-9_]*_aarch64\.whl$`),
+		// On musl Linux, such as Alpine, uv runs a musl CPython, which
+		// installs only musllinux wheels.
+		"linux-musl/amd64": regexp.MustCompile(`musllinux_[0-9]+_[0-9]+_x86_64\.whl$`),
+		"linux-musl/arm64": regexp.MustCompile(`musllinux_[0-9]+_[0-9]+_aarch64\.whl$`),
+		"windows/amd64":    regexp.MustCompile(`win_amd64\.whl$`),
+		"windows/arm64":    regexp.MustCompile(`win_arm64\.whl$`),
 	}
 	// python312Wheel matches a wheel CPython 3.12 can install.
 	python312Wheel = regexp.MustCompile(`-(cp312-cp312|cp3[0-9]+-abi3|py3-none|py2\.py3-none)-`)
@@ -183,12 +187,16 @@ var (
 )
 
 // knownSourceBuilds lists the locked packages with no wheel for a supported
-// platform's native architecture, which uv would build from source there with
-// the tools the build constraints pin. PyPI has no Windows arm64 wheel of blis
-// 1.3.3 or statsmodels 0.15.0, but uv runs an x86-64 Python on Windows on
-// arm64 by default, which installs their win_amd64 wheels instead.
+// platform's native architecture, which uv builds from source there with the
+// tools the build constraints pin. On musl Linux it does: PyPI has no
+// musllinux wheel of scikit-learn 1.9.1, nor on aarch64 of matplotlib 3.11.2
+// or statsmodels 0.15.0. PyPI has no Windows arm64 wheel of blis 1.3.3 or
+// statsmodels 0.15.0, but uv runs an x86-64 Python on Windows on arm64 by
+// default, which installs their win_amd64 wheels instead.
 var knownSourceBuilds = map[string][]string{
-	"windows/arm64": {"blis", "statsmodels"},
+	"linux-musl/amd64": {"scikit-learn"},
+	"linux-musl/arm64": {"matplotlib", "scikit-learn", "statsmodels"},
+	"windows/arm64":    {"blis", "statsmodels"},
 }
 
 func TestLockHasAWheelForEverySupportedPlatform(t *testing.T) {

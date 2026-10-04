@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -42,27 +44,42 @@ func readBuildRequirements(log string) []string {
 	return reqs
 }
 
+// sourceBuildPlatform is the knownSourceBuilds key of the platform the test
+// runs on: GOOS/GOARCH, with linux-musl for a Linux whose C library is musl,
+// whose dynamic loader is /lib/ld-musl-<arch>.so.1.
+func sourceBuildPlatform() string {
+	goos := runtime.GOOS
+	if goos == "linux" {
+		if musl, _ := filepath.Glob("/lib/ld-musl-*.so.1"); len(musl) > 0 {
+			goos = "linux-musl"
+		}
+	}
+	return goos + "/" + runtime.GOARCH
+}
+
 // uv installs a build tool that no build constraint names without an error,
 // so only a real build shows whether the constraints cover every tool. This
-// builds every package in knownSourceBuilds from source, here, with the
-// pinned uv and an empty cache.
+// builds the packages knownSourceBuilds lists for the platform it runs on,
+// as the setup there does, with the pinned uv and an empty cache.
 func TestSourceBuildsUseOnlyPinnedTools(t *testing.T) {
 	if os.Getenv("INSYRA_PY_E2E") != "1" {
 		t.Skip("set INSYRA_PY_E2E=1 to build the source packages with the pinned uv")
 	}
-	// Two packages compiled from source, with an empty cache, take a few
-	// minutes; the ceiling is here so a stuck download fails rather than hangs.
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+	// Up to three packages are compiled, with an empty cache; the ceiling is
+	// here so a stuck download fails rather than hangs.
+	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Minute)
 	defer cancel()
 
 	python, err := pinnedPythonVersion()
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources := sourceBuiltPackages()
+	platform := sourceBuildPlatform()
+	sources := slices.Clone(knownSourceBuilds[platform])
 	if len(sources) == 0 {
-		t.Skip("no supported platform builds a package from source")
+		t.Skipf("%s builds no locked package from source", platform)
 	}
+	slices.Sort(sources)
 
 	// The builds run inside the cache, and Windows build tools that are not
 	// long-path aware fail past 260 characters, so the directory gets a short

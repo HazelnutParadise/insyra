@@ -227,7 +227,9 @@ func TestPinnedEnvironmentEndToEnd(t *testing.T) {
 		t.Skip("set INSYRA_PY_E2E=1 to build the real Python environment")
 	}
 	useTempEnvironment(t, "")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	// On musl Linux the setup compiles up to three packages, which took 17
+	// minutes in an Alpine arm64 container on an M3.
+	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Minute)
 	defer cancel()
 
 	var dt *insyra.DataTable

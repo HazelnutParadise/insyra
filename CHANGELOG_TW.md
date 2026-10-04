@@ -258,6 +258,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `RunCodef`、`RunFilef`、它們的 `Context` 版本和 `Run` 的參數，不會再變成 Python 程式碼。過去佔位字元是一個參數接一個參數、對整份程式碼輪流替換，後面的參數替換時，也會改到前面參數插進去的文字：傳入 `$v2` 和 `+__import__('os').system('id')+` 兩段文字，就會執行那個指令。`$v1` 也會吃掉 `$v10` 的開頭。JSON 寫不出來的值（例如 `[]any{文字, math.NaN()}`）會照 Go 的格式原樣寫進程式碼，裡面的文字就成了程式碼。現在佔位字元只在原本的模板裡找一次，依完整編號替換，也只轉換模板用到的參數。寫不成 Python 值的參數，會在 Python 啟動前回傳錯誤，並註明是哪個佔位字元。含有 NaN 或無限大的 `[]float64` 也一樣，過去會寫成 Python 不認得的 `NaN` 或 `+Inf`。
 - uv 從原始碼編譯套件時安裝的工具，現在跟環境裡的每個套件一樣，都釘死版本並核對雜湊值。目前沒有任何支援的平台需要從原始碼編譯：Windows arm64 上 uv 跑的是 x86-64 的 Python，會直接裝 `blis` 與 `statsmodels` 的 `win_amd64` wheel。如果改用原生 arm64 的 Python，這兩個就要從原始碼編譯，現在會用釘好版本的工具（Cython、meson-python、NumPy 等十個）。之前建好的環境在下一次執行時會再同步一次，不會安裝任何東西。
 - Python 現在能在 Windows arm64 上執行。uv 在那裡裝的是 x86-64 的 Python，由 Windows 模擬執行；polars 的 CPU 檢查把機器讀成 ARM64，在每段程式開頭的 `import polars` 拋出 `unknown feature flag`，所以每次執行都失敗。產生的程式現在會在 ARM64 Windows 上的 x86-64 Python 設定 `POLARS_SKIP_CPU_CHECK=1`，已經設過這個變數時不動它。
+- 支援 Alpine 這類 musl Linux。uv 在那裡會裝 musl 版的 CPython，而 PyPI 沒有 `scikit-learn` 的 musllinux wheel，arm64 上也沒有 `matplotlib` 與 `statsmodels` 的，所以建環境時會從原始碼編譯這些套件，請先裝好 C 與 C++ 編譯器（`apk add build-base`）。這個版本稍早釘版的編譯工具不符合 `scikit-learn` 的編譯需求，原本在那裡根本建不起來；現在改成每個需要編譯的套件都接受的 12 個工具。CI 會在 amd64 與 arm64 的 Alpine 上建環境並執行 Python。
 
 ### `pd`
 - **BREAKING（行為改變）**：`FromDataList` 遇到空的 list 會回傳空的 `Series`，也就是長度 0、`any` 型別的 gpandas series，和 pandas 的 `pd.Series([])` 一樣。過去會回傳 `empty DataList` 錯誤。`nil` list 仍然回傳錯誤。
