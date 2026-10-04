@@ -97,9 +97,13 @@ uses its eligible devices:
 
 Assignments carry their input range and execution report. Inspect
 `ExecutionResult.Assignments` for `DeviceID`, `RowStart`, `RowEnd`, `WallTime`,
-`Chunks`, and `FallbackReason`. A failed assignment is recomputed on the CPU
-for its own rows; successful assignments are kept and merged by input range,
-independent of completion order. The final nearest indices and `float64`
+`Chunks`, and `FallbackReason`. `WallTime` is read from Go's monotonic clock,
+so an assignment that finishes within one tick of that clock reports 0; on
+Windows a tick is the system timer interval, up to about 15.6 ms. Use
+`FallbackReason`, not `WallTime`, to tell whether an assignment ran on its
+device. A failed assignment is recomputed on the CPU for its own rows;
+successful assignments are kept and merged by input range, independent of
+completion order. The final nearest indices and `float64`
 distances remain bit-identical to `NearestExactCPU`.
 
 Single-device hardware correctness for the exact-nearest path is verified.

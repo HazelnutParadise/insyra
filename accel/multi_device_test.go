@@ -9,16 +9,22 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 )
 
 type lockedShortlistExecutor struct {
-	mu    sync.Mutex
+	mu sync.Mutex
+	// delay makes each call last at least this long. time.Sleep wakes by the
+	// same monotonic clock WallTime is read from, so a delayed call measures at
+	// least delay even where that clock ticks coarsely, as on Windows.
+	delay time.Duration
 	inner shortlistExecutor
 }
 
 func (e *lockedShortlistExecutor) Name() string { return "locked-shortlist" }
 
 func (e *lockedShortlistExecutor) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
+	time.Sleep(e.delay)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.inner.Execute(ctx, req)
@@ -97,7 +103,8 @@ func TestShardStrategiesRespectMeasuredFloor(t *testing.T) {
 func TestMultiDeviceDispatchMergesRangesAndReportsPlacement(t *testing.T) {
 	exerciseDeviceRegardlessOfProfit(t)
 	session := multiDeviceTestSession(t, Config{ShardStrategy: ShardStrategyForced})
-	backend := &lockedShortlistExecutor{}
+	const deviceTime = time.Millisecond
+	backend := &lockedShortlistExecutor{delay: deviceTime}
 	if err := RegisterBackendExecutor(BackendCUDA, backend); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
@@ -112,8 +119,8 @@ func TestMultiDeviceDispatchMergesRangesAndReportsPlacement(t *testing.T) {
 		t.Fatalf("result = accelerated %t assignments %d fallback %q", result.Accelerated, len(result.Assignments), result.FallbackReason)
 	}
 	for _, assignment := range result.Assignments {
-		if assignment.FallbackReason != FallbackReasonNone || assignment.WallTime <= 0 {
-			t.Fatalf("assignment did not report successful placement and wall time: %#v", assignment)
+		if assignment.FallbackReason != FallbackReasonNone || assignment.WallTime < deviceTime {
+			t.Fatalf("assignment did not report successful placement and a wall time covering its device call (at least %v): %#v", deviceTime, assignment)
 		}
 	}
 	assertMatchesReference(t, dataset, queries, 2, result.Index, result.Distance)
