@@ -133,7 +133,7 @@ CCL SHALL read a cell of every Go integer type (`int`, `int8`, `int16`, `int32`,
 
 ### Requirement: Duration functions refuse a date
 
-`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL convert a `time.Duration`, a string `time.ParseDuration` accepts, or a number of seconds, to days, hours, minutes or seconds. A `time.Time` value or a string Insyra's date parser reads as a date SHALL be an error that says the function converts a duration and names the function that gives the corresponding part of a date: `DAYOFMONTH(x)` for `DAY`, and `TONUM(FORMAT_DATE(x, '15'))`, `TONUM(FORMAT_DATE(x, '04'))` and `TONUM(FORMAT_DATE(x, '05'))` for `HOUR`, `MINUTE` and `SECOND`.
+`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL convert a `time.Duration`, a string `time.ParseDuration` accepts, or a number of seconds, to days, hours, minutes or seconds. A `time.Time` value or a string Insyra's date parser reads as a date SHALL be an error that says the function converts a duration and names the function that gives the corresponding part of a date: `DAYOFMONTH(x)` for `DAY`, and `DATEPART(x, 'hour')`, `DATEPART(x, 'minute')` and `DATEPART(x, 'second')` for `HOUR`, `MINUTE` and `SECOND`.
 
 #### Scenario: A date string reaches DAY
 - **WHEN** 求值 `DAY('2024-01-02T06:00:00Z')`
@@ -141,10 +141,10 @@ CCL SHALL read a cell of every Go integer type (`int`, `int8`, `int16`, `int32`,
 
 #### Scenario: A date column reaches HOUR
 - **WHEN** 欄 `A` 存 `time.Time` 2024-01-02 06:30:15 UTC，逐列求值 `HOUR(A)`
-- **THEN** 回傳錯誤，訊息提到 `FORMAT_DATE(` 與 `'15'`
+- **THEN** 回傳錯誤，訊息提到 `DATEPART(x, 'hour')`
 
 #### Scenario: The replacement gives the Excel part
-- **WHEN** 欄 `A` 存 `'2024-01-02T06:30:15Z'`，求值 `DAYOFMONTH(A)`、`TONUM(FORMAT_DATE(A, '15'))`、`TONUM(FORMAT_DATE(A, '04'))`、`TONUM(FORMAT_DATE(A, '05'))`
+- **WHEN** 欄 `A` 存 `'2024-01-02T06:30:15Z'`，求值 `DAYOFMONTH(A)`、`DATEPART(A, 'hour')`、`DATEPART(A, 'minute')`、`DATEPART(A, 'second')`
 - **THEN** 分別得到 2、6、30、15
 
 #### Scenario: Durations still convert
@@ -262,4 +262,20 @@ A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUs
 #### Scenario: A copied integer column keeps its types
 - **WHEN** 欄 `A` 為 `int16` 的 `[1, 2]`，`AddColUsingCCL("b", "A")`
 - **THEN** `b` 仍是 `int16` 的 `[1, 2]`
+
+### Requirement: DATEPART gives one part of a date
+
+`DATEPART(d, unit)` SHALL return, as a `float64`, the year, month, day of the month, hour, minute or second of `d` for a unit of `year`, `month`, `day`, `hour`, `minute` or `second`, in either singular or plural form and in any letter case, read in `d`'s own time zone, dropping any fraction of a second. `d` SHALL be a `time.Time` or a string Insyra's date parser reads as a date. Any other unit, a `d` that is not a date, a unit that is not a string, or a number of arguments other than two SHALL be an error.
+
+#### Scenario: Each part
+- **WHEN** 欄 `A` 存 `'2024-03-09T06:07:08Z'`，求值 `DATEPART(A, 'year')`、`'month'`、`'day'`、`'hour'`、`'minute'`、`'second'`
+- **THEN** 分別得到 2024、3、9、6、7、8
+
+#### Scenario: The date's own time zone
+- **WHEN** 欄 `B` 存 UTC+8 的 2024-12-31 23:59:58.999，求值 `DATEPART(B, 'hour')` 與 `DATEPART(B, 'second')`
+- **THEN** 分別得到 23 與 58
+
+#### Scenario: An unknown unit
+- **WHEN** 求值 `DATEPART(A, 'week')`
+- **THEN** 回傳錯誤
 
