@@ -21,11 +21,12 @@ The Python environment SHALL be built with the uv version pinned in `py/environm
 
 ### Requirement: The pins live in one directory and agree
 
-`py/environment/` SHALL hold every version the package installs: the uv version and the exact Python version (`requires-python = "==X.Y.Z"`) in `pyproject.toml`, every package the Python preamble imports as an exact `name==version` dependency, the full resolution with file hashes in `uv.lock`, and the uv checksums in `uv-sha256.sum`. The lock SHALL record the same Python requirement and the same version for every pinned package, SHALL take every package from `https://pypi.org/simple`, and SHALL hold a wheel of every package for every supported platform except the source builds the tests list; `uv-sha256.sum` SHALL hold a checksum for the archive of every supported platform.
+`py/environment/` SHALL hold every version the package installs: the uv version and the exact Python version (`requires-python = "==X.Y.Z"`) in `pyproject.toml`, every package the Python preamble imports as an exact `name==version` dependency, every tool a source build installs as an exact `name==version` entry of `[tool.uv] build-constraint-dependencies` with the SHA-256 of every file of that version, the full resolution with file hashes and the build constraints with their hashes in `uv.lock`, and the uv checksums in `uv-sha256.sum`. The lock SHALL record the same Python requirement, the same version for every pinned package and the same build constraints with the same hashes, SHALL take every package from `https://pypi.org/simple`, and SHALL hold a wheel of every package for every supported platform except the source builds the tests list; a build tool the environment also installs SHALL be pinned at the version the environment runs; `uv-sha256.sum` SHALL hold a checksum for the archive of every supported platform.
 
 #### Scenario: Pins checked by the tests
 - **WHEN** `go test ./py/` runs
 - **THEN** it fails if a package the preamble imports is not pinned exactly, if the lock disagrees with a pin or the Python requirement, takes a package from another index, or lacks a wheel it is expected to have, if either version cannot be read from `pyproject.toml`, or if a supported platform has no checksum
+- **AND** it fails if a build constraint is not an exact `name==version` with at least one SHA-256, if the lock does not record the same build constraints with the same hashes, or if a build tool the environment also installs is pinned at another version
 
 ### Requirement: The environment follows the pins
 
@@ -102,4 +103,40 @@ The environment directory SHALL be `.insyra_env/<code>_<os>_<arch>` under the wo
 #### Scenario: A Python bump without a new code
 - **WHEN** `requires-python` in `py/environment/pyproject.toml` is changed and `envDirPython` is not
 - **THEN** `go test ./py/` fails, naming both versions and asking for a new directory code
+
+### Requirement: A source build uses only pinned, verified tools
+
+When uv builds a locked package from source, every tool the build installs SHALL be one the build constraints pin, at that version, and its download SHALL match one of the constraint's hashes, or the setup SHALL fail. Because uv installs a build tool that no constraint names without an error, a test gated on `INSYRA_PY_E2E=1` SHALL build every package the tests list as a source build, with the pinned uv, an empty cache and `--no-binary-package`, and fail if a build installed a tool the constraints do not pin at that version. A workflow SHALL run that test on macOS whenever a file that decides it changes (anything under `py/environment/`, `py/environment.go`, `py/environment_build_test.go`, `py/environment_pins_test.go` or the workflow), and SHALL fail unless the test is seen to pass.
+
+#### Scenario: A tampered build tool
+- **WHEN** a build tool's download does not match the hashes the lock records for it
+- **THEN** uv refuses it and the setup fails with uv's `Hash mismatch` error
+
+#### Scenario: A build tool the constraints do not name
+- **WHEN** a source build installs a tool that is not in the build constraints, or at another version
+- **THEN** the gated test fails naming that tool and version
+
+#### Scenario: The pins change
+- **WHEN** a push or pull request changes a file under `py/environment/`, or `knownSourceBuilds`
+- **THEN** the `Python Build Tools` workflow builds `blis` and `statsmodels` from source on macOS, runs the gated test, and fails if it skipped or did not run
+
+### Requirement: Python runs on Windows on arm64
+
+The script `py` generates SHALL begin, before any import, with a guard that sets `POLARS_SKIP_CPU_CHECK` to `1` through `os.environ.setdefault` exactly when `os.name` is `nt`, `platform.machine()` in lower case is `arm64` and `sysconfig.get_platform()` is `win-amd64`, so that the x86-64 CPython uv installs on Windows on arm64 by default, which Windows runs through emulation, can import polars. A workflow SHALL run `TestPinnedEnvironmentEndToEnd` on GitHub's Windows arm64 runner whenever anything under `py/` or the workflow changes, and SHALL fail unless the test is seen to pass.
+
+#### Scenario: An x86-64 Python on ARM64 Windows
+- **WHEN** the script runs in an interpreter whose `sysconfig.get_platform()` is `win-amd64` on a machine `platform.machine()` reports as `ARM64`
+- **THEN** `POLARS_SKIP_CPU_CHECK` is `1` before polars is imported
+
+#### Scenario: Any other interpreter or platform
+- **WHEN** the interpreter is a native arm64 Python on Windows, an x86-64 Python on an x86-64 machine, or any Python on another operating system
+- **THEN** the guard leaves `POLARS_SKIP_CPU_CHECK` unset and polars runs its check
+
+#### Scenario: The caller set the variable
+- **WHEN** `POLARS_SKIP_CPU_CHECK` is already set, to any value
+- **THEN** the guard keeps that value
+
+#### Scenario: A change to the package
+- **WHEN** a push or pull request changes a file under `py/`
+- **THEN** the `Python on Windows arm64` workflow builds the environment on `windows-11-arm`, runs Python through the package, and fails if the test skipped or did not run
 

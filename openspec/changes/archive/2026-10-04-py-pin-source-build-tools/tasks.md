@@ -23,4 +23,4 @@
 - [x] 4.1 在 Mac 上以 `INSYRA_PY_E2E=1` 跑 `TestSourceBuildsUseOnlyPinnedTools`，通過；拿掉 lock 裡的 `ninja` 再跑，確認失敗並指出 `ninja`
 - [x] 4.2 突變檢查：改掉 lock 裡一個雜湊值、讓 `numpy` 的編譯版本與環境不同，`TestSourceBuildToolsArePinned` 都會失敗
 - [x] 4.3 `gofmt -s -l`、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`（0 issues）、`openspec validate py-pin-source-build-tools --strict`
-- [ ] 4.4 push 後 `Python Build Tools` workflow 通過，從紀錄確認兩個套件都是從原始碼編譯、裝進來的編譯工具都在清單裡
+- [x] 4.4 push 後 `Python Build Tools` workflow 通過，從紀錄確認兩個套件都是從原始碼編譯、裝進來的編譯工具都在清單裡

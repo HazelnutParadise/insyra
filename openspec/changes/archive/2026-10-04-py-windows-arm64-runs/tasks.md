@@ -20,4 +20,4 @@
 
 - [x] 4.1 本機在 macOS 上跑 `TestPinnedEnvironmentEndToEnd`（`INSYRA_PY_E2E=1`），確認跳過檢查的程式不影響其他平台
 - [x] 4.2 `gofmt -s -l`、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`（0 issues）、`openspec validate py-windows-arm64-runs --strict`
-- [ ] 4.3 push 後 `Python on Windows arm64` workflow 通過
+- [x] 4.3 push 後 `Python on Windows arm64` workflow 通過
