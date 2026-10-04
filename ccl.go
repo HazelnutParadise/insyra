@@ -303,6 +303,9 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 			}
 		}
 	})
+	if err == nil {
+		unifyCCLNumbers(result)
+	}
 	return result, err
 }
 

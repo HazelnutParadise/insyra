@@ -178,9 +178,9 @@ CCL supports the following data types:
    so `A + 1` on an integer column stays an integer column (see
    [Numeric Comparison and Arithmetic](#numeric-comparison-and-arithmetic)).
    A literal with a decimal point or an exponent is a `float64`, and so is a
-   whole number past the `int64` range. Write `0.0` rather than `0` where a
-   `float64` is wanted: `COALESCE(TONUM(A), 0)` puts an integer `0` in the rows
-   it fills, next to the `float64` values `TONUM` gives.
+   whole number past the `int64` range. Whether you write `0` or `0.0` does not
+   show in a computed column, because the column holds one kind of number (see
+   [Numeric Comparison and Arithmetic](#numeric-comparison-and-arithmetic)).
 
    An `e` is only part of a number when at least one digit follows it (after an
    optional sign), so a column called `E` or `E1` still reads as a column. A
@@ -380,7 +380,7 @@ When performing arithmetic operations or comparisons, CCL attempts to convert op
 - **Integers stay integers.** When both operands are integers, of any Go integer type, `+`, `-`, `*`, `%` and unary minus compute in `int64` and give an `int64`, and `==`, `!=`, `<`, `>`, `<=`, `>=` compare them exactly. So `A * 1` on an integer column is an `int64` column, and `int64(9007199254740993) + 0` is `9007199254740993`. `SUM`, `MIN` and `MAX` give an `int64` when every value they use is an integer, and `MOD` follows `%`. In arithmetic a `nil` next to an integer is an integer `0`
 - **An integer result `int64` cannot hold is an error**, never a wrapped-around number: `9223372036854775807 + 1` fails with `integer overflow`. Write one operand with a decimal point, `A * 1.0`, to compute in `float64` instead
 - **Everything else is `float64`, as before.** `/` and `^` always give a `float64` (`7 / 2` is `3.5`, `6 / 3` is `2.0`, `2 ^ 3` is `8.0`), and so do `AVG`, `MEDIAN`, the variance family, `COUNT`, the math functions other than `MOD`, the sequence functions, and any operation with a `float64`, a numeric string or a boolean on either side. A `float64` holds every integer up to 2^53 (9,007,199,254,740,992) exactly; past that, an integer that meets a `float64`, such as `A + 0.5`, is read as the nearest `float64` and loses its last digits. A `uint64` above the `int64` range is always read that way
-- Each row follows these rules on its own values, so a column whose cells mix integers and decimals gives a column that mixes `int64` and `float64` results
+- **A computed column holds one kind of number.** Each row follows the rules above, and then the column `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` or a statement of `ExecuteCCL` writes is settled as a whole, the way a pandas column has one dtype: when its numbers include a `float64` or `float32`, every integer a `float64` holds exactly becomes a `float64`. So `COALESCE(TONUM(A), 0)` over `["19.5", "abc", "30"]` is `[19.5, 0.0, 30.0]`, all `float64`. An integer past 2^53 keeps its digits rather than become a `float64` that changes it. A column whose numbers are all integers is left as it is, and values that are not numbers, such as text, booleans, `nil`, dates and durations, are never changed: `IF(A == 0, 'none', A * 1.5)` gives the text and `float64`s
 - String-to-number conversion follows standard parsing rules
 - Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
 
@@ -798,7 +798,7 @@ dt.ExecuteCCL(`
 `IFNULL` differs from the existing `IFNA`: `IFNA` only triggers on float `NaN` or the string `"#N/A"`, while `IFNULL` matches actual `nil` values.
 
 ```go
-dt.AddColUsingCCL("price_num", "COALESCE(TONUM(['price_str']), 0.0)") // 0.0 keeps the column float64
+dt.AddColUsingCCL("price_num", "COALESCE(TONUM(['price_str']), 0)")
 dt.AddColUsingCCL("price_fmt", "TOSTR(['price'], '$%.2f')")
 ```
 

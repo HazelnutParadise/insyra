@@ -31,11 +31,12 @@ func TestCCL_NumericStringComparison(t *testing.T) {
 			expected: []any{float64(150), float64(100), float64(75), float64(60)},
 		},
 		{
-			// A numeric string goes through float64; an integer stays one.
+			// A numeric string goes through float64, and the column holds one
+			// kind of number, so the integers become float64s too.
 			name:     "Mixed string and number multiplication",
 			colData:  []any{"10", 20, "30", 40},
 			cclExpr:  "A * 2",
-			expected: []any{float64(20), int64(40), float64(60), int64(80)},
+			expected: []any{float64(20), float64(40), float64(60), float64(80)},
 		},
 	}
 

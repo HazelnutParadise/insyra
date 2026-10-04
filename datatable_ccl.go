@@ -331,6 +331,7 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 	}
 
 	// 更新目標列的資料
+	unifyCCLNumbers(results)
 	dt.columns[targetColIdx].data = results
 
 	return nil
@@ -413,6 +414,7 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 	}
 
 	// 創建新列並添加到 DataTable
+	unifyCCLNumbers(results)
 	newCol := &DataList{
 		data: results,
 		name: newColName,

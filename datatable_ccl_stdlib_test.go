@@ -143,7 +143,7 @@ func TestDataTable_ExecuteCCL_StdlibPipeline(t *testing.T) {
 	dt.ExecuteCCL(`
 		['Email'] = LOWER(TRIM(['Email']))
 		NEW('Domain') = MID(['Email'], FIND('@', ['Email']) + 1, LEN(['Email']))
-		NEW('AgeNum') = COALESCE(TONUM(['AgeStr']), 0.0)
+		NEW('AgeNum') = COALESCE(TONUM(['AgeStr']), 0)
 	`)
 
 	if err := dt.Err(); err != nil {
