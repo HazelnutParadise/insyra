@@ -432,6 +432,18 @@ func createTempPythonScript(code string) (string, func(), error) {
 	return scriptPath, cleanup, nil
 }
 
+// skipPolarsCPUCheckUnderEmulation runs before the imports. On Windows on
+// arm64 uv installs the x86-64 CPython, which Windows runs through emulation;
+// polars' CPU check reads the machine as ARM64 there, finds no x86 feature
+// flags and refuses to import. The check is skipped for that case only, and a
+// value the caller set is kept.
+const skipPolarsCPUCheckUnderEmulation = `import os
+import platform
+import sysconfig
+if os.name == "nt" and platform.machine().lower() == "arm64" and sysconfig.get_platform() == "win-amd64":
+	os.environ.setdefault("POLARS_SKIP_CPU_CHECK", "1")
+`
+
 func generateDefaultPyCode(executionID, addr string) string {
 	imports := ""
 	for imps := range pyDependencies {
@@ -441,10 +453,11 @@ func generateDefaultPyCode(executionID, addr string) string {
 	}
 	return fmt.Sprintf(`
 %v
+%v
 import sys
 sent = False
 %v
-`, imports, builtInFunc(addr, executionID))
+`, skipPolarsCPUCheckUnderEmulation, imports, builtInFunc(addr, executionID))
 }
 
 // placeholderPattern matches $v1, $v2, … by their whole number. A number with

@@ -1,0 +1,55 @@
+# Builds the Python environment on Windows on arm64 and runs Python through
+# the py package there. uv installs an x86-64 Python on that platform, which
+# Windows runs through emulation, so it behaves unlike any other leg of CI.
+# The environment installs wheels only, so a run takes minutes, and it runs
+# for every change to the package.
+
+name: Python on Windows arm64
+
+on:
+  push:
+    branches: [ "main", "dev", "0.4" ]
+    paths:
+      - "py/**"
+      - ".github/workflows/py-windows-arm64.yml"
+  pull_request:
+    branches: [ "main", "dev", "0.4" ]
+    paths:
+      - "py/**"
+      - ".github/workflows/py-windows-arm64.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  e2e:
+    name: Run Python on Windows arm64
+    runs-on: windows-11-arm
+    timeout-minutes: 45
+    env:
+      INSYRA_PY_E2E: "1"
+    steps:
+    - uses: actions/checkout@v5
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache-dependency-path: go.sum
+    # Builds the environment from nothing through the py package, as a user's
+    # first call does, and runs Python in it.
+    - name: Build the environment and run Python
+      run: |
+        set -o pipefail
+        go test ./py/ -run '^TestPinnedEnvironmentEndToEnd$' -count=1 -v -timeout 40m | tee e2e.log
+    # The test skips itself without INSYRA_PY_E2E, and a -run pattern that
+    # matches nothing passes, so a green run proves nothing until the test is
+    # seen to have passed.
+    - name: Confirm the test ran
+      run: |
+        set -euo pipefail
+        grep -q -- '--- PASS: TestPinnedEnvironmentEndToEnd' e2e.log || { echo "TestPinnedEnvironmentEndToEnd did not run"; exit 1; }
