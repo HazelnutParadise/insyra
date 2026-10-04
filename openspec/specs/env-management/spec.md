@@ -2,9 +2,7 @@
 
 ## Purpose
 The CLI's named environments: creating, listing, opening, renaming, deleting and describing them, how their variables, history and config are stored and restored between commands, the default environment, and how a variable the environment cannot store is reported.
-
 ## Requirements
-
 ### Requirement: Environment create
 系統 SHALL 提供 `env create <name>` 命令建立新環境。
 
@@ -145,3 +143,12 @@ The CLI's named environments: creating, listing, opening, renaming, deleting and
 #### Scenario: A session keeps an unsaved variable
 - **WHEN** 在 REPL 或 DSL session 中建立一個無法保存的變數，之後再執行多個命令
 - **THEN** 警告只出現一次，該變數在 session 結束或以 `env open` 開啟另一個環境之前都能使用
+
+### Requirement: Environment operations have one public name
+
+Every environment operation SHALL be a method of `Manager`. The package-level functions that only call the same method on `Default()` SHALL carry `Deprecated: use Default().<Name> instead.` and SHALL keep acting on `Default()` until they are removed. No caller in the repository SHALL use them, apart from the test that pins them.
+
+#### Scenario: A deprecated wrapper keeps its meaning
+- **WHEN** a caller runs `SetBasePath(dir)` and then `Create("wrapped")`
+- **THEN** `Default().Exists("wrapped")` is true and `Default().BasePath()` is `dir`
+
