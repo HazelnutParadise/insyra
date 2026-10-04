@@ -7,23 +7,25 @@ import (
 	"io"
 
 	"github.com/HazelnutParadise/insyra/internal/dsl"
-	"github.com/HazelnutParadise/insyra/internal/dsl/env"
 )
 
-// Session is the programmatic DSL execution session.
-//
-// It supports Execute(line), ExecuteFile(path), and Context().
+// Session runs command lines against one environment: its variables, kept in
+// memory and saved after every command that succeeds, and its history.
+// Execute runs one line, ExecuteFile a .isr script, and Context gives the
+// variables and the rest of the execution state. A Session is not safe for use
+// by more than one goroutine at a time.
 type Session = dsl.Session
 
-// NewSession creates a DSL session bound to mgr's environment storage.
+// NewSession creates a session on the environment envName of mgr. The
+// environment "default" is created when it does not exist; any other must
+// exist already, made with mgr.Create, or NewSession returns an error.
 //
-// mgr is required: pass env.Default() from cli/env to use the standard
-// <UserHomeDir>/.insyra root, or env.NewManager(path) for a custom root
-// (e.g. per-workspace embedding). Each session keeps its own Manager, so
-// concurrent sessions in the same process can target different roots
-// without interfering with each other.
+// mgr is required: DefaultManager() keeps environments where the insyra command
+// does, under <UserHomeDir>/.insyra, and NewManager(root, dir) somewhere else,
+// such as a workspace. Each session keeps its own Manager, so sessions in one
+// process can work on different roots without interfering with each other.
 //
-// envName "" defaults to "default". output nil silently discards.
-func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, error) {
+// envName "" means "default". A nil output discards what the commands print.
+func NewSession(mgr *Manager, envName string, output io.Writer) (*Session, error) {
 	return dsl.NewSession(mgr, envName, output)
 }

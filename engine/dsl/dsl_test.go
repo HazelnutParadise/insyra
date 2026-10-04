@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/HazelnutParadise/insyra/cli/env"
 )
 
 func setupTempHome(t *testing.T) string {
@@ -15,14 +13,13 @@ func setupTempHome(t *testing.T) string {
 	t.Setenv("HOME", home)
 	t.Setenv("HOMEDRIVE", "")
 	t.Setenv("HOMEPATH", "")
-	t.Cleanup(func() { env.Default().SetBasePath("") })
 	return home
 }
 
 func TestNewSessionAndExecute(t *testing.T) {
 	setupTempHome(t)
 
-	session, err := NewSession(env.Default(), "", nil)
+	session, err := NewSession(DefaultManager(), "", nil)
 	if err != nil {
 		t.Fatalf("new session failed: %v", err)
 	}
@@ -42,7 +39,7 @@ func TestNewSessionWithCustomManager(t *testing.T) {
 	setupTempHome(t)
 
 	workspace := filepath.Join(t.TempDir(), "ws", ".idensyra")
-	mgr := env.NewManager(workspace, "")
+	mgr := NewManager(workspace, "")
 
 	session, err := NewSession(mgr, "default", nil)
 	if err != nil {

@@ -31,29 +31,32 @@ The `engine` package re-exports some of Insyra's core data structures and algori
 
 ```go
 type Session
-func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, error)
+func NewSession(mgr *Manager, envName string, output io.Writer) (*Session, error)
+
+type Manager
+func DefaultManager() *Manager
+func NewManager(basePath, envsDirName string) *Manager
 ```
 
-`mgr` comes from `github.com/HazelnutParadise/insyra/cli/env`: `env.Default()` for the standard `~/.insyra` root, or `env.NewManager(basePath, envsDirName)` for another one. `cli/env` does not pull in the shell or the REPL either.
+`DefaultManager()` keeps environments where the `insyra` command does, under `~/.insyra/envs/`, and returns a new Manager on every call. `NewManager(basePath, envsDirName)` puts them somewhere else, such as a workspace. `NewSession` opens an environment that exists; `"default"` is created when missing, and any other is made first with `mgr.Create(name)`. The Manager's methods (`List`, `Create`, `Export`, `Import`, `SaveState` and the rest) and the types they use (`EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable`, `UnsavedVariable`) all come from `engine/dsl`, so a program needs nothing under `cli/`.
 
 Key methods on `Session`:
 
-- `Execute(line string) error` — execute one DSL command line.
+- `Execute(line string) error` — execute one DSL command line; the environment is saved after every command that succeeds.
 - `ExecuteFile(path string) error` — execute a `.isr` script file with line-numbered errors.
 - `Context() *commands.ExecContext` — access the underlying execution context/variables (`commands` is `github.com/HazelnutParadise/insyra/cli/commands`).
+
+A `Session` is not safe for use by more than one goroutine at a time.
 
 Example:
 
 ```go
 package main
 
-import (
-    "github.com/HazelnutParadise/insyra/cli/env"
-    "github.com/HazelnutParadise/insyra/engine/dsl"
-)
+import "github.com/HazelnutParadise/insyra/engine/dsl"
 
 func main() {
-    s, _ := dsl.NewSession(env.Default(), "default", nil)
+    s, _ := dsl.NewSession(dsl.DefaultManager(), "default", nil)
     _ = s.Execute("newdl 1 2 3 as x")
     _ = s.Execute("mean x")
 }

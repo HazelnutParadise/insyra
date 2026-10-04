@@ -59,8 +59,8 @@ type Manager struct {
 //	env.NewManager("/ws/.idensyra", "")          // /ws/.idensyra/envs/<name>/
 //	env.NewManager("/ws/.idensyra", "insights")  // /ws/.idensyra/insights/<name>/
 //
-// Both fields are fixed at construction; create a new Manager to point
-// somewhere else.
+// SetBasePath and SetEnvsDirName move a Manager after construction; do not
+// move one while an environment it manages is in use.
 func NewManager(basePath, envsDirName string) *Manager {
 	return &Manager{
 		basePath:    strings.TrimSpace(basePath),

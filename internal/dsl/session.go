@@ -18,12 +18,11 @@ type Session struct {
 
 // NewSession creates a DSL session bound to mgr's environment storage.
 //
-// mgr must be non-nil — pass env.Default() to use the standard
-// <UserHomeDir>/.insyra root, or env.NewManager(path) for a custom one.
+// mgr must be non-nil. engine/dsl documents the choices callers have.
 // envName "" defaults to "default". output nil silently discards.
 func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, error) {
 	if mgr == nil {
-		return nil, errors.New("dsl: env manager is required (pass env.Default() or env.NewManager(path))")
+		return nil, errors.New("dsl: env manager is required (pass dsl.DefaultManager() or dsl.NewManager(root, dir))")
 	}
 
 	if err := mgr.EnsureDefaultEnvironment(); err != nil {

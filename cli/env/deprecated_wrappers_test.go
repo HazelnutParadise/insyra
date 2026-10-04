@@ -74,3 +74,36 @@ func TestDeprecatedWrappersActOnDefault(t *testing.T) {
 		t.Fatalf("ResolveEnvPath = %q, %v", path, err)
 	}
 }
+
+// #260 follow-up: engine/dsl is where a program gets a Manager and the types its
+// methods use, so the same names here are Deprecated for one release. Default,
+// ConfigKeys and ExportPayload have no counterpart there and stay.
+func TestNamesEngineDSLNowProvidesAreDeprecated(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), "env.go", nil, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs := map[string]string{}
+	for _, decl := range f.Decls {
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			docs[d.Name.Name] = strings.Join(strings.Fields(d.Doc.Text()), " ")
+		case *ast.GenDecl:
+			for _, spec := range d.Specs {
+				if ts, ok := spec.(*ast.TypeSpec); ok {
+					docs[ts.Name.Name] = strings.Join(strings.Fields(d.Doc.Text()), " ")
+				}
+			}
+		}
+	}
+	for _, name := range []string{"Manager", "NewManager", "EnvironmentInfo", "GlobalConfig", "State", "SerializedVariable", "UnsavedVariable"} {
+		if want := "Deprecated: use " + name + " from engine/dsl instead"; !strings.Contains(docs[name], want) {
+			t.Errorf("%s doc %q does not contain %q", name, docs[name], want)
+		}
+	}
+	for _, name := range []string{"Default", "ConfigKeys", "ExportPayload"} {
+		if strings.Contains(docs[name], "Deprecated:") {
+			t.Errorf("%s is deprecated, but engine/dsl has no counterpart for it", name)
+		}
+	}
+}

@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/engine/dsl"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +31,7 @@ func newTestExecContext(t *testing.T) *ExecContext {
 // CLI-4: the one-shot dispatcher path writes the sanitized line.
 func TestDispatchHistoryIsSanitized(t *testing.T) {
 	base := t.TempDir()
-	mgr := env.NewManager(base, "envs")
+	mgr := dsl.NewManager(base, "envs")
 	if err := mgr.EnsureDefaultEnvironment(); err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func newOneShotRoot(t *testing.T) (*cobra.Command, *ExecContext, *bytes.Buffer) 
 		Vars:    map[string]any{},
 		Output:  out,
 		EnvName: "default",
-		Env:     env.NewManager(t.TempDir(), ""),
+		Env:     dsl.NewManager(t.TempDir(), ""),
 	}
 	root := &cobra.Command{Use: "insyra", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().String("env", "default", "Environment name")

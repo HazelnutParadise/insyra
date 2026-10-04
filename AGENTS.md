@@ -278,10 +278,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: delete both files and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry.
 - **Status**: pending
 
-### [2026-10-03] — remove the package-level functions of `cli/env` one release after they were deprecated
-- **Where**: the package-level wrappers at the end of `cli/env/env.go`, `cli/env/deprecated_wrappers_test.go`, and the note under "Custom environment storage location" in `Docs/cli-dsl.md`
-- **What**: `cli-env-one-name` deprecated all 26 under the one-name rule of #211 (#261, CL-3): each only calls the same method on `Default()`.
-- **Suggestion**: delete them, the test file and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry. `ConfigKeys` and `Default` are not wrappers and stay.
+### [2026-10-03] — remove the deprecated names of `cli/env` one release after they were deprecated
+- **Where**: `cli/env/env.go`, `cli/env/deprecated_wrappers_test.go`, and the note under "Custom environment storage location" in `Docs/cli-dsl.md`
+- **What**: under the one-name rule of #211, `cli-env-one-name` deprecated the 26 package-level functions, which only call the same method on `Default()` (#261, CL-3), and `engine-dsl-manager` deprecated `Manager`, `NewManager`, `EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable` and `UnsavedVariable`, which `engine/dsl` now provides under the same names (#260 follow-up).
+- **Suggestion**: delete them, their tests and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry. `Default`, `ConfigKeys` and `ExportPayload` have no counterpart and stay; `Default` then returns the internal Manager type, which callers name as `dsl.Manager`.
 - **Status**: pending
 
 ### [2026-10-03] — remove `engine/ccl.ResetEvalDepth` and `ResetFuncCallDepth` one release after they were deprecated

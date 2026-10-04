@@ -3,7 +3,7 @@ package repl
 import (
 	"io"
 
-	"github.com/HazelnutParadise/insyra/cli/env"
+	enginedsl "github.com/HazelnutParadise/insyra/engine/dsl"
 	"github.com/HazelnutParadise/insyra/internal/dsl"
 )
 
@@ -17,6 +17,6 @@ type DSLSession = dsl.Session
 //
 // Deprecated: use NewSession from engine/dsl instead, which does the same.
 // Removed in the release after the one that deprecated it.
-func NewDSLSession(mgr *env.Manager, envName string, output io.Writer) (*DSLSession, error) {
+func NewDSLSession(mgr *enginedsl.Manager, envName string, output io.Writer) (*DSLSession, error) {
 	return dsl.NewSession(mgr, envName, output)
 }

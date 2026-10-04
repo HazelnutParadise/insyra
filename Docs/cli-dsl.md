@@ -91,12 +91,11 @@ package main
 import (
     "fmt"
 
-    "github.com/HazelnutParadise/insyra/cli/env"
     "github.com/HazelnutParadise/insyra/engine/dsl"
 )
 
 func main() {
-    session, err := dsl.NewSession(env.Default(), "default", nil)
+    session, err := dsl.NewSession(dsl.DefaultManager(), "default", nil)
     if err != nil {
         panic(err)
     }
@@ -118,17 +117,20 @@ func main() {
 
 #### Custom environment storage location
 
-`NewSession` takes an `*env.Manager` that owns where environment files live.
-Pass `env.Default()` for the standard `<UserHomeDir>/.insyra/envs/` layout,
-or `env.NewManager(basePath, envsDirName)` for a custom root and/or a
-custom per-environment subfolder name:
+`NewSession` takes a `*dsl.Manager` that owns where environment files live.
+Pass `dsl.DefaultManager()` for the standard `<UserHomeDir>/.insyra/envs/` layout,
+the one the `insyra` command uses, or `dsl.NewManager(basePath, envsDirName)`
+for a custom root and/or a custom per-environment subfolder name.
+`DefaultManager` returns a new Manager on every call, so moving one with
+`SetBasePath` moves no other. Everything here comes from `engine/dsl`; a
+program does not need to import anything under `cli/`.
 
 ```go
 // /workspace/.idensyra/envs/<name>/
-mgr := env.NewManager("/workspace/.idensyra", "")
+mgr := dsl.NewManager("/workspace/.idensyra", "")
 
 // /workspace/.idensyra/insights/<name>/  (Idensyra's layout)
-mgr := env.NewManager("/workspace/.idensyra", "insights")
+mgr := dsl.NewManager("/workspace/.idensyra", "insights")
 
 session, err := dsl.NewSession(mgr, "default", &out)
 ```
@@ -140,8 +142,8 @@ Each session keeps its own Manager, so multiple sessions can coexist in
 the same process with different roots and not interfere:
 
 ```go
-mgrA := env.NewManager("/wsA", "")
-mgrB := env.NewManager("/wsB", "")
+mgrA := dsl.NewManager("/wsA", "")
+mgrB := dsl.NewManager("/wsB", "")
 
 sessionA, _ := dsl.NewSession(mgrA, "default", outA)
 sessionB, _ := dsl.NewSession(mgrB, "default", outB)
@@ -152,7 +154,7 @@ The Manager is also useful on its own when you only need the storage layer
 (listing envs, exporting, reading history) without spinning up a session:
 
 ```go
-mgr := env.NewManager("/workspace/.idensyra", "insights")
+mgr := dsl.NewManager("/workspace/.idensyra", "insights")
 envs, _ := mgr.List()
 mgr.Create("scratch")
 mgr.Export("scratch", "/tmp/backup.json")
@@ -160,7 +162,9 @@ mgr.Export("scratch", "/tmp/backup.json")
 
 To save a map of variables yourself, `mgr.SaveVariables(name, vars)` writes every variable the environment can store and returns the ones it left out, each with its name, Go type and reason. `mgr.SaveState(name, vars)` saves the same way without the list. Both return an error only when the file could not be written.
 
-Every operation is a method on a `Manager`. The package-level functions of the same names (`env.Create`, `env.SaveState`, `env.SetBasePath` and the rest) only call the method on `env.Default()`; they are **Deprecated** and are removed in the next release. Call `env.Default().Create(name)` instead.
+A session opens an environment that already exists. `"default"` is created when it is missing; create any other with `mgr.Create(name)` before calling `NewSession`. A `Session` is not safe for use by more than one goroutine at a time, so a program that shares one between goroutines holds its own lock around each call.
+
+Every operation is a method on a `Manager`. Before `engine/dsl` had its own names, programs reached the Manager through `cli/env`. `cli/env`'s `Manager`, `NewManager`, `EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable` and `UnsavedVariable` are **Deprecated** in favour of the same names in `engine/dsl`, which are the same types and function, and so are its package-level functions (`env.Create`, `env.SaveState`, `env.SetBasePath` and the rest), which only call the method on `env.Default()`. All of them are removed in the next release. `env.Default()` stays: it is the Manager the `insyra` command itself uses.
 
 ## Global Flags
 
@@ -718,14 +722,19 @@ import (
     "bytes"
     "fmt"
 
-    "github.com/HazelnutParadise/insyra/cli/env"
     "github.com/HazelnutParadise/insyra/engine/dsl"
 )
 
 func main() {
     var out bytes.Buffer
 
-    session, err := dsl.NewSession(env.Default(), "demo", &out)
+    mgr := dsl.DefaultManager()
+    if !mgr.Exists("demo") {
+        if err := mgr.Create("demo"); err != nil {
+            panic(err)
+        }
+    }
+    session, err := dsl.NewSession(mgr, "demo", &out)
     if err != nil {
         panic(err)
     }

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/engine/dsl"
 )
 
 // #260 (EN-2): the DSL session has one public name, in engine/dsl. The names it
@@ -45,7 +45,7 @@ func TestDeprecatedNewDSLSessionKeepsItsMeaning(t *testing.T) {
 	if _, err := NewDSLSession(nil, "default", nil); err == nil {
 		t.Error("NewDSLSession accepted a nil manager")
 	}
-	session, err := NewDSLSession(env.NewManager(t.TempDir(), ""), "", nil)
+	session, err := NewDSLSession(dsl.NewManager(t.TempDir(), ""), "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
