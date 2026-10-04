@@ -131,26 +131,6 @@ CCL SHALL read a cell of every Go integer type (`int`, `int8`, `int16`, `int32`,
 - **WHEN** 欄 `A` 存 `float32(NaN)`，求值 `ISNA(A)` 與 `IFNA(A, 0)`
 - **THEN** 分別得到 true 與 0
 
-### Requirement: Duration functions refuse a date
-
-`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL convert a `time.Duration`, a string `time.ParseDuration` accepts, or a number of seconds, to days, hours, minutes or seconds. A `time.Time` value or a string Insyra's date parser reads as a date SHALL be an error that says the function converts a duration and names the function that gives the corresponding part of a date: `DAYOFMONTH(x)` for `DAY`, and `DATEPART(x, 'hour')`, `DATEPART(x, 'minute')` and `DATEPART(x, 'second')` for `HOUR`, `MINUTE` and `SECOND`.
-
-#### Scenario: A date string reaches DAY
-- **WHEN** 求值 `DAY('2024-01-02T06:00:00Z')`
-- **THEN** 回傳錯誤，訊息說明 `DAY` 換算的是時間長度，並提到 `DAYOFMONTH(`
-
-#### Scenario: A date column reaches HOUR
-- **WHEN** 欄 `A` 存 `time.Time` 2024-01-02 06:30:15 UTC，逐列求值 `HOUR(A)`
-- **THEN** 回傳錯誤，訊息提到 `DATEPART(x, 'hour')`
-
-#### Scenario: The replacement gives the Excel part
-- **WHEN** 欄 `A` 存 `'2024-01-02T06:30:15Z'`，求值 `DAYOFMONTH(A)`、`DATEPART(A, 'hour')`、`DATEPART(A, 'minute')`、`DATEPART(A, 'second')`
-- **THEN** 分別得到 2、6、30、15
-
-#### Scenario: Durations still convert
-- **WHEN** 求值 `DAY(A - B)`（A 為 2024-01-03 12:00、B 為 2024-01-02 00:00）、`DAY('36h')`、`MINUTE('90s')`、`HOUR(7200)`
-- **THEN** 分別得到 1.5、1.5、1.5、2，不回傳錯誤
-
 ### Requirement: A doubled quote inside a literal is one quote
 
 A string literal SHALL be enclosed in single or double quotes. Inside it, the enclosing quote character written twice SHALL stand for one such character, and the other quote character SHALL stand for itself. A bracketed column name SHALL follow the same rule. A backslash SHALL be an ordinary character. Splitting a statement-mode script into statements SHALL treat a doubled quote as part of the literal, so a `;` or a line break inside the literal does not end the statement.
@@ -278,4 +258,24 @@ A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUs
 #### Scenario: An unknown unit
 - **WHEN** 求值 `DATEPART(A, 'week')`
 - **THEN** 回傳錯誤
+
+### Requirement: DAY, HOUR, MINUTE and SECOND take a part of a date
+
+`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL return, as a `float64`, the day of the month, hour, minute or second of a `time.Time` or of a string Insyra's date parser reads as a date, read in the date's own time zone and dropping any fraction of a second, giving what `DATEPART(d, 'day')`, `'hour'`, `'minute'` and `'second'` give. A `time.Duration`, a string `time.ParseDuration` accepts, or a number SHALL be an error that says the function takes a date and names `DATEDIFF(end, start, unit)`. Any other value that is not a date, or a number of arguments other than one, SHALL be an error. `DAYOFMONTH` SHALL keep giving what `DAY` gives.
+
+#### Scenario: Parts of a date
+- **WHEN** 欄 `A` 存 UTC 的 2024-01-02 06:30:15.999，求值 `DAY(A)`、`HOUR(A)`、`MINUTE(A)`、`SECOND(A)`
+- **THEN** 分別得到 2、6、30、15
+
+#### Scenario: A date string in another time zone
+- **WHEN** 求值 `DAY('2024-12-31T23:59:58+08:00')` 與 `HOUR('2024-12-31T23:59:58+08:00')`
+- **THEN** 分別得到 31 與 23
+
+#### Scenario: A duration is refused
+- **WHEN** 欄 `A`、`B` 為日期，求值 `DAY(A - B)`、`HOUR(7200)`、`DAY('36h')`
+- **THEN** 都回傳錯誤，訊息說明需要日期，並提到 `DATEDIFF(end, start, '<unit>')`
+
+#### Scenario: What the error points to
+- **WHEN** A 為 2024-01-03 12:00、B 為 2024-01-02 00:00，求值 `DATEDIFF(A, B, 'day')` 與 `(A - B) / 3600`
+- **THEN** 分別得到 1.5 與 36
 
