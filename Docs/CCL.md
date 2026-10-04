@@ -812,6 +812,7 @@ These operate on `time.Time` values (or strings parseable by Insyra's date parse
 | `MONTH(d)` | Month 1–12 |
 | `DAYOFMONTH(d)` | Day 1–31 |
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
+| `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
 | `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A `month` or `year` shift keeps the day of the month, and stops at the last day of a month that does not have it, as Excel's `EDATE` does: `DATEADD('2024-01-31', 1, 'month')` is `2024-02-29` and `DATEADD('2024-02-29', 1, 'year')` is `2025-02-28`. The time of day and the time zone are kept. A fractional `n` truncates for `day`, `month` and `year`. More than 2,147,483,647 days, months or years, or more than about 292 years in hours, minutes or seconds, is an error |
 | `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
@@ -849,7 +850,7 @@ These convert a **duration** to a number of units. They are not Excel's `DAY`, `
 - `MINUTE(x)`: returns minutes as `float64`.
 - `SECOND(x)`: returns seconds as `float64`.
 - For all four, a numeric value of more than about 292 years of seconds, either way, is an error rather than a wrapped-around number.
-- A date, a `time.Time` value or a string such as `'2024-01-02'` or `'2024-01-02T06:30:00Z'`, is an error that names the function to use instead: `DAYOFMONTH(x)` for the day of the month, and `TONUM(FORMAT_DATE(x, '15'))`, `TONUM(FORMAT_DATE(x, '04'))` and `TONUM(FORMAT_DATE(x, '05'))` for the hour, minute and second.
+- A date, a `time.Time` value or a string such as `'2024-01-02'` or `'2024-01-02T06:30:00Z'`, is an error that names the function to use instead: `DAYOFMONTH(x)` for the day of the month, and `DATEPART(x, 'hour')`, `DATEPART(x, 'minute')` and `DATEPART(x, 'second')` for the hour, minute and second.
 
 Examples:
 
@@ -993,7 +994,7 @@ CCL looks like an Excel formula, and most functions that share a name with an Ex
 | Excel | CCL | Difference |
 | --- | --- | --- |
 | `DAY(date)` | `DAYOFMONTH(d)` | CCL's `DAY(x)` converts a duration to days and refuses a date |
-| `HOUR(date)` / `MINUTE(date)` / `SECOND(date)` | `TONUM(FORMAT_DATE(d, '15'))` / `'04'` / `'05'` | CCL's `HOUR`, `MINUTE` and `SECOND` convert a duration to hours, minutes and seconds and refuse a date |
+| `HOUR(date)` / `MINUTE(date)` / `SECOND(date)` | `DATEPART(d, 'hour')` / `'minute'` / `'second'` | CCL's `HOUR`, `MINUTE` and `SECOND` convert a duration to hours, minutes and seconds and refuse a date |
 | `WEEKDAY(date)` | `WEEKDAY(d) + 1` | CCL counts Sunday as 0 through Saturday as 6; Excel's default counts Sunday as 1 through Saturday as 7 |
 | `EDATE(date, months)` | `DATEADD(d, n, 'month')` | Same month-end rule. CCL keeps the time of day, and returns a date rather than a serial number |
 | `DATEDIF(start, end, unit)` | `DATEDIFF(d1, d2, unit)` | CCL gives `d1 - d2`, with a fraction and a sign, in `'day'`, `'hour'`, `'minute'` or `'second'`. Excel gives whole units from `start` to `end` and is an error when `start` is later |

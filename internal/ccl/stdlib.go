@@ -23,7 +23,7 @@ import (
 //   - Type conversion (stdlib_typeconv.go): TONUM/VALUE, TOSTR/TEXT,
 //     TOBOOL, COALESCE, IFNULL
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAYOFMONTH,
-//     WEEKDAY, DATEDIFF, DATEADD, FORMAT_DATE
+//     WEEKDAY, DATEPART, DATEDIFF, DATEADD, FORMAT_DATE
 //   - Aggregates: SUM, AVG, COUNT, MAX, MIN (this file) and
 //     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)
 func RegisterStandardFunctions() {
@@ -197,11 +197,11 @@ func RegisterStandardFunctions() {
 	registerFunction("DAY", durationIn("DAY", "days", func(d time.Duration) float64 { return d.Hours() / 24.0 },
 		"day of the month", "DAYOFMONTH(x)"))
 	registerFunction("HOUR", durationIn("HOUR", "hours", time.Duration.Hours,
-		"hour", "TONUM(FORMAT_DATE(x, '15'))"))
+		"hour", "DATEPART(x, 'hour')"))
 	registerFunction("MINUTE", durationIn("MINUTE", "minutes", time.Duration.Minutes,
-		"minute", "TONUM(FORMAT_DATE(x, '04'))"))
+		"minute", "DATEPART(x, 'minute')"))
 	registerFunction("SECOND", durationIn("SECOND", "seconds", time.Duration.Seconds,
-		"second", "TONUM(FORMAT_DATE(x, '05'))"))
+		"second", "DATEPART(x, 'second')"))
 }
 
 // durationIn builds DAY, HOUR, MINUTE or SECOND: the argument as a number of

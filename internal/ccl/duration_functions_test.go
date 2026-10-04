@@ -25,12 +25,12 @@ func TestDurationFunctionsRefuseADate(t *testing.T) {
 		{"DAY('2024-01-02T06:00:00Z')", []string{"DAYOFMONTH("}},
 		{"DAY(C)", []string{"DAYOFMONTH("}},
 		{"DAY(A)", []string{"DAYOFMONTH("}},
-		{"HOUR(B)", []string{"FORMAT_DATE(", "'15'"}},
-		{"HOUR(A)", []string{"FORMAT_DATE(", "'15'"}},
-		{"MINUTE(B)", []string{"FORMAT_DATE(", "'04'"}},
-		{"MINUTE(C)", []string{"FORMAT_DATE(", "'04'"}},
-		{"SECOND(B)", []string{"FORMAT_DATE(", "'05'"}},
-		{"SECOND(A)", []string{"FORMAT_DATE(", "'05'"}},
+		{"HOUR(B)", []string{"DATEPART(x, 'hour')"}},
+		{"HOUR(A)", []string{"DATEPART(x, 'hour')"}},
+		{"MINUTE(B)", []string{"DATEPART(x, 'minute')"}},
+		{"MINUTE(C)", []string{"DATEPART(x, 'minute')"}},
+		{"SECOND(B)", []string{"DATEPART(x, 'second')"}},
+		{"SECOND(A)", []string{"DATEPART(x, 'second')"}},
 	} {
 		got, err := evalCol(t, ctx, c.expr)
 		if err == nil {
@@ -56,9 +56,9 @@ func TestDatePartReplacementsGiveTheExcelPart(t *testing.T) {
 		want float64
 	}{
 		{"DAYOFMONTH(A)", 2},
-		{"TONUM(FORMAT_DATE(A, '15'))", 6},
-		{"TONUM(FORMAT_DATE(A, '04'))", 30},
-		{"TONUM(FORMAT_DATE(A, '05'))", 15},
+		{"DATEPART(A, 'hour')", 6},
+		{"DATEPART(A, 'minute')", 30},
+		{"DATEPART(A, 'second')", 15},
 	} {
 		got, err := evalCol(t, ctx, c.expr)
 		if err != nil {

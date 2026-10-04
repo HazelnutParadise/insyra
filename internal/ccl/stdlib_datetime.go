@@ -106,6 +106,42 @@ func registerDateTimeFunctions() {
 		}
 	})
 
+	// DATEPART(d, unit) returns one part of d, read in d's own time zone:
+	// "year", "month", "day", "hour", "minute" or "second" (singular or
+	// plural, any case). It is the third of the DATEADD / DATEDIFF / DATEPART
+	// family and what Excel's YEAR, MONTH, DAY, HOUR, MINUTE and SECOND give;
+	// CCL's HOUR, MINUTE and SECOND convert durations instead. A fraction of
+	// a second is dropped, as Excel's SECOND drops it.
+	registerFunction("DATEPART", func(args ...any) (any, error) {
+		if len(args) != 2 {
+			return nil, fmt.Errorf("DATEPART requires 2 arguments (d, unit)")
+		}
+		t, ok := toTime(args[0])
+		if !ok {
+			return nil, fmt.Errorf("DATEPART: cannot convert first arg %T to date", args[0])
+		}
+		unit, ok := args[1].(string)
+		if !ok {
+			return nil, fmt.Errorf("DATEPART: unit must be a string, got %T", args[1])
+		}
+		switch strings.ToLower(unit) {
+		case "year", "years":
+			return float64(t.Year()), nil
+		case "month", "months":
+			return float64(t.Month()), nil
+		case "day", "days":
+			return float64(t.Day()), nil
+		case "hour", "hours":
+			return float64(t.Hour()), nil
+		case "minute", "minutes":
+			return float64(t.Minute()), nil
+		case "second", "seconds":
+			return float64(t.Second()), nil
+		default:
+			return nil, fmt.Errorf("DATEPART: unknown unit %q (expected year/month/day/hour/minute/second)", unit)
+		}
+	})
+
 	// DATEADD(d, n, unit) returns d shifted by n units. Supports the same
 	// unit set as DATEDIFF plus "month"/"year", which stop at the last day of
 	// a month that is too short, as Excel's EDATE does.
