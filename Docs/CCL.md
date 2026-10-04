@@ -804,13 +804,15 @@ dt.AddColUsingCCL("price_fmt", "TOSTR(['price'], '$%.2f')")
 
 ### Date Component & Arithmetic Functions
 
-These operate on `time.Time` values (or strings parseable by Insyra's date parser). They are what to use for a part of a date: `DAY`/`HOUR`/`MINUTE`/`SECOND` convert durations and refuse a date (see [below](#day--hour--minute--second)).
+These operate on `time.Time` values (or strings parseable by Insyra's date parser). `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE` and `SECOND` mean what they mean in Excel: a part of a date. To express a duration in a unit, use `DATEDIFF` (see [below](#day--hour--minute--second)).
 
 | Function | Description |
 | --- | --- |
 | `YEAR(d)` | Year as number |
 | `MONTH(d)` | Month 1–12 |
-| `DAYOFMONTH(d)` | Day 1–31 |
+| `DAY(d)` | Day of the month, 1–31 |
+| `HOUR(d)` / `MINUTE(d)` / `SECOND(d)` | Hour 0–23, minute 0–59, second 0–59; a fraction of a second is dropped |
+| `DAYOFMONTH(d)` | **Deprecated**: the same as `DAY(d)`, kept so existing formulas keep working. Use `DAY` |
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
 | `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
@@ -835,31 +837,25 @@ Aggregate functions perform calculations on a set of values (a column, a row, or
 CCL supports basic date and duration arithmetic and comparison. Key points:
 
 - Date strings (e.g., `"2006-01-02"`, RFC3339) are automatically parsed as `time.Time` when possible; parsed values are treated as date/time values.
-- A date difference (`A - B`) is a duration. In a numeric context it counts **seconds**, so `(A - B) > 0` and `(A - B) / 86400` work; `DAY(A - B)` converts it to days directly.
-- `date - date` returns a `time.Duration` representing the difference between the two dates. Use `DAY(...)`, `HOUR(...)`, `MINUTE(...)`, or `SECOND(...)` to convert the result to numeric values.
+- A date difference (`A - B`) is a duration. In a numeric context it counts **seconds**, so `(A - B) > 0` and `(A - B) / 86400` work; `DATEDIFF(A, B, 'day')` gives it in days directly.
+- `date - date` returns a `time.Duration` representing the difference between the two dates. Use `DATEDIFF(A, B, unit)`, or divide the difference by 86400, 3600 or 60, to express it in days, hours or minutes.
 - `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days). A fraction keeps its hours and minutes: `0.5` moves the date 12 hours, `0.0625` 1 hour 30 minutes and `0.001` 86.4 seconds. The date moves by a duration, so a shift of more than about 292 years (106,751 days) either way is an error.
 - Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
 - If a string cannot be parsed as a date (or the operands are other unsupported types), operations fall back to their original behavior (numeric/string comparison or an error).
 
 ### DAY / HOUR / MINUTE / SECOND
 
-These convert a **duration** to a number of units. They are not Excel's `DAY`, `HOUR`, `MINUTE` and `SECOND`, which take a part of a date.
+These take a part of a date, as in Excel, Google Sheets and Power BI: `DAY('2024-01-02T06:30:15Z')` is `2`, `HOUR` of it `6`, `MINUTE` `30` and `SECOND` `15`. They accept a `time.Time` or a string Insyra's date parser reads, read in the date's own time zone, and return a `float64`, like `YEAR` and `MONTH`. `DATEPART(d, 'day')` and the other units give the same answers.
 
-- `DAY(x)`: accepts a `time.Duration`, a duration string (e.g., `"24h"`), or a numeric value (interpreted as seconds); returns days as `float64`.
-- `HOUR(x)`: returns hours as `float64`.
-- `MINUTE(x)`: returns minutes as `float64`.
-- `SECOND(x)`: returns seconds as `float64`.
-- For all four, a numeric value of more than about 292 years of seconds, either way, is an error rather than a wrapped-around number.
-- A date, a `time.Time` value or a string such as `'2024-01-02'` or `'2024-01-02T06:30:00Z'`, is an error that names the function to use instead: `DAYOFMONTH(x)` for the day of the month, and `DATEPART(x, 'hour')`, `DATEPART(x, 'minute')` and `DATEPART(x, 'second')` for the hour, minute and second.
-
-Examples:
+A duration, a duration string such as `'36h'`, or a number is not a date, and is an error that names the way to express a duration in a unit. A number is not read as an Excel serial date. Use `DATEDIFF` for the difference between two dates, or divide the difference, which counts seconds:
 
 ```go
 // Given A and B are date/time columns
-// Calculate difference and express it in days/hours/minutes/seconds
-dt.AddColUsingCCL("diff", "A - B")                     // -> time.Duration
-dt.AddColUsingCCL("diff_days", "DAY(A - B)")           // -> float64 days
-dt.AddColUsingCCL("diff_hours", "HOUR(A - B)")         // -> float64 hours
+dt.AddColUsingCCL("order_day", "DAY(A)")                    // -> day of the month
+dt.AddColUsingCCL("order_hour", "HOUR(A)")                  // -> hour 0-23
+dt.AddColUsingCCL("diff", "A - B")                          // -> time.Duration
+dt.AddColUsingCCL("diff_days", "DATEDIFF(A, B, 'day')")     // -> float64 days
+dt.AddColUsingCCL("diff_hours", "(A - B) / 3600")           // -> float64 hours
 ```
 
 ### SUM
@@ -993,8 +989,7 @@ CCL looks like an Excel formula, and most functions that share a name with an Ex
 
 | Excel | CCL | Difference |
 | --- | --- | --- |
-| `DAY(date)` | `DAYOFMONTH(d)` | CCL's `DAY(x)` converts a duration to days and refuses a date |
-| `HOUR(date)` / `MINUTE(date)` / `SECOND(date)` | `DATEPART(d, 'hour')` / `'minute'` / `'second'` | CCL's `HOUR`, `MINUTE` and `SECOND` convert a duration to hours, minutes and seconds and refuse a date |
+| `DAY(45000)` and the other date functions on a serial number | `DAY(d)` on a date | Excel counts dates as days since 1900; CCL reads a `time.Time` or a date string, and a number is an error |
 | `WEEKDAY(date)` | `WEEKDAY(d) + 1` | CCL counts Sunday as 0 through Saturday as 6; Excel's default counts Sunday as 1 through Saturday as 7 |
 | `EDATE(date, months)` | `DATEADD(d, n, 'month')` | Same month-end rule. CCL keeps the time of day, and returns a date rather than a serial number |
 | `DATEDIF(start, end, unit)` | `DATEDIFF(d1, d2, unit)` | CCL gives `d1 - d2`, with a fraction and a sign, in `'day'`, `'hour'`, `'minute'` or `'second'`. Excel gives whole units from `start` to `end` and is an error when `start` is later |
@@ -1201,10 +1196,10 @@ dt.AddColUsingCCL("cube", "A ^ 3")
 ### Date & Duration Examples
 
 ```go
-// Date difference returns time.Duration; use DAY/HOUR/MINUTE/SECOND to convert
+// Date difference returns time.Duration; use DATEDIFF to express it in a unit
 // A and B are date/time columns
 dt.AddColUsingCCL("diff", "A - B")                     // -> time.Duration
-dt.AddColUsingCCL("diff_days", "DAY(A - B)")           // -> float64 days
+dt.AddColUsingCCL("diff_days", "DATEDIFF(A, B, 'day')") // -> float64 days
 dt.AddColUsingCCL("prev_diff", "IF(#>0, A.(#-1) - A, NULL)") // uses IF short-circuiting to avoid row -1; NULL is the nil literal
 ```
 

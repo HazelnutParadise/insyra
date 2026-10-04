@@ -181,8 +181,8 @@ func TestDataTable_AddColUsingCCL_PreviousRowAccess_WithDates(t *testing.T) {
 		t.Fatalf("expected 24h at row1, got %v", d)
 	}
 
-	// test DAY/HOUR/MINUTE/SECOND helpers
-	dt.AddColUsingCCL("days2", "IF(#>0, DAY(A.(#-1) - A), NULL)")
+	// express the difference in days, hours, minutes and seconds
+	dt.AddColUsingCCL("days2", "IF(#>0, DATEDIFF(A.(#-1), A, 'day'), NULL)")
 	v := dt.GetCol("C").Get(1)
 	f, ok := v.(float64)
 	if !ok {
@@ -192,7 +192,7 @@ func TestDataTable_AddColUsingCCL_PreviousRowAccess_WithDates(t *testing.T) {
 		t.Fatalf("expected 1.0 days at row1, got %v", f)
 	}
 
-	dt.AddColUsingCCL("hours2", "IF(#>0, HOUR(A.(#-1) - A), NULL)")
+	dt.AddColUsingCCL("hours2", "IF(#>0, DATEDIFF(A.(#-1), A, 'hour'), NULL)")
 	vh := dt.GetCol("D").Get(1)
 	fh, ok := vh.(float64)
 	if !ok {
@@ -202,7 +202,7 @@ func TestDataTable_AddColUsingCCL_PreviousRowAccess_WithDates(t *testing.T) {
 		t.Fatalf("expected 24.0 hours at row1, got %v", fh)
 	}
 
-	dt.AddColUsingCCL("mins2", "IF(#>0, MINUTE(A.(#-1) - A), NULL)")
+	dt.AddColUsingCCL("mins2", "IF(#>0, DATEDIFF(A.(#-1), A, 'minute'), NULL)")
 	vm := dt.GetCol("E").Get(1)
 	fm, ok := vm.(float64)
 	if !ok {
@@ -212,7 +212,7 @@ func TestDataTable_AddColUsingCCL_PreviousRowAccess_WithDates(t *testing.T) {
 		t.Fatalf("expected 1440.0 minutes at row1, got %v", fm)
 	}
 
-	dt.AddColUsingCCL("secs2", "IF(#>0, SECOND(A.(#-1) - A), NULL)")
+	dt.AddColUsingCCL("secs2", "IF(#>0, DATEDIFF(A.(#-1), A, 'second'), NULL)")
 	vs := dt.GetCol("F").Get(1)
 	fs, ok := vs.(float64)
 	if !ok {

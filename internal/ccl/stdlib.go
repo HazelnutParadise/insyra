@@ -6,15 +6,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // RegisterStandardFunctions registers the standard library of CCL functions.
 // Categories:
 //   - Logical: IF, AND, OR, CASE
 //   - Null/NaN: ISNA, IFNA
-//   - String concat / duration helpers (this file)
+//   - String concat (this file)
 //   - Math (stdlib_math.go): ABS, ROUND, FLOOR, CEIL, TRUNC, MOD, POW,
 //     SQRT, LN, LOG, LOG10, EXP, SIGN
 //   - String (stdlib_string.go): LEN, UPPER, LOWER, TRIM/L/RTRIM,
@@ -22,8 +20,9 @@ import (
 //     ENDSWITH, REGEX_MATCH, REPEAT
 //   - Type conversion (stdlib_typeconv.go): TONUM/VALUE, TOSTR/TEXT,
 //     TOBOOL, COALESCE, IFNULL
-//   - Date components (stdlib_datetime.go): YEAR, MONTH, DAYOFMONTH,
-//     WEEKDAY, DATEPART, DATEDIFF, DATEADD, FORMAT_DATE
+//   - Date components (stdlib_datetime.go): YEAR, MONTH, DAY, HOUR,
+//     MINUTE, SECOND, DAYOFMONTH, WEEKDAY, DATEPART, DATEDIFF, DATEADD,
+//     FORMAT_DATE
 //   - Aggregates: SUM, AVG, COUNT, MAX, MIN (this file) and
 //     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)
 func RegisterStandardFunctions() {
@@ -192,59 +191,6 @@ func RegisterStandardFunctions() {
 		return minVal, nil
 	})
 
-	// Duration helpers: convert a time.Duration, a duration string or a
-	// number of seconds to a unit.
-	registerFunction("DAY", durationIn("DAY", "days", func(d time.Duration) float64 { return d.Hours() / 24.0 },
-		"day of the month", "DAYOFMONTH(x)"))
-	registerFunction("HOUR", durationIn("HOUR", "hours", time.Duration.Hours,
-		"hour", "DATEPART(x, 'hour')"))
-	registerFunction("MINUTE", durationIn("MINUTE", "minutes", time.Duration.Minutes,
-		"minute", "DATEPART(x, 'minute')"))
-	registerFunction("SECOND", durationIn("SECOND", "seconds", time.Duration.Seconds,
-		"second", "DATEPART(x, 'second')"))
-}
-
-// durationIn builds DAY, HOUR, MINUTE or SECOND: the argument as a number of
-// units. Excel's functions of these names take a part of a date instead, so a
-// date is refused with a pointer to the function that does that, rather than
-// read as the time since midnight.
-func durationIn(name, units string, in func(time.Duration) float64, part, partFunc string) func(args ...any) (any, error) {
-	refuseDate := func() error {
-		return fmt.Errorf("%s converts a duration to %s and was given a date; for the %s of a date x, use %s",
-			name, units, part, partFunc)
-	}
-	return func(args ...any) (any, error) {
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s requires 1 argument", name)
-		}
-		var d time.Duration
-		switch x := args[0].(type) {
-		case time.Duration:
-			d = x
-		case time.Time:
-			return nil, refuseDate()
-		case string:
-			pd, err := time.ParseDuration(x)
-			if err == nil {
-				d = pd
-				break
-			}
-			if _, ok := utils.TryParseTime(x); ok {
-				return nil, refuseDate()
-			}
-			return nil, fmt.Errorf("%s: cannot parse %q as a duration", name, x)
-		default:
-			f, ok := toFloat64(x)
-			if !ok {
-				return nil, fmt.Errorf("unsupported type for %s: %T", name, x)
-			}
-			// A number is a count of seconds.
-			if d, ok = durationOf(f, time.Second); !ok {
-				return nil, fmt.Errorf("%s: %v seconds is out of range", name, f)
-			}
-		}
-		return in(d), nil
-	}
 }
 
 // Helper for aggregate functions

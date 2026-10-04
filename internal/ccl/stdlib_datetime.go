@@ -24,9 +24,17 @@ func toTime(val any) (time.Time, bool) {
 }
 
 // registerDateTimeFunctions registers date-component extraction and arithmetic
-// helpers. These complement the existing DAY/HOUR/MINUTE/SECOND duration
-// functions in stdlib.go, which operate on time.Duration values.
+// helpers.
 func registerDateTimeFunctions() {
+	// DAY, HOUR, MINUTE and SECOND take a part of a date, as in Excel, Google
+	// Sheets, DAX and Spark SQL. A duration is refused with a pointer to
+	// DATEDIFF, which expresses one in a unit.
+	for _, p := range []struct{ name, unit string }{
+		{"DAY", "day"}, {"HOUR", "hour"}, {"MINUTE", "minute"}, {"SECOND", "second"},
+	} {
+		registerFunction(p.name, datePartFunction(p.name, p.unit))
+	}
+
 	registerFunction("YEAR", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("YEAR requires 1 argument")
@@ -109,9 +117,7 @@ func registerDateTimeFunctions() {
 	// DATEPART(d, unit) returns one part of d, read in d's own time zone:
 	// "year", "month", "day", "hour", "minute" or "second" (singular or
 	// plural, any case). It is the third of the DATEADD / DATEDIFF / DATEPART
-	// family and what Excel's YEAR, MONTH, DAY, HOUR, MINUTE and SECOND give;
-	// CCL's HOUR, MINUTE and SECOND convert durations instead. A fraction of
-	// a second is dropped, as Excel's SECOND drops it.
+	// family, and gives what YEAR, MONTH, DAY, HOUR, MINUTE and SECOND give.
 	registerFunction("DATEPART", func(args ...any) (any, error) {
 		if len(args) != 2 {
 			return nil, fmt.Errorf("DATEPART requires 2 arguments (d, unit)")
@@ -124,22 +130,11 @@ func registerDateTimeFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("DATEPART: unit must be a string, got %T", args[1])
 		}
-		switch strings.ToLower(unit) {
-		case "year", "years":
-			return float64(t.Year()), nil
-		case "month", "months":
-			return float64(t.Month()), nil
-		case "day", "days":
-			return float64(t.Day()), nil
-		case "hour", "hours":
-			return float64(t.Hour()), nil
-		case "minute", "minutes":
-			return float64(t.Minute()), nil
-		case "second", "seconds":
-			return float64(t.Second()), nil
-		default:
+		v, ok := datePart(t, unit)
+		if !ok {
 			return nil, fmt.Errorf("DATEPART: unknown unit %q (expected year/month/day/hour/minute/second)", unit)
 		}
+		return v, nil
 	})
 
 	// DATEADD(d, n, unit) returns d shifted by n units. Supports the same
@@ -217,6 +212,60 @@ func addMonths(t time.Time, years, months int) time.Time {
 	last := time.Date(first.Year(), first.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
 	hour, minute, sec := t.Clock()
 	return time.Date(first.Year(), first.Month(), min(t.Day(), last), hour, minute, sec, t.Nanosecond(), t.Location())
+}
+
+// datePart returns the unit part of t, read in t's own time zone, dropping any
+// fraction of a second as Excel's SECOND does. ok is false for an unknown unit.
+func datePart(t time.Time, unit string) (float64, bool) {
+	switch strings.ToLower(unit) {
+	case "year", "years":
+		return float64(t.Year()), true
+	case "month", "months":
+		return float64(t.Month()), true
+	case "day", "days":
+		return float64(t.Day()), true
+	case "hour", "hours":
+		return float64(t.Hour()), true
+	case "minute", "minutes":
+		return float64(t.Minute()), true
+	case "second", "seconds":
+		return float64(t.Second()), true
+	}
+	return 0, false
+}
+
+// datePartFunction builds DAY, HOUR, MINUTE or SECOND, which give one part of
+// a date. These names used to convert a duration to a number of units, so a
+// duration, a duration string or a number gets an error naming DATEDIFF rather
+// than a generic one.
+func datePartFunction(name, unit string) func(args ...any) (any, error) {
+	refuseDuration := func(what string) error {
+		return fmt.Errorf("%s takes a date and was given %s; to express a duration in %ss, use DATEDIFF(end, start, '%s'), or divide the difference of two dates, which counts seconds", name, what, unit, unit)
+	}
+	return func(args ...any) (any, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s requires 1 argument", name)
+		}
+		if t, ok := toTime(args[0]); ok {
+			v, _ := datePart(t, unit)
+			return v, nil
+		}
+		switch x := args[0].(type) {
+		case time.Duration:
+			return nil, refuseDuration("a duration")
+		case string:
+			if _, err := time.ParseDuration(x); err == nil {
+				return nil, refuseDuration("a duration")
+			}
+			return nil, fmt.Errorf("%s: cannot read %q as a date", name, x)
+		case bool:
+			return nil, fmt.Errorf("%s: cannot convert %T to date", name, x)
+		}
+		if _, ok := toFloat64(args[0]); ok {
+			return nil, refuseDuration("a number, which CCL does not read as a date")
+		}
+		return nil, fmt.Errorf("%s: cannot convert %T to date", name, args[0])
+	}
 }
 
 // addDuration shifts t by n units of a clock unit, refusing a shift a Duration
