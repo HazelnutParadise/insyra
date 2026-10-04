@@ -44,8 +44,8 @@ func readBuildRequirements(log string) []string {
 
 // uv installs a build tool that no build constraint names without an error,
 // so only a real build shows whether the constraints cover every tool. This
-// builds every package some supported platform builds from source, here,
-// with the pinned uv and an empty cache.
+// builds every package in knownSourceBuilds from source, here, with the
+// pinned uv and an empty cache.
 func TestSourceBuildsUseOnlyPinnedTools(t *testing.T) {
 	if os.Getenv("INSYRA_PY_E2E") != "1" {
 		t.Skip("set INSYRA_PY_E2E=1 to build the source packages with the pinned uv")

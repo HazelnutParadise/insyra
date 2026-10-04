@@ -1,0 +1,62 @@
+# Builds the packages the Python environment would compile from source, with
+# the build tools the pins name, every time something that decides that
+# changes. It forces the builds, so it runs on macOS, whose compiler builds
+# both. A full run downloads the whole environment and compiles two packages,
+# so it runs only for those files.
+
+name: Python Build Tools
+
+on:
+  push:
+    branches: [ "main", "dev", "0.4" ]
+    paths:
+      - "py/environment/**"
+      - "py/environment.go"
+      - "py/environment_build_test.go"
+      - "py/environment_pins_test.go"
+      - ".github/workflows/py-build-tools.yml"
+  pull_request:
+    branches: [ "main", "dev", "0.4" ]
+    paths:
+      - "py/environment/**"
+      - "py/environment.go"
+      - "py/environment_build_test.go"
+      - "py/environment_pins_test.go"
+      - ".github/workflows/py-build-tools.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-tools:
+    name: Check every build tool is pinned
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      INSYRA_PY_E2E: "1"
+    steps:
+    - uses: actions/checkout@v5
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache-dependency-path: go.sum
+    # Builds blis and statsmodels from source with uv's log on and an empty
+    # cache, and fails if a build installed a tool the build constraints do
+    # not pin.
+    - name: Build the source packages
+      run: |
+        set -o pipefail
+        go test ./py/ -run '^TestSourceBuildsUseOnlyPinnedTools$' -count=1 -v -timeout 50m | tee build-check.log
+    # The test skips itself without INSYRA_PY_E2E, and a -run pattern that
+    # matches nothing passes, so a green run proves nothing until the test is
+    # seen to have passed.
+    - name: Confirm the test ran
+      run: |
+        set -euo pipefail
+        grep -q -- '--- PASS: TestSourceBuildsUseOnlyPinnedTools' build-check.log || { echo "TestSourceBuildsUseOnlyPinnedTools did not run"; exit 1; }

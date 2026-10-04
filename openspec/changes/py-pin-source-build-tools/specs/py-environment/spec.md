@@ -13,7 +13,7 @@
 
 ### Requirement: A source build uses only pinned, verified tools
 
-When uv builds a locked package from source, every tool the build installs SHALL be one the build constraints pin, at that version, and its download SHALL match one of the constraint's hashes, or the setup SHALL fail. Because uv installs a build tool that no constraint names without an error, a test gated on `INSYRA_PY_E2E=1` SHALL build every package some supported platform builds from source, with the pinned uv and an empty cache, and fail if a build installed a tool the constraints do not pin at that version. A workflow SHALL run that test and `TestPinnedEnvironmentEndToEnd` on GitHub's Windows arm64 runner whenever a file that decides the build or the checks changes (anything under `py/environment/`, `py/environment.go`, `py/init.go`, `py/const.go`, `py/environment_build_test.go`, `py/environment_pins_test.go`, `py/environment_setup_test.go` or the workflow), and SHALL fail unless both tests are seen to pass.
+When uv builds a locked package from source, every tool the build installs SHALL be one the build constraints pin, at that version, and its download SHALL match one of the constraint's hashes, or the setup SHALL fail. Because uv installs a build tool that no constraint names without an error, a test gated on `INSYRA_PY_E2E=1` SHALL build every package the tests list as a source build, with the pinned uv, an empty cache and `--no-binary-package`, and fail if a build installed a tool the constraints do not pin at that version. A workflow SHALL run that test on macOS whenever a file that decides it changes (anything under `py/environment/`, `py/environment.go`, `py/environment_build_test.go`, `py/environment_pins_test.go` or the workflow), and SHALL fail unless the test is seen to pass.
 
 #### Scenario: A tampered build tool
 - **WHEN** a build tool's download does not match the hashes the lock records for it
@@ -25,4 +25,4 @@ When uv builds a locked package from source, every tool the build installs SHALL
 
 #### Scenario: The pins change
 - **WHEN** a push or pull request changes a file under `py/environment/`, or `knownSourceBuilds`
-- **THEN** the Windows arm64 workflow builds the environment from nothing, compiling `blis` and `statsmodels`, runs both gated tests, and fails if either of them skipped or did not run
+- **THEN** the `Python Build Tools` workflow builds `blis` and `statsmodels` from source on macOS, runs the gated test, and fails if it skipped or did not run

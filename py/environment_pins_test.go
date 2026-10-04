@@ -183,8 +183,10 @@ var (
 )
 
 // knownSourceBuilds lists the locked packages with no wheel for a supported
-// platform, which uv builds from source there with the tools the build
-// constraints pin. PyPI has no Windows arm64 wheel of blis 1.3.3 or statsmodels 0.15.0.
+// platform's native architecture, which uv would build from source there with
+// the tools the build constraints pin. PyPI has no Windows arm64 wheel of blis
+// 1.3.3 or statsmodels 0.15.0, but uv runs an x86-64 Python on Windows on
+// arm64 by default, which installs their win_amd64 wheels instead.
 var knownSourceBuilds = map[string][]string{
 	"windows/arm64": {"blis", "statsmodels"},
 }
