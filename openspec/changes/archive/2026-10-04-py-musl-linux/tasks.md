@@ -25,4 +25,4 @@
 - [x] 4.1 本機 Alpine arm64 容器跑 CI 的同一串指令：端對端測試與編譯檢查都通過；macOS 上編譯檢查會跳過
 - [x] 4.2 本機 Alpine amd64 容器建環境成功、`scikit-learn` 從原始碼編譯
 - [x] 4.3 `gofmt -s -l`、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`（0 issues）、`openspec validate py-musl-linux --strict`
-- [ ] 4.4 push 後 `Python on musl Linux` workflow 三個 job 都通過
+- [x] 4.4 push 後 `Python on musl Linux` workflow 三個 job 都通過
