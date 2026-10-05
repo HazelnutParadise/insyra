@@ -38,7 +38,7 @@ func DefaultManager() *Manager
 func NewManager(basePath, envsDirName string) *Manager
 ```
 
-`DefaultManager()` keeps environments where the `insyra` command does, under `~/.insyra/envs/`, and returns a new Manager on every call. `NewManager(basePath, envsDirName)` puts them somewhere else, such as a workspace. `NewSession` opens an environment that exists; `"default"` is created when missing, and any other is made first with `mgr.Create(name)`. The Manager's methods (`List`, `Create`, `Export`, `Import`, `SaveState` and the rest) and the types they use (`EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable`, `UnsavedVariable`) all come from `engine/dsl`, so a program needs nothing under `cli/`.
+`DefaultManager()` keeps environments where the `insyra` command does, under `~/.insyra/envs/`, and returns a new Manager on every call. `NewManager(basePath, envsDirName)` puts them somewhere else, such as a workspace. `NewSession` opens an environment that exists; `"default"` is created when missing, and any other is made first with `mgr.Create(name)`. The Manager's methods (`Exists`, `Create`, `List`, `Export`, `Import`, `SaveState` and the rest, each listed under "Manager methods" in [Docs/cli-dsl.md](../Docs/cli-dsl.md)) and the types they use (`EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable`, `UnsavedVariable`) all come from `engine/dsl`, so a program needs nothing under `cli/`.
 
 Key methods on `Session`:
 

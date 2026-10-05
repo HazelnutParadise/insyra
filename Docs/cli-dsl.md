@@ -164,6 +164,57 @@ To save a map of variables yourself, `mgr.SaveVariables(name, vars)` writes ever
 
 A session opens an environment that already exists. `"default"` is created when it is missing; create any other with `mgr.Create(name)` before calling `NewSession`. A `Session` is not safe for use by more than one goroutine at a time, so a program that shares one between goroutines holds its own lock around each call.
 
+#### Manager methods
+
+An environment name may contain only letters, digits, `.`, `_` and `-`, must start with a letter or digit, and may not contain `..`. Every method that takes a name refuses any other with an error, except `Exists`, which returns `false`.
+
+Environments:
+
+| Method | What it does |
+| --- | --- |
+| `Exists(name) bool` | Reports whether the environment's folder is there. It also returns `false` for a name that is not allowed or a folder it cannot read, so follow a `false` with `Create`, which reports the real cause. |
+| `Create(name) error` | Makes the environment with an empty `state.json`, `history.txt` and `config.json`. Fails if it already exists. |
+| `Open(name) (string, error)` | Returns the environment's folder. Fails if it does not exist. |
+| `List() ([]EnvironmentInfo, error)` | Every environment, sorted by name, each with its folder, variable count and last access time. |
+| `Info(name) (EnvironmentInfo, error)` | The same for one environment. |
+| `Clear(name, keepHistory) error` | Removes every variable, and the history too unless `keepHistory` is `true`. Fails if the environment does not exist. |
+| `Rename(oldName, newName) error` | Fails if `oldName` does not exist or `newName` already does. |
+| `Delete(name) error` | Removes the environment's folder and everything in it. Fails if it does not exist. |
+| `Export(name, path) error` | Writes the variables, history and configuration to one JSON file. |
+| `Import(path, name, force) (string, error)` | Reads such a file into `name`, or the name the file records when `name` is `""`, and returns the name used. A missing environment is created; an existing one is overwritten only when it is empty or `force` is `true`. |
+| `EnsureDefaultEnvironment() error` | Creates `"default"` if it is missing. |
+
+Variables and history:
+
+| Method | What it does |
+| --- | --- |
+| `RestoreVariables(name) (map[string]any, error)` | Reads the variables back at the Go types they were saved with. |
+| `SaveVariables(name, vars) ([]UnsavedVariable, error)` | Replaces the saved variables with `vars` and returns those the environment cannot store, such as a function. |
+| `SaveState(name, vars) error` | The same, without the list. |
+| `LoadState(name) (*State, error)` | `state.json` as stored, without turning each variable back into a Go value. |
+| `AppendHistory(name, line) error` | Adds one line to `history.txt`. |
+| `ReadHistory(name) ([]string, error)` | The lines of `history.txt`, without empty ones. |
+
+Configuration shared by every environment of the Manager, in `config.json` at its root:
+
+| Method | What it does |
+| --- | --- |
+| `LoadGlobalConfig() (GlobalConfig, error)` | Reads it, writing the defaults first when there is none. |
+| `UpdateGlobalConfig(key, value) (GlobalConfig, error)` | Sets one key the way `insyra config <key> <value>` does, refusing an unknown key or value. |
+| `SaveGlobalConfig(cfg) error` | Writes all of it. |
+| `GlobalConfigPath() (string, error)` | Where it is. |
+
+Where the Manager keeps things:
+
+| Method | What it does |
+| --- | --- |
+| `BasePath() (string, error)` | The root: the one given to `NewManager`, or `<UserHomeDir>/.insyra`. |
+| `EnvsDirName() string` | The subfolder that holds the environments, `"envs"` unless set. |
+| `EnvsPath() (string, error)` | The two joined. |
+| `ResolveEnvPath(name) (string, error)` | One environment's folder, whether or not it exists. |
+| `EnsureBaseStructure() error` | Creates the root and the subfolder if they are missing. |
+| `SetBasePath(path)`, `SetEnvsDirName(name)` | Move the Manager; `""` goes back to the default. Do not move a Manager while a session uses it. |
+
 Every operation is a method on a `Manager`. Before `engine/dsl` had its own names, programs reached the Manager through `cli/env`. `cli/env`'s `Manager`, `NewManager`, `EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable` and `UnsavedVariable` are **Deprecated** in favour of the same names in `engine/dsl`, which are the same types and function, and so are its package-level functions (`env.Create`, `env.SaveState`, `env.SetBasePath` and the rest), which only call the method on `env.Default()`. All of them are removed in the next release. `env.Default()` stays: it is the Manager the `insyra` command itself uses.
 
 ## Global Flags
