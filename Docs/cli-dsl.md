@@ -162,7 +162,7 @@ mgr.Export("scratch", "/tmp/backup.json")
 
 To save a map of variables yourself, `mgr.SaveVariables(name, vars)` writes every variable the environment can store and returns the ones it left out, each with its name, Go type and reason. `mgr.SaveState(name, vars)` saves the same way without the list. Both return an error only when the file could not be written.
 
-A session opens an environment that already exists. `"default"` is created when it is missing; create any other with `mgr.Create(name)` before calling `NewSession`. A `Session` is not safe for use by more than one goroutine at a time, so a program that shares one between goroutines holds its own lock around each call.
+`NewSession` creates the environment when it does not exist and reuses it when it does, so a program names its environment without checking first. To refuse a name that is not there yet, call `mgr.Exists(name)` before `NewSession`. The `insyra` command is stricter: `insyra --env name` and `env open name` fail on an environment that does not exist, so a name mistyped in a terminal is not quietly turned into a new, empty environment; make one there with `insyra env create name`. A `Session` is not safe for use by more than one goroutine at a time, so a program that shares one between goroutines holds its own lock around each call.
 
 #### Manager methods
 
@@ -173,7 +173,7 @@ Environments:
 | Method | What it does |
 | --- | --- |
 | `Exists(name) bool` | Reports whether the environment's folder is there. It also returns `false` for a name that is not allowed or a folder it cannot read, so follow a `false` with `Create`, which reports the real cause. |
-| `Create(name) error` | Makes the environment with an empty `state.json`, `history.txt` and `config.json`. Fails if it already exists. |
+| `Create(name) error` | Makes the environment with an empty `state.json`, `history.txt` and `config.json`. Fails if it already exists; of several `Create`s of one name running at once, exactly one succeeds. `NewSession` calls it for a missing environment, so a program rarely needs to. |
 | `Open(name) (string, error)` | Returns the environment's folder. Fails if it does not exist. |
 | `List() ([]EnvironmentInfo, error)` | Every environment, sorted by name, each with its folder, variable count and last access time. |
 | `Info(name) (EnvironmentInfo, error)` | The same for one environment. |
@@ -779,13 +779,7 @@ import (
 func main() {
     var out bytes.Buffer
 
-    mgr := dsl.DefaultManager()
-    if !mgr.Exists("demo") {
-        if err := mgr.Create("demo"); err != nil {
-            panic(err)
-        }
-    }
-    session, err := dsl.NewSession(mgr, "demo", &out)
+    session, err := dsl.NewSession(dsl.DefaultManager(), "demo", &out)
     if err != nil {
         panic(err)
     }

@@ -155,7 +155,9 @@ func (m *Manager) EnsureDefaultEnvironment() error {
 		return err
 	}
 	if !m.Exists("default") {
-		if err := m.Create("default"); err != nil {
+		// Another caller may create it between the check and Create; that
+		// leaves the environment there, which is all this asks for.
+		if err := m.Create("default"); err != nil && !m.Exists("default") {
 			return err
 		}
 	}
@@ -197,10 +199,13 @@ func (m *Manager) Create(name string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(envPath); err == nil {
-		return fmt.Errorf("environment already exists: %s", name)
-	}
-	if err := os.MkdirAll(envPath, 0o755); err != nil {
+	// Mkdir, not MkdirAll: the parent exists, and Mkdir fails for a folder that
+	// is already there, so of several Creates running at once exactly one makes
+	// the environment and the rest report that it exists.
+	if err := os.Mkdir(envPath, 0o755); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("environment already exists: %s", name)
+		}
 		return err
 	}
 	if err := writeDefaultFiles(envPath); err != nil {
@@ -532,15 +537,35 @@ func (m *Manager) isEnvironmentEmpty(name string) (bool, error) {
 	}
 }
 
+// writeDefaultFiles gives a new environment an empty history, state and
+// configuration. A file that is already there is left alone, so it cannot wipe
+// what a session saved after another caller created the environment.
 func writeDefaultFiles(envPath string) error {
-	if err := os.WriteFile(filepath.Join(envPath, "history.txt"), []byte(""), 0o600); err != nil {
-		return err
+	files := []struct {
+		name string
+		data string
+		perm os.FileMode
+	}{
+		{"history.txt", "", 0o600},
+		{"state.json", "{\n  \"variables\": {},\n  \"lastAccess\": \"\"\n}\n", 0o644},
+		{"config.json", "{}\n", 0o644},
 	}
-	if err := os.WriteFile(filepath.Join(envPath, "state.json"), []byte("{\n  \"variables\": {},\n  \"lastAccess\": \"\"\n}\n"), 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(envPath, "config.json"), []byte("{}\n"), 0o644); err != nil {
-		return err
+	for _, f := range files {
+		handle, err := os.OpenFile(filepath.Join(envPath, f.name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, f.perm)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		_, writeErr := handle.WriteString(f.data)
+		closeErr := handle.Close()
+		if writeErr != nil {
+			return writeErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
 	}
 	return nil
 }

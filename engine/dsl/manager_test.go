@@ -13,12 +13,6 @@ func TestNewManagerAndSessionWithoutTheCLI(t *testing.T) {
 	root := filepath.Join(t.TempDir(), ".idensyra")
 	mgr := NewManager(root, "insights")
 
-	if _, err := NewSession(mgr, "analysis", nil); err == nil {
-		t.Fatal("NewSession opened an environment that does not exist")
-	}
-	if err := mgr.Create("analysis"); err != nil {
-		t.Fatal(err)
-	}
 	session, err := NewSession(mgr, "analysis", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -95,5 +89,69 @@ func TestDefaultManagerIsTheDefaultLocationAndNotShared(t *testing.T) {
 	got, err = DefaultManager().EnvsPath()
 	if err != nil || got != filepath.Join(home, ".insyra", "envs") {
 		t.Errorf("a later DefaultManager is at %q, %v", got, err)
+	}
+}
+
+// A program names its environment in code and does not know on its first run
+// whether it exists yet, so NewSession creates a missing one and reuses one
+// that is there.
+func TestNewSessionCreatesAMissingEnvironmentAndReusesAnExistingOne(t *testing.T) {
+	mgr := NewManager(t.TempDir(), "")
+
+	first, err := NewSession(mgr, "analysis", nil)
+	if err != nil {
+		t.Fatalf("NewSession on a missing environment: %v", err)
+	}
+	if !mgr.Exists("analysis") {
+		t.Fatal("NewSession did not create the environment")
+	}
+	if err := first.Execute("newdl 1 2 3 as x"); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := NewSession(mgr, "analysis", nil)
+	if err != nil {
+		t.Fatalf("NewSession on an existing environment: %v", err)
+	}
+	if _, ok := second.Context().Vars["x"]; !ok {
+		t.Errorf("the second session lost x: %v", second.Context().Vars)
+	}
+}
+
+func TestNewSessionRefusesANameItCannotCreate(t *testing.T) {
+	mgr := NewManager(t.TempDir(), "")
+	for _, bad := range []string{"a/b", "..", "with space"} {
+		if _, err := NewSession(mgr, bad, nil); err == nil {
+			t.Errorf("NewSession accepted the environment name %q", bad)
+		}
+	}
+	infos, err := mgr.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, info := range infos {
+		if info.Name != "default" {
+			t.Errorf("a refused name left the environment %q behind", info.Name)
+		}
+	}
+}
+
+// Two sessions opened at once on the same missing environment both succeed:
+// whichever creates it, the other uses it.
+func TestNewSessionOnAMissingEnvironmentFromTwoGoroutines(t *testing.T) {
+	for round := 0; round < 20; round++ {
+		mgr := NewManager(t.TempDir(), "")
+		errs := make(chan error, 2)
+		for i := 0; i < 2; i++ {
+			go func() {
+				_, err := NewSession(mgr, "shared", nil)
+				errs <- err
+			}()
+		}
+		for i := 0; i < 2; i++ {
+			if err := <-errs; err != nil {
+				t.Fatalf("round %d: %v", round, err)
+			}
+		}
 	}
 }

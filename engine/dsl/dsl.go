@@ -16,9 +16,11 @@ import (
 // by more than one goroutine at a time.
 type Session = dsl.Session
 
-// NewSession creates a session on the environment envName of mgr. The
-// environment "default" is created when it does not exist; any other must
-// exist already, made with mgr.Create, or NewSession returns an error.
+// NewSession creates a session on the environment envName of mgr. A missing
+// environment is created and an existing one is reused, so a program can name
+// its environment without checking first; call mgr.Exists beforehand to refuse
+// a name that is not there yet. A name an environment may not have, such as
+// one containing a slash, is an error.
 //
 // mgr is required: DefaultManager() keeps environments where the insyra command
 // does, under <UserHomeDir>/.insyra, and NewManager(root, dir) somewhere else,

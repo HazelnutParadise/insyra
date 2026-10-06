@@ -16,7 +16,8 @@ type Session struct {
 	ctx *commands.ExecContext
 }
 
-// NewSession creates a DSL session bound to mgr's environment storage.
+// NewSession creates a DSL session on the environment envName of mgr,
+// creating the environment when it does not exist.
 //
 // mgr must be non-nil. engine/dsl documents the choices callers have.
 // envName "" defaults to "default". output nil silently discards.
@@ -33,6 +34,14 @@ func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, e
 		envName = "default"
 	}
 
+	// A missing environment is created. Create refuses one that already
+	// exists, so when another session creates it in between, the second check
+	// finds it and the session opens it instead of failing.
+	if !mgr.Exists(envName) {
+		if err := mgr.Create(envName); err != nil && !mgr.Exists(envName) {
+			return nil, err
+		}
+	}
 	envPath, err := mgr.Open(envName)
 	if err != nil {
 		return nil, err

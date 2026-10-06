@@ -121,7 +121,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `cli/repl.DSLSession` 與 `NewDSLSession` 標為 **Deprecated**，請改用 `engine/dsl` 的 `Session` 與 `NewSession`，兩者是同一個型別、同一個函式。下一版會移除。
 - **BREAKING**：把新的 map 指定給 `cli/commands.Registry`，不再會替換命令登錄表；這個變數存的是登錄表本身的 map，`Register`、`Dispatch` 與殼層都讀它。請用 `Register` 註冊命令。
 - `engine/dsl` 現在提供執行命令語言所需的一切，使用它的程式不必再匯入 `cli/` 底下的任何東西。以前 `NewSession` 要傳 `cli/env` 的 Manager，連文件推薦的入口都得拉進 CLI 的套件。現在 `engine/dsl` 有 `Manager`、`NewManager`、`DefaultManager`，以及 Manager 方法會用到的型別（`EnvironmentInfo`、`GlobalConfig`、`State`、`SerializedVariable`、`UnsavedVariable`），`dsl.NewSession(dsl.DefaultManager(), "default", nil)` 只需要一個 import。`DefaultManager` 把環境放在 `insyra` 命令使用的位置 `~/.insyra/envs/`，每次呼叫都回傳一個新的 Manager，所以對其中一個呼叫 `SetBasePath` 不會搬動其他的。`cli/env` 裡的同名項目標為 **Deprecated**，它們是同一個型別與函式，下一版移除；`insyra` 命令自己使用的 `cli/env.Default` 保留。
-- `Docs/cli-dsl.md` 裡用 `engine/dsl` 開啟 `demo` 環境的範例會失敗，錯誤是 `environment does not exist: demo`，因為除了 `default` 以外，session 只能開啟已經存在的環境。範例改成先建立環境，文件也寫明這一點，並說明 `Session` 不能同時給多個 goroutine 使用。
+- `engine/dsl` 的文件寫明 `Session` 不能同時給多個 goroutine 使用。
+- `engine/dsl.NewSession` 遇到不存在的環境會自動建立，已存在就沿用。以前它只會自動建立 `default`，其他環境不存在時會回傳 `environment does not exist`，所以程式第一次執行前得先用 `Exists` 檢查、再呼叫 `Create`，連 `Docs/cli-dsl.md` 裡的範例照抄都會失敗。如果要拒絕還不存在的名稱，請先呼叫 `mgr.Exists`。`insyra` 命令的行為不變：`insyra --env name` 和 `env open name` 遇到不存在的環境照樣報錯，免得在終端機打錯字時默默建出一個新環境。
+- 同時從多個地方建立同一個環境現在是安全的。以前兩個同名的 `Create` 可能都回報成功，後到的那個還可能把先到那邊的 session 已經存好的 `state.json` 蓋掉，讓變數不見；同時開兩個 session 也可能失敗，錯誤是 `environment already exists: default`。現在只會有一個 `Create` 成功，已存在環境的檔案絕不會被覆寫，同時開啟的 session 也都能正常開啟。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。
