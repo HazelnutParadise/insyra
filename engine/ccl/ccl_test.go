@@ -113,8 +113,8 @@ func TestMultilineAndStatementHelpers(t *testing.T) {
 	}
 
 	name, expr, isNew := ccl.GetNewColInfo(nodes[0])
-	if !isNew || name != "C" || expr == nil {
-		t.Errorf("GetNewColInfo on NEW('C') = …: got (%q, %v, %v)", name, expr != nil, isNew)
+	if !isNew || name != "C" || expr == (ccl.CCLNode{}) {
+		t.Errorf("GetNewColInfo on NEW('C') = …: got (%q, %v, %v)", name, expr != (ccl.CCLNode{}), isNew)
 	}
 	if !ccl.IsNewColNode(nodes[0]) {
 		t.Error("IsNewColNode on NEW('C') = … is false")
@@ -126,7 +126,7 @@ func TestMultilineAndStatementHelpers(t *testing.T) {
 	if target, ok := ccl.GetAssignmentTarget(nodes[1]); !ok || target != "A" {
 		t.Errorf("GetAssignmentTarget: got (%q, %v), want (\"A\", true)", target, ok)
 	}
-	if ccl.GetExpressionNode(nodes[1]) == nil {
+	if ccl.GetExpressionNode(nodes[1]) == (ccl.CCLNode{}) {
 		t.Error("GetExpressionNode returned nil for an assignment")
 	}
 

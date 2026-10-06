@@ -2,6 +2,12 @@ package ccl
 
 // Context defines the interface for data access in CCL.
 // Implement this interface to allow CCL to operate on your custom data structures.
+//
+// engine/ccl publishes this interface and promises that its method set does
+// not change, because programs outside the module implement it. Add a new
+// capability as a separate interface the evaluator checks for with a type
+// assertion, as GlobalRowContext does. TestContextMethodSetIsFixed in
+// engine/ccl pins the methods.
 type Context interface {
 	// GetCol returns the value of the column at the given index for the current row.
 	GetCol(index int) any

@@ -14,13 +14,31 @@
 // way to remove a function; registering a name again replaces it.
 package ccl
 
-import internalccl "github.com/HazelnutParadise/insyra/internal/ccl"
+import (
+	"errors"
 
-// CCL types
+	internalccl "github.com/HazelnutParadise/insyra/internal/ccl"
+)
+
+// Context is what CCL evaluates against: implement it to apply CCL to your own
+// data, or use MapContext. Its method set is fixed, so an implementation written
+// today keeps compiling: a capability CCL gains later comes as a separate,
+// optional interface the evaluator checks for, never as a method added here.
 type Context = internalccl.Context
-type CCLNode = internalccl.CCLNode
+
+// CCLNode is a compiled expression or statement. Only the functions of this
+// package make one: CompileExpression, CompileMultiline,
+// CompileMultilineStatements, Bind, GetNewColInfo and GetExpressionNode. Its
+// zero value, CCLNode{}, holds nothing, and the functions that evaluate a node
+// refuse it with an error.
+type CCLNode struct {
+	node internalccl.CCLNode
+}
+
+// EvaluationResult is what EvaluateStatement reports about a statement: its
+// value, and whether it assigned to a column or created one, and which.
 type EvaluationResult = internalccl.EvaluationResult
-type MapContext = internalccl.MapContext
+
 type Func = internalccl.Func
 type AggFunc = internalccl.AggFunc
 
@@ -41,74 +59,117 @@ type CompileError = internalccl.CompileError
 // row loop to name.
 type EvalError = internalccl.EvalError
 
-// NewMapContext creates a map-based CCL context.
-func NewMapContext(data map[string][]any) (*MapContext, error) {
-	return internalccl.NewMapContext(data)
+// errNoNode is returned for the zero CCLNode, which no function of this
+// package produces.
+var errNoNode = errors.New("ccl: the node is empty; make one with CompileExpression or CompileMultiline")
+
+func wrapNodes(nodes []internalccl.CCLNode) []CCLNode {
+	if nodes == nil {
+		return nil
+	}
+	out := make([]CCLNode, len(nodes))
+	for i, n := range nodes {
+		out[i] = CCLNode{node: n}
+	}
+	return out
 }
 
-// CompileExpression compiles a CCL expression into an AST.
+// CompileExpression compiles a CCL expression.
 func CompileExpression(expression string) (CCLNode, error) {
-	return internalccl.CompileExpression(expression)
+	n, err := internalccl.CompileExpression(expression)
+	if err != nil {
+		return CCLNode{}, err
+	}
+	return CCLNode{node: n}, nil
 }
 
-// CompileMultiline compiles a multi-line CCL script into AST nodes.
+// CompileMultiline compiles a multi-line CCL script, one node per statement.
 func CompileMultiline(script string) ([]CCLNode, error) {
-	return internalccl.CompileMultiline(script)
+	nodes, err := internalccl.CompileMultiline(script)
+	if err != nil {
+		return nil, err
+	}
+	return wrapNodes(nodes), nil
 }
 
 // CompiledStatement pairs a compiled statement with the source line it came
 // from, so a failure part-way through a script can say which line failed.
-type CompiledStatement = internalccl.CompiledStatement
+type CompiledStatement struct {
+	Node CCLNode
+	Src  string
+}
 
 // CompileMultilineStatements compiles a script and keeps each statement's
-// source text alongside its AST.
+// source text alongside it.
 func CompileMultilineStatements(script string) ([]CompiledStatement, error) {
-	return internalccl.CompileMultilineStatements(script)
+	stmts, err := internalccl.CompileMultilineStatements(script)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CompiledStatement, len(stmts))
+	for i, st := range stmts {
+		out[i] = CompiledStatement{Node: CCLNode{node: st.Node}, Src: st.Src}
+	}
+	return out, nil
 }
 
 // Bind resolves column references to indices.
 func Bind(n CCLNode, colNameMap map[string]int) (CCLNode, error) {
-	return internalccl.Bind(n, colNameMap)
+	if n.node == nil {
+		return CCLNode{}, errNoNode
+	}
+	bound, err := internalccl.Bind(n.node, colNameMap)
+	if err != nil {
+		return CCLNode{}, err
+	}
+	return CCLNode{node: bound}, nil
 }
 
 // Evaluate evaluates a CCL node with the given context.
 func Evaluate(n CCLNode, ctx Context) (any, error) {
-	return internalccl.Evaluate(n, ctx)
+	if n.node == nil {
+		return nil, errNoNode
+	}
+	return internalccl.Evaluate(n.node, ctx)
 }
 
 // EvaluateStatement evaluates a CCL statement and returns detailed result.
 func EvaluateStatement(n CCLNode, ctx Context) (*EvaluationResult, error) {
-	return internalccl.EvaluateStatement(n, ctx)
+	if n.node == nil {
+		return nil, errNoNode
+	}
+	return internalccl.EvaluateStatement(n.node, ctx)
 }
 
 // GetAssignmentTarget returns the assignment target column name/index.
 func GetAssignmentTarget(n CCLNode) (string, bool) {
-	return internalccl.GetAssignmentTarget(n)
+	return internalccl.GetAssignmentTarget(n.node)
 }
 
 // GetNewColInfo returns the new column info if the node creates one.
 func GetNewColInfo(n CCLNode) (string, CCLNode, bool) {
-	return internalccl.GetNewColInfo(n)
+	name, expr, ok := internalccl.GetNewColInfo(n.node)
+	return name, CCLNode{node: expr}, ok
 }
 
 // GetExpressionNode returns the expression node for a statement.
 func GetExpressionNode(n CCLNode) CCLNode {
-	return internalccl.GetExpressionNode(n)
+	return CCLNode{node: internalccl.GetExpressionNode(n.node)}
 }
 
 // IsAssignmentNode reports whether the node is an assignment.
 func IsAssignmentNode(n CCLNode) bool {
-	return internalccl.IsAssignmentNode(n)
+	return internalccl.IsAssignmentNode(n.node)
 }
 
 // IsNewColNode reports whether the node creates a new column.
 func IsNewColNode(n CCLNode) bool {
-	return internalccl.IsNewColNode(n)
+	return internalccl.IsNewColNode(n.node)
 }
 
 // IsRowDependent reports whether the node depends on row context.
 func IsRowDependent(n CCLNode) bool {
-	return internalccl.IsRowDependent(n)
+	return internalccl.IsRowDependent(n.node)
 }
 
 // RegisterStandardFunctions registers the built-in CCL functions. Importing the

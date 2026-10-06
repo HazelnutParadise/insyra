@@ -246,11 +246,11 @@ func main() {
 
 ### CCL
 
-CCL (Column Calculation Language) is Insyra's expression language for column calculations and statement-based transforms. The `internal/ccl` package provides compilation and evaluation helpers which are useful for building tools that analyze or test CCL expressions. Any structure that implements the `engine.Context` (an alias of `ccl.Context`) interface can be used with CCL (for example, DataTable's internal context and `MapContext` implement this interface).
+CCL (Column Calculation Language) is Insyra's expression language for column calculations and statement-based transforms. The `internal/ccl` package provides compilation and evaluation helpers which are useful for building tools that analyze or test CCL expressions. Any structure that implements `ccl.Context` can be used with CCL (DataTable's internal context and `MapContext` both do), which is how a program applies CCL to its own data. The method set of `Context` is fixed: a capability CCL gains later arrives as a separate, optional interface the evaluator checks for, so an implementation written today keeps compiling.
 
 ```go
-// type alias
-type CCLNode = ccl.CCLNode
+// an opaque compiled expression or statement
+type CCLNode struct{ /* unexported */ }
 
 // Compilation / Evaluation helpers
 func CompileExpression(expression string) (CCLNode, error)
@@ -270,14 +270,14 @@ func NewMapContext(data map[string][]any) (*MapContext, error)
 
 Key notes (see `internal/ccl` and `Docs/CCL.md` for full details):
 
-- `CompileExpression` / `CompileMultiline` compile CCL text into AST nodes (`CCLNode`).
+- `CompileExpression` / `CompileMultiline` compile CCL text into nodes (`CCLNode`). A `CCLNode` only comes from these functions and the other node functions of `engine/ccl`; passing a string or anything else to `Evaluate` does not compile, and the zero value `CCLNode{}` is refused with an error.
 - `Evaluate` evaluates an expression node for the current row in a `ccl.Context`.
 - `EvaluateStatement` returns an `EvaluationResult` (assignment / new column metadata) but does **not** apply changes to higher-level data structures — DataTable applies assignments at a higher level.
 - Call `ccl.RegisterStandardFunctions()` (from the `engine/ccl` subpackage) once to register the built-in functions (e.g., `SUM`, `AVG`, `CONCAT`) when your program does not import the `insyra` package, whose import already registers them. Calling it again puts every built-in back and replaces a function you registered under a built-in's name.
 - `RegisterFunction` adds a scalar function (one value per argument in, one value out, called per row), `RegisterAggregateFunction` an aggregate (whole columns in, one value out), and `RegisterSequenceFunction` a sequence function (whole columns in, a column of the same length out, like `LAG` or `CUMSUM`).
 - There is one function registry for the whole process, shared by every `DataTable`, the parquet CCL functions, the CLI and `engine/ccl`. Registering and evaluating are safe from any number of goroutines, and each registration takes effect as a whole. An expression evaluated while a registration is under way may call the old function for some rows and the new one for later rows, so register before evaluating when that matters. Names are matched in any letter case; registering a name again replaces it, a built-in's included, and there is no way to remove one.
 - `ResetEvalDepth` and `ResetFuncCallDepth` are Deprecated: they do nothing, and are removed in the next release.
-- `MapContext` (see `internal/ccl/map_context.go`) implements `Context` for a `map[string][]any` and is useful for tests and quick experiments.
+- `MapContext` implements `Context` for a `map[string][]any` and is useful for tests and quick experiments. Make one with `NewMapContext` and move between rows with `SetRowIndex`, which refuses a row that is not there; it has no exported fields to change behind them.
 
 Examples:
 
