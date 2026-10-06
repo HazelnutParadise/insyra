@@ -33,7 +33,7 @@ Insyra uses one command system across CLI, REPL, scripts, and Go DSL sessions.
 - **Script mode** (`run`) executes line-by-line commands from a `.isr` text file.
 - **Go DSL API** (`engine/dsl`) lets you execute the same command language inside Go code.
 
-All modes share the same command registry (`cli/commands` from Go code), variable model (`map[string]any` in execution context), and environment persistence under `~/.insyra`. The commands themselves are implemented in `internal/dsl/commands`, outside `cli/`, so a Go program using `engine/dsl` does not pull in the shell or the REPL.
+All modes share the same command registry (a Go program adds to it through `engine/dsl`'s `Register`), variable model (`map[string]any` in execution context), and environment persistence under `~/.insyra`. The commands themselves are implemented in `internal/dsl/commands`, outside `cli/`, so a Go program using `engine/dsl` does not pull in the shell or the REPL.
 
 ## Installation
 
@@ -216,6 +216,67 @@ Where the Manager keeps things:
 | `SetBasePath(path)`, `SetEnvsDirName(name)` | Move the Manager; `""` goes back to the default. Do not move a Manager while a session uses it. |
 
 Every operation is a method on a `Manager`. Before `engine/dsl` had its own names, programs reached the Manager through `cli/env`. `cli/env`'s `Manager`, `NewManager`, `EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable` and `UnsavedVariable` are **Deprecated** in favour of the same names in `engine/dsl`, which are the same types and function, and so are its package-level functions (`env.Create`, `env.SaveState`, `env.SetBasePath` and the rest), which only call the method on `env.Default()`. All of them are removed in the next release. `env.Default()` stays: it is the Manager the `insyra` command itself uses.
+
+#### Registering your own command
+
+A program adds a command with `dsl.Register`. It is then available in every session in the process, and runs like a built-in one: its arguments are counted before it runs, its error reaches the caller of `Execute`, and the session saves the variables after it succeeds.
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/HazelnutParadise/insyra"
+    "github.com/HazelnutParadise/insyra/engine/dsl"
+)
+
+func main() {
+    err := dsl.Register(&dsl.CommandHandler{
+        Name:        "total",
+        Usage:       "total <var> [as <var>]",
+        Description: "Sum a DataList",
+        Args:        dsl.MaxArgs(1).WithAlias(),
+        Run: func(ctx *dsl.ExecContext, args []string) error {
+            list, ok := ctx.Vars[args[0]].(*insyra.DataList)
+            if !ok {
+                return fmt.Errorf("%s is not a DataList", args[0])
+            }
+            sum := list.Sum()
+            if len(args) == 3 && args[1] == "as" {
+                ctx.Vars[args[2]] = sum
+            }
+            _, _ = fmt.Fprintf(ctx.Output, "total: %v\n", sum)
+            return nil
+        },
+    })
+    if err != nil {
+        panic(err)
+    }
+
+    session, err := dsl.NewSession(dsl.DefaultManager(), "default", os.Stdout)
+    if err != nil {
+        panic(err)
+    }
+    _ = session.Execute("newdl 1 2 3 as x")
+    _ = session.Execute("total x as t")
+}
+```
+
+The fields of `dsl.CommandHandler`:
+
+| Field | What it is |
+| --- | --- |
+| `Name` | The command's name. Required, and it may not be one that is already registered, a built-in's included. |
+| `Aliases` | Other names the one-shot form `insyra <command> ...` accepts for it. Sessions, scripts and the REPL know a command by its `Name` only. |
+| `Usage`, `Description` | The lines `help` prints. |
+| `Forms`, `Examples` | Optional further lines `help <command>` prints, one per shape and one per example. |
+| `Args` | How many arguments it takes: `dsl.MaxArgs(n)`, with `.WithAlias()` to allow a trailing `as <var>`; `dsl.FormArgs(map[string]int{...})` when the first argument picks a form, counting the form word; `dsl.FormArgsAt(i, ...)` when the argument at position `i` does; or `dsl.OpenArgs()` when it checks every argument itself. An argument past the count is refused before `Run`. |
+| `Run` | Required. It receives the session's `*dsl.ExecContext` and the arguments after the command's name; it reads and writes variables through `ctx.Vars` and prints to `ctx.Output`. |
+| `Flags`, `DisableFlagParsing` | Only for the `insyra` command's one-shot form; a session hands a command its flags as ordinary arguments. |
+
+`Register` returns an error for a handler without a `Name` or a `Run`, for a name already taken, and for a flag with no name or one declared twice. It is safe to call from any goroutine, and there is no way to remove a command. Before `engine/dsl` had these names, programs reached them through `cli/commands`; its `ExecContext`, `CommandHandler`, `CommandFlag`, `ArgLimit`, `Register`, `MaxArgs`, `FormArgs`, `FormArgsAt` and `OpenArgs` are **Deprecated** in favour of the same names in `engine/dsl`, which are the same types and functions, and are removed in the next release.
 
 ## Global Flags
 

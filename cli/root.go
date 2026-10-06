@@ -9,6 +9,7 @@ import (
 	"github.com/HazelnutParadise/insyra/cli/commands"
 	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/HazelnutParadise/insyra/cli/repl"
+	enginedsl "github.com/HazelnutParadise/insyra/engine/dsl"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +24,7 @@ func Execute() error {
 }
 
 func NewRootCommand() *cobra.Command {
-	execCtx := &commands.ExecContext{
+	execCtx := &enginedsl.ExecContext{
 		OpenREPL: repl.Start,
 		Env:      env.Default(),
 	}
@@ -64,7 +65,7 @@ func NewRootCommand() *cobra.Command {
 
 // openEnvironment applies the root flags: opens (creating if needed) the
 // selected environment, restores its variables and sets colour/log level.
-func openEnvironment(execCtx *commands.ExecContext) error {
+func openEnvironment(execCtx *enginedsl.ExecContext) error {
 	if err := execCtx.Env.EnsureDefaultEnvironment(); err != nil {
 		return err
 	}
@@ -94,7 +95,7 @@ func openEnvironment(execCtx *commands.ExecContext) error {
 // still in front, so they are peeled off here and applied before the
 // command runs; otherwise they would be stored as data in the default
 // environment.
-func wrapRawArgCommand(sub *cobra.Command, execCtx *commands.ExecContext) {
+func wrapRawArgCommand(sub *cobra.Command, execCtx *enginedsl.ExecContext) {
 	original := sub.RunE
 	sub.RunE = func(cmd *cobra.Command, args []string) error {
 		rest, changed, err := consumeRootFlags(args)

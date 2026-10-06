@@ -18,7 +18,7 @@ func TestEngineDSLAPIIsUnchanged(t *testing.T) {
 		newSession  func(*env.Manager, string, io.Writer) (*Session, error) //nolint:staticcheck // the deprecated spelling must still compile
 		execute     func(*Session, string) error
 		executeFile func(*Session, string) error
-		context     func(*Session) *commands.ExecContext
+		context     func(*Session) *commands.ExecContext //nolint:staticcheck // the deprecated spelling must still compile
 	}{NewSession, (*Session).Execute, (*Session).ExecuteFile, (*Session).Context}
 	if api.newSession == nil || api.execute == nil || api.executeFile == nil || api.context == nil {
 		t.Fatal("engine/dsl lost part of its API")

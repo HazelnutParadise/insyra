@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HazelnutParadise/insyra/cli/commands"
+	enginedsl "github.com/HazelnutParadise/insyra/engine/dsl"
 )
 
 // completer.go was the whole of cli/repl's uncovered half: tab completion is
@@ -17,7 +17,7 @@ import (
 // what is left to type.
 
 // complete runs Do over a line, with the cursor at the end.
-func complete(t *testing.T, ctx *commands.ExecContext, line string) ([]string, int) {
+func complete(t *testing.T, ctx *enginedsl.ExecContext, line string) ([]string, int) {
 	t.Helper()
 	runes := []rune(line)
 	got, length := NewAutoCompleter(ctx).(*simpleCompleter).Do(runes, len(runes))
@@ -28,8 +28,8 @@ func complete(t *testing.T, ctx *commands.ExecContext, line string) ([]string, i
 	return out, length
 }
 
-func contextWithVars(names ...string) *commands.ExecContext {
-	ctx := &commands.ExecContext{Vars: map[string]any{}}
+func contextWithVars(names ...string) *enginedsl.ExecContext {
+	ctx := &enginedsl.ExecContext{Vars: map[string]any{}}
 	for _, n := range names {
 		ctx.Vars[n] = 1
 	}
@@ -127,7 +127,7 @@ func TestVariableCompletions_NoContext(t *testing.T) {
 	if got := variableCompletions(nil, ""); got != nil {
 		t.Errorf("a nil context offered %d completions", len(got))
 	}
-	if got := variableCompletions(&commands.ExecContext{}, ""); len(got) != 0 {
+	if got := variableCompletions(&enginedsl.ExecContext{}, ""); len(got) != 0 {
 		t.Errorf("a context with no variables offered %d completions", len(got))
 	}
 }

@@ -36,6 +36,10 @@ func NewSession(mgr *Manager, envName string, output io.Writer) (*Session, error
 type Manager
 func DefaultManager() *Manager
 func NewManager(basePath, envsDirName string) *Manager
+
+type ExecContext
+type CommandHandler
+func Register(handler *CommandHandler) error
 ```
 
 `DefaultManager()` keeps environments where the `insyra` command does, under `~/.insyra/envs/`, and returns a new Manager on every call. `NewManager(basePath, envsDirName)` puts them somewhere else, such as a workspace. `NewSession` creates the environment when it does not exist and reuses it when it does. The Manager's methods (`Exists`, `Create`, `List`, `Export`, `Import`, `SaveState` and the rest, each listed under "Manager methods" in [Docs/cli-dsl.md](../Docs/cli-dsl.md)) and the types they use (`EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable`, `UnsavedVariable`) all come from `engine/dsl`, so a program needs nothing under `cli/`.
@@ -44,7 +48,9 @@ Key methods on `Session`:
 
 - `Execute(line string) error` — execute one DSL command line; the environment is saved after every command that succeeds.
 - `ExecuteFile(path string) error` — execute a `.isr` script file with line-numbered errors.
-- `Context() *commands.ExecContext` — access the underlying execution context/variables (`commands` is `github.com/HazelnutParadise/insyra/cli/commands`).
+- `Context() *ExecContext` — access the underlying execution context/variables.
+
+A program adds its own command with `Register(&CommandHandler{...})`, with `MaxArgs`, `FormArgs`, `FormArgsAt` or `OpenArgs` saying how many arguments it takes; "Registering your own command" in [Docs/cli-dsl.md](../Docs/cli-dsl.md) has an example and every field.
 
 A `Session` is not safe for use by more than one goroutine at a time.
 

@@ -3,7 +3,7 @@ package repl
 import (
 	"testing"
 
-	"github.com/HazelnutParadise/insyra/cli/commands"
+	enginedsl "github.com/HazelnutParadise/insyra/engine/dsl"
 )
 
 func TestPrompt(t *testing.T) {
@@ -15,7 +15,7 @@ func TestPrompt(t *testing.T) {
 }
 
 func TestStartMissingEnvironment(t *testing.T) {
-	ctx := &commands.ExecContext{EnvName: "__does_not_exist__", Vars: map[string]any{}}
+	ctx := &enginedsl.ExecContext{EnvName: "__does_not_exist__", Vars: map[string]any{}}
 	err := Start(ctx)
 	if err == nil {
 		t.Fatalf("expected error when environment does not exist")

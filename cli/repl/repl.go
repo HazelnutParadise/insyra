@@ -11,13 +11,14 @@ import (
 	"github.com/HazelnutParadise/insyra/cli/commands"
 	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/HazelnutParadise/insyra/cli/style"
+	enginedsl "github.com/HazelnutParadise/insyra/engine/dsl"
 	"github.com/HazelnutParadise/insyra/internal/dsl"
 	"github.com/ergochat/readline"
 )
 
-func Start(ctx *commands.ExecContext) error {
+func Start(ctx *enginedsl.ExecContext) error {
 	if ctx == nil {
-		ctx = &commands.ExecContext{}
+		ctx = &enginedsl.ExecContext{}
 	}
 	if ctx.Env == nil {
 		ctx.Env = env.Default()

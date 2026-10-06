@@ -7,14 +7,15 @@ import (
 	"strings"
 
 	"github.com/HazelnutParadise/insyra/cli/commands"
+	enginedsl "github.com/HazelnutParadise/insyra/engine/dsl"
 	"github.com/ergochat/readline"
 )
 
 type simpleCompleter struct {
-	ctx *commands.ExecContext
+	ctx *enginedsl.ExecContext
 }
 
-func NewAutoCompleter(ctx *commands.ExecContext) readline.AutoCompleter {
+func NewAutoCompleter(ctx *enginedsl.ExecContext) readline.AutoCompleter {
 	return &simpleCompleter{ctx: ctx}
 }
 
@@ -55,7 +56,7 @@ func commandCompletions(target string) [][]rune {
 	return toSuffixes(names, target)
 }
 
-func variableCompletions(ctx *commands.ExecContext, target string) [][]rune {
+func variableCompletions(ctx *enginedsl.ExecContext, target string) [][]rune {
 	if ctx == nil {
 		return nil
 	}

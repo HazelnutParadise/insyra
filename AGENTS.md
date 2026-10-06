@@ -272,6 +272,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-06] — remove the deprecated names of `cli/commands` one release after they were deprecated
+- **Where**: `cli/commands/commands.go`, `cli/commands/deprecated_names_test.go`, the `//nolint:staticcheck` line in `engine/dsl/api_test.go`, and the sentence under "Registering your own command" in `Docs/cli-dsl.md`
+- **What**: `engine-dsl-register-command` deprecated `ExecContext`, `CommandHandler`, `CommandFlag`, `ArgLimit`, `Register`, `MaxArgs`, `FormArgs`, `FormArgsAt` and `OpenArgs` under the one-name rule of #211, because `engine/dsl` now provides them under the same names.
+- **Suggestion**: delete them, the test, the `nolint` line and the sentence in the same release as the other Deprecated removals, with a BREAKING changelog entry. `BuildCobraCommands` then names its parameter as `*dsl.ExecContext`; `Registry`, `Dispatch`, `LookupCommand`, `SnapshotRegistry`, `DBConn`, `SanitizeHistoryLine`, `CloseAllDBConns` and `SaveEnvState` have no counterpart and stay.
+- **Status**: pending
+
 ### [2026-10-03] — remove `cli/repl.DSLSession` and `NewDSLSession` one release after they were deprecated
 - **Where**: `cli/repl/session.go`, `cli/repl/session_test.go`, and the note under "Go DSL Session API" in `Docs/cli-dsl.md`
 - **What**: `dsl-outside-cli` deprecated them under the one-name rule of #211 (#260, EN-2): they are the same type and function as `engine/dsl`'s `Session` and `NewSession`.

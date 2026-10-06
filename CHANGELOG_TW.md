@@ -124,6 +124,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `engine/dsl` 的文件寫明 `Session` 不能同時給多個 goroutine 使用。
 - `engine/dsl.NewSession` 遇到不存在的環境會自動建立，已存在就沿用。以前它只會自動建立 `default`，其他環境不存在時會回傳 `environment does not exist`，所以程式第一次執行前得先用 `Exists` 檢查、再呼叫 `Create`，連 `Docs/cli-dsl.md` 裡的範例照抄都會失敗。如果要拒絕還不存在的名稱，請先呼叫 `mgr.Exists`。`insyra` 命令的行為不變：`insyra --env name` 和 `env open name` 遇到不存在的環境照樣報錯，免得在終端機打錯字時默默建出一個新環境。
 - 同時從多個地方建立同一個環境現在是安全的。以前兩個同名的 `Create` 可能都回報成功，後到的那個還可能把先到那邊的 session 已經存好的 `state.json` 蓋掉，讓變數不見；同時開兩個 session 也可能失敗，錯誤是 `environment already exists: default`。現在只會有一個 `Create` 成功，已存在環境的檔案絕不會被覆寫，同時開啟的 session 也都能正常開啟。
+- 程式可以透過 `engine/dsl` 加入自己的命令：`dsl.Register(&dsl.CommandHandler{...})`，參數數量用 `dsl.MaxArgs`、`FormArgs`、`FormArgsAt` 或 `OpenArgs` 宣告，`Run` 收到的是 `dsl.ExecContext`。以前唯一的辦法是 `cli/commands.Register`，文件裡完全沒寫，用了還會把 Cobra 殼層拉進程式。`Docs/cli-dsl.md` 附上範例，並逐一說明 `CommandHandler` 的每個欄位。`cli/commands` 裡的同名項目（`ExecContext`、`CommandHandler`、`CommandFlag`、`ArgLimit`、`Register`、`MaxArgs`、`FormArgs`、`FormArgsAt`、`OpenArgs`）標為 **Deprecated**，它們是同一批型別與函式，下一版移除；`BuildCobraCommands` 與 `cli/commands` 其餘的部分保留。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。
