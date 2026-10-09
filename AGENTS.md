@@ -272,6 +272,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-10] — `env clear default` empties the default environment without `--force`
+- **Where**: `internal/dsl/commands/env.go`, the `clear` form
+- **What**: `cli-overwrite-and-delete-documented` made `env delete default` need `--force` (#320), but `env clear default`, run from another environment, still drops every variable of the default environment and, without `--keep-history`, its history too, with no flag. Measured by the review of that change on 2026-10-10. It loses the same data `delete` does, short of the config file. `Docs/cli-dsl.md` ("Commands that replace or remove data") states it.
+- **Suggestion**: ask for `--force` on `env clear default` as `delete` does, or leave it, since clearing is what the user named; it changes what a command accepts, so the owner decides.
+- **Status**: pending
+
 ### [2026-10-06] — remove the deprecated names of `cli/commands` one release after they were deprecated
 - **Where**: `cli/commands/commands.go`, `cli/commands/deprecated_names_test.go`, the `//nolint:staticcheck` line in `engine/dsl/api_test.go`, and the sentence under "Registering your own command" in `Docs/cli-dsl.md`
 - **What**: `engine-dsl-register-command` deprecated `ExecContext`, `CommandHandler`, `CommandFlag`, `ArgLimit`, `Register`, `MaxArgs`, `FormArgs`, `FormArgsAt` and `OpenArgs` under the one-name rule of #211, because `engine/dsl` now provides them under the same names.

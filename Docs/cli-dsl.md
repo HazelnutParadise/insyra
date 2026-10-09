@@ -271,14 +271,14 @@ The fields of `dsl.CommandHandler`:
 | Field | What it is |
 | --- | --- |
 | `Name` | The command's name. Required, and it may not be one that is already registered, a built-in's included. |
-| `Aliases` | Other names the one-shot form `insyra <command> ...` accepts for it. Sessions, scripts and the REPL know a command by its `Name` only. |
+| `Aliases` | Other names the command answers to, in one-shot use, sessions, scripts and the REPL alike, and in `help <alias>`. |
 | `Usage`, `Description` | The lines `help` prints. |
 | `Forms`, `Examples` | Optional further lines `help <command>` prints, one per shape and one per example. |
 | `Args` | How many arguments it takes: `dsl.MaxArgs(n)`, with `.WithAlias()` to allow a trailing `as <var>`; `dsl.FormArgs(map[string]int{...})` when the first argument picks a form, counting the form word; `dsl.FormArgsAt(i, ...)` when the argument at position `i` does; or `dsl.OpenArgs()` when it checks every argument itself. An argument past the count is refused before `Run`. |
 | `Run` | Required. It receives the session's `*dsl.ExecContext` and the arguments after the command's name; it reads and writes variables through `ctx.Vars` and prints to `ctx.Output`. |
 | `Flags`, `DisableFlagParsing` | Only for the `insyra` command's one-shot form; a session hands a command its flags as ordinary arguments. |
 
-`Register` returns an error for a handler without a `Name` or a `Run`, for a name already taken, and for a flag with no name or one declared twice. It is safe to call from any goroutine, and there is no way to remove a command. Before `engine/dsl` had these names, programs reached them through `cli/commands`; its `ExecContext`, `CommandHandler`, `CommandFlag`, `ArgLimit`, `Register`, `MaxArgs`, `FormArgs`, `FormArgsAt` and `OpenArgs` are **Deprecated** in favour of the same names in `engine/dsl`, which are the same types and functions, and are removed in the next release.
+`Register` returns an error for a handler without a `Name` or a `Run`, for a name already taken, for a name that is another command's alias or an alias that is already a name or an alias, and for a flag with no name or one declared twice. It is safe to call from any goroutine, and there is no way to remove a command. Before `engine/dsl` had these names, programs reached them through `cli/commands`; its `ExecContext`, `CommandHandler`, `CommandFlag`, `ArgLimit`, `Register`, `MaxArgs`, `FormArgs`, `FormArgsAt` and `OpenArgs` are **Deprecated** in favour of the same names in `engine/dsl`, which are the same types and functions, and are removed in the next release.
 
 ## Global Flags
 
@@ -348,7 +348,7 @@ insyra env import ./exp1.json exp1-copy --force
 
 None of these asks before it acts, so a script or a one-shot command never stops to wait for an answer. Export an environment first if you may want it back.
 
-- `env delete <name>` removes the environment's directory: its variables, its history and its config. It refuses the environment in use. It also refuses `default`, the environment every command opens when `--env` is not given, unless you add `--force`; a deleted `default` comes back empty on the next command. Both refusals look at the directory, so on a file system that ignores case `Default` counts as `default`.
+- `env delete <name>` removes the environment's directory: its variables, its history and its config. An environment that is a symbolic link loses only the link. It refuses the environment in use. It also refuses `default`, the environment every command opens when `--env` is not given, unless you add `--force`; a deleted `default` comes back empty on the next command. Both refusals look at the directory, so on a file system that ignores case `Default` counts as `default`.
 - `env clear [name]` drops every variable, and empties the history too unless you add `--keep-history`.
 - `env open <name>`, inside the REPL or a script, replaces the session's variables with the opened environment's. The current environment was saved after the last command, but a variable it could not store, such as a `regression` result, is gone.
 - `env export [name] <file>` replaces `<file>` if it exists.

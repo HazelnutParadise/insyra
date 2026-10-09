@@ -145,3 +145,90 @@ func TestEnvDeleteRefusalsHoldForANameInAnotherCase(t *testing.T) {
 		t.Fatal("an environment was deleted through another spelling")
 	}
 }
+
+// Deleting an environment that is a link removes only the link, so a link to
+// default is not default; but deleting default while the session works
+// through a link to it would pull the session's directory away.
+func TestEnvDeleteThroughALink(t *testing.T) {
+	ctx := newEnvDeleteContext(t)
+	envs, err := ctx.Env.EnvsPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(envs, "default"), filepath.Join(envs, "lnk")); err != nil {
+		t.Skipf("cannot make a symbolic link here: %v", err)
+	}
+	if err := Dispatch(ctx, "env", []string{"delete", "lnk"}); err != nil {
+		t.Fatalf("env delete lnk = %v, want it deleted without --force", err)
+	}
+	if _, err := os.Lstat(filepath.Join(envs, "lnk")); !os.IsNotExist(err) {
+		t.Errorf("the link is still there: %v", err)
+	}
+	if !ctx.Env.Exists("default") {
+		t.Fatal("deleting the link deleted default")
+	}
+
+	if err := os.Symlink(filepath.Join(envs, "work"), filepath.Join(envs, "via")); err != nil {
+		t.Fatal(err)
+	}
+	ctx.EnvName = "via"
+	err = Dispatch(ctx, "env", []string{"delete", "work", "--force"})
+	if err == nil || !strings.Contains(err.Error(), "current environment") {
+		t.Errorf("env delete work while in a link to it = %v, want the current-environment refusal", err)
+	}
+	if !ctx.Env.Exists("work") {
+		t.Fatal("the session's directory was deleted")
+	}
+}
+
+// clear, import and rename decided whether they had touched the session's own
+// environment by its spelling, so on a file system that ignores case
+// `env clear WORK` cleared the file while the session kept the variables and
+// wrote them back on the next save.
+func TestEnvCommandsOnTheCurrentEnvironmentInAnotherCase(t *testing.T) {
+	base := t.TempDir()
+	if !caseInsensitiveDir(t, base) {
+		t.Skip("the file system distinguishes case, so WORK is another environment")
+	}
+	mgr := env.NewManager(base, "")
+	if err := mgr.EnsureDefaultEnvironment(); err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.Create("work"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := newTestExecContext(t)
+	ctx.Env = mgr
+	ctx.EnvName = "work"
+	ctx.Vars["x"] = 1
+
+	if err := Dispatch(ctx, "env", []string{"clear", "WORK"}); err != nil {
+		t.Fatalf("env clear WORK: %v", err)
+	}
+	if _, ok := ctx.Vars["x"]; ok {
+		t.Error("env clear WORK left the session's variables, so the next save writes them back")
+	}
+
+	export := filepath.Join(t.TempDir(), "e.json")
+	ctx.Vars["y"] = 2
+	if err := SaveEnvState(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := Dispatch(ctx, "env", []string{"export", "work", export}); err != nil {
+		t.Fatal(err)
+	}
+	ctx.Vars = map[string]any{"stale": 3}
+	if err := Dispatch(ctx, "env", []string{"import", export, "WORK", "--force"}); err != nil {
+		t.Fatalf("env import into WORK: %v", err)
+	}
+	if _, ok := ctx.Vars["y"]; !ok {
+		t.Errorf("env import into WORK did not reload the session's variables: %v", ctx.Vars)
+	}
+
+	if err := Dispatch(ctx, "env", []string{"rename", "WORK", "other"}); err != nil {
+		t.Fatalf("env rename WORK other: %v", err)
+	}
+	if ctx.EnvName != "other" {
+		t.Errorf("after renaming the current environment the session is in %q, want other", ctx.EnvName)
+	}
+}

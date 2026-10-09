@@ -5,6 +5,8 @@
 - [x] 1.1 先寫會失敗的測試：沒有 `--force` 時 `env delete default` 回傳提到 `--force` 的錯誤且環境仍在；`--force` 時刪除；`--force` 不解除刪除使用中環境的拒絕；未知旗標回傳錯誤；one-shot `--env work env delete default --force` 刪除 `default`；`help save`、`help plot`、`help env` 說明取代與刪除；在舊程式上記錄失敗
 - [x] 1.2 `env.go` 解析 `env delete <name> [--force]` 並拒絕沒有 `--force` 的 `default`；`CommandFlag.Form` 可用 `|` 列出多個字（`cli/commands/cobra.go` 比對），`env` 的 `--force` 宣告為 `import|delete`，one-shot 時傳給 `env delete`；`cli/AGENTS.md` 說明；`env`、`save`、`plot` 的 `Forms` 說明取代與刪除；1.1 通過
 
+- [x] 1.3 依 review 結果補強：刪除與重新命名比對 `Lstat(目標)` 與 `Stat(目前環境)`，清空與匯入兩邊都跟著連結；`env clear`、`env import`、`env rename` 與 `env list` 都以目錄認出目前環境；先寫在舊程式上失敗的測試（大小寫與符號連結），再修到通過
+
 ## 2. 驗證
 
 - [x] 2.1 `gofmt`、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`（0 issues）通過

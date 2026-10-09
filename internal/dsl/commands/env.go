@@ -72,7 +72,7 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 				lastAccess = item.LastAccess.Format(time.RFC3339)
 			}
 			marker := " "
-			if item.Name == ctx.EnvName {
+			if actsOn(ctx, item.Name, ctx.EnvName, false) {
 				marker = "*"
 			}
 			_, _ = fmt.Fprintf(ctx.Output, "%s %s (vars=%d, lastAccess=%s)\n", marker, item.Name, item.VariableCount, lastAccess)
@@ -102,10 +102,11 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
+		current := actsOn(ctx, name, ctx.EnvName, true)
 		if err := ctx.Env.Clear(name, keepHistory); err != nil {
 			return err
 		}
-		if name == ctx.EnvName {
+		if current {
 			ctx.Vars = map[string]any{}
 		}
 		if keepHistory {
@@ -133,7 +134,7 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		if name == ctx.EnvName {
+		if actsOn(ctx, name, ctx.EnvName, true) {
 			vars, restoreErr := ctx.Env.RestoreVariables(name)
 			if restoreErr == nil {
 				ctx.Vars = vars
@@ -146,12 +147,12 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		if sameEnvironment(ctx, name, ctx.EnvName) {
+		if actsOn(ctx, name, ctx.EnvName, false) {
 			return fmt.Errorf("cannot delete current environment: %s", name)
 		}
 		// default is the environment every command opens when --env is not
 		// given, so deleting it by mistake loses the most.
-		if !force && sameEnvironment(ctx, name, "default") {
+		if !force && actsOn(ctx, name, "default", false) {
 			return fmt.Errorf("env delete: default is the environment insyra opens when --env is not given; deleting it loses its variables and history, and it comes back empty on the next command. Add --force to delete it")
 		}
 		if err := ctx.Env.Delete(name); err != nil {
@@ -163,10 +164,12 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if len(args) < 3 {
 			return fmt.Errorf("usage: env rename <old> <new>")
 		}
+		// Decided before the rename, while the old name still resolves.
+		current := actsOn(ctx, args[1], ctx.EnvName, false)
 		if err := ctx.Env.Rename(args[1], args[2]); err != nil {
 			return err
 		}
-		if ctx.EnvName == args[1] {
+		if current {
 			ctx.EnvName = args[2]
 			if envPath, err := ctx.Env.ResolveEnvPath(args[2]); err == nil {
 				ctx.EnvPath = envPath
@@ -224,21 +227,30 @@ func parseEnvClearArgs(ctx *ExecContext, args []string) (string, bool, error) {
 	return name, keepHistory, nil
 }
 
-// sameEnvironment reports whether a and b name one environment directory. On a
-// file system that ignores case, Default and default are the same directory,
-// so comparing the names alone would let a refusal be spelled around.
-func sameEnvironment(ctx *ExecContext, a, b string) bool {
-	if a == b {
+// actsOn reports whether a command acting on the environment target acts on
+// the directory of the environment other. On a file system that ignores case,
+// Default and default are one directory, so comparing names alone would let a
+// command miss, or a refusal be spelled around. other is followed through a
+// link, since a session opened through one works in its target; target is
+// followed only when the command writes through it (clear, import), not when
+// it removes or moves target's own entry (delete, rename), which leaves a link's
+// target alone.
+func actsOn(ctx *ExecContext, target, other string, followTarget bool) bool {
+	if target == other {
 		return true
 	}
-	pathA, errA := ctx.Env.ResolveEnvPath(a)
-	pathB, errB := ctx.Env.ResolveEnvPath(b)
-	if errA != nil || errB != nil {
+	targetPath, errT := ctx.Env.ResolveEnvPath(target)
+	otherPath, errO := ctx.Env.ResolveEnvPath(other)
+	if errT != nil || errO != nil {
 		return false
 	}
-	infoA, errA := os.Stat(pathA)
-	infoB, errB := os.Stat(pathB)
-	return errA == nil && errB == nil && os.SameFile(infoA, infoB)
+	stat := os.Lstat
+	if followTarget {
+		stat = os.Stat
+	}
+	targetInfo, errT := stat(targetPath)
+	otherInfo, errO := os.Stat(otherPath)
+	return errT == nil && errO == nil && os.SameFile(targetInfo, otherInfo)
 }
 
 func parseEnvDeleteArgs(args []string) (string, bool, error) {
