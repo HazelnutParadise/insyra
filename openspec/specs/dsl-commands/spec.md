@@ -430,3 +430,25 @@ The DSL and REPL SHALL expose acceleration inspection commands for device state 
 - **WHEN** a user runs `show accel.cache`
 - **THEN** the runtime prints acceleration cache budget, residency summary, and related metrics
 
+### Requirement: A command that stores several variables names each one
+在 `as <var>`（或 `$result`）之外另存變數的指令 SHALL 在輸出中列出它存入的每一個變數名稱，因為每個另存的變數都會取代同名的既有變數。至少包含：`kmeans`（`<var>_centers`、`<var>_size`、`<var>_withinss`、`<var>_totss`、`<var>_totwithinss`、`<var>_betweenss`、`<var>_iter`、`<var>_ifault`）、`dbscan`（`<var>_isseed`）、`silhouette`（`<var>_avg`）、`pca`（`<var>_eigenvalues`、`<var>_explained_variance`）、`corrmatrix`（`<var>_p`）、`knn_classify`（`<var>_classes`、`<var>_probs`）、`knn_neighbors`（`<var>_distances`）、`quant factor`（`<var>_alpha`）與 `quant portfolio`（`<var>_stats`）。`Docs/cli-dsl.md` SHALL 列出每個指令另存的變數，並說明 `hclust` 樹與 `regression` 結果能存活多久、哪些指令讀得到它們。
+
+#### Scenario: kmeans names all nine variables
+- **WHEN** 使用者執行 `kmeans t 2 as km`
+- **THEN** 輸出列出 `km` 與八個 `km_*` 變數的名稱，且這九個變數都已存入
+
+#### Scenario: quant factor names its alpha table
+- **WHEN** 使用者執行 `quant factor a f as fm`
+- **THEN** 輸出列出 `fm` 與 `fm_alpha`
+
+### Requirement: Commands that replace or remove data say so
+會取代或刪除既有資料的指令 SHALL 在 `insyra help <command>` 的 `Forms` 與 `Docs/cli-dsl.md` 說明這件事，至少包含：`env delete` 刪除整個環境；`env clear` 清空變數，沒有 `--keep-history` 時也清空歷史；`env open` 以開啟的環境取代工作階段的變數，無法存進環境的變數因此消失；`env export` 取代已存在的輸出檔；`env import --force` 取代目標環境；`save` 寫 CSV、JSON 或 Parquet 時取代已存在的檔案；`plot` 取代已存在的輸出檔，沒有 `save` 時寫到工作目錄的 `<type>.html`。
+
+#### Scenario: Help says save replaces a file
+- **WHEN** 使用者執行 `insyra help save`
+- **THEN** 輸出說明存到已存在的 CSV、JSON 或 Parquet 檔會取代它
+
+#### Scenario: Help says where plot writes
+- **WHEN** 使用者執行 `insyra help plot`
+- **THEN** 輸出說明沒有 `save` 時寫到工作目錄的 `<type>.html`，並取代同名檔案
+

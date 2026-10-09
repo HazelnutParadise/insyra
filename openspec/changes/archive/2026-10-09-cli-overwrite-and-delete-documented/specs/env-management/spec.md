@@ -1,6 +1,12 @@
-## MODIFIED Requirements
+## REMOVED Requirements
 
 ### Requirement: Environment delete
+**Reason**: Its "Delete with confirmation" scenario described a confirmation prompt `env delete` never showed. The requirement is replaced by "Environment delete without a prompt", which states what the command does, including the `default` and current-environment refusals.
+**Migration**: None; `env delete` never asked for confirmation.
+
+## ADDED Requirements
+
+### Requirement: Environment delete without a prompt
 系統 SHALL 提供 `env delete <name> [--force]` 命令刪除環境，刪除時 SHALL NOT 出現確認提示。系統 SHALL 拒絕刪除目前使用中的環境，`--force` SHALL NOT 解除這項拒絕。沒有 `--force` 時，系統 SHALL 拒絕刪除 `default` 環境，錯誤訊息 SHALL 說明刪除會失去它的變數與歷史，並說明加上 `--force` 才會刪除。兩項拒絕 SHALL 以刪除後會不會移除受保護環境的目錄判斷，不只比對名稱拼法：在不分大小寫的檔案系統上 `Default` 視同 `default`；要刪除的環境若是符號連結，刪除只移除連結本身，SHALL NOT 因它指向 `default` 而拒絕；目前的工作階段若經由連結開啟，SHALL 拒絕刪除連結指向的目錄。其他未知的旗標 SHALL 回傳錯誤。one-shot 使用時，`--force` SHALL 傳到指令。
 
 #### Scenario: Delete an environment

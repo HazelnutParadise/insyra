@@ -104,3 +104,25 @@ When `accel` is run without `--mode`, it SHALL read the default mode from the gl
 - **WHEN** `Default()`'s config sets `accel-mode` to `gpu`, the session's manager sets it to `cpu`, and `accel` runs without `--mode`
 - **THEN** the mode is `cpu`
 
+### Requirement: A command answers to its aliases everywhere
+`Dispatch` 與 `LookupCommand` SHALL 以指令的 `Name` 或任一 `Aliases` 找到同一個指令，在 one-shot、REPL、腳本、Go session 與 `help <alias>` 都一樣。`Register` SHALL 拒絕名稱是其他指令別名的 handler，以及任一別名已經是某個指令名稱或別名的 handler，並回傳錯誤且不註冊，讓同一個字永遠只對應一個指令。
+
+#### Scenario: help names a command by its alias
+- **WHEN** 使用者執行 `help quit`
+- **THEN** 輸出 `exit` 的說明，而不是 unknown command
+
+#### Scenario: An alias already taken
+- **WHEN** 程式註冊一個指令，它的別名是另一個已註冊指令的別名或名稱
+- **THEN** `Register` 回傳錯誤，該指令沒有被註冊
+
+### Requirement: A one-shot flag may belong to several forms
+`CommandFlag.Form` MAY 以 `|` 分隔列出多個字（例如 `"import|delete"`），寫法與 Usage 的選項相同；第一個參數等於其中任一個字（不分大小寫）時，`BuildCobraCommands` SHALL 把這個旗標交給 `Run`，否則 SHALL 丟掉它。
+
+#### Scenario: --force reaches env delete
+- **WHEN** the shell runs `insyra --env work env delete default --force`
+- **THEN** `env`'s Run receives `delete default --force`
+
+#### Scenario: --force is still dropped from env clear
+- **WHEN** the shell runs `insyra env clear a --force`
+- **THEN** `env`'s Run receives `clear a`
+
