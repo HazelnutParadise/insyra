@@ -348,7 +348,7 @@ insyra env import ./exp1.json exp1-copy --force
 
 None of these asks before it acts, so a script or a one-shot command never stops to wait for an answer. Export an environment first if you may want it back.
 
-- `env delete <name>` removes the environment's directory: its variables, its history and its config. It refuses the environment in use. It also refuses `default`, the environment every command opens when `--env` is not given, unless you add `--force`; a deleted `default` comes back empty on the next command.
+- `env delete <name>` removes the environment's directory: its variables, its history and its config. It refuses the environment in use. It also refuses `default`, the environment every command opens when `--env` is not given, unless you add `--force`; a deleted `default` comes back empty on the next command. Both refusals look at the directory, so on a file system that ignores case `Default` counts as `default`.
 - `env clear [name]` drops every variable, and empties the history too unless you add `--keep-history`.
 - `env open <name>`, inside the REPL or a script, replaces the session's variables with the opened environment's. The current environment was saved after the last command, but a variable it could not store, such as a `regression` result, is gone.
 - `env export [name] <file>` replaces `<file>` if it exists.

@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -103,5 +105,43 @@ func TestHelpSaysWhatIsReplacedOrRemoved(t *testing.T) {
 				t.Errorf("help %s does not mention %q:\n%s", name, want, forms)
 			}
 		}
+	}
+}
+
+// caseInsensitiveDir reports whether dir's file system ignores letter case.
+func caseInsensitiveDir(t *testing.T, dir string) bool {
+	t.Helper()
+	if err := os.Mkdir(filepath.Join(dir, "probe"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := os.Stat(filepath.Join(dir, "PROBE"))
+	return err == nil
+}
+
+// On a file system that ignores case, `Default` is the default environment's
+// directory, so the refusals compared by spelling let it through.
+func TestEnvDeleteRefusalsHoldForANameInAnotherCase(t *testing.T) {
+	base := t.TempDir()
+	if !caseInsensitiveDir(t, base) {
+		t.Skip("the file system distinguishes case, so Default is another environment")
+	}
+	mgr := env.NewManager(base, "")
+	if err := mgr.EnsureDefaultEnvironment(); err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.Create("work"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := newTestExecContext(t)
+	ctx.Env = mgr
+	ctx.EnvName = "work"
+	if err := Dispatch(ctx, "env", []string{"delete", "Default"}); err == nil || !strings.Contains(err.Error(), "--force") {
+		t.Errorf("env delete Default = %v, want the refusal that mentions --force", err)
+	}
+	if err := Dispatch(ctx, "env", []string{"delete", "WORK", "--force"}); err == nil || !strings.Contains(err.Error(), "current environment") {
+		t.Errorf("env delete WORK while in work = %v, want the current-environment refusal", err)
+	}
+	if !mgr.Exists("default") || !mgr.Exists("work") {
+		t.Fatal("an environment was deleted through another spelling")
 	}
 }

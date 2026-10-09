@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 )
@@ -145,12 +146,12 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		if name == ctx.EnvName {
+		if sameEnvironment(ctx, name, ctx.EnvName) {
 			return fmt.Errorf("cannot delete current environment: %s", name)
 		}
 		// default is the environment every command opens when --env is not
 		// given, so deleting it by mistake loses the most.
-		if name == "default" && !force {
+		if !force && sameEnvironment(ctx, name, "default") {
 			return fmt.Errorf("env delete: default is the environment insyra opens when --env is not given; deleting it loses its variables and history, and it comes back empty on the next command. Add --force to delete it")
 		}
 		if err := ctx.Env.Delete(name); err != nil {
@@ -221,6 +222,23 @@ func parseEnvClearArgs(ctx *ExecContext, args []string) (string, bool, error) {
 	}
 
 	return name, keepHistory, nil
+}
+
+// sameEnvironment reports whether a and b name one environment directory. On a
+// file system that ignores case, Default and default are the same directory,
+// so comparing the names alone would let a refusal be spelled around.
+func sameEnvironment(ctx *ExecContext, a, b string) bool {
+	if a == b {
+		return true
+	}
+	pathA, errA := ctx.Env.ResolveEnvPath(a)
+	pathB, errB := ctx.Env.ResolveEnvPath(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	infoA, errA := os.Stat(pathA)
+	infoB, errB := os.Stat(pathB)
+	return errA == nil && errB == nil && os.SameFile(infoA, infoB)
 }
 
 func parseEnvDeleteArgs(args []string) (string, bool, error) {
