@@ -351,7 +351,9 @@ func TestDSLSessionExecuteFileStopsAtANestedExit(t *testing.T) {
 	if err := os.WriteFile(inner, []byte("newdl 1 as a\nexit\nnewdl 2 as b\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(outer, []byte("run "+inner+"\nnewdl 3 as c\n"), 0o600); err != nil {
+	// Forward slashes: ExecuteFile reads each line with the DSL tokenizer, which
+	// takes a backslash as an escape, and Windows accepts either separator.
+	if err := os.WriteFile(outer, []byte("run "+filepath.ToSlash(inner)+"\nnewdl 3 as c\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := session.ExecuteFile(outer); err != nil {

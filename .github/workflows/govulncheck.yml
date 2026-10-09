@@ -22,8 +22,11 @@ jobs:
       with:
         # Latest 1.26 patch rather than an exact version: an older patch ships
         # standard-library CVEs fixed in later ones, which the scan would
-        # otherwise (correctly) flag against the toolchain itself.
+        # otherwise (correctly) flag against the toolchain itself. check-latest
+        # makes setup-go ask for that patch; without it, 1.26.x is satisfied by
+        # whatever 1.26 the runner image has cached, which lags a release.
         go-version: '1.26.x'
+        check-latest: true
         cache-dependency-path: go.sum
     # Pinned to v1.3.0 instead of golang/govulncheck-action@v1 (which always
     # installs @latest). v1.4.0 bundles x/tools v0.46.0, which panics while
