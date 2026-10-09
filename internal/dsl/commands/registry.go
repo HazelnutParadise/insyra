@@ -86,14 +86,11 @@ var Registry = map[string]*CommandHandler{}
 
 var registryMu sync.RWMutex
 
-// LookupCommand returns the handler registered under name, taking the read
-// lock. Reading Registry directly is not safe while another goroutine
+// LookupCommand returns the handler registered under name or listing it among
+// its aliases, taking the read lock. Reading Registry directly is not safe while another goroutine
 // registers, which an embedder may do at any time.
 func LookupCommand(name string) (*CommandHandler, bool) {
-	registryMu.RLock()
-	defer registryMu.RUnlock()
-	h, ok := Registry[name]
-	return h, ok
+	return lookupByNameOrAlias(name)
 }
 
 // SnapshotRegistry returns the registered names in sorted order and the
@@ -136,6 +133,9 @@ func Register(handler *CommandHandler) error {
 	if _, exists := Registry[handler.Name]; exists {
 		return fmt.Errorf("command already registered: %s", handler.Name)
 	}
+	if err := checkAliasesFree(handler); err != nil {
+		return err
+	}
 	run, limit, name, usage := handler.Run, handler.Args, handler.Name, handler.Usage
 	handler.Run = func(ctx *ExecContext, args []string) error {
 		if err := limit.check(name, usage, args); err != nil {
@@ -166,6 +166,30 @@ func Dispatch(ctx *ExecContext, name string, args []string) error {
 		ctx.Env = env.Default()
 	}
 	return handler.Run(ctx, args)
+}
+
+// checkAliasesFree refuses a handler whose name is another command's alias,
+// or one of whose aliases is already a name or an alias, since Dispatch would
+// then pick between them in map order. The caller holds registryMu.
+func checkAliasesFree(handler *CommandHandler) error {
+	taken := make(map[string]string, len(Registry))
+	for name, h := range Registry {
+		taken[name] = name
+		for _, alias := range h.Aliases {
+			taken[alias] = name
+		}
+	}
+	if owner, ok := taken[handler.Name]; ok {
+		return fmt.Errorf("command %s: the name is an alias of %s", handler.Name, owner)
+	}
+	taken[handler.Name] = handler.Name
+	for _, alias := range handler.Aliases {
+		if owner, ok := taken[alias]; ok {
+			return fmt.Errorf("command %s: alias %s is already taken by %s", handler.Name, alias, owner)
+		}
+		taken[alias] = handler.Name
+	}
+	return nil
 }
 
 // lookupByNameOrAlias finds the handler registered under name or listing it

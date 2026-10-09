@@ -337,3 +337,37 @@ func TestDSLSessionExecuteExitWrapsErrExit(t *testing.T) {
 		t.Fatalf("Execute(exit) = %v, want an error wrapping commands.ErrExit", err)
 	}
 }
+
+// An exit in a script that a file run by ExecuteFile starts with `run` ends
+// the whole file, as it does under `insyra run`.
+func TestDSLSessionExecuteFileStopsAtANestedExit(t *testing.T) {
+	session, err := NewSession(env.NewManager(t.TempDir(), ""), "default", nil)
+	if err != nil {
+		t.Fatalf("failed to create session: %v", err)
+	}
+	dir := t.TempDir()
+	inner := filepath.Join(dir, "inner.isr")
+	outer := filepath.Join(dir, "outer.isr")
+	if err := os.WriteFile(inner, []byte("newdl 1 as a\nexit\nnewdl 2 as b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outer, []byte("run "+inner+"\nnewdl 3 as c\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.ExecuteFile(outer); err != nil {
+		t.Fatalf("ExecuteFile returned %v", err)
+	}
+	vars := session.Context().Vars
+	if _, ok := vars["a"]; !ok {
+		t.Error("the inner script's first line did not run")
+	}
+	for _, name := range []string{"b", "c"} {
+		if _, ok := vars[name]; ok {
+			t.Errorf("%s was created after exit", name)
+		}
+	}
+	// The file is over, so a later Execute is outside any script again.
+	if err := session.Execute("exit"); !errors.Is(err, commands.ErrExit) || err.Error() == commands.ErrExit.Error() {
+		t.Errorf("Execute(exit) after the file = %v, want the nothing-to-end error", err)
+	}
+}

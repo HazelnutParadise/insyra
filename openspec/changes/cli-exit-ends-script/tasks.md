@@ -5,6 +5,8 @@
 - [x] 1.1 先寫會失敗的測試：腳本在 `exit`、`quit` 行停止並印出 `script ended by exit at line N`；巢狀 `run` 整條停止且最外層回傳 nil；REPL 與腳本之外的 `exit` 回傳包住 `ErrExit` 的錯誤；`Dispatch` 以別名找到指令；`Session.ExecuteFile` 在 `exit` 行停止回傳 nil；在舊程式上記錄失敗
 - [x] 1.2 `exit.go` 依情境回傳 `ErrExit` 或說明錯誤；`run.go` 在 `exit` 停止；`Dispatch` 查別名；`repl.go` 改由指令結束 REPL；`api.go` 的 `ExecuteFile` 在 `exit` 停止；1.1 通過
 
+- [x] 1.3 依 review 結果補強：`Session.ExecuteFile` 算一層腳本，檔案 `run` 的腳本裡的 `exit` 結束整個檔案；`LookupCommand` 也認別名，`help quit` 說明 `exit`；`Register` 拒絕重複的別名；先寫在舊程式上失敗的測試，再修到通過
+
 ## 2. 驗證
 
 - [x] 2.1 `gofmt`、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`（0 issues）通過

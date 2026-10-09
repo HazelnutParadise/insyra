@@ -18,6 +18,15 @@ func init() {
 // script that ran it stops too without reporting the exit again.
 var errScriptExited = fmt.Errorf("script ended by %w", ErrExit)
 
+// EnterScript counts the caller as one level of running script, as run does
+// for each file, until the returned function is called. Session.ExecuteFile
+// uses it so that exit inside the file, or inside a script the file runs,
+// ends the whole file the way it ends `insyra run`.
+func EnterScript(ctx *ExecContext) (leave func()) {
+	ctx.scriptDepth++
+	return func() { ctx.scriptDepth-- }
+}
+
 // maxScriptDepth bounds nested `run` calls so a script that runs itself
 // (directly or through another script) stops instead of recursing forever.
 const maxScriptDepth = 16

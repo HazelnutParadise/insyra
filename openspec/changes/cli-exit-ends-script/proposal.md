@@ -15,7 +15,8 @@
 - `Session.ExecuteFile` stops at an `exit` or `quit` line and returns nil.
 - In the REPL, `exit` and `quit` go through the command like any other line instead of being matched as text first. What the user sees does not change.
 - Run anywhere else (one-shot `insyra exit`, a single `Session.Execute("exit")`), `exit` fails with an error saying it only ends the REPL or a script. A one-shot `insyra exit` therefore exits with status 1.
-- `Dispatch` finds a command by any of its aliases, so `quit` works in a script and in the Go API as it already did in one-shot use. `exit` is the only command with an alias.
+- `Dispatch` and `LookupCommand` find a command by any of its aliases, so `quit` works in a script and in the Go API as it already did in one-shot use, and `help quit` describes it. `exit` is the only built-in command with an alias. So that one word never names two commands, `Register` refuses a name that is another command's alias and an alias that is already a name or an alias; before, two commands could share an alias and `Dispatch` would pick one in map order.
+- `Session.ExecuteFile` counts as one level of running script, so an `exit` in a script the file starts with `run` ends the whole file, as under `insyra run`.
 - `ErrExit` is exported from `engine/dsl`, and every error `exit` returns wraps it, so a program embedding the DSL can tell `exit` apart with `errors.Is`.
 - `Docs/cli-dsl.md`, both CHANGELOGs, `api-review.md` and `delivery-status.md` are updated. The `cli-command-guide.md` example the finding cites was removed with the skills' reference files, and no current document gives `insyra exit` as an example.
 
@@ -28,6 +29,7 @@
 ### Modified Capabilities
 
 - `script-runner`: a script stops at an `exit` or `quit` line.
+- `command-registry`: a command answers to its aliases everywhere, and an alias is never shared.
 
 ## Impact
 

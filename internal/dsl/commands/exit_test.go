@@ -119,3 +119,39 @@ func TestDispatchFindsACommandByItsAlias(t *testing.T) {
 		t.Errorf("Dispatch(no-such-command) = %v", err)
 	}
 }
+
+// Dispatch finds a command by its aliases, so two commands sharing an alias,
+// or an alias shadowing a name, would make the pick depend on map order.
+func TestRegisterRefusesAnAliasAlreadyTaken(t *testing.T) {
+	noop := func(*ExecContext, []string) error { return nil }
+	if err := Register(&CommandHandler{Name: "zzaliasone", Aliases: []string{"zzshared"}, Args: MaxArgs(0), Run: noop}); err != nil {
+		t.Fatalf("first registration: %v", err)
+	}
+	cases := []*CommandHandler{
+		{Name: "zzaliastwo", Aliases: []string{"zzshared"}, Args: MaxArgs(0), Run: noop}, // alias of another command
+		{Name: "zzaliasthree", Aliases: []string{"mean"}, Args: MaxArgs(0), Run: noop},   // a command's name
+		{Name: "zzshared", Args: MaxArgs(0), Run: noop},                                  // a name that is an alias
+		{Name: "quit", Args: MaxArgs(0), Run: noop},                                      // exit's alias
+		{Name: "zzaliasfour", Aliases: []string{"zzaliasfour"}, Args: MaxArgs(0), Run: noop},
+	}
+	for _, h := range cases {
+		name := h.Name
+		if err := Register(h); err == nil {
+			t.Errorf("Register(%s, aliases %v) succeeded", name, h.Aliases)
+		}
+		if got, ok := LookupCommand(name); ok && got == h {
+			t.Errorf("%s was registered despite the clash", name)
+		}
+	}
+}
+
+// `quit` runs, so `help quit` describes it rather than calling it unknown.
+func TestHelpFindsACommandByItsAlias(t *testing.T) {
+	ctx := newTestExecContext(t)
+	if err := Dispatch(ctx, "help", []string{"quit"}); err != nil {
+		t.Fatalf("help quit: %v", err)
+	}
+	if out := ctx.Output.(*bytes.Buffer).String(); !strings.Contains(out, "End the REPL or the running script") {
+		t.Errorf("help quit printed:\n%s", out)
+	}
+}

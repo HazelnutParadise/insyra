@@ -109,6 +109,7 @@ func (session *Session) ExecuteFile(path string) error {
 	defer func() {
 		_ = file.Close()
 	}()
+	defer commands.EnterScript(session.ctx)()
 
 	scanner := bufio.NewScanner(file)
 	lineNumber := 0

@@ -60,7 +60,8 @@ func Dispatch(ctx *ExecContext, name string, args []string) error {
 	return commands.Dispatch(ctx, name, args)
 }
 
-// LookupCommand returns the handler registered under name.
+// LookupCommand returns the handler registered under name or listing it among
+// its aliases.
 func LookupCommand(name string) (*CommandHandler, bool) { return commands.LookupCommand(name) }
 
 // SnapshotRegistry returns the registered names in sorted order and the
