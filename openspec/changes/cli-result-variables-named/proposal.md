@@ -24,7 +24,7 @@ The finding's second half is already fixed on this line. `cli-env-typed-state` (
 
 ## Impact
 
-- Code: `cli/commands/helpers.go` (`alsoStored`), `cli/commands/clustering.go`, `cli/commands/pca.go`, `cli/commands/knn.go`, `cli/commands/quant.go`, success lines only.
-- Tests: `cli/commands/result_variables_test.go`.
+- Code: `internal/dsl/commands/helpers.go` (`alsoStored`), `internal/dsl/commands/clustering.go`, `internal/dsl/commands/pca.go`, `internal/dsl/commands/knn.go`, `internal/dsl/commands/quant.go`, success lines only.
+- Tests: `internal/dsl/commands/result_variables_test.go`.
 - Docs: `Docs/cli-dsl.md`, `CHANGELOG.md`, `CHANGELOG_TW.md`, `api-review.md`, `delivery-status.md`.
 - No stored value changes. No library change, no new dependency.
