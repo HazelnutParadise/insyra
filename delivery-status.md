@@ -63,6 +63,8 @@ Previous batch: `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#1
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
 ## Current Blockers
+The Vulnerability Scan on `dev` is red from 2026-10-09 and blocks the next release: Go 1.25 gets no fix for eleven standard-library advisories, and `x/net`'s fix needs `go 1.26.0`. It clears only when the `go` directive moves to 1.26, which waits for the owner on [#203](https://github.com/HazelnutParadise/insyra/issues/203); the measurements are in the `AGENTS.md` follow-up on dependencies held back by the Go 1.25 directive.
+
 The implementation has no code blocker. Acceptance still needs a multi-GPU host for the gated concurrent/sequential parity run and wall-clock measurement. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up; gated device tests must run from an unsandboxed shell on this host (sandboxed shells see only a software adapter).
 
 ## Next Verifiable Output
