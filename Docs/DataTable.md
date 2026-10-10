@@ -2498,6 +2498,25 @@ for i, name := range names {
 }
 ```
 
+### ColDataTypes
+
+```go
+func (dt *DataTable) ColDataTypes() []DataType
+```
+
+**Description:** Returns each column's `DataType` in column order, the way `ColNames` returns each column's name. See `DataList.DataType` for what each value means.
+
+**Example:**
+
+```go
+names := dt.ColNames()
+for i, t := range dt.ColDataTypes() {
+    if t == insyra.DataTypeNumber {
+        fmt.Println(names[i], "can be analysed")
+    }
+}
+```
+
 ### Headers
 
 ```go
@@ -4249,7 +4268,7 @@ func (dt *DataTable) Show()
 func (dt *DataTable) ShowTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the DataTable content in the console. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`).
+**Description:** Displays the DataTable content in the console. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`). A table of more than 25 rows prints its first 20 and last 5 rows with a `...` line between them; the summary line above the table still covers every row. Column widths fit the rows that are printed.
 
 **Parameters:**
 
@@ -4272,12 +4291,12 @@ func (dt *DataTable) ShowRange(startEnd ...any)
 func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) // same output, written to w
 ```
 
-**Description:** Displays the DataTable with a specified range of rows. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout.
+**Description:** Displays the DataTable with a specified range of rows. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout. Only the printed rows are read to size the columns, so showing five rows of a million-row table takes as long as showing a five-row table, and a wide cell outside the range does not widen the columns. `ShowHead(n)` and `ShowTail(n)` are the plainer spellings of `ShowRange(n)` and `ShowRange(-n)`.
 
 **Parameters:**
 
 - `startEnd`: Optional parameters to specify the range of rows to display:
-  - No parameters: shows all rows
+  - No parameters: the whole table, as `Show` prints it: a table of more than 25 rows prints its first 20 and last 5 rows
   - One positive value: shows first N rows (e.g., ShowRange(5) shows first 5 rows)
   - One negative value: shows last N rows (e.g., ShowRange(-5) shows last 5 rows)
   - Two values [start, end]: shows rows from index start (inclusive) to index end (exclusive)
@@ -4290,12 +4309,16 @@ func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) // same output, w
 **Example:**
 
 ```go
-dt.ShowRange()      // Show all rows
+dt.ShowRange()      // Show the whole table (first 20 and last 5 rows past 25)
 dt.ShowRange(5)     // Show first 5 rows
 dt.ShowRange(-5)    // Show last 5 rows
 dt.ShowRange(2, 10) // Show rows 2-9
 dt.ShowRange(2, nil) // Show rows from index 2 to end
+dt.ShowHead(5)      // Same as ShowRange(5)
+dt.ShowTail(5)      // Same as ShowRange(-5)
 ```
+
+`ShowHead(n)` / `ShowHeadTo(w, n)` and `ShowTail(n)` / `ShowTailTo(w, n)` take a positive `n`; zero or a negative number prints an error line.
 
 ### ShowTypes
 
@@ -4304,7 +4327,17 @@ func (dt *DataTable) ShowTypes()
 func (dt *DataTable) ShowTypesTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the data types of each column. `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
+**Description:** Displays the Go type of every cell, column by column. The first row, `DataType`, sums each whole column up in one word (the values of `ColDataTypes()`), so the verdict sits above the detail it was judged from. `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
+
+```
+RowNames   A(price)  B(city)  C(notes)
+---------- --------- -------- ---------
+DataType   number    string   mixed
+---------- --------- -------- ---------
+0:         int       string   int
+1:         float64   nil      string
+2:         nil       string   nil
+```
 
 **Parameters:**
 
@@ -4327,7 +4360,7 @@ func (dt *DataTable) ShowTypesRange(startEnd ...any)
 func (dt *DataTable) ShowTypesRangeTo(w io.Writer, startEnd ...any) // same output, written to w
 ```
 
-**Description:** Displays the data types of columns within a specified range. `ShowTypesRangeTo` writes the same output to any `io.Writer` instead of stdout.
+**Description:** Displays the data types of columns within a specified range. `ShowTypesRangeTo` writes the same output to any `io.Writer` instead of stdout. The `DataType` row summarises each whole column; the per-cell types and the column widths come from the printed rows only.
 
 **Parameters:**
 
@@ -4674,6 +4707,8 @@ dt.ClearErr()
 | `PopErr() *ErrorInfo`   | Returns the last error and clears it, so the table can be reused straight away.                 |
 | `ClearErr() *DataTable` | Clears the last error and returns the DataTable for continued chaining.                         |
 | `SetErr(pkg, fn, msg string, args ...any) *DataTable` | Records an error the way insyra's own methods do: logs a warning and sets `Err()`, replacing any earlier error. Wrapper packages (such as `isr`) use it. |
+
+`Err()` is safe on a nil table: it reports `nil DataTable` instead of crashing. Every other method on a nil table still fails loudly, on purpose (most crash; a few, such as `Resample` and `ToSQL`, return an error), so a nil cannot travel on unnoticed.
 
 ### Global Error Buffer
 

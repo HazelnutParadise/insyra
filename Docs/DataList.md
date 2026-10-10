@@ -178,6 +178,39 @@ dl := insyra.NewDataList(1, 2, 3)
 data := dl.Data() // []any{1, 2, 3}
 ```
 
+### DataType
+
+```go
+func (dl *DataList) DataType() DataType
+```
+
+**Description:** Returns what kind of values the list holds, so a program can check before it analyses: can this column be averaged, grouped as text, read as dates. Missing values (`nil`, `NaN`) are left out, so `[10, nil, 30]` is a number column.
+
+| Value | Meaning | Example |
+|---|---|---|
+| `DataTypeNumber` | every value is a number; integers and floats alike | `[10, 2.5, nil]` |
+| `DataTypeString` | every value is text; text that looks numeric, such as `"0050"`, stays text | `["Taipei", "Taichung"]` |
+| `DataTypeBool` | every value is `true` or `false` | `[true, false]` |
+| `DataTypeTime` | every value is a `time.Time` | a date column |
+| `DataTypeOther` | every value is one kind none of the above covers; a `decimal.Decimal` is one, because the numeric functions cannot read it as a number | `[]byte` blobs |
+| `DataTypeMixed` | values of more than one kind | `[1, "a", true]` |
+| `DataTypeEmpty` | no values, or only `nil` and `NaN` | `[nil, NaN]` |
+
+`String()` gives the name (`"number"`, `"mixed"`, ...). `ShowTypes` answers a different question: it prints the Go type of every cell (`int`, `float64`, `nil`), where `DataType` sums the column up in one word.
+
+**Example:**
+
+```go
+switch dl.DataType() {
+case insyra.DataTypeNumber:
+    dl.FillWithMean()
+case insyra.DataTypeString:
+    dl.FillWithMode()
+case insyra.DataTypeMixed:
+    fmt.Println("mixed column, clean it first")
+}
+```
+
 ### Len
 
 ```go
@@ -2132,10 +2165,12 @@ func (dl *DataList) ShowRangeTo(w io.Writer, startEnd ...any) // same output, wr
 
 The end index is exclusive, and a negative end counts back from the end and stays exclusive — exactly like a Python slice, so `ShowRange(2, -1)` stops before the last item. Pass `nil` as the end to run all the way to the end.
 
+`ShowHead(n)` / `ShowHeadTo(w, n)` and `ShowTail(n)` / `ShowTailTo(w, n)` are the plainer spellings of `ShowRange(n)` and `ShowRange(-n)`, and take a positive `n`; zero or a negative number prints an error line.
+
 **Parameters:**
 
 - `startEnd`: Variable parameters for range specification
-  - No parameters: shows all items
+  - No parameters: the whole list, as `Show` prints it: a list of more than 25 items prints its first 20 and last 5
   - Single positive integer (n): shows first n items
   - Single negative integer (-n): shows last n items
   - Two parameters (start, end): shows items from start to end (exclusive)
@@ -2152,6 +2187,8 @@ dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 dl.ShowRange(3)      // Show first 3 items
 dl.ShowRange(-3)     // Show last 3 items
 dl.ShowRange(2, 5)   // Show items from index 2 to 4
+dl.ShowHead(3)       // Same as ShowRange(3)
+dl.ShowTail(3)       // Same as ShowRange(-3)
 dl.ShowRange(2, -1)  // Show items from index 2 up to but NOT including the last one
 dl.ShowRange(5, nil) // Show items from index 5 to end
 ```
@@ -2163,7 +2200,7 @@ func (dl *DataList) ShowTypes()
 func (dl *DataList) ShowTypesTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the data types of each element in the DataList. `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
+**Description:** Displays the Go type of each element in the DataList, under a `DataType:` line that sums the whole list up in one word (the value of `DataType()`). `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
 
 **Parameters:**
 
@@ -2198,7 +2235,7 @@ func (dl *DataList) ShowTypesRangeTo(w io.Writer, startEnd ...any) // same outpu
 **Parameters:**
 
 - `startEnd`: Variable parameters for range specification (same as ShowRange)
-  - No parameters: shows all items
+  - No parameters: the whole list, as `Show` prints it: a list of more than 25 items prints its first 20 and last 5
   - Single positive integer (n): shows first n items
   - Single negative integer (-n): shows last n items
   - Two parameters (start, end): shows items from start to end (exclusive)
@@ -2773,6 +2810,12 @@ dl.ClearErr()
 | `PopErr() *ErrorInfo`  | Returns the last error and clears it, so the list can be reused straight away.                  |
 | `ClearErr() *DataList` | Clears the last error and returns the DataList for continued chaining.                          |
 | `SetErr(pkg, fn, msg string, args ...any) *DataList` | Records an error the way insyra's own methods do: logs a warning and sets `Err()`, replacing any earlier error. Wrapper packages (such as `isr`) use it; application code rarely needs it. |
+
+`Err()` is safe on a nil list, such as the one `GetColByName` returns for a column
+that is not there: it reports `nil DataList` instead of crashing. Every other
+method on a nil list still fails loudly, on purpose (most crash; the `Show`
+methods print an error line), so a nil cannot travel on unnoticed; check `Err()`
+right after a lookup.
 
 > **Note:** `setError` is an internal helper used by methods to record the last error on the instance. Most chainable methods will call it when an operation fails.
 

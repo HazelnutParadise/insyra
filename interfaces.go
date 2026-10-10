@@ -62,6 +62,8 @@ type IDataList interface {
 	EWM(EWMOptions) *EWMDataList
 	MovingStdev(int) *DataList
 	Len() int
+	// DataType returns the kind of values the list holds, ignoring missing ones.
+	DataType() DataType
 	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
 	SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList
 	Shuffle(options ...SamplingOptions) *DataList
@@ -104,6 +106,8 @@ type IDataList interface {
 	IsTheSameAs(*DataList) bool
 	Show()
 	ShowRange(startEnd ...any)
+	ShowHead(n int)
+	ShowTail(n int)
 	ShowTypes()
 	ShowTypesRange(startEnd ...any)
 
@@ -153,6 +157,8 @@ type IDataTable interface {
 	ColNamesToFirstRow() *DataTable
 	DropColNames() *DataTable
 	ColNames() []string
+	// ColDataTypes returns each column's DataType in column order.
+	ColDataTypes() []DataType
 	Headers() []string
 	SetColNames(colNames []string) *DataTable
 	SetHeaders(headers []string) *DataTable
@@ -192,6 +198,8 @@ type IDataTable interface {
 	Show()
 	ShowTypes()
 	ShowRange(startEnd ...any)
+	ShowHead(n int)
+	ShowTail(n int)
 	ShowTypesRange(startEnd ...any)
 	// GetRowIndexByName returns the index of a row by its name.
 	// Returns -1 and false if the row name does not exist.
