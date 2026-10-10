@@ -15,7 +15,7 @@ You will create:
 
 ## Prerequisites
 
-- Go 1.25+.
+- Go 1.26+.
 - Insyra + plot:
 
 ```bash

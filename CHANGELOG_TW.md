@@ -8,6 +8,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
+### Core
+
+- **BREAKING**：Insyra 現在需要 Go 1.26，`go.mod` 的 `go` 指示為 `1.26.9`。Go 1.27 發布後，Go 1.25 就不再有修正版。2026-10-08 公布的十一則標準函式庫漏洞只從 Go 1.26.9 起修正，其中幾則在 `plot.SavePNG` 與 `DataTable.ToSQL` 會用到的 `net/http`。HTTP/2 那幾則在 `golang.org/x/net` 的修正版也需要 Go 1.26。使用 Go 1.21 以上時，除非設定 `GOTOOLCHAIN=local`，`go` 指令會自動下載 1.26.9 工具鏈。
+
 ## v0.3.4
 
 ### Core

@@ -63,7 +63,7 @@ Previous batch: `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#1
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
 ## Current Blockers
-The Vulnerability Scan on `dev` is red from 2026-10-09 and blocks the next release: Go 1.25 gets no fix for eleven standard-library advisories, and `x/net`'s fix needs `go 1.26.0`. It clears only when the `go` directive moves to 1.26, which waits for the owner on [#203](https://github.com/HazelnutParadise/insyra/issues/203); the measurements are in the `AGENTS.md` follow-up on dependencies held back by the Go 1.25 directive.
+The Vulnerability Scan on `dev` is red from 2026-10-09 and blocks the next release. `require-go-1-26` clears the eleven standard-library advisories; the five in `golang.org/x/net` v0.58.0 remain until `bump-x-net-for-http2-advisories` lands.
 
 The implementation has no code blocker. Acceptance still needs a multi-GPU host for the gated concurrent/sequential parity run and wall-clock measurement. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up; gated device tests must run from an unsandboxed shell on this host (sandboxed shells see only a software adapter).
 
@@ -83,6 +83,11 @@ golangci-lint also runs nilerr, bodyclose, rowserrcheck, sqlclosecheck and error
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: `dev`, the 0.3.x line, requires Go 1.26: the `go` directive moves from 1.25.12 to 1.26.9 in `require-go-1-26`, and the modules the 1.25 directive held back move in their own changes after it.
+  rationale: Go 1.25 left support when Go 1.27 was released. On 2026-10-08 eleven standard-library advisories reachable from insyra code were published with fixes only in go1.26.9 and go1.27.2, and the `x/net` fix for five of them declares `go 1.26.0`, so the Vulnerability Scan could not turn green on 1.25 and no release could ship. The owner decided on 2026-10-10, recorded on #203.
+  timestamp: 2026-10-10
+  impacted_ticket_ids: require-go-1-26, bump-x-net-for-http2-advisories
 
 - decision: Huashan v0.3.4 ships #379's CPU half: `EdgeSum` and its gradients exact (M33) and `Tanh` correctly rounded (M34). M35's device library is in the code but internal, with no public caller. M36 to M39 move to v0.3.5, in the same order and with the same acceptance.
   rationale: The CPU half is done and verified and changes `Tape.Tanh`'s gradients, so it is worth releasing. The device half is four milestones, and M38 reworks `nn`'s tensor model; finished fixes should not wait for it. The owner approved on 2026-09-28, and the split is announced on #379.

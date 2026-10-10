@@ -8,6 +8,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ## Unreleased
 
+### Core
+
+- **BREAKING**: Insyra now requires Go 1.26; the `go` directive in `go.mod` is `1.26.9`. Go 1.25 stopped receiving fixes when Go 1.27 was released, and eleven standard-library vulnerabilities published on 2026-10-08, several of them in `net/http`, which `plot.SavePNG` and `DataTable.ToSQL` reach, are fixed only from Go 1.26.9. The `golang.org/x/net` fix for the HTTP/2 ones also needs Go 1.26. With Go 1.21 or newer, the `go` command downloads the 1.26.9 toolchain automatically unless `GOTOOLCHAIN=local` is set.
+
 ## v0.3.4
 
 ### Core

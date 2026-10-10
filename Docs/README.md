@@ -162,6 +162,6 @@ This site documents the newest release. For the version a project actually uses,
 
 ### Requirements & Notes
 
-- Go 1.25+ (per `go.mod`).
+- Go 1.26+ (per `go.mod`).
 - Some packages download external tools or use network access (see each package doc for details).
 - For numbers that must stay exact, such as money and rates, use [`github.com/TimLai666/go-decimal`](https://github.com/TimLai666/go-decimal). It is the decimal type `finance` takes and returns and a Parquet `Decimal128` column reads as. How cells treat it, including converting a column for `Mean` and `Sum`, and the comparison with other Go decimal packages are in [Decimal](Decimal.md).
