@@ -151,7 +151,7 @@ Dependencies move on their own schedule; ours is the release. **Before `dev` is 
 - **Never move a module into a vulnerable range.** Stop at the newest version outside every range.
 - **Never let a bump raise the `go` directive.** The minimum-Go promise to downstream users is a separate, explicit decision. Stop at the newest version that keeps the current directive.
 - **A bump that changes what insyra returns is not part of the refresh.** If updating a module changes a result or an output insyra produces, stop at the newest version that changes nothing and record the difference. The update then lands as its own change, with its changelog entry, so the behaviour change is reviewed and announced rather than carried in with a version bump.
-- Anything held back — its newest version needs a newer Go, is inside an advisory, breaks a tool CI depends on, or changes what insyra returns — goes into the Follow-ups below with the reason, the way the modules held back by the Go 1.25 directive already are.
+- Anything held back — its newest version needs a newer Go, is inside an advisory, breaks the build or a tool CI depends on, or changes what insyra returns — goes into the Follow-ups below with the reason, the way `chromedp` is.
 
 Why this is a rule and not a habit: dependencies only moved when Dependabot filed an alert, which means the graph only moved once something was already broken, and the fix was taken under time pressure. Dependabot also reads the default branch, so an alert raised against a released version stays open until the next merge to `main` no matter how quickly it is fixed on `dev`.
 
@@ -258,6 +258,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 ## Follow-ups
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
+
+### [2026-10-10] — `chromedp` held at v0.16.0
+- **Where**: `go.mod`, `github.com/chromedp/chromedp` and the `cdproto` it requires, reached through `github.com/go-echarts/snapshot-chromedp` v0.0.5, which `plot.SavePNG` uses
+- **What**: v0.16.0 is the newest `chromedp` insyra can take. v0.17.0 through v0.19.1 declare `go 1.27`. v0.20.0 and v0.20.1 declare `go 1.25` but change `chromedp.Run`, `FullScreenshot` and the query options to a generic API, so `snapshot-chromedp` v0.0.5, its newest release, no longer compiles (`too many arguments in call to chromedp.Run`, `undefined: chromedp.ByQuery`). Measured on 2026-10-10: a bar chart saved through `plot.SavePNG` with `chromedp` v0.12.1 and with v0.16.0 produced byte-identical PNGs.
+- **Suggestion**: take `chromedp` v0.20 or later once `snapshot-chromedp` releases a version that compiles against it, and compare `plot.SavePNG` output before and after, as above.
+- **Status**: pending
 
 ### [2026-09-28] — scaler JSON with an empty column reference binds to an unnamed column
 - **Where**: `datatable_scale.go` `unmarshalJSON`, and `resolveEncodingColumn` in `datatable_preprocess.go`
@@ -433,11 +439,4 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: [read.go](read.go) `ReadExcelSheet` → `ReadSlice2D`
 - **What**: excelize `GetRows` returns strings and `ReadSlice2D` appends them as-is, so Excel loads produce all-string DataTables while CSV loads run column-level inference (`inferCSVColumnTypes`). Opposite defaults for the two spreadsheet formats. Noticed while adding `CSVReadOptions.RawStrings` (issue #188).
 - **Suggestion**: Decide whether Excel reads should run the same column inference by default (with the same opt-out), or stay raw; either way document the behavior in `Docs/DataTable.md`.
-- **Status**: pending
-
-### [2026-07-11] — dependencies held back by the Go 1.25 directive
-- **Where**: `go.mod`
-- **What**: the 2026-09-28 refresh left two groups below their newest versions. (1) The newest version of each of these declares `go 1.26` or later, so taking it would raise insyra's directive: `golang.org/x/crypto`, `exp`, `image`, `mod`, `net`, `oauth2`, `sync`, `sys`, `telemetry`, `term`, `text`, `time` and `tools`; `google.golang.org/api`; `google.golang.org/genproto` with its `googleapis/api` and `googleapis/rpc`; `cloud.google.com/go/auth` with `auth/oauth2adapt`, `bigquery`, `compute/metadata` and `iam`; `github.com/googleapis/gax-go/v2`; `github.com/quic-go/quic-go`; `github.com/twpayne/go-geom` (`go 1.26.3`); `modernc.org/libc`; and `chromedp` from `v0.15.0` (newest `v0.16.0`) with the `cdproto` it needs. `golang.org/x/crypto` v0.56.0 is also the first version outside GO-2026-6355 and GO-2026-6354, which #203 tracks; insyra does not import the affected `ssh` package. (2) `chromedp` stops at `v0.12.1`, below the newest Go-1.25 version `v0.14.2`, because from `v0.13.0` it requires `go-json-experiment/json`, and govulncheck panics on that package's generic variadics ("got jsontext.Value, want variadic parameter of unnamed slice or string type") when govulncheck itself is built with Go 1.25. Measured 2026-09-24: x/vuln v1.3.0 and v1.7.0 built with go1.25.14 both panic on it, and v1.7.0 built with go1.26.5 completes. The Vulnerability Scan job builds govulncheck with Go 1.25, so taking `v0.14.2` would break it.
-- **Note (2026-09-28)**: `google.golang.org/grpc` is no longer held back. GitHub's advisory now gives the v1.84 line its own fix (`d5a41119`, in v1.84.0), so v1.84.0 is outside every range of GHSA-2v4p-qf9q-27wj. The Go vulnerability database has not caught up: GO-2026-6443, last modified two days before v1.84.0 was tagged, still covers it, so govulncheck lists it among the packages insyra imports but does not call.
-- **Suggestion**: when the minimum Go rises to 1.26, take group (1) and the whole chromedp chain together, and move the Vulnerability Scan job to Go 1.26 in the same change.
 - **Status**: pending

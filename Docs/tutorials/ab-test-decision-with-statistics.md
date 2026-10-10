@@ -15,7 +15,7 @@ You will build a script that:
 
 ## Prerequisites
 
-- Go 1.25+.
+- Go 1.26+.
 - Insyra + stats:
 
 ```bash
