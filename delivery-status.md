@@ -63,8 +63,6 @@ Previous batch: `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#1
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
 ## Current Blockers
-The Vulnerability Scan on `dev` is red from 2026-10-09 and blocks the next release. `require-go-1-26` clears the eleven standard-library advisories; the five in `golang.org/x/net` v0.58.0 remain until `bump-x-net-for-http2-advisories` lands.
-
 The implementation has no code blocker. Acceptance still needs a multi-GPU host for the gated concurrent/sequential parity run and wall-clock measurement. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up; gated device tests must run from an unsandboxed shell on this host (sandboxed shells see only a software adapter).
 
 ## Next Verifiable Output
