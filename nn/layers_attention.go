@@ -25,8 +25,9 @@ func MultiHeadAttention(embed, heads int) Layer {
 	return &multiHeadAttentionLayer{embed: embed, heads: heads}
 }
 
-// NewMultiHeadAttention is the constructor-style spelling of
-// MultiHeadAttention.
+// NewMultiHeadAttention builds the same layer as MultiHeadAttention.
+//
+// Deprecated: use MultiHeadAttention. Removed in 0.4.
 func NewMultiHeadAttention(embed, heads int) Layer {
 	return MultiHeadAttention(embed, heads)
 }

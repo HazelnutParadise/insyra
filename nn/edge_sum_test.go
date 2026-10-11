@@ -137,13 +137,13 @@ func TestEdgeSumIssueExample(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEdgeTopology: %v", err)
 	}
-	weights, err := NewFloat32Tensor([]int{3}, []float32{0.5, -1, 0.25})
+	weights, err := NewTensor([]int{3}, []float32{0.5, -1, 0.25})
 	if err != nil {
-		t.Fatalf("NewFloat32Tensor(weights): %v", err)
+		t.Fatalf("NewTensor(weights): %v", err)
 	}
-	values, err := NewFloat32Tensor([]int{3}, []float32{0.1, 0.2, 0.3})
+	values, err := NewTensor([]int{3}, []float32{0.1, 0.2, 0.3})
 	if err != nil {
-		t.Fatalf("NewFloat32Tensor(values): %v", err)
+		t.Fatalf("NewTensor(values): %v", err)
 	}
 	out, err := EdgeSum(top, weights, values)
 	if err != nil {
@@ -157,8 +157,8 @@ func TestEdgeSumIssueExample(t *testing.T) {
 		float32(float32(0.5) * float32(0.1)),
 		float32(float32(-1) * float32(0.2)),
 	}
-	if !slices.Equal(out.Data(), want) {
-		t.Fatalf("output = %v, want %v", out.Data(), want)
+	if !slices.Equal(float32Values(t, out), want) {
+		t.Fatalf("output = %v, want %v", float32Values(t, out), want)
 	}
 }
 
@@ -171,13 +171,13 @@ func TestEdgeSumMatchesDenseReference(t *testing.T) {
 	}
 	weights32 := []float32{0.7, -1.2, 2.3, 0.4, -3.1, 1.1, -0.6, 2.2, -1.7, 0.9, 1.6, -0.8, 2.5, -1.4, 0.3}
 	values32 := []float32{0.15, -0.25, 0.33, -0.72, 0.9, -1.1}
-	weights, err := NewFloat32Tensor([]int{len(sources)}, weights32)
+	weights, err := NewTensor([]int{len(sources)}, weights32)
 	if err != nil {
-		t.Fatalf("NewFloat32Tensor(weights): %v", err)
+		t.Fatalf("NewTensor(weights): %v", err)
 	}
-	values, err := NewFloat32Tensor([]int{6}, values32)
+	values, err := NewTensor([]int{6}, values32)
 	if err != nil {
-		t.Fatalf("NewFloat32Tensor(values): %v", err)
+		t.Fatalf("NewTensor(values): %v", err)
 	}
 	out, err := EdgeSum(top, weights, values)
 	if err != nil {
@@ -194,7 +194,7 @@ func TestEdgeSumMatchesDenseReference(t *testing.T) {
 			ref[t] += dense[t][s] * float64(values32[s])
 		}
 	}
-	got := out.Data()
+	got := float32Values(t, out)
 	for i := 0; i < 6; i++ {
 		tolerance := 1e-6 * (1 + math.Abs(ref[i]))
 		if math.Abs(float64(got[i])-ref[i]) > tolerance {
@@ -235,7 +235,7 @@ func TestEdgeSumMatchesExactOracle(t *testing.T) {
 						pairs = append(pairs, [2]float32{fixedWeights[e], fixedValues[b*6+sources[e]]})
 					}
 				}
-				got := math.Float32bits(out.Data()[b*6+target])
+				got := math.Float32bits(float32Values(t, out)[b*6+target])
 				want := math.Float32bits(exactSumOracle(pairs))
 				if got != want {
 					t.Fatalf("fixed graph output[%d][%d]: bits = %#08x, want %#08x", b, target, got, want)
@@ -284,7 +284,7 @@ func TestEdgeSumMatchesExactOracle(t *testing.T) {
 					pairs = append(pairs, [2]float32{randomWeights[e], randomValues[b*nodes+randomSources[e]]})
 				}
 			}
-			got := math.Float32bits(randomOut.Data()[b*nodes+target])
+			got := math.Float32bits(float32Values(t, randomOut)[b*nodes+target])
 			want := math.Float32bits(exactSumOracle(pairs))
 			if got != want {
 				t.Fatalf("random graph output[%d][%d]: bits = %#08x, want %#08x", b, target, got, want)
@@ -298,20 +298,20 @@ func TestEdgeSumNodeWithoutIncomingEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEdgeTopology: %v", err)
 	}
-	weights, err := NewFloat32Tensor([]int{1}, []float32{2})
+	weights, err := NewTensor([]int{1}, []float32{2})
 	if err != nil {
-		t.Fatalf("NewFloat32Tensor(weights): %v", err)
+		t.Fatalf("NewTensor(weights): %v", err)
 	}
-	values, err := NewFloat32Tensor([]int{3}, []float32{1, 2, 3})
+	values, err := NewTensor([]int{3}, []float32{1, 2, 3})
 	if err != nil {
-		t.Fatalf("NewFloat32Tensor(values): %v", err)
+		t.Fatalf("NewTensor(values): %v", err)
 	}
 	out, err := EdgeSum(top, weights, values)
 	if err != nil {
 		t.Fatalf("EdgeSum: %v", err)
 	}
-	if want := []float32{0, 2, 0}; !slices.Equal(out.Data(), want) {
-		t.Fatalf("output = %v, want %v", out.Data(), want)
+	if want := []float32{0, 2, 0}; !slices.Equal(float32Values(t, out), want) {
+		t.Fatalf("output = %v, want %v", float32Values(t, out), want)
 	}
 }
 
@@ -320,13 +320,13 @@ func TestEdgeSumRefuses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEdgeTopology: %v", err)
 	}
-	goodWeights, err := NewFloat32Tensor([]int{3}, []float32{0.5, -1, 0.25})
+	goodWeights, err := NewTensor([]int{3}, []float32{0.5, -1, 0.25})
 	if err != nil {
-		t.Fatalf("NewFloat32Tensor(weights): %v", err)
+		t.Fatalf("NewTensor(weights): %v", err)
 	}
-	goodValues, err := NewFloat32Tensor([]int{3}, []float32{0.1, 0.2, 0.3})
+	goodValues, err := NewTensor([]int{3}, []float32{0.1, 0.2, 0.3})
 	if err != nil {
-		t.Fatalf("NewFloat32Tensor(values): %v", err)
+		t.Fatalf("NewTensor(values): %v", err)
 	}
 	boolValues := mustTestBoolTensor(t, []int{3}, []bool{true, false, true})
 
@@ -395,17 +395,17 @@ func TestEdgeSumLargeSparseGraph(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEdgeTopology: %v", err)
 	}
-	weights, err := NewFloat32Tensor([]int{4}, []float32{1, 2, 3, 4})
+	weights, err := NewTensor([]int{4}, []float32{1, 2, 3, 4})
 	if err != nil {
-		t.Fatalf("NewFloat32Tensor(weights): %v", err)
+		t.Fatalf("NewTensor(weights): %v", err)
 	}
 	valuesData := make([]float32, nodes)
 	for i := range valuesData {
 		valuesData[i] = float32(i % 10)
 	}
-	values, err := NewFloat32Tensor([]int{nodes}, valuesData)
+	values, err := NewTensor([]int{nodes}, valuesData)
 	if err != nil {
-		t.Fatalf("NewFloat32Tensor(values): %v", err)
+		t.Fatalf("NewTensor(values): %v", err)
 	}
 
 	runtime.GC()
@@ -423,7 +423,7 @@ func TestEdgeSumLargeSparseGraph(t *testing.T) {
 	if !slices.Equal(out.Shape(), []int{nodes}) {
 		t.Fatalf("output shape = %v, want [%d]", out.Shape(), nodes)
 	}
-	got := out.Data()
+	got := float32Values(t, out)
 	if got[999_999] != float32(float32(1)*valuesData[0]) {
 		t.Fatalf("output[999999] = %v, want %v", got[999_999], float32(float32(1)*valuesData[0]))
 	}

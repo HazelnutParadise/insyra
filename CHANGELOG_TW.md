@@ -40,6 +40,15 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CLI 新增等級檢定：`wilcoxon single <var> <mu>`、`wilcoxon paired <var1> <var2>`、`mannwhitney <var1> <var2>`（都可加 `two-sided`、`greater` 或 `less`）以及 `kruskal <group1> <group2> [groupN]`，分別印出 `W=… p=…`、`U=… p=…`、`H=… df=… p=…`。以前只能從 Go 使用。
 - `fillna … ffill|bfill … missing nan|nil` 不再把另一種缺值算進 `limit`：對 `[1, nil, NaN]` 執行 `fillna x ffill limit 1 missing nan` 會得到 `[1, nil, 1]`，原本 `NaN` 會留著沒填。沒有指定 `limit` 時，以及 `mean`、`median`、`mode`、`interpolate`，結果都不變。
 
+### `ml` 與 `nn`
+
+- `nn.CustomLoss{Name, Loss, Validate}` 讓 `Sequential.Fit` 能用呼叫者在 tape 上計算的 loss 訓練，原本只接受 `CrossEntropy`、`MSE`、`BCEWithLogits`。`Loss` 回傳由 tape 運算組成、型別為 float32 的純量 loss，`Validate` 可選，用來檢查每個批次的目標值，`Name` 用於錯誤訊息。`Fit` 會在第一個批次前拒絕沒有 `Loss` 的 `CustomLoss`，也會拒絕回傳 nil、不是 float32 純量，或不在 tape 上算出的結果。
+- `Sequential.FitContext(ctx, x, y, cfg)` 讓訓練可以中途取消。每個批次前檢查 context；context 結束時回傳 `ctx.Err()` 與已完成的 epoch，模型保留已經做過的更新。`Fit` 就是以 `context.Background()` 呼叫 `FitContext`，結果不變。
+- `nn.LayerNormShape(dims []int)` 對最後幾個維度做正規化，相當於 torch 的 `normalized_shape` 清單。`LayerNorm` 保留 `interface{}` 參數與原本接受的輸入。
+- `nn` 的每個東西只留一個名字。下列名稱改為 Deprecated，意義不變，在 0.4 移除：十二個層建構子的 `New…` 版本（`NewDense`、`NewReLU`、`NewDropout`、`NewFunc`、`NewMultiHeadAttention`、`NewConv2D`、`NewMaxPool2D`、`NewAvgPool2D`、`NewGlobalAvgPool`、`NewBatchNorm2D`、`NewLayerNorm`、`NewEmbedding`；請用沒有 `New` 的名稱）；loss 選擇器 `SoftmaxCrossEntropy`、`MSELoss`、`BCEWithLogitsLoss`（請用 `CrossEntropy`、`MSE`、`BCEWithLogits`）；`Classifier`、`Regressor`（請用 `BoundClassifier`、`BoundRegressor`）；`MaxPoolOptions`、`AveragePoolOptions`（請用 `PoolOptions`）；`DataType` 與常數 `Float32`、`Float16`、`Float64`（請用 `DType` 與 `DType…` 常數）；`NewFloat32Tensor`、`NewTensorWithDType`（請用 `NewTensor`）；以及 `Tensor.Data`（請用 `Tensor.Float32Data`，它會把其他 dtype 回報為錯誤）。
+- 在 nil 的迴歸模型（`LinearModel`、`RidgeModel`、`LogisticModel` 等迴歸系列）上呼叫 `Predict`，或把 nil 模型指標交給 `ExportONNX`，會回傳錯誤，不再 panic。`Features` 仍是模型值上的方法，`Fit` 系列函式的回傳型別不變。
+- `ml.WriteONNX` 改為 Deprecated，`ExportONNX` 是同一個函式，參數仍是 `any`。`DecisionTreeOptions` 的別名 `DecisionTreeClassifierOptions`、`DecisionTreeRegressorOptions` 也改為 Deprecated。兩者都在 0.4 移除。
+
 ### `datafetch`
 
 - 建構子回傳的客戶端改為匯出型別：`TWStock` 回傳 `*TWStockClient`，`YFinance` 回傳 `*YFinanceClient`，它的 `Ticker` 回傳 `*YFTicker`，`TWGeocoding` 回傳 `*TWGeocodingClient`，`GoogleMapsStores` 回傳 `*GoogleMapsStoresClient`。現在可以把客戶端存進自己的 struct 欄位或當成參數傳遞，既有的呼叫不必修改。不是由建構子建立的 TWSE／TPEx 或地理編碼客戶端（例如建構子出錯時回傳的 `nil` 或零值），過去會直接 panic 的地方現在回傳錯誤；原本就有回應的呼叫，回應不變。
@@ -71,6 +80,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 有一欄叫 `name` 的 pandas DataFrame，回傳後不會有表名。pandas 會把欄位當成屬性回傳，過去表名會變成那一欄印出來的內容。直接設在 DataFrame 本身的名稱一樣會成為表名。
 - `RunCodef`、`RunFilef` 與它們的 `Context` 版本的參數，不會再變成 Python 程式碼。過去佔位字元是一個參數接一個參數、對整份程式碼輪流替換，後面的參數替換時，也會改到前面參數插進去的文字：傳入 `$v2` 和 `+__import__('os').system('id')+` 兩段文字，就會執行那個指令。`$v1` 也會吃掉 `$v10` 的開頭。JSON 寫不出來的值（例如 `[]any{文字, math.NaN()}`）會照 Go 的格式原樣寫進程式碼，裡面的文字就成了程式碼。現在佔位字元只在原本的模板裡找一次，依完整編號替換，也只轉換模板用到的參數。寫不成 Python 值的參數，會在 Python 啟動前回傳錯誤，並註明是哪個佔位字元。含有 NaN 或無限大的 `[]float64` 也一樣，過去會寫成 Python 不認得的 `NaN` 或 `+Inf`。
 - 在 ARM64 的 Windows 上用 x86-64 的 Python 也能執行了。polars 的 CPU 檢查把機器讀成 ARM64，在每段程式開頭的 `import polars` 拋出 `unknown feature flag`，所以每次執行都失敗。產生的程式現在會在 ARM64 Windows 上的 x86-64 Python 設定 `POLARS_SKIP_CPU_CHECK=1`，已經設過這個變數時不動它。
+
+### `stats`
+
+- `ChiSquareIndependenceTest` 在同一個 `AtomicDoAll` 裡一次讀取兩個清單，和兩樣本檢定的做法相同。
 
 
 ## v0.3.4

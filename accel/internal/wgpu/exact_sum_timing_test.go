@@ -184,7 +184,10 @@ func exactSumTimingCPU(rows, degree, products int, xs, valueBits []uint32) ([]fl
 	if err != nil {
 		return nil, 0, err
 	}
-	out := result.Data()
+	out, err := result.Float32Data()
+	if err != nil {
+		return nil, 0, fmt.Errorf("Float32Data: %w", err)
+	}
 	if len(out) < rows {
 		return nil, 0, fmt.Errorf("nn.EdgeSum returned %d outputs for %d rows", len(out), rows)
 	}

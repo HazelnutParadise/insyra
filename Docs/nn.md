@@ -188,6 +188,12 @@ if err != nil { log.Fatal(err) }
 _ = result.TrainLosses
 ```
 
+Built-in losses are `CrossEntropy`, `MSE`, and `BCEWithLogits`. For another
+loss, `CustomLoss` lets the caller compute it with tape operations so gradients
+still reach model parameters. `Loss` must return a float32 scalar produced on
+that tape. `Validate` is optional and runs for each training batch and for the
+validation set.
+
 `Seed` is always used as the source for `math/rand`'s `Perm` shuffle. Zero is
 a valid seed, not a request for time-based randomness. The same inputs,
 configuration, and seed reproduce the same parameter trajectory. Each epoch
@@ -196,7 +202,42 @@ validation loss when configured, elapsed time, and rows per second. Set
 `Quiet: true` to suppress that line, or use `Progress: func(nn.FitEpoch) {}`
 for custom reporting; `Quiet` does not suppress the callback. Fit v1 does not
 include schedules, early stopping, checkpointing, datasets, or `DataTable`
-integration.
+integration; a caller can still stop a run from `Progress`, as below.
+
+#### Stopping a run
+
+`FitContext(ctx, x, y, cfg)` is `Fit` under a `context.Context`, and `Fit`
+calls it with `context.Background()`. The context is checked before every
+batch, and after each epoch's last batch, before its validation. When it is
+done, `FitContext` returns `ctx.Err()`, so `errors.Is(err, context.Canceled)`
+or `errors.Is(err, context.DeadlineExceeded)` tells a stop from a failure,
+together with a `FitResult` listing the epochs that finished. The model keeps
+every optimizer step taken before the stop, including the steps of an epoch
+that did not finish. An epoch counts as finished once its batches, its
+validation and its `Progress` call have run, so a run whose every epoch
+finished returns its whole result and no error, even if the context was
+cancelled during the last `Progress` call. A context that is already done
+changes nothing, and a nil context is an error.
+
+Cancelling from `Progress` stops before the next epoch's first batch, so the
+model is exactly what a run of that many epochs would have produced:
+
+```go
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+best := math.Inf(1)
+cfg.Progress = func(epoch nn.FitEpoch) {
+	if epoch.HasValLoss && epoch.ValLoss >= best {
+		cancel() // validation stopped improving
+	}
+	best = math.Min(best, epoch.ValLoss)
+}
+result, err := model.FitContext(ctx, trainX, trainY, cfg)
+if err != nil && !errors.Is(err, context.Canceled) {
+	log.Fatal(err)
+}
+fmt.Println(len(result.Epochs), "epochs ran")
+```
 
 Validation calls `Predict`, so `TrainingOnly` layers such as Dropout are
 structurally excluded from validation just as they are from inference.
@@ -516,7 +557,8 @@ The catalog layers are:
 | `MaxPool2D` / `AvgPool2D` | NCHW pooling; omitted stride defaults to the kernel size, matching torch |
 | `GlobalAvgPool` | Reduces spatial dimensions to `[N,C,1,1]` |
 | `BatchNorm2D(features)` | Batch statistics and running-stat updates in `Forward`; running statistics in `Predict` |
-| `LayerNorm(dims)` | Learned suffix normalization over an integer or shape slice |
+| `LayerNorm(dims)` | Learned suffix normalization; retains the integer and shape-slice inputs |
+| `LayerNormShape(dims)` | Explicit shape form; copies the shape slice |
 | `Embedding(vocab, dim)` | Int64 `[N]` or `[N,S]` lookup with scatter-add gradients |
 | `MultiHeadAttention(embed, heads)` | Mask-free batch-first self-attention over `[batch, sequence, embed]` |
 | `Residual(layers...)` | Adds the input to a composable sub-stack; inference honors nested `EvalLayer` paths |

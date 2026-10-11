@@ -1,6 +1,7 @@
 package nn
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -92,7 +93,9 @@ func (o AdamW) fitOptimizerValidate() error {
 
 func (o AdamW) fitOptimizerStep(tape *Tape) error { return tape.AdamW(o.Rate, o.WeightDecay) }
 
-// LossSpec selects one of the losses already implemented by Tape.
+// LossSpec selects the loss Fit trains with: CrossEntropy, MSE or
+// BCEWithLogits, or a CustomLoss the caller computes on the tape. Its methods
+// are unexported, so CustomLoss is how a caller supplies any other loss.
 type LossSpec interface {
 	fitLossName() string
 	fitLossValidate(*Tensor, *Tensor) error
@@ -156,9 +159,86 @@ func (BCEWithLogits) fitLoss(tape *Tape, prediction, target *Tensor) (*Tensor, e
 	return tape.BCEWithLogitsLoss(prediction, target)
 }
 
-// These aliases keep selector names close to the corresponding tape methods.
+// CustomLoss selects a loss the caller computes on the tape.
+//
+// Loss is required. It returns the batch's loss as a float32 scalar computed
+// with operations on tape, so the reverse pass reaches the parameters.
+// Validate is optional: when set, Fit calls it before Loss on every batch and
+// on the validation set, where the built-in losses check their targets. Name
+// labels the loss in Fit's errors; empty means "CustomLoss".
+type CustomLoss struct {
+	Name     string
+	Loss     func(tape *Tape, prediction, target *Tensor) (*Tensor, error)
+	Validate func(prediction, target *Tensor) error
+}
+
+func (l CustomLoss) fitLossName() string {
+	if l.Name == "" {
+		return "CustomLoss"
+	}
+	return l.Name
+}
+
+// fitLossConfigError reports a CustomLoss that cannot run, so Fit refuses it
+// before any batch.
+func (l CustomLoss) fitLossConfigError() error {
+	if l.Loss == nil {
+		return fmt.Errorf("fit config Loss %s has no Loss function", l.fitLossName())
+	}
+	return nil
+}
+
+func (l CustomLoss) fitLossValidate(prediction, target *Tensor) error {
+	if l.Validate == nil {
+		return nil
+	}
+	return l.Validate(prediction, target)
+}
+
+func (l CustomLoss) fitLoss(tape *Tape, prediction, target *Tensor) (*Tensor, error) {
+	if err := l.fitLossConfigError(); err != nil {
+		return nil, err
+	}
+	loss, err := l.Loss(tape, prediction, target)
+	if err != nil {
+		return nil, err
+	}
+	name := l.fitLossName()
+	if loss == nil {
+		return nil, fmt.Errorf("loss %s returned no tensor", name)
+	}
+	if loss.dtype != DTypeFloat32 || len(loss.shape) != 0 {
+		return nil, fmt.Errorf("loss %s must return a float32 scalar, got %s with shape %v", name, loss.dtype, loss.shape)
+	}
+	if !producedOnTape(tape, loss) {
+		return nil, fmt.Errorf("loss %s returned a tensor no operation on the tape produced, so no gradient would reach the parameters", name)
+	}
+	return loss, nil
+}
+
+// producedOnTape reports whether an operation recorded on tape produced output.
+func producedOnTape(tape *Tape, output *Tensor) bool {
+	for _, op := range tape.ops {
+		if op.output == output {
+			return true
+		}
+	}
+	return false
+}
+
+// SoftmaxCrossEntropy is the same loss selector as CrossEntropy.
+//
+// Deprecated: use CrossEntropy. Removed in 0.4.
 type SoftmaxCrossEntropy = CrossEntropy
+
+// MSELoss is the same loss selector as MSE.
+//
+// Deprecated: use MSE. Removed in 0.4.
 type MSELoss = MSE
+
+// BCEWithLogitsLoss is the same loss selector as BCEWithLogits.
+//
+// Deprecated: use BCEWithLogits. Removed in 0.4.
 type BCEWithLogitsLoss = BCEWithLogits
 
 // FitConfig controls one complete Sequential training run.
@@ -196,13 +276,30 @@ type FitResult struct {
 }
 
 // Fit trains the Sequential using the existing tape forward, loss, backward,
-// and optimizer methods. It is intentionally a thin, deterministic loop.
+// and optimizer methods. It is intentionally a thin, deterministic loop, and
+// it is FitContext with context.Background().
 func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error) {
+	return s.FitContext(context.Background(), x, y, cfg)
+}
+
+// FitContext is Fit under ctx. The context is checked before every batch and
+// once more after each epoch's last batch, before its validation. When it is
+// done, FitContext returns ctx.Err() together with a FitResult listing only
+// the epochs that finished, their validation and Progress call included. The
+// model keeps every optimizer step taken before the check, including the
+// steps of an epoch that did not finish. A run whose every epoch finished
+// returns its result and no error, even if the context was cancelled during
+// the last epoch's Progress call. A context that is already done when
+// FitContext is called changes nothing. A nil context is an error.
+func (s *Sequential) FitContext(ctx context.Context, x, y *Tensor, cfg FitConfig) (*FitResult, error) {
 	if s == nil {
 		return nil, fmt.Errorf("fit sequential is nil")
 	}
 	if s.tape == nil {
 		return nil, fmt.Errorf("fit sequential tape is nil")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("fit context is nil")
 	}
 	if err := validateFitConfig(x, y, cfg); err != nil {
 		return nil, err
@@ -214,6 +311,9 @@ func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error) {
 		if err := validateFitRows(cfg.ValX, cfg.ValY, "validation"); err != nil {
 			return nil, err
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return &FitResult{}, err
 	}
 
 	// Keep the model's tape and parameter registry so optimizer state survives
@@ -232,6 +332,10 @@ func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error) {
 		var lossTotal float64
 		batchCount := 0
 		for start := 0; start < rows; start += cfg.BatchSize {
+			if err := ctx.Err(); err != nil {
+				result.Elapsed = time.Since(runStarted)
+				return result, err
+			}
 			end := start + cfg.BatchSize
 			if end > rows {
 				end = rows
@@ -265,6 +369,11 @@ func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error) {
 			}
 			lossTotal += float64(loss.data[0])
 			batchCount++
+		}
+
+		if err := ctx.Err(); err != nil {
+			result.Elapsed = time.Since(runStarted)
+			return result, err
 		}
 
 		progress := FitEpoch{
@@ -325,6 +434,11 @@ func validateFitConfig(x, y *Tensor, cfg FitConfig) error {
 	}
 	if isNilFitInterface(cfg.Loss) {
 		return fmt.Errorf("fit config Loss is required")
+	}
+	if checked, ok := cfg.Loss.(interface{ fitLossConfigError() error }); ok {
+		if err := checked.fitLossConfigError(); err != nil {
+			return err
+		}
 	}
 	if x == nil {
 		return fmt.Errorf("fit config x is nil")

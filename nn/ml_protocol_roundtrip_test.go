@@ -285,7 +285,7 @@ func dlInputsForTable(model *nn.Model, features []string, table *insyra.DataTabl
 				}
 				data[index] = float32(number)
 			}
-			tensor, err := nn.NewFloat32Tensor(shape, data)
+			tensor, err := nn.NewTensor(shape, data)
 			if err != nil {
 				return nil, err
 			}
