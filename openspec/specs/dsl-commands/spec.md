@@ -2,7 +2,9 @@
 
 ## Purpose
 TBD - created by archiving change cli-repl. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Load data from file
 系統 SHALL 提供 `load` 命令從檔案載入資料為 DataTable。
 
@@ -430,3 +432,22 @@ The DSL and REPL SHALL expose acceleration inspection commands for device state 
 - **WHEN** a user runs `show accel.cache`
 - **THEN** the runtime prints acceleration cache budget, residency summary, and related metrics
 
+### Requirement: A command that stores several variables names each one
+
+A command that stores variables besides its `as <var>` result SHALL name every variable it stores in its success line.
+
+#### Scenario: kmeans names all nine variables
+- **WHEN** the user runs `kmeans t 2 as km`
+- **THEN** the output lists `km` and the eight `km_*` variables, and all nine are stored
+
+#### Scenario: quant factor names its alpha table
+- **WHEN** the user runs `quant factor a f as fm`
+- **THEN** the output lists `fm` and `fm_alpha`
+
+#### Scenario: quant portfolio names its stats table
+- **WHEN** the user runs `quant portfolio rets maxsharpe rf 0.0001 as w`
+- **THEN** the output lists `w` and `w_stats`
+
+#### Scenario: A stored variable replaces one of the same name
+- **WHEN** a variable `km_size` already exists and the user runs `kmeans t 2 as km`
+- **THEN** the output names `km_size`, and `km_size` holds the new result
