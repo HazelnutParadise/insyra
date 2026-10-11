@@ -18,7 +18,10 @@ func init() {
 			"wilcoxon paired <var1> <var2> [two-sided|greater|less]     paired samples",
 		},
 		Examples: []string{"insyra wilcoxon single ratings 3", "insyra wilcoxon paired before after less"},
-		Run:      runWilcoxonCommand,
+		// mu may be negative; a leading '-' must reach the command, not the
+		// flag parser.
+		DisableFlagParsing: true,
+		Run:                runWilcoxonCommand,
 	})
 	_ = Register(&CommandHandler{
 		Name:        "mannwhitney",
@@ -43,7 +46,7 @@ func runWilcoxonCommand(ctx *ExecContext, args []string) error {
 	mode := strings.ToLower(args[0])
 	switch mode {
 	case "single":
-		if len(args) < 3 {
+		if len(args) < 3 || len(args) > 4 {
 			return fmt.Errorf("usage: wilcoxon single <var> <mu> [two-sided|greater|less]")
 		}
 		dl, err := getDataListVar(ctx, args[1])
@@ -69,7 +72,7 @@ func runWilcoxonCommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintf(ctx.Output, "W=%v p=%v\n", result.Statistic, result.PValue)
 		return nil
 	case "paired":
-		if len(args) < 3 {
+		if len(args) < 3 || len(args) > 4 {
 			return fmt.Errorf("usage: wilcoxon paired <var1> <var2> [two-sided|greater|less]")
 		}
 		dl1, err := getDataListVar(ctx, args[1])
@@ -100,7 +103,7 @@ func runWilcoxonCommand(ctx *ExecContext, args []string) error {
 }
 
 func runMannWhitneyCommand(ctx *ExecContext, args []string) error {
-	if len(args) < 2 {
+	if len(args) < 2 || len(args) > 3 {
 		return fmt.Errorf("usage: mannwhitney <var1> <var2> [two-sided|greater|less]")
 	}
 	a, err := getDataListVar(ctx, args[0])

@@ -157,6 +157,12 @@ func TwoWayANOVAFromTable(dt insyra.IDataTable, valueCol, factorACol, factorBCol
 		return nil, errors.New("factor B has fewer than two levels")
 	}
 
+	// Check that every combination was observed before allocating one cell
+	// per combination: a table whose factors are almost all distinct would
+	// otherwise allocate len(a)*len(b) cells only to report a missing one.
+	if i, j, missing := firstMissingCombination(a.of, b.of, len(a.levels), len(b.levels)); missing {
+		return nil, fmt.Errorf("no observations for A=%v, B=%v", a.levels[i], b.levels[j])
+	}
 	nCells := len(a.levels) * len(b.levels)
 	cellValues := make([][]float64, nCells)
 
@@ -199,32 +205,26 @@ func readRepeatedMeasures(dt insyra.IDataTable, valueCol, conditionCol, subjectC
 	if n < 2 {
 		return nil, errors.New("at least two subjects are required")
 	}
-	rowOf := make([][]int, n)
-	for i := range rowOf {
-		rowOf[i] = make([]int, k)
-		for j := range rowOf[i] {
-			rowOf[i][j] = -1
+	// Find a repeated or a missing measurement before allocating the
+	// subject-by-condition grid, so a table whose subjects or conditions are
+	// almost all distinct is refused without allocating n*k cells.
+	firstRow := make(map[[2]int]int, len(values))
+	for r := range values {
+		key := [2]int{subj.of[r], cond.of[r]}
+		if prev, seen := firstRow[key]; seen {
+			return nil, fmt.Errorf("subject %v has more than one observation for condition %v (rows %d and %d)", subj.levels[key[0]], cond.levels[key[1]], prev+1, r+1)
 		}
+		firstRow[key] = r
+	}
+	if s, c, missing := firstMissingCombination(subj.of, cond.of, n, k); missing {
+		return nil, fmt.Errorf("subject %v has no observation for condition %v", subj.levels[s], cond.levels[c])
 	}
 	grid := make([][]float64, n)
 	for i := range grid {
 		grid[i] = make([]float64, k)
 	}
 	for r, v := range values {
-		s := subj.of[r]
-		c := cond.of[r]
-		if rowOf[s][c] >= 0 {
-			return nil, fmt.Errorf("subject %v has more than one observation for condition %v (rows %d and %d)", subj.levels[s], cond.levels[c], rowOf[s][c]+1, r+1)
-		}
-		rowOf[s][c] = r
-		grid[s][c] = v
-	}
-	for s := 0; s < n; s++ {
-		for c := 0; c < k; c++ {
-			if rowOf[s][c] < 0 {
-				return nil, fmt.Errorf("subject %v has no observation for condition %v", subj.levels[s], cond.levels[c])
-			}
-		}
+		grid[subj.of[r]][cond.of[r]] = v
 	}
 	lists := make([]insyra.IDataList, n)
 	for s := 0; s < n; s++ {
@@ -259,4 +259,29 @@ func FriedmanTestFromTable(dt insyra.IDataTable, valueCol, conditionCol, subject
 		return nil, err
 	}
 	return FriedmanTest(lists...)
+}
+
+// firstMissingCombination reports the first combination of an outer level
+// and an inner level, in row-major order, that no row holds, given each row's
+// outer and inner level numbers. It uses memory in proportion to the rows,
+// not to nOuter*nInner.
+func firstMissingCombination(outerOf, innerOf []int, nOuter, nInner int) (int, int, bool) {
+	seen := make([]map[int]struct{}, nOuter)
+	for r, o := range outerOf {
+		if seen[o] == nil {
+			seen[o] = make(map[int]struct{})
+		}
+		seen[o][innerOf[r]] = struct{}{}
+	}
+	for o := 0; o < nOuter; o++ {
+		if len(seen[o]) == nInner {
+			continue
+		}
+		for in := 0; in < nInner; in++ {
+			if _, ok := seen[o][in]; !ok {
+				return o, in, true
+			}
+		}
+	}
+	return 0, 0, false
 }

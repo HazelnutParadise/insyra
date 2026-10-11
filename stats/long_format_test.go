@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -766,5 +767,32 @@ func TestLongFormatIntegerLevelsFollowGoMapKeyTypes(t *testing.T) {
 	}
 	if r.FactorA.DF != 3 {
 		t.Errorf("FactorA.DF: got %d, want 3 (int and int64 levels remain distinct)", r.FactorA.DF)
+	}
+}
+
+// A table whose factors are almost all distinct is refused without first
+// allocating one cell per combination of levels.
+func TestLongFormatRefusesSparseTablesWithoutAllocatingEveryCell(t *testing.T) {
+	const n = 5000
+	values := make([]any, n)
+	a := make([]any, n)
+	b := make([]any, n)
+	for i := range n {
+		values[i] = float64(i)
+		a[i] = i
+		b[i] = i
+	}
+	dt := insyra.NewDataTable(insyra.NewDataList(values...), insyra.NewDataList(a...), insyra.NewDataList(b...))
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, errTwo := stats.TwoWayANOVAFromTable(dt, "A", "B", "C")
+	_, errRep := stats.RepeatedMeasuresANOVAFromTable(dt, "A", "B", "C")
+	runtime.ReadMemStats(&after)
+	if errTwo == nil || errRep == nil {
+		t.Fatalf("sparse tables were accepted: two-way %v, repeated %v", errTwo, errRep)
+	}
+	// n*n cells would be 25 million slice headers, hundreds of megabytes.
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > 64<<20 {
+		t.Errorf("refusing a sparse table allocated %d bytes", grew)
 	}
 }

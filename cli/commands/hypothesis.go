@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
@@ -254,7 +255,9 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintf(ctx.Output, "F=%v p=%v\n", result.Factor.F, result.Factor.P)
 		return nil
 	case "twoway":
-		if len(args) >= 2 {
+		// A first argument that reads as a level count is the list form, as
+		// it always was, even when a table happens to be named like a number.
+		if len(args) >= 2 && !isIntArg(args[1]) {
 			if table, ok := ctx.Vars[args[1]].(*insyra.DataTable); ok {
 				if len(args) != 5 {
 					return fmt.Errorf("usage: anova twoway <table> <value> <factorA> <factorB>")
@@ -490,4 +493,11 @@ func printFriedmanResult(ctx *ExecContext, result *stats.FriedmanTestResult) {
 		df = *result.DF
 	}
 	_, _ = fmt.Fprintf(ctx.Output, "Q=%v df=%v p=%v\n", result.Statistic, df, result.PValue)
+}
+
+// isIntArg reports whether arg reads as an integer, the way the list forms'
+// level counts are read.
+func isIntArg(arg string) bool {
+	_, err := strconv.Atoi(arg)
+	return err == nil
 }
