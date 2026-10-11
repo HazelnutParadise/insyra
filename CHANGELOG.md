@@ -91,6 +91,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `LPModel.WriteLP(w)` writes a model in LP format to any `io.Writer`. `GenerateLPFile` keeps its signature and writes the same file as before.
 - `ParseLingo(r)` and `ParseLingoFile(path)` read a LINGO model and return an error for a statement they cannot read, naming its line, where the underscore readers drop it. They also read `@GIN`, `@FREE` and `@BND`. `ParseLingoModel_txt` and `ParseLingoModel_str` keep their behaviour and are deprecated; they are removed in 0.4.
+- `GenerateLPFile` checks the objective type before it opens the file. A model with an unknown objective type cut an existing LP file down to its two-line banner; it now leaves the file alone and creates none.
 
 ### `py`
 

@@ -91,6 +91,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `LPModel.WriteLP(w)` 把模型以 LP 格式寫到任何 `io.Writer`。`GenerateLPFile` 簽名不變，寫出的檔案和以前相同。
 - `ParseLingo(r)` 與 `ParseLingoFile(path)` 讀取 LINGO 模型，遇到讀不懂的敘述會回傳指出行號的錯誤；底線名稱的舊讀法則是直接略過。新讀法也讀 `@GIN`、`@FREE`、`@BND`。`ParseLingoModel_txt` 與 `ParseLingoModel_str` 行為不變，改為 Deprecated，在 0.4 移除。
+- `GenerateLPFile` 先檢查目標函數型別再開檔。目標型別不合法的模型原本會把既有的 LP 檔截成只剩兩行標頭；現在不動既有檔案，也不建立新檔。
 
 ### `py`
 
