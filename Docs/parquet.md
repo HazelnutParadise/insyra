@@ -150,7 +150,7 @@ for an unsupported column, but records no reason.
 func Write(dt insyra.IDataTable, path string) error
 ```
 
-**Description:** Writes an `insyra.IDataTable` to a Parquet file. The file footer is written when the writer closes, so an error from that close is returned rather than only logged.
+**Description:** Writes an `insyra.IDataTable` to a Parquet file, opening the file in place as it always has. `WriteContext` accepts cancellation and optional `WriteOptions`, and writes to a same-directory temporary file that replaces the target only once it is complete, so a failed write leaves the old file untouched.
 
 **Parameters:**
 
@@ -160,6 +160,21 @@ func Write(dt insyra.IDataTable, path string) error
 **Returns:**
 
 - `error`: Error when the operation fails.
+
+`WriteTo` and `WriteToContext` write to any `io.Writer` without closing it. `WriteContext` and `WriteToContext` accept an optional `WriteOptions` value. `Compression` supports uncompressed (default), Snappy, Gzip, Brotli, and Zstandard. `RowGroupSize` sets the maximum rows per row group; zero uses 1,048,576. Negative sizes and more than one options value return an error.
+
+```go
+func WriteContext(ctx context.Context, dt insyra.IDataTable, path string, opts ...WriteOptions) error
+func WriteTo(dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error
+func WriteToContext(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error
+```
+
+`ReadFrom` reads from any `io.ReaderAt` and its total size. `StreamFrom` uses the same two-channel contract as `Stream`.
+
+```go
+func ReadFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions) (*insyra.DataTable, error)
+func StreamFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error)
+```
 
 ### Stream
 

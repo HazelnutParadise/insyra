@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/apache/arrow/go/v17/parquet"
-	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	"github.com/apache/arrow-go/v18/parquet"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
 
 func writeRows(t *testing.T, n int, rowGroupSize int64) string {

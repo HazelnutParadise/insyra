@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
 // The whole CCL bridge — FilterWithCCL, ApplyCCL and the 17 parquetContext
@@ -287,6 +287,25 @@ func TestApplyCCL_AddsAColumn(t *testing.T) {
 	}
 }
 
+func TestApplyCCL_CurrentRowValuesRemainPerRow(t *testing.T) {
+	path := fixture(t)
+	if err := ApplyCCL(context.Background(), path, "NEW('r') = @"); err != nil {
+		t.Fatalf("ApplyCCL: %v", err)
+	}
+	dt, err := Read(context.Background(), path, ReadOptions{})
+	if err != nil {
+		t.Fatalf("reading back: %v", err)
+	}
+	if got, want := colValues(t, dt, "r"), []any{
+		"[1 10 a true]",
+		"[2 20 b false]",
+		"[3 30 c true]",
+		"[4 40 d false]",
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("r: got %#v (%T), want %#v (%T)", got, got, want, want)
+	}
+}
+
 func TestApplyCCL_OverwritesAnExistingColumn(t *testing.T) {
 	path := fixture(t)
 
@@ -396,7 +415,7 @@ func TestApplyCCL_MissingFile(t *testing.T) {
 
 // record builds the same four columns as the fixture as an in-memory Arrow
 // record. The caller releases it.
-func record(t *testing.T) arrow.Record {
+func record(t *testing.T) arrow.RecordBatch {
 	t.Helper()
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "num", Type: arrow.PrimitiveTypes.Int64},
@@ -411,7 +430,7 @@ func record(t *testing.T) arrow.Record {
 	b.Field(1).(*array.Float64Builder).AppendValues([]float64{10, 20, 30, 40}, nil)
 	b.Field(2).(*array.StringBuilder).AppendValues([]string{"a", "b", "c", "d"}, nil)
 	b.Field(3).(*array.BooleanBuilder).AppendValues([]bool{true, false, true, false}, nil)
-	return b.NewRecord()
+	return b.NewRecordBatch()
 }
 
 func newTestContext(t *testing.T) *parquetContext {

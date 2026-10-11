@@ -5,21 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/ccl"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
 
 // parquetContext implements ccl.Context for direct parquet file operations
 type parquetContext struct {
 	// Current record batch
-	record arrow.Record
+	record arrow.RecordBatch
 
 	// Column metadata
 	colNames   []string
@@ -30,7 +32,10 @@ type parquetContext struct {
 	currentRow []any
 }
 
-func newParquetContext(record arrow.Record, colNames []string) *parquetContext {
+// cclBatchSize is the fixed number of rows read and evaluated per CCL batch.
+const cclBatchSize = 1000
+
+func newParquetContext(record arrow.RecordBatch, colNames []string) *parquetContext {
 	colNameMap := make(map[string]int)
 	for i, name := range colNames {
 		colNameMap[name] = i
@@ -93,7 +98,7 @@ func (c *parquetContext) GetRowIndex() int {
 }
 
 func (c *parquetContext) GetCurrentRow() any {
-	return c.currentRow
+	return slices.Clone(c.currentRow)
 }
 
 func (c *parquetContext) GetCell(colIndex, rowIndex int) (any, error) {
@@ -227,7 +232,7 @@ func (c *parquetContext) GetAllData() ([]any, error) {
 	return allData, nil
 }
 
-// applyBatchCCL applies CCL transformations to a single arrow.Record batch
+// applyBatchCCL applies CCL transformations to a single arrow.RecordBatch batch
 // resolveAssignTarget maps a CCL assignment target to an existing column name.
 // A named target is encoded by the parser as "'name'" (surrounded by single
 // quotes); a column-index target is the bare Excel letter (A, B, ..., AA).
@@ -253,7 +258,7 @@ func resolveAssignTarget(target string, colNames []string) (string, bool) {
 	return "", false
 }
 
-func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, compiledNodes []ccl.CCLNode) (arrow.Record, error) {
+func applyBatchCCL(rec arrow.RecordBatch, pqCtx *parquetContext, colNames []string, compiledNodes []ccl.CCLNode) (arrow.RecordBatch, error) {
 	numRows := int(rec.NumRows())
 
 	// Build column name map
@@ -337,12 +342,12 @@ func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, c
 		}
 	}
 
-	// Convert result columns to arrow.Record
+	// Convert result columns to arrow.RecordBatch
 	return buildArrowRecord(resultCols, colNames, rec.Schema())
 }
 
-// buildArrowRecord constructs an arrow.Record from column data
-func buildArrowRecord(cols map[string][]any, colNames []string, originalSchema *arrow.Schema) (arrow.Record, error) {
+// buildArrowRecord constructs an arrow.RecordBatch from column data
+func buildArrowRecord(cols map[string][]any, colNames []string, originalSchema *arrow.Schema) (arrow.RecordBatch, error) {
 	mem := memory.DefaultAllocator
 
 	// Build schema for result
@@ -375,7 +380,7 @@ func buildArrowRecord(cols map[string][]any, colNames []string, originalSchema *
 		arrays[i] = arr
 	}
 
-	return array.NewRecord(schema, arrays, int64(len(cols[colNames[0]]))), nil
+	return array.NewRecordBatch(schema, arrays, int64(len(cols[colNames[0]]))), nil
 }
 
 // buildArrowArray constructs an arrow.Array from Go slice
@@ -453,7 +458,7 @@ func buildArrowArray(mem memory.Allocator, data []any, dtype arrow.DataType) (ar
 //
 //	Will not modify the original parquet file.
 func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra.DataTable, error) {
-	batchSize := 1000
+	batchSize := cclBatchSize
 
 	// Compile CCL expression once
 	compiledExpr, err := ccl.CompileExpression(filterExpr)
@@ -571,7 +576,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 //
 //	The input file will be overwritten.
 func ApplyCCL(ctx context.Context, path string, cclScript string) error {
-	batchSize := 1000
+	batchSize := cclBatchSize
 
 	// Compile CCL statements once
 	compiledNodes, err := ccl.CompileMultiline(cclScript)
@@ -580,10 +585,19 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 	}
 
 	// Create temporary output file
-	tmpPath := path + ".tmp"
-	outFile, err := os.Create(tmpPath)
+	// A name of its own in the same directory, so a file the caller keeps at
+	// <path>.tmp is left alone; the result keeps the original file's mode.
+	outFile, err := os.CreateTemp(filepath.Dir(path), ".insyra-*.tmp")
 	if err != nil {
 		return fmt.Errorf("failed to create temporary output file: %w", err)
+	}
+	tmpPath := outFile.Name()
+	if info, statErr := os.Stat(path); statErr == nil {
+		if err := outFile.Chmod(info.Mode().Perm()); err != nil {
+			_ = outFile.Close()
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("failed to set the temporary file's mode: %w", err)
+		}
 	}
 	defer func() {
 		// On the success path writer.Close() already closed this same fd (see

@@ -59,12 +59,22 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `DiagOf`、`DiagMatrix`、`DiagMatrixSize`、`IdentityMatrix` 以單一型別建立與讀取對角線，大小小於 1 或矩陣為 nil 時回傳錯誤而不是 panic。`Diag(x any, dims ...int)` 改為 Deprecated，行為不變（包括大小小於 1 時 panic），在 0.4 移除。
 - `TwoWayANOVAFromTable(dt, valueCol, factorACol, factorBCol)`、`RepeatedMeasuresANOVAFromTable(dt, valueCol, conditionCol, subjectCol)` 與 `FriedmanTestFromTable(dt, valueCol, conditionCol, subjectCol)` 讀取每列一筆觀測值的表格，也就是 R 的 `aov` 與 `friedman.test` 讀的形狀，不必再手動拆成各格或每位受試者一個清單。欄位指定為既有欄的 Excel 欄字母，找不到時再比完全相同的欄名。因子層級依 `ToMapKey` 比較，所以 `int(1)` 與 `int64(1)` 是不同層級。`nil` 或 `NaN` 層級、不是有限數字的值、沒有觀測值的組合、各格內沒有重複觀測的雙因子表，以及缺少某個條件或同一條件量了兩次的受試者，都會被拒絕。結果與用同樣資料呼叫 `TwoWayANOVA`、`RepeatedMeasuresANOVA`、`FriedmanTest` 相同。
+- `ChiSquareIndependenceTest` 在同一個 `AtomicDoAll` 裡一次讀取兩個清單，和兩樣本檢定的做法相同。
 
 ### `csvxl`
 
 - 編碼參數給空字串，或任何大小寫的 `"auto"`，現在都代表自動偵測，跟核心的 CSV 讀取函式一致。以前空字串代表直接當成 UTF-8，`"AUTO"` 則會被當成不支援的編碼而報錯。
 - 活頁簿唯一的工作表就算名叫 `__insyra_placeholder__`，`AppendCsvToExcel` 也能取代它。以前它用的暫存工作表名稱剛好撞名，結果舊的儲存格都留下來。
 - 函式名稱改用 Go 的拼法：`CSVToExcel`、`AppendCSVToExcel`、`CSVDirToExcel`、`ReadCSVToString` 是原本的函式換上新名字，`CsvToExcel`、`AppendCsvToExcel`、`EachCsvToOneExcel`、`ReadCsvToString` 改為 Deprecated 包裝，照常可用。新增 `ExcelToCSV` 與 `ExcelDirToCSV`，接受 `ExcelToCSVOptions{Sheets, AllowFormulas}`：試算表會當成公式執行的文字（以 `=`、`+`、`-`、`@` 開頭且不是數字）預設會在前面加單引號，設定 `AllowFormulas` 才原樣寫出；指定活頁簿沒有的工作表會回錯誤；檔名保留給定的副檔名。`ExcelToCsv` 與 `EachExcelToCsv` 改為 Deprecated，簽名與輸出不變，CLI 的 `convert` 仍使用它們。
+
+### `parquet`
+
+- `ReadFrom` 與 `StreamFrom` 從任何 `io.ReaderAt` 讀取 Parquet 檔，`WriteTo` 寫到任何 `io.Writer` 且不會關閉它。這條線的 `StreamFrom` 和 `Stream` 一樣用 channel 傳送批次。
+- 新的 `WriteContext` 與 `WriteToContext` 搭配 `WriteOptions{Compression, RowGroupSize}` 指定壓縮方式與 row group 大小，context 結束時停止。`WriteContext` 先寫到同目錄的暫存檔，完整寫完才換上，寫入失敗時舊檔不受影響。`Write(dt, path)` 簽名不變，仍是原地寫入。
+- Arrow 讀不了的檔案在每個讀取函式都回傳錯誤，不再 panic；row group 的列數比中繼資料少時，回傳指出哪些 row group 的錯誤，不再靜默少讀。
+- `ApplyCCL` 使用 `@` 時每一列拿到自己的值；原本同一批 1,000 列都拿到該批最後一列的值。
+- Arrow 依賴從 `github.com/apache/arrow/go/v17` 換成 `github.com/apache/arrow-go/v18` v18.8.0。讀出的表格相同，duration 欄仍讀成 `int64` 計數。
+- `ApplyCCL` 改用同目錄裡自己專用名稱的暫存檔，並保留原檔的權限。原本固定寫到 `<path>.tmp`，會覆寫再刪掉使用者自己放在那個名稱的檔案。
 
 ### `pd`
 
@@ -80,10 +90,6 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 有一欄叫 `name` 的 pandas DataFrame，回傳後不會有表名。pandas 會把欄位當成屬性回傳，過去表名會變成那一欄印出來的內容。直接設在 DataFrame 本身的名稱一樣會成為表名。
 - `RunCodef`、`RunFilef` 與它們的 `Context` 版本的參數，不會再變成 Python 程式碼。過去佔位字元是一個參數接一個參數、對整份程式碼輪流替換，後面的參數替換時，也會改到前面參數插進去的文字：傳入 `$v2` 和 `+__import__('os').system('id')+` 兩段文字，就會執行那個指令。`$v1` 也會吃掉 `$v10` 的開頭。JSON 寫不出來的值（例如 `[]any{文字, math.NaN()}`）會照 Go 的格式原樣寫進程式碼，裡面的文字就成了程式碼。現在佔位字元只在原本的模板裡找一次，依完整編號替換，也只轉換模板用到的參數。寫不成 Python 值的參數，會在 Python 啟動前回傳錯誤，並註明是哪個佔位字元。含有 NaN 或無限大的 `[]float64` 也一樣，過去會寫成 Python 不認得的 `NaN` 或 `+Inf`。
 - 在 ARM64 的 Windows 上用 x86-64 的 Python 也能執行了。polars 的 CPU 檢查把機器讀成 ARM64，在每段程式開頭的 `import polars` 拋出 `unknown feature flag`，所以每次執行都失敗。產生的程式現在會在 ARM64 Windows 上的 x86-64 Python 設定 `POLARS_SKIP_CPU_CHECK=1`，已經設過這個變數時不動它。
-
-### `stats`
-
-- `ChiSquareIndependenceTest` 在同一個 `AtomicDoAll` 裡一次讀取兩個清單，和兩樣本檢定的做法相同。
 
 
 ## v0.3.4
