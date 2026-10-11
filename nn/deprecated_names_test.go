@@ -66,7 +66,7 @@ func nnDocs(t *testing.T, file string) map[string]string {
 }
 
 func TestDeprecatedNNNamesSayWhatReplacedThem(t *testing.T) {
-	const removal = "Removed in Insyra 0.4."
+	const removal = "Removed in 0.4."
 	deprecated := []struct{ file, name, notice string }{
 		{"layers.go", "NewDense", "Deprecated: use Dense"},
 		{"layers.go", "NewReLU", "Deprecated: use ReLU"},

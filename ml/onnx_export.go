@@ -42,7 +42,7 @@ func ExportONNX(w io.Writer, fitted any) error {
 
 // WriteONNX writes a fitted model the way ExportONNX does.
 //
-// Deprecated: use ExportONNX. Removed in Insyra 0.4.
+// Deprecated: use ExportONNX. Removed in 0.4.
 func WriteONNX(w io.Writer, fitted any) error { return ExportONNX(w, fitted) }
 
 func (m *LinearModel) ExportONNX(w io.Writer) error { return ExportONNX(w, m) }

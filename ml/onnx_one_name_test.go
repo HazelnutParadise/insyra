@@ -47,7 +47,7 @@ func mlDocs(t *testing.T, file string) map[string]string {
 }
 
 func TestDeprecatedMLNamesSayWhatReplacedThem(t *testing.T) {
-	const removal = "Removed in Insyra 0.4."
+	const removal = "Removed in 0.4."
 	deprecated := []struct{ file, name, notice string }{
 		{"onnx_export.go", "WriteONNX", "Deprecated: use ExportONNX"},
 		{"decision_tree.go", "DecisionTreeClassifierOptions", "Deprecated: use DecisionTreeOptions"},

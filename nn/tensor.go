@@ -34,21 +34,21 @@ const (
 const (
 	// Float32 is DTypeFloat32.
 	//
-	// Deprecated: use DTypeFloat32. Removed in Insyra 0.4.
+	// Deprecated: use DTypeFloat32. Removed in 0.4.
 	Float32 = DTypeFloat32
 	// Float16 is DTypeFloat16.
 	//
-	// Deprecated: use DTypeFloat16. Removed in Insyra 0.4.
+	// Deprecated: use DTypeFloat16. Removed in 0.4.
 	Float16 = DTypeFloat16
 	// Float64 is DTypeFloat64.
 	//
-	// Deprecated: use DTypeFloat64. Removed in Insyra 0.4.
+	// Deprecated: use DTypeFloat64. Removed in 0.4.
 	Float64 = DTypeFloat64
 )
 
 // DataType is the same type as DType.
 //
-// Deprecated: use DType. Removed in Insyra 0.4.
+// Deprecated: use DType. Removed in 0.4.
 type DataType = DType
 
 // Tensor is a row-major, N-dimensional tensor. Its data slice is private so a
@@ -74,7 +74,7 @@ func NewTensor(shape []int, data []float32) (*Tensor, error) {
 
 // NewFloat32Tensor constructs the same tensor as NewTensor.
 //
-// Deprecated: use NewTensor. Removed in Insyra 0.4.
+// Deprecated: use NewTensor. Removed in 0.4.
 func NewFloat32Tensor(shape []int, data []float32) (*Tensor, error) {
 	return newFloat32Tensor(shape, data)
 }
@@ -99,7 +99,7 @@ func NewBoolTensor(shape []int, data []bool) (*Tensor, error) {
 //
 // Deprecated: use NewTensor, which builds the same tensor; NewInt64Tensor,
 // NewStringTensor and NewBoolTensor build the other dtypes. Removed in
-// Insyra 0.4.
+// 0.4.
 func NewTensorWithDType(dtype DType, shape []int, data []float32) (*Tensor, error) {
 	if dtype != DTypeFloat32 {
 		return nil, unsupportedDTypeError(dtype)
@@ -136,7 +136,7 @@ func (t *Tensor) Strides() []int {
 // another dtype.
 //
 // Deprecated: use Float32Data, which reports a nil tensor or another dtype as
-// an error instead of returning nil. Removed in Insyra 0.4.
+// an error instead of returning nil. Removed in 0.4.
 func (t *Tensor) Data() []float32 {
 	if t == nil || t.dtype != DTypeFloat32 {
 		return nil

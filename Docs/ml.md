@@ -364,7 +364,7 @@ The default `MaxBins` is 32. `MaxDepth` and `MaxLeaves` use zero for unlimited;
 `MinSamplesLeaf` defaults to 1. Both tree functions take `DecisionTreeOptions`.
 Deprecated: `DecisionTreeClassifierOptions` and `DecisionTreeRegressorOptions`
 are the same type under two more names; they still work in this release and
-are removed in Insyra 0.4.
+are removed in 0.4.
 
 At each split, missing values are sent to the branch with the better gain. A
 tie, or a split that saw no missing values while fitting, defaults to the left
@@ -566,7 +566,7 @@ if err := ml.ExportONNX(&modelFile, model); err != nil {
 `Estimator.Fit`, and every exportable model also has the method
 `model.ExportONNX(w)`. A nil model is an error. Deprecated: `WriteONNX` is the
 same export under another name, taking `any`; it still works in this release
-and is removed in Insyra 0.4.
+and is removed in 0.4.
 
 `LinearModel`, `RidgeModel`, `LassoModel`, `WeightedLinearModel`,
 `LogisticModel`, `DecisionTreeClassifier`, `DecisionTreeRegressor`,

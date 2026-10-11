@@ -228,17 +228,17 @@ func producedOnTape(tape *Tape, output *Tensor) bool {
 
 // SoftmaxCrossEntropy is the same loss selector as CrossEntropy.
 //
-// Deprecated: use CrossEntropy. Removed in Insyra 0.4.
+// Deprecated: use CrossEntropy. Removed in 0.4.
 type SoftmaxCrossEntropy = CrossEntropy
 
 // MSELoss is the same loss selector as MSE.
 //
-// Deprecated: use MSE. Removed in Insyra 0.4.
+// Deprecated: use MSE. Removed in 0.4.
 type MSELoss = MSE
 
 // BCEWithLogitsLoss is the same loss selector as BCEWithLogits.
 //
-// Deprecated: use BCEWithLogits. Removed in Insyra 0.4.
+// Deprecated: use BCEWithLogits. Removed in 0.4.
 type BCEWithLogitsLoss = BCEWithLogits
 
 // FitConfig controls one complete Sequential training run.

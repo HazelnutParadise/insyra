@@ -53,7 +53,7 @@ func Dense(in, out int) Layer {
 
 // NewDense builds the same layer as Dense.
 //
-// Deprecated: use Dense. Removed in Insyra 0.4.
+// Deprecated: use Dense. Removed in 0.4.
 func NewDense(in, out int) Layer { return Dense(in, out) }
 
 func (l *denseLayer) Build(t *Tape) error {
@@ -149,7 +149,7 @@ func ReLU() Layer {
 
 // NewReLU builds the same layer as ReLU.
 //
-// Deprecated: use ReLU. Removed in Insyra 0.4.
+// Deprecated: use ReLU. Removed in 0.4.
 func NewReLU() Layer { return ReLU() }
 
 // NewSigmoid creates a differentiable sigmoid activation layer.
@@ -176,7 +176,7 @@ func Dropout(p float32) Layer { return &dropoutLayer{p: p} }
 
 // NewDropout builds the same layer as Dropout.
 //
-// Deprecated: use Dropout. Removed in Insyra 0.4.
+// Deprecated: use Dropout. Removed in 0.4.
 func NewDropout(p float32) Layer { return Dropout(p) }
 
 func (l *dropoutLayer) Build(*Tape) error {
@@ -221,7 +221,7 @@ func Func(fn func(*Tape, *Tensor) (*Tensor, error)) Layer { return &funcLayer{fn
 
 // NewFunc builds the same layer as Func.
 //
-// Deprecated: use Func. Removed in Insyra 0.4.
+// Deprecated: use Func. Removed in 0.4.
 func NewFunc(fn func(*Tape, *Tensor) (*Tensor, error)) Layer { return Func(fn) }
 
 func (l *funcLayer) Build(*Tape) error {

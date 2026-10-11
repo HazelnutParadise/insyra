@@ -27,7 +27,7 @@ func MultiHeadAttention(embed, heads int) Layer {
 
 // NewMultiHeadAttention builds the same layer as MultiHeadAttention.
 //
-// Deprecated: use MultiHeadAttention. Removed in Insyra 0.4.
+// Deprecated: use MultiHeadAttention. Removed in 0.4.
 func NewMultiHeadAttention(embed, heads int) Layer {
 	return MultiHeadAttention(embed, heads)
 }

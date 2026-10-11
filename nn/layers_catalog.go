@@ -28,7 +28,7 @@ func Conv2D(in, out, kernel int, options ...ConvOptions) Layer {
 
 // NewConv2D builds the same layer as Conv2D.
 //
-// Deprecated: use Conv2D. Removed in Insyra 0.4.
+// Deprecated: use Conv2D. Removed in 0.4.
 func NewConv2D(in, out, kernel int, options ...ConvOptions) Layer {
 	return Conv2D(in, out, kernel, options...)
 }
@@ -145,7 +145,7 @@ func MaxPool2D(kernel int, options ...PoolOptions) Layer {
 
 // NewMaxPool2D builds the same layer as MaxPool2D.
 //
-// Deprecated: use MaxPool2D. Removed in Insyra 0.4.
+// Deprecated: use MaxPool2D. Removed in 0.4.
 func NewMaxPool2D(kernel int, options ...PoolOptions) Layer {
 	return MaxPool2D(kernel, options...)
 }
@@ -157,7 +157,7 @@ func AvgPool2D(kernel int, options ...PoolOptions) Layer {
 
 // NewAvgPool2D builds the same layer as AvgPool2D.
 //
-// Deprecated: use AvgPool2D. Removed in Insyra 0.4.
+// Deprecated: use AvgPool2D. Removed in 0.4.
 func NewAvgPool2D(kernel int, options ...PoolOptions) Layer {
 	return AvgPool2D(kernel, options...)
 }
@@ -208,7 +208,7 @@ func GlobalAvgPool() Layer { return &globalAvgPoolLayer{} }
 
 // NewGlobalAvgPool builds the same layer as GlobalAvgPool.
 //
-// Deprecated: use GlobalAvgPool. Removed in Insyra 0.4.
+// Deprecated: use GlobalAvgPool. Removed in 0.4.
 func NewGlobalAvgPool() Layer { return GlobalAvgPool() }
 
 func (*globalAvgPoolLayer) Build(*Tape) error { return nil }
@@ -234,7 +234,7 @@ func BatchNorm2D(features int) Layer {
 
 // NewBatchNorm2D builds the same layer as BatchNorm2D.
 //
-// Deprecated: use BatchNorm2D. Removed in Insyra 0.4.
+// Deprecated: use BatchNorm2D. Removed in 0.4.
 func NewBatchNorm2D(features int) Layer { return BatchNorm2D(features) }
 
 func (l *batchNorm2DLayer) Build(t *Tape) error {
@@ -348,7 +348,7 @@ func LayerNormShape(dims []int) Layer {
 // other value builds a layer whose Build reports a dimension of 0.
 //
 // Deprecated: use LayerNorm for one size or LayerNormShape for a shape.
-// Removed in Insyra 0.4.
+// Removed in 0.4.
 func NewLayerNorm(dims interface{}) Layer {
 	return LayerNorm(dims)
 }
@@ -422,7 +422,7 @@ func Embedding(vocab, dims int) Layer { return &embeddingLayer{vocab: vocab, dim
 
 // NewEmbedding builds the same layer as Embedding.
 //
-// Deprecated: use Embedding. Removed in Insyra 0.4.
+// Deprecated: use Embedding. Removed in 0.4.
 func NewEmbedding(vocab, dims int) Layer { return Embedding(vocab, dims) }
 
 func (l *embeddingLayer) Build(t *Tape) error {

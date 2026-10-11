@@ -167,12 +167,12 @@ type PoolOptions struct {
 
 // MaxPoolOptions is the same type as PoolOptions.
 //
-// Deprecated: use PoolOptions. Removed in Insyra 0.4.
+// Deprecated: use PoolOptions. Removed in 0.4.
 type MaxPoolOptions = PoolOptions
 
 // AveragePoolOptions is the same type as PoolOptions.
 //
-// Deprecated: use PoolOptions. Removed in Insyra 0.4.
+// Deprecated: use PoolOptions. Removed in 0.4.
 type AveragePoolOptions = PoolOptions
 
 // ResizeOptions controls the ONNX Resize coordinate and interpolation
