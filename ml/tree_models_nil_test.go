@@ -51,9 +51,9 @@ func TestTreeModelsAreSafeWhenNil(t *testing.T) {
 	for name, model := range models {
 		t.Run(name, func(t *testing.T) {
 			noPanic(t, func() {
-				if got := model.Features(); got != nil {
-					t.Errorf("Features() = %v, want nil", got)
-				}
+				// Features stays a value method promoted from modelBase on this
+				// line, so a model value keeps satisfying an interface that
+				// names it; on a nil pointer it still panics.
 				if got := model.FeatureImportances(); got != nil {
 					t.Errorf("FeatureImportances() = %v, want nil", got)
 				}

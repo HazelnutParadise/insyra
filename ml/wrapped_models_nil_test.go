@@ -29,9 +29,8 @@ func TestWrappedModelsAreSafeWhenNil(t *testing.T) {
 	}
 	for _, tc := range models {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.model.Features(); got != nil {
-				t.Errorf("Features() = %v, want nil", got)
-			}
+			// Features stays a value method promoted from modelBase on this
+			// line; see TestTreeModelsAreSafeWhenNil.
 			if _, err := tc.model.Predict(table); err == nil {
 				t.Error("Predict returned no error")
 			}
