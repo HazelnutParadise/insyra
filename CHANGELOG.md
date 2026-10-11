@@ -74,6 +74,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - A file the Arrow reader cannot read is an error from every reader instead of a panic, and a row group shorter than its metadata says is an error naming the row groups instead of a short read.
 - `ApplyCCL` with `@` gives each row its own values; it gave every row of a 1,000-row batch that batch's last row.
 - The Arrow dependency moves from `github.com/apache/arrow/go/v17` to `github.com/apache/arrow-go/v18` v18.8.0. Tables read the same, including duration columns, which still read as their `int64` count.
+- `ApplyCCL` writes through a temporary file with a name of its own in the same directory and keeps the original file's mode. It wrote through `<path>.tmp`, overwriting and then deleting a file the caller kept under that name.
 
 ### `pd`
 

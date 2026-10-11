@@ -74,6 +74,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - Arrow 讀不了的檔案在每個讀取函式都回傳錯誤，不再 panic；row group 的列數比中繼資料少時，回傳指出哪些 row group 的錯誤，不再靜默少讀。
 - `ApplyCCL` 使用 `@` 時每一列拿到自己的值；原本同一批 1,000 列都拿到該批最後一列的值。
 - Arrow 依賴從 `github.com/apache/arrow/go/v17` 換成 `github.com/apache/arrow-go/v18` v18.8.0。讀出的表格相同，duration 欄仍讀成 `int64` 計數。
+- `ApplyCCL` 改用同目錄裡自己專用名稱的暫存檔，並保留原檔的權限。原本固定寫到 `<path>.tmp`，會覆寫再刪掉使用者自己放在那個名稱的檔案。
 
 ### `pd`
 
