@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 )
 
 // writeInt16File writes a file whose one column, i16, holds int16(i % 300)

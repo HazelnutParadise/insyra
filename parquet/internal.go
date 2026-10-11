@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/apache/arrow-go/v18/parquet"
 	"io"
 	"os"
 	"time"
@@ -11,21 +12,29 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 	"github.com/TimLai666/go-decimal/decimal"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/apache/arrow/go/v17/parquet/file"
-	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet/file"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
 
-// streamAsArrowRecord：串流讀（可選欄、可選包），一批一批吐出 arrow.Record
-func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan arrow.Record, <-chan error) {
-	recChan := make(chan arrow.Record)
+// streamAsArrowRecord：串流讀（可選欄、可選包），一批一批吐出 arrow.RecordBatch
+func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan arrow.RecordBatch, <-chan error) {
+	recChan := make(chan arrow.RecordBatch)
 	errChan := make(chan error, 1)
 
 	go func() {
 		defer close(recChan)
 		defer close(errChan)
+		defer func() {
+			if r := recover(); r != nil {
+				select {
+				case errChan <- unreadableFile(path, r):
+				default:
+				}
+			}
+		}()
 
 		f, err := os.Open(path)
 		if err != nil {
@@ -82,6 +91,36 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 				rowGroups[i] = i
 			}
 		}
+		if len(colIndices) == 0 {
+			colIndices = make([]int, r.MetaData().Schema.NumColumns())
+			for i := range colIndices {
+				colIndices[i] = i
+			}
+		}
+		groups := opt.RowGroups
+		if len(groups) == 0 {
+			groups = make([]int, r.NumRowGroups())
+			for i := range groups {
+				groups[i] = i
+			}
+		}
+		if len(colIndices) == 0 {
+			colIndices = make([]int, r.MetaData().Schema.NumColumns())
+			for i := range colIndices {
+				colIndices[i] = i
+			}
+		}
+		counts := make([]int64, len(groups))
+		var want int64
+		countable := len(groups) > 0
+		for i, rg := range groups {
+			if rg < 0 || rg >= r.NumRowGroups() {
+				countable = false
+				break
+			}
+			counts[i] = r.MetaData().RowGroup(rg).NumRows()
+			want += counts[i]
+		}
 
 		rr, err := fr.GetRecordReader(ctx, colIndices, rowGroups)
 		if err != nil {
@@ -90,9 +129,11 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 		}
 		defer rr.Release()
 
+		var read int64
 		for rr.Next() {
-			rec := rr.Record()
+			rec := rr.RecordBatch()
 			rec.Retain()
+			read += rec.NumRows()
 			select {
 			case <-ctx.Done():
 				rec.Release()
@@ -102,12 +143,172 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 			}
 		}
 		if rr.Err() != nil && !errors.Is(rr.Err(), io.EOF) {
-			errChan <- rr.Err()
+			errChan <- readerFailed(ctx, path, rr.Err(), f, colIndices, groups, counts, countable)
+			return
+		}
+		if countable && read != want {
+			errChan <- damagedFile(path, read, want, shortRowGroupsFrom(ctx, f, colIndices, groups, counts))
 		}
 	}()
 
 	return recChan, errChan
 }
+
+// streamArrowRecordsFrom streams records from a random-access Parquet source.
+func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string, opt ReadOptions, batchSize int, done func()) (<-chan arrow.RecordBatch, <-chan error) {
+	recChan := make(chan arrow.RecordBatch)
+	errChan := make(chan error, 1)
+	go func() {
+		defer close(recChan)
+		defer close(errChan)
+		defer func() {
+			if r := recover(); r != nil {
+				select {
+				case errChan <- unreadableFile(label, r):
+				default:
+				}
+			}
+		}()
+		if done != nil {
+			defer done()
+		}
+		r, err := file.NewParquetReader(src)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer func() {
+			if err := r.Close(); err != nil {
+				insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", label, err)
+			}
+		}()
+		fr, err := pqarrow.NewFileReader(r, pqarrow.ArrowReadProperties{Parallel: true, BatchSize: int64(batchSize)}, memory.DefaultAllocator)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		var colIndices []int
+		if len(opt.Columns) > 0 {
+			for _, name := range opt.Columns {
+				idx := r.MetaData().Schema.ColumnIndexByName(name)
+				if idx < 0 {
+					errChan <- fmt.Errorf("column %s not found", name)
+					return
+				}
+				colIndices = append(colIndices, idx)
+			}
+		}
+		groups := opt.RowGroups
+		if len(groups) == 0 {
+			groups = make([]int, r.NumRowGroups())
+			for i := range groups {
+				groups[i] = i
+			}
+		}
+		if len(colIndices) == 0 {
+			colIndices = make([]int, r.MetaData().Schema.NumColumns())
+			for i := range colIndices {
+				colIndices[i] = i
+			}
+		}
+		counts := make([]int64, len(groups))
+		var want int64
+		countable := len(groups) > 0
+		for i, rg := range groups {
+			if rg < 0 || rg >= r.NumRowGroups() {
+				countable = false
+				break
+			}
+			counts[i] = r.MetaData().RowGroup(rg).NumRows()
+			want += counts[i]
+		}
+		rr, err := fr.GetRecordReader(ctx, colIndices, groups)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer rr.Release()
+		var read int64
+		for rr.Next() {
+			rec := rr.RecordBatch()
+			rec.Retain()
+			read += rec.NumRows()
+			select {
+			case <-ctx.Done():
+				rec.Release()
+				errChan <- ctx.Err()
+				return
+			case recChan <- rec:
+			}
+		}
+		if rr.Err() != nil && !errors.Is(rr.Err(), io.EOF) {
+			errChan <- readerFailed(ctx, label, rr.Err(), src, colIndices, groups, counts, countable)
+			return
+		}
+		if countable && read != want {
+			errChan <- damagedFile(label, read, want, shortRowGroupsFrom(ctx, src, colIndices, groups, counts))
+		}
+	}()
+	return recChan, errChan
+}
+
+func unreadableFile(label string, r any) error {
+	return fmt.Errorf("parquet: %s is not a readable Parquet file: %v", label, r)
+}
+
+func damagedFile(label string, read, want int64, groups []int) error {
+	return fmt.Errorf("parquet: %s is damaged: its metadata holds %d rows in the row groups read, but %d were read; row groups %v did not read in full", label, want, read, groups)
+}
+
+func readerFailed(ctx context.Context, label string, err error, src parquet.ReaderAtSeeker, columns, groups []int, counts []int64, countable bool) error {
+	if ctx.Err() != nil || !countable {
+		return err
+	}
+	bad := shortRowGroupsFrom(ctx, src, columns, groups, counts)
+	if len(bad) == 0 {
+		return err
+	}
+	var want int64
+	for _, n := range counts {
+		want += n
+	}
+	return fmt.Errorf("parquet: %s is damaged: its metadata holds %d rows in the row groups read; row groups %v did not read in full: %w", label, want, bad, err)
+}
+
+func shortRowGroupsFrom(ctx context.Context, src parquet.ReaderAtSeeker, columns, groups []int, counts []int64) []int {
+	var bad []int
+	for i, rg := range groups {
+		pr, err := file.NewParquetReader(readerAtSeekerNoClose{ReaderAtSeeker: src})
+		if err != nil {
+			bad = append(bad, rg)
+			continue
+		}
+		fr, err := pqarrow.NewFileReader(pr, pqarrow.ArrowReadProperties{Parallel: true}, memory.DefaultAllocator)
+		if err != nil {
+			_ = pr.Close()
+			bad = append(bad, rg)
+			continue
+		}
+		t, err := fr.ReadRowGroups(ctx, columns, []int{rg})
+		if err != nil {
+			_ = pr.Close()
+			bad = append(bad, rg)
+			continue
+		}
+		rows := t.NumRows()
+		t.Release()
+		_ = pr.Close()
+		if rows != counts[i] {
+			bad = append(bad, rg)
+			continue
+		}
+	}
+	return bad
+}
+
+type readerAtSeekerNoClose struct{ parquet.ReaderAtSeeker }
+
+func (readerAtSeekerNoClose) Close() error { return nil }
 
 func chunkedToSlice(chunked *arrow.Chunked) any {
 	if chunked.Len() == 0 {
@@ -326,7 +527,7 @@ func newColumn(data any, name string) *insyra.DataList {
 	return insyra.NewDataList(data).SetName(name)
 }
 
-func recordToDataTable(rec arrow.Record) *insyra.DataTable {
+func recordToDataTable(rec arrow.RecordBatch) *insyra.DataTable {
 	dataTable := insyra.NewDataTable()
 	if rec == nil {
 		return dataTable
