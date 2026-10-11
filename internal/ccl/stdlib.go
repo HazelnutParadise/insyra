@@ -23,7 +23,7 @@ import (
 //   - Type conversion (stdlib_typeconv.go): TONUM/VALUE, TOSTR/TEXT,
 //     TOBOOL, COALESCE, IFNULL
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAYOFMONTH,
-//     WEEKDAY, DATEDIFF, DATEADD, FORMAT_DATE
+//     WEEKDAY, DATEPART, DATEDIFF, DATEADD, FORMAT_DATE
 //   - Aggregates: SUM, AVG, COUNT, MAX, MIN (this file) and
 //     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)
 func RegisterStandardFunctions() {
@@ -82,6 +82,8 @@ func RegisterStandardFunctions() {
 		switch v := val.(type) {
 		case float64:
 			return math.IsNaN(v), nil
+		case float32:
+			return math.IsNaN(float64(v)), nil
 		case string:
 			return v == "#N/A", nil
 		}
@@ -97,6 +99,8 @@ func RegisterStandardFunctions() {
 		switch v := val.(type) {
 		case float64:
 			isNA = math.IsNaN(v)
+		case float32:
+			isNA = math.IsNaN(float64(v))
 		case string:
 			isNA = v == "#N/A"
 		}
@@ -339,6 +343,22 @@ func toFloat64(val any) (float64, bool) {
 		return float64(v), true
 	case int64:
 		return float64(v), true
+	case int8:
+		return float64(v), true
+	case int16:
+		return float64(v), true
+	case uint:
+		return float64(v), true
+	case uint8:
+		return float64(v), true
+	case uint16:
+		return float64(v), true
+	case uint32:
+		return float64(v), true
+	case uint64:
+		// A uint64 above 2^53 lands on the nearest float64, the way an int64
+		// that large already does.
+		return float64(v), true
 	case float32:
 		return float64(v), true
 	case bool:
@@ -370,6 +390,20 @@ func toBool(val any) (bool, bool) {
 	case int32:
 		return v != 0, true
 	case int64:
+		return v != 0, true
+	case int8:
+		return v != 0, true
+	case int16:
+		return v != 0, true
+	case uint:
+		return v != 0, true
+	case uint8:
+		return v != 0, true
+	case uint16:
+		return v != 0, true
+	case uint32:
+		return v != 0, true
+	case uint64:
 		return v != 0, true
 	case float32:
 		return v != 0, true

@@ -173,12 +173,23 @@ CCL supports the following data types:
    optional sign), so a column called `E` or `E1` still reads as a column. A
    literal too large for a `float64` is an error rather than `+Inf`.
 
-2. **Strings** - Enclosed in single quotes
+2. **Strings** - Enclosed in single or double quotes
 
    ```
    "'Hello, World!'"   // String
    "'123'"             // Numeric string
+   `"Hello"`           // Double quotes work the same way
+   "'it''s'"           // it's
+   `"say ""hi"""`      // say "hi"
    ```
+
+   As in Excel, the quote character written twice inside a literal stands for
+   one: `'it''s'` is `it's` and `"say ""hi"""` is `say "hi"`. The other kind of
+   quote needs nothing, so `"it's"` and `'say "hi"'` work as written. A
+   backslash is an ordinary character, so `'C:\data'` is the text `C:\data` and
+   `'it\'s'` is an unclosed string. Bracketed column names follow the same rule:
+   `['O''Brien']` is the column `O'Brien`. In statement mode a `;` or a line
+   break inside a literal does not end the statement.
 
 3. **Boolean Values** - `true` or `false` (case-insensitive: `TRUE`, `False` work too)
 
@@ -358,6 +369,8 @@ When performing arithmetic operations or comparisons, CCL attempts to convert op
 **Important Notes:**
 
 - If both operands can be converted to numbers, numeric comparison is used
+- A cell of any Go numeric type is a number: `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32` and `float64`. This holds everywhere a number is read, in arithmetic, comparisons, conditions, function arguments, aggregates and row indices, so an `int16` or `uint8` column, which `parquet.Read` gives for such a column of a file, works like any other
+- An integer larger than 2^53 (9,007,199,254,740,992) is read as the nearest `float64`, so its last digits are lost: `int64` and `uint64` values that large compare equal to their neighbours
 - String-to-number conversion follows standard parsing rules
 - Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
 - The comparison error applies to `>`, `<`, `>=` and `<=` between such a string and a number. `==` and `!=` do not raise it: a non-numeric string is simply not equal to a number, so `"hello" == 5` is `false`
@@ -538,7 +551,7 @@ dt.AddColUsingCCL("result", "[A] + [B] * 2")
 
 ### 3. Bracket Column Name `['colName']`
 
-Use brackets with single-quoted strings to reference columns by their name. This is particularly useful when you have named columns:
+Use brackets with a quoted name, in single or double quotes, to reference columns by their name. This is particularly useful when you have named columns. A quote inside the name is written twice, as in a string literal: `['O''Brien']`.
 
 ```
 "['Sales']"          // Reference to column named "Sales"
@@ -588,6 +601,8 @@ You can also use another column as the row index:
 ```
 "A.B"                // Value of column A at the row index specified by the value in column B
 ```
+
+The row index can be held as any Go numeric type. A fraction is dropped, as it is for a `float64` index, so a `float32` of `1.5` reads row 1. Held as any type other than `int`, `float64` included, an index that is `NaN`, infinite or past the `int32` range is an error.
 
 ### All-Column Reference `@`
 
@@ -683,7 +698,7 @@ Example:
 // Returns 0 if the value in column A is a numeric NaN or the string "#N/A", otherwise returns the value in column A
 ```
 
-> **Note:** `ISNA` handles numeric `NaN` and the string `"#N/A"`. It does **not** return true for `nil` values.
+> **Note:** `ISNA` handles numeric `NaN`, `float64` or `float32`, and the string `"#N/A"`. It does **not** return true for `nil` values.
 
 ### IFNA Function
 
@@ -790,6 +805,7 @@ These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers an
 | `MONTH(d)` | Month 1–12 |
 | `DAYOFMONTH(d)` | Day 1–31 |
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
+| `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
 | `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A fractional `n` truncates for `day`, `month` and `year`. A day, month or year count that is `NaN`, infinite or beyond `int64`, or more than about 292 years in hours, minutes or seconds, is an error |
 | `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
@@ -1054,9 +1070,32 @@ Chained comparisons are equivalent to using the AND operator:
 
 Register your own scalar function with `RegisterFunction` from `engine/ccl`. It
 receives the evaluated arguments and returns a value or an error; an error stops
-the expression the same way a built-in function's error does. Names are matched
-without regard to case, and registering is safe while other goroutines are
-evaluating.
+the expression the same way a built-in function's error does.
+
+`engine/ccl` registers three kinds of function:
+
+| Function | Takes | Returns | Like |
+| --- | --- | --- | --- |
+| `RegisterFunction` | one value per argument; called for each row when an argument depends on the row, and possibly once for the whole column when none does | one value | `ROUND` |
+| `RegisterAggregateFunction` | whole columns | one value, which every row receives | `SUM` |
+| `RegisterSequenceFunction` | whole columns | a column of the same length, of which each row of a `DataTable` receives its own cell | `CUMSUM` |
+
+There is one registry for the whole process. Every `DataTable`, the parquet CCL
+functions, the CLI and `engine/ccl` read it, so a function registered once is
+available to all of them. Registering and evaluating are safe from any number of
+goroutines, and each registration takes effect as a whole. An expression that
+is evaluated while a registration is under way may call the old function for
+some rows and the new one for later rows, so register your functions before you
+evaluate when that matters. Names are matched in any letter case. Registering a
+name again replaces the function of the same kind under that name, a built-in's
+included, and there is no way to remove one. A name is looked up as a sequence
+function first, then as an aggregate, then as a scalar, so a scalar function
+registered as `SUM` is never called. `IF`, `AND` and `OR` are evaluated by the
+language itself and cannot be replaced.
+
+The parquet CCL functions read a file in batches of rows: an aggregate there
+covers one batch rather than the whole file, and a sequence function does not
+give each row its own cell. Use sequence functions on a `DataTable`.
 
 ```go
 import (
