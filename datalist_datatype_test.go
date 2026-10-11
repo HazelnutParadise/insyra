@@ -73,3 +73,24 @@ func TestDataTypeString(t *testing.T) {
 		}
 	}
 }
+
+// A NaN is missing whatever float kind holds it, not only a float64 one.
+func TestDataTypeTreatsEveryFloatNaNAsMissing(t *testing.T) {
+	type temperature float64
+	cases := []struct {
+		name string
+		dl   *DataList
+		want DataType
+	}{
+		{"float32 NaN alone", NewDataList(float32(math.NaN())), DataTypeEmpty},
+		{"float32 NaN among strings", NewDataList("a", float32(math.NaN())), DataTypeString},
+		{"named float NaN alone", NewDataList(temperature(math.NaN())), DataTypeEmpty},
+		{"named float NaN among strings", NewDataList("a", temperature(math.NaN())), DataTypeString},
+		{"named float value", NewDataList(temperature(21.5)), DataTypeNumber},
+	}
+	for _, c := range cases {
+		if got := c.dl.DataType(); got != c.want {
+			t.Errorf("%s: DataType() = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

@@ -1353,6 +1353,11 @@ func prepareTableLayoutTypes(dt *DataTable, dataMap map[string][]any, colIndices
 				width = w
 			}
 		}
+		// The DataType row prints one word per column; leave room for it so
+		// a narrow column shows "number", not "num".
+		if w := runewidth.StringWidth(dataTypeOf(col).String()); w > width {
+			width = w
+		}
 		colWidths[idx] = min(width, maxColWidthAllowed)
 	}
 

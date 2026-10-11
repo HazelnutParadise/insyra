@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"math"
 	"reflect"
 	"time"
 )
@@ -81,7 +82,7 @@ func (dt *DataTable) ColDataTypes() []DataType {
 func dataTypeOf(values []any) DataType {
 	found := DataTypeEmpty
 	for _, v := range values {
-		if isMissing(v) {
+		if isMissingForDataType(v) {
 			continue
 		}
 		t := valueDataType(v)
@@ -94,6 +95,21 @@ func dataTypeOf(values []any) DataType {
 		}
 	}
 	return found
+}
+
+// isMissingForDataType is isMissing widened to every float kind: a NaN held
+// as a float32 or a named float type is as missing as a float64 one. It stays
+// separate from isMissing so the filling methods keep their behaviour.
+func isMissingForDataType(v any) bool {
+	if isMissing(v) {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Float32, reflect.Float64:
+		return math.IsNaN(rv.Float())
+	}
+	return false
 }
 
 func valueDataType(v any) DataType {

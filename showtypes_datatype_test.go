@@ -44,3 +44,26 @@ func TestShowTypesLeadsWithTheDataType(t *testing.T) {
 		t.Fatalf("a DataList's type info does not state its data type:\n%s", buf.String())
 	}
 }
+
+// An unnamed column of ints is three characters wide by its letter and its
+// Go type, narrower than the word its DataType row prints; the row still
+// prints the whole word.
+func TestShowTypesFitsTheDataTypeWord(t *testing.T) {
+	colored := Config.GetDoesUseColoredOutput()
+	Config.SetUseColoredOutput(false)
+	defer Config.SetUseColoredOutput(colored)
+
+	dt := NewDataTable(NewDataList(1, 2), NewDataList(nil, nil))
+	var buf bytes.Buffer
+	dt.ShowTypesTo(&buf)
+	var row string
+	for line := range strings.SplitSeq(buf.String(), "\n") {
+		if strings.HasPrefix(line, "DataType") {
+			row = line
+			break
+		}
+	}
+	if got := strings.Fields(row); len(got) != 3 || got[1] != "number" || got[2] != "empty" {
+		t.Fatalf("DataType row = %q, want number and empty in full:\n%s", row, buf.String())
+	}
+}
