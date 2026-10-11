@@ -1,6 +1,7 @@
 package pd
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -48,6 +49,29 @@ func TestFromAndToDataTable(t *testing.T) {
 	r2, c2 := dt2.Size()
 	if r2 != 3 || c2 != 3 {
 		t.Fatalf("unexpected roundtrip size: %d x %d", r2, c2)
+	}
+}
+
+func TestFromDataListEmptyIsAnEmptySeries(t *testing.T) {
+	s, err := FromDataList(insyra.NewDataList())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s == nil || s.Series == nil {
+		t.Fatal("missing series")
+	}
+	if s.Len() != 0 {
+		t.Fatalf("Len() = %d, want 0", s.Len())
+	}
+	if want := reflect.TypeOf((*any)(nil)).Elem(); s.DType() != want {
+		t.Fatalf("DType() = %v, want %v", s.DType(), want)
+	}
+	dl, err := s.ToDataList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dl.Len() != 0 {
+		t.Fatalf("round trip length = %d, want 0", dl.Len())
 	}
 }
 

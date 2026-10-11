@@ -28,11 +28,13 @@ func runConvertCommand(ctx *ExecContext, args []string) error {
 
 	switch {
 	case inExt == ".csv" && (outExt == ".xlsx" || outExt == ".xlsm"):
-		if err := csvxl.CsvToExcel([]string{input}, nil, output); err != nil {
+		if err := csvxl.CSVToExcel([]string{input}, nil, output); err != nil {
 			return err
 		}
 	case (inExt == ".xlsx" || inExt == ".xlsm") && outExt == ".csv":
-		if err := csvxl.ExcelToCsv(input, filepath.Dir(output), []string{filepath.Base(output)}); err != nil {
+		// convert keeps ExcelToCsv's output naming and unguarded text, which
+		// ExcelToCSV does not share, until the old function is removed.
+		if err := csvxl.ExcelToCsv(input, filepath.Dir(output), []string{filepath.Base(output)}); err != nil { //nolint:staticcheck
 			return err
 		}
 	default:

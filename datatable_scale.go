@@ -21,6 +21,10 @@ type ScalerParams struct {
 	// PassThrough reports that a fitted imputer deliberately leaves this
 	// column unchanged because its numeric strategy met observed non-numeric
 	// values.
+	//
+	// Deprecated: on 0.4 SimpleImputer refuses such a column when it is fitted,
+	// so PassThrough is always false there; it is removed in 0.4. On this line
+	// it keeps its meaning.
 	PassThrough bool
 
 	Mean   float64

@@ -56,6 +56,11 @@ const (
 
 ## Main Functions
 
+The uppercase `CSVToExcel`, `AppendCSVToExcel`, `CSVDirToExcel` and
+`ReadCSVToString` names are the preferred spellings. The earlier `CsvToExcel`,
+`AppendCsvToExcel`, `EachCsvToOneExcel` and `ReadCsvToString` names remain
+available as deprecated wrappers with the same behavior.
+
 ### `CsvToExcel`
 
 ```go
@@ -167,6 +172,23 @@ func ReadCsvToString(filePath string, encoding ...string) (string, error)
 
 - `string`: Return value.
 - `error`: Error when the operation fails.
+
+`ReadCSVToString` is the preferred spelling and has the same signature and behavior.
+
+### `ExcelToCSV`
+
+```go
+type ExcelToCSVOptions struct { Sheets []string; AllowFormulas bool }
+func ExcelToCSV(excelFile, outputDir string, csvNames []string, options ...ExcelToCSVOptions) error
+func ExcelDirToCSV(dir, outputDir string, options ...ExcelToCSVOptions) error
+```
+
+An empty `Sheets` converts every worksheet. A requested worksheet that is not
+in the workbook returns an error. At most one options value may be supplied.
+Formula-like text beginning with `=`, `+`, `-` or `@` is prefixed with an
+apostrophe unless it is numeric or `AllowFormulas` is true. `ExcelToCsv` and
+`EachExcelToCsv` keep their old behavior; worksheet selection for the new API
+moves to `ExcelToCSVOptions.Sheets`.
 
 ### `insyra.DetectEncoding`
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
@@ -30,9 +31,11 @@ func isAutoEncoding(encoding string) bool {
 	return encoding == "" || strings.EqualFold(encoding, Auto)
 }
 
-// Convert multiple CSV files to an Excel file, supporting custom sheet names.
+// CsvToExcel converts multiple CSV files to an Excel file, supporting custom sheet names.
 // If the sheet name is not specified, the file name of the CSV file will be used.
 // If csvEncoding is not specified, auto-detection will be used.
+//
+// Deprecated: use CSVToExcel, which has the same arguments and behavior. Removed in 0.4.
 func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error {
 	encoding := Auto // Default to auto-detection
 	if len(csvEncoding) == 1 {
@@ -85,10 +88,18 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 	return nil
 }
 
-// Append CSV files to an existing Excel file, supporting custom sheet names.
+// CSVToExcel converts CSV files to one Excel workbook. Its arguments and behavior
+// are the same as the legacy CsvToExcel function.
+func CSVToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error {
+	return CsvToExcel(csvFiles, sheetNames, output, csvEncoding...)
+}
+
+// AppendCsvToExcel appends CSV files to an existing Excel file, supporting custom sheet names.
 // If the sheet name is not specified, the file name of the CSV file will be used.
 // If the sheet is exists, it will be overwritten.
 // If csvEncoding is not specified, auto-detection will be used.
+//
+// Deprecated: use AppendCSVToExcel, which has the same arguments and behavior. Removed in 0.4.
 func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error {
 	encoding := Auto // Default to auto-detection
 	if len(csvEncoding) == 1 {
@@ -152,8 +163,76 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 	return nil
 }
 
+// AppendCSVToExcel appends CSV files to an Excel workbook.
+func AppendCSVToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error {
+	return AppendCsvToExcel(csvFiles, sheetNames, existingFile, csvEncoding...)
+}
+
+// ExcelToCSVOptions controls sheet selection and formula protection.
+type ExcelToCSVOptions struct {
+	// Sheets selects the worksheets to convert. Empty selects every worksheet.
+	Sheets []string
+	// AllowFormulas writes formula-like text without a leading apostrophe.
+	AllowFormulas bool
+}
+
+// ExcelToCSV converts selected workbook sheets to CSV. Formula-like text is
+// prefixed with an apostrophe unless AllowFormulas is set.
+func ExcelToCSV(excelFile, outputDir string, csvNames []string, options ...ExcelToCSVOptions) error {
+	if len(options) > 1 {
+		return fmt.Errorf("at most one ExcelToCSVOptions may be given, got %d", len(options))
+	}
+	var opts ExcelToCSVOptions
+	if len(options) == 1 {
+		opts = options[0]
+	}
+	f, err := excelize.OpenFile(excelFile)
+	if err != nil {
+		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
+	}
+	defer func() { _ = f.Close() }()
+	sheets := f.GetSheetList()
+	if len(opts.Sheets) > 0 {
+		sheets = make([]string, 0, len(opts.Sheets))
+		for _, wanted := range opts.Sheets {
+			if !sliceutil.Contains(f.GetSheetList(), wanted) {
+				return fmt.Errorf("sheet %q not found in %s", wanted, excelFile)
+			}
+			sheets = append(sheets, wanted)
+		}
+	}
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", outputDir, err)
+	}
+	for idx, sheet := range sheets {
+		name := sheet + ".csv"
+		if idx < len(csvNames) && csvNames[idx] != "" {
+			name = csvOutputName(csvNames[idx])
+		}
+		path, err := safeSheetCSVPath(outputDir, sheet, name)
+		if err != nil {
+			return err
+		}
+		if err := saveSheetAsCsv(f, sheet, path, opts.AllowFormulas); err != nil {
+			return fmt.Errorf("failed to save sheet %s as CSV: %w", sheet, err)
+		}
+	}
+	insyra.LogInfo("csvxl", "ExcelToCSV", "Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
+	return nil
+}
+
+func csvOutputName(name string) string {
+	if filepath.Ext(name) != "" {
+		return name
+	}
+	return name + ".csv"
+}
+
 // ExcelToCsv splits an Excel file into multiple CSV files, one per sheet.
 // If customNames is provided, it uses them as CSV filenames; otherwise, it uses the sheet names.
+//
+// Deprecated: use ExcelToCSV. Sheet selection moves to ExcelToCSVOptions.Sheets;
+// ExcelToCSV also guards formula-like text by default. Removed in 0.4.
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error {
 	f, err := excelize.OpenFile(excelFile)
 	if err != nil {
@@ -211,6 +290,21 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 	return nil
 }
 
+func guardFormula(s string) string {
+	trimmed := strings.TrimLeft(s, " \t\r\n")
+	if trimmed == "" {
+		return s
+	}
+	switch trimmed[0] {
+	case '=', '+', '-', '@':
+		if _, err := strconv.ParseFloat(strings.TrimSpace(trimmed), 64); err == nil {
+			return s
+		}
+		return "'" + s
+	}
+	return s
+}
+
 // ===============================
 
 // safeSheetCSVPath joins a CSV file name made from a sheet name onto outputDir.
@@ -230,7 +324,7 @@ func safeSheetCSVPath(outputDir, sheet, fileName string) (string, error) {
 // saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file. The
 // rows are read before the output is touched, so a sheet that cannot be read
 // never truncates an existing file.
-func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) error {
+func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string, allowFormulas ...bool) error {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return fmt.Errorf("failed to read rows from sheet %s: %w", sheetName, err)
@@ -251,6 +345,11 @@ func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) er
 			return fmt.Errorf("failed to check visibility of row %d in sheet %s: %w", rowIdx+1, sheetName, err)
 		}
 		if visible {
+			if len(allowFormulas) > 0 && !allowFormulas[0] {
+				for i, cell := range row {
+					row[i] = guardFormula(cell)
+				}
+			}
 			err := writer.Write(row)
 			if err != nil {
 				return fmt.Errorf("failed to write row to CSV file %s: %w", outputCsvName, err)
