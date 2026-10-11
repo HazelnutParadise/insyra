@@ -7,23 +7,24 @@ import (
 	gpdc "github.com/apoplexi24/gpandas/utils/collection"
 )
 
+// Series is a pandas-like series backed by gpandas: it embeds gpandas'
+// collection Series, so every method of that type is available on it.
 type Series struct {
 	gpdc.Series
 }
 
+// FromDataList converts dl into a Series, typed by its values. An empty list
+// gives an empty Series; a nil list is an error.
 func FromDataList(dl insyra.IDataList) (*Series, error) {
 	if dl == nil {
 		return nil, fmt.Errorf("nil DataList")
 	}
-	if dl.Len() == 0 {
-		return nil, fmt.Errorf("empty DataList")
-	}
-
 	listType := ""
 	int64List := []int64{}
 	float64List := []float64{}
 	stringList := []string{}
-	for _, val := range dl.Data() {
+	data := dl.Data()
+	for _, val := range data {
 		tryAppendValue(val, &listType, &int64List, &float64List, &stringList)
 	}
 
@@ -47,7 +48,7 @@ func FromDataList(dl insyra.IDataList) (*Series, error) {
 		}
 		return &Series{gpds}, nil
 	default:
-		gpds, err := gpdc.NewAnySeriesFromData(dl.Data(), nil)
+		gpds, err := gpdc.NewAnySeriesFromData(data, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create any Series: %w", err)
 		}
@@ -118,6 +119,7 @@ func tryAppendValue(val any, listType *string, int64List *[]int64, float64List *
 	}
 }
 
+// FromGPandasSeries wraps a gpandas collection Series; a nil one is an error.
 func FromGPandasSeries(gpds gpdc.Series) (*Series, error) {
 	if gpds == nil {
 		return nil, fmt.Errorf("nil gpandas Series")

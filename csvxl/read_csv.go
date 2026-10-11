@@ -8,6 +8,9 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/csv"
 )
 
+// ReadCsvToString reads a CSV file and returns its content as UTF-8.
+//
+// Deprecated: use ReadCSVToString, which has the same arguments and behavior. Removed in 0.4.
 func ReadCsvToString(filePath string, encoding ...string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -43,4 +46,9 @@ func ReadCsvToString(filePath string, encoding ...string) (string, error) {
 	}
 
 	return result, nil
+}
+
+// ReadCSVToString reads a CSV file as a string using the same options as ReadCsvToString.
+func ReadCSVToString(filePath string, encoding ...string) (string, error) {
+	return ReadCsvToString(filePath, encoding...)
 }

@@ -13,6 +13,8 @@ import (
 // EachCsvToOneExcel converts each CSV file in the given directory to an Excel file.
 // The output Excel file will be saved in the given output path.
 // If encoding is not specified, auto-detection will be used.
+//
+// Deprecated: use CSVDirToExcel, which has the same arguments and behavior. Removed in 0.4.
 func EachCsvToOneExcel(dir string, output string, encoding ...string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*.csv"))
 	if err != nil {
@@ -25,10 +27,18 @@ func EachCsvToOneExcel(dir string, output string, encoding ...string) error {
 	return CsvToExcel(csvFiles, nil, output, encoding...)
 }
 
+// CSVDirToExcel converts every CSV in a directory to one workbook.
+func CSVDirToExcel(dir string, output string, encoding ...string) error {
+	return EachCsvToOneExcel(dir, output, encoding...)
+}
+
 // EachExcelToCsv converts each Excel file in the given directory to CSV files.
 // The output CSV files will be saved in the given output directory.
 // The CSV files will be named as the Excel file name plus the sheet name plus ".csv",
 // for example, "ExcelFileName_SheetName.csv".
+//
+// Deprecated: use ExcelDirToCSV. Worksheet selection moves to ExcelToCSVOptions.Sheets;
+// the new function guards formula-like text by default. Removed in 0.4.
 func EachExcelToCsv(dir string, outputDir string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*.xlsx"))
 	if err != nil {
@@ -41,6 +51,55 @@ func EachExcelToCsv(dir string, outputDir string) error {
 		}
 	}
 
+	return nil
+}
+
+// ExcelDirToCSV converts each Excel workbook in a directory to CSV files.
+func ExcelDirToCSV(dir, outputDir string, options ...ExcelToCSVOptions) error {
+	if len(options) > 1 {
+		return fmt.Errorf("at most one ExcelToCSVOptions may be given, got %d", len(options))
+	}
+	var opts ExcelToCSVOptions
+	if len(options) == 1 {
+		opts = options[0]
+	}
+	files, err := filepath.Glob(filepath.Join(dir, "*.xlsx"))
+	if err != nil {
+		return fmt.Errorf("failed to list Excel files in %s: %w", dir, err)
+	}
+	for _, x := range files {
+		f, err := excelize.OpenFile(x)
+		if err != nil {
+			return fmt.Errorf("failed to open Excel file %s: %w", x, err)
+		}
+		sheets := f.GetSheetList()
+		_ = f.Close()
+		allSheets := sheets
+		if len(opts.Sheets) > 0 {
+			sheets = make([]string, 0, len(opts.Sheets))
+			for _, s := range opts.Sheets {
+				found := false
+				for _, existing := range allSheets {
+					if existing == s {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return fmt.Errorf("sheet %q not found in %s", s, x)
+				}
+				sheets = append(sheets, s)
+			}
+		}
+		base := strings.TrimSuffix(filepath.Base(x), ".xlsx")
+		names := make([]string, len(sheets))
+		for i, sheet := range sheets {
+			names[i] = base + "_" + sheet + ".csv"
+		}
+		if err := ExcelToCSV(x, outputDir, names, opts); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

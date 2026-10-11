@@ -766,7 +766,7 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 
 **Behavior:**
 
-- All database operations (CREATE TABLE, ALTER TABLE, INSERT, etc.) are executed inside a single database transaction. If any step fails, the transaction is rolled back and no partial changes are committed.
+- SQLite and PostgreSQL operations run in one transaction. MySQL `Replace` writes to a staging table and atomically renames it into place, so a failed write leaves the old table intact. MySQL replacement refuses tables referenced by foreign keys.
 - Rows are inserted with **batched multi-value INSERTs**. The default batch size is 500 rows; tune via `ToSQLOptions.BatchSize`. Note that `BatchSize × column-count` must stay below the driver's bind-parameter limit (PostgreSQL/MySQL: 65535).
 - When `IfExists` is set to append mode, `ToSQL` fetches the existing table's columns once and adds any missing ones via `ALTER TABLE` before inserting (no per-row schema introspection).
 - Type inference samples the first non-nil value in each column. Recognized types include `time.Time` (→ `DATETIME`/`TIMESTAMP`), `[]byte` (→ `BLOB`/`BYTEA`), `sql.Null*` (unwraps the underlying value), and pointers (dereferenced). All-nil columns fall back to `TEXT`.
@@ -792,12 +792,12 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 **SQLActionIfTableExists values:**
 
 - `SQLActionIfTableExistsFail` — return an error if the table exists (default)
-- `SQLActionIfTableExistsReplace` — drop and recreate the table
+- `SQLActionIfTableExistsReplace` — replace the table; on MySQL, failed staging writes preserve the old table
 - `SQLActionIfTableExistsAppend` — keep the table and append rows, adding missing columns if needed
 
 **Returns:**
 
-- `error`: Error information, returns nil if successful; if any DDL/DML step fails, an error is returned and the entire operation is rolled back.
+- `error`: Error information, returns nil if successful; failed MySQL staging writes leave the prior table intact.
 
 **Examples:**
 
@@ -1264,6 +1264,8 @@ func NewMaxAbsScaler() *MaxAbsScaler
 ```
 
 `Params()` returns the fitted parameters keyed by column name (`Mean`/`Std`, `Min`/`Max`/`OutputMin`/`OutputMax`, `Median`/`Q1`/`Q3`/`IQR`, or `MaxAbs` depending on the kind).
+
+`ScalerParams.PassThrough` is deprecated. It reports the existing imputer pass-through state and is retained for compatibility; its value and behavior are unchanged.
 
 There is also a DataList-oriented counterpart (`DataListScaler`) on every scaler: `FitDataList`, `TransformDataList`, `FitTransformDataList`, `InverseTransformDataList`, each returning a new `*DataList`.
 
