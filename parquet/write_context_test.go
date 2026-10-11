@@ -12,6 +12,30 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
+type cancelAfterFooterWriter struct {
+	bytes.Buffer
+	cancel context.CancelFunc
+	writes int
+}
+
+func (w *cancelAfterFooterWriter) Write(p []byte) (int, error) {
+	n, err := w.Buffer.Write(p)
+	w.writes++
+	if w.writes > 1 && bytes.Equal(p, []byte("PAR1")) {
+		w.cancel()
+	}
+	return n, err
+}
+
+func TestWriteToContextReturnsCancellationAfterClose(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	w := &cancelAfterFooterWriter{cancel: cancel}
+	err := WriteToContext(ctx, sampleTable(), w)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("WriteToContext returned %v, want context.Canceled", err)
+	}
+}
+
 // cancelOnWrite cancels ctx on the after-th write, so the writer's own output
 // is what ends the write rather than the caller.
 type cancelOnWrite struct {

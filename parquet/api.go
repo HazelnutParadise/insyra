@@ -80,7 +80,7 @@ func Inspect(path string) (info FileInfo, err error) {
 		}
 	}()
 
-	r, err := file.NewParquetReader(f)
+	r, err := file.NewParquetReader(f, file.WithReadProps(readerProperties()))
 	if err != nil {
 		return FileInfo{}, err
 	}
@@ -141,9 +141,21 @@ func Inspect(path string) (info FileInfo, err error) {
 }
 
 // Write writes dt to path as a Parquet file using the default WriteOptions.
-// The target is replaced only after the complete file is written.
+// The target is opened in place and closed after writing.
 func Write(dt insyra.IDataTable, path string) error {
-	return WriteContext(context.Background(), dt, path)
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	writeErr := writeFileContents(context.Background(), dt, f)
+	closeErr := f.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return fmt.Errorf("parquet: failed to close writer: %w", closeErr)
+	}
+	return nil
 }
 
 // Compression selects the codec used for every column.
@@ -216,7 +228,7 @@ func WriteContext(ctx context.Context, dt insyra.IDataTable, path string, opts .
 		return err
 	}
 	return utils.WriteFileAtomically(path, func(w io.Writer) error {
-		if err := WriteToContext(ctx, dt, w, opts...); err != nil {
+		if err := writeFileContents(ctx, dt, w, opts...); err != nil {
 			return err
 		}
 		return ctx.Err()
@@ -228,6 +240,10 @@ func WriteTo(dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error {
 	return WriteToContext(context.Background(), dt, w, opts...)
 }
 func WriteToContext(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error {
+	return writeFileContents(ctx, dt, w, opts...)
+}
+
+func writeFileContents(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error {
 	if ctx == nil {
 		return errNilContext
 	}
@@ -250,7 +266,9 @@ func WriteToContext(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts
 	}
 	rows := arrowTable.NumRows()
 	writeGroup := func(offset, size int64) error {
-		writer.NewRowGroup()
+		if err := writer.NewRowGroupChecked(); err != nil {
+			return err
+		}
 		for i := 0; i < int(arrowTable.NumCols()); i++ {
 			if err := writer.WriteColumnChunked(arrowTable.Column(i).Data(), offset, size); err != nil {
 				return err
@@ -278,6 +296,9 @@ func WriteToContext(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts
 	}
 	if err := writer.Close(); err != nil {
 		return fmt.Errorf("parquet: failed to close writer: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -308,7 +329,19 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 
 // ReadFrom reads a Parquet file from any random access source.
 func ReadFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions) (*insyra.DataTable, error) {
-	return readTableFrom(ctx, io.NewSectionReader(r, 0, size), "the Parquet input", opt)
+	return readTableFrom(ctx, io.NewSectionReader(panicSafeReaderAt{r}, 0, size), "the Parquet input", opt)
+}
+
+type panicSafeReaderAt struct{ io.ReaderAt }
+
+func (r panicSafeReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			n = 0
+			err = unreadableFile("the Parquet input", v)
+		}
+	}()
+	return r.ReaderAt.ReadAt(p, off)
 }
 
 func readTableFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string, opt ReadOptions) (dt *insyra.DataTable, err error) {
@@ -318,8 +351,11 @@ func readTableFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string
 			err = unreadableFile(label, r)
 		}
 	}()
-	r, err := file.NewParquetReader(src)
+	r, err := file.NewParquetReader(src, file.WithReadProps(readerProperties()))
 	if err != nil {
+		return nil, err
+	}
+	if err := normalizeStoredDurationSchema(r); err != nil {
 		return nil, err
 	}
 	defer func() {
@@ -420,7 +456,7 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<
 // StreamFrom streams batches from a random-access source using the same channel contract as Stream.
 func StreamFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error) {
 	return streamTablesFrom(ctx, func() (<-chan arrow.RecordBatch, <-chan error) {
-		return streamArrowRecordsFrom(ctx, io.NewSectionReader(r, 0, size), "the Parquet input", opt, batchSize, nil)
+		return streamArrowRecordsFrom(ctx, io.NewSectionReader(panicSafeReaderAt{r}, 0, size), "the Parquet input", opt, batchSize, nil)
 	})
 }
 

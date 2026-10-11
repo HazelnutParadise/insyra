@@ -134,6 +134,34 @@ func TestWriteRowGroupSize(t *testing.T) {
 	assertSameColumns(t, dt, back)
 }
 
+type refuseAfterHeaderWriter struct {
+	writes int
+	failAt int
+}
+
+func (w *refuseAfterHeaderWriter) Write(p []byte) (int, error) {
+	w.writes++
+	if w.writes < w.failAt {
+		return len(p), nil
+	}
+	return 0, fmt.Errorf("writer refused output after header")
+}
+
+func TestWriteRowGroupFailureReturnsErrorWithoutPanic(t *testing.T) {
+	for failAt := 2; failAt <= 12; failAt++ {
+		t.Run(fmt.Sprint(failAt), func(t *testing.T) {
+			w := &refuseAfterHeaderWriter{failAt: failAt}
+			var err error
+			noPanic(t, "WriteTo row group transition", func() {
+				err = WriteToContext(context.Background(), mixedTable(2), w, WriteOptions{RowGroupSize: 1})
+			})
+			if err == nil {
+				t.Fatal("WriteToContext returned nil after writer refused output")
+			}
+		})
+	}
+}
+
 // assertSameColumns compares every named column of want with the column of the
 // same name in got.
 func assertSameColumns(t *testing.T, want, got *insyra.DataTable) {

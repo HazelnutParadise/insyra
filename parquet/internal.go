@@ -2,9 +2,9 @@ package parquet
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/apache/arrow-go/v18/parquet"
 	"io"
 	"os"
 	"time"
@@ -14,10 +14,57 @@ import (
 	"github.com/TimLai666/go-decimal/decimal"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/flight"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet"
 	"github.com/apache/arrow-go/v18/parquet/file"
 	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
+
+// pqarrow v18 cannot decode a stored Duration schema even though its Parquet
+// physical type is INT64. Present those columns to pqarrow as INT64; the public
+// table representation has always been the raw int64 count.
+func normalizeStoredDurationSchema(r *file.Reader) error {
+	pairs := r.MetaData().FileMetaData.KeyValueMetadata
+	for _, pair := range pairs {
+		if pair.Key != "ARROW:schema" || pair.Value == nil {
+			continue
+		}
+		serialized, err := base64.StdEncoding.DecodeString(*pair.Value)
+		if err != nil {
+			return fmt.Errorf("parquet: decode stored Arrow schema: %w", err)
+		}
+		stored, err := flight.DeserializeSchema(serialized, memory.DefaultAllocator)
+		if err != nil {
+			return fmt.Errorf("parquet: decode stored Arrow schema: %w", err)
+		}
+		fields := stored.Fields()
+		changed := false
+		for i := range fields {
+			if fields[i].Type.ID() == arrow.DURATION {
+				column := r.MetaData().Schema.ColumnIndexByName(fields[i].Name)
+				if column >= 0 && r.MetaData().Schema.Column(column).PhysicalType() == parquet.Types.Int64 {
+					fields[i].Type = arrow.PrimitiveTypes.Int64
+					changed = true
+				}
+			}
+		}
+		if changed {
+			metadata := stored.Metadata()
+			normalized := arrow.NewSchema(fields, &metadata)
+			*pair.Value = base64.StdEncoding.EncodeToString(flight.SerializeSchema(normalized, memory.DefaultAllocator))
+		}
+		return nil
+	}
+	return nil
+}
+
+func readerProperties() *parquet.ReaderProperties {
+	props := parquet.NewReaderProperties(memory.DefaultAllocator)
+	props.MaxCompressedPageSize = 1 << 40
+	props.MaxUncompressedPageSize = 1 << 40
+	return props
+}
 
 // streamAsArrowRecord：串流讀（可選欄、可選包），一批一批吐出 arrow.RecordBatch
 func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan arrow.RecordBatch, <-chan error) {
@@ -53,8 +100,12 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 			}
 		}()
 
-		r, err := file.NewParquetReader(f)
+		r, err := file.NewParquetReader(f, file.WithReadProps(readerProperties()))
 		if err != nil {
+			errChan <- err
+			return
+		}
+		if err := normalizeStoredDurationSchema(r); err != nil {
 			errChan <- err
 			return
 		}
@@ -172,8 +223,12 @@ func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, lab
 		if done != nil {
 			defer done()
 		}
-		r, err := file.NewParquetReader(src)
+		r, err := file.NewParquetReader(src, file.WithReadProps(readerProperties()))
 		if err != nil {
+			errChan <- err
+			return
+		}
+		if err := normalizeStoredDurationSchema(r); err != nil {
 			errChan <- err
 			return
 		}
@@ -278,8 +333,13 @@ func readerFailed(ctx context.Context, label string, err error, src parquet.Read
 func shortRowGroupsFrom(ctx context.Context, src parquet.ReaderAtSeeker, columns, groups []int, counts []int64) []int {
 	var bad []int
 	for i, rg := range groups {
-		pr, err := file.NewParquetReader(readerAtSeekerNoClose{ReaderAtSeeker: src})
+		pr, err := file.NewParquetReader(readerAtSeekerNoClose{ReaderAtSeeker: src}, file.WithReadProps(readerProperties()))
 		if err != nil {
+			bad = append(bad, rg)
+			continue
+		}
+		if err := normalizeStoredDurationSchema(pr); err != nil {
+			_ = pr.Close()
 			bad = append(bad, rg)
 			continue
 		}
@@ -418,7 +478,7 @@ func supportedArrowType(dt arrow.DataType) bool {
 		arrow.BOOL,
 		arrow.STRING, arrow.LARGE_STRING,
 		arrow.BINARY, arrow.LARGE_BINARY, arrow.FIXED_SIZE_BINARY,
-		arrow.TIMESTAMP, arrow.DATE32, arrow.DATE64,
+		arrow.TIMESTAMP, arrow.DATE32, arrow.DATE64, arrow.DURATION,
 		arrow.DECIMAL128, arrow.DECIMAL256,
 		arrow.NULL:
 		return true
@@ -481,6 +541,8 @@ func getVal(arr arrow.Array, i int) any {
 		return append([]byte(nil), a.Value(i)...)
 	case *array.Timestamp:
 		return a.Value(i).ToTime(a.DataType().(*arrow.TimestampType).Unit)
+	case *array.Duration:
+		return int64(a.Value(i))
 	case *array.Date32:
 		return a.Value(i).ToTime().UTC()
 	case *array.Date64:

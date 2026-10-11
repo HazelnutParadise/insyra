@@ -519,7 +519,7 @@ func getValHandles(arr arrow.Array) bool {
 		*array.Float64, *array.Float32,
 		*array.String, *array.LargeString, *array.Boolean,
 		*array.Binary, *array.LargeBinary, *array.FixedSizeBinary,
-		*array.Timestamp, *array.Date32, *array.Date64,
+		*array.Timestamp, *array.Date32, *array.Date64, *array.Duration,
 		*array.Decimal128, *array.Decimal256,
 		*array.Null:
 		return true

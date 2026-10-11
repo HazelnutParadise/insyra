@@ -5,9 +5,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/apache/arrow-go/v18/parquet/file"
 )
 
 // damagedFiles writes the two whole files a damaged one is made of: a 1,000-row
@@ -157,6 +160,54 @@ func TestEveryReaderRefusesADamagedFile(t *testing.T) {
 type panickingAt struct{ reason string }
 
 func (p panickingAt) ReadAt([]byte, int64) (int, error) { panic(p.reason) }
+
+type panicAtRange struct {
+	data       []byte
+	start, end int64
+}
+
+func (p panicAtRange) ReadAt(dst []byte, off int64) (int, error) {
+	if off < p.end && off+int64(len(dst)) > p.start {
+		panic("column chunk source fault")
+	}
+	return bytes.NewReader(p.data).ReadAt(dst, off)
+}
+
+func TestReaderAtPanicInColumnChunkReturnsError(t *testing.T) {
+	const child = "INSYRA_PARQUET_PANIC_CHUNK_CHILD"
+	if os.Getenv(child) == "1" {
+		var buf bytes.Buffer
+		if err := WriteTo(sampleTable(), &buf); err != nil {
+			t.Fatal(err)
+		}
+		r, err := file.NewParquetReader(bytes.NewReader(buf.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		chunk, err := r.MetaData().RowGroup(0).ColumnChunk(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := chunk.DataPageOffset()
+		_ = r.Close()
+		source := panicAtRange{data: buf.Bytes(), start: start, end: start + 64}
+		if _, err := ReadFrom(context.Background(), source, int64(len(source.data)), ReadOptions{}); err == nil {
+			t.Fatal("ReadFrom returned nil on a column chunk fault")
+		}
+		dtChan, errChan := StreamFrom(context.Background(), source, int64(len(source.data)), ReadOptions{}, 10)
+		for range dtChan {
+		}
+		if err := <-errChan; err == nil {
+			t.Fatal("StreamFrom returned nil on a column chunk fault")
+		}
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestReaderAtPanicInColumnChunkReturnsError$")
+	cmd.Env = append(os.Environ(), child+"=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("reader subprocess failed: %v\n%s", err, out)
+	}
+}
 
 // TestAReaderPanicBecomesAnError covers the readers that cannot let a panic
 // reach the caller on their own: StreamFrom reads in a goroutine, where a panic
