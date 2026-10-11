@@ -76,7 +76,7 @@ func TestLoadONNXReadsOpsetAndMaterialisesInitializer(t *testing.T) {
 	if !ok {
 		t.Fatal("model did not materialise the bias initializer")
 	}
-	if got := initializer.Data(); len(got) != 1 || got[0] != 0.5 {
+	if got := float32Values(t, initializer); len(got) != 1 || got[0] != 0.5 {
 		t.Fatalf("bias initializer = %v, want [0.5]", got)
 	}
 }
@@ -107,7 +107,7 @@ func TestLoadONNXDecodesHalfInitializers(t *testing.T) {
 			if got == nil || got.DType() != DTypeFloat32 {
 				t.Fatalf("initializer = %#v, want float32 tensor", got)
 			}
-			values := got.Data()
+			values := float32Values(t, got)
 			if len(values) != len(tc.want) {
 				t.Fatalf("values = %v, want %v", values, tc.want)
 			}

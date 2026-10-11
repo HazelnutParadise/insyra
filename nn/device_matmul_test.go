@@ -43,10 +43,10 @@ func TestDeviceMatMulIsBitEqualToCPUOnHardware(t *testing.T) {
 		}
 		t.Fatalf("default MatMul did not use the device: %s", report.FallbackReason)
 	}
-	if len(got.Data()) != len(cpu.data) {
-		t.Fatalf("device result length = %d, CPU length = %d", len(got.Data()), len(cpu.data))
+	if len(float32Values(t, got)) != len(cpu.data) {
+		t.Fatalf("device result length = %d, CPU length = %d", len(float32Values(t, got)), len(cpu.data))
 	}
-	for i, value := range got.Data() {
+	for i, value := range float32Values(t, got) {
 		if value != cpu.data[i] {
 			t.Fatalf("bit parity failed at %d: device=%08x cpu=%08x", i, math.Float32bits(value), math.Float32bits(cpu.data[i]))
 		}

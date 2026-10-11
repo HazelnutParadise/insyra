@@ -59,7 +59,7 @@ func TestTapeEdgeSumMatchesExactOracle(t *testing.T) {
 					pairs = append(pairs, [2]float32{weightsF[e], upstreamF[b*6+targets[e]]})
 				}
 			}
-			got := math.Float32bits(gradV.Data()[b*6+s])
+			got := math.Float32bits(float32Values(t, gradV)[b*6+s])
 			want := math.Float32bits(exactSumOracle(pairs))
 			if got != want {
 				t.Fatalf("values gradient[%d][%d]: bits = %#08x, want %#08x", b, s, got, want)
@@ -71,7 +71,7 @@ func TestTapeEdgeSumMatchesExactOracle(t *testing.T) {
 		for b := 0; b < 3; b++ {
 			pairs = append(pairs, [2]float32{upstreamF[b*6+targets[e]], valuesF[b*6+sources[e]]})
 		}
-		got := math.Float32bits(gradW.Data()[e])
+		got := math.Float32bits(float32Values(t, gradW)[e])
 		want := math.Float32bits(exactSumOracle(pairs))
 		if got != want {
 			t.Fatalf("weights gradient[%d]: bits = %#08x, want %#08x", e, got, want)
@@ -123,9 +123,9 @@ func TestEdgeSumEdgeOrderDoesNotMatter(t *testing.T) {
 	}
 	originalForward := runForward(originalTopology, weightsF)
 	permutedForward := runForward(permutedTopology, permutedWeights)
-	for i := range originalForward.Data() {
-		got := math.Float32bits(permutedForward.Data()[i])
-		want := math.Float32bits(originalForward.Data()[i])
+	for i := range float32Values(t, originalForward) {
+		got := math.Float32bits(float32Values(t, permutedForward)[i])
+		want := math.Float32bits(float32Values(t, originalForward)[i])
 		if got != want {
 			t.Fatalf("permuted forward[%d]: bits = %#08x, want %#08x", i, got, want)
 		}
@@ -166,16 +166,16 @@ func TestEdgeSumEdgeOrderDoesNotMatter(t *testing.T) {
 	}
 	originalGradients := runTape(originalTopology, weightsF)
 	permutedGradients := runTape(permutedTopology, permutedWeights)
-	for i := range originalGradients.dValues.Data() {
-		got := math.Float32bits(permutedGradients.dValues.Data()[i])
-		want := math.Float32bits(originalGradients.dValues.Data()[i])
+	for i := range float32Values(t, originalGradients.dValues) {
+		got := math.Float32bits(float32Values(t, permutedGradients.dValues)[i])
+		want := math.Float32bits(float32Values(t, originalGradients.dValues)[i])
 		if got != want {
 			t.Fatalf("permuted values gradient[%d]: bits = %#08x, want %#08x", i, got, want)
 		}
 	}
 	for edge, original := range order {
-		got := math.Float32bits(permutedGradients.dWeights.Data()[edge])
-		want := math.Float32bits(originalGradients.dWeights.Data()[original])
+		got := math.Float32bits(float32Values(t, permutedGradients.dWeights)[edge])
+		want := math.Float32bits(float32Values(t, originalGradients.dWeights)[original])
 		if got != want {
 			t.Fatalf("permuted weights gradient[%d] maps to original edge %d: bits = %#08x, want %#08x", edge, original, got, want)
 		}
@@ -241,7 +241,7 @@ func TestTapeEdgeSumFiniteDifferences(t *testing.T) {
 		if err != nil {
 			t.Fatalf("mseLossForward: %v", err)
 		}
-		return lossResult.Data()[0]
+		return float32Values(t, lossResult)[0]
 	}
 
 	const eps = float32(1e-2)
@@ -252,7 +252,7 @@ func TestTapeEdgeSumFiniteDifferences(t *testing.T) {
 			plus[index] += eps
 			minus[index] -= eps
 			finite := (lossFor(plus, valuesF) - lossFor(minus, valuesF)) / (2 * eps)
-			analytic := gradW.Data()[index]
+			analytic := float32Values(t, gradW)[index]
 			if math.Abs(float64(finite-analytic)) > 2e-2*(1+math.Abs(float64(analytic))) {
 				t.Fatalf("weights gradient[%d] = %g, finite difference = %g", index, analytic, finite)
 			}
@@ -265,7 +265,7 @@ func TestTapeEdgeSumFiniteDifferences(t *testing.T) {
 			plus[index] += eps
 			minus[index] -= eps
 			finite := (lossFor(weightsF, plus) - lossFor(weightsF, minus)) / (2 * eps)
-			analytic := gradV.Data()[index]
+			analytic := float32Values(t, gradV)[index]
 			if math.Abs(float64(finite-analytic)) > 2e-2*(1+math.Abs(float64(analytic))) {
 				t.Fatalf("values gradient[%d] = %g, finite difference = %g", index, analytic, finite)
 			}

@@ -118,8 +118,8 @@ func TestCastToHalfRoundsAndWidens(t *testing.T) {
 			if got.DType() != DTypeFloat32 {
 				t.Fatalf("Cast dtype = %s, want %s", got.DType(), DTypeFloat32)
 			}
-			values := got.Data()
-			for index, value := range input.Data() {
+			values := float32Values(t, got)
+			for index, value := range float32Values(t, input) {
 				if math.IsNaN(float64(value)) {
 					if !math.IsNaN(float64(values[index])) {
 						t.Fatalf("Cast NaN = %v", values[index])

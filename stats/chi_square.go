@@ -159,8 +159,11 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 
 // ChiSquareIndependenceTest performs a chi-square test of independence.
 func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTestResult, error) {
-	rowVals := rowData.Data()
-	colVals := colData.Data()
+	var rowVals, colVals []any
+	insyra.AtomicDoAll(func() {
+		rowVals = rowData.Data()
+		colVals = colData.Data()
+	}, rowData, colData)
 
 	if len(rowVals) == 0 || len(colVals) == 0 {
 		return nil, errors.New("input DataLists cannot be empty")

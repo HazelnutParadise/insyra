@@ -29,9 +29,16 @@ type DecisionTreeOptions struct {
 	CategoricalFeatures []string
 }
 
-// DecisionTreeClassifierOptions and DecisionTreeRegressorOptions are aliases
-// kept for callers that prefer a model-specific option name.
+// DecisionTreeClassifierOptions is the same type as DecisionTreeOptions.
+//
+// Deprecated: use DecisionTreeOptions, which both tree functions take.
+// Removed in Insyra 0.4.
 type DecisionTreeClassifierOptions = DecisionTreeOptions
+
+// DecisionTreeRegressorOptions is the same type as DecisionTreeOptions.
+//
+// Deprecated: use DecisionTreeOptions, which both tree functions take.
+// Removed in Insyra 0.4.
 type DecisionTreeRegressorOptions = DecisionTreeOptions
 
 // DecisionTreeNode is one fitted node. A leaf has IsLeaf set and reports its
@@ -944,6 +951,15 @@ func (m *DecisionTreeClassifier) PredictProba(dt *insyra.DataTable) (*insyra.Dat
 	return probabilityTable(m.classes, byClass), nil
 }
 
+// Features reports the columns the model was fitted on, in fitting order.
+// It returns nil for a nil model.
+func (m *DecisionTreeClassifier) Features() []string {
+	if m == nil {
+		return nil
+	}
+	return m.modelBase.Features()
+}
+
 func (m *DecisionTreeClassifier) FeatureImportances() []float64 {
 	if m == nil {
 		return nil
@@ -977,6 +993,15 @@ func (m *DecisionTreeRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList,
 		values[i] = leaf.Value
 	}
 	return insyra.NewDataList(values...), nil
+}
+
+// Features reports the columns the model was fitted on, in fitting order.
+// It returns nil for a nil model.
+func (m *DecisionTreeRegressor) Features() []string {
+	if m == nil {
+		return nil
+	}
+	return m.modelBase.Features()
 }
 
 func (m *DecisionTreeRegressor) FeatureImportances() []float64 {

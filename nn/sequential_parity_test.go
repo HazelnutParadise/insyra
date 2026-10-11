@@ -47,7 +47,7 @@ func TestSequentialPyTorchInterop(t *testing.T) {
 		t.Fatalf("Predict: %v", err)
 	}
 	want := flattenReferenceOutput(t, reference.Forward)
-	assertSequentialValues(t, "forward", got.Data(), want)
+	assertSequentialValues(t, "forward", float32Values(t, got), want)
 
 	tape := NewTape(1)
 	trainModel, err := NewSequential(tape, Dense(784, 128), ReLU(), Dense(128, 10))
@@ -75,7 +75,7 @@ func TestSequentialPyTorchInterop(t *testing.T) {
 	if err := tape.AdamW(1e-3, 1e-2); err != nil {
 		t.Fatalf("AdamW: %v", err)
 	}
-	assertSequentialValues(t, "loss", loss.Data(), []float32{reference.Loss})
+	assertSequentialValues(t, "loss", float32Values(t, loss), []float32{reference.Loss})
 	assertSequentialParameters(t, trainModel, reference.PostParameters)
 }
 
@@ -168,7 +168,7 @@ func assertSequentialParameters(t *testing.T, model *Sequential, want map[string
 		if parameter == nil {
 			t.Fatalf("post-step parameter %q is missing", name)
 		}
-		got := parameter.Value().Data()
+		got := float32Values(t, parameter.Value())
 		if strings.HasSuffix(name, ".weight") {
 			got = transposeSequentialWeight(got, parameter.Value().Shape()[0], parameter.Value().Shape()[1])
 		}

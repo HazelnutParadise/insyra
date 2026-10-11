@@ -26,7 +26,9 @@ func Conv2D(in, out, kernel int, options ...ConvOptions) Layer {
 	return &conv2DLayer{in: in, out: out, kernel: kernel, opts: opts}
 }
 
-// NewConv2D is the constructor-style spelling of Conv2D.
+// NewConv2D builds the same layer as Conv2D.
+//
+// Deprecated: use Conv2D. Removed in Insyra 0.4.
 func NewConv2D(in, out, kernel int, options ...ConvOptions) Layer {
 	return Conv2D(in, out, kernel, options...)
 }
@@ -141,7 +143,9 @@ func MaxPool2D(kernel int, options ...PoolOptions) Layer {
 	return newPool2DLayer(kernel, true, options...)
 }
 
-// NewMaxPool2D is the constructor-style spelling of MaxPool2D.
+// NewMaxPool2D builds the same layer as MaxPool2D.
+//
+// Deprecated: use MaxPool2D. Removed in Insyra 0.4.
 func NewMaxPool2D(kernel int, options ...PoolOptions) Layer {
 	return MaxPool2D(kernel, options...)
 }
@@ -151,7 +155,9 @@ func AvgPool2D(kernel int, options ...PoolOptions) Layer {
 	return newPool2DLayer(kernel, false, options...)
 }
 
-// NewAvgPool2D is the constructor-style spelling of AvgPool2D.
+// NewAvgPool2D builds the same layer as AvgPool2D.
+//
+// Deprecated: use AvgPool2D. Removed in Insyra 0.4.
 func NewAvgPool2D(kernel int, options ...PoolOptions) Layer {
 	return AvgPool2D(kernel, options...)
 }
@@ -200,7 +206,9 @@ type globalAvgPoolLayer struct{}
 // GlobalAvgPool creates a global average-pooling layer.
 func GlobalAvgPool() Layer { return &globalAvgPoolLayer{} }
 
-// NewGlobalAvgPool is the constructor-style spelling of GlobalAvgPool.
+// NewGlobalAvgPool builds the same layer as GlobalAvgPool.
+//
+// Deprecated: use GlobalAvgPool. Removed in Insyra 0.4.
 func NewGlobalAvgPool() Layer { return GlobalAvgPool() }
 
 func (*globalAvgPoolLayer) Build(*Tape) error { return nil }
@@ -224,7 +232,9 @@ func BatchNorm2D(features int) Layer {
 	return &batchNorm2DLayer{features: features, epsilon: 1e-5, momentum: 0.1}
 }
 
-// NewBatchNorm2D is the constructor-style spelling of BatchNorm2D.
+// NewBatchNorm2D builds the same layer as BatchNorm2D.
+//
+// Deprecated: use BatchNorm2D. Removed in Insyra 0.4.
 func NewBatchNorm2D(features int) Layer { return BatchNorm2D(features) }
 
 func (l *batchNorm2DLayer) Build(t *Tape) error {
@@ -315,22 +325,33 @@ type layerNormLayer struct {
 
 // LayerNorm normalizes the last dimension and applies learned affine values.
 // dims may be an int or a []int normalized shape, matching torch's accepted
-// forms.
+// forms. Use LayerNormShape to pass a shape directly.
 func LayerNorm(dims interface{}) Layer {
-	var shape []int
 	switch value := dims.(type) {
 	case int:
-		shape = []int{value}
+		return &layerNormLayer{dims: []int{value}, epsilon: 1e-5}
 	case []int:
-		shape = append([]int(nil), value...)
+		return LayerNormShape(value)
 	default:
-		shape = []int{0}
+		return &layerNormLayer{dims: []int{0}, epsilon: 1e-5}
 	}
-	return &layerNormLayer{dims: shape, epsilon: 1e-5}
 }
 
-// NewLayerNorm is the constructor-style spelling of LayerNorm.
-func NewLayerNorm(dims interface{}) Layer { return LayerNorm(dims) }
+// LayerNormShape normalizes the trailing len(dims) dimensions and applies
+// learned affine values of that shape, as torch.nn.LayerNorm does when given
+// a normalized_shape list. dims is copied.
+func LayerNormShape(dims []int) Layer {
+	return &layerNormLayer{dims: append([]int(nil), dims...), epsilon: 1e-5}
+}
+
+// NewLayerNorm builds LayerNorm for an int and LayerNormShape for a []int. Any
+// other value builds a layer whose Build reports a dimension of 0.
+//
+// Deprecated: use LayerNorm for one size or LayerNormShape for a shape.
+// Removed in Insyra 0.4.
+func NewLayerNorm(dims interface{}) Layer {
+	return LayerNorm(dims)
+}
 
 func (l *layerNormLayer) Build(t *Tape) error {
 	if len(l.dims) == 0 {
@@ -399,7 +420,9 @@ type embeddingLayer struct {
 // Embedding creates a trainable [vocab, dims] token table.
 func Embedding(vocab, dims int) Layer { return &embeddingLayer{vocab: vocab, dims: dims} }
 
-// NewEmbedding is the constructor-style spelling of Embedding.
+// NewEmbedding builds the same layer as Embedding.
+//
+// Deprecated: use Embedding. Removed in Insyra 0.4.
 func NewEmbedding(vocab, dims int) Layer { return Embedding(vocab, dims) }
 
 func (l *embeddingLayer) Build(t *Tape) error {

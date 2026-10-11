@@ -17,7 +17,9 @@ type BoundRegressor struct {
 	output    ValueInfo
 }
 
-// Regressor is a short alias for BoundRegressor.
+// Regressor is the same type as BoundRegressor.
+//
+// Deprecated: use BoundRegressor. Removed in Insyra 0.4.
 type Regressor = BoundRegressor
 
 // BindRegressor binds feature names to a two-dimensional float32 ONNX input.
@@ -104,7 +106,9 @@ type BoundClassifier struct {
 	classes       *insyra.DataList
 }
 
-// Classifier is a short alias for BoundClassifier.
+// Classifier is the same type as BoundClassifier.
+//
+// Deprecated: use BoundClassifier. Removed in Insyra 0.4.
 type Classifier = BoundClassifier
 
 // BindClassifier binds feature names and caller-owned class labels to a model.
