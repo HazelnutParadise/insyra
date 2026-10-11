@@ -26,6 +26,9 @@ The zero-value `Options{}` selects `EngineMILP`. Set `Options.Engine` to `Engine
 
 `Solution` provides `Status`, `Objective`, `Values`, `Engine`, `Elapsed`, `Nodes`, and `Log`. `Solution.ToDataTable()` returns the variable/value rows in model order.
 
+> [!NOTE]
+> When the linear relaxation at a branch-and-bound node fails numerically, go-milp v0.2.0 skips that node and can still report the result as optimal, even though the skipped part of the search might have held a better solution ([go-milp#2](https://github.com/daniel-sullivan/go-milp/issues/2)). If an integer program's answer matters, solve it once more with `EngineGLPK` and compare the objectives.
+
 ## Features
 
 ### Solve From LP File
