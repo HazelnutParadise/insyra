@@ -18,16 +18,31 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `engine/ccl` 可以註冊序列函式了：用 `RegisterSequenceFunction(name, fn)` 搭配新的 `SeqFunc` 型別，加入一個吃整欄、回傳同樣長度一欄的函式，就像 `LAG`、`CUMSUM` 那樣。以前從模組外只能註冊純量函式與彙總函式。註冊函式的說明也寫清楚函式登錄表的行為：整個程式共用同一份，可以從任意多個 goroutine 同時使用，名稱不分大小寫，同名再註冊一次會取代同一類的函式。什麼都不做的 `ResetEvalDepth`、`ResetFuncCallDepth` 標為 Deprecated。
 - 讀寫不再非得經過硬碟上的檔案。`ReadCSV(r io.Reader, opts)` 可以從任何來源讀 CSV，例如 HTTP 回應、壓縮檔裡的檔案、`embed.FS` 檔案或記憶體中的位元組，`Encoding` 留空時會從開頭的位元組偵測編碼；`ReadCSV_FileWithOptions` 與 `ReadCSV_StringWithOptions` 現在走同一套程式，同樣的位元組不論走哪個入口都得到同樣的表格。`StreamCSV(r, opts, batchSize)` 以 `for dt, err := range insyra.StreamCSV(...)` 一批一批讀 CSV，記憶體裡只放當下這一批；標題列會命名每一批的欄位，型別逐批推斷。`ReadJSON` 接受 `io.Reader`，`ReadExcel(r, sheet, …)` 從來源讀活頁簿，`(*DataTable).WriteCSV` 與 `WriteJSON` 可寫到任何 `io.Writer`，`ToCSVWithOptions` 與 `ToJSON` 現在也透過它們寫檔。既有函式的簽名與結果都沒有改變。
 - DataTable 現在可以寫成 Excel。`(*DataTable).ToExcel(path, ExcelWriteOptions)` 把表格寫成活頁簿裡的一張工作表，活頁簿其他工作表維持原樣，檔案不存在時會自動建立，所以一份報表可以一年放一張表。工作表已經存在時會回傳可用 `ErrSheetExists` 比對的錯誤，檔案完全不動；設定 `IfSheetExists: SheetExistsReplace` 才會取代那張表，而且保留它原本的位置，原本隱藏的也維持隱藏，其他工作表定義的名稱也留在原處。`Sheet` 預設為 `Sheet1`。數字、布林值與時間會存成 Excel 的原生值。檔案要整份寫完才會取代原檔，既有檔案的權限不變。`(*DataTable).WriteExcel(w, opts)` 可以把單一工作表的活頁簿寫到任何 `io.Writer`。
+- `DataList.DataType()` 與 `DataTable.ColDataTypes()` 說明一欄裝的是哪種值：`DataTypeNumber`、`DataTypeString`、`DataTypeBool`、`DataTypeTime`、`DataTypeOther`、`DataTypeMixed`，沒有值時是 `DataTypeEmpty`。缺值（nil，以及任何浮點型別的 NaN）不算，整數和浮點數都算數字，看起來像數字的文字仍是文字。這條線上 decimal 判為 `DataTypeOther`，因為數值函式不把它當數字讀。`ShowTypes` 開頭多一列 `DataType`，在逐格的 Go 型別上方總結每一欄；DataList 的型別資訊也多一行 `DataType:`。
+- DataList 與 DataTable 新增 `ShowHead(n)`、`ShowTail(n)` 以及 `ShowHeadTo`、`ShowTailTo`，是 `ShowRange(n)` 與 `ShowRange(-n)` 更直白的寫法。數量小於 1 時印出錯誤行。
+- 在 nil 的 `DataList` 或 `DataTable`（例如 `GetCol` 找不到欄時回傳的值）上呼叫 `Err()`，會回報 `nil DataList` 或 `nil DataTable`，不再崩潰。只有 `Err()` 有這層保護，nil 值上的其他方法照樣會失敗。
+- DataTable 的 `Show`、`ShowRange`、`ShowTypesRange` 改成只依要印出的列決定欄寬，不再格式化每一格，所以 `ShowRange(5)` 不會再隨表格變大而變慢。會印出全部列的視圖，輸出逐位元組不變。超過 25 列、只印前 20 列與後 5 列時，若某欄最寬的格子落在沒印出的列，該欄會變窄。`Show` 接受的介面匯出為 `Showable`。
+- `DataTable.SliceRows(from, to)` 與 `SliceCols(from, to)` 像 Go 的 `s[from:to]` 那樣取連續的列或欄。`SliceRows` 用 0 起算的位置；`SliceCols` 的兩端可以是 Excel 欄字母或 int 位置，int 可為負數從尾端算，`nil` 代表不限該端：在四欄的表上 `SliceCols("B", "D")`、`SliceCols(1, 3)`、`SliceCols("B", -1)` 是同一個呼叫。無法使用的邊界會記錄錯誤並回傳空表。十個 `FilterRowsByRowIndex…`、`FilterColsByColIndex…` 方法以及 `Headers`、`SetHeaders` 改為 Deprecated，請改用 `SliceRows`、`SliceCols`、`ColNames`、`SetColNames`；它們在 0.3.x 線照常可用。`FilterColsByColIndexLessThan` 與 `…LessThanOrEqualTo` 收到超過最後一欄的字母時回傳所有欄，不再 panic。
+- `DataTable.FilterRowsWhere(keep func(row *DataList) bool)` 把整列交給 `keep`，條件可以比較同一列的兩欄。`Filter` 與 `FilterRows` 改用呼叫開始時的欄位運作，判斷式裡新增或刪除欄位不會再讓篩選崩潰或讀錯欄。`FilterByCustomElement` 改為 Deprecated，`Filter` 做的是同一件事。
+- `Rolling`、`Expanding`、`EWM` 的選項被拒絕時，各 reducer 回傳的空清單會在 `Err()` 帶著錯誤，原本是沒有錯誤的空清單。`ShiftCol`、`DiffCol`、`PctChangeCol` 與四個 `Cum…Col` 遇到不存在的欄時，回傳帶著表格錯誤的空清單；`GroupedColumnTransform.As` 遇到第一個轉換失敗的群組就停止。成功的呼叫結果不變。
+- `GroupBy`、`Pivot`、`Merge` 的鍵以及 `Describe` 的相異值計數，把 `uintptr` 和其他整數寬度視為同一群，`Count` 與 `Counter` 原本就是如此。
+- `DataList.Difference`、`MovingAverage`、`MovingStdev`、`WeightedMovingAverage` 改為 Deprecated，行為不變，在 0.4 移除。替代寫法 `Diff(1)`、`Rolling(RollingOptions{Window: w}).Mean()`、`Rolling(...).Std()` 與帶 `Weights` 的 `Rolling(...)` 會保留輸入長度，並在舊方法失敗或給 NaN 的地方給 `nil`；`Docs/DataList.md` 列出每一項差異。
+- `SqrtRat`、`PowRat`、`SortTimes`、`F64orRat` 改為 Deprecated，它們和資料表無關，在 0.4 移除。`SqrtRat` 遇到 nil 或負值、`PowRat` 遇到 nil 底數時回傳 nil，原本會 panic；`PowRat` 收到負指數時回傳倒數次方，原本回傳 1。
 
 ### CLI
 
 - `save <var> <file.xlsx>` 把表格寫成活頁簿裡的一張工作表：`sheet <name>` 指定工作表（預設 `Sheet1`），`if-exists replace` 會取代已經存在的工作表，不加則拒絕寫入。活頁簿裡的其他工作表都保留。
+- `rolling` 的選項被函式庫拒絕時（例如 `minobs` 大於視窗），指令會帶著原因失敗，不再存下一個空結果。
 
 ### `datafetch`
 
 - 建構子回傳的客戶端改為匯出型別：`TWStock` 回傳 `*TWStockClient`，`YFinance` 回傳 `*YFinanceClient`，它的 `Ticker` 回傳 `*YFTicker`，`TWGeocoding` 回傳 `*TWGeocodingClient`，`GoogleMapsStores` 回傳 `*GoogleMapsStoresClient`。現在可以把客戶端存進自己的 struct 欄位或當成參數傳遞，既有的呼叫不必修改。不是由建構子建立的 TWSE／TPEx 或地理編碼客戶端（例如建構子出錯時回傳的 `nil` 或零值），過去會直接 panic 的地方現在回傳錯誤；原本就有回應的呼叫，回應不變。
 - 每個抓取方法都有接收 `context.Context` 的 `...Context` 版本，做法與 `ReadSQLContext` 相同，原本的方法改為以 `context.Background()` 呼叫它：`TWStockClient` 的六個方法（例如 `DailyPricesContext`）、`ReverseContext`、`ReverseColsContext`、`ReverseTableContext`、`SearchContext`、`GetReviewsContext`，以及 `YFTicker` 所有會發出請求的 26 個方法（例如 `HistoryContext`）。context 會傳到限流等待、重試前的退避、每個 HTTP 請求與評論翻頁之間的等待。被取消的呼叫回傳 `ctx.Err()` 且不重試。`ReverseContext` 的請求若被 context 中斷，回報的是 context 的錯誤而不是 `ErrGeocodeTimeout`，`ErrGeocodeTimeout` 仍只代表服務沒在 `Timeout` 內回應。`ReverseCols` 批次中途被取消時，會回傳已解析的列，其餘標為 `pending`，與配額用完時相同。go-yfinance 無法中途停止已經開始的呼叫，所以 Yahoo Finance 的方法在 context 結束時會立刻返回，那次呼叫則留在背景跑完，期間仍可能送出剩下的請求。`ReverseTableByColName` 沒有 Context 版本，請把同樣的欄位以 Excel 式索引傳給 `ReverseTableContext`。
 - `YFPeriodYearly` 改為 Deprecated，請改用抓取相同財報的 `YFPeriodAnnual`，它產生的表格仍標示 `yearly`。評論排序常數改為 `GoogleMapsStoreReviewSortByRelevance`、`GoogleMapsStoreReviewSortByNewest`、`GoogleMapsStoreReviewSortByHighestRating`、`GoogleMapsStoreReviewSortByLowestRating`，`SortByRelevance` 等四個舊名改為數值相同的 Deprecated 常數。`GoogleMapsStoreReviewsFetchingOptions.MaxWaitingInterval` 以 `time.Duration` 設定翻頁之間最長的等待，規則與原本的毫秒欄位相同，`MaxWaitingInterval_Milliseconds` 改為 Deprecated，兩個都設定時 `GetReviews` 會在發出請求前回傳 `nil` 並記錄警告。這些 Deprecated 名稱在 0.3.x 線上照常可用。
+
+### `stats`
+
+- `DiagOf`、`DiagMatrix`、`DiagMatrixSize`、`IdentityMatrix` 以單一型別建立與讀取對角線，大小小於 1 或矩陣為 nil 時回傳錯誤而不是 panic。`Diag(x any, dims ...int)` 改為 Deprecated，行為不變（包括大小小於 1 時 panic），在 0.4 移除。
 
 ### `csvxl`
 
@@ -44,6 +59,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 有一欄叫 `name` 的 pandas DataFrame，回傳後不會有表名。pandas 會把欄位當成屬性回傳，過去表名會變成那一欄印出來的內容。直接設在 DataFrame 本身的名稱一樣會成為表名。
 - `RunCodef`、`RunFilef` 與它們的 `Context` 版本的參數，不會再變成 Python 程式碼。過去佔位字元是一個參數接一個參數、對整份程式碼輪流替換，後面的參數替換時，也會改到前面參數插進去的文字：傳入 `$v2` 和 `+__import__('os').system('id')+` 兩段文字，就會執行那個指令。`$v1` 也會吃掉 `$v10` 的開頭。JSON 寫不出來的值（例如 `[]any{文字, math.NaN()}`）會照 Go 的格式原樣寫進程式碼，裡面的文字就成了程式碼。現在佔位字元只在原本的模板裡找一次，依完整編號替換，也只轉換模板用到的參數。寫不成 Python 值的參數，會在 Python 啟動前回傳錯誤，並註明是哪個佔位字元。含有 NaN 或無限大的 `[]float64` 也一樣，過去會寫成 Python 不認得的 `NaN` 或 `+Inf`。
 - 在 ARM64 的 Windows 上用 x86-64 的 Python 也能執行了。polars 的 CPU 檢查把機器讀成 ARM64，在每段程式開頭的 `import polars` 拋出 `unknown feature flag`，所以每次執行都失敗。產生的程式現在會在 ARM64 Windows 上的 x86-64 Python 設定 `POLARS_SKIP_CPU_CHECK=1`，已經設過這個變數時不動它。
+
 
 ## v0.3.4
 

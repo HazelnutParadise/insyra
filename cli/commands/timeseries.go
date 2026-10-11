@@ -115,7 +115,8 @@ func runMovAvgCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	result := dl.Clone().MovingAverage(window)
+	// movavg keeps MovingAverage's shorter result until the method is removed.
+	result := dl.Clone().MovingAverage(window) //nolint:staticcheck
 	if result == nil {
 		return fmt.Errorf("movavg: window %d is invalid for a list of %d items", window, dl.Len())
 	}
@@ -155,7 +156,8 @@ func runDiffCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	result := dl.Clone().Difference()
+	// diff keeps Difference's length-n-1 result until the method is removed.
+	result := dl.Clone().Difference() //nolint:staticcheck
 	if result == nil {
 		return fmt.Errorf("diff: list %s needs at least 2 items", coreArgs[0])
 	}
@@ -363,6 +365,9 @@ func runRollingCommand(ctx *ExecContext, args []string) error {
 	default:
 		return fmt.Errorf("rolling: unknown reducer %q (supported: sum, mean, min, max, median, std, var, cov <other>, beta <other>)", coreArgs[2])
 	}
+	if err := result.PopErr(); err != nil {
+		return fmt.Errorf("rolling: %w", err)
+	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
 	return nil
@@ -492,8 +497,8 @@ func runEWMCommand(ctx *ExecContext, args []string) error {
 	default:
 		return fmt.Errorf("ewm: unknown reducer %q (supported: mean, var, std)", coreArgs[3])
 	}
-	if result.Len() != dl.Len() {
-		return fmt.Errorf("ewm: invalid options (alpha %v, span %v, halflife %v)", opts.Alpha, opts.Span, opts.HalfLife)
+	if err := result.PopErr(); err != nil {
+		return fmt.Errorf("ewm: %w", err)
 	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)

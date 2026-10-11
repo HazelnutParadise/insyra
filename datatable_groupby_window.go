@@ -25,6 +25,9 @@ type GroupedColumnTransform struct {
 // As executes the configured transform and returns the resulting column with
 // the given name. The output has the same length as the parent DataTable
 // (rows that didn't appear in any group, if any, remain nil).
+// When the transform cannot run, whether the column or grouping was invalid or
+// an argument was, As records the error on the table and returns an empty
+// DataList carrying it.
 func (t *GroupedColumnTransform) As(name string) *DataList {
 	if t == nil {
 		out := NewDataList()
@@ -32,12 +35,12 @@ func (t *GroupedColumnTransform) As(name string) *DataList {
 		return out
 	}
 	if t.err != "" {
+		var errInfo *ErrorInfo
 		if t.parent != nil && t.parent.parent != nil {
 			t.parent.parent.warn("GroupedColumnTransform.As", "%s", t.err)
+			errInfo = t.parent.parent.Err()
 		}
-		out := NewDataList()
-		out.SetName(name)
-		return out
+		return emptyWindowResult(name, errInfo)
 	}
 	g := t.parent
 	if g == nil || t.perGroupFn == nil {
@@ -67,6 +70,22 @@ func (t *GroupedColumnTransform) As(name string) *DataList {
 			}
 		}
 		result := t.perGroupFn(sub)
+		var failErr *ErrorInfo
+		if e := sub.Err(); e != nil {
+			failErr = e
+		} else if result != nil {
+			failErr = result.Err()
+		}
+		if failErr != nil {
+			// Every failure a per-group transform can have is a bad argument,
+			// the same for every group, so the first one fails the call. The
+			// sub-list has already logged it; record it on the table without
+			// logging it twice.
+			if g.parent != nil {
+				g.parent.setError(LogLevelWarning, "DataTable", "GroupedColumnTransform.As", failErr.Message)
+			}
+			return emptyWindowResult(name, failErr)
+		}
 		if result == nil {
 			for _, idx := range rowIdxs {
 				if idx < nRows {

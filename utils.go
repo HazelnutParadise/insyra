@@ -18,6 +18,9 @@ import (
 	"github.com/saintfish/chardet"
 )
 
+// F64orRat is a type constraint satisfied by float64 and *big.Rat.
+//
+// Deprecated: no insyra function uses F64orRat. Removed in 0.4.
 type F64orRat = utils.F64orRat
 
 var ToFloat64 = utils.ToFloat64
@@ -86,29 +89,43 @@ func ProcessData(input any) ([]any, int) {
 	return data, len(data)
 }
 
-// SqrtRat calculates the square root of a big.Rat.
-// 計算 big.Rat 的平方根
+// SqrtRat returns the square root of x, rounded to the precision of a
+// big.Float holding x. It returns nil when x is nil or negative.
+//
+// Deprecated: SqrtRat has nothing to do with data tables and was removed in
+// 0.4. Use math/big directly:
+//
+//	f := new(big.Float).SetRat(x)
+//	root, _ := f.Sqrt(f).Rat(nil)
 func SqrtRat(x *big.Rat) *big.Rat {
-	// 將 *big.Rat 轉換為 *big.Float
+	if x == nil || x.Sign() < 0 {
+		return nil
+	}
 	floatValue := new(big.Float).SetRat(x)
-
-	// 計算平方根
 	sqrtValue := new(big.Float).Sqrt(floatValue)
-
-	// 將 *big.Float 轉換為 *big.Rat
-	result := new(big.Rat)
-	sqrtXRat, _ := sqrtValue.Rat(result)
-	return sqrtXRat
+	result, _ := sqrtValue.Rat(nil)
+	return result
 }
 
-// PowRat calculates the power of a big.Rat.
-// 計算 big.Rat 的次方 (v^n)
+// PowRat returns base raised to exponent as a new value. A negative exponent
+// gives the reciprocal of the positive power, so PowRat(2/3, -2) is 9/4. Any
+// base to the power 0 is 1. It returns nil when base is nil, or when base is 0
+// and exponent is negative, since 0 has no reciprocal.
+//
+// Deprecated: PowRat has nothing to do with data tables and was removed in
+// 0.4. Use math/big directly: raise base.Num() and base.Denom() with
+// big.Int.Exp and combine them with big.Rat.SetFrac.
 func PowRat(base *big.Rat, exponent int) *big.Rat {
-	result := new(big.Rat).SetInt64(1) // 初始化為 1
-	for range exponent {
-		result.Mul(result, base) // result = result * base
+	if base == nil || (exponent < 0 && base.Sign() == 0) {
+		return nil
 	}
-	return result
+	n := new(big.Int).Abs(big.NewInt(int64(exponent)))
+	num := new(big.Int).Exp(base.Num(), n, nil)
+	den := new(big.Int).Exp(base.Denom(), n, nil)
+	if exponent < 0 {
+		num, den = den, num
+	}
+	return new(big.Rat).SetFrac(num, den)
 }
 
 // Deprecated: ConvertLongDataToWide is misleadingly named — it does not produce
@@ -253,6 +270,9 @@ func CalcColIndex(colNumber int) (colIndex string, ok bool) {
 
 // SortTimes sorts a slice of time.Time in ascending order.
 // It sorts the times directly in the provided slice.
+//
+// Deprecated: SortTimes has nothing to do with data tables and was removed in
+// 0.4. Use slices.SortStableFunc(times, time.Time.Compare).
 func SortTimes(times []time.Time) {
 	algorithms.ParallelSortStableFunc(times, func(a, b time.Time) int {
 		if a.Before(b) {

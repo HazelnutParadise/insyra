@@ -538,7 +538,7 @@ ewm returns halflife 5 std minobs 3 as ewvol
 
 `rolling` additionally takes two paired reducers, each consuming a second DataList variable: `rolling <var> <window> cov <other> [...]` and `rolling <var> <window> beta <other> [...]`. `beta` is `Cov(var, other) / Var(other)`; a flat benchmark window yields nil.
 
-A window shorter than `minobs` has to be asked for explicitly. Omit `minobs` and it defaults to `window`, which means a `rolling ... 20` over 1,000 rows emits nil for the first 19 rows instead of computing from a partial window; `minobs 5` is what makes the first four rows real numbers. `minobs` above `window` is not refused: it logs a warning and stores an empty result. `center yes` shifts the window to straddle each position the way pandas' `rolling(center=True)` does; with the default `minobs` the first and last few rows are still nil, and a smaller `minobs` is what fills them from a partial window.
+A window shorter than `minobs` has to be asked for explicitly. Omit `minobs` and it defaults to `window`, which means a `rolling ... 20` over 1,000 rows emits nil for the first 19 rows instead of computing from a partial window; `minobs 5` is what makes the first four rows real numbers. `minobs` above `window` is an error: the command fails with the reason and stores nothing. `center yes` shifts the window to straddle each position the way pandas' `rolling(center=True)` does; with the default `minobs` the first and last few rows are still nil, and a smaller `minobs` is what fills them from a partial window.
 
 `expanding <var> <minobs> <reducer>` reduces over everything from row 1 to the current row. Its `minobs` is a required argument, and until that many valid observations have arrived the position is nil.
 

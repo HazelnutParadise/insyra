@@ -55,13 +55,18 @@ type IDataList interface {
 	FillWithMedian() *DataList
 	FillWithMode() *DataList
 	FillByInterpolation(extrapolate ...bool) *DataList
+	// Deprecated: use Rolling(...).Mean(); see DataList.MovingAverage.
 	MovingAverage(int) *DataList
+	// Deprecated: use Rolling(...).Mean() with Weights; see DataList.WeightedMovingAverage.
 	WeightedMovingAverage(int, any) *DataList
 	ExponentialSmoothing(float64) *DataList
 	DoubleExponentialSmoothing(float64, float64) *DataList
 	EWM(EWMOptions) *EWMDataList
+	// Deprecated: use Rolling(...).Std(); see DataList.MovingStdev.
 	MovingStdev(int) *DataList
 	Len() int
+	// DataType returns the kind of values the list holds, ignoring missing ones.
+	DataType() DataType
 	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
 	SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList
 	Shuffle(options ...SamplingOptions) *DataList
@@ -89,6 +94,7 @@ type IDataList interface {
 	Quartile(int) float64
 	IQR() float64
 	Percentile(float64) float64
+	// Deprecated: use Diff(1); see DataList.Difference.
 	Difference() *DataList
 	Describe(...DescribeOptions) *DataTable
 	Summary()
@@ -104,6 +110,8 @@ type IDataList interface {
 	IsTheSameAs(*DataList) bool
 	Show()
 	ShowRange(startEnd ...any)
+	ShowHead(n int)
+	ShowTail(n int)
 	ShowTypes()
 	ShowTypesRange(startEnd ...any)
 
@@ -153,6 +161,8 @@ type IDataTable interface {
 	ColNamesToFirstRow() *DataTable
 	DropColNames() *DataTable
 	ColNames() []string
+	// ColDataTypes returns each column's DataType in column order.
+	ColDataTypes() []DataType
 	Headers() []string
 	SetColNames(colNames []string) *DataTable
 	SetHeaders(headers []string) *DataTable
@@ -192,6 +202,8 @@ type IDataTable interface {
 	Show()
 	ShowTypes()
 	ShowRange(startEnd ...any)
+	ShowHead(n int)
+	ShowTail(n int)
 	ShowTypesRange(startEnd ...any)
 	// GetRowIndexByName returns the index of a row by its name.
 	// Returns -1 and false if the row name does not exist.
@@ -235,6 +247,8 @@ type IDataTable interface {
 	// Operations
 	Transpose() *DataTable
 	Clone() *DataTable
+	SliceRows(from, to int) *DataTable
+	SliceCols(from, to any) *DataTable
 	To2DSlice() [][]any
 	SimpleRandomSample(sampleSize int) *DataTable
 	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable
@@ -248,6 +262,7 @@ type IDataTable interface {
 	Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 	FilterByCustomElement(f func(value any) bool) *DataTable
 	FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
+	FilterRowsWhere(keep func(row *DataList) bool) *DataTable
 	FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable
 	FilterColsByColIndexGreaterThan(threshold string) *DataTable
 	FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
