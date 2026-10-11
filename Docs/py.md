@@ -10,6 +10,8 @@ On first use it:
 
 This setup requires network access and may take a while the first time.
 
+On Windows on arm64, an x86-64 build of CPython runs through Windows' x64 emulation, and polars' CPU check reads the machine as ARM64 under that emulation and can refuse to import. The script `py` generates therefore sets `POLARS_SKIP_CPU_CHECK=1` for an x86-64 Python on ARM64 Windows, unless you set the variable yourself. A native arm64 Python, and every other platform, is left as it is.
+
 ### Environment Utilities
 
 ```go
@@ -77,6 +79,8 @@ func RunCodef(out any, code string, args ...any) error
 - `error`: Returns an error if execution failed or result binding failed, `nil` otherwise.
 
 In the Python code template, use `$v1`, `$v2`, `$v3`, etc. as placeholders for the arguments passed to the function.
+
+Each placeholder is replaced from the template as you wrote it, in one pass. Text an argument puts into the script is not read again, so an argument holding `$v2` stays the text `$v2`. A placeholder is read by its whole number: `$v10` is the tenth argument. One with no argument at its position, or written with a leading zero such as `$v01`, is left in the script as written. Only the arguments the template uses are converted, and one that cannot be written as a Python value, such as `math.NaN()`, or a slice or map holding it, makes the call return an error that names its placeholder. Python does not start in that case.
 
 #### Example
 
@@ -354,6 +358,8 @@ func main() {
 
 The `py` package supports concurrent execution of Python code. Multiple goroutines can call `RunCode`, `RunCodef`, `RunFile`, and `RunFilef` simultaneously without interference. Each execution gets a unique ID and processes independently.
 
+Python sends the value passed to `insyra.Return` back over a local IPC server: a Unix socket file in the temp directory (`os.TempDir()`), or a named pipe on Windows. The server opens when a call needs it and closes when the last call running at the same time finishes, so the socket file exists only while a call is in progress, the first call's environment setup included. If the server cannot open, for example because the temp directory's path is too long for a Unix socket, the call returns an error that wraps the cause (`errors.Is(err, syscall.EINVAL)` for that case) before it prepares the environment or starts Python, and the next call tries again.
+
 ## Automatic Type Conversion
 
 When passing Go variables to Python code using `RunCodef` or `RunFilef`, certain Insyra types are automatically converted to their Python equivalents:
@@ -372,7 +378,7 @@ When `out` is a `DataTable` or `DataList` pointer, `insyra.Return` recognizes co
 - **pandas.DataFrame** -> `*insyra.DataTable`
   - Columns become `ColNames`.
   - Index becomes `RowNames` (converted to strings).
-  - `DataFrame.name` (if set) becomes `DataTable.Name`.
+  - `DataFrame.name` (if set) becomes `DataTable.Name`. A column called `name` is not taken for it, so such a DataFrame comes back with no table name.
 - **polars.DataFrame** -> `*insyra.DataTable`
   - Columns become `ColNames`.
   - Polars has no index; row names are not set.
@@ -384,6 +390,30 @@ When `out` is a `DataTable` or `DataList` pointer, `insyra.Return` recognizes co
 - **2D list** -> `*insyra.DataTable`
 - **dict** -> `*insyra.DataTable` (single row, keys become column names)
 - **list of dict** -> `*insyra.DataTable` (multiple rows, keys become column names)
+
+An empty DataFrame, such as the result of a filter that matched no rows, comes back as a table with no rows and the DataFrame's column names.
+
+A NaN, `inf` or `-inf` in the result, such as a missing value in a DataFrame, comes back as `math.NaN()`, `math.Inf(1)` or `math.Inf(-1)`: in a table or list cell, a float field, a slice, array or map value, or anything decoded into `any`. Python's `None` comes back as `nil`, so `ClearNaNs`, `ClearNils` and the other methods that tell the two apart work on the result as on any other list. A NaN for a type that cannot hold one, such as `int`, is an error.
+
+A result the Go side cannot read, such as an integer too large for a float64 (`10**400`), makes the call return an error that says why, and `insyra.Return` raises in Python. Code that catches that exception and returns another value gets that value back instead.
+
+### Tables and lists inside a result
+
+A table or a list can also sit inside the value you return. `insyra.Return` turns a DataFrame or Series anywhere inside a dict, list or tuple into the payload it sends for one at the top level. On the Go side, when the type you decode into has a `*insyra.DataTable`, `*insyra.DataList`, `insyra.IDataTable` or `insyra.IDataList` in a struct field, a map value, a slice or array element or behind a pointer, that part is decoded as a table or a list, replacing what it held, and everything else exactly as `encoding/json` decodes it: struct fields are matched by their `json` tag or Go name, an exact match before one that ignores case, with its rules for embedded structs, `-` and `,string`; map keys can be strings, integers or a type with `UnmarshalText`; decoding into a value that already holds something keeps what the result leaves out; and `None` sets a pointer, slice, map or interface to nil and leaves a struct as it is. A type with its own `UnmarshalJSON` or `UnmarshalText` decodes itself.
+
+```go
+type Scored struct {
+    Table *insyra.DataTable `json:"table"`
+    Score float64           `json:"score"`
+}
+var s Scored
+err := py.RunCode(&s, `insyra.Return({"table": df, "score": 7})`)
+
+var splits map[string]*insyra.DataTable
+err = py.RunCode(&splits, `insyra.Return({"train": train, "test": test})`)
+```
+
+An embedded `*insyra.DataTable` or `*insyra.DataList` follows the rule for an embedded struct. Without a tag it is decoded from the whole value around it, as the `isr` types (`struct{ *insyra.DataTable }`) are, at the top of the result or inside it, and a value of the other kind, such as a DataFrame for an `isr` list, is an error. Beside other fields it takes the value only when Python sent a DataFrame, a Series or a list; a dict is then the struct's own object and goes to its other fields. With a tag it is a field under that name, so ``struct{ *insyra.DataTable `json:"table"`; Score float64 }`` reads the table from the key `table`. An embedded `insyra.IDataTable` or `insyra.IDataList` is a field named after its type, as an embedded interface is in `encoding/json`. A struct field named `DataTable` or `DataList`, embedded or not, takes the whole result when the result is itself a DataFrame, a Series or a list; a `json` tag that points the field at another key opts it out, and a dict is decoded key by key as usual.
 
 ### Example: DataFrame -> DataTable
 
@@ -414,7 +444,7 @@ Here are some functions that are useful when writing Python code to be executed 
 ### `insyra.Return`
 
 ```python
-insyra.Return(result=None, error=None, url)
+insyra.Return(result=None, error=None)
 ```
 
 This function is used to return data from Python to Go.
@@ -425,7 +455,6 @@ If `result` is a pandas/polars DataFrame or Series, it will be normalized and re
 
 - `result` (any): The result data to be returned to Go.
 - `error` (string): The error message if an error occurred, None otherwise. The Insyra framework will automatically deal with errors, you don't need to set it manually.
-- `url` (string): The URL to send the data to. Insyra will automatically set it, you don't need to set it manually.
 
 #### Example
 
@@ -439,7 +468,7 @@ insyra.Return({
 ### `insyra_return`
 
 ```python
-insyra_return(result=None, error=None, url)
+insyra_return(result=None, error=None)
 ```
 
 This is an alias for `insyra.Return` for convenience. It provides the same functionality as `insyra.Return`.
@@ -448,7 +477,6 @@ This is an alias for `insyra.Return` for convenience. It provides the same funct
 
 - `result` (any): The result data to be returned to Go.
 - `error` (string): The error message if an error occurred, None otherwise. The Insyra framework will automatically deal with errors, you don't need to set it manually.
-- `url` (string): The URL to send the data to. Insyra will automatically set it, you don't need to set it manually.
 
 #### Example
 

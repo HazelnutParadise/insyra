@@ -49,7 +49,14 @@ class insyra:
 				insyra._COLUMNS_KEY: [str(c) for c in result.columns],
 				insyra._INDEX_KEY: [str(i) for i in result.index],
 			}
-			name_value = getattr(result, "name", None)
+			# pandas returns a column as an attribute, so a DataFrame with a
+			# column called name would be named after that column. Beside
+			# such a column only an explicitly set name, kept in the
+			# instance's __dict__, counts.
+			if "name" in result.columns:
+				name_value = result.__dict__.get("name")
+			else:
+				name_value = getattr(result, "name", None)
 			if name_value is not None:
 				payload[insyra._NAME_KEY] = str(name_value)
 			return payload
@@ -86,6 +93,16 @@ class insyra:
 			return payload
 
 		return result
+
+	@staticmethod
+	def _encode_default(value):
+		# json.dumps calls this only for an object it cannot write itself, so a
+		# DataFrame or Series inside a dict or list is sent as its payload at no
+		# cost to plain values.
+		normalized = insyra._normalize_result(value)
+		if normalized is value:
+			raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+		return normalized
 
 	@staticmethod
 	def _connect_ipc():
@@ -135,10 +152,16 @@ class insyra:
 		
 		try:
 			f = insyra._connect_ipc()
-			insyra._write_msg(f, json.dumps(payload).encode('utf-8'))
-			# Wait for ack
-			insyra._read_msg(f)
+			insyra._write_msg(f, json.dumps(payload, default=insyra._encode_default).encode('utf-8'))
+			# The Go side answers whether it could read the result; no answer
+			# means it could not.
+			ack = insyra._read_msg(f)
 			f.close()
+			if ack is None:
+				raise Exception("the Go side closed the connection without acknowledging the result")
+			reply = json.loads(ack)
+			if reply.get("status") != "ok":
+				raise Exception(reply.get("error") or "the Go side could not read the result")
 		except Exception as e:
 			sys.stderr.write(f"IPC failed: {e}\n")
 			sys.stderr.flush()

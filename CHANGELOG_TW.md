@@ -24,6 +24,17 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 每個抓取方法都有接收 `context.Context` 的 `...Context` 版本，做法與 `ReadSQLContext` 相同，原本的方法改為以 `context.Background()` 呼叫它：`TWStockClient` 的六個方法（例如 `DailyPricesContext`）、`ReverseContext`、`ReverseColsContext`、`ReverseTableContext`、`SearchContext`、`GetReviewsContext`，以及 `YFTicker` 所有會發出請求的 26 個方法（例如 `HistoryContext`）。context 會傳到限流等待、重試前的退避、每個 HTTP 請求與評論翻頁之間的等待。被取消的呼叫回傳 `ctx.Err()` 且不重試。`ReverseContext` 的請求若被 context 中斷，回報的是 context 的錯誤而不是 `ErrGeocodeTimeout`，`ErrGeocodeTimeout` 仍只代表服務沒在 `Timeout` 內回應。`ReverseCols` 批次中途被取消時，會回傳已解析的列，其餘標為 `pending`，與配額用完時相同。go-yfinance 無法中途停止已經開始的呼叫，所以 Yahoo Finance 的方法在 context 結束時會立刻返回，那次呼叫則留在背景跑完，期間仍可能送出剩下的請求。`ReverseTableByColName` 沒有 Context 版本，請把同樣的欄位以 Excel 式索引傳給 `ReverseTableContext`。
 - `YFPeriodYearly` 改為 Deprecated，請改用抓取相同財報的 `YFPeriodAnnual`，它產生的表格仍標示 `yearly`。評論排序常數改為 `GoogleMapsStoreReviewSortByRelevance`、`GoogleMapsStoreReviewSortByNewest`、`GoogleMapsStoreReviewSortByHighestRating`、`GoogleMapsStoreReviewSortByLowestRating`，`SortByRelevance` 等四個舊名改為數值相同的 Deprecated 常數。`GoogleMapsStoreReviewsFetchingOptions.MaxWaitingInterval` 以 `time.Duration` 設定翻頁之間最長的等待，規則與原本的毫秒欄位相同，`MaxWaitingInterval_Milliseconds` 改為 Deprecated，兩個都設定時 `GetReviews` 會在發出請求前回傳 `nil` 並記錄警告。這些 Deprecated 名稱在 0.3.x 線上照常可用。
 
+### `py`
+
+- 把 Python 結果傳回 Go 的 IPC 伺服器，改成在 `Run…` 呼叫需要時才開啟，同時執行的最後一個呼叫結束時關閉；在 Unix 上關閉時會一併刪掉暫存目錄裡的 socket 檔，v0.3.4 每個執行過 Python 的程式都會留下一個。伺服器開不起來時（例如暫存目錄的路徑太長，放不下 Unix socket），呼叫會在準備環境、啟動 Python 之前回傳包住原因的錯誤，下一次呼叫會再試一次。v0.3.4 只記一則警告，照樣啟動 Python，最後回傳 `exit status 1`。伺服器接受連線失敗時現在會關閉，正在執行的呼叫會回傳錯誤，下一次呼叫會開一個新的伺服器。
+- Python 行程失敗時（回傳值之前就崩潰，或因 context 結束被終止），呼叫會回傳這個失敗；context 結束時回傳 `ctx.Err()`。過去約有一半機率回傳 nil 錯誤且沒有結果，因為執行器同時看到失敗與行程結束，隨機挑了其中一個。Python 在行程失敗前已經送回的結果仍會回傳。
+- 結果裡的表格與清單現在會解碼成表格與清單。`insyra.Return` 會把 dict、list、tuple 裡的 DataFrame 與 Series 轉成表格或清單的格式；過去 `json.dumps` 會失敗，錯誤是 `Object of type DataFrame is not JSON serializable`。型別是 `*insyra.DataTable`、`*insyra.DataList`、`insyra.IDataTable` 或 `insyra.IDataList` 的 struct 欄位、map 值、slice 或 array 元素，會解碼成表格或清單；過去走 JSON 解碼只會得到空表。這類型別的其他部分，解碼方式和 `encoding/json` 完全相同。結果本身是表格或清單時，名叫 `DataTable` 或 `DataList` 的 struct 欄位跟以前一樣收到整個結果；結果是 dict 時逐欄解碼。
+- 空的 DataFrame 回傳時保留欄名；過去欄名會被改成 `a_1`、`b_1` 之類的名稱。
+- 結果裡的 NaN 或無限大會解碼成 `math.NaN()`、`math.Inf(1)` 或 `math.Inf(-1)`。Python 的 `json.dumps` 會把它們寫成 `NaN`、`Infinity`、`-Infinity`，過去整個呼叫會回傳 `nil`，也不報錯：DataFrame 裡只要有一個缺值，拿回來的就是 nil。`None` 跟以前一樣解碼成 `nil`。因為其他原因讀不了的結果（例如 float64 放不下的 `10**400`），現在也會回傳錯誤並說明原因，過去同樣會變成 `nil`。Go 端拒收結果或沒有回應時，`insyra.Return` 會在 Python 裡 raise。
+- 有一欄叫 `name` 的 pandas DataFrame，回傳後不會有表名。pandas 會把欄位當成屬性回傳，過去表名會變成那一欄印出來的內容。直接設在 DataFrame 本身的名稱一樣會成為表名。
+- `RunCodef`、`RunFilef` 與它們的 `Context` 版本的參數，不會再變成 Python 程式碼。過去佔位字元是一個參數接一個參數、對整份程式碼輪流替換，後面的參數替換時，也會改到前面參數插進去的文字：傳入 `$v2` 和 `+__import__('os').system('id')+` 兩段文字，就會執行那個指令。`$v1` 也會吃掉 `$v10` 的開頭。JSON 寫不出來的值（例如 `[]any{文字, math.NaN()}`）會照 Go 的格式原樣寫進程式碼，裡面的文字就成了程式碼。現在佔位字元只在原本的模板裡找一次，依完整編號替換，也只轉換模板用到的參數。寫不成 Python 值的參數，會在 Python 啟動前回傳錯誤，並註明是哪個佔位字元。含有 NaN 或無限大的 `[]float64` 也一樣，過去會寫成 Python 不認得的 `NaN` 或 `+Inf`。
+- 在 ARM64 的 Windows 上用 x86-64 的 Python 也能執行了。polars 的 CPU 檢查把機器讀成 ARM64，在每段程式開頭的 `import polars` 拋出 `unknown feature flag`，所以每次執行都失敗。產生的程式現在會在 ARM64 Windows 上的 x86-64 Python 設定 `POLARS_SKIP_CPU_CHECK=1`，已經設過這個變數時不動它。
+
 ## v0.3.4
 
 ### Core
