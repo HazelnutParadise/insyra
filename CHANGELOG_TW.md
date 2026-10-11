@@ -11,6 +11,12 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### Core
 
 - **BREAKING**：Insyra 現在需要 Go 1.26，`go.mod` 的 `go` 指示為 `1.26.9`。Go 1.27 發布後，Go 1.25 就不再有修正版。2026-10-08 公布的十一則標準函式庫漏洞只從 Go 1.26.9 起修正，其中幾則在 `plot.SavePNG` 與 `DataTable.ToSQL` 會用到的 `net/http`。HTTP/2 那幾則在 `golang.org/x/net` 的修正版也需要 Go 1.26。使用 Go 1.21 以上時，除非設定 `GOTOOLCHAIN=local`，`go` 指令會自動下載 1.26.9 工具鏈。
+- CCL 字串字面值裡連寫兩個引號代表一個引號，跟 Excel 一樣：`'it''s'` 是 `it's`，`"say ""hi"""` 是 `say "hi"`。以前字串裡沒辦法放跟外層相同的引號。連續兩個引號以前一定編譯失敗，所以原本能編譯的運算式意思都不變。中括號裡的欄名也適用同樣規則（`['O''Brien']`），statement mode 把腳本切成多個敘述時也照這個規則判斷。反斜線仍然是一般字元。
+- CCL 新增 `DATEPART(d, unit)`，取出日期的某個部分並回傳數字：`'year'`、`'month'`、`'day'`、`'hour'`、`'minute'` 或 `'second'`，以日期本身的時區來算。這條線上的 `DAY`、`HOUR`、`MINUTE`、`SECOND` 是換算時間長度用的，要取日期的這些部分就用 `DATEPART`。
+- CCL 把每一種 Go 整數型別與 `float32` 的格子都當成數字。`int8`、`int16` 與無號整數欄（`parquet.Read` 讀到檔案裡這類欄位時給的就是這些型別）過去不被 CCL 當成數字：`SUM` 回 0、`MAX` 回 `nil`、`A == 1` 回 false，全都不報錯，而 `A * 2`、`IF(A, 'y', 'n')` 與 `ROUND(A, 2)` 會失敗。`A.B` 也接受存成 `int32`、`int64`、`float32` 或其他整數型別的列號，過去會被拒絕；小數部分和 `float64` 列號一樣捨去。`ISNA` 與 `IFNA` 也把 `float32` 的 NaN 當成缺值。
+- CCL 的列號是 NaN、無限大或超出 `int32` 範圍時，在每個平台上都會報錯。以前 `float64` 的這種列號在 arm64 會讀到第 0 列，在 amd64 會報錯。
+- `engine/ccl` 可以註冊序列函式了：用 `RegisterSequenceFunction(name, fn)` 搭配新的 `SeqFunc` 型別，加入一個吃整欄、回傳同樣長度一欄的函式，就像 `LAG`、`CUMSUM` 那樣。以前從模組外只能註冊純量函式與彙總函式。註冊函式的說明也寫清楚函式登錄表的行為：整個程式共用同一份，可以從任意多個 goroutine 同時使用，名稱不分大小寫，同名再註冊一次會取代同一類的函式。什麼都不做的 `ResetEvalDepth`、`ResetFuncCallDepth` 標為 Deprecated。
+
 
 ## v0.3.4
 
