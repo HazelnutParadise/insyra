@@ -136,7 +136,7 @@ func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, 
 	}
 	defer func() { _ = file.Close() }()
 
-	decoded, err := decodeCSVInput(file, opts.Encoding, filePath)
+	decoded, err := decodeCSVFileInput(file, opts.Encoding, filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -261,11 +261,26 @@ func readCSVRows(r io.Reader, opts CSVReadOptions, trimBOM bool) ([][]string, er
 // nothing is lost and r need not be seekable. source names the input in
 // messages.
 func decodeCSVInput(r io.Reader, encoding string, source string) (io.Reader, error) {
+	return decodeCSVStream(r, encoding, source, false)
+}
+
+// decodeCSVFileInput is decodeCSVInput for the file path readers, so a failure
+// while auto-detecting reads exactly as it always did from a path:
+// "failed to auto-detect encoding for <path>: failed to read file <path>: …".
+// The stream entry points (ReadCSV, StreamCSV) keep their own wording.
+func decodeCSVFileInput(f *os.File, encoding string, filePath string) (io.Reader, error) {
+	return decodeCSVStream(f, encoding, filePath, true)
+}
+
+func decodeCSVStream(r io.Reader, encoding string, source string, fromFile bool) (io.Reader, error) {
 	useEncoding := strings.ToLower(encoding)
 	if useEncoding == "" || useEncoding == "auto" {
 		buffered := bufio.NewReaderSize(r, encodingSampleSize)
 		sample, err := buffered.Peek(encodingSampleSize)
 		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, bufio.ErrBufferFull) {
+			if fromFile {
+				return nil, fmt.Errorf("failed to auto-detect encoding for %s: failed to read file %s: %w", source, source, err)
+			}
 			return nil, fmt.Errorf("failed to read %s: %w", source, err)
 		}
 		detected, err := detectEncodingOfSample(sample, source)
@@ -617,6 +632,20 @@ func ReadJSON(data any) (*DataTable, error) {
 		r, err := unmarshalJSONRows([]byte(v))
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+		}
+		rows = r
+	case json.Marshaler:
+		// A value that has chosen how to marshal itself is marshaled and read
+		// back, as it was before ReadJSON accepted a reader. Implementing
+		// MarshalJSON decides the encoding even when the value also reads as
+		// a stream.
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal input: %w", err)
+		}
+		r, err := unmarshalJSONRows(b)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal/unmarshal input as JSON: %w", err)
 		}
 		rows = r
 	case io.Reader:

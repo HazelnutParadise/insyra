@@ -2,6 +2,8 @@ package insyra
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -230,4 +232,46 @@ func TestReadExcelMatchesTheFileReader(t *testing.T) {
 		t.Fatal(err)
 	}
 	tablesEqual(t, "ReadExcel", fromReader, fromFile)
+}
+
+// A value that can both marshal itself and read as a stream is encoded by its
+// MarshalJSON, the way it was before ReadJSON accepted a reader. The reader
+// path must not take over from a type that chose how to marshal itself.
+type marshalingReader struct {
+	viaMarshal []byte
+	viaRead    io.Reader
+}
+
+func (m *marshalingReader) MarshalJSON() ([]byte, error) { return m.viaMarshal, nil }
+func (m *marshalingReader) Read(p []byte) (int, error)   { return m.viaRead.Read(p) }
+
+func TestReadJSONPrefersMarshalOverRead(t *testing.T) {
+	m := &marshalingReader{
+		viaMarshal: []byte(`[{"name":"via-marshal"}]`),
+		viaRead:    strings.NewReader(`[{"name":"via-reader"}]`),
+	}
+	got, err := ReadJSON(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := ReadJSON([]byte(`[{"name":"via-marshal"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tablesEqual(t, "MarshalJSON wins over Read", got, want)
+}
+
+// The file reader must report an encoding-detection failure the way it always
+// did, the detection wrap around a file read, so callers that match the message
+// keep working. Reading a directory is a read failure after a successful open.
+func TestReadCSVFileReportsTheDetectionReadFailure(t *testing.T) {
+	dir := t.TempDir()
+	_, err := ReadCSV_FileWithOptions(dir, CSVReadOptions{})
+	if err == nil {
+		t.Fatal("reading a directory as a CSV file succeeded")
+	}
+	want := fmt.Sprintf("failed to auto-detect encoding for %s: failed to read file %s: ", dir, dir)
+	if !strings.HasPrefix(err.Error(), want) {
+		t.Fatalf("error %q does not start with %q", err.Error(), want)
+	}
 }

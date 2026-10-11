@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
+	"github.com/HazelnutParadise/insyra/internal/excelsheet"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -84,7 +87,7 @@ func (dt *DataTable) ToExcel(path string, opts ExcelWriteOptions) error {
 		case opts.IfSheetExists != SheetExistsReplace:
 			return fmt.Errorf("%w: %s in %s", ErrSheetExists, f.GetSheetName(idx), path)
 		default:
-			if err := replaceSheetInPlace(f, sheet, idx); err != nil {
+			if err := excelsheet.Replace(f, sheet, idx); err != nil {
 				return fmt.Errorf("failed to replace sheet %s: %w", sheet, err)
 			}
 		}
@@ -136,48 +139,6 @@ func openOrNewWorkbook(path, sheet string) (*excelize.File, bool, error) {
 		return nil, false, fmt.Errorf("failed to name sheet %s: %w", sheet, err)
 	}
 	return f, true, nil
-}
-
-// replaceSheetInPlace empties the sheet at idx by deleting and re-creating it,
-// then moves it back to where it was and restores the active sheet. excelize
-// refuses to delete a workbook's only sheet, so that case goes through a
-// placeholder. Sheet names match without regard to case, as in Excel.
-func replaceSheetInPlace(f *excelize.File, sheet string, idx int) error {
-	sheets := f.GetSheetList()
-	active := f.GetSheetName(f.GetActiveSheetIndex())
-	next := ""
-	if idx+1 < len(sheets) {
-		next = sheets[idx+1]
-	}
-	placeholder := ""
-	if f.SheetCount == 1 {
-		placeholder = "__insyra_placeholder__"
-		if _, err := f.NewSheet(placeholder); err != nil {
-			return err
-		}
-	}
-	if err := f.DeleteSheet(sheet); err != nil {
-		return err
-	}
-	if _, err := f.NewSheet(sheet); err != nil {
-		return err
-	}
-	if placeholder != "" {
-		if err := f.DeleteSheet(placeholder); err != nil {
-			return err
-		}
-	}
-	if next != "" {
-		if err := f.MoveSheet(sheet, next); err != nil {
-			return err
-		}
-	}
-	activeIdx, err := f.GetSheetIndex(active)
-	if err != nil {
-		return err
-	}
-	f.SetActiveSheet(activeIdx)
-	return nil
 }
 
 // writeExcelRows writes the table into sheet, which must be empty.
@@ -238,10 +199,35 @@ func excelCellValue(v any) any {
 // writeFileAtomically runs write against a temporary file in the target's
 // directory and renames it into place only after every write and the close
 // succeeded. A failure part-way therefore never leaves a truncated or empty
-// file at path, and no temp file is left behind.
+// file at path, and no temp file is left behind. The result is modes the
+// caller could have made directly: an existing file keeps its permission bits
+// and a new one is created under the process umask, the way os.Create would.
 func writeFileAtomically(path string, write func(w io.Writer) error) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
+	var tmp *os.File
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	info, err := os.Stat(path)
+	switch {
+	case err == nil:
+		// The file exists, so the replacement keeps the modes the file has.
+		tmp, err = os.CreateTemp(dir, "."+base+".*.tmp")
+		if err != nil {
+			return err
+		}
+		if err := os.Chmod(tmp.Name(), info.Mode().Perm()); err != nil {
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
+			return err
+		}
+	case errors.Is(err, fs.ErrNotExist):
+		// A new file: create the temporary with mode 0o666 before the umask,
+		// so it ends up exactly as new a file here would. os.CreateTemp cannot
+		// be used, because it creates its file 0o600.
+		tmp, err = createTempWithUmask(dir, base)
+		if err != nil {
+			return err
+		}
+	default:
 		return err
 	}
 	tmpPath := tmp.Name()
@@ -255,13 +241,26 @@ func writeFileAtomically(path string, write func(w io.Writer) error) error {
 		cleanup()
 		return err
 	}
-	if err := os.Chmod(tmpPath, 0o644); err != nil {
-		cleanup()
-		return err
-	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		cleanup()
 		return err
 	}
 	return nil
+}
+
+// createTempWithUmask makes a temporary file next to base with mode 0o666
+// before the umask, so the mode the file ends up with is the one a new file in
+// dir would have. The name is random and O_EXCL keeps it unclaimed.
+func createTempWithUmask(dir, base string) (*os.File, error) {
+	for i := 0; i < 10000; i++ {
+		name := filepath.Join(dir, "."+base+"."+strconv.FormatUint(rand.Uint64(), 36)+".tmp")
+		f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
+		if err == nil {
+			return f, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("could not create a temporary file next to %s", base)
 }
