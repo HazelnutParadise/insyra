@@ -59,12 +59,21 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `DiagOf`, `DiagMatrix`, `DiagMatrixSize` and `IdentityMatrix` build and read diagonals with one type in and one out, and return an error instead of panicking on a size below 1 or a nil matrix. `Diag(x any, dims ...int)` is deprecated with its behaviour unchanged, including its panic on a size below 1, and is removed in 0.4.
 - `TwoWayANOVAFromTable(dt, valueCol, factorACol, factorBCol)`, `RepeatedMeasuresANOVAFromTable(dt, valueCol, conditionCol, subjectCol)` and `FriedmanTestFromTable(dt, valueCol, conditionCol, subjectCol)` read a table with one row per observation, the shape R's `aov` and `friedman.test` read, so the data no longer has to be split by hand into cells or one list per subject. A column is an existing column's Excel-style letter or, failing that, an exact column name. Factor levels are compared as `ToMapKey` compares values, so `int(1)` and `int64(1)` are different levels. A `nil` or `NaN` level, a value that is not a finite number, a combination with no observations, a two-way table without replication within its cells, and a subject missing a condition or measured twice under one are refused. The results are those of `TwoWayANOVA`, `RepeatedMeasuresANOVA` and `FriedmanTest` for the same data.
+- `ChiSquareIndependenceTest` reads its two lists at one moment, under one `AtomicDoAll`, as the two-sample tests already do.
 
 ### `csvxl`
 
 - An encoding argument of `""` or `"auto"` in any letter case now means detection, as it does in the core CSV readers. `""` used to read the bytes as UTF-8, and `"AUTO"` was refused as an unsupported encoding.
 - `AppendCsvToExcel` replaces a workbook's only sheet even when that sheet is named `__insyra_placeholder__`. The name of the temporary sheet it uses collided with it, so the old cells were kept.
 - The functions have Go's spelling: `CSVToExcel`, `AppendCSVToExcel`, `CSVDirToExcel` and `ReadCSVToString` are the old functions under new names, and `CsvToExcel`, `AppendCsvToExcel`, `EachCsvToOneExcel` and `ReadCsvToString` are deprecated wrappers that keep working. `ExcelToCSV` and `ExcelDirToCSV` are new and take `ExcelToCSVOptions{Sheets, AllowFormulas}`: text a spreadsheet would run as a formula (starting with `=`, `+`, `-` or `@`, and not a number) gets a leading single quote unless `AllowFormulas` is set, a sheet the workbook does not have is an error, and a file name keeps the extension it was given. `ExcelToCsv` and `EachExcelToCsv` are deprecated and keep their signatures and output; the CLI's `convert` still uses them.
+
+### `parquet`
+
+- `ReadFrom` and `StreamFrom` read a Parquet file from any `io.ReaderAt`, and `WriteTo` writes one to any `io.Writer` without closing it. `StreamFrom` sends batches on channels, as `Stream` does on this line.
+- `WriteOptions{Compression, RowGroupSize}` with the new `WriteContext` and `WriteToContext` choose the codec and row group size and stop when the context ends. `WriteContext` writes to a temporary file in the same directory and puts it in place only once it is complete, so a failed write leaves the old file untouched. `Write(dt, path)` keeps its signature and still writes in place.
+- A file the Arrow reader cannot read is an error from every reader instead of a panic, and a row group shorter than its metadata says is an error naming the row groups instead of a short read.
+- `ApplyCCL` with `@` gives each row its own values; it gave every row of a 1,000-row batch that batch's last row.
+- The Arrow dependency moves from `github.com/apache/arrow/go/v17` to `github.com/apache/arrow-go/v18` v18.8.0. Tables read the same, including duration columns, which still read as their `int64` count.
 
 ### `pd`
 
@@ -80,10 +89,6 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - A pandas DataFrame with a column called `name` comes back with no table name. pandas returns a column as an attribute, so the table was named after the printed contents of that column. A name set on the frame itself still becomes the table's name.
 - An argument to `RunCodef`, `RunFilef` or their `Context` forms can no longer turn into Python code. The placeholders were replaced one argument at a time across the whole script, so each pass also rewrote what the passes before it had inserted: passing the texts `$v2` and `+__import__('os').system('id')+` ran the command. `$v1` also matched the start of `$v10`. A value JSON could not write, such as `[]any{text, math.NaN()}`, was written the way Go formats it, which put the text into the script as code. Placeholders are now found once in the template, each by its whole number, and only the arguments the template uses are converted. A value that cannot be written as a Python value is an error naming its placeholder, returned before Python starts. That includes a `[]float64` holding a NaN or an infinity, which was written as `NaN` or `+Inf`, names Python does not know.
 - Python runs on Windows on arm64 with an x86-64 Python. polars' CPU check, reading the machine as ARM64, raised `unknown feature flag` at the `import polars` every script starts with, so every run failed. The generated script now sets `POLARS_SKIP_CPU_CHECK=1` for an x86-64 Python on ARM64 Windows, unless the variable is already set.
-
-### `stats`
-
-- `ChiSquareIndependenceTest` reads its two lists at one moment, under one `AtomicDoAll`, as the two-sample tests already do.
 
 
 ## v0.3.4
