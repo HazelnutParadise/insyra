@@ -666,7 +666,7 @@ func isWordAgainstNumber(a, b any) bool {
 		return false
 	}
 	switch b.(type) {
-	case float64, float32, int, int32, int64:
+	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		return true
 	}
 	return false
@@ -1054,10 +1054,19 @@ func evaluateRowAccess(left, right cclNode, ctx Context, depth, callDepth int) (
 				rowIndices = append(rowIndices, i)
 			}
 		}
-	case float64:
-		rowIndices = []int{int(v)}
 	case int:
 		rowIndices = []int{v}
+	case float64, float32, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		// Every other Go numeric type reads like a float64 index, a fraction
+		// dropped. NaN, the infinities and values past the int32 range are
+		// refused, as rangeBound refuses them: int(f) is undefined there, and
+		// amd64 and arm64 disagree, so a float64 NaN used to read row 0 on one
+		// and fail on the other.
+		f, _ := toFloat64(v)
+		if math.IsNaN(f) || f > math.MaxInt32 || f < math.MinInt32 {
+			return nil, fmt.Errorf("row index %v is out of range", v)
+		}
+		rowIndices = []int{int(f)}
 	case string:
 		idx, err := ctx.GetRowIndexByName(v)
 		if err != nil {
