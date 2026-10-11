@@ -444,7 +444,7 @@ Here are some functions that are useful when writing Python code to be executed 
 ### `insyra.Return`
 
 ```python
-insyra.Return(result=None, error=None, url)
+insyra.Return(result=None, error=None)
 ```
 
 This function is used to return data from Python to Go.
@@ -455,7 +455,6 @@ If `result` is a pandas/polars DataFrame or Series, it will be normalized and re
 
 - `result` (any): The result data to be returned to Go.
 - `error` (string): The error message if an error occurred, None otherwise. The Insyra framework will automatically deal with errors, you don't need to set it manually.
-- `url` (string): The URL to send the data to. Insyra will automatically set it, you don't need to set it manually.
 
 #### Example
 
@@ -469,7 +468,7 @@ insyra.Return({
 ### `insyra_return`
 
 ```python
-insyra_return(result=None, error=None, url)
+insyra_return(result=None, error=None)
 ```
 
 This is an alias for `insyra.Return` for convenience. It provides the same functionality as `insyra.Return`.
@@ -478,7 +477,6 @@ This is an alias for `insyra.Return` for convenience. It provides the same funct
 
 - `result` (any): The result data to be returned to Go.
 - `error` (string): The error message if an error occurred, None otherwise. The Insyra framework will automatically deal with errors, you don't need to set it manually.
-- `url` (string): The URL to send the data to. Insyra will automatically set it, you don't need to set it manually.
 
 #### Example
 
