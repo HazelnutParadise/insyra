@@ -44,7 +44,7 @@ func main() {
 ### GoogleMapsStores
 
 ```go
-func GoogleMapsStores() *googleMapsStoreCrawler
+func GoogleMapsStores() *GoogleMapsStoresClient
 ```
 
 **Description:** Creates a new Google Maps store crawler instance.
@@ -55,7 +55,7 @@ func GoogleMapsStores() *googleMapsStoreCrawler
 
 **Returns:**
 
-- A crawler instance (unexported type). Creating it needs no network access, and it is never `nil`.
+- A `*GoogleMapsStoresClient`. Creating it needs no network access, and it is never `nil`. The type can be named in your own structs and signatures, but its zero value is not a working client: `Search` and `GetReviews` on a `GoogleMapsStoresClient` that did not come from `GoogleMapsStores` send nothing and return `nil` with a warning.
 
 **Example:**
 
@@ -66,7 +66,7 @@ crawler := datafetch.GoogleMapsStores()
 ### Search
 
 ```go
-func (c *googleMapsStoreCrawler) Search(query string) []GoogleMapsStoreData
+func (c *GoogleMapsStoresClient) Search(query string) []GoogleMapsStoreData
 ```
 
 **Description:** Searches for stores by name or keyword.
@@ -91,7 +91,7 @@ for _, store := range stores {
 ### GetReviews
 
 ```go
-func (c *googleMapsStoreCrawler) GetReviews(storeID string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews
+func (c *GoogleMapsStoresClient) GetReviews(storeID string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews
 ```
 
 **Description:** Fetches reviews for a specific store, 10 per page, from the review window Google Search shows for the store. No sign-in is needed.
@@ -114,10 +114,30 @@ reviews := crawler.GetReviews(store.ID, 1)
 
 // With options
 options := datafetch.GoogleMapsStoreReviewsFetchingOptions{
-    SortBy:                          datafetch.SortByNewest,
-    MaxWaitingInterval_Milliseconds: 3000,
+    SortBy:             datafetch.GoogleMapsStoreReviewSortByNewest,
+    MaxWaitingInterval: 3 * time.Second,
 }
 reviews := crawler.GetReviews(store.ID, 20, options)
+```
+
+### SearchContext and GetReviewsContext
+
+```go
+func (c *GoogleMapsStoresClient) SearchContext(ctx context.Context, query string) []GoogleMapsStoreData
+func (c *GoogleMapsStoresClient) GetReviewsContext(ctx context.Context, storeID string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews
+```
+
+**Description:** `Search` and `GetReviews` with a `context.Context`; the plain methods call them with `context.Background()`. When `ctx` is done, the request in flight or the wait between review pages stops at once, and the method returns `nil` with a warning, the way it reports any other failure. Check `ctx.Err()` to tell a cancellation from a failed request. A `nil` context is refused the same way.
+
+**Example:**
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+defer cancel()
+reviews := crawler.GetReviewsContext(ctx, store.ID, 0)
+if reviews == nil && ctx.Err() != nil {
+    fmt.Println("stopped:", ctx.Err())
+}
 ```
 
 ### ToDataTable
@@ -197,14 +217,16 @@ Configuration for review fetching.
 ```go
 type GoogleMapsStoreReviewsFetchingOptions struct {
     SortBy                          GoogleMapsStoreReviewSortBy
-    MaxWaitingInterval_Milliseconds uint
+    MaxWaitingInterval              time.Duration
+    MaxWaitingInterval_Milliseconds uint // Deprecated: use MaxWaitingInterval
 }
 ```
 
 **Fields:**
 
 - `SortBy`: How to sort reviews. Zero means by relevance.
-- `MaxWaitingInterval_Milliseconds`: Maximum wait time between requests (helps avoid rate limiting). Each wait is random between 1000 and this value, so it must be at least 1000. Zero means 5000.
+- `MaxWaitingInterval`: The longest wait between two review pages, which helps avoid rate limiting. Each wait is random between one second and this value, so it must be at least one second; a smaller value is replaced by the default with a warning. Zero means 5 seconds.
+- `MaxWaitingInterval_Milliseconds`: **Deprecated.** The same limit counted in milliseconds, removed in the release after the one that deprecated it. Setting it together with `MaxWaitingInterval` is an error: `GetReviews` returns `nil` with a warning before any request.
 
 ### GoogleMapsStoreReviewSortBy
 
@@ -212,12 +234,14 @@ Review sorting options.
 
 ```go
 const (
-    SortByRelevance     GoogleMapsStoreReviewSortBy = 1 // Most relevant first (default)
-    SortByNewest        GoogleMapsStoreReviewSortBy = 2 // Most recent first
-    SortByHighestRating GoogleMapsStoreReviewSortBy = 3 // 5-star reviews first
-    SortByLowestRating  GoogleMapsStoreReviewSortBy = 4 // 1-star reviews first
+    GoogleMapsStoreReviewSortByRelevance     GoogleMapsStoreReviewSortBy = 1 // Most relevant first (default)
+    GoogleMapsStoreReviewSortByNewest        GoogleMapsStoreReviewSortBy = 2 // Most recent first
+    GoogleMapsStoreReviewSortByHighestRating GoogleMapsStoreReviewSortBy = 3 // 5-star reviews first
+    GoogleMapsStoreReviewSortByLowestRating  GoogleMapsStoreReviewSortBy = 4 // 1-star reviews first
 )
 ```
+
+`SortByRelevance`, `SortByNewest`, `SortByHighestRating` and `SortByLowestRating` are deprecated constants with the same values, removed in the release after the one that deprecated them.
 
 ## Notes
 
@@ -226,7 +250,7 @@ const (
 - Every request times out after 30 seconds. Progress is logged at debug level.
 - Review fetching requires a stable internet connection.
 - Large review counts may take longer to fetch.
-- Use `MaxWaitingInterval_Milliseconds` to control request pacing.
+- Use `MaxWaitingInterval` to control request pacing.
 - Store IDs are in the format `0x...:0x...`.
 
 ## Complete Example
@@ -237,6 +261,8 @@ package main
 import (
     "fmt"
     "log"
+    "time"
+
     "github.com/HazelnutParadise/insyra/datafetch"
 )
 
@@ -257,8 +283,8 @@ func main() {
 
     // Fetch reviews for the first store with custom options
     options := datafetch.GoogleMapsStoreReviewsFetchingOptions{
-        SortBy:                          datafetch.SortByNewest,
-        MaxWaitingInterval_Milliseconds: 2000,
+        SortBy:             datafetch.GoogleMapsStoreReviewSortByNewest,
+        MaxWaitingInterval: 2 * time.Second,
     }
 
     reviews := crawler.GetReviews(stores[0].ID, 2, options)
@@ -316,10 +342,10 @@ func main() {
 #### YFinance
 
 ```go
-func YFinance(cfg YFinanceConfig) (*yahooFinance, error)
+func YFinance(cfg YFinanceConfig) (*YFinanceClient, error)
 ```
 
-Creates a stateful fetcher instance.
+Creates a stateful fetcher, a `*YFinanceClient`. The type can be named in your own structs and signatures; a `YFinanceClient` or `YFTicker` that did not come from `YFinance` and `Ticker`, such as a zero value, returns an error from every method instead of fetching.
 
 **YFinanceConfig Fields:**
 
@@ -327,17 +353,17 @@ Creates a stateful fetcher instance.
 | :------------- | :-------------- | :--------------------------------------------------------------------------- | :------------------- |
 | `Timeout`      | `time.Duration` | Per-request timeout limit.                                                   | `15s`                |
 | `Interval`     | `time.Duration` | Minimum spacing between the scheduled starts of successive requests (for rate limiting); no request starts before its scheduled time. Set to `0` to disable. | `0`                  |
-| `UserAgent`    | `string`        | HTTP User-Agent header.                                                      | (Default browser UA) |
+| `UserAgent`    | `string`        | HTTP User-Agent header. See [How the client identifies itself](#how-the-client-identifies-itself). | Chrome 117 on Windows |
 | `Retries`      | `int`           | Number of retry attempts on failure.                                         | `0`                  |
 | `RetryBackoff` | `time.Duration` | Base backoff duration between retries.                                       | `300ms`              |
 
 #### Ticker
 
 ```go
-func (y *yahooFinance) Ticker(symbol string) *ticker
+func (y *YFinanceClient) Ticker(symbol string) *YFTicker
 ```
 
-Returns a ticker object bound to the fetcher instance. This method is designed to support chained calls (e.g., `yf.Ticker("AAPL").History(...)`). Any errors encountered during initialization or method calls are returned by the subsequent action methods.
+Returns a `*YFTicker` bound to the fetcher. This method is designed to support chained calls (e.g., `yf.Ticker("AAPL").History(...)`). Any errors encountered during initialization or method calls are returned by the subsequent action methods.
 
 ---
 
@@ -375,6 +401,8 @@ These methods return a `*datafetch.YFFinancialStatementTables` structure contain
 - `datafetch.YFPeriodAnnual` (Default)
 - `datafetch.YFPeriodQuarterly`
 
+`datafetch.YFPeriodYearly` is deprecated: it fetches the same statements as `YFPeriodAnnual` but labels the tables `yearly`, and it is removed in the release after the one that deprecated it.
+
 #### 4. Options & Derivatives
 
 - `Options()`: Returns a list of available expiration dates.
@@ -399,6 +427,21 @@ These methods return a `*datafetch.YFFinancialStatementTables` structure contain
 
 ---
 
+### Cancellation
+
+Every ticker method that requests data has a `...Context` form taking a `context.Context` first, such as `HistoryContext(ctx, params)`, `QuoteContext(ctx)`, `OptionChainContext(ctx, date)` and `NewsContext(ctx, count, tab)`; the plain method calls it with `context.Background()`. `Earnings`, `Sustainability`, `FundsData` and `TopHoldings` send no request and have none.
+
+When the context is done, the method returns `ctx.Err()` at once, so `errors.Is(err, context.Canceled)` or `errors.Is(err, context.DeadlineExceeded)` tells a cancellation from a failure. A call whose context is already done sends nothing, and `History` and `Quote` stop waiting for the `Interval` throttle or a retry backoff. Once a call has started, though, the Yahoo Finance backend offers no way to stop it, and one call can make several requests: a cookie, a crumb, then the data. Such a call is abandoned rather than interrupted. It runs to its end in the background and may still send its remaining requests, each limited only by the backend's own timeout, which a stalled connection can outlast, and its result is discarded. Until it ends it keeps using the client, so a later call on the same client may have to wait for it. A `nil` context is an error.
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+history, err := yf.Ticker("AAPL").HistoryContext(ctx, datafetch.YFHistoryParams{Period: "1y", Interval: "1d"})
+if errors.Is(err, context.DeadlineExceeded) {
+    // Yahoo did not answer within five seconds.
+}
+```
+
 ### Notes & Limitations
 
 1. **Rate Limiting**: Frequent requests may lead to temporary IP blocks by Yahoo Finance. Use the `Interval` setting in `YFinanceConfig` to mitigate this.
@@ -407,6 +450,15 @@ These methods return a `*datafetch.YFFinancialStatementTables` structure contain
    - `Earnings()` (Full earnings reports)
    - `Sustainability()` (ESG scores)
    - `FundsData()`, `TopHoldings()` (Fund-specific data)
+
+### How the client identifies itself
+
+By default the Yahoo Finance client presents itself to Yahoo as a web browser, in two ways:
+
+- It sends the `User-Agent` header of Chrome 117 on Windows.
+- The go-yfinance backend opens every connection with Chrome's TLS fingerprint, whatever the header says.
+
+Yahoo's terms of service apply to how you use the data. To send a different header, set `YFinanceConfig.UserAgent`; the TLS fingerprint cannot be changed through `datafetch`.
 
 ## Taiwan Reverse Geocoding (TWGeocoding)
 
@@ -449,7 +501,7 @@ func main() {
 ### Initialization & Configuration
 
 ```go
-func TWGeocoding(cfg TWGeocodingConfig) (*twGeocoder, error)
+func TWGeocoding(cfg TWGeocodingConfig) (*TWGeocodingClient, error)
 ```
 
 **`TWGeocodingConfig` fields:**
@@ -464,12 +516,12 @@ func TWGeocoding(cfg TWGeocodingConfig) (*twGeocoder, error)
 | `BaseURL`      | `string`        | Endpoint override (for mocks/tests or a future paid/self-hosted tier).| Official endpoint   |
 | `Cache`        | `GeocodeCache`  | Optional result cache. `nil` disables caching.                        | `nil`               |
 
-Invalid values (negative `Interval` / `Retries` / `RetryBackoff`) return an error.
+Invalid values (negative `Interval` / `Retries` / `RetryBackoff`) return an error. The returned `*TWGeocodingClient` can be named in your own structs and signatures; a `TWGeocodingClient` that did not come from `TWGeocoding`, such as a zero value, returns an error from every method instead of sending a request.
 
 ### Single Lookup
 
 ```go
-func (g *twGeocoder) Reverse(lat, lng float64) (*ReverseGeocodeResult, error)
+func (g *TWGeocodingClient) Reverse(lat, lng float64) (*ReverseGeocodeResult, error)
 ```
 
 Returns a typed `*ReverseGeocodeResult`; `ErrGeocodeNotFound` when the point is outside any village; a `*RateLimitError` when the quota is exhausted; `ErrGeocodeTimeout` on timeout.
@@ -494,13 +546,13 @@ Batch methods reverse-geocode many coordinates and return an `*insyra.DataTable`
 
 ```go
 // Two parallel DataLists.
-func (g *twGeocoder) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error)
+func (g *TWGeocodingClient) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error)
 
 // A DataTable's columns, addressed by Excel-style index ("A", "B", ...).
-func (g *twGeocoder) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error)
+func (g *TWGeocodingClient) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error)
 
 // A DataTable's columns, addressed by name.
-func (g *twGeocoder) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error)
+func (g *TWGeocodingClient) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error)
 ```
 
 Batch semantics tuned for the 15/hour quota:
@@ -518,6 +570,21 @@ if rl := (*datafetch.RateLimitError)(nil); errors.As(err, &rl) {
     fmt.Printf("quota hit; resolved rows kept, resets at %s\n", rl.ResetAt)
 }
 enriched.Show()
+```
+
+### Cancellation
+
+`ReverseContext`, `ReverseColsContext` and `ReverseTableContext` take a `context.Context` first; `Reverse`, `ReverseCols` and `ReverseTable` call them with `context.Background()`. `ReverseTableByColName` has no Context form: pass the same columns to `ReverseTableContext` by their Excel-style index. When the context is done, the `Interval` throttle, the request in flight and any retry backoff stop at once, and the call returns `ctx.Err()`. A request the caller's deadline cut off is not retried, and is reported as `context.DeadlineExceeded` rather than `ErrGeocodeTimeout`, which means the service did not answer within `Timeout`.
+
+A batch stopped part-way keeps what it resolved, the same way it does when the quota runs out: the table comes back with every row resolved so far, the rest of the valid coordinates marked `pending`, and `ctx.Err()`. No request is sent after the context is done, so the rows already paid for are not lost and the batch can be resumed from the `pending` rows. A `nil` context is an error.
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+enriched, err := g.ReverseTableContext(ctx, dt, "A", "B")
+if errors.Is(err, context.DeadlineExceeded) {
+    // enriched holds the rows resolved in time; the rest are "pending".
+}
 ```
 
 ### Optional Caching
@@ -595,7 +662,7 @@ Use `TWMarketTWSE`, `TWMarketTPEx`, or `TWMarketAuto`. `Auto` tries TWSE first a
 ### Configuration
 
 ```go
-func TWStock(cfg TWStockConfig) (*twStock, error)
+func TWStock(cfg TWStockConfig) (*TWStockClient, error)
 ```
 
 | Field | Type | Default | Description |
@@ -607,7 +674,7 @@ func TWStock(cfg TWStockConfig) (*twStock, error)
 | `RetryBackoff` | `time.Duration` | `300ms` | Base delay before a retry, multiplied by attempt number. |
 | `Concurrency` | `int` | `6` | Normalized concurrency setting reserved for batched fetch extensions. |
 
-Negative `Interval`, `Retries`, `RetryBackoff`, or `Concurrency` values return an error. Non-2xx responses, invalid JSON, and exchange errors are never silently swallowed.
+Negative `Interval`, `Retries`, `RetryBackoff`, or `Concurrency` values return an error. Non-2xx responses, invalid JSON, and exchange errors are never silently swallowed. The returned `*TWStockClient` can be named in your own structs and signatures; a `TWStockClient` that did not come from `TWStock`, such as a zero value, returns an error from every method instead of sending a request.
 
 ### Methods and columns
 
@@ -619,6 +686,8 @@ InstitutionalTrades(date time.Time, market TWMarket) (*insyra.DataTable, error)
 MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)
 AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)
 ```
+
+Each method has a `...Context` form taking a `context.Context` first, such as `DailyPricesContext(ctx, code, from, to, market)`; the plain method calls it with `context.Background()`. When the context is done, the `Interval` throttle, the request in flight and any retry backoff stop at once, and the call returns `ctx.Err()` without sending another request, so a long backfill can be stopped between two monthly requests. A `nil` context is an error.
 
 `DailyPrices` requests one month at a time, filters to the inclusive `[from, to]` range, and sorts by `Date` ascending.
 

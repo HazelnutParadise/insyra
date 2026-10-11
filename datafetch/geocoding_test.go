@@ -18,7 +18,7 @@ const geocodeNotFoundBody = `{"ok":false,"error":"not_found","message":"No villa
 
 // newGeocoder builds a fetcher pointed at the given mock server URL, with retries
 // off and no throttle unless a test overrides via the returned config mutation.
-func newTestGeocoder(t *testing.T, baseURL string, mutate func(*TWGeocodingConfig)) *twGeocoder {
+func newTestGeocoder(t *testing.T, baseURL string, mutate func(*TWGeocodingConfig)) *TWGeocodingClient {
 	t.Helper()
 	cfg := TWGeocodingConfig{BaseURL: baseURL, RetryBackoff: time.Millisecond}
 	if mutate != nil {

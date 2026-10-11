@@ -18,6 +18,12 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `engine/ccl` 可以註冊序列函式了：用 `RegisterSequenceFunction(name, fn)` 搭配新的 `SeqFunc` 型別，加入一個吃整欄、回傳同樣長度一欄的函式，就像 `LAG`、`CUMSUM` 那樣。以前從模組外只能註冊純量函式與彙總函式。註冊函式的說明也寫清楚函式登錄表的行為：整個程式共用同一份，可以從任意多個 goroutine 同時使用，名稱不分大小寫，同名再註冊一次會取代同一類的函式。什麼都不做的 `ResetEvalDepth`、`ResetFuncCallDepth` 標為 Deprecated。
 
 
+### `datafetch`
+
+- 建構子回傳的客戶端改為匯出型別：`TWStock` 回傳 `*TWStockClient`，`YFinance` 回傳 `*YFinanceClient`，它的 `Ticker` 回傳 `*YFTicker`，`TWGeocoding` 回傳 `*TWGeocodingClient`，`GoogleMapsStores` 回傳 `*GoogleMapsStoresClient`。現在可以把客戶端存進自己的 struct 欄位或當成參數傳遞，既有的呼叫不必修改。不是由建構子建立的 TWSE／TPEx 或地理編碼客戶端（例如建構子出錯時回傳的 `nil` 或零值），過去會直接 panic 的地方現在回傳錯誤；原本就有回應的呼叫，回應不變。
+- 每個抓取方法都有接收 `context.Context` 的 `...Context` 版本，做法與 `ReadSQLContext` 相同，原本的方法改為以 `context.Background()` 呼叫它：`TWStockClient` 的六個方法（例如 `DailyPricesContext`）、`ReverseContext`、`ReverseColsContext`、`ReverseTableContext`、`SearchContext`、`GetReviewsContext`，以及 `YFTicker` 所有會發出請求的 26 個方法（例如 `HistoryContext`）。context 會傳到限流等待、重試前的退避、每個 HTTP 請求與評論翻頁之間的等待。被取消的呼叫回傳 `ctx.Err()` 且不重試。`ReverseContext` 的請求若被 context 中斷，回報的是 context 的錯誤而不是 `ErrGeocodeTimeout`，`ErrGeocodeTimeout` 仍只代表服務沒在 `Timeout` 內回應。`ReverseCols` 批次中途被取消時，會回傳已解析的列，其餘標為 `pending`，與配額用完時相同。go-yfinance 無法中途停止已經開始的呼叫，所以 Yahoo Finance 的方法在 context 結束時會立刻返回，那次呼叫則留在背景跑完，期間仍可能送出剩下的請求。`ReverseTableByColName` 沒有 Context 版本，請把同樣的欄位以 Excel 式索引傳給 `ReverseTableContext`。
+- `YFPeriodYearly` 改為 Deprecated，請改用抓取相同財報的 `YFPeriodAnnual`，它產生的表格仍標示 `yearly`。評論排序常數改為 `GoogleMapsStoreReviewSortByRelevance`、`GoogleMapsStoreReviewSortByNewest`、`GoogleMapsStoreReviewSortByHighestRating`、`GoogleMapsStoreReviewSortByLowestRating`，`SortByRelevance` 等四個舊名改為數值相同的 Deprecated 常數。`GoogleMapsStoreReviewsFetchingOptions.MaxWaitingInterval` 以 `time.Duration` 設定翻頁之間最長的等待，規則與原本的毫秒欄位相同，`MaxWaitingInterval_Milliseconds` 改為 Deprecated，兩個都設定時 `GetReviews` 會在發出請求前回傳 `nil` 並記錄警告。這些 Deprecated 名稱在 0.3.x 線上照常可用。
+
 ## v0.3.4
 
 ### Core

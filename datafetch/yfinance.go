@@ -48,14 +48,39 @@ type YFinanceConfig struct {
 
 type YFHistoryParams = models.HistoryParams
 
-// YFPeriod represents frequency values used for financial statements.
-// Accepted values: YFPeriodAnnual, YFPeriodYearly, YFPeriodQuarterly.
-// When empty or unrecognized, it defaults to YFPeriodAnnual.
+// copyHistoryParams returns a copy of p that shares no memory with it.
+// HistoryContext may abandon a request that is still reading its parameters,
+// so the dates and repair options are copied, not shared.
+func copyHistoryParams(p YFHistoryParams) models.HistoryParams {
+	out := p
+	if p.Start != nil {
+		start := *p.Start
+		out.Start = &start
+	}
+	if p.End != nil {
+		end := *p.End
+		out.End = &end
+	}
+	if p.RepairOptions != nil {
+		repair := *p.RepairOptions
+		out.RepairOptions = &repair
+	}
+	return out
+}
+
+// YFPeriod selects the frequency of a financial statement: YFPeriodAnnual or
+// YFPeriodQuarterly. The empty value means YFPeriodAnnual, and a value
+// go-yfinance does not accept comes back as an error.
 type YFPeriod string
 
 const (
-	YFPeriodAnnual    YFPeriod = "annual"
-	YFPeriodYearly    YFPeriod = "yearly"
+	YFPeriodAnnual YFPeriod = "annual"
+
+	// Deprecated: use YFPeriodAnnual, which fetches the same statements. This
+	// spelling labels the tables it returns "yearly" rather than "annual".
+	// Removed in the release after the one that deprecated it.
+	YFPeriodYearly YFPeriod = "yearly"
+
 	YFPeriodQuarterly YFPeriod = "quarterly"
 )
 
@@ -93,9 +118,10 @@ func (cfg YFinanceConfig) normalize() (YFinanceConfig, error) {
 	return out, nil
 }
 
-// yahooFinance is a stateful fetcher.
-// Each instance has its own interval limiter.
-type yahooFinance struct {
+// YFinanceClient fetches Yahoo Finance data. Each client has its own request
+// limiter. Create one with YFinance. A client that did not come from YFinance,
+// such as a zero value, returns an error from every method.
+type YFinanceClient struct {
 	cfg     YFinanceConfig
 	client  *yfclient.Client
 	limiter *limiter.IntervalLimiter
@@ -105,7 +131,7 @@ type yahooFinance struct {
 }
 
 // YFinance creates a YahooFinance fetcher using a config struct (no WithXxx in public API).
-func YFinance(cfg YFinanceConfig) (*yahooFinance, error) {
+func YFinance(cfg YFinanceConfig) (*YFinanceClient, error) {
 	normalized, err := cfg.normalize()
 	if err != nil {
 		return nil, err
@@ -121,7 +147,7 @@ func YFinance(cfg YFinanceConfig) (*yahooFinance, error) {
 		return nil, err
 	}
 
-	yf := &yahooFinance{
+	yf := &YFinanceClient{
 		cfg:            normalized,
 		client:         c,
 		limiter:        limiter.NewIntervalLimiter(normalized.Interval),
@@ -129,7 +155,7 @@ func YFinance(cfg YFinanceConfig) (*yahooFinance, error) {
 	}
 
 	// ensure resources are cleaned up automatically when yf is garbage-collected
-	runtime.SetFinalizer(yf, func(y *yahooFinance) { y.close() })
+	runtime.SetFinalizer(yf, func(y *YFinanceClient) { y.close() })
 
 	return yf, nil
 }
@@ -137,7 +163,7 @@ func YFinance(cfg YFinanceConfig) (*yahooFinance, error) {
 // lifecycle (internal)
 // close closes underlying resources. It is unexported because resources are
 // managed automatically; callers do not need to call this directly.
-func (y *yahooFinance) close() {
+func (y *YFinanceClient) close() {
 	if y == nil || y.client == nil {
 		return
 	}
@@ -145,19 +171,154 @@ func (y *yahooFinance) close() {
 }
 
 // helpers
-// NOTE: previously there was a helper newTicker; calls are inlined below
-// to avoid an extra indirection and keep client checks local.
 
-func (y *yahooFinance) beforeRequest() error {
-	return y.limiter.Wait(context.Background())
+func (y *YFinanceClient) beforeRequest(ctx context.Context) error {
+	return y.limiter.Wait(ctx)
 }
 
-func (y *yahooFinance) sleepBackoff(attempt int) {
+func (y *YFinanceClient) sleepBackoff(ctx context.Context, attempt int) error {
 	// attempt: 0,1,2...
 	if y.cfg.RetryBackoff <= 0 {
-		return
+		return nil
 	}
-	time.Sleep(y.cfg.RetryBackoff * time.Duration(attempt+1))
+	return sleepContext(ctx, y.cfg.RetryBackoff*time.Duration(attempt+1))
+}
+
+// runYF runs call, one go-yfinance call, under ctx. go-yfinance cannot stop a
+// call once it has started, and a call can send several requests, so when ctx
+// can be cancelled the call runs on its own goroutine and runYF stops waiting
+// for it once ctx is done: it returns ctx.Err() at once, and the call runs to
+// its end in the background, where it may still send its remaining requests,
+// with its result discarded. A panic in the call comes back as an error, since
+// the caller could not recover it on that goroutine. With a context that is
+// never done, such as context.Background(), the call runs on the caller's
+// goroutine.
+func runYF[T any](ctx context.Context, call func() (T, error)) (T, error) {
+	var zero T
+	if err := contextErr(ctx); err != nil {
+		return zero, err
+	}
+	if ctx.Done() == nil {
+		return call()
+	}
+	type outcome struct {
+		value T
+		err   error
+	}
+	// Room for one value, so the goroutine never blocks after runYF has
+	// stopped waiting for it.
+	done := make(chan outcome, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- outcome{err: fmt.Errorf("yfinance: request panicked: %v", r)}
+			}
+		}()
+		value, err := call()
+		done <- outcome{value: value, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		return zero, ctx.Err()
+	case o := <-done:
+		return o.value, o.err
+	}
+}
+
+// tickerValue runs one go-yfinance request for t's symbol under ctx.
+func tickerValue[T any](ctx context.Context, t *YFTicker, call func(*yfticker.Ticker) (T, error)) (T, error) {
+	var zero T
+	if err := t.checkError(); err != nil {
+		return zero, err
+	}
+	if err := contextErr(ctx); err != nil {
+		return zero, err
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return zero, err
+	}
+	// A ticker built on a shared client leaves the client open when closed, so
+	// closing tk while an abandoned request still uses it is safe.
+	defer tk.Close()
+	return runYF(ctx, func() (T, error) {
+		// Keep the client reachable until the call ends. Without it an
+		// abandoned call could outlive every other reference, and the
+		// finalizer's Close would block on the request still holding the
+		// client, stalling every finalizer in the program.
+		defer runtime.KeepAlive(t.yf)
+		return call(tk)
+	})
+}
+
+// tickerTable runs one go-yfinance request for t's symbol under ctx and turns
+// its result into a table named SYMBOL.name.
+func tickerTable[T any](ctx context.Context, t *YFTicker, name string, convertDates bool, call func(*yfticker.Ticker) (T, error)) (*insyra.DataTable, error) {
+	value, err := tickerValue(ctx, t, call)
+	if err != nil {
+		return nil, err
+	}
+	return namedTable(value, t.symbol, name, convertDates)
+}
+
+// namedTable turns a go-yfinance result into a DataTable named SYMBOL.name,
+// converting date-like columns to time.Time when convertDates is set.
+func namedTable(value any, symbol, name string, convertDates bool) (*insyra.DataTable, error) {
+	dt, err := insyra.ReadJSON(value)
+	if err != nil {
+		return nil, err
+	}
+	if convertDates {
+		dt = normalizeDateColumns(dt)
+	}
+	dt.SetName(fmt.Sprintf("%s.%s", strings.ToUpper(symbol), name))
+	return dt, nil
+}
+
+// withRetries runs call the way History and Quote do: each attempt waits for
+// the limiter, and a rate limit or a timeout is retried after a backoff, up
+// to Retries times. A done ctx stops the wait, the request and the backoff,
+// and is returned as ctx.Err() without another attempt.
+func withRetries[T any](ctx context.Context, t *YFTicker, what string, call func(*yfticker.Ticker) (T, error)) (T, error) {
+	var zero T
+	if err := t.checkError(); err != nil {
+		return zero, err
+	}
+	if err := contextErr(ctx); err != nil {
+		return zero, err
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return zero, err
+	}
+	defer tk.Close()
+
+	var lastErr error
+	for attempt := 0; attempt <= t.yf.cfg.Retries; attempt++ {
+		if err := t.yf.beforeRequest(ctx); err != nil {
+			return zero, err
+		}
+		value, err := runYF(ctx, func() (T, error) {
+			defer runtime.KeepAlive(t.yf) // see tickerValue
+			return call(tk)
+		})
+		if err == nil {
+			return value, nil
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return zero, ctxErr
+		}
+		lastErr = classifyError(err)
+		if !retryable(lastErr) {
+			return zero, lastErr
+		}
+		if attempt < t.yf.cfg.Retries {
+			if err := t.yf.sleepBackoff(ctx, attempt); err != nil {
+				return zero, err
+			}
+		}
+	}
+	return zero, fmt.Errorf("yfinance: %s failed: %w", what, lastErr)
 }
 
 // normalizeDateColumns converts any string columns whose name suggests a date/time into time.Time
@@ -227,35 +388,36 @@ func normalizeDateColumns(dt *insyra.DataTable) *insyra.DataTable {
 	})
 }
 
-// public fetch methods
-// QuoteRaw fetches quote data for a symbol and returns the library's native quote struct.
-// (Use this as your stable base; you can convert it to DataTable later.)
-// Quote fetches quote data for a symbol and returns the library's native quote struct.
-// Uses instance timeout and retries; callers don't need to pass a context.
-// Note: low-level convenience methods like Quote/History/MultiHistory
-// were removed from `yahooFinance` to keep a smaller surface API.
-// Use `y.Ticker(symbol)` and the returned `ticker` methods instead.
-
 // High-level Python-like API
 
-// ticker wraps a symbol and provides methods similar to python yfinance's Ticker.
-type ticker struct {
-	yf     *yahooFinance
+// YFTicker is a handle on one symbol, bound to the YFinanceClient that made it,
+// with methods similar to Python yfinance's Ticker. Get one from
+// (*YFinanceClient).Ticker. A ticker that did not come from a YFinanceClient
+// made by YFinance, such as a zero value, returns an error from every method.
+//
+// Each method that requests data has a Context form. A method whose context is
+// already done sends nothing. When the context ends while a call is running,
+// the method returns ctx.Err() at once and abandons the call, which
+// go-yfinance cannot stop: it runs to its end in the background and may still
+// send its remaining requests, and a later call on the same client may have to
+// wait for it.
+type YFTicker struct {
+	yf     *YFinanceClient
 	symbol string
 	err    error
 }
 
-// Ticker returns a ticker bound to this yahooFinance instance.
+// Ticker returns a YFTicker bound to this YFinanceClient instance.
 // The ticker does not manage the lifecycle of the underlying client; resources
 // are automatically cleaned up when the fetcher is no longer referenced.
-func (y *yahooFinance) Ticker(symbol string) *ticker {
+func (y *YFinanceClient) Ticker(symbol string) *YFTicker {
 	if y == nil {
-		return &ticker{err: errors.New("yfinance: yahooFinance is nil")}
+		return &YFTicker{err: errors.New("yfinance: yahooFinance is nil")}
 	}
-	return &ticker{yf: y, symbol: symbol}
+	return &YFTicker{yf: y, symbol: symbol}
 }
 
-func (t *ticker) checkError() error {
+func (t *YFTicker) checkError() error {
 	if t == nil {
 		return errors.New("yfinance: ticker is nil")
 	}
@@ -271,319 +433,234 @@ func (t *ticker) checkError() error {
 	return nil
 }
 
-// History returns historical OHLCV bars as an insyra.DataTable.
-func (t *ticker) History(params YFHistoryParams) (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	var lastErr error
-	for attempt := 0; attempt <= t.yf.cfg.Retries; attempt++ {
-		if err := t.yf.beforeRequest(); err != nil {
-			return nil, err
-		}
-
-		bars, err := tk.History(models.HistoryParams(params))
-		if err == nil {
-			dt, err := insyra.ReadJSON(bars)
-			if err != nil {
-				return nil, err
-			}
-			dt = normalizeDateColumns(dt)
-			dt.SetName(fmt.Sprintf("%s.History", strings.ToUpper(t.symbol)))
-			return dt, nil
-		}
-		lastErr = classifyError(err)
-		if !retryable(lastErr) {
-			return nil, lastErr
-		}
-		if attempt < t.yf.cfg.Retries {
-			t.yf.sleepBackoff(attempt)
-		}
-	}
-
-	return nil, fmt.Errorf("yfinance: history failed: %w", lastErr)
+// History returns historical OHLCV bars as an insyra.DataTable. It is
+// HistoryContext with context.Background().
+func (t *YFTicker) History(params YFHistoryParams) (*insyra.DataTable, error) {
+	return t.HistoryContext(context.Background(), params)
 }
 
-// Quote returns quote information for the ticker as an insyra.DataTable.
-func (t *ticker) Quote() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
+// HistoryContext is History with a context; see YFTicker for what a done
+// context does.
+func (t *YFTicker) HistoryContext(ctx context.Context, params YFHistoryParams) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	// Copy before the request starts, so the call reads only its own copy.
+	model := copyHistoryParams(params)
+	bars, err := withRetries(ctx, t, "history", func(tk *yfticker.Ticker) ([]models.Bar, error) {
+		return tk.History(model)
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer tk.Close()
-
-	var lastErr error
-	for attempt := 0; attempt <= t.yf.cfg.Retries; attempt++ {
-		if err := t.yf.beforeRequest(); err != nil {
-			return nil, err
-		}
-
-		q, err := tk.Quote()
-		if err == nil {
-			dt, err := insyra.ReadJSON(q)
-			if err != nil {
-				return nil, err
-			}
-			dt = normalizeDateColumns(dt)
-			dt.SetName(fmt.Sprintf("%s.Quote", strings.ToUpper(t.symbol)))
-			return dt, nil
-		}
-		lastErr = classifyError(err)
-		if !retryable(lastErr) {
-			return nil, lastErr
-		}
-		if attempt < t.yf.cfg.Retries {
-			t.yf.sleepBackoff(attempt)
-		}
-	}
-
-	return nil, fmt.Errorf("yfinance: quote failed: %w", lastErr)
+	return namedTable(bars, t.symbol, "History", true)
 }
 
-// Info returns metadata for the ticker as a DataTable.
-func (t *ticker) Info() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	info, err := tk.Info()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(info)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.Info", strings.ToUpper(t.symbol)))
-	return dt, nil
+// Quote returns quote information for the ticker as an insyra.DataTable. It is
+// QuoteContext with context.Background().
+func (t *YFTicker) Quote() (*insyra.DataTable, error) {
+	return t.QuoteContext(context.Background())
 }
 
-// Dividends returns dividends history for the ticker as a DataTable.
-func (t *ticker) Dividends() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
+// QuoteContext is Quote with a context; see YFTicker for what a done context
+// does.
+func (t *YFTicker) QuoteContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	q, err := withRetries(ctx, t, "quote", (*yfticker.Ticker).Quote)
 	if err != nil {
 		return nil, err
 	}
-	defer tk.Close()
-
-	divs, err := tk.Dividends()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(divs)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.Dividends", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return namedTable(q, t.symbol, "Quote", true)
 }
 
-// Splits returns stock splits history for the ticker as a DataTable.
-func (t *ticker) Splits() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	splits, err := tk.Splits()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(splits)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.Splits", strings.ToUpper(t.symbol)))
-	return dt, nil
+// Info returns metadata for the ticker as a DataTable. It is InfoContext with
+// context.Background().
+func (t *YFTicker) Info() (*insyra.DataTable, error) {
+	return t.InfoContext(context.Background())
 }
 
-// Actions returns corporate actions (dividends + splits) as a DataTable.
-func (t *ticker) Actions() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
+// InfoContext is Info with a context; see YFTicker for what a done context
+// does.
+func (t *YFTicker) InfoContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
+	return tickerTable(ctx, t, "Info", true, (*yfticker.Ticker).Info)
+}
 
-	acts, err := tk.Actions()
-	if err != nil {
+// Dividends returns dividends history for the ticker as a DataTable. It is
+// DividendsContext with context.Background().
+func (t *YFTicker) Dividends() (*insyra.DataTable, error) {
+	return t.DividendsContext(context.Background())
+}
+
+// DividendsContext is Dividends with a context; see YFTicker for what a done
+// context does.
+func (t *YFTicker) DividendsContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	dt, err := insyra.ReadJSON(acts)
-	if err != nil {
+	return tickerTable(ctx, t, "Dividends", true, (*yfticker.Ticker).Dividends)
+}
+
+// Splits returns stock splits history for the ticker as a DataTable. It is
+// SplitsContext with context.Background().
+func (t *YFTicker) Splits() (*insyra.DataTable, error) {
+	return t.SplitsContext(context.Background())
+}
+
+// SplitsContext is Splits with a context; see YFTicker for what a done context
+// does.
+func (t *YFTicker) SplitsContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.Actions", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return tickerTable(ctx, t, "Splits", true, (*yfticker.Ticker).Splits)
+}
+
+// Actions returns corporate actions (dividends + splits) as a DataTable. It is
+// ActionsContext with context.Background().
+func (t *YFTicker) Actions() (*insyra.DataTable, error) {
+	return t.ActionsContext(context.Background())
+}
+
+// ActionsContext is Actions with a context; see YFTicker for what a done
+// context does.
+func (t *YFTicker) ActionsContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	return tickerTable(ctx, t, "Actions", true, (*yfticker.Ticker).Actions)
 }
 
 // Options returns the list of option expiration dates (like `Ticker.options`).
-func (t *ticker) Options() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
+// It is OptionsContext with context.Background().
+func (t *YFTicker) Options() (*insyra.DataTable, error) {
+	return t.OptionsContext(context.Background())
+}
 
-	exps, err := tk.Options()
-	if err != nil {
+// OptionsContext is Options with a context; see YFTicker for what a done
+// context does.
+func (t *YFTicker) OptionsContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	dt, err := insyra.ReadJSON(exps)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.Options", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return tickerTable(ctx, t, "Options", true, (*yfticker.Ticker).Options)
 }
 
 // OptionChain returns option chain data split into calls/puts/underlying tables.
-func (t *ticker) OptionChain(date string) (*YFOptionChainTables, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
+// It is OptionChainContext with context.Background().
+func (t *YFTicker) OptionChain(date string) (*YFOptionChainTables, error) {
+	return t.OptionChainContext(context.Background(), date)
+}
 
-	chain, err := tk.OptionChain(date)
+// OptionChainContext is OptionChain with a context; see YFTicker for what a
+// done context does.
+func (t *YFTicker) OptionChainContext(ctx context.Context, date string) (*YFOptionChainTables, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	chain, err := tickerValue(ctx, t, func(tk *yfticker.Ticker) (*models.OptionChain, error) {
+		return tk.OptionChain(date)
+	})
 	if err != nil {
 		return nil, err
 	}
 	return buildOptionChainTables(t.symbol, date, chain)
 }
 
-// News fetches news articles for this ticker.
-func (t *ticker) News(count int, tab models.NewsTab) (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	articles, err := tk.News(count, tab)
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(articles)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.News", strings.ToUpper(t.symbol)))
-	return dt, nil
+// News fetches news articles for this ticker. It is NewsContext with
+// context.Background().
+func (t *YFTicker) News(count int, tab models.NewsTab) (*insyra.DataTable, error) {
+	return t.NewsContext(context.Background(), count, tab)
 }
 
-// Calendar returns upcoming calendar events (earnings, dividends) for the ticker.
-func (t *ticker) Calendar() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
+// NewsContext is News with a context; see YFTicker for what a done context
+// does.
+func (t *YFTicker) NewsContext(ctx context.Context, count int, tab models.NewsTab) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
+	return tickerTable(ctx, t, "News", true, func(tk *yfticker.Ticker) ([]models.NewsArticle, error) {
+		return tk.News(count, tab)
+	})
+}
 
-	cal, err := tk.Calendar()
-	if err != nil {
+// Calendar returns upcoming calendar events (earnings, dividends) for the
+// ticker. It is CalendarContext with context.Background().
+func (t *YFTicker) Calendar() (*insyra.DataTable, error) {
+	return t.CalendarContext(context.Background())
+}
+
+// CalendarContext is Calendar with a context; see YFTicker for what a done
+// context does.
+func (t *YFTicker) CalendarContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	dt, err := insyra.ReadJSON(cal)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.Calendar", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return tickerTable(ctx, t, "Calendar", true, (*yfticker.Ticker).Calendar)
 }
 
 // Financials: IncomeStatement / BalanceSheet / CashFlow
-// IncomeStatement returns multi-table statements (values/items/meta).
-func (t *ticker) IncomeStatement(freq YFPeriod) (*YFFinancialStatementTables, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
+// IncomeStatement returns multi-table statements (values/items/meta). It is
+// IncomeStatementContext with context.Background().
+func (t *YFTicker) IncomeStatement(freq YFPeriod) (*YFFinancialStatementTables, error) {
+	return t.IncomeStatementContext(context.Background(), freq)
+}
 
-	stmt, err := tk.IncomeStatement(string(freq))
+// IncomeStatementContext is IncomeStatement with a context; see YFTicker for
+// what a done context does.
+func (t *YFTicker) IncomeStatementContext(ctx context.Context, freq YFPeriod) (*YFFinancialStatementTables, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	stmt, err := tickerValue(ctx, t, func(tk *yfticker.Ticker) (*models.FinancialStatement, error) {
+		return tk.IncomeStatement(string(freq))
+	})
 	if err != nil {
 		return nil, err
 	}
 	return buildFinancialStatementTables(t.symbol, "IncomeStatement", freq, stmt)
 }
 
-// BalanceSheet returns multi-table statements (values/items/meta).
-func (t *ticker) BalanceSheet(freq YFPeriod) (*YFFinancialStatementTables, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
+// BalanceSheet returns multi-table statements (values/items/meta). It is
+// BalanceSheetContext with context.Background().
+func (t *YFTicker) BalanceSheet(freq YFPeriod) (*YFFinancialStatementTables, error) {
+	return t.BalanceSheetContext(context.Background(), freq)
+}
 
-	stmt, err := tk.BalanceSheet(string(freq))
+// BalanceSheetContext is BalanceSheet with a context; see YFTicker for what a
+// done context does.
+func (t *YFTicker) BalanceSheetContext(ctx context.Context, freq YFPeriod) (*YFFinancialStatementTables, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	stmt, err := tickerValue(ctx, t, func(tk *yfticker.Ticker) (*models.FinancialStatement, error) {
+		return tk.BalanceSheet(string(freq))
+	})
 	if err != nil {
 		return nil, err
 	}
 	return buildFinancialStatementTables(t.symbol, "BalanceSheet", freq, stmt)
 }
 
-// CashFlow returns multi-table statements (values/items/meta).
-func (t *ticker) CashFlow(freq YFPeriod) (*YFFinancialStatementTables, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
+// CashFlow returns multi-table statements (values/items/meta). It is
+// CashFlowContext with context.Background().
+func (t *YFTicker) CashFlow(freq YFPeriod) (*YFFinancialStatementTables, error) {
+	return t.CashFlowContext(context.Background(), freq)
+}
 
-	stmt, err := tk.CashFlow(string(freq))
+// CashFlowContext is CashFlow with a context; see YFTicker for what a done
+// context does.
+func (t *YFTicker) CashFlowContext(ctx context.Context, freq YFPeriod) (*YFFinancialStatementTables, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	stmt, err := tickerValue(ctx, t, func(tk *yfticker.Ticker) (*models.FinancialStatement, error) {
+		return tk.CashFlow(string(freq))
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -591,330 +668,196 @@ func (t *ticker) CashFlow(freq YFPeriod) (*YFFinancialStatementTables, error) {
 }
 
 // Holders
-func (t *ticker) MajorHolders() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
 
-	h, err := tk.MajorHolders()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(h)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.MajorHolders", strings.ToUpper(t.symbol)))
-	return dt, nil
+// MajorHolders returns major holders information as a DataTable. It is
+// MajorHoldersContext with context.Background().
+func (t *YFTicker) MajorHolders() (*insyra.DataTable, error) {
+	return t.MajorHoldersContext(context.Background())
 }
 
-func (t *ticker) InstitutionalHolders() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
+// MajorHoldersContext is MajorHolders with a context; see YFTicker for what a
+// done context does.
+func (t *YFTicker) MajorHoldersContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	h, err := tk.InstitutionalHolders()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(h)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.InstitutionalHolders", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return tickerTable(ctx, t, "MajorHolders", true, (*yfticker.Ticker).MajorHolders)
 }
 
-func (t *ticker) MutualFundHolders() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	h, err := tk.MutualFundHolders()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(h)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.MutualFundHolders", strings.ToUpper(t.symbol)))
-	return dt, nil
+func (t *YFTicker) InstitutionalHolders() (*insyra.DataTable, error) {
+	return t.InstitutionalHoldersContext(context.Background())
 }
 
-func (t *ticker) InsiderTransactions() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
+// InstitutionalHoldersContext is InstitutionalHolders with a context; see YFTicker for what a done context does.
+func (t *YFTicker) InstitutionalHoldersContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	tx, err := tk.InsiderTransactions()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(tx)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.InsiderTransactions", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return tickerTable(ctx, t, "InstitutionalHolders", true, (*yfticker.Ticker).InstitutionalHolders)
 }
 
-// FastInfo returns a quick summary as DataTable.
-func (t *ticker) FastInfo() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
+func (t *YFTicker) MutualFundHolders() (*insyra.DataTable, error) {
+	return t.MutualFundHoldersContext(context.Background())
+}
 
-	fi, err := tk.FastInfo()
-	if err != nil {
+// MutualFundHoldersContext is MutualFundHolders with a context; see YFTicker for what a done context does.
+func (t *YFTicker) MutualFundHoldersContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	dt, err := insyra.ReadJSON(fi)
-	if err != nil {
+	return tickerTable(ctx, t, "MutualFundHolders", true, (*yfticker.Ticker).MutualFundHolders)
+}
+
+func (t *YFTicker) InsiderTransactions() (*insyra.DataTable, error) {
+	return t.InsiderTransactionsContext(context.Background())
+}
+
+// InsiderTransactionsContext is InsiderTransactions with a context; see YFTicker for what a done context does.
+func (t *YFTicker) InsiderTransactionsContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.FastInfo", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return tickerTable(ctx, t, "InsiderTransactions", true, (*yfticker.Ticker).InsiderTransactions)
+}
+
+// FastInfo returns a quick summary as DataTable. It is FastInfoContext with context.Background().
+func (t *YFTicker) FastInfo() (*insyra.DataTable, error) {
+	return t.FastInfoContext(context.Background())
+}
+
+// FastInfoContext is FastInfo with a context; see YFTicker for what a done context does.
+func (t *YFTicker) FastInfoContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	return tickerTable(ctx, t, "FastInfo", true, (*yfticker.Ticker).FastInfo)
 }
 
 // Earnings returns earnings report data for the ticker.
 // Note: not implemented because underlying go-yfinance version does not expose this method.
-func (t *ticker) Earnings() (*insyra.DataTable, error) {
+func (t *YFTicker) Earnings() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
 	return nil, errors.New("yfinance: Earnings not supported by the go-yfinance backend")
 }
 
-// EarningsEstimate returns earnings estimates as a DataTable.
-func (t *ticker) EarningsEstimate() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	est, err := tk.EarningsEstimate()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(est)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.EarningsEstimate", strings.ToUpper(t.symbol)))
-	return dt, nil
+// EarningsEstimate returns earnings estimates as a DataTable. It is EarningsEstimateContext with context.Background().
+func (t *YFTicker) EarningsEstimate() (*insyra.DataTable, error) {
+	return t.EarningsEstimateContext(context.Background())
 }
 
-// EarningsHistory returns historical earnings data as a DataTable.
-func (t *ticker) EarningsHistory() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
+// EarningsEstimateContext is EarningsEstimate with a context; see YFTicker for what a done context does.
+func (t *YFTicker) EarningsEstimateContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	hs, err := tk.EarningsHistory()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(hs)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.EarningsHistory", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return tickerTable(ctx, t, "EarningsEstimate", true, (*yfticker.Ticker).EarningsEstimate)
 }
 
-// EPSTrend returns EPS trend data as a DataTable.
-func (t *ticker) EPSTrend() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	et, err := tk.EPSTrend()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(et)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.EPSTrend", strings.ToUpper(t.symbol)))
-	return dt, nil
+// EarningsHistory returns historical earnings data as a DataTable. It is EarningsHistoryContext with context.Background().
+func (t *YFTicker) EarningsHistory() (*insyra.DataTable, error) {
+	return t.EarningsHistoryContext(context.Background())
 }
 
-// EPSRevisions returns EPS revisions data as a DataTable.
-func (t *ticker) EPSRevisions() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
+// EarningsHistoryContext is EarningsHistory with a context; see YFTicker for what a done context does.
+func (t *YFTicker) EarningsHistoryContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	rev, err := tk.EPSRevisions()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(rev)
-	if err != nil {
-		return nil, err
-	}
-	dt.SetName(fmt.Sprintf("%s.EPSRevisions", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return tickerTable(ctx, t, "EarningsHistory", true, (*yfticker.Ticker).EarningsHistory)
 }
 
-// Recommendations returns analyst recommendations as a DataTable.
-func (t *ticker) Recommendations() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	recs, err := tk.Recommendations()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(recs)
-	if err != nil {
-		return nil, err
-	}
-	dt.SetName(fmt.Sprintf("%s.Recommendations", strings.ToUpper(t.symbol)))
-	return dt, nil
+// EPSTrend returns EPS trend data as a DataTable. It is EPSTrendContext with context.Background().
+func (t *YFTicker) EPSTrend() (*insyra.DataTable, error) {
+	return t.EPSTrendContext(context.Background())
 }
 
-// AnalystPriceTargets returns analyst price targets as a DataTable.
-func (t *ticker) AnalystPriceTargets() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
+// EPSTrendContext is EPSTrend with a context; see YFTicker for what a done context does.
+func (t *YFTicker) EPSTrendContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
-
-	apt, err := tk.AnalystPriceTargets()
-	if err != nil {
-		return nil, err
-	}
-	dt, err := insyra.ReadJSON(apt)
-	if err != nil {
-		return nil, err
-	}
-	dt.SetName(fmt.Sprintf("%s.AnalystPriceTargets", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return tickerTable(ctx, t, "EPSTrend", true, (*yfticker.Ticker).EPSTrend)
 }
 
-// RevenueEstimate returns revenue estimates as a DataTable.
-func (t *ticker) RevenueEstimate() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
+// EPSRevisions returns EPS revisions data as a DataTable. It is EPSRevisionsContext with context.Background().
+func (t *YFTicker) EPSRevisions() (*insyra.DataTable, error) {
+	return t.EPSRevisionsContext(context.Background())
+}
 
-	rev, err := tk.RevenueEstimate()
-	if err != nil {
+// EPSRevisionsContext is EPSRevisions with a context; see YFTicker for what a done context does.
+func (t *YFTicker) EPSRevisionsContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	dt, err := insyra.ReadJSON(rev)
-	if err != nil {
+	return tickerTable(ctx, t, "EPSRevisions", false, (*yfticker.Ticker).EPSRevisions)
+}
+
+// Recommendations returns analyst recommendations as a DataTable. It is RecommendationsContext with context.Background().
+func (t *YFTicker) Recommendations() (*insyra.DataTable, error) {
+	return t.RecommendationsContext(context.Background())
+}
+
+// RecommendationsContext is Recommendations with a context; see YFTicker for what a done context does.
+func (t *YFTicker) RecommendationsContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	dt.SetName(fmt.Sprintf("%s.RevenueEstimate", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return tickerTable(ctx, t, "Recommendations", false, (*yfticker.Ticker).Recommendations)
+}
+
+// AnalystPriceTargets returns analyst price targets as a DataTable. It is AnalystPriceTargetsContext with context.Background().
+func (t *YFTicker) AnalystPriceTargets() (*insyra.DataTable, error) {
+	return t.AnalystPriceTargetsContext(context.Background())
+}
+
+// AnalystPriceTargetsContext is AnalystPriceTargets with a context; see YFTicker for what a done context does.
+func (t *YFTicker) AnalystPriceTargetsContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	return tickerTable(ctx, t, "AnalystPriceTargets", false, (*yfticker.Ticker).AnalystPriceTargets)
+}
+
+// RevenueEstimate returns revenue estimates as a DataTable. It is RevenueEstimateContext with context.Background().
+func (t *YFTicker) RevenueEstimate() (*insyra.DataTable, error) {
+	return t.RevenueEstimateContext(context.Background())
+}
+
+// RevenueEstimateContext is RevenueEstimate with a context; see YFTicker for what a done context does.
+func (t *YFTicker) RevenueEstimateContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	return tickerTable(ctx, t, "RevenueEstimate", false, (*yfticker.Ticker).RevenueEstimate)
 }
 
 // Sustainability returns sustainability data as a DataTable.
 // Note: not implemented because underlying go-yfinance version does not expose this method.
-func (t *ticker) Sustainability() (*insyra.DataTable, error) {
+func (t *YFTicker) Sustainability() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
 	return nil, errors.New("yfinance: Sustainability not supported by the installed go-yfinance backend")
 }
 
-// GrowthEstimates returns growth estimates as a DataTable.
-func (t *ticker) GrowthEstimates() (*insyra.DataTable, error) {
-	if err := t.checkError(); err != nil {
-		return nil, err
-	}
-	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
-	if err != nil {
-		return nil, err
-	}
-	defer tk.Close()
+// GrowthEstimates returns growth estimates as a DataTable. It is GrowthEstimatesContext with context.Background().
+func (t *YFTicker) GrowthEstimates() (*insyra.DataTable, error) {
+	return t.GrowthEstimatesContext(context.Background())
+}
 
-	g, err := tk.GrowthEstimates()
-	if err != nil {
+// GrowthEstimatesContext is GrowthEstimates with a context; see YFTicker for what a done context does.
+func (t *YFTicker) GrowthEstimatesContext(ctx context.Context) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	dt, err := insyra.ReadJSON(g)
-	if err != nil {
-		return nil, err
-	}
-	dt.SetName(fmt.Sprintf("%s.GrowthEstimates", strings.ToUpper(t.symbol)))
-	return dt, nil
+	return tickerTable(ctx, t, "GrowthEstimates", false, (*yfticker.Ticker).GrowthEstimates)
 }
 
 // FundsData returns fund-related data for ETFs/mutual funds.
 // Note: not implemented because underlying go-yfinance version does not expose this method.
-func (t *ticker) FundsData() (*insyra.DataTable, error) {
+func (t *YFTicker) FundsData() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
@@ -923,7 +866,7 @@ func (t *ticker) FundsData() (*insyra.DataTable, error) {
 
 // TopHoldings returns top holdings for a fund as a DataTable.
 // Note: not implemented because underlying go-yfinance version does not expose this method.
-func (t *ticker) TopHoldings() (*insyra.DataTable, error) {
+func (t *YFTicker) TopHoldings() (*insyra.DataTable, error) {
 	if err := t.checkError(); err != nil {
 		return nil, err
 	}
