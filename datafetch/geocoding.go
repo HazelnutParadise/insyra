@@ -137,8 +137,22 @@ type geocodeAPIResponse struct {
 	} `json:"result"`
 }
 
-// twGeocoder is a stateful reverse-geocoding fetcher. Construct it with TWGeocoding.
-type twGeocoder struct {
+// errTWGeocodingNotCreated is what every method of a TWGeocodingClient that did
+// not come from TWGeocoding returns.
+var errTWGeocodingNotCreated = errors.New("datafetch: TWGeocodingClient was not created with TWGeocoding")
+
+// usable reports whether g came from TWGeocoding.
+func (g *TWGeocodingClient) usable() error {
+	if g == nil || g.client == nil || g.limiter == nil {
+		return errTWGeocodingNotCreated
+	}
+	return nil
+}
+
+// TWGeocodingClient reverse-geocodes Taiwan coordinates to their county, town
+// and village. Create one with TWGeocoding. A client that did not come
+// from TWGeocoding, such as a zero value, returns an error from every method.
+type TWGeocodingClient struct {
 	cfg     TWGeocodingConfig
 	client  *http.Client
 	limiter *limiter.IntervalLimiter
@@ -148,12 +162,12 @@ type twGeocoder struct {
 // TWGeocoding creates a Taiwan reverse-geocoding fetcher backed by
 // geocoding.zuola.com. Note the free tier is limited to 15 requests/hour per IP;
 // use a GeocodeCache and the batch methods' de-duplication to conserve it.
-func TWGeocoding(cfg TWGeocodingConfig) (*twGeocoder, error) {
+func TWGeocoding(cfg TWGeocodingConfig) (*TWGeocodingClient, error) {
 	normalized, err := cfg.normalize()
 	if err != nil {
 		return nil, err
 	}
-	return &twGeocoder{
+	return &TWGeocodingClient{
 		cfg:     normalized,
 		client:  &http.Client{Timeout: normalized.Timeout},
 		limiter: limiter.NewIntervalLimiter(normalized.Interval),
@@ -164,7 +178,22 @@ func TWGeocoding(cfg TWGeocodingConfig) (*twGeocoder, error) {
 // Reverse resolves a single coordinate to its Taiwan administrative region.
 // It returns ErrGeocodeNotFound when the point is outside any village, a
 // *RateLimitError when the quota is exhausted, and ErrGeocodeTimeout on timeout.
-func (g *twGeocoder) Reverse(lat, lng float64) (*ReverseGeocodeResult, error) {
+// It is ReverseContext with context.Background().
+func (g *TWGeocodingClient) Reverse(lat, lng float64) (*ReverseGeocodeResult, error) {
+	return g.ReverseContext(context.Background(), lat, lng)
+}
+
+// ReverseContext is Reverse with a context. The limiter wait, the request and
+// each retry backoff stop when ctx is done, and the call then returns
+// ctx.Err(); a request ended by ctx is not retried or reported as
+// ErrGeocodeTimeout.
+func (g *TWGeocodingClient) ReverseContext(ctx context.Context, lat, lng float64) (*ReverseGeocodeResult, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	if err := g.usable(); err != nil {
+		return nil, err
+	}
 	key := geocodeCacheKey(lat, lng)
 	if g.cache != nil {
 		if cached, ok := g.cache.Get(key); ok {
@@ -179,16 +208,22 @@ func (g *twGeocoder) Reverse(lat, lng float64) (*ReverseGeocodeResult, error) {
 
 	var lastErr error
 	for attempt := 0; attempt <= g.cfg.Retries; attempt++ {
-		if err := g.limiter.Wait(context.Background()); err != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := g.limiter.Wait(ctx); err != nil {
 			return nil, err
 		}
 
-		res, err := g.doReverse(lat, lng)
+		res, err := g.doReverse(ctx, lat, lng)
 		if err == nil {
 			if g.cache != nil {
 				g.cache.Set(key, res)
 			}
 			return res, nil
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
 		}
 
 		lastErr = err
@@ -202,15 +237,17 @@ func (g *twGeocoder) Reverse(lat, lng float64) (*ReverseGeocodeResult, error) {
 			return nil, err
 		}
 		if attempt < g.cfg.Retries {
-			g.sleepBackoff(attempt)
+			if err := g.sleepBackoff(ctx, attempt); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return nil, lastErr
 }
 
 // doReverse performs one HTTP request without retry/cache logic.
-func (g *twGeocoder) doReverse(lat, lng float64) (*ReverseGeocodeResult, error) {
-	req, err := http.NewRequest(http.MethodGet, g.cfg.BaseURL, nil)
+func (g *TWGeocodingClient) doReverse(ctx context.Context, lat, lng float64) (*ReverseGeocodeResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.cfg.BaseURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -267,11 +304,11 @@ func (g *twGeocoder) doReverse(lat, lng float64) (*ReverseGeocodeResult, error) 
 	}
 }
 
-func (g *twGeocoder) sleepBackoff(attempt int) {
+func (g *TWGeocodingClient) sleepBackoff(ctx context.Context, attempt int) error {
 	if g.cfg.RetryBackoff <= 0 {
-		return
+		return nil
 	}
-	time.Sleep(g.cfg.RetryBackoff * time.Duration(attempt+1))
+	return sleepContext(ctx, g.cfg.RetryBackoff*time.Duration(attempt+1))
 }
 
 // ReverseCols reverse-geocodes parallel latitude/longitude lists and returns a
@@ -280,7 +317,19 @@ func (g *twGeocoder) sleepBackoff(attempt int) {
 // point costs at most one request. Per-row failures are tolerated. If the quota
 // is exhausted mid-batch, the already-resolved rows are returned together with a
 // *RateLimitError, and the remaining rows are marked "pending".
-func (g *twGeocoder) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error) {
+// It is ReverseColsContext with context.Background().
+func (g *TWGeocodingClient) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error) {
+	return g.ReverseColsContext(context.Background(), lat, lng)
+}
+
+// ReverseColsContext is ReverseCols with a context. When ctx is done part-way,
+// it returns the rows resolved so far, marks the rest pending and returns
+// ctx.Err(), as it does when the quota runs out; no request is sent after
+// ctx is done.
+func (g *TWGeocodingClient) ReverseColsContext(ctx context.Context, lat, lng *insyra.DataList) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
 	if lat == nil || lng == nil {
 		return nil, errors.New("datafetch: ReverseCols requires non-nil lat and lng lists")
 	}
@@ -288,6 +337,13 @@ func (g *twGeocoder) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, 
 		return nil, fmt.Errorf("datafetch: ReverseCols lat/lng length mismatch (%d vs %d)", lat.Len(), lng.Len())
 	}
 	n := lat.Len()
+	// dev returned an empty table for two empty lists without touching the
+	// client; only a batch that would issue a request needs a usable client.
+	if n > 0 {
+		if err := g.usable(); err != nil {
+			return nil, err
+		}
+	}
 
 	latVals := make([]any, n)
 	lngVals := make([]any, n)
@@ -334,6 +390,7 @@ func (g *twGeocoder) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, 
 
 	seen := make(map[string]batchOutcome)
 	var rateErr *RateLimitError
+	var ctxErr error
 	halted := false
 
 	for i := range n {
@@ -359,7 +416,20 @@ func (g *twGeocoder) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, 
 			continue
 		}
 
-		res, err := g.Reverse(latF, lngF)
+		if err := ctx.Err(); err != nil {
+			ctxErr = err
+			halted = true
+			statusVals[i] = geocodeStatusPending
+			continue
+		}
+
+		res, err := g.ReverseContext(ctx, latF, lngF)
+		if err != nil && ctx.Err() != nil {
+			ctxErr = ctx.Err()
+			halted = true
+			statusVals[i] = geocodeStatusPending
+			continue
+		}
 		switch {
 		case err == nil:
 			outcome := batchOutcome{res: res, status: geocodeStatusOK}
@@ -402,13 +472,25 @@ func (g *twGeocoder) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, 
 	if rateErr != nil {
 		return dt, rateErr
 	}
+	if ctxErr != nil {
+		return dt, ctxErr
+	}
 	return dt, nil
 }
 
 // ReverseTable reverse-geocodes the given DataTable's latitude/longitude columns,
 // addressed by Excel-style column index ("A", "B", ...). See ReverseCols for the
 // output shape and batch semantics.
-func (g *twGeocoder) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error) {
+// It is ReverseTableContext with context.Background().
+func (g *TWGeocodingClient) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error) {
+	return g.ReverseTableContext(context.Background(), dt, latCol, lngCol)
+}
+
+// ReverseTableContext is ReverseTable with a context; see ReverseColsContext.
+func (g *TWGeocodingClient) ReverseTableContext(ctx context.Context, dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
 	if dt == nil {
 		return nil, errors.New("datafetch: ReverseTable requires a non-nil DataTable")
 	}
@@ -417,13 +499,14 @@ func (g *twGeocoder) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (
 	if lat == nil || lng == nil {
 		return nil, fmt.Errorf("datafetch: ReverseTable could not resolve columns %q / %q", latCol, lngCol)
 	}
-	return g.ReverseCols(lat, lng)
+	return g.ReverseColsContext(ctx, lat, lng)
 }
 
 // ReverseTableByColName reverse-geocodes the given DataTable's latitude/longitude
 // columns, addressed by column name. See ReverseCols for the output shape and
-// batch semantics.
-func (g *twGeocoder) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error) {
+// batch semantics. It has no Context form on this line: ReverseTableContext takes
+// the same columns by Excel-style index.
+func (g *TWGeocodingClient) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error) {
 	if dt == nil {
 		return nil, errors.New("datafetch: ReverseTableByColName requires a non-nil DataTable")
 	}

@@ -9,6 +9,7 @@ package datafetch
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"html"
 	"io"
@@ -46,6 +47,9 @@ const (
 	// the name at 11.
 	gmapsSearchResults = 64
 
+	// gmapsDefaultMaxWait is the longest wait between review pages when the caller sets none.
+	gmapsDefaultMaxWait = 5 * time.Second
+
 	gmapsUserAgent       = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 	gmapsRequestTimeout  = 30 * time.Second
 	gmapsMaxResponseSize = 64 << 20
@@ -78,26 +82,54 @@ type GoogleMapsStoreReviews []GoogleMapsStoreReview
 // GoogleMapsStoreReviewsFetchingOptions is a struct for options when fetching reviews.
 // A zero field means its default.
 type GoogleMapsStoreReviewsFetchingOptions struct {
+	// SortBy is the order of the reviews. Zero means
+	// GoogleMapsStoreReviewSortByRelevance.
 	SortBy GoogleMapsStoreReviewSortBy
-	// MaxWaitingInterval_Milliseconds is the maximum waiting interval in milliseconds between requests.
-	// It must be at least 1000; zero means 5000.
+
+	// MaxWaitingInterval is the longest wait between two review pages. Each
+	// wait is random between one second and this value, so it must be at least
+	// one second; zero means 5 seconds.
+	MaxWaitingInterval time.Duration
+
+	// Deprecated: use MaxWaitingInterval, which is the same limit as a
+	// time.Duration. This field counts milliseconds, and setting both fields is
+	// an error. Removed in the release after the one that deprecated it.
 	MaxWaitingInterval_Milliseconds uint
 }
 
+// GoogleMapsStoreReviewSortBy is the order GetReviews asks Google for.
 type GoogleMapsStoreReviewSortBy uint8
 
 const (
-	// SortByRelevance 按相關性排序
-	SortByRelevance GoogleMapsStoreReviewSortBy = 1
-	// SortByNewest 按最新排序
-	SortByNewest GoogleMapsStoreReviewSortBy = 2
-	// SortByRating 按評分排序
-	SortByHighestRating GoogleMapsStoreReviewSortBy = 3
-	// SortByLowestRating 按最低評分排序
-	SortByLowestRating GoogleMapsStoreReviewSortBy = 4
+	GoogleMapsStoreReviewSortByRelevance     GoogleMapsStoreReviewSortBy = 1 // most relevant first, the default
+	GoogleMapsStoreReviewSortByNewest        GoogleMapsStoreReviewSortBy = 2 // most recent first
+	GoogleMapsStoreReviewSortByHighestRating GoogleMapsStoreReviewSortBy = 3 // highest rating first
+	GoogleMapsStoreReviewSortByLowestRating  GoogleMapsStoreReviewSortBy = 4 // lowest rating first
 )
 
-type googleMapsStoreCrawler struct {
+const (
+	// Deprecated: use GoogleMapsStoreReviewSortByRelevance. Removed in the
+	// release after the one that deprecated it.
+	SortByRelevance = GoogleMapsStoreReviewSortByRelevance
+
+	// Deprecated: use GoogleMapsStoreReviewSortByNewest. Removed in the release
+	// after the one that deprecated it.
+	SortByNewest = GoogleMapsStoreReviewSortByNewest
+
+	// Deprecated: use GoogleMapsStoreReviewSortByHighestRating. Removed in the
+	// release after the one that deprecated it.
+	SortByHighestRating = GoogleMapsStoreReviewSortByHighestRating
+
+	// Deprecated: use GoogleMapsStoreReviewSortByLowestRating. Removed in the
+	// release after the one that deprecated it.
+	SortByLowestRating = GoogleMapsStoreReviewSortByLowestRating
+)
+
+// GoogleMapsStoresClient searches Google Maps for stores and fetches their
+// reviews. Create one with GoogleMapsStores. A client that did not come
+// from GoogleMapsStores, such as a zero value, returns nil from Search
+// and GetReviews with a warning.
+type GoogleMapsStoresClient struct {
 	client         *http.Client
 	headers        map[string]string
 	storeSearchUrl string
@@ -111,8 +143,8 @@ type GoogleMapsStoreData struct {
 
 // GoogleMapsStores returns a crawler for Google Maps store data. It needs no
 // network access and never returns nil.
-func GoogleMapsStores() *googleMapsStoreCrawler {
-	return &googleMapsStoreCrawler{
+func GoogleMapsStores() *GoogleMapsStoresClient {
+	return &GoogleMapsStoresClient{
 		client:         &http.Client{Timeout: gmapsRequestTimeout},
 		headers:        map[string]string{"User-Agent": gmapsUserAgent},
 		storeSearchUrl: gmapsSearchURL,
@@ -120,10 +152,31 @@ func GoogleMapsStores() *googleMapsStoreCrawler {
 	}
 }
 
+// usable reports whether c came from GoogleMapsStores.
+func (c *GoogleMapsStoresClient) usable() bool {
+	return c != nil && c.client != nil
+}
+
 // Search searches Google Maps for stores matching storeName and returns up to
 // 20 of them, in Google's order. It returns nil when the request fails or no
 // store comes back, and logs a warning saying which.
-func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData {
+// It is SearchContext with context.Background().
+func (c *GoogleMapsStoresClient) Search(storeName string) []GoogleMapsStoreData {
+	return c.SearchContext(context.Background(), storeName)
+}
+
+// SearchContext is Search with a context. When ctx is done the request
+// stops, and SearchContext returns nil with a warning, as for any other
+// failure.
+func (c *GoogleMapsStoresClient) SearchContext(ctx context.Context, storeName string) []GoogleMapsStoreData {
+	if err := contextErr(ctx); err != nil {
+		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "%v. Returning nil.", err)
+		return nil
+	}
+	if !c.usable() {
+		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "the GoogleMapsStoresClient was not created with GoogleMapsStores. Returning nil.")
+		return nil
+	}
 	params := url.Values{}
 	params.Set("tbm", "map")
 	params.Set("hl", "zh-TW")
@@ -131,7 +184,7 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData 
 	params.Set("q", storeName)
 	params.Set("pb", gmapsSearchPB)
 
-	body, err := c.get(c.storeSearchUrl + "?" + params.Encode())
+	body, err := c.get(ctx, c.storeSearchUrl+"?"+params.Encode())
 	if err != nil {
 		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Failed to search: %v. Returning nil.", err)
 		return nil
@@ -183,23 +236,47 @@ func parseGoogleMapsSearch(body []byte) ([]GoogleMapsStoreData, error) {
 //
 // ReviewerState and ReviewerLevel are always empty: the review pages no longer
 // carry a reviewer's status line or guide level.
-func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews {
+// It is GetReviewsContext with context.Background().
+func (c *GoogleMapsStoresClient) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews {
+	return c.GetReviewsContext(context.Background(), storeId, pageCount, options...)
+}
+
+// GetReviewsContext is GetReviews with a context. When ctx is done, the
+// request or the wait between pages stops, and GetReviewsContext returns nil
+// with a warning, as for any other failure.
+func (c *GoogleMapsStoresClient) GetReviewsContext(ctx context.Context, storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews {
+	if err := contextErr(ctx); err != nil {
+		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "%v. Returning nil.", err)
+		return nil
+	}
+	if !c.usable() {
+		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "the GoogleMapsStoresClient was not created with GoogleMapsStores. Returning nil.")
+		return nil
+	}
 	fetchingOptions := GoogleMapsStoreReviewsFetchingOptions{
-		SortBy:                          SortByRelevance,
-		MaxWaitingInterval_Milliseconds: 5000,
+		SortBy:             GoogleMapsStoreReviewSortByRelevance,
+		MaxWaitingInterval: gmapsDefaultMaxWait,
 	}
 	if len(options) == 1 {
 		// A zero field keeps its default; only a value that is set and out of
 		// range is worth a warning.
-		if sortBy := options[0].SortBy; sortBy > SortByLowestRating {
+		if sortBy := options[0].SortBy; sortBy > GoogleMapsStoreReviewSortByLowestRating {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "SortBy is invalid. Using default value.")
 		} else if sortBy != 0 {
 			fetchingOptions.SortBy = sortBy
 		}
-		if wait := options[0].MaxWaitingInterval_Milliseconds; wait != 0 && wait < 1000 {
+		wait := options[0].MaxWaitingInterval
+		if options[0].MaxWaitingInterval_Milliseconds != 0 {
+			if wait != 0 {
+				insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "set MaxWaitingInterval only; the deprecated MaxWaitingInterval_Milliseconds cannot be combined with it. Returning nil.")
+				return nil
+			}
+			wait = time.Duration(options[0].MaxWaitingInterval_Milliseconds) * time.Millisecond
+		}
+		if wait != 0 && wait < time.Second {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "MaxWaitingInterval is too small. Using default value.")
 		} else if wait != 0 {
-			fetchingOptions.MaxWaitingInterval_Milliseconds = wait
+			fetchingOptions.MaxWaitingInterval = wait
 		}
 	} else if len(options) > 1 {
 		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Got too many options. Using default options.")
@@ -211,7 +288,7 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 	for page := 1; pageCount == 0 || page <= pageCount; page++ {
 		insyra.LogDebug("datafetch", "GoogleMapsStores.GetReviews", "fetching reviews on page %d", page)
 
-		body, err := c.get(c.storeReviewUrl + "?" + gmapsReviewQuery(storeId, fetchingOptions.SortBy, token))
+		body, err := c.get(ctx, c.storeReviewUrl+"?"+gmapsReviewQuery(storeId, fetchingOptions.SortBy, token))
 		if err != nil {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to fetch reviews: %v. Returning nil.", err)
 			return nil
@@ -229,12 +306,14 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 			break
 		}
 
-		// 隨機等待 1 秒到 MaxWaitingInterval，防止被 Google 封鎖。上限剛好是 1000
-		// 時只有一種等待時間，rand.IntN 的參數仍須大於零。
-		maxWait := int(fetchingOptions.MaxWaitingInterval_Milliseconds)
-		waitTime := 1000 + rand.IntN(maxWait-1000+1)
-		insyra.LogDebug("datafetch", "GoogleMapsStores.GetReviews", "waiting %.1fs before fetching the next page", float64(waitTime)/1000)
-		time.Sleep(time.Duration(waitTime) * time.Millisecond)
+		// 隨機等待 1 秒到 MaxWaitingInterval，防止被 Google 封鎖。上限剛好是 1 秒時只有一種等待時間，rand.Int64N 的參數仍須大於零。
+		maxWait := fetchingOptions.MaxWaitingInterval
+		waitTime := time.Second + time.Duration(rand.Int64N(int64(maxWait-time.Second)+1))
+		insyra.LogDebug("datafetch", "GoogleMapsStores.GetReviews", "waiting %.1fs before fetching the next page", waitTime.Seconds())
+		if err := sleepContext(ctx, waitTime); err != nil {
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "stopped while waiting for the next page: %v. Returning nil.", err)
+			return nil
+		}
 	}
 
 	return reviews
@@ -345,8 +424,8 @@ func (reviews GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable {
 
 // get sends a GET request with the crawler's headers and returns the body of
 // a 200 response, read up to gmapsMaxResponseSize.
-func (c *googleMapsStoreCrawler) get(rawURL string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+func (c *GoogleMapsStoresClient) get(ctx context.Context, rawURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

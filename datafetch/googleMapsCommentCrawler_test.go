@@ -36,7 +36,7 @@ func captureGmapsWarnings(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-func crawlerFor(server *httptest.Server) *googleMapsStoreCrawler {
+func crawlerFor(server *httptest.Server) *GoogleMapsStoresClient {
 	c := GoogleMapsStores()
 	c.storeSearchUrl = server.URL + "/search"
 	c.storeReviewUrl = server.URL + "/reviews"
