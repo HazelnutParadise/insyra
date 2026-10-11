@@ -64,7 +64,7 @@ func (dt *DataTable) writeCSVAndClose(wc io.WriteCloser, opts CSVWriteOptions) (
 			err = closeErr
 		}
 	}()
-	return dt.writeCSV(wc, opts)
+	return dt.WriteCSV(wc, opts)
 }
 
 // sanitizeCSVFormula prefixes a value a spreadsheet would execute with a
@@ -82,9 +82,11 @@ func sanitizeCSVFormula(s string) string {
 	return s
 }
 
-// writeCSV streams the table as CSV to w. Every write error, including the
-// one csv.Writer only reports at Flush, is returned.
-func (dt *DataTable) writeCSV(w io.Writer, opts CSVWriteOptions) error {
+// WriteCSV writes the table as CSV to any destination — an HTTP response, a
+// zip entry, a buffer — the same way ToCSVWithOptions writes a file. Every
+// write error, including the one csv.Writer only reports at Flush, is
+// returned.
+func (dt *DataTable) WriteCSV(w io.Writer, opts CSVWriteOptions) error {
 	setRowNamesToFirstCol := opts.SetRowNamesToFirstCol
 	setColNamesToFirstRow := opts.SetColNamesToFirstRow
 	// 寫入 UTF-8 BOM

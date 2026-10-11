@@ -285,15 +285,24 @@ func DetectEncoding(filePath string) (string, error) {
 	defer func() { _ = f.Close() }()
 
 	// Read a reasonably large sample to improve detection accuracy
-	buf := make([]byte, 8192)
+	buf := make([]byte, encodingSampleSize)
 	n, err := f.Read(buf)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
 	}
-	if n == 0 {
-		return "", fmt.Errorf("empty file %s", filePath)
+	return detectEncodingOfSample(buf[:n], filePath)
+}
+
+// encodingSampleSize is how much of an input the encoding is judged from.
+const encodingSampleSize = 8192
+
+// detectEncodingOfSample names the encoding of the first bytes of an input.
+// source only labels the messages, so a file and a reader are judged by the
+// same rule.
+func detectEncodingOfSample(sample []byte, source string) (string, error) {
+	if len(sample) == 0 {
+		return "", fmt.Errorf("empty file %s", source)
 	}
-	sample := buf[:n]
 
 	// BOM checks. UTF-32's BOMs start with UTF-16's, so they must be tested
 	// first or every UTF-32LE file is reported as UTF-16LE.
@@ -316,8 +325,8 @@ func DetectEncoding(filePath string) (string, error) {
 	// Quick UTF-8 heuristic. A sample that filled the buffer may end in the
 	// middle of a multi-byte rune, which is not invalid UTF-8, just truncated:
 	// back off to the last complete rune before judging. A shorter sample is
-	// the whole file, so its tail is judged as it is.
-	if utf8.Valid(sample) || (n == len(buf) && utf8.Valid(trimIncompleteRune(sample))) {
+	// the whole input, so its tail is judged as it is.
+	if utf8.Valid(sample) || (len(sample) == encodingSampleSize && utf8.Valid(trimIncompleteRune(sample))) {
 		return "utf-8", nil
 	}
 
@@ -325,7 +334,7 @@ func DetectEncoding(filePath string) (string, error) {
 	detector := chardet.NewTextDetector()
 	res, err := detector.DetectBest(sample)
 	if err != nil {
-		return "", fmt.Errorf("failed to detect encoding for file %s: %w", filePath, err)
+		return "", fmt.Errorf("failed to detect encoding for file %s: %w", source, err)
 	}
 
 	charset := strings.ToLower(res.Charset)

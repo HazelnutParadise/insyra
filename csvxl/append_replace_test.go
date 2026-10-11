@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
 )
@@ -457,4 +458,47 @@ func TestAppendCsvToExcelAddsNoSheetWhenTheCsvIsMissing(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 	require.Equal(t, []string{"data"}, f.GetSheetList())
+}
+
+// Replacing a workbook's only sheet goes through a placeholder, because
+// excelize refuses to delete the last sheet. When that sheet is itself named
+// like the placeholder, NewSheet finds it already there and DeleteSheet leaves
+// the only sheet alone, so the old contents survived under the same name. Both
+// users of the shared replacement must pick a placeholder the workbook does not
+// hold yet.
+func TestReplaceOnlySheetNamedLikeThePlaceholder(t *testing.T) {
+	const name = "__insyra_placeholder__"
+	dir := t.TempDir()
+
+	newPlaceholderBook := func(path string) {
+		f := excelize.NewFile()
+		require.NoError(t, f.SetSheetName("Sheet1", name))
+		require.NoError(t, f.SetCellValue(name, "Z100", "old"))
+		require.NoError(t, f.SaveAs(path))
+		require.NoError(t, f.Close())
+	}
+	requireOneSheetWithoutZ100 := func(f *excelize.File) {
+		require.Equal(t, []string{name}, f.GetSheetList(), "the sheet must keep its name and count")
+		value, err := f.GetCellValue(name, "Z100")
+		require.NoError(t, err)
+		require.Empty(t, value, "the old far-off cell must not survive")
+	}
+
+	csvFile := writeCSV(t, dir, "s.csv", "a\n9")
+	csvxlPath := filepath.Join(dir, "csvxl.xlsx")
+	newPlaceholderBook(csvxlPath)
+	require.NoError(t, AppendCsvToExcel([]string{csvFile}, []string{name}, csvxlPath, UTF8))
+	f, err := excelize.OpenFile(csvxlPath)
+	require.NoError(t, err)
+	requireOneSheetWithoutZ100(f)
+	require.NoError(t, f.Close())
+
+	rootPath := filepath.Join(dir, "root.xlsx")
+	newPlaceholderBook(rootPath)
+	dt := insyra.NewDataTable(insyra.NewDataList("9").SetName("a"))
+	require.NoError(t, dt.ToExcel(rootPath, insyra.ExcelWriteOptions{Sheet: name, IfSheetExists: insyra.SheetExistsReplace}))
+	f, err = excelize.OpenFile(rootPath)
+	require.NoError(t, err)
+	requireOneSheetWithoutZ100(f)
+	require.NoError(t, f.Close())
 }
