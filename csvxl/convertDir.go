@@ -36,7 +36,6 @@ func CSVDirToExcel(dir string, output string, encoding ...string) error {
 // The output CSV files will be saved in the given output directory.
 // The CSV files will be named as the Excel file name plus the sheet name plus ".csv",
 // for example, "ExcelFileName_SheetName.csv".
-// EachExcelToCsv converts every Excel workbook in a directory to CSV files.
 //
 // Deprecated: use ExcelDirToCSV. Worksheet selection moves to ExcelToCSVOptions.Sheets;
 // the new function guards formula-like text by default. Removed in 0.4.
