@@ -83,6 +83,16 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `FromDataList` 遇到空清單時回傳空 Series，原本回傳錯誤。
 
+### `lp`
+
+- `lp.Solve(model, opts)` 與 `lp.SolveFile(path, opts)` 用純 Go 的 go-milp 求解，回傳 `*Solution` 與錯誤，不需要安裝 GLPK；設 `Engine: lp.EngineGLPK` 則改用已安裝的 `glpsol`（透過 `GLPK_PATH` 或 `PATH` 尋找），不會替你安裝任何東西。`SolveFromFile` 與 `SolveModel` 保留原本的 GLPK 行為（包括自動安裝 GLPK），改為 Deprecated，在 0.4 移除。
+
+### `lpgen`
+
+- `LPModel.WriteLP(w)` 把模型以 LP 格式寫到任何 `io.Writer`。`GenerateLPFile` 簽名不變，寫出的檔案和以前相同。
+- `ParseLingo(r)` 與 `ParseLingoFile(path)` 讀取 LINGO 模型，遇到讀不懂的敘述會回傳指出行號的錯誤；底線名稱的舊讀法則是直接略過。新讀法也讀 `@GIN`、`@FREE`、`@BND`。`ParseLingoModel_txt` 與 `ParseLingoModel_str` 行為不變，改為 Deprecated，在 0.4 移除。
+- `GenerateLPFile` 先檢查目標函數型別再開檔。目標型別不合法的模型原本會把既有的 LP 檔截成只剩兩行標頭；現在不動既有檔案，也不建立新檔。
+
 ### `py`
 
 - 把 Python 結果傳回 Go 的 IPC 伺服器，改成在 `Run…` 呼叫需要時才開啟，同時執行的最後一個呼叫結束時關閉；在 Unix 上關閉時會一併刪掉暫存目錄裡的 socket 檔，v0.3.4 每個執行過 Python 的程式都會留下一個。伺服器開不起來時（例如暫存目錄的路徑太長，放不下 Unix socket），呼叫會在準備環境、啟動 Python 之前回傳包住原因的錯誤，下一次呼叫會再試一次。v0.3.4 只記一則警告，照樣啟動 Python，最後回傳 `exit status 1`。伺服器接受連線失敗時現在會關閉，正在執行的呼叫會回傳錯誤，下一次呼叫會開一個新的伺服器。

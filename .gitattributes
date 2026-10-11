@@ -1,0 +1,2 @@
+# LP fixtures are compared byte for byte; keep their line endings LF on every platform.
+*.lp.txt text eol=lf

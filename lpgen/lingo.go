@@ -2,202 +2,469 @@ package lpgen
 
 import (
 	"bufio"
+	"fmt"
+	"io"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
 )
 
-// ParseLingoModel_txt parse lingo model from txt file.
-// It turns LINGO model to standard lp model.
-// Go to `LINGO > Generate > Display Model` in LINGO to get the model.
+// parseLingo reads a LINGO model from r and turns it into an LPModel. With
+// strict off it skips whatever it does not recognise, so a model that is read
+// but not understood comes back without an error; only text r cannot yield is
+// one. With strict on, the same skip is an error naming the line, because the
+// caller asked for a model and got a different one.
+func parseLingo(r io.Reader, strict bool) (*LPModel, error) {
+	// 初始化 LPModel
+	model := &LPModel{
+		Constraints: make([]string, 0),
+		Bounds:      make([]string, 0),
+		BinaryVars:  make([]string, 0),
+		IntegerVars: make([]string, 0),
+	}
+
+	// 用於累積多行表達式
+	var currentExpr strings.Builder
+	var isFirstLine = true
+	// 敘述開始的行號，供嚴格模式報錯使用；以 scanner 讀到的行數計。
+	var stmtLine int
+	lineNo := 0
+
+	// 逐行讀取文件
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		lineNo++
+		line := strings.TrimSpace(scanner.Text())
+
+		// 跳過不必要的行
+		if line == "MODEL:" || len(line) == 0 || line == "END" {
+			continue
+		}
+
+		// 移除方括號和內部數字
+		line = lingoRowLabelRe.ReplaceAllString(line, "")
+		line = strings.TrimSpace(line)
+
+		if strict {
+			segments := strings.Split(line, ";")
+			for i, segment := range segments {
+				segment = strings.TrimSpace(segment)
+				if segment != "" {
+					if !isFirstLine {
+						if !strings.HasPrefix(segment, "-") && !strings.HasPrefix(segment, "+") {
+							currentExpr.WriteString(" ")
+						}
+					} else {
+						stmtLine = lineNo
+					}
+					currentExpr.WriteString(segment)
+					isFirstLine = false
+				}
+				if i == len(segments)-1 {
+					continue
+				}
+
+				expr := strings.TrimSpace(currentExpr.String())
+				currentExpr.Reset()
+				isFirstLine = true
+				if expr == "" {
+					continue
+				}
+				expr = lingoMultiplyRe.ReplaceAllString(expr, " ")
+				expr = lingoMissingSpaceRe.ReplaceAllString(expr, `$1 $2`)
+				expr = lingoSciNotationRe.ReplaceAllString(expr, `$1$2$3`)
+				expr = lingoSpaceRe.ReplaceAllString(expr, " ")
+				if err := lingoStrictStatement(model, expr, stmtLine); err != nil {
+					return nil, err
+				}
+			}
+			continue
+		}
+
+		// 累積當前行到表達式
+		if line != "" {
+			if !isFirstLine {
+				if !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "+") {
+					currentExpr.WriteString(" ")
+				}
+			} else {
+				// 這一行是這句敘述的開頭。
+				stmtLine = lineNo
+			}
+		}
+		currentExpr.WriteString(line)
+		isFirstLine = false
+
+		// 如果行尾沒有分號，繼續累積下一行
+		if !strings.HasSuffix(line, ";") {
+			continue
+		}
+
+		// 獲取完整表達式並清理
+		expr := currentExpr.String()
+		expr = strings.TrimSpace(expr)
+		expr = strings.TrimSuffix(expr, ";")
+		currentExpr.Reset()
+		isFirstLine = true
+
+		// 清理表達式格式
+		expr = lingoMultiplyRe.ReplaceAllString(expr, " ")
+		expr = lingoMissingSpaceRe.ReplaceAllString(expr, `$1 $2`)
+		expr = lingoSciNotationRe.ReplaceAllString(expr, `$1$2$3`)
+		expr = lingoSpaceRe.ReplaceAllString(expr, " ")
+
+		if strict {
+			if err := lingoStrictStatement(model, expr, stmtLine); err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		// 判斷和處理目標函數
+		if strings.HasPrefix(strings.ToUpper(expr), "MIN=") || strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
+			lingoSetObjective(model, expr)
+		} else if strings.HasPrefix(strings.ToUpper(expr), "@BIN") {
+			// 處理 Binary 變數宣告
+			lingo_handleVariableDeclarations(expr, "@BIN", &model.BinaryVars)
+		} else if strings.HasPrefix(strings.ToUpper(expr), "@INT") {
+			// 處理 Integer 變數宣告
+			lingo_handleVariableDeclarations(expr, "@INT", &model.IntegerVars)
+		} else if strings.ContainsAny(expr, "<=>=") {
+			lingoAddRelation(model, expr)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	if strict {
+		if rest := strings.TrimSpace(currentExpr.String()); rest != "" {
+			return nil, fmt.Errorf("line %d: LINGO statement has no closing ';': %s", stmtLine, rest)
+		}
+	}
+
+	return model, nil
+}
+
+// lingoStrictStatement reads one statement of a model read with strict on. It
+// knows the objective, the relations, the @BIN, @INT and @GIN declarations,
+// @FREE(x) and @BND(l, x, u), and it skips a comment. Anything else is an error
+// naming the line the statement starts on: dropping it would hand back a model
+// the text does not describe.
+func lingoStrictStatement(model *LPModel, expr string, line int) error {
+	declErr := func() error {
+		return fmt.Errorf("line %d: LINGO declaration not read: %s", line, expr)
+	}
+
+	switch {
+	case strings.HasPrefix(expr, "!"):
+		// LINGO 註解，不是敘述。
+		return nil
+	case strings.HasPrefix(strings.ToUpper(expr), "MIN="), strings.HasPrefix(strings.ToUpper(expr), "MAX="):
+		objective := strings.TrimSpace(strings.SplitN(expr, "=", 2)[1])
+		if !lingoIsLinearExpression(objective) {
+			return fmt.Errorf("line %d: LINGO objective is not a linear expression: %s", line, expr)
+		}
+		lingoSetObjective(model, expr)
+	case strings.HasPrefix(strings.ToUpper(expr), "@BIN"), strings.HasPrefix(strings.ToUpper(expr), "@INT"),
+		strings.HasPrefix(strings.ToUpper(expr), "@GIN"):
+		// @GIN is LINGO's general integer, which belongs with @INT.
+		prefix, target := "@BIN", &model.BinaryVars
+		if !strings.HasPrefix(strings.ToUpper(expr), "@BIN") {
+			prefix, target = "@INT", &model.IntegerVars
+		}
+		if strings.HasPrefix(strings.ToUpper(expr), "@GIN") {
+			prefix = "@GIN"
+		}
+		name, ok := lingoDeclaredName(expr, prefix)
+		if !ok {
+			return declErr()
+		}
+		*target = append(*target, name)
+	case strings.HasPrefix(strings.ToUpper(expr), "@FREE"):
+		name, ok := lingoDeclaredName(expr, "@FREE")
+		if !ok {
+			return declErr()
+		}
+		model.Bounds = append(model.Bounds, name+" free")
+	case strings.HasPrefix(strings.ToUpper(expr), "@BND"):
+		bound, ok := lingoBnd(expr)
+		if !ok {
+			return declErr()
+		}
+		model.Bounds = append(model.Bounds, bound)
+	case strings.ContainsAny(expr, "<=>"):
+		if !lingoIsLinearRelation(expr) {
+			return fmt.Errorf("line %d: LINGO relation is not linear or is not recognised: %s", line, expr)
+		}
+		lingoAddRelation(model, expr)
+	default:
+		return fmt.Errorf("line %d: LINGO statement not recognised: %s", line, expr)
+	}
+	return nil
+}
+
+var (
+	lingoRelationOpRe  = regexp.MustCompile(`<=|>=|=`)
+	lingoLinearTokenRe = regexp.MustCompile(`(?:[+-]|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?|[A-Za-z][A-Za-z0-9_]*)`)
+)
+
+func lingoIsLinearRelation(expr string) bool {
+	locations := lingoRelationOpRe.FindAllStringIndex(expr, -1)
+	if len(locations) != 1 && len(locations) != 2 {
+		return false
+	}
+	parts := make([]string, 0, len(locations)+1)
+	start := 0
+	for _, location := range locations {
+		op := expr[location[0]:location[1]]
+		if op != "<=" && op != ">=" && op != "=" {
+			return false
+		}
+		parts = append(parts, strings.TrimSpace(expr[start:location[0]]))
+		start = location[1]
+	}
+	parts = append(parts, strings.TrimSpace(expr[start:]))
+	if len(parts) == 3 && !lingoIsBound(expr) {
+		return false
+	}
+	for _, part := range parts {
+		if !lingoIsLinearExpression(part) {
+			return false
+		}
+	}
+	return true
+}
+
+func lingoIsLinearExpression(expr string) bool {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return false
+	}
+	locations := lingoLinearTokenRe.FindAllStringIndex(expr, -1)
+	if len(locations) == 0 {
+		return false
+	}
+	previous := 0
+	for _, location := range locations {
+		if strings.TrimSpace(expr[previous:location[0]]) != "" {
+			return false
+		}
+		previous = location[1]
+	}
+	if strings.TrimSpace(expr[locations[len(locations)-1][1]:]) != "" {
+		return false
+	}
+
+	tokens := make([]string, len(locations))
+	for i, location := range locations {
+		tokens[i] = expr[location[0]:location[1]]
+	}
+	for i := 0; i < len(tokens); {
+		if tokens[i] == "+" || tokens[i] == "-" {
+			i++
+			if i == len(tokens) {
+				return false
+			}
+		}
+		if i >= len(tokens) {
+			return false
+		}
+		if isLinearNumber(tokens[i]) {
+			i++
+			if i < len(tokens) && lingoExpressionVarRe.MatchString(tokens[i]) {
+				if locations[i-1][1] == locations[i][0] {
+					return false
+				}
+				i++
+			}
+		} else if lingoExpressionVarRe.MatchString(tokens[i]) {
+			i++
+		} else {
+			return false
+		}
+		if i == len(tokens) {
+			return true
+		}
+		if tokens[i] != "+" && tokens[i] != "-" {
+			return false
+		}
+	}
+	return false
+}
+
+func isLinearNumber(token string) bool {
+	_, err := strconv.ParseFloat(token, 64)
+	return err == nil
+}
+
+var lingoExpressionVarRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
+
+// lingoDeclaredName returns the variable a declaration such as "@BIN(X)"
+// declares. prefix is stripped without regard to case and what is left must be
+// a parenthesised bare variable name, so a declaration the reader cannot read is
+// reported rather than turned into an empty name.
+func lingoDeclaredName(expr, prefix string) (string, bool) {
+	inner, ok := lingoDeclaredArgs(expr, prefix)
+	if !ok || !lingoBareVarRe.MatchString(inner) {
+		return "", false
+	}
+	return inner, true
+}
+
+// lingoDeclaredArgs returns what a declaration puts between its parentheses,
+// with prefix stripped without regard to case and the outside trimmed. What is
+// left is not checked further: @BIN names one variable, @BND three values.
+func lingoDeclaredArgs(expr, prefix string) (string, bool) {
+	if len(expr) < len(prefix) || !strings.EqualFold(expr[:len(prefix)], prefix) {
+		return "", false
+	}
+	rest := strings.TrimSpace(expr[len(prefix):])
+	if len(rest) < 2 || !strings.HasPrefix(rest, "(") || !strings.HasSuffix(rest, ")") {
+		return "", false
+	}
+	return strings.TrimSpace(rest[1 : len(rest)-1]), true
+}
+
+// lingoBnd turns a @BND(l, x, u) declaration into the bound "l <= x <= u". The
+// two limits keep the text they were written as, since a value the reader
+// understands exactly need not be reformatted.
+func lingoBnd(expr string) (string, bool) {
+	inner, ok := lingoDeclaredArgs(expr, "@BND")
+	if !ok {
+		return "", false
+	}
+	parts := strings.Split(inner, ",")
+	if len(parts) != 3 {
+		return "", false
+	}
+	for i, s := range parts {
+		parts[i] = strings.TrimSpace(s)
+	}
+	if !lingoIsNumber(parts[0]) || !lingoBareVarRe.MatchString(parts[1]) || !lingoIsNumber(parts[2]) {
+		return "", false
+	}
+	return fmt.Sprintf("%s <= %s <= %s", parts[0], parts[1], parts[2]), true
+}
+
+// lingoIsNumber reports whether s is a number the reader takes: the shape the
+// rest of the parser uses, or the scientific notation it writes back without
+// spaces (1e-5), which lingoNumRe does not match.
+func lingoIsNumber(s string) bool {
+	if lingoNumRe.MatchString(s) {
+		return true
+	}
+	if _, err := strconv.ParseFloat(s, 64); err == nil {
+		return true
+	}
+	return false
+}
+
+// lingoSetObjective records a MIN= or MAX= statement's objective.
+func lingoSetObjective(model *LPModel, expr string) {
+	objType := "Minimize"
+	if strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
+		objType = "Maximize"
+	}
+	content := strings.TrimSpace(strings.SplitN(expr, "=", 2)[1])
+	model.ObjectiveType = objType
+	model.Objective = content
+}
+
+// lingoAddRelation records a relation, in Bounds when it is a single variable
+// against constants and in Constraints otherwise.
+func lingoAddRelation(model *LPModel, expr string) {
+	if lingoIsBound(expr) {
+		model.Bounds = append(model.Bounds, expr)
+		return
+	}
+	model.Constraints = append(model.Constraints, expr)
+}
+
+// ParseLingo reads a LINGO model from text and turns it into an LPModel. The
+// text is what LINGO shows under LINGO > Generate > Display Model. Text that
+// cannot be read, such as a line of 64 KiB or more, is an error.
+//
+// A statement it does not recognise, a declaration whose variable it cannot
+// read, or a last statement without its closing ';' is an error giving the
+// line the statement starts on. Besides the objective, the constraints and
+// the bounds, it reads @BIN, @INT and @GIN declarations, @FREE(x) as the bound
+// "x free" and @BND(l, x, u) as "l <= x <= u", and it skips a comment, a
+// statement starting with '!'.
+func ParseLingo(model string) (*LPModel, error) {
+	lp, err := parseLingo(strings.NewReader(model), true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read LINGO model: %w", err)
+	}
+	return lp, nil
+}
+
+// ParseLingoFile reads a LINGO model from the file at path, the way ParseLingo
+// reads it from text. A file that cannot be opened or read is an error; a
+// missing file matches fs.ErrNotExist.
+//
+// It reads a file as ParseLingo reads text: a statement it does not recognise,
+// a declaration whose variable it cannot read, or a last statement without its
+// closing ';' is an error giving the line the statement starts on. Besides the
+// objective, the constraints and the bounds, it reads @BIN, @INT and @GIN
+// declarations, @FREE(x) as the bound "x free" and @BND(l, x, u) as
+// "l <= x <= u", and it skips a comment, a statement starting with '!'.
+func ParseLingoFile(path string) (*LPModel, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open LINGO model: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	lp, err := parseLingo(file, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read LINGO model %s: %w", path, err)
+	}
+	return lp, nil
+}
+
+// ParseLingoModel_str reads a LINGO model from text, or returns nil and logs a
+// warning when the text cannot be read.
+//
+// Deprecated: use ParseLingo, which returns an error and refuses statements it
+// does not understand. Removed in 0.4.
+func ParseLingoModel_str(modelStr string) *LPModel {
+	model, err := parseLingo(strings.NewReader(modelStr), false)
+	if err != nil {
+		// strict off: the message and the nil are the ones this name has always
+		// given on text it cannot read at all.
+		insyra.LogWarning("lpgen", "ParseLingoModel_str", "%s", fmt.Errorf("failed to read LINGO model: %w", err).Error())
+		return nil
+	}
+	return model
+}
+
+// ParseLingoModel_txt reads a LINGO model from a file, or returns nil and logs
+// a warning when the file cannot be opened or read.
+//
+// Deprecated: use ParseLingoFile, which returns an error and refuses
+// statements it does not understand. Removed in 0.4.
 func ParseLingoModel_txt(filePath string) *LPModel {
-	// 讀取文件
 	file, err := os.Open(filePath)
 	if err != nil {
-		insyra.LogWarning("lpgen", "ParseLingoModel_txt", "%s", err.Error())
+		insyra.LogWarning("lpgen", "ParseLingoModel_txt", "%s", fmt.Errorf("failed to open LINGO model: %w", err).Error())
 		return nil
 	}
 	defer func() { _ = file.Close() }()
 
-	// 初始化 LPModel
-	model := &LPModel{
-		Constraints: make([]string, 0),
-		Bounds:      make([]string, 0),
-		BinaryVars:  make([]string, 0),
-		IntegerVars: make([]string, 0),
-	}
-
-	// 用於累積多行表達式
-	var currentExpr strings.Builder
-	var isFirstLine = true
-
-	// 逐行讀取文件
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// 跳過不必要的行
-		if line == "MODEL:" || len(line) == 0 || line == "END" {
-			continue
-		}
-
-		// 移除方括號和內部數字
-		line = lingoRowLabelRe.ReplaceAllString(line, "")
-		line = strings.TrimSpace(line)
-
-		// 累積當前行到表達式
-		if !isFirstLine && line != "" {
-			if !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "+") {
-				currentExpr.WriteString(" ")
-			}
-		}
-		currentExpr.WriteString(line)
-		isFirstLine = false
-
-		// 如果行尾沒有分號，繼續累積下一行
-		if !strings.HasSuffix(line, ";") {
-			continue
-		}
-
-		// 獲取完整表達式並清理
-		expr := currentExpr.String()
-		expr = strings.TrimSpace(expr)
-		expr = strings.TrimSuffix(expr, ";")
-		currentExpr.Reset()
-		isFirstLine = true
-
-		// 清理表達式格式
-		expr = lingoMultiplyRe.ReplaceAllString(expr, " ")
-		expr = lingoMissingSpaceRe.ReplaceAllString(expr, `$1 $2`)
-		expr = lingoSciNotationRe.ReplaceAllString(expr, `$1$2$3`)
-		expr = lingoSpaceRe.ReplaceAllString(expr, " ")
-
-		// 判斷和處理目標函數
-		if strings.HasPrefix(strings.ToUpper(expr), "MIN=") || strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
-			objType := "Minimize"
-			if strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
-				objType = "Maximize"
-			}
-			content := strings.TrimSpace(strings.SplitN(expr, "=", 2)[1])
-			model.ObjectiveType = objType
-			model.Objective = content
-		} else if strings.HasPrefix(strings.ToUpper(expr), "@BIN") {
-			// 處理 Binary 變數宣告
-			lingo_handleVariableDeclarations(expr, "@BIN", &model.BinaryVars)
-		} else if strings.HasPrefix(strings.ToUpper(expr), "@INT") {
-			// 處理 Integer 變數宣告
-			lingo_handleVariableDeclarations(expr, "@INT", &model.IntegerVars)
-		} else if strings.ContainsAny(expr, "<=>=") {
-			// 處理 Bounds 和 Constraints：以「變數項數量」判斷，而非 +/- 字元。
-			if lingoIsBound(expr) {
-				model.Bounds = append(model.Bounds, expr)
-			} else {
-				model.Constraints = append(model.Constraints, expr)
-			}
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		insyra.LogWarning("lpgen", "ParseLingoModel_txt", "%s", err.Error())
+	model, err := parseLingo(file, false)
+	if err != nil {
+		insyra.LogWarning("lpgen", "ParseLingoModel_txt", "%s", fmt.Errorf("failed to read LINGO model %s: %w", filePath, err).Error())
 		return nil
 	}
-
 	return model
 }
 
-// ParseLingoModel_str parse lingo model from string.
-// It turns LINGO model to standard lp model.
-// Go to `LINGO > Generate > Display Model` in LINGO to get the model.
-func ParseLingoModel_str(modelStr string) *LPModel {
-	// 初始化 LPModel
-	model := &LPModel{
-		Constraints: make([]string, 0),
-		Bounds:      make([]string, 0),
-		BinaryVars:  make([]string, 0),
-		IntegerVars: make([]string, 0),
-	}
-
-	// 用於累積多行表達式
-	var currentExpr strings.Builder
-	var isFirstLine = true
-
-	// 將字串分割成行
-	scanner := bufio.NewScanner(strings.NewReader(modelStr))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// 跳過不必要的行
-		if line == "MODEL:" || len(line) == 0 || line == "END" {
-			continue
-		}
-
-		// 移除方括號和內部數字
-		line = lingoRowLabelRe.ReplaceAllString(line, "")
-		line = strings.TrimSpace(line)
-
-		// 累積當前行到表達式
-		if !isFirstLine && line != "" {
-			if !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "+") {
-				currentExpr.WriteString(" ")
-			}
-		}
-		currentExpr.WriteString(line)
-		isFirstLine = false
-
-		// 如果行尾沒有分號，繼續累積下一行
-		if !strings.HasSuffix(line, ";") {
-			continue
-		}
-
-		// 獲取完整表達式並清理
-		expr := currentExpr.String()
-		expr = strings.TrimSpace(expr)
-		expr = strings.TrimSuffix(expr, ";")
-		currentExpr.Reset()
-		isFirstLine = true
-
-		// 清理表達式格式
-		expr = lingoMultiplyRe.ReplaceAllString(expr, " ")
-		expr = lingoMissingSpaceRe.ReplaceAllString(expr, `$1 $2`)
-		expr = lingoSciNotationRe.ReplaceAllString(expr, `$1$2$3`)
-		expr = lingoSpaceRe.ReplaceAllString(expr, " ")
-
-		// 判斷和處理目標函數
-		if strings.HasPrefix(strings.ToUpper(expr), "MIN=") || strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
-			objType := "Minimize"
-			if strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
-				objType = "Maximize"
-			}
-			content := strings.TrimSpace(strings.SplitN(expr, "=", 2)[1])
-			model.ObjectiveType = objType
-			model.Objective = content
-		} else if strings.HasPrefix(strings.ToUpper(expr), "@BIN") {
-			// 處理 Binary 變數宣告
-			lingo_handleVariableDeclarations(expr, "@BIN", &model.BinaryVars)
-		} else if strings.HasPrefix(strings.ToUpper(expr), "@INT") {
-			// 處理 Integer 變數宣告
-			lingo_handleVariableDeclarations(expr, "@INT", &model.IntegerVars)
-		} else if strings.ContainsAny(expr, "<=>=") {
-			// 處理 Bounds 和 Constraints：以「變數項數量」判斷，而非 +/- 字元。
-			if lingoIsBound(expr) {
-				model.Bounds = append(model.Bounds, expr)
-			} else {
-				model.Constraints = append(model.Constraints, expr)
-			}
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		insyra.LogWarning("lpgen", "ParseLingoModel_str", "%s", err.Error())
-		return nil
-	}
-
-	return model
-}
-
-// Compiled once: both parsers rebuilt these five on every call.
+// Compiled once: the parser rebuilt these five on every call.
 var (
 	lingoRowLabelRe     = regexp.MustCompile(`^\[\_\d+\]\s*`)
 	lingoMultiplyRe     = regexp.MustCompile(`\s*\*\s*`)
