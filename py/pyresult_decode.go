@@ -617,6 +617,15 @@ func assignResult(dst reflect.Value, src any) error {
 		}
 		fields := cachedFields(t)
 		entries, isObject := src.(map[string]any)
+		// A result that is itself a table or a list goes into a field named
+		// DataTable or DataList, embedded or not, as the binder placed it
+		// before the per-field decoding; a dict is still the struct's own
+		// object and is decoded key by key.
+		if kind := wholeResultKind(src); kind != "" {
+			if handled, err := assignWholeNamedResult(dst, src, kind); err != nil || handled {
+				return err
+			}
+		}
 		// An untagged embedded table or list is decoded from the whole value,
 		// the way encoding/json decodes an untagged embedded struct from the
 		// object around it; the isr types are such a struct. Beside other
@@ -666,6 +675,75 @@ func isPayload(entries map[string]any) bool {
 	return ok
 }
 
+// wholeResultKind reports whether src is a Python table or a list itself, a
+// payload marked with its type or a bare array, rather than an object keyed by
+// field name. It returns "table", "list" or "".
+func wholeResultKind(src any) string {
+	entries, ok := src.(map[string]any)
+	if !ok {
+		if _, ok := src.([]any); ok {
+			return "list"
+		}
+		return ""
+	}
+	rawType, ok := entries[pyReturnTypeKey]
+	if !ok || rawType == nil {
+		return ""
+	}
+	switch conv.ToString(rawType) {
+	case pyReturnTypeDataTable, pyReturnTypeDataFrame:
+		return "table"
+	case pyReturnTypeDataList, pyReturnTypeSeries:
+		return "list"
+	}
+	return ""
+}
+
+// wholeNamedField returns the index path of the field named name whose type is
+// exactly typ, at any depth and whether or not it is embedded, as long as its
+// json tag does not send it to a different key.
+func wholeNamedField(t reflect.Type, name string, typ reflect.Type) ([]int, bool) {
+	sf, ok := t.FieldByName(name)
+	if !ok || sf.Type != typ || !sf.IsExported() {
+		return nil, false
+	}
+	tag := sf.Tag.Get("json")
+	if tag == "-" {
+		return nil, false
+	}
+	if tagName, _, _ := strings.Cut(tag, ","); tagName != "" && tagName != name {
+		return nil, false
+	}
+	return sf.Index, true
+}
+
+// assignWholeNamedResult decodes a whole Python table or list into the struct
+// field named DataTable or DataList, however it is nested. A bare list is also
+// readable as a table, as decodeDataTable reads one.
+func assignWholeNamedResult(dst reflect.Value, src any, kind string) (bool, error) {
+	name, typ := "DataList", dataListPtrType
+	if kind == "table" {
+		name, typ = "DataTable", dataTablePtrType
+	}
+	if idx, ok := wholeNamedField(dst.Type(), name, typ); ok {
+		field, err := fieldByIndex(dst, idx)
+		if err != nil {
+			return true, err
+		}
+		return true, assignTableOrList(field, src)
+	}
+	if kind == "list" {
+		if idx, ok := wholeNamedField(dst.Type(), "DataTable", dataTablePtrType); ok {
+			field, err := fieldByIndex(dst, idx)
+			if err != nil {
+				return true, err
+			}
+			return true, assignTableOrList(field, src)
+		}
+	}
+	return false, nil
+}
+
 // assignTableOrList decodes src into dst, a table or a list, replacing what
 // dst held.
 func assignTableOrList(dst reflect.Value, src any) error {
@@ -708,7 +786,9 @@ func assignStruct(dst reflect.Value, entries map[string]any) error {
 	for _, key := range slices.Sorted(maps.Keys(entries)) {
 		i, ok := fields.exact[key]
 		if !ok {
-			i, ok = fields.folded[foldName(key)]
+			if j := fields.foldedIndex(key); j >= 0 {
+				i, ok = j, true
+			}
 		}
 		if !ok {
 			continue
@@ -836,13 +916,24 @@ type jsonField struct {
 }
 
 // jsonFields lists a struct type's fields in index order, with each field's
-// position by its exact name and by its name folded for case, and the
-// untagged embedded tables and lists, which take the whole value.
+// position by its exact name, and the untagged embedded tables and lists,
+// which take the whole value.
 type jsonFields struct {
-	list   []jsonField
-	exact  map[string]int
-	folded map[string]int
-	whole  []jsonField
+	list  []jsonField
+	exact map[string]int
+	whole []jsonField
+}
+
+// foldedIndex returns the index in list of the first field whose name equals
+// key with strings.EqualFold, as encoding/json matches a key to a field
+// without regard to case, or -1 when none does.
+func (fs *jsonFields) foldedIndex(key string) int {
+	for i := range fs.list {
+		if strings.EqualFold(fs.list[i].name, key) {
+			return i
+		}
+	}
+	return -1
 }
 
 var fieldCache sync.Map // reflect.Type -> *jsonFields
@@ -1004,13 +1095,9 @@ func structFields(t reflect.Type) *jsonFields {
 		}
 	}
 
-	fs := &jsonFields{list: out, exact: make(map[string]int, len(out)), folded: make(map[string]int, len(out)), whole: kept}
+	fs := &jsonFields{list: out, exact: make(map[string]int, len(out)), whole: kept}
 	for i, f := range out {
 		fs.exact[f.name] = i
-		// The first field to fold to a name takes it, as in encoding/json.
-		if _, ok := fs.folded[foldName(f.name)]; !ok {
-			fs.folded[foldName(f.name)] = i
-		}
 	}
 	return fs
 }
@@ -1043,10 +1130,4 @@ func hasTagOption(opts, option string) bool {
 		}
 	}
 	return false
-}
-
-// foldName returns a form of name that two names share exactly when
-// strings.EqualFold holds for them, as encoding/json's foldName does.
-func foldName(name string) string {
-	return strings.Map(func(r rune) rune { return unicode.ToUpper(unicode.ToLower(r)) }, name)
 }

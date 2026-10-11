@@ -50,8 +50,13 @@ class insyra:
 				insyra._INDEX_KEY: [str(i) for i in result.index],
 			}
 			# pandas returns a column as an attribute, so a DataFrame with a
-			# column called name would be named after that column.
-			name_value = None if "name" in result.columns else getattr(result, "name", None)
+			# column called name would be named after that column. Beside
+			# such a column only an explicitly set name, kept in the
+			# instance's __dict__, counts.
+			if "name" in result.columns:
+				name_value = result.__dict__.get("name")
+			else:
+				name_value = getattr(result, "name", None)
 			if name_value is not None:
 				payload[insyra._NAME_KEY] = str(name_value)
 			return payload

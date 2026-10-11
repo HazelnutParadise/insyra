@@ -69,3 +69,34 @@ print(json.dumps([insyra._normalize_result(name_column), insyra._normalize_resul
 		t.Errorf("a DataFrame named scores came back named %q", nameSet.GetName())
 	}
 }
+
+// A DataFrame with a column called name whose name was also set explicitly:
+// pandas returns the column for the name attribute, so the explicitly set
+// name lives only in the instance's __dict__ and is the one that comes back.
+func TestAnExplicitDataFrameNameSurvivesANameColumn(t *testing.T) {
+	python := pythonWithPandas(t)
+	script := "import json\nimport pandas as pd\n" + builtInFunc("unused", "0") + `
+explicit = pd.DataFrame({"name": ["x", "y"], "v": [1, 2]})
+object.__setattr__(explicit, "name", "scores")
+print(json.dumps(insyra._normalize_result(explicit)))
+`
+	cmd := exec.Command(python, "-c", script)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("python failed: %v\n%s", err, stderr.String())
+	}
+	var payload any
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("python printed %s (%v)", out, err)
+	}
+
+	var explicit *insyra.DataTable
+	if err := bindPyResult(&explicit, payload); err != nil {
+		t.Fatal(err)
+	}
+	if explicit.GetName() != "scores" {
+		t.Errorf("a DataFrame named scores explicitly came back named %q", explicit.GetName())
+	}
+}

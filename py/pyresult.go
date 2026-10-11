@@ -150,7 +150,10 @@ func newIPCAddress() string {
 func acquireIPCServer() (string, error) {
 	serverMu.Lock()
 	defer serverMu.Unlock()
-	if serverUsers == 0 {
+	// serverLn is nil either before the first run or after an accept loop
+	// stopped its listener, so a server that died is opened again while the
+	// runs still holding its old address keep their count.
+	if serverLn == nil {
 		addr := newIPCAddress()
 		ln, err := ipc.Listen(addr)
 		if err != nil {
@@ -163,6 +166,17 @@ func acquireIPCServer() (string, error) {
 	return serverAddr, nil
 }
 
+// invalidateIPCServer marks ln's server as unusable while it is still the one
+// in use, so the next acquire opens a fresh server. The runs already holding
+// its address release as usual; only the count they share is kept.
+func invalidateIPCServer(ln net.Listener) {
+	serverMu.Lock()
+	defer serverMu.Unlock()
+	if serverLn == ln {
+		serverLn, serverAddr = nil, ""
+	}
+}
+
 // releaseIPCServer ends one run's use of the IPC server and closes the server
 // when no run is left.
 func releaseIPCServer() {
@@ -173,6 +187,12 @@ func releaseIPCServer() {
 	}
 	serverUsers--
 	if serverUsers > 0 {
+		return
+	}
+	// A server whose accept loop already stopped was marked unusable and has
+	// no listener left to close.
+	if serverLn == nil {
+		serverAddr = ""
 		return
 	}
 	if err := serverLn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
@@ -191,6 +211,7 @@ func acceptIPC(ln net.Listener) {
 			// Accept fail every time. `continue` then spun a warning
 			// per iteration for the life of the process.
 			if errors.Is(err, net.ErrClosed) {
+				invalidateIPCServer(ln)
 				return
 			}
 			var ne net.Error
@@ -201,8 +222,10 @@ func acceptIPC(ln net.Listener) {
 			// Close it too: a listener left open still queues connections,
 			// and the Python process behind one would wait for an
 			// acknowledgement nobody sends. Closed, its connect fails and
-			// the run returns an error.
+			// the run returns an error. The server is marked unusable with
+			// it, so the next run opens a fresh one.
 			_ = ln.Close()
+			invalidateIPCServer(ln)
 			return
 		}
 		go handleIPCConnection(conn)
