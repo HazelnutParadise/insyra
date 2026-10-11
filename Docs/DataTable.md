@@ -153,7 +153,7 @@ if err != nil {
 type CSVReadOptions struct {
     FirstColToRowNames bool
     FirstRowToColNames bool
-    Encoding           string // file input only; "" or "auto" auto-detects
+    Encoding           string // "" or "auto" detects from the first bytes; ignored for a string, which is UTF-8
     RawStrings         bool   // keep every cell as its original string; skip type inference
     AllowRaggedRows    bool   // pad short rows; keep long rows in extra columns
     TrimLeadingSpace   bool   // ignore leading spaces before fields and quotes
@@ -185,6 +185,35 @@ if err != nil {
     log.Fatal(err)
 }
 // dt cells are all strings: "0050", "00878", "600.855", ...
+```
+
+### ReadCSV / StreamCSV — from any source
+
+```go
+func ReadCSV(r io.Reader, opts CSVReadOptions) (*DataTable, error)
+func StreamCSV(r io.Reader, opts CSVReadOptions, batchSize int) iter.Seq2[*DataTable, error]
+```
+
+**Description:** Read CSV that is not a file on disk — an HTTP response body, a zip entry, an `embed.FS` file, bytes in memory — without writing it to a temporary file first. `ReadCSV` reads the way `ReadCSV_FileWithOptions` reads a file, and `ReadCSV_FileWithOptions` now calls the same code, so a reader and a file holding the same bytes give the same table. With `Encoding` empty or `"auto"`, the encoding is detected from the first bytes of `r`.
+
+`StreamCSV` reads a batch at a time and holds only the current batch in memory, so it handles files larger than memory. Range over it; leaving the loop early stops reading `r`. With `FirstRowToColNames`, the header names the columns of every batch. Column types are inferred batch by batch, as pandas does for `read_csv(chunksize=…)`, so a column can come back as numbers in one batch and strings in another; set `RawStrings` to keep every batch as strings. A failure arrives once, as a nil table with the error, and ends the loop.
+
+**Example:**
+
+```go
+resp, err := http.Get("https://example.com/data.csv")
+if err != nil {
+    log.Fatal(err)
+}
+defer resp.Body.Close()
+
+for dt, err := range insyra.StreamCSV(resp.Body, insyra.CSVReadOptions{FirstRowToColNames: true}, 1000) {
+    if err != nil {
+        log.Fatal(err)
+    }
+    rows, _ := dt.Size()
+    fmt.Println("batch of", rows, "rows")
+}
 ```
 
 ### ReadJSON_File
@@ -219,11 +248,11 @@ if err != nil {
 func ReadJSON(data any) (*DataTable, error)
 ```
 
-**Description:** Reads JSON data (supports bytes, string, slice, map, or any JSON-compatible value) and loads it into a new DataTable. Bytes and strings are decoded the way `encoding/json` decodes them: input that is not valid JSON, such as a number with a leading zero (`01`) or a trailing comma, is an error; invalid UTF-8 inside a string becomes U+FFFD; and errors are worded as `encoding/json` words them. Numbers are typed as in `ReadJSON_File`; a number that is neither an `int64` nor a finite `float64`, such as `1e400`, is kept as the string it was written as, the way `ReadCSV` keeps the same text.
+**Description:** Reads JSON data (supports bytes, string, an `io.Reader` such as an HTTP response body or an open file, slice, map, or any JSON-compatible value) and loads it into a new DataTable. A reader is read in full and decoded the same way as bytes. Bytes and strings are decoded the way `encoding/json` decodes them: input that is not valid JSON, such as a number with a leading zero (`01`) or a trailing comma, is an error; invalid UTF-8 inside a string becomes U+FFFD; and errors are worded as `encoding/json` words them. Numbers are typed as in `ReadJSON_File`; a number that is neither an `int64` nor a finite `float64`, such as `1e400`, is kept as the string it was written as, the way `ReadCSV` keeps the same text.
 
 **Parameters:**
 
-- `data`: JSON input (e.g., []byte, string, []map[string]any, map[string]any, etc.)
+- `data`: JSON input (e.g., []byte, string, io.Reader, []map[string]any, map[string]any, etc.)
 
 **Returns:**
 
@@ -503,6 +532,14 @@ if err != nil {
 }
 ```
 
+### ReadExcel — from any source
+
+```go
+func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+```
+
+**Description:** Reads one sheet of a workbook that is not a file on disk — an upload, an HTTP response, a zip entry — the same way `ReadExcelSheet` reads a path.
+
 ## Data Saving
 
 ### ToCSV
@@ -562,6 +599,14 @@ if err != nil {
 }
 ```
 
+### WriteCSV — to any destination
+
+```go
+func (dt *DataTable) WriteCSV(w io.Writer, opts CSVWriteOptions) error
+```
+
+**Description:** Writes the table as CSV to any destination — an HTTP response, a zip entry, a buffer — with the same output `ToCSVWithOptions` writes to a file. `ToCSVWithOptions` uses it.
+
 ### ToJSON
 
 ```go
@@ -587,6 +632,14 @@ if err != nil {
     log.Fatal(err)
 }
 ```
+
+### WriteJSON — to any destination
+
+```go
+func (dt *DataTable) WriteJSON(w io.Writer, useColNames bool) error
+```
+
+**Description:** Writes the table as JSON to any destination, with the same bytes `ToJSON` writes to a file.
 
 ### ToJSON_Bytes
 
@@ -633,6 +686,45 @@ func (dt *DataTable) ToJSON_String(useColNames bool) string
 jsonStr := dt.ToJSON_String(true)
 fmt.Println(jsonStr)
 ```
+
+### ToExcel
+
+```go
+func (dt *DataTable) ToExcel(filePath string, opts ExcelWriteOptions) error
+
+type ExcelWriteOptions struct {
+    Sheet                 string            // sheet to write; "" means "Sheet1"
+    SetColNamesToFirstRow bool              // write the column names as the first row
+    SetRowNamesToFirstCol bool              // write the row names as the first column
+    IfSheetExists         SheetExistsPolicy // SheetExistsFail (default) or SheetExistsReplace
+}
+```
+
+**Description:** Writes the table as one sheet of the workbook at `filePath` and leaves every other sheet as it was. If the file does not exist, a new workbook is created. If the workbook lacks the sheet, the sheet is added after the existing ones.
+
+If the sheet already exists, the default is to refuse: the call returns an error matching `ErrSheetExists` and the file is not touched. With `IfSheetExists: SheetExistsReplace`, the old sheet is thrown away, formatting included, and the table is written in its place, in the same position among the other sheets. Formulas on other sheets that point at it by name then read the new values. Sheet names are matched the way Excel matches them, without regard to case, so `data` and `Data` are the same sheet.
+
+Numbers, booleans and `time.Time` values are written as Excel values, not text, so they sort and sum in a spreadsheet. A time keeps its wall-clock reading but not its time zone, because Excel does not store one. Anything else is written as the same text `ToCSV` would write. The workbook is written to a temporary file and renamed into place, so a failure never leaves a damaged workbook behind. The path must end in an extension Excel's current format uses (`.xlsx`, `.xlsm`, …); the legacy `.xls` format cannot be written.
+
+**Example:** keep one sheet per year in a single report.
+
+```go
+opts := insyra.ExcelWriteOptions{Sheet: "2025", SetColNamesToFirstRow: true}
+err := sales2025.ToExcel("report.xlsx", opts)
+if errors.Is(err, insyra.ErrSheetExists) {
+    // 2025 is already there. Overwrite it on purpose; 2023 and 2024 stay.
+    opts.IfSheetExists = insyra.SheetExistsReplace
+    err = sales2025.ToExcel("report.xlsx", opts)
+}
+```
+
+### WriteExcel — to any destination
+
+```go
+func (dt *DataTable) WriteExcel(w io.Writer, opts ExcelWriteOptions) error
+```
+
+**Description:** Writes the table as a new one-sheet workbook to any destination, such as an HTTP response, a zip entry or a buffer. The cells are written the same way `ToExcel` writes them. `IfSheetExists` is ignored, because the workbook is always new.
 
 ### ToMap
 

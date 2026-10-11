@@ -344,6 +344,8 @@ insyra --env demo run pipeline.isr
 - `ragged true|false` — read-side, CSV only. `ragged true` pads short rows with empty cells and keeps extra cells in automatically named columns. Padded cells count as empty for type inference (an otherwise-integer column becomes float with `NaN`); combine with `infer false` to keep cells verbatim. Default `false`, so uneven rows remain strict errors unless enabled.
 - `trimspace true|false` — read-side, CSV only. `trimspace true` ignores leading whitespace before fields, including before quoted fields. Default `false`.
 - `bom true|false` — save-side, write a UTF-8 BOM (helps Windows Excel open Chinese CSVs). Default `false`.
+- `sheet <name>` — Excel only. On `load` it names the sheet to read and is required; on `save` it names the sheet to write, default `Sheet1`, and the workbook's other sheets are kept.
+- `if-exists fail|replace` — save-side, Excel only. What to do when the workbook already has that sheet. Default `fail`: the save is refused and the file is left as it was; `replace` overwrites that one sheet.
 
 Boolean values accept `true|false`, `yes|no`, `on|off`, `1|0` (case-insensitive).
 
@@ -352,7 +354,7 @@ The shared list above is the union, not what every format accepts. An option a f
 | Format | `load` / `read` options | `save` options |
 | --- | --- | --- |
 | CSV | `headers`, `rownames`, `encoding`, `infer`, `ragged`, `trimspace` | `headers`, `rownames`, `bom` |
-| Excel | `sheet` (required), `headers`, `rownames` | not a save target — `save` refuses an `.xlsx` path |
+| Excel | `sheet` (required), `headers`, `rownames` | `sheet`, `if-exists`, `headers`, `rownames` (`.xlsx`/`.xlsm`; `.xls` cannot be written) |
 | JSON | `headers` | `headers` |
 | Parquet | `cols`, `rowgroups` | none |
 
@@ -383,6 +385,12 @@ save gdp out.csv rownames true
 
 # Pure data dump, no header row
 save matrix data.csv headers false
+
+# Excel: writes one sheet (default Sheet1); the workbook's other sheets are kept
+save sales2025 report.xlsx sheet 2025
+
+# The sheet already exists: saving again is refused unless you say to replace it
+save sales2025 report.xlsx sheet 2025 if-exists replace
 ```
 
 `read` is a quick previewer that forwards the same options to `load` (e.g. `read big5.csv encoding big5`). It never stores a variable: `read` prints what it loaded and throws the table away, so it has no `as` form and an explicit `as <var>` is an error rather than a silent no-op. Use `load` when the preview should become a variable.
@@ -840,7 +848,7 @@ Source policy:
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |
 | `sample` | `sample <var> <n>\|frac <frac>\|shuffle [replace true\|false] [seed N] [as <var>]` | Randomly sample or shuffle a DataList/DataTable |
-| `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames [true\|false]]` | Save a DataTable variable to a file or SQL connection |
+| `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] [sheet <name>] [if-exists fail\|replace] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames [true\|false]]` | Save a DataTable variable to a file or SQL connection |
 | `scale` | `scale fit std\|minmax\|robust\|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...> \| scale transform\|inverse <scalerVar> <tableVar> as <outVar>` | Fit a reusable feature scaler and transform/inverse tables with it |
 | `set` | `set <var> <row> <col> <value>` | Set single element in DataTable |
 | `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |
@@ -981,6 +989,7 @@ show sil_avg
 - **Variable not found**: use `vars` to inspect current environment variables.
 - **Variable type mismatch**: many commands require specific variable types (`DataTable` vs `DataList`).
 - **Excel load fails**: `load <file.xlsx> sheet <sheet-name> [headers true|false] [rownames true|false] [as <var>]` always requires `sheet <name>`.
+- **Excel save says the sheet already exists**: `save` never overwrites a sheet unless asked, and it does not pick another name such as `Sheet2` on its own. Add `if-exists replace` to overwrite that one sheet (the others are kept), or pick another name with `sheet <name>`. `.xls` cannot be written; save as `.xlsx`.
 - **Parquet option errors**:
   - `cols` and `rowgroups` must be followed by comma-separated values.
   - `rowgroups` must be non-negative integers.

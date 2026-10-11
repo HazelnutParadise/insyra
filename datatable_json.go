@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
@@ -75,6 +76,19 @@ func (dt *DataTable) ToJSON(filePath string, useColNames bool) error {
 	}
 
 	return nil
+}
+
+// WriteJSON writes the table as JSON to any destination — an HTTP response, a
+// zip entry, a buffer — with the same bytes ToJSON writes to a file.
+// useColNames picks column names as keys; otherwise the Excel-style indices
+// (A, B, C...) are used.
+func (dt *DataTable) WriteJSON(w io.Writer, useColNames bool) error {
+	jsonData, err := json.MarshalIndent(dt.buildJSONRows(useColNames), "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(jsonData)
+	return err
 }
 
 // ToJSON_Bytes converts the DataTable to JSON format and returns it as a byte slice.

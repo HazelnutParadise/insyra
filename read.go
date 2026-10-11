@@ -1,9 +1,13 @@
 package insyra
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/csv"
+	"errors"
 	"fmt"
+	"io"
+	"iter"
 	"math"
 	"os"
 	"reflect"
@@ -93,7 +97,8 @@ func Slice2DToDataTable(data any) (*DataTable, error) {
 type CSVReadOptions struct {
 	FirstColToRowNames bool
 	FirstRowToColNames bool
-	// Encoding applies to file input only; "" or "auto" auto-detects.
+	// Encoding names the input's encoding; "" or "auto" detects it from the
+	// first bytes. A string is UTF-8 already, so the string readers ignore it.
 	Encoding string
 	// RawStrings keeps every cell as its original string and skips column
 	// type inference entirely. Use it for data that looks numeric but must
@@ -131,25 +136,147 @@ func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, 
 	}
 	defer func() { _ = file.Close() }()
 
-	useEncoding := strings.ToLower(opts.Encoding)
-	if useEncoding == "" || useEncoding == "auto" {
-		detected, err := DetectEncoding(filePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to auto-detect encoding for %s: %w", filePath, err)
-		}
-		useEncoding = detected
-		LogInfo("csvxl", "ReadCSV_File", "Auto-detected encoding %s for file %s", useEncoding, filePath)
+	decoded, err := decodeCSVInput(file, opts.Encoding, filePath)
+	if err != nil {
+		return nil, err
 	}
-
-	// Use internal CSV reader with encoding support. It returns parsed records
-	// directly so the file path applies the tolerance options in exactly one
-	// parse, matching ReadCSV_StringWithOptions.
-	rows, err := csvInternal.ReadCSVRecordsWithEncodingOptions(file, useEncoding, opts.AllowRaggedRows, opts.TrimLeadingSpace)
+	rows, err := readCSVRows(decoded, opts, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read CSV file %s: %w", filePath, err)
 	}
-
 	return csvRowsToDataTable(rows, opts), nil
+}
+
+// ReadCSV reads CSV from any source — an open file, an HTTP response body, a
+// zip entry, bytes in memory — into a DataTable, the same way
+// ReadCSV_FileWithOptions reads a file. When opts.Encoding is "" or "auto",
+// the encoding is detected from the first bytes of r.
+func ReadCSV(r io.Reader, opts CSVReadOptions) (*DataTable, error) {
+	decoded, err := decodeCSVInput(r, opts.Encoding, "the CSV input")
+	if err != nil {
+		return nil, err
+	}
+	rows, err := readCSVRows(decoded, opts, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CSV from the CSV input: %w", err)
+	}
+	return csvRowsToDataTable(rows, opts), nil
+}
+
+// StreamCSV reads CSV from r a batch at a time. Range over it:
+//
+//	for dt, err := range insyra.StreamCSV(r, opts, 1000) {
+//		if err != nil {
+//			return err
+//		}
+//		// dt holds up to 1000 data rows
+//	}
+//
+// Each table holds at most batchSize data rows. With opts.FirstRowToColNames
+// the header row names the columns of every batch, not only the first.
+// Column types are inferred batch by batch, as pandas does for
+// read_csv(chunksize=…), so a column can be numbers in one batch and strings
+// in another; opts.RawStrings keeps every batch as strings. Only the rows of
+// the current batch are held in memory, and leaving the loop early stops
+// reading r. A failure arrives once, as a nil table and the error, and ends
+// the loop.
+func StreamCSV(r io.Reader, opts CSVReadOptions, batchSize int) iter.Seq2[*DataTable, error] {
+	return func(yield func(*DataTable, error) bool) {
+		if batchSize <= 0 {
+			yield(nil, fmt.Errorf("StreamCSV: batchSize must be positive, got %d", batchSize))
+			return
+		}
+		decoded, err := decodeCSVInput(r, opts.Encoding, "the CSV input")
+		if err != nil {
+			yield(nil, err)
+			return
+		}
+		reader := csv.NewReader(decoded)
+		reader.FieldsPerRecord = csvFieldsPerRecord(opts)
+		reader.TrimLeadingSpace = opts.TrimLeadingSpace
+
+		var header []string
+		first := true
+		batch := make([][]string, 0, batchSize)
+		emit := func() bool {
+			rows := batch
+			if header != nil {
+				rows = append([][]string{header}, batch...)
+			}
+			batch = make([][]string, 0, batchSize)
+			return yield(csvRowsToDataTable(rows, opts), nil)
+		}
+		for {
+			record, err := reader.Read()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				yield(nil, fmt.Errorf("failed to read CSV from the CSV input: %w", err))
+				return
+			}
+			if first {
+				first = false
+				if len(record) > 0 {
+					record[0] = strings.TrimPrefix(record[0], "\uFEFF")
+				}
+				if opts.FirstRowToColNames {
+					header = record
+					continue
+				}
+			}
+			batch = append(batch, record)
+			if len(batch) == batchSize && !emit() {
+				return
+			}
+		}
+		if len(batch) > 0 {
+			emit()
+		}
+	}
+}
+
+// readCSVRows parses decoded CSV text with the row-width and leading-space
+// options in opts. ReadCSV, ReadCSV_FileWithOptions and
+// ReadCSV_StringWithOptions all parse through it. trimBOM drops a UTF-8
+// byte-order mark the decoder left at the start of the first field; the
+// string reader strips it from the text before parsing instead, as it always
+// has.
+func readCSVRows(r io.Reader, opts CSVReadOptions, trimBOM bool) ([][]string, error) {
+	reader := csv.NewReader(r)
+	reader.FieldsPerRecord = csvFieldsPerRecord(opts)
+	reader.TrimLeadingSpace = opts.TrimLeadingSpace
+	rows, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	if trimBOM && len(rows) > 0 && len(rows[0]) > 0 {
+		rows[0][0] = strings.TrimPrefix(rows[0][0], "\uFEFF")
+	}
+	return rows, nil
+}
+
+// decodeCSVInput returns r decoded to UTF-8. An empty or "auto" encoding is
+// detected from r's first bytes, which are read ahead and then handed on, so
+// nothing is lost and r need not be seekable. source names the input in
+// messages.
+func decodeCSVInput(r io.Reader, encoding string, source string) (io.Reader, error) {
+	useEncoding := strings.ToLower(encoding)
+	if useEncoding == "" || useEncoding == "auto" {
+		buffered := bufio.NewReaderSize(r, encodingSampleSize)
+		sample, err := buffered.Peek(encodingSampleSize)
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, bufio.ErrBufferFull) {
+			return nil, fmt.Errorf("failed to read %s: %w", source, err)
+		}
+		detected, err := detectEncodingOfSample(sample, source)
+		if err != nil {
+			return nil, fmt.Errorf("failed to auto-detect encoding for %s: %w", source, err)
+		}
+		useEncoding = detected
+		LogInfo("insyra", "ReadCSV", "Auto-detected encoding %s for %s", useEncoding, source)
+		r = buffered
+	}
+	return csvInternal.DecodingReader(r, useEncoding), nil
 }
 
 // csvRowsToDataTable builds a DataTable from parsed CSV rows, applying the
@@ -367,10 +494,9 @@ func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTabl
 	// (consistent with the file reader).
 	csvString = strings.TrimPrefix(csvString, string([]byte{0xEF, 0xBB, 0xBF}))
 
-	reader := csv.NewReader(strings.NewReader(csvString))
-	reader.FieldsPerRecord = csvFieldsPerRecord(opts)
-	reader.TrimLeadingSpace = opts.TrimLeadingSpace
-	rows, err := reader.ReadAll()
+	// A Go string is UTF-8 already, so there is nothing to detect or decode;
+	// an empty string is an empty table rather than an undetectable encoding.
+	rows, err := readCSVRows(strings.NewReader(csvString), opts, false)
 	if err != nil {
 		return nil, err
 	}
@@ -387,6 +513,23 @@ func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames boo
 		return nil, fmt.Errorf("failed to open Excel file %s: %w", filePath, err)
 	}
 	defer func() { _ = f.Close() }()
+	return readExcelSheetFrom(f, sheetName, setFirstColToRowNames, setFirstRowToColNames)
+}
+
+// ReadExcel reads one sheet of an Excel workbook from any source — an HTTP
+// response body, a zip entry, bytes in memory — the same way ReadExcelSheet
+// reads a file.
+func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+	f, err := excelize.OpenReader(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open Excel input: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	return readExcelSheetFrom(f, sheetName, setFirstColToRowNames, setFirstRowToColNames)
+}
+
+// readExcelSheetFrom is the sheet reader behind ReadExcelSheet and ReadExcel.
+func readExcelSheetFrom(f *excelize.File, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rows from sheet %s: %w", sheetName, err)
@@ -472,6 +615,18 @@ func ReadJSON(data any) (*DataTable, error) {
 		rows = r
 	case string:
 		r, err := unmarshalJSONRows([]byte(v))
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+		}
+		rows = r
+	case io.Reader:
+		// Any source — an HTTP response body, an open file, a zip entry — is
+		// read in full and decoded the same way as bytes.
+		b, err := io.ReadAll(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read JSON: %w", err)
+		}
+		r, err := unmarshalJSONRows(b)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}
