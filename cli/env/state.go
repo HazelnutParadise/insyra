@@ -351,28 +351,47 @@ func (m *Manager) ReadHistory(envName string) ([]string, error) {
 	return lines, nil
 }
 
-// Package-level wrappers around the default Manager.
+// Package-level wrappers around the default Manager. Use the corresponding
+// method on Default() instead.
 
+// SaveState calls Default().SaveState.
+//
+// Deprecated: use Default().SaveState instead. Removed in 0.4.
 func SaveState(envName string, vars map[string]any) error {
 	return defaultManager.SaveState(envName, vars)
 }
 
+// SaveVariables calls Default().SaveVariables.
+//
+// Deprecated: use Default().SaveVariables instead. Removed in 0.4.
 func SaveVariables(envName string, vars map[string]any) ([]UnsavedVariable, error) {
 	return defaultManager.SaveVariables(envName, vars)
 }
 
+// LoadState calls Default().LoadState.
+//
+// Deprecated: use Default().LoadState instead. Removed in 0.4.
 func LoadState(envName string) (*State, error) {
 	return defaultManager.LoadState(envName)
 }
 
+// RestoreVariables calls Default().RestoreVariables.
+//
+// Deprecated: use Default().RestoreVariables instead. Removed in 0.4.
 func RestoreVariables(envName string) (map[string]any, error) {
 	return defaultManager.RestoreVariables(envName)
 }
 
+// AppendHistory calls Default().AppendHistory.
+//
+// Deprecated: use Default().AppendHistory instead. Removed in 0.4.
 func AppendHistory(envName, command string) error {
 	return defaultManager.AppendHistory(envName, command)
 }
 
+// ReadHistory calls Default().ReadHistory.
+//
+// Deprecated: use Default().ReadHistory instead. Removed in 0.4.
 func ReadHistory(envName string) ([]string, error) {
 	return defaultManager.ReadHistory(envName)
 }

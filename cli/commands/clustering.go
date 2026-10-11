@@ -47,7 +47,7 @@ func runKMeansCommand(ctx *ExecContext, args []string) error {
 	ctx.Vars[alias+"_betweenss"] = result.BetweenSS
 	ctx.Vars[alias+"_iter"] = result.Iter
 	ctx.Vars[alias+"_ifault"] = result.IFault
-	_, _ = fmt.Fprintf(ctx.Output, "stored %s (labels)\n", alias)
+	_, _ = fmt.Fprintf(ctx.Output, "stored %s (labels) and %s\n", alias, alsoStored(alias, "centers", "size", "withinss", "totss", "totwithinss", "betweenss", "iter", "ifault"))
 	return nil
 }
 
@@ -127,7 +127,7 @@ func runDBSCANCommand(ctx *ExecContext, args []string) error {
 	}
 	ctx.Vars[alias] = intSliceToDataList(result.Cluster)
 	ctx.Vars[alias+"_isseed"] = result.IsSeed
-	_, _ = fmt.Fprintf(ctx.Output, "stored %s (labels)\n", alias)
+	_, _ = fmt.Fprintf(ctx.Output, "stored %s (labels) and %s\n", alias, alsoStored(alias, "isseed"))
 	return nil
 }
 
@@ -154,7 +154,7 @@ func runSilhouetteCommand(ctx *ExecContext, args []string) error {
 	}
 	ctx.Vars[alias] = widths
 	ctx.Vars[alias+"_avg"] = result.AverageSilhouette
-	_, _ = fmt.Fprintf(ctx.Output, "stored %s (widths)\n", alias)
+	_, _ = fmt.Fprintf(ctx.Output, "stored %s (widths) and %s\n", alias, alsoStored(alias, "avg"))
 	return nil
 }
 

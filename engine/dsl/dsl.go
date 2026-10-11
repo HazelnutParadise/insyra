@@ -1,7 +1,10 @@
 package dsl
 
 import (
+	"errors"
 	"io"
+	"strings"
+	"time"
 
 	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/HazelnutParadise/insyra/cli/repl"
@@ -9,18 +12,39 @@ import (
 
 // Session is the programmatic DSL execution session.
 //
-// It supports Execute(line), ExecuteFile(path), and Context().
+// It supports Execute(line), ExecuteFile(path), and Context(). It is not safe
+// for concurrent use.
 type Session = repl.DSLSession
 
-// NewSession creates a DSL session bound to mgr's environment storage.
+// NewSession creates a DSL session bound to mgr's environment storage. A
+// missing environment is created before the session opens it.
 //
-// mgr is required: pass env.Default() to use the standard
-// <UserHomeDir>/.insyra root, or env.NewManager(path) for a custom root
+// mgr is required: pass DefaultManager() to use the standard
+// <UserHomeDir>/.insyra root, or NewManager(path, dir) for a custom root
 // (e.g. per-workspace embedding). Each session keeps its own Manager, so
 // concurrent sessions in the same process can target different roots
 // without interfering with each other.
 //
 // envName "" defaults to "default". output nil silently discards.
 func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, error) {
+	if mgr != nil {
+		if strings.TrimSpace(envName) == "" {
+			envName = "default"
+		}
+		if err := mgr.Create(envName); err != nil {
+			if !errors.Is(err, env.ErrAlreadyExists) {
+				return nil, err
+			}
+			for range 100 {
+				if mgr.HasCompleteDefaults(envName) {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			if !mgr.HasCompleteDefaults(envName) {
+				return nil, err
+			}
+		}
+	}
 	return repl.NewDSLSession(mgr, envName, output)
 }

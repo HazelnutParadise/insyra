@@ -47,7 +47,7 @@ func runKNNClassifyCommand(ctx *ExecContext, args []string) error {
 	ctx.Vars[alias] = result.Predictions
 	ctx.Vars[alias+"_classes"] = result.Classes
 	ctx.Vars[alias+"_probs"] = result.Probabilities
-	_, _ = fmt.Fprintf(ctx.Output, "stored %s (predictions)\n", alias)
+	_, _ = fmt.Fprintf(ctx.Output, "stored %s (predictions) and %s\n", alias, alsoStored(alias, "classes", "probs"))
 	return nil
 }
 
@@ -112,7 +112,7 @@ func runKNNNeighborsCommand(ctx *ExecContext, args []string) error {
 	}
 	ctx.Vars[alias] = intMatrixToDataTable(result.Indices, "neighbor")
 	ctx.Vars[alias+"_distances"] = floatMatrixToDataTable(result.Distances, "distance")
-	_, _ = fmt.Fprintf(ctx.Output, "stored %s (indices)\n", alias)
+	_, _ = fmt.Fprintf(ctx.Output, "stored %s (indices) and %s\n", alias, alsoStored(alias, "distances"))
 	return nil
 }
 

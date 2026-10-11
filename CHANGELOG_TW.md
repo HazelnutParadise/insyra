@@ -39,6 +39,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `anova twoway`、`anova repeated` 與新的 `friedman` 指令可直接用每列一筆觀測值的表格，也就是讀進 CSV 後常見的形狀：`anova twoway scores score drug dose`、`anova repeated trial value visit patient`、`friedman trial value visit patient`。第一個參數是 DataTable 變數時採用這種形式；用 DataList 變數時，`anova twoway` 與 `anova repeated` 和以前完全一樣，`friedman s1 s2 s3` 則是每位受試者一個清單。`friedman` 印出 `Q`、自由度與 p 值。
 - CLI 新增等級檢定：`wilcoxon single <var> <mu>`、`wilcoxon paired <var1> <var2>`、`mannwhitney <var1> <var2>`（都可加 `two-sided`、`greater` 或 `less`）以及 `kruskal <group1> <group2> [groupN]`，分別印出 `W=… p=…`、`U=… p=…`、`H=… df=… p=…`。以前只能從 Go 使用。
 - `fillna … ffill|bfill … missing nan|nil` 不再把另一種缺值算進 `limit`：對 `[1, nil, NaN]` 執行 `fillna x ffill limit 1 missing nan` 會得到 `[1, nil, 1]`，原本 `NaN` 會留著沒填。沒有指定 `limit` 時，以及 `mean`、`median`、`mode`、`interpolate`，結果都不變。
+- `engine/dsl` 提供程式不必 import `cli/` 就能用的功能：`Manager`、`NewManager`、`DefaultManager` 用來開啟與建立環境，`Register` 讓你加入自己的指令，並可設定參數數量上限（例如 `MaxArgs(1)`）。`NewSession` 遇到還不存在的環境會建立它，多個 session 同時啟動也安全；`insyra` CLI 的 `--env` 仍會拒絕不存在的環境。
+- `cli/env` 的每個環境操作只留一個名字，也就是 `Manager` 上的方法；`SetBasePath`、`LoadState`、`ReadHistory` 等套件層級函式改為呼叫 `Default()` 的 Deprecated 包裝，照常可用。`env clear --keep-history`、`env import --force`、`accel --mode` 等一次性旗標改成和指令一起宣告，行為不變。
+- 會存下多個變數的指令（例如 `pca`、`kmeans`）現在會在輸出中列出存下的每個變數名稱，存下的值不變。
 
 ### `ml` 與 `nn`
 
