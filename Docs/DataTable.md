@@ -15,6 +15,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Data Replacement](#data-replacement)
 - [Column Calculation](#column-calculation)
 - [Searching](#searching)
+- [Slicing](#slicing)
 - [Filtering](#filtering)
 - [Statistical Analysis](#statistical-analysis)
 - [Utility Methods](#utility-methods)
@@ -2402,7 +2403,9 @@ dt.SetColNames([]string{"Name", "Age", "Role"}) // Set column names
 func (dt *DataTable) SetHeaders(headers []string) *DataTable
 ```
 
-**Description:** Alias for SetColNames, sets the column names of the DataTable.
+**Deprecated.** Use `SetColNames`; `SetHeaders` is removed in 0.4.
+
+**Description:** Sets the column names, exactly as `SetColNames` does.
 
 **Parameters:**
 
@@ -2523,7 +2526,9 @@ for i, t := range dt.ColDataTypes() {
 func (dt *DataTable) Headers() []string
 ```
 
-**Description:** Alias for ColNames, returns a slice containing all column names in order.
+**Deprecated.** Use `ColNames`; `Headers` is removed in 0.4.
+
+**Description:** Returns the column names in order, exactly as `ColNames` does.
 
 **Parameters:**
 
@@ -3658,6 +3663,66 @@ func (dt *DataTable) FindColsIfAllElementsContainSubstring(substring string) []s
 colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 ```
 
+## Slicing
+
+`SliceRows` and `SliceCols` take a contiguous range of rows or columns the way `s[from:to]` slices a Go slice: `from` is included and `to` is not. `SliceRows` takes positions with `0 <= from <= to <= NumRows()`. `SliceCols` takes each bound either as an Excel-style letter (`"B"`) or as an int position (`1`), so `"B"` and `1` mark the same column; `nil` leaves that end open, and an int bound may be negative, counting from the end, or `NumCols()`, one past the last column. A bound the method cannot use is an error recorded on the table, and the result is an empty DataTable. Both return a new table that owns its data.
+
+### SliceRows
+
+```go
+func (dt *DataTable) SliceRows(from, to int) *DataTable
+```
+
+**Description:** Returns rows `from` through `to-1`, with `0 <= from <= to <= NumRows()`. The result keeps the table's name, the column names and the names of the rows it holds. `from == to` gives the columns with no rows.
+
+**Parameters:**
+
+- `from`: Position of the first row to keep (0-based)
+- `to`: Position one past the last row to keep
+
+**Returns:**
+
+- `*DataTable`: New DataTable with the rows in the range
+
+**Example:**
+
+```go
+firstTen := dt.SliceRows(0, 10)
+fromRow5 := dt.SliceRows(5, dt.NumRows())
+if err := dt.Err(); err != nil {
+    // a bound was outside the table
+}
+```
+
+### SliceCols
+
+```go
+func (dt *DataTable) SliceCols(from, to any) *DataTable
+```
+
+**Description:** Returns the columns from `from` up to, but not including, `to`. The result keeps every row, the row names and the table's name.
+
+Each bound is a column selector with two spellings, an Excel-style letter or an int position, and both spellings of one column are the same bound: on a table whose columns are named `a`, `b`, `c`, `d`, the calls `SliceCols("B", "D")` and `SliceCols(1, 3)` both return columns B and C. The end stays excluded whichever spelling is used, as in any Go slice, so ranges that meet do not overlap: `SliceCols(nil, "C")` and `SliceCols("C", nil)` split a table in two.
+
+**Parameters:**
+
+- `from`: The first column to keep: a letter or an int position; `nil` for the first column.
+- `to`: The column to stop before, in the same forms; `nil` to run to the last column. An int bound may be negative, counting from the end, and may be `NumCols()`, one past the last column.
+
+A bound that picks no column (a letter past the last column, an int outside `-NumCols()` to `NumCols()`), a value of another type, or a `from` that comes after `to` records an error on the table and returns an empty DataTable. `from` and `to` picking the same column gives a table with no columns.
+
+**Returns:**
+
+- `*DataTable`: New DataTable with the columns in the range
+
+**Example:**
+
+```go
+fromB := dt.SliceCols("B", nil)    // columns B, C, D, ...
+firstTwo := dt.SliceCols(nil, "C") // columns A and B
+lastTwo := dt.SliceCols(-2, nil)   // the last two columns
+```
+
 ## Filtering
 
 ### Filter
@@ -3666,17 +3731,17 @@ colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 ```
 
-**Description:** Filters the DataTable using a custom filter function. Keeps only rows where the filter function returns true for at least one cell. A `Filter*` method whose filter matches nothing returns an empty table that is safe to use.
+**Description:** Keeps a row when `filterFunc` returns `true` for **any one** of its cells. `filterFunc` is called cell by cell, so it cannot compare two cells of the same row; for a condition such as "price above cost", use [`FilterRowsWhere`](#filterrowswhere). A `Filter*` method whose filter matches nothing returns an empty table that is safe to use.
 
 **Parameters:**
 
-- `filterFunc`: Custom filter function that receives:
+- `filterFunc`: Called once per cell, until one cell of the row passes. It receives:
 
   - `rowIndex`: Row index (0-based)
-  - `columnIndex`: Column name
+  - `columnIndex`: The column's Excel-style letter (`"A"`, `"B"`, …), not its name
   - `value`: Cell value
 
-  Returns `true` to keep the cell/row, `false` to discard
+  Returns `true` to keep the row the cell belongs to.
 
 **Returns:**
 
@@ -3685,19 +3750,18 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 **Example:**
 
 ```go
-// Keep rows with non-nil values
+// Keep rows that have at least one non-nil cell
 filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
     return value != nil
 })
 
-// Keep rows where column "age" has values greater than 30
+// Keep rows whose column B holds a number greater than 30
 filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
-    if columnIndex == "age" {
-        if num, ok := value.(int); ok {
-            return num > 30
-        }
+    if columnIndex != "B" {
+        return false
     }
-    return false
+    num, ok := insyra.ToFloat64Safe(value)
+    return ok && num > 30
 })
 ```
 
@@ -3707,7 +3771,9 @@ filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 func (dt *DataTable) FilterByCustomElement(f func(value any) bool) *DataTable
 ```
 
-**Description:** Filters the DataTable based on a custom function applied to each element.
+**Deprecated.** `FilterByCustomElement` is `Filter` without the row and column arguments and returns exactly what `Filter` returns; it is removed in 0.4. Write `dt.Filter(func(_ int, _ string, value any) bool { return f(value) })` instead.
+
+**Description:** Keeps a row when `f` returns `true` for any one of its cells.
 
 **Parameters:**
 
@@ -3717,25 +3783,13 @@ func (dt *DataTable) FilterByCustomElement(f func(value any) bool) *DataTable
 
 - `*DataTable`: New filtered DataTable
 
-**Example:**
-
-```go
-// Filter to keep only numeric values greater than 10
-filtered := dt.FilterByCustomElement(func(value any) bool {
-    if num, ok := value.(float64); ok {
-        return num > 10
-    }
-    return false
-})
-```
-
 ### FilterRows
 
 ```go
 func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
 ```
 
-**Description:** Filters rows based on a custom function that checks each cell. Keeps only rows where the filter function returns true for at least one cell.
+**Description:** Keeps a row when `filterFunc` returns `true` for **any one** of its cells, like `Filter`, but hands `filterFunc` the column's name as well as its letter. It cannot compare two cells of the same row either; use [`FilterRowsWhere`](#filterrowswhere) for that.
 
 **Parameters:**
 
@@ -3756,14 +3810,44 @@ filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
     return x == 100
 })
 
-// Keep rows where column A value is greater than 25
-filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
-    return (colIndex == "A") && (x.(int) > 25)
+// Keep rows whose column A holds a number greater than 25
+filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
+    num, ok := insyra.ToFloat64Safe(x)
+    return colIndex == "A" && ok && num > 25
 })
 
-// Keep rows where column named "age" value is greater than 25
-filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
-    return (colName == "age") && (x.(int) > 25)
+// Keep rows whose column named "age" holds a number greater than 25
+filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
+    num, ok := insyra.ToFloat64Safe(x)
+    return colName == "age" && ok && num > 25
+})
+```
+
+### FilterRowsWhere
+
+```go
+func (dt *DataTable) FilterRowsWhere(keep func(row *DataList) bool) *DataTable
+```
+
+**Description:** Keeps the rows for which `keep` returns `true`, judging each row as a whole. `keep` is called once per row with a `DataList` holding the row's cells in column order, named with the row's name, so a condition can compare cells of the same row. The result keeps the table's name, the column names and the kept rows' names. The row handed to `keep` is a copy: changing it changes neither the table nor the result. A nil `keep` records an error on the table and returns an empty DataTable.
+
+**Parameters:**
+
+- `keep`: Called once per row. `row.Get(i)` is the cell in column `i` (0-based); look a position up by name with `GetColNumberByName`.
+
+**Returns:**
+
+- `*DataTable`: New DataTable with the kept rows
+
+**Example:**
+
+```go
+priceCol := dt.GetColNumberByName("price")
+costCol := dt.GetColNumberByName("cost")
+
+// Keep the rows sold at a loss
+losses := dt.FilterRowsWhere(func(row *insyra.DataList) bool {
+    return insyra.ToFloat64(row.Get(priceCol)) < insyra.ToFloat64(row.Get(costCol))
 })
 ```
 
@@ -3835,6 +3919,8 @@ filtered := dt.FilterColsByColNameEqualTo("age")
 func (dt *DataTable) FilterColsByColIndexGreaterThan(threshold string) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceCols(i+1, dt.NumCols())`, where `i` is the column's position (`ParseColIndex` turns a letter into one). `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
+
 **Description:** Filters columns by index greater than the specified threshold.
 
 **Parameters:**
@@ -3856,6 +3942,8 @@ filtered := dt.FilterColsByColIndexGreaterThan("B") // Columns C, D, E...
 ```go
 func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
 ```
+
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceCols(i, dt.NumCols())`, where `i` is the column's position (`ParseColIndex` turns a letter into one). `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
 
 **Description:** Filters columns by index greater than or equal to the specified threshold.
 
@@ -3879,6 +3967,8 @@ filtered := dt.FilterColsByColIndexGreaterThanOrEqualTo("B") // Columns B, C, D.
 func (dt *DataTable) FilterColsByColIndexLessThan(threshold string) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceCols(0, i)`, where `i` is the column's position (`ParseColIndex` turns a letter into one). A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
+
 **Description:** Filters columns by index less than the specified threshold.
 
 **Parameters:**
@@ -3901,6 +3991,8 @@ filtered := dt.FilterColsByColIndexLessThan("C") // Columns A, B
 func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceCols(0, i+1)`, where `i` is the column's position (`ParseColIndex` turns a letter into one). A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
+
 **Description:** Filters columns by index less than or equal to the specified threshold.
 
 **Parameters:**
@@ -3922,6 +4014,8 @@ filtered := dt.FilterColsByColIndexLessThanOrEqualTo("C") // Columns A, B, C
 ```go
 func (dt *DataTable) FilterColsByColIndexEqualTo(index string) *DataTable
 ```
+
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceCols(i, i+1)`, where `i` is the column's position (`ParseColIndex` turns a letter into one), or `GetCol` to read the column as a DataList. `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
 
 **Description:** Filters columns by exact index match.
 
@@ -4011,6 +4105,8 @@ filtered := dt.FilterRowsByRowNameContains("John") // Rows with "John" in name
 func (dt *DataTable) FilterRowsByRowIndexGreaterThan(threshold int) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceRows(threshold+1, dt.NumRows())`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
+
 **Description:** Filters rows by index greater than the specified threshold.
 
 **Parameters:**
@@ -4032,6 +4128,8 @@ filtered := dt.FilterRowsByRowIndexGreaterThan(5) // Rows 6, 7, 8...
 ```go
 func (dt *DataTable) FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable
 ```
+
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceRows(threshold, dt.NumRows())`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
 
 **Description:** Filters rows by index greater than or equal to the specified threshold.
 
@@ -4055,6 +4153,8 @@ filtered := dt.FilterRowsByRowIndexGreaterThanOrEqualTo(5) // Rows 5, 6, 7...
 func (dt *DataTable) FilterRowsByRowIndexLessThan(threshold int) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceRows(0, threshold)`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
+
 **Description:** Filters rows by index less than the specified threshold.
 
 **Parameters:**
@@ -4077,6 +4177,8 @@ filtered := dt.FilterRowsByRowIndexLessThan(5) // Rows 0, 1, 2, 3, 4
 func (dt *DataTable) FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceRows(0, threshold+1)`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
+
 **Description:** Filters rows by index less than or equal to the specified threshold.
 
 **Parameters:**
@@ -4098,6 +4200,8 @@ filtered := dt.FilterRowsByRowIndexLessThanOrEqualTo(5) // Rows 0, 1, 2, 3, 4, 5
 ```go
 func (dt *DataTable) FilterRowsByRowIndexEqualTo(index int) *DataTable
 ```
+
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceRows(index, index+1)`. `SliceRows` reports a bound outside the table as an error, where this method returns an empty table.
 
 **Description:** Filters rows by exact index match.
 

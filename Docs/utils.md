@@ -74,15 +74,22 @@ func ProcessData(input any) ([]any, int)
 func SqrtRat(x *big.Rat) *big.Rat
 ```
 
-**Description:** Calculates the square root of a `*big.Rat` and returns the result as another `*big.Rat`.
+**Deprecated.** Removed in 0.4. Use `math/big` directly:
+
+```go
+f := new(big.Float).SetRat(x)
+root, _ := f.Sqrt(f).Rat(nil)
+```
+
+**Description:** Returns the square root of `x`, rounded to the precision of a `big.Float` holding `x`. Returns `nil` when `x` is `nil` or negative.
 
 **Parameters:**
 
-- `x`: Numeric parameter value. Type: `*big.Rat`.
+- `x`: The value to take the square root of. Type: `*big.Rat`.
 
 **Returns:**
 
-- `*big.Rat`: Return value. Type: `*big.Rat`.
+- `*big.Rat`: The square root, or `nil`. Type: `*big.Rat`.
 
 ### PowRat
 
@@ -90,16 +97,18 @@ func SqrtRat(x *big.Rat) *big.Rat
 func PowRat(base *big.Rat, exponent int) *big.Rat
 ```
 
-**Description:** Computes `base^exponent` for `*big.Rat` values.
+**Deprecated.** Removed in 0.4. Use `math/big` directly: raise `base.Num()` and `base.Denom()` with `big.Int.Exp` and combine them with `big.Rat.SetFrac`.
+
+**Description:** Returns `base` raised to `exponent` as a new value. A negative exponent gives the reciprocal of the positive power, so `PowRat(big.NewRat(2, 3), -2)` is `9/4`. Any base to the power 0 is 1. Returns `nil` when `base` is `nil`, or when `base` is 0 and `exponent` is negative, since 0 has no reciprocal.
 
 **Parameters:**
 
-- `base`: Input value for `base`. Type: `*big.Rat`.
-- `exponent`: Input value for `exponent`. Type: `int`.
+- `base`: The value to raise. Type: `*big.Rat`.
+- `exponent`: The power, which may be negative. Type: `int`.
 
 **Returns:**
 
-- `*big.Rat`: Return value. Type: `*big.Rat`.
+- `*big.Rat`: The power, or `nil`. Type: `*big.Rat`.
 
 ### ConvertLongDataToWide
 
@@ -191,11 +200,13 @@ func IsNumeric(v any) bool
 func SortTimes(times []time.Time)
 ```
 
-**Description:** Sorts a slice of `time.Time` in ascending order.
+**Deprecated.** Removed in 0.4. Use `slices.SortFunc(times, time.Time.Compare)`.
+
+**Description:** Sorts a slice of `time.Time` in ascending order, in place.
 
 **Parameters:**
 
-- `times`: Input value for `times`. Type: `[]time.Time`.
+- `times`: The times to sort. Type: `[]time.Time`.
 
 **Returns:**
 
@@ -283,7 +294,6 @@ package main
 
 import (
     "fmt"
-    "math/big"
 
     "github.com/HazelnutParadise/insyra"
 )
@@ -292,9 +302,5 @@ func main() {
     num := 42
     f := insyra.ToFloat64(num)
     fmt.Println("Converted:", f)
-
-    rat := big.NewRat(16, 1)
-    sqrtRat := insyra.SqrtRat(rat)
-    fmt.Println("Square root:", sqrtRat)
 }
 ```
