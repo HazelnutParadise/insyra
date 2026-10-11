@@ -49,7 +49,53 @@ type CommandHandler struct {
 	// the user can copy into a shell.
 	Examples           []string
 	DisableFlagParsing bool
+	Args               ArgLimit
+	Flags              []CommandFlag
 	Run                func(ctx *ExecContext, args []string) error
+}
+
+// CommandFlag describes a one-shot CLI flag.
+type CommandFlag struct {
+	Name       string
+	Usage      string
+	TakesValue bool
+	Form       string
+}
+
+func (f CommandFlag) define(cmd *cobra.Command) {
+	if f.TakesValue {
+		cmd.Flags().String(f.Name, "", f.Usage)
+		return
+	}
+	cmd.Flags().Bool(f.Name, false, f.Usage)
+}
+
+func (f CommandFlag) appendTo(cmd *cobra.Command, args, runArgs []string) []string {
+	if f.Form != "" {
+		matches := false
+		if len(args) > 0 {
+			for _, form := range strings.Split(f.Form, "|") {
+				if strings.EqualFold(args[0], strings.TrimSpace(form)) {
+					matches = true
+					break
+				}
+			}
+		}
+		if !matches {
+			return runArgs
+		}
+	}
+	if f.TakesValue {
+		value, err := cmd.Flags().GetString(f.Name)
+		if err == nil && strings.TrimSpace(value) != "" {
+			return append(runArgs, "--"+f.Name, value)
+		}
+		return runArgs
+	}
+	if set, err := cmd.Flags().GetBool(f.Name); err == nil && set {
+		return append(runArgs, "--"+f.Name)
+	}
+	return runArgs
 }
 
 // Registry holds every registered command by name. Access it through
@@ -58,6 +104,14 @@ type CommandHandler struct {
 var Registry = map[string]*CommandHandler{}
 
 var registryMu sync.RWMutex
+
+func alsoStored(alias string, suffixes ...string) string {
+	names := make([]string, len(suffixes))
+	for i, suffix := range suffixes {
+		names[i] = alias + "_" + suffix
+	}
+	return strings.Join(names, ", ")
+}
 
 // LookupCommand returns the handler registered under name, taking the read
 // lock. Reading Registry directly is not safe while another goroutine
@@ -93,6 +147,23 @@ func Register(handler *CommandHandler) error {
 	}
 	if handler.Run == nil {
 		return fmt.Errorf("handler run function is required")
+	}
+	seenFlags := make(map[string]bool, len(handler.Flags))
+	for _, flag := range handler.Flags {
+		if flag.Name == "" {
+			return fmt.Errorf("command %s: a flag has no name", handler.Name)
+		}
+		if seenFlags[flag.Name] {
+			return fmt.Errorf("command %s: flag --%s is declared twice", handler.Name, flag.Name)
+		}
+		seenFlags[flag.Name] = true
+	}
+	run, limit, name, usage := handler.Run, handler.Args, handler.Name, handler.Usage
+	handler.Run = func(ctx *ExecContext, args []string) error {
+		if err := limit.check(name, usage, args); err != nil {
+			return err
+		}
+		return run(ctx, args)
 	}
 	registryMu.Lock()
 	defer registryMu.Unlock()
@@ -153,23 +224,8 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 			DisableFlagParsing: localHandler.DisableFlagParsing,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				runArgs := args
-				if localHandler.Name == "env" && len(args) > 0 && strings.EqualFold(args[0], "clear") {
-					keepHistory, flagErr := cmd.Flags().GetBool("keep-history")
-					if flagErr == nil && keepHistory {
-						runArgs = append(runArgs, "--keep-history")
-					}
-				}
-				if localHandler.Name == "env" && len(args) > 0 && strings.EqualFold(args[0], "import") {
-					force, flagErr := cmd.Flags().GetBool("force")
-					if flagErr == nil && force {
-						runArgs = append(runArgs, "--force")
-					}
-				}
-				if localHandler.Name == "accel" {
-					mode, flagErr := cmd.Flags().GetString("mode")
-					if flagErr == nil && strings.TrimSpace(mode) != "" {
-						runArgs = append(runArgs, "--mode", mode)
-					}
+				for _, flag := range localHandler.Flags {
+					runArgs = flag.appendTo(cmd, args, runArgs)
 				}
 				err := Dispatch(ctx, localHandler.Name, runArgs)
 				envName := ctx.EnvName
@@ -192,12 +248,8 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 		})
 
 		created := commands[len(commands)-1]
-		if localHandler.Name == "env" {
-			created.Flags().Bool("keep-history", false, "With 'env clear', keep command history")
-			created.Flags().Bool("force", false, "With 'env import', overwrite non-empty target environment")
-		}
-		if localHandler.Name == "accel" {
-			created.Flags().String("mode", "", "Acceleration mode: auto|cpu|gpu|strict-gpu")
+		for _, flag := range localHandler.Flags {
+			flag.define(created)
 		}
 	}
 

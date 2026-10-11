@@ -120,14 +120,27 @@ func (m *Manager) UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
 	return cfg, nil
 }
 
-// Package-level wrappers around the default Manager.
+// Package-level wrappers around the default Manager. Use the corresponding
+// method on Default() instead.
 
+// GlobalConfigPath calls Default().GlobalConfigPath.
+//
+// Deprecated: use Default().GlobalConfigPath instead. Removed in 0.4.
 func GlobalConfigPath() (string, error) { return defaultManager.GlobalConfigPath() }
 
+// LoadGlobalConfig calls Default().LoadGlobalConfig.
+//
+// Deprecated: use Default().LoadGlobalConfig instead. Removed in 0.4.
 func LoadGlobalConfig() (GlobalConfig, error) { return defaultManager.LoadGlobalConfig() }
 
+// SaveGlobalConfig calls Default().SaveGlobalConfig.
+//
+// Deprecated: use Default().SaveGlobalConfig instead. Removed in 0.4.
 func SaveGlobalConfig(cfg GlobalConfig) error { return defaultManager.SaveGlobalConfig(cfg) }
 
+// UpdateGlobalConfig calls Default().UpdateGlobalConfig.
+//
+// Deprecated: use Default().UpdateGlobalConfig instead. Removed in 0.4.
 func UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
 	return defaultManager.UpdateGlobalConfig(key, value)
 }

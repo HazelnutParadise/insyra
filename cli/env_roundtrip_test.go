@@ -141,8 +141,8 @@ func requireTime(t *testing.T, dt *insyra.DataTable, column string, row int, wan
 // table with parsed dates keeps them as time.Time rather than going back to
 // text.
 func TestOneShotKeepsColumnOrderAndCellTypes(t *testing.T) {
-	env.SetBasePath(t.TempDir())
-	t.Cleanup(func() { env.SetBasePath("") })
+	env.Default().SetBasePath(t.TempDir())
+	t.Cleanup(func() { env.Default().SetBasePath("") })
 
 	// This table intentionally has no NaN: the old code path only reordered
 	// columns to alphabetical on tables without NaN, so a clean table is what
@@ -213,8 +213,8 @@ func TestOneShotKeepsColumnOrderAndCellTypes(t *testing.T) {
 // seven cells, so the round trip may not flatten them into text or into one
 // common type.
 func TestOneShotKeepsListCellTypes(t *testing.T) {
-	env.SetBasePath(t.TempDir())
-	t.Cleanup(func() { env.SetBasePath("") })
+	env.Default().SetBasePath(t.TempDir())
+	t.Cleanup(func() { env.Default().SetBasePath("") })
 
 	runOneShot(t, "newdl", "1", "2.5", "3.0", "true", "nil", "x", "NaN", "as", "l")
 
@@ -265,8 +265,8 @@ func TestOneShotKeepsListCellTypes(t *testing.T) {
 // environment, and if it does, it transforms a later table the way the scaler
 // fitted in the earlier invocation would.
 func TestOneShotKeepsFittedScaler(t *testing.T) {
-	env.SetBasePath(t.TempDir())
-	t.Cleanup(func() { env.SetBasePath("") })
+	env.Default().SetBasePath(t.TempDir())
+	t.Cleanup(func() { env.Default().SetBasePath("") })
 
 	csvPath := writeCSV(t, "mixed.csv", "zeta,alpha,when\n3,x,2024-01-02\n1.5,y,2024-03-04\n")
 
@@ -311,8 +311,8 @@ func TestOneShotKeepsFittedScaler(t *testing.T) {
 // tree: cutree in the next invocation has to be able to cut it, and the
 // labels have to come back out of the environment as a list.
 func TestOneShotKeepsHierarchicalTree(t *testing.T) {
-	env.SetBasePath(t.TempDir())
-	t.Cleanup(func() { env.SetBasePath("") })
+	env.Default().SetBasePath(t.TempDir())
+	t.Cleanup(func() { env.Default().SetBasePath("") })
 
 	csvPath := writeCSV(t, "points.csv", "x,y\n1,2\n2,3\n8,9\n9,9\n")
 
@@ -348,8 +348,8 @@ func TestOneShotKeepsHierarchicalTree(t *testing.T) {
 
 // CCL 的日期相減會產生 time.Duration，環境以前存不了它，會把整張表丟掉。
 func TestOneShotKeepsDurationColumn(t *testing.T) {
-	env.SetBasePath(t.TempDir())
-	t.Cleanup(func() { env.SetBasePath("") })
+	env.Default().SetBasePath(t.TempDir())
+	t.Cleanup(func() { env.Default().SetBasePath("") })
 
 	csvPath := writeCSV(t, "dates.csv", "start,end\n2024-01-02,2024-01-05\n2024-03-04,2024-03-04\n")
 
