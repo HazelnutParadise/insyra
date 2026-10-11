@@ -272,7 +272,7 @@ func CalcColIndex(colNumber int) (colIndex string, ok bool) {
 // It sorts the times directly in the provided slice.
 //
 // Deprecated: SortTimes has nothing to do with data tables and was removed in
-// 0.4. Use slices.SortFunc(times, time.Time.Compare).
+// 0.4. Use slices.SortStableFunc(times, time.Time.Compare).
 func SortTimes(times []time.Time) {
 	algorithms.ParallelSortStableFunc(times, func(a, b time.Time) int {
 		if a.Before(b) {

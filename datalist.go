@@ -902,7 +902,7 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 // Returns a new DataList containing the weighted moving average values.
 //
 // Deprecated: use Rolling(RollingOptions{Window: windowSize, Weights: weights}).Mean(),
-// which keeps the input's length, so on a fully numeric list its
+// with the weights as a []float64, which keeps the input's length, so on a fully numeric list its
 // Data()[windowSize-1:] is this method's result. It gives nil for a window
 // holding a gap and for weights summing to zero, where this method fails or
 // divides by zero. Removed in 0.4.

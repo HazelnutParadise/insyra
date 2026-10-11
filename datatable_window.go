@@ -9,8 +9,9 @@ package insyra
 // The returned DataList is not attached to dt — call dt.AppendCols(...) or
 // dt.UpdateCol(...) to wire it in.
 //
-// A failing call returns an empty DataList carrying the error and records the
-// error on dt as well.
+// When the column is missing, the call returns an empty DataList carrying the
+// error and records the error on dt as well. An invalid argument, such as a
+// period of 0 for DiffCol, is carried by the returned list.
 // =============================================================================
 
 // snapshotCol resolves col against dt and returns a stand-alone *DataList

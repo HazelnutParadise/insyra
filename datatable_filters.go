@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -85,8 +86,17 @@ func (dt *DataTable) SliceCols(from, to any) *DataTable {
 		if start < end {
 			rowNames = cloneRowNames(dt.rowNames)
 		}
+		cols := cloneColumns(dt.columns[start:end])
+		// A table's columns may differ in length; the slice keeps every row,
+		// so a short column is padded with nil to the table's row count.
+		numRows := dt.getMaxColLength()
+		for _, c := range cols {
+			for len(c.data) < numRows {
+				c.data = append(c.data, nil)
+			}
+		}
 		result = &DataTable{
-			columns:           cloneColumns(dt.columns[start:end]),
+			columns:           cols,
 			rowNames:          rowNames,
 			name:              dt.name,
 			creationTimestamp: dt.creationTimestamp,
@@ -136,7 +146,7 @@ func (dt *DataTable) sliceColBound(bound any, ifNil int) (int, bool) {
 	return 0, false
 }
 
-// cloneColumns deep-copies the selected columns so a sliced table owns its
+// cloneColumns copies the selected columns so a sliced table owns its
 // storage.
 func cloneColumns(cols []*DataList) []*DataList {
 	out := make([]*DataList, len(cols))
@@ -164,6 +174,7 @@ func cloneRowNames(idx *core.BiIndex) *core.BiIndex {
 //
 // Deprecated: use SliceCols(i+1, nil), where i is the column's position;
 // ParseColIndex turns a letter into one.
+// Removed in 0.4.
 func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *DataTable {
 	var newDt *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -191,6 +202,7 @@ func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *
 // than or equal to the specified column.
 //
 // Deprecated: use SliceCols(columnIndexLetter, nil).
+// Removed in 0.4.
 func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -220,6 +232,7 @@ func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter 
 // Deprecated: use SliceCols(columnIndexLetter, i+1), where i is the column's
 // position; ParseColIndex turns a letter into one. To pick a column as a
 // DataList, use GetCol.
+// Removed in 0.4.
 func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -248,6 +261,7 @@ func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *Data
 // specified column; a letter past the last column keeps them all.
 //
 // Deprecated: use SliceCols(nil, columnIndexLetter).
+// Removed in 0.4.
 func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -277,6 +291,7 @@ func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *Dat
 //
 // Deprecated: use SliceCols(nil, i+1), where i is the column's position;
 // ParseColIndex turns a letter into one.
+// Removed in 0.4.
 func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -287,7 +302,11 @@ func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter str
 			return
 		}
 
-		filteredCols := dt.columns[:min(colIdx+1, len(dt.columns))]
+		end := len(dt.columns)
+		if colIdx < end {
+			end = colIdx + 1
+		}
+		filteredCols := dt.columns[:end]
 
 		newDt := &DataTable{
 			columns:           filteredCols,
@@ -363,6 +382,7 @@ func (dt *DataTable) FilterColsByColNameContains(substring string) *DataTable {
 //
 // Deprecated: use SliceRows(threshold+1, dt.NumRows()). SliceRows reports a
 // bound outside the table as an error; this method clamps it.
+// Removed in 0.4.
 func (dt *DataTable) FilterRowsByRowIndexGreaterThan(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex > threshold
@@ -374,6 +394,7 @@ func (dt *DataTable) FilterRowsByRowIndexGreaterThan(threshold int) *DataTable {
 //
 // Deprecated: use SliceRows(threshold, dt.NumRows()). SliceRows reports a
 // bound outside the table as an error; this method clamps it.
+// Removed in 0.4.
 func (dt *DataTable) FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex >= threshold
@@ -385,6 +406,7 @@ func (dt *DataTable) FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *Da
 // Deprecated: use SliceRows(index, index+1). SliceRows reports a row outside
 // the table as an error; this method returns no rows. To read one row as a
 // DataList, use GetRow.
+// Removed in 0.4.
 func (dt *DataTable) FilterRowsByRowIndexEqualTo(index int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex == index
@@ -395,6 +417,7 @@ func (dt *DataTable) FilterRowsByRowIndexEqualTo(index int) *DataTable {
 //
 // Deprecated: use SliceRows(0, threshold). SliceRows reports a bound outside
 // the table as an error; this method clamps it.
+// Removed in 0.4.
 func (dt *DataTable) FilterRowsByRowIndexLessThan(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex < threshold
@@ -406,6 +429,7 @@ func (dt *DataTable) FilterRowsByRowIndexLessThan(threshold int) *DataTable {
 //
 // Deprecated: use SliceRows(0, threshold+1). SliceRows reports a bound outside
 // the table as an error; this method clamps it.
+// Removed in 0.4.
 func (dt *DataTable) FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex <= threshold
@@ -516,6 +540,7 @@ func filterRowNames(originalRowNames *core.BiIndex, filteredIndices []int) *core
 //	dt.Filter(func(_ int, _ string, value any) bool { return filterFunc(value) })
 //
 // To judge a whole row at once, use FilterRowsWhere.
+// Removed in 0.4.
 func (dt *DataTable) FilterByCustomElement(filterFunc func(value any) bool) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return filterFunc(value)
@@ -536,7 +561,7 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 		// The predicate runs inside the table's lock and may call the
 		// table's own methods; work from the columns as they were when the
 		// call began, so a column added meanwhile cannot run past the result.
-		cols := dt.columns
+		cols := slices.Clone(dt.columns)
 		filteredCols := make([]*DataList, len(cols))
 		for i := range cols {
 			// Preserve the original column name (and metadata) in the result;
@@ -603,8 +628,9 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 //		return insyra.ToFloat64(row.Get(0)) < insyra.ToFloat64(row.Get(1))
 //	})
 //
-// The row is a copy: changing it changes neither the table nor the result. A
-// nil keep records an error and returns an empty DataTable.
+// The row is a new list: setting its cells changes neither the table nor the
+// result, though a cell holding a slice or a map shares that value with the
+// table. A nil keep records an error and returns an empty DataTable.
 func (dt *DataTable) FilterRowsWhere(keep func(row *DataList) bool) *DataTable {
 	if keep == nil {
 		dt.warn("FilterRowsWhere", "keep is nil")
@@ -616,7 +642,7 @@ func (dt *DataTable) FilterRowsWhere(keep func(row *DataList) bool) *DataTable {
 		// methods; the columns as they were when the call began are what
 		// the result is built from, so a column added meanwhile cannot run
 		// past filteredCols.
-		cols := dt.columns
+		cols := slices.Clone(dt.columns)
 		filteredCols := make([]*DataList, len(cols))
 		for i, col := range cols {
 			filteredCols[i] = &DataList{name: col.name, creationTimestamp: col.creationTimestamp}
@@ -740,7 +766,7 @@ func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any)
 		// The predicate runs inside the table's lock and may call the
 		// table's own methods; work from the columns as they were when the
 		// call began, so a column added meanwhile cannot run past the result.
-		cols := dt.columns
+		cols := slices.Clone(dt.columns)
 		filteredCols := make([]*DataList, len(cols))
 		for i := range cols {
 			filteredCols[i] = NewDataList()

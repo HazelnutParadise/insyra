@@ -175,6 +175,7 @@ func (dt *DataTable) ColNames() []string {
 // Headers returns the column names, exactly as ColNames does.
 //
 // Deprecated: use ColNames.
+// Removed in 0.4.
 func (dt *DataTable) Headers() []string {
 	return dt.ColNames()
 }
@@ -208,6 +209,7 @@ func (dt *DataTable) SetColNames(colNames []string) *DataTable {
 // SetHeaders names the columns, exactly as SetColNames does.
 //
 // Deprecated: use SetColNames.
+// Removed in 0.4.
 func (dt *DataTable) SetHeaders(headers []string) *DataTable {
 	return dt.SetColNames(headers)
 }

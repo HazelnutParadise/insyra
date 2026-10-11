@@ -1483,7 +1483,7 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 
 **Description:** Calculates weighted moving average with specified window size and weights. Each window's value is the weighted sum divided by the sum of the weights, so weights summing to zero give `±Inf` or `NaN`. The result has `n - windowSize + 1` values. A `nil` or non-numeric cell, a `windowSize` below 1 or above the length, or weights of the wrong length make the call fail, with `Err()` set and `nil` returned; a `NaN` makes every window holding it `NaN`.
 
-> **Deprecated:** use [`Rolling(RollingOptions{Window: windowSize, Weights: weights}).Mean()`](#rolling), which keeps the input's length; on a fully numeric list its `Data()[windowSize-1:]` is this method's result. It gives `nil` for a window holding a gap and for weights summing to zero; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in 0.4.
+> **Deprecated:** use [`Rolling(RollingOptions{Window: windowSize, Weights: weights}).Mean()`](#rolling), with the weights as a `[]float64` (`RollingOptions.Weights` takes no other type, so convert a DataList or an integer slice first), which keeps the input's length; on a fully numeric list its `Data()[windowSize-1:]` is this method's result. It gives `nil` for a window holding a gap and for weights summing to zero; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in 0.4.
 
 **Parameters:**
 

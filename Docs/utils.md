@@ -200,7 +200,7 @@ func IsNumeric(v any) bool
 func SortTimes(times []time.Time)
 ```
 
-**Deprecated.** Removed in 0.4. Use `slices.SortFunc(times, time.Time.Compare)`.
+**Deprecated.** Removed in 0.4. Use `slices.SortStableFunc(times, time.Time.Compare)`, which keeps the same stable order.
 
 **Description:** Sorts a slice of `time.Time` in ascending order, in place.
 

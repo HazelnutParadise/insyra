@@ -2249,7 +2249,7 @@ These methods provide point predictions only; R's `predict.lm` and
 
 ## Matrix Operations
 
-Four functions build or read a diagonal. Each takes and returns one type, and none panics: a size below 1, an empty slice and a nil matrix are errors.
+Four functions build or read a diagonal. Each takes and returns one type, and none panics: a size below 1 and a nil matrix are errors, and so is an empty slice given to `DiagMatrix`. `DiagMatrixSize` accepts an empty slice and returns a zero matrix of the size asked for.
 
 ### DiagOf
 
@@ -2315,7 +2315,7 @@ fmt.Println(d, mat.Formatted(sq), mat.Formatted(rect), mat.Formatted(id))
 func Diag(x any, dims ...int) (any, error)
 ```
 
-**Deprecated:** `Diag` took and returned `any`, so every caller had to type-assert the result. It keeps its old meaning for this release and is removed in 0.4. A size below 1, such as `Diag(0)` or `Diag([]float64{})`, is an error; it used to return an empty matrix. Replace each call with the typed function:
+**Deprecated:** `Diag` took and returned `any`, so every caller had to type-assert the result. It keeps its old behaviour on this line, including the panic for a size below 1 such as `Diag(0)` or `Diag([]float64{})`, and is removed in 0.4. The typed functions return an error there instead. Replace each call with the typed function:
 
 | `Diag` call | Replacement |
 | --- | --- |
