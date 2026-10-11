@@ -161,12 +161,22 @@ func replaceThroughStagingTable(db *gorm.DB, fullName, plainTable, schema string
 	}
 	stmt := fmt.Sprintf("RENAME TABLE %s TO %s, %s TO %s", quoteQualifiedName(dialect, schema, plainTable), quoteQualifiedName(dialect, schema, backup), quotedStaging, quoteQualifiedName(dialect, schema, plainTable))
 	if err := db.Exec(stmt).Error; err != nil {
-		swapped, checkErr := tableExists(db, dialect, schema, backup)
-		if checkErr == nil {
-			var stagingExists bool
-			stagingExists, checkErr = tableExists(db, dialect, schema, staging)
-			swapped = swapped && !stagingExists
-		}
+		// Check what the rename did on a context of its own: when ctx itself
+		// ended during the rename, querying on it would fail and leave the
+		// staging table behind.
+		var swapped bool
+		checkErr := cleanup(func(tx *gorm.DB) error {
+			backupExists, err := tableExists(tx, dialect, schema, backup)
+			if err != nil {
+				return err
+			}
+			stagingExists, err := tableExists(tx, dialect, schema, staging)
+			if err != nil {
+				return err
+			}
+			swapped = backupExists && !stagingExists
+			return nil
+		})
 		if checkErr != nil {
 			return errors.Join(fmt.Errorf("replacing table %s: %w", fullName, err), fmt.Errorf("could not verify whether the rename completed: %w", checkErr))
 		}
@@ -187,7 +197,7 @@ func tableReferencedBy(db *gorm.DB, dialect, schema, table string) (string, erro
 		return "", nil
 	}
 	var names []string
-	query := "SELECT TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_NAME = ? AND REFERENCED_TABLE_SCHEMA = "
+	query := "SELECT CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_NAME = ? AND REFERENCED_TABLE_SCHEMA = "
 	args := []any{table}
 	if schema != "" {
 		query += "?"
@@ -195,7 +205,9 @@ func tableReferencedBy(db *gorm.DB, dialect, schema, table string) (string, erro
 	} else {
 		query += "DATABASE()"
 	}
-	query += " AND TABLE_NAME <> ? LIMIT 1"
+	// A table referencing itself moves with the rename; the same name in
+	// another database is a different table and does block it.
+	query += " AND NOT (TABLE_NAME = ? AND TABLE_SCHEMA = REFERENCED_TABLE_SCHEMA) LIMIT 1"
 	args = append(args, table)
 	if err := db.Raw(query, args...).Scan(&names).Error; err != nil {
 		return "", err

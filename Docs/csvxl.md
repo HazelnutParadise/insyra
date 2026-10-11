@@ -186,9 +186,20 @@ func ExcelDirToCSV(dir, outputDir string, options ...ExcelToCSVOptions) error
 An empty `Sheets` converts every worksheet. A requested worksheet that is not
 in the workbook returns an error. At most one options value may be supplied.
 Formula-like text beginning with `=`, `+`, `-` or `@` is prefixed with an
-apostrophe unless it is numeric or `AllowFormulas` is true. `ExcelToCsv` and
-`EachExcelToCsv` keep their old behavior; worksheet selection for the new API
-moves to `ExcelToCSVOptions.Sheets`.
+apostrophe unless it is a number written in decimal digits (`-12`, `+3.5`,
+`-1e309`) or `AllowFormulas` is true; `+Inf` and `-NaN` are guarded.
+
+`ExcelToCSV` names the file of the i-th converted sheet `csvNames[i]`, adding
+`.csv` only when the name has no extension (`report.txt` stays `report.txt`),
+and the sheet's name plus `.csv` when `csvNames[i]` is missing or empty. A name
+holding a path separator is an error, so every file lands in `outputDir`.
+`ExcelDirToCSV` writes each sheet of `Book.xlsx` as `Book_<sheet>.csv`.
+
+`ExcelToCsv` and `EachExcelToCsv` keep their old behavior: no formula guard,
+`.csv` appended to any caller-given name that does not end in `.csv`
+(`report.txt` becomes `report.txt.csv`), and a caller-given relative path used
+as given. Worksheet selection for the new API moves to
+`ExcelToCSVOptions.Sheets`.
 
 ### `insyra.DetectEncoding`
 

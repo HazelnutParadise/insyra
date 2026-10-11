@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
+	"regexp"
 	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
@@ -290,6 +290,13 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 	return nil
 }
 
+// plainNumber matches a number written in decimal digits, with an optional
+// sign, fraction and exponent, the way a spreadsheet reads one. It decides by
+// spelling, not by what strconv.ParseFloat accepts: "+Inf" and "0x1p3" are
+// not numbers to a spreadsheet, and "-1e309" is one even though it overflows
+// a float64.
+var plainNumber = regexp.MustCompile(`^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$`)
+
 func guardFormula(s string) string {
 	trimmed := strings.TrimLeft(s, " \t\r\n")
 	if trimmed == "" {
@@ -297,7 +304,7 @@ func guardFormula(s string) string {
 	}
 	switch trimmed[0] {
 	case '=', '+', '-', '@':
-		if _, err := strconv.ParseFloat(strings.TrimSpace(trimmed), 64); err == nil {
+		if plainNumber.MatchString(strings.TrimSpace(trimmed)) {
 			return s
 		}
 		return "'" + s
