@@ -721,7 +721,7 @@ High-level command map:
 - **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `fillnan` (deprecated), `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `parsedates`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
-- **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
+- **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `wilcoxon`, `mannwhitney`, `kruskal`, `friedman`, `plot`, `fetch`
 - **Quant**: `quant` (`sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`, `portfolio`, `frontier`)
 - **Acceleration**: `accel` (`devices`, `cache`, `plan`)
 
@@ -732,7 +732,7 @@ fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [ex
 fillnan <var> mean [as <var>]   # deprecated; only fills NaN, mean only
 ```
 
-`fillna` clones the input (DataList or DataTable) and saves the filled result under `as <var>` or `$result`. `cols` filters which DataTable columns to touch (ignored for DataList). `limit` caps consecutive forward/backward fills — and `limit 0` means **no cap at all**, filling a gap as far as the data reaches, not "fill nothing". `extrapolate` controls whether interpolation fills leading/trailing gaps; `missing` selects which kind of missing to fill (default `both`). `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
+`fillna` clones the input (DataList or DataTable) and saves the filled result under `as <var>` or `$result`. `cols` filters which DataTable columns to touch (ignored for DataList). For `ffill`/`bfill`, cells of the unselected missing kind are skipped and do not consume `limit`. `limit` caps consecutive forward/backward fills — and `limit 0` means **no cap at all**, filling a gap as far as the data reaches, not "fill nothing". `extrapolate` controls whether interpolation fills leading/trailing gaps; `missing` selects which kind of missing to fill (default `both`). `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
 
 `fillnan <var> mean` is a legacy alias kept for backward compatibility — it only fills NaN (leaves nil alone) and only supports the `mean` strategy. New code should use `fillna ... missing nan` instead.
 
@@ -799,6 +799,7 @@ Source policy:
 | `filter` | `filter <var> <expr> [as <var>]` | Filter DataTable by CCL expression |
 | `find` | `find <var> <value>` | Find rows containing value |
 | `ftest` | `ftest var\|levene\|bartlett ...` | F-test commands |
+| `friedman` | `friedman <table> <value> <condition> <subject> \| friedman <subject1> <subject2> [subjectN]` | Friedman test for repeated measures |
 | `get` | `get <var> <row> <col>` | Get single element from DataTable |
 | `groupby` | `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` | Group a DataTable and aggregate columns (split-apply-combine) |
 | `help` | `help [command]` | Show command help |
@@ -809,8 +810,10 @@ Source policy:
 | `knn_neighbors` | `knn_neighbors <train_var> <test_var> <k> [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors search |
 | `kmeans` | `kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]` | K-means clustering |
 | `kurtosis` | `kurtosis <var>` | Kurtosis of a DataList |
+| `kruskal` | `kruskal <group1> <group2> [groupN]` | Kruskal-Wallis test across groups |
 | `load` | `load <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [ragged true\|false] [trimspace true\|false] [sheet <name>] \| load parquet <file> [...] \| load sql <conn> <table>\|query "<sql>" [...] [as <var>]` | Load data into a DataTable variable from a file, parquet, or SQL connection |
 | `lower` | `lower <var> [as <var>]` | Lowercase DataList strings |
+| `mannwhitney` | `mannwhitney <var1> <var2> [two-sided\|greater\|less]` | Mann-Whitney U test for two independent samples |
 | `max` | `max <var>` | DataList maximum |
 | `mean` | `mean <var>` | DataList mean |
 | `median` | `median <var>` | DataList median |
@@ -870,6 +873,7 @@ Source policy:
 | `unpivot` | `unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true\|false] [as <var>]` | Reshape wide-form DataTable to long form |
 | `upper` | `upper <var> [as <var>]` | Uppercase DataList strings |
 | `var` | `var <var>` | DataList variance |
+| `wilcoxon` | `wilcoxon single\|paired ...` | Wilcoxon signed-rank tests |
 | `vars` | `vars` | List variables in current environment |
 | `version` | `version` | Show insyra version |
 | `ztest` | `ztest single\|two ...` | Z-test commands |
@@ -1004,3 +1008,19 @@ load parquet data.parquet cols id,amount,status rowgroups 0,1 as t
 # invalid (unknown option)
 load parquet data.parquet columns id
 ```
+
+
+## Rank-based CLI tests
+
+- `wilcoxon single <var> <mu> [two-sided|greater|less]`
+- `wilcoxon paired <var1> <var2> [two-sided|greater|less]`
+- `mannwhitney <var1> <var2> [two-sided|greater|less]`
+- `kruskal <group1> <group2> [groupN]`
+
+## Long-format ANOVA and Friedman
+
+- `anova twoway <table> <value> <factorA> <factorB>`
+- `anova repeated <table> <value> <condition> <subject>`
+- `friedman <table> <value> <condition> <subject>` or `friedman <subject1> <subject2> [subjectN]`
+
+Table column selectors accept a column name or Excel-style letter.

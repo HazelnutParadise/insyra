@@ -828,7 +828,7 @@ func (dl *DataList) FillNaNWithMean() *DataList
 
 > A `nil` cell makes the call fail: `Err()` is set and the list is left untouched. `NaN` cells are replaced with the mean, and every other number is rewritten as a `float64`.
 
-> **Deprecated:** Use [`FillWithMean`](#fillwithmean) instead, which also fills `nil` (not just `NaN`), leaves the other numbers as they were, and matches the other `Fill*` imputation methods. See [Methods that look alike but differ](#methods-that-look-alike-but-differ).
+> **Deprecated:** to fill `NaN` alone, as this method does, use `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())`, which leaves the other values as they were. [`FillWithMean`](#fillwithmean) fills `nil` as well. See [Methods that look alike but differ](#methods-that-look-alike-but-differ).
 
 **Parameters:**
 

@@ -28,11 +28,15 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `GroupBy`, `Pivot` and `Merge` keys and `Describe`'s unique count put a `uintptr` with the other integer widths, as `Count` and `Counter` already did.
 - `DataList.Difference`, `MovingAverage`, `MovingStdev` and `WeightedMovingAverage` are deprecated and keep their behaviour; they are removed in 0.4. Their replacements, `Diff(1)`, `Rolling(RollingOptions{Window: w}).Mean()`, `Rolling(...).Std()` and `Rolling(...)` with `Weights`, keep the input's length and give `nil` where the old methods fail or give NaN; `Docs/DataList.md` lists every difference.
 - `SqrtRat`, `PowRat`, `SortTimes` and `F64orRat` are deprecated; they have nothing to do with data tables and are removed in 0.4. `SqrtRat` returns nil for a nil or negative value and `PowRat` for a nil base, where both panicked, and `PowRat` with a negative exponent returns the reciprocal power instead of 1.
+- `FillNaNWithMean`'s deprecation notice gives the call that keeps its behaviour, `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())`; it pointed at `FillWithMean`, which also fills nil.
 
 ### CLI
 
 - `save <var> <file.xlsx>` writes the table as one sheet of a workbook: `sheet <name>` picks the sheet (default `Sheet1`), and `if-exists replace` replaces a sheet that is already there instead of refusing. The workbook's other sheets are kept.
 - `rolling` fails with the reason when the library refuses its options, such as `minobs` above the window, instead of saving an empty result.
+- `anova twoway`, `anova repeated` and a new `friedman` command run on a table with one row per observation, the shape a loaded CSV usually has: `anova twoway scores score drug dose`, `anova repeated trial value visit patient`, `friedman trial value visit patient`. A command takes this form when its first argument is a DataTable variable; with DataList variables `anova twoway` and `anova repeated` run exactly as before, and `friedman s1 s2 s3` takes one list per subject. `friedman` prints `Q`, the degrees of freedom and the p-value.
+- The CLI runs the rank-based tests: `wilcoxon single <var> <mu>`, `wilcoxon paired <var1> <var2>`, `mannwhitney <var1> <var2>` (each with an optional `two-sided`, `greater` or `less`) and `kruskal <group1> <group2> [groupN]`. They print `W=… p=…`, `U=… p=…` and `H=… df=… p=…`. They were available only from Go before.
+- `fillna … ffill|bfill … missing nan|nil` no longer counts the other kind of missing value toward `limit`: `fillna x ffill limit 1 missing nan` on `[1, nil, NaN]` gives `[1, nil, 1]`, where it left the `NaN` unfilled. Without a `limit`, and for `mean`, `median`, `mode` and `interpolate`, results are unchanged.
 
 ### `datafetch`
 
@@ -43,6 +47,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `stats`
 
 - `DiagOf`, `DiagMatrix`, `DiagMatrixSize` and `IdentityMatrix` build and read diagonals with one type in and one out, and return an error instead of panicking on a size below 1 or a nil matrix. `Diag(x any, dims ...int)` is deprecated with its behaviour unchanged, including its panic on a size below 1, and is removed in 0.4.
+- `TwoWayANOVAFromTable(dt, valueCol, factorACol, factorBCol)`, `RepeatedMeasuresANOVAFromTable(dt, valueCol, conditionCol, subjectCol)` and `FriedmanTestFromTable(dt, valueCol, conditionCol, subjectCol)` read a table with one row per observation, the shape R's `aov` and `friedman.test` read, so the data no longer has to be split by hand into cells or one list per subject. A column is an existing column's Excel-style letter or, failing that, an exact column name. Factor levels are compared as `ToMapKey` compares values, so `int(1)` and `int64(1)` are different levels. A `nil` or `NaN` level, a value that is not a finite number, a combination with no observations, a two-way table without replication within its cells, and a subject missing a condition or measured twice under one are refused. The results are those of `TwoWayANOVA`, `RepeatedMeasuresANOVA` and `FriedmanTest` for the same data.
 
 ### `csvxl`
 

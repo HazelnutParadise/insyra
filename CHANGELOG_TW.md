@@ -28,11 +28,15 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `GroupBy`、`Pivot`、`Merge` 的鍵以及 `Describe` 的相異值計數，把 `uintptr` 和其他整數寬度視為同一群，`Count` 與 `Counter` 原本就是如此。
 - `DataList.Difference`、`MovingAverage`、`MovingStdev`、`WeightedMovingAverage` 改為 Deprecated，行為不變，在 0.4 移除。替代寫法 `Diff(1)`、`Rolling(RollingOptions{Window: w}).Mean()`、`Rolling(...).Std()` 與帶 `Weights` 的 `Rolling(...)` 會保留輸入長度，並在舊方法失敗或給 NaN 的地方給 `nil`；`Docs/DataList.md` 列出每一項差異。
 - `SqrtRat`、`PowRat`、`SortTimes`、`F64orRat` 改為 Deprecated，它們和資料表無關，在 0.4 移除。`SqrtRat` 遇到 nil 或負值、`PowRat` 遇到 nil 底數時回傳 nil，原本會 panic；`PowRat` 收到負指數時回傳倒數次方，原本回傳 1。
+- `FillNaNWithMean` 的 Deprecated 說明改成給出保留其行為的寫法 `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())`；原本指向會連 nil 一起填的 `FillWithMean`。
 
 ### CLI
 
 - `save <var> <file.xlsx>` 把表格寫成活頁簿裡的一張工作表：`sheet <name>` 指定工作表（預設 `Sheet1`），`if-exists replace` 會取代已經存在的工作表，不加則拒絕寫入。活頁簿裡的其他工作表都保留。
 - `rolling` 的選項被函式庫拒絕時（例如 `minobs` 大於視窗），指令會帶著原因失敗，不再存下一個空結果。
+- `anova twoway`、`anova repeated` 與新的 `friedman` 指令可直接用每列一筆觀測值的表格，也就是讀進 CSV 後常見的形狀：`anova twoway scores score drug dose`、`anova repeated trial value visit patient`、`friedman trial value visit patient`。第一個參數是 DataTable 變數時採用這種形式；用 DataList 變數時，`anova twoway` 與 `anova repeated` 和以前完全一樣，`friedman s1 s2 s3` 則是每位受試者一個清單。`friedman` 印出 `Q`、自由度與 p 值。
+- CLI 新增等級檢定：`wilcoxon single <var> <mu>`、`wilcoxon paired <var1> <var2>`、`mannwhitney <var1> <var2>`（都可加 `two-sided`、`greater` 或 `less`）以及 `kruskal <group1> <group2> [groupN]`，分別印出 `W=… p=…`、`U=… p=…`、`H=… df=… p=…`。以前只能從 Go 使用。
+- `fillna … ffill|bfill … missing nan|nil` 不再把另一種缺值算進 `limit`：對 `[1, nil, NaN]` 執行 `fillna x ffill limit 1 missing nan` 會得到 `[1, nil, 1]`，原本 `NaN` 會留著沒填。沒有指定 `limit` 時，以及 `mean`、`median`、`mode`、`interpolate`，結果都不變。
 
 ### `datafetch`
 
@@ -43,6 +47,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `stats`
 
 - `DiagOf`、`DiagMatrix`、`DiagMatrixSize`、`IdentityMatrix` 以單一型別建立與讀取對角線，大小小於 1 或矩陣為 nil 時回傳錯誤而不是 panic。`Diag(x any, dims ...int)` 改為 Deprecated，行為不變（包括大小小於 1 時 panic），在 0.4 移除。
+- `TwoWayANOVAFromTable(dt, valueCol, factorACol, factorBCol)`、`RepeatedMeasuresANOVAFromTable(dt, valueCol, conditionCol, subjectCol)` 與 `FriedmanTestFromTable(dt, valueCol, conditionCol, subjectCol)` 讀取每列一筆觀測值的表格，也就是 R 的 `aov` 與 `friedman.test` 讀的形狀，不必再手動拆成各格或每位受試者一個清單。欄位指定為既有欄的 Excel 欄字母，找不到時再比完全相同的欄名。因子層級依 `ToMapKey` 比較，所以 `int(1)` 與 `int64(1)` 是不同層級。`nil` 或 `NaN` 層級、不是有限數字的值、沒有觀測值的組合、各格內沒有重複觀測的雙因子表，以及缺少某個條件或同一條件量了兩次的受試者，都會被拒絕。結果與用同樣資料呼叫 `TwoWayANOVA`、`RepeatedMeasuresANOVA`、`FriedmanTest` 相同。
 
 ### `csvxl`
 

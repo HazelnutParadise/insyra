@@ -56,8 +56,8 @@ the result, not after.
 | Do two measurements of the same subjects differ? | `PairedTTest(data1, data2, confidenceLevel...)` |
 | The same questions with the population σ known | `SingleSampleZTest(data, mu, sigma, alternative, confidenceLevel)` / `TwoSampleZTest(data1, data2, sigma1, sigma2, alternative, confidenceLevel)` |
 | Do three or more groups differ? | `OneWayANOVA(groups...)` |
-| Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells...)` |
-| Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects...)` |
+| Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells...)` or `TwoWayANOVAFromTable` |
+| Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects...)` or `RepeatedMeasuresANOVAFromTable` |
 | Are two categorical variables related? | `ChiSquareIndependenceTest(rowData, colData)` |
 | Does a distribution match the expected counts? | `ChiSquareGoodnessOfFit(input, p, rescaleP)` |
 | Do groups have equal variance? | `FTestForVarianceEquality(data1, data2)`, `LeveneTest(groups)`, `BartlettTest(groups)` |
@@ -70,6 +70,10 @@ is an `AlternativeHypothesis` with no default, so pass one explicitly. The last
 row is the fallback when a parametric assumption fails — see
 [Nonparametric Tests (Rank-Based)](#nonparametric-tests-rank-based) for the
 parametric → rank-based mapping and the decision flow.
+
+### Long-format ANOVA and Friedman entry points
+
+`TwoWayANOVAFromTable(dt, valueCol, factorACol, factorBCol)` accepts a long-format table with one observation per row. `RepeatedMeasuresANOVAFromTable(dt, valueCol, conditionCol, subjectCol)` and `FriedmanTestFromTable` accept one row per subject-condition measurement. Column selectors are strings: an in-range Excel-style letter takes precedence, then an exact column name is checked. Each function returns the corresponding existing test result and an error; input tables are not modified. Values must be finite numbers, factor levels cannot be nil or NaN, and repeated-measures inputs require one value per subject and condition.
 
 ### Values that are not numbers
 
@@ -762,7 +766,7 @@ func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)
 func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error)
 ```
 
-**Description:** Analyze effects of two factors and their interaction. Cells must be in row-major order: cell `i*factorBLevels + j` holds the data for `A=i, B=j`, so you pass exactly `factorALevels × factorBLevels` of them. Both level counts must be at least 2, and a level count below 2 or a cell count that is not their product fails with `invalid levels or cells`. There is no long-format entry point — reshape your data into cells yourself before calling this function. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the cell and the row. Errors count levels from one, so `cell (A=2, B=1)` is `cells[factorBLevels]`, the first level of B under the second level of A.
+**Description:** Analyze effects of two factors and their interaction. Cells must be in row-major order: cell `i*factorBLevels + j` holds the data for `A=i, B=j`, so you pass exactly `factorALevels × factorBLevels` of them. Both level counts must be at least 2, and a level count below 2 or a cell count that is not their product fails with `invalid levels or cells`. For a one-row-per-observation table, use `TwoWayANOVAFromTable` below instead of splitting rows into cell lists yourself. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the cell and the row. Errors count levels from one, so `cell (A=2, B=1)` is `cells[factorBLevels]`, the first level of B under the second level of A.
 
 **Parameters:**
 
@@ -772,6 +776,23 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 **Returns:**
 
 - `*TwoWayANOVAResult`: Return value.
+
+#### Two Way ANOVA from a long-format table
+
+```go
+func TwoWayANOVAFromTable(dt insyra.IDataTable, valueCol, factorACol, factorBCol string) (*TwoWayANOVAResult, error)
+```
+
+`dt` has one observation per row. The three selectors are column names or Excel letters; an in-range letter takes precedence over an identical name. The function groups observations by the two factors and passes row-major cells to `TwoWayANOVA`. Each factor needs at least two levels, every combination needs an observation, and the table must contain within-cell replication so the error term can be estimated. Values must be finite; factor levels cannot be nil or NaN. Levels follow `insyra.ToMapKey`'s Go map-key equality, so `int(1)` and `int64(1)` are distinct. The input table is not modified.
+
+#### Repeated Measures ANOVA
+
+```go
+func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) (*RepeatedMeasuresANOVAResult, error)
+func RepeatedMeasuresANOVAFromTable(dt insyra.IDataTable, valueCol, conditionCol, subjectCol string) (*RepeatedMeasuresANOVAResult, error)
+```
+
+Each list is one subject's observations in condition order. The table form accepts one subject-condition measurement per row and requires exactly one finite value for every subject and condition. It groups levels in first-seen order and leaves the source table unchanged. Both return `RepeatedMeasuresANOVAResult`.
 
 #### ANOVA Result Types
 
