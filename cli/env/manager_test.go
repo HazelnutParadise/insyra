@@ -18,6 +18,16 @@ func setupTempHome(t *testing.T) string {
 	return home
 }
 
+func TestCreateNestedEnvironment(t *testing.T) {
+	mgr := NewManager(t.TempDir(), "")
+	if err := mgr.Create("team/run"); err != nil {
+		t.Fatal(err)
+	}
+	if !mgr.Exists("team/run") {
+		t.Fatal("nested environment was not created")
+	}
+}
+
 func TestManagerIsolatedFromDefault(t *testing.T) {
 	setupTempHome(t)
 

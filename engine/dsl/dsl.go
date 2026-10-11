@@ -1,8 +1,10 @@
 package dsl
 
 import (
+	"errors"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/HazelnutParadise/insyra/cli/repl"
@@ -29,8 +31,17 @@ func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, e
 		if strings.TrimSpace(envName) == "" {
 			envName = "default"
 		}
-		if !mgr.Exists(envName) {
-			if err := mgr.Create(envName); err != nil && !mgr.Exists(envName) {
+		if err := mgr.Create(envName); err != nil {
+			if !errors.Is(err, env.ErrAlreadyExists) {
+				return nil, err
+			}
+			for range 100 {
+				if mgr.HasCompleteDefaults(envName) {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			if !mgr.HasCompleteDefaults(envName) {
 				return nil, err
 			}
 		}

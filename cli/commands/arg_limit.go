@@ -56,3 +56,15 @@ func (l ArgLimit) check(name, usage string, args []string) error {
 	}
 	return fmt.Errorf("%s: unexpected argument %q; usage: %s", name, core[limit], usage)
 }
+
+func (l ArgLimit) validate() error {
+	if l.max < 0 || l.formAt < 0 {
+		return fmt.Errorf("argument limits and form positions must be non-negative")
+	}
+	for form, n := range l.forms {
+		if n < 0 {
+			return fmt.Errorf("argument limit for form %q must be non-negative", form)
+		}
+	}
+	return nil
+}

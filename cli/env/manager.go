@@ -20,6 +20,8 @@ const (
 	defaultEnvsDirName = "envs"
 )
 
+var ErrAlreadyExists = errors.New("environment already exists")
+
 type EnvironmentInfo struct {
 	Name          string
 	Path          string
@@ -203,9 +205,12 @@ func (m *Manager) Create(name string) error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(envPath), 0o755); err != nil {
+		return err
+	}
 	if err := os.Mkdir(envPath, 0o755); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return fmt.Errorf("environment already exists: %s", name)
+			return fmt.Errorf("%w: %s", ErrAlreadyExists, name)
 		}
 		return err
 	}
@@ -213,6 +218,21 @@ func (m *Manager) Create(name string) error {
 		return err
 	}
 	return nil
+}
+
+// HasCompleteDefaults reports whether an existing environment has all default files.
+func (m *Manager) HasCompleteDefaults(name string) bool {
+	path, err := m.ResolveEnvPath(name)
+	if err != nil {
+		return false
+	}
+	for _, file := range []string{"state.json", "history.txt", "config.json"} {
+		info, err := os.Stat(filepath.Join(path, file))
+		if err != nil || !info.Mode().IsRegular() {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Manager) Open(name string) (string, error) {

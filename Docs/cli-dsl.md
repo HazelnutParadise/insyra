@@ -158,6 +158,9 @@ err := dsl.Register(&dsl.CommandHandler{
     Usage: "copy <var> [as <var>]",
     Args: dsl.MaxArgs(1).WithAlias(),
     Run: func(ctx *dsl.ExecContext, args []string) error {
+        if len(args) == 0 {
+            return fmt.Errorf("copy requires a variable name")
+        }
         target := "copy"
         if len(args) == 3 && args[1] == "as" {
             target = args[2]
@@ -167,6 +170,8 @@ err := dsl.Register(&dsl.CommandHandler{
     },
 })
 ```
+
+`ArgLimit` 只檢查參數數量上限，不會檢查必要參數；指令仍須自行檢查最低參數數量。
 
 The Manager is also useful on its own when you only need the storage layer
 (listing envs, exporting, reading history) without spinning up a session:

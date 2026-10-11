@@ -49,3 +49,15 @@ func TestConcurrentNewSessionsCreateOneEnvironmentSafely(t *testing.T) {
 		t.Fatal("concurrent NewSession calls did not create the environment")
 	}
 }
+
+func TestNewSessionRejectsIncompleteEnvironment(t *testing.T) {
+	root := t.TempDir()
+	mgr := NewManager(root, "")
+	path := filepath.Join(root, "envs", "broken")
+	if err := os.MkdirAll(filepath.Join(path, "state.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewSession(mgr, "broken", nil); err == nil {
+		t.Fatal("expected incomplete environment to fail")
+	}
+}

@@ -50,6 +50,37 @@ func TestRegisterRejectsDuplicate(t *testing.T) {
 	}
 }
 
+// A registration refused as a duplicate changes nothing: retrying the same
+// handler with a new argument limit does not wrap the registered command in
+// that limit.
+func TestDuplicateRegistrationDoesNotMutateOriginalHandler(t *testing.T) {
+	oldRegistry := Registry
+	Registry = map[string]*CommandHandler{}
+	defer func() { Registry = oldRegistry }()
+	handler := &CommandHandler{Name: "dup", Run: func(*ExecContext, []string) error { return nil }}
+	if err := Register(handler); err != nil {
+		t.Fatal(err)
+	}
+	handler.Args = MaxArgs(0)
+	if err := Register(handler); err == nil {
+		t.Fatal("expected duplicate error")
+	}
+	if err := Registry["dup"].Run(&ExecContext{}, []string{"a"}); err != nil {
+		t.Fatalf("the registered command now refuses an argument: %v", err)
+	}
+	if err := handler.Run(&ExecContext{}, []string{"a"}); err != nil {
+		t.Fatalf("the caller's handler was wrapped in the refused limit: %v", err)
+	}
+}
+
+func TestRegisterRejectsNegativeArgumentLimits(t *testing.T) {
+	for _, limit := range []ArgLimit{MaxArgs(-1), FormArgsAt(-1, map[string]int{"x": 1}), FormArgs(map[string]int{"x": -1})} {
+		if err := Register(&CommandHandler{Name: "invalid", Args: limit, Run: func(*ExecContext, []string) error { return nil }}); err == nil {
+			t.Errorf("Register(%+v) succeeded", limit)
+		}
+	}
+}
+
 func TestBuildCobraCommands(t *testing.T) {
 	oldRegistry := Registry
 	Registry = map[string]*CommandHandler{}

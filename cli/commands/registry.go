@@ -148,6 +148,9 @@ func Register(handler *CommandHandler) error {
 	if handler.Run == nil {
 		return fmt.Errorf("handler run function is required")
 	}
+	if err := handler.Args.validate(); err != nil {
+		return fmt.Errorf("command %s: %w", handler.Name, err)
+	}
 	seenFlags := make(map[string]bool, len(handler.Flags))
 	for _, flag := range handler.Flags {
 		if flag.Name == "" {
@@ -158,19 +161,20 @@ func Register(handler *CommandHandler) error {
 		}
 		seenFlags[flag.Name] = true
 	}
-	run, limit, name, usage := handler.Run, handler.Args, handler.Name, handler.Usage
-	handler.Run = func(ctx *ExecContext, args []string) error {
-		if err := limit.check(name, usage, args); err != nil {
-			return err
-		}
-		return run(ctx, args)
-	}
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	if _, exists := Registry[handler.Name]; exists {
 		return fmt.Errorf("command already registered: %s", handler.Name)
 	}
-	Registry[handler.Name] = handler
+	copy := *handler
+	run, limit, name, usage := copy.Run, copy.Args, copy.Name, copy.Usage
+	copy.Run = func(ctx *ExecContext, args []string) error {
+		if err := limit.check(name, usage, args); err != nil {
+			return err
+		}
+		return run(ctx, args)
+	}
+	Registry[copy.Name] = &copy
 	return nil
 }
 
