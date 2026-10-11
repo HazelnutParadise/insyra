@@ -83,6 +83,15 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `FromDataList` turns an empty list into an empty Series; it returned an error.
 
+### `lp`
+
+- `lp.Solve(model, opts)` and `lp.SolveFile(path, opts)` solve a model in pure Go with go-milp and return a `*Solution` and an error, so no GLPK installation is needed; `Engine: lp.EngineGLPK` runs an installed `glpsol` instead, found through `GLPK_PATH` or `PATH`, and nothing is installed for you. `SolveFromFile` and `SolveModel` keep their GLPK behaviour, including installing GLPK, and are deprecated; they are removed in 0.4.
+
+### `lpgen`
+
+- `LPModel.WriteLP(w)` writes a model in LP format to any `io.Writer`. `GenerateLPFile` keeps its signature and writes the same file as before.
+- `ParseLingo(r)` and `ParseLingoFile(path)` read a LINGO model and return an error for a statement they cannot read, naming its line, where the underscore readers drop it. They also read `@GIN`, `@FREE` and `@BND`. `ParseLingoModel_txt` and `ParseLingoModel_str` keep their behaviour and are deprecated; they are removed in 0.4.
+
 ### `py`
 
 - The IPC server that carries results back from Python opens when a `Run…` call needs it and closes when the last call running at the same time finishes, which on Unix removes its socket file from the temp directory; v0.3.4 left one there after every program that ran Python. When it cannot open, for example because the temp directory's path is too long for a Unix socket, the call returns an error that wraps the cause before it prepares the environment or starts Python, and the next call tries again. v0.3.4 logged a warning, ran Python anyway and returned `exit status 1`. A server whose accept loop fails now closes, so the run in flight returns an error, and the next run opens a new one.
