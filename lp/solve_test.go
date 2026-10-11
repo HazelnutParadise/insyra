@@ -101,6 +101,36 @@ func TestSolveWithTheDefaultEngine(t *testing.T) {
 	}
 }
 
+func TestMILPPresolveKeepsDistinctCloseConstraints(t *testing.T) {
+	model := lpgen.NewLPModel().SetObjective("Minimize", "x + y").
+		AddConstraint("1e-7 x + 1e-7 y = 1").
+		AddConstraint("2e-7 x + 1e-7 y = 1.5")
+	sol, err := Solve(model, Options{})
+	if err != nil {
+		t.Fatalf("Solve: %v", err)
+	}
+	if sol.Status != StatusOptimal {
+		t.Fatalf("solution %+v, want optimal", sol)
+	}
+	if math.Abs(sol.Objective-1e7)/1e7 > 1e-6 {
+		t.Errorf("objective %g, want 1e7 within relative error 1e-6", sol.Objective)
+	}
+}
+
+func TestMILPUnboundedRelaxationWithNoIntegerFeasiblePointIsInfeasible(t *testing.T) {
+	model := lpgen.NewLPModel().SetObjective("Maximize", "z").
+		AddConstraint("2 x - 2 y = 1").
+		AddBound("x >= 0").AddBound("y >= 0").AddBound("z >= 0").
+		AddIntegerVar("x").AddIntegerVar("y")
+	sol, err := Solve(model, Options{})
+	if err != nil {
+		t.Fatalf("Solve: %v", err)
+	}
+	if sol.Status != StatusInfeasible {
+		t.Errorf("status %s, want infeasible", sol.Status)
+	}
+}
+
 func TestSolveRefusesAModelItCannotSolve(t *testing.T) {
 	quietLP(t)
 	tests := []struct {

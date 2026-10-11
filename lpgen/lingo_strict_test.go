@@ -1,6 +1,8 @@
 package lpgen
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -96,6 +98,53 @@ func TestParseLingoSkipsComments(t *testing.T) {
 	}
 	if want := []string{"X >= 1"}; !reflect.DeepEqual(m.Bounds, want) {
 		t.Errorf("bounds: got %v, want %v", m.Bounds, want)
+	}
+}
+
+func TestParseLingoReadsStatementAfterInlineComment(t *testing.T) {
+	const input = "MODEL:\nMIN= X;\n! note; X >= 5;\nEND"
+	for name, parse := range map[string]func() (*LPModel, error){
+		"text": func() (*LPModel, error) { return ParseLingo(input) },
+		"file": func() (*LPModel, error) {
+			path := filepath.Join(t.TempDir(), "model.lng")
+			if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return ParseLingoFile(path)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, err := parse()
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if !reflect.DeepEqual(m.Bounds, []string{"X >= 5"}) {
+				t.Errorf("bounds %v, want [X >= 5]", m.Bounds)
+			}
+		})
+	}
+}
+
+func TestParseLingoRefusesInvalidLinearExpressions(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		input string
+	}{
+		{"unknown function in relation", "MODEL:\n@UNKNOWN(X)=1;\nEND"},
+		{"empty objective", "MODEL:\nMIN= ;\nEND"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := ParseLingo(tt.input)
+			if err == nil {
+				t.Fatalf("ParseLingo returned model %+v without an error", m)
+			}
+			if m != nil {
+				t.Errorf("invalid expression returned a partial model: %+v", m)
+			}
+			if !strings.Contains(err.Error(), "line 2") {
+				t.Errorf("error %q does not identify line 2", err)
+			}
+		})
 	}
 }
 

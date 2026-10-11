@@ -22,7 +22,7 @@ func Solve(model *lpgen.LPModel, opts lp.Options) (*lp.Solution, error)
 func SolveFile(path string, opts lp.Options) (*lp.Solution, error)
 ```
 
-The zero-value `Options{}` selects `EngineMILP`. Set `Options.Engine` to `EngineGLPK` to use an installed `glpsol`; `Options.TimeLimit` sets a time limit. Solver outcomes such as infeasible, unbounded, or stopped are returned as a `Solution` with nil error. Invalid input, an unavailable engine, or a solver failure returns an error.
+The zero-value `Options{}` selects `EngineMILP`. Set `Options.Engine` to `EngineGLPK` to use an installed `glpsol`; `Options.TimeLimit` is a best-effort limit. With `EngineMILP`, it applies to branch search and may not cover the initial continuous solve, so total solve time can exceed it. Solver outcomes such as infeasible, unbounded, or stopped are returned as a `Solution` with nil error. Invalid input, an unavailable engine, or a solver failure returns an error.
 
 `Solution` provides `Status`, `Objective`, `Values`, `Engine`, `Elapsed`, `Nodes`, and `Log`. `Solution.ToDataTable()` returns the variable/value rows in model order.
 

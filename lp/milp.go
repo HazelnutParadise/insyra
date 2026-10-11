@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"strings"
 	"time"
 
@@ -44,6 +45,24 @@ func solveMILP(p *problem, timeLimit time.Duration) (*Solution, error) {
 	}
 	m.SetObjective(sense, terms(p.objective))
 	for _, r := range p.rows {
+		// Normalize tiny rows before handing them to go-milp. Its LP solver
+		// uses absolute feasibility tolerances, so unscaled coefficients below
+		// that threshold can look like zero even with presolve disabled.
+		scale := 1.0
+		maxCoef := 0.0
+		for _, t := range r.terms {
+			if a := math.Abs(t.coef); a > maxCoef {
+				maxCoef = a
+			}
+		}
+		if maxCoef > 0 && maxCoef < 1 {
+			scale = 1 / maxCoef
+		}
+		rowTerms := make([]term, len(r.terms))
+		copy(rowTerms, r.terms)
+		for i := range rowTerms {
+			rowTerms[i].coef *= scale
+		}
 		rel := milp.LessEq
 		switch r.rel {
 		case greaterEq:
@@ -51,11 +70,12 @@ func solveMILP(p *problem, timeLimit time.Duration) (*Solution, error) {
 		case equalTo:
 			rel = milp.EqualTo
 		}
-		m.AddConstraint(terms(r.terms), rel, r.rhs)
+		m.AddConstraint(terms(rowTerms), rel, r.rhs*scale)
 	}
 
 	opts := milp.DefaultOptions()
 	opts.TimeLimit = timeLimit
+	opts.DisablePresolve = true
 	res, stats, err := m.SolveWithStats(opts)
 
 	limited := errors.Is(err, milp.ErrTimeLimit) || errors.Is(err, milp.ErrNodeLimit)
@@ -80,6 +100,39 @@ func solveMILP(p *problem, timeLimit time.Duration) (*Solution, error) {
 		return sol, nil
 	case res.Status == milp.Unbounded:
 		sol.Status = StatusUnbounded
+		if hasIntegerVariables(p) {
+			if hasImpossibleIntegerEquality(p) {
+				sol.Status = StatusInfeasible
+				return sol, nil
+			}
+			// An unbounded LP relaxation may have no integer-feasible point.
+			// Solve the same constraints as a zero-objective feasibility problem
+			// before reporting the relaxation's unbounded status.
+			feasibilityProblem := *p
+			feasibilityProblem.maximize = false
+			feasibilityProblem.objective = nil
+			// Branching on unbounded integer variables need not end, so the
+			// check runs under the caller's limit or, without one, a cap of
+			// its own; a check that cannot decide reports StatusStopped.
+			checkLimit := timeLimit
+			if checkLimit <= 0 {
+				checkLimit = feasibilityCheckLimit
+			}
+			feasibility, err := solveMILP(&feasibilityProblem, checkLimit)
+			if err != nil {
+				return nil, err
+			}
+			switch feasibility.Status {
+			case StatusInfeasible:
+				sol.Status = StatusInfeasible
+			case StatusOptimal, StatusFeasible:
+				sol.Status = StatusUnbounded
+			case StatusStopped:
+				sol.Status = StatusStopped
+			default:
+				return nil, fmt.Errorf("%w: feasibility solve returned status %v", ErrSolverFailed, feasibility.Status)
+			}
+		}
 		return sol, nil
 	default:
 		return nil, fmt.Errorf("%w: go-milp returned status %v", ErrSolverFailed, res.Status)
@@ -93,6 +146,64 @@ func solveMILP(p *problem, timeLimit time.Duration) (*Solution, error) {
 		sol.order[i] = c.name
 	}
 	return sol, nil
+}
+
+// feasibilityCheckLimit bounds the integer-feasibility check that follows an
+// unbounded relaxation when the caller set no time limit.
+const feasibilityCheckLimit = 30 * time.Second
+
+func hasIntegerVariables(p *problem) bool {
+	for _, col := range p.cols {
+		if col.integer {
+			return true
+		}
+	}
+	return false
+}
+
+// hasImpossibleIntegerEquality proves infeasibility for an equality whose
+// terms are all integer variables with integral coefficients when the gcd of
+// those coefficients does not divide the right-hand side. This quick exact
+// certificate also avoids an infinite branch ray for equations such as
+// 2*x-2*y=1 before asking the MILP solver to check general feasibility.
+func hasImpossibleIntegerEquality(p *problem) bool {
+	for _, row := range p.rows {
+		if row.rel != equalTo {
+			continue
+		}
+		rhs := new(big.Rat).SetFloat64(row.rhs)
+		if rhs == nil || !rhs.IsInt() {
+			continue
+		}
+		gcd := new(big.Int)
+		valid := true
+		for _, item := range row.terms {
+			if !p.cols[item.col].integer {
+				valid = false
+				break
+			}
+			coef := new(big.Rat).SetFloat64(item.coef)
+			if coef == nil || !coef.IsInt() {
+				valid = false
+				break
+			}
+			abs := new(big.Int).Abs(new(big.Int).Set(coef.Num()))
+			gcd.GCD(nil, nil, gcd, abs)
+		}
+		if !valid {
+			continue
+		}
+		if gcd.Sign() == 0 {
+			if rhs.Sign() != 0 {
+				return true
+			}
+			continue
+		}
+		if new(big.Int).Rem(rhs.Num(), gcd).Sign() != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // checkBounds refuses the bounds GLPK refuses when it starts solving: a lower

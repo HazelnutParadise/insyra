@@ -27,8 +27,10 @@ const (
 // limit.
 type Options struct {
 	Engine Engine
-	// TimeLimit stops the search once it has run this long; zero means no
-	// limit. GLPK takes whole seconds, so its limit is rounded up.
+	// TimeLimit is a best-effort limit on solver search; zero means no limit.
+	// For EngineMILP it does not include the initial continuous relaxation, so
+	// total solve time may exceed the limit. GLPK takes whole seconds, so its
+	// limit is rounded up.
 	TimeLimit time.Duration
 }
 

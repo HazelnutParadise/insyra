@@ -48,6 +48,42 @@ func parseLingo(r io.Reader, strict bool) (*LPModel, error) {
 		line = lingoRowLabelRe.ReplaceAllString(line, "")
 		line = strings.TrimSpace(line)
 
+		if strict {
+			segments := strings.Split(line, ";")
+			for i, segment := range segments {
+				segment = strings.TrimSpace(segment)
+				if segment != "" {
+					if !isFirstLine {
+						if !strings.HasPrefix(segment, "-") && !strings.HasPrefix(segment, "+") {
+							currentExpr.WriteString(" ")
+						}
+					} else {
+						stmtLine = lineNo
+					}
+					currentExpr.WriteString(segment)
+					isFirstLine = false
+				}
+				if i == len(segments)-1 {
+					continue
+				}
+
+				expr := strings.TrimSpace(currentExpr.String())
+				currentExpr.Reset()
+				isFirstLine = true
+				if expr == "" {
+					continue
+				}
+				expr = lingoMultiplyRe.ReplaceAllString(expr, " ")
+				expr = lingoMissingSpaceRe.ReplaceAllString(expr, `$1 $2`)
+				expr = lingoSciNotationRe.ReplaceAllString(expr, `$1$2$3`)
+				expr = lingoSpaceRe.ReplaceAllString(expr, " ")
+				if err := lingoStrictStatement(model, expr, stmtLine); err != nil {
+					return nil, err
+				}
+			}
+			continue
+		}
+
 		// 累積當前行到表達式
 		if line != "" {
 			if !isFirstLine {
@@ -129,6 +165,10 @@ func lingoStrictStatement(model *LPModel, expr string, line int) error {
 		// LINGO 註解，不是敘述。
 		return nil
 	case strings.HasPrefix(strings.ToUpper(expr), "MIN="), strings.HasPrefix(strings.ToUpper(expr), "MAX="):
+		objective := strings.TrimSpace(strings.SplitN(expr, "=", 2)[1])
+		if !lingoIsLinearExpression(objective) {
+			return fmt.Errorf("line %d: LINGO objective is not a linear expression: %s", line, expr)
+		}
 		lingoSetObjective(model, expr)
 	case strings.HasPrefix(strings.ToUpper(expr), "@BIN"), strings.HasPrefix(strings.ToUpper(expr), "@INT"),
 		strings.HasPrefix(strings.ToUpper(expr), "@GIN"):
@@ -158,12 +198,111 @@ func lingoStrictStatement(model *LPModel, expr string, line int) error {
 		}
 		model.Bounds = append(model.Bounds, bound)
 	case strings.ContainsAny(expr, "<=>"):
+		if !lingoIsLinearRelation(expr) {
+			return fmt.Errorf("line %d: LINGO relation is not linear or is not recognised: %s", line, expr)
+		}
 		lingoAddRelation(model, expr)
 	default:
 		return fmt.Errorf("line %d: LINGO statement not recognised: %s", line, expr)
 	}
 	return nil
 }
+
+var (
+	lingoRelationOpRe  = regexp.MustCompile(`<=|>=|=`)
+	lingoLinearTokenRe = regexp.MustCompile(`(?:[+-]|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?|[A-Za-z][A-Za-z0-9_]*)`)
+)
+
+func lingoIsLinearRelation(expr string) bool {
+	locations := lingoRelationOpRe.FindAllStringIndex(expr, -1)
+	if len(locations) != 1 && len(locations) != 2 {
+		return false
+	}
+	parts := make([]string, 0, len(locations)+1)
+	start := 0
+	for _, location := range locations {
+		op := expr[location[0]:location[1]]
+		if op != "<=" && op != ">=" && op != "=" {
+			return false
+		}
+		parts = append(parts, strings.TrimSpace(expr[start:location[0]]))
+		start = location[1]
+	}
+	parts = append(parts, strings.TrimSpace(expr[start:]))
+	if len(parts) == 3 && !lingoIsBound(expr) {
+		return false
+	}
+	for _, part := range parts {
+		if !lingoIsLinearExpression(part) {
+			return false
+		}
+	}
+	return true
+}
+
+func lingoIsLinearExpression(expr string) bool {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return false
+	}
+	locations := lingoLinearTokenRe.FindAllStringIndex(expr, -1)
+	if len(locations) == 0 {
+		return false
+	}
+	previous := 0
+	for _, location := range locations {
+		if strings.TrimSpace(expr[previous:location[0]]) != "" {
+			return false
+		}
+		previous = location[1]
+	}
+	if strings.TrimSpace(expr[locations[len(locations)-1][1]:]) != "" {
+		return false
+	}
+
+	tokens := make([]string, len(locations))
+	for i, location := range locations {
+		tokens[i] = expr[location[0]:location[1]]
+	}
+	for i := 0; i < len(tokens); {
+		if tokens[i] == "+" || tokens[i] == "-" {
+			i++
+			if i == len(tokens) {
+				return false
+			}
+		}
+		if i >= len(tokens) {
+			return false
+		}
+		if isLinearNumber(tokens[i]) {
+			i++
+			if i < len(tokens) && lingoExpressionVarRe.MatchString(tokens[i]) {
+				if locations[i-1][1] == locations[i][0] {
+					return false
+				}
+				i++
+			}
+		} else if lingoExpressionVarRe.MatchString(tokens[i]) {
+			i++
+		} else {
+			return false
+		}
+		if i == len(tokens) {
+			return true
+		}
+		if tokens[i] != "+" && tokens[i] != "-" {
+			return false
+		}
+	}
+	return false
+}
+
+func isLinearNumber(token string) bool {
+	_, err := strconv.ParseFloat(token, 64)
+	return err == nil
+}
+
+var lingoExpressionVarRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 
 // lingoDeclaredName returns the variable a declaration such as "@BIN(X)"
 // declares. prefix is stripped without regard to case and what is left must be
