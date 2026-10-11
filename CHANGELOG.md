@@ -29,6 +29,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `DataList.Difference`, `MovingAverage`, `MovingStdev` and `WeightedMovingAverage` are deprecated and keep their behaviour; they are removed in 0.4. Their replacements, `Diff(1)`, `Rolling(RollingOptions{Window: w}).Mean()`, `Rolling(...).Std()` and `Rolling(...)` with `Weights`, keep the input's length and give `nil` where the old methods fail or give NaN; `Docs/DataList.md` lists every difference.
 - `SqrtRat`, `PowRat`, `SortTimes` and `F64orRat` are deprecated; they have nothing to do with data tables and are removed in 0.4. `SqrtRat` returns nil for a nil or negative value and `PowRat` for a nil base, where both panicked, and `PowRat` with a negative exponent returns the reciprocal power instead of 1.
 - `FillNaNWithMean`'s deprecation notice gives the call that keeps its behaviour, `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())`; it pointed at `FillWithMean`, which also fills nil.
+- `ToSQL` with `Replace` on MySQL keeps the old table when the write fails. MySQL ends a transaction at `DROP TABLE`, so a failed insert left neither the old table nor the new rows. The rows now go into a staging table that one `RENAME TABLE` swaps in before the old table is dropped, and a table another table references by foreign key is refused before anything changes. The account needs database-level `CREATE`, `INSERT`, `ALTER` and `DROP`. SQLite and PostgreSQL keep one transaction, as before.
+- `ScalerParams.PassThrough` is deprecated; it keeps its meaning on this line and is removed in 0.4, where `SimpleImputer` refuses such a column when it is fitted.
 
 ### CLI
 
@@ -53,6 +55,11 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - An encoding argument of `""` or `"auto"` in any letter case now means detection, as it does in the core CSV readers. `""` used to read the bytes as UTF-8, and `"AUTO"` was refused as an unsupported encoding.
 - `AppendCsvToExcel` replaces a workbook's only sheet even when that sheet is named `__insyra_placeholder__`. The name of the temporary sheet it uses collided with it, so the old cells were kept.
+- The functions have Go's spelling: `CSVToExcel`, `AppendCSVToExcel`, `CSVDirToExcel` and `ReadCSVToString` are the old functions under new names, and `CsvToExcel`, `AppendCsvToExcel`, `EachCsvToOneExcel` and `ReadCsvToString` are deprecated wrappers that keep working. `ExcelToCSV` and `ExcelDirToCSV` are new and take `ExcelToCSVOptions{Sheets, AllowFormulas}`: text a spreadsheet would run as a formula (starting with `=`, `+`, `-` or `@`, and not a number) gets a leading single quote unless `AllowFormulas` is set, a sheet the workbook does not have is an error, and a file name keeps the extension it was given. `ExcelToCsv` and `EachExcelToCsv` are deprecated and keep their signatures and output; the CLI's `convert` still uses them.
+
+### `pd`
+
+- `FromDataList` turns an empty list into an empty Series; it returned an error.
 
 ### `py`
 
