@@ -16,13 +16,23 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL 把每一種 Go 整數型別與 `float32` 的格子都當成數字。`int8`、`int16` 與無號整數欄（`parquet.Read` 讀到檔案裡這類欄位時給的就是這些型別）過去不被 CCL 當成數字：`SUM` 回 0、`MAX` 回 `nil`、`A == 1` 回 false，全都不報錯，而 `A * 2`、`IF(A, 'y', 'n')` 與 `ROUND(A, 2)` 會失敗。`A.B` 也接受存成 `int32`、`int64`、`float32` 或其他整數型別的列號，過去會被拒絕；小數部分和 `float64` 列號一樣捨去。`ISNA` 與 `IFNA` 也把 `float32` 的 NaN 當成缺值。
 - CCL 的列號是 NaN、無限大或超出 `int32` 範圍時，在每個平台上都會報錯。以前 `float64` 的這種列號在 arm64 會讀到第 0 列，在 amd64 會報錯。
 - `engine/ccl` 可以註冊序列函式了：用 `RegisterSequenceFunction(name, fn)` 搭配新的 `SeqFunc` 型別，加入一個吃整欄、回傳同樣長度一欄的函式，就像 `LAG`、`CUMSUM` 那樣。以前從模組外只能註冊純量函式與彙總函式。註冊函式的說明也寫清楚函式登錄表的行為：整個程式共用同一份，可以從任意多個 goroutine 同時使用，名稱不分大小寫，同名再註冊一次會取代同一類的函式。什麼都不做的 `ResetEvalDepth`、`ResetFuncCallDepth` 標為 Deprecated。
+- 讀寫不再非得經過硬碟上的檔案。`ReadCSV(r io.Reader, opts)` 可以從任何來源讀 CSV，例如 HTTP 回應、壓縮檔裡的檔案、`embed.FS` 檔案或記憶體中的位元組，`Encoding` 留空時會從開頭的位元組偵測編碼；`ReadCSV_FileWithOptions` 與 `ReadCSV_StringWithOptions` 現在走同一套程式，同樣的位元組不論走哪個入口都得到同樣的表格。`StreamCSV(r, opts, batchSize)` 以 `for dt, err := range insyra.StreamCSV(...)` 一批一批讀 CSV，記憶體裡只放當下這一批；標題列會命名每一批的欄位，型別逐批推斷。`ReadJSON` 接受 `io.Reader`，`ReadExcel(r, sheet, …)` 從來源讀活頁簿，`(*DataTable).WriteCSV` 與 `WriteJSON` 可寫到任何 `io.Writer`，`ToCSVWithOptions` 與 `ToJSON` 現在也透過它們寫檔。既有函式的簽名與結果都沒有改變。
+- DataTable 現在可以寫成 Excel。`(*DataTable).ToExcel(path, ExcelWriteOptions)` 把表格寫成活頁簿裡的一張工作表，活頁簿其他工作表維持原樣，檔案不存在時會自動建立，所以一份報表可以一年放一張表。工作表已經存在時會回傳可用 `ErrSheetExists` 比對的錯誤，檔案完全不動；設定 `IfSheetExists: SheetExistsReplace` 才會取代那張表，而且保留它原本的位置，原本隱藏的也維持隱藏，其他工作表定義的名稱也留在原處。`Sheet` 預設為 `Sheet1`。數字、布林值與時間會存成 Excel 的原生值。檔案要整份寫完才會取代原檔，既有檔案的權限不變。`(*DataTable).WriteExcel(w, opts)` 可以把單一工作表的活頁簿寫到任何 `io.Writer`。
 
+### CLI
+
+- `save <var> <file.xlsx>` 把表格寫成活頁簿裡的一張工作表：`sheet <name>` 指定工作表（預設 `Sheet1`），`if-exists replace` 會取代已經存在的工作表，不加則拒絕寫入。活頁簿裡的其他工作表都保留。
 
 ### `datafetch`
 
 - 建構子回傳的客戶端改為匯出型別：`TWStock` 回傳 `*TWStockClient`，`YFinance` 回傳 `*YFinanceClient`，它的 `Ticker` 回傳 `*YFTicker`，`TWGeocoding` 回傳 `*TWGeocodingClient`，`GoogleMapsStores` 回傳 `*GoogleMapsStoresClient`。現在可以把客戶端存進自己的 struct 欄位或當成參數傳遞，既有的呼叫不必修改。不是由建構子建立的 TWSE／TPEx 或地理編碼客戶端（例如建構子出錯時回傳的 `nil` 或零值），過去會直接 panic 的地方現在回傳錯誤；原本就有回應的呼叫，回應不變。
 - 每個抓取方法都有接收 `context.Context` 的 `...Context` 版本，做法與 `ReadSQLContext` 相同，原本的方法改為以 `context.Background()` 呼叫它：`TWStockClient` 的六個方法（例如 `DailyPricesContext`）、`ReverseContext`、`ReverseColsContext`、`ReverseTableContext`、`SearchContext`、`GetReviewsContext`，以及 `YFTicker` 所有會發出請求的 26 個方法（例如 `HistoryContext`）。context 會傳到限流等待、重試前的退避、每個 HTTP 請求與評論翻頁之間的等待。被取消的呼叫回傳 `ctx.Err()` 且不重試。`ReverseContext` 的請求若被 context 中斷，回報的是 context 的錯誤而不是 `ErrGeocodeTimeout`，`ErrGeocodeTimeout` 仍只代表服務沒在 `Timeout` 內回應。`ReverseCols` 批次中途被取消時，會回傳已解析的列，其餘標為 `pending`，與配額用完時相同。go-yfinance 無法中途停止已經開始的呼叫，所以 Yahoo Finance 的方法在 context 結束時會立刻返回，那次呼叫則留在背景跑完，期間仍可能送出剩下的請求。`ReverseTableByColName` 沒有 Context 版本，請把同樣的欄位以 Excel 式索引傳給 `ReverseTableContext`。
 - `YFPeriodYearly` 改為 Deprecated，請改用抓取相同財報的 `YFPeriodAnnual`，它產生的表格仍標示 `yearly`。評論排序常數改為 `GoogleMapsStoreReviewSortByRelevance`、`GoogleMapsStoreReviewSortByNewest`、`GoogleMapsStoreReviewSortByHighestRating`、`GoogleMapsStoreReviewSortByLowestRating`，`SortByRelevance` 等四個舊名改為數值相同的 Deprecated 常數。`GoogleMapsStoreReviewsFetchingOptions.MaxWaitingInterval` 以 `time.Duration` 設定翻頁之間最長的等待，規則與原本的毫秒欄位相同，`MaxWaitingInterval_Milliseconds` 改為 Deprecated，兩個都設定時 `GetReviews` 會在發出請求前回傳 `nil` 並記錄警告。這些 Deprecated 名稱在 0.3.x 線上照常可用。
+
+### `csvxl`
+
+- 編碼參數給空字串，或任何大小寫的 `"auto"`，現在都代表自動偵測，跟核心的 CSV 讀取函式一致。以前空字串代表直接當成 UTF-8，`"AUTO"` 則會被當成不支援的編碼而報錯。
+- 活頁簿唯一的工作表就算名叫 `__insyra_placeholder__`，`AppendCsvToExcel` 也能取代它。以前它用的暫存工作表名稱剛好撞名，結果舊的儲存格都留下來。
 
 ### `py`
 
