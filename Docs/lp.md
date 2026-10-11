@@ -1,12 +1,11 @@
 # [ lp ] Package
 
-The `lp` package provides functionality to solve Linear Programming (LP) problems using the GLPK library. It allows you to define and solve LP models, and provides tools to handle the results.
+The `lp` package solves linear and mixed-integer programs. `Solve` and `SolveFile` use the pure-Go go-milp engine by default. GLPK can be selected explicitly with `Options{Engine: lp.EngineGLPK}`.
 
 > [!NOTE]
 >
-> - This package will automatically install GLPK on your system if it is not already installed (requires network access).
-> - Linux/macOS require build tools (`make`, compiler, or Xcode) for source builds.
-> - You can set `GLPK_PATH` to point to an existing `glpsol` binary.
+> - The new `Solve` and `SolveFile` APIs do not install GLPK. The legacy `SolveFromFile` and `SolveModel` functions retain their automatic-install behavior.
+> - For the explicit GLPK engine, set `GLPK_PATH` to the `glpsol` executable or its containing directory, or make `glpsol` available on `PATH`.
 
 ## Installation
 
@@ -15,6 +14,17 @@ To install the `lp` package, use the following command:
 ```bash
 go get github.com/HazelnutParadise/insyra/lp
 ```
+
+## Pure-Go Solver
+
+```go
+func Solve(model *lpgen.LPModel, opts lp.Options) (*lp.Solution, error)
+func SolveFile(path string, opts lp.Options) (*lp.Solution, error)
+```
+
+The zero-value `Options{}` selects `EngineMILP`. Set `Options.Engine` to `EngineGLPK` to use an installed `glpsol`; `Options.TimeLimit` sets a time limit. Solver outcomes such as infeasible, unbounded, or stopped are returned as a `Solution` with nil error. Invalid input, an unavailable engine, or a solver failure returns an error.
+
+`Solution` provides `Status`, `Objective`, `Values`, `Engine`, `Elapsed`, `Nodes`, and `Log`. `Solution.ToDataTable()` returns the variable/value rows in model order.
 
 ## Features
 

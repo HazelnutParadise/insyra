@@ -18,6 +18,9 @@ import (
 
 // SolveFromFile solves an LP file with GLPK and sets a timeout in seconds.
 // Returns two DataTables: one with the parsed results and one with additional info.
+//
+// Deprecated: use SolveFile for a Solution and error. SolveFile does not
+// automatically install GLPK and its return type differs. Removed in 0.4.
 func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable) {
 	// Check the arguments before initGLPK: a call that is already wrong is no
 	// reason to go looking for — or install — a solver.
@@ -84,6 +87,9 @@ func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *in
 
 // SolveModel solves an LPModel directly by passing the model to GLPK without generating a model file.
 // Returns two DataTables: one with the parsed results and one with additional info.
+//
+// Deprecated: use Solve for a Solution and error. Solve does not automatically
+// install GLPK and its return type differs. Removed in 0.4.
 func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable) {
 	initGLPK()
 	var timeout time.Duration
