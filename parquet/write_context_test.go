@@ -173,7 +173,7 @@ func TestWriteContextRefusesANilContext(t *testing.T) {
 	}
 }
 
-func TestWriteLeavesAFileNamedLikeItsTempAlone(t *testing.T) {
+func TestWriteContextAndApplyCCLLeaveAFileNamedLikeTheirTempAlone(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "mine.parquet")
 	// A caller who keeps something next to the file it asks Insyra to write
@@ -184,7 +184,10 @@ func TestWriteLeavesAFileNamedLikeItsTempAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Write(mixedTable(10), path); err != nil {
+	if err := WriteContext(context.Background(), mixedTable(10), path); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyCCL(context.Background(), path, "NEW('extra') = 1"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -211,7 +214,7 @@ func TestWriteLeavesAFileNamedLikeItsTempAlone(t *testing.T) {
 // their bytes, that the file left behind is one writer's table whole, and that
 // neither a refused nor a completed write leaves a temporary file behind. Each
 // side is therefore asked only to land at least one file.
-func TestConcurrentWritesToOnePathDoNotMix(t *testing.T) {
+func TestConcurrentWriteContextsToOnePathDoNotMix(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "shared.parquet")
 	small := mixedTable(1000)
@@ -227,7 +230,7 @@ func TestConcurrentWritesToOnePathDoNotMix(t *testing.T) {
 		defer wg.Done()
 		got := outcome{}
 		for range 20 {
-			if err := Write(dt, path); err != nil {
+			if err := WriteContext(context.Background(), dt, path); err != nil {
 				got.failures = append(got.failures, err)
 				continue
 			}

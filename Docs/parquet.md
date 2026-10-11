@@ -150,7 +150,7 @@ for an unsupported column, but records no reason.
 func Write(dt insyra.IDataTable, path string) error
 ```
 
-**Description:** Writes an `insyra.IDataTable` to a Parquet file. Data is written to a same-directory temporary file and renamed into place only after success. `WriteContext` accepts cancellation and optional `WriteOptions`; `Write` uses the default settings.
+**Description:** Writes an `insyra.IDataTable` to a Parquet file, opening the file in place as it always has. `WriteContext` accepts cancellation and optional `WriteOptions`, and writes to a same-directory temporary file that replaces the target only once it is complete, so a failed write leaves the old file untouched.
 
 **Parameters:**
 

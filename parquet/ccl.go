@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -584,10 +585,19 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 	}
 
 	// Create temporary output file
-	tmpPath := path + ".tmp"
-	outFile, err := os.Create(tmpPath)
+	// A name of its own in the same directory, so a file the caller keeps at
+	// <path>.tmp is left alone; the result keeps the original file's mode.
+	outFile, err := os.CreateTemp(filepath.Dir(path), ".insyra-*.tmp")
 	if err != nil {
 		return fmt.Errorf("failed to create temporary output file: %w", err)
+	}
+	tmpPath := outFile.Name()
+	if info, statErr := os.Stat(path); statErr == nil {
+		if err := outFile.Chmod(info.Mode().Perm()); err != nil {
+			_ = outFile.Close()
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("failed to set the temporary file's mode: %w", err)
+		}
 	}
 	defer func() {
 		// On the success path writer.Close() already closed this same fd (see
