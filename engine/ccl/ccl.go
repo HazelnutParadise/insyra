@@ -180,10 +180,10 @@ func RegisterStandardFunctions() {
 }
 
 // RegisterFunction registers a custom scalar function: one value per argument
-// in, one value out, called once for each row. The registry is shared by every
-// goroutine and every DataTable in the process; the name is matched in any letter
-// case, and a later registration under the same name replaces this one,
-// including a built-in's. A panic inside fn is returned as an error from the
+// in and one value out. Row-dependent expressions are evaluated per row;
+// row-independent expressions may be evaluated only once. The registry is shared by every
+// goroutine and every DataTable in the process; the name is matched with
+// strings.EqualFold (in any letter case), and a later scalar registration replaces this one. A panic inside fn is returned as an error from the
 // evaluation that called it.
 func RegisterFunction(name string, fn Func) {
 	internalccl.RegisterFunction(name, fn)
@@ -191,12 +191,10 @@ func RegisterFunction(name string, fn Func) {
 
 // RegisterAggregateFunction registers a custom aggregate function: whole
 // columns in, one value out, which every row receives. The registry is shared by
-// every goroutine and every DataTable in the process; the name is matched in any
-// letter case, and a later registration under the same name replaces this one,
-// including a built-in's. A function registered under a built-in's name, such as
-// SUM, is the caller's from then on: nothing in insyra computes that name with
-// the built-in's arithmetic any more, so parquet's FilterWithCCL and ApplyCCL
-// compute it over the whole column instead of batch by batch.
+// every goroutine and every DataTable in the process; the name is matched with
+// strings.EqualFold (in any letter case). A later aggregate registration replaces the prior one.
+// Evaluation checks sequence, aggregate, then scalar functions; IF, AND and OR
+// are special forms outside those registries.
 func RegisterAggregateFunction(name string, fn AggFunc) {
 	internalccl.RegisterAggregateFunction(name, fn)
 }
@@ -204,10 +202,8 @@ func RegisterAggregateFunction(name string, fn AggFunc) {
 // RegisterSequenceFunction registers a custom sequence function: whole columns
 // in, a column of the same length out, of which each row receives its own cell.
 // The registry is shared by every goroutine and every DataTable in the process;
-// the name is matched in any letter case, and a later registration under the
-// same name replaces this one, including a built-in's. A function registered
-// under a built-in's name, such as CUMSUM, is the caller's from then on: nothing
-// in insyra computes that name with the built-in's arithmetic any more.
+// the name is matched using strings.EqualFold (in any letter case), and a later registration under
+// the same name replaces the earlier sequence function, including a built-in.
 func RegisterSequenceFunction(name string, fn SeqFunc) {
 	internalccl.RegisterSequenceFunction(name, fn)
 }

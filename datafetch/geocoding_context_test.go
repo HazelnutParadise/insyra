@@ -48,6 +48,23 @@ func TestGeocodingRefusesANilContext(t *testing.T) {
 	}
 }
 
+func TestReverseColsContextReportsCancellationBeforeEmptyOrInvalidBatch(t *testing.T) {
+	g, err := TWGeocoding(TWGeocodingConfig{BaseURL: "http://127.0.0.1:1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, lists := range [][2]*insyra.DataList{
+		{insyra.NewDataList(), insyra.NewDataList()},
+		{insyra.NewDataList("bad"), insyra.NewDataList(nil)},
+	} {
+		if _, err := g.ReverseColsContext(ctx, lists[0], lists[1]); !errors.Is(err, context.Canceled) {
+			t.Errorf("cancelled batch returned %v, want context.Canceled", err)
+		}
+	}
+}
+
 func TestReverseContextReportsTheCallersDeadline(t *testing.T) {
 	var count int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

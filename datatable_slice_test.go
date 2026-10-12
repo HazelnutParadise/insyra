@@ -1,10 +1,24 @@
 package insyra
 
 import (
+	"math"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
+
+func TestFilterColsLessThanOrEqualToMaxParsedIndex(t *testing.T) {
+	letter, ok := utils.CalcColIndex(math.MaxInt)
+	if !ok {
+		t.Fatal("could not encode maximum int column index")
+	}
+	got := sliceFixture().FilterColsByColIndexLessThanOrEqualTo(letter)
+	if got.NumCols() != 4 {
+		t.Fatalf("maximum parsed index kept %d columns, want 4", got.NumCols())
+	}
+}
 
 func sliceFixture() *DataTable {
 	dt := NewDataTable(
@@ -71,6 +85,15 @@ func TestSliceCols(t *testing.T) {
 	}
 	if e := dt.Err(); e != nil {
 		t.Fatalf("in-range slices recorded %v", e)
+	}
+}
+
+func TestSliceColsPadsShortColumns(t *testing.T) {
+	dt := NewDataTable(NewDataList(1, 2, 3), NewDataList("x"))
+	dt.columns[1].data = []any{"x"}
+	got := dt.SliceCols(1, 2)
+	if want := [][]any{{"x"}, {nil}, {nil}}; !reflect.DeepEqual(got.To2DSlice(), want) {
+		t.Fatalf("SliceCols of short column = %v, want %v", got.To2DSlice(), want)
 	}
 }
 

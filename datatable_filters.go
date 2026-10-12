@@ -1,11 +1,28 @@
 package insyra
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/HazelnutParadise/insyra/internal/core"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 )
+
+func padColumnsToLength(cols []*DataList, length int) []*DataList {
+	out := make([]*DataList, len(cols))
+	for i, col := range cols {
+		out[i] = col
+		if len(col.data) < length {
+			// SliceCols clones the columns after padding; do not change the source.
+			padded := &DataList{name: col.name, creationTimestamp: col.creationTimestamp}
+			padded.data = append([]any(nil), col.data...)
+			padded.data = append(padded.data, make([]any, length-len(padded.data))...)
+			padded.lastModifiedTimestamp.Store(col.lastModifiedTimestamp.Load())
+			out[i] = padded
+		}
+	}
+	return out
+}
 
 // ==================== Slices ====================
 
@@ -65,7 +82,8 @@ func (dt *DataTable) SliceRows(from, to int) *DataTable {
 // The result keeps every row, the row names and the table's name, and owns
 // its data. A bound that picks no column, lies outside the table, or comes
 // after the other records an error on the table and returns an empty
-// DataTable.
+// DataTable. If selected columns have unequal lengths, the shorter columns
+// are padded with nil to the table's longest column.
 func (dt *DataTable) SliceCols(from, to any) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -87,7 +105,7 @@ func (dt *DataTable) SliceCols(from, to any) *DataTable {
 			rowNames = cloneRowNames(dt.rowNames)
 		}
 		result = &DataTable{
-			columns:           cloneColumns(dt.columns[start:end]),
+			columns:           cloneColumns(padColumnsToLength(dt.columns[start:end], dt.getMaxColLength())),
 			rowNames:          rowNames,
 			name:              dt.name,
 			creationTimestamp: dt.creationTimestamp,
@@ -263,7 +281,11 @@ func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter str
 			return
 		}
 
-		filteredCols := dt.columns[:min(colIdx+1, len(dt.columns))]
+		end := len(dt.columns)
+		if colIdx < end {
+			end = colIdx + 1
+		}
+		filteredCols := dt.columns[:end]
 
 		newDt := &DataTable{
 			columns:           cloneColumns(filteredCols),
@@ -511,7 +533,7 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 		// The predicate runs inside the table's lock and may call the
 		// table's own methods; work from the columns as they were when the
 		// call began, so a column added meanwhile cannot run past the result.
-		cols := dt.columns
+		cols := slices.Clone(dt.columns)
 		filteredCols := make([]*DataList, len(cols))
 		for i := range cols {
 			// Preserve the original column name (and metadata) in the result;
@@ -578,7 +600,8 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 //		return insyra.ToFloat64(row.Get(0)) < insyra.ToFloat64(row.Get(1))
 //	})
 //
-// The row is a copy: changing it changes neither the table nor the result. A
+// The row's cell slice is a copy, but reference values such as slices and maps
+// inside cells are shared; changing a referenced value can affect the table. A
 // nil keep records an error and returns an empty DataTable.
 func (dt *DataTable) FilterRowsWhere(keep func(row *DataList) bool) *DataTable {
 	if keep == nil {
@@ -591,7 +614,7 @@ func (dt *DataTable) FilterRowsWhere(keep func(row *DataList) bool) *DataTable {
 		// methods; the columns as they were when the call began are what
 		// the result is built from, so a column added meanwhile cannot run
 		// past filteredCols.
-		cols := dt.columns
+		cols := slices.Clone(dt.columns)
 		filteredCols := make([]*DataList, len(cols))
 		for i, col := range cols {
 			filteredCols[i] = &DataList{name: col.name, creationTimestamp: col.creationTimestamp}
@@ -715,7 +738,7 @@ func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any)
 		// The predicate runs inside the table's lock and may call the
 		// table's own methods; work from the columns as they were when the
 		// call began, so a column added meanwhile cannot run past the result.
-		cols := dt.columns
+		cols := slices.Clone(dt.columns)
 		filteredCols := make([]*DataList, len(cols))
 		for i := range cols {
 			filteredCols[i] = NewDataList()

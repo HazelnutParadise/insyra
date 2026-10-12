@@ -44,3 +44,15 @@ func TestShowTypesLeadsWithTheDataType(t *testing.T) {
 		t.Fatalf("a DataList's type info does not state its data type:\n%s", buf.String())
 	}
 }
+
+func TestShowTypesKeepsCompleteDataTypeInNarrowColumns(t *testing.T) {
+	colored := Config.GetDoesUseColoredOutput()
+	Config.SetUseColoredOutput(false)
+	defer Config.SetUseColoredOutput(colored)
+	dt := NewDataTable(NewDataList(1), NewDataList(nil))
+	var buf bytes.Buffer
+	dt.ShowTypesTo(&buf)
+	if !strings.Contains(buf.String(), "number") || !strings.Contains(buf.String(), "empty") {
+		t.Fatalf("narrow ShowTypes omitted complete types:\n%s", buf.String())
+	}
+}

@@ -3784,7 +3784,7 @@ colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 
 ## Slicing
 
-`SliceRows` and `SliceCols` take a contiguous range of rows or columns the way `s[from:to]` slices a Go slice: `from` is included and `to` is not. `SliceRows` takes positions with `0 <= from <= to <= NumRows()`. `SliceCols` takes each bound as a [column selector](#column-selectors), a letter, a `Name` or an int, so `"B"`, `Name("price")` and `1` can each mark where the range starts or stops. A bound the method cannot use is an error recorded on the table, and the result is an empty DataTable. Both return a new table that owns its data.
+`SliceRows` and `SliceCols` take a contiguous range of rows or columns the way `s[from:to]` slices a Go slice: `from` is included and `to` is not. `SliceRows` takes positions with `0 <= from <= to <= NumRows()`. `SliceCols` takes each bound as a [column selector](#column-selectors), a letter, a `Name` or an int, so `"B"`, `Name("price")` and `1` can each mark where the range starts or stops. A bound the method cannot use is an error recorded on the table, and the result is an empty DataTable. When source columns have unequal lengths, selected columns are padded with `nil` to the table's longest column. Both return a new table that owns its data.
 
 ### SliceRows
 
@@ -3949,7 +3949,7 @@ filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
 func (dt *DataTable) FilterRowsWhere(keep func(row *DataList) bool) *DataTable
 ```
 
-**Description:** Keeps the rows for which `keep` returns `true`, judging each row as a whole. `keep` is called once per row with a `DataList` holding the row's cells in column order, named with the row's name, so a condition can compare cells of the same row. The result keeps the table's name, the column names and the kept rows' names. The row handed to `keep` is a copy: changing it changes neither the table nor the result. A nil `keep` records an error on the table and returns an empty DataTable.
+**Description:** Keeps the rows for which `keep` returns `true`, judging each row as a whole. `keep` is called once per row with a `DataList` holding the row's cells in column order, named with the row's name, so a condition can compare cells of the same row. The result keeps the table's name, the column names and the kept rows' names. The row's cell slice is copied; reference values such as slices and maps inside cells remain shared, so mutating one can affect the source table. A nil `keep` records an error on the table and returns an empty DataTable.
 
 **Parameters:**
 

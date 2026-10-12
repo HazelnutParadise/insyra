@@ -339,6 +339,9 @@ func (g *TWGeocodingClient) ReverseColsContext(ctx context.Context, lat, lng *in
 	if lat.Len() != lng.Len() {
 		return nil, fmt.Errorf("datafetch: ReverseCols lat/lng length mismatch (%d vs %d)", lat.Len(), lng.Len())
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	n := lat.Len()
 
 	latVals := make([]any, n)

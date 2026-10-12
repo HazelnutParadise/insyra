@@ -1369,6 +1369,9 @@ func prepareTableLayoutTypes(dt *DataTable, dataMap map[string][]any, colIndices
 	maxColWidthAllowed := max(terminalWidth-maxName-5, 20)
 	for _, idx := range colIndices {
 		width := runewidth.StringWidth(idx)
+		if w := runewidth.StringWidth("DataType"); w > width {
+			width = w
+		}
 		col := dataMap[idx]
 		for _, r := range rows {
 			if r >= len(col) {

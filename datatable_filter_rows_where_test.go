@@ -184,6 +184,53 @@ func TestFilterRowsWhereSurvivesAColumnAddedByKeep(t *testing.T) {
 	}
 }
 
+func TestFilterRowsWhereSurvivesDropColsInKeep(t *testing.T) {
+	dt := rowsWhereFixture()
+	dropped := false
+	got := dt.FilterRowsWhere(func(*DataList) bool {
+		if !dropped {
+			dropped = true
+			dt.DropColsByIndex("A")
+		}
+		return true
+	})
+	if got.NumCols() != 2 || !reflect.DeepEqual(got.To2DSlice(), rowsWhereFixture().To2DSlice()) {
+		t.Fatalf("result after DropCols is %v, want original two columns", got.To2DSlice())
+	}
+}
+
+func TestFilterSurvivesDropColsInPredicate(t *testing.T) {
+	dt := rowsWhereFixture()
+	dropped := false
+	got := dt.Filter(func(int, string, any) bool {
+		if !dropped {
+			dropped = true
+			dt.DropColsByIndex("A")
+		}
+		return true
+	})
+	want := [][]any{{1, 2}, {5, 4}, {3, 3}, {8, 1}}
+	if !reflect.DeepEqual(got.To2DSlice(), want) {
+		t.Fatalf("Filter after DropCols = %v, want %v", got.To2DSlice(), want)
+	}
+}
+
+func TestFilterRowsSurvivesDropColsInPredicate(t *testing.T) {
+	dt := rowsWhereFixture()
+	dropped := false
+	got := dt.FilterRows(func(string, string, any) bool {
+		if !dropped {
+			dropped = true
+			dt.DropColsByIndex("A")
+		}
+		return true
+	})
+	want := [][]any{{1, 2}, {5, 4}, {3, 3}, {8, 1}}
+	if !reflect.DeepEqual(got.To2DSlice(), want) {
+		t.Fatalf("FilterRows after DropCols = %v, want %v", got.To2DSlice(), want)
+	}
+}
+
 // Filter and FilterRows call their function inside the table's lock too, and
 // crashed with an index out of range when it added a column.
 func TestFilterAndFilterRowsSurviveAColumnAddedByTheirFunction(t *testing.T) {

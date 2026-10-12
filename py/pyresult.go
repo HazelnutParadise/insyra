@@ -163,7 +163,7 @@ func newIPCAddress() string {
 func acquireIPCServer() (string, error) {
 	serverMu.Lock()
 	defer serverMu.Unlock()
-	if serverUsers == 0 {
+	if serverLn == nil {
 		addr := newIPCAddress()
 		ln, err := ipc.Listen(addr)
 		if err != nil {
@@ -186,6 +186,10 @@ func releaseIPCServer() {
 	}
 	serverUsers--
 	if serverUsers > 0 {
+		return
+	}
+	if serverLn == nil {
+		serverAddr = ""
 		return
 	}
 	if err := serverLn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
@@ -216,6 +220,11 @@ func acceptIPC(ln net.Listener) {
 			// acknowledgement nobody sends. Closed, its connect fails and
 			// the run returns an error.
 			_ = ln.Close()
+			serverMu.Lock()
+			if serverLn == ln {
+				serverLn, serverAddr = nil, ""
+			}
+			serverMu.Unlock()
 			return
 		}
 		go handleIPCConnection(conn)

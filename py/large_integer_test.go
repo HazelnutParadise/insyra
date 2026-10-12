@@ -3,10 +3,21 @@ package py
 import (
 	"context"
 	"math"
+	"reflect"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
 )
+
+func TestAssignStructUsesEqualFoldForTurkishI(t *testing.T) {
+	var got struct{ I string }
+	if err := assignStruct(reflect.ValueOf(&got).Elem(), map[string]any{"İ": "must not match"}); err != nil {
+		t.Fatal(err)
+	}
+	if got.I != "" {
+		t.Fatalf("dotted capital I incorrectly matched I: %q", got.I)
+	}
+}
 
 // bigID is 2^53 + 1, which a float64 rounds to 2^53.
 const bigID = 9007199254740993

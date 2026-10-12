@@ -208,3 +208,34 @@ func TestAnAcceptLoopThatStopsClosesItsListener(t *testing.T) {
 		t.Error("the accept loop stopped without closing its listener")
 	}
 }
+
+func TestStoppedAcceptLoopInvalidatesSharedListener(t *testing.T) {
+	ln := &failingListener{}
+	serverMu.Lock()
+	oldLn, oldAddr, oldUsers := serverLn, serverAddr, serverUsers
+	serverLn, serverAddr, serverUsers = ln, "stale", 1
+	serverMu.Unlock()
+	defer func() {
+		serverMu.Lock()
+		if serverLn != nil {
+			_ = serverLn.Close()
+		}
+		serverLn, serverAddr, serverUsers = oldLn, oldAddr, oldUsers
+		serverMu.Unlock()
+	}()
+	acceptIPC(ln)
+	serverMu.Lock()
+	invalidated := serverLn == nil && serverAddr == ""
+	serverMu.Unlock()
+	if !invalidated {
+		t.Fatal("stopped accept loop left its dead listener registered")
+	}
+	if _, err := acquireIPCServer(); err == nil {
+		releaseIPCServer()
+	} else if strings.Contains(err.Error(), "operation not permitted") || strings.Contains(err.Error(), "permission denied") {
+		t.Logf("fresh listener creation unavailable in sandbox: %v", err)
+	} else {
+		t.Fatalf("acquire after accept failure: %v", err)
+	}
+	releaseIPCServer() // The run that held the old listener must release safely.
+}

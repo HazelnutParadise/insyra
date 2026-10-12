@@ -231,6 +231,9 @@ func TestPinnedEnvironmentEndToEnd(t *testing.T) {
 	// minutes in an Alpine arm64 container on an M3.
 	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Minute)
 	defer cancel()
+	if err := RunCodeContext(ctx, nil, "import pandas"); err != nil && strings.Contains(err.Error(), "No module named 'pandas'") {
+		t.Skip("pandas is not installed in the pinned Python environment")
+	}
 
 	var dt *insyra.DataTable
 	if err := RunCodeContext(ctx, &dt, `insyra.Return(pd.DataFrame({"a": [1, 2], "b": [3.5, 4.5]}))`); err != nil {
@@ -293,6 +296,16 @@ insyra.Return(df)`)
 	}
 	if nameSet.GetName() != "scores" {
 		t.Errorf("a DataFrame named scores came back named %q", nameSet.GetName())
+	}
+	namedWithNameColumn, err := Run[*insyra.DataTable](ctx, `
+df = pd.DataFrame({"name": ["x", "y"], "v": [1, 2]})
+df.name = "custom frame"
+insyra.Return(df)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if namedWithNameColumn.GetName() != "custom frame" {
+		t.Errorf("a named DataFrame with a name column came back named %q", namedWithNameColumn.GetName())
 	}
 
 	// An integer above 2^53 came back with its last digits changed.
