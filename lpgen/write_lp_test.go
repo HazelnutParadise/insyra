@@ -42,3 +42,13 @@ func TestWriteLPRejectsAnUnknownObjectiveType(t *testing.T) {
 		t.Errorf("an unknown objective type wrote:\n%s", buf.String())
 	}
 }
+
+func TestWriteLPDoesNotWriteBeforeValidatingObjectiveType(t *testing.T) {
+	var buf bytes.Buffer
+	if err := NewLPModel().SetObjective("upwards", "x").WriteLP(&buf); err == nil {
+		t.Fatal("WriteLP accepted an unknown objective type")
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("WriteLP wrote %d bytes before rejecting objective type", buf.Len())
+	}
+}

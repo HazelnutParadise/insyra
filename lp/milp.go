@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"strings"
 	"time"
 
@@ -44,6 +45,20 @@ func solveMILP(p *problem, timeLimit time.Duration) (*Solution, error) {
 	}
 	m.SetObjective(sense, terms(p.objective))
 	for _, r := range p.rows {
+		scale := 1.0
+		maxCoef := 0.0
+		for _, t := range r.terms {
+			if a := math.Abs(t.coef); a > maxCoef {
+				maxCoef = a
+			}
+		}
+		if maxCoef > 0 && maxCoef < 1 {
+			scale = 1 / maxCoef
+		}
+		rowTerms := append([]term(nil), r.terms...)
+		for i := range rowTerms {
+			rowTerms[i].coef *= scale
+		}
 		rel := milp.LessEq
 		switch r.rel {
 		case greaterEq:
@@ -51,11 +66,12 @@ func solveMILP(p *problem, timeLimit time.Duration) (*Solution, error) {
 		case equalTo:
 			rel = milp.EqualTo
 		}
-		m.AddConstraint(terms(r.terms), rel, r.rhs)
+		m.AddConstraint(terms(rowTerms), rel, r.rhs*scale)
 	}
 
 	opts := milp.DefaultOptions()
 	opts.TimeLimit = timeLimit
+	opts.DisablePresolve = true
 	res, stats, err := m.SolveWithStats(opts)
 
 	limited := errors.Is(err, milp.ErrTimeLimit) || errors.Is(err, milp.ErrNodeLimit)
@@ -80,6 +96,33 @@ func solveMILP(p *problem, timeLimit time.Duration) (*Solution, error) {
 		return sol, nil
 	case res.Status == milp.Unbounded:
 		sol.Status = StatusUnbounded
+		if hasIntegerVariables(p) {
+			if hasImpossibleIntegerEquality(p) {
+				sol.Status = StatusInfeasible
+				return sol, nil
+			}
+			feasibilityProblem := *p
+			feasibilityProblem.maximize = false
+			feasibilityProblem.objective = nil
+			checkLimit := timeLimit
+			if checkLimit <= 0 {
+				checkLimit = feasibilityCheckLimit
+			}
+			feasibility, err := solveMILP(&feasibilityProblem, checkLimit)
+			if err != nil {
+				return nil, err
+			}
+			switch feasibility.Status {
+			case StatusInfeasible:
+				sol.Status = StatusInfeasible
+			case StatusOptimal, StatusFeasible:
+				sol.Status = StatusUnbounded
+			case StatusStopped:
+				sol.Status = StatusStopped
+			default:
+				return nil, fmt.Errorf("%w: feasibility solve returned status %v", ErrSolverFailed, feasibility.Status)
+			}
+		}
 		return sol, nil
 	default:
 		return nil, fmt.Errorf("%w: go-milp returned status %v", ErrSolverFailed, res.Status)
@@ -93,6 +136,56 @@ func solveMILP(p *problem, timeLimit time.Duration) (*Solution, error) {
 		sol.order[i] = c.name
 	}
 	return sol, nil
+}
+
+const feasibilityCheckLimit = 30 * time.Second
+
+func hasIntegerVariables(p *problem) bool {
+	for _, col := range p.cols {
+		if col.integer {
+			return true
+		}
+	}
+	return false
+}
+
+func hasImpossibleIntegerEquality(p *problem) bool {
+	for _, row := range p.rows {
+		if row.rel != equalTo {
+			continue
+		}
+		rhs := new(big.Rat).SetFloat64(row.rhs)
+		if rhs == nil || !rhs.IsInt() {
+			continue
+		}
+		gcd := new(big.Int)
+		valid := true
+		for _, item := range row.terms {
+			if !p.cols[item.col].integer {
+				valid = false
+				break
+			}
+			coef := new(big.Rat).SetFloat64(item.coef)
+			if coef == nil || !coef.IsInt() {
+				valid = false
+				break
+			}
+			gcd.GCD(nil, nil, gcd, new(big.Int).Abs(new(big.Int).Set(coef.Num())))
+		}
+		if !valid {
+			continue
+		}
+		if gcd.Sign() == 0 {
+			if rhs.Sign() != 0 {
+				return true
+			}
+			continue
+		}
+		if new(big.Int).Rem(rhs.Num(), gcd).Sign() != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // checkBounds refuses the bounds GLPK refuses when it starts solving: a lower

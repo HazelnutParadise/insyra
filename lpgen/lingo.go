@@ -48,6 +48,36 @@ func parseLingo(r io.Reader, strict bool) (*LPModel, error) {
 		line = lingoRowLabelRe.ReplaceAllString(line, "")
 		line = strings.TrimSpace(line)
 
+		if strict {
+			parts := strings.Split(line, ";")
+			for i, part := range parts {
+				part = strings.TrimSpace(part)
+				if currentExpr.Len() == 0 && part != "" {
+					stmtLine = lineNo
+				}
+				if strings.HasPrefix(part, "!") {
+					currentExpr.Reset()
+					continue
+				}
+				if part != "" {
+					if currentExpr.Len() > 0 && !strings.HasPrefix(part, "+") && !strings.HasPrefix(part, "-") {
+						currentExpr.WriteByte(' ')
+					}
+					currentExpr.WriteString(part)
+				}
+				if i < len(parts)-1 {
+					expr := cleanStrictLingoExpr(currentExpr.String())
+					currentExpr.Reset()
+					if expr != "" {
+						if err := lingoStrictStatement(model, expr, stmtLine); err != nil {
+							return nil, err
+						}
+					}
+				}
+			}
+			continue
+		}
+
 		// 累積當前行到表達式
 		if line != "" {
 			if !isFirstLine {
@@ -75,10 +105,7 @@ func parseLingo(r io.Reader, strict bool) (*LPModel, error) {
 		isFirstLine = true
 
 		// 清理表達式格式
-		expr = lingoMultiplyRe.ReplaceAllString(expr, " ")
-		expr = lingoMissingSpaceRe.ReplaceAllString(expr, `$1 $2`)
-		expr = lingoSciNotationRe.ReplaceAllString(expr, `$1$2$3`)
-		expr = lingoSpaceRe.ReplaceAllString(expr, " ")
+		expr = cleanLingoExpr(expr)
 
 		if strict {
 			if err := lingoStrictStatement(model, expr, stmtLine); err != nil {
@@ -114,6 +141,20 @@ func parseLingo(r io.Reader, strict bool) (*LPModel, error) {
 	return model, nil
 }
 
+func cleanLingoExpr(expr string) string {
+	expr = lingoMultiplyRe.ReplaceAllString(expr, " ")
+	expr = lingoMissingSpaceRe.ReplaceAllString(expr, "$1 $2")
+	expr = lingoSciNotationRe.ReplaceAllString(expr, "$1$2$3")
+	return strings.TrimSpace(lingoSpaceRe.ReplaceAllString(expr, " "))
+}
+
+func cleanStrictLingoExpr(expr string) string {
+	expr = lingoSciNotationRe.ReplaceAllString(expr, "$1$2$3")
+	expr = lingoLinearMultiplyRe.ReplaceAllString(expr, "$1 $2")
+	expr = lingoMissingSpaceRe.ReplaceAllString(expr, "$1 $2")
+	return strings.TrimSpace(lingoSpaceRe.ReplaceAllString(expr, " "))
+}
+
 // lingoStrictStatement reads one statement of a model read with strict on. It
 // knows the objective, the relations, the @BIN, @INT and @GIN declarations,
 // @FREE(x) and @BND(l, x, u), and it skips a comment. Anything else is an error
@@ -129,6 +170,9 @@ func lingoStrictStatement(model *LPModel, expr string, line int) error {
 		// LINGO 註解，不是敘述。
 		return nil
 	case strings.HasPrefix(strings.ToUpper(expr), "MIN="), strings.HasPrefix(strings.ToUpper(expr), "MAX="):
+		if !lingoIsLinear(strings.TrimSpace(strings.SplitN(expr, "=", 2)[1])) {
+			return fmt.Errorf("line %d: invalid linear objective: %s", line, expr)
+		}
 		lingoSetObjective(model, expr)
 	case strings.HasPrefix(strings.ToUpper(expr), "@BIN"), strings.HasPrefix(strings.ToUpper(expr), "@INT"),
 		strings.HasPrefix(strings.ToUpper(expr), "@GIN"):
@@ -158,11 +202,56 @@ func lingoStrictStatement(model *LPModel, expr string, line int) error {
 		}
 		model.Bounds = append(model.Bounds, bound)
 	case strings.ContainsAny(expr, "<=>"):
+		parts := lingoRelSplitRe.Split(expr, -1)
+		if len(parts) < 2 {
+			return fmt.Errorf("line %d: invalid relation: %s", line, expr)
+		}
+		for _, part := range parts {
+			if !lingoIsLinear(strings.TrimSpace(part)) {
+				return fmt.Errorf("line %d: invalid linear expression: %s", line, expr)
+			}
+		}
 		lingoAddRelation(model, expr)
 	default:
 		return fmt.Errorf("line %d: LINGO statement not recognised: %s", line, expr)
 	}
 	return nil
+}
+
+func lingoIsLinear(expr string) bool {
+	tokens := strings.Fields(expr)
+	if len(tokens) == 0 {
+		return false
+	}
+	expectTerm, previousNumber := true, false
+	for _, token := range tokens {
+		if token == "+" || token == "-" {
+			if expectTerm {
+				continue
+			}
+			expectTerm, previousNumber = true, false
+			continue
+		}
+		if !expectTerm && (!previousNumber || !lingoBareVarRe.MatchString(token)) {
+			return false
+		}
+		if lingoIsNumber(token) {
+			if !expectTerm {
+				return false
+			}
+			previousNumber, expectTerm = true, false
+			continue
+		}
+		if lingoBareVarRe.MatchString(token) {
+			if !expectTerm && !previousNumber {
+				return false
+			}
+			previousNumber, expectTerm = false, false
+			continue
+		}
+		return false
+	}
+	return !expectTerm
 }
 
 // lingoDeclaredName returns the variable a declaration such as "@BIN(X)"
@@ -327,11 +416,12 @@ func ParseLingoModel_txt(filePath string) *LPModel {
 
 // Compiled once: the parser rebuilt these five on every call.
 var (
-	lingoRowLabelRe     = regexp.MustCompile(`^\[\_\d+\]\s*`)
-	lingoMultiplyRe     = regexp.MustCompile(`\s*\*\s*`)
-	lingoSpaceRe        = regexp.MustCompile(`\s+`)
-	lingoMissingSpaceRe = regexp.MustCompile(`([a-zA-Z_0-9]+)([+-])`)
-	lingoSciNotationRe  = regexp.MustCompile(`(\d)([eE])\s*([+-]?\d+)`)
+	lingoRowLabelRe       = regexp.MustCompile(`^\[\_\d+\]\s*`)
+	lingoMultiplyRe       = regexp.MustCompile(`\s*\*\s*`)
+	lingoSpaceRe          = regexp.MustCompile(`\s+`)
+	lingoMissingSpaceRe   = regexp.MustCompile(`([a-zA-Z_0-9]+)([+-])`)
+	lingoSciNotationRe    = regexp.MustCompile(`(\d)([eE])\s*([+-]?\d+)`)
+	lingoLinearMultiplyRe = regexp.MustCompile(`([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*\*\s*([A-Za-z_][A-Za-z0-9_]*)`)
 )
 
 // handleVariableDeclarations 處理變數宣告並將變數名稱添加到相應的列表中

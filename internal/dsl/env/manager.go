@@ -50,6 +50,10 @@ type Manager struct {
 	envsDirName string // empty = "envs"
 }
 
+// ErrEnvironmentExists is returned by Create when another caller already
+// created the environment.
+var ErrEnvironmentExists = errors.New("environment already exists")
+
 // NewManager constructs a Manager rooted at basePath. envsDirName overrides
 // the per-environment subfolder name; pass "" for the default "envs".
 //
@@ -157,7 +161,7 @@ func (m *Manager) EnsureDefaultEnvironment() error {
 	if !m.Exists("default") {
 		// Another caller may create it between the check and Create; that
 		// leaves the environment there, which is all this asks for.
-		if err := m.Create("default"); err != nil && !m.Exists("default") {
+		if err := m.Create("default"); err != nil && !errors.Is(err, ErrEnvironmentExists) {
 			return err
 		}
 	}
@@ -199,16 +203,23 @@ func (m *Manager) Create(name string) error {
 	if err != nil {
 		return err
 	}
-	// Mkdir, not MkdirAll: the parent exists, and Mkdir fails for a folder that
-	// is already there, so of several Creates running at once exactly one makes
-	// the environment and the rest report that it exists.
+	return createEnvironment(envPath, name, writeDefaultFiles)
+}
+
+func createEnvironment(envPath, name string, initialize func(string) error) error {
+	// Mkdir, not MkdirAll: exactly one concurrent caller claims the directory.
 	if err := os.Mkdir(envPath, 0o755); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return fmt.Errorf("environment already exists: %s", name)
+			if info, statErr := os.Stat(envPath); statErr == nil && info.IsDir() {
+				return fmt.Errorf("%w: %s", ErrEnvironmentExists, name)
+			}
 		}
 		return err
 	}
-	if err := writeDefaultFiles(envPath); err != nil {
+	if err := initialize(envPath); err != nil {
+		if cleanupErr := os.RemoveAll(envPath); cleanupErr != nil {
+			return errors.Join(err, fmt.Errorf("remove incomplete environment: %w", cleanupErr))
+		}
 		return err
 	}
 	return nil
@@ -553,7 +564,14 @@ func writeDefaultFiles(envPath string) error {
 	for _, f := range files {
 		handle, err := os.OpenFile(filepath.Join(envPath, f.name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, f.perm)
 		if errors.Is(err, fs.ErrExist) {
-			continue
+			info, statErr := os.Lstat(filepath.Join(envPath, f.name))
+			if statErr == nil && info.Mode().IsRegular() {
+				continue
+			}
+			if statErr != nil {
+				return statErr
+			}
+			return fmt.Errorf("default environment path %s is not a regular file", f.name)
 		}
 		if err != nil {
 			return err

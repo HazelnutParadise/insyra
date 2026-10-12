@@ -118,6 +118,9 @@ func Register(handler *CommandHandler) error {
 	if handler.Run == nil {
 		return fmt.Errorf("handler run function is required")
 	}
+	if err := handler.Args.validate(); err != nil {
+		return fmt.Errorf("command %s: %w", handler.Name, err)
+	}
 	seenFlags := make(map[string]bool, len(handler.Flags))
 	for _, flag := range handler.Flags {
 		if flag.Name == "" {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,6 +12,46 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats"
 )
+
+func TestTwoWayLongRejectsMissingCombinationsBeforeGridAllocation(t *testing.T) {
+	const n = 5000
+	values, a, b := make([]any, n), make([]any, n), make([]any, n)
+	for i := range n {
+		values[i], a[i], b[i] = float64(i), i, i
+	}
+	dt := insyra.NewDataTable(insyra.NewDataList(values...).SetName("v"), insyra.NewDataList(a...).SetName("a"), insyra.NewDataList(b...).SetName("b"))
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, err := stats.TwoWayANOVAFromTable(dt, insyra.Name("v"), insyra.Name("a"), insyra.Name("b"))
+	runtime.ReadMemStats(&after)
+	if err == nil {
+		t.Fatal("expected missing combinations to be rejected")
+	}
+	if delta := after.TotalAlloc - before.TotalAlloc; delta >= 64<<20 {
+		t.Fatalf("rejection allocated %d bytes, want under 64 MiB", delta)
+	}
+}
+
+func TestRepeatedMeasuresLongRejectsMissingCombinationsBeforeGridAllocation(t *testing.T) {
+	const n = 5000
+	values, conditions, subjects := make([]any, n), make([]any, n), make([]any, n)
+	for i := range n {
+		values[i], conditions[i], subjects[i] = float64(i), i, i
+	}
+	dt := insyra.NewDataTable(insyra.NewDataList(values...).SetName("v"), insyra.NewDataList(conditions...).SetName("condition"), insyra.NewDataList(subjects...).SetName("subject"))
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, err := stats.RepeatedMeasuresANOVAFromTable(dt, insyra.Name("v"), insyra.Name("condition"), insyra.Name("subject"))
+	runtime.ReadMemStats(&after)
+	if err == nil {
+		t.Fatal("expected missing combinations to be rejected")
+	}
+	if delta := after.TotalAlloc - before.TotalAlloc; delta >= 64<<20 {
+		t.Fatalf("rejection allocated %d bytes, want under 64 MiB", delta)
+	}
+}
 
 var longRef = &refTable{path: "testdata/long_format_reference.txt"}
 

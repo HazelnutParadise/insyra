@@ -38,7 +38,7 @@ func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, e
 	// exists, so when another session creates it in between, the second check
 	// finds it and the session opens it instead of failing.
 	if !mgr.Exists(envName) {
-		if err := mgr.Create(envName); err != nil && !mgr.Exists(envName) {
+		if err := mgr.Create(envName); err != nil && !errors.Is(err, env.ErrEnvironmentExists) {
 			return nil, err
 		}
 	}

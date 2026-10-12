@@ -10,10 +10,11 @@ import (
 
 func init() {
 	_ = Register(&CommandHandler{
-		Name:        "wilcoxon",
-		Args:        FormArgs(map[string]int{"single": 4, "paired": 4}),
-		Usage:       "wilcoxon single|paired ...",
-		Description: "Wilcoxon signed-rank tests",
+		Name:               "wilcoxon",
+		DisableFlagParsing: true,
+		Args:               FormArgs(map[string]int{"single": 4, "paired": 4}),
+		Usage:              "wilcoxon single|paired ...",
+		Description:        "Wilcoxon signed-rank tests",
 		Forms: []string{
 			"wilcoxon single <var> <mu> [two-sided|greater|less]        one sample against mu",
 			"wilcoxon paired <var1> <var2> [two-sided|greater|less]     paired samples",

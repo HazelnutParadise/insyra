@@ -2,6 +2,7 @@ package env
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -508,5 +509,37 @@ func TestImportEnvironmentNonEmptyRequiresForce(t *testing.T) {
 	}
 	if _, exists := state.Variables["old"]; exists {
 		t.Fatalf("expected old target variable to be overwritten")
+	}
+}
+
+func TestWriteDefaultFilesRejectsDirectoryAtDefaultFilePath(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "history.txt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeDefaultFiles(root); err == nil {
+		t.Fatal("expected directory collision to fail")
+	}
+}
+
+func TestCreateIdentifiesAlreadyExistingEnvironment(t *testing.T) {
+	mgr := NewManager(t.TempDir(), "")
+	if err := mgr.Create("known"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.Create("known"); !errors.Is(err, ErrEnvironmentExists) {
+		t.Fatalf("Create error = %v, want ErrEnvironmentExists", err)
+	}
+}
+
+func TestCreateRemovesItsDirectoryWhenInitializationFails(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "incomplete")
+	wantErr := errors.New("default file write failed")
+	err := createEnvironment(root, "incomplete", func(string) error { return wantErr })
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("createEnvironment error = %v, want %v", err, wantErr)
+	}
+	if _, statErr := os.Stat(root); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("incomplete directory remains: stat error = %v", statErr)
 	}
 }
