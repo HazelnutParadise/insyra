@@ -4014,7 +4014,7 @@ filtered := dt.FilterColsByColNameEqualTo("age")
 func (dt *DataTable) FilterColsByColIndexGreaterThan(threshold string) *DataTable
 ```
 
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(i+1, nil)`, where `i` is the column's position (`ParseColIndex` turns a letter into one). `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
+**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(i+1, nil)`, where `i` is the column's position (`ColIndexToNumber` turns a column index into one). `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
 
 **Description:** Filters columns by index greater than the specified threshold.
 
@@ -4086,7 +4086,7 @@ filtered := dt.FilterColsByColIndexLessThan("C") // Columns A, B
 func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable
 ```
 
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(nil, i+1)`, where `i` is the column's position (`ParseColIndex` turns a letter into one). A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
+**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(nil, i+1)`, where `i` is the column's position (`ColIndexToNumber` turns a column index into one). A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
 
 **Description:** Filters columns by index less than or equal to the specified threshold.
 
@@ -4110,7 +4110,7 @@ filtered := dt.FilterColsByColIndexLessThanOrEqualTo("C") // Columns A, B, C
 func (dt *DataTable) FilterColsByColIndexEqualTo(index string) *DataTable
 ```
 
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(index, i+1)`, where `i` is the column's position (`ParseColIndex` turns a letter into one), or `GetCol` to read the column as a DataList. `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
+**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(index, i+1)`, where `i` is the column's position (`ColIndexToNumber` turns a column index into one), or `GetCol` to read the column as a DataList. `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
 
 **Description:** Filters columns by exact index match.
 

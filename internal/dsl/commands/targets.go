@@ -87,7 +87,7 @@ func resolveTarget(cmd, kind string, names []string, letters bool, token string)
 		if !letters {
 			return 0, fmt.Errorf("%s: %s picks a column by its letters, and a %s has none; write %s<n> or %s<name>", cmd, token, kind, numberPrefix, namePrefix)
 		}
-		pos, ok := insyra.ParseColIndex(raw)
+		pos, ok := insyra.ColIndexToNumber(raw)
 		if !ok {
 			return 0, fmt.Errorf("%s: %q is not a column index; %s takes Excel-style letters such as A or AB", cmd, raw, indexPrefix)
 		}
@@ -115,7 +115,7 @@ func resolveTarget(cmd, kind string, names []string, letters bool, token string)
 			readings = append(readings, reading{pos, fmt.Sprintf("number %d", n), targetName(kind, names, pos), numberPrefix + token})
 		}
 	} else if letters {
-		if pos, ok := insyra.ParseColIndex(token); ok && pos < count {
+		if pos, ok := insyra.ColIndexToNumber(token); ok && pos < count {
 			readings = append(readings, reading{pos, "index " + strings.ToUpper(token), fmt.Sprintf("%s, number %d", targetName(kind, names, pos), pos), indexPrefix + token})
 		}
 	}

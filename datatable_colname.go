@@ -6,7 +6,7 @@ package insyra
 func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
-		nIndex, ok := ParseColIndex(index)
+		nIndex, ok := ColIndexToNumber(index)
 		if !ok {
 			dt.fail("SetColNameByIndex", "invalid column index: %s", index)
 			result = dt
@@ -92,7 +92,7 @@ func (dt *DataTable) GetColNameByNumber(index int) string {
 func (dt *DataTable) GetColNameByIndex(index string) string {
 	var result string
 	dt.AtomicDo(func(dt *DataTable) {
-		nIndex, ok := ParseColIndex(index)
+		nIndex, ok := ColIndexToNumber(index)
 		if !ok {
 			dt.fail("GetColNameByIndex", "invalid column index: %s", index)
 			result = ""

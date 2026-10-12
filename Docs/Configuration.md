@@ -35,8 +35,10 @@ Control whether terminal output is colored:
 insyra.Config.SetUseColoredOutput(true)
 
 // Check colored output status
-usesColor := insyra.Config.GetDoesUseColoredOutput()
+usesColor := insyra.Config.GetUseColoredOutput()
 ```
+
+`GetDoesUseColoredOutput` is the deprecated name of `GetUseColoredOutput`. It returns the same value and is removed in the release after the one that deprecated it.
 
 ## Error Handling
 
@@ -125,6 +127,8 @@ insyra.Config.Dangerously_TurnOffThreadSafety()
 // If you need to reset all configs back to library defaults, call:
 insyra.SetDefaultConfig()
 ```
+
+The underscore in `Dangerously_TurnOffThreadSafety` is deliberate. Go names do not use one, so the call looks wrong wherever it is written, and that is the warning. Naming linters report only the declaration inside insyra, never your call.
 
 Control device acceleration independently from thread safety:
 

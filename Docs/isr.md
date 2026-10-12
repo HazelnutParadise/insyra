@@ -235,10 +235,10 @@ isr.DL.From(...values) *dl
 
 **Equivalent:** `insyra.NewDataList()`
 
-#### Creating DataLists with Of (Alias)
+#### Creating DataLists with Of
 
 ```go
-// Create DataList with values using Of (alias for From)
+// Of builds the same DataList as From
 dataList := isr.DL.Of("A", "B", "C", 1, 2, 3, 4, 5, 6)
 ```
 
@@ -248,7 +248,7 @@ dataList := isr.DL.Of("A", "B", "C", 1, 2, 3, 4, 5, 6)
 isr.DL.Of(...values) *dl
 ```
 
-**Description:** Alias for `From()` providing a shorter method name
+**Description:** Builds exactly what `From()` builds. Both names are kept on purpose, after Java and Rust: `From` reads as converting data you already have (Rust's `From::from`), and `Of` reads as listing the elements (Java's `List.of`). Use whichever reads better at the call.
 
 **Parameters:**
 
@@ -342,7 +342,7 @@ dataList.Push(7, 8, 9)
 Push(...values) *dl
 ```
 
-**Description:** Use when you need this method.
+**Description:** Appends the values, like `Append()`, and returns the isr list so the chain can go on to isr methods such as `At`. `Append()` itself returns `*insyra.DataList`, which has no `At`. isr cannot change `Append` to return its own type, because the isr list has to stay an `insyra.IDataList`.
 
 **Parameters:**
 
@@ -352,7 +352,7 @@ Push(...values) *dl
 
 - Self (for method chaining)
 
-**Equivalent:** `insyra.DataList.Append()`
+**Equivalent:** `insyra.DataList.Append()`, returning the isr list
 
 #### Method Chaining Example
 
@@ -407,10 +407,10 @@ isr.DT.From(nil) *dt
 
 **Equivalent:** `insyra.NewDataTable()`
 
-#### Creating DataTables with Of (Alias)
+#### Creating DataTables with Of
 
 ```go
-// Create DataTable using Of (alias for From)
+// Of builds the same DataTable as From
 dataTable := isr.DT.Of(nil)
 
 // Create from various sources
@@ -424,7 +424,7 @@ dataTable := isr.DT.Of(isr.DL.From("A", "B", "C"))
 isr.DT.Of(item) *dt
 ```
 
-**Description:** Alias for `From()` providing a shorter method name
+**Description:** Builds exactly what `From()` builds. As with `DL.Of`, both names are kept on purpose: `From` for converting data, `Of` for listing it.
 
 **Parameters:**
 
@@ -706,7 +706,7 @@ dataTable.Push(isr.DLs{
 Push(data any) *dt
 ```
 
-**Description:** Append data to existing DataTable
+**Description:** Appends to the table, as a row or as columns depending on what it is given: a `Row` or `[]Row` adds rows, and a `Col`, `[]Col` or any form of DataList adds columns. It is therefore not `AppendCols` under another name, and it returns the isr table so the chain goes on.
 
 **Parameters:**
 

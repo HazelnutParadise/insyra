@@ -73,7 +73,7 @@ func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) (result
 		LogDebug("DataTable", "EditColByIndexUsingCCL", "Starting CCL evaluation for column %s: %s", colIndex, cclFormula)
 
 		// 解析欄位索引
-		targetColIdx, ok := ParseColIndex(colIndex)
+		targetColIdx, ok := ColIndexToNumber(colIndex)
 		if !ok || targetColIdx < 0 || targetColIdx >= len(dt.columns) {
 			dt.fail("EditColByIndexUsingCCL", "Column index '%s' out of range", colIndex)
 			return
@@ -243,12 +243,12 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 		targetColIdx = idx
 	} else {
 		// 欄位索引形式 A, B, C。裸識別字兩側同一套規則，欄名一律寫成 ['name']。
-		idx, ok := ParseColIndex(target)
+		idx, ok := ColIndexToNumber(target)
 		if !ok {
 			return ccl.NotAnIndexError(target, colNameMap)
 		}
 		if idx < 0 || idx >= len(dt.columns) {
-			letters, _ := CalcColIndex(idx)
+			letters, _ := ColNumberToIndex(idx)
 			return ccl.PastLastColumnError(target, letters, len(dt.columns), colNameMap)
 		}
 		targetColIdx = idx

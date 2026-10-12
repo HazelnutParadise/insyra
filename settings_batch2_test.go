@@ -102,7 +102,7 @@ func TestSimpleImputerTakesOptions(t *testing.T) {
 // the caller never learned that the range they asked for was not the one
 // displayed.
 func TestShowRangeRefusesWhatItCannotRead(t *testing.T) {
-	colored := Config.GetDoesUseColoredOutput()
+	colored := Config.GetUseColoredOutput()
 	Config.SetUseColoredOutput(false)
 	defer Config.SetUseColoredOutput(colored)
 
@@ -126,7 +126,7 @@ func TestShowRangeRefusesWhatItCannotRead(t *testing.T) {
 }
 
 func TestShowHeadAndTail(t *testing.T) {
-	colored := Config.GetDoesUseColoredOutput()
+	colored := Config.GetUseColoredOutput()
 	Config.SetUseColoredOutput(false)
 	defer Config.SetUseColoredOutput(colored)
 

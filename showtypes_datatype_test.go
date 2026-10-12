@@ -9,7 +9,7 @@ import (
 // ShowTypes prints each cell's Go type; the DataType row on top sums each
 // column up in one word, so a reader sees both the detail and the verdict.
 func TestShowTypesLeadsWithTheDataType(t *testing.T) {
-	colored := Config.GetDoesUseColoredOutput()
+	colored := Config.GetUseColoredOutput()
 	Config.SetUseColoredOutput(false)
 	defer Config.SetUseColoredOutput(colored)
 

@@ -193,7 +193,7 @@ func TestDeprecatedIndexFiltersMatchSlices(t *testing.T) {
 	}
 	nCols := dt.NumCols()
 	for i := 0; i < nCols; i++ {
-		letter, _ := CalcColIndex(i)
+		letter, _ := ColNumberToIndex(i)
 		if i+1 < nCols {
 			same("ColIndexGreaterThan "+letter, dt.FilterColsByColIndexGreaterThan(letter), dt.SliceCols(i+1, nCols))
 		}

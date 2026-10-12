@@ -56,8 +56,18 @@ func (c *configStruct) SetUseColoredOutput(colored bool) {
 	c.coloredOutput.Store(colored)
 }
 
-func (c *configStruct) GetDoesUseColoredOutput() bool {
+// GetUseColoredOutput reports whether output is coloured; see
+// SetUseColoredOutput. It is true by default.
+func (c *configStruct) GetUseColoredOutput() bool {
 	return c.coloredOutput.Load()
+}
+
+// GetDoesUseColoredOutput reports whether output is coloured.
+//
+// Deprecated: use GetUseColoredOutput, which is the same method. Removed in
+// the release after the one that deprecated it.
+func (c *configStruct) GetDoesUseColoredOutput() bool {
+	return c.GetUseColoredOutput()
 }
 
 // SetPanicOnError controls what happens when the library records an error.
@@ -140,6 +150,10 @@ func (c *configStruct) GetAccelerationEnabled() bool {
 //
 // Dangerously_TurnOffThreadSafety turns off thread safety for all data structures.
 // You can enjoy extreme performance boost, but data consistency is NOT guaranteed.
+//
+// The underscore is deliberate. Go names do not use one, so the call looks
+// wrong wherever it is written, and that is the warning. Naming linters report
+// only this declaration, never the code that calls it.
 func (c *configStruct) Dangerously_TurnOffThreadSafety() {
 	c.threadSafe.Store(false)
 	LogWarning("config", "Dangerously_TurnOffThreadSafety", "Thread safety is turned off. Data consistency is NOT guaranteed!\nIt may be a mistake. Remove `Dangerously_TurnOffThreadSafety()` in your code to restore thread safety.")

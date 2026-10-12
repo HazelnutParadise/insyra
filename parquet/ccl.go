@@ -463,7 +463,7 @@ func resolveAssignTarget(target string, colNames []string) (string, bool) {
 		}
 		return "", false
 	}
-	if idx, ok := insyra.ParseColIndex(target); ok && idx >= 0 && idx < len(colNames) {
+	if idx, ok := insyra.ColIndexToNumber(target); ok && idx >= 0 && idx < len(colNames) {
 		return colNames[idx], true
 	}
 	return "", false
@@ -482,11 +482,11 @@ func assignTargetError(target string, colNames []string) error {
 	for index, name := range colNames {
 		names[name] = index
 	}
-	idx, ok := insyra.ParseColIndex(target)
+	idx, ok := insyra.ColIndexToNumber(target)
 	if !ok {
 		return ccl.NotAnIndexError(target, names)
 	}
-	letters, _ := insyra.CalcColIndex(idx)
+	letters, _ := insyra.ColNumberToIndex(idx)
 	return ccl.PastLastColumnError(target, letters, len(colNames), names)
 }
 
@@ -2229,7 +2229,7 @@ func wholeColumnValues(ctx context.Context, path string, colNames []string, prio
 		return nil, err
 	}
 	if word, index, found := ccl.FirstColPastEnd(bound, len(names)); found {
-		letters, _ := insyra.CalcColIndex(index)
+		letters, _ := insyra.ColNumberToIndex(index)
 		return nil, ccl.PastLastColumnError(word, letters, len(names), colNameMap)
 	}
 

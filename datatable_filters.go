@@ -131,7 +131,7 @@ func (dt *DataTable) sliceColBound(bound any, ifNil int) (int, bool) {
 // gives an empty DataTable.
 //
 // Deprecated: use SliceCols(i+1, nil), where i is the column's position;
-// ParseColIndex turns a letter into one. SliceCols reports a bound past the
+// ColIndexToNumber turns a column index into one. SliceCols reports a bound past the
 // last column as an error instead of returning an empty table.
 func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *DataTable {
 	var newDt *DataTable
@@ -191,7 +191,7 @@ func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter 
 // unreadable letter, or one past the last column, gives an empty DataTable.
 //
 // Deprecated: use SliceCols(columnIndexLetter, i+1), where i is the column's
-// position; ParseColIndex turns a letter into one. To pick a column as a
+// position; ColIndexToNumber turns a column index into one. To pick a column as a
 // DataList, use GetCol.
 func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
@@ -252,7 +252,7 @@ func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *Dat
 // keeps them all. An unreadable letter gives an empty DataTable.
 //
 // Deprecated: use SliceCols(nil, i+1), where i is the column's position;
-// ParseColIndex turns a letter into one. SliceCols reports a bound past the
+// ColIndexToNumber turns a column index into one. SliceCols reports a bound past the
 // last column as an error.
 func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable

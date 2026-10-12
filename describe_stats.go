@@ -177,7 +177,7 @@ func describeColumnLabel(index int, name string) string {
 	if name != "" {
 		return name
 	}
-	if label, ok := CalcColIndex(index); ok {
+	if label, ok := ColNumberToIndex(index); ok {
 		return label
 	}
 	return ""

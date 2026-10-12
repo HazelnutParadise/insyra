@@ -11,7 +11,7 @@ func restoreConfig(t *testing.T) {
 	t.Helper()
 	level := Config.GetLogLevel()
 	panicOnError := Config.GetPanicOnError()
-	colored := Config.GetDoesUseColoredOutput()
+	colored := Config.GetUseColoredOutput()
 	hook := Config.GetDefaultErrHandlingFunc()
 	t.Cleanup(func() {
 		Config.SetLogLevel(level)

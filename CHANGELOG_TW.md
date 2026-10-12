@@ -88,6 +88,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`engine/ccl.CCLNode` 改成不透明型別，只有這個套件的編譯與節點函式能產生它。以前它是 `any` 的別名，所以 `ccl.Evaluate("A + B", ctx)`、`ccl.Evaluate(42, ctx)` 都能編譯，要到執行時才失敗，錯誤是 `invalid node`。先編譯再把節點傳回去的程式碼不受影響；原本拿節點和 `nil` 比較的地方，改成和 `ccl.CCLNode{}` 比較，`Evaluate`、`EvaluateStatement` 與 `Bind` 遇到這個零值會回傳錯誤。`CompiledStatement` 改成獨立的 struct，`Node` 與 `Src` 欄位不變。
 - **BREAKING**：`engine/ccl.MapContext` 不再有公開欄位。以前直接改欄位會繞過檢查：`ctx.CurrentRowIdx = 99` 會讓欄位讀成 `nil` 而且不報錯，`SetRowIndex(99)` 則會拒絕；在 `ctx.Data` 裡加一欄，那一欄永遠讀成 `nil`。請用 `NewMapContext` 建立、用 `SetRowIndex` 換列；`Context` 的方法全部都還在。
 - `engine/ccl.Context` 是程式把 CCL 套用到自己資料時要實作的介面，它的方法集從此固定：CCL 日後新增的能力會以獨立的選用介面提供，今天寫好的實作不會因此編譯失敗。套件說明寫明了這點，也有測試把方法釘在現有的 15 個。
+- `ColIndexToNumber` 與 `ColNumberToIndex` 在 Excel 式欄位索引與從 0 起算的欄位編號之間轉換：`ColIndexToNumber("AA")` 是 `26`，`ColNumberToIndex(26)` 是 `"AA"`。`Config.GetUseColoredOutput` 回報 `SetUseColoredOutput` 設定的值。`ParseColIndex`、`CalcColIndex` 與 `Config.GetDoesUseColoredOutput` 標為 **Deprecated**，回傳值與新名稱相同，下一版移除。`Config.Dangerously_TurnOffThreadSafety` 刻意保留底線作為警告；取值方法保留 `Get` 前綴，與對應的 `Set` 方法成對
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。

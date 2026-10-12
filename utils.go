@@ -261,14 +261,35 @@ func IsNumeric(v any) bool {
 	return false
 }
 
-// ParseColIndex converts an Excel-like column name (e.g., "A", "Z", "AA") to its 0-based integer index.
-func ParseColIndex(colIndex string) (colNumber int, ok bool) {
+// ColIndexToNumber turns an Excel-style column index ("A", "Z", "AA", in
+// either case) into its column number, which counts from 0: "A" is 0 and "AA"
+// is 26. It reports -1, false for an empty string or any character that is not
+// a letter. ColNumberToIndex is the reverse.
+func ColIndexToNumber(colIndex string) (colNumber int, ok bool) {
 	return utils.ParseColIndex(colIndex)
 }
 
-// CalcColIndex converts a 0-based column number to its Excel-style index (A, B, C, ..., Z, AA, AB, ...).
-func CalcColIndex(colNumber int) (colIndex string, ok bool) {
+// ColNumberToIndex turns a column number, which counts from 0, into its
+// Excel-style column index: 0 is "A" and 26 is "AA". It reports "", false for
+// a negative number. ColIndexToNumber is the reverse.
+func ColNumberToIndex(colNumber int) (colIndex string, ok bool) {
 	return utils.CalcColIndex(colNumber)
+}
+
+// ParseColIndex turns an Excel-style column index into its 0-based number.
+//
+// Deprecated: use ColIndexToNumber, which is the same function. Removed in the
+// release after the one that deprecated it.
+func ParseColIndex(colIndex string) (colNumber int, ok bool) {
+	return ColIndexToNumber(colIndex)
+}
+
+// CalcColIndex turns a 0-based column number into its Excel-style index.
+//
+// Deprecated: use ColNumberToIndex, which is the same function. Removed in the
+// release after the one that deprecated it.
+func CalcColIndex(colNumber int) (colIndex string, ok bool) {
+	return ColNumberToIndex(colNumber)
 }
 
 // SortTimes sorts a slice of time.Time in ascending order.
@@ -290,7 +311,7 @@ func SortTimes(times []time.Time) {
 // colorText 根據環境支持自動決定是否添加顏色到文本
 // code 是 ANSI 顏色代碼，text 是要設置顏色的文本
 func colorText(code string, text any) string {
-	if Config.GetDoesUseColoredOutput() && utils.IsColorSupported() {
+	if Config.GetUseColoredOutput() && utils.IsColorSupported() {
 		return fmt.Sprintf("\033[%sm%v\033[0m", code, text)
 	}
 	return fmt.Sprintf("%v", text)

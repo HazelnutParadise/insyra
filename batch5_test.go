@@ -76,7 +76,7 @@ func TestShowTypesColumnOrderBeyondZ(t *testing.T) {
 	for i := 0; i < 28; i++ {
 		dt.AppendCols(NewDataList(i))
 	}
-	coloured := Config.GetDoesUseColoredOutput()
+	coloured := Config.GetUseColoredOutput()
 	Config.SetUseColoredOutput(false)
 	defer Config.SetUseColoredOutput(coloured)
 
@@ -105,7 +105,7 @@ func TestShowTypesColumnOrderBeyondZWithNamedColumns(t *testing.T) {
 	for i := 0; i < 28; i++ {
 		dt.AppendCols(NewDataList(i).SetName(fmt.Sprintf("c%d", i)))
 	}
-	coloured := Config.GetDoesUseColoredOutput()
+	coloured := Config.GetUseColoredOutput()
 	Config.SetUseColoredOutput(false)
 	defer Config.SetUseColoredOutput(coloured)
 

@@ -153,38 +153,53 @@ wide := insyra.ConvertLongDataToWide(data, factor, []insyra.IDataList{ind1, ind2
 wide.Show()
 ```
 
-### ParseColIndex
+### ColIndexToNumber
 
 ```go
-func ParseColIndex(colIndex string) (int, bool)
+func ColIndexToNumber(colIndex string) (int, bool)
 ```
 
-**Description:** Converts Excel-style column index (e.g., `A`, `Z`, `AA`) into a 0-based index. The second return value is a boolean `ok` indicating whether parsing succeeded (false for invalid column index).
+**Description:** Turns an Excel-style column index (`A`, `Z`, `AA`, in either case) into its column number, which counts from 0: `A` is 0 and `AA` is 26. The second return value is `false`, with the number `-1`, for an empty string or any character that is not a letter. `ColNumberToIndex` is the reverse.
 
 **Parameters:**
 
-- `colIndex`: Index value to use. Type: `string`.
+- `colIndex`: Excel-style column index. Type: `string`.
 
   **Returns:**
 
-- `int`: Computed value (0-based index). Type: `int`.
-- `bool`: Success flag (`ok`) indicating whether parsing succeeded. Type: `bool`.
+- `int`: Column number, counting from 0. Type: `int`.
+- `bool`: Whether `colIndex` is a column index. Type: `bool`.
 
-### CalcColIndex
+**Example:**
 
 ```go
-func CalcColIndex(index int) (string, bool)
+n, ok := insyra.ColIndexToNumber("AA") // 26, true
 ```
 
-**Description:** Converts a 0-based column index into an Excel-style column index (e.g., `A`, `Z`, `AA`). The second return value is a boolean `ok` indicating whether conversion succeeded (false for negative indices).
+### ColNumberToIndex
+
+```go
+func ColNumberToIndex(colNumber int) (string, bool)
+```
+
+**Description:** Turns a column number, which counts from 0, into its Excel-style column index: 0 is `A` and 26 is `AA`. The second return value is `false`, with an empty string, for a negative number. `ColIndexToNumber` is the reverse.
+
 **Parameters:**
 
-- `index`: 0-based index value to use. Type: `int`.
+- `colNumber`: Column number, counting from 0. Type: `int`.
 
   **Returns:**
 
-- `string`: Computed value (Excel-style column index). Type: `string`.
-- `bool`: Success flag (`ok`) indicating whether conversion succeeded. Type: `bool`.
+- `string`: Excel-style column index. Type: `string`.
+- `bool`: Whether `colNumber` is a column number. Type: `bool`.
+
+**Example:**
+
+```go
+index, ok := insyra.ColNumberToIndex(26) // "AA", true
+```
+
+> `ParseColIndex` and `CalcColIndex` are the deprecated names of `ColIndexToNumber` and `ColNumberToIndex`. They return the same values and are removed in the release after the one that deprecated them.
 
 ### IsNumeric
 
