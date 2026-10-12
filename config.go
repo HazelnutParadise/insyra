@@ -148,15 +148,37 @@ func (c *configStruct) GetAccelerationEnabled() bool {
 
 // # NOT RECOMMENDED!
 //
-// Dangerously_TurnOffThreadSafety turns off thread safety for all data structures.
-// You can enjoy extreme performance boost, but data consistency is NOT guaranteed.
+// Dangerously_TurnOffThreadSafety turns off the per-instance locking of
+// DataList and DataTable. DataList.AtomicDo, DataTable.AtomicDo and AtomicDoAll
+// then run their callback without taking any lock, so every DataList and
+// DataTable method, and every type that embeds one (isr's included), is no
+// longer safe to use from more than one goroutine at a time. You can enjoy an
+// extreme performance boost, but data consistency is NOT guaranteed.
+// Config, the global error buffer and logging stay safe, because they do not
+// use those locks.
+//
+// Change the switch only while no other goroutine is using a DataList or a
+// DataTable. TurnOnThreadSafety turns the locking back on and leaves every
+// other setting as it is.
 //
 // The underscore is deliberate. Go names do not use one, so the call looks
 // wrong wherever it is written, and that is the warning. Naming linters report
 // only this declaration, never the code that calls it.
 func (c *configStruct) Dangerously_TurnOffThreadSafety() {
 	c.threadSafe.Store(false)
-	LogWarning("config", "Dangerously_TurnOffThreadSafety", "Thread safety is turned off. Data consistency is NOT guaranteed!\nIt may be a mistake. Remove `Dangerously_TurnOffThreadSafety()` in your code to restore thread safety.")
+	LogWarning("config", "Dangerously_TurnOffThreadSafety", "Thread safety is turned off. Data consistency is NOT guaranteed!\nIt may be a mistake. Remove `Dangerously_TurnOffThreadSafety()` in your code, or call `Config.TurnOnThreadSafety()`, to restore thread safety.")
+}
+
+// TurnOnThreadSafety turns the per-instance locking of DataList and DataTable
+// back on after Dangerously_TurnOffThreadSafety, and changes no other setting.
+// Thread safety is on by default, so a program that never turned it off never
+// needs this. As with turning it off, call it only while no other goroutine is
+// using a DataList or a DataTable. It logs at Info level when it turns locking
+// back on, and does nothing when locking is already on.
+func (c *configStruct) TurnOnThreadSafety() {
+	if previous := c.threadSafe.Swap(true); !previous {
+		LogInfo("config", "TurnOnThreadSafety", "thread safety turned back on")
+	}
 }
 
 // ======================== Configs ========================

@@ -124,9 +124,14 @@ Fine-tune performance for your use case:
 // Data consistency is NOT guaranteed when this is disabled.
 insyra.Config.Dangerously_TurnOffThreadSafety()
 
+// Turn the locking back on, leaving every other setting as it is
+insyra.Config.TurnOnThreadSafety()
+
 // If you need to reset all configs back to library defaults, call:
 insyra.SetDefaultConfig()
 ```
+
+What turning it off removes is the lock each `DataList` and `DataTable` takes in `AtomicDo` and `AtomicDoAll`. Every method of those types, and of any type that embeds one (`isr`'s `DL` and `DT` included), is then unsafe to call from more than one goroutine at a time. `Config`, the global error buffer and logging stay safe, because they do not use those locks. Change the switch in either direction only while no other goroutine is using a `DataList` or a `DataTable`. `TurnOnThreadSafety` turns the locking back on without touching the log level, coloured output, the error hook or acceleration, which `SetDefaultConfig` would reset too.
 
 The underscore in `Dangerously_TurnOffThreadSafety` is deliberate. Go names do not use one, so the call looks wrong wherever it is written, and that is the warning. Naming linters report only the declaration inside insyra, never your call.
 

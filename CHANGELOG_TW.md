@@ -89,6 +89,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`engine/ccl.MapContext` 不再有公開欄位。以前直接改欄位會繞過檢查：`ctx.CurrentRowIdx = 99` 會讓欄位讀成 `nil` 而且不報錯，`SetRowIndex(99)` 則會拒絕；在 `ctx.Data` 裡加一欄，那一欄永遠讀成 `nil`。請用 `NewMapContext` 建立、用 `SetRowIndex` 換列；`Context` 的方法全部都還在。
 - `engine/ccl.Context` 是程式把 CCL 套用到自己資料時要實作的介面，它的方法集從此固定：CCL 日後新增的能力會以獨立的選用介面提供，今天寫好的實作不會因此編譯失敗。套件說明寫明了這點，也有測試把方法釘在現有的 15 個。
 - `ColIndexToNumber` 與 `ColNumberToIndex` 在 Excel 式欄位索引與從 0 起算的欄位編號之間轉換：`ColIndexToNumber("AA")` 是 `26`，`ColNumberToIndex(26)` 是 `"AA"`。`Config.GetUseColoredOutput` 回報 `SetUseColoredOutput` 設定的值。`ParseColIndex`、`CalcColIndex` 與 `Config.GetDoesUseColoredOutput` 標為 **Deprecated**，回傳值與新名稱相同，下一版移除。`Config.Dangerously_TurnOffThreadSafety` 刻意保留底線作為警告；取值方法保留 `Get` 前綴，與對應的 `Set` 方法成對
+- `Config.TurnOnThreadSafety()` 在 `Config.Dangerously_TurnOffThreadSafety()` 之後把 `DataList` 與 `DataTable` 的實例鎖開回來，其他設定都不動。以前只有 `SetDefaultConfig()` 能開回來，但它會連 log 等級、彩色輸出、panic-on-error、錯誤 hook 與加速設定一起重設。`Dangerously_TurnOffThreadSafety` 的文件也寫明了關掉的範圍：`AtomicDo` 與 `AtomicDoAll` 的鎖，也就是 `DataList` 與 `DataTable` 的每個方法；`Config`、全域錯誤緩衝區與 log 仍然安全
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
