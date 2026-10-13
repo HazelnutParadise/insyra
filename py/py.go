@@ -300,7 +300,6 @@ func PipInstallContext(ctx context.Context, dep string) error {
 		}
 		return fmt.Errorf("failed to install dependency %s: %w. stderr: %s", dep, err, stderr.String())
 	}
-	insyra.LogInfo("py", "PipInstall", "Installed dependency: %s", dep)
 	return nil
 }
 
@@ -335,7 +334,6 @@ func PipUninstallContext(ctx context.Context, dep string) error {
 		}
 		return fmt.Errorf("failed to uninstall dependency %s: %w. stderr: %s", dep, err, stderr.String())
 	}
-	insyra.LogInfo("py", "PipUninstall", "Uninstalled dependency: %s", dep)
 	return nil
 }
 
@@ -372,7 +370,6 @@ func PipList() (map[string]string, error) {
 		result[p.Name] = p.Version
 	}
 
-	insyra.LogInfo("py", "PipList", "Found %d installed packages", len(pkgs))
 	return result, nil
 }
 

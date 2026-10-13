@@ -27,6 +27,5 @@ func SaveChart(plt *plot.Plot, filename string) error {
 		insyra.LogError("gplot", "SaveChart", "%v", wrapped)
 		return wrapped
 	}
-	insyra.LogInfo("gplot", "SaveChart", "saved chart to %s", filename)
 	return nil
 }

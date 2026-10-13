@@ -61,6 +61,10 @@ Each line becomes one record:
 - **A plain `io.Writer`:** `slog.New(slog.NewTextHandler(w, nil))`.
 - **Errors:** a recorded error is logged at Error level whether or not a logger is set. The error buffer and `SetDefaultErrHandlingFunc` below receive the same lines as before.
 
+## What insyra Logs at Info
+
+A line at Info tells you something the call's return value does not: an encoding insyra guessed for a file, a column `ToSQL` added to an existing database table, the progress of a long operation (each epoch of `nn.Sequential.Fit`, preparing the Python environment), or a switch such as acceleration changing state. A call that succeeded and says so through its return value, such as `plot.SaveHTML` returning a nil error, writes nothing. To see only warnings and failures, call `SetLogLevel(insyra.LogLevelWarning)`.
+
 ## Colored Output
 
 Control whether terminal output is colored:

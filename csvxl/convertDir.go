@@ -95,6 +95,5 @@ func excelFileToCsv(excelFile, outputDir string, opts ExcelToCSVOptions) error {
 		}
 	}
 
-	insyra.LogInfo("csvxl", "excelFileToCsv", "Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
 	return nil
 }

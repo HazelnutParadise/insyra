@@ -95,7 +95,7 @@
 | C-10 | ~~Med~~ 部分修正（reader-writer-entry-points：核心與 parquet 已有 Reader／Writer 入口；`csvxl` 是多檔轉單一活頁簿的形狀，經裁定不做） | 全套件只吃檔案路徑，沒有 `io.Reader`/`io.Writer` 版本：記憶體中的 CSV、HTTP 回應、`embed.FS` 都得先落地成檔案才能轉（準則 8、10） | 全套件 | 核心改成 Reader/Writer，路徑版當薄包裝 |
 | C-11 | Med | `CsvToExcel(csvFiles, sheetNames, ...)` 用兩個平行切片靠索引對位，錯一格就對到別的 sheet；`ExcelToCsv(…, csvNames, onlyContainSheets...)` 同樣問題（準則 4、8） | convert.go:31, 135 | `[]SheetSpec{Path, Sheet}` 一個切片 |
 | C-12 | ~~Low~~ 已修正（csvxl-go-names） | 命名不符 Go 慣例：`Csv` 應為 `CSV`；`EachCsvToOneExcel` 讀起來要想一下（「每個 CSV 到一個 Excel」）；doc comment 缺 Go 風格開頭（準則 3、9、E） | 全套件 | v1 前統一改名 |
-| C-9 | Low | 每次成功都以 Info 等級寫 log。這是跨套件模式（parquet 除外），要在 core 的 logger 審查時一併決定 library 該不該在成功路徑上 log | 全套件 | 待 core 決定 |
+| C-9 | ~~Low~~ 已修正（quiet-success-logs） | 每次成功都以 Info 等級寫 log。這是跨套件模式（parquet 除外），要在 core 的 logger 審查時一併決定 library 該不該在成功路徑上 log | 全套件 | 待 core 決定 |
 
 ### parallel
 
@@ -535,7 +535,7 @@
 | K-13、C-12、I-4、DF-5 | [#212](https://github.com/HazelnutParadise/insyra/issues/212) | DF-5 已修正（datafetch-naming-cleanup）；C-12 已修正（csvxl-go-names）；K-13、I-4 已修正（core-go-names） |
 | K-14、D-8、E-6、E-7、PL-4、NN-3、C-2 | [#213](https://github.com/HazelnutParadise/insyra/issues/213) | 已關閉（refuse-extra-optional-values、column-data-type、core-settings-batch、imputer-refuses-unfillable-columns、nn-batchnorm-options、plot-heatmap-point-type、csvxl-encoding-like-core、read-write-names） |
 | K-15 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) | 已修正（core-utils-cleanup） |
-| K-17、C-9 | [#215](https://github.com/HazelnutParadise/insyra/issues/215) | K-17 已修正（core-slog-logger） |
+| K-17、C-9 | [#215](https://github.com/HazelnutParadise/insyra/issues/215) | 已關閉（core-slog-logger、quiet-success-logs） |
 | D-3 | [#216](https://github.com/HazelnutParadise/insyra/issues/216) |  |
 | D-5、D-6 | [#217](https://github.com/HazelnutParadise/insyra/issues/217) |  |
 | D-7 | [#218](https://github.com/HazelnutParadise/insyra/issues/218) | 文件已補，改名待裁定 |
