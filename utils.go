@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -396,15 +397,54 @@ func detectEncodingOfSample(sample []byte, source string) (string, error) {
 	// Fallback to chardet. When it cannot name a charset — which happens on a
 	// very short sample — assume UTF-8 rather than failing the whole read; the
 	// decoder reports any byte it then cannot handle.
-	detector := chardet.NewTextDetector()
-	res, err := detector.DetectBest(sample)
+	results, err := chardet.NewTextDetector().DetectAll(sample)
 	if err != nil {
 		LogWarning("insyra", "DetectEncoding", "could not identify the encoding of %s (%v); assuming utf-8", source, err)
 		return "utf-8", nil
 	}
+	return conclusiveCharset(results, source)
+}
 
-	charset := strings.ToLower(res.Charset)
-	return charset, nil
+// minEncodingConfidence is the lowest chardet confidence (0-100) insyra acts
+// on. Measured on 2026-10-13: Big5, GBK, Shift_JIS and EUC-KR files whose
+// only non-ASCII text is a short header all scored 10, tied with other CJK
+// charsets, and a Shift_JIS file of ten short rows scored 49 as windows-1252;
+// Big5, GBK and EUC-KR files with ten rows of text scored 77 to 100.
+const minEncodingConfidence = 50
+
+// ErrEncodingAmbiguous is returned, wrapped, when an encoding was to be
+// detected and the input does not show which one it is: the best guess is
+// below the confidence insyra acts on, or another charset is just as likely.
+// Name the encoding to read such an input.
+var ErrEncodingAmbiguous = errors.New("cannot tell the encoding")
+
+// conclusiveCharset returns the best of chardet's results when it is clear:
+// confident enough and not tied. chardet runs its recognisers concurrently and
+// sorts their results unstably, so a tie used to be broken by whichever
+// goroutine finished first; a tie is now refused, which keeps the answer the
+// same on every call.
+func conclusiveCharset(results []chardet.Result, source string) (string, error) {
+	sorted := append([]chardet.Result(nil), results...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].Confidence != sorted[j].Confidence {
+			return sorted[i].Confidence > sorted[j].Confidence
+		}
+		return strings.ToLower(sorted[i].Charset) < strings.ToLower(sorted[j].Charset)
+	})
+	best := sorted[0]
+	tied := len(sorted) > 1 && sorted[1].Confidence == best.Confidence
+	if best.Confidence >= minEncodingConfidence && !tied {
+		return strings.ToLower(best.Charset), nil
+	}
+	var candidates []string
+	for i, r := range sorted {
+		if i == 5 {
+			break
+		}
+		candidates = append(candidates, fmt.Sprintf("%s (%d)", strings.ToLower(r.Charset), r.Confidence))
+	}
+	return "", fmt.Errorf("%w of %s: it could be %s, out of 100, and insyra guesses only at %d or more with no tie; name the encoding instead of detecting it",
+		ErrEncodingAmbiguous, source, strings.Join(candidates, ", "), minEncodingConfidence)
 }
 
 // trimIncompleteRune drops a trailing partial UTF-8 sequence so a sample cut at

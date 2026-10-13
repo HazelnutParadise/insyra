@@ -1,6 +1,7 @@
 package csvxl
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,4 +89,26 @@ func writeCSVBytes(t *testing.T, data []byte) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// A file too short to tell Big5 from GB-18030 and Shift_JIS is refused by every
+// csvxl reader that detects the encoding, and read when the encoding is named.
+func TestAmbiguousEncodingIsRefusedByCSVXL(t *testing.T) {
+	b, err := traditionalchinese.Big5.NewEncoder().String("名稱,數量\n蘋果,3\n香蕉,5\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := writeCSVBytes(t, []byte(b))
+
+	if _, err := ReadCSVToString(path); !errors.Is(err, insyra.ErrEncodingAmbiguous) {
+		t.Fatalf("ReadCSVToString: got %v, want ErrEncodingAmbiguous", err)
+	}
+	out := filepath.Join(t.TempDir(), "out.xlsx")
+	if err := CSVToExcel([]string{path}, nil, out); !errors.Is(err, insyra.ErrEncodingAmbiguous) {
+		t.Fatalf("CSVToExcel: got %v, want ErrEncodingAmbiguous", err)
+	}
+	got, err := ReadCSVToString(path, Big5)
+	if err != nil || !strings.HasPrefix(got, "名稱") {
+		t.Fatalf("with Big5 named: got %q, %v", got, err)
+	}
 }

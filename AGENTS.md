@@ -279,10 +279,10 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-10-13] — encoding detection gives different answers for one very short Big5 file
-- **Where**: `utils.go` `DetectEncoding`, through chardet's `DetectBest`
-- **What**: measured on 2026-10-13: a Big5 CSV of two data rows (`名稱,數量` / `蘋果,3` / `香蕉,5`, 24 bytes) was detected as `shift_jis`, `gb-18030` or `big5` across 50 calls in one process, in proportions that changed between runs, and `ReadCSVFile` read its header as `ｦWｺﾙ` with a nil error. The only sign was the Info line naming the guessed encoding, which `quiet-success-logs` kept for that reason. Big5 files of 1, 3, 10, 30 and 100 data rows built from longer Chinese text were detected as `big5` 200 times out of 200. The likely cause, not read in chardet's source, is a tie between recognisers that is broken in map order.
-- **Suggestion**: make the answer deterministic first, for example by asking chardet for all results and breaking a tie in a fixed order. Then decide whether a guess below some confidence should be a warning or an error that asks for the encoding, which changes what a read does with such a file.
+### [2026-10-13] — a Shift_JIS file whose only Japanese is its header is read as windows-1252
+- **Where**: `utils.go` `conclusiveCharset`, through chardet's Shift_JIS and windows-1252 recognisers
+- **What**: `encoding-guess-refuses-ties` refuses a chardet answer below 50 or tied, which turned every other wrong or random read measured on 2026-10-13 into an error. This one passes: a Shift_JIS CSV with the header `名前,数量` over 300 rows of numbers scores 60 as windows-1252 and 10 as Shift_JIS, so it is read as windows-1252 with a nil error. A Shift_JIS file of ten short rows of text (`東京都,新宿区,西新宿`) also scored only 10 as Shift_JIS, and 49 as windows-1252, so chardet barely recognises Shift_JIS on short input at all. `Docs/csvxl.md` and `Docs/DataTable.md` tell Japanese users to name `shift_jis`.
+- **Suggestion**: refuse a single-byte Latin answer when every high byte of the sample also forms a valid Shift_JIS pair and the Latin text would contain characters such as the C1 range or unusual accent sequences; or measure a pure-Go detector with stronger Japanese statistics against the same samples before switching.
 - **Status**: pending
 
 ### [2026-10-12] — remove `ParseColIndex`, `CalcColIndex` and `GetDoesUseColoredOutput` one release after they were deprecated

@@ -294,12 +294,15 @@ func DetectEncoding(filePath string) (string, error)
 - Reads a 8192-byte sample for detection.
 - Checks BOM markers (`utf-8`, `utf-16le`, `utf-16be`).
 - Returns `utf-8` if the sample is valid UTF-8. When the sample fills all 8192 bytes, a character cut off by that boundary is ignored; a file shorter than the sample is judged as it is.
-- Falls back to `chardet` for other encodings.
-- Returns an error for empty files or failed detection.
+- Falls back to `chardet` for other encodings, and uses its answer only when it is clear: a confidence of at least 50 out of 100, with no other charset scoring the same.
+- Returns an error for empty files, and an error wrapping `ErrEncodingAmbiguous` when `chardet`'s answer is not clear. The message lists the likeliest charsets with their scores; name the encoding to read such a file.
+- Returns `utf-8`, with a warning, when `chardet` names no charset at all.
 
 ```go
 enc, err := insyra.DetectEncoding("data.csv")
-if err != nil {
+if errors.Is(err, insyra.ErrEncodingAmbiguous) {
+    // the file does not show its encoding; ask for it or use a known one
+} else if err != nil {
     // handle detection error
 }
 ```

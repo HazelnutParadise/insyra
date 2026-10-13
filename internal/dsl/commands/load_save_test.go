@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -371,5 +372,29 @@ func TestSave_CSV_GuardsFormulasByDefault(t *testing.T) {
 	}
 	if err := runSaveCommand(ctx, []string{"t", filepath.Join(dir, "x.json"), "allowformulas", "true"}); err == nil {
 		t.Fatal("allowformulas was accepted for JSON")
+	}
+}
+
+func TestLoad_CSV_AmbiguousEncodingSaysHowToName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "short.csv")
+	// 名稱,數量 / 蘋果,3 / 香蕉,5 in Big5: too short to tell from GB-18030 or Shift_JIS.
+	big5 := "\xa6W\xba\xd9,\xbc\xc6\xb6q\n\xc4\xab\xaaG,3\n\xad\xbb\xbf\xbc,5\n"
+	mustWrite(t, path, big5)
+
+	ctx := newTestExecContext(t)
+	err := runLoadCommand(ctx, []string{path, "as", "t"})
+	if !errors.Is(err, insyra.ErrEncodingAmbiguous) || !strings.Contains(err.Error(), "encoding <name>") {
+		t.Fatalf("got %v, want the ambiguous-encoding error with the CLI hint", err)
+	}
+
+	if err := runLoadCommand(ctx, []string{path, "encoding", "big5", "as", "t"}); err != nil {
+		t.Fatalf("load with the encoding named failed: %v", err)
+	}
+	dt, err := getDataTableVar(ctx, "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dt.ColNames()[0]; got != "名稱" {
+		t.Fatalf("header reads %q", got)
 	}
 }

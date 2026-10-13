@@ -62,13 +62,15 @@ func TestDetectEncodingUTF32BOM(t *testing.T) {
 }
 
 // SEC-5 (e): when the detector cannot name a charset, fall back to UTF-8 with
-// a warning rather than failing the whole read.
+// a warning rather than failing the whole read. A lone 0xFF is named by no
+// recogniser; a lone 0xE9 is named UTF-8 at confidence 10, which is a weak
+// guess and refused (TestAWeakGuessIsRefused).
 func TestDetectEncodingFallsBackToUTF8(t *testing.T) {
 	restoreConfig(t)
 	Config.SetLogLevel(LogLevelFatal)
 
 	p := filepath.Join(t.TempDir(), "short.bin")
-	if err := os.WriteFile(p, []byte{0xE9}, 0o644); err != nil {
+	if err := os.WriteFile(p, []byte{0xFF}, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got, err := DetectEncoding(p)

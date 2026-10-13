@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -91,6 +92,9 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 				AllowRaggedRows:  opts.Ragged,
 				TrimLeadingSpace: opts.TrimSpace,
 			})
+			if errors.Is(err, insyra.ErrEncodingAmbiguous) {
+				err = fmt.Errorf("%w; add encoding <name> to the load command, for example: load %s encoding big5", err, path)
+			}
 		case "json":
 			if opts.HeadersSet || opts.RowNamesSet || opts.SheetSet || opts.Encoding != "" || opts.InferSet || opts.RaggedSet || opts.TrimSpaceSet {
 				return fmt.Errorf("load json: headers/rownames/sheet/encoding/infer/ragged/trimspace options are not supported for JSON")
