@@ -2,7 +2,10 @@
 
 package insyra
 
-import "sync/atomic"
+import (
+	"log/slog"
+	"sync/atomic"
+)
 
 // errHandlingFunc is the signature of the hook installed by
 // SetDefaultErrHandlingFunc.
@@ -22,6 +25,9 @@ type configStruct struct {
 	// acceleration is read by device dispatch hot paths and written by
 	// SetAcceleration / SetDefaultConfig; use an atomic to avoid a data race.
 	acceleration atomic.Bool
+	// logger, when set, receives every line insyra logs instead of the
+	// standard log package; see SetLogger.
+	logger atomic.Pointer[slog.Logger]
 }
 
 var Config *configStruct = &configStruct{}
@@ -68,6 +74,27 @@ func (c *configStruct) GetUseColoredOutput() bool {
 // the release after the one that deprecated it.
 func (c *configStruct) GetDoesUseColoredOutput() bool {
 	return c.GetUseColoredOutput()
+}
+
+// SetLogger sends every line insyra logs to l instead of the standard log
+// package. Each line becomes one record at its own level (Debug, Info, Warn,
+// Error, and Fatal as slog.LevelError+4), with the formatted message and, when
+// the call names them, a "package" and a "func" attribute. The record's source
+// is the function that logged. The message carries no "[insyra - …]" prefix
+// and no colour codes.
+//
+// SetLogLevel still decides which lines insyra emits; the handler then keeps
+// the ones its own level allows. Pass nil to go back to the standard log
+// package, which is the default. A plain io.Writer works through
+// slog.New(slog.NewTextHandler(w, nil)).
+func (c *configStruct) SetLogger(l *slog.Logger) {
+	c.logger.Store(l)
+}
+
+// GetLogger returns the logger set with SetLogger, or nil when insyra writes
+// to the standard log package.
+func (c *configStruct) GetLogger() *slog.Logger {
+	return c.logger.Load()
 }
 
 // SetPanicOnError controls what happens when the library records an error.
@@ -184,13 +211,14 @@ func (c *configStruct) TurnOnThreadSafety() {
 // ======================== Configs ========================
 
 // SetDefaultConfig resets every Config field to its default value: log level
-// Info, coloured output on, panic-on-error off, no error hook, thread safety
-// on, acceleration on.
+// Info, coloured output on, panic-on-error off, no error hook, no logger (the
+// standard log package), thread safety on, acceleration on.
 func SetDefaultConfig() {
 	Config.logLevel.Store(int32(LogLevelInfo))
 	Config.coloredOutput.Store(true)
 	Config.panicOnError.Store(false)
 	Config.defaultErrHandlingFunc.Store(nil)
+	Config.logger.Store(nil)
 	Config.threadSafe.Store(true)
 	Config.acceleration.Store(true)
 }

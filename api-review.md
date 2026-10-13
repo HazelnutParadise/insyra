@@ -144,7 +144,7 @@
 | K-15 | ~~Low~~ 已修正（core-utils-cleanup） | 核心套件匯出了與資料表無關的工具：`SqrtRat`、`PowRat`（repo 內無人用）、`SortTimes`（只有 mkt 用一次，`slices.SortFunc` 可替代）、`ProcessData` 回傳 `([]any, int)` 而 int 就是 `len()`、失敗時回 `nil, 0` 靠 log 通知。`F64orRat` 是 internal 介面的匯出別名（準則 1、2） | utils.go:43-87, 90-112, 255-264, 20 | `SqrtRat`/`PowRat`/`SortTimes` 移入 internal 或刪除；`ProcessData` 改回 `([]any, error)` |
 | K-16 | ~~Low~~ 已修正（batch 3） | `atomic.go` 的 doc comment 是亂碼（`憒??典??蔭??`，來源檔曾以錯誤編碼存檔）；`SetDefaultConfig` 的 doc 寫成「DefaultConfig returns…」；`ReadCSV_FileWithOptions` 用 `"csvxl"` 當套件名寫 log（實際在 core）；`Slice2DToDataTable` 對空切片回錯而 pandas 允許空表（準則 5、E） | atomic.go:31, 37, 44, 49；config.go:97；read.go:139, 51 | 修文件；空切片回空表 |
 | K-18 | ~~Med~~ 已修正（batch 3） | `AppendRowsByColName` 直接 range map 新增欄位，Go map 迭代順序隨機，`ReadJSON`／`ReadJSON_File` 同一份 JSON 每次讀出的欄序不同（`TestReadJSONFileMatchesReadJSON` 隨機失敗）（準則 6、13） | datatable.go:222 | 欄名排序後新增 |
-| K-17 | Low | `LogInfo`/`LogWarning` 等四個 logger 函式是唯一的 log 出口，只能輸出到標準 `log`，不能接 `slog`/zap，也沒有 `io.Writer` 可設；成功路徑（Info）預設開啟，生產環境使用者要自己關（準則 14） | logger.go | 提供 `SetLogger(*slog.Logger)` 或 `SetOutput(io.Writer)`；預設等級改 Warning |
+| K-17 | ~~Low~~ 已修正（core-slog-logger） | `LogInfo`/`LogWarning` 等四個 logger 函式是唯一的 log 出口，只能輸出到標準 `log`，不能接 `slog`/zap，也沒有 `io.Writer` 可設；成功路徑（Info）預設開啟，生產環境使用者要自己關（準則 14） | logger.go | 提供 `SetLogger(*slog.Logger)` 或 `SetOutput(io.Writer)`；預設等級改 Warning |
 
 ### core — DataList（datalist.go, datalist_*.go, describe_options.go）
 
@@ -535,7 +535,7 @@
 | K-13、C-12、I-4、DF-5 | [#212](https://github.com/HazelnutParadise/insyra/issues/212) | DF-5 已修正（datafetch-naming-cleanup）；C-12 已修正（csvxl-go-names）；K-13、I-4 已修正（core-go-names） |
 | K-14、D-8、E-6、E-7、PL-4、NN-3、C-2 | [#213](https://github.com/HazelnutParadise/insyra/issues/213) | 已關閉（refuse-extra-optional-values、column-data-type、core-settings-batch、imputer-refuses-unfillable-columns、nn-batchnorm-options、plot-heatmap-point-type、csvxl-encoding-like-core、read-write-names） |
 | K-15 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) | 已修正（core-utils-cleanup） |
-| K-17、C-9 | [#215](https://github.com/HazelnutParadise/insyra/issues/215) |  |
+| K-17、C-9 | [#215](https://github.com/HazelnutParadise/insyra/issues/215) | K-17 已修正（core-slog-logger） |
 | D-3 | [#216](https://github.com/HazelnutParadise/insyra/issues/216) |  |
 | D-5、D-6 | [#217](https://github.com/HazelnutParadise/insyra/issues/217) |  |
 | D-7 | [#218](https://github.com/HazelnutParadise/insyra/issues/218) | 文件已補，改名待裁定 |

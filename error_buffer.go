@@ -2,7 +2,6 @@ package insyra
 
 import (
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -142,7 +141,11 @@ func dispatchToHook(call hookCall) {
 	case hookQueue <- call:
 	default:
 		if hookDropNoted.CompareAndSwap(false, true) {
-			log.Printf("[insyra - Warning] error hook queue full (%d); further hook calls are dropped until it drains (errors are still recorded)", hookQueueSize)
+			// Not LogWarning: that would record the warning and hand it to
+			// the very hook whose queue is full.
+			if Config.GetLogLevel() <= LogLevelWarning {
+				emit(1, LogLevelWarning, "", "", "error hook queue full (%d); further hook calls are dropped until it drains (errors are still recorded)", hookQueueSize)
+			}
 		}
 	}
 }

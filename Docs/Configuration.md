@@ -5,6 +5,7 @@ Insyra provides a global `Config` object for managing library behavior. You can 
 **Default values (after `SetDefaultConfig`)**:
 
 - Log level: `LogLevelInfo`
+- Logger: none, so log lines go to the standard `log` package
 - Colored output: `true`
 - Panic protection: `false`
 - Thread safety: `true`
@@ -25,6 +26,40 @@ insyra.Config.SetLogLevel(insyra.LogLevelFatal)    // Only fatal failures
 // Get current log level
 level := insyra.Config.GetLogLevel()
 ```
+
+## Sending Logs to slog
+
+By default insyra writes its log lines to the standard `log` package, as text such as `[insyra - Warning] DataList.FindFirst: Value not found, returning nil.`. To send them to your own logging instead, give insyra a `*slog.Logger`:
+
+```go
+import "log/slog"
+
+insyra.Config.SetLogger(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+
+insyra.NewDataTable(insyra.NewDataList(1)).GetCol("Z")
+// {"time":"…","level":"ERROR","msg":"column Z does not exist, the table has 1 column(s)","package":"DataTable","func":"GetCol"}
+
+insyra.Config.SetLogger(nil) // back to the standard log package
+current := insyra.Config.GetLogger() // nil when no logger is set
+```
+
+Each line becomes one record:
+
+| insyra level | slog level |
+| --- | --- |
+| `LogLevelDebug` | `slog.LevelDebug` |
+| `LogLevelInfo` | `slog.LevelInfo` |
+| `LogLevelWarning` | `slog.LevelWarn` |
+| `LogLevelError` | `slog.LevelError` |
+| `LogLevelFatal` | `slog.LevelError + 4` (shown as `ERROR+4`) |
+
+- **Message:** the formatted message, without the `[insyra - …]` prefix, colour codes or a trailing newline.
+- **Attributes:** `package` and `func` name where the line came from, and are left out when the line names neither.
+- **Source:** the record's source is the insyra function that logged, so a handler created with `AddSource: true` shows that function rather than insyra's logger.
+- **Filtering:** `SetLogLevel` still decides which lines insyra emits. Your handler then keeps the ones its own level allows. At insyra's default `LogLevelInfo`, a handler set to `slog.LevelDebug` still receives no Debug lines until you also call `SetLogLevel(insyra.LogLevelDebug)`.
+- **Other packages:** zap, zerolog and most other logging packages provide a slog handler, so the same call connects insyra to them.
+- **A plain `io.Writer`:** `slog.New(slog.NewTextHandler(w, nil))`.
+- **Errors:** a recorded error is logged at Error level whether or not a logger is set. The error buffer and `SetDefaultErrHandlingFunc` below receive the same lines as before.
 
 ## Colored Output
 
@@ -92,7 +127,7 @@ failFast := insyra.Config.GetPanicOnError()
 
 ### Watching everything that happened (global)
 
-
+```go
 // Set custom error handling function for all errors
 insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageName, funcName, errMsg string) {
     // Your custom error handling logic
