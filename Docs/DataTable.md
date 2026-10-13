@@ -4349,7 +4349,7 @@ func (dt *DataTable) Summary()
 func (dt *DataTable) SummaryTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays a comprehensive statistical summary of the DataTable. `SummaryTo` writes the same output to any `io.Writer`.
+**Description:** Displays a comprehensive statistical summary of the DataTable. `SummaryTo` writes the same output to any `io.Writer`, without colour unless the writer is a terminal.
 
 **Parameters:**
 
@@ -4467,7 +4467,7 @@ func (dt *DataTable) Show()
 func (dt *DataTable) ShowTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the DataTable content in the console. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`). A table of up to 60 rows prints whole; a longer one prints its first 20 and last 5 rows with a `...` line between them; the summary line above the table still covers every row. Column widths fit the rows that are printed.
+**Description:** Displays the DataTable content in the console. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`), without colour unless the writer is a terminal. A table of up to 60 rows prints whole; a longer one prints its first 20 and last 5 rows with a `...` line between them; the summary line above the table still covers every row. Column widths fit the rows that are printed.
 
 **Parameters:**
 

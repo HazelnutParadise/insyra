@@ -56,9 +56,9 @@ func (dl *DataList) SummaryTo(w io.Writer) {
 		// Check if DataList is empty
 		if dlLen == 0 {
 			// Display header - using yellow as DataList primary color
-			fmt.Fprintln(w, colorText("1;33", dataTitle))
+			fmt.Fprintln(w, colorText(w, "1;33", dataTitle))
 			fmt.Fprintln(w, strings.Repeat("=", min(width, 80)))
-			fmt.Fprintln(w, colorText("3;33", "Empty dataset"))
+			fmt.Fprintln(w, colorText(w, "3;33", "Empty dataset"))
 			return
 		}
 
@@ -72,7 +72,7 @@ func (dl *DataList) SummaryTo(w io.Writer) {
 
 		// Start displaying results
 		// Display header - using green as DataList primary color
-		fmt.Fprintln(w, colorText("1;33", dataTitle))
+		fmt.Fprintln(w, colorText(w, "1;33", dataTitle))
 		fmt.Fprintln(w, strings.Repeat("=", min(width, 80)))
 
 		// Initialize statistics
@@ -83,8 +83,8 @@ func (dl *DataList) SummaryTo(w io.Writer) {
 		}
 
 		// Display basic info
-		fmt.Fprintf(w, "Total items: %s\n", colorText("1;33", fmt.Sprintf("%d", stats.totalCount)))
-		fmt.Fprintf(w, "Numeric items: %s\n", colorText("1;33", fmt.Sprintf("%d (%.1f%%)", stats.numericCount, stats.numericPercent)))
+		fmt.Fprintf(w, "Total items: %s\n", colorText(w, "1;33", fmt.Sprintf("%d", stats.totalCount)))
+		fmt.Fprintf(w, "Numeric items: %s\n", colorText(w, "1;33", fmt.Sprintf("%d (%.1f%%)", stats.numericCount, stats.numericPercent)))
 		fmt.Fprintln(w)
 
 		// Calculate statistics only if we have numeric values
@@ -103,12 +103,12 @@ func (dl *DataList) SummaryTo(w io.Writer) {
 			stats.modeValues = dl.Mode()
 		} // Calculate statistics only if we have numeric values
 		if numericCount == 0 {
-			fmt.Fprintln(w, colorText("3;33", "No numeric data available for statistical analysis"))
+			fmt.Fprintln(w, colorText(w, "3;33", "No numeric data available for statistical analysis"))
 			return
 		}
 
 		// Create a nice table with borders for statistics
-		fmt.Fprintln(w, colorText("1;33", "Statistical Summary"))
+		fmt.Fprintln(w, colorText(w, "1;33", "Statistical Summary"))
 
 		// 使用新的自適應表格顯示邏輯
 		displayDataListSummaryTable(w, stats, width)
@@ -167,7 +167,7 @@ func displayDataListSummaryTable(w io.Writer, stats struct {
 
 	// Central Tendency section
 	fmt.Fprintln(w, topLine)
-	fmt.Fprintf(w, colorText("1;32", headerFmt), "Central Tendency", "Value")
+	fmt.Fprintf(w, colorText(w, "1;32", headerFmt), "Central Tendency", "Value")
 	fmt.Fprintln(w, dividerLine)
 	fmt.Fprintf(w, headerFmt, "Mean", formatFloat(stats.mean))
 	fmt.Fprintf(w, headerFmt, "Median", formatFloat(stats.median))
@@ -200,7 +200,7 @@ func displayDataListSummaryTable(w io.Writer, stats struct {
 	fmt.Fprintln(w, dividerLine)
 
 	// Dispersion section
-	fmt.Fprintf(w, colorText("1;32", headerFmt), "Dispersion", "Value")
+	fmt.Fprintf(w, colorText(w, "1;32", headerFmt), "Dispersion", "Value")
 	fmt.Fprintln(w, dividerLine)
 	fmt.Fprintf(w, headerFmt, "Minimum", formatFloat(stats.min))
 	fmt.Fprintf(w, headerFmt, "Maximum", formatFloat(stats.max))
@@ -210,7 +210,7 @@ func displayDataListSummaryTable(w io.Writer, stats struct {
 	fmt.Fprintln(w, dividerLine)
 
 	// Quantiles section
-	fmt.Fprintf(w, colorText("1;32", headerFmt), "Quantiles", "Value")
+	fmt.Fprintf(w, colorText(w, "1;32", headerFmt), "Quantiles", "Value")
 	fmt.Fprintln(w, dividerLine)
 	fmt.Fprintf(w, headerFmt, "Q1 (25%)", formatFloat(stats.q1))
 	fmt.Fprintf(w, headerFmt, "Q2 (50%)", formatFloat(stats.median))

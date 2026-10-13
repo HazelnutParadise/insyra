@@ -28,7 +28,7 @@ func showRangeProblem(startEnd []any) string {
 }
 
 func printShowProblem(w io.Writer, method, problem string) {
-	fmt.Fprintln(w, colorText("1;31", fmt.Sprintf("ERROR: %s %s", method, problem)))
+	fmt.Fprintln(w, colorText(w, "1;31", fmt.Sprintf("ERROR: %s %s", method, problem)))
 }
 
 // ShowHead displays the first n rows, the same as ShowRange(n).

@@ -29,7 +29,7 @@ func TestConfigSettersRaceFree(t *testing.T) {
 			for j := 0; j < 200; j++ {
 				LogInfo("t", "t", "x")
 				_ = Config.GetLogLevel()
-				_ = colorText("1", "y")
+				_ = colorText(os.Stdout, "1", "y")
 				_ = Config.GetDontPanicStatus()
 			}
 		}()

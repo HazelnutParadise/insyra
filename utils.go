@@ -16,6 +16,7 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/algorithms"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/saintfish/chardet"
+	"golang.org/x/term"
 )
 
 // F64orRat is a type constraint satisfied by float64 and *big.Rat.
@@ -308,13 +309,31 @@ func SortTimes(times []time.Time) {
 	})
 }
 
-// colorText 根據環境支持自動決定是否添加顏色到文本
-// code 是 ANSI 顏色代碼，text 是要設置顏色的文本
-func colorText(code string, text any) string {
-	if Config.GetUseColoredOutput() && utils.IsColorSupported() {
+// colorText wraps text in the ANSI colour code when it is going to w and w
+// should be coloured (see useColorFor); otherwise it returns the plain text.
+func colorText(w io.Writer, code string, text any) string {
+	if useColorFor(w) {
 		return fmt.Sprintf("\033[%sm%v\033[0m", code, text)
 	}
 	return fmt.Sprintf("%v", text)
+}
+
+// useColorFor reports whether output to w is coloured: coloured output is on
+// (Config.SetUseColoredOutput), the environment allows colour (NO_COLOR is
+// unset and TERM is not "dumb"), and w is a terminal. A file, a pipe or a
+// buffer gets plain text, so colour codes never end up inside saved output.
+func useColorFor(w io.Writer) bool {
+	if !Config.GetUseColoredOutput() || !utils.IsColorSupported() {
+		return false
+	}
+	f, ok := w.(*os.File)
+	return ok && isTerminal(f)
+}
+
+// isTerminal reports whether f is a terminal. It is a variable so tests can
+// check the coloured path without one.
+var isTerminal = func(f *os.File) bool {
+	return term.IsTerminal(int(f.Fd()))
 }
 
 // DetectEncoding detects the character encoding of a text file.

@@ -2208,7 +2208,7 @@ func (dl *DataList) Show()
 func (dl *DataList) ShowTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays DataList content in a clean, colored linear format. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout. A list of up to 60 items prints whole; a longer one prints its first 20 and last 5 items.
+**Description:** Displays DataList content in a clean, colored linear format. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout, without colour unless the writer is a terminal. A list of up to 60 items prints whole; a longer one prints its first 20 and last 5 items.
 
 **Parameters:**
 

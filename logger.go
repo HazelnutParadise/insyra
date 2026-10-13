@@ -94,7 +94,8 @@ func emit(skip int, level LogLevel, packageName, funcName, msg string, args ...a
 	}
 	fullMsg += msg
 	if level >= LogLevelError {
-		fullMsg = colorText("31", fullMsg)
+		// The reset goes before the newline, so the next line starts plain.
+		fullMsg = colorText(log.Writer(), "31", strings.TrimSuffix(fullMsg, "\n")) + "\n"
 	}
 	log.Printf(fullMsg, args...)
 }

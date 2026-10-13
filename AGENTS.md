@@ -285,12 +285,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: make the answer deterministic first, for example by asking chardet for all results and breaking a tie in a fixed order. Then decide whether a guess below some confidence should be a warning or an error that asks for the encoding, which changes what a read does with such a file.
 - **Status**: pending
 
-### [2026-10-13] — red error lines carry colour codes into files and pipes
-- **Where**: `utils.go` `colorText`, through `internal/utils` `IsColorSupported`
-- **What**: `IsColorSupported` checks only `NO_COLOR` and `TERM=dumb`, never whether the output is a terminal, so with the default `SetUseColoredOutput(true)` an Error or Fatal line written to a file or a pipe carries ANSI codes. Measured on 2026-10-13: with `log.SetOutput` pointed at a buffer, `GetCol("Z")` wrote `\x1b[31m[insyra - Error] DataTable.GetCol: …\n\x1b[0m`, the reset after the newline, and routed through `slog.SetDefault` the codes landed inside the JSON message. `core-slog-logger` keeps them out of `SetLogger`'s records, but not out of the standard `log` path, which it left byte for byte as it was.
-- **Suggestion**: colour only when the destination of `log.Writer()` is a terminal (`golang.org/x/term`'s `IsTerminal` on an `*os.File`), and put the reset before the newline. It changes default output, so it goes in its own change with a changelog entry.
-- **Status**: pending
-
 ### [2026-10-12] — remove `ParseColIndex`, `CalcColIndex` and `GetDoesUseColoredOutput` one release after they were deprecated
 - **Where**: `utils.go` (`ParseColIndex`, `CalcColIndex`), `config.go` (`GetDoesUseColoredOutput`)
 - **What**: under the one-name rule of #211, `core-go-names` deprecated them in favour of `ColIndexToNumber`, `ColNumberToIndex` and `GetUseColoredOutput` (K-13, #212), keeping each one's results for one release. Nothing else in the module calls them.

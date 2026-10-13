@@ -77,6 +77,8 @@ insyra.Config.SetUseColoredOutput(true)
 usesColor := insyra.Config.GetUseColoredOutput()
 ```
 
+Colour is used only where it can be seen: a log line, `Show`, `ShowTypes` or `Summary` output is coloured when coloured output is on, the `NO_COLOR` environment variable is unset, `TERM` is not `dumb`, and the destination is a terminal. Output going to a file, a pipe or a `bytes.Buffer` (through `ShowTo`, `SummaryTo` or `log.SetOutput`) is plain text, so colour codes never end up in saved output. Lines sent to a logger set with `SetLogger` are never coloured.
+
 `GetDoesUseColoredOutput` is the deprecated name of `GetUseColoredOutput`. It returns the same value and is removed in the release after the one that deprecated it.
 
 ## Error Handling

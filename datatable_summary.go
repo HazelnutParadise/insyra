@@ -50,17 +50,17 @@ func (dt *DataTable) SummaryTo(w io.Writer) {
 	}
 
 	// Display header - using blue as DataTable's primary color
-	fmt.Fprintln(w, colorText("1;36", tableTitle))
+	fmt.Fprintln(w, colorText(w, "1;36", tableTitle))
 	fmt.Fprintln(w, strings.Repeat("=", min(width, 80)))
 
 	// Check if DataTable is empty
 	if len(columns) == 0 {
-		fmt.Fprintln(w, colorText("2;37", "Empty dataset"))
+		fmt.Fprintln(w, colorText(w, "2;37", "Empty dataset"))
 		return
 	} // Display overall table information
 	fmt.Fprintf(w, "Dimensions: %s rows × %s columns\n",
-		colorText("1;36", fmt.Sprintf("%d", rowCount)),
-		colorText("1;36", fmt.Sprintf("%d", len(columns))))
+		colorText(w, "1;36", fmt.Sprintf("%d", rowCount)),
+		colorText(w, "1;36", fmt.Sprintf("%d", len(columns))))
 	// Count data types across the entire table
 	var totalElements int
 	var numericCount, stringCount, boolCount, otherCount int
@@ -89,20 +89,20 @@ func (dt *DataTable) SummaryTo(w io.Writer) {
 	}
 
 	// Display table-wide statistics (使用固定寬度格式，避免歪斜)
-	fmt.Fprintln(w, "\n"+colorText("1;36", "Table-wide Statistics"))
+	fmt.Fprintln(w, "\n"+colorText(w, "1;36", "Table-wide Statistics"))
 	fmt.Fprintln(w, strings.Repeat("-", min(width, 50)))
 
 	fmt.Fprintf(w, "Total elements: %s\n",
-		colorText("1;36", fmt.Sprintf("%d", totalElements))) // 顯示各類型資料的比例
+		colorText(w, "1;36", fmt.Sprintf("%d", totalElements))) // 顯示各類型資料的比例
 	if totalElements > 0 {
 		fmt.Fprintf(w, "Data types: %s numeric (%.1f%%), %s string (%.1f%%), %s boolean (%.1f%%), %s other (%.1f%%)\n",
-			colorText("1;36", fmt.Sprintf("%d", numericCount)),
+			colorText(w, "1;36", fmt.Sprintf("%d", numericCount)),
 			float64(numericCount)/float64(totalElements)*100,
-			colorText("1;36", fmt.Sprintf("%d", stringCount)),
+			colorText(w, "1;36", fmt.Sprintf("%d", stringCount)),
 			float64(stringCount)/float64(totalElements)*100,
-			colorText("1;36", fmt.Sprintf("%d", boolCount)),
+			colorText(w, "1;36", fmt.Sprintf("%d", boolCount)),
 			float64(boolCount)/float64(totalElements)*100,
-			colorText("1;36", fmt.Sprintf("%d", otherCount)),
+			colorText(w, "1;36", fmt.Sprintf("%d", otherCount)),
 			float64(otherCount)/float64(totalElements)*100)
 	}
 
@@ -121,9 +121,9 @@ func (dt *DataTable) SummaryTo(w io.Writer) {
 		dividerLine := "├" + strings.Repeat("─", statNameWidth+2) + "┼" + strings.Repeat("─", valueWidth+2) + "┤"
 		topLine := "┌" + strings.Repeat("─", statNameWidth+2) + "┬" + strings.Repeat("─", valueWidth+2) + "┐"
 		bottomLine := "└" + strings.Repeat("─", statNameWidth+2) + "┴" + strings.Repeat("─", valueWidth+2) + "┘"
-		fmt.Fprintln(w, "\n"+colorText("1;36", "Numeric Data Statistics (Across All Columns)"))
+		fmt.Fprintln(w, "\n"+colorText(w, "1;36", "Numeric Data Statistics (Across All Columns)"))
 		fmt.Fprintln(w, topLine)
-		fmt.Fprintf(w, colorText("1;32", headerFmt), "Statistic", "Value")
+		fmt.Fprintf(w, colorText(w, "1;32", headerFmt), "Statistic", "Value")
 		fmt.Fprintln(w, dividerLine)
 		fmt.Fprintf(w, headerFmt, "Count", fmt.Sprintf("%d", len(numericValues)))
 		fmt.Fprintf(w, headerFmt, "Mean", formatFloat(tempDl.Mean()))
@@ -133,7 +133,7 @@ func (dt *DataTable) SummaryTo(w io.Writer) {
 		fmt.Fprintf(w, headerFmt, "Std Deviation", formatFloat(tempDl.Stdev()))
 		fmt.Fprintln(w, bottomLine)
 	} // Display column information
-	fmt.Fprintln(w, "\n"+colorText("1;36", "Column Overview"))
+	fmt.Fprintln(w, "\n"+colorText(w, "1;36", "Column Overview"))
 	fmt.Fprintln(w, strings.Repeat("-", min(width, 50)))
 
 	// 使用新的自適應表格顯示邏輯
@@ -257,7 +257,7 @@ func displayColumnOverviewTable(w io.Writer, columns []*DataList, width int) {
 
 	// 打印表頭
 	fmt.Fprintln(w, topLine)
-	fmt.Fprintf(w, colorText("1;32", headerFmt), "Column Name", "Data Type", "Quick Statistics")
+	fmt.Fprintf(w, colorText(w, "1;32", headerFmt), "Column Name", "Data Type", "Quick Statistics")
 	fmt.Fprintln(w, dividerLine)
 
 	// 為每一列顯示基本信息
