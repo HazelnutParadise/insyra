@@ -7,7 +7,7 @@ How `ApplyCCL` writes the file it rewrites: with the original's compression and 
 
 ### Requirement: ApplyCCL keeps the file's layout unless told otherwise
 
-Without options, `ApplyCCL` SHALL write each column the original file has with the codec the original used for it, a column the script adds with the codec of the original's first column, and row groups holding at most as many rows as the original's largest row group. With one `WriteOptions`, it SHALL write every column with that `Compression` and row groups of that `RowGroupSize`, as `Write` does. More than one `WriteOptions`, or one `Write` refuses, SHALL be an error returned before the file is read, leaving it unchanged.
+Without options, `ApplyCCL` SHALL write each column the original file has with the codec the original used for it, a column the script adds with the codec of the original's first column, and row groups holding at most as many rows as the original's largest row group.
 
 #### Scenario: A Zstd file in one row group
 - **WHEN** 2,500 列、以 `CompressionZstd` 寫成一個 row group 的檔案經 `ApplyCCL(ctx, path, "NEW('b') = ['id'] * 2")` 改寫
@@ -21,6 +21,10 @@ Without options, `ApplyCCL` SHALL write each column the original file has with t
 - **WHEN** 原檔欄位 `a` 用 ZSTD、`b` 用 SNAPPY，`ApplyCCL` 新增欄位 `c`
 - **THEN** `a` 仍是 ZSTD、`b` 仍是 SNAPPY、`c` 是 ZSTD
 
+### Requirement: ApplyCCL writes with the settings it is given
+
+With one `WriteOptions`, `ApplyCCL` SHALL write every column with that `Compression` and row groups of that `RowGroupSize`, as `Write` does. More than one `WriteOptions`, or one `Write` refuses, SHALL be an error returned before the file is read, leaving it unchanged.
+
 #### Scenario: Settings given
 - **WHEN** `ApplyCCL(ctx, path, script, WriteOptions{Compression: CompressionGzip, RowGroupSize: 1000})` 改寫 2,500 列
 - **THEN** 每個欄位區塊都是 GZIP，row group 為 1,000、1,000、500
@@ -28,7 +32,6 @@ Without options, `ApplyCCL` SHALL write each column the original file has with t
 #### Scenario: Settings that cannot be used
 - **WHEN** `ApplyCCL` 收到 `RowGroupSize: -1` 或兩個 `WriteOptions`
 - **THEN** 回傳錯誤，檔案位元組不變
-
 ### Requirement: ApplyCCL writes through a temporary file of its own
 
 `ApplyCCL` SHALL write the new file through a temporary file with a name of its own in the file's directory and rename it into place only when the whole file was written, so a failure leaves the original as it was, a file named `<path>.tmp` is not touched, and no temporary file is left behind. An input with no rows SHALL leave the original untouched.
@@ -47,7 +50,7 @@ Without options, `ApplyCCL` SHALL write each column the original file has with t
 
 ### Requirement: ApplyCCL loses no value to a column's type
 
-`ApplyCCL` SHALL write a column a statement assigns with the type the file gave it when every value written into it can be held by that type without loss, and otherwise, like a column a script creates, with the type `Write` gives a table column holding those values, settled from every value the column receives, not from the first batch. Every column a statement writes SHALL be nullable, so a missing value reads back as `nil`. A value that cannot be written, or a column type `ApplyCCL` cannot write back, SHALL be an error that leaves the file as it was, never a panic.
+`ApplyCCL` SHALL write a column a statement assigns with the type the file gave it when every value written into it can be held by that type without loss, and otherwise, like a column a script creates, with the type `Write` gives a table column holding those values, settled from every value the column receives, not from the first batch.
 
 #### Scenario: A fraction in an integer column
 - **WHEN** 對 int64 欄 `num` 為 `[1, 2, 3, 4]` 的檔案執行 `ApplyCCL(ctx, path, "['num'] = ['num'] * 1.5")`
@@ -61,10 +64,13 @@ Without options, `ApplyCCL` SHALL write each column the original file has with t
 - **WHEN** 對 `A` 為 1 到 2,500、以 `WriteOptions{RowGroupSize: 1000}` 寫出的檔案執行 `ApplyCCL(ctx, path, "NEW('r') = ROLLING_MEAN(A, 1500)")`
 - **THEN** 讀回的 `r` 前 1,499 列為 nil、其後是 float64，不是文字
 
+### Requirement: A column ApplyCCL writes keeps its missing values
+
+Every column a statement writes SHALL be nullable, so a missing value reads back as `nil`. A value that cannot be written, or a column type `ApplyCCL` cannot write back, SHALL be an error that leaves the file as it was, never a panic.
+
 #### Scenario: A missing value in a created column
 - **WHEN** 對 `A` 為 `[1, nil, 3]` 的檔案執行 `ApplyCCL(ctx, path, "NEW('c') = A")`
 - **THEN** 讀回的 `c` 是 `[1, nil, 3]`
-
 ### Requirement: ApplyCCL writes back an unwritten column exactly
 
 `ApplyCCL` SHALL write a column no statement writes back with the type and the values the file gave it, whatever its Arrow type, including integer and float widths other than 64 bits, dates, decimals, large strings, lists and structs, and SHALL NOT fail because the file has such a column. A column a statement assigns SHALL keep its type, `int8` to `int64`, the unsigned widths, `float32`, `float64`, `Date32` and `Date64` included, when that type holds every value written into it exactly.

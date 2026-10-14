@@ -1,7 +1,8 @@
 # core-atomic-file-output Specification
 
 ## Purpose
-`ToCSV`／`ToJSON` 的輸出契約：不留截斷檔、不吞寫入錯誤。
+`ToCSV`／`ToJSON` 的輸出契約：先寫同目錄暫存檔再改名，所以不會留下截斷的檔案；寫入或 flush 的錯誤一律回傳，不會被吞掉，失敗時也不留下暫存檔。
+
 
 ## Requirements
 ### Requirement: ToCSV and ToJSON are atomic and honest

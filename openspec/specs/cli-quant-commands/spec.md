@@ -6,12 +6,16 @@ CLI／REPL／DSL 的 `quant` 命令群：每個 `quant` 函式一個形式（績
 ## Requirements
 ### Requirement: quant command forms map one-to-one to quant functions
 
-CLI SHALL 提供 `quant <form> ...` 命令，各形式 SHALL 呼叫對應的 `quant` 函式並回傳其結果：`sharpe`→`SharpeRatio`、`sortino`→`SortinoRatio`、`ir`→`InformationRatio`、`maxdd`→`MaxDrawdown`、`annret`→`AnnualizedReturn`、`calmar`→`CalmarRatio`、`drawdown`→`DrawdownSeries`、`var`→`ValueAtRisk`、`cvar`→`ConditionalValueAtRisk`、`beta`→`Beta`、`capm`→`CAPM`、`factor`→`FactorModel`、`bs`→`BlackScholes`、`iv`→`ImpliedVolatility`。序列引數 SHALL 為 `DataList` 變數（`factor` 的 `factors` 為 `DataTable`）；`periods`、`days`、`confidence` SHALL 為必填位置引數；`rf`、`mar`、`q` 為 `key value` 選項，預設 0；VaR 方法預設 `historical`。函式庫錯誤 SHALL 原樣回傳並加 `quant <form>:` 前綴。未知形式 SHALL 回傳列出所有形式的錯誤。
+CLI SHALL 提供 `quant <form> ...` 命令，各形式 SHALL 呼叫對應的 `quant` 函式並回傳其結果：`sharpe`→`SharpeRatio`、`sortino`→`SortinoRatio`、`ir`→`InformationRatio`、`maxdd`→`MaxDrawdown`、`annret`→`AnnualizedReturn`、`calmar`→`CalmarRatio`、`drawdown`→`DrawdownSeries`、`var`→`ValueAtRisk`、`cvar`→`ConditionalValueAtRisk`、`beta`→`Beta`、`capm`→`CAPM`、`factor`→`FactorModel`、`bs`→`BlackScholes`、`iv`→`ImpliedVolatility`。未知形式 SHALL 回傳列出所有形式的錯誤。
 
 #### Scenario: Sharpe equals the library
 
 - **WHEN** 變數 `r` 為報酬序列，執行 `quant sharpe r 252 rf 0.0001 as s`
 - **THEN** 輸出含 `sharpe=`，`s` 等於 `quant.SharpeRatio(r, 0.0001, 252)`
+
+### Requirement: quant command arguments
+
+序列引數 SHALL 為 `DataList` 變數（`factor` 的 `factors` 為 `DataTable`）；`periods`、`days`、`confidence` SHALL 為必填位置引數；`rf`、`mar`、`q` 為 `key value` 選項，預設 0；VaR 方法預設 `historical`。函式庫錯誤 SHALL 原樣回傳並加 `quant <form>:` 前綴。
 
 #### Scenario: VaR method keyword
 
@@ -27,7 +31,6 @@ CLI SHALL 提供 `quant <form> ...` 命令，各形式 SHALL 呼叫對應的 `qu
 
 - **WHEN** `r` 含一個 nil，執行 `quant sortino r 252`
 - **THEN** 錯誤訊息以 `quant sortino:` 開頭並含函式庫的列號訊息
-
 ### Requirement: Structured results are printed and stored as tables
 
 `quant capm` SHALL 印出 `beta`、`alpha`、`r2`、`beta_se`、`alpha_se`、`n`，並在 `as` 時存一列 `DataTable`（同名欄）。`quant factor` SHALL 印出 `alpha` 與每個因子的 `exposure`、`t`、`p`，並在 `as` 時存 `DataTable`（欄 `Factor, Exposure, StdErr, TValue, PValue`，一因子一列），`alpha` 及其推論值 SHALL 以 `alpha` 名稱另存為 `<var>_alpha` 一列表。`quant bs` SHALL 印出 `price delta gamma vega theta rho` 並在 `as` 時存一列 `DataTable`。`quant drawdown` SHALL 存 `DataList`。
@@ -51,4 +54,3 @@ CLI SHALL 提供 `quant <form> ...` 命令，各形式 SHALL 呼叫對應的 `qu
 
 - **WHEN** 以 `quant bs` 的價格執行 `quant iv call <price> 42 40 0.10 0.5 as v`
 - **THEN** `v` 等於 0.20（1e-8 內）
-

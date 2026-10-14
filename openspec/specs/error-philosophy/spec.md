@@ -1,7 +1,8 @@
 # error-philosophy Specification
 
 ## Purpose
-錯誤哲學：程式庫預設不結束、不中斷宿主程序；要 fail-fast 由呼叫端明確開啟。
+錯誤哲學：程式庫預設不結束、不中斷宿主程序，要 fail-fast 由呼叫端明確開啟；建構函式拿到不能用的輸入時回傳錯誤，解析器跳過讀不懂的部分，失敗的函式仍回傳可用的物件。
+
 
 ## Requirements
 

@@ -33,7 +33,7 @@ The exported API of `engine/dsl` SHALL be unchanged: `NewSession` SHALL take `*c
 
 ### Requirement: A program needs nothing from cli/ to use the command language
 
-`engine/dsl` SHALL provide `Manager`, `NewManager`, `DefaultManager`, and the types the Manager's methods use (`EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable`, `UnsavedVariable`), as the same types `cli/env` names. `DefaultManager` SHALL return a new Manager rooted at `<UserHomeDir>/.insyra`, with environments in `envs/`, on every call. The same names in `cli/env` SHALL carry a `Deprecated:` notice pointing at `engine/dsl` and stay for one release; `cli/env.Default`, `ConfigKeys` and `ExportPayload` SHALL NOT be deprecated. `NewSession` SHALL create the environment it is given when it does not exist and open it when it does, and SHALL return an error for a name an environment may not have.
+`engine/dsl` SHALL provide `Manager`, `NewManager`, `DefaultManager`, and the types the Manager's methods use (`EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable`, `UnsavedVariable`), as the same types `cli/env` names. `DefaultManager` SHALL return a new Manager rooted at `<UserHomeDir>/.insyra`, with environments in `envs/`, on every call.
 
 #### Scenario: A workspace-scoped session from engine/dsl alone
 - **WHEN** a program importing only `engine/dsl` creates `NewManager(root, "insights")`, opens a session on the environment `analysis` and runs `newdl 1 2 3 as x`
@@ -42,6 +42,18 @@ The exported API of `engine/dsl` SHALL be unchanged: `NewSession` SHALL take `*c
 #### Scenario: Default managers are independent
 - **WHEN** a program calls `DefaultManager()` twice and moves the first with `SetBasePath`
 - **THEN** the second is still at `<UserHomeDir>/.insyra/envs`, and the two are different values
+
+### Requirement: cli/env's environment names point at engine/dsl
+
+The names `engine/dsl` now provides SHALL carry a `Deprecated:` notice in `cli/env` pointing at `engine/dsl` and stay for one release; `cli/env.Default`, `ConfigKeys` and `ExportPayload` SHALL NOT be deprecated.
+
+#### Scenario: Reading cli/env's doc comments
+- **WHEN** reading the doc comments of `cli/env`'s `Manager`, `NewManager`, `EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable` and `UnsavedVariable`, and of `Default`, `ConfigKeys` and `ExportPayload`
+- **THEN** each of the first seven has a `Deprecated:` paragraph naming `engine/dsl`, and the last three have none
+
+### Requirement: NewSession creates the environment it is given
+
+`NewSession` SHALL create the environment it is given when it does not exist and open it when it does, and SHALL return an error for a name an environment may not have.
 
 #### Scenario: A session on an environment that does not exist
 - **WHEN** `NewSession` is called with an environment that has not been created, runs `newdl 1 2 3 as x`, and a second `NewSession` opens the same environment
@@ -54,10 +66,9 @@ The exported API of `engine/dsl` SHALL be unchanged: `NewSession` SHALL take `*c
 #### Scenario: Two sessions on a missing environment at once
 - **WHEN** two goroutines call `NewSession` on the same missing environment at the same time
 - **THEN** both succeed
-
 ### Requirement: A program registers its own command through engine/dsl
 
-`engine/dsl` SHALL provide `Register`, `CommandHandler`, `ExecContext`, `CommandFlag`, `ArgLimit`, `MaxArgs`, `FormArgs`, `FormArgsAt` and `OpenArgs`, as the same types and functions the command language's registry uses. A command registered through `Register` SHALL be available in every session in the process, its declared argument count SHALL be enforced before its `Run`, its error SHALL reach the caller of `Execute`, and the session SHALL save its variables after it succeeds. `Register` SHALL refuse a name already registered, a built-in's included, and a handler without `Run`. The same names in `cli/commands` SHALL carry a `Deprecated:` notice pointing at `engine/dsl`.
+`engine/dsl` SHALL provide `Register`, `CommandHandler`, `ExecContext`, `CommandFlag`, `ArgLimit`, `MaxArgs`, `FormArgs`, `FormArgsAt` and `OpenArgs`, as the same types and functions the command language's registry uses. A command registered through `Register` SHALL be available in every session in the process, its declared argument count SHALL be enforced before its `Run`, its error SHALL reach the caller of `Execute`, and the session SHALL save its variables after it succeeds.
 
 #### Scenario: A registered command in a session
 - **WHEN** a program registers `zzdouble` through `engine/dsl`, opens a session and runs `zzdouble x as y`
@@ -67,7 +78,10 @@ The exported API of `engine/dsl` SHALL be unchanged: `NewSession` SHALL take `*c
 - **WHEN** `zzdouble`, declared with `MaxArgs(1).WithAlias()`, is run as `zzdouble x y z`
 - **THEN** `Execute` returns an error and `Run` is not called
 
+### Requirement: Register refuses a taken name and an incomplete handler
+
+`Register` SHALL refuse a name already registered, a built-in's included, and a handler without `Run`. The same names in `cli/commands` SHALL carry a `Deprecated:` notice pointing at `engine/dsl`.
+
 #### Scenario: A taken name
 - **WHEN** a program registers a command named `newdl`
 - **THEN** `Register` returns an error
-

@@ -1,7 +1,8 @@
 # cli-failure-reporting Specification
 
 ## Purpose
-CLI 指令做不到被交代的事時，必須以非零狀態結束並說明原因。
+CLI 指令做不到被交代的事時，必須以非零狀態結束並說明原因：錯誤要指出是哪個指令、哪個參數，不認得的選項要列出支援的選項，型別不對也不能說成變數不存在。
+
 ## Requirements
 ### Requirement: A command that fails exits non-zero
 

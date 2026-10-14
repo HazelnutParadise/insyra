@@ -1,7 +1,8 @@
 # global-error-buffer-scope Specification
 
 ## Purpose
-全域錯誤緩衝區的定位：有上限的診斷日誌，不是錯誤處理 API。
+全域錯誤緩衝區的定位：它是有上限、會丟棄最舊紀錄的診斷日誌，不是錯誤處理 API；錯誤處理走實例的 `Err()` 或函式回傳的 `error`，兩邊的紀錄互不影響。
+
 
 ## Requirements
 ### Requirement: The global buffer is a bounded diagnostic log

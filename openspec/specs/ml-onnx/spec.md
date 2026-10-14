@@ -1,7 +1,8 @@
 # ml-onnx Specification
 
 ## Purpose
-TBD - created by archiving change add-ml-onnx-export. Update Purpose after archive.
+Exporting a fitted `ml` model to ONNX so another runtime can run it: one export function typed by the protocol, linear, tree and ensemble families covered, and every exported family proved by running the file and comparing its predictions.
+
 
 ## Requirements
 

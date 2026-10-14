@@ -49,7 +49,7 @@ A Fit call configured to match the documented hand-written tape loop — same se
 
 ### Requirement: Training can be cancelled between batches
 
-`(*Sequential).FitContext(ctx, x, y, cfg)` SHALL train exactly as `Fit` does, and `Fit` SHALL be `FitContext` with `context.Background()`. `FitContext` SHALL check `ctx` before every batch and before each epoch's validation. When `ctx` is done, it SHALL return `ctx.Err()` unwrapped and a `FitResult` listing only the epochs whose batches, validation and `Progress` call completed, with `Elapsed` set; the parameters SHALL keep every optimizer step taken before the check. A run whose every epoch finished SHALL return its result and no error, even if `ctx` was cancelled during the last `Progress` call. A context already done at the call SHALL leave the model and its tape unchanged. A nil context SHALL be refused with an error before anything changes.
+`(*Sequential).FitContext(ctx, x, y, cfg)` SHALL train exactly as `Fit` does, and `Fit` SHALL be `FitContext` with `context.Background()`. `FitContext` SHALL check `ctx` before every batch and before each epoch's validation. When `ctx` is done, it SHALL return `ctx.Err()` unwrapped and a `FitResult` listing only the epochs whose batches, validation and `Progress` call completed, with `Elapsed` set; the parameters SHALL keep every optimizer step taken before the check.
 
 #### Scenario: Stopping after an epoch
 - **WHEN** 以同一個種子執行 3 個 epoch 的 `FitContext`，在第 1 個 epoch 的 `Progress` 裡取消 context
@@ -63,25 +63,32 @@ A Fit call configured to match the documented hand-written tape loop — same se
 - **WHEN** 一個 `Func` 層在第 2 個 epoch 最後一個 batch 的 forward 中取消 context
 - **THEN** 第 2 個 epoch 的 `Progress` 不會被呼叫，回傳 `context.Canceled` 與只有第 1 個 epoch 的結果
 
+#### Scenario: A deadline
+- **WHEN** 以已過期的 deadline 呼叫 `FitContext`
+- **THEN** 回傳的錯誤符合 `errors.Is(err, context.DeadlineExceeded)`
+
+### Requirement: A run that finished is not cancelled after the fact
+
+A run whose every epoch finished SHALL return its result and no error, even if `ctx` was cancelled during the last `Progress` call.
+
 #### Scenario: A cancel after the last epoch finished
 - **WHEN** 在最後一個 epoch 的 `Progress` 裡取消 context
 - **THEN** 回傳全部 epoch 的結果，沒有錯誤
+
+### Requirement: A context unusable at the call changes nothing
+
+A context already done at the call SHALL leave the model and its tape unchanged. A nil context SHALL be refused with an error before anything changes.
 
 #### Scenario: A context that is already done
 - **WHEN** 以已取消的 context 呼叫 `FitContext`
 - **THEN** 參數不變，`Progress` 沒有被呼叫，回傳 `context.Canceled` 與空的結果
 
-#### Scenario: A deadline
-- **WHEN** 以已過期的 deadline 呼叫 `FitContext`
-- **THEN** 回傳的錯誤符合 `errors.Is(err, context.DeadlineExceeded)`
-
 #### Scenario: A nil context
 - **WHEN** 以 nil context 呼叫 `FitContext`
 - **THEN** 回傳錯誤，參數不變
-
 ### Requirement: Fit trains with a loss the caller computes on the tape
 
-`nn.CustomLoss{Name, Loss, Validate}` SHALL be accepted as `FitConfig.Loss`. `Loss func(tape *Tape, prediction, target *Tensor) (*Tensor, error)` SHALL be required, and `Fit` SHALL refuse a `CustomLoss` without it before any batch runs. `Fit` SHALL call `Validate func(prediction, target *Tensor) error`, when set, before `Loss` on every training batch and on the validation set. `Name` SHALL label the loss in `Fit`'s errors, and an empty `Name` SHALL read `CustomLoss`. A `Loss` result that is nil, not float32, not a scalar, or not produced by an operation on the tape it was given SHALL be an error naming the loss, never a panic. `LossSpec` SHALL keep its unexported methods.
+`nn.CustomLoss{Name, Loss, Validate}` SHALL be accepted as `FitConfig.Loss`. `Loss func(tape *Tape, prediction, target *Tensor) (*Tensor, error)` SHALL be required, and `Fit` SHALL refuse a `CustomLoss` without it before any batch runs. `Fit` SHALL call `Validate func(prediction, target *Tensor) error`, when set, before `Loss` on every training batch and on the validation set.
 
 #### Scenario: A custom loss that is a built-in one
 - **WHEN** 以同一個種子，分別用 `nn.MSE{}` 與 `Loss` 呼叫 `tape.MSELoss` 的 `nn.CustomLoss` 執行含 validation 的 `Fit`
@@ -98,6 +105,10 @@ A Fit call configured to match the documented hand-written tape loop — same se
 #### Scenario: A missing loss function
 - **WHEN** 以沒有 `Loss` 的 `nn.CustomLoss{Name: "huber"}` 呼叫 `Fit`
 - **THEN** 在任何 batch 之前回傳指出缺少 `Loss` 的錯誤，參數不變
+
+### Requirement: A custom loss result Fit cannot train on is an error
+
+`Name` SHALL label the loss in `Fit`'s errors, and an empty `Name` SHALL read `CustomLoss`. A `Loss` result that is nil, not float32, not a scalar, or not produced by an operation on the tape it was given SHALL be an error naming the loss, never a panic. `LossSpec` SHALL keep its unexported methods.
 
 #### Scenario: A result Fit cannot train on
 - **WHEN** `Loss` 回傳 nil、形狀為 `[2]` 的張量、int64 張量，或在 tape 之外用 kernel 算出的純量

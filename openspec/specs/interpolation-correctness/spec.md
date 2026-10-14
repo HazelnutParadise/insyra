@@ -1,7 +1,8 @@
 # interpolation-correctness Specification
 
 ## Purpose
-插值法必須滿足它名稱所宣稱的條件。
+插值法必須滿足它名稱所宣稱的條件，例如 Hermite 插值要通過每個節點並符合給定的導數；任何插值遇到 NaN 的 x 都回傳錯誤，不回傳看起來合理的數值。
+
 ## Requirements
 ### Requirement: Hermite interpolation satisfies its conditions
 

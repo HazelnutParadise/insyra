@@ -1,7 +1,8 @@
 # csv-formula-safety Specification
 
 ## Purpose
-CSV 匯出可選擇讓試算表安全開啟，不執行儲存格內容。
+CSV 匯出可以選擇讓試算表安全開啟：開頭是 `=`、`+`、`-`、`@` 的儲存格加上單引號前綴，試算表就不會把內容當成公式執行，其他儲存格原樣寫出。
+
 
 ## Requirements
 ### Requirement: A CSV export can be made spreadsheet-safe

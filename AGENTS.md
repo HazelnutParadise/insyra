@@ -32,7 +32,18 @@ through a change first:
    (`openspec-verify-change`).
 4. **Archive** — once the change is implemented and merged, archive it into
    `openspec/changes/archive/` (`openspec-archive-change`). **Completed changes
-   must be archived, not left sitting in `openspec/changes/`.**
+   must be archived, not left sitting in `openspec/changes/`.** Archiving a
+   change that creates a capability leaves `TBD - created by archiving change …`
+   as its Purpose; replace it in the same commit with one or two sentences on
+   what the capability is for.
+
+Every main spec must pass `openspec validate --specs --strict`, and the
+GolangCI-Lint workflow runs it on every push and pull request: a Purpose of at
+least 50 characters, every requirement's text before its first scenario at most
+500 characters, a SHALL or MUST in each, and a scenario under each. To shorten a
+requirement, split it into requirements that each state one behaviour, keep
+the original header on the first so a later `MODIFIED` delta still finds it,
+and keep every rule and scenario.
 
 Trivial edits (typos, formatting, comment/doc-only touch-ups) may skip OpenSpec.
 When in doubt, propose a change. The docs/changelog/skills-in-sync rule below
@@ -627,12 +638,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: (1) return the error so the command fails; (2) refuse `schema` on SQLite or document that it is accepted and has no effect; (3) give `ExecuteFile` the `run` tokenizer, or say how they differ; (4) route the error line through the same colour check as the rest of the output. Each is small and independent.
 - **Status**: pending
 
-### [2026-09-27] — 36 main specs fail `openspec validate --specs --strict`
-- **Where**: `openspec/specs/*/spec.md`, mostly the `## Purpose` section
-- **What**: on 2026-09-28 the strict run reports 36 failures of 136 specs on this branch, among them the seven `accel-*` specs, the five `ml-*` specs, `nn-inference`, `changelog`, `cli-entry`, `command-registry`, `core-multilock-reentry` and `error-philosophy`. dev recorded 26 of its 101 on 2026-09-14. Nothing in CI runs the command.
-- **Suggestion**: write each Purpose from its requirements as its own change, then add the strict run to the lint workflow so the count cannot climb again.
-- **Status**: pending
-
 ### [2026-09-25] — device MatMul's bit-parity rests on behaviour WGSL does not promise
 - **Where**: `accel/internal/wgpu/matmul.go` (`matmulWGSL`), `accel/nn_matmul.go`, and the default-on hook in `nn/device_matmul_wiring.go`
 - **What**: `ENG.md` now defines a device float32 result as the correctly rounded value of the exact operation, computed in integers, because WGSL lets an implementation contract, reassociate and flush subnormals. Device MatMul predates that rule: it accumulates `acc + a*b` in `f32` and matches the CPU only because Metal and Go on arm64 both fuse (asserted with `==` on the M3). The same measurement for `EdgeSum` on 2026-09-25 showed Metal fusing exactly like arm64, so today's parity is real, but a conforming implementation that reassociated the loop or flushed a subnormal would break it, and amd64's CPU, which does not fuse, already disagrees with the device.
@@ -697,12 +702,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `parquet/internal.go` `inferArrowType`
 - **What**: the reader handles twenty Arrow types; the writer emits eight. `parquet-binary-is-bytes` added `Binary`, so a binary column now survives a round trip, but a `Date32` column still comes back as a timestamp, a decimal as its text, and an `Int16` as an `Int64`.
 - **Suggestion**: `inferArrowType` infers from Go values, so it cannot tell an `int16` that came from a `Date32` column from any other. Carrying the source schema through a read would fix it properly; inferring `time.Time` to `Date64` would guess wrong on ordinary data. Worth doing only if round-tripping is a use case someone has.
-- **Status**: pending
-
-### [2026-09-12] — 46 of the 105 archived specs have a `## Purpose` nobody wrote
-- **Where**: `openspec/specs/*/spec.md`, the `## Purpose` section
-- **What**: `openspec validate --specs --strict` on 2026-09-12 reported 46 failures, and every one is the same shape: 26 specs still carry the placeholder sentence `openspec archive` writes for a new capability (`TBD - created by archiving change <id>. Update Purpose after archive.`) and 20 have a Purpose under 50 characters. Eight also have a requirement over 500 characters. The failures are not new and nothing in CI runs this command, which is why they accumulated — the capability is created by the first change that touches it, the placeholder lands in the main spec, and a `## Purpose` written in a later delta is ignored because deltas only supply one at creation. `verification-integrity` was fixed in `docs-hygiene-and-remaining-partials` as an example of the size the replacement should be.
-- **Suggestion**: not a mechanical pass. Each Purpose is one or two sentences saying what the capability is for, which means reading the requirements under it, so this is 46 small judgements rather than one edit. Do it as its own change, and add `openspec validate --specs --strict` to the lint workflow afterwards so the count cannot climb again. Until then, anyone archiving a change that creates a capability must write its Purpose in the same commit.
 - **Status**: pending
 
 ### [2026-09-11] — `insyra run` exits 0 when a line fails

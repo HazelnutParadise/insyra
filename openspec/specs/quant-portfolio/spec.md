@@ -6,7 +6,7 @@
 ## Requirements
 ### Requirement: Mean-variance optimisation under sum-to-one and box constraints
 
-`quant` SHALL 提供 `PortfolioObjective`（`MinimumVariance`、`TargetReturn`、`MaximumSharpe`）、`PortfolioConfig{Objective; TargetReturn, RiskFreeRate float64; MinWeight, MaxWeight []float64; Tolerance float64; MaxIterations int}`、`PortfolioResult{Weights []float64; AssetNames []string; ExpectedReturn, Variance, Volatility, SharpeRatio float64; Iterations int; Converged bool}` 與方法 `Weight(name string) (float64, bool)`，以及 `OptimizePortfolio(returns insyra.IDataTable, cfg PortfolioConfig) (*PortfolioResult, error)` 與 `OptimizePortfolioMoments(mean []float64, cov [][]float64, names []string, cfg PortfolioConfig) (*PortfolioResult, error)`。權重 SHALL 滿足 `Σw = 1` 與 `MinWeight[i] ≤ w[i] ≤ MaxWeight[i]`（未給時為 `[0, 1]`）。`OptimizePortfolio` SHALL 以各欄平均為期望報酬、樣本共變異數（n−1）為 Σ。`MinimumVariance` SHALL 最小化 `wᵀΣw`；`TargetReturn` SHALL 在 `μᵀw = TargetReturn` 下最小化 `wᵀΣw`；`MaximumSharpe` SHALL 最大化 `(μᵀw − RiskFreeRate) / sqrt(wᵀΣw)`。`SharpeRatio` 欄位 SHALL 為每期值。`Tolerance` 預設 1e-10、`MaxIterations` 預設 10000；未收斂 SHALL 回傳 `Converged: false` 與當時最佳解，不回錯。
+`OptimizePortfolio(returns insyra.IDataTable, cfg PortfolioConfig) (*PortfolioResult, error)` SHALL choose weights that satisfy `Σw = 1` and `MinWeight[i] ≤ w[i] ≤ MaxWeight[i]`（未給時為 `[0, 1]`）。`MinimumVariance` SHALL 最小化 `wᵀΣw`；`TargetReturn` SHALL 在 `μᵀw = TargetReturn` 下最小化 `wᵀΣw`；`MaximumSharpe` SHALL 最大化 `(μᵀw − RiskFreeRate) / sqrt(wᵀΣw)`。
 
 #### Scenario: Interior minimum variance matches the closed form
 
@@ -33,16 +33,23 @@
 - **WHEN** 以 `MaximumSharpe` 求解，並以 `EfficientFrontier` 取 50 點
 - **THEN** 結果的 `SharpeRatio` 不小於 50 點中的最大值減 1e-6
 
-#### Scenario: Moments entry point agrees with the table entry point
+### Requirement: The portfolio types
 
-- **WHEN** 以同一組報酬先算均值與共變異數再呼叫 `OptimizePortfolioMoments`
-- **THEN** 權重與 `OptimizePortfolio` 相同（1e-12）
+`quant` SHALL 提供 `PortfolioObjective`（`MinimumVariance`、`TargetReturn`、`MaximumSharpe`）、`PortfolioConfig{Objective; TargetReturn, RiskFreeRate float64; MinWeight, MaxWeight []float64; Tolerance float64; MaxIterations int}`、`PortfolioResult{Weights []float64; AssetNames []string; ExpectedReturn, Variance, Volatility, SharpeRatio float64; Iterations int; Converged bool}` 與方法 `Weight(name string) (float64, bool)`。`SharpeRatio` 欄位 SHALL 為每期值。
 
 #### Scenario: Weight lookup by name
 
 - **WHEN** 欄名為 `A, B, C`
 - **THEN** `Weight("B")` 回傳第二個權重與 `true`；`Weight("Z")` 回傳 `0, false`
 
+### Requirement: The moments and the convergence settings
+
+`OptimizePortfolio` SHALL 以各欄平均為期望報酬、樣本共變異數（n−1）為 Σ；`OptimizePortfolioMoments(mean []float64, cov [][]float64, names []string, cfg PortfolioConfig) (*PortfolioResult, error)` SHALL 直接使用給定的均值與共變異數。`Tolerance` 預設 1e-10、`MaxIterations` 預設 10000；未收斂 SHALL 回傳 `Converged: false` 與當時最佳解，不回錯。
+
+#### Scenario: Moments entry point agrees with the table entry point
+
+- **WHEN** 以同一組報酬先算均值與共變異數再呼叫 `OptimizePortfolioMoments`
+- **THEN** 權重與 `OptimizePortfolio` 相同（1e-12）
 ### Requirement: Efficient frontier sweep
 
 `quant` SHALL 提供 `EfficientFrontier(returns insyra.IDataTable, points int, cfg PortfolioConfig) ([]PortfolioResult, error)`：在最小變異數組合的報酬與界內可達最大報酬之間等距取 `points` 個目標報酬，各以 `TargetReturn` 求解，依 `ExpectedReturn` 遞增回傳。`points < 2` SHALL 回錯。
@@ -89,4 +96,3 @@
 
 - **WHEN** 未設定環境變數
 - **THEN** 該測試 Skip，`go test ./quant/...` 不需要 Python
-

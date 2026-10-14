@@ -19,7 +19,7 @@ Says which rows the `DataTable` filters keep. `Filter` and `FilterRows` judge on
 
 ### Requirement: FilterRowsWhere judges a whole row
 
-`FilterRowsWhere(keep)` SHALL call `keep` once per row with a DataList holding that row's cells in column order and named with the row's name, and SHALL return a new table holding the rows for which `keep` returned true, with the source table's name, column names and the kept rows' names. The DataList SHALL be a copy, so changing it SHALL NOT change the source or the result, and a slice cell SHALL stay one cell. A nil `keep` SHALL record an error on the table and return an empty, non-nil DataTable.
+`FilterRowsWhere(keep)` SHALL call `keep` once per row with a DataList holding that row's cells in column order and named with the row's name, and SHALL return a new table holding the rows for which `keep` returned true, with the source table's name, column names and the kept rows' names. The DataList SHALL be a copy: changing it changes neither the source nor the result. A slice cell SHALL stay one cell. A nil `keep` SHALL record an error on the table and return an empty, non-nil DataTable.
 
 #### Scenario: One column compared with another
 

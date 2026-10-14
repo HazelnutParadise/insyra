@@ -1,7 +1,8 @@
 # clustering-initial-centers Specification
 
 ## Purpose
-k-means 初始中心為相異列，與 R 一致。
+k-means 的初始中心一定是相異的資料列，和 R 一致：抽到重複列時從相異列重抽，不回報空群；抽到的中心本來就相異時，既有 seed 的結果逐位不變。
+
 
 ## Requirements
 ### Requirement: Initial centres are distinct rows

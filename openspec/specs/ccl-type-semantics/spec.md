@@ -25,19 +25,11 @@ When neither operand of `<`, `>`, `<=` or `>=` converts to a number and both are
 
 ### Requirement: Internal types never reach a cell
 
-No internal representation SHALL become a cell value. A column range used as a whole result SHALL resolve to the current row restricted to those columns, the same way a bare column reference resolves to the current row's value. A row range SHALL remain an error, because it names rows but not what they are rows of, and the message SHALL say how to attach it to a column. `LAG` and `LEAD` SHALL accept a row-shaped argument (`@` or a column range); every other sequence function SHALL refuse one, because it does arithmetic on each element.
+No internal representation SHALL become a cell value. A column range used as a whole result SHALL resolve to the current row restricted to those columns, the same way a bare column reference resolves to the current row's value. A row range SHALL remain an error, because it names rows but not what they are rows of, and the message SHALL say how to attach it to a column.
 
 #### Scenario: A bare column range
 - **WHEN** 執行 `AddColUsingCCL("r", "A:B")`
 - **THEN** 每一格是該列的 A、B 值（`[]any`），與 `(A:B).#` 相同，SHALL NOT 出現 `ColumnRange`
-
-#### Scenario: A sequence function over the whole row
-- **WHEN** 求值 `LAG(@, 1)`
-- **THEN** 每一列得到前一列的內容，與 `LAG(@.#, 1)` 相同，第一列為 nil
-
-#### Scenario: A sequence function that needs numbers
-- **WHEN** 求值 `CUMSUM(@)`
-- **THEN** 回傳錯誤說明整列不是數字
 
 #### Scenario: A bare row range
 - **WHEN** 求值 `1:2`
@@ -47,6 +39,17 @@ No internal representation SHALL become a cell value. A column range used as a w
 - **WHEN** 求值 `SUM(A:C)`、`SUM((A:C).(2:5))` 與 `SUM(A.(0:1))`
 - **THEN** 結果與批次 8 之前相同，範圍內的每個儲存格只計入一次
 
+### Requirement: Only LAG and LEAD take a whole row
+
+`LAG` and `LEAD` SHALL accept a row-shaped argument (`@` or a column range); every other sequence function SHALL refuse one, because it does arithmetic on each element.
+
+#### Scenario: A sequence function over the whole row
+- **WHEN** 求值 `LAG(@, 1)`
+- **THEN** 每一列得到前一列的內容，與 `LAG(@.#, 1)` 相同，第一列為 nil
+
+#### Scenario: A sequence function that needs numbers
+- **WHEN** 求值 `CUMSUM(@)`
+- **THEN** 回傳錯誤說明整列不是數字
 ### Requirement: AND and OR check their arguments
 
 `AND()` and `OR()` SHALL require at least two arguments, and SHALL return an error for an argument that cannot be converted to a boolean, matching `&&` and `||`.
@@ -185,19 +188,11 @@ A string literal SHALL be enclosed in single or double quotes. Inside it, the en
 
 ### Requirement: Integers stay integers
 
-A number literal written as digits alone, with an optional leading minus, that fits an `int64` SHALL be an `int64`; any other number literal SHALL be a `float64`. When both operands are integers — a cell of any Go integer type whose value fits an `int64`, or an integer literal — `+`, `-`, `*`, `%` and unary minus SHALL compute in `int64` and give an `int64`, and `==`, `!=`, `<`, `>`, `<=` and `>=` SHALL compare them exactly. In arithmetic a `nil` next to an integer SHALL be an integer `0`. An integer result outside the `int64` range SHALL be an error that says it overflows. `SUM`, `MIN` and `MAX`, and their streaming forms, SHALL give an `int64` when every value they use is an integer, and an integer `SUM` outside the `int64` range SHALL be an error. `MOD` of two integers SHALL give an `int64`. The row index `#` SHALL be an `int64`. Every other numeric operation SHALL compute in `float64` as before, `/` and `^` included.
+When both operands are integers — a cell of any Go integer type whose value fits an `int64`, or an integer literal — `+`, `-`, `*`, `%` and unary minus SHALL compute in `int64` and give an `int64`, and `==`, `!=`, `<`, `>`, `<=` and `>=` SHALL compare them exactly. In arithmetic a `nil` next to an integer SHALL be an integer `0`. An integer result outside the `int64` range SHALL be an error that says it overflows.
 
 #### Scenario: An ID past 2^53 keeps its digits
 - **WHEN** 欄 `A` 存 `int64(9007199254740993)`，求值 `A + 0`、`A * 1`、`A - 1`
 - **THEN** 分別得到 `int64(9007199254740993)`、`int64(9007199254740993)`、`int64(9007199254740992)`
-
-#### Scenario: Integer literals
-- **WHEN** 求值 `1 + 2`、`7 % 3`、`-5`、`1.0`、`1e3`
-- **THEN** 分別得到 `int64(3)`、`int64(1)`、`int64(-5)`、`float64(1)`、`float64(1000)`
-
-#### Scenario: Division and powers stay float64
-- **WHEN** 求值 `7 / 2`、`6 / 3`、`2 ^ 3`
-- **THEN** 分別得到 `float64` 的 3.5、2、8
 
 #### Scenario: Exact comparison
 - **WHEN** 欄 `A` 存 `int64(1<<53 + 1)`、欄 `B` 存 `int64(1<<53)`，求值 `A == B` 與 `A > B`
@@ -207,6 +202,22 @@ A number literal written as digits alone, with an optional leading minus, that f
 - **WHEN** 欄 `A` 存 `int64(math.MaxInt64)`，求值 `A + 1`、`A * 2`、`SUM(A, 1)`
 - **THEN** 都回傳提到 overflow 的錯誤
 
+#### Scenario: nil next to an integer
+- **WHEN** 欄 `C` 存 `int16(3)`，求值 `nil + C` 與 `nil + 2.5`
+- **THEN** 分別得到 `int64(3)` 與 `float64(2.5)`
+
+### Requirement: A number literal written as digits is an integer
+
+A number literal written as digits alone, with an optional leading minus, that fits an `int64` SHALL be an `int64`; any other number literal SHALL be a `float64`.
+
+#### Scenario: Integer literals
+- **WHEN** 求值 `1 + 2`、`7 % 3`、`-5`、`1.0`、`1e3`
+- **THEN** 分別得到 `int64(3)`、`int64(1)`、`int64(-5)`、`float64(1)`、`float64(1000)`
+
+### Requirement: Aggregates of integers give an integer
+
+`SUM`, `MIN` and `MAX`, and their streaming forms, SHALL give an `int64` when every value they use is an integer, and an integer `SUM` outside the `int64` range SHALL be an error. `MOD` of two integers SHALL give an `int64`. The row index `#` SHALL be an `int64`.
+
 #### Scenario: Aggregates of integers
 - **WHEN** 欄 `A` 依序存 `int64(1<<53 + 1)`、`int64(1<<53)`、nil、`int64(2)`，求值 `SUM(A)`、`MAX(A)`、`MIN(A)`
 - **THEN** 分別得到 `int64(1<<54 + 3)`、`int64(1<<53 + 1)`、`int64(2)`；streaming 形式得到相同的值與型別
@@ -215,13 +226,16 @@ A number literal written as digits alone, with an optional leading minus, that f
 - **WHEN** 欄 `A` 依序存 `int64(1)`、`2.5`、`int64(3)`，求值 `SUM(A)`
 - **THEN** 得到 `float64(6.5)`
 
-#### Scenario: nil next to an integer
-- **WHEN** 欄 `C` 存 `int16(3)`，求值 `nil + C` 與 `nil + 2.5`
-- **THEN** 分別得到 `int64(3)` 與 `float64(2.5)`
+### Requirement: Other numeric operations stay float64
 
+Every numeric operation not covered by the integer rules SHALL compute in `float64` as before, `/` and `^` included.
+
+#### Scenario: Division and powers stay float64
+- **WHEN** 求值 `7 / 2`、`6 / 3`、`2 ^ 3`
+- **THEN** 分別得到 `float64` 的 3.5、2、8
 ### Requirement: A computed column holds one kind of number
 
-A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` or a statement of `ExecuteCCL` SHALL hold one kind of number: when the numbers among its values include a `float64` or `float32`, every value of a Go integer type whose magnitude is at most 2^53 SHALL become the `float64` of the same value. An integer of larger magnitude SHALL keep its type and value. A column whose numbers are all integers SHALL be left as computed. Values that are not numbers SHALL be left as computed.
+A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` or a statement of `ExecuteCCL` SHALL hold one kind of number: when the numbers among its values include a `float64` or `float32`, every value of a Go integer type whose magnitude is at most 2^53 SHALL become the `float64` of the same value. An integer of larger magnitude SHALL keep its type and value. A column whose numbers are all integers, and every value that is not a number, SHALL be left as computed.
 
 #### Scenario: A literal fallback in a float column
 - **WHEN** 欄 `A` 為 `["19.5", "abc", "30"]`，`AddColUsingCCL("r", "COALESCE(TONUM(A), 0)")`
@@ -245,7 +259,7 @@ A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUs
 
 ### Requirement: DATEPART gives one part of a date
 
-`DATEPART(d, unit)` SHALL return, as a `float64`, the year, month, day of the month, hour, minute or second of `d` for a unit of `year`, `month`, `day`, `hour`, `minute` or `second`, in either singular or plural form and in any letter case, read in `d`'s own time zone, dropping any fraction of a second. `d` SHALL be a `time.Time` or a string Insyra's date parser reads as a date. Any other unit, a `d` that is not a date, a unit that is not a string, or a number of arguments other than two SHALL be an error.
+`DATEPART(d, unit)` SHALL return, as a `float64`, the year, month, day of the month, hour, minute or second of `d` for a unit of `year`, `month`, `day`, `hour`, `minute` or `second`, singular or plural and in any letter case, read in `d`'s own time zone, dropping any fraction of a second. `d` SHALL be a `time.Time` or a string Insyra's date parser reads as a date. Any other unit, a `d` that is not a date, a unit that is not a string, or a number of arguments other than two SHALL be an error.
 
 #### Scenario: Each part
 - **WHEN** 欄 `A` 存 `'2024-03-09T06:07:08Z'`，求值 `DATEPART(A, 'year')`、`'month'`、`'day'`、`'hour'`、`'minute'`、`'second'`
@@ -261,7 +275,7 @@ A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUs
 
 ### Requirement: DAY, HOUR, MINUTE and SECOND take a part of a date
 
-`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL return, as a `float64`, the day of the month, hour, minute or second of a `time.Time` or of a string Insyra's date parser reads as a date, read in the date's own time zone and dropping any fraction of a second, giving what `DATEPART(d, 'day')`, `'hour'`, `'minute'` and `'second'` give. A `time.Duration`, a string `time.ParseDuration` accepts, or a number SHALL be an error that says the function takes a date and names `DATEDIFF(end, start, unit)`. Any other value that is not a date, or a number of arguments other than one, SHALL be an error. `DAYOFMONTH` SHALL keep giving what `DAY` gives.
+`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL return, as a `float64`, the day of the month, hour, minute or second of a `time.Time` or of a string Insyra's date parser reads as a date, read in the date's own time zone and dropping any fraction of a second, giving what `DATEPART(d, 'day')`, `'hour'`, `'minute'` and `'second'` give. `DAYOFMONTH` SHALL keep giving what `DAY` gives.
 
 #### Scenario: Parts of a date
 - **WHEN** 欄 `A` 存 UTC 的 2024-01-02 06:30:15.999，求值 `DAY(A)`、`HOUR(A)`、`MINUTE(A)`、`SECOND(A)`
@@ -271,6 +285,10 @@ A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUs
 - **WHEN** 求值 `DAY('2024-12-31T23:59:58+08:00')` 與 `HOUR('2024-12-31T23:59:58+08:00')`
 - **THEN** 分別得到 31 與 23
 
+### Requirement: DAY, HOUR, MINUTE and SECOND refuse a duration
+
+A `time.Duration`, a string `time.ParseDuration` accepts, or a number given to `DAY`, `HOUR`, `MINUTE` or `SECOND` SHALL be an error that says the function takes a date and names `DATEDIFF(end, start, unit)`. Any other value that is not a date, or a number of arguments other than one, SHALL be an error.
+
 #### Scenario: A duration is refused
 - **WHEN** 欄 `A`、`B` 為日期，求值 `DAY(A - B)`、`HOUR(7200)`、`DAY('36h')`
 - **THEN** 都回傳錯誤，訊息說明需要日期，並提到 `DATEDIFF(end, start, '<unit>')`
@@ -278,4 +296,3 @@ A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUs
 #### Scenario: What the error points to
 - **WHEN** A 為 2024-01-03 12:00、B 為 2024-01-02 00:00，求值 `DATEDIFF(A, B, 'day')` 與 `(A - B) / 3600`
 - **THEN** 分別得到 1.5 與 36
-

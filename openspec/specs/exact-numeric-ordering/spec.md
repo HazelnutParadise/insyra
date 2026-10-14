@@ -1,7 +1,8 @@
 # exact-numeric-ordering Specification
 
 ## Purpose
-排序與排名的數值精度：整數以整數精度比較，不因 float64 而失真。
+排序與排名的數值精度：整數之間以整數精度比較，包括有號與無號混合、超出 `int64` 的 `uint64`，不因經過 float64 而失真；只有其中一方是浮點數時才用 float64 比較。
+
 
 ## Requirements
 ### Requirement: Integers compare exactly

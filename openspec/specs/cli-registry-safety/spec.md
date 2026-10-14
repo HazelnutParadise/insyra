@@ -1,7 +1,8 @@
 # cli-registry-safety Specification
 
 ## Purpose
-CLI 命令登錄表的並行安全：嵌入端可從多個 goroutine 註冊與分派命令。
+CLI 命令登錄表的並行安全：嵌入端可以從多個 goroutine 同時註冊與分派命令，在 race detector 下不會回報 data race。
+
 
 ## Requirements
 ### Requirement: Registry is safe for concurrent use

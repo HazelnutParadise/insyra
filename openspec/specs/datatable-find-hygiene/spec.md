@@ -1,7 +1,8 @@
 # datatable-find-hygiene Specification
 
 ## Purpose
-`DataTable` 查找與建表的衛生規則：非命中不當錯誤記錄；由 map 建立的欄位順序固定。
+`DataTable` 查找與建表的衛生規則：查找時沒命中是正常結果，不記成錯誤；由 map 一次新增多個欄位時依欄名排序，同一輸入每次都得到相同的欄序。
+
 
 ## Requirements
 ### Requirement: Find helpers do not record non-matches as errors

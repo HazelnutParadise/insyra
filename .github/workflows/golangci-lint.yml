@@ -25,3 +25,18 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.12.2
+
+  openspec:
+    # Every main spec has to pass strict validation, so a change archived
+    # with a placeholder Purpose or an overlong requirement fails here
+    # instead of piling up (spec-validation spec).
+    name: OpenSpec strict validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: openspec validate --specs --strict
+        run: npx --yes @fission-ai/openspec@1.14.1 validate --specs --strict --no-interactive

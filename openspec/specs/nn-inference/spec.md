@@ -1,7 +1,8 @@
 # dl-inference Specification
 
 ## Purpose
-TBD - created by archiving change add-dl-onnx-mlp-inference. Update Purpose after archive.
+Running exported neural networks in pure Go with `nn`: loading ONNX and SafeTensors files, kernels proved against the reference runtime, published checkpoints that run unmodified, tensors with one constructor and accessor per dtype, and device matrix multiplication that is measured first and changes no bit.
+
 
 ## Requirements
 
@@ -212,12 +213,10 @@ harness.
 
 `dl` SHALL run 2-D f32 matmuls at or above the measured MAC floor on a
 device by default, wiring the device implementation at package init through
-`accel`'s exported surface — no opt-in import. Setting
-`INSYRA_ACCEL_DISABLE_WGPU=1` or calling `RegisterDeviceMatMul(nil)` SHALL
-restore the pure CPU path. Device results SHALL remain asserted bit-equal to
-the CPU path on hardware, and any device absence, error, or parity failure
-SHALL fall back to the CPU path observably rather than change any answer.
-Under the `race` build tag the device path SHALL NOT be wired.
+`accel`'s exported surface — no opt-in import. Device results SHALL remain
+asserted bit-equal to the CPU path on hardware, and any device absence, error,
+or parity failure SHALL fall back to the CPU path observably rather than change
+any answer.
 
 #### Scenario: Default on, results exact
 
@@ -225,13 +224,6 @@ Under the `race` build tag the device path SHALL NOT be wired.
   present, and a 2-D matmul at or above the measured floor executes
 - **THEN** the result SHALL be bit-equal to the CPU path's result, asserted
   by a hardware test with exact equality
-
-#### Scenario: The switch restores the CPU path
-
-- **WHEN** `INSYRA_ACCEL_DISABLE_WGPU=1` is set or the hook is cleared with
-  `RegisterDeviceMatMul(nil)`
-- **THEN** every matmul SHALL take the pure CPU path and produce the
-  existing CPU results byte-for-byte
 
 #### Scenario: Device trouble is a performance event
 
@@ -246,6 +238,18 @@ Under the `race` build tag the device path SHALL NOT be wired.
 - **THEN** the device SHALL NOT be consulted, because measurement refused
   those shapes
 
+### Requirement: The device matmul can be switched off
+
+Setting `INSYRA_ACCEL_DISABLE_WGPU=1` or calling `RegisterDeviceMatMul(nil)`
+SHALL restore the pure CPU path. Under the `race` build tag the device path
+SHALL NOT be wired.
+
+#### Scenario: The switch restores the CPU path
+
+- **WHEN** `INSYRA_ACCEL_DISABLE_WGPU=1` is set or the hook is cleared with
+  `RegisterDeviceMatMul(nil)`
+- **THEN** every matmul SHALL take the pure CPU path and produce the
+  existing CPU results byte-for-byte
 ### Requirement: Acceleration obeys the Config system, layered under the ops override
 
 `insyra.Config` SHALL expose `SetAcceleration(enabled bool)` and
@@ -405,16 +409,19 @@ and ReduceMin.
 
 ### Requirement: A tensor has one constructor and one accessor per dtype
 
-`NewTensor` SHALL be the float32 tensor constructor, beside `NewInt64Tensor`, `NewStringTensor` and `NewBoolTensor`. `Float32Data`, `Int64Data`, `StringData` and `BoolData` SHALL be the data accessors, each returning an error for a nil tensor or a tensor of another dtype. `NewFloat32Tensor` and `NewTensorWithDType` SHALL remain for one release as Deprecated functions naming `NewTensor`, `NewTensorWithDType` still refusing every dtype but `DTypeFloat32`. `Tensor.Data` SHALL remain for one release as a Deprecated method naming `Float32Data`, still returning nil for a nil or non-float32 tensor.
+`NewTensor` SHALL be the float32 tensor constructor, beside `NewInt64Tensor`, `NewStringTensor` and `NewBoolTensor`. `Float32Data`, `Int64Data`, `StringData` and `BoolData` SHALL be the data accessors, each returning an error for a nil tensor or a tensor of another dtype.
 
 #### Scenario: Reading a tensor of another dtype
 - **WHEN** 對 int64 張量呼叫 `Float32Data`
 - **THEN** 回傳指出 dtype 的錯誤；已 Deprecated 的 `Data` 仍回傳 nil
 
+### Requirement: The replaced tensor names stay one release
+
+`NewFloat32Tensor` and `NewTensorWithDType` SHALL remain for one release as Deprecated functions naming `NewTensor`, `NewTensorWithDType` still refusing every dtype but `DTypeFloat32`. `Tensor.Data` SHALL remain for one release as a Deprecated method naming `Float32Data`, still returning nil for a nil or non-float32 tensor.
+
 #### Scenario: The deprecated constructors keep their meaning
 - **WHEN** 以同樣的形狀與資料呼叫 `NewFloat32Tensor`、`NewTensorWithDType(DTypeFloat32, …)` 與 `NewTensor`，再以 `DTypeInt64` 呼叫 `NewTensorWithDType`
 - **THEN** 前三者得到相同的張量，最後一個回傳錯誤；兩個 Deprecated 函式的 doc comment 都指名 `NewTensor`
-
 ### Requirement: A dtype, a binding and pooling options have one name each
 
 `DType`, the `DType…` constants, `BoundClassifier`, `BoundRegressor` and `PoolOptions` SHALL be the names of these things. `DataType`, `Float32`, `Float16`, `Float64`, `Classifier`, `Regressor`, `MaxPoolOptions` and `AveragePoolOptions` SHALL remain for one release as Deprecated aliases or constants with the same type or value, each doc comment naming its replacement.

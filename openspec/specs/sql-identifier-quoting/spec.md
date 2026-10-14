@@ -1,7 +1,8 @@
 # sql-identifier-quoting Specification
 
 ## Purpose
-每一個 SQL 語句都為識別字加引號。
+每一個 SQL 語句都為資料表與欄位等識別字加上引號，包括 `ToSQL` 在 SQLite 上查詢既有欄位的語句，所以名稱含空白或引號的資料表也能建立與附加。
+
 
 ## Requirements
 ### Requirement: Every statement quotes its identifiers

@@ -9,13 +9,13 @@ How the hypothesis tests take their alternative hypothesis and confidence level,
 
 `SingleSampleTTest`、`TwoSampleTTest`、`PairedTTest` SHALL 以最後一個參數 `opts ...TTestOptions` 接收設定；`SingleSampleZTest`、`TwoSampleZTest` SHALL 以 `opts ...ZTestOptions` 接收；`SingleSampleWilcoxon`、`PairedWilcoxon` SHALL 以 `opts ...WilcoxonOptions` 接收；`MannWhitneyU` SHALL 以 `opts ...MannWhitneyUOptions` 接收。這四個型別 SHALL 各有 `Alternative AlternativeHypothesis` 與 `ConfidenceLevel float64` 兩個欄位；`TTestOptions` SHALL 另有 `EqualVariance bool`，只有 `TwoSampleTTest` 讀取它，`SingleSampleTTest` 與 `PairedTTest` SHALL 忽略它。
 
-`Alternative` 為空字串時 SHALL 視為 `TwoSided`；為 `TwoSided`、`Greater` 或 `Less` 以外的值時 SHALL 回傳錯誤 `alternative must be two-sided, greater or less, got "<值>"`。`ConfidenceLevel` 為 0 時 SHALL 視為 0.95；嚴格介於 0 與 1 之間時 SHALL 照用；其他值，包括 `NaN`、負數與大於等於 1 的值，SHALL 回傳錯誤 `confidence level must be strictly between 0 and 1, got <值>`。給了一個以上的設定值時 SHALL 回傳錯誤 `at most one stats.<型別> may be given, got <個數>`。這些檢查 SHALL 在讀取任何樣本之前完成，出錯時 SHALL NOT 回傳結果。
-
-`mu`、`sigma`、`sigma1`、`sigma2` SHALL 維持為必填的位置參數。`TwoSampleTTest` SHALL 為 `TwoSampleTTest(data1, data2 insyra.IDataList, opts ...TTestOptions)`，SHALL NOT 另有表示變異數假設的位置參數。
-
 #### Scenario: No options means two-sided at 95%
 - **WHEN** 呼叫 `SingleSampleTTest(x, 50)`，`x` 為 `52.1, 58.3, 57.4, 51.3, 61.2, 42.8, 46.8`
 - **THEN** 結果與 `SingleSampleTTest(x, 50, TTestOptions{Alternative: TwoSided, ConfidenceLevel: 0.95})` 逐位元相同，p 值為 0.2973295155（R `t.test(x, mu = 50)`）
+
+### Requirement: The alternative and the confidence level are checked
+
+`Alternative` 為空字串時 SHALL 視為 `TwoSided`；為 `TwoSided`、`Greater` 或 `Less` 以外的值時 SHALL 回傳錯誤 `alternative must be two-sided, greater or less, got "<值>"`。`ConfidenceLevel` 為 0 時 SHALL 視為 0.95；嚴格介於 0 與 1 之間時 SHALL 照用；其他值，包括 `NaN`、負數與大於等於 1 的值，SHALL 回傳錯誤 `confidence level must be strictly between 0 and 1, got <值>`。
 
 #### Scenario: NaN as a level is refused
 - **WHEN** 呼叫 `SingleSampleWilcoxon(x, 50, WilcoxonOptions{ConfidenceLevel: math.NaN()})`
@@ -25,14 +25,25 @@ How the hypothesis tests take their alternative hypothesis and confidence level,
 - **WHEN** 呼叫 `MannWhitneyU(x, y, MannWhitneyUOptions{})`
 - **THEN** 以雙尾檢定計算，與 `MannWhitneyU(x, y, MannWhitneyUOptions{Alternative: TwoSided})` 結果相同，不回傳錯誤
 
-#### Scenario: Two options values
-- **WHEN** 呼叫 `SingleSampleZTest(x, 50, 10, ZTestOptions{}, ZTestOptions{})`
-- **THEN** 回傳錯誤 `at most one stats.ZTestOptions may be given, got 2`
-
 #### Scenario: Unknown alternative
 - **WHEN** 呼叫 `PairedTTest(x, y, TTestOptions{Alternative: "sideways"})`
 - **THEN** 回傳錯誤 `alternative must be two-sided, greater or less, got "sideways"`
 
+### Requirement: Settings are checked before any sample is read
+
+給了一個以上的設定值時 SHALL 回傳錯誤 `at most one stats.<型別> may be given, got <個數>`。設定的檢查 SHALL 在讀取任何樣本之前完成，出錯時 SHALL NOT 回傳結果。
+
+#### Scenario: Two options values
+- **WHEN** 呼叫 `SingleSampleZTest(x, 50, 10, ZTestOptions{}, ZTestOptions{})`
+- **THEN** 回傳錯誤 `at most one stats.ZTestOptions may be given, got 2`
+
+### Requirement: The statistical values a test needs stay required
+
+`mu`、`sigma`、`sigma1`、`sigma2` SHALL 維持為必填的位置參數。`TwoSampleTTest` SHALL 為 `TwoSampleTTest(data1, data2 insyra.IDataList, opts ...TTestOptions)`，SHALL NOT 另有表示變異數假設的位置參數。
+
+#### Scenario: Equal variance is an option
+- **WHEN** 程式呼叫 `TwoSampleTTest(x, y, true)`
+- **THEN** 無法編譯；`TwoSampleTTest(x, y, TTestOptions{EqualVariance: true})` 可以編譯
 ### Requirement: The t-tests test one-sided alternatives as R's t.test does
 
 `SingleSampleTTest`、`TwoSampleTTest` 與 `PairedTTest` 在 `Alternative` 為 `Greater` 或 `Less` 時，SHALL 回傳與 R `t.test(..., alternative = "greater" | "less", conf.level = cl)` 相同的統計量、自由度、p 值與單尾信賴界限：`Greater` 的區間 SHALL 為 `[下界, +Inf]`，`Less` 的區間 SHALL 為 `[-Inf, 上界]`。統計量、自由度與效果量 SHALL 與 `Alternative` 無關。樣本沒有變異而統計量為 `+Inf` 或 `-Inf`、且自由度為有限正數時，p 值 SHALL 依 `Alternative` 決定為 0 或 1；統計量或自由度為 `NaN` 時（例如兩組都沒有變異的 Welch 檢定），p 值 SHALL 為 `NaN`。`Alternative` 為 `TwoSided` 時的結果 SHALL 與變更前逐位元相同。

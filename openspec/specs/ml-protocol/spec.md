@@ -1,7 +1,8 @@
 # ml-protocol Specification
 
 ## Purpose
-TBD - created by archiving change add-ml-estimator-protocol. Update Purpose after archive.
+The one interface every `ml` model and preprocessing step satisfies, so pipelines, cross-validation and export can take any of them: wrapped `stats` models keep their results, capabilities beyond prediction are discoverable, fit functions return the model's own type, and a nil model fails safely.
+
 
 ## Requirements
 
@@ -71,20 +72,27 @@ The system SHALL expose ridge and lasso fitting through the same fitting-functio
 
 ### Requirement: A fit function returns the model's own type
 
-Every exported `Fit*` function in `ml` SHALL return a pointer to the model type it builds, never an interface: `FitLinearRegression` `*LinearModel`, `FitPolynomialRegression` `*PolynomialModel`, `FitWeightedLinearRegression` `*WeightedLinearModel`, `FitRidgeRegression` `*RidgeModel`, `FitLassoRegression` `*LassoModel`, `FitExponentialRegression` `*ExponentialModel`, `FitLogarithmicRegression` `*LogarithmicModel`, `FitLogisticRegression` `*LogisticModel`, `FitPoissonRegression` `*PoissonModel`, `FitGLM` `*GLMModel`, `FitKMeans` `*KMeansModel`, `FitPCA` `*PCATransformer`, `FitKNNClassifier` `*KNNClassifier`, `FitKNNRegressor` `*KNNRegressor`, and the tree and ensemble functions their own types as before. Each type SHALL implement every protocol interface the function returned before the change. `Estimator.Fit`, `Estimator.FitWeighted` and `Step.Fit` SHALL keep returning `Model` and `Transformer`.
+Every exported `Fit*` function in `ml` SHALL return a pointer to the model type it builds, never an interface. For the regressions: `FitLinearRegression` `*LinearModel`, `FitPolynomialRegression` `*PolynomialModel`, `FitWeightedLinearRegression` `*WeightedLinearModel`, `FitRidgeRegression` `*RidgeModel`, `FitLassoRegression` `*LassoModel`, `FitExponentialRegression` `*ExponentialModel`, `FitLogarithmicRegression` `*LogarithmicModel`.
 
 #### Scenario: The wrapped result is read without a type assertion
 - **WHEN** 呼叫 `ml.FitLinearRegression(x, y)` 並直接讀 `model.Result.Coefficients`
 - **THEN** 程式可以編譯，係數與直接呼叫 `stats.LinearRegression` 的結果相同
 
+### Requirement: The other fit functions return their own types and keep their interfaces
+
+`FitLogisticRegression` SHALL return `*LogisticModel`, `FitPoissonRegression` `*PoissonModel`, `FitGLM` `*GLMModel`, `FitKMeans` `*KMeansModel`, `FitPCA` `*PCATransformer`, `FitKNNClassifier` `*KNNClassifier`, `FitKNNRegressor` `*KNNRegressor`, and the tree and ensemble functions their own types as before. Each type a `Fit*` function returns SHALL implement every protocol interface the function returned before the change.
+
 #### Scenario: A returned type still satisfies its interface
 - **WHEN** 把 `FitLogisticRegression` 或 `FitKNNClassifier` 的結果指派給 `ml.ProbaModel`，把 `FitKMeans` 的結果指派給 `ml.Clusterer`，把 `FitPCA` 的結果指派給 `ml.Transformer`
 - **THEN** 都可以編譯，行為與改動前相同
 
+### Requirement: The pipeline seams keep returning interfaces
+
+`Estimator.Fit`, `Estimator.FitWeighted` and `Step.Fit` SHALL keep returning `Model` and `Transformer`.
+
 #### Scenario: A fit function inside an estimator
 - **WHEN** 把 `ml.FitLinearRegression` 放進 `ml.Estimator` 的 `Fit`
 - **THEN** 要寫成回傳 `(ml.Model, error)` 的 closure，交叉驗證結果與改動前相同
-
 ### Requirement: A fitted model is safe to call when it is nil
 
 Every exported method of every type an `ml` `Fit*` function returns SHALL be safe to call on a nil receiver: `Features`, `FeatureImportances` and `LeafValues` SHALL return nil, `Clusters` SHALL return 0, `Classes` SHALL return an empty list whose `Err()` is set, and `Predict`, `PredictProba`, `Transform` and `ExportONNX` SHALL return an error. `ml.ExportONNX` SHALL return an error, and write nothing, when its model argument is nil or a nil pointer.

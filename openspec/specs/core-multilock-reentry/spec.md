@@ -1,7 +1,8 @@
 # core-multilock-reentry Specification
 
 ## Purpose
-`AtomicDoAll` 在 `AtomicDo` 內再入的行為：內聯執行而非死鎖。
+`AtomicDoAll` 在 `AtomicDo` 回呼內再次進入時的行為：已持有其中一個實例的鎖時改為內聯執行，不再加鎖，所以兩個 goroutine 互為鏡像的巢狀呼叫不會死鎖。
+
 
 ## Requirements
 ### Requirement: AtomicDoAll inside AtomicDo does not deadlock

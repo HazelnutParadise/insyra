@@ -1,7 +1,8 @@
 # ml-trees Specification
 
 ## Purpose
-TBD - created by archiving change add-ml-decision-tree. Update Purpose after archive.
+Decision trees, random forests and gradient boosting in `ml`: deterministic fits for classification and regression, missing values and categorical features handled inside the tree, reproducible ensembles from a seed, exact numeric splits checked against the reference implementation, and one options type.
+
 
 ## Requirements
 

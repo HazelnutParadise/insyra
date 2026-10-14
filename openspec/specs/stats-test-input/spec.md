@@ -59,11 +59,15 @@ The hypothesis tests and `CalculateMoment` refuse a cell they cannot read as a f
 
 ### Requirement: Hypothesis test errors number positions from one
 
-`stats` 的假設檢定，即 `SingleSampleTTest`、`TwoSampleTTest`、`PairedTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`LeveneTest`、`BartlettTest`、`SingleSampleWilcoxon`、`PairedWilcoxon`、`MannWhitneyU`、`OneWayANOVA`、`TwoWayANOVA`、`RepeatedMeasuresANOVA`、`KruskalWallis` 與 `FriedmanTest`，錯誤訊息中的每個位置 SHALL 從 1 起算，且 SHALL 寫出它數的是什麼：`row`、`group`、`cell (A=a, B=b)` 的 A 與 B 水準、`subject` 或 `condition`。以 slice 接收多個 list 的函式 SHALL 依 slice 中的順序為組、格或受試者編號，第一個為 1。`TwoWayANOVA` 的 `cells[i*factorBLevels + j]` SHALL 稱為 `A=i+1, B=j+1`。`RepeatedMeasuresANOVA` 與 `FriedmanTest` 的每個 list 是一位受試者，其中的格 SHALL 稱為 `condition`。
+`stats` 的假設檢定，即 `SingleSampleTTest`、`TwoSampleTTest`、`PairedTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`LeveneTest`、`BartlettTest`、`SingleSampleWilcoxon`、`PairedWilcoxon`、`MannWhitneyU`、`OneWayANOVA`、`TwoWayANOVA`、`RepeatedMeasuresANOVA`、`KruskalWallis` 與 `FriedmanTest`，錯誤訊息中的每個位置 SHALL 從 1 起算，且 SHALL 寫出它數的是什麼：`row`、`group`、`cell (A=a, B=b)` 的 A 與 B 水準、`subject` 或 `condition`。
 
 #### Scenario: Levene names the second group as group 2
 - **WHEN** `LeveneTest([]insyra.IDataList{NewDataList(1.0, 2.0, 3.0), NewDataList(4.0, nil, 6.5)})`
 - **THEN** 回傳錯誤 `group 2 contains a non-numeric value at row 2: <nil>`
+
+### Requirement: Groups, cells and subjects are numbered by their order
+
+以 slice 接收多個 list 的函式 SHALL 依 slice 中的順序為組、格或受試者編號，第一個為 1。`TwoWayANOVA` 的 `cells[i*factorBLevels + j]` SHALL 稱為 `A=i+1, B=j+1`。`RepeatedMeasuresANOVA` 與 `FriedmanTest` 的每個 list 是一位受試者，其中的格 SHALL 稱為 `condition`。
 
 #### Scenario: Friedman names the subject and the condition
 - **WHEN** `FriedmanTest([]insyra.IDataList{NewDataList(1.0, 2.0, 3.0), NewDataList(2.0, math.NaN(), 1.0), NewDataList(3.0, 1.0, 2.0)})`

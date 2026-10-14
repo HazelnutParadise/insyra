@@ -1,7 +1,8 @@
 # command-registry Specification
 
 ## Purpose
-TBD - created by archiving change cli-repl. Update Purpose after archive.
+The one registry every CLI and DSL command is declared in: a shared handler interface and execution context, locked access from any goroutine, aliases and one-shot flags declared at registration, and the help table built from what each command declares.
+
 ## Requirements
 ### Requirement: Unified command handler interface
 系統 SHALL 定義統一的 `CommandHandler` 介面，所有命令邏輯通過此介面註冊，CLI、REPL 和腳本執行三個入口共用同一套 handler。
@@ -76,26 +77,31 @@ The acceleration handler SHALL expose selected backend, selected devices, and fa
 
 ### Requirement: Commands declare their one-shot flags at registration
 
-A `CommandHandler` SHALL declare the flags its one-shot form takes in `Flags`. `BuildCobraCommands` SHALL register each declared flag with Cobra under its name and help text, and SHALL append each one that is set to the arguments `Run` receives, in declared order: a switch as `--name`, a flag that takes a value as `--name value` when the value is not blank. A flag with a `Form` SHALL be appended only when the first argument is that word, in any letter case. `BuildCobraCommands` SHALL NOT single out a command by name to add or forward a flag.
+A `CommandHandler` SHALL declare the flags its one-shot form takes in `Flags`. `BuildCobraCommands` SHALL register each declared flag with Cobra under its name and help text, and SHALL append each one that is set to the arguments `Run` receives, in declared order: a switch as `--name`, a flag that takes a value as `--name value` when the value is not blank. `BuildCobraCommands` SHALL NOT single out a command by name to add or forward a flag.
+
+#### Scenario: env clear keeps its history flag
+- **WHEN** the shell runs `insyra env clear a --keep-history`
+- **THEN** `env`'s Run receives `clear a --keep-history`
+
+#### Scenario: A flag with a value
+- **WHEN** the shell runs `insyra accel devices --mode cpu`
+- **THEN** `accel`'s Run receives `devices --mode cpu`
+
+### Requirement: A flag with a form reaches only that form
+
+A flag with a `Form` SHALL be appended only when the first argument is that word, in any letter case.
+
+#### Scenario: A flag outside its form is dropped
+- **WHEN** the shell runs `insyra env clear a --force`
+- **THEN** `env`'s Run receives `clear a`
+
+### Requirement: Register refuses a malformed flag
 
 `Register` SHALL refuse a handler with a flag that has no name or a name declared twice, with an error and without registering it.
 
 #### Scenario: A flag declared twice
 - **WHEN** a handler declares `--force` twice and is registered
 - **THEN** `Register` returns an error and the command is not registered
-
-#### Scenario: env clear keeps its history flag
-- **WHEN** the shell runs `insyra env clear a --keep-history`
-- **THEN** `env`'s Run receives `clear a --keep-history`
-
-#### Scenario: A flag outside its form is dropped
-- **WHEN** the shell runs `insyra env clear a --force`
-- **THEN** `env`'s Run receives `clear a`
-
-#### Scenario: A flag with a value
-- **WHEN** the shell runs `insyra accel devices --mode cpu`
-- **THEN** `accel`'s Run receives `devices --mode cpu`
-
 ### Requirement: accel reads its mode from the session's manager
 
 When `accel` is run without `--mode`, it SHALL read the default mode from the global config of the session's environment manager (`ExecContext.Env`), and from `Default()` only when the session has none.
@@ -125,4 +131,3 @@ When `accel` is run without `--mode`, it SHALL read the default mode from the gl
 #### Scenario: --force is still dropped from env clear
 - **WHEN** the shell runs `insyra env clear a --force`
 - **THEN** `env`'s Run receives `clear a`
-

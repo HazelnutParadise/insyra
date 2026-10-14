@@ -1,7 +1,8 @@
 # accel-convergence-surface Specification
 
 ## Purpose
-TBD - created by archiving change add-accel-convergence-surface. Update Purpose after archive.
+The single place a program turns acceleration on and off and reads where its work ran, so every accelerated operation in the module shares one control surface; it also holds the planning rules that keep accel work covered by an OpenSpec change and handed off with its state.
+
 ## Requirements
 ### Requirement: Shared acceleration control surface
 The project SHALL provide a shared control surface for acceleration work through `delivery-status.md`, `AGENTS.md`, and `CLAUDE.md`.
