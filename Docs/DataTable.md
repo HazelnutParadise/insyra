@@ -3270,16 +3270,17 @@ sampled := dt.SimpleRandomSample(10)
 - If sample size is greater than or equal to the number of rows, returns a full copy
 - If sample size is less than or equal to 0, returns an empty DataTable
 
-### Sample / SampleFrac / Shuffle / TrainTestSplit
+### Sample / SampleFrac / Shuffle / Shuffled / TrainTestSplit
 
 ```go
 func (dt *DataTable) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable
 func (dt *DataTable) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable
 func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable
+func (dt *DataTable) Shuffled(options ...SamplingOptions) *DataTable
 func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable)
 ```
 
-**Description:** Performs row-wise random sampling, shuffling, and train/test splitting. DataTable operations always move whole rows together, so every column and row name remains aligned.
+**Description:** Performs row-wise random sampling, shuffling, and train/test splitting. DataTable operations always move whole rows together, so every column and row name remains aligned. `Shuffle` reorders the table's own rows and returns the table; `Shuffled`, `Sample`, `SampleFrac` and `TrainTestSplit` return new tables and leave the table as it is. For one seed, `Shuffle` and `Shuffled` give the same order. A column shorter than the table is padded with `nil` by both.
 
 **Options:**
 
@@ -3298,7 +3299,8 @@ Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible samples. `TrainT
 ```go
 sample := dt.Sample(100, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
 preview := dt.SampleFrac(0.05, false)
-shuffled := dt.Shuffle()
+shuffled := dt.Shuffled() // dt keeps its order
+dt.Shuffle()              // dt itself is reordered
 
 train, test := dt.TrainTestSplit(0.8, insyra.SamplingOptions{UseSeed: true, Seed: 42})
 orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{PreserveOrder: true})

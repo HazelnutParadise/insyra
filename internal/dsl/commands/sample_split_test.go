@@ -62,6 +62,35 @@ func TestRunSampleCommand_ShuffleDataList(t *testing.T) {
 	if out.Len() != 4 {
 		t.Fatalf("shuffle len = %d, want 4", out.Len())
 	}
+	// `shuffle x as out` stores a shuffled copy; x keeps its order (#218).
+	x := ctx.Vars["x"].(*insyra.DataList)
+	if out == x {
+		t.Fatalf("shuffle stored x itself as out; it must store a copy")
+	}
+	if got := x.Data(); len(got) != 4 || got[0] != 1 || got[1] != 2 || got[2] != 3 || got[3] != 4 {
+		t.Fatalf("shuffle changed x to %v", got)
+	}
+}
+
+func TestRunSampleCommand_ShuffleLeavesTheTable(t *testing.T) {
+	table := cliSamplingTable()
+	before := table.GetColByNumber(0).Data()
+	ctx := &ExecContext{
+		Vars:   map[string]any{"t": table},
+		Output: &bytes.Buffer{},
+	}
+	if err := runSampleCommand(ctx, []string{"t", "shuffle", "seed", "42", "as", "out"}); err != nil {
+		t.Fatalf("shuffle error: %v", err)
+	}
+	if ctx.Vars["out"] == any(table) {
+		t.Fatalf("shuffle stored t itself as out; it must store a copy")
+	}
+	after := table.GetColByNumber(0).Data()
+	for i := range before {
+		if before[i] != after[i] {
+			t.Fatalf("shuffle changed t: %v, was %v", after, before)
+		}
+	}
 }
 
 func TestRunSplitCommand_SeededAndPreserveOrder(t *testing.T) {

@@ -181,15 +181,62 @@ func (dt *DataTable) SampleFrac(frac float64, withReplacement bool, options ...S
 	return dt.Sample(fracCount(rows, frac), withReplacement, options...)
 }
 
-// Shuffle returns a new DataTable with rows randomly reordered.
+// Shuffle puts the rows of the DataTable in random order, in place, and
+// returns the table; every column and the row names move with their rows. A
+// column shorter than the table is padded with nil, as Shuffled pads it. Use
+// Shuffled for a shuffled copy that leaves the table as it is. For one seed,
+// Shuffle and Shuffled give the same order.
 func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable {
 	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
 		dt.fail("Shuffle", "%s", msg)
+		return dt
+	}
+	empty := false
+	dt.AtomicDo(func(dt *DataTable) {
+		rows := dt.getMaxColLength()
+		if rows == 0 {
+			empty = true
+			return
+		}
+		indices := newSamplingRandom(options).perm(rows)
+		for _, col := range dt.columns {
+			shuffled := make([]any, rows)
+			for newIdx, oldIdx := range indices {
+				if oldIdx < len(col.data) {
+					shuffled[newIdx] = col.data[oldIdx]
+				}
+			}
+			col.data = shuffled
+			col.updateTimestamp()
+		}
+		if dt.rowNames != nil && dt.rowNames.Len() > 0 {
+			rowNames := core.NewBiIndex(rows)
+			for newIdx, oldIdx := range indices {
+				if name, ok := dt.rowNames.Get(oldIdx); ok && name != "" {
+					_, _ = rowNames.Set(newIdx, name)
+				}
+			}
+			dt.rowNames = rowNames
+		}
+		dt.updateTimestamp()
+	})
+	if empty {
+		dt.warn("Shuffle", "DataTable is empty")
+	}
+	return dt
+}
+
+// Shuffled returns a copy of the DataTable with its rows in random order,
+// named after the table with "_Shuffled" appended, and leaves the table as it
+// is. Use Shuffle to reorder the table itself.
+func (dt *DataTable) Shuffled(options ...SamplingOptions) *DataTable {
+	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
+		dt.fail("Shuffled", "%s", msg)
 		return NewDataTable()
 	}
 	snap := dt.snapshotForSampling()
 	if snap.rows == 0 {
-		dt.warn("Shuffle", "DataTable is empty")
+		dt.warn("Shuffled", "DataTable is empty")
 		return NewDataTable()
 	}
 	rng := newSamplingRandom(options)

@@ -85,10 +85,10 @@ func TestDataTableSampleFracAndShuffle(t *testing.T) {
 	if frac.NumRows() != 1 {
 		t.Fatalf("SampleFrac rows = %d, want 1", frac.NumRows())
 	}
-	shuffledA := dt.Shuffle(SamplingOptions{UseSeed: true, Seed: 4})
-	shuffledB := dt.Shuffle(SamplingOptions{UseSeed: true, Seed: 4})
+	shuffledA := dt.Shuffled(SamplingOptions{UseSeed: true, Seed: 4})
+	shuffledB := dt.Shuffled(SamplingOptions{UseSeed: true, Seed: 4})
 	if shuffledA.NumRows() != dt.NumRows() {
-		t.Fatalf("Shuffle rows = %d, want %d", shuffledA.NumRows(), dt.NumRows())
+		t.Fatalf("Shuffled rows = %d, want %d", shuffledA.NumRows(), dt.NumRows())
 	}
 	if !dataTablesRowsEqual(shuffledA, shuffledB) {
 		t.Fatalf("same seed should produce same shuffle")

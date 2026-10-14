@@ -60,11 +60,42 @@ func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...Sa
 	return dl.Sample(fracCount(length, frac), withReplacement, options...)
 }
 
-// Shuffle returns a randomly reordered copy of the DataList.
+// Shuffle puts the elements of the DataList in random order, in place, and
+// returns the list, the way Sort reorders it. Use Shuffled for a shuffled
+// copy that leaves the list as it is. For one seed, Shuffle and Shuffled give
+// the same order.
 func (dl *DataList) Shuffle(options ...SamplingOptions) *DataList {
 	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
 		dl.fail("Shuffle", "%s", msg)
-		return NewDataList()
+		return dl
+	}
+	empty := false
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			empty = true
+			return
+		}
+		indices := newSamplingRandom(options).perm(len(dl.data))
+		shuffled := make([]any, len(indices))
+		for i, idx := range indices {
+			shuffled[i] = dl.data[idx]
+		}
+		dl.data = shuffled
+		dl.updateTimestamp()
+	})
+	if empty {
+		dl.warn("Shuffle", "DataList is empty")
+	}
+	return dl
+}
+
+// Shuffled returns a copy of the DataList with its elements in random order,
+// named after the list with "_Shuffled" appended, and leaves the list as it
+// is. Use Shuffle to reorder the list itself.
+func (dl *DataList) Shuffled(options ...SamplingOptions) *DataList {
+	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
+		dl.fail("Shuffled", "%s", msg)
+		return dl.failedResult()
 	}
 	var data []any
 	var name string
@@ -74,7 +105,7 @@ func (dl *DataList) Shuffle(options ...SamplingOptions) *DataList {
 		name = dl.name
 	})
 	if len(data) == 0 {
-		dl.warn("Shuffle", "DataList is empty")
+		dl.warn("Shuffled", "DataList is empty")
 		return NewDataList()
 	}
 

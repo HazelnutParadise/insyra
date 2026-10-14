@@ -226,7 +226,7 @@ A method that returns a `*DataList` either changes the list you call it on and r
 - Replacing: `ReplaceFirst`, `ReplaceLast`, `ReplaceAll`, `ReplaceOutliers`, `ReplaceNaNsWith`, `ReplaceNilsWith`, `ReplaceNaNsAndNilsWith`
 - Removing: `Drop`, `DropAll`, `DropIfContains`, `Clear`, `ClearStrings`, `ClearNumbers`, `ClearNaNs`, `ClearNils`, `ClearNilsAndNaNs`, `ClearOutliers`
 - Rescaling and filling: `Normalize`, `Standardize`, `FillNaNWithMean`, `FillForward`, `FillBackward`, `FillWithMean`, `FillWithMedian`, `FillWithMode`, `FillByInterpolation`
-- Ordering: `Sort`, `Reverse`
+- Ordering: `Sort`, `Reverse`, `Shuffle`
 - Text and types: `Upper`, `Lower`, `Capitalize`, `ParseNumbers`, `ParseStrings`, `ParseDates`
 
 `Pop` also changes the list, and returns the value it removed. `SetName`, `SetErr` and `ClearErr` change only the list's name or error and return the list.
@@ -234,11 +234,13 @@ A method that returns a `*DataList` either changes the list you call it on and r
 **Leaves the list unchanged and returns a new list:**
 
 - Copying and combining: `Clone`, `Concat`
-- Selecting and mapping: `Filter`, `Map`, `Sample`, `SampleFrac`, `Shuffle`
+- Selecting and mapping: `Filter`, `Map`, `Sample`, `SampleFrac`, `Shuffled`
 - Ranking: `Rank`
 - Sequence transforms: `Shift`, `Diff`, `PctChange`, `CumSum`, `CumProd`, `CumMax`, `CumMin`, `Difference`
 - Smoothing: `MovingAverage`, `WeightedMovingAverage`, `MovingStdev`, `ExponentialSmoothing`, `DoubleExponentialSmoothing`
 - Windows: the reducers of `Rolling`, `Expanding` and `EWM`. Those three methods take a copy of the list when they are called, so changing the list afterwards does not change what the reducers compute.
+
+Where a pair exists, the verb changes the list and the `-ed` form returns a copy, as in Swift and Kotlin: `dl.Shuffle()` shuffles `dl`, and `dl.Shuffled()` returns a shuffled copy and leaves `dl` as it is.
 
 The difference matters when a list is kept under two names. `b := a` does not copy: `b.Sort()` sorts `a` too. Use `b := a.Clone()` for a separate list.
 
@@ -1778,15 +1780,16 @@ dl := insyra.NewDataList(3, 1, 4, 1, 5, 9, 2)
 m := dl.CumMin() // [3, 1, 1, 1, 1, 1, 1]
 ```
 
-### Sample / SampleFrac / Shuffle
+### Sample / SampleFrac / Shuffle / Shuffled
 
 ```go
 func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
 func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList
 func (dl *DataList) Shuffle(options ...SamplingOptions) *DataList
+func (dl *DataList) Shuffled(options ...SamplingOptions) *DataList
 ```
 
-**Description:** Returns randomly sampled or shuffled copies of a DataList. `Sample` draws `n` elements, `SampleFrac` draws `floor(frac * Len())` elements with a minimum of 1 for non-empty lists, and `Shuffle` returns all elements in random order.
+**Description:** `Sample` draws `n` elements and `SampleFrac` draws `floor(frac * Len())` elements, with a minimum of 1 for non-empty lists; both return a new list and leave the list as it is. `Shuffle` puts the list's own elements in random order and returns the list, the way `Sort` does. `Shuffled` returns a shuffled copy named `<name>_Shuffled` and leaves the list as it is. For one seed, `Shuffle` and `Shuffled` give the same order.
 
 **Options:**
 
@@ -1806,10 +1809,11 @@ Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible results.
 dl := insyra.NewDataList(1, 2, 3, 4, 5)
 sample := dl.Sample(3, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
 preview := dl.SampleFrac(0.4, false)
-shuffled := dl.Shuffle(insyra.SamplingOptions{UseSeed: true, Seed: 42})
+shuffled := dl.Shuffled(insyra.SamplingOptions{UseSeed: true, Seed: 42}) // dl keeps its order
+dl.Shuffle()                                                            // dl itself is reordered
 ```
 
-**Errors:** Invalid `n`, invalid `frac`, empty input, and `n > Len()` without replacement are recorded via `dl.Err()` and return an empty DataList.
+**Errors:** Invalid `n`, invalid `frac`, and `n > Len()` without replacement are recorded via `dl.Err()` and return an empty DataList; an empty input returns an empty DataList with no error. `Shuffle` with more than one `SamplingOptions` records an error and leaves the list as it was.
 
 ### Rolling
 

@@ -38,8 +38,8 @@ func TestDataListSampleFracFloorAtLeastOne(t *testing.T) {
 
 func TestDataListShuffleSeedReproducible(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4, 5)
-	a := dl.Shuffle(SamplingOptions{UseSeed: true, Seed: 9})
-	b := dl.Shuffle(SamplingOptions{UseSeed: true, Seed: 9})
+	a := dl.Shuffled(SamplingOptions{UseSeed: true, Seed: 9})
+	b := dl.Shuffled(SamplingOptions{UseSeed: true, Seed: 9})
 	if !equalAnySlices(a.Data(), b.Data()) {
 		t.Fatalf("same seed should produce same shuffle: %v vs %v", a.Data(), b.Data())
 	}
