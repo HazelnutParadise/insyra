@@ -19,7 +19,7 @@ import (
 func (dl *DataList) Shift(periods int, fill ...any) *DataList {
 	if msg := extraOptional("fill value", len(fill)); msg != "" {
 		dl.fail("Shift", "%s", msg)
-		return dl
+		return dl.failedResult()
 	}
 	var fillVal any
 	if len(fill) > 0 {

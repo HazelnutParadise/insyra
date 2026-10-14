@@ -800,7 +800,7 @@ func (dl *DataList) Normalize() *DataList
 
 **Returns:**
 
-- `*DataList`: Reference to the normalized DataList
+- `*DataList`: The same DataList, normalized; when the call fails, the same DataList unchanged, with the error on `Err()`
 
 **Example:**
 
@@ -1449,7 +1449,7 @@ mad := dl.MAD()
 func (dl *DataList) Rank(ascending ...bool) *DataList
 ```
 
-**Description:** Assigns ranks to elements based on their values. By default it ranks in ascending order. Pass `false` for descending order. Ties receive the average rank. `nil` and `NaN` cells get a `NaN` rank and do not take a rank position (pandas `na_option="keep"`); any other non-numeric cell makes the call fail with `Err()` set and `nil` returned.
+**Description:** Assigns ranks to elements based on their values. By default it ranks in ascending order. Pass `false` for descending order. Ties receive the average rank. `nil` and `NaN` cells get a `NaN` rank and do not take a rank position (pandas `na_option="keep"`); any other non-numeric cell, or more than one `ascending` flag, makes the call fail: it returns an empty DataList carrying the error, which is also recorded on the list.
 
 **Parameters:**
 
@@ -1813,7 +1813,7 @@ shuffled := dl.Shuffled(insyra.SamplingOptions{UseSeed: true, Seed: 42}) // dl k
 dl.Shuffle()                                                            // dl itself is reordered
 ```
 
-**Errors:** Invalid `n`, invalid `frac`, and `n > Len()` without replacement are recorded via `dl.Err()` and return an empty DataList; an empty input returns an empty DataList with no error. `Shuffle` with more than one `SamplingOptions` records an error and leaves the list as it was.
+**Errors:** Invalid `n`, invalid `frac`, and `n > Len()` without replacement are recorded via `dl.Err()` and return an empty DataList carrying the same error; an empty input returns an empty DataList with no error. `Shuffle` with more than one `SamplingOptions` records an error and leaves the list as it was.
 
 ### Rolling
 
@@ -2897,12 +2897,13 @@ leave `Err()` alone. Addressing a column, row or index that is not there is
 different — the caller asserted it existed and the only other signal is a bare
 `nil` — so that is recorded, as is any invalid argument.
 
-A **transform** that computes a new list (`MovingAverage`, `Diff`, `Rank`, …)
-never returns `nil`: on failure you get an empty, usable list carrying the
-error, so the next step in the chain cannot nil-dereference. `Normalize`
-changes the list in place when it succeeds, but when it fails it also returns
-such an empty list rather than the list itself, so check `Err()` before
-writing `dl = dl.Normalize()`.
+A **transform** that computes a new list (`MovingAverage`, `Diff`, `Rank`,
+`Shift`, `Sample`, `Shuffled`, …) never returns `nil`: on failure you get an
+empty, usable list carrying the error, also recorded on the list you called it
+on, so the next step in the chain cannot nil-dereference. A method that changes
+the list in place (`Sort`, `Normalize`, `FillForward`, …) returns the list
+itself when it fails, left as it was, so `dl = dl.Normalize()` never throws the
+data away.
 A **lookup** (`GetColByName`, `GetRow`, …) still returns `nil` when the target
 is not there — that is its "not found" answer — so check it before chaining
 off the result.

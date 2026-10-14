@@ -16,7 +16,6 @@ func TestChainableTransformsNeverReturnNil(t *testing.T) {
 		name string
 		call func(dl *DataList) *DataList
 	}{
-		{"Normalize", func(dl *DataList) *DataList { return dl.Clone().Append("x").Normalize() }},
 		{"MovingAverage", func(dl *DataList) *DataList { return dl.Clone().MovingAverage(0) }},
 		{"WeightedMovingAverage", func(dl *DataList) *DataList { return dl.Clone().WeightedMovingAverage(2, []float64{1}) }},
 		{"ExponentialSmoothing", func(dl *DataList) *DataList { return dl.Clone().ExponentialSmoothing(5) }},

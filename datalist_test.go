@@ -360,9 +360,11 @@ func TestDataListNormalize(t *testing.T) {
 	if got := dl.Data(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Normalize = %v, want %v", got, want)
 	}
+	// Normalize changes the list in place, so a failure leaves the list as
+	// it was and returns it, like every other in-place method.
 	bad := NewDataList(1.0, "x")
-	if got := bad.Normalize(); got == nil || got.Len() != 0 || bad.Err() == nil {
-		t.Fatalf("Normalize with a non-numeric cell should give an empty result and set Err, got %v / %v", got, bad.Err())
+	if got := bad.Normalize(); got != bad || !reflect.DeepEqual(bad.Data(), []any{1.0, "x"}) || bad.Err() == nil {
+		t.Fatalf("Normalize with a non-numeric cell should return the list unchanged and set Err, got %v / %v", got, bad.Err())
 	}
 }
 

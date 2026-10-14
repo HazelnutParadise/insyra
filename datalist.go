@@ -772,20 +772,18 @@ func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
 }
 
 // Normalize normalizes the data in the DataList, skipping NaN values.
-// Directly modifies the DataList.
+// Directly modifies the DataList and returns it. When it fails it records the
+// error and returns the list unchanged, like every other in-place method.
 func (dl *DataList) Normalize() *DataList {
-	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
 		values, badRow, ok := numericCells(dl.data, true)
 		if !ok {
 			dl.fail("Normalize", "non-numeric value at row %d; list left unchanged", badRow)
-			isFailed = true
 			return
 		}
 		n, min, max, _, _ := observedStats(values)
 		if n == 0 {
 			dl.fail("Normalize", "Cannot normalize due to invalid Min/Max values")
-			isFailed = true
 			return
 		}
 
@@ -797,9 +795,6 @@ func (dl *DataList) Normalize() *DataList {
 		}
 		dl.updateTimestamp()
 	})
-	if isFailed {
-		return dl.failedResult()
-	}
 	return dl
 }
 
@@ -1099,7 +1094,7 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 func (dl *DataList) Rank(ascending ...bool) *DataList {
 	if msg := extraOptional("ascending flag", len(ascending)); msg != "" {
 		dl.fail("Rank", "%s", msg)
-		return dl
+		return dl.failedResult()
 	}
 	var data []float64
 	var cells []any

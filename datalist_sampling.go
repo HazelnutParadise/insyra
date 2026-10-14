@@ -6,7 +6,7 @@ import "time"
 func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList {
 	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
 		dl.fail("Sample", "%s", msg)
-		return NewDataList()
+		return dl.failedResult()
 	}
 	var data []any
 	var name string
@@ -17,7 +17,7 @@ func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptio
 	})
 	if n <= 0 {
 		dl.fail("Sample", "n must be > 0")
-		return NewDataList()
+		return dl.failedResult()
 	}
 	if len(data) == 0 {
 		dl.warn("Sample", "DataList is empty")
@@ -25,7 +25,7 @@ func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptio
 	}
 	if !withReplacement && n > len(data) {
 		dl.fail("Sample", "n cannot exceed DataList length when sampling without replacement")
-		return NewDataList()
+		return dl.failedResult()
 	}
 
 	rng := newSamplingRandom(options)
@@ -46,12 +46,12 @@ func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptio
 func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList {
 	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
 		dl.fail("SampleFrac", "%s", msg)
-		return NewDataList()
+		return dl.failedResult()
 	}
 	length := dl.Len()
 	if frac <= 0 || frac > 1 {
 		dl.fail("SampleFrac", "frac must be in (0, 1]")
-		return NewDataList()
+		return dl.failedResult()
 	}
 	if length == 0 {
 		dl.warn("SampleFrac", "DataList is empty")
