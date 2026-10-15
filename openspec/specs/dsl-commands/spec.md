@@ -1,7 +1,8 @@
 # dsl-commands Specification
 
 ## Purpose
-TBD - created by archiving change cli-repl. Update Purpose after archive.
+What each command of the insyra command language does, from loading, inspecting and reshaping data to statistics, time series, CCL, charts, fetching and variable management, as run from the REPL, a `.isr` script, a one-shot command or `engine/dsl`.
+
 
 ## Requirements
 

@@ -1,7 +1,8 @@
 # cli-entry Specification
 
 ## Purpose
-TBD - created by archiving change cli-repl. Update Purpose after archive.
+The `insyra` binary's entry point: a Cobra command tree that runs one-shot commands or opens the REPL, with `version`, `help` and the `accel` command group available from the shell.
+
 ## Requirements
 ### Requirement: CLI entry point with cobra
 系統 SHALL 提供 `cmd/insyra/main.go` 作為 CLI 程式入口，使用 cobra 框架建立 root command。

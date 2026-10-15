@@ -1,7 +1,9 @@
 # repl-engine Specification
 
 ## Purpose
-TBD - created by archiving change cli-repl. Update Purpose after archive.
+The interactive REPL: its read-evaluate loop, tab completion of command names, variable names and file paths, command history that survives leaving and reopening the same environment, and clearing the screen.
+
+
 ## Requirements
 ### Requirement: REPL interactive loop
 系統 SHALL 提供互動式 REPL 迴圈，使用 readline 行編輯庫，支援行編輯、歷史瀏覽和信號處理。

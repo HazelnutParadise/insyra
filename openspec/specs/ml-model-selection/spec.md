@@ -1,7 +1,8 @@
 # ml-model-selection Specification
 
 ## Purpose
-TBD - created by archiving change add-ml-model-selection. Update Purpose after archive.
+How `ml` evaluates and chooses models honestly: splitting data, cross-validating on folds, scoring a fitted model on held-out rows, metrics that state what they measure and which direction is better, comparing candidates on identical folds, and carrying sample weights aligned with their rows.
+
 ## Requirements
 ### Requirement: Data can be split for honest evaluation
 The system SHALL divide observations into folds for evaluation.

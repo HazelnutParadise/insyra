@@ -1,7 +1,8 @@
 # command-registry Specification
 
 ## Purpose
-TBD - created by archiving change cli-repl. Update Purpose after archive.
+The one registry every CLI and DSL command is declared in: a shared handler interface and execution context, locked access from any goroutine, one-shot flags declared at registration and refused when malformed, and the help table built from what each command declares.
+
 
 ## Requirements
 

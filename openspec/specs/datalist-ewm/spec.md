@@ -7,7 +7,7 @@
 
 ### Requirement: Exponentially weighted mean, variance, and standard deviation
 
-`DataList` SHALL 提供 `EWM(opts EWMOptions) *EWMDataList`，`EWMDataList` SHALL 提供 `Mean()`、`Var()`、`Std()` 三個 reducer，各回傳與來源等長的 `*DataList`。`EWMOptions{Alpha, Span, HalfLife float64; Adjust bool; Bias bool; MinObs int}` SHALL 恰好指定 `Alpha`（`0 < Alpha <= 1`）、`Span`（`>= 1`）、`HalfLife`（`> 0`）三者之一，換算與 pandas 相同：`alpha = 2/(span+1)`、`alpha = 1 − exp(ln 0.5 / halflife)`。`Adjust`、`Bias` 的語意 SHALL 與 pandas `Series.ewm(adjust=…).var(bias=…)` 相同；`MinObs <= 0` 視為 1。非數值或 nil 的格子 SHALL 被略過且不重置權重累積，有效觀察數未達 `MinObs` 的位置輸出 nil。`DataTable` SHALL 提供 `EWMCol(col string, opts EWMOptions) *EWMDataList`，欄位參照規則與 `RollingCol` 相同。
+`DataList` SHALL 提供 `EWM(opts EWMOptions) *EWMDataList`，`EWMDataList` SHALL 提供 `Mean()`、`Var()`、`Std()` 三個 reducer，各回傳與來源等長的 `*DataList`。`EWMOptions{Alpha, Span, HalfLife float64; Adjust bool; Bias bool; MinObs int}` SHALL 恰好指定 `Alpha`（`0 < Alpha <= 1`）、`Span`（`>= 1`）、`HalfLife`（`> 0`）三者之一，換算與 pandas 相同：`alpha = 2/(span+1)`、`alpha = 1 − exp(ln 0.5 / halflife)`。
 
 #### Scenario: Matches pandas on the fixture corpus
 
@@ -19,6 +19,10 @@
 - **WHEN** `EWMOptions` 未指定任何衰減參數，或同時指定兩個以上
 - **THEN** `EWM` 拒絕這組選項，不 panic
 
+### Requirement: EWM's adjustment, bias and minimum observations
+
+`Adjust`、`Bias` 的語意 SHALL 與 pandas `Series.ewm(adjust=…).var(bias=…)` 相同；`MinObs <= 0` 視為 1。非數值或 nil 的格子 SHALL 被略過且不重置權重累積，有效觀察數未達 `MinObs` 的位置輸出 nil。
+
 #### Scenario: Adjust false is the recursive form
 
 - **WHEN** `Adjust: false`、`Alpha: 0.5`、輸入 `[1, 2, 3]`
@@ -29,6 +33,13 @@
 - **WHEN** `MinObs: 3`，輸入 5 個數值
 - **THEN** 前兩個輸出為 nil，之後為數值
 
+### Requirement: EWMCol windows a table column
+
+`DataTable` SHALL 提供 `EWMCol(col string, opts EWMOptions) *EWMDataList`，欄位參照規則與 `RollingCol` 相同。
+
+#### Scenario: A column by name
+- **WHEN** 表格有名為 `price` 的欄，呼叫 `dt.EWMCol("price", EWMOptions{Alpha: 0.5}).Mean()`
+- **THEN** 結果與 `dt.GetColByName("price").EWM(EWMOptions{Alpha: 0.5}).Mean()` 相同
 ### Requirement: EWM appears on the interfaces
 
 `IDataList` SHALL 宣告 `EWM(opts EWMOptions) *EWMDataList`；`IDataTable` SHALL 宣告 `EWMCol(col string, opts EWMOptions) *EWMDataList`。

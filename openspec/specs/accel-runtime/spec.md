@@ -1,7 +1,8 @@
 # accel-runtime Specification
 
 ## Purpose
-TBD - created by archiving change add-accel-runtime-capability. Update Purpose after archive.
+The `accel` package boundary and its session: an optional package the core never needs, a session that is safe for concurrent use and can be shared across the process or limited to chosen devices, and a typed execution surface whose result says where the work ran.
+
 ## Requirements
 ### Requirement: Optional acceleration package boundary
 The system SHALL expose GPGPU acceleration through an opt-in `insyra/accel` package family rather than through mandatory core-package dependencies.

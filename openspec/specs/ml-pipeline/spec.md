@@ -1,7 +1,8 @@
 # ml-pipeline Specification
 
 ## Purpose
-TBD - created by archiving change add-ml-pipeline. Update Purpose after archive.
+Fitting preprocessing and a model as one unit: a pipeline that fits and predicts end to end, column transformers that treat columns differently, feature names that match the estimator's importances, and fitting on training rows only inside cross-validation.
+
 ## Requirements
 ### Requirement: Preprocessing and a model fit and predict as one
 The system SHALL let a caller compose preprocessing steps with a model into a single fitted object.

@@ -7,22 +7,26 @@
 
 ### Requirement: Block bootstrap resampling of a return series
 
-`quant` SHALL 提供 `BootstrapConfig{Horizon int; BlockSize int; Paths int; Seed uint64; Stationary bool}` 與 `BlockBootstrap(returns insyra.IDataList, cfg BootstrapConfig) (*BootstrapResult, error)`。`BootstrapResult` SHALL 包含 `Returns [][]float64`（`Paths` 列，每列 `Horizon` 個重抽樣的每期報酬）與 `Equity [][]float64`（`Paths` 列，每列 `Horizon+1` 個值，`Equity[p][0] == 1.0`，`Equity[p][t] == Equity[p][t-1] * (1 + Returns[p][t-1])`）。`Stationary` 為 false 時 SHALL 使用 moving block bootstrap：每個區塊長度固定為 `BlockSize`，起點在 `[0, n-BlockSize]` 內均勻抽取；為 true 時 SHALL 使用 stationary bootstrap：區塊長度服從平均為 `BlockSize` 的幾何分布，起點在 `[0, n)` 內均勻抽取，索引超出尾端時 SHALL 環狀接回序列開頭。
+`quant` SHALL 提供 `BootstrapConfig{Horizon int; BlockSize int; Paths int; Seed uint64; Stationary bool}` 與 `BlockBootstrap(returns insyra.IDataList, cfg BootstrapConfig) (*BootstrapResult, error)`。`BootstrapResult` SHALL 包含 `Returns [][]float64`（`Paths` 列，每列 `Horizon` 個重抽樣的每期報酬）與 `Equity [][]float64`（`Paths` 列，每列 `Horizon+1` 個值，`Equity[p][0] == 1.0`，`Equity[p][t] == Equity[p][t-1] * (1 + Returns[p][t-1])`）。
 
 #### Scenario: Output shapes
 
 - **WHEN** 以 `Horizon: 252, BlockSize: 20, Paths: 100` 呼叫 `BlockBootstrap`
 - **THEN** `Returns` 為 100 × 252，`Equity` 為 100 × 253，每列 `Equity[p][0]` 為 1.0
 
-#### Scenario: Blocks are contiguous slices of the input
-
-- **WHEN** 以 `BlockSize == len(returns)`、`Horizon == len(returns)`、`Stationary: false` 呼叫
-- **THEN** 每條 `Returns[p]` 都等於原始序列，`Equity[p]` 等於原始序列的複利曲線
-
 #### Scenario: Equity compounds from 1.0
 
 - **WHEN** 輸入為常數報酬 `r` 的序列
 - **THEN** 每條路徑 `Equity[p][t]` 等於 `(1+r)^t`（浮點容差內）
+
+### Requirement: Moving and stationary blocks
+
+`Stationary` 為 false 時 SHALL 使用 moving block bootstrap：每個區塊長度固定為 `BlockSize`，起點在 `[0, n-BlockSize]` 內均勻抽取；為 true 時 SHALL 使用 stationary bootstrap：區塊長度服從平均為 `BlockSize` 的幾何分布，起點在 `[0, n)` 內均勻抽取，索引超出尾端時 SHALL 環狀接回序列開頭。
+
+#### Scenario: Blocks are contiguous slices of the input
+
+- **WHEN** 以 `BlockSize == len(returns)`、`Horizon == len(returns)`、`Stationary: false` 呼叫
+- **THEN** 每條 `Returns[p]` 都等於原始序列，`Equity[p]` 等於原始序列的複利曲線
 
 #### Scenario: Stationary block lengths have the requested mean
 
@@ -33,7 +37,6 @@
 
 - **WHEN** 以 `Stationary: true` 抽到的區塊跨越序列尾端
 - **THEN** 區塊在尾端之後接續 `returns[0]`，不截斷也不回錯
-
 ### Requirement: Bootstrap output is reproducible from the seed
 
 給定相同的 `returns` 與 `cfg`（含 `Seed`），`BlockBootstrap` SHALL 回傳逐位元相同的 `Returns` 與 `Equity`。`Seed` SHALL 永遠生效，零值即為種子 0，不存在「未設定即隨機」的模式。亂數 SHALL 只依賴以 `Seed` 初始化的 PCG 序列，整數與浮點的縮減 SHALL 在 `quant` 內完成。

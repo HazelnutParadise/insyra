@@ -1,7 +1,8 @@
 # stats-knn Specification
 
 ## Purpose
-TBD - created by archiving change add-knn-device-path. Update Purpose after archive.
+How `stats`' nearest-neighbour search may use an accelerator without depending on one: the wiring direction, automatic algorithm selection and the probe thresholds are each decided by measurement rather than assumed.
+
 ## Requirements
 ### Requirement: KNN can be answered by an accelerator without depending on one
 The system SHALL let a registered device searcher answer auto-algorithm KNN queries in batch, keep `stats` free of any accelerator dependency, and change nothing when no searcher is registered.
