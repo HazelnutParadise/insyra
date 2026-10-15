@@ -90,7 +90,7 @@ func NewDataList(values ...any) *DataList {
 	continuousMemData := make([]any, len(flatData))
 	copy(continuousMemData, flatData)
 
-	timestamp := time.Now().Unix()
+	timestamp := clock().UnixNano()
 	dl := &DataList{
 		data:              continuousMemData,
 		creationTimestamp: timestamp,
@@ -175,7 +175,7 @@ func (dl *DataList) Clone() *DataList {
 		newDL = &DataList{
 			data:              newData,
 			name:              dl.name,
-			creationTimestamp: time.Now().Unix(),
+			creationTimestamp: clock().UnixNano(),
 		}
 		newDL.lastModifiedTimestamp.Store(newDL.creationTimestamp)
 	})
@@ -1981,8 +1981,10 @@ func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 	return result
 }
 
-// IsTheSameAs checks if the DataList is fully the same as another DataList.
-// It checks for equality in name, data, creation timestamp, and last modified timestamp.
+// IsTheSameAs reports whether another DataList holds equal data, by
+// IsEqualTo's cell rule, and has the same name. It does not compare when
+// either list was created or changed. Use a == b to ask whether two values are
+// the same object.
 func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 	if dl == anotherDl {
 		return true
@@ -1998,13 +2000,9 @@ func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 	// (see Concat for why the nested pattern would race on anotherDl).
 	var otherData []any
 	var otherName string
-	var otherCreation int64
-	var otherLastModified int64
 	anotherDl.AtomicDo(func(anotherDl *DataList) {
 		otherData = append(otherData, anotherDl.data...)
 		otherName = anotherDl.name
-		otherCreation = anotherDl.creationTimestamp
-		otherLastModified = anotherDl.lastModifiedTimestamp.Load()
 	})
 
 	var result bool
@@ -2021,17 +2019,7 @@ func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 			}
 		}
 
-		if dl.name != otherName {
-			result = false
-			return
-		}
-
-		if dl.creationTimestamp != otherCreation || dl.lastModifiedTimestamp.Load() != otherLastModified {
-			result = false
-			return
-		}
-
-		result = true
+		result = dl.name == otherName
 	})
 	return result
 }
@@ -2231,23 +2219,46 @@ func (dl *DataList) ToStringSlice() []string {
 
 // ======================== Timestamp ========================
 
-// GetCreationTimestamp returns the creation time of the DataList in Unix timestamp.
-func (dl *DataList) GetCreationTimestamp() int64 {
-	var ts int64
+// CreationTime returns when the DataList was created, at the clock's full
+// resolution.
+func (dl *DataList) CreationTime() time.Time {
+	var ns int64
 	dl.AtomicDo(func(dl *DataList) {
-		ts = dl.creationTimestamp
+		ns = dl.creationTimestamp
 	})
-	return ts
+	return timeFromUnixNano(ns)
 }
 
-// GetLastModifiedTimestamp returns the last updated time of the DataList in Unix timestamp.
+// LastModifiedTime returns when the DataList was last changed, at the clock's
+// full resolution. It never moves backwards, even if the wall clock does.
+func (dl *DataList) LastModifiedTime() time.Time {
+	return timeFromUnixNano(dl.lastModifiedTimestamp.Load())
+}
+
+// GetCreationTimestamp returns the creation time of the DataList in Unix seconds.
+//
+// Deprecated: use CreationTime, which keeps sub-second changes apart. Removed
+// in the release after the one that deprecated it.
+func (dl *DataList) GetCreationTimestamp() int64 {
+	var ns int64
+	dl.AtomicDo(func(dl *DataList) {
+		ns = dl.creationTimestamp
+	})
+	return unixSecondsFromUnixNano(ns)
+}
+
+// GetLastModifiedTimestamp returns the last updated time of the DataList in Unix seconds.
+//
+// Deprecated: use LastModifiedTime, which keeps sub-second changes apart.
+// Removed in the release after the one that deprecated it.
 func (dl *DataList) GetLastModifiedTimestamp() int64 {
-	return dl.lastModifiedTimestamp.Load()
+	return unixSecondsFromUnixNano(dl.lastModifiedTimestamp.Load())
 }
 
-// updateTimestamp updates the lastModifiedTimestamp to the current Unix time.
+// updateTimestamp moves lastModifiedTimestamp to the current time, in Unix
+// nanoseconds, unless the clock reads earlier than the time already recorded.
 func (dl *DataList) updateTimestamp() {
-	now := time.Now().Unix()
+	now := clock().UnixNano()
 	oldTimestamp := dl.lastModifiedTimestamp.Load()
 
 	if oldTimestamp < now {

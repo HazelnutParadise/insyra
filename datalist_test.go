@@ -768,8 +768,9 @@ func TestDataListIsTheSameAs(t *testing.T) {
 	dl2.lastModifiedTimestamp.Add(1)
 	dl2.ReplaceLast(8, 4.9)
 
-	if dl1.IsTheSameAs(dl2) {
-		t.Errorf("Expected dl1 and dl2 not to be the same, but they are")
+	// Same data and name, a different history: the same, whatever the clock.
+	if !dl1.IsTheSameAs(dl2) {
+		t.Errorf("Expected dl1 and dl2 to be the same, but they are not")
 	}
 }
 
@@ -810,13 +811,18 @@ func TestDataListToStringSlice(t *testing.T) {
 }
 
 func TestDataListGetCreationTimestamp(t *testing.T) {
+	created := time.Unix(1700000000, 0)
+	at := created
+	setClock(t, &at)
 	dl := NewDataList(1, 2, 3, 4)
-	time.Sleep(1 * time.Second)
-	newTime := time.Now().Unix()
+	at = created.Add(time.Second)
 	dl.SetName("TestName2")
 
-	if dl.GetCreationTimestamp() == newTime || dl.GetCreationTimestamp() == 0 {
-		t.Errorf("Creation timestamp wrong, got %v", dl.GetCreationTimestamp())
+	if got := dl.GetCreationTimestamp(); got != created.Unix() {
+		t.Errorf("Creation timestamp wrong, got %v, want %v", got, created.Unix())
+	}
+	if got := dl.CreationTime(); !got.Equal(created) {
+		t.Errorf("CreationTime wrong, got %v, want %v", got, created)
 	}
 }
 

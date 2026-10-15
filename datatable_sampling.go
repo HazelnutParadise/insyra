@@ -3,7 +3,6 @@ package insyra
 import (
 	"math"
 	"math/rand/v2"
-	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/core"
 )
@@ -104,7 +103,7 @@ func (dt *DataTable) snapshotForSampling() dataTableSamplingSnapshot {
 }
 
 func dataTableFromSampledRows(snap dataTableSamplingSnapshot, indices []int, suffix string) *DataTable {
-	now := time.Now().Unix()
+	now := clock().UnixNano()
 	out := &DataTable{
 		columns:           make([]*DataList, len(snap.colData)),
 		rowNames:          core.NewBiIndex(0),

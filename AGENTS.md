@@ -290,6 +290,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-15] — remove the second-resolution timestamp getters one release after they were deprecated
+- **Where**: `datalist.go` and `datatable.go` (`GetCreationTimestamp`, `GetLastModifiedTimestamp`), their lines in `interfaces.go`, `unixSecondsFromUnixNano` in `timestamps.go`
+- **What**: `timestamps-are-times` (#220, D-12) added `CreationTime` and `LastModifiedTime`, which return a `time.Time` at the clock's full resolution, and deprecated the two getters, which return Unix seconds and keep that meaning for one release.
+- **Suggestion**: delete them in the same release as the other Deprecated removals, with `TestDeprecatedTimestampGettersReturnUnixSeconds`, the seconds check in `TestDataListGetCreationTimestamp`, their sections in `Docs/DataList.md` and `Docs/DataTable.md`, and a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-10-13] — a Shift_JIS file whose only Japanese is its header is read as windows-1252
 - **Where**: `utils.go` `conclusiveCharset`, through chardet's Shift_JIS and windows-1252 recognisers
 - **What**: `encoding-guess-refuses-ties` refuses a chardet answer below 50 or tied, which turned every other wrong or random read measured on 2026-10-13 into an error. This one passes: a Shift_JIS CSV with the header `名前,数量` over 300 rows of numbers scores 60 as windows-1252 and 10 as Shift_JIS, so it is read as windows-1252 with a nil error. A Shift_JIS file of ten short rows of text (`東京都,新宿区,西新宿`) also scored only 10 as Shift_JIS, and 49 as windows-1252, so chardet barely recognises Shift_JIS on short input at all. `Docs/csvxl.md` and `Docs/DataTable.md` tell Japanese users to name `shift_jis`.

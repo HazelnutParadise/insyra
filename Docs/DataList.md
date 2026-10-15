@@ -43,8 +43,8 @@ type DataList struct {
 
 - `data`: Slice containing the actual data elements of any type
 - `name`: Optional name for the DataList
-- `creationTimestamp`: Unix timestamp when the DataList was created
-- `lastModifiedTimestamp`: Unix timestamp when the DataList was last modified
+- `creationTimestamp`: when the DataList was created, in Unix nanoseconds; read it with `CreationTime()`
+- `lastModifiedTimestamp`: when the DataList was last modified, in Unix nanoseconds; read it with `LastModifiedTime()`
 - `atomicActor`: Internal mutex + holder pair used by `AtomicDo` to serialise execution; same-goroutine re-entry runs inline without re-locking
 
 ### Naming Conventions
@@ -2363,7 +2363,15 @@ isEqual := dl1.IsEqualTo(dl2) // true
 func (dl *DataList) IsTheSameAs(other *DataList) bool
 ```
 
-**Description:** Checks if the DataList is identical to another (including metadata).
+**Description:** Checks whether another DataList holds equal data, by the same cell rule as `IsEqualTo`, and has the same name. It does not compare when either list was created or modified, so a list and its `Clone()` are always the same. A nil argument returns `false` with a warning.
+
+To ask whether two values are the same object, compare the pointers: `dl1 == dl2`.
+
+| Question | Use |
+| --- | --- |
+| Equal data? | `dl1.IsEqualTo(dl2)` |
+| Equal data and name? | `dl1.IsTheSameAs(dl2)` |
+| The same object? | `dl1 == dl2` |
 
 **Parameters:**
 
@@ -2371,14 +2379,16 @@ func (dl *DataList) IsTheSameAs(other *DataList) bool
 
 **Returns:**
 
-- `bool`: True if completely identical (data, name, timestamps)
+- `bool`: True if the data and the name are equal
 
 **Example:**
 
 ```go
-dl1 := insyra.NewDataList(1, 2, 3)
-dl2 := dl1 // Same reference
-isSame := dl1.IsTheSameAs(dl2) // true
+dl1 := insyra.NewDataList(1, 2, 3).SetName("x")
+dl2 := dl1.Clone()
+dl1.IsTheSameAs(dl2)               // true
+dl1.IsTheSameAs(dl2.SetName("y")) // false: the name differs
+dl1.IsEqualTo(dl2)                // true: the data is equal
 ```
 
 ## Data Conversion
@@ -2589,13 +2599,13 @@ dl := insyra.NewDataList(1, 2, 3)
 dl.SetName("Factor_Loadings")
 ```
 
-### GetCreationTimestamp
+### CreationTime
 
 ```go
-func (dl *DataList) GetCreationTimestamp() int64
+func (dl *DataList) CreationTime() time.Time
 ```
 
-**Description:** Returns the creation timestamp in Unix format.
+**Description:** Returns when the DataList was created, at the clock's full resolution.
 
 **Parameters:**
 
@@ -2603,14 +2613,49 @@ func (dl *DataList) GetCreationTimestamp() int64
 
 **Returns:**
 
-- `int64`: Unix timestamp when DataList was created
+- `time.Time`: when the DataList was created
 
 **Example:**
 
 ```go
 dl := insyra.NewDataList(1, 2, 3)
-timestamp := dl.GetCreationTimestamp()
+created := dl.CreationTime()
 ```
+
+### LastModifiedTime
+
+```go
+func (dl *DataList) LastModifiedTime() time.Time
+```
+
+**Description:** Returns when the DataList was last modified, at the clock's full resolution, so two changes less than a second apart give different times. It never moves backwards, even if the wall clock is set back. On a platform whose clock is coarser than the time between two changes, both can still read the same.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- `time.Time`: when the DataList was last modified
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, 2, 3)
+before := dl.LastModifiedTime()
+dl.Append(4) // This updates the time
+changed := dl.LastModifiedTime().After(before)
+```
+
+### GetCreationTimestamp
+
+```go
+func (dl *DataList) GetCreationTimestamp() int64
+```
+
+**Deprecated:** use `CreationTime`. This method is removed in the release after the one that deprecated it.
+
+**Description:** Returns the creation time in Unix seconds, `CreationTime().Unix()`.
 
 ### GetLastModifiedTimestamp
 
@@ -2618,23 +2663,9 @@ timestamp := dl.GetCreationTimestamp()
 func (dl *DataList) GetLastModifiedTimestamp() int64
 ```
 
-**Description:** Returns the last modification timestamp in Unix format.
+**Deprecated:** use `LastModifiedTime`. This method is removed in the release after the one that deprecated it.
 
-**Parameters:**
-
-- None.
-
-**Returns:**
-
-- `int64`: Unix timestamp when DataList was last modified
-
-**Example:**
-
-```go
-dl := insyra.NewDataList(1, 2, 3)
-dl.Append(4) // This updates the timestamp
-timestamp := dl.GetLastModifiedTimestamp()
-```
+**Description:** Returns the last modification time in Unix seconds, `LastModifiedTime().Unix()`. Two changes within one second read the same.
 
 ## Utility Methods
 

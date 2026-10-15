@@ -1,7 +1,5 @@
 package insyra
 
-import "time"
-
 // Sample returns a new DataList containing n randomly selected elements.
 func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList {
 	if msg := extraOptional("SamplingOptions", len(options)); msg != "" {
@@ -36,7 +34,7 @@ func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptio
 	for i, idx := range indices {
 		out.data[i] = data[idx]
 	}
-	now := time.Now().Unix()
+	now := clock().UnixNano()
 	out.creationTimestamp = now
 	out.lastModifiedTimestamp.Store(now)
 	return out
@@ -117,7 +115,7 @@ func (dl *DataList) Shuffled(options ...SamplingOptions) *DataList {
 	for i, idx := range indices {
 		out.data[i] = data[idx]
 	}
-	now := time.Now().Unix()
+	now := clock().UnixNano()
 	out.creationTimestamp = now
 	out.lastModifiedTimestamp.Store(now)
 	return out

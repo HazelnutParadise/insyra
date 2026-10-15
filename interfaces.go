@@ -3,6 +3,7 @@ package insyra
 import (
 	"context"
 	"io"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -10,6 +11,8 @@ import (
 // IDataList defines the behavior expected from a DataList.
 type IDataList interface {
 	AtomicDo(func(*DataList))
+	CreationTime() time.Time
+	LastModifiedTime() time.Time
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	updateTimestamp()
@@ -254,8 +257,12 @@ type IDataTable interface {
 	DropRowNames() *DataTable
 	RowNames() []string
 	SetRowNames(rowNames []string) *DataTable
+	CreationTime() time.Time
+	LastModifiedTime() time.Time
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
+	IsEqualTo(other *DataTable) bool
+	IsTheSameAs(other *DataTable) bool
 	getRowNameByIndex(index int) (string, bool)
 	getMaxColLength() int
 	updateTimestamp()

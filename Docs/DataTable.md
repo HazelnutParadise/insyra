@@ -20,6 +20,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Filtering](#filtering)
 - [Statistical Analysis](#statistical-analysis)
 - [Utility Methods](#utility-methods)
+- [Comparison](#comparison)
 - [Error Handling](#error-handling)
 - [AtomicDo](#atomicdo)
 - [Notes](#notes)
@@ -85,8 +86,8 @@ type DataTable struct {
 - `columnIndex`: Maps column indices (A, B, C...) to slice positions
 - `rowNames`: Maps row names to their indices
 - `name`: Name of the DataTable
-- `creationTimestamp`: Unix timestamp when the table was created
-- `lastModifiedTimestamp`: Unix timestamp when the table was last modified
+- `creationTimestamp`: when the table was created, in Unix nanoseconds; read it with `CreationTime()`
+- `lastModifiedTimestamp`: when the table was last modified, in Unix nanoseconds; read it with `LastModifiedTime()`
 - `atomicActor`: Internal mutex + holder pair used by `AtomicDo` to serialise execution; same-goroutine re-entry runs inline without re-locking
 
 ### Extending DataTable with your own type
@@ -3192,13 +3193,13 @@ counter := dt.Counter()
 n := counter[insyra.ToMapKey(blob)]
 ```
 
-### GetCreationTimestamp
+### CreationTime
 
 ```go
-func (dt *DataTable) GetCreationTimestamp() int64
+func (dt *DataTable) CreationTime() time.Time
 ```
 
-**Description:** Gets the creation timestamp of the DataTable.
+**Description:** Returns when the table was created, at the clock's full resolution.
 
 **Parameters:**
 
@@ -3206,14 +3207,45 @@ func (dt *DataTable) GetCreationTimestamp() int64
 
 **Returns:**
 
-- `int64`: Unix timestamp when the table was created
+- `time.Time`: when the table was created
 
 **Example:**
 
 ```go
-timestamp := dt.GetCreationTimestamp()
-fmt.Printf("Created at: %d\n", timestamp)
+fmt.Println("Created at:", dt.CreationTime())
 ```
+
+### LastModifiedTime
+
+```go
+func (dt *DataTable) LastModifiedTime() time.Time
+```
+
+**Description:** Returns when the table was last modified, at the clock's full resolution, so two changes less than a second apart give different times. It never moves backwards, even if the wall clock is set back. On a platform whose clock is coarser than the time between two changes, both can still read the same.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- `time.Time`: when the table was last modified
+
+**Example:**
+
+```go
+fmt.Println("Last modified at:", dt.LastModifiedTime())
+```
+
+### GetCreationTimestamp
+
+```go
+func (dt *DataTable) GetCreationTimestamp() int64
+```
+
+**Deprecated:** use `CreationTime`. This method is removed in the release after the one that deprecated it.
+
+**Description:** Returns the creation time in Unix seconds, `CreationTime().Unix()`.
 
 ### GetLastModifiedTimestamp
 
@@ -3221,22 +3253,9 @@ fmt.Printf("Created at: %d\n", timestamp)
 func (dt *DataTable) GetLastModifiedTimestamp() int64
 ```
 
-**Description:** Gets the last modified timestamp of the DataTable.
+**Deprecated:** use `LastModifiedTime`. This method is removed in the release after the one that deprecated it.
 
-**Parameters:**
-
-- None.
-
-**Returns:**
-
-- `int64`: Unix timestamp when the table was last modified
-
-**Example:**
-
-```go
-timestamp := dt.GetLastModifiedTimestamp()
-fmt.Printf("Last modified at: %d\n", timestamp)
-```
+**Description:** Returns the last modified time in Unix seconds, `LastModifiedTime().Unix()`. Two changes within one second read the same.
 
 ### SimpleRandomSample
 
@@ -4778,8 +4797,7 @@ The Clone method creates a complete deep copy of the DataTable, including:
 - Column index mapping
 - Row names mapping
 - Table name
-- Creation timestamp (original timestamp is preserved)
-- Last modified timestamp (reset to current time)
+- Creation and last modified time, both set to the time of the clone
 
 The cloned DataTable is completely independent of the original, so modifications to one will not affect the other.
 
@@ -4862,6 +4880,63 @@ slice := dt.To2DSlice()
 fmt.Printf("Number of rows: %d\n", len(slice))
 fmt.Printf("Number of columns: %d\n", len(slice[0]))
 fmt.Printf("Value at [0][0]: %v\n", slice[0][0])
+```
+
+## Comparison
+
+| Question | Use |
+| --- | --- |
+| Same number of rows and columns, and equal cells? | `dt1.IsEqualTo(dt2)` |
+| All of that, and the same table, column and row names? | `dt1.IsTheSameAs(dt2)` |
+| The same object? | `dt1 == dt2` |
+
+### IsEqualTo
+
+```go
+func (dt *DataTable) IsEqualTo(other *DataTable) bool
+```
+
+**Description:** Checks whether another DataTable has the same number of rows and columns and equal cells. Cells are compared with the rule `DataList.IsEqualTo` uses: their types must match, so `int(1)` and `int64(1)` differ, and two `NaN` cells are equal. A cell past the end of a column shorter than the table counts as `nil`. Table, column and row names are not compared, so two tables read from files with different headers but the same values are equal. A nil argument returns `false` with a warning and leaves `Err()` alone.
+
+**Parameters:**
+
+- `other`: the DataTable to compare with
+
+**Returns:**
+
+- `bool`: true if the shape and every cell are equal
+
+**Example:**
+
+```go
+a := insyra.NewDataTable(insyra.NewDataList(1, 2).SetName("x"))
+b := insyra.NewDataTable(insyra.NewDataList(1, 2).SetName("y"))
+a.IsEqualTo(b)   // true: the names are not compared
+a.IsTheSameAs(b) // false: the column names differ
+```
+
+### IsTheSameAs
+
+```go
+func (dt *DataTable) IsTheSameAs(other *DataTable) bool
+```
+
+**Description:** Checks everything `IsEqualTo` checks, and also that the table names, the column names in order, and the row names in order are equal. A row without a name matches only a row without a name. Creation and modification times are not compared, so a table and its `Clone()` are always the same. A nil argument returns `false` with a warning and leaves `Err()` alone.
+
+**Parameters:**
+
+- `other`: the DataTable to compare with
+
+**Returns:**
+
+- `bool`: true if the cells and every name are equal
+
+**Example:**
+
+```go
+dt := insyra.NewDataTable(insyra.NewDataList(1, 2).SetName("x"))
+dt.SetRowNames([]string{"r1", "r2"})
+dt.IsTheSameAs(dt.Clone()) // true
 ```
 
 ## Error Handling

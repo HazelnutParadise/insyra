@@ -2,7 +2,6 @@ package insyra
 
 import (
 	"strings"
-	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/core"
 	"github.com/HazelnutParadise/insyra/internal/utils"
@@ -598,7 +597,7 @@ func (dt *DataTable) FilterRowsWhere(keep func(row *DataList) bool) *DataTable {
 			filteredCols[i] = &DataList{name: col.name, creationTimestamp: col.creationTimestamp}
 			filteredCols[i].lastModifiedTimestamp.Store(col.lastModifiedTimestamp.Load())
 		}
-		now := time.Now().Unix()
+		now := clock().UnixNano()
 		numRows := dt.getMaxColLength()
 		var kept []int
 		for rowIdx := 0; rowIdx < numRows; rowIdx++ {
