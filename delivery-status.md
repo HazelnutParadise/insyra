@@ -290,7 +290,7 @@ Deltas that still change what someone would do. The standing technical decisions
 ## Source Links
 - [ENG.md](ENG.md) — architecture, test seams, the precision contract, standing assumptions. Read before changing any of them.
 - [AGENTS.md](AGENTS.md) — the operating contract, including the acceleration rules and the open follow-ups.
-- [openspec/changes/archive/](openspec/changes/archive/) — 179 archived changes, each holding its own proposal, spec deltas and tasks.
+- [openspec/changes/archive/](openspec/changes/archive/) — 240 archived changes, each holding its own proposal, spec deltas and tasks.
 - [openspec/specs/](openspec/specs/) — the current capability specs, which reflect the code as it stands.
 - [Docs/accel.md](Docs/accel.md), [Docs/ml.md](Docs/ml.md) — the user-facing surfaces.
 - Open issues: [#379](https://github.com/HazelnutParadise/insyra/issues/379) device operations and state lifecycle (M36–M39), [#401](https://github.com/HazelnutParadise/insyra/issues/401) keeping a replaced sheet's formatting in `AppendCsvToExcel`.
