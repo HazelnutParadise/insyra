@@ -1,7 +1,8 @@
 # stats-regression Specification
 
 ## Purpose
-TBD - created by archiving change add-stats-regression-predict. Update Purpose after archive.
+What every fitted regression in `stats` offers and refuses: predicting new data along a path validated against a reference implementation, published links for generalised linear models, penalized and weighted fits matching scikit-learn, and unreadable numeric input refused rather than replaced.
+
 ## Requirements
 ### Requirement: Every fitted regression can score new data
 The system SHALL let a caller obtain predictions from any fitted regression result.

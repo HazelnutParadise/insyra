@@ -1,7 +1,8 @@
 # ml-protocol Specification
 
 ## Purpose
-TBD - created by archiving change add-ml-estimator-protocol. Update Purpose after archive.
+The one interface every `ml` model and preprocessing step satisfies, so pipelines, cross-validation and export can take any of them: wrapped `stats` models keep their results, capabilities beyond prediction are discoverable, a third party can check its own model, and a nil fitted model refuses to predict or export.
+
 
 ## Requirements
 

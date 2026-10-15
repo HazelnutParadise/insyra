@@ -1,7 +1,8 @@
 # changelog Specification
 
 ## Purpose
-TBD - created by archiving change repo-changelog. Update Purpose after archive.
+Keeps a user-facing record of every change in `CHANGELOG.md` and `CHANGELOG_TW.md`: their layout mirrors the release note, an entry is written in the same change as the work it describes, and `## Unreleased` becomes the version at release time.
+
 ## Requirements
 ### Requirement: Changelog files exist at the repository root
 
@@ -23,8 +24,6 @@ The repository SHALL host its changelog in two files at the root: `CHANGELOG.md`
 
 Each changelog file SHALL use `##` for version sections and `###` for package sections, so that promoting every `###` heading to `##` in a version section produces that version's release note body without further editing.
 
-Package section headings SHALL match the names used in release notes: `Core`, `CLI`, `DataList / DataTable`, and backtick-quoted package names such as `` `stats` ``, `` `finance` ``, `` `mkt` ``, `` `datafetch` ``. Entries that apply to the whole release and belong above any package section SHALL be placed as bullets directly under the version heading.
-
 #### Scenario: Unreleased section is the only version section initially
 
 - **WHEN** the changelog files are first created by this change
@@ -37,6 +36,14 @@ Package section headings SHALL match the names used in release notes: `Core`, `C
 - **AND** replaces each leading `### ` with `## `
 - **THEN** the result matches the heading structure of previously published release notes for this repository
 
+### Requirement: Package sections use the release notes' names
+
+Package section headings SHALL match the names used in release notes: `Core`, `CLI`, `DataList / DataTable`, and backtick-quoted package names such as `` `stats` ``, `` `finance` ``, `` `mkt` ``, `` `datafetch` ``. Entries that apply to the whole release and belong above any package section SHALL be placed as bullets directly under the version heading.
+
+#### Scenario: An entry for one package
+
+- **WHEN** a change to `stats` is recorded
+- **THEN** its entry goes under the `` ### `stats` `` heading of `## Unreleased`, not under a heading of another spelling
 ### Requirement: Version sections are renamed at release time
 
 At release time the `## Unreleased` heading SHALL be renamed to the released version number in both files, and a fresh empty `## Unreleased` section SHALL be added above it.
@@ -89,4 +96,3 @@ The changelog rule SHALL be stated in `AGENTS.md` for AI coding agents and in `C
 - **WHEN** a reader opens `README.md`, `README_TW.md`, or `Docs/README.md`
 - **THEN** each links to the changelog file matching its own language
 - **AND** no copy of the changelog exists under `Docs/`
-

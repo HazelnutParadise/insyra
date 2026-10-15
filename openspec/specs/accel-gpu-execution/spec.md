@@ -1,7 +1,8 @@
 # accel-gpu-execution Specification
 
 ## Purpose
-TBD - created by archiving change add-accel-distance-kernel. Update Purpose after archive.
+What running an operation on a GPU must guarantee: the result is bit-identical to the CPU reference whatever the device, only operations measured to win are offered, the device is chosen by the work per row, and a submission too large for one dispatch is split rather than dropped.
+
 ## Requirements
 ### Requirement: A device result is bit-identical to its CPU reference
 The system SHALL ship a CPU reference implementation for every device operation, and SHALL verify on the running platform that the device result matches it bit for bit.

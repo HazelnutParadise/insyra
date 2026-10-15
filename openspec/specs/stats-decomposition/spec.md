@@ -1,7 +1,8 @@
 # stats-decomposition Specification
 
 ## Purpose
-TBD - created by archiving change add-pca-transform-parameters. Update Purpose after archive.
+Applying a fitted decomposition such as PCA to new data with the parameters learned at fit time, so new observations are projected the same way as the training rows.
+
 ## Requirements
 ### Requirement: A fitted decomposition can be applied to new data
 The system SHALL return enough of a fitted principal-component decomposition to project observations it was not fitted on.

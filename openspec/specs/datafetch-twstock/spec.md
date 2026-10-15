@@ -7,26 +7,33 @@
 
 ### Requirement: TWStock client configuration and transport
 
-`datafetch` SHALL 提供 `TWStockConfig{Timeout, Interval, UserAgent string, Retries int, RetryBackoff time.Duration, Concurrency int}` 與 `TWStock(cfg TWStockConfig) (*twStock, error)`，零值欄位 SHALL 套用與 `YFinanceConfig.normalize` 相同型態的預設。每次請求 SHALL 遵守 `Interval` 節流：相鄰兩個請求排定的開始時間至少相隔 `Interval`，且每個請求都不會早於排定的時間開始。客戶端在排定之後、送出之前的處理時間不在這個保證之內。HTTP 非 2xx、逾時、JSON 解析失敗、或 payload `stat`／`tables` 表示無資料以外的錯誤 SHALL 依 `Retries` 與 `RetryBackoff` 重試後回錯。`TWMarket` SHALL 為 `TWMarketTWSE`、`TWMarketTPEx`、`TWMarketAuto`；`Auto` SHALL 先查 TWSE，收到「查無資料」時再查 TPEx。
+`datafetch` SHALL 提供 `TWStockConfig{Timeout, Interval, UserAgent string, Retries int, RetryBackoff time.Duration, Concurrency int}` 與 `TWStock(cfg TWStockConfig) (*twStock, error)`，零值欄位 SHALL 套用與 `YFinanceConfig.normalize` 相同型態的預設。每次請求 SHALL 遵守 `Interval` 節流：相鄰兩個請求排定的開始時間至少相隔 `Interval`，且每個請求都不會早於排定的時間開始。客戶端在排定之後、送出之前的處理時間不在這個保證之內。
 
 #### Scenario: Throttle is honoured
 
 - **WHEN** `Interval: 200ms`，在時間 t0 之後連續發出兩個請求
 - **THEN** 第二個請求不會在 t0 之後 200ms 以內送出
 
+### Requirement: TWStock retries a failed request
+
+HTTP 非 2xx、逾時、JSON 解析失敗、或 payload `stat`／`tables` 表示無資料以外的錯誤 SHALL 依 `Retries` 與 `RetryBackoff` 重試後回錯。
+
 #### Scenario: Retry then fail
 
 - **WHEN** 伺服器連續回 500 且 `Retries: 2`
 - **THEN** 共送出 3 次請求後回傳含狀態碼的錯誤
 
+### Requirement: TWStock markets
+
+`TWMarket` SHALL 為 `TWMarketTWSE`、`TWMarketTPEx`、`TWMarketAuto`；`Auto` SHALL 先查 TWSE，收到「查無資料」時再查 TPEx。
+
 #### Scenario: Auto market falls through to TPEx
 
 - **WHEN** 以 `TWMarketAuto` 查一檔上櫃股票的日線
 - **THEN** TWSE 回「查無資料」後改查 TPEx 並回傳資料
-
 ### Requirement: Daily prices by stock and date range
 
-`twStock` SHALL 提供 `DailyPrices(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)`，逐月呼叫 TWSE `rwd/zh/afterTrading/STOCK_DAY`（`date=YYYYMM01&stockNo=`）或 TPEx `www/zh-tw/afterTrading/tradingStock`（`code=&date=YYYY/MM/01`），合併後只保留 `[from, to]` 內的列並依日期遞增。欄位 SHALL 為 `Date`（`time.Time`，由民國年 `115/09/01` 轉換）、`Code`、`Volume`（股數，`int64`）、`Turnover`（`int64`）、`Open`、`High`、`Low`、`Close`、`Change`（`float64`）、`Transactions`（`int64`）。含逗號的數字 SHALL 去逗號後轉型；`--`、空字串、`X` 等非數值 SHALL 轉為 nil。`from > to`、空 `code` SHALL 回錯。
+`twStock` SHALL 提供 `DailyPrices(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)`，逐月呼叫 TWSE `rwd/zh/afterTrading/STOCK_DAY`（`date=YYYYMM01&stockNo=`）或 TPEx `www/zh-tw/afterTrading/tradingStock`（`code=&date=YYYY/MM/01`），合併後只保留 `[from, to]` 內的列並依日期遞增。欄位 SHALL 為 `Date`（`time.Time`，由民國年 `115/09/01` 轉換）、`Code`、`Volume`（股數，`int64`）、`Turnover`（`int64`）、`Open`、`High`、`Low`、`Close`、`Change`（`float64`）、`Transactions`（`int64`）。
 
 #### Scenario: Two-month range yields two requests and typed columns
 
@@ -38,30 +45,40 @@
 - **WHEN** 以 fixture 模擬 TPEx `tradingStock` 回應查 `6488`
 - **THEN** 輸出欄位與 TWSE 相同，數值型別相同
 
+### Requirement: Daily price cells are read or left empty
+
+含逗號的數字 SHALL 去逗號後轉型；`--`、空字串、`X` 等非數值 SHALL 轉為 nil。`from > to`、空 `code` SHALL 回錯。
+
 #### Scenario: Non-numeric cells become nil
 
 - **WHEN** fixture 中某列的 `Change` 為 `X` 或價格為 `--`
 - **THEN** 該格為 nil，其餘欄位正常
-
 ### Requirement: Institutional trades, margin balances, and full daily quotes
 
-`twStock` SHALL 提供 `InstitutionalTrades(date time.Time, market TWMarket)`（TWSE `rwd/zh/fund/T86?selectType=ALL`、TPEx `www/zh-tw/insti/dailyTrade?type=Daily`）、`MarginBalance(date time.Time, market TWMarket)`（TWSE `rwd/zh/marginTrading/MI_MARGN?selectType=ALL` 的個股表、TPEx 對應 margin 端點）、`AllDailyQuotes(market TWMarket)`（TWSE OpenAPI `exchangeReport/STOCK_DAY_ALL`、TPEx OpenAPI `tpex_mainboard_daily_close_quotes`），各回傳 `(*insyra.DataTable, error)`。三大法人表 SHALL 至少含 `Date`、`Code`、`Name`、`ForeignNet`、`TrustNet`、`DealerNet`、`TotalNet`（股數，`int64`）；融資融券表 SHALL 至少含 `Date`、`Code`、`Name`、`MarginBalance`、`ShortBalance`（`int64`）；全市場日行情 SHALL 含 `Date`、`Code`、`Name`、`Volume`、`Turnover`、`Open`、`High`、`Low`、`Close`、`Change`、`Transactions`。中文表頭 SHALL 在套件內對應到上述英文欄名；對應不到必要欄位 SHALL 回錯指出缺哪一欄。
+`twStock` SHALL 提供 `InstitutionalTrades(date time.Time, market TWMarket)`（TWSE `rwd/zh/fund/T86?selectType=ALL`、TPEx `www/zh-tw/insti/dailyTrade?type=Daily`）與 `MarginBalance(date time.Time, market TWMarket)`（TWSE `rwd/zh/marginTrading/MI_MARGN?selectType=ALL` 的個股表、TPEx 對應 margin 端點），各回傳 `(*insyra.DataTable, error)`。三大法人表 SHALL 至少含 `Date`、`Code`、`Name`、`ForeignNet`、`TrustNet`、`DealerNet`、`TotalNet`（股數，`int64`）；融資融券表 SHALL 至少含 `Date`、`Code`、`Name`、`MarginBalance`、`ShortBalance`（`int64`）。
 
 #### Scenario: Institutional fixture maps headers
 
 - **WHEN** 以 fixture 模擬 TWSE `T86` 回應
 - **THEN** 輸出含 `ForeignNet`、`TrustNet`、`DealerNet`、`TotalNet` 四欄，型別 `int64`，`Date` 等於查詢日
 
-#### Scenario: Missing required header is refused
+### Requirement: Full daily quotes for a market
 
-- **WHEN** fixture 的表頭少了「證券代號」
-- **THEN** 回傳指出該欄位名稱的錯誤
+`twStock` SHALL 提供 `AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)`（TWSE OpenAPI `exchangeReport/STOCK_DAY_ALL`、TPEx OpenAPI `tpex_mainboard_daily_close_quotes`）。全市場日行情 SHALL 含 `Date`、`Code`、`Name`、`Volume`、`Turnover`、`Open`、`High`、`Low`、`Close`、`Change`、`Transactions`。
 
 #### Scenario: Full quote table from OpenAPI
 
 - **WHEN** 以 fixture 模擬 `STOCK_DAY_ALL`（含 `Date: "1150903"`）
 - **THEN** 每列 `Date` 為 2026-09-03，價格為 `float64`，列數等於 fixture 筆數
 
+### Requirement: Chinese headers map to the English columns
+
+中文表頭 SHALL 在套件內對應到上述英文欄名；對應不到必要欄位 SHALL 回錯指出缺哪一欄。
+
+#### Scenario: Missing required header is refused
+
+- **WHEN** fixture 的表頭少了「證券代號」
+- **THEN** 回傳指出該欄位名稱的錯誤
 ### Requirement: Live access is opt-in
 
 套件測試 SHALL 只在 `INSYRA_RUN_LIVE_TWSTOCK=1` 時對交易所發出真實請求；未設定時 live 測試 SHALL `Skip`。fixture 測試 SHALL 透過可注入的 `http.RoundTripper`（回放 `datafetch/testdata/twstock/` 的錄製回應）進行，不觸網也不開 socket。

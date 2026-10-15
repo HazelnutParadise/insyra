@@ -1,16 +1,14 @@
 # dl-training Specification
 
 ## Purpose
-TBD - created by archiving change add-dl-autodiff-mlp. Update Purpose after archive.
+Training in `nn`: the tape's gradients for the MLP, attention and CNN families checked against PyTorch, convergence on real data, the practitioner toolkit, layers composed with Sequential, persistence of what was trained, and operations computed outside the tape that join its reverse pass.
+
 
 ## Requirements
 
 ### Requirement: The tape differentiates the MLP family and PyTorch agrees
 
-`dl` SHALL provide reverse-mode autodiff as a tape over the existing plain
-kernels: training wrappers record operations, `Backward` walks the tape
-calling per-op VJPs, and the inference kernels remain untouched. The MLP
-family — MatMul, Add, Relu, Sigmoid, Tanh, Gemm as used by exported MLPs —
+The MLP family — MatMul, Add, Relu, Sigmoid, Tanh, Gemm as used by exported MLPs —
 SHALL be differentiable, with softmax and cross-entropy fused into one loss
 whose backward is the stable softmax−onehot form. One SGD step SHALL update
 tracked parameters. First-step gradients and loss SHALL match PyTorch under
@@ -23,6 +21,12 @@ identical SafeTensors-loaded weights within f32 tolerance.
   same fixed batch
 - **THEN** the loss and every parameter gradient SHALL agree within f32
   tolerance, verified through the reference gate
+
+### Requirement: The tape sits over the inference kernels
+
+`dl` SHALL provide reverse-mode autodiff as a tape over the existing plain
+kernels: training wrappers record operations, `Backward` walks the tape
+calling per-op VJPs, and the inference kernels remain untouched.
 
 #### Scenario: The tape agrees with finite differences without any toolchain
 
@@ -39,14 +43,11 @@ identical SafeTensors-loaded weights within f32 tolerance.
 
 ### Requirement: An encoder block trains one Adam step matching PyTorch
 
-The tape SHALL differentiate the attention family — batched MatMul with
-broadcast-reduced gradients, axis-Softmax, LayerNormalization with input,
-scale, and bias gradients, Gelu, and the shape operations the encoder block
-backpropagates through — and an Adam optimizer with bias-corrected moments
-SHALL update tracked parameters. A fixed two-head encoder block loaded from
-one SafeTensors file by both PyTorch and dl SHALL agree on the loss, every
-parameter gradient, and every post-step parameter value within f32
-tolerance after one Adam step.
+An Adam optimizer with bias-corrected moments SHALL update tracked
+parameters. A fixed two-head encoder block loaded from one SafeTensors file
+by both PyTorch and dl SHALL agree on the loss, every parameter gradient,
+and every post-step parameter value within f32 tolerance after one Adam
+step.
 
 #### Scenario: One Adam training step agrees end to end
 
@@ -54,6 +55,13 @@ tolerance after one Adam step.
   run one forward, backward, and Adam step on the same fixed batch
 - **THEN** loss, every gradient, and every updated parameter SHALL agree
   within f32 tolerance through the reference gate
+
+### Requirement: The tape differentiates the attention family
+
+The tape SHALL differentiate the attention family — batched MatMul with
+broadcast-reduced gradients, axis-Softmax, LayerNormalization with input,
+scale, and bias gradients, Gelu, and the shape operations the encoder block
+backpropagates through.
 
 #### Scenario: Every new VJP survives finite differences without a toolchain
 
@@ -71,15 +79,10 @@ tolerance after one Adam step.
 
 ### Requirement: A CNN trains one Adam step matching PyTorch
 
-The tape SHALL differentiate the CNN family — Conv with input, weight, and
-bias gradients under the exercised attribute combinations, MaxPool routing
-to the selected maxima, AveragePool and GlobalAveragePool spreading under
-the forward's count_include_pad semantics, and inference-mode
-BatchNormalization with input, scale, and bias gradients over loaded
-statistics. A fixed MNIST-class CNN loaded from one SafeTensors file by
-both PyTorch (eval-mode BatchNorm) and dl SHALL agree on the loss, every
-parameter gradient, and every post-step parameter within f32 tolerance
-after one Adam step.
+A fixed MNIST-class CNN loaded from one SafeTensors file by both PyTorch
+(eval-mode BatchNorm) and dl SHALL agree on the loss, every parameter
+gradient, and every post-step parameter within f32 tolerance after one Adam
+step.
 
 #### Scenario: One CNN Adam step agrees end to end
 
@@ -87,6 +90,15 @@ after one Adam step.
   one forward, backward, and Adam step on the same fixed batch
 - **THEN** loss, every gradient, and every updated parameter SHALL agree
   within f32 tolerance through the reference gate
+
+### Requirement: The tape differentiates the CNN family
+
+The tape SHALL differentiate the CNN family — Conv with input, weight, and
+bias gradients under the exercised attribute combinations, MaxPool routing
+to the selected maxima, AveragePool and GlobalAveragePool spreading under
+the forward's count_include_pad semantics, and inference-mode
+BatchNormalization with input, scale, and bias gradients over loaded
+statistics.
 
 #### Scenario: Every CNN VJP survives finite differences without a toolchain
 
@@ -131,14 +143,11 @@ micro-convergence test SHALL verify the loop mechanics everywhere.
 
 ### Requirement: Practice ops train the way practitioners train
 
-The tape SHALL provide inverted dropout (train-mode masking scaled by
-1/(1−p) from the seeded RNG, eval-mode identity, gradients routed
-through the mask), decoupled weight decay applied separately from the
+The tape SHALL provide decoupled weight decay applied separately from the
 Adam moment update matching `torch.optim.AdamW`, and a step-decay
 learning-rate schedule matching `torch.optim.lr_scheduler.StepLR`.
 Multi-step AdamW+StepLR trajectories SHALL match PyTorch under
-identical weights with dropout disabled; dropout SHALL be verified by
-mask statistics, scaling, determinism under seed, and eval identity.
+identical weights with dropout disabled.
 
 #### Scenario: AdamW and StepLR trajectories match PyTorch
 
@@ -146,6 +155,20 @@ mask statistics, scaling, determinism under seed, and eval identity.
   with decoupled weight decay and step decay, dropout disabled
 - **THEN** loss and every parameter SHALL match within f32 tolerance at
   every step
+
+#### Scenario: Decoupled means decoupled
+
+- **WHEN** the same configuration runs with coupled L2 emulation and
+  with decoupled decay
+- **THEN** the trajectories SHALL differ, and only the decoupled one
+  SHALL match `torch.optim.AdamW`
+
+### Requirement: The tape provides inverted dropout
+
+The tape SHALL provide inverted dropout: train-mode masking scaled by
+1/(1−p) from the seeded RNG, eval-mode identity, gradients routed
+through the mask. Dropout SHALL be verified by mask statistics, scaling,
+determinism under seed, and eval identity.
 
 #### Scenario: Dropout behaves and reproduces
 
@@ -155,26 +178,13 @@ mask statistics, scaling, determinism under seed, and eval identity.
   identical across runs with the same seed, gradients SHALL flow only
   through kept elements, and eval mode SHALL be the identity
 
-#### Scenario: Decoupled means decoupled
-
-- **WHEN** the same configuration runs with coupled L2 emulation and
-  with decoupled decay
-- **THEN** the trajectories SHALL differ, and only the decoupled one
-  SHALL match `torch.optim.AdamW`
-
 ### Requirement: Sequential composes layers without changing a single digit
 
-`nn` SHALL provide a `Layer` interface (Build, Forward, Parameters)
-and a `Sequential` that builds layers eagerly with construction-time
-dimension errors naming the layer, trains through `Forward(tape, x)`,
-and predicts through `Predict(x)` on a throwaway tape that
-structurally skips `TrainingOnly` layers. Parameter names SHALL follow
-torch's `nn.Sequential` convention and `LoadWeights` SHALL accept
-torch Linear layout. The MNIST training run expressed through
-Sequential SHALL reproduce the hand-written tape run's loss curve and
-accuracy digit-for-digit under the same seed, compared against that
-run executed in the same process rather than against recorded numbers,
-which f32 arithmetic does not carry between platforms.
+The MNIST training run expressed through `Sequential` SHALL reproduce the
+hand-written tape run's loss curve and accuracy digit-for-digit under the
+same seed, compared against that run executed in the same process rather
+than against recorded numbers, which f32 arithmetic does not carry between
+platforms.
 
 #### Scenario: The sugar changes nothing
 
@@ -186,11 +196,13 @@ which f32 arithmetic does not carry between platforms.
 - **AND** the absolute claims that remain SHALL be ones any platform
   meets: the loss falls and the accuracy reaches its target
 
-#### Scenario: A PyTorch Sequential loads and predicts
+### Requirement: Layers compose into a Sequential
 
-- **WHEN** weights trained by a torch `nn.Sequential` MLP are saved
-  via safetensors and loaded with `LoadWeights`
-- **THEN** `Predict` SHALL match torch's forward within f32 tolerance
+`nn` SHALL provide a `Layer` interface (Build, Forward, Parameters)
+and a `Sequential` that builds layers eagerly with construction-time
+dimension errors naming the layer, trains through `Forward(tape, x)`,
+and predicts through `Predict(x)` on a throwaway tape that
+structurally skips `TrainingOnly` layers.
 
 #### Scenario: Dropout cannot reach inference
 
@@ -204,30 +216,23 @@ which f32 arithmetic does not carry between platforms.
 - **THEN** `NewSequential` SHALL fail naming the layer index and kind,
   before any training begins
 
+### Requirement: Sequential follows torch's names and layout
+
+Parameter names SHALL follow torch's `nn.Sequential` convention and
+`LoadWeights` SHALL accept torch Linear layout.
+
+#### Scenario: A PyTorch Sequential loads and predicts
+
+- **WHEN** weights trained by a torch `nn.Sequential` MLP are saved
+  via safetensors and loaded with `LoadWeights`
+- **THEN** `Predict` SHALL match torch's forward within f32 tolerance
+
 ### Requirement: The catalog trains a CNN and embeds tokens, torch-verified
 
 The layer catalog SHALL include Conv2D, MaxPool2D, AvgPool2D,
-GlobalAvgPool, BatchNorm2D, LayerNorm, and Embedding. BatchNorm2D
-SHALL use batch statistics with running-stat updates in training and
-running statistics in Predict, with its three-term gradient verified
-against `torch.nn.BatchNorm2d` in train mode. Embedding SHALL
-scatter-add its gradient into the table, verified against
-`torch.nn.Embedding`. A Sequential CNN SHALL converge on MNIST to at
-least 97% test accuracy, and a torch-trained CNN SHALL load and
-predict within f32 tolerance.
-
-#### Scenario: BatchNorm trains like torch
-
-- **WHEN** a small network with BatchNorm2D trains several steps in
-  both frameworks under identical weights and batches
-- **THEN** loss, every gradient, every parameter, and the running
-  statistics SHALL match within f32 tolerance at every step
-
-#### Scenario: Embedding gradients scatter correctly
-
-- **WHEN** repeated token indices appear in one batch
-- **THEN** their gradient rows SHALL accumulate, matching torch and
-  finite differences
+GlobalAvgPool, BatchNorm2D, LayerNorm, and Embedding. A Sequential CNN
+SHALL converge on MNIST to at least 97% test accuracy, and a torch-trained
+CNN SHALL load and predict within f32 tolerance.
 
 #### Scenario: A Sequential CNN converges
 
@@ -241,6 +246,27 @@ predict within f32 tolerance.
   LoadWeights
 - **THEN** Predict SHALL match torch eval-mode forward within f32
   tolerance
+
+### Requirement: BatchNorm2D and Embedding train like torch
+
+BatchNorm2D SHALL use batch statistics with running-stat updates in
+training and running statistics in Predict, with its three-term gradient
+verified against `torch.nn.BatchNorm2d` in train mode. Embedding SHALL
+scatter-add its gradient into the table, verified against
+`torch.nn.Embedding`.
+
+#### Scenario: BatchNorm trains like torch
+
+- **WHEN** a small network with BatchNorm2D trains several steps in
+  both frameworks under identical weights and batches
+- **THEN** loss, every gradient, every parameter, and the running
+  statistics SHALL match within f32 tolerance at every step
+
+#### Scenario: Embedding gradients scatter correctly
+
+- **WHEN** repeated token indices appear in one batch
+- **THEN** their gradient rows SHALL accumulate, matching torch and
+  finite differences
 
 ### Requirement: What nn trains, nn persists, and everyone can read
 
@@ -345,11 +371,7 @@ and every post-step parameter.
 
 ### Requirement: A malformed custom operation is an error, never a silent gradient
 
-`Tape.Custom` SHALL refuse an empty name, a nil `vjp`, a nil or non-float32 `output` or input, an `output` that is also one of its inputs, an `output` that an operation already recorded on this tape produced, and an `output` that such an operation already read as an input, and SHALL record nothing when it refuses. During the reverse pass, a custom `vjp` that returns an error, the wrong number of gradients, a non-float32 gradient, or a gradient shaped unlike its input SHALL fail the pass with an error naming the operation.
-
-#### Scenario: A gradient of the wrong shape
-- **WHEN** a custom `vjp` returns a gradient shaped `[2]` for an input shaped `[3]`
-- **THEN** `Backward` returns an error naming the operation and the two shapes
+`Tape.Custom` SHALL refuse an empty name, a nil `vjp`, a nil or non-float32 `output` or input, an `output` that is also one of its inputs, an `output` that an operation already recorded on this tape produced, and an `output` that such an operation already read as an input, and SHALL record nothing when it refuses.
 
 #### Scenario: A refused declaration
 - **WHEN** `Custom` is called with a nil `vjp`
@@ -362,6 +384,14 @@ and every post-step parameter.
 #### Scenario: An output an earlier operation read
 - **WHEN** `b` was computed outside the tape, `Tape.Mul(b, c)` read it, and `Custom` is then called with `b` as its output
 - **THEN** `Custom` returns an error naming `Mul`, because the reverse pass would visit the custom operation before `Mul` and `b`'s gradient from `Mul` would never reach the custom operation's inputs
+
+### Requirement: A custom VJP that returns a bad gradient fails the pass
+
+During the reverse pass, a custom `vjp` that returns an error, the wrong number of gradients, a non-float32 gradient, or a gradient shaped unlike its input SHALL fail the pass with an error naming the operation.
+
+#### Scenario: A gradient of the wrong shape
+- **WHEN** a custom `vjp` returns a gradient shaped `[2]` for an input shaped `[3]`
+- **THEN** `Backward` returns an error naming the operation and the two shapes
 
 ### Requirement: A failed reverse pass publishes no gradient
 

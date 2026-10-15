@@ -32,7 +32,18 @@ through a change first:
    (`openspec-verify-change`).
 4. **Archive** — once the change is implemented and merged, archive it into
    `openspec/changes/archive/` (`openspec-archive-change`). **Completed changes
-   must be archived, not left sitting in `openspec/changes/`.**
+   must be archived, not left sitting in `openspec/changes/`.** Archiving a
+   change that creates a capability leaves `TBD - created by archiving change …`
+   as its Purpose; replace it in the same commit with one or two sentences on
+   what the capability is for.
+
+Every main spec must pass `openspec validate --specs --strict`, and the
+GolangCI-Lint workflow runs it on every push and pull request: a Purpose of at
+least 50 characters, every requirement's text before its first scenario at most
+500 characters, a SHALL or MUST in each, and a scenario under each. To shorten a
+requirement, split it into requirements that each state one behaviour, keep
+the original header on the first so a later `MODIFIED` delta still finds it,
+and keep every rule and scenario.
 
 Trivial edits (typos, formatting, comment/doc-only touch-ups) may skip OpenSpec.
 When in doubt, propose a change. The docs/changelog/skills-in-sync rule below
@@ -359,12 +370,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `datalist_window.go` `Shift`
 - **What**: `Shift` builds its result through `NewDataList`, which flattens every slice, so a list holding `[]byte{1, 2}` and `3` comes back three cells long: measured on 2026-09-14, `Append([]byte{1, 2}, 3)` then `Shift(0)` gives `[1 2 3]`. Present on v0.3.2; found while backporting `one-value-one-cell`.
 - **Suggestion**: build the result with `Append`, or wrap each cell with `Cell`. The length and cells of the result change for lists holding slices, so decide which line takes it.
-- **Status**: pending
-
-### [2026-09-14] — 26 main specs fail `openspec validate --specs --strict`
-- **Where**: `openspec/specs/*/spec.md`, mostly the `## Purpose` section
-- **What**: on 2026-09-14 the strict run reports 26 failures of 101 specs: the seven `accel-*` specs, `changelog`, `cli-entry`, `command-registry`, `core-preprocessing`, `dsl-commands`, `env-management`, the five `ml-*` specs, `nn-inference`, `nn-training`, `repl-engine`, `script-runner`, `stats-clustering`, `stats-decomposition`, `stats-knn` and `stats-regression`. dev at e6fbb53 had 27 of 50; the 0.4 backport fixed `verification-integrity` and gave every spec it added a real Purpose. Nothing in CI runs the command.
-- **Suggestion**: write each Purpose from its requirements as its own change, then add the strict run to the lint workflow so the count cannot climb again.
 - **Status**: pending
 
 ### [2026-09-12] — grouping, pivoting, merging and `Describe` still merge nested values that print alike

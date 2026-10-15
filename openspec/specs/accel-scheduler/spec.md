@@ -1,7 +1,8 @@
 # accel-scheduler Specification
 
 ## Purpose
-TBD - created by archiving change add-accel-scheduler-multi-gpu. Update Purpose after archive.
+How work is split across several GPUs: only shardable columnar operations are eligible, shards are weighted by each device's capability and merged in a fixed order, and multi-device execution starts only past a measured saturation point, under strict or automatic mode.
+
 ## Requirements
 ### Requirement: Shardable workload policy
 The system SHALL define a bounded set of shardable workload classes for v1 multi-device execution.

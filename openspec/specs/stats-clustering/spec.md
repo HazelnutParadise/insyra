@@ -1,7 +1,8 @@
 # stats-clustering Specification
 
 ## Purpose
-TBD - created by archiving change add-kmeans-assign. Update Purpose after archive.
+Applying a fitted clustering to observations it was not fitted on, so new rows can be assigned to the clusters a model has already found.
+
 ## Requirements
 ### Requirement: A fitted clustering assigns new observations
 The system SHALL let a caller assign observations to the centres a clustering converged on, whether or not those observations were part of the fit.
