@@ -1016,8 +1016,8 @@ Source policy:
 | `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] [allowformulas true\|false] [sheet <name>] [if-exists fail\|replace] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames [true\|false]]` | Save a DataTable variable to a file or SQL connection |
 | `scale` | `scale fit std\|minmax\|robust\|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...> \| scale transform\|inverse <scalerVar> <tableVar> as <outVar>` | Fit a reusable feature scaler and transform/inverse tables with it |
 | `set` | `set <var> <row> <col> <value>` | Set single element in DataTable |
-| `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |
-| `setrownames` | `setrownames <var> <names...>` | Set DataTable row names |
+| `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names, exactly one per column |
+| `setrownames` | `setrownames <var> <names...>` | Set DataTable row names, exactly one per row |
 | `shape` | `shape <var>` | Show shape of DataTable/DataList |
 | `shift` | `shift <var> <periods> [fill <value>] [as <var>]` | Shift / lag (periods > 0) / lead (periods < 0); empty slots default to nil |
 | `show` | `show <var> [N] [M]` | Display data with optional range (supports negative and _) |

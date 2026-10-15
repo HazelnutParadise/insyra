@@ -1,8 +1,8 @@
 package insyra
 
 // SetColNameByIndex names the column at the given Excel-style index ("A", "B",
-// ...). A name another column already has gets a numeric suffix. Returns the
-// receiver.
+// ...). A name another column already has gets a numeric suffix and a warning.
+// Returns the receiver.
 func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -12,15 +12,13 @@ func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable {
 			result = dt
 			return
 		}
-		name = safeColName(dt, name)
-
 		if nIndex < 0 || nIndex >= len(dt.columns) {
 			dt.fail("SetColNameByIndex", "Index out of bounds")
 			result = dt
 			return
 		}
 
-		dt.columns[nIndex].name = name
+		dt.columns[nIndex].name = safeColNameExcept(dt, "SetColNameByIndex", name, nIndex)
 		dt.updateTimestamp()
 		result = dt
 	})
@@ -28,7 +26,8 @@ func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable {
 }
 
 // SetColNameByNumber names the column at the given 0-based number. A name
-// another column already has gets a numeric suffix. Returns the receiver.
+// another column already has gets a numeric suffix and a warning. Returns the
+// receiver.
 func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -42,24 +41,24 @@ func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable
 			return
 		}
 
-		name = safeColName(dt, name)
-		dt.columns[numberIndex].name = name
+		dt.columns[numberIndex].name = safeColNameExcept(dt, "SetColNameByNumber", name, numberIndex)
 		dt.updateTimestamp()
 		result = dt
 	})
 	return result
 }
 
-// ChangeColName renames the column called oldName. Returns the receiver.
+// ChangeColName renames the column called oldName. A name another column
+// already has gets a numeric suffix and a warning. Returns the receiver.
 func (dt *DataTable) ChangeColName(oldName, newName string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
-		for _, col := range dt.columns {
+		for i, col := range dt.columns {
 			if col.name == oldName {
-				// Route through safeColName so a rename cannot create a duplicate
-				// column name (which would shadow lookups), consistent with the
-				// other name setters.
-				col.name = safeColName(dt, newName)
+				// Route through safeColNameExcept so a rename cannot create a
+				// duplicate column name (which would shadow lookups), consistent
+				// with the other name setters.
+				col.name = safeColNameExcept(dt, "ChangeColName", newName, i)
 				break
 			}
 		}
@@ -179,25 +178,26 @@ func (dt *DataTable) Headers() []string {
 	return dt.ColNames()
 }
 
-// SetColNames names the columns in order. More names than columns appends empty
-// columns to carry the extra names; a name another column already has gets a
-// numeric suffix. Returns the receiver.
+// SetColNames names the existing columns in order, the way SetRowNames names
+// rows. Columns past the last name lose their names; names past the last column
+// are ignored with a warning. A name given earlier in the same call gets a
+// numeric suffix and a warning; a column's own current name never counts as
+// taken. Returns the receiver.
 func (dt *DataTable) SetColNames(colNames []string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
-		for i, colName := range colNames {
-			if i < len(dt.columns) {
-				dt.columns[i].SetName(safeColName(dt, colName))
-			} else {
-				// Add new column
-				newCol := NewDataList()
-				newCol.SetName(safeColName(dt, colName))
-				dt.AppendCols(newCol)
-			}
+		if len(colNames) > len(dt.columns) {
+			dt.warn("SetColNames", "%d names given for %d columns; ignored %q", len(colNames), len(dt.columns), colNames[len(dt.columns):])
+			colNames = colNames[:len(dt.columns)]
 		}
-		// Set excess columns to empty name
+		taken := make(map[string]bool, len(colNames))
+		for i, colName := range colNames {
+			name := warnIfRenamed(dt, "SetColNames", colName, uniqueName(colName, func(c string) bool { return taken[c] }))
+			taken[name] = true
+			dt.columns[i].name = name
+		}
 		for i := len(colNames); i < len(dt.columns); i++ {
-			dt.columns[i].SetName("")
+			dt.columns[i].name = ""
 		}
 		dt.updateTimestamp()
 		result = dt

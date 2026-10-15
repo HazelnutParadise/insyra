@@ -20,7 +20,14 @@ func runSetRowNamesCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	table.SetRowNames(args[1:])
+	names := args[1:]
+	if len(names) != table.NumRows() {
+		return fmt.Errorf("setrownames: got %d names for %d rows; pass exactly one name per row", len(names), table.NumRows())
+	}
+	table.SetRowNames(names)
+	if err := checkTableErr("setrownames", table); err != nil {
+		return err
+	}
 	_, _ = fmt.Fprintln(ctx.Output, "row names updated")
 	return nil
 }

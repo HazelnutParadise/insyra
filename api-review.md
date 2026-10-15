@@ -191,7 +191,7 @@
 | T-11 | ~~Med~~ 已修正（one-column-selector）：全庫統一一套欄位選擇器，裸字串一律是 Excel 索引、`Name(...)` 是欄名、`int` 是位置；`GetCol` 的大寫欄名 fallback 移除，核心存取器補齊明講版 | `GetCol(index)` 先 `ToUpper` 再退回名稱查詢，`GetCol("price")` 找不到名為 price 的欄（已實測，專案記憶已有此陷阱）；`ReplaceInCol("a", …)` 把名稱 "a" 當成 Excel 索引 A（已實測），欄名 "b" 若在第 0 欄會改到第 1 欄。名稱與索引共用一個 string 參數是整個 DataTable 的結構性歧義（準則 3、6） | datatable.go:297-317；datatable_replace.go:361 | `GetCol` 不退回名稱；長期：索引用 typed `ColIndex`，名稱用 `ByName` |
 | T-12 | Med（時間格式已修正 batch 2；JSON 部分待決） | `ToJSON_Bytes`／`ToJSON_String` 遇到 NaN 回 nil／空字串只設 Err（已實測），呼叫端拿到空 JSON 不會察覺；`ToCSV` 用 `%v` 輸出 `time.Time` 成 `2024-01-02 03:04:05 +0000 UTC`，`ParseDates` 預設 layout 讀不回來，CSV 往返壞掉（已實測）；`ToCSV(path, bool, bool, bool)` 三個裸 bool 且無 `io.Writer` 版本 | datatable_json.go:85-105；datatable_csv.go:13 | JSON 回 error；CSV 時間用 RFC3339；加 options struct 與 `WriteCSV(w io.Writer)` |
 | T-13 | ~~Med~~ 已修正（filter-rows-where） | `Filter(func(row, col, value) bool)` 與 `FilterRows` 是「任一格子符合就留整列」，不是列謂詞。最常見的 `A > B` 這種跨欄條件無法表達，只能繞去 CCL；`FilterByCustomElement` 與 `Filter` 重複（準則 4、5） | datatable_filters.go:333-440 | 加 `FilterRowsWhere(func(row *DataList) bool)` |
-| T-14 | Med | `SetColNames` 給的名字比欄多時自動新增空欄（已實測），pandas 是長度不符即 raise；`AppendCols` 遇同名自動改成 `name_1` 不通知 | datatable_colname.go:163-185；datatable.go:69 | 長度不符回錯；同名至少 warn |
+| T-14 | ~~Med~~ 已修正（datatable-names-one-rule） | `SetColNames` 給的名字比欄多時自動新增空欄（已實測），pandas 是長度不符即 raise；`AppendCols` 遇同名自動改成 `name_1` 不通知 | datatable_colname.go:163-185；datatable.go:69 | 長度不符回錯；同名至少 warn |
 | T-15 | ~~Med~~ 已修正（無名欄垂直合併：fix-clear-defects-core；`Merge` 內部寫死 `*DataTable`：embeddable-sealed-interfaces 改由隱藏方法取出內嵌的核心表格） | `mergeVertical` 對沒有欄名的表（`NewDataTable(NewDataList(...))` 預設）判定「重複欄名 ""」而回錯，兩張無名表無法垂直合併（推論，未實測）；`Merge(other IDataTable, ...)` 內部立刻斷言 `*DataTable`，介面參數只是裝飾（K-7） | datatable_merge.go:31, 389-400 | 無名欄以位置對齊；參數改 `*DataTable` |
 | T-16 | ~~Med~~ 已修正（batch 13）  | GroupBy 的 `columnsSnapshot` 是欄位指標的淺拷貝，`Aggregate` 在鎖外讀 `sourceCol.data`；父表被並行修改時是 data race（程式碼註解自己承認）。與 Rolling／EWM 深拷貝快照的做法不一致 | datatable_groupby.go:139-146 | 深拷貝或在 Aggregate 期間持鎖 |
 | T-17 | ~~Med~~ 已修正（pivot-takes-aggregate-op：`PivotConfig.AggFunc` 改收 `*AggregateOp`；group-keys-integers-by-value：各整數寬度依數值分組、補上 `uintptr`，`int 1` 與 `float64 1.0` 依擁有者裁定維持兩組） | 聚合相關 API 三種寫法：`Aggregate` 用 typed `AggregateOp`，`Pivot.AggFunc` 用字串（含 "avg"、"std" 別名），`Resample` 用 `AggregateOp`。GroupBy 的 key 把 `int 1` 與 `float64 1.0` 分成兩組（CSV 讀進來的 int64 與手動建的 float 會分家），pandas 視為同一組（準則 5、6） | datatable_pivot.go:44, 545-580；datatable_groupby.go:210 | Pivot 改收 `AggregateOp`；數值 key 正規化 |
@@ -547,7 +547,7 @@
 | D-18 | [#224](https://github.com/HazelnutParadise/insyra/issues/224) | 已關閉（window-failures-carry-the-error） |
 | T-11、T-20、MK-3 | [#225](https://github.com/HazelnutParadise/insyra/issues/225) | 已關閉（one-column-selector；T-20 的 mode 魔數與 MK-3 的其餘項目另開） |
 | T-13 | [#226](https://github.com/HazelnutParadise/insyra/issues/226) | 已修正（filter-rows-where） |
-| T-14 | [#227](https://github.com/HazelnutParadise/insyra/issues/227) |  |
+| T-14 | [#227](https://github.com/HazelnutParadise/insyra/issues/227) | 已修正（datatable-names-one-rule） |
 | T-15 | [#228](https://github.com/HazelnutParadise/insyra/issues/228) | 已關閉（fix-clear-defects-core、embeddable-sealed-interfaces） |
 | T-16 | [#229](https://github.com/HazelnutParadise/insyra/issues/229) |  |
 | T-17 | [#230](https://github.com/HazelnutParadise/insyra/issues/230) | 已修正（pivot-takes-aggregate-op、group-keys-integers-by-value） |

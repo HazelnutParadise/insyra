@@ -17,16 +17,16 @@ func TestSetColNames(t *testing.T) {
 		t.Errorf("Expected names X, Y, got %s, %s", result1.columns[0].name, result1.columns[1].name)
 	}
 
-	// Test case 2: More colNames than columns (add new columns)
+	// Test case 2: More colNames than columns (extra names are ignored)
 	dt2 := NewDataTable()
 	dt2.AppendCols(NewDataList().SetName("A"))
 	colNames2 := []string{"X", "Y", "Z"}
 	result2 := dt2.SetColNames(colNames2)
-	if len(result2.columns) != 3 {
-		t.Errorf("Expected 3 columns, got %d", len(result2.columns))
+	if len(result2.columns) != 1 {
+		t.Fatalf("Expected 1 column, got %d", len(result2.columns))
 	}
-	if result2.columns[0].name != "X" || result2.columns[1].name != "Y" || result2.columns[2].name != "Z" {
-		t.Errorf("Expected names X, Y, Z, got %s, %s, %s", result2.columns[0].name, result2.columns[1].name, result2.columns[2].name)
+	if result2.columns[0].name != "X" {
+		t.Errorf("Expected name X, got %s", result2.columns[0].name)
 	}
 
 	// Test case 3: Fewer colNames than columns (set excess to empty)

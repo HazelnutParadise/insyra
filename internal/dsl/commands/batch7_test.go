@@ -184,6 +184,8 @@ func TestOutOfRangeArgumentsAreRejected(t *testing.T) {
 		"sample larger than list": {"sample", "x", "99"},
 		"too few column names":    {"setcolnames", "dt", "only_one"},
 		"too many column names":   {"setcolnames", "dt", "a", "b", "c", "d"},
+		"too few row names":       {"setrownames", "dt", "r1"},
+		"too many row names":      {"setrownames", "dt", "r1", "r2", "r3", "r4"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			ctx := tableCtx(t)
@@ -201,6 +203,10 @@ func TestOutOfRangeArgumentsAreRejected(t *testing.T) {
 	ctx = tableCtx(t)
 	if err := Dispatch(ctx, "setcolnames", []string{"dt", "a", "b", "c"}); err != nil {
 		t.Errorf("setcolnames with the right count: %v", err)
+	}
+	ctx = tableCtx(t)
+	if err := Dispatch(ctx, "setrownames", []string{"dt", "r1", "r2", "r3"}); err != nil {
+		t.Errorf("setrownames with the right count: %v", err)
 	}
 }
 

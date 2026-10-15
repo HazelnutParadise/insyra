@@ -91,7 +91,7 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 			// the other and race across their two independent actor locks.
 			column.data = slices.Clone(col.data)
 			column.name = col.name
-			column.name = safeColName(dt, column.name)
+			column.name = safeColName(dt, "AppendCols", column.name)
 
 			dt.columns = append(dt.columns, column)
 			if len(column.data) < maxLength {
@@ -125,7 +125,7 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable {
 			maxLength := dt.getMaxColLength()
 
 			if rowData.name != "" {
-				srn := safeRowName(dt, rowData.name)
+				srn := safeRowName(dt, "AppendRowsFromDataList", rowData.name)
 				_, _ = dt.rowNames.Set(maxLength, srn)
 			}
 
@@ -534,7 +534,7 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable {
 
 		// 更新行名
 		if dl.name != "" {
-			srn := safeRowName(dt, dl.name)
+			srn := safeRowNameExcept(dt, "UpdateRow", dl.name, index)
 			_, _ = dt.rowNames.Set(index, srn)
 		}
 
@@ -564,7 +564,7 @@ func (dt *DataTable) setColToRowNames(funcName string, col any) *DataTable {
 		}
 		for i, value := range dt.columns[num].data {
 			if value != nil {
-				rowName := safeRowName(dt, conv.ToString(value))
+				rowName := safeRowNameExcept(dt, funcName, conv.ToString(value), i)
 				_, _ = dt.rowNames.Set(i, rowName)
 			}
 		}
@@ -584,11 +584,26 @@ func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable {
 			dt.fail("SetRowToColNames", "Row index %d is out of range, returning", rowIndex)
 			return
 		}
+		// Every column the row names gives up its old name, so a name is taken
+		// only by a column the row leaves alone or one named earlier in the row.
+		renamed := make([]bool, len(dt.columns))
 		for i, value := range row.data {
-			if value != nil {
-				columnName := safeColName(dt, conv.ToString(value))
-				dt.columns[i].name = columnName
+			renamed[i] = i < len(dt.columns) && value != nil
+		}
+		taken := map[string]bool{}
+		for i, col := range dt.columns {
+			if !renamed[i] && col.name != "" {
+				taken[col.name] = true
 			}
+		}
+		for i, value := range row.data {
+			if !renamed[i] {
+				continue
+			}
+			name := conv.ToString(value)
+			columnName := warnIfRenamed(dt, "SetRowToColNames", name, uniqueName(name, func(c string) bool { return taken[c] }))
+			taken[columnName] = true
+			dt.columns[i].name = columnName
 		}
 
 		dt.DropRowsByIndex(rowIndex)
@@ -1515,24 +1530,45 @@ func newEmptyDataList(rowCount int) *DataList {
 	return dl
 }
 
-func safeRowName(dt *DataTable, name string) string {
+// uniqueName returns name when taken does not report it, and otherwise the
+// first of name_1, name_2, ... that taken does not report.
+func uniqueName(name string, taken func(string) bool) string {
 	if name == "" {
 		return ""
 	}
+	unique := name
+	for counter := 1; taken(unique); counter++ {
+		unique = fmt.Sprintf("%s_%d", name, counter)
+	}
+	return unique
+}
 
-	originalName := name
-	counter := 1
+// uniqueRowName is safeRowName without the warning, for callers that make
+// duplicates on purpose, such as sampling with replacement.
+func uniqueRowName(dt *DataTable, name string) string {
+	return safeRowNameExcept(dt, "", name, -1)
+}
 
+// safeRowName returns name, or name with a numeric suffix when another row
+// already has it, and warns under funcName when it adds the suffix.
+func safeRowName(dt *DataTable, funcName, name string) string {
+	return safeRowNameExcept(dt, funcName, name, -1)
+}
+
+// safeRowNameExcept is safeRowName for renaming row self: the name self already
+// has does not count as taken. An empty funcName renames silently.
+func safeRowNameExcept(dt *DataTable, funcName, name string, self int) string {
 	if dt.rowNames == nil {
 		dt.rowNames = core.NewBiIndex(0)
 	}
-
-	for dt.rowNames.Has(name) {
-		name = fmt.Sprintf("%s_%d", originalName, counter)
-		counter++
+	unique := uniqueName(name, func(candidate string) bool {
+		index, exists := dt.rowNames.Index(candidate)
+		return exists && index != self
+	})
+	if funcName != "" && unique != name {
+		dt.warn(funcName, "row name %q is already taken; renamed to %q", name, unique)
 	}
-
-	return name
+	return unique
 }
 
 func (dt *DataTable) reindexRowNamesAfterRemoval(removedIndex int) {
@@ -1597,33 +1633,30 @@ func (dt *DataTable) remapRowNamesByIndices(keptIndices []int) {
 	dt.rowNames = remapped
 }
 
-func safeColName(dt *DataTable, name string) string {
-	if name == "" {
-		return ""
-	}
+// safeColName returns name, or name with a numeric suffix when a column already
+// has it, and warns under funcName when it adds the suffix.
+func safeColName(dt *DataTable, funcName, name string) string {
+	return safeColNameExcept(dt, funcName, name, -1)
+}
 
-	originalName := name
-	counter := 1
-
-	for {
-		// 檢查是否已經存在該列名
-		found := false
-		for _, col := range dt.columns {
-			if col.name == name {
-				found = true
+// safeColNameExcept is safeColName for renaming column self: the name self
+// already has does not count as taken.
+func safeColNameExcept(dt *DataTable, funcName, name string, self int) string {
+	return warnIfRenamed(dt, funcName, name, uniqueName(name, func(candidate string) bool {
+		for i, col := range dt.columns {
+			if i != self && col.name == candidate {
+				return true
 			}
 		}
+		return false
+	}))
+}
 
-		if !found {
-			break // 如果列名不存在，跳出循環
-		}
-
-		// 如果列名存在，則生成新的列名並繼續檢查
-		name = fmt.Sprintf("%s_%d", originalName, counter)
-		counter++
+func warnIfRenamed(dt *DataTable, funcName, name, unique string) string {
+	if unique != name {
+		dt.warn(funcName, "column name %q is already taken; renamed to %q", name, unique)
 	}
-
-	return name
+	return unique
 }
 
 // containsSubstring reports whether value contains substring.

@@ -345,7 +345,7 @@ func csvRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 				// 第一欄是行名，不作為列名處理
 				continue
 			}
-			column := &DataList{name: safeColName(dt, colName)}
+			column := &DataList{name: safeColName(dt, "ReadCSV", colName)}
 			dt.columns = append(dt.columns, column)
 		}
 		startRow = 1
@@ -364,7 +364,7 @@ func csvRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 	for rowIndex, row := range rows[startRow:] {
 		if opts.HasRowNames {
 			rowName := row[0]
-			_, _ = dt.rowNames.Set(rowIndex, safeRowName(dt, rowName))
+			_, _ = dt.rowNames.Set(rowIndex, safeRowName(dt, "ReadCSV", rowName))
 			row = row[1:] // 移除第一欄作為行名
 		}
 
@@ -408,7 +408,7 @@ func csvRaggedRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 			if opts.HasRowNames && i == 0 {
 				continue
 			}
-			dt.columns = append(dt.columns, &DataList{name: safeColName(dt, colName)})
+			dt.columns = append(dt.columns, &DataList{name: safeColName(dt, "ReadCSV", colName)})
 		}
 		startRow = 1
 	} else {
@@ -431,7 +431,7 @@ func csvRaggedRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 			} else {
 				cells = nil
 			}
-			_, _ = dt.rowNames.Set(rowIndex, safeRowName(dt, rowName))
+			_, _ = dt.rowNames.Set(rowIndex, safeRowName(dt, "ReadCSV", rowName))
 		}
 
 		if len(cells) > len(dt.columns) {
@@ -443,7 +443,7 @@ func csvRaggedRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 				if opts.HasRowNames {
 					columnNumber++
 				}
-				name := safeColName(dt, fmt.Sprintf("extra_%d", columnNumber))
+				name := safeColName(dt, "ReadCSV", fmt.Sprintf("extra_%d", columnNumber))
 				data := make([]any, rowIndex)
 				for i := range data {
 					data[i] = ""

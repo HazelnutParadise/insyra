@@ -131,7 +131,7 @@ func dataTableFromSampledRows(snap dataTableSamplingSnapshot, indices []int, suf
 			if !ok || name == "" {
 				continue
 			}
-			_, _ = out.rowNames.Set(newIdx, safeRowName(out, name))
+			_, _ = out.rowNames.Set(newIdx, uniqueRowName(out, name))
 		}
 	}
 	return out
@@ -314,7 +314,10 @@ func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable {
 	if earlyResult != nil {
 		return earlyResult
 	}
-	ndt.SetColNames(colNames)
+	// SetColNames names only existing columns, so create them named.
+	for _, name := range colNames {
+		ndt.AppendCols(NewDataList().SetName(name))
+	}
 	ndt.AppendRowsFromDataList(sampledRows...)
 
 	return ndt

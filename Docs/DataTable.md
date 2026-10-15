@@ -1631,6 +1631,8 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable
 
 **Description:** Appends columns to the DataTable. The passed `DataList`s are **copied** into the table — mutating a source list afterwards does not affect the table (and vice versa).
 
+A column whose name another column already has is added with a numeric suffix (`a` becomes `a_1`, then `a_2`), and a warning names the change. This is the rule every column and row name setter follows: a clashing name gets a suffix and a warning, a column's or row's own current name never counts as a clash, and `Err()` is not touched.
+
 **Parameters:**
 
 - `columns`: DataList columns to append
@@ -2235,7 +2237,7 @@ for i, name := range names {
 func (dt *DataTable) SetRowNames(rowNames []string) *DataTable
 ```
 
-**Description:** Sets the row names of the DataTable using a slice of strings. Only sets names for existing rows; excess names are ignored.
+**Description:** Names the existing rows in order. Rows past the last name lose their names. Names past the last row are ignored, and a warning lists them. A row's current name does not count as taken, and a name given twice in one call gets a numeric suffix on its second use, with a warning.
 
 **Parameters:**
 
@@ -2449,7 +2451,7 @@ dt.SetColNameByIndex("A", "Identifier") // Set the name of column A to "Identifi
 func (dt *DataTable) SetColNames(colNames []string) *DataTable
 ```
 
-**Description:** Sets the column names of the DataTable using a slice of strings. If the slice has more elements than existing columns, new columns will be added. If the slice has fewer elements, excess columns will be set to empty names.
+**Description:** Names the existing columns in order, the same way `SetRowNames` names rows. Columns past the last name lose their names. Names past the last column are ignored, and a warning lists them. `SetColNames` never adds a column; to add one, use `AppendCols`. A column's current name does not count as taken, so `SetColNames([]string{"b", "a"})` on columns `a`, `b` swaps them. A name given twice in one call gets a numeric suffix on its second use (`[]string{"x", "x"}` gives `x`, `x_1`), and a warning names the change.
 
 **Parameters:**
 

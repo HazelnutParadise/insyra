@@ -22,6 +22,11 @@ None in flight. Nothing left can be picked up without the owner answering someth
 **Awaiting a ruling:** nothing from the decision list that started on 2026-09-25; the open `api-review` issues are the next pickup.
 
 ## Latest Milestones
+- 2026-10-15 `datatable-names-one-rule` ([#227](https://github.com/HazelnutParadise/insyra/issues/227), api-review T-14, and the AGENTS.md follow-up of 2026-10-01). The owner ruled on 2026-10-15:
+  - **Length.** `SetColNames` follows `SetRowNames`. It names the existing columns only, so extra names are ignored with a warning and no longer append empty columns. Columns past the last name still lose their names. pandas and polars raise instead; the owner chose the library's own row-name rule over a new error.
+  - **Clashes.** A name another column or row has still gets `_1`, and now every setter, `AppendCols` and the CSV reader log a warning naming the change. `Err()` is not touched.
+  - **Self-collision.** This was a defect: a column or row renamed to its own name, or to one another gives up in the same call, got a suffix. On columns `a` and `b`, `SetColNames({"a","b"})` gave `[a_1 b_1]` and now keeps `[a b]`.
+  - **Other fixes.** `SimpleRandomSample` relied on the old growth to name its columns; measured, it returned unnamed columns once growth stopped, and it now creates them named. The CLI's `setrownames` refuses a count mismatch as `setcolnames` does, closing that part of the 2026-09-26 follow-up.
 - 2026-10-15 `datalist-quantile` and `mode-returns-every-mode` ([#221](https://github.com/HazelnutParadise/insyra/issues/221), api-review D-13 and QU-3). The owner ruled on 2026-10-15: add `Quantile`, keep `Percentile` and `Quartile`, make `Mode` work like pandas, and add no DataTable form of WalkForward.
   - **Scales.** One concept had three scales. `DataList.Quantile(p)` now takes 0..1, like pandas, R and gonum. `Percentile` (0..100, like NumPy) and `Quartile` (1..3) stay, as an exception to the one-name rule recorded in `AGENTS.md`. The scale follows the name, so `quant.PercentileBands` stays 0..100.
   - **NaN.** Measured on 6493910b, every member of the family sorted `NaN` into the data: `[1,2,3,NaN]` gave `Quartile(3)` 2.25 against `Describe`'s 2.5, and `Median()` gave 1.5. `Percentile(NaN)` panicked. `Quantile`, `Percentile`, `Quartile`, `IQR` and `Median` now skip `NaN` like `nil`.

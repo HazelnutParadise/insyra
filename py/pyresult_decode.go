@@ -255,8 +255,7 @@ func dataTableFromPayload(payload map[string]any) (*insyra.DataTable, error) {
 		return nil, err
 	}
 
-	// The empty path has already named its columns; naming them again would see
-	// each name as taken and add a suffix.
+	// The empty path has already named its columns.
 	if len(colNames) > 0 && len(rows) > 0 {
 		dt.SetColNames(colNames)
 	}

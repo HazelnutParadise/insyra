@@ -508,7 +508,7 @@ func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable
 				result.columns[j].data = append(result.columns[j].data, val)
 			}
 			if name, ok := d.getRowNameByIndex(i); ok {
-				if unique := safeRowName(result, name); unique != "" {
+				if unique := safeRowName(result, "Merge", name); unique != "" {
 					_, _ = result.rowNames.Set(i, unique)
 				}
 			}
@@ -526,7 +526,7 @@ func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable
 				result.columns[j].data = append(result.columns[j].data, val)
 			}
 			if name, ok := o.getRowNameByIndex(i); ok {
-				if unique := safeRowName(result, name); unique != "" {
+				if unique := safeRowName(result, "Merge", name); unique != "" {
 					_, _ = result.rowNames.Set(currentRows+i, unique)
 				}
 			}

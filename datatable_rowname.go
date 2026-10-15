@@ -33,7 +33,7 @@ func (dt *DataTable) SetRowNameByIndex(index int, name string) *DataTable {
 			return
 		}
 
-		srn := safeRowName(dt, name)
+		srn := safeRowNameExcept(dt, "SetRowNameByIndex", name, index)
 		_, _ = dt.rowNames.Set(index, srn)
 		dt.updateTimestamp()
 	})
@@ -120,7 +120,7 @@ func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable {
 			} else if newName != oldName {
 				// safeRowName keeps the rename from taking another row's name
 				// (BiIndex.Set would silently move the name off that row).
-				_, _ = dt.rowNames.Set(index, safeRowName(dt, newName))
+				_, _ = dt.rowNames.Set(index, safeRowNameExcept(dt, "ChangeRowName", newName, index))
 			}
 		}
 		dt.updateTimestamp()
@@ -198,24 +198,27 @@ func (dt *DataTable) RowNames() []string {
 	return rowNames
 }
 
-// SetRowNames sets the row names of the DataTable.
-// Different from SetColNames, it only sets names for existing rows.
+// SetRowNames names the existing rows in order. Rows past the last name lose
+// their names; names past the last row are ignored with a warning. A name given
+// earlier in the same call gets a numeric suffix and a warning; a row's own
+// current name never counts as taken. Returns the receiver.
 func (dt *DataTable) SetRowNames(rowNames []string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
-		if dt.rowNames == nil {
-			dt.rowNames = core.NewBiIndex(0)
-		}
 		maxRows := dt.getMaxColLength()
+		if len(rowNames) > maxRows {
+			dt.warn("SetRowNames", "%d names given for %d rows; ignored %q", len(rowNames), maxRows, rowNames[maxRows:])
+			rowNames = rowNames[:maxRows]
+		}
+		// Every row is renamed, so start from no names: a name is then taken
+		// only by one given earlier in this call.
+		dt.rowNames = core.NewBiIndex(0)
 		for i, name := range rowNames {
-			if i < maxRows {
-				dt.SetRowNameByIndex(i, name)
+			if name != "" {
+				_, _ = dt.rowNames.Set(i, safeRowName(dt, "SetRowNames", name))
 			}
 		}
-		// Set excess rows to empty name
-		for i := len(rowNames); i < maxRows; i++ {
-			_, _ = dt.rowNames.DeleteByID(i)
-		}
+		dt.updateTimestamp()
 		result = dt
 	})
 	return result
