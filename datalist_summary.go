@@ -90,17 +90,26 @@ func (dl *DataList) SummaryTo(w io.Writer) {
 		// Calculate statistics only if we have numeric values
 		if numericCount > 0 {
 			// Calculate all statistical indicators
-			stats.mean = dl.Mean()
-			stats.median = dl.Median()
-			stats.min = dl.Min()
-			stats.max = dl.Max()
-			stats.rangeVal = dl.Range()
-			stats.stdev = dl.Stdev()
-			stats.variance = dl.Var()
-			stats.q1 = dl.Quartile(1)
-			stats.q3 = dl.Quartile(3)
-			stats.iqr = dl.IQR()
-			stats.modeValues = dl.Mode()
+			// The statistics come from the numeric cells alone, so a display
+			// never records an error on the list for a cell it cannot use.
+			numeric := make([]any, 0, numericCount)
+			for _, v := range dlData {
+				if IsNumeric(v) {
+					numeric = append(numeric, v)
+				}
+			}
+			nums := NewDataList(numeric...)
+			stats.mean = nums.Mean()
+			stats.median = nums.Median()
+			stats.min = nums.Min()
+			stats.max = nums.Max()
+			stats.rangeVal = nums.Range()
+			stats.stdev = nums.Stdev()
+			stats.variance = nums.Var()
+			stats.q1 = nums.Quartile(1)
+			stats.q3 = nums.Quartile(3)
+			stats.iqr = nums.IQR()
+			stats.modeValues = nums.Mode()
 		} // Calculate statistics only if we have numeric values
 		if numericCount == 0 {
 			fmt.Fprintln(w, colorText(w, "3;33", "No numeric data available for statistical analysis"))

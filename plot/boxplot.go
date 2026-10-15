@@ -186,13 +186,23 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) (*charts.BoxPl
 }
 
 // createBoxPlotData generates the five-number summary (Min, Q1, Q2, Q3, Max)
+// of the numeric cells. Cells that are not numbers are left out here rather
+// than handed to Quartile, which records an error on the caller's list for
+// them.
 func createBoxPlotData(data insyra.IDataList) []float64 {
+	var numeric []any
+	for _, v := range data.Data() {
+		if _, ok := insyra.ToFloat64Safe(v); ok {
+			numeric = append(numeric, v)
+		}
+	}
+	values := insyra.NewDataList(numeric...)
 	return []float64{
-		data.Min(),
-		data.Quartile(1),
-		data.Quartile(2),
-		data.Quartile(3),
-		data.Max(),
+		values.Min(),
+		values.Quartile(1),
+		values.Quartile(2),
+		values.Quartile(3),
+		values.Max(),
 	}
 }
 

@@ -230,6 +230,7 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
   - **Getters keep the `Get` prefix** and pair with a `Set…` setter (`GetName`/`SetName`, `GetLogLevel`/`SetLogLevel`). Effective Go drops `Get` from field getters, but the module has more than a hundred exported `Get…` names. Dropping the prefix would break almost every caller for no change in behaviour, the same reasoning as the `Options`/`Config` ruling below. A new getter follows the library: `Get` plus the setter's noun (`GetUseColoredOutput` for `SetUseColoredOutput`).
   - **`Dangerously_TurnOffThreadSafety` keeps its underscore.** A name that looks wrong is the warning. Naming linters report only the declaration, never a caller.
   - **`isr` keeps both `Of` and `From`** on `DL` and `DT`, an exception to the one-name rule of #211, after Java's `List.of` (list the elements) and Rust's `From::from` (convert what you have).
+  - **`Quantile`, `Percentile` and `Quartile` are three names on purpose**, an exception to the one-name rule of #211 ruled by the owner on 2026-10-15 (#221). They are one type-7 quantile on three scales, the way NumPy keeps both `quantile` and `percentile`. The scale follows the name: a `Quantile` takes 0..1, a `Percentile` takes 0..100 (`DataList.Percentile`, `quant.PercentileBands`) and `Quartile` takes the quartile's own number, 1..3. `DescribeOptions.Percentiles` takes 0..1 after pandas' `describe`. A new quantile API uses the `Quantile` name and the 0..1 scale.
   - **`isr`'s `Push` is not a second name.** `dl.Push` is `Append` returning the isr list so the chain continues, which `Append` cannot do without the isr list leaving `IDataList` (#208). `dt.Push` adds rows or columns depending on the type it is given.
   - Column conversions use the library's two nouns: an index is the Excel-style letters (`"AA"`), and a number is the 0-based position (`ColIndexToNumber`, `ColNumberToIndex`, `GetColIndexByNumber`).
 - `AtomicDo` serializes access to ONE instance (same-instance nesting is safe, e.g. `Stdev`→`Var`). To read/operate on MULTIPLE instances atomically, use `insyra.AtomicDoAll(func(){...}, a, b, ...)` — it locks all given DataList/DataTable instances together in a deadlock-free order. Call it from the outermost level: inside an `AtomicDo` on one of those instances it runs inline without locking the others (the same trust-zone rule as nested `AtomicDo`), because locking there would deadlock against a goroutine doing the mirror image. Do NOT nest `AtomicDo` on a *different* instance inside a callback: that inner call runs WITHOUT locking the other instance and can race a concurrent mutation. (`engine/atomic.AtomicDoN([]*Actor, f)` is the same primitive for arbitrary user structs holding an `*atomic.Actor`.)
@@ -289,6 +290,14 @@ A skill is installed into an agent's environment and outlives the version it cam
 ## Follow-ups
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
+
+### [2026-10-15] — `Median` and `Mode` still skip a text cell that `Quantile` refuses
+- **Where**: `datalist.go` `Median` and `Mode`
+- **What**: #221 made the quantile family record an error naming the row and return `NaN` for a cell that is neither a number nor missing. `Median` was only taught to skip `NaN`, and `Mode` was only changed to return every mode. Both still pass over any other non-numeric cell: `Median` logs a warning and `Mode` skips it silently. Measured on 2026-10-15:
+  - On `[1, 2, "x", 3]`, `Median()` returns 2 with a nil `Err()`, while `Quantile(0.5)` returns `NaN` and an error.
+  - On `[1, "x", "x"]`, `Mode()` returns `[1]`. pandas would return `["x"]`, because it counts any value. `Mode` returns `[]float64`, so it cannot.
+- **Suggestion**: decide whether `Median` fails like `Quantile` (the AGENTS.md rule for an unreadable cell), and whether `Mode` should count non-numeric values, which needs a different return type. The first changes a result only on mixed lists. The second breaks every caller.
+- **Status**: pending
 
 ### [2026-10-15] — remove the second-resolution timestamp getters one release after they were deprecated
 - **Where**: `datalist.go` and `datatable.go` (`GetCreationTimestamp`, `GetLastModifiedTimestamp`), their lines in `interfaces.go`, `unixSecondsFromUnixNano` in `timestamps.go`

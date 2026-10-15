@@ -7,7 +7,8 @@ import (
 func init() {
 	_ = Register(&CommandHandler{Name: "quartile", Args: MaxArgs(2), Usage: "quartile <var> <q>", Description: "DataList quartile", Run: runQuartileCommand})
 	_ = Register(&CommandHandler{Name: "iqr", Args: MaxArgs(1), Usage: "iqr <var>", Description: "DataList IQR", Run: runIQRCommand})
-	_ = Register(&CommandHandler{Name: "percentile", Args: MaxArgs(2), Usage: "percentile <var> <p>", Description: "DataList percentile", Run: runPercentileCommand})
+	_ = Register(&CommandHandler{Name: "percentile", Args: MaxArgs(2), Usage: "percentile <var> <p>", Description: "DataList percentile, p from 0 to 100", Run: runPercentileCommand})
+	_ = Register(&CommandHandler{Name: "quantile", Args: MaxArgs(2), Usage: "quantile <var> <p>", Description: "DataList quantile, p from 0 to 1", Run: runQuantileCommand})
 	_ = Register(&CommandHandler{Name: "count", Args: MaxArgs(2), Usage: "count <var> <value>", Description: "Count occurrences", Run: runCountCommand})
 	_ = Register(&CommandHandler{Name: "counter", Args: MaxArgs(1), Usage: "counter <var>", Description: "DataList frequency map", Run: runCounterCommand})
 }
@@ -53,6 +54,22 @@ func runPercentileCommand(ctx *ExecContext, args []string) error {
 		return err
 	}
 	_, _ = fmt.Fprintf(ctx.Output, "%v\n", dl.Percentile(p))
+	return nil
+}
+
+func runQuantileCommand(ctx *ExecContext, args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: quantile <var> <p>")
+	}
+	dl, err := getDataListVar(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	p, err := parseFloatArg("quantile", "p", args[1])
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(ctx.Output, "%v\n", dl.Quantile(p))
 	return nil
 }
 

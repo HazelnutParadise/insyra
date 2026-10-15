@@ -1443,7 +1443,8 @@ func (dl *DataList) GMean() float64 {
 	return result
 }
 
-// Median calculates the median of the DataList.
+// Median calculates the median of the DataList. NaN cells are missing and
+// skipped, like nil, so Median agrees with Quantile(0.5).
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) Median() float64 {
 	var result float64
@@ -1460,6 +1461,9 @@ func (dl *DataList) Median() float64 {
 			vfloat, ok := ToFloat64Safe(v)
 			if !ok {
 				dl.warn("Median", "Element %v is not a numeric type, skipping", v)
+				continue
+			}
+			if math.IsNaN(vfloat) {
 				continue
 			}
 			validData = append(validData, vfloat)
@@ -1489,63 +1493,42 @@ func (dl *DataList) Median() float64 {
 	return result
 }
 
-// Mode calculates the mode of the DataList.
-// Only works with numeric data types.
-// Mode could be a single value or multiple values.
-// Returns nil if the DataList is empty or if no valid elements can be used.
+// Mode returns every value that occurs most often, in ascending order, the way
+// pandas' Series.mode does: [1 1 2 2] gives [1 2], and a list whose values all
+// occur equally often, such as [1 2 3] or [7], gives every value. Only numeric
+// cells are counted, by their float64 value, so 2 and 2.0 are the same value;
+// nil and NaN cells are missing and skipped. A list with no numeric values
+// returns nil.
 func (dl *DataList) Mode() []float64 {
 	var result []float64
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
 			dl.warn("Mode", "DataList is empty, returning nil")
-			result = nil
 			return
 		}
 
 		freqMap := make(map[float64]int)
+		maxFreq := 0
 		for _, v := range dl.data {
 			vfloat, ok := ToFloat64Safe(v)
-			if !ok {
+			if !ok || math.IsNaN(vfloat) {
 				continue
 			}
 			freqMap[vfloat]++
+			maxFreq = max(maxFreq, freqMap[vfloat])
 		}
 
 		if len(freqMap) == 0 {
 			dl.warn("Mode", "No valid elements to compute mode, returning nil")
-			result = nil
 			return
 		}
 
-		var modes []float64
-		maxFreq := 0
-		for _, freq := range freqMap {
-			if freq > maxFreq {
-				maxFreq = freq
-			}
-		}
-
-		// Check if all elements have the same frequency
-		allSameFrequency := true
-		for _, freq := range freqMap {
-			if freq != maxFreq {
-				allSameFrequency = false
-				break
-			}
-		}
-
-		if allSameFrequency {
-			dl.warn("Mode", "All elements have the same frequency. No mode exists, returning nil")
-			result = nil
-			return
-		}
 		for num, freq := range freqMap {
 			if freq == maxFreq {
-				modes = append(modes, num)
+				result = append(result, num)
 			}
 		}
-
-		result = modes
+		sort.Float64s(result)
 	})
 	return result
 }
@@ -1769,8 +1752,8 @@ func (dl *DataList) Range() float64 {
 // quantileType7 returns the p-quantile (p in [0,1]) of an ascending-sorted,
 // non-empty slice using R's type-7 method (the R / numpy / pandas default):
 // linear interpolation at position h = p*(n-1). This is the single quantile
-// definition shared by Quartile, Percentile and the RobustScaler so they never
-// disagree with each other or with Describe.
+// definition shared by Quantile, Quartile, Percentile and the RobustScaler so
+// they never disagree with each other or with Describe.
 func quantileType7(sorted []float64, p float64) float64 {
 	n := len(sorted)
 	if n == 0 {
@@ -1794,127 +1777,107 @@ func quantileType7(sorted []float64, p float64) float64 {
 	return sorted[lower] + (h-float64(lower))*(sorted[upper]-sorted[lower])
 }
 
-// Quartile calculates the quartile based on the input value (1 to 3).
-// 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
-// Uses R's type-7 quantile (the R / numpy / pandas default), matching Percentile.
-func (dl *DataList) Quartile(q int) float64 {
-	var result float64
+// sortedObservations returns the list's numeric values in ascending order for
+// the quantile family (Quantile, Percentile, Quartile, IQR). nil and NaN cells
+// are missing and skipped, the way Describe and pandas skip them; any other
+// cell that is not a number fails the call named fn, and ok is false.
+func (dl *DataList) sortedObservations(fn string) (sorted []float64, ok bool) {
+	values, badRow, ok := numericCells(dl.data, true)
+	if !ok {
+		dl.fail(fn, "non-numeric value at row %d", badRow)
+		return nil, false
+	}
+	sorted = values[:0]
+	for _, v := range values {
+		if !math.IsNaN(v) {
+			sorted = append(sorted, v)
+		}
+	}
+	sort.Float64s(sorted)
+	return sorted, true
+}
+
+// quantileOf is the body of Quantile, Percentile and Quartile once p is on the
+// 0..1 scale. It must run inside AtomicDo.
+func (dl *DataList) quantileOf(fn string, p float64) float64 {
+	sorted, ok := dl.sortedObservations(fn)
+	if !ok {
+		return math.NaN()
+	}
+	if len(sorted) == 0 {
+		dl.warn(fn, "no numeric values to compute a quantile from")
+		return math.NaN()
+	}
+	return quantileType7(sorted, p)
+}
+
+// Quantile returns the p-quantile of the list's numeric values, with p on the
+// 0..1 scale: Quantile(0.25) is the first quartile, Quantile(0.5) the median
+// and Quantile(0.9) the 90th percentile. It uses R's type-7 quantile, the
+// default of R, NumPy and pandas (linear interpolation between order
+// statistics), the same definition Percentile, Quartile and Describe use.
+//
+// nil and NaN cells are missing and skipped. A p that is NaN or outside
+// [0, 1], or a cell that is neither a number nor missing, records an error and
+// returns NaN. A list with no numeric values returns NaN without an error.
+func (dl *DataList) Quantile(p float64) float64 {
+	result := math.NaN()
 	dl.AtomicDo(func(dl *DataList) {
-		if len(dl.data) == 0 {
-			dl.warn("Quartile", "DataList is empty")
-			result = math.NaN()
+		if math.IsNaN(p) || p < 0 || p > 1 {
+			dl.fail("Quantile", "p %v is outside [0, 1]", p)
 			return
 		}
-		if q < 1 || q > 3 {
-			dl.fail("Quartile", "Invalid quartile value")
-			result = math.NaN()
-			return
-		}
-
-		// Convert the DataList to a slice of float64 for numeric operations, skipping invalid elements
-		var numericData []float64
-		for _, v := range dl.data {
-			vfloat, ok := ToFloat64Safe(v)
-			if !ok {
-				dl.warn("Quartile", "Element %v is not a numeric type, skipping", v)
-				continue
-			}
-			numericData = append(numericData, vfloat)
-		}
-
-		if len(numericData) == 0 {
-			dl.fail("Quartile", "No valid elements to compute quartile")
-			result = math.NaN()
-			return
-		}
-
-		// Sort the data
-		sort.Float64s(numericData)
-
-		var p float64
-		switch q {
-		case 1:
-			p = 0.25
-		case 2:
-			p = 0.5
-		case 3:
-			p = 0.75
-		}
-
-		// Unified type-7 quantile so Quartile agrees with Percentile / Describe /
-		// RobustScaler. numericData is already sorted above.
-		result = quantileType7(numericData, p)
+		result = dl.quantileOf("Quantile", p)
 	})
 	return result
 }
 
-// IQR calculates the interquartile range of the DataList.
-// Returns math.NaN() if the DataList is empty or if Q1 or Q3 cannot be calculated.
-// Returns the interquartile range (Q3 - Q1) as a float64.
-func (dl *DataList) IQR() float64 {
-	var q1, q3 float64
-	var earlyResult *float64
+// Quartile returns the q-th quartile: 1 is Q1, 2 the median (Q2) and 3 Q3.
+// Quartile(q) is Quantile(q/4) and follows its rules for missing and
+// non-numeric cells. A q other than 1, 2 or 3 records an error and returns NaN.
+func (dl *DataList) Quartile(q int) float64 {
+	result := math.NaN()
 	dl.AtomicDo(func(dl *DataList) {
-		if dl.Len() == 0 {
-			dl.warn("IQR", "DataList is empty")
-			earlyResult = new(float64)
-			*earlyResult = math.NaN()
+		if q < 1 || q > 3 {
+			dl.fail("Quartile", "quartile %d is not 1, 2 or 3", q)
 			return
 		}
-
-		q1 = dl.Quartile(1)
-		q3 = dl.Quartile(3)
+		result = dl.quantileOf("Quartile", float64(q)/4)
 	})
-	if earlyResult != nil {
-		return *earlyResult
-	}
-
-	if math.IsNaN(q1) || math.IsNaN(q3) {
-		dl.warn("IQR", "Q1 or Q3 calculation failed")
-		return math.NaN()
-	}
-
-	return q3 - q1
+	return result
 }
 
-// Percentile calculates the percentile based on the input value (0 to 100).
-func (dl *DataList) Percentile(p float64) float64 {
-	var result float64
+// IQR returns the interquartile range, Q3 - Q1, by the same rules as Quartile.
+// It returns NaN when the list has no numeric values, and records an error and
+// returns NaN when a cell is neither a number nor missing.
+func (dl *DataList) IQR() float64 {
+	result := math.NaN()
 	dl.AtomicDo(func(dl *DataList) {
-		if len(dl.data) == 0 {
-			dl.warn("Percentile", "DataList is empty")
-			result = math.NaN()
+		sorted, ok := dl.sortedObservations("IQR")
+		if !ok {
 			return
 		}
-		if p < 0 || p > 100 {
-			dl.fail("Percentile", "Invalid percentile value")
-			result = math.NaN()
+		if len(sorted) == 0 {
+			dl.warn("IQR", "no numeric values to compute a quantile from")
 			return
 		}
+		result = quantileType7(sorted, 0.75) - quantileType7(sorted, 0.25)
+	})
+	return result
+}
 
-		// Convert the DataList to a slice of float64 for numeric operations, skipping invalid elements
-		var numericData []float64
-		for _, v := range dl.data {
-			vfloat, ok := ToFloat64Safe(v)
-			if !ok {
-				dl.fail("Percentile", "Element %v cannot be converted to float64, skipping", v)
-				continue
-			}
-			numericData = append(numericData, vfloat)
-		}
-
-		if len(numericData) == 0 {
-			dl.fail("Percentile", "No valid elements to compute percentile")
-			result = math.NaN()
+// Percentile returns the p-th percentile, with p on the 0..100 scale:
+// Percentile(90) is Quantile(0.9). It follows Quantile's rules for missing and
+// non-numeric cells. A p that is NaN or outside [0, 100] records an error and
+// returns NaN.
+func (dl *DataList) Percentile(p float64) float64 {
+	result := math.NaN()
+	dl.AtomicDo(func(dl *DataList) {
+		if math.IsNaN(p) || p < 0 || p > 100 {
+			dl.fail("Percentile", "p %v is outside [0, 100]", p)
 			return
 		}
-
-		// Sort the data
-		sort.Float64s(numericData)
-
-		// Unified type-7 quantile (see quantileType7): the R / numpy / pandas
-		// default, shared with Quartile so the two never disagree.
-		result = quantileType7(numericData, p/100.0)
+		result = dl.quantileOf("Percentile", p/100)
 	})
 	return result
 }

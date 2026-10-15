@@ -99,6 +99,7 @@ type IDataList interface {
 	Quartile(int) float64
 	IQR() float64
 	Percentile(float64) float64
+	Quantile(float64) float64
 	// Deprecated: use Diff(1); see DataList.Difference.
 	Difference() *DataList
 	Describe(...DescribeOptions) *DataTable

@@ -1194,7 +1194,7 @@ gmean := dl.GMean() // 2.83 (approximately)
 func (dl *DataList) Median() float64
 ```
 
-**Description:** Returns the median value after sorting elements.
+**Description:** Returns the median value after sorting elements. `nil` and `NaN` cells are skipped, so `Median()` equals `Quantile(0.5)`.
 
 **Parameters:**
 
@@ -1217,7 +1217,7 @@ median := dl.Median() // 3.0
 func (dl *DataList) Mode() []float64
 ```
 
-**Description:** Returns the most frequent value(s) in the DataList.
+**Description:** Returns every value that occurs most often, in ascending order, the way pandas' `Series.mode` does. When several values tie for the highest count, all of them are returned. That includes a list whose values all occur equally often: `[1 2 3]` has three modes and `[7]` has one. Only numeric cells are counted, by their `float64` value, so `2` and `2.0` are the same value. `nil` and `NaN` cells are skipped.
 
 **Parameters:**
 
@@ -1225,13 +1225,14 @@ func (dl *DataList) Mode() []float64
 
 **Returns:**
 
-- `[]float64`: Slice of mode values
+- `[]float64`: The modes in ascending order, or `nil` when the list has no numeric values.
 
 **Example:**
 
 ```go
-dl := insyra.NewDataList(1, 2, 2, 3, 3, 3)
-modes := dl.Mode() // [3.0]
+insyra.NewDataList(1, 2, 2, 3, 3, 3).Mode() // [3]
+insyra.NewDataList(3, 3, 1, 1, 2).Mode()    // [1 3]
+insyra.NewDataList(1, 2, 3).Mode()          // [1 2 3]
 ```
 
 ### Stdev
@@ -1349,13 +1350,50 @@ dl := insyra.NewDataList(1, 5, 3, 9, 2)
 range := dl.Range() // 8.0 (9 - 1)
 ```
 
+### Quantile
+
+```go
+func (dl *DataList) Quantile(p float64) float64
+```
+
+**Description:** Returns the p-quantile of the list's numeric values, with `p` on the 0..1 scale: `Quantile(0.25)` is the first quartile, `Quantile(0.5)` the median and `Quantile(0.9)` the 90th percentile. It is the same as pandas' `Series.quantile(p)` and R's `quantile(x, p, na.rm = TRUE)`.
+
+Every quantile in Insyra uses R's type-7 definition, the default of R, NumPy and pandas (pandas calls it `linear`). It interpolates linearly between the two order statistics around position `p*(n-1)`. So `Quantile`, `Quartile`, `Percentile`, `IQR`, `Describe`, `RobustScale` and `quant.PercentileBands` always agree. The scale follows the name:
+
+| Call | Scale | First quartile |
+| --- | --- | --- |
+| `Quantile(p)` | 0 to 1 | `Quantile(0.25)` |
+| `Percentile(p)` | 0 to 100 | `Percentile(25)` |
+| `Quartile(q)` | 1, 2 or 3 | `Quartile(1)` |
+| `DescribeOptions.Percentiles` | 0 to 1, like pandas' `describe` | `0.25` |
+
+`nil` and `NaN` cells are missing and skipped, the way `Describe` and pandas skip them.
+
+**Parameters:**
+
+- `p`: The probability, from 0 to 1 inclusive.
+
+**Returns:**
+
+- `float64`: The p-quantile. It is `NaN` when the list has no numeric values. It is also `NaN`, with an error recorded on the list, when `p` is `NaN` or outside `[0, 1]`, or when a cell is neither a number nor missing.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, 2, 3, 4, 10)
+dl.Quantile(0.25) // 2
+dl.Quantile(0.9)  // 7.6
+
+insyra.NewDataList(1, 2, 3, math.NaN()).Quantile(0.75) // 2.5, the NaN is skipped
+```
+
 ### Quartile
 
 ```go
 func (dl *DataList) Quartile(q int) float64
 ```
 
-**Description:** Calculates quartile values (Q1, Q2, Q3). Uses R's type-7 quantile (the R / NumPy / pandas default), so `Quartile`, `Percentile`, `IQR`, `Describe` and `RobustScale` all agree.
+**Description:** Returns the q-th quartile: 1 is Q1, 2 the median and 3 Q3. `Quartile(q)` is `Quantile(q/4)`, and it follows `Quantile`'s rules for missing and non-numeric cells.
 
 **Parameters:**
 
@@ -1363,15 +1401,15 @@ func (dl *DataList) Quartile(q int) float64
 
 **Returns:**
 
-- `float64`: Quartile value
+- `float64`: The quartile. A `q` other than 1, 2 or 3 records an error and returns `NaN`.
 
 **Example:**
 
 ```go
 dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-q1 := dl.Quartile(1) // First quartile
-q2 := dl.Quartile(2) // Second quartile (median)
-q3 := dl.Quartile(3) // Third quartile
+q1 := dl.Quartile(1) // 3.25
+q2 := dl.Quartile(2) // 5.5, the median
+q3 := dl.Quartile(3) // 7.75
 ```
 
 ### IQR
@@ -1380,7 +1418,7 @@ q3 := dl.Quartile(3) // Third quartile
 func (dl *DataList) IQR() float64
 ```
 
-**Description:** Calculates the interquartile range (Q3 - Q1).
+**Description:** Calculates the interquartile range, Q3 - Q1, by the same rules as `Quartile`.
 
 **Parameters:**
 
@@ -1388,36 +1426,36 @@ func (dl *DataList) IQR() float64
 
 **Returns:**
 
-- `float64`: Interquartile range
+- `float64`: Interquartile range. It is `NaN` when the list has no numeric values. It is also `NaN`, with an error recorded, when a cell is neither a number nor missing.
 
 **Example:**
 
 ```go
 dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-iqr := dl.IQR()
+iqr := dl.IQR() // 4.5
 ```
 
 ### Percentile
 
 ```go
-func (dl *DataList) Percentile(percentile float64) float64
+func (dl *DataList) Percentile(p float64) float64
 ```
 
-**Description:** Calculates the value below which a given percentage of observations fall. Uses R's type-7 quantile (the R / NumPy / pandas default), consistent with `Quartile`.
+**Description:** Returns the p-th percentile, with `p` on the 0..100 scale, the way NumPy's `percentile` does. `Percentile(p)` is `Quantile(p/100)`, and it follows `Quantile`'s rules for missing and non-numeric cells.
 
 **Parameters:**
 
-- `percentile`: Percentile value (0-100)
+- `p`: Percentile, from 0 to 100 inclusive. `Percentile(0.5)` is the 0.5th percentile, not the median. Use `Quantile` for a fraction.
 
 **Returns:**
 
-- `float64`: Value at the specified percentile
+- `float64`: Value at the specified percentile. A `p` that is `NaN` or outside `[0, 100]` records an error and returns `NaN`.
 
 **Example:**
 
 ```go
 dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-p75 := dl.Percentile(75) // 75th percentile
+p75 := dl.Percentile(75) // 7.75, the same as dl.Quantile(0.75)
 ```
 
 ### MAD

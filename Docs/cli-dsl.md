@@ -880,7 +880,7 @@ High-level command map:
 - **Database**: `db` (`connect` / `list` / `tables` / `disconnect`), `load sql`, `save <var> sql`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
 - **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `fillnan` (deprecated), `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
-- **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
+- **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `quantile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `parsedates`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `friedman`, `wilcoxon`, `mannwhitney`, `kruskal`, `ftest`, `chisq`, `plot`, `fetch`
 - **Quant**: `quant` (`sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`, `portfolio`, `frontier`)
@@ -995,9 +995,10 @@ Source policy:
 | `cutree` | `cutree <tree_var> k <n>\|h <value> [as <var>]` | Cut a hierarchical clustering tree |
 | `dbscan` | `dbscan <var> <eps> <minpts> [as <var>]` | Density-based clustering |
 | `silhouette` | `silhouette <var> <labels_var> [as <var>]` | Silhouette analysis |
-| `percentile` | `percentile <var> <p>` | DataList percentile |
+| `percentile` | `percentile <var> <p>` | DataList percentile, p from 0 to 100 |
 | `plot` | `plot <type> <var> [save <file>]` | Create charts from variables |
 | `quant` | `quant sharpe\|sortino\|ir\|maxdd\|annret\|calmar\|drawdown\|var\|cvar\|beta\|capm\|factor\|bs\|iv\|portfolio\|frontier ...` | Quantitative finance: performance, risk, exposure, factor, option and portfolio analytics |
+| `quantile` | `quantile <var> <p>` | DataList quantile, p from 0 to 1 |
 | `quartile` | `quartile <var> <q>` | DataList quartile |
 | `range` | `range <var>` | DataList range |
 | `rank` | `rank <var> [asc\|desc\|true\|false] [as <var>]` | Rank DataList |
@@ -1053,7 +1054,7 @@ save region_summary region_summary.csv
 
 Without `as`, the result is stored in `$result`. `all true` includes non-numeric and mixed columns. `by` is available for DataTable variables only.
 
-`describe`'s `percentiles` are fractions from 0 to 1 (`0.1,0.5,0.9`), and a value outside that range is refused. `percentile <var> <p>` takes a percentage from 0 to 100 instead: `percentile x 50` is the median, and `percentile x 0.5` is the 0.5th percentile. `quartile`, `percentile` and `describe` use R's type-7 quantile, the default in R, NumPy and pandas, so their results agree (see [DataList](DataList.md)).
+`describe`'s `percentiles` are fractions from 0 to 1 (`0.1,0.5,0.9`), and a value outside that range is refused. `quantile <var> <p>` takes the same 0 to 1 fraction: `quantile x 0.5` is the median. `percentile <var> <p>` takes a percentage from 0 to 100 instead: `percentile x 50` is the median, and `percentile x 0.5` is the 0.5th percentile. `quantile`, `quartile`, `percentile` and `describe` use R's type-7 quantile, the default in R, NumPy and pandas, so their results agree (see [DataList](DataList.md)).
 
 ## ANOVA and Friedman on a Table
 

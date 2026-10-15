@@ -428,6 +428,20 @@ Runs a time-series walk-forward (out-of-sample) validation over `n` periods. For
 
 This function is intentionally **index-driven** rather than `IDataList`-based: both callbacks receive half-open `[start, end)` index ranges into **your own** data (close over the actual series), so any data layout and any parameter type `P` work. `evaluate` should return one return per out-of-sample period (typically `testEnd - testStart` values).
 
+With a `DataTable`, slice it in the callbacks. `DataTable.SliceRows(from, to)` takes the same half-open range, so each window is one call:
+
+```go
+n := dt.NumRows()
+res, err := quant.WalkForward(n, quant.WalkForwardConfig{TrainSize: 252, TestSize: 63},
+    func(trainStart, trainEnd int) Params {
+        return fitParams(dt.SliceRows(trainStart, trainEnd)) // in-sample rows only
+    },
+    func(p Params, testStart, testEnd int) []float64 {
+        return runStrategy(dt.SliceRows(testStart, testEnd), p) // one return per row
+    },
+)
+```
+
 Windows advance by `TestSize` starting at `TrainSize`. With a rolling window, fold k is train `[TestStart-TrainSize, TestStart)`, test `[TestStart, TestStart+TestSize)`; `Anchored` fixes the training start at 0 (expanding). If `n-TrainSize` is not a multiple of `TestSize`, the final out-of-sample window is shorter than `TestSize` rather than dropped, so all data is used.
 
 **Returns:** `(*WalkForwardResult, err)` — `err` is non-nil for non-positive `n`/`TrainSize`/`TestSize`, `TrainSize >= n` (no room to test), or a nil callback.
@@ -493,7 +507,7 @@ func PercentileBands(paths [][]float64, percentiles []float64) ([][]float64, err
 
 For every time step, the requested percentiles across all paths — the vertical slices of a fan chart. `paths` is any matrix of equal-length rows (`BootstrapResult.Equity`, `BootstrapResult.Returns`, or your own). `percentiles` are on the `0..100` scale, and `bands[i]` is the series for `percentiles[i]` in the order you gave, each as long as one path.
 
-The quantile is R's **type-7** (linear interpolation between order statistics), the same definition as `DataList.Percentile`, `Quartile`, and `Describe`, so the bands agree with the rest of the library.
+The quantile is R's **type-7** (linear interpolation between order statistics), the same definition as `DataList.Quantile`, `Percentile`, `Quartile`, and `Describe`, so the bands agree with the rest of the library. The scale follows the name, as everywhere in Insyra: a `Percentile` takes 0 to 100 (`PercentileBands(paths, []float64{5, 50, 95})` matches `DataList.Percentile(5)` and so on), while `Quantile` and `DescribeOptions.Percentiles` take 0 to 1.
 
 **Returns:** `(bands, err)` — `err` is non-nil if `paths` is empty or ragged, or `percentiles` is empty or contains a value outside `[0, 100]`.
 
