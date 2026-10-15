@@ -4,6 +4,7 @@
 What each command of the insyra command language does, from loading, inspecting and reshaping data to statistics, time series, CCL, charts, fetching and variable management, as run from the REPL, a `.isr` script, a one-shot command or `engine/dsl`.
 
 ## Requirements
+
 ### Requirement: Load data from file
 系統 SHALL 提供 `load` 命令從檔案載入資料為 DataTable。
 
@@ -265,7 +266,7 @@ What each command of the insyra command language does, from loading, inspecting 
 - **THEN** 系統建立空的 DataTable
 
 ### Requirement: DataList statistics commands
-系統 SHALL 提供 DataList 統計命令：`sum`、`mean`、`median`、`mode`、`stdev`、`var`、`min`、`max`、`range`、`quartile`、`iqr`、`percentile`、`count`、`counter`。
+系統 SHALL 提供 DataList 統計命令：`sum`、`mean`、`median`、`mode`、`stdev`、`var`、`min`、`max`、`range`、`quartile`、`iqr`、`percentile`、`quantile`、`count`、`counter`。
 
 #### Scenario: Mean of DataList
 - **WHEN** 使用者執行 `mean d1`
@@ -274,6 +275,10 @@ What each command of the insyra command language does, from loading, inspecting 
 #### Scenario: Quartile
 - **WHEN** 使用者執行 `quartile d1 1`
 - **THEN** 系統呼叫 `d1.Quartile(1)` 顯示第 1 四分位數
+
+#### Scenario: Quantile
+- **WHEN** 使用者執行 `quantile d1 0.75`
+- **THEN** 系統呼叫 `d1.Quantile(0.75)`，顯示與 `percentile d1 75` 相同的數字
 
 #### Scenario: Counter
 - **WHEN** 使用者執行 `counter d1`
@@ -448,6 +453,7 @@ The DSL and REPL SHALL expose acceleration inspection commands for device state 
 #### Scenario: Reading the command guide
 - **WHEN** 讀 `Docs/cli-dsl.md` 的另存變數說明
 - **THEN** 每個上述指令都列出它另存的變數，並寫明 `hclust` 樹隨環境保存、只有 `cutree` 讀得到，`regression` 結果只存活在本次 session
+
 ### Requirement: Commands that replace or remove data say so
 會取代或刪除既有資料的指令 SHALL 在 `insyra help <command>` 的 `Forms` 與 `Docs/cli-dsl.md` 說明這件事，至少包含：`env delete` 刪除整個環境；`env clear` 清空變數，沒有 `--keep-history` 時也清空歷史；`env open` 以開啟的環境取代工作階段的變數，無法存進環境的變數因此消失；`env export` 取代已存在的輸出檔；`env import --force` 取代目標環境；`save` 寫 CSV、JSON 或 Parquet 時取代已存在的檔案；`plot` 取代已存在的輸出檔，沒有 `save` 時寫到工作目錄的 `<type>.html`。
 
