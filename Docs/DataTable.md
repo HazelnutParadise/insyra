@@ -2451,7 +2451,7 @@ dt.SetColNameByIndex("A", "Identifier") // Set the name of column A to "Identifi
 func (dt *DataTable) SetColNames(colNames []string) *DataTable
 ```
 
-**Description:** Names the existing columns in order, the same way `SetRowNames` names rows. Columns past the last name lose their names. Names past the last column are ignored, and a warning lists them. `SetColNames` never adds a column; to add one, use `AppendCols`. A column's current name does not count as taken, so `SetColNames([]string{"b", "a"})` on columns `a`, `b` swaps them. A name given twice in one call gets a numeric suffix on its second use (`[]string{"x", "x"}` gives `x`, `x_1`), and a warning names the change.
+**Description:** Names the existing columns in order, the same way `SetRowNames` names rows. Columns past the last name lose their names. Names past the last column are ignored, and a warning lists them. `SetColNames` never adds a column; to add one, use `AppendCols`. A column's current name does not count as taken, so on a table whose columns A and B are named `price` and `qty`, `SetColNames([]string{"qty", "price"})` names column A `qty` and column B `price`; the data stays where it is. A name given twice in one call gets a numeric suffix on its second use (`[]string{"x", "x"}` gives `x`, `x_1`), and a warning names the change.
 
 **Parameters:**
 

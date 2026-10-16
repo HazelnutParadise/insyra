@@ -18,7 +18,7 @@ How a DataTable names its columns and rows. The name setters only name what exis
 - **THEN** the rows are named `r1` and `r2`, and a warning lists `r3`
 
 #### Scenario: Fewer names than columns
-- **WHEN** `SetColNames([]string{"x"})` is called on columns `a`, `b`
+- **WHEN** `SetColNames([]string{"x"})` is called on a table whose columns A and B are named `price` and `qty`
 - **THEN** the names are `x` and `""`
 
 ### Requirement: A column or row's own name is never a clash
@@ -26,15 +26,15 @@ How a DataTable names its columns and rows. The name setters only name what exis
 A setter that renames a column or row SHALL NOT count that column's or row's current name as taken. `SetColNames` and `SetRowNames`, which rename every column or row, SHALL check each name only against names given earlier in the same call.
 
 #### Scenario: The same names again
-- **WHEN** `SetColNames([]string{"a", "b"})` is called on columns `a`, `b`
-- **THEN** the names stay `a`, `b`
+- **WHEN** `SetColNames([]string{"price", "qty"})` is called on a table whose columns A and B are named `price` and `qty`
+- **THEN** the names stay `price`, `qty`
 
-#### Scenario: Swapping names
-- **WHEN** `SetColNames([]string{"b", "a"})` is called on columns `a`, `b`, or a row holding `b`, `a` is passed to `SetRowToColNames`
-- **THEN** the names are `b`, `a`
+#### Scenario: Two columns trade names
+- **WHEN** `SetColNames([]string{"qty", "price"})` is called on a table whose columns A and B are named `price` and `qty`, or a row holding `qty`, `price` is passed to `SetRowToColNames` on that table
+- **THEN** column A is named `qty` and column B `price`, and no cell moves
 
 #### Scenario: A single setter given the column's own name
-- **WHEN** `SetColNameByIndex("A", "a")`, `SetColNameByNumber(1, "b")` or `ChangeColName("a", "a")` is called on columns `a`, `b`, or `SetRowNameByIndex(0, name)` is called with the row's own name
+- **WHEN** `SetColNameByIndex("A", "price")`, `SetColNameByNumber(1, "qty")` or `ChangeColName("price", "price")` is called on a table whose columns A and B are named `price` and `qty`, or `SetRowNameByIndex(0, name)` is called with the row's own name
 - **THEN** no name changes
 
 ### Requirement: A clashing name gets a suffix and a warning
@@ -42,8 +42,8 @@ A setter that renames a column or row SHALL NOT count that column's or row's cur
 When a column or row name another column or row already has is assigned, the name SHALL get the first free numeric suffix (`_1`, `_2`, …). A warning naming the original and the new name SHALL be logged, and `Err()` SHALL NOT be touched.
 
 #### Scenario: Appending a column with a taken name
-- **WHEN** `AppendCols` adds a column named `a` to a table that has `a` and `b`
-- **THEN** the names are `a`, `b`, `a_1`, a warning names `a_1`, and `Err()` is nil
+- **WHEN** `AppendCols` adds a column named `price` to a table whose columns are named `price` and `qty`
+- **THEN** the names are `price`, `qty`, `price_1`, a warning names `price_1`, and `Err()` is nil
 
 #### Scenario: A name repeated in one call
 - **WHEN** `SetColNames([]string{"x", "x"})` or `SetRowNames([]string{"r", "r"})` is called
