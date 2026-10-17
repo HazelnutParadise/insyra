@@ -2,7 +2,9 @@
 
 ## Purpose
 The CLI's named environments: creating, listing, opening, renaming, deleting and describing them, how their variables, history and config are stored and restored between commands, the default environment, and how a variable the environment cannot store is reported.
+
 ## Requirements
+
 ### Requirement: Environment create
 系統 SHALL 提供 `env create <name>` 命令建立新環境。
 
@@ -191,3 +193,26 @@ Of several `Create` calls for the same environment running at once, exactly one 
 - **WHEN** 檔案系統不分大小寫，目前使用 `work`，使用者執行 `env rename WORK other`
 - **THEN** 工作階段改在 `other` 環境
 
+### Requirement: A failed environment creation leaves no directory behind
+
+When writing the default files fails during `Create`, the manager SHALL remove the new environment's directory and SHALL return the error, so that the next `Create` or `NewSession` makes the environment again instead of opening an incomplete one.
+
+#### Scenario: Default files cannot be written
+- **WHEN** creating the environment `incomplete` fails while its default files are written
+- **THEN** the call returns the error, and the environment's directory does not exist
+
+### Requirement: A default file path that is not a regular file is an error
+
+When a default file path already exists as something other than a regular file, such as a directory, creating an environment SHALL return an error that names the path, and SHALL NOT skip the file.
+
+#### Scenario: A directory where history.txt belongs
+- **WHEN** a directory named `history.txt` already exists in the folder being initialised
+- **THEN** the call returns an error and the default files are not reported as written
+
+### Requirement: Create reports an existing environment as ErrEnvironmentExists
+
+When the environment already exists, `Create` SHALL return an error for which `errors.Is` matches `ErrEnvironmentExists`, and its message SHALL still name the environment.
+
+#### Scenario: Creating an environment twice
+- **WHEN** `Create("known")` is called after an earlier successful `Create("known")` on the same manager
+- **THEN** `errors.Is(err, ErrEnvironmentExists)` is true

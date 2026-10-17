@@ -147,7 +147,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 在主要結果之外另存變數的指令，會在輸出中列出每一個另存的變數，因為它們都會取代同名的既有變數。`kmeans … as km` 以前存了八個 `km_*` 變數卻只印出 `stored km (labels)`，現在印出 `stored km (labels) and km_centers, km_size, …, km_ifault`。`dbscan`、`silhouette`、`pca`、`knn_classify` 與 `knn_neighbors` 也一樣，`quant factor` 與 `quant portfolio` 最後會印出 `stored fm and fm_alpha` 與 `stored w and w_stats`。`Docs/cli-dsl.md` 把 `quant factor` 與 `quant portfolio` 另存的變數一起列出，並說明 `hclust` 樹會跟著環境存檔、只有 `cutree` 讀得到，而 `regression` 結果只在這次工作階段存在，兩者 `show` 都無法顯示。
 - 新增 `quantile <var> <p>` 指令，是 `percentile <var> <p>` 的 0 到 1 版本：`quantile x 0.75` 和 `percentile x 75` 印出同一個數字（#221）。`mode` 跟著 `DataList.Mode`，會由小到大印出所有眾數。
 - **BREAKING**：`setrownames` 給的名字數量和列數不同時會回報錯誤，和 `setcolnames` 一致。以前在四列的表格上執行 `setrownames t r1 … r6` 會顯示成功，並默默丟掉 `r5`、`r6`。
-- `wilcoxon single`、`ttest single`、`ztest single` 在一次性模式接受負數的 `mu`；原本 `insyra ttest single x -1` 會把 `-1` 當成旗標。`anova twoway` 的第一個參數能讀成數字時，即使有同名的表格變數，仍當成 list 形式的層級數。
+- `wilcoxon single`、`ttest single`、`ztest single` 在一次性模式接受負數的 `mu`；原本 `insyra ttest single x -1` 會把 `-1` 當成旗標。`anova twoway` 的前兩個參數都能讀成數字時，即使有跟第一個參數同名的表格變數，仍當成 list 形式的層級數。
 - 預設檔寫不進去的環境會被移除並回傳錯誤；原本 `Create` 與 `NewSession` 看到目錄存在就當成已建立。`Register` 會拒絕負數的參數上限，原本要到指令執行時才越界。
 
 ### `ml` 與 `nn`

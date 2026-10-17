@@ -2,7 +2,9 @@
 
 ## Purpose
 The long-format entry points to the two-way ANOVA, the repeated-measures ANOVA and the Friedman test: a table with one row per observation, its columns picked by the one column selector rule, grouped and handed to the list-taking functions so the numbers come from one implementation, and refused rather than repaired when a level is missing or a design cell is empty.
+
 ## Requirements
+
 ### Requirement: The two-way ANOVA and the repeated-measures tests take a long-format table
 
 `stats` SHALL 提供：
@@ -32,6 +34,7 @@ The long-format entry points to the two-way ANOVA, the repeated-measures ANOVA a
 #### Scenario: Integer levels of different widths are one level
 - **WHEN** 條件欄一半的值是 `int64(1)`、另一半是 `int(1)`，其餘為 `int64(2)`
 - **THEN** 只有兩個條件水準
+
 ### Requirement: Long-format input is refused, not repaired
 
 - 數值欄的每一格 SHALL 是有限數值；否則 SHALL 回傳 `value column <選擇器> contains a non-numeric value at row <列>: <值>` 或 `value column <選擇器> contains a non-finite value at row <列>: <值>`，列從 1 起算。
@@ -51,6 +54,7 @@ The long-format entry points to the two-way ANOVA, the repeated-measures ANOVA a
 #### Scenario: A missing measurement
 - **WHEN** 受試者 `s3` 在條件 `t2` 沒有任何列
 - **THEN** 回傳錯誤 `subject s3 has no observation for condition t2`
+
 ### Requirement: The long-format entry points agree with R
 
 `TwoWayANOVAFromTable` SHALL 在平衡設計上與 R `aov(value ~ A * B)` 相符；`RepeatedMeasuresANOVAFromTable` SHALL 與 R `aov(value ~ cond + Error(subj/cond))` 相符；`FriedmanTestFromTable` SHALL 與 R `friedman.test(value ~ cond | subj)` 相符。比對使用列順序打亂、水準為文字的長格式資料，參考值由呼叫這些 R 函式的腳本產生並提交到 `stats/testdata`，測試執行時不需要 R。
@@ -58,3 +62,15 @@ The long-format entry points to the two-way ANOVA, the repeated-measures ANOVA a
 #### Scenario: Shuffled rows
 - **WHEN** 以 R 腳本打亂列順序後輸出的長格式資料建立表格並呼叫三個函式
 - **THEN** 平方和、自由度、F 值、統計量與 p 值都與 R 的輸出相符
+
+### Requirement: A missing or repeated level combination is refused before the grid is allocated
+
+`TwoWayANOVAFromTable`, `RepeatedMeasuresANOVAFromTable` and `FriedmanTestFromTable` SHALL find a missing or repeated level combination before they allocate the grid of cells or subjects, and SHALL return the same error as before. A table whose factors are almost all distinct SHALL be refused without allocating a cell for every level combination.
+
+#### Scenario: Two-way table with mostly empty combinations
+- **WHEN** `TwoWayANOVAFromTable` is called on a table of 5000 rows whose factors A and B each take 5000 distinct levels, with each row on a diagonal combination
+- **THEN** the call returns the error `no observations for A=0, B=1` and allocates less than 64 MiB
+
+#### Scenario: Repeated-measures table with mostly missing combinations
+- **WHEN** `RepeatedMeasuresANOVAFromTable` is called on a table of 5000 rows with 5000 distinct subjects and 5000 distinct conditions, each row on a diagonal combination
+- **THEN** the call returns an error and allocates less than 64 MiB

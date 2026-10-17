@@ -28,6 +28,7 @@ How `lpgen` saves a model to an LP file and reads a LINGO model: saving returns 
 #### Scenario: A successful save
 - **WHEN** 一個合法的模型呼叫 `GenerateLPFile(path)`
 - **THEN** 回傳 nil，檔案內容與 `WriteLP` 寫出的文字相同
+
 ### Requirement: A LINGO model is read by ParseLingo and ParseLingoFile
 
 `ParseLingo(model string) (*LPModel, error)` SHALL read a LINGO model from text and `ParseLingoFile(path string) (*LPModel, error)` SHALL read one from a file, and the two SHALL return equal models for the same text. Everything the old parser read SHALL be read the same way: the objective, constraints, bounds, `@BIN` and `@INT` declarations.
@@ -47,6 +48,7 @@ A file that cannot be opened, and text that cannot be read, such as a line longe
 #### Scenario: A line the reader cannot hold
 - **WHEN** `ParseLingo` 讀取的文字有一行超過讀取器的上限
 - **THEN** 回傳 nil 模型與錯誤
+
 ### Requirement: The old LINGO names keep their meaning for one release
 
 `ParseLingoModel_str` and `ParseLingoModel_txt` SHALL remain for one release, each with a doc comment whose `Deprecated:` paragraph names its replacement, and SHALL return what they returned before: the model, or `nil` with a warning when the text or file cannot be read.
@@ -90,3 +92,35 @@ Besides `@BIN` and `@INT`, `ParseLingo` and `ParseLingoFile` SHALL read `@GIN(x)
 #### Scenario: A free variable reaches the solver
 - **WHEN** 以 `lp.Solve` 求解 `ParseLingo` 讀出的 `MIN= X; @FREE(X); X + Y >= -3; Y <= 0;`
 - **THEN** 目標值為 -3，而不是把 X 當成非負時的 0
+
+### Requirement: A LINGO statement after a comment on its line is read
+
+`ParseLingo` and `ParseLingoFile` SHALL end a comment at the next `;` and SHALL read the statement that follows it on the same line, so a statement written after `! note;` is not dropped.
+
+#### Scenario: A statement after an inline comment
+- **WHEN** `ParseLingo("MIN=X; ! note; X >= 5;")` is called
+- **THEN** the error is nil and `Bounds` contains `X >= 5`
+
+### Requirement: A LINGO objective or relation side must be a linear expression
+
+`ParseLingo` and `ParseLingoFile` SHALL refuse an objective or relation side that is not a linear expression made of numbers, variable names, `+` and `-`, returning a nil model and an error that names the line.
+
+#### Scenario: An empty objective
+- **WHEN** `ParseLingo("MIN= ;")` is called
+- **THEN** the model is nil and the error contains `line 1`
+
+#### Scenario: A power in an objective
+- **WHEN** `ParseLingo("MIN= X**Y;")` is called
+- **THEN** the model is nil and the error contains `line 1`
+
+#### Scenario: A function call in a relation
+- **WHEN** `ParseLingo("@UNKNOWN(X)=1;")` is called
+- **THEN** the model is nil and the error contains `line 1`
+
+### Requirement: WriteLP refuses an unknown objective type before writing
+
+`(*LPModel).WriteLP` SHALL validate the objective type before it writes any byte to its writer, so a call that returns an error leaves the writer untouched.
+
+#### Scenario: An unknown objective type
+- **WHEN** a model with the objective type `upwards` is passed to `WriteLP`
+- **THEN** the call returns an error and the writer receives no bytes
