@@ -178,6 +178,26 @@ func TestOneShot_AddColAcceptsNegativeLiterals(t *testing.T) {
 	}
 }
 
+func TestOneShotSingleSampleTestsAcceptNegativeMu(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"wilcoxon", []string{"wilcoxon", "single", "x", "-1"}},
+		{"ttest", []string{"ttest", "single", "x", "-1"}},
+		{"ztest", []string{"ztest", "single", "x", "-1", "2"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, ctx, _ := newOneShotRoot(t)
+			ctx.Vars["x"] = insyra.NewDataList(-2.0, -1.0, 0.0, 1.0)
+			root.SetArgs(tc.args)
+			if err := root.Execute(); err != nil {
+				t.Fatalf("one-shot negative mu failed: %v", err)
+			}
+		})
+	}
+}
+
 func TestOneShot_HelpForNewDLStillRenders(t *testing.T) {
 	_, output, err := runOneShot(t, "help", "newdl")
 	if err != nil {

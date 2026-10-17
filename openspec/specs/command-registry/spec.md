@@ -4,6 +4,7 @@
 The one registry every CLI and DSL command is declared in: a shared handler interface and execution context, locked access from any goroutine, aliases and one-shot flags declared at registration, and the help table built from what each command declares.
 
 ## Requirements
+
 ### Requirement: Unified command handler interface
 系統 SHALL 定義統一的 `CommandHandler` 介面，所有命令邏輯通過此介面註冊，CLI、REPL 和腳本執行三個入口共用同一套 handler。
 
@@ -102,6 +103,7 @@ A flag with a `Form` SHALL be appended only when the first argument is that word
 #### Scenario: A flag declared twice
 - **WHEN** a handler declares `--force` twice and is registered
 - **THEN** `Register` returns an error and the command is not registered
+
 ### Requirement: accel reads its mode from the session's manager
 
 When `accel` is run without `--mode`, it SHALL read the default mode from the global config of the session's environment manager (`ExecContext.Env`), and from `Default()` only when the session has none.
@@ -131,3 +133,15 @@ When `accel` is run without `--mode`, it SHALL read the default mode from the gl
 #### Scenario: --force is still dropped from env clear
 - **WHEN** the shell runs `insyra env clear a --force`
 - **THEN** `env`'s Run receives `clear a`
+
+### Requirement: Register refuses a negative argument limit
+
+`Register` SHALL refuse a handler whose argument limit has a negative maximum, a negative form position, or a negative count for any form, returning an error and leaving the command unregistered.
+
+#### Scenario: A negative maximum
+- **WHEN** a handler declares `MaxArgs(-1)` and is registered
+- **THEN** `Register` returns an error and the command is not registered
+
+#### Scenario: A negative count for one form
+- **WHEN** a handler declares `FormArgs(map[string]int{"form": -1})` and is registered
+- **THEN** `Register` returns an error and the command is not registered

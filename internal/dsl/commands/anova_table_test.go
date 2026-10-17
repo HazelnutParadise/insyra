@@ -86,6 +86,16 @@ func TestAnovaTableTwoWayMatchesLibraryAndLists(t *testing.T) {
 	}
 }
 
+func TestAnovaTwoWayNumericTableNameStillSelectsListForm(t *testing.T) {
+	ctx := newTestExecContext(t)
+	ctx.Vars["2"] = twoWayTable()
+	cells := cellLists()
+	ctx.Vars["c11"], ctx.Vars["c12"], ctx.Vars["c21"], ctx.Vars["c22"] = cells[0], cells[1], cells[2], cells[3]
+	if _, err := runAnova(ctx, "twoway", "2", "2", "c11", "c12", "c21", "c22"); err != nil {
+		t.Fatalf("numeric table name shadowed list form: %v", err)
+	}
+}
+
 func TestAnovaTableTokens(t *testing.T) {
 	twoWay := twoWayTable()
 	libResult, err := stats.TwoWayANOVAFromTable(twoWay, insyra.Name("score"), insyra.Name("drug"), insyra.Name("dose"))

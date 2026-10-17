@@ -138,6 +138,17 @@ func TwoWayANOVAFromTable(dt insyra.IDataTable, valueCol, factorACol, factorBCol
 	}
 
 	nCells := len(a.levels) * len(b.levels)
+	present := make(map[int]struct{}, len(values))
+	for r := range values {
+		present[a.of[r]*len(b.levels)+b.of[r]] = struct{}{}
+	}
+	for i := range a.levels {
+		for j := range b.levels {
+			if _, ok := present[i*len(b.levels)+j]; !ok {
+				return nil, fmt.Errorf("no observations for A=%v, B=%v", a.levels[i], b.levels[j])
+			}
+		}
+	}
 	cellValues := make([][]float64, nCells)
 
 	for r, v := range values {
@@ -149,9 +160,6 @@ func TwoWayANOVAFromTable(dt insyra.IDataTable, valueCol, factorACol, factorBCol
 	for i := range a.levels {
 		for j := range b.levels {
 			idx := i*len(b.levels) + j
-			if len(cellValues[idx]) == 0 {
-				return nil, fmt.Errorf("no observations for A=%v, B=%v", a.levels[i], b.levels[j])
-			}
 			cells[idx] = insyra.NewDataList(cellValues[idx])
 		}
 	}
@@ -176,11 +184,22 @@ func readRepeatedMeasures(dt insyra.IDataTable, valueCol, conditionCol, subjectC
 	if n < 2 {
 		return nil, errors.New("at least two subjects are required")
 	}
-	rowOf := make([][]int, n)
+	rowOf := make([]map[int]int, n)
 	for i := range rowOf {
-		rowOf[i] = make([]int, k)
-		for j := range rowOf[i] {
-			rowOf[i][j] = -1
+		rowOf[i] = make(map[int]int)
+	}
+	for r := range values {
+		s, c := subj.of[r], cond.of[r]
+		if prior, ok := rowOf[s][c]; ok {
+			return nil, fmt.Errorf("subject %v has more than one observation for condition %v (rows %d and %d)", subj.levels[s], cond.levels[c], prior+1, r+1)
+		}
+		rowOf[s][c] = r
+	}
+	for s := range rowOf {
+		for c := range k {
+			if _, ok := rowOf[s][c]; !ok {
+				return nil, fmt.Errorf("subject %v has no observation for condition %v", subj.levels[s], cond.levels[c])
+			}
 		}
 	}
 	grid := make([][]float64, n)
@@ -188,20 +207,7 @@ func readRepeatedMeasures(dt insyra.IDataTable, valueCol, conditionCol, subjectC
 		grid[i] = make([]float64, k)
 	}
 	for r, v := range values {
-		s := subj.of[r]
-		c := cond.of[r]
-		if rowOf[s][c] >= 0 {
-			return nil, fmt.Errorf("subject %v has more than one observation for condition %v (rows %d and %d)", subj.levels[s], cond.levels[c], rowOf[s][c]+1, r+1)
-		}
-		rowOf[s][c] = r
-		grid[s][c] = v
-	}
-	for s := 0; s < n; s++ {
-		for c := 0; c < k; c++ {
-			if rowOf[s][c] < 0 {
-				return nil, fmt.Errorf("subject %v has no observation for condition %v", subj.levels[s], cond.levels[c])
-			}
-		}
+		grid[subj.of[r]][cond.of[r]] = v
 	}
 	lists := make([]insyra.IDataList, n)
 	for s := 0; s < n; s++ {

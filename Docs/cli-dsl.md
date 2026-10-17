@@ -221,7 +221,7 @@ Every operation is a method on a `Manager`. Before `engine/dsl` had its own name
 
 #### Registering your own command
 
-A program adds a command with `dsl.Register`. It is then available in every session in the process, and runs like a built-in one: its arguments are counted before it runs, its error reaches the caller of `Execute`, and the session saves the variables after it succeeds.
+A program adds a command with `dsl.Register`. It is then available in every session in the process. `ArgLimit` rejects arguments beyond the declared maximum before the command runs; it does not check that required arguments are present, so the handler must check the argument count before indexing. Its error reaches the caller of `Execute`, and the session saves variables after it succeeds.
 
 ```go
 package main
@@ -241,6 +241,9 @@ func main() {
         Description: "Sum a DataList",
         Args:        dsl.MaxArgs(1).WithAlias(),
         Run: func(ctx *dsl.ExecContext, args []string) error {
+            if len(args) < 1 {
+                return fmt.Errorf("usage: total <var> [as <var>]")
+            }
             list, ok := ctx.Vars[args[0]].(*insyra.DataList)
             if !ok {
                 return fmt.Errorf("%s is not a DataList", args[0])
@@ -1073,7 +1076,7 @@ insyra load trial.csv as scores
 insyra anova twoway scores score drug dose
 ```
 
-A command takes the table form when its first argument after the mode is a DataTable variable, and the list form otherwise, so `anova twoway 2 3 c11 c12 …` and `anova repeated s1 s2 s3` work as before. Each column is picked by the same token rule as every other command: a number, an Excel-style letter or a name, with `number:`, `index:` and `name:` to force one reading. The distinct values of a factor, condition or subject column are its levels. A blank or `NaN` level, a value that is not a number, a combination of levels with no rows, and a subject with no row, or two rows, for a condition are refused with the row or the levels named. The output is the same line the list form prints (`FA=… pA=… FB=… pB=…`, `F=… p=…`); `friedman` prints `Q=… df=… p=…`.
+For `anova twoway`, the list form wins when its first two arguments after the mode are integers, even if a DataTable variable has the same name; otherwise a DataTable in the first position selects the table form. The other table commands select the table form when their first argument is a DataTable variable, and the list form otherwise. This keeps `anova twoway 2 3 c11 c12 …` and `anova repeated s1 s2 s3` unambiguous. Each column is picked by the same token rule as every other command: a number, an Excel-style letter or a name, with `number:`, `index:` and `name:` to force one reading. The distinct values of a factor, condition or subject column are its levels. A blank or `NaN` level, a value that is not a number, a combination of levels with no rows, and a subject with no row, or two rows, for a condition are refused with the row or the levels named. The output is the same line the list form prints (`FA=… pA=… FB=… pB=…`, `F=… p=…`); `friedman` prints `Q=… df=… p=…`.
 
 `friedman <subject1> <subject2> [subjectN]` is the list form: one DataList per subject, holding that subject's values in the same condition order, as `anova repeated` takes them.
 

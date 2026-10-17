@@ -152,7 +152,9 @@ type Options struct {
 ```
 
 - `Engine`: `lp.EngineMILP` or `lp.EngineGLPK`. The empty value selects `lp.EngineMILP`.
-- `TimeLimit`: How long the search may run. Zero means no limit. When the limit is reached, the status is `StatusFeasible` with the best solution found so far, or `StatusStopped` if there is none. GLPK takes whole seconds, so `EngineGLPK` rounds the limit up: `1500 * time.Millisecond` becomes 2 seconds.
+- `TimeLimit`: A best-effort limit on solver search. Zero means no limit. With `EngineMILP`, the timer starts after the initial continuous relaxation, so the total solve may exceed the limit. When reached, the status is `StatusFeasible` with the best solution found so far, or `StatusStopped` if there is none. GLPK takes whole seconds, so `EngineGLPK` rounds the limit up: `1500 * time.Millisecond` becomes 2 seconds.
+
+When an integer model's continuous relaxation is unbounded, Insyra checks integer feasibility before reporting unbounded. This check uses the caller's time limit, or 30 seconds when none is set; if it cannot decide, the status is `StatusStopped`.
 
 ## Engines
 

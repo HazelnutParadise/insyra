@@ -52,6 +52,23 @@ func FormArgsAt(at int, forms map[string]int) ArgLimit {
 // OpenArgs declares that the command validates every argument itself.
 func OpenArgs() ArgLimit { return ArgLimit{declared: true, open: true} }
 
+func (l ArgLimit) validate() error {
+	if l.max < 0 {
+		return fmt.Errorf("argument limit cannot be negative: %d", l.max)
+	}
+	if l.forms != nil {
+		if l.formAt < 0 {
+			return fmt.Errorf("form argument position cannot be negative: %d", l.formAt)
+		}
+		for form, n := range l.forms {
+			if n < 0 {
+				return fmt.Errorf("argument limit for form %q cannot be negative: %d", form, n)
+			}
+		}
+	}
+	return nil
+}
+
 // WithAlias allows a trailing `as <var>` on top of the limit.
 func (l ArgLimit) WithAlias() ArgLimit {
 	l.alias = true

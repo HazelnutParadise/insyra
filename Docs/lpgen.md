@@ -212,7 +212,9 @@ func ParseLingo(model string) (*LPModel, error)
 
 **Description:** Parses a LINGO model from text and converts it to a standard LP model. Use `LINGO > Generate > Display Model` in LINGO to get the text.
 
-It reads these statements, each ending with `;`:
+It reads statements separated by `;`, including when several statements share a line. In strict mode the objective and both sides of each relation must be linear expressions made from numbers, variable names and addition or subtraction. Unsupported functions and other expression syntax are errors with the starting line number.
+
+It reads these statements:
 
 | LINGO | Becomes |
 | --- | --- |

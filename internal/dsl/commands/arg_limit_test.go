@@ -50,3 +50,21 @@ func TestArgLimitRefusesAnIgnoredArgument(t *testing.T) {
 		}
 	}
 }
+
+func TestRegisterRejectsNegativeArgumentLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		limit ArgLimit
+	}{
+		{"negative max", MaxArgs(-1)},
+		{"negative position", FormArgsAt(-1, map[string]int{"form": 1})},
+		{"negative form limit", FormArgs(map[string]int{"form": -1})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Register(&CommandHandler{Name: "invalid_arg_limit_" + strings.ReplaceAll(tc.name, " ", "_"), Args: tc.limit, Run: func(*ExecContext, []string) error { return nil }})
+			if err == nil {
+				t.Fatal("Register accepted invalid ArgLimit")
+			}
+		})
+	}
+}

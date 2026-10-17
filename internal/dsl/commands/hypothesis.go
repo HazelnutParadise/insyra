@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
@@ -15,10 +16,11 @@ const friedmanUsage = "friedman <table> <value> <condition> <subject> | friedman
 
 func init() {
 	_ = Register(&CommandHandler{
-		Name:        "ttest",
-		Args:        FormArgs(map[string]int{"single": 3, "two": 4, "paired": 3}),
-		Usage:       "ttest single|two|paired ...",
-		Description: "T-test commands",
+		Name:               "ttest",
+		DisableFlagParsing: true,
+		Args:               FormArgs(map[string]int{"single": 3, "two": 4, "paired": 3}),
+		Usage:              "ttest single|two|paired ...",
+		Description:        "T-test commands",
 		Forms: []string{
 			"ttest single <var> <mu>                     one-sample, against population mean mu",
 			"ttest two <var1> <var2> [equal|unequal]     two-sample (default: unequal, Welch's test)",
@@ -32,10 +34,11 @@ func init() {
 		Run: runTTestCommand,
 	})
 	_ = Register(&CommandHandler{
-		Name:        "ztest",
-		Args:        FormArgs(map[string]int{"single": 5, "two": 6}),
-		Usage:       "ztest single|two ...",
-		Description: "Z-test commands",
+		Name:               "ztest",
+		DisableFlagParsing: true,
+		Args:               FormArgs(map[string]int{"single": 5, "two": 6}),
+		Usage:              "ztest single|two ...",
+		Description:        "Z-test commands",
 		Forms: []string{
 			"ztest single <var> <mu> <sigma> [two-sided|greater|less]",
 			"ztest two <var1> <var2> <sigma1> <sigma2> [two-sided|greater|less]",
@@ -283,7 +286,13 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintf(ctx.Output, "F=%v p=%v\n", result.Factor.F, result.Factor.P)
 		return nil
 	case "twoway":
-		if len(args) >= 2 {
+		listForm := len(args) >= 3
+		if listForm {
+			_, errA := strconv.Atoi(args[1])
+			_, errB := strconv.Atoi(args[2])
+			listForm = errA == nil && errB == nil
+		}
+		if !listForm && len(args) >= 2 {
 			if table := tableVar(ctx, args[1]); table != nil {
 				if len(args) != 5 {
 					return fmt.Errorf("usage: anova twoway <table> <value> <factorA> <factorB>")

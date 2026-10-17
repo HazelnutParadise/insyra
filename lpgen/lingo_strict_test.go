@@ -103,6 +103,24 @@ func TestParseLingoSkipsComments(t *testing.T) {
 // as declarations rather than as relations. @GIN(Y) is a general integer, so it
 // belongs with @INT; @FREE(X) and @BND(l, X, u) are bounds, and reading them
 // changes what the solver may do with X.
+func TestParseLingoReadsInlineCommentFollowingStatement(t *testing.T) {
+	m, err := ParseLingo("MIN=X; ! note; X >= 5;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(m.Bounds, []string{"X >= 5"}) {
+		t.Fatalf("bounds %v", m.Bounds)
+	}
+}
+
+func TestParseLingoRejectsNonlinearOrUnknownExpressions(t *testing.T) {
+	for _, input := range []string{"@UNKNOWN(X)=1;", "MIN= ;", "MIN= X**Y;"} {
+		if m, err := ParseLingo(input); err == nil || m != nil || !strings.Contains(err.Error(), "line 1") {
+			t.Errorf("ParseLingo(%q) = (%+v, %v), want line-numbered error", input, m, err)
+		}
+	}
+}
+
 func TestParseLingoReadsGinFreeAndBnd(t *testing.T) {
 	m, err := ParseLingo("MODEL:\nMIN= X + Y + Z;\n@GIN(Y);\n@FREE(X);\n@BND(-5, Z, 2.5);\nX + Y >= -3;\nEND")
 	if err != nil {
