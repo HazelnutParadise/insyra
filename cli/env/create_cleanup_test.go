@@ -16,7 +16,7 @@ func TestWriteDefaultFilesRejectsDirectoryAtDefaultFilePath(t *testing.T) {
 	err := writeDefaultFiles(dir)
 	// Linux reaches the regular-file check; Windows refuses to open the
 	// directory first. Either way the directory is an error, not a default file.
-	if err == nil || !(strings.Contains(err.Error(), "not a regular file") || strings.Contains(err.Error(), "is a directory")) {
+	if err == nil || (!strings.Contains(err.Error(), "not a regular file") && !strings.Contains(err.Error(), "is a directory")) {
 		t.Fatalf("writeDefaultFiles = %v, want an error naming the directory", err)
 	}
 }
