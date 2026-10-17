@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/HazelnutParadise/insyra/py/internal/ipc"
 )
@@ -17,7 +18,7 @@ import (
 // Python. It reads the execution ID and the IPC address from the script it is
 // given and answers the way the value says: "result:<JSON>" returns the JSON
 // value, "pyjson:<text>" returns the text as it is, the way Python's
-// json.dumps writes NaN and the infinities, and "exit:<code>" exits with that
+// json.dumps writes NaN and the infinities, "sleep" never answers, and "exit:<code>" exits with that
 // status without returning anything, as Python does for a script it cannot
 // compile. It fails, as insyra.Return raises, unless the Go side acknowledges
 // the result.
@@ -69,6 +70,10 @@ func fakePython(mode string, args []string) int {
 		}
 		fmt.Fprintln(os.Stderr, "fake python: exiting with status", status)
 		return status
+	}
+	if mode == "sleep" {
+		time.Sleep(time.Minute)
+		return 0
 	}
 	if len(args) != 1 {
 		fmt.Fprintln(os.Stderr, "fake python: want one script, got", args)

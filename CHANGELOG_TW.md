@@ -118,7 +118,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 有一欄叫 `name` 的 pandas DataFrame，回傳後不會有表名。pandas 會把欄位當成屬性回傳，過去表名會變成那一欄印出來的內容。直接設在 DataFrame 本身的名稱一樣會成為表名。
 - `RunCodef`、`RunFilef` 與它們的 `Context` 版本的參數，不會再變成 Python 程式碼。過去佔位字元是一個參數接一個參數、對整份程式碼輪流替換，後面的參數替換時，也會改到前面參數插進去的文字：傳入 `$v2` 和 `+__import__('os').system('id')+` 兩段文字，就會執行那個指令。`$v1` 也會吃掉 `$v10` 的開頭。JSON 寫不出來的值（例如 `[]any{文字, math.NaN()}`）會照 Go 的格式原樣寫進程式碼，裡面的文字就成了程式碼。現在佔位字元只在原本的模板裡找一次，依完整編號替換，也只轉換模板用到的參數。寫不成 Python 值的參數，會在 Python 啟動前回傳錯誤，並註明是哪個佔位字元。含有 NaN 或無限大的 `[]float64` 也一樣，過去會寫成 Python 不認得的 `NaN` 或 `+Inf`。
 - 在 ARM64 的 Windows 上用 x86-64 的 Python 也能執行了。polars 的 CPU 檢查把機器讀成 ARM64，在每段程式開頭的 `import polars` 拋出 `unknown feature flag`，所以每次執行都失敗。產生的程式現在會在 ARM64 Windows 上的 x86-64 Python 設定 `POLARS_SKIP_CPU_CHECK=1`，已經設過這個變數時不動它。
-
+- `py.Run[T](code)` 直接回傳解碼成 `T` 的 Python 結果，不必先宣告變數。新增 `PipInstallContext` 與 `PipUninstallContext`，context 結束時會停止安裝。所有接受 context 的函式傳入 nil 時回傳錯誤（過去會當機），傳入已結束的 context 時回傳 `ctx.Err()`。`RunCodeWithTimeout` 已棄用，請改用 `RunCodeContext` 搭配 `context.WithTimeout`，兩者行為相同。0.4 移除。
 
 ## v0.3.4
 

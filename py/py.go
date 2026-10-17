@@ -5,6 +5,7 @@ package py
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -51,6 +52,30 @@ func ReinstallPyEnv() error {
 	return nil
 }
 
+// Run runs the Python code and returns the value passed to insyra.Return as a
+// T, bound by the same rules RunCode uses: *insyra.DataTable and
+// *insyra.DataList for DataFrames and Series, and a struct, map, slice or
+// scalar through JSON. $v1, $v2, ... in code are filled from args, as RunCodef
+// fills them. On failure it returns T's zero value and the error.
+//
+// ctx bounds the run: cancelling it kills the Python process and Run returns
+// ctx.Err(); a nil ctx is an error. T must not be insyra.DataTable or
+// insyra.DataList itself, which cannot be copied; use a pointer.
+func Run[T any](ctx context.Context, code string, args ...any) (T, error) {
+	var out T
+	switch any(&out).(type) {
+	case *insyra.DataTable:
+		return out, errors.New("py: Run cannot return an insyra.DataTable by value; use Run[*insyra.DataTable]")
+	case *insyra.DataList:
+		return out, errors.New("py: Run cannot return an insyra.DataList by value; use Run[*insyra.DataList]")
+	}
+	if err := RunCodefContext(ctx, &out, code, args...); err != nil {
+		var zero T
+		return zero, err
+	}
+	return out, nil
+}
+
 // Run the Python file and bind the result to the provided struct pointer.
 func RunFile(out any, filePath string) error {
 	file, err := os.ReadFile(filePath)
@@ -58,7 +83,7 @@ func RunFile(out any, filePath string) error {
 		return fmt.Errorf("failed to read Python file: %w", err)
 	}
 	code := string(file)
-	return RunCode(out, code)
+	return RunCodeContext(context.Background(), out, code)
 }
 
 // Run the Python file with the given Golang variables and bind the result to the provided struct pointer.
@@ -69,99 +94,18 @@ func RunFilef(out any, filePath string, args ...any) error {
 		return fmt.Errorf("failed to read Python file: %w", err)
 	}
 	code := string(file)
-	return RunCodef(out, code, args...)
+	return RunCodefContext(context.Background(), out, code, args...)
 }
 
 // Run the Python code and bind the result to the provided struct pointer.
 func RunCode(out any, code string) error {
-	return runPythonCode(out, code)
+	return RunCodeContext(context.Background(), out, code)
 }
 
 // Run the Python code with the given Golang variables and bind the result to the provided struct pointer.
 // The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
 func RunCodef(out any, code string, args ...any) error {
-	formattedCode, err := replacePlaceholders(code, args...)
-	if err != nil {
-		return fmt.Errorf("failed to format code: %w", err)
-	}
-	return runPythonCode(out, formattedCode)
-}
-
-// runPythonCode executes the Python code and binds the result to the provided struct pointer.
-func runPythonCode(out any, code string) error {
-	addr, err := acquireIPCServer()
-	if err != nil {
-		return err
-	}
-	defer releaseIPCServer()
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
-
-	// 生成執行ID
-	executionID := generateExecutionID()
-
-	code = generateDefaultPyCode(executionID, addr) + fmt.Sprintf(`
-try:
-%v
-except Exception as e:
-    import sys
-    sys.stdout.flush()
-    sys.stderr.flush()
-    insyra_return(None, str(e))
-finally:
-    import sys
-    sys.stdout.flush()
-    sys.stderr.flush()
-    if not sent:
-        insyra_return(None, None)
-`, indentCode(code))
-
-	// 創建進程結束通知channel
-	processDone := make(chan struct{})
-	execErr := make(chan error, 1)
-
-	scriptPath, cleanup, err := createTempPythonScript(code)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	// 在goroutine中執行Python代碼
-	go func(python, path string) {
-		defer close(processDone)
-		pythonCmd := exec.Command(python, path)
-		pythonCmd.Stdout = os.Stdout
-		pythonCmd.Stderr = os.Stderr
-		utils.ApplyHideWindow(pythonCmd)
-		if err := pythonCmd.Run(); err != nil {
-			execErr <- err
-		}
-	}(pyPath, scriptPath)
-
-	// 等待並接收結果
-	pyResult := waitForResult(executionID, processDone, execErr)
-	// 如果有錯誤（從系統執行或 Python 返回），直接返回
-	if pyResult[1] != nil {
-		return fmt.Errorf("%v", pyResult[1])
-	}
-	// 正常執行且無錯誤；即使回傳值為 nil 也要呼叫 bindPyResult 以便把 nil 綁定到 out（例如清空 interface 變數）
-	if pyResult[0] == nil {
-		if out != nil {
-			if err := bindPyResult(out, nil); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	// 將結果 bind 到傳入的結構指標
-	if out != nil {
-		if err := bindPyResult(out, pyResult[0]); err != nil {
-			return err
-		}
-	}
-	return nil
+	return RunCodefContext(context.Background(), out, code, args...)
 }
 
 // Run the Python code using the provided context. If the context is canceled
@@ -209,15 +153,24 @@ func RunFilefContext(ctx context.Context, out any, filePath string, args ...any)
 // Run the Python code with a timeout. This is a convenience wrapper that creates
 // a context with timeout and runs the code. If the timeout occurs it returns
 // context.DeadlineExceeded (i.e., ctx.Err()).
+//
+// Deprecated: use RunCodeContext with a context from context.WithTimeout,
+// which is the same call. Removed in 0.4.
 func RunCodeWithTimeout(timeout time.Duration, out any, code string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return runPythonCodeContext(ctx, out, code)
+	return RunCodeContext(ctx, out, code)
 }
 
 // runPythonCodeContext executes the Python code and binds the result to the provided struct pointer.
 // It behaves like runPythonCode but uses the provided Context so callers can cancel the execution.
 func runPythonCodeContext(ctx context.Context, out any, code string) error {
+	if ctx == nil {
+		return errors.New("py: nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	addr, err := acquireIPCServer()
 	if err != nil {
 		return err
@@ -299,34 +252,48 @@ finally:
 
 // Install dependencies using uv pip
 func PipInstall(dep string) error {
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
-	pythonCmd := exec.Command("uv", "pip", "install", dep, "--python", pyPath)
-	pythonCmd.Dir = absInstallDir
-	var stdout, stderr bytes.Buffer
-	pythonCmd.Stdout = &stdout
-	pythonCmd.Stderr = &stderr
-	utils.ApplyHideWindow(pythonCmd)
-	if err := pythonCmd.Run(); err != nil {
-		return fmt.Errorf("failed to install dependency %s: %w. stderr: %s", dep, err, stderr.String())
-	}
-	return nil
+	return PipInstallContext(context.Background(), dep)
+}
+
+// PipInstallContext installs a dependency with uv pip. Cancelling ctx stops
+// the uv command and returns ctx.Err(); a nil ctx is an error. The first-use
+// preparation of the environment is not interrupted by ctx.
+func PipInstallContext(ctx context.Context, dep string) error {
+	return runPip(ctx, "install", dep)
 }
 
 // Uninstall dependencies using uv pip
 func PipUninstall(dep string) error {
+	return PipUninstallContext(context.Background(), dep)
+}
+
+// PipUninstallContext uninstalls a dependency with uv pip, with the same
+// context rules as PipInstallContext.
+func PipUninstallContext(ctx context.Context, dep string) error {
+	return runPip(ctx, "uninstall", dep)
+}
+
+func runPip(ctx context.Context, verb, dep string) error {
+	if ctx == nil {
+		return errors.New("py: nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := pyEnvInit(); err != nil {
 		return err
 	}
-	pythonCmd := exec.Command("uv", "pip", "uninstall", dep, "--python", pyPath)
+	pythonCmd := exec.CommandContext(ctx, "uv", "pip", verb, dep, "--python", pyPath)
 	pythonCmd.Dir = absInstallDir
 	var stdout, stderr bytes.Buffer
 	pythonCmd.Stdout = &stdout
 	pythonCmd.Stderr = &stderr
 	utils.ApplyHideWindow(pythonCmd)
 	if err := pythonCmd.Run(); err != nil {
-		return fmt.Errorf("failed to uninstall dependency %s: %w. stderr: %s", dep, err, stderr.String())
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		return fmt.Errorf("failed to %s dependency %s: %w. stderr: %s", verb, dep, err, stderr.String())
 	}
 	return nil
 }

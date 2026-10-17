@@ -277,6 +277,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-17] — remove `py.RunCodeWithTimeout` in 0.4
+- **Where**: `py/py.go`
+- **What**: `RunCodeWithTimeout` is marked Deprecated on this line (`RunCodeContext` with `context.WithTimeout` is the same call). `0.4` has no such function.
+- **Suggestion**: delete it when this line is merged into `0.4`, together with its test `TestRunCodeWithTimeoutKeepsItsMeaning`.
+- **Status**: pending
+
 ### [2026-10-10] — `chromedp` held at v0.16.0
 - **Where**: `go.mod`, `github.com/chromedp/chromedp` and the `cdproto` it requires, reached through `github.com/go-echarts/snapshot-chromedp` v0.0.5, which `plot.SavePNG` uses
 - **What**: v0.16.0 is the newest `chromedp` insyra can take. v0.17.0 through v0.19.1 declare `go 1.27`. v0.20.0 and v0.20.1 declare `go 1.25` but change `chromedp.Run`, `FullScreenshot` and the query options to a generic API, so `snapshot-chromedp` v0.0.5, its newest release, no longer compiles (`too many arguments in call to chromedp.Run`, `undefined: chromedp.ByQuery`). Measured on 2026-10-10: a bar chart saved through `plot.SavePNG` with `chromedp` v0.12.1 and with v0.16.0 produced byte-identical PNGs.

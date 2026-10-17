@@ -60,6 +60,18 @@ if err != nil {
 
 ---
 
+### Typed Result: `Run`
+
+```go
+func Run[T any](code string) (T, error)
+```
+
+Runs the code and decodes what it passes to `insyra.Return` into a `T`, so no pointer needs declaring first. On failure it returns the zero `T` and the error. A `*insyra.DataTable` or `*insyra.DataList` is asked for as the pointer type; a table by value is refused.
+
+```go
+rows, err := py.Run[[]map[string]int](`insyra.Return([{"a": 1}])`)
+```
+
 ### Run Code With Parameters
 
 ```go
@@ -168,9 +180,14 @@ func RunCodefContext(ctx context.Context, out any, code string, args ...any) err
 func RunFileContext(ctx context.Context, out any, filepath string) error
 func RunFilefContext(ctx context.Context, out any, filepath string, args ...any) error
 
-// Convenience helper:
+func PipInstallContext(ctx context.Context, dep string) error
+func PipUninstallContext(ctx context.Context, dep string) error
+
+// Deprecated: use RunCodeContext with a context from context.WithTimeout. Removed in 0.4.
 func RunCodeWithTimeout(timeout time.Duration, out any, code string) error
 ```
+
+A nil context, or one that has already ended, is refused before anything starts: `nil` returns an error, an ended context returns `ctx.Err()`.
 
 **Parameters:**
 
@@ -183,10 +200,12 @@ func RunCodeWithTimeout(timeout time.Duration, out any, code string) error
 
 #### Examples
 
-Timeout (convenience):
+Timeout:
 
 ```go
-err := py.RunCodeWithTimeout(1*time.Second, nil, `
+ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+defer cancel()
+err := py.RunCodeContext(ctx, nil, `
 import time
 time.sleep(10)
 insyra.Return({"ok": True})
@@ -242,6 +261,8 @@ func PipInstall(dep string) error
 
 - `error`: Non-nil if installation failed; nil otherwise.
 
+`PipInstallContext(ctx, dep)` is the same call that stops when `ctx` ends and returns `ctx.Err()`.
+
 ### Uninstall Python Dependency
 
 ```go
@@ -257,6 +278,8 @@ func PipUninstall(dep string) error
 **Returns:**
 
 - `error`: Non-nil if uninstallation failed; nil otherwise.
+
+`PipUninstallContext(ctx, dep)` is the same call that stops when `ctx` ends and returns `ctx.Err()`.
 
 ### List Installed Python Packages
 
