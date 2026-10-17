@@ -20,6 +20,7 @@ A `nil` context SHALL be refused with an error, or for the Google Maps client a 
 #### Scenario: A nil context
 - **WHEN** 以 nil context 呼叫 `DailyPricesContext`、`ReverseContext`、`InfoContext`、`SearchContext`
 - **THEN** 前三個回傳錯誤，`SearchContext` 回傳 nil 並記錄警告，沒有 panic，也沒有發出請求
+
 ### Requirement: The context reaches every wait and request
 
 A `Context` method SHALL wait for the request limiter under `ctx`, SHALL stop a retry backoff when `ctx` is done, and for the TWSE/TPEx, geocoding and Google Maps clients SHALL send each HTTP request under `ctx`. When `ctx` is done during any of these, the call SHALL return `ctx.Err()` without starting another request and without retrying.
@@ -51,6 +52,7 @@ A call that sends several requests (a month range, one-year ex-rights slices, th
 #### Scenario: A geocoding request cut off by the caller's deadline
 - **WHEN** 伺服器延遲回應，`Retries` 為 2，context 50 毫秒後到期
 - **THEN** `ReverseContext` 約 50 毫秒後回傳 `context.DeadlineExceeded` 而不是 `ErrGeocodeTimeout`，伺服器只收到一個請求
+
 ### Requirement: A geocoding batch stopped by its context keeps what it resolved
 
 When `ctx` is done part-way through `ReverseColsContext` or `ReverseTableContext`, the method SHALL return the table with every row resolved so far, the in-batch duplicates of those rows served from the batch's memo, every other row with a valid coordinate marked `pending`, and `ctx.Err()`, as it does for an exhausted quota. It SHALL NOT send another request after `ctx` is done.
@@ -82,3 +84,17 @@ The abandoned call SHALL share no memory with the caller's arguments, so a calle
 #### Scenario: The history parameters are copied before the call
 - **WHEN** 把帶 `Start`、`End` 與 `RepairOptions` 的 `YFHistoryParams` 轉成 go-yfinance 的參數後，呼叫端再修改原本的日期與修復選項
 - **THEN** 轉換結果不受影響
+
+### Requirement: A batch reports an ended context even when its input is empty or invalid
+
+`ReverseColsContext` SHALL return the context's error when the context has already ended, even when the lat and lng lists are empty or every coordinate in them is invalid, and `ReverseTableContext` SHALL do the same once its two columns resolve. Neither MUST send a request in that case.
+
+#### Scenario: Cancelled before an empty batch
+
+- **WHEN** `ReverseColsContext` is called with a cancelled context and two empty lists
+- **THEN** it returns an error for which `errors.Is(err, context.Canceled)` holds, and sends no request
+
+#### Scenario: Cancelled before a batch of invalid coordinates
+
+- **WHEN** `ReverseColsContext` is called with a cancelled context, a latitude list holding `"bad"` and a longitude list holding `nil`
+- **THEN** it returns `context.Canceled`, and sends no request

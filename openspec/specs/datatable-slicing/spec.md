@@ -2,7 +2,9 @@
 
 ## Purpose
 Says how `SliceRows` and `SliceCols` take a contiguous range of rows or columns with half-open Go slice bounds, `SliceRows` by position and `SliceCols` by column selector, what happens to a bound they cannot use, and which older names are deprecated spellings of them.
+
 ## Requirements
+
 ### Requirement: SliceRows and SliceCols take a range by position
 
 `SliceRows(from, to)` SHALL return rows `from` through `to-1` as a new DataTable, for `0 <= from <= to <= NumRows()`. `SliceCols(from, to)` SHALL return the columns from `from` up to, but not including, `to`. The result SHALL keep the source table's name, the column names and the names of the rows it holds, and SHALL own its data. `from == to` SHALL give no rows (with every column) or no columns.
@@ -25,6 +27,7 @@ Each bound of `SliceCols` SHALL be a column selector: an Excel-style letter, a `
 
 - **WHEN** `SliceCols("C", nil)` and `SliceCols(nil, "C")` are called on the same table
 - **THEN** the first holds C and D and the second A and B
+
 ### Requirement: A bound outside the table is an error
 
 For `SliceRows`, a bound with `from < 0`, `from > to` or `to` past the length SHALL record an error on the table naming the bounds. For `SliceCols`, a bound that picks no column, an int outside `-NumCols()` to `NumCols()`, a value of another type, or a `from` that comes after `to` SHALL record an error on the table. The method SHALL then return an empty, non-nil DataTable and SHALL NOT panic.
@@ -66,3 +69,12 @@ The ten `FilterColsByColIndex…` and `FilterRowsByRowIndex…` methods SHALL be
 
 - **WHEN** `Headers()` and `ColNames()` are called on one table, and `SetHeaders` and `SetColNames` are each given the same names on two copies of it
 - **THEN** both reads return the same names, and the two copies end with the same column names
+
+### Requirement: SliceCols pads a short column with nil
+
+When a column that `SliceCols` selects is shorter than the table's longest column, the result SHALL pad that column with `nil` to the table's longest column length, so the result keeps every row of the table, and the source table SHALL NOT change.
+
+#### Scenario: A short column in the range
+
+- **WHEN** `SliceCols(1, 2)` is called on a table whose column `A` holds three values and whose column `B` holds one value, `"x"`
+- **THEN** the result holds one column of three values, `"x"`, `nil` and `nil`, and the source table is unchanged

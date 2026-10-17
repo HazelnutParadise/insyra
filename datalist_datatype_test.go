@@ -27,6 +27,8 @@ func TestDataListDataType(t *testing.T) {
 		{"numbers and text", []any{1, "a"}, DataTypeMixed},
 		{"numbers and booleans", []any{1, true}, DataTypeMixed},
 		{"only missing values", []any{nil, math.NaN()}, DataTypeEmpty},
+		{"float32 NaN is missing", []any{float32(math.NaN())}, DataTypeEmpty},
+		{"named float NaN is missing", []any{namedFloat(math.NaN())}, DataTypeEmpty},
 		{"no values", nil, DataTypeEmpty},
 	}
 	for _, tc := range cases {
@@ -41,6 +43,8 @@ func TestDataListDataType(t *testing.T) {
 		})
 	}
 }
+
+type namedFloat float64
 
 func TestDataTableColDataTypes(t *testing.T) {
 	dt := NewDataTable(

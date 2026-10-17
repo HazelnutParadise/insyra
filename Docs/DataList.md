@@ -166,7 +166,7 @@ data := dl.Data() // []any{1, 2, 3}
 func (dl *DataList) DataType() DataType
 ```
 
-**Description:** Returns what kind of values the list holds, so a program can check before it analyses: can this column be averaged, grouped as text, read as dates. Missing values (`nil`, `NaN`) are left out, so `[10, nil, 30]` is a number column.
+**Description:** Returns what kind of values the list holds, so a program can check before it analyses: can this column be averaged, grouped as text, read as dates. Missing values (`nil` and NaN of any floating-point type, including named float types) are left out, so `[10, nil, 30]` is a number column.
 
 | Value | Meaning | Example |
 |---|---|---|

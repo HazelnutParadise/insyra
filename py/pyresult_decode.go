@@ -719,7 +719,12 @@ func assignStruct(dst reflect.Value, entries map[string]any) error {
 	for _, key := range slices.Sorted(maps.Keys(entries)) {
 		i, ok := fields.exact[key]
 		if !ok {
-			i, ok = fields.folded[foldName(key)]
+			for index, candidate := range fields.list {
+				if strings.EqualFold(key, candidate.name) {
+					i, ok = index, true
+					break
+				}
+			}
 		}
 		if !ok {
 			continue
@@ -847,13 +852,12 @@ type jsonField struct {
 }
 
 // jsonFields lists a struct type's fields in index order, with each field's
-// position by its exact name and by its name folded for case, and the
+// position by its exact name for direct lookup, and the
 // untagged embedded tables and lists, which take the whole value.
 type jsonFields struct {
-	list   []jsonField
-	exact  map[string]int
-	folded map[string]int
-	whole  []jsonField
+	list  []jsonField
+	exact map[string]int
+	whole []jsonField
 }
 
 var fieldCache sync.Map // reflect.Type -> *jsonFields
@@ -1015,13 +1019,9 @@ func structFields(t reflect.Type) *jsonFields {
 		}
 	}
 
-	fs := &jsonFields{list: out, exact: make(map[string]int, len(out)), folded: make(map[string]int, len(out)), whole: kept}
+	fs := &jsonFields{list: out, exact: make(map[string]int, len(out)), whole: kept}
 	for i, f := range out {
 		fs.exact[f.name] = i
-		// The first field to fold to a name takes it, as in encoding/json.
-		if _, ok := fs.folded[foldName(f.name)]; !ok {
-			fs.folded[foldName(f.name)] = i
-		}
 	}
 	return fs
 }
@@ -1054,12 +1054,6 @@ func hasTagOption(opts, option string) bool {
 		}
 	}
 	return false
-}
-
-// foldName returns a form of name that two names share exactly when
-// strings.EqualFold holds for them, as encoding/json's foldName does.
-func foldName(name string) string {
-	return strings.Map(func(r rune) rune { return unicode.ToUpper(unicode.ToLower(r)) }, name)
 }
 
 // holdsWideNumber reports whether v holds a number go-json would wrap around
