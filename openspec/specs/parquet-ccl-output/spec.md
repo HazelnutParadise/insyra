@@ -48,3 +48,43 @@ With one `WriteOptions`, `ApplyCCL` SHALL write every column with that `Compress
 #### Scenario: An expression that fails on the first batch
 - **WHEN** 以 `context.Background()` 對 5,000 列的檔案連續 10 次呼叫會在第一批出錯的 `FilterWithCCL` 或 `ApplyCCL`
 - **THEN** 每次都回傳錯誤，之後 goroutine 數量回到呼叫前的水準
+
+### Requirement: ApplyCCL loses no value to a column's type
+
+`ApplyCCL` SHALL write a column a statement assigns with the type the file gave it when every value written into it can be held by that type without loss, and otherwise, like a column a script creates, with the type `Write` gives a table column holding those values, settled from every value the column receives, not from the first batch.
+
+#### Scenario: A fraction in an integer column
+- **WHEN** 對 int64 欄 `num` 為 `[1, 2, 3, 4]` 的檔案執行 `ApplyCCL(ctx, path, "['num'] = ['num'] * 1.5")`
+- **THEN** 讀回的 `num` 是 float64 的 `[1.5, 3, 4.5, 6]`，不是截斷後的整數
+
+#### Scenario: Whole numbers keep an integer column
+- **WHEN** 對只有一個 int64 欄 `n`、值為 1 到 5 的檔案執行 `ApplyCCL(ctx, path, "['n'] = A * 2")`
+- **THEN** 讀回的 `n` 仍是 int64 的 `[2, 4, 6, 8, 10]`
+
+#### Scenario: A created column that starts with missing values
+- **WHEN** 對 `A` 為 1 到 2,500、以 `WriteOptions{RowGroupSize: 1000}` 寫出的檔案執行 `ApplyCCL(ctx, path, "NEW('r') = ROLLING_MEAN(A, 1500)")`
+- **THEN** 讀回的 `r` 前 1,499 列為 nil、其後是 float64，不是文字
+
+### Requirement: A column ApplyCCL writes keeps its missing values
+
+Every column a statement writes SHALL be nullable, so a missing value reads back as `nil`. A value that cannot be written, or a column type `ApplyCCL` cannot write back, SHALL be an error that leaves the file as it was, never a panic.
+
+#### Scenario: A missing value in a created column
+- **WHEN** 對 `A` 為 `[1, nil, 3]` 的檔案執行 `ApplyCCL(ctx, path, "NEW('c') = A")`
+- **THEN** 讀回的 `c` 是 `[1, nil, 3]`
+
+### Requirement: ApplyCCL writes back an unwritten column exactly
+
+`ApplyCCL` SHALL write a column no statement writes back with the type and the values the file gave it, whatever its Arrow type, including integer and float widths other than 64 bits, dates, decimals, large strings, lists and structs, and SHALL NOT fail because the file has such a column. A column a statement assigns SHALL keep its type, `int8` to `int64`, the unsigned widths, `float32`, `float64`, `Date32` and `Date64` included, when that type holds every value written into it exactly.
+
+#### Scenario: A file with columns of many types
+- **WHEN** 對一個含 `int32`、`float32`、`Date32`、`decimal128(10, 2)`、`large_string`、`list<int64>` 欄位的檔案執行 `ApplyCCL(ctx, path, "NEW('n') = 1")`
+- **THEN** 不回傳錯誤，讀回後這些欄的 Arrow 型別與每一格的值都與原檔相同
+
+#### Scenario: Rows held back by LEAD
+- **WHEN** 對同一個檔案執行 `ApplyCCL(ctx, path, "NEW('n') = LEAD(['i32'], 1500)")`
+- **THEN** 其他欄的型別與值都與原檔相同
+
+#### Scenario: An int32 column assigned whole numbers
+- **WHEN** 對 `int32` 欄 `i32` 執行 `ApplyCCL(ctx, path, "['i32'] = ['i32'] * 2")`
+- **THEN** 讀回的 `i32` 仍是 `int32`，值為原來的兩倍
