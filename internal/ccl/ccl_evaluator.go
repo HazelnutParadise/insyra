@@ -36,6 +36,33 @@ func Evaluate(n cclNode, ctx Context) (any, error) {
 	return resolveResultValue(val, ctx)
 }
 
+// sequenceColumn reads one argument of the sequence function name over every
+// row of ctx: a whole row per element for '@' or a column range, which only
+// LAG and LEAD accept, and the argument's value per row otherwise. The
+// evaluator builds a call's arguments with it, and TopSequence.Push reads a
+// batch's column argument the same way the evaluator reads the whole table's.
+func sequenceColumn(name string, arg cclNode, ctx Context, depth, callDepth int) ([]any, error) {
+	// A row-shaped argument — '@' or a column range — is one row
+	// per element, not one value per element. evaluateToColumn
+	// flattens both into the whole table, which LAG would then
+	// shift into a single nonsense slice repeated in every cell.
+	rows, isRowShaped, err := rowShapedColumn(arg, ctx, depth, callDepth)
+	if err != nil {
+		return nil, fmt.Errorf("sequence function %s: %w", name, err)
+	}
+	if isRowShaped {
+		if !SequenceFunctionTakesRows(strings.ToUpper(name)) {
+			return nil, fmt.Errorf("sequence function %s needs numbers, and %s is a whole row; only LAG and LEAD accept one", name, describeRowShaped(arg))
+		}
+		return rows, nil
+	}
+	colData, err := evaluateToColumn(arg, ctx, depth, callDepth)
+	if err != nil {
+		return nil, fmt.Errorf("sequence function %s: %w", name, err)
+	}
+	return colData, nil
+}
+
 // EvaluateStatement evaluates a CCL statement and returns detailed result
 func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 	switch t := n.(type) {
@@ -123,7 +150,7 @@ func IsNewColNode(n cclNode) bool {
 // IsRowDependent checks if the expression depends on the current row.
 func IsRowDependent(n cclNode) bool {
 	switch t := n.(type) {
-	case *cclNumberNode, *cclStringNode, *cclBooleanNode, *cclNilNode, *cclFoldedValueNode:
+	case *cclNumberNode, *cclStringNode, *cclBooleanNode, *cclNilNode, *cclFoldedValueNode, *cclFailedPartNode:
 		return false
 	case *cclIdentifierNode, *cclColIndexNode, *cclColNameNode, *cclResolvedColNode, *cclAtNode, *cclRowIndexNode:
 		return true
@@ -255,9 +282,17 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		return nil, nil
 	case *cclFoldedValueNode:
 		return t.value, nil
+	case *cclFailedPartNode:
+		// A whole-table part the streaming resolver could not compute. It
+		// fails here, so only a row that reaches it fails — the way the part
+		// fails on a whole table only where it is evaluated.
+		return nil, t.err
 	case *cclAtNode:
 		return ctx.GetCurrentRow(), nil
 	case *cclRowIndexNode:
+		if g, ok := ctx.(GlobalRowContext); ok {
+			return float64(g.GlobalRowIndex()), nil
+		}
 		return float64(ctx.GetRowIndex()), nil
 	case *cclIdentifierNode:
 		idx, ok := utils.ParseColIndex(t.name)
@@ -337,26 +372,11 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			functionDepth := callDepth + 1
 			seqArgs := make([][]any, len(t.args))
 			for i, arg := range t.args {
-				// A row-shaped argument ('@' or a column range) is one row per
-				// element, not one value per element. evaluateToColumn would
-				// flatten it into the whole table, which LAG would then shift
-				// into a single nonsense slice repeated in every cell.
-				rows, isRowShaped, err := rowShapedColumn(arg, ctx, depth+1, functionDepth)
+				column, err := sequenceColumn(t.name, arg, ctx, depth+1, functionDepth)
 				if err != nil {
-					return nil, fmt.Errorf("sequence function %s: %w", t.name, err)
+					return nil, err
 				}
-				if isRowShaped {
-					if !SequenceFunctionTakesRows(upper) {
-						return nil, fmt.Errorf("sequence function %s needs numbers, and %s is a whole row; only LAG and LEAD accept one", t.name, describeRowShaped(arg))
-					}
-					seqArgs[i] = rows
-					continue
-				}
-				colData, err := evaluateToColumn(arg, ctx, depth+1, functionDepth)
-				if err != nil {
-					return nil, fmt.Errorf("sequence function %s: %w", t.name, err)
-				}
-				seqArgs[i] = colData
+				seqArgs[i] = column
 			}
 			return callSequenceFunction(t.name, seqArgs)
 		}
@@ -1130,6 +1150,15 @@ func evaluateRowAccess(left, right cclNode, ctx Context, depth, callDepth int) (
 		rowIndices = []int{idx}
 	default:
 		return nil, fmt.Errorf("invalid row index type: %T", rowVal)
+	}
+
+	// A row written in the expression is a position in the whole table, while
+	// a context holding one part of it reads rows by their place in the part.
+	if g, ok := ctx.(GlobalRowContext); ok {
+		offset := g.GlobalRowIndex() - ctx.GetRowIndex()
+		for i := range rowIndices {
+			rowIndices[i] -= offset
+		}
 	}
 
 	// 2. Prepare to fetch data from left

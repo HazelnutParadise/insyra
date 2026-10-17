@@ -23,6 +23,16 @@ var registryMu sync.RWMutex
 var defaultFunctions = map[string]Func{}
 var aggregateFunctions = map[string]AggFunc{}
 var sequenceFunctions = map[string]SeqFunc{}
+
+// userAggregates holds the names a caller has registered through
+// RegisterAggregateFunction, so that a built-in streaming form can tell whose
+// arithmetic stands behind a name. Guarded by registryMu like the registries.
+var userAggregates = map[string]bool{}
+
+// userSequences is the same for RegisterSequenceFunction: a built-in name a
+// caller re-registered has the caller's arithmetic, not the one a streaming form
+// reproduces. Guarded by registryMu like the registries.
+var userSequences = map[string]bool{}
 var maxFuncCallDepth = 20 // 合理的函數調用深度上限
 
 // RegisterFunction registers a custom scalar function for CCL evaluation.
@@ -31,14 +41,26 @@ func RegisterFunction(name string, fn Func) {
 }
 
 // RegisterAggregateFunction registers a custom aggregate function for CCL evaluation.
+// The name is remembered as the caller's, so that the built-in streaming forms
+// stand down for it: whatever arithmetic is registered is the caller's.
 func RegisterAggregateFunction(name string, fn AggFunc) {
 	registerAggregateFunction(name, fn)
+
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	userAggregates[strings.ToUpper(name)] = true
 }
 
 // RegisterSequenceFunction registers a custom sequence function (whole-column
-// input, same-length-column output) for CCL evaluation.
+// input, same-length-column output) for CCL evaluation. The name is remembered as
+// the caller's, so that the built-in streaming forms stand down for it: whatever
+// arithmetic is registered is the caller's.
 func RegisterSequenceFunction(name string, fn SeqFunc) {
 	registerSequenceFunction(name, fn)
+
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	userSequences[strings.ToUpper(name)] = true
 }
 
 func registerFunction(name string, fn Func) {
@@ -47,16 +69,24 @@ func registerFunction(name string, fn Func) {
 	defaultFunctions[strings.ToUpper(name)] = fn
 }
 
+// registerAggregateFunction registers an aggregate function as the built-in it
+// names, dropping any mark a caller had left on that name.
 func registerAggregateFunction(name string, fn AggFunc) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
-	aggregateFunctions[strings.ToUpper(name)] = fn
+	key := strings.ToUpper(name)
+	aggregateFunctions[key] = fn
+	delete(userAggregates, key)
 }
 
+// registerSequenceFunction registers a sequence function as the built-in it
+// names, dropping any mark a caller had left on that name.
 func registerSequenceFunction(name string, fn SeqFunc) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
-	sequenceFunctions[strings.ToUpper(name)] = fn
+	key := strings.ToUpper(name)
+	sequenceFunctions[key] = fn
+	delete(userSequences, key)
 }
 
 func lookupFunction(name string) (Func, bool) {

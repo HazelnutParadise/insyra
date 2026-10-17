@@ -1097,9 +1097,10 @@ function first, then as an aggregate, then as a scalar, so a scalar function
 registered as `SUM` is never called. `IF`, `AND` and `OR` are evaluated by the
 language itself and cannot be replaced.
 
-The parquet CCL functions read a file in batches of rows: an aggregate there
-covers one batch rather than the whole file, and a sequence function does not
-give each row its own cell. Use sequence functions on a `DataTable`.
+The parquet CCL functions read a file in batches of rows and still give the
+answer the loaded table gives; see [Batches of 1,000 rows](parquet.md#batches-of-1000-rows)
+for what that costs. An aggregate or sequence function a caller registered,
+or registered under a built-in name, is computed by holding the columns it reads.
 
 ```go
 import (
