@@ -42,8 +42,8 @@ type DataList struct {
 
 - `data`: Slice containing the actual data elements of any type
 - `name`: Optional name for the DataList
-- `creationTimestamp`: Unix timestamp when the DataList was created
-- `lastModifiedTimestamp`: Unix timestamp when the DataList was last modified
+- `creationTimestamp`: when the DataList was created, in Unix nanoseconds; read it with `CreationTime()`
+- `lastModifiedTimestamp`: when the DataList was last modified, in Unix nanoseconds; read it with `LastModifiedTime()`
 - `atomicActor`: Internal mutex + holder pair used by `AtomicDo` to serialise execution; same-goroutine re-entry runs inline without re-locking
 
 ### Naming Conventions
@@ -1285,6 +1285,43 @@ dl := insyra.NewDataList(1, 5, 3, 9, 2)
 range := dl.Range() // 8.0 (9 - 1)
 ```
 
+### Quantile
+
+```go
+func (dl *DataList) Quantile(p float64) float64
+```
+
+**Description:** Returns the p-quantile of the list's numeric values, with `p` on the 0..1 scale: `Quantile(0.25)` is the first quartile, `Quantile(0.5)` the median and `Quantile(0.9)` the 90th percentile. It is the same as pandas' `Series.quantile(p)` and R's `quantile(x, p, na.rm = TRUE)`.
+
+It uses R's type-7 definition, the default of R, NumPy and pandas (pandas calls it `linear`), which `Quartile` and `Percentile` also use. The scale follows the name:
+
+| Call | Scale | First quartile |
+| --- | --- | --- |
+| `Quantile(p)` | 0 to 1 | `Quantile(0.25)` |
+| `Percentile(p)` | 0 to 100 | `Percentile(25)` |
+| `Quartile(q)` | 1, 2 or 3 | `Quartile(1)` |
+| `DescribeOptions.Percentiles` | 0 to 1, like pandas' `describe` | `0.25` |
+
+`nil` and `NaN` cells are missing and skipped, the way `Describe` and pandas skip them. `Percentile` and `Quartile` do not skip a `NaN` on this line, so on a list that holds one they differ from `Quantile`; 0.4 makes them skip it too.
+
+**Parameters:**
+
+- `p`: The probability, from 0 to 1 inclusive.
+
+**Returns:**
+
+- `float64`: The p-quantile. It is `NaN` with a warning recorded on the list when `p` is `NaN` or outside `[0, 1]`, when a cell is neither a number nor missing, or when the list has no numeric values.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, 2, 3, 4, 10)
+dl.Quantile(0.25) // 2
+dl.Quantile(0.9)  // 7.6
+
+insyra.NewDataList(1, 2, 3, math.NaN()).Quantile(0.75) // 2.5, the NaN is skipped
+```
+
 ### Quartile
 
 ```go
@@ -1715,15 +1752,16 @@ dl := insyra.NewDataList(3, 1, 4, 1, 5, 9, 2)
 m := dl.CumMin() // [3, 1, 1, 1, 1, 1, 1]
 ```
 
-### Sample / SampleFrac / Shuffle
+### Sample / SampleFrac / Shuffle / Shuffled
 
 ```go
 func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
 func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList
 func (dl *DataList) Shuffle(options ...SamplingOptions) *DataList
+func (dl *DataList) Shuffled(options ...SamplingOptions) *DataList
 ```
 
-**Description:** Returns randomly sampled or shuffled copies of a DataList. `Sample` draws `n` elements, `SampleFrac` draws `floor(frac * Len())` elements with a minimum of 1 for non-empty lists, and `Shuffle` returns all elements in random order.
+**Description:** Returns randomly sampled or shuffled copies of a DataList. `Sample` draws `n` elements, `SampleFrac` draws `floor(frac * Len())` elements with a minimum of 1 for non-empty lists, and `Shuffled` returns all elements in random order, in a copy named `<name>_Shuffled`, leaving the list as it is. `Shuffle` does the same on this line, but on the 0.4 line it reorders the list itself and returns it, the way `Sort` does, so use `Shuffled` wherever a copy is meant.
 
 **Options:**
 
@@ -1743,7 +1781,7 @@ Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible results.
 dl := insyra.NewDataList(1, 2, 3, 4, 5)
 sample := dl.Sample(3, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
 preview := dl.SampleFrac(0.4, false)
-shuffled := dl.Shuffle(insyra.SamplingOptions{UseSeed: true, Seed: 42})
+shuffled := dl.Shuffled(insyra.SamplingOptions{UseSeed: true, Seed: 42}) // dl keeps its order
 ```
 
 **Errors:** Invalid `n`, invalid `frac`, empty input, and `n > Len()` without replacement are recorded via `dl.Err()` and return an empty DataList.
@@ -2319,7 +2357,15 @@ isEqual := dl1.IsEqualTo(dl2) // true
 func (dl *DataList) IsTheSameAs(other *DataList) bool
 ```
 
-**Description:** Checks if the DataList is identical to another (including metadata).
+**Description:** Checks whether another DataList holds equal data, by the same cell rule as `IsEqualTo`, has the same name, and was created and last modified in the same Unix second. A nil argument returns `false` with a warning. On the 0.4 line it compares the data and the name only.
+
+To ask whether two values are the same object, compare the pointers: `dl1 == dl2`.
+
+| Question | Use |
+| --- | --- |
+| Equal data? | `dl1.IsEqualTo(dl2)` |
+| Equal data, name and times? | `dl1.IsTheSameAs(dl2)` |
+| The same object? | `dl1 == dl2` |
 
 **Parameters:**
 
@@ -2327,14 +2373,15 @@ func (dl *DataList) IsTheSameAs(other *DataList) bool
 
 **Returns:**
 
-- `bool`: True if completely identical (data, name, timestamps)
+- `bool`: True if the data, the name and the two times (in whole seconds) are equal
 
 **Example:**
 
 ```go
-dl1 := insyra.NewDataList(1, 2, 3)
-dl2 := dl1 // Same reference
-isSame := dl1.IsTheSameAs(dl2) // true
+dl1 := insyra.NewDataList(1, 2, 3).SetName("x")
+dl2 := dl1 // the same object
+dl1.IsTheSameAs(dl2) // true
+dl1.IsEqualTo(insyra.NewDataList(1, 2, 3)) // true: the data is equal
 ```
 
 ## Data Conversion
@@ -2533,13 +2580,13 @@ dl := insyra.NewDataList(1, 2, 3)
 dl.SetName("Factor_Loadings")
 ```
 
-### GetCreationTimestamp
+### CreationTime
 
 ```go
-func (dl *DataList) GetCreationTimestamp() int64
+func (dl *DataList) CreationTime() time.Time
 ```
 
-**Description:** Returns the creation timestamp in Unix format.
+**Description:** Returns when the DataList was created, at the clock's full resolution.
 
 **Parameters:**
 
@@ -2547,14 +2594,49 @@ func (dl *DataList) GetCreationTimestamp() int64
 
 **Returns:**
 
-- `int64`: Unix timestamp when DataList was created
+- `time.Time`: when the DataList was created
 
 **Example:**
 
 ```go
 dl := insyra.NewDataList(1, 2, 3)
-timestamp := dl.GetCreationTimestamp()
+created := dl.CreationTime()
 ```
+
+### LastModifiedTime
+
+```go
+func (dl *DataList) LastModifiedTime() time.Time
+```
+
+**Description:** Returns when the DataList was last modified, at the clock's full resolution, so two changes less than a second apart give different times. It never moves backwards, even if the wall clock is set back. On a platform whose clock is coarser than the time between two changes, both can still read the same.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- `time.Time`: when the DataList was last modified
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, 2, 3)
+before := dl.LastModifiedTime()
+dl.Append(4) // This updates the time
+changed := dl.LastModifiedTime().After(before)
+```
+
+### GetCreationTimestamp
+
+```go
+func (dl *DataList) GetCreationTimestamp() int64
+```
+
+**Deprecated:** use `CreationTime`. This method is removed in 0.4.
+
+**Description:** Returns the creation time in Unix seconds, `CreationTime().Unix()`.
 
 ### GetLastModifiedTimestamp
 
@@ -2562,23 +2644,9 @@ timestamp := dl.GetCreationTimestamp()
 func (dl *DataList) GetLastModifiedTimestamp() int64
 ```
 
-**Description:** Returns the last modification timestamp in Unix format.
+**Deprecated:** use `LastModifiedTime`. This method is removed in 0.4.
 
-**Parameters:**
-
-- None.
-
-**Returns:**
-
-- `int64`: Unix timestamp when DataList was last modified
-
-**Example:**
-
-```go
-dl := insyra.NewDataList(1, 2, 3)
-dl.Append(4) // This updates the timestamp
-timestamp := dl.GetLastModifiedTimestamp()
-```
+**Description:** Returns the last modification time in Unix seconds, `LastModifiedTime().Unix()`. Two changes within one second read the same.
 
 ## Utility Methods
 
@@ -2639,6 +2707,12 @@ instance — cannot be a key in the returned map. Such a value is keyed by an
 by themselves, so `counter[1]` and `counter["a"]` work as before, and printing
 the whole map stays readable: a stand-in shows as its type with a shortened
 form of its content, such as `[]uint8(00ff41)`.
+
+`insyra.UncomparableKey` also stands in for a `NaN`, and for an array or
+struct holding one. A `NaN` is comparable to Go but never equal to itself, so
+using one as a map key would make an entry nobody could read back: three
+`NaN`s in a column used to become three counts of one. Read their count with
+`counter[insyra.ToMapKey(math.NaN())]`.
 
 **To read one value's count, use `Count`, not this map.** `Count` matches
 integers by value, where the map keys them by Go type: a CSV load stores

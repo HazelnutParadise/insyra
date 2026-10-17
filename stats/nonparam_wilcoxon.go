@@ -24,7 +24,7 @@ import (
 // The asymptotic z and Method ("exact" vs "asymptotic") report which
 // distributional path produced the p-value. For exact mode Z is NaN.
 type WilcoxonTestResult struct {
-	testResultBase
+	TestResult
 	Z          float64 // standardized z (asymptotic path); NaN for exact
 	Method     string  // "exact" or "asymptotic"
 	NEffective int     // number of nonzero |d_i| used (zeros dropped under "wilcox")
@@ -147,7 +147,7 @@ func computeWilcoxon(diffs []float64, alt AlternativeHypothesis, cl float64, ciO
 		// statistic is undefined. Mirror SciPy's behaviour of returning NaN.
 		nanCIVal := [2]float64{math.NaN(), math.NaN()}
 		return &WilcoxonTestResult{
-			testResultBase: testResultBase{
+			TestResult: TestResult{
 				Statistic:   math.NaN(),
 				PValue:      math.NaN(),
 				DF:          nil,
@@ -236,7 +236,7 @@ func computeWilcoxon(diffs []float64, alt AlternativeHypothesis, cl float64, ciO
 	rRB := rankBiserialMatched(wPlus, nEff)
 
 	res := &WilcoxonTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic:   wPlus,
 			PValue:      pValue,
 			DF:          nil,

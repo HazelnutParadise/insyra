@@ -63,7 +63,6 @@ func SaveHTML(chart Renderable, path string, animation ...bool) error {
 	if err := chart.Render(f); err != nil {
 		return fmt.Errorf("failed to render chart: %w", err)
 	}
-	insyra.LogInfo("plot", "SaveHTML", "successfully saved HTML file in %s.", path)
 	return nil
 }
 
@@ -134,7 +133,6 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 		if resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("online service returned non-OK status: %s", resp.Status)
 		}
-		insyra.LogInfo("plot", "SavePNG", "successfully received PNG response from HazelnutParadise online service.")
 		// 讀入回應並驗證 PNG 簽章，避免把錯誤頁（如 HTML）當成圖片寫入 .png。
 		// Bounded: an unbounded ReadAll on a remote response is an
 		// out-of-memory waiting for a large or hostile reply. One byte past the
@@ -162,7 +160,6 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 		}
 	}
 
-	insyra.LogInfo("plot", "SavePNG", "successfully saved PNG file in %s.", pngPath)
 	return nil
 }
 

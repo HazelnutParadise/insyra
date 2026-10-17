@@ -31,6 +31,18 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `FillNaNWithMean` 的 Deprecated 說明改成給出保留其行為的寫法 `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())`；原本指向會連 nil 一起填的 `FillWithMean`。
 - MySQL 上用 `Replace` 的 `ToSQL` 寫入失敗時會保留舊表。MySQL 在 `DROP TABLE` 時就結束交易，所以插入失敗後舊表和新資料都沒了。現在資料先寫進暫存表，再用一次 `RENAME TABLE` 換上，最後才刪掉舊表；被其他表以外鍵參照的表會在任何變更前被拒絕。帳號需要資料庫層級的 `CREATE`、`INSERT`、`ALTER`、`DROP` 權限。SQLite 與 PostgreSQL 照舊使用單一交易。
 - `ScalerParams.PassThrough` 改為 Deprecated，在這條線意義不變，在 0.4 移除；0.4 的 `SimpleImputer` 會在 fit 時拒絕這種欄位。
+- `Config.TurnOnThreadSafety()` 在 `Config.Dangerously_TurnOffThreadSafety()` 之後把 `DataList` 與 `DataTable` 的實例鎖開回來，其他設定都不動。以前只有 `SetDefaultConfig()` 能開回來，但它會連 log 等級、彩色輸出、panic-on-error、錯誤 hook 與加速設定一起重設。`Dangerously_TurnOffThreadSafety` 的文件也寫明了關掉的範圍：`AtomicDo` 與 `AtomicDoAll` 的鎖，也就是 `DataList` 與 `DataTable` 的每個方法；`Config`、全域錯誤緩衝區與 log 仍然安全。
+- `Config.SetLogger(*slog.Logger)` 讓 insyra 的日誌改送到 `log/slog` 的 logger，不再寫進標準 `log` 套件。每一行會變成一筆 record，保留原本的等級（Fatal 對應 `ERROR+4`），帶有 `package` 與 `func` 屬性，來源標示為寫日誌的那個 insyra 函式，而且不加 `[insyra - …]` 前綴和顏色碼。`SetLogger(nil)` 會改回標準 `log` 套件，`GetLogger` 回傳目前設定的 logger，`SetDefaultConfig` 會清除它。哪些行要送出仍由 `SetLogLevel` 決定，`LogFatal` 在沒有開 `SetDontPanic(true)` 時仍會結束程式。沒有設定 logger 時，輸出和以前完全一樣。CCL 的警告現在也會遵守日誌等級，並送到 logger、錯誤緩衝區與錯誤 hook。
+- `ColIndexToNumber` 與 `ColNumberToIndex` 在 Excel 式欄位索引與從 0 起算的欄位編號之間轉換：`ColIndexToNumber("AA")` 是 `26`，`ColNumberToIndex(26)` 是 `"AA"`。`Config.GetUseColoredOutput` 回報 `SetUseColoredOutput` 設定的值。`ParseColIndex`、`CalcColIndex` 與 `Config.GetDoesUseColoredOutput` 標為 **Deprecated**，回傳值與新名稱相同，0.4 移除。`Config.Dangerously_TurnOffThreadSafety` 刻意保留底線作為警告；取值方法保留 `Get` 前綴，與對應的 `Set` 方法成對。
+- `DataTable.IsEqualTo(other)` 與 `IsTheSameAs(other)` 用來比較兩張表。`IsEqualTo` 在兩張表的列數、欄數相同且每一格都相等時為 true（型別必須相同，兩個 NaN 視為相等，短欄超出的格子視為 `nil`），不看表名、欄名與列名。`IsTheSameAs` 另外要求表名、欄名與列名依序相同。
+- `DataList` 與 `DataTable` 新增 `CreationTime()` 與 `LastModifiedTime()`，回傳依時鐘完整精度記錄的 `time.Time`，相隔不到一秒的兩次修改也分得出來。`GetCreationTimestamp` 與 `GetLastModifiedTimestamp` 標為 **Deprecated**，仍回傳 Unix 秒，0.4 移除。`DataList.IsTheSameAs` 仍以整秒比較這兩個時間，和以前一樣。
+- `DataList.Quantile(p)` 以 pandas、R 與 gonum 使用的 0 到 1 刻度回傳 p 分位數：採用 R 的 type-7 分位數，與 `Percentile`、`Quartile` 使用的定義相同。`nil` 與 `NaN` 會被略過；`p` 超出 `[0, 1]`、儲存格不是數字或整個列表沒有數字時，會記錄警告並回傳 `NaN`。
+- `DataList.Shuffled` 與 `DataTable.Shuffled` 回傳一份名為 `<名稱>_Shuffled` 的洗牌副本，原物件不變。這個版本的 `Shuffle` 仍回傳副本，也沒有棄用，但 0.4 的 `Shuffle` 會就地洗牌，要副本請用 `Shuffled`。
+- `ReadSlice2D` 現在是把二維切片轉成 DataTable 的函式，`Slice2DToDataTable` 標為 **Deprecated**，0.4 移除。`ReadJSONFile`、`DataTable.ToJSONBytes` 與 `DataTable.ToJSONString` 取代 `ReadJSON_File`、`ToJSON_Bytes` 與 `ToJSON_String`；舊名稱標為 **Deprecated**，行為不變，0.4 移除。
+- 修正 `Counter` 對每個 `NaN` 各建立一個取不回來的項目的問題。`NaN` 在 Go 中可以比較，但永遠不等於自己，所以每次 `counter[NaN]++` 都會產生一個沒有人查得到的新 key：一欄有三個 `NaN` 時，結果是三筆各為 1，而 `Count` 正確回報 3。現在同一欄的所有 `NaN` 合成一個項目，計數正確，用 `counter[insyra.ToMapKey(math.NaN())]` 讀取。含有 `NaN` 的陣列或結構同樣不等於自己，也比照處理。`counter[math.NaN()]` 仍然回傳 0，這點一直如此、也必然如此，因為 Go 的 map 無法比對 `NaN` key。
+- 呼叫已經用回傳值告訴你成功時，insyra 不再另外寫一行日誌。`csvxl` 的轉換函式（`CSVToExcel`、`AppendCSVToExcel`、`ExcelToCSV`、`ExcelDirToCSV` 與它們已棄用的舊拼法），以及 `plot.SaveHTML`、`plot.SavePNG`、`gplot.SaveChart`、`py.PipInstall`、`PipUninstall`、`PipList` 的 Info 訊息都拿掉了。留下來的 Info 訊息都是回傳值沒說的事：insyra 猜出來的編碼、`ToSQL` 幫既有資料表加的欄位、`nn.Sequential.Fit` 與準備 Python 環境的進度，以及加速與 thread safety 開關的切換。預設等級維持 `LogLevelInfo`。只想看警告和錯誤，可以呼叫 `SetLogLevel(insyra.LogLevelWarning)`。
+- CCL 中單獨作為整個運算式的欄位範圍或 `@`，現在是目前這一列的值。`AddColUsingCCL("r", "A:B")` 在每個儲存格放入該列 A、B 的值（`[]any`），過去每格放的是呼叫端無法使用的內部範圍值；`LAG(@, 1)`、`LAG(A:B, 1)`、`LEAD(@, 1)` 與 `LEAD(A:B, 1)` 會給每一列前一列或後一列的內容，過去 `LAG(@, 1)` 會把整張攤平的表位移成一個 slice，重複放進每一列。其他序列函數遇到整列時會回報錯誤，因為它們要對每個元素做運算；單獨的列範圍（例如 `1:2`）也是錯誤，訊息會提示改寫成 `A.(1:2)`。`SUM(A:C)`、`SUM(A.(0:1))` 與其他讀取範圍的地方不變。
+- `CsvToExcel`、`CSVToExcel`、`AppendCsvToExcel` 與 `AppendCSVToExcel` 會照呼叫端寫的路徑讀取輸入檔。名為 `export.txt`、`DATA.CSV` 或完全沒有副檔名的 CSV 會當成它本身讀入；過去所有不以小寫 `.csv` 結尾的名稱都會被補上 `.csv`，這些檔案因此打不開。路徑指向的檔案不存在時仍會嘗試補上 `.csv`，所以以前讀得到的檔案現在照樣讀得到。`x` 與 `x.csv` 同時存在時，讀的是 `x`。
 
 ### CLI
 
@@ -43,6 +55,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `cli/env` 的每個環境操作只留一個名字，也就是 `Manager` 上的方法；`SetBasePath`、`LoadState`、`ReadHistory` 等套件層級函式改為呼叫 `Default()` 的 Deprecated 包裝，照常可用。`env clear --keep-history`、`env import --force`、`accel --mode` 等一次性旗標改成和指令一起宣告，行為不變。
 - 會存下多個變數的指令（例如 `pca`、`kmeans`）現在會在輸出中列出存下的每個變數名稱，存下的值不變。
 - `ttest single` 與 `ztest single` 在一次性模式接受負數的 `mu`；原本 `insyra ttest single x -1` 會把 `-1` 當成旗標而失敗。`wilcoxon single` 本來就可以。
+- 新增 `quantile <var> <p>` 指令，印出 DataList 的分位數，`p` 範圍為 0 到 1；`percentile` 則是 0 到 100。`shuffle ... as` 指令改呼叫 `Shuffled`，所以在每個版本線上都不會改動來源變數的順序。
+- 環境的預設檔案寫入失敗時，`env create`（以及任何會建立 `default` 環境的指令）會移除建到一半的資料夾，不再留下殘缺的環境；預設檔案的路徑上若是一個資料夾，會回報錯誤，不再略過。
 
 ### `ml` 與 `nn`
 
@@ -64,6 +78,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `DiagOf`、`DiagMatrix`、`DiagMatrixSize`、`IdentityMatrix` 以單一型別建立與讀取對角線，大小小於 1 或矩陣為 nil 時回傳錯誤而不是 panic。`Diag(x any, dims ...int)` 改為 Deprecated，行為不變（包括大小小於 1 時 panic），在 0.4 移除。
 - `TwoWayANOVAFromTable(dt, valueCol, factorACol, factorBCol)`、`RepeatedMeasuresANOVAFromTable(dt, valueCol, conditionCol, subjectCol)` 與 `FriedmanTestFromTable(dt, valueCol, conditionCol, subjectCol)` 讀取每列一筆觀測值的表格，也就是 R 的 `aov` 與 `friedman.test` 讀的形狀，不必再手動拆成各格或每位受試者一個清單。欄位指定為既有欄的 Excel 欄字母，找不到時再比完全相同的欄名。因子層級依 `ToMapKey` 比較，所以 `int(1)` 與 `int64(1)` 是不同層級。`nil` 或 `NaN` 層級、不是有限數字的值、沒有觀測值的組合、各格內沒有重複觀測的雙因子表，以及缺少某個條件或同一條件量了兩次的受試者，都會被拒絕。結果與用同樣資料呼叫 `TwoWayANOVA`、`RepeatedMeasuresANOVA`、`FriedmanTest` 相同。
 - `ChiSquareIndependenceTest` 在同一個 `AtomicDoAll` 裡一次讀取兩個清單，和兩樣本檢定的做法相同。
+- 檢定結果現在可以一起處理：共用的結果型別匯出為 `TestResult`，所有檢定結果都符合新的 `HypothesisTestResult` 介面（`Base() *TestResult`），同一個函式或同一個 slice 可以接 t 檢定、Mann-Whitney U 與卡方檢定的結果。`stats` 的每個結果型別都有版面一致的 `String()` 與 `Show()`，`fmt.Println(res)` 會印出可讀的結果，不再是 Go 的原始結構；`fmt.Fprintln(w, res)` 可寫到任何 writer。`ChiSquareTestResult.Show()` 與 `FactorAnalysisResult.Show()` 改印這個版面。
 
 ### `csvxl`
 
@@ -79,6 +94,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ApplyCCL` 使用 `@` 時每一列拿到自己的值；原本同一批 1,000 列都拿到該批最後一列的值。
 - Arrow 依賴從 `github.com/apache/arrow/go/v17` 換成 `github.com/apache/arrow-go/v18` v18.8.0。讀出的表格相同，duration 欄仍讀成 `int64` 計數。
 - `ApplyCCL` 改用同目錄裡自己專用名稱的暫存檔，並保留原檔的權限。原本固定寫到 `<path>.tmp`，會覆寫再刪掉使用者自己放在那個名稱的檔案。
+- `ApplyCCL` 改寫檔案時，會沿用每一欄原本的壓縮格式，row group 也維持原檔最大的那一組的大小；腳本新增的欄位則採用第一欄的壓縮格式。過去一律寫成未壓縮、每 1,000 列一組：一個 20 萬列、用 Zstd 壓縮的檔案加一欄後，從 1.7 MB 變成 9.3 MB，分成 200 組。也可以像 `WriteContext` 一樣傳入 `WriteOptions` 自行指定這兩項。路徑是符號連結時會寫到連結指向的檔案，並保留檔案原本的權限，與其他寫檔函式一致。
+- `FilterWithCCL` 與 `ApplyCCL` 因錯誤提早返回時，會停止讀檔。過去負責讀檔的 goroutine 會卡在送下一批資料，檔案也一直開著，直到 context 結束為止；用 `context.Background()` 的話，就是一直到程式結束。
+- `FilterWithCCL` 與 `ApplyCCL` 的結果，現在和先用 `Read` 載入檔案再執行同一個運算式相同。過去它們一次讀 1,000 列、每一批各自計算，所以 `A > AVG(A)` 比的是該批的平均、`SUM(A) > 1000000` 加總的是一批、`# == 0` 會符合每一批的第一列、`A == A.0` 讀到的是該批的第一列，`NEW('c') = CUMSUM(A)` 則把該批整串累計值以文字寫進每個儲存格。聚合函式（`SUM`、`AVG`、`COUNT`、`MIN`、`MAX`、`VAR`、`VARP`、`STDEV`、`STDEVP`）、列索引 `#`、固定列（例如 `A.1500`）現在都對整個檔案計算；內建序列函式（`LAG`、`LEAD`、`DIFF`、`PCT_CHANGE`、`CUMSUM`、`CUMPROD`、`CUMMAX`、`CUMMIN`、`ROLLING_*`）可以跨批次，只保留跨過批次邊界所需的列；其他會讀到目前列以外的部分（`MEDIAN`、你註冊的函式、`A.(# - 1)`、放在其他運算式裡的序列函式），則讀入它所用到的整欄再計算。除非運算式需要整欄，記憶體仍只放一批。`ApplyCCL` 的後一條陳述式現在看得到前面陳述式新增或取代的欄位，`NEW('r') = @` 也會給每一列自己的值。多出來的讀檔次數寫在 `Docs/parquet.md`。
+- `ApplyCCL` 現在接受所有欄位型別。沒有被任何陳述式寫入的欄位，會直接用檔案原本的資料寫回、完全不變：各種寬度的整數與浮點數、日期、decimal、list、struct 等；過去只要有 `int64`、`float64`、文字、布林、時間戳以外的欄位，整個呼叫就失敗。被陳述式寫入的欄位在所有新值都放得進去時，會保留原本的型別，現在也包含 `int8` 到 `int32`、無號整數、`float32`、`Date32` 與 `Date64`；放不進去時則和 `Write` 一樣決定型別。型別改由所有值決定，不再只看前 1,000 列，所以一開始是空值的欄位不會再被寫成文字，把小數指定給整數欄時會改成浮點數，不再被截掉。
 
 ### `pd`
 
@@ -104,7 +123,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 有一欄叫 `name` 的 pandas DataFrame，回傳後不會有表名。pandas 會把欄位當成屬性回傳，過去表名會變成那一欄印出來的內容。直接設在 DataFrame 本身的名稱一樣會成為表名。
 - `RunCodef`、`RunFilef` 與它們的 `Context` 版本的參數，不會再變成 Python 程式碼。過去佔位字元是一個參數接一個參數、對整份程式碼輪流替換，後面的參數替換時，也會改到前面參數插進去的文字：傳入 `$v2` 和 `+__import__('os').system('id')+` 兩段文字，就會執行那個指令。`$v1` 也會吃掉 `$v10` 的開頭。JSON 寫不出來的值（例如 `[]any{文字, math.NaN()}`）會照 Go 的格式原樣寫進程式碼，裡面的文字就成了程式碼。現在佔位字元只在原本的模板裡找一次，依完整編號替換，也只轉換模板用到的參數。寫不成 Python 值的參數，會在 Python 啟動前回傳錯誤，並註明是哪個佔位字元。含有 NaN 或無限大的 `[]float64` 也一樣，過去會寫成 Python 不認得的 `NaN` 或 `+Inf`。
 - 在 ARM64 的 Windows 上用 x86-64 的 Python 也能執行了。polars 的 CPU 檢查把機器讀成 ARM64，在每段程式開頭的 `import polars` 拋出 `unknown feature flag`，所以每次執行都失敗。產生的程式現在會在 ARM64 Windows 上的 x86-64 Python 設定 `POLARS_SKIP_CPU_CHECK=1`，已經設過這個變數時不動它。
-
+- `py.Run[T](code)` 直接回傳解碼成 `T` 的 Python 結果，不必先宣告變數。新增 `PipInstallContext` 與 `PipUninstallContext`，context 結束時會停止安裝。所有接受 context 的函式傳入 nil 時回傳錯誤（過去會當機），傳入已結束的 context 時回傳 `ctx.Err()`。`RunCodeWithTimeout` 已棄用，請改用 `RunCodeContext` 搭配 `context.WithTimeout`，兩者行為相同。0.4 移除。
 
 ## v0.3.4
 

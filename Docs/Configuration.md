@@ -9,6 +9,7 @@ Insyra provides a global `Config` object for managing library behavior. You can 
 - Panic protection: `false`
 - Thread safety: `true`
 - Acceleration: `true`
+- Logger: none, so log lines go to the standard `log` package
 
 ## Log Level Management
 
@@ -25,6 +26,46 @@ insyra.Config.SetLogLevel(insyra.LogLevelFatal)    // Only fatal errors
 level := insyra.Config.GetLogLevel()
 ```
 
+## Sending Logs to slog
+
+By default insyra writes its log lines to the standard `log` package, as text such as `[insyra - Warning] DataList.FindFirst: Value not found, returning nil.`. To send them to your own logging instead, give insyra a `*slog.Logger`:
+
+```go
+import "log/slog"
+
+insyra.Config.SetLogger(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+
+insyra.NewDataTable(insyra.NewDataList(1)).GetCol("Z")
+// {"time":"…","level":"WARN","msg":"column Z does not exist, the table has 1 column(s)","package":"DataTable","func":"GetCol"}
+
+insyra.Config.SetLogger(nil) // back to the standard log package
+current := insyra.Config.GetLogger() // nil when no logger is set
+```
+
+Each line becomes one record:
+
+| insyra level | slog level |
+| --- | --- |
+| `LogLevelDebug` | `slog.LevelDebug` |
+| `LogLevelInfo` | `slog.LevelInfo` |
+| `LogLevelWarning` | `slog.LevelWarn` |
+| `LogLevelFatal` | `slog.LevelError + 4` (shown as `ERROR+4`) |
+
+- **Message:** the formatted message, without the `[insyra - …]` prefix, colour codes or a trailing newline.
+- **Attributes:** `package` and `func` name where the line came from, and are left out when the line names neither.
+- **Source:** the record's source is the insyra function that logged, so a handler created with `AddSource: true` shows that function rather than insyra's logger.
+- **Filtering:** `SetLogLevel` still decides which lines insyra emits. Your handler then keeps the ones its own level allows. At insyra's default `LogLevelInfo`, a handler set to `slog.LevelDebug` still receives no Debug lines until you also call `SetLogLevel(insyra.LogLevelDebug)`.
+- **Fatal:** `LogFatal` still ends the program after the record is handled unless `SetDontPanic(true)` is on.
+- **Other packages:** zap, zerolog and most other logging packages provide a slog handler, so the same call connects insyra to them.
+- **A plain `io.Writer`:** `slog.New(slog.NewTextHandler(w, nil))`.
+- **Errors:** a recorded error is logged at Warning level whether or not a logger is set. The error buffer and `SetDefaultErrHandlingFunc` below receive the same lines as before.
+- **CCL:** the warnings the CCL engine raises reach the same logger.
+- **Reset:** `SetDefaultConfig` clears the logger.
+
+## What insyra Logs at Info
+
+A line at Info tells you something the call's return value does not: an encoding insyra guessed for a file, a column `ToSQL` added to an existing database table, the progress of a long operation (each epoch of `nn.Sequential.Fit`, preparing the Python environment), or a switch such as acceleration changing state. A call that succeeded and says so through its return value, such as `plot.SaveHTML` returning a nil error, writes nothing. To see only warnings and failures, call `SetLogLevel(insyra.LogLevelWarning)`.
+
 ## Colored Output
 
 Control whether terminal output is colored:
@@ -34,8 +75,10 @@ Control whether terminal output is colored:
 insyra.Config.SetUseColoredOutput(true)
 
 // Check colored output status
-usesColor := insyra.Config.GetDoesUseColoredOutput()
+usesColor := insyra.Config.GetUseColoredOutput()
 ```
+
+`GetDoesUseColoredOutput` is the deprecated name of `GetUseColoredOutput`. It returns the same value and is removed in 0.4.
 
 ## Error Handling (global)
 
@@ -94,9 +137,16 @@ Fine-tune performance for your use case:
 // Data consistency is NOT guaranteed when this is disabled.
 insyra.Config.Dangerously_TurnOffThreadSafety()
 
+// Turn the locking back on, leaving every other setting as it is
+insyra.Config.TurnOnThreadSafety()
+
 // If you need to reset all configs back to library defaults, call:
 insyra.SetDefaultConfig()
 ```
+
+What turning it off removes is the lock each `DataList` and `DataTable` takes in `AtomicDo` and `AtomicDoAll`. Every method of those types, and of any type that embeds one (`isr`'s `DL` and `DT` included), is then unsafe to call from more than one goroutine at a time. `Config`, the global error buffer and logging stay safe, because they do not use those locks. Change the switch in either direction only while no other goroutine is using a `DataList` or a `DataTable`. `TurnOnThreadSafety` turns the locking back on without touching the log level, coloured output, the error hook or acceleration, which `SetDefaultConfig` would reset too.
+
+The underscore in `Dangerously_TurnOffThreadSafety` is deliberate. Go names do not use one, so the call looks wrong wherever it is written, and that is the warning. Naming linters report only the declaration inside insyra, never your call.
 
 Control device acceleration independently from thread safety:
 

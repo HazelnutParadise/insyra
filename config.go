@@ -2,7 +2,10 @@
 
 package insyra
 
-import "sync/atomic"
+import (
+	"log/slog"
+	"sync/atomic"
+)
 
 // errHandlingFunc is the signature of the hook installed by
 // SetDefaultErrHandlingFunc.
@@ -22,6 +25,9 @@ type configStruct struct {
 	// acceleration is read by device dispatch hot paths and written by
 	// SetAcceleration / SetDefaultConfig; use an atomic to avoid a data race.
 	acceleration atomic.Bool
+	// logger, when set, receives every line insyra logs instead of the
+	// standard log package; see SetLogger.
+	logger atomic.Pointer[slog.Logger]
 }
 
 var Config *configStruct = &configStruct{}
@@ -51,8 +57,17 @@ func (c *configStruct) SetUseColoredOutput(colored bool) {
 	c.coloredOutput.Store(colored)
 }
 
-func (c *configStruct) GetDoesUseColoredOutput() bool {
+// GetUseColoredOutput reports whether output is coloured; see
+// SetUseColoredOutput. It is true by default.
+func (c *configStruct) GetUseColoredOutput() bool {
 	return c.coloredOutput.Load()
+}
+
+// GetDoesUseColoredOutput reports whether output is coloured.
+//
+// Deprecated: use GetUseColoredOutput, which is the same method. Removed in 0.4.
+func (c *configStruct) GetDoesUseColoredOutput() bool {
+	return c.GetUseColoredOutput()
 }
 
 func (c *configStruct) SetDontPanic(dontPanic bool) {
@@ -105,23 +120,71 @@ func (c *configStruct) GetAccelerationEnabled() bool {
 
 // # NOT RECOMMENDED!
 //
-// Dangerously_TurnOffThreadSafety turns off thread safety for all data structures.
-// You can enjoy extreme performance boost, but data consistency is NOT guaranteed.
+// Dangerously_TurnOffThreadSafety turns off the per-instance locking of
+// DataList and DataTable. DataList.AtomicDo, DataTable.AtomicDo and AtomicDoAll
+// then run their callback without taking any lock, so every DataList and
+// DataTable method, and every type that embeds one (isr's included), is no
+// longer safe to use from more than one goroutine at a time. You can enjoy an
+// extreme performance boost, but data consistency is NOT guaranteed.
+// Config, the global error buffer and logging stay safe, because they do not
+// use those locks.
+//
+// Change the switch only while no other goroutine is using a DataList or a
+// DataTable. TurnOnThreadSafety turns the locking back on and leaves every
+// other setting as it is.
+//
+// The underscore is deliberate. Go names do not use one, so the call looks
+// wrong wherever it is written, and that is the warning. Naming linters report
+// only this declaration, never the code that calls it.
 func (c *configStruct) Dangerously_TurnOffThreadSafety() {
 	c.threadSafe.Store(false)
-	LogWarning("config", "Dangerously_TurnOffThreadSafety", "Thread safety is turned off. Data consistency is NOT guaranteed!\nIt may be a mistake. Remove `Dangerously_TurnOffThreadSafety()` in your code to restore thread safety.")
+	LogWarning("config", "Dangerously_TurnOffThreadSafety", "Thread safety is turned off. Data consistency is NOT guaranteed!\nIt may be a mistake. Remove `Dangerously_TurnOffThreadSafety()` in your code, or call `Config.TurnOnThreadSafety()`, to restore thread safety.")
+}
+
+// TurnOnThreadSafety turns the per-instance locking of DataList and DataTable
+// back on after Dangerously_TurnOffThreadSafety, and changes no other setting.
+// Thread safety is on by default, so a program that never turned it off never
+// needs this. As with turning it off, call it only while no other goroutine is
+// using a DataList or a DataTable. It logs at Info level when it turns locking
+// back on, and does nothing when locking is already on.
+func (c *configStruct) TurnOnThreadSafety() {
+	if previous := c.threadSafe.Swap(true); !previous {
+		LogInfo("config", "TurnOnThreadSafety", "thread safety turned back on")
+	}
+}
+
+// SetLogger sends every line insyra logs to l instead of the standard log
+// package. Each line becomes one record at its own level (Debug, Info, Warn,
+// and Fatal as slog.LevelError+4), with the formatted message and, when the
+// call names them, a "package" and a "func" attribute. The record's source is
+// the function that logged. The message carries no "[insyra - …]" prefix and
+// no colour codes.
+//
+// SetLogLevel still decides which lines insyra emits; the handler then keeps
+// the ones its own level allows. Pass nil to go back to the standard log
+// package, which is the default. A plain io.Writer works through
+// slog.New(slog.NewTextHandler(w, nil)).
+func (c *configStruct) SetLogger(l *slog.Logger) {
+	c.logger.Store(l)
+}
+
+// GetLogger returns the logger set with SetLogger, or nil when insyra writes
+// to the standard log package.
+func (c *configStruct) GetLogger() *slog.Logger {
+	return c.logger.Load()
 }
 
 // ======================== Configs ========================
 
 // SetDefaultConfig resets every Config field to its default value: log level
-// Info, coloured output on, dontPanic off, no error hook, thread safety on,
-// acceleration on.
+// Info, coloured output on, dontPanic off, no error hook, no logger (the
+// standard log package), thread safety on, acceleration on.
 func SetDefaultConfig() {
 	Config.logLevel.Store(int32(LogLevelInfo))
 	Config.coloredOutput.Store(true)
 	Config.dontPanic.Store(false)
 	Config.defaultErrHandlingFunc.Store(nil)
+	Config.logger.Store(nil)
 	Config.threadSafe.Store(true)
 	Config.acceleration.Store(true)
 }

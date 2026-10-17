@@ -3,7 +3,6 @@ package insyra
 import (
 	"math"
 	"math/rand/v2"
-	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/core"
 )
@@ -104,7 +103,7 @@ func (dt *DataTable) snapshotForSampling() dataTableSamplingSnapshot {
 }
 
 func dataTableFromSampledRows(snap dataTableSamplingSnapshot, indices []int, suffix string) *DataTable {
-	now := time.Now().Unix()
+	now := clock().UnixNano()
 	out := &DataTable{
 		columns:           make([]*DataList, len(snap.colData)),
 		rowNames:          core.NewBiIndex(0),
@@ -173,11 +172,25 @@ func (dt *DataTable) SampleFrac(frac float64, withReplacement bool, options ...S
 	return dt.Sample(fracCount(rows, frac), withReplacement, options...)
 }
 
-// Shuffle returns a new DataTable with rows randomly reordered.
+// Shuffled returns a copy of the DataTable with its rows in random order,
+// named after the table with "_Shuffled" appended, and leaves the table as it
+// is. On the 0.4 line Shuffle reorders the table itself, so new code that
+// wants a copy should call Shuffled.
+func (dt *DataTable) Shuffled(options ...SamplingOptions) *DataTable {
+	return dt.shuffledCopy("Shuffled", options)
+}
+
+// Shuffle returns a new DataTable with rows randomly reordered and leaves the
+// table as it is, exactly as Shuffled does. On the 0.4 line it shuffles the
+// table in place and returns it, so call Shuffled where a copy is meant.
 func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable {
+	return dt.shuffledCopy("Shuffle", options)
+}
+
+func (dt *DataTable) shuffledCopy(funcName string, options []SamplingOptions) *DataTable {
 	snap := dt.snapshotForSampling()
 	if snap.rows == 0 {
-		dt.warn("Shuffle", "DataTable is empty")
+		dt.warn(funcName, "DataTable is empty")
 		return NewDataTable()
 	}
 	rng := newSamplingRandom(options)
