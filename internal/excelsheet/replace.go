@@ -2,7 +2,12 @@
 // share, so a sheet is replaced one way everywhere.
 package excelsheet
 
-import "github.com/xuri/excelize/v2"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/xuri/excelize/v2"
+)
 
 // Replace empties the existing sheet at idx by deleting and re-creating it,
 // then moves it back to where it was, hides it again if it was hidden and
@@ -28,9 +33,12 @@ func Replace(f *excelize.File, sheet string, idx int) error {
 	}
 	placeholder := ""
 	if f.SheetCount == 1 {
-		placeholder = "__insyra_placeholder__"
+		placeholder = availableSheetName(sheets, "__insyra_placeholder__")
 		if _, err := f.NewSheet(placeholder); err != nil {
 			return err
+		}
+		if f.SheetCount != 2 {
+			return fmt.Errorf("creating placeholder sheet did not increase sheet count")
 		}
 	}
 	if err := f.DeleteSheet(sheet); err != nil {
@@ -71,4 +79,20 @@ func Replace(f *excelize.File, sheet string, idx int) error {
 	}
 	f.SetActiveSheet(activeIdx)
 	return nil
+}
+
+func availableSheetName(sheets []string, base string) string {
+	used := make(map[string]bool, len(sheets))
+	for _, name := range sheets {
+		used[strings.ToLower(name)] = true
+	}
+	for n := 0; ; n++ {
+		candidate := base
+		if n > 0 {
+			candidate = fmt.Sprintf("%s_%d", base, n)
+		}
+		if !used[strings.ToLower(candidate)] {
+			return candidate
+		}
+	}
 }

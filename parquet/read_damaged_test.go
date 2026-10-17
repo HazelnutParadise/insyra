@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -164,6 +165,15 @@ type panickingAt struct{ reason string }
 
 func (p panickingAt) ReadAt([]byte, int64) (int, error) { panic(p.reason) }
 
+type panickingPageReaderAt struct{ data []byte }
+
+func (p panickingPageReaderAt) ReadAt(buf []byte, off int64) (int, error) {
+	if off > 4 && off < int64(len(p.data)/2) {
+		panic("page read fault")
+	}
+	return bytes.NewReader(p.data).ReadAt(buf, off)
+}
+
 // TestAReaderPanicBecomesAnError covers the readers that cannot let a panic
 // reach the caller on their own: StreamFrom reads in a goroutine, where a panic
 // would take the process down instead of the caller. The overlapping file
@@ -190,5 +200,32 @@ func TestAReaderPanicBecomesAnError(t *testing.T) {
 	})
 	if streamErr == nil || !strings.Contains(streamErr.Error(), "not a readable Parquet file") {
 		t.Errorf("StreamFrom returned %v, want an error saying the file is not readable", streamErr)
+	}
+}
+
+func TestReaderAtPagePanicDoesNotCrashProcess(t *testing.T) {
+	const childEnv = "INSYRA_PARQUET_PANIC_READER_CHILD"
+	if os.Getenv(childEnv) == "1" {
+		var data bytes.Buffer
+		if err := WriteTo(mixedTable(10), &data); err != nil {
+			t.Fatal(err)
+		}
+		r := panickingPageReaderAt{data: data.Bytes()}
+		if _, err := ReadFrom(context.Background(), r, int64(len(r.data)), ReadOptions{}); err == nil {
+			t.Fatal("ReadFrom returned no error")
+		}
+		for _, err := range StreamFrom(context.Background(), r, int64(len(r.data)), ReadOptions{}, 4) {
+			if err != nil {
+				return
+			}
+		}
+		t.Fatal("StreamFrom returned no error")
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestReaderAtPagePanicDoesNotCrashProcess$")
+	cmd.Env = append(os.Environ(), childEnv+"=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("reader panic terminated subprocess: %v\n%s", err, output)
 	}
 }

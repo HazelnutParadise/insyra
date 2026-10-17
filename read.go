@@ -679,6 +679,16 @@ func ReadJSON(data any) (*DataTable, error) {
 			return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}
 		rows = r
+	case json.Marshaler:
+		b, err := v.MarshalJSON()
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal JSON: %w", err)
+		}
+		r, err := unmarshalJSONRows(b)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+		}
+		rows = r
 	case io.Reader:
 		// Any source — an HTTP response body, an open file, a zip entry — is
 		// read in full and decoded the same way as bytes.
