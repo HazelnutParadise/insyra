@@ -218,7 +218,7 @@ func writeRequiredColumnFixture(t *testing.T) string {
 	}
 	arr := builder.NewArray()
 	defer arr.Release()
-	rec := array.NewRecord(schema, []arrow.Array{arr}, 10)
+	rec := array.NewRecordBatch(schema, []arrow.Array{arr}, 10)
 	defer rec.Release()
 
 	path := filepath.Join(t.TempDir(), "required.parquet")
@@ -490,7 +490,7 @@ func writeDateColumnFixture(t *testing.T) string {
 	}
 	arr := builder.NewArray()
 	defer arr.Release()
-	rec := array.NewRecord(schema, []arrow.Array{arr}, 5)
+	rec := array.NewRecordBatch(schema, []arrow.Array{arr}, 5)
 	defer rec.Release()
 
 	path := filepath.Join(t.TempDir(), "dates.parquet")
@@ -789,7 +789,7 @@ func TestApplyCCLKeepsATimeZone(t *testing.T) {
 		tArr, nArr := tb.NewArray(), nb.NewArray()
 		defer tArr.Release()
 		defer nArr.Release()
-		rec := array.NewRecord(schema, []arrow.Array{tArr, nArr}, 4)
+		rec := array.NewRecordBatch(schema, []arrow.Array{tArr, nArr}, 4)
 		defer rec.Release()
 
 		path := filepath.Join(t.TempDir(), "zoned.parquet")
@@ -872,7 +872,7 @@ func writeNoRowsFixture(t *testing.T) string {
 	defer builder.Release()
 	arr := builder.NewArray()
 	defer arr.Release()
-	rec := array.NewRecord(schema, []arrow.Array{arr}, 0)
+	rec := array.NewRecordBatch(schema, []arrow.Array{arr}, 0)
 	defer rec.Release()
 
 	path := filepath.Join(t.TempDir(), "no-rows.parquet")
