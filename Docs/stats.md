@@ -38,8 +38,8 @@ Take the values you need and check `err` last.
 
 A few functions return **no** error, because there is nothing that can fail:
 `NormCDF(x float64) float64`, `DefaultFactorAnalysisOptions()`, and
-`RegisterKNNDeviceSearcher(fn)` each return a bare value, and the two `Show()`
-methods (`ChiSquareTestResult.Show`, `FactorAnalysisResult.Show`) only print.
+`RegisterKNNDeviceSearcher(fn)` each return a bare value, and every result's
+`String()` and `Show()` only print.
 Every other exported function in the package ends in `error`.
 
 `stats` never calls `LogFatal`, so nothing here ends your program the way
@@ -144,20 +144,55 @@ For clustering APIs, Insyra uses an R-oriented result shape and cross-language v
 
 ### Common Result Structure
 
+Every hypothesis test's result embeds `TestResult`, so the fields below read directly on any result (`r.PValue`).
+
 ```go
-type testResultBase struct {
-    Statistic   float64           // Test statistic value
-    PValue      float64           // P-value
-    DF          *float64          // Degrees of freedom (nil if not applicable)
-    CI          *[2]float64       // Confidence interval (nil if not calculated)
-    EffectSizes []EffectSizeEntry // Effect size measures
+type TestResult struct {
+    Statistic   float64           // the test statistic (t, z, F, χ², U, W+, H, Q, …)
+    PValue      float64           // p-value under the test's alternative hypothesis
+    DF          *float64          // degrees of freedom; nil if the test has none
+    CI          *[2]float64       // confidence interval; nil if the test reports none
+    EffectSizes []EffectSizeEntry // effect sizes
 }
 
 type EffectSizeEntry struct {
     Type  string  // "cohen_d", "hedges_g", etc.
     Value float64 // Effect size value
 }
+
+type HypothesisTestResult interface {
+    Base() *TestResult
+}
 ```
+
+`TTestResult`, `ZTestResult`, `FTestResult`, `ChiSquareTestResult`, `CorrelationResult`, `WilcoxonTestResult`, `MannWhitneyUResult`, `KruskalWallisResult` and `FriedmanTestResult` all satisfy `HypothesisTestResult`, so one function or one slice can take any of them. `Base()` returns the embedded `TestResult` itself, not a copy.
+
+```go
+tt, err := stats.TwoSampleTTest(control, variant, true)
+if err != nil {
+    log.Fatal(err)
+}
+mw, err := stats.MannWhitneyU(control, variant, stats.TwoSided)
+if err != nil {
+    log.Fatal(err)
+}
+for _, r := range []stats.HypothesisTestResult{tt, mw} {
+    fmt.Printf("statistic=%.4f p=%.4f\n", r.Base().Statistic, r.Base().PValue)
+}
+```
+
+### Printing a result
+
+Every result type in `stats` has `String()` and `Show()`, so `fmt.Println(res)`, `log.Print(res)` and `res.Show()` all print the whole result, and `fmt.Fprintln(w, res)` writes it to any `io.Writer`, such as a file or an HTTP response. `Show()` prints exactly `String()` and a newline to standard output, except `FactorAnalysisResult.Show(startEndRange...)`, which given a row range shows each table through that range instead. Every result is laid out by the same rules:
+
+- The first line names the analysis, such as `t-test` or `Two-way ANOVA`.
+- Then comes one line per field, `  Name: value`, with the field's Go name, in the order the type declares them. The fields of the embedded `TestResult` come first.
+- A field that is `nil` does not apply to this result and is left out.
+- Numbers are written as a plain decimal from 0.000001 up to 1e21, so a sum of squares of 1,500,000 prints as `1500000`, and in exponent form outside that range.
+- A list prints on its line in brackets. Past 60 values it shows the first 20 and the last 5 and says how many there are, the rule the table views follow.
+- A table field, such as `ContingencyTable` in a chi-square result or `Loadings` in a factor analysis, prints as a grid under its name, with row and column names, cut the same way past 60 rows.
+
+The text carries no colour codes and does not depend on the terminal, so it is the same in a log file and in a test. `ChiSquareTestResult.Show()` and `FactorAnalysisResult.Show()` used to print their own layouts; they now print this one.
 
 ### Alternative Hypothesis
 
@@ -276,7 +311,7 @@ const (
 
 ```go
 type CorrelationResult struct {
-    testResultBase // Statistic = correlation coefficient, PValue = significance
+    TestResult // Statistic = correlation coefficient, PValue = significance
 }
 ```
 
@@ -399,7 +434,7 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TT
 
 ```go
 type TTestResult struct {
-    testResultBase
+    TestResult
     Mean     *float64 // Mean of first group
     Mean2    *float64 // Mean of second group (nil for single sample)
     MeanDiff *float64 // Mean difference (paired t-test only)
@@ -461,7 +496,7 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 
 ```go
 type ZTestResult struct {
-    testResultBase
+    TestResult
     Mean  float64  // Sample mean
     Mean2 *float64 // Second sample mean (nil for single sample)
     N     int      // Sample size
@@ -521,7 +556,7 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTes
 
 ```go
 type ChiSquareTestResult struct {
-    testResultBase           // Statistic = chi-square statistic
+    TestResult           // Statistic = chi-square statistic
     ContingencyTable *insyra.DataTable // Contingency table with observed and expected values
 }
 ```
@@ -553,7 +588,7 @@ for i := 0; i < rows; i++ {
 func (r *ChiSquareTestResult) Show()
 ```
 
-**Description:** Displays the chi-square test results including the test statistic, p-value, degrees of freedom, and the contingency table.
+**Description:** Prints the result, the same text `String()` returns, followed by a newline. See [Printing a result](#printing-a-result).
 
 **Parameters:**
 
@@ -939,7 +974,7 @@ func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) (*
 
 ```go
 type FTestResult struct {
-    testResultBase
+    TestResult
     DF2 float64 // Second degrees of freedom
 }
 ```
@@ -1153,14 +1188,14 @@ subject and the condition, both counted from one.
 
 ```go
 type WilcoxonTestResult struct {
-    testResultBase             // Statistic = W+ ; DF nil ; CI = Hodges-Lehmann ; EffectSizes: rank_biserial
+    TestResult             // Statistic = W+ ; DF nil ; CI = Hodges-Lehmann ; EffectSizes: rank_biserial
     Z          float64         // asymptotic z (NaN for exact)
     Method     string          // "exact" | "asymptotic"
     NEffective int             // nonzero |d_i| used (zeros dropped)
 }
 
 type MannWhitneyUResult struct {
-    testResultBase             // Statistic = min(U1,U2) ; DF nil ; CI = HL shift ; EffectSizes: rank_biserial, cles_a12
+    TestResult             // Statistic = min(U1,U2) ; DF nil ; CI = HL shift ; EffectSizes: rank_biserial, cles_a12
     U1     float64
     U2     float64
     Z      float64             // asymptotic z (NaN for exact)
@@ -1168,13 +1203,13 @@ type MannWhitneyUResult struct {
 }
 
 type KruskalWallisResult struct {
-    testResultBase             // Statistic = H (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: epsilon_squared
+    TestResult             // Statistic = H (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: epsilon_squared
     NTotal       int
     GroupRankSum []float64      // rank sum per group, input order
 }
 
 type FriedmanTestResult struct {
-    testResultBase             // Statistic = Q (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: kendalls_w
+    TestResult             // Statistic = Q (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: kendalls_w
     NSubjects   int
     KConditions int
 }
