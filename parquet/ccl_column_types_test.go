@@ -138,12 +138,12 @@ func readArrowTable(t *testing.T, path string) arrow.Table {
 	if err != nil {
 		t.Fatalf("reading %s as Arrow: %v", path, err)
 	}
-	// The Parquet reader owns f and closes it, so only it is closed here.
-	t.Cleanup(func() {
-		if err := r.Close(); err != nil {
-			t.Errorf("closing the Parquet reader of %s: %v", path, err)
-		}
-	})
+	// The table is in memory, so the file is closed now: Windows refuses to
+	// replace a file that is still open, which ApplyCCL does next. The Parquet
+	// reader owns f and closes it, so only it is closed here.
+	if err := r.Close(); err != nil {
+		t.Fatalf("closing the Parquet reader of %s: %v", path, err)
+	}
 	return tbl
 }
 
