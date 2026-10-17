@@ -37,10 +37,8 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/gaukas/clienthellod v0.4.2 // indirect
 	github.com/gaukas/godicttls v0.0.4 // indirect
-	github.com/glebarez/go-sqlite v1.23.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-sql-driver/mysql v1.10.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/go-webgpu/goffi v0.6.4 // indirect
 	github.com/go-webgpu/webgpu v0.5.5 // indirect
@@ -62,19 +60,13 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgx/v5 v5.11.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/jinzhu/inflection v1.0.0 // indirect
-	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.20.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
-	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
-	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/mailru/easyjson v0.9.2 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/mattn/go-sqlite3 v1.14.52 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
 	github.com/olekukonko/errors v1.3.0 // indirect
@@ -130,7 +122,6 @@ require (
 )
 
 require (
-	github.com/Masterminds/squirrel v1.5.4
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/TimLai666/go-decimal v0.1.3
 	github.com/apache/arrow-go/v18 v18.8.0
@@ -138,13 +129,14 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/daniel-sullivan/go-milp v0.2.0
 	github.com/ergochat/readline v0.1.3
-	github.com/glebarez/sqlite v1.11.0
 	github.com/go-echarts/go-echarts/v2 v2.7.2
 	github.com/go-echarts/snapshot-chromedp v0.0.5
+	github.com/go-sql-driver/mysql v1.10.1
 	github.com/goccy/go-json v0.10.6
 	github.com/gogpu/gputypes v0.8.0
 	github.com/gogpu/wgpu v0.34.5
 	github.com/google/uuid v1.6.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/mattn/go-runewidth v0.0.30
 	github.com/petermattis/goid v0.0.0-20260918085751-abfca077860b
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
@@ -156,9 +148,5 @@ require (
 	gonum.org/v1/gonum v0.17.0
 	gonum.org/v1/plot v0.17.0
 	google.golang.org/protobuf v1.36.12
-	gorm.io/driver/mysql v1.6.0
-	gorm.io/driver/postgres v1.6.3
-	gorm.io/driver/sqlite v1.6.0
-	gorm.io/gorm v1.31.2
 	modernc.org/sqlite v1.59.0
 )

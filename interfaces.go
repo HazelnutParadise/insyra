@@ -2,10 +2,9 @@ package insyra
 
 import (
 	"context"
+	"database/sql"
 	"io"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // IDataList defines the behavior expected from a DataList.
@@ -371,7 +370,7 @@ type IDataTable interface {
 	ToExcel(filePath string, opts ExcelWriteOptions) error
 	WriteExcel(w io.Writer, opts ExcelWriteOptions) error
 
-	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
+	ToSQL(db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error
 
 	Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)
 	EWMCol(any, EWMOptions) *EWMDataList
@@ -444,7 +443,7 @@ type IDataTable interface {
 
 	GetColNameByIndex(index string) string
 	ToCSVWithOptions(filePath string, opts CSVWriteOptions) error
-	ToSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ToSQLOptions) error
+	ToSQLContext(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error
 
 	// Output to any writer
 	ShowTo(w io.Writer)

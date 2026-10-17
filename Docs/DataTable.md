@@ -471,21 +471,22 @@ if err != nil {
 ### ReadSQL
 
 ```go
-func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)
-func ReadSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)
-func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) iter.Seq2[*DataTable, error]
+func ReadSQL(db *sql.DB, dialect SQLDialect, tableName string, options ...ReadSQLOptions) (*DataTable, error)
+func ReadSQLContext(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ReadSQLOptions) (*DataTable, error)
+func ReadSQLStream(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ReadSQLOptions) iter.Seq2[*DataTable, error]
 ```
 
 **Description:** Loads data from a database table or custom SQL query into a DataTable.
 
 - `ReadSQL` is the simple form. It is equivalent to `ReadSQLContext(context.Background(), ...)`.
 - `ReadSQLContext` is the context-aware variant. The query and row scanning run under `ctx`, so callers can cancel long-running reads.
-- `ReadSQLStream` reads a (potentially huge) result set in chunks. Range over it with `for dt, err := range insyra.ReadSQLStream(ctx, db, "orders")`: each chunk arrives as a `*DataTable` with a nil error, and a failure arrives once, as a nil table with the error, and ends the loop. The query runs when the loop starts and chunks are read in your own goroutine, so breaking out early closes the rows and returns the connection to the pool at once, with nothing to cancel. Use this when the result set does not fit in memory.
+- `ReadSQLStream` reads a (potentially huge) result set in chunks. Range over it with `for dt, err := range insyra.ReadSQLStream(ctx, db, insyra.SQLDialectPostgres, "orders")`: each chunk arrives as a `*DataTable` with a nil error, and a failure arrives once, as a nil table with the error, and ends the loop. The query runs when the loop starts and chunks are read in your own goroutine, so breaking out early closes the rows and returns the connection to the pool at once, with nothing to cancel. Use this when the result set does not fit in memory.
 
 **Parameters:**
 
 - `ctx`: Context that controls cancellation of the database calls (Context variants only)
-- `db`: GORM database connection
+- `db`: A `database/sql` connection, opened with any driver. With gorm, pass the connection `gormDB.DB()` returns.
+- `dialect`: The database behind `db`: `insyra.SQLDialectSQLite`, `insyra.SQLDialectMySQL` or `insyra.SQLDialectPostgres`. It has no default, and any other value is an error. A `*sql.DB` does not say which database it talks to, and the dialect decides how names are quoted, which column types are inferred and how a table is replaced.
 - `tableName`: Name of the database table to read from. Ignored when `ReadSQLOptions.Query` is set.
 - `options`: Optional configuration (`ReadSQLOptions` struct, see below)
 
@@ -518,40 +519,40 @@ func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options .
 **Examples:**
 
 ```go
-// Simple read with options.
-db, _ := gorm.Open(mysql.Open("connection_string"), &gorm.Config{})
-dt, err := insyra.ReadSQL(db, "users", insyra.ReadSQLOptions{
+// Simple read with options. Any database/sql driver works; this one is
+// github.com/go-sql-driver/mysql.
+db, _ := sql.Open("mysql", "user:pass@tcp(localhost:3306)/shop")
+dt, err := insyra.ReadSQL(db, insyra.SQLDialectMySQL, "users", insyra.ReadSQLOptions{
     Limit:   100,
     OrderBy: "id DESC",
 })
 
-// Parameterized custom query.
-dt, err := insyra.ReadSQL(db, "", insyra.ReadSQLOptions{
+// Parameterized custom query. Query and Params go to the driver as written,
+// so use the driver's own placeholders: ? on MySQL and SQLite, $1 on PostgreSQL.
+dt, err := insyra.ReadSQL(db, insyra.SQLDialectMySQL, "", insyra.ReadSQLOptions{
     Query:  "SELECT * FROM users WHERE active = ? AND age > ?",
     Params: []any{true, 18},
 })
 
+// Already using gorm: pass the connection underneath it.
+sqlDB, _ := gormDB.DB()
+dt, err := insyra.ReadSQL(sqlDB, insyra.SQLDialectPostgres, "users")
+
 // Cancelable read.
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
-dt, err := insyra.ReadSQLContext(ctx, db, "users")
+dt, err := insyra.ReadSQLContext(ctx, db, insyra.SQLDialectMySQL, "users")
 
 // Streaming a huge table in chunks of 5000 rows.
-ctx, cancel := context.WithCancel(context.Background())
-defer cancel()
-ch, err := insyra.ReadSQLStream(ctx, db, "events", insyra.ReadSQLOptions{ChunkSize: 5000})
-if err != nil {
-    log.Fatal(err)
-}
-for chunk := range ch {
-    if chunk.Err != nil {
-        log.Fatal(chunk.Err)
+for chunk, err := range insyra.ReadSQLStream(ctx, db, insyra.SQLDialectMySQL, "events", insyra.ReadSQLOptions{ChunkSize: 5000}) {
+    if err != nil {
+        log.Fatal(err)
     }
-    process(chunk.Table)
+    process(chunk)
 }
 
 // Force types and parse a date column.
-dt, err := insyra.ReadSQL(db, "events", insyra.ReadSQLOptions{
+dt, err := insyra.ReadSQL(db, insyra.SQLDialectMySQL, "events", insyra.ReadSQLOptions{
     ParseDates: []string{"created_at"},
     DType: map[string]reflect.Type{
         "score": reflect.TypeFor[float64](),
@@ -798,8 +799,8 @@ for k, col := range m {
 ### ToSQL
 
 ```go
-func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
-func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ToSQLOptions) error
+func (dt *DataTable) ToSQL(db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error
+func (dt *DataTable) ToSQLContext(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error
 ```
 
 **Description:** Writes the DataTable to a SQL database.
@@ -821,7 +822,8 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 **Parameters:**
 
 - `ctx`: Context that controls cancellation of the database calls (`ToSQLContext` only)
-- `db`: GORM database connection
+- `db`: A `database/sql` connection, opened with any driver. With gorm, pass the connection `gormDB.DB()` returns.
+- `dialect`: The database behind `db`, as for `ReadSQL`. It also decides which Replace behaviour below applies, so name MySQL as `insyra.SQLDialectMySQL` even when the server is a MySQL-compatible one.
 - `tableName`: Target table name
 - `options`: Optional SQL options (`ToSQLOptions` struct, see below)
 
@@ -848,16 +850,16 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 **Examples:**
 
 ```go
-db, _ := gorm.Open(mysql.Open("connection_string"))
+db, _ := sql.Open("mysql", "user:pass@tcp(localhost:3306)/shop")
 
 // Replace existing table if present.
-err := dt.ToSQL(db, "users", ToSQLOptions{IfExists: SQLActionIfTableExistsReplace})
+err := dt.ToSQL(db, insyra.SQLDialectMySQL, "users", ToSQLOptions{IfExists: SQLActionIfTableExistsReplace})
 if err != nil {
     log.Fatal(err)
 }
 
 // Append into an existing table; missing columns are added once.
-err = dt.ToSQL(db, "events", ToSQLOptions{
+err = dt.ToSQL(db, insyra.SQLDialectMySQL, "events", ToSQLOptions{
     IfExists:  SQLActionIfTableExistsAppend,
     BatchSize: 1000,
 })
@@ -865,7 +867,7 @@ err = dt.ToSQL(db, "events", ToSQLOptions{
 // Cancelable write with a deadline.
 ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 defer cancel()
-err = dt.ToSQLContext(ctx, db, "events_archive", ToSQLOptions{
+err = dt.ToSQLContext(ctx, db, insyra.SQLDialectMySQL, "events_archive", ToSQLOptions{
     IfExists: SQLActionIfTableExistsReplace,
     Schema:   "analytics",
 })

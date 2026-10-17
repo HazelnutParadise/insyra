@@ -28,7 +28,7 @@ func runSaveSQL(ctx *ExecContext, varName string, table *insyra.DataTable, args 
 	if err != nil {
 		return err
 	}
-	if err := table.ToSQLContext(context.Background(), conn.DB, tableName, opts); err != nil {
+	if err := table.ToSQLContext(context.Background(), conn.DB, insyra.SQLDialect(conn.Dialect), tableName, opts); err != nil {
 		return err
 	}
 	rows, _ := table.Size()

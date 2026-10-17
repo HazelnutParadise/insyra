@@ -11,10 +11,10 @@ import (
 
 func TestReadSQL_BasicSelect(t *testing.T) {
 	db := newTestSQLite(t)
-	require.NoError(t, db.Exec("CREATE TABLE t (a INTEGER, b TEXT);").Error)
-	require.NoError(t, db.Exec("INSERT INTO t (a, b) VALUES (1, 'one'), (2, 'two');").Error)
+	execSQL(t, db, "CREATE TABLE t (a INTEGER, b TEXT);")
+	execSQL(t, db, "INSERT INTO t (a, b) VALUES (1, 'one'), (2, 'two');")
 
-	dt, err := ReadSQL(db, "t")
+	dt, err := ReadSQL(db, SQLDialectSQLite, "t")
 	require.NoError(t, err)
 	require.NotNil(t, dt)
 
@@ -25,10 +25,10 @@ func TestReadSQL_BasicSelect(t *testing.T) {
 
 func TestReadSQL_ColumnsSubset(t *testing.T) {
 	db := newTestSQLite(t)
-	require.NoError(t, db.Exec("CREATE TABLE t (a INTEGER, b TEXT, c REAL);").Error)
-	require.NoError(t, db.Exec("INSERT INTO t (a, b, c) VALUES (1, 'one', 1.5);").Error)
+	execSQL(t, db, "CREATE TABLE t (a INTEGER, b TEXT, c REAL);")
+	execSQL(t, db, "INSERT INTO t (a, b, c) VALUES (1, 'one', 1.5);")
 
-	dt, err := ReadSQL(db, "t", ReadSQLOptions{Columns: []string{"a", "c"}})
+	dt, err := ReadSQL(db, SQLDialectSQLite, "t", ReadSQLOptions{Columns: []string{"a", "c"}})
 	require.NoError(t, err)
 	_, cols := dt.Size()
 	require.Equal(t, 2, cols)
@@ -36,12 +36,12 @@ func TestReadSQL_ColumnsSubset(t *testing.T) {
 
 func TestReadSQL_ParamsBoundToCustomQuery(t *testing.T) {
 	db := newTestSQLite(t)
-	require.NoError(t, db.Exec("CREATE TABLE t (n INTEGER);").Error)
+	execSQL(t, db, "CREATE TABLE t (n INTEGER);")
 	for _, v := range []int{1, 2, 3, 4, 5} {
-		require.NoError(t, db.Exec("INSERT INTO t (n) VALUES (?);", v).Error)
+		execSQL(t, db, "INSERT INTO t (n) VALUES (?);", v)
 	}
 
-	dt, err := ReadSQL(db, "", ReadSQLOptions{
+	dt, err := ReadSQL(db, SQLDialectSQLite, "", ReadSQLOptions{
 		Query:  "SELECT n FROM t WHERE n > ? AND n < ? ORDER BY n",
 		Params: []any{1, 5},
 	})
@@ -52,10 +52,10 @@ func TestReadSQL_ParamsBoundToCustomQuery(t *testing.T) {
 
 func TestReadSQL_IndexColAliasesRowName(t *testing.T) {
 	db := newTestSQLite(t)
-	require.NoError(t, db.Exec("CREATE TABLE t (label TEXT, n INTEGER);").Error)
-	require.NoError(t, db.Exec("INSERT INTO t (label, n) VALUES ('alpha', 1), ('beta', 2);").Error)
+	execSQL(t, db, "CREATE TABLE t (label TEXT, n INTEGER);")
+	execSQL(t, db, "INSERT INTO t (label, n) VALUES ('alpha', 1), ('beta', 2);")
 
-	dt, err := ReadSQL(db, "t", ReadSQLOptions{IndexCol: "label"})
+	dt, err := ReadSQL(db, SQLDialectSQLite, "t", ReadSQLOptions{IndexCol: "label"})
 	require.NoError(t, err)
 
 	// IndexCol "label" becomes the row name; only "n" should remain as a column.
@@ -72,10 +72,10 @@ func TestReadSQL_IndexColAliasesRowName(t *testing.T) {
 
 func TestReadSQL_ParseDatesParsesIsoString(t *testing.T) {
 	db := newTestSQLite(t)
-	require.NoError(t, db.Exec("CREATE TABLE t (when_at TEXT);").Error)
-	require.NoError(t, db.Exec("INSERT INTO t (when_at) VALUES ('2024-06-01T12:34:56Z');").Error)
+	execSQL(t, db, "CREATE TABLE t (when_at TEXT);")
+	execSQL(t, db, "INSERT INTO t (when_at) VALUES ('2024-06-01T12:34:56Z');")
 
-	dt, err := ReadSQL(db, "t", ReadSQLOptions{ParseDates: []string{"when_at"}})
+	dt, err := ReadSQL(db, SQLDialectSQLite, "t", ReadSQLOptions{ParseDates: []string{"when_at"}})
 	require.NoError(t, err)
 
 	dl := dt.GetColByName("when_at")
@@ -90,10 +90,10 @@ func TestReadSQL_ParseDatesParsesIsoString(t *testing.T) {
 
 func TestReadSQL_DTypeForcesType(t *testing.T) {
 	db := newTestSQLite(t)
-	require.NoError(t, db.Exec("CREATE TABLE t (n TEXT);").Error)
-	require.NoError(t, db.Exec("INSERT INTO t (n) VALUES ('42'), ('100');").Error)
+	execSQL(t, db, "CREATE TABLE t (n TEXT);")
+	execSQL(t, db, "INSERT INTO t (n) VALUES ('42'), ('100');")
 
-	dt, err := ReadSQL(db, "t", ReadSQLOptions{
+	dt, err := ReadSQL(db, SQLDialectSQLite, "t", ReadSQLOptions{
 		DType: map[string]reflect.Type{"n": reflect.TypeFor[int64]()},
 	})
 	require.NoError(t, err)
@@ -106,26 +106,26 @@ func TestReadSQL_DTypeForcesType(t *testing.T) {
 
 func TestReadSQLContext_RespectsCancellation(t *testing.T) {
 	db := newTestSQLite(t)
-	require.NoError(t, db.Exec("CREATE TABLE t (n INTEGER);").Error)
-	require.NoError(t, db.Exec("INSERT INTO t (n) VALUES (1);").Error)
+	execSQL(t, db, "CREATE TABLE t (n INTEGER);")
+	execSQL(t, db, "INSERT INTO t (n) VALUES (1);")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := ReadSQLContext(ctx, db, "t")
+	_, err := ReadSQLContext(ctx, db, SQLDialectSQLite, "t")
 	require.Error(t, err)
 }
 
 func TestReadSQLStream_EmitsChunks(t *testing.T) {
 	db := newTestSQLite(t)
-	require.NoError(t, db.Exec("CREATE TABLE big (n INTEGER);").Error)
+	execSQL(t, db, "CREATE TABLE big (n INTEGER);")
 	for i := 1; i <= 25; i++ {
-		require.NoError(t, db.Exec("INSERT INTO big (n) VALUES (?);", i).Error)
+		execSQL(t, db, "INSERT INTO big (n) VALUES (?);", i)
 	}
 
 	totalRows := 0
 	chunkCount := 0
-	for table, err := range ReadSQLStream(context.Background(), db, "big", ReadSQLOptions{ChunkSize: 10}) {
+	for table, err := range ReadSQLStream(context.Background(), db, SQLDialectSQLite, "big", ReadSQLOptions{ChunkSize: 10}) {
 		require.NoError(t, err)
 		require.NotNil(t, table)
 		r, _ := table.Size()
@@ -138,9 +138,9 @@ func TestReadSQLStream_EmitsChunks(t *testing.T) {
 
 func TestReadSQLStream_StopsOnCancelledContext(t *testing.T) {
 	db := newTestSQLite(t)
-	require.NoError(t, db.Exec("CREATE TABLE big (n INTEGER);").Error)
+	execSQL(t, db, "CREATE TABLE big (n INTEGER);")
 	for i := 1; i <= 50; i++ {
-		require.NoError(t, db.Exec("INSERT INTO big (n) VALUES (?);", i).Error)
+		execSQL(t, db, "INSERT INTO big (n) VALUES (?);", i)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -150,7 +150,7 @@ func TestReadSQLStream_StopsOnCancelledContext(t *testing.T) {
 	// and the loop ends there.
 	chunks := 0
 	var last error
-	for _, err := range ReadSQLStream(ctx, db, "big", ReadSQLOptions{ChunkSize: 5}) {
+	for _, err := range ReadSQLStream(ctx, db, SQLDialectSQLite, "big", ReadSQLOptions{ChunkSize: 5}) {
 		if err != nil {
 			last = err
 			continue
@@ -164,15 +164,14 @@ func TestReadSQLStream_StopsOnCancelledContext(t *testing.T) {
 
 func TestReadSQLStream_BreakingEarlyReleasesTheConnection(t *testing.T) {
 	db := newTestSQLite(t)
-	require.NoError(t, db.Exec("CREATE TABLE big (n INTEGER);").Error)
+	execSQL(t, db, "CREATE TABLE big (n INTEGER);")
 	for i := 1; i <= 50; i++ {
-		require.NoError(t, db.Exec("INSERT INTO big (n) VALUES (?);", i).Error)
+		execSQL(t, db, "INSERT INTO big (n) VALUES (?);", i)
 	}
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
+	sqlDB := db
 
 	// No cancel anywhere: leaving the loop must be enough.
-	for _, err := range ReadSQLStream(context.Background(), db, "big", ReadSQLOptions{ChunkSize: 5}) {
+	for _, err := range ReadSQLStream(context.Background(), db, SQLDialectSQLite, "big", ReadSQLOptions{ChunkSize: 5}) {
 		require.NoError(t, err)
 		break
 	}
@@ -181,7 +180,7 @@ func TestReadSQLStream_BreakingEarlyReleasesTheConnection(t *testing.T) {
 
 func TestReadSQLStream_NilDBIsOneFailure(t *testing.T) {
 	yields := 0
-	for table, err := range ReadSQLStream(context.Background(), nil, "t") {
+	for table, err := range ReadSQLStream(context.Background(), nil, SQLDialectSQLite, "t") {
 		yields++
 		require.Nil(t, table)
 		require.Error(t, err)

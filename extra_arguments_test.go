@@ -105,18 +105,16 @@ func TestExtraOptionalValuesAreRefused(t *testing.T) {
 		}},
 		{"ReadSQL", func() error {
 			db := newTestSQLite(t)
-			if err := db.Exec("CREATE TABLE t (a INTEGER); INSERT INTO t VALUES (1);").Error; err != nil {
-				t.Fatal(err)
-			}
-			_, err := ReadSQL(db, "t", ReadSQLOptions{}, ReadSQLOptions{})
+			execSQL(t, db, "CREATE TABLE t (a INTEGER)")
+			execSQL(t, db, "INSERT INTO t VALUES (1)")
+			_, err := ReadSQL(db, SQLDialectSQLite, "t", ReadSQLOptions{}, ReadSQLOptions{})
 			return err
 		}},
 		{"ReadSQLStream", func() error {
 			db := newTestSQLite(t)
-			if err := db.Exec("CREATE TABLE t (a INTEGER); INSERT INTO t VALUES (1);").Error; err != nil {
-				t.Fatal(err)
-			}
-			for _, err := range ReadSQLStream(context.Background(), db, "t", ReadSQLOptions{}, ReadSQLOptions{}) {
+			execSQL(t, db, "CREATE TABLE t (a INTEGER)")
+			execSQL(t, db, "INSERT INTO t VALUES (1)")
+			for _, err := range ReadSQLStream(context.Background(), db, SQLDialectSQLite, "t", ReadSQLOptions{}, ReadSQLOptions{}) {
 				if err != nil {
 					return err
 				}
@@ -124,7 +122,7 @@ func TestExtraOptionalValuesAreRefused(t *testing.T) {
 			return nil
 		}},
 		{"ToSQL", func() error {
-			return table().ToSQL(newTestSQLite(t), "out", ToSQLOptions{}, ToSQLOptions{})
+			return table().ToSQL(newTestSQLite(t), SQLDialectSQLite, "out", ToSQLOptions{}, ToSQLOptions{})
 		}},
 		{"ReadCSV_File", func() error {
 			path := filepath.Join(t.TempDir(), "a.csv")

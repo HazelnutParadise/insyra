@@ -70,10 +70,10 @@ func TestLoadSQL_TableRoundTrip(t *testing.T) {
 	mustConnectSQLite(t, ctx, "rt", dsn)
 
 	conn, _ := getDBConn(ctx, "rt")
-	if err := conn.DB.Exec("CREATE TABLE t (a INTEGER, b TEXT);").Error; err != nil {
+	if _, err := conn.DB.Exec("CREATE TABLE t (a INTEGER, b TEXT);"); err != nil {
 		t.Fatalf("create table failed: %v", err)
 	}
-	if err := conn.DB.Exec("INSERT INTO t (a, b) VALUES (1, 'one'), (2, 'two');").Error; err != nil {
+	if _, err := conn.DB.Exec("INSERT INTO t (a, b) VALUES (1, 'one'), (2, 'two');"); err != nil {
 		t.Fatalf("insert failed: %v", err)
 	}
 
@@ -94,11 +94,11 @@ func TestLoadSQL_QueryWithParams(t *testing.T) {
 	mustConnectSQLite(t, ctx, "mem", "sqlite::memory:")
 
 	conn, _ := getDBConn(ctx, "mem")
-	if err := conn.DB.Exec("CREATE TABLE nums (n INTEGER);").Error; err != nil {
+	if _, err := conn.DB.Exec("CREATE TABLE nums (n INTEGER);"); err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
 	for _, v := range []int{1, 2, 3, 4, 5} {
-		if err := conn.DB.Exec("INSERT INTO nums (n) VALUES (?)", v).Error; err != nil {
+		if _, err := conn.DB.Exec("INSERT INTO nums (n) VALUES (?)", v); err != nil {
 			t.Fatalf("insert %d: %v", v, err)
 		}
 	}
@@ -177,7 +177,7 @@ func TestSaveSQL_AppendBatchSize(t *testing.T) {
 
 	conn, _ := getDBConn(ctx, "mem")
 	var cnt int64
-	if err := conn.DB.Raw("SELECT COUNT(*) FROM big").Scan(&cnt).Error; err != nil {
+	if err := conn.DB.QueryRow("SELECT COUNT(*) FROM big").Scan(&cnt); err != nil {
 		t.Fatalf("count failed: %v", err)
 	}
 	if cnt != 1500 {
@@ -207,7 +207,7 @@ func TestSaveSQL_RownamesAcceptsBareAndValueForms(t *testing.T) {
 			}
 			conn, _ := getDBConn(ctx, "mem")
 			var cols []string
-			rows, err := conn.DB.Raw("PRAGMA table_info(" + tc.args[3] + ")").Rows()
+			rows, err := conn.DB.Query("PRAGMA table_info(" + tc.args[3] + ")")
 			if err != nil {
 				t.Fatalf("pragma failed: %v", err)
 			}
@@ -221,6 +221,9 @@ func TestSaveSQL_RownamesAcceptsBareAndValueForms(t *testing.T) {
 					t.Fatalf("scan: %v", err)
 				}
 				cols = append(cols, name)
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatalf("pragma rows: %v", err)
 			}
 			hasRowName := false
 			for _, c := range cols {
@@ -241,10 +244,10 @@ func TestDBTables_ListsSQLiteTables(t *testing.T) {
 	mustConnectSQLite(t, ctx, "mem", "sqlite::memory:")
 
 	conn, _ := getDBConn(ctx, "mem")
-	if err := conn.DB.Exec("CREATE TABLE alpha (n INTEGER);").Error; err != nil {
+	if _, err := conn.DB.Exec("CREATE TABLE alpha (n INTEGER);"); err != nil {
 		t.Fatalf("create alpha: %v", err)
 	}
-	if err := conn.DB.Exec("CREATE TABLE beta (n INTEGER);").Error; err != nil {
+	if _, err := conn.DB.Exec("CREATE TABLE beta (n INTEGER);"); err != nil {
 		t.Fatalf("create beta: %v", err)
 	}
 

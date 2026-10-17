@@ -1,16 +1,15 @@
 package commands
 
 import (
+	"database/sql"
 	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
 
-	"github.com/glebarez/sqlite"
-	"gorm.io/driver/mysql"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
+	_ "github.com/go-sql-driver/mysql" // registers "mysql"
+	_ "github.com/jackc/pgx/v5/stdlib" // registers "pgx"
+	_ "modernc.org/sqlite"             // registers "sqlite"
 )
 
 // DBConn represents a named database connection registered in an ExecContext.
@@ -18,7 +17,7 @@ type DBConn struct {
 	Name    string
 	Dialect string // "sqlite", "mysql", "postgres"
 	DSN     string // original DSN string supplied by the user (with password masked when displayed)
-	DB      *gorm.DB
+	DB      *sql.DB
 }
 
 // openDBConn opens a database connection from a dsn of the form
@@ -29,26 +28,25 @@ type DBConn struct {
 //	postgres://user:pass@host:port/db?sslmode=disable (URL form, native to pgx)
 //	postgres:host=... user=... password=... dbname=... (libpq KV form)
 //
-// All three dialects use pure-Go drivers (modernc.org/sqlite, go-sql-driver/mysql, jackc/pgx).
+// All three dialects use pure-Go database/sql drivers (modernc.org/sqlite,
+// go-sql-driver/mysql, jackc/pgx).
 func openDBConn(name, dsn string) (*DBConn, error) {
 	dialect, raw, err := splitDSN(dsn)
 	if err != nil {
 		return nil, err
 	}
 
-	// gorm's default logger prints a failing or slow query with its bound
-	// parameters interpolated, so a WHERE on a token or a password ends up in
-	// the terminal and in whatever captures it. The CLI reports errors itself.
-	cfg := &gorm.Config{Logger: gormlogger.Discard}
-
-	var db *gorm.DB
+	// database/sql logs nothing, so no query with its bound parameters (a
+	// WHERE on a token or a password) reaches the terminal; the CLI reports
+	// errors itself.
+	var db *sql.DB
 	switch dialect {
 	case "sqlite":
-		db, err = gorm.Open(sqlite.Open(raw), cfg)
+		db, err = sql.Open("sqlite", raw)
 	case "mysql":
-		db, err = gorm.Open(mysql.Open(toMySQLNativeDSN(raw)), cfg)
+		db, err = sql.Open("mysql", toMySQLNativeDSN(raw))
 	case "postgres":
-		db, err = gorm.Open(postgres.Open(raw), cfg)
+		db, err = sql.Open("pgx", raw)
 	default:
 		return nil, fmt.Errorf("unsupported dialect %q (supported: sqlite, mysql, postgres)", dialect)
 	}
@@ -57,12 +55,8 @@ func openDBConn(name, dsn string) (*DBConn, error) {
 	}
 
 	// Eagerly verify the connection so the user gets immediate feedback.
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("getting underlying *sql.DB: %w", err)
-	}
-	if err := sqlDB.Ping(); err != nil {
-		_ = sqlDB.Close()
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("pinging %s: %w", dialect, err)
 	}
 
@@ -261,11 +255,7 @@ func (c *DBConn) closeDBConn() error {
 	if c == nil || c.DB == nil {
 		return nil
 	}
-	sqlDB, err := c.DB.DB()
-	if err != nil {
-		return err
-	}
-	return sqlDB.Close()
+	return c.DB.Close()
 }
 
 // getDBConn fetches a registered connection by name.

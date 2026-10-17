@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // defaultStreamChunkSize is the per-chunk row count used by ReadSQLStream
@@ -66,31 +64,38 @@ type ReadSQLOptions struct {
 
 // ReadSQL reads table data from the database and converts it into a DataTable.
 //
-// Equivalent to ReadSQLContext(context.Background(), db, tableName, options...).
-func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error) {
-	return ReadSQLContext(context.Background(), db, tableName, options...)
+// db is any database/sql connection; a gorm user passes the one gorm.DB()
+// returns. dialect names the database behind it and has no default. A custom
+// ReadSQLOptions.Query and its Params go to the driver as written, so they
+// use the driver's own placeholders ($1 on PostgreSQL, ? on SQLite and MySQL).
+//
+// Equivalent to ReadSQLContext(context.Background(), db, dialect, tableName, options...).
+func ReadSQL(db *sql.DB, dialect SQLDialect, tableName string, options ...ReadSQLOptions) (*DataTable, error) {
+	return ReadSQLContext(context.Background(), db, dialect, tableName, options...)
 }
 
 // ReadSQLContext is the context-aware variant of ReadSQL. The query and row
 // scanning run under ctx, so callers can cancel long-running reads.
-func ReadSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error) {
+func ReadSQLContext(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ReadSQLOptions) (*DataTable, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db cannot be nil")
+	}
+	if err := checkSQLDialect(dialect); err != nil {
+		return nil, err
 	}
 
 	if msg := extraOptional("ReadSQLOptions", len(options)); msg != "" {
 		return nil, errors.New(msg)
 	}
 	opts := normalizeReadSQLOptions(options)
-	tx := db.WithContext(ctx)
 
-	query, params, err := buildReadSQLQuery(tx, tableName, opts)
+	query, params, err := buildReadSQLQuery(ctx, db, string(dialect), tableName, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	LogDebug("core", "ReadSQL", "Executing SQL query: %s", query)
-	rows, err := tx.Raw(query, params...).Rows()
+	rows, err := db.QueryContext(ctx, query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("error executing query: %w", err)
 	}
@@ -103,7 +108,7 @@ func ReadSQLContext(ctx context.Context, db *gorm.DB, tableName string, options 
 // ReadSQLStream reads a (potentially huge) query result chunk by chunk. Range
 // over it:
 //
-//	for dt, err := range insyra.ReadSQLStream(ctx, db, "orders") {
+//	for dt, err := range insyra.ReadSQLStream(ctx, db, insyra.SQLDialectPostgres, "orders") {
 //		if err != nil {
 //			return err
 //		}
@@ -119,10 +124,14 @@ func ReadSQLContext(ctx context.Context, db *gorm.DB, tableName string, options 
 //
 // Chunk size is controlled by options[0].ChunkSize; zero means use the package
 // default (1000 rows).
-func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) iter.Seq2[*DataTable, error] {
+func ReadSQLStream(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ReadSQLOptions) iter.Seq2[*DataTable, error] {
 	return func(yield func(*DataTable, error) bool) {
 		if db == nil {
 			yield(nil, fmt.Errorf("db cannot be nil"))
+			return
+		}
+		if err := checkSQLDialect(dialect); err != nil {
+			yield(nil, err)
 			return
 		}
 
@@ -136,15 +145,14 @@ func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options .
 			chunkSize = defaultStreamChunkSize
 		}
 
-		tx := db.WithContext(ctx)
-		query, params, err := buildReadSQLQuery(tx, tableName, opts)
+		query, params, err := buildReadSQLQuery(ctx, db, string(dialect), tableName, opts)
 		if err != nil {
 			yield(nil, err)
 			return
 		}
 
 		LogDebug("core", "ReadSQLStream", "Executing SQL query: %s (chunkSize=%d)", query, chunkSize)
-		rows, err := tx.Raw(query, params...).Rows()
+		rows, err := db.QueryContext(ctx, query, params...)
 		if err != nil {
 			yield(nil, fmt.Errorf("error executing query: %w", err))
 			return
@@ -191,13 +199,12 @@ func normalizeReadSQLOptions(options []ReadSQLOptions) ReadSQLOptions {
 // buildReadSQLQuery resolves either the user-supplied Query or constructs one
 // from the table name and the shape options. When a custom Query is set, the
 // table-existence pre-check is skipped (the database will report any error).
-func buildReadSQLQuery(tx *gorm.DB, tableName string, opts ReadSQLOptions) (string, []any, error) {
+func buildReadSQLQuery(ctx context.Context, db sqlConn, dialect, tableName string, opts ReadSQLOptions) (string, []any, error) {
 	if opts.Query != "" {
 		return opts.Query, opts.Params, nil
 	}
 
-	dialect := tx.Name()
-	if err := requireTableExists(tx, dialect, opts.Schema, tableName); err != nil {
+	if err := requireTableExists(ctx, db, dialect, opts.Schema, tableName); err != nil {
 		return "", nil, err
 	}
 
@@ -230,8 +237,8 @@ func buildReadSQLQuery(tx *gorm.DB, tableName string, opts ReadSQLOptions) (stri
 	return q, opts.Params, nil
 }
 
-func requireTableExists(tx *gorm.DB, dialect, schema, tableName string) error {
-	exists, err := tableExists(tx, dialect, schema, tableName)
+func requireTableExists(ctx context.Context, db sqlConn, dialect, schema, tableName string) error {
+	exists, err := tableExists(ctx, db, dialect, schema, tableName)
 	if err != nil {
 		return fmt.Errorf("error checking existence of table %s: %w", tableName, err)
 	}

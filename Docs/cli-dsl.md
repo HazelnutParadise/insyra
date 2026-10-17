@@ -590,7 +590,7 @@ save top_regions sql main top_regions if-exists replace
 db disconnect main
 ```
 
-`load sql <conn> <table>` accepts `where "<sql>"`, `order "<sql>"`, `limit N`, `offset N`, `cols "c1,c2"`, `schema <s>`, `indexcol <c>`, and `parsedates "c1,c2"`. `load sql <conn> query "<SQL>"` accepts only `params <v1> <v2> ...` (positional placeholders, parsed as literals).
+`load sql <conn> <table>` accepts `where "<sql>"`, `order "<sql>"`, `limit N`, `offset N`, `cols "c1,c2"`, `schema <s>`, `indexcol <c>`, and `parsedates "c1,c2"`. `load sql <conn> query "<SQL>"` accepts only `params <v1> <v2> ...` (positional placeholders, parsed as literals). The query goes to the driver as written, so use the database's own placeholders: `?` on SQLite and MySQL, `$1`, `$2`, … on PostgreSQL.
 
 `save <var> sql <conn> <table>` accepts `if-exists fail|replace|append` (default `fail`), `batch N`, `schema <s>`, and the `rownames` flag (writes the DataTable row names as an extra column).
 

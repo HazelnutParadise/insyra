@@ -166,7 +166,7 @@ func listTables(conn *DBConn, schema string) ([]string, error) {
 		}
 	case "postgres":
 		if schema != "" {
-			query = "SELECT table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema = ? ORDER BY table_name"
+			query = "SELECT table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema = $1 ORDER BY table_name"
 			args = []any{schema}
 		} else {
 			query = "SELECT table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema = current_schema() ORDER BY table_name"
@@ -175,7 +175,7 @@ func listTables(conn *DBConn, schema string) ([]string, error) {
 		return nil, fmt.Errorf("db tables: unsupported dialect %q", conn.Dialect)
 	}
 
-	rows, err := conn.DB.Raw(query, args...).Rows()
+	rows, err := conn.DB.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing tables: %w", err)
 	}

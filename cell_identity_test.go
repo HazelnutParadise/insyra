@@ -8,9 +8,6 @@ import (
 	"testing"
 	"time"
 
-	gsqlite "gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-
 	_ "modernc.org/sqlite"
 )
 
@@ -28,14 +25,11 @@ func blobTable(t *testing.T) *DataTable {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	db, err := gorm.Open(gsqlite.New(gsqlite.Config{Conn: sqlDB}), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.Exec(`CREATE TABLE files (name TEXT, payload BLOB)`)
-	db.Exec(`INSERT INTO files VALUES ('a', X'00FF41'), ('b', X'00FF41'), ('c', X'00FF42')`)
+	sqlDB.SetMaxOpenConns(1)
+	execSQL(t, sqlDB, `CREATE TABLE files (name TEXT, payload BLOB)`)
+	execSQL(t, sqlDB, `INSERT INTO files VALUES ('a', X'00FF41'), ('b', X'00FF41'), ('c', X'00FF42')`)
 
-	dt, err := ReadSQL(db, "files")
+	dt, err := ReadSQL(sqlDB, SQLDialectSQLite, "files")
 	if err != nil {
 		t.Fatal(err)
 	}

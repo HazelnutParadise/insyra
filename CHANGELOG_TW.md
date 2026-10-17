@@ -107,6 +107,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 原子寫入（`ToCSV`、`ToJSON`、`ToExcel`、Parquet `Write`、`GenerateLPFile`、檔案型地理編碼快取）會跟著路徑上的符號連結，取代連結指向的檔案，這和 `os.WriteFile` 一樣；連結仍是連結，目標還不存在也一樣。既有檔案保留它的權限位元，新檔案依程序的 umask 以 0666 建立。原本會把連結換成一般檔案，並把每個檔案都改成 0644。暫存檔改用短名稱（`.insyra-<隨機>.tmp`），所以檔名接近 255 位元組上限時不會再因 `file name too long` 失敗，寫入函式 panic 時也會刪掉暫存檔。
 - `ReadJSON` 讀到同時實作 `json.Marshaler` 與 `io.Reader` 的值時，讀的是它 marshal 出的 JSON，而不是把它當串流。
 - `csvxl.AppendCSVToExcel` 與使用 `SheetExistsReplace` 的 `DataTable.ToExcel`，現在能取代唯一工作表就叫 `__insyra_placeholder__` 的活頁簿；原本因為占位工作表同名，舊內容會留下來。
+- **BREAKING**：`ToSQL`、`ToSQLContext`、`ReadSQL`、`ReadSQLContext`、`ReadSQLStream` 不再收 `*gorm.DB`，改收 `database/sql` 的連線加上資料庫種類，例如 `dt.ToSQL(db, insyra.SQLDialectPostgres, "sales")`。核心套件因此不再依賴 gorm 和 squirrel。拿一支只用 `DataTable` 的程式實測，少了 19 個套件，其中 6 個是第三方模組，執行檔小了 0.93 MB（8.65 MB → 7.72 MB）。用 gorm 的人改傳 gorm 底下的連線：`sqlDB, _ := gormDB.DB()`。資料庫種類一定要給，只接受 `SQLDialectSQLite`、`SQLDialectMySQL`、`SQLDialectPostgres`，其他值都會回傳錯誤；以前 gorm 回報不認得的種類時，會默默改用 SQLite 的查詢。自訂的 `ReadSQLOptions.Query` 和 `Params` 現在原封不動交給驅動程式，所以 PostgreSQL 的查詢要寫 `$1` 而不是 `?`，gorm 的 `@name` 參數和 `IN ?` 自動展開陣列也不再適用。交易和 Replace 的保證都沒有改變。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
@@ -154,6 +155,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`setrownames` 給的名字數量和列數不同時會回報錯誤，和 `setcolnames` 一致。以前在四列的表格上執行 `setrownames t r1 … r6` 會顯示成功，並默默丟掉 `r5`、`r6`。
 - `wilcoxon single`、`ttest single`、`ztest single` 在一次性模式接受負數的 `mu`；原本 `insyra ttest single x -1` 會把 `-1` 當成旗標。`anova twoway` 的前兩個參數都能讀成數字時，即使有跟第一個參數同名的表格變數，仍當成 list 形式的層級數。
 - 預設檔寫不進去的環境會被移除並回傳錯誤；原本 `Create` 與 `NewSession` 看到目錄存在就當成已建立。`Register` 會拒絕負數的參數上限，原本要到指令執行時才越界。
+- **BREAKING**：`db` 指令改用 `database/sql` 的驅動程式開連線，`cli/commands.DBConn.DB` 改成 `*sql.DB`。PostgreSQL 的 `load sql <conn> query "…"` 要用 `$1`、`$2` 當參數符號，`?` 不會再被自動換掉。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。

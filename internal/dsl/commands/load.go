@@ -29,6 +29,7 @@ func init() {
 			"infer false (CSV only) keeps every cell as its original string — no type inference.",
 			"ragged and trimspace are CSV-only; ragged pads short rows and keeps extra cells.",
 			"Booleans accept true|false|yes|no|on|off|1|0.",
+			"A SQL query goes to the driver as written: placeholders are ? on sqlite and mysql, $1, $2, ... on postgres.",
 		},
 		Examples: []string{
 			"insyra load sales.csv as t",

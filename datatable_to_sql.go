@@ -12,9 +12,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	sq "github.com/Masterminds/squirrel"
-	"gorm.io/gorm"
 )
 
 // defaultBatchSize is the per-INSERT row count when ToSQLOptions.BatchSize is unset.
@@ -56,9 +53,12 @@ const (
 
 // ToSQL writes the DataTable to the given database table.
 //
-// Equivalent to ToSQLContext(context.Background(), db, tableName, options...).
-func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error {
-	return dt.ToSQLContext(context.Background(), db, tableName, options...)
+// db is any database/sql connection; a gorm user passes the one gorm.DB()
+// returns. dialect names the database behind it and has no default.
+//
+// Equivalent to ToSQLContext(context.Background(), db, dialect, tableName, options...).
+func (dt *DataTable) ToSQL(db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error {
+	return dt.ToSQLContext(context.Background(), db, dialect, tableName, options...)
 }
 
 // ToSQLContext is the context-aware variant of ToSQL.
@@ -66,12 +66,15 @@ func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOption
 // All database calls run under ctx, so callers can cancel long writes.
 // Rows are inserted with batched multi-value INSERT statements; the batch size
 // is controlled by options[0].BatchSize.
-func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ToSQLOptions) error {
+func (dt *DataTable) ToSQLContext(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error {
 	if dt == nil {
 		return fmt.Errorf("dt is nil")
 	}
 	if db == nil {
 		return fmt.Errorf("db cannot be nil")
+	}
+	if err := checkSQLDialect(dialect); err != nil {
+		return err
 	}
 
 	if msg := extraOptional("ToSQLOptions", len(options)); msg != "" {
@@ -81,7 +84,7 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 	if len(options) > 0 {
 		opts = options[0]
 	}
-	return dt.toSQL(ctx, db, tableName, opts, db.Name() == "mysql")
+	return dt.toSQL(ctx, db, dialect, tableName, opts, dialect == SQLDialectMySQL)
 }
 
 // toSQL writes the table with options already resolved. replaceByRename
@@ -91,7 +94,7 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 // puts in place. SQLite and PostgreSQL run DDL inside a transaction, where
 // dropping and recreating is already undone by a failed write, and a rename
 // would carry the views that read the table over to the old copy.
-func (dt *DataTable) toSQL(ctx context.Context, db *gorm.DB, tableName string, opts ToSQLOptions, replaceByRename bool) error {
+func (dt *DataTable) toSQL(ctx context.Context, db *sql.DB, sqlDialect SQLDialect, tableName string, opts ToSQLOptions, replaceByRename bool) error {
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = defaultBatchSize
 	}
@@ -101,21 +104,21 @@ func (dt *DataTable) toSQL(ctx context.Context, db *gorm.DB, tableName string, o
 	}
 
 	fullName := qualifiedTableName(opts.Schema, tableName)
-	tx := db.WithContext(ctx)
+	dialect := string(sqlDialect)
 	if opts.IfExists == SQLActionIfTableExistsReplace && replaceByRename {
-		exists, err := tableExists(tx, tx.Name(), opts.Schema, tableName)
+		exists, err := tableExists(ctx, db, dialect, opts.Schema, tableName)
 		if err != nil {
 			return err
 		}
 		if exists {
-			return replaceThroughStagingTable(tx, fullName, tableName, opts.Schema, cols, rows, opts)
+			return replaceThroughStagingTable(ctx, db, dialect, fullName, tableName, opts.Schema, cols, rows, opts)
 		}
 		// Nothing to replace, so the table is created. Should another session
 		// create it before the transaction below looks again, refuse rather
 		// than fall back to dropping it, which is what this path avoids.
 		opts.IfExists = SQLActionIfTableExistsFail
 	}
-	return saveRowsToDB(tx, fullName, tableName, opts.Schema, cols, rows, opts)
+	return saveRowsToDB(ctx, db, dialect, fullName, tableName, opts.Schema, cols, rows, opts)
 }
 
 // collectRowsForSQL extracts the canonical column ordering and row values
@@ -160,7 +163,7 @@ func qualifiedTableName(schema, table string) string {
 	return schema + "." + table
 }
 
-// quoteSQLIdent quotes a single SQL identifier for the given gorm dialect,
+// quoteSQLIdent quotes a single SQL identifier for the given dialect,
 // escaping the quote character by doubling it. This prevents SQL injection
 // through table/column/schema names that originate from untrusted data
 // (e.g. column names read from a CSV/JSON header).
@@ -196,12 +199,11 @@ func validateSQLType(typ string) error {
 	return nil
 }
 
-func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
+func saveRowsToDB(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
 	if len(rows) == 0 {
 		return fmt.Errorf("data is empty")
 	}
-	return db.Transaction(func(tx *gorm.DB) error {
-		dialect := tx.Name()
+	return inSQLTx(ctx, db, func(tx *sql.Tx) error {
 
 		// All identifiers below are quoted per-dialect to prevent SQL injection
 		// through table/schema/column names (which may originate from untrusted
@@ -212,7 +214,7 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 		}
 		quotedTable := quoteQualifiedName(dialect, schema, plainTable)
 
-		exists, err := tableExists(tx, dialect, schema, plainTable)
+		exists, err := tableExists(ctx, tx, dialect, schema, plainTable)
 		if err != nil {
 			return err
 		}
@@ -222,7 +224,7 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 			case SQLActionIfTableExistsFail:
 				return fmt.Errorf("table %s already exists", fullName)
 			case SQLActionIfTableExistsReplace:
-				if err := tx.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", quotedTable)).Error; err != nil {
+				if _, err := tx.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s;", quotedTable)); err != nil {
 					return err
 				}
 				exists = false
@@ -233,13 +235,13 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 
 		if !exists {
 			createSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s);", quotedTable, sqlColumnDefs(dialect, cols, columnTypes))
-			if err := tx.Exec(createSQL).Error; err != nil {
+			if _, err := tx.ExecContext(ctx, createSQL); err != nil {
 				return err
 			}
 		} else if opts.IfExists == SQLActionIfTableExistsAppend {
 			// Hoist the schema check out of the per-row loop. Existing column
 			// names are fetched once; missing columns are added once.
-			existing, err := fetchTableColumns(tx, dialect, schema, plainTable)
+			existing, err := fetchTableColumns(ctx, tx, dialect, schema, plainTable)
 			if err != nil {
 				return err
 			}
@@ -257,7 +259,7 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 						return err
 					}
 					alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", quotedTable, quoteSQLIdent(dialect, c), typ)
-					if err := tx.Exec(alterSQL).Error; err != nil {
+					if _, err := tx.ExecContext(ctx, alterSQL); err != nil {
 						return err
 					}
 					LogInfo("DataTable", "ToSQL", "Added column %s to table %s", c, fullName)
@@ -265,7 +267,7 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 			}
 		}
 
-		return insertSQLRows(tx, dialect, quotedTable, cols, rows, opts.BatchSize)
+		return insertSQLRows(ctx, tx, dialect, quotedTable, cols, rows, opts.BatchSize)
 	})
 }
 
@@ -313,25 +315,30 @@ func sqlColumnDefs(dialect string, cols []string, columnTypes map[string]string)
 }
 
 // insertSQLRows writes rows with batched multi-value INSERTs. Table and column
-// identifiers are quoted (squirrel emits them verbatim); only VALUES are
-// parameterized.
-func insertSQLRows(tx *gorm.DB, dialect, quotedTable string, cols []string, rows [][]any, batchSize int) error {
+// identifiers are quoted; only VALUES are parameterized.
+func insertSQLRows(ctx context.Context, tx sqlConn, dialect, quotedTable string, cols []string, rows [][]any, batchSize int) error {
 	quotedCols := make([]string, len(cols))
 	for i, c := range cols {
 		quotedCols[i] = quoteSQLIdent(dialect, c)
 	}
-	ph := placeholderFormat(dialect)
+	head := "INSERT INTO " + quotedTable + " (" + strings.Join(quotedCols, ",") + ") VALUES "
+	rowMarks := "(" + strings.TrimSuffix(strings.Repeat("?,", len(cols)), ",") + ")"
 	for start := 0; start < len(rows); start += batchSize {
 		end := min(start+batchSize, len(rows))
-		builder := sq.Insert(quotedTable).PlaceholderFormat(ph).Columns(quotedCols...)
-		for _, row := range rows[start:end] {
-			builder = builder.Values(row...)
+		var b strings.Builder
+		b.WriteString(head)
+		args := make([]any, 0, (end-start)*len(cols))
+		for i, row := range rows[start:end] {
+			if len(row) != len(cols) {
+				return fmt.Errorf("row %d has %d values for %d columns", start+i+1, len(row), len(cols))
+			}
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(rowMarks)
+			args = append(args, row...)
 		}
-		sqlStr, args, err := builder.ToSql()
-		if err != nil {
-			return err
-		}
-		if err := tx.Exec(sqlStr, args...).Error; err != nil {
+		if _, err := tx.ExecContext(ctx, bindVars(dialect, b.String()), args...); err != nil {
 			return err
 		}
 	}
@@ -354,13 +361,12 @@ const stagingCleanupTimeout = 30 * time.Second
 // target's name and the old table under a backup name, which is then dropped.
 // A failure before the rename drops the staging table and leaves the target
 // untouched.
-func replaceThroughStagingTable(db *gorm.DB, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
-	dialect := db.Name()
+func replaceThroughStagingTable(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
 	columnTypes, err := resolveSQLColumnTypes(dialect, cols, rows, opts)
 	if err != nil {
 		return err
 	}
-	referrer, err := tableReferencedBy(db, dialect, schema, plainTable)
+	referrer, err := tableReferencedBy(ctx, db, dialect, schema, plainTable)
 	if err != nil {
 		return err
 	}
@@ -376,15 +382,16 @@ func replaceThroughStagingTable(db *gorm.DB, fullName, plainTable, schema string
 	quotedStaging := quoteQualifiedName(dialect, schema, staging)
 
 	// cleanup runs one statement with a context the caller cannot cancel.
-	base := context.WithoutCancel(db.Statement.Context)
-	cleanup := func(run func(tx *gorm.DB) error) error {
+	base := context.WithoutCancel(ctx)
+	cleanup := func(run func(ctx context.Context) error) error {
 		ctx, cancel := context.WithTimeout(base, stagingCleanupTimeout)
 		defer cancel()
-		return run(db.WithContext(ctx))
+		return run(ctx)
 	}
 	dropStaging := func(cause error) error {
-		if err := cleanup(func(tx *gorm.DB) error {
-			return tx.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", quotedStaging)).Error
+		if err := cleanup(func(ctx context.Context) error {
+			_, err := db.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s;", quotedStaging))
+			return err
 		}); err != nil {
 			return errors.Join(cause, fmt.Errorf("could not drop the staging table %s: %w", qualifiedTableName(schema, staging), err))
 		}
@@ -392,13 +399,13 @@ func replaceThroughStagingTable(db *gorm.DB, fullName, plainTable, schema string
 	}
 
 	createSQL := fmt.Sprintf("CREATE TABLE %s (%s);", quotedStaging, sqlColumnDefs(dialect, cols, columnTypes))
-	if err := db.Exec(createSQL).Error; err != nil {
+	if _, err := db.ExecContext(ctx, createSQL); err != nil {
 		// Nothing was created, so there is nothing to drop.
 		return fmt.Errorf("creating the staging table %s: %w (replacing a table on MySQL creates tables under new names, which needs the CREATE, INSERT, ALTER and DROP privileges on the database)",
 			qualifiedTableName(schema, staging), err)
 	}
-	if err := db.Transaction(func(tx *gorm.DB) error {
-		return insertSQLRows(tx, dialect, quotedStaging, cols, rows, opts.BatchSize)
+	if err := inSQLTx(ctx, db, func(tx *sql.Tx) error {
+		return insertSQLRows(ctx, tx, dialect, quotedStaging, cols, rows, opts.BatchSize)
 	}); err != nil {
 		return dropStaging(err)
 	}
@@ -409,13 +416,13 @@ func replaceThroughStagingTable(db *gorm.DB, fullName, plainTable, schema string
 		// MySQL's RENAME TABLE is atomic on its own and commits on its own,
 		// so a transaction around it would only add a COMMIT that can fail
 		// after the rename has happened.
-		swapErr = db.Exec(stmts[0]).Error
+		_, swapErr = db.ExecContext(ctx, stmts[0])
 	} else {
 		// Two statements: one transaction, so a failed second one undoes
 		// the first.
-		swapErr = db.Transaction(func(tx *gorm.DB) error {
+		swapErr = inSQLTx(ctx, db, func(tx *sql.Tx) error {
 			for _, stmt := range stmts {
-				if err := tx.Exec(stmt).Error; err != nil {
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
 					return err
 				}
 			}
@@ -426,9 +433,9 @@ func replaceThroughStagingTable(db *gorm.DB, fullName, plainTable, schema string
 		// The rename may have run even though no answer came back, over a
 		// dropped connection or a context cancelled at that moment. Look.
 		var swapped bool
-		checkErr := cleanup(func(tx *gorm.DB) error {
+		checkErr := cleanup(func(ctx context.Context) error {
 			var err error
-			swapped, err = renameSwapHappened(tx, dialect, schema, staging, backup)
+			swapped, err = renameSwapHappened(ctx, db, dialect, schema, staging, backup)
 			return err
 		})
 		if checkErr != nil {
@@ -440,8 +447,9 @@ func replaceThroughStagingTable(db *gorm.DB, fullName, plainTable, schema string
 			return dropStaging(fmt.Errorf("replacing table %s: %w", fullName, swapErr))
 		}
 	}
-	if err := cleanup(func(tx *gorm.DB) error {
-		return tx.Exec(fmt.Sprintf("DROP TABLE %s;", quoteQualifiedName(dialect, schema, backup))).Error
+	if err := cleanup(func(ctx context.Context) error {
+		_, err := db.ExecContext(ctx, fmt.Sprintf("DROP TABLE %s;", quoteQualifiedName(dialect, schema, backup)))
+		return err
 	}); err != nil {
 		return fmt.Errorf("table %s now holds the new rows, but its previous contents remain in %s, which could not be dropped: %w",
 			fullName, qualifiedTableName(schema, backup), err)
@@ -451,12 +459,12 @@ func replaceThroughStagingTable(db *gorm.DB, fullName, plainTable, schema string
 
 // renameSwapHappened reports whether the rename of a staged replace took
 // effect: the staging table is gone and the backup exists.
-func renameSwapHappened(db *gorm.DB, dialect, schema, staging, backup string) (bool, error) {
-	stagingLeft, err := tableExists(db, dialect, schema, staging)
+func renameSwapHappened(ctx context.Context, db sqlConn, dialect, schema, staging, backup string) (bool, error) {
+	stagingLeft, err := tableExists(ctx, db, dialect, schema, staging)
 	if err != nil {
 		return false, err
 	}
-	backupMade, err := tableExists(db, dialect, schema, backup)
+	backupMade, err := tableExists(ctx, db, dialect, schema, backup)
 	if err != nil {
 		return false, err
 	}
@@ -466,29 +474,31 @@ func renameSwapHappened(db *gorm.DB, dialect, schema, staging, backup string) (b
 // tableReferencedBy names a table, other than table itself, that references
 // table by foreign key, or returns "" when none does or the dialect is one the
 // staged replace does not run on.
-func tableReferencedBy(db *gorm.DB, dialect, schema, table string) (string, error) {
-	var names []string
-	var q *gorm.DB
+func tableReferencedBy(ctx context.Context, db sqlConn, dialect, schema, table string) (string, error) {
+	var query string
+	var args []any
 	switch dialect {
 	case "mysql":
 		const refs = "SELECT TABLE_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE REFERENCED_TABLE_NAME = ? AND NOT (TABLE_NAME = REFERENCED_TABLE_NAME AND CONSTRAINT_SCHEMA = UNIQUE_CONSTRAINT_SCHEMA) AND UNIQUE_CONSTRAINT_SCHEMA = "
 		if schema != "" {
-			q = db.Raw(refs+"? LIMIT 1", table, schema)
+			query, args = refs+"? LIMIT 1", []any{table, schema}
 		} else {
-			q = db.Raw(refs+"(SELECT DATABASE()) LIMIT 1", table)
+			query, args = refs+"(SELECT DATABASE()) LIMIT 1", []any{table}
 		}
 	case "sqlite":
-		q = db.Raw(`SELECT m.name FROM sqlite_master AS m JOIN pragma_foreign_key_list(m.name) AS f WHERE m.type = 'table' AND f."table" = ? COLLATE NOCASE AND m.name <> ? COLLATE NOCASE LIMIT 1`, table, table)
+		query, args = `SELECT m.name FROM sqlite_master AS m JOIN pragma_foreign_key_list(m.name) AS f WHERE m.type = 'table' AND f."table" = ? COLLATE NOCASE AND m.name <> ? COLLATE NOCASE LIMIT 1`, []any{table, table}
 	default:
 		return "", nil
 	}
-	if err := q.Scan(&names).Error; err != nil {
-		return "", err
-	}
-	if len(names) == 0 {
+	var name string
+	err := db.QueryRowContext(ctx, bindVars(dialect, query), args...).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
-	return names[0], nil
+	if err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 // renameSwapStatements puts staging under the name table and table under the
@@ -506,15 +516,6 @@ func renameSwapStatements(dialect, schema, table, staging, backup string) []stri
 	}
 }
 
-func placeholderFormat(dialect string) sq.PlaceholderFormat {
-	switch dialect {
-	case "postgres":
-		return sq.Dollar
-	default:
-		return sq.Question
-	}
-}
-
 func textType(dialect string) string {
 	_ = dialect
 	return "TEXT"
@@ -523,26 +524,27 @@ func textType(dialect string) string {
 // tableExists checks whether the given table is present, using a
 // dialect-appropriate query. Errors are swallowed and treated as "not
 // existing" to preserve historical behaviour.
-func tableExists(tx *gorm.DB, dialect, schema, table string) (bool, error) {
+func tableExists(ctx context.Context, tx sqlConn, dialect, schema, table string) (bool, error) {
 	var count int
-	var q *gorm.DB
+	var query string
+	var args []any
 	switch dialect {
 	case "mysql":
 		if schema != "" {
-			q = tx.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = ?", table, schema)
+			query, args = "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = ?", []any{table, schema}
 		} else {
-			q = tx.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = (SELECT DATABASE())", table)
+			query, args = "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = (SELECT DATABASE())", []any{table}
 		}
 	case "postgres":
 		if schema != "" {
-			q = tx.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = ?", table, schema)
+			query, args = "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = ?", []any{table, schema}
 		} else {
-			q = tx.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = current_schema()", table)
+			query, args = "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = current_schema()", []any{table}
 		}
 	default: // sqlite or unknown
-		q = tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table)
+		query, args = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", []any{table}
 	}
-	if err := q.Scan(&count).Error; err != nil {
+	if err := tx.QueryRowContext(ctx, bindVars(dialect, query), args...).Scan(&count); err != nil {
 		// A COUNT against information_schema/sqlite_master failing is a real DB
 		// error (connection/permission/etc.), not "table absent"; propagate it
 		// instead of silently reporting the table as non-existent.
@@ -552,7 +554,7 @@ func tableExists(tx *gorm.DB, dialect, schema, table string) (bool, error) {
 }
 
 // fetchTableColumns returns the existing column names of the given table.
-func fetchTableColumns(tx *gorm.DB, dialect, schema, table string) ([]string, error) {
+func fetchTableColumns(ctx context.Context, tx sqlConn, dialect, schema, table string) ([]string, error) {
 	var (
 		rows *sql.Rows
 		err  error
@@ -560,21 +562,21 @@ func fetchTableColumns(tx *gorm.DB, dialect, schema, table string) ([]string, er
 	switch dialect {
 	case "mysql":
 		if schema != "" {
-			rows, err = tx.Raw("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = ?", table, schema).Rows()
+			rows, err = tx.QueryContext(ctx, bindVars(dialect, "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = ?"), table, schema)
 		} else {
-			rows, err = tx.Raw("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = (SELECT DATABASE())", table).Rows()
+			rows, err = tx.QueryContext(ctx, bindVars(dialect, "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = (SELECT DATABASE())"), table)
 		}
 	case "postgres":
 		if schema != "" {
-			rows, err = tx.Raw("SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = ?", table, schema).Rows()
+			rows, err = tx.QueryContext(ctx, bindVars(dialect, "SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = ?"), table, schema)
 		} else {
-			rows, err = tx.Raw("SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = current_schema()", table).Rows()
+			rows, err = tx.QueryContext(ctx, bindVars(dialect, "SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = current_schema()"), table)
 		}
 	default: // sqlite or unknown
 		// Quote like every other statement here: an unquoted identifier breaks
 		// on an ordinary name containing a space, and leaves the statement open
 		// to whatever the name contains.
-		rows, err = tx.Raw(fmt.Sprintf("PRAGMA table_info(%s)", quoteSQLIdent(dialect, table))).Rows()
+		rows, err = tx.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s)", quoteSQLIdent(dialect, table)))
 	}
 	if err != nil {
 		return nil, err

@@ -33,7 +33,7 @@ func runLoadSQL(ctx *ExecContext, args []string) (*insyra.DataTable, error) {
 			return nil, err
 		}
 		opts.Query = args[2]
-		return insyra.ReadSQLContext(context.Background(), conn.DB, "", opts)
+		return insyra.ReadSQLContext(context.Background(), conn.DB, insyra.SQLDialect(conn.Dialect), "", opts)
 	}
 
 	table := args[1]
@@ -41,7 +41,7 @@ func runLoadSQL(ctx *ExecContext, args []string) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadSQLContext(context.Background(), conn.DB, table, opts)
+	return insyra.ReadSQLContext(context.Background(), conn.DB, insyra.SQLDialect(conn.Dialect), table, opts)
 }
 
 func parseLoadSQLTableOptions(args []string) (insyra.ReadSQLOptions, error) {

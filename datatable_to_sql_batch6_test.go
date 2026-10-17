@@ -16,15 +16,15 @@ func TestAppendToTableWithSpaceInName(t *testing.T) {
 
 	const table = "my table"
 	dt := NewDataTable(NewDataList(1, 2).SetName("value"))
-	if err := dt.ToSQL(db, table, ToSQLOptions{IfExists: SQLActionIfTableExistsFail}); err != nil {
+	if err := dt.ToSQL(db, SQLDialectSQLite, table, ToSQLOptions{IfExists: SQLActionIfTableExistsFail}); err != nil {
 		t.Fatalf("creating %q failed: %v", table, err)
 	}
 	more := NewDataTable(NewDataList(3).SetName("value"))
-	if err := more.ToSQL(db, table, ToSQLOptions{IfExists: SQLActionIfTableExistsAppend}); err != nil {
+	if err := more.ToSQL(db, SQLDialectSQLite, table, ToSQLOptions{IfExists: SQLActionIfTableExistsAppend}); err != nil {
 		t.Fatalf("appending to %q failed: %v", table, err)
 	}
 
-	read, err := ReadSQL(db, table)
+	read, err := ReadSQL(db, SQLDialectSQLite, table)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +42,11 @@ func TestAppendToTableWithQuoteInName(t *testing.T) {
 
 	const table = `we"ird`
 	dt := NewDataTable(NewDataList(1).SetName("value"))
-	if err := dt.ToSQL(db, table, ToSQLOptions{IfExists: SQLActionIfTableExistsFail}); err != nil {
+	if err := dt.ToSQL(db, SQLDialectSQLite, table, ToSQLOptions{IfExists: SQLActionIfTableExistsFail}); err != nil {
 		t.Fatalf("creating %q failed: %v", table, err)
 	}
 	more := NewDataTable(NewDataList(2).SetName("value"))
-	if err := more.ToSQL(db, table, ToSQLOptions{IfExists: SQLActionIfTableExistsAppend}); err != nil {
+	if err := more.ToSQL(db, SQLDialectSQLite, table, ToSQLOptions{IfExists: SQLActionIfTableExistsAppend}); err != nil {
 		if strings.Contains(err.Error(), "syntax") {
 			t.Fatalf("identifier was not quoted: %v", err)
 		}
