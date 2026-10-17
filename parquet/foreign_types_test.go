@@ -167,6 +167,144 @@ func TestReadRepresentableForeignTypes(t *testing.T) {
 	}
 }
 
+func TestDurationRoundTripsAcrossReadersAndWriter(t *testing.T) {
+	field := arrow.Field{Name: "duration", Type: arrow.FixedWidthTypes.Duration_s, Nullable: true}
+	schema := arrow.NewSchema([]arrow.Field{field}, nil)
+	builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
+	builder.Field(0).(*array.DurationBuilder).AppendValues([]arrow.Duration{1, 2, 0}, []bool{true, true, false})
+	rec := builder.NewRecordBatch()
+	builder.Release()
+	arrowTable := array.NewTableFromRecords(schema, []arrow.RecordBatch{rec})
+	rec.Release()
+	physical, storedSchema, err := parquetWriteTable(arrowTable)
+	arrowTable.Release()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer physical.Release()
+	path := filepath.Join(t.TempDir(), "duration.parquet")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := pqarrow.NewFileWriter(physical.Schema(), f, parquet.NewWriterProperties(), pqarrow.DefaultWriterProps())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.AppendKeyValueMetadata("ARROW:schema", storedSchema); err != nil {
+		t.Fatal(err)
+	}
+	physicalRecord := array.NewRecordBatch(physical.Schema(), []arrow.Array{physical.Column(0).Data().Chunk(0)}, physical.NumRows())
+	if err := w.Write(physicalRecord); err != nil {
+		t.Fatal(err)
+	}
+	physicalRecord.Release()
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	want := []any{time.Second, 2 * time.Second, nil}
+	check := func(t *testing.T, values []any) {
+		t.Helper()
+		for i := range want {
+			if values[i] != want[i] {
+				t.Errorf("value[%d]=%#v want %#v", i, values[i], want[i])
+			}
+		}
+	}
+	backTable, err := Read(context.Background(), path, ReadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backTable.Err() != nil {
+		t.Fatal(backTable.Err())
+	}
+	check(t, []any{backTable.GetElementByNumberIndex(0, 0), backTable.GetElementByNumberIndex(1, 0), backTable.GetElementByNumberIndex(2, 0)})
+	list, err := ReadColumn(context.Background(), path, "duration", ReadColumnOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(t, []any{list.Get(0), list.Get(1), list.Get(2)})
+	count := 0
+	for batch, err := range Stream(context.Background(), path, ReadOptions{}, 2) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if batch == nil {
+			continue
+		}
+		for row := 0; row < batch.NumRows(); row++ {
+			if batch.GetElementByNumberIndex(row, 0) != want[count] {
+				t.Errorf("stream[%d]=%#v want %#v", count, batch.GetElementByNumberIndex(row, 0), want[count])
+			}
+			count++
+		}
+	}
+	if count != len(want) {
+		t.Fatalf("stream yielded %d rows", count)
+	}
+	f, err = os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	streamFromCount := 0
+	for batch, err := range StreamFrom(context.Background(), f, info.Size(), ReadOptions{}, 2) {
+		if err != nil {
+			_ = f.Close()
+			t.Fatal(err)
+		}
+		if batch == nil {
+			continue
+		}
+		for row := 0; row < batch.NumRows(); row++ {
+			if got := batch.GetElementByNumberIndex(row, 0); got != want[streamFromCount] {
+				t.Errorf("StreamFrom[%d]=%#v want %#v", streamFromCount, got, want[streamFromCount])
+			}
+			streamFromCount++
+		}
+	}
+	if streamFromCount != len(want) {
+		t.Errorf("StreamFrom yielded %d rows, want %d", streamFromCount, len(want))
+	}
+	_ = f.Close()
+	filtered, err := FilterWithCCL(context.Background(), path, "A > 0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := filtered.GetElementByNumberIndex(0, 0); got != time.Second {
+		t.Errorf("FilterWithCCL value=%#v want %v", got, time.Second)
+	}
+	from, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromInfo, err := from.Stat()
+	if err != nil {
+		_ = from.Close()
+		t.Fatal(err)
+	}
+	fromTable, err := ReadFrom(context.Background(), from, fromInfo.Size(), ReadOptions{})
+	_ = from.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(t, []any{fromTable.GetElementByNumberIndex(0, 0), fromTable.GetElementByNumberIndex(1, 0), fromTable.GetElementByNumberIndex(2, 0)})
+	var out bytes.Buffer
+	src := insyra.NewDataTable(insyra.NewDataList(time.Second, 2*time.Second, nil).SetName("duration"))
+	if err := WriteTo(src, &out); err != nil {
+		t.Fatal(err)
+	}
+	back, err := ReadFrom(context.Background(), bytes.NewReader(out.Bytes()), int64(out.Len()), ReadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(t, []any{back.GetElementByNumberIndex(0, 0), back.GetElementByNumberIndex(1, 0), back.GetElementByNumberIndex(2, 0)})
+}
+
 func TestReadUnrepresentableColumnSaysSo(t *testing.T) {
 	fields := []arrow.Field{
 		{Name: "ok", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
@@ -362,7 +500,7 @@ func TestSupportedTypesAreExactlyWhatGetValHandles(t *testing.T) {
 		&arrow.DictionaryType{IndexType: arrow.PrimitiveTypes.Int32, ValueType: arrow.BinaryTypes.String},
 		// Not representable:
 		arrow.FixedWidthTypes.Time32s, arrow.FixedWidthTypes.Time64us,
-		arrow.FixedWidthTypes.Duration_s,
+		// Duration is represented as time.Duration.
 		arrow.FixedWidthTypes.MonthInterval,
 		arrow.ListOf(arrow.PrimitiveTypes.Int64),
 		arrow.StructOf(arrow.Field{Name: "a", Type: arrow.PrimitiveTypes.Int64}),

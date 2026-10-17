@@ -152,7 +152,7 @@ fmt.Print(buf.String())
 func (lp *LPModel) GenerateLPFile(filename string) error
 ```
 
-**Description:** Saves the model to disk as a CPLEX LP file, with exactly the text `WriteLP` writes. The text goes to a temporary file in the same directory, which replaces `filename` only once everything has been written, so a failed call leaves no file behind and an existing file at `filename` keeps its content. The file is saved the way `DataTable.ToCSV` saves one: as a new file with mode 0644 that takes the old one's place, so an existing file's permissions are not kept, a symbolic link at `filename` is replaced rather than followed, and the directory has to be writable.
+**Description:** Saves the model to disk as a CPLEX LP file, with exactly the text `WriteLP` writes. The text goes to a temporary file with a short name in the same directory, which replaces the resolved target only once everything has been written, so a failed call leaves no file behind and an existing file keeps its content and permission bits. A symbolic link at `filename` is followed and remains in place, including when its target does not exist yet. New files use mode 0666 subject to the process umask, and the directory has to be writable.
 
 **Parameters:**
 

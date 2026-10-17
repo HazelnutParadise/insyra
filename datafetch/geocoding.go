@@ -15,6 +15,7 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/datafetch/internal/limiter"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	json "github.com/goccy/go-json"
 )
 
@@ -735,15 +736,15 @@ func (c *fileGeocodeCache) persist() {
 		insyra.LogWarning("datafetch", "NewFileGeocodeCache", "Failed to marshal cache: %v", err)
 		return
 	}
-	// Write to a sibling temp file and rename so an interrupted write can never
-	// leave a truncated cache that the next run would treat as corrupt (empty).
-	tmp := c.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		insyra.LogWarning("datafetch", "NewFileGeocodeCache", "Failed to write cache file %q: %v", tmp, err)
-		return
-	}
-	if err := os.Rename(tmp, c.path); err != nil {
-		_ = os.Remove(tmp)
-		insyra.LogWarning("datafetch", "NewFileGeocodeCache", "Failed to replace cache file %q: %v", c.path, err)
+	// The shared atomic writer replaces the cache only once it is whole, so an
+	// interrupted write never leaves a truncated cache that the next run would
+	// treat as corrupt (empty), and a file the caller keeps at <path>.tmp is
+	// left alone.
+	err = utils.WriteFileAtomically(c.path, func(w io.Writer) error {
+		_, werr := w.Write(data)
+		return werr
+	})
+	if err != nil {
+		insyra.LogWarning("datafetch", "NewFileGeocodeCache", "Failed to write cache file %q: %v", c.path, err)
 	}
 }

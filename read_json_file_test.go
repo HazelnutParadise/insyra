@@ -1,6 +1,8 @@
 package insyra_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -8,6 +10,21 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 )
+
+type jsonReader struct{ bytes.Reader }
+
+func (r *jsonReader) MarshalJSON() ([]byte, error) { return json.Marshal(map[string]any{"a": 17}) }
+
+func TestReadJSONPrefersMarshalerOverReader(t *testing.T) {
+	input := &jsonReader{Reader: *bytes.NewReader([]byte(`{"a":3}`))}
+	dt, err := insyra.ReadJSON(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dt.GetColByName("a").Get(0); got != int64(17) {
+		t.Fatalf("got %v (%T), want marshaled value 17", got, got)
+	}
+}
 
 func TestReadJSONFileKeepsLargeInt(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "d.json")

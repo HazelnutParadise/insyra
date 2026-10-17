@@ -2,10 +2,12 @@ package parquet
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -13,11 +15,83 @@ import (
 	"github.com/TimLai666/go-decimal/decimal"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/flight"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/parquet"
 	"github.com/apache/arrow-go/v18/parquet/file"
 	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
+
+const storedDurationUnitKey = "insyra:parquet-duration-unit"
+
+// normalizeStoredDurationSchema presents Arrow Duration columns as int64 to
+// pqarrow v18, which cannot decode Duration fields. The original unit is
+// retained in Arrow field metadata and restored when values enter DataTable.
+func normalizeStoredDurationSchema(r *file.Reader) error {
+	pairs := r.MetaData().FileMetaData.KeyValueMetadata
+	for _, pair := range pairs {
+		if pair.Key != "ARROW:schema" || pair.Value == nil {
+			continue
+		}
+		serialized, err := base64.StdEncoding.DecodeString(*pair.Value)
+		if err != nil {
+			return fmt.Errorf("parquet: decode stored Arrow schema: %w", err)
+		}
+		stored, err := flight.DeserializeSchema(serialized, memory.DefaultAllocator)
+		if err != nil {
+			return fmt.Errorf("parquet: decode stored Arrow schema: %w", err)
+		}
+		fields := stored.Fields()
+		changed := false
+		for i := range fields {
+			if fields[i].Type.ID() != arrow.DURATION {
+				continue
+			}
+			column := r.MetaData().Schema.ColumnIndexByName(fields[i].Name)
+			if column < 0 || r.MetaData().Schema.Column(column).PhysicalType() != parquet.Types.Int64 {
+				continue
+			}
+			unit := fields[i].Type.(*arrow.DurationType).Unit
+			metadata := fields[i].Metadata.ToMap()
+			metadata[storedDurationUnitKey] = strconv.Itoa(int(unit))
+			fields[i].Metadata = arrow.MetadataFrom(metadata)
+			fields[i].Type = arrow.PrimitiveTypes.Int64
+			changed = true
+		}
+		if changed {
+			metadata := stored.Metadata()
+			normalized := arrow.NewSchema(fields, &metadata)
+			*pair.Value = base64.StdEncoding.EncodeToString(flight.SerializeSchema(normalized, memory.DefaultAllocator))
+		}
+		return nil
+	}
+	return nil
+}
+
+func restoreStoredDuration(value any, field arrow.Field) any {
+	unitText, ok := field.Metadata.ToMap()[storedDurationUnitKey]
+	if !ok {
+		return value
+	}
+	unit, err := strconv.Atoi(unitText)
+	if err != nil {
+		return value
+	}
+	v, ok := value.(int64)
+	if !ok {
+		return value
+	}
+	multiplier := int64(1)
+	switch arrow.TimeUnit(unit) {
+	case arrow.Second:
+		multiplier = int64(time.Second)
+	case arrow.Millisecond:
+		multiplier = int64(time.Millisecond)
+	case arrow.Microsecond:
+		multiplier = int64(time.Microsecond)
+	}
+	return time.Duration(v * multiplier)
+}
 
 // streamAsArrowRecord：串流讀（可選欄、可選包），一批一批吐出 arrow.RecordBatch
 func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan arrow.RecordBatch, <-chan error) {
@@ -41,6 +115,55 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 			insyra.LogWarning("parquet", "close", "failed to close file %s: %v", path, err)
 		}
 	})
+}
+
+// parquetWriteTable lowers Arrow Duration columns to their INT64 physical
+// representation and returns the Arrow schema metadata needed to restore the
+// Duration type on read. Parquet has no duration logical type of its own.
+func parquetWriteTable(src arrow.Table) (arrow.Table, string, error) {
+	fields := append([]arrow.Field(nil), src.Schema().Fields()...)
+	hasDuration := false
+	columns := make([]arrow.Column, src.NumCols())
+	for i := range columns {
+		col := src.Column(i)
+		if col.DataType().ID() != arrow.DURATION {
+			columns[i] = *arrow.NewColumn(fields[i], col.Data())
+			continue
+		}
+		hasDuration = true
+		fields[i].Type = arrow.PrimitiveTypes.Int64
+		chunks := make([]arrow.Array, len(col.Data().Chunks()))
+		for ci := range chunks {
+			source := col.Data().Chunk(ci).(*array.Duration)
+			builder := array.NewInt64Builder(memory.DefaultAllocator)
+			for row := 0; row < source.Len(); row++ {
+				if source.IsNull(row) {
+					builder.AppendNull()
+				} else {
+					builder.Append(int64(source.Value(row)))
+				}
+			}
+			chunks[ci] = builder.NewArray()
+			builder.Release()
+		}
+		data := arrow.NewChunked(arrow.PrimitiveTypes.Int64, chunks)
+		columns[i] = *arrow.NewColumn(fields[i], data)
+		data.Release()
+		for _, chunk := range chunks {
+			chunk.Release()
+		}
+	}
+	metadata := src.Schema().Metadata()
+	schema := arrow.NewSchema(fields, &metadata)
+	result := array.NewTable(schema, columns, src.NumRows())
+	for i := range columns {
+		columns[i].Release()
+	}
+	if !hasDuration {
+		return result, "", nil
+	}
+	encoded := base64.StdEncoding.EncodeToString(flight.SerializeSchema(src.Schema(), memory.DefaultAllocator))
+	return result, encoded, nil
 }
 
 // streamArrowRecordsFrom streams record batches from any seekable source.
@@ -72,8 +195,12 @@ func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, lab
 			}
 		}()
 
-		r, err := file.NewParquetReader(src)
+		r, err := file.NewParquetReader(src, file.WithReadProps(readerProperties()))
 		if err != nil {
+			errChan <- err
+			return
+		}
+		if err := normalizeStoredDurationSchema(r); err != nil {
 			errChan <- err
 			return
 		}
@@ -281,7 +408,7 @@ func supportedArrowType(dt arrow.DataType) bool {
 		arrow.BOOL,
 		arrow.STRING, arrow.LARGE_STRING,
 		arrow.BINARY, arrow.LARGE_BINARY, arrow.FIXED_SIZE_BINARY,
-		arrow.TIMESTAMP, arrow.DATE32, arrow.DATE64,
+		arrow.TIMESTAMP, arrow.DATE32, arrow.DATE64, arrow.DURATION,
 		arrow.DECIMAL128, arrow.DECIMAL256,
 		arrow.NULL:
 		return true
@@ -334,6 +461,17 @@ func getVal(arr arrow.Array, i int) any {
 		return a.Value(i)
 	case *array.Boolean:
 		return a.Value(i)
+	case *array.Duration:
+		v := int64(a.Value(i))
+		switch a.DataType().(*arrow.DurationType).Unit {
+		case arrow.Second:
+			v *= int64(time.Second)
+		case arrow.Millisecond:
+			v *= int64(time.Millisecond)
+		case arrow.Microsecond:
+			v *= int64(time.Microsecond)
+		}
+		return time.Duration(v)
 	case *array.Binary:
 		// []byte, so a binary column is not indistinguishable from a text one.
 		// The value is copied because Arrow owns the buffer behind it.
@@ -400,6 +538,10 @@ func recordToDataTable(rec arrow.RecordBatch) *insyra.DataTable {
 		// col is an arrow.Array, we can wrap it in a Chunked to reuse chunkedToSlice
 		chunked := arrow.NewChunked(col.DataType(), []arrow.Array{col})
 		data := chunkedToSlice(chunked)
+		field := rec.Schema().Field(i)
+		if _, ok := field.Metadata.ToMap()[storedDurationUnitKey]; ok {
+			data = restoreDurationSlice(data, field)
+		}
 		chunked.Release()
 
 		colName := rec.Schema().Field(i).Name
@@ -409,6 +551,26 @@ func recordToDataTable(rec arrow.RecordBatch) *insyra.DataTable {
 		dataTable.AppendCols(newColumn(data, colName))
 	}
 	return dataTable
+}
+
+func restoreDurationSlice(data any, field arrow.Field) any {
+	values, ok := data.([]any)
+	if !ok {
+		if raw, isInt64 := data.([]int64); isInt64 {
+			values = make([]any, len(raw))
+			for i, value := range raw {
+				values[i] = value
+			}
+		} else {
+			return data
+		}
+	}
+	for i, value := range values {
+		if value != nil {
+			values[i] = restoreStoredDuration(value, field)
+		}
+	}
+	return values
 }
 
 // dataTableToArrowTable converts dt into an Arrow table. ctx is checked once
@@ -475,7 +637,7 @@ func dataTableToArrowTable(ctx context.Context, dt insyra.IDataTable) (arrow.Tab
 // all of them in and read one answer, which is what ApplyCCL needs when a
 // column's type is settled from a file rather than from one batch.
 type columnKinds struct {
-	hasInt, hasFloat, hasString, hasBool, hasTime, hasBytes, hasOther bool
+	hasInt, hasFloat, hasString, hasBool, hasTime, hasDuration, hasBytes, hasOther bool
 
 	// lossyInt64 says a value has been added that an int64 cannot hold without
 	// loss: a float that is not a whole number, one outside int64's range, or a
@@ -530,6 +692,8 @@ func (k *columnKinds) add(data []any) {
 			k.hasBool = true
 		case time.Time:
 			k.hasTime = true
+		case time.Duration:
+			k.hasDuration = true
 		case []byte:
 			k.hasBytes = true
 		default:
@@ -554,6 +718,8 @@ func (k *columnKinds) arrowType() arrow.DataType {
 		return arrow.FixedWidthTypes.Boolean
 	case k.hasTime && !numeric && !k.hasBool:
 		return arrow.FixedWidthTypes.Timestamp_ns
+	case k.hasDuration && !numeric && !k.hasBool && !k.hasTime:
+		return arrow.FixedWidthTypes.Duration_ns
 	case k.hasFloat && !k.hasBool && !k.hasTime:
 		return arrow.PrimitiveTypes.Float64
 	case k.hasInt && !k.hasBool && !k.hasTime:
@@ -595,6 +761,12 @@ func appendValue(b array.Builder, v any) {
 	case *array.TimestampBuilder:
 		if t, ok := v.(time.Time); ok {
 			builder.Append(arrow.Timestamp(t.UnixNano()))
+		} else {
+			builder.AppendNull()
+		}
+	case *array.DurationBuilder:
+		if d, ok := v.(time.Duration); ok {
+			builder.Append(arrow.Duration(d))
 		} else {
 			builder.AppendNull()
 		}

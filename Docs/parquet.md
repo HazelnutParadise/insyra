@@ -141,6 +141,7 @@ entirely.
 | `String`, `LargeString` | `string` |
 | `Binary`, `LargeBinary`, `FixedSizeBinary` | `[]byte`, so a binary column is never mistaken for a text one; `Show` prints each cell as hex, shortened for a value longer than 20 bytes (for example `30313233343536373839... (26 bytes)`) |
 | `Timestamp` | `time.Time` |
+| `Duration` | `time.Duration`, scaled from Arrow seconds, milliseconds, microseconds or nanoseconds |
 | `Date32`, `Date64` | `time.Time` at UTC midnight |
 | `Decimal128`, `Decimal256` | `decimal.Decimal` ([go-decimal](https://github.com/TimLai666/go-decimal)), exact |
 | `Null` | `nil` in every cell, which is all such a column holds; no reason is recorded |
@@ -155,6 +156,11 @@ about 16 significant digits happens only in the float result. See [Exact Decimal
 A binary column exports to JSON as base64, which is what `encoding/json` does
 with a `[]byte`, so nothing is lost. Writing the table back to Parquet keeps
 it a binary column.
+
+`time.Duration` values are written as Arrow `Duration` in nanoseconds. The
+Parquet column stores the counts as `INT64` with the Arrow schema retained in
+the file, so `Read`, `Stream`, and the corresponding `*From` and column APIs
+restore them as `time.Duration`.
 
 A dictionary-encoded column reads as the values it holds, in the Go type the
 table above gives their Arrow type, so a pandas `category` column of strings

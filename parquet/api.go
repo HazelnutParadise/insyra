@@ -66,6 +66,25 @@ func unreadableFile(label string, r any) error {
 	return fmt.Errorf("parquet: %s is not a readable Parquet file: %v", label, r)
 }
 
+func readerProperties() *parquet.ReaderProperties {
+	props := parquet.NewReaderProperties(memory.DefaultAllocator)
+	props.MaxCompressedPageSize = 1 << 40
+	props.MaxUncompressedPageSize = 1 << 40
+	return props
+}
+
+type panicSafeReaderAt struct{ io.ReaderAt }
+
+func (r panicSafeReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			n = 0
+			err = fmt.Errorf("parquet: the Parquet input is not a readable Parquet file: ReaderAt panic: %v", v)
+		}
+	}()
+	return r.ReaderAt.ReadAt(p, off)
+}
+
 // damagedFile is the error for a file that read a different number of rows than
 // its metadata holds. It is the second line of defence: a page Arrow cannot
 // decode is an error of the read itself, which readerFailed names, so this one
@@ -121,7 +140,7 @@ func Inspect(path string) (info FileInfo, err error) {
 		}
 	}()
 
-	r, err := file.NewParquetReader(f)
+	r, err := file.NewParquetReader(f, file.WithReadProps(readerProperties()))
 	if err != nil {
 		return FileInfo{}, err
 	}
@@ -335,29 +354,41 @@ func WriteToContext(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts
 		return err
 	}
 	defer arrowTable.Release()
+	writeTable, arrowSchema, err := parquetWriteTable(arrowTable)
+	if err != nil {
+		return err
+	}
+	defer writeTable.Release()
 
 	createdBy := fmt.Sprintf("go-insyra v%s", insyra.Version)
 
 	// The Parquet writer closes its sink when it is closed, if the sink is an
 	// io.Closer. Hiding Close keeps the caller's writer open.
-	writer, err := pqarrow.NewFileWriter(arrowTable.Schema(), writerOnly{w}, parquet.NewWriterProperties(parquet.WithCreatedBy(createdBy), parquet.WithCompression(codec)), pqarrow.DefaultWriterProps())
+	writer, err := pqarrow.NewFileWriter(writeTable.Schema(), writerOnly{w}, parquet.NewWriterProperties(parquet.WithCreatedBy(createdBy), parquet.WithCompression(codec)), pqarrow.DefaultWriterProps())
 	if err != nil {
 		return err
+	}
+	if arrowSchema != "" {
+		if err := writer.AppendKeyValueMetadata("ARROW:schema", arrowSchema); err != nil {
+			return err
+		}
 	}
 
 	// The row groups are written here rather than through WriteTable so ctx
 	// can be checked between them. The loop is the one WriteTable runs, so an
 	// unset WriteOptions writes the same bytes as before.
 	writeRowGroup := func(offset, size int64) error {
-		writer.NewRowGroup()
-		for i := 0; i < int(arrowTable.NumCols()); i++ {
-			if err := writer.WriteColumnChunked(arrowTable.Column(i).Data(), offset, size); err != nil {
+		if err := writer.NewRowGroupChecked(); err != nil {
+			return err
+		}
+		for i := 0; i < int(writeTable.NumCols()); i++ {
+			if err := writer.WriteColumnChunked(writeTable.Column(i).Data(), offset, size); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	rows := arrowTable.NumRows()
+	rows := writeTable.NumRows()
 	if rows == 0 {
 		// Arrow's WriteTable writes one empty row group for an empty table.
 		if err := ctx.Err(); err != nil {
@@ -383,7 +414,7 @@ func WriteToContext(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts
 	if err := writer.Close(); err != nil {
 		return fmt.Errorf("parquet: failed to close writer: %w", err)
 	}
-	return nil
+	return ctx.Err()
 }
 
 // writerOnly exposes only Write, so a writer handed to WriteTo is never
@@ -416,7 +447,7 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 // Parquet keeps its index at the end of the file, so reading needs to seek:
 // hence an io.ReaderAt and the total size rather than a plain io.Reader.
 func ReadFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions) (*insyra.DataTable, error) {
-	return readTableFrom(ctx, io.NewSectionReader(r, 0, size), "the Parquet input", opt)
+	return readTableFrom(ctx, io.NewSectionReader(panicSafeReaderAt{r}, 0, size), "the Parquet input", opt)
 }
 
 // readTableFrom is the one reader behind Read and ReadFrom. label names the
@@ -428,8 +459,11 @@ func readTableFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string
 		}
 	}()
 
-	r, err := file.NewParquetReader(src)
+	r, err := file.NewParquetReader(src, file.WithReadProps(readerProperties()))
 	if err != nil {
+		return nil, err
+	}
+	if err := normalizeStoredDurationSchema(r); err != nil {
 		return nil, err
 	}
 	defer func() {
@@ -515,6 +549,9 @@ func readTableFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string
 	for i := 0; i < int(arrowTable.NumCols()); i++ {
 		col := arrowTable.Column(i)
 		data := chunkedToSlice(col.Data())
+		if _, ok := col.Field().Metadata.ToMap()[storedDurationUnitKey]; ok {
+			data = restoreDurationSlice(data, col.Field())
+		}
 		// getVal already yields nil for a type it cannot represent; the reason
 		// has to be recorded here, where the column's name and type are known.
 		if !supportedArrowType(col.DataType()) {
@@ -550,7 +587,7 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) it
 // io.ReaderAt and the size.
 func StreamFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions, batchSize int) iter.Seq2[*insyra.DataTable, error] {
 	return streamSeq(ctx, func(inner context.Context) (<-chan arrow.RecordBatch, <-chan error) {
-		return streamArrowRecordsFrom(inner, io.NewSectionReader(r, 0, size), "the Parquet input", opt, batchSize, nil)
+		return streamArrowRecordsFrom(inner, io.NewSectionReader(panicSafeReaderAt{r}, 0, size), "the Parquet input", opt, batchSize, nil)
 	})
 }
 

@@ -104,6 +104,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`DataTable.SetColNames` 只替表格現有的欄命名，和 `SetRowNames` 替列命名的方式一樣。以前名字比欄多時會自動新增空欄，例如兩欄的表格呼叫 `SetColNames([]string{"x", "y", "z"})` 會變成三欄；現在只命名兩欄，並記一筆警告列出被略過的 `z`。要新增欄請用 `AppendCols`。`SetRowNames` 多出來的名字一樣略過，現在也會用警告列出來。把欄或列改成它原本的名字時不再加上後綴：A、B 兩欄原本叫 `price`、`qty` 時，`SetColNames([]string{"price", "qty"})` 以前會改成 `price_1`、`qty_1`，`[]string{"qty", "price"}` 會把 A 欄命名成 `qty_1`；現在前者維持 `price`、`qty`，後者把 A 欄命名為 `qty`、B 欄命名為 `price`，資料位置不變。修正涵蓋 `SetColNames`、`SetColNameByIndex`、`SetColNameByNumber`、`ChangeColName`、`SetRowToColNames`、`SetColToRowNames`、`SetRowNames`、`SetRowNameByIndex` 與 `UpdateRow`。名字真的和其他欄或列重複時，照舊加上數字後綴，但現在會記一筆警告說明改名，例如 `AppendCols` 加入第二個 `price` 欄而改成 `price_1`，或 CSV 檔的標題重複時。`Err()` 不受影響。
 - `Filter`、`FilterRows`、`FilterRowsWhere` 改用欄位清單的複本，判斷式裡刪掉欄位不會再讓正在讀的欄位位移。`SliceCols` 把較短的欄補上 `nil`，欄位長度不一的表也保留每一列。`FilterColsByColIndexLessThanOrEqualTo` 遇到 `ParseColIndex` 能讀到的最大字母時不再溢位。
 - `DataType` 把以 `float32` 或具名浮點型別儲存的 `NaN` 視為缺值，和 `float64` 的 `NaN` 一樣；`ShowTypes` 在窄欄裡印出完整的 `DataType` 字樣，不再截成 `num`。
+- 原子寫入（`ToCSV`、`ToJSON`、`ToExcel`、Parquet `Write`、`GenerateLPFile`、檔案型地理編碼快取）會跟著路徑上的符號連結，取代連結指向的檔案，這和 `os.WriteFile` 一樣；連結仍是連結，目標還不存在也一樣。既有檔案保留它的權限位元，新檔案依程序的 umask 以 0666 建立。原本會把連結換成一般檔案，並把每個檔案都改成 0644。暫存檔改用短名稱（`.insyra-<隨機>.tmp`），所以檔名接近 255 位元組上限時不會再因 `file name too long` 失敗，寫入函式 panic 時也會刪掉暫存檔。
+- `ReadJSON` 讀到同時實作 `json.Marshaler` 與 `io.Reader` 的值時，讀的是它 marshal 出的 JSON，而不是把它當串流。
+- `csvxl.AppendCSVToExcel` 與使用 `SheetExistsReplace` 的 `DataTable.ToExcel`，現在能取代唯一工作表就叫 `__insyra_placeholder__` 的活頁簿；原本因為占位工作表同名，舊內容會留下來。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
@@ -214,6 +217,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING（輸出）**：`AppendCsvToExcel` 改用全新的工作表取代既有的同名工作表，做法與 `DataTable.ToExcel` 相同，不再像 v0.3.3 那樣就地清空儲存格。就地清空只移除值與公式，列與儲存格上的其他東西都還在：新資料落在舊的隱藏列上，在 Excel 裡看不到，`ExcelToCsv` 讀回時也會跳過；舊的註解與超連結也留在新值上。舊工作表內容越多也越慢：取代一張有 2 萬個公式的工作表要 157 毫秒，現在是 6 毫秒。工作表仍保留原本的位置，原本隱藏的也維持隱藏，作用中的工作表不變，活頁簿其他地方的定義名稱與公式也都保留，但舊工作表的欄寬、檢視與合併範圍不再保留，只屬於這張工作表的定義名稱也會一起消失。名稱只差大小寫的工作表，現在會改用呼叫時給的名稱：附加到 `TARGET` 會把名為 `Target` 的工作表改名，v0.3.3 則維持原名。
 - 函式名稱改成 Go 對縮寫的寫法，與 insyra 其他套件一致：`CSVToExcel`、`AppendCSVToExcel`、`ExcelToCSV` 與 `ExcelToCSVOptions`、`ReadCSVToString`，處理整個目錄的兩個函式則是 `CSVDirToExcel` 與 `ExcelDirToCSV`。舊名稱 `CsvToExcel`、`AppendCsvToExcel`、`ExcelToCsv`、`ExcelToCsvOptions`、`EachCsvToOneExcel`、`EachExcelToCsv` 與 `ReadCsvToString` 的行為與新名稱完全相同，標為 **Deprecated**，下一版移除。CLI 的 `convert` 不受影響。
 - `CSVToExcel` 與 `AppendCSVToExcel` 會先檢查編碼名稱才讀檔，解碼表裡沒有的名稱會回傳一個指出該名稱的錯誤。過去要讀到 CSV 時才會發現：沒有任何檔案時（例如 `CSVDirToExcel` 遇到空目錄），不存在的編碼照樣被接受並寫出工作簿。有好幾個檔案時，同一個錯誤會每個檔案重複一次。
+- 公式防護改依形狀判斷文字是不是數字，不再用 `strconv.ParseFloat`：`+Inf`、`-NaN` 與 `+0x1p2` 這類十六進位浮點會加上開頭的單引號，`-1e309` 雖然超出 `float64` 但仍寫成一般數字，不再加引號。`DataTable.ToCSV` 用同一個函式，行為一起改變。
 
 ### `parquet`
 - `Write` 先寫入暫存檔再 rename 到目標位置，中途失敗時不會留下截斷的 Parquet 檔。
@@ -233,6 +237,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ApplyCCL` 的 `NEW('r') = @` 讓每一列寫入自己那一列的值。過去每批 1,000 列裡的每一格，寫入的都是該批最後一列。
 - 檔案中某個 row group 損壞時，`Read`、`ReadFrom`、`ReadColumn`、`Stream`、`StreamFrom`、`FilterWithCCL` 與 `ApplyCCL` 會回傳錯誤，指出是哪個檔案、哪些 row group 沒能完整讀出。本套件過去使用的 Arrow 讀取器會把解不開的頁標頭當成那個 row group 的結尾，接著讀下一組，所以過去它們會不報錯地回傳其他組的列，`ApplyCCL` 還會用這些列覆寫原檔：以每組 1,000 列存成 3,000 列的檔案，第三組損壞時最後 1,000 列就此遺失，第二組損壞時中間 1,000 列被悄悄略過。現在 `ApplyCCL` 遇到這種檔案不會改動它。
 - `parquet` 改用 `github.com/apache/arrow-go/v18` v18.8.0 讀寫，取代 `github.com/apache/arrow/go/v17` v17.0.0，公開的名稱都沒有改變。壓縮頁損壞時會回傳錯誤：使用 Snappy 時，Arrow v17 會在它自己開的 goroutine 裡以 `snappy: corrupt input` panic，任何 `recover` 都攔不到，所以 `Read`、`Stream`、`FilterWithCCL` 與 `ApplyCCL` 會讓整個程式結束。現在解不開的頁由讀取器自己回報，它的錯誤會保留在本套件回傳的錯誤裡。
+- `time.Duration` 欄位能完整往返：`Write` 以 `INT64` 奈秒儲存，並在檔案的 schema 裡保留 Arrow `Duration` 型別，`Read`、`Stream`、`ReadFrom`、`StreamFrom`、`ReadColumn` 讀回 `time.Duration`，其他工具以 Arrow 秒、毫秒或微秒寫的檔案也一樣。arrow-go v18 完全拒絕讀這種欄位，所以 Duration 欄位原本讀不出來，或讀成 `nil`。
+- 含有超過 arrow-go v18 預設上限（壓縮 64 MiB、解壓 256 MiB，比 v17 小）的資料頁的檔案，在 `Read`、`Stream`、`Inspect`、`ApplyCCL`、`FilterWithCCL` 都能讀。
+- 傳給 `ReadFrom` 或 `StreamFrom` 的 `io.ReaderAt` 內部 panic 會變成錯誤。Arrow 在 goroutine 裡讀欄位，呼叫端的 `recover` 接不到，整個程式會結束。
+- `WriteTo` 與 `WriteToContext` 在 row group 無法開始時回傳錯誤而不是 panic；`WriteToContext` 在寫 footer 期間 context 被取消時回傳 `ctx.Err()`。
 
 ### `mkt`
 - **BREAKING**：`CAI` 改成一般函式，不再是存著 `CustomerActivityIndex` 的變數。呼叫方式不變，只有對它賦值會編譯失敗。
@@ -243,7 +251,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `lpgen`
 - 新增 `LPModel.WriteLP(io.Writer) error`，把 `GenerateLPFile` 存檔的同一份 CPLEX LP 文字寫進任何 writer，遇到不認識的目標型別時回傳錯誤。`GenerateLPFile` 改為透過它寫檔，輸出內容不變。
-- **BREAKING**：`GenerateLPFile` 改為回傳 `error`，不再只記錄警告：檔案建立或寫入失敗、目標型別不是 minimize 或 maximize 時都會回傳錯誤。它先寫進暫存檔，整個模型寫完才取代目標檔，所以存檔失敗時不會留下檔案，也不會再毀掉既有的檔案。v0.3.3 會先清空既有檔案才檢查目標型別，最後檔案裡只剩開頭兩行說明文字。存檔方式與 `ToCSV` 相同：寫出權限為 0644 的新檔取代舊檔，所以既有檔案的權限不會保留，路徑若是符號連結，會被換成一般檔案，不會寫進連結指向的檔案。當作一般敘述呼叫的寫法仍可編譯，請記得檢查新的回傳值。
+- **BREAKING**：`GenerateLPFile` 改為回傳 `error`，不再只記錄警告：檔案建立或寫入失敗、目標型別不是 minimize 或 maximize 時都會回傳錯誤。它先寫進暫存檔，整個模型寫完才取代目標檔，所以存檔失敗時不會留下檔案，也不會再毀掉既有的檔案。v0.3.3 會先清空既有檔案才檢查目標型別，最後檔案裡只剩開頭兩行說明文字。既有檔案保留它的權限位元，路徑若是符號連結，會跟著連結寫進它指向的檔案。當作一般敘述呼叫的寫法仍可編譯，請記得檢查新的回傳值。
 - `ParseLingo(text)` 與 `ParseLingoFile(path)` 讀取 LINGO 模型，回傳 `(*LPModel, error)`：檔案打不開或讀不了、某一行長達 64 KiB 以上，都會回傳錯誤，檔案不存在時可用 `errors.Is` 比對 `fs.ErrNotExist`。與舊函式不同，它們不會回傳缺了一部分的模型：認不得的敘述、讀不出變數的宣告，以及最後一句漏了 `;`，都會回傳錯誤並指出行號與該句，舊函式則是不吭一聲地丟掉。它們也會讀 `@GIN(x)`（一般整數）、`@FREE(x)`（可為負的變數）與 `@BND(l, x, u)`（範圍 `l <= x <= u`），舊函式會把這三種都丟掉，於是模型寫成 LP 後，可為負的變數變成了非負。以 `!` 開頭的 LINGO 註解會略過。`ParseLingoModel_str` 與 `ParseLingoModel_txt` 標為 **Deprecated**，下一版移除。移除前，失敗時照舊回傳 `nil` 並記錄警告。
 - `ParseLingo` 與 `ParseLingoFile` 會讀同一行註解後面的敘述（原本會被丟掉），並拒絕不是線性式的目標或限制式，例如 `MIN= ;` 或 `@UNKNOWN(X)=1;`，錯誤會指出行號。`WriteLP` 遇到未知的目標型別時，在寫任何東西到 `w` 之前就拒絕。
 
@@ -407,7 +415,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `Write` 關閉 Parquet writer 失敗時改為回傳錯誤，而不是只寫 log。檔尾在關閉時才寫入，過去關閉失敗會留下無法讀取的檔案卻回傳 `nil`。套件其他地方關閉時的錯誤改經 Insyra 的 logger 而非標準 `log` 套件，`Config.SetLogLevel` 對它們生效。
 - 修正 `FilterWithCCL` 只回傳前 1000 列符合的資料。檔案以每批 1000 列讀取，而第一批之後的每一批都被接到結果欄位的複本上而不是欄位本身，所以 2500 列的檔案用每列都成立的條件過濾，回傳的是 1000 列，而且完全沒有錯誤。符合的列現在跨整段串流收集。
 - 最後一批之後才發生的讀取錯誤不再被換成部分結果。讀取端的紀錄通道與錯誤通道是一起關閉的，`FilterWithCCL`、`ApplyCCL` 與 `Stream` 的 `select` 可能挑中任何一個，因此讀到一半失敗的檔案可能回傳截斷的表格而 error 為 nil，`ApplyCCL` 更會把截斷的結果覆蓋回原檔。三者現在都先讀錯誤通道再結束。成功的串流呼叫也不再每次都印出 `failed to close file … file already closed`。
-- 讀取其他工具寫出的 Parquet 檔時，reader 不認識的欄位型別不再變成一串重複的字。`getVal` 的 fallback 回傳 `arr.String()`，也就是整個 array 的字串形式，忽略列索引，所以那一欄每一列都讀成類似 `[19000 19001 19002]` 的東西，而 `Read` 回傳 nil error、表格的 `Err()` 也是 nil。`parquet.Write` 只寫得出七種 Arrow 型別，所以這個問題在本函式庫自己寫的檔案上看不到，只在讀別人的檔案時發生。現在 `Date32`／`Date64` 讀成 UTC 午夜的 `time.Time`，`Int8`／`Int16` 與四種無號整數讀成同名的 Go 型別，`LargeString` 讀成 `string`，`Decimal128`／`Decimal256` 以檔案自己的未縮放整數與 scale 精確讀成 [go-decimal](https://github.com/TimLai666/go-decimal) 的 `decimal.Decimal`。其餘的 `List`、`Struct`、`Map`、`Time32`、`Time64`、`Duration`、`Interval` 讀成 `nil`，檔案其他欄位照常讀取。`Read`、`Stream` 與 `ReadColumn` 會以警告記錄原因，並寫進回傳表格或 list 的 `Err()`，內容是 `column "tags": unsupported Arrow column type list<item: int64>; its cells were read as nil`；有好幾欄不支援時，每一欄都會記錄警告，`Err()` 留下的是最後一欄。`FilterWithCCL` 對這種欄位同樣拿到 `nil`，但不記錄原因。可以用 `ReadOptions.Columns` 跳過該欄。Arrow 型別為 `Null` 的欄位讀成 `nil`，不記錄原因，因為它本來就只裝著 null。Dictionary 編碼的欄位讀成其值所屬的 Go 型別，不論 reader 直接還原成底層型別，或在檔案保存了 Arrow schema 時交出 Arrow dictionary。
+- 讀取其他工具寫出的 Parquet 檔時，reader 不認識的欄位型別不再變成一串重複的字。`getVal` 的 fallback 回傳 `arr.String()`，也就是整個 array 的字串形式，忽略列索引，所以那一欄每一列都讀成類似 `[19000 19001 19002]` 的東西，而 `Read` 回傳 nil error、表格的 `Err()` 也是 nil。`parquet.Write` 只寫得出七種 Arrow 型別，所以這個問題在本函式庫自己寫的檔案上看不到，只在讀別人的檔案時發生。現在 `Date32`／`Date64` 讀成 UTC 午夜的 `time.Time`，`Int8`／`Int16` 與四種無號整數讀成同名的 Go 型別，`LargeString` 讀成 `string`，`Decimal128`／`Decimal256` 以檔案自己的未縮放整數與 scale 精確讀成 [go-decimal](https://github.com/TimLai666/go-decimal) 的 `decimal.Decimal`。其餘的 `List`、`Struct`、`Map`、`Time32`、`Time64`、`Interval` 讀成 `nil`，檔案其他欄位照常讀取。`Read`、`Stream` 與 `ReadColumn` 會以警告記錄原因，並寫進回傳表格或 list 的 `Err()`，內容是 `column "tags": unsupported Arrow column type list<item: int64>; its cells were read as nil`；有好幾欄不支援時，每一欄都會記錄警告，`Err()` 留下的是最後一欄。`FilterWithCCL` 對這種欄位同樣拿到 `nil`，但不記錄原因。可以用 `ReadOptions.Columns` 跳過該欄。Arrow 型別為 `Null` 的欄位讀成 `nil`，不記錄原因，因為它本來就只裝著 null。Dictionary 編碼的欄位讀成其值所屬的 Go 型別，不論 reader 直接還原成底層型別，或在檔案保存了 Arrow schema 時交出 Arrow dictionary。
 - `decimal.Decimal` 依數值大小排序，不是依數字文字的字典順序，所以含 9.5、10.2、100.0 的欄位會照這個順序排，而不是 10.2、100.0、9.5。與 `time.Time` 一樣，它對 `Mean`、`Sum` 與 `IsNumeric` 而言不是數值。
 - Parquet 的 `Binary`、`LargeBinary`、`FixedSizeBinary` 欄改為讀成 `[]byte`。過去每一列都是同一段文字，也就是整個 array 的字串形式，error 還是 nil，所以位元組整個遺失，二進位欄讀回來也跟文字欄沒兩樣。現在 `Read`、`Stream` 與 `ReadColumn` 讀出的每一格都是該列自己的位元組，從 Arrow 的緩衝區複製出來。`Show` 以十六進位顯示這一欄，JSON 匯出寫成 base64。`Write` 仍然把 `[]byte` 格子的欄位寫成字串欄，內容是 Go 對該切片的文字，例如 `[65 45 48 49]`，所以把這種欄寫回檔案保不住它的位元組。
 

@@ -2,7 +2,9 @@
 
 ## Purpose
 A Parquet file written by another tool carries column types this library never writes, and reading one is the main thing a Parquet reader is for. This capability fixes what each Arrow column type becomes in Go, insists that a cell is the value of its own row, and says what happens to a type with no faithful representation: nothing that looks like data, and a reason the caller can find. It exists because the reader used to answer an unknown type with the string form of the whole column, repeated in every row, and report success.
+
 ## Requirements
+
 ### Requirement: A column never reads back as a value it does not hold
 
 讀取 Parquet 時，每一格 SHALL 是該列自己的值。系統 SHALL NOT 把整欄的字串傾印當成單一格的值，也 SHALL NOT 忽略列索引。
@@ -74,3 +76,18 @@ Dictionary 欄位 SHALL 讀成每一列索引所指的值，型別與直接讀�
 - **WHEN** 讀取含 `Binary` 欄的檔案，未經修改直接寫回
 - **THEN** 寫出的檔案中該欄仍是二進位型別，且位元組相同
 
+### Requirement: A duration column round-trips as time.Duration
+
+`Write` SHALL store a column of `time.Duration` as `INT64` nanoseconds, with the Arrow `Duration` type recorded in the file's Arrow schema. `Read`, `ReadFrom`, `ReadColumn`, `Stream` and `StreamFrom` SHALL return those cells as `time.Duration`, and a null cell as `nil`.
+
+#### Scenario: A duration column written and read back
+- **WHEN** a column holds `time.Second`, `2 * time.Second` and a null, and is written and then read
+- **THEN** the cells read back as `time.Second`, `2 * time.Second` and `nil`
+
+### Requirement: A duration column from another tool keeps its unit
+
+When a file stores its Arrow schema and a column in it is an Arrow duration in seconds, milliseconds, microseconds or nanoseconds, the readers SHALL return that column's cells as `time.Duration` scaled from that unit.
+
+#### Scenario: A column of Arrow durations in seconds
+- **WHEN** a file stores its Arrow schema and holds an Arrow `Duration` column in seconds with the values 1, 2 and a null
+- **THEN** the cells read back as `time.Second`, `2 * time.Second` and `nil`

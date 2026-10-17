@@ -61,11 +61,12 @@ func runFromRecord(rec arrow.RecordBatch, names []string, offset int) cclRun {
 		arrays[i] = col
 		col.Retain()
 		data := make([]any, col.Len())
+		field := rec.Schema().Field(i)
 		for j := range data {
 			if col.IsNull(j) {
 				continue
 			}
-			data[j] = getVal(col, j)
+			data[j] = restoreStoredDuration(getVal(col, j), field)
 		}
 		cols[i] = data
 	}
@@ -2011,8 +2012,11 @@ func cclFileInfo(path string) (totalRows int, colNames []string, schema *arrow.S
 	}
 	defer func() { _ = f.Close() }()
 
-	r, err := file.NewParquetReader(f)
+	r, err := file.NewParquetReader(f, file.WithReadProps(readerProperties()))
 	if err != nil {
+		return 0, nil, nil, err
+	}
+	if err := normalizeStoredDurationSchema(r); err != nil {
 		return 0, nil, nil, err
 	}
 	defer func() { _ = r.Close() }()
@@ -2560,7 +2564,7 @@ func sourceLayout(path string) (layout cclOutputLayout, err error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	r, err := file.NewParquetReader(f)
+	r, err := file.NewParquetReader(f, file.WithReadProps(readerProperties()))
 	if err != nil {
 		return cclOutputLayout{}, err
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -89,6 +90,54 @@ func TestWriteToContextStopsBetweenRowGroups(t *testing.T) {
 	// rather than hand back a short table.
 	if _, err := ReadFrom(context.Background(), bytes.NewReader(w.buf.Bytes()), int64(w.buf.Len()), ReadOptions{}); err == nil {
 		t.Fatal("a write stopped by its context read back as a whole Parquet file")
+	}
+}
+
+func TestWriteToContextChecksCancellationAfterFooter(t *testing.T) {
+	dt := mixedTable(5)
+	var baseline bytes.Buffer
+	if err := WriteTo(dt, &baseline); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	w := &cancelOnWrite{cancel: cancel, after: 0}
+	// Determine the last write from a successful serialization, then cancel as
+	// the footer's final bytes are accepted by the destination.
+	w.after = countWrites(dt)
+	if err := WriteToContext(ctx, dt, w); !errors.Is(err, context.Canceled) {
+		t.Fatalf("WriteToContext returned %v, want context.Canceled", err)
+	}
+	if w.buf.Len() != baseline.Len() {
+		t.Fatalf("footer output length=%d want %d", w.buf.Len(), baseline.Len())
+	}
+}
+
+func countWrites(dt insyra.IDataTable) int {
+	w := &countingWriter{}
+	if err := WriteTo(dt, w); err != nil {
+		panic(err)
+	}
+	return w.calls
+}
+
+type countingWriter struct{ calls int }
+
+func (w *countingWriter) Write(p []byte) (int, error) { w.calls++; return len(p), nil }
+
+type rejectAfterHeader struct{ accepted bool }
+
+func (w *rejectAfterHeader) Write(p []byte) (int, error) {
+	if !w.accepted {
+		w.accepted = true
+		return len(p), nil
+	}
+	return 0, errors.New("writer refused row group")
+}
+
+func TestWriteToReturnsNewRowGroupError(t *testing.T) {
+	dt := insyra.NewDataTable(insyra.NewDataList(1, 2).SetName("A"))
+	if err := WriteTo(dt, &rejectAfterHeader{}, WriteOptions{RowGroupSize: 1}); err == nil || !strings.Contains(err.Error(), "writer refused row group") {
+		t.Fatalf("WriteTo returned %v, want row group write error", err)
 	}
 }
 

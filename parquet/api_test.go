@@ -12,6 +12,13 @@ import (
 	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
 
+func TestReaderPropertiesDisableArrowPageSizeLimits(t *testing.T) {
+	props := readerProperties()
+	if props.MaxCompressedPageSize != 1<<40 || props.MaxUncompressedPageSize != 1<<40 {
+		t.Fatalf("reader page limits compressed=%d uncompressed=%d", props.MaxCompressedPageSize, props.MaxUncompressedPageSize)
+	}
+}
+
 func writeRows(t *testing.T, n int, rowGroupSize int64) string {
 	t.Helper()
 	vals := make([]any, n)

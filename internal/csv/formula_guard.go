@@ -1,9 +1,11 @@
 package csv
 
 import (
-	"strconv"
+	"regexp"
 	"strings"
 )
+
+var numericLiteral = regexp.MustCompile(`^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$`)
 
 // GuardFormula prefixes text a spreadsheet would execute with a single quote,
 // which spreadsheets read as "this is text". Only leading =, +, - and @ (and
@@ -18,7 +20,7 @@ func GuardFormula(s string) string {
 	}
 	switch trimmed[0] {
 	case '=', '+', '-', '@':
-		if _, err := strconv.ParseFloat(strings.TrimSpace(trimmed), 64); err == nil {
+		if numericLiteral.MatchString(strings.TrimSpace(trimmed)) {
 			return s
 		}
 		return "'" + s
