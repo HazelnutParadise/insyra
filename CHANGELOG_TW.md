@@ -94,6 +94,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ApplyCCL` 使用 `@` 時每一列拿到自己的值；原本同一批 1,000 列都拿到該批最後一列的值。
 - Arrow 依賴從 `github.com/apache/arrow/go/v17` 換成 `github.com/apache/arrow-go/v18` v18.8.0。讀出的表格相同，duration 欄仍讀成 `int64` 計數。
 - `ApplyCCL` 改用同目錄裡自己專用名稱的暫存檔，並保留原檔的權限。原本固定寫到 `<path>.tmp`，會覆寫再刪掉使用者自己放在那個名稱的檔案。
+- `ApplyCCL` 改寫檔案時，會沿用每一欄原本的壓縮格式，row group 也維持原檔最大的那一組的大小；腳本新增的欄位則採用第一欄的壓縮格式。過去一律寫成未壓縮、每 1,000 列一組：一個 20 萬列、用 Zstd 壓縮的檔案加一欄後，從 1.7 MB 變成 9.3 MB，分成 200 組。也可以像 `WriteContext` 一樣傳入 `WriteOptions` 自行指定這兩項。路徑是符號連結時會寫到連結指向的檔案，並保留檔案原本的權限，與其他寫檔函式一致。
+- `FilterWithCCL` 與 `ApplyCCL` 因錯誤提早返回時，會停止讀檔。過去負責讀檔的 goroutine 會卡在送下一批資料，檔案也一直開著，直到 context 結束為止；用 `context.Background()` 的話，就是一直到程式結束。
 
 ### `pd`
 

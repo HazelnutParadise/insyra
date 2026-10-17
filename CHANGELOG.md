@@ -94,6 +94,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `ApplyCCL` with `@` gives each row its own values; it gave every row of a 1,000-row batch that batch's last row.
 - The Arrow dependency moves from `github.com/apache/arrow/go/v17` to `github.com/apache/arrow-go/v18` v18.8.0. Tables read the same, including duration columns, which still read as their `int64` count.
 - `ApplyCCL` writes through a temporary file with a name of its own in the same directory and keeps the original file's mode. It wrote through `<path>.tmp`, overwriting and then deleting a file the caller kept under that name.
+- `ApplyCCL` writes the file back with the compression each column had and row groups as large as the original's largest one, and a column the script adds takes the first column's codec. It used to write every file uncompressed in groups of 1,000 rows: a 200,000-row Zstd file with one column added grew from 1.7 MB to 9.3 MB, in 200 row groups. An optional `WriteOptions` sets both instead, as `WriteContext` takes it. It also follows a symbolic link and keeps the file's permissions, the way the writers do.
+- `FilterWithCCL` and `ApplyCCL` stop reading the file when they return early with an error. The goroutine reading it used to stay blocked on its next batch, with the file open, for as long as the context lived, which for `context.Background()` was the rest of the program.
 
 ### `pd`
 
