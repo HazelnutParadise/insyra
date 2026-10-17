@@ -32,6 +32,7 @@ An unknown `Compression`, a negative `RowGroupSize` and more than one `WriteOpti
 #### Scenario: Settings that cannot be used
 - **WHEN** `Write` 收到 `RowGroupSize: -1`、未知的 `Compression`，或兩個 `WriteOptions`
 - **THEN** 回傳錯誤，目標路徑沒有檔案
+
 ### Requirement: A write can be cancelled
 
 `WriteContext(ctx, dt, path, opts...)` and `WriteToContext(ctx, dt, w, opts...)` SHALL stop and return the context's error when `ctx` is done: before the table is converted, between columns while converting, before each row group and, for `WriteContext`, before the finished temporary file replaces `path`. A cancelled `WriteContext` SHALL leave the file at `path` as it was and no temporary file behind.
@@ -51,14 +52,31 @@ A nil `ctx` SHALL be an error, not a panic. `Write` and `WriteTo` SHALL be `Writ
 #### Scenario: A nil context
 - **WHEN** 以 nil context 呼叫 `WriteContext` 或 `WriteToContext`
 - **THEN** 回傳錯誤而不 panic，目錄裡沒有檔案，writer 沒有收到位元組
+
 ### Requirement: Writes to one path do not mix
 
-`Write` and `WriteContext` SHALL write through a temporary file with a name of its own in the directory of `path`, so two writes to the same path at once each leave either their own complete file or the other's at `path`, never a mix, a write the operating system refuses to rename leaves no temporary file, and a file the caller keeps at `<path>.tmp` is not touched.
+`Write` and `WriteContext` SHALL write through a temporary file with a name of its own in the directory of the file that `path` names (the target, when `path` is a symbolic link), so two writes to the same path at once each leave either their own complete file or the other's at `path`, never a mix, a write the operating system refuses to rename leaves no temporary file, and a file the caller keeps at `<path>.tmp` is not touched.
 
 #### Scenario: Two writers
-- **WHEN** 兩個 goroutine 各自對同一路徑連續寫入 20 次，一個寫 1,000 列、一個寫 3,000 列
-- **THEN** 每一邊至少有一次寫入回傳 nil（Windows 可能拒絕兩個同時改名到同一目標的其中一個），最後的檔案可讀，列數是 1,000 或 3,000，目錄裡沒有其他檔案
+- **WHEN** two goroutines each write to the same path 20 times in a row, one writing 1,000 rows and one writing 3,000 rows
+- **THEN** each side has at least one write that returns nil (Windows may refuse one of two renames onto the same target at once), the final file is readable with 1,000 or 3,000 rows, and no other file is left in the directory
 
 #### Scenario: A file named like the old temporary file
-- **WHEN** `path + ".tmp"` 已有使用者的檔案，再呼叫 `Write(dt, path)`
-- **THEN** 該檔案內容不變
+- **WHEN** `path + ".tmp"` already holds a file of the user's, and `Write(dt, path)` is called
+- **THEN** that file's content is unchanged
+
+### Requirement: WriteTo reports a row group it cannot start or write
+
+`WriteTo` and `WriteToContext` SHALL return the error of a row group that cannot be started or written, and SHALL NOT panic.
+
+#### Scenario: A destination that refuses a row group
+- **WHEN** the destination refuses a write after the header, and the table is written with `RowGroupSize: 1`
+- **THEN** the call returns that error and does not panic
+
+### Requirement: A cancellation during the footer is reported
+
+`WriteToContext` SHALL return `ctx.Err()` when `ctx` is done while the footer is written, after every row group was written.
+
+#### Scenario: Cancelled as the footer is accepted
+- **WHEN** `ctx` is cancelled as the last bytes of the footer are accepted by the destination
+- **THEN** `WriteToContext` returns `context.Canceled`, and the destination holds every byte of the file

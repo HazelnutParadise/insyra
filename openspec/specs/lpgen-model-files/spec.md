@@ -19,15 +19,15 @@ How `lpgen` saves a model to an LP file and reads a LINGO model: saving returns 
 
 ### Requirement: Saving a model replaces the file only when it is whole
 
-`GenerateLPFile` SHALL write through a temporary file in the directory of `filename` that is renamed into place only after the whole model was written, so a failed call SHALL NOT leave a file at `filename` or a temporary file behind, and a file already at `filename` SHALL keep its content. A successful call SHALL save exactly the text `WriteLP` writes.
+`GenerateLPFile` SHALL write through a temporary file in the directory of the file `filename` names (the target, when `filename` is a symbolic link) that is renamed into place only after the whole model was written, so a failed call SHALL NOT leave a file at `filename` or a temporary file behind, and a file already at `filename` SHALL keep its content. A successful call SHALL save exactly the text `WriteLP` writes.
 
 #### Scenario: An existing file and a failed save
-- **WHEN** `path` 已有一個 LP 檔，再以未知的目標型別呼叫 `GenerateLPFile(path)`
-- **THEN** 回傳錯誤，`path` 的內容與呼叫前相同
+- **WHEN** `path` already holds an LP file, and `GenerateLPFile(path)` is called on a model with an unknown objective type
+- **THEN** the call returns an error and the content of `path` is the same as before the call
 
 #### Scenario: A successful save
-- **WHEN** 一個合法的模型呼叫 `GenerateLPFile(path)`
-- **THEN** 回傳 nil，檔案內容與 `WriteLP` 寫出的文字相同
+- **WHEN** a valid model is saved with `GenerateLPFile(path)`
+- **THEN** the call returns nil and the file content equals the text `WriteLP` writes
 
 ### Requirement: A LINGO model is read by ParseLingo and ParseLingoFile
 

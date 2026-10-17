@@ -32,13 +32,14 @@ With one `WriteOptions`, `ApplyCCL` SHALL write every column with that `Compress
 #### Scenario: Settings that cannot be used
 - **WHEN** `ApplyCCL` 收到 `RowGroupSize: -1` 或兩個 `WriteOptions`
 - **THEN** 回傳錯誤，檔案位元組不變
+
 ### Requirement: ApplyCCL writes through a temporary file of its own
 
-`ApplyCCL` SHALL write the new file through a temporary file with a name of its own in the file's directory and rename it into place only when the whole file was written, so a failure leaves the original as it was, a file named `<path>.tmp` is not touched, and no temporary file is left behind. An input with no rows SHALL leave the original untouched.
+`ApplyCCL` SHALL write the new file through a temporary file with a name of its own in the directory of the file that `path` names (the target, when `path` is a symbolic link), and rename it into place only when the whole file was written, so a failure leaves the original as it was, a file named `<path>.tmp` is not touched, and no temporary file is left behind. An input with no rows SHALL leave the original untouched.
 
 #### Scenario: A file named like the old temporary file
-- **WHEN** `path + ".tmp"` 已有使用者的檔案，再執行 `ApplyCCL`
-- **THEN** 該檔案內容不變，目錄裡除了這兩個檔案沒有其他檔案
+- **WHEN** `path + ".tmp"` already holds a file of the user's, and `ApplyCCL` is run
+- **THEN** that file's content is unchanged, and the directory holds no files besides these two
 
 ### Requirement: A CCL call that returns stops its reader
 
@@ -71,6 +72,7 @@ Every column a statement writes SHALL be nullable, so a missing value reads back
 #### Scenario: A missing value in a created column
 - **WHEN** 對 `A` 為 `[1, nil, 3]` 的檔案執行 `ApplyCCL(ctx, path, "NEW('c') = A")`
 - **THEN** 讀回的 `c` 是 `[1, nil, 3]`
+
 ### Requirement: ApplyCCL writes back an unwritten column exactly
 
 `ApplyCCL` SHALL write a column no statement writes back with the type and the values the file gave it, whatever its Arrow type, including integer and float widths other than 64 bits, dates, decimals, large strings, lists and structs, and SHALL NOT fail because the file has such a column. A column a statement assigns SHALL keep its type, `int8` to `int64`, the unsigned widths, `float32`, `float64`, `Date32` and `Date64` included, when that type holds every value written into it exactly.
