@@ -2,7 +2,6 @@
 
 ## Purpose
 The `accel` package boundary and its session: an optional package the core never needs, a session that is safe for concurrent use and can be shared across the process or limited to chosen devices, and a typed execution surface whose result says where the work ran.
-
 ## Requirements
 ### Requirement: Optional acceleration package boundary
 The system SHALL expose GPGPU acceleration through an opt-in `insyra/accel` package family rather than through mandatory core-package dependencies.
@@ -97,3 +96,19 @@ The system SHALL honor a process-wide hard device mask from `INSYRA_ACCEL_DEVICE
 
 - **WHEN** a bound names a device that does not exist
 - **THEN** the mismatch is visible in the session's reporting rather than silently ignored
+
+### Requirement: The exported surface is the user API
+The `accel` package SHALL export only what a user, `accel/knnbridge`, `nn` or the CLI calls. Backend registration, device and report injection, the CPU reference for nearest search, and test reset hooks SHALL be unexported. Their former exported names SHALL remain for one release, marked `Deprecated:`, and SHALL behave as before.
+
+#### Scenario: The backend-author names are deprecated
+- **WHEN** the package's exported declarations are read
+- **THEN** `RegisterBackendExecutor`, `BackendExecutor`, `ExecuteRequest`, `ExecuteResponse`, `ExecuteColumn`, `RegisterDiscoverer`, `Discoverer`, `RegisterSDKProbe`, `SDKProbe`, `Session.RegisterDevice`, `Session.RecordReport`, `Session.PlanShardableWorkload`, `NearestExactCPU` and the four `Reset…ForTest` functions each carry a `Deprecated:` paragraph
+
+#### Scenario: A deprecated name still works
+- **WHEN** a caller uses `Session.RegisterDevice` during the deprecation release
+- **THEN** the device is registered exactly as before the change
+
+#### Scenario: Tests in another package reset the shared session without the exported hook
+- **WHEN** a test outside `accel` needs the shared session rediscovered
+- **THEN** it calls `internal/acceltest.ResetDefault`, which drops the session that `accel.Default` returns
+
