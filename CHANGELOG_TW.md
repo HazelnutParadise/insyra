@@ -108,6 +108,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ReadJSON` 讀到同時實作 `json.Marshaler` 與 `io.Reader` 的值時，讀的是它 marshal 出的 JSON，而不是把它當串流。
 - `csvxl.AppendCSVToExcel` 與使用 `SheetExistsReplace` 的 `DataTable.ToExcel`，現在能取代唯一工作表就叫 `__insyra_placeholder__` 的活頁簿；原本因為占位工作表同名，舊內容會留下來。
 - **BREAKING**：`ToSQL`、`ToSQLContext`、`ReadSQL`、`ReadSQLContext`、`ReadSQLStream` 不再收 `*gorm.DB`，改收 `database/sql` 的連線加上資料庫種類，例如 `dt.ToSQL(db, insyra.SQLDialectPostgres, "sales")`。核心套件因此不再依賴 gorm 和 squirrel。拿一支只用 `DataTable` 的程式實測，少了 19 個套件，其中 6 個是第三方模組，執行檔小了 0.93 MB（8.65 MB → 7.72 MB）。用 gorm 的人改傳 gorm 底下的連線：`sqlDB, _ := gormDB.DB()`。資料庫種類一定要給，只接受 `SQLDialectSQLite`、`SQLDialectMySQL`、`SQLDialectPostgres`，其他值都會回傳錯誤；以前 gorm 回報不認得的種類時，會默默改用 SQLite 的查詢。自訂的 `ReadSQLOptions.Query` 和 `Params` 現在原封不動交給驅動程式，所以 PostgreSQL 的查詢要寫 `$1` 而不是 `?`，gorm 的 `@name` 參數和 `IN ?` 自動展開陣列也不再適用。交易和 Replace 的保證都沒有改變。
+- **BREAKING**：`ToSQL` 遇到沒有名字的欄位，改用欄位字母（`A`、`B`…）當欄名，不再寫成 MySQL 和 PostgreSQL 都不接受的空白名稱 `""`。例如 `NewDataTable(NewDataList(1, 2, 3)).ToSQL(db, insyra.SQLDialectMySQL, "t")` 以前會失敗並回傳 `Incorrect column name ''`，現在會寫出欄位 `A`。寫進 SQLite 的表也一樣，以前的 `""` 欄位現在會叫 `A`。如果已經有別的欄位用了這個字母當名稱，在寫入任何東西之前就會回傳錯誤。
+- 在 MySQL 上，`ToSQL` 寫入失敗時不會再留下做到一半的表。要新建的表會先用暫存名稱寫入，所有資料列都寫完才改名成目標名稱，所以寫入失敗時不會留下任何表。以前會留下一張空表，害下一次寫入因為 `already exists` 失敗。追加模式新增的欄位，在資料列寫入失敗時會被刪掉；以前資料列會回滾，但新增的欄位會留下來。在 MySQL 上建表現在需要對整個資料庫有 CREATE、INSERT、ALTER、DROP 權限，跟 Replace 原本的要求相同。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。

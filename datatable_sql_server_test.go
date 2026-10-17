@@ -192,3 +192,58 @@ func requireNoLeftoverTables(t *testing.T, s sqlServer, db *sql.DB) {
 	}
 	require.NoError(t, rows.Err())
 }
+
+// More placeholders than the protocol allows: the first batch fits and the
+// second fails on the server.
+func tooManyPlaceholders() (*DataTable, ToSQLOptions) {
+	vals := make([]any, 70000)
+	for i := range vals {
+		vals[i] = i
+	}
+	return NewDataTable(NewDataList(vals...).SetName("id"), NewDataList(vals...).SetName("extra")),
+		ToSQLOptions{BatchSize: 33000}
+}
+
+// A write to a missing table that fails leaves no table behind, on MySQL as
+// well, where CREATE TABLE commits on its own.
+func TestSQLServerFailedCreateLeavesNoTable(t *testing.T) {
+	eachSQLServer(t, func(t *testing.T, s sqlServer, db *sql.DB) {
+		const table = "insyra_it_create"
+		serverTable(t, s, db, table)
+		big, opts := tooManyPlaceholders()
+		require.Error(t, big.ToSQL(db, s.dialect, table, opts))
+		exists, err := tableExists(context.Background(), db, string(s.dialect), "", table)
+		require.NoError(t, err)
+		require.False(t, exists, "the failed write left the table behind")
+		requireNoLeftoverTables(t, s, db)
+	})
+}
+
+// An append that adds a column and then fails leaves the table as it was:
+// no new column and no new rows, on MySQL as well, where ALTER TABLE
+// commits on its own.
+func TestSQLServerFailedAppendLeavesTheTableAsItWas(t *testing.T) {
+	eachSQLServer(t, func(t *testing.T, s sqlServer, db *sql.DB) {
+		const table = "insyra_it_append_fail"
+		serverTable(t, s, db, table)
+		require.NoError(t, NewDataTable(NewDataList(1, 2).SetName("id")).ToSQL(db, s.dialect, table))
+		big, opts := tooManyPlaceholders()
+		opts.IfExists = SQLActionIfTableExistsAppend
+		require.Error(t, big.ToSQL(db, s.dialect, table, opts))
+		require.Equal(t, 2, serverCount(t, s, db, table))
+		cols, err := fetchTableColumns(context.Background(), db, string(s.dialect), "", table)
+		require.NoError(t, err)
+		require.Equal(t, []string{"id"}, cols)
+	})
+}
+
+func TestSQLServerWritesAnUnnamedColumn(t *testing.T) {
+	eachSQLServer(t, func(t *testing.T, s sqlServer, db *sql.DB) {
+		const table = "insyra_it_unnamed"
+		serverTable(t, s, db, table)
+		require.NoError(t, NewDataTable(NewDataList(1, 2, 3)).ToSQL(db, s.dialect, table))
+		got, err := ReadSQL(db, s.dialect, table)
+		require.NoError(t, err)
+		require.Equal(t, []string{"A"}, got.ColNames())
+	})
+}

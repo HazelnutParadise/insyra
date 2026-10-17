@@ -87,25 +87,29 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *sql.DB, dialect SQLDi
 	return dt.toSQL(ctx, db, dialect, tableName, opts, dialect == SQLDialectMySQL)
 }
 
-// toSQL writes the table with options already resolved. replaceByRename
-// chooses how IfExists Replace swaps out an existing table: MySQL commits
-// every DDL statement at once, so a DROP inside a transaction cannot be
-// rolled back, and there the new rows go into a staging table that a rename
-// puts in place. SQLite and PostgreSQL run DDL inside a transaction, where
-// dropping and recreating is already undone by a failed write, and a rename
-// would carry the views that read the table over to the old copy.
-func (dt *DataTable) toSQL(ctx context.Context, db *sql.DB, sqlDialect SQLDialect, tableName string, opts ToSQLOptions, replaceByRename bool) error {
+// toSQL writes the table with options already resolved. ddlCommits says the
+// database commits every DDL statement at once, as MySQL does, so a CREATE,
+// DROP or ALTER inside a transaction cannot be rolled back. There a new or
+// replacing table is written under a staging name that a rename puts in
+// place, and columns an append adds are dropped again if the rows fail.
+// SQLite and PostgreSQL run DDL inside a transaction, where a failed write
+// already undoes everything, and a rename would carry the views that read
+// the table over to the old copy.
+func (dt *DataTable) toSQL(ctx context.Context, db *sql.DB, sqlDialect SQLDialect, tableName string, opts ToSQLOptions, ddlCommits bool) error {
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = defaultBatchSize
 	}
 	cols, rows := dt.collectRowsForSQL(opts.HasRowNames)
+	if err := nameUnnamedSQLColumns(cols, opts.HasRowNames); err != nil {
+		return err
+	}
 	if len(rows) == 0 {
 		return fmt.Errorf("data is empty")
 	}
 
 	fullName := qualifiedTableName(opts.Schema, tableName)
 	dialect := string(sqlDialect)
-	if opts.IfExists == SQLActionIfTableExistsReplace && replaceByRename {
+	if opts.IfExists == SQLActionIfTableExistsReplace && ddlCommits {
 		exists, err := tableExists(ctx, db, dialect, opts.Schema, tableName)
 		if err != nil {
 			return err
@@ -114,9 +118,12 @@ func (dt *DataTable) toSQL(ctx context.Context, db *sql.DB, sqlDialect SQLDialec
 			return replaceThroughStagingTable(ctx, db, dialect, fullName, tableName, opts.Schema, cols, rows, opts)
 		}
 		// Nothing to replace, so the table is created. Should another session
-		// create it before the transaction below looks again, refuse rather
-		// than fall back to dropping it, which is what this path avoids.
+		// create it meanwhile, refuse rather than fall back to dropping it,
+		// which is what this path avoids.
 		opts.IfExists = SQLActionIfTableExistsFail
+	}
+	if ddlCommits {
+		return saveRowsWithCommittedDDL(ctx, db, dialect, fullName, tableName, opts.Schema, cols, rows, opts)
 	}
 	return saveRowsToDB(ctx, db, dialect, fullName, tableName, opts.Schema, cols, rows, opts)
 }
@@ -154,6 +161,38 @@ func (dt *DataTable) collectRowsForSQL(includeRowName bool) (cols []string, rows
 		}
 	})
 	return cols, rows
+}
+
+// nameUnnamedSQLColumns gives a column with no name its Excel-style letter,
+// the name insyra already uses for it elsewhere: MySQL and PostgreSQL refuse
+// an empty identifier. A letter another column already goes by is refused,
+// compared without case because MySQL and SQLite compare column names so.
+func nameUnnamedSQLColumns(cols []string, hasRowNames bool) error {
+	first := 0
+	if hasRowNames {
+		first = 1
+	}
+	taken := make(map[string]bool, len(cols))
+	for _, c := range cols {
+		if c != "" {
+			taken[strings.ToLower(c)] = true
+		}
+	}
+	for i := first; i < len(cols); i++ {
+		if cols[i] != "" {
+			continue
+		}
+		letter, ok := ColNumberToIndex(i - first)
+		if !ok {
+			return fmt.Errorf("column %d has no name", i-first+1)
+		}
+		if taken[strings.ToLower(letter)] {
+			return fmt.Errorf("column %s has no name, and another column is already named %s; name the column before writing it", letter, letter)
+		}
+		cols[i] = letter
+		taken[strings.ToLower(letter)] = true
+	}
+	return nil
 }
 
 func qualifiedTableName(schema, table string) string {
@@ -271,6 +310,166 @@ func saveRowsToDB(ctx context.Context, db *sql.DB, dialect, fullName, plainTable
 	})
 }
 
+// saveRowsWithCommittedDDL is saveRowsToDB for a database whose DDL commits on
+// its own. A missing table is created under a staging name and renamed in
+// once every row is written; a rename to a name that is taken fails, so a
+// table another session creates meanwhile is refused, not overwritten. An
+// append adds its missing columns first, writes the rows in one transaction,
+// and drops the columns it added if the rows fail.
+func saveRowsWithCommittedDDL(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
+	columnTypes, err := resolveSQLColumnTypes(dialect, cols, rows, opts)
+	if err != nil {
+		return err
+	}
+	exists, err := tableExists(ctx, db, dialect, schema, plainTable)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return createThroughStagingTable(ctx, db, dialect, fullName, plainTable, schema, cols, rows, columnTypes, opts)
+	}
+	if opts.IfExists != SQLActionIfTableExistsAppend {
+		return fmt.Errorf("table %s already exists", fullName)
+	}
+
+	quotedTable := quoteQualifiedName(dialect, schema, plainTable)
+	existing, err := fetchTableColumns(ctx, db, dialect, schema, plainTable)
+	if err != nil {
+		return err
+	}
+	have := make(map[string]bool, len(existing))
+	for _, c := range existing {
+		have[strings.ToLower(c)] = true
+	}
+	var added []string
+	dropAdded := func(cause error) error {
+		var left []string
+		for _, c := range added {
+			if err := runSQLCleanup(ctx, func(ctx context.Context) error {
+				_, err := db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s;", quotedTable, quoteSQLIdent(dialect, c)))
+				return err
+			}); err != nil {
+				left = append(left, c)
+				cause = errors.Join(cause, err)
+			}
+		}
+		if len(left) > 0 {
+			return errors.Join(cause, fmt.Errorf("the columns %s added to table %s could not be dropped again", strings.Join(left, ", "), fullName))
+		}
+		return cause
+	}
+	for _, c := range cols {
+		if have[strings.ToLower(c)] {
+			continue
+		}
+		typ := columnTypes[c]
+		if typ == "" {
+			typ = textType(dialect)
+		}
+		if err := validateSQLType(typ); err != nil {
+			return dropAdded(err)
+		}
+		if _, err := db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", quotedTable, quoteSQLIdent(dialect, c), typ)); err != nil {
+			return dropAdded(err)
+		}
+		added = append(added, c)
+	}
+	if err := inSQLTx(ctx, db, func(tx *sql.Tx) error {
+		return insertSQLRows(ctx, tx, dialect, quotedTable, cols, rows, opts.BatchSize)
+	}); err != nil {
+		return dropAdded(err)
+	}
+	for _, c := range added {
+		LogInfo("DataTable", "ToSQL", "Added column %s to table %s", c, fullName)
+	}
+	return nil
+}
+
+// createThroughStagingTable creates a missing table without ever leaving an
+// incomplete one under its name: the rows go into a staging table, which a
+// rename then puts under the target's name.
+func createThroughStagingTable(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, columnTypes map[string]string, opts ToSQLOptions) error {
+	suffix, err := stagingSuffix()
+	if err != nil {
+		return err
+	}
+	staging := "insyra_new_" + suffix
+	quotedStaging := quoteQualifiedName(dialect, schema, staging)
+	dropStaging := func(cause error) error {
+		if err := runSQLCleanup(ctx, func(ctx context.Context) error {
+			_, err := db.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s;", quotedStaging))
+			return err
+		}); err != nil {
+			return errors.Join(cause, fmt.Errorf("could not drop the staging table %s: %w", qualifiedTableName(schema, staging), err))
+		}
+		return cause
+	}
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("CREATE TABLE %s (%s);", quotedStaging, sqlColumnDefs(dialect, cols, columnTypes))); err != nil {
+		return fmt.Errorf("creating the staging table %s: %w (creating a table on MySQL writes it under a new name first, which needs the CREATE, INSERT, ALTER and DROP privileges on the database)",
+			qualifiedTableName(schema, staging), err)
+	}
+	if err := inSQLTx(ctx, db, func(tx *sql.Tx) error {
+		return insertSQLRows(ctx, tx, dialect, quotedStaging, cols, rows, opts.BatchSize)
+	}); err != nil {
+		return dropStaging(err)
+	}
+	renameErr := func() error {
+		_, err := db.ExecContext(ctx, renameStatement(dialect, schema, staging, plainTable))
+		return err
+	}()
+	if renameErr == nil {
+		return nil
+	}
+	// The rename may have run even though no answer came back. It did if the
+	// staging table is gone; if it is still there and the name is taken,
+	// another session created the table meanwhile.
+	var stagingLeft, taken bool
+	if err := runSQLCleanup(ctx, func(ctx context.Context) error {
+		var err error
+		if stagingLeft, err = tableExists(ctx, db, dialect, schema, staging); err != nil {
+			return err
+		}
+		taken, err = tableExists(ctx, db, dialect, schema, plainTable)
+		return err
+	}); err != nil {
+		return errors.Join(fmt.Errorf("creating table %s: %w", fullName, renameErr),
+			fmt.Errorf("could not check whether the rename happened: %w; if %s exists, it holds the new rows", err, qualifiedTableName(schema, staging)))
+	}
+	if !stagingLeft {
+		return nil
+	}
+	if taken {
+		return dropStaging(fmt.Errorf("table %s already exists", fullName))
+	}
+	return dropStaging(fmt.Errorf("creating table %s: %w", fullName, renameErr))
+}
+
+// renameStatement puts the table from under the name to.
+func renameStatement(dialect, schema, from, to string) string {
+	if dialect == "mysql" {
+		return fmt.Sprintf("RENAME TABLE %s TO %s", quoteQualifiedName(dialect, schema, from), quoteQualifiedName(dialect, schema, to))
+	}
+	return fmt.Sprintf("ALTER TABLE %s RENAME TO %s", quoteQualifiedName(dialect, schema, from), quoteSQLIdent(dialect, to))
+}
+
+// stagingSuffix is the random part of a staging table's name.
+func stagingSuffix() (string, error) {
+	var random [8]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", fmt.Errorf("naming the staging table: %w", err)
+	}
+	return hex.EncodeToString(random[:]), nil
+}
+
+// runSQLCleanup runs one cleanup statement with a context the caller cannot
+// cancel, bounded by stagingCleanupTimeout, so that cancelling a write does
+// not also cancel undoing it.
+func runSQLCleanup(ctx context.Context, run func(ctx context.Context) error) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), stagingCleanupTimeout)
+	defer cancel()
+	return run(ctx)
+}
+
 // resolveSQLColumnTypes gives every column its SQL type: the caller's
 // ColumnTypes first, otherwise one inferred from the column's first non-nil
 // value. Every type is checked against the safe character set.
@@ -373,21 +572,14 @@ func replaceThroughStagingTable(ctx context.Context, db *sql.DB, dialect, fullNa
 	if referrer != "" {
 		return fmt.Errorf("table %s is referenced by a foreign key from %s, and replacing it would leave that reference on the old copy; nothing was changed: drop the constraint first, or append", fullName, referrer)
 	}
-	var random [8]byte
-	if _, err := rand.Read(random[:]); err != nil {
-		return fmt.Errorf("naming the staging table: %w", err)
+	suffix, err := stagingSuffix()
+	if err != nil {
+		return err
 	}
-	suffix := hex.EncodeToString(random[:])
 	staging, backup := "insyra_new_"+suffix, "insyra_old_"+suffix
 	quotedStaging := quoteQualifiedName(dialect, schema, staging)
 
-	// cleanup runs one statement with a context the caller cannot cancel.
-	base := context.WithoutCancel(ctx)
-	cleanup := func(run func(ctx context.Context) error) error {
-		ctx, cancel := context.WithTimeout(base, stagingCleanupTimeout)
-		defer cancel()
-		return run(ctx)
-	}
+	cleanup := func(run func(ctx context.Context) error) error { return runSQLCleanup(ctx, run) }
 	dropStaging := func(cause error) error {
 		if err := cleanup(func(ctx context.Context) error {
 			_, err := db.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s;", quotedStaging))

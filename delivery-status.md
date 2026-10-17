@@ -22,6 +22,10 @@ None in flight. Nothing left can be picked up without the owner answering someth
 **Awaiting a ruling:** nothing from the decision list that started on 2026-09-25; the open `api-review` issues are the next pickup.
 
 ## Latest Milestones
+- 2026-10-17 `sql-unnamed-column-uses-its-letter` and `sql-mysql-failed-write-leaves-nothing`, fixing the two defects that running the SQL functions against MySQL 8.4 and PostgreSQL 16 in Docker turned up (`datatable_sql_server_test.go`, gated on `INSYRA_TEST_MYSQL_DSN` / `INSYRA_TEST_POSTGRES_DSN`):
+  - **Unnamed columns.** `ToSQL` wrote an unnamed column as `""`, which both servers refuse (`Incorrect column name ''`). It now writes the column's letter, the name `Unpivot` and the scalers already use, and refuses a letter another column already has.
+  - **MySQL leftovers.** On MySQL, a failed create left an empty table, and a failed append left its new column (measured: columns `[extra id]` after the failure). A missing table is now written under a staging name and renamed in, and an append drops the columns it added when the rows fail. Both server tests failed on MySQL before the change and pass on both servers after it. Both `AGENTS.md` follow-ups are closed.
+  - **Still not in CI.** The server tests run only where a DSN is set, so CI does not run them.
 - 2026-10-17 `isr-exported-types-and-output` ([#237](https://github.com/HazelnutParadise/insyra/issues/237), [#238](https://github.com/HazelnutParadise/insyra/issues/238), [#239](https://github.com/HazelnutParadise/insyra/issues/239), api-review I-2, I-3, I-5). The owner ruled on 2026-10-17:
   - **Types.** isr's table and list are exported as `isr.DataTable` and `isr.DataList`. `DT`, `DL` and the embedded `.DataTable`/`.DataList` field keep their names, so no caller changes; renaming the variables would have broken about 60 documented uses.
   - **`From(any)` and `map[any]any` stay.** `Row`/`Col` keys are #225 selectors, and named constructors would give one job two names (#211). The `Row`/`Col` error, which reported `map[interface {}]interface {}` for an `isr.Row`, now names the type and the key it could not use.

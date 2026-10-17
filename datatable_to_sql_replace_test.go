@@ -372,3 +372,73 @@ func TestRenameSwapStatementsForMySQL(t *testing.T) {
 		[]string{`ALTER TABLE "sales" RENAME TO "insyra_old_x"`, `ALTER TABLE "insyra_new_x" RENAME TO "sales"`},
 		renameSwapStatements("sqlite", "", "sales", "insyra_new_x", "insyra_old_x"))
 }
+
+// Where DDL commits on its own, a missing table is written under a staging
+// name and renamed in only once every row is in, so a write that fails
+// leaves no table behind.
+func TestToSQLCreateByRenameLeavesNothingWhenWriteFails(t *testing.T) {
+	db, hooks := newFileSQLite(t)
+	failStatement(hooks, "INSERT INTO", 2)
+	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
+		ToSQLOptions{BatchSize: 2}, true)
+	require.ErrorContains(t, err, "forced failure")
+	require.Empty(t, tableNamesIn(t, db))
+}
+
+func TestToSQLCreateByRenameWritesTheTable(t *testing.T) {
+	db, _ := newFileSQLite(t)
+	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
+		ToSQLOptions{BatchSize: 2}, true)
+	require.NoError(t, err)
+	require.Equal(t, []int64{101, 102, 103, 104, 105}, salesIDs(t, db, "sales"))
+	require.Equal(t, []string{"sales"}, tableNamesIn(t, db))
+}
+
+// Columns an append adds are committed on their own where DDL commits, so a
+// write that fails afterwards drops them again, and the rows go in one
+// transaction: the table is left as it was.
+func TestToSQLAppendByCommittedDDLUndoesAddedColumnsWhenWriteFails(t *testing.T) {
+	db, hooks := newFileSQLite(t)
+	execSQL(t, db, `CREATE TABLE sales (id INTEGER)`)
+	execSQL(t, db, `INSERT INTO sales VALUES (1), (2), (3)`)
+	failStatement(hooks, "INSERT INTO", 2)
+	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
+		ToSQLOptions{IfExists: SQLActionIfTableExistsAppend, BatchSize: 2}, true)
+	require.ErrorContains(t, err, "forced failure")
+	require.Equal(t, []int64{1, 2, 3}, salesIDs(t, db, "sales"))
+	cols, err := fetchTableColumns(context.Background(), db, "sqlite", "", "sales")
+	require.NoError(t, err)
+	require.Equal(t, []string{"id"}, cols)
+}
+
+func TestToSQLAppendByCommittedDDLAddsColumnsAndRows(t *testing.T) {
+	db, _ := newFileSQLite(t)
+	execSQL(t, db, `CREATE TABLE sales (id INTEGER)`)
+	execSQL(t, db, `INSERT INTO sales VALUES (1)`)
+	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
+		ToSQLOptions{IfExists: SQLActionIfTableExistsAppend, BatchSize: 2}, true)
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 101, 102, 103, 104, 105}, salesIDs(t, db, "sales"))
+	cols, err := fetchTableColumns(context.Background(), db, "sqlite", "", "sales")
+	require.NoError(t, err)
+	require.Equal(t, []string{"id", "amount"}, cols)
+}
+
+// A table another session creates just before the rename
+// makes the rename fail; that table is kept and the staging table dropped.
+func TestToSQLCreateByRenameRefusesATableCreatedDuringTheWrite(t *testing.T) {
+	db, hooks := newFileSQLite(t)
+	created := false
+	hooks.before = func(query string) error {
+		if !created && strings.Contains(query, `RENAME TO "sales"`) {
+			created = true
+			execSQL(t, db, `CREATE TABLE sales (id INTEGER, amount REAL)`)
+			execSQL(t, db, `INSERT INTO sales VALUES (7, 70)`)
+		}
+		return nil
+	}
+	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales", ToSQLOptions{}, true)
+	require.ErrorContains(t, err, "already exists")
+	require.Equal(t, []int64{7}, salesIDs(t, db, "sales"))
+	require.Equal(t, []string{"sales"}, tableNamesIn(t, db))
+}
