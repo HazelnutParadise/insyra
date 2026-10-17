@@ -93,7 +93,7 @@ func writeManyTypesFile(t *testing.T, rows int) string {
 		i16.Append(int16(i % 300))
 	}
 
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 
 	path := filepath.Join(t.TempDir(), "many-types.parquet")
@@ -962,7 +962,7 @@ func writeNarrowTypesFile(t *testing.T) string {
 		b.Field(7).(*array.Float32Builder).Append(float32(i) / 8)
 		b.Field(8).(*array.Date32Builder).Append(arrow.Date32FromTime(start.AddDate(0, 0, i)))
 	}
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 
 	path := filepath.Join(t.TempDir(), "narrow-types.parquet")

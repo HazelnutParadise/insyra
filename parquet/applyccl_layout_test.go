@@ -165,7 +165,7 @@ func writeTwoColumns(t *testing.T, path string, n int) {
 		b.Field(0).(*array.Int64Builder).Append(int64(i))
 		b.Field(1).(*array.Int64Builder).Append(int64(i * 10))
 	}
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 
 	f, err := os.Create(path)
