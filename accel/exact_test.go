@@ -16,7 +16,7 @@ type shortlistExecutor struct{ calls int }
 
 func (*shortlistExecutor) Name() string { return "cpu-shortlist" }
 
-func (e *shortlistExecutor) Execute(_ context.Context, req ExecuteRequest) (ExecuteResponse, error) {
+func (e *shortlistExecutor) Execute(_ context.Context, req executeRequest) (executeResponse, error) {
 	e.calls++
 	rows := len(req.Columns[0].Values)
 	k := req.Shortlist
@@ -49,7 +49,7 @@ func (e *shortlistExecutor) Execute(_ context.Context, req ExecuteRequest) (Exec
 			boundary[r] = math.MaxFloat32
 		}
 	}
-	return ExecuteResponse{ShortlistIndex: idx, ShortlistDistance: dist, ShortlistBoundary: boundary}, nil
+	return executeResponse{ShortlistIndex: idx, ShortlistDistance: dist, ShortlistBoundary: boundary}, nil
 }
 
 // exerciseDeviceRegardlessOfProfit lowers the profitability floor for tests that
@@ -89,7 +89,7 @@ func exactQueries(count, dims int, rnd *rand.Rand) [][]float64 {
 
 func assertMatchesReference(t *testing.T, ds *Dataset, queries [][]float64, m int, gotIdx []uint32, gotDist []float64) {
 	t.Helper()
-	wantIdx, wantDist, rows, err := NearestExactCPU(ds, queries, m)
+	wantIdx, wantDist, rows, err := nearestExactCPU(ds, queries, m)
 	if err != nil {
 		t.Fatalf("reference failed: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestExactNearestMatchesTheReference(t *testing.T) {
 	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
 	shortlist := &shortlistExecutor{}
-	if err := RegisterBackendExecutor(BackendCUDA, shortlist); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, shortlist); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	rnd := rand.New(rand.NewSource(21))
@@ -140,7 +140,7 @@ func TestExactNearestMatchesTheReference(t *testing.T) {
 func TestExactNearestOnAdversarialData(t *testing.T) {
 	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
-	if err := RegisterBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 
@@ -184,7 +184,7 @@ func TestExactNearestOnAdversarialData(t *testing.T) {
 func TestExactNearestTiesGoToTheLowestIndex(t *testing.T) {
 	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
-	if err := RegisterBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	const rows = 1024
@@ -300,7 +300,7 @@ func BenchmarkExactNearest(b *testing.B) {
 		queries := exactQueries(queryCount, 16, rnd)
 		b.Run(fmt.Sprintf("q=%d/cpu-float64", queryCount), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				if _, _, _, err := NearestExactCPU(ds, queries, 2); err != nil {
+				if _, _, _, err := nearestExactCPU(ds, queries, 2); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -331,7 +331,7 @@ func BenchmarkExactNearest(b *testing.B) {
 func TestExactNearestDeclinesTinyQuerySets(t *testing.T) {
 	session := singleDeviceSession(t, Config{})
 	backend := &shortlistExecutor{}
-	if err := RegisterBackendExecutor(BackendCUDA, backend); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, backend); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	rnd := rand.New(rand.NewSource(27))
@@ -361,7 +361,7 @@ func TestExactNearestDeclinesTinyQuerySets(t *testing.T) {
 func TestExactNearestRechecksWhenTheCutIsTooClose(t *testing.T) {
 	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
-	if err := RegisterBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	const rows, queryCount = 512, 40
@@ -399,7 +399,7 @@ func TestExactNearestRechecksWhenTheCutIsTooClose(t *testing.T) {
 func TestExactNearestSurvivesSinglePrecisionOverflow(t *testing.T) {
 	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
-	if err := RegisterBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	const rows, queryCount = 256, 32
@@ -436,7 +436,7 @@ func TestExactNearestSurvivesSinglePrecisionOverflow(t *testing.T) {
 func TestExactNearestSurvivesSubnormalDistances(t *testing.T) {
 	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
-	if err := RegisterBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	const rows, queryCount = 256, 32
@@ -466,7 +466,7 @@ func TestExactNearestRefusesADeviceItCannotUse(t *testing.T) {
 	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
 	backend := &shortlistExecutor{}
-	if err := RegisterBackendExecutor(BackendCUDA, backend); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, backend); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	rnd := rand.New(rand.NewSource(31))

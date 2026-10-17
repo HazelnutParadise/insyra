@@ -27,13 +27,13 @@ func (d *countingDiscoverer) count() int {
 
 func isolateDefault(t *testing.T) *countingDiscoverer {
 	t.Helper()
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	isolateBuiltinProbes(t)
-	ResetDefaultForTest()
-	t.Cleanup(ResetDefaultForTest)
+	resetDefault()
+	t.Cleanup(resetDefault)
 	counter := &countingDiscoverer{}
-	RegisterDiscoverer(counter)
+	registerDiscoverer(counter)
 	return counter
 }
 
@@ -82,8 +82,8 @@ func TestDefaultCloseIsANoOp(t *testing.T) {
 	if session.Closed() {
 		t.Fatal("the shared session must stay open for every other caller")
 	}
-	// Still usable: a closed session refuses RegisterDevice.
-	if err := session.RegisterDevice(Device{ID: "test:0", Backend: BackendCUDA}); err != nil {
+	// Still usable: a closed session refuses registerDevice.
+	if err := session.registerDevice(Device{ID: "test:0", Backend: BackendCUDA}); err != nil {
 		t.Fatalf("the shared session must remain usable after Close: %v", err)
 	}
 	if Default() != session {
@@ -99,7 +99,7 @@ func TestOwnSessionStillClosesNormally(t *testing.T) {
 	if !session.Closed() {
 		t.Fatal("a caller-owned session must actually close")
 	}
-	if err := session.RegisterDevice(Device{ID: "x", Backend: BackendCUDA}); err == nil {
+	if err := session.registerDevice(Device{ID: "x", Backend: BackendCUDA}); err == nil {
 		t.Fatal("a closed session must refuse mutation")
 	}
 }

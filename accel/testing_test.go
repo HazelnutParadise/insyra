@@ -44,7 +44,7 @@ func setHostMemoryBytesForTest(bytes uint64) func() {
 // builtinExecutors holds the registrations the package makes for itself at
 // startup, captured the first time a test clears the registry.
 var (
-	builtinExecutors    map[Backend]BackendExecutor
+	builtinExecutors    map[Backend]backendExecutor
 	captureBuiltinsOnce sync.Once
 )
 
@@ -66,8 +66,8 @@ func resetBackendExecutorsForTest() {
 
 func singleDeviceSession(t *testing.T, cfg Config) *Session {
 	t.Helper()
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	isolateBuiltinProbes(t)
 	resetBackendExecutorsForTest()
 	t.Cleanup(resetBackendExecutorsForTest)

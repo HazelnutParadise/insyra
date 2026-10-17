@@ -36,10 +36,10 @@ func init() {
 	// gogpu reports Metal on Apple and Vulkan or DX12 elsewhere. Register one
 	// probe per accel backend kind so a device is only ever offered under the
 	// backend it belongs to, and never enumerated twice.
-	RegisterSDKProbe(wgpuProbe{backend: BackendMetal})
-	RegisterSDKProbe(wgpuProbe{backend: BackendWebGPU})
-	_ = RegisterBackendExecutor(BackendMetal, wgpuExecutor{})
-	_ = RegisterBackendExecutor(BackendWebGPU, wgpuExecutor{})
+	registerSDKProbe(wgpuProbe{backend: BackendMetal})
+	registerSDKProbe(wgpuProbe{backend: BackendWebGPU})
+	_ = registerBackendExecutor(BackendMetal, wgpuExecutor{})
+	_ = registerBackendExecutor(BackendWebGPU, wgpuExecutor{})
 }
 
 type wgpuProbe struct {
@@ -101,25 +101,25 @@ type wgpuExecutor struct{}
 
 func (wgpuExecutor) Name() string { return "gogpu-wgpu" }
 
-func (wgpuExecutor) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
+func (wgpuExecutor) Execute(ctx context.Context, req executeRequest) (executeResponse, error) {
 	switch req.Op {
 	case OpNearestShortlist:
 		return wgpuShortlist(ctx, req)
 	default:
-		return ExecuteResponse{}, fmt.Errorf("accel: wgpu backend does not support operation %q", req.Op)
+		return executeResponse{}, fmt.Errorf("accel: wgpu backend does not support operation %q", req.Op)
 	}
 }
 
-func wgpuShortlist(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
+func wgpuShortlist(ctx context.Context, req executeRequest) (executeResponse, error) {
 	columns := make([]wgpu.Column, len(req.Columns))
 	for i, column := range req.Columns {
 		columns[i] = wgpu.Column{Name: column.Name, Values: column.Values}
 	}
 	indices, distances, boundary, cost, err := wgpu.NearestShortlist(ctx, columns, req.Queries, req.Shortlist)
 	if err != nil {
-		return ExecuteResponse{}, translateWGPUError(err)
+		return executeResponse{}, translateWGPUError(err)
 	}
-	return ExecuteResponse{
+	return executeResponse{
 		ShortlistIndex:    indices,
 		ShortlistDistance: distances,
 		ShortlistBoundary: boundary,

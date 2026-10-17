@@ -29,10 +29,10 @@ func (d stubDiscoverer) Discover(cfg Config) ([]Device, error) {
 
 func TestOpenDiscoversDevicesFromRegisteredDiscoverers(t *testing.T) {
 	disableNativeProbes(t)
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 
-	RegisterDiscoverer(stubDiscoverer{
+	registerDiscoverer(stubDiscoverer{
 		name: "stub-webgpu",
 		devices: []Device{
 			{
@@ -67,10 +67,10 @@ func TestOpenDiscoversDevicesFromRegisteredDiscoverers(t *testing.T) {
 
 func TestOpenSkipsDiscoveryInCPUMode(t *testing.T) {
 	disableNativeProbes(t)
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 
-	RegisterDiscoverer(stubDiscoverer{
+	registerDiscoverer(stubDiscoverer{
 		name: "stub-cuda",
 		devices: []Device{
 			{ID: "cuda:0", Backend: BackendCUDA, Type: DeviceTypeDiscrete, MemoryClass: MemoryClassDevice},
@@ -95,8 +95,8 @@ func TestOpenSkipsDiscoveryInCPUMode(t *testing.T) {
 
 func TestCurrentDiscoverersIncludesBuiltinBackends(t *testing.T) {
 	disableNativeProbes(t)
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 
 	discoverers := currentDiscoverers()
 	if len(discoverers) < 3 {
@@ -118,10 +118,10 @@ func TestCurrentDiscoverersIncludesBuiltinBackends(t *testing.T) {
 
 func TestCurrentDiscoverersAppendsRegisteredDiscoverersAfterBuiltins(t *testing.T) {
 	disableNativeProbes(t)
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 
-	RegisterDiscoverer(stubDiscoverer{name: "custom"})
+	registerDiscoverer(stubDiscoverer{name: "custom"})
 
 	discoverers := currentDiscoverers()
 	if got := discoverers[len(discoverers)-1].Name(); got != "custom" {
@@ -131,8 +131,8 @@ func TestCurrentDiscoverersAppendsRegisteredDiscoverersAfterBuiltins(t *testing.
 
 func TestOpenDiscoversBuiltinStubDeviceFromEnv(t *testing.T) {
 	disableNativeProbes(t)
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	resetBuiltinProbeOverridesForTest()
 	t.Cleanup(resetBuiltinProbeOverridesForTest)
 	setBuiltinProbeOverrideForTest(
@@ -179,8 +179,8 @@ func TestOpenDiscoversBuiltinStubDeviceFromEnv(t *testing.T) {
 }
 
 func TestBuiltinDiscovererUsesNativeProbeOverrideBeforeStub(t *testing.T) {
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	isolateBuiltinProbes(t)
 	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
 
@@ -237,8 +237,8 @@ func TestBuiltinDiscovererUsesNativeProbeOverrideBeforeStub(t *testing.T) {
 // whatever GPU the host actually had, so every device count on a Mac came out
 // one too high. isolateBuiltinProbes must leave nothing discoverable.
 func TestIsolatedBuiltinProbesFindNoHostDevices(t *testing.T) {
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	isolateBuiltinProbes(t)
 
 	session, err := Open(Config{})
@@ -259,8 +259,8 @@ func TestIsolatedBuiltinProbesFindNoHostDevices(t *testing.T) {
 
 func TestOpenStrictGPUFailsWithoutAcceleratorButReturnsSessionReport(t *testing.T) {
 	disableNativeProbes(t)
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 
 	session, err := Open(Config{Mode: ModeStrictGPU})
 	if err == nil {
@@ -286,8 +286,8 @@ func TestOpenStrictGPUFailsWithoutAcceleratorButReturnsSessionReport(t *testing.
 }
 
 func TestDiscoveryReportPopulatesCoreMetrics(t *testing.T) {
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	isolateBuiltinProbes(t)
 	setBuiltinProbeOverrideForTest(
 		BackendCUDA,
@@ -369,10 +369,10 @@ func TestNormalizeBudgetBytesFallsBackForSharedMemoryDevicesWithoutNativeBudget(
 
 func TestOpenReportsDiscoveryErrorReasonCode(t *testing.T) {
 	disableNativeProbes(t)
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 
-	RegisterDiscoverer(stubDiscoverer{
+	registerDiscoverer(stubDiscoverer{
 		name: "broken-backend",
 		err:  errors.New("probe failed"),
 	})
@@ -402,10 +402,10 @@ func TestOpenReportsDiscoveryErrorReasonCode(t *testing.T) {
 
 func TestOpenHonorsDiscoveryTimeout(t *testing.T) {
 	disableNativeProbes(t)
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 
-	RegisterDiscoverer(stubDiscoverer{
+	registerDiscoverer(stubDiscoverer{
 		name:  "slow-backend",
 		delay: 200 * time.Millisecond,
 	})

@@ -20,8 +20,8 @@ func (p *fakeSDKProbe) Probe(cfg Config) ([]Device, error) {
 }
 
 func TestSDKProbeWinsOverNativeAndStub(t *testing.T) {
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	isolateBuiltinProbes(t)
 
 	nativeCalls := 0
@@ -56,7 +56,7 @@ func TestSDKProbeWinsOverNativeAndStub(t *testing.T) {
 			},
 		},
 	}
-	RegisterSDKProbe(probe)
+	registerSDKProbe(probe)
 
 	session, err := Open(Config{})
 	if err != nil {
@@ -102,8 +102,8 @@ func TestSDKProbeWinsOverNativeAndStub(t *testing.T) {
 }
 
 func TestSDKProbeUnavailableFallsThroughToNative(t *testing.T) {
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	isolateBuiltinProbes(t)
 
 	setBuiltinProbeOverrideForTest(
@@ -129,7 +129,7 @@ func TestSDKProbeUnavailableFallsThroughToNative(t *testing.T) {
 		nil,
 	)
 
-	RegisterSDKProbe(&fakeSDKProbe{backend: BackendCUDA, err: ErrSDKProbeUnavailable})
+	registerSDKProbe(&fakeSDKProbe{backend: BackendCUDA, err: ErrSDKProbeUnavailable})
 
 	session, err := Open(Config{})
 	if err != nil {
@@ -148,8 +148,8 @@ func TestSDKProbeUnavailableFallsThroughToNative(t *testing.T) {
 
 func TestSDKProbeRealErrorPropagatesAsDiscoveryError(t *testing.T) {
 	disableNativeProbes(t)
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	resetBuiltinProbeOverridesForTest()
 	t.Cleanup(resetBuiltinProbeOverridesForTest)
 
@@ -159,7 +159,7 @@ func TestSDKProbeRealErrorPropagatesAsDiscoveryError(t *testing.T) {
 		nil,
 	)
 
-	RegisterSDKProbe(&fakeSDKProbe{backend: BackendCUDA, err: errors.New("nvml exploded")})
+	registerSDKProbe(&fakeSDKProbe{backend: BackendCUDA, err: errors.New("nvml exploded")})
 
 	session, err := Open(Config{})
 	if err == nil {

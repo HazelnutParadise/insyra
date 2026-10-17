@@ -11,12 +11,12 @@ import (
 // probes followed by env stubs.
 var ErrSDKProbeUnavailable = errors.New("accel: sdk probe unavailable")
 
-// SDKProbe is a backend-specific probe that talks directly to the vendor SDK
+// sdkProbe is a backend-specific probe that talks directly to the vendor SDK
 // (NVML for CUDA, Metal API for Apple, wgpu-native for WebGPU, …) instead of
 // shelling out to a host command. Probes that succeed should set
 // Device.ProbeSource to ProbeSourceSDK; the discoverer normalizes the field if
 // the probe leaves it blank.
-type SDKProbe interface {
+type sdkProbe interface {
 	Name() string
 	Backend() Backend
 	Probe(cfg Config) ([]Device, error)
@@ -24,14 +24,14 @@ type SDKProbe interface {
 
 var (
 	sdkProbesMu sync.RWMutex
-	sdkProbes   = map[Backend][]SDKProbe{}
+	sdkProbes   = map[Backend][]sdkProbe{}
 )
 
-// RegisterSDKProbe wires an SDK probe into the discoverer pipeline for its
+// registerSDKProbe wires an SDK probe into the discoverer pipeline for its
 // backend. Multiple probes per backend are tried in registration order; the
 // first one that returns devices wins. The pipeline ordering is:
 // SDK > native command > env stub.
-func RegisterSDKProbe(probe SDKProbe) {
+func registerSDKProbe(probe sdkProbe) {
 	if probe == nil {
 		return
 	}
@@ -41,22 +41,22 @@ func RegisterSDKProbe(probe SDKProbe) {
 	sdkProbes[backend] = append(sdkProbes[backend], probe)
 }
 
-// ResetSDKProbesForTest clears every registered SDK probe. Tests use this to
+// resetSDKProbes clears every registered SDK probe. Tests use this to
 // isolate themselves from probes that may have been registered by init().
-func ResetSDKProbesForTest() {
+func resetSDKProbes() {
 	sdkProbesMu.Lock()
 	defer sdkProbesMu.Unlock()
-	sdkProbes = map[Backend][]SDKProbe{}
+	sdkProbes = map[Backend][]sdkProbe{}
 }
 
-func sdkProbesForBackend(backend Backend) []SDKProbe {
+func sdkProbesForBackend(backend Backend) []sdkProbe {
 	sdkProbesMu.RLock()
 	defer sdkProbesMu.RUnlock()
 	probes := sdkProbes[backend]
 	if len(probes) == 0 {
 		return nil
 	}
-	cloned := make([]SDKProbe, len(probes))
+	cloned := make([]sdkProbe, len(probes))
 	copy(cloned, probes)
 	return cloned
 }

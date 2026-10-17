@@ -3,7 +3,7 @@
 //
 // It is deliberately ignorant of the accel runtime: it speaks in its own small
 // vocabulary so that accel can import it without a cycle. The adapter that maps
-// this onto accel's Device and ExecuteRequest lives in accel/backend_wgpu.go.
+// this onto accel's Device and executeRequest lives in accel/backend_wgpu.go.
 package wgpu
 
 import (

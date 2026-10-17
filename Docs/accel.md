@@ -26,12 +26,12 @@ The runtime executes on real hardware. A dataset is uploaded to a GPU, ranked by
   - aggregate budget enforcement against normalized accel budgets
   - device usage summaries remain zero until true device residency exists
 - Planning and inspection:
-  - shardable multi-device planning via `PlanShardable()` / `PlanShardableWorkload(...)`
+  - shardable multi-device planning, inspected with `PlanShardable()`
   - weighted shard assignments and deterministic merge-policy reporting
   - `Config.ShardStrategy`: `single`, `auto` (the default), or `forced`
   - execution via `ExecuteNearestExact(...)`, returning the M nearest query points per row as exact `float64` values
   - `DeviceMatMul(...)`, the device implementation used by `nn`'s default large 2-D float32 MatMul path
-  - backend executor registry: `RegisterBackendExecutor(backend, BackendExecutor)`
+  - the backends, discoverers and SDK probes are internal: the GPU backend registers itself, and nothing outside `accel` registers a device, a backend or a report. `RegisterBackendExecutor`, `RegisterDiscoverer`, `RegisterSDKProbe`, `Session.RegisterDevice`, `Session.RecordReport`, `Session.PlanShardableWorkload`, `NearestExactCPU`, their types and the four `Reset…ForTest` hooks are deprecated and removed in the next release
   - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel plan`, `show accel.devices`, `show accel.cache`, `config accel.mode`
 
 ## GPU Execution
@@ -104,7 +104,7 @@ Windows a tick is the system timer interval, up to about 15.6 ms. Use
 device. A failed assignment is recomputed on the CPU for its own rows;
 successful assignments are kept and merged by input range, independent of
 completion order. The final nearest indices and `float64`
-distances remain bit-identical to `NearestExactCPU`.
+distances remain bit-identical to the pure-`float64` CPU computation.
 
 Single-device hardware correctness for the exact-nearest path is verified.
 The concurrent-versus-sequential multi-assignment parity test is written as a
@@ -127,7 +127,7 @@ The surviving operation resolves that rather than trading it away: the device ra
 
 Three other operations existed and were removed once measured against a host using every core it has: a column sum at 0.7x, a squared-distance matrix whose readback grew with the answer, and a single-precision nearest query no `float64` caller could use. Nothing is added back without that measurement.
 
-The device operation ships a CPU reference — `NearestExactCPU` — and a test asserting the device result is bit-identical to it on the running platform. Parity depends on both toolchains contracting multiply-add the same way, which is a property of the platform rather than of the kernel, so it is measured where it runs rather than assumed.
+The device operation ships an internal `float64` CPU reference and a test asserting the device result is bit-identical to it on the running platform. Parity depends on both toolchains contracting multiply-add the same way, which is a property of the platform rather than of the kernel, so it is measured where it runs rather than assumed.
 
 ### Exact answers from a single-precision device
 

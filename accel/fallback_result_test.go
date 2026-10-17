@@ -11,8 +11,8 @@ import (
 // situation of anyone running Insyra without a GPU.
 func noDeviceSession(t *testing.T, cfg Config) *Session {
 	t.Helper()
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	isolateBuiltinProbes(t)
 	resetBackendExecutorsForTest()
 	t.Cleanup(resetBackendExecutorsForTest)
@@ -36,9 +36,9 @@ type failingExecutor struct {
 
 func (*failingExecutor) Name() string { return "failing" }
 
-func (e *failingExecutor) Execute(context.Context, ExecuteRequest) (ExecuteResponse, error) {
+func (e *failingExecutor) Execute(context.Context, executeRequest) (executeResponse, error) {
 	e.calls++
-	return ExecuteResponse{}, e.err
+	return executeResponse{}, e.err
 }
 
 // TestDeviceFailureStillAnswers covers the device that exists but does not
@@ -48,7 +48,7 @@ func TestDeviceFailureStillAnswers(t *testing.T) {
 	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
 	failing := &failingExecutor{err: errors.New("device fell over")}
-	if err := RegisterBackendExecutor(BackendCUDA, failing); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, failing); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 
@@ -105,8 +105,8 @@ func TestIneligibleDatasetReturnsNothing(t *testing.T) {
 // TestStrictGPUStillFails pins the opt-out. Strict mode exists so that a missing
 // device is loud, and the fallback must not quietly satisfy it.
 func TestStrictGPUStillFails(t *testing.T) {
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	isolateBuiltinProbes(t)
 	resetBackendExecutorsForTest()
 	t.Cleanup(resetBackendExecutorsForTest)

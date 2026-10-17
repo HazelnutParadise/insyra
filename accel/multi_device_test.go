@@ -23,7 +23,7 @@ type lockedShortlistExecutor struct {
 
 func (e *lockedShortlistExecutor) Name() string { return "locked-shortlist" }
 
-func (e *lockedShortlistExecutor) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
+func (e *lockedShortlistExecutor) Execute(ctx context.Context, req executeRequest) (executeResponse, error) {
 	time.Sleep(e.delay)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -37,9 +37,9 @@ type assignmentFailureExecutor struct {
 
 func (e *assignmentFailureExecutor) Name() string { return "assignment-failure" }
 
-func (e *assignmentFailureExecutor) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
+func (e *assignmentFailureExecutor) Execute(ctx context.Context, req executeRequest) (executeResponse, error) {
 	if req.Device.ID == e.failedDevice {
-		return ExecuteResponse{}, errors.New("test device failed")
+		return executeResponse{}, errors.New("test device failed")
 	}
 	return e.inner.Execute(ctx, req)
 }
@@ -47,10 +47,10 @@ func (e *assignmentFailureExecutor) Execute(ctx context.Context, req ExecuteRequ
 func multiDeviceTestSession(t *testing.T, cfg Config) *Session {
 	t.Helper()
 	disableNativeProbes(t)
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	isolateBuiltinProbes(t)
-	RegisterDiscoverer(stubDiscoverer{
+	registerDiscoverer(stubDiscoverer{
 		name: "multi-device",
 		devices: []Device{
 			{ID: "cuda:a", Backend: BackendCUDA, Type: DeviceTypeDiscrete, MemoryClass: MemoryClassDevice, Score: 100},
@@ -67,11 +67,11 @@ func multiDeviceTestSession(t *testing.T, cfg Config) *Session {
 
 func TestShardStrategiesRespectMeasuredFloor(t *testing.T) {
 	auto := multiDeviceTestSession(t, Config{})
-	below := auto.PlanShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar, Rows: 31_999, Dimensions: 32})
+	below := auto.planShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar, Rows: 31_999, Dimensions: 32})
 	if len(below.Assignments) != 1 || below.Assignments[0].Rows != 31_999 {
 		t.Fatalf("auto below floor = %#v, want one 31999-row assignment", below.Assignments)
 	}
-	above := auto.PlanShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar, Rows: 64_000, Dimensions: 32})
+	above := auto.planShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar, Rows: 64_000, Dimensions: 32})
 	if len(above.Assignments) != 2 {
 		t.Fatalf("auto above floor produced %d assignments, want 2", len(above.Assignments))
 	}
@@ -80,7 +80,7 @@ func TestShardStrategiesRespectMeasuredFloor(t *testing.T) {
 			t.Fatalf("auto assignment below measured floor or without range: %#v", assignment)
 		}
 	}
-	heavy := auto.PlanShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar, Rows: 16_000, Dimensions: 128})
+	heavy := auto.planShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar, Rows: 16_000, Dimensions: 128})
 	if len(heavy.Assignments) != 2 {
 		t.Fatalf("auto heavy-shape plan produced %d assignments, want 2", len(heavy.Assignments))
 	}
@@ -91,7 +91,7 @@ func TestShardStrategiesRespectMeasuredFloor(t *testing.T) {
 	}
 
 	forced := multiDeviceTestSession(t, Config{ShardStrategy: ShardStrategyForced})
-	plan := forced.PlanShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar, Rows: 1_024, Dimensions: 128})
+	plan := forced.planShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar, Rows: 1_024, Dimensions: 128})
 	if len(plan.Assignments) != 2 {
 		t.Fatalf("forced plan produced %d assignments, want 2", len(plan.Assignments))
 	}
@@ -105,7 +105,7 @@ func TestMultiDeviceDispatchMergesRangesAndReportsPlacement(t *testing.T) {
 	session := multiDeviceTestSession(t, Config{ShardStrategy: ShardStrategyForced})
 	const deviceTime = time.Millisecond
 	backend := &lockedShortlistExecutor{delay: deviceTime}
-	if err := RegisterBackendExecutor(BackendCUDA, backend); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, backend); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	rnd := rand.New(rand.NewSource(20260805))
@@ -130,7 +130,7 @@ func TestMultiDeviceAssignmentFailureFallsBackOnlyItsRows(t *testing.T) {
 	exerciseDeviceRegardlessOfProfit(t)
 	session := multiDeviceTestSession(t, Config{ShardStrategy: ShardStrategyForced})
 	backend := &assignmentFailureExecutor{failedDevice: "cuda:b"}
-	if err := RegisterBackendExecutor(BackendCUDA, backend); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, backend); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	rnd := rand.New(rand.NewSource(20260806))
@@ -214,7 +214,7 @@ func TestMultiDeviceParityConcurrentAndSequentialOnHardware(t *testing.T) {
 	}
 	seqIndex, seqDistance := merge(sequential)
 	concurrentIndex, concurrentDistance := merge(concurrent)
-	wantIndex, wantDistance, _, err := NearestExactCPU(dataset, queries, 2)
+	wantIndex, wantDistance, _, err := nearestExactCPU(dataset, queries, 2)
 	if err != nil {
 		t.Fatalf("reference failed: %v", err)
 	}

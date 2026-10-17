@@ -64,7 +64,7 @@ func TestShapeMap(t *testing.T) {
 
 				cpu := best(reps, func() time.Duration {
 					start := time.Now()
-					if _, _, _, err := NearestExactCPU(ds, points, m); err != nil {
+					if _, _, _, err := nearestExactCPU(ds, points, m); err != nil {
 						t.Fatal(err)
 					}
 					return time.Since(start)

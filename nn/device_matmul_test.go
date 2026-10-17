@@ -9,6 +9,7 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/accel"
+	"github.com/HazelnutParadise/insyra/internal/acceltest"
 )
 
 func TestDeviceMatMulIsBitEqualToCPUOnHardware(t *testing.T) {
@@ -195,8 +196,8 @@ func TestDeviceMatMulDisabledWGPUKeepsCPUResult(t *testing.T) {
 	t.Cleanup(func() { insyra.Config.SetAcceleration(previous) })
 	insyra.Config.SetAcceleration(true)
 	t.Setenv("INSYRA_ACCEL_DISABLE_WGPU", "1")
-	accel.ResetDefaultForTest()
-	t.Cleanup(accel.ResetDefaultForTest)
+	acceltest.ResetDefault()
+	t.Cleanup(acceltest.ResetDefault)
 	t.Cleanup(func() { RegisterDeviceMatMul(nil) })
 	RegisterDeviceMatMul(accel.DeviceMatMul)
 

@@ -33,7 +33,7 @@ func TestNewSessionUsesDefaults(t *testing.T) {
 
 func TestRegisterDeviceAndDefensiveCopy(t *testing.T) {
 	s := NewSession()
-	err := s.RegisterDevice(Device{
+	err := s.registerDevice(Device{
 		ID:      "cuda:0",
 		Name:    "GPU 0",
 		Backend: BackendCUDA,
@@ -70,7 +70,7 @@ func TestRecordReportAppendsHistory(t *testing.T) {
 		StartedAt:       time.Unix(0, 0),
 		FinishedAt:      time.Unix(1, 0),
 	}
-	if err := s.RecordReport(report); err != nil {
+	if err := s.recordReport(report); err != nil {
 		t.Fatalf("record report failed: %v", err)
 	}
 
@@ -91,10 +91,10 @@ func TestClosePreventsMutation(t *testing.T) {
 	if !s.Closed() {
 		t.Fatal("session should report closed")
 	}
-	if err := s.RegisterDevice(Device{ID: "cpu:0"}); err == nil {
+	if err := s.registerDevice(Device{ID: "cpu:0"}); err == nil {
 		t.Fatal("expected register device to fail after close")
 	}
-	if err := s.RecordReport(Report{}); err == nil {
+	if err := s.recordReport(Report{}); err == nil {
 		t.Fatal("expected record report to fail after close")
 	}
 }

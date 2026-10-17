@@ -329,6 +329,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `accel`
 - `NewSession` 最多只能給一個 `Config`，給兩個時由 `Discover` 回報錯誤，不再只用第一個。
+- **Deprecated**：`accel` 給後端作者用的 API 和測試鉤子改為內部使用。受影響的名稱：`RegisterBackendExecutor`、`BackendExecutor`、`ExecuteRequest`、`ExecuteResponse`、`ExecuteColumn`、`RegisterDiscoverer`、`Discoverer`、`RegisterSDKProbe`、`SDKProbe`、`Session.RegisterDevice`、`Session.RecordReport`、`Session.PlanShardableWorkload`、`NearestExactCPU`、`ResetBackendExecutorsForTest`、`ResetDefaultForTest`、`ResetDiscoverersForTest` 和 `ResetSDKProbesForTest`。這一版照舊能用，下一版移除。`accel` 以外沒有人用到它們，而且呼叫 `RegisterDevice` 加 `RecordReport`，就能讓 `Report().Accelerated` 在什麼都沒跑的情況下顯示 `true`。`ExecuteNearestExact` 不論有沒有裝置都會給出 `float64` 結果，所以 `NearestExactCPU` 已經沒有用處。要重新讀取裝置用 `Discover`，要看分配計畫用 `PlanShardable`。
 
 ### `quant`
 - **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。

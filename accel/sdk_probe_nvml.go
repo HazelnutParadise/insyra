@@ -36,7 +36,7 @@ type nvmlSDKProbe struct {
 	open nvmlOpenFunc
 }
 
-func newNVMLSDKProbe(open nvmlOpenFunc) SDKProbe {
+func newNVMLSDKProbe(open nvmlOpenFunc) sdkProbe {
 	return nvmlSDKProbe{open: open}
 }
 

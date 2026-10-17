@@ -16,21 +16,21 @@ var (
 	ErrReadbackTimeout = errors.New("accel: device readback timed out")
 )
 
-// ExecuteColumn is one projected column, already narrowed to float32 and with
+// executeColumn is one projected column, already narrowed to float32 and with
 // nulls replaced by the operation's identity, so a backend never has to know
 // about precision policy or Insyra's null representation.
-type ExecuteColumn struct {
+type executeColumn struct {
 	Name   string
 	Values []float32
 }
 
-// ExecuteRequest is one operation over one dataset on one device. Columns keep
+// executeRequest is one operation over one dataset on one device. Columns keep
 // their dataset order, because a kernel that reads across columns cares about
 // position in a way a map would lose.
-type ExecuteRequest struct {
+type executeRequest struct {
 	Op        Op
 	Device    Device
-	Columns   []ExecuteColumn
+	Columns   []executeColumn
 	Precision Precision
 	// Queries holds one point per entry, each carrying one value per column in
 	// Columns order. OpNearestShortlist ranks every row against them.
@@ -40,12 +40,12 @@ type ExecuteRequest struct {
 	Shortlist int
 }
 
-// ExecuteResponse carries the computed results and what the submission cost.
+// executeResponse carries the computed results and what the submission cost.
 // The durations describe the whole submission rather than any one column —
 // transfer, dispatch and readback are properties of the submission, and a
 // per-column split would be invented. They are host-observed: Metal and GLES do
 // not implement GPU timestamp queries.
-type ExecuteResponse struct {
+type executeResponse struct {
 	Reductions map[string]float64
 	// Distances and NearestIndex are retained for backends that still fill
 	// them; the shipped operation reports through the Shortlist fields below.
@@ -65,19 +65,19 @@ type ExecuteResponse struct {
 	BytesUploaded uint64
 }
 
-// BackendExecutor runs an operation on a real device. Registering one is how a
+// backendExecutor runs an operation on a real device. Registering one is how a
 // backend module opts into the accel runtime.
-type BackendExecutor interface {
+type backendExecutor interface {
 	Name() string
-	Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error)
+	Execute(ctx context.Context, req executeRequest) (executeResponse, error)
 }
 
 var (
 	backendExecutorsMu sync.RWMutex
-	backendExecutors   = map[Backend]BackendExecutor{}
+	backendExecutors   = map[Backend]backendExecutor{}
 )
 
-func RegisterBackendExecutor(backend Backend, executor BackendExecutor) error {
+func registerBackendExecutor(backend Backend, executor backendExecutor) error {
 	if backend == "" || backend == BackendUnknown || backend == BackendCPU {
 		return fmt.Errorf("accel: executor backend is required")
 	}
@@ -90,15 +90,15 @@ func RegisterBackendExecutor(backend Backend, executor BackendExecutor) error {
 	return nil
 }
 
-// ResetBackendExecutorsForTest clears every registered executor. Tests use this
+// resetBackendExecutors clears every registered executor. Tests use this
 // to keep one package's registration from leaking into another's.
-func ResetBackendExecutorsForTest() {
+func resetBackendExecutors() {
 	backendExecutorsMu.Lock()
 	defer backendExecutorsMu.Unlock()
-	backendExecutors = map[Backend]BackendExecutor{}
+	backendExecutors = map[Backend]backendExecutor{}
 }
 
-func lookupBackendExecutor(backend Backend) (BackendExecutor, bool) {
+func lookupBackendExecutor(backend Backend) (backendExecutor, bool) {
 	backendExecutorsMu.RLock()
 	defer backendExecutorsMu.RUnlock()
 	executor, ok := backendExecutors[backend]

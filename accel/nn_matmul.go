@@ -67,7 +67,7 @@ func recordDeviceMatMulFallback(session *Session, reason FallbackReason, rows in
 		report.Metrics = map[string]float64{}
 	}
 	report.Metrics["execution.fallback"] = 1
-	_ = session.RecordReport(report)
+	_ = session.recordReport(report)
 	session.logDeviceMatMul(false, reason, rows)
 	return cause
 }
@@ -81,7 +81,7 @@ func recordDeviceMatMulSuccess(session *Session, rows int) {
 	}
 	report.Metrics["execution.accelerated"] = 1
 	report.Metrics["execution.fallback"] = 0
-	_ = session.RecordReport(report)
+	_ = session.recordReport(report)
 	session.logDeviceMatMul(true, FallbackReasonNone, rows)
 }
 

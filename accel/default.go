@@ -45,9 +45,9 @@ func Default() *Session {
 	return defaultSession
 }
 
-// ResetDefaultForTest drops the shared session so the next Default call
-// rediscovers. Tests use this the way they use ResetDiscoverersForTest.
-func ResetDefaultForTest() {
+// resetDefault drops the shared session so the next Default call
+// rediscovers. Tests use this the way they use resetDiscoverers.
+func resetDefault() {
 	defaultMu.Lock()
 	defer defaultMu.Unlock()
 	defaultOnce = sync.Once{}

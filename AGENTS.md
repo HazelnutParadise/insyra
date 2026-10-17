@@ -303,6 +303,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: change each when something else already breaks its callers. On its own the move breaks every caller passing a literal (`CorrelationMethod(1)`, `"classification"`) for no gain a reader can see.
 - **Status**: pending
 
+### [2026-10-18] — remove accel's deprecated backend-author names
+- **Where**: `accel/deprecated.go`
+- **What**: `accel-user-surface-only` made the backend-author API and the test hooks internal (#262). Their old exported names stay for one release as Deprecated wrappers and aliases: `RegisterBackendExecutor`, `BackendExecutor`, `ExecuteRequest`, `ExecuteResponse`, `ExecuteColumn`, `RegisterDiscoverer`, `Discoverer`, `RegisterSDKProbe`, `SDKProbe`, `Session.RegisterDevice`, `Session.RecordReport`, `Session.PlanShardableWorkload`, `NearestExactCPU` and the four `Reset…ForTest` functions.
+- **Suggestion**: delete `accel/deprecated.go` except its `init`, which installs `internal/acceltest`'s reset, in the release after the one that ships the deprecation. Also delete `TestDeprecatedRegisterDeviceStillRegisters`, and turn `TestBackendAuthorNamesAreDeprecated` into a check that the names are gone.
+- **Status**: pending
+
 ### [2026-10-15] — `Median` and `Mode` still skip a text cell that `Quantile` refuses
 - **Where**: `datalist.go` `Median` and `Mode`
 - **What**: #221 made the quantile family record an error naming the row and return `NaN` for a cell that is neither a number nor missing. `Median` was only taught to skip `NaN`, and `Mode` was only changed to return every mode. Both still pass over any other non-numeric cell: `Median` logs a warning and `Mode` skips it silently. Measured on 2026-10-15:

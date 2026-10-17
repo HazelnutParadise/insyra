@@ -29,7 +29,7 @@ const nvmlDisableEnv = "INSYRA_ACCEL_DISABLE_NVML_SDK"
 
 func init() {
 	probe := newNVMLSDKProbe(openWindowsNVML)
-	RegisterSDKProbe(probe)
+	registerSDKProbe(probe)
 }
 
 func isEnvFlagOn(key string) bool {

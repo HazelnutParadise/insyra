@@ -37,7 +37,7 @@ func TestExactNearestUsesOneSubmissionAtTheBound(t *testing.T) {
 	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
 	backend := &shortlistExecutor{}
-	if err := RegisterBackendExecutor(BackendCUDA, backend); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, backend); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	rnd := rand.New(rand.NewSource(20260805))
@@ -74,7 +74,7 @@ func TestExactNearestChunkMergePreservesOrderAndParity(t *testing.T) {
 	}
 	narrowed := narrowQueries(queries)
 	device := Device{ID: "test-device", Backend: BackendCUDA}
-	request := ExecuteRequest{
+	request := executeRequest{
 		Op:        OpNearestShortlist,
 		Device:    device,
 		Columns:   columns,
@@ -149,7 +149,7 @@ func TestExactNearestChunked64K128Hardware(t *testing.T) {
 	if result.Chunks != 4 {
 		t.Fatalf("got %d chunks, want 4", result.Chunks)
 	}
-	wantIndex, wantDistance, _, err := NearestExactCPU(dataset, queries, 5)
+	wantIndex, wantDistance, _, err := nearestExactCPU(dataset, queries, 5)
 	if err != nil {
 		t.Fatalf("brute-force reference failed: %v", err)
 	}

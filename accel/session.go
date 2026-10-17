@@ -115,7 +115,7 @@ func (s *Session) LastReport() *Report {
 	return &report
 }
 
-func (s *Session) RegisterDevice(device Device) error {
+func (s *Session) registerDevice(device Device) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -128,7 +128,7 @@ func (s *Session) RegisterDevice(device Device) error {
 	return nil
 }
 
-func (s *Session) RecordReport(report Report) error {
+func (s *Session) recordReport(report Report) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.recordReportLocked(report)

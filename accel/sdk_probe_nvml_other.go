@@ -8,7 +8,7 @@ package accel
 // no-op keeps the seam observable and avoids registering anything that would
 // silently fall through to ErrSDKProbeUnavailable on every Probe() call.
 //
-// Tests can still register a fake CUDA SDKProbe via RegisterSDKProbe to
+// Tests can still register a fake CUDA sdkProbe via registerSDKProbe to
 // exercise the SDK-priority path on any platform.
 
 var _ = newNVMLSDKProbe // keep the cross-platform seam exported for tests

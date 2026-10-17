@@ -91,26 +91,26 @@ func exactNearestChunkRanges(rows, maxRows int) []nearestRowRange {
 // production bound; maxRows is injectable for the ungated merge tests.
 func executeNearestShortlistChunks(
 	ctx context.Context,
-	executor BackendExecutor,
+	executor backendExecutor,
 	device Device,
-	columns []ExecuteColumn,
+	columns []executeColumn,
 	queries [][]float32,
 	precision Precision,
 	shortlist int,
 	maxRows int,
-) (ExecuteResponse, int, error) {
+) (executeResponse, int, error) {
 	ranges := exactNearestChunkRanges(len(columns[0].Values), maxRows)
-	response := ExecuteResponse{
+	response := executeResponse{
 		ShortlistIndex:    make([]uint32, 0, len(columns[0].Values)*shortlist),
 		ShortlistDistance: make([]float32, 0, len(columns[0].Values)*shortlist),
 		ShortlistBoundary: make([]float32, 0, len(columns[0].Values)),
 	}
 	for chunkNumber, rowRange := range ranges {
-		chunkColumns := make([]ExecuteColumn, len(columns))
+		chunkColumns := make([]executeColumn, len(columns))
 		for i, column := range columns {
-			chunkColumns[i] = ExecuteColumn{Name: column.Name, Values: column.Values[rowRange.lo:rowRange.hi]}
+			chunkColumns[i] = executeColumn{Name: column.Name, Values: column.Values[rowRange.lo:rowRange.hi]}
 		}
-		chunk, err := executor.Execute(ctx, ExecuteRequest{
+		chunk, err := executor.Execute(ctx, executeRequest{
 			Op:        OpNearestShortlist,
 			Device:    device,
 			Columns:   chunkColumns,
@@ -119,13 +119,13 @@ func executeNearestShortlistChunks(
 			Shortlist: shortlist,
 		})
 		if err != nil {
-			return ExecuteResponse{}, chunkNumber, err
+			return executeResponse{}, chunkNumber, err
 		}
 		rows := rowRange.hi - rowRange.lo
 		if len(chunk.ShortlistIndex) != rows*shortlist ||
 			len(chunk.ShortlistDistance) != rows*shortlist ||
 			len(chunk.ShortlistBoundary) != rows {
-			return ExecuteResponse{}, chunkNumber + 1, fmt.Errorf(
+			return executeResponse{}, chunkNumber + 1, fmt.Errorf(
 				"accel: backend returned a %d/%d/%d shortlist for chunk %d, expected %d/%d/%d",
 				len(chunk.ShortlistIndex), len(chunk.ShortlistDistance), len(chunk.ShortlistBoundary),
 				chunkNumber, rows*shortlist, rows*shortlist, rows)
@@ -359,11 +359,11 @@ type assignmentExecution struct {
 
 func executeNearestAssignment(
 	ctx context.Context,
-	executor BackendExecutor,
+	executor backendExecutor,
 	device Device,
 	deviceOK bool,
 	assignment ShardAssignment,
-	columns []ExecuteColumn,
+	columns []executeColumn,
 	host [][]float64,
 	queries [][]float64,
 	narrowed [][]float32,
@@ -391,14 +391,14 @@ func executeNearestAssignment(
 	if executor == nil {
 		return fallback(FallbackReasonNoBackendExecutor)
 	}
-	var response ExecuteResponse
+	var response executeResponse
 	var err error
 	if localRows > exactNearestChunkRows {
 		response, out.Chunks, err = executeNearestShortlistChunks(
 			ctx, executor, device, localColumns, narrowed, PrecisionFloat32, k, exactNearestChunkRows)
 	} else {
 		out.Chunks = 1
-		response, err = executor.Execute(ctx, ExecuteRequest{
+		response, err = executor.Execute(ctx, executeRequest{
 			Op: OpNearestShortlist, Device: device, Columns: localColumns,
 			Queries: narrowed, Precision: PrecisionFloat32, Shortlist: k,
 		})
@@ -421,10 +421,10 @@ func executeNearestAssignment(
 	return out
 }
 
-func sliceExecuteColumns(columns []ExecuteColumn, lo, hi int) []ExecuteColumn {
-	out := make([]ExecuteColumn, len(columns))
+func sliceExecuteColumns(columns []executeColumn, lo, hi int) []executeColumn {
+	out := make([]executeColumn, len(columns))
 	for i, column := range columns {
-		out[i] = ExecuteColumn{Name: column.Name, Values: column.Values[lo:hi]}
+		out[i] = executeColumn{Name: column.Name, Values: column.Values[lo:hi]}
 	}
 	return out
 }
@@ -437,9 +437,9 @@ func sliceHostColumns(columns [][]float64, lo, hi int) [][]float64 {
 	return out
 }
 
-// NearestExactCPU is the reference: every distance, every query point, float64
+// nearestExactCPU is the reference: every distance, every query point, float64
 // throughout. It is what the accelerated path is asserted equal to.
-func NearestExactCPU(dataset *Dataset, queries [][]float64, m int) ([]uint32, []float64, int, error) {
+func nearestExactCPU(dataset *Dataset, queries [][]float64, m int) ([]uint32, []float64, int, error) {
 	if dataset == nil {
 		return nil, nil, 0, fmt.Errorf("accel: nil dataset")
 	}
@@ -457,8 +457,8 @@ func NearestExactCPU(dataset *Dataset, queries [][]float64, m int) ([]uint32, []
 // narrowColumns produces the single-precision copy the device kernel reads, and
 // checks the columns share a row count. It is not what the answer is computed
 // from — that is hostColumns — only what the device ranks with.
-func narrowColumns(dataset *Dataset) ([]ExecuteColumn, int, FallbackReason) {
-	columns := make([]ExecuteColumn, 0, len(dataset.Buffers))
+func narrowColumns(dataset *Dataset) ([]executeColumn, int, FallbackReason) {
+	columns := make([]executeColumn, 0, len(dataset.Buffers))
 	rows := -1
 	for _, buffer := range dataset.Buffers {
 		values, _, reason := deviceValues(buffer, PrecisionFloat32)
@@ -470,7 +470,7 @@ func narrowColumns(dataset *Dataset) ([]ExecuteColumn, int, FallbackReason) {
 		} else if len(values) != rows {
 			return nil, 0, FallbackReasonWorkloadUnsupported
 		}
-		columns = append(columns, ExecuteColumn{Name: buffer.Name, Values: values})
+		columns = append(columns, executeColumn{Name: buffer.Name, Values: values})
 	}
 	if rows <= 0 {
 		return nil, 0, FallbackReasonWorkloadUnsupported

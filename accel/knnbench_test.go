@@ -38,7 +38,7 @@ func BenchmarkKNNShapes(b *testing.B) {
 		name := fmt.Sprintf("train=%d/test=%d/d=%d", shape.train, shape.test, shape.dims)
 		b.Run(name+"/cpu", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				if _, _, _, err := NearestExactCPU(ds, queries, 5); err != nil {
+				if _, _, _, err := nearestExactCPU(ds, queries, 5); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -86,7 +86,7 @@ func BenchmarkKNNTrueDirection(b *testing.B) {
 		name := fmt.Sprintf("train=%d/test=%d/d=%d", shape.train, shape.test, shape.dims)
 		b.Run(name+"/cpu", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				if _, _, _, err := NearestExactCPU(testSet, trainQueries, 5); err != nil {
+				if _, _, _, err := nearestExactCPU(testSet, trainQueries, 5); err != nil {
 					b.Fatal(err)
 				}
 			}

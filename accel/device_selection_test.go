@@ -15,8 +15,8 @@ func selectionTestDevices() []Device {
 
 func openSelectionTestSession(t *testing.T, cfg Config) (*Session, error) {
 	t.Helper()
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	isolateBuiltinProbes(t)
 	setBuiltinProbeOverrideForTest(
 		BackendCUDA,
@@ -49,7 +49,7 @@ func TestDeviceSelectionEnvironmentMaskHidesDevicesAtDiscoveryBoundary(t *testin
 	if len(report.DiscoveredDeviceIDs) != 1 || report.DiscoveredDeviceIDs[0] != "cuda:test:1" {
 		t.Fatalf("report discovered IDs = %v, want only cuda:test:1", report.DiscoveredDeviceIDs)
 	}
-	plan := session.PlanShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar, Rows: 1000})
+	plan := session.planShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar, Rows: 1000})
 	if len(plan.DeviceIDs) != 1 || plan.DeviceIDs[0] != "cuda:test:1" {
 		t.Fatalf("planner devices = %v, want only cuda:test:1", plan.DeviceIDs)
 	}

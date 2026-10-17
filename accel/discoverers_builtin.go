@@ -29,8 +29,8 @@ type builtinDiscoverer struct {
 	envKey      string
 }
 
-func builtinDiscoverers() []Discoverer {
-	return []Discoverer{
+func builtinDiscoverers() []deviceDiscoverer {
+	return []deviceDiscoverer{
 		builtinDiscoverer{
 			name:        "cuda",
 			backend:     BackendCUDA,

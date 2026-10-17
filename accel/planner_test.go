@@ -4,8 +4,8 @@ import "testing"
 
 func TestPlanShardableAggregatesAllAccelerators(t *testing.T) {
 	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
 	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
 
@@ -37,8 +37,8 @@ func TestPlanShardableAggregatesAllAccelerators(t *testing.T) {
 
 func TestPlanShardableFallsBackWithoutAccelerators(t *testing.T) {
 	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 
 	session, err := Open(Config{})
 	if err != nil {
@@ -59,10 +59,10 @@ func TestPlanShardableFallsBackWithoutAccelerators(t *testing.T) {
 
 func TestPlanShardableBuildsWeightedAssignments(t *testing.T) {
 	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 
-	RegisterDiscoverer(stubDiscoverer{
+	registerDiscoverer(stubDiscoverer{
 		name: "weighted-devices",
 		devices: []Device{
 			{
@@ -93,7 +93,7 @@ func TestPlanShardableBuildsWeightedAssignments(t *testing.T) {
 		_ = session.Close()
 	})
 
-	plan := session.PlanShardableWorkload(WorkloadEstimate{
+	plan := session.planShardableWorkload(WorkloadEstimate{
 		Class: WorkloadClassColumnar,
 		Rows:  96_000,
 		Bytes: 96_000_000,
@@ -117,8 +117,8 @@ func TestPlanShardableBuildsWeightedAssignments(t *testing.T) {
 
 func TestPlanShardableWorkloadFallsBackWhenAutoModeNotProfitable(t *testing.T) {
 	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
 
 	session, err := Open(Config{})
@@ -129,7 +129,7 @@ func TestPlanShardableWorkloadFallsBackWhenAutoModeNotProfitable(t *testing.T) {
 		_ = session.Close()
 	})
 
-	plan := session.PlanShardableWorkload(WorkloadEstimate{
+	plan := session.planShardableWorkload(WorkloadEstimate{
 		Class: WorkloadClassColumnar,
 		Rows:  32,
 		Bytes: 1024,
@@ -144,8 +144,8 @@ func TestPlanShardableWorkloadFallsBackWhenAutoModeNotProfitable(t *testing.T) {
 
 func TestPlanShardableWorkloadKeepsStrictModeOnUnsupportedWorkload(t *testing.T) {
 	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
-	ResetDiscoverersForTest()
-	t.Cleanup(ResetDiscoverersForTest)
+	resetDiscoverers()
+	t.Cleanup(resetDiscoverers)
 	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
 
 	session, err := Open(Config{Mode: ModeStrictGPU})
@@ -156,7 +156,7 @@ func TestPlanShardableWorkloadKeepsStrictModeOnUnsupportedWorkload(t *testing.T)
 		_ = session.Close()
 	})
 
-	plan := session.PlanShardableWorkload(WorkloadEstimate{
+	plan := session.planShardableWorkload(WorkloadEstimate{
 		Class: WorkloadClassUnknown,
 		Rows:  1000,
 		Bytes: 64000,

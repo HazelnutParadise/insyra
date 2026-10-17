@@ -7,33 +7,33 @@ import (
 	"time"
 )
 
-type Discoverer interface {
+type deviceDiscoverer interface {
 	Name() string
 	Discover(cfg Config) ([]Device, error)
 }
 
 var (
 	discoverersMu sync.RWMutex
-	discoverers   []Discoverer
+	discoverers   []deviceDiscoverer
 )
 
-func RegisterDiscoverer(d Discoverer) {
+func registerDiscoverer(d deviceDiscoverer) {
 	discoverersMu.Lock()
 	defer discoverersMu.Unlock()
 	discoverers = append(discoverers, d)
 }
 
-func ResetDiscoverersForTest() {
+func resetDiscoverers() {
 	discoverersMu.Lock()
 	discoverers = nil
 	discoverersMu.Unlock()
-	ResetSDKProbesForTest()
+	resetSDKProbes()
 }
 
-func currentDiscoverers() []Discoverer {
+func currentDiscoverers() []deviceDiscoverer {
 	discoverersMu.RLock()
 	defer discoverersMu.RUnlock()
-	combined := append([]Discoverer(nil), builtinDiscoverers()...)
+	combined := append([]deviceDiscoverer(nil), builtinDiscoverers()...)
 	combined = append(combined, discoverers...)
 	return combined
 }
@@ -326,7 +326,7 @@ func defaultDeviceScore(device Device) float64 {
 	return score
 }
 
-func runDiscovererWithTimeout(discoverer Discoverer, cfg Config) ([]Device, error) {
+func runDiscovererWithTimeout(discoverer deviceDiscoverer, cfg Config) ([]Device, error) {
 	timeout := cfg.DiscoveryTimeout
 	if timeout <= 0 {
 		return discoverer.Discover(cfg)

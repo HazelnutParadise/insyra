@@ -19,10 +19,10 @@ type ShardPlan struct {
 }
 
 func (s *Session) PlanShardable() ShardPlan {
-	return s.PlanShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar})
+	return s.planShardableWorkload(WorkloadEstimate{Class: WorkloadClassColumnar})
 }
 
-func (s *Session) PlanShardableWorkload(workload WorkloadEstimate) ShardPlan {
+func (s *Session) planShardableWorkload(workload WorkloadEstimate) ShardPlan {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.planShardableWorkloadLocked(workload)

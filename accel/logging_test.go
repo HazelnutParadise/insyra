@@ -36,7 +36,7 @@ func loggingFixture(t *testing.T) (*Session, *Dataset, [][]float64) {
 	t.Helper()
 	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
-	if err := RegisterBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	rnd := rand.New(rand.NewSource(91))
@@ -83,7 +83,7 @@ func TestExecutionLoggingReportsFirstQualifyingFallbackOnce(t *testing.T) {
 	output := captureAccelLogs(t, insyra.LogLevelInfo)
 	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
-	if err := RegisterBackendExecutor(BackendCUDA, &failingExecutor{err: errors.New("device failed")}); err != nil {
+	if err := registerBackendExecutor(BackendCUDA, &failingExecutor{err: errors.New("device failed")}); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 	rnd := rand.New(rand.NewSource(92))
