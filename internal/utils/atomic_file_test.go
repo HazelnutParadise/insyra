@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -55,9 +56,12 @@ func TestWriteFileAtomicallyFollowsSymlinkAndKeepsMode(t *testing.T) {
 	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("link replaced: %v", err)
 	}
-	info, _ := os.Stat(target)
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("mode=%o", info.Mode().Perm())
+	// Windows has no permission bits to keep: Perm reports 0666 for any file.
+	if runtime.GOOS != "windows" {
+		info, _ := os.Stat(target)
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("mode=%o", info.Mode().Perm())
+		}
 	}
 	dangling := filepath.Join(dir, "dangling")
 	if err := os.Symlink("created", dangling); err != nil {
