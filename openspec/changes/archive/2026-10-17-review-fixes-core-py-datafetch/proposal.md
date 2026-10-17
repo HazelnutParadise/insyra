@@ -8,7 +8,7 @@ A review of the 0.4 port against 0.3.5 found defects that had been copied along 
 - `SliceCols` returned a selected column shorter than the table's longest column as it was, so the slice lost the rows past its length (`TestSliceColsPadsShortColumns`).
 - `FilterColsByColIndexLessThanOrEqualTo` overflowed on the largest column letter `ParseColIndex` reads and panicked (`TestFilterColsLessThanOrEqualToMaxParsedIndex`).
 - `DataType` counted only a `float64` NaN as missing (`TestDataListDataType`), and `ShowTypes` cut the `DataType` word to `num` in a narrow column (`TestShowTypesKeepsCompleteDataTypeInNarrowColumns`).
-- `py`: after the IPC accept loop stopped, the next run was given the dead listener's address (`TestStoppedAcceptLoopInvalidatesSharedListener`). A DataFrame with a column called `name` lost a name set on the frame (`TestPinnedEnvironmentEndToEnd`). Result field names were folded by a private rule that did not match `strings.EqualFold` (`TestAssignStructUsesEqualFoldForTurkishI`).
+- `py`: after the IPC accept loop stopped, the next run was given the dead listener's address (`TestStoppedAcceptLoopInvalidatesSharedListener`). Result field names were folded by a private rule that did not match `strings.EqualFold` (`TestAssignStructUsesEqualFoldForTurkishI`).
 - `datafetch`: `ReverseColsContext` returned no error for a context that had already ended when the batch was empty or invalid (`TestReverseColsContextReportsCancellationBeforeEmptyOrInvalidBatch`).
 - Docs: `FilterRowsWhere`'s row shares slice and map cells, which `Docs/DataTable.md` did not say. The CCL docs said a registration under a built-in's name replaces it whatever its kind, and that a scalar function is called for each row. The registry keeps one map per kind and checks sequence, then aggregate, then scalar functions (`internal/ccl/ccl_functions.go`, `internal/ccl/ccl_evaluator.go`).
 
@@ -19,7 +19,7 @@ A review of the 0.4 port against 0.3.5 found defects that had been copied along 
 - `FilterColsByColIndexLessThanOrEqualTo` compares the index before adding one, so the largest parsed letter keeps every column and does not panic.
 - `DataList.DataType()` treats a NaN of any floating-point type, including `float32` and named float types, as missing.
 - `ShowTypes` sizes a column so its `DataType` word prints whole.
-- `py`: the IPC server forgets a listener whose accept loop stopped, so the next run opens a new server. A DataFrame with a column called `name` takes a name set on the frame object itself. Result field names match with `strings.EqualFold`, and the first field in declaration order that matches takes the key.
+- `py`: the IPC server forgets a listener whose accept loop stopped, so the next run opens a new server. Result field names match with `strings.EqualFold`, and the first field in declaration order that matches takes the key.
 - `datafetch`: `ReverseColsContext` checks the context after its input checks, so an already-ended context returns its error for an empty or invalid batch. `ReverseTableContext` inherits this once its columns resolve.
 - Documentation only: `Docs/DataTable.md`, `Docs/DataList.md`, `Docs/py.md`, `Docs/CCL.md`, and the doc comments of `engine/ccl`. Both changelogs gain entries under Core, `py` and `datafetch`.
 
@@ -45,7 +45,7 @@ None.
 - `datatable-bounds-and-aliasing`: the largest parsed column index does not overflow.
 - `data-type`: a NaN of any float type is missing; `ShowTypes` keeps the `DataType` word whole.
 - `py-ipc-server`: a run after the accept loop stopped opens a new server.
-- `py-run-api`: a DataFrame's explicit name is kept beside a `name` column; result field names match by `strings.EqualFold`.
+- `py-run-api`: result field names match by `strings.EqualFold`.
 - `datafetch-cancellation`: an ended context is reported before an empty or invalid batch.
 - `ccl-function-registry`: the documented replacement rule is per function kind, with the evaluation order.
 

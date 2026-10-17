@@ -66,7 +66,7 @@ class insyra:
 			}
 			# pandas returns a column as an attribute, so a DataFrame with a
 			# column called name would be named after that column.
-			name_value = result.__dict__.get("name") if "name" in result.columns else getattr(result, "name", None)
+			name_value = None if "name" in result.columns else getattr(result, "name", None)
 			if name_value is not None:
 				payload[insyra._NAME_KEY] = str(name_value)
 			return payload

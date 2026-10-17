@@ -21,11 +21,8 @@
 
 - [x] 3.1 `py/pyresult.go`: `acquireIPCServer` opens a server when `serverLn` is nil; `releaseIPCServer` handles a nil listener; `acceptIPC` clears the registered listener when its accept loop stops
 - [x] 3.2 `py/pyresult_decode.go`: struct fields match by exact name, then by `strings.EqualFold` in declaration order; the folded map and `foldName` are removed
-- [x] 3.3 `py/builtin.go`: the DataFrame name is read from the frame's `__dict__` when a column called `name` exists
 - [x] 3.4 `py/ipc_server_test.go`: `TestStoppedAcceptLoopInvalidatesSharedListener`
 - [x] 3.5 `py/large_integer_test.go`: `TestAssignStructUsesEqualFoldForTurkishI`
-- [x] 3.6 `py/builtin_test.go`: `TestBuiltInPreservesExplicitDataFrameNameWithNameColumn`; `py/environment_setup_test.go`: the named DataFrame case in `TestPinnedEnvironmentEndToEnd`
-- [x] 3.7 `Docs/py.md`: DataFrame `name` mapping
 
 ## 4. datafetch
 
