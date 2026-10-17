@@ -14,7 +14,7 @@ import (
 // withColoredOutput sets the global switch for one test and puts it back.
 func withColoredOutput(t *testing.T, colored bool) {
 	t.Helper()
-	prev := insyra.Config.GetDoesUseColoredOutput()
+	prev := insyra.Config.GetUseColoredOutput()
 	insyra.Config.SetUseColoredOutput(colored)
 	t.Cleanup(func() { insyra.Config.SetUseColoredOutput(prev) })
 }

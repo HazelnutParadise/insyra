@@ -21,7 +21,7 @@ func WarningText(message string) string {
 }
 
 func withColor(text, color string) string {
-	if !insyra.Config.GetDoesUseColoredOutput() {
+	if !insyra.Config.GetUseColoredOutput() {
 		return text
 	}
 	return fmt.Sprintf("%s%s%s", color, text, ansiReset)

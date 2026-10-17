@@ -186,7 +186,7 @@ func fillNAColumnNumbers(dt *insyra.DataTable, cols []string, methodName string)
 		if found {
 			continue
 		}
-		if i, ok := insyra.ParseColIndex(col); ok && i >= 0 && i < len(names) {
+		if i, ok := insyra.ColIndexToNumber(col); ok && i >= 0 && i < len(names) {
 			numbers = append(numbers, i)
 			continue
 		}

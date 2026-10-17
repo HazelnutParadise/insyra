@@ -247,7 +247,7 @@ func resolveAssignTarget(target string, colNames []string) (string, bool) {
 		}
 		return "", false
 	}
-	if idx, ok := insyra.ParseColIndex(target); ok && idx >= 0 && idx < len(colNames) {
+	if idx, ok := insyra.ColIndexToNumber(target); ok && idx >= 0 && idx < len(colNames) {
 		return colNames[idx], true
 	}
 	for _, c := range colNames {
