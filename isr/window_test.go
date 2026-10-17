@@ -7,7 +7,7 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-func buildIsrTable() *dt {
+func buildIsrTable() *DataTable {
 	price := insyra.NewDataList(10.0, 12.0, 11.0, 13.0, 18.0)
 	price.SetName("price")
 	return UseDT(insyra.NewDataTable(price))

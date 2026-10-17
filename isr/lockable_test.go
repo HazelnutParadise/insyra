@@ -6,6 +6,6 @@ import "github.com/HazelnutParadise/insyra"
 // the unexported lock method and can be passed to insyra.AtomicDoAll directly.
 // This fails to compile if that ever stops being true.
 var (
-	_ insyra.Lockable = (*dl)(nil)
-	_ insyra.Lockable = (*dt)(nil)
+	_ insyra.Lockable = (*DataList)(nil)
+	_ insyra.Lockable = (*DataTable)(nil)
 )

@@ -222,10 +222,10 @@
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | I-1 | ~~High~~ 已修正（make-errors-non-terminating） | `isr` 是 README 建議的入口，卻是 `LogFatal` 最密集的地方：`DT.From` 讀 CSV／Excel／JSON 失敗、`Col`／`Row`／`Push` 型別不對、`UseDL`／`UseDT` 型別不對，全部直接結束程序（K-1 的使用者端表現）。檔案不存在這種最常見的錯誤沒有任何回復手段 | isr/dt.go:48-155, 178, 193, 268-318；isr/use.go:15, 30 | 走 `Err()` 或提供 `TryFrom(...) (*dt, error)` |
-| I-2 | Med | `DT.From`／`DL.From` 回傳 `*dt`／`*dl`，型別未匯出。使用者無法寫 `func f(t *isr.dt)`，表在自己的函式間傳遞只能退回 `.DataTable`，語法糖到函式邊界就失效；golint 也把「匯出函式回傳未匯出型別」列為錯誤（準則 3、8、9） | isr/dl.go:14；isr/dt.go:13 | 匯出為 `isr.DL`／`isr.DT` 型別（現有的 `DL`／`DT` 是 var，要改名） |
-| I-3 | Med | 型別安全交給執行期：`From(item any)` 是 20 分支的 type switch，`Row`／`Col` 是 `map[any]any`，`At(row any, col any)`，`Name("x")` 回傳未匯出的 `name`。編譯器擋不住任何誤用，錯了就是 I-1 的 Fatal（準則 8） | isr/dt.go:20-28, 41-155, 197-235；isr/name.go | 分成 `FromCSV(CSV)`、`FromRows(Rows)` 等具名建構子 |
+| I-2 | ~~Med~~ 已修正（isr-exported-types-and-output；型別匯出為 `isr.DataTable`／`isr.DataList`，`DT`／`DL` 變數不改名） | `DT.From`／`DL.From` 回傳 `*dt`／`*dl`，型別未匯出。使用者無法寫 `func f(t *isr.dt)`，表在自己的函式間傳遞只能退回 `.DataTable`，語法糖到函式邊界就失效；golint 也把「匯出函式回傳未匯出型別」列為錯誤（準則 3、8、9） | isr/dl.go:14；isr/dt.go:13 | 匯出為 `isr.DL`／`isr.DT` 型別（現有的 `DL`／`DT` 是 var，要改名） |
+| I-3 | ~~Med~~ 已修正（isr-exported-types-and-output；擁有者 2026-10-17 裁定保留 `From(any)` 與 `map[any]any`：key 是 #225 的選擇器；`Row`／`Col` 的錯誤訊息改為指出型別與 key） | 型別安全交給執行期：`From(item any)` 是 20 分支的 type switch，`Row`／`Col` 是 `map[any]any`，`At(row any, col any)`，`Name("x")` 回傳未匯出的 `name`。編譯器擋不住任何誤用，錯了就是 I-1 的 Fatal（準則 8） | isr/dt.go:20-28, 41-155, 197-235；isr/name.go | 分成 `FromCSV(CSV)`、`FromRows(Rows)` 等具名建構子 |
 | I-4 | ~~Low~~ 已修正（core-go-names：`FirstCol2RowNames` 已由 `HasRowNames` 取代；擁有者裁定 `Of`／`From` 刻意並存（學 Java `List.of` 與 Rust `From::from`）、`Opts` 拼法維持；`Push` 經實測不是別名：`dl.Push` 是回傳 isr 型別以便續串的 `Append`，`dt.Push` 依型別加列或加欄，已寫進 Docs/isr.md；`DLs` 依 K-7 裁定） | 命名：`CSV_inOpts`、`CSV_outOpts`、`Excel_inOpts` 底線；`FirstCol2RowNames` 用 `2` 代 To；`Of` 是 `From` 別名、`Push` 是 `AppendCols` 別名；`DLs = []insyra.IDataList` 混用介面（K-7）（準則 1、9） | isr/csv.go；isr/excel.go；isr/dl.go:10, 38；isr/dt.go:159 | v1 前統一 |
-| I-5 | Low | `Pivot`／`Unpivot` 把底層 error 丟掉只留 `Err()`（doc 有寫）；`CSV.OutputOpts` 存在但 `From` 用不到，沒有對應的輸出函式 | isr/pivot.go:31-44；isr/csv.go:19 | 保留 error 版本；刪或實作 OutputOpts |
+| I-5 | ~~Low~~ 已修正（isr-exported-types-and-output；`Pivot`／`Unpivot` 依裁定維持只回傳 isr 表；`OutputOpts` 由新的 `(*DataTable).To` 使用） | `Pivot`／`Unpivot` 把底層 error 丟掉只留 `Err()`（doc 有寫）；`CSV.OutputOpts` 存在但 `From` 用不到，沒有對應的輸出函式 | isr/pivot.go:31-44；isr/csv.go:19 | 保留 error 版本；刪或實作 OutputOpts |
 | I-6 | OK | `groupby.go`／`window.go`／`pivot.go` 三個新檔是好的包裝：一對一轉發、doc 指回底層語意、`Rolling` 選項 struct | — | — |
 
 ### stats
@@ -557,9 +557,9 @@
 | E-2 | [#234](https://github.com/HazelnutParadise/insyra/issues/234) |  |
 | E-3 | [#235](https://github.com/HazelnutParadise/insyra/issues/235) |  |
 | E-8 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) | 已修正（show-measures-shown-rows、show-whole-up-to-60-rows） |
-| I-2 | [#237](https://github.com/HazelnutParadise/insyra/issues/237) |  |
-| I-3 | [#238](https://github.com/HazelnutParadise/insyra/issues/238) |  |
-| I-5 | [#239](https://github.com/HazelnutParadise/insyra/issues/239) |  |
+| I-2 | [#237](https://github.com/HazelnutParadise/insyra/issues/237) | 已關閉（isr-exported-types-and-output） |
+| I-3 | [#238](https://github.com/HazelnutParadise/insyra/issues/238) | 已關閉（isr-exported-types-and-output） |
+| I-5 | [#239](https://github.com/HazelnutParadise/insyra/issues/239) | 已關閉（isr-exported-types-and-output） |
 | ST-4 | [#240](https://github.com/HazelnutParadise/insyra/issues/240) | 已修正（stats-test-settings、ttest-welch-default） |
 | ST-5 | [#241](https://github.com/HazelnutParadise/insyra/issues/241) | 已修正（stats-test-results） |
 | ST-6 | [#242](https://github.com/HazelnutParadise/insyra/issues/242) | 已修正（chisq-observed-expected） |

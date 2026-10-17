@@ -275,6 +275,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`CSV_inOpts`、`CSV_outOpts`、`Excel_inOpts` 的標題列與列名欄位改成 `NoHeaderRow` 與 `HasRowNames`，跟核心的設定包一致。`FirstRow2ColNames: true` 現在是預設值，可以直接拿掉；`FirstRow2ColNames: false` 要改成 `NoHeaderRow: true`。型別名稱維持簡短的 `Opts` 寫法。
 - isr 的表格與清單現在符合 `insyra.IDataTable` 與 `insyra.IDataList`，可以直接傳給 `stats`、`plot`、`mkt` 與 `Merge`：以前 `stats.PCA(isrTable)` 會編譯失敗，必須寫成 `isrTable.DataTable`。
 - **BREAKING**：`isr.Pivot.Agg` 改為 `*insyra.AggregateOp`，和 `PivotConfig.AggFunc` 一致：`Agg: "sum"` 要改寫成 `Agg: new(insyra.OpSum)`。
+- isr 的表與 list 型別匯出為 `isr.DataTable` 和 `isr.DataList`，自己的函式可以直接收它們：`func f(t *isr.DataTable)`。`isr.DT`、`isr.DL` 和 `t.DataTable` 的寫法都不變。
+- 新增 `(*isr.DataTable).To`，把表寫成 `isr.CSV`、`isr.JSON` 或 `isr.Excel`，是 `DT.From` 的輸出版，失敗時回傳 error。傳入沒有 `FilePath` 的 `*isr.CSV` 或 `*isr.JSON` 時，結果會填進 `String` 或 `Bytes`。原本沒有任何函式讀取的 `CSV.OutputOpts` 開始生效，並新增 `IncludeBOM`；`JSON` 和 `Excel` 也新增 `OutputOpts`（`UseColIndex`；`NoHeaderRow`、`HasRowNames`、`IfSheetExists`）。JSON 預設用欄名當 key，設定 `UseColIndex` 後改用欄位索引。
+- `DT.From` 與 `Push` 遇到 `Row` 或 `Col` 有不能用的 key 時，錯誤訊息會指出型別和那個 key：`DT.From(isr.Row{"A": 1, 3.5: 2})` 原本回報 `got unexpected type map[interface {}]interface {}`，現在是 `isr.Row keys must be all column indices (string or int) or all Name selectors; key 3.5 has type float64`。
 
 ### `gplot`
 - **BREAKING**：`SaveChart` 檔案寫不出來時改為回傳 `error`，不再結束程式。既有呼叫要改成 `if err := gplot.SaveChart(...); err != nil { ... }` 或明確寫 `_ =`。

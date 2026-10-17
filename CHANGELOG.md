@@ -275,6 +275,9 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - **BREAKING**: `CSV_inOpts`, `CSV_outOpts` and `Excel_inOpts` spell the header row and row names `NoHeaderRow` and `HasRowNames`, like the core options. `FirstRow2ColNames: true` is now the default and can be dropped; `FirstRow2ColNames: false` becomes `NoHeaderRow: true`. The type names keep their short `Opts` spelling.
 - isr's tables and lists satisfy `insyra.IDataTable` and `insyra.IDataList`, so they can be passed straight to `stats`, `plot`, `mkt` and `Merge`: `stats.PCA(isrTable)` used to fail to compile and needed `isrTable.DataTable`.
 - **BREAKING**: `isr.Pivot.Agg` is `*insyra.AggregateOp`, like `PivotConfig.AggFunc`: write `Agg: new(insyra.OpSum)` instead of `Agg: "sum"`.
+- isr's table and list types are exported as `isr.DataTable` and `isr.DataList`, so your own functions can take them: `func f(t *isr.DataTable)`. `isr.DT`, `isr.DL` and `t.DataTable` are unchanged.
+- `(*isr.DataTable).To` writes a table to `isr.CSV`, `isr.JSON` or `isr.Excel`, the counterpart of `DT.From`, and returns an error. A `*isr.CSV` or `*isr.JSON` without a `FilePath` receives the output in `String` or `Bytes`. `CSV.OutputOpts`, which nothing read before, now applies and gains `IncludeBOM`; `JSON` and `Excel` gain `OutputOpts` (`UseColIndex`; `NoHeaderRow`, `HasRowNames`, `IfSheetExists`). JSON keys by column name unless `UseColIndex` is set.
+- `DT.From` and `Push` name the type and the key they could not use in a `Row` or `Col`: `DT.From(isr.Row{"A": 1, 3.5: 2})` used to report `got unexpected type map[interface {}]interface {}`, and now says `isr.Row keys must be all column indices (string or int) or all Name selectors; key 3.5 has type float64`.
 
 ### `gplot`
 - **BREAKING**: `SaveChart` returns an `error` instead of ending the program when the file cannot be written. Existing calls need `if err := gplot.SaveChart(...); err != nil { ... }` or an explicit `_ =`.

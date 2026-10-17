@@ -15,7 +15,7 @@ import "github.com/HazelnutParadise/insyra"
 // wrapper holds a usable underlying value before recording the error, so the
 // caller cannot dereference a nil.
 
-func failDT(t *dt, funcName, msg string, args ...any) *dt {
+func failDT(t *DataTable, funcName, msg string, args ...any) *DataTable {
 	if t.DataTable == nil {
 		t.DataTable = insyra.NewDataTable()
 	}
@@ -23,7 +23,7 @@ func failDT(t *dt, funcName, msg string, args ...any) *dt {
 	return t
 }
 
-func failDL(l *dl, funcName, msg string, args ...any) *dl {
+func failDL(l *DataList, funcName, msg string, args ...any) *DataList {
 	if l.DataList == nil {
 		l.DataList = insyra.NewDataList()
 	}
@@ -40,25 +40,25 @@ func failDL(l *dl, funcName, msg string, args ...any) *dl {
 // These overrides keep the block syntax intact.
 
 // ClearErr clears the recorded error and returns the DT for further chaining.
-func (t *dt) ClearErr() *dt {
+func (t *DataTable) ClearErr() *DataTable {
 	t.DataTable.ClearErr()
 	return t
 }
 
 // SetErr records an error on the DT and returns it for further chaining.
-func (t *dt) SetErr(packageName, funcName, msg string, args ...any) *dt {
+func (t *DataTable) SetErr(packageName, funcName, msg string, args ...any) *DataTable {
 	t.DataTable.SetErr(packageName, funcName, msg, args...)
 	return t
 }
 
 // ClearErr clears the recorded error and returns the DL for further chaining.
-func (l *dl) ClearErr() *dl {
+func (l *DataList) ClearErr() *DataList {
 	l.DataList.ClearErr()
 	return l
 }
 
 // SetErr records an error on the DL and returns it for further chaining.
-func (l *dl) SetErr(packageName, funcName, msg string, args ...any) *dl {
+func (l *DataList) SetErr(packageName, funcName, msg string, args ...any) *DataList {
 	l.DataList.SetErr(packageName, funcName, msg, args...)
 	return l
 }
