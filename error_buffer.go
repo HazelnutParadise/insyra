@@ -70,7 +70,7 @@ func (l LogLevel) String() string {
 	case LogLevelFatal:
 		return "FATAL"
 	default:
-		return "UNKNOWN"
+		return fmt.Sprintf("LogLevel(%d)", int(l))
 	}
 }
 

@@ -13,7 +13,7 @@ import (
 
 // VaRMethod selects the distribution used to calculate value at risk and
 // conditional value at risk.
-type VaRMethod uint8
+type VaRMethod int
 
 const (
 	// VaRHistorical uses the empirical R type-7 return quantile. At 0.95
@@ -59,7 +59,7 @@ func valueAtRiskF64(returns []float64, confidence float64, method VaRMethod) (fl
 		}
 		return -(mean + z*sd), nil
 	default:
-		return math.NaN(), fmt.Errorf("ValueAtRisk: unknown method %d", method)
+		return math.NaN(), fmt.Errorf("ValueAtRisk: unknown method %v", method)
 	}
 }
 
@@ -107,7 +107,7 @@ func conditionalValueAtRiskF64(returns []float64, confidence float64, method VaR
 		}
 		return -(mean - sd*normPDF(z)/(1-confidence)), nil
 	default:
-		return math.NaN(), fmt.Errorf("ConditionalValueAtRisk: unknown method %d", method)
+		return math.NaN(), fmt.Errorf("ConditionalValueAtRisk: unknown method %v", method)
 	}
 }
 
@@ -119,7 +119,7 @@ func validateVaRInputs(returns []float64, confidence float64, method VaRMethod) 
 		return fmt.Errorf("VaR: confidence must be in (0, 1), got %v", confidence)
 	}
 	if method != VaRHistorical && method != VaRParametric {
-		return fmt.Errorf("VaR: unknown method %d", method)
+		return fmt.Errorf("VaR: unknown method %v", method)
 	}
 	return nil
 }

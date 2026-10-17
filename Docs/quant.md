@@ -93,7 +93,7 @@ Only the first and last points of `equity` matter; `days` is the calendar-day sp
 ### ValueAtRisk and ConditionalValueAtRisk
 
 ```go
-type VaRMethod uint8
+type VaRMethod int
 
 const (
     VaRHistorical VaRMethod = iota
@@ -200,7 +200,7 @@ Both functions return an error for nil input, unequal lengths, fewer than 3 obse
 `BlackScholes` prices European calls and puts with continuous dividend yield:
 
 ```go
-type OptionType uint8
+type OptionType int
 
 const (
     OptionCall OptionType = iota
@@ -522,7 +522,7 @@ The solver is pure Go, so no Python or external optimizer is involved, and the p
 ### Types
 
 ```go
-type PortfolioObjective uint8
+type PortfolioObjective int
 
 const (
     MinimumVariance PortfolioObjective = iota // minimize w'Σw            (zero value)

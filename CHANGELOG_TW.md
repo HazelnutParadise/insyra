@@ -110,6 +110,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`ToSQL`、`ToSQLContext`、`ReadSQL`、`ReadSQLContext`、`ReadSQLStream` 不再收 `*gorm.DB`，改收 `database/sql` 的連線加上資料庫種類，例如 `dt.ToSQL(db, insyra.SQLDialectPostgres, "sales")`。核心套件因此不再依賴 gorm 和 squirrel。拿一支只用 `DataTable` 的程式實測，少了 19 個套件，其中 6 個是第三方模組，執行檔小了 0.93 MB（8.65 MB → 7.72 MB）。用 gorm 的人改傳 gorm 底下的連線：`sqlDB, _ := gormDB.DB()`。資料庫種類一定要給，只接受 `SQLDialectSQLite`、`SQLDialectMySQL`、`SQLDialectPostgres`，其他值都會回傳錯誤；以前 gorm 回報不認得的種類時，會默默改用 SQLite 的查詢。自訂的 `ReadSQLOptions.Query` 和 `Params` 現在原封不動交給驅動程式，所以 PostgreSQL 的查詢要寫 `$1` 而不是 `?`，gorm 的 `@name` 參數和 `IN ?` 自動展開陣列也不再適用。交易和 Replace 的保證都沒有改變。
 - **BREAKING**：`ToSQL` 遇到沒有名字的欄位，改用欄位字母（`A`、`B`…）當欄名，不再寫成 MySQL 和 PostgreSQL 都不接受的空白名稱 `""`。例如 `NewDataTable(NewDataList(1, 2, 3)).ToSQL(db, insyra.SQLDialectMySQL, "t")` 以前會失敗並回傳 `Incorrect column name ''`，現在會寫出欄位 `A`。寫進 SQLite 的表也一樣，以前的 `""` 欄位現在會叫 `A`。如果已經有別的欄位用了這個字母當名稱，在寫入任何東西之前就會回傳錯誤。
 - 在 MySQL 上，`ToSQL` 寫入失敗時不會再留下做到一半的表。要新建的表會先用暫存名稱寫入，所有資料列都寫完才改名成目標名稱，所以寫入失敗時不會留下任何表。以前會留下一張空表，害下一次寫入因為 `already exists` 失敗。追加模式新增的欄位，在資料列寫入失敗時會被刪掉；以前資料列會回滾，但新增的欄位會留下來。在 MySQL 上建表現在需要對整個資料庫有 CREATE、INSERT、ALTER、DROP 權限，跟 Replace 原本的要求相同。
+- 值是數字的 enum 現在都會印出名稱。`MergeMode`、`NaNPolicy`、`UnknownPolicy`、`LabelSort`、`ResampleFreq`、`SheetExistsPolicy`、`SQLActionIfTableExists`、`MergeDirection` 與 `ErrPoppingMode` 新增 `String()`，`fmt.Print(insyra.MergeModeOuter)` 印出 `MergeModeOuter`，不再是 `1`。不在常數之內的值印成 `型別名(n)`，原本就有 `String()` 的型別也一樣：`DataType(9)` 過去印 `unknown`、`LogLevel(9)` 印 `UNKNOWN`、`AggregateOp(99)` 印 `op(99)`。回報未知設定的錯誤會寫出名稱：`LabelEncode` 收到 `LabelSort(9)` 時，訊息從 `unknown LabelSort 9` 改為 `unknown LabelSort LabelSort(9)`。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
@@ -176,6 +177,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`nn.LayerNorm(dim int)` 改收最後一維的大小，新增的 `nn.LayerNormShape(dims []int)` 正規化結尾的多個維度，對應 torch 的 `normalized_shape` 清單。`LayerNorm` 原本收 `interface{}`，傳入既不是 `int` 也不是 `[]int` 的值（例如 `int64(4)`）會建出一個到 `Build` 才失敗的層，錯誤訊息是 `layernorm dimensions must be positive, got [0]`。`LayerNorm(16)` 照常編譯；`LayerNorm([]int{2, 3})` 請改成 `LayerNormShape([]int{2, 3})`。（[issue #265](https://github.com/HazelnutParadise/insyra/issues/265)）
 - 新增 `Sequential.FitContext(ctx, x, y, cfg)`，訓練可以取消。每個 batch 開始前都會檢查 context；context 結束時回傳 `ctx.Err()` 與已經跑完的 epoch，模型保留已經做過的優化步驟。`Fit` 就是用 `context.Background()` 呼叫的 `FitContext`。（[issue #266](https://github.com/HazelnutParadise/insyra/issues/266)）
 - 新增 `nn.CustomLoss{Name, Loss, Validate}`，`Sequential.Fit` 可以用呼叫者在 tape 上算的 loss 訓練，不再只限 `CrossEntropy`、`MSE`、`BCEWithLogits`。`Loss` 用 tape 上的運算算出這個 batch 的損失，回傳 float32 純量；`Validate` 選填，用來檢查每個 batch 的目標值；`Name` 會標在錯誤訊息裡。`Fit` 會在跑任何 batch 之前拒絕沒有 `Loss` 的 `CustomLoss`；`Loss` 回傳 nil、不是 float32 純量，或是在 tape 之外算出的值（否則參數拿到的梯度全是零）時，也會回傳錯誤。（[issue #266](https://github.com/HazelnutParadise/insyra/issues/266)）
+- `ClassAverage` 與 `MetricDirection` 遇到常數以外的值時，印成 `ClassAverage(n)` 與 `MetricDirection(n)`。過去 `ClassAverage(9)` 會印成 `macro`，等於報出一個它根本不是的規則。ONNX 匯出無法表示未知類別處理方式時，錯誤訊息會寫出該方式的名稱。
 
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。
@@ -185,6 +187,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 依「每個東西只有一個名字」的規則整理名稱：`YFPeriodYearly` 改為 Deprecated，請改用抓取相同財報的 `YFPeriodAnnual`，移除前它產生的表格仍標示 `yearly`。評論排序常數改為 `GoogleMapsStoreReviewSortByRelevance`、`GoogleMapsStoreReviewSortByNewest`、`GoogleMapsStoreReviewSortByHighestRating`、`GoogleMapsStoreReviewSortByLowestRating`，`SortByRelevance` 等四個舊名改為數值相同的 Deprecated 常數。`GoogleMapsStoreReviewsFetchingOptions.MaxWaitingInterval` 以 `time.Duration` 設定翻頁之間最長的等待，規則與原本的毫秒欄位相同，`MaxWaitingInterval_Milliseconds` 改為 Deprecated，兩個都設定時 `GetReviews` 會在發出請求前回傳 `nil` 並記錄警告。`TWGeocoding` 的 `ReverseTable` 改為以函式庫的欄位選擇器指定欄位，`ReverseTable(dt, insyra.Name("lat"), insyra.Name("lng"))` 就是以名稱選欄，`ReverseTableByColName` 改為 Deprecated。原本傳兩個字串的呼叫仍把字串當成 Excel 式欄位索引。這些 Deprecated 名稱會在下一個版本移除。
 - 每個抓取方法都有接收 `context.Context` 的 `...Context` 版本，做法與 `ReadSQLContext` 相同，原本的方法改為以 `context.Background()` 呼叫它：`TWStockClient` 的六個方法（例如 `DailyPricesContext`）、`ReverseContext`、`ReverseColsContext`、`ReverseTableContext`、`SearchContext`、`GetReviewsContext`，以及 `YFTicker` 所有會發出請求的 26 個方法（例如 `HistoryContext`）。context 會傳到限流等待、重試前的退避、每個 HTTP 請求與評論翻頁之間的等待。被取消的呼叫回傳 `ctx.Err()` 且不重試。`ReverseContext` 的請求若被 context 中斷，回報的是 context 的錯誤而不是 `ErrGeocodeTimeout`，`ErrGeocodeTimeout` 仍只代表服務沒在 `Timeout` 內回應。`ReverseCols` 批次中途被取消時，會回傳已解析的列，其餘標為 `pending`，與配額用完時相同。go-yfinance 無法中途停止已經開始的呼叫，所以 Yahoo Finance 的方法在 context 結束時會立刻返回，那次呼叫則留在背景跑完，期間仍可能送出剩下的請求。
 - context 已經結束時，`ReverseColsContext` 與 `ReverseTableContext` 會回傳 context 的錯誤，即使批次是空的或座標全部無效也一樣；原本會回報成功。
+- **BREAKING**：`GoogleMapsStoreReviewSortBy` 從 `uint8` 改為 `int`，並會印出常數名稱。常數、數字字面值與型別轉換照常可以編譯，只有把它和 `uint8` 值直接做運算的程式會編譯失敗。
 
 ### `stats`
 - **BREAKING**：`FactorAnalysis` 在 `Rotation.Method: FactorRotationOblimin` 且 `Rotation.Restarts` 大於 1 時，現在真的會做參數所描述的搜尋。Oblimin 過去每一輪都自己建一個單位矩陣當起點，忽略傳進來的起點，所以 `Restarts: 20` 是把同一份計算跑 20 次再回傳第一個結果，實測 20 個起點花 202 ms 回傳和 9.9 ms 一模一樣的答案。現在它和其他九個方法一樣從每個起點各旋轉一次，而且 `Delta: 0` 時與同樣 `Restarts` 的 Quartimin 結果逐位元相同，因為兩者本來就是同一個準則。在測試套件的 12 個生成資料集上，載荷最多移動 1.2e-5；在過因子的模型上（用三因子資料抽四個因子），額外的起點會找到單位矩陣起點到不了的另一個盆地，準則值低 47 倍。那個解的因子相關也高達 0.905：`Restarts` 要的是最低的準則值，不保證那個解就是你要的，這對任何多起點的斜交旋轉都成立。預設的 `Restarts: 1` 不變。SPSS 的 Direct Oblimin 是單起點，`Restarts: 1` 仍然是。
@@ -210,6 +213,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `stats` 的每個結果型別都能印出自己。每個型別都有 `String()`，`fmt.Println(res)`、寫進 log，或用 `fmt.Fprintln(w, res)` 寫到任何 `io.Writer`，都會得到完整的結果；`Show()` 則把 `String()` 原樣印到標準輸出。以前只有 `ChiSquareTestResult` 與 `FactorAnalysisResult` 有 `Show`，其他型別印出來是 Go 原始的 struct 格式，指標只看得到位址。現在所有結果都照同一種版面：第一行是分析名稱，接著每個欄位一行、用 Go 的欄位名稱，值為 `nil` 的欄位不印，數字照 insyra 輸出文字的規則寫，清單與表格超過 60 筆時和表格檢視一樣只列頭尾，表格畫成格線。輸出不含色碼。**原有的兩個 `Show` 也改用這個版面**，`FactorAnalysisResult.Show` 給了列範圍時，仍照該範圍顯示每張表。
 - **BREAKING**：卡方檢定的類別名稱改照 insyra 把任何值寫成文字的規則，也就是 `ToStringSlice` 用的規則。以前用 `fmt` 的 `%v`，所以浮點數類別 1,500,000 會標成 `1.5e+06`、0.00001 會標成 `1e-05`，現在是 `1500000` 與 `0.00001`。這些標籤是 `Observed` 與 `Expected` 的列名與欄名，也是 `ChiSquareGoodnessOfFit` 的 `p` 要寫的鍵，所以寫成 `"1.5e+06"` 的鍵現在會被當成不存在的類別而回傳錯誤，請改寫成 `"1500000"`。字串、整數、`nil`，以及介於 0.0001 到一百萬之間的浮點數，標籤都不變。`ChiSquareIndependenceTest` 也改在同一個 `AtomicDoAll` 內讀取兩個 list，和雙樣本檢定一樣，呼叫端同時改變兩個 list 的長度時，不會再讀到兩個時點混在一起的資料。
 - `TwoWayANOVAFromTable`、`RepeatedMeasuresANOVAFromTable`、`FriedmanTestFromTable` 先找出缺漏或重複的組合，再為每個組合配置格子，所以因子幾乎全不相同的表會直接被拒絕，不會先配置層級數平方個格子。
+- `CorrelationMethod`、`SkewnessMethod` 與 `KurtosisMethod` 印出常數名稱，不再是數字。
 
 ### `csvxl`
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 會用 v0.3.3 檢查工作表名稱的同一套規則檢查 `csvNames` 指定的檔名：含路徑分隔符號、或不會直接落在輸出目錄內的檔名都會被拒絕，所以 `csvNames: []string{"sub/out.csv"}` 不再寫進子目錄。每張 CSV 先寫入暫存檔再 rename 到目標位置，寫入失敗時不會留下截斷的檔案。
@@ -245,6 +249,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 含有超過 arrow-go v18 預設上限（壓縮 64 MiB、解壓 256 MiB，比 v17 小）的資料頁的檔案，在 `Read`、`Stream`、`Inspect`、`ApplyCCL`、`FilterWithCCL` 都能讀。
 - 傳給 `ReadFrom` 或 `StreamFrom` 的 `io.ReaderAt` 內部 panic 會變成錯誤。Arrow 在 goroutine 裡讀欄位，呼叫端的 `recover` 接不到，整個程式會結束。
 - `WriteTo` 與 `WriteToContext` 在 row group 無法開始時回傳錯誤而不是 panic；`WriteToContext` 在寫 footer 期間 context 被取消時回傳 `ctx.Err()`。
+- `Compression` 印出常數名稱，未知的值回報為 `Compression(n)`。
 
 ### `mkt`
 - **BREAKING**：`CAI` 改成一般函式，不再是存著 `CustomerActivityIndex` 的變數。呼叫方式不變，只有對它賦值會編譯失敗。
@@ -252,6 +257,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `finance`
 - **BREAKING（行為，簽名不變）**：所有接受 `opts ...Options` 的函式收到超過一個 `Options` 時會回傳錯誤。以前是默默採用最後一個，跟函式庫其他地方相反。
+- **BREAKING**：`DayCountBasis` 與 `PaymentTiming` 從 `uint8` 改為 `int`，數值仍對應 Excel 的 `basis` 與 `type`，並會印出常數名稱。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。
 
 ### `lpgen`
 - 新增 `LPModel.WriteLP(io.Writer) error`，把 `GenerateLPFile` 存檔的同一份 CPLEX LP 文字寫進任何 writer，遇到不認識的目標型別時回傳錯誤。`GenerateLPFile` 改為透過它寫檔，輸出內容不變。
@@ -323,6 +329,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `accel`
 - `NewSession` 最多只能給一個 `Config`，給兩個時由 `Discover` 回報錯誤，不再只用第一個。
+
+### `quant`
+- **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。
 
 ## v0.3.3
 

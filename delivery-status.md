@@ -22,6 +22,11 @@ None in flight. Nothing left can be picked up without the owner answering someth
 **Awaiting a ruling:** nothing from the decision list that started on 2026-09-25; the open `api-review` issues are the next pickup.
 
 ## Latest Milestones
+- 2026-10-18 `enums-print-their-names` ([#246](https://github.com/HazelnutParadise/insyra/issues/246), api-review QU-1). The owner ruled on 2026-10-18 to keep each enum's underlying type and make every one readable, rather than move 65 types to one side:
+  - **Inventory.** 40 `string`, 19 `int` and 6 `uint8` enum types. None is serialized anywhere (`state.json`, scaler JSON and ONNX export never write an enum's raw value), so one underlying type would have bought no readable storage.
+  - **Readable.** The 19 integer enums without `String()` gained one. Unknown values print `TypeName(n)` everywhere (`ClassAverage(9)` used to print `macro`), and every error about an unknown setting names it: `VaR: unknown method 3` → `VaR: unknown method VaRMethod(3)`.
+  - **Breaking.** The six `uint8` enums (`quant.VaRMethod`, `OptionType`, `PortfolioObjective`, `finance.DayCountBasis`, `PaymentTiming`, `datafetch.GoogleMapsStoreReviewSortBy`) are now `int`.
+  - **Rule.** AGENTS.md Key Conventions now says when an enum is a number and when it is a string. `stats.CorrelationMethod` and `ml.MetricKind` break it and are recorded as a follow-up.
 - 2026-10-17 `sql-unnamed-column-uses-its-letter` and `sql-mysql-failed-write-leaves-nothing`, fixing the two defects that running the SQL functions against MySQL 8.4 and PostgreSQL 16 in Docker turned up (`datatable_sql_server_test.go`, gated on `INSYRA_TEST_MYSQL_DSN` / `INSYRA_TEST_POSTGRES_DSN`):
   - **Unnamed columns.** `ToSQL` wrote an unnamed column as `""`, which both servers refuse (`Incorrect column name ''`). It now writes the column's letter, the name `Unpivot` and the scalers already use, and refuses a letter another column already has.
   - **MySQL leftovers.** On MySQL, a failed create left an empty table, and a failed append left its new column (measured: columns `[extra id]` after the failure). A missing table is now written under a staging name and renamed in, and an append drops the columns it added when the rows fail. Both server tests failed on MySQL before the change and pass on both servers after it. Both `AGENTS.md` follow-ups are closed.

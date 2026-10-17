@@ -9,7 +9,7 @@ import (
 // PaymentTiming indicates whether an annuity payment occurs at the end
 // of each period (ordinary annuity, Excel's type=0) or at the beginning
 // (annuity due, Excel's type=1).
-type PaymentTiming uint8
+type PaymentTiming int
 
 const (
 	// PaymentEnd places each payment at the end of its period.

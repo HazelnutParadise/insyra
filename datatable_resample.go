@@ -36,7 +36,7 @@ func (dt *DataTable) Resample(timeCol any, freq ResampleFreq, aggs ...ResampleAg
 		return empty, fmt.Errorf("Resample: at least one aggregate is required")
 	}
 	if !validResampleFreq(freq) {
-		return empty, fmt.Errorf("Resample: unknown frequency %d", freq)
+		return empty, fmt.Errorf("Resample: unknown frequency %v", freq)
 	}
 
 	var (

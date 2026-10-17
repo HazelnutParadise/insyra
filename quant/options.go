@@ -8,7 +8,7 @@ import (
 )
 
 // OptionType identifies whether an option is a call or a put.
-type OptionType uint8
+type OptionType int
 
 const (
 	// OptionCall is a call option.
@@ -88,7 +88,7 @@ func validateBSInput(in BSInput) error {
 		return fmt.Errorf("BlackScholes: TimeToExpiry must be non-negative, got %v", in.TimeToExpiry)
 	}
 	if in.Type != OptionCall && in.Type != OptionPut {
-		return fmt.Errorf("BlackScholes: unknown Type %d", in.Type)
+		return fmt.Errorf("BlackScholes: unknown Type %v", in.Type)
 	}
 	return nil
 }

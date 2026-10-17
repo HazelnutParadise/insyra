@@ -738,7 +738,7 @@ func applyONNXOneHot(b *onnxBuilder, groups []onnxGroup, encoder *insyra.OneHotE
 	}
 	options := encoder.Options()
 	if options.Unknown != insyra.UnknownIgnore {
-		return nil, fmt.Errorf("one-hot encoder unknown policy %d cannot be represented by ONNX", options.Unknown)
+		return nil, fmt.Errorf("one-hot encoder unknown policy %v cannot be represented by ONNX", options.Unknown)
 	}
 	columns := encoder.Columns()
 	categories := encoder.Categories()
@@ -825,7 +825,7 @@ func applyONNXScalarEncoder(b *onnxBuilder, groups []onnxGroup, source, output s
 		return nil, errors.New("scalar encoder has no fitted column name")
 	}
 	if unknown != insyra.UnknownIgnore {
-		return nil, fmt.Errorf("encoder column %q unknown policy %d cannot be represented by ONNX", source, unknown)
+		return nil, fmt.Errorf("encoder column %q unknown policy %v cannot be represented by ONNX", source, unknown)
 	}
 	if len(classes) == 0 {
 		return nil, fmt.Errorf("encoder column %q has no fitted classes", source)

@@ -252,7 +252,7 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| QU-1 | Low | enum 風格：`VaRMethod`、`OptionType`、`PortfolioObjective` 用 `uint8`，`stats` 用 string，core 用 int；同一個程式庫三種 enum 寫法，printf `%d` 出來的錯誤訊息（`unknown method 3`）也不如 string 可讀（準則 6、9） | quant/risk.go:16；options.go:11；portfolio.go:12 | 全庫統一為 typed int + `String()`，或 string |
+| QU-1 | ~~Low~~ 已修正（enums-print-their-names） | enum 風格：`VaRMethod`、`OptionType`、`PortfolioObjective` 用 `uint8`，`stats` 用 string，core 用 int；同一個程式庫三種 enum 寫法，printf `%d` 出來的錯誤訊息（`unknown method 3`）也不如 string 可讀（準則 6、9） | quant/risk.go:16；options.go:11；portfolio.go:12 | 全庫統一為 typed int + `String()`，或 string |
 | QU-2 | ~~Low~~ 已修正（參數型別依 K-7 裁定維持介面；embeddable-sealed-interfaces 把 `CAPM`／`Beta` 重複的 nil 與長度檢查併成 `pairedSeries`） | 參數型別 `insyra.IDataList`／`IDataTable`（K-7）；`CAPM`／`Beta` 先 `asset.Len()` 比長度再 `numericSeries`，nil 檢查與長度檢查在 `numericSeries` 之前重複實作（各函式自己寫一次） | quant/capm.go:40-70 | 改具體型別；長度檢查併入 helper |
 | QU-3 | ~~Low~~ 已修正（datalist-quantile）：`PercentileBands` 維持 0..100，跟 `Percentile` 同一刻度，文件寫明；WalkForward 不另加 DataTable 版，`Docs/quant.md` 補上用 `SliceRows` 切窗的範例 | `PercentileBands(paths, percentiles []float64)` 的百分位尺度要與 D-13（0..1 vs 0..100）一起統一；`WalkForward[P any]` 用索引區間回呼，使用者要自己切資料，沒有收 DataTable 的版本（準則 4） | quant/bootstrap.go:217；walkforward.go | 文件標明尺度；加 DataTable 版 |
 | QU-4 | OK | 範本等級：每個函式先 `numericSeries` 拒絕不可讀值並指出列號、全部回 error、doc 寫清單位（per-period vs annualized、calendar days）、`BootstrapConfig.Seed` 語意明確、`PortfolioConfig` 只預設容忍度其餘一律驗證、`Converged=false` 不當錯誤。其他套件應以此為準 | — | — |

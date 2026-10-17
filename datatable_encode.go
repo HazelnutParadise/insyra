@@ -554,7 +554,7 @@ func collectLabelClasses(values []any, opts LabelEncodeOptions) ([]any, map[stri
 			return a.firstSeen < b.firstSeen
 		})
 	default:
-		return nil, nil, fmt.Errorf("LabelEncode: unknown LabelSort %d", opts.SortBy)
+		return nil, nil, fmt.Errorf("LabelEncode: unknown LabelSort %v", opts.SortBy)
 	}
 	classes := make([]any, 0, len(order))
 	keyToID := make(map[string]int, len(order))
@@ -606,7 +606,7 @@ func collectOrdinalClasses(values []any, opts OrdinalEncodeOptions) ([]any, map[
 		case UnknownError:
 			return nil, nil, fmt.Errorf("OrdinalEncode: value %v is not in Order", raw)
 		default:
-			return nil, nil, fmt.Errorf("OrdinalEncode: unknown UnknownPolicy %d", opts.Unknown)
+			return nil, nil, fmt.Errorf("OrdinalEncode: unknown UnknownPolicy %v", opts.Unknown)
 		}
 	}
 	return classes, keyToID, nil
@@ -683,7 +683,7 @@ func (e *OneHotEncoder) encodeOneHotColumn(state *oneHotColumnState, values []an
 			categoryCount++
 			outputColumns = append(outputColumns, oneHotCategoryColumnName(state.prefix, e.opts.Separator, v))
 		default:
-			return nil, fmt.Errorf("OneHotEncoder.Transform: unknown UnknownPolicy %d", e.opts.Unknown)
+			return nil, fmt.Errorf("OneHotEncoder.Transform: unknown UnknownPolicy %v", e.opts.Unknown)
 		}
 	}
 
@@ -847,7 +847,7 @@ func encodeScalarCategory(raw any, nan NaNPolicy, unknown UnknownPolicy, method 
 		(*keyToID)[key] = id
 		return id, nil
 	default:
-		return nil, fmt.Errorf("%s: unknown UnknownPolicy %d", method, unknown)
+		return nil, fmt.Errorf("%s: unknown UnknownPolicy %v", method, unknown)
 	}
 }
 
@@ -1004,7 +1004,7 @@ func normalizeCategoryValue(v any, policy NaNPolicy, method string) (any, bool, 
 	case NaNSkip:
 		return nil, true, nil
 	default:
-		return nil, false, fmt.Errorf("%s: unknown NaNPolicy %d", method, policy)
+		return nil, false, fmt.Errorf("%s: unknown NaNPolicy %v", method, policy)
 	}
 }
 

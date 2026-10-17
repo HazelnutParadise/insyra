@@ -10,7 +10,7 @@ import (
 // DayCountBasis selects how day counts and year lengths are computed
 // in bond and ACCRINT-style functions. Values match Excel's "basis"
 // parameter exactly.
-type DayCountBasis uint8
+type DayCountBasis int
 
 const (
 	// Basis30_360US is the US (NASD) 30/360 convention. Excel basis = 0.

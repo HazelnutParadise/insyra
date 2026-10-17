@@ -251,6 +251,12 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
   - **No option functions.** Insyra does not use the `WithXxx(...)` pattern (`Describe(WithPercentiles(0.1, 0.9))`), and never has. A setting belongs in the function's own signature or options struct, where it shows in the documentation; option functions are scattered across the package, so someone who does not already know the library cannot see what can be set.
   - **`Options` or `Config`.** A settings pack that can be left out, every field usable at its zero value, is named `XxxOptions`; a struct that describes the job itself and has fields that must be filled (`PivotConfig`, a chart config, `RFMConfig`) is named `XxxConfig`. Existing names are not changed to fit: about seventy types would break every caller for no difference in behaviour. The `isr` package keeps its short `Opts` spelling (`CSV_inOpts`, `Excel_inOpts`) because it is the short-syntax layer; its fields still follow the header-row and row-name spelling below.
   - **An options struct that already exists stays one**, even with three or fewer fields: turning it back into parameters would break every caller without making any call clearer.
+- **An enum's underlying type follows one rule.** Ruled by the owner on 2026-10-18 (#246). Take the first that applies:
+  1. The number means something outside insyra (Excel's day-count `basis`, R's skewness `type`) → `int`, numbered exactly as the outside source numbers it.
+  2. The constant's text leaves Go unchanged: a name an outside standard or tool defines (an R method, an echarts theme, a SQL dialect, a yfinance period), or text written to a config file, JSON, a log or a result report → `string`, the constant's value being that text. Words the CLI parses into a constant do not count; the CLI owns that vocabulary.
+  3. Otherwise → `int` with `iota`, the zero value being the documented default.
+
+  Every integer enum has `String()`: a known value prints a name, an unknown one prints `TypeName(n)`. An error reports an enum value with `%v`, never `%d`. Moving an existing type to the other side breaks its callers, so a type that breaks the rule is recorded under Follow-ups rather than changed on sight. "A bool stays a bool" above covers a yes/no parameter and says nothing about enums.
 
 ## Docs, Changelog & Skills Must Stay in Sync
 
@@ -290,6 +296,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 ## Follow-ups
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
+
+### [2026-10-18] — two enums break the underlying-type rule
+- **Where**: `stats/correlation.go` `CorrelationMethod`; `ml/model_selection.go` `MetricKind`
+- **What**: under the enum rule in Key Conventions, `CorrelationMethod` should be a `string` (pearson, kendall and spearman are the names R's `cor(method=)` defines) and is an `int`, while `MetricKind` should be an `int` (only insyra reads it) and is a `string`. Found by the inventory for `enums-print-their-names` on 2026-10-18. Both print readable names after that change, so nothing is unreadable today.
+- **Suggestion**: change each when something else already breaks its callers. On its own the move breaks every caller passing a literal (`CorrelationMethod(1)`, `"classification"`) for no gain a reader can see.
+- **Status**: pending
 
 ### [2026-10-15] — `Median` and `Mode` still skip a text cell that `Quantile` refuses
 - **Where**: `datalist.go` `Median` and `Mode`

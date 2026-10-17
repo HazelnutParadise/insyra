@@ -63,7 +63,7 @@ Every exported function returns `(decimal.Decimal, error)` (or `([]AmortizationR
 When during each period the annuity payment occurs.
 
 ```go
-type PaymentTiming uint8
+type PaymentTiming int
 
 const (
     PaymentEnd   PaymentTiming = 0 // end of period (Excel type=0, default)
@@ -443,7 +443,7 @@ Cumulative depreciation between `startPeriod` and `endPeriod` (real numbers in `
 Bond and ACCRINT functions take a `DayCountBasis` that mirrors Excel's `basis` parameter:
 
 ```go
-type DayCountBasis uint8
+type DayCountBasis int
 
 const (
     Basis30_360US     DayCountBasis = 0 // US (NASD) 30/360

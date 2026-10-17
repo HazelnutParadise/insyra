@@ -109,6 +109,13 @@ leave `Err()` alone. Addressing a column, row or index that is not there is
 recorded, because the caller asserted it existed and the only other signal
 would be a bare `nil`.
 
+An error that reports a setting names it. Every enum whose values are numbers,
+such as `quant.VaRMethod` or `insyra.MergeMode`, has a `String()` method, so
+`fmt.Print(quant.VaRParametric)` prints `VaRParametric`. A value that is not one
+of the constants prints as the type and the number, and an error reports it the
+same way: `ValueAtRisk` called with `quant.VaRMethod(3)` fails with
+`VaR: unknown method VaRMethod(3)`.
+
 ### Failing fast (opt-in)
 
 For a script or a notebook, stopping at the first mistake can beat carrying on

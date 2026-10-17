@@ -98,7 +98,7 @@ type GoogleMapsStoreReviewsFetchingOptions struct {
 }
 
 // GoogleMapsStoreReviewSortBy is the order GetReviews asks Google for.
-type GoogleMapsStoreReviewSortBy uint8
+type GoogleMapsStoreReviewSortBy int
 
 const (
 	GoogleMapsStoreReviewSortByRelevance     GoogleMapsStoreReviewSortBy = 1 // most relevant first, the default
