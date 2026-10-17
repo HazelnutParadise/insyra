@@ -84,7 +84,6 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 		return fmt.Errorf("%d files failed to convert", failedFiles)
 	}
 
-	insyra.LogInfo("csvxl", "CsvToExcel", "Successfully converted %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, output, failedFiles)
 	return nil
 }
 
@@ -159,7 +158,6 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 		return fmt.Errorf("%d files failed to append", failedFiles)
 	}
 
-	insyra.LogInfo("csvxl", "AppendCsvToExcel", "Successfully appended %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, existingFile, failedFiles)
 	return nil
 }
 
@@ -217,7 +215,6 @@ func ExcelToCSV(excelFile, outputDir string, csvNames []string, options ...Excel
 			return fmt.Errorf("failed to save sheet %s as CSV: %w", sheet, err)
 		}
 	}
-	insyra.LogInfo("csvxl", "ExcelToCSV", "Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
 	return nil
 }
 
@@ -263,7 +260,6 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 		sheetsToProcess = sheetsInXlsx
 	}
 
-	numSheets := len(sheetsToProcess)
 	for idx, sheet := range sheetsToProcess {
 		var outputCsv string
 		if len(csvNames) > idx && csvNames[idx] != "" {
@@ -286,7 +282,6 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 		}
 	}
 
-	insyra.LogInfo("csvxl", "ExcelToCsv", "Successfully converted %d sheets to CSV files in %s.", numSheets, outputDir)
 	return nil
 }
 

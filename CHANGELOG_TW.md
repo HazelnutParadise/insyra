@@ -39,6 +39,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `DataList.Quantile(p)` 以 pandas、R 與 gonum 使用的 0 到 1 刻度回傳 p 分位數：採用 R 的 type-7 分位數，與 `Percentile`、`Quartile` 使用的定義相同。`nil` 與 `NaN` 會被略過；`p` 超出 `[0, 1]`、儲存格不是數字或整個列表沒有數字時，會記錄警告並回傳 `NaN`。
 - `DataList.Shuffled` 與 `DataTable.Shuffled` 回傳一份名為 `<名稱>_Shuffled` 的洗牌副本，原物件不變。這個版本的 `Shuffle` 仍回傳副本，也沒有棄用，但 0.4 的 `Shuffle` 會就地洗牌，要副本請用 `Shuffled`。
 - `ReadSlice2D` 現在是把二維切片轉成 DataTable 的函式，`Slice2DToDataTable` 標為 **Deprecated**，0.4 移除。`ReadJSONFile`、`DataTable.ToJSONBytes` 與 `DataTable.ToJSONString` 取代 `ReadJSON_File`、`ToJSON_Bytes` 與 `ToJSON_String`；舊名稱標為 **Deprecated**，行為不變，0.4 移除。
+- 修正 `Counter` 對每個 `NaN` 各建立一個取不回來的項目的問題。`NaN` 在 Go 中可以比較，但永遠不等於自己，所以每次 `counter[NaN]++` 都會產生一個沒有人查得到的新 key：一欄有三個 `NaN` 時，結果是三筆各為 1，而 `Count` 正確回報 3。現在同一欄的所有 `NaN` 合成一個項目，計數正確，用 `counter[insyra.ToMapKey(math.NaN())]` 讀取。含有 `NaN` 的陣列或結構同樣不等於自己，也比照處理。`counter[math.NaN()]` 仍然回傳 0，這點一直如此、也必然如此，因為 Go 的 map 無法比對 `NaN` key。
+- 呼叫已經用回傳值告訴你成功時，insyra 不再另外寫一行日誌。`csvxl` 的轉換函式（`CSVToExcel`、`AppendCSVToExcel`、`ExcelToCSV`、`ExcelDirToCSV` 與它們已棄用的舊拼法），以及 `plot.SaveHTML`、`plot.SavePNG`、`gplot.SaveChart`、`py.PipInstall`、`PipUninstall`、`PipList` 的 Info 訊息都拿掉了。留下來的 Info 訊息都是回傳值沒說的事：insyra 猜出來的編碼、`ToSQL` 幫既有資料表加的欄位、`nn.Sequential.Fit` 與準備 Python 環境的進度，以及加速與 thread safety 開關的切換。預設等級維持 `LogLevelInfo`。只想看警告和錯誤，可以呼叫 `SetLogLevel(insyra.LogLevelWarning)`。
 
 ### CLI
 

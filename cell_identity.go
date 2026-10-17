@@ -39,9 +39,11 @@ const maxCellEncodeDepth = 64
 // string cell's own content can contain one and the closer would be a guess.
 const uncomparableDisplayBytes = 64
 
-// UncomparableKey stands in for a cell value that Go cannot use as a map key —
-// a slice, a map, or anything containing one. It is what ToMapKey returns
-// for such a value, and what appears as the key in a Counter result.
+// UncomparableKey stands in for a cell value that cannot serve as a map key:
+// a slice, a map or anything containing one, which Go refuses to compare, and
+// a NaN or anything containing one, which compares unequal to itself and so
+// would make an entry nobody could look up. It is what ToMapKey returns for
+// such a value, and what appears as the key in a Counter result.
 //
 // Two of them are equal exactly when the values they stand for count and match
 // as the same value. The content they carry is deliberately not exported: it
@@ -105,7 +107,7 @@ func truncateForDisplay(s string) string {
 // loaded data. To ask how often one value appears, prefer Count(v), which
 // matches integers by value.
 func ToMapKey(v any) any {
-	if comparableCell(v) {
+	if usableAsMapKey(v) {
 		return v
 	}
 	typ, content := splitCellEncoding(v)
@@ -114,6 +116,21 @@ func ToMapKey(v any) any {
 		key.text = s.String()
 	}
 	return key
+}
+
+// usableAsMapKey reports whether v can serve as a map key, which asks not only
+// whether == is legal but whether it is useful: a value must equal itself. A
+// NaN is comparable by the type system and NaN != NaN, so using one as a map
+// key makes an entry nobody can look up: three NaNs in a column became three
+// counts of one. Self-equality catches the nested shapes too, since an array
+// or a struct holding a NaN compares element by element and is unequal to
+// itself as well. comparableCell is checked first, because == panics without
+// it.
+func usableAsMapKey(v any) bool {
+	if !comparableCell(v) {
+		return false
+	}
+	return v == v
 }
 
 // comparableCell reports whether == on v is safe.
