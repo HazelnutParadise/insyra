@@ -291,6 +291,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-17] — `ToSQL` cannot write an unnamed column to MySQL or PostgreSQL
+- **Where**: `datatable_to_sql.go` `collectRowsForSQL` and `quoteSQLIdent`
+- **What**: a column with no name is written under the empty identifier. SQLite accepts `""`, but MySQL and PostgreSQL refuse it. Measured on 2026-10-17 against MySQL 8.4 and PostgreSQL 16 in Docker: the CLI script `newdl 1 2 3 as x`, `newdt x as t`, `save t sql m t2 if-exists replace` fails with `Error 1166 (42000): Incorrect column name ''` on MySQL and `zero-length delimited identifier` (SQLSTATE 42601) on PostgreSQL. Present before `sql-takes-database-sql`, which did not change how a name is quoted.
+- **Suggestion**: write an unnamed column under its Excel-style letter (`A`), the name `Fit` already gives an unnamed column, or refuse it with an error naming the column. Either way, decide before the change, because SQLite tables written today have a column called `""`.
+- **Status**: pending
+
 ### [2026-10-15] — `Median` and `Mode` still skip a text cell that `Quantile` refuses
 - **Where**: `datalist.go` `Median` and `Mode`
 - **What**: #221 made the quantile family record an error naming the row and return `NaN` for a cell that is neither a number nor missing. `Median` was only taught to skip `NaN`, and `Mode` was only changed to return every mode. Both still pass over any other non-numeric cell: `Median` logs a warning and `Mode` skips it silently. Measured on 2026-10-15:
@@ -506,6 +512,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 ### [2026-09-28] — on MySQL, a failed `ToSQL` can still leave a new table or new columns behind
 - **Where**: `datatable_to_sql.go` `saveRowsToDB`, the `!exists` branch (`CREATE TABLE`) and the append branch (`ALTER TABLE … ADD COLUMN`)
 - **What**: MySQL commits every DDL statement on its own and ends the transaction it is in (MySQL 8.4 Reference Manual, "Statements That Cause an Implicit Commit"), so the `INSERT`s after a `CREATE TABLE` or an `ALTER TABLE` commit batch by batch. By the manual, not run against a MySQL server: a failed write leaves the table created because it did not exist, or the columns added in append mode, and the batches written before the failure. With `SQLActionIfTableExistsFail`, the next attempt then fails because the table exists. `sql-replace-keeps-old-table` fixed Replace, which lost the old table, and `Docs/DataTable.md` now states these two cases.
+- **Measured (2026-10-17)**: against MySQL 8.4 in Docker, a `ToSQL` to a missing table whose second batch passes 65,535 placeholders (`Error 1390`) returns the error and leaves the new table behind, empty. The same call against PostgreSQL 16 leaves nothing. The integration tests that run on a DSN now exist (`datatable_sql_server_test.go`, gated on `INSYRA_TEST_MYSQL_DSN` / `INSYRA_TEST_POSTGRES_DSN`); they cover Replace, including a failed one, but not this case, which is still pending.
 - **Suggestion**: create a missing table the way Replace now works, through a staging table renamed to the target (a rename to a taken name fails, so a table created meanwhile is not overwritten). Added columns cannot be taken back once the ALTER commits; decide whether to check the whole write before the ALTER, or accept and document it. Verify both against a real MySQL before changing them, and add an integration test gated on a MySQL DSN in the environment: the Replace path of `sql-replace-keeps-old-table` was reasoned from the MySQL manual and tested only on SQLite through the same code, and whether TiDB, which a caller names `SQLDialectMySQL`, runs a multi-table `RENAME TABLE` atomically is not known.
 - **Status**: pending
 
