@@ -203,7 +203,7 @@ func TestSetDefaultConfigClearsTheLogger(t *testing.T) {
 		panicOnErr  bool
 		threadSafe  bool
 		accelerated bool
-	}{Config.GetLogLevel(), Config.GetDoesUseColoredOutput(), Config.GetDontPanicStatus(), Config.threadSafe.Load(), Config.GetAccelerationEnabled()}
+	}{Config.GetLogLevel(), Config.GetUseColoredOutput(), Config.GetDontPanicStatus(), Config.threadSafe.Load(), Config.GetAccelerationEnabled()}
 	useRecordingLogger(t, LogLevelInfo)
 	t.Cleanup(func() {
 		Config.SetLogLevel(previous.level)

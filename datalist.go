@@ -89,7 +89,7 @@ func NewDataList(values ...any) *DataList {
 	continuousMemData := make([]any, len(flatData))
 	copy(continuousMemData, flatData)
 
-	timestamp := time.Now().Unix()
+	timestamp := clock().UnixNano()
 	dl := &DataList{
 		data:              continuousMemData,
 		creationTimestamp: timestamp,
@@ -174,7 +174,7 @@ func (dl *DataList) Clone() *DataList {
 		newDL = &DataList{
 			data:              newData,
 			name:              dl.name,
-			creationTimestamp: time.Now().Unix(),
+			creationTimestamp: clock().UnixNano(),
 		}
 		newDL.lastModifiedTimestamp.Store(newDL.creationTimestamp)
 	})
@@ -1763,6 +1763,47 @@ func quantileType7(sorted []float64, p float64) float64 {
 	return sorted[lower] + (h-float64(lower))*(sorted[upper]-sorted[lower])
 }
 
+// Quantile returns the p-quantile of the list's numeric values, with p on the
+// 0..1 scale: Quantile(0.25) is the first quartile, Quantile(0.5) the median
+// and Quantile(0.9) the 90th percentile. It uses R's type-7 quantile, the
+// default of R, NumPy and pandas (linear interpolation between order
+// statistics), the same definition Percentile and Quartile use.
+//
+// nil and NaN cells are missing and skipped. A p that is NaN or outside
+// [0, 1], or a cell that is neither a number nor missing, records a warning
+// naming the problem and returns NaN. A list with no numeric values returns
+// NaN with a warning.
+func (dl *DataList) Quantile(p float64) float64 {
+	result := math.NaN()
+	dl.AtomicDo(func(dl *DataList) {
+		if math.IsNaN(p) || p < 0 || p > 1 {
+			dl.warn("Quantile", "p %v is outside [0, 1]", p)
+			return
+		}
+		sorted := make([]float64, 0, len(dl.data))
+		for i, v := range dl.data {
+			if v == nil {
+				continue
+			}
+			f, ok := ToFloat64Safe(v)
+			if !ok {
+				dl.warn("Quantile", "non-numeric value at row %d", i)
+				return
+			}
+			if !math.IsNaN(f) {
+				sorted = append(sorted, f)
+			}
+		}
+		if len(sorted) == 0 {
+			dl.warn("Quantile", "no numeric values to compute a quantile from")
+			return
+		}
+		sort.Float64s(sorted)
+		result = quantileType7(sorted, p)
+	})
+	return result
+}
+
 // Quartile calculates the quartile based on the input value (1 to 3).
 // 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
 // Uses R's type-7 quantile (the R / numpy / pandas default), matching Percentile.
@@ -1951,7 +1992,8 @@ func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 }
 
 // IsTheSameAs checks if the DataList is fully the same as another DataList.
-// It checks for equality in name, data, creation timestamp, and last modified timestamp.
+// It checks for equality in name, data, creation time, and last modified time,
+// the two times compared in whole Unix seconds. 0.4 compares data and name only.
 func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 	if dl == anotherDl {
 		return true
@@ -1995,7 +2037,8 @@ func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 			return
 		}
 
-		if dl.creationTimestamp != otherCreation || dl.lastModifiedTimestamp.Load() != otherLastModified {
+		if unixSecondsFromUnixNano(dl.creationTimestamp) != unixSecondsFromUnixNano(otherCreation) ||
+			unixSecondsFromUnixNano(dl.lastModifiedTimestamp.Load()) != unixSecondsFromUnixNano(otherLastModified) {
 			result = false
 			return
 		}
@@ -2097,23 +2140,46 @@ func (dl *DataList) ToStringSlice() []string {
 
 // ======================== Timestamp ========================
 
-// GetCreationTimestamp returns the creation time of the DataList in Unix timestamp.
-func (dl *DataList) GetCreationTimestamp() int64 {
-	var ts int64
+// CreationTime returns when the DataList was created, at the clock's full
+// resolution.
+func (dl *DataList) CreationTime() time.Time {
+	var ns int64
 	dl.AtomicDo(func(dl *DataList) {
-		ts = dl.creationTimestamp
+		ns = dl.creationTimestamp
 	})
-	return ts
+	return timeFromUnixNano(ns)
 }
 
-// GetLastModifiedTimestamp returns the last updated time of the DataList in Unix timestamp.
+// LastModifiedTime returns when the DataList was last changed, at the clock's
+// full resolution. It never moves backwards, even if the wall clock does.
+func (dl *DataList) LastModifiedTime() time.Time {
+	return timeFromUnixNano(dl.lastModifiedTimestamp.Load())
+}
+
+// GetCreationTimestamp returns the creation time of the DataList in Unix seconds.
+//
+// Deprecated: use CreationTime, which keeps sub-second changes apart. Removed
+// in 0.4.
+func (dl *DataList) GetCreationTimestamp() int64 {
+	var ns int64
+	dl.AtomicDo(func(dl *DataList) {
+		ns = dl.creationTimestamp
+	})
+	return unixSecondsFromUnixNano(ns)
+}
+
+// GetLastModifiedTimestamp returns the last updated time of the DataList in Unix seconds.
+//
+// Deprecated: use LastModifiedTime, which keeps sub-second changes apart.
+// Removed in 0.4.
 func (dl *DataList) GetLastModifiedTimestamp() int64 {
-	return dl.lastModifiedTimestamp.Load()
+	return unixSecondsFromUnixNano(dl.lastModifiedTimestamp.Load())
 }
 
-// updateTimestamp updates the lastModifiedTimestamp to the current Unix time.
+// updateTimestamp moves lastModifiedTimestamp to the current time, in Unix
+// nanoseconds, unless the clock reads earlier than the time already recorded.
 func (dl *DataList) updateTimestamp() {
-	now := time.Now().Unix()
+	now := clock().UnixNano()
 	oldTimestamp := dl.lastModifiedTimestamp.Load()
 
 	if oldTimestamp < now {

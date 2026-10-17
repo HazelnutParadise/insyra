@@ -57,8 +57,17 @@ func (c *configStruct) SetUseColoredOutput(colored bool) {
 	c.coloredOutput.Store(colored)
 }
 
-func (c *configStruct) GetDoesUseColoredOutput() bool {
+// GetUseColoredOutput reports whether output is coloured; see
+// SetUseColoredOutput. It is true by default.
+func (c *configStruct) GetUseColoredOutput() bool {
 	return c.coloredOutput.Load()
+}
+
+// GetDoesUseColoredOutput reports whether output is coloured.
+//
+// Deprecated: use GetUseColoredOutput, which is the same method. Removed in 0.4.
+func (c *configStruct) GetDoesUseColoredOutput() bool {
+	return c.GetUseColoredOutput()
 }
 
 func (c *configStruct) SetDontPanic(dontPanic bool) {

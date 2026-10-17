@@ -3,7 +3,6 @@ package insyra
 import (
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/core"
 	"github.com/HazelnutParadise/insyra/internal/utils"
@@ -173,7 +172,7 @@ func cloneRowNames(idx *core.BiIndex) *core.BiIndex {
 // FilterColsByColIndexGreaterThan filters columns with index greater than the specified column.
 //
 // Deprecated: use SliceCols(i+1, nil), where i is the column's position;
-// ParseColIndex turns a letter into one.
+// ColIndexToNumber turns a letter into one.
 // Removed in 0.4.
 func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *DataTable {
 	var newDt *DataTable
@@ -230,7 +229,7 @@ func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter 
 // FilterColsByColIndexEqualTo filters to only keep the column with the specified index.
 //
 // Deprecated: use SliceCols(columnIndexLetter, i+1), where i is the column's
-// position; ParseColIndex turns a letter into one. To pick a column as a
+// position; ColIndexToNumber turns a letter into one. To pick a column as a
 // DataList, use GetCol.
 // Removed in 0.4.
 func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *DataTable {
@@ -290,7 +289,7 @@ func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *Dat
 // equal to the specified column; a letter past the last column keeps them all.
 //
 // Deprecated: use SliceCols(nil, i+1), where i is the column's position;
-// ParseColIndex turns a letter into one.
+// ColIndexToNumber turns a letter into one.
 // Removed in 0.4.
 func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
@@ -648,7 +647,7 @@ func (dt *DataTable) FilterRowsWhere(keep func(row *DataList) bool) *DataTable {
 			filteredCols[i] = &DataList{name: col.name, creationTimestamp: col.creationTimestamp}
 			filteredCols[i].lastModifiedTimestamp.Store(col.lastModifiedTimestamp.Load())
 		}
-		now := time.Now().Unix()
+		now := clock().UnixNano()
 		numRows := dt.getMaxColLength()
 		var kept []int
 		for rowIdx := 0; rowIdx < numRows; rowIdx++ {

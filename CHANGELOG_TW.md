@@ -33,6 +33,12 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ScalerParams.PassThrough` 改為 Deprecated，在這條線意義不變，在 0.4 移除；0.4 的 `SimpleImputer` 會在 fit 時拒絕這種欄位。
 - `Config.TurnOnThreadSafety()` 在 `Config.Dangerously_TurnOffThreadSafety()` 之後把 `DataList` 與 `DataTable` 的實例鎖開回來，其他設定都不動。以前只有 `SetDefaultConfig()` 能開回來，但它會連 log 等級、彩色輸出、panic-on-error、錯誤 hook 與加速設定一起重設。`Dangerously_TurnOffThreadSafety` 的文件也寫明了關掉的範圍：`AtomicDo` 與 `AtomicDoAll` 的鎖，也就是 `DataList` 與 `DataTable` 的每個方法；`Config`、全域錯誤緩衝區與 log 仍然安全。
 - `Config.SetLogger(*slog.Logger)` 讓 insyra 的日誌改送到 `log/slog` 的 logger，不再寫進標準 `log` 套件。每一行會變成一筆 record，保留原本的等級（Fatal 對應 `ERROR+4`），帶有 `package` 與 `func` 屬性，來源標示為寫日誌的那個 insyra 函式，而且不加 `[insyra - …]` 前綴和顏色碼。`SetLogger(nil)` 會改回標準 `log` 套件，`GetLogger` 回傳目前設定的 logger，`SetDefaultConfig` 會清除它。哪些行要送出仍由 `SetLogLevel` 決定，`LogFatal` 在沒有開 `SetDontPanic(true)` 時仍會結束程式。沒有設定 logger 時，輸出和以前完全一樣。CCL 的警告現在也會遵守日誌等級，並送到 logger、錯誤緩衝區與錯誤 hook。
+- `ColIndexToNumber` 與 `ColNumberToIndex` 在 Excel 式欄位索引與從 0 起算的欄位編號之間轉換：`ColIndexToNumber("AA")` 是 `26`，`ColNumberToIndex(26)` 是 `"AA"`。`Config.GetUseColoredOutput` 回報 `SetUseColoredOutput` 設定的值。`ParseColIndex`、`CalcColIndex` 與 `Config.GetDoesUseColoredOutput` 標為 **Deprecated**，回傳值與新名稱相同，0.4 移除。`Config.Dangerously_TurnOffThreadSafety` 刻意保留底線作為警告；取值方法保留 `Get` 前綴，與對應的 `Set` 方法成對。
+- `DataTable.IsEqualTo(other)` 與 `IsTheSameAs(other)` 用來比較兩張表。`IsEqualTo` 在兩張表的列數、欄數相同且每一格都相等時為 true（型別必須相同，兩個 NaN 視為相等，短欄超出的格子視為 `nil`），不看表名、欄名與列名。`IsTheSameAs` 另外要求表名、欄名與列名依序相同。
+- `DataList` 與 `DataTable` 新增 `CreationTime()` 與 `LastModifiedTime()`，回傳依時鐘完整精度記錄的 `time.Time`，相隔不到一秒的兩次修改也分得出來。`GetCreationTimestamp` 與 `GetLastModifiedTimestamp` 標為 **Deprecated**，仍回傳 Unix 秒，0.4 移除。`DataList.IsTheSameAs` 仍以整秒比較這兩個時間，和以前一樣。
+- `DataList.Quantile(p)` 以 pandas、R 與 gonum 使用的 0 到 1 刻度回傳 p 分位數：採用 R 的 type-7 分位數，與 `Percentile`、`Quartile` 使用的定義相同。`nil` 與 `NaN` 會被略過；`p` 超出 `[0, 1]`、儲存格不是數字或整個列表沒有數字時，會記錄警告並回傳 `NaN`。
+- `DataList.Shuffled` 與 `DataTable.Shuffled` 回傳一份名為 `<名稱>_Shuffled` 的洗牌副本，原物件不變。這個版本的 `Shuffle` 仍回傳副本，也沒有棄用，但 0.4 的 `Shuffle` 會就地洗牌，要副本請用 `Shuffled`。
+- `ReadSlice2D` 現在是把二維切片轉成 DataTable 的函式，`Slice2DToDataTable` 標為 **Deprecated**，0.4 移除。`ReadJSONFile`、`DataTable.ToJSONBytes` 與 `DataTable.ToJSONString` 取代 `ReadJSON_File`、`ToJSON_Bytes` 與 `ToJSON_String`；舊名稱標為 **Deprecated**，行為不變，0.4 移除。
 
 ### CLI
 
@@ -45,6 +51,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `cli/env` 的每個環境操作只留一個名字，也就是 `Manager` 上的方法；`SetBasePath`、`LoadState`、`ReadHistory` 等套件層級函式改為呼叫 `Default()` 的 Deprecated 包裝，照常可用。`env clear --keep-history`、`env import --force`、`accel --mode` 等一次性旗標改成和指令一起宣告，行為不變。
 - 會存下多個變數的指令（例如 `pca`、`kmeans`）現在會在輸出中列出存下的每個變數名稱，存下的值不變。
 - `ttest single` 與 `ztest single` 在一次性模式接受負數的 `mu`；原本 `insyra ttest single x -1` 會把 `-1` 當成旗標而失敗。`wilcoxon single` 本來就可以。
+- 新增 `quantile <var> <p>` 指令，印出 DataList 的分位數，`p` 範圍為 0 到 1；`percentile` 則是 0 到 100。`shuffle ... as` 指令改呼叫 `Shuffled`，所以在每個版本線上都不會改動來源變數的順序。
 
 ### `ml` 與 `nn`
 

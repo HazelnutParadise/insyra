@@ -22,9 +22,9 @@ func TestTurnOnThreadSafetyKeepsTheOtherSettings(t *testing.T) {
 	if !Config.threadSafe.Load() {
 		t.Fatal("thread safety is still off after TurnOnThreadSafety")
 	}
-	if Config.GetLogLevel() != LogLevelFatal || Config.GetDoesUseColoredOutput() || Config.GetAccelerationEnabled() {
+	if Config.GetLogLevel() != LogLevelFatal || Config.GetUseColoredOutput() || Config.GetAccelerationEnabled() {
 		t.Fatalf("TurnOnThreadSafety changed other settings: log level %v, coloured %v, acceleration %v",
-			Config.GetLogLevel(), Config.GetDoesUseColoredOutput(), Config.GetAccelerationEnabled())
+			Config.GetLogLevel(), Config.GetUseColoredOutput(), Config.GetAccelerationEnabled())
 	}
 }
 

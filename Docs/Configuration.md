@@ -71,8 +71,10 @@ Control whether terminal output is colored:
 insyra.Config.SetUseColoredOutput(true)
 
 // Check colored output status
-usesColor := insyra.Config.GetDoesUseColoredOutput()
+usesColor := insyra.Config.GetUseColoredOutput()
 ```
+
+`GetDoesUseColoredOutput` is the deprecated name of `GetUseColoredOutput`. It returns the same value and is removed in 0.4.
 
 ## Error Handling (global)
 

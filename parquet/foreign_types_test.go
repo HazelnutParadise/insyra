@@ -233,7 +233,7 @@ func TestABinaryColumnExportsToJSONAsBase64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := dt.ToJSON_String(true); !strings.Contains(got, `"AP9B"`) {
+	if got := dt.ToJSONString(true); !strings.Contains(got, `"AP9B"`) {
 		t.Errorf("JSON does not carry the bytes as base64 AP9B: %s", got)
 	}
 }

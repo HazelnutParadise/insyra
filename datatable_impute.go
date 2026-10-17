@@ -14,7 +14,7 @@ func (dt *DataTable) imputeColumnIndices(methodName string, cols []string) []int
 			indices = append(indices, idx)
 			continue
 		}
-		if idx, ok := ParseColIndex(col); ok && idx >= 0 && idx < len(dt.columns) {
+		if idx, ok := ColIndexToNumber(col); ok && idx >= 0 && idx < len(dt.columns) {
 			indices = append(indices, idx)
 			continue
 		}
