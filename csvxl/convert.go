@@ -48,10 +48,9 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 	defer func() { _ = f.Close() }()
 	failedFiles := 0
 
-	for idx, csvFile := range csvFiles {
-		if !strings.HasSuffix(csvFile, ".csv") {
-			csvFile += ".csv"
-		}
+	for idx, given := range csvFiles {
+		// A file that is not there fails when it is read, and is counted then.
+		csvFile, _ := resolveCsvSource(given)
 
 		// 如果提供了自訂工作表名稱，則使用它，否則使用 CSV 檔案的名稱
 		sheetName := getSheetName(csvFile, sheetNames, idx)
@@ -115,10 +114,9 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 
 	failedFiles := 0
 
-	for idx, csvFile := range csvFiles {
-		if !strings.HasSuffix(csvFile, ".csv") {
-			csvFile += ".csv"
-		}
+	for idx, given := range csvFiles {
+		// A file that is not there fails when it is read, and is counted then.
+		csvFile, _ := resolveCsvSource(given)
 
 		// 如果提供了自訂工作表名稱，則使用它，否則使用 CSV 檔案的名稱
 		sheetName := getSheetName(csvFile, sheetNames, idx)
@@ -440,4 +438,29 @@ func getSheetName(csvFile string, sheetNames []string, idx int) string {
 		return sheetNames[idx]
 	}
 	return strings.TrimSuffix(filepath.Base(csvFile), filepath.Ext(csvFile))
+}
+
+// resolveCsvSource turns a path the caller gave into the file to read. The
+// path is used as written when it names a file, so a CSV called export.txt or
+// DATA.CSV is read as itself. Only when nothing is there, or a directory is,
+// is .csv appended as a convenience for a name whose extension was left off.
+// When neither is a file it returns the path as given and an error naming
+// what was tried.
+func resolveCsvSource(given string) (string, error) {
+	if isRegularFile(given) {
+		return given, nil
+	}
+	if strings.EqualFold(filepath.Ext(given), ".csv") {
+		return given, fmt.Errorf("no CSV file at \"%s\": %w", given, os.ErrNotExist)
+	}
+	withCsv := given + ".csv"
+	if isRegularFile(withCsv) {
+		return withCsv, nil
+	}
+	return given, fmt.Errorf("no CSV file at \"%s\" or \"%s\": %w", given, withCsv, os.ErrNotExist)
+}
+
+func isRegularFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
