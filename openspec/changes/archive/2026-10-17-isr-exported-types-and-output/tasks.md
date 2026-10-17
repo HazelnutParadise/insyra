@@ -19,4 +19,4 @@
 ## 4. Verification
 
 - [x] 4.1 gofmt, `go build ./...`, `go vet ./...`, `go test ./...`, `golangci-lint run`
-- [ ] 4.2 Push to `0.4`, CI green, archive, comment and close #237, #238, #239
+- [x] 4.2 Push to `0.4`, CI green, archive, comment and close #237, #238, #239
