@@ -2,7 +2,9 @@
 
 ## Purpose
 How Go code runs Python through `py`: the typed `Run`, the context forms of the runners and of the `uv pip` commands, what a nil, finished or ending context does to a call, and what a failed Python process returns.
+
 ## Requirements
+
 ### Requirement: Run returns the result as the type asked for
 
 `py.Run[T any](ctx context.Context, code string, args ...any) (T, error)` SHALL run `code` with `$v1`, `$v2`, … replaced from `args` as `RunCodef` replaces them, and SHALL return the value Python passed to `insyra.Return` decoded into a `T` by the rules `RunCode` binds with. When the run or the decoding fails, it SHALL return the zero value of `T` and the error.
@@ -30,6 +32,7 @@ When `T` is `insyra.DataTable` or `insyra.DataList` itself, `Run` SHALL return a
 #### Scenario: A value table
 - **WHEN** `Run[insyra.DataTable]` is called
 - **THEN** it returns an error naming `Run[*insyra.DataTable]` without starting Python
+
 ### Requirement: The context forms handle a nil or finished context
 
 `Run`, `RunCodeContext`, `RunCodefContext`, `RunFileContext`, `RunFilefContext`, `PipInstallContext` and `PipUninstallContext` SHALL return an error for a nil context instead of panicking, and SHALL return `ctx.Err()` without preparing the environment or starting a process when the context is already done. When the context ends while Python or `uv pip` runs, the process SHALL be stopped and the call SHALL return `ctx.Err()`.
@@ -149,6 +152,7 @@ Beside other fields an untagged embedded `*insyra.DataTable` or `*insyra.DataLis
 #### Scenario: A dict holding a DataFrame from Python
 - **WHEN** the code runs `insyra.Return({"table": df, "score": 7})` in the real environment
 - **THEN** the call succeeds and the table arrives as a table
+
 ### Requirement: An empty DataFrame keeps its column names
 
 A DataFrame with no rows SHALL be decoded into a table with its columns and their names, not renamed with numeric suffixes.
@@ -184,6 +188,7 @@ A placeholder whose number is past the last argument, or written with a leading 
 #### Scenario: An argument the template does not use
 - **WHEN** the template is `x = $v2` and the arguments are `math.NaN()` and `3`
 - **THEN** the script holds `x = 3` and the call does not fail
+
 ### Requirement: A NaN or an infinity in a result comes back as one
 
 When the value Python passes to `insyra.Return` holds a NaN, an `inf` or a `-inf`, the runners SHALL decode it as `math.NaN()`, `math.Inf(1)` or `math.Inf(-1)` wherever the result type can hold a float64: a table or list cell, a float field, a slice, array or map element, or an `any`. Python's `None` SHALL still come back as `nil`. Text inside strings SHALL be left as it is, and a result holding no NaN or infinity SHALL decode exactly as before.
@@ -207,6 +212,7 @@ Decoding a NaN or an infinity into a type that cannot hold one SHALL be an error
 #### Scenario: A NaN for an int
 - **WHEN** Python returns a NaN and the result type is `int`
 - **THEN** the call returns an error naming the NaN
+
 ### Requirement: A result the Go side cannot read is an error
 
 When the Go side cannot decode the message `insyra.Return` sends, it SHALL answer with an error, and unless the run then delivers another result, the call SHALL return an error saying why rather than `nil`. `insyra.Return` SHALL raise when the answer is an error or when the connection closes without an answer.
@@ -225,15 +231,22 @@ When the Go side cannot decode the message `insyra.Return` sends, it SHALL answe
 
 ### Requirement: A pandas DataFrame's name is never one of its columns
 
-When `insyra.Return` sends a pandas DataFrame, the table SHALL take the DataFrame's `name` attribute as its name only when `name` is not a label of the DataFrame's columns. A DataFrame with a column labelled `name`, at any level of its column index, SHALL come back with no table name.
+When `insyra.Return` sends a pandas DataFrame, the table SHALL take the DataFrame's `name` attribute as its name. When `name` is a label of the DataFrame's columns, at any level of its column index, the table SHALL take only a name set as an attribute on the DataFrame object and SHALL NOT take the column as its name; a DataFrame with such a column and no attribute name SHALL come back with no table name.
 
 #### Scenario: A column called name
+
 - **WHEN** Python returns `pd.DataFrame({"name": ["x", "y"], "v": [1, 2]})`
 - **THEN** the table has no name and its columns are `name` and `v`
 
 #### Scenario: A name set on the DataFrame
+
 - **WHEN** Python sets `df.name = "scores"` on a DataFrame without a column called `name` and returns it
 - **THEN** the table is named `scores`
+
+#### Scenario: A name set on a DataFrame with a column called name
+
+- **WHEN** Python sets `df.name = "custom frame"` on `pd.DataFrame({"name": ["x", "y"], "v": [1, 2]})` and returns it
+- **THEN** the table is named `custom frame` and its columns are `name` and `v`
 
 ### Requirement: An integer in a result keeps every digit
 
@@ -266,3 +279,12 @@ Bound into an integer field, an integer SHALL be exact whenever the field's type
 #### Scenario: A DataFrame of ids and floats
 - **WHEN** Python returns a pandas or polars DataFrame with an integer column `id` holding `2**53 + 1` beside a float column `x`
 - **THEN** the `id` cell is the `int64` 9007199254740993 and the `x` cells are float64
+
+### Requirement: Result field names match by strings.EqualFold
+
+When a key in a result matches no struct field exactly, the field that takes it SHALL be the first field, in declaration order, whose name `strings.EqualFold` accepts for the key. A key that folds to a field's name under any other rule MUST NOT match that field.
+
+#### Scenario: A dotted capital I does not match I
+
+- **WHEN** the result holds a key `İ` and the struct has a field `I` with no exact match
+- **THEN** the field `I` keeps its zero value

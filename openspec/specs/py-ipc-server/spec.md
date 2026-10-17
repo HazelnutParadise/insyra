@@ -2,7 +2,9 @@
 
 ## Purpose
 When the local IPC server that carries Python's result back to Go is open, and what a `Run…` call returns when the server cannot open, so a failure reaches the caller as an error instead of an exit status and a log line.
+
 ## Requirements
+
 ### Requirement: A failed IPC server start is the call's error
 
 When the IPC server that carries results back from Python cannot open, the `Run…` call that needed it SHALL return an error that names the address and wraps the listen error, so `errors.Is` sees the underlying cause. The call SHALL return before the Python environment is prepared and before Python starts. A later call SHALL try to open the server again.
@@ -35,3 +37,11 @@ Runs in flight at the same time SHALL share one IPC server. When the last of the
 - **WHEN** a client connects to the server's address and sends a framed message holding an execution ID and a result
 - **THEN** the server acknowledges it and the result is stored under that execution ID
 
+### Requirement: A stopped IPC server is replaced by the next run
+
+When the accept loop of the IPC server stops on an error that is not a timeout, the server SHALL forget that listener and its address, so the next `Run…` call that needs the server SHALL open a new one and MUST NOT be given the address of the stopped one.
+
+#### Scenario: A run after the accept loop stopped
+
+- **WHEN** the accept loop stops on a non-timeout error while runs are using the server, and a later run needs the server
+- **THEN** the later run gets a new server address, and the stopped server's address is not used

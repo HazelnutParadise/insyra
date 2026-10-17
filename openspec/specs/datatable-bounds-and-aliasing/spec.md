@@ -4,6 +4,7 @@
 Guarantees that a `DataTable` never panics on a bad index (it sets `Err()`) and never hands out or shares its own storage: `Data`/`ToMap` return copies and every `Filter*` result owns its columns and row names.
 
 ## Requirements
+
 ### Requirement: Bad indices set Err instead of panicking
 
 `DataTable.GetElementByNumberIndex`、`SetRowToColNames`、`SetColToRowNames` 遇到不存在的欄或列 SHALL 設定 `Err()` 並回傳 nil／自身，SHALL NOT panic。
@@ -40,3 +41,11 @@ Guarantees that a `DataTable` never panics on a bad index (it sets `Err()`) and 
 - **WHEN** 第一欄 3 列、第二欄 1 列的表呼叫 `FilterRows(func(...) bool { return true })`
 - **THEN** 回傳 3 列，第二欄後兩列為 nil，不 panic
 
+### Requirement: The largest parsed column index does not overflow
+
+`FilterColsByColIndexLessThanOrEqualTo` SHALL accept the largest column letter that `ParseColIndex` reads and MUST NOT panic on it, and SHALL keep every column of the table when the index is past the table's last column.
+
+#### Scenario: The largest parsed letter
+
+- **WHEN** `FilterColsByColIndexLessThanOrEqualTo` is called with the letter for the largest `int` column number on a four-column table
+- **THEN** the result holds all four columns and no panic occurs
