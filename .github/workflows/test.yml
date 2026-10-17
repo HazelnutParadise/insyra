@@ -59,3 +59,53 @@ jobs:
     - name: Coverage summary
       if: matrix.os == 'macOS-latest'
       run: go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
+
+  # The SQL functions against real servers. datatable_sql_server_test.go runs
+  # only where a DSN is set; SQLite cannot show MySQL's implicit commits,
+  # RENAME TABLE, information_schema or PostgreSQL's $n placeholders. Service
+  # containers run on Linux runners only, so this is a job of its own.
+  sql-servers:
+    name: SQL servers
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: pw
+          MYSQL_DATABASE: shop
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -ppw"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: pw
+          POSTGRES_DB: shop
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      INSYRA_TEST_MYSQL_DSN: root:pw@tcp(127.0.0.1:3306)/shop?parseTime=true
+      INSYRA_TEST_POSTGRES_DSN: postgres://postgres:pw@127.0.0.1:5432/shop?sslmode=disable
+    steps:
+    - uses: actions/checkout@v5
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache-dependency-path: go.sum
+    - name: Server tests
+      # A test that skips passes, so check that both servers were reached.
+      run: |
+        set -o pipefail
+        go test -count=1 -v -run '^TestSQLServer' . | tee sql-servers.out
+        grep -q -- '--- PASS: TestSQLServerRoundTrip/mysql' sql-servers.out
+        grep -q -- '--- PASS: TestSQLServerRoundTrip/postgres' sql-servers.out

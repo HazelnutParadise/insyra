@@ -13,7 +13,8 @@ import (
 )
 
 // These tests run against a real MySQL or PostgreSQL server, and only when
-// its DSN is set, for example with Docker:
+// its DSN is set. CI sets both in the Test workflow's sql-servers job;
+// locally, start the servers with Docker and set, for example:
 //
 //	INSYRA_TEST_MYSQL_DSN='root:pw@tcp(127.0.0.1:33061)/shop?parseTime=true'
 //	INSYRA_TEST_POSTGRES_DSN='postgres://postgres:pw@127.0.0.1:54321/shop?sslmode=disable'
