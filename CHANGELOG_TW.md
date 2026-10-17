@@ -42,6 +42,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `engine/dsl` 提供程式不必 import `cli/` 就能用的功能：`Manager`、`NewManager`、`DefaultManager` 用來開啟與建立環境，`Register` 讓你加入自己的指令，並可設定參數數量上限（例如 `MaxArgs(1)`）。`NewSession` 遇到還不存在的環境會建立它，多個 session 同時啟動也安全；`insyra` CLI 的 `--env` 仍會拒絕不存在的環境。
 - `cli/env` 的每個環境操作只留一個名字，也就是 `Manager` 上的方法；`SetBasePath`、`LoadState`、`ReadHistory` 等套件層級函式改為呼叫 `Default()` 的 Deprecated 包裝，照常可用。`env clear --keep-history`、`env import --force`、`accel --mode` 等一次性旗標改成和指令一起宣告，行為不變。
 - 會存下多個變數的指令（例如 `pca`、`kmeans`）現在會在輸出中列出存下的每個變數名稱，存下的值不變。
+- `ttest single` 與 `ztest single` 在一次性模式接受負數的 `mu`；原本 `insyra ttest single x -1` 會把 `-1` 當成旗標而失敗。`wilcoxon single` 本來就可以。
 
 ### `ml` 與 `nn`
 

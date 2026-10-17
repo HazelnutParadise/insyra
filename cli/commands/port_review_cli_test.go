@@ -21,6 +21,25 @@ func TestOneShot_WilcoxonAcceptsANegativeMu(t *testing.T) {
 	}
 }
 
+// The same holds for the one-sample t and z tests, whose mu is the argument a
+// leading minus sign used to be taken from.
+func TestOneShot_TAndZTestsAcceptANegativeMu(t *testing.T) {
+	for _, args := range [][]string{
+		{"ttest", "single", "x", "-1"},
+		{"ztest", "single", "x", "-1", "1"},
+	} {
+		root, ctx, out := newOneShotRoot(t)
+		ctx.Vars["x"] = insyra.NewDataList(-3.0, -2.5, -1.0, 0.5, -4.0, -2.0)
+		root.SetArgs(args)
+		if err := root.Execute(); err != nil {
+			t.Fatalf("%v failed: %v", args, err)
+		}
+		if out.Len() == 0 {
+			t.Errorf("%v printed nothing", args)
+		}
+	}
+}
+
 // A trailing argument the rank tests do not read is an error, not ignored.
 func TestRankTestsRefuseExtraArguments(t *testing.T) {
 	ctx := newTimeSeriesContext(t, map[string]any{
