@@ -25,7 +25,10 @@ func init() {
 			"insyra ttest two before after equal",
 			"insyra ttest paired pre post",
 		},
-		Run: runTTestCommand,
+		// mu may be negative; a leading '-' must reach the command, not the
+		// flag parser.
+		DisableFlagParsing: true,
+		Run:                runTTestCommand,
 	})
 	_ = Register(&CommandHandler{
 		Name:        "ztest",
@@ -39,7 +42,10 @@ func init() {
 			"insyra ztest single iq 100 15",
 			"insyra ztest two a b 1.0 1.2 greater",
 		},
-		Run: runZTestCommand,
+		// mu may be negative; a leading '-' must reach the command, not the
+		// flag parser.
+		DisableFlagParsing: true,
+		Run:                runZTestCommand,
 	})
 	_ = Register(&CommandHandler{
 		Name:        "anova",

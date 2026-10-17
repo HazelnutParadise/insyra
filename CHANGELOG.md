@@ -42,6 +42,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `engine/dsl` covers what a program needs without importing `cli/`: `Manager`, `NewManager` and `DefaultManager` open and create environments, and `Register` adds a command of your own, optionally with an argument limit such as `MaxArgs(1)`. `NewSession` creates an environment that does not exist yet, safely when several sessions start at once; the `insyra` CLI's `--env` still refuses an unknown environment.
 - Each environment operation in `cli/env` has one name, a method on `Manager`; the package-level functions such as `SetBasePath`, `LoadState` and `ReadHistory` are deprecated wrappers over `Default()` and keep working. One-shot flags such as `env clear --keep-history`, `env import --force` and `accel --mode` are declared with their commands and behave as before.
 - A command that stores more than one variable, such as `pca` or `kmeans`, now names every variable it stored in its output. The stored values are unchanged.
+- `ttest single` and `ztest single` take a negative `mu` in one-shot mode; `insyra ttest single x -1` read `-1` as a flag and failed. `wilcoxon single` already did.
 
 ### `ml` and `nn`
 
