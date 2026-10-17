@@ -2,7 +2,7 @@
 
 ### Requirement: ApplyCCL keeps the file's layout unless told otherwise
 
-Without options, `ApplyCCL` SHALL write each column the original file has with the codec the original used for it, a column the script adds with the codec of the original's first column, and row groups holding at most as many rows as the original's largest row group. With one `WriteOptions`, it SHALL write every column with that `Compression` and row groups of that `RowGroupSize`, as `WriteContext` does. More than one `WriteOptions`, or one `WriteContext` refuses, SHALL be an error returned before the file is read, leaving it unchanged.
+Without options, `ApplyCCL` SHALL write each column the original file has with the codec the original used for it, a column the script adds with the codec of the original's first column, and row groups holding at most as many rows as the original's largest row group.
 
 #### Scenario: A Zstd file in one row group
 - **WHEN** 2,500 列、以 `CompressionZstd` 寫成一個 row group 的檔案經 `ApplyCCL(ctx, path, "NEW('b') = ['id'] * 2")` 改寫
@@ -15,6 +15,10 @@ Without options, `ApplyCCL` SHALL write each column the original file has with t
 #### Scenario: Columns with different codecs
 - **WHEN** 原檔欄位 `a` 用 ZSTD、`b` 用 SNAPPY，`ApplyCCL` 新增欄位 `c`
 - **THEN** `a` 仍是 ZSTD、`b` 仍是 SNAPPY、`c` 是 ZSTD
+
+### Requirement: ApplyCCL takes the layout from WriteOptions when given
+
+With one `WriteOptions`, `ApplyCCL` SHALL write every column with that `Compression` and row groups of that `RowGroupSize`, as `WriteContext` does. More than one `WriteOptions`, or one `WriteContext` refuses, SHALL be an error returned before the file is read, leaving it unchanged.
 
 #### Scenario: Settings given
 - **WHEN** `ApplyCCL(ctx, path, script, WriteOptions{Compression: CompressionGzip, RowGroupSize: 1000})` 改寫 2,500 列
