@@ -41,6 +41,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ReadSlice2D` 現在是把二維切片轉成 DataTable 的函式，`Slice2DToDataTable` 標為 **Deprecated**，0.4 移除。`ReadJSONFile`、`DataTable.ToJSONBytes` 與 `DataTable.ToJSONString` 取代 `ReadJSON_File`、`ToJSON_Bytes` 與 `ToJSON_String`；舊名稱標為 **Deprecated**，行為不變，0.4 移除。
 - 修正 `Counter` 對每個 `NaN` 各建立一個取不回來的項目的問題。`NaN` 在 Go 中可以比較，但永遠不等於自己，所以每次 `counter[NaN]++` 都會產生一個沒有人查得到的新 key：一欄有三個 `NaN` 時，結果是三筆各為 1，而 `Count` 正確回報 3。現在同一欄的所有 `NaN` 合成一個項目，計數正確，用 `counter[insyra.ToMapKey(math.NaN())]` 讀取。含有 `NaN` 的陣列或結構同樣不等於自己，也比照處理。`counter[math.NaN()]` 仍然回傳 0，這點一直如此、也必然如此，因為 Go 的 map 無法比對 `NaN` key。
 - 呼叫已經用回傳值告訴你成功時，insyra 不再另外寫一行日誌。`csvxl` 的轉換函式（`CSVToExcel`、`AppendCSVToExcel`、`ExcelToCSV`、`ExcelDirToCSV` 與它們已棄用的舊拼法），以及 `plot.SaveHTML`、`plot.SavePNG`、`gplot.SaveChart`、`py.PipInstall`、`PipUninstall`、`PipList` 的 Info 訊息都拿掉了。留下來的 Info 訊息都是回傳值沒說的事：insyra 猜出來的編碼、`ToSQL` 幫既有資料表加的欄位、`nn.Sequential.Fit` 與準備 Python 環境的進度，以及加速與 thread safety 開關的切換。預設等級維持 `LogLevelInfo`。只想看警告和錯誤，可以呼叫 `SetLogLevel(insyra.LogLevelWarning)`。
+- CCL 中單獨作為整個運算式的欄位範圍或 `@`，現在是目前這一列的值。`AddColUsingCCL("r", "A:B")` 在每個儲存格放入該列 A、B 的值（`[]any`），過去每格放的是呼叫端無法使用的內部範圍值；`LAG(@, 1)`、`LAG(A:B, 1)`、`LEAD(@, 1)` 與 `LEAD(A:B, 1)` 會給每一列前一列或後一列的內容，過去 `LAG(@, 1)` 會把整張攤平的表位移成一個 slice，重複放進每一列。其他序列函數遇到整列時會回報錯誤，因為它們要對每個元素做運算；單獨的列範圍（例如 `1:2`）也是錯誤，訊息會提示改寫成 `A.(1:2)`。`SUM(A:C)`、`SUM(A.(0:1))` 與其他讀取範圍的地方不變。
 
 ### CLI
 

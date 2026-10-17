@@ -249,7 +249,11 @@ When a range (column range or row range) is used inside an aggregate function (l
 - `SUM(@.0:5)`: Sums all values in rows 0 through 5 across all columns.
 - `AVG(A.(0:10))`: Averages the first 11 values of column A.
 
-> **Note:** Raw row ranges like `SUM(0:5)` are not supported for data access. You must explicitly specify the target using the row access operator (e.g., `@.0:5` or `A.0:5`).
+A column range that is the whole expression stands for the current row restricted to those columns, the way a bare `A` means `A.#`: `AddColUsingCCL("r", "A:B")` fills each cell with that row's A and B values as a `[]any`. `LAG` and `LEAD` accept such a row, and `@`, as their argument (`LAG(@, 1)` and `LAG(A:B, 1)` give each row the one before it). The other sequence functions do arithmetic on each element and refuse a row.
+
+> **Note:** Raw row ranges like `SUM(0:5)` are not supported for data access, and a bare row range such as `1:2` is an error. A row range attaches to a column: `A.(1:2)`.
+>
+> You must explicitly specify the target using the row access operator (e.g., `@.0:5` or `A.0:5`).
 
 ### Comparison Operators
 

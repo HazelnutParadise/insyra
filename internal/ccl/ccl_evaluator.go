@@ -29,7 +29,11 @@ type EvaluationResult struct {
 
 // Evaluate evaluates a CCL node with the given context.
 func Evaluate(n cclNode, ctx Context) (any, error) {
-	return evaluateWithContext(n, ctx, 0)
+	val, err := evaluateWithContext(n, ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	return resolveResultValue(val, ctx)
 }
 
 // EvaluateStatement evaluates a CCL statement and returns detailed result
@@ -38,6 +42,9 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 	case *cclAssignmentNode:
 		// Evaluate the expression
 		val, err := evaluateWithContext(t.expr, ctx, 0)
+		if err == nil {
+			val, err = resolveResultValue(val, ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -49,6 +56,9 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 	case *cclNewColNode:
 		// Evaluate the expression for new column
 		val, err := evaluateWithContext(t.expr, ctx, 0)
+		if err == nil {
+			val, err = resolveResultValue(val, ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -60,6 +70,9 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 	default:
 		// Regular expression
 		val, err := evaluateWithContext(n, ctx, 0)
+		if err == nil {
+			val, err = resolveResultValue(val, ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -118,11 +131,14 @@ func IsRowDependent(n cclNode) bool {
 		if t.op == "." {
 			return IsRowDependent(t.right)
 		}
-		if t.op == ":" {
-			// 範圍運算符特殊處理：如果兩邊都是靜態欄位引用，則視為行無關
-			if isStaticColumnNode(t.left) && isStaticColumnNode(t.right) {
-				return false
-			}
+		if t.op == ":" && isStaticColumnNode(t.left) && isStaticColumnNode(t.right) {
+			// A COLUMN range on its own is the current row restricted to those
+			// columns — the same defaulting that makes a bare `A` mean `A.#` —
+			// so it changes from row to row. A ROW range (`0:1`) has no such
+			// reading and falls through to the operand check below. Inside an
+			// aggregate the range never reaches this case: evaluateToColumn
+			// expands it before asking.
+			return true
 		}
 		return IsRowDependent(t.left) || IsRowDependent(t.right)
 	case *cclFoldChainNode:
@@ -321,6 +337,21 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			functionDepth := callDepth + 1
 			seqArgs := make([][]any, len(t.args))
 			for i, arg := range t.args {
+				// A row-shaped argument ('@' or a column range) is one row per
+				// element, not one value per element. evaluateToColumn would
+				// flatten it into the whole table, which LAG would then shift
+				// into a single nonsense slice repeated in every cell.
+				rows, isRowShaped, err := rowShapedColumn(arg, ctx, depth+1, functionDepth)
+				if err != nil {
+					return nil, fmt.Errorf("sequence function %s: %w", t.name, err)
+				}
+				if isRowShaped {
+					if !SequenceFunctionTakesRows(upper) {
+						return nil, fmt.Errorf("sequence function %s needs numbers, and %s is a whole row; only LAG and LEAD accept one", t.name, describeRowShaped(arg))
+					}
+					seqArgs[i] = rows
+					continue
+				}
 				colData, err := evaluateToColumn(arg, ctx, depth+1, functionDepth)
 				if err != nil {
 					return nil, fmt.Errorf("sequence function %s: %w", t.name, err)
@@ -921,6 +952,31 @@ func applyOperator(op string, left, right any) (any, error) {
 }
 
 func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, error) {
+	// 0. A column range names columns; here we want everything in them. This
+	// has to be decided before the row-dependence check below, because a range
+	// that IS the whole answer means something else — the current row
+	// restricted to those columns — and is therefore row-dependent.
+	if bin, ok := n.(*cclBinaryOpNode); ok && bin.op == ":" {
+		v, err := evaluateRange(bin.left, bin.right, ctx, depth, callDepth)
+		if err != nil {
+			return nil, err
+		}
+		switch r := v.(type) {
+		case ColumnRange:
+			var allData []any
+			for i := r.Start; i <= r.End; i++ {
+				col, err := ctx.GetColData(i)
+				if err != nil {
+					return nil, err
+				}
+				allData = append(allData, col...)
+			}
+			return allData, nil
+		case RowRange:
+			return nil, fmt.Errorf("raw row range cannot be used as a data source; use @.start:end instead")
+		}
+	}
+
 	// 1. 針對直接欄位引用的優化
 	switch t := n.(type) {
 	case *cclAtNode:
