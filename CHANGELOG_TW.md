@@ -82,6 +82,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 在 nil 的迴歸模型（`LinearModel`、`RidgeModel`、`LogisticModel` 等迴歸系列）上呼叫 `Predict`，或把 nil 模型指標交給 `ExportONNX`，會回傳錯誤，不再 panic。`Features` 仍是模型值上的方法，`Fit` 系列函式的回傳型別不變。
 - `ml.WriteONNX` 改為 Deprecated，`ExportONNX` 是同一個函式，參數仍是 `any`。`DecisionTreeOptions` 的別名 `DecisionTreeClassifierOptions`、`DecisionTreeRegressorOptions` 也改為 Deprecated。兩者都在 0.4 移除。
 - 新增 `nn.CustomOptimizer{Name, Step}` 與 `Parameter.Update(fn)`，`Sequential.Fit` 可以用呼叫者自己寫的 optimizer 訓練，不再只限 `SGD`、`SGDMomentum`、`Adam`、`AdamW`。`Fit` 每個 batch 呼叫一次 `Step`，傳入模型 tape 上的所有參數；`Update` 把參數的 float32 資料和梯度交給 `fn`（loss 沒有影響到這個參數時，梯度是 nil），`fn` 寫進去的值會保留下來，手寫的訓練迴圈也能用。`Fit` 會在跑任何 batch 之前拒絕沒有 `Step` 的 `CustomOptimizer`。內建的 optimizer 行為不變。（[issue #266](https://github.com/HazelnutParadise/insyra/issues/266)）
+- CPU 上的 2-D float32 `MatMul` 快了 1.2 到 2.9 倍：在 4 vCPU 的 Linux amd64 機器上，1×784×28 從 23.0 µs 降到 19.5 µs，64×784×28 從 694 µs 降到 331 µs，256×256×256 從 5.32 ms 降到 1.81 ms。每個輸出仍照原本的順序累加乘積，所以不是 NaN 的結果每個位元都和原本相同；兩個 NaN 在同一次加法相遇時，得到的 NaN 位元可能不同。（[#463](https://github.com/HazelnutParadise/insyra/issues/463)）
 
 ### `datafetch`
 
