@@ -137,7 +137,7 @@ const (
 
 ### A chart that cannot be built is an error
 
-Every `Create...` function returns the chart and an `error`. When one cannot build a chart, usually because it was given no data, it returns a `nil` chart and an error that starts with the function's name, such as `plot: CreateBarChart: no data to draw`. A failing call logs nothing, so reporting the error is up to you. Each constructor's section below lists what it refuses. `CreateGaugeChart` takes a plain `float64` and cannot fail. Its error is always `nil`, and it returns one so that every constructor is called the same way.
+Every `Create...` function returns the chart and an `error`. When one cannot build a chart, usually because it was given no data, it returns a `nil` chart and an error that starts with the function's name, such as `plot: CreateBarChart: no data to draw`. A failing call logs nothing, so reporting the error is up to you. Each constructor's section below lists what it refuses. `CreateGaugeChart` takes a plain `float64` and fails only when it is `NaN` or an infinity.
 
 Check the error before saving. `SaveHTML` and `SavePNG` do not check for a `nil` chart and panic with a nil pointer dereference when given one:
 
@@ -162,7 +162,7 @@ An empty list is not refused. The bar and line charts draw it as an empty series
 - **The Y axis is chosen from the cells' text.** While every cell's text parses as a number, the Y axis is numeric. A single cell whose text does not parse, such as a word, a `bool`, or `nil` (whose text is `<nil>`), turns the Y axis of the bar and line charts into categories. Each distinct text becomes a category, and every cell, the numbers included, is drawn at its category's position. `NewDataList(1, "abc", 3)` gives a Y axis labelled `1`, `abc`, `3`, with the bars at 0, 1 and 2.
 - **On a numeric axis, a string is drawn as 0.** The values are read through `DataList.ToF64Slice`, which does not parse text, so `NewDataList(1, "2", 3)` is drawn as 1, 0, 3.
 - **The box plot leaves such cells out.** Its five numbers come from the cells that are Go numbers, so `"5"`, `"abc"` and `nil` are ignored. Its Y axis is chosen from the text all the same, so one text cell makes it a category axis whose labels no longer match the boxes.
-- **A `NaN` or an infinity leaves the page blank.** In any chart, bar values, pie slices or a gauge value alike, go-echarts cannot encode such a value and does not report the failure. `SaveHTML` writes a page with no chart on it and returns no error. A box plot list with no number in it, empty or all text, has a `NaN` summary and blanks the page the same way.
+- **A `NaN` or an infinity is refused.** go-echarts cannot encode such a value and drops the failure, which used to leave a page with no chart. Every `Create...` function now returns an error naming the value (for a list, the list and row, counting from one). A box plot list with no number in it, empty or all text, is refused too, because it has no five-number summary.
 
 Clean a column before charting it rather than relying on any of this: `ParseNumbers` turns numeric text into numbers, and `ClearNilsAndNaNs` removes `nil` and `NaN` cells.
 

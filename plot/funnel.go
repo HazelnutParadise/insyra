@@ -3,6 +3,7 @@
 package plot
 
 import (
+	"fmt"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -29,6 +30,11 @@ type FunnelChartConfig struct {
 func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) (*charts.Funnel, error) {
 	if len(data) == 0 {
 		return nil, chartError("CreateFunnelChart", "no data to draw")
+	}
+	for name, value := range data {
+		if err := requireFinite("CreateFunnelChart", fmt.Sprintf("the value of stage %q", name), value); err != nil {
+			return nil, err
+		}
 	}
 	funnel := charts.NewFunnel()
 

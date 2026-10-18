@@ -59,6 +59,9 @@ func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*charts.
 	if len(data) == 0 {
 		return nil, chartError("CreateLineChart", "no data to draw")
 	}
+	if err := requireFiniteLists("CreateLineChart", data); err != nil {
+		return nil, err
+	}
 	line := charts.NewLine()
 
 	internal.SetBaseChartGlobalOptions(line, internal.BaseChartConfig{

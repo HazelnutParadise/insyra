@@ -54,6 +54,9 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*charts.Ba
 	if len(data) == 0 {
 		return nil, chartError("CreateBarChart", "no data to draw")
 	}
+	if err := requireFiniteLists("CreateBarChart", data); err != nil {
+		return nil, err
+	}
 	bar := charts.NewBar()
 
 	// Set title and subtitle

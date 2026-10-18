@@ -1,6 +1,7 @@
 package plot
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/HazelnutParadise/insyra/plot/internal"
@@ -52,6 +53,16 @@ type ScatterChartConfig struct {
 func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoint) (*charts.Scatter, error) {
 	if len(data) == 0 {
 		return nil, chartError("CreateScatterChart", "no data to draw")
+	}
+	for name, points := range data {
+		for i, pt := range points {
+			if err := requireFinite("CreateScatterChart", fmt.Sprintf("X of point %d in %q", i+1, name), pt.X); err != nil {
+				return nil, err
+			}
+			if err := requireFinite("CreateScatterChart", fmt.Sprintf("Y of point %d in %q", i+1, name), pt.Y); err != nil {
+				return nil, err
+			}
+		}
 	}
 	scatter := charts.NewScatter()
 
