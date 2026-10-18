@@ -959,7 +959,7 @@ func validateTree(tree *HierarchicalResult) error {
 	used := make(map[int]int, 2*len(tree.Merge))
 	for step, row := range tree.Merge {
 		for _, id := range row {
-			if !((id < 0 && -id <= n) || (id > 0 && id <= step)) {
+			if (id >= 0 || -id > n) && (id <= 0 || id > step) {
 				return fmt.Errorf("merge %d joins %d, which is neither a leaf (-1 to -%d) nor an earlier merge (1 to %d)", step+1, id, n, step)
 			}
 			if first, dup := used[id]; dup {

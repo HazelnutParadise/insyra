@@ -39,7 +39,7 @@ func runColCommand(ctx *ExecContext, args []string) error {
 		dl = table.GetColByNumber(index)
 	} else if slices.Contains(table.ColNames(), selector) {
 		dl = table.GetColByName(selector)
-	} else if index, ok := insyra.ParseColIndex(selector); ok {
+	} else if index, ok := insyra.ColIndexToNumber(selector); ok {
 		// Only a letter that lands inside the table is a column; one past the
 		// end falls through to "not found" instead of a library warning.
 		if _, cols := table.Size(); index < cols {
