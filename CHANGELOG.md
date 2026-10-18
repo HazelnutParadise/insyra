@@ -107,6 +107,9 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - An argument to `RunCodef`, `RunFilef` or their `Context` forms can no longer turn into Python code. The placeholders were replaced one argument at a time across the whole script, so each pass also rewrote what the passes before it had inserted: passing the texts `$v2` and `+__import__('os').system('id')+` ran the command. `$v1` also matched the start of `$v10`. A value JSON could not write, such as `[]any{text, math.NaN()}`, was written the way Go formats it, which put the text into the script as code. Placeholders are now found once in the template, each by its whole number, and only the arguments the template uses are converted. A value that cannot be written as a Python value is an error naming its placeholder, returned before Python starts. That includes a `[]float64` holding a NaN or an infinity, which was written as `NaN` or `+Inf`, names Python does not know.
 - Python runs on Windows on arm64 with an x86-64 Python. polars' CPU check, reading the machine as ARM64, raised `unknown feature flag` at the `import polars` every script starts with, so every run failed. The generated script now sets `POLARS_SKIP_CPU_CHECK=1` for an x86-64 Python on ARM64 Windows, unless the variable is already set.
 
+### `accel`
+
+- `ExecuteNearestExact` returns an error naming the column when a hand-built `Buffer` is declared numeric but holds `Values` it cannot read (`[]float32`, `[]int`, nil), when `Type` and `Values` disagree, or when columns differ in length. It returned an empty result with a nil error before ([#441](https://github.com/HazelnutParadise/insyra/issues/441)). Datasets built by `ProjectDataList` and `ProjectDataTable` are unaffected, and a `bool`, `string` or `any` column still reports `dtype-not-eligible` without an error.
 
 ## v0.3.4
 

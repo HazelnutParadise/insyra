@@ -131,6 +131,8 @@ The device operation ships a CPU reference — `NearestExactCPU` — and a test 
 
 ### Exact answers from a single-precision device
 
+A `Buffer` you build by hand must hold `[]float64` (`Type` `float64`) or `[]int64` (`Type` `int64`) and every column must have the same length; otherwise `ExecuteNearestExact` returns an error naming the column instead of an empty result. A `bool`, `string` or `any` column is reported as `dtype-not-eligible` without an error.
+
 `ExecuteNearestExact` returns what a `float64` computation over every query point would return — the same indices, the same distances — while still using the device for most of the work.
 
 It gets there by not trusting the device with the decision. The device ranks the query points in single precision and returns a few candidates per row, along with the distance of the best candidate it discarded. The host recomputes those candidates in `float64` and picks from them. If the discarded one is close enough that single precision could not tell them apart, that row is recomputed against every query point instead.

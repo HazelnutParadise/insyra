@@ -107,6 +107,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `RunCodef`、`RunFilef` 與它們的 `Context` 版本的參數，不會再變成 Python 程式碼。過去佔位字元是一個參數接一個參數、對整份程式碼輪流替換，後面的參數替換時，也會改到前面參數插進去的文字：傳入 `$v2` 和 `+__import__('os').system('id')+` 兩段文字，就會執行那個指令。`$v1` 也會吃掉 `$v10` 的開頭。JSON 寫不出來的值（例如 `[]any{文字, math.NaN()}`）會照 Go 的格式原樣寫進程式碼，裡面的文字就成了程式碼。現在佔位字元只在原本的模板裡找一次，依完整編號替換，也只轉換模板用到的參數。寫不成 Python 值的參數，會在 Python 啟動前回傳錯誤，並註明是哪個佔位字元。含有 NaN 或無限大的 `[]float64` 也一樣，過去會寫成 Python 不認得的 `NaN` 或 `+Inf`。
 - 在 ARM64 的 Windows 上用 x86-64 的 Python 也能執行了。polars 的 CPU 檢查把機器讀成 ARM64，在每段程式開頭的 `import polars` 拋出 `unknown feature flag`，所以每次執行都失敗。產生的程式現在會在 ARM64 Windows 上的 x86-64 Python 設定 `POLARS_SKIP_CPU_CHECK=1`，已經設過這個變數時不動它。
 
+### `accel`
+
+- 手動組出來的 `Buffer` 如果宣告為數值欄，但 `Values` 讀不了（`[]float32`、`[]int`、nil）、`Type` 與 `Values` 不符，或欄位長度不一致，`ExecuteNearestExact` 現在會回傳指出欄位的錯誤。過去它會回傳空結果且沒有錯誤（[#441](https://github.com/HazelnutParadise/insyra/issues/441)）。由 `ProjectDataList`、`ProjectDataTable` 建出的資料集不受影響；`bool`、`string`、`any` 欄位仍回報 `dtype-not-eligible`，不會出錯。
 
 ## v0.3.4
 
