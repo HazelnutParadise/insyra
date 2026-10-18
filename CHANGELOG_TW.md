@@ -99,6 +99,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `datafetch.TAIFEX(cfg)`，讀取期交所免金鑰的公開資料：`InstitutionalFutures`、`InstitutionalOptions`（三大法人的成交與未平倉）、`LargeTradersFutures`、`LargeTradersOptions`（大額交易人的未沖銷部位）與 `PutCallRatio`，每個都是數值已轉型的資料表。OpenAPI 只有最新一天（Put/Call 比有 20 天），不讀取網站上更長的歷史（[#437](https://github.com/HazelnutParadise/insyra/issues/437)）。
 - 新增 `TWStockClient.MonthlyRevenue(year, month, market)`，從公開資訊觀測站的彙總頁讀取所有上市櫃公司的月營收（與累計營收），2003 年 1 月起，每頁一次請求，回傳數值已轉型的資料表。`PageDate` 是整頁的出表日期，不是各公司公告日（[#435](https://github.com/HazelnutParadise/insyra/issues/435)）。
 - 新增 `datafetch.FinMind(cfg)`，連到 [FinMind](https://finmindtrade.com)，一次請求就能拿到一檔證券的整段歷史。`FinMindClient.Dataset(name, dataID, from, to)` 把任何資料集回傳成數值已轉型的資料表，欄位照 FinMind 原樣。超過請求上限（`ErrFinMindLimit`）與方案權限不足（`ErrFinMindLevel`）可以和其他錯誤分辨，而且不會重試（[#433](https://github.com/HazelnutParadise/insyra/issues/433)）。
+- 新增 `datafetch.JPX(cfg)` 與 `JPXClient.InvestorTypes(from, to, unit)`，讀取日本交易所集團每週的投資部門別売買状況（2016 年起）：每週、每個市場、14 個投資人類別各一列，單位為千日圓或千股。舊的 `.xls` 與 2026 年 9 月起每週一份的 `.xlsx` 都能讀，並處理假日週與跨年週。數字在下一週的第四個營業日公布（[#468](https://github.com/HazelnutParadise/insyra/issues/468)）。
 
 ### `stats`
 

@@ -845,3 +845,33 @@ Dataset(name, dataID string, from, to time.Time) (*insyra.DataTable, error)
 **Errors you can tell apart.** `errors.Is(err, datafetch.ErrFinMindLimit)` means the plan's request limit was reached (HTTP 402); `errors.Is(err, datafetch.ErrFinMindLevel)` means the plan does not allow the request, such as a free account asking for a dataset above its level, or one that needs a `dataID` without giving it. Neither is retried, since waiting or upgrading is the fix, not repeating the call. Other failures, such as an unknown dataset (HTTP 422, whose message lists the valid names), are ordinary errors.
 
 **Traps in the data.** One is checked: the `date` of `TaiwanStockMonthRevenue` is the first day of the month *after* the revenue month (`revenue_month` 7 has `date` 2026-08-01) and is not the announcement date, so aligning it with prices on `date` looks ahead. The rest were reported when the dataset was tried on 2026-10-17 and are not checked here: individual institutional trades start on 2012-05-02, not 2005 as the documentation says; a daily price row with no trade has all four prices 0, so filter with `close > 0`; and the free tier refuses adjusted prices (`TaiwanStockPriceAdj`) though the documentation says it allows them.
+
+## Japan Exchange Group (JPX)
+
+```go
+client, err := datafetch.JPX(datafetch.TWStockConfig{Interval: 3 * time.Second, Retries: 2})
+weeks, err := client.InvestorTypes(
+    time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC),
+    datafetch.JPXUnitValue)
+```
+
+The JPX publishes every week how much each type of investor sold and bought on the Tokyo and Nagoya markets: individuals (cash and margin separately), foreigners, investment trusts, business companies, financial institutions, proprietary trading and more (投資部門別売買状況). It is the one public weekly series in a major market that gives individuals' actual purchases and sales. `JPX` takes the same settings as `TWStock` (`Timeout`, `Interval`, `UserAgent`, `Retries`, `RetryBackoff`); one file per week is a request, so for a year or more set an `Interval` of about 3 seconds, which was enough to fetch every week since 2016. A `JPXClient` that did not come from `JPX`, such as a zero value, returns an error from every method.
+
+```go
+InvestorTypes(from, to time.Time, unit JPXUnit) (*insyra.DataTable, error)
+```
+
+with an `InvestorTypesContext` form. It returns the weeks that overlap `[from, to]` from 2016, as one row per week, market and investor group:
+
+| Column | Meaning |
+| :--- | :--- |
+| `WeekStart`, `WeekEnd` (`time.Time`) | the first and last trading day of the week, so a holiday week is one to three days and a week can cross the year end |
+| `Market` (`string`) | `"TSE Prime"`, `"TSE Standard"`, `"TSE Growth"`, `"Tokyo & Nagoya"`; for weeks before April 2022 `"TSE 1st"`, `"TSE 2nd"`, `"TSE Mothers"`, `"TSE JASDAQ"` and `"Tokyo & Nagoya"` |
+| `Investor` (`string`) | one of fourteen groups that do not overlap and add up to the market: `Proprietary Cash`, `Proprietary Margin`, `Individuals Cash`, `Individuals Margin`, `Foreigners Institutions`, `Foreigners Individuals`, `Securities Cos.`, `Investment Trusts`, `Business Cos.`, `Other Cos.`, `Life & Non-Life`, `City & Regional BK`, `Trust BK`, `Other Financials` |
+| `Sales`, `Purchases`, `Balance`, `Total` (`int64`) | sales, purchases, purchases less sales, and sales plus purchases, in **thousands of yen** for `JPXUnitValue` or **thousands of shares** for `JPXUnitShares` |
+
+Individuals as a whole are the two Individuals rows summed, and likewise for foreigners and proprietary trading.
+
+**Publication lag.** A week's figures come out on the fourth business day of the following week at 15:00 JST, so a backtest must lag them by at least that; `WeekEnd` is not the date the data was known.
+
+**Two file formats.** Weeks since September 2026 are one workbook per week (`.xlsx`). Earlier weeks are `.xls` files, one for value and one for shares, that hold the previous week beside the report week; only the report week of each is used, and the cash and margin rows are cross-checked against the blocks they split (a mismatch logs a warning). The yearly archive pages are searched for the years in the range and the year after it. The file names carry random IDs, so they are found on the pages, not built. The `.xls` files are read by a small reader inside the package, since the available libraries dropped cells of these files. A week the JPX has not published, or a range with no files, gives no rows.
