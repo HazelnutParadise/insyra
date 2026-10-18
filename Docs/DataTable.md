@@ -777,6 +777,7 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 - When `IfExists` is set to append mode, `ToSQL` fetches the existing table's columns once and adds any missing ones via `ALTER TABLE` before inserting (no per-row schema introspection).
 - Type inference samples the first non-nil value in each column. Recognized types include `time.Time` (→ `DATETIME`/`TIMESTAMP`), `[]byte` (→ `BLOB`/`BYTEA`), `sql.Null*` (unwraps the underlying value), and pointers (dereferenced). All-nil columns fall back to `TEXT`.
 - You can provide `ColumnTypes` to override the inferred SQL types.
+- A column with no name is written under its letter (`A`, `B`, …), because MySQL and PostgreSQL refuse an empty column name. If another column is already named that letter, compared without case, the call fails before anything is written.
 
 **Parameters:**
 
