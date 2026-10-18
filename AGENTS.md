@@ -297,6 +297,18 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-28] — remove `ReverseTableByColName` one release after it was deprecated
+- **Where**: `datafetch/geocoding.go`, its row in `datafetch/deprecated_names_test.go`, and its note in `Docs/datafetch.md`
+- **What**: `datafetch-naming-cleanup` deprecated it in favour of `ReverseTable` with `insyra.Name(...)` selectors (DF-5, filed under #212). The other deprecated `datafetch` names were deleted by `remove-dev-deprecated-apis`; this one is a method that 0.4 deprecated alone, so it stays.
+- **Suggestion**: delete it, the test row and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry.
+- **Status**: pending
+
+### [2026-10-18] — `ErrPoppingMode` has no user left
+- **Where**: `error_buffer.go`
+- **What**: `ErrPoppingMode` was the mode the nine removed global error-buffer accessors (`PopError`, `PeekError` and the rest) took. Nothing in the module reads it now. It is a released, undeprecated type, so `remove-dev-deprecated-apis` left it alone.
+- **Suggestion**: deprecate it with the next batch of Deprecated names and delete it one release later, with a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-10-18] — two enums break the underlying-type rule
 - **Where**: `stats/correlation.go` `CorrelationMethod`; `ml/model_selection.go` `MetricKind`
 - **What**: under the enum rule in Key Conventions, `CorrelationMethod` should be a `string` (pearson, kendall and spearman are the names R's `cor(method=)` defines) and is an `int`, while `MetricKind` should be an `int` (only insyra reads it) and is a `string`. Found by the inventory for `enums-print-their-names` on 2026-10-18. Both print readable names after that change, so nothing is unreadable today.
@@ -317,22 +329,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: decide whether `Median` fails like `Quantile` (the AGENTS.md rule for an unreadable cell), and whether `Mode` should count non-numeric values, which needs a different return type. The first changes a result only on mixed lists. The second breaks every caller.
 - **Status**: pending
 
-### [2026-10-15] — remove the second-resolution timestamp getters one release after they were deprecated
-- **Where**: `datalist.go` and `datatable.go` (`GetCreationTimestamp`, `GetLastModifiedTimestamp`), their lines in `interfaces.go`, `unixSecondsFromUnixNano` in `timestamps.go`
-- **What**: `timestamps-are-times` (#220, D-12) added `CreationTime` and `LastModifiedTime`, which return a `time.Time` at the clock's full resolution, and deprecated the two getters, which return Unix seconds and keep that meaning for one release.
-- **Suggestion**: delete them in the same release as the other Deprecated removals, with `TestDeprecatedTimestampGettersReturnUnixSeconds`, the seconds check in `TestDataListGetCreationTimestamp`, their sections in `Docs/DataList.md` and `Docs/DataTable.md`, and a BREAKING changelog entry.
-- **Status**: pending
-
 ### [2026-10-13] — a Shift_JIS file whose only Japanese is its header is read as windows-1252
 - **Where**: `utils.go` `conclusiveCharset`, through chardet's Shift_JIS and windows-1252 recognisers
 - **What**: `encoding-guess-refuses-ties` refuses a chardet answer below 50 or tied, which turned every other wrong or random read measured on 2026-10-13 into an error. This one passes: a Shift_JIS CSV with the header `名前,数量` over 300 rows of numbers scores 60 as windows-1252 and 10 as Shift_JIS, so it is read as windows-1252 with a nil error. A Shift_JIS file of ten short rows of text (`東京都,新宿区,西新宿`) also scored only 10 as Shift_JIS, and 49 as windows-1252, so chardet barely recognises Shift_JIS on short input at all. `Docs/csvxl.md` and `Docs/DataTable.md` tell Japanese users to name `shift_jis`.
 - **Suggestion**: refuse a single-byte Latin answer when every high byte of the sample also forms a valid Shift_JIS pair and the Latin text would contain characters such as the C1 range or unusual accent sequences; or measure a pure-Go detector with stronger Japanese statistics against the same samples before switching.
-- **Status**: pending
-
-### [2026-10-12] — remove `ParseColIndex`, `CalcColIndex` and `GetDoesUseColoredOutput` one release after they were deprecated
-- **Where**: `utils.go` (`ParseColIndex`, `CalcColIndex`), `config.go` (`GetDoesUseColoredOutput`)
-- **What**: under the one-name rule of #211, `core-go-names` deprecated them in favour of `ColIndexToNumber`, `ColNumberToIndex` and `GetUseColoredOutput` (K-13, #212), keeping each one's results for one release. Nothing else in the module calls them.
-- **Suggestion**: in the first release after the one that ships `core-go-names`, delete them, `TestDeprecatedCoreNamesKeepTheirResults` and the deprecated-name notes in `Docs/utils.md` and `Docs/Configuration.md`, and add a BREAKING changelog entry. Do it in the same release as the `SetDontPanic` removal if they coincide.
 - **Status**: pending
 
 ### [2026-10-06] — remove the deprecated names of `cli/commands` one release after they were deprecated
@@ -347,16 +347,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: delete both files and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry.
 - **Status**: pending
 
-### [2026-10-03] — remove the deprecated names of `cli/env` one release after they were deprecated
-- **Where**: `cli/env/env.go`, `cli/env/deprecated_wrappers_test.go`, and the note under "Custom environment storage location" in `Docs/cli-dsl.md`
-- **What**: under the one-name rule of #211, `cli-env-one-name` deprecated the 26 package-level functions, which only call the same method on `Default()` (#261, CL-3), and `engine-dsl-manager` deprecated `Manager`, `NewManager`, `EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable` and `UnsavedVariable`, which `engine/dsl` now provides under the same names (#260 follow-up).
-- **Suggestion**: delete them, their tests and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry. `Default`, `ConfigKeys` and `ExportPayload` have no counterpart and stay; `Default` then returns the internal Manager type, which callers name as `dsl.Manager`.
-- **Status**: pending
-
-### [2026-10-03] — remove `engine/ccl.ResetEvalDepth` and `ResetFuncCallDepth` one release after they were deprecated
-- **Where**: `engine/ccl/ccl.go`, `TestResetDepthsAreNoOps` in `engine/ccl/ccl_test.go` and `TestNoOpResetsAreDeprecated` in `engine/ccl/registry_contract_test.go`, and their note in `engine/README.md`
-- **What**: `engine-ccl-registry-contract` deprecated them (#259, EN-1): they have done nothing since recursion depth moved onto the call stack in #191.
-- **Suggestion**: delete them, the two tests and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry.
+### [2026-10-03] — remove the deprecated `Manager` names of `cli/env` one release after they were deprecated
+- **Where**: `cli/env/env.go`, and the note under "Custom environment storage location" in `Docs/cli-dsl.md`
+- **What**: `engine-dsl-manager` deprecated `Manager`, `NewManager`, `EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable` and `UnsavedVariable`, which `engine/dsl` provides under the same names (#260 follow-up). The 26 package-level functions that called the same method on `Default()` are already deleted (`remove-dev-deprecated-apis`).
+- **Suggestion**: delete the seven names and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry. `Default`, `ConfigKeys` and `ExportPayload` have no counterpart and stay; `Default` then returns the internal Manager type, which callers name as `dsl.Manager`.
 - **Status**: pending
 
 ### [2026-10-02] — `Write` panics on a `uint64` above the `int64` range
@@ -395,12 +389,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: if two writers racing for one path should both succeed on Windows, retry the rename a few times on `ERROR_ACCESS_DENIED` and `ERROR_SHARING_VIOLATION` in `internal/utils`, which covers every atomic writer. Otherwise leave it: the caller already gets an error it can retry.
 - **Status**: pending
 
-### [2026-09-30] — remove `py.RunCodeWithTimeout` one release after it was deprecated
-- **Where**: `py/py.go`, `TestRunCodeWithTimeoutKeepsItsMeaning` in `py/run_test.go`, and its mentions in `Docs/py.md`
-- **What**: `py-typed-run` deprecated it under the one-name rule of #211 (PY-2, #255), keeping its meaning for one release: it is `RunCodeContext` with a context from `context.WithTimeout`.
-- **Suggestion**: delete it, its test and its mentions in `Docs/py.md` in the same release as the other Deprecated removals, with a BREAKING changelog entry.
-- **Status**: pending
-
 ### [2026-09-30] — concurrent Python runs on Windows may find no pipe instance to connect to
 - **Where**: `py/pyresult.go` `acceptIPC`, and `insyra._connect_ipc` in `py/builtin.go`
 - **What**: go-winio creates a server pipe instance only when `Accept` is called (`makeConnectedServerPipe` in `listenerRoutine`, go-winio v0.6.2 `pipe.go`), so between one connection being accepted and the next `Accept`, no instance may be waiting. The Python side opens the pipe with `open()` once and does not retry, so a run whose `insyra.Return` lands in that window could fail with `ERROR_PIPE_BUSY`. Found by the adversarial review of `py-ipc-server-errors` on 2026-09-30 by reading the code; not reproduced, because no Windows host was available. It predates that change.
@@ -413,34 +401,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: have the four accessors say what the tensor holds and what was asked for, such as `tensor is int64, not float32`, and keep `unsupportedDTypeError` for constructors and loaders refusing a dtype. It changes an error message only.
 - **Status**: pending
 
-### [2026-09-30] — remove the deprecated `nn` names one release after they were deprecated
-- **Where**: `nn/layers.go`, `nn/layers_catalog.go`, `nn/layers_attention.go` (the twelve `New…` twins: `NewDense`, `NewReLU`, `NewDropout`, `NewFunc`, `NewMultiHeadAttention`, `NewConv2D`, `NewMaxPool2D`, `NewAvgPool2D`, `NewGlobalAvgPool`, `NewBatchNorm2D`, `NewLayerNorm`, `NewEmbedding`), `nn/fit.go` (`SoftmaxCrossEntropy`, `MSELoss`, `BCEWithLogitsLoss`), `nn/protocol.go` (`Classifier`, `Regressor`), `nn/kernels.go` (`MaxPoolOptions`, `AveragePoolOptions`), `nn/tensor.go` (`DataType`, `Float32`, `Float16`, `Float64`, `NewFloat32Tensor`, `NewTensorWithDType`, `Tensor.Data`)
-- **What**: `nn-one-name-per-thing` deprecated them under the one-name rule of #211 (NN-1, #265), keeping each one's meaning for one release; `nn-layernorm-typed-constructors` made `NewLayerNorm(interface{})` build `LayerNorm` or `LayerNormShape`.
-- **Suggestion**: delete them in the same release as the other Deprecated removals, with `nn/deprecated_names_test.go` (keep its check that the remaining names are not deprecated), `TestDeprecatedNewLayerNormKeepsItsMeaning` in `nn/layernorm_typed_test.go`, `TestTensorRejectsUnsupportedDTypeByName` in `nn/tensor_test.go`, their notes in `Docs/nn.md`, and a BREAKING changelog entry.
-- **Status**: pending
-
 ### [2026-09-30] — three more second names in `nn` and `ml`
 - **Where**: `nn/autodiff_cnn.go` `Tape.BatchNormTraining` ("a concise alias for BatchNormalizationTraining"); `nn/autodiff_catalog.go` `Tape.EmbeddingLookup` (`Tape.Embedding` with its two arguments swapped); `ml/pipeline.go` `TransformColumns` ("the functional spelling of NewColumnTransformer", returning the `Transformer` interface where `NewColumnTransformer` returns `*ColumnTransformer`)
 - **What**: found while doing NN-1 and ML-2 under the one-name rule of #211. The review did not list any of them as a second name (it marked `EmbeddingLookup` and `TransformColumns` OK and filed `BatchNormTraining` under NN-3 for its positional options), so they were not in #264 or #265 and were left alone.
 - **Suggestion**: deprecate the second name of each the way `nn-one-name-per-thing` did: keep `BatchNormalizationTraining` (the ONNX operator name the tape records), `Embedding` (the torch argument order, table first) and `NewColumnTransformer` (the concrete return, as ML-1 asked of every constructor).
-- **Status**: pending
-
-### [2026-09-30] — remove the deprecated `ml` names one release after they were deprecated
-- **Where**: `ml/onnx_export.go` (`WriteONNX`), `ml/decision_tree.go` (`DecisionTreeClassifierOptions`, `DecisionTreeRegressorOptions`)
-- **What**: `ml-one-onnx-export-name` deprecated them under the one-name rule of #211 (ML-2, #264), keeping each one's meaning for one release.
-- **Suggestion**: delete them in the same release as the other Deprecated removals, with `TestDeprecatedMLNamesSayWhatReplacedThem`, `TestWriteONNXKeepsItsMeaning` and `TestDeprecatedTreeOptionsAreTheSameType` in `ml/onnx_one_name_test.go` (keep the `ExportONNX` half of the last two), their notes in `Docs/ml.md`, and a BREAKING changelog entry.
-- **Status**: pending
-
-### [2026-09-30] — remove the `Csv` spellings of the `csvxl` functions one release after they were deprecated
-- **Where**: `csvxl/convert.go`, `csvxl/convertDir.go`, `csvxl/read_csv.go`
-- **What**: `csvxl-go-names` renamed `CsvToExcel`, `AppendCsvToExcel`, `ExcelToCsv`, `ExcelToCsvOptions`, `EachCsvToOneExcel`, `EachExcelToCsv` and `ReadCsvToString` to `CSVToExcel`, `AppendCSVToExcel`, `ExcelToCSV`, `ExcelToCSVOptions`, `CSVDirToExcel`, `ExcelDirToCSV` and `ReadCSVToString` (the C-12 part of #212). The old names stay one release as Deprecated wrappers and a type alias.
-- **Suggestion**: delete them in the same release as the other Deprecated removals, with `pairByPosition` and the `csvNames` arm of `excelToCSV` that only the old `CsvToExcel`, `AppendCsvToExcel` and `ExcelToCsv` use (`csvxl-sheet-pairs`), `csvxl/sheet_pairs_deprecated_test.go`, `TestDeprecatedCSVXLNamesSayWhatReplacedThem`, `TestDeprecatedCSVXLNamesGiveTheSameWorkbook`, the deprecated-names table in `Docs/csvxl.md`, and a BREAKING changelog entry. The `csvxl-*`, `csv-formula-guard`, `io-error-hygiene` and `optional-values` specs under `openspec/specs/` still name the old spellings. Move them to the new names in the same change.
-- **Status**: pending
-
-### [2026-09-30] — remove `ParseLingoModel_str` and `ParseLingoModel_txt` one release after they were deprecated
-- **Where**: `lpgen/lingo.go`
-- **What**: `lpgen-reports-errors` gave the LINGO parser the names `ParseLingo` and `ParseLingoFile`, which return an error (#258, LP-3). The old names stay one release as Deprecated wrappers that still return `nil` and log a warning on failure.
-- **Suggestion**: delete them in the same release as the other Deprecated removals, with `TestDeprecatedLingoNamesSayWhatReplacedThem` and the old-name checks in `lpgen/lingo_errors_test.go`. Move the tests in `lpgen/lpgen_test.go` and `lpgen/no_panic_test.go` that still call them to the new names, drop their section from `Docs/lpgen.md`, and add a BREAKING changelog entry.
 - **Status**: pending
 
 ### [2026-09-29] — try an honest User-Agent against Yahoo before changing the Yahoo Finance default
@@ -473,18 +437,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: export one silent resolver from the root package, for example `(*DataTable).ColNumber(selector any) (int, error)` built on `lookupColSelector`, and use it here instead of `Clone` + `GetCol`. It adds a method to `IDataTable`, so decide it with the interface rules in Key Conventions.
 - **Status**: pending
 
-### [2026-09-28] — remove the deprecated `datafetch` names one release after they were deprecated
-- **Where**: `datafetch/yfinance.go` (`YFPeriodYearly`), `datafetch/googleMapsCommentCrawler.go` (`SortByRelevance`, `SortByNewest`, `SortByHighestRating`, `SortByLowestRating`, `GoogleMapsStoreReviewsFetchingOptions.MaxWaitingInterval_Milliseconds`), `datafetch/geocoding.go` (`ReverseTableByColName`)
-- **What**: `datafetch-naming-cleanup` deprecated them under the one-name rule of #211 (DF-5, filed under #212), keeping each one's value and meaning for one release.
-- **Suggestion**: delete them in the same release as the other Deprecated removals, with their rows in `TestDeprecatedDatafetchNamesSayWhatReplacedThem` and `TestDeprecatedDatafetchNamesKeepTheirValues`, the both-fields check in `GetReviews`, the tests that still use the old names (`TestGetReviewsAtTheMinimumWaitingInterval`, `TestGetReviewsZeroOptionsAreDefaults`, `TestGetReviewsRefusesBothWaitingFields`, `TestReverseTableIndexVsName`, `TestReverseTableInvalidColumn` and the `ReverseTableByColName` case of `TestReverseTableTakesColumnSelectors`), their notes in `Docs/datafetch.md`, and a BREAKING changelog entry.
-- **Status**: pending
-
-### [2026-09-28] — remove `stats.Diag` one release after it was deprecated
-- **Where**: `stats/diag.go`, `stats/diag_test.go` (`TestDiag`, `TestDiagDeprecatedKeepsMeaning`, `TestDiagNoLongerPanics`), and the `Diag (Deprecated)` section of `Docs/stats.md`
-- **What**: `diag-typed-functions` deprecated `Diag(x any, dims ...int) (any, error)` under the one-name rule (#245, ST-9), in favour of `DiagOf`, `DiagMatrix`, `DiagMatrixSize` and `IdentityMatrix`. Nothing else in the module calls it.
-- **Suggestion**: delete it, its tests and its section in the same release as the other Deprecated removals, with a BREAKING changelog entry.
-- **Status**: pending
-
 ### [2026-09-28] — `ReadSlice2D` drops what a row longer than the first holds
 - **Where**: `read.go` `ReadSlice2D`, which takes the column count from the first row
 - **What**: measured on 2026-09-28: `ReadSlice2D([][]float64{{1}, {2, 3}})` returns a 2×1 table and a nil error; the `3` is gone, with no warning and nothing on `Err()`. A shorter row is padded with `nil`, which is fine. `chart-constructors-return-errors` made `gplot.CreateHeatmapChart` take a table and points `[][]float64` callers at `ReadSlice2D`, so a ragged grid that the heat map refused before is now silently cut. `Docs/gplot.md` and the changelog state it.
@@ -496,24 +448,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **What**: measured on 2026-09-28 by the review of `chart-constructors-return-errors`, both present before it. (1) `CreateWordCloud` on a list holding a slice cell (`dl.Append([]int{1, 2})`, or a `Cell([]byte{…})`) panics with `hash of unhashable type []int`, because the cell itself is the map key. (2) `isNilList` recognises only a nil `*insyra.DataList`, so a value of a type that embeds a nil one, such as `isr.DL`, passes and panics with a nil pointer dereference in `plot.CreateBarChart`, `plot.CreateWordCloud`, `gplot.CreateBarChart` and `gplot.CreateLineChart`. `stats` has the same gap (`asDataList`, in the follow-up on three smaller things the dev merge's review measured). So does `py`: `pythonLiteral` in `py/py.go` calls `Data()` or `To2DSlice()` on an `IDataList` or `IDataTable` argument without checking for nil, and measured on 2026-10-03, `replacePlaceholders("x = $v1", (*insyra.DataList)(nil))`, which `RunCodef` reaches, panics with a nil pointer dereference, as does a nil `*insyra.DataTable`.
 - **Suggestion**: (1) count by the text the chart shows, which merges `1` and `"1"` into one word, or by `encodeCell`, which keeps them apart; decide which a word cloud means. (2) one exported helper in the core that recognises a nil list behind an embedding, used by `plot`, `gplot`, `stats` and `py` alike; in `py` a nil list or table could be written as `None`, the way an untyped `nil` argument already is.
 - **Status**: pending, tracked in [#411](https://github.com/HazelnutParadise/insyra/issues/411) (word cloud) and [#412](https://github.com/HazelnutParadise/insyra/issues/412) (nil wrapper)
-
-### [2026-09-28] — remove `Difference`, `MovingAverage`, `MovingStdev` and `WeightedMovingAverage` one release after they were deprecated
-- **Where**: `datalist.go`, their lines in `IDataList` (`interfaces.go`), `internal/dsl/commands/timeseries.go` (`movavg`, `diff`), and the tests that call them (`datalist_legacy_transforms_test.go`, `datalist_legacy_smoothing_test.go`, `datalist_deprecated_test.go`, `datalist_test.go`, `datalist_numeric_test.go`, `chainable_nil_test.go`, `instance_error_test.go`, `error_philosophy_test.go`)
-- **What**: `deprecate-look-alike-window-methods` deprecated the four by the owner's ruling on #222 (2026-09-28), keeping their behaviour for one release instead of turning them into aliases of `Diff(1)` and `Rolling(...)`, which would have changed their results under the same name. The CLI's `movavg` and `diff` still call them.
-- **Suggestion**: delete the four and their `IDataList` lines, drop their rows from the characterization tests and from the table in `Docs/DataList.md`, and add a BREAKING changelog entry, in the same release as the other Deprecated removals. Decide first what `movavg` and `diff` become: reproduce their current output from `Rolling(...).Mean()` and `Diff(1)` by dropping the leading `nil` positions, or deprecate them in favour of `rolling … mean` and `diffn` the way `fillnan` points at `fillna`.
-- **Status**: pending
-
-### [2026-09-28] — remove `SqrtRat`, `PowRat`, `SortTimes` and `F64orRat` one release after they were deprecated
-- **Where**: `utils.go`; the constraint behind `F64orRat` in `internal/utils/utils.go`
-- **What**: `core-utils-cleanup` deprecated the four (#214, K-15): none has anything to do with data tables and nothing in the module calls them. They stay one release, marked Deprecated, with `SqrtRat` and `PowRat` fixed so they no longer panic and `PowRat` computes negative powers.
-- **Suggestion**: delete them and the internal `F64orRat` in the same release as the other Deprecated removals, with `TestSqrtRatNegativeReturnsNil`, `TestPowRatNegativeExponent` and `TestSortTimes`, their sections in `Docs/utils.md`, and a BREAKING changelog entry.
-- **Status**: pending
-
-### [2026-09-28] — remove the deprecated `DataTable` filter and header names one release after they were deprecated
-- **Where**: `datatable_filters.go`, `datatable_colname.go`, `interfaces.go`
-- **What**: under the one-name rule, `filter-rows-where` deprecated `FilterByCustomElement` (#226, T-13), which returns exactly what `Filter` returns, and `datatable-slicing` deprecated the ten `FilterColsByColIndex…`/`FilterRowsByRowIndex…` methods in favour of `SliceCols`/`SliceRows`, and `Headers`/`SetHeaders` in favour of `ColNames`/`SetColNames` (#231, T-21).
-- **Suggestion**: delete the thirteen methods, their lines in `IDataTable`, the tests that pin their old meaning (`TestFilterByCustomElementEqualsFilter`, `TestDeprecatedIndexFiltersMatchSlices`, `TestDeprecatedColIndexFiltersDoNotPanicPastTheEnd`, `TestHeadersAreColNames`) and their sections in `Docs/DataTable.md` in the same release as the other Deprecated removals, with a BREAKING changelog entry.
-- **Status**: pending
 
 ### [2026-09-28] — `TestMultiDeviceDispatchMergesRangesAndReportsPlacement` fails on Windows when a shard finishes within one clock tick
 - **Where**: `accel/multi_device_test.go`, the `assignment.WallTime <= 0` check; `accel/exact.go` sets `WallTime` from `time.Since`
@@ -551,22 +485,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: each is a few lines in its own command: refuse the extra names, the range, the token, or the option, and make `config`'s Usage say `config [<key> <value>]` unless reading one key is wanted. They are independent, so they can go in one small change.
 - **Status**: pending
 
-### [2026-09-26] — remove the underscore reader and writer names one release after their replacements
-- **Where**: `read.go` (`ReadCSV_File`, `ReadCSV_FileWithOptions`, `ReadCSV_String`, `ReadCSV_StringWithOptions`, `ReadJSON_File`), `datatable_csv.go` (`ToCSVWithOptions`), `datatable_json.go` (`ToJSON_Bytes`, `ToJSON_String`) and the two JSON methods in `IDataTable`
-- **What**: `read-write-names` gave each reader and writer one name taking an optional options struct, by the owner's rulings on #213. The old names stay one release as Deprecated wrappers that keep their old meaning.
-- **Suggestion**: delete them, and `CSVWriteOptions.SanitizeFormulas` (a no-op since `csv-formula-guard-by-default` made the guard the default), in the same release as `Slice2DToDataTable` and `ScalerParams.PassThrough`, with the tests that pin their old meaning (`TestDeprecatedReadWriteNamesKeepTheirMeaning`, `TestReadCSV_StringLegacyNoHeaderMatchesNoHeaderRow`) and a BREAKING changelog entry.
-- **Status**: pending
-
-### [2026-09-26] — remove `ScalerParams.PassThrough` one release after it went dead
-- **Where**: `datatable_scale.go` (`ScalerParams.PassThrough`)
-- **What**: `imputer-refuses-unfillable-columns` made `SimpleImputer.Fit` refuse a selected column its mean or median cannot fill, by the owner's ruling on #213, so nothing sets the field any more. It stays one release, always false and Deprecated.
-- **Suggestion**: delete it in the same release as `Slice2DToDataTable`, with a BREAKING changelog entry.
-- **Status**: pending
-
-### [2026-09-25] — remove `Slice2DToDataTable` one release after `ReadSlice2D` became its one name
-- **Where**: `read.go` (`Slice2DToDataTable`)
-- **What**: `exported-functions-are-functions` made `ReadSlice2D` the function that turns a 2D slice into a DataTable and left `Slice2DToDataTable` as a Deprecated wrapper, by the owner's ruling on #211 that each function has one name and the `Read*` family keeps it.
-- **Suggestion**: in the first release after the one that ships `exported-functions-are-functions`, delete `Slice2DToDataTable` and `TestSlice2DToDataTableMatchesReadSlice2D`, drop the deprecated-spelling note from `Docs/DataTable.md`, and add a BREAKING changelog entry. Do it in the same release as the `SetDontPanic` removal if they coincide.
+### [2026-09-26] — remove the `ReadCSV_…` names and `CSVWriteOptions.SanitizeFormulas` one release after their replacements
+- **Where**: `read.go` (`ReadCSV_File`, `ReadCSV_FileWithOptions`, `ReadCSV_String`, `ReadCSV_StringWithOptions`), `datatable_csv.go` (`ToCSVWithOptions`)
+- **What**: `read-write-names` gave each reader and writer one name taking an optional options struct, by the owner's rulings on #213. `ReadJSON_File`, `ToJSON_Bytes` and `ToJSON_String` are already deleted (`remove-dev-deprecated-apis`); the names above stay one release as Deprecated wrappers that keep their old meaning, because 0.3.4 shipped them and `dev` has no deprecation for them.
+- **Suggestion**: delete them, and `CSVWriteOptions.SanitizeFormulas` (a no-op since `csv-formula-guard-by-default` made the guard the default), with the tests that pin their old meaning (`TestDeprecatedReadWriteNamesKeepTheirMeaning`, `TestReadCSV_StringLegacyNoHeaderMatchesNoHeaderRow`) and a BREAKING changelog entry.
 - **Status**: pending
 
 ### [2026-09-27] — outside the hypothesis tests, `stats` still numbers some positions from zero, and two paths let `NaN` through
@@ -729,12 +651,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `config.go` (`SetDontPanic`, `GetDontPanicStatus`)
 - **What**: The library never terminates or panics by default. `LogFatal` records the error and returns; `Config.SetPanicOnError(true)` is the opt-in that turns any recorded error into a `panic` (never `os.Exit`). `SetDontPanic(v)` remains one release as a Deprecated alias for `SetPanicOnError(!v)` so existing callers keep compiling. Shipped in `make-errors-non-terminating` (2026-09-07).
 - **Suggestion**: In the first release after the one that ships `make-errors-non-terminating`, delete `SetDontPanic` and `GetDontPanicStatus`, drop the alias note from `Docs/Configuration.md`, and add a BREAKING changelog entry. Do not let the alias drift into a second release.
-- **Status**: pending
-
-### [2026-09-07] — delete the nine Deprecated global error-buffer accessors
-- **Where**: `error_buffer.go` (`PopError`, `PopErrorByPackageName`, `PopErrorByFuncName`, `PopErrorAndCallback`, `PeekError`, `GetErrorsByLevel`, `GetErrorsByPackage`, `PopErrorInfo`, `HasErrorAboveLevel`)
-- **What**: The global buffer is a diagnostic log, not an error-handling API — it mixes records from every goroutine and object. `make-errors-non-terminating` marked these nine Deprecated and kept `GetAllErrors`, `PopAllErrors`, `HasError`, `GetErrorCount` and `ClearErrors` as the supported surface.
-- **Suggestion**: Delete them in the same release that drops `SetDontPanic`, with a BREAKING changelog entry.
 - **Status**: pending
 
 ### [2026-08-01] — multi-GPU planning and execution coverage

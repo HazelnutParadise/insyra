@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -177,29 +174,6 @@ func TestPipInstallContextStopsWithItsContext(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 20*time.Second {
 		t.Errorf("the install took %v to stop", elapsed)
-	}
-}
-
-func TestRunCodeWithTimeoutKeepsItsMeaning(t *testing.T) {
-	useFakePython(t, "sleep")
-	if err := RunCodeWithTimeout(300*time.Millisecond, nil, "import time\ntime.sleep(60)"); !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("RunCodeWithTimeout gave %v, want context.DeadlineExceeded", err)
-	}
-
-	f, err := parser.ParseFile(token.NewFileSet(), "py.go", nil, parser.ParseComments)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var doc string
-	for _, d := range f.Decls {
-		if fn, ok := d.(*ast.FuncDecl); ok && fn.Name.Name == "RunCodeWithTimeout" {
-			doc = strings.Join(strings.Fields(fn.Doc.Text()), " ")
-		}
-	}
-	for _, want := range []string{"Deprecated: use RunCodeContext", "Removed in the release after the one that deprecated it."} {
-		if !strings.Contains(doc, want) {
-			t.Errorf("RunCodeWithTimeout's doc %q does not say %q", doc, want)
-		}
 	}
 }
 

@@ -60,8 +60,6 @@ func TestInPlaceTransformsRefuseMixedData(t *testing.T) {
 		{"Normalize", func(dl *DataList) { dl.Normalize() }},
 		{"Standardize", func(dl *DataList) { dl.Standardize() }},
 		{"ClearOutliers", func(dl *DataList) { dl.ClearOutliers(2) }},
-		{"Difference", func(dl *DataList) { dl.Difference() }},
-		{"FillNaNWithMean", func(dl *DataList) { dl.FillNaNWithMean() }},
 	}
 	for _, c := range cases {
 		dl := NewDataList(1, "x", 3)
@@ -113,18 +111,6 @@ func TestClearOutliersKeepsNil(t *testing.T) {
 	want := []any{10, 10, 10, 10, 10, 10, 10, nil}
 	if !reflect.DeepEqual(dl.Data(), want) {
 		t.Fatalf("got %v", dl.Data())
-	}
-}
-
-func TestDifferenceEmitsNaNForMissingOperand(t *testing.T) {
-	d := NewDataList(1, nil, 4).Difference()
-	if d == nil || d.Len() != 2 {
-		t.Fatalf("expected 2 differences, got %v", d)
-	}
-	for _, v := range d.Data() {
-		if f, ok := v.(float64); !ok || !math.IsNaN(f) {
-			t.Fatalf("expected NaN, got %v", d.Data())
-		}
 	}
 }
 

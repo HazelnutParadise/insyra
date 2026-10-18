@@ -70,28 +70,6 @@ func TestGetUseColoredOutputMirrorsItsSetter(t *testing.T) {
 	}
 }
 
-func TestDeprecatedCoreNamesKeepTheirResults(t *testing.T) {
-	for n := -3; n <= 20000; n++ {
-		oldIndex, oldOK := CalcColIndex(n)
-		newIndex, newOK := ColNumberToIndex(n)
-		if oldIndex != newIndex || oldOK != newOK {
-			t.Fatalf("CalcColIndex(%d) = %q, %v; ColNumberToIndex = %q, %v", n, oldIndex, oldOK, newIndex, newOK)
-		}
-		oldNumber, oldOK := ParseColIndex(newIndex)
-		newNumber, newOK := ColIndexToNumber(newIndex)
-		if oldNumber != newNumber || oldOK != newOK {
-			t.Fatalf("ParseColIndex(%q) = %d, %v; ColIndexToNumber = %d, %v", newIndex, oldNumber, oldOK, newNumber, newOK)
-		}
-	}
-	defer SetDefaultConfig()
-	for _, colored := range []bool{false, true} {
-		Config.SetUseColoredOutput(colored)
-		if Config.GetDoesUseColoredOutput() != Config.GetUseColoredOutput() {
-			t.Fatalf("with coloured output %v, GetDoesUseColoredOutput and GetUseColoredOutput disagree", colored)
-		}
-	}
-}
-
 // rootDocComments returns the doc comment of each function and method declared
 // in the named files, keyed by name, on one line.
 func rootDocComments(t *testing.T, files ...string) map[string]string {
@@ -110,27 +88,6 @@ func rootDocComments(t *testing.T, files ...string) map[string]string {
 		}
 	}
 	return docs
-}
-
-func TestDeprecatedCoreNamesSayWhatReplacedThem(t *testing.T) {
-	const removal = "Removed in the release after the one that deprecated it."
-	deprecated := map[string]string{
-		"ParseColIndex":           "ColIndexToNumber",
-		"CalcColIndex":            "ColNumberToIndex",
-		"GetDoesUseColoredOutput": "GetUseColoredOutput",
-	}
-	docs := rootDocComments(t, "utils.go", "config.go")
-	for old, current := range deprecated {
-		doc, ok := docs[old]
-		if !ok {
-			t.Errorf("%s has no doc comment in utils.go or config.go", old)
-			continue
-		}
-		notice := "Deprecated: use " + current + ", which is the same "
-		if !strings.Contains(doc, notice) || !strings.Contains(doc, removal) {
-			t.Errorf("%s doc is %q; want it to contain %q and %q", old, doc, notice, removal)
-		}
-	}
 }
 
 func TestThreadSafetySwitchSaysItsUnderscoreIsDeliberate(t *testing.T) {

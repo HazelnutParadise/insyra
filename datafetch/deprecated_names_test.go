@@ -67,12 +67,6 @@ func TestDeprecatedDatafetchNamesSayWhatReplacedThem(t *testing.T) {
 	const removal = "Removed in the release after the one that deprecated it."
 	// Later changes add their deprecated names here.
 	deprecated := []struct{ file, name, notice string }{
-		{"yfinance.go", "YFPeriodYearly", "Deprecated: use YFPeriodAnnual"},
-		{"googleMapsCommentCrawler.go", "SortByRelevance", "Deprecated: use GoogleMapsStoreReviewSortByRelevance"},
-		{"googleMapsCommentCrawler.go", "SortByNewest", "Deprecated: use GoogleMapsStoreReviewSortByNewest"},
-		{"googleMapsCommentCrawler.go", "SortByHighestRating", "Deprecated: use GoogleMapsStoreReviewSortByHighestRating"},
-		{"googleMapsCommentCrawler.go", "SortByLowestRating", "Deprecated: use GoogleMapsStoreReviewSortByLowestRating"},
-		{"googleMapsCommentCrawler.go", "GoogleMapsStoreReviewsFetchingOptions.MaxWaitingInterval_Milliseconds", "Deprecated: use MaxWaitingInterval"},
 		{"geocoding.go", "TWGeocodingClient.ReverseTableByColName", "Deprecated: use ReverseTable(dt, insyra.Name(latColName), insyra.Name(lngColName))"},
 	}
 	for _, d := range deprecated {
@@ -83,23 +77,6 @@ func TestDeprecatedDatafetchNamesSayWhatReplacedThem(t *testing.T) {
 		}
 		if !strings.Contains(doc, d.notice) || !strings.Contains(doc, removal) {
 			t.Errorf("%s doc is %q; want it to contain %q and %q", d.name, doc, d.notice, removal)
-		}
-	}
-}
-
-func TestDeprecatedDatafetchNamesKeepTheirValues(t *testing.T) {
-	if YFPeriodYearly != YFPeriod("yearly") {
-		t.Errorf("YFPeriodYearly is %q, want \"yearly\"", YFPeriodYearly)
-	}
-	pairs := []struct{ old, current, want GoogleMapsStoreReviewSortBy }{
-		{SortByRelevance, GoogleMapsStoreReviewSortByRelevance, 1},
-		{SortByNewest, GoogleMapsStoreReviewSortByNewest, 2},
-		{SortByHighestRating, GoogleMapsStoreReviewSortByHighestRating, 3},
-		{SortByLowestRating, GoogleMapsStoreReviewSortByLowestRating, 4},
-	}
-	for _, p := range pairs {
-		if p.old != p.want || p.current != p.want {
-			t.Errorf("old name %d and new name %d, want both %d", p.old, p.current, p.want)
 		}
 	}
 }

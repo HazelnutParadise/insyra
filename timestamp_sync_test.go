@@ -11,7 +11,7 @@ func TestUpdateTimestampSynchronous_DataList(t *testing.T) {
 	dl := NewDataList(1, 2, 3)
 	dl.lastModifiedTimestamp.Store(0)
 	dl.Append(4)
-	if dl.GetLastModifiedTimestamp() == 0 {
+	if dl.lastModifiedTimestamp.Load() == 0 {
 		t.Fatal("Append returned before lastModifiedTimestamp was updated")
 	}
 }
@@ -20,7 +20,7 @@ func TestUpdateTimestampSynchronous_DataTable(t *testing.T) {
 	dt := NewDataTable(NewDataList(1, 2).SetName("c"))
 	dt.lastModifiedTimestamp.Store(0)
 	dt.AppendRowsByColIndex(map[string]any{"A": 3})
-	if dt.GetLastModifiedTimestamp() == 0 {
+	if dt.lastModifiedTimestamp.Load() == 0 {
 		t.Fatal("AppendRowsByColIndex returned before lastModifiedTimestamp was updated")
 	}
 }

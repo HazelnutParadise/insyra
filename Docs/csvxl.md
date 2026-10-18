@@ -247,22 +247,6 @@ func insyra.DetectEncoding(csvFile string) (string, error)
 - `string`: Return value.
 - `error`: Error when the operation fails.
 
-## Deprecated names
-
-The functions used to be spelled with `Csv`, which Go's naming convention writes `CSV`, like every other package in insyra does. The old names still work and are **Deprecated**; they will be removed in the release after the one that deprecated them.
-
-Three of them keep their old parameters, which pair names by position: `CsvToExcel(csvFiles, sheetNames, …)` and `AppendCsvToExcel` give `csvFiles[i]` the sheet `sheetNames[i]`, and `ExcelToCsv(…, csvNames, …)` gives the i-th converted sheet the file `csvNames[i]`. Their replacements take the name together with what it names. A pairing that would put two CSVs in one sheet or two sheets in one CSV is an error in the old names too.
-
-| Deprecated | Use |
-| --- | --- |
-| `CsvToExcel(files, names, out)` | `CSVToExcel([]SheetFromCSV{{Path: files[0], Sheet: names[0]}, …}, out)` |
-| `AppendCsvToExcel(files, names, book)` | `AppendCSVToExcel([]SheetFromCSV{…}, book)` |
-| `ExcelToCsv(book, dir, names, opts)` | `ExcelToCSV(book, dir, ExcelToCSVOptions{FileNames: map[string]string{"Sheet": "file"}})` |
-| `ExcelToCsvOptions` | `ExcelToCSVOptions` (the same type) |
-| `EachCsvToOneExcel` | `CSVDirToExcel` |
-| `EachExcelToCsv` | `ExcelDirToCSV` |
-| `ReadCsvToString` | `ReadCSVToString` |
-
 ## Errors
 
 Errors wrap the underlying cause, so `errors.Is(err, os.ErrNotExist)` and similar checks work through them. Output directories are created with mode 0755.

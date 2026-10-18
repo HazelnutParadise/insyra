@@ -6,9 +6,8 @@ import (
 	"testing"
 )
 
-// The weights of WeightedMean and WeightedMovingAverage are one weight per
-// element or per window position, held as a plain []float64, the same type
-// RollingOptions.Weights takes. No conversion at the call site any more.
+// The weights of WeightedMean are one weight per element, held as a plain
+// []float64, the same type RollingOptions.Weights takes. No conversion at the call site any more.
 func TestWeightedMethodsTakeFloat64Weights(t *testing.T) {
 	want := reflect.TypeOf([]float64(nil))
 	dlType := reflect.TypeOf((*DataList)(nil))
@@ -19,14 +18,6 @@ func TestWeightedMethodsTakeFloat64Weights(t *testing.T) {
 	}
 	if got := mean.Type.In(1); got != want {
 		t.Errorf("WeightedMean weights parameter is %v, want %v", got, want)
-	}
-
-	movingAvg, ok := dlType.MethodByName("WeightedMovingAverage")
-	if !ok {
-		t.Fatal("DataList has no method WeightedMovingAverage")
-	}
-	if got := movingAvg.Type.In(2); got != want {
-		t.Errorf("WeightedMovingAverage weights parameter is %v, want %v", got, want)
 	}
 }
 
@@ -59,37 +50,6 @@ func TestWeightedMeanWithFloat64Weights(t *testing.T) {
 		}
 		if dl.Err() == nil {
 			t.Error("WeightedMean with the wrong number of weights recorded no error")
-		}
-	})
-}
-
-func TestWeightedMovingAverageWithFloat64Weights(t *testing.T) {
-	t.Run("one weight per window position", func(t *testing.T) {
-		dl := NewDataList(1.0, 2.0, 3.0)
-		// (1*1 + 2*3)/4 = 1.75, (2*1 + 3*3)/4 = 2.75
-		got := dl.WeightedMovingAverage(2, []float64{1, 3})
-		if got == nil {
-			t.Fatal("WeightedMovingAverage returned nil")
-		}
-		if !reflect.DeepEqual(got.Data(), []any{1.75, 2.75}) {
-			t.Errorf("WeightedMovingAverage = %v, want [1.75 2.75]", got.Data())
-		}
-	})
-
-	t.Run("weights of the wrong length fail", func(t *testing.T) {
-		dl := NewDataList(1.0, 2.0, 3.0)
-		got := dl.WeightedMovingAverage(2, []float64{1})
-		if got == nil {
-			t.Fatal("WeightedMovingAverage returned nil")
-		}
-		if got.Len() != 0 {
-			t.Errorf("WeightedMovingAverage = %v, want an empty result", got.Data())
-		}
-		if got.Err() == nil {
-			t.Error("the result recorded no error")
-		}
-		if dl.Err() == nil {
-			t.Error("the receiver recorded no error")
 		}
 	})
 }

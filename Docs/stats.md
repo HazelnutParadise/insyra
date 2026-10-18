@@ -26,7 +26,7 @@ The stats package provides comprehensive statistical analysis functions:
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
 - **Instance-Based Prediction**: K-nearest neighbors (KNN) classification and regression
 - **Clustering Analysis**: K-means, hierarchical agglomerative clustering, DBSCAN, silhouette analysis
-- **Matrix Operations**: Diagonal matrix creation and extraction (Diag function)
+- **Matrix Operations**: Diagonal matrix creation and extraction (`DiagOf`, `DiagMatrix`, `DiagMatrixSize`, `IdentityMatrix`)
 
 Most functions expect numeric data in `DataList`/`DataTable` and return `error` when inputs are invalid or computation fails. Always handle `err` at call sites.
 
@@ -2510,28 +2510,6 @@ if err != nil {
 }
 fmt.Println(d, mat.Formatted(sq), mat.Formatted(rect), mat.Formatted(id))
 ```
-
-### Diag (Deprecated)
-
-```go
-func Diag(x any, dims ...int) (any, error)
-```
-
-**Deprecated:** `Diag` took and returned `any`, so every caller had to type-assert the result. It keeps its old meaning for this release and is removed in the next. A size below 1, such as `Diag(0)` or `Diag([]float64{})`, is an error; it used to panic. Replace each call with the typed function:
-
-| `Diag` call | Replacement |
-| --- | --- |
-| `Diag(m)` | `DiagOf(m)` |
-| `Diag(v)` | `DiagMatrix(v)` |
-| `Diag(v, n)` | `DiagMatrixSize(v, n, n)` |
-| `Diag(v, nrow, ncol)` | `DiagMatrixSize(v, nrow, ncol)` |
-| `Diag(n)` | `IdentityMatrix(n)` |
-| `Diag(nil)` | `IdentityMatrix(1)` |
-| `Diag(nil, nrow, ncol)` | `DiagMatrixSize(ones, nrow, ncol)`, with `ones` holding `min(nrow, ncol)` ones |
-
-`DiagMatrixSize` refuses a `v` longer than the diagonal, where `Diag(v, nrow, ncol)` cut it short.
-
----
 
 ## Method Reference
 

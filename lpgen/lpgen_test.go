@@ -268,12 +268,12 @@ X1 >= 1;
 @INT(X4);
 END`
 
-func TestParseLingoModel_str(t *testing.T) {
+func TestParseLingo(t *testing.T) {
 	quiet(t)
 
-	m := ParseLingoModel_str(lingoModel)
-	if m == nil {
-		t.Fatal("ParseLingoModel_str returned nil")
+	m, err := ParseLingo(lingoModel)
+	if err != nil {
+		t.Fatalf("ParseLingo: %v", err)
 	}
 
 	if m.ObjectiveType != "Maximize" {
@@ -300,88 +300,40 @@ func TestParseLingoModel_str(t *testing.T) {
 }
 
 // An expression split over several lines is joined before it is read.
-func TestParseLingoModel_str_MultiLineExpression(t *testing.T) {
+func TestParseLingo_MultiLineExpression(t *testing.T) {
 	quiet(t)
 
-	m := ParseLingoModel_str("MODEL:\nMIN= X1\n + X2\n + X3;\nEND")
-	if m == nil {
-		t.Fatal("ParseLingoModel_str returned nil")
+	m, err := ParseLingo("MODEL:\nMIN= X1\n + X2\n + X3;\nEND")
+	if err != nil {
+		t.Fatalf("ParseLingo: %v", err)
 	}
 	if want := "X1 + X2 + X3"; m.Objective != want {
 		t.Errorf("objective: got %q, want %q", m.Objective, want)
 	}
 }
 
-// The parser reads the whole thing and keeps nothing it did not recognise. An
-// expression that never ends with a semicolon is never flushed, so it is
-// dropped — worth pinning, because it looks like data loss and is by design.
-func TestParseLingoModel_str_EdgeCases(t *testing.T) {
+func TestParseLingo_EdgeCases(t *testing.T) {
 	quiet(t)
 
 	t.Run("empty input", func(t *testing.T) {
-		m := ParseLingoModel_str("")
-		if m == nil {
-			t.Fatal("empty input gave nil")
+		m, err := ParseLingo("")
+		if err != nil {
+			t.Fatalf("empty input gave %v", err)
 		}
 		if m.Objective != "" || len(m.Constraints) != 0 || len(m.Bounds) != 0 {
 			t.Errorf("empty input produced %+v", m)
 		}
 	})
 
-	t.Run("unterminated expression is dropped", func(t *testing.T) {
-		m := ParseLingoModel_str("MODEL:\nMIN= X1 + X2\nEND")
-		if m == nil {
-			t.Fatal("returned nil")
-		}
-		if m.Objective != "" {
-			t.Errorf("an expression with no semicolon was kept: %q", m.Objective)
-		}
-	})
-
-	t.Run("unrecognised expression is dropped", func(t *testing.T) {
-		m := ParseLingoModel_str("MODEL:\nhello world;\nEND")
-		if m == nil {
-			t.Fatal("returned nil")
-		}
-		if len(m.Constraints) != 0 || len(m.Bounds) != 0 {
-			t.Errorf("an unrecognised expression was kept: %+v", m)
-		}
-	})
-
 	t.Run("lowercase min and max", func(t *testing.T) {
-		m := ParseLingoModel_str("min= X;")
+		m, err := ParseLingo("min= X;")
+		if err != nil {
+			t.Fatalf("ParseLingo: %v", err)
+		}
 		if m.ObjectiveType != "Minimize" {
 			t.Errorf("objective type: got %q, want \"Minimize\"", m.ObjectiveType)
 		}
 	})
-}
-
-func TestParseLingoModel_txt(t *testing.T) {
-	quiet(t)
-
-	path := filepath.Join(t.TempDir(), "model.lng")
-	if err := os.WriteFile(path, []byte(lingoModel), 0o600); err != nil {
-		t.Fatalf("writing the fixture: %v", err)
-	}
-
-	fromFile := ParseLingoModel_txt(path)
-	fromString := ParseLingoModel_str(lingoModel)
-	if fromFile == nil {
-		t.Fatal("ParseLingoModel_txt returned nil for a readable file")
-	}
-	if !reflect.DeepEqual(fromFile, fromString) {
-		t.Errorf("the file and string parsers disagree:\n file:   %+v\n string: %+v", fromFile, fromString)
-	}
-}
-
-// A file that cannot be opened gives nil, which is the only signal the caller
-// gets — there is no error return.
-func TestParseLingoModel_txt_MissingFile(t *testing.T) {
-	quiet(t)
-
-	if m := ParseLingoModel_txt(filepath.Join(t.TempDir(), "nope.lng")); m != nil {
-		t.Errorf("a missing file gave %+v, want nil", m)
-	}
 }
 
 // lingoIsBound is what decides whether a relation lands in Bounds or in

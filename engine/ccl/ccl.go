@@ -207,19 +207,3 @@ func RegisterAggregateFunction(name string, fn AggFunc) {
 func RegisterSequenceFunction(name string, fn SeqFunc) {
 	internalccl.RegisterSequenceFunction(name, fn)
 }
-
-// ResetEvalDepth does nothing. Recursion depth has been threaded on the call
-// stack since thread-ccl-eval-depth (issue #191), so there is no global state
-// left to reset.
-//
-// Deprecated: it does nothing; remove the call. Removed in the release after the
-// one that deprecated it.
-func ResetEvalDepth() {
-}
-
-// ResetFuncCallDepth does nothing, for the same reason as ResetEvalDepth.
-//
-// Deprecated: it does nothing; remove the call. Removed in the release after the
-// one that deprecated it.
-func ResetFuncCallDepth() {
-}

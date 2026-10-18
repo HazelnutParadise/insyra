@@ -115,19 +115,3 @@ func (dt *DataTable) ToJSONBytes(useColNames bool) []byte {
 func (dt *DataTable) ToJSONString(useColNames bool) string {
 	return string(dt.ToJSONBytes(useColNames))
 }
-
-// ToJSON_Bytes returns the DataTable as indented JSON.
-//
-// Deprecated: use ToJSONBytes, which is the same method. Removed in the
-// release after the one that deprecated it.
-func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte {
-	return dt.ToJSONBytes(useColNames)
-}
-
-// ToJSON_String returns the DataTable as indented JSON text.
-//
-// Deprecated: use ToJSONString, which is the same method. Removed in the
-// release after the one that deprecated it.
-func (dt *DataTable) ToJSON_String(useColNames bool) string {
-	return dt.ToJSONString(useColNames)
-}

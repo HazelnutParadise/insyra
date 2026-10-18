@@ -216,9 +216,8 @@ Configuration for review fetching.
 
 ```go
 type GoogleMapsStoreReviewsFetchingOptions struct {
-    SortBy                          GoogleMapsStoreReviewSortBy
-    MaxWaitingInterval              time.Duration
-    MaxWaitingInterval_Milliseconds uint // Deprecated: use MaxWaitingInterval
+    SortBy             GoogleMapsStoreReviewSortBy
+    MaxWaitingInterval time.Duration
 }
 ```
 
@@ -226,7 +225,6 @@ type GoogleMapsStoreReviewsFetchingOptions struct {
 
 - `SortBy`: How to sort reviews. Zero means by relevance.
 - `MaxWaitingInterval`: The longest wait between two review pages, which helps avoid rate limiting. Each wait is random between one second and this value, so it must be at least one second; a smaller value is replaced by the default with a warning. Zero means 5 seconds.
-- `MaxWaitingInterval_Milliseconds`: **Deprecated.** The same limit counted in milliseconds, removed in the release after the one that deprecated it. Setting it together with `MaxWaitingInterval` is an error: `GetReviews` returns `nil` with a warning before any request.
 
 ### GoogleMapsStoreReviewSortBy
 
@@ -240,8 +238,6 @@ const (
     GoogleMapsStoreReviewSortByLowestRating  GoogleMapsStoreReviewSortBy = 4 // 1-star reviews first
 )
 ```
-
-`SortByRelevance`, `SortByNewest`, `SortByHighestRating` and `SortByLowestRating` are deprecated constants with the same values, removed in the release after the one that deprecated them.
 
 ## Notes
 
@@ -406,8 +402,6 @@ These methods return a `*datafetch.YFFinancialStatementTables` structure contain
 
 - `datafetch.YFPeriodAnnual` (Default)
 - `datafetch.YFPeriodQuarterly`
-
-`datafetch.YFPeriodYearly` is deprecated: it fetches the same statements as `YFPeriodAnnual` but labels the tables `yearly`, and it is removed in the release after the one that deprecated it.
 
 #### 4. Options & Derivatives
 

@@ -171,13 +171,6 @@ func (dt *DataTable) ColNames() []string {
 	return result
 }
 
-// Headers returns the column names, exactly as ColNames does.
-//
-// Deprecated: use ColNames.
-func (dt *DataTable) Headers() []string {
-	return dt.ColNames()
-}
-
 // SetColNames names the existing columns in order, the way SetRowNames names
 // rows. Columns past the last name lose their names; names past the last column
 // are ignored with a warning. A name given earlier in the same call gets a
@@ -203,13 +196,6 @@ func (dt *DataTable) SetColNames(colNames []string) *DataTable {
 		result = dt
 	})
 	return result
-}
-
-// SetHeaders names the columns, exactly as SetColNames does.
-//
-// Deprecated: use SetColNames.
-func (dt *DataTable) SetHeaders(headers []string) *DataTable {
-	return dt.SetColNames(headers)
 }
 
 // ---------------------- not atomic below ----------------------

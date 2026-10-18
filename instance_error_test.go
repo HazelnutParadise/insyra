@@ -13,14 +13,14 @@ func TestErrIsSticky(t *testing.T) {
 	Config.SetPanicOnError(false)
 
 	dl := NewDataList(1.0, 2.0, 3.0)
-	dl.MovingAverage(0)                       // first failure: invalid window
-	dl.WeightedMovingAverage(2, []float64{1}) // second failure: weights length
+	dl.Diff(0)       // first failure: invalid periods
+	dl.PctChange(-1) // second failure: invalid periods
 	err := dl.Err()
 	if err == nil {
 		t.Fatal("no error recorded")
 	}
-	if err.FuncName != "MovingAverage" {
-		t.Fatalf("Err() reports %q; the first failure (MovingAverage) must win", err.FuncName)
+	if err.FuncName != "Diff" {
+		t.Fatalf("Err() reports %q; the first failure (Diff) must win", err.FuncName)
 	}
 
 	dt := NewDataTable(NewDataList(1, 2, 3).SetName("a"))

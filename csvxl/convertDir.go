@@ -25,14 +25,6 @@ func CSVDirToExcel(dir string, output string, encoding ...string) error {
 	return CSVToExcel(sheets, output, encoding...)
 }
 
-// EachCsvToOneExcel converts every CSV file in a directory into one workbook.
-//
-// Deprecated: use CSVDirToExcel, which is the same function. Removed in the
-// release after the one that deprecated it.
-func EachCsvToOneExcel(dir string, output string, encoding ...string) error {
-	return CSVDirToExcel(dir, output, encoding...)
-}
-
 // ExcelDirToCSV writes every sheet of every Excel workbook directly inside
 // dir, those whose name ends in ".xlsx", as CSV files in outputDir. Each file
 // is named after its workbook and sheet, as in "Book_Sheet.csv". The options
@@ -76,14 +68,6 @@ func ExcelDirToCSV(dir string, outputDir string, options ...ExcelToCSVOptions) e
 	}
 
 	return nil
-}
-
-// EachExcelToCsv writes every sheet of every workbook in a directory as CSV.
-//
-// Deprecated: use ExcelDirToCSV, which is the same function. Removed in the
-// release after the one that deprecated it.
-func EachExcelToCsv(dir string, outputDir string, options ...ExcelToCsvOptions) error {
-	return ExcelDirToCSV(dir, outputDir, options...)
 }
 
 // planExcelFileCSVs returns where each selected sheet of one workbook goes.

@@ -16,13 +16,6 @@ type DataList struct {
 	*insyra.DataList
 }
 
-// Deprecated: Use UseDL instead.
-// PtrDL converts a DataList or DL to a *DL.
-// You should no longer use this function, use UseDL instead.
-func PtrDL[T *insyra.DataList | DataList](l T) *DataList {
-	return UseDL(l)
-}
-
 // From is equivalent to insyra.NewDataList(data...).
 // nolint:govet
 func (d DataList) From(data ...any) *DataList {

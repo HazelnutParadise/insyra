@@ -2,10 +2,12 @@
 
 ## Purpose
 `csvxl` 如何把呼叫端給的路徑變成實際讀寫的檔案：讀取時原路徑優先，不存在才補 `.csv`；寫出時保留呼叫端給的副檔名，沒有副檔名才補 `.csv`。補 `.csv` 只填空缺，永遠不覆蓋呼叫端寫下的名字。
+
 ## Requirements
+
 ### Requirement: A source path is read as written first
 
-`CsvToExcel` and `AppendCsvToExcel` SHALL open each source path as given when it names an existing file. Only when it does not exist, or names a directory, SHALL they append `.csv` and try that path. When neither exists the failure SHALL name both paths.
+`CSVToExcel` and `AppendCSVToExcel` SHALL open each source path as given when it names an existing file. Only when it does not exist, or names a directory, SHALL they append `.csv` and try that path. When neither exists the failure SHALL name both paths.
 
 #### Scenario: A CSV whose name does not end in .csv
 - **WHEN** the source is `export.txt` or `DATA.CSV` and that file exists
@@ -29,7 +31,7 @@
 
 ### Requirement: An output name keeps the extension it was given
 
-`ExcelToCSV` SHALL use a `FileNames` value as written when it has an extension of any case, and SHALL append `.csv` only to a value with no extension. The deprecated `ExcelToCsv` SHALL treat its `csvNames` entries the same way.
+`ExcelToCSV` SHALL use a `FileNames` value as written when it has an extension of any case, and SHALL append `.csv` only to a value with no extension.
 
 #### Scenario: A name with its own extension
 - **WHEN** `FileNames` maps a sheet to `report.txt` or `REPORT.CSV`
@@ -38,4 +40,3 @@
 #### Scenario: A bare name
 - **WHEN** `FileNames` maps a sheet to `report`
 - **THEN** the file written is `report.csv`
-

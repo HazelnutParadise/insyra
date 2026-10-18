@@ -10,7 +10,7 @@
 `DataList` 上回傳 `*DataList` 的方法 SHALL NOT 回傳 nil。會產生新 list 的方法失敗時 SHALL 回傳可用的空 `DataList`，錯誤 SHALL 同時記錄在該結果與接收者上。直接修改接收者的方法失敗時 SHALL 回傳接收者本身、內容不變，錯誤記錄在接收者上。
 
 #### Scenario: Invalid window keeps the chain alive
-- **WHEN** 對 3 個元素的 list 呼叫 `MovingAverage(0).Sort()`
+- **WHEN** 對 3 個元素的 list 呼叫 `Sample(0, false).Sort()`
 - **THEN** 不 panic，結果長度為 0，接收者的 `Err()` 非 nil
 
 #### Scenario: A failed in-place method keeps the data

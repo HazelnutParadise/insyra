@@ -20,14 +20,6 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// Slice2DToDataTable converts a 2D slice into a DataTable.
-//
-// Deprecated: use ReadSlice2D, which is the same function. This spelling is
-// removed in the release after the one that deprecated it.
-func Slice2DToDataTable(data any) (*DataTable, error) {
-	return ReadSlice2D(data)
-}
-
 // ReadSlice2D converts a 2D slice of any type into a DataTable, one inner
 // slice per row. It supports [][]any, [][]int, [][]float64, [][]string and
 // other 2D slice and array types.
@@ -600,14 +592,6 @@ func readExcelSheetFrom(f *excelize.File, sheetName string, rowNames bool, heade
 }
 
 // ----- json -----
-
-// ReadJSON_File reads a JSON file.
-//
-// Deprecated: use ReadJSONFile, which is the same function. Removed in the
-// release after the one that deprecated it.
-func ReadJSON_File(filePath string) (*DataTable, error) {
-	return ReadJSONFile(filePath)
-}
 
 // ReadJSONFile reads a JSON file and loads the data into a DataTable.
 // It decodes through the same path as ReadJSON, so numbers are typed the

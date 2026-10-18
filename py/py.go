@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	json "github.com/goccy/go-json"
 
@@ -155,18 +154,6 @@ func RunFilefContext(ctx context.Context, out any, filePath string, args ...any)
 		return fmt.Errorf("failed to format code: %w", err)
 	}
 	return runPythonCodeContext(ctx, out, formattedCode)
-}
-
-// RunCodeWithTimeout runs the code under a context that ends after timeout,
-// and returns context.DeadlineExceeded when it does.
-//
-// Deprecated: use RunCodeContext with a context from context.WithTimeout,
-// which is what this does. Removed in the release after the one that
-// deprecated it.
-func RunCodeWithTimeout(timeout time.Duration, out any, code string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	return RunCodeContext(ctx, out, code)
 }
 
 // runPythonCodeContext executes the Python code and binds the result to out.

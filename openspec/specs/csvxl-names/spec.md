@@ -1,7 +1,7 @@
 # csvxl-names Specification
 
 ## Purpose
-The names of the `csvxl` functions: they follow Go's initialism convention, every exported identifier's doc comment starts with its name, the old `Csv` spellings stay one release as Deprecated wrappers, and an encoding no decoder handles is refused before any file is read.
+The names of the `csvxl` functions: they follow Go's initialism convention, every exported identifier's doc comment starts with its name, and an encoding no decoder handles is refused before any file is read.
 
 ## Requirements
 
@@ -16,18 +16,6 @@ The names of the `csvxl` functions: they follow Go's initialism convention, ever
 #### Scenario: A directory of CSV files
 - **WHEN** 目錄裡有兩個 CSV，呼叫 `CSVDirToExcel(dir, out)`
 - **THEN** `out` 是一個工作簿，每個 CSV 各一張工作表
-
-### Requirement: The old csvxl names keep their meaning for one release
-
-`CsvToExcel`, `AppendCsvToExcel`, `ExcelToCsv`, `EachCsvToOneExcel`, `EachExcelToCsv` and `ReadCsvToString` SHALL remain as wrappers of the new functions, and `ExcelToCsvOptions` SHALL remain as an alias of `ExcelToCSVOptions`. Each SHALL have a doc comment whose `Deprecated:` paragraph names its replacement and says it is removed in the release after the one that deprecated it.
-
-#### Scenario: The deprecation notices
-- **WHEN** 讀取七個舊名稱的 doc comment
-- **THEN** 各自有指名新名稱的 `Deprecated:` 段落
-
-#### Scenario: An old name gives the same result
-- **WHEN** 以 `CsvToExcel` 與 `CSVToExcel` 轉換同一個 CSV
-- **THEN** 兩個工作簿的工作表與儲存格相同
 
 ### Requirement: The conversions refuse an encoding they cannot decode
 

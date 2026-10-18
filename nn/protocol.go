@@ -17,11 +17,6 @@ type BoundRegressor struct {
 	output    ValueInfo
 }
 
-// Regressor is the same type as BoundRegressor.
-//
-// Deprecated: use BoundRegressor. Removed in the release after the one that deprecated it.
-type Regressor = BoundRegressor
-
 // BindRegressor binds feature names to a two-dimensional float32 ONNX input.
 // The model must have exactly one runtime input and one runtime output. Extra
 // columns in a prediction table are ignored; bound columns are read in the
@@ -105,11 +100,6 @@ type BoundClassifier struct {
 	probabilities ValueInfo
 	classes       *insyra.DataList
 }
-
-// Classifier is the same type as BoundClassifier.
-//
-// Deprecated: use BoundClassifier. Removed in the release after the one that deprecated it.
-type Classifier = BoundClassifier
 
 // BindClassifier binds feature names and caller-owned class labels to a model.
 // The probability output is selected by the conventional ONNX name
