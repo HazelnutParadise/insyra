@@ -179,6 +179,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `quant`
 
 - `quant.OBV(close, volume)` and `OBVFromReturns(returns, volume)` return Granville's on-balance volume; the second takes the direction from a return series, so dividend-adjusted returns can be used with raw share volume. `SignedVolumeRatio(returns, volume, n)` is the scale-free signed-volume ratio over `n` days, and `Divergence(price, indicator, n, cooldown)` flags a new `n`-day price extreme that an indicator does not confirm ([#456](https://github.com/HazelnutParadise/insyra/issues/456)).
+- `quant.AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold` and `NetAdvanceRatio` compute market-breadth indicators from the daily numbers of advancing and declining stocks. A missing day is `NaN` and skipped, the window counts valid days, and a zero denominator is `NaN` ([#448](https://github.com/HazelnutParadise/insyra/issues/448)).
 
 ## v0.3.4
 

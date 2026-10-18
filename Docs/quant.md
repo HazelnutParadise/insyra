@@ -25,6 +25,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 - **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
+- **Market breadth**: `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio` — market-wide indicators from the daily counts of advancing and declining stocks
 - **Portfolio optimization**: `OptimizePortfolio`, `OptimizePortfolioMoments`, `EfficientFrontier` — mean-variance weights under a sum-to-one and per-asset box constraint, for minimum variance, a target return, or maximum Sharpe, plus the frontier between them
 
 Unlike the [`finance`](./finance.md) package (which uses high-precision `decimal.Decimal` for TVM, NPV/IRR, and bond pricing), `quant` works with ordinary floating-point numbers — the industry convention for return/equity analytics, where statistical noise dwarfs floating-point error.
@@ -533,6 +534,26 @@ Flags days when a price makes a new `n`-day extreme that an indicator does not c
 obv, err := quant.OBV(close, volume)
 flags, err := quant.Divergence(close, obv, 20, 10)
 ```
+
+---
+
+## Market Breadth
+
+```go
+func AdvanceDeclineRatio(adv, dec insyra.IDataList, window int) (*insyra.DataList, error)
+func AdvanceDeclineLine(adv, dec insyra.IDataList, start float64) (*insyra.DataList, error)
+func OverboughtOversold(adv, dec insyra.IDataList, window int) (*insyra.DataList, error)
+func NetAdvanceRatio(adv, dec insyra.IDataList, window int) (*insyra.DataList, error)
+```
+
+`adv` and `dec` are the daily numbers of advancing and declining stocks. Each function returns a list as long as its input.
+
+- `AdvanceDeclineRatio` (ADR): advancing total divided by declining total over the last `window` days. `NaN` when the declining total is 0.
+- `AdvanceDeclineLine` (ADL): `start` plus the running sum of `adv - dec`.
+- `OverboughtOversold` (OBOS): the sum of `adv - dec` over the last `window` days, which is the `window`-period change of the ADL. It grows with the number of listed stocks, so its absolute value does not compare across decades.
+- `NetAdvanceRatio`: `(sum adv - sum dec) / (sum adv + sum dec)` over the window, in [-1, 1] whatever the number of listed stocks. `NaN` when both totals are 0.
+
+**Missing days.** A `nil` or `NaN` in either list marks a day with no data. That day outputs `NaN` and is skipped, not counted as 0: the window is the last `window` valid days, so a missing day does not shorten it, and the ADL carries on from its last level. Any other non-number, an infinity or a negative count is an error, as is a length mismatch, a nil list, or a `window` below 1.
 
 ---
 

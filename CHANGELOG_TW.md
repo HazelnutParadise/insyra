@@ -179,6 +179,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `quant`
 
 - 新增 `quant.OBV(close, volume)` 與 `OBVFromReturns(returns, volume)`，回傳葛蘭碧的能量潮（OBV）；後者的漲跌方向取自報酬序列，因此可以用還原權息的報酬搭配原始成交股數。`SignedVolumeRatio(returns, volume, n)` 是 `n` 日內的無單位帶號成交量比，`Divergence(price, indicator, n, cooldown)` 標出價格創 `n` 日新高或新低、指標卻沒有跟上的日子（[#456](https://github.com/HazelnutParadise/insyra/issues/456)）。
+- 新增 `quant.AdvanceDeclineRatio`、`AdvanceDeclineLine`、`OverboughtOversold` 與 `NetAdvanceRatio`，用每日上漲與下跌家數計算市場寬幅指標。缺值日輸出 `NaN` 並略過，窗口只算有效日，分母為 0 時回 `NaN`（[#448](https://github.com/HazelnutParadise/insyra/issues/448)）。
 
 ## v0.3.4
 
