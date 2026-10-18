@@ -4,6 +4,7 @@
 Most cell values are things Go can compare and hash, so counting and searching them is free. Some are not: a slice, a map, anything holding one. This capability says what happens to those: they are identified by their type and their content, so they can be counted and matched like anything else, and the library never crashes on them. It exists because counting a binary column used to kill the process while searching it reported that a value sitting in two rows was not there.
 
 ## Requirements
+
 ### Requirement: A cell Go cannot compare never crashes the library
 
 對 Go 無法比較的格子值進行計數、搜尋或比對時，系統 SHALL NOT panic，SHALL NOT 讓程式終止。系統 SHALL 以該值的型別與內容識別它。
@@ -90,3 +91,10 @@ Most cell values are things Go can compare and hash, so counting and searching t
 #### Scenario: Nested values of the same kind and content
 - **WHEN** 比較 `[]any{[]int{1}}` 與 `[]any{[]int64{1}}`
 - **THEN** 兩者的識別相同，計數為同一項
+
+### Requirement: Nested strings are written unambiguously
+The system SHALL write each string inside a nested value with its length, so that two nested values count as the same value only when their strings are equal element by element.
+
+#### Scenario: A string holding separators
+- **WHEN** a list holds Cell([]any{"a,s:b"}) and Cell([]any{"a","b"})
+- **THEN** Counter reports two entries and Count of each finds one

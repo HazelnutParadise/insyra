@@ -2,7 +2,9 @@
 
 ## Purpose
 What each command of the insyra command language does, from loading, inspecting and reshaping data to statistics, time series, CCL, charts, fetching and variable management, as run from the REPL, a `.isr` script, a one-shot command or `engine/dsl`.
+
 ## Requirements
+
 ### Requirement: Load data from file
 系統 SHALL 提供 `load` 命令從檔案載入資料為 DataTable。
 
@@ -465,3 +467,35 @@ A command that stores variables besides its `as <var>` result SHALL name every v
 - **WHEN** 活頁簿有 `Q1`、`Q2`、`Q3`，使用者執行 `sheets book.xlsx`
 - **THEN** 輸出三行 `Q1`、`Q2`、`Q3`
 
+### Requirement: col accepts an Excel-style column letter
+The system SHALL resolve the selector of `col` as a 0-based position when it is a whole number, otherwise as an exact column name, otherwise as an Excel-style letter that names a column of the table, and SHALL report "column not found" when none applies.
+
+#### Scenario: A letter selects a column
+- **WHEN** `col t B` runs on a table with at least two columns and no column named `B`
+- **THEN** the second column is saved
+
+#### Scenario: A column name wins over a letter
+- **WHEN** a column is named `A` and is not the first column
+- **THEN** `col t A` saves the column named `A`
+
+#### Scenario: A letter past the last column
+- **WHEN** the letter names a column the table does not have
+- **THEN** the command fails with "column not found" and stores nothing
+
+### Requirement: Numeric arguments may name a number variable
+The system SHALL read a numeric command argument that does not parse as a number as the name of a variable holding a number, and SHALL use that value, reporting the usual invalid-argument error when no such variable exists.
+
+#### Scenario: A variable supplies the number
+- **WHEN** `n` holds 2 and `shift x n` runs
+- **THEN** the shift uses 2 periods
+
+#### Scenario: A literal number is unchanged
+- **WHEN** an argument parses as a number
+- **THEN** it is used as that number even if a variable has the same text as its name
+
+### Requirement: Statistic commands can store their result
+The system SHALL store the result of `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max` and `range` under the variable named by a trailing `as <var>`, and SHALL print the number of `show <var>` for a number variable.
+
+#### Scenario: Mean stored and shown
+- **WHEN** `mean x as m` then `show m` run
+- **THEN** `m` holds the mean and `show m` prints it

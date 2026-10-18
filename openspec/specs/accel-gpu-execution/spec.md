@@ -4,6 +4,7 @@
 What running an operation on a GPU must guarantee: the result is bit-identical to the CPU reference whatever the device, only operations measured to win are offered, the device is chosen by the work per row, and a submission too large for one dispatch is split rather than dropped.
 
 ## Requirements
+
 ### Requirement: A device result is bit-identical to its CPU reference
 The system SHALL ship a CPU reference implementation for every device operation, and SHALL verify on the running platform that the device result matches it bit for bit.
 
@@ -170,3 +171,23 @@ The system SHALL split a device submission whose size exceeds a measured bound i
 
 - **WHEN** a chunked execution completes
 - **THEN** the execution result reports how many chunks ran, and everything else in the result surface is unchanged
+
+### Requirement: A malformed buffer is refused with an error
+The system SHALL return an error that names the column when `ExecuteNearestExact` receives a buffer declared numeric whose `Values` it cannot read, whose `Type` disagrees with its `Values`, or whose length differs from another column's, and SHALL NOT return an empty result with a nil error for it.
+
+#### Scenario: Values of an unreadable type
+- **WHEN** a buffer with `Type` `float64` holds `[]float32{1, 2}`
+- **THEN** the call returns an error naming the column
+- **AND** no empty result is reported as success
+
+#### Scenario: Type disagrees with Values
+- **WHEN** a buffer with `Type` `int64` holds `[]float64`
+- **THEN** the call returns an error naming the column
+
+#### Scenario: Columns of different lengths
+- **WHEN** two buffers hold different numbers of values
+- **THEN** the call returns an error naming the shorter or longer column
+
+#### Scenario: A non-numeric column stays ineligible
+- **WHEN** a buffer has `Type` `string` and holds `[]string`
+- **THEN** the call returns no answer with reason `dtype-not-eligible` and a nil error outside strict mode
