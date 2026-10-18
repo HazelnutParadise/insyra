@@ -823,3 +823,25 @@ PutCallRatio() (*insyra.DataTable, error)
 | `PutCallRatio` | `Date`, `PutVolume`, `CallVolume`, `PutOI`, `CallOI` (`int64`), `VolumeRatio`, `OIRatio` (`float64`, percent: 88.75 means the put volume is 88.75% of the call volume) |
 
 In the large-trader tables, `Top5Buy` and the others are the open long and short positions held by the 5 and 10 largest traders, and `MarketOI` is the whole market's open interest. `SettlementMonth` is kept as the exchange publishes it, a string such as `"202610"`, where `"999912"` is the total over all months. `TraderType` is `"0"` for all traders and `"1"` for the specific institutional traders. The exchange answers some of its tables as CSV with Chinese headers whatever is asked for; the client reads either form into the same columns.
+
+## FinMind
+
+```go
+client, err := datafetch.FinMind(datafetch.FinMindConfig{Token: os.Getenv("FINMIND_TOKEN")})
+prices, err := client.Dataset("TaiwanStockPrice", "2330",
+    time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Time{})
+```
+
+[FinMind](https://finmindtrade.com) serves Taiwan and US market data, one security's whole history per request: daily prices from 1994, monthly revenue, financial statements, dividends, delisted securities' prices and more, over 100 datasets (the list is at <https://finmind.github.io/llms-full.txt>). It complements `TWStock`, which reads the exchanges' own pages one day for the whole market: FinMind suits a long history of one security, `TWStock` a whole market one day at a time.
+
+`FinMind` takes a `FinMindConfig`: `Token` (sent in an `Authorization` header; leave it empty for the free tier without a token, or when a proxy adds it), `Timeout`, `Interval`, `UserAgent`, `Retries` and `RetryBackoff`. A `FinMindClient` that did not come from `FinMind` returns an error from every method.
+
+```go
+Dataset(name, dataID string, from, to time.Time) (*insyra.DataTable, error)
+```
+
+`Dataset` is the one entry point, with a `DatasetContext` form, and it returns the dataset's columns as FinMind sends them, in FinMind's order and under FinMind's names: integers are `int64`, other numbers `float64`, text stays text, `null` is `nil`, and a column named `date` becomes a `time.Time` when every value is a date. `dataID` is the security (`"2330"`); most datasets need one on the free tier. A zero `from` or `to` leaves that end open. A dataset with no rows gives an empty table with no columns.
+
+**Errors you can tell apart.** `errors.Is(err, datafetch.ErrFinMindLimit)` means the plan's request limit was reached (HTTP 402); `errors.Is(err, datafetch.ErrFinMindLevel)` means the plan does not allow the request, such as a free account asking for a dataset above its level, or one that needs a `dataID` without giving it. Neither is retried, since waiting or upgrading is the fix, not repeating the call. Other failures, such as an unknown dataset (HTTP 422, whose message lists the valid names), are ordinary errors.
+
+**Traps in the data.** One is checked: the `date` of `TaiwanStockMonthRevenue` is the first day of the month *after* the revenue month (`revenue_month` 7 has `date` 2026-08-01) and is not the announcement date, so aligning it with prices on `date` looks ahead. The rest were reported when the dataset was tried on 2026-10-17 and are not checked here: individual institutional trades start on 2012-05-02, not 2005 as the documentation says; a daily price row with no trade has all four prices 0, so filter with `close > 0`; and the free tier refuses adjusted prices (`TaiwanStockPriceAdj`) though the documentation says it allows them.

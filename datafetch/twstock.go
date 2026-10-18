@@ -113,6 +113,7 @@ type TWStockClient struct {
 	tpexOpenAPIBaseURL string
 	tdccBaseURL        string
 	mopsBaseURL        string
+	headers            map[string]string // sent with every request, such as an Authorization header
 }
 
 // TWStock creates a client for the unauthenticated TWSE and TPEx data APIs.
@@ -146,9 +147,17 @@ func (t *TWStockClient) doJSON(ctx context.Context, rawURL string, output any) e
 	})
 }
 
+// finalError wraps an error that retrying cannot fix, such as a request limit
+// or a plan that lacks access. doGet returns it at once.
+type finalError struct{ err error }
+
+func (e *finalError) Error() string { return e.err.Error() }
+func (e *finalError) Unwrap() error { return e.err }
+
 // doGet sends a GET request under the client's limiter, retries and backoff and
 // passes the response to read, which must close its body. A reply that read
-// reports as errTWStockNoData is final and is not retried.
+// reports as errTWStockNoData, or wraps in a finalError, is final and is not
+// retried.
 func (t *TWStockClient) doGet(ctx context.Context, rawURL string, read func(*http.Response) error) error {
 	var lastErr error
 	for attempt := 0; attempt <= t.cfg.Retries; attempt++ {
@@ -163,12 +172,16 @@ func (t *TWStockClient) doGet(ctx context.Context, rawURL string, read func(*htt
 			lastErr = err
 		} else {
 			req.Header.Set("User-Agent", t.cfg.UserAgent)
+			for name, value := range t.headers {
+				req.Header.Set(name, value)
+			}
 			resp, requestErr := t.client.Do(req) //nolint:bodyclose // read closes the body
 			if requestErr != nil {
 				lastErr = requestErr
 			} else {
 				lastErr = read(resp)
-				if errors.Is(lastErr, errTWStockNoData) {
+				var final *finalError
+				if errors.Is(lastErr, errTWStockNoData) || errors.As(lastErr, &final) {
 					return lastErr
 				}
 			}

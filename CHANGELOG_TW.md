@@ -98,6 +98,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `TWStockClient.DailyQuotesOn(date, market)`，回傳任一過去交易日所有證券的收盤行情，來源是證交所（2004-02-11 起，含之後下市的證券）或櫃買中心，`Change` 帶正負號並以交易所自己的參考價計算，另有交易所的漲跌標記 `Sign`。新增 `TWStockClient.AdvanceDecline(date, market, commonStockOnly)`，交易所有公布時回傳官方的上漲、下跌家數（含漲停、跌停），沒有時由收盤行情計算（[#447](https://github.com/HazelnutParadise/insyra/issues/447)）。
 - 新增 `datafetch.TAIFEX(cfg)`，讀取期交所免金鑰的公開資料：`InstitutionalFutures`、`InstitutionalOptions`（三大法人的成交與未平倉）、`LargeTradersFutures`、`LargeTradersOptions`（大額交易人的未沖銷部位）與 `PutCallRatio`，每個都是數值已轉型的資料表。OpenAPI 只有最新一天（Put/Call 比有 20 天），不讀取網站上更長的歷史（[#437](https://github.com/HazelnutParadise/insyra/issues/437)）。
 - 新增 `TWStockClient.MonthlyRevenue(year, month, market)`，從公開資訊觀測站的彙總頁讀取所有上市櫃公司的月營收（與累計營收），2003 年 1 月起，每頁一次請求，回傳數值已轉型的資料表。`PageDate` 是整頁的出表日期，不是各公司公告日（[#435](https://github.com/HazelnutParadise/insyra/issues/435)）。
+- 新增 `datafetch.FinMind(cfg)`，連到 [FinMind](https://finmindtrade.com)，一次請求就能拿到一檔證券的整段歷史。`FinMindClient.Dataset(name, dataID, from, to)` 把任何資料集回傳成數值已轉型的資料表，欄位照 FinMind 原樣。超過請求上限（`ErrFinMindLimit`）與方案權限不足（`ErrFinMindLevel`）可以和其他錯誤分辨，而且不會重試（[#433](https://github.com/HazelnutParadise/insyra/issues/433)）。
 
 ### `stats`
 
