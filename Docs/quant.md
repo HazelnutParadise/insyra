@@ -25,6 +25,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 - **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
+- **Text tone**: `ToneCounts`, `DailyTone` — count positive and negative words from a lexicon (with negation, for English or Chinese) and add them up by trading day without looking ahead
 - **Event studies and signal buckets**: `EventStudy`, `SignalBuckets`, `Bias`, `BiasZ` — forward excess returns after events or by signal bucket, with a monthly Newey-West t-test, and the bias indicators that feed them
 - **Turning points and regimes**: `ZigZag`, `Regimes` — causal turning points of a price series and the bull and bear stretches between them
 - **Signal backtest**: `BacktestSignal` — a 0–1 position signal into a net return series with a one-row delay, cash returns and separate buy and sell costs
@@ -539,6 +540,44 @@ Flags days when a price makes a new `n`-day extreme that an indicator does not c
 ```go
 obv, err := quant.OBV(close, volume)
 flags, err := quant.Divergence(close, obv, 20, 10)
+```
+
+---
+
+## Text Tone
+
+News and filing tone is a standard input (Tetlock 2007; Loughran and McDonald 2011). Two functions do the counting and the look-ahead-safe alignment to trading days; you supply the word lists.
+
+### ToneCounts
+
+```go
+func ToneCounts(texts insyra.IDataList, lex Lexicon, opts ...ToneOptions) (*insyra.DataTable, error)
+
+type Lexicon struct{ Positive, Negative, Negation []string }
+```
+
+Counts positive and negative words in each text and returns a table with `Positive`, `Negative` and `Words` (`int64`), one row per text; a nil or empty text counts zero. `Lexicon` is not shipped: the Loughran-McDonald finance lists are available from their authors under their own terms, and a Chinese list has to come from you. A term in more than one list is an error.
+
+`ToneOptions`:
+
+- `Mode`: `ToneWords` (default) splits text into words at spaces and punctuation and matches whole words. `ToneSubstring` matches terms as substrings, **longest first**, for text with no spaces such as Chinese. Each matched term is consumed, so with both 大漲 and 漲 in the lexicon, 大漲 is counted once and 漲 is not counted again inside it. `Words` is then the number of letters, digits and characters, spaces and punctuation left out.
+- `NegationWindow`: a positive word is **not counted** when a word of `lex.Negation` comes within this many words before it (characters, with `ToneSubstring`, counted between the end of the negation and the start of the positive word). 0 turns it off. Only positive words are cancelled; a negated negative word still counts as negative.
+- `CaseSensitive`: match the lexicon exactly; otherwise case is ignored.
+
+### DailyTone
+
+```go
+func DailyTone(published insyra.IDataList, counts *insyra.DataTable, tradingDays insyra.IDataList, opts DailyToneOptions) (*insyra.DataTable, error)
+```
+
+Adds the counts up by trading day. `published` holds each article's time (`time.Time`), `counts` is the table from `ToneCounts` (one row per article, in the same order) and `tradingDays` the trading dates in ascending order. An article is assigned to the first trading day on or after its date, and to the **next** trading day when it was published at or after the close (`CloseHour`, `CloseMinute`, read in `Location`) or on a day with no trading, so weekend and after-close news is seen in the next session and never in one already over. Articles after the last trading day are dropped. With the default close of 0:00, every article published on a trading day counts for that day.
+
+The result has one row per trading day: `Date`, `Positive`, `Negative`, `Words` for that day, `NetTone`, the rolling `(positive - negative) / words` over the last `Window` trading days including the day, and `Z`, the z-score of `NetTone` against the `ZWindow` days **before** the day, never including it (`ZWindow` 0 leaves it `NaN`). A window with no words is `NaN`.
+
+```go
+counts, err := quant.ToneCounts(headlines, lex, quant.ToneOptions{NegationWindow: 3})
+daily, err := quant.DailyTone(publishedAt, counts, tradingDays,
+    quant.DailyToneOptions{CloseHour: 16, Location: newYork, Window: 5, ZWindow: 60})
 ```
 
 ---
