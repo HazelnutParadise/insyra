@@ -25,6 +25,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 - **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
+- **Event studies and signal buckets**: `EventStudy`, `SignalBuckets`, `Bias`, `BiasZ` — forward excess returns after events or by signal bucket, with a monthly Newey-West t-test, and the bias indicators that feed them
 - **Turning points and regimes**: `ZigZag`, `Regimes` — causal turning points of a price series and the bull and bear stretches between them
 - **Signal backtest**: `BacktestSignal` — a 0–1 position signal into a net return series with a one-row delay, cash returns and separate buy and sell costs
 - **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
@@ -538,6 +539,53 @@ Flags days when a price makes a new `n`-day extreme that an indicator does not c
 ```go
 obv, err := quant.OBV(close, volume)
 flags, err := quant.Divergence(close, obv, 20, 10)
+```
+
+---
+
+## Event Studies and Signal Buckets
+
+Both tools answer "what happened to the price after the signal". They share one setup: `prices` has one column per stock and one row per date, in date order, and `dates` gives each row's date as a `time.Time` or a `"YYYY-MM-DD"` string. A stock whose signal fires on row `s` is bought at the close of row `s + Delay` (`Delay` is at least 1, default 1, so a signal is never traded at the close that produced it) and held for each horizon. Its return is measured against a benchmark over the same window:
+
+- `BenchmarkCrossSection` (default): the equal-weighted mean return of every stock with a price at both ends of the window, and tradable when a mask is given.
+- `BenchmarkLevels`: the change of an index over the window, from `BenchmarkLevels`.
+- `BenchmarkOwnMean`: the mean of that series' own returns over the same horizon, for a single series such as a market index.
+
+Observations are averaged within calendar months of the signal date, and the Newey-West test (`stats.NeweyWestMeanTest`) is run on the monthly means, so many events on one day are not treated as independent samples. `NeweyWestLag` 0 chooses `stats.NeweyWestLag(months)`, a positive value is used as it is, and a negative one means the plain t-test. An observation whose window has a missing price, runs past the last row or is not tradable at the entry is counted in `Missing` and left out. To study a sub-period, pass the matching slices of every table and of `dates`.
+
+Each horizon gives a `ForwardSummary`: `Observations`, `Missing`, `MeanExcess`, `WinRate`, `Months`, `MonthlyMean`, `TStat`, `PValue` and `Lag`. The t statistic is `NaN` with fewer than two months.
+
+### EventStudy
+
+```go
+func EventStudy(prices, events insyra.IDataTable, dates insyra.IDataList, opts EventStudyOptions) ([]ForwardSummary, error)
+```
+
+`events` has the shape of `prices` with `true` where an event happened at that row's close. `EventStudyOptions` embeds `ForwardOptions` (`Horizons`, `Delay`, `Benchmark`, `BenchmarkLevels`, `Tradable`, `NeweyWestLag`) and adds `MinGap`, the fewest rows between two counted events of the same stock. It returns one summary per horizon.
+
+### SignalBuckets
+
+```go
+func SignalBuckets(signal, prices insyra.IDataTable, dates insyra.IDataList, opts BucketOptions) ([]BucketSummary, error)
+```
+
+Every non-missing cell of `signal` is an observation, sorted into a bucket by `Edges` (n ascending edges make n+1 buckets; the bucket above an edge includes it) or, when `Edges` is empty, by `Quantiles` of all signal values pooled over all dates and stocks. Each `BucketSummary` has `Index`, `Lower`, `Upper` and one `ForwardSummary` per horizon. With one column and `BenchmarkOwnMean` this is the single-series version.
+
+### Bias and BiasZ
+
+```go
+func Bias(prices insyra.IDataList, n int) (*insyra.DataList, error)
+func BiasZ(prices insyra.IDataList, n, window int) (*insyra.DataList, error)
+```
+
+`Bias` is `price / SMA(n) - 1`, `NaN` for the first `n - 1` rows. `BiasZ` divides the bias by the standard deviation of the previous `window` biases, never including the current day's own, so nothing is seen ahead of time; it is `NaN` until enough earlier biases exist.
+
+```go
+bias, _ := quant.Bias(close, 20)
+buckets, err := quant.SignalBuckets(biasTable, closes, dates, quant.BucketOptions{
+    ForwardOptions: quant.ForwardOptions{Horizons: []int{1, 5, 20, 60}},
+    Edges:          []float64{-0.2, -0.1, 0, 0.1, 0.2},
+})
 ```
 
 ---

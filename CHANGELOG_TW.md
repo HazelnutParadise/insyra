@@ -184,6 +184,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `quant.RSI(prices, n, opts)`，以 Wilder 或簡單平均（`RSIWilder`、`RSISimple`）計算相對強弱指標，並可選擇缺值的處理方式（`RSIMissingError`、`RSIMissingFlat`、`RSIMissingBreak`）。新增 `quant.SharpeDifferenceTest(a, b, riskFree)`，用 Memmel 修正的 Jobson-Korkie 統計量檢定兩組報酬的 Sharpe 是否相同；有一組沒有變異時回傳 `ErrSharpeUndefined`（[#464](https://github.com/HazelnutParadise/insyra/issues/464)）。
 - 新增 `quant.QuantileSort(table, dateCol, signalCol, returnCols, n, opts)`，每天各自把股票依訊號分成 `n` 組，回傳每日每組的平均報酬與檔數，以及最高組減最低組的價差；可設定每天最少檔數、同分處理方式（平均排名或 `pandas.qcut`）、權重欄與是否減掉當天平均（[#458](https://github.com/HazelnutParadise/insyra/issues/458)）。新增 `insyra.IsNilTable`，判斷資料表是否為 nil（含包裝），作法與 `IsNilList` 相同。
 - 新增 `quant.ZigZag(prices, threshold)`，在不偷看未來的前提下找出價格序列的轉折點，每個轉折附極值位置與確認位置；`quant.Regimes(pivots, opts)` 把轉折點轉成多頭與空頭期間，可設定 Pagan 與 Sossounov 的最短階段與最短循環。新增 `quant.BacktestSignal(signal, assetReturns, opts)`，把 0～1 的部位訊號轉成淨報酬：訊號落後一列生效，可帶現金報酬與各自的買進、賣出成本（[#442](https://github.com/HazelnutParadise/insyra/issues/442)）。
+- 新增 `quant.EventStudy(prices, events, dates, opts)` 與 `quant.SignalBuckets(signal, prices, dates, opts)`，量測事件之後、或依訊號分桶之後，多個持有期的超額報酬。部位至少在訊號後一列才進場，基準可用橫斷面平均、指數或序列自身的平均，t 檢定是對月平均做 Newey-West。新增 `quant.Bias` 與 `quant.BiasZ`，計算乖離率與只用前幾天波動度調整的乖離率（[#445](https://github.com/HazelnutParadise/insyra/issues/445)、[#446](https://github.com/HazelnutParadise/insyra/issues/446)）。
 
 ## v0.3.4
 
