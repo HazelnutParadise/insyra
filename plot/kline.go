@@ -3,6 +3,7 @@
 package plot
 
 import (
+	"fmt"
 	"sort"
 
 	"time"
@@ -43,6 +44,13 @@ type KlineChartConfig struct {
 func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) (*charts.Kline, error) {
 	if len(klinePoints) == 0 {
 		return nil, chartError("CreateKlineChart", "no points to draw")
+	}
+	for i, pt := range klinePoints {
+		for name, v := range map[string]float64{"open": pt.Open, "high": pt.High, "low": pt.Low, "close": pt.Close} {
+			if err := requireFinite("CreateKlineChart", fmt.Sprintf("the %s of point %d", name, i+1), v); err != nil {
+				return nil, err
+			}
+		}
 	}
 	klineChart := charts.NewKLine()
 

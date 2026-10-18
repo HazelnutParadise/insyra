@@ -282,6 +282,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：熱圖的點型別改成公開的 `HeatMapPoint[X, Y]`，型別限制改成公開的 `HeatMapAxis`（以前拼成 `heapMapAxisValue`，而且沒有公開）。現在可以在迴圈裡把點收集成 `[]plot.HeatMapPoint[int, int]`。建立點的函式改名為 `NewHeatMapPoint` 與 `NewHeatMapMissingPoint`，`HeatMapPoint(x, y, v)` 要改成 `NewHeatMapPoint(x, y, v)`。
 - **BREAKING**：每個 `Create...` 函式都改為回傳圖表與 `error`：`chart, err := plot.CreateBarChart(config, data)`。無法建立圖表時（通常是沒有給資料），會回傳 `nil` 圖表與開頭是函式名稱的錯誤，例如 `plot: CreateBarChart: no data to draw`；v0.3.3 則是記錄警告後回傳 `nil`。這種失敗不會再另外寫進紀錄。`CreateGaugeChart` 不會失敗，錯誤一律是 `nil`，保留這個回傳值是為了讓每個建構函式的呼叫方式都一樣。
 - `CreateBoxPlot` 丟掉沒有資料清單的系列時，會在警告裡指出是哪一個系列；全部都被丟掉時，錯誤會說沒有任何系列有資料。v0.3.3 明明收到了系列，警告卻寫「no series provided」。
+- **BREAKING**：`plot` 的每個圖表建構函式遇到資料裡有 `NaN` 或無限大時，會回傳指出該值的錯誤；過去它回傳圖表，但存出來的頁面是空白的，也沒有任何錯誤。`CreateBoxPlot` 的清單若沒有任何數字（空的或全是文字）也同樣被拒絕。`CreateGaugeChart` 的 error 不再永遠是 nil。（[#409](https://github.com/HazelnutParadise/insyra/issues/409)）
 
 ### `isr`
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。

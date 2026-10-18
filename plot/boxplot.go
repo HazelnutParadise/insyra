@@ -78,6 +78,16 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) (*charts.BoxPl
 		insyra.LogWarning("plot", "CreateBoxPlot", "series %d (%q) has no data lists; skipping it", i, series[i].Name)
 	}
 	series = kept
+	for _, s := range series {
+		if err := requireFiniteLists("CreateBoxPlot", s.Data); err != nil {
+			return nil, chartError("CreateBoxPlot", "series %q: %v", s.Name, err)
+		}
+		for i, dl := range s.Data {
+			if !hasNumericCell(dl) {
+				return nil, chartError("CreateBoxPlot", "series %q: list %d has no numeric value, so it has no five-number summary", s.Name, i+1)
+			}
+		}
+	}
 	boxPlot := charts.NewBoxPlot()
 
 	internal.SetBaseChartGlobalOptions(boxPlot, internal.BaseChartConfig{

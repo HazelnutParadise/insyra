@@ -1,6 +1,7 @@
 package plot
 
 import (
+	"fmt"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -39,6 +40,11 @@ type PieChartConfig struct {
 func CreatePieChart(config PieChartConfig, data ...PieItem) (*charts.Pie, error) {
 	if len(data) == 0 {
 		return nil, chartError("CreatePieChart", "no items to draw")
+	}
+	for i, item := range data {
+		if err := requireFinite("CreatePieChart", fmt.Sprintf("the value of item %d (%q)", i+1, item.Name), item.Value); err != nil {
+			return nil, err
+		}
 	}
 	pie := charts.NewPie()
 

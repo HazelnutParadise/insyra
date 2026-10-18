@@ -3,6 +3,7 @@
 package plot
 
 import (
+	"fmt"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -52,6 +53,11 @@ type ThemeRiverChartConfig struct {
 func CreateThemeRiverChart(config ThemeRiverChartConfig, data ...ThemeRiverData) (*charts.ThemeRiver, error) {
 	if len(data) == 0 {
 		return nil, chartError("CreateThemeRiverChart", "no data to draw")
+	}
+	for i, d := range data {
+		if err := requireFinite("CreateThemeRiverChart", fmt.Sprintf("the value of entry %d", i+1), d.Value); err != nil {
+			return nil, err
+		}
 	}
 	themeRiver := charts.NewThemeRiver()
 

@@ -3,6 +3,7 @@
 package plot
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/HazelnutParadise/insyra"
@@ -44,6 +45,18 @@ type RadarSeries struct {
 func CreateRadarChart(config RadarChartConfig, series []RadarSeries) (*charts.Radar, error) {
 	if len(series) == 0 {
 		return nil, chartError("CreateRadarChart", "no series to draw")
+	}
+	for _, s := range series {
+		for i, v := range s.Values {
+			if err := requireFinite("CreateRadarChart", fmt.Sprintf("value %d of series %q", i+1, s.Name), float64(v)); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for name, v := range config.MaxValues {
+		if err := requireFinite("CreateRadarChart", fmt.Sprintf("MaxValues[%q]", name), float64(v)); err != nil {
+			return nil, err
+		}
 	}
 	radar := charts.NewRadar()
 

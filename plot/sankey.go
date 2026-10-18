@@ -3,6 +3,7 @@
 package plot
 
 import (
+	"fmt"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -36,6 +37,11 @@ type SankeyChartConfig struct {
 func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) (*charts.Sankey, error) {
 	if len(links) == 0 {
 		return nil, chartError("CreateSankeyChart", "no links to draw")
+	}
+	for i, link := range links {
+		if err := requireFinite("CreateSankeyChart", fmt.Sprintf("the value of link %d", i+1), float64(link.Value)); err != nil {
+			return nil, err
+		}
 	}
 	sankey := charts.NewSankey()
 

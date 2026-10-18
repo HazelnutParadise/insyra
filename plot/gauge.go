@@ -25,9 +25,11 @@ type GaugeChartConfig struct {
 
 // CreateGaugeChart draws a gauge showing value.
 //
-// The error is always nil. The gauge returns one so that every constructor in
-// this package has the same shape.
+// It returns an error when value is NaN or an infinity, which a chart cannot draw.
 func CreateGaugeChart(config GaugeChartConfig, value float64) (*charts.Gauge, error) {
+	if err := requireFinite("CreateGaugeChart", "value", value); err != nil {
+		return nil, err
+	}
 	gauge := charts.NewGauge()
 
 	internal.SetBaseChartGlobalOptions(gauge, internal.BaseChartConfig{
