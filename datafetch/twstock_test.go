@@ -681,3 +681,64 @@ func TestTWStockDailyPricesAdjustedKeepsNils(t *testing.T) {
 		t.Errorf("AdjClose[0] = %v, want 98", got)
 	}
 }
+
+func TestTWStockOddLotQuotes(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, fixtureKey("/rwd/zh/afterTrading/TWTC7U", query("date", "20260102", "response", "json", "selectType", "ALL")), "twse_twtc7u_20260102.json")
+	transport.addFixture(t, fixtureKey("/rwd/zh/afterTrading/TWT53U", query("date", "20260102", "response", "json", "selectType", "ALL")), "twse_twt53u_20260102.json")
+
+	intraday, err := stock.OddLotQuotes(dateUTC(2026, time.January, 2), TWOddLotIntraday)
+	if err != nil {
+		t.Fatalf("intraday error: %v", err)
+	}
+	// Fixture: 0050, 0051, 0052 and the 合計 totals row, which is dropped.
+	if got := intraday.GetColByName("Code").Data(); len(got) != 3 || got[0] != "0050" {
+		t.Fatalf("intraday codes = %v", got)
+	}
+	for name, want := range map[string]any{"Volume": int64(3257147), "Transactions": int64(36193), "Turnover": int64(216356465), "Open": 66.0, "Close": 67.0, "High": 67.0, "Low": 65.95, "BidPrice": 66.95, "BidVolume": int64(9148), "AskPrice": 67.0, "AskVolume": int64(147266)} {
+		if got := intraday.GetColByName(name).Data()[0]; got != want {
+			t.Errorf("intraday %s = %v (%T), want %v", name, got, got, want)
+		}
+	}
+
+	after, err := stock.OddLotQuotes(dateUTC(2026, time.January, 2), TWOddLotAfterHours)
+	if err != nil {
+		t.Fatalf("after-hours error: %v", err)
+	}
+	// 0057 traded nothing, so its price is "--" and nil.
+	codes := after.GetColByName("Code").Data()
+	if len(codes) != 4 || codes[3] != "0057" {
+		t.Fatalf("after-hours codes = %v", codes)
+	}
+	if got := after.GetColByName("Price").Data()[0]; got != 67.0 {
+		t.Errorf("after-hours Price = %v, want 67", got)
+	}
+	if got := after.GetColByName("Price").Data()[3]; got != nil {
+		t.Errorf("a price of -- should be nil, got %v", got)
+	}
+	if after.GetColByName("Open") != nil {
+		t.Error("the after-hours table has no Open column")
+	}
+}
+
+func TestTWStockOddLotQuotesNoDataAndBadSession(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.replies[fixtureKey("/rwd/zh/afterTrading/TWTC7U", query("date", "20260103", "response", "json", "selectType", "ALL"))] = []fixtureReply{{status: http.StatusOK, body: []byte(`{"stat":"很抱歉，沒有符合條件的資料!","total":0}`)}}
+	transport.replies[fixtureKey("/rwd/zh/afterTrading/TWTC7U", query("date", "20190102", "response", "json", "selectType", "ALL"))] = []fixtureReply{{status: http.StatusOK, body: []byte(`{"stat":"查詢日期小於109年10月26日，請重新查詢!","total":0}`)}}
+	for _, day := range []time.Time{dateUTC(2026, time.January, 3), dateUTC(2019, time.January, 2)} {
+		dt, err := stock.OddLotQuotes(day, TWOddLotIntraday)
+		if err != nil {
+			t.Fatalf("%v: %v", day, err)
+		}
+		if dt.NumRows() != 0 || dt.GetColByName("Code") == nil {
+			t.Errorf("%v: want an empty table with columns, got %d rows", day, dt.NumRows())
+		}
+	}
+	if _, err := stock.OddLotQuotes(dateUTC(2026, time.January, 2), TWOddLotSession("Night")); err == nil {
+		t.Error("an unknown session should be an error")
+	}
+	var zero TWStockClient
+	if _, err := zero.OddLotQuotes(dateUTC(2026, time.January, 2), TWOddLotIntraday); err == nil {
+		t.Error("a zero client should be an error")
+	}
+}
