@@ -180,7 +180,6 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `quant.OBV(close, volume)` and `OBVFromReturns(returns, volume)` return Granville's on-balance volume; the second takes the direction from a return series, so dividend-adjusted returns can be used with raw share volume. `SignedVolumeRatio(returns, volume, n)` is the scale-free signed-volume ratio over `n` days, and `Divergence(price, indicator, n, cooldown)` flags a new `n`-day price extreme that an indicator does not confirm ([#456](https://github.com/HazelnutParadise/insyra/issues/456)).
 
-
 ## v0.3.4
 
 ### Core
