@@ -50,6 +50,9 @@ type Manager struct {
 	mu          sync.RWMutex
 	basePath    string // empty = use UserHomeDir/.insyra
 	envsDirName string // empty = "envs"
+
+	baseMu    sync.Mutex
+	baselines map[string]map[string]string // env path -> variable -> encoded form last read or written
 }
 
 // NewManager constructs a Manager rooted at basePath. envsDirName overrides
