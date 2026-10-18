@@ -27,8 +27,11 @@ import (
 )
 
 func main() {
-    csvFiles := []string{"file1.csv", "file2.csv"}
-    if err := csvxl.CsvToExcel(csvFiles, nil, "output.xlsx"); err != nil {
+    sheets := []csvxl.SheetFromCSV{
+        {Path: "jan.csv", Sheet: "January"},
+        {Path: "feb.csv"}, // sheet "feb"
+    }
+    if err := csvxl.CSVToExcel(sheets, "output.xlsx"); err != nil {
         log.Fatal(err)
     }
 }
@@ -56,10 +59,47 @@ const (
 
 ## Main Functions
 
-The uppercase `CSVToExcel`, `AppendCSVToExcel`, `CSVDirToExcel` and
-`ReadCSVToString` names are the preferred spellings. The earlier `CsvToExcel`,
-`AppendCsvToExcel`, `EachCsvToOneExcel` and `ReadCsvToString` names remain
-available as deprecated wrappers with the same behavior.
+The uppercase `CSVToExcel`, `AppendCSVToExcel`, `CSVDirToExcel`,
+`ReadCSVToString`, `ExcelToCSV` and `ExcelDirToCSV` names are the preferred
+spellings. The earlier `CsvToExcel`, `AppendCsvToExcel`, `EachCsvToOneExcel`,
+`ReadCsvToString`, `ExcelToCsv` and `EachExcelToCsv` names remain available,
+deprecated, with their old signatures and behavior. The new names never pair a
+CSV with a sheet by position: each CSV is named together with its sheet, and a
+pairing that would put two CSVs in one sheet or two sheets in one CSV is an
+error before anything is written. The deprecated names keep pairing by
+position and do not refuse such a pairing.
+
+### `CSVToExcel` and `AppendCSVToExcel`
+
+```go
+type SheetFromCSV struct {
+    Path  string // the CSV file; ".csv" is appended when Path does not end in it
+    Sheet string // the sheet's name; empty means the file's name without its extension
+}
+func CSVToExcel(sheets []SheetFromCSV, output string, csvEncoding ...string) error
+func AppendCSVToExcel(sheets []SheetFromCSV, existingFile string, csvEncoding ...string) error
+```
+
+`CSVToExcel` writes a new workbook at `output`, one sheet per element, in the
+order given. `AppendCSVToExcel` writes the sheets into an existing workbook and
+replaces a sheet of the same name, as `AppendCsvToExcel` describes below.
+
+Two elements that name the same sheet are an error that names the sheet and
+both files, before any CSV is read: `CSVToExcel` writes no workbook and
+`AppendCSVToExcel` leaves the workbook as it was. Sheet names are compared
+without regard to case, as Excel compares them, so `{Path: "a.csv"}` and
+`{Path: "b.csv", Sheet: "A"}` collide. Otherwise they behave as the deprecated
+functions: a CSV that cannot be read is counted as failed and the others are
+still converted.
+
+### `SheetNames`
+
+```go
+func SheetNames(excelFile string) ([]string, error)
+```
+
+Returns the workbook's sheet names in workbook order, or an error naming the
+file when it cannot be opened.
 
 ### `CsvToExcel`
 
@@ -67,7 +107,7 @@ available as deprecated wrappers with the same behavior.
 func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error
 ```
 
-**Description:** Converts multiple CSV files into a new Excel workbook. If `sheetNames` is empty, filenames are used.
+**Description:** Converts multiple CSV files into a new Excel workbook. `sheetNames[i]` names the sheet of `csvFiles[i]`; a missing or empty name uses the file's name. Deprecated: use `CSVToExcel`.
 
 **Parameters:**
 
@@ -86,7 +126,7 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error
 ```
 
-**Description:** Appends CSV files as new sheets. An existing sheet with the same name is replaced by a fresh sheet before the CSV is written. What the workbook records about the sheet stays: its position among the sheets, whether it is hidden, and which sheet is active. Names and formulas elsewhere in the workbook are kept, including those that refer to it. Nothing stored in the old sheet itself survives: its cells and formulas, hidden rows, row heights, comments, hyperlinks, column widths, views and merged ranges all go, and so do the names defined for that sheet alone. The sheet name is matched without regard to case and the replaced sheet takes the name as given, so appending to `TARGET` renames a sheet called `Target`. This works even when it is the workbook's only sheet. Each CSV is read in full before its sheet is touched, so a CSV that cannot be read, because it is missing, its encoding cannot be detected or it is not valid CSV, leaves its sheet as it was, or adds no sheet when there was none; the other CSVs are still appended, and the error counts the files that failed.
+**Description:** Deprecated: use `AppendCSVToExcel`. `sheetNames[i]` names the sheet of `csvFiles[i]`. Appends CSV files as new sheets. An existing sheet with the same name is replaced by a fresh sheet before the CSV is written. What the workbook records about the sheet stays: its position among the sheets, whether it is hidden, and which sheet is active. Names and formulas elsewhere in the workbook are kept, including those that refer to it. Nothing stored in the old sheet itself survives: its cells and formulas, hidden rows, row heights, comments, hyperlinks, column widths, views and merged ranges all go, and so do the names defined for that sheet alone. The sheet name is matched without regard to case and the replaced sheet takes the name as given, so appending to `TARGET` renames a sheet called `Target`. This works even when it is the workbook's only sheet. Each CSV is read in full before its sheet is touched, so a CSV that cannot be read, because it is missing, its encoding cannot be detected or it is not valid CSV, leaves its sheet as it was, or adds no sheet when there was none; the other CSVs are still appended, and the error counts the files that failed.
 
 **Parameters:**
 
@@ -178,8 +218,12 @@ func ReadCsvToString(filePath string, encoding ...string) (string, error)
 ### `ExcelToCSV`
 
 ```go
-type ExcelToCSVOptions struct { Sheets []string; AllowFormulas bool }
-func ExcelToCSV(excelFile, outputDir string, csvNames []string, options ...ExcelToCSVOptions) error
+type ExcelToCSVOptions struct {
+    Sheets        []string          // sheets to convert; empty means every sheet
+    FileNames     map[string]string // sheet name -> CSV file name
+    AllowFormulas bool
+}
+func ExcelToCSV(excelFile, outputDir string, options ...ExcelToCSVOptions) error
 func ExcelDirToCSV(dir, outputDir string, options ...ExcelToCSVOptions) error
 ```
 
@@ -189,17 +233,34 @@ Formula-like text beginning with `=`, `+`, `-` or `@` is prefixed with an
 apostrophe unless it is a number written in decimal digits (`-12`, `+3.5`,
 `-1e309`) or `AllowFormulas` is true; `+Inf` and `-NaN` are guarded.
 
-`ExcelToCSV` names the file of the i-th converted sheet `csvNames[i]`, adding
-`.csv` only when the name has no extension (`report.txt` stays `report.txt`),
-and the sheet's name plus `.csv` when `csvNames[i]` is missing or empty. A name
-holding a path separator is an error, so every file lands in `outputDir`.
-`ExcelDirToCSV` writes each sheet of `Book.xlsx` as `Book_<sheet>.csv`.
+`ExcelToCSV` writes each sheet as its name plus `.csv`, unless `FileNames` maps
+the sheet to another name. A `FileNames` value keeps an extension it already
+has (`report.txt` stays `report.txt`) and gets `.csv` when it has none. A key
+that is not among the sheets converted is an error naming it, so a misspelled
+sheet is not silently ignored.
+
+```go
+// Q1.csv, second.csv and Q3.csv
+err := csvxl.ExcelToCSV("book.xlsx", "out", csvxl.ExcelToCSVOptions{
+    FileNames: map[string]string{"Q2": "second"},
+})
+```
+
+`ExcelDirToCSV` writes each sheet of `Book.xlsx` as `Book_<sheet>.csv` and
+refuses `FileNames`, which cannot name the files of several workbooks.
+
+Every file name is checked before the first CSV is written. A name holding a
+path separator, and two sheets that would be written to one file, compared
+without regard to case as macOS and Windows compare file names, are an error
+and nothing is written. For `ExcelDirToCSV` this covers every workbook in the
+directory at once: `a.xlsx`'s sheet `b_c` and `a_b.xlsx`'s sheet `c` would both
+be `a_b_c.csv`.
 
 `ExcelToCsv` and `EachExcelToCsv` keep their old behavior: no formula guard,
-`.csv` appended to any caller-given name that does not end in `.csv`
-(`report.txt` becomes `report.txt.csv`), and a caller-given relative path used
-as given. Worksheet selection for the new API moves to
-`ExcelToCSVOptions.Sheets`.
+`csvNames[i]` naming the file of the i-th converted sheet, `.csv` appended to
+any caller-given name that does not end in `.csv` (`report.txt` becomes
+`report.txt.csv`), a caller-given relative path used as given, and no check
+for two sheets written to one file.
 
 ### `insyra.DetectEncoding`
 

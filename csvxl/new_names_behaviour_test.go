@@ -27,7 +27,7 @@ func TestExcelToCSVOptionsAndFormulaGuard(t *testing.T) {
 	_ = f.Close()
 
 	guarded := filepath.Join(dir, "guarded")
-	if err := ExcelToCSV(xlsx, guarded, nil); err != nil {
+	if err := ExcelToCSV(xlsx, guarded); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(guarded, "Sheet1.csv"))
@@ -39,7 +39,7 @@ func TestExcelToCSVOptionsAndFormulaGuard(t *testing.T) {
 	}
 
 	allowed := filepath.Join(dir, "allowed")
-	if err := ExcelToCSV(xlsx, allowed, nil, ExcelToCSVOptions{AllowFormulas: true}); err != nil {
+	if err := ExcelToCSV(xlsx, allowed, ExcelToCSVOptions{AllowFormulas: true}); err != nil {
 		t.Fatal(err)
 	}
 	b, err = os.ReadFile(filepath.Join(allowed, "Sheet1.csv"))
@@ -51,16 +51,16 @@ func TestExcelToCSVOptionsAndFormulaGuard(t *testing.T) {
 	}
 
 	selected := filepath.Join(dir, "selected")
-	if err := ExcelToCSV(xlsx, selected, []string{"chosen"}, ExcelToCSVOptions{Sheets: []string{"Other"}}); err != nil {
+	if err := ExcelToCSV(xlsx, selected, ExcelToCSVOptions{Sheets: []string{"Other"}, FileNames: map[string]string{"Other": "chosen"}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(selected, "chosen.csv")); err != nil {
 		t.Fatal(err)
 	}
-	if err := ExcelToCSV(xlsx, dir, nil, ExcelToCSVOptions{Sheets: []string{"missing"}}); err == nil {
+	if err := ExcelToCSV(xlsx, dir, ExcelToCSVOptions{Sheets: []string{"missing"}}); err == nil {
 		t.Fatal("missing sheet accepted")
 	}
-	if err := ExcelToCSV(xlsx, dir, nil, ExcelToCSVOptions{}, ExcelToCSVOptions{}); err == nil {
+	if err := ExcelToCSV(xlsx, dir, ExcelToCSVOptions{}, ExcelToCSVOptions{}); err == nil {
 		t.Fatal("multiple options accepted")
 	}
 	legacy := filepath.Join(dir, "legacy")

@@ -54,53 +54,80 @@ func EachExcelToCsv(dir string, outputDir string) error {
 	return nil
 }
 
-// ExcelDirToCSV converts each Excel workbook in a directory to CSV files.
+// ExcelDirToCSV writes every sheet of every .xlsx workbook in dir as a CSV
+// file in outputDir, sheet S of Book.xlsx as Book_S.csv. See
+// ExcelToCSVOptions for choosing sheets and the formula guard; FileNames is
+// refused, because one map cannot name the files of several workbooks.
+//
+// Every file name of every workbook is checked before the first CSV is
+// written: a name that would leave outputDir, and two sheets that would be
+// written to one file, even from different workbooks and compared without
+// regard to case, are an error and nothing is written.
 func ExcelDirToCSV(dir, outputDir string, options ...ExcelToCSVOptions) error {
-	if len(options) > 1 {
-		return fmt.Errorf("at most one ExcelToCSVOptions may be given, got %d", len(options))
+	opts, err := oneExcelToCSVOptions(options)
+	if err != nil {
+		return err
 	}
-	var opts ExcelToCSVOptions
-	if len(options) == 1 {
-		opts = options[0]
+	if len(opts.FileNames) > 0 {
+		return fmt.Errorf("ExcelDirToCSV names each file after its workbook and sheet; FileNames applies only to ExcelToCSV")
 	}
 	files, err := filepath.Glob(filepath.Join(dir, "*.xlsx"))
 	if err != nil {
 		return fmt.Errorf("failed to list Excel files in %s: %w", dir, err)
 	}
-	for _, x := range files {
-		f, err := excelize.OpenFile(x)
+	var all []csvTarget
+	perFile := make([][]csvTarget, len(files))
+	for i, excelFile := range files {
+		targets, err := planExcelFileCSVs(excelFile, outputDir, opts)
 		if err != nil {
-			return fmt.Errorf("failed to open Excel file %s: %w", x, err)
+			return err
 		}
-		sheets := f.GetSheetList()
-		_ = f.Close()
-		allSheets := sheets
-		if len(opts.Sheets) > 0 {
-			sheets = make([]string, 0, len(opts.Sheets))
-			for _, s := range opts.Sheets {
-				found := false
-				for _, existing := range allSheets {
-					if existing == s {
-						found = true
-						break
-					}
-				}
-				if !found {
-					return fmt.Errorf("sheet %q not found in %s", s, x)
-				}
-				sheets = append(sheets, s)
-			}
-		}
-		base := strings.TrimSuffix(filepath.Base(x), ".xlsx")
-		names := make([]string, len(sheets))
-		for i, sheet := range sheets {
-			names[i] = base + "_" + sheet + ".csv"
-		}
-		if err := ExcelToCSV(x, outputDir, names, opts); err != nil {
+		perFile[i] = targets
+		all = append(all, targets...)
+	}
+	if err := refuseSharedCSVFiles(all); err != nil {
+		return err
+	}
+	for i, excelFile := range files {
+		if err := writeExcelFileCSVs(excelFile, outputDir, perFile[i], opts.AllowFormulas); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// planExcelFileCSVs returns where each selected sheet of one workbook goes.
+func planExcelFileCSVs(excelFile, outputDir string, opts ExcelToCSVOptions) ([]csvTarget, error) {
+	f, err := excelize.OpenFile(excelFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
+	}
+	defer func() { _ = f.Close() }()
+	base := strings.TrimSuffix(filepath.Base(excelFile), ".xlsx")
+	sheets, err := selectSheets(excelFile, f.GetSheetList(), opts.Sheets)
+	if err != nil {
+		return nil, err
+	}
+	targets := make([]csvTarget, 0, len(sheets))
+	for _, sheet := range sheets {
+		path, err := safeSheetCSVPath(outputDir, sheet, base+"_"+sheet+".csv")
+		if err != nil {
+			return nil, err
+		}
+		targets = append(targets, csvTarget{source: filepath.Base(excelFile) + " sheet " + sheet, sheet: sheet, path: path})
+	}
+	return targets, nil
+}
+
+// writeExcelFileCSVs writes the planned sheets of one workbook and closes the
+// workbook before returning, on every path.
+func writeExcelFileCSVs(excelFile, outputDir string, targets []csvTarget, allowFormulas bool) error {
+	f, err := excelize.OpenFile(excelFile)
+	if err != nil {
+		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
+	}
+	defer func() { _ = f.Close() }()
+	return writeCSVTargets(f, outputDir, targets, allowFormulas)
 }
 
 // excelFileToCsv writes every sheet of one workbook as a CSV file and closes
