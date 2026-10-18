@@ -112,6 +112,7 @@ type TWStockClient struct {
 	twseOpenAPIBaseURL string
 	tpexOpenAPIBaseURL string
 	tdccBaseURL        string
+	mopsBaseURL        string
 }
 
 // TWStock creates a client for the unauthenticated TWSE and TPEx data APIs.
@@ -129,6 +130,7 @@ func TWStock(cfg TWStockConfig) (*TWStockClient, error) {
 		twseOpenAPIBaseURL: "https://openapi.twse.com.tw",
 		tpexOpenAPIBaseURL: "https://www.tpex.org.tw",
 		tdccBaseURL:        "https://opendata.tdcc.com.tw",
+		mopsBaseURL:        "https://mopsov.twse.com.tw",
 	}, nil
 }
 

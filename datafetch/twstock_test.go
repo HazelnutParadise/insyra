@@ -121,6 +121,7 @@ func newFixtureTWStock(t *testing.T, cfg TWStockConfig) (*TWStockClient, *fixtur
 	stock.twseOpenAPIBaseURL = "https://twse-openapi.test"
 	stock.tpexOpenAPIBaseURL = "https://tpex-openapi.test"
 	stock.tdccBaseURL = "https://tdcc.test"
+	stock.mopsBaseURL = "https://mops.test"
 	return stock, transport
 }
 
@@ -944,5 +945,101 @@ func TestIsCommonStockCode(t *testing.T) {
 		if got := isCommonStockCode(code); got != want {
 			t.Errorf("isCommonStockCode(%q) = %v, want %v", code, got, want)
 		}
+	}
+}
+
+func mopsFixture(t *testing.T, transport *fixtureTransport, key, name string) {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join("testdata", "mops", name))
+	if err != nil {
+		t.Fatalf("read fixture %s: %v", name, err)
+	}
+	transport.replies[key] = append(transport.replies[key], fixtureReply{status: http.StatusOK, body: body})
+}
+
+func TestTWStockMonthlyRevenue(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	mopsFixture(t, transport, "/nas/t21/sii/t21sc03_114_9_0.html", "sii_114_9_0.html")
+	mopsFixture(t, transport, "/nas/t21/sii/t21sc03_114_9_1.html", "sii_114_9_1.html")
+	dt, err := stock.MonthlyRevenue(2025, 9, TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("MonthlyRevenue error: %v", err)
+	}
+	// Fixture: six domestic companies in two industries and one foreign company.
+	if dt.NumRows() != 7 {
+		t.Fatalf("rows = %d, want 7", dt.NumRows())
+	}
+	want := map[string]any{
+		"Month": dateUTC(2025, time.September, 1), "Code": "1101", "Name": "台泥", "Industry": "水泥工業", "Market": "TWSE",
+		"Revenue": int64(13306676), "PrevMonthRevenue": int64(12214776), "LastYearRevenue": int64(13325249),
+		"MoMChange": 8.93, "YoYChange": -0.13, "Cumulative": int64(109438297), "LastYearCumulative": int64(105591346),
+		"CumulativeChange": 3.64, "Remark": "", "PageDate": dateUTC(2026, time.October, 16),
+	}
+	for name, w := range want {
+		if got := dt.GetColByName(name).Data()[0]; got != w {
+			t.Errorf("%s = %v (%T), want %v", name, got, got, w)
+		}
+	}
+	if got := dt.GetColByName("Industry").Data()[3]; got != "食品工業" {
+		t.Errorf("fourth company's industry = %v, want 食品工業", got)
+	}
+}
+
+func TestTWStockMonthlyRevenueBothMarketsAndOldPages(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	mopsFixture(t, transport, "/nas/t21/sii/t21sc03_114_9_0.html", "sii_114_9_0.html")
+	transport.replies["/nas/t21/sii/t21sc03_114_9_1.html"] = []fixtureReply{{status: http.StatusNotFound, body: []byte("Not Found")}}
+	mopsFixture(t, transport, "/nas/t21/otc/t21sc03_114_9_0.html", "otc_114_9_0.html")
+	transport.replies["/nas/t21/otc/t21sc03_114_9_1.html"] = []fixtureReply{{status: http.StatusNotFound, body: []byte("Not Found")}}
+	both, err := stock.MonthlyRevenue(2025, 9, TWMarketAuto)
+	if err != nil {
+		t.Fatalf("both markets: %v", err)
+	}
+	markets := map[any]int{}
+	for _, m := range both.GetColByName("Market").Data() {
+		markets[m]++
+	}
+	if markets["TWSE"] != 6 || markets["TPEx"] != 4 {
+		t.Errorf("markets = %v, want 6 TWSE and 4 TPEx", markets)
+	}
+
+	// January 2003 has one page with no suffix, ten cells to a row and no remark.
+	transport.replies["/nas/t21/sii/t21sc03_92_1_0.html"] = []fixtureReply{{status: http.StatusNotFound, body: []byte("Not Found")}}
+	mopsFixture(t, transport, "/nas/t21/sii/t21sc03_92_1.html", "sii_92_1.html")
+	old, err := stock.MonthlyRevenue(2003, 1, TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("2003: %v", err)
+	}
+	if old.NumRows() != 4 || old.GetColByName("Revenue").Data()[0] != int64(2273373) || old.GetColByName("Remark").Data()[0] != "" {
+		t.Errorf("2003: %d rows, first revenue %v", old.NumRows(), old.GetColByName("Revenue").Data()[0])
+	}
+	if got := old.GetColByName("Month").Data()[0]; got != dateUTC(2003, time.January, 1) {
+		t.Errorf("2003 Month = %v", got)
+	}
+
+	// A month with no page at all is an empty table.
+	transport.replies["/nas/t21/sii/t21sc03_115_12_0.html"] = []fixtureReply{{status: http.StatusNotFound, body: []byte("Not Found")}}
+	transport.replies["/nas/t21/sii/t21sc03_115_12.html"] = []fixtureReply{{status: http.StatusNotFound, body: []byte("Not Found")}}
+	none, err := stock.MonthlyRevenue(2026, 12, TWMarketTWSE)
+	if err != nil || none.NumRows() != 0 || none.GetColByName("Revenue") == nil {
+		t.Errorf("missing month: %v, %v", none, err)
+	}
+}
+
+func TestTWStockMonthlyRevenueRefusesBadCalls(t *testing.T) {
+	stock, _ := newFixtureTWStock(t, TWStockConfig{})
+	for name, f := range map[string]func() error{
+		"early year": func() error { _, e := stock.MonthlyRevenue(2002, 12, TWMarketTWSE); return e },
+		"month 13":   func() error { _, e := stock.MonthlyRevenue(2025, 13, TWMarketTWSE); return e },
+		"month 0":    func() error { _, e := stock.MonthlyRevenue(2025, 0, TWMarketTWSE); return e },
+		"market":     func() error { _, e := stock.MonthlyRevenue(2025, 9, TWMarket("NYSE")); return e },
+	} {
+		if f() == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+	var zero TWStockClient
+	if _, err := zero.MonthlyRevenue(2025, 9, TWMarketTWSE); err == nil {
+		t.Error("a zero client should be an error")
 	}
 }

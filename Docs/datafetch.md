@@ -689,6 +689,7 @@ MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)
 AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)
 OddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error)
 ShareholdingDistribution() (*insyra.DataTable, error)
+MonthlyRevenue(year, month int, market TWMarket) (*insyra.DataTable, error)
 DailyQuotesOn(date time.Time, market TWMarket) (*insyra.DataTable, error)
 AdvanceDecline(date time.Time, market TWMarket, commonStockOnly bool) (*insyra.DataTable, error)
 ```
@@ -705,6 +706,7 @@ Each method has a `...Context` form taking a `context.Context` first, such as `D
 | `InstitutionalTrades` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `ForeignNet`, `TrustNet`, `DealerNet`, `TotalNet` (`int64`, shares) |
 | `MarginBalance` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `MarginBalance`, `ShortBalance` (`int64`, source balance units) |
 | `AllDailyQuotes` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `Volume` (`int64`, shares), `Turnover` (`int64`, currency units), `Open`, `High`, `Low`, `Close`, `Change` (`float64`), `Transactions` (`int64`) |
+| `MonthlyRevenue` | see Monthly revenue below |
 | `DailyQuotesOn` | the columns of `AllDailyQuotes` plus `Sign` (`string`): `"+"` up, `"-"` down, `"="` unchanged, `"X"` no reference price (then `Change` is `nil`) |
 | `AdvanceDecline` | one row: `Date` (`time.Time`), `Advancing`, `AdvancingLimit`, `Declining`, `DecliningLimit`, `Unchanged`, `NoTrade`, `NoReference` (`int64`), `Source` (`string`) |
 | `OddLotQuotes` | `Date` (`time.Time`), `Code`, `Name` (`string`), `Volume` (`int64`, shares), `Transactions`, `Turnover` (`int64`), `BidPrice`, `AskPrice` (`float64`), `BidVolume`, `AskVolume` (`int64`), plus `Open`, `Close`, `High`, `Low` (`float64`) for `TWOddLotIntraday` or `Price` for `TWOddLotAfterHours` |
@@ -724,6 +726,25 @@ The TWSE answers repeated requests with the throttling page described above; for
 `OddLotQuotes(date, session)` returns the TWSE's odd-lot report (trades of fewer than 1,000 shares) for one day, one row per security, from `TWTC7U` (intraday, `TWOddLotIntraday`, available since 2020-10-26) or `TWT53U` (after hours, `TWOddLotAfterHours`, since 2005). Prices are as traded and not adjusted for ex-rights, and a price the exchange shows as `--` is `nil`. The exchange's 合計 totals row is left out. A holiday, or a date before the report existed, gives an empty table with the columns in place, not an error.
 
 Only the TWSE publishes these reports by date. The TPEx's OpenAPI (`tpex_odd_stock`) gives just the latest day, so the method does not read it. The TWSE answers repeated requests with the throttling page described above, so for a backfill set `Interval` and `Retries` as suggested there.
+
+### Monthly revenue
+
+`MonthlyRevenue(year, month, market)` returns the monthly operating revenue of every listed company for one month from the Market Observation Post System (MOPS) summary pages, one page per market, which saves the two thousand per-company requests. `year` is the Gregorian year (2025, not 114), the pages start in January 2003, and `TWMarketAuto` returns both TWSE and TPEx. A month with no page gives an empty table with the columns in place.
+
+| Column | Meaning |
+| :--- | :--- |
+| `Month` (`time.Time`) | the first day of the month the revenue is for |
+| `Code`, `Name`, `Industry`, `Market` (`string`) | the company; `Market` is `"TWSE"` or `"TPEx"` |
+| `Revenue`, `PrevMonthRevenue`, `LastYearRevenue` (`int64`) | this month, last month and the same month a year earlier, in **thousands of NT dollars** |
+| `MoMChange`, `YoYChange` (`float64`) | percent change from last month and from a year earlier, as the site computes them |
+| `Cumulative`, `LastYearCumulative` (`int64`) | the year to date and the year before's, in thousands of NT dollars |
+| `CumulativeChange` (`float64`) | percent change of the year to date |
+| `Remark` (`string`) | the company's note, empty when there is none |
+| `PageDate` (`time.Time`) | when the page was produced |
+
+**`PageDate` is not an announcement date.** It is the date the whole page was produced (出表日期), not the day each company published its figure; companies report by the 10th of the following month. Do not use it as the moment a figure was known and could be traded on. Names are decoded from Big5, which loses a few rare characters.
+
+Newer months have a domestic page and a second page for companies listed from abroad, and both are read; older months have a single page. The MOPS answers repeated requests with the throttling page described above, so for a backfill set `Interval` and `Retries` as suggested there.
 
 ### Shareholding distribution
 
