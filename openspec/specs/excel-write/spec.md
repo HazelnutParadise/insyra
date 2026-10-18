@@ -2,9 +2,7 @@
 
 ## Purpose
 How a DataTable is written as one sheet of an Excel workbook, through `ToExcel`, `WriteExcel` and the CLI's `save`: which sheet, what happens to a sheet that already exists, and what of the rest of the workbook is kept.
-
 ## Requirements
-
 ### Requirement: A save touches only its own sheet
 
 `ToExcel` SHALL write the table as the sheet named in its options, `Sheet1` when none is given. It SHALL create the workbook when the path does not exist, add the sheet when the workbook lacks it, and leave every other sheet as it was.
@@ -44,3 +42,15 @@ When the sheet already exists, `ToExcel` SHALL refuse with an error matching `Er
 #### Scenario: Saving twice without naming a sheet
 - **WHEN** `save t out.xlsx` runs twice
 - **THEN** the second fails without renaming the sheet to `Sheet2`, and says to add `sheet <name>` for a new sheet or `if-exists replace` to overwrite `Sheet1`
+
+### Requirement: A replaced sheet leaves none of its parts in the file
+When a sheet is replaced, the system SHALL remove the comments, tables, drawings and the parts only they referenced from the saved file, and SHALL keep a part another sheet still references.
+
+#### Scenario: Old comment text is gone
+- **WHEN** a sheet holding a comment is replaced and the workbook is saved
+- **THEN** no part of the saved file contains the old comment text
+
+#### Scenario: A new table takes the old table's name
+- **WHEN** a sheet holding a table named `Orders` is replaced and a new table named `Orders` is added
+- **THEN** adding the table succeeds and the saved file holds one table part
+
