@@ -52,6 +52,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `nn` 的每個東西只留一個名字。下列名稱改為 Deprecated，意義不變，在 0.4 移除：十二個層建構子的 `New…` 版本（`NewDense`、`NewReLU`、`NewDropout`、`NewFunc`、`NewMultiHeadAttention`、`NewConv2D`、`NewMaxPool2D`、`NewAvgPool2D`、`NewGlobalAvgPool`、`NewBatchNorm2D`、`NewLayerNorm`、`NewEmbedding`；請用沒有 `New` 的名稱）；loss 選擇器 `SoftmaxCrossEntropy`、`MSELoss`、`BCEWithLogitsLoss`（請用 `CrossEntropy`、`MSE`、`BCEWithLogits`）；`Classifier`、`Regressor`（請用 `BoundClassifier`、`BoundRegressor`）；`MaxPoolOptions`、`AveragePoolOptions`（請用 `PoolOptions`）；`DataType` 與常數 `Float32`、`Float16`、`Float64`（請用 `DType` 與 `DType…` 常數）；`NewFloat32Tensor`、`NewTensorWithDType`（請用 `NewTensor`）；以及 `Tensor.Data`（請用 `Tensor.Float32Data`，它會把其他 dtype 回報為錯誤）。
 - 在 nil 的迴歸模型（`LinearModel`、`RidgeModel`、`LogisticModel` 等迴歸系列）上呼叫 `Predict`，或把 nil 模型指標交給 `ExportONNX`，會回傳錯誤，不再 panic。`Features` 仍是模型值上的方法，`Fit` 系列函式的回傳型別不變。
 - `ml.WriteONNX` 改為 Deprecated，`ExportONNX` 是同一個函式，參數仍是 `any`。`DecisionTreeOptions` 的別名 `DecisionTreeClassifierOptions`、`DecisionTreeRegressorOptions` 也改為 Deprecated。兩者都在 0.4 移除。
+- 新增 `nn.CustomOptimizer{Name, Step}` 與 `Parameter.Update(fn)`，`Sequential.Fit` 可以用呼叫者自己寫的 optimizer 訓練，不再只限 `SGD`、`SGDMomentum`、`Adam`、`AdamW`。`Fit` 每個 batch 呼叫一次 `Step`，傳入模型 tape 上的所有參數；`Update` 把參數的 float32 資料和梯度交給 `fn`（loss 沒有影響到這個參數時，梯度是 nil），`fn` 寫進去的值會保留下來，手寫的訓練迴圈也能用。`Fit` 會在跑任何 batch 之前拒絕沒有 `Step` 的 `CustomOptimizer`。內建的 optimizer 行為不變。（[issue #266](https://github.com/HazelnutParadise/insyra/issues/266)）
 
 ### `datafetch`
 
