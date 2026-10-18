@@ -53,7 +53,7 @@ func runWilcoxonCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		mu, err := parseFloatArg("wilcoxon", "mu", args[2])
+		mu, err := parseFloatArg(ctx, "wilcoxon", "mu", args[2])
 		if err != nil {
 			return err
 		}

@@ -47,7 +47,11 @@ func runShowCommand(ctx *ExecContext, args []string) error {
 	case insyra.Scaler:
 		return showScaler(ctx, args[0], typed)
 	default:
-		return fmt.Errorf("show is only supported for DataTable/DataList/scaler")
+		if number, ok := numberValue(value); ok && len(args) == 1 {
+			_, _ = fmt.Fprintf(ctx.Output, "%v\n", number)
+			return nil
+		}
+		return fmt.Errorf("show is only supported for DataTable/DataList/scaler/number")
 	}
 
 	return nil

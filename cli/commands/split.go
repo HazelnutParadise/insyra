@@ -41,7 +41,7 @@ func runSplitCommand(ctx *ExecContext, args []string) error {
 	if !strings.EqualFold(coreArgs[1], "train") {
 		return fmt.Errorf("split: expected 'train <frac>'")
 	}
-	trainFrac, err := strconv.ParseFloat(coreArgs[2], 64)
+	trainFrac, err := parseFloatToken(ctx, coreArgs[2])
 	if err != nil {
 		return fmt.Errorf("split: invalid train fraction %q", coreArgs[2])
 	}
