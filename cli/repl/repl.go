@@ -41,12 +41,11 @@ func Start(ctx *commands.ExecContext) error {
 		ctx.EnvPath = envPath
 	}
 	if ctx.Vars == nil {
-		vars, err := ctx.Env.RestoreVariables(ctx.EnvName)
+		vars, err := ctx.Env.OpenVariables(ctx.EnvName)
 		if err != nil {
-			ctx.Vars = map[string]any{}
-		} else {
-			ctx.Vars = vars
+			return err
 		}
+		ctx.Vars = vars
 	}
 
 	historyFile := filepath.Join(ctx.EnvPath, "history.txt")
