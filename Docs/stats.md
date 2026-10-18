@@ -1007,6 +1007,33 @@ fmt.Printf("Regression F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 
 ---
 
+## Multiple Comparisons
+
+### Adjust P-Values
+
+```go
+func AdjustPValues(pvals insyra.IDataList, method PAdjustMethod) (*insyra.DataList, error)
+```
+
+**Description:** Corrects a batch of p-values for testing many hypotheses at once, for example 6 moving-average crossovers × long and short. The result has the same order as the input and each value is capped at 1. It matches R's `p.adjust` for the same method.
+
+**Parameters:**
+
+- `pvals`: The raw p-values. Each must be a number in [0, 1], or `NaN` for a test that was not run. Type: `insyra.IDataList`.
+- `method`: One of `PAdjustHolm` (family-wise error rate, step-down), `PAdjustBonferroni`, `PAdjustHochberg` (family-wise, step-up), `PAdjustBH` (Benjamini-Hochberg false discovery rate) and `PAdjustBY` (Benjamini-Yekutieli, any dependence). Type: `PAdjustMethod`.
+
+**Returns:**
+
+- `*insyra.DataList`: The adjusted p-values. A `NaN` stays `NaN` and is not counted in the number of tests, as in R.
+- `error`: A nil or empty list, a value that is not a number or lies outside [0, 1], or an unknown method.
+
+```go
+adj, err := stats.AdjustPValues(insyra.NewDataList(0.01, 0.04, 0.03, 0.005), stats.PAdjustHolm)
+// adj: 0.03, 0.06, 0.06, 0.02
+```
+
+---
+
 ## Nonparametric Tests (Rank-Based)
 
 Rank-based tests do not assume normality or homogeneity of variance. They
