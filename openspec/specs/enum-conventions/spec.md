@@ -8,12 +8,20 @@ Every exported enum takes its underlying type from one rule, so a reader can tel
 
 An exported enum type SHALL take its underlying type from the first rule that applies:
 1. If the number means something outside insyra, such as Excel's day-count `basis`, it SHALL be `int`, numbered as the outside source numbers it.
-2. If the constant's text leaves Go unchanged, it SHALL be `string`, and the constant's value SHALL be that text. Text leaves Go unchanged when it is a name defined by an outside standard or tool, or when it is written to a configuration file, JSON, a log or a result report.
+2. If the constant's text leaves Go unchanged, it SHALL be `string`, and the constant's value SHALL be that text.
 3. Otherwise it SHALL be `int`, numbered with `iota`, with its zero value as the documented default.
 
 #### Scenario: External numbering
 - **WHEN** `finance.Basis30_360EU` is converted to `int`
 - **THEN** the result is 4, Excel's basis number for that convention
+
+### Requirement: What text leaves Go unchanged
+
+For the underlying-type rule, an enum constant's text SHALL count as leaving Go unchanged when it is a name defined by an outside standard or tool, or when it is written to a configuration file, JSON, a log or a result report.
+
+#### Scenario: Text written to a configuration file
+- **WHEN** an enum's constant is written by its text into a configuration file
+- **THEN** the enum's underlying type is `string`, and the constant's value is that text
 
 ### Requirement: Every numeric enum prints its name
 
