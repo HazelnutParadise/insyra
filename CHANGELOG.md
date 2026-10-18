@@ -56,6 +56,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Error and warning messages that named a row or column by a 1-based number (`ToExcel`, `ToSQL`, `csvxl` Excel-to-CSV, `mkt.RFM`) now say `row index N` / `column index N` counted from 0, like the rest of the library.
 - A value nested more than 32 `[]any` deep is no longer merged with another that differs only in a deep leaf in `Count` and lookups; past the depth limit a container is identified by its address, so a separate copy of such a value is a different value. Nothing that worked changes, since `Count` panicked on these values on v0.3.2.
 - A slice that contains itself, put into a list with `Append`, no longer ends the process with a stack overflow when `Show` prints it or when a `stats` function refuses it: such a cell is shown by its type. Other cells print as before.
+- Encoding detection gives the same answer for the same bytes. A very short file where chardet's recognizers tie, such as a 24-byte Big5 CSV, was read as Shift_JIS, GB18030 or Big5 from one call to the next; a tie is now broken by charset name. How a low-confidence guess is handled is unchanged.
 
 ### CLI
 

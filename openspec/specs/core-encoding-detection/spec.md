@@ -15,3 +15,10 @@
 #### Scenario: A short file with an invalid tail
 - **WHEN** 檔案比 8192 位元組短，結尾是 Latin-1 位元組，例如 `name\nJos\xe9\n`
 - **THEN** `DetectEncoding` 不回傳 `utf-8`，因為取樣就是整個檔案，結尾沒有被切開
+
+### Requirement: Detection gives the same answer for the same bytes
+`DetectEncoding` and the reader-based detection SHALL return the same charset every time they are given the same bytes, breaking a tie between equally confident recognizers by charset name.
+
+#### Scenario: A short Big5 file where recognizers tie
+- **WHEN** the same 24-byte Big5 sample is detected 300 times
+- **THEN** every call returns the same charset

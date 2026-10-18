@@ -370,13 +370,24 @@ func detectEncodingOfSample(sample []byte, source string) (string, error) {
 	}
 
 	// Fallback to chardet
+	// chardet runs its recognizers concurrently and sorts their answers by
+	// confidence alone, so recognizers that tie come back in whatever order they
+	// finished. DetectBest returns the first of them, which made a short Big5
+	// file read as Shift_JIS, GB18030 or Big5 from one call to the next. Take
+	// every answer and break a tie by name, so one input always gets one answer.
 	detector := chardet.NewTextDetector()
-	res, err := detector.DetectBest(sample)
+	results, err := detector.DetectAll(sample)
 	if err != nil {
 		return "", fmt.Errorf("failed to detect encoding for file %s: %w", source, err)
 	}
+	best := results[0]
+	for _, r := range results[1:] {
+		if r.Confidence == best.Confidence && r.Charset < best.Charset {
+			best = r
+		}
+	}
 
-	charset := strings.ToLower(res.Charset)
+	charset := strings.ToLower(best.Charset)
 	return charset, nil
 }
 

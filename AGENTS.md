@@ -290,10 +290,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: take `chromedp` v0.20 or later once `snapshot-chromedp` releases a version that compiles against it, and compare `plot.SavePNG` output before and after, as above.
 - **Status**: pending
 
-### [2026-10-13] — encoding detection gives different answers for one very short Big5 file
-- **Where**: `utils.go` `DetectEncoding`, through chardet's `DetectBest`
-- **What**: measured on 2026-10-13 on `0.4`: a Big5 CSV of two data rows (`名稱,數量` / `蘋果,3` / `香蕉,5`, 24 bytes) was detected as `shift_jis`, `gb-18030` or `big5` across 50 calls in one process, in proportions that changed between runs, and the read took its header as `ｦWｺﾙ` with a nil error. The only sign was the Info line naming the guessed encoding, which `quiet-success-logs` kept for that reason. Big5 files of 1, 3, 10, 30 and 100 data rows built from longer Chinese text were detected as `big5` 200 times out of 200. The likely cause, not read in chardet's source, is a tie between recognisers that is broken in map order. Not measured on this line.
-- **Suggestion**: make the answer deterministic first, for example by asking chardet for all results and breaking a tie in a fixed order. Then decide whether a guess below some confidence should be a warning or an error that asks for the encoding, which changes what a read does with such a file.
+### [2026-10-13] — a guess below some confidence is still returned as the encoding
+- **Where**: `utils.go` `detectEncodingOfSample`
+- **What**: the answer for one input is now stable (`encoding-detection-is-deterministic`), but a 24-byte Big5 CSV (`名稱,數量` / `蘋果,3` / `香蕉,5`) can still be read as another encoding when the recognizers tie, and the read returns a nil error with a garbled header. The only sign is the Info line naming the guess.
+- **Suggestion**: decide whether a guess below some confidence should be a warning or an error that asks for the encoding. That changes what a read does with such a file.
 - **Status**: pending
 
 ### [2026-09-25] — device MatMul's bit-parity rests on behaviour WGSL does not promise
