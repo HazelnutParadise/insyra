@@ -217,7 +217,7 @@ func optimize(label string, mean []float64, cov [][]float64, names []string, cfg
 	case MaximumSharpe:
 		weights, iterations, converged = problem.solveMaximumSharpe(cfg.RiskFreeRate)
 	default:
-		return nil, fmt.Errorf("%s: unknown Objective %d", label, cfg.Objective)
+		return nil, fmt.Errorf("%s: unknown Objective %v", label, cfg.Objective)
 	}
 
 	result := problem.result(weights, names, cfg.RiskFreeRate, iterations, converged)

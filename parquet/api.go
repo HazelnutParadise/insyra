@@ -200,7 +200,7 @@ func resolveWriteOptions(opts []WriteOptions) (compress.Compression, int64, erro
 	case CompressionZstd:
 		codec = compress.Codecs.Zstd
 	default:
-		return codec, 0, fmt.Errorf("parquet: unknown Compression %d", opt.Compression)
+		return codec, 0, fmt.Errorf("parquet: unknown Compression %v", opt.Compression)
 	}
 	if opt.RowGroupSize < 0 {
 		return codec, 0, fmt.Errorf("parquet: RowGroupSize must not be negative, got %d", opt.RowGroupSize)

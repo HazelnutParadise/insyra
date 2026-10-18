@@ -110,6 +110,13 @@ handler := insyra.Config.GetDefaultErrHandlingFunc()
 
 The global buffer behind `GetAllErrors`, `PopAllErrors`, `HasError`, `GetErrorCount` and `ClearErrors` is a diagnostic log rather than an error-handling API: it holds up to `insyra.ErrorBufferCapacity` (1536) records from every goroutine and every object, and drops the oldest when full. Use it to see what a run did, and handle errors through `Err()`/`PopErr()` or a returned `error`. `PopError`, `PopErrorByPackageName`, `PopErrorByFuncName`, `PopErrorAndCallback`, `PeekError`, `GetErrorsByLevel`, `GetErrorsByPackage`, `PopErrorInfo` and `HasErrorAboveLevel` are deprecated for that reason.
 
+An error that reports a setting names it. Every enum whose values are numbers,
+such as `quant.VaRMethod` or `insyra.MergeMode`, has a `String()` method, so
+`fmt.Print(quant.VaRParametric)` prints `VaRParametric`. A value that is not one
+of the constants prints as the type and the number, and an error reports it the
+same way: `ValueAtRisk` called with `quant.VaRMethod(3)` fails with
+`VaR: unknown method VaRMethod(3)`.
+
 ### Fatal errors
 
 A path with nothing left to do but give up records a fatal, and by default that ends the program. `LogFatal` logs through `log.Fatalf` unless panic protection is on, so the statements after the call never run, deferred functions do not run either, and the process exits with status 1. `SetDontPanic(true)` turns the same path into one logged line and a return:
