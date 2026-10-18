@@ -400,8 +400,18 @@ func writeCellValue(b *strings.Builder, rv reflect.Value, depth int, path []cell
 		return noCellRef
 	}
 	if depth > maxCellEncodeDepth {
-		writeCellAddress(b, rv)
-		return noCellRef
+		// An interface only wraps what it holds; look through it so a scalar
+		// leaf is written by value and two deep values that differ in a leaf
+		// stay different. Only a container is cut off, by its address.
+		inner := rv
+		for inner.Kind() == reflect.Interface && !inner.IsNil() {
+			inner = inner.Elem()
+		}
+		if !isScalarKind(inner.Kind()) {
+			writeCellAddress(b, inner)
+			return noCellRef
+		}
+		rv = inner
 	}
 
 	switch rv.Kind() {
@@ -525,4 +535,16 @@ func writeCellAddress(b *strings.Builder, rv reflect.Value) {
 	default:
 		fmt.Fprintf(b, "p:%s", rv.Type())
 	}
+}
+
+// isScalarKind reports whether a value of kind k holds no reference to descend
+// into, so writing it cannot recurse.
+func isScalarKind(k reflect.Kind) bool {
+	switch k {
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.String:
+		return true
+	}
+	return false
 }

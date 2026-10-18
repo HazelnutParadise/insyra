@@ -10,16 +10,16 @@ import (
 )
 
 func gatherRegressionInputs(dlY insyra.IDataList, dlXs []insyra.IDataList, extra ...insyra.IDataList) (y []float64, xs [][]float64, extras [][]float64, n int, err error) {
-	if dlY == nil {
+	if insyra.IsNilList(dlY) {
 		return nil, nil, nil, 0, fmt.Errorf("y data list is nil")
 	}
 	for j, dlX := range dlXs {
-		if dlX == nil {
+		if insyra.IsNilList(dlX) {
 			return nil, nil, nil, 0, fmt.Errorf("predictor %d data list is nil", j)
 		}
 	}
 	for j, dlExtra := range extra {
-		if dlExtra == nil {
+		if insyra.IsNilList(dlExtra) {
 			return nil, nil, nil, 0, fmt.Errorf("extra data list %d is nil", j)
 		}
 	}
@@ -95,7 +95,7 @@ func gatherPredictorInputs(dlXs []insyra.IDataList) (xs [][]float64, n int, err 
 		return nil, 0, fmt.Errorf("no predictor data lists provided")
 	}
 	for j, dlX := range dlXs {
-		if dlX == nil {
+		if insyra.IsNilList(dlX) {
 			return nil, 0, fmt.Errorf("predictor %d data list is nil", j)
 		}
 	}

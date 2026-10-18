@@ -290,10 +290,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: take `chromedp` v0.20 or later once `snapshot-chromedp` releases a version that compiles against it, and compare `plot.SavePNG` output before and after, as above.
 - **Status**: pending
 
-### [2026-10-13] — encoding detection gives different answers for one very short Big5 file
-- **Where**: `utils.go` `DetectEncoding`, through chardet's `DetectBest`
-- **What**: measured on 2026-10-13 on `0.4`: a Big5 CSV of two data rows (`名稱,數量` / `蘋果,3` / `香蕉,5`, 24 bytes) was detected as `shift_jis`, `gb-18030` or `big5` across 50 calls in one process, in proportions that changed between runs, and the read took its header as `ｦWｺﾙ` with a nil error. The only sign was the Info line naming the guessed encoding, which `quiet-success-logs` kept for that reason. Big5 files of 1, 3, 10, 30 and 100 data rows built from longer Chinese text were detected as `big5` 200 times out of 200. The likely cause, not read in chardet's source, is a tie between recognisers that is broken in map order. Not measured on this line.
-- **Suggestion**: make the answer deterministic first, for example by asking chardet for all results and breaking a tie in a fixed order. Then decide whether a guess below some confidence should be a warning or an error that asks for the encoding, which changes what a read does with such a file.
+### [2026-10-13] — a guess below some confidence is still returned as the encoding
+- **Where**: `utils.go` `detectEncodingOfSample`
+- **What**: the answer for one input is now stable (`encoding-detection-is-deterministic`), but a 24-byte Big5 CSV (`名稱,數量` / `蘋果,3` / `香蕉,5`) can still be read as another encoding when the recognizers tie, and the read returns a nil error with a garbled header. The only sign is the Info line naming the guess.
+- **Suggestion**: decide whether a guess below some confidence should be a warning or an error that asks for the encoding. That changes what a read does with such a file.
 - **Status**: pending
 
 ### [2026-09-25] — device MatMul's bit-parity rests on behaviour WGSL does not promise
@@ -320,18 +320,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: report it to the maintainer. There is no GitHub route: psych declares no `BugReports` URL, `revelle` has no psych repository, and `cran/psych` is a read-only mirror with issues disabled, so the only channel is the maintainer address in `DESCRIPTION` (`revelle@northwestern.edu`). A report needs the reproduction (hyperplane `c(.5,.4,.5,.3)` with complexity `c(1.3,1.0,1.1,1.0)` selects 2, not 3) and the fix — index back into the tied set at both steps, and assign the fit step. Sending it goes out under the owner's name, so it waits for the owner.
 - **Status**: pending
 
-### [2026-09-14] — `stats` functions outside the input guard still crash on a nil list
-- **Where**: `stats/numericinput.go` `numericSlice`, reached from goroutines in `stats/regression_shared.go` `gatherRegressionInputs`; `Correlation` and `Covariance`, which reach `numericSlice` through `requireNumericPair`; and the functions that call `AtomicDo` or `Data` on an argument without converting it: `LogisticRegression`, `ChiSquareGoodnessOfFit`, `ChiSquareIndependenceTest`, `Silhouette`'s labels, `KNNClassify`'s labels, `KNNRegress`'s targets, `Skewness`, `Kurtosis`
-- **What**: `numericSlice` checks only for a nil interface, so a typed nil `*DataList` reaches `AtomicDo` and panics, and `gatherRegressionInputs` calls it from goroutines it starts itself. Measured on 2026-09-27: `LinearRegression(x, typedNil)` and `PoissonRegression(typedNil, x)` end the process with a nil-pointer panic that no caller can recover, and every other function named above panics in the caller's goroutine on a typed nil. The hypothesis tests are no longer on this list: `hypothesis-tests-refuse-non-finite` converts every argument of the paired, rank and ANOVA tests through `asDataList` before any goroutine starts, so a nil list there gets the error an empty one gets. One nil still gets through `asDataList` itself: a wrapper holding a nil list, such as `isr.UseDL((*insyra.DataList)(nil))`, panics in its `AtomicDo` (measured with `OneWayANOVA`), now in the caller's goroutine rather than inside one the function started.
-- **Suggestion**: convert the remaining entry points through `asDataList`, or add a typed-nil check to `numericSlice` so the goroutines in `gatherRegressionInputs` get an error back instead of panicking, then widen `stats-input-type-guard` to name them. Decide first whether a nil list is an error or an empty sample. The hypothesis tests did not need that decision, because every one of them already refused an empty list.
-- **Status**: pending
-
-### [2026-09-14] — two deeply nested values with different leaves count as one
-- **Where**: `cell_identity.go` `maxCellEncodeDepth` and the interface arm of `writeCellValue`
-- **What**: a `[]any` level spends two encoding levels (the slice and the interface inside it), so a value nested more than 32 `[]any` deep reaches the limit of 64. Past it an interface is written as `p:interface {}`, its type with no address, so two such values that differ only in their deepest leaf encode alike: measured on 2026-09-14, a list holding a depth-40 value with leaf 1 and two with leaf 2 reports `Count` 3 for either. On v0.3.2 the same `Count` panicked, so nothing that worked changed, but the answer is silently wrong.
-- **Suggestion**: at the limit, unwrap the interface and write the address of the value inside it, which is what the comment above `maxCellEncodeDepth` says already happens.
-- **Status**: pending
-
 ### [2026-09-12] — grouping, pivoting, merging and `Describe` still merge nested values that print alike
 - **Where**: `datatable_groupby.go` `encodeGroupKey` and `uniqueKey`, `datatable_encode.go` `labelKey`, their default arms
 - **What**: `encodeGroupKey` and `uniqueKey` fall back to `%T:%v`, which does not descend, so `[]any{1}` and `[]any{"1"}` produce the same key: `GroupBy`, `Pivot` and `Merge` put the integer and the string in one group, and `Describe`'s unique count counts them once. `labelKey` uses `%T:%#v`, which separates an int from a string but not `[]any{1}` from `[]any{1.0}`. Measured on 2026-09-13. `identify-uncomparable-cells` gave cell lookups a recursive encoder, `encodeCell`; on 0.4 `encodeGroupKey` and `uniqueKey` moved to it too, but that changes the keys existing data groups by, so it stayed off the 0.3.x line.
@@ -342,12 +330,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `datalist.go` `flattenWithNilSupport`
 - **What**: a `[]byte` cell is one value everywhere it is looked up — counted and matched by content — but `NewDataList([]byte{0, 255})` still produces two cells holding `0` and `255`, because the constructor flattens every slice (pinned by `TestAnUnmarkedSliceStillFlattens`). The owner ruled on 2026-09-12 that the flattening stays: it is what makes `NewDataList` read like constructing a pandas Series. `one-value-one-cell` gave that decision an escape hatch, `NewDataList(Cell(blob), …)`, so the remaining gap is only that a reader who writes the bare form and then searches for the blob gets 0 with nothing to explain it.
 - **Suggestion**: documentation, not code. `Docs/DataList.md` describes the flattening and `Cell` together; keep the `Count`/`Counter` examples building their list with `Append` or `Cell` so they are runnable as written, and consider whether `Count` should say something when it is handed a slice that the receiving list could not be holding.
-- **Status**: pending
-
-### [2026-09-12] — a self-referential slice put into a list with `Append` still takes the process down when printed
-- **Where**: `stats` error formatting with `%v` of a refused cell (`numericValues` and everything that reads through it); `Show` of such a cell
-- **What**: `NewDataList` no longer recurses forever on a slice that contains itself (`flattenToDepth` keeps a slice 64 levels down as one cell). `Append` does not flatten, so it can still put such a slice into a list as one cell, and printing that cell overflows the stack: measured on 2026-09-27, `OneWayANOVA` on a list holding `cyclic` ends with `fatal error: stack overflow`.
-- **Suggestion**: for the error text, print a composite cell by its type instead of its contents, or through the bounded encoder `encodeCell`.
 - **Status**: pending
 
 ### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
@@ -374,12 +356,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **What**: the planner retains capability-weighted heterogeneous assignments and its existing `MergePolicy`. `ExecuteNearestExact` now dispatches one worker per assignment, uses the bounded chunk seam, merges by input range, and falls back per assignment without changing the exact CPU decision.
 - **Suggestion**: run `INSYRA_ACCEL_GPU_TESTS=1 go test ./accel -run TestMultiDeviceParityConcurrentAndSequentialOnHardware` on a multi-GPU host, then record concurrent-versus-sequential wall clock for the 32k/8k saturation classes. The single-device host verifies correctness only; it cannot supply a multi-GPU speedup number.
 - **Status**: single-device correctness verified; multi-GPU wall clock and non-Apple parity remain pending
-
-### [2026-08-01] — `ToF64Slice` still fabricates zeros for 54 callers outside `stats`
-- **Where**: `datalist.go` `ToF64Slice`, and its callers in `plot/`, `gplot/`, `cli/`, `datalist_interpolation.go`
-- **What**: it routes every value through `insyra.ToFloat64`, which has no failure channel and yields `0` for anything it cannot parse, then returns a full-length slice — so a caller cannot tell a real zero from a value that was never read. `stats` was moved off it on 2026-08-01 after a blank among six observations was measured moving a Pearson coefficient from 0.9992 to 0.9879. `quant` followed on 2026-09-05 (`fix-quant-legacy-numeric-input`): its last five call sites — `SharpeRatio`, `MaxDrawdown`, `AnnualizedReturn`, `DeflatedSharpeRatio`, and `PBO`'s column loop — now read through `numericSeries`, so the whole package refuses an unreadable cell instead of zeroing it. The remaining callers were left deliberately: they are display and reporting paths, where a fabricated zero shows up as a point on a chart rather than inside a coefficient.
-- **Suggestion**: leave them, but decide rather than drift. If they are to stay, the method's doc comment should say what it does with a value it cannot read, because it currently does not. A new numeric analysis must not use it.
-- **Status**: pending
 
 ### [2026-08-01] — the GPU backend is verified on Apple and Metal only
 - **Where**: `accel/`, the whole device path

@@ -55,6 +55,9 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 //
 // rescaleP: Whether to rescale p to sum to 1. p is not mutated (a copy is used).
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) (*ChiSquareTestResult, error) {
+	if insyra.IsNilList(input) {
+		return nil, errors.New("input DataList is nil")
+	}
 	// 計算類別頻率
 	data := input.Data()
 	if len(data) == 0 {
@@ -147,6 +150,9 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 
 // ChiSquareIndependenceTest performs a chi-square test of independence.
 func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTestResult, error) {
+	if insyra.IsNilList(rowData) || insyra.IsNilList(colData) {
+		return nil, errors.New("input DataLists cannot be nil")
+	}
 	var rowVals, colVals []any
 	insyra.AtomicDoAll(func() {
 		rowVals = rowData.Data()

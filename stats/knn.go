@@ -175,6 +175,9 @@ type categoricalLabelSet struct {
 }
 
 func categoricalLabelsFromDataList(labels insyra.IDataList, expected int) (*categoricalLabelSet, error) {
+	if insyra.IsNilList(labels) {
+		return nil, errors.New("labels data list is nil")
+	}
 	out := &categoricalLabelSet{
 		encoded: make([]string, 0, expected),
 		values:  make(map[string]any, expected),
@@ -207,6 +210,9 @@ func categoricalLabelsFromDataList(labels insyra.IDataList, expected int) (*cate
 }
 
 func numericVectorFromDataList(values insyra.IDataList, expected int) ([]float64, error) {
+	if insyra.IsNilList(values) {
+		return nil, errors.New("values data list is nil")
+	}
 	out := make([]float64, 0, expected)
 	var size int
 	nonFinite := false

@@ -279,15 +279,15 @@ func FormatValue(value any) string {
 				return "[]"
 			}
 			if length > 3 {
-				return fmt.Sprintf("[%v, %v, ... +%d]",
-					rv.Index(0).Interface(),
-					rv.Index(1).Interface(),
+				return fmt.Sprintf("[%s, %s, ... +%d]",
+					SprintBounded(rv.Index(0).Interface()),
+					SprintBounded(rv.Index(1).Interface()),
 					length-2)
 			}
 			// 對於長度 <= 3 的陣列，使用逗號分隔的格式
 			var elements []string
 			for i := range length {
-				elements = append(elements, fmt.Sprintf("%v", rv.Index(i).Interface()))
+				elements = append(elements, SprintBounded(rv.Index(i).Interface()))
 			}
 			return "[" + strings.Join(elements, ", ") + "]"
 		}
@@ -512,4 +512,51 @@ func GetTerminalWidth() int {
 	}
 
 	return width
+}
+
+// SprintBounded renders a cell for a message. A slice, map or
+// other composite is shown by its contents when they are small and finite, and
+// by its type when they are not: printing a value that refers back to itself
+// overflows the stack, and a fatal stack overflow cannot be recovered.
+func SprintBounded(v any) string {
+	budget := 10000
+	if isBoundedValue(reflect.ValueOf(v), 16, &budget) {
+		return fmt.Sprintf("%v", v)
+	}
+	return fmt.Sprintf("%T", v)
+}
+
+// isBoundedValue reports whether printing rv visits at most budget nodes and
+// descends at most depth levels, which no self-referencing value does.
+func isBoundedValue(rv reflect.Value, depth int, budget *int) bool {
+	*budget--
+	if *budget < 0 || depth < 0 {
+		return false
+	}
+	switch rv.Kind() {
+	case reflect.Invalid:
+		return true
+	case reflect.Interface, reflect.Pointer:
+		return rv.IsNil() || isBoundedValue(rv.Elem(), depth-1, budget)
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < rv.Len(); i++ {
+			if !isBoundedValue(rv.Index(i), depth-1, budget) {
+				return false
+			}
+		}
+	case reflect.Map:
+		iter := rv.MapRange()
+		for iter.Next() {
+			if !isBoundedValue(iter.Key(), depth-1, budget) || !isBoundedValue(iter.Value(), depth-1, budget) {
+				return false
+			}
+		}
+	case reflect.Struct:
+		for i := 0; i < rv.NumField(); i++ {
+			if !isBoundedValue(rv.Field(i), depth-1, budget) {
+				return false
+			}
+		}
+	}
+	return true
 }

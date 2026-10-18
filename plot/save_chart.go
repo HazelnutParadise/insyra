@@ -15,6 +15,7 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/snapshot-chromedp/render"
+	json "github.com/goccy/go-json"
 	"github.com/google/uuid"
 )
 
@@ -44,8 +45,26 @@ type Renderable interface {
 	RenderContent() []byte
 }
 
+// checkEncodable reports a chart whose options JSON cannot hold, such as a
+// NaN or an infinity in the data. go-echarts drops that encoding error and
+// writes a page with no chart in it, so the check runs first and names the
+// problem instead.
+func checkEncodable(chart Renderable) error {
+	c, ok := chart.(interface{ JSON() map[string]interface{} })
+	if !ok {
+		return nil
+	}
+	if _, err := json.Marshal(c.JSON()); err != nil {
+		return fmt.Errorf("chart data cannot be encoded (NaN and infinite values are not supported; remove or replace them): %w", err)
+	}
+	return nil
+}
+
 // SaveHTML 將圖表渲染並保存為 HTML 文件
 func SaveHTML(chart Renderable, path string, animation ...bool) error {
+	if err := checkEncodable(chart); err != nil {
+		return err
+	}
 	if len(animation) > 0 && !animation[0] {
 		disableAnimation(chart)
 	} else {
@@ -77,6 +96,10 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 	// Check it here so the caller gets an error instead of a panic.
 	if filepath.Ext(pngPath) == "" {
 		return fmt.Errorf("output path %q has no file extension; SavePNG needs one to choose the image format (for example .png)", pngPath)
+	}
+
+	if err := checkEncodable(chart); err != nil {
+		return err
 	}
 
 	doesUseOnlineServiceOnFail := len(useOnlineServiceOnFail) == 0 || useOnlineServiceOnFail[0]

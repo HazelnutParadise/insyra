@@ -53,6 +53,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 值是數字的 enum 現在都會印出名稱。`MergeMode`、`NaNPolicy`、`UnknownPolicy`、`LabelSort`、`ResampleFreq`、`SheetExistsPolicy`、`SQLActionIfTableExists`、`MergeDirection` 與 `ErrPoppingMode` 新增 `String()`，`quant`（`VaRMethod`、`OptionType`、`PortfolioObjective`）、`finance`（`DayCountBasis`、`PaymentTiming`）、`datafetch`、`parquet`、`stats`、`ml` 與 `lp` 的數字 enum 也一樣。`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。不在常數之內的值印成 `型別名(n)`，原本就有 `String()` 的型別也一樣：`DataType(9)` 過去印 `unknown`、`LogLevel(9)` 印 `UNKNOWN`、`AggregateOp(99)` 印 `op(99)`、`ml.ClassAverage(9)` 印 `macro`。回報未知設定的錯誤會寫出名稱：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。所有 enum 的底層型別都沒有變，呼叫端不用改動。
 - **BREAKING**：`ToSQL` 遇到沒有名字的欄位，改用欄位字母（`A`、`B`…）當欄名，不再寫成 MySQL 和 PostgreSQL 都不接受的空白名稱 `""`。例如 `NewDataTable(NewDataList(1, 2, 3)).ToSQL(db, "t")` 在 MySQL 上以前會失敗並回傳 `Incorrect column name ''`，現在會寫出欄位 `A`。寫進 SQLite 的表也一樣，以前的 `""` 欄位現在會叫 `A`。如果已經有別的欄位用了這個字母當名稱（不分大小寫），在寫入任何東西之前就會回傳錯誤。
 - **BREAKING**：CCL 把浮點數轉成文字時，改寫成一般的十進位數字。A = 0.0000001 時，`'x' & A` 現在是 `x0.0000001`，不再是 `x1e-07`；`CONCAT('n=', 1000000)` 是 `n=1000000`，不再是 `n=1e+06`；`LEN(1000000)` 是 7，跟整數欄位存 1000000 時一致，以前是 5。範圍包含 `&`、`CONCAT`、沒有指定格式的 `TOSTR`，以及所有字串函式。1e21 以上、NaN 與無限大維持原本寫法，`ToCSV`、`ToJSON`、`Show` 不變，因為科學記號的數字儲存格讀回來還是同一個數。用浮點數組字串的運算式會得到不同的字串；想要舊寫法請用 `TOSTR(x, '%g')`。
+- 過去用 1 起算數字指出列或欄的錯誤與警告訊息（`ToExcel`、`ToSQL`、`csvxl` 的 Excel 轉 CSV、`mkt.RFM`），現在改寫成從 0 算的 `row index N` / `column index N`，與函式庫其他地方一致。
+- 巢狀超過 32 層 `[]any` 的值，不再因為只有很深的葉子不同，就在 `Count` 與查找時被當成同一個值；超過深度限制後，容器以位址識別，所以這種值的另一份複本是不同的值。原本能用的行為不變，因為 `Count` 在 v0.3.2 對這類值會 panic。
+- 把包含自己的 slice 用 `Append` 放進清單後，`Show` 印出它、或 `stats` 函式拒絕它時，不再因 stack overflow 讓程式結束，這種儲存格改以型別顯示。其他儲存格的顯示不變。
+- 編碼偵測對相同的位元組給出相同的答案。chardet 的辨識器平手時，例如 24 位元組的 Big5 CSV，過去每次呼叫可能被判成 Shift_JIS、GB18030 或 Big5；現在平手時依編碼名稱決定。低信心猜測的處理方式不變。
 
 ### CLI
 
@@ -163,6 +167,13 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `plot`
 
 - `CreateWordCloud` 依圖上顯示的文字計數，清單裡有 slice 型儲存格時不再 panic（`hash of unhashable type`）（[#411](https://github.com/HazelnutParadise/insyra/issues/411)）。`1` 和 `"1"` 會算成同一個詞，和它們在圖上看起來一樣。
+- 圖表資料含 `NaN` 或無限大時（`NaN` 的長條、空清單的箱型圖摘要、`NaN` 的儀表），`SaveHTML` 與 `SavePNG` 會回傳錯誤。過去它們會寫出一頁沒有圖的內容並回傳 nil（[#409](https://github.com/HazelnutParadise/insyra/issues/409)）。圖表建構函式不變，在這條線上仍會回傳圖表。
+
+### `gplot`
+
+- `CreateBarChart` 與 `CreateHistogram` 收到 `isr.DL` 這類包著 nil 清單的包裝時，會記錄警告並回傳 nil，不再 panic（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。
+- `LinearRegression`、`PoissonRegression`、`LogisticRegression`、`Correlation`、`Covariance`、`ChiSquareGoodnessOfFit`、`ChiSquareIndependenceTest`、`Silhouette`、`KNNClassify`、`KNNRegress`、`Skewness`、`Kurtosis` 收到 nil 清單（直接傳入或包在 `isr.DL` 這類包裝裡）時回傳錯誤。過去會 panic，迴歸函式還是在自己啟動的 goroutine 裡 panic，讓程式結束。`insyra.ProcessData` 把 nil 清單當成不支援的輸入。
+- `AppendCsvToExcel` 與 `ToExcel` 搭配 `SheetExistsReplace` 取代工作表時，會保留舊工作表的欄寬與檢視（縮放、格線、凍結或分割窗格），這些在 v0.3.4 會一起消失。隱藏的列與欄、合併範圍、列高、註解、超連結與該工作表自己的定義名稱仍會移除，因為它們會藏住或錯置新資料（[#401](https://github.com/HazelnutParadise/insyra/issues/401)）。
 
 ## v0.3.4
 
