@@ -22,44 +22,44 @@ type Rolling struct {
 }
 
 // Shift returns dt[col].Shift(periods, fill...).
-func (t *dt) Shift(col string, periods int, fill ...any) *insyra.DataList {
+func (t *DataTable) Shift(col string, periods int, fill ...any) *insyra.DataList {
 	return t.ShiftCol(col, periods, fill...)
 }
 
 // Diff returns dt[col].Diff(periods).
-func (t *dt) Diff(col string, periods int) *insyra.DataList {
+func (t *DataTable) Diff(col string, periods int) *insyra.DataList {
 	return t.DiffCol(col, periods)
 }
 
 // PctChange returns dt[col].PctChange(periods).
-func (t *dt) PctChange(col string, periods int) *insyra.DataList {
+func (t *DataTable) PctChange(col string, periods int) *insyra.DataList {
 	return t.PctChangeCol(col, periods)
 }
 
 // CumSum returns dt[col].CumSum().
-func (t *dt) CumSum(col string) *insyra.DataList {
+func (t *DataTable) CumSum(col string) *insyra.DataList {
 	return t.CumSumCol(col)
 }
 
 // CumProd returns dt[col].CumProd().
-func (t *dt) CumProd(col string) *insyra.DataList {
+func (t *DataTable) CumProd(col string) *insyra.DataList {
 	return t.CumProdCol(col)
 }
 
 // CumMax returns dt[col].CumMax().
-func (t *dt) CumMax(col string) *insyra.DataList {
+func (t *DataTable) CumMax(col string) *insyra.DataList {
 	return t.CumMaxCol(col)
 }
 
 // CumMin returns dt[col].CumMin().
-func (t *dt) CumMin(col string) *insyra.DataList {
+func (t *DataTable) CumMin(col string) *insyra.DataList {
 	return t.CumMinCol(col)
 }
 
 // RollingOn builds a rolling-window view over dt[col]. The terminal call
 // (Mean / Sum / Min / Max / Median / Std / Var / Apply / Corr) materialises
 // a column the same length as the source.
-func (t *dt) RollingOn(col string, r Rolling) *insyra.RollingDataList {
+func (t *DataTable) RollingOn(col string, r Rolling) *insyra.RollingDataList {
 	return t.RollingCol(col, insyra.RollingOptions{
 		Window:  r.Window,
 		MinObs:  r.MinObs,
@@ -69,6 +69,6 @@ func (t *dt) RollingOn(col string, r Rolling) *insyra.RollingDataList {
 }
 
 // ExpandingOn builds an expanding-window view over dt[col].
-func (t *dt) ExpandingOn(col string, minObs int) *insyra.ExpandingDataList {
+func (t *DataTable) ExpandingOn(col string, minObs int) *insyra.ExpandingDataList {
 	return t.ExpandingCol(col, minObs)
 }

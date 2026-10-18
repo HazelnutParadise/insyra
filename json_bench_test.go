@@ -1,6 +1,6 @@
 // BenchmarkJSONPaths is the benchmark AGENTS.md's "One JSON library" rule uses
 // to compare a candidate JSON library against the one insyra reads and writes
-// with. It measures insyra's own two paths — ToJSON_Bytes and ReadJSON — over a
+// with. It measures insyra's own two paths — ToJSONBytes and ReadJSON — over a
 // fixed 100,000 x 5 table built from a fixed seed, so two runs of two libraries
 // are comparable.
 //
@@ -58,13 +58,13 @@ func newJSONBenchTable() *DataTable {
 func BenchmarkJSONPaths(b *testing.B) {
 	// Built once, outside every sub-benchmark, so no timing covers construction.
 	dt := newJSONBenchTable()
-	encoded := dt.ToJSON_Bytes(true)
+	encoded := dt.ToJSONBytes(true)
 
-	b.Run("ToJSON_Bytes", func(b *testing.B) {
+	b.Run("ToJSONBytes", func(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(int64(len(encoded)))
 		for b.Loop() {
-			_ = dt.ToJSON_Bytes(true)
+			_ = dt.ToJSONBytes(true)
 		}
 	})
 

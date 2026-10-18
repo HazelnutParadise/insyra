@@ -193,3 +193,29 @@ func TestToSQL_RowNamesPersistsRowNameColumn(t *testing.T) {
 	require.NoError(t, rows.Err())
 	require.Equal(t, []row{{"alpha", 10}, {"beta", 20}}, got)
 }
+
+// A column with no name is written under its Excel-style letter, the name
+// insyra already uses for it, because MySQL and PostgreSQL refuse an empty
+// identifier.
+func TestToSQLWritesAnUnnamedColumnUnderItsLetter(t *testing.T) {
+	db := newTestSQLite(t)
+	dt := NewDataTable(NewDataList(1, 2), NewDataList("x", "y").SetName("label"), NewDataList(3.5, 4.5))
+	require.NoError(t, dt.ToSQL(db, "t"))
+	got, err := ReadSQL(db, "t")
+	require.NoError(t, err)
+	require.Equal(t, []string{"A", "label", "C"}, got.ColNames())
+	require.EqualValues(t, 2, got.GetColByName("A").Get(1))
+	require.Equal(t, 4.5, got.GetColByName("C").Get(1))
+}
+
+// The letter must not land on another column's name: the write is refused
+// before anything is created.
+func TestToSQLRefusesAnUnnamedColumnWhoseLetterIsTaken(t *testing.T) {
+	db := newTestSQLite(t)
+	dt := NewDataTable(NewDataList(1), NewDataList(2).SetName("a"))
+	err := dt.ToSQL(db, "t")
+	require.ErrorContains(t, err, "column A has no name")
+	var n int64
+	require.NoError(t, db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE name = 't'").Scan(&n).Error)
+	require.Zero(t, n)
+}

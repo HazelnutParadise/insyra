@@ -163,7 +163,7 @@ func (m *Manager) EnsureDefaultEnvironment() error {
 		return err
 	}
 	if !m.Exists("default") {
-		if err := m.Create("default"); err != nil && !m.Exists("default") {
+		if err := m.Create("default"); err != nil && !errors.Is(err, ErrAlreadyExists) {
 			return err
 		}
 	}
@@ -215,6 +215,9 @@ func (m *Manager) Create(name string) error {
 		return err
 	}
 	if err := writeDefaultFiles(envPath); err != nil {
+		if cleanupErr := os.RemoveAll(envPath); cleanupErr != nil {
+			return errors.Join(err, fmt.Errorf("remove incomplete environment: %w", cleanupErr))
+		}
 		return err
 	}
 	return nil
@@ -571,6 +574,13 @@ func writeDefaultFiles(envPath string) error {
 	for _, f := range files {
 		handle, err := os.OpenFile(filepath.Join(envPath, f.name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, f.perm)
 		if errors.Is(err, fs.ErrExist) {
+			info, statErr := os.Lstat(filepath.Join(envPath, f.name))
+			if statErr != nil {
+				return statErr
+			}
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("default environment path %s is not a regular file", f.name)
+			}
 			continue
 		}
 		if err != nil {

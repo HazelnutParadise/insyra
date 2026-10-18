@@ -114,7 +114,7 @@ func TestToJSONWritesWhatEncodingJSONWrites(t *testing.T) {
 		if err != nil {
 			t.Fatalf("useColNames=%v: encoding/json.MarshalIndent: %v", useColNames, err)
 		}
-		got := dt.ToJSON_Bytes(useColNames)
+		got := dt.ToJSONBytes(useColNames)
 		if !bytes.Equal(got, want) {
 			t.Errorf("useColNames=%v:\n got %s\nwant %s", useColNames, got, want)
 		}

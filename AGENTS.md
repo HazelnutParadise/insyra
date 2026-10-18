@@ -224,7 +224,15 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 
 - Column indexing is Excel-style alphabetic (`"A"`, `"B"`, `"AA"`), not numeric, for `GetCol`/`UpdateCol` etc.
 - `GetRowIndexByName` returns `(-1, false)` when not found — always check the boolean, because `-1` is also a valid "last element" index in many `Get` methods.
-- Thread safety is on by default via the actor model. `Config.Dangerously_TurnOffThreadSafety()` exists but is explicitly discouraged.
+- Thread safety is on by default via the actor model. `Config.Dangerously_TurnOffThreadSafety()` exists but is explicitly discouraged; `Config.TurnOnThreadSafety()` turns it back on without resetting other settings.
+- **Names that depart from Go convention on purpose.** Ruled by the owner on 2026-10-12 (#212). Do not raise them again in a review.
+  - **Getters keep the `Get` prefix** and pair with a `Set…` setter (`GetName`/`SetName`, `GetLogLevel`/`SetLogLevel`). Effective Go drops `Get` from field getters, but the module has more than a hundred exported `Get…` names. Dropping the prefix would break almost every caller for no change in behaviour. A new getter follows the library: `Get` plus the setter's noun (`GetUseColoredOutput` for `SetUseColoredOutput`).
+  - **`Dangerously_TurnOffThreadSafety` keeps its underscore.** A name that looks wrong is the warning. Naming linters report only the declaration, never a caller.
+  - **`isr` keeps both `Of` and `From`** on `DL` and `DT`, an exception to the one-name rule, after Java's `List.of` (list the elements) and Rust's `From::from` (convert what you have).
+  - **`isr`'s `Push` is not a second name.** `dl.Push` is `Append` returning the isr list so the chain continues, which `Append` cannot do without the isr list leaving `IDataList`. `dt.Push` adds rows or columns depending on the type it is given.
+  - Column conversions use the library's two nouns: an index is the Excel-style letters (`"AA"`), and a number is the 0-based position (`ColIndexToNumber`, `ColNumberToIndex`, `GetColIndexByNumber`).
+- **Log at Info only what the return value does not say.** Ruled by the owner on 2026-10-13 (#215). An Info line is for a guess the library made about the data (an encoding it detected), a change made outside the call's own result (a column `ToSQL` added to an existing table), the progress of a long operation (`nn.Sequential.Fit`'s epochs, preparing the Python environment), or a switch changing state (acceleration, thread safety). Never log a line that only confirms success: a nil error already says the file was saved. The default level stays `LogLevelInfo`, because the lines that remain are the ones a user needs to see; a program that wants only warnings calls `SetLogLevel(LogLevelWarning)`, and one with its own logging calls `Config.SetLogger`.
+- **Every enum whose underlying type is an integer has `String()`.** A known value prints its constant's name, an unknown one prints `TypeName(n)`, and an error that reports an enum value formats it with `%v`, never `%d`.
 - `AtomicDo` serializes access to ONE instance (same-instance nesting is safe, e.g. `Stdev`→`Var`). To read/operate on MULTIPLE instances atomically, use `insyra.AtomicDoAll(func(){...}, a, b, ...)` — it locks all given DataList/DataTable instances together in a deadlock-free order. Do NOT nest `AtomicDo` on a *different* instance inside a callback: that inner call runs WITHOUT locking the other instance and can race a concurrent mutation. (`engine/atomic.AtomicDoN([]*Actor, f)` is the same primitive for arbitrary user structs holding an `*atomic.Actor`.)
 - Error handling uses an instance-level `Err()` pattern rather than returning errors from every method (check `.Err()` after chained calls; `PopErr()` reads and clears it). Wrapper packages such as `isr` record their failures through the exported `SetErr(packageName, funcName, msg, args...)`.
 - Use the `isr` package for convenient syntax and the root `insyra` package where performance matters: some `isr` constructors convert or copy their input (building a table from lists measured about 9x slower than `insyra.NewDataTable`), while methods called through the wrapper cost almost nothing extra.
@@ -270,10 +278,22 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-17] — remove `py.RunCodeWithTimeout` in 0.4
+- **Where**: `py/py.go`
+- **What**: `RunCodeWithTimeout` is marked Deprecated on this line (`RunCodeContext` with `context.WithTimeout` is the same call). `0.4` has no such function.
+- **Suggestion**: delete it when this line is merged into `0.4`, together with its test `TestRunCodeWithTimeoutKeepsItsMeaning`.
+- **Status**: pending
+
 ### [2026-10-10] — `chromedp` held at v0.16.0
 - **Where**: `go.mod`, `github.com/chromedp/chromedp` and the `cdproto` it requires, reached through `github.com/go-echarts/snapshot-chromedp` v0.0.5, which `plot.SavePNG` uses
 - **What**: v0.16.0 is the newest `chromedp` insyra can take. v0.17.0 through v0.19.1 declare `go 1.27`. v0.20.0 and v0.20.1 declare `go 1.25` but change `chromedp.Run`, `FullScreenshot` and the query options to a generic API, so `snapshot-chromedp` v0.0.5, its newest release, no longer compiles (`too many arguments in call to chromedp.Run`, `undefined: chromedp.ByQuery`). Measured on 2026-10-10: a bar chart saved through `plot.SavePNG` with `chromedp` v0.12.1 and with v0.16.0 produced byte-identical PNGs.
 - **Suggestion**: take `chromedp` v0.20 or later once `snapshot-chromedp` releases a version that compiles against it, and compare `plot.SavePNG` output before and after, as above.
+- **Status**: pending
+
+### [2026-10-13] — encoding detection gives different answers for one very short Big5 file
+- **Where**: `utils.go` `DetectEncoding`, through chardet's `DetectBest`
+- **What**: measured on 2026-10-13 on `0.4`: a Big5 CSV of two data rows (`名稱,數量` / `蘋果,3` / `香蕉,5`, 24 bytes) was detected as `shift_jis`, `gb-18030` or `big5` across 50 calls in one process, in proportions that changed between runs, and the read took its header as `ｦWｺﾙ` with a nil error. The only sign was the Info line naming the guessed encoding, which `quiet-success-logs` kept for that reason. Big5 files of 1, 3, 10, 30 and 100 data rows built from longer Chinese text were detected as `big5` 200 times out of 200. The likely cause, not read in chardet's source, is a tie between recognisers that is broken in map order. Not measured on this line.
+- **Suggestion**: make the answer deterministic first, for example by asking chardet for all results and breaking a tie in a fixed order. Then decide whether a guess below some confidence should be a warning or an error that asks for the encoding, which changes what a read does with such a file.
 - **Status**: pending
 
 ### [2026-09-28] — scaler JSON with an empty column reference binds to an unnamed column

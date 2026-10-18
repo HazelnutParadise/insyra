@@ -48,7 +48,7 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
 				data: result,
 				name: newColName,
 			}
-			timestamp := time.Now().Unix()
+			timestamp := clock().UnixNano()
 			newCol.creationTimestamp = timestamp
 			newCol.lastModifiedTimestamp.Store(timestamp)
 			dt.AppendCols(newCol)
@@ -422,7 +422,7 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 		data: results,
 		name: newColName,
 	}
-	timestamp := time.Now().Unix()
+	timestamp := clock().UnixNano()
 	newCol.creationTimestamp = timestamp
 	newCol.lastModifiedTimestamp.Store(timestamp)
 	dt.AppendCols(newCol)

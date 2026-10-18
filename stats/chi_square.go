@@ -2,7 +2,6 @@ package stats
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -12,21 +11,10 @@ import (
 )
 
 type ChiSquareTestResult struct {
-	testResultBase
+	TestResult
 
 	// a DataTable representing the contingency table([2]float64{observed, expected})
 	ContingencyTable *insyra.DataTable
-}
-
-func (r *ChiSquareTestResult) Show() {
-	if r == nil {
-		fmt.Println("Chi-Square Test failed: cannot show results")
-		return
-	}
-	fmt.Printf("Chi-Square Test Statistic: %v\n", r.Statistic)
-	fmt.Printf("Chi-Square Test P-Value: %v\n", r.PValue)
-	fmt.Printf("Chi-Square Test Degrees of Freedom: %v\n", *r.DF)
-	insyra.Show("Contingency Table([2]float64{observed, expected})", r.ContingencyTable)
 }
 
 // calculateChiSquare calculates the chi-square statistic and related results.
@@ -47,7 +35,7 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 
 	float64DF := float64(df)
 	return &ChiSquareTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: chiSquare,
 			PValue:    pValue,
 			DF:        &float64DF,

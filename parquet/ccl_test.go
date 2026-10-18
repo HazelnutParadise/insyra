@@ -322,9 +322,10 @@ func TestApplyCCL_OverwritesAnExistingColumn(t *testing.T) {
 	}
 }
 
-// An assignment into an int64 column is written back as int64, so a fractional
-// result is truncated rather than widening the column.
-func TestApplyCCL_KeepsTheColumnType(t *testing.T) {
+// An assignment into an int64 column takes the type Write would give its new
+// values, as the loaded table holds them: a fractional result widens the column
+// to float64. It used to be written back as int64, truncating 1.5 to 1.
+func TestApplyCCL_WidensAnAssignedColumn(t *testing.T) {
 	path := fixture(t)
 
 	if err := ApplyCCL(context.Background(), path, "['num'] = ['num'] * 1.5"); err != nil {
@@ -335,8 +336,7 @@ func TestApplyCCL_KeepsTheColumnType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading back: %v", err)
 	}
-	// 1.5, 3.0, 4.5, 6.0 written into an int64 column.
-	if got, want := colValues(t, dt, "num"), []any{int64(1), int64(3), int64(4), int64(6)}; !reflect.DeepEqual(got, want) {
+	if got, want := colValues(t, dt, "num"), []any{1.5, 3.0, 4.5, 6.0}; !reflect.DeepEqual(got, want) {
 		t.Errorf("num: got %v, want %v", got, want)
 	}
 }
@@ -437,7 +437,7 @@ func newTestContext(t *testing.T) *parquetContext {
 	t.Helper()
 	rec := record(t)
 	t.Cleanup(rec.Release)
-	return newParquetContext(rec, []string{"num", "score", "label", "flag"})
+	return newParquetContext(rec, []string{"num", "score", "label", "flag"}, 0)
 }
 
 // GetCol and GetColByName read the current row; the rest read the record.
@@ -665,7 +665,7 @@ func TestParquetContext_RowNamesAreNotSupported(t *testing.T) {
 // Every accessor has to survive a context built with no record at all, because
 // that is what an empty batch produces.
 func TestParquetContext_NoRecord(t *testing.T) {
-	c := newParquetContext(nil, []string{"num"})
+	c := newParquetContext(nil, []string{"num"}, 0)
 
 	if got := c.GetColCount(); got != 0 {
 		t.Errorf("GetColCount: got %d, want 0", got)

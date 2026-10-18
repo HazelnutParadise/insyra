@@ -17,7 +17,7 @@ import (
 func keepConfig(t *testing.T) {
 	t.Helper()
 	level := Config.GetLogLevel()
-	colored := Config.GetDoesUseColoredOutput()
+	colored := Config.GetUseColoredOutput()
 	dontPanic := Config.GetDontPanicStatus()
 	hook := Config.GetDefaultErrHandlingFunc()
 	t.Cleanup(func() {

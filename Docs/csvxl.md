@@ -233,6 +233,8 @@ Formula-like text beginning with `=`, `+`, `-` or `@` is prefixed with an
 apostrophe unless it is a number written in decimal digits (`-12`, `+3.5`,
 `-1e309`) or `AllowFormulas` is true; `+Inf` and `-NaN` are guarded.
 
+`CSVToExcel` and `AppendCSVToExcel` open an input path as it is written, so a CSV named `export.txt`, `DATA.CSV` or `plain` is read as itself. `.csv` is appended and tried only when the path names no file, or names a directory, and when both `x` and `x.csv` exist `x` is read.
+
 `ExcelToCSV` writes each sheet as its name plus `.csv`, unless `FileNames` maps
 the sheet to another name. A `FileNames` value keeps an extension it already
 has (`report.txt` stays `report.txt`) and gets `.csv` when it has none. A key
