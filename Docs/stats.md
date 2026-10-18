@@ -1055,6 +1055,44 @@ adj, err := stats.AdjustPValues(insyra.NewDataList(0.01, 0.04, 0.03, 0.005), sta
 
 ---
 
+## Random-Walk and Survival Tests
+
+### Variance Ratio
+
+```go
+func VarianceRatio(returns insyra.IDataList, qs ...int) ([]VarianceRatioResult, error)
+func ChowDenning(returns insyra.IDataList, robust bool, qs ...int) (*ChowDenningResult, error)
+```
+
+**Description:** Tests whether returns follow a random walk by comparing the variance of `q`-period returns with `q` times the variance of one-period returns (Lo and MacKinlay 1988). A ratio above 1 means returns trend (positive autocorrelation), below 1 that they reverse. `returns` are single-period returns, ideally log returns so that `q`-period returns are their sums. The unbiased estimators and overlapping `q`-period sums are used, with `n` the number of returns.
+
+**Parameters:**
+
+- `returns`: Single-period returns, at least `q + 1` of them.
+- `qs`: One or more holding periods, each from 2 to `n - 1`.
+- `robust` (`ChowDenning`): use the heteroskedasticity-robust `z*` instead of the homoscedastic `z`.
+
+**Returns:**
+
+- `[]VarianceRatioResult`, one per `q`: `Q`, `VR`, `ZHomoscedastic` and `PHomoscedastic` (valid for independent increments with a constant variance), `ZRobust` and `PRobust` (Lo and MacKinlay's `z*`, valid under heteroskedasticity). The p-values are two-tailed from the normal distribution, an asymptotic result that needs a long series.
+- `*ChowDenningResult` from `ChowDenning`: `MaxZ`, the largest absolute `z` over the periods, and `P`, its p-value with the Sidak correction `1 - (2Φ(max) - 1)^k`, so choosing the best `q` does not inflate the false-positive rate (Chow and Denning 1993).
+- `error`: no `q`, a `q` out of range, a nil list, a value that is not a finite number, or returns with no variance.
+
+### Kaplan-Meier
+
+```go
+func KaplanMeier(durations, observed insyra.IDataList) (*KaplanMeierResult, error)
+```
+
+**Description:** Estimates the survival curve from how long each subject was observed and whether the event happened. `observed` is `true` (or 1) when the event happened at that duration and `false` (or 0) when the subject was censored, that is, still going when observation ended. A subject censored at the same time as an event is counted as at risk for that event. To ask whether a bull market is more likely to end the longer it has lasted, pass each bull market's length, and `false` for the one still running.
+
+**Returns:**
+
+- `*KaplanMeierResult`: one entry per distinct event time in `Times`, `AtRisk`, `Events`, `Censored`, `Survival` and `StdErr` (Greenwood's standard error of the survival probability, `NaN` where every subject at risk had the event), plus `Median` (the first time the curve is at or below 0.5, the midpoint of the stretch when it is exactly 0.5, `NaN` if it never gets there), `N` and `Total`. The values match R's `survival::survfit`.
+- `error`: a nil or empty list, lists of different lengths, a negative or non-finite duration, or an `observed` that is not a bool or 0/1.
+
+---
+
 ## Nonparametric Tests (Rank-Based)
 
 Rank-based tests do not assume normality or homogeneity of variance. They
