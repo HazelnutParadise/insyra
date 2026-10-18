@@ -8,6 +8,31 @@ import (
 	"unicode/utf8"
 )
 
+func TestDetectEncodingBoundary(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "b.txt")
+	body := append([]byte(strings.Repeat("a", 8191)), []byte("中文字再多一些內容")...)
+	if err := os.WriteFile(p, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	enc, err := DetectEncoding(p)
+	if err != nil || enc != "utf-8" {
+		t.Fatalf("got %q err=%v", enc, err)
+	}
+}
+
+// A file shorter than the sample holds every byte of itself, so an invalid tail
+// is invalid, not cut off: Latin-1 "Jos\xe9" must not be judged UTF-8 by
+// trimming the \xe9 away.
+func TestDetectEncodingKeepsAnInvalidTailOfAShortFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "latin1.csv")
+	if err := os.WriteFile(p, []byte("name\nJos\xe9\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if enc, err := DetectEncoding(p); err == nil && enc == "utf-8" {
+		t.Fatalf("a Latin-1 file was reported as utf-8")
+	}
+}
+
 // SEC-5 (a): a CSV in a charset outside UTF-8/UTF-16/Big5/GB18030 used to be
 // copied byte-for-byte into the table. Named explicitly, it must be decoded.
 func TestReadCSVDecodesLatin1(t *testing.T) {
@@ -108,53 +133,6 @@ func TestReadCSVUTF32WithBOM(t *testing.T) {
 	}
 	if got, _ := dt.GetColByNumber(0).Get(0).(string); got != "hé" {
 		t.Fatalf("cell = %q, want %q", got, "hé")
-	}
-}
-
-// SEC-3: a cell that a spreadsheet would execute as a formula can be escaped
-// on request. The default is unchanged so a round trip keeps the exact value.
-func TestToCSVFormulaSanitization(t *testing.T) {
-	quietLogs(t)
-
-	dt := NewDataTable(NewDataList("=cmd|' /C calc'!A0", "+1+1", "@SUM(A1)", "-2+3", "safe").SetName("v"))
-	dir := t.TempDir()
-
-	plain := filepath.Join(dir, "plain.csv")
-	if err := dt.ToCSV(plain, false, true, false); err != nil {
-		t.Fatal(err)
-	}
-	raw, _ := os.ReadFile(plain)
-	if !strings.Contains(string(raw), "=cmd") {
-		t.Fatalf("ToCSV changed the value by default:\n%s", raw)
-	}
-
-	// The zero options write exactly what ToCSV writes.
-	zero := filepath.Join(dir, "zero.csv")
-	if err := dt.ToCSVWithOptions(zero, CSVWriteOptions{SetColNamesToFirstRow: true}); err != nil {
-		t.Fatal(err)
-	}
-	if got := mustRead(t, zero); string(got) != string(raw) {
-		t.Fatalf("ToCSVWithOptions without SanitizeFormulas differs from ToCSV:\n%s\nvs\n%s", got, raw)
-	}
-
-	safe := filepath.Join(dir, "safe.csv")
-	if err := dt.ToCSVWithOptions(safe, CSVWriteOptions{
-		SetColNamesToFirstRow: true,
-		SanitizeFormulas:      true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	out := string(mustRead(t, safe))
-	for _, dangerous := range []string{"\n=cmd", "\n+1+1", "\n@SUM", "\n-2+3"} {
-		if strings.Contains(out, dangerous) {
-			t.Fatalf("cell starting with a formula character was not escaped: %q in\n%s", dangerous, out)
-		}
-	}
-	if !strings.Contains(out, "safe") {
-		t.Fatalf("ordinary cell was lost:\n%s", out)
-	}
-	if strings.Contains(out, "'safe") {
-		t.Fatalf("ordinary cell was escaped:\n%s", out)
 	}
 }
 

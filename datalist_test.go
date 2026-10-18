@@ -887,3 +887,134 @@ func TestFlattenSlicesNotArrays(t *testing.T) {
 		t.Errorf("Expected slices flattened but arrays not %v, got %v", expected4, dl4.Data())
 	}
 }
+
+// uncomparableCell holds a slice, so Go panics when two of them meet ==.
+type uncomparableCell struct{ s []int }
+
+// Such a cell used to be unequal to everything, itself included. Since
+// identify-uncomparable-cells it is compared by its type and content, like
+// every lookup, so a copy holding the same content is equal and one holding
+// different content is not.
+func TestIsEqualToUncomparableCellsDoNotPanic(t *testing.T) {
+	quietLogs(t)
+	dl := NewDataList(1.0, uncomparableCell{s: []int{1}})
+	other := NewDataList(1.0, uncomparableCell{s: []int{2}})
+	noPanic(t, "IsEqualTo", func() {
+		if !dl.IsEqualTo(dl.Clone()) {
+			t.Fatal("a copy holding the same uncomparable cell should be equal")
+		}
+		if dl.IsEqualTo(other) {
+			t.Fatal("an uncomparable cell with different content should be unequal")
+		}
+	})
+	noPanic(t, "IsTheSameAs", func() {
+		// Not asserted against a clone: Clone stamps a fresh creation time,
+		// so the answer would depend on the clock, not on the cells.
+		if dl.IsTheSameAs(other) {
+			t.Fatal("an uncomparable cell with different content should not be the same")
+		}
+	})
+	if !NewDataList(1.0, "x").IsEqualTo(NewDataList(1.0, "x")) {
+		t.Fatal("equal lists should be equal")
+	}
+	if NewDataList(1.0, 2.0, "x").IsEqualTo(NewDataList(1.0, 3.0, "x")) {
+		t.Fatal("different lists should not be equal")
+	}
+}
+
+// Whether IsEqualTo should treat NaN as equal to NaN is an open decision; this
+// line keeps the existing result, where a NaN cell never equals another.
+func TestIsEqualToKeepsNaNUnequal(t *testing.T) {
+	dl := NewDataList(1.0, math.NaN())
+	if dl.IsEqualTo(dl.Clone()) {
+		t.Fatal("IsEqualTo should keep NaN != NaN")
+	}
+}
+
+func TestClearNilsAndNaNsSinglePass(t *testing.T) {
+	dl := NewDataList(1.0, math.NaN(), nil, 2.0, nil, math.NaN())
+	dl.ClearNilsAndNaNs()
+	if !reflect.DeepEqual(dl.Data(), []any{1.0, 2.0}) {
+		t.Fatalf("got %v", dl.Data())
+	}
+}
+
+// ClearNumbers removes the built-in numeric types only; a named numeric type
+// such as time.Duration has always been kept.
+func TestClearNumbersKeepsNamedNumericTypes(t *testing.T) {
+	dl := NewDataList(1, int64(2), 3.5, float32(4), uint8(5), "x", time.Second, nil)
+	dl.ClearNumbers()
+	if !reflect.DeepEqual(dl.Data(), []any{"x", time.Second, nil}) {
+		t.Fatalf("got %v", dl.Data())
+	}
+}
+
+func TestDropAllMatchesNaNOnlyWhenAsked(t *testing.T) {
+	dl := NewDataList(1.0, math.NaN(), "a", nil, 2.0)
+	dl.DropAll(math.NaN(), "a")
+	if !reflect.DeepEqual(dl.Data(), []any{1.0, nil, 2.0}) {
+		t.Fatalf("got %v", dl.Data())
+	}
+	kept := NewDataList(1.0, math.NaN(), 2.0)
+	kept.DropAll(2.0)
+	got := kept.Data()
+	if len(got) != 2 || got[0] != 1.0 {
+		t.Fatalf("got %v", got)
+	}
+	if f, ok := got[1].(float64); !ok || !math.IsNaN(f) {
+		t.Fatalf("NaN should be kept when not asked to drop it, got %v", got)
+	}
+}
+
+// IN-3, seen from the public API: comparing integers through float64 makes any
+// two int64 above 2^53 look equal, so Sort left them in input order.
+//
+// Rank still routes through ToF64Slice on this line and therefore keeps the
+// float64 tie behaviour; its fix depends on the DataList numeric rework that
+// lives on the 0.4 line.
+func TestSortExactForLargeIntegers(t *testing.T) {
+	const twoP53 = int64(1) << 53
+	dl := NewDataList(twoP53+1, twoP53, twoP53+2)
+	dl.Sort()
+	want := []any{twoP53, twoP53 + 1, twoP53 + 2}
+	got := dl.Data()
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Sort = %v, want %v", got, want)
+		}
+	}
+}
+
+// IN-2: Close() must not silently swallow an operation that was already
+// waiting for the lock — the caller has no way to learn it never ran.
+func TestCloseDoesNotDropWaitingOperations(t *testing.T) {
+	quietLogs(t)
+
+	dl := NewDataList(1)
+	started := make(chan struct{})
+	appended := make(chan struct{})
+
+	go func() {
+		dl.AtomicDo(func(inner *DataList) {
+			close(started)
+			// Give the other goroutine time to queue up on the mutex.
+			time.Sleep(100 * time.Millisecond)
+			inner.Close()
+		})
+	}()
+
+	<-started
+	go func() {
+		dl.Append(2)
+		close(appended)
+	}()
+
+	select {
+	case <-appended:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Append never returned")
+	}
+	if n := dl.Len(); n != 2 {
+		t.Fatalf("Len() = %d, want 2: Close() dropped the queued Append", n)
+	}
+}

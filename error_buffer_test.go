@@ -1,6 +1,9 @@
 package insyra
 
 import (
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -322,4 +325,82 @@ func TestErrorTimestamp(t *testing.T) {
 	}
 
 	ClearErrors()
+}
+
+func TestErrorHookOrdered(t *testing.T) {
+	keepConfig(t)
+	Config.SetLogLevel(LogLevelFatal)
+	var mu sync.Mutex
+	got := []string{}
+	done := make(chan struct{}, 200)
+	Config.SetDefaultErrHandlingFunc(func(_ LogLevel, _ string, _ string, msg string) {
+		mu.Lock()
+		got = append(got, msg)
+		mu.Unlock()
+		done <- struct{}{}
+	})
+	for i := 0; i < 100; i++ {
+		LogWarning("t", "t", "m%03d", i)
+	}
+	for i := 0; i < 100; i++ {
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("the hook received %d of 100 calls", i)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for i, m := range got {
+		if m != "m"+strings.Repeat("0", 3-len(itoa(i)))+itoa(i) {
+			t.Fatalf("out of order at %d: %v", i, got[:i+1])
+		}
+	}
+}
+
+// A slow hook facing a burst larger than the hook queue still receives every
+// call: the calls that do not fit in the queue are delivered on their own
+// goroutine, as v0.3.2 delivered every call, instead of being dropped.
+func TestErrorHookSlowHookReceivesEveryCallOfABurst(t *testing.T) {
+	keepConfig(t)
+	Config.SetLogLevel(LogLevelFatal)
+	const burst = 3000
+	var received atomic.Int64
+	Config.SetDefaultErrHandlingFunc(func(_ LogLevel, pkg string, _ string, _ string) {
+		if pkg != "burst" {
+			return
+		}
+		time.Sleep(200 * time.Microsecond)
+		received.Add(1)
+	})
+	for i := 0; i < burst; i++ {
+		LogWarning("burst", "t", "m%d", i)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for received.Load() < burst {
+		if time.Now().After(deadline) {
+			t.Fatalf("the hook received %d of %d calls", received.Load(), burst)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	s := ""
+	for i > 0 {
+		s = string(rune('0'+i%10)) + s
+		i /= 10
+	}
+	return s
+}
+
+// quietLogs silences the logger for a test and restores it afterwards.
+func quietLogs(t *testing.T) {
+	t.Helper()
+	level := Config.GetLogLevel()
+	t.Cleanup(func() { Config.SetLogLevel(level) })
+	Config.SetLogLevel(LogLevelFatal)
 }

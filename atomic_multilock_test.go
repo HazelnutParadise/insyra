@@ -358,3 +358,77 @@ func TestStress_NestedAtomicDoAll(t *testing.T) {
 		wg.Wait()
 	})
 }
+
+// AtomicDoAll called from inside AtomicDo on one of its instances skips the
+// instance this goroutine already holds and still locks the others. When it
+// ran the callback inline instead, AppendCols inside dt.AtomicDo read col's
+// data unlocked and raced this goroutine's col.Append (reported under -race).
+func TestAtomicDoAllNestedInAtomicDoLocksTheOthers(t *testing.T) {
+	dt := NewDataTable()
+	col := NewDataList(1, 2, 3)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			col.Append(i)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			dt.AtomicDo(func(tbl *DataTable) { tbl.AppendCols(col) })
+		}
+	}()
+	wg.Wait()
+	if got := dt.getMaxColLength(); got < 3 {
+		t.Fatalf("appended columns are shorter than the source list: %d", got)
+	}
+}
+
+// K-8 (#209): a nil instance used to be dereferenced inside AtomicDoAll and
+// panic. There is nothing to lock on a nil value; the callback still runs.
+func TestAtomicDoAllSkipsNilInstance(t *testing.T) {
+	quietLogs(t)
+
+	var nilList *DataList
+	var nilTable *DataTable
+	var nilIface IDataList
+	ran := false
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("AtomicDoAll panicked on a nil instance: %v", r)
+			}
+		}()
+		AtomicDoAll(func() { ran = true }, NewDataList(1), nilList, nilTable, nilIface, nil)
+	}()
+	if !ran {
+		t.Fatal("the callback did not run")
+	}
+}
+
+// Skipping the nil instance must not skip the others: a real list passed next
+// to a nil one is still locked while the callback runs.
+func TestAtomicDoAllStillLocksAlongsideNil(t *testing.T) {
+	quietLogs(t)
+
+	var nilList *DataList
+	dl := NewDataList(1)
+	appended := make(chan struct{})
+	AtomicDoAll(func() {
+		go func() {
+			dl.Append(2)
+			close(appended)
+		}()
+		select {
+		case <-appended:
+			t.Error("another goroutine wrote the list while AtomicDoAll held it")
+		case <-time.After(50 * time.Millisecond):
+		}
+	}, nilList, dl)
+	<-appended
+	if n := dl.Len(); n != 2 {
+		t.Errorf("Len = %d after the callback returned, want 2", n)
+	}
+}

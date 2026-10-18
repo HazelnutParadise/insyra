@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -53,29 +54,49 @@ func TestToCSVReportsCloseFailure(t *testing.T) {
 	}
 }
 
-// AtomicDoAll called from inside AtomicDo on one of its instances skips the
-// instance this goroutine already holds and still locks the others. When it
-// ran the callback inline instead, AppendCols inside dt.AtomicDo read col's
-// data unlocked and raced this goroutine's col.Append (reported under -race).
-func TestAtomicDoAllNestedInAtomicDoLocksTheOthers(t *testing.T) {
-	dt := NewDataTable()
-	col := NewDataList(1, 2, 3)
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 200; i++ {
-			col.Append(i)
+// SEC-3: a cell that a spreadsheet would execute as a formula can be escaped
+// on request. The default is unchanged so a round trip keeps the exact value.
+func TestToCSVFormulaSanitization(t *testing.T) {
+	quietLogs(t)
+
+	dt := NewDataTable(NewDataList("=cmd|' /C calc'!A0", "+1+1", "@SUM(A1)", "-2+3", "safe").SetName("v"))
+	dir := t.TempDir()
+
+	plain := filepath.Join(dir, "plain.csv")
+	if err := dt.ToCSV(plain, false, true, false); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(plain)
+	if !strings.Contains(string(raw), "=cmd") {
+		t.Fatalf("ToCSV changed the value by default:\n%s", raw)
+	}
+
+	// The zero options write exactly what ToCSV writes.
+	zero := filepath.Join(dir, "zero.csv")
+	if err := dt.ToCSVWithOptions(zero, CSVWriteOptions{SetColNamesToFirstRow: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustRead(t, zero); string(got) != string(raw) {
+		t.Fatalf("ToCSVWithOptions without SanitizeFormulas differs from ToCSV:\n%s\nvs\n%s", got, raw)
+	}
+
+	safe := filepath.Join(dir, "safe.csv")
+	if err := dt.ToCSVWithOptions(safe, CSVWriteOptions{
+		SetColNamesToFirstRow: true,
+		SanitizeFormulas:      true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := string(mustRead(t, safe))
+	for _, dangerous := range []string{"\n=cmd", "\n+1+1", "\n@SUM", "\n-2+3"} {
+		if strings.Contains(out, dangerous) {
+			t.Fatalf("cell starting with a formula character was not escaped: %q in\n%s", dangerous, out)
 		}
-	}()
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 200; i++ {
-			dt.AtomicDo(func(tbl *DataTable) { tbl.AppendCols(col) })
-		}
-	}()
-	wg.Wait()
-	if got := dt.getMaxColLength(); got < 3 {
-		t.Fatalf("appended columns are shorter than the source list: %d", got)
+	}
+	if !strings.Contains(out, "safe") {
+		t.Fatalf("ordinary cell was lost:\n%s", out)
+	}
+	if strings.Contains(out, "'safe") {
+		t.Fatalf("ordinary cell was escaped:\n%s", out)
 	}
 }

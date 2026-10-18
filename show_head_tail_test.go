@@ -55,3 +55,26 @@ func TestShowHeadAndTail(t *testing.T) {
 		t.Errorf("a count that is not positive was accepted:\n%s", bad.String())
 	}
 }
+
+// IN-8: ShowRange(2, -1) is documented as "to the end" but excludes the last
+// item. The documented way to reach the end is a nil end; this pins both.
+func TestShowRangeNegativeEndMatchesDocs(t *testing.T) {
+	quietLogs(t)
+
+	dl := NewDataList(10, 20, 30, 40, 50)
+
+	var excl bytes.Buffer
+	dl.ShowRangeTo(&excl, 2, -1)
+	if strings.Contains(excl.String(), "50") {
+		t.Fatalf("ShowRange(2, -1) should exclude the last item (Python slice semantics):\n%s", excl.String())
+	}
+	if !strings.Contains(excl.String(), "40") {
+		t.Fatalf("ShowRange(2, -1) should include index 3:\n%s", excl.String())
+	}
+
+	var toEnd bytes.Buffer
+	dl.ShowRangeTo(&toEnd, 2, nil)
+	if !strings.Contains(toEnd.String(), "50") {
+		t.Fatalf("ShowRange(2, nil) should run to the end:\n%s", toEnd.String())
+	}
+}
