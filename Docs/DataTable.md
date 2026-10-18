@@ -304,6 +304,8 @@ if err != nil {
 }
 ```
 
+**Row lengths:** the table is as wide as the widest row. A shorter row is padded with `nil`, and a row longer than the first keeps all its values. (Before v0.3.5 the width came from the first row and values past it were dropped without an error.)
+
 **Error Cases:**
 
 The function returns an error for:

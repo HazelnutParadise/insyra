@@ -179,12 +179,12 @@ func runQuantSharpe(ctx *ExecContext, form *quantForm, args []string, alias stri
 	if err != nil {
 		return err
 	}
-	periods, err := quantFloat(form, "periods", args[1])
+	periods, err := quantFloat(ctx, form, "periods", args[1])
 	if err != nil {
 		return err
 	}
 	riskFreeRate := 0.0
-	if err := parseQuantOptions(form, args[2:], quantOption{key: "rf", target: &riskFreeRate}); err != nil {
+	if err := parseQuantOptions(ctx, form, args[2:], quantOption{key: "rf", target: &riskFreeRate}); err != nil {
 		return err
 	}
 	value, err := quant.SharpeRatio(returns, riskFreeRate, periods)
@@ -203,12 +203,12 @@ func runQuantSortino(ctx *ExecContext, form *quantForm, args []string, alias str
 	if err != nil {
 		return err
 	}
-	periods, err := quantFloat(form, "periods", args[1])
+	periods, err := quantFloat(ctx, form, "periods", args[1])
 	if err != nil {
 		return err
 	}
 	minimumAcceptableReturn := 0.0
-	if err := parseQuantOptions(form, args[2:], quantOption{key: "mar", target: &minimumAcceptableReturn}); err != nil {
+	if err := parseQuantOptions(ctx, form, args[2:], quantOption{key: "mar", target: &minimumAcceptableReturn}); err != nil {
 		return err
 	}
 	value, err := quant.SortinoRatio(returns, minimumAcceptableReturn, periods)
@@ -231,11 +231,11 @@ func runQuantInformationRatio(ctx *ExecContext, form *quantForm, args []string, 
 	if err != nil {
 		return err
 	}
-	periods, err := quantFloat(form, "periods", args[2])
+	periods, err := quantFloat(ctx, form, "periods", args[2])
 	if err != nil {
 		return err
 	}
-	if err := parseQuantOptions(form, args[3:]); err != nil {
+	if err := parseQuantOptions(ctx, form, args[3:]); err != nil {
 		return err
 	}
 	value, err := quant.InformationRatio(returns, benchmark, periods)
@@ -254,7 +254,7 @@ func runQuantMaxDrawdown(ctx *ExecContext, form *quantForm, args []string, alias
 	if err != nil {
 		return err
 	}
-	if err := parseQuantOptions(form, args[1:]); err != nil {
+	if err := parseQuantOptions(ctx, form, args[1:]); err != nil {
 		return err
 	}
 	value, err := quant.MaxDrawdown(equity)
@@ -273,11 +273,11 @@ func runQuantAnnualizedReturn(ctx *ExecContext, form *quantForm, args []string, 
 	if err != nil {
 		return err
 	}
-	days, err := quantInt(form, "days", args[1])
+	days, err := quantInt(ctx, form, "days", args[1])
 	if err != nil {
 		return err
 	}
-	if err := parseQuantOptions(form, args[2:]); err != nil {
+	if err := parseQuantOptions(ctx, form, args[2:]); err != nil {
 		return err
 	}
 	value, err := quant.AnnualizedReturn(equity, days)
@@ -296,11 +296,11 @@ func runQuantCalmar(ctx *ExecContext, form *quantForm, args []string, alias stri
 	if err != nil {
 		return err
 	}
-	days, err := quantInt(form, "days", args[1])
+	days, err := quantInt(ctx, form, "days", args[1])
 	if err != nil {
 		return err
 	}
-	if err := parseQuantOptions(form, args[2:]); err != nil {
+	if err := parseQuantOptions(ctx, form, args[2:]); err != nil {
 		return err
 	}
 	value, err := quant.CalmarRatio(equity, days)
@@ -319,7 +319,7 @@ func runQuantDrawdownSeries(ctx *ExecContext, form *quantForm, args []string, al
 	if err != nil {
 		return err
 	}
-	if err := parseQuantOptions(form, args[1:]); err != nil {
+	if err := parseQuantOptions(ctx, form, args[1:]); err != nil {
 		return err
 	}
 	series, err := quant.DrawdownSeries(equity)
@@ -369,7 +369,7 @@ func runQuantBeta(ctx *ExecContext, form *quantForm, args []string, alias string
 	if err != nil {
 		return err
 	}
-	if err := parseQuantOptions(form, args[2:]); err != nil {
+	if err := parseQuantOptions(ctx, form, args[2:]); err != nil {
 		return err
 	}
 	value, err := quant.Beta(asset, market)
@@ -393,7 +393,7 @@ func runQuantCAPM(ctx *ExecContext, form *quantForm, args []string, alias string
 		return err
 	}
 	riskFreeRate := 0.0
-	if err := parseQuantOptions(form, args[2:], quantOption{key: "rf", target: &riskFreeRate}); err != nil {
+	if err := parseQuantOptions(ctx, form, args[2:], quantOption{key: "rf", target: &riskFreeRate}); err != nil {
 		return err
 	}
 	result, err := quant.CAPM(asset, market, riskFreeRate)
@@ -426,7 +426,7 @@ func runQuantFactorModel(ctx *ExecContext, form *quantForm, args []string, alias
 		return err
 	}
 	riskFreeRate := 0.0
-	if err := parseQuantOptions(form, args[2:], quantOption{key: "rf", target: &riskFreeRate}); err != nil {
+	if err := parseQuantOptions(ctx, form, args[2:], quantOption{key: "rf", target: &riskFreeRate}); err != nil {
 		return err
 	}
 	result, err := quant.FactorModel(asset, factors, riskFreeRate)
@@ -489,13 +489,13 @@ func runQuantBlackScholes(ctx *ExecContext, form *quantForm, args []string, alia
 		{"vol", args[4], &input.Volatility},
 		{"years", args[5], &input.TimeToExpiry},
 	} {
-		value, err := quantFloat(form, field.label, field.raw)
+		value, err := quantFloat(ctx, form, field.label, field.raw)
 		if err != nil {
 			return err
 		}
 		*field.target = value
 	}
-	if err := parseQuantOptions(form, args[6:], quantOption{key: "q", target: &input.DividendYield}); err != nil {
+	if err := parseQuantOptions(ctx, form, args[6:], quantOption{key: "q", target: &input.DividendYield}); err != nil {
 		return err
 	}
 
@@ -537,13 +537,13 @@ func runQuantImpliedVolatility(ctx *ExecContext, form *quantForm, args []string,
 		{"rate", args[4], &input.Rate},
 		{"years", args[5], &input.TimeToExpiry},
 	} {
-		value, err := quantFloat(form, field.label, field.raw)
+		value, err := quantFloat(ctx, form, field.label, field.raw)
 		if err != nil {
 			return err
 		}
 		*field.target = value
 	}
-	if err := parseQuantOptions(form, args[6:], quantOption{key: "q", target: &input.DividendYield}); err != nil {
+	if err := parseQuantOptions(ctx, form, args[6:], quantOption{key: "q", target: &input.DividendYield}); err != nil {
 		return err
 	}
 
@@ -568,11 +568,11 @@ func runQuantPortfolio(ctx *ExecContext, form *quantForm, args []string, alias s
 		return err
 	}
 	var config quant.PortfolioConfig
-	consumed, err := parseQuantObjective(form, args[1:], &config)
+	consumed, err := parseQuantObjective(ctx, form, args[1:], &config)
 	if err != nil {
 		return err
 	}
-	if err := parseQuantPortfolioOptions(form, args[1+consumed:], returns.NumCols(), &config); err != nil {
+	if err := parseQuantPortfolioOptions(ctx, form, args[1+consumed:], returns.NumCols(), &config); err != nil {
 		return err
 	}
 
@@ -617,7 +617,7 @@ func runQuantFrontier(ctx *ExecContext, form *quantForm, args []string, alias st
 	if err != nil {
 		return err
 	}
-	points, err := quantInt(form, "points", args[1])
+	points, err := quantInt(ctx, form, "points", args[1])
 	if err != nil {
 		return err
 	}
@@ -625,7 +625,7 @@ func runQuantFrontier(ctx *ExecContext, form *quantForm, args []string, alias st
 		return fmt.Errorf("quant %s: points must be at least 2, got %d", form.name, points)
 	}
 	var config quant.PortfolioConfig
-	if err := parseQuantPortfolioOptions(form, args[2:], returns.NumCols(), &config); err != nil {
+	if err := parseQuantPortfolioOptions(ctx, form, args[2:], returns.NumCols(), &config); err != nil {
 		return err
 	}
 
@@ -694,7 +694,7 @@ func parseQuantVaRArgs(ctx *ExecContext, form *quantForm, args []string) (*insyr
 	if err != nil {
 		return nil, 0, quant.VaRHistorical, err
 	}
-	confidence, err := quantFloat(form, "confidence", args[1])
+	confidence, err := quantFloat(ctx, form, "confidence", args[1])
 	if err != nil {
 		return nil, 0, quant.VaRHistorical, err
 	}
@@ -734,7 +734,7 @@ func parseQuantOptionType(form *quantForm, raw string) (quant.OptionType, error)
 // parseQuantObjective reads the positional objective keyword of
 // `quant portfolio` and reports how many tokens it consumed, since
 // `target` also takes the return that follows it.
-func parseQuantObjective(form *quantForm, args []string, config *quant.PortfolioConfig) (int, error) {
+func parseQuantObjective(ctx *ExecContext, form *quantForm, args []string, config *quant.PortfolioConfig) (int, error) {
 	switch strings.ToLower(strings.TrimSpace(args[0])) {
 	case "minvar":
 		config.Objective = quant.MinimumVariance
@@ -746,7 +746,7 @@ func parseQuantObjective(form *quantForm, args []string, config *quant.Portfolio
 		if len(args) < 2 {
 			return 0, fmt.Errorf("quant %s: objective %q requires a target return (usage: %s)", form.name, args[0], form.usage)
 		}
-		value, err := quantFloat(form, "target", args[1])
+		value, err := quantFloat(ctx, form, "target", args[1])
 		if err != nil {
 			return 0, err
 		}
@@ -760,7 +760,7 @@ func parseQuantObjective(form *quantForm, args []string, config *quant.Portfolio
 // parseQuantPortfolioOptions consumes the `rf`, `min` and `max` options the
 // two portfolio forms share. It cannot reuse parseQuantOptions because the
 // bounds are comma-separated lists rather than single floats.
-func parseQuantPortfolioOptions(form *quantForm, args []string, assets int, config *quant.PortfolioConfig) error {
+func parseQuantPortfolioOptions(ctx *ExecContext, form *quantForm, args []string, assets int, config *quant.PortfolioConfig) error {
 	for i := 0; i < len(args); i += 2 {
 		key := strings.ToLower(strings.TrimSpace(args[i]))
 		if key != "rf" && key != "min" && key != "max" {
@@ -771,7 +771,7 @@ func parseQuantPortfolioOptions(form *quantForm, args []string, assets int, conf
 		}
 		switch key {
 		case "rf":
-			value, err := quantFloat(form, "rf", args[i+1])
+			value, err := quantFloat(ctx, form, "rf", args[i+1])
 			if err != nil {
 				return err
 			}
@@ -815,7 +815,7 @@ func parseQuantWeightBounds(form *quantForm, label, raw string, assets int) ([]f
 // parseQuantOptions consumes the trailing `key value` pairs a form accepts.
 // A form with no options rejects every remaining token, so a stray argument
 // is reported instead of ignored.
-func parseQuantOptions(form *quantForm, args []string, options ...quantOption) error {
+func parseQuantOptions(ctx *ExecContext, form *quantForm, args []string, options ...quantOption) error {
 	for i := 0; i < len(args); {
 		matched := false
 		for _, option := range options {
@@ -825,7 +825,7 @@ func parseQuantOptions(form *quantForm, args []string, options ...quantOption) e
 			if i+1 >= len(args) {
 				return fmt.Errorf("quant %s: option %q requires a value", form.name, args[i])
 			}
-			value, err := quantFloat(form, option.key, args[i+1])
+			value, err := quantFloat(ctx, form, option.key, args[i+1])
 			if err != nil {
 				return err
 			}
@@ -868,16 +868,16 @@ func quantTable(ctx *ExecContext, form *quantForm, name string) (*insyra.DataTab
 	return dt, nil
 }
 
-func quantFloat(form *quantForm, label, raw string) (float64, error) {
-	value, err := strconv.ParseFloat(raw, 64)
+func quantFloat(ctx *ExecContext, form *quantForm, label, raw string) (float64, error) {
+	value, err := parseFloatToken(ctx, raw)
 	if err != nil {
 		return 0, fmt.Errorf("quant %s: invalid %s %q", form.name, label, raw)
 	}
 	return value, nil
 }
 
-func quantInt(form *quantForm, label, raw string) (int, error) {
-	value, err := strconv.Atoi(raw)
+func quantInt(ctx *ExecContext, form *quantForm, label, raw string) (int, error) {
+	value, err := atoiArg(ctx, raw)
 	if err != nil {
 		return 0, fmt.Errorf("quant %s: invalid %s %q", form.name, label, raw)
 	}

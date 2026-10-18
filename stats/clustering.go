@@ -291,7 +291,7 @@ func numericMatrixFromTable(dataTable insyra.IDataTable) ([][]float64, []string,
 		// the one policy has one implementation. The error text stays the
 		// broad one these callers already document; the detailed row is in
 		// the wrapped cause.
-		values, err := numericValues(raw, fmt.Sprintf("column %d", j+1))
+		values, err := numericValues(raw, fmt.Sprintf("column %d", j))
 		if err != nil {
 			return nil, nil, fmt.Errorf("input contains non-numeric values: %w", err)
 		}

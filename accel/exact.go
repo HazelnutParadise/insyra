@@ -181,6 +181,10 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 		}
 	}
 
+	if err := checkExactBuffers(dataset); err != nil {
+		return ExactNearestResult{}, err
+	}
+
 	// The device leg always runs in single precision. That is not the caller's
 	// trade to make, because it does not reach the caller's numbers.
 	workload.Op = OpNearestShortlist
@@ -476,6 +480,46 @@ func narrowColumns(dataset *Dataset) ([]ExecuteColumn, int, FallbackReason) {
 		return nil, 0, FallbackReasonWorkloadUnsupported
 	}
 	return columns, rows, FallbackReasonNone
+}
+
+// checkExactBuffers refuses a dataset whose buffers the exact path cannot read,
+// naming the column. A caller who builds a Dataset by hand can reach this: an
+// unreadable buffer would otherwise come back as an empty answer, and the
+// contract is that every operation returns its answer.
+func checkExactBuffers(dataset *Dataset) error {
+	rows := -1
+	for i, buffer := range dataset.Buffers {
+		n := -1
+		switch typed := buffer.Values.(type) {
+		case []float64:
+			n = len(typed)
+			if buffer.Type != DataTypeFloat64 && buffer.Type != DataTypeUnknown && buffer.Type != "" {
+				return fmt.Errorf("accel: column %d (%q) holds []float64 but its Type is %q", i, buffer.Name, buffer.Type)
+			}
+		case []int64:
+			n = len(typed)
+			if buffer.Type != DataTypeInt64 && buffer.Type != DataTypeUnknown && buffer.Type != "" {
+				return fmt.Errorf("accel: column %d (%q) holds []int64 but its Type is %q", i, buffer.Name, buffer.Type)
+			}
+		default:
+			// A bool, string or any column is a dataset this operation is not
+			// eligible for, and reports that as a fallback reason. A column that
+			// says it is numeric but holds something else is a malformed buffer.
+			switch buffer.Type {
+			case DataTypeFloat64, DataTypeInt64, DataTypeUnknown, "":
+				return fmt.Errorf("accel: column %d (%q) holds %T; exact nearest reads only []float64 and []int64", i, buffer.Name, buffer.Values)
+			}
+		}
+		if n < 0 {
+			continue
+		}
+		if rows == -1 {
+			rows = n
+		} else if n != rows {
+			return fmt.Errorf("accel: column %d (%q) has %d rows, an earlier column has %d", i, buffer.Name, n, rows)
+		}
+	}
+	return nil
 }
 
 // hostColumns pulls the dataset's values at their own precision. This is the

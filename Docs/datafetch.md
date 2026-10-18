@@ -676,6 +676,8 @@ func TWStock(cfg TWStockConfig) (*TWStockClient, error)
 
 Negative `Interval`, `Retries`, `RetryBackoff`, or `Concurrency` values return an error. Non-2xx responses, invalid JSON, and exchange errors are never silently swallowed. The returned `*TWStockClient` can be named in your own structs and signatures; a `TWStockClient` that did not come from `TWStock`, such as a zero value, returns an error from every method instead of sending a request.
 
+**Being throttled.** The TWSE site (and the MOPS pages) sometimes answers HTTP 307 with a "for security reasons the page cannot be shown" page and no `Location`, and TPEx or the OpenAPI hosts may answer 429. The error then matches `errors.Is(err, datafetch.ErrTWStockThrottled)` and its text says the source refused the request as too frequent. It is retried like any failed request, but the defaults (`Retries` 0) give up at the first one, which ends a multi-year backfill. Reports from 2026-10-17 saw one URL answer 307, 307, 200 when requested every 3 seconds, so for a backfill start from something like `Interval: 3 * time.Second`, `Retries: 5`, `RetryBackoff: 3 * time.Second` and widen them until the run completes. These values are a starting point, not a measured guarantee; the defaults are unchanged.
+
 ### Methods and columns
 
 ```go

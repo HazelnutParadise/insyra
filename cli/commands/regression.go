@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
@@ -103,7 +102,7 @@ func runRegressionCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		degree, err := strconv.Atoi(coreArgs[3])
+		degree, err := atoiArg(ctx, coreArgs[3])
 		if err != nil || degree < 1 {
 			return fmt.Errorf("invalid polynomial degree: %s", coreArgs[3])
 		}

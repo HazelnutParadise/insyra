@@ -31,6 +31,13 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `FillNaNWithMean` 的 Deprecated 說明改成給出保留其行為的寫法 `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())`；原本指向會連 nil 一起填的 `FillWithMean`。
 - MySQL 上用 `Replace` 的 `ToSQL` 寫入失敗時會保留舊表。MySQL 在 `DROP TABLE` 時就結束交易，所以插入失敗後舊表和新資料都沒了。現在資料先寫進暫存表，再用一次 `RENAME TABLE` 換上，最後才刪掉舊表；被其他表以外鍵參照的表會在任何變更前被拒絕。帳號需要資料庫層級的 `CREATE`、`INSERT`、`ALTER`、`DROP` 權限。SQLite 與 PostgreSQL 照舊使用單一交易。
 - `ScalerParams.PassThrough` 改為 Deprecated，在這條線意義不變，在 0.4 移除；0.4 的 `SimpleImputer` 會在 fit 時拒絕這種欄位。
+- 新增 `insyra.IsNilList(dl)`，判斷一個 `IDataList` 背後是否沒有清單，包含內嵌 nil `*DataList` 的包裝（例如 `isr.DL`）。`plot` 圖表與 `stats` 函式收到這種包裝時，會當成 nil 清單處理，不再 panic（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。
+- `ReadSlice2D` 的表格寬度改以最寬的一列為準。過去比第一列長的列，多出來的值會默默消失，也沒有錯誤：`[][]float64{{1}, {2, 3}}` 得到的 2x1 表格裡沒有 3。較短的列仍補 nil（[#410](https://github.com/HazelnutParadise/insyra/issues/410)）。
+- `NewDataList` 收到包含自己的 slice 時，不再以 `fatal error: stack overflow` 讓整個程式結束。它最多往下展開 64 層，更深的部分當成一個儲存格保留；一般的巢狀照舊展開。
+- `DataList.Shift` 會把儲存格裡的 slice 當成一個儲存格保留。過去它透過會展開所有 slice 的 `NewDataList` 建立結果，所以含有 `[]byte{1, 2}` 與 `3` 的清單經 `Shift(0)` 後會變成三格。
+- `quant`、`ml`、`nn` 與 `DataTable.Resample` 中指出壞儲存格的錯誤訊息，現在一律寫 `row index N`，從 0 算起，與 `Get(N)` 一致；過去 `quant` 與 `Resample` 從 1 算（`row 3`），`ml` 與 `nn` 從 0 算但只寫 `row N`。只有文字改變，比對舊文字的程式需要更新。
+- 讀入 JSON 的 scaler 會拒絕 `"ref"` 為空的欄位。過去它會綁到第一個沒有名稱的欄並默默改掉該欄的值。`Fit` 不會寫出空參照，所以只有手寫的 JSON 會遇到。
+- 兩個巢狀值的字串內含編碼用的分隔字元時，不再被當成同一個值：清單裡有 `Cell([]any{"a,s:b"})` 與 `Cell([]any{"a", "b"})` 時，`Count([]any{"a", "b"})` 會回 2，`Counter` 只有一筆。巢狀字串現在加上長度前綴。非巢狀的儲存格，以及不含這類字串的巢狀值，計數與過去相同。
 - `Config.TurnOnThreadSafety()` 在 `Config.Dangerously_TurnOffThreadSafety()` 之後把 `DataList` 與 `DataTable` 的實例鎖開回來，其他設定都不動。以前只有 `SetDefaultConfig()` 能開回來，但它會連 log 等級、彩色輸出、panic-on-error、錯誤 hook 與加速設定一起重設。`Dangerously_TurnOffThreadSafety` 的文件也寫明了關掉的範圍：`AtomicDo` 與 `AtomicDoAll` 的鎖，也就是 `DataList` 與 `DataTable` 的每個方法；`Config`、全域錯誤緩衝區與 log 仍然安全。
 - `Config.SetLogger(*slog.Logger)` 讓 insyra 的日誌改送到 `log/slog` 的 logger，不再寫進標準 `log` 套件。每一行會變成一筆 record，保留原本的等級（Fatal 對應 `ERROR+4`），帶有 `package` 與 `func` 屬性，來源標示為寫日誌的那個 insyra 函式，而且不加 `[insyra - …]` 前綴和顏色碼。`SetLogger(nil)` 會改回標準 `log` 套件，`GetLogger` 回傳目前設定的 logger，`SetDefaultConfig` 會清除它。哪些行要送出仍由 `SetLogLevel` 決定，`LogFatal` 在沒有開 `SetDontPanic(true)` 時仍會結束程式。沒有設定 logger 時，輸出和以前完全一樣。CCL 的警告現在也會遵守日誌等級，並送到 logger、錯誤緩衝區與錯誤 hook。
 - `ColIndexToNumber` 與 `ColNumberToIndex` 在 Excel 式欄位索引與從 0 起算的欄位編號之間轉換：`ColIndexToNumber("AA")` 是 `26`，`ColNumberToIndex(26)` 是 `"AA"`。`Config.GetUseColoredOutput` 回報 `SetUseColoredOutput` 設定的值。`ParseColIndex`、`CalcColIndex` 與 `Config.GetDoesUseColoredOutput` 標為 **Deprecated**，回傳值與新名稱相同，0.4 移除。`Config.Dangerously_TurnOffThreadSafety` 刻意保留底線作為警告；取值方法保留 `Get` 前綴，與對應的 `Set` 方法成對。
@@ -60,6 +67,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `quantile <var> <p>` 指令，印出 DataList 的分位數，`p` 範圍為 0 到 1；`percentile` 則是 0 到 100。`shuffle ... as` 指令改呼叫 `Shuffled`，所以在每個版本線上都不會改動來源變數的順序。
 - 環境的預設檔案寫入失敗時，`env create`（以及任何會建立 `default` 環境的指令）會移除建到一半的資料夾，不再留下殘缺的環境；預設檔案的路徑上若是一個資料夾，會回報錯誤，不再略過。
 - `convert <file.xlsx> sheet <name> <file.csv> [sheet <name> <file.csv> ...]` 只轉出指名的工作表，各自寫成指定的檔案，檔案可以在不同目錄。指定不存在的工作表、同一張工作表給兩次，或兩張工作表寫到同一個檔案，都會在寫出任何檔案前回錯誤。這個形式預設會在試算表會當成公式執行的文字前加單引號，給 `allowformulas true` 才原樣寫出。`convert <file.xlsx> <file.csv>` 照舊。新增的 `sheets <file.xlsx>` 依順序列出活頁簿的工作表。
+- `col` 現在接受 Excel 風格的欄位字母：`insyra col t A as x`。整數仍是從 0 開始的位置，欄名會先於字母比對，所以原本能用的呼叫意思不變，名稱剛好叫 `A` 的欄位也仍然優先於 A 欄（[#438](https://github.com/HazelnutParadise/insyra/issues/438)）。
+- 所有接受數字的指令參數，現在也可以填數字變數的名稱：`sample frac f`、`kmeans … k`、`shift x n`、`ttest … mu`、`quant` 各形式等，會使用該變數的值；過去填非數字的名稱會報錯。數字變數可由 `sum`、`mean`、`median`、`mode`、`stdev`、`var`、`min`、`max`、`range` 結尾加上 `as <var>` 產生（照常印出結果，只有寫了 `as` 才存下），並可用 `show <var>` 顯示。能解析成數字的字串仍視為數字，所以原本能用的寫法意義不變。
 
 ### `ml` 與 `nn`
 
@@ -76,12 +85,17 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 建構子回傳的客戶端改為匯出型別：`TWStock` 回傳 `*TWStockClient`，`YFinance` 回傳 `*YFinanceClient`，它的 `Ticker` 回傳 `*YFTicker`，`TWGeocoding` 回傳 `*TWGeocodingClient`，`GoogleMapsStores` 回傳 `*GoogleMapsStoresClient`。現在可以把客戶端存進自己的 struct 欄位或當成參數傳遞，既有的呼叫不必修改。不是由建構子建立的 TWSE／TPEx 或地理編碼客戶端（例如建構子出錯時回傳的 `nil` 或零值），過去會直接 panic 的地方現在回傳錯誤；原本就有回應的呼叫，回應不變。
 - 每個抓取方法都有接收 `context.Context` 的 `...Context` 版本，做法與 `ReadSQLContext` 相同，原本的方法改為以 `context.Background()` 呼叫它：`TWStockClient` 的六個方法（例如 `DailyPricesContext`）、`ReverseContext`、`ReverseColsContext`、`ReverseTableContext`、`SearchContext`、`GetReviewsContext`，以及 `YFTicker` 所有會發出請求的 26 個方法（例如 `HistoryContext`）。context 會傳到限流等待、重試前的退避、每個 HTTP 請求與評論翻頁之間的等待。被取消的呼叫回傳 `ctx.Err()` 且不重試。`ReverseContext` 的請求若被 context 中斷，回報的是 context 的錯誤而不是 `ErrGeocodeTimeout`，`ErrGeocodeTimeout` 仍只代表服務沒在 `Timeout` 內回應。`ReverseCols` 批次中途被取消時，會回傳已解析的列，其餘標為 `pending`，與配額用完時相同。go-yfinance 無法中途停止已經開始的呼叫，所以 Yahoo Finance 的方法在 context 結束時會立刻返回，那次呼叫則留在背景跑完，期間仍可能送出剩下的請求。`ReverseTableByColName` 沒有 Context 版本，請把同樣的欄位以 Excel 式索引傳給 `ReverseTableContext`。
 - `YFPeriodYearly` 改為 Deprecated，請改用抓取相同財報的 `YFPeriodAnnual`，它產生的表格仍標示 `yearly`。評論排序常數改為 `GoogleMapsStoreReviewSortByRelevance`、`GoogleMapsStoreReviewSortByNewest`、`GoogleMapsStoreReviewSortByHighestRating`、`GoogleMapsStoreReviewSortByLowestRating`，`SortByRelevance` 等四個舊名改為數值相同的 Deprecated 常數。`GoogleMapsStoreReviewsFetchingOptions.MaxWaitingInterval` 以 `time.Duration` 設定翻頁之間最長的等待，規則與原本的毫秒欄位相同，`MaxWaitingInterval_Milliseconds` 改為 Deprecated，兩個都設定時 `GetReviews` 會在發出請求前回傳 `nil` 並記錄警告。這些 Deprecated 名稱在 0.3.x 線上照常可用。
+- `TWStock` 的方法遇到 HTTP 307 或 429 時，會明說是被來源節流：錯誤訊息指出來源認為請求太頻繁，請調大 `Interval` 與 `Retries`，`errors.Is(err, datafetch.ErrTWStockThrottled)` 也會成立（[#434](https://github.com/HazelnutParadise/insyra/issues/434)）。證交所會隨機以安全性頁面回 307，所以 `Docs/datafetch.md` 補上回填歷史時的起始設定值。預設值不變。
 
 ### `stats`
 
 - `DiagOf`、`DiagMatrix`、`DiagMatrixSize`、`IdentityMatrix` 以單一型別建立與讀取對角線，大小小於 1 或矩陣為 nil 時回傳錯誤而不是 panic。`Diag(x any, dims ...int)` 改為 Deprecated，行為不變（包括大小小於 1 時 panic），在 0.4 移除。
 - `TwoWayANOVAFromTable(dt, valueCol, factorACol, factorBCol)`、`RepeatedMeasuresANOVAFromTable(dt, valueCol, conditionCol, subjectCol)` 與 `FriedmanTestFromTable(dt, valueCol, conditionCol, subjectCol)` 讀取每列一筆觀測值的表格，也就是 R 的 `aov` 與 `friedman.test` 讀的形狀，不必再手動拆成各格或每位受試者一個清單。欄位指定為既有欄的 Excel 欄字母，找不到時再比完全相同的欄名。因子層級依 `ToMapKey` 比較，所以 `int(1)` 與 `int64(1)` 是不同層級。`nil` 或 `NaN` 層級、不是有限數字的值、沒有觀測值的組合、各格內沒有重複觀測的雙因子表，以及缺少某個條件或同一條件量了兩次的受試者，都會被拒絕。結果與用同樣資料呼叫 `TwoWayANOVA`、`RepeatedMeasuresANOVA`、`FriedmanTest` 相同。
 - `ChiSquareIndependenceTest` 在同一個 `AtomicDoAll` 裡一次讀取兩個清單，和兩樣本檢定的做法相同。
+- `BartlettTest`、`KruskalWallis`、`FriedmanTest` 與其他卡方類檢定，在各組完全一致時不再以 `cephes: parameter out of bounds` panic：Bartlett 統計量會因捨入誤差略小於 0（兩組相同），`KruskalWallis` 或 `FriedmanTest` 遇到全部數值相同時統計量為 0。現在會回傳結果，p 值為 1；自由度不是正數時，p 值為 NaN 而不是 panic。原本沒有 panic 的結果不變。
+- `PCA` 與 `KNNRegress` 的目標值遇到 `NaN` 或 `±Inf` 會回傳錯誤。過去它們只檢查儲存格能否轉成數字，所以 `PCA` 會回傳 `NaN` 特徵值、`KNNRegress` 會預測出 `NaN` 或 `±Inf`，而且沒有錯誤。原本就回傳錯誤的呼叫不變；原本回傳 `NaN` 結果的呼叫現在改回傳錯誤。
+- **BREAKING（錯誤訊息文字）**：指出儲存格位置的錯誤訊息，現在改從 0 算起，與 `Get(i)` 收的數字一致，並明寫是索引：`data contains a non-finite value at row index 2: NaN`。`v0.3.4` 的假說檢定從 1 算（`row 3`），容易被當成 DataTable 自己的編號，與它差一。範圍包含假說檢定、回歸、相關、偏度、峰度與動差，以及回歸、GLM 與因素分析的 `(index N)`、`row N` 檢查；依傳入順序命名的群組、儲存格與受試者（`group 2`、`subject 3`）仍從 1 算。數值與錯誤型別不變，只有文字改變，比對舊文字的程式需要更新。
+- `CutTreeByK` 與 `CutTreeByHeight` 會拒絕葉子或合併步驟被併入超過一次的樹（手動編輯 `state.json` 可能產生）。過去它們會在要求 1 群時回傳 2 群，且沒有錯誤。
 - 檢定結果現在可以一起處理：共用的結果型別匯出為 `TestResult`，所有檢定結果都符合新的 `HypothesisTestResult` 介面（`Base() *TestResult`），同一個函式或同一個 slice 可以接 t 檢定、Mann-Whitney U 與卡方檢定的結果。`stats` 的每個結果型別都有版面一致的 `String()` 與 `Show()`，`fmt.Println(res)` 會印出可讀的結果，不再是 Go 的原始結構；`fmt.Fprintln(w, res)` 可寫到任何 writer。`ChiSquareTestResult.Show()` 與 `FactorAnalysisResult.Show()` 改印這個版面。
 
 ### `csvxl`
@@ -134,6 +148,14 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `RunCodef`、`RunFilef` 與它們的 `Context` 版本的參數，不會再變成 Python 程式碼。過去佔位字元是一個參數接一個參數、對整份程式碼輪流替換，後面的參數替換時，也會改到前面參數插進去的文字：傳入 `$v2` 和 `+__import__('os').system('id')+` 兩段文字，就會執行那個指令。`$v1` 也會吃掉 `$v10` 的開頭。JSON 寫不出來的值（例如 `[]any{文字, math.NaN()}`）會照 Go 的格式原樣寫進程式碼，裡面的文字就成了程式碼。現在佔位字元只在原本的模板裡找一次，依完整編號替換，也只轉換模板用到的參數。寫不成 Python 值的參數，會在 Python 啟動前回傳錯誤，並註明是哪個佔位字元。含有 NaN 或無限大的 `[]float64` 也一樣，過去會寫成 Python 不認得的 `NaN` 或 `+Inf`。
 - 在 ARM64 的 Windows 上用 x86-64 的 Python 也能執行了。polars 的 CPU 檢查把機器讀成 ARM64，在每段程式開頭的 `import polars` 拋出 `unknown feature flag`，所以每次執行都失敗。產生的程式現在會在 ARM64 Windows 上的 x86-64 Python 設定 `POLARS_SKIP_CPU_CHECK=1`，已經設過這個變數時不動它。
 - `py.Run[T](code)` 直接回傳解碼成 `T` 的 Python 結果，不必先宣告變數。新增 `PipInstallContext` 與 `PipUninstallContext`，context 結束時會停止安裝。所有接受 context 的函式傳入 nil 時回傳錯誤（過去會當機），傳入已結束的 context 時回傳 `ctx.Err()`。`RunCodeWithTimeout` 已棄用，請改用 `RunCodeContext` 搭配 `context.WithTimeout`，兩者行為相同。0.4 移除。
+
+### `accel`
+
+- 手動組出來的 `Buffer` 如果宣告為數值欄，但 `Values` 讀不了（`[]float32`、`[]int`、nil）、`Type` 與 `Values` 不符，或欄位長度不一致，`ExecuteNearestExact` 現在會回傳指出欄位的錯誤。過去它會回傳空結果且沒有錯誤（[#441](https://github.com/HazelnutParadise/insyra/issues/441)）。由 `ProjectDataList`、`ProjectDataTable` 建出的資料集不受影響；`bool`、`string`、`any` 欄位仍回報 `dtype-not-eligible`，不會出錯。
+
+### `plot`
+
+- `CreateWordCloud` 依圖上顯示的文字計數，清單裡有 slice 型儲存格時不再 panic（`hash of unhashable type`）（[#411](https://github.com/HazelnutParadise/insyra/issues/411)）。`1` 和 `"1"` 會算成同一個詞，和它們在圖上看起來一樣。
 
 ## v0.3.4
 

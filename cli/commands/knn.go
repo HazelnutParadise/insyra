@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
@@ -32,11 +31,11 @@ func runKNNClassifyCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	k, err := strconv.Atoi(coreArgs[3])
+	k, err := atoiArg(ctx, coreArgs[3])
 	if err != nil {
 		return fmt.Errorf("invalid k: %s", coreArgs[3])
 	}
-	opts, err := parseKNNCommandOptions(coreArgs[4:])
+	opts, err := parseKNNCommandOptions(ctx, coreArgs[4:])
 	if err != nil {
 		return err
 	}
@@ -68,11 +67,11 @@ func runKNNRegressCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	k, err := strconv.Atoi(coreArgs[3])
+	k, err := atoiArg(ctx, coreArgs[3])
 	if err != nil {
 		return fmt.Errorf("invalid k: %s", coreArgs[3])
 	}
-	opts, err := parseKNNCommandOptions(coreArgs[4:])
+	opts, err := parseKNNCommandOptions(ctx, coreArgs[4:])
 	if err != nil {
 		return err
 	}
@@ -98,11 +97,11 @@ func runKNNNeighborsCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	k, err := strconv.Atoi(coreArgs[2])
+	k, err := atoiArg(ctx, coreArgs[2])
 	if err != nil {
 		return fmt.Errorf("invalid k: %s", coreArgs[2])
 	}
-	opts, err := parseKNNCommandOptions(coreArgs[3:])
+	opts, err := parseKNNCommandOptions(ctx, coreArgs[3:])
 	if err != nil {
 		return err
 	}
@@ -116,7 +115,7 @@ func runKNNNeighborsCommand(ctx *ExecContext, args []string) error {
 	return nil
 }
 
-func parseKNNCommandOptions(args []string) (stats.KNNOptions, error) {
+func parseKNNCommandOptions(ctx *ExecContext, args []string) (stats.KNNOptions, error) {
 	opts := stats.KNNOptions{}
 	const supported = "weighting, algorithm, leafsize"
 	for i := 0; i < len(args); i += 2 {
@@ -145,7 +144,7 @@ func parseKNNCommandOptions(args []string) (stats.KNNOptions, error) {
 			}
 			opts.Algorithm = a
 		case "leafsize":
-			v, err := strconv.Atoi(args[i+1])
+			v, err := atoiArg(ctx, args[i+1])
 			if err != nil {
 				return opts, fmt.Errorf("knn: invalid leafsize %q, expected a whole number", args[i+1])
 			}

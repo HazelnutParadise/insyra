@@ -120,7 +120,7 @@ func runTTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		mu, err := parseFloatArg("ttest", "mu", args[2])
+		mu, err := parseFloatArg(ctx, "ttest", "mu", args[2])
 		if err != nil {
 			return err
 		}
@@ -188,11 +188,11 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		mu, err := parseFloatArg("ztest", "mu", args[2])
+		mu, err := parseFloatArg(ctx, "ztest", "mu", args[2])
 		if err != nil {
 			return err
 		}
-		sigma, err := parseFloatArg("ztest", "sigma", args[3])
+		sigma, err := parseFloatArg(ctx, "ztest", "sigma", args[3])
 		if err != nil {
 			return err
 		}
@@ -218,11 +218,11 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		s1, err := parseFloatArg("ztest", "s1", args[3])
+		s1, err := parseFloatArg(ctx, "ztest", "s1", args[3])
 		if err != nil {
 			return err
 		}
-		s2, err := parseFloatArg("ztest", "s2", args[4])
+		s2, err := parseFloatArg(ctx, "ztest", "s2", args[4])
 		if err != nil {
 			return err
 		}
@@ -279,11 +279,11 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		if len(args) < 4 {
 			return fmt.Errorf("usage: anova twoway <aLevels> <bLevels> <cell1> <cell2> [cellN]")
 		}
-		aLevels, err := parseIntArg("anova", "aLevels", args[1])
+		aLevels, err := parseIntArg(ctx, "anova", "aLevels", args[1])
 		if err != nil {
 			return err
 		}
-		bLevels, err := parseIntArg("anova", "bLevels", args[2])
+		bLevels, err := parseIntArg(ctx, "anova", "bLevels", args[2])
 		if err != nil {
 			return err
 		}
@@ -403,7 +403,7 @@ func runChiSqCommand(ctx *ExecContext, args []string) error {
 		}
 		probabilities := make([]float64, 0, len(args)-2)
 		for _, raw := range args[2:] {
-			value, parseErr := parseFloatArg("chisq", "value", raw)
+			value, parseErr := parseFloatArg(ctx, "chisq", "value", raw)
 			if parseErr != nil {
 				return parseErr
 			}

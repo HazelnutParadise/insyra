@@ -362,10 +362,10 @@ func CrossValidateWeighted(x *insyra.DataTable, y *insyra.DataList, weights *ins
 	for i := 0; i < weights.Len(); i++ {
 		value, ok := insyra.ToFloat64Safe(weights.Get(i))
 		if !ok || math.IsNaN(value) || math.IsInf(value, 0) {
-			return nil, fmt.Errorf("ml: weight at row %d is not a finite number: %v", i+1, weights.Get(i))
+			return nil, fmt.Errorf("ml: weight at row index %d is not a finite number: %v", i, weights.Get(i))
 		}
 		if value <= 0 {
-			return nil, fmt.Errorf("ml: weights must be strictly positive; row %d holds %v", i+1, value)
+			return nil, fmt.Errorf("ml: weights must be strictly positive; row index %d holds %v", i, value)
 		}
 	}
 	if estimator.FitWeighted == nil {
@@ -1141,7 +1141,7 @@ func classLabelsFromProbabilities(probabilities *insyra.DataTable, classes *insy
 		for col := 0; col < probabilities.NumCols(); col++ {
 			value, ok := insyra.ToFloat64Safe(probabilities.GetElementByNumberIndex(row, col))
 			if !ok || math.IsNaN(value) || math.IsInf(value, 0) {
-				return nil, fmt.Errorf("ml: probability at row %d, class %d is not finite", row, col)
+				return nil, fmt.Errorf("ml: probability at row index %d, class %d is not finite", row, col)
 			}
 			if value > bestValue {
 				bestValue = value
@@ -1196,7 +1196,7 @@ func logLossScore(yTrue *insyra.DataList, prediction Prediction) (float64, error
 		}
 		probability, ok := insyra.ToFloat64Safe(probabilities.GetElementByNumberIndex(row, class))
 		if !ok || math.IsNaN(probability) || probability < 0 || probability > 1 {
-			return 0, fmt.Errorf("ml: probability at row %d, class %d is outside [0,1]", row, class)
+			return 0, fmt.Errorf("ml: probability at row index %d, class %d is outside [0,1]", row, class)
 		}
 		if probability == 0 {
 			return math.Inf(1), nil
@@ -1234,7 +1234,7 @@ func rocAUCScore(yTrue *insyra.DataList, prediction Prediction) (float64, error)
 	for row := 0; row < yTrue.Len(); row++ {
 		score, ok := insyra.ToFloat64Safe(probabilities.GetElementByNumberIndex(row, 1))
 		if !ok || math.IsNaN(score) || math.IsInf(score, 0) {
-			return 0, fmt.Errorf("ml: ROC AUC score at row %d is not finite", row)
+			return 0, fmt.Errorf("ml: ROC AUC score at row index %d is not finite", row)
 		}
 		// A label belonging to neither class is not a negative — it is a
 		// malformed input, and treating it as negative reports confident
@@ -1311,11 +1311,11 @@ func numericPair(actual, predicted *insyra.DataList) ([]float64, []float64, erro
 		var ok bool
 		actualValues[i], ok = insyra.ToFloat64Safe(actual.Get(i))
 		if !ok || math.IsNaN(actualValues[i]) {
-			return nil, nil, fmt.Errorf("ml: true value at row %d is not numeric", i)
+			return nil, nil, fmt.Errorf("ml: true value at row index %d is not numeric", i)
 		}
 		predictedValues[i], ok = insyra.ToFloat64Safe(predicted.Get(i))
 		if !ok || math.IsNaN(predictedValues[i]) {
-			return nil, nil, fmt.Errorf("ml: prediction at row %d is not numeric", i)
+			return nil, nil, fmt.Errorf("ml: prediction at row index %d is not numeric", i)
 		}
 	}
 	return actualValues, predictedValues, nil

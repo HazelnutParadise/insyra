@@ -214,7 +214,7 @@ func (r *LogarithmicRegressionResult) Predict(typ PredictType, newXs ...insyra.I
 	out := make([]any, n)
 	for i, x := range xs[0] {
 		if x <= 0 {
-			return nil, fmt.Errorf("x must be > 0 for ln prediction (index %d)", i)
+			return nil, fmt.Errorf("x must be > 0 for ln prediction (row index %d)", i)
 		}
 		out[i] = r.Intercept + r.Slope*math.Log(x)
 	}
@@ -356,7 +356,7 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionRes
 	logYs := make([]float64, len(ys))
 	for i := range ys {
 		if ys[i] <= 0 {
-			return nil, fmt.Errorf("y must be > 0 for log computation (index %d)", i)
+			return nil, fmt.Errorf("y must be > 0 for log computation (row index %d)", i)
 		}
 		logYs[i] = math.Log(ys[i])
 	}
@@ -452,7 +452,7 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionRes
 	logXs := make([]float64, len(xs))
 	for i := range xs {
 		if xs[i] <= 0 {
-			return nil, fmt.Errorf("x must be > 0 for ln computation (index %d)", i)
+			return nil, fmt.Errorf("x must be > 0 for ln computation (row index %d)", i)
 		}
 		logXs[i] = math.Log(xs[i])
 	}

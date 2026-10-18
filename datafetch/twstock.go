@@ -81,6 +81,12 @@ const (
 
 var errTWStockNoData = errors.New("datafetch: TWStock no data")
 
+// ErrTWStockThrottled matches (with errors.Is) an error returned because the
+// exchange's site refused the request as too frequent: HTTP 307 with its
+// security page, or 429. It is retried like any other failed request. The fix is
+// a larger Interval and Retries on TWStockConfig, not a change to the call.
+var ErrTWStockThrottled = errors.New("datafetch: TWStock request throttled by the source")
+
 // errTWStockNotCreated is what every method of a TWStockClient that did not
 // come from TWStock returns.
 var errTWStockNotCreated = errors.New("datafetch: TWStockClient was not created with TWStock")
@@ -172,6 +178,10 @@ func readJSONResponse(resp *http.Response, output any) error {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		if resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusTooManyRequests {
+			return fmt.Errorf("datafetch: TWStock HTTP status %d: the source refused the request as too frequent; raise Interval and Retries in TWStockConfig: %w",
+				resp.StatusCode, ErrTWStockThrottled)
+		}
 		return fmt.Errorf("datafetch: TWStock HTTP status %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))

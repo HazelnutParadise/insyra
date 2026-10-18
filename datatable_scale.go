@@ -643,6 +643,11 @@ func (s *scaler) unmarshalJSON(data []byte, kind string) error {
 	var cols []scalerColumn
 	seen := make(map[string]bool, len(in.Columns))
 	for _, c := range in.Columns {
+		// Fit never writes an empty reference: an unnamed column is remembered
+		// by its letter. An empty one would resolve to the first unnamed column.
+		if c.Ref == "" {
+			return fmt.Errorf("insyra: scaler JSON: a column has an empty reference")
+		}
 		// Fit refuses a column selected twice, so a reference listed twice was
 		// not written by Fit, and reading it would keep only the last one.
 		if seen[c.Ref] {

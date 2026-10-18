@@ -27,8 +27,8 @@ func TestParametricTestsRefuseBlankCells(t *testing.T) {
 	}
 	for name, f := range cases {
 		err := f()
-		if err == nil || !strings.Contains(err.Error(), "row 3") {
-			t.Fatalf("%s: expected error naming row 3, got %v", name, err)
+		if err == nil || !strings.Contains(err.Error(), "row index 2") {
+			t.Fatalf("%s: expected error naming row index 2, got %v", name, err)
 		}
 	}
 }

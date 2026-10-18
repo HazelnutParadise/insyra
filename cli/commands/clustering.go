@@ -26,11 +26,11 @@ func runKMeansCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	k, err := strconv.Atoi(coreArgs[1])
+	k, err := atoiArg(ctx, coreArgs[1])
 	if err != nil || k < 1 {
 		return fmt.Errorf("invalid cluster count: %s", coreArgs[1])
 	}
-	opts, err := parseKMeansOptions(coreArgs[2:])
+	opts, err := parseKMeansOptions(ctx, coreArgs[2:])
 	if err != nil {
 		return err
 	}
@@ -82,13 +82,13 @@ func runCutTreeCommand(ctx *ExecContext, args []string) error {
 	var err error
 	switch coreArgs[1] {
 	case "k":
-		k, convErr := strconv.Atoi(coreArgs[2])
+		k, convErr := atoiArg(ctx, coreArgs[2])
 		if convErr != nil {
 			return fmt.Errorf("invalid k: %s", coreArgs[2])
 		}
 		labels, err = stats.CutTreeByK(tree, k)
 	case "h":
-		h, convErr := strconv.ParseFloat(coreArgs[2], 64)
+		h, convErr := parseFloatToken(ctx, coreArgs[2])
 		if convErr != nil {
 			return fmt.Errorf("invalid height: %s", coreArgs[2])
 		}
@@ -113,11 +113,11 @@ func runDBSCANCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	eps, err := strconv.ParseFloat(coreArgs[1], 64)
+	eps, err := parseFloatToken(ctx, coreArgs[1])
 	if err != nil {
 		return fmt.Errorf("invalid eps: %s", coreArgs[1])
 	}
-	minPts, err := strconv.Atoi(coreArgs[2])
+	minPts, err := atoiArg(ctx, coreArgs[2])
 	if err != nil {
 		return fmt.Errorf("invalid minpts: %s", coreArgs[2])
 	}
@@ -158,7 +158,7 @@ func runSilhouetteCommand(ctx *ExecContext, args []string) error {
 	return nil
 }
 
-func parseKMeansOptions(args []string) (stats.KMeansOptions, error) {
+func parseKMeansOptions(ctx *ExecContext, args []string) (stats.KMeansOptions, error) {
 	opts := stats.KMeansOptions{}
 	const supported = "nstart, itermax, seed"
 	for i := 0; i < len(args); i += 2 {
@@ -169,13 +169,13 @@ func parseKMeansOptions(args []string) (stats.KMeansOptions, error) {
 		// option in the CLI; NSTART used to be an unknown option.
 		switch strings.ToLower(args[i]) {
 		case "nstart":
-			v, err := strconv.Atoi(args[i+1])
+			v, err := atoiArg(ctx, args[i+1])
 			if err != nil {
 				return opts, fmt.Errorf("kmeans: invalid nstart %q, expected a whole number", args[i+1])
 			}
 			opts.NStart = v
 		case "itermax":
-			v, err := strconv.Atoi(args[i+1])
+			v, err := atoiArg(ctx, args[i+1])
 			if err != nil {
 				return opts, fmt.Errorf("kmeans: invalid itermax %q, expected a whole number", args[i+1])
 			}

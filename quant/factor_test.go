@@ -186,13 +186,13 @@ func TestFactorModelRejectsInvalidInput(t *testing.T) {
 			[]string{"MKT", "HML"},
 			toDL(0.006, -0.002, 0.008, 0.001, -0.005, 0.004, 0.003),
 			insyra.NewDataList(0.002, -0.001, 0.003, 0.004, 0.001, 0.004, "n/a"),
-		), "HML", "row 7"},
+		), "HML", "row index 6"},
 		{"NaN factor cell", validAsset, factorTable(
 			[]string{"MKT", "SMB"},
 			toDL(0.006, -0.002, 0.008, 0.001, -0.005, 0.004),
 			insyra.NewDataList(0.002, math.NaN(), 0.003, -0.002, 0.001, 0.004),
-		), "SMB", "row 2"},
-		{"Inf asset cell", insyra.NewDataList(0.01, -0.004, math.Inf(1), 0.003, -0.008, 0.006), validFactors, "asset", "row 3"},
+		), "SMB", "row index 1"},
+		{"Inf asset cell", insyra.NewDataList(0.01, -0.004, math.Inf(1), 0.003, -0.008, 0.006), validFactors, "asset", "row index 2"},
 	}
 	for _, tc := range badCases {
 		t.Run(tc.name, func(t *testing.T) {

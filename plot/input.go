@@ -10,14 +10,10 @@ import "github.com/HazelnutParadise/insyra"
 // drawn; a chart left with nothing to draw refuses the same way it already
 // refuses no data at all.
 
-// isNilList reports whether dl carries no usable list — either no value at all,
-// or a nil *insyra.DataList inside the interface.
+// isNilList reports whether dl carries no usable list: no value at all, a nil
+// *insyra.DataList, or a wrapper such as isr.DL that embeds one.
 func isNilList(dl insyra.IDataList) bool {
-	if dl == nil {
-		return true
-	}
-	v, ok := dl.(*insyra.DataList)
-	return ok && v == nil
+	return insyra.IsNilList(dl)
 }
 
 // nonNilLists returns data without its nil entries, warning once per entry.

@@ -1174,7 +1174,7 @@ func softmaxCrossEntropyForward(logits, labels *Tensor) (*Tensor, error) {
 	for row := 0; row < rows; row++ {
 		label := labels.int64Data[row]
 		if label < 0 || label >= int64(classes) {
-			return nil, fmt.Errorf("cross-entropy label %d at row %d is outside [0,%d)", label, row, classes)
+			return nil, fmt.Errorf("cross-entropy label %d at row index %d is outside [0,%d)", label, row, classes)
 		}
 		maxValue := float32(math.Inf(-1))
 		for class := 0; class < classes; class++ {

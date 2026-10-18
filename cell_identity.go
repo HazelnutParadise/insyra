@@ -418,8 +418,14 @@ func writeCellValue(b *strings.Builder, rv reflect.Value, depth int, path []cell
 		return writeCellValue(b, rv.Elem(), depth+1, path, memo)
 
 	case reflect.String:
-		b.WriteString("s:")
-		b.WriteString(rv.String())
+		// Length-prefixed, so a string holding the encoding's own separators
+		// cannot stand for two values: []any{"a,s:b"} and []any{"a", "b"}
+		// would otherwise write the same elements.
+		str := rv.String()
+		b.WriteString("s")
+		b.WriteString(strconv.Itoa(len(str)))
+		b.WriteString(":")
+		b.WriteString(str)
 
 	case reflect.Bool:
 		if rv.Bool() {

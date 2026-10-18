@@ -296,34 +296,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: make the answer deterministic first, for example by asking chardet for all results and breaking a tie in a fixed order. Then decide whether a guess below some confidence should be a warning or an error that asks for the encoding, which changes what a read does with such a file.
 - **Status**: pending
 
-### [2026-09-28] — scaler JSON with an empty column reference binds to an unnamed column
-- **Where**: `datatable_scale.go` `unmarshalJSON`, and `resolveEncodingColumn` in `datatable_preprocess.go`
-- **What**: `json.Unmarshal` accepts a fitted column whose `"ref"` is `""`, and `Transform` then resolves `""` by name, which matches the first column that has no name. Measured on 2026-09-28: a `StandardScaler` read from JSON holding one column with `"ref":""`, mean 1 and std 1, transformed the unnamed column A of a table from `[5, 7]` to `[4, 6]` with no error. `Fit` never writes an empty reference, because an unnamed column is remembered by its letter, so only JSON written by hand or by another program reaches this. `0.4` refuses an empty reference (`TestScalerJSONRefusesAnEmptyReference`), but as part of its typed reference format (`decodeScalerRef`), which this line does not have.
-- **Suggestion**: refuse an empty `"ref"` in `unmarshalJSON`, next to the check for a column listed twice, and leave the receiver as it was. The JSON format stays as it is.
-- **Status**: pending
-
-### [2026-09-28] — cutting a tree accepts a node merged twice
-- **Where**: `stats/internal/clustering/cluster.go` `validateTree`
-- **What**: `validateTree` checks that every merge joins a leaf or an earlier merge, but not that each is used once. Measured on 2026-09-28 with three labels: merges `{-1,-2},{-1,-2}`, `{-1,-2},{1,1}` or `{-1,-1},{-2,1}` all pass, and `CutTreeByK(tree, 1)` returns `[1 1 2]`, two clusters where one was asked for, with no error. A hand-edited `state.json` reaches `cutree` this way. Present before the port of `0.4`'s check, and on `0.4` too.
-- **Suggestion**: track which leaves and merges have been used and refuse an id seen a second time, a merge joining something with itself included.
-- **Status**: pending
-
-### [2026-09-28] — two nested values whose strings contain the separators count as one
-- **Where**: `cell_identity.go` `encodeCell`, the string arm inside a nested value
-- **What**: a string inside a nested value is written without escaping the characters the encoding uses as separators. Measured on 2026-09-28: a list holding `Cell([]any{"a,s:b"})` and `Cell([]any{"a", "b"})` reports `Count([]any{"a", "b"})` 2 and a `Counter` of one entry. `0.4` tracks the same defect.
-- **Suggestion**: write a nested string length-prefixed or quoted, so no content can stand for a separator.
-- **Status**: pending
-
 ### [2026-09-28] — a rebuilt sheet leaves its old comments, drawing and table parts in the file
 - **Where**: `csvxl/convert.go` `replaceSheet`, through excelize's `DeleteSheet`
 - **What**: `DeleteSheet` removes the worksheet and its relationships but not the parts they pointed to. Measured on 2026-09-28: after replacing a sheet that had a comment and a table, `xl/comments1.xml`, `xl/drawings/vmlDrawing1.vml` and `xl/tables/table1.xml` are still in the saved file and in `[Content_Types].xml`, referenced by nothing, so the old comment text is still inside the file; excelize also refuses a new table under the old table's name (`the same name table already exists`). Not checked in Excel or LibreOffice, neither of which was available. `0.4`'s `excelsheet.Replace` does the same.
 - **Suggestion**: open such a file in Excel and LibreOffice first. If either complains, or if leaving the old comment text in the file matters, remove the parts the old sheet's relationships pointed to before deleting it.
-- **Status**: pending
-
-### [2026-09-27] — outside the hypothesis tests, `stats` still numbers some positions from zero, and two paths let `NaN` through
-- **Where**: the `predictor %d` label in `stats/regression_shared.go`; the `(index %d)` checks in `stats/regression.go`, `stats/regression_glm.go`, `stats/regression_poisson.go` and `stats/glm_irls.go`; `row %d column %d` and `column %d` in `stats/factor_analysis.go`; `columns %d and %d` in `stats/correlation.go`; `stats/pca.go`, which also reads cells with `ToFloat64Safe` alone; `stats/knn.go` `numericVectorFromDataList`
-- **What**: every hypothesis test now counts the list and the position from one (`hypothesis-tests-refuse-non-finite`). Elsewhere the old numbering is still there. Measured on 2026-09-27: `LinearRegression(y, x1, x2)` with a blank at row 3 of `x2` says `predictor 1 contains a non-numeric value at row 3: <nil>`, `LogarithmicRegression` with `x = -2` at row 2 says `(index 1)`, and `FactorAnalysis` with text at row 2 of its second column says `non-numeric value at row 1 column 1: x`. The correlation and PCA column numbers are zero-based in the code and were not measured. Separately, `PCA` and `KNNRegress`'s targets check only that a cell converts, so a `NaN` or `+Inf` reaches the result with a nil error: `PCA` returns `NaN` eigenvalues, and `KNNRegress` predicts `NaN` or `+Inf`. `Docs/stats.md` states the `PCA` and `KNNRegress` behaviour.
-- **Suggestion**: number every position from one, and read `PCA` and `numericVectorFromDataList` through `numericValues`. Both change what callers see, the error text in one case and an error where a result came back in the other, so decide first whether they go on 0.3.x the way the hypothesis tests did. That change rested on the documentation already saying such a value is never used.
 - **Status**: pending
 
 ### [2026-09-27] — two one-shot commands on one environment lose one command's variables
@@ -362,12 +338,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: the fix is the error-returning `SaveChart`, which changes the signature and therefore stays on `0.4`. Nothing to do on the 0.3.x line but keep the documentation honest. When the two lines merge, this entry goes away with it.
 - **Status**: pending (0.4 carries the fix; recorded here so the gap is not mistaken for closed)
 
-### [2026-09-19] — `BartlettTest` panics when the group variances come out equal
-- **Where**: `stats/ftest.go` `BartlettTest`, through `stats/distutil.go` `chiSquaredPValue`
-- **What**: Bartlett's `T` is a difference of logs, so for groups whose variances agree it lands at or just below zero by rounding. `chiSquaredPValue` passes it straight to `distuv.ChiSquared{K: df}.CDF`, which panics with `cephes: parameter out of bounds` for any negative argument — measured on 2026-09-19, `chiSquaredPValue(-1e-16, 1)` panics while `chiSquaredPValue(0, 1)` returns 1. Whether two identical groups panic therefore depends on the values: `{0.1, 0.2, 0.3}` twice returns statistic 0 and p 1, while `{-0.32329881667362437, -0.319580921043235, 0.9093452052941211, 0.9788142136474671}` twice panics. A random sweep over k=2..4 and n=2..40 hit it 5 times in 135 tries. Pre-existing: the same input panics identically on e6fbb53, so this is not a backport regression. `df <= 0` panics the same way (`chiSquaredPValue(1, 0)`), which `FriedmanTest`, `KruskalWallis`, `ChiSquareTest`, `PartialCorrelation` and `FactorAnalysis` also reach. `KruskalWallis` and `FriedmanTest` reach it on finite data too, when every value is equal: measured on 2026-09-27, `KruskalWallis` on four all-zero groups of sizes 24, 4, 27 and 11, and `FriedmanTest` on 21 subjects with 7 conditions each, all zero, both panic with `cephes: parameter out of bounds`.
-- **Suggestion**: clamp in `chiSquaredPValue` — a negative `chi2` is a rounding artefact of a statistic that is zero, so returning 1 for it is the right answer, and a non-positive `df` should return NaN the way `tQuantile` already does. That changes a panic into a value for every caller at once, which needs deciding before it is done: it is a behaviour change, though the old behaviour was a panic.
-- **Status**: pending
-
 ### [2026-09-17] — psych 2.6.5's `faRotations` tie-break picks a start that did not tie, and nobody upstream has been told
 - **Where**: upstream `psych::faRotations`; recorded on our side in [stats/testdata/crosslang_baseline.R](stats/testdata/crosslang_baseline.R) and in the comment at `factorParityTol` in [stats/factor_analysis_test.go](stats/factor_analysis_test.go)
 - **What**: when several rotation starts tie on the highest hyperplane count, psych breaks the tie by applying `which()` to the tied rows alone and then uses that result as a start number. `which()` returns a position within the subset, so with starts 1 and 3 tied and start 3 the simpler one, psych selects start 2, which never tied. The fit comparison that follows is computed and never assigned, so it has no effect. Our port selects by criterion value and does not share the defect; the only thing that depends on it is which solution psych's own baselines record.
@@ -386,12 +356,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: at the limit, unwrap the interface and write the address of the value inside it, which is what the comment above `maxCellEncodeDepth` says already happens.
 - **Status**: pending
 
-### [2026-09-14] — `DataList.Shift` flattens a slice cell
-- **Where**: `datalist_window.go` `Shift`
-- **What**: `Shift` builds its result through `NewDataList`, which flattens every slice, so a list holding `[]byte{1, 2}` and `3` comes back three cells long: measured on 2026-09-14, `Append([]byte{1, 2}, 3)` then `Shift(0)` gives `[1 2 3]`. Present on v0.3.2; found while backporting `one-value-one-cell`.
-- **Suggestion**: build the result with `Append`, or wrap each cell with `Cell`. The length and cells of the result change for lists holding slices, so decide which line takes it.
-- **Status**: pending
-
 ### [2026-09-12] — grouping, pivoting, merging and `Describe` still merge nested values that print alike
 - **Where**: `datatable_groupby.go` `encodeGroupKey` and `uniqueKey`, `datatable_encode.go` `labelKey`, their default arms
 - **What**: `encodeGroupKey` and `uniqueKey` fall back to `%T:%v`, which does not descend, so `[]any{1}` and `[]any{"1"}` produce the same key: `GroupBy`, `Pivot` and `Merge` put the integer and the string in one group, and `Describe`'s unique count counts them once. `labelKey` uses `%T:%#v`, which separates an int from a string but not `[]any{1}` from `[]any{1.0}`. Measured on 2026-09-13. `identify-uncomparable-cells` gave cell lookups a recursive encoder, `encodeCell`; on 0.4 `encodeGroupKey` and `uniqueKey` moved to it too, but that changes the keys existing data groups by, so it stayed off the 0.3.x line.
@@ -404,10 +368,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: documentation, not code. `Docs/DataList.md` describes the flattening and `Cell` together; keep the `Count`/`Counter` examples building their list with `Append` or `Cell` so they are runnable as written, and consider whether `Count` should say something when it is handed a slice that the receiving list could not be holding.
 - **Status**: pending
 
-### [2026-09-12] — a self-referential slice takes the process down in `NewDataList`
-- **Where**: `datalist.go` `flattenWithNilSupport`
-- **What**: it recurses into every `reflect.Slice` with no depth limit, so a slice containing itself exhausts the stack. Measured on 2026-09-13: `cyclic := []any{1}; cyclic[0] = cyclic; insyra.NewDataList(cyclic)` ends with `fatal error: stack overflow`. That is not a panic: `recover` cannot catch it, and the whole program ends. `encodeCell` was given a depth limit of 64 for exactly this reason; the flattener was not touched because it is the constructor's hot path and the fix should be measured against it. `Append` does not flatten, so it can put such a slice into a list as one cell, and printing that cell overflows the stack the same way: `stats` formats a refused cell with `%v` in its error, so measured on 2026-09-27, `OneWayANOVA` on a list holding `cyclic` ends with `fatal error: stack overflow`. Every function that reads through `numericValues` shares this, and the hypothesis tests joined them in `hypothesis-tests-refuse-non-finite`; before that they reported only the position.
-- **Suggestion**: the same depth bound, or a visited-pointer set. A bound is cheaper and a 64-deep slice literal is already pathological; a visited set is exact but costs an allocation per construction. Measure `NewDataList` on a large flat slice before and after, because that path runs for every table built from a slice. For the error text, print a composite cell by its type instead of its contents, or through the same bounded encoder.
+### [2026-09-12] — a self-referential slice put into a list with `Append` still takes the process down when printed
+- **Where**: `stats` error formatting with `%v` of a refused cell (`numericValues` and everything that reads through it); `Show` of such a cell
+- **What**: `NewDataList` no longer recurses forever on a slice that contains itself (`flattenToDepth` keeps a slice 64 levels down as one cell). `Append` does not flatten, so it can still put such a slice into a list as one cell, and printing that cell overflows the stack: measured on 2026-09-27, `OneWayANOVA` on a list holding `cyclic` ends with `fatal error: stack overflow`.
+- **Suggestion**: for the error text, print a composite cell by its type instead of its contents, or through the bounded encoder `encodeCell`.
 - **Status**: pending
 
 ### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library

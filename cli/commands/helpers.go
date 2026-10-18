@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"math"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -103,12 +104,84 @@ func varTypeError(ctx *ExecContext, cmd, name string) error {
 	return fmt.Errorf("%s: %s holds a %T, which is neither a DataTable nor a DataList", cmd, name, v)
 }
 
+// resolveNumberToken lets a numeric argument be the name of a number variable.
+// A token that already reads as a number is returned as it is; one that does
+// not, and that names a variable holding a number, becomes that number's text.
+// Anything else comes back unchanged so the caller reports its usual error.
+func resolveNumberToken(ctx *ExecContext, raw string) string {
+	if ctx == nil || raw == "" {
+		return raw
+	}
+	if _, err := strconv.ParseFloat(raw, 64); err == nil {
+		return raw
+	}
+	value, ok := ctx.Vars[raw]
+	if !ok {
+		return raw
+	}
+	if number, isNumber := numberValue(value); isNumber {
+		return strconv.FormatFloat(number, 'g', -1, 64)
+	}
+	return raw
+}
+
+// numberValue reads a variable that holds one number.
+func numberValue(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, true
+	case float32:
+		return float64(typed), true
+	case int:
+		return float64(typed), true
+	case int8:
+		return float64(typed), true
+	case int16:
+		return float64(typed), true
+	case int32:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case uint:
+		return float64(typed), true
+	case uint8:
+		return float64(typed), true
+	case uint16:
+		return float64(typed), true
+	case uint32:
+		return float64(typed), true
+	case uint64:
+		return float64(typed), true
+	}
+	return 0, false
+}
+
+// atoiArg and parseFloatToken read a numeric command argument, which may name a
+// number variable. They return strconv's own error for a bad one, so call sites
+// that report it themselves keep doing so.
+func atoiArg(ctx *ExecContext, raw string) (int, error) {
+	token := resolveNumberToken(ctx, raw)
+	if v, err := strconv.Atoi(token); err == nil {
+		return v, nil
+	}
+	// A number variable that holds a whole number as a float64, such as
+	// 252.0 from a computation, still counts as a whole number.
+	if f, err := strconv.ParseFloat(token, 64); err == nil && f == math.Trunc(f) && math.Abs(f) < 1<<53 {
+		return int(f), nil
+	}
+	return strconv.Atoi(token)
+}
+
+func parseFloatToken(ctx *ExecContext, raw string) (float64, error) {
+	return strconv.ParseFloat(resolveNumberToken(ctx, raw), 64)
+}
+
 // parseFloatArg reads a numeric argument and reports a bad one the way the rest
 // of the CLI reports things. Returning strconv's own error handed the user
 // `strconv.ParseFloat: parsing "abc": invalid syntax`, which names neither the
-// command nor the argument.
-func parseFloatArg(cmd, field, raw string) (float64, error) {
-	v, err := strconv.ParseFloat(raw, 64)
+// command nor the argument. The argument may name a number variable.
+func parseFloatArg(ctx *ExecContext, cmd, field, raw string) (float64, error) {
+	v, err := parseFloatToken(ctx, raw)
 	if err != nil {
 		return 0, wrapArgError(err, "%s: invalid %s %q, expected a number", cmd, field, raw)
 	}
@@ -116,8 +189,8 @@ func parseFloatArg(cmd, field, raw string) (float64, error) {
 }
 
 // parseIntArg is parseFloatArg for a whole number.
-func parseIntArg(cmd, field, raw string) (int, error) {
-	v, err := strconv.Atoi(raw)
+func parseIntArg(ctx *ExecContext, cmd, field, raw string) (int, error) {
+	v, err := atoiArg(ctx, raw)
 	if err != nil {
 		return 0, wrapArgError(err, "%s: invalid %s %q, expected a whole number", cmd, field, raw)
 	}

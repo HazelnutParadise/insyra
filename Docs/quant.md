@@ -30,7 +30,7 @@ Unlike the [`finance`](./finance.md) package (which uses high-precision `decimal
 
 **Input convention.** Functions that take your *raw data series* accept `insyra.IDataList` (a return or equity column) or `insyra.IDataTable` (a strategy×period matrix), the same as the [`stats`](./stats.md) package. Values that are *not* raw data — scalar Sharpe/variance inputs, and the returns/equity that walk-forward and the bootstrap *compute* — stay as `float64`. Every exported function follows an **error-first** convention: invalid input returns an `error` rather than logging or panicking. Always handle `err` at the call site.
 
-Every function that reads a `DataList` or `DataTable` refuses values it cannot read: a non-numeric cell, a `NaN`, or an `Inf` returns an error naming the series and the one-based row, and a `nil` series returns an error naming it. No cell is ever silently coerced to `0`. Clean a series with gaps before the call — `ClearNils` drops blanks (a `PctChange` column starts with one), or fill them explicitly.
+Every function that reads a `DataList` or `DataTable` refuses values it cannot read: a non-numeric cell, a `NaN`, or an `Inf` returns an error naming the series and the zero-based row index, and a `nil` series returns an error naming it. No cell is ever silently coerced to `0`. Clean a series with gaps before the call — `ClearNils` drops blanks (a `PctChange` column starts with one), or fill them explicitly.
 
 > **Annualized vs per-period Sharpe.** `SharpeRatio` returns an *annualized* Sharpe (it multiplies by `√periodsPerYear`). The overfitting diagnostics (`ProbabilisticSharpeRatio`, `DeflatedSharpeRatio`, and the Sharpe ratios you feed to them) use the *per-period, non-annualized* Sharpe — i.e. `mean/stddev` with no annualization. Compute that with `SharpeRatio(returns, 0, 1)`. Mixing the two conventions silently corrupts DSR/PBO results.
 
@@ -193,7 +193,7 @@ Regresses `asset - riskFreeRate` on `market - riskFreeRate`. `riskFreeRate` is a
 
 The standard errors use residual degrees of freedom `N-2`. A constant asset excess-return series is valid: `Beta` is `0`, `Alpha` is the constant, `BetaStdErr` and `AlphaStdErr` are `0`, and `RSquared` is `NaN` because total asset variance is zero.
 
-Both functions return an error for nil input, unequal lengths, fewer than 3 observations, a zero-variance benchmark, or a non-numeric, `NaN`, or `Inf` cell. Unreadable cells are named with their series (`asset` or `market`) and one-based row number.
+Both functions return an error for nil input, unequal lengths, fewer than 3 observations, a zero-variance benchmark, or a non-numeric, `NaN`, or `Inf` cell. Unreadable cells are named with their series (`asset` or `market`) and zero-based row index.
 
 ## Options (Black–Scholes–Merton)
 
@@ -298,7 +298,7 @@ func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate
 
 `FactorModel` uses the same OLS coefficients, inference values, R², adjusted R², and residuals as `stats.LinearRegression`. With one factor, pass an already excess market column and the raw market return plus `riskFreeRate` to `CAPM`; the factor-model exposure, alpha, and standard errors agree with CAPM.
 
-The model requires at least `k + 2` observations for `k` factors. It refuses nil inputs, an empty factor table, unequal asset/factor lengths, unreadable cells, and `NaN` or `Inf` values. Errors identify the factor column and one-based row where applicable. A collinear factor set returns the regression error instead of a near-singular numeric result. Standard errors are ordinary OLS standard errors; heteroskedasticity and autocorrelation adjustments such as Newey–West are outside this API.
+The model requires at least `k + 2` observations for `k` factors. It refuses nil inputs, an empty factor table, unequal asset/factor lengths, unreadable cells, and `NaN` or `Inf` values. Errors identify the factor column and zero-based row index where applicable. A collinear factor set returns the regression error instead of a near-singular numeric result. Standard errors are ordinary OLS standard errors; heteroskedasticity and autocorrelation adjustments such as Newey–West are outside this API.
 
 ---
 
@@ -854,7 +854,7 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`ProbabilisticSharpeRatio`** — `n < 2`, non-positive variance term (extreme skew/kurtosis)
 - **`ExpectedMaxSharpe`** — negative `sharpeVariance`
 - **`DeflatedSharpeRatio`** — nil, empty, or unreadable `trialSharpes` (the error names the series and row), or any downstream error
-- **`PBO`** — empty matrix, an unreadable cell (the error names the zero-based `column <j>` and the one-based row), columns of unequal length, fewer than 2 strategies, odd/non-positive `nSplits`, `nSplits > T`
+- **`PBO`** — empty matrix, an unreadable cell (the error names the zero-based `column <j>` and the zero-based row index), columns of unequal length, fewer than 2 strategies, odd/non-positive `nSplits`, `nSplits > T`
 - **`WalkForward`** — non-positive `n`/`TrainSize`/`TestSize`, `TrainSize >= n`, nil callback
 - **`BlockBootstrap`** — empty or unreadable `returns` (non-numeric, NaN, Inf — the error names the row), non-positive `Horizon`/`Paths`, `BlockSize < 1`, `BlockSize > len(returns)`
 - **`PercentileBands`** — empty or ragged `paths`, empty `percentiles`, a percentile outside `[0, 100]`
@@ -869,7 +869,7 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`CalmarRatio`** — invalid annualized-return input, zero maximum drawdown, or an unreadable/non-finite equity point
 - **`InformationRatio`** — unequal lengths, fewer than 2 observations, non-positive periods per year, zero tracking error, or an unreadable/non-finite cell
 - **`DrawdownSeries`** — empty equity or an unreadable/non-finite equity point; non-positive running peaks are represented as `nil`
-- **`OptimizePortfolio`** — `nil` table, fewer than 2 asset columns, columns of unequal length, fewer observations than assets plus one, an unreadable/non-finite cell named with its column and one-based row, `MinWeight`/`MaxWeight` of the wrong length or with `MinWeight[i] > MaxWeight[i]`, infeasible bounds (`Σ MinWeight > 1` or `Σ MaxWeight < 1`), a `TargetReturn` outside the attainable range (the error reports that range), or an unknown `Objective`. Hitting `MaxIterations` is **not** an error — it returns `Converged: false`
+- **`OptimizePortfolio`** — `nil` table, fewer than 2 asset columns, columns of unequal length, fewer observations than assets plus one, an unreadable/non-finite cell named with its column and zero-based row index, `MinWeight`/`MaxWeight` of the wrong length or with `MinWeight[i] > MaxWeight[i]`, infeasible bounds (`Σ MinWeight > 1` or `Σ MaxWeight < 1`), a `TargetReturn` outside the attainable range (the error reports that range), or an unknown `Objective`. Hitting `MaxIterations` is **not** an error — it returns `Converged: false`
 - **`OptimizePortfolioMoments`** — everything above, plus a `cov` that is not square, disagrees with `mean` in length, holds a non-finite value, is not symmetric, or is not positive semidefinite (the error reports the smallest eigenvalue), and a non-`nil` `names` of the wrong length
 - **`EfficientFrontier`** — `points < 2`, plus every `OptimizePortfolio` error
 
