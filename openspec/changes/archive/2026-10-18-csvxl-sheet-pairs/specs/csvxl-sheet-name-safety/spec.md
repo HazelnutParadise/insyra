@@ -15,3 +15,7 @@
 #### Scenario: A FileNames entry that leaves the output directory
 - **WHEN** 呼叫端以 `FileNames` 把某張工作表指定為 `../escape`
 - **THEN** 回傳錯誤，輸出目錄內外都不會寫出任何 CSV
+
+#### Scenario: A csvNames entry that leaves the output directory
+- **WHEN** 呼叫端以已棄用 `ExcelToCsv` 的 `csvNames` 指定 `../escape`
+- **THEN** 回傳錯誤，輸出目錄外不會寫出任何檔案
