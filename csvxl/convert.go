@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
@@ -35,7 +36,8 @@ func isAutoEncoding(encoding string) bool {
 // If the sheet name is not specified, the file name of the CSV file will be used.
 // If csvEncoding is not specified, auto-detection will be used.
 //
-// Deprecated: use CSVToExcel, which has the same arguments and behavior. Removed in 0.4.
+// Deprecated: use CSVToExcel, which takes each CSV together with its sheet
+// name as a SheetFromCSV. Removed in 0.4.
 func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error {
 	encoding := Auto // Default to auto-detection
 	if len(csvEncoding) == 1 {
@@ -86,9 +88,30 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 	return nil
 }
 
-// CSVToExcel converts CSV files to one Excel workbook. Its arguments and behavior
-// are the same as the legacy CsvToExcel function.
-func CSVToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error {
+// SheetFromCSV is one sheet of the workbook CSVToExcel or AppendCSVToExcel
+// writes: the CSV file at Path, written as the sheet named Sheet.
+type SheetFromCSV struct {
+	// Path is the CSV file, opened as written; ".csv" is appended only when no
+	// file has that path.
+	Path string
+	// Sheet names the sheet. Empty means the CSV file's name without its
+	// extension.
+	Sheet string
+}
+
+// CSVToExcel converts CSV files into one Excel workbook saved at output, one
+// sheet per element of sheets, in the order given. csvEncoding is the files'
+// encoding, detected when it is left out.
+//
+// Two elements that name the same sheet, compared without regard to case as
+// Excel compares sheet names, are an error before any file is read, and no
+// workbook is written. Otherwise it behaves as CsvToExcel: a CSV that cannot
+// be read is counted as failed and the others are still converted.
+func CSVToExcel(sheets []SheetFromCSV, output string, csvEncoding ...string) error {
+	csvFiles, sheetNames, err := planSheets(sheets)
+	if err != nil {
+		return err
+	}
 	return CsvToExcel(csvFiles, sheetNames, output, csvEncoding...)
 }
 
@@ -97,7 +120,8 @@ func CSVToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 // If the sheet is exists, it will be overwritten.
 // If csvEncoding is not specified, auto-detection will be used.
 //
-// Deprecated: use AppendCSVToExcel, which has the same arguments and behavior. Removed in 0.4.
+// Deprecated: use AppendCSVToExcel, which takes each CSV together with its
+// sheet name as a SheetFromCSV. Removed in 0.4.
 func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error {
 	encoding := Auto // Default to auto-detection
 	if len(csvEncoding) == 1 {
@@ -159,58 +183,204 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 	return nil
 }
 
-// AppendCSVToExcel appends CSV files to an Excel workbook.
-func AppendCSVToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error {
+// AppendCSVToExcel writes CSV files into the existing Excel workbook at
+// existingFile, one sheet per element of sheets, and saves it in place. A
+// sheet that already has that name is replaced. csvEncoding is the files'
+// encoding, detected when it is left out.
+//
+// Two elements that name the same sheet, compared without regard to case, are
+// an error before any file is read, and the workbook is not rewritten.
+// Otherwise it behaves as AppendCsvToExcel.
+func AppendCSVToExcel(sheets []SheetFromCSV, existingFile string, csvEncoding ...string) error {
+	csvFiles, sheetNames, err := planSheets(sheets)
+	if err != nil {
+		return err
+	}
 	return AppendCsvToExcel(csvFiles, sheetNames, existingFile, csvEncoding...)
 }
 
-// ExcelToCSVOptions controls sheet selection and formula protection.
+// planSheets splits sheets into the deprecated functions' parallel slices and
+// refuses two elements that name the same sheet, compared without regard to
+// case as Excel compares sheet names. The sheet name of an element without
+// one is worked out the way CsvToExcel works it out.
+func planSheets(sheets []SheetFromCSV) ([]string, []string, error) {
+	csvFiles := make([]string, len(sheets))
+	sheetNames := make([]string, len(sheets))
+	resolved := make([]string, len(sheets))
+	seen := make(map[string]int, len(sheets))
+	for i, s := range sheets {
+		csvFiles[i] = s.Path
+		sheetNames[i] = s.Sheet
+		csvFile := s.Path
+		if !strings.HasSuffix(csvFile, ".csv") {
+			csvFile += ".csv"
+		}
+		name := getSheetName(csvFile, sheetNames, i)
+		resolved[i] = name
+		if j, ok := seen[strings.ToLower(name)]; ok {
+			prev := resolved[j]
+			if prev == name {
+				return nil, nil, fmt.Errorf("%s and %s would both be written to sheet %q", sheets[j].Path, s.Path, name)
+			}
+			return nil, nil, fmt.Errorf("%s and %s would both be written to sheet %q, which Excel treats as the same sheet as %q", sheets[j].Path, s.Path, name, prev)
+		}
+		seen[strings.ToLower(name)] = i
+	}
+	return csvFiles, sheetNames, nil
+}
+
+// ExcelToCSVOptions configures ExcelToCSV and ExcelDirToCSV. The zero value
+// converts every sheet and guards formula-like text.
 type ExcelToCSVOptions struct {
-	// Sheets selects the worksheets to convert. Empty selects every worksheet.
+	// Sheets limits the conversion to these sheets. Empty means every sheet.
+	// A name the workbook does not have is an error.
 	Sheets []string
+	// FileNames maps a sheet name to the name of the CSV file written for it.
+	// A sheet with no entry, or an empty one, is written as its name plus
+	// ".csv". A name with an extension of any case is used as written; one
+	// with none gets ".csv". A key that is not among the sheets converted is
+	// an error. ExcelDirToCSV, which names files after their workbook, refuses
+	// FileNames.
+	FileNames map[string]string
 	// AllowFormulas writes formula-like text without a leading apostrophe.
 	AllowFormulas bool
 }
 
-// ExcelToCSV converts selected workbook sheets to CSV. Formula-like text is
-// prefixed with an apostrophe unless AllowFormulas is set.
-func ExcelToCSV(excelFile, outputDir string, csvNames []string, options ...ExcelToCSVOptions) error {
+func oneExcelToCSVOptions(options []ExcelToCSVOptions) (ExcelToCSVOptions, error) {
 	if len(options) > 1 {
-		return fmt.Errorf("at most one ExcelToCSVOptions may be given, got %d", len(options))
+		return ExcelToCSVOptions{}, fmt.Errorf("at most one ExcelToCSVOptions may be given, got %d", len(options))
 	}
-	var opts ExcelToCSVOptions
 	if len(options) == 1 {
-		opts = options[0]
+		return options[0], nil
+	}
+	return ExcelToCSVOptions{}, nil
+}
+
+// ExcelToCSV writes each sheet of the workbook at excelFile as a CSV file in
+// outputDir. See ExcelToCSVOptions for choosing sheets, naming their files and
+// the formula guard, which prefixes formula-like text with an apostrophe
+// unless AllowFormulas is set.
+//
+// Every file name is checked before the first CSV is written: a name that
+// would leave outputDir, and two sheets that would be written to one file,
+// compared without regard to case, are an error and nothing is written.
+func ExcelToCSV(excelFile, outputDir string, options ...ExcelToCSVOptions) error {
+	opts, err := oneExcelToCSVOptions(options)
+	if err != nil {
+		return err
 	}
 	f, err := excelize.OpenFile(excelFile)
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
 	}
 	defer func() { _ = f.Close() }()
-	sheets := f.GetSheetList()
-	if len(opts.Sheets) > 0 {
-		sheets = make([]string, 0, len(opts.Sheets))
-		for _, wanted := range opts.Sheets {
-			if !sliceutil.Contains(f.GetSheetList(), wanted) {
-				return fmt.Errorf("sheet %q not found in %s", wanted, excelFile)
-			}
-			sheets = append(sheets, wanted)
-		}
+	sheets, err := selectSheets(excelFile, f.GetSheetList(), opts.Sheets)
+	if err != nil {
+		return err
 	}
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", outputDir, err)
+	if err := checkFileNameKeys(excelFile, opts.FileNames, sheets); err != nil {
+		return err
 	}
-	for idx, sheet := range sheets {
+	targets := make([]csvTarget, 0, len(sheets))
+	for _, sheet := range sheets {
 		name := sheet + ".csv"
-		if idx < len(csvNames) && csvNames[idx] != "" {
-			name = csvOutputName(csvNames[idx])
+		if given := opts.FileNames[sheet]; given != "" {
+			name = csvOutputName(given)
 		}
 		path, err := safeSheetCSVPath(outputDir, sheet, name)
 		if err != nil {
 			return err
 		}
-		if err := saveSheetAsCsv(f, sheet, path, opts.AllowFormulas); err != nil {
-			return fmt.Errorf("failed to save sheet %s as CSV: %w", sheet, err)
+		targets = append(targets, csvTarget{source: "sheet " + sheet, sheet: sheet, path: path})
+	}
+	if err := refuseSharedCSVFiles(targets); err != nil {
+		return err
+	}
+	if err := writeCSVTargets(f, outputDir, targets, opts.AllowFormulas); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SheetNames returns the names of the sheets of the workbook at excelFile, in
+// workbook order.
+func SheetNames(excelFile string) ([]string, error) {
+	f, err := excelize.OpenFile(excelFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
+	}
+	defer func() { _ = f.Close() }()
+	return f.GetSheetList(), nil
+}
+
+// selectSheets returns the sheets to convert: every sheet when wanted is
+// empty, otherwise the wanted ones, each once. A wanted name the workbook does
+// not have is an error.
+func selectSheets(excelFile string, inFile, wanted []string) ([]string, error) {
+	if len(wanted) == 0 {
+		return inFile, nil
+	}
+	selected := make([]string, 0, len(wanted))
+	for _, s := range wanted {
+		if !sliceutil.Contains(inFile, s) {
+			return nil, fmt.Errorf("sheet %q not found in %s", s, excelFile)
+		}
+		if !sliceutil.Contains(selected, s) {
+			selected = append(selected, s)
+		}
+	}
+	return selected, nil
+}
+
+// csvTarget is one sheet and the CSV file it is written to. source names the
+// sheet in an error, with its workbook when there are several.
+type csvTarget struct {
+	source string
+	sheet  string
+	path   string
+}
+
+// checkFileNameKeys refuses a FileNames key that is not among the sheets
+// being converted, so a typo is not silently ignored.
+func checkFileNameKeys(excelFile string, fileNames map[string]string, sheets []string) error {
+	var unknown []string
+	for key := range fileNames {
+		if !sliceutil.Contains(sheets, key) {
+			unknown = append(unknown, key)
+		}
+	}
+	if len(unknown) == 0 {
+		return nil
+	}
+	sort.Strings(unknown)
+	return fmt.Errorf("FileNames names sheet(s) %s, which are not among the sheets converted from %s (%s)",
+		strings.Join(unknown, ", "), excelFile, strings.Join(sheets, ", "))
+}
+
+// refuseSharedCSVFiles refuses two sheets that would be written to one file.
+// File names are compared without regard to case, because the file systems of
+// macOS and Windows do not tell them apart.
+func refuseSharedCSVFiles(targets []csvTarget) error {
+	seen := make(map[string]csvTarget, len(targets))
+	for _, t := range targets {
+		key := strings.ToLower(t.path)
+		if prev, ok := seen[key]; ok {
+			return fmt.Errorf("%s and %s would both be written to %s", prev.source, t.source, filepath.Base(prev.path))
+		}
+		seen[key] = t
+	}
+	return nil
+}
+
+// writeCSVTargets creates outputDir when it is missing and writes each sheet
+// of f to its CSV file.
+func writeCSVTargets(f *excelize.File, outputDir string, targets []csvTarget, allowFormulas bool) error {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", outputDir, err)
+	}
+	for _, t := range targets {
+		if err := saveSheetAsCsv(f, t.sheet, t.path, allowFormulas); err != nil {
+			return fmt.Errorf("failed to save sheet %s as CSV: %w", t.sheet, err)
 		}
 	}
 	return nil
@@ -226,7 +396,8 @@ func csvOutputName(name string) string {
 // ExcelToCsv splits an Excel file into multiple CSV files, one per sheet.
 // If customNames is provided, it uses them as CSV filenames; otherwise, it uses the sheet names.
 //
-// Deprecated: use ExcelToCSV. Sheet selection moves to ExcelToCSVOptions.Sheets;
+// Deprecated: use ExcelToCSV. Sheet selection moves to ExcelToCSVOptions.Sheets
+// and file names to ExcelToCSVOptions.FileNames, keyed by sheet name;
 // ExcelToCSV also guards formula-like text by default. Removed in 0.4.
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error {
 	f, err := excelize.OpenFile(excelFile)

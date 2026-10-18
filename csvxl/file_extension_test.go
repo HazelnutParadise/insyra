@@ -15,7 +15,7 @@ func firstCell(t *testing.T, dir, source string) string {
 	t.Helper()
 	out := filepath.Join(dir, "out.xlsx")
 	_ = os.Remove(out)
-	require.NoError(t, CSVToExcel([]string{source}, []string{"s"}, out, UTF8))
+	require.NoError(t, CSVToExcel([]SheetFromCSV{{Path: source, Sheet: "s"}}, out, UTF8))
 	return sheetRows(t, out, "s")[0][0]
 }
 
@@ -56,7 +56,7 @@ func TestAppendCSVToExcelReadsThePathAsWritten(t *testing.T) {
 	dir := t.TempDir()
 	writeCSV(t, dir, "export.txt", "cell\n1\n")
 	out := filepath.Join(dir, "out.xlsx")
-	require.NoError(t, CSVToExcel(nil, nil, out))
-	require.NoError(t, AppendCSVToExcel([]string{filepath.Join(dir, "export.txt")}, []string{"s"}, out, UTF8))
+	require.NoError(t, CSVToExcel(nil, out))
+	require.NoError(t, AppendCSVToExcel([]SheetFromCSV{{Path: filepath.Join(dir, "export.txt"), Sheet: "s"}}, out, UTF8))
 	require.Equal(t, "cell", sheetRows(t, out, "s")[0][0])
 }

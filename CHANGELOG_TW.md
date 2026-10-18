@@ -57,6 +57,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ttest single` 與 `ztest single` 在一次性模式接受負數的 `mu`；原本 `insyra ttest single x -1` 會把 `-1` 當成旗標而失敗。`wilcoxon single` 本來就可以。
 - 新增 `quantile <var> <p>` 指令，印出 DataList 的分位數，`p` 範圍為 0 到 1；`percentile` 則是 0 到 100。`shuffle ... as` 指令改呼叫 `Shuffled`，所以在每個版本線上都不會改動來源變數的順序。
 - 環境的預設檔案寫入失敗時，`env create`（以及任何會建立 `default` 環境的指令）會移除建到一半的資料夾，不再留下殘缺的環境；預設檔案的路徑上若是一個資料夾，會回報錯誤，不再略過。
+- `convert <file.xlsx> sheet <name> <file.csv> [sheet <name> <file.csv> ...]` 只轉出指名的工作表，各自寫成指定的檔案，檔案可以在不同目錄。指定不存在的工作表、同一張工作表給兩次，或兩張工作表寫到同一個檔案，都會在寫出任何檔案前回錯誤。這個形式預設會在試算表會當成公式執行的文字前加單引號，給 `allowformulas true` 才原樣寫出。`convert <file.xlsx> <file.csv>` 照舊。新增的 `sheets <file.xlsx>` 依順序列出活頁簿的工作表。
 
 ### `ml` 與 `nn`
 
@@ -66,6 +67,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `nn` 的每個東西只留一個名字。下列名稱改為 Deprecated，意義不變，在 0.4 移除：十二個層建構子的 `New…` 版本（`NewDense`、`NewReLU`、`NewDropout`、`NewFunc`、`NewMultiHeadAttention`、`NewConv2D`、`NewMaxPool2D`、`NewAvgPool2D`、`NewGlobalAvgPool`、`NewBatchNorm2D`、`NewLayerNorm`、`NewEmbedding`；請用沒有 `New` 的名稱）；loss 選擇器 `SoftmaxCrossEntropy`、`MSELoss`、`BCEWithLogitsLoss`（請用 `CrossEntropy`、`MSE`、`BCEWithLogits`）；`Classifier`、`Regressor`（請用 `BoundClassifier`、`BoundRegressor`）；`MaxPoolOptions`、`AveragePoolOptions`（請用 `PoolOptions`）；`DataType` 與常數 `Float32`、`Float16`、`Float64`（請用 `DType` 與 `DType…` 常數）；`NewFloat32Tensor`、`NewTensorWithDType`（請用 `NewTensor`）；以及 `Tensor.Data`（請用 `Tensor.Float32Data`，它會把其他 dtype 回報為錯誤）。
 - 在 nil 的迴歸模型（`LinearModel`、`RidgeModel`、`LogisticModel` 等迴歸系列）上呼叫 `Predict`，或把 nil 模型指標交給 `ExportONNX`，會回傳錯誤，不再 panic。`Features` 仍是模型值上的方法，`Fit` 系列函式的回傳型別不變。
 - `ml.WriteONNX` 改為 Deprecated，`ExportONNX` 是同一個函式，參數仍是 `any`。`DecisionTreeOptions` 的別名 `DecisionTreeClassifierOptions`、`DecisionTreeRegressorOptions` 也改為 Deprecated。兩者都在 0.4 移除。
+- 新增 `nn.CustomOptimizer{Name, Step}` 與 `Parameter.Update(fn)`，`Sequential.Fit` 可以用呼叫者自己寫的 optimizer 訓練，不再只限 `SGD`、`SGDMomentum`、`Adam`、`AdamW`。`Fit` 每個 batch 呼叫一次 `Step`，傳入模型 tape 上的所有參數；`Update` 把參數的 float32 資料和梯度交給 `fn`（loss 沒有影響到這個參數時，梯度是 nil），`fn` 寫進去的值會保留下來，手寫的訓練迴圈也能用。`Fit` 會在跑任何 batch 之前拒絕沒有 `Step` 的 `CustomOptimizer`。內建的 optimizer 行為不變。（[issue #266](https://github.com/HazelnutParadise/insyra/issues/266)）
 
 ### `datafetch`
 
@@ -84,7 +86,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - 編碼參數給空字串，或任何大小寫的 `"auto"`，現在都代表自動偵測，跟核心的 CSV 讀取函式一致。以前空字串代表直接當成 UTF-8，`"AUTO"` 則會被當成不支援的編碼而報錯。
 - 活頁簿唯一的工作表就算名叫 `__insyra_placeholder__`，`AppendCsvToExcel` 也能取代它。以前它用的暫存工作表名稱剛好撞名，結果舊的儲存格都留下來。
-- 函式名稱改用 Go 的拼法：`CSVToExcel`、`AppendCSVToExcel`、`CSVDirToExcel`、`ReadCSVToString` 是原本的函式換上新名字，`CsvToExcel`、`AppendCsvToExcel`、`EachCsvToOneExcel`、`ReadCsvToString` 改為 Deprecated 包裝，照常可用。新增 `ExcelToCSV` 與 `ExcelDirToCSV`，接受 `ExcelToCSVOptions{Sheets, AllowFormulas}`：試算表會當成公式執行的文字（以 `=`、`+`、`-`、`@` 開頭且不是數字）預設會在前面加單引號，設定 `AllowFormulas` 才原樣寫出；指定活頁簿沒有的工作表會回錯誤；檔名保留給定的副檔名。`ExcelToCsv` 與 `EachExcelToCsv` 改為 Deprecated，簽名與輸出不變，CLI 的 `convert` 仍使用它們。
+- 函式名稱改用 Go 的拼法，新名稱把每個 CSV 和它的工作表寫在一起，不再用兩個 slice 依位置配對。`CSVToExcel(sheets []SheetFromCSV, output, csvEncoding...)` 與 `AppendCSVToExcel(sheets []SheetFromCSV, existingFile, csvEncoding...)` 接受 `SheetFromCSV{Path, Sheet}`，`Sheet` 留空就用檔名；`CSVDirToExcel`、`ReadCSVToString` 是原本的函式換上新名字。新增 `ExcelToCSV(excelFile, outputDir, options...)` 與 `ExcelDirToCSV`，接受 `ExcelToCSVOptions{Sheets, FileNames, AllowFormulas}`：`FileNames` 以工作表名稱對應 CSV 檔名，鍵不是要轉的工作表時回錯誤，`ExcelDirToCSV` 不接受它；試算表會當成公式執行的文字（以 `=`、`+`、`-`、`@` 開頭且不是數字）預設會在前面加單引號，設定 `AllowFormulas` 才原樣寫出；指定活頁簿沒有的工作表會回錯誤；檔名保留給定的副檔名。兩個 CSV 寫到同一張工作表，或兩張工作表寫到同一個 CSV 檔（不分大小寫，`ExcelDirToCSV` 也跨活頁簿比對），都會在寫出任何東西前回錯誤，`ExcelToCSV` 也會先檢查完所有檔名才寫第一個檔。新增 `SheetNames(excelFile)` 列出活頁簿的工作表。`CsvToExcel`、`AppendCsvToExcel`、`EachCsvToOneExcel`、`ReadCsvToString`、`ExcelToCsv`、`EachExcelToCsv` 改為 Deprecated，簽名、依位置配對的方式與輸出都不變，CLI 一般的 `convert` 仍使用它們。
 
 ### `parquet`
 

@@ -422,6 +422,25 @@ save sales2025 report.xlsx sheet 2025 if-exists replace
 
 `read` is a quick previewer that forwards the same options to `load` (e.g. `read big5.csv encoding big5`). It never stores a variable: `read` prints what it loaded and throws the table away, so it has no `as` form and an explicit `as <var>` is an error rather than a silent no-op. Use `load` when the preview should become a variable.
 
+### A2. Converting a workbook to CSV
+
+A CSV holds one sheet, so `convert` can name each sheet together with the file it goes to. `sheets` lists what a workbook holds, in workbook order.
+
+```text
+# Which sheets are there?
+sheets book.xlsx
+
+# Q1 to q1.csv and Q3 to q3.csv; the other sheets are not converted
+convert book.xlsx sheet Q1 q1.csv sheet Q3 q3.csv
+
+# A sheet name with a space is quoted
+convert book.xlsx sheet "2025 Q2" q2.csv
+```
+
+An unknown sheet, a sheet given twice, or two sheets for one file (also when the names differ only in case) is an error, and nothing is written. The files may be in different directories. The `sheet` form puts a leading quote before text a spreadsheet would run as a formula (starting with `=`, `+`, `-` or `@`, and not a number); `allowformulas true` writes it as is.
+
+`convert book.xlsx out.csv` works as before: the first sheet goes to `out.csv`, every other sheet to `<sheet>.csv` beside it, and no text is guarded.
+
 ### B0. SQL workflow (load and save against a live DB)
 
 Open a named connection, list tables, load a query into a DataTable, transform, and write back:
@@ -741,7 +760,7 @@ High-level command map:
 
 - **Core**: `help`, `version`, `exit`, `history`, `clear`, `config`, `run`, `completion`
 - **Environment**: `env`, `vars`, `drop`, `clone`, `rename`, `shape`, `types`, `show`, `summary`, `describe`
-- **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`
+- **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`, `sheets`
 - **Database**: `db` (`connect` / `list` / `tables` / `disconnect`), `load sql`, `save <var> sql`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
 - **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `fillnan` (deprecated), `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
@@ -796,7 +815,7 @@ Source policy:
 | `cols` | `cols <var>` | List DataTable column names |
 | `completion` | `completion [command]` | Generate the autocompletion script for insyra for the specified shell. |
 | `config` | `config [key] [value]` | Read or update global CLI config |
-| `convert` | `convert <input> <output>` | Convert file formats (csv<->xlsx) |
+| `convert` | `convert <input> <output> \| convert <file.xlsx> sheet <name> <file.csv> [sheet <name> <file.csv> ...] [allowformulas true\|false]` | Convert file formats (csv<->xlsx) |
 | `corr` | `corr <x> <y> [pearson\|kendall\|spearman]` | Correlation between two DataLists |
 | `corrmatrix` | `corrmatrix <datatable> [pearson\|kendall\|spearman] [as <var>]` | Correlation matrix for a DataTable; also stores the matching p-value matrix as `<var>_p` |
 | `count` | `count <var> <value>` | Count occurrences |
@@ -884,6 +903,7 @@ Source policy:
 | `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |
 | `setrownames` | `setrownames <var> <names...>` | Set DataTable row names |
 | `shape` | `shape <var>` | Show shape of DataTable/DataList |
+| `sheets` | `sheets <file.xlsx>` | List the sheets of an Excel workbook, one per line, in workbook order |
 | `shift` | `shift <var> <periods> [fill <value>] [as <var>]` | Shift / lag (periods > 0) / lead (periods < 0); empty slots default to nil |
 | `show` | `show <var> [N] [M]` | Display data with optional range (supports negative and _) |
 | `skewness` | `skewness <var>` | Skewness of a DataList |
