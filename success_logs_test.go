@@ -126,17 +126,17 @@ func TestConvertingFilesLogsOnlyTheEncodingGuess(t *testing.T) {
 	}
 	xlsx := filepath.Join(dir, "u.xlsx")
 
-	if err := csvxl.CSVToExcel([]string{csvPath}, []string{"first"}, xlsx); err != nil {
+	if err := csvxl.CSVToExcel([]csvxl.SheetFromCSV{{Path: csvPath, Sheet: "first"}}, xlsx); err != nil {
 		t.Fatal(err)
 	}
 	onlyEncodingLines(t, "CSVToExcel", h.take())
 
-	if err := csvxl.AppendCSVToExcel([]string{csvPath}, []string{"second"}, xlsx); err != nil {
+	if err := csvxl.AppendCSVToExcel([]csvxl.SheetFromCSV{{Path: csvPath, Sheet: "second"}}, xlsx); err != nil {
 		t.Fatal(err)
 	}
 	onlyEncodingLines(t, "AppendCSVToExcel", h.take())
 
-	if err := csvxl.ExcelToCSV(xlsx, filepath.Join(dir, "out"), nil); err != nil {
+	if err := csvxl.ExcelToCSV(xlsx, filepath.Join(dir, "out")); err != nil {
 		t.Fatal(err)
 	}
 	onlyEncodingLines(t, "ExcelToCSV", h.take())

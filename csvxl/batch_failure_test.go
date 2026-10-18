@@ -25,7 +25,7 @@ func TestCSVToExcelKeepsGoingPastAMissingFile(t *testing.T) {
 	missing := filepath.Join(dir, "missing.csv")
 	out := filepath.Join(dir, "out.xlsx")
 
-	err := CSVToExcel([]string{good, missing}, nil, out, UTF8)
+	err := CSVToExcel([]SheetFromCSV{{Path: good}, {Path: missing}}, out, UTF8)
 	require.Error(t, err)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.Contains(t, err.Error(), missing)
@@ -42,7 +42,7 @@ func TestCSVToExcelNamesEveryFailedFile(t *testing.T) {
 	second := filepath.Join(dir, "second.csv")
 	out := filepath.Join(dir, "out.xlsx")
 
-	err := CSVToExcel([]string{first, good, second}, nil, out, UTF8)
+	err := CSVToExcel([]SheetFromCSV{{Path: first}, {Path: good}, {Path: second}}, out, UTF8)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), first)
 	require.Contains(t, err.Error(), second)
@@ -55,7 +55,7 @@ func TestCSVToExcelReportsASheetNameExcelRejects(t *testing.T) {
 	b := writeCSV(t, dir, "b.csv", "y\n2\n")
 	out := filepath.Join(dir, "out.xlsx")
 
-	err := CSVToExcel([]string{a, b}, []string{"a", "bad:name"}, out, UTF8)
+	err := CSVToExcel([]SheetFromCSV{{Path: a, Sheet: "a"}, {Path: b, Sheet: "bad:name"}}, out, UTF8)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), b)
 	require.Equal(t, []string{"a"}, sheetList(t, out))
@@ -65,7 +65,7 @@ func TestCSVToExcelWritesNothingWhenEveryFileFails(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "out.xlsx")
 
-	err := CSVToExcel([]string{filepath.Join(dir, "a.csv"), filepath.Join(dir, "b.csv")}, nil, out, UTF8)
+	err := CSVToExcel([]SheetFromCSV{{Path: filepath.Join(dir, "a.csv")}, {Path: filepath.Join(dir, "b.csv")}}, out, UTF8)
 	require.Error(t, err)
 	_, statErr := os.Stat(out)
 	require.True(t, errors.Is(statErr, os.ErrNotExist), "an output file was written although nothing converted")
@@ -76,11 +76,11 @@ func TestAppendCSVToExcelLeavesASheetAloneWhenItsCSVFails(t *testing.T) {
 	data := writeCSV(t, dir, "data.csv", "keep\nme\n")
 	other := writeCSV(t, dir, "other.csv", "old\n")
 	xlsx := filepath.Join(dir, "book.xlsx")
-	require.NoError(t, CSVToExcel([]string{data, other}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]SheetFromCSV{{Path: data}, {Path: other}}, xlsx, UTF8))
 
 	missing := filepath.Join(dir, "missing.csv")
 	fresh := writeCSV(t, dir, "fresh.csv", "new\n")
-	err := AppendCSVToExcel([]string{missing, fresh}, []string{"data", "other"}, xlsx, UTF8)
+	err := AppendCSVToExcel([]SheetFromCSV{{Path: missing, Sheet: "data"}, {Path: fresh, Sheet: "other"}}, xlsx, UTF8)
 	require.Error(t, err)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.Contains(t, err.Error(), missing)
@@ -92,11 +92,11 @@ func TestAppendCSVToExcelLeavesTheFileAloneWhenEveryCSVFails(t *testing.T) {
 	dir := t.TempDir()
 	data := writeCSV(t, dir, "data.csv", "keep\n")
 	xlsx := filepath.Join(dir, "book.xlsx")
-	require.NoError(t, CSVToExcel([]string{data}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]SheetFromCSV{{Path: data}}, xlsx, UTF8))
 	before, err := os.ReadFile(xlsx)
 	require.NoError(t, err)
 
-	err = AppendCSVToExcel([]string{filepath.Join(dir, "missing.csv")}, []string{"data"}, xlsx, UTF8)
+	err = AppendCSVToExcel([]SheetFromCSV{{Path: filepath.Join(dir, "missing.csv"), Sheet: "data"}}, xlsx, UTF8)
 	require.Error(t, err)
 	after, err := os.ReadFile(xlsx)
 	require.NoError(t, err)

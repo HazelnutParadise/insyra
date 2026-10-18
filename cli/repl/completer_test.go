@@ -158,6 +158,13 @@ func TestShouldCompletePath(t *testing.T) {
 		{command: "convert", tokenCount: 2, target: "da", want: true},
 		{command: "convert", tokenCount: 3, target: "da", want: true},
 		{command: "convert", tokenCount: 4, target: "da", want: false},
+		// convert <book> sheet <name> <file> sheet <name> <file>: each file.
+		{command: "convert", tokenCount: 5, target: "q", want: true},
+		{command: "convert", tokenCount: 7, target: "Q", want: false},
+		{command: "convert", tokenCount: 8, target: "q", want: true},
+		{command: "sheets", tokenCount: 2, target: "", want: true},
+		{command: "sheets", tokenCount: 2, target: "bo", want: true},
+		{command: "sheets", tokenCount: 3, target: "bo", want: false},
 		{command: "mean", tokenCount: 2, target: "da", want: false},
 	}
 	for _, tt := range tests {

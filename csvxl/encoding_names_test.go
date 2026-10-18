@@ -37,7 +37,7 @@ func TestEncodingNamesMeanWhatTheCoreReadersMean(t *testing.T) {
 			t.Fatalf("ReadCSVToString(%q) did not detect Big5: %q", name, got)
 		}
 		out := filepath.Join(t.TempDir(), "out.xlsx")
-		if err := CSVToExcel([]string{path}, []string{"s"}, out, name); err != nil {
+		if err := CSVToExcel([]SheetFromCSV{{Path: path, Sheet: "s"}}, out, name); err != nil {
 			t.Fatalf("CSVToExcel(%q): %v", name, err)
 		}
 	}

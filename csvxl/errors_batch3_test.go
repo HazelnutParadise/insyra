@@ -9,7 +9,7 @@ import (
 )
 
 func TestCSVToExcelErrorUnwraps(t *testing.T) {
-	err := ExcelToCSV("/definitely/not/here.xlsx", t.TempDir(), nil)
+	err := ExcelToCSV("/definitely/not/here.xlsx", t.TempDir())
 	if err == nil || !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected os.ErrNotExist in chain, got %v", err)
 	}
@@ -22,11 +22,11 @@ func TestExcelToCSVDirPerm(t *testing.T) {
 		t.Fatal(err)
 	}
 	xlsx := filepath.Join(dir, "a.xlsx")
-	if err := CSVToExcel([]string{csv}, nil, xlsx, UTF8); err != nil {
+	if err := CSVToExcel([]SheetFromCSV{{Path: csv}}, xlsx, UTF8); err != nil {
 		t.Fatal(err)
 	}
 	outDir := filepath.Join(dir, "out")
-	if err := ExcelToCSV(xlsx, outDir, nil); err != nil {
+	if err := ExcelToCSV(xlsx, outDir); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(outDir)

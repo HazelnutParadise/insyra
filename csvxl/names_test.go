@@ -131,6 +131,10 @@ func TestDeprecatedCSVXLNamesSayWhatReplacedThem(t *testing.T) {
 		"EachExcelToCsv":    "ExcelDirToCSV",
 		"ReadCsvToString":   "ReadCSVToString",
 	}
+	// These three keep their positional parameters while their replacements
+	// pair a CSV with its sheet (csvxl-sheet-pairs), so the notice names the
+	// replacement without calling it the same function.
+	reshaped := map[string]bool{"CsvToExcel": true, "AppendCsvToExcel": true, "ExcelToCsv": true}
 	docs := csvxlDocNames(t)
 	for old, current := range deprecated {
 		doc, ok := docs[old]
@@ -139,6 +143,9 @@ func TestDeprecatedCSVXLNamesSayWhatReplacedThem(t *testing.T) {
 			continue
 		}
 		notice := "Deprecated: use " + current + ", which is the same "
+		if reshaped[old] {
+			notice = "Deprecated: use " + current + ", which "
+		}
 		if !strings.Contains(doc, notice) || !strings.Contains(doc, removal) {
 			t.Errorf("%s doc is %q; want it to contain %q and %q", old, doc, notice, removal)
 		}

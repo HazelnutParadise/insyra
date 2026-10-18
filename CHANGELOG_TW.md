@@ -159,6 +159,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `wilcoxon single`、`ttest single`、`ztest single` 在一次性模式接受負數的 `mu`；原本 `insyra ttest single x -1` 會把 `-1` 當成旗標。`anova twoway` 的前兩個參數都能讀成數字時，即使有跟第一個參數同名的表格變數，仍當成 list 形式的層級數。
 - 預設檔寫不進去的環境會被移除並回傳錯誤；原本 `Create` 與 `NewSession` 看到目錄存在就當成已建立。`Register` 會拒絕負數的參數上限，原本要到指令執行時才越界。
 - **BREAKING**：`db` 指令改用 `database/sql` 的驅動程式開連線，`cli/commands.DBConn.DB` 改成 `*sql.DB`。PostgreSQL 的 `load sql <conn> query "…"` 要用 `$1`、`$2` 當參數符號，`?` 不會再被自動換掉。
+- **BREAKING**：`convert <file.xlsx> <file.csv>` 只接受只有一張工作表的活頁簿，有多張時會回傳錯誤並列出工作表。原本在三張工作表的活頁簿上，它會把第一張寫成 `<file.csv>`，其他工作表則以各自的名稱寫在旁邊。改用 `convert <file.xlsx> sheet <名稱> <file.csv> [sheet <名稱> <file.csv> ...]` 把每張指定的工作表寫成對應的檔案；工作表不存在、同一張給兩次或兩張寫到同一個檔，都會在寫出任何東西前回傳錯誤。新增 `sheets <file.xlsx>` 列出活頁簿的工作表。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。
@@ -224,9 +225,13 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 編碼參數給空字串，或任何大小寫的 `"auto"`，現在都代表自動偵測，跟核心的 CSV 讀取函式一致。以前空字串代表直接當成 UTF-8，`"AUTO"` 則會被當成不支援的編碼而報錯。
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 跟 `ToCSV` 一樣，預設會防範公式注入：在活頁簿裡安全的文字，轉成 CSV 再用試算表打開時會被當成公式。要原樣寫出就用 `ExcelToCsvOptions{AllowFormulas: true}`。挑選工作表的清單也移進同一個設定包：`ExcelToCsv(file, dir, names, "2024", "2025")` 改成 `ExcelToCsv(file, dir, names, csvxl.ExcelToCsvOptions{Sheets: []string{"2024", "2025"}})`。
 - **BREAKING（輸出）**：`AppendCsvToExcel` 改用全新的工作表取代既有的同名工作表，做法與 `DataTable.ToExcel` 相同，不再像 v0.3.3 那樣就地清空儲存格。就地清空只移除值與公式，列與儲存格上的其他東西都還在：新資料落在舊的隱藏列上，在 Excel 裡看不到，`ExcelToCsv` 讀回時也會跳過；舊的註解與超連結也留在新值上。舊工作表內容越多也越慢：取代一張有 2 萬個公式的工作表要 157 毫秒，現在是 6 毫秒。工作表仍保留原本的位置，原本隱藏的也維持隱藏，作用中的工作表不變，活頁簿其他地方的定義名稱與公式也都保留，但舊工作表的欄寬、檢視與合併範圍不再保留，只屬於這張工作表的定義名稱也會一起消失。名稱只差大小寫的工作表，現在會改用呼叫時給的名稱：附加到 `TARGET` 會把名為 `Target` 的工作表改名，v0.3.3 則維持原名。
-- 函式名稱改成 Go 對縮寫的寫法，與 insyra 其他套件一致：`CSVToExcel`、`AppendCSVToExcel`、`ExcelToCSV` 與 `ExcelToCSVOptions`、`ReadCSVToString`，處理整個目錄的兩個函式則是 `CSVDirToExcel` 與 `ExcelDirToCSV`。舊名稱 `CsvToExcel`、`AppendCsvToExcel`、`ExcelToCsv`、`ExcelToCsvOptions`、`EachCsvToOneExcel`、`EachExcelToCsv` 與 `ReadCsvToString` 的行為與新名稱完全相同，標為 **Deprecated**，下一版移除。CLI 的 `convert` 不受影響。
+- 函式名稱改成 Go 對縮寫的寫法，與 insyra 其他套件一致：`CSVToExcel`、`AppendCSVToExcel`、`ExcelToCSV` 與 `ExcelToCSVOptions`、`ReadCSVToString`，處理整個目錄的兩個函式則是 `CSVDirToExcel` 與 `ExcelDirToCSV`。舊名稱 `CsvToExcel`、`AppendCsvToExcel`、`ExcelToCsv`、`ExcelToCsvOptions`、`EachCsvToOneExcel`、`EachExcelToCsv` 與 `ReadCsvToString` 仍可使用，標為 **Deprecated**，下一版移除。
 - `CSVToExcel` 與 `AppendCSVToExcel` 會先檢查編碼名稱才讀檔，解碼表裡沒有的名稱會回傳一個指出該名稱的錯誤。過去要讀到 CSV 時才會發現：沒有任何檔案時（例如 `CSVDirToExcel` 遇到空目錄），不存在的編碼照樣被接受並寫出工作簿。有好幾個檔案時，同一個錯誤會每個檔案重複一次。
 - 公式防護改依形狀判斷文字是不是數字，不再用 `strconv.ParseFloat`：`+Inf`、`-NaN` 與 `+0x1p2` 這類十六進位浮點會加上開頭的單引號，`-1e309` 雖然超出 `float64` 但仍寫成一般數字，不再加引號。`DataTable.ToCSV` 用同一個函式，行為一起改變。
+- **BREAKING**：`CSVToExcel` 與 `AppendCSVToExcel` 改收 `[]SheetFromCSV`，每個元素同時寫出 CSV（`Path`）和它的工作表（`Sheet`，留空就用檔名），不再用兩個切片靠位置對應。`ExcelToCSV(excelFile, outputDir, opts...)` 拿掉 `csvNames`，改用 `ExcelToCSVOptions.FileNames` 以工作表名稱對應 CSV 檔名，寫了不是要轉換的工作表就回傳錯誤。原本用切片時，少給的名稱會默默改用檔名，多給的會被丟掉，`ExcelToCSV` 沒給 `Sheets` 時還得照活頁簿裡的工作表順序對應。已棄用的 `CsvToExcel`、`AppendCsvToExcel` 與 `ExcelToCsv` 維持原本的參數。
+- 兩個 CSV 寫到同一張工作表、兩張工作表寫到同一個 CSV，都會在寫出任何東西前回傳錯誤，新舊名稱皆然，比對時不分大小寫。原本兩個 CSV 都叫 `Sales` 時，只會產生一張混著兩個檔案資料列的工作表；兩張工作表給同一個 CSV 檔名時，只留下第二張。`ExcelDirToCSV` 也會擋下不同活頁簿撞名的情況（`a.xlsx` 的 `b_c` 和 `a_b.xlsx` 的 `c` 原本都會寫成 `a_b_c.csv`），並拒收 `FileNames`。
+- `ExcelToCSV` 會在寫第一個 CSV 前檢查完所有檔名，被拒絕的檔名不會留下寫到一半的輸出。
+- 新增 `SheetNames`，依活頁簿順序列出工作表名稱。
 
 ### `parquet`
 - `Write` 先寫入暫存檔再 rename 到目標位置，中途失敗時不會留下截斷的 Parquet 檔。

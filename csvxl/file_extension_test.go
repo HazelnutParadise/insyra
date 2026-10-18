@@ -19,7 +19,7 @@ func firstCell(t *testing.T, dir, source string) string {
 	t.Helper()
 	out := filepath.Join(dir, "out.xlsx")
 	_ = os.Remove(out)
-	require.NoError(t, CSVToExcel([]string{source}, []string{"s"}, out, UTF8))
+	require.NoError(t, CSVToExcel([]SheetFromCSV{{Path: source, Sheet: "s"}}, out, UTF8))
 	return sheetRows(t, out, "s")[0][0]
 }
 
@@ -59,7 +59,7 @@ func TestCSVToExcelSkipsADirectoryOfTheSameName(t *testing.T) {
 func TestCSVToExcelNamesBothPathsWhenNeitherExists(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "nope")
-	err := CSVToExcel([]string{missing}, nil, filepath.Join(dir, "out.xlsx"), UTF8)
+	err := CSVToExcel([]SheetFromCSV{{Path: missing}}, filepath.Join(dir, "out.xlsx"), UTF8)
 	require.Error(t, err)
 	// Quoted, so the bare path is not satisfied by being a prefix of the
 	// other, and quoted by hand rather than with %q, which would double the
@@ -72,10 +72,10 @@ func TestAppendCSVToExcelReadsANameThatDoesNotEndInCsv(t *testing.T) {
 	dir := t.TempDir()
 	base := writeCSV(t, dir, "base.csv", "a\n1\n")
 	xlsx := filepath.Join(dir, "book.xlsx")
-	require.NoError(t, CSVToExcel([]string{base}, []string{"base"}, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]SheetFromCSV{{Path: base, Sheet: "base"}}, xlsx, UTF8))
 
 	source := writeCSV(t, dir, "export.txt", "appended\n1\n")
-	require.NoError(t, AppendCSVToExcel([]string{source}, []string{"more"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]SheetFromCSV{{Path: source, Sheet: "more"}}, xlsx, UTF8))
 	require.Equal(t, "appended", sheetRows(t, xlsx, "more")[0][0])
 }
 
@@ -83,10 +83,10 @@ func TestExcelToCSVKeepsTheExtensionItWasGiven(t *testing.T) {
 	dir := t.TempDir()
 	source := writeCSV(t, dir, "src.csv", "a\n1\n")
 	xlsx := filepath.Join(dir, "book.xlsx")
-	require.NoError(t, CSVToExcel([]string{source, source, source}, []string{"one", "two", "three"}, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]SheetFromCSV{{Path: source, Sheet: "one"}, {Path: source, Sheet: "two"}, {Path: source, Sheet: "three"}}, xlsx, UTF8))
 
 	outDir := t.TempDir()
-	require.NoError(t, ExcelToCSV(xlsx, outDir, []string{"report.txt", "REPORT.CSV", "bare"}))
+	require.NoError(t, ExcelToCSV(xlsx, outDir, ExcelToCSVOptions{FileNames: map[string]string{"one": "report.txt", "two": "REPORT.CSV", "three": "bare"}}))
 
 	entries, err := os.ReadDir(outDir)
 	require.NoError(t, err)

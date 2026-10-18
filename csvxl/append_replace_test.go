@@ -36,11 +36,11 @@ func TestAppendCSVToExcelReplacesExistingSheet(t *testing.T) {
 	big := writeCSV(t, dir, "data.csv", "a,b\n1,2\n3,4\n5,6")
 	other := writeCSV(t, dir, "other.csv", "x\n1")
 	xlsx := filepath.Join(dir, "out.xlsx")
-	require.NoError(t, CSVToExcel([]string{big, other}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]SheetFromCSV{{Path: big}, {Path: other}}, xlsx, UTF8))
 	require.Len(t, sheetRows(t, xlsx, "data"), 4)
 
 	small := writeCSV(t, dir, "small.csv", "a\n9")
-	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"data"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]SheetFromCSV{{Path: small, Sheet: "data"}}, xlsx, UTF8))
 	rows := sheetRows(t, xlsx, "data")
 	require.Equal(t, [][]string{{"a"}, {"9"}}, rows, "stale cells must not survive")
 }
@@ -49,10 +49,10 @@ func TestAppendCSVToExcelReplacesOnlySheet(t *testing.T) {
 	dir := t.TempDir()
 	big := writeCSV(t, dir, "data.csv", "a,b\n1,2\n3,4")
 	xlsx := filepath.Join(dir, "out.xlsx")
-	require.NoError(t, CSVToExcel([]string{big}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]SheetFromCSV{{Path: big}}, xlsx, UTF8))
 
 	small := writeCSV(t, dir, "small.csv", "a\n9")
-	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"data"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]SheetFromCSV{{Path: small, Sheet: "data"}}, xlsx, UTF8))
 
 	f, err := excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -71,7 +71,7 @@ func TestAppendCSVToExcelKeepsTheReplacedSheetsPosition(t *testing.T) {
 	target := writeCSV(t, dir, "Target.csv", "a,b,c\n1,2,3\n4,5,6")
 	last := writeCSV(t, dir, "Last.csv", "l\n1")
 	xlsx := filepath.Join(dir, "out.xlsx")
-	require.NoError(t, CSVToExcel([]string{first, target, last}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]SheetFromCSV{{Path: first}, {Path: target}, {Path: last}}, xlsx, UTF8))
 
 	f, err := excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -84,7 +84,7 @@ func TestAppendCSVToExcelKeepsTheReplacedSheetsPosition(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	small := writeCSV(t, dir, "small.csv", "z\n9")
-	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"Target"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]SheetFromCSV{{Path: small, Sheet: "Target"}}, xlsx, UTF8))
 
 	f, err = excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestAppendCSVToExcelLeavesNothingOfTheOldSheet(t *testing.T) {
 	dir := t.TempDir()
 	target := writeCSV(t, dir, "Target.csv", "a,b\n1,2\n3,4\n5,6")
 	xlsx := filepath.Join(dir, "out.xlsx")
-	require.NoError(t, CSVToExcel([]string{target}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]SheetFromCSV{{Path: target}}, xlsx, UTF8))
 
 	f, err := excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestAppendCSVToExcelLeavesNothingOfTheOldSheet(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	fresh := writeCSV(t, dir, "fresh.csv", "h\nr1\nr2\nr3\nr4")
-	require.NoError(t, AppendCSVToExcel([]string{fresh}, []string{"Target"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]SheetFromCSV{{Path: fresh, Sheet: "Target"}}, xlsx, UTF8))
 
 	f, err = excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -144,7 +144,7 @@ func TestAppendCSVToExcelLeavesNothingOfTheOldSheet(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	out := t.TempDir()
-	require.NoError(t, ExcelToCSV(xlsx, out, nil))
+	require.NoError(t, ExcelToCSV(xlsx, out))
 	back, err := os.ReadFile(filepath.Join(out, "Target.csv"))
 	require.NoError(t, err)
 	require.Equal(t, "h\nr1\nr2\nr3\nr4\n", string(back), "every row must read back")
@@ -154,7 +154,7 @@ func TestAppendCSVToExcelReplacesTheOnlySheetWithAFreshOne(t *testing.T) {
 	dir := t.TempDir()
 	big := writeCSV(t, dir, "data.csv", "a,b\n1,2\n3,4")
 	xlsx := filepath.Join(dir, "out.xlsx")
-	require.NoError(t, CSVToExcel([]string{big}, nil, xlsx, UTF8))
+	require.NoError(t, CSVToExcel([]SheetFromCSV{{Path: big}}, xlsx, UTF8))
 
 	f, err := excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -163,7 +163,7 @@ func TestAppendCSVToExcelReplacesTheOnlySheetWithAFreshOne(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	small := writeCSV(t, dir, "small.csv", "a\n9")
-	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"data"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]SheetFromCSV{{Path: small, Sheet: "data"}}, xlsx, UTF8))
 
 	f, err = excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -236,7 +236,7 @@ func TestAppendCSVToExcelClearsAFarRightSheetCheaply(t *testing.T) {
 		require.NoError(t, f.Close())
 	})
 	gotTime, gotAlloc := measure(func() {
-		require.NoError(t, AppendCSVToExcel([]string{small}, []string{"Target"}, replaced, UTF8))
+		require.NoError(t, AppendCSVToExcel([]SheetFromCSV{{Path: small, Sheet: "Target"}}, replaced, UTF8))
 	})
 	t.Logf("v0.3.2 path: %v, %.1f MB; AppendCSVToExcel: %v, %.1f MB",
 		baseTime, float64(baseAlloc)/1e6, gotTime, float64(gotAlloc)/1e6)
@@ -297,7 +297,7 @@ func TestAppendCSVToExcelReplacesASheetWithoutCellAddresses(t *testing.T) {
 	require.True(t, stripped, "the Target sheet was not found in the package")
 
 	small := writeCSV(t, dir, "small.csv", "z\n9")
-	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"Target"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]SheetFromCSV{{Path: small, Sheet: "Target"}}, xlsx, UTF8))
 	require.Equal(t, [][]string{{"z"}, {"9"}}, sheetRows(t, xlsx, "Target"), "stale cells must not survive")
 }
 
@@ -325,7 +325,7 @@ func TestAppendCSVToExcelKeepsTheNamesOfTheSheetsAfterIt(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	small := writeCSV(t, dir, "small.csv", "z\n9")
-	require.NoError(t, AppendCSVToExcel([]string{small}, []string{"Target"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]SheetFromCSV{{Path: small, Sheet: "Target"}}, xlsx, UTF8))
 
 	f, err = excelize.OpenFile(xlsx)
 	require.NoError(t, err)
@@ -362,7 +362,7 @@ func TestAppendCSVToExcelKeepsAHiddenSheetHidden(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	small := writeCSV(t, dir, "small.csv", "z\n9")
-	require.NoError(t, AppendCSVToExcel([]string{small, small}, []string{"Data", "Secret"}, xlsx, UTF8))
+	require.NoError(t, AppendCSVToExcel([]SheetFromCSV{{Path: small, Sheet: "Data"}, {Path: small, Sheet: "Secret"}}, xlsx, UTF8))
 
 	f, err = excelize.OpenFile(xlsx)
 	require.NoError(t, err)

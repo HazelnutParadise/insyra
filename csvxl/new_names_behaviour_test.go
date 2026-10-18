@@ -30,7 +30,7 @@ func TestConversionsRefuseAnUnknownEncoding(t *testing.T) {
 	csvPath := writeNamedCSV(t, t.TempDir(), "a.csv", "x,y\n1,2\n")
 
 	out := filepath.Join(t.TempDir(), "out.xlsx")
-	err := CSVToExcel([]string{csvPath}, nil, out, "klingon-1")
+	err := CSVToExcel([]SheetFromCSV{{Path: csvPath}}, out, "klingon-1")
 	if err == nil {
 		t.Fatal("CSVToExcel accepted an encoding no decoder handles")
 	}
@@ -57,7 +57,7 @@ func TestConversionsRefuseAnUnknownEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = AppendCSVToExcel([]string{csvPath}, []string{"Sheet1"}, book, "klingon-1")
+	err = AppendCSVToExcel([]SheetFromCSV{{Path: csvPath, Sheet: "Sheet1"}}, book, "klingon-1")
 	if err == nil {
 		t.Fatal("AppendCSVToExcel accepted an encoding no decoder handles")
 	}
@@ -104,7 +104,7 @@ func TestDeprecatedCSVXLNamesGiveTheSameWorkbook(t *testing.T) {
 	if err := CsvToExcel([]string{csvPath}, nil, old, UTF8); err != nil {
 		t.Fatalf("CsvToExcel: %v", err)
 	}
-	if err := CSVToExcel([]string{csvPath}, nil, current, UTF8); err != nil {
+	if err := CSVToExcel([]SheetFromCSV{{Path: csvPath}}, current, UTF8); err != nil {
 		t.Fatalf("CSVToExcel: %v", err)
 	}
 
@@ -178,7 +178,7 @@ func TestCSVDirToExcelWritesOneSheetPerFile(t *testing.T) {
 // empty file list cannot hide it and the workbook is not written or rewritten.
 func TestAnUnknownEncodingIsRefusedWithNoFiles(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "out.xlsx")
-	err := CSVToExcel(nil, nil, out, "klingon-1")
+	err := CSVToExcel(nil, out, "klingon-1")
 	if err == nil {
 		t.Fatal("CSVToExcel accepted an encoding no decoder handles")
 	}
@@ -218,7 +218,7 @@ func TestAnUnknownEncodingIsRefusedWithNoFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = AppendCSVToExcel(nil, nil, book, "klingon-1")
+	err = AppendCSVToExcel(nil, book, "klingon-1")
 	if err == nil {
 		t.Fatal("AppendCSVToExcel accepted an encoding no decoder handles")
 	}
@@ -238,13 +238,13 @@ func TestAnUnknownEncodingIsRefusedWithNoFiles(t *testing.T) {
 // would have been applied to.
 func TestAnUnknownEncodingIsNamedOnce(t *testing.T) {
 	dir := t.TempDir()
-	var files []string
+	var files []SheetFromCSV
 	for _, name := range []string{"a.csv", "b.csv", "c.csv"} {
-		files = append(files, writeNamedCSV(t, dir, name, "x\n1\n"))
+		files = append(files, SheetFromCSV{Path: writeNamedCSV(t, dir, name, "x\n1\n")})
 	}
 	out := filepath.Join(t.TempDir(), "out.xlsx")
 
-	err := CSVToExcel(files, nil, out, "klingon-1")
+	err := CSVToExcel(files, out, "klingon-1")
 	if err == nil {
 		t.Fatal("CSVToExcel accepted an encoding no decoder handles")
 	}
@@ -257,7 +257,7 @@ func TestAnUnknownEncodingIsNamedOnce(t *testing.T) {
 // files: the workbook is still written.
 func TestAKnownEncodingWithNoFilesStillWritesAWorkbook(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "out.xlsx")
-	if err := CSVToExcel(nil, nil, out, "big5"); err != nil {
+	if err := CSVToExcel(nil, out, "big5"); err != nil {
 		t.Fatalf("CSVToExcel: %v", err)
 	}
 	if _, err := os.Stat(out); err != nil {

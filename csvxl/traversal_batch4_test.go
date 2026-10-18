@@ -73,7 +73,7 @@ func TestExcelToCSVRejectsTraversingSheetName(t *testing.T) {
 	xlsx := filepath.Join(root, "evil.xlsx")
 	craftWorkbookWithSheetName(t, xlsx, "../important")
 
-	err := ExcelToCSV(xlsx, outDir, nil)
+	err := ExcelToCSV(xlsx, outDir)
 	if err == nil {
 		t.Fatal("ExcelToCSV accepted a sheet name that escapes the output directory")
 	}
@@ -104,7 +104,7 @@ func TestExcelToCSVChecksTheFileNameActuallyUsed(t *testing.T) {
 	for sheet, file := range map[string]string{".": "..csv", "..": "...csv"} {
 		xlsx := filepath.Join(root, "dots.xlsx")
 		craftWorkbookWithSheetName(t, xlsx, sheet)
-		if err := ExcelToCSV(xlsx, outDir, nil); err != nil {
+		if err := ExcelToCSV(xlsx, outDir); err != nil {
 			t.Fatalf("ExcelToCSV refused a sheet named %q: %v", sheet, err)
 		}
 		if _, err := os.Stat(filepath.Join(outDir, file)); err != nil {
@@ -123,8 +123,8 @@ func TestExcelToCSVChecksTheFileNameActuallyUsed(t *testing.T) {
 		t.Fatal(err)
 	}
 	craftWorkbookWithSheetName(t, evil, "sheet")
-	if err := ExcelToCSV(evil, outDir, []string{"../escape"}); err == nil {
-		t.Fatal("a csvNames entry that leaves the output directory was accepted")
+	if err := ExcelToCSV(evil, outDir, ExcelToCSVOptions{FileNames: map[string]string{"sheet": "../escape"}}); err == nil {
+		t.Fatal("a FileNames entry that leaves the output directory was accepted")
 	}
 	if _, err := os.Stat(filepath.Join(root, "escape.csv")); err == nil {
 		t.Fatal("a file was written outside the output directory")

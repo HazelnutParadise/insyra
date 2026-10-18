@@ -431,10 +431,16 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: delete them in the same release as the other Deprecated removals, with `TestDeprecatedMLNamesSayWhatReplacedThem`, `TestWriteONNXKeepsItsMeaning` and `TestDeprecatedTreeOptionsAreTheSameType` in `ml/onnx_one_name_test.go` (keep the `ExportONNX` half of the last two), their notes in `Docs/ml.md`, and a BREAKING changelog entry.
 - **Status**: pending
 
+### [2026-10-18] — backport the new `csvxl` signatures to `dev` before v0.3.5 ships
+- **Where**: `csvxl/convert.go`, `csvxl/convertDir.go` and `internal/dsl/commands/convert.go` on `dev`
+- **What**: `csvxl-sheet-pairs` gave `CSVToExcel` and `AppendCSVToExcel` a `[]SheetFromCSV` and moved `ExcelToCSV`'s file names into `ExcelToCSVOptions.FileNames` on `0.4`. `dev`'s Unreleased already carries the same new names in the old, positional shape. If v0.3.5 ships them that way, a caller who moves from `CsvToExcel` to `CSVToExcel` breaks a second time when 0.4 is released. The owner ruled on 2026-10-18 (#270) to backport.
+- **Suggestion**: before v0.3.5 is tagged, port `SheetFromCSV`, the new signatures, `FileNames`, `SheetNames`, the duplicate-target refusals and the `sheets` command to `dev`. The new names are unreleased there, so changing them breaks nobody; the old `Csv` names stay exactly as they are on `dev`. Keep the CLI's `convert` behaviour change (a several-sheet workbook to one file fails) on `0.4`, but `convert`'s new `sheet <name> <file.csv>` pairs only add a form and may go with it.
+- **Status**: pending
+
 ### [2026-09-30] — remove the `Csv` spellings of the `csvxl` functions one release after they were deprecated
 - **Where**: `csvxl/convert.go`, `csvxl/convertDir.go`, `csvxl/read_csv.go`
 - **What**: `csvxl-go-names` renamed `CsvToExcel`, `AppendCsvToExcel`, `ExcelToCsv`, `ExcelToCsvOptions`, `EachCsvToOneExcel`, `EachExcelToCsv` and `ReadCsvToString` to `CSVToExcel`, `AppendCSVToExcel`, `ExcelToCSV`, `ExcelToCSVOptions`, `CSVDirToExcel`, `ExcelDirToCSV` and `ReadCSVToString` (the C-12 part of #212). The old names stay one release as Deprecated wrappers and a type alias.
-- **Suggestion**: delete them in the same release as the other Deprecated removals, with `TestDeprecatedCSVXLNamesSayWhatReplacedThem`, `TestDeprecatedCSVXLNamesGiveTheSameWorkbook`, the deprecated-names table in `Docs/csvxl.md`, and a BREAKING changelog entry. The `csvxl-*`, `csv-formula-guard`, `io-error-hygiene` and `optional-values` specs under `openspec/specs/` still name the old spellings. Move them to the new names in the same change.
+- **Suggestion**: delete them in the same release as the other Deprecated removals, with `pairByPosition` and the `csvNames` arm of `excelToCSV` that only the old `CsvToExcel`, `AppendCsvToExcel` and `ExcelToCsv` use (`csvxl-sheet-pairs`), `csvxl/sheet_pairs_deprecated_test.go`, `TestDeprecatedCSVXLNamesSayWhatReplacedThem`, `TestDeprecatedCSVXLNamesGiveTheSameWorkbook`, the deprecated-names table in `Docs/csvxl.md`, and a BREAKING changelog entry. The `csvxl-*`, `csv-formula-guard`, `io-error-hygiene` and `optional-values` specs under `openspec/specs/` still name the old spellings. Move them to the new names in the same change.
 - **Status**: pending
 
 ### [2026-09-30] — remove `ParseLingoModel_str` and `ParseLingoModel_txt` one release after they were deprecated

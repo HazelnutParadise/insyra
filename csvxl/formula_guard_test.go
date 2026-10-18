@@ -47,7 +47,7 @@ func TestExcelToCSVGuardsFormulasByDefault(t *testing.T) {
 	xlsx := guardWorkbook(t, dir)
 
 	out := filepath.Join(dir, "guarded")
-	if err := ExcelToCSV(xlsx, out, nil); err != nil {
+	if err := ExcelToCSV(xlsx, out); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(out, "Sheet1.csv")); got != "'=1+1\n-5\n'@x\nhello\n" {
@@ -58,7 +58,7 @@ func TestExcelToCSVGuardsFormulasByDefault(t *testing.T) {
 	}
 
 	raw := filepath.Join(dir, "raw")
-	if err := ExcelToCSV(xlsx, raw, nil, ExcelToCSVOptions{Sheets: []string{"Sheet1"}, AllowFormulas: true}); err != nil {
+	if err := ExcelToCSV(xlsx, raw, ExcelToCSVOptions{Sheets: []string{"Sheet1"}, AllowFormulas: true}); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(raw, "Sheet1.csv")); got != "=1+1\n-5\n@x\nhello\n" {
@@ -67,7 +67,7 @@ func TestExcelToCSVGuardsFormulasByDefault(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(raw, "Other.csv")); !os.IsNotExist(err) {
 		t.Fatalf("Sheets did not limit the conversion: %v", err)
 	}
-	if err := ExcelToCSV(xlsx, raw, nil, ExcelToCSVOptions{}, ExcelToCSVOptions{}); err == nil {
+	if err := ExcelToCSV(xlsx, raw, ExcelToCSVOptions{}, ExcelToCSVOptions{}); err == nil {
 		t.Fatal("two options structs were accepted")
 	}
 }

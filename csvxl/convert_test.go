@@ -81,7 +81,7 @@ func TestCSVToExcelWithAutoDetection(t *testing.T) {
 	// Test auto-detection (default behavior)
 	outputFile := filepath.Join(tempDir, "output_auto.xlsx")
 	// Use explicit UTF-8 to avoid flakiness from charset detection in CI
-	err = CSVToExcel([]string{csvFile1, csvFile2}, nil, outputFile, UTF8)
+	err = CSVToExcel([]SheetFromCSV{{Path: csvFile1}, {Path: csvFile2}}, outputFile, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file was created
@@ -90,7 +90,7 @@ func TestCSVToExcelWithAutoDetection(t *testing.T) {
 
 	// Test explicit auto encoding (also force UTF-8 for determinism)
 	outputFile2 := filepath.Join(tempDir, "output_explicit_auto.xlsx")
-	err = CSVToExcel([]string{csvFile1, csvFile2}, nil, outputFile2, UTF8)
+	err = CSVToExcel([]SheetFromCSV{{Path: csvFile1}, {Path: csvFile2}}, outputFile2, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file was created
@@ -99,7 +99,7 @@ func TestCSVToExcelWithAutoDetection(t *testing.T) {
 
 	// Test explicit UTF-8 encoding
 	outputFile3 := filepath.Join(tempDir, "output_utf8.xlsx")
-	err = CSVToExcel([]string{csvFile1, csvFile2}, nil, outputFile3, UTF8)
+	err = CSVToExcel([]SheetFromCSV{{Path: csvFile1}, {Path: csvFile2}}, outputFile3, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file was created
@@ -117,7 +117,7 @@ func TestAppendCSVToExcelWithAutoDetection(t *testing.T) {
 	require.NoError(t, err)
 
 	outputFile := filepath.Join(tempDir, "append_test.xlsx")
-	err = CSVToExcel([]string{csvFile1}, nil, outputFile, UTF8)
+	err = CSVToExcel([]SheetFromCSV{{Path: csvFile1}}, outputFile, UTF8)
 	require.NoError(t, err)
 
 	// Create additional CSV file to append
@@ -127,7 +127,7 @@ func TestAppendCSVToExcelWithAutoDetection(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test appending with explicit UTF-8
-	err = AppendCSVToExcel([]string{csvFile2}, nil, outputFile, UTF8)
+	err = AppendCSVToExcel([]SheetFromCSV{{Path: csvFile2}}, outputFile, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file still exists
@@ -140,7 +140,7 @@ func TestAppendCSVToExcelWithAutoDetection(t *testing.T) {
 	err = os.WriteFile(csvFile3, []byte(csvContent3), 0644)
 	require.NoError(t, err)
 
-	err = AppendCSVToExcel([]string{csvFile3}, nil, outputFile, UTF8)
+	err = AppendCSVToExcel([]SheetFromCSV{{Path: csvFile3}}, outputFile, UTF8)
 	require.NoError(t, err)
 
 	// Check if the Excel file still exists
@@ -222,7 +222,7 @@ func TestExcelToCSVWithFilteredRows(t *testing.T) {
 
 	// Convert to CSV
 	outputDir := filepath.Join(tempDir, "output")
-	err = ExcelToCSV(excelFile, outputDir, nil)
+	err = ExcelToCSV(excelFile, outputDir)
 	require.NoError(t, err)
 	// Check the CSV file
 	csvFile := filepath.Join(outputDir, "Sheet1.csv")

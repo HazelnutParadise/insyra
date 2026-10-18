@@ -116,18 +116,19 @@ func toSuffixes(candidates []string, target string) [][]rune {
 
 func shouldCompletePath(commandName string, tokenCount int, target string) bool {
 	if target == "" {
-		if commandName == "load" || commandName == "save" || commandName == "read" || commandName == "run" || commandName == "convert" {
+		if commandName == "load" || commandName == "save" || commandName == "read" || commandName == "run" || commandName == "convert" || commandName == "sheets" {
 			return true
 		}
 	}
 
 	switch commandName {
-	case "load", "read", "run":
+	case "load", "read", "run", "sheets":
 		return tokenCount <= 2
 	case "save":
 		return tokenCount == 3
 	case "convert":
-		return tokenCount == 2 || tokenCount == 3
+		// convert <input> <output>, or convert <book> sheet <name> <file> ...
+		return tokenCount == 2 || tokenCount == 3 || (tokenCount >= 5 && (tokenCount-5)%3 == 0)
 	default:
 		return false
 	}

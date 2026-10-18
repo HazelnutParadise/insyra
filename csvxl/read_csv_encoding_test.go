@@ -104,7 +104,7 @@ func TestAmbiguousEncodingIsRefusedByCSVXL(t *testing.T) {
 		t.Fatalf("ReadCSVToString: got %v, want ErrEncodingAmbiguous", err)
 	}
 	out := filepath.Join(t.TempDir(), "out.xlsx")
-	if err := CSVToExcel([]string{path}, nil, out); !errors.Is(err, insyra.ErrEncodingAmbiguous) {
+	if err := CSVToExcel([]SheetFromCSV{{Path: path}}, out); !errors.Is(err, insyra.ErrEncodingAmbiguous) {
 		t.Fatalf("CSVToExcel: got %v, want ErrEncodingAmbiguous", err)
 	}
 	got, err := ReadCSVToString(path, Big5)
