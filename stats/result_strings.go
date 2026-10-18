@@ -20,6 +20,30 @@ func (r *TTestResult) String() string { return formatResult("t-test", r) }
 // Show prints String to standard output.
 func (r *TTestResult) Show() { fmt.Println(r.String()) }
 
+// String returns the result as text: "Newey-West mean test", then one line per field.
+func (r *NeweyWestResult) String() string { return formatResult("Newey-West mean test", r) }
+
+// Show prints String to standard output.
+func (r *NeweyWestResult) Show() { fmt.Println(r.String()) }
+
+// String returns the result as text: "Variance ratio", then one line per field.
+func (r *VarianceRatioResult) String() string { return formatResult("Variance ratio", r) }
+
+// Show prints String to standard output.
+func (r *VarianceRatioResult) Show() { fmt.Println(r.String()) }
+
+// String returns the result as text: "Chow-Denning test", then one line per field.
+func (r *ChowDenningResult) String() string { return formatResult("Chow-Denning test", r) }
+
+// Show prints String to standard output.
+func (r *ChowDenningResult) Show() { fmt.Println(r.String()) }
+
+// String returns the result as text: "Kaplan-Meier", then one line per field.
+func (r *KaplanMeierResult) String() string { return formatResult("Kaplan-Meier", r) }
+
+// Show prints String to standard output.
+func (r *KaplanMeierResult) Show() { fmt.Println(r.String()) }
+
 // String returns the result as text: "z-test", then one line per field.
 func (r *ZTestResult) String() string { return formatResult("z-test", r) }
 

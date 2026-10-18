@@ -687,6 +687,11 @@ ExRights(from, to time.Time, market TWMarket) (*insyra.DataTable, error)
 InstitutionalTrades(date time.Time, market TWMarket) (*insyra.DataTable, error)
 MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)
 AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)
+OddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error)
+ShareholdingDistribution() (*insyra.DataTable, error)
+MonthlyRevenue(year, month int, market TWMarket) (*insyra.DataTable, error)
+DailyQuotesOn(date time.Time, market TWMarket) (*insyra.DataTable, error)
+AdvanceDecline(date time.Time, market TWMarket, commonStockOnly bool) (*insyra.DataTable, error)
 ```
 
 Each method has a `...Context` form taking a `context.Context` first, such as `DailyPricesContext(ctx, code, from, to, market)`; the plain method calls it with `context.Background()`. When the context is done, the `Interval` throttle, the request in flight and any retry backoff stop at once, and the call returns `ctx.Err()` without sending another request, so a long backfill can be stopped between two monthly requests. A `nil` context is an error.
@@ -701,8 +706,61 @@ Each method has a `...Context` form taking a `context.Context` first, such as `D
 | `InstitutionalTrades` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `ForeignNet`, `TrustNet`, `DealerNet`, `TotalNet` (`int64`, shares) |
 | `MarginBalance` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `MarginBalance`, `ShortBalance` (`int64`, source balance units) |
 | `AllDailyQuotes` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `Volume` (`int64`, shares), `Turnover` (`int64`, currency units), `Open`, `High`, `Low`, `Close`, `Change` (`float64`), `Transactions` (`int64`) |
+| `MonthlyRevenue` | see Monthly revenue below |
+| `DailyQuotesOn` | the columns of `AllDailyQuotes` plus `Sign` (`string`): `"+"` up, `"-"` down, `"="` unchanged, `"X"` no reference price (then `Change` is `nil`) |
+| `AdvanceDecline` | one row: `Date` (`time.Time`), `Advancing`, `AdvancingLimit`, `Declining`, `DecliningLimit`, `Unchanged`, `NoTrade`, `NoReference` (`int64`), `Source` (`string`) |
+| `OddLotQuotes` | `Date` (`time.Time`), `Code`, `Name` (`string`), `Volume` (`int64`, shares), `Transactions`, `Turnover` (`int64`), `BidPrice`, `AskPrice` (`float64`), `BidVolume`, `AskVolume` (`int64`), plus `Open`, `Close`, `High`, `Low` (`float64`) for `TWOddLotIntraday` or `Price` for `TWOddLotAfterHours` |
 
 `--`, `X`, and blank numeric cells become `nil`. TPEx historical prices report volume in lots and turnover in thousands of currency units, so `DailyPrices` converts them to shares and currency units to match the TWSE schema. This unit conversion is based on the source field names `成交張數` and `成交仟元`; margin balances retain the source endpoint's units.
+
+### Any day's closes and advancing and declining counts
+
+`AllDailyQuotes` gives only the latest day. `DailyQuotesOn(date, market)` gives every security's close for any past day, one request per day: from the TWSE's `MI_INDEX` report (data since 2004-02-11, including securities delisted since, so a study of the whole market has no survivorship bias) or the TPEx's daily close report. `Change` is signed and measured from the exchange's own reference price, which already accounts for ex-rights and ex-dividend days; `Sign` carries the exchange's up or down mark. A weekend or holiday gives an empty table with the columns in place. `TWMarketAuto` tries the TWSE and then the TPEx.
+
+`AdvanceDecline(date, market, commonStockOnly)` counts the securities that rose, fell and stood still. For recent TWSE days the exchange publishes the count itself (漲跌證券數合計) and that is returned with `Source` `"official"`, including the limit-up and limit-down counts: its 股票 column when `commonStockOnly`, the whole-market column otherwise. Without that table, and always for the TPEx, the counts are made from the closes' marks with `Source` `"computed"` and the limit counts `nil`; `commonStockOnly` then keeps four-digit codes starting with 1 to 9 and drops those starting with 91, the depositary receipts. On 2026-10-16 the computed 684 up and 286 down equal the official stock column.
+
+The TWSE answers repeated requests with the throttling page described above; for a multi-year backfill set `Interval` and `Retries` as suggested there.
+
+### Odd-lot quotes
+
+`OddLotQuotes(date, session)` returns the TWSE's odd-lot report (trades of fewer than 1,000 shares) for one day, one row per security, from `TWTC7U` (intraday, `TWOddLotIntraday`, available since 2020-10-26) or `TWT53U` (after hours, `TWOddLotAfterHours`, since 2005). Prices are as traded and not adjusted for ex-rights, and a price the exchange shows as `--` is `nil`. The exchange's 合計 totals row is left out. A holiday, or a date before the report existed, gives an empty table with the columns in place, not an error.
+
+Only the TWSE publishes these reports by date. The TPEx's OpenAPI (`tpex_odd_stock`) gives just the latest day, so the method does not read it. The TWSE answers repeated requests with the throttling page described above, so for a backfill set `Interval` and `Retries` as suggested there.
+
+### Monthly revenue
+
+`MonthlyRevenue(year, month, market)` returns the monthly operating revenue of every listed company for one month from the Market Observation Post System (MOPS) summary pages, one page per market, which saves the two thousand per-company requests. `year` is the Gregorian year (2025, not 114), the pages start in January 2003, and `TWMarketAuto` returns both TWSE and TPEx. A month with no page gives an empty table with the columns in place.
+
+| Column | Meaning |
+| :--- | :--- |
+| `Month` (`time.Time`) | the first day of the month the revenue is for |
+| `Code`, `Name`, `Industry`, `Market` (`string`) | the company; `Market` is `"TWSE"` or `"TPEx"` |
+| `Revenue`, `PrevMonthRevenue`, `LastYearRevenue` (`int64`) | this month, last month and the same month a year earlier, in **thousands of NT dollars** |
+| `MoMChange`, `YoYChange` (`float64`) | percent change from last month and from a year earlier, as the site computes them |
+| `Cumulative`, `LastYearCumulative` (`int64`) | the year to date and the year before's, in thousands of NT dollars |
+| `CumulativeChange` (`float64`) | percent change of the year to date |
+| `Remark` (`string`) | the company's note, empty when there is none |
+| `PageDate` (`time.Time`) | when the page was produced |
+
+**`PageDate` is not an announcement date.** It is the date the whole page was produced (出表日期), not the day each company published its figure; companies report by the 10th of the following month. Do not use it as the moment a figure was known and could be traded on. Names are decoded from Big5, which loses a few rare characters.
+
+Newer months have a domestic page and a second page for companies listed from abroad, and both are read; older months have a single page. The MOPS answers repeated requests with the throttling page described above, so for a backfill set `Interval` and `Retries` as suggested there.
+
+### Shareholding distribution
+
+`ShareholdingDistribution()` returns the Taiwan Depository & Clearing Corporation's weekly shareholding distribution, from `opendata.tdcc.com.tw`: for every security, how many holders hold how many shares at each holding level. It is the usual way to watch big holders against small ones, and it exists only for Taiwan.
+
+| Column | Meaning |
+| :--- | :--- |
+| `Date` (`time.Time`) | the data date of the week |
+| `Code` (`string`) | security code |
+| `Level` (`int64`), `LevelLabel` (`string`) | the holding level, 1 to 17 |
+| `Holders`, `Shares` (`int64`) | holders and shares at that level |
+| `Percent` (`float64`) | the share of the securities held in custody |
+
+Levels 1 to 15 are ranges of shares held: 1-999, 1,000-5,000, 5,001-10,000, 10,001-15,000, 15,001-20,000, 20,001-30,000, 30,001-40,000, 40,001-50,000, 50,001-100,000, 100,001-200,000, 200,001-400,000, 400,001-600,000, 600,001-800,000, 800,001-1,000,000 and 1,000,001 and above. Level 16 is the difference adjustment the TDCC publishes, and level 17 the total. About 69,000 rows come back in one request, about 2.4 MB.
+
+**Only the latest week is available.** The TDCC publishes no history through this source, so save each week's table if you want a series; the earlier weeks need the TDCC website's per-security query or a paid source.
 
 ### Adjusted prices and corporate actions
 
@@ -737,3 +795,83 @@ returns := prices.PctChangeCol("AdjClose", 1).ClearNils()
 - `ExRights` splits ranges longer than a year into contiguous one-year requests, so a ten-year ex-rights history is ten requests.
 - The exchange table is whatever the exchange serves at call time; nothing is cached, so a reference price the exchange revises afterwards changes later results.
 - The exchange rate limit is not published as a stable contract. Intraday, real-time quotes, order books, fundamentals, dividend payout details beyond the ex-date reference prices, and local caching are outside this client.
+
+## Taiwan Futures Exchange (TAIFEX)
+
+```go
+client, err := datafetch.TAIFEX(datafetch.TWStockConfig{})
+```
+
+`TAIFEX` reads the Taiwan Futures Exchange's open data (`openapi.taifex.com.tw`), which needs no key. It takes the same settings as `TWStock` (`Timeout`, `Interval`, `UserAgent`, `Retries`, `RetryBackoff`) and shares its throttling and retry behaviour. A `TAIFEXClient` that did not come from `TAIFEX`, such as a zero value, returns an error from every method. Each method has a `...Context` form.
+
+```go
+InstitutionalFutures() (*insyra.DataTable, error)
+InstitutionalOptions() (*insyra.DataTable, error)
+LargeTradersFutures() (*insyra.DataTable, error)
+LargeTradersOptions() (*insyra.DataTable, error)
+PutCallRatio() (*insyra.DataTable, error)
+```
+
+**Only the latest day.** The OpenAPI gives the latest trading day for the first four tables, and the last 20 trading days for `PutCallRatio`. Longer histories come from the exchange's website (for example `https://www.taifex.com.tw/cht/3/futContractsDate`), which this client does not read, so keep each day's result if you want a series.
+
+| Method | Columns |
+| :--- | :--- |
+| `InstitutionalFutures` | `Date` (`time.Time`), `Contract`, `Trader` (`string`; 自營商 dealers, 投信 investment trusts, 外資及陸資 foreign investors), then `TradeLong`, `TradeShort`, `TradeNet` and `OILong`, `OIShort`, `OINet` (`int64`, contracts), each with a `...Value` column (`int64`, thousands of NT dollars) |
+| `InstitutionalOptions` | the same, plus `CallPut` (`"CALL"` or `"PUT"`) after `Contract` |
+| `LargeTradersFutures` | `Date`, `Contract`, `ContractName`, `SettlementMonth`, `TraderType` (`string`), `Top5Buy`, `Top5Sell`, `Top10Buy`, `Top10Sell`, `MarketOI` (`int64`, contracts) |
+| `LargeTradersOptions` | the same, plus `CallPut` (`"買權"` call or `"賣權"` put) after `ContractName` |
+| `PutCallRatio` | `Date`, `PutVolume`, `CallVolume`, `PutOI`, `CallOI` (`int64`), `VolumeRatio`, `OIRatio` (`float64`, percent: 88.75 means the put volume is 88.75% of the call volume) |
+
+In the large-trader tables, `Top5Buy` and the others are the open long and short positions held by the 5 and 10 largest traders, and `MarketOI` is the whole market's open interest. `SettlementMonth` is kept as the exchange publishes it, a string such as `"202610"`, where `"999912"` is the total over all months. `TraderType` is `"0"` for all traders and `"1"` for the specific institutional traders. The exchange answers some of its tables as CSV with Chinese headers whatever is asked for; the client reads either form into the same columns.
+
+## FinMind
+
+```go
+client, err := datafetch.FinMind(datafetch.FinMindConfig{Token: os.Getenv("FINMIND_TOKEN")})
+prices, err := client.Dataset("TaiwanStockPrice", "2330",
+    time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Time{})
+```
+
+[FinMind](https://finmindtrade.com) serves Taiwan and US market data, one security's whole history per request: daily prices from 1994, monthly revenue, financial statements, dividends, delisted securities' prices and more, over 100 datasets (the list is at <https://finmind.github.io/llms-full.txt>). It complements `TWStock`, which reads the exchanges' own pages one day for the whole market: FinMind suits a long history of one security, `TWStock` a whole market one day at a time.
+
+`FinMind` takes a `FinMindConfig`: `Token` (sent in an `Authorization` header; leave it empty for the free tier without a token, or when a proxy adds it), `Timeout`, `Interval`, `UserAgent`, `Retries` and `RetryBackoff`. A `FinMindClient` that did not come from `FinMind` returns an error from every method.
+
+```go
+Dataset(name, dataID string, from, to time.Time) (*insyra.DataTable, error)
+```
+
+`Dataset` is the one entry point, with a `DatasetContext` form, and it returns the dataset's columns as FinMind sends them, in FinMind's order and under FinMind's names: integers are `int64`, other numbers `float64`, text stays text, `null` is `nil`, and a column named `date` becomes a `time.Time` when every value is a date. `dataID` is the security (`"2330"`); most datasets need one on the free tier. A zero `from` or `to` leaves that end open. A dataset with no rows gives an empty table with no columns.
+
+**Errors you can tell apart.** `errors.Is(err, datafetch.ErrFinMindLimit)` means the plan's request limit was reached (HTTP 402); `errors.Is(err, datafetch.ErrFinMindLevel)` means the plan does not allow the request, such as a free account asking for a dataset above its level, or one that needs a `dataID` without giving it. Neither is retried, since waiting or upgrading is the fix, not repeating the call. Other failures, such as an unknown dataset (HTTP 422, whose message lists the valid names), are ordinary errors.
+
+**Traps in the data.** One is checked: the `date` of `TaiwanStockMonthRevenue` is the first day of the month *after* the revenue month (`revenue_month` 7 has `date` 2026-08-01) and is not the announcement date, so aligning it with prices on `date` looks ahead. The rest were reported when the dataset was tried on 2026-10-17 and are not checked here: individual institutional trades start on 2012-05-02, not 2005 as the documentation says; a daily price row with no trade has all four prices 0, so filter with `close > 0`; and the free tier refuses adjusted prices (`TaiwanStockPriceAdj`) though the documentation says it allows them.
+
+## Japan Exchange Group (JPX)
+
+```go
+client, err := datafetch.JPX(datafetch.TWStockConfig{Interval: 3 * time.Second, Retries: 2})
+weeks, err := client.InvestorTypes(
+    time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC),
+    datafetch.JPXUnitValue)
+```
+
+The JPX publishes every week how much each type of investor sold and bought on the Tokyo and Nagoya markets: individuals (cash and margin separately), foreigners, investment trusts, business companies, financial institutions, proprietary trading and more (投資部門別売買状況). It is the one public weekly series in a major market that gives individuals' actual purchases and sales. `JPX` takes the same settings as `TWStock` (`Timeout`, `Interval`, `UserAgent`, `Retries`, `RetryBackoff`); one file per week is a request, so for a year or more set an `Interval` of about 3 seconds, which was enough to fetch every week since 2016. A `JPXClient` that did not come from `JPX`, such as a zero value, returns an error from every method.
+
+```go
+InvestorTypes(from, to time.Time, unit JPXUnit) (*insyra.DataTable, error)
+```
+
+with an `InvestorTypesContext` form. It returns the weeks that overlap `[from, to]` from 2016, as one row per week, market and investor group:
+
+| Column | Meaning |
+| :--- | :--- |
+| `WeekStart`, `WeekEnd` (`time.Time`) | the first and last trading day of the week, so a holiday week is one to three days and a week can cross the year end |
+| `Market` (`string`) | `"TSE Prime"`, `"TSE Standard"`, `"TSE Growth"`, `"Tokyo & Nagoya"`; for weeks before April 2022 `"TSE 1st"`, `"TSE 2nd"`, `"TSE Mothers"`, `"TSE JASDAQ"` and `"Tokyo & Nagoya"` |
+| `Investor` (`string`) | one of fourteen groups that do not overlap and add up to the market: `Proprietary Cash`, `Proprietary Margin`, `Individuals Cash`, `Individuals Margin`, `Foreigners Institutions`, `Foreigners Individuals`, `Securities Cos.`, `Investment Trusts`, `Business Cos.`, `Other Cos.`, `Life & Non-Life`, `City & Regional BK`, `Trust BK`, `Other Financials` |
+| `Sales`, `Purchases`, `Balance`, `Total` (`int64`) | sales, purchases, purchases less sales, and sales plus purchases, in **thousands of yen** for `JPXUnitValue` or **thousands of shares** for `JPXUnitShares` |
+
+Individuals as a whole are the two Individuals rows summed, and likewise for foreigners and proprietary trading.
+
+**Publication lag.** A week's figures come out on the fourth business day of the following week at 15:00 JST, so a backtest must lag them by at least that; `WeekEnd` is not the date the data was known.
+
+**Two file formats.** Weeks since September 2026 are one workbook per week (`.xlsx`). Earlier weeks are `.xls` files, one for value and one for shares, that hold the previous week beside the report week; only the report week of each is used, and the cash and margin rows are cross-checked against the blocks they split (a mismatch logs a warning). The yearly archive pages are searched for the years in the range and the year after it. The file names carry random IDs, so they are found on the pages, not built. The `.xls` files are read by a small reader inside the package, since the available libraries dropped cells of these files. A week the JPX has not published, or a range with no files, gives no rows.

@@ -287,7 +287,7 @@ func quantileType7(sorted []float64, p float64) float64 {
 // value it cannot parse; a resampled zero would silently flatten the
 // forecast. label prefixes the error so the caller can find the cell.
 func numericSeries(dl insyra.IDataList, label string) ([]float64, error) {
-	if dl == nil {
+	if insyra.IsNilList(dl) {
 		return nil, fmt.Errorf("%s is nil", label)
 	}
 	var raw []any

@@ -24,6 +24,15 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
+- **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
+- **Text tone**: `ToneCounts`, `DailyTone` — count positive and negative words from a lexicon (with negation, for English or Chinese) and add them up by trading day without looking ahead
+- **Event studies and signal buckets**: `EventStudy`, `SignalBuckets`, `Bias`, `BiasZ` — forward excess returns after events or by signal bucket, with a monthly Newey-West t-test, and the bias indicators that feed them
+- **Turning points and regimes**: `ZigZag`, `Regimes` — causal turning points of a price series and the bull and bear stretches between them
+- **Signal backtest**: `BacktestSignal` — a 0–1 position signal into a net return series with a one-row delay, cash returns and separate buy and sell costs
+- **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
+- **Oscillators**: `RSI` — relative strength index with Wilder or simple averaging and a choice for missing prices
+- **Sharpe comparison**: `SharpeDifferenceTest` — Jobson-Korkie test with Memmel's correction for whether two return series have the same Sharpe ratio
+- **Market breadth**: `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio` — market-wide indicators from the daily counts of advancing and declining stocks
 - **Portfolio optimization**: `OptimizePortfolio`, `OptimizePortfolioMoments`, `EfficientFrontier` — mean-variance weights under a sum-to-one and per-asset box constraint, for minimum variance, a target return, or maximum Sharpe, plus the frontier between them
 
 Unlike the [`finance`](./finance.md) package (which uses high-precision `decimal.Decimal` for TVM, NPV/IRR, and bond pricing), `quant` works with ordinary floating-point numbers — the industry convention for return/equity analytics, where statistical noise dwarfs floating-point error.
@@ -496,6 +505,270 @@ For every time step, the requested percentiles across all paths — the vertical
 The quantile is R's **type-7** (linear interpolation between order statistics), the same definition as `DataList.Percentile`, `Quartile`, and `Describe`, so the bands agree with the rest of the library.
 
 **Returns:** `(bands, err)` — `err` is non-nil if `paths` is empty or ragged, or `percentiles` is empty or contains a value outside `[0, 100]`.
+
+---
+
+## Volume Indicators
+
+All four take series of the same length and return a `*insyra.DataList` of the same length. They refuse a `NaN`, an infinity, a non-number, a nil series and a length mismatch, as the rest of the package does, and a negative volume.
+
+### OBV and OBVFromReturns
+
+```go
+func OBV(close, volume insyra.IDataList) (*insyra.DataList, error)
+func OBVFromReturns(returns, volume insyra.IDataList) (*insyra.DataList, error)
+```
+
+Granville's on-balance volume: `OBV[t] = OBV[t-1] + sign(change[t]) * volume[t]`, where a flat day adds nothing. `OBV` takes the change from the close; `OBVFromReturns` takes the direction from a return series, so you can pass dividend-adjusted returns with raw share volume (on an ex-dividend day the raw close falls without a real down move). The first value is `0`; the level of OBV is arbitrary and only its differences carry information.
+
+### SignedVolumeRatio
+
+```go
+func SignedVolumeRatio(returns, volume insyra.IDataList, n int) (*insyra.DataList, error)
+```
+
+For each day, `sum(sign(return) * volume) / sum(volume)` over the last `n` days. The value lies in [-1, 1] and has no unit, so it compares across stocks where the OBV slope does not. The first `n-1` values and any window with no volume are `NaN`.
+
+### Divergence
+
+```go
+func Divergence(price, indicator insyra.IDataList, n, cooldown int) (*insyra.DataList, error)
+```
+
+Flags days when a price makes a new `n`-day extreme that an indicator does not confirm: `-1` (bearish) when price is above its highest value of the previous `n` days while the indicator is below its highest, `+1` (bullish) for the mirror image on lows, `0` otherwise. The first `n` rows are `0`. After a flag, the same kind is not flagged again for `cooldown` days, so one episode is one event; `cooldown` 0 flags every qualifying day.
+
+```go
+obv, err := quant.OBV(close, volume)
+flags, err := quant.Divergence(close, obv, 20, 10)
+```
+
+---
+
+## Text Tone
+
+News and filing tone is a standard input (Tetlock 2007; Loughran and McDonald 2011). Two functions do the counting and the look-ahead-safe alignment to trading days; you supply the word lists.
+
+### ToneCounts
+
+```go
+func ToneCounts(texts insyra.IDataList, lex Lexicon, opts ...ToneOptions) (*insyra.DataTable, error)
+
+type Lexicon struct{ Positive, Negative, Negation []string }
+```
+
+Counts positive and negative words in each text and returns a table with `Positive`, `Negative` and `Words` (`int64`), one row per text; a nil or empty text counts zero. `Lexicon` is not shipped: the Loughran-McDonald finance lists are available from their authors under their own terms, and a Chinese list has to come from you. A term in more than one list is an error.
+
+`ToneOptions`:
+
+- `Mode`: `ToneWords` (default) splits text into words at spaces and punctuation and matches whole words. `ToneSubstring` matches terms as substrings, **longest first**, for text with no spaces such as Chinese. Each matched term is consumed, so with both 大漲 and 漲 in the lexicon, 大漲 is counted once and 漲 is not counted again inside it. `Words` is then the number of letters, digits and characters, spaces and punctuation left out.
+- `NegationWindow`: a positive word is **not counted** when a word of `lex.Negation` comes within this many words before it (characters, with `ToneSubstring`, counted between the end of the negation and the start of the positive word). 0 turns it off. Only positive words are cancelled; a negated negative word still counts as negative.
+- `CaseSensitive`: match the lexicon exactly; otherwise case is ignored.
+
+### DailyTone
+
+```go
+func DailyTone(published insyra.IDataList, counts *insyra.DataTable, tradingDays insyra.IDataList, opts DailyToneOptions) (*insyra.DataTable, error)
+```
+
+Adds the counts up by trading day. `published` holds each article's time (`time.Time`), `counts` is the table from `ToneCounts` (one row per article, in the same order) and `tradingDays` the trading dates in ascending order. An article is assigned to the first trading day on or after its date, and to the **next** trading day when it was published at or after the close (`CloseHour`, `CloseMinute`, read in `Location`) or on a day with no trading, so weekend and after-close news is seen in the next session and never in one already over. Articles after the last trading day are dropped. With the default close of 0:00, every article published on a trading day counts for that day.
+
+The result has one row per trading day: `Date`, `Positive`, `Negative`, `Words` for that day, `NetTone`, the rolling `(positive - negative) / words` over the last `Window` trading days including the day, and `Z`, the z-score of `NetTone` against the `ZWindow` days **before** the day, never including it (`ZWindow` 0 leaves it `NaN`). A window with no words is `NaN`.
+
+```go
+counts, err := quant.ToneCounts(headlines, lex, quant.ToneOptions{NegationWindow: 3})
+daily, err := quant.DailyTone(publishedAt, counts, tradingDays,
+    quant.DailyToneOptions{CloseHour: 16, Location: newYork, Window: 5, ZWindow: 60})
+```
+
+---
+
+## Event Studies and Signal Buckets
+
+Both tools answer "what happened to the price after the signal". They share one setup: `prices` has one column per stock and one row per date, in date order, and `dates` gives each row's date as a `time.Time` or a `"YYYY-MM-DD"` string. A stock whose signal fires on row `s` is bought at the close of row `s + Delay` (`Delay` is at least 1, default 1, so a signal is never traded at the close that produced it) and held for each horizon. Its return is measured against a benchmark over the same window:
+
+- `BenchmarkCrossSection` (default): the equal-weighted mean return of every stock with a price at both ends of the window, and tradable when a mask is given.
+- `BenchmarkLevels`: the change of an index over the window, from `BenchmarkLevels`.
+- `BenchmarkOwnMean`: the mean of that series' own returns over the same horizon, for a single series such as a market index.
+
+Observations are averaged within calendar months of the signal date, and the Newey-West test (`stats.NeweyWestMeanTest`) is run on the monthly means, so many events on one day are not treated as independent samples. `NeweyWestLag` 0 chooses `stats.NeweyWestLag(months)`, a positive value is used as it is, and a negative one means the plain t-test. An observation whose window has a missing price, runs past the last row or is not tradable at the entry is counted in `Missing` and left out. To study a sub-period, pass the matching slices of every table and of `dates`.
+
+Each horizon gives a `ForwardSummary`: `Observations`, `Missing`, `MeanExcess`, `WinRate`, `Months`, `MonthlyMean`, `TStat`, `PValue` and `Lag`. The t statistic is `NaN` with fewer than two months.
+
+### EventStudy
+
+```go
+func EventStudy(prices, events insyra.IDataTable, dates insyra.IDataList, opts EventStudyOptions) ([]ForwardSummary, error)
+```
+
+`events` has the shape of `prices` with `true` where an event happened at that row's close. `EventStudyOptions` embeds `ForwardOptions` (`Horizons`, `Delay`, `Benchmark`, `BenchmarkLevels`, `Tradable`, `NeweyWestLag`) and adds `MinGap`, the fewest rows between two counted events of the same stock. It returns one summary per horizon.
+
+### SignalBuckets
+
+```go
+func SignalBuckets(signal, prices insyra.IDataTable, dates insyra.IDataList, opts BucketOptions) ([]BucketSummary, error)
+```
+
+Every non-missing cell of `signal` is an observation, sorted into a bucket by `Edges` (n ascending edges make n+1 buckets; the bucket above an edge includes it) or, when `Edges` is empty, by `Quantiles` of all signal values pooled over all dates and stocks. Each `BucketSummary` has `Index`, `Lower`, `Upper` and one `ForwardSummary` per horizon. With one column and `BenchmarkOwnMean` this is the single-series version.
+
+### Bias and BiasZ
+
+```go
+func Bias(prices insyra.IDataList, n int) (*insyra.DataList, error)
+func BiasZ(prices insyra.IDataList, n, window int) (*insyra.DataList, error)
+```
+
+`Bias` is `price / SMA(n) - 1`, `NaN` for the first `n - 1` rows. `BiasZ` divides the bias by the standard deviation of the previous `window` biases, never including the current day's own, so nothing is seen ahead of time; it is `NaN` until enough earlier biases exist.
+
+```go
+bias, _ := quant.Bias(close, 20)
+buckets, err := quant.SignalBuckets(biasTable, closes, dates, quant.BucketOptions{
+    ForwardOptions: quant.ForwardOptions{Horizons: []int{1, 5, 20, 60}},
+    Edges:          []float64{-0.2, -0.1, 0, 0.1, 0.2},
+})
+```
+
+---
+
+## Turning Points and Regimes
+
+### ZigZag
+
+```go
+func ZigZag(prices insyra.IDataList, threshold float64) ([]Pivot, error)
+
+type Pivot struct {
+    Kind        PivotKind // PivotLow or PivotHigh
+    Index       int       // row of the extreme
+    Price       float64
+    ConfirmedAt int       // first row on which the price was `threshold` away from the extreme
+}
+```
+
+Finds the turning points of a positive price series that reverse by at least `threshold`, a fraction such as `0.10` for 10%. Trade on `ConfirmedAt`, the earliest the pivot could be known, and describe the series with `Index`.
+
+It is causal: a pivot is reported at the row that confirms it and uses no later price, so recomputing on a series cut short returns exactly the pivots of the full series whose `ConfirmedAt` lies before the cut (the tests check this on random series). Pivots alternate between lows and highs, and the extreme still being tracked at the end is not reported. For `100, 111, 120, 105, 95, 100, 115, 130, 116` with a threshold of 0.10 the pivots are low at 0 confirmed at 1, high at 2 confirmed at 3, low at 4 confirmed at 6, high at 7 confirmed at 8.
+
+### Regimes
+
+```go
+func Regimes(pivots []Pivot, opts ...RegimeOptions) ([]Regime, error)
+```
+
+Turns the pivots into bull stretches (low to the next high) and bear stretches (high to the next low). Each `Regime` has `Kind` (`RegimeBull` or `RegimeBear`), `Start` and `End` rows, `Length`, `Change` (the price change as a fraction) and `ConfirmedAt`. The stretch before the first pivot and after the last is not reported.
+
+`RegimeOptions.MinPhase` removes a stretch shorter than that many rows together with the two turning points around it, so its neighbours join; `MinCycle` removes a turning point that makes a low-to-low or high-to-high cycle shorter than that, with the one before it. They follow the minimum phase and cycle lengths of Pagan and Sossounov (2003). Using them looks at the whole list, so it is not causal.
+
+---
+
+## Signal Backtest
+
+### BacktestSignal
+
+```go
+func BacktestSignal(signal, assetReturns insyra.IDataList, opts ...BacktestOptions) (*BacktestResult, error)
+```
+
+`signal[t]` is the position from 0 to 1 decided from the close of row `t`. It takes effect one row later, so the position during row `t` is `signal[t-1]` and the asset return of row `t` is never earned by a signal that saw it. Row 0 is held at `InitialPosition` (default 0).
+
+The return of a row is `position * assetReturn + (1 - position) * cashReturn` less `BuyCost` times the position added and `SellCost` times the position removed at the start of that row. The portfolio is taken to be rebalanced to the target every row, so drift is ignored.
+
+`BacktestOptions` holds `CashReturns` (a list; nil means 0), `BuyCost`, `SellCost` (fractions of the portfolio traded, from 0 up to 1) and `InitialPosition`. The result has `NetReturns`, `Positions` (the share in the asset during each row), `Turnover` (how much was traded at the start of each row) and `Trades` (rows on which the position changed). Feed `NetReturns` to `SharpeRatio` or `MaxDrawdown`.
+
+```go
+pivots, err := quant.ZigZag(close, 0.10)
+res, err := quant.BacktestSignal(signal, returns, quant.BacktestOptions{BuyCost: 0.0015, SellCost: 0.0045})
+```
+
+---
+
+## Cross-Sectional Sorting
+
+### QuantileSort
+
+```go
+func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols []string, n int, opts ...QuantileSortOptions) (*QuantileSortResult, error)
+```
+
+Every day, sorts the stocks into `n` groups by a signal and reports each group's mean return and the spread between the top and the bottom group, the standard check of whether a signal ranks future returns. The table is in long form, one row per stock and date. Each day is sorted on its own, and 9.6 million stock-days take about 3 seconds.
+
+`dateCol`, `signalCol`, `returnCols` and `WeightCol` are column names, or Excel-style letters when no column has that name. Dates are grouped by value and appear in the order they first appear in the table. A stock with a missing (`nil` or `NaN`) signal is left out of its day, and a missing return is left out of that column's means. Text, an infinity, a missing date or a non-positive weight is an error.
+
+**Options (`QuantileSortOptions`)**
+
+- `MinStocks`: the fewest stocks with a signal a day needs; fewer skips the day. At least `n` are always needed.
+- `Ties`: `QuantileTiesRank` (default) gives equal signals their average rank and puts the stock in group `ceil(rank * n / m)`, so equal signals share a group. `QuantileTiesQcut` cuts at the day's quantiles with linear interpolation like `pandas.qcut`, with the first group including the minimum; a day whose edges coincide is skipped, where pandas would raise.
+- `WeightCol`: a column of positive weights; group means are weighted. Empty means equal weights.
+- `Demean`: subtract the day's mean return over the sorted stocks, so the group means are excess returns.
+
+**Result (`QuantileSortResult`)**
+
+- `Groups`: one row per date and group, with columns `date`, `group` (1 is the lowest signal), `count`, then the mean of each return column under its own name. A return with no value in a group is `NaN`.
+- `Spread`: one row per date, with `date` and `spread_<column>`, the highest group's mean minus the lowest group's.
+- `Skipped`: the dates left out and why.
+
+```go
+res, err := quant.QuantileSort(panel, "date", "signal", []string{"ret_5d"}, 5)
+spread := res.Spread.GetColByName("spread_ret_5d")
+sharpe, err := quant.SharpeRatio(spread, 0, 252)
+```
+
+---
+
+## Oscillators
+
+### RSI
+
+```go
+func RSI(prices insyra.IDataList, n int, opts ...RSIOptions) (*insyra.DataList, error)
+
+type RSIOptions struct {
+    Method  RSIMethod  // RSIWilder (default) or RSISimple
+    Missing RSIMissing // RSIMissingError (default), RSIMissingFlat or RSIMissingBreak
+}
+```
+
+Relative strength index of a price series over `n` days, `100 * avgGain / (avgGain + avgLoss)`, in [0, 100]. The averages come from the day-to-day price changes:
+
+- `RSIWilder`: an exponential average of weight `1/n`, Wilder's original definition (1978) and the default of most software. It starts from the plain mean of the first `n` changes.
+- `RSISimple`: the plain mean of the last `n` changes, Cutler's version.
+
+The first `n` values, which lack `n` changes, are `NaN`. A stretch with no gain and no loss has no defined RSI and is `NaN`; gains only is 100 and losses only is 0. Wilder's RSI(14) on the closes of the StockCharts worked example is 70.53, 66.32, 66.55, 69.41, … and the tests pin those values.
+
+A missing price (nil or `NaN`) is an error unless `Missing` says otherwise: `RSIMissingFlat` carries the last price over, so the missing day counts as a change of 0 (its own value is `NaN`), and `RSIMissingBreak` ends the series there and starts a new one after it, which needs `n` changes of its own. Infinities and non-numbers are always errors.
+
+---
+
+## Sharpe Ratio Comparison
+
+### SharpeDifferenceTest
+
+```go
+func SharpeDifferenceTest(a, b insyra.IDataList, riskFree float64) (*SharpeDifferenceResult, error)
+```
+
+Tests whether two return series over the same periods have the same Sharpe ratio, with the Jobson-Korkie (1981) statistic as corrected by Memmel (2003). `riskFree` is the per-period risk-free rate subtracted from both. The result holds the per-period (not annualized) `SharpeA` and `SharpeB`, `Difference`, `Z`, and the p-values `PValue` (two-tailed), `PValueGreater` (H1: A is higher) and `PValueLess`, all from the standard normal distribution.
+
+It is a closed formula, cheap enough for thousands of series. It assumes roughly normal, uncorrelated returns; with fat tails or serial correlation it rejects too often, and a HAC or bootstrap test (Ledoit and Wolf 2008) is more reliable, which this package does not have yet. A series with no variance, such as a strategy that never entered, returns `ErrSharpeUndefined`. At least 3 observations of the same length are needed. When several series are tested, correct the p-values with `stats.AdjustPValues`.
+
+---
+
+## Market Breadth
+
+```go
+func AdvanceDeclineRatio(adv, dec insyra.IDataList, window int) (*insyra.DataList, error)
+func AdvanceDeclineLine(adv, dec insyra.IDataList, start float64) (*insyra.DataList, error)
+func OverboughtOversold(adv, dec insyra.IDataList, window int) (*insyra.DataList, error)
+func NetAdvanceRatio(adv, dec insyra.IDataList, window int) (*insyra.DataList, error)
+```
+
+`adv` and `dec` are the daily numbers of advancing and declining stocks. Each function returns a list as long as its input.
+
+- `AdvanceDeclineRatio` (ADR): advancing total divided by declining total over the last `window` days. `NaN` when the declining total is 0.
+- `AdvanceDeclineLine` (ADL): `start` plus the running sum of `adv - dec`.
+- `OverboughtOversold` (OBOS): the sum of `adv - dec` over the last `window` days, which is the `window`-period change of the ADL. It grows with the number of listed stocks, so its absolute value does not compare across decades.
+- `NetAdvanceRatio`: `(sum adv - sum dec) / (sum adv + sum dec)` over the window, in [-1, 1] whatever the number of listed stocks. `NaN` when both totals are 0.
+
+**Missing days.** A `nil` or `NaN` in either list marks a day with no data. That day outputs `NaN` and is skipped, not counted as 0: the window is the last `window` valid days, so a missing day does not shorten it, and the ADL carries on from its last level. Any other non-number, an infinity or a negative count is an error, as is a length mismatch, a nil list, or a `window` below 1.
 
 ---
 
