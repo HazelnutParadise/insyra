@@ -16,7 +16,7 @@ func zipText(t *testing.T, path string) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	out := map[string]string{}
 	for _, f := range zr.File {
 		rc, err := f.Open()
@@ -24,7 +24,7 @@ func zipText(t *testing.T, path string) map[string]string {
 			t.Fatal(err)
 		}
 		b, _ := io.ReadAll(rc)
-		rc.Close()
+		_ = rc.Close()
 		out[f.Name] = string(b)
 	}
 	return out
@@ -63,7 +63,7 @@ func TestReplaceRemovesCommentsAndTablesOfTheOldSheet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer g.Close()
+	defer func() { _ = g.Close() }()
 	if err := Replace(g, "Data", 0); err != nil {
 		t.Fatal(err)
 	}

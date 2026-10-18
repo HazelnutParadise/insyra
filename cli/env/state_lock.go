@@ -125,10 +125,7 @@ func mergeStored(mine map[string]json.RawMessage, unsaved map[string]bool, base 
 	}
 	for key, raw := range mine {
 		if prev, had := base[key]; had && prev == string(raw) {
-			if _, inFile := file[key]; !inFile {
-				continue // unchanged here, removed by another process
-			}
-			continue // the file's version stands
+			continue // unchanged here: the file's version stands, or another process removed it
 		}
 		out[key] = raw
 	}
