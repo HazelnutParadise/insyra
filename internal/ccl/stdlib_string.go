@@ -4,13 +4,15 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
 )
 
 // toString converts a value to a string for use in CCL string functions.
-// nil becomes the empty string. Other scalars use fmt.Sprint to mirror CONCAT.
+// nil becomes the empty string. Other scalars use fmt.Sprint to mirror CONCAT,
+// except that a float is written as plain decimal digits (see floatText).
 func toString(val any) string {
 	if val == nil {
 		return ""
@@ -18,7 +20,30 @@ func toString(val any) string {
 	if s, ok := val.(string); ok {
 		return s
 	}
+	return textOf(val)
+}
+
+// textOf is fmt.Sprint with one difference: a finite float below 1e21 in
+// magnitude is written as the shortest decimal that reads back as the same
+// number, never in exponent form. fmt writes 1e-07 and 1e+06, which is fine in
+// a CSV or JSON number cell but unreadable inside a string built by CCL
+// ('id-' & A gave id-1e-07), and which made LEN(1000000) 5 while the same
+// value from an integer column gave 7.
+func textOf(val any) string {
+	switch v := val.(type) {
+	case float64:
+		return floatText(v, 64)
+	case float32:
+		return floatText(float64(v), 32)
+	}
 	return fmt.Sprint(val)
+}
+
+func floatText(f float64, bits int) string {
+	if math.IsNaN(f) || math.IsInf(f, 0) || math.Abs(f) >= 1e21 {
+		return fmt.Sprint(f)
+	}
+	return strconv.FormatFloat(f, 'f', -1, bits)
 }
 
 // runeAt returns a substring [start, start+length) measured in runes.
