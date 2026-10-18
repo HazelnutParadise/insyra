@@ -64,7 +64,7 @@ func ProcessData(input any) ([]any, int) {
 		}
 	case reflect.Interface:
 		// 支持 IDataList 的断言
-		if dl, ok := input.(IDataList); ok {
+		if dl, ok := input.(IDataList); ok && !IsNilList(dl) {
 			data = dl.Data()
 		} else {
 			LogWarning("core", "ProcessData", "Unsupported data type %T, returning nil.", input)
@@ -78,7 +78,7 @@ func ProcessData(input any) ([]any, int) {
 		}
 	default:
 		// 尝试类型断言为 IDataList
-		if dl, ok := input.(IDataList); ok {
+		if dl, ok := input.(IDataList); ok && !IsNilList(dl) {
 			data = dl.Data()
 		} else {
 			LogWarning("core", "ProcessData", "Unsupported data type %T, returning nil.", input)

@@ -303,6 +303,9 @@ func numericMatrixFromTable(dataTable insyra.IDataTable) ([][]float64, []string,
 }
 
 func intLabelsFromDataList(labels insyra.IDataList, expected int) ([]int, error) {
+	if insyra.IsNilList(labels) {
+		return nil, errors.New("labels data list is nil")
+	}
 	out := make([]int, 0, expected)
 	var size int
 	labels.AtomicDo(func(dl *insyra.DataList) {

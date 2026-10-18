@@ -54,7 +54,7 @@ func numericValues(raw []any, label string) ([]float64, error) {
 // numericValues. It returns the length separately so a caller checking that
 // several series agree in length still gets that length when conversion fails.
 func numericSlice(dl insyra.IDataList, label string) ([]float64, int, error) {
-	if dl == nil {
+	if insyra.IsNilList(dl) {
 		return nil, 0, fmt.Errorf("%s data list is nil", label)
 	}
 	var raw []any

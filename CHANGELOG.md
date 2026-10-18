@@ -170,6 +170,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `gplot`
 
 - `CreateBarChart` and `CreateHistogram` given a nil list wrapper such as `isr.DL` log a warning and return nil instead of panicking ([#412](https://github.com/HazelnutParadise/insyra/issues/412)).
+- `LinearRegression`, `PoissonRegression`, `LogisticRegression`, `Correlation`, `Covariance`, `ChiSquareGoodnessOfFit`, `ChiSquareIndependenceTest`, `Silhouette`, `KNNClassify`, `KNNRegress`, `Skewness` and `Kurtosis` return an error when given a nil list, bare or inside a wrapper such as `isr.DL`. They panicked, and the regressions did so in a goroutine they started themselves, which ended the process. `insyra.ProcessData` treats a nil list as unsupported input.
 
 ## v0.3.4
 

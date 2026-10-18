@@ -77,7 +77,7 @@ func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.ID
 		}
 	}
 
-	if dlY == nil {
+	if insyra.IsNilList(dlY) {
 		return nil, errors.New("y data list is nil")
 	}
 	xs, n, err := gatherPredictorInputs(dlXs)
