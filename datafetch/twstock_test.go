@@ -120,6 +120,7 @@ func newFixtureTWStock(t *testing.T, cfg TWStockConfig) (*TWStockClient, *fixtur
 	stock.tpexBaseURL = "https://tpex.test"
 	stock.twseOpenAPIBaseURL = "https://twse-openapi.test"
 	stock.tpexOpenAPIBaseURL = "https://tpex-openapi.test"
+	stock.tdccBaseURL = "https://tdcc.test"
 	return stock, transport
 }
 
@@ -741,4 +742,72 @@ func TestTWStockOddLotQuotesNoDataAndBadSession(t *testing.T) {
 	if _, err := zero.OddLotQuotes(dateUTC(2026, time.January, 2), TWOddLotIntraday); err == nil {
 		t.Error("a zero client should be an error")
 	}
+}
+
+func TestTWStockShareholdingDistribution(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, "/getOD.ashx?id=1-5", "tdcc_shareholding_20261016.csv")
+	dt, err := stock.ShareholdingDistribution()
+	if err != nil {
+		t.Fatalf("ShareholdingDistribution error: %v", err)
+	}
+	// Fixture: securities 000218 and 0050, 17 levels each.
+	if dt.NumRows() != 34 {
+		t.Fatalf("rows = %d, want 34", dt.NumRows())
+	}
+	row := func(code string, level int64) int {
+		codes, levels := dt.GetColByName("Code").Data(), dt.GetColByName("Level").Data()
+		for i := range codes {
+			if codes[i] == code && levels[i] == level {
+				return i
+			}
+		}
+		t.Fatalf("no row for %s level %d", code, level)
+		return -1
+	}
+	i := row("000218", 15)
+	if got := dt.GetColByName("Date").Data()[i].(time.Time); !got.Equal(dateUTC(2026, time.October, 16)) {
+		t.Errorf("Date = %v", got)
+	}
+	for name, want := range map[string]any{"Holders": int64(1), "Shares": int64(422278902), "Percent": 100.0, "LevelLabel": "1,000,001 and above"} {
+		if got := dt.GetColByName(name).Data()[i]; got != want {
+			t.Errorf("%s = %v (%T), want %v", name, got, got, want)
+		}
+	}
+	if label := dt.GetColByName("LevelLabel").Data()[row("0050", 17)]; label != "total" {
+		t.Errorf("level 17 label = %v", label)
+	}
+	if label := dt.GetColByName("LevelLabel").Data()[row("0050", 16)]; label != "difference adjustment" {
+		t.Errorf("level 16 label = %v", label)
+	}
+}
+
+func TestTWStockShareholdingDistributionRefusesBadFiles(t *testing.T) {
+	for name, body := range map[string]string{
+		"header":    "\xef\xbb\xbf日期,代號\r\n20261016,1\r\n",
+		"short row": "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\r\n20261016,0050,1,2\r\n",
+		"bad date":  "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\r\n2026-10-16,0050,1,2,3,0.1\r\n",
+		"bad level": "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\r\n20261016,0050,x,2,3,0.1\r\n",
+		"empty":     "",
+	} {
+		stock, transport := newFixtureTransportTWStock(t)
+		transport.replies["/getOD.ashx?id=1-5"] = []fixtureReply{{status: http.StatusOK, body: []byte(body)}}
+		if _, err := stock.ShareholdingDistribution(); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+	stock, transport := newFixtureTransportTWStock(t)
+	transport.addStatus("/getOD.ashx?id=1-5", http.StatusInternalServerError)
+	if _, err := stock.ShareholdingDistribution(); err == nil {
+		t.Error("a server error should be an error")
+	}
+	var zero TWStockClient
+	if _, err := zero.ShareholdingDistribution(); err == nil {
+		t.Error("a zero client should be an error")
+	}
+}
+
+func newFixtureTransportTWStock(t *testing.T) (*TWStockClient, *fixtureTransport) {
+	t.Helper()
+	return newFixtureTWStock(t, TWStockConfig{})
 }

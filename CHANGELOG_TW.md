@@ -94,6 +94,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `YFPeriodYearly` 改為 Deprecated，請改用抓取相同財報的 `YFPeriodAnnual`，它產生的表格仍標示 `yearly`。評論排序常數改為 `GoogleMapsStoreReviewSortByRelevance`、`GoogleMapsStoreReviewSortByNewest`、`GoogleMapsStoreReviewSortByHighestRating`、`GoogleMapsStoreReviewSortByLowestRating`，`SortByRelevance` 等四個舊名改為數值相同的 Deprecated 常數。`GoogleMapsStoreReviewsFetchingOptions.MaxWaitingInterval` 以 `time.Duration` 設定翻頁之間最長的等待，規則與原本的毫秒欄位相同，`MaxWaitingInterval_Milliseconds` 改為 Deprecated，兩個都設定時 `GetReviews` 會在發出請求前回傳 `nil` 並記錄警告。這些 Deprecated 名稱在 0.3.x 線上照常可用。
 - `TWStock` 的方法遇到 HTTP 307 或 429 時，會明說是被來源節流：錯誤訊息指出來源認為請求太頻繁，請調大 `Interval` 與 `Retries`，`errors.Is(err, datafetch.ErrTWStockThrottled)` 也會成立（[#434](https://github.com/HazelnutParadise/insyra/issues/434)）。證交所會隨機以安全性頁面回 307，所以 `Docs/datafetch.md` 補上回填歷史時的起始設定值。預設值不變。
 - 新增 `TWStockClient.OddLotQuotes(date, session)`，讀取證交所每日零股行情單，盤中（`TWOddLotIntraday`，2020-10-26 起）或盤後（`TWOddLotAfterHours`），回傳數值已轉型的資料表；顯示為 `--` 的價格是 `nil`，沒有報表的日子回傳空表。尚未支援櫃買中心的零股報表（[#451](https://github.com/HazelnutParadise/insyra/issues/451)）。
+- 新增 `TWStockClient.ShareholdingDistribution()`，讀取集保結算所每週的股權分散表（每檔證券在 17 個持股分級的人數與股數），回傳數值已轉型的資料表。只提供最新一週，需要時間序列請每週自行存檔（[#436](https://github.com/HazelnutParadise/insyra/issues/436)）。
 
 ### `stats`
 

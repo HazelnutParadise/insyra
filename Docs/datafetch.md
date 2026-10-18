@@ -688,6 +688,7 @@ InstitutionalTrades(date time.Time, market TWMarket) (*insyra.DataTable, error)
 MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)
 AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)
 OddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error)
+ShareholdingDistribution() (*insyra.DataTable, error)
 ```
 
 Each method has a `...Context` form taking a `context.Context` first, such as `DailyPricesContext(ctx, code, from, to, market)`; the plain method calls it with `context.Background()`. When the context is done, the `Interval` throttle, the request in flight and any retry backoff stop at once, and the call returns `ctx.Err()` without sending another request, so a long backfill can be stopped between two monthly requests. A `nil` context is an error.
@@ -711,6 +712,22 @@ Each method has a `...Context` form taking a `context.Context` first, such as `D
 `OddLotQuotes(date, session)` returns the TWSE's odd-lot report (trades of fewer than 1,000 shares) for one day, one row per security, from `TWTC7U` (intraday, `TWOddLotIntraday`, available since 2020-10-26) or `TWT53U` (after hours, `TWOddLotAfterHours`, since 2005). Prices are as traded and not adjusted for ex-rights, and a price the exchange shows as `--` is `nil`. The exchange's 合計 totals row is left out. A holiday, or a date before the report existed, gives an empty table with the columns in place, not an error.
 
 Only the TWSE publishes these reports by date. The TPEx's OpenAPI (`tpex_odd_stock`) gives just the latest day, so the method does not read it. The TWSE answers repeated requests with the throttling page described above, so for a backfill set `Interval` and `Retries` as suggested there.
+
+### Shareholding distribution
+
+`ShareholdingDistribution()` returns the Taiwan Depository & Clearing Corporation's weekly shareholding distribution, from `opendata.tdcc.com.tw`: for every security, how many holders hold how many shares at each holding level. It is the usual way to watch big holders against small ones, and it exists only for Taiwan.
+
+| Column | Meaning |
+| :--- | :--- |
+| `Date` (`time.Time`) | the data date of the week |
+| `Code` (`string`) | security code |
+| `Level` (`int64`), `LevelLabel` (`string`) | the holding level, 1 to 17 |
+| `Holders`, `Shares` (`int64`) | holders and shares at that level |
+| `Percent` (`float64`) | the share of the securities held in custody |
+
+Levels 1 to 15 are ranges of shares held: 1-999, 1,000-5,000, 5,001-10,000, 10,001-15,000, 15,001-20,000, 20,001-30,000, 30,001-40,000, 40,001-50,000, 50,001-100,000, 100,001-200,000, 200,001-400,000, 400,001-600,000, 600,001-800,000, 800,001-1,000,000 and 1,000,001 and above. Level 16 is the difference adjustment the TDCC publishes, and level 17 the total. About 69,000 rows come back in one request, about 2.4 MB.
+
+**Only the latest week is available.** The TDCC publishes no history through this source, so save each week's table if you want a series; the earlier weeks need the TDCC website's per-security query or a paid source.
 
 ### Adjusted prices and corporate actions
 

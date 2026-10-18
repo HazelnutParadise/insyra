@@ -111,6 +111,7 @@ type TWStockClient struct {
 	tpexBaseURL        string
 	twseOpenAPIBaseURL string
 	tpexOpenAPIBaseURL string
+	tdccBaseURL        string
 }
 
 // TWStock creates a client for the unauthenticated TWSE and TPEx data APIs.
@@ -127,10 +128,26 @@ func TWStock(cfg TWStockConfig) (*TWStockClient, error) {
 		tpexBaseURL:        "https://www.tpex.org.tw",
 		twseOpenAPIBaseURL: "https://openapi.twse.com.tw",
 		tpexOpenAPIBaseURL: "https://www.tpex.org.tw",
+		tdccBaseURL:        "https://opendata.tdcc.com.tw",
 	}, nil
 }
 
 func (t *TWStockClient) doJSON(ctx context.Context, rawURL string, output any) error {
+	return t.doGet(ctx, rawURL, func(resp *http.Response) error {
+		if err := readJSONResponse(resp, output); err != nil {
+			return err
+		}
+		if response, ok := output.(*twStockResponse); ok {
+			return responseStatus(response.Stat)
+		}
+		return nil
+	})
+}
+
+// doGet sends a GET request under the client's limiter, retries and backoff and
+// passes the response to read, which must close its body. A reply that read
+// reports as errTWStockNoData is final and is not retried.
+func (t *TWStockClient) doGet(ctx context.Context, rawURL string, read func(*http.Response) error) error {
 	var lastErr error
 	for attempt := 0; attempt <= t.cfg.Retries; attempt++ {
 		if err := contextErr(ctx); err != nil {
@@ -144,18 +161,13 @@ func (t *TWStockClient) doJSON(ctx context.Context, rawURL string, output any) e
 			lastErr = err
 		} else {
 			req.Header.Set("User-Agent", t.cfg.UserAgent)
-			resp, requestErr := t.client.Do(req) //nolint:bodyclose // readJSONResponse closes the body
+			resp, requestErr := t.client.Do(req) //nolint:bodyclose // read closes the body
 			if requestErr != nil {
 				lastErr = requestErr
 			} else {
-				lastErr = readJSONResponse(resp, output)
-				if lastErr == nil {
-					if response, ok := output.(*twStockResponse); ok {
-						lastErr = responseStatus(response.Stat)
-						if errors.Is(lastErr, errTWStockNoData) {
-							return lastErr
-						}
-					}
+				lastErr = read(resp)
+				if errors.Is(lastErr, errTWStockNoData) {
+					return lastErr
 				}
 			}
 		}
@@ -175,23 +187,33 @@ func (t *TWStockClient) doJSON(ctx context.Context, rawURL string, output any) e
 }
 
 func readJSONResponse(resp *http.Response, output any) error {
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-		if resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusTooManyRequests {
-			return fmt.Errorf("datafetch: TWStock HTTP status %d: the source refused the request as too frequent; raise Interval and Retries in TWStockConfig: %w",
-				resp.StatusCode, ErrTWStockThrottled)
-		}
-		return fmt.Errorf("datafetch: TWStock HTTP status %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	body, err := readBodyResponse(resp, 32<<20)
 	if err != nil {
-		return fmt.Errorf("datafetch: TWStock read response: %w", err)
+		return err
 	}
 	if err := json.Unmarshal(body, output); err != nil {
 		return fmt.Errorf("datafetch: TWStock decode JSON: %w", err)
 	}
 	return nil
+}
+
+// readBodyResponse closes resp and returns its body, read up to limit bytes. A
+// status outside 2xx is an error, and 307 and 429 match ErrTWStockThrottled.
+func readBodyResponse(resp *http.Response, limit int64) ([]byte, error) {
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		if resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusTooManyRequests {
+			return nil, fmt.Errorf("datafetch: TWStock HTTP status %d: the source refused the request as too frequent; raise Interval and Retries in TWStockConfig: %w",
+				resp.StatusCode, ErrTWStockThrottled)
+		}
+		return nil, fmt.Errorf("datafetch: TWStock HTTP status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+	if err != nil {
+		return nil, fmt.Errorf("datafetch: TWStock read response: %w", err)
+	}
+	return body, nil
 }
 
 func (t *TWStockClient) sleepBackoff(ctx context.Context, attempt int) error {
