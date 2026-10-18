@@ -1108,14 +1108,21 @@ func matMul2DWithWorkers(a, b *Tensor, workers int) (*Tensor, error) {
 	if workers <= 0 {
 		workers = parallelWorkerCountForMACs(a.shape[0], b.shape[1], a.shape[1])
 	}
+	// Each output row keeps one running sum per column and walks b row by row.
+	// Every output element still starts at zero and adds its products in
+	// inner-index order, so every non-NaN result is bit-identical to a dot
+	// product per element; only the interleaving across columns differs, which
+	// removes the add-to-add dependency and the strided reads of b. Which NaN
+	// comes out when two meet is left to the compiler, as Go does not specify it.
+	inner, columns := a.shape[1], b.shape[1]
+	left, right, out := a.data, b.data, result.data
 	parallelFor(a.shape[0], workers, func(start, end int) {
 		for row := start; row < end; row++ {
-			for column := 0; column < b.shape[1]; column++ {
-				var sum float32
-				for inner := 0; inner < a.shape[1]; inner++ {
-					sum += a.data[row*a.shape[1]+inner] * b.data[inner*b.shape[1]+column]
+			sums := out[row*columns : (row+1)*columns]
+			for index, value := range left[row*inner : (row+1)*inner] {
+				for column, weight := range right[index*columns : (index+1)*columns] {
+					sums[column] += value * weight
 				}
-				result.data[row*b.shape[1]+column] = sum
 			}
 		}
 	})
