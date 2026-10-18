@@ -63,3 +63,13 @@ func TestConstructorsStillDrawFiniteValues(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// The list counts from one, the way the arguments are numbered, and the row is
+// the index Get(i) takes.
+func TestNonFiniteErrorNamesTheRowIndex(t *testing.T) {
+	quiet(t)
+	_, err := CreateBarChart(BarChartConfig{}, insyra.NewDataList(1.0, math.NaN()))
+	if err == nil || !strings.Contains(err.Error(), "list 1, row index 1") {
+		t.Fatalf("want the error to name list 1, row index 1, got %v", err)
+	}
+}

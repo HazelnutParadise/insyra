@@ -40,9 +40,11 @@ func requireFiniteLists(funcName string, lists []insyra.IDataList) error {
 	return nil
 }
 
-// sprintPos names a cell the way the rest of the library does: counting from one.
+// sprintPos names a cell the way the rest of the library does: the list by its
+// place among the arguments, counting from one, and the row by the index
+// Get(i) takes, counting from zero.
 func sprintPos(kind string, i, row int) string {
-	return fmt.Sprintf("%s %d, row %d", kind, i+1, row+1)
+	return fmt.Sprintf("%s %d, row index %d", kind, i+1, row)
 }
 
 // hasNumericCell reports whether dl holds at least one number.
