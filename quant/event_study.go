@@ -154,7 +154,7 @@ func SignalBuckets(signal, prices insyra.IDataTable, dates insyra.IDataList, opt
 	edges := append([]float64(nil), opts.Edges...)
 	if len(edges) == 0 {
 		if len(opts.Quantiles) == 0 {
-			return nil, errors.New("Edges or Quantiles is needed")
+			return nil, errors.New("edges or quantiles are needed")
 		}
 		var pooled []float64
 		for _, s := range sig {

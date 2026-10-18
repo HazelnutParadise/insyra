@@ -127,7 +127,7 @@ func newPanel(prices insyra.IDataTable, dates insyra.IDataList, o ForwardOptions
 		o.Delay = 1
 	}
 	if o.Delay < 1 {
-		return nil, errors.New("Delay must be at least 1, so a signal is never traded at its own close")
+		return nil, errors.New("the delay must be at least 1, so a signal is never traded at its own close")
 	}
 	switch o.Benchmark {
 	case BenchmarkCrossSection, BenchmarkLevels, BenchmarkOwnMean:
@@ -174,7 +174,7 @@ func newPanel(prices insyra.IDataTable, dates insyra.IDataList, o ForwardOptions
 
 	if o.Tradable != nil {
 		if insyra.IsNilTable(o.Tradable) {
-			return nil, errors.New("Tradable is nil")
+			return nil, errors.New("the tradable mask is nil")
 		}
 		var mask [][]any
 		o.Tradable.AtomicDo(func(dt *insyra.DataTable) {
