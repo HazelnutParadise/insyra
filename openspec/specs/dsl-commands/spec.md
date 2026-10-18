@@ -2,10 +2,7 @@
 
 ## Purpose
 What each command of the insyra command language does, from loading, inspecting and reshaping data to statistics, time series, CCL, charts, fetching and variable management, as run from the REPL, a `.isr` script, a one-shot command or `engine/dsl`.
-
-
 ## Requirements
-
 ### Requirement: Load data from file
 系統 SHALL 提供 `load` 命令從檔案載入資料為 DataTable。
 
@@ -56,11 +53,19 @@ What each command of the insyra command language does, from loading, inspecting 
 - **THEN** 系統載入並顯示檔案前幾筆資料，不將結果存入環境變數
 
 ### Requirement: Convert format
-系統 SHALL 提供 `convert` 命令進行格式轉換。
+系統 SHALL 提供 `convert` 命令進行格式轉換。Excel 轉 CSV 時，SHALL 接受 `sheet <工作表> <檔名>` 成對指定，可重複多組，每組把該工作表寫成該檔，其他工作表不轉；不存在的工作表、同一張工作表給兩次、兩張工作表寫到同一個檔名（不分大小寫），SHALL 在寫出任何檔案前回錯誤。`convert <file.xlsx> <file.csv>` SHALL 照舊把第一張工作表寫成該檔、其他工作表寫成同目錄的 `<工作表>.csv`。
 
 #### Scenario: CSV to Excel
 - **WHEN** 使用者執行 `convert "data.csv" "data.xlsx"`
 - **THEN** 系統轉換 CSV 為 Excel
+
+#### Scenario: Pairs of sheets and files
+- **WHEN** 活頁簿有 `Q1`、`Q2`、`Q3`，使用者執行 `convert book.xlsx sheet Q1 q1.csv sheet Q3 q3.csv`
+- **THEN** 只寫出 `q1.csv`（Q1）與 `q3.csv`（Q3）
+
+#### Scenario: One output file for a workbook of several sheets
+- **WHEN** 活頁簿有 `Q1`、`Q2`、`Q3`，使用者執行 `convert book.xlsx out.csv`
+- **THEN** 寫出 `out.csv`（Q1）、`Q2.csv` 與 `Q3.csv`
 
 ### Requirement: Show data
 系統 SHALL 提供 `show` 命令顯示資料內容，支援正數（前 N 筆）、負數（後 N 筆）、範圍。
@@ -452,3 +457,11 @@ A command that stores variables besides its `as <var>` result SHALL name every v
 #### Scenario: A stored variable replaces one of the same name
 - **WHEN** a variable `km_size` already exists and the user runs `kmeans t 2 as km`
 - **THEN** the output names `km_size`, and `km_size` holds the new result
+
+### Requirement: List the sheets of a workbook
+系統 SHALL 提供 `sheets <file.xlsx>` 命令，依活頁簿順序每行印出一個工作表名稱。
+
+#### Scenario: Listing
+- **WHEN** 活頁簿有 `Q1`、`Q2`、`Q3`，使用者執行 `sheets book.xlsx`
+- **THEN** 輸出三行 `Q1`、`Q2`、`Q3`
+
