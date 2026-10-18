@@ -116,6 +116,12 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ParseLingo(r)` 與 `ParseLingoFile(path)` 讀取 LINGO 模型，遇到讀不懂的敘述會回傳指出行號的錯誤；底線名稱的舊讀法則是直接略過。新讀法也讀 `@GIN`、`@FREE`、`@BND`。`ParseLingoModel_txt` 與 `ParseLingoModel_str` 行為不變，改為 Deprecated，在 0.4 移除。
 - `GenerateLPFile` 先檢查目標函數型別再開檔。目標型別不合法的模型原本會把既有的 LP 檔截成只剩兩行標頭；現在不動既有檔案，也不建立新檔。
 
+### `isr`
+
+- isr 的表格與清單型別匯出為 `isr.DataTable` 與 `isr.DataList`，自己的函式可以直接接收：`func f(t *isr.DataTable)`。`isr.DT`、`isr.DL` 與 `t.DataTable` 不變。
+- 新增 `(*isr.DataTable).To`，把表格寫到 `isr.CSV`、`isr.JSON` 或 `isr.Excel`，是 `DT.From` 的對應操作，並回傳 error。沒有 `FilePath` 的 `*isr.CSV` 或 `*isr.JSON` 會把輸出放進 `String` 或 `Bytes`。`CSV.OutputOpts` 新增 `IncludeBOM`；`JSON` 與 `Excel` 新增 `OutputOpts`（`UseColIndex`；`RowNames2FirstCol`、`ColNames2FirstRow` 與 `IfSheetExists`）。和 `ToCSV` 一樣，只有設定 `ColNames2FirstRow` 與 `RowNames2FirstCol` 時才會寫出欄名與列名。JSON 預設以欄名為鍵，設定 `UseColIndex` 才改用欄位索引。
+- `DT.From` 與 `Push` 會指出 `Row` 或 `Col` 裡無法使用的型別與鍵：`DT.From(isr.Row{"A": 1, 3.5: 2})` 過去回報 `got unexpected type map[interface {}]interface {}`，現在改為 `isr.Row keys must be all column indices (string or int) or all Name selectors; key 3.5 has type float64`。
+
 ### `py`
 
 - 把 Python 結果傳回 Go 的 IPC 伺服器，改成在 `Run…` 呼叫需要時才開啟，同時執行的最後一個呼叫結束時關閉；在 Unix 上關閉時會一併刪掉暫存目錄裡的 socket 檔，v0.3.4 每個執行過 Python 的程式都會留下一個。伺服器開不起來時（例如暫存目錄的路徑太長，放不下 Unix socket），呼叫會在準備環境、啟動 Python 之前回傳包住原因的錯誤，下一次呼叫會再試一次。v0.3.4 只記一則警告，照樣啟動 Python，最後回傳 `exit status 1`。伺服器接受連線失敗時現在會關閉，正在執行的呼叫會回傳錯誤，下一次呼叫會開一個新的伺服器。

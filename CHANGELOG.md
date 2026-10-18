@@ -116,6 +116,12 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `ParseLingo(r)` and `ParseLingoFile(path)` read a LINGO model and return an error for a statement they cannot read, naming its line, where the underscore readers drop it. They also read `@GIN`, `@FREE` and `@BND`. `ParseLingoModel_txt` and `ParseLingoModel_str` keep their behaviour and are deprecated; they are removed in 0.4.
 - `GenerateLPFile` checks the objective type before it opens the file. A model with an unknown objective type cut an existing LP file down to its two-line banner; it now leaves the file alone and creates none.
 
+### `isr`
+
+- isr's table and list types are exported as `isr.DataTable` and `isr.DataList`, so your own functions can take them: `func f(t *isr.DataTable)`. `isr.DT`, `isr.DL` and `t.DataTable` are unchanged.
+- `(*isr.DataTable).To` writes a table to `isr.CSV`, `isr.JSON` or `isr.Excel`, the counterpart of `DT.From`, and returns an error. A `*isr.CSV` or `*isr.JSON` without a `FilePath` receives the output in `String` or `Bytes`. `CSV.OutputOpts` gains `IncludeBOM`; `JSON` and `Excel` gain `OutputOpts` (`UseColIndex`; `RowNames2FirstCol`, `ColNames2FirstRow` and `IfSheetExists`). Like `ToCSV`, the column names and row names are written only when `ColNames2FirstRow` and `RowNames2FirstCol` are set. JSON keys by column name unless `UseColIndex` is set.
+- `DT.From` and `Push` name the type and the key they could not use in a `Row` or `Col`: `DT.From(isr.Row{"A": 1, 3.5: 2})` used to report `got unexpected type map[interface {}]interface {}`, and now says `isr.Row keys must be all column indices (string or int) or all Name selectors; key 3.5 has type float64`.
+
 ### `py`
 
 - The IPC server that carries results back from Python opens when a `Run…` call needs it and closes when the last call running at the same time finishes, which on Unix removes its socket file from the temp directory; v0.3.4 left one there after every program that ran Python. When it cannot open, for example because the temp directory's path is too long for a Unix socket, the call returns an error that wraps the cause before it prepares the environment or starts Python, and the next call tries again. v0.3.4 logged a warning, ran Python anyway and returned `exit status 1`. A server whose accept loop fails now closes, so the run in flight returns an error, and the next run opens a new one.

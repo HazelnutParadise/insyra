@@ -40,6 +40,18 @@ import "github.com/HazelnutParadise/insyra/isr"
 - `isr.DL` - Pre-defined DataList instance for creating new DataLists
 - `isr.DT` - Pre-defined DataTable instance for creating new DataTables
 
+### The isr Types
+
+`isr.DataTable` and `isr.DataList` wrap `*insyra.DataTable` and `*insyra.DataList`. Their methods return the isr type, so a chain stays in short syntax, and they satisfy `insyra.IDataTable` and `insyra.IDataList`. Name them in your own functions:
+
+```go
+func summarize(t *isr.DataTable) int { return t.NumRows() }
+
+summarize(isr.DT.From(isr.CSV{FilePath: "data.csv"}))
+```
+
+`t.DataTable` and `l.DataList` give back the wrapped root value.
+
 ### Type Aliases
 
 - `isr.Row` - `map[any]any` representing a table row
@@ -62,7 +74,7 @@ type CSV struct {
     FilePath   string      // Path to CSV file (use this OR String, not both)
     String     string      // CSV data as string (use this OR FilePath, not both)
     InputOpts  CSV_inOpts  // Options for reading CSV
-    OutputOpts CSV_outOpts // Reserved for output (not used by DT.From)
+    OutputOpts CSV_outOpts // Options for writing with (*isr.DataTable).To
 }
 
 // CSV_inOpts structure
@@ -71,6 +83,13 @@ type CSV_inOpts struct {
     FirstRow2ColNames bool   // Treat the first row as column names
     Encoding          string // Specify input file encoding (e.g., "big5", "utf-8"), Only for FilePath input
     RawStrings        bool   // Keep every cell as its original string; skip column type inference
+}
+
+// CSV_outOpts structure, used by (*isr.DataTable).To
+type CSV_outOpts struct {
+    RowNames2FirstCol bool // Write the row names as the first column
+    ColNames2FirstRow bool // Write the column names as the first row
+    IncludeBOM        bool // Start the file with a UTF-8 byte order mark, for Excel
 }
 
 // Examples:
@@ -85,6 +104,11 @@ csvFromString := isr.CSV{String: "name,age\nJohn,30\nJane,25"}
 type JSON struct {
     FilePath string // Path to JSON file (use this OR Bytes, not both)
     Bytes    []byte // JSON data as byte slice (use this OR FilePath, not both)
+    OutputOpts JSON_outOpts // Options for writing with (*isr.DataTable).To
+}
+
+type JSON_outOpts struct {
+    UseColIndex bool // Key values by column index (A, B, …); the default keys them by column name
 }
 ```
 
@@ -93,15 +117,23 @@ type JSON struct {
 ```go
 // Excel struct for specifying Excel file and sheet
 type Excel struct {
-    FilePath  string
-    SheetName string
-    InputOpts Excel_inOpts
+    FilePath   string
+    SheetName  string // Sheet to read or write; writing defaults to "Sheet1"
+    InputOpts  Excel_inOpts
+    OutputOpts Excel_outOpts
 }
 
 // Excel_inOpts structure for reading Excel files
 type Excel_inOpts struct {
     FirstCol2RowNames bool // Treat the first column as row names
     FirstRow2ColNames bool // Treat the first row as column names
+}
+
+// Excel_outOpts structure for writing with (*isr.DataTable).To
+type Excel_outOpts struct {
+    RowNames2FirstCol bool                     // Write the row names as the first column
+    ColNames2FirstRow bool                     // Write the column names as the first row
+    IfSheetExists     insyra.SheetExistsPolicy // Zero value refuses to overwrite an existing sheet; insyra.SheetExistsReplace replaces it
 }
 
 // Example:
@@ -226,7 +258,7 @@ dataList := isr.DL.From("A", "B", "C", 1, 2, 3, 4, 5, 6)
 **Method:**
 
 ```go
-isr.DL.From(...values) *dl
+isr.DL.From(...values) *isr.DataList
 ```
 
 **Description:** Use when you need this method.
@@ -237,7 +269,7 @@ isr.DL.From(...values) *dl
 
 **Returns:**
 
-- Pointer to DataList wrapper (*dl)
+- Pointer to DataList wrapper (*isr.DataList)
 
 **Equivalent:** `insyra.NewDataList()`
 
@@ -251,7 +283,7 @@ dataList := isr.DL.Of("A", "B", "C", 1, 2, 3, 4, 5, 6)
 **Method:**
 
 ```go
-isr.DL.Of(...values) *dl
+isr.DL.Of(...values) *isr.DataList
 ```
 
 **Description:** Builds exactly what `From()` builds. Both names are kept on purpose, after Java and Rust: `From` reads as converting data you already have (Rust's `From::from`), and `Of` reads as listing the elements (Java's `List.of`). Use whichever reads better at the call.
@@ -262,7 +294,7 @@ isr.DL.Of(...values) *dl
 
 **Returns:**
 
-- Pointer to DataList wrapper (*dl)
+- Pointer to DataList wrapper (*isr.DataList)
 
 #### Converting Existing DataList
 
@@ -278,34 +310,34 @@ isrList := isr.PtrDL(originalList)
 **Function:**
 
 ```go
-isr.UseDL[T *insyra.DataList | dl](l T) *dl
+isr.UseDL[T *insyra.DataList | isr.DataList](l T) *isr.DataList
 ```
 
 **Description:** Convert between insyra and isr types (recommended)
 
 **Parameters:**
 
-- `*insyra.DataList` or `dl`
+- `*insyra.DataList` or `isr.DataList`
 
 **Returns:**
 
-- `*dl`
+- `*isr.DataList`
 
 **Old Function**:
 
 ```go
-isr.PtrDL[T](t T) *dl
+isr.PtrDL[T](t T) *isr.DataList
 ```
 
 **Description:** Convert between insyra and isr types (use `UseDL` instead)
 
 **Parameters:**
 
-- `*insyra.DataList` or `dl`
+- `*insyra.DataList` or `isr.DataList`
 
 **Returns:**
 
-- `*dl`
+- `*isr.DataList`
 
 ### DataList Methods
 
@@ -345,7 +377,7 @@ dataList.Push(7, 8, 9)
 **Method:**
 
 ```go
-Push(...values) *dl
+Push(...values) *isr.DataList
 ```
 
 **Description:** Appends the values, like `Append()`, and returns the isr list so the chain can go on to isr methods such as `At`. `Append()` itself returns `*insyra.DataList`, which has no `At`. isr cannot change `Append` to return its own type, because the isr list has to stay an `insyra.IDataList`.
@@ -398,7 +430,7 @@ dataTable := isr.DT.From(nil)
 **Method:**
 
 ```go
-isr.DT.From(nil) *dt
+isr.DT.From(nil) *isr.DataTable
 ```
 
 **Description:** Creates an empty DataTable that can be populated later
@@ -409,7 +441,7 @@ isr.DT.From(nil) *dt
 
 **Returns:**
 
-- Pointer to empty DataTable wrapper (*dt)
+- Pointer to empty DataTable wrapper (*isr.DataTable)
 
 **Equivalent:** `insyra.NewDataTable()`
 
@@ -427,7 +459,7 @@ dataTable := isr.DT.Of(isr.DL.From("A", "B", "C"))
 **Method:**
 
 ```go
-isr.DT.Of(item) *dt
+isr.DT.Of(item) *isr.DataTable
 ```
 
 **Description:** Builds exactly what `From()` builds. As with `DL.Of`, both names are kept on purpose: `From` for converting data, `Of` for listing it.
@@ -438,7 +470,7 @@ isr.DT.Of(item) *dt
 
 **Returns:**
 
-- Pointer to DataTable wrapper (*dt)
+- Pointer to DataTable wrapper (*isr.DataTable)
 
 #### Basic Creation from DataList
 
@@ -563,34 +595,34 @@ isrTable := isr.PtrDT(originalTable)
 **Function:**
 
 ```go
-isr.UseDT[T *insyra.DataTable | dt](t T) *dt
+isr.UseDT[T *insyra.DataTable | isr.DataTable](t T) *isr.DataTable
 ```
 
 **Description:** Convert between insyra and isr types (recommended)
 
 **Parameters:**
 
-- `*insyra.DataTable` or `dt`
+- `*insyra.DataTable` or `isr.DataTable`
 
 **Returns:**
 
-- `*dt`
+- `*isr.DataTable`
 
 **Old Function**:
 
 ```go
-isr.PtrDT[T](t T) *dt
+isr.PtrDT[T](t T) *isr.DataTable
 ```
 
 **Description:** Convert between insyra and isr types (use `UseDT` instead)
 
 **Parameters:**
 
-- `*insyra.DataTable` or `dt`
+- `*insyra.DataTable` or `isr.DataTable`
 
 **Returns:**
 
-- `*dt`
+- `*isr.DataTable`
 
 ### DataTable Methods
 
@@ -598,14 +630,14 @@ isr.PtrDT[T](t T) *dt
 
 ```go
 // Get row by index
-row := dataTable.Row(0)              // First row (returns *dl)
+row := dataTable.Row(0)              // First row (returns *isr.DataList)
 row := dataTable.Row(isr.Name("ID")) // Row by name
 ```
 
 **Method:**
 
 ```go
-Row(row any) *dl
+Row(row any) *isr.DataList
 ```
 
 **Description:** Use when you need this method.
@@ -624,7 +656,7 @@ Row(row any) *dl
 
 ```go
 // Get column by index/name
-col := dataTable.Col(0)              // First column (returns *dl)
+col := dataTable.Col(0)              // First column (returns *isr.DataList)
 col := dataTable.Col("Name")         // Column by string name
 col := dataTable.Col(isr.Name("ID")) // Column by Name type
 ```
@@ -632,7 +664,7 @@ col := dataTable.Col(isr.Name("ID")) // Column by Name type
 **Method:**
 
 ```go
-Col(col any) *dl
+Col(col any) *isr.DataList
 ```
 
 **Description:** Use when you need this method.
@@ -713,18 +745,50 @@ dataTable.Push(isr.DLs{
 **Method:**
 
 ```go
-Push(data any) *dt
+Push(data any) *isr.DataTable
 ```
 
 **Description:** Appends to the table, as a row or as columns depending on what it is given: a `Row` or `[]Row` adds rows, and a `Col`, `[]Col` or any form of DataList adds columns. It is therefore not `AppendCols` under another name, and it returns the isr table so the chain goes on.
 
 **Parameters:**
 
-- `Row`, `[]Row`, `Col`, `[]Col`, `*dl`, `*insyra.DataList`, `[]*insyra.DataList`, `[]dl`, or `DLs`
+- `Row`, `[]Row`, `Col`, `[]Col`, `*isr.DataList`, `*insyra.DataList`, `[]*insyra.DataList`, `[]isr.DataList`, or `DLs`
 
 **Returns:**
 
 - Self (for method chaining)
+
+#### Writing Out
+
+```go
+To(target any) error
+```
+
+**Description:** Writes the table to a CSV, JSON or Excel target, the output counterpart of `DT.From`. The target's `OutputOpts` say how to write it.
+
+**Parameters:**
+
+- `target`: `isr.CSV`, `isr.JSON` or `isr.Excel`, by value or by pointer. With a `FilePath` the table goes to that file. A `*isr.CSV` or `*isr.JSON` without a `FilePath` receives the output in memory, in `CSV.String` or `JSON.Bytes`. `isr.Excel` always needs a `FilePath`.
+
+**Returns:**
+
+- `error`: nil on success. An unsupported target, a value target with no `FilePath`, a nil table, or a failed write returns an error; the table is not changed.
+
+JSON keys each value by its column name unless `JSON.OutputOpts.UseColIndex` is set. Excel refuses to overwrite a sheet that already exists unless `OutputOpts.IfSheetExists` is `insyra.SheetExistsReplace`. As with `ToCSV`, the column names and row names are written only when `ColNames2FirstRow` and `RowNames2FirstCol` are set.
+
+```go
+t := isr.DT.From(isr.CSV{FilePath: "in.csv"})
+if err := t.To(isr.CSV{FilePath: "out.csv", OutputOpts: isr.CSV_outOpts{ColNames2FirstRow: true, IncludeBOM: true}}); err != nil {
+    // handle the error
+}
+
+var j isr.JSON
+j.OutputOpts.UseColIndex = true
+if err := t.To(&j); err != nil {
+    // handle the error
+}
+// j.Bytes holds [{"A": ..., "B": ...}, ...]
+```
 
 #### Executing CCL Statements
 
@@ -759,7 +823,7 @@ result := isr.DT.From(isr.Rows{
 **Method:**
 
 ```go
-CCL(cclStatements string) *dt
+CCL(cclStatements string) *isr.DataTable
 ```
 
 **Description:** Execute CCL statements to modify or create columns
@@ -889,8 +953,8 @@ processed := isr.DL.From(1, 2, 3).Push(4, 5).At(4) // Returns 5
 
 ### Core Types
 
-- `dl` - DataList wrapper struct containing `*insyra.DataList`
-- `dt` - DataTable wrapper struct containing `*insyra.DataTable`
+- `isr.DataList` - DataList wrapper struct containing `*insyra.DataList`
+- `isr.DataTable` - DataTable wrapper struct containing `*insyra.DataTable`
 
 ### Input Types
 
@@ -905,10 +969,10 @@ processed := isr.DL.From(1, 2, 3).Push(4, 5).At(4) // Returns 5
 
 ### Key Functions
 
-- `PtrDL[T]` - Convert to `*dl` (deprecated, use `UseDL` instead)
-- `PtrDT[T]` - Convert to `*dt` (deprecated, use `UseDT` instead)
-- `UseDL[T]` - Convert to `*dl` (recommended)
-- `UseDT[T]` - Convert to `*dt` (recommended)
+- `PtrDL[T]` - Convert to `*isr.DataList` (deprecated, use `UseDL` instead)
+- `PtrDT[T]` - Convert to `*isr.DataTable` (deprecated, use `UseDT` instead)
+- `UseDL[T]` - Convert to `*isr.DataList` (recommended)
+- `UseDT[T]` - Convert to `*isr.DataTable` (recommended)
 - `Name(string)` - Create named reference
 
 ## Error Handling
@@ -982,6 +1046,17 @@ jsonTable := isr.DT.From(isr.JSON{FilePath: "data.json"})
 csvFromString := isr.DT.From(isr.CSV{String: "name,age\nJohn,30\nJane,25"})
 jsonData := []byte(`[{"name":"John","age":30}]`)
 jsonFromBytes := isr.DT.From(isr.JSON{Bytes: jsonData})
+
+// Write out, the counterpart of DT.From; each returns an error
+err := csvTable.To(isr.CSV{FilePath: "out.csv"})
+err = csvTable.To(isr.Excel{FilePath: "out.xlsx", SheetName: "Result"})
+err = csvTable.To(isr.JSON{FilePath: "out.json"})
+
+// Write into memory: pass a pointer and leave FilePath empty
+var c isr.CSV
+err = csvTable.To(&c) // c.String holds the CSV text
+var j isr.JSON
+err = csvTable.To(&j) // j.Bytes holds the JSON
 ```
 
 ### Conversion Operations
