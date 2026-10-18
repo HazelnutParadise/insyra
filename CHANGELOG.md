@@ -34,6 +34,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `insyra.IsNilList(dl)` reports whether an `IDataList` has no list behind it, including a wrapper that embeds a nil `*DataList` such as `isr.DL`. `plot` charts and `stats` functions given such a wrapper treat it as a nil list instead of panicking ([#412](https://github.com/HazelnutParadise/insyra/issues/412)).
 - `ReadSlice2D` makes the table as wide as the widest row. A row longer than the first used to lose its extra values with no error: `[][]float64{{1}, {2, 3}}` gave a 2x1 table without the 3. Shorter rows are still padded with nil ([#410](https://github.com/HazelnutParadise/insyra/issues/410)).
 - `NewDataList` no longer ends the process with `fatal error: stack overflow` when it is given a slice that contains itself. It descends at most 64 slices deep and keeps anything below that as one cell; ordinary nesting flattens as before.
+- `DataList.Shift` keeps a slice stored in a cell as one cell. It built its result through `NewDataList`, which flattens every slice, so a list holding `[]byte{1, 2}` and `3` came back three cells long after `Shift(0)`.
 
 ### CLI
 
