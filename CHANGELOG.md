@@ -176,6 +176,11 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `stats.AdjustPValues(pvals, method)` corrects a batch of p-values for testing many hypotheses at once with Holm, Bonferroni, Hochberg, Benjamini-Hochberg or Benjamini-Yekutieli (`PAdjustHolm`, `PAdjustBonferroni`, `PAdjustHochberg`, `PAdjustBH`, `PAdjustBY`), matching R's `p.adjust`. A `NaN` stays `NaN` and is not counted among the tests ([#444](https://github.com/HazelnutParadise/insyra/issues/444)).
 - `stats.NeweyWestMeanTest(series, lag)` tests whether the mean of an autocorrelated series is zero with a Newey-West (Bartlett) standard error, for example overlapping returns where an ordinary t-test overstates t. A negative `lag` uses `NeweyWestLag(n)`; lag 0 is the one-sample t-test with an `n` divisor ([#457](https://github.com/HazelnutParadise/insyra/issues/457)).
 
+### `quant`
+
+- `quant.OBV(close, volume)` and `OBVFromReturns(returns, volume)` return Granville's on-balance volume; the second takes the direction from a return series, so dividend-adjusted returns can be used with raw share volume. `SignedVolumeRatio(returns, volume, n)` is the scale-free signed-volume ratio over `n` days, and `Divergence(price, indicator, n, cooldown)` flags a new `n`-day price extreme that an indicator does not confirm ([#456](https://github.com/HazelnutParadise/insyra/issues/456)).
+
+
 ## v0.3.4
 
 ### Core

@@ -176,6 +176,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `stats.AdjustPValues(pvals, method)`，一次檢驗很多假設時，用 Holm、Bonferroni、Hochberg、Benjamini-Hochberg 或 Benjamini-Yekutieli（`PAdjustHolm`、`PAdjustBonferroni`、`PAdjustHochberg`、`PAdjustBH`、`PAdjustBY`）校正一批 p 值，結果與 R 的 `p.adjust` 一致。`NaN` 維持 `NaN`，也不算進檢驗數（[#444](https://github.com/HazelnutParadise/insyra/issues/444)）。
 - 新增 `stats.NeweyWestMeanTest(series, lag)`，用 Newey-West（Bartlett 核）標準誤檢定自我相關序列的平均數是否為零，例如重疊持有期的報酬，一般 t 檢定會把 t 值高估。`lag` 為負數時用 `NeweyWestLag(n)`，為 0 時等於以 `n` 為除數的單樣本 t 檢定（[#457](https://github.com/HazelnutParadise/insyra/issues/457)）。
 
+### `quant`
+
+- 新增 `quant.OBV(close, volume)` 與 `OBVFromReturns(returns, volume)`，回傳葛蘭碧的能量潮（OBV）；後者的漲跌方向取自報酬序列，因此可以用還原權息的報酬搭配原始成交股數。`SignedVolumeRatio(returns, volume, n)` 是 `n` 日內的無單位帶號成交量比，`Divergence(price, indicator, n, cooldown)` 標出價格創 `n` 日新高或新低、指標卻沒有跟上的日子（[#456](https://github.com/HazelnutParadise/insyra/issues/456)）。
+
+
 ## v0.3.4
 
 ### Core

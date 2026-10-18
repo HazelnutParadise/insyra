@@ -24,6 +24,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
+- **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
 - **Portfolio optimization**: `OptimizePortfolio`, `OptimizePortfolioMoments`, `EfficientFrontier` — mean-variance weights under a sum-to-one and per-asset box constraint, for minimum variance, a target return, or maximum Sharpe, plus the frontier between them
 
 Unlike the [`finance`](./finance.md) package (which uses high-precision `decimal.Decimal` for TVM, NPV/IRR, and bond pricing), `quant` works with ordinary floating-point numbers — the industry convention for return/equity analytics, where statistical noise dwarfs floating-point error.
@@ -496,6 +497,42 @@ For every time step, the requested percentiles across all paths — the vertical
 The quantile is R's **type-7** (linear interpolation between order statistics), the same definition as `DataList.Percentile`, `Quartile`, and `Describe`, so the bands agree with the rest of the library.
 
 **Returns:** `(bands, err)` — `err` is non-nil if `paths` is empty or ragged, or `percentiles` is empty or contains a value outside `[0, 100]`.
+
+---
+
+## Volume Indicators
+
+All four take series of the same length and return a `*insyra.DataList` of the same length. They refuse a `NaN`, an infinity, a non-number, a nil series and a length mismatch, as the rest of the package does, and a negative volume.
+
+### OBV and OBVFromReturns
+
+```go
+func OBV(close, volume insyra.IDataList) (*insyra.DataList, error)
+func OBVFromReturns(returns, volume insyra.IDataList) (*insyra.DataList, error)
+```
+
+Granville's on-balance volume: `OBV[t] = OBV[t-1] + sign(change[t]) * volume[t]`, where a flat day adds nothing. `OBV` takes the change from the close; `OBVFromReturns` takes the direction from a return series, so you can pass dividend-adjusted returns with raw share volume (on an ex-dividend day the raw close falls without a real down move). The first value is `0`; the level of OBV is arbitrary and only its differences carry information.
+
+### SignedVolumeRatio
+
+```go
+func SignedVolumeRatio(returns, volume insyra.IDataList, n int) (*insyra.DataList, error)
+```
+
+For each day, `sum(sign(return) * volume) / sum(volume)` over the last `n` days. The value lies in [-1, 1] and has no unit, so it compares across stocks where the OBV slope does not. The first `n-1` values and any window with no volume are `NaN`.
+
+### Divergence
+
+```go
+func Divergence(price, indicator insyra.IDataList, n, cooldown int) (*insyra.DataList, error)
+```
+
+Flags days when a price makes a new `n`-day extreme that an indicator does not confirm: `-1` (bearish) when price is above its highest value of the previous `n` days while the indicator is below its highest, `+1` (bullish) for the mirror image on lows, `0` otherwise. The first `n` rows are `0`. After a flag, the same kind is not flagged again for `cooldown` days, so one episode is one event; `cooldown` 0 flags every qualifying day.
+
+```go
+obv, err := quant.OBV(close, volume)
+flags, err := quant.Divergence(close, obv, 20, 10)
+```
 
 ---
 
