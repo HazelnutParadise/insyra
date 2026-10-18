@@ -74,6 +74,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `TwoWayANOVAFromTable(dt, valueCol, factorACol, factorBCol)`、`RepeatedMeasuresANOVAFromTable(dt, valueCol, conditionCol, subjectCol)` 與 `FriedmanTestFromTable(dt, valueCol, conditionCol, subjectCol)` 讀取每列一筆觀測值的表格，也就是 R 的 `aov` 與 `friedman.test` 讀的形狀，不必再手動拆成各格或每位受試者一個清單。欄位指定為既有欄的 Excel 欄字母，找不到時再比完全相同的欄名。因子層級依 `ToMapKey` 比較，所以 `int(1)` 與 `int64(1)` 是不同層級。`nil` 或 `NaN` 層級、不是有限數字的值、沒有觀測值的組合、各格內沒有重複觀測的雙因子表，以及缺少某個條件或同一條件量了兩次的受試者，都會被拒絕。結果與用同樣資料呼叫 `TwoWayANOVA`、`RepeatedMeasuresANOVA`、`FriedmanTest` 相同。
 - `ChiSquareIndependenceTest` 在同一個 `AtomicDoAll` 裡一次讀取兩個清單，和兩樣本檢定的做法相同。
 - `BartlettTest`、`KruskalWallis`、`FriedmanTest` 與其他卡方類檢定，在各組完全一致時不再以 `cephes: parameter out of bounds` panic：Bartlett 統計量會因捨入誤差略小於 0（兩組相同），`KruskalWallis` 或 `FriedmanTest` 遇到全部數值相同時統計量為 0。現在會回傳結果，p 值為 1；自由度不是正數時，p 值為 NaN 而不是 panic。原本沒有 panic 的結果不變。
+- `PCA` 與 `KNNRegress` 的目標值遇到 `NaN` 或 `±Inf` 會回傳錯誤。過去它們只檢查儲存格能否轉成數字，所以 `PCA` 會回傳 `NaN` 特徵值、`KNNRegress` 會預測出 `NaN` 或 `±Inf`，而且沒有錯誤。原本就回傳錯誤的呼叫不變；原本回傳 `NaN` 結果的呼叫現在改回傳錯誤。
 
 ### `csvxl`
 

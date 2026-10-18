@@ -88,7 +88,7 @@ depends on the family, and each family states which:
 | Hypothesis tests: t, z, F, Levene, Bartlett, Wilcoxon, Mann-Whitney U, one-way, two-way and repeated-measures ANOVA, Kruskal-Wallis, Friedman | refused, with an error naming the list and the position, both counted from one |
 | Skewness, kurtosis, moments | refused, with an error naming the series and the one-based row |
 | Clustering, and the features KNN reads | refused |
-| PCA, and the targets `KNNRegress` reads | a blank or text cell is refused, but `NaN` and `±Inf` are **not**: they reach the result, so `PCA` returns `NaN` eigenvalues and `KNNRegress` returns a `NaN` or infinite prediction, with a nil error |
+| PCA, and the targets `KNNRegress` reads | refused with an error: a blank or text cell, `NaN` and `±Inf` all stop the call |
 | Factor analysis | a `NaN` or `±Inf` removes the whole observation (listwise deletion); a blank or text cell is refused |
 | Decision trees in [`insyra/ml`](/Docs/ml.md) | a direction is learned per node for missing *features*; a missing *target* is refused |
 
