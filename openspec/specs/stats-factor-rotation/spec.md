@@ -2,7 +2,6 @@
 
 ## Purpose
 Factor rotation turns a fitted loading matrix into an equivalent one that is easier to read, and the whole point is that it is equivalent: the common part of the model must survive it untouched. This capability says what that means in numbers, what a multi-start search may start from so the guarantee holds, and what the convergence flag a caller reads is allowed to claim. It exists because none of the three was enforced — an orthogonal rotation could come back oblique, and a rotation that ran out of iterations reported success.
-
 ## Requirements
 ### Requirement: A rotation preserves the fitted model
 
@@ -81,3 +80,15 @@ Factor rotation turns a fitted loading matrix into an equivalent one that is eas
 #### Scenario: The same call on different platforms
 - **WHEN** 在 amd64 與 arm64 上以相同資料與選項呼叫 `FactorAnalysis`，且 `Rotation.Restarts` 大於 1
 - **THEN** 兩者使用相同的隨機起點，選中的解落在同一個盆地
+
+### Requirement: Oblimin rotates from the start it is given
+For each rotation start, the system SHALL rotate oblimin from that start, and with `Restarts` of 1 SHALL rotate from the identity as before.
+
+#### Scenario: Same criterion as quartimin
+- **WHEN** oblimin with `Delta` 0 and quartimin rotate the same loadings with the same `Restarts`
+- **THEN** their criterion values agree to 1e-12
+
+#### Scenario: A random start escapes the identity basin
+- **WHEN** oblimin rotates the over-factored fixture with `Restarts` of 5
+- **THEN** the criterion value is below a tenth of the single-start value
+

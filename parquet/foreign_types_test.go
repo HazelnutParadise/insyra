@@ -238,9 +238,9 @@ func TestABinaryColumnExportsToJSONAsBase64(t *testing.T) {
 	}
 }
 
-// The writer is unchanged on this line: a column of []byte cells is still
-// written as a string column, as it was before binary columns read as bytes.
-func TestAByteColumnIsStillWrittenAsAString(t *testing.T) {
+// A column of []byte cells is written as Parquet Binary, so reading it back
+// gives the same bytes (see binary_write_test.go for the cell-level checks).
+func TestAByteColumnIsWrittenAsBinary(t *testing.T) {
 	dl := insyra.NewDataList()
 	dl.Append([]byte("A-01"), []byte("C-3"))
 	out := filepath.Join(t.TempDir(), "bytes.parquet")
@@ -251,10 +251,8 @@ func TestAByteColumnIsStillWrittenAsAString(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := back.GetElementByNumberIndex(0, 0).(string); !ok {
-		t.Errorf("a []byte column read back as %T, want the string column the writer produces", back.GetElementByNumberIndex(0, 0))
-	} else {
-		t.Logf("written as string %q", got)
+	if got, ok := back.GetElementByNumberIndex(0, 0).([]byte); !ok || string(got) != "A-01" {
+		t.Errorf("a []byte column read back as %#v, want the bytes A-01", back.GetElementByNumberIndex(0, 0))
 	}
 }
 

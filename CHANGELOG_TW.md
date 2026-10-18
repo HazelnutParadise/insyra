@@ -52,6 +52,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `CsvToExcel`、`CSVToExcel`、`AppendCsvToExcel` 與 `AppendCSVToExcel` 會照呼叫端寫的路徑讀取輸入檔。名為 `export.txt`、`DATA.CSV` 或完全沒有副檔名的 CSV 會當成它本身讀入；過去所有不以小寫 `.csv` 結尾的名稱都會被補上 `.csv`，這些檔案因此打不開。路徑指向的檔案不存在時仍會嘗試補上 `.csv`，所以以前讀得到的檔案現在照樣讀得到。`x` 與 `x.csv` 同時存在時，讀的是 `x`。
 - 值是數字的 enum 現在都會印出名稱。`MergeMode`、`NaNPolicy`、`UnknownPolicy`、`LabelSort`、`ResampleFreq`、`SheetExistsPolicy`、`SQLActionIfTableExists`、`MergeDirection` 與 `ErrPoppingMode` 新增 `String()`，`quant`（`VaRMethod`、`OptionType`、`PortfolioObjective`）、`finance`（`DayCountBasis`、`PaymentTiming`）、`datafetch`、`parquet`、`stats`、`ml` 與 `lp` 的數字 enum 也一樣。`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。不在常數之內的值印成 `型別名(n)`，原本就有 `String()` 的型別也一樣：`DataType(9)` 過去印 `unknown`、`LogLevel(9)` 印 `UNKNOWN`、`AggregateOp(99)` 印 `op(99)`、`ml.ClassAverage(9)` 印 `macro`。回報未知設定的錯誤會寫出名稱：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。所有 enum 的底層型別都沒有變，呼叫端不用改動。
 - **BREAKING**：`ToSQL` 遇到沒有名字的欄位，改用欄位字母（`A`、`B`…）當欄名，不再寫成 MySQL 和 PostgreSQL 都不接受的空白名稱 `""`。例如 `NewDataTable(NewDataList(1, 2, 3)).ToSQL(db, "t")` 在 MySQL 上以前會失敗並回傳 `Incorrect column name ''`，現在會寫出欄位 `A`。寫進 SQLite 的表也一樣，以前的 `""` 欄位現在會叫 `A`。如果已經有別的欄位用了這個字母當名稱（不分大小寫），在寫入任何東西之前就會回傳錯誤。
+- **BREAKING**：CCL 把浮點數轉成文字時，改寫成一般的十進位數字。A = 0.0000001 時，`'x' & A` 現在是 `x0.0000001`，不再是 `x1e-07`；`CONCAT('n=', 1000000)` 是 `n=1000000`，不再是 `n=1e+06`；`LEN(1000000)` 是 7，跟整數欄位存 1000000 時一致，以前是 5。範圍包含 `&`、`CONCAT`、沒有指定格式的 `TOSTR`，以及所有字串函式。1e21 以上、NaN 與無限大維持原本寫法，`ToCSV`、`ToJSON`、`Show` 不變，因為科學記號的數字儲存格讀回來還是同一個數。用浮點數組字串的運算式會得到不同的字串；想要舊寫法請用 `TOSTR(x, '%g')`。
 
 ### CLI
 
@@ -69,6 +70,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `convert <file.xlsx> sheet <name> <file.csv> [sheet <name> <file.csv> ...]` 只轉出指名的工作表，各自寫成指定的檔案，檔案可以在不同目錄。指定不存在的工作表、同一張工作表給兩次，或兩張工作表寫到同一個檔案，都會在寫出任何檔案前回錯誤。這個形式預設會在試算表會當成公式執行的文字前加單引號，給 `allowformulas true` 才原樣寫出。`convert <file.xlsx> <file.csv>` 照舊。新增的 `sheets <file.xlsx>` 依順序列出活頁簿的工作表。
 - `col` 現在接受 Excel 風格的欄位字母：`insyra col t A as x`。整數仍是從 0 開始的位置，欄名會先於字母比對，所以原本能用的呼叫意思不變，名稱剛好叫 `A` 的欄位也仍然優先於 A 欄（[#438](https://github.com/HazelnutParadise/insyra/issues/438)）。
 - 所有接受數字的指令參數，現在也可以填數字變數的名稱：`sample frac f`、`kmeans … k`、`shift x n`、`ttest … mu`、`quant` 各形式等，會使用該變數的值；過去填非數字的名稱會報錯。數字變數可由 `sum`、`mean`、`median`、`mode`、`stdev`、`var`、`min`、`max`、`range` 結尾加上 `as <var>` 產生（照常印出結果，只有寫了 `as` 才存下），並可用 `show <var>` 顯示。能解析成數字的字串仍視為數字，所以原本能用的寫法意義不變。
+- 兩個 `insyra` 指令同時使用同一個環境時，不會再互相蓋掉對方的變數。過去存檔會把自己手上那份 `state.json` 整份寫回去，後存的就吃掉先存的；現在只把自己這個指令新增、修改、刪除的部分，疊在存檔當下檔案裡的內容上，過程只用一個很短的鎖和各自獨立的暫存檔。指令之間不會因此排隊等待。
+- `state.json` 讀不了（被截斷、手動改成不合法的 JSON）時，指令現在會停下來並報錯，錯誤訊息指出檔名。以前指令會拿一份空的變數去跑，存檔時把檔案整個蓋掉，環境裡所有變數就此消失；`env open` 還會把前一個環境的變數帶進剛打開的環境。現在什麼都不執行，檔案維持原樣，可以讓你修復。完全沒有 `state.json` 的環境仍然從空的開始。
 
 ### `ml` 與 `nn`
 
@@ -97,12 +100,14 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING（錯誤訊息文字）**：指出儲存格位置的錯誤訊息，現在改從 0 算起，與 `Get(i)` 收的數字一致，並明寫是索引：`data contains a non-finite value at row index 2: NaN`。`v0.3.4` 的假說檢定從 1 算（`row 3`），容易被當成 DataTable 自己的編號，與它差一。範圍包含假說檢定、回歸、相關、偏度、峰度與動差，以及回歸、GLM 與因素分析的 `(index N)`、`row N` 檢查；依傳入順序命名的群組、儲存格與受試者（`group 2`、`subject 3`）仍從 1 算。數值與錯誤型別不變，只有文字改變，比對舊文字的程式需要更新。
 - `CutTreeByK` 與 `CutTreeByHeight` 會拒絕葉子或合併步驟被併入超過一次的樹（手動編輯 `state.json` 可能產生）。過去它們會在要求 1 群時回傳 2 群，且沒有錯誤。
 - 檢定結果現在可以一起處理：共用的結果型別匯出為 `TestResult`，所有檢定結果都符合新的 `HypothesisTestResult` 介面（`Base() *TestResult`），同一個函式或同一個 slice 可以接 t 檢定、Mann-Whitney U 與卡方檢定的結果。`stats` 的每個結果型別都有版面一致的 `String()` 與 `Show()`，`fmt.Println(res)` 會印出可讀的結果，不再是 Go 的原始結構；`fmt.Fprintln(w, res)` 可寫到任何 writer。`ChiSquareTestResult.Show()` 與 `FactorAnalysisResult.Show()` 改印這個版面。
+- **BREAKING**：`FactorAnalysis` 在 `Rotation.Method: FactorRotationOblimin` 且 `Rotation.Restarts` 大於 1 時，現在真的會做參數所描述的搜尋。Oblimin 過去每一輪都自己建一個單位矩陣當起點，忽略傳進來的起點，所以 `Restarts: 20` 是把同一份計算跑 20 次再回傳第一個結果，實測 20 個起點花 202 ms 回傳和 9.9 ms 一模一樣的答案。現在它和其他九個方法一樣從每個起點各旋轉一次，而且 `Delta: 0` 時與同樣 `Restarts` 的 Quartimin 結果逐位元相同，因為兩者本來就是同一個準則。在測試套件的 12 個生成資料集上，載荷最多移動 1.2e-5；在過因子的模型上（用三因子資料抽四個因子），額外的起點會找到單位矩陣起點到不了的另一個盆地，準則值低 47 倍。那個解的因子相關也高達 0.905：`Restarts` 要的是最低的準則值，不保證那個解就是你要的，這對任何多起點的斜交旋轉都成立。預設的 `Restarts: 1` 不變。SPSS 的 Direct Oblimin 是單起點，`Restarts: 1` 仍然是。
 
 ### `csvxl`
 
 - 編碼參數給空字串，或任何大小寫的 `"auto"`，現在都代表自動偵測，跟核心的 CSV 讀取函式一致。以前空字串代表直接當成 UTF-8，`"AUTO"` 則會被當成不支援的編碼而報錯。
 - 活頁簿唯一的工作表就算名叫 `__insyra_placeholder__`，`AppendCsvToExcel` 也能取代它。以前它用的暫存工作表名稱剛好撞名，結果舊的儲存格都留下來。
 - 函式名稱改用 Go 的拼法，新名稱把每個 CSV 和它的工作表寫在一起，不再用兩個 slice 依位置配對。`CSVToExcel(sheets []SheetFromCSV, output, csvEncoding...)` 與 `AppendCSVToExcel(sheets []SheetFromCSV, existingFile, csvEncoding...)` 接受 `SheetFromCSV{Path, Sheet}`，`Sheet` 留空就用檔名；`CSVDirToExcel`、`ReadCSVToString` 是原本的函式換上新名字。新增 `ExcelToCSV(excelFile, outputDir, options...)` 與 `ExcelDirToCSV`，接受 `ExcelToCSVOptions{Sheets, FileNames, AllowFormulas}`：`FileNames` 以工作表名稱對應 CSV 檔名，鍵不是要轉的工作表時回錯誤，`ExcelDirToCSV` 不接受它；試算表會當成公式執行的文字（以 `=`、`+`、`-`、`@` 開頭且不是數字）預設會在前面加單引號，設定 `AllowFormulas` 才原樣寫出；指定活頁簿沒有的工作表會回錯誤；檔名保留給定的副檔名。兩個 CSV 寫到同一張工作表，或兩張工作表寫到同一個 CSV 檔（不分大小寫，`ExcelDirToCSV` 也跨活頁簿比對），都會在寫出任何東西前回錯誤，`ExcelToCSV` 也會先檢查完所有檔名才寫第一個檔。新增 `SheetNames(excelFile)` 列出活頁簿的工作表。`CsvToExcel`、`AppendCsvToExcel`、`EachCsvToOneExcel`、`ReadCsvToString`、`ExcelToCsv`、`EachExcelToCsv` 改為 Deprecated，簽名、依位置配對的方式與輸出都不變，CLI 一般的 `convert` 仍使用它們。
+- 取代工作表時（`AppendCSVToExcel`，或 `DataTable.ToExcel` 搭配 `SheetExistsReplace`），現在會把舊工作表擁有的東西一併從存檔中移除：註解、表格、繪圖，以及只有它們用到的圖片和圖表。以前這些會原封不動留在檔案裡、沒有任何地方參照，所以舊註解文字還在檔案內，新表格也不能沿用舊表格的名稱。驗證方式是讀存檔內容並用 excelize 重新開啟，沒有用 Excel 或 LibreOffice 實際開過。
 
 ### `parquet`
 
@@ -116,6 +121,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `FilterWithCCL` 與 `ApplyCCL` 因錯誤提早返回時，會停止讀檔。過去負責讀檔的 goroutine 會卡在送下一批資料，檔案也一直開著，直到 context 結束為止；用 `context.Background()` 的話，就是一直到程式結束。
 - `FilterWithCCL` 與 `ApplyCCL` 的結果，現在和先用 `Read` 載入檔案再執行同一個運算式相同。過去它們一次讀 1,000 列、每一批各自計算，所以 `A > AVG(A)` 比的是該批的平均、`SUM(A) > 1000000` 加總的是一批、`# == 0` 會符合每一批的第一列、`A == A.0` 讀到的是該批的第一列，`NEW('c') = CUMSUM(A)` 則把該批整串累計值以文字寫進每個儲存格。聚合函式（`SUM`、`AVG`、`COUNT`、`MIN`、`MAX`、`VAR`、`VARP`、`STDEV`、`STDEVP`）、列索引 `#`、固定列（例如 `A.1500`）現在都對整個檔案計算；內建序列函式（`LAG`、`LEAD`、`DIFF`、`PCT_CHANGE`、`CUMSUM`、`CUMPROD`、`CUMMAX`、`CUMMIN`、`ROLLING_*`）可以跨批次，只保留跨過批次邊界所需的列；其他會讀到目前列以外的部分（`MEDIAN`、你註冊的函式、`A.(# - 1)`、放在其他運算式裡的序列函式），則讀入它所用到的整欄再計算。除非運算式需要整欄，記憶體仍只放一批。`ApplyCCL` 的後一條陳述式現在看得到前面陳述式新增或取代的欄位，`NEW('r') = @` 也會給每一列自己的值。多出來的讀檔次數寫在 `Docs/parquet.md`。
 - `ApplyCCL` 現在接受所有欄位型別。沒有被任何陳述式寫入的欄位，會直接用檔案原本的資料寫回、完全不變：各種寬度的整數與浮點數、日期、decimal、list、struct 等；過去只要有 `int64`、`float64`、文字、布林、時間戳以外的欄位，整個呼叫就失敗。被陳述式寫入的欄位在所有新值都放得進去時，會保留原本的型別，現在也包含 `int8` 到 `int32`、無號整數、`float32`、`Date32` 與 `Date64`；放不進去時則和 `Write` 一樣決定型別。型別改由所有值決定，不再只看前 1,000 列，所以一開始是空值的欄位不會再被寫成文字，把小數指定給整數欄時會改成浮點數，不再被截掉。
+- `Write` 會把所有儲存格都是 `[]byte` 的欄位存成 Parquet 的 `Binary` 欄位，讀回來還是同樣的位元組。以前它把每格寫成 Go 對切片的文字表示，`A-01` 會被存成 `[65 45 48 49]`，二進位欄位讀進來再寫出去，資料就壞了。`[]byte` 與其他種類的值混在同一欄時，若是合法 UTF-8 就寫成它的文字。這種欄位寫出來的檔案跟以前不同。其他型別在來回一趟後仍會變（`Date32` 變成 timestamp、decimal 變成文字、`Int16` 變成 `Int64`）。
 
 ### `pd`
 

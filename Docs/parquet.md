@@ -126,9 +126,12 @@ rounded, and it sorts by value rather than by the text of its digits. Like a
 path; convert it first if you need arithmetic. See [Exact Decimals](Decimal.md).
 
 A binary column exports to JSON as base64, which is what a `[]byte` becomes
-in JSON, so nothing is lost. `Write` still writes a column of `[]byte` cells
-as a string column holding Go's text for the slice, such as `[65 45 48 49]`,
-so a read-then-write round trip keeps neither the binary type nor the bytes.
+in JSON, so nothing is lost. `Write` writes a column whose cells are all `[]byte`
+as a `Binary` column, so those bytes come back as bytes. A `[]byte` cell in a
+column that also holds other values is written as text when it is valid UTF-8.
+Other types still change on a read-then-write round trip, because `Write` infers
+a column's type from its Go values: a `Date32` column comes back as a timestamp,
+a decimal as text and an `Int16` as an `Int64`.
 
 A dictionary-encoded column reads as the values it holds, in the Go type the
 table above gives their Arrow type, so a pandas `category` column of strings

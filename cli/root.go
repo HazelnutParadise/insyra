@@ -77,12 +77,11 @@ func openEnvironment(execCtx *commands.ExecContext) error {
 	execCtx.EnvName = flagEnv
 	execCtx.EnvPath = envPath
 
-	vars, err := execCtx.Env.RestoreVariables(flagEnv)
+	vars, err := execCtx.Env.OpenVariables(flagEnv)
 	if err != nil {
-		execCtx.Vars = map[string]any{}
-	} else {
-		execCtx.Vars = vars
+		return err
 	}
+	execCtx.Vars = vars
 
 	applyRuntimeConfig(flagNoColor, flagLogLevel)
 	return nil

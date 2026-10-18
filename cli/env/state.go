@@ -56,6 +56,19 @@ func (m *Manager) SaveVariables(envName string, vars map[string]any) ([]UnsavedV
 		}
 		stored[key] = raw
 	}
+	finalPath := filepath.Join(envPath, "state.json")
+	unlock, err := lockState(envPath)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	// A save that follows RestoreVariables on this Manager writes only what this
+	// process changed since, on top of what the file holds now, so a variable
+	// another process saved in between survives. A save with no restore before
+	// it replaces the file, as it always has.
+	if base, ok := m.baselineFor(envPath); ok {
+		stored = mergeStored(stored, unsavedNames(unsaved), base, currentStored(finalPath))
+	}
 	document := struct {
 		Variables  map[string]json.RawMessage `json:"variables"`
 		LastAccess string                     `json:"lastAccess"`
@@ -69,15 +82,27 @@ func (m *Manager) SaveVariables(envName string, vars map[string]any) ([]UnsavedV
 	}
 	// Atomic write: write to a temp file then rename over state.json (rename is
 	// atomic on the same filesystem), so an interruption mid-write cannot leave a
-	// truncated/corrupted state.json that would wipe the user's variables.
-	finalPath := filepath.Join(envPath, "state.json")
-	tmpPath := finalPath + ".tmp"
-	if err := os.WriteFile(tmpPath, payload, 0o644); err != nil {
+	// truncated/corrupted state.json that would wipe the user's variables. The
+	// temporary name is unique to this writer.
+	tmp, err := os.CreateTemp(envPath, "state.json.*.tmp")
+	if err != nil {
+		return nil, err
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(payload); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return nil, err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
 		return nil, err
 	}
 	if err := os.Rename(tmpPath, finalPath); err != nil {
+		_ = os.Remove(tmpPath)
 		return nil, err
 	}
+	m.setBaseline(envPath, stored)
 	if len(unsaved) == 0 {
 		return nil, nil
 	}
@@ -163,6 +188,10 @@ func (m *Manager) RestoreVariables(envName string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	envPath, err := m.ResolveEnvPath(envName)
+	if err != nil {
+		return nil, err
+	}
 	vars := make(map[string]any, len(state.Variables))
 	for key, serialized := range state.Variables {
 		value, ok, err := decodeVariable(serialized)
@@ -184,6 +213,7 @@ func (m *Manager) RestoreVariables(envName string) (map[string]any, error) {
 		}
 		vars[key] = value
 	}
+	m.setBaselineFromVars(envPath, vars)
 	return vars, nil
 }
 

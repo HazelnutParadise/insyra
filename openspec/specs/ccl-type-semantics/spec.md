@@ -2,9 +2,7 @@
 
 ## Purpose
 CCL 遇到無法表示的數字字面值或與值不相符的格式時回報錯誤，不把 `+Inf` 或 `fmt` 的錯誤標記當成結果寫進儲存格。
-
 ## Requirements
-
 ### Requirement: A literal that cannot be represented is an error
 
 數字字面值 SHALL 在超出 float64 範圍時回報編譯錯誤，SHALL NOT 靜默變成 `+Inf`。指數形式（`1e5`、`1.5e-3`、`2E+3`）SHALL 是合法的數字字面值；`e` 後面沒有數字時 SHALL 仍視為識別字，讓名為 `E` 或 `E1` 的欄位不受影響。
@@ -132,3 +130,22 @@ No internal representation SHALL become a cell value. A column range used as a w
 #### Scenario: A sequence function that needs numbers
 - **WHEN** 求值 `CUMSUM(@)`
 - **THEN** 回傳錯誤說明整列不是數字
+
+### Requirement: CCL writes a float as plain decimal text
+When `&`, `CONCAT` or a string function converts a finite `float64` or `float32` below 1e21 in magnitude to text, the system SHALL write the shortest decimal that reads back as the same number, without an exponent.
+
+#### Scenario: A small number
+- **WHEN** `'x' & A` is evaluated for A equal to 0.0000001
+- **THEN** the result is `x0.0000001`
+
+#### Scenario: Length of a literal
+- **WHEN** `LEN(1000000)` is evaluated
+- **THEN** the result is 7
+
+### Requirement: Large and non-finite floats keep their spelling
+A float of 1e21 or more in magnitude, NaN and the infinities SHALL keep Go's default text.
+
+#### Scenario: 1e21
+- **WHEN** a string function converts 1e21 to text
+- **THEN** the text is `1e+21`
+

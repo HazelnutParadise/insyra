@@ -824,8 +824,8 @@ func applyOperator(op string, left, right any) (any, error) {
 
 	// 處理 & 運算符（字串連接，等同於 CONCAT）
 	if op == "&" {
-		leftStr := fmt.Sprintf("%v", left)
-		rightStr := fmt.Sprintf("%v", right)
+		leftStr := textOf(left)
+		rightStr := textOf(right)
 		return leftStr + rightStr, nil
 	}
 	// 處理 && 運算符（邏輯與，等同於 AND）
