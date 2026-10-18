@@ -513,7 +513,7 @@ func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string, al
 		// Check if the row is visible (not filtered out)
 		visible, err := f.GetRowVisible(sheetName, rowIdx+1) // rowIdx is 0-based, GetRowVisible is 1-based
 		if err != nil {
-			return fmt.Errorf("failed to check visibility of row %d in sheet %s: %w", rowIdx+1, sheetName, err)
+			return fmt.Errorf("failed to check visibility of row index %d in sheet %s: %w", rowIdx, sheetName, err)
 		}
 		if visible {
 			if len(allowFormulas) > 0 && !allowFormulas[0] {
