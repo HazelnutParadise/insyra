@@ -104,6 +104,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 編碼參數給空字串，或任何大小寫的 `"auto"`，現在都代表自動偵測，跟核心的 CSV 讀取函式一致。以前空字串代表直接當成 UTF-8，`"AUTO"` 則會被當成不支援的編碼而報錯。
 - 活頁簿唯一的工作表就算名叫 `__insyra_placeholder__`，`AppendCsvToExcel` 也能取代它。以前它用的暫存工作表名稱剛好撞名，結果舊的儲存格都留下來。
 - 函式名稱改用 Go 的拼法，新名稱把每個 CSV 和它的工作表寫在一起，不再用兩個 slice 依位置配對。`CSVToExcel(sheets []SheetFromCSV, output, csvEncoding...)` 與 `AppendCSVToExcel(sheets []SheetFromCSV, existingFile, csvEncoding...)` 接受 `SheetFromCSV{Path, Sheet}`，`Sheet` 留空就用檔名；`CSVDirToExcel`、`ReadCSVToString` 是原本的函式換上新名字。新增 `ExcelToCSV(excelFile, outputDir, options...)` 與 `ExcelDirToCSV`，接受 `ExcelToCSVOptions{Sheets, FileNames, AllowFormulas}`：`FileNames` 以工作表名稱對應 CSV 檔名，鍵不是要轉的工作表時回錯誤，`ExcelDirToCSV` 不接受它；試算表會當成公式執行的文字（以 `=`、`+`、`-`、`@` 開頭且不是數字）預設會在前面加單引號，設定 `AllowFormulas` 才原樣寫出；指定活頁簿沒有的工作表會回錯誤；檔名保留給定的副檔名。兩個 CSV 寫到同一張工作表，或兩張工作表寫到同一個 CSV 檔（不分大小寫，`ExcelDirToCSV` 也跨活頁簿比對），都會在寫出任何東西前回錯誤，`ExcelToCSV` 也會先檢查完所有檔名才寫第一個檔。新增 `SheetNames(excelFile)` 列出活頁簿的工作表。`CsvToExcel`、`AppendCsvToExcel`、`EachCsvToOneExcel`、`ReadCsvToString`、`ExcelToCsv`、`EachExcelToCsv` 改為 Deprecated，簽名、依位置配對的方式與輸出都不變，CLI 一般的 `convert` 仍使用它們。
+- 取代工作表時（`AppendCSVToExcel`，或 `DataTable.ToExcel` 搭配 `SheetExistsReplace`），現在會把舊工作表擁有的東西一併從存檔中移除：註解、表格、繪圖，以及只有它們用到的圖片和圖表。以前這些會原封不動留在檔案裡、沒有任何地方參照，所以舊註解文字還在檔案內，新表格也不能沿用舊表格的名稱。驗證方式是讀存檔內容並用 excelize 重新開啟，沒有用 Excel 或 LibreOffice 實際開過。
 
 ### `parquet`
 

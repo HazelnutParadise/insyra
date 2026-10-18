@@ -296,12 +296,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: make the answer deterministic first, for example by asking chardet for all results and breaking a tie in a fixed order. Then decide whether a guess below some confidence should be a warning or an error that asks for the encoding, which changes what a read does with such a file.
 - **Status**: pending
 
-### [2026-09-28] — a rebuilt sheet leaves its old comments, drawing and table parts in the file
-- **Where**: `csvxl/convert.go` `replaceSheet`, through excelize's `DeleteSheet`
-- **What**: `DeleteSheet` removes the worksheet and its relationships but not the parts they pointed to. Measured on 2026-09-28: after replacing a sheet that had a comment and a table, `xl/comments1.xml`, `xl/drawings/vmlDrawing1.vml` and `xl/tables/table1.xml` are still in the saved file and in `[Content_Types].xml`, referenced by nothing, so the old comment text is still inside the file; excelize also refuses a new table under the old table's name (`the same name table already exists`). Not checked in Excel or LibreOffice, neither of which was available. `0.4`'s `excelsheet.Replace` does the same.
-- **Suggestion**: open such a file in Excel and LibreOffice first. If either complains, or if leaving the old comment text in the file matters, remove the parts the old sheet's relationships pointed to before deleting it.
-- **Status**: pending
-
 ### [2026-09-27] — an unreadable `state.json` is overwritten by the next command
 - **Where**: `cli/root.go` `openEnvironment`, `cli/repl/repl.go` `Start`, `cli/repl/api.go` `NewDSLSession`, and `env open` in `cli/commands/env.go`
 - **What**: when `RestoreVariables` fails, the first three start from an empty variable map without saying so, and the save after the next command writes that map over the file, so every variable in the environment is lost. Measured on 2026-09-27 with the CLI built from `dev` at 550cf94: after `newdl 1 2 3 as x`, truncating `state.json` mid-object and running `newdl 9 as y` left a `state.json` holding only `y`. `env open` fails differently, going by its code: when the opened environment's state cannot be read, it keeps the previous environment's variables, and the next save writes them into the environment just opened. `cli-env-typed-state` does not make this more likely, because a file it writes always decodes, but it does not change it.

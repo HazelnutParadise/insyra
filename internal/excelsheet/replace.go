@@ -12,8 +12,10 @@ import (
 // then moves it back to where it was, hides it again if it was hidden and
 // restores the active sheet. Nothing stored in the old sheet survives: no
 // cell, formula, hidden row, row height, comment, hyperlink, column width,
-// view or merged range. Names defined for a later sheet stay with that sheet;
-// only the names belonging to the replaced sheet are deleted with it.
+// view or merged range, and the comments, tables, drawings and pictures it
+// owned are removed from the file too, unless another part still uses them.
+// Names defined for a later sheet stay with that sheet; only the names
+// belonging to the replaced sheet are deleted with it.
 // excelize refuses to delete a workbook's only sheet, so that case goes
 // through a placeholder the workbook does not hold yet. Sheet names match
 // without regard to case, as in Excel.
@@ -46,9 +48,12 @@ func Replace(f *excelize.File, sheet string, idx int) error {
 			return fmt.Errorf("placeholder sheet %s was not created next to %s", placeholder, sheet)
 		}
 	}
+	// Read what the old sheet owns before DeleteSheet drops its relationships.
+	owned := ownedParts(f, idx)
 	if err := f.DeleteSheet(sheet); err != nil {
 		return err
 	}
+	dropParts(f, owned)
 	if _, err := f.NewSheet(sheet); err != nil {
 		return err
 	}
