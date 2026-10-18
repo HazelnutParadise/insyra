@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // Layer 0 — numeric input conversion.
@@ -32,7 +33,7 @@ func appendNumericValues(dst []float64, raw []any, label func() string, position
 	for i, value := range raw {
 		converted, ok := insyra.ToFloat64Safe(value)
 		if !ok {
-			return nil, fmt.Errorf("%s contains a non-numeric value at %s index %d: %v", label(), position, i, value)
+			return nil, fmt.Errorf("%s contains a non-numeric value at %s index %d: %s", label(), position, i, utils.SprintBounded(value))
 		}
 		if math.IsNaN(converted) || math.IsInf(converted, 0) {
 			return nil, fmt.Errorf("%s contains a non-finite value at %s index %d: %v", label(), position, i, converted)

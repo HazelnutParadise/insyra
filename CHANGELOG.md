@@ -55,6 +55,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - **BREAKING**: CCL writes a float as plain decimal digits when it turns one into text. `'x' & A` for A = 0.0000001 is now `x0.0000001` instead of `x1e-07`, `CONCAT('n=', 1000000)` is `n=1000000` instead of `n=1e+06`, and `LEN(1000000)` is 7, the same as for an integer column holding 1000000, where it was 5. This covers `&`, `CONCAT`, `TOSTR` without a format and every string function. A value of 1e21 or more, NaN and the infinities keep their old spelling, and `ToCSV`, `ToJSON` and `Show` are unchanged because a number cell in exponent form reads back as the same value. An expression that builds text from a float returns a different string; use `TOSTR(x, '%g')` for the old spelling.
 - Error and warning messages that named a row or column by a 1-based number (`ToExcel`, `ToSQL`, `csvxl` Excel-to-CSV, `mkt.RFM`) now say `row index N` / `column index N` counted from 0, like the rest of the library.
 - A value nested more than 32 `[]any` deep is no longer merged with another that differs only in a deep leaf in `Count` and lookups; past the depth limit a container is identified by its address, so a separate copy of such a value is a different value. Nothing that worked changes, since `Count` panicked on these values on v0.3.2.
+- A slice that contains itself, put into a list with `Append`, no longer ends the process with a stack overflow when `Show` prints it or when a `stats` function refuses it: such a cell is shown by its type. Other cells print as before.
 
 ### CLI
 

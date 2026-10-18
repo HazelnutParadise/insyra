@@ -338,12 +338,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: documentation, not code. `Docs/DataList.md` describes the flattening and `Cell` together; keep the `Count`/`Counter` examples building their list with `Append` or `Cell` so they are runnable as written, and consider whether `Count` should say something when it is handed a slice that the receiving list could not be holding.
 - **Status**: pending
 
-### [2026-09-12] — a self-referential slice put into a list with `Append` still takes the process down when printed
-- **Where**: `stats` error formatting with `%v` of a refused cell (`numericValues` and everything that reads through it); `Show` of such a cell
-- **What**: `NewDataList` no longer recurses forever on a slice that contains itself (`flattenToDepth` keeps a slice 64 levels down as one cell). `Append` does not flatten, so it can still put such a slice into a list as one cell, and printing that cell overflows the stack: measured on 2026-09-27, `OneWayANOVA` on a list holding `cyclic` ends with `fatal error: stack overflow`.
-- **Suggestion**: for the error text, print a composite cell by its type instead of its contents, or through the bounded encoder `encodeCell`.
-- **Status**: pending
-
 ### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
 - **Where**: `internal/utils` `IsNumeric` / `ToFloat64Safe`, and every numeric path behind them
 - **Note (2026-09-14)**: measured on this line, a decimal column reaches `stats.SingleSampleTTest`, which returns a `NaN` result with a nil error, and `stats.Skewness`, which fails with "zero variance" because `SliceToF64` reads every decimal as 0; `stats.Correlation` refuses it. `ToJSON` writes a decimal cell as `{}`. `0.4` fixes these through changes that stayed there.
