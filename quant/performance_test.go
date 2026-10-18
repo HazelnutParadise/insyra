@@ -134,12 +134,12 @@ func TestPerformanceRejectsUnreadableInput(t *testing.T) {
 		series string
 		row    string
 	}{
-		{"nil cell", []any{0.01, nil, 0.02}, "returns", "row 2"},
-		{"text cell", []any{0.01, "n/a", 0.02}, "returns", "row 2"},
-		{"NaN cell", []any{0.01, math.NaN(), 0.02}, "returns", "row 2"},
-		{"positive Inf cell", []any{0.01, math.Inf(1), 0.02}, "returns", "row 2"},
-		{"negative Inf cell", []any{0.01, math.Inf(-1), 0.02}, "returns", "row 2"},
-		{"unreadable last cell", []any{0.01, 0.02, "x"}, "returns", "row 3"},
+		{"nil cell", []any{0.01, nil, 0.02}, "returns", "row index 1"},
+		{"text cell", []any{0.01, "n/a", 0.02}, "returns", "row index 1"},
+		{"NaN cell", []any{0.01, math.NaN(), 0.02}, "returns", "row index 1"},
+		{"positive Inf cell", []any{0.01, math.Inf(1), 0.02}, "returns", "row index 1"},
+		{"negative Inf cell", []any{0.01, math.Inf(-1), 0.02}, "returns", "row index 1"},
+		{"unreadable last cell", []any{0.01, 0.02, "x"}, "returns", "row index 2"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -163,10 +163,10 @@ func TestPerformanceRejectsUnreadableInput(t *testing.T) {
 		values []any
 		row    string
 	}{
-		{"text cell", []any{100.0, "n/a", 90.0}, "row 2"},
-		{"nil cell", []any{100.0, nil, 90.0}, "row 2"},
-		{"NaN cell", []any{100.0, math.NaN(), 90.0}, "row 2"},
-		{"Inf cell", []any{100.0, math.Inf(1), 90.0}, "row 2"},
+		{"text cell", []any{100.0, "n/a", 90.0}, "row index 1"},
+		{"nil cell", []any{100.0, nil, 90.0}, "row index 1"},
+		{"NaN cell", []any{100.0, math.NaN(), 90.0}, "row index 1"},
+		{"Inf cell", []any{100.0, math.Inf(1), 90.0}, "row index 1"},
 	}
 	for _, tc := range equityCases {
 		t.Run("equity/"+tc.name, func(t *testing.T) {

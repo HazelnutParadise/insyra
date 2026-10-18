@@ -412,6 +412,18 @@ newdl 4 5 6
 # second command writes to $result
 ```
 
+### Number Variables
+
+Any argument that expects a number can name a number variable instead. `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max` and `range` store their result when they end with `as <var>`, and `show <var>` prints it:
+
+```text
+mean x as m
+sample y frac m
+show m
+```
+
+A token that parses as a number is always read as a number. Free-form value positions (`fillna`, `set`, filter values) and name-or-number selectors such as `col` keep their own rules.
+
 ### Literal Values
 
 Several commands accept **literal data values** as arguments — places where a single cell value is being supplied. The CLI coerces each token through this ladder (case-insensitive for the keyword rows):
@@ -998,12 +1010,12 @@ Source policy:
 | `load` | `load <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [ragged true\|false] [trimspace true\|false] [sheet <name>] \| load parquet <file> [...] \| load sql <conn> <table>\|query "<sql>" [...] [as <var>]` | Load data into a DataTable variable from a file, parquet, or SQL connection |
 | `lower` | `lower <var> [as <var>]` | Lowercase DataList strings |
 | `mannwhitney` | `mannwhitney <var1> <var2> [two-sided\|greater\|less]` | Mann-Whitney U test for two independent samples |
-| `max` | `max <var>` | DataList maximum |
-| `mean` | `mean <var>` | DataList mean |
-| `median` | `median <var>` | DataList median |
+| `max` | `max <var> [as <var>]` | DataList maximum |
+| `mean` | `mean <var> [as <var>]` | DataList mean |
+| `median` | `median <var> [as <var>]` | DataList median |
 | `merge` | `merge <var1> <var2> <direction> <mode> [on <cols>] [as <var>]` | Merge two DataTables |
-| `min` | `min <var>` | DataList minimum |
-| `mode` | `mode <var>` | DataList mode |
+| `min` | `min <var> [as <var>]` | DataList minimum |
+| `mode` | `mode <var> [as <var>]` | DataList mode |
 | `movavg` | `movavg <var> <window> [as <var>]` | Moving average |
 | `newdl` | `newdl <values...> [as <var>]` | Create DataList manually |
 | `newdt` | `newdt <dl_vars...> [as <var>]` | Create DataTable from DataList variables |
@@ -1023,7 +1035,7 @@ Source policy:
 | `quant` | `quant sharpe\|sortino\|ir\|maxdd\|annret\|calmar\|drawdown\|var\|cvar\|beta\|capm\|factor\|bs\|iv\|portfolio\|frontier ...` | Quantitative finance: performance, risk, exposure, factor, option and portfolio analytics |
 | `quantile` | `quantile <var> <p>` | DataList quantile, p from 0 to 1 |
 | `quartile` | `quartile <var> <q>` | DataList quartile |
-| `range` | `range <var>` | DataList range |
+| `range` | `range <var> [as <var>]` | DataList range |
 | `rank` | `rank <var> [asc\|desc\|true\|false] [as <var>]` | Rank DataList |
 | `read` | `read <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [ragged true\|false] [trimspace true\|false] [sheet <name>]` | Quick preview a file without saving variable |
 | `regression` | `regression <type> <y> <x...> [as <var>]` | Regression analysis: linear/poly/exp/log/logistic/poisson |
@@ -1049,8 +1061,8 @@ Source policy:
 | `sort` | `sort <var> <col> [asc\|desc]` | Sort DataTable by one column |
 | `split` | `split <var> train <frac> [shuffle true\|false] [seed N] as <trainVar> <testVar>` | Split DataTable rows into train/test tables |
 | `standardize` | `standardize <var> [as <var>]` | Standardize DataList |
-| `stdev` | `stdev <var>` | DataList standard deviation |
-| `sum` | `sum <var>` | DataList sum |
+| `stdev` | `stdev <var> [as <var>]` | DataList standard deviation |
+| `sum` | `sum <var> [as <var>]` | DataList sum |
 | `summary` | `summary <var>` | Show summary statistics |
 | `swap` | `swap <var> col\|row <a> <b>` | Swap DataTable columns or rows |
 | `transpose` | `transpose <var> [as <var>]` | Transpose DataTable |
@@ -1058,7 +1070,7 @@ Source policy:
 | `types` | `types <var>` | Show value types of DataTable/DataList |
 | `unpivot` | `unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true\|false] [as <var>]` | Reshape wide-form DataTable to long form |
 | `upper` | `upper <var> [as <var>]` | Uppercase DataList strings |
-| `var` | `var <var>` | DataList variance |
+| `var` | `var <var> [as <var>]` | DataList variance |
 | `vars` | `vars` | List variables in current environment |
 | `version` | `version` | Show insyra version |
 | `wilcoxon` | `wilcoxon single\|paired ...` | Wilcoxon signed-rank tests |

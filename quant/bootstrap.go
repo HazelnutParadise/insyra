@@ -298,10 +298,10 @@ func numericSeries(dl insyra.IDataList, label string) ([]float64, error) {
 	for i, value := range raw {
 		converted, ok := insyra.ToFloat64Safe(value)
 		if !ok {
-			return nil, fmt.Errorf("%s contains a non-numeric value at row %d: %v", label, i+1, value)
+			return nil, fmt.Errorf("%s contains a non-numeric value at row index %d: %v", label, i, value)
 		}
 		if math.IsNaN(converted) || math.IsInf(converted, 0) {
-			return nil, fmt.Errorf("%s contains a non-finite value at row %d: %v", label, i+1, converted)
+			return nil, fmt.Errorf("%s contains a non-finite value at row index %d: %v", label, i, converted)
 		}
 		out[i] = converted
 	}

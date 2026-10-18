@@ -954,12 +954,18 @@ func validateTree(tree *HierarchicalResult) error {
 	if len(tree.Height) != len(tree.Merge) {
 		return fmt.Errorf("tree has %d merges and %d heights; each merge needs one height", len(tree.Merge), len(tree.Height))
 	}
+	// Every leaf and every merge is joined exactly once; a node used twice
+	// would put one observation in two clusters.
+	used := make(map[int]int, 2*len(tree.Merge))
 	for step, row := range tree.Merge {
 		for _, id := range row {
-			if (id < 0 && -id <= n) || (id > 0 && id <= step) {
-				continue
+			if (id >= 0 || -id > n) && (id <= 0 || id > step) {
+				return fmt.Errorf("merge %d joins %d, which is neither a leaf (-1 to -%d) nor an earlier merge (1 to %d)", step+1, id, n, step)
 			}
-			return fmt.Errorf("merge %d joins %d, which is neither a leaf (-1 to -%d) nor an earlier merge (1 to %d)", step+1, id, n, step)
+			if first, dup := used[id]; dup {
+				return fmt.Errorf("merge %d joins %d, which merge %d already joined; each leaf and merge is joined once", step+1, id, first)
+			}
+			used[id] = step + 1
 		}
 	}
 	return nil

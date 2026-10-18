@@ -21,7 +21,7 @@ func runQuartileCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	q, err := parseIntArg("quartile", "q", args[1])
+	q, err := parseIntArg(ctx, "quartile", "q", args[1])
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func runPercentileCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	p, err := parseFloatArg("percentile", "p", args[1])
+	p, err := parseFloatArg(ctx, "percentile", "p", args[1])
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func runQuantileCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	p, err := parseFloatArg("quantile", "p", args[1])
+	p, err := parseFloatArg(ctx, "quantile", "p", args[1])
 	if err != nil {
 		return err
 	}

@@ -114,7 +114,7 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 		{
 			"SingleSampleTTest",
 			func() error { _, err := stats.SingleSampleTTest(withSlice(1.0, 2.0, 3.0), 0); return err },
-			"data contains a non-numeric value at row 4: [10 11]",
+			"data contains a non-numeric value at row index 3: [10 11]",
 		},
 		{
 			"PairedTTest",
@@ -122,7 +122,7 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 				_, err := stats.PairedTTest(withSlice(1.0, 2.0, 3.0), dl(1.0, 2.0, 3.0, 4.0))
 				return err
 			},
-			"data1 contains a non-numeric value at row 4: [10 11]",
+			"data1 contains a non-numeric value at row index 3: [10 11]",
 		},
 		{
 			"SingleSampleWilcoxon",
@@ -133,7 +133,7 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 				)
 				return err
 			},
-			"data contains a non-numeric value at row 4: [10 11]",
+			"data contains a non-numeric value at row index 3: [10 11]",
 		},
 		{
 			"OneWayANOVA",
@@ -141,7 +141,7 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 				_, err := stats.OneWayANOVA([]insyra.IDataList{withSlice(1.0, 2.0, 3.0), dl(4.0, 5.0, 6.0)})
 				return err
 			},
-			"group 1 contains a non-numeric value at row 4: [10 11]",
+			"group 1 contains a non-numeric value at row index 3: [10 11]",
 		},
 		{
 			"KruskalWallis",
@@ -149,7 +149,7 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 				_, err := stats.KruskalWallis([]insyra.IDataList{withSlice(1.0, 2.0, 3.0), dl(4.0, 5.0, 6.0)})
 				return err
 			},
-			"group 1 contains a non-numeric value at row 4: [10 11]",
+			"group 1 contains a non-numeric value at row index 3: [10 11]",
 		},
 		{
 			"TwoWayANOVA",
@@ -157,7 +157,7 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 				_, err := stats.TwoWayANOVA(2, 2, []insyra.IDataList{withSlice(1.0, 2.0, 3.0), dl(3.0, 4.5), dl(5.0, 6.0), dl(7.0, 8.5)})
 				return err
 			},
-			"cell (A=1, B=1) contains a non-numeric value at row 4: [10 11]",
+			"cell (A=1, B=1) contains a non-numeric value at row index 3: [10 11]",
 		},
 		{
 			"RepeatedMeasuresANOVA",
@@ -165,7 +165,7 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 				_, err := stats.RepeatedMeasuresANOVA([]insyra.IDataList{dl(1.0, 2.0, 3.0), withSlice(2.0, 3.0)})
 				return err
 			},
-			"subject 2 contains a non-numeric value at condition 3: [10 11]",
+			"subject 2 contains a non-numeric value at condition index 2: [10 11]",
 		},
 		{
 			"FriedmanTest",
@@ -173,7 +173,7 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 				_, err := stats.FriedmanTest([]insyra.IDataList{dl(1.0, 2.0, 3.0), withSlice(2.0, 3.0), dl(3.0, 1.0, 2.0)})
 				return err
 			},
-			"subject 2 contains a non-numeric value at condition 3: [10 11]",
+			"subject 2 contains a non-numeric value at condition index 2: [10 11]",
 		},
 	}
 

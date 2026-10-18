@@ -156,3 +156,35 @@ func TestSanitizeHistoryLineMasksEscapedAndSpacedPasswords(t *testing.T) {
 		}
 	}
 }
+
+// #370: a number argument may name a number variable, and the stat commands can make one.
+func TestNumberVariablesFeedNumericArguments(t *testing.T) {
+	ctx := newTestExecContext(t)
+	ctx.Vars["x"] = insyra.NewDataList(1, 2, 3, 4, 5, 6)
+	handler, ok := LookupCommand("mean")
+	if !ok {
+		t.Fatal("mean is not registered")
+	}
+	if err := handler.Run(ctx, []string{"x", "as", "m"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := ctx.Vars["m"]; got != 3.5 {
+		t.Fatalf("m = %v, want 3.5", got)
+	}
+	ctx.Vars["n"] = 2
+	got, err := parseIntArg(ctx, "shift", "periods", "n")
+	if err != nil || got != 2 {
+		t.Fatalf("parseIntArg through a variable = %d, %v", got, err)
+	}
+	if f, err := parseFloatArg(ctx, "t", "mu", "m"); err != nil || f != 3.5 {
+		t.Fatalf("parseFloatArg through a variable = %v, %v", f, err)
+	}
+	if _, err := parseFloatArg(ctx, "t", "mu", "x"); err == nil {
+		t.Fatal("a list variable is not a number")
+	}
+	var out strings.Builder
+	ctx.Output = &out
+	if err := runShowCommand(ctx, []string{"m"}); err != nil || strings.TrimSpace(out.String()) != "3.5" {
+		t.Fatalf("show m = %q, %v", out.String(), err)
+	}
+}

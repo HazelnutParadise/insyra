@@ -147,9 +147,13 @@ func TestReadSlice2D_InconsistentLengths(t *testing.T) {
 		return
 	}
 	dt.Show()
-	// 應該以第一行的列數為準
-	if len(dt.ColNames()) != 3 {
-		t.Errorf("ReadSlice2D() with inconsistent lengths expected 3 columns, got %d", len(dt.ColNames()))
+	// 以最寬那一列的欄數為準，不丟掉多出來的值
+	if len(dt.ColNames()) != 4 {
+		t.Errorf("ReadSlice2D() with inconsistent lengths expected 4 columns, got %d", len(dt.ColNames()))
+		return
+	}
+	if dt.GetElement(2, "D") != "Extra" {
+		t.Errorf("the value past the first row was lost: got %v", dt.GetElement(2, "D"))
 		return
 	}
 	// 第二行的第三列應該是 nil
@@ -616,5 +620,25 @@ func TestReadCSV_StringWithOptions_RaggedPaddingAffectsInference(t *testing.T) {
 	}
 	if v, ok := qty[1].(float64); !ok || !math.IsNaN(v) {
 		t.Errorf("expected NaN for padded cell, got %v (%T)", qty[1], qty[1])
+	}
+}
+
+func TestReadSlice2DKeepsValuesPastTheFirstRow(t *testing.T) {
+	dt, err := insyra.ReadSlice2D([][]float64{{1}, {2, 3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, cols := dt.Size()
+	if rows != 2 || cols != 2 {
+		t.Fatalf("want 2x2, got %dx%d", rows, cols)
+	}
+	if got := dt.GetElementByNumberIndex(1, 1); got != 3.0 {
+		t.Fatalf("the 3 past the first row was lost: got %v", got)
+	}
+	if got := dt.GetElementByNumberIndex(0, 1); got != nil {
+		t.Fatalf("a short row should be padded with nil, got %v", got)
+	}
+	if _, err := insyra.ReadSlice2D([][]int{{}, {1}}); err == nil {
+		t.Fatal("an empty first row should still be an error")
 	}
 }

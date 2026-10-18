@@ -32,6 +32,7 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 	}
 	var rowNum, colNum, numComponents int
 	var data *mat.Dense
+	nonFinite := false
 	// Bulk-load per column via ToF64Slice. The previous nested-loop form
 	// (`dt.GetRow(i).Get(j)` for every cell) profiled to 67% runtime.Stack —
 	// each Get goes through the DataList actor, whose getGID call walks the
@@ -75,6 +76,11 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 						data = nil
 						return
 					}
+					if math.IsNaN(f) || math.IsInf(f, 0) {
+						nonFinite = true
+						data = nil
+						return
+					}
 					data.Set(i, j, f)
 				}
 			})
@@ -88,6 +94,9 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 	}
 	if rowNum < 2 || colNum < 1 {
 		return nil, errors.New("insufficient data shape for PCA")
+	}
+	if data == nil && nonFinite {
+		return nil, errors.New("input contains a NaN or infinite value")
 	}
 	if data == nil {
 		return nil, errors.New("input contains non-numeric values")

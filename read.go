@@ -46,9 +46,19 @@ func ReadSlice2D(data any) (*DataTable, error) {
 		return nil, fmt.Errorf("input data must be a 2D slice, first element is %s", firstRow.Kind())
 	}
 
-	numCols := firstRow.Len()
-	if numCols == 0 {
+	if firstRow.Len() == 0 {
 		return nil, fmt.Errorf("first row cannot be empty")
+	}
+
+	// The table is as wide as the widest row, so a row longer than the first
+	// keeps all its values. Shorter rows are padded with nil below.
+	numCols := 0
+	for rowIdx := 0; rowIdx < rv.Len(); rowIdx++ {
+		row := rv.Index(rowIdx)
+		if row.Kind() != reflect.Slice && row.Kind() != reflect.Array {
+			return nil, fmt.Errorf("row %d is not a slice or array, got %s", rowIdx, row.Kind())
+		}
+		numCols = max(numCols, row.Len())
 	}
 
 	dls := make([]*DataList, numCols)

@@ -32,7 +32,7 @@ func TestNumericValuesRefusesEveryUnreadableForm(t *testing.T) {
 			}
 			// The row is what makes the error actionable — a caller has to be
 			// able to find the cell.
-			if !strings.Contains(err.Error(), "row 3") {
+			if !strings.Contains(err.Error(), "row index 2") {
 				t.Fatalf("error %q does not name the row", err)
 			}
 			if !strings.Contains(err.Error(), "predictor 0") {
@@ -61,21 +61,21 @@ func TestAppendNumericValuesNamesThePositionAndAppends(t *testing.T) {
 			[]any{1.0, nil},
 			"subject 2",
 			"condition",
-			"subject 2 contains a non-numeric value at condition 2: <nil>",
+			"subject 2 contains a non-numeric value at condition index 1: <nil>",
 		},
 		{
 			"a non-finite cell",
 			[]any{math.NaN()},
 			"subject 1",
 			"condition",
-			"subject 1 contains a non-finite value at condition 1: NaN",
+			"subject 1 contains a non-finite value at condition index 0: NaN",
 		},
 		{
 			"row position is the default",
 			[]any{1.0, "x"},
 			"group 3",
 			"row",
-			"group 3 contains a non-numeric value at row 2: x",
+			"group 3 contains a non-numeric value at row index 1: x",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestAppendNumericValuesReturnsNilOnRefusal(t *testing.T) {
 	if err == nil {
 		t.Fatalf("nil was accepted")
 	}
-	if want := "subject 2 contains a non-numeric value at condition 2: <nil>"; err.Error() != want {
+	if want := "subject 2 contains a non-numeric value at condition index 1: <nil>"; err.Error() != want {
 		t.Fatalf("error %q, want %q", err.Error(), want)
 	}
 	if values != nil {

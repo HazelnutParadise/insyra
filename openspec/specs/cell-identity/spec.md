@@ -110,3 +110,10 @@ Most cell values are things Go can compare and hash, so counting, searching and 
 - **WHEN** 呼叫端以 `insyra.ToMapKey(int64(5))` 索引計數結果
 - **THEN** 得到與 `counter[5]` 相同的計數
 
+### Requirement: Nested strings are written unambiguously
+The system SHALL write each string inside a nested value with its length, so that two nested values count as the same value only when their strings are equal element by element.
+
+#### Scenario: A string holding separators
+- **WHEN** a list holds Cell([]any{"a,s:b"}) and Cell([]any{"a","b"})
+- **THEN** Counter reports two entries and Count of each finds one
+

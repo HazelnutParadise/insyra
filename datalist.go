@@ -48,6 +48,16 @@ func (dl *DataList) Data() []any {
 // flattenWithNilSupport flattens a slice of any values, properly handling nil values
 // Only flattens slices, not arrays
 func flattenWithNilSupport(values []any) []any {
+	return flattenToDepth(values, 0)
+}
+
+// maxFlattenDepth bounds how many slices deep the flattener descends. A slice
+// that contains itself would otherwise recurse until the stack is exhausted,
+// which ends the process and cannot be recovered. Past the bound the slice is
+// kept as one cell, as Cell does.
+const maxFlattenDepth = 64
+
+func flattenToDepth(values []any, depth int) []any {
 	var result []any
 
 	for _, value := range values {
@@ -64,14 +74,16 @@ func flattenWithNilSupport(values []any) []any {
 
 		// Use reflection to check if the value is a slice (but not array)
 		rv := reflect.ValueOf(value)
-		if rv.Kind() == reflect.Slice {
+		if rv.Kind() == reflect.Slice && depth >= maxFlattenDepth {
+			result = append(result, value)
+		} else if rv.Kind() == reflect.Slice {
 			// Recursively flatten slice elements
 			sliceLen := rv.Len()
 			subSlice := make([]any, sliceLen)
 			for i := range sliceLen {
 				subSlice[i] = rv.Index(i).Interface()
 			}
-			result = append(result, flattenWithNilSupport(subSlice)...)
+			result = append(result, flattenToDepth(subSlice, depth+1)...)
 		} else {
 			result = append(result, value)
 		}

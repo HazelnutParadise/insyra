@@ -52,7 +52,19 @@ func fTwoTailedPValue(f, df1, df2 float64) float64 {
 	return 2 * math.Min(dist.CDF(f), 1-dist.CDF(f))
 }
 
+// chiSquaredPValue is the right-tail probability of a chi-squared statistic.
+// gonum panics ("cephes: parameter out of bounds") on a negative statistic or a
+// non-positive df, and a statistic computed as a difference of logs or of
+// sums lands just below zero by rounding when the groups agree exactly. A
+// negative statistic therefore has p = 1, and a df that is not positive or a
+// NaN input has no p-value.
 func chiSquaredPValue(chi2, df float64) float64 {
+	if math.IsNaN(chi2) || math.IsNaN(df) || df <= 0 {
+		return math.NaN()
+	}
+	if chi2 <= 0 {
+		return 1
+	}
 	return 1 - distuv.ChiSquared{K: df}.CDF(chi2)
 }
 

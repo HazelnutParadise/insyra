@@ -464,7 +464,7 @@ func TestPortfolioUnreadableCellNamesTheColumn(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an unreadable-cell error")
 	}
-	if !strings.Contains(err.Error(), "B") || !strings.Contains(err.Error(), "row 4") {
+	if !strings.Contains(err.Error(), "B") || !strings.Contains(err.Error(), "row index 3") {
 		t.Errorf("error does not name column B and row 4: %v", err)
 	}
 }

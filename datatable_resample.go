@@ -73,12 +73,12 @@ func (dt *DataTable) Resample(timeCol any, freq ResampleFreq, aggs ...ResampleAg
 		times = make([]time.Time, nRows)
 		for row := 0; row < nRows; row++ {
 			if row >= len(timeValues) {
-				resErr = fmt.Errorf("Resample: time column row %d is not a time.Time", row+1)
+				resErr = fmt.Errorf("Resample: time column row index %d is not a time.Time", row)
 				return
 			}
 			value, ok := timeValues[row].(time.Time)
 			if !ok {
-				resErr = fmt.Errorf("Resample: time column row %d is not a time.Time: %v", row+1, timeValues[row])
+				resErr = fmt.Errorf("Resample: time column row index %d is not a time.Time: %v", row, timeValues[row])
 				return
 			}
 			times[row] = value
