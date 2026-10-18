@@ -20,6 +20,12 @@ func (r *TTestResult) String() string { return formatResult("t-test", r) }
 // Show prints String to standard output.
 func (r *TTestResult) Show() { fmt.Println(r.String()) }
 
+// String returns the result as text: "Newey-West mean test", then one line per field.
+func (r *NeweyWestResult) String() string { return formatResult("Newey-West mean test", r) }
+
+// Show prints String to standard output.
+func (r *NeweyWestResult) Show() { fmt.Println(r.String()) }
+
 // String returns the result as text: "z-test", then one line per field.
 func (r *ZTestResult) String() string { return formatResult("z-test", r) }
 

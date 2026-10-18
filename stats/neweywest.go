@@ -10,11 +10,11 @@ import (
 
 // NeweyWestResult is the result of NeweyWestMeanTest.
 type NeweyWestResult struct {
-	TestResult          // Statistic is the t value, DF is N-1
-	Mean        float64 // sample mean
-	StdErr      float64 // Newey-West (HAC) standard error of the mean
-	Lag         int     // the lag used, after any automatic choice
-	N           int     // number of observations
+	TestResult         // Statistic is the t value, DF is N-1
+	Mean       float64 // sample mean
+	StdErr     float64 // Newey-West (HAC) standard error of the mean
+	Lag        int     // the lag used, after any automatic choice
+	N          int     // number of observations
 }
 
 // NeweyWestLag returns the lag NeweyWestMeanTest uses when it is asked to
@@ -81,10 +81,9 @@ func NeweyWestMeanTest(series insyra.IDataList, lag int) (*NeweyWestResult, erro
 	if longRun <= 0 {
 		// A constant series has no variance: the arithmetic gives ±Inf or NaN.
 		result.StdErr = 0
-		switch {
-		case mean == 0:
+		if mean == 0 {
 			result.Statistic, result.PValue = math.NaN(), math.NaN()
-		default:
+		} else {
 			result.Statistic, result.PValue = math.Copysign(math.Inf(1), mean), 0
 		}
 		return result, nil
