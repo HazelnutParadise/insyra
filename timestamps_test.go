@@ -73,29 +73,6 @@ func TestLastModifiedTimeNeverMovesBack(t *testing.T) {
 	}
 }
 
-func TestDeprecatedTimestampGettersReturnUnixSeconds(t *testing.T) {
-	at := time.Unix(1700000000, 500)
-	setClock(t, &at)
-
-	dl := NewDataList(1)
-	dt := NewDataTable(NewDataList(1).SetName("c"))
-	if got := dl.GetCreationTimestamp(); got != 1700000000 {
-		t.Errorf("DataList.GetCreationTimestamp = %d", got)
-	}
-	if got := dl.GetLastModifiedTimestamp(); got != 1700000000 {
-		t.Errorf("DataList.GetLastModifiedTimestamp = %d", got)
-	}
-	if got := dt.GetCreationTimestamp(); got != 1700000000 {
-		t.Errorf("DataTable.GetCreationTimestamp = %d", got)
-	}
-	if got := dt.GetLastModifiedTimestamp(); got != 1700000000 {
-		t.Errorf("DataTable.GetLastModifiedTimestamp = %d", got)
-	}
-	if got := dl.CreationTime(); !got.Equal(at) {
-		t.Errorf("CreationTime = %v, want %v", got, at)
-	}
-}
-
 func TestIsTheSameAsIgnoresTimes(t *testing.T) {
 	base := time.Unix(1700000000, 0)
 	at := base

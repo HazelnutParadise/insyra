@@ -25,13 +25,6 @@ func MultiHeadAttention(embed, heads int) Layer {
 	return &multiHeadAttentionLayer{embed: embed, heads: heads}
 }
 
-// NewMultiHeadAttention builds the same layer as MultiHeadAttention.
-//
-// Deprecated: use MultiHeadAttention. Removed in the release after the one that deprecated it.
-func NewMultiHeadAttention(embed, heads int) Layer {
-	return MultiHeadAttention(embed, heads)
-}
-
 func (l *multiHeadAttentionLayer) Build(t *Tape) error {
 	if l.embed <= 0 || l.heads <= 0 {
 		return fmt.Errorf("multiheadattention dimensions must be positive, got embed=%d heads=%d", l.embed, l.heads)

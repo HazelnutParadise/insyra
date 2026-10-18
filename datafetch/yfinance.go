@@ -143,11 +143,6 @@ type YFPeriod string
 const (
 	YFPeriodAnnual YFPeriod = "annual"
 
-	// Deprecated: use YFPeriodAnnual, which fetches the same statements. This
-	// spelling labels the tables it returns "yearly" rather than "annual".
-	// Removed in the release after the one that deprecated it.
-	YFPeriodYearly YFPeriod = "yearly"
-
 	YFPeriodQuarterly YFPeriod = "quarterly"
 )
 

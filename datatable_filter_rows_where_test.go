@@ -132,41 +132,6 @@ func TestFilterKeepsARowWhenAnyCellPasses(t *testing.T) {
 	}
 }
 
-// FilterByCustomElement is Filter with the row and column arguments dropped.
-// Checked on the fixture, on a table with nil and slice cells, and on an
-// empty table, for a predicate that keeps some, all and no rows.
-func TestFilterByCustomElementEqualsFilter(t *testing.T) {
-	withNil := NewDataTable(
-		NewDataList(nil, 2, "x").SetName("a"),
-		NewDataList(Cell([]byte{1}), nil, 3.5).SetName("b"),
-	)
-	withNil.SetRowNameByIndex(2, "last")
-	tables := map[string]*DataTable{
-		"fixture": rowsWhereFixture(),
-		"nil":     withNil,
-		"empty":   NewDataTable(),
-	}
-	predicates := map[string]func(any) bool{
-		"some": func(v any) bool { f, ok := ToFloat64Safe(v); return ok && f > 2 },
-		"all":  func(any) bool { return true },
-		"none": func(any) bool { return false },
-		"nil":  func(v any) bool { return v == nil },
-	}
-	for tn, dt := range tables {
-		for pn, f := range predicates {
-			a := dt.FilterByCustomElement(f)
-			b := dt.Filter(func(_ int, _ string, v any) bool { return f(v) })
-			if !reflect.DeepEqual(a.To2DSlice(), b.To2DSlice()) ||
-				!reflect.DeepEqual(a.ColNames(), b.ColNames()) ||
-				!reflect.DeepEqual(a.RowNames(), b.RowNames()) ||
-				a.GetName() != b.GetName() {
-				t.Errorf("%s/%s: FilterByCustomElement gave %v %v %v, Filter gave %v %v %v", tn, pn,
-					a.To2DSlice(), a.ColNames(), a.RowNames(), b.To2DSlice(), b.ColNames(), b.RowNames())
-			}
-		}
-	}
-}
-
 // keep may call the table's own methods. A column it adds is not in the
 // result and does not crash the call.
 func TestFilterRowsWhereSurvivesAColumnAddedByKeep(t *testing.T) {

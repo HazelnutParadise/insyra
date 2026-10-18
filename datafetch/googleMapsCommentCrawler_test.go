@@ -258,7 +258,7 @@ func TestGetReviewsReadsReviewPages(t *testing.T) {
 	})
 
 	reviews := crawlerFor(server).GetReviews(store, 0,
-		GoogleMapsStoreReviewsFetchingOptions{SortBy: SortByNewest, MaxWaitingInterval_Milliseconds: 1000})
+		GoogleMapsStoreReviewsFetchingOptions{SortBy: GoogleMapsStoreReviewSortByNewest, MaxWaitingInterval: time.Second})
 
 	if len(reviews) != 4 {
 		t.Fatalf("got %d reviews over two pages, want 4: %+v", len(reviews), reviews)
@@ -333,7 +333,7 @@ func TestGetReviewsAtTheMinimumWaitingInterval(t *testing.T) {
 	})
 
 	start := time.Now()
-	reviews := crawlerFor(server).GetReviews("0x1:0x2", 2, GoogleMapsStoreReviewsFetchingOptions{MaxWaitingInterval_Milliseconds: 1000})
+	reviews := crawlerFor(server).GetReviews("0x1:0x2", 2, GoogleMapsStoreReviewsFetchingOptions{MaxWaitingInterval: time.Second})
 
 	if len(reviews) != 2 {
 		t.Errorf("got %d reviews over two pages, want 2", len(reviews))
@@ -352,8 +352,8 @@ func TestGetReviewsZeroOptionsAreDefaults(t *testing.T) {
 	logged := captureGmapsWarnings(t)
 	server, requests := reviewServer(t, map[string]string{"": reviewPage(t, "")})
 
-	crawlerFor(server).GetReviews("0x1:0x2", 1, GoogleMapsStoreReviewsFetchingOptions{SortBy: SortByNewest})
-	crawlerFor(server).GetReviews("0x1:0x2", 1, GoogleMapsStoreReviewsFetchingOptions{MaxWaitingInterval_Milliseconds: 2000})
+	crawlerFor(server).GetReviews("0x1:0x2", 1, GoogleMapsStoreReviewsFetchingOptions{SortBy: GoogleMapsStoreReviewSortByNewest})
+	crawlerFor(server).GetReviews("0x1:0x2", 1, GoogleMapsStoreReviewsFetchingOptions{MaxWaitingInterval: 2 * time.Second})
 
 	if logged.Len() != 0 {
 		t.Errorf("setting one option logged a warning: %q", logged.String())

@@ -34,26 +34,6 @@ func TestGetReviewsWaitsWithADurationLimit(t *testing.T) {
 	}
 }
 
-func TestGetReviewsRefusesBothWaitingFields(t *testing.T) {
-	logged := captureGmapsWarnings(t)
-	server, requests := reviewServer(t, map[string]string{"": reviewPage(t, "")})
-
-	reviews := crawlerFor(server).GetReviews("0x1:0x2", 1, GoogleMapsStoreReviewsFetchingOptions{
-		MaxWaitingInterval:              2 * time.Second,
-		MaxWaitingInterval_Milliseconds: 2000,
-	})
-
-	if reviews != nil {
-		t.Errorf("got %d reviews, want nil", len(reviews))
-	}
-	if n := len(requests()); n != 0 {
-		t.Errorf("sent %d requests, want none", n)
-	}
-	if !strings.Contains(logged.String(), "MaxWaitingInterval_Milliseconds") {
-		t.Errorf("the warning %q does not name the deprecated field", logged.String())
-	}
-}
-
 func TestGetReviewsReplacesAWaitUnderOneSecond(t *testing.T) {
 	logged := captureGmapsWarnings(t)
 	posted := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)

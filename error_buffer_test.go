@@ -39,45 +39,6 @@ func TestErrorBufferBasicOperations(t *testing.T) {
 	ClearErrors()
 }
 
-func TestPeekError(t *testing.T) {
-	ClearErrors()
-
-	// Peek on empty buffer should return nil
-	if PeekError(ErrPoppingModeFIFO) != nil {
-		t.Error("PeekError should return nil when buffer is empty")
-	}
-
-	// Push an error
-	LogWarning("TestPackage", "TestFunc", "Test message")
-	time.Sleep(10 * time.Millisecond)
-
-	// Peek should return the error without removing it
-	err := PeekError(ErrPoppingModeFIFO)
-	if err == nil {
-		t.Error("PeekError should return non-nil after pushing an error")
-		return // Prevents nil dereference
-	}
-
-	if err.PackageName != "TestPackage" {
-		t.Errorf("Expected PackageName 'TestPackage', got '%s'", err.PackageName)
-	}
-
-	if err.FuncName != "TestFunc" {
-		t.Errorf("Expected FuncName 'TestFunc', got '%s'", err.FuncName)
-	}
-
-	if err.Level != LogLevelWarning {
-		t.Errorf("Expected Level LogLevelWarning, got %v", err.Level)
-	}
-
-	// Count should still be 1 (not removed)
-	if GetErrorCount() != 1 {
-		t.Errorf("GetErrorCount should still be 1 after peek, got %d", GetErrorCount())
-	}
-
-	ClearErrors()
-}
-
 func TestGetAllErrors(t *testing.T) {
 	ClearErrors()
 
@@ -109,42 +70,6 @@ func TestGetAllErrors(t *testing.T) {
 	ClearErrors()
 }
 
-func TestGetErrorsByLevel(t *testing.T) {
-	ClearErrors()
-
-	LogWarning("Pkg1", "Func1", "Warning 1")
-	LogWarning("Pkg2", "Func2", "Warning 2")
-	time.Sleep(20 * time.Millisecond)
-
-	warnings := GetErrorsByLevel(LogLevelWarning)
-	if len(warnings) != 2 {
-		t.Errorf("Expected 2 warnings, got %d", len(warnings))
-	}
-
-	// Should not remove errors
-	if GetErrorCount() != 2 {
-		t.Error("GetErrorsByLevel should not remove errors")
-	}
-
-	ClearErrors()
-}
-
-func TestGetErrorsByPackage(t *testing.T) {
-	ClearErrors()
-
-	LogWarning("Pkg1", "Func1", "Message 1")
-	LogWarning("Pkg2", "Func2", "Message 2")
-	LogWarning("Pkg1", "Func3", "Message 3")
-	time.Sleep(20 * time.Millisecond)
-
-	pkg1Errors := GetErrorsByPackage("Pkg1")
-	if len(pkg1Errors) != 2 {
-		t.Errorf("Expected 2 errors from Pkg1, got %d", len(pkg1Errors))
-	}
-
-	ClearErrors()
-}
-
 func TestPopAllErrors(t *testing.T) {
 	ClearErrors()
 
@@ -161,57 +86,6 @@ func TestPopAllErrors(t *testing.T) {
 	if GetErrorCount() != 0 {
 		t.Errorf("PopAllErrors should remove all errors, count is %d", GetErrorCount())
 	}
-}
-
-func TestPopErrorInfo(t *testing.T) {
-	ClearErrors()
-
-	// Pop from empty should return nil
-	if PopErrorInfo(ErrPoppingModeFIFO) != nil {
-		t.Error("PopErrorInfo should return nil when buffer is empty")
-	}
-
-	LogWarning("TestPkg", "TestFn", "Test message")
-	time.Sleep(10 * time.Millisecond)
-
-	err := PopErrorInfo(ErrPoppingModeFIFO)
-	if err == nil {
-		t.Error("PopErrorInfo should return non-nil")
-		return
-	}
-
-	if err.PackageName != "TestPkg" {
-		t.Errorf("Expected PackageName 'TestPkg', got '%s'", err.PackageName)
-	}
-
-	// Should be empty now
-	if GetErrorCount() != 0 {
-		t.Error("PopErrorInfo should remove the error")
-	}
-}
-
-func TestHasErrorAboveLevel(t *testing.T) {
-	ClearErrors()
-
-	// No errors
-	if HasErrorAboveLevel(LogLevelWarning) {
-		t.Error("HasErrorAboveLevel should return false when empty")
-	}
-
-	LogWarning("Pkg", "Fn", "Warning")
-	time.Sleep(10 * time.Millisecond)
-
-	// Should have warning level errors
-	if !HasErrorAboveLevel(LogLevelWarning) {
-		t.Error("HasErrorAboveLevel should return true for Warning when warning exists")
-	}
-
-	// Should not have fatal level errors
-	if HasErrorAboveLevel(LogLevelFatal) {
-		t.Error("HasErrorAboveLevel should return false for Fatal when only warning exists")
-	}
-
-	ClearErrors()
 }
 
 func TestErrorInfoError(t *testing.T) {
@@ -312,10 +186,11 @@ func TestErrorTimestamp(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	after := time.Now()
 
-	err := PeekError(ErrPoppingModeFIFO)
-	if err == nil {
-		t.Fatal("Expected error to be present")
+	errs := GetAllErrors()
+	if len(errs) != 1 {
+		t.Fatalf("Expected one error to be present, got %d", len(errs))
 	}
+	err := errs[0]
 
 	if err.Timestamp.Before(before) || err.Timestamp.After(after) {
 		t.Error("Error timestamp should be between before and after times")

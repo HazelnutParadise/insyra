@@ -30,27 +30,6 @@ const (
 	DTypeBFloat16 DType = "bfloat16"
 )
 
-// Short names for three dtypes, with the same values.
-const (
-	// Float32 is DTypeFloat32.
-	//
-	// Deprecated: use DTypeFloat32. Removed in the release after the one that deprecated it.
-	Float32 = DTypeFloat32
-	// Float16 is DTypeFloat16.
-	//
-	// Deprecated: use DTypeFloat16. Removed in the release after the one that deprecated it.
-	Float16 = DTypeFloat16
-	// Float64 is DTypeFloat64.
-	//
-	// Deprecated: use DTypeFloat64. Removed in the release after the one that deprecated it.
-	Float64 = DTypeFloat64
-)
-
-// DataType is the same type as DType.
-//
-// Deprecated: use DType. Removed in the release after the one that deprecated it.
-type DataType = DType
-
 // Tensor is a row-major, N-dimensional tensor. Its data slice is private so a
 // caller cannot change a model initializer while another goroutine is running
 // the same Model. Data returns a copy for the same reason.
@@ -72,13 +51,6 @@ func NewTensor(shape []int, data []float32) (*Tensor, error) {
 	return newFloat32Tensor(shape, data)
 }
 
-// NewFloat32Tensor constructs the same tensor as NewTensor.
-//
-// Deprecated: use NewTensor. Removed in the release after the one that deprecated it.
-func NewFloat32Tensor(shape []int, data []float32) (*Tensor, error) {
-	return newFloat32Tensor(shape, data)
-}
-
 // NewInt64Tensor constructs an int64 tensor.
 func NewInt64Tensor(shape []int, data []int64) (*Tensor, error) {
 	return newInt64Tensor(shape, data)
@@ -92,19 +64,6 @@ func NewStringTensor(shape []int, data []string) (*Tensor, error) {
 // NewBoolTensor constructs a bool tensor.
 func NewBoolTensor(shape []int, data []bool) (*Tensor, error) {
 	return newBoolTensor(shape, data)
-}
-
-// NewTensorWithDType constructs a float32 tensor. Its data is float32, so
-// every dtype other than DTypeFloat32 is refused.
-//
-// Deprecated: use NewTensor, which builds the same tensor; NewInt64Tensor,
-// NewStringTensor and NewBoolTensor build the other dtypes. Removed in the
-// release after the one that deprecated it.
-func NewTensorWithDType(dtype DType, shape []int, data []float32) (*Tensor, error) {
-	if dtype != DTypeFloat32 {
-		return nil, unsupportedDTypeError(dtype)
-	}
-	return newFloat32Tensor(shape, data)
 }
 
 // DType reports the tensor's explicit element type.
@@ -130,19 +89,6 @@ func (t *Tensor) Strides() []int {
 		return nil
 	}
 	return append([]int(nil), t.strides...)
-}
-
-// Data returns a copy of the float32 data, or nil for a nil tensor or one of
-// another dtype.
-//
-// Deprecated: use Float32Data, which reports a nil tensor or another dtype as
-// an error instead of returning nil. Removed in the release after the one
-// that deprecated it.
-func (t *Tensor) Data() []float32 {
-	if t == nil || t.dtype != DTypeFloat32 {
-		return nil
-	}
-	return append([]float32(nil), t.data...)
 }
 
 // Float32Data returns a copy of float32 data. It returns an error for a nil

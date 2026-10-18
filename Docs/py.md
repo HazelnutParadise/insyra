@@ -239,12 +239,9 @@ func RunFileContext(ctx context.Context, out any, filepath string) error
 func RunFilefContext(ctx context.Context, out any, filepath string, args ...any) error
 func PipInstallContext(ctx context.Context, dep string) error
 func PipUninstallContext(ctx context.Context, dep string) error
-
-// Deprecated: use RunCodeContext with context.WithTimeout.
-func RunCodeWithTimeout(timeout time.Duration, out any, code string) error
 ```
 
-The plain functions (`RunCode`, `RunCodef`, `RunFile`, `RunFilef`, `PipInstall`, `PipUninstall`) call these with `context.Background()`. `RunCodeWithTimeout` is `RunCodeContext` with a context from `context.WithTimeout`; it is deprecated and will be removed in the release after the one that deprecated it.
+The plain functions (`RunCode`, `RunCodef`, `RunFile`, `RunFilef`, `PipInstall`, `PipUninstall`) call these with `context.Background()`.
 
 **Parameters:**
 

@@ -385,54 +385,6 @@ func TestDataListStandardize(t *testing.T) {
 	}
 }
 
-func TestDataListFillNaNWithMean(t *testing.T) {
-	dl := NewDataList(1.0, math.NaN(), 3.0)
-	dl.FillNaNWithMean()
-	if got := dl.Data(); !reflect.DeepEqual(got, []any{1.0, 2.0, 3.0}) {
-		t.Fatalf("FillNaNWithMean = %v", got)
-	}
-}
-
-func TestDataListMovingAverage(t *testing.T) {
-	dl := NewDataList(1.0, 2.0, 3.0, 4.0)
-	got := dl.MovingAverage(2)
-	if got == nil {
-		t.Fatal("MovingAverage returned nil")
-	}
-	if !reflect.DeepEqual(got.Data(), []any{1.5, 2.5, 3.5}) {
-		t.Fatalf("MovingAverage(2) = %v", got.Data())
-	}
-	if dl.Len() != 4 {
-		t.Fatal("MovingAverage must not modify the receiver")
-	}
-	for _, w := range []int{0, 5} {
-		src := NewDataList(1.0, 2.0, 3.0, 4.0)
-		if got := src.MovingAverage(w); got == nil || got.Len() != 0 || src.Err() == nil {
-			t.Fatalf("MovingAverage(%d) should give an empty result and set Err, got %v / %v", w, got, src.Err())
-		}
-	}
-	nonNumeric := NewDataList(1.0, "x", 3.0)
-	if got := nonNumeric.MovingAverage(2); got == nil || got.Len() != 0 || nonNumeric.Err() == nil {
-		t.Fatalf("MovingAverage over a non-numeric cell should give an empty result and set Err, got %v / %v", got, nonNumeric.Err())
-	}
-}
-
-func TestDataListWeightedMovingAverage(t *testing.T) {
-	dl := NewDataList(1.0, 2.0, 3.0)
-	got := dl.WeightedMovingAverage(2, []float64{1, 3})
-	if got == nil {
-		t.Fatal("WeightedMovingAverage returned nil")
-	}
-	// (1*1+2*3)/4 = 1.75, (2*1+3*3)/4 = 2.75
-	if !reflect.DeepEqual(got.Data(), []any{1.75, 2.75}) {
-		t.Fatalf("WeightedMovingAverage = %v", got.Data())
-	}
-	src := NewDataList(1.0, 2.0, 3.0)
-	if got := src.WeightedMovingAverage(2, []float64{1}); got == nil || got.Len() != 0 || src.Err() == nil {
-		t.Fatalf("weights of the wrong length should give an empty result and set Err, got %v / %v", got, src.Err())
-	}
-}
-
 func TestDataListExponentialSmoothing(t *testing.T) {
 	dl := NewDataList(10.0, 20.0, 30.0)
 	got := dl.ExponentialSmoothing(0.5)
@@ -467,25 +419,6 @@ func TestDataListDoubleExponentialSmoothing(t *testing.T) {
 	src := NewDataList(10.0, 20.0, 30.0)
 	if got := src.DoubleExponentialSmoothing(0.5, -0.1); got == nil || got.Len() != 0 || src.Err() == nil {
 		t.Fatalf("beta outside [0, 1] should give an empty result and set Err, got %v / %v", got, src.Err())
-	}
-}
-
-func TestDataListMovingStdev(t *testing.T) {
-	dl := NewDataList(1.0, 2.0, 4.0)
-	got := dl.MovingStdev(2)
-	if got == nil {
-		t.Fatal("MovingStdev returned nil")
-	}
-	// sample stdev of (1,2) = sqrt(0.5), of (2,4) = sqrt(2)
-	want := []float64{math.Sqrt(0.5), math.Sqrt(2)}
-	for i, w := range want {
-		if math.Abs(got.Data()[i].(float64)-w) > 1e-12 {
-			t.Fatalf("MovingStdev[%d] = %v, want %v", i, got.Data()[i], w)
-		}
-	}
-	src := NewDataList(1.0, 2.0, 4.0)
-	if got := src.MovingStdev(4); got == nil || got.Len() != 0 || src.Err() == nil {
-		t.Fatalf("a window larger than the list should give an empty result and set Err, got %v / %v", got, src.Err())
 	}
 }
 
@@ -818,9 +751,6 @@ func TestDataListGetCreationTimestamp(t *testing.T) {
 	at = created.Add(time.Second)
 	dl.SetName("TestName2")
 
-	if got := dl.GetCreationTimestamp(); got != created.Unix() {
-		t.Errorf("Creation timestamp wrong, got %v, want %v", got, created.Unix())
-	}
 	if got := dl.CreationTime(); !got.Equal(created) {
 		t.Errorf("CreationTime wrong, got %v, want %v", got, created)
 	}

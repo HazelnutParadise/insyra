@@ -351,15 +351,6 @@ func TestDataTable_Counter(t *testing.T) {
 	}
 }
 
-func TestDataTable_GetLastModifiedTimestamp(t *testing.T) {
-	dt := NewDataTable()
-	dl := NewDataList(1, 2, 3)
-	dt.AppendRowsFromDataList(dl)
-	if dt.GetLastModifiedTimestamp() != time.Now().Unix() {
-		t.Errorf("GetLastModifiedTimestamp() did not return the correct timestamp")
-	}
-}
-
 func TestDataTable_GetColNameByIndex(t *testing.T) {
 	dt := NewDataTable()
 	dl1 := NewDataList(1, 2, 3).SetName("ColA")

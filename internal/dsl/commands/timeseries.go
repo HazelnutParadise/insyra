@@ -120,11 +120,24 @@ func runMovAvgCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	// movavg keeps MovingAverage's shorter result until the method is removed.
-	result := dl.Clone().MovingAverage(window) // nolint:staticcheck
-	if err := result.PopErr(); err != nil {
-		return fmt.Errorf("movavg: %w", err)
+	// movavg keeps its shorter result: one value per full window.
+	data := dl.Data()
+	if window <= 0 || window > len(data) {
+		return fmt.Errorf("movavg: invalid window size %d for a list of %d items", window, len(data))
 	}
+	averages := make([]float64, len(data)-window+1)
+	for i := range averages {
+		sum := 0.0
+		for j := range window {
+			v, ok := insyra.ToFloat64Safe(data[i+j])
+			if !ok {
+				return fmt.Errorf("movavg: element %v is not numeric", data[i+j])
+			}
+			sum += v
+		}
+		averages[i] = sum / float64(window)
+	}
+	result := insyra.NewDataList(averages)
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
 	return nil
@@ -161,14 +174,24 @@ func runDiffCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	// diff keeps Difference's length-n-1 result until the method is removed.
-	result := dl.Clone().Difference() // nolint:staticcheck
-	if err := result.PopErr(); err != nil {
-		return fmt.Errorf("diff: %w", err)
-	}
-	if result.Len() == 0 {
+	// diff keeps its length n-1 result: one difference per adjacent pair.
+	data := dl.Data()
+	if len(data) < 2 {
 		return fmt.Errorf("diff: list %s needs at least 2 items", coreArgs[0])
 	}
+	values := make([]float64, len(data))
+	for i, cell := range data {
+		v, ok := insyra.ToFloat64Safe(cell)
+		if !ok {
+			return fmt.Errorf("diff: non-numeric value at row %d", i)
+		}
+		values[i] = v
+	}
+	differences := make([]float64, len(values)-1)
+	for i := 1; i < len(values); i++ {
+		differences[i-1] = values[i] - values[i-1]
+	}
+	result := insyra.NewDataList(differences)
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
 	return nil

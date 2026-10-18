@@ -74,7 +74,7 @@ func TestPanicOnErrorIsOptInAndRecoverable(t *testing.T) {
 	func() {
 		defer func() { recovered = recover() }()
 		recovered = nil
-		dl.MovingAverage(0)
+		dl.Diff(0)
 	}()
 	if recovered == nil {
 		t.Fatal("SetPanicOnError(true) did not panic on an instance error")

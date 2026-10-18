@@ -46,7 +46,7 @@ func TestShowTypesLeadsWithTheDataType(t *testing.T) {
 }
 
 func TestShowTypesKeepsCompleteDataTypeInNarrowColumns(t *testing.T) {
-	colored := Config.GetDoesUseColoredOutput()
+	colored := Config.GetUseColoredOutput()
 	Config.SetUseColoredOutput(false)
 	defer Config.SetUseColoredOutput(colored)
 	dt := NewDataTable(NewDataList(1), NewDataList(nil))

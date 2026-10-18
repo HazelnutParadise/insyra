@@ -41,11 +41,3 @@ func ReadCSVToString(filePath string, encoding ...string) (string, error) {
 
 	return result, nil
 }
-
-// ReadCsvToString reads a CSV file as UTF-8 CSV text.
-//
-// Deprecated: use ReadCSVToString, which is the same function. Removed in the
-// release after the one that deprecated it.
-func ReadCsvToString(filePath string, encoding ...string) (string, error) {
-	return ReadCSVToString(filePath, encoding...)
-}

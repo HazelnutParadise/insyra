@@ -65,22 +65,6 @@ func engineCCLDocs(t *testing.T) map[string]string {
 	return docs
 }
 
-// The two resets have done nothing since the depth counters moved onto the call
-// stack, so they say so where go doc and an editor show it.
-func TestNoOpResetsAreDeprecated(t *testing.T) {
-	docs := engineCCLDocs(t)
-	for _, name := range []string{"ResetEvalDepth", "ResetFuncCallDepth"} {
-		doc, ok := docs[name]
-		if !ok {
-			t.Errorf("%s is missing from ccl.go", name)
-			continue
-		}
-		if !strings.Contains(doc, "Deprecated: it does nothing") {
-			t.Errorf("%s doc %q has no Deprecated notice saying it does nothing", name, doc)
-		}
-	}
-}
-
 // Every registration function says that the registry is shared by the whole
 // process, safe to use from several goroutines, and keyed by a case-folded
 // name a later registration replaces.

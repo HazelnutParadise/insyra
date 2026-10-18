@@ -308,8 +308,6 @@ if err != nil {
 }
 ```
 
-Deprecated: `ReadJSON_File` still works in this release and is removed in the next; use `ReadJSONFile`, which is the same function.
-
 ### ReadJSON
 
 ```go
@@ -353,8 +351,6 @@ func ReadSlice2D(data any) (*DataTable, error)
 
 - `*DataTable`: New DataTable with converted data (nil if error occurs)
 - `error`: Error information, returns nil if successful
-
-**Deprecated spelling:** `Slice2DToDataTable` is the same function under its old name. It still works in this release, is marked Deprecated, and will be removed in the next one; replace it with `ReadSlice2D`.
 
 **Quick example:**
 
@@ -705,8 +701,6 @@ jsonData := dt.ToJSONBytes(true)
 fmt.Println(string(jsonData))
 ```
 
-Deprecated: `ToJSON_Bytes` still works in this release and is removed in the next; use `ToJSONBytes`, which is the same method.
-
 ### ToJSONString
 
 ```go
@@ -729,8 +723,6 @@ func (dt *DataTable) ToJSONString(useColNames bool) string
 jsonStr := dt.ToJSONString(true)
 fmt.Println(jsonStr)
 ```
-
-Deprecated: `ToJSON_String` still works in this release and is removed in the next; use `ToJSONString`, which is the same method.
 
 ### ToExcel
 
@@ -2471,30 +2463,6 @@ func (dt *DataTable) SetColNames(colNames []string) *DataTable
 dt.SetColNames([]string{"Name", "Age", "Role"}) // Set column names
 ```
 
-### SetHeaders
-
-```go
-func (dt *DataTable) SetHeaders(headers []string) *DataTable
-```
-
-**Deprecated.** Use `SetColNames`; `SetHeaders` will be removed in the next release.
-
-**Description:** Sets the column names, exactly as `SetColNames` does.
-
-**Parameters:**
-
-- `headers`: Slice of strings representing the new column names
-
-**Returns:**
-
-- `*DataTable`: The modified DataTable
-
-**Example:**
-
-```go
-dt.SetHeaders([]string{"Name", "Age", "Role"}) // Set column names
-```
-
 ### ColNamesToFirstRow
 
 ```go
@@ -2592,30 +2560,6 @@ for i, t := range dt.ColDataTypes() {
         fmt.Println(names[i], "can be analysed")
     }
 }
-```
-
-### Headers
-
-```go
-func (dt *DataTable) Headers() []string
-```
-
-**Deprecated.** Use `ColNames`; `Headers` will be removed in the next release.
-
-**Description:** Returns the column names in order, exactly as `ColNames` does.
-
-**Parameters:**
-
-- None.
-
-**Returns:**
-
-- `[]string`: Slice of column names
-
-**Example:**
-
-```go
-headers := dt.Headers() // Same as dt.ColNames()
 ```
 
 ### DropColsByName
@@ -3243,58 +3187,6 @@ func (dt *DataTable) LastModifiedTime() time.Time
 fmt.Println("Last modified at:", dt.LastModifiedTime())
 ```
 
-### GetCreationTimestamp
-
-```go
-func (dt *DataTable) GetCreationTimestamp() int64
-```
-
-**Deprecated:** use `CreationTime`. This method is removed in the release after the one that deprecated it.
-
-**Description:** Returns the creation time in Unix seconds, `CreationTime().Unix()`.
-
-### GetLastModifiedTimestamp
-
-```go
-func (dt *DataTable) GetLastModifiedTimestamp() int64
-```
-
-**Deprecated:** use `LastModifiedTime`. This method is removed in the release after the one that deprecated it.
-
-**Description:** Returns the last modified time in Unix seconds, `LastModifiedTime().Unix()`. Two changes within one second read the same.
-
-### SimpleRandomSample
-
-```go
-func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable
-```
-
-**Description:** Performs simple random sampling on the DataTable.
-
-> **Deprecated:** Use [`Sample(n, false)`](#sample--samplefrac--shuffle--traintestsplit) instead, which shares the `SamplingOptions` (seed/reproducibility) surface with the other sampling methods. Note `Sample` records an error and returns an empty table when `n` exceeds the row count, rather than cloning the whole table.
-
-**Parameters:**
-
-- `sampleSize`: Number of rows to sample. If `sampleSize <= 0`, returns an empty DataTable. If `sampleSize >= number of rows`, returns a copy of the original DataTable.
-
-**Returns:**
-
-- `*DataTable`: A new DataTable containing the sampled rows
-
-**Example:**
-
-```go
-// Sample 10 rows from the DataTable
-sampled := dt.SimpleRandomSample(10)
-```
-
-**Notes:**
-
-- Uses random permutation to ensure unbiased sampling
-- Returns a new DataTable, leaving the original unchanged
-- If sample size is greater than or equal to the number of rows, returns a full copy
-- If sample size is less than or equal to 0, returns an empty DataTable
-
 ### Sample / SampleFrac / Shuffle / Shuffled / TrainTestSplit
 
 ```go
@@ -3889,24 +3781,6 @@ filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 })
 ```
 
-### FilterByCustomElement
-
-```go
-func (dt *DataTable) FilterByCustomElement(f func(value any) bool) *DataTable
-```
-
-**Deprecated.** `FilterByCustomElement` is `Filter` without the row and column arguments and returns exactly what `Filter` returns; it will be removed in the next release. Write `dt.Filter(func(_ int, _ string, value any) bool { return f(value) })` instead.
-
-**Description:** Keeps a row when `f` returns `true` for any one of its cells.
-
-**Parameters:**
-
-- `f`: Custom filter function that takes a value and returns a boolean
-
-**Returns:**
-
-- `*DataTable`: New filtered DataTable
-
 ### FilterRows
 
 ```go
@@ -4037,126 +3911,6 @@ func (dt *DataTable) FilterColsByColNameEqualTo(columnName string) *DataTable
 filtered := dt.FilterColsByColNameEqualTo("age")
 ```
 
-### FilterColsByColIndexGreaterThan
-
-```go
-func (dt *DataTable) FilterColsByColIndexGreaterThan(threshold string) *DataTable
-```
-
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(i+1, nil)`, where `i` is the column's position (`ColIndexToNumber` turns a column index into one). `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
-
-**Description:** Filters columns by index greater than the specified threshold.
-
-**Parameters:**
-
-- `threshold`: Column index threshold (A, B, C...)
-
-**Returns:**
-
-- `*DataTable`: New filtered DataTable
-
-**Example:**
-
-```go
-filtered := dt.FilterColsByColIndexGreaterThan("B") // Columns C, D, E...
-```
-
-### FilterColsByColIndexGreaterThanOrEqualTo
-
-```go
-func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
-```
-
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(threshold, nil)`: `FilterColsByColIndexGreaterThanOrEqualTo("B")` is `SliceCols("B", nil)`. `SliceCols` reports a letter past the last column as an error, where this method returns an empty table.
-
-**Description:** Filters columns by index greater than or equal to the specified threshold.
-
-**Parameters:**
-
-- `threshold`: Column index threshold (A, B, C...)
-
-**Returns:**
-
-- `*DataTable`: New filtered DataTable
-
-**Example:**
-
-```go
-filtered := dt.FilterColsByColIndexGreaterThanOrEqualTo("B") // Columns B, C, D...
-```
-
-### FilterColsByColIndexLessThan
-
-```go
-func (dt *DataTable) FilterColsByColIndexLessThan(threshold string) *DataTable
-```
-
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(nil, threshold)`: `FilterColsByColIndexLessThan("C")` is `SliceCols(nil, "C")`. A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
-
-**Description:** Filters columns by index less than the specified threshold.
-
-**Parameters:**
-
-- `threshold`: Column index threshold (A, B, C...)
-
-**Returns:**
-
-- `*DataTable`: New filtered DataTable
-
-**Example:**
-
-```go
-filtered := dt.FilterColsByColIndexLessThan("C") // Columns A, B
-```
-
-### FilterColsByColIndexLessThanOrEqualTo
-
-```go
-func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable
-```
-
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(nil, i+1)`, where `i` is the column's position (`ColIndexToNumber` turns a column index into one). A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
-
-**Description:** Filters columns by index less than or equal to the specified threshold.
-
-**Parameters:**
-
-- `threshold`: Column index threshold (A, B, C...)
-
-**Returns:**
-
-- `*DataTable`: New filtered DataTable
-
-**Example:**
-
-```go
-filtered := dt.FilterColsByColIndexLessThanOrEqualTo("C") // Columns A, B, C
-```
-
-### FilterColsByColIndexEqualTo
-
-```go
-func (dt *DataTable) FilterColsByColIndexEqualTo(index string) *DataTable
-```
-
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceCols(index, i+1)`, where `i` is the column's position (`ColIndexToNumber` turns a column index into one), or `GetCol` to read the column as a DataList. `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
-
-**Description:** Filters columns by exact index match.
-
-**Parameters:**
-
-- `index`: Column index (A, B, C...)
-
-**Returns:**
-
-- `*DataTable`: New filtered DataTable
-
-**Example:**
-
-```go
-filtered := dt.FilterColsByColIndexEqualTo("B") // Only column B
-```
-
 ### FilterColsByColNameContains
 
 ```go
@@ -4221,126 +3975,6 @@ func (dt *DataTable) FilterRowsByRowNameContains(substring string) *DataTable
 
 ```go
 filtered := dt.FilterRowsByRowNameContains("John") // Rows with "John" in name
-```
-
-### FilterRowsByRowIndexGreaterThan
-
-```go
-func (dt *DataTable) FilterRowsByRowIndexGreaterThan(threshold int) *DataTable
-```
-
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceRows(threshold+1, dt.NumRows())`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
-
-**Description:** Filters rows by index greater than the specified threshold.
-
-**Parameters:**
-
-- `threshold`: Row index threshold (0-based)
-
-**Returns:**
-
-- `*DataTable`: New filtered DataTable
-
-**Example:**
-
-```go
-filtered := dt.FilterRowsByRowIndexGreaterThan(5) // Rows 6, 7, 8...
-```
-
-### FilterRowsByRowIndexGreaterThanOrEqualTo
-
-```go
-func (dt *DataTable) FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable
-```
-
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceRows(threshold, dt.NumRows())`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
-
-**Description:** Filters rows by index greater than or equal to the specified threshold.
-
-**Parameters:**
-
-- `threshold`: Row index threshold (0-based)
-
-**Returns:**
-
-- `*DataTable`: New filtered DataTable
-
-**Example:**
-
-```go
-filtered := dt.FilterRowsByRowIndexGreaterThanOrEqualTo(5) // Rows 5, 6, 7...
-```
-
-### FilterRowsByRowIndexLessThan
-
-```go
-func (dt *DataTable) FilterRowsByRowIndexLessThan(threshold int) *DataTable
-```
-
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceRows(0, threshold)`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
-
-**Description:** Filters rows by index less than the specified threshold.
-
-**Parameters:**
-
-- `threshold`: Row index threshold (0-based)
-
-**Returns:**
-
-- `*DataTable`: New filtered DataTable
-
-**Example:**
-
-```go
-filtered := dt.FilterRowsByRowIndexLessThan(5) // Rows 0, 1, 2, 3, 4
-```
-
-### FilterRowsByRowIndexLessThanOrEqualTo
-
-```go
-func (dt *DataTable) FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable
-```
-
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceRows(0, threshold+1)`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
-
-**Description:** Filters rows by index less than or equal to the specified threshold.
-
-**Parameters:**
-
-- `threshold`: Row index threshold (0-based)
-
-**Returns:**
-
-- `*DataTable`: New filtered DataTable
-
-**Example:**
-
-```go
-filtered := dt.FilterRowsByRowIndexLessThanOrEqualTo(5) // Rows 0, 1, 2, 3, 4, 5
-```
-
-### FilterRowsByRowIndexEqualTo
-
-```go
-func (dt *DataTable) FilterRowsByRowIndexEqualTo(index int) *DataTable
-```
-
-**Deprecated.** This is a slice, not a filter, and it will be removed in the next release. Use `SliceRows(index, index+1)`, or `GetRow` to read the row as a DataList. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
-
-**Description:** Filters rows by exact index match.
-
-**Parameters:**
-
-- `index`: Row index (0-based)
-
-**Returns:**
-
-- `*DataTable`: New filtered DataTable
-
-**Example:**
-
-```go
-filtered := dt.FilterRowsByRowIndexEqualTo(3) // Only row 3
 ```
 
 ## Statistical Analysis
@@ -4969,7 +4603,7 @@ leave `Err()` alone. Addressing a column, row or index that is not there is
 different — the caller asserted it existed and the only other signal is a bare
 `nil` — so that is recorded, as is any invalid argument.
 
-A **transform** that computes a new list (`Normalize`, `MovingAverage`,
+A **transform** that computes a new list (`Normalize`,
 `Diff`, `Rank`, …) never returns `nil`: on failure you get an empty, usable
 list carrying the error, so the next step in the chain cannot nil-dereference.
 A **lookup** (`GetColByName`, `GetRow`, …) still returns `nil` when the target
@@ -5033,11 +4667,6 @@ if insyra.HasError() {
     fmt.Println("Errors detected!")
 }
 
-// Check if any errors at or above a specific level exist
-if insyra.HasErrorAboveLevel(insyra.LogLevelWarning) {
-    fmt.Println("Warnings or higher severity errors detected!")
-}
-
 // Get the count of errors
 count := insyra.GetErrorCount()
 ```
@@ -5045,31 +4674,16 @@ count := insyra.GetErrorCount()
 #### Retrieving Errors (Non-Destructive)
 
 ```go
-// Peek at the first/last error without removing it
-err := insyra.PeekError(insyra.ErrPoppingModeFIFO)
-if err != nil {
-    fmt.Printf("First error: %s\n", err.Error())
-}
-
 // Get all errors without removing them
 allErrors := insyra.GetAllErrors()
 for _, e := range allErrors {
     fmt.Printf("[%s] %s.%s: %s\n", e.Level, e.PackageName, e.FuncName, e.Message)
 }
-
-// Get errors filtered by level
-warnings := insyra.GetErrorsByLevel(insyra.LogLevelWarning)
-
-// Get errors filtered by package
-dtErrors := insyra.GetErrorsByPackage("DataTable")
 ```
 
 #### Retrieving and Removing Errors
 
 ```go
-// Pop a single error (removes it from the buffer)
-err := insyra.PopErrorInfo(insyra.ErrPoppingModeFIFO)
-
 // Pop all errors (clears the buffer)
 allErrors := insyra.PopAllErrors()
 
@@ -5126,7 +4740,7 @@ insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageNam
 
 3. **Use Global Buffer for Monitoring**: The global error buffer is ideal for logging and monitoring across the application.
 
-4. **Check Specific Error Levels**: Use `HasErrorAboveLevel()` to filter for errors that require immediate attention.
+4. **Filter by Level or Package Yourself**: Read `GetAllErrors()` and filter on `Level` and `PackageName` when you need only some of the errors.
 
 ## AtomicDo
 

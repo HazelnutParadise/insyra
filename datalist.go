@@ -823,126 +823,6 @@ func (dl *DataList) Standardize() *DataList {
 	return dl
 }
 
-// FillNaNWithMean replaces all NaN values in the DataList with the mean value.
-// Directly modifies the DataList.
-//
-// Deprecated: to fill NaN alone, as this method does, use
-// dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean()), which also leaves
-// the other numbers as they were instead of rewriting them as float64.
-// FillWithMean fills nil cells too.
-func (dl *DataList) FillNaNWithMean() *DataList {
-	dl.AtomicDo(func(dl *DataList) {
-		values, badRow, ok := numericCells(dl.data, true)
-		if !ok {
-			dl.fail("FillNaNWithMean", "non-numeric value at row %d; list left unchanged", badRow)
-			return
-		}
-		n, _, _, mean, _ := observedStats(values)
-		if n == 0 {
-			dl.fail("FillNaNWithMean", "no numeric values to compute mean; list left unchanged")
-			return
-		}
-		for i, v := range dl.data {
-			if v == nil {
-				continue
-			}
-			if math.IsNaN(values[i]) {
-				dl.data[i] = mean
-			} else {
-				dl.data[i] = values[i]
-			}
-		}
-		dl.updateTimestamp()
-	})
-	return dl
-}
-
-// MovingAverage calculates the moving average of the DataList using a specified window size.
-// Returns a new DataList containing the moving average values.
-//
-// Deprecated: use Rolling(RollingOptions{Window: windowSize}).Mean(), which
-// keeps the input's length with windowSize-1 leading nils, so on a fully
-// numeric list its Data()[windowSize-1:] is this method's result. It gives nil
-// for a window holding a nil or non-numeric cell instead of failing. Removed in
-// the release after the one that deprecated it.
-func (dl *DataList) MovingAverage(windowSize int) *DataList {
-	var movingAverageData []float64
-	isFailed := false
-	dl.AtomicDo(func(dl *DataList) {
-		if windowSize <= 0 || windowSize > dl.Len() {
-			dl.fail("MovingAverage", "Invalid window size")
-			isFailed = true
-			return
-		}
-		movingAverageData = make([]float64, len(dl.data)-windowSize+1)
-		for i := range movingAverageData {
-			windowSum := 0.0
-			for j := range windowSize {
-				v, ok := ToFloat64Safe(dl.data[i+j])
-				if !ok {
-					dl.fail("MovingAverage", "Element %v is not numeric, aborting", dl.data[i+j])
-					isFailed = true
-					return
-				}
-				windowSum += v
-			}
-			movingAverageData[i] = windowSum / float64(windowSize)
-		}
-	})
-	if isFailed {
-		return dl.failedResult()
-	}
-	return NewDataList(movingAverageData)
-}
-
-// WeightedMovingAverage applies a weighted moving average to the DataList with a given window size.
-// The weights parameter takes one weight per window position, as a []float64 of the same length as the
-// window size, the same type RollingOptions.Weights takes.
-// Returns a new DataList containing the weighted moving average values.
-//
-// Deprecated: use Rolling(RollingOptions{Window: windowSize, Weights: weights}).Mean(),
-// which keeps the input's length, so on a fully numeric list its
-// Data()[windowSize-1:] is this method's result. It gives nil for a window
-// holding a gap and for weights summing to zero, where this method fails or
-// divides by zero. Removed in the release after the one that deprecated it.
-func (dl *DataList) WeightedMovingAverage(windowSize int, weights []float64) *DataList {
-	var movingAvgData []float64
-	isFailed := false
-	dl.AtomicDo(func(dl *DataList) {
-		if windowSize <= 0 || windowSize > dl.Len() || len(weights) != windowSize {
-			dl.fail("WeightedMovingAverage", "Invalid window size or weights length")
-			isFailed = true
-			return
-		}
-
-		// 計算權重總和，避免直接除以 windowSize
-		weightsSum := 0.0
-		for _, w := range weights {
-			weightsSum += w
-		}
-
-		movingAvgData = make([]float64, len(dl.data)-windowSize+1)
-		for i := 0; i < len(movingAvgData); i++ {
-			window := dl.data[i : i+windowSize]
-			sum := 0.0
-			for j := 0; j < windowSize; j++ {
-				wv, ok := ToFloat64Safe(window[j])
-				if !ok {
-					dl.fail("WeightedMovingAverage", "Element %v is not numeric, aborting", window[j])
-					isFailed = true
-					return
-				}
-				sum += wv * weights[j]
-			}
-			movingAvgData[i] = sum / weightsSum // 使用權重總和
-		}
-	})
-	if isFailed {
-		return dl.failedResult()
-	}
-	return NewDataList(movingAvgData)
-}
-
 // ExponentialSmoothing applies exponential smoothing to the DataList.
 // The alpha parameter controls the smoothing factor.
 // Returns a new DataList containing the smoothed values.
@@ -1014,34 +894,6 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 		return dl.failedResult()
 	}
 	return NewDataList(smoothedData)
-}
-
-// MovingStdev calculates the moving standard deviation for the DataList using a specified window size.
-//
-// Deprecated: use Rolling(RollingOptions{Window: windowSize}).Std(), which
-// keeps the input's length, so on a fully numeric list its
-// Data()[windowSize-1:] is this method's result. It gives nil where this method
-// gives NaN, and skips a NaN this method lets through. Removed in the release
-// after the one that deprecated it.
-func (dl *DataList) MovingStdev(windowSize int) *DataList {
-	var movingStdDevData []float64
-	isFailed := false
-	dl.AtomicDo(func(dl *DataList) {
-		if windowSize <= 0 || windowSize > dl.Len() {
-			dl.fail("MovingStdev", "Invalid window size")
-			isFailed = true
-			return
-		}
-		movingStdDevData = make([]float64, len(dl.data)-windowSize+1)
-		for i := range movingStdDevData {
-			window := NewDataList(dl.data[i : i+windowSize]...)
-			movingStdDevData[i] = window.Stdev()
-		}
-	})
-	if isFailed {
-		return dl.failedResult()
-	}
-	return NewDataList(movingStdDevData)
 }
 
 // Sort sorts the DataList using a mixed sorting logic.
@@ -1882,39 +1734,6 @@ func (dl *DataList) Percentile(p float64) float64 {
 	return result
 }
 
-// Difference calculates the differences between adjacent elements in the
-// DataList. The output is one element shorter than the input
-// (out[i] = in[i+1] - in[i]).
-//
-// Deprecated: use Diff(1), which keeps the input's length with a leading nil,
-// so on a fully numeric list Diff(1).Data()[1:] is this method's result. It
-// gives nil, not NaN or a failure, for a nil or non-numeric operand. Removed in
-// the release after the one that deprecated it.
-func (dl *DataList) Difference() *DataList {
-	var result *DataList
-	dl.AtomicDo(func(dl *DataList) {
-		if len(dl.data) < 2 {
-			dl.warn("Difference", "DataList is too short to calculate differences, returning an empty list")
-			result = dl.failedResult()
-			return
-		}
-		values, badRow, ok := numericCells(dl.data, true)
-		if !ok {
-			dl.fail("Difference", "non-numeric value at row %d", badRow)
-			result = dl.failedResult()
-			return
-		}
-
-		differenceData := make([]float64, len(values)-1)
-		for i := 1; i < len(values); i++ {
-			differenceData[i-1] = values[i] - values[i-1]
-		}
-
-		result = NewDataList(differenceData)
-	})
-	return result
-}
-
 // ======================== Comparison ========================
 
 // IsEqualTo checks if the data of the DataList is equal to another DataList.
@@ -2196,26 +2015,6 @@ func (dl *DataList) CreationTime() time.Time {
 // full resolution. It never moves backwards, even if the wall clock does.
 func (dl *DataList) LastModifiedTime() time.Time {
 	return timeFromUnixNano(dl.lastModifiedTimestamp.Load())
-}
-
-// GetCreationTimestamp returns the creation time of the DataList in Unix seconds.
-//
-// Deprecated: use CreationTime, which keeps sub-second changes apart. Removed
-// in the release after the one that deprecated it.
-func (dl *DataList) GetCreationTimestamp() int64 {
-	var ns int64
-	dl.AtomicDo(func(dl *DataList) {
-		ns = dl.creationTimestamp
-	})
-	return unixSecondsFromUnixNano(ns)
-}
-
-// GetLastModifiedTimestamp returns the last updated time of the DataList in Unix seconds.
-//
-// Deprecated: use LastModifiedTime, which keeps sub-second changes apart.
-// Removed in the release after the one that deprecated it.
-func (dl *DataList) GetLastModifiedTimestamp() int64 {
-	return unixSecondsFromUnixNano(dl.lastModifiedTimestamp.Load())
 }
 
 // updateTimestamp moves lastModifiedTimestamp to the current time, in Unix

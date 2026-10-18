@@ -7,7 +7,7 @@ import "testing"
 // wrong way round used to take the program down with a slice-bounds panic,
 // because the code took the first "(" and the first ")" without checking which
 // came first.
-func TestParseLingoModel_MalformedDeclarations(t *testing.T) {
+func TestParseLingo_MalformedDeclarations(t *testing.T) {
 	quiet(t)
 
 	tests := []struct {
@@ -23,27 +23,11 @@ func TestParseLingoModel_MalformedDeclarations(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := ParseLingoModel_str(tt.model)
-			if m == nil {
-				t.Fatal("the parser gave nil")
-			}
-			// The rest of the model is still read.
-			if m.Objective != "X" {
-				t.Errorf("objective: got %q, want \"X\"", m.Objective)
+			// A declaration it cannot read is an error, never a panic.
+			m, err := ParseLingo(tt.model)
+			if err == nil {
+				t.Fatalf("the parser read %+v", m)
 			}
 		})
-	}
-}
-
-// A declaration it cannot read is skipped, not guessed at.
-func TestParseLingoModel_MalformedDeclarationIsSkipped(t *testing.T) {
-	quiet(t)
-
-	m := ParseLingoModel_str("MODEL:\nMIN= X;\n@BIN)X(;\n@BIN(Y);\nEND")
-	if m == nil {
-		t.Fatal("the parser gave nil")
-	}
-	if len(m.BinaryVars) != 1 || m.BinaryVars[0] != "Y" {
-		t.Errorf("binary vars: got %v, want [Y]", m.BinaryVars)
 	}
 }

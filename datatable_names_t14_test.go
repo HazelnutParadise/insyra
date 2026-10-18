@@ -115,6 +115,6 @@ func TestSetRowNamesWarnsAboutIgnoredAndRenamedNames(t *testing.T) {
 	}
 }
 
-func TestSimpleRandomSampleKeepsColumnNames(t *testing.T) {
-	assertNames(t, "sample", twoColTable().SimpleRandomSample(1).ColNames(), []string{"a", "b"})
+func TestSampleKeepsColumnNames(t *testing.T) {
+	assertNames(t, "sample", twoColTable().Sample(1, false).ColNames(), []string{"a", "b"})
 }

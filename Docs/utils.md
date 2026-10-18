@@ -76,83 +76,6 @@ if err != nil {
 fmt.Println(len(values)) // 3
 ```
 
-### SqrtRat
-
-```go
-func SqrtRat(x *big.Rat) *big.Rat
-```
-
-**Deprecated.** `SqrtRat` will be removed in the next release. Use `math/big` directly:
-
-```go
-f := new(big.Float).SetRat(x)
-root, _ := f.Sqrt(f).Rat(nil)
-```
-
-**Description:** Returns the square root of `x`, rounded to the precision of a `big.Float` holding `x`. Returns `nil` when `x` is `nil` or negative.
-
-**Parameters:**
-
-- `x`: The value to take the square root of. Type: `*big.Rat`.
-
-**Returns:**
-
-- `*big.Rat`: The square root, or `nil`. Type: `*big.Rat`.
-
-### PowRat
-
-```go
-func PowRat(base *big.Rat, exponent int) *big.Rat
-```
-
-**Deprecated.** `PowRat` will be removed in the next release. Use `math/big` directly: raise `base.Num()` and `base.Denom()` with `big.Int.Exp` and combine them with `big.Rat.SetFrac`.
-
-**Description:** Returns `base` raised to `exponent` as a new value. A negative exponent gives the reciprocal of the positive power, so `PowRat(big.NewRat(2, 3), -2)` is `9/4`. Any base to the power 0 is 1. Returns `nil` when `base` is `nil`, or when `base` is 0 and `exponent` is negative, since 0 has no reciprocal.
-
-**Parameters:**
-
-- `base`: The value to raise. Type: `*big.Rat`.
-- `exponent`: The power, which may be negative. Type: `int`.
-
-**Returns:**
-
-- `*big.Rat`: The power, or `nil`. Type: `*big.Rat`.
-
-### ConvertLongDataToWide
-
-```go
-func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, aggFunc func([]float64) float64) IDataTable
-```
-
-**Deprecated.** Despite the name, this function does **not** produce a true long-to-wide pivot — it groups rows by `factor` and applies `aggFunc` to every independent column and the observation column independently, yielding one row per factor with one cell per `(factor, column)` pair. The unique values of `factor` are **not** spread into new column headers.
-
-For a real long-to-wide reshape (where unique values of one column become new column headers), use [`(*DataTable).Pivot`](DataTable.md#pivot--unpivot-long--wide-reshape). For the group-and-summarise behaviour this helper actually provides, use [`(*DataTable).GroupBy`](DataTable.md#groupby) followed by `Aggregate` — it is type-safe, surfaces errors via `Err()`, and supports the full `AggregateOp` set.
-
-This function will be removed in a future release.
-
-**Description (legacy):** Converts long data into a wide table. When `aggFunc` is nil, the first value is used for duplicates.
-
-**Parameters:**
-
-- `data`: Input data values. Type: `IDataList`.
-- `factor`: Input value for `factor`. Type: `IDataList`.
-- `independents`: Input value for `independents`. Type: `[]IDataList`.
-- `aggFunc`: Input value for `aggFunc`. Type: `func([]float64) float64`.
-
-**Returns:**
-
-- `IDataTable`: Resulting data table. Type: `IDataTable`.
-
-```go
-data := insyra.NewDataList(5, 15, 25, 35).SetName("Value")
-factor := insyra.NewDataList("A", "B", "C", "A").SetName("Factor")
-ind1 := insyra.NewDataList(1, 2, 1, 2).SetName("Independent1")
-ind2 := insyra.NewDataList(10, 20, 10, 20).SetName("Independent2")
-
-wide := insyra.ConvertLongDataToWide(data, factor, []insyra.IDataList{ind1, ind2}, nil)
-wide.Show()
-```
-
 ### ColIndexToNumber
 
 ```go
@@ -199,8 +122,6 @@ func ColNumberToIndex(colNumber int) (string, bool)
 index, ok := insyra.ColNumberToIndex(26) // "AA", true
 ```
 
-> `ParseColIndex` and `CalcColIndex` are the deprecated names of `ColIndexToNumber` and `ColNumberToIndex`. They return the same values and are removed in the release after the one that deprecated them.
-
 ### IsNumeric
 
 ```go
@@ -216,24 +137,6 @@ func IsNumeric(v any) bool
 **Returns:**
 
 - `bool`: Computed value. Type: `bool`.
-
-### SortTimes
-
-```go
-func SortTimes(times []time.Time)
-```
-
-**Deprecated.** `SortTimes` will be removed in the next release. Use `slices.SortFunc(times, time.Time.Compare)`.
-
-**Description:** Sorts a slice of `time.Time` in ascending order, in place.
-
-**Parameters:**
-
-- `times`: The times to sort. Type: `[]time.Time`.
-
-**Returns:**
-
-- None.
 
 ### Show
 

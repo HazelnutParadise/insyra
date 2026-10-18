@@ -5,26 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"os"
 	"reflect"
 	"sort"
 	"strings"
-	"time"
 	"unicode/utf8"
 
-	"github.com/HazelnutParadise/Go-Utils/conv"
-	"github.com/HazelnutParadise/insyra/internal/algorithms"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/saintfish/chardet"
 	"golang.org/x/term"
 )
-
-// F64orRat is a type constraint satisfied by float64 and *big.Rat.
-//
-// Deprecated: no insyra function uses F64orRat. It will be removed in the next
-// release.
-type F64orRat = utils.F64orRat
 
 // ToFloat64 converts a numeric value — any int, uint or float width, a named
 // type over one, or a decimal — to float64. A value it cannot convert gives
@@ -86,152 +76,6 @@ func ProcessData(input any) ([]any, error) {
 	return nil, fmt.Errorf("cannot read %T: want a slice, an array or an IDataList", input)
 }
 
-// SqrtRat returns the square root of x, rounded to the precision of a
-// big.Float holding x. It returns nil when x is nil or negative.
-//
-// Deprecated: SqrtRat has nothing to do with data tables and will be removed
-// in the next release. Use math/big directly:
-//
-//	f := new(big.Float).SetRat(x)
-//	root, _ := f.Sqrt(f).Rat(nil)
-func SqrtRat(x *big.Rat) *big.Rat {
-	if x == nil || x.Sign() < 0 {
-		return nil
-	}
-	floatValue := new(big.Float).SetRat(x)
-	sqrtValue := new(big.Float).Sqrt(floatValue)
-	result, _ := sqrtValue.Rat(nil)
-	return result
-}
-
-// PowRat returns base raised to exponent as a new value. A negative exponent
-// gives the reciprocal of the positive power, so PowRat(2/3, -2) is 9/4. Any
-// base to the power 0 is 1. It returns nil when base is nil, or when base is 0
-// and exponent is negative, since 0 has no reciprocal.
-//
-// Deprecated: PowRat has nothing to do with data tables and will be removed in
-// the next release. Use math/big directly: raise base.Num() and base.Denom()
-// with big.Int.Exp and combine them with big.Rat.SetFrac.
-func PowRat(base *big.Rat, exponent int) *big.Rat {
-	if base == nil || (exponent < 0 && base.Sign() == 0) {
-		return nil
-	}
-	n := new(big.Int).Abs(big.NewInt(int64(exponent)))
-	num := new(big.Int).Exp(base.Num(), n, nil)
-	den := new(big.Int).Exp(base.Denom(), n, nil)
-	if exponent < 0 {
-		num, den = den, num
-	}
-	return new(big.Rat).SetFrac(num, den)
-}
-
-// Deprecated: ConvertLongDataToWide is misleadingly named — it does not produce
-// a true wide-form pivot. It groups rows by the factor column and aggregates
-// every independent column and the observation column into a single row per
-// factor (i.e. one cell per (factor, column) pair, never spreading the factor
-// values into new column headers).
-//
-// For an actual long-to-wide reshape (where unique values of one column become
-// new column headers), use (*DataTable).Pivot. For the group-and-summarise
-// behaviour this function provides, use (*DataTable).GroupBy followed by
-// Aggregate, which is type-safe, surfaces errors via Err(), and supports the
-// full AggregateOp set:
-//
-//	dt.GroupBy(insyra.Name("factor")).Aggregate(
-//	    insyra.AggregateConfig{SourceCol: insyra.Name("ind1"), Op: insyra.OpMean},
-//	    insyra.AggregateConfig{SourceCol: insyra.Name("ind2"), Op: insyra.OpMean},
-//	    insyra.AggregateConfig{SourceCol: insyra.Name("data"), Op: insyra.OpMean},
-//	)
-//
-// This function will be removed in a future release.
-func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, aggFunc func([]float64) float64) IDataTable {
-
-	// 檢查是否存在空的 factor 或 data
-	if factor == nil || data == nil {
-		fmt.Println("Factor or data is nil")
-		return nil
-	}
-
-	var independentName []string
-	for _, independent := range independents {
-		independentName = append(independentName, independent.GetName())
-	}
-
-	wideTable := NewDataTable()
-
-	// 建立一個 map 儲存每個因子對應的觀測值及自變數
-	factorMap := make(map[any][][]float64)
-
-	// 迭代資料，根據因子將觀測值和自變數分組
-	for i := range factor.Len() {
-		key := factor.Get(i)
-
-		// 如果該因子尚未在 map 中，初始化空的觀測值和自變數切片
-		if _, exists := factorMap[key]; !exists {
-			factorMap[key] = make([][]float64, 0)
-		}
-
-		// 收集自變數的值
-		row := make([]float64, len(independents))
-		for j, independent := range independents {
-			row[j] = conv.ParseF64(independent.Get(i))
-		}
-
-		// 加入觀測值
-		value := conv.ParseF64(data.Get(i))
-		row = append(row, value)
-
-		// 將該行資料加入對應的因子組
-		factorMap[key] = append(factorMap[key], row)
-	}
-
-	// 如果提供的聚合函數為 nil，則將資料直接轉換為寬資料
-	if aggFunc == nil {
-		aggFunc = func(values []float64) float64 {
-			if len(values) > 0 {
-				return values[0] // 直接返回第一筆資料
-			}
-			return 0.0
-		}
-	}
-
-	// 將因子映射到寬資料表
-	for key, rows := range factorMap {
-		row := NewDataList()
-
-		// 將因子值作為行標題
-		row.Append(key)
-
-		// 依次處理每個自變數
-		for j := 0; j < len(independents); j++ {
-			columnValues := make([]float64, len(rows))
-			for i, r := range rows {
-				columnValues[i] = r[j]
-			}
-			// 聚合自變數的數據
-			row.Append(aggFunc(columnValues))
-		}
-
-		// 聚合觀測值
-		observations := make([]float64, len(rows))
-		for i, r := range rows {
-			observations[i] = r[len(independents)] // 最後一列是觀測值
-		}
-		row.Append(aggFunc(observations))
-
-		// 將結果加入寬資料表
-		wideTable.AppendRowsFromDataList(row)
-	}
-
-	wideTable.SetColToRowNames("A")
-	for i := range independents {
-		wideTable.columns[i].name = fmt.Sprintf("%v", independentName[i])
-	}
-	wideTable.columns[len(independents)].name = data.GetName()
-
-	return wideTable
-}
-
 // isNumeric checks if the value is numeric.
 func IsNumeric(v any) bool {
 	if v == nil {
@@ -276,38 +120,6 @@ func ColIndexToNumber(colIndex string) (colNumber int, ok bool) {
 // a negative number. ColIndexToNumber is the reverse.
 func ColNumberToIndex(colNumber int) (colIndex string, ok bool) {
 	return utils.CalcColIndex(colNumber)
-}
-
-// ParseColIndex turns an Excel-style column index into its 0-based number.
-//
-// Deprecated: use ColIndexToNumber, which is the same function. Removed in the
-// release after the one that deprecated it.
-func ParseColIndex(colIndex string) (colNumber int, ok bool) {
-	return ColIndexToNumber(colIndex)
-}
-
-// CalcColIndex turns a 0-based column number into its Excel-style index.
-//
-// Deprecated: use ColNumberToIndex, which is the same function. Removed in the
-// release after the one that deprecated it.
-func CalcColIndex(colNumber int) (colIndex string, ok bool) {
-	return ColNumberToIndex(colNumber)
-}
-
-// SortTimes sorts a slice of time.Time in ascending order.
-// It sorts the times directly in the provided slice.
-//
-// Deprecated: SortTimes has nothing to do with data tables and will be removed
-// in the next release. Use slices.SortFunc(times, time.Time.Compare).
-func SortTimes(times []time.Time) {
-	algorithms.ParallelSortStableFunc(times, func(a, b time.Time) int {
-		if a.Before(b) {
-			return -1
-		} else if a.After(b) {
-			return 1
-		}
-		return 0
-	})
 }
 
 // colorText wraps text in the ANSI colour code when it is going to w and w

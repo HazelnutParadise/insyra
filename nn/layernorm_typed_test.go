@@ -70,22 +70,3 @@ func TestLayerNormTakesATypedSize(t *testing.T) {
 		}
 	}
 }
-
-func TestDeprecatedNewLayerNormKeepsItsMeaning(t *testing.T) {
-	weightShape := func(layer Layer) ([]int, error) {
-		model, err := NewSequential(NewTape(1), layer)
-		if err != nil {
-			return nil, err
-		}
-		return model.NamedParameters()["0.weight"].Value().Shape(), nil
-	}
-	if got, err := weightShape(NewLayerNorm(4)); err != nil || !slices.Equal(got, []int{4}) {
-		t.Errorf("NewLayerNorm(4) = %v, %v; want [4]", got, err)
-	}
-	if got, err := weightShape(NewLayerNorm([]int{2, 3})); err != nil || !slices.Equal(got, []int{2, 3}) {
-		t.Errorf("NewLayerNorm([2 3]) = %v, %v; want [2 3]", got, err)
-	}
-	if _, err := weightShape(NewLayerNorm(int64(4))); err == nil || !strings.Contains(err.Error(), "must be positive") {
-		t.Errorf("NewLayerNorm(int64(4)) error = %v, want the dimension error it gave before", err)
-	}
-}

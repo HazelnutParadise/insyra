@@ -134,15 +134,6 @@ func CSVToExcel(sheets []SheetFromCSV, output string, csvEncoding ...string) err
 	return nil
 }
 
-// CsvToExcel converts CSV files into one Excel workbook. sheetNames[i] names
-// the sheet of csvFiles[i]; a missing or empty name uses the CSV file's name.
-//
-// Deprecated: use CSVToExcel, which takes each CSV together with its sheet
-// name. Removed in the release after the one that deprecated it.
-func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error {
-	return CSVToExcel(pairByPosition(csvFiles, sheetNames), output, csvEncoding...)
-}
-
 // AppendCSVToExcel writes CSV files into the existing Excel workbook at
 // existingFile, one sheet per element of sheets, and saves it in place. A
 // sheet that already has that name is replaced by a fresh one in the same
@@ -214,16 +205,6 @@ func AppendCSVToExcel(sheets []SheetFromCSV, existingFile string, csvEncoding ..
 	return nil
 }
 
-// AppendCsvToExcel writes CSV files into an existing Excel workbook.
-// sheetNames[i] names the sheet of csvFiles[i]; a missing or empty name uses
-// the CSV file's name.
-//
-// Deprecated: use AppendCSVToExcel, which takes each CSV together with its
-// sheet name. Removed in the release after the one that deprecated it.
-func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error {
-	return AppendCSVToExcel(pairByPosition(csvFiles, sheetNames), existingFile, csvEncoding...)
-}
-
 // ExcelToCSVOptions configures ExcelToCSV and ExcelDirToCSV. The zero value
 // converts every sheet and guards formula-like text.
 type ExcelToCSVOptions struct {
@@ -244,12 +225,6 @@ type ExcelToCSVOptions struct {
 	// workbook becomes a formula again once it is a CSV.
 	AllowFormulas bool
 }
-
-// ExcelToCsvOptions is the old name of ExcelToCSVOptions.
-//
-// Deprecated: use ExcelToCSVOptions, which is the same type. Removed in the
-// release after the one that deprecated it.
-type ExcelToCsvOptions = ExcelToCSVOptions
 
 func oneExcelToCSVOptions(opts []ExcelToCSVOptions) (ExcelToCSVOptions, error) {
 	if len(opts) > 1 {
@@ -273,25 +248,7 @@ func ExcelToCSV(excelFile string, outputDir string, options ...ExcelToCSVOptions
 	if err != nil {
 		return err
 	}
-	return excelToCSV(excelFile, outputDir, opts, nil)
-}
-
-// ExcelToCsv writes each sheet of a workbook as a CSV file. csvNames[i] names
-// the file of the i-th converted sheet; a missing or empty name uses the
-// sheet's name plus ".csv".
-//
-// Deprecated: use ExcelToCSV, which names a sheet's file by the sheet's name
-// through ExcelToCSVOptions.FileNames. Removed in the release after the one
-// that deprecated it.
-func ExcelToCsv(excelFile string, outputDir string, csvNames []string, options ...ExcelToCsvOptions) error {
-	opts, err := oneExcelToCSVOptions(options)
-	if err != nil {
-		return err
-	}
-	if len(csvNames) > 0 && len(opts.FileNames) > 0 {
-		return fmt.Errorf("file names were given both in csvNames and in FileNames; give them in FileNames")
-	}
-	return excelToCSV(excelFile, outputDir, opts, csvNames)
+	return excelToCSV(excelFile, outputDir, opts)
 }
 
 // SheetNames returns the names of the sheets of the workbook at excelFile, in
@@ -305,9 +262,8 @@ func SheetNames(excelFile string) ([]string, error) {
 	return f.GetSheetList(), nil
 }
 
-// excelToCSV is ExcelToCSV. csvNames, when not nil, are ExcelToCsv's file
-// names, the i-th naming the i-th converted sheet.
-func excelToCSV(excelFile, outputDir string, opts ExcelToCSVOptions, csvNames []string) error {
+// excelToCSV is ExcelToCSV.
+func excelToCSV(excelFile, outputDir string, opts ExcelToCSVOptions) error {
 	f, err := excelize.OpenFile(excelFile, insyra.ExcelReadOptions())
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
@@ -319,14 +275,6 @@ func excelToCSV(excelFile, outputDir string, opts ExcelToCSVOptions, csvNames []
 		return err
 	}
 	fileNames := opts.FileNames
-	if csvNames != nil {
-		fileNames = map[string]string{}
-		for idx, sheet := range sheets {
-			if idx < len(csvNames) && csvNames[idx] != "" {
-				fileNames[sheet] = csvNames[idx]
-			}
-		}
-	}
 	if err := checkFileNameKeys(excelFile, fileNames, sheets); err != nil {
 		return err
 	}
@@ -601,19 +549,6 @@ func planSheets(sheets []SheetFromCSV) ([]plannedSheet, error) {
 		plans[i] = plannedSheet{csvFile: csvFile, resolveErr: err, sheet: name}
 	}
 	return plans, nil
-}
-
-// pairByPosition builds the deprecated functions' sheets: sheetNames[i]
-// names the sheet of csvFiles[i], and a name past the last file is ignored.
-func pairByPosition(csvFiles, sheetNames []string) []SheetFromCSV {
-	sheets := make([]SheetFromCSV, len(csvFiles))
-	for i, path := range csvFiles {
-		sheets[i].Path = path
-		if i < len(sheetNames) {
-			sheets[i].Sheet = sheetNames[i]
-		}
-	}
-	return sheets
 }
 
 // resolveCsvSource turns a path the caller gave into the file to read. The

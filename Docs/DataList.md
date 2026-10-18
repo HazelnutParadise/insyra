@@ -225,7 +225,7 @@ A method that returns a `*DataList` either changes the list you call it on and r
 - Adding and updating: `Append`, `AppendDataList`, `InsertAt`, `Update`
 - Replacing: `ReplaceFirst`, `ReplaceLast`, `ReplaceAll`, `ReplaceOutliers`, `ReplaceNaNsWith`, `ReplaceNilsWith`, `ReplaceNaNsAndNilsWith`
 - Removing: `Drop`, `DropAll`, `DropIfContains`, `Clear`, `ClearStrings`, `ClearNumbers`, `ClearNaNs`, `ClearNils`, `ClearNilsAndNaNs`, `ClearOutliers`
-- Rescaling and filling: `Normalize`, `Standardize`, `FillNaNWithMean`, `FillForward`, `FillBackward`, `FillWithMean`, `FillWithMedian`, `FillWithMode`, `FillByInterpolation`
+- Rescaling and filling: `Normalize`, `Standardize`, `FillForward`, `FillBackward`, `FillWithMean`, `FillWithMedian`, `FillWithMode`, `FillByInterpolation`
 - Ordering: `Sort`, `Reverse`, `Shuffle`
 - Text and types: `Upper`, `Lower`, `Capitalize`, `ParseNumbers`, `ParseStrings`, `ParseDates`
 
@@ -236,8 +236,8 @@ A method that returns a `*DataList` either changes the list you call it on and r
 - Copying and combining: `Clone`, `Concat`
 - Selecting and mapping: `Filter`, `Map`, `Sample`, `SampleFrac`, `Shuffled`
 - Ranking: `Rank`
-- Sequence transforms: `Shift`, `Diff`, `PctChange`, `CumSum`, `CumProd`, `CumMax`, `CumMin`, `Difference`
-- Smoothing: `MovingAverage`, `WeightedMovingAverage`, `MovingStdev`, `ExponentialSmoothing`, `DoubleExponentialSmoothing`
+- Sequence transforms: `Shift`, `Diff`, `PctChange`, `CumSum`, `CumProd`, `CumMax`, `CumMin`
+- Smoothing: `ExponentialSmoothing`, `DoubleExponentialSmoothing`
 - Windows: the reducers of `Rolling`, `Expanding` and `EWM`. Those three methods take a copy of the list when they are called, so changing the list afterwards does not change what the reducers compute.
 
 Where a pair exists, the verb changes the list and the `-ed` form returns a copy, as in Swift and Kotlin: `dl.Shuffle()` shuffles `dl`, and `dl.Shuffled()` returns a shuffled copy and leaves `dl` as it is.
@@ -834,40 +834,6 @@ func (dl *DataList) Standardize() *DataList
 dl := insyra.NewDataList(10, 20, 30, 40, 50)
 dl.Standardize()
 // Values are standardized to have mean=0 and std=1
-```
-
-### FillNaNWithMean
-
-```go
-func (dl *DataList) FillNaNWithMean() *DataList
-```
-
-**Description:** Replaces all NaN values with the mean value of numeric elements.
-
-> A cell that is neither numeric, `nil`, nor `NaN` makes the call fail: `Err()` is set, naming the row, and the list is left untouched. `nil` cells are left as they are, and every other number is rewritten as a `float64`.
-
-> **Deprecated:** to fill `NaN` alone, as this method does, replace the `NaN` cells with the mean of the values that are there:
->
-> ```go
-> dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())   // or .Median()
-> ```
->
-> This gives the same values, leaves `nil` cells as they are, and also leaves the other numbers as they were instead of rewriting them as `float64`. When the list holds no number, `Mean()` is `NaN` and nothing changes, where this method records an error. [`FillWithMean`](#fillwithmean) fills `nil` cells too. See [Filling Only nil or Only NaN](#filling-only-nil-or-only-nan) for the other kinds of fill, and [Methods that look alike but differ](#methods-that-look-alike-but-differ).
-
-**Parameters:**
-
-- None.
-
-**Returns:**
-
-- `*DataList`: Reference to the modified DataList
-
-**Example:**
-
-```go
-dl := insyra.NewDataList(1.0, math.NaN(), 3.0, math.NaN(), 5.0)
-dl.FillNaNWithMean()
-// NaN values are replaced with mean (3.0)
 ```
 
 ### FillWithMean
@@ -1509,99 +1475,13 @@ ranksDesc := dl.Rank(false) // descending
 
 ### Methods that look alike but differ
 
-Six pairs of methods compute the same thing and give the same numbers on a fully numeric series, over the positions both produce. They are not two names for one function: each keeps its own output length, its own handling of `nil` and `NaN`, and its own failures, and a test pins every row of this table.
+`ExponentialSmoothing` and `EWM(...).Mean()` compute the same thing and give the same numbers on a fully numeric series. They are not two names for one function: each keeps its own handling of `nil` and `NaN` and its own failures, and a test pins the row of this table.
 
-`Difference`, `MovingAverage`, `MovingStdev` and `WeightedMovingAverage` are **Deprecated** and removed in the release after the one that deprecated them. Until then they behave exactly as described here, and the table is what changes when you move to the method beside them. `ExponentialSmoothing` is not deprecated, because `EWM` refuses `alpha = 0`. `FillNaNWithMean` has been Deprecated since v0.2.19.
-
-The method in the second column keeps the input's length and gives `nil` where a window has too few values, so its result lines up with the other columns of a table. The one in the first column gives only the positions it can compute, and most of them refuse a gap outright rather than skip it.
+`EWM` keeps the input's length and carries the mean across a gap. `ExponentialSmoothing` refuses a gap outright rather than skip it, and it is not deprecated, because `EWM` refuses `alpha = 0`.
 
 | Method | Similar method | Where they differ |
 | --- | --- | --- |
-| `Difference()` | `Diff(1)` | Length `n-1` against `n` with a leading `nil`. A `nil` operand gives `NaN` against `nil`. A non-numeric cell fails the call against giving `nil`. Fewer than two values give an empty list against `[nil]`. |
-| `FillNaNWithMean()` | `FillWithMean()` | Fills `NaN` only and leaves `nil`, against both. Rewrites every other number as `float64`, against leaving it as it was. |
-| `MovingAverage(w)` | `Rolling(RollingOptions{Window: w}).Mean()` | Length `n-w+1` against `n` with `w-1` leading `nil`. A `nil` or non-numeric cell fails the call against `nil` for each window holding it. `NaN` propagates against `nil`. `w > n` fails against a list of `nil`. |
-| `MovingStdev(w)` | `Rolling(RollingOptions{Window: w}).Std()` | Length `n-w+1` against `n`. A `nil` or non-numeric cell is skipped against `nil` for the window. `NaN` propagates against `nil`. `w = 1` gives `NaN` against `nil`. `w > n` fails against a list of `nil`. |
 | `ExponentialSmoothing(a)` | `EWM(EWMOptions{Alpha: a}).Mean()` | `a = 0` is accepted against refused. A `nil`, `NaN` or non-numeric cell fails the call against carrying the last mean forward with decaying weight. |
-| `WeightedMovingAverage(w, ws)` | `Rolling(RollingOptions{Window: w, Weights: ws}).Mean()` | Length `n-w+1` against `n`. A `nil` or non-numeric cell fails the call against `nil`. `NaN` propagates against `nil`. Weights summing to zero give `±Inf` or `NaN` against `nil`. `w > n` fails against a list of `nil`. |
-
-For the positions both produce, `Rolling(...).Mean().Data()[w-1:]` equals `MovingAverage(w)` on a fully numeric series, and `Diff(1).Data()[1:]` equals `Difference()`.
-
-### Difference
-
-```go
-func (dl *DataList) Difference() *DataList
-```
-
-**Description:** Calculates differences between consecutive elements. The output is one element **shorter** than the input (`out[i] = in[i+1] - in[i]`). A pair with a `nil` or `NaN` operand yields `NaN`; any other non-numeric cell makes the call fail, with `Err()` set and an empty list returned. A list of fewer than two values gives an empty list without an error.
-
-> **Deprecated:** use [`Diff(1)`](#diff), which keeps the input's length with a leading `nil`; on a fully numeric list `Diff(1).Data()[1:]` is this method's result. It gives `nil`, not `NaN` or a failure, for a `nil` or non-numeric operand; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in the release after the one that deprecated it.
-
-**Parameters:**
-
-- None.
-
-**Returns:**
-
-- `*DataList`: New DataList with consecutive differences (length `n-1`).
-
-**Example:**
-
-```go
-dl := insyra.NewDataList(1, 3, 6, 10, 15)
-diff := dl.Difference()
-// Returns: [2, 3, 4, 5] (differences between consecutive elements)
-```
-
-### MovingAverage
-
-```go
-func (dl *DataList) MovingAverage(windowSize int) *DataList
-```
-
-**Description:** Calculates moving average with specified window size. The result has `n - windowSize + 1` values, one per full window. Every cell must be a number: a `nil` or non-numeric cell makes the call fail, with `Err()` set and an empty list returned, and a `NaN` makes every window holding it `NaN`. A `windowSize` below 1 or above the length also fails.
-
-> **Deprecated:** use [`Rolling(RollingOptions{Window: windowSize}).Mean()`](#rolling), which keeps the input's length with `windowSize-1` leading `nil`; on a fully numeric list its `Data()[windowSize-1:]` is this method's result. It gives `nil` for a window holding a gap instead of failing; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in the release after the one that deprecated it.
-
-**Parameters:**
-
-- `windowSize`: Size of the moving window
-
-**Returns:**
-
-- `*DataList`: New DataList with moving averages
-
-**Example:**
-
-```go
-dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-ma := dl.MovingAverage(3) // 3-period moving average
-```
-
-### WeightedMovingAverage
-
-```go
-func (dl *DataList) WeightedMovingAverage(windowSize int, weights []float64) *DataList
-```
-
-**Description:** Calculates weighted moving average with specified window size and weights. Each window's value is the weighted sum divided by the sum of the weights, so weights summing to zero give `±Inf` or `NaN`. The result has `n - windowSize + 1` values. A `nil` or non-numeric cell, a `windowSize` below 1 or above the length, or weights of the wrong length make the call fail, with `Err()` set and an empty list returned; a `NaN` makes every window holding it `NaN`.
-
-> **Deprecated:** use [`Rolling(RollingOptions{Window: windowSize, Weights: weights}).Mean()`](#rolling), which keeps the input's length; on a fully numeric list its `Data()[windowSize-1:]` is this method's result. It gives `nil` for a window holding a gap and for weights summing to zero; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in the release after the one that deprecated it.
-
-**Parameters:**
-
-- `windowSize`: Size of the moving window
-- `weights`: One weight per window position, oldest first, as a `[]float64` (the type `RollingOptions.Weights` takes). Its length must equal `windowSize`.
-
-**Returns:**
-
-- `*DataList`: New DataList with weighted moving averages. When the number of weights differs from `windowSize`, an empty DataList, with `Err()` set on it and on the receiver.
-
-**Example:**
-
-```go
-dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-wma := dl.WeightedMovingAverage(3, []float64{0.2, 0.3, 0.5})
-```
 
 ### ExponentialSmoothing
 
@@ -1654,31 +1534,6 @@ dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 smoothed := dl.DoubleExponentialSmoothing(0.3, 0.2)
 ```
 
-### MovingStdev
-
-```go
-func (dl *DataList) MovingStdev(windowSize int) *DataList
-```
-
-**Description:** Calculates the moving sample standard deviation with specified window size. The result has `n - windowSize + 1` values. A `nil` or non-numeric cell is skipped within its window, a window left with fewer than two numbers gives `NaN` (so a `windowSize` of 1 gives `NaN` everywhere), and a `NaN` makes every window holding it `NaN`. A `windowSize` below 1 or above the length makes the call fail.
-
-> **Deprecated:** use [`Rolling(RollingOptions{Window: windowSize}).Std()`](#rolling), which keeps the input's length; on a fully numeric list its `Data()[windowSize-1:]` is this method's result. It gives `nil` where this method gives `NaN`, and skips a `NaN` this method lets through; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in the release after the one that deprecated it.
-
-**Parameters:**
-
-- `windowSize`: Size of the moving window
-
-**Returns:**
-
-- `*DataList`: New DataList with moving standard deviations
-
-**Example:**
-
-```go
-dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-mstdev := dl.MovingStdev(3)
-```
-
 ### Shift
 
 ```go
@@ -1713,7 +1568,7 @@ func (dl *DataList) Diff(periods int) *DataList
 
 **Description:** Returns the `periods`-step backward difference (`out[i] = in[i] - in[i-periods]`) with the same length as the input. The first `periods` positions are `nil`. Cells where either operand is non-numeric or nil are emitted as `nil`. `periods` must be > 0.
 
-Unlike [Difference](#difference) (which returns length `n-1`), `Diff` preserves the input length so the result lines up with neighbouring columns — preferred for use inside a `DataTable`.
+`Diff` preserves the input length so the result lines up with neighbouring columns, which suits use inside a `DataTable`.
 
 **Parameters:**
 
@@ -2685,26 +2540,6 @@ dl.Append(4) // This updates the time
 changed := dl.LastModifiedTime().After(before)
 ```
 
-### GetCreationTimestamp
-
-```go
-func (dl *DataList) GetCreationTimestamp() int64
-```
-
-**Deprecated:** use `CreationTime`. This method is removed in the release after the one that deprecated it.
-
-**Description:** Returns the creation time in Unix seconds, `CreationTime().Unix()`.
-
-### GetLastModifiedTimestamp
-
-```go
-func (dl *DataList) GetLastModifiedTimestamp() int64
-```
-
-**Deprecated:** use `LastModifiedTime`. This method is removed in the release after the one that deprecated it.
-
-**Description:** Returns the last modification time in Unix seconds, `LastModifiedTime().Unix()`. Two changes within one second read the same.
-
 ## Utility Methods
 
 **How a value is matched.** `Count`, `FindFirst`, `FindLast`, `FindAll`, the `Replace` methods and `DropAll` compare cells the same way. An integer matches an integer of the same value whatever their Go types, so `Count(2)` finds the `int64` 2s a CSV load produces. A float never matches an integer: search with `2.0` to find `2.0`. `NaN` matches `NaN`. `IsEqualTo` is stricter, because it asks whether two lists hold identical data: it compares cell by cell including the Go type, so `[1]` and `[int64(1)]` are not equal.
@@ -2966,7 +2801,7 @@ leave `Err()` alone. Addressing a column, row or index that is not there is
 different — the caller asserted it existed and the only other signal is a bare
 `nil` — so that is recorded, as is any invalid argument.
 
-A **transform** that computes a new list (`MovingAverage`, `Diff`, `Rank`,
+A **transform** that computes a new list (`Diff`, `Rank`,
 `Shift`, `Sample`, `Shuffled`, …) never returns `nil`: on failure you get an
 empty, usable list carrying the error, also recorded on the list you called it
 on, so the next step in the chain cannot nil-dereference. A method that changes

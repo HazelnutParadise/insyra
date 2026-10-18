@@ -68,14 +68,6 @@ func (c *configStruct) GetUseColoredOutput() bool {
 	return c.coloredOutput.Load()
 }
 
-// GetDoesUseColoredOutput reports whether output is coloured.
-//
-// Deprecated: use GetUseColoredOutput, which is the same method. Removed in
-// the release after the one that deprecated it.
-func (c *configStruct) GetDoesUseColoredOutput() bool {
-	return c.GetUseColoredOutput()
-}
-
 // SetLogger sends every line insyra logs to l instead of the standard log
 // package. Each line becomes one record at its own level (Debug, Info, Warn,
 // Error, and Fatal as slog.LevelError+4), with the formatted message and, when

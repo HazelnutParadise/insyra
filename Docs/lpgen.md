@@ -263,6 +263,3 @@ if err != nil {
 sol, err := lp.Solve(model, lp.Options{})
 ```
 
-### Deprecated LINGO names
-
-`ParseLingoModel_str(modelStr string) *LPModel` and `ParseLingoModel_txt(filePath string) *LPModel` are the old names of `ParseLingo` and `ParseLingoFile`. They do not refuse a statement they do not read: they drop it, as they always have, including `@GIN`, `@FREE` and `@BND`, and report only text they cannot read at all, by returning `nil` and logging a warning. They are **Deprecated** and will be removed in the release after the one that deprecated them.

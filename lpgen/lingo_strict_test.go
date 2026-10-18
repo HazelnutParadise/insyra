@@ -30,13 +30,6 @@ func TestParseLingoRefusesAnUnterminatedStatement(t *testing.T) {
 			t.Errorf("the error does not say %q: %v", want, err)
 		}
 	}
-
-	quiet(t)
-	if got := ParseLingoModel_str(text); got == nil {
-		t.Fatal("the deprecated name returned nil for text it reads")
-	} else if got.Objective != "" {
-		t.Errorf("the deprecated name kept the unterminated statement: %q", got.Objective)
-	}
 }
 
 // A sentence is not a model statement. Silently dropping it is how a wrong
@@ -134,22 +127,5 @@ func TestParseLingoReadsGinFreeAndBnd(t *testing.T) {
 	}
 	if want := []string{"X + Y >= -3"}; !reflect.DeepEqual(m.Constraints, want) {
 		t.Errorf("constraints: got %v, want %v", m.Constraints, want)
-	}
-}
-
-// The deprecated names kept their loose reading for one release: the same text
-// that the new name refuses still comes back as a model, minus what was dropped.
-func TestDeprecatedLingoReaderStillDropsWhatItDoesNotRead(t *testing.T) {
-	quiet(t)
-
-	m := ParseLingoModel_str("MODEL:\nMIN= X;\n@FREE(X);\nhello world;\nEND")
-	if m == nil {
-		t.Fatal("the deprecated name returned nil")
-	}
-	if len(m.Bounds) != 0 {
-		t.Errorf("the deprecated name read a declaration it does not read: %v", m.Bounds)
-	}
-	if m.Objective != "X" {
-		t.Errorf("objective: got %q, want \"X\"", m.Objective)
 	}
 }
