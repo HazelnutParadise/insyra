@@ -76,8 +76,10 @@ func (d MetricDirection) String() string {
 		return "higher is better"
 	case LowerIsBetter:
 		return "lower is better"
-	default:
+	case NoDirection:
 		return "no direction"
+	default:
+		return fmt.Sprintf("MetricDirection(%d)", int(d))
 	}
 }
 
@@ -474,9 +476,11 @@ const (
 	BinaryAverage
 )
 
-// classAverageName is for error messages.
+// String names the averaging rule for error messages.
 func (a ClassAverage) String() string {
 	switch a {
+	case MacroAverage:
+		return "macro"
 	case MicroAverage:
 		return "micro"
 	case WeightedAverage:
@@ -484,7 +488,7 @@ func (a ClassAverage) String() string {
 	case BinaryAverage:
 		return "binary"
 	default:
-		return "macro"
+		return fmt.Sprintf("ClassAverage(%d)", int(a))
 	}
 }
 

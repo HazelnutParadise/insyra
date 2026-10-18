@@ -27,7 +27,7 @@ func quietTest(t *testing.T) {
 // had never been called. This file is in-package because dt and dl are
 // unexported, so an external test cannot name them.
 
-func sampleDT() *dt {
+func sampleDT() *DataTable {
 	return DT.From(DLs{
 		DL.From(1, 2, 3).SetName("A"),
 		DL.From("x", "y", "z").SetName("B"),
@@ -115,7 +115,7 @@ func TestDT_From_DataListForms(t *testing.T) {
 			t.Errorf("size: got %dx%d, want 3x1", rows, cols)
 		}
 	})
-	t.Run("*dl", func(t *testing.T) {
+	t.Run("*DataList", func(t *testing.T) {
 		table := DT.From(DL.From(1, 2, 3))
 		if rows, cols := table.Size(); rows != 3 || cols != 1 {
 			t.Errorf("size: got %dx%d, want 3x1", rows, cols)
@@ -130,8 +130,8 @@ func TestDT_From_DataListForms(t *testing.T) {
 			t.Errorf("size: got %dx%d, want 2x2", rows, cols)
 		}
 	})
-	t.Run("[]dl", func(t *testing.T) {
-		table := DT.From([]dl{*DL.From(1, 2), *DL.From(3, 4)})
+	t.Run("[]DataList", func(t *testing.T) {
+		table := DT.From([]DataList{*DL.From(1, 2), *DL.From(3, 4)})
 		if rows, cols := table.Size(); rows != 2 || cols != 2 {
 			t.Errorf("size: got %dx%d, want 2x2", rows, cols)
 		}
@@ -339,8 +339,8 @@ func TestDT_PushForms(t *testing.T) {
 			t.Errorf("columns: got %d, want 4", cols)
 		}
 	})
-	t.Run("[]dl", func(t *testing.T) {
-		table := sampleDT().Push([]dl{*DL.From(7, 8, 9)})
+	t.Run("[]DataList", func(t *testing.T) {
+		table := sampleDT().Push([]DataList{*DL.From(7, 8, 9)})
 		if _, cols := table.Size(); cols != 3 {
 			t.Errorf("columns: got %d, want 3", cols)
 		}
@@ -422,26 +422,26 @@ func TestDT_RowWithMixedKeys(t *testing.T) {
 func TestDT_WindowWrappers(t *testing.T) {
 	quietTest(t)
 
-	build := func() *dt {
+	build := func() *DataTable {
 		return DT.From(DLs{DL.From(1.0, 3.0, 2.0, 6.0).SetName("v")})
 	}
 
 	tests := []struct {
 		name string
-		get  func(*dt) *insyra.DataList
+		get  func(*DataTable) *insyra.DataList
 		want []any
 	}{
-		{name: "Diff", get: func(t *dt) *insyra.DataList { return t.Diff("v", 1) },
+		{name: "Diff", get: func(t *DataTable) *insyra.DataList { return t.Diff("v", 1) },
 			want: []any{nil, 2.0, -1.0, 4.0}},
-		{name: "PctChange", get: func(t *dt) *insyra.DataList { return t.PctChange("v", 1) },
+		{name: "PctChange", get: func(t *DataTable) *insyra.DataList { return t.PctChange("v", 1) },
 			want: []any{nil, 2.0, -1.0 / 3.0, 2.0}},
-		{name: "CumSum", get: func(t *dt) *insyra.DataList { return t.CumSum("v") },
+		{name: "CumSum", get: func(t *DataTable) *insyra.DataList { return t.CumSum("v") },
 			want: []any{1.0, 4.0, 6.0, 12.0}},
-		{name: "CumProd", get: func(t *dt) *insyra.DataList { return t.CumProd("v") },
+		{name: "CumProd", get: func(t *DataTable) *insyra.DataList { return t.CumProd("v") },
 			want: []any{1.0, 3.0, 6.0, 36.0}},
-		{name: "CumMax", get: func(t *dt) *insyra.DataList { return t.CumMax("v") },
+		{name: "CumMax", get: func(t *DataTable) *insyra.DataList { return t.CumMax("v") },
 			want: []any{1.0, 3.0, 3.0, 6.0}},
-		{name: "CumMin", get: func(t *dt) *insyra.DataList { return t.CumMin("v") },
+		{name: "CumMin", get: func(t *DataTable) *insyra.DataList { return t.CumMin("v") },
 			want: []any{1.0, 1.0, 1.0, 1.0}},
 	}
 	for _, tt := range tests {
@@ -499,20 +499,20 @@ func TestDT_CCL_BadStatement(t *testing.T) {
 func TestUse_ValueWithNilPointer(t *testing.T) {
 	quietTest(t)
 
-	table := UseDT(dt{})
+	table := UseDT(DataTable{})
 	if table == nil {
-		t.Fatal("UseDT(dt{}) returned nil")
+		t.Fatal("UseDT(DataTable{}) returned nil")
 	}
 	if table.DataTable != nil {
-		t.Error("UseDT(dt{}) invented a table")
+		t.Error("UseDT(DataTable{}) invented a table")
 	}
 
-	list := UseDL(dl{})
+	list := UseDL(DataList{})
 	if list == nil {
-		t.Fatal("UseDL(dl{}) returned nil")
+		t.Fatal("UseDL(DataList{}) returned nil")
 	}
 	if list.DataList != nil {
-		t.Error("UseDL(dl{}) invented a list")
+		t.Error("UseDL(DataList{}) invented a list")
 	}
 }
 

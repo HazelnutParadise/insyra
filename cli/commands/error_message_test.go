@@ -24,6 +24,7 @@ func TestNumericArgumentErrorsNameTheCommandAndField(t *testing.T) {
 		{name: "expsmooth alpha", cmd: "expsmooth", args: []string{"x", "abc"}, field: "alpha"},
 		{name: "quartile q", cmd: "quartile", args: []string{"x", "abc"}, field: "q"},
 		{name: "percentile p", cmd: "percentile", args: []string{"x", "abc"}, field: "p"},
+		{name: "quantile p", cmd: "quantile", args: []string{"x", "abc"}, field: "p"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

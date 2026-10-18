@@ -57,3 +57,16 @@ type Context interface {
 	// This is used for the @ operator in aggregate functions (e.g., SUM(@)).
 	GetAllData() ([]any, error)
 }
+
+// GlobalRowContext is a Context that holds part of a larger table, such as one
+// batch of a file read in batches. GlobalRowIndex is the current row's
+// position in the whole table, which is what # means. A row position written
+// in an expression, such as the row in A.# or A.5, is a position in the whole
+// table too, and the evaluator turns it into the part's own row before it asks
+// GetCell, GetCellByName or GetRowAt. Those, like GetRowIndex, SetRowIndex and
+// GetRowCount, work on the part's own rows, because the evaluator also walks
+// a context's rows through them.
+type GlobalRowContext interface {
+	Context
+	GlobalRowIndex() int
+}

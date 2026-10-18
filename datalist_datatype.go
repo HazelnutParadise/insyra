@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"fmt"
 	"math"
 	"reflect"
 	"time"
@@ -54,7 +55,7 @@ func (t DataType) String() string {
 	case DataTypeMixed:
 		return "mixed"
 	}
-	return "unknown"
+	return fmt.Sprintf("DataType(%d)", int(t))
 }
 
 // DataType returns the kind of values the list holds, ignoring missing ones.

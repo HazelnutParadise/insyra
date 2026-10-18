@@ -9,7 +9,7 @@ import (
 )
 
 type FTestResult struct {
-	testResultBase
+	TestResult
 	DF2 float64 // degree of freedom for the second group
 }
 
@@ -45,7 +45,7 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, erro
 	pValue := fTwoTailedPValue(fValue, df1, df2)
 
 	return &FTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: fValue,
 			PValue:    pValue,
 			DF:        &df1,
@@ -137,7 +137,7 @@ func BartlettTest(groups []insyra.IDataList) (*FTestResult, error) {
 	pValue := chiSquaredPValue(chiSquared, df)
 
 	return &FTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: chiSquared,
 			PValue:    pValue,
 			DF:        &df,
@@ -161,7 +161,7 @@ func FTestForRegression(ssr, sse float64, df1, df2 int) (*FTestResult, error) {
 	df1f := float64(df1)
 	df2f := float64(df2)
 	return &FTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: fValue,
 			PValue:    pValue,
 			DF:        &df1f,
@@ -188,7 +188,7 @@ func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) (*
 	df1f := float64(numeratorDF)
 	df2f := float64(denominatorDF)
 	return &FTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: fValue,
 			PValue:    pValue,
 			DF:        &df1f,
@@ -206,7 +206,7 @@ func oneWayANOVAForLevene(values []float64, labels []int, k int) (*FTestResult, 
 	df1 := float64(stats.DFB)
 	df2 := float64(stats.DFW)
 	return &FTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: stats.F,
 			PValue:    stats.P,
 			DF:        &df1,

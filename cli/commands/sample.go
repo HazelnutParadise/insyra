@@ -163,9 +163,9 @@ func applyShuffle(ctx *ExecContext, varName string, opts sampleCommandOptions) (
 	samplingOpts := samplingOptionsFromCLI(opts)
 	switch v := value.(type) {
 	case *insyra.DataTable:
-		return v.Shuffle(samplingOpts...), nil
+		return v.Shuffled(samplingOpts...), nil
 	case *insyra.DataList:
-		return v.Shuffle(samplingOpts...), nil
+		return v.Shuffled(samplingOpts...), nil
 	default:
 		return nil, fmt.Errorf("variable %s is not a DataList or DataTable", varName)
 	}

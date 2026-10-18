@@ -1,5 +1,7 @@
 package isr
 
+// CSV is a CSV source for DT.From and a CSV target for (*DataTable).To.
+// InputOpts apply when reading, OutputOpts when writing.
 type CSV struct {
 	FilePath   string
 	String     string
@@ -19,4 +21,5 @@ type CSV_inOpts struct {
 type CSV_outOpts struct {
 	RowNames2FirstCol bool
 	ColNames2FirstRow bool
+	IncludeBOM        bool // start the file with a UTF-8 byte order mark, for Excel
 }

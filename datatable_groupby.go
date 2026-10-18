@@ -79,7 +79,7 @@ func (o AggregateOp) String() string {
 	case OpCustom:
 		return "custom"
 	}
-	return fmt.Sprintf("op(%d)", int(o))
+	return fmt.Sprintf("AggregateOp(%d)", int(o))
 }
 
 // AggregateConfig describes a single aggregation operation produced by Aggregate.

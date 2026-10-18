@@ -74,6 +74,9 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 	}
 
 	cols, rows := dt.collectRowsForSQL(opts.RowNames)
+	if err := nameUnnamedSQLColumns(cols, opts.RowNames); err != nil {
+		return err
+	}
 	if len(rows) == 0 {
 		return fmt.Errorf("data is empty")
 	}
@@ -82,6 +85,9 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 	tx := db.WithContext(ctx)
 	if opts.IfExists == SQLActionIfTableExistsReplace && db.Name() == "mysql" {
 		cols, rows := dt.collectRowsForSQL(opts.RowNames)
+		if err := nameUnnamedSQLColumns(cols, opts.RowNames); err != nil {
+			return err
+		}
 		if len(rows) == 0 {
 			return fmt.Errorf("data is empty")
 		}
@@ -284,6 +290,38 @@ func (dt *DataTable) collectRowsForSQL(includeRowName bool) (cols []string, rows
 		}
 	})
 	return cols, rows
+}
+
+// nameUnnamedSQLColumns gives a column with no name its Excel-style letter,
+// the name insyra already uses for it elsewhere: MySQL and PostgreSQL refuse
+// an empty identifier. A letter another column already goes by is refused,
+// compared without case because MySQL and SQLite compare column names so.
+func nameUnnamedSQLColumns(cols []string, hasRowNames bool) error {
+	first := 0
+	if hasRowNames {
+		first = 1
+	}
+	taken := make(map[string]bool, len(cols))
+	for _, c := range cols {
+		if c != "" {
+			taken[strings.ToLower(c)] = true
+		}
+	}
+	for i := first; i < len(cols); i++ {
+		if cols[i] != "" {
+			continue
+		}
+		letter, ok := ColNumberToIndex(i - first)
+		if !ok {
+			return fmt.Errorf("column %d has no name", i-first+1)
+		}
+		if taken[strings.ToLower(letter)] {
+			return fmt.Errorf("column %s has no name, and another column is already named %s; name the column before writing it", letter, letter)
+		}
+		cols[i] = letter
+		taken[strings.ToLower(letter)] = true
+	}
+	return nil
 }
 
 func qualifiedTableName(schema, table string) string {

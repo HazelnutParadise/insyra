@@ -45,7 +45,7 @@ type DataTable struct {
 // NewDataTable creates a DataTable from the given columns, in order. A column
 // whose name collides with an earlier one is renamed with a numeric suffix.
 func NewDataTable(columns ...*DataList) *DataTable {
-	now := time.Now().Unix()
+	now := clock().UnixNano()
 	newTable := &DataTable{
 		columns:           []*DataList{},
 		rowNames:          core.NewBiIndex(0),
@@ -1437,7 +1437,7 @@ func (dt *DataTable) Transpose() *DataTable {
 // The cloned DataTable has a new creation timestamp and is fully independent.
 func (dt *DataTable) Clone() *DataTable {
 	var newDT *DataTable
-	now := time.Now().Unix()
+	now := clock().UnixNano()
 	dt.AtomicDo(func(dt *DataTable) {
 		clonedColumns := make([]*DataList, len(dt.columns))
 		var clonedRowNames *core.BiIndex
@@ -1505,7 +1505,7 @@ func newEmptyDataList(rowCount int) *DataList {
 		data[i] = nil
 	}
 
-	now := time.Now().Unix()
+	now := clock().UnixNano()
 	dl := &DataList{
 		data:              data,
 		creationTimestamp: now,
@@ -1632,22 +1632,40 @@ func containsSubstring(value string, substring string) bool {
 }
 
 func (dt *DataTable) updateTimestamp() {
-	now := time.Now().Unix()
+	now := clock().UnixNano()
 	oldTimestamp := dt.lastModifiedTimestamp.Load()
 	if oldTimestamp < now {
 		dt.lastModifiedTimestamp.Store(now)
 	}
 }
 
+// CreationTime returns when the table was created, at the clock's full
+// resolution.
+func (dt *DataTable) CreationTime() time.Time {
+	return timeFromUnixNano(dt.creationTimestamp)
+}
+
+// LastModifiedTime returns when the table was last changed, at the clock's
+// full resolution. It never moves backwards, even if the wall clock does.
+func (dt *DataTable) LastModifiedTime() time.Time {
+	return timeFromUnixNano(dt.lastModifiedTimestamp.Load())
+}
+
 // GetCreationTimestamp returns when the table was created, as Unix seconds.
+//
+// Deprecated: use CreationTime, which keeps sub-second changes apart. Removed
+// in 0.4.
 func (dt *DataTable) GetCreationTimestamp() int64 {
-	return dt.creationTimestamp
+	return unixSecondsFromUnixNano(dt.creationTimestamp)
 }
 
 // GetLastModifiedTimestamp returns when the table was last changed, as Unix
 // seconds. Two changes within the same second are indistinguishable.
+//
+// Deprecated: use LastModifiedTime, which keeps sub-second changes apart.
+// Removed in 0.4.
 func (dt *DataTable) GetLastModifiedTimestamp() int64 {
-	return dt.lastModifiedTimestamp.Load()
+	return unixSecondsFromUnixNano(dt.lastModifiedTimestamp.Load())
 }
 
 // Err returns the last error that occurred during a chained operation.

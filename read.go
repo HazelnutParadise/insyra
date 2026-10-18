@@ -20,14 +20,17 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// Alias for Slice2DToDataTable
-// Converts a 2D slice into a DataTable.
-// Supports various types like [][]any, [][]int, [][]float64, [][]string, etc.
-var ReadSlice2D = Slice2DToDataTable
-
-// Slice2DToDataTable converts a 2D slice of any type into a DataTable.
-// It supports various 2D array types such as [][]any, [][]int, [][]float64, [][]string, etc.
+// Slice2DToDataTable converts a 2D slice into a DataTable.
+//
+// Deprecated: use ReadSlice2D, which is the same function. Removed in 0.4.
 func Slice2DToDataTable(data any) (*DataTable, error) {
+	return ReadSlice2D(data)
+}
+
+// ReadSlice2D converts a 2D slice of any type into a DataTable, one inner
+// slice per row. It supports [][]any, [][]int, [][]float64, [][]string and
+// other 2D slice and array types.
+func ReadSlice2D(data any) (*DataTable, error) {
 	if data == nil {
 		return nil, fmt.Errorf("input data cannot be nil")
 	}
@@ -574,12 +577,19 @@ func readExcelSheetFrom(f *excelize.File, sheetName string, setFirstColToRowName
 
 // ----- json -----
 
-// ReadJSON_File reads a JSON file and loads the data into a DataTable.
+// ReadJSON_File reads a JSON file.
+//
+// Deprecated: use ReadJSONFile, which is the same function. Removed in 0.4.
+func ReadJSON_File(filePath string) (*DataTable, error) {
+	return ReadJSONFile(filePath)
+}
+
+// ReadJSONFile reads a JSON file and loads the data into a DataTable.
 // It decodes through the same path as ReadJSON, so numbers are typed the
 // same way from a file as from bytes: integer literals become int64 (large
 // integers keep full precision) and decimal literals become float64. A file
 // holding a single object loads as one row.
-func ReadJSON_File(filePath string) (*DataTable, error) {
+func ReadJSONFile(filePath string) (*DataTable, error) {
 	buf, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)

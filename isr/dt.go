@@ -8,9 +8,13 @@ import (
 )
 
 // Use `DT.From` to create a new DataTable from a DataList, DL, Row, Col, []Row, []Col, CSV, JSON, map[string]any, or map[int]any.
-var DT = dt{}
+var DT = DataTable{}
 
-type dt struct {
+// DataTable is isr's table: an *insyra.DataTable whose methods return the isr
+// type, so short-syntax chains keep going. Name it in your own signatures as
+// *isr.DataTable; build one with DT.From, DT.Of or UseDT, and write it out with
+// To.
+type DataTable struct {
 	*insyra.DataTable
 }
 
@@ -22,7 +26,7 @@ type Row map[any]any
 // Rows is a type alias for []Row.
 type Rows = []Row
 
-// DL is a type alias for map[any]any.
+// Col is a type alias for map[any]any.
 // It is used to represent a column in a DataTable.
 // Every key in the map represents a row Index.
 type Col map[any]any
@@ -33,31 +37,39 @@ type Cols = []Col
 // Deprecated: Use UseDT instead.
 // PtrDT converts a DataTable or DT to a *DT.
 // You should no longer use this function, use UseDT instead.
-func PtrDT[T *insyra.DataTable | dt](t T) *dt {
+func PtrDT[T *insyra.DataTable | DataTable](t T) *DataTable {
 	return UseDT(t)
 }
 
-// From converts a DataList, DL, Row, Col, []DL, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.
+// From converts item to a DataTable. item is one of:
+//   - a 2-D slice ([][]any, [][]int, [][]float64, [][]string, …), one inner slice per row;
+//   - *insyra.DataList, *DataList, []*insyra.DataList, []DataList or DLs, one list per column;
+//   - Row, Rows, Col or Cols, whose keys are all column indices (string or int) or all Name selectors;
+//   - CSV, JSON or Excel, read from FilePath or from the in-memory field;
+//   - map[string]any or map[int]any, one row keyed by column index;
+//   - nil, for an empty table.
+//
+// Anything else logs a warning that names the type it got.
 // nolint:govet
-func (d dt) From(item any) *dt {
-	t := dt{}
+func (d DataTable) From(item any) *DataTable {
+	t := DataTable{}
 	switch val := item.(type) {
 	case [][]any, [][]int, [][]float64, [][]string, [][]bool, [][]uint, [][]int8, [][]int16, [][]int32, [][]int64, [][]uint8, [][]uint16, [][]uint32, [][]uint64, [][]float32, [][]complex64, [][]complex128, [][]uintptr:
-		converted, err := insyra.Slice2DToDataTable(val)
+		converted, err := insyra.ReadSlice2D(val)
 		if err != nil {
 			insyra.LogWarning("isr", "DT.From", "%v", err)
 		}
 		t.DataTable = converted
 	case *insyra.DataList:
 		t.DataTable = insyra.NewDataTable(val)
-	case *dl:
+	case *DataList:
 		t.DataTable = insyra.NewDataTable(val.DataList)
 	case []*insyra.DataList:
 		t.DataTable = insyra.NewDataTable()
 		for _, l := range val {
 			t.AppendCols(l)
 		}
-	case []dl:
+	case []DataList:
 		t.DataTable = insyra.NewDataTable()
 		for _, l := range val {
 			t.AppendCols(l.DataList)
@@ -73,21 +85,21 @@ func (d dt) From(item any) *dt {
 		}
 	case Row:
 		t.DataTable = insyra.NewDataTable()
-		err := fromRowToDT(&t, val)
+		err := fromRowToDT(&t, val, "isr.Row")
 		if err != nil {
 			recordDT(&t, "DT.From", "%v", err)
 		}
 	case Rows:
 		t.DataTable = insyra.NewDataTable()
 		for _, r := range val {
-			err := fromRowToDT(&t, r)
+			err := fromRowToDT(&t, r, "isr.Row")
 			if err != nil {
 				recordDT(&t, "DT.From", "%v", err)
 			}
 		}
 	case Col:
 		t.DataTable = insyra.NewDataTable()
-		err := fromRowToDT(&t, val)
+		err := fromRowToDT(&t, val, "isr.Col")
 		if err != nil {
 			recordDT(&t, "DT.From", "%v", err)
 		}
@@ -95,7 +107,7 @@ func (d dt) From(item any) *dt {
 	case Cols:
 		t.DataTable = insyra.NewDataTable()
 		for _, r := range val {
-			err := fromRowToDT(&t, r)
+			err := fromRowToDT(&t, r, "isr.Col")
 			if err != nil {
 				recordDT(&t, "DT.From", "%v", err)
 			}
@@ -134,7 +146,7 @@ func (d dt) From(item any) *dt {
 		t.DataTable = insyra.NewDataTable()
 		var err error
 		if val.FilePath != "" {
-			t.DataTable, err = insyra.ReadJSON_File(val.FilePath)
+			t.DataTable, err = insyra.ReadJSONFile(val.FilePath)
 		} else {
 			t.DataTable, err = insyra.ReadJSON(val.Bytes)
 		}
@@ -163,13 +175,13 @@ func (d dt) From(item any) *dt {
 
 // Of is an alias for From.
 // It converts a DataList, DL, Row, Col, []DL, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.
-func (d dt) Of(item any) *dt {
+func (d DataTable) Of(item any) *DataTable {
 	return d.From(item)
 }
 
 // Col returns a DL that contains the column at the specified index.
-func (t *dt) Col(col any) *dl {
-	var l dl
+func (t *DataTable) Col(col any) *DataList {
+	var l DataList
 	switch v := col.(type) {
 	case int:
 		l.DataList = t.GetColByNumber(v)
@@ -185,8 +197,8 @@ func (t *dt) Col(col any) *dl {
 }
 
 // Row returns a DL that contains the row at the specified index.
-func (t *dt) Row(row any) *dl {
-	var l dl
+func (t *DataTable) Row(row any) *DataList {
+	var l DataList
 	switch v := row.(type) {
 	case int:
 		l.DataList = t.GetRow(v)
@@ -200,7 +212,7 @@ func (t *dt) Row(row any) *dl {
 }
 
 // At returns the element at the specified row and column.
-func (t *dt) At(row any, col any) any {
+func (t *DataTable) At(row any, col any) any {
 	switch v := col.(type) {
 	case int:
 		switch r := row.(type) {
@@ -240,11 +252,11 @@ func (t *dt) At(row any, col any) any {
 	return nil
 }
 
-func (t *dt) Push(data any) *dt {
+func (t *DataTable) Push(data any) *DataTable {
 	switch val := data.(type) {
 	case *insyra.DataList:
 		t.AppendCols(val)
-	case *dl:
+	case *DataList:
 		t.AppendCols(val.DataList)
 	case []*insyra.DataList:
 		t.AtomicDo(func(dt *insyra.DataTable) {
@@ -252,7 +264,7 @@ func (t *dt) Push(data any) *dt {
 				dt.AppendCols(l)
 			}
 		})
-	case []dl:
+	case []DataList:
 		for _, l := range val {
 			t.AppendCols(l.DataList)
 		}
@@ -267,7 +279,7 @@ func (t *dt) Push(data any) *dt {
 			}
 		})
 	case Row:
-		err := fromRowToDT(t, val)
+		err := fromRowToDT(t, val, "isr.Row")
 		if err != nil {
 			recordDT(t, "DT.Push", "%v", err)
 		}
@@ -275,7 +287,7 @@ func (t *dt) Push(data any) *dt {
 		t.AtomicDo(func(dt *insyra.DataTable) {
 			for _, r := range val {
 				// A row that cannot be added is skipped and the rest still go in.
-				if err := fromRowToDT(UseDT(dt), r); err != nil {
+				if err := fromRowToDT(UseDT(dt), r, "isr.Row"); err != nil {
 					dt.SetErr("isr", "DT.Push", "%v", err)
 				}
 			}
@@ -284,7 +296,7 @@ func (t *dt) Push(data any) *dt {
 		// 先創建新dt 當成row插入 再轉置
 		// 轉置後抽出為dl 再插入
 		temDT := UseDT(insyra.NewDataTable())
-		err := fromRowToDT(temDT, val)
+		err := fromRowToDT(temDT, val, "isr.Col")
 		if err != nil {
 			recordDT(t, "DT.Push", "%v", err)
 		}
@@ -303,7 +315,7 @@ func (t *dt) Push(data any) *dt {
 	case []Col:
 		for _, r := range val {
 			temDT := UseDT(insyra.NewDataTable())
-			err := fromRowToDT(temDT, r)
+			err := fromRowToDT(temDT, r, "isr.Col")
 			if err != nil {
 				recordDT(t, "DT.Push", "%v", err)
 			}
@@ -325,11 +337,13 @@ func (t *dt) Push(data any) *dt {
 }
 
 // CCL executes CCL statements on the DataTable and returns the updated DataTable.
-func (t *dt) CCL(cclStatements string) *dt {
+func (t *DataTable) CCL(cclStatements string) *DataTable {
 	return UseDT(t.ExecuteCCL(cclStatements))
 }
 
-func fromRowToDT(t *dt, val map[any]any) error {
+// fromRowToDT appends val as one row. kind names the caller's type (isr.Row
+// or isr.Col) for the error.
+func fromRowToDT(t *DataTable, val map[any]any, kind string) error {
 	strMap := make(map[string]any)
 	if isIntKey(val) || isStrKey(val) {
 		for k, v := range val {
@@ -346,9 +360,22 @@ func fromRowToDT(t *dt, val map[any]any) error {
 		}
 		t.AppendRowsByColName(strMap)
 	} else {
-		return fmt.Errorf("got unexpected type %T", val)
+		return fmt.Errorf("%s keys must be all column indices (string or int) or all Name selectors; %s", kind, describeRowKeys(val))
 	}
 	return nil
+}
+
+// describeRowKeys names the first key that is none of the accepted kinds, or
+// says the kinds are mixed when every key is accepted on its own.
+func describeRowKeys(m map[any]any) string {
+	for k := range m {
+		switch k.(type) {
+		case string, int, name:
+		default:
+			return fmt.Sprintf("key %v has type %T", k, k)
+		}
+	}
+	return "the keys mix indices and Name selectors"
 }
 
 func isStrKey(m map[any]any) bool {

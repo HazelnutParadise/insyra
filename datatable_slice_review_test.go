@@ -50,12 +50,12 @@ func TestSliceColsKeepsEveryRowOfARaggedTable(t *testing.T) {
 	}
 }
 
-// The largest letter ParseColIndex reads is the largest int; adding one to it
+// The largest letter ColIndexToNumber reads is the largest int; adding one to it
 // must not wrap around into a negative slice bound.
 func TestFilterColsByColIndexLessThanOrEqualToTheLargestLetter(t *testing.T) {
-	letters, ok := CalcColIndex(int(^uint(0) >> 1))
+	letters, ok := ColNumberToIndex(int(^uint(0) >> 1))
 	if !ok {
-		t.Skip("CalcColIndex cannot spell the largest int")
+		t.Skip("ColNumberToIndex cannot spell the largest int")
 	}
 	dt := NewDataTable(NewDataList(1), NewDataList(2))
 	got := dt.FilterColsByColIndexLessThanOrEqualTo(letters) //nolint:staticcheck

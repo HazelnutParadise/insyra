@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/HazelnutParadise/insyra"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -158,6 +157,5 @@ func excelFileToCsv(excelFile, outputDir string) error {
 		}
 	}
 
-	insyra.LogInfo("csvxl", "excelFileToCsv", "Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
 	return nil
 }

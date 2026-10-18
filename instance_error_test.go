@@ -62,3 +62,12 @@ func TestSetErrRecordsLikeInternalWarnings(t *testing.T) {
 		t.Fatalf("global buffer holds %d isr records, want 3", n)
 	}
 }
+
+func TestUpdateErrNamesItself(t *testing.T) {
+	quietLogs(t)
+	dl := NewDataList(1)
+	dl.Update(5, 2)
+	if dl.Err() == nil || dl.Err().FuncName != "Update" {
+		t.Fatalf("got %v", dl.Err())
+	}
+}
