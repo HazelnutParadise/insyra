@@ -774,3 +774,31 @@ returns := prices.PctChangeCol("AdjClose", 1).ClearNils()
 - `ExRights` splits ranges longer than a year into contiguous one-year requests, so a ten-year ex-rights history is ten requests.
 - The exchange table is whatever the exchange serves at call time; nothing is cached, so a reference price the exchange revises afterwards changes later results.
 - The exchange rate limit is not published as a stable contract. Intraday, real-time quotes, order books, fundamentals, dividend payout details beyond the ex-date reference prices, and local caching are outside this client.
+
+## Taiwan Futures Exchange (TAIFEX)
+
+```go
+client, err := datafetch.TAIFEX(datafetch.TWStockConfig{})
+```
+
+`TAIFEX` reads the Taiwan Futures Exchange's open data (`openapi.taifex.com.tw`), which needs no key. It takes the same settings as `TWStock` (`Timeout`, `Interval`, `UserAgent`, `Retries`, `RetryBackoff`) and shares its throttling and retry behaviour. A `TAIFEXClient` that did not come from `TAIFEX`, such as a zero value, returns an error from every method. Each method has a `...Context` form.
+
+```go
+InstitutionalFutures() (*insyra.DataTable, error)
+InstitutionalOptions() (*insyra.DataTable, error)
+LargeTradersFutures() (*insyra.DataTable, error)
+LargeTradersOptions() (*insyra.DataTable, error)
+PutCallRatio() (*insyra.DataTable, error)
+```
+
+**Only the latest day.** The OpenAPI gives the latest trading day for the first four tables, and the last 20 trading days for `PutCallRatio`. Longer histories come from the exchange's website (for example `https://www.taifex.com.tw/cht/3/futContractsDate`), which this client does not read, so keep each day's result if you want a series.
+
+| Method | Columns |
+| :--- | :--- |
+| `InstitutionalFutures` | `Date` (`time.Time`), `Contract`, `Trader` (`string`; 自營商 dealers, 投信 investment trusts, 外資及陸資 foreign investors), then `TradeLong`, `TradeShort`, `TradeNet` and `OILong`, `OIShort`, `OINet` (`int64`, contracts), each with a `...Value` column (`int64`, thousands of NT dollars) |
+| `InstitutionalOptions` | the same, plus `CallPut` (`"CALL"` or `"PUT"`) after `Contract` |
+| `LargeTradersFutures` | `Date`, `Contract`, `ContractName`, `SettlementMonth`, `TraderType` (`string`), `Top5Buy`, `Top5Sell`, `Top10Buy`, `Top10Sell`, `MarketOI` (`int64`, contracts) |
+| `LargeTradersOptions` | the same, plus `CallPut` (`"買權"` call or `"賣權"` put) after `ContractName` |
+| `PutCallRatio` | `Date`, `PutVolume`, `CallVolume`, `PutOI`, `CallOI` (`int64`), `VolumeRatio`, `OIRatio` (`float64`, percent: 88.75 means the put volume is 88.75% of the call volume) |
+
+In the large-trader tables, `Top5Buy` and the others are the open long and short positions held by the 5 and 10 largest traders, and `MarketOI` is the whole market's open interest. `SettlementMonth` is kept as the exchange publishes it, a string such as `"202610"`, where `"999912"` is the total over all months. `TraderType` is `"0"` for all traders and `"1"` for the specific institutional traders. The exchange answers some of its tables as CSV with Chinese headers whatever is asked for; the client reads either form into the same columns.

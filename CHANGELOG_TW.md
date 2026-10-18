@@ -96,6 +96,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `TWStockClient.OddLotQuotes(date, session)`，讀取證交所每日零股行情單，盤中（`TWOddLotIntraday`，2020-10-26 起）或盤後（`TWOddLotAfterHours`），回傳數值已轉型的資料表；顯示為 `--` 的價格是 `nil`，沒有報表的日子回傳空表。尚未支援櫃買中心的零股報表（[#451](https://github.com/HazelnutParadise/insyra/issues/451)）。
 - 新增 `TWStockClient.ShareholdingDistribution()`，讀取集保結算所每週的股權分散表（每檔證券在 17 個持股分級的人數與股數），回傳數值已轉型的資料表。只提供最新一週，需要時間序列請每週自行存檔（[#436](https://github.com/HazelnutParadise/insyra/issues/436)）。
 - 新增 `TWStockClient.DailyQuotesOn(date, market)`，回傳任一過去交易日所有證券的收盤行情，來源是證交所（2004-02-11 起，含之後下市的證券）或櫃買中心，`Change` 帶正負號並以交易所自己的參考價計算，另有交易所的漲跌標記 `Sign`。新增 `TWStockClient.AdvanceDecline(date, market, commonStockOnly)`，交易所有公布時回傳官方的上漲、下跌家數（含漲停、跌停），沒有時由收盤行情計算（[#447](https://github.com/HazelnutParadise/insyra/issues/447)）。
+- 新增 `datafetch.TAIFEX(cfg)`，讀取期交所免金鑰的公開資料：`InstitutionalFutures`、`InstitutionalOptions`（三大法人的成交與未平倉）、`LargeTradersFutures`、`LargeTradersOptions`（大額交易人的未沖銷部位）與 `PutCallRatio`，每個都是數值已轉型的資料表。OpenAPI 只有最新一天（Put/Call 比有 20 天），不讀取網站上更長的歷史（[#437](https://github.com/HazelnutParadise/insyra/issues/437)）。
 
 ### `stats`
 
