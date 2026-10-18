@@ -25,6 +25,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 - **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
+- **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
 - **Oscillators**: `RSI` — relative strength index with Wilder or simple averaging and a choice for missing prices
 - **Sharpe comparison**: `SharpeDifferenceTest` — Jobson-Korkie test with Memmel's correction for whether two return series have the same Sharpe ratio
 - **Market breadth**: `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio` — market-wide indicators from the daily counts of advancing and declining stocks
@@ -535,6 +536,39 @@ Flags days when a price makes a new `n`-day extreme that an indicator does not c
 ```go
 obv, err := quant.OBV(close, volume)
 flags, err := quant.Divergence(close, obv, 20, 10)
+```
+
+---
+
+## Cross-Sectional Sorting
+
+### QuantileSort
+
+```go
+func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols []string, n int, opts ...QuantileSortOptions) (*QuantileSortResult, error)
+```
+
+Every day, sorts the stocks into `n` groups by a signal and reports each group's mean return and the spread between the top and the bottom group, the standard check of whether a signal ranks future returns. The table is in long form, one row per stock and date. Each day is sorted on its own, and 9.6 million stock-days take about 3 seconds.
+
+`dateCol`, `signalCol`, `returnCols` and `WeightCol` are column names, or Excel-style letters when no column has that name. Dates are grouped by value and appear in the order they first appear in the table. A stock with a missing (`nil` or `NaN`) signal is left out of its day, and a missing return is left out of that column's means. Text, an infinity, a missing date or a non-positive weight is an error.
+
+**Options (`QuantileSortOptions`)**
+
+- `MinStocks`: the fewest stocks with a signal a day needs; fewer skips the day. At least `n` are always needed.
+- `Ties`: `QuantileTiesRank` (default) gives equal signals their average rank and puts the stock in group `ceil(rank * n / m)`, so equal signals share a group. `QuantileTiesQcut` cuts at the day's quantiles with linear interpolation like `pandas.qcut`, with the first group including the minimum; a day whose edges coincide is skipped, where pandas would raise.
+- `WeightCol`: a column of positive weights; group means are weighted. Empty means equal weights.
+- `Demean`: subtract the day's mean return over the sorted stocks, so the group means are excess returns.
+
+**Result (`QuantileSortResult`)**
+
+- `Groups`: one row per date and group, with columns `date`, `group` (1 is the lowest signal), `count`, then the mean of each return column under its own name. A return with no value in a group is `NaN`.
+- `Spread`: one row per date, with `date` and `spread_<column>`, the highest group's mean minus the lowest group's.
+- `Skipped`: the dates left out and why.
+
+```go
+res, err := quant.QuantileSort(panel, "date", "signal", []string{"ret_5d"}, 5)
+spread := res.Spread.GetColByName("spread_ret_5d")
+sharpe, err := quant.SharpeRatio(spread, 0, 252)
 ```
 
 ---

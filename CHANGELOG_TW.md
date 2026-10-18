@@ -181,6 +181,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `quant.OBV(close, volume)` 與 `OBVFromReturns(returns, volume)`，回傳葛蘭碧的能量潮（OBV）；後者的漲跌方向取自報酬序列，因此可以用還原權息的報酬搭配原始成交股數。`SignedVolumeRatio(returns, volume, n)` 是 `n` 日內的無單位帶號成交量比，`Divergence(price, indicator, n, cooldown)` 標出價格創 `n` 日新高或新低、指標卻沒有跟上的日子（[#456](https://github.com/HazelnutParadise/insyra/issues/456)）。
 - 新增 `quant.AdvanceDeclineRatio`、`AdvanceDeclineLine`、`OverboughtOversold` 與 `NetAdvanceRatio`，用每日上漲與下跌家數計算市場寬幅指標。缺值日輸出 `NaN` 並略過，窗口只算有效日，分母為 0 時回 `NaN`（[#448](https://github.com/HazelnutParadise/insyra/issues/448)）。
 - 新增 `quant.RSI(prices, n, opts)`，以 Wilder 或簡單平均（`RSIWilder`、`RSISimple`）計算相對強弱指標，並可選擇缺值的處理方式（`RSIMissingError`、`RSIMissingFlat`、`RSIMissingBreak`）。新增 `quant.SharpeDifferenceTest(a, b, riskFree)`，用 Memmel 修正的 Jobson-Korkie 統計量檢定兩組報酬的 Sharpe 是否相同；有一組沒有變異時回傳 `ErrSharpeUndefined`（[#464](https://github.com/HazelnutParadise/insyra/issues/464)）。
+- 新增 `quant.QuantileSort(table, dateCol, signalCol, returnCols, n, opts)`，每天各自把股票依訊號分成 `n` 組，回傳每日每組的平均報酬與檔數，以及最高組減最低組的價差；可設定每天最少檔數、同分處理方式（平均排名或 `pandas.qcut`）、權重欄與是否減掉當天平均（[#458](https://github.com/HazelnutParadise/insyra/issues/458)）。新增 `insyra.IsNilTable`，判斷資料表是否為 nil（含包裝），作法與 `IsNilList` 相同。
 
 ## v0.3.4
 
