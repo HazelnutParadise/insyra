@@ -276,24 +276,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: take `chromedp` v0.20 or later once `snapshot-chromedp` releases a version that compiles against it, and compare `plot.SavePNG` output before and after, as above.
 - **Status**: pending
 
-### [2026-09-28] — scaler JSON with an empty column reference binds to an unnamed column
-- **Where**: `datatable_scale.go` `unmarshalJSON`, and `resolveEncodingColumn` in `datatable_preprocess.go`
-- **What**: `json.Unmarshal` accepts a fitted column whose `"ref"` is `""`, and `Transform` then resolves `""` by name, which matches the first column that has no name. Measured on 2026-09-28: a `StandardScaler` read from JSON holding one column with `"ref":""`, mean 1 and std 1, transformed the unnamed column A of a table from `[5, 7]` to `[4, 6]` with no error. `Fit` never writes an empty reference, because an unnamed column is remembered by its letter, so only JSON written by hand or by another program reaches this. `0.4` refuses an empty reference (`TestScalerJSONRefusesAnEmptyReference`), but as part of its typed reference format (`decodeScalerRef`), which this line does not have.
-- **Suggestion**: refuse an empty `"ref"` in `unmarshalJSON`, next to the check for a column listed twice, and leave the receiver as it was. The JSON format stays as it is.
-- **Status**: pending
-
-### [2026-09-28] — cutting a tree accepts a node merged twice
-- **Where**: `stats/internal/clustering/cluster.go` `validateTree`
-- **What**: `validateTree` checks that every merge joins a leaf or an earlier merge, but not that each is used once. Measured on 2026-09-28 with three labels: merges `{-1,-2},{-1,-2}`, `{-1,-2},{1,1}` or `{-1,-1},{-2,1}` all pass, and `CutTreeByK(tree, 1)` returns `[1 1 2]`, two clusters where one was asked for, with no error. A hand-edited `state.json` reaches `cutree` this way. Present before the port of `0.4`'s check, and on `0.4` too.
-- **Suggestion**: track which leaves and merges have been used and refuse an id seen a second time, a merge joining something with itself included.
-- **Status**: pending
-
-### [2026-09-28] — two nested values whose strings contain the separators count as one
-- **Where**: `cell_identity.go` `encodeCell`, the string arm inside a nested value
-- **What**: a string inside a nested value is written without escaping the characters the encoding uses as separators. Measured on 2026-09-28: a list holding `Cell([]any{"a,s:b"})` and `Cell([]any{"a", "b"})` reports `Count([]any{"a", "b"})` 2 and a `Counter` of one entry. `0.4` tracks the same defect.
-- **Suggestion**: write a nested string length-prefixed or quoted, so no content can stand for a separator.
-- **Status**: pending
-
 ### [2026-09-28] — a rebuilt sheet leaves its old comments, drawing and table parts in the file
 - **Where**: `csvxl/convert.go` `replaceSheet`, through excelize's `DeleteSheet`
 - **What**: `DeleteSheet` removes the worksheet and its relationships but not the parts they pointed to. Measured on 2026-09-28: after replacing a sheet that had a comment and a table, `xl/comments1.xml`, `xl/drawings/vmlDrawing1.vml` and `xl/tables/table1.xml` are still in the saved file and in `[Content_Types].xml`, referenced by nothing, so the old comment text is still inside the file; excelize also refuses a new table under the old table's name (`the same name table already exists`). Not checked in Excel or LibreOffice, neither of which was available. `0.4`'s `excelsheet.Replace` does the same.

@@ -36,6 +36,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `NewDataList` no longer ends the process with `fatal error: stack overflow` when it is given a slice that contains itself. It descends at most 64 slices deep and keeps anything below that as one cell; ordinary nesting flattens as before.
 - `DataList.Shift` keeps a slice stored in a cell as one cell. It built its result through `NewDataList`, which flattens every slice, so a list holding `[]byte{1, 2}` and `3` came back three cells long after `Shift(0)`.
 - Errors from `quant`, `ml`, `nn` and `DataTable.Resample` that name a bad cell now say `row index N`, counted from zero like `Get(N)`, where `quant` and `Resample` counted from one (`row 3`) and `ml` and `nn` counted from zero but wrote only `row N`. Only the text changes; code that matches the old text must be updated.
+- A scaler read from JSON refuses a column whose `"ref"` is empty. It used to bind to the first unnamed column and shift its values with no error. `Fit` never writes an empty reference, so only hand-written JSON was affected.
+- Two nested values whose strings contain the separators the identity encoding uses no longer count as one: a list holding `Cell([]any{"a,s:b"})` and `Cell([]any{"a", "b"})` reported `Count([]any{"a", "b"})` 2 and a `Counter` of one entry. Nested strings are now length-prefixed. Cells that are not nested values, and nested values without such strings, count as before.
 
 ### CLI
 
@@ -77,6 +79,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `BartlettTest`, `KruskalWallis`, `FriedmanTest` and the other chi-squared based tests no longer panic with `cephes: parameter out of bounds` when the groups agree exactly: Bartlett's statistic can come out a rounding error below zero (identical groups), and `KruskalWallis` or `FriedmanTest` on lists whose values are all equal reach a zero statistic. They now return a result with a p-value of 1. A degrees-of-freedom value that is not positive gives a NaN p-value instead of a panic. Results that did not panic are unchanged.
 - `PCA` and `KNNRegress`'s targets refuse a `NaN` or `±Inf` cell with an error. They only checked that a cell converts to a number, so `PCA` returned `NaN` eigenvalues and `KNNRegress` predicted `NaN` or `±Inf` with a nil error. A call that returned an error before still does; one that returned a `NaN` result now returns an error.
 - **BREAKING (error text)**: an error that names a cell now counts its position from zero, the number `Get(i)` takes, and says so: `data contains a non-finite value at row index 2: NaN`. `v0.3.4` counted the hypothesis tests from one (`row 3`), which read as DataTable's own numbering and was one off from it. This covers the hypothesis tests, regression, correlation, skewness, kurtosis and moments, and the `(index N)` / `row N` checks in regression, GLM and factor analysis; a group, cell or subject named by the order you passed it (`group 2`, `subject 3`) still counts from one. The values and error types are unchanged; only the text, so code that matches the old text must be updated.
+- `CutTreeByK` and `CutTreeByHeight` refuse a tree in which a leaf or a merge is joined more than once, as a hand-edited `state.json` could produce. They returned two clusters where one was asked for, with no error.
 
 ### `csvxl`
 

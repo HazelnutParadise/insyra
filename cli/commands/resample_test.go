@@ -141,7 +141,7 @@ func TestRunResampleCommand_NonTimeColumn(t *testing.T) {
 	if !strings.HasPrefix(message, "resample: ") {
 		t.Errorf("error %q should carry the resample: prefix", message)
 	}
-	if !strings.Contains(message, "row 1") || !strings.Contains(message, "time.Time") {
+	if !strings.Contains(message, "row index 0") || !strings.Contains(message, "time.Time") {
 		t.Errorf("error %q should carry the library's row-numbered message", message)
 	}
 }

@@ -36,6 +36,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `NewDataList` 收到包含自己的 slice 時，不再以 `fatal error: stack overflow` 讓整個程式結束。它最多往下展開 64 層，更深的部分當成一個儲存格保留；一般的巢狀照舊展開。
 - `DataList.Shift` 會把儲存格裡的 slice 當成一個儲存格保留。過去它透過會展開所有 slice 的 `NewDataList` 建立結果，所以含有 `[]byte{1, 2}` 與 `3` 的清單經 `Shift(0)` 後會變成三格。
 - `quant`、`ml`、`nn` 與 `DataTable.Resample` 中指出壞儲存格的錯誤訊息，現在一律寫 `row index N`，從 0 算起，與 `Get(N)` 一致；過去 `quant` 與 `Resample` 從 1 算（`row 3`），`ml` 與 `nn` 從 0 算但只寫 `row N`。只有文字改變，比對舊文字的程式需要更新。
+- 讀入 JSON 的 scaler 會拒絕 `"ref"` 為空的欄位。過去它會綁到第一個沒有名稱的欄並默默改掉該欄的值。`Fit` 不會寫出空參照，所以只有手寫的 JSON 會遇到。
+- 兩個巢狀值的字串內含編碼用的分隔字元時，不再被當成同一個值：清單裡有 `Cell([]any{"a,s:b"})` 與 `Cell([]any{"a", "b"})` 時，`Count([]any{"a", "b"})` 會回 2，`Counter` 只有一筆。巢狀字串現在加上長度前綴。非巢狀的儲存格，以及不含這類字串的巢狀值，計數與過去相同。
 
 ### CLI
 
@@ -77,6 +79,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `BartlettTest`、`KruskalWallis`、`FriedmanTest` 與其他卡方類檢定，在各組完全一致時不再以 `cephes: parameter out of bounds` panic：Bartlett 統計量會因捨入誤差略小於 0（兩組相同），`KruskalWallis` 或 `FriedmanTest` 遇到全部數值相同時統計量為 0。現在會回傳結果，p 值為 1；自由度不是正數時，p 值為 NaN 而不是 panic。原本沒有 panic 的結果不變。
 - `PCA` 與 `KNNRegress` 的目標值遇到 `NaN` 或 `±Inf` 會回傳錯誤。過去它們只檢查儲存格能否轉成數字，所以 `PCA` 會回傳 `NaN` 特徵值、`KNNRegress` 會預測出 `NaN` 或 `±Inf`，而且沒有錯誤。原本就回傳錯誤的呼叫不變；原本回傳 `NaN` 結果的呼叫現在改回傳錯誤。
 - **BREAKING（錯誤訊息文字）**：指出儲存格位置的錯誤訊息，現在改從 0 算起，與 `Get(i)` 收的數字一致，並明寫是索引：`data contains a non-finite value at row index 2: NaN`。`v0.3.4` 的假說檢定從 1 算（`row 3`），容易被當成 DataTable 自己的編號，與它差一。範圍包含假說檢定、回歸、相關、偏度、峰度與動差，以及回歸、GLM 與因素分析的 `(index N)`、`row N` 檢查；依傳入順序命名的群組、儲存格與受試者（`group 2`、`subject 3`）仍從 1 算。數值與錯誤型別不變，只有文字改變，比對舊文字的程式需要更新。
+- `CutTreeByK` 與 `CutTreeByHeight` 會拒絕葉子或合併步驟被併入超過一次的樹（手動編輯 `state.json` 可能產生）。過去它們會在要求 1 群時回傳 2 群，且沒有錯誤。
 
 ### `csvxl`
 

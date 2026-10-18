@@ -37,3 +37,20 @@ func TestShiftKeepsASliceCellWhole(t *testing.T) {
 		t.Fatal("Shift(0) and Shift(-1) changed the length")
 	}
 }
+
+// A string inside a nested value must not be able to pass for the separators
+// the encoding puts between values.
+func TestNestedStringsHoldingSeparatorsStayDistinct(t *testing.T) {
+	dl := NewDataList()
+	dl.Append(Cell([]any{"a,s:b"}))
+	if got := dl.Count([]any{"a", "b"}); got != 0 {
+		t.Fatalf("Count of the two-string value = %d, want 0", got)
+	}
+	if got := dl.Count([]any{"a,s:b"}); got != 1 {
+		t.Fatalf("Count of the one-string value = %d, want 1", got)
+	}
+	dl.Append(Cell([]any{"a", "b"}))
+	if n := len(dl.Counter()); n != 2 {
+		t.Fatalf("Counter has %d entries, want 2", n)
+	}
+}
