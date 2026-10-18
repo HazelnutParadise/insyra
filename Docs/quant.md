@@ -25,6 +25,8 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 - **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
+- **Turning points and regimes**: `ZigZag`, `Regimes` — causal turning points of a price series and the bull and bear stretches between them
+- **Signal backtest**: `BacktestSignal` — a 0–1 position signal into a net return series with a one-row delay, cash returns and separate buy and sell costs
 - **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
 - **Oscillators**: `RSI` — relative strength index with Wilder or simple averaging and a choice for missing prices
 - **Sharpe comparison**: `SharpeDifferenceTest` — Jobson-Korkie test with Memmel's correction for whether two return series have the same Sharpe ratio
@@ -536,6 +538,58 @@ Flags days when a price makes a new `n`-day extreme that an indicator does not c
 ```go
 obv, err := quant.OBV(close, volume)
 flags, err := quant.Divergence(close, obv, 20, 10)
+```
+
+---
+
+## Turning Points and Regimes
+
+### ZigZag
+
+```go
+func ZigZag(prices insyra.IDataList, threshold float64) ([]Pivot, error)
+
+type Pivot struct {
+    Kind        PivotKind // PivotLow or PivotHigh
+    Index       int       // row of the extreme
+    Price       float64
+    ConfirmedAt int       // first row on which the price was `threshold` away from the extreme
+}
+```
+
+Finds the turning points of a positive price series that reverse by at least `threshold`, a fraction such as `0.10` for 10%. Trade on `ConfirmedAt`, the earliest the pivot could be known, and describe the series with `Index`.
+
+It is causal: a pivot is reported at the row that confirms it and uses no later price, so recomputing on a series cut short returns exactly the pivots of the full series whose `ConfirmedAt` lies before the cut (the tests check this on random series). Pivots alternate between lows and highs, and the extreme still being tracked at the end is not reported. For `100, 111, 120, 105, 95, 100, 115, 130, 116` with a threshold of 0.10 the pivots are low at 0 confirmed at 1, high at 2 confirmed at 3, low at 4 confirmed at 6, high at 7 confirmed at 8.
+
+### Regimes
+
+```go
+func Regimes(pivots []Pivot, opts ...RegimeOptions) ([]Regime, error)
+```
+
+Turns the pivots into bull stretches (low to the next high) and bear stretches (high to the next low). Each `Regime` has `Kind` (`RegimeBull` or `RegimeBear`), `Start` and `End` rows, `Length`, `Change` (the price change as a fraction) and `ConfirmedAt`. The stretch before the first pivot and after the last is not reported.
+
+`RegimeOptions.MinPhase` removes a stretch shorter than that many rows together with the two turning points around it, so its neighbours join; `MinCycle` removes a turning point that makes a low-to-low or high-to-high cycle shorter than that, with the one before it. They follow the minimum phase and cycle lengths of Pagan and Sossounov (2003). Using them looks at the whole list, so it is not causal.
+
+---
+
+## Signal Backtest
+
+### BacktestSignal
+
+```go
+func BacktestSignal(signal, assetReturns insyra.IDataList, opts ...BacktestOptions) (*BacktestResult, error)
+```
+
+`signal[t]` is the position from 0 to 1 decided from the close of row `t`. It takes effect one row later, so the position during row `t` is `signal[t-1]` and the asset return of row `t` is never earned by a signal that saw it. Row 0 is held at `InitialPosition` (default 0).
+
+The return of a row is `position * assetReturn + (1 - position) * cashReturn` less `BuyCost` times the position added and `SellCost` times the position removed at the start of that row. The portfolio is taken to be rebalanced to the target every row, so drift is ignored.
+
+`BacktestOptions` holds `CashReturns` (a list; nil means 0), `BuyCost`, `SellCost` (fractions of the portfolio traded, from 0 up to 1) and `InitialPosition`. The result has `NetReturns`, `Positions` (the share in the asset during each row), `Turnover` (how much was traded at the start of each row) and `Trades` (rows on which the position changed). Feed `NetReturns` to `SharpeRatio` or `MaxDrawdown`.
+
+```go
+pivots, err := quant.ZigZag(close, 0.10)
+res, err := quant.BacktestSignal(signal, returns, quant.BacktestOptions{BuyCost: 0.0015, SellCost: 0.0045})
 ```
 
 ---
