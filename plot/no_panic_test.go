@@ -99,7 +99,7 @@ func TestSavePNG_PathWithoutExtension(t *testing.T) {
 
 func TestChartsRefuseAnIsrWrapperHoldingNilList(t *testing.T) {
 	quiet(t)
-	if got := CreateBarChart(BarChartConfig{}, isr.DL); got != nil {
+	if got, err := CreateBarChart(BarChartConfig{}, isr.DL); got != nil || err == nil {
 		t.Fatal("a wrapper holding a nil list should be refused like a nil list")
 	}
 }
@@ -110,7 +110,7 @@ func TestWordCloudCountsSliceCellsByTheirText(t *testing.T) {
 	dl.Append([]int{1, 2})
 	dl.Append([]int{1, 2})
 	dl.Append(insyra.Cell([]byte("hi")))
-	if CreateWordCloud(WordCloudConfig{}, dl) == nil {
-		t.Fatal("a list holding slice cells should still draw a word cloud")
+	if got, err := CreateWordCloud(WordCloudConfig{}, dl); got == nil || err != nil {
+		t.Fatalf("a list holding slice cells should still draw a word cloud, got %v", err)
 	}
 }

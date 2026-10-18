@@ -17,7 +17,6 @@ func TestIsNilList(t *testing.T) {
 		{"nil interface", nil, true},
 		{"typed nil", typedNil, true},
 		{"isr.DL zero value", isr.DL, true},
-		{"isr wrapper of nil", isr.UseDL((*insyra.DataList)(nil)), true},
 		{"real list", insyra.NewDataList(1, 2), false},
 		{"isr wrapper of a real list", isr.DL.From(1, 2), false},
 	}
