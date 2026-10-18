@@ -2,6 +2,8 @@ package insyra
 
 import (
 	"bytes"
+	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -66,4 +68,76 @@ func TestShowTypesFitsTheDataTypeWord(t *testing.T) {
 	if got := strings.Fields(row); len(got) != 3 || got[1] != "number" || got[2] != "empty" {
 		t.Fatalf("DataType row = %q, want number and empty in full:\n%s", row, buf.String())
 	}
+}
+
+// IN-9: ShowTypes sorted its column headers as plain strings, so a table with
+// more than 26 columns printed A, AA, AB, B, ... while Show printed them in
+// the real column order.
+func TestShowTypesColumnOrderBeyondZ(t *testing.T) {
+	quietLogs(t)
+
+	dt := NewDataTable()
+	for i := 0; i < 28; i++ {
+		dt.AppendCols(NewDataList(i))
+	}
+	coloured := Config.GetDoesUseColoredOutput()
+	Config.SetUseColoredOutput(false)
+	defer Config.SetUseColoredOutput(coloured)
+
+	var typesOut, showOut bytes.Buffer
+	dt.ShowTypesRangeTo(&typesOut)
+	dt.ShowRangeTo(&showOut)
+
+	typeCols := headerColumns(typesOut.String())
+	showCols := headerColumns(showOut.String())
+	if len(typeCols) == 0 || len(showCols) == 0 {
+		t.Fatalf("could not find the header row\ntypes:\n%s\nshow:\n%s", typesOut.String(), showOut.String())
+	}
+	if strings.Join(typeCols, ",") != strings.Join(showCols, ",") {
+		t.Fatalf("ShowTypes column order %v differs from Show's %v", typeCols, showCols)
+	}
+}
+
+// The same order holds when the columns have names. ShowTypes keys a named
+// column as "AA(name)", and parsing that whole key as a column index failed, so
+// it fell back to a string sort and printed A, AA, AB, B again.
+func TestShowTypesColumnOrderBeyondZWithNamedColumns(t *testing.T) {
+	quietLogs(t)
+
+	dt := NewDataTable()
+	for i := 0; i < 28; i++ {
+		dt.AppendCols(NewDataList(i).SetName(fmt.Sprintf("c%d", i)))
+	}
+	coloured := Config.GetDoesUseColoredOutput()
+	Config.SetUseColoredOutput(false)
+	defer Config.SetUseColoredOutput(coloured)
+
+	var typesOut, showOut bytes.Buffer
+	dt.ShowTypesRangeTo(&typesOut)
+	dt.ShowRangeTo(&showOut)
+
+	typeCols := headerColumns(typesOut.String())
+	showCols := headerColumns(showOut.String())
+	if len(typeCols) == 0 || len(showCols) == 0 {
+		t.Fatalf("could not find the header row\ntypes:\n%s\nshow:\n%s", typesOut.String(), showOut.String())
+	}
+	if strings.Join(typeCols, ",") != strings.Join(showCols, ",") {
+		t.Fatalf("ShowTypes column order %v differs from Show's %v", typeCols, showCols)
+	}
+}
+
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// headerColumns returns the column labels from every "RowNames ..." header
+// line, in the order they are printed (the display pages the columns).
+func headerColumns(out string) []string {
+	var cols []string
+	for _, line := range strings.Split(ansiEscape.ReplaceAllString(out, ""), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "RowNames" {
+			continue
+		}
+		cols = append(cols, fields[1:]...)
+	}
+	return cols
 }
