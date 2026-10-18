@@ -636,6 +636,8 @@ func CreateGaugeChart(config GaugeChartConfig, value float64) (*charts.Gauge, er
 
 ![WordCloud Example](./img/plot/wordcloud_example.png)
 
+Words are counted by the text the chart shows, so a cell that is a slice is a word like any other and `1` and `"1"` count as one word.
+
 #### Configuration
 
 ```go

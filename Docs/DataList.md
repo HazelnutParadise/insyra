@@ -51,6 +51,10 @@ type DataList struct {
 
 - **List Names**: Use snake-style Pascal case (e.g., `Factor_Loadings`, `Communalities`) to avoid spelling errors caused by spaces.
 
+### Nil lists
+
+`insyra.IsNilList(dl)` reports whether an `IDataList` has no list behind it: a nil interface, a nil `*DataList`, or a wrapper that embeds a nil `*DataList`, such as `isr.DL` (which satisfies `IDataList` but panics on its first method call). Use it to refuse such a value before calling a method on it.
+
 ## Creating DataList
 
 ### NewDataList
