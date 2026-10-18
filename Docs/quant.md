@@ -25,6 +25,8 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 - **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
+- **Oscillators**: `RSI` — relative strength index with Wilder or simple averaging and a choice for missing prices
+- **Sharpe comparison**: `SharpeDifferenceTest` — Jobson-Korkie test with Memmel's correction for whether two return series have the same Sharpe ratio
 - **Market breadth**: `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio` — market-wide indicators from the daily counts of advancing and declining stocks
 - **Portfolio optimization**: `OptimizePortfolio`, `OptimizePortfolioMoments`, `EfficientFrontier` — mean-variance weights under a sum-to-one and per-asset box constraint, for minimum variance, a target return, or maximum Sharpe, plus the frontier between them
 
@@ -534,6 +536,44 @@ Flags days when a price makes a new `n`-day extreme that an indicator does not c
 obv, err := quant.OBV(close, volume)
 flags, err := quant.Divergence(close, obv, 20, 10)
 ```
+
+---
+
+## Oscillators
+
+### RSI
+
+```go
+func RSI(prices insyra.IDataList, n int, opts ...RSIOptions) (*insyra.DataList, error)
+
+type RSIOptions struct {
+    Method  RSIMethod  // RSIWilder (default) or RSISimple
+    Missing RSIMissing // RSIMissingError (default), RSIMissingFlat or RSIMissingBreak
+}
+```
+
+Relative strength index of a price series over `n` days, `100 * avgGain / (avgGain + avgLoss)`, in [0, 100]. The averages come from the day-to-day price changes:
+
+- `RSIWilder`: an exponential average of weight `1/n`, Wilder's original definition (1978) and the default of most software. It starts from the plain mean of the first `n` changes.
+- `RSISimple`: the plain mean of the last `n` changes, Cutler's version.
+
+The first `n` values, which lack `n` changes, are `NaN`. A stretch with no gain and no loss has no defined RSI and is `NaN`; gains only is 100 and losses only is 0. Wilder's RSI(14) on the closes of the StockCharts worked example is 70.53, 66.32, 66.55, 69.41, … and the tests pin those values.
+
+A missing price (nil or `NaN`) is an error unless `Missing` says otherwise: `RSIMissingFlat` carries the last price over, so the missing day counts as a change of 0 (its own value is `NaN`), and `RSIMissingBreak` ends the series there and starts a new one after it, which needs `n` changes of its own. Infinities and non-numbers are always errors.
+
+---
+
+## Sharpe Ratio Comparison
+
+### SharpeDifferenceTest
+
+```go
+func SharpeDifferenceTest(a, b insyra.IDataList, riskFree float64) (*SharpeDifferenceResult, error)
+```
+
+Tests whether two return series over the same periods have the same Sharpe ratio, with the Jobson-Korkie (1981) statistic as corrected by Memmel (2003). `riskFree` is the per-period risk-free rate subtracted from both. The result holds the per-period (not annualized) `SharpeA` and `SharpeB`, `Difference`, `Z`, and the p-values `PValue` (two-tailed), `PValueGreater` (H1: A is higher) and `PValueLess`, all from the standard normal distribution.
+
+It is a closed formula, cheap enough for thousands of series. It assumes roughly normal, uncorrelated returns; with fat tails or serial correlation it rejects too often, and a HAC or bootstrap test (Ledoit and Wolf 2008) is more reliable, which this package does not have yet. A series with no variance, such as a strategy that never entered, returns `ErrSharpeUndefined`. At least 3 observations of the same length are needed. When several series are tested, correct the p-values with `stats.AdjustPValues`.
 
 ---
 
