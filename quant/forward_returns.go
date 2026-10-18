@@ -183,7 +183,7 @@ func newPanel(prices insyra.IDataTable, dates insyra.IDataList, o ForwardOptions
 			}
 		})
 		if len(mask) != len(cols) {
-			return nil, fmt.Errorf("Tradable has %d columns and prices has %d", len(mask), len(cols))
+			return nil, fmt.Errorf("the tradable mask has %d columns and prices has %d", len(mask), len(cols))
 		}
 		p.tradable = make([][]bool, len(mask))
 		for c, col := range mask {
