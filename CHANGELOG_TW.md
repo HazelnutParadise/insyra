@@ -162,6 +162,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `plot`
 
 - `CreateWordCloud` 依圖上顯示的文字計數，清單裡有 slice 型儲存格時不再 panic（`hash of unhashable type`）（[#411](https://github.com/HazelnutParadise/insyra/issues/411)）。`1` 和 `"1"` 會算成同一個詞，和它們在圖上看起來一樣。
+- 圖表資料含 `NaN` 或無限大時（`NaN` 的長條、空清單的箱型圖摘要、`NaN` 的儀表），`SaveHTML` 與 `SavePNG` 會回傳錯誤。過去它們會寫出一頁沒有圖的內容並回傳 nil（[#409](https://github.com/HazelnutParadise/insyra/issues/409)）。圖表建構函式不變，在這條線上仍會回傳圖表。
+
+### `gplot`
+
+- `CreateBarChart` 與 `CreateHistogram` 收到 `isr.DL` 這類包著 nil 清單的包裝時，會記錄警告並回傳 nil，不再 panic（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。
 
 ## v0.3.4
 

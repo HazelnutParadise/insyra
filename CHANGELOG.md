@@ -162,6 +162,11 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `plot`
 
 - `CreateWordCloud` counts words by the text the chart shows, so a list holding a slice cell no longer panics with `hash of unhashable type` ([#411](https://github.com/HazelnutParadise/insyra/issues/411)). `1` and `"1"` count as one word, as they already looked on the chart.
+- `SaveHTML` and `SavePNG` return an error when a chart's data holds `NaN` or an infinity (a `NaN` bar, an empty list's box-plot summary, a `NaN` gauge). They wrote a page with no chart in it and returned nil before ([#409](https://github.com/HazelnutParadise/insyra/issues/409)). The chart constructors are unchanged; on this line they still return the chart.
+
+### `gplot`
+
+- `CreateBarChart` and `CreateHistogram` given a nil list wrapper such as `isr.DL` log a warning and return nil instead of panicking ([#412](https://github.com/HazelnutParadise/insyra/issues/412)).
 
 ## v0.3.4
 
