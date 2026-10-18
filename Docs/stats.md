@@ -468,6 +468,27 @@ if err != nil {
 fmt.Printf("t=%.4f, p=%.4f, mean diff=%.4f\n", result.Statistic, result.PValue, *result.MeanDiff)
 ```
 
+### Newey-West Mean Test
+
+```go
+func NeweyWestMeanTest(series insyra.IDataList, lag int) (*NeweyWestResult, error)
+func NeweyWestLag(n int) int
+```
+
+**Description:** Tests whether the mean of a series is zero when the series is autocorrelated. A plain t-test overstates the t value several times over for a series like the daily returns of a position held 20 days, where neighbours share 19 days. The standard error here is the Newey-West (HAC) one with Bartlett weights `1 - j/(lag+1)`.
+
+**Parameters:**
+
+- `series`: The observations. Type: `insyra.IDataList`.
+- `lag`: Number of autocovariances to include, smaller than the number of observations. A negative `lag` uses `NeweyWestLag(n)`, which is `floor(4 * (n/100)^(2/9))`. A `lag` of 0 gives the one-sample t-test of mean zero whose variance divides by `n` instead of `n-1`. A common choice for overlapping returns is the holding period plus a few days.
+
+**Returns:**
+
+- `*NeweyWestResult`: `Statistic` (t), `PValue` (two-tailed, t distribution with `N-1` degrees of freedom), `DF`, `Mean`, `StdErr`, `Lag` and `N`.
+- `error`: Fewer than two observations, a value that is not a finite number, or a `lag` that is not smaller than `N`.
+
+The variance has no small-sample correction, which matches `sandwich::NeweyWest(prewhite = FALSE, adjust = FALSE)` and statsmodels `cov_type="HAC"` with `use_correction=False`. statsmodels reads the p-value from the normal distribution rather than from t.
+
 ---
 
 ## Z-Tests
