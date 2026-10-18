@@ -11,8 +11,9 @@ import (
 	insyra "github.com/HazelnutParadise/insyra"
 )
 
-// OptimizerSpec selects one of the optimizers already implemented by Tape.
-// Fit deliberately exposes only those tape-level choices in v1.
+// OptimizerSpec selects the optimizer Fit steps with: SGD, SGDMomentum, Adam
+// or AdamW, or a CustomOptimizer the caller writes. Its methods are
+// unexported, so CustomOptimizer is how a caller supplies any other optimizer.
 type OptimizerSpec interface {
 	fitOptimizerName() string
 	fitOptimizerValidate() error
@@ -92,6 +93,41 @@ func (o AdamW) fitOptimizerValidate() error {
 }
 
 func (o AdamW) fitOptimizerStep(tape *Tape) error { return tape.AdamW(o.Rate, o.WeightDecay) }
+
+// CustomOptimizer selects an optimizer the caller writes.
+//
+// Step is required. Fit calls it once per batch, after the reverse pass, with
+// every parameter tracked on the model's tape in creation order; it updates
+// them with Parameter.Update. The slice is Step's own and may be kept.
+// Optimizer state, such as a step count or a moment per parameter, belongs to
+// Step's closure; a *Parameter keeps its identity across batches and Fit
+// calls, so it can key a map. Name labels the optimizer in Fit's errors;
+// empty means "CustomOptimizer".
+type CustomOptimizer struct {
+	Name string
+	Step func(params []*Parameter) error
+}
+
+func (o CustomOptimizer) fitOptimizerName() string {
+	if o.Name == "" {
+		return "CustomOptimizer"
+	}
+	return o.Name
+}
+
+func (o CustomOptimizer) fitOptimizerValidate() error {
+	if o.Step == nil {
+		return fmt.Errorf("fit config Optimizer %s has no Step function", o.fitOptimizerName())
+	}
+	return nil
+}
+
+func (o CustomOptimizer) fitOptimizerStep(tape *Tape) error {
+	if err := o.fitOptimizerValidate(); err != nil {
+		return err
+	}
+	return o.Step(append([]*Parameter(nil), tape.params...))
+}
 
 // LossSpec selects the loss Fit trains with: CrossEntropy, MSE or
 // BCEWithLogits, or a CustomLoss the caller computes on the tape. Its methods

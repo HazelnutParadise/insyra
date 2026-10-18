@@ -22,6 +22,11 @@ None in flight. Nothing left can be picked up without the owner answering someth
 **Awaiting a ruling:** nothing from the decision list that started on 2026-09-25; the open `api-review` issues are the next pickup.
 
 ## Latest Milestones
+- 2026-10-18 `nn-custom-optimizer` ([#266](https://github.com/HazelnutParadise/insyra/issues/266), api-review NN-2, the last part). The owner ruled on 2026-10-18 for option A: an adapter plus a write primitive, over only the primitive or documenting a workaround.
+  - **Before.** Nothing outside `nn` could write a parameter. Measured on ffff6a1d, a custom optimizer was possible only in a hand-written loop, through `SaveWeights` → `LoadSafeTensors` → `LoadWeights` every step. That matched `nn.SGD` bit for bit, but it worked only on a `Sequential`, never inside `Fit`, and needed a hand transpose from the internal `[in,out]` layout to torch's `[out,in]`.
+  - **Added.** `Parameter.Update(fn func(value, grad []float32)) error` hands over the live data and the gradient in one layout, with `grad` nil for a parameter the loss did not reach. `nn.CustomOptimizer{Name, Step}` implements the still-sealed `OptimizerSpec`, and `Fit` calls `Step` once per batch with every tracked parameter.
+  - **Unchanged.** The built-in optimizers do not use either path, so their results do not move. Device MatMul and `EdgeSum` upload their inputs on every call, so a host write cannot leave a stale device copy.
+  - NN-2 is fully fixed. Not breaking.
 - 2026-10-18 `enums-print-their-names` ([#246](https://github.com/HazelnutParadise/insyra/issues/246), api-review QU-1). The owner ruled on 2026-10-18 to keep each enum's underlying type and make every one readable, rather than move 65 types to one side:
   - **Inventory.** 40 `string`, 19 `int` and 6 `uint8` enum types. None is serialized anywhere (`state.json`, scaler JSON and ONNX export never write an enum's raw value), so one underlying type would have bought no readable storage.
   - **Readable.** The 19 integer enums without `String()` gained one. Unknown values print `TypeName(n)` everywhere (`ClassAverage(9)` used to print `macro`), and every error about an unknown setting names it: `VaR: unknown method 3` → `VaR: unknown method VaRMethod(3)`.

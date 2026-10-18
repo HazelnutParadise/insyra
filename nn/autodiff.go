@@ -48,6 +48,39 @@ func (p *Parameter) Grad() *Tensor {
 	return gradient
 }
 
+// Update calls fn with the parameter's float32 data and its most recent
+// gradient, in the same layout as Value and Grad, and keeps what fn writes
+// into value: the next forward pass reads it. grad is nil when the last
+// reverse pass did not reach the parameter, or none has run. Both slices are
+// valid only while fn runs. Writing into grad changes the gradient that Grad
+// and the tape's optimizers read until the next reverse pass.
+//
+// Update is how a CustomOptimizer, or a training loop written by hand, writes
+// a parameter. It does not touch the state of the tape's built-in optimizers.
+func (p *Parameter) Update(fn func(value, grad []float32)) error {
+	if p == nil || p.value == nil {
+		return fmt.Errorf("parameter update: parameter is nil")
+	}
+	if fn == nil {
+		return fmt.Errorf("parameter update: function is nil")
+	}
+	if err := requireFloat32(p.value, "parameter update value"); err != nil {
+		return err
+	}
+	var grad []float32
+	if p.grad != nil {
+		if err := requireFloat32(p.grad, "parameter update gradient"); err != nil {
+			return err
+		}
+		if len(p.grad.data) != len(p.value.data) {
+			return fmt.Errorf("parameter update: gradient has %d values, parameter has %d", len(p.grad.data), len(p.value.data))
+		}
+		grad = p.grad.data
+	}
+	fn(p.value.data, grad)
+	return nil
+}
+
 type tapeOp struct {
 	name   string
 	inputs []*Tensor

@@ -241,8 +241,62 @@ would otherwise train on a gradient of zero. `Validate`, optional, checks a
 batch's prediction and target before `Loss` runs, on every training batch and
 on the validation set, the way the built-in losses check their target dtypes;
 a custom loss gets no other target check. `Name` labels the loss in `Fit`'s
-errors and defaults to `CustomLoss`. Optimizers have no such adapter: a
-parameter's value cannot be written from outside the package.
+errors and defaults to `CustomLoss`.
+
+For any other optimizer, `nn.CustomOptimizer` takes a function that updates
+the parameters from their gradients. This one is Lion's sign update without
+momentum; any state it needs, such as a moment per parameter, lives in the
+closure and can be keyed by `*nn.Parameter`:
+
+```go
+rate := float32(1e-4)
+result, err := model.Fit(trainX, trainY, nn.FitConfig{
+	Epochs: 5, BatchSize: 128, Loss: nn.CrossEntropy{},
+	Optimizer: nn.CustomOptimizer{
+		Name: "sign-sgd",
+		Step: func(params []*nn.Parameter) error {
+			for _, p := range params {
+				err := p.Update(func(value, grad []float32) {
+					if grad == nil {
+						return // the loss did not reach this parameter
+					}
+					for i, g := range grad {
+						if g > 0 {
+							value[i] -= rate
+						} else if g < 0 {
+							value[i] += rate
+						}
+					}
+				})
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
+})
+```
+
+`Step` is required, and `Fit` refuses a `CustomOptimizer` without it before
+any batch. `Fit` calls `Step` once per batch, after the reverse pass, with
+every parameter tracked on the model's tape in creation order, which for a
+`Sequential` is `model.Parameters()`. The slice is a copy `Step` may keep. An
+error from `Step` stops `Fit`, which returns it wrapped with the epoch, the
+batch and the optimizer's name. `Name` labels the optimizer in `Fit`'s errors
+and defaults to `CustomOptimizer`. The built-in optimizers do not go through
+`CustomOptimizer`, so their results are unchanged.
+
+`Parameter.Update(fn)` is how a parameter is written from outside the package,
+in a `CustomOptimizer` or in a training loop written by hand. It calls
+`fn(value, grad)` with the parameter's own float32 data and its most recent
+gradient, both in the layout `Value()` and `Grad()` report, and the next
+forward pass reads whatever `fn` wrote into `value`. `grad` is nil when the
+last reverse pass did not reach the parameter. Both slices are valid only
+while `fn` runs; keep a copy, not the slice. Writing into `grad` changes the
+gradient `Grad()` and the tape's optimizers read until the next reverse pass.
+`Update` returns an error for a nil parameter or a nil `fn`, and does not touch
+the state the tape's `SGDMomentum`, `Adam` and `AdamW` keep.
 
 `Seed` is always used as the source for `math/rand`'s `Perm` shuffle. Zero is
 a valid seed, not a request for time-based randomness. The same inputs,
@@ -342,6 +396,8 @@ Gradients are float32 and are available through `Parameter.Grad()` or
 `Tape.Grad(parameter.Value())` after `Backward`; an unconnected tracked
 parameter receives a zero tensor. A `Backward` that returns an error publishes
 nothing: both keep returning what the last successful pass computed.
+`Parameter.Update` writes a parameter from its gradient for an optimizer the
+tape does not have; see `CustomOptimizer` above.
 `Tape.Tanh`'s gradient rounds every step to float32 without fusing any two, so
 it is the same bits on every platform. Exact-form GELU is differentiable; the tanh
 approximation is refused by the tape until its VJP is covered.
