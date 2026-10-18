@@ -326,12 +326,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: convert the remaining entry points through `asDataList`, or add a typed-nil check to `numericSlice` so the goroutines in `gatherRegressionInputs` get an error back instead of panicking, then widen `stats-input-type-guard` to name them. Decide first whether a nil list is an error or an empty sample. The hypothesis tests did not need that decision, because every one of them already refused an empty list.
 - **Status**: pending
 
-### [2026-09-14] — two deeply nested values with different leaves count as one
-- **Where**: `cell_identity.go` `maxCellEncodeDepth` and the interface arm of `writeCellValue`
-- **What**: a `[]any` level spends two encoding levels (the slice and the interface inside it), so a value nested more than 32 `[]any` deep reaches the limit of 64. Past it an interface is written as `p:interface {}`, its type with no address, so two such values that differ only in their deepest leaf encode alike: measured on 2026-09-14, a list holding a depth-40 value with leaf 1 and two with leaf 2 reports `Count` 3 for either. On v0.3.2 the same `Count` panicked, so nothing that worked changed, but the answer is silently wrong.
-- **Suggestion**: at the limit, unwrap the interface and write the address of the value inside it, which is what the comment above `maxCellEncodeDepth` says already happens.
-- **Status**: pending
-
 ### [2026-09-12] — grouping, pivoting, merging and `Describe` still merge nested values that print alike
 - **Where**: `datatable_groupby.go` `encodeGroupKey` and `uniqueKey`, `datatable_encode.go` `labelKey`, their default arms
 - **What**: `encodeGroupKey` and `uniqueKey` fall back to `%T:%v`, which does not descend, so `[]any{1}` and `[]any{"1"}` produce the same key: `GroupBy`, `Pivot` and `Merge` put the integer and the string in one group, and `Describe`'s unique count counts them once. `labelKey` uses `%T:%#v`, which separates an int from a string but not `[]any{1}` from `[]any{1.0}`. Measured on 2026-09-13. `identify-uncomparable-cells` gave cell lookups a recursive encoder, `encodeCell`; on 0.4 `encodeGroupKey` and `uniqueKey` moved to it too, but that changes the keys existing data groups by, so it stayed off the 0.3.x line.
