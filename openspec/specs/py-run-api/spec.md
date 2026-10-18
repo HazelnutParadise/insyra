@@ -69,14 +69,6 @@ When the Python process exits with an error before it returns a value, whether i
 - **WHEN** `PipInstallContext(ctx, "--requirement=/etc/passwd")` is called
 - **THEN** it returns an error naming `PipInstall` before the environment is prepared
 
-### Requirement: RunCodeWithTimeout is deprecated
-
-`RunCodeWithTimeout` SHALL keep its meaning, running the code under a context from `context.WithTimeout`, and its doc comment SHALL say `Deprecated: use RunCodeContext` with `context.WithTimeout` and that it is removed in the release after the one that deprecated it.
-
-#### Scenario: Timeout
-- **WHEN** `RunCodeWithTimeout(300*time.Millisecond, nil, code)` runs code that does not finish
-- **THEN** it returns an error for which `errors.Is(err, context.DeadlineExceeded)` holds
-
 ### Requirement: Tables and lists inside a result are decoded as tables and lists
 
 When the type a result is decoded into holds `*insyra.DataTable`, `*insyra.DataList`, `insyra.IDataTable` or `insyra.IDataList` below its top level, in a struct field, a map value, a slice or array element, or behind a pointer, `RunCode`, `Run` and the other runners SHALL decode each such part with the table or list decoder, and every other part as `encoding/json` decodes it.

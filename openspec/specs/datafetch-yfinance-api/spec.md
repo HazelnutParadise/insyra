@@ -32,6 +32,7 @@ The two parameter structs SHALL have the same field names as go-yfinance's, chec
 #### Scenario: The field lists match go-yfinance
 - **WHEN** 以反射比較 `YFHistoryParams` 與 `models.HistoryParams`、`YFRepairOptions` 與 `models.RepairOptions` 的欄位名稱
 - **THEN** 兩邊的欄位名稱集合相同
+
 ### Requirement: News takes insyra's own tab type
 
 `News` SHALL take its tab as a `YFNewsTab`. `YFNewsTabNews` (`"news"`), `YFNewsTabAll` (`"all"`) and `YFNewsTabPressReleases` (`"press releases"`) SHALL select what the go-yfinance tabs of the same value select, and the empty tab SHALL select news. Any other value SHALL be refused with an error naming the accepted tabs, before any request is sent.
@@ -44,10 +45,10 @@ The two parameter structs SHALL have the same field names as go-yfinance's, chec
 - **WHEN** 以空字串的分頁轉換成 go-yfinance 的分頁
 - **THEN** 結果是 news 分頁
 
-### Requirement: One statement frequency has one name
+### Requirement: A statement frequency has one constant
 
-`YFPeriodAnnual` SHALL be the name for annual statements. `YFPeriodYearly` SHALL remain for one release as a Deprecated constant with its value `"yearly"`, whose doc comment names `YFPeriodAnnual`, so a table fetched with it keeps its `yearly` label until the constant is removed.
+`YFPeriodAnnual` SHALL be the name for annual statements, with the value `"annual"`. The former synonym `YFPeriodYearly` SHALL NOT exist, so a statement frequency has exactly one constant.
 
-#### Scenario: The deprecated synonym
-- **WHEN** 讀取 `YFPeriodYearly` 的 doc comment 與值
-- **THEN** 有指名 `YFPeriodAnnual` 的 `Deprecated:` 段落，值仍為 `"yearly"`
+#### Scenario: The annual constant
+- **WHEN** 讀取 `YFPeriodAnnual` 的值
+- **THEN** 值為 `"annual"`，套件中沒有 `YFPeriodYearly`

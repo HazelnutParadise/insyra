@@ -2,7 +2,9 @@
 
 ## Purpose
 What a function does when its trailing optional parameter is given more than one value. The parameter stands for one optional value, so a second one is an error the caller hears about, never a value quietly dropped.
+
 ## Requirements
+
 ### Requirement: A trailing optional parameter takes at most one value
 
 A function whose last parameter is a variadic standing for one optional value (`...T` or `...XxxOptions`) SHALL treat more than one value as an error, reported through the function's normal error path: a chainable method SHALL record it and leave its receiver unchanged, a function returning an error SHALL return it, and a constructor without an error result SHALL keep it and report it from the first call that can fail. No such function SHALL keep the first or the last value and drop the others.
@@ -46,6 +48,5 @@ The heat map point type SHALL be exported as `HeatMapPoint[X, Y]` with the expor
 
 #### Scenario: Uppercase AUTO on a Big5 file
 
-- **WHEN** `ReadCsvToString(path, "AUTO")` reads a Big5 file
+- **WHEN** `ReadCSVToString(path, "AUTO")` reads a Big5 file
 - **THEN** the text is decoded from Big5 instead of the call failing
-

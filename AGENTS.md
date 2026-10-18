@@ -297,6 +297,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-28] — remove `ReverseTableByColName` one release after it was deprecated
+- **Where**: `datafetch/geocoding.go`, its row in `datafetch/deprecated_names_test.go`, and its note in `Docs/datafetch.md`
+- **What**: `datafetch-naming-cleanup` deprecated it in favour of `ReverseTable` with `insyra.Name(...)` selectors (DF-5, filed under #212). The other deprecated `datafetch` names were deleted by `remove-dev-deprecated-apis`; this one is a method that 0.4 deprecated alone, so it stays.
+- **Suggestion**: delete it, the test row and the note in the same release as the other Deprecated removals, with a BREAKING changelog entry.
+- **Status**: pending
+
 ### [2026-10-18] — `ErrPoppingMode` has no user left
 - **Where**: `error_buffer.go`
 - **What**: `ErrPoppingMode` was the mode the nine removed global error-buffer accessors (`PopError`, `PeekError` and the rest) took. Nothing in the module reads it now. It is a released, undeprecated type, so `remove-dev-deprecated-apis` left it alone.

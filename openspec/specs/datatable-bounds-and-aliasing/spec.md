@@ -40,12 +40,3 @@ Guarantees that a `DataTable` never panics on a bad index (it sets `Err()`) and 
 #### Scenario: FilterRows on a ragged table
 - **WHEN** 第一欄 3 列、第二欄 1 列的表呼叫 `FilterRows(func(...) bool { return true })`
 - **THEN** 回傳 3 列，第二欄後兩列為 nil，不 panic
-
-### Requirement: The largest parsed column index does not overflow
-
-`FilterColsByColIndexLessThanOrEqualTo` SHALL accept the largest column letter that `ParseColIndex` reads and MUST NOT panic on it, and SHALL keep every column of the table when the index is past the table's last column.
-
-#### Scenario: The largest parsed letter
-
-- **WHEN** `FilterColsByColIndexLessThanOrEqualTo` is called with the letter for the largest `int` column number on a four-column table
-- **THEN** the result holds all four columns and no panic occurs

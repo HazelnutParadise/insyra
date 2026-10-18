@@ -2,13 +2,15 @@
 
 ## Purpose
 What each command of the insyra command language does, from loading, inspecting and reshaping data to statistics, time series, CCL, charts, fetching and variable management, as run from the REPL, a `.isr` script, a one-shot command or `engine/dsl`.
+
 ## Requirements
+
 ### Requirement: Load data from file
 系統 SHALL 提供 `load` 命令從檔案載入資料為 DataTable。
 
 #### Scenario: Load CSV
 - **WHEN** 使用者執行 `load "data.csv" as t1`
-- **THEN** 系統呼叫 `ReadCSV_File()` 載入 CSV 並將結果存為變數 `t1`
+- **THEN** 系統呼叫 `ReadCSVFile()` 載入 CSV 並將結果存為變數 `t1`
 
 #### Scenario: Load Excel with sheet
 - **WHEN** 使用者執行 `load "data.xlsx" sheet Sales as t1`
@@ -16,7 +18,7 @@ What each command of the insyra command language does, from loading, inspecting 
 
 #### Scenario: Load JSON
 - **WHEN** 使用者執行 `load "data.json" as t1`
-- **THEN** 系統呼叫 `ReadJSON_File()` 載入 JSON
+- **THEN** 系統呼叫 `ReadJSONFile()` 載入 JSON
 
 #### Scenario: Load Parquet
 - **WHEN** 使用者執行 `load parquet "data.parquet" as t1`
@@ -310,11 +312,11 @@ What each command of the insyra command language does, from loading, inspecting 
 
 #### Scenario: Moving average
 - **WHEN** 使用者執行 `movavg d1 5 as d1_ma`
-- **THEN** 系統呼叫 `d1.MovingAverage(5)` 並存結果
+- **THEN** 系統自行計算每個視窗的平均值（以 `insyra.ToFloat64Safe` 讀取格子），並存結果；輸出比輸入短
 
 #### Scenario: Fill NaN with mean
 - **WHEN** 使用者執行 `fillnan d1 mean`
-- **THEN** 系統呼叫 `d1.FillNaNWithMean()`
+- **THEN** 系統透過 `fillna` 機制把 NaN 填為平均值
 
 ### Requirement: Advanced statistics commands
 系統 SHALL 提供進階統計命令：`corr`、`corrmatrix`、`regression`、`ttest`、`ztest`、`anova`、`ftest`、`chisq`、`pca`、`kmeans`、`hclust`、`cutree`、`dbscan`、`silhouette`、`skewness`、`kurtosis`、`cov`。
@@ -481,4 +483,3 @@ The DSL and REPL SHALL expose acceleration inspection commands for device state 
 #### Scenario: Listing
 - **WHEN** 活頁簿有 `Q1`、`Q2`、`Q3`，使用者執行 `sheets book.xlsx`
 - **THEN** 輸出三行 `Q1`、`Q2`、`Q3`
-

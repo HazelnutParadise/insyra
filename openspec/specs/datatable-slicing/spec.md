@@ -47,29 +47,6 @@ For `SliceRows`, a bound with `from < 0`, `from > to` or `to` past the length SH
 - **WHEN** `SliceCols("C", "B")` is called
 - **THEN** `Err()` says that from comes after to
 
-### Requirement: The index filters and Headers are deprecated spellings
-
-The ten `FilterColsByColIndex…` and `FilterRowsByRowIndex…` methods SHALL be marked Deprecated, each naming the `SliceCols` or `SliceRows` call it stands for, and SHALL return the same data, column names and row names as that call for every bound inside the table. `FilterColsByColIndexLessThan` and `FilterColsByColIndexLessThanOrEqualTo` SHALL keep every column for a letter past the last one instead of panicking.
-
-#### Scenario: Every threshold inside the table
-
-- **WHEN** each deprecated index method is called with each column letter or row index of a four-column, five-row table
-- **THEN** its result equals the corresponding slice
-
-#### Scenario: A letter past the last column
-
-- **WHEN** `FilterColsByColIndexLessThan("Z")` is called on a four-column table
-- **THEN** it returns every column and does not panic
-
-### Requirement: Headers and SetHeaders are ColNames and SetColNames
-
-`Headers` and `SetHeaders` SHALL be marked Deprecated in favour of `ColNames` and `SetColNames` and behave exactly like them.
-
-#### Scenario: The same names either way
-
-- **WHEN** `Headers()` and `ColNames()` are called on one table, and `SetHeaders` and `SetColNames` are each given the same names on two copies of it
-- **THEN** both reads return the same names, and the two copies end with the same column names
-
 ### Requirement: SliceCols pads a short column with nil
 
 When a column that `SliceCols` selects is shorter than the table's longest column, the result SHALL pad that column with `nil` to the table's longest column length, so the result keeps every row of the table, and the source table SHALL NOT change.

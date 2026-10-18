@@ -31,7 +31,7 @@ What CSV output does with text a spreadsheet would run as a formula. The file is
 
 ### Requirement: Excel-to-CSV conversion is guarded the same way
 
-`csvxl.ExcelToCsv` and `EachExcelToCsv` SHALL guard formula-like text exactly as the core CSV writer does unless `ExcelToCsvOptions.AllowFormulas` is set, and SHALL convert every sheet when `Sheets` is empty.
+`csvxl.ExcelToCSV` and `ExcelDirToCSV` SHALL guard formula-like text exactly as the core CSV writer does unless `ExcelToCSVOptions.AllowFormulas` is set, and SHALL convert every sheet when `Sheets` is empty.
 
 #### Scenario: A text cell holding a formula
 

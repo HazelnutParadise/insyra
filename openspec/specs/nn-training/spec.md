@@ -39,6 +39,7 @@ calling per-op VJPs, and the inference kernels remain untouched.
 - **WHEN** code uses the existing kernels or graph interpreter without the
   tape
 - **THEN** behavior and results SHALL be byte-for-byte unchanged
+
 ### Requirement: An encoder block trains one Adam step matching PyTorch
 
 An Adam optimizer with bias-corrected moments SHALL update tracked
@@ -74,6 +75,7 @@ backpropagates through.
   differentiate
 - **THEN** the tape SHALL return an error naming the operation, never a
   silent zero gradient
+
 ### Requirement: A CNN trains one Adam step matching PyTorch
 
 A fixed MNIST-class CNN loaded from one SafeTensors file by both PyTorch
@@ -110,6 +112,7 @@ statistics.
   or variance
 - **THEN** the tape SHALL refuse naming the operation, matching the
   forward's inference-only contract
+
 ### Requirement: Training converges on a real dataset
 
 The tape SHALL train an MLP classifier on the real MNIST dataset from
@@ -173,6 +176,7 @@ determinism under seed, and eval identity.
   1−p, kept values SHALL be scaled by 1/(1−p), the mask SHALL be
   identical across runs with the same seed, gradients SHALL flow only
   through kept elements, and eval mode SHALL be the identity
+
 ### Requirement: Sequential composes layers without changing a single digit
 
 The MNIST training run expressed through `Sequential` SHALL reproduce the
@@ -221,6 +225,7 @@ Parameter names SHALL follow torch's `nn.Sequential` convention and
 - **WHEN** weights trained by a torch `nn.Sequential` MLP are saved
   via safetensors and loaded with `LoadWeights`
 - **THEN** `Predict` SHALL match torch's forward within f32 tolerance
+
 ### Requirement: The catalog trains a CNN and embeds tokens, torch-verified
 
 The layer catalog SHALL include Conv2D, MaxPool2D, AvgPool2D,
@@ -261,6 +266,7 @@ scatter-add its gradient into the table, verified against
 - **WHEN** repeated token indices appear in one batch
 - **THEN** their gradient rows SHALL accumulate, matching torch and
   finite differences
+
 ### Requirement: What nn trains, nn persists, and everyone can read
 
 `nn` SHALL write SafeTensors files that its own loader, the Python
@@ -385,6 +391,7 @@ During the reverse pass, a custom `vjp` that returns an error, the wrong number 
 #### Scenario: A gradient of the wrong shape
 - **WHEN** a custom `vjp` returns a gradient shaped `[2]` for an input shaped `[3]`
 - **THEN** `Backward` returns an error naming the operation and the two shapes
+
 ### Requirement: A failed reverse pass publishes no gradient
 
 A `Backward` or `BackwardFrom` that returns an error SHALL leave every gradient readable through `Tape.Grad` and `Parameter.Grad` as the last successful pass left it.
@@ -409,29 +416,6 @@ A `Backward` or `BackwardFrom` that returns an error SHALL leave every gradient 
 - **WHEN** `BackwardFrom` is given a tensor no recorded operation produced
 - **THEN** it returns an error instead of zero gradients
 
-### Requirement: A layer and a loss have one name each
-
-The layer constructors SHALL be `Dense`, `ReLU`, `NewSigmoid`, `NewTanh`, `NewGelu`, `Dropout`, `NewFlatten`, `Func`, `Conv2D`, `MaxPool2D`, `AvgPool2D`, `GlobalAvgPool`, `BatchNorm2D`, `LayerNorm`, `Embedding`, `MultiHeadAttention` and `Residual`; the `New` prefix SHALL appear only where the bare name is a kernel function.
-
-#### Scenario: A deprecated twin builds the same layer
-- **WHEN** 以同一個種子分別用 `NewDense(3, 4)` 與 `Dense(3, 4)` 建立 `Sequential`
-- **THEN** 參數的形狀、順序與數值相同；`NewDense` 的 doc comment 有指名 `Dense` 的 `Deprecated:` 段落
-
-### Requirement: The replaced layer constructors stay one release
-
-`NewDense`, `NewReLU`, `NewDropout`, `NewFunc`, `NewMultiHeadAttention`, `NewConv2D`, `NewMaxPool2D`, `NewAvgPool2D`, `NewGlobalAvgPool`, `NewBatchNorm2D`, `NewLayerNorm` and `NewEmbedding` SHALL remain for one release as Deprecated constructors that build the same layer as their bare name. Each Deprecated doc comment SHALL name its replacement.
-
-#### Scenario: Every deprecated constructor names its replacement
-- **WHEN** 讀取這十二個 `New…` 建構函式的 doc comment
-- **THEN** 每一個都有 `Deprecated:` 段落，指名去掉 `New` 的建構函式
-
-### Requirement: The losses have one name each
-
-The `FitConfig.Loss` selectors SHALL be `CrossEntropy`, `MSE` and `BCEWithLogits`; `SoftmaxCrossEntropy`, `MSELoss` and `BCEWithLogitsLoss` SHALL remain for one release as Deprecated aliases of them, each doc comment naming its replacement.
-
-#### Scenario: A deprecated loss alias trains the same way
-- **WHEN** 以同一個種子分別用 `nn.MSELoss{}` 與 `nn.MSE{}` 執行 `Fit`
-- **THEN** 每個 epoch 的訓練損失相同
 ### Requirement: LayerNorm takes a typed size
 
 `LayerNorm(dim int)` SHALL build a layer normalizing the last dimension, of size `dim`, and `LayerNormShape(dims []int)` SHALL build one normalizing the trailing `len(dims)` dimensions, copying `dims`. A non-positive size or an empty shape SHALL be reported by `Build`, and so by `NewSequential` naming the layer.
@@ -444,10 +428,18 @@ The `FitConfig.Loss` selectors SHALL be `CrossEntropy`, `MSE` and `BCEWithLogits
 - **WHEN** 以 `LayerNorm(0)` 或 `LayerNormShape(nil)` 建立 `Sequential`
 - **THEN** `NewSequential` 回傳指出該層的錯誤
 
-### Requirement: NewLayerNorm stays one release
+### Requirement: Layer constructors take the bare name
 
-`NewLayerNorm(dims interface{})` SHALL remain for one release as a Deprecated constructor naming both `LayerNorm` and `LayerNormShape`, building `LayerNorm` for an `int`, `LayerNormShape` for a `[]int`, and for any other value the layer it built before this change.
+The layer constructors SHALL be `Dense`, `ReLU`, `NewSigmoid`, `NewTanh`, `NewGelu`, `Dropout`, `NewFlatten`, `Func`, `Conv2D`, `MaxPool2D`, `AvgPool2D`, `GlobalAvgPool`, `BatchNorm2D`, `LayerNorm`, `Embedding`, `MultiHeadAttention` and `Residual`; the `New` prefix SHALL appear only where the bare name is a kernel function.
 
-#### Scenario: The deprecated constructor keeps its meaning
-- **WHEN** 以 `4`、`[]int{2, 3}` 與 `int64(4)` 呼叫 `NewLayerNorm`
-- **THEN** 前兩者分別與 `LayerNorm(4)`、`LayerNormShape([]int{2, 3})` 相同，第三者與改動前一樣在 `Build` 時回傳錯誤
+#### Scenario: The bare constructor builds the layer
+- **WHEN** 以 `Dense(3, 4)` 建立 `Sequential`
+- **THEN** 它有一個形狀為 3×4 的權重與一個長度 4 的偏差，且沒有 `NewDense`
+
+### Requirement: Fit loss selectors are named once
+
+The `FitConfig.Loss` selectors SHALL be `CrossEntropy`, `MSE` and `BCEWithLogits`. The earlier selectors `SoftmaxCrossEntropy`, `MSELoss` and `BCEWithLogitsLoss` SHALL NOT exist at package level; `Tape.SoftmaxCrossEntropy`, `Tape.MSELoss` and `Tape.BCEWithLogitsLoss` are the tape's loss methods and SHALL remain.
+
+#### Scenario: A selector trains
+- **WHEN** 以 `nn.MSE{}` 作為 `FitConfig.Loss` 執行 `Fit`
+- **THEN** 每個 epoch 回報訓練損失，這個損失與 `Tape.MSELoss` 對同一批資料算出的相同

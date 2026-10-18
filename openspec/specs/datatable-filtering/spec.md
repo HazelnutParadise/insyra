@@ -33,15 +33,6 @@ Says which rows the `DataTable` filters keep. `Filter` and `FilterRows` judge on
 - **WHEN** `keep` returns false for every row
 - **THEN** the result has the source's columns and no rows
 
-### Requirement: FilterByCustomElement is a deprecated spelling of Filter
-
-`FilterByCustomElement(f)` SHALL return the same table as `Filter` given a function that passes `f` the cell's value, and SHALL be marked Deprecated with that replacement named.
-
-#### Scenario: Same result
-
-- **WHEN** both are applied with the same predicate to the same table
-- **THEN** the data, column names, row names and table name are equal
-
 ### Requirement: A predicate that drops a column does not shift the columns it reads
 
 `Filter`, `FilterRows` and `FilterRowsWhere` SHALL build their result from the columns the table had when the call began, so dropping a column from the table inside the predicate or the keep function MUST NOT change the values the result holds.

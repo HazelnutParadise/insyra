@@ -29,18 +29,6 @@ The root package SHALL export `ColIndexToNumber(colIndex string) (int, bool)`, w
 - **WHEN** 呼叫 `Config.SetUseColoredOutput(false)`
 - **THEN** `Config.GetUseColoredOutput()` 回傳 `false`；呼叫 `SetDefaultConfig()` 後回傳 `true`
 
-### Requirement: The replaced names keep their meaning for one release
-
-`ParseColIndex`, `CalcColIndex` and `Config.GetDoesUseColoredOutput` SHALL remain as wrappers that return exactly what `ColIndexToNumber`, `ColNumberToIndex` and `Config.GetUseColoredOutput` return. Each SHALL have a doc comment whose `Deprecated:` paragraph names its replacement and says it is removed in the release after the one that deprecated it.
-
-#### Scenario: The deprecation notices
-- **WHEN** 讀取三個舊名稱的 doc comment
-- **THEN** 各自有指名新名稱的 `Deprecated:` 段落與移除時程
-
-#### Scenario: An old name gives the same answer
-- **WHEN** 對 0 到 20000 的每個數字與其欄位索引比較新舊函式，並在開關彩色輸出後比較兩個 getter
-- **THEN** 新舊名稱的回傳值完全相同
-
 ### Requirement: The thread-safety switch keeps its underscore on purpose
 
 `Config.Dangerously_TurnOffThreadSafety` SHALL keep its name, and its doc comment SHALL say that the underscore is a deliberate warning that makes the call site look wrong.
