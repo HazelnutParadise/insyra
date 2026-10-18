@@ -811,7 +811,7 @@ Source policy:
 | `clean` | `clean <var> nan\|nil\|strings\|outliers [<stddev>]` | Clean values from DataTable/DataList |
 | `clear` | `clear` | Clear terminal screen |
 | `clone` | `clone <var> [as <var>]` | Deep clone DataTable/DataList variable |
-| `col` | `col <var> <name\|index> [as <var>]` | Extract DataTable column as DataList |
+| `col` | `col <var> <name\|number\|letter> [as <var>]` | Extract DataTable column as DataList. A whole number is a 0-based position; otherwise an exact column name is tried first, then an Excel-style letter (`A`, `B`, ..., `AA`). A column literally named `A` therefore beats column A |
 | `cols` | `cols <var>` | List DataTable column names |
 | `completion` | `completion [command]` | Generate the autocompletion script for insyra for the specified shell. |
 | `config` | `config [key] [value]` | Read or update global CLI config |

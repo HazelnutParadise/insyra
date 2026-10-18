@@ -195,3 +195,28 @@ func TestDispatchHistoryIsSanitized(t *testing.T) {
 		t.Fatalf("history.txt is group/world readable: %o", perm)
 	}
 }
+
+// #438: col takes an Excel-style letter; a column's own name still wins.
+func TestColAcceptsExcelLetters(t *testing.T) {
+	ctx := newTestExecContext(t)
+	ctx.Vars["dt"] = insyra.NewDataTable(
+		insyra.NewDataList(1, 2).SetName("price"),
+		insyra.NewDataList(3, 4).SetName("A"),
+	)
+	check := func(selector string, want int) {
+		t.Helper()
+		if err := runColCommand(ctx, []string{"dt", selector, "as", "c"}); err != nil {
+			t.Fatalf("col %s: %v", selector, err)
+		}
+		if got := ctx.Vars["c"].(*insyra.DataList).Get(0); got != want {
+			t.Fatalf("col %s: first value %v, want %d", selector, got, want)
+		}
+	}
+	check("price", 1)
+	check("0", 1)
+	check("B", 3)
+	check("A", 3) // the column named "A" beats the letter A
+	if err := runColCommand(ctx, []string{"dt", "C", "as", "d"}); err == nil {
+		t.Fatal("a letter past the last column should be an error")
+	}
+}

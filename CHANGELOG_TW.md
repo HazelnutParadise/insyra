@@ -46,6 +46,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 會存下多個變數的指令（例如 `pca`、`kmeans`）現在會在輸出中列出存下的每個變數名稱，存下的值不變。
 - `ttest single` 與 `ztest single` 在一次性模式接受負數的 `mu`；原本 `insyra ttest single x -1` 會把 `-1` 當成旗標而失敗。`wilcoxon single` 本來就可以。
 - `convert <file.xlsx> sheet <name> <file.csv> [sheet <name> <file.csv> ...]` 只轉出指名的工作表，各自寫成指定的檔案，檔案可以在不同目錄。指定不存在的工作表、同一張工作表給兩次，或兩張工作表寫到同一個檔案，都會在寫出任何檔案前回錯誤。這個形式預設會在試算表會當成公式執行的文字前加單引號，給 `allowformulas true` 才原樣寫出。`convert <file.xlsx> <file.csv>` 照舊。新增的 `sheets <file.xlsx>` 依順序列出活頁簿的工作表。
+- `col` 現在接受 Excel 風格的欄位字母：`insyra col t A as x`。整數仍是從 0 開始的位置，欄名會先於字母比對，所以原本能用的呼叫意思不變，名稱剛好叫 `A` 的欄位也仍然優先於 A 欄（[#438](https://github.com/HazelnutParadise/insyra/issues/438)）。
 
 ### `ml` 與 `nn`
 

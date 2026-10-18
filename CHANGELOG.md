@@ -46,6 +46,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - A command that stores more than one variable, such as `pca` or `kmeans`, now names every variable it stored in its output. The stored values are unchanged.
 - `ttest single` and `ztest single` take a negative `mu` in one-shot mode; `insyra ttest single x -1` read `-1` as a flag and failed. `wilcoxon single` already did.
 - `convert <file.xlsx> sheet <name> <file.csv> [sheet <name> <file.csv> ...]` writes only the sheets it names, each to its own file, which may be in different directories. An unknown sheet, a sheet given twice, or two sheets for one file is an error before anything is written. This form puts a leading quote before text a spreadsheet would run as a formula unless `allowformulas true` is given. `convert <file.xlsx> <file.csv>` works as before. The new `sheets <file.xlsx>` lists a workbook's sheets in order.
+- `col` accepts an Excel-style column letter: `insyra col t A as x`. A whole number is still a 0-based position and an exact column name is tried before a letter, so every call that worked keeps its meaning, and a column literally named `A` still beats column A ([#438](https://github.com/HazelnutParadise/insyra/issues/438)).
 
 ### `ml` and `nn`
 
