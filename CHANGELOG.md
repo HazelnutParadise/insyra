@@ -35,6 +35,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `ReadSlice2D` makes the table as wide as the widest row. A row longer than the first used to lose its extra values with no error: `[][]float64{{1}, {2, 3}}` gave a 2x1 table without the 3. Shorter rows are still padded with nil ([#410](https://github.com/HazelnutParadise/insyra/issues/410)).
 - `NewDataList` no longer ends the process with `fatal error: stack overflow` when it is given a slice that contains itself. It descends at most 64 slices deep and keeps anything below that as one cell; ordinary nesting flattens as before.
 - `DataList.Shift` keeps a slice stored in a cell as one cell. It built its result through `NewDataList`, which flattens every slice, so a list holding `[]byte{1, 2}` and `3` came back three cells long after `Shift(0)`.
+- Errors from `quant`, `ml`, `nn` and `DataTable.Resample` that name a bad cell now say `row index N`, counted from zero like `Get(N)`, where `quant` and `Resample` counted from one (`row 3`) and `ml` and `nn` counted from zero but wrote only `row N`. Only the text changes; code that matches the old text must be updated.
 
 ### CLI
 

@@ -75,11 +75,11 @@ func TestValueAtRiskRejectsInvalidInput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			bad := insyra.NewDataList(0.01, tc.bad, 0.03)
 			for _, method := range []VaRMethod{VaRHistorical, VaRParametric} {
-				if _, err := ValueAtRisk(bad, 0.95, method); err == nil || !strings.Contains(err.Error(), "row 2") {
-					t.Errorf("ValueAtRisk error = %v, want row 2", err)
+				if _, err := ValueAtRisk(bad, 0.95, method); err == nil || !strings.Contains(err.Error(), "row index 1") {
+					t.Errorf("ValueAtRisk error = %v, want row index 1", err)
 				}
-				if _, err := ConditionalValueAtRisk(bad, 0.95, method); err == nil || !strings.Contains(err.Error(), "row 2") {
-					t.Errorf("ConditionalValueAtRisk error = %v, want row 2", err)
+				if _, err := ConditionalValueAtRisk(bad, 0.95, method); err == nil || !strings.Contains(err.Error(), "row index 1") {
+					t.Errorf("ConditionalValueAtRisk error = %v, want row index 1", err)
 				}
 			}
 		})

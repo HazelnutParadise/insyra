@@ -163,10 +163,10 @@ func TestDeflatedSharpeRatioRejectsUnreadableInput(t *testing.T) {
 		values []any
 		row    string
 	}{
-		{"NaN trial", []any{0.5, math.NaN(), 0.7}, "row 2"},
-		{"Inf trial", []any{0.5, math.Inf(1), 0.7}, "row 2"},
-		{"nil trial", []any{0.5, nil, 0.7}, "row 2"},
-		{"text trial", []any{0.5, 0.6, "n/a"}, "row 3"},
+		{"NaN trial", []any{0.5, math.NaN(), 0.7}, "row index 1"},
+		{"Inf trial", []any{0.5, math.Inf(1), 0.7}, "row index 1"},
+		{"nil trial", []any{0.5, nil, 0.7}, "row index 1"},
+		{"text trial", []any{0.5, 0.6, "n/a"}, "row index 2"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -189,7 +189,7 @@ func TestDeflatedSharpeRatioRejectsUnreadableInput(t *testing.T) {
 }
 
 func TestPBORejectsUnreadableInput(t *testing.T) {
-	// Column 1 (zero-based, the second column) holds a string in row 3
+	// Column 1 (zero-based, the second column) holds a string in row index 2
 	// (one-based). The error must name both.
 	colA := insyra.NewDataList(0.01, 0.02, 0.03, 0.04)
 	colB := insyra.NewDataList(0.02, 0.01, "x", 0.03)
@@ -197,8 +197,8 @@ func TestPBORejectsUnreadableInput(t *testing.T) {
 	if err == nil {
 		t.Fatalf("PBO returned nil error, got %v", got)
 	}
-	if !strings.Contains(err.Error(), "column 1") || !strings.Contains(err.Error(), "row 3") {
-		t.Errorf("PBO error = %q, want column 1 and row 3", err)
+	if !strings.Contains(err.Error(), "column 1") || !strings.Contains(err.Error(), "row index 2") {
+		t.Errorf("PBO error = %q, want column 1 and row index 2", err)
 	}
 	if !math.IsNaN(got) {
 		t.Errorf("PBO = %v on refusal, want NaN", got)
@@ -207,7 +207,7 @@ func TestPBORejectsUnreadableInput(t *testing.T) {
 	// A non-finite cell in the first column is refused the same way.
 	nanCol := insyra.NewDataList(0.01, math.NaN(), 0.03, 0.04)
 	if _, err := PBO(insyra.NewDataTable(nanCol, colA), 2); err == nil ||
-		!strings.Contains(err.Error(), "column 0") || !strings.Contains(err.Error(), "row 2") {
-		t.Errorf("PBO error = %v, want column 0 and row 2", err)
+		!strings.Contains(err.Error(), "column 0") || !strings.Contains(err.Error(), "row index 1") {
+		t.Errorf("PBO error = %v, want column 0 and row index 1", err)
 	}
 }

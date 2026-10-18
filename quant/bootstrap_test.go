@@ -265,16 +265,16 @@ func TestBlockBootstrapRejectsUnreadableInput(t *testing.T) {
 	if err == nil {
 		t.Fatal("non-numeric element: expected error")
 	}
-	if !strings.Contains(err.Error(), "row 3") {
-		t.Errorf("error %q does not name row 3", err)
+	if !strings.Contains(err.Error(), "row index 2") {
+		t.Errorf("error %q does not name row index 2", err)
 	}
 	if res != nil {
 		t.Error("expected nil result on refusal")
 	}
 	for _, v := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
 		dl := insyra.NewDataList(0.01, v, 0.02)
-		if _, err := BlockBootstrap(dl, cfg); err == nil || !strings.Contains(err.Error(), "row 2") {
-			t.Errorf("value %v: expected an error naming row 2, got %v", v, err)
+		if _, err := BlockBootstrap(dl, cfg); err == nil || !strings.Contains(err.Error(), "row index 1") {
+			t.Errorf("value %v: expected an error naming row index 1, got %v", v, err)
 		}
 	}
 }

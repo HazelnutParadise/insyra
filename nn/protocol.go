@@ -186,7 +186,7 @@ func (m *BoundClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error
 		for column := range classes {
 			value, ok := insyra.ToFloat64Safe(probabilities.GetColByNumber(column).Get(row))
 			if !ok {
-				return nil, fmt.Errorf("probability column %q has a non-numeric value at row %d", probabilities.ColNames()[column], row)
+				return nil, fmt.Errorf("probability column %q has a non-numeric value at row index %d", probabilities.ColNames()[column], row)
 			}
 			if column == 0 || value > bestValue {
 				best, bestValue = column, value
@@ -232,15 +232,15 @@ func (m *BoundClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable,
 			for index := 0; index < width; index++ {
 				probability := float64(data[rowStart+index])
 				if math.IsNaN(probability) || math.IsInf(probability, 0) || probability < 0 {
-					return nil, fmt.Errorf("classifier probability output %q has invalid value %v at row %d column %d", m.probabilities.Name, probability, row, index)
+					return nil, fmt.Errorf("classifier probability output %q has invalid value %v at row index %d column index %d", m.probabilities.Name, probability, row, index)
 				}
 				sum += probability
 			}
 			if !math.IsInf(sum, 0) && sum <= 0 {
-				return nil, fmt.Errorf("classifier probability output %q has non-positive sum at row %d", m.probabilities.Name, row)
+				return nil, fmt.Errorf("classifier probability output %q has non-positive sum at row index %d", m.probabilities.Name, row)
 			}
 			if math.IsInf(sum, 0) || math.IsNaN(sum) {
-				return nil, fmt.Errorf("classifier probability output %q has invalid sum at row %d", m.probabilities.Name, row)
+				return nil, fmt.Errorf("classifier probability output %q has invalid sum at row index %d", m.probabilities.Name, row)
 			}
 			values[row] = float64(data[rowStart+column]) / sum
 		}
@@ -334,11 +334,11 @@ func tableInputTensor(dt *insyra.DataTable, spec ValueInfo, features []string) (
 	for row := 0; row < rows; row++ {
 		for column, values := range columns {
 			if row >= len(values) {
-				return nil, 0, fmt.Errorf("feature column %q has no value at row %d", features[column], row)
+				return nil, 0, fmt.Errorf("feature column %q has no value at row index %d", features[column], row)
 			}
 			value, ok := insyra.ToFloat64Safe(values[row])
 			if !ok {
-				return nil, 0, fmt.Errorf("feature column %q has a non-numeric value at row %d", features[column], row)
+				return nil, 0, fmt.Errorf("feature column %q has a non-numeric value at row index %d", features[column], row)
 			}
 			if len(features) == 1 && len(shape) == 1 {
 				data[row] = float32(value)
