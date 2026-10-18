@@ -352,7 +352,7 @@ func encodeTrainingFeature(name string, raw []any, n int, categorical bool, maxB
 		}
 		converted, ok := insyra.ToFloat64Safe(value)
 		if !ok {
-			return treeFeature{}, nil, fmt.Errorf("ml: feature %q contains non-numeric value at row %d", name, i)
+			return treeFeature{}, nil, fmt.Errorf("ml: feature %q contains non-numeric value at row index %d", name, i)
 		}
 		observed = append(observed, float32(converted))
 	}
@@ -438,7 +438,7 @@ func treeClasses(raw []any, n int) ([]any, []int, error) {
 	keys := make([]string, 0)
 	for i, value := range raw {
 		if treeMissing(value) {
-			return nil, nil, fmt.Errorf("ml: classification target is missing at row %d", i)
+			return nil, nil, fmt.Errorf("ml: classification target is missing at row index %d", i)
 		}
 		key := treeCategoryKey(value)
 		if _, ok := valuesByKey[key]; !ok {
@@ -466,7 +466,7 @@ func quantizeTargets(raw []any, n int) ([]int64, []int64, float64, error) {
 	for i, value := range raw {
 		converted, ok := insyra.ToFloat64Safe(value)
 		if !ok || math.IsNaN(converted) || math.IsInf(converted, 0) {
-			return nil, nil, 0, fmt.Errorf("ml: regression target must be finite numeric at row %d", i)
+			return nil, nil, 0, fmt.Errorf("ml: regression target must be finite numeric at row index %d", i)
 		}
 		values[i] = converted
 		if abs := math.Abs(converted); abs > maxAbs {

@@ -82,13 +82,13 @@ func readLongFormat(dt insyra.IDataTable, valueCol any, factorCols []any, roles 
 		for i := range rows {
 			cell := facCells[i]
 			if cell == nil {
-				return nil, nil, fmt.Errorf("%s column %v has no level at row %d", roles[k], factorCols[k], i+1)
+				return nil, nil, fmt.Errorf("%s column %v has no level at row index %d", roles[k], factorCols[k], i)
 			}
 			if f, ok := cell.(float64); ok && math.IsNaN(f) {
-				return nil, nil, fmt.Errorf("%s column %v has no level at row %d", roles[k], factorCols[k], i+1)
+				return nil, nil, fmt.Errorf("%s column %v has no level at row index %d", roles[k], factorCols[k], i)
 			}
 			if f, ok := cell.(float32); ok && math.IsNaN(float64(f)) {
-				return nil, nil, fmt.Errorf("%s column %v has no level at row %d", roles[k], factorCols[k], i+1)
+				return nil, nil, fmt.Errorf("%s column %v has no level at row index %d", roles[k], factorCols[k], i)
 			}
 
 			key := insyra.ToMapKey(cell)
@@ -191,7 +191,7 @@ func readRepeatedMeasures(dt insyra.IDataTable, valueCol, conditionCol, subjectC
 	for r := range values {
 		s, c := subj.of[r], cond.of[r]
 		if prior, ok := rowOf[s][c]; ok {
-			return nil, fmt.Errorf("subject %v has more than one observation for condition %v (rows %d and %d)", subj.levels[s], cond.levels[c], prior+1, r+1)
+			return nil, fmt.Errorf("subject %v has more than one observation for condition %v (row indexes %d and %d)", subj.levels[s], cond.levels[c], prior, r)
 		}
 		rowOf[s][c] = r
 	}

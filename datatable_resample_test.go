@@ -91,8 +91,8 @@ func TestDataTable_Resample_RejectsBadTimeColumnWithRow(t *testing.T) {
 		NewDataList(1.0, 2.0).SetName("Value"),
 	)
 	_, err := dt.Resample(Name("Date"), ResampleMonthly, ResampleAgg{Col: Name("Value"), Op: OpSum})
-	if err == nil || !strings.Contains(err.Error(), "row 2") {
-		t.Fatalf("error = %v, want row 2", err)
+	if err == nil || !strings.Contains(err.Error(), "row index 1") {
+		t.Fatalf("error = %v, want row index 1", err)
 	}
 }
 

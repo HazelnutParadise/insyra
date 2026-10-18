@@ -159,7 +159,7 @@ func numericColumns(dt *insyra.DataTable) ([][]float64, error) {
 		for i, value := range raw {
 			converted, ok := insyra.ToFloat64Safe(value)
 			if !ok {
-				return nil, fmt.Errorf("ml: column %q contains non-numeric value at row %d", name, i)
+				return nil, fmt.Errorf("ml: column %q contains non-numeric value at row index %d", name, i)
 			}
 			values[i] = converted
 		}

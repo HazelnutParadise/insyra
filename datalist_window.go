@@ -31,13 +31,15 @@ func (dl *DataList) Shift(periods int, fill ...any) *DataList {
 		out := make([]any, n)
 		switch {
 		case periods == 0:
-			copy(out, dl.data)
+			for i, v := range dl.data {
+				out[i] = Cell(v)
+			}
 		case periods > 0:
 			for i := range n {
 				if i < periods {
 					out[i] = fillVal
 				} else {
-					out[i] = dl.data[i-periods]
+					out[i] = Cell(dl.data[i-periods])
 				}
 			}
 		default:
@@ -47,10 +49,11 @@ func (dl *DataList) Shift(periods int, fill ...any) *DataList {
 				if src >= n {
 					out[i] = fillVal
 				} else {
-					out[i] = dl.data[src]
+					out[i] = Cell(dl.data[src])
 				}
 			}
 		}
+		// Each existing cell is wrapped so a slice stored in it stays one cell.
 		result = NewDataList(out...)
 		result.name = dl.name
 	})

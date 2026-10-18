@@ -70,7 +70,7 @@ func PoissonRegressionWithOptions(opts PoissonRegressionOptions, dlY insyra.IDat
 	}
 	for i, v := range y {
 		if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
-			return nil, fmt.Errorf("poisson response must be non-negative finite values (index %d)", i)
+			return nil, fmt.Errorf("poisson response must be non-negative finite values (row index %d)", i)
 		}
 	}
 	var offset []float64

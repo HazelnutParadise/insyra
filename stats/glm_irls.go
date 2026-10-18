@@ -73,7 +73,7 @@ func fitIRLS(X *mat.Dense, y []float64, fam glmFamily, link glmLink, opts irlsOp
 	}
 	for i, w := range weights {
 		if w < 0 || math.IsNaN(w) {
-			return nil, fmt.Errorf("weights must be non-negative finite values (index %d)", i)
+			return nil, fmt.Errorf("weights must be non-negative finite values (row index %d)", i)
 		}
 	}
 

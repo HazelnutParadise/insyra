@@ -50,7 +50,7 @@ func WeightedLinearRegression(dlY insyra.IDataList, dlWeights insyra.IDataList, 
 	weights := extras[0]
 	for i, w := range weights {
 		if w <= 0 {
-			return nil, fmt.Errorf("weights must be strictly positive; row %d holds %v", i+1, w)
+			return nil, fmt.Errorf("weights must be strictly positive; row index %d holds %v", i, w)
 		}
 	}
 	p := len(xs)
