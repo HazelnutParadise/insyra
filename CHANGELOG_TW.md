@@ -31,6 +31,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `FillNaNWithMean` 的 Deprecated 說明改成給出保留其行為的寫法 `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())`；原本指向會連 nil 一起填的 `FillWithMean`。
 - MySQL 上用 `Replace` 的 `ToSQL` 寫入失敗時會保留舊表。MySQL 在 `DROP TABLE` 時就結束交易，所以插入失敗後舊表和新資料都沒了。現在資料先寫進暫存表，再用一次 `RENAME TABLE` 換上，最後才刪掉舊表；被其他表以外鍵參照的表會在任何變更前被拒絕。帳號需要資料庫層級的 `CREATE`、`INSERT`、`ALTER`、`DROP` 權限。SQLite 與 PostgreSQL 照舊使用單一交易。
 - `ScalerParams.PassThrough` 改為 Deprecated，在這條線意義不變，在 0.4 移除；0.4 的 `SimpleImputer` 會在 fit 時拒絕這種欄位。
+- 新增 `insyra.IsNilList(dl)`，判斷一個 `IDataList` 背後是否沒有清單，包含內嵌 nil `*DataList` 的包裝（例如 `isr.DL`）。`plot` 圖表與 `stats` 函式收到這種包裝時，會當成 nil 清單處理，不再 panic（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。
 
 ### CLI
 
@@ -111,6 +112,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `accel`
 
 - 手動組出來的 `Buffer` 如果宣告為數值欄，但 `Values` 讀不了（`[]float32`、`[]int`、nil）、`Type` 與 `Values` 不符，或欄位長度不一致，`ExecuteNearestExact` 現在會回傳指出欄位的錯誤。過去它會回傳空結果且沒有錯誤（[#441](https://github.com/HazelnutParadise/insyra/issues/441)）。由 `ProjectDataList`、`ProjectDataTable` 建出的資料集不受影響；`bool`、`string`、`any` 欄位仍回報 `dtype-not-eligible`，不會出錯。
+
+### `plot`
+
+- `CreateWordCloud` 依圖上顯示的文字計數，清單裡有 slice 型儲存格時不再 panic（`hash of unhashable type`）（[#411](https://github.com/HazelnutParadise/insyra/issues/411)）。`1` 和 `"1"` 會算成同一個詞，和它們在圖上看起來一樣。
 
 ## v0.3.4
 

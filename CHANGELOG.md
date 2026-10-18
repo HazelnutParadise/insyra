@@ -31,6 +31,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `FillNaNWithMean`'s deprecation notice gives the call that keeps its behaviour, `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())`; it pointed at `FillWithMean`, which also fills nil.
 - `ToSQL` with `Replace` on MySQL keeps the old table when the write fails. MySQL ends a transaction at `DROP TABLE`, so a failed insert left neither the old table nor the new rows. The rows now go into a staging table that one `RENAME TABLE` swaps in before the old table is dropped, and a table another table references by foreign key is refused before anything changes. The account needs database-level `CREATE`, `INSERT`, `ALTER` and `DROP`. SQLite and PostgreSQL keep one transaction, as before.
 - `ScalerParams.PassThrough` is deprecated; it keeps its meaning on this line and is removed in 0.4, where `SimpleImputer` refuses such a column when it is fitted.
+- `insyra.IsNilList(dl)` reports whether an `IDataList` has no list behind it, including a wrapper that embeds a nil `*DataList` such as `isr.DL`. `plot` charts and `stats` functions given such a wrapper treat it as a nil list instead of panicking ([#412](https://github.com/HazelnutParadise/insyra/issues/412)).
 
 ### CLI
 
@@ -111,6 +112,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `accel`
 
 - `ExecuteNearestExact` returns an error naming the column when a hand-built `Buffer` is declared numeric but holds `Values` it cannot read (`[]float32`, `[]int`, nil), when `Type` and `Values` disagree, or when columns differ in length. It returned an empty result with a nil error before ([#441](https://github.com/HazelnutParadise/insyra/issues/441)). Datasets built by `ProjectDataList` and `ProjectDataTable` are unaffected, and a `bool`, `string` or `any` column still reports `dtype-not-eligible` without an error.
+
+### `plot`
+
+- `CreateWordCloud` counts words by the text the chart shows, so a list holding a slice cell no longer panics with `hash of unhashable type` ([#411](https://github.com/HazelnutParadise/insyra/issues/411)). `1` and `"1"` count as one word, as they already looked on the chart.
 
 ## v0.3.4
 
