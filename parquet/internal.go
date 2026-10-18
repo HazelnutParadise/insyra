@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"time"
+	"unicode/utf8"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
@@ -730,6 +731,9 @@ func (k *columnKinds) add(data []any) {
 func (k *columnKinds) arrowType() arrow.DataType {
 	numeric := k.hasInt || k.hasFloat
 	switch {
+	case k.hasBytes && !k.hasString && !k.hasOther && !k.hasInt && !k.hasFloat && !k.hasBool && !k.hasTime:
+		// Only byte slices: the column is Binary, so the bytes come back as bytes.
+		return arrow.BinaryTypes.Binary
 	case k.hasString || k.hasOther || k.hasBytes:
 		return arrow.BinaryTypes.String
 	case k.hasBool && !numeric && !k.hasTime:
@@ -765,7 +769,18 @@ func appendValue(b array.Builder, v any) {
 	case *array.Float64Builder:
 		builder.Append(conv.ParseF64(v))
 	case *array.StringBuilder:
-		builder.Append(conv.ToString(v))
+		if raw, ok := v.([]byte); ok && utf8.Valid(raw) {
+			// conv.ToString would write a byte slice as "[65 45 48 49]".
+			builder.Append(string(raw))
+		} else {
+			builder.Append(conv.ToString(v))
+		}
+	case *array.BinaryBuilder:
+		if raw, ok := v.([]byte); ok {
+			builder.Append(raw)
+		} else {
+			builder.AppendNull()
+		}
 	case *array.BooleanBuilder:
 		builder.Append(conv.ParseBool(v))
 	case *array.TimestampBuilder:
