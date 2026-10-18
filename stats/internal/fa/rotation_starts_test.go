@@ -315,9 +315,7 @@ func TestARejectedStartIsReplaced(t *testing.T) {
 // because it is the one fixture on which the identity start stops in a basin a
 // random start escapes: the quartimin criterion reaches f = 0.0444 from the
 // identity and from the informed Varimax start, and f = 0.00094 from the first
-// random start. Oblimin at gamma = 0 is the same criterion, but on this line it
-// builds its own identity start and ignores the ones it is handed, so it stays
-// at 0.0444 however many starts are asked for.
+// random start. Oblimin at gamma = 0 is the same criterion.
 func overFactoredStructure() *mat.Dense {
 	return mat.NewDense(6, 4, []float64{
 		0.97371501712956454, 0.0079721325645778496, -0.014459486993830628, -0.21588523283154318,
@@ -442,5 +440,28 @@ func TestConvergedRotationDoesNotWarn(t *testing.T) {
 	}
 	if got := insyra.GetErrorCount() - before; got != 0 {
 		t.Errorf("%d entries pushed into the error buffer for a converged rotation", got)
+	}
+}
+
+// Oblimin used to build its own identity start on every pass and ignore the
+// one it was handed, so Restarts ran the same computation N times. At gamma = 0
+// oblimin is the quartimin criterion, and quartimin does use its starts, so the
+// two must agree for the same start list — they did not, at Restarts >= 5 on
+// the over-factored fixture, where a random start reaches a lower basin.
+func TestObliminRunsFromTheStartItIsGiven(t *testing.T) {
+	for name, L := range map[string]*mat.Dense{"noisy": noisyStructure(), "over-factored": overFactoredStructure()} {
+		for _, restarts := range []int{1, 2, 5, 20} {
+			fo := criterionOf(t, "oblimin", L, restarts)
+			fq := criterionOf(t, "quartimin", L, restarts)
+			if math.Abs(fo-fq) > 1e-12 {
+				t.Errorf("%s/restarts=%d: oblimin f = %.12f, quartimin f = %.12f — oblimin is not rotating from the same starts", name, restarts, fo, fq)
+			}
+		}
+	}
+
+	L := overFactoredStructure()
+	one, five := criterionOf(t, "oblimin", L, 1), criterionOf(t, "oblimin", L, 5)
+	if five >= one/10 {
+		t.Errorf("over-factored: f = %.6f at one start and %.6f at five; the search did not leave the identity's basin", one, five)
 	}
 }
