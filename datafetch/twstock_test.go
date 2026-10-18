@@ -747,7 +747,7 @@ func TestTWStockOddLotQuotesNoDataAndBadSession(t *testing.T) {
 
 func TestTWStockShareholdingDistribution(t *testing.T) {
 	stock, transport := newFixtureTWStock(t, TWStockConfig{})
-	transport.addFixture(t, "/getOD.ashx?id=1-5", "tdcc_shareholding_20261016.csv")
+	transport.addFixture(t, "/getOD.ashx?id=1-5", "tdcc_shareholding_20261016.csv.txt")
 	dt, err := stock.ShareholdingDistribution()
 	if err != nil {
 		t.Fatalf("ShareholdingDistribution error: %v", err)

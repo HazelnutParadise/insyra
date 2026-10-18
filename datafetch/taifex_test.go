@@ -67,7 +67,7 @@ func TestTAIFEXInstitutional(t *testing.T) {
 
 func TestTAIFEXLargeTraders(t *testing.T) {
 	client, transport := newFixtureTAIFEX(t)
-	addTAIFEXFixture(t, transport, "/v1/OpenInterestOfLargeTradersFutures", "large_traders_futures.csv")
+	addTAIFEXFixture(t, transport, "/v1/OpenInterestOfLargeTradersFutures", "large_traders_futures.csv.txt")
 	addTAIFEXFixture(t, transport, "/v1/OpenInterestOfLargeTradersOptions", "large_traders_options.json")
 
 	// The futures table comes back as CSV with Chinese headers and a byte order mark.
