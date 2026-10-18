@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
@@ -59,7 +58,7 @@ func runScaleFit(ctx *ExecContext, args []string) error {
 	scalerVar := args[1]
 	tableVar := args[2]
 
-	cols, featureMin, featureMax, hasRange, err := parseScaleFitOptions(args[3:])
+	cols, featureMin, featureMax, hasRange, err := parseScaleFitOptions(ctx, args[3:])
 	if err != nil {
 		return err
 	}
@@ -140,7 +139,7 @@ func runScaleApply(ctx *ExecContext, args []string, inverse bool) error {
 	return nil
 }
 
-func parseScaleFitOptions(args []string) (cols []string, featureMin, featureMax float64, hasRange bool, err error) {
+func parseScaleFitOptions(ctx *ExecContext, args []string) (cols []string, featureMin, featureMax float64, hasRange bool, err error) {
 	for i := 0; i < len(args); {
 		key := strings.ToLower(args[i])
 		switch key {
@@ -154,11 +153,11 @@ func parseScaleFitOptions(args []string) (cols []string, featureMin, featureMax 
 			if i+2 >= len(args) {
 				return nil, 0, 0, false, fmt.Errorf("scale fit: range requires <min> <max>")
 			}
-			featureMin, err = strconv.ParseFloat(args[i+1], 64)
+			featureMin, err = parseFloatToken(ctx, args[i+1])
 			if err != nil {
 				return nil, 0, 0, false, fmt.Errorf("scale fit: invalid range min %q", args[i+1])
 			}
-			featureMax, err = strconv.ParseFloat(args[i+2], 64)
+			featureMax, err = parseFloatToken(ctx, args[i+2])
 			if err != nil {
 				return nil, 0, 0, false, fmt.Errorf("scale fit: invalid range max %q", args[i+2])
 			}

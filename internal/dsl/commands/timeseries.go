@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
@@ -116,7 +115,7 @@ func runMovAvgCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	window, err := parseIntArg("movavg", "window", coreArgs[1])
+	window, err := parseIntArg(ctx, "movavg", "window", coreArgs[1])
 	if err != nil {
 		return err
 	}
@@ -152,7 +151,7 @@ func runExpSmoothCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	alpha, err := parseFloatArg("expsmooth", "alpha", coreArgs[1])
+	alpha, err := parseFloatArg(ctx, "expsmooth", "alpha", coreArgs[1])
 	if err != nil {
 		return err
 	}
@@ -210,7 +209,7 @@ func runShiftCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	periods, err := strconv.Atoi(coreArgs[1])
+	periods, err := atoiArg(ctx, coreArgs[1])
 	if err != nil {
 		return wrapArgError(err, "shift: invalid periods %q", coreArgs[1])
 	}
@@ -240,7 +239,7 @@ func runDiffNCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	periods, err := strconv.Atoi(coreArgs[1])
+	periods, err := atoiArg(ctx, coreArgs[1])
 	if err != nil {
 		return wrapArgError(err, "diffn: invalid periods %q", coreArgs[1])
 	}
@@ -262,7 +261,7 @@ func runPctChangeCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	periods, err := strconv.Atoi(coreArgs[1])
+	periods, err := atoiArg(ctx, coreArgs[1])
 	if err != nil {
 		return wrapArgError(err, "pctchange: invalid periods %q", coreArgs[1])
 	}
@@ -314,7 +313,7 @@ func runRollingCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	window, err := strconv.Atoi(coreArgs[1])
+	window, err := atoiArg(ctx, coreArgs[1])
 	if err != nil {
 		return wrapArgError(err, "rolling: invalid window %q", coreArgs[1])
 	}
@@ -350,7 +349,7 @@ func runRollingCommand(ctx *ExecContext, args []string) error {
 			if err != nil {
 				return err
 			}
-			n, err := strconv.Atoi(v)
+			n, err := atoiArg(ctx, v)
 			if err != nil {
 				return wrapArgError(err, "rolling: invalid minobs %q", v)
 			}
@@ -413,7 +412,7 @@ func runExpandingCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	minObs, err := strconv.Atoi(coreArgs[1])
+	minObs, err := atoiArg(ctx, coreArgs[1])
 	if err != nil {
 		return wrapArgError(err, "expanding: invalid minobs %q", coreArgs[1])
 	}
@@ -455,7 +454,7 @@ func runEWMCommand(ctx *ExecContext, args []string) error {
 	}
 
 	decay := strings.ToLower(coreArgs[1])
-	value, err := strconv.ParseFloat(coreArgs[2], 64)
+	value, err := parseFloatToken(ctx, coreArgs[2])
 	if err != nil {
 		return wrapArgError(err, "ewm: invalid %s %q", decay, coreArgs[2])
 	}
@@ -505,7 +504,7 @@ func runEWMCommand(ctx *ExecContext, args []string) error {
 			}
 			opts.Bias = b
 		case "minobs":
-			n, err := strconv.Atoi(raw)
+			n, err := atoiArg(ctx, raw)
 			if err != nil {
 				return wrapArgError(err, "ewm: invalid minobs %q", raw)
 			}

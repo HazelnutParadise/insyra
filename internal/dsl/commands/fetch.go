@@ -123,7 +123,7 @@ func runFetchCommand(ctx *ExecContext, args []string) error {
 	case "news":
 		count := 10
 		if len(params) >= 1 {
-			parsed, parseErr := parseIntArg("fetch", "news count", params[0])
+			parsed, parseErr := parseIntArg(ctx, "fetch", "news count", params[0])
 			if parseErr != nil {
 				return parseErr
 			}

@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/HazelnutParadise/insyra/stats"
 )
@@ -20,7 +19,7 @@ func runPCACommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	n, err := strconv.Atoi(coreArgs[1])
+	n, err := atoiArg(ctx, coreArgs[1])
 	if err != nil || n < 1 {
 		return fmt.Errorf("invalid number of components: %s", coreArgs[1])
 	}
