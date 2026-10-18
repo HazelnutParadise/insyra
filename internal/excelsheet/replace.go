@@ -10,10 +10,14 @@ import (
 
 // Replace empties the existing sheet at idx by deleting and re-creating it,
 // then moves it back to where it was, hides it again if it was hidden and
-// restores the active sheet. Nothing stored in the old sheet survives: no
-// cell, formula, hidden row, row height, comment, hyperlink, column width,
-// view or merged range, and the comments, tables, drawings and pictures it
-// owned are removed from the file too, unless another part still uses them.
+// restores the active sheet. What lays the sheet out without touching its
+// data is carried over: the widths of its visible columns and its view
+// (zoom, gridlines, frozen or split panes). Nothing else stored in the old
+// sheet survives: no cell, formula, hidden row or column, row height, comment,
+// hyperlink or merged range, and the comments, tables, drawings and pictures
+// it owned are removed from the file too, unless another part still uses
+// them. Hidden rows and columns and merged ranges are dropped because they
+// would hide the new data.
 // Names defined for a later sheet stay with that sheet; only the names
 // belonging to the replaced sheet are deleted with it.
 // excelize refuses to delete a workbook's only sheet, so that case goes
@@ -48,6 +52,7 @@ func Replace(f *excelize.File, sheet string, idx int) error {
 			return fmt.Errorf("placeholder sheet %s was not created next to %s", placeholder, sheet)
 		}
 	}
+	layout := readLayout(f, sheet)
 	// Read what the old sheet owns before DeleteSheet drops its relationships.
 	owned := ownedParts(f, idx)
 	if err := f.DeleteSheet(sheet); err != nil {
@@ -55,6 +60,9 @@ func Replace(f *excelize.File, sheet string, idx int) error {
 	}
 	dropParts(f, owned)
 	if _, err := f.NewSheet(sheet); err != nil {
+		return err
+	}
+	if err := layout.apply(f, sheet); err != nil {
 		return err
 	}
 	if placeholder != "" {
@@ -102,4 +110,64 @@ func availableSheetName(f *excelize.File, base string) string {
 		}
 		name = fmt.Sprintf("%s%d", base, i)
 	}
+}
+
+// excelizeDefaultColWidth is the width GetColWidth reports for a column that
+// sets none, so a column at that width has nothing to carry over.
+const excelizeDefaultColWidth = 9.140625
+
+// layout is what a sheet records about how it looks apart from its cells.
+type layout struct {
+	widths map[string]float64
+	view   *excelize.ViewOptions
+	panes  *excelize.Panes
+}
+
+// readLayout reads the widths of the sheet's visible columns and its first
+// view and panes. Every column Excel has is asked, because the sheet's stored
+// dimension only covers the cells written when it was loaded and says nothing
+// of a column that has a width and no cell. A part that cannot be read is left
+// out, since losing a width is not worth failing the replace.
+func readLayout(f *excelize.File, sheet string) layout {
+	l := layout{widths: map[string]float64{}}
+	for c := 1; c <= excelize.MaxColumns; c++ {
+		name, err := excelize.ColumnNumberToName(c)
+		if err != nil {
+			break
+		}
+		if w, err := f.GetColWidth(sheet, name); err != nil {
+			break
+		} else if w != excelizeDefaultColWidth {
+			if visible, err := f.GetColVisible(sheet, name); err == nil && visible {
+				l.widths[name] = w
+			}
+		}
+	}
+	if view, err := f.GetSheetView(sheet, 0); err == nil {
+		l.view = &view
+	}
+	if panes, err := f.GetPanes(sheet); err == nil && (panes.Freeze || panes.Split) {
+		l.panes = &panes
+	}
+	return l
+}
+
+// apply writes the layout onto the freshly created sheet.
+func (l layout) apply(f *excelize.File, sheet string) error {
+	for name, w := range l.widths {
+		if err := f.SetColWidth(sheet, name, name, w); err != nil {
+			return err
+		}
+	}
+	if l.view != nil {
+		if err := f.SetSheetView(sheet, 0, l.view); err != nil {
+			return err
+		}
+	}
+	if l.panes != nil {
+		if err := f.SetPanes(sheet, l.panes); err != nil {
+			return err
+		}
+	}
+	return nil
 }

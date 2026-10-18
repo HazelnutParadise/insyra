@@ -172,6 +172,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `CreateBarChart` 與 `CreateHistogram` 收到 `isr.DL` 這類包著 nil 清單的包裝時，會記錄警告並回傳 nil，不再 panic（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。
 - `LinearRegression`、`PoissonRegression`、`LogisticRegression`、`Correlation`、`Covariance`、`ChiSquareGoodnessOfFit`、`ChiSquareIndependenceTest`、`Silhouette`、`KNNClassify`、`KNNRegress`、`Skewness`、`Kurtosis` 收到 nil 清單（直接傳入或包在 `isr.DL` 這類包裝裡）時回傳錯誤。過去會 panic，迴歸函式還是在自己啟動的 goroutine 裡 panic，讓程式結束。`insyra.ProcessData` 把 nil 清單當成不支援的輸入。
+- `AppendCsvToExcel` 與 `ToExcel` 搭配 `SheetExistsReplace` 取代工作表時，會保留舊工作表的欄寬與檢視（縮放、格線、凍結或分割窗格），這些在 v0.3.4 會一起消失。隱藏的列與欄、合併範圍、列高、註解、超連結與該工作表自己的定義名稱仍會移除，因為它們會藏住或錯置新資料（[#401](https://github.com/HazelnutParadise/insyra/issues/401)）。
 
 ## v0.3.4
 

@@ -1,7 +1,7 @@
 # csvxl-excel-append Specification
 
 ## Purpose
-Defines what `csvxl.AppendCsvToExcel` does when the target sheet already exists (rebuild it in its place, so nothing stored in the old sheet survives while what the workbook records about it, its position, hidden state and the active sheet, stays, and names and formulas elsewhere keep their sheets, even for a single-sheet workbook) and requires every workbook the package opens to be closed.
+Defines what `csvxl.AppendCsvToExcel` does when the target sheet already exists (rebuild it in its place, so no cell, hidden row or column, merged range, comment or link survives while column widths and the view carry over, and what the workbook records about it, its position, hidden state and the active sheet, stays, and names and formulas elsewhere keep their sheets, even for a single-sheet workbook) and requires every workbook the package opens to be closed.
 
 ## Requirements
 
@@ -16,7 +16,7 @@ Defines what `csvxl.AppendCsvToExcel` does when the target sheet already exists 
 
 ### Requirement: Appending to an existing sheet name rebuilds the sheet
 
-`csvxl.AppendCsvToExcel` 遇到工作簿已有同名工作表時 SHALL 以新的空白工作表取代它再寫入 CSV，使結果只含 CSV 的內容：舊工作表的儲存格、公式、隱藏列、列高、註解、超連結、欄寬、檢視、合併範圍與只屬於該工作表的定義名稱 SHALL NOT 殘留。活頁簿對該工作表的紀錄 SHALL 保留：它在工作簿中的位置與隱藏狀態不變，作用中的工作表不變。活頁簿其他地方的定義名稱與公式 SHALL 保留，並維持原本的所屬工作表。工作表名稱比對不分大小寫，取代後的工作表 SHALL 使用呼叫時給的名稱。工作簿只有那一張工作表時 SHALL 仍能完成替換。
+`csvxl.AppendCsvToExcel` 遇到工作簿已有同名工作表時 SHALL 以新的空白工作表取代它再寫入 CSV：舊工作表的儲存格、公式、隱藏列與隱藏欄、列高、註解、超連結、合併範圍與只屬於該工作表的定義名稱 SHALL NOT 殘留，可見欄的欄寬與檢視（縮放、格線、凍結或分割窗格）SHALL 保留。活頁簿對該工作表的紀錄 SHALL 保留：位置、隱藏狀態與作用中的工作表不變。活頁簿其他地方的定義名稱與公式 SHALL 保留，並維持原本的所屬工作表。工作表名稱比對不分大小寫，取代後的工作表 SHALL 使用呼叫時給的名稱。工作簿只有那一張工作表時 SHALL 仍能完成替換。
 
 #### Scenario: Stale cells do not survive an append
 
@@ -32,6 +32,11 @@ Defines what `csvxl.AppendCsvToExcel` does when the target sheet already exists 
 
 - **WHEN** 工作表依序為 `First`、`Target`、`Last`，`Target` 的第 2、3 列被隱藏，B2 有註解、B3 有超連結，之後對 `Target` 執行 `AppendCsvToExcel`
 - **THEN** 工作表順序仍是 `First`、`Target`、`Last`，新寫入的列都是顯示狀態，B2 沒有註解，B3 沒有超連結，`ExcelToCsv` 讀回的列數與 CSV 相同
+
+#### Scenario: Layout stays, what hides data goes
+
+- **WHEN** `Target` 的 A 欄寬為 40、B 欄被隱藏、A2:C2 合併、第 1 列凍結、縮放 150，之後對 `Target` 執行 `AppendCsvToExcel`
+- **THEN** A 欄寬仍為 40，凍結與縮放不變，B 欄顯示，沒有合併範圍，且每一列都讀得回來
 
 #### Scenario: Names of the sheets after it stay with them
 
