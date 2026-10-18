@@ -378,10 +378,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: documentation, not code. `Docs/DataList.md` describes the flattening and `Cell` together; keep the `Count`/`Counter` examples building their list with `Append` or `Cell` so they are runnable as written, and consider whether `Count` should say something when it is handed a slice that the receiving list could not be holding.
 - **Status**: pending
 
-### [2026-09-12] — a self-referential slice takes the process down in `NewDataList`
-- **Where**: `datalist.go` `flattenWithNilSupport`
-- **What**: it recurses into every `reflect.Slice` with no depth limit, so a slice containing itself exhausts the stack. Measured on 2026-09-13: `cyclic := []any{1}; cyclic[0] = cyclic; insyra.NewDataList(cyclic)` ends with `fatal error: stack overflow`. That is not a panic: `recover` cannot catch it, and the whole program ends. `encodeCell` was given a depth limit of 64 for exactly this reason; the flattener was not touched because it is the constructor's hot path and the fix should be measured against it. `Append` does not flatten, so it can put such a slice into a list as one cell, and printing that cell overflows the stack the same way: `stats` formats a refused cell with `%v` in its error, so measured on 2026-09-27, `OneWayANOVA` on a list holding `cyclic` ends with `fatal error: stack overflow`. Every function that reads through `numericValues` shares this, and the hypothesis tests joined them in `hypothesis-tests-refuse-non-finite`; before that they reported only the position.
-- **Suggestion**: the same depth bound, or a visited-pointer set. A bound is cheaper and a 64-deep slice literal is already pathological; a visited set is exact but costs an allocation per construction. Measure `NewDataList` on a large flat slice before and after, because that path runs for every table built from a slice. For the error text, print a composite cell by its type instead of its contents, or through the same bounded encoder.
+### [2026-09-12] — a self-referential slice put into a list with `Append` still takes the process down when printed
+- **Where**: `stats` error formatting with `%v` of a refused cell (`numericValues` and everything that reads through it); `Show` of such a cell
+- **What**: `NewDataList` no longer recurses forever on a slice that contains itself (`flattenToDepth` keeps a slice 64 levels down as one cell). `Append` does not flatten, so it can still put such a slice into a list as one cell, and printing that cell overflows the stack: measured on 2026-09-27, `OneWayANOVA` on a list holding `cyclic` ends with `fatal error: stack overflow`.
+- **Suggestion**: for the error text, print a composite cell by its type instead of its contents, or through the bounded encoder `encodeCell`.
 - **Status**: pending
 
 ### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
