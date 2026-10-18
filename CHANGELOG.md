@@ -32,6 +32,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `ToSQL` with `Replace` on MySQL keeps the old table when the write fails. MySQL ends a transaction at `DROP TABLE`, so a failed insert left neither the old table nor the new rows. The rows now go into a staging table that one `RENAME TABLE` swaps in before the old table is dropped, and a table another table references by foreign key is refused before anything changes. The account needs database-level `CREATE`, `INSERT`, `ALTER` and `DROP`. SQLite and PostgreSQL keep one transaction, as before.
 - `ScalerParams.PassThrough` is deprecated; it keeps its meaning on this line and is removed in 0.4, where `SimpleImputer` refuses such a column when it is fitted.
 - `insyra.IsNilList(dl)` reports whether an `IDataList` has no list behind it, including a wrapper that embeds a nil `*DataList` such as `isr.DL`. `plot` charts and `stats` functions given such a wrapper treat it as a nil list instead of panicking ([#412](https://github.com/HazelnutParadise/insyra/issues/412)).
+- `ReadSlice2D` makes the table as wide as the widest row. A row longer than the first used to lose its extra values with no error: `[][]float64{{1}, {2, 3}}` gave a 2x1 table without the 3. Shorter rows are still padded with nil ([#410](https://github.com/HazelnutParadise/insyra/issues/410)).
 
 ### CLI
 
