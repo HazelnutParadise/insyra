@@ -60,19 +60,16 @@ func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) (*charts.Wor
 		config.SizeRange = []float32{0, 25}
 	}
 
-	dataMap := make(map[any]float32)
+	// Words are counted by the text the chart shows, so a cell that cannot be a
+	// map key, such as a slice, is still a word and 1 and "1" are one word.
+	dataMap := make(map[string]float32)
 	isEmpty := true
 	data.AtomicDo(func(dl *insyra.DataList) {
 		if data.Len() > 0 {
 			isEmpty = false
 		}
 		for _, item := range data.Data() {
-			_, ok := dataMap[item]
-			if !ok {
-				dataMap[item] = 1
-			} else {
-				dataMap[item]++
-			}
+			dataMap[conv.ToString(item)]++
 		}
 	})
 	if isEmpty {
@@ -93,11 +90,11 @@ func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) (*charts.Wor
 }
 
 // convertToWordCloudData converts map[string]float32 to []opts.WordCloudData.
-func convertToWordCloudData(data map[any]float32) []opts.WordCloudData {
+func convertToWordCloudData(data map[string]float32) []opts.WordCloudData {
 	items := make([]opts.WordCloudData, len(data))
 	i := 0
 	for name, value := range data {
-		items[i] = opts.WordCloudData{Name: conv.ToString(name), Value: value}
+		items[i] = opts.WordCloudData{Name: name, Value: value}
 		i++
 	}
 	return items

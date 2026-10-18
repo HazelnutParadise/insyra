@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/isr"
 )
 
 // error-philosophy says no insyra package panics under the default config.
@@ -93,5 +94,23 @@ func TestSavePNG_PathWithoutExtension(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "extension") {
 		t.Errorf("error %q does not mention the missing extension", err)
+	}
+}
+
+func TestChartsRefuseAnIsrWrapperHoldingNilList(t *testing.T) {
+	quiet(t)
+	if got := CreateBarChart(BarChartConfig{}, isr.DL); got != nil {
+		t.Fatal("a wrapper holding a nil list should be refused like a nil list")
+	}
+}
+
+func TestWordCloudCountsSliceCellsByTheirText(t *testing.T) {
+	quiet(t)
+	dl := insyra.NewDataList("a")
+	dl.Append([]int{1, 2})
+	dl.Append([]int{1, 2})
+	dl.Append(insyra.Cell([]byte("hi")))
+	if CreateWordCloud(WordCloudConfig{}, dl) == nil {
+		t.Fatal("a list holding slice cells should still draw a word cloud")
 	}
 }

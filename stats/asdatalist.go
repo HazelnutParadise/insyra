@@ -11,7 +11,7 @@ import "github.com/HazelnutParadise/insyra"
 // becomes an empty list, so the caller's existing length checks report the
 // error instead of a panic.
 func asDataList(dl insyra.IDataList) *insyra.DataList {
-	if dl == nil {
+	if insyra.IsNilList(dl) {
 		return insyra.NewDataList()
 	}
 	if concrete, ok := dl.(*insyra.DataList); ok {
