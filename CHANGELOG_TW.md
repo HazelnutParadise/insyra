@@ -180,6 +180,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `nn.CustomLoss{Name, Loss, Validate}`，`Sequential.Fit` 可以用呼叫者在 tape 上算的 loss 訓練，不再只限 `CrossEntropy`、`MSE`、`BCEWithLogits`。`Loss` 用 tape 上的運算算出這個 batch 的損失，回傳 float32 純量；`Validate` 選填，用來檢查每個 batch 的目標值；`Name` 會標在錯誤訊息裡。`Fit` 會在跑任何 batch 之前拒絕沒有 `Loss` 的 `CustomLoss`；`Loss` 回傳 nil、不是 float32 純量，或是在 tape 之外算出的值（否則參數拿到的梯度全是零）時，也會回傳錯誤。（[issue #266](https://github.com/HazelnutParadise/insyra/issues/266)）
 - `ClassAverage` 與 `MetricDirection` 遇到常數以外的值時，印成 `ClassAverage(n)` 與 `MetricDirection(n)`。過去 `ClassAverage(9)` 會印成 `macro`，等於報出一個它根本不是的規則。ONNX 匯出無法表示未知類別處理方式時，錯誤訊息會寫出該方式的名稱。
 - 新增 `nn.CustomOptimizer{Name, Step}` 與 `Parameter.Update(fn)`，`Sequential.Fit` 可以用呼叫者自己寫的 optimizer 訓練，不再只限 `SGD`、`SGDMomentum`、`Adam`、`AdamW`。`Fit` 每個 batch 呼叫一次 `Step`，傳入模型 tape 上的所有參數；`Update` 把參數的 float32 資料和梯度交給 `fn`（loss 沒有影響到這個參數時，梯度是 nil），`fn` 寫進去的值會保留下來，手寫的訓練迴圈也能用。`Fit` 會在跑任何 batch 之前拒絕沒有 `Step` 的 `CustomOptimizer`。內建的 optimizer 行為不變。（[issue #266](https://github.com/HazelnutParadise/insyra/issues/266)）
+- CPU 上的 2-D float32 `MatMul` 快了 1.2 到 2.9 倍：在 4 vCPU 的 Linux amd64 機器上，1×784×28 從 23.0 µs 降到 19.5 µs，64×784×28 從 694 µs 降到 331 µs，256×256×256 從 5.32 ms 降到 1.81 ms。每個輸出仍照原本的順序累加乘積，所以不是 NaN 的結果每個位元都和原本相同；兩個 NaN 在同一次加法相遇時，得到的 NaN 位元可能不同。（[#463](https://github.com/HazelnutParadise/insyra/issues/463)）
 
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。
