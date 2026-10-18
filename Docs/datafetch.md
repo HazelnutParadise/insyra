@@ -689,6 +689,8 @@ MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)
 AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)
 OddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error)
 ShareholdingDistribution() (*insyra.DataTable, error)
+DailyQuotesOn(date time.Time, market TWMarket) (*insyra.DataTable, error)
+AdvanceDecline(date time.Time, market TWMarket, commonStockOnly bool) (*insyra.DataTable, error)
 ```
 
 Each method has a `...Context` form taking a `context.Context` first, such as `DailyPricesContext(ctx, code, from, to, market)`; the plain method calls it with `context.Background()`. When the context is done, the `Interval` throttle, the request in flight and any retry backoff stop at once, and the call returns `ctx.Err()` without sending another request, so a long backfill can be stopped between two monthly requests. A `nil` context is an error.
@@ -703,9 +705,19 @@ Each method has a `...Context` form taking a `context.Context` first, such as `D
 | `InstitutionalTrades` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `ForeignNet`, `TrustNet`, `DealerNet`, `TotalNet` (`int64`, shares) |
 | `MarginBalance` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `MarginBalance`, `ShortBalance` (`int64`, source balance units) |
 | `AllDailyQuotes` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `Volume` (`int64`, shares), `Turnover` (`int64`, currency units), `Open`, `High`, `Low`, `Close`, `Change` (`float64`), `Transactions` (`int64`) |
+| `DailyQuotesOn` | the columns of `AllDailyQuotes` plus `Sign` (`string`): `"+"` up, `"-"` down, `"="` unchanged, `"X"` no reference price (then `Change` is `nil`) |
+| `AdvanceDecline` | one row: `Date` (`time.Time`), `Advancing`, `AdvancingLimit`, `Declining`, `DecliningLimit`, `Unchanged`, `NoTrade`, `NoReference` (`int64`), `Source` (`string`) |
 | `OddLotQuotes` | `Date` (`time.Time`), `Code`, `Name` (`string`), `Volume` (`int64`, shares), `Transactions`, `Turnover` (`int64`), `BidPrice`, `AskPrice` (`float64`), `BidVolume`, `AskVolume` (`int64`), plus `Open`, `Close`, `High`, `Low` (`float64`) for `TWOddLotIntraday` or `Price` for `TWOddLotAfterHours` |
 
 `--`, `X`, and blank numeric cells become `nil`. TPEx historical prices report volume in lots and turnover in thousands of currency units, so `DailyPrices` converts them to shares and currency units to match the TWSE schema. This unit conversion is based on the source field names `成交張數` and `成交仟元`; margin balances retain the source endpoint's units.
+
+### Any day's closes and advancing and declining counts
+
+`AllDailyQuotes` gives only the latest day. `DailyQuotesOn(date, market)` gives every security's close for any past day, one request per day: from the TWSE's `MI_INDEX` report (data since 2004-02-11, including securities delisted since, so a study of the whole market has no survivorship bias) or the TPEx's daily close report. `Change` is signed and measured from the exchange's own reference price, which already accounts for ex-rights and ex-dividend days; `Sign` carries the exchange's up or down mark. A weekend or holiday gives an empty table with the columns in place. `TWMarketAuto` tries the TWSE and then the TPEx.
+
+`AdvanceDecline(date, market, commonStockOnly)` counts the securities that rose, fell and stood still. For recent TWSE days the exchange publishes the count itself (漲跌證券數合計) and that is returned with `Source` `"official"`, including the limit-up and limit-down counts: its 股票 column when `commonStockOnly`, the whole-market column otherwise. Without that table, and always for the TPEx, the counts are made from the closes' marks with `Source` `"computed"` and the limit counts `nil`; `commonStockOnly` then keeps four-digit codes starting with 1 to 9 and drops those starting with 91, the depositary receipts. On 2026-10-16 the computed 684 up and 286 down equal the official stock column.
+
+The TWSE answers repeated requests with the throttling page described above; for a multi-year backfill set `Interval` and `Retries` as suggested there.
 
 ### Odd-lot quotes
 

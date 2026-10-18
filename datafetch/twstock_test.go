@@ -811,3 +811,138 @@ func newFixtureTransportTWStock(t *testing.T) (*TWStockClient, *fixtureTransport
 	t.Helper()
 	return newFixtureTWStock(t, TWStockConfig{})
 }
+
+func miIndexKey(date string) string {
+	return fixtureKey("/rwd/zh/afterTrading/MI_INDEX", query("date", date, "type", "ALLBUT0999", "response", "json"))
+}
+
+func TestTWStockDailyQuotesOn(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, miIndexKey("20261016"), "twse_mi_index_20261016.json")
+	dt, err := stock.DailyQuotesOn(dateUTC(2026, time.October, 16), TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("DailyQuotesOn error: %v", err)
+	}
+	if dt.NumRows() != 9 {
+		t.Fatalf("rows = %d, want 9", dt.NumRows())
+	}
+	row := func(code string) int {
+		for i, c := range dt.GetColByName("Code").Data() {
+			if c == code {
+				return i
+			}
+		}
+		t.Fatalf("no row for %s", code)
+		return -1
+	}
+	check := func(code string, want map[string]any) {
+		for name, w := range want {
+			if got := dt.GetColByName(name).Data()[row(code)]; got != w {
+				t.Errorf("%s %s = %v (%T), want %v", code, name, got, got, w)
+			}
+		}
+	}
+	// 台泥 rose 0.07-style marks: the sign comes from the markup, the size from 漲跌價差.
+	check("1101", map[string]any{"Sign": "+", "Close": 27.3, "Volume": int64(57437884), "Transactions": int64(16647), "Turnover": int64(1574086796), "Open": 27.1})
+	check("1203", map[string]any{"Sign": "-"})
+	check("1108", map[string]any{"Sign": "=", "Change": 0.0})
+	check("1470", map[string]any{"Sign": "=", "Close": nil, "Volume": int64(0)})
+	check("8908", map[string]any{"Sign": "X", "Change": nil})
+	if got := dt.GetColByName("Change").Data()[row("1203")].(float64); got >= 0 {
+		t.Errorf("a falling stock has Change %v, want it negative", got)
+	}
+	if got := dt.GetColByName("Date").Data()[0].(time.Time); !got.Equal(dateUTC(2026, time.October, 16)) {
+		t.Errorf("Date = %v", got)
+	}
+}
+
+func TestTWStockDailyQuotesOnTPEx(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, fixtureKey("/www/zh-tw/afterTrading/otc", query("date", "2026/10/16", "type", "EW", "response", "json")), "tpex_daily_otc_20261016.json")
+	dt, err := stock.DailyQuotesOn(dateUTC(2026, time.October, 16), TWMarketTPEx)
+	if err != nil {
+		t.Fatalf("TPEx DailyQuotesOn error: %v", err)
+	}
+	if dt.NumRows() != 6 {
+		t.Fatalf("rows = %d, want 6", dt.NumRows())
+	}
+	signs := dt.GetColByName("Sign").Data()
+	changes := dt.GetColByName("Change").Data()
+	if signs[0] != "+" || changes[0] != 0.05 || signs[2] != "-" || changes[2] != -0.25 || signs[4] != "=" || signs[5] != "X" || changes[5] != nil {
+		t.Errorf("signs %v changes %v", signs, changes)
+	}
+	if got := dt.GetColByName("Volume").Data()[0]; got != int64(13452000) {
+		t.Errorf("Volume = %v, want 13452000 shares", got)
+	}
+}
+
+func TestTWStockDailyQuotesOnEmptyDay(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.replies[miIndexKey("20261017")] = []fixtureReply{{status: http.StatusOK, body: []byte(`{"stat":"很抱歉，沒有符合條件的資料!","type":"ALLBUT0999"}`)}}
+	dt, err := stock.DailyQuotesOn(dateUTC(2026, time.October, 17), TWMarketTWSE)
+	if err != nil || dt.NumRows() != 0 || dt.GetColByName("Close") == nil {
+		t.Errorf("empty day: %v rows, err %v", dt.NumRows(), err)
+	}
+	if _, err := stock.DailyQuotesOn(dateUTC(2026, time.October, 17), TWMarket("NYSE")); err == nil {
+		t.Error("an unknown market should be an error")
+	}
+	var zero TWStockClient
+	if _, err := zero.DailyQuotesOn(dateUTC(2026, time.October, 16), TWMarketTWSE); err == nil {
+		t.Error("a zero client should be an error")
+	}
+}
+
+func TestTWStockAdvanceDecline(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, miIndexKey("20261016"), "twse_mi_index_20261016.json")
+	transport.addFixture(t, miIndexKey("20261016"), "twse_mi_index_20261016.json")
+	transport.addFixture(t, miIndexKey("20161004"), "twse_mi_index_no_breadth.json")
+	transport.addFixture(t, miIndexKey("20161004"), "twse_mi_index_no_breadth.json")
+	day := dateUTC(2026, time.October, 16)
+	value := func(dt *insyra.DataTable, name string) any { return dt.GetColByName(name).Data()[0] }
+
+	// The official table: the stock column when commonStockOnly, the whole market otherwise.
+	stocks, err := stock.AdvanceDecline(day, TWMarketTWSE, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]any{"Advancing": int64(684), "AdvancingLimit": int64(19), "Declining": int64(286), "DecliningLimit": int64(0), "Unchanged": int64(106), "NoTrade": int64(5), "NoReference": int64(1), "Source": "official"} {
+		if got := value(stocks, name); got != want {
+			t.Errorf("stock %s = %v, want %v", name, got, want)
+		}
+	}
+	market, err := stock.AdvanceDecline(day, TWMarketTWSE, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value(market, "Advancing") != int64(9016) || value(market, "AdvancingLimit") != int64(68) || value(market, "NoReference") != int64(3528) {
+		t.Errorf("market counts: %v %v %v", value(market, "Advancing"), value(market, "AdvancingLimit"), value(market, "NoReference"))
+	}
+
+	// A day without the official table is counted from the closes.
+	oldDay := dateUTC(2016, time.October, 4)
+	common, err := stock.AdvanceDecline(oldDay, TWMarketTWSE, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]any{"Advancing": int64(2), "Declining": int64(2), "Unchanged": int64(1), "NoTrade": int64(1), "NoReference": int64(1), "AdvancingLimit": nil, "Source": "computed"} {
+		if got := value(common, name); got != want {
+			t.Errorf("computed common %s = %v, want %v", name, got, want)
+		}
+	}
+	all, err := stock.AdvanceDecline(oldDay, TWMarketTWSE, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value(all, "Advancing") != int64(3) || value(all, "Declining") != int64(3) {
+		t.Errorf("computed all: %v up, %v down", value(all, "Advancing"), value(all, "Declining"))
+	}
+}
+
+func TestIsCommonStockCode(t *testing.T) {
+	for code, want := range map[string]bool{"2330": true, "1101": true, "9958": true, "9103": false, "00400A": false, "0050": false, "23": false, "A123": false, "": false} {
+		if got := isCommonStockCode(code); got != want {
+			t.Errorf("isCommonStockCode(%q) = %v, want %v", code, got, want)
+		}
+	}
+}

@@ -95,6 +95,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `TWStock` 的方法遇到 HTTP 307 或 429 時，會明說是被來源節流：錯誤訊息指出來源認為請求太頻繁，請調大 `Interval` 與 `Retries`，`errors.Is(err, datafetch.ErrTWStockThrottled)` 也會成立（[#434](https://github.com/HazelnutParadise/insyra/issues/434)）。證交所會隨機以安全性頁面回 307，所以 `Docs/datafetch.md` 補上回填歷史時的起始設定值。預設值不變。
 - 新增 `TWStockClient.OddLotQuotes(date, session)`，讀取證交所每日零股行情單，盤中（`TWOddLotIntraday`，2020-10-26 起）或盤後（`TWOddLotAfterHours`），回傳數值已轉型的資料表；顯示為 `--` 的價格是 `nil`，沒有報表的日子回傳空表。尚未支援櫃買中心的零股報表（[#451](https://github.com/HazelnutParadise/insyra/issues/451)）。
 - 新增 `TWStockClient.ShareholdingDistribution()`，讀取集保結算所每週的股權分散表（每檔證券在 17 個持股分級的人數與股數），回傳數值已轉型的資料表。只提供最新一週，需要時間序列請每週自行存檔（[#436](https://github.com/HazelnutParadise/insyra/issues/436)）。
+- 新增 `TWStockClient.DailyQuotesOn(date, market)`，回傳任一過去交易日所有證券的收盤行情，來源是證交所（2004-02-11 起，含之後下市的證券）或櫃買中心，`Change` 帶正負號並以交易所自己的參考價計算，另有交易所的漲跌標記 `Sign`。新增 `TWStockClient.AdvanceDecline(date, market, commonStockOnly)`，交易所有公布時回傳官方的上漲、下跌家數（含漲停、跌停），沒有時由收盤行情計算（[#447](https://github.com/HazelnutParadise/insyra/issues/447)）。
 
 ### `stats`
 
