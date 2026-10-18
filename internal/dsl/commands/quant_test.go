@@ -694,7 +694,7 @@ func TestRunQuantCommand_LibraryErrorIsSurfaced(t *testing.T) {
 	if !strings.Contains(message, libErr.Error()) {
 		t.Errorf("error %q should carry the library message %q verbatim", message, libErr)
 	}
-	if !strings.Contains(message, "row 2") {
+	if !strings.Contains(message, "row index 1") {
 		t.Errorf("error %q should keep the library's row number", message)
 	}
 	if _, exists := ctx.Vars["$result"]; exists {

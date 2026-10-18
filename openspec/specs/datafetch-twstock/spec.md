@@ -2,9 +2,7 @@
 
 ## Purpose
 `datafetch` 對證交所（TWSE）與櫃買中心（TPEx）免登入端點的客戶端：逐月分頁的個股日線、當日三大法人買賣超、融資融券餘額、全市場日行情，輸出型別化的 `DataTable`（民國日期轉 `time.Time`、佔位符轉 nil）；含節流、重試、`Auto` 市場 fallback，測試以錄製的 fixture 回放、live 存取需 opt-in。
-
 ## Requirements
-
 ### Requirement: TWStock client configuration and transport
 
 `datafetch` SHALL 提供 `TWStockConfig{Timeout, Interval, UserAgent string, Retries int, RetryBackoff time.Duration, Concurrency int}` 與 `TWStock(cfg TWStockConfig) (*twStock, error)`，零值欄位 SHALL 套用與 `YFinanceConfig.normalize` 相同型態的預設。每次請求 SHALL 遵守 `Interval` 節流：相鄰兩個請求排定的開始時間至少相隔 `Interval`，且每個請求都不會早於排定的時間開始。客戶端在排定之後、送出之前的處理時間不在這個保證之內。
@@ -31,6 +29,7 @@ HTTP 非 2xx、逾時、JSON 解析失敗、或 payload `stat`／`tables` 表示
 
 - **WHEN** 以 `TWMarketAuto` 查一檔上櫃股票的日線
 - **THEN** TWSE 回「查無資料」後改查 TPEx 並回傳資料
+
 ### Requirement: Daily prices by stock and date range
 
 `twStock` SHALL 提供 `DailyPrices(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)`，逐月呼叫 TWSE `rwd/zh/afterTrading/STOCK_DAY`（`date=YYYYMM01&stockNo=`）或 TPEx `www/zh-tw/afterTrading/tradingStock`（`code=&date=YYYY/MM/01`），合併後只保留 `[from, to]` 內的列並依日期遞增。欄位 SHALL 為 `Date`（`time.Time`，由民國年 `115/09/01` 轉換）、`Code`、`Volume`（股數，`int64`）、`Turnover`（`int64`）、`Open`、`High`、`Low`、`Close`、`Change`（`float64`）、`Transactions`（`int64`）。
@@ -53,6 +52,7 @@ HTTP 非 2xx、逾時、JSON 解析失敗、或 payload `stat`／`tables` 表示
 
 - **WHEN** fixture 中某列的 `Change` 為 `X` 或價格為 `--`
 - **THEN** 該格為 nil，其餘欄位正常
+
 ### Requirement: Institutional trades, margin balances, and full daily quotes
 
 `twStock` SHALL 提供 `InstitutionalTrades(date time.Time, market TWMarket)`（TWSE `rwd/zh/fund/T86?selectType=ALL`、TPEx `www/zh-tw/insti/dailyTrade?type=Daily`）與 `MarginBalance(date time.Time, market TWMarket)`（TWSE `rwd/zh/marginTrading/MI_MARGN?selectType=ALL` 的個股表、TPEx 對應 margin 端點），各回傳 `(*insyra.DataTable, error)`。三大法人表 SHALL 至少含 `Date`、`Code`、`Name`、`ForeignNet`、`TrustNet`、`DealerNet`、`TotalNet`（股數，`int64`）；融資融券表 SHALL 至少含 `Date`、`Code`、`Name`、`MarginBalance`、`ShortBalance`（`int64`）。
@@ -79,6 +79,7 @@ HTTP 非 2xx、逾時、JSON 解析失敗、或 payload `stat`／`tables` 表示
 
 - **WHEN** fixture 的表頭少了「證券代號」
 - **THEN** 回傳指出該欄位名稱的錯誤
+
 ### Requirement: Live access is opt-in
 
 套件測試 SHALL 只在 `INSYRA_RUN_LIVE_TWSTOCK=1` 時對交易所發出真實請求；未設定時 live 測試 SHALL `Skip`。fixture 測試 SHALL 透過可注入的 `http.RoundTripper`（回放 `datafetch/testdata/twstock/` 的錄製回應）進行，不觸網也不開 socket。
@@ -87,3 +88,20 @@ HTTP 非 2xx、逾時、JSON 解析失敗、或 payload `stat`／`tables` 表示
 
 - **WHEN** 未設定 `INSYRA_RUN_LIVE_TWSTOCK`
 - **THEN** `go test ./datafetch/...` 不發出對 twse.com.tw 或 tpex.org.tw 的請求
+
+### Requirement: A throttled answer is reported as throttling
+The system SHALL return an error that matches `ErrTWStockThrottled` and tells the caller to raise `Interval` and `Retries` when a TWSE or TPEx request is answered with HTTP 307 or 429, and SHALL retry it under the configured `Retries` like any other failed request.
+
+#### Scenario: The exchange answers 307 with its security page
+- **WHEN** a request is answered with HTTP 307 and no `Location`
+- **THEN** the returned error matches `ErrTWStockThrottled`
+- **AND** its message names `Interval` and `Retries`
+
+#### Scenario: A retry gets through
+- **WHEN** `Retries` is 2 and the source answers 307, 307, then 200
+- **THEN** the call succeeds after three requests
+
+#### Scenario: Other failures are not called throttling
+- **WHEN** a request is answered with HTTP 500
+- **THEN** the returned error does not match `ErrTWStockThrottled`
+

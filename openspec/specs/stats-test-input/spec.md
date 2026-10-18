@@ -2,9 +2,7 @@
 
 ## Purpose
 The hypothesis tests and `CalculateMoment` refuse a cell they cannot read as a finite number, with an error naming the list and the position, both counted from one, and never count it in n; a nil list is an error, not a panic.
-
 ## Requirements
-
 ### Requirement: Parametric tests refuse unreadable cells
 
 `SingleSampleTTest`、`TwoSampleTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`BartlettTest`、`LeveneTest` 與 `CalculateMoment` SHALL 經 `asDataList` 轉換後，以 `numericSlice` 讀取輸入；任一格非數值、nil、NaN 或 Inf 時 SHALL 回傳含標籤與列號的錯誤，SHALL NOT 把該格算進 n。nil 或帶型別的 nil list SHALL 回傳錯誤，SHALL NOT panic。全為有限數值的輸入 SHALL 得到與變更前逐位元相同的統計量。
@@ -80,3 +78,26 @@ The hypothesis tests and `CalculateMoment` refuse a cell they cannot read as a f
 #### Scenario: A mismatched subject is numbered from one
 - **WHEN** `FriedmanTest([]insyra.IDataList{NewDataList(1.0, 2.0, 3.0), NewDataList(2.0, 1.0)})`
 - **THEN** 回傳錯誤 `subject 2 has 2 observations, expected 3`
+
+### Requirement: Chi-squared based tests return a result on degenerate input
+The system SHALL return a result, never panic, from a chi-squared based test when its statistic is zero or rounds to a tiny negative value, reporting a p-value of 1, and SHALL report a NaN p-value when the degrees of freedom are not positive.
+
+#### Scenario: All observations equal
+- **WHEN** `KruskalWallis` or `FriedmanTest` receives lists whose values are all equal
+- **THEN** it returns a result with a p-value of 1 and no panic
+
+#### Scenario: Identical groups
+- **WHEN** `BartlettTest` receives two identical groups
+- **THEN** it returns a result with a p-value of 1 and no panic
+
+### Requirement: Error positions count from zero
+The system SHALL name the position of an unreadable cell in a `stats` error as a zero-based index worded `row index N` or `condition index N`, matching the position `Get(N)` takes, while a group, cell or subject named by argument order keeps counting from one.
+
+#### Scenario: The third observation is bad
+- **WHEN** the third value passed to a hypothesis test is NaN
+- **THEN** the error says `row index 2`, not `row 3`
+
+#### Scenario: A group is named by argument order
+- **WHEN** the second list passed to `OneWayANOVA` holds a NaN
+- **THEN** the error names `group 2` and the zero-based row index of the cell
+

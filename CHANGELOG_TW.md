@@ -111,6 +111,12 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`ToSQL` 遇到沒有名字的欄位，改用欄位字母（`A`、`B`…）當欄名，不再寫成 MySQL 和 PostgreSQL 都不接受的空白名稱 `""`。例如 `NewDataTable(NewDataList(1, 2, 3)).ToSQL(db, insyra.SQLDialectMySQL, "t")` 以前會失敗並回傳 `Incorrect column name ''`，現在會寫出欄位 `A`。寫進 SQLite 的表也一樣，以前的 `""` 欄位現在會叫 `A`。如果已經有別的欄位用了這個字母當名稱，在寫入任何東西之前就會回傳錯誤。
 - 在 MySQL 上，`ToSQL` 寫入失敗時不會再留下做到一半的表。要新建的表會先用暫存名稱寫入，所有資料列都寫完才改名成目標名稱，所以寫入失敗時不會留下任何表。以前會留下一張空表，害下一次寫入因為 `already exists` 失敗。追加模式新增的欄位，在資料列寫入失敗時會被刪掉；以前資料列會回滾，但新增的欄位會留下來。在 MySQL 上建表現在需要對整個資料庫有 CREATE、INSERT、ALTER、DROP 權限，跟 Replace 原本的要求相同。
 - 值是數字的 enum 現在都會印出名稱。`MergeMode`、`NaNPolicy`、`UnknownPolicy`、`LabelSort`、`ResampleFreq`、`SheetExistsPolicy`、`SQLActionIfTableExists`、`MergeDirection` 與 `ErrPoppingMode` 新增 `String()`，`fmt.Print(insyra.MergeModeOuter)` 印出 `MergeModeOuter`，不再是 `1`。不在常數之內的值印成 `型別名(n)`，原本就有 `String()` 的型別也一樣：`DataType(9)` 過去印 `unknown`、`LogLevel(9)` 印 `UNKNOWN`、`AggregateOp(99)` 印 `op(99)`。回報未知設定的錯誤會寫出名稱：`LabelEncode` 收到 `LabelSort(9)` 時，訊息從 `unknown LabelSort 9` 改為 `unknown LabelSort LabelSort(9)`。
+- 新增 `insyra.IsNilList(dl)`，判斷一個 `IDataList` 背後是否沒有清單，包含內嵌 nil `*DataList` 的包裝（例如 `isr.DL`）。`plot` 圖表與 `stats` 函式收到這種包裝時，會當成 nil 清單處理，不再 panic（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。
+- `ReadSlice2D` 的表格寬度改以最寬的一列為準。過去比第一列長的列，多出來的值會默默消失，也沒有錯誤：`[][]float64{{1}, {2, 3}}` 得到的 2x1 表格裡沒有 3。較短的列仍補 nil（[#410](https://github.com/HazelnutParadise/insyra/issues/410)）。
+- `NewDataList` 收到包含自己的 slice 時，不再以 `fatal error: stack overflow` 讓整個程式結束。它最多往下展開 64 層，更深的部分當成一個儲存格保留；一般的巢狀照舊展開。
+- `DataList.Shift` 會把儲存格裡的 slice 當成一個儲存格保留。過去它透過會展開所有 slice 的 `NewDataList` 建立結果，所以含有 `[]byte{1, 2}` 與 `3` 的清單經 `Shift(0)` 後會變成三格。
+- `quant`、`ml`、`nn` 與 `DataTable.Resample` 中指出壞儲存格的錯誤訊息，現在一律寫 `row index N`，從 0 算起，與 `Get(N)` 一致；過去 `quant` 與 `Resample` 從 1 算（`row 3`），`ml` 與 `nn` 從 0 算但只寫 `row N`。只有文字改變，比對舊文字的程式需要更新。
+- 兩個巢狀值的字串內含編碼用的分隔字元時，不再被當成同一個值：清單裡有 `Cell([]any{"a,s:b"})` 與 `Cell([]any{"a", "b"})` 時，`Count([]any{"a", "b"})` 會回 2，`Counter` 只有一筆。巢狀字串現在加上長度前綴。非巢狀的儲存格，以及不含這類字串的巢狀值，計數與過去相同。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
@@ -160,6 +166,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 預設檔寫不進去的環境會被移除並回傳錯誤；原本 `Create` 與 `NewSession` 看到目錄存在就當成已建立。`Register` 會拒絕負數的參數上限，原本要到指令執行時才越界。
 - **BREAKING**：`db` 指令改用 `database/sql` 的驅動程式開連線，`cli/commands.DBConn.DB` 改成 `*sql.DB`。PostgreSQL 的 `load sql <conn> query "…"` 要用 `$1`、`$2` 當參數符號，`?` 不會再被自動換掉。
 - **BREAKING**：`convert <file.xlsx> <file.csv>` 只接受只有一張工作表的活頁簿，有多張時會回傳錯誤並列出工作表。原本在三張工作表的活頁簿上，它會把第一張寫成 `<file.csv>`，其他工作表則以各自的名稱寫在旁邊。改用 `convert <file.xlsx> sheet <名稱> <file.csv> [sheet <名稱> <file.csv> ...]` 把每張指定的工作表寫成對應的檔案；工作表不存在、同一張給兩次或兩張寫到同一個檔，都會在寫出任何東西前回傳錯誤。新增 `sheets <file.xlsx>` 列出活頁簿的工作表。
+- 所有接受數字的指令參數，現在也可以填數字變數的名稱：`sample frac f`、`kmeans … k`、`shift x n`、`ttest … mu`、`quant` 各形式等，會使用該變數的值；過去填非數字的名稱會報錯。數字變數可由 `sum`、`mean`、`median`、`mode`、`stdev`、`var`、`min`、`max`、`range` 結尾加上 `as <var>` 產生（照常印出結果，只有寫了 `as` 才存下），並可用 `show <var>` 顯示。能解析成數字的字串仍視為數字，所以原本能用的寫法意義不變。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。
@@ -190,6 +197,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 每個抓取方法都有接收 `context.Context` 的 `...Context` 版本，做法與 `ReadSQLContext` 相同，原本的方法改為以 `context.Background()` 呼叫它：`TWStockClient` 的六個方法（例如 `DailyPricesContext`）、`ReverseContext`、`ReverseColsContext`、`ReverseTableContext`、`SearchContext`、`GetReviewsContext`，以及 `YFTicker` 所有會發出請求的 26 個方法（例如 `HistoryContext`）。context 會傳到限流等待、重試前的退避、每個 HTTP 請求與評論翻頁之間的等待。被取消的呼叫回傳 `ctx.Err()` 且不重試。`ReverseContext` 的請求若被 context 中斷，回報的是 context 的錯誤而不是 `ErrGeocodeTimeout`，`ErrGeocodeTimeout` 仍只代表服務沒在 `Timeout` 內回應。`ReverseCols` 批次中途被取消時，會回傳已解析的列，其餘標為 `pending`，與配額用完時相同。go-yfinance 無法中途停止已經開始的呼叫，所以 Yahoo Finance 的方法在 context 結束時會立刻返回，那次呼叫則留在背景跑完，期間仍可能送出剩下的請求。
 - context 已經結束時，`ReverseColsContext` 與 `ReverseTableContext` 會回傳 context 的錯誤，即使批次是空的或座標全部無效也一樣；原本會回報成功。
 - **BREAKING**：`GoogleMapsStoreReviewSortBy` 從 `uint8` 改為 `int`，並會印出常數名稱。常數、數字字面值與型別轉換照常可以編譯，只有把它和 `uint8` 值直接做運算的程式會編譯失敗。
+- `TWStock` 的方法遇到 HTTP 307 或 429 時，會明說是被來源節流：錯誤訊息指出來源認為請求太頻繁，請調大 `Interval` 與 `Retries`，`errors.Is(err, datafetch.ErrTWStockThrottled)` 也會成立（[#434](https://github.com/HazelnutParadise/insyra/issues/434)）。證交所會隨機以安全性頁面回 307，所以 `Docs/datafetch.md` 補上回填歷史時的起始設定值。預設值不變。
 
 ### `stats`
 - **BREAKING**：`FactorAnalysis` 在 `Rotation.Method: FactorRotationOblimin` 且 `Rotation.Restarts` 大於 1 時，現在真的會做參數所描述的搜尋。Oblimin 過去每一輪都自己建一個單位矩陣當起點，忽略傳進來的起點，所以 `Restarts: 20` 是把同一份計算跑 20 次再回傳第一個結果，實測 20 個起點花 202 ms 回傳和 9.9 ms 一模一樣的答案。現在它和其他九個方法一樣從每個起點各旋轉一次，而且 `Delta: 0` 時與同樣 `Restarts` 的 Quartimin 結果逐位元相同，因為兩者本來就是同一個準則。在測試套件的 12 個生成資料集上，載荷最多移動 1.2e-5；在過因子的模型上（用三因子資料抽四個因子），額外的起點會找到單位矩陣起點到不了的另一個盆地，準則值低 47 倍。那個解的因子相關也高達 0.905：`Restarts` 要的是最低的準則值，不保證那個解就是你要的，這對任何多起點的斜交旋轉都成立。預設的 `Restarts: 1` 不變。SPSS 的 Direct Oblimin 是單起點，`Restarts: 1` 仍然是。
@@ -216,6 +224,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：卡方檢定的類別名稱改照 insyra 把任何值寫成文字的規則，也就是 `ToStringSlice` 用的規則。以前用 `fmt` 的 `%v`，所以浮點數類別 1,500,000 會標成 `1.5e+06`、0.00001 會標成 `1e-05`，現在是 `1500000` 與 `0.00001`。這些標籤是 `Observed` 與 `Expected` 的列名與欄名，也是 `ChiSquareGoodnessOfFit` 的 `p` 要寫的鍵，所以寫成 `"1.5e+06"` 的鍵現在會被當成不存在的類別而回傳錯誤，請改寫成 `"1500000"`。字串、整數、`nil`，以及介於 0.0001 到一百萬之間的浮點數，標籤都不變。`ChiSquareIndependenceTest` 也改在同一個 `AtomicDoAll` 內讀取兩個 list，和雙樣本檢定一樣，呼叫端同時改變兩個 list 的長度時，不會再讀到兩個時點混在一起的資料。
 - `TwoWayANOVAFromTable`、`RepeatedMeasuresANOVAFromTable`、`FriedmanTestFromTable` 先找出缺漏或重複的組合，再為每個組合配置格子，所以因子幾乎全不相同的表會直接被拒絕，不會先配置層級數平方個格子。
 - `CorrelationMethod`、`SkewnessMethod` 與 `KurtosisMethod` 印出常數名稱，不再是數字。
+- `BartlettTest`、`KruskalWallis`、`FriedmanTest` 與其他卡方類檢定，在各組完全一致時不再以 `cephes: parameter out of bounds` panic：Bartlett 統計量會因捨入誤差略小於 0（兩組相同），`KruskalWallis` 或 `FriedmanTest` 遇到全部數值相同時統計量為 0。現在會回傳結果，p 值為 1；自由度不是正數時，p 值為 NaN 而不是 panic。原本沒有 panic 的結果不變。
+- `PCA` 與 `KNNRegress` 的目標值遇到 `NaN` 或 `±Inf` 會回傳錯誤。過去它們只檢查儲存格能否轉成數字，所以 `PCA` 會回傳 `NaN` 特徵值、`KNNRegress` 會預測出 `NaN` 或 `±Inf`，而且沒有錯誤。原本就回傳錯誤的呼叫不變；原本回傳 `NaN` 結果的呼叫現在改回傳錯誤。
+- **BREAKING（錯誤訊息文字）**：指出儲存格位置的錯誤訊息，現在改從 0 算起，與 `Get(i)` 收的數字一致，並明寫是索引：`data contains a non-finite value at row index 2: NaN`。`v0.3.4` 的假說檢定從 1 算（`row 3`），容易被當成 DataTable 自己的編號，與它差一。範圍包含假說檢定、回歸、相關、偏度、峰度與動差，以及回歸、GLM 與因素分析的 `(index N)`、`row N` 檢查；依傳入順序命名的群組、儲存格與受試者（`group 2`、`subject 3`）仍從 1 算。數值與錯誤型別不變，只有文字改變，比對舊文字的程式需要更新。
+- `CutTreeByK` 與 `CutTreeByHeight` 會拒絕葉子或合併步驟被併入超過一次的樹（手動編輯 `state.json` 可能產生）。過去它們會在要求 1 群時回傳 2 群，且沒有錯誤。
 
 ### `csvxl`
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 會用 v0.3.3 檢查工作表名稱的同一套規則檢查 `csvNames` 指定的檔名：含路徑分隔符號、或不會直接落在輸出目錄內的檔名都會被拒絕，所以 `csvNames: []string{"sub/out.csv"}` 不再寫進子目錄。每張 CSV 先寫入暫存檔再 rename 到目標位置，寫入失敗時不會留下截斷的檔案。
@@ -283,6 +295,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：每個 `Create...` 函式都改為回傳圖表與 `error`：`chart, err := plot.CreateBarChart(config, data)`。無法建立圖表時（通常是沒有給資料），會回傳 `nil` 圖表與開頭是函式名稱的錯誤，例如 `plot: CreateBarChart: no data to draw`；v0.3.3 則是記錄警告後回傳 `nil`。這種失敗不會再另外寫進紀錄。`CreateGaugeChart` 不會失敗，錯誤一律是 `nil`，保留這個回傳值是為了讓每個建構函式的呼叫方式都一樣。
 - `CreateBoxPlot` 丟掉沒有資料清單的系列時，會在警告裡指出是哪一個系列；全部都被丟掉時，錯誤會說沒有任何系列有資料。v0.3.3 明明收到了系列，警告卻寫「no series provided」。
 - **BREAKING**：`plot` 的每個圖表建構函式遇到資料裡有 `NaN` 或無限大時，會回傳指出該值的錯誤；過去它回傳圖表，但存出來的頁面是空白的，也沒有任何錯誤。`CreateBoxPlot` 的清單若沒有任何數字（空的或全是文字）也同樣被拒絕。`CreateGaugeChart` 的 error 不再永遠是 nil。（[#409](https://github.com/HazelnutParadise/insyra/issues/409)）
+- `CreateWordCloud` 依圖上顯示的文字計數，清單裡有 slice 型儲存格時不再 panic（`hash of unhashable type`）（[#411](https://github.com/HazelnutParadise/insyra/issues/411)）。`1` 和 `"1"` 會算成同一個詞，和它們在圖上看起來一樣。
 
 ### `isr`
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。
@@ -337,6 +350,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `accel`
 - `NewSession` 最多只能給一個 `Config`，給兩個時由 `Discover` 回報錯誤，不再只用第一個。
 - **Deprecated**：`accel` 給後端作者用的 API 和測試鉤子改為內部使用。受影響的名稱：`RegisterBackendExecutor`、`BackendExecutor`、`ExecuteRequest`、`ExecuteResponse`、`ExecuteColumn`、`RegisterDiscoverer`、`Discoverer`、`RegisterSDKProbe`、`SDKProbe`、`Session.RegisterDevice`、`Session.RecordReport`、`Session.PlanShardableWorkload`、`NearestExactCPU`、`ResetBackendExecutorsForTest`、`ResetDefaultForTest`、`ResetDiscoverersForTest` 和 `ResetSDKProbesForTest`。這一版照舊能用，下一版移除。`accel` 以外沒有人用到它們，而且呼叫 `RegisterDevice` 加 `RecordReport`，就能讓 `Report().Accelerated` 在什麼都沒跑的情況下顯示 `true`。`ExecuteNearestExact` 不論有沒有裝置都會給出 `float64` 結果，所以 `NearestExactCPU` 已經沒有用處。要重新讀取裝置用 `Discover`，要看分配計畫用 `PlanShardable`。
+- 手動組出來的 `Buffer` 如果宣告為數值欄，但 `Values` 讀不了（`[]float32`、`[]int`、nil）、`Type` 與 `Values` 不符，或欄位長度不一致，`ExecuteNearestExact` 現在會回傳指出欄位的錯誤。過去它會回傳空結果且沒有錯誤（[#441](https://github.com/HazelnutParadise/insyra/issues/441)）。由 `ProjectDataList`、`ProjectDataTable` 建出的資料集不受影響；`bool`、`string`、`any` 欄位仍回報 `dtype-not-eligible`，不會出錯。
 
 ### `quant`
 - **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。
