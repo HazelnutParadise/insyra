@@ -3,8 +3,6 @@ package isr
 import "github.com/HazelnutParadise/insyra"
 
 // UseDL converts a DataList or DL to a *DL.
-// It is the alias of PtrDL.
-// Recommended to use this function instead of PtrDL.
 func UseDL[T *insyra.DataList | DataList](l T) *DataList {
 	switch concrete := any(l).(type) {
 	case *insyra.DataList:
@@ -23,8 +21,6 @@ func UseDL[T *insyra.DataList | DataList](l T) *DataList {
 }
 
 // UseDT converts a DataTable or DT to a *DT.
-// It is the alias of PtrDT.
-// Recommended to use this function instead of PtrDT.
 func UseDT[T *insyra.DataTable | DataTable](t T) *DataTable {
 	switch concrete := any(t).(type) {
 	case *insyra.DataTable:

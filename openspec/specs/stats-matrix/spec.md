@@ -1,8 +1,10 @@
 # stats-matrix Specification
 
 ## Purpose
-The typed helpers in `stats` that read a matrix's diagonal and build diagonal and identity matrices, one function per job, and the deprecated `Diag` that did all of them through `any`. None of them panics: a size below 1, an empty slice and a nil matrix are errors.
+The typed helpers in `stats` that read a matrix's diagonal and build diagonal and identity matrices, one function per job. None of them panics: a size below 1, an empty slice and a nil matrix are errors.
+
 ## Requirements
+
 ### Requirement: Diagonal and identity matrices have typed functions
 
 `stats` SHALL 提供：
@@ -32,14 +34,3 @@ The typed helpers in `stats` that read a matrix's diagonal and build diagonal an
 #### Scenario: Too many diagonal values
 - **WHEN** 呼叫 `DiagMatrixSize([]float64{1, 2, 3}, 2, 2)`
 - **THEN** 回傳錯誤，矩陣為 nil
-### Requirement: Diag is deprecated and no longer panics
-
-`Diag(x any, dims ...int) (any, error)` SHALL 保留一個版本，標為 Deprecated，doc comment SHALL 列出每種用法對應的新函式。它 SHALL 保留原本的意義，但會產生小於 1 的列數或欄數時（例如 `Diag(0)`、`Diag([]float64{})`、`Diag(-1)`）SHALL 回傳錯誤，SHALL NOT panic。
-
-#### Scenario: The old sizes that panicked
-- **WHEN** 呼叫 `Diag(0)`
-- **THEN** 回傳錯誤，不 panic
-
-#### Scenario: The old meaning is kept
-- **WHEN** 呼叫 `Diag([]float64{1, 2, 3})`、`Diag(3)` 與 `Diag(nil, 2, 3)`
-- **THEN** 結果分別與 `DiagMatrix([]float64{1, 2, 3})`、`IdentityMatrix(3)` 與 `DiagMatrixSize([]float64{1, 1}, 2, 3)` 相同

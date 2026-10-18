@@ -618,23 +618,3 @@ func TestReadCSV_StringWithOptions_RaggedPaddingAffectsInference(t *testing.T) {
 		t.Errorf("expected NaN for padded cell, got %v (%T)", qty[1], qty[1])
 	}
 }
-
-// Slice2DToDataTable stays for one release as the deprecated spelling of
-// ReadSlice2D and must answer exactly as ReadSlice2D does.
-func TestSlice2DToDataTableMatchesReadSlice2D(t *testing.T) {
-	data := [][]any{{1, "Alice", 2.5}, {2, nil, 3.5}}
-	want, err := insyra.ReadSlice2D(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := insyra.Slice2DToDataTable(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ToJSONString(true) != want.ToJSONString(true) {
-		t.Fatalf("Slice2DToDataTable gave %s, ReadSlice2D gave %s", got.ToJSONString(true), want.ToJSONString(true))
-	}
-	if _, err := insyra.Slice2DToDataTable(nil); err == nil {
-		t.Fatal("Slice2DToDataTable(nil) succeeded")
-	}
-}

@@ -32,13 +32,6 @@ func Conv2D(in, out, kernel int, options ...ConvOptions) Layer {
 	return &conv2DLayer{in: in, out: out, kernel: kernel, opts: opts}
 }
 
-// NewConv2D builds the same layer as Conv2D.
-//
-// Deprecated: use Conv2D. Removed in the release after the one that deprecated it.
-func NewConv2D(in, out, kernel int, options ...ConvOptions) Layer {
-	return Conv2D(in, out, kernel, options...)
-}
-
 func (l *conv2DLayer) Build(t *Tape) error {
 	if l.err != nil {
 		return l.err
@@ -155,23 +148,9 @@ func MaxPool2D(kernel int, options ...PoolOptions) Layer {
 	return newPool2DLayer(kernel, true, options...)
 }
 
-// NewMaxPool2D builds the same layer as MaxPool2D.
-//
-// Deprecated: use MaxPool2D. Removed in the release after the one that deprecated it.
-func NewMaxPool2D(kernel int, options ...PoolOptions) Layer {
-	return MaxPool2D(kernel, options...)
-}
-
 // AvgPool2D creates an average-pooling layer over NCHW tensors.
 func AvgPool2D(kernel int, options ...PoolOptions) Layer {
 	return newPool2DLayer(kernel, false, options...)
-}
-
-// NewAvgPool2D builds the same layer as AvgPool2D.
-//
-// Deprecated: use AvgPool2D. Removed in the release after the one that deprecated it.
-func NewAvgPool2D(kernel int, options ...PoolOptions) Layer {
-	return AvgPool2D(kernel, options...)
 }
 
 func newPool2DLayer(kernel int, max bool, options ...PoolOptions) Layer {
@@ -226,11 +205,6 @@ type globalAvgPoolLayer struct{}
 // GlobalAvgPool creates a global average-pooling layer.
 func GlobalAvgPool() Layer { return &globalAvgPoolLayer{} }
 
-// NewGlobalAvgPool builds the same layer as GlobalAvgPool.
-//
-// Deprecated: use GlobalAvgPool. Removed in the release after the one that deprecated it.
-func NewGlobalAvgPool() Layer { return GlobalAvgPool() }
-
 func (*globalAvgPoolLayer) Build(*Tape) error { return nil }
 func (l *globalAvgPoolLayer) Forward(t *Tape, x *Tensor) (*Tensor, error) {
 	return t.GlobalAveragePool(x)
@@ -251,11 +225,6 @@ type batchNorm2DLayer struct {
 func BatchNorm2D(features int) Layer {
 	return &batchNorm2DLayer{features: features, epsilon: 1e-5, momentum: 0.1}
 }
-
-// NewBatchNorm2D builds the same layer as BatchNorm2D.
-//
-// Deprecated: use BatchNorm2D. Removed in the release after the one that deprecated it.
-func NewBatchNorm2D(features int) Layer { return BatchNorm2D(features) }
 
 func (l *batchNorm2DLayer) Build(t *Tape) error {
 	if l.features <= 0 {
@@ -357,22 +326,6 @@ func LayerNormShape(dims []int) Layer {
 	return &layerNormLayer{dims: append([]int(nil), dims...), epsilon: 1e-5}
 }
 
-// NewLayerNorm builds LayerNorm for an int and LayerNormShape for a []int. Any
-// other value builds a layer whose Build reports a dimension of 0.
-//
-// Deprecated: use LayerNorm for one size or LayerNormShape for a shape.
-// Removed in the release after the one that deprecated it.
-func NewLayerNorm(dims interface{}) Layer {
-	switch value := dims.(type) {
-	case int:
-		return LayerNorm(value)
-	case []int:
-		return LayerNormShape(value)
-	default:
-		return &layerNormLayer{dims: []int{0}, epsilon: 1e-5}
-	}
-}
-
 func (l *layerNormLayer) Build(t *Tape) error {
 	if len(l.dims) == 0 {
 		return fmt.Errorf("layernorm dimensions must not be empty")
@@ -439,11 +392,6 @@ type embeddingLayer struct {
 
 // Embedding creates a trainable [vocab, dims] token table.
 func Embedding(vocab, dims int) Layer { return &embeddingLayer{vocab: vocab, dims: dims} }
-
-// NewEmbedding builds the same layer as Embedding.
-//
-// Deprecated: use Embedding. Removed in the release after the one that deprecated it.
-func NewEmbedding(vocab, dims int) Layer { return Embedding(vocab, dims) }
 
 func (l *embeddingLayer) Build(t *Tape) error {
 	if l.vocab <= 0 || l.dims <= 0 {

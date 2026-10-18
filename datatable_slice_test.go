@@ -1,24 +1,10 @@
 package insyra
 
 import (
-	"math"
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/HazelnutParadise/insyra/internal/utils"
 )
-
-func TestFilterColsLessThanOrEqualToMaxParsedIndex(t *testing.T) {
-	letter, ok := utils.CalcColIndex(math.MaxInt)
-	if !ok {
-		t.Fatal("could not encode maximum int column index")
-	}
-	got := sliceFixture().FilterColsByColIndexLessThanOrEqualTo(letter)
-	if got.NumCols() != 4 {
-		t.Fatalf("maximum parsed index kept %d columns, want 4", got.NumCols())
-	}
-}
 
 func sliceFixture() *DataTable {
 	dt := NewDataTable(
@@ -199,72 +185,5 @@ func TestSliceResultOwnsItsData(t *testing.T) {
 	}
 	if v := dt.GetElementByNumberIndex(1, 0); v != 2 {
 		t.Errorf("editing SliceCols' result changed the source to %v", v)
-	}
-}
-
-// The ten deprecated index filters return what the slice they stand for
-// returns, for every threshold inside the table.
-func TestDeprecatedIndexFiltersMatchSlices(t *testing.T) {
-	dt := sliceFixture()
-	same := func(what string, a, b *DataTable) {
-		t.Helper()
-		if !reflect.DeepEqual(a.To2DSlice(), b.To2DSlice()) || !reflect.DeepEqual(a.ColNames(), b.ColNames()) ||
-			!reflect.DeepEqual(a.RowNames(), b.RowNames()) {
-			t.Errorf("%s: deprecated gave %v %v %q, slice gave %v %v %q", what,
-				a.To2DSlice(), a.ColNames(), a.RowNames(), b.To2DSlice(), b.ColNames(), b.RowNames())
-		}
-	}
-	nCols := dt.NumCols()
-	for i := 0; i < nCols; i++ {
-		letter, _ := ColNumberToIndex(i)
-		if i+1 < nCols {
-			same("ColIndexGreaterThan "+letter, dt.FilterColsByColIndexGreaterThan(letter), dt.SliceCols(i+1, nCols))
-		}
-		same("ColIndexGreaterThanOrEqualTo "+letter, dt.FilterColsByColIndexGreaterThanOrEqualTo(letter), dt.SliceCols(i, nCols))
-		same("ColIndexGreaterThanOrEqualTo by letter "+letter, dt.FilterColsByColIndexGreaterThanOrEqualTo(letter), dt.SliceCols(letter, nil))
-		same("ColIndexEqualTo "+letter, dt.FilterColsByColIndexEqualTo(letter), dt.SliceCols(i, i+1))
-		if i > 0 {
-			same("ColIndexLessThan "+letter, dt.FilterColsByColIndexLessThan(letter), dt.SliceCols(0, i))
-			same("ColIndexLessThan by letter "+letter, dt.FilterColsByColIndexLessThan(letter), dt.SliceCols(nil, letter))
-		}
-		same("ColIndexLessThanOrEqualTo "+letter, dt.FilterColsByColIndexLessThanOrEqualTo(letter), dt.SliceCols(0, i+1))
-	}
-	nRows := dt.NumRows()
-	for k := 0; k < nRows; k++ {
-		same("RowIndexGreaterThan", dt.FilterRowsByRowIndexGreaterThan(k), dt.SliceRows(k+1, nRows))
-		same("RowIndexGreaterThanOrEqualTo", dt.FilterRowsByRowIndexGreaterThanOrEqualTo(k), dt.SliceRows(k, nRows))
-		same("RowIndexEqualTo", dt.FilterRowsByRowIndexEqualTo(k), dt.SliceRows(k, k+1))
-		same("RowIndexLessThan", dt.FilterRowsByRowIndexLessThan(k), dt.SliceRows(0, k))
-		same("RowIndexLessThanOrEqualTo", dt.FilterRowsByRowIndexLessThanOrEqualTo(k), dt.SliceRows(0, k+1))
-	}
-	if e := dt.Err(); e != nil {
-		t.Fatalf("recorded %v", e)
-	}
-}
-
-// A letter past the last column meant "every column" to the less-than
-// filters, but they sliced past the end and panicked.
-func TestDeprecatedColIndexFiltersDoNotPanicPastTheEnd(t *testing.T) {
-	dt := sliceFixture()
-	for name, got := range map[string]*DataTable{
-		"LessThan":          dt.FilterColsByColIndexLessThan("Z"),
-		"LessThanOrEqualTo": dt.FilterColsByColIndexLessThanOrEqualTo("Z"),
-	} {
-		if !reflect.DeepEqual(got.To2DSlice(), dt.To2DSlice()) {
-			t.Errorf("FilterColsByColIndex%s(\"Z\") = %v, want every column", name, got.To2DSlice())
-		}
-	}
-}
-
-func TestHeadersAreColNames(t *testing.T) {
-	dt := sliceFixture()
-	if !reflect.DeepEqual(dt.Headers(), dt.ColNames()) {
-		t.Fatalf("Headers() = %v, ColNames() = %v", dt.Headers(), dt.ColNames())
-	}
-	a, b := sliceFixture(), sliceFixture()
-	a.SetHeaders([]string{"x", "y"})
-	b.SetColNames([]string{"x", "y"})
-	if !reflect.DeepEqual(a.ColNames(), b.ColNames()) {
-		t.Fatalf("SetHeaders gave %v, SetColNames gave %v", a.ColNames(), b.ColNames())
 	}
 }

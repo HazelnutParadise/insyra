@@ -34,13 +34,6 @@ type Col map[any]any
 // Cols is a type alias for []Col.
 type Cols = []Col
 
-// Deprecated: Use UseDT instead.
-// PtrDT converts a DataTable or DT to a *DT.
-// You should no longer use this function, use UseDT instead.
-func PtrDT[T *insyra.DataTable | DataTable](t T) *DataTable {
-	return UseDT(t)
-}
-
 // From converts item to a DataTable. item is one of:
 //   - a 2-D slice ([][]any, [][]int, [][]float64, [][]string, …), one inner slice per row;
 //   - *insyra.DataList, *DataList, []*insyra.DataList, []DataList or DLs, one list per column;

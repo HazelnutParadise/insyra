@@ -25,14 +25,6 @@ When a `DataList` or `DataTable` was created and last changed, kept at the clock
 - **WHEN** list 在 T+1s 被修改後，時鐘退回 T 再修改一次
 - **THEN** `LastModifiedTime()` 仍為 T+1s
 
-### Requirement: The second-resolution getters remain for one release
-
-`GetCreationTimestamp()` and `GetLastModifiedTimestamp()` SHALL be marked Deprecated and SHALL return the Unix seconds of `CreationTime()` and `LastModifiedTime()`.
-
-#### Scenario: Old getters
-- **WHEN** list 建立於 `time.Unix(1700000000, 500)`
-- **THEN** `GetCreationTimestamp()` 為 1700000000，`CreationTime()` 等於 `time.Unix(1700000000, 500)`
-
 ### Requirement: IsTheSameAs compares data and name
 
 `DataList.IsTheSameAs` SHALL return true exactly when both lists hold equal data, under the same cell rule as `IsEqualTo`, and have the same name. It SHALL NOT compare creation or modification times. A nil argument SHALL return false.

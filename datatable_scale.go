@@ -17,12 +17,6 @@ type ScalerParams struct {
 	Kind   string
 	// Replacement is populated by fitted imputers. It is nil for scalers.
 	Replacement any
-	// PassThrough is always false.
-	//
-	// Deprecated: a fitted imputer no longer leaves a selected column it
-	// cannot fill unchanged; SimpleImputer.Fit reports it instead. The field
-	// is removed in the release after the one that deprecated it.
-	PassThrough bool
 
 	Mean   float64
 	Std    float64

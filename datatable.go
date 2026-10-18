@@ -1421,10 +1421,10 @@ func (dt *DataTable) Transpose() *DataTable {
 		newDt := &DataTable{
 			columns:           make([]*DataList, 0),
 			rowNames:          core.NewBiIndex(0),
-			creationTimestamp: dt.GetCreationTimestamp(),
+			creationTimestamp: dt.creationTimestamp,
 		}
 
-		newDt.lastModifiedTimestamp.Store(dt.GetLastModifiedTimestamp())
+		newDt.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
 
 		for _, col := range dls {
 			newDt.AppendRowsFromDataList(col)
@@ -1682,23 +1682,6 @@ func (dt *DataTable) CreationTime() time.Time {
 // full resolution. It never moves backwards, even if the wall clock does.
 func (dt *DataTable) LastModifiedTime() time.Time {
 	return timeFromUnixNano(dt.lastModifiedTimestamp.Load())
-}
-
-// GetCreationTimestamp returns when the table was created, as Unix seconds.
-//
-// Deprecated: use CreationTime, which keeps sub-second changes apart. Removed
-// in the release after the one that deprecated it.
-func (dt *DataTable) GetCreationTimestamp() int64 {
-	return unixSecondsFromUnixNano(dt.creationTimestamp)
-}
-
-// GetLastModifiedTimestamp returns when the table was last changed, as Unix
-// seconds. Two changes within the same second are indistinguishable.
-//
-// Deprecated: use LastModifiedTime, which keeps sub-second changes apart.
-// Removed in the release after the one that deprecated it.
-func (dt *DataTable) GetLastModifiedTimestamp() int64 {
-	return unixSecondsFromUnixNano(dt.lastModifiedTimestamp.Load())
 }
 
 // Err returns the first error recorded on this DataTable since it was created

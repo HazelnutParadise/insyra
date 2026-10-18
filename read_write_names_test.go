@@ -114,8 +114,7 @@ func TestToCSVWritesTheHeaderByDefault(t *testing.T) {
 	}
 }
 
-// The old names stay one release as Deprecated wrappers and keep their old
-// meaning, positional bools included.
+// The Deprecated CSV spellings keep their old meaning, positional bools included.
 func TestDeprecatedReadWriteNamesKeepTheirMeaning(t *testing.T) {
 	path := writeTempCSV(t, "name,age\nAmy,30\n")
 	newer, _ := ReadCSVFile(path)
@@ -132,19 +131,6 @@ func TestDeprecatedReadWriteNamesKeepTheirMeaning(t *testing.T) {
 		t.Fatalf("ReadCSV_String kept columns %v", s.ColNames())
 	}
 
-	dt := NewDataTable(NewDataList(1).SetName("a"))
-	if dt.ToJSON_String(true) != dt.ToJSONString(true) || string(dt.ToJSON_Bytes(false)) != string(dt.ToJSONBytes(false)) {
-		t.Fatal("the deprecated JSON spellings differ from the new ones")
-	}
-	jsonPath := filepath.Join(t.TempDir(), "d.json")
-	if err := dt.ToJSON(jsonPath, true); err != nil {
-		t.Fatal(err)
-	}
-	a, err1 := ReadJSONFile(jsonPath)
-	b, err2 := ReadJSON_File(jsonPath)
-	if err1 != nil || err2 != nil || a.ToJSONString(true) != b.ToJSONString(true) {
-		t.Fatalf("ReadJSONFile and ReadJSON_File differ: %v %v", err1, err2)
-	}
 }
 
 func TestExcelWriteOptionsWriteTheHeaderByDefault(t *testing.T) {

@@ -194,10 +194,3 @@ func TestRegisterFunction(t *testing.T) {
 		t.Errorf("ENGINETESTDOUBLE(A) on row 0: got %v (%T), want int 2", got, got)
 	}
 }
-
-// Both are documented no-ops kept for API compatibility; calling them must stay
-// harmless.
-func TestResetDepthsAreNoOps(t *testing.T) {
-	ccl.ResetEvalDepth()
-	ccl.ResetFuncCallDepth()
-}

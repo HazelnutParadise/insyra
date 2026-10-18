@@ -90,11 +90,6 @@ type GoogleMapsStoreReviewsFetchingOptions struct {
 	// wait is random between one second and this value, so it must be at least
 	// one second; zero means 5 seconds.
 	MaxWaitingInterval time.Duration
-
-	// Deprecated: use MaxWaitingInterval, which is the same limit as a
-	// time.Duration. This field counts milliseconds, and setting both fields is
-	// an error. Removed in the release after the one that deprecated it.
-	MaxWaitingInterval_Milliseconds uint
 }
 
 // GoogleMapsStoreReviewSortBy is the order GetReviews asks Google for.
@@ -105,24 +100,6 @@ const (
 	GoogleMapsStoreReviewSortByNewest        GoogleMapsStoreReviewSortBy = 2 // most recent first
 	GoogleMapsStoreReviewSortByHighestRating GoogleMapsStoreReviewSortBy = 3 // highest rating first
 	GoogleMapsStoreReviewSortByLowestRating  GoogleMapsStoreReviewSortBy = 4 // lowest rating first
-)
-
-const (
-	// Deprecated: use GoogleMapsStoreReviewSortByRelevance. Removed in the
-	// release after the one that deprecated it.
-	SortByRelevance = GoogleMapsStoreReviewSortByRelevance
-
-	// Deprecated: use GoogleMapsStoreReviewSortByNewest. Removed in the release
-	// after the one that deprecated it.
-	SortByNewest = GoogleMapsStoreReviewSortByNewest
-
-	// Deprecated: use GoogleMapsStoreReviewSortByHighestRating. Removed in the
-	// release after the one that deprecated it.
-	SortByHighestRating = GoogleMapsStoreReviewSortByHighestRating
-
-	// Deprecated: use GoogleMapsStoreReviewSortByLowestRating. Removed in the
-	// release after the one that deprecated it.
-	SortByLowestRating = GoogleMapsStoreReviewSortByLowestRating
 )
 
 // GoogleMapsStoresClient searches Google Maps for stores and fetches their
@@ -266,13 +243,6 @@ func (c *GoogleMapsStoresClient) GetReviewsContext(ctx context.Context, storeId 
 			fetchingOptions.SortBy = sortBy
 		}
 		wait := options[0].MaxWaitingInterval
-		if options[0].MaxWaitingInterval_Milliseconds != 0 {
-			if wait != 0 {
-				insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "set MaxWaitingInterval only; the deprecated MaxWaitingInterval_Milliseconds cannot be combined with it. Returning nil.")
-				return nil
-			}
-			wait = time.Duration(options[0].MaxWaitingInterval_Milliseconds) * time.Millisecond
-		}
 		if wait != 0 && wait < time.Second {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "MaxWaitingInterval is too small. Using default value.")
 		} else if wait != 0 {

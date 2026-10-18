@@ -3,7 +3,6 @@
 ## Purpose
 Decision trees, random forests and gradient boosting in `ml`: deterministic fits for classification and regression, missing values and categorical features handled inside the tree, reproducible ensembles from a seed, exact numeric splits checked against the reference implementation, and one options type.
 
-
 ## Requirements
 
 ### Requirement: Trees for classification and regression
@@ -174,10 +173,10 @@ The system SHALL produce, for the same data and depth, the same predictions as s
 - **THEN** an exact classification tree's predicted labels match scikit-learn's on every probe point
 - **AND** an exact regression tree's predictions match within single-precision tolerance
 
-### Requirement: One options type for trees
+### Requirement: DecisionTreeOptions is the one options type for trees
 
-`DecisionTreeOptions` SHALL be the options type both `FitDecisionTreeClassifier` and `FitDecisionTreeRegressor` take. `DecisionTreeClassifierOptions` and `DecisionTreeRegressorOptions` SHALL remain for one release as Deprecated aliases of `DecisionTreeOptions`, each doc comment naming it.
+`DecisionTreeOptions` SHALL be the options type both `FitDecisionTreeClassifier` and `FitDecisionTreeRegressor` take. The aliases `DecisionTreeClassifierOptions` and `DecisionTreeRegressorOptions` SHALL NOT exist.
 
-#### Scenario: The deprecated aliases are the same type
-- **WHEN** 把 `ml.DecisionTreeClassifierOptions{MaxDepth: 2}` 傳給 `FitDecisionTreeClassifier`
-- **THEN** 可以編譯，fit 出的樹與傳入 `ml.DecisionTreeOptions{MaxDepth: 2}` 相同，兩個別名的 doc comment 都有指名 `DecisionTreeOptions` 的 `Deprecated:` 段落
+#### Scenario: One options type fits both trees
+- **WHEN** 把 `ml.DecisionTreeOptions{MaxDepth: 2}` 分別傳給 `FitDecisionTreeClassifier` 與 `FitDecisionTreeRegressor`
+- **THEN** 兩者都可以編譯並 fit 出深度不超過 2 的樹

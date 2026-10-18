@@ -36,16 +36,6 @@ func TestTensorCarriesDTypeAndRowMajorLayout(t *testing.T) {
 	}
 }
 
-func TestTensorRejectsUnsupportedDTypeByName(t *testing.T) {
-	_, err := NewTensorWithDType(DTypeFloat64, []int{2}, []float32{1, 2})
-	if err == nil {
-		t.Fatal("NewTensorWithDType accepted float64")
-	}
-	if !strings.Contains(err.Error(), "float64") {
-		t.Fatalf("error %q does not name the unsupported dtype", err)
-	}
-}
-
 func TestBroadcastBinaryUsesNumpyTrailingDimensions(t *testing.T) {
 	left, err := NewTensor([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
 	if err != nil {

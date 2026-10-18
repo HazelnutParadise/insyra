@@ -165,16 +165,6 @@ type PoolOptions struct {
 	StorageOrder    int
 }
 
-// MaxPoolOptions is the same type as PoolOptions.
-//
-// Deprecated: use PoolOptions. Removed in the release after the one that deprecated it.
-type MaxPoolOptions = PoolOptions
-
-// AveragePoolOptions is the same type as PoolOptions.
-//
-// Deprecated: use PoolOptions. Removed in the release after the one that deprecated it.
-type AveragePoolOptions = PoolOptions
-
 // ResizeOptions controls the ONNX Resize coordinate and interpolation
 // semantics supported by the inference kernels.
 type ResizeOptions struct {

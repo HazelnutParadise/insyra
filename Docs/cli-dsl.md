@@ -217,7 +217,7 @@ Where the Manager keeps things:
 | `EnsureBaseStructure() error` | Creates the root and the subfolder if they are missing. |
 | `SetBasePath(path)`, `SetEnvsDirName(name)` | Move the Manager; `""` goes back to the default. Do not move a Manager while a session uses it. |
 
-Every operation is a method on a `Manager`. Before `engine/dsl` had its own names, programs reached the Manager through `cli/env`. `cli/env`'s `Manager`, `NewManager`, `EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable` and `UnsavedVariable` are **Deprecated** in favour of the same names in `engine/dsl`, which are the same types and function, and so are its package-level functions (`env.Create`, `env.SaveState`, `env.SetBasePath` and the rest), which only call the method on `env.Default()`. All of them are removed in the next release. `env.Default()` stays: it is the Manager the `insyra` command itself uses.
+Every operation is a method on a `Manager`. Before `engine/dsl` had its own names, programs reached the Manager through `cli/env`. `cli/env`'s `Manager`, `NewManager`, `EnvironmentInfo`, `GlobalConfig`, `State`, `SerializedVariable` and `UnsavedVariable` are **Deprecated** in favour of the same names in `engine/dsl`, which are the same types and function, and are removed in the next release. The package-level functions that only called the method on `env.Default()` (`env.Create`, `env.SaveState`, `env.SetBasePath` and the rest) are gone: call the method on a Manager. `env.Default()` stays: it is the Manager the `insyra` command itself uses.
 
 #### Registering your own command
 

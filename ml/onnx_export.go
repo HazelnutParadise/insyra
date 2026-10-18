@@ -40,20 +40,6 @@ func ExportONNX(w io.Writer, fitted Model) error {
 	return nil
 }
 
-// WriteONNX writes a fitted model the way ExportONNX does.
-//
-// Deprecated: use ExportONNX, which takes a Model. WriteONNX keeps its any
-// parameter until it is removed: a Model is exported by ExportONNX and any
-// other value is refused. Removed in the release after the one that
-// deprecated it.
-func WriteONNX(w io.Writer, fitted any) error {
-	model, ok := fitted.(Model)
-	if !ok && fitted != nil {
-		return fmt.Errorf("ml: ONNX export does not support %T", fitted)
-	}
-	return ExportONNX(w, model)
-}
-
 func (m *LinearModel) ExportONNX(w io.Writer) error { return ExportONNX(w, m) }
 func (m *RidgeModel) ExportONNX(w io.Writer) error  { return ExportONNX(w, m) }
 func (m *LassoModel) ExportONNX(w io.Writer) error  { return ExportONNX(w, m) }

@@ -56,7 +56,10 @@ func runFillNaNCommand(ctx *ExecContext, args []string) error {
 		return fmt.Errorf("fillnan: unexpected extra args %v (use 'fillna' for options)", coreArgs[2:])
 	}
 	// The deprecated `fillnan` command intentionally keeps NaN-only mean fill.
-	result := dl.Clone().FillNaNWithMean() // nolint:staticcheck
+	result, err := applyFillNAToList(dl, "mean", fillNAOptions{Missing: "nan"})
+	if err != nil {
+		return err
+	}
 	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "warning: 'fillnan' is deprecated; use 'fillna %s mean missing nan%s' instead\n", coreArgs[0], aliasSuffix(alias))
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)

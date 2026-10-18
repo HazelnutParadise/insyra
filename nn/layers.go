@@ -51,11 +51,6 @@ func Dense(in, out int) Layer {
 	return &denseLayer{in: in, out: out}
 }
 
-// NewDense builds the same layer as Dense.
-//
-// Deprecated: use Dense. Removed in the release after the one that deprecated it.
-func NewDense(in, out int) Layer { return Dense(in, out) }
-
 func (l *denseLayer) Build(t *Tape) error {
 	if l.in <= 0 || l.out <= 0 {
 		return fmt.Errorf("dense dimensions must be positive, got %d -> %d", l.in, l.out)
@@ -147,11 +142,6 @@ func ReLU() Layer {
 	return &activationLayer{kind: "ReLU", forward: func(t *Tape, x *Tensor) (*Tensor, error) { return t.Relu(x) }}
 }
 
-// NewReLU builds the same layer as ReLU.
-//
-// Deprecated: use ReLU. Removed in the release after the one that deprecated it.
-func NewReLU() Layer { return ReLU() }
-
 // NewSigmoid creates a differentiable sigmoid activation layer.
 func NewSigmoid() Layer {
 	return &activationLayer{kind: "Sigmoid", forward: func(t *Tape, x *Tensor) (*Tensor, error) { return t.Sigmoid(x) }}
@@ -173,11 +163,6 @@ type dropoutLayer struct {
 
 // Dropout creates an inverted training-only dropout layer. Predict skips it.
 func Dropout(p float32) Layer { return &dropoutLayer{p: p} }
-
-// NewDropout builds the same layer as Dropout.
-//
-// Deprecated: use Dropout. Removed in the release after the one that deprecated it.
-func NewDropout(p float32) Layer { return Dropout(p) }
 
 func (l *dropoutLayer) Build(*Tape) error {
 	if math.IsNaN(float64(l.p)) || math.IsInf(float64(l.p), 0) || l.p < 0 || l.p >= 1 {
@@ -218,11 +203,6 @@ type funcLayer struct {
 // Func wraps an arbitrary tape operation, including residual or other
 // composite blocks that are not a catalogued layer.
 func Func(fn func(*Tape, *Tensor) (*Tensor, error)) Layer { return &funcLayer{fn: fn} }
-
-// NewFunc builds the same layer as Func.
-//
-// Deprecated: use Func. Removed in the release after the one that deprecated it.
-func NewFunc(fn func(*Tape, *Tensor) (*Tensor, error)) Layer { return Func(fn) }
 
 func (l *funcLayer) Build(*Tape) error {
 	if l.fn == nil {

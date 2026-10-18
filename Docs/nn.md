@@ -61,13 +61,6 @@ results are bit-identical to serial results; small workloads stay serial.
 `NewInt64Tensor`, `NewStringTensor`, and `NewBoolTensor` build the control and
 label tensors used by ONNX graphs.
 
-Deprecated: `Tensor.Data`, `NewFloat32Tensor`, `NewTensorWithDType`, the
-`DataType` alias of `DType` and the `Float32`, `Float16` and `Float64`
-constants still work in this release and are removed in the next. Use
-`Float32Data`, `NewTensor`, `DType` and `DTypeFloat32`, `DTypeFloat16`,
-`DTypeFloat64`. `Data` returns nil instead of an error for a tensor that is
-not float32, and `NewTensorWithDType` accepts only `DTypeFloat32`.
-
 ## Device MatMul
 
 Large 2-D float32 MatMuls use the device by default when the measured 16Mi
@@ -204,9 +197,7 @@ The optimizer selectors are `nn.SGD{Rate}`, `nn.SGDMomentum{Rate, Momentum}`,
 `nn.Adam{Rate}` and `nn.AdamW{Rate, WeightDecay}`, and each runs the tape method
 of the same name. The loss selectors are `nn.CrossEntropy{}`, `nn.MSE{}` and
 `nn.BCEWithLogits{}`, which run `Tape.SoftmaxCrossEntropy`, `Tape.MSELoss` and
-`Tape.BCEWithLogitsLoss`. The selector aliases `nn.SoftmaxCrossEntropy`,
-`nn.MSELoss` and `nn.BCEWithLogitsLoss` are deprecated: they still work in this
-release and are removed in the next. `CrossEntropy` needs int64 targets and the other two need
+`Tape.BCEWithLogitsLoss`. `CrossEntropy` needs int64 targets and the other two need
 float32 targets, in `ValY` as well as `y`. `Fit` refuses a missing optimizer or
 loss, a rate, momentum or weight decay that is negative or not finite, an
 `Epochs` or `BatchSize` below 1, and `ValX` given without `ValY` or the other
@@ -715,13 +706,6 @@ training path. `BatchNorm2D` uses this seam and does not need a global mode
 flag. `NewSigmoid`, `NewTanh`, `NewGelu`, and `NewFlatten` use the `New` prefix
 because the package already exports kernel functions with the shorter names.
 
-Deprecated: the `New…` twins of the other layers (`NewDense`, `NewReLU`,
-`NewDropout`, `NewFunc`, `NewConv2D`, `NewMaxPool2D`, `NewAvgPool2D`,
-`NewGlobalAvgPool`, `NewBatchNorm2D`, `NewLayerNorm`, `NewEmbedding` and
-`NewMultiHeadAttention`) build the same layers as the names in the table. They
-still work in this release and are removed in the next. So are `MaxPoolOptions`
-and `AveragePoolOptions`, the same type as `PoolOptions`.
-
 `Parameters` returns parameters in layer order. `NamedParameters` follows
 torch `nn.Sequential`: layer positions include parameterless layers, so a
 model with `Dense`, `ReLU`, `Dropout`, `Dense` exposes `0.weight`, `0.bias`,
@@ -924,5 +908,4 @@ score, _ := ml.Score(regressor, table, target, ml.RMSEMetric{})
 probability table follows the supplied class order.
 
 `BindRegressor` and `BindClassifier` return `*nn.BoundRegressor` and
-`*nn.BoundClassifier`. Deprecated: the aliases `nn.Regressor` and
-`nn.Classifier` still work in this release and are removed in the next.
+`*nn.BoundClassifier`.

@@ -7,7 +7,7 @@ Defines how the numeric transforms and reducers on `DataList` treat cells they c
 
 ### Requirement: In-place numeric transforms refuse unreadable cells before writing
 
-`DataList.Normalize`、`Standardize`、`ClearOutliers`、`Difference`、`FillNaNWithMean` SHALL 在寫入任何格子之前掃描整份資料。nil 與 NaN 格子 SHALL 視為缺值、保留原樣（`Difference` 對含缺值的相鄰對 SHALL 輸出 NaN）。任一格子既非數值也非缺值時，呼叫 SHALL 設定 `Err()`、SHALL NOT 改動任何格子，且 SHALL 維持該函式既有的失敗回傳形狀。全為數值的輸入 SHALL 得到與變更前逐位元相同的結果。
+`DataList.Normalize`、`Standardize`、`ClearOutliers` SHALL 在寫入任何格子之前掃描整份資料。nil 與 NaN 格子 SHALL 視為缺值、保留原樣。任一格子既非數值也非缺值時，呼叫 SHALL 設定 `Err()`、SHALL NOT 改動任何格子，且 SHALL 維持該函式既有的失敗回傳形狀。全為數值的輸入 SHALL 得到與變更前逐位元相同的結果。
 
 #### Scenario: Normalize on mixed data leaves the list untouched
 
@@ -26,7 +26,7 @@ Defines how the numeric transforms and reducers on `DataList` treat cells they c
 
 #### Scenario: Fully numeric input is unchanged
 
-- **WHEN** 既有測試中的全數值輸入呼叫五個函式
+- **WHEN** 既有測試中的全數值輸入呼叫三個函式
 - **THEN** 結果與變更前相同，既有測試不修改即通過
 
 ### Requirement: Rank, smoothing and interpolation never treat a cell as zero
@@ -61,89 +61,47 @@ Defines how the numeric transforms and reducers on `DataList` treat cells they c
 - **WHEN** 對 `Celsius(36.6)` 呼叫 `IsNumeric` 與 `ToFloat64Safe`
 - **THEN** 兩者都說是數字，且轉換結果為 36.6
 
-### Requirement: Weights are a float64 slice
+### Requirement: The weighted methods keep the rest of their behaviour
 
-`DataList.WeightedMean` SHALL take its weights as `[]float64`, and `DataList.WeightedMovingAverage` SHALL take `(windowSize int, weights []float64)`, the same type as `RollingOptions.Weights`. `IDataList` SHALL declare the same signatures.
+A weights slice whose length does not match the list's length SHALL make `WeightedMean` record an error and return `NaN`. `WeightedMean` SHALL skip a non-numeric element together with its weight and SHALL return `NaN` for an empty list, for a list with no numeric element and for a zero total weight.
+
+#### Scenario: Weights of the wrong length
+- **WHEN** `NewDataList(1.0, 2.0, 3.0).WeightedMean([]float64{1, 2})`
+- **THEN** 回傳 NaN，並在接收者記錄錯誤
+
+#### Scenario: A non-numeric element is skipped with its weight
+- **WHEN** `NewDataList(1, "x", 3).WeightedMean([]float64{1, 100, 1})`
+- **THEN** 結果為 2，權重 100 不計入
+
+### Requirement: ExponentialSmoothing stays and the CLI time-series commands keep their output
+
+`DataList.ExponentialSmoothing` SHALL NOT be deprecated. The CLI's `movavg` and `diff` SHALL keep their output: `movavg` the shorter list of window means, `diff` the `n - 1` differences, each computed by the command itself.
+
+#### Scenario: ExponentialSmoothing is not deprecated
+- **WHEN** 讀取 `ExponentialSmoothing` 的 doc comment
+- **THEN** 沒有 Deprecated 段落
+
+#### Scenario: The commands keep their shorter output
+- **WHEN** 對 `[1, 2, 3, 4, 5]` 執行 `movavg d1 3` 與 `diff d1`
+- **THEN** 結果分別為 `[2, 3, 4]` 與 `[1, 1, 1, 1]`
+
+### Requirement: WeightedMean takes float64 weights
+
+`DataList.WeightedMean` SHALL take its weights as `[]float64`, the same type as `RollingOptions.Weights`. `IDataList` SHALL declare the same signature.
 
 #### Scenario: A float64 slice of weights
 - **WHEN** `NewDataList(1, 2, 3, 4).WeightedMean([]float64{1, 2, 3, 4})`
 - **THEN** 結果為 3，`Err()` 為 nil
 
-#### Scenario: Weighted moving average with float64 weights
-- **WHEN** `NewDataList(1.0, 2.0, 3.0).WeightedMovingAverage(2, []float64{1, 3})`
-- **THEN** 結果為 `[1.75, 2.75]`
-
 #### Scenario: The signature is checked by the compiler
 - **WHEN** 程式把 `*DataList` 或 `[]int` 當權重傳入
 - **THEN** 編譯失敗，而不是在執行時才以長度不符報錯
 
-### Requirement: The weighted methods keep the rest of their behaviour
+### Requirement: ExponentialSmoothing keeps a contract of its own
 
-A weights slice whose length does not match (the list's length for `WeightedMean`, `windowSize` for `WeightedMovingAverage`) SHALL record an error, `WeightedMean` then returning `NaN` and `WeightedMovingAverage` an empty list carrying the error. `WeightedMean` SHALL skip a non-numeric element together with its weight and SHALL return `NaN` for an empty list, for a list with no numeric element and for a zero total weight.
-
-#### Scenario: Weights of the wrong length
-- **WHEN** `NewDataList(1.0, 2.0, 3.0).WeightedMean([]float64{1, 2})`，以及 `WeightedMovingAverage(2, []float64{1})`
-- **THEN** 前者回傳 NaN、後者回傳長度 0 的 list，兩者都在接收者記錄錯誤
-
-#### Scenario: A non-numeric element is skipped with its weight
-- **WHEN** `NewDataList(1, "x", 3).WeightedMean([]float64{1, 100, 1})`
-- **THEN** 結果為 2，權重 100 不計入
-### Requirement: The older window and fill methods keep contracts of their own
-
-`DataList.Difference`, `FillNaNWithMean`, `MovingAverage`, `MovingStdev`, `ExponentialSmoothing` and `WeightedMovingAverage` SHALL keep their own contracts, which differ from those of `Diff(1)`, `FillWithMean`, `Rolling(...).Mean()`, `Rolling(...).Std()`, `EWM(EWMOptions{Alpha: a}).Mean()` and `Rolling(RollingOptions{Weights: ...}).Mean()`. On a fully numeric series each SHALL give its replacement's numbers wherever both give one. A test SHALL pin each documented difference.
-
-#### Scenario: Difference is shorter and strict
-- **WHEN** 對 `[1, 4, 9, 16]` 呼叫 `Difference()` 與 `Diff(1)`
-- **THEN** 前者為 `[3, 5, 7]`，後者為 `[nil, 3, 5, 7]`
-- **AND** 對 `[1, nil, 4]`，前者為 `[NaN, NaN]`，後者為 `[nil, nil, nil]`
-- **AND** 對 `["a", 1, 2]`，前者回傳長度 0 並記錄錯誤，後者為 `[nil, nil, 1]` 且無錯誤
-
-#### Scenario: FillNaNWithMean fills NaN only
-- **WHEN** 對 `[1, nil, NaN, 3]` 呼叫 `FillNaNWithMean()` 與 `FillWithMean()`
-- **THEN** 前者為 `[1.0, nil, 2.0, 3.0]`（全部數字改寫成 `float64`），後者為 `[1, 2.0, 2.0, 3]`
-
-#### Scenario: MovingAverage is shorter and fails on a gap
-- **WHEN** 對 `[1, 2, 3, 4, 5]` 以視窗 3 呼叫兩者
-- **THEN** `MovingAverage` 為 `[2, 3, 4]`，`Rolling` 為 `[nil, nil, 2, 3, 4]`
-- **AND** 對 `[1, nil, 3, 4, 5]` 以視窗 2，`MovingAverage` 回傳長度 0 並記錄錯誤，`Rolling` 為 `[nil, nil, nil, 3.5, 4.5]`
-- **AND** 視窗大於長度時 `MovingAverage` 記錄錯誤，`Rolling` 回傳整列 nil
-
-#### Scenario: MovingStdev skips a gap and gives NaN for a window of one
-- **WHEN** 對 `[1, 2, 3]` 以視窗 1 呼叫 `MovingStdev` 與 `Rolling(...).Std()`
-- **THEN** 前者為三個 `NaN`，後者為三個 nil
+`DataList.ExponentialSmoothing` SHALL keep its own contract, which differs from that of `EWM(EWMOptions{Alpha: a}).Mean()`. On a fully numeric series it SHALL give its replacement's numbers wherever both give one. A test SHALL pin each documented difference.
 
 #### Scenario: ExponentialSmoothing accepts alpha zero and refuses a gap
 - **WHEN** 對 `[1, 2, 3]` 呼叫 `ExponentialSmoothing(0)` 與 `EWM(EWMOptions{Alpha: 0}).Mean()`
 - **THEN** 前者為 `[1, 1, 1]`，後者回傳長度 0 並記錄錯誤
 - **AND** 對 `[1, nil, 3]` 以 `alpha` 0.5，前者記錄錯誤，後者為 `[1, 1, 2.333…]`
-
-#### Scenario: WeightedMovingAverage divides by a zero weight sum
-- **WHEN** 對 `[1, 2, 3]` 以視窗 2、權重 `[1, -1]` 呼叫兩者
-- **THEN** `WeightedMovingAverage` 為 `[-Inf, -Inf]`，`Rolling` 為 `[nil, nil, nil]`
-
-### Requirement: Four look-alike window methods are deprecated and keep their meaning
-
-`DataList.Difference`, `MovingAverage`, `MovingStdev` and `WeightedMovingAverage` SHALL be marked Deprecated in their doc comments and on `IDataList`, each naming its replacement (`Diff(1)`, `Rolling(RollingOptions{Window: w}).Mean()`, `Rolling(RollingOptions{Window: w}).Std()`, `Rolling(RollingOptions{Window: w, Weights: ws}).Mean()`), how the replacement's result lines up with its own, and that it is removed in the release after the one that deprecated it.
-
-#### Scenario: The deprecation is written where a caller sees it
-- **WHEN** 讀取 `Difference`、`MovingAverage`、`MovingStdev`、`WeightedMovingAverage` 的 doc comment
-- **THEN** 每一個都有以 `Deprecated: use` 開頭、指名替代呼叫的段落，並寫明下一版移除
-
-### Requirement: The deprecated window methods behave as before until removed
-
-Until their removal, `Difference`, `MovingAverage`, `MovingStdev` and `WeightedMovingAverage` SHALL each keep exactly the behaviour the requirement "The older window and fill methods keep contracts of their own" pins. `ExponentialSmoothing` SHALL NOT be deprecated. The CLI's `movavg` and `diff` SHALL keep their output.
-
-#### Scenario: The old meaning stays
-- **WHEN** 對 `[1, 2, 3, 4, 5]` 呼叫 `MovingAverage(3)`
-- **THEN** 結果仍為 `[2, 3, 4]`，而不是 `Rolling` 的 `[nil, nil, 2, 3, 4]`
-
-#### Scenario: ExponentialSmoothing is not deprecated
-- **WHEN** 讀取 `ExponentialSmoothing` 的 doc comment
-- **THEN** 沒有 Deprecated 段落
-### Requirement: A NaN-only mean fill has a replacement that keeps its behaviour
-
-`FillNaNWithMean`'s Deprecated notice SHALL name `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())` as the replacement that fills `NaN` alone, instead of only `FillWithMean`, which also fills `nil`. On a list of numbers, `nil` and `NaN`, the replacement SHALL give the same values in every cell as `FillNaNWithMean`, leaving `nil` cells as they are.
-
-#### Scenario: The replacement matches
-- **WHEN** 對 `[1, nil, NaN, 3, NaN]` 分別呼叫 `FillNaNWithMean()` 與 `ReplaceNaNsWith(Clone().ClearNilsAndNaNs().Mean())`
-- **THEN** 兩者每一格的數值相同：`[1, nil, 2, 3, 2]`，nil 保留

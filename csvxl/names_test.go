@@ -118,36 +118,3 @@ func TestExportedCSVXLNamesHaveGoDocComments(t *testing.T) {
 		}
 	}
 }
-
-func TestDeprecatedCSVXLNamesSayWhatReplacedThem(t *testing.T) {
-	const removal = "Removed in the release after the one that deprecated it."
-	// Later changes add their deprecated names here.
-	deprecated := map[string]string{
-		"CsvToExcel":        "CSVToExcel",
-		"AppendCsvToExcel":  "AppendCSVToExcel",
-		"ExcelToCsv":        "ExcelToCSV",
-		"ExcelToCsvOptions": "ExcelToCSVOptions",
-		"EachCsvToOneExcel": "CSVDirToExcel",
-		"EachExcelToCsv":    "ExcelDirToCSV",
-		"ReadCsvToString":   "ReadCSVToString",
-	}
-	// These three keep their positional parameters while their replacements
-	// pair a CSV with its sheet (csvxl-sheet-pairs), so the notice names the
-	// replacement without calling it the same function.
-	reshaped := map[string]bool{"CsvToExcel": true, "AppendCsvToExcel": true, "ExcelToCsv": true}
-	docs := csvxlDocNames(t)
-	for old, current := range deprecated {
-		doc, ok := docs[old]
-		if !ok {
-			t.Errorf("%s is not an exported name of the package", old)
-			continue
-		}
-		notice := "Deprecated: use " + current + ", which is the same "
-		if reshaped[old] {
-			notice = "Deprecated: use " + current + ", which "
-		}
-		if !strings.Contains(doc, notice) || !strings.Contains(doc, removal) {
-			t.Errorf("%s doc is %q; want it to contain %q and %q", old, doc, notice, removal)
-		}
-	}
-}

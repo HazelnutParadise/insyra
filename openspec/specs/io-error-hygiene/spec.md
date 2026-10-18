@@ -2,13 +2,15 @@
 
 ## Purpose
 `csvxl` 與 `parquet` 的 I/O 錯誤處理契約：錯誤可 unwrap、目錄權限保守、寫檔不留截斷檔、日誌走 Insyra logger。
+
 ## Requirements
+
 ### Requirement: csvxl errors unwrap and directories are 0755
 
-`csvxl` 的錯誤 SHALL 以 `%w` 包裝底層錯誤；`ExcelToCsv`／`EachExcelToCsv` 建立的目錄權限 SHALL 為 0755。
+`csvxl` 的錯誤 SHALL 以 `%w` 包裝底層錯誤；`ExcelToCSV`／`ExcelDirToCSV` 建立的目錄權限 SHALL 為 0755。
 
 #### Scenario: Missing CSV
-- **WHEN** `CsvToExcel([]string{"/nope.csv"}, nil, out)` 
+- **WHEN** `CSVToExcel([]SheetFromCSV{{Path: "/nope.csv"}}, out)`
 - **THEN** 回傳的錯誤 `errors.Is(err, os.ErrNotExist)` 為 true
 
 ### Requirement: parquet.Write is atomic and logs through Insyra
@@ -21,10 +23,10 @@
 
 ### Requirement: A named sheet that is not there is an error
 
-`ExcelToCsv` 收到 `onlyContainSheets` 時，其中不存在於檔案的名稱 SHALL 回報錯誤並列出檔案實際有的工作表，SHALL NOT 靜默略過。
+`ExcelToCSV` 收到 `Sheets` 時，其中不存在於檔案的名稱 SHALL 回報錯誤並列出檔案實際有的工作表，SHALL NOT 靜默略過。
 
 #### Scenario: A misspelled sheet name
-- **WHEN** `onlyContainSheets` 含一個檔案裡沒有的名稱
+- **WHEN** `Sheets` 含一個檔案裡沒有的名稱
 - **THEN** 回傳錯誤，指出缺少哪些、檔案有哪些
 
 ### Requirement: Remote and compressed input is bounded
@@ -58,4 +60,3 @@ IPC 伺服器的 accept 迴圈在監聽器已關閉時 SHALL 結束，僅在逾�
 #### Scenario: A permanently failing listener
 - **WHEN** `Accept` 持續失敗
 - **THEN** 迴圈結束並回報一次，而不是每次迭代印一行警告
-

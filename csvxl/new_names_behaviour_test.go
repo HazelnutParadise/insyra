@@ -93,52 +93,6 @@ func TestConversionsRefuseAnUnknownEncoding(t *testing.T) {
 	}
 }
 
-// Each old name is a one-line call to its new one, so the workbook it writes
-// has to be the same workbook, sheet for sheet and cell for cell.
-func TestDeprecatedCSVXLNamesGiveTheSameWorkbook(t *testing.T) {
-	dir := t.TempDir()
-	csvPath := writeNamedCSV(t, dir, "data.csv", "a,b\n1,2\n3,4\n")
-	old := filepath.Join(dir, "old.xlsx")
-	current := filepath.Join(dir, "current.xlsx")
-
-	if err := CsvToExcel([]string{csvPath}, nil, old, UTF8); err != nil {
-		t.Fatalf("CsvToExcel: %v", err)
-	}
-	if err := CSVToExcel([]SheetFromCSV{{Path: csvPath}}, current, UTF8); err != nil {
-		t.Fatalf("CSVToExcel: %v", err)
-	}
-
-	oldBook, err := excelize.OpenFile(old)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = oldBook.Close() }()
-	currentBook, err := excelize.OpenFile(current)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = currentBook.Close() }()
-
-	oldSheets := oldBook.GetSheetList()
-	currentSheets := currentBook.GetSheetList()
-	if !reflect.DeepEqual(oldSheets, currentSheets) {
-		t.Fatalf("sheets differ: %q against %q", oldSheets, currentSheets)
-	}
-	for _, sheet := range oldSheets {
-		oldRows, err := oldBook.GetRows(sheet)
-		if err != nil {
-			t.Fatal(err)
-		}
-		currentRows, err := currentBook.GetRows(sheet)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(oldRows, currentRows) {
-			t.Errorf("rows of sheet %s differ: %q against %q", sheet, oldRows, currentRows)
-		}
-	}
-}
-
 // A directory is a sheet list: one sheet per CSV, named after the file.
 func TestCSVDirToExcelWritesOneSheetPerFile(t *testing.T) {
 	dir := t.TempDir()

@@ -73,15 +73,6 @@ func TestDL_FromFlattens(t *testing.T) {
 	}
 }
 
-func TestPtrDL_StillWorks(t *testing.T) {
-	quietTest(t)
-
-	l := PtrDL(insyra.NewDataList(1, 2))
-	if l == nil || l.Len() != 2 {
-		t.Fatalf("PtrDL gave %v", l)
-	}
-}
-
 // --- DT.From ----------------------------------------------------------------
 
 func TestDT_From_SliceForms(t *testing.T) {
@@ -472,17 +463,5 @@ func TestUse_ValueWithNilPointer(t *testing.T) {
 	}
 	if list.Err() == nil {
 		t.Error("UseDL on a value with a nil list recorded no error")
-	}
-}
-
-func TestPtrDT_StillWorks(t *testing.T) {
-	quietTest(t)
-
-	table := PtrDT(insyra.NewDataTable(insyra.NewDataList(1, 2)))
-	if table == nil {
-		t.Fatal("PtrDT returned nil")
-	}
-	if rows, _ := table.Size(); rows != 2 {
-		t.Errorf("rows: got %d, want 2", rows)
 	}
 }

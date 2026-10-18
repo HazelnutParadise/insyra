@@ -2,9 +2,6 @@ package lpgen
 
 import (
 	"errors"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -42,9 +39,6 @@ func TestParseLingoAndParseLingoFileReadTheSameModel(t *testing.T) {
 	if !reflect.DeepEqual(fromString, fromFile) {
 		t.Errorf("the text and file readers disagree:\n text: %+v\n file: %+v", fromString, fromFile)
 	}
-	if fromDeprecated := ParseLingoModel_str(lingoModel); !reflect.DeepEqual(fromString, fromDeprecated) {
-		t.Errorf("ParseLingo and the deprecated name disagree:\n new:  %+v\n old: %+v", fromString, fromDeprecated)
-	}
 	if fromString.ObjectiveType != "Maximize" {
 		t.Errorf("objective type: got %q, want \"Maximize\"", fromString.ObjectiveType)
 	}
@@ -79,58 +73,5 @@ func TestParseLingoReportsALineItCannotHold(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("a line the reader cannot hold gave a nil error")
-	}
-
-	// The deprecated name keeps its old meaning: nil plus a warning.
-	quiet(t)
-	if got := ParseLingoModel_str(text); got != nil {
-		t.Errorf("the deprecated name gave %+v, want nil", got)
-	}
-}
-
-// A Deprecated name has to say what replaced it, and the sentence has to be in
-// the doc comment rather than only in the changelog, so it is read from the
-// source.
-func TestDeprecatedLingoNamesSayWhatReplacedThem(t *testing.T) {
-	file, err := parser.ParseFile(token.NewFileSet(), "lingo.go", nil, parser.ParseComments)
-	if err != nil {
-		t.Fatalf("parsing lingo.go: %v", err)
-	}
-
-	docs := make(map[string]string)
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Doc == nil {
-			continue
-		}
-		switch fn.Name.Name {
-		case "ParseLingoModel_str", "ParseLingoModel_txt":
-			// Doc.Text() keeps the comment's own line breaks, so collapse the
-			// wrapped paragraph before looking for a sentence in it.
-			docs[fn.Name.Name] = strings.Join(strings.Fields(fn.Doc.Text()), " ")
-		}
-	}
-
-	want := map[string][]string{
-		"ParseLingoModel_str": {
-			"Deprecated: use ParseLingo, which returns the failure as an error.",
-			"Removed in the release after the one that deprecated it.",
-		},
-		"ParseLingoModel_txt": {
-			"Deprecated: use ParseLingoFile, which returns the failure as an error.",
-			"Removed in the release after the one that deprecated it.",
-		},
-	}
-	for name, sentences := range want {
-		doc, ok := docs[name]
-		if !ok {
-			t.Errorf("%s has no doc comment at all", name)
-			continue
-		}
-		for _, sentence := range sentences {
-			if !strings.Contains(doc, sentence) {
-				t.Errorf("%s does not say %q:\n%s", name, sentence, doc)
-			}
-		}
 	}
 }

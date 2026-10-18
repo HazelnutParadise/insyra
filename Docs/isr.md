@@ -293,12 +293,9 @@ isr.DL.Of(...values) *isr.DataList
 #### Converting Existing DataList
 
 ```go
-// Convert insyra.DataList to isr.DL (recommended)
+// Convert insyra.DataList to isr.DL
 originalList := insyra.NewDataList(1, 2, 3)
 isrList := isr.UseDL(originalList)
-
-// Deprecated: Use UseDL instead
-isrList := isr.PtrDL(originalList)
 ```
 
 **Function:**
@@ -307,23 +304,7 @@ isrList := isr.PtrDL(originalList)
 isr.UseDL[T *insyra.DataList | isr.DataList](l T) *isr.DataList
 ```
 
-**Description:** Convert between insyra and isr types (recommended)
-
-**Parameters:**
-
-- `*insyra.DataList` or `dl`
-
-**Returns:**
-
-- `*isr.DataList`
-
-**Old Function**:
-
-```go
-isr.PtrDL[T](t T) *isr.DataList
-```
-
-**Description:** Convert between insyra and isr types (use `UseDL` instead)
+**Description:** Convert between insyra and isr types
 
 **Parameters:**
 
@@ -573,12 +554,9 @@ dataTable := isr.DT.From(map[int]any{
 #### Converting Existing DataTable
 
 ```go
-// Convert insyra.DataTable to isr.DT (recommended)
+// Convert insyra.DataTable to isr.DT
 originalTable := insyra.NewDataTable()
 isrTable := isr.UseDT(originalTable)
-
-// Deprecated: Use UseDT instead
-isrTable := isr.PtrDT(originalTable)
 ```
 
 **Function:**
@@ -587,23 +565,7 @@ isrTable := isr.PtrDT(originalTable)
 isr.UseDT[T *insyra.DataTable | isr.DataTable](t T) *isr.DataTable
 ```
 
-**Description:** Convert between insyra and isr types (recommended)
-
-**Parameters:**
-
-- `*insyra.DataTable` or `dt`
-
-**Returns:**
-
-- `*isr.DataTable`
-
-**Old Function**:
-
-```go
-isr.PtrDT[T](t T) *isr.DataTable
-```
-
-**Description:** Convert between insyra and isr types (use `UseDT` instead)
+**Description:** Convert between insyra and isr types
 
 **Parameters:**
 
@@ -959,10 +921,8 @@ processed := isr.DL.From(1, 2, 3).Push(4, 5).At(4) // Returns 5
 
 ### Key Functions
 
-- `PtrDL[T]` - Convert to `*isr.DataList` (deprecated, use `UseDL` instead)
-- `PtrDT[T]` - Convert to `*isr.DataTable` (deprecated, use `UseDT` instead)
-- `UseDL[T]` - Convert to `*isr.DataList` (recommended)
-- `UseDT[T]` - Convert to `*isr.DataTable` (recommended)
+- `UseDL[T]` - Convert to `*isr.DataList`
+- `UseDT[T]` - Convert to `*isr.DataTable`
 - `Name(string)` - Create named reference
 
 ## Error Handling
@@ -993,7 +953,7 @@ an `*insyra.ErrorInfo`, which you can still recover.
 1. **Use method chaining** for fluent operations
 2. **Use `isr.DL.From()`** instead of `isr.DL{}.From()`
 3. **Use `isr.DT.From()`** instead of `isr.DT{}.From()`
-4. **Use `UseDL/UseDT`** when converting from insyra types (recommended over `PtrDL/PtrDT`)
+4. **Use `UseDL/UseDT`** when converting from insyra types
 5. **Use `isr.Name()`** for named element access
 
 ## Quick Reference
@@ -1051,11 +1011,7 @@ err = csvTable.To(&j) // j.Bytes holds the JSON
 ### Conversion Operations
 
 ```go
-// Convert insyra types to isr types (recommended)
+// Convert insyra types to isr types
 isrDL := isr.UseDL(insyraDataList)
 isrDT := isr.UseDT(insyraDataTable)
-
-// Deprecated: Use UseDL/UseDT instead
-isrDL := isr.PtrDL(insyraDataList)
-isrDT := isr.PtrDT(insyraDataTable)
 ```

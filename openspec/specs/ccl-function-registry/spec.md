@@ -22,14 +22,6 @@ The documentation of `engine/ccl` SHALL state that there is one function registr
 - **WHEN** one goroutine repeatedly registers a built-in and then a caller's function under the same aggregate or sequence name while another reads the registry
 - **THEN** the reader never sees the caller's function without the caller's mark
 
-### Requirement: No-op functions say they do nothing
-
-`ResetEvalDepth` and `ResetFuncCallDepth` SHALL carry a `Deprecated:` notice saying they do nothing, and SHALL stay callable until they are removed.
-
-#### Scenario: Reading the documentation
-- **WHEN** a caller reads the doc comment of `ResetEvalDepth` or `ResetFuncCallDepth`
-- **THEN** it contains `Deprecated: it does nothing`
-
 ### Requirement: The documentation states the replacement rule per function kind
 
 The documentation of `engine/ccl` SHALL state that registering a name again replaces the function of the same kind, a built-in of that kind included, and MUST NOT suggest that it replaces a function of another kind.
