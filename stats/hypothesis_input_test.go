@@ -36,7 +36,7 @@ func TestPairedAndOneSampleTestsRefuseUnreadableCells(t *testing.T) {
 			bad := insyra.NewDataList(1.0, 2.0, tc.bad, 4.0)
 			clean := insyra.NewDataList(1.5, 2.5, 3.0, 4.5)
 			want := func(label string) string {
-				return fmt.Sprintf("%s contains a %s value at row 3: %s", label, tc.kind, tc.shown)
+				return fmt.Sprintf("%s contains a %s value at row index 2: %s", label, tc.kind, tc.shown)
 			}
 
 			for _, call := range []struct {
@@ -170,7 +170,7 @@ func TestANOVAFamilyRefusesUnreadableCells(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			want := func(label, position string, at int) string {
-				return fmt.Sprintf("%s contains a %s value at %s %d: %s", label, tc.kind, position, at, tc.shown)
+				return fmt.Sprintf("%s contains a %s value at %s index %d: %s", label, tc.kind, position, at-1, tc.shown)
 			}
 
 			for _, call := range []struct {
@@ -363,7 +363,7 @@ func TestRankAndVarianceTestsRefuseUnreadableCells(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			bad := tc.bad
 			want := func(label, position string, at int) string {
-				return fmt.Sprintf("%s contains a %s value at %s %d: %s", label, tc.kind, position, at, tc.shown)
+				return fmt.Sprintf("%s contains a %s value at %s index %d: %s", label, tc.kind, position, at-1, tc.shown)
 			}
 
 			for _, call := range []struct {

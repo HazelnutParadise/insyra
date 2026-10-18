@@ -373,7 +373,7 @@ func TestLongFormatErrors(t *testing.T) {
 			valueCol:  "value",
 			factorA:   "B",
 			factorB:   "C",
-			wantError: "value column value contains a non-numeric value at row 2: x",
+			wantError: "value column value contains a non-numeric value at row index 1: x",
 		},
 		{
 			name:      "value column Inf",
@@ -381,7 +381,7 @@ func TestLongFormatErrors(t *testing.T) {
 			valueCol:  "value",
 			factorA:   "B",
 			factorB:   "C",
-			wantError: "value column value contains a non-finite value at row 1: +Inf",
+			wantError: "value column value contains a non-finite value at row index 0: +Inf",
 		},
 		{
 			name:      "factor A nil cell",
@@ -389,7 +389,7 @@ func TestLongFormatErrors(t *testing.T) {
 			valueCol:  "value",
 			factorA:   "B",
 			factorB:   "C",
-			wantError: "factor A column B has no level at row 3",
+			wantError: "factor A column B has no level at row index 2",
 		},
 		{
 			name:      "factor B NaN cell",
@@ -397,7 +397,7 @@ func TestLongFormatErrors(t *testing.T) {
 			valueCol:  "value",
 			factorA:   "B",
 			factorB:   "C",
-			wantError: "factor B column C has no level at row 3",
+			wantError: "factor B column C has no level at row index 2",
 		},
 		{
 			name:      "factor A one level",
@@ -686,13 +686,13 @@ func TestRepeatedMeasuresLongErrors(t *testing.T) {
 			wantError: "subject s3 has no observation for condition t2",
 		},
 		{
-			name: "subject s2 has t1 twice at rows 3 and 5",
+			name: "subject s2 has t1 twice at row indexes 2 and 4",
 			dt: insyra.NewDataTable(
 				insyra.NewDataList(1.0, 2.0, 3.0, 4.0, 5.0).SetName("value"),
 				insyra.NewDataList("t1", "t2", "t1", "t2", "t1").SetName("cond"),
 				insyra.NewDataList("s1", "s2", "s2", "s1", "s2").SetName("subj"),
 			),
-			wantError: "subject s2 has more than one observation for condition t1 (rows 3 and 5)",
+			wantError: "subject s2 has more than one observation for condition t1 (row indexes 2 and 4)",
 		},
 		{
 			name: "only condition t1 present",
@@ -719,7 +719,7 @@ func TestRepeatedMeasuresLongErrors(t *testing.T) {
 				insyra.NewDataList("t1", "t2", "t1", "t2", "t1").SetName("cond"),
 				insyra.NewDataList("s1", "s2", "s1", "s2", nil).SetName("subj"),
 			),
-			wantError: "subject column subj has no level at row 5",
+			wantError: "subject column subj has no level at row index 4",
 		},
 	}
 

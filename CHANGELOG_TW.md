@@ -75,6 +75,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `ChiSquareIndependenceTest` 在同一個 `AtomicDoAll` 裡一次讀取兩個清單，和兩樣本檢定的做法相同。
 - `BartlettTest`、`KruskalWallis`、`FriedmanTest` 與其他卡方類檢定，在各組完全一致時不再以 `cephes: parameter out of bounds` panic：Bartlett 統計量會因捨入誤差略小於 0（兩組相同），`KruskalWallis` 或 `FriedmanTest` 遇到全部數值相同時統計量為 0。現在會回傳結果，p 值為 1；自由度不是正數時，p 值為 NaN 而不是 panic。原本沒有 panic 的結果不變。
 - `PCA` 與 `KNNRegress` 的目標值遇到 `NaN` 或 `±Inf` 會回傳錯誤。過去它們只檢查儲存格能否轉成數字，所以 `PCA` 會回傳 `NaN` 特徵值、`KNNRegress` 會預測出 `NaN` 或 `±Inf`，而且沒有錯誤。原本就回傳錯誤的呼叫不變；原本回傳 `NaN` 結果的呼叫現在改回傳錯誤。
+- **BREAKING（錯誤訊息文字）**：指出儲存格位置的錯誤訊息，現在改從 0 算起，與 `Get(i)` 收的數字一致，並明寫是索引：`data contains a non-finite value at row index 2: NaN`。`v0.3.4` 的假說檢定從 1 算（`row 3`），容易被當成 DataTable 自己的編號，與它差一。範圍包含假說檢定、回歸、相關、偏度、峰度與動差，以及回歸、GLM 與因素分析的 `(index N)`、`row N` 檢查；依傳入順序命名的群組、儲存格與受試者（`group 2`、`subject 3`）仍從 1 算。數值與錯誤型別不變，只有文字改變，比對舊文字的程式需要更新。
 
 ### `csvxl`
 

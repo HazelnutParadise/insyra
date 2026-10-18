@@ -385,7 +385,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 				if ok {
 					data.Set(i, j, value)
 				} else {
-					conversionErr = fmt.Errorf("non-numeric value at row %d column %d: %v", i, j, cell)
+					conversionErr = fmt.Errorf("non-numeric value at row index %d column index %d: %v", i, j, cell)
 					return
 				}
 			}

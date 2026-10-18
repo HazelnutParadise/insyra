@@ -32,10 +32,10 @@ func appendNumericValues(dst []float64, raw []any, label func() string, position
 	for i, value := range raw {
 		converted, ok := insyra.ToFloat64Safe(value)
 		if !ok {
-			return nil, fmt.Errorf("%s contains a non-numeric value at %s %d: %v", label(), position, i+1, value)
+			return nil, fmt.Errorf("%s contains a non-numeric value at %s index %d: %v", label(), position, i, value)
 		}
 		if math.IsNaN(converted) || math.IsInf(converted, 0) {
-			return nil, fmt.Errorf("%s contains a non-finite value at %s %d: %v", label(), position, i+1, converted)
+			return nil, fmt.Errorf("%s contains a non-finite value at %s index %d: %v", label(), position, i, converted)
 		}
 		dst = append(dst, converted)
 	}

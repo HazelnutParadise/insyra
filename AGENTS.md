@@ -300,12 +300,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: open such a file in Excel and LibreOffice first. If either complains, or if leaving the old comment text in the file matters, remove the parts the old sheet's relationships pointed to before deleting it.
 - **Status**: pending
 
-### [2026-09-27] — outside the hypothesis tests, `stats` still numbers some positions from zero
-- **Where**: the `predictor %d` label in `stats/regression_shared.go`; the `(index %d)` checks in `stats/regression.go`, `stats/regression_glm.go`, `stats/regression_poisson.go` and `stats/glm_irls.go`; `row %d column %d` and `column %d` in `stats/factor_analysis.go`; `columns %d and %d` in `stats/correlation.go`; `stats/pca.go`
-- **What**: every hypothesis test counts the list and the position from one (`hypothesis-tests-refuse-non-finite`). Elsewhere the old numbering is still there. Measured on 2026-09-27: `LinearRegression(y, x1, x2)` with a blank at row 3 of `x2` says `predictor 1 contains a non-numeric value at row 3: <nil>`, `LogarithmicRegression` with `x = -2` at row 2 says `(index 1)`, and `FactorAnalysis` with text at row 2 of its second column says `non-numeric value at row 1 column 1: x`. The correlation and PCA column numbers are zero-based in the code and were not measured. (`PCA` and `KNNRegress`'s targets now refuse `NaN` and `±Inf`, as `pca-knn-refuse-non-finite`.)
-- **Suggestion**: number every position from one. It changes the error text callers see, so decide first whether it goes on 0.3.x the way the hypothesis tests did.
-- **Status**: pending
-
 ### [2026-09-27] — two one-shot commands on one environment lose one command's variables
 - **Where**: `cli/env/state.go` `SaveVariables` (the save every command ends with) and `RestoreVariables` (the load it starts with)
 - **What**: each command reads the whole `state.json`, runs, and writes the whole file back through the same `state.json.tmp` path. Two `insyra` commands against one environment at the same time each save their own copy, so the later rename wins and the variables the other command created are gone; if both write the temporary file at once, one rename can also fail. Found by the review of `cli-env-typed-state` on 2026-09-27, by reading the code; not reproduced. It predates that change, which did not alter the read-modify-write.

@@ -71,7 +71,7 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 				colNames[i] = dl.GetName()
 				label := colNames[i]
 				if label == "" {
-					label = fmt.Sprintf("column %d", i+1)
+					label = fmt.Sprintf("column %d", i)
 				}
 				var convErr error
 				if colSlices[i], convErr = numericValues(dl.Data(), label); convErr != nil && err == nil {
