@@ -126,6 +126,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `lp`
 
 - `lp.Solve(model, opts)` 與 `lp.SolveFile(path, opts)` 用純 Go 的 go-milp 求解，回傳 `*Solution` 與錯誤，不需要安裝 GLPK；設 `Engine: lp.EngineGLPK` 則改用已安裝的 `glpsol`（透過 `GLPK_PATH` 或 `PATH` 尋找），不會替你安裝任何東西。`SolveFromFile` 與 `SolveModel` 保留原本的 GLPK 行為（包括自動安裝 GLPK），改為 Deprecated，在 0.4 移除。
+- **BREAKING**：`SolveFromFile` 與 `SolveModel` 不再回傳 `nil` 表格。沒有解的時候（逾時、求解器錯誤、暫存檔寫不進去、參數被拒絕），第一個表格是空表格，原因放在它的 `Err()`；參數被拒絕時第二個表格也不再是 `nil`，Status 是 `Error`，Warnings 放原因。原本用 `result == nil` 判斷的程式要改成 `result.Err() != nil`。過去求解失敗後直接呼叫 `result.Show()` 會 panic。兩個函式都已標示 Deprecated，`Solve` 與 `SolveFile` 則回傳 `Solution` 與 error。
 
 ### `lpgen`
 

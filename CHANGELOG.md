@@ -126,6 +126,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `lp`
 
 - `lp.Solve(model, opts)` and `lp.SolveFile(path, opts)` solve a model in pure Go with go-milp and return a `*Solution` and an error, so no GLPK installation is needed; `Engine: lp.EngineGLPK` runs an installed `glpsol` instead, found through `GLPK_PATH` or `PATH`, and nothing is installed for you. `SolveFromFile` and `SolveModel` keep their GLPK behaviour, including installing GLPK, and are deprecated; they are removed in 0.4.
+- **BREAKING**: `SolveFromFile` and `SolveModel` no longer return `nil` tables. When there is no solution (a timeout, a solver error, a temporary file that could not be written, or rejected arguments) the first table is empty and its `Err()` holds the reason, and the second table is no longer `nil` when the arguments are rejected: its Status is `Error` and Warnings holds the reason. A caller that tested `result == nil` should test `result.Err() != nil`. Calling `result.Show()` on a failed solve used to panic. Both functions are Deprecated; `Solve` and `SolveFile` return a `Solution` and an error.
 
 ### `lpgen`
 

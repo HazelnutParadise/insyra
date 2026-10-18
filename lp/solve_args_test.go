@@ -20,8 +20,11 @@ func TestSolveFromFile_TooManyTimeoutsIsRefusedBeforeInit(t *testing.T) {
 	insyra.ClearErrors()
 
 	result, info := SolveFromFile("no_such_model.lp", 1, 2)
-	if result != nil || info != nil {
-		t.Errorf("got (%v, %v), want (nil, nil)", result, info)
+	if result == nil || info == nil {
+		t.Fatalf("got (%v, %v), want two tables", result, info)
+	}
+	if rows, _ := result.Size(); rows != 0 || result.Err() == nil {
+		t.Errorf("solution table has %d rows and Err() %v, want an empty table carrying the reason", rows, result.Err())
 	}
 
 	warned := false

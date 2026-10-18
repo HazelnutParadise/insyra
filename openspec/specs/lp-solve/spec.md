@@ -2,9 +2,7 @@
 
 ## Purpose
 How `lp.Solve` and `lp.SolveFile` solve a linear or integer program, with go-milp by default or an installed glpsol, what a Solution reports, and how the deprecated GLPK functions relate to them.
-
 ## Requirements
-
 ### Requirement: Solve and SolveFile return a solution or an error, never both
 
 `lp.Solve` 與 `lp.SolveFile` SHALL 回傳 `(*Solution, error)`，error 不為 nil 時 `Solution` 為 nil。
@@ -160,3 +158,15 @@ GLPK 引擎 SHALL 從 `--write` 產生的結果檔讀取目標值與變數值，
 #### Scenario: The deprecation notices
 - **WHEN** 讀取 `SolveFromFile` 與 `SolveModel` 的 doc comment
 - **THEN** 各自有 `Deprecated:` 段落，指名 `Solve` 或 `SolveFile` 為替代，並寫明在 0.4 移除
+
+### Requirement: The deprecated GLPK functions never return a nil table
+`lp.SolveFromFile` and `lp.SolveModel` SHALL return a non-nil solution table and a non-nil info table on every path. When no solution is produced, the solution table SHALL be empty and its `Err()` SHALL hold the reason.
+
+#### Scenario: Rejected arguments
+- **WHEN** `SolveFromFile` is called with more than one timeout
+- **THEN** both tables are non-nil, the solution table is empty with a non-nil `Err()`, and the info table's Status is `Error`
+
+#### Scenario: Unreadable solution file
+- **WHEN** the solution file glpsol should have written is missing
+- **THEN** the parsed table is empty and its `Err()` holds the reason
+

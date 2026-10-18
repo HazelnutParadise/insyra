@@ -92,13 +92,17 @@ func TestParseGLPKOutputFromFile_EmptyFile(t *testing.T) {
 }
 
 // A missing file is how a timed-out or crashed solver shows up. The function
-// reports it and hands back nil, which is what SolveFromFile then returns as
-// its result table.
+// reports it and hands back an empty table carrying the reason on Err(), which
+// is what SolveFromFile then returns as its result table.
 func TestParseGLPKOutputFromFile_MissingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.txt")
 
-	if dt := parseGLPKOutputFromFile(path); dt != nil {
-		t.Errorf("a missing file gave %v, want nil", dt)
+	dt := parseGLPKOutputFromFile(path)
+	if dt == nil {
+		t.Fatal("a missing file gave nil, want an empty DataTable")
+	}
+	if rows, _ := dt.Size(); rows != 0 || dt.Err() == nil {
+		t.Errorf("a missing file gave %d rows and Err() %v, want an empty table with an error", rows, dt.Err())
 	}
 }
 
