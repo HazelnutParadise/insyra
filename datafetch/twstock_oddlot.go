@@ -70,8 +70,7 @@ func (t *TWStockClient) OddLotQuotes(date time.Time, session TWOddLotSession) (*
 // adjusted for ex-rights, and a price the exchange shows as "--" is nil. The
 // exchange's 合計 totals row is left out. A date
 // with no data, such as a holiday or one before the session existed, gives an
-// empty table. Only the TWSE publishes these reports by date; the TPEx
-// publishes just the latest day, which this method does not read.
+// empty table. This method reads the TWSE; TPExOddLotQuotes reads the TPEx.
 func (t *TWStockClient) OddLotQuotesContext(ctx context.Context, date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
 	if err := contextErr(ctx); err != nil {
 		return nil, err
@@ -124,6 +123,106 @@ func (t *TWStockClient) OddLotQuotesContext(ctx context.Context, date time.Time,
 				out[i+1] = parseInt(raw)
 			default:
 				out[i+1] = parseFloat(raw)
+			}
+		}
+		rows = append(rows, out)
+	}
+	return oddLotTable(columns, rows), nil
+}
+
+var tpexOddLotHeaderAliases = map[TWOddLotSession]map[string]string{
+	TWOddLotIntraday: {
+		"代號": "Code", "名稱": "Name", "最後成交價": "Close", "首筆成交價": "Open", "最高": "High", "最低": "Low",
+		"成交股數": "Volume", "成交金額(元)": "Turnover", "成交筆數": "Transactions",
+		"最後買價": "BidPrice", "最後買量(股)": "BidVolume", "最後賣價": "AskPrice", "最後賣量(股)": "AskVolume",
+	},
+	TWOddLotAfterHours: {
+		"代號": "Code", "名稱": "Name", "成交股數": "Volume", "成交筆數": "Transactions", "成交金額": "Turnover",
+		"成交價格(元)": "Price", "未成交買價": "BidPrice", "未成交買量": "BidVolume", "未成交賣價": "AskPrice", "未成交賣量": "AskVolume",
+	},
+}
+
+var tpexOddLotPaths = map[TWOddLotSession]string{
+	TWOddLotIntraday:   "/www/zh-tw/afterTrading/oddQuote",
+	TWOddLotAfterHours: "/www/zh-tw/afterTrading/odd",
+}
+
+// TPExOddLotQuotes is OddLotQuotes for the TPEx (上櫃): the day's odd-lot
+// trading of every TPEx security for the chosen session. It is
+// TPExOddLotQuotesContext with context.Background().
+func (t *TWStockClient) TPExOddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
+	return t.TPExOddLotQuotesContext(context.Background(), date, session)
+}
+
+// TPExOddLotQuotesContext is TPExOddLotQuotes with a context. The limiter wait,
+// the request and each retry backoff stop when ctx is done, and the call then
+// returns ctx.Err() without sending another request.
+//
+// The table has the columns OddLotQuotes gives for the same session, so the two
+// exchanges' tables can be stacked. The TPEx intraday report also shows each
+// stock's change from the previous close, which is left out. Where the TPEx
+// shows a price of 0.00 for a stock that did not trade or had no quote, the
+// value is nil. A date with no data, such as a holiday or one before the
+// session existed (intraday began on 2020-10-26; after-hours data starts in
+// January 2011), gives an empty table.
+func (t *TWStockClient) TPExOddLotQuotesContext(ctx context.Context, date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	path, ok := tpexOddLotPaths[session]
+	if !ok {
+		return nil, fmt.Errorf("datafetch: unsupported odd-lot session %q", session)
+	}
+	date = normalizeDate(date)
+	if err := t.usable(); err != nil {
+		return nil, err
+	}
+	columns := oddLotColumns[session]
+
+	var response twStockResponse
+	values := url.Values{"date": {date.Format("2006/01/02")}, "type": {"Daily"}, "response": {"json"}}
+	if err := t.doJSON(ctx, requestURL(t.tpexBaseURL, path, values), &response); err != nil {
+		if errors.Is(err, errTWStockNoData) {
+			return oddLotTable(columns, nil), nil
+		}
+		return nil, err
+	}
+	if len(response.Tables) == 0 || len(response.Tables[0].Data) == 0 {
+		return oddLotTable(columns, nil), nil
+	}
+	table := response.Tables[0]
+	fields := make([]string, len(table.Fields))
+	for i, f := range table.Fields {
+		fields[i] = strings.TrimSpace(f)
+	}
+	indexes, err := mapHeaders(fields, tpexOddLotHeaderAliases[session], columns)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([][]any, 0, len(table.Data))
+	for rowIndex, row := range table.Data {
+		for _, name := range columns {
+			if indexes[name] >= len(row) {
+				return nil, fmt.Errorf("datafetch: TPEx odd-lot row %d is missing required cells", rowIndex)
+			}
+		}
+		if strings.TrimSpace(cell(row, indexes["Code"])) == "" {
+			continue
+		}
+		out := make([]any, len(columns)+1)
+		out[0] = date
+		for i, name := range columns {
+			raw := cell(row, indexes[name])
+			switch name {
+			case "Code", "Name":
+				out[i+1] = strings.TrimSpace(raw)
+			case "Volume", "Transactions", "Turnover", "BidVolume", "AskVolume":
+				out[i+1] = parseInt(raw)
+			default:
+				// A price the TPEx shows as 0.00 is no trade or no quote.
+				if price := parseFloat(raw); price != 0.0 {
+					out[i+1] = price
+				}
 			}
 		}
 		rows = append(rows, out)

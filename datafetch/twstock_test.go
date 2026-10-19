@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -742,6 +743,82 @@ func TestTWStockOddLotQuotesNoDataAndBadSession(t *testing.T) {
 	var zero TWStockClient
 	if _, err := zero.OddLotQuotes(dateUTC(2026, time.January, 2), TWOddLotIntraday); err == nil {
 		t.Error("a zero client should be an error")
+	}
+}
+
+func TestTWStockTPExOddLotQuotes(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, fixtureKey("/www/zh-tw/afterTrading/oddQuote", query("date", "2026/10/16", "type", "Daily", "response", "json")), "tpex_oddquote_20261016.json")
+	transport.addFixture(t, fixtureKey("/www/zh-tw/afterTrading/odd", query("date", "2026/10/16", "type", "Daily", "response", "json")), "tpex_odd_20261016.json")
+	day := dateUTC(2026, time.October, 16)
+
+	intraday, err := stock.TPExOddLotQuotes(day, TWOddLotIntraday)
+	if err != nil {
+		t.Fatalf("intraday error: %v", err)
+	}
+	// Fixture: 00411A, 006201, 00679B and 00687C, which did not trade.
+	if got := intraday.GetColByName("Code").Data(); len(got) != 4 || got[0] != "00411A" || got[3] != "00687C" {
+		t.Fatalf("intraday codes = %v", got)
+	}
+	for name, want := range map[string]any{"Volume": int64(46322), "Transactions": int64(426), "Turnover": int64(471215), "Open": 10.12, "Close": 10.17, "High": 10.44, "Low": 10.12, "BidPrice": 10.17, "BidVolume": int64(130), "AskPrice": 10.2, "AskVolume": int64(560)} {
+		if got := intraday.GetColByName(name).Data()[0]; got != want {
+			t.Errorf("intraday %s = %v (%T), want %v", name, got, got, want)
+		}
+	}
+	for _, name := range []string{"Open", "Close", "High", "Low", "AskPrice"} {
+		if got := intraday.GetColByName(name).Data()[3]; got != nil {
+			t.Errorf("a stock that did not trade has %s = %v, want nil", name, got)
+		}
+	}
+	if intraday.GetColByName("Change") != nil || intraday.GetColByName("漲跌") != nil {
+		t.Error("the change column is left out")
+	}
+	if got := intraday.GetColByName("Date").Data()[0]; got != day {
+		t.Errorf("Date = %v, want %v", got, day)
+	}
+
+	after, err := stock.TPExOddLotQuotes(day, TWOddLotAfterHours)
+	if err != nil {
+		t.Fatalf("after-hours error: %v", err)
+	}
+	for name, want := range map[string]any{"Volume": int64(620), "Transactions": int64(5), "Turnover": int64(6322), "Price": 10.2, "BidPrice": 10.2, "BidVolume": int64(6854), "AskVolume": int64(0)} {
+		if got := after.GetColByName(name).Data()[0]; got != want {
+			t.Errorf("after-hours %s = %v (%T), want %v", name, got, got, want)
+		}
+	}
+	if got := after.GetColByName("AskPrice").Data()[0]; got != nil {
+		t.Errorf("an ask of 0.00 means no quote and should be nil, got %v", got)
+	}
+	// Same columns as the TWSE's table for the session, so the two stack.
+	twse := oddLotTable(oddLotColumns[TWOddLotAfterHours], nil)
+	if !reflect.DeepEqual(after.ColNames(), twse.ColNames()) {
+		t.Errorf("columns %v differ from the TWSE's %v", after.ColNames(), twse.ColNames())
+	}
+}
+
+func TestTWStockTPExOddLotQuotesNoDataAndBadSession(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	empty := []byte(`{"tables":[{"title":"盤中零股每日收盤行情","date":"20261018","fields":["代號","名稱"],"data":[]}],"stat":"ok"}`)
+	transport.replies[fixtureKey("/www/zh-tw/afterTrading/oddQuote", query("date", "2026/10/18", "type", "Daily", "response", "json"))] = []fixtureReply{{status: http.StatusOK, body: empty}}
+	dt, err := stock.TPExOddLotQuotes(dateUTC(2026, time.October, 18), TWOddLotIntraday)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dt.NumRows() != 0 || dt.GetColByName("Code") == nil {
+		t.Errorf("a day with no data should be an empty table with columns, got %d rows", dt.NumRows())
+	}
+	if _, err := stock.TPExOddLotQuotes(dateUTC(2026, time.October, 16), TWOddLotSession("Night")); err == nil {
+		t.Error("an unknown session should be an error")
+	}
+	var zero TWStockClient
+	if _, err := zero.TPExOddLotQuotes(dateUTC(2026, time.October, 16), TWOddLotIntraday); err == nil {
+		t.Error("a zero client should be an error")
+	}
+	// A header the code needs but the report lacks is refused, not guessed.
+	bad := []byte(`{"tables":[{"fields":["代號","名稱"],"data":[["00411A","x"]]}],"stat":"ok"}`)
+	transport.replies[fixtureKey("/www/zh-tw/afterTrading/odd", query("date", "2026/10/16", "type", "Daily", "response", "json"))] = []fixtureReply{{status: http.StatusOK, body: bad}}
+	if _, err := stock.TPExOddLotQuotes(dateUTC(2026, time.October, 16), TWOddLotAfterHours); err == nil {
+		t.Error("a report without the required headers should be an error")
 	}
 }
 
