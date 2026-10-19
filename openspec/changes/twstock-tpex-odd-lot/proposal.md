@@ -6,14 +6,14 @@
 
 ## What Changes
 
-- `TWStockClient.TPExOddLotQuotesLatest()` (and `...Context`) returns the TPEx after-hours odd-lot report of the latest trading day, in the same columns as `OddLotQuotes(date, TWOddLotAfterHours)`.
-- No history and no TPEx intraday odd lot: see design.
+- `TWStockClient.TPExOddLotQuotes(date, session)` (and `...Context`) returns the TPEx intraday or after-hours odd-lot report of a trading day, in the same columns as `OddLotQuotes`.
+- The doc comment of `OddLotQuotes`, which says the TPEx publishes only the latest day, is corrected.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `twstock-tpex-odd-lot`: the latest day's TPEx odd-lot report.
+- `twstock-tpex-odd-lot`: the TPEx odd-lot reports by date.
 
 ## Impact
 

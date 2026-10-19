@@ -2,27 +2,43 @@
 
 ## What the TPEx offers (checked 2026-10-19)
 
-- `https://www.tpex.org.tw/openapi/v1/tpex_odd_stock` ("上櫃股票零股交易資訊") returns 1,010 rows, all dated the latest trading day (ROC `1151019`). Columns: Date, SecuritiesCompanyCode, CompanyName, TradeVolume, NumberOfTransactions, TradeAmount, Price, LastBestBidPrice, LastBestBidVolume, LastBestAskPrice, LastBestAskVolume. One `Price` and no open, high, low: this is the after-hours session.
-- A `date` query parameter is ignored: asking for 1151016 still returns the latest day. There is no history through this API.
-- The OpenAPI document lists no TPEx intraday odd-lot report. I did not find one on the website either, but did not search exhaustively.
+The first version of this note looked only at the OpenAPI and wrongly said the TPEx has no history. The TPEx website has both reports by date, through the JSON the pages themselves call (found by watching the pages' network requests, then called with `curl`):
 
-So the TWSE half of #451 can be fetched by date and the TPEx half cannot. `OddLotQuotes`'s doc comment already says so.
+| Report | Endpoint | Earliest date with data | Columns |
+| --- | --- | --- | --- |
+| After-hours odd lot (盤後零股) | `/www/zh-tw/afterTrading/odd?date=YYYY/MM/DD&type=Daily&response=json` | between 2011-01 and 2012-06 (2012-06-01 has 620 rows) | 代號, 名稱, 成交股數, 成交筆數, 成交金額, 成交價格, 未成交買價, 未成交買量, 未成交賣價, 未成交賣量 |
+| Intraday odd lot (盤中零股) | `/www/zh-tw/afterTrading/oddQuote?date=YYYY/MM/DD&type=Daily&response=json` | 2020-10-26, as on the TWSE (2020-10-20 is empty, 2020-11-02 has 879 rows) | 代號, 名稱, 最後成交價, 漲跌, 首筆成交價, 最高, 最低, 成交股數, 成交金額(元), 成交筆數, 最後買價, 最後買量(股), 最後賣價, 最後賣量(股) |
+
+Both answer in the same envelope the package already reads for other TPEx reports (`stat`, `date`, `tables[0].fields` and `.data`), numbers have thousands separators, and a day with no data gives an empty table. The OpenAPI (`/openapi/v1/tpex_odd_stock`) gives only the latest after-hours day and ignores a date, so it is not the source to use. The earliest after-hours date was bracketed by spot checks (2010 is empty, 2012 has data), not pinned to the day; the implementation should find it.
+
+`OddLotQuotes`'s doc comment says the TPEx publishes only the latest day. That is wrong and is corrected by this change.
 
 ## Proposed API
 
 ```go
-func (t *TWStockClient) TPExOddLotQuotesLatest() (*insyra.DataTable, error)
-func (t *TWStockClient) TPExOddLotQuotesLatestContext(ctx context.Context) (*insyra.DataTable, error)
+// TWSE, already there
+func (t *TWStockClient) OddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error)
+
+// new: the same shape for the TPEx
+func (t *TWStockClient) TPExOddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error)
+func (t *TWStockClient) TPExOddLotQuotesContext(ctx context.Context, date time.Time, session TWOddLotSession) (*insyra.DataTable, error)
 ```
 
-The table has Date, Code, Name, Volume, Transactions, Turnover, Price, BidPrice, BidVolume, AskPrice, AskVolume, with the same types as `OddLotQuotes` after-hours (Date as the library's other TWStock tables give it, numbers parsed, a price shown as `--` or empty is nil). It reuses the client's limiter, retry and throttling handling.
+The tables use the columns `OddLotQuotes` already gives for each session (Date, Code, Name, Volume, Transactions, Turnover, then Open, Close, High, Low for intraday and Price for after-hours, and the last best bid and ask price and volume), so the two exchanges' tables can be stacked. The TPEx intraday table's `漲跌` (change) column is left out, as the TWSE's has none.
+
+Usage:
+
+```go
+client, _ := datafetch.TWStock(datafetch.TWStockConfig{Interval: 3 * time.Second, Retries: 5})
+tse, _ := client.OddLotQuotes(day, datafetch.TWOddLotAfterHours)
+otc, _ := client.TPExOddLotQuotes(day, datafetch.TWOddLotAfterHours)
+```
 
 ## Decisions for you
 
-1. **A separate method, not a new `session` constant.** `OddLotQuotes(date, session)` takes a date; the TPEx call cannot honour one, and hiding that behind a constant would make a past date silently return today's data. A separate name says "latest" up front. Alternative: add `TWOddLotTPExAfterHours` and return an error when `date` is not the latest day. I recommend the separate method.
-2. **No history helper.** To build history the caller runs it once a day and stores the result. A helper that stores files would add state to a fetch library. I recommend not adding one.
-3. **Do it at all?** It gives one day at a time. Worth it only if you will collect daily from now on. If not, close #451 as done for the TWSE half and note that the TPEx publishes no history.
+1. **Name and shape.** A new `TPExOddLotQuotes(date, session)` beside `OddLotQuotes` keeps the TWSE method's signature and meaning (no break) and reads like the package's other market-specific methods. The alternative, adding a `market` argument to `OddLotQuotes`, changes a released signature, which I would not do on this line. I recommend the new method.
+2. **Drop `漲跌` from the intraday table?** It can be recomputed from the close and the previous close, and the TWSE table does not have it. I recommend dropping it so the two tables match.
 
 ## Tests
 
-Parse a saved response (fixture, `.csv.txt` rule applies only to CSV), a response with a different date than today is still accepted, an HTML throttling page gives the existing throttled error, an empty array gives an empty table, and the live test behind `INSYRA_LIVE_TESTS` as for the other methods.
+Parse saved responses of both reports (a normal day, an empty day, a holiday), an HTML throttling page gives the existing throttled error, the unknown session value is refused like `OddLotQuotes` does, and the live test behind `INSYRA_LIVE_TESTS` as for the other methods.
