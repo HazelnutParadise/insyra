@@ -53,6 +53,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
 - **Cross-sectional regression**: `FamaMacBeth` — regress every date's returns on several characteristics and test each coefficient's time average with a Newey-West t-test
 - **Oscillators**: `RSI` — relative strength index with Wilder or simple averaging and a choice for missing prices
+- **Technical indicators**: `SMA`, `EMA`, `MACD`, `Bollinger`, `TrueRange`, `ATR`, `KD` — the common moving-average, volatility and stochastic indicators, checked against TA-Lib
 - **Sharpe comparison**: `SharpeDifferenceTest` — Jobson-Korkie test with Memmel's correction for whether two return series have the same Sharpe ratio
 - **Market breadth**: `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio` — market-wide indicators from the daily counts of advancing and declining stocks
 - **Portfolio optimization**: `OptimizePortfolio`, `OptimizePortfolioMoments`, `EfficientFrontier` — mean-variance weights under a sum-to-one and per-asset box constraint, for minimum variance, a target return, or maximum Sharpe, plus the frontier between them
@@ -923,6 +924,33 @@ for i, name := range res.Names {
 ---
 
 ## Oscillators
+
+### Technical Indicators
+
+```go
+func SMA(prices insyra.IDataList, n int) (*insyra.DataList, error)
+func EMA(prices insyra.IDataList, n int) (*insyra.DataList, error)
+func MACD(prices insyra.IDataList, fast, slow, signal int) (*MACDResult, error)    // MACD, Signal, Histogram
+func Bollinger(prices insyra.IDataList, n int, k float64) (*BollingerResult, error) // Upper, Middle, Lower
+func TrueRange(high, low, close insyra.IDataList) (*insyra.DataList, error)
+func ATR(high, low, close insyra.IDataList, n int) (*insyra.DataList, error)
+func KD(high, low, close insyra.IDataList, n int, opts ...KDOptions) (*KDResult, error) // K, D
+```
+
+They follow TA-Lib's definitions, and the tests compare every one with TA-Lib on three seeded synthetic series (`quant/testdata/indicator_baseline.py` regenerates the values):
+
+- A window that is not full is `NaN`, and the result has one row per price. Every returned list is named after its line (`SMA`, `MACD`, `Signal`, `Upper`, `K` and so on). A `NaN` is not accepted by the other `quant` functions that take a series, so drop the leading rows before passing an indicator on.
+- `EMA` has weight `2/(n+1)` and starts from the simple average of its first `n` values. `MACD` starts both EMAs on row `slow-1`, the fast one from the simple average of the `fast` prices ending there. TA-Lib leaves the MACD line (and K of the stochastic) empty until the signal line (D) exists; here they start earlier, and the values agree wherever both have one.
+- `Bollinger` uses the population standard deviation. `ATR` is Wilder's: row `n` is the mean of the first `n` true ranges and later rows are smoothed with weight `1/n`. `TrueRange` is `NaN` on row 0.
+- `KD` takes where the close lies in the range of the last `n` rows (RSV, 0 to 100; a flat window counts as 50). `KDOptions.Method` chooses the smoothing: `KDRecursive` (default) is the KD of Taiwanese brokers' software, which TA-Lib and pandas-ta do not have, so their `STOCH` numbers differ from it (use `KDMovingAverage` to compare with them), where K and D start at 50 and `K = (1 − 1/SlowK) × previous K + RSV/SlowK`, then D from K the same way; `KDMovingAverage` is TA-Lib's STOCH, simple averages of RSV and then K. `SlowK` and `SlowD` default to 3. The usual setting is `n = 9`.
+
+A missing, non-numeric or non-finite value is an error naming its row index, since a moving average over a hole is not the average of anything.
+
+```go
+macd, _ := quant.MACD(close, 12, 26, 9)
+kd, _ := quant.KD(high, low, close, 9)
+bands, _ := quant.Bollinger(close, 20, 2)
+```
 
 ### RSI
 
