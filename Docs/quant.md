@@ -2,6 +2,8 @@
 
 This document describes all public APIs in the `quant` package, designed for AI/automated applications to directly understand each function, type, parameter, and return value.
 
+> **Technical analysis is bullshit.** The indicators and chart-pattern tools in this package are here so you can test that claim yourself, not because they make money. In our own study ([#471](https://github.com/HazelnutParadise/insyra/issues/471)) of 1,808 Taiwan stocks (delisted ones included) and 3,671 US stocks, out of sample from 2015 to 2026, every textbook chart pattern appeared about as often in shuffled prices as in real ones (within 10%), and ascending triangles broke down about 77% of the time in both, the opposite of the textbook. Run a theory against a shuffled control (`ShuffleBars`) before you trade it.
+
 ---
 
 ## Installation
