@@ -51,61 +51,61 @@ func (k GapKind) String() string {
 type GapFill int
 
 const (
-	// FillUnknown means the data ends, or a new segment starts, before the
+	// GapFillUnknown means the data ends, or a new segment starts, before the
 	// window is over.
-	FillUnknown GapFill = iota
-	// Filled means the price came back to the edge of the gap in the window.
-	Filled
-	// NotFilled means it did not.
-	NotFilled
+	GapFillUnknown GapFill = iota
+	// GapFilled means the price came back to the edge of the gap in the window.
+	GapFilled
+	// GapNotFilled means it did not.
+	GapNotFilled
 )
 
 // String returns the constant name of f, or GapFill(n) for a value that is not
 // one of the constants.
 func (f GapFill) String() string {
 	switch f {
-	case FillUnknown:
-		return "FillUnknown"
-	case Filled:
-		return "Filled"
-	case NotFilled:
-		return "NotFilled"
+	case GapFillUnknown:
+		return "GapFillUnknown"
+	case GapFilled:
+		return "GapFilled"
+	case GapNotFilled:
+		return "GapNotFilled"
 	}
 	return fmt.Sprintf("GapFill(%d)", int(f))
 }
 
 // Gap is one price gap and its class.
 //
-// Row is the row of the gap day; Up is true for a gap up (its low is above the
-// previous high) and false for a gap down (its high is below the previous
-// low). RelativeVolume is the day's volume over the mean of the LookbackRows
+// Row is the row of the gap day; Direction is BreakUp for a gap up (its low is
+// above the previous high) and BreakDown for a gap down (its high is below the
+// previous low). RelativeVolume is the day's volume over the mean of the LookbackRows
 // before it (NaN when that mean is 0), TrendZ the move over those rows in
 // units of the volatility to be expected over them, and HighVolume whether
 // RelativeVolume reached HighVolumeRatio. Kind, RelativeVolume, TrendZ and
 // HighVolume use only rows up to the gap day, so they can be used to trade it.
 //
-// FilledWithin5 and FilledWithin20 look at the rows after the gap day, so they
-// are what happened afterwards, an outcome to study and not something to trade
-// on. A gap up is filled when a later low reaches the previous high, a gap down
+// Fills holds, for each of GapOptions.FillWindows in the same order, whether the
+// gap was filled within that many rows after the gap day. It looks at the rows
+// after the gap day, so it is what happened afterwards, an outcome to study and
+// not something to trade on. A gap up is filled when a later low reaches the previous high, a gap down
 // when a later high reaches the previous low.
 type Gap struct {
 	Row            int
-	Up             bool
+	Direction      BreakDirection // BreakUp or BreakDown
 	Kind           GapKind
 	HighVolume     bool
 	RelativeVolume float64
 	TrendZ         float64
-	FilledWithin5  GapFill
-	FilledWithin20 GapFill
+	Fills          []GapFill // one per GapOptions.FillWindows
 }
 
 // GapOptions are the optional settings of ClassifyGaps. A zero field takes the
 // default shown.
 type GapOptions struct {
-	// Breaks are the rows on which a new data segment starts, as in
+	// SegmentStarts are the rows on which a new data segment starts, as in
 	// ZigZagOptions. A gap is not looked for until a segment has enough rows,
 	// and the fill windows stop at the end of the segment.
-	Breaks []int
+	SegmentStarts []int
 	// LookbackRows is the number of rows whose range, mean volume and price move
 	// a gap is judged against. Default 20.
 	LookbackRows int
@@ -115,9 +115,13 @@ type GapOptions struct {
 	// HighVolumeRatio is the relative volume from which a day counts as heavy.
 	// Default 1.5.
 	HighVolumeRatio float64
-	// TrendZ is the size of the earlier move, in standard deviations, from
+	// RunawayZ is the size of the earlier move, in standard deviations, from
 	// which a gap to a new extreme is a runaway and not a breakaway. Default 1.
-	TrendZ float64
+	RunawayZ float64
+	// FillWindows are the numbers of rows after the gap day within which a fill
+	// is looked for, each giving one entry of Gap.Fills. Default 5 and 20. Each
+	// must be at least 1.
+	FillWindows []int
 	// ExhaustionZ is the size of the earlier move from which a gap to a new
 	// extreme on heavy volume is an exhaustion gap. Default 2.
 	ExhaustionZ float64
@@ -132,8 +136,8 @@ type GapOptions struct {
 //   - Common: the close stays inside the range of those rows.
 //   - Breakaway: the close is a new extreme (above the highest high for a gap
 //     up, below the lowest low for a gap down) after a move of less than
-//     TrendZ standard deviations in either direction.
-//   - Runaway: a new extreme after a move of between TrendZ and ExhaustionZ
+//     RunawayZ standard deviations in either direction.
+//   - Runaway: a new extreme after a move of between RunawayZ and ExhaustionZ
 //     standard deviations in the gap's direction.
 //   - Exhaustion: a new extreme after a move of ExhaustionZ standard deviations
 //     or more in the gap's direction, on volume of HighVolumeRatio times the
@@ -153,7 +157,7 @@ func ClassifyGaps(high, low, close, volume insyra.IDataList, opts ...GapOptions)
 	if len(opts) == 1 {
 		o = opts[0]
 	}
-	if o.LookbackRows < 0 || o.VolatilityRows < 0 || o.HighVolumeRatio < 0 || o.TrendZ < 0 || o.ExhaustionZ < 0 {
+	if o.LookbackRows < 0 || o.VolatilityRows < 0 || o.HighVolumeRatio < 0 || o.RunawayZ < 0 || o.ExhaustionZ < 0 {
 		return nil, errors.New("GapOptions fields must not be negative")
 	}
 	if o.LookbackRows == 0 {
@@ -165,14 +169,22 @@ func ClassifyGaps(high, low, close, volume insyra.IDataList, opts ...GapOptions)
 	if o.HighVolumeRatio == 0 {
 		o.HighVolumeRatio = 1.5
 	}
-	if o.TrendZ == 0 {
-		o.TrendZ = 1
+	if o.RunawayZ == 0 {
+		o.RunawayZ = 1
+	}
+	if o.FillWindows == nil {
+		o.FillWindows = []int{5, 20}
+	}
+	for _, w := range o.FillWindows {
+		if w < 1 {
+			return nil, fmt.Errorf("FillWindows must be at least 1, got %d", w)
+		}
 	}
 	if o.ExhaustionZ == 0 {
 		o.ExhaustionZ = 2
 	}
-	if o.ExhaustionZ < o.TrendZ {
-		return nil, errors.New("ExhaustionZ must not be below TrendZ")
+	if o.ExhaustionZ < o.RunawayZ {
+		return nil, errors.New("ExhaustionZ must not be below RunawayZ")
 	}
 	h, err := numericSeries(high, "high")
 	if err != nil {
@@ -202,13 +214,13 @@ func ClassifyGaps(high, low, close, volume insyra.IDataList, opts ...GapOptions)
 			return nil, fmt.Errorf("volume holds %v at row index %d; it must not be negative", m[i], i)
 		}
 	}
-	breaks, err := cleanBreaks(o.Breaks, n)
+	starts, err := cleanSegmentStarts(o.SegmentStarts, n)
 	if err != nil {
 		return nil, err
 	}
-	segStart := segmentStarts(n, breaks)
+	segStart := segmentStartOf(n, starts)
 	segEnd := make([]int, n) // first row after the row's segment
-	for _, b := range segmentBounds(n, breaks) {
+	for _, b := range segmentBounds(n, starts) {
 		for i := b[0]; i < b[1]; i++ {
 			segEnd[i] = b[1]
 		}
@@ -225,6 +237,10 @@ func ClassifyGaps(high, low, close, volume insyra.IDataList, opts ...GapOptions)
 		down := h[t] < l[t-1]
 		if !up && !down {
 			continue
+		}
+		dir := BreakDown
+		if up {
+			dir = BreakUp
 		}
 		hi, lo, meanVol := math.Inf(-1), math.Inf(1), 0.0
 		for j := t - o.LookbackRows; j < t; j++ {
@@ -255,7 +271,7 @@ func ClassifyGaps(high, low, close, volume insyra.IDataList, opts ...GapOptions)
 		newHigh, newLow := c[t] > hi, c[t] < lo
 		heavy := rv >= o.HighVolumeRatio
 
-		g := Gap{Row: t, Up: up, RelativeVolume: rv, TrendZ: z, HighVolume: heavy, Kind: GapUnclassified}
+		g := Gap{Row: t, Direction: dir, RelativeVolume: rv, TrendZ: z, HighVolume: heavy, Kind: GapUnclassified}
 		extreme, move := newHigh, z
 		if !up {
 			extreme, move = newLow, -z
@@ -263,9 +279,9 @@ func ClassifyGaps(high, low, close, volume insyra.IDataList, opts ...GapOptions)
 		switch {
 		case !newHigh && !newLow:
 			g.Kind = GapCommon
-		case extreme && math.Abs(z) < o.TrendZ:
+		case extreme && math.Abs(z) < o.RunawayZ:
 			g.Kind = GapBreakaway
-		case extreme && move >= o.TrendZ && move < o.ExhaustionZ:
+		case extreme && move >= o.RunawayZ && move < o.ExhaustionZ:
 			g.Kind = GapRunaway
 		case extreme && move >= o.ExhaustionZ && heavy:
 			g.Kind = GapExhaustion
@@ -274,8 +290,10 @@ func ClassifyGaps(high, low, close, volume insyra.IDataList, opts ...GapOptions)
 		if !up {
 			edge = l[t-1]
 		}
-		g.FilledWithin5 = gapFill(h, l, t, 5, segEnd[t], up, edge)
-		g.FilledWithin20 = gapFill(h, l, t, 20, segEnd[t], up, edge)
+		g.Fills = make([]GapFill, len(o.FillWindows))
+		for i, w := range o.FillWindows {
+			g.Fills[i] = gapFill(h, l, t, w, segEnd[t], up, edge)
+		}
 		out = append(out, g)
 	}
 	return out, nil
@@ -283,12 +301,12 @@ func ClassifyGaps(high, low, close, volume insyra.IDataList, opts ...GapOptions)
 
 func gapFill(h, l []float64, t, window, end int, up bool, edge float64) GapFill {
 	if t+window >= end {
-		return FillUnknown
+		return GapFillUnknown
 	}
 	for j := t + 1; j <= t+window; j++ {
 		if (up && l[j] <= edge) || (!up && h[j] >= edge) {
-			return Filled
+			return GapFilled
 		}
 	}
-	return NotFilled
+	return GapNotFilled
 }

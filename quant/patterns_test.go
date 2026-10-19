@@ -11,7 +11,7 @@ import (
 // volatility thresholds, checked against a two-pass standard deviation.
 func TestVolatilityThresholdsByHand(t *testing.T) {
 	p := []float64{100, 110, 99, 108.9}
-	got, err := VolatilityThresholds(prices(p...), VolatilityOptions{Multiple: 2, Window: 3, MinRows: 2, Floor: 0.01, WarmupVolatility: 0.05})
+	got, err := VolatilityThresholds(prices(p...), VolatilityThresholdOptions{Multiple: 2, Window: 3, MinRows: 2, Floor: 0.01, WarmupVolatility: 0.05})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,14 +33,14 @@ func TestVolatilityThresholdsByHand(t *testing.T) {
 
 func TestVolatilityThresholdsFloorWindowAndBreaks(t *testing.T) {
 	flat := prices(100, 100, 100, 100, 100, 100)
-	got, err := VolatilityThresholds(flat, VolatilityOptions{Multiple: 3, MinRows: 2})
+	got, err := VolatilityThresholds(flat, VolatilityThresholdOptions{Multiple: 3, MinRows: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	nearlyAll(t, "floor", got, []float64{0.075, 0.075, 0.02, 0.02, 0.02, 0.02})
 
 	// A break restarts the window: the first two rows after it are warm-up again.
-	got, err = VolatilityThresholds(flat, VolatilityOptions{Multiple: 3, MinRows: 2, Breaks: []int{3}})
+	got, err = VolatilityThresholds(flat, VolatilityThresholdOptions{Multiple: 3, MinRows: 2, SegmentStarts: []int{3}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,17 +49,17 @@ func TestVolatilityThresholdsFloorWindowAndBreaks(t *testing.T) {
 
 func TestVolatilityThresholdsRefuseBadInput(t *testing.T) {
 	good := prices(100, 101, 102)
-	for name, o := range map[string]VolatilityOptions{
+	for name, o := range map[string]VolatilityThresholdOptions{
 		"no multiple":     {},
 		"negative window": {Multiple: 1, Window: -1},
 		"minrows>window":  {Multiple: 1, Window: 5, MinRows: 6},
-		"break outside":   {Multiple: 1, Breaks: []int{3}},
+		"break outside":   {Multiple: 1, SegmentStarts: []int{3}},
 	} {
 		if _, err := VolatilityThresholds(good, o); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
 	}
-	if _, err := VolatilityThresholds(prices(100, 0, 101), VolatilityOptions{Multiple: 1}); err == nil {
+	if _, err := VolatilityThresholds(prices(100, 0, 101), VolatilityThresholdOptions{Multiple: 1}); err == nil {
 		t.Error("a zero price should be an error")
 	}
 }
@@ -76,7 +76,7 @@ func TestZigZagByWithAConstantThresholdIsZigZag(t *testing.T) {
 		th[i] = 0.08
 	}
 	want, _ := ZigZag(prices(s...), 0.08)
-	got, err := ZigZagBy(prices(s...), prices(th...))
+	got, err := ZigZagAdaptive(prices(s...), prices(th...))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,12 +90,12 @@ func TestZigZagByWithAConstantThresholdIsZigZag(t *testing.T) {
 func TestZigZagByUsesTheThresholdOfTheExtreme(t *testing.T) {
 	p := prices(100, 120, 105, 130, 110)
 	tight := prices(0.05, 0.05, 0.05, 0.05, 0.05)
-	got, _ := ZigZagBy(p, tight)
+	got, _ := ZigZagAdaptive(p, tight)
 	if len(got) < 3 {
 		t.Fatalf("with a tight threshold every swing counts: %+v", got)
 	}
 	loose := prices(0.05, 0.30, 0.05, 0.05, 0.05) // the peak at row 1 needs a 30% fall to confirm
-	got, err := ZigZagBy(p, loose)
+	got, err := ZigZagAdaptive(p, loose)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestZigZagByIsCausalAndHonoursBreaks(t *testing.T) {
 		th[i] = 0.05 + 0.1*rng.Float64()
 	}
 	breaks := []int{200, 350}
-	full, err := ZigZagBy(prices(s...), prices(th...), ZigZagOptions{Breaks: breaks})
+	full, err := ZigZagAdaptive(prices(s...), prices(th...), ZigZagOptions{SegmentStarts: breaks})
 	if err != nil || len(full) < 5 {
 		t.Fatalf("pivots: %d, %v", len(full), err)
 	}
@@ -143,7 +143,7 @@ func TestZigZagByIsCausalAndHonoursBreaks(t *testing.T) {
 				cutBreaks = append(cutBreaks, b)
 			}
 		}
-		part, err := ZigZagBy(prices(s[:cut]...), prices(th[:cut]...), ZigZagOptions{Breaks: cutBreaks})
+		part, err := ZigZagAdaptive(prices(s[:cut]...), prices(th[:cut]...), ZigZagOptions{SegmentStarts: cutBreaks})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -168,15 +168,15 @@ func TestZigZagByRefusesBadInput(t *testing.T) {
 		"short":        {[]float64{0.1, 0.1}, nil},
 		"zero":         {[]float64{0.1, 0, 0.1}, nil},
 		"one":          {[]float64{0.1, 1, 0.1}, nil},
-		"break out":    {[]float64{0.1, 0.1, 0.1}, []ZigZagOptions{{Breaks: []int{3}}}},
-		"negative brk": {[]float64{0.1, 0.1, 0.1}, []ZigZagOptions{{Breaks: []int{-1}}}},
+		"break out":    {[]float64{0.1, 0.1, 0.1}, []ZigZagOptions{{SegmentStarts: []int{3}}}},
+		"negative brk": {[]float64{0.1, 0.1, 0.1}, []ZigZagOptions{{SegmentStarts: []int{-1}}}},
 		"two options":  {[]float64{0.1, 0.1, 0.1}, []ZigZagOptions{{}, {}}},
 	} {
-		if _, err := ZigZagBy(p, prices(th.l...), th.opts...); err == nil {
+		if _, err := ZigZagAdaptive(p, prices(th.l...), th.opts...); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
 	}
-	if _, err := ZigZagBy(p, nil); err == nil {
+	if _, err := ZigZagAdaptive(p, nil); err == nil {
 		t.Error("nil thresholds should be an error")
 	}
 }
@@ -217,7 +217,7 @@ func TestDoubleTopBreaksDownThroughTheTrough(t *testing.T) {
 		t.Fatal(err)
 	}
 	dt := findPattern(got, PatternDoubleTop)
-	want := []Pattern{{Kind: PatternDoubleTop, Start: 10, FormedAt: 32, ExpiresAt: 50, BreakoutAt: 36, Direction: BreakDown}}
+	want := []Pattern{{Kind: PatternDoubleTop, Start: 10, ConfirmedAt: 32, ExpiresAt: 50, BreakoutAt: 36, Direction: BreakDown}}
 	if !reflect.DeepEqual(dt, want) {
 		t.Fatalf("got %+v\nwant %+v", dt, want)
 	}
@@ -244,14 +244,14 @@ func TestDoubleTopExpires(t *testing.T) {
 func TestPatternToleranceOptions(t *testing.T) {
 	c := flatWith(60, nil)
 	def, _ := DetectPatterns(prices(c...), doubleTop)
-	if len(findPattern(def, PatternAscendingTriangle)) != 1 || len(findPattern(def, PatternBox)) != 0 {
+	if len(findPattern(def, PatternAscendingTriangle)) != 1 || len(findPattern(def, PatternRectangle)) != 0 {
 		t.Fatalf("the lows rise 25%% of the height, which is not flat by default: %+v", def)
 	}
 	wide, err := DetectPatterns(prices(c...), doubleTop, PatternOptions{FlatTolerance: 0.3})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(findPattern(wide, PatternBox)) != 1 {
+	if len(findPattern(wide, PatternRectangle)) != 1 {
 		t.Fatalf("with FlatTolerance 0.3 it is a box: %+v", wide)
 	}
 	tight, _ := DetectPatterns(prices(c...), doubleTop, PatternOptions{SymmetryTolerance: 0.01})
@@ -282,7 +282,7 @@ func TestHeadAndShouldersBreaksThroughTheNeckline(t *testing.T) {
 	}
 	hs := findPattern(got, PatternHeadAndShouldersTop)
 	// Row 52 closes at 100, above the neckline, so the first close under it is row 54.
-	want := []Pattern{{Kind: PatternHeadAndShouldersTop, Start: 10, FormedAt: 52, ExpiresAt: 90, BreakoutAt: 54, Direction: BreakDown}}
+	want := []Pattern{{Kind: PatternHeadAndShouldersTop, Start: 10, ConfirmedAt: 52, ExpiresAt: 90, BreakoutAt: 54, Direction: BreakDown}}
 	if !reflect.DeepEqual(hs, want) {
 		t.Fatalf("got %+v\nwant %+v", hs, want)
 	}
@@ -325,7 +325,7 @@ func TestPatternsDoNotCrossASegment(t *testing.T) {
 	for i := 2; i < 4; i++ {
 		split[i].Segment = 1
 	}
-	got, err := DetectPatterns(prices(flatWith(60, nil)...), split, PatternOptions{Breaks: []int{15}})
+	got, err := DetectPatterns(prices(flatWith(60, nil)...), split, PatternOptions{SegmentStarts: []int{15}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,22 +361,22 @@ func TestDetectPatternsIsCausal(t *testing.T) {
 	for i := 1; i < n; i++ {
 		s[i] = s[i-1] * math.Exp(0.015*rng.NormFloat64()+0.01*math.Sin(float64(i)/9))
 	}
-	th, _ := VolatilityThresholds(prices(s...), VolatilityOptions{Multiple: 1.5})
-	pivots, _ := ZigZagBy(prices(s...), th)
+	th, _ := VolatilityThresholds(prices(s...), VolatilityThresholdOptions{Multiple: 1.5})
+	pivots, _ := ZigZagAdaptive(prices(s...), th)
 	full, err := DetectPatterns(prices(s...), pivots)
 	if err != nil || len(full) < 20 {
 		t.Fatalf("patterns: %d, %v", len(full), err)
 	}
 	for cut := 30; cut <= n; cut += 13 {
 		sub := th.Data()[:cut]
-		cp, _ := ZigZagBy(prices(s[:cut]...), prices(toFloats(sub)...))
+		cp, _ := ZigZagAdaptive(prices(s[:cut]...), prices(toFloats(sub)...))
 		part, err := DetectPatterns(prices(s[:cut]...), cp)
 		if err != nil {
 			t.Fatal(err)
 		}
 		var want []Pattern
 		for _, p := range full {
-			if p.FormedAt < cut {
+			if p.ConfirmedAt < cut {
 				if p.BreakoutAt >= cut {
 					p.BreakoutAt, p.Direction = -1, BreakNone
 				}
@@ -495,10 +495,10 @@ func TestRegimesStayInsideTheirSegment(t *testing.T) {
 func TestPatternsRefuseBreaksThatDifferFromThePivots(t *testing.T) {
 	c := prices(flatWith(60, nil)...)
 	// doubleTop was made without breaks, so every pivot is in segment 0.
-	if _, err := DetectPatterns(c, doubleTop, PatternOptions{Breaks: []int{15}}); err == nil || !strings.Contains(err.Error(), "Segment") {
+	if _, err := DetectPatterns(c, doubleTop, PatternOptions{SegmentStarts: []int{15}}); err == nil || !strings.Contains(err.Error(), "Segment") {
 		t.Errorf("DetectPatterns: %v", err)
 	}
-	if _, err := FanBreaks(c, doubleTop, FanOptions{Breaks: []int{15}}); err == nil {
+	if _, err := FanBreaks(c, doubleTop, FanOptions{SegmentStarts: []int{15}}); err == nil {
 		t.Error("FanBreaks should refuse it too")
 	}
 	if _, err := FanBreaks(c, doubleTop, FanOptions{}, FanOptions{}); err == nil {

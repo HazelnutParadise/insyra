@@ -25,14 +25,14 @@ const (
 	// PatternDoubleBottom is two troughs of about the same depth, broken upward
 	// through the peak between them.
 	PatternDoubleBottom
-	// PatternBox is a flat top and a flat bottom, broken in either direction.
-	PatternBox
+	// PatternRectangle is a flat top and a flat bottom, broken in either direction.
+	PatternRectangle
 	// PatternAscendingTriangle is a flat top over a rising bottom.
 	PatternAscendingTriangle
 	// PatternDescendingTriangle is a falling top over a flat bottom.
 	PatternDescendingTriangle
-	// PatternSymmetricTriangle is a falling top over a rising bottom.
-	PatternSymmetricTriangle
+	// PatternSymmetricalTriangle is a falling top over a rising bottom.
+	PatternSymmetricalTriangle
 	// PatternRisingWedge is a top and a bottom that both rise and close in
 	// on each other.
 	PatternRisingWedge
@@ -55,14 +55,14 @@ func (k PatternKind) String() string {
 		return "PatternDoubleTop"
 	case PatternDoubleBottom:
 		return "PatternDoubleBottom"
-	case PatternBox:
-		return "PatternBox"
+	case PatternRectangle:
+		return "PatternRectangle"
 	case PatternAscendingTriangle:
 		return "PatternAscendingTriangle"
 	case PatternDescendingTriangle:
 		return "PatternDescendingTriangle"
-	case PatternSymmetricTriangle:
-		return "PatternSymmetricTriangle"
+	case PatternSymmetricalTriangle:
+		return "PatternSymmetricalTriangle"
 	case PatternRisingWedge:
 		return "PatternRisingWedge"
 	case PatternFallingWedge:
@@ -71,6 +71,32 @@ func (k PatternKind) String() string {
 		return "PatternDiamond"
 	}
 	return fmt.Sprintf("PatternKind(%d)", int(k))
+}
+
+// Trend is the direction of the price change before a pattern.
+type Trend int
+
+const (
+	// TrendUnknown means there were not enough rows in the segment to tell.
+	TrendUnknown Trend = iota
+	// TrendUp means the close was higher than TrendRows rows earlier.
+	TrendUp
+	// TrendDown means it was not higher.
+	TrendDown
+)
+
+// String returns the constant name of t, or Trend(n) for a value that is not one
+// of the constants.
+func (t Trend) String() string {
+	switch t {
+	case TrendUnknown:
+		return "TrendUnknown"
+	case TrendUp:
+		return "TrendUp"
+	case TrendDown:
+		return "TrendDown"
+	}
+	return fmt.Sprintf("Trend(%d)", int(t))
 }
 
 // BreakDirection says which way a price left a pattern or crossed a line.
@@ -101,7 +127,7 @@ func (d BreakDirection) String() string {
 
 // Pattern is one chart pattern candidate. Every row in it is a row index.
 //
-// FormedAt is the row that confirmed the last turning point of the pattern,
+// ConfirmedAt is the row that confirmed the last turning point of the pattern,
 // the first day it could be known; Start is the row of its first turning
 // point, which is in the past by then. The breakout is the first close beyond
 // the pattern's line before ExpiresAt. BreakoutAt is -1 and Direction is
@@ -111,26 +137,26 @@ func (d BreakDirection) String() string {
 // breaking up) never breaks: only the textbook directions are watched, a box
 // is watched both ways.
 //
-// PreTrend is the sign of the price change over the TrendRows before Start,
+// PriorTrend is the direction of the price change over the TrendRows before Start,
 // +1 for up, -1 for down and 0 when there were not that many rows in the
 // segment. Candidates overlap: each new turning point can start a new one, so
 // several can break out on the same day.
 type Pattern struct {
-	Kind       PatternKind
-	Start      int
-	FormedAt   int
-	ExpiresAt  int
-	BreakoutAt int
-	Direction  BreakDirection
-	PreTrend   int
+	Kind        PatternKind
+	Start       int
+	ConfirmedAt int
+	ExpiresAt   int
+	BreakoutAt  int
+	Direction   BreakDirection
+	PriorTrend  Trend
 }
 
 // PatternOptions are the optional settings of DetectPatterns. A zero field
 // takes the default shown.
 type PatternOptions struct {
-	// Breaks are the rows on which a new data segment starts. Pass the Breaks
-	// given to ZigZagBy. No pattern or line crosses a break.
-	Breaks []int
+	// SegmentStarts are the rows on which a new data segment starts. Pass the SegmentStarts
+	// given to ZigZagAdaptive. No pattern or line crosses a break.
+	SegmentStarts []int
 	// FlatTolerance is how far a pattern's top or bottom may move, as a share
 	// of the pattern's height from highest peak to lowest trough, and still
 	// count as flat. Default 0.2.
@@ -146,7 +172,7 @@ type PatternOptions struct {
 	// MinDoubleSeparation is the fewest rows between the two peaks of a double
 	// top or bottom. Default 5.
 	MinDoubleSeparation int
-	// TrendRows is how many rows before a pattern's start PreTrend looks back.
+	// TrendRows is how many rows before a pattern's start PriorTrend looks back.
 	// Default 60.
 	TrendRows int
 }
@@ -178,22 +204,22 @@ func checkPivots(pivots []Pivot, n int) error {
 }
 
 // checkSegments refuses pivots whose Segment does not match the segment their
-// row lies in under breaks, which is what happens when the pivots were made
-// with different Breaks than the ones passed now.
-func checkSegments(pivots []Pivot, breaks []int) error {
+// row lies in under segment starts, which is what happens when the pivots were made
+// with different SegmentStarts than the ones passed now.
+func checkSegments(pivots []Pivot, starts []int) error {
 	for i, p := range pivots {
-		seg := sort.SearchInts(breaks, p.Index+1) // breaks at or before the pivot's row
+		seg := sort.SearchInts(starts, p.Index+1) // starts at or before the pivot's row
 		if p.Segment != seg {
-			return fmt.Errorf("pivot at list position %d has Segment %d but row index %d lies in segment %d of the Breaks given; pass the Breaks used for ZigZagBy", i, p.Segment, p.Index, seg)
+			return fmt.Errorf("pivot at list position %d has Segment %d but row index %d lies in segment %d of the SegmentStarts given; pass the SegmentStarts used for ZigZagAdaptive", i, p.Segment, p.Index, seg)
 		}
 	}
 	return nil
 }
 
 // segmentStarts returns, for every row, the first row of its segment.
-func segmentStarts(n int, breaks []int) []int {
+func segmentStartOf(n int, starts []int) []int {
 	start := make([]int, n)
-	for _, b := range segmentBounds(n, breaks) {
+	for _, b := range segmentBounds(n, starts) {
 		for i := b[0]; i < b[1]; i++ {
 			start[i] = b[0]
 		}
@@ -202,7 +228,7 @@ func segmentStarts(n int, breaks []int) []int {
 }
 
 // DetectPatterns finds the chart patterns formed by the turning points of
-// ZigZag or ZigZagBy, using only information available at the close of each
+// ZigZag or ZigZagAdaptive, using only information available at the close of each
 // row: a pattern is first known on the row that confirms its last turning
 // point, and its breakout is the first later close beyond its line. The
 // pivots must come from the same prices.
@@ -250,14 +276,14 @@ func DetectPatterns(prices insyra.IDataList, pivots []Pivot, opts ...PatternOpti
 	if err := checkPivots(pivots, len(c)); err != nil {
 		return nil, err
 	}
-	breaks, err := cleanBreaks(o.Breaks, len(c))
+	starts, err := cleanSegmentStarts(o.SegmentStarts, len(c))
 	if err != nil {
 		return nil, err
 	}
-	if err := checkSegments(pivots, breaks); err != nil {
+	if err := checkSegments(pivots, starts); err != nil {
 		return nil, err
 	}
-	segStart := segmentStarts(len(c), breaks)
+	segStart := segmentStartOf(len(c), starts)
 
 	var cands []*patternCandidate
 	var live []*patternCandidate
@@ -316,18 +342,18 @@ func newCandidates(pivots []Pivot, p, t int, c []float64, segStart []int, o Patt
 	line := func(a, b int) patternLine {
 		return patternLine{float64(row(a)), price(a), float64(row(b)), price(b)}
 	}
-	preTrend := func(x0 int) int {
+	priorTrend := func(x0 int) Trend {
 		if x0-o.TrendRows < 0 || x0-segStart[x0] < o.TrendRows {
-			return 0
+			return TrendUnknown
 		}
 		if c[x0] > c[x0-o.TrendRows] {
-			return 1
+			return TrendUp
 		}
-		return -1
+		return TrendDown
 	}
 	base := func(kind PatternKind, first int, expires int) patternCandidate {
 		return patternCandidate{
-			Pattern: Pattern{Kind: kind, Start: row(first), FormedAt: t, ExpiresAt: expires, BreakoutAt: -1},
+			Pattern: Pattern{Kind: kind, Start: row(first), ConfirmedAt: t, ExpiresAt: expires, BreakoutAt: -1},
 			invHigh: math.Inf(1),
 			invLow:  math.Inf(-1),
 		}
@@ -346,16 +372,16 @@ func newCandidates(pivots []Pivot, p, t int, c []float64, segStart []int, o Patt
 			du := (price(hB) - price(hA)) / height
 			dl := (price(lB) - price(lA)) / height
 			f := o.FlatTolerance
-			kind, ok := PatternBox, true
+			kind, ok := PatternRectangle, true
 			switch {
 			case math.Abs(du) <= f && math.Abs(dl) <= f:
-				kind = PatternBox
+				kind = PatternRectangle
 			case math.Abs(du) <= f && dl > f:
 				kind = PatternAscendingTriangle
 			case du < -f && math.Abs(dl) <= f:
 				kind = PatternDescendingTriangle
 			case du < -f && dl > f:
-				kind = PatternSymmetricTriangle
+				kind = PatternSymmetricalTriangle
 			case du > f && dl > f && dl > du:
 				kind = PatternRisingWedge
 			case du < -f && dl < -f && du < dl:
@@ -367,7 +393,7 @@ func newCandidates(pivots []Pivot, p, t int, c []float64, segStart []int, o Patt
 				width := min(row(p)-row(p-3), o.MaxRows)
 				cand := base(kind, p-3, row(p)+width)
 				cand.upper, cand.lower = line(hA, hB), line(lA, lB)
-				cand.PreTrend = preTrend(row(p - 3))
+				cand.PriorTrend = priorTrend(row(p - 3))
 				out = append(out, &cand)
 			}
 		}
@@ -447,30 +473,30 @@ func newCandidates(pivots []Pivot, p, t int, c []float64, segStart []int, o Patt
 // FanBreak is one close through a fan line, as found by FanBreaks.
 //
 // Direction is BreakDown for a fan drawn under rising troughs and BreakUp for
-// a fan drawn over falling peaks. Number is 1, 2 or 3, the count of fan lines
+// a fan drawn over falling peaks. Line is 1, 2 or 3, the count of fan lines
 // the price has now broken; after the third the fan is spent. Anchor and
 // Through are the rows of the two turning points the broken line joins.
 type FanBreak struct {
 	Direction BreakDirection
-	Number    int
-	At        int
+	Line      int
+	Row       int
 	Anchor    int
 	Through   int
 }
 
 // FanOptions are the optional settings of FanBreaks.
 type FanOptions struct {
-	// Breaks are the rows on which a new data segment starts. Pass the Breaks
-	// given to ZigZagBy.
-	Breaks []int
+	// SegmentStarts are the rows on which a new data segment starts. Pass the SegmentStarts
+	// given to ZigZagAdaptive.
+	SegmentStarts []int
 }
 
 // FanBreaks finds fan-principle breaks in the turning points of ZigZag or
-// ZigZagBy, using only information known at each row. From a trough (or peak)
+// ZigZagAdaptive, using only information known at each row. From a trough (or peak)
 // it draws a line through the next higher trough (lower peak) that is flatter
 // than the last line; each close through such a line is a break, and the third
 // ends the fan. A close past the anchor itself discards the fan. Pass the
-// Breaks given to ZigZagBy in FanOptions.
+// SegmentStarts given to ZigZagAdaptive in FanOptions.
 func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...FanOptions) ([]FanBreak, error) {
 	if len(opts) > 1 {
 		return nil, errors.New("FanBreaks accepts at most one FanOptions")
@@ -486,14 +512,14 @@ func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...FanOptions) ([]F
 	if err := checkPivots(pivots, len(c)); err != nil {
 		return nil, err
 	}
-	breaks, err := cleanBreaks(o.Breaks, len(c))
+	starts, err := cleanSegmentStarts(o.SegmentStarts, len(c))
 	if err != nil {
 		return nil, err
 	}
-	if err := checkSegments(pivots, breaks); err != nil {
+	if err := checkSegments(pivots, starts); err != nil {
 		return nil, err
 	}
-	segStart := segmentStarts(len(c), breaks)
+	segStart := segmentStartOf(len(c), starts)
 
 	type fan struct {
 		anchor, through, broken int
@@ -575,7 +601,7 @@ func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...FanOptions) ([]F
 			}
 			f.broken++
 			f.slope = math.Abs(b.Price-a.Price) / float64(b.Index-a.Index)
-			out = append(out, FanBreak{Direction: dir, Number: min(f.broken, 3), At: t, Anchor: a.Index, Through: b.Index})
+			out = append(out, FanBreak{Direction: dir, Line: min(f.broken, 3), Row: t, Anchor: a.Index, Through: b.Index})
 			f.through = -1
 			if f.broken >= 3 {
 				f.anchor, f.broken, f.slope = -1, 0, math.Inf(1)

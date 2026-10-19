@@ -61,11 +61,11 @@ func listOf(v []float64) *insyra.DataList { return insyra.NewDataList(toAny(v)..
 
 func baselinePivots(t *testing.T, c baselineCase) []Pivot {
 	t.Helper()
-	th, err := VolatilityThresholds(listOf(c.Close), VolatilityOptions{Multiple: c.Multiple, Breaks: c.Breaks})
+	th, err := VolatilityThresholds(listOf(c.Close), VolatilityThresholdOptions{Multiple: c.Multiple, SegmentStarts: c.Breaks})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pivots, err := ZigZagBy(listOf(c.Close), th, ZigZagOptions{Breaks: c.Breaks})
+	pivots, err := ZigZagAdaptive(listOf(c.Close), th, ZigZagOptions{SegmentStarts: c.Breaks})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestZigZagByMatchesTheReference(t *testing.T) {
 func TestDetectPatternsMatchesTheReference(t *testing.T) {
 	kindsSeen := map[PatternKind]bool{}
 	for _, c := range baseline(t) {
-		got, err := DetectPatterns(listOf(c.Close), baselinePivots(t, c), PatternOptions{Breaks: c.Breaks})
+		got, err := DetectPatterns(listOf(c.Close), baselinePivots(t, c), PatternOptions{SegmentStarts: c.Breaks})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -110,7 +110,7 @@ func TestDetectPatternsMatchesTheReference(t *testing.T) {
 				dir = BreakDown
 			}
 			g := got[i]
-			if g.Kind != PatternKind(w.Kind) || g.FormedAt != w.Formed || g.BreakoutAt != w.Breakout || g.Direction != dir || g.PreTrend != w.Pretrend {
+			if g.Kind != PatternKind(w.Kind) || g.ConfirmedAt != w.Formed || g.BreakoutAt != w.Breakout || g.Direction != dir || g.PriorTrend != priorTrendOf(w.Pretrend) {
 				t.Fatalf("%s pattern %d: got %+v, reference kind %d formed %d breakout %d direction %d pretrend %d",
 					c.Name, i, g, w.Kind, w.Formed, w.Breakout, w.Direction, w.Pretrend)
 			}
@@ -127,7 +127,7 @@ func TestDetectPatternsMatchesTheReference(t *testing.T) {
 func TestFanBreaksMatchesTheReference(t *testing.T) {
 	total := 0
 	for _, c := range baseline(t) {
-		got, err := FanBreaks(listOf(c.Close), baselinePivots(t, c), FanOptions{Breaks: c.Breaks})
+		got, err := FanBreaks(listOf(c.Close), baselinePivots(t, c), FanOptions{SegmentStarts: c.Breaks})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -144,7 +144,7 @@ func TestFanBreaksMatchesTheReference(t *testing.T) {
 			if g.Direction == BreakUp {
 				d = 1
 			}
-			key := [3]int{d, g.Number, g.At}
+			key := [3]int{d, g.Line, g.Row}
 			if want[key] == 0 {
 				t.Fatalf("%s: fan break %+v is not in the reference", c.Name, g)
 			}
@@ -168,7 +168,7 @@ func TestClassifyGapsMatchesTheReference(t *testing.T) {
 	}
 	seen := map[[2]int]bool{}
 	for _, c := range baseline(t) {
-		got, err := ClassifyGaps(listOf(c.High), listOf(c.Low), listOf(c.Close), listOf(c.Volume), GapOptions{Breaks: c.Breaks})
+		got, err := ClassifyGaps(listOf(c.High), listOf(c.Low), listOf(c.Close), listOf(c.Volume), GapOptions{SegmentStarts: c.Breaks})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,15 +185,15 @@ func TestClassifyGapsMatchesTheReference(t *testing.T) {
 		}
 		fill := func(want *bool, row, window int) GapFill {
 			if row+window >= segEnd(row) {
-				return FillUnknown // the reference looks across a break; ClassifyGaps stops at it
+				return GapFillUnknown // the reference looks across a break; ClassifyGaps stops at it
 			}
 			if want == nil {
 				t.Fatalf("%s row %d: the reference has no answer inside the segment", c.Name, row)
 			}
 			if *want {
-				return Filled
+				return GapFilled
 			}
-			return NotFilled
+			return GapNotFilled
 		}
 		for i, w := range c.Gaps {
 			g := got[i]
@@ -201,7 +201,7 @@ func TestClassifyGapsMatchesTheReference(t *testing.T) {
 			if w.Label != "" {
 				wantKind, wantUp = labels[w.Label].kind, labels[w.Label].up
 			}
-			if g.Row != w.Row || g.Up != wantUp || g.Kind != wantKind {
+			if g.Row != w.Row || (g.Direction == BreakUp) != wantUp || g.Kind != wantKind {
 				t.Fatalf("%s gap %d: got %+v, reference row %d up %v label %q", c.Name, i, g, w.Row, w.Up, w.Label)
 			}
 			if w.Label == "BGU_V" || w.Label == "BGD_V" || w.Label == "EGU" || w.Label == "EGD" {
@@ -220,11 +220,11 @@ func TestClassifyGapsMatchesTheReference(t *testing.T) {
 			if d := g.RelativeVolume - w.RelativeVolume; d > 1e-8 || d < -1e-8 {
 				t.Fatalf("%s gap %d: RelativeVolume %v, reference %v", c.Name, i, g.RelativeVolume, w.RelativeVolume)
 			}
-			if f := fill(w.Fill5, w.Row, 5); g.FilledWithin5 != f {
-				t.Fatalf("%s gap %d: FilledWithin5 %v, reference %v", c.Name, i, g.FilledWithin5, f)
+			if f := fill(w.Fill5, w.Row, 5); g.Fills[0] != f {
+				t.Fatalf("%s gap %d: Fills[0] %v, reference %v", c.Name, i, g.Fills[0], f)
 			}
-			if f := fill(w.Fill20, w.Row, 20); g.FilledWithin20 != f {
-				t.Fatalf("%s gap %d: FilledWithin20 %v, reference %v", c.Name, i, g.FilledWithin20, f)
+			if f := fill(w.Fill20, w.Row, 20); g.Fills[1] != f {
+				t.Fatalf("%s gap %d: Fills[1] %v, reference %v", c.Name, i, g.Fills[1], f)
 			}
 			seen[[2]int{int(wantKind), b2i(wantUp)}] = true
 		}
@@ -241,4 +241,14 @@ func b2i(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func priorTrendOf(sign int) Trend {
+	switch sign {
+	case 1:
+		return TrendUp
+	case -1:
+		return TrendDown
+	}
+	return TrendUnknown
 }

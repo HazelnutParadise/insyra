@@ -161,7 +161,7 @@ func TestShuffleBarsDestroysAutocorrelation(t *testing.T) {
 func TestShuffleBarsKeepsEachSegmentAndNoVolume(t *testing.T) {
 	o, h, l, c, v := randomBars(300, 3)
 	breaks := []int{100, 220}
-	so, _, _, sc, sv := shuffled(t, o, h, l, c, v, ShuffleOptions{Seed: 4, Breaks: breaks})
+	so, _, _, sc, sv := shuffled(t, o, h, l, c, v, ShuffleOptions{Seed: 4, SegmentStarts: breaks})
 	for _, b := range []int{0, 100, 220} {
 		if so[b] != o[b] || sc[b] != c[b] || sv[b] != v[b] {
 			t.Errorf("segment start %d must stay as it was", b)
@@ -204,7 +204,7 @@ func TestShuffleBarsRefusesBadInput(t *testing.T) {
 	if _, err := ShuffleBars(p(o), p(h), p(l), p(c), p(neg)); err == nil {
 		t.Error("negative volume should be an error")
 	}
-	if _, err := ShuffleBars(p(o), p(h), p(l), p(c), p(v), ShuffleOptions{Breaks: []int{10}}); err == nil {
+	if _, err := ShuffleBars(p(o), p(h), p(l), p(c), p(v), ShuffleOptions{SegmentStarts: []int{10}}); err == nil {
 		t.Error("a break outside the series should be an error")
 	}
 	if _, err := ShuffleBars(p(o), p(h), p(l), p(c), p(v), ShuffleOptions{}, ShuffleOptions{}); err == nil {

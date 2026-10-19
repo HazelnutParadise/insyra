@@ -14,10 +14,10 @@ type ShuffleOptions struct {
 	// different seed for every path you draw. The stream is a PCG generator, so
 	// results do not depend on the Go release.
 	Seed uint64
-	// Breaks are the rows on which a new data segment starts, as in
+	// SegmentStarts are the rows on which a new data segment starts, as in
 	// ZigZagOptions. Bars are shuffled within their own segment and each segment
 	// is rebuilt from its own first bar, so no bar crosses a break.
-	Breaks []int
+	SegmentStarts []int
 }
 
 // ShuffleBars builds a random-walk copy of a series of daily bars, the null to
@@ -88,7 +88,7 @@ func ShuffleBars(open, high, low, close, volume insyra.IDataList, opts ...Shuffl
 			}
 		}
 	}
-	breaks, err := cleanBreaks(o.Breaks, n)
+	starts, err := cleanSegmentStarts(o.SegmentStarts, n)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func ShuffleBars(open, high, low, close, volume insyra.IDataList, opts ...Shuffl
 	outO, outH, outL, outC := make([]any, n), make([]any, n), make([]any, n), make([]any, n)
 	outV := make([]any, n)
 	rng := newBootstrapRNG(o.Seed)
-	for _, b := range segmentBounds(n, breaks) {
+	for _, b := range segmentBounds(n, starts) {
 		from, to := b[0], b[1]
 		if to == from {
 			continue

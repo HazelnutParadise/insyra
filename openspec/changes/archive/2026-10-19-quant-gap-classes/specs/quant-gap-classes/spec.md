@@ -15,11 +15,11 @@
 - **THEN** the gap is GapUnclassified
 
 ### Requirement: Fills look only forward and stop at a break
-`quant.ClassifyGaps` SHALL report a gap as filled within a window when a later low (up) or high (down) reaches the previous high (low), and SHALL report FillUnknown when the window runs past the data or the end of the segment.
+`quant.ClassifyGaps` SHALL report, for each window in GapOptions.FillWindows (5 and 20 rows by default), whether a gap was filled within it, that is when a later low (up) or high (down) reaches the previous high (low), and SHALL report GapFillUnknown when the window runs past the data or the end of the segment.
 
 #### Scenario: A window past the data
 - **WHEN** a gap on the 95th of 100 rows
-- **THEN** FilledWithin20 is FillUnknown
+- **THEN** the 20-row entry of Fills is GapFillUnknown
 
 ### Requirement: Unusable input is refused
 `quant.ClassifyGaps` SHALL return an error for series of different lengths, a high below its low, negative volume, a price that is not positive, a negative option and an ExhaustionZ below TrendZ.

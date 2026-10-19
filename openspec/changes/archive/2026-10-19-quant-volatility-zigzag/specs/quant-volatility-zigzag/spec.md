@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: A threshold for every row keeps the search causal
-`quant.ZigZagBy` SHALL confirm a high or low when the price has moved the threshold of the row of the extreme away from it, SHALL give the same pivots as `ZigZag` for a constant threshold, and a series cut short SHALL give exactly the pivots of the full series whose confirming row lies before the cut.
+`quant.ZigZagAdaptive` SHALL confirm a high or low when the price has moved the threshold of the row of the extreme away from it, SHALL give the same pivots as `ZigZag` for a constant threshold, and a series cut short SHALL give exactly the pivots of the full series whose confirming row lies before the cut.
 
 #### Scenario: A loose threshold at a peak
 - **WHEN** a peak at row 1 has a threshold of 0.30 and the price falls 12.5% from it
 - **THEN** no pivot is reported at row 1
 
 ### Requirement: Nothing is carried over a data break
-`quant.ZigZagBy` SHALL start a new search at every row in `ZigZagOptions.Breaks`, SHALL NOT report a pivot confirmed after its segment ended, and SHALL set `Pivot.Segment` to the number of breaks before the pivot.
+`quant.ZigZagAdaptive` SHALL start a new search at every row in `ZigZagOptions.SegmentStarts`, SHALL NOT report a pivot confirmed after its segment ended, and SHALL set `Pivot.Segment` to the number of breaks before the pivot.
 
 #### Scenario: Two breaks
 - **WHEN** the breaks are rows 200 and 350
@@ -22,7 +22,7 @@
 - **THEN** the thresholds are the 0.02 floor once MinRows returns exist
 
 ### Requirement: Unusable input is refused
-`quant.ZigZagBy` and `quant.VolatilityThresholds` SHALL return an error for a threshold outside (0, 1), thresholds of a different length than the prices, a break outside the series, a non-positive Multiple, and a price that is not positive.
+`quant.ZigZagAdaptive` and `quant.VolatilityThresholds` SHALL return an error for a threshold outside (0, 1), thresholds of a different length than the prices, a break outside the series, a non-positive Multiple, and a price that is not positive.
 
 #### Scenario: A threshold of 1
 - **WHEN** a threshold is 1

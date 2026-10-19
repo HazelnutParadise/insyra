@@ -34,14 +34,14 @@ func TestClassifyGapsBreakawayOnHeavyVolumeAndItsFill(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 	g := got[0]
-	if g.Row != 65 || !g.Up || g.Kind != GapBreakaway || !g.HighVolume {
+	if g.Row != 65 || g.Direction != BreakUp || g.Kind != GapBreakaway || !g.HighVolume {
 		t.Fatalf("got %+v", g)
 	}
 	if math.Abs(g.RelativeVolume-3) > 1e-12 || g.TrendZ != 0 {
 		t.Errorf("relative volume %v, trend %v", g.RelativeVolume, g.TrendZ)
 	}
-	if g.FilledWithin5 != Filled || g.FilledWithin20 != Filled {
-		t.Errorf("fills %v %v", g.FilledWithin5, g.FilledWithin20)
+	if g.Fills[0] != GapFilled || g.Fills[1] != GapFilled {
+		t.Errorf("fills %v %v", g.Fills[0], g.Fills[1])
 	}
 }
 
@@ -58,11 +58,11 @@ func TestClassifyGapsCommonGapDownAndFillsNotYetKnown(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Row 81 opens inside row 80's range, so only row 80 is a gap.
-	if len(got) != 1 || got[0].Row != 80 || got[0].Up || got[0].Kind != GapCommon {
+	if len(got) != 1 || got[0].Row != 80 || got[0].Direction != BreakDown || got[0].Kind != GapCommon {
 		t.Fatalf("got %+v", got)
 	}
-	if got[0].FilledWithin5 != NotFilled || got[0].FilledWithin20 != FillUnknown {
-		t.Errorf("fills %v %v: the 20-row window runs past the data", got[0].FilledWithin5, got[0].FilledWithin20)
+	if got[0].Fills[0] != GapNotFilled || got[0].Fills[1] != GapFillUnknown {
+		t.Errorf("fills %v %v: the 20-row window runs past the data", got[0].Fills[0], got[0].Fills[1])
 	}
 }
 
@@ -126,7 +126,7 @@ func TestClassifyGapsRunawayExhaustionAndUnclassified(t *testing.T) {
 
 	// Options move the boundaries: a runaway needs a bigger move, or a lighter definition of heavy volume.
 	h, l, c, v := trendBars(0.002, 1000)
-	strict, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{TrendZ: 3, ExhaustionZ: 4})
+	strict, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{RunawayZ: 3, ExhaustionZ: 4})
 	if err != nil || strict[0].Kind != GapBreakaway {
 		t.Errorf("with TrendZ 3 a move of 1.5 is small enough to be a breakaway: %+v, %v", strict, err)
 	}
@@ -143,7 +143,7 @@ func TestClassifyGapsNeedsAFullSegmentBehindIt(t *testing.T) {
 	for i := 66; i < 100; i++ {
 		h[i], l[i], c[i] = 107, 105, 106
 	}
-	got, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{Breaks: []int{30}})
+	got, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{SegmentStarts: []int{30}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,8 +151,8 @@ func TestClassifyGapsNeedsAFullSegmentBehindIt(t *testing.T) {
 		t.Fatalf("row 65 is only 35 rows into its segment: %+v", got)
 	}
 	// A fill window that crosses a break is unknown.
-	got, _ = ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{Breaks: []int{68}})
-	if len(got) != 1 || got[0].FilledWithin5 != FillUnknown {
+	got, _ = ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{SegmentStarts: []int{68}})
+	if len(got) != 1 || got[0].Fills[0] != GapFillUnknown {
 		t.Fatalf("got %+v", got)
 	}
 }
@@ -172,7 +172,7 @@ func TestClassifyGapsRefusesBadInput(t *testing.T) {
 	if _, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v2...)); err == nil {
 		t.Error("negative volume should be an error")
 	}
-	if _, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{TrendZ: 3, ExhaustionZ: 2}); err == nil {
+	if _, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{RunawayZ: 3, ExhaustionZ: 2}); err == nil {
 		t.Error("ExhaustionZ below TrendZ should be an error")
 	}
 	if _, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{LookbackRows: -1}); err == nil {
@@ -184,5 +184,28 @@ func TestClassifyGapsRefusesBadInput(t *testing.T) {
 	got, err := ClassifyGaps(prices(), prices(), prices(), prices())
 	if err != nil || len(got) != 0 {
 		t.Errorf("empty input: %v, %v", got, err)
+	}
+}
+
+func TestClassifyGapsFillWindowsAreOptions(t *testing.T) {
+	h, l, c, v := calmBars()
+	h[65], l[65], c[65], v[65] = 108, 105, 106, 3000
+	for i := 66; i < 100; i++ {
+		h[i], l[i], c[i] = 107, 105, 106
+	}
+	l[70] = 100.5 // back to the old high 5 rows after the gap
+	got, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{FillWindows: []int{1, 4, 10}})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("%v, %v", got, err)
+	}
+	if want := []GapFill{GapNotFilled, GapNotFilled, GapFilled}; len(got[0].Fills) != 3 || got[0].Fills[0] != want[0] || got[0].Fills[1] != want[1] || got[0].Fills[2] != want[2] {
+		t.Errorf("fills %v, want %v", got[0].Fills, want)
+	}
+	if _, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{FillWindows: []int{0}}); err == nil {
+		t.Error("a window of 0 should be an error")
+	}
+	none, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v...), GapOptions{FillWindows: []int{}})
+	if err != nil || len(none) != 1 || len(none[0].Fills) != 0 {
+		t.Errorf("an empty list asks for no fills: %v, %v", none, err)
 	}
 }

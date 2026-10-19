@@ -19,7 +19,7 @@
 
 #### Scenario: A wider flat tolerance
 - **WHEN** lows rise by 25% of the height and FlatTolerance is 0.3
-- **THEN** the pattern is a PatternBox and not an ascending triangle
+- **THEN** the pattern is a PatternRectangle and not an ascending triangle
 
 ### Requirement: Fan lines are numbered and spent after the third break
 `quant.FanBreaks` SHALL return each close through the line joining a fan's anchor to the next flatter turning point, numbered 1 to 3, SHALL discard a fan when the price passes its anchor, and SHALL start a new fan after the third break.
@@ -35,9 +35,9 @@
 - **WHEN** ConfirmedAt is not after Index
 - **THEN** an error names the pivot's list position
 
-### Requirement: Breaks that differ from the pivots are refused
-`quant.DetectPatterns` and `quant.FanBreaks` SHALL return an error when a pivot's Segment does not match the segment its row lies in under the Breaks they are given.
+### Requirement: SegmentStarts that differ from the pivots are refused
+`quant.DetectPatterns` and `quant.FanBreaks` SHALL return an error when a pivot's Segment does not match the segment its row lies in under the SegmentStarts they are given.
 
 #### Scenario: Pivots made without breaks
-- **WHEN** the pivots all have Segment 0 and Breaks is `[15]` with a pivot after row 15
+- **WHEN** the pivots all have Segment 0 and SegmentStarts is `[15]` with a pivot after row 15
 - **THEN** an error names the pivot's list position
