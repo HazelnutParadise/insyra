@@ -6,7 +6,7 @@
 
 ## What Changes
 
-- `quant.ShuffleBars(open, high, low, close, volume, opts)` returns a table of bars with the days in random order: each bar keeps its gap from the previous close, its high, low and close over its open, and its volume, and the path is rebuilt from the first bar.
+- `quant.ShuffleBars(open, high, low, close, opts)` returns a table of bars with the days in random order: each bar keeps its gap from the previous close, its high, low and close over its open, and its volume, and the path is rebuilt from the first bar.
 - `ShuffleOptions.Seed` always applies, and `SegmentStarts` shuffles within each segment.
 
 ## Capabilities

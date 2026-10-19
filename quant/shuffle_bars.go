@@ -18,6 +18,9 @@ type ShuffleOptions struct {
 	// ZigZagOptions. Bars are shuffled within their own segment and each segment
 	// is rebuilt from its own first bar, so no bar crosses a break.
 	SegmentStarts []int
+	// Volume is the volume of each bar. It stays with its bar through the
+	// shuffle and the result has a Volume column. Nil means no volume.
+	Volume insyra.IDataList
 }
 
 // ShuffleBars builds a random-walk copy of a series of daily bars, the null to
@@ -38,10 +41,11 @@ type ShuffleOptions struct {
 // real one, so the rebuilt path is a bridge between the real first and last
 // closes of its segment.
 //
-// Prices must be positive, and the high at or above the low. volume may be nil,
-// and then the result has no Volume column. The result is a table with the
-// columns Open, High, Low, Close and, unless volume is nil, Volume.
-func ShuffleBars(open, high, low, close, volume insyra.IDataList, opts ...ShuffleOptions) (*insyra.DataTable, error) {
+// Prices must be positive, and the high at or above the low. Volume is optional,
+// given in ShuffleOptions; without it the result has no Volume column. The
+// result is a table with the columns Open, High, Low, Close and, when volume was
+// given, Volume.
+func ShuffleBars(open, high, low, close insyra.IDataList, opts ...ShuffleOptions) (*insyra.DataTable, error) {
 	if len(opts) > 1 {
 		return nil, errors.New("ShuffleBars accepts at most one ShuffleOptions")
 	}
@@ -75,8 +79,8 @@ func ShuffleBars(open, high, low, close, volume insyra.IDataList, opts ...Shuffl
 		}
 	}
 	var vol []float64
-	if !insyra.IsNilList(volume) {
-		if vol, err = numericSeries(volume, "volume"); err != nil {
+	if !insyra.IsNilList(o.Volume) {
+		if vol, err = numericSeries(o.Volume, "volume"); err != nil {
 			return nil, err
 		}
 		if len(vol) != n {

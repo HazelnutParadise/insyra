@@ -788,17 +788,18 @@ The classes, relative volume, `TrendZ` and fills agree with the independent impl
 ### ShuffleBars
 
 ```go
-func ShuffleBars(open, high, low, close, volume insyra.IDataList, opts ...ShuffleOptions) (*insyra.DataTable, error)
+func ShuffleBars(open, high, low, close insyra.IDataList, opts ...ShuffleOptions) (*insyra.DataTable, error)
 
 type ShuffleOptions struct {
-    Seed   uint64 // always applies; the zero value is seed 0
+    Seed          uint64           // always applies; the zero value is seed 0
     SegmentStarts []int
+    Volume        insyra.IDataList // optional; stays with its bar and adds a Volume column
 }
 ```
 
 A random-walk copy of a series of daily bars, the null for "does this shape appear more often, or break the way the textbook says, than chance would produce?". Each bar after the first of its segment keeps its gap from the previous close, its high, low and close over its open, and its volume. The bars are put in a random order and the path is rebuilt from the first bar. The order of the days, with the autocorrelation and volatility clustering that depend on it, is destroyed; each bar stays internally consistent (the high is still at or above the open and close); and because the ratios multiply to the same total in any order, each segment ends on the real last close.
 
-The result is a table with the columns `Open`, `High`, `Low`, `Close` and `Volume` (left out when `volume` is nil). Draw many paths with different seeds, run the same detector on each, and compare the counts with the real series:
+The result is a table with the columns `Open`, `High`, `Low`, `Close` and `Volume` (only when `ShuffleOptions.Volume` is given). Draw many paths with different seeds, run the same detector on each, and compare the counts with the real series:
 
 ```go
 // how many ascending triangles break down
@@ -818,7 +819,7 @@ count := func(close insyra.IDataList) int {
 real := count(close)
 fake := 0
 for seed := uint64(0); seed < 200; seed++ {
-    dt, _ := quant.ShuffleBars(open, high, low, close, volume, quant.ShuffleOptions{Seed: seed})
+    dt, _ := quant.ShuffleBars(open, high, low, close, quant.ShuffleOptions{Seed: seed, Volume: volume})
     fake += count(dt.GetColByName("Close"))
 }
 // compare real with fake/200

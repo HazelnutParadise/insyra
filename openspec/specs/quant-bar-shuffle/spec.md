@@ -6,7 +6,7 @@ A random-walk copy of a series of daily bars made by shuffling whole bars, the n
 ## Requirements
 
 ### Requirement: Whole bars are shuffled and the path is rebuilt
-`quant.ShuffleBars` SHALL keep the first bar of each segment, put the other bars in a random order, rebuild each bar from the previous rebuilt close with its own gap, high, low and close ratios and its own volume, and so end each segment on the real last close.
+`quant.ShuffleBars` SHALL keep the first bar of each segment, put the other bars in a random order, rebuild each bar from the previous rebuilt close with its own gap, high, low and close ratios and its own volume when ShuffleOptions.Volume is given, and so end each segment on the real last close.
 
 #### Scenario: A rebuilt bar
 - **WHEN** a bar with a 2% gap and a high 1% over its open
@@ -20,7 +20,7 @@ A random-walk copy of a series of daily bars made by shuffling whole bars, the n
 - **THEN** the tables are equal
 
 ### Requirement: Unusable input is refused
-`quant.ShuffleBars` SHALL return an error for a price that is not positive, series of different lengths, a high below its low, negative volume and a break outside the series, and SHALL leave out the Volume column when volume is nil.
+`quant.ShuffleBars` SHALL return an error for a price that is not positive, series of different lengths, a high below its low, negative volume and a break outside the series, and a volume of a different length, and SHALL leave out the Volume column when ShuffleOptions.Volume is not given.
 
 #### Scenario: A zero open
 - **WHEN** an open is 0

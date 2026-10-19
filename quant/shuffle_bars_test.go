@@ -27,11 +27,14 @@ func randomBars(n int, seed int64) (o, h, l, c, v []float64) {
 
 func shuffled(t *testing.T, o, h, l, c, v []float64, opts ...ShuffleOptions) (so, sh, sl, sc, sv []float64) {
 	t.Helper()
-	var vol insyra.IDataList
-	if v != nil {
-		vol = prices(v...)
+	var opt ShuffleOptions
+	if len(opts) == 1 {
+		opt = opts[0]
 	}
-	dt, err := ShuffleBars(prices(o...), prices(h...), prices(l...), prices(c...), vol, opts...)
+	if v != nil {
+		opt.Volume = prices(v...)
+	}
+	dt, err := ShuffleBars(prices(o...), prices(h...), prices(l...), prices(c...), opt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,30 +193,33 @@ func TestShuffleBarsRefusesBadInput(t *testing.T) {
 	p := func(x []float64) insyra.IDataList { return prices(x...) }
 	bad := append([]float64(nil), o...)
 	bad[3] = 0
-	if _, err := ShuffleBars(p(bad), p(h), p(l), p(c), p(v)); err == nil {
+	if _, err := ShuffleBars(p(bad), p(h), p(l), p(c), ShuffleOptions{Volume: p(v)}); err == nil {
 		t.Error("a zero open should be an error")
 	}
-	if _, err := ShuffleBars(p(o), p(h), p(l[:9]), p(c), p(v)); err == nil {
+	if _, err := ShuffleBars(p(o), p(h), p(l[:9]), p(c), ShuffleOptions{Volume: p(v)}); err == nil {
 		t.Error("different lengths should be an error")
 	}
-	if _, err := ShuffleBars(p(o), p(l), p(h), p(c), p(v)); err == nil {
+	if _, err := ShuffleBars(p(o), p(l), p(h), p(c), ShuffleOptions{Volume: p(v)}); err == nil {
 		t.Error("a high below the low should be an error")
 	}
 	neg := append([]float64(nil), v...)
 	neg[2] = -1
-	if _, err := ShuffleBars(p(o), p(h), p(l), p(c), p(neg)); err == nil {
+	if _, err := ShuffleBars(p(o), p(h), p(l), p(c), ShuffleOptions{Volume: p(neg)}); err == nil {
 		t.Error("negative volume should be an error")
 	}
-	if _, err := ShuffleBars(p(o), p(h), p(l), p(c), p(v), ShuffleOptions{SegmentStarts: []int{10}}); err == nil {
+	if _, err := ShuffleBars(p(o), p(h), p(l), p(c), ShuffleOptions{Volume: p(v[:9])}); err == nil {
+		t.Error("a volume of a different length should be an error")
+	}
+	if _, err := ShuffleBars(p(o), p(h), p(l), p(c), ShuffleOptions{Volume: p(v), SegmentStarts: []int{10}}); err == nil {
 		t.Error("a break outside the series should be an error")
 	}
-	if _, err := ShuffleBars(p(o), p(h), p(l), p(c), p(v), ShuffleOptions{}, ShuffleOptions{}); err == nil {
+	if _, err := ShuffleBars(p(o), p(h), p(l), p(c), ShuffleOptions{}, ShuffleOptions{}); err == nil {
 		t.Error("two option sets should be an error")
 	}
-	if _, err := ShuffleBars(nil, p(h), p(l), p(c), p(v)); err == nil {
+	if _, err := ShuffleBars(nil, p(h), p(l), p(c)); err == nil {
 		t.Error("nil open should be an error")
 	}
-	if dt, err := ShuffleBars(p(nil), p(nil), p(nil), p(nil), nil); err != nil || dt == nil {
+	if dt, err := ShuffleBars(p(nil), p(nil), p(nil), p(nil)); err != nil || dt == nil {
 		t.Errorf("empty input: %v, %v", dt, err)
 	}
 }
