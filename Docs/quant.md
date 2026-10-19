@@ -2,6 +2,27 @@
 
 This document describes all public APIs in the `quant` package, designed for AI/automated applications to directly understand each function, type, parameter, and return value.
 
+> **Technical analysis is bullshit.** The technical-analysis tools in this package are here so you can test that claim yourself, not because they make money. The rest of `quant` (performance and risk metrics, CAPM and factor models, options, portfolio optimization, bootstrap, walk-forward and overfitting diagnostics, event studies, signal buckets and backtests) is not technical analysis, and this warning does not apply to it.
+>
+> In our own study (October 2026), 17 common theories (Dow theory, moving averages, KD, RSI, MACD, Elliott waves, chart patterns and others) were checked on real data: Taiwan stocks (about 2,300, over 300 of them delisted), US stocks, and 47 national indexes, with trading costs deducted and the rules fixed before looking at the results. Scored only on 2015 to 2026, data the rules were not tuned on:
+>
+> - Following an indicator stock by stock beat buy-and-hold for 0% to 0.1% of Taiwan and US stocks, after costs and after correcting for luck.
+> - Of 90-odd rules for moving in and out of the whole market, none beat buy-and-hold significantly (Taiwan after 2003, US after 1970).
+> - Elliott waves, head and shoulders and triangles appear as often in shuffled prices as in real ones, and ascending triangles break down nearly 80% of the time in both, the opposite of the textbook.
+> - The rules that did once work (US moving-average timing before 1970, for one) stopped working. None of the 17 theories was tested on a large sample when it was proposed.
+>
+> Prices are not perfectly random, but what is left is smaller than the cost of trading it or has already vanished. This is a test of history, not investment advice.
+>
+> **What in this package it covers, and what the study found:**
+>
+> | Functions | Theory | Finding |
+> | --- | --- | --- |
+> | `RSI` | RSI, overbought and oversold | Ineffective. In Taiwan, stocks with a high RSI did better afterwards, not worse. Trading it stock by stock lost to holding. |
+> | `Bias`, `BiasZ` | Bias ratio (乖離率) | Only useful read backwards. Taiwan stocks continue for one to three months, they do not revert, and the gap does not pay the costs. |
+> | `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` | On-balance volume, volume and price | Description only. Volume is a shadow of the price move, not the fuel for it. |
+> | `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio` | Market breadth | Description only. A majority of advancers marks broad strength, not an overbought market, and the "triple confirmation" is one dataset. |
+> | `ZigZag`, `Regimes` | Dow theory | Description only. Bull stretches are long and bear ones short, and pullbacks are common, but mechanical Dow trading did not beat holding. |
+
 ---
 
 ## Installation
@@ -31,6 +52,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Signal backtest**: `BacktestSignal` — a 0–1 position signal into a net return series with a one-row delay, cash returns and separate buy and sell costs
 - **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
 - **Oscillators**: `RSI` — relative strength index with Wilder or simple averaging and a choice for missing prices
+- **Technical indicators**: `SMA`, `EMA`, `MACD`, `Bollinger`, `TrueRange`, `ATR`, `KD` — the common moving-average, volatility and stochastic indicators, checked against TA-Lib
 - **Sharpe comparison**: `SharpeDifferenceTest` — Jobson-Korkie test with Memmel's correction for whether two return series have the same Sharpe ratio
 - **Market breadth**: `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio` — market-wide indicators from the daily counts of advancing and declining stocks
 - **Portfolio optimization**: `OptimizePortfolio`, `OptimizePortfolioMoments`, `EfficientFrontier` — mean-variance weights under a sum-to-one and per-asset box constraint, for minimum variance, a target return, or maximum Sharpe, plus the frontier between them
@@ -718,6 +740,33 @@ sharpe, err := quant.SharpeRatio(spread, 0, 252)
 ---
 
 ## Oscillators
+
+### Technical Indicators
+
+```go
+func SMA(prices insyra.IDataList, n int) (*insyra.DataList, error)
+func EMA(prices insyra.IDataList, n int) (*insyra.DataList, error)
+func MACD(prices insyra.IDataList, fast, slow, signal int) (*MACDResult, error)    // MACD, Signal, Histogram
+func Bollinger(prices insyra.IDataList, n int, k float64) (*BollingerResult, error) // Upper, Middle, Lower
+func TrueRange(high, low, close insyra.IDataList) (*insyra.DataList, error)
+func ATR(high, low, close insyra.IDataList, n int) (*insyra.DataList, error)
+func KD(high, low, close insyra.IDataList, n int, opts ...KDOptions) (*KDResult, error) // K, D
+```
+
+They follow TA-Lib's definitions, and the tests compare every one with TA-Lib on three seeded synthetic series (`quant/testdata/indicator_baseline.py` regenerates the values):
+
+- A window that is not full is `NaN`, and the result has one row per price. Every returned list is named after its line (`SMA`, `MACD`, `Signal`, `Upper`, `K` and so on). A `NaN` is not accepted by the other `quant` functions that take a series, so drop the leading rows before passing an indicator on.
+- `EMA` has weight `2/(n+1)` and starts from the simple average of its first `n` values. `MACD` starts both EMAs on row `slow-1`, the fast one from the simple average of the `fast` prices ending there. TA-Lib leaves the MACD line (and K of the stochastic) empty until the signal line (D) exists; here they start earlier, and the values agree wherever both have one.
+- `Bollinger` uses the population standard deviation. `ATR` is Wilder's: row `n` is the mean of the first `n` true ranges and later rows are smoothed with weight `1/n`. `TrueRange` is `NaN` on row 0.
+- `KD` takes where the close lies in the range of the last `n` rows (RSV, 0 to 100; a flat window counts as 50). `KDOptions.Method` chooses the smoothing: `KDRecursive` (default) is the KD of Taiwanese brokers' software, which TA-Lib and pandas-ta do not have, so their `STOCH` numbers differ from it (use `KDMovingAverage` to compare with them), where K and D start at 50 and `K = (1 − 1/SlowK) × previous K + RSV/SlowK`, then D from K the same way; `KDMovingAverage` is TA-Lib's STOCH, simple averages of RSV and then K. `SlowK` and `SlowD` default to 3. The usual setting is `n = 9`.
+
+A missing, non-numeric or non-finite value is an error naming its row index, since a moving average over a hole is not the average of anything.
+
+```go
+macd, _ := quant.MACD(close, 12, 26, 9)
+kd, _ := quant.KD(high, low, close, 9)
+bands, _ := quant.Bollinger(close, 20, 2)
+```
 
 ### RSI
 
