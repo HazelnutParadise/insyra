@@ -53,10 +53,10 @@ var oddLotPaths = map[TWOddLotSession]string{
 }
 
 // OddLotQuotes returns the day's odd-lot (less than one board lot of 1,000
-// shares) trading of every TWSE security for the chosen session. It is
-// OddLotQuotesContext with context.Background().
-func (t *TWStockClient) OddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
-	return t.OddLotQuotesContext(context.Background(), date, session)
+// shares) trading of every security on the chosen market for the chosen
+// session. It is OddLotQuotesContext with context.Background().
+func (t *TWStockClient) OddLotQuotes(date time.Time, session TWOddLotSession, market TWMarket) (*insyra.DataTable, error) {
+	return t.OddLotQuotesContext(context.Background(), date, session, market)
 }
 
 // OddLotQuotesContext is OddLotQuotes with a context. The limiter wait, the
@@ -67,23 +67,45 @@ func (t *TWStockClient) OddLotQuotes(date time.Time, session TWOddLotSession) (*
 // Transactions, Turnover, the last best bid and ask price and volume, and the
 // prices of the session: Open, Close (the last trade), High and Low for
 // TWOddLotIntraday, and Price for TWOddLotAfterHours. Prices are as traded, not
-// adjusted for ex-rights, and a price the exchange shows as "--" is nil. The
-// exchange's 合計 totals row is left out. A date
-// with no data, such as a holiday or one before the session existed, gives an
-// empty table. Only the TWSE publishes these reports by date; the TPEx
-// publishes just the latest day, which this method does not read.
-func (t *TWStockClient) OddLotQuotesContext(ctx context.Context, date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
+// adjusted for ex-rights. The two markets give the same columns, so their tables
+// can be stacked.
+//
+// For TWMarketTWSE a price shown as "--" is nil and the exchange's 合計 totals
+// row is left out. For TWMarketTPEx the intraday report's change column is left
+// out and a price shown as 0.00 (no trade or no quote) is nil. As with
+// DailyQuotesOn, TWMarketAuto reads the TWSE and, only if it has no data for the
+// date, the TPEx. A date with no data, such as a holiday or one before the
+// session existed (intraday began on 2020-10-26; the TWSE's after-hours reports
+// start in 2005 and the TPEx's in January 2011), gives an empty table.
+func (t *TWStockClient) OddLotQuotesContext(ctx context.Context, date time.Time, session TWOddLotSession, market TWMarket) (*insyra.DataTable, error) {
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	path, ok := oddLotPaths[session]
-	if !ok {
+	if _, ok := oddLotPaths[session]; !ok {
 		return nil, fmt.Errorf("datafetch: unsupported odd-lot session %q", session)
+	}
+	if !validMarket(market) {
+		return nil, fmt.Errorf("datafetch: unsupported market %q", market)
 	}
 	date = normalizeDate(date)
 	if err := t.usable(); err != nil {
 		return nil, err
 	}
+	switch market {
+	case TWMarketTPEx:
+		return t.tpexOddLotQuotes(ctx, date, session)
+	case TWMarketAuto:
+		table, err := t.twseOddLotQuotes(ctx, date, session)
+		if err != nil || table.NumRows() > 0 {
+			return table, err
+		}
+		return t.tpexOddLotQuotes(ctx, date, session)
+	}
+	return t.twseOddLotQuotes(ctx, date, session)
+}
+
+func (t *TWStockClient) twseOddLotQuotes(ctx context.Context, date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
+	path := oddLotPaths[session]
 	columns := oddLotColumns[session]
 
 	var response twStockResponse
@@ -124,6 +146,78 @@ func (t *TWStockClient) OddLotQuotesContext(ctx context.Context, date time.Time,
 				out[i+1] = parseInt(raw)
 			default:
 				out[i+1] = parseFloat(raw)
+			}
+		}
+		rows = append(rows, out)
+	}
+	return oddLotTable(columns, rows), nil
+}
+
+var tpexOddLotHeaderAliases = map[TWOddLotSession]map[string]string{
+	TWOddLotIntraday: {
+		"代號": "Code", "名稱": "Name", "最後成交價": "Close", "首筆成交價": "Open", "最高": "High", "最低": "Low",
+		"成交股數": "Volume", "成交金額(元)": "Turnover", "成交筆數": "Transactions",
+		"最後買價": "BidPrice", "最後買量(股)": "BidVolume", "最後賣價": "AskPrice", "最後賣量(股)": "AskVolume",
+	},
+	TWOddLotAfterHours: {
+		"代號": "Code", "名稱": "Name", "成交股數": "Volume", "成交筆數": "Transactions", "成交金額": "Turnover",
+		"成交價格(元)": "Price", "未成交買價": "BidPrice", "未成交買量": "BidVolume", "未成交賣價": "AskPrice", "未成交賣量": "AskVolume",
+	},
+}
+
+var tpexOddLotPaths = map[TWOddLotSession]string{
+	TWOddLotIntraday:   "/www/zh-tw/afterTrading/oddQuote",
+	TWOddLotAfterHours: "/www/zh-tw/afterTrading/odd",
+}
+
+func (t *TWStockClient) tpexOddLotQuotes(ctx context.Context, date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
+	path := tpexOddLotPaths[session]
+	columns := oddLotColumns[session]
+
+	var response twStockResponse
+	values := url.Values{"date": {date.Format("2006/01/02")}, "type": {"Daily"}, "response": {"json"}}
+	if err := t.doJSON(ctx, requestURL(t.tpexBaseURL, path, values), &response); err != nil {
+		if errors.Is(err, errTWStockNoData) {
+			return oddLotTable(columns, nil), nil
+		}
+		return nil, err
+	}
+	if len(response.Tables) == 0 || len(response.Tables[0].Data) == 0 {
+		return oddLotTable(columns, nil), nil
+	}
+	table := response.Tables[0]
+	fields := make([]string, len(table.Fields))
+	for i, f := range table.Fields {
+		fields[i] = strings.TrimSpace(f)
+	}
+	indexes, err := mapHeaders(fields, tpexOddLotHeaderAliases[session], columns)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([][]any, 0, len(table.Data))
+	for rowIndex, row := range table.Data {
+		for _, name := range columns {
+			if indexes[name] >= len(row) {
+				return nil, fmt.Errorf("datafetch: TPEx odd-lot row %d is missing required cells", rowIndex)
+			}
+		}
+		if strings.TrimSpace(cell(row, indexes["Code"])) == "" {
+			continue
+		}
+		out := make([]any, len(columns)+1)
+		out[0] = date
+		for i, name := range columns {
+			raw := cell(row, indexes[name])
+			switch name {
+			case "Code", "Name":
+				out[i+1] = strings.TrimSpace(raw)
+			case "Volume", "Transactions", "Turnover", "BidVolume", "AskVolume":
+				out[i+1] = parseInt(raw)
+			default:
+				// A price the TPEx shows as 0.00 is no trade or no quote.
+				if price := parseFloat(raw); price != 0.0 {
+					out[i+1] = price
+				}
 			}
 		}
 		rows = append(rows, out)

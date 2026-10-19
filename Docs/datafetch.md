@@ -687,7 +687,7 @@ ExRights(from, to time.Time, market TWMarket) (*insyra.DataTable, error)
 InstitutionalTrades(date time.Time, market TWMarket) (*insyra.DataTable, error)
 MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)
 AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)
-OddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error)
+OddLotQuotes(date time.Time, session TWOddLotSession, market TWMarket) (*insyra.DataTable, error)
 ShareholdingDistribution() (*insyra.DataTable, error)
 MonthlyRevenue(year, month int, market TWMarket) (*insyra.DataTable, error)
 DailyQuotesOn(date time.Time, market TWMarket) (*insyra.DataTable, error)
@@ -723,9 +723,7 @@ The TWSE answers repeated requests with the throttling page described above; for
 
 ### Odd-lot quotes
 
-`OddLotQuotes(date, session)` returns the TWSE's odd-lot report (trades of fewer than 1,000 shares) for one day, one row per security, from `TWTC7U` (intraday, `TWOddLotIntraday`, available since 2020-10-26) or `TWT53U` (after hours, `TWOddLotAfterHours`, since 2005). Prices are as traded and not adjusted for ex-rights, and a price the exchange shows as `--` is `nil`. The exchange's 合計 totals row is left out. A holiday, or a date before the report existed, gives an empty table with the columns in place, not an error.
-
-Only the TWSE publishes these reports by date. The TPEx's OpenAPI (`tpex_odd_stock`) gives just the latest day, so the method does not read it. The TWSE answers repeated requests with the throttling page described above, so for a backfill set `Interval` and `Retries` as suggested there.
+`OddLotQuotes(date, session, market)` returns a market's odd-lot report (trades of fewer than 1,000 shares) for one day, one row per security. `TWMarketTWSE` reads `TWTC7U` (intraday, `TWOddLotIntraday`, available since 2020-10-26) or `TWT53U` (after hours, `TWOddLotAfterHours`, since 2005); a price the exchange shows as `--` is `nil` and its 合計 totals row is left out. `TWMarketTPEx` reads the TPEx (上櫃) pages `afterTrading/oddQuote` (intraday, since 2020-10-26) and `afterTrading/odd` (after hours, since January 2011); its intraday report's change column is left out and a price shown as `0.00` (no trade or no quote) is `nil`. The two markets give the same columns, so the tables can be stacked. As in `DailyQuotesOn`, `TWMarketAuto` reads the TWSE and only if it has no data for the date the TPEx. Prices are as traded and not adjusted for ex-rights. A holiday, or a date before the report existed, gives an empty table with the columns in place, not an error. The TPEx's OpenAPI (`tpex_odd_stock`) gives only the latest day and is not used. The TWSE answers repeated requests with the throttling page described above, so for a backfill set `Interval` and `Retries` as suggested there.
 
 ### Monthly revenue
 
