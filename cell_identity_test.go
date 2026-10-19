@@ -193,7 +193,7 @@ func TestSharedSubValueIsEncodedPromptly(t *testing.T) {
 		case r := <-done:
 			want := 2 // x and y, not other
 			if depth > 30 {
-				want = 3 // beyond the limit the leaves are not read
+				want = 1 // beyond the limit a container is identified by its address, so only x itself matches
 			}
 			if r.count != want {
 				t.Errorf("depth %d: Count(x) = %d, want %d", depth, r.count, want)

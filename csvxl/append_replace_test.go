@@ -140,7 +140,7 @@ func TestAppendCSVToExcelLeavesNothingOfTheOldSheet(t *testing.T) {
 	require.False(t, linked, "an old hyperlink must not survive")
 	width, err := f.GetColWidth("Target", "A")
 	require.NoError(t, err)
-	require.NotEqual(t, 40.0, width, "the replaced sheet starts with default column widths")
+	require.Equal(t, 40.0, width, "a column width is carried over")
 	require.NoError(t, f.Close())
 
 	out := t.TempDir()
@@ -171,7 +171,7 @@ func TestAppendCSVToExcelReplacesTheOnlySheetWithAFreshOne(t *testing.T) {
 	require.Equal(t, []string{"data"}, f.GetSheetList())
 	width, err := f.GetColWidth("data", "B")
 	require.NoError(t, err)
-	require.NotEqual(t, 33.0, width, "the replaced sheet starts with default column widths")
+	require.Equal(t, 33.0, width, "a column width is carried over")
 	rows, err := f.GetRows("data")
 	require.NoError(t, err)
 	require.Equal(t, [][]string{{"a"}, {"9"}}, rows)

@@ -176,7 +176,7 @@ func (dt *DataTable) writeExcelRows(f *excelize.File, sheet string, opts ExcelWr
 			return err
 		}
 		if err := f.SetSheetRow(sheet, cell, &row); err != nil {
-			return fmt.Errorf("failed to write row %d of sheet %s: %w", i+1, sheet, err)
+			return fmt.Errorf("failed to write row index %d of sheet %s: %w", i, sheet, err)
 		}
 	}
 	return nil

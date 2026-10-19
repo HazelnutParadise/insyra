@@ -83,7 +83,7 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 			amountValue := dt.GetElement(i, amountCol)
 			amount, ok := insyra.ToFloat64Safe(amountValue)
 			if !ok {
-				insyra.LogWarning("mkt", "RFM", "Amount at row %d is not numeric (%v), skipping the row", i+1, amountValue)
+				insyra.LogWarning("mkt", "RFM", "Amount at row index %d is not numeric (%v), skipping the row", i, amountValue)
 				continue
 			}
 
