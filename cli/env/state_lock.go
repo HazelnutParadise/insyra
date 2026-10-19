@@ -45,7 +45,7 @@ func lockState(envPath string) (func(), error) {
 			continue
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("another insyra process is saving this environment (%s is held: %v); try again", path, err)
+			return nil, fmt.Errorf("another insyra process is saving this environment (%s is held: %w); try again", path, err)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
