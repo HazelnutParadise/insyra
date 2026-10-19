@@ -6,7 +6,7 @@ The Taipei Exchange's intraday and after-hours odd-lot reports by date, in the s
 ## Requirements
 
 ### Requirement: TPEx odd-lot reports are available by date
-`TWStockClient.TPExOddLotQuotes` SHALL return the TPEx intraday or after-hours odd-lot report of the given date with the columns of `OddLotQuotes` for that session, numbers parsed and a missing price as nil, SHALL return an empty table for a date with no data, and SHALL return the throttled error and not parse a throttling page as data.
+`TWStockClient.OddLotQuotes` with `TWMarketTPEx` SHALL return the TPEx intraday or after-hours odd-lot report of the given date with the columns of `OddLotQuotes` for that session, numbers parsed and a missing price as nil, SHALL return an empty table for a date with no data, and SHALL return the throttled error and not parse a throttling page as data.
 
 #### Scenario: An after-hours day
 - **WHEN** the date is a trading day and the session is after-hours

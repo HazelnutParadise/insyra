@@ -6,7 +6,7 @@
 
 ## What Changes
 
-- `TWStockClient.TPExOddLotQuotes(date, session)` (and `...Context`) returns the TPEx intraday or after-hours odd-lot report of a trading day, in the same columns as `OddLotQuotes`.
+- `TWStockClient.OddLotQuotes(date, session, market)` (and `...Context`) takes the market, `TWMarketTWSE`, `TWMarketTPEx` or `TWMarketAuto`, and so reads the TPEx intraday or after-hours odd-lot report of a trading day in the same columns as the TWSE's. It replaces `OddLotQuotes(date, session)`, which was not yet released.
 - The doc comment of `OddLotQuotes`, which says the TPEx publishes only the latest day, is corrected.
 
 ## Capabilities

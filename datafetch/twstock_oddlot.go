@@ -53,10 +53,10 @@ var oddLotPaths = map[TWOddLotSession]string{
 }
 
 // OddLotQuotes returns the day's odd-lot (less than one board lot of 1,000
-// shares) trading of every TWSE security for the chosen session. It is
-// OddLotQuotesContext with context.Background().
-func (t *TWStockClient) OddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
-	return t.OddLotQuotesContext(context.Background(), date, session)
+// shares) trading of every security on the chosen market for the chosen
+// session. It is OddLotQuotesContext with context.Background().
+func (t *TWStockClient) OddLotQuotes(date time.Time, session TWOddLotSession, market TWMarket) (*insyra.DataTable, error) {
+	return t.OddLotQuotesContext(context.Background(), date, session, market)
 }
 
 // OddLotQuotesContext is OddLotQuotes with a context. The limiter wait, the
@@ -67,22 +67,45 @@ func (t *TWStockClient) OddLotQuotes(date time.Time, session TWOddLotSession) (*
 // Transactions, Turnover, the last best bid and ask price and volume, and the
 // prices of the session: Open, Close (the last trade), High and Low for
 // TWOddLotIntraday, and Price for TWOddLotAfterHours. Prices are as traded, not
-// adjusted for ex-rights, and a price the exchange shows as "--" is nil. The
-// exchange's 合計 totals row is left out. A date
-// with no data, such as a holiday or one before the session existed, gives an
-// empty table. This method reads the TWSE; TPExOddLotQuotes reads the TPEx.
-func (t *TWStockClient) OddLotQuotesContext(ctx context.Context, date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
+// adjusted for ex-rights. The two markets give the same columns, so their tables
+// can be stacked.
+//
+// For TWMarketTWSE a price shown as "--" is nil and the exchange's 合計 totals
+// row is left out. For TWMarketTPEx the intraday report's change column is left
+// out and a price shown as 0.00 (no trade or no quote) is nil. As with
+// DailyQuotesOn, TWMarketAuto reads the TWSE and, only if it has no data for the
+// date, the TPEx. A date with no data, such as a holiday or one before the
+// session existed (intraday began on 2020-10-26; the TWSE's after-hours reports
+// start in 2005 and the TPEx's in January 2011), gives an empty table.
+func (t *TWStockClient) OddLotQuotesContext(ctx context.Context, date time.Time, session TWOddLotSession, market TWMarket) (*insyra.DataTable, error) {
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
-	path, ok := oddLotPaths[session]
-	if !ok {
+	if _, ok := oddLotPaths[session]; !ok {
 		return nil, fmt.Errorf("datafetch: unsupported odd-lot session %q", session)
+	}
+	if !validMarket(market) {
+		return nil, fmt.Errorf("datafetch: unsupported market %q", market)
 	}
 	date = normalizeDate(date)
 	if err := t.usable(); err != nil {
 		return nil, err
 	}
+	switch market {
+	case TWMarketTPEx:
+		return t.tpexOddLotQuotes(ctx, date, session)
+	case TWMarketAuto:
+		table, err := t.twseOddLotQuotes(ctx, date, session)
+		if err != nil || table.NumRows() > 0 {
+			return table, err
+		}
+		return t.tpexOddLotQuotes(ctx, date, session)
+	}
+	return t.twseOddLotQuotes(ctx, date, session)
+}
+
+func (t *TWStockClient) twseOddLotQuotes(ctx context.Context, date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
+	path := oddLotPaths[session]
 	columns := oddLotColumns[session]
 
 	var response twStockResponse
@@ -147,36 +170,8 @@ var tpexOddLotPaths = map[TWOddLotSession]string{
 	TWOddLotAfterHours: "/www/zh-tw/afterTrading/odd",
 }
 
-// TPExOddLotQuotes is OddLotQuotes for the TPEx (上櫃): the day's odd-lot
-// trading of every TPEx security for the chosen session. It is
-// TPExOddLotQuotesContext with context.Background().
-func (t *TWStockClient) TPExOddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
-	return t.TPExOddLotQuotesContext(context.Background(), date, session)
-}
-
-// TPExOddLotQuotesContext is TPExOddLotQuotes with a context. The limiter wait,
-// the request and each retry backoff stop when ctx is done, and the call then
-// returns ctx.Err() without sending another request.
-//
-// The table has the columns OddLotQuotes gives for the same session, so the two
-// exchanges' tables can be stacked. The TPEx intraday report also shows each
-// stock's change from the previous close, which is left out. Where the TPEx
-// shows a price of 0.00 for a stock that did not trade or had no quote, the
-// value is nil. A date with no data, such as a holiday or one before the
-// session existed (intraday began on 2020-10-26; after-hours data starts in
-// January 2011), gives an empty table.
-func (t *TWStockClient) TPExOddLotQuotesContext(ctx context.Context, date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
-	if err := contextErr(ctx); err != nil {
-		return nil, err
-	}
-	path, ok := tpexOddLotPaths[session]
-	if !ok {
-		return nil, fmt.Errorf("datafetch: unsupported odd-lot session %q", session)
-	}
-	date = normalizeDate(date)
-	if err := t.usable(); err != nil {
-		return nil, err
-	}
+func (t *TWStockClient) tpexOddLotQuotes(ctx context.Context, date time.Time, session TWOddLotSession) (*insyra.DataTable, error) {
+	path := tpexOddLotPaths[session]
 	columns := oddLotColumns[session]
 
 	var response twStockResponse

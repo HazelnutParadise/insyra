@@ -13,32 +13,17 @@ Both answer in the same envelope the package already reads for other TPEx report
 
 `OddLotQuotes`'s doc comment says the TPEx publishes only the latest day. That is wrong and is corrected by this change.
 
-## Proposed API
+## API (decided, after a review of the design)
 
 ```go
-// TWSE, already there
-func (t *TWStockClient) OddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error)
-
-// new: the same shape for the TPEx
-func (t *TWStockClient) TPExOddLotQuotes(date time.Time, session TWOddLotSession) (*insyra.DataTable, error)
-func (t *TWStockClient) TPExOddLotQuotesContext(ctx context.Context, date time.Time, session TWOddLotSession) (*insyra.DataTable, error)
+func (t *TWStockClient) OddLotQuotes(date time.Time, session TWOddLotSession, market TWMarket) (*insyra.DataTable, error)
+func (t *TWStockClient) OddLotQuotesContext(ctx context.Context, date time.Time, session TWOddLotSession, market TWMarket) (*insyra.DataTable, error)
 ```
 
-The tables use the columns `OddLotQuotes` already gives for each session (Date, Code, Name, Volume, Transactions, Turnover, then Open, Close, High, Low for intraday and Price for after-hours, and the last best bid and ask price and volume), so the two exchanges' tables can be stacked. The TPEx intraday table's `漲跌` (change) column is left out, as the TWSE's has none.
+`OddLotQuotes(date, session)` and a separate `TPExOddLotQuotes` were first proposed. Every other `TWStockClient` method that reads either exchange takes `market TWMarket`, and none has a `TPEx` prefix. `OddLotQuotes(date, session)` was still under Unreleased in the changelog, so adding the argument breaks nobody. `TWMarketAuto` follows `DailyQuotesOn`: the TWSE first, the TPEx only if the TWSE has no data for the date.
 
-Usage:
-
-```go
-client, _ := datafetch.TWStock(datafetch.TWStockConfig{Interval: 3 * time.Second, Retries: 5})
-tse, _ := client.OddLotQuotes(day, datafetch.TWOddLotAfterHours)
-otc, _ := client.TPExOddLotQuotes(day, datafetch.TWOddLotAfterHours)
-```
-
-## Decisions for you
-
-1. **Name and shape.** A new `TPExOddLotQuotes(date, session)` beside `OddLotQuotes` keeps the TWSE method's signature and meaning (no break) and reads like the package's other market-specific methods. The alternative, adding a `market` argument to `OddLotQuotes`, changes a released signature, which I would not do on this line. I recommend the new method.
-2. **Drop `漲跌` from the intraday table?** It can be recomputed from the close and the previous close, and the TWSE table does not have it. I recommend dropping it so the two tables match.
+The tables use the columns the TWSE report gives for each session (Date, Code, Name, Volume, Transactions, Turnover, then Open, Close, High, Low for intraday and Price for after-hours, and the last best bid and ask price and volume), so the two exchanges can be stacked. The TPEx intraday table's `漲跌` (change) column is left out. A price the TPEx shows as `0.00` is nil, as the TWSE's `--` is.
 
 ## Tests
 
-Parse saved responses of both reports (a normal day, an empty day, a holiday), an HTML throttling page gives the existing throttled error, the unknown session value is refused like `OddLotQuotes` does, and the live test behind `INSYRA_LIVE_TESTS` as for the other methods.
+Parse saved responses of both reports for both markets, an empty day, an HTML throttling page gives the existing throttled error, the unknown session and unknown market are refused, `TWMarketAuto` reads only the TWSE when it has data and falls through to the TPEx when it has none, and the live test behind `INSYRA_LIVE_TESTS` as for the other methods.
