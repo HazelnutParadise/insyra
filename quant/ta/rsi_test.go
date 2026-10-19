@@ -130,3 +130,38 @@ func TestRSIRefusesBadInput(t *testing.T) {
 		}
 	}
 }
+
+// A segment start restarts RSI: the rows after it need n changes of their own,
+// and nothing leaks across the break.
+func TestRSIRestartsAtASegmentStart(t *testing.T) {
+	p := []float64{10, 11, 12, 11, 13, 14, 20, 21, 20, 22, 23, 21}
+	whole, err := RSI(prices(p...), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	split, err := RSI(prices(p...), 2, RSIOptions{SegmentStarts: []int{6}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, s := floats(t, whole), floats(t, split)
+	for i := 0; i < 6; i++ {
+		if !(w[i] == s[i] || (math.IsNaN(w[i]) && math.IsNaN(s[i]))) {
+			t.Fatalf("row %d before the break changed: %v vs %v", i, w[i], s[i])
+		}
+	}
+	// Rows 6 and 7 have fewer than 2 changes in the new segment.
+	if !math.IsNaN(s[6]) || !math.IsNaN(s[7]) || math.IsNaN(s[8]) {
+		t.Fatalf("the new segment starts again: %v", s[6:])
+	}
+	// The second segment on its own gives the same numbers.
+	alone, _ := RSI(prices(p[6:]...), 2)
+	a := floats(t, alone)
+	for i := range a {
+		if !(a[i] == s[6+i] || (math.IsNaN(a[i]) && math.IsNaN(s[6+i]))) {
+			t.Fatalf("segment alone %v, in context %v", a, s[6:])
+		}
+	}
+	if _, err := RSI(prices(p...), 2, RSIOptions{SegmentStarts: []int{12}}); err == nil {
+		t.Error("a segment start outside the series should be an error")
+	}
+}

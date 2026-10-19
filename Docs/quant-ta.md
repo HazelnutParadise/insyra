@@ -25,7 +25,9 @@ This document describes the public API of `github.com/HazelnutParadise/insyra/qu
 > | `Bias`, `BiasZ` | Bias ratio (乖離率) | Only useful read backwards. Taiwan stocks continue for one to three months, they do not revert, and the gap does not pay the costs. |
 > | `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `PriceDivergence` | On-balance volume, volume and price | Description only. Volume is a shadow of the price move, not the fuel for it. |
 > | `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio` | Market breadth | Description only. A majority of advancers marks broad strength, not an overbought market, and the "triple confirmation" is one dataset. |
-> | `ZigZag`, `Regimes` | Dow theory | Description only. Bull stretches are long and bear ones short, and pullbacks are common, but mechanical Dow trading did not beat holding. |
+> | `DetectPatterns`, `FanBreaks` | Head and shoulders, double tops and bottoms, triangles, wedges, rectangles, diamonds, fan lines, Elliott-style counting | Ineffective. These patterns appear as often in shuffled prices as in real ones, and ascending triangles break down nearly 80% of the time in both, the opposite of the textbook. |
+> | `ClassifyGaps` | Common, breakaway, runaway and exhaustion gaps | Description only. After an exhaustion gap US stocks fell 1.07% over the next 5 days before 2015, and the effect was gone after 2015. The other gap classes were not tested on their own. |
+> | `ZigZag`, `ZigZagAdaptive`, `Regimes` | Dow theory | Description only. Bull stretches are long and bear ones short, and pullbacks are common, but mechanical Dow trading did not beat holding. |
 
 ---
 
@@ -43,7 +45,10 @@ go get github.com/HazelnutParadise/insyra/quant/ta
 - **Oscillators and strength**: `RSI`, `Bias`, `BiasZ`
 - **Volume**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `PriceDivergence`
 - **Market breadth**: `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio`
-- **Turning points and regimes**: `ZigZag`, `Regimes`
+- **Turning points and regimes**: `ZigZag`, `ZigZagAdaptive`, `VolatilityThresholds`, `Regimes`
+- **Chart patterns and fans**: `DetectPatterns`, `FanBreaks`
+- **Gaps**: `ClassifyGaps`
+- **Random-walk control**: `ShuffleBars`
 
 **Conventions.** Every function takes its series as `insyra.IDataList` and returns an `error` for invalid input, naming the row index (counted from 0). The tools use only information known at the close of each row, so a series cut short gives the results of the full series for the rows before the cut. A row without enough history is `NaN`. They were first part of `quant`, which keeps the evaluation tools (performance and risk metrics, event studies, signal buckets, backtests); see [`quant`](./quant.md).
 
@@ -119,6 +124,7 @@ type Pivot struct {
     Index       int       // row of the extreme
     Price       float64
     ConfirmedAt int       // first row on which the price was `threshold` away from the extreme
+    Segment     int       // data segment the pivot is in; 0 unless ZigZagAdaptive was given SegmentStarts
 }
 ```
 
@@ -136,6 +142,168 @@ Turns the pivots into bull stretches (low to the next high) and bear stretches (
 
 `RegimeOptions.MinPhase` removes a stretch shorter than that many rows together with the two turning points around it, so its neighbours join; `MinCycle` removes a turning point that makes a low-to-low or high-to-high cycle shorter than that, with the one before it. They follow the minimum phase and cycle lengths of Pagan and Sossounov (2003). Using them looks at the whole list, so it is not causal.
 
+### ZigZagAdaptive and VolatilityThresholds
+
+```go
+func ZigZagAdaptive(prices, thresholds insyra.IDataList, opts ...ZigZagOptions) ([]Pivot, error)
+func VolatilityThresholds(prices insyra.IDataList, multiple float64, opts ...VolatilityThresholdOptions) (*insyra.DataList, error)
+
+type ZigZagOptions struct {
+    SegmentStarts []int // rows on which a new data segment starts
+}
+type VolatilityThresholdOptions struct {
+    Window           int     // default 60
+    MinRows          int     // default 20; fewer returns than this use WarmupVolatility
+    Floor            float64 // default 0.02
+    WarmupVolatility float64 // default 0.025
+    SegmentStarts           []int
+}
+```
+
+`ZigZagAdaptive` is `ZigZag` with a threshold for every row, so a quiet stock reverses on a smaller move than a wild one. `thresholds[i]` is the fall or rise from an extreme at row `i` that confirms it, which is known on the day the extreme is made, so the result stays causal. `VolatilityThresholds` returns `max(Floor, Multiple × the population standard deviation of the last Window daily log returns)` for every row, and `Multiple × WarmupVolatility` (at least `Floor`) until `MinRows` returns exist.
+
+`SegmentStarts` are the rows on which a new data segment starts, for example after a trading halt or a relisting. Nothing is carried over a break: the extreme being tracked is dropped, a pivot is never made from rows on both sides, and the volatility window restarts. `Pivot.Segment` counts the breaks before a pivot. Pass the same `SegmentStarts` to `DetectPatterns`, `FanBreaks` and `ClassifyGaps`; `DetectPatterns` and `FanBreaks` return an error when a pivot's `Segment` does not match the `SegmentStarts` they are given. `Regimes` never joins pivots of different segments.
+
+```go
+th, _ := ta.VolatilityThresholds(close, 3, ta.VolatilityThresholdOptions{SegmentStarts: breaks})
+pivots, _ := ta.ZigZagAdaptive(close, th, ta.ZigZagOptions{SegmentStarts: breaks})
+```
+
+The results were compared with an independent implementation on five seeded synthetic series (`quant/testdata/pattern_baseline.json`, regenerated by `pattern_baseline.py`): every pivot, confirmation row and segment agrees.
+
+---
+
+## Chart Patterns
+
+### DetectPatterns
+
+```go
+func DetectPatterns(prices insyra.IDataList, pivots []Pivot, opts ...PatternOptions) ([]Pattern, error)
+
+type Pattern struct {
+    Kind       PatternKind    // PatternHeadAndShouldersTop, ...Bottom, PatternDoubleTop, ...Bottom, PatternRectangle,
+                              // PatternAscendingTriangle, ...Descending..., ...Symmetrical..., PatternRisingWedge,
+                              // PatternFallingWedge, PatternDiamond
+    Start      int            // row of the first turning point
+    ConfirmedAt int            // row that confirmed the last turning point: the first day it is known
+    ExpiresAt  int
+    BreakoutAt int            // -1 if it never broke out
+    Direction  BreakDirection // BreakUp, BreakDown or BreakNone
+    PriorTrend Trend          // TrendUp, TrendDown, or TrendUnknown when the segment is too short: the change over the TrendRows before Start
+}
+```
+
+Finds the patterns formed by the turning points of `ZigZag` or `ZigZagAdaptive` using only what is known at each close: a pattern is first known on the row that confirms its last turning point (`ConfirmedAt`), and its breakout is the first later close beyond its line (`BreakoutAt`) before `ExpiresAt`. A series cut short gives the patterns of the full series formed before the cut, with any later breakout forgotten (the tests check this).
+
+Only the textbook direction is watched: a head and shoulders top, double top and diamond break down, a bottom breaks up, a rectangle and the triangles and wedges either way. A pattern the price cancels by passing the head or the peaks before breaking never breaks. The same pattern is found again from every turning point that completes it, so patterns overlap and several can break out on the same day.
+
+Prices are closes, so a pattern's lines are drawn through closes and not intraday highs and lows.
+
+`PatternOptions` (a zero field takes its default): `FlatTolerance` (0.2) is how far a line may move, as a share of the pattern's height, and count as flat; `SymmetryTolerance` (0.3) how far apart the shoulders or the two peaks of a double may be; `MaxRows` (120) the longest wait for a breakout; `MinDoubleSeparation` (5) the fewest rows between a double's peaks; `TrendRows` (60) the look-back of `PriorTrend`; and `SegmentStarts`, which stops a pattern from joining pivots of different segments.
+
+### FanBreaks
+
+```go
+func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...FanOptions) ([]FanBreak, error)
+
+type FanOptions struct {
+    SegmentStarts []int // the SegmentStarts given to ZigZagAdaptive
+}
+```
+
+The fan principle: from a trough, a line through the next higher trough that is flatter than the last; each close under such a line is a break, and the third ends the fan (mirrored over falling peaks). Returns each break with its `Line` (1 to 3), `Direction`, the row `Row` and the rows of the two turning points the line joins. A close past the anchor itself discards the fan.
+
+On the five synthetic series every pattern (all eleven kinds), its formation row, breakout row and direction, and every fan break agree with the independent implementation.
+
+```go
+patterns, _ := ta.DetectPatterns(close, pivots, ta.PatternOptions{SegmentStarts: breaks})
+for _, p := range patterns {
+    if p.Kind == ta.PatternAscendingTriangle && p.BreakoutAt >= 0 {
+        // p.Direction is where it went; trade on p.BreakoutAt, not p.Start
+    }
+}
+```
+
+---
+
+## Gaps
+
+### ClassifyGaps
+
+```go
+func ClassifyGaps(high, low, close, volume insyra.IDataList, opts ...GapOptions) ([]Gap, error)
+
+type Gap struct {
+    Row            int
+    Direction      BreakDirection // BreakUp for a gap up, BreakDown for a gap down
+    Kind           GapKind // GapCommon, GapBreakaway, GapRunaway, GapExhaustion, GapUnclassified
+    HighVolume     bool
+    RelativeVolume float64 // the day's volume over the mean of the LookbackRows before it
+    TrendZ         float64 // the earlier move in standard deviations
+    Fills          []GapFill // GapFilled, GapNotFilled or GapFillUnknown, one per GapOptions.FillWindows
+}
+```
+
+A gap up has a low above the previous high; a gap down a high below the previous low. It is judged against the `LookbackRows` (20) rows before the gap day:
+
+| Class | Close | Earlier move (`Gap.TrendZ`) | Volume |
+| --- | --- | --- | --- |
+| Common | inside the range | any | any |
+| Breakaway | a new extreme (above the highest high for a gap up) | under 1 either way | any (`HighVolume` says) |
+| Runaway | a new extreme | 1 to 2 in the gap's direction | any |
+| Exhaustion | a new extreme | 2 or more in the gap's direction | at least 1.5 × the recent mean |
+
+The earlier move is the return over `LookbackRows` rows ending the day before, divided by the standard deviation of daily log returns over `VolatilityRows` (60) rows times the square root of `LookbackRows`. Everything in the class uses rows up to and including the gap day, so it can be traded; a gap that fits none of the classes (for example a gap up to a new high straight after a sharp fall) is `GapUnclassified`. A gap is only looked for from row `max(LookbackRows+1, VolatilityRows)+1` of its segment, 61 with the defaults.
+
+`Fills` looks forward, one entry for each of `GapOptions.FillWindows` (5 and 20 rows by default): a gap up is filled when a later low reaches the previous high, a gap down when a later high reaches the previous low. They are an outcome to study, not a signal. `GapFillUnknown` means the data, or the segment, ends before the window does.
+
+Options: `SegmentStarts`, `LookbackRows`, `VolatilityRows`, `HighVolumeRatio` (1.5), `RunawayZ` (1), `ExhaustionZ` (2) and `FillWindows` (5 and 20).
+
+The classes, relative volume, `TrendZ` and fills agree with the independent implementation on the five synthetic series, except that a fill window that would cross a break is `GapFillUnknown` here.
+
+---
+
+## Random-Walk Control
+
+### ShuffleBars
+
+```go
+func ShuffleBars(open, high, low, close insyra.IDataList, opts ...ShuffleOptions) (*insyra.DataTable, error)
+
+type ShuffleOptions struct {
+    Seed          uint64           // always applies; the zero value is seed 0
+    SegmentStarts []int
+    Volume        insyra.IDataList // optional; stays with its bar and adds a Volume column
+}
+```
+
+A random-walk copy of a series of daily bars, the null for "does this shape appear more often, or break the way the textbook says, than chance would produce?". Each bar after the first of its segment keeps its gap from the previous close, its high, low and close over its open, and its volume. The bars are put in a random order and the path is rebuilt from the first bar. The order of the days, with the autocorrelation and volatility clustering that depend on it, is destroyed; each bar stays internally consistent (the high is still at or above the open and close); and because the ratios multiply to the same total in any order, each segment ends on the real last close.
+
+The result is a table with the columns `Open`, `High`, `Low`, `Close` and `Volume` (only when `ShuffleOptions.Volume` is given). Draw many paths with different seeds, run the same detector on each, and compare the counts with the real series:
+
+```go
+// how many ascending triangles break down
+count := func(close insyra.IDataList) int {
+    th, _ := ta.VolatilityThresholds(close, 3)
+    pivots, _ := ta.ZigZagAdaptive(close, th)
+    patterns, _ := ta.DetectPatterns(close, pivots)
+    n := 0
+    for _, p := range patterns {
+        if p.Kind == ta.PatternAscendingTriangle && p.Direction == ta.BreakDown {
+            n++
+        }
+    }
+    return n
+}
+
+real := count(close)
+fake := 0
+for seed := uint64(0); seed < 200; seed++ {
+    dt, _ := ta.ShuffleBars(open, high, low, close, ta.ShuffleOptions{Seed: seed, Volume: volume})
+    fake += count(dt.GetColByName("Close"))
+}
+// compare real with fake/200
+```
 ---
 
 ## Oscillators
@@ -175,6 +343,7 @@ func RSI(prices insyra.IDataList, n int, opts ...RSIOptions) (*insyra.DataList, 
 type RSIOptions struct {
     Method  RSIMethod  // RSIWilder (default) or RSISimple
     Missing RSIMissing // RSIMissingError (default), RSIMissingFlat or RSIMissingBreak
+    SegmentStarts []int // rows on which a new data segment starts; each segment is computed on its own
 }
 ```
 

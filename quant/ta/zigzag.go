@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -33,12 +34,14 @@ func (k PivotKind) String() string {
 // Pivot is one turning point found by ZigZag. Index and Price locate the
 // extreme; ConfirmedAt is the first row on which the price had moved the
 // threshold away from it, the earliest a trader could know about it. Trade on
-// ConfirmedAt and describe the series with Index.
+// ConfirmedAt and describe the series with Index. Segment counts the data
+// segment starts before the pivot, and is 0 unless ZigZagAdaptive was given SegmentStarts.
 type Pivot struct {
 	Kind        PivotKind
 	Index       int
 	Price       float64
 	ConfirmedAt int
+	Segment     int
 }
 
 // ZigZag finds the turning points of a price series that reverse by at least
@@ -55,23 +58,139 @@ func ZigZag(prices insyra.IDataList, threshold float64) ([]Pivot, error) {
 	if math.IsNaN(threshold) || threshold <= 0 || threshold >= 1 {
 		return nil, errors.New("threshold must be a fraction between 0 and 1, such as 0.10 for 10%")
 	}
-	p, err := numericSeries(prices, "prices")
+	p, err := positivePrices(prices)
+	if err != nil {
+		return nil, err
+	}
+	th := make([]float64, len(p))
+	for i := range th {
+		th[i] = threshold
+	}
+	return zigzagCore(p, th, nil), nil
+}
+
+// ZigZagOptions are the optional settings of ZigZagAdaptive and VolatilityThresholds.
+type ZigZagOptions struct {
+	// SegmentStarts are the rows on which a new data segment starts, for example the
+	// first row after a trading halt, a relisting or a gap in the data. Nothing
+	// is carried over a break: the extreme being tracked is dropped, and a
+	// pivot is never made from rows on both sides. Row 0 starts the first
+	// segment on its own and need not be listed.
+	SegmentStarts []int
+}
+
+// ZigZagAdaptive is ZigZag with a threshold for every row, so the reversal that
+// counts can follow the volatility of the day, for example 3 times the 60-day
+// standard deviation (see VolatilityThresholds). thresholds[i] is the fraction
+// a reversal from an extreme at row i must reach, so it is known on the day the
+// extreme is made and the result stays causal. Each threshold must be a
+// fraction between 0 and 1.
+//
+// Pivots carry the number of the data segment they lie in (see
+// ZigZagOptions.SegmentStarts). The pivot still being tracked when a segment ends is
+// not reported.
+func ZigZagAdaptive(prices, thresholds insyra.IDataList, opts ...ZigZagOptions) ([]Pivot, error) {
+	o, err := zigzagOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	p, err := positivePrices(prices)
+	if err != nil {
+		return nil, err
+	}
+	th, err := numericSeries(thresholds, "thresholds")
+	if err != nil {
+		return nil, err
+	}
+	if len(th) != len(p) {
+		return nil, fmt.Errorf("thresholds has %d rows but prices has %d", len(th), len(p))
+	}
+	for i, v := range th {
+		if v <= 0 || v >= 1 {
+			return nil, fmt.Errorf("thresholds holds %v at row index %d; a threshold must be a fraction between 0 and 1", v, i)
+		}
+	}
+	starts, err := cleanSegmentStarts(o.SegmentStarts, len(p))
+	if err != nil {
+		return nil, err
+	}
+	return zigzagCore(p, th, starts), nil
+}
+
+func zigzagOptions(opts []ZigZagOptions) (ZigZagOptions, error) {
+	if len(opts) > 1 {
+		return ZigZagOptions{}, errors.New("at most one ZigZagOptions is accepted")
+	}
+	if len(opts) == 1 {
+		return opts[0], nil
+	}
+	return ZigZagOptions{}, nil
+}
+
+// cleanSegmentStarts returns segment starts sorted, without duplicates and without row 0.
+func cleanSegmentStarts(starts []int, n int) ([]int, error) {
+	out := make([]int, 0, len(starts))
+	for _, b := range starts {
+		if b < 0 || b >= n {
+			return nil, fmt.Errorf("break at row index %d is outside the %d rows", b, n)
+		}
+		if b > 0 {
+			out = append(out, b)
+		}
+	}
+	sort.Ints(out)
+	uniq := out[:0]
+	for i, b := range out {
+		if i == 0 || b != out[i-1] {
+			uniq = append(uniq, b)
+		}
+	}
+	return uniq, nil
+}
+
+// segmentBounds returns the [start, end) row ranges the segment starts cut n rows into.
+func segmentBounds(n int, starts []int) [][2]int {
+	var out [][2]int
+	start := 0
+	for _, b := range starts {
+		out = append(out, [2]int{start, b})
+		start = b
+	}
+	return append(out, [2]int{start, n})
+}
+
+func positivePrices(prices insyra.IDataList) ([]float64, error) {
+	return positiveSeries(prices, "prices")
+}
+
+func positiveSeries(dl insyra.IDataList, label string) ([]float64, error) {
+	p, err := numericSeries(dl, label)
 	if err != nil {
 		return nil, err
 	}
 	for i, v := range p {
 		if v <= 0 {
-			return nil, fmt.Errorf("prices holds %v at row index %d; a percentage threshold needs positive prices", v, i)
+			return nil, fmt.Errorf("%s holds %v at row index %d; prices must be positive", label, v, i)
 		}
 	}
-	if len(p) == 0 {
-		return nil, nil
-	}
+	return p, nil
+}
 
+func zigzagCore(p, th []float64, starts []int) []Pivot {
 	var pivots []Pivot
-	lowIdx, highIdx := 0, 0
+	for seg, b := range segmentBounds(len(p), starts) {
+		pivots = zigzagSegment(pivots, p, th, b[0], b[1], seg)
+	}
+	return pivots
+}
+
+func zigzagSegment(pivots []Pivot, p, th []float64, from, to, seg int) []Pivot {
+	if to-from < 2 {
+		return pivots
+	}
+	lowIdx, highIdx := from, from
 	direction := 0 // 0 undecided, +1 rising since a confirmed low, -1 falling since a confirmed high
-	for t := 1; t < len(p); t++ {
+	for t := from + 1; t < to; t++ {
 		switch direction {
 		case 0:
 			if p[t] < p[lowIdx] {
@@ -80,30 +199,126 @@ func ZigZag(prices insyra.IDataList, threshold float64) ([]Pivot, error) {
 			if p[t] > p[highIdx] {
 				highIdx = t
 			}
-			if p[t] >= p[lowIdx]*(1+threshold) {
-				pivots = append(pivots, Pivot{PivotLow, lowIdx, p[lowIdx], t})
+			if p[t] >= p[lowIdx]*(1+th[lowIdx]) {
+				pivots = append(pivots, Pivot{PivotLow, lowIdx, p[lowIdx], t, seg})
 				direction, highIdx = 1, t
-			} else if p[t] <= p[highIdx]*(1-threshold) {
-				pivots = append(pivots, Pivot{PivotHigh, highIdx, p[highIdx], t})
+			} else if p[t] <= p[highIdx]*(1-th[highIdx]) {
+				pivots = append(pivots, Pivot{PivotHigh, highIdx, p[highIdx], t, seg})
 				direction, lowIdx = -1, t
 			}
 		case 1:
 			if p[t] > p[highIdx] {
 				highIdx = t
-			} else if p[t] <= p[highIdx]*(1-threshold) {
-				pivots = append(pivots, Pivot{PivotHigh, highIdx, p[highIdx], t})
+			} else if p[t] <= p[highIdx]*(1-th[highIdx]) {
+				pivots = append(pivots, Pivot{PivotHigh, highIdx, p[highIdx], t, seg})
 				direction, lowIdx = -1, t
 			}
 		case -1:
 			if p[t] < p[lowIdx] {
 				lowIdx = t
-			} else if p[t] >= p[lowIdx]*(1+threshold) {
-				pivots = append(pivots, Pivot{PivotLow, lowIdx, p[lowIdx], t})
+			} else if p[t] >= p[lowIdx]*(1+th[lowIdx]) {
+				pivots = append(pivots, Pivot{PivotLow, lowIdx, p[lowIdx], t, seg})
 				direction, highIdx = 1, t
 			}
 		}
 	}
-	return pivots, nil
+	return pivots
+}
+
+// VolatilityThresholdOptions are the settings of VolatilityThresholds. A zero field
+// takes the default shown.
+type VolatilityThresholdOptions struct {
+	// Window is the number of rows of returns the standard deviation looks at.
+	// Default 60.
+	Window int
+	// MinRows is the fewest returns needed before the standard deviation is
+	// trusted. Before that, WarmupVolatility stands in for it. Default 20.
+	MinRows int
+	// Floor is the smallest threshold returned. Default 0.02.
+	Floor float64
+	// WarmupVolatility is the daily volatility assumed while there are fewer
+	// than MinRows returns. Default 0.025.
+	WarmupVolatility float64
+	// SegmentStarts are the rows on which a new data segment starts, as in
+	// ZigZagOptions. The return across a break is not used, and the window
+	// restarts there.
+	SegmentStarts []int
+}
+
+// VolatilityThresholds returns, for every row, max(Floor, multiple times the
+// standard deviation of the daily log returns over the last Window rows), the
+// per-row threshold ZigZagAdaptive takes. It looks only at returns up to the row
+// itself, so using it does not look ahead. The standard deviation is the
+// population one over the returns available, up to Window of them. multiple is
+// how many standard deviations of the daily log return a reversal must reach,
+// for example 3, and must be above 0.
+func VolatilityThresholds(prices insyra.IDataList, multiple float64, opts ...VolatilityThresholdOptions) (*insyra.DataList, error) {
+	if math.IsNaN(multiple) || multiple <= 0 {
+		return nil, errors.New("multiple must be above 0")
+	}
+	if len(opts) > 1 {
+		return nil, errors.New("VolatilityThresholds accepts at most one VolatilityThresholdOptions")
+	}
+	var opt VolatilityThresholdOptions
+	if len(opts) == 1 {
+		opt = opts[0]
+	}
+	return volatilityThresholds(prices, multiple, opt)
+}
+
+func volatilityThresholds(prices insyra.IDataList, multiple float64, opts VolatilityThresholdOptions) (*insyra.DataList, error) {
+	if opts.Window < 0 || opts.MinRows < 0 || opts.Floor < 0 || opts.WarmupVolatility < 0 {
+		return nil, errors.New("options Window, MinRows, Floor and WarmupVolatility must not be negative")
+	}
+	if opts.Window == 0 {
+		opts.Window = 60
+	}
+	if opts.MinRows == 0 {
+		opts.MinRows = 20
+	}
+	if opts.Floor == 0 {
+		opts.Floor = 0.02
+	}
+	if opts.WarmupVolatility == 0 {
+		opts.WarmupVolatility = 0.025
+	}
+	if opts.MinRows > opts.Window {
+		return nil, errors.New("option MinRows must not exceed Window")
+	}
+	p, err := positivePrices(prices)
+	if err != nil {
+		return nil, err
+	}
+	starts, err := cleanSegmentStarts(opts.SegmentStarts, len(p))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, len(p))
+	for _, b := range segmentBounds(len(p), starts) {
+		for i := b[0]; i < b[1]; i++ {
+			k := i - b[0] // returns available: rows b[0]+1 .. i
+			if k > opts.Window {
+				k = opts.Window
+			}
+			if k < opts.MinRows {
+				out[i] = math.Max(opts.Floor, multiple*opts.WarmupVolatility)
+				continue
+			}
+			var sum, sumSq float64
+			for j := i - k + 1; j <= i; j++ {
+				r := math.Log(p[j] / p[j-1])
+				sum += r
+				sumSq += r * r
+			}
+			v := sumSq/float64(k) - (sum/float64(k))*(sum/float64(k))
+			sd := 0.0
+			if v > 0 {
+				sd = math.Sqrt(v)
+			}
+			out[i] = math.Max(opts.Floor, multiple*sd)
+		}
+	}
+	return insyra.NewDataList(out...), nil
 }
 
 // RegimeKind says whether a stretch of the price series is a bull or a bear
@@ -161,7 +376,9 @@ type RegimeOptions struct {
 // last are not reported, since neither has both ends. Pivots must alternate, as
 // ZigZag returns them.
 //
-// Removing turning points to enforce MinPhase and MinCycle uses the whole list,
+// Pivots from ZigZagAdaptive with SegmentStarts carry their segment: a regime never joins
+// two segments, and MinPhase and MinCycle apply inside each. Removing turning
+// points to enforce MinPhase and MinCycle uses a segment's whole list,
 // so unlike ZigZag it is not causal: a regime reported as ending at a pivot may
 // be merged into a longer one once later pivots are known. Use ConfirmedAt only
 // without minimums.
@@ -177,13 +394,31 @@ func Regimes(pivots []Pivot, opts ...RegimeOptions) ([]Regime, error) {
 		return nil, errors.New("MinPhase and MinCycle must not be negative")
 	}
 	for i := 1; i < len(pivots); i++ {
-		if pivots[i].Kind == pivots[i-1].Kind {
+		if pivots[i].Segment < pivots[i-1].Segment {
+			return nil, fmt.Errorf("pivot at list position %d is in an earlier segment than the one before it", i)
+		}
+		if pivots[i].Segment == pivots[i-1].Segment && pivots[i].Kind == pivots[i-1].Kind {
 			return nil, fmt.Errorf("pivots at list positions %d and %d are both %v; they must alternate", i-1, i, pivots[i].Kind)
 		}
 		if pivots[i].Index <= pivots[i-1].Index {
 			return nil, fmt.Errorf("pivot at list position %d is not after the one before it", i)
 		}
 	}
+	// A regime never crosses a data break: each segment is turned into regimes
+	// on its own, with MinPhase and MinCycle applied inside it.
+	regimes := []Regime{}
+	for from := 0; from < len(pivots); {
+		to := from
+		for to < len(pivots) && pivots[to].Segment == pivots[from].Segment {
+			to++
+		}
+		regimes = append(regimes, regimesOfSegment(pivots[from:to], o)...)
+		from = to
+	}
+	return regimes, nil
+}
+
+func regimesOfSegment(pivots []Pivot, o RegimeOptions) []Regime {
 	kept := append([]Pivot(nil), pivots...)
 	for changed := true; changed; {
 		changed = false
@@ -215,5 +450,5 @@ func Regimes(pivots []Pivot, opts ...RegimeOptions) ([]Regime, error) {
 		}
 		regimes = append(regimes, Regime{kind, a.Index, b.Index, b.Index - a.Index, b.Price/a.Price - 1, b.ConfirmedAt})
 	}
-	return regimes, nil
+	return regimes
 }

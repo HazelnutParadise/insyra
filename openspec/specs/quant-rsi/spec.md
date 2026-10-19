@@ -18,3 +18,10 @@ The relative strength index with Wilder or simple averaging and an explicit poli
 #### Scenario: A gap under the break policy
 - **WHEN** the prices are 1, 2, nil, 4, 3, 5 and n is 2
 - **THEN** the values at row indices 2, 3 and 4 are NaN and the value at row index 5 is defined
+
+### Requirement: RSI restarts at a data segment start
+`ta.RSI` SHALL compute each segment given in RSIOptions.SegmentStarts on its own, so a segment needs n changes of its own before it shows a value and rows before a segment start are not changed by what follows.
+
+#### Scenario: A relisting
+- **WHEN** a series is split at row 6
+- **THEN** the rows from 6 on equal the RSI of that part computed alone
