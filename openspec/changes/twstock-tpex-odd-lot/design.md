@@ -6,10 +6,10 @@ The first version of this note looked only at the OpenAPI and wrongly said the T
 
 | Report | Endpoint | Earliest date with data | Columns |
 | --- | --- | --- | --- |
-| After-hours odd lot (盤後零股) | `/www/zh-tw/afterTrading/odd?date=YYYY/MM/DD&type=Daily&response=json` | between 2011-01 and 2012-06 (2012-06-01 has 620 rows) | 代號, 名稱, 成交股數, 成交筆數, 成交金額, 成交價格, 未成交買價, 未成交買量, 未成交賣價, 未成交賣量 |
+| After-hours odd lot (盤後零股) | `/www/zh-tw/afterTrading/odd?date=YYYY/MM/DD&type=Daily&response=json` | between 2010-12-01 (empty) and 2011-01-03 (562 rows) | 代號, 名稱, 成交股數, 成交筆數, 成交金額, 成交價格, 未成交買價, 未成交買量, 未成交賣價, 未成交賣量 |
 | Intraday odd lot (盤中零股) | `/www/zh-tw/afterTrading/oddQuote?date=YYYY/MM/DD&type=Daily&response=json` | 2020-10-26, as on the TWSE (2020-10-20 is empty, 2020-11-02 has 879 rows) | 代號, 名稱, 最後成交價, 漲跌, 首筆成交價, 最高, 最低, 成交股數, 成交金額(元), 成交筆數, 最後買價, 最後買量(股), 最後賣價, 最後賣量(股) |
 
-Both answer in the same envelope the package already reads for other TPEx reports (`stat`, `date`, `tables[0].fields` and `.data`), numbers have thousands separators, and a day with no data gives an empty table. The OpenAPI (`/openapi/v1/tpex_odd_stock`) gives only the latest after-hours day and ignores a date, so it is not the source to use. The earliest after-hours date was bracketed by spot checks (2010 is empty, 2012 has data), not pinned to the day; the implementation should find it.
+Both answer in the same envelope the package already reads for other TPEx reports (`stat`, `date`, `tables[0].fields` and `.data`), numbers have thousands separators, and a day with no data gives an empty table. The OpenAPI (`/openapi/v1/tpex_odd_stock`) gives only the latest after-hours day and ignores a date, so it is not the source to use. The earliest after-hours date was bracketed by spot checks (2010-12-01 is empty, 2011-01-03 has data), not pinned to the day; the implementation should find it.
 
 `OddLotQuotes`'s doc comment says the TPEx publishes only the latest day. That is wrong and is corrected by this change.
 
