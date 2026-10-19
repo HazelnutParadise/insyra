@@ -557,11 +557,14 @@ For each day, `sum(sign(return) * volume) / sum(volume)` over the last `n` days.
 func Divergence(price, indicator insyra.IDataList, n, cooldown int) (*insyra.DataList, error)
 ```
 
-Flags days when a price makes a new `n`-day extreme that an indicator does not confirm: `-1` (bearish) when price is above its highest value of the previous `n` days while the indicator is below its highest, `+1` (bullish) for the mirror image on lows, `0` otherwise. The first `n` rows are `0`. After a flag, the same kind is not flagged again for `cooldown` days, so one episode is one event; `cooldown` 0 flags every qualifying day.
+Flags days when a price makes a new `n`-day extreme that an indicator does not confirm: `-1` (bearish) when price is above its highest value of the previous `n` days while the indicator is below its highest, `+1` (bullish) for the mirror image on lows, `0` otherwise. The first `n` rows are `0`. After a flag, the same kind is not flagged again for `cooldown` days, so one episode is one event; `cooldown` 0 flags every qualifying day. The indicator may start with `NaN`, as `RSI` and `SignedVolumeRatio` do: a day whose indicator, or any of the previous `n` values of it, is `NaN` is `0`. Price must be finite, and an infinite indicator value is an error.
 
 ```go
 obv, err := quant.OBV(close, volume)
 flags, err := quant.Divergence(close, obv, 20, 10)
+
+rsi, err := quant.RSI(close, 14)
+flags, err = quant.Divergence(close, rsi, 20, 10) // the first rows of rsi are NaN
 ```
 
 ---
