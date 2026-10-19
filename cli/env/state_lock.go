@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -32,7 +33,11 @@ func lockState(envPath string) (func(), error) {
 			_ = f.Close()
 			return func() { _ = os.Remove(path) }, nil
 		}
-		if !errors.Is(err, os.ErrExist) {
+		// Windows refuses with "access denied", not "exists", to create a file
+		// whose deletion by another holder has not finished. That is a lock
+		// someone is letting go of, so wait for it like a held one.
+		held := errors.Is(err, os.ErrExist) || (runtime.GOOS == "windows" && errors.Is(err, os.ErrPermission))
+		if !held {
 			return nil, err
 		}
 		if info, statErr := os.Stat(path); statErr == nil && time.Since(info.ModTime()) > stateLockStale {
@@ -40,7 +45,7 @@ func lockState(envPath string) (func(), error) {
 			continue
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("another insyra process is saving this environment (%s is held); try again", path)
+			return nil, fmt.Errorf("another insyra process is saving this environment (%s is held: %w); try again", path, err)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
