@@ -25,10 +25,10 @@ func TestZigZagWorkedExample(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []Pivot{
-		{PivotLow, 0, 100, 1},
-		{PivotHigh, 2, 120, 3},
-		{PivotLow, 4, 95, 6},
-		{PivotHigh, 7, 130, 8},
+		{PivotLow, 0, 100, 1, 0},
+		{PivotHigh, 2, 120, 3, 0},
+		{PivotLow, 4, 95, 6, 0},
+		{PivotHigh, 7, 130, 8, 0},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v\nwant %+v", got, want)
@@ -70,7 +70,7 @@ func TestZigZagStartsWithAFallAndAlternates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Pivot{{PivotHigh, 0, 100, 2}, {PivotLow, 2, 85, 3}, {PivotHigh, 4, 120, 5}}
+	want := []Pivot{{PivotHigh, 0, 100, 2, 0}, {PivotLow, 2, 85, 3, 0}, {PivotHigh, 4, 120, 5, 0}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v\nwant %+v", got, want)
 	}
@@ -133,8 +133,8 @@ func TestRegimes(t *testing.T) {
 
 func TestRegimesMinimums(t *testing.T) {
 	pivots := []Pivot{
-		{PivotLow, 0, 100, 3}, {PivotHigh, 10, 150, 12}, {PivotLow, 12, 140, 14},
-		{PivotHigh, 25, 190, 27}, {PivotLow, 40, 120, 42},
+		{PivotLow, 0, 100, 3, 0}, {PivotHigh, 10, 150, 12, 0}, {PivotLow, 12, 140, 14, 0},
+		{PivotHigh, 25, 190, 27, 0}, {PivotLow, 40, 120, 42, 0},
 	}
 	// The bear stretch 10 -> 12 is 2 rows long; with MinPhase 3 it goes, and the
 	// two bull stretches around it join into one from 0 to 25.
@@ -154,7 +154,7 @@ func TestRegimesMinimums(t *testing.T) {
 	if !sameRegimes(cycles, want) {
 		t.Errorf("MinCycle: got %+v\nwant %+v", cycles, want)
 	}
-	if _, err := Regimes([]Pivot{{PivotLow, 0, 1, 1}, {PivotLow, 2, 1, 3}}); err == nil {
+	if _, err := Regimes([]Pivot{{PivotLow, 0, 1, 1, 0}, {PivotLow, 2, 1, 3, 0}}); err == nil {
 		t.Error("pivots that do not alternate should be an error")
 	}
 	if _, err := Regimes(pivots, RegimeOptions{MinPhase: -1}); err == nil {
