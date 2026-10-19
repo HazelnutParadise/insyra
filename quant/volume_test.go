@@ -97,3 +97,40 @@ func TestVolumeFunctionsRefuseBadInput(t *testing.T) {
 		}
 	}
 }
+
+// An indicator such as RSI starts with NaN. Divergence skips the days whose
+// window reaches a NaN, and still refuses a NaN price or an infinite indicator.
+func TestDivergenceAcceptsAnIndicatorThatStartsWithNaN(t *testing.T) {
+	nan := math.NaN()
+	price := prices(1, 2, 3, 4, 5, 6, 7, 8)
+	ind := prices(nan, nan, 5, 4, 3, 2, 1, 0)
+	got, err := Divergence(price, ind, 3, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flags := floats(t, got)
+	// Rows 0..2 have no history; row 3's window (rows 0..3) reaches a NaN, so it is 0.
+	// Row 4's window (rows 1..4) still does; row 5's (rows 2..5) does not: price makes a
+	// new high and the indicator does not.
+	want := []float64{0, 0, 0, 0, 0, -1, -1, -1}
+	for i := range want {
+		if flags[i] != want[i] {
+			t.Fatalf("flags %v, want %v", flags, want)
+		}
+	}
+	// RSI itself can be passed straight in.
+	closePrices := prices(10, 11, 12, 11, 13, 14, 15, 14, 16, 17, 18, 17, 19, 20, 21, 22)
+	rsi, err := RSI(closePrices, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Divergence(closePrices, rsi, 5, 1); err != nil {
+		t.Errorf("Divergence(close, RSI) should work: %v", err)
+	}
+	if _, err := Divergence(prices(1, nan, 3, 4), prices(1, 2, 3, 4), 2, 0); err == nil {
+		t.Error("a NaN price should still be an error")
+	}
+	if _, err := Divergence(prices(1, 2, 3, 4), prices(1, math.Inf(1), 3, 4), 2, 0); err == nil {
+		t.Error("an infinite indicator should still be an error")
+	}
+}

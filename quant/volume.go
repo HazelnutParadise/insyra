@@ -140,6 +140,11 @@ func SignedVolumeRatio(returns, volume insyra.IDataList, n int) (*insyra.DataLis
 // cooldown is the number of days after a flag of one kind during which that
 // kind is not flagged again, so one episode is one event; 0 flags every day
 // that qualifies.
+//
+// The indicator may start with NaN, as RSI and SignedVolumeRatio do before they
+// have enough rows: a day whose indicator or any of the previous n values of it
+// is NaN is 0, as the first n rows are. Price must be finite. An infinite
+// indicator value is an error.
 func Divergence(price, indicator insyra.IDataList, n, cooldown int) (*insyra.DataList, error) {
 	if n < 1 {
 		return nil, errors.New("window n must be at least 1")
@@ -151,7 +156,7 @@ func Divergence(price, indicator insyra.IDataList, n, cooldown int) (*insyra.Dat
 	if err != nil {
 		return nil, err
 	}
-	ind, err := numericSeries(indicator, "indicator")
+	ind, err := numericSeriesAllowNaN(indicator, "indicator")
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +168,9 @@ func Divergence(price, indicator insyra.IDataList, n, cooldown int) (*insyra.Dat
 	for t := range out {
 		out[t] = 0
 		if t < n {
+			continue
+		}
+		if hasNaN(ind[t-n : t+1]) {
 			continue
 		}
 		pMax, pMin := p[t-n], p[t-n]
@@ -179,4 +187,13 @@ func Divergence(price, indicator insyra.IDataList, n, cooldown int) (*insyra.Dat
 		}
 	}
 	return insyra.NewDataList(out...), nil
+}
+
+func hasNaN(v []float64) bool {
+	for _, x := range v {
+		if math.IsNaN(x) {
+			return true
+		}
+	}
+	return false
 }
