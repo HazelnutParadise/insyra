@@ -254,3 +254,32 @@ func TestIndicatorsRefuseBadInput(t *testing.T) {
 		t.Errorf("short series: %v", err)
 	}
 }
+
+func TestIndicatorListsAreNamed(t *testing.T) {
+	p := prices(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+	one := func(l *insyra.DataList, err error, want string) {
+		t.Helper()
+		if err != nil || l.GetName() != want {
+			t.Errorf("want a list named %q, got %q, %v", want, l.GetName(), err)
+		}
+	}
+	l, err := SMA(p, 3)
+	one(l, err, "SMA")
+	l, err = EMA(p, 3)
+	one(l, err, "EMA")
+	m, err := MACD(p, 2, 4, 2)
+	one(m.MACD, err, "MACD")
+	one(m.Signal, err, "Signal")
+	one(m.Histogram, err, "Histogram")
+	b, err := Bollinger(p, 3, 2)
+	one(b.Upper, err, "Upper")
+	one(b.Middle, err, "Middle")
+	one(b.Lower, err, "Lower")
+	l, err = TrueRange(p, p, p)
+	one(l, err, "TrueRange")
+	l, err = ATR(p, p, p, 3)
+	one(l, err, "ATR")
+	k, err := KD(p, p, p, 3)
+	one(k.K, err, "K")
+	one(k.D, err, "D")
+}

@@ -9,9 +9,12 @@ import (
 )
 
 // The indicators in this file follow the definitions of TA-Lib, the usual
-// reference: a window that is not full is NaN, EMA starts from the simple
-// average of its first n values, and a standard deviation is the population
-// one. They refuse a missing, non-numeric or non-finite value instead of
+// reference, except KD, whose default is the recursive form used by Taiwanese
+// brokers' software (use KDMovingAverage for TA-Lib's STOCH): a window that is
+// not full is NaN, EMA starts from the simple average of its first n values,
+// and a standard deviation is the population one. Every returned list is named
+// after its line (SMA, MACD, Signal, Upper, K and so on), so it can be added to
+// a table as it is. They refuse a missing, non-numeric or non-finite value instead of
 // guessing, since a moving average over a hole is not the average of anything.
 
 func nanSeries(n int) []float64 {
@@ -22,12 +25,12 @@ func nanSeries(n int) []float64 {
 	return out
 }
 
-func listOfFloats(v []float64) *insyra.DataList {
+func listOfFloats(name string, v []float64) *insyra.DataList {
 	out := make([]any, len(v))
 	for i, x := range v {
 		out[i] = x
 	}
-	return insyra.NewDataList(out...)
+	return insyra.NewDataList(out...).SetName(name)
 }
 
 func checkPeriod(name string, n, min int) error {
@@ -84,7 +87,7 @@ func SMA(prices insyra.IDataList, n int) (*insyra.DataList, error) {
 	if err != nil {
 		return nil, err
 	}
-	return listOfFloats(smaOf(p, n)), nil
+	return listOfFloats("SMA", smaOf(p, n)), nil
 }
 
 // EMA returns the exponential moving average with weight 2/(n+1), started from
@@ -98,7 +101,7 @@ func EMA(prices insyra.IDataList, n int) (*insyra.DataList, error) {
 	if err != nil {
 		return nil, err
 	}
-	return listOfFloats(emaOf(p, n, 0)), nil
+	return listOfFloats("EMA", emaOf(p, n, 0)), nil
 }
 
 // MACDResult holds the three lines of MACD.
@@ -146,7 +149,7 @@ func MACD(prices insyra.IDataList, fast, slow, signal int) (*MACDResult, error) 
 			hist[i] = macd[i] - sig[i]
 		}
 	}
-	return &MACDResult{listOfFloats(macd), listOfFloats(sig), listOfFloats(hist)}, nil
+	return &MACDResult{listOfFloats("MACD", macd), listOfFloats("Signal", sig), listOfFloats("Histogram", hist)}, nil
 }
 
 // BollingerResult holds the three bands.
@@ -182,7 +185,7 @@ func Bollinger(prices insyra.IDataList, n int, k float64) (*BollingerResult, err
 		sd := math.Sqrt(ss / float64(n))
 		up[i], lo[i] = mid[i]+k*sd, mid[i]-k*sd
 	}
-	return &BollingerResult{listOfFloats(up), listOfFloats(mid), listOfFloats(lo)}, nil
+	return &BollingerResult{listOfFloats("Upper", up), listOfFloats("Middle", mid), listOfFloats("Lower", lo)}, nil
 }
 
 func barSeries(high, low, close insyra.IDataList) (h, l, c []float64, err error) {
@@ -222,7 +225,7 @@ func TrueRange(high, low, close insyra.IDataList) (*insyra.DataList, error) {
 	if err != nil {
 		return nil, err
 	}
-	return listOfFloats(trueRangeOf(h, l, c)), nil
+	return listOfFloats("TrueRange", trueRangeOf(h, l, c)), nil
 }
 
 // ATR returns Wilder's average true range over n rows: row n is the simple
@@ -239,7 +242,7 @@ func ATR(high, low, close insyra.IDataList, n int) (*insyra.DataList, error) {
 	tr := trueRangeOf(h, l, c)
 	out := nanSeries(len(h))
 	if len(h) <= n {
-		return listOfFloats(out), nil
+		return listOfFloats("ATR", out), nil
 	}
 	var sum float64
 	for i := 1; i <= n; i++ {
@@ -251,7 +254,7 @@ func ATR(high, low, close insyra.IDataList, n int) (*insyra.DataList, error) {
 		prev = (prev*float64(n-1) + tr[i]) / float64(n)
 		out[i] = prev
 	}
-	return listOfFloats(out), nil
+	return listOfFloats("ATR", out), nil
 }
 
 // KDMethod chooses how the raw stochastic value is smoothed into K and D.
@@ -371,5 +374,5 @@ func KD(high, low, close insyra.IDataList, n int, opts ...KDOptions) (*KDResult,
 			d[i] = s / float64(o.SlowD)
 		}
 	}
-	return &KDResult{listOfFloats(k), listOfFloats(d)}, nil
+	return &KDResult{listOfFloats("K", k), listOfFloats("D", d)}, nil
 }
