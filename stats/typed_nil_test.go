@@ -22,13 +22,16 @@ func TestNilListsAreErrorsNotPanics(t *testing.T) {
 			"LogisticRegression": func() error { _, e := stats.LogisticRegression(nilList, good); return e },
 			"Correlation":        func() error { _, e := stats.Correlation(nilList, good, stats.PearsonCorrelation); return e },
 			"Covariance":         func() error { _, e := stats.Covariance(good, nilList); return e },
-			"ChiSquareGoF":       func() error { _, e := stats.ChiSquareGoodnessOfFit(nilList, map[string]float64{"a": 0.5, "b": 0.5}, false); return e },
-			"ChiSquareIndep":     func() error { _, e := stats.ChiSquareIndependenceTest(good, nilList); return e },
-			"Silhouette":         func() error { _, e := stats.Silhouette(table, nilList); return e },
-			"KNNClassify":        func() error { _, e := stats.KNNClassify(table, nilList, table, 1); return e },
-			"KNNRegress":         func() error { _, e := stats.KNNRegress(table, nilList, table, 1); return e },
-			"Skewness":           func() error { _, e := stats.Skewness(nilList); return e },
-			"Kurtosis":           func() error { _, e := stats.Kurtosis(nilList); return e },
+			"ChiSquareGoF": func() error {
+				_, e := stats.ChiSquareGoodnessOfFit(nilList, map[string]float64{"a": 0.5, "b": 0.5}, false)
+				return e
+			},
+			"ChiSquareIndep": func() error { _, e := stats.ChiSquareIndependenceTest(good, nilList); return e },
+			"Silhouette":     func() error { _, e := stats.Silhouette(table, nilList); return e },
+			"KNNClassify":    func() error { _, e := stats.KNNClassify(table, nilList, table, 1); return e },
+			"KNNRegress":     func() error { _, e := stats.KNNRegress(table, nilList, table, 1); return e },
+			"Skewness":       func() error { _, e := stats.Skewness(nilList); return e },
+			"Kurtosis":       func() error { _, e := stats.Kurtosis(nilList); return e },
 		}
 		for cname, f := range cases {
 			t.Run(name+"/"+cname, func(t *testing.T) {

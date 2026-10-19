@@ -53,3 +53,9 @@ Most cells hold a primitive the library knows how to render. Some hold a value i
 - **WHEN** 一段非法 UTF-8 的位元組裡剛好有 `0x0a`
 - **THEN** 仍以十六進位顯示，不會被當成多行字串只顯示第一行
 
+### Requirement: A cell that refers to itself is shown by its type
+`Show` and the error messages of `stats` SHALL name a cell by its Go type when printing its contents would not finish, so that a slice containing itself SHALL NOT end the process.
+
+#### Scenario: Showing a self-referential slice
+- **WHEN** a list holds a slice whose element is the slice itself and `Show` is called
+- **THEN** the cell is shown as its type and the call returns
