@@ -24,6 +24,12 @@ func TestEnumsPrintTheirNames(t *testing.T) {
 		{SkewnessAdjusted, "SkewnessAdjusted"},
 		{SkewnessBiasAdjusted, "SkewnessBiasAdjusted"},
 		{SkewnessMethod(99), "SkewnessMethod(99)"},
+		{PAdjustHolm, "PAdjustHolm"},
+		{PAdjustBonferroni, "PAdjustBonferroni"},
+		{PAdjustHochberg, "PAdjustHochberg"},
+		{PAdjustBH, "PAdjustBH"},
+		{PAdjustBY, "PAdjustBY"},
+		{PAdjustMethod(99), "PAdjustMethod(99)"},
 	}
 	for _, c := range cases {
 		if got := fmt.Sprint(c.got); got != c.want {

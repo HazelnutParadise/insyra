@@ -184,7 +184,7 @@ func nameUnnamedSQLColumns(cols []string, hasRowNames bool) error {
 		}
 		letter, ok := ColNumberToIndex(i - first)
 		if !ok {
-			return fmt.Errorf("column %d has no name", i-first+1)
+			return fmt.Errorf("column index %d has no name", i-first)
 		}
 		if taken[strings.ToLower(letter)] {
 			return fmt.Errorf("column %s has no name, and another column is already named %s; name the column before writing it", letter, letter)

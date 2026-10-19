@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/HazelnutParadise/insyra/stats/internal/fa"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
@@ -400,7 +401,7 @@ func FactorAnalysis(dt insyra.IDataTable, opts ...FactorAnalysisOptions) (*Facto
 				if ok {
 					data.Set(i, j, value)
 				} else {
-					conversionErr = fmt.Errorf("non-numeric value at row index %d column index %d: %v", i, j, cell)
+					conversionErr = fmt.Errorf("non-numeric value at row index %d column index %d: %s", i, j, utils.SprintBounded(cell))
 					return
 				}
 			}

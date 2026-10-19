@@ -60,6 +60,9 @@ func ProcessData(input any) ([]any, error) {
 		return nil, fmt.Errorf("input is a nil %T", input)
 	}
 	if dl, ok := input.(IDataList); ok {
+		if IsNilList(dl) {
+			return nil, fmt.Errorf("input is a nil list: %T", input)
+		}
 		return dl.Data(), nil
 	}
 	if value.Kind() == reflect.Pointer {

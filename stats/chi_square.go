@@ -95,6 +95,9 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 // rescaleP rescales the probabilities to sum to 1; without it they must
 // already sum to 1.
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p map[string]float64, rescaleP bool) (*ChiSquareTestResult, error) {
+	if insyra.IsNilList(input) {
+		return nil, errors.New("input DataList is nil")
+	}
 	// 計算類別頻率
 	data := input.Data()
 	if len(data) == 0 {

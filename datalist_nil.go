@@ -10,10 +10,21 @@ func IsNilList(dl IDataList) bool {
 	if dl == nil {
 		return true
 	}
-	return embedsNilDataList(reflect.ValueOf(dl), 0)
+	return embedsNil(reflect.ValueOf(dl), reflect.TypeFor[*DataList](), 0)
 }
 
-func embedsNilDataList(v reflect.Value, depth int) bool {
+// IsNilTable reports whether dt has no DataTable behind it, the way IsNilList
+// does for a list: a nil interface, a nil *DataTable, or a value that embeds a
+// nil *DataTable.
+func IsNilTable(dt IDataTable) bool {
+	if dt == nil {
+		return true
+	}
+	return embedsNil(reflect.ValueOf(dt), reflect.TypeFor[*DataTable](), 0)
+}
+
+// embedsNil reports whether v is, or embeds, a nil pointer of type target.
+func embedsNil(v reflect.Value, target reflect.Type, depth int) bool {
 	if depth > 8 {
 		return false
 	}
@@ -22,20 +33,20 @@ func embedsNilDataList(v reflect.Value, depth int) bool {
 		if v.IsNil() {
 			return true
 		}
-		if v.Type() == reflect.TypeFor[*DataList]() {
+		if v.Type() == target {
 			return false
 		}
-		return embedsNilDataList(v.Elem(), depth+1)
+		return embedsNil(v.Elem(), target, depth+1)
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
 			if !v.Type().Field(i).Anonymous {
 				continue
 			}
 			f := v.Field(i)
-			if f.Kind() == reflect.Pointer && f.Type() == reflect.TypeFor[*DataList]() && f.IsNil() {
+			if f.Kind() == reflect.Pointer && f.Type() == target && f.IsNil() {
 				return true
 			}
-			if embedsNilDataList(f, depth+1) {
+			if embedsNil(f, target, depth+1) {
 				return true
 			}
 		}
