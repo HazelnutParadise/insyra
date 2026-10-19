@@ -4,6 +4,7 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -453,5 +454,54 @@ func TestFanIsDiscardedWhenThePricePassesTheAnchor(t *testing.T) {
 	got, _ := FanBreaks(prices(c...), lows)
 	if len(got) != 0 {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+// Regimes never join pivots from different data segments: a high ending one
+// segment and a high starting the next is not an alternation error, and a high
+// followed by a low across a break is not a bear stretch.
+func TestRegimesStayInsideTheirSegment(t *testing.T) {
+	pivots := []Pivot{
+		{PivotLow, 0, 100, 2, 0}, {PivotHigh, 10, 120, 12, 0},
+		{PivotHigh, 30, 90, 32, 1}, {PivotLow, 40, 80, 42, 1}, {PivotHigh, 50, 95, 52, 1},
+	}
+	got, err := Regimes(pivots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[0].Kind != RegimeBull || got[0].End != 10 || got[1].Kind != RegimeBear || got[1].Start != 30 || got[2].Kind != RegimeBull {
+		t.Fatalf("got %+v", got)
+	}
+	for _, r := range got {
+		if r.Start < 30 && r.End >= 30 {
+			t.Fatalf("regime %+v crosses the break", r)
+		}
+	}
+	// Inside one segment the alternation check still applies.
+	if _, err := Regimes([]Pivot{{PivotLow, 0, 1, 1, 0}, {PivotLow, 2, 1, 3, 0}}); err == nil {
+		t.Error("two lows in one segment should be an error")
+	}
+	if _, err := Regimes([]Pivot{{PivotLow, 0, 1, 1, 1}, {PivotHigh, 2, 1, 3, 0}}); err == nil {
+		t.Error("segments out of order should be an error")
+	}
+	// MinPhase applies inside a segment only.
+	short := []Pivot{{PivotLow, 0, 100, 1, 0}, {PivotHigh, 1, 101, 2, 0}, {PivotHigh, 30, 90, 31, 1}, {PivotLow, 40, 80, 41, 1}}
+	got, err = Regimes(short, RegimeOptions{MinPhase: 3})
+	if err != nil || len(got) != 1 || got[0].Kind != RegimeBear {
+		t.Fatalf("the one-row bull stretch in segment 0 is removed, the bear stretch in segment 1 stays: %+v, %v", got, err)
+	}
+}
+
+func TestPatternsRefuseBreaksThatDifferFromThePivots(t *testing.T) {
+	c := prices(flatWith(60, nil)...)
+	// doubleTop was made without breaks, so every pivot is in segment 0.
+	if _, err := DetectPatterns(c, doubleTop, PatternOptions{Breaks: []int{15}}); err == nil || !strings.Contains(err.Error(), "Segment") {
+		t.Errorf("DetectPatterns: %v", err)
+	}
+	if _, err := FanBreaks(c, doubleTop, FanOptions{Breaks: []int{15}}); err == nil {
+		t.Error("FanBreaks should refuse it too")
+	}
+	if _, err := FanBreaks(c, doubleTop, FanOptions{}, FanOptions{}); err == nil {
+		t.Error("two option sets should be an error")
 	}
 }

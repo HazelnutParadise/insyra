@@ -683,7 +683,7 @@ type VolatilityOptions struct {
 
 `ZigZagBy` is `ZigZag` with a threshold for every row, so a quiet stock reverses on a smaller move than a wild one. `thresholds[i]` is the fall or rise from an extreme at row `i` that confirms it, which is known on the day the extreme is made, so the result stays causal. `VolatilityThresholds` returns `max(Floor, Multiple × the population standard deviation of the last Window daily log returns)` for every row, and `Multiple × WarmupVolatility` (at least `Floor`) until `MinRows` returns exist.
 
-`Breaks` are the rows on which a new data segment starts, for example after a trading halt or a relisting. Nothing is carried over a break: the extreme being tracked is dropped, a pivot is never made from rows on both sides, and the volatility window restarts. `Pivot.Segment` counts the breaks before a pivot. Pass the same `Breaks` to `DetectPatterns`, `FanBreaks` and `ClassifyGaps`.
+`Breaks` are the rows on which a new data segment starts, for example after a trading halt or a relisting. Nothing is carried over a break: the extreme being tracked is dropped, a pivot is never made from rows on both sides, and the volatility window restarts. `Pivot.Segment` counts the breaks before a pivot. Pass the same `Breaks` to `DetectPatterns`, `FanBreaks` and `ClassifyGaps`; `DetectPatterns` and `FanBreaks` return an error when a pivot's `Segment` does not match the `Breaks` they are given. `Regimes` never joins pivots of different segments.
 
 ```go
 th, _ := quant.VolatilityThresholds(close, quant.VolatilityOptions{Multiple: 3, Breaks: breaks})
@@ -725,7 +725,11 @@ Prices are closes, so a pattern's lines are drawn through closes and not intrada
 ### FanBreaks
 
 ```go
-func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...ZigZagOptions) ([]FanBreak, error)
+func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...FanOptions) ([]FanBreak, error)
+
+type FanOptions struct {
+    Breaks []int // the Breaks given to ZigZagBy
+}
 ```
 
 The fan principle: from a trough, a line through the next higher trough that is flatter than the last; each close under such a line is a break, and the third ends the fan (mirrored over falling peaks). Returns each break with its `Number` (1 to 3), `Direction`, the row `At` and the rows of the two turning points the line joins. A close past the anchor itself discards the fan.

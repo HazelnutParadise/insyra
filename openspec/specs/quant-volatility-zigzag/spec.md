@@ -32,3 +32,10 @@ Turning points whose reversal threshold follows the volatility of the series and
 #### Scenario: A threshold of 1
 - **WHEN** a threshold is 1
 - **THEN** an error names its row index
+
+### Requirement: Regimes never cross a data break
+`quant.Regimes` SHALL turn the pivots of each segment into regimes on its own, SHALL apply MinPhase and MinCycle inside a segment, and SHALL NOT report two pivots of different segments as an alternation error or join them into a regime.
+
+#### Scenario: Two highs either side of a break
+- **WHEN** one segment ends with a high and the next starts with a high
+- **THEN** no error is returned and no regime spans the break

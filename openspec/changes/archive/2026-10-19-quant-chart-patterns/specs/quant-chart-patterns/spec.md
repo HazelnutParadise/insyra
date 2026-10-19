@@ -34,3 +34,10 @@
 #### Scenario: A pivot confirmed before it happened
 - **WHEN** ConfirmedAt is not after Index
 - **THEN** an error names the pivot's list position
+
+### Requirement: Breaks that differ from the pivots are refused
+`quant.DetectPatterns` and `quant.FanBreaks` SHALL return an error when a pivot's Segment does not match the segment its row lies in under the Breaks they are given.
+
+#### Scenario: Pivots made without breaks
+- **WHEN** the pivots all have Segment 0 and Breaks is `[15]` with a pivot after row 15
+- **THEN** an error names the pivot's list position

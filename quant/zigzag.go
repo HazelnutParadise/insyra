@@ -366,7 +366,9 @@ type RegimeOptions struct {
 // last are not reported, since neither has both ends. Pivots must alternate, as
 // ZigZag returns them.
 //
-// Removing turning points to enforce MinPhase and MinCycle uses the whole list,
+// Pivots from ZigZagBy with Breaks carry their segment: a regime never joins
+// two segments, and MinPhase and MinCycle apply inside each. Removing turning
+// points to enforce MinPhase and MinCycle uses a segment's whole list,
 // so unlike ZigZag it is not causal: a regime reported as ending at a pivot may
 // be merged into a longer one once later pivots are known. Use ConfirmedAt only
 // without minimums.
@@ -382,13 +384,31 @@ func Regimes(pivots []Pivot, opts ...RegimeOptions) ([]Regime, error) {
 		return nil, errors.New("MinPhase and MinCycle must not be negative")
 	}
 	for i := 1; i < len(pivots); i++ {
-		if pivots[i].Kind == pivots[i-1].Kind {
+		if pivots[i].Segment < pivots[i-1].Segment {
+			return nil, fmt.Errorf("pivot at list position %d is in an earlier segment than the one before it", i)
+		}
+		if pivots[i].Segment == pivots[i-1].Segment && pivots[i].Kind == pivots[i-1].Kind {
 			return nil, fmt.Errorf("pivots at list positions %d and %d are both %v; they must alternate", i-1, i, pivots[i].Kind)
 		}
 		if pivots[i].Index <= pivots[i-1].Index {
 			return nil, fmt.Errorf("pivot at list position %d is not after the one before it", i)
 		}
 	}
+	// A regime never crosses a data break: each segment is turned into regimes
+	// on its own, with MinPhase and MinCycle applied inside it.
+	regimes := []Regime{}
+	for from := 0; from < len(pivots); {
+		to := from
+		for to < len(pivots) && pivots[to].Segment == pivots[from].Segment {
+			to++
+		}
+		regimes = append(regimes, regimesOfSegment(pivots[from:to], o)...)
+		from = to
+	}
+	return regimes, nil
+}
+
+func regimesOfSegment(pivots []Pivot, o RegimeOptions) []Regime {
 	kept := append([]Pivot(nil), pivots...)
 	for changed := true; changed; {
 		changed = false
@@ -420,5 +440,5 @@ func Regimes(pivots []Pivot, opts ...RegimeOptions) ([]Regime, error) {
 		}
 		regimes = append(regimes, Regime{kind, a.Index, b.Index, b.Index - a.Index, b.Price/a.Price - 1, b.ConfirmedAt})
 	}
-	return regimes, nil
+	return regimes
 }

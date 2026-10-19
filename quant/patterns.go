@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -176,6 +177,19 @@ func checkPivots(pivots []Pivot, n int) error {
 	return nil
 }
 
+// checkSegments refuses pivots whose Segment does not match the segment their
+// row lies in under breaks, which is what happens when the pivots were made
+// with different Breaks than the ones passed now.
+func checkSegments(pivots []Pivot, breaks []int) error {
+	for i, p := range pivots {
+		seg := sort.SearchInts(breaks, p.Index+1) // breaks at or before the pivot's row
+		if p.Segment != seg {
+			return fmt.Errorf("pivot at list position %d has Segment %d but row index %d lies in segment %d of the Breaks given; pass the Breaks used for ZigZagBy", i, p.Segment, p.Index, seg)
+		}
+	}
+	return nil
+}
+
 // segmentStarts returns, for every row, the first row of its segment.
 func segmentStarts(n int, breaks []int) []int {
 	start := make([]int, n)
@@ -238,6 +252,9 @@ func DetectPatterns(prices insyra.IDataList, pivots []Pivot, opts ...PatternOpti
 	}
 	breaks, err := cleanBreaks(o.Breaks, len(c))
 	if err != nil {
+		return nil, err
+	}
+	if err := checkSegments(pivots, breaks); err != nil {
 		return nil, err
 	}
 	segStart := segmentStarts(len(c), breaks)
@@ -441,16 +458,26 @@ type FanBreak struct {
 	Through   int
 }
 
+// FanOptions are the optional settings of FanBreaks.
+type FanOptions struct {
+	// Breaks are the rows on which a new data segment starts. Pass the Breaks
+	// given to ZigZagBy.
+	Breaks []int
+}
+
 // FanBreaks finds fan-principle breaks in the turning points of ZigZag or
 // ZigZagBy, using only information known at each row. From a trough (or peak)
 // it draws a line through the next higher trough (lower peak) that is flatter
 // than the last line; each close through such a line is a break, and the third
 // ends the fan. A close past the anchor itself discards the fan. Pass the
-// Breaks given to ZigZagBy as the option.
-func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...ZigZagOptions) ([]FanBreak, error) {
-	o, err := zigzagOptions(opts)
-	if err != nil {
-		return nil, err
+// Breaks given to ZigZagBy in FanOptions.
+func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...FanOptions) ([]FanBreak, error) {
+	if len(opts) > 1 {
+		return nil, errors.New("FanBreaks accepts at most one FanOptions")
+	}
+	var o FanOptions
+	if len(opts) == 1 {
+		o = opts[0]
 	}
 	c, err := positivePrices(prices)
 	if err != nil {
@@ -461,6 +488,9 @@ func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...ZigZagOptions) (
 	}
 	breaks, err := cleanBreaks(o.Breaks, len(c))
 	if err != nil {
+		return nil, err
+	}
+	if err := checkSegments(pivots, breaks); err != nil {
 		return nil, err
 	}
 	segStart := segmentStarts(len(c), breaks)

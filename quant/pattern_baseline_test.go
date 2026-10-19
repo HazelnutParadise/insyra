@@ -127,7 +127,7 @@ func TestDetectPatternsMatchesTheReference(t *testing.T) {
 func TestFanBreaksMatchesTheReference(t *testing.T) {
 	total := 0
 	for _, c := range baseline(t) {
-		got, err := FanBreaks(listOf(c.Close), baselinePivots(t, c), ZigZagOptions{Breaks: c.Breaks})
+		got, err := FanBreaks(listOf(c.Close), baselinePivots(t, c), FanOptions{Breaks: c.Breaks})
 		if err != nil {
 			t.Fatal(err)
 		}
