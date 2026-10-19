@@ -11,7 +11,7 @@ import (
 // volatility thresholds, checked against a two-pass standard deviation.
 func TestVolatilityThresholdsByHand(t *testing.T) {
 	p := []float64{100, 110, 99, 108.9}
-	got, err := VolatilityThresholds(prices(p...), VolatilityThresholdOptions{Multiple: 2, Window: 3, MinRows: 2, Floor: 0.01, WarmupVolatility: 0.05})
+	got, err := VolatilityThresholds(prices(p...), 2, VolatilityThresholdOptions{Window: 3, MinRows: 2, Floor: 0.01, WarmupVolatility: 0.05})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,14 +33,14 @@ func TestVolatilityThresholdsByHand(t *testing.T) {
 
 func TestVolatilityThresholdsFloorWindowAndBreaks(t *testing.T) {
 	flat := prices(100, 100, 100, 100, 100, 100)
-	got, err := VolatilityThresholds(flat, VolatilityThresholdOptions{Multiple: 3, MinRows: 2})
+	got, err := VolatilityThresholds(flat, 3, VolatilityThresholdOptions{MinRows: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	nearlyAll(t, "floor", got, []float64{0.075, 0.075, 0.02, 0.02, 0.02, 0.02})
 
 	// A break restarts the window: the first two rows after it are warm-up again.
-	got, err = VolatilityThresholds(flat, VolatilityThresholdOptions{Multiple: 3, MinRows: 2, SegmentStarts: []int{3}})
+	got, err = VolatilityThresholds(flat, 3, VolatilityThresholdOptions{MinRows: 2, SegmentStarts: []int{3}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,17 +49,25 @@ func TestVolatilityThresholdsFloorWindowAndBreaks(t *testing.T) {
 
 func TestVolatilityThresholdsRefuseBadInput(t *testing.T) {
 	good := prices(100, 101, 102)
-	for name, o := range map[string]VolatilityThresholdOptions{
-		"no multiple":     {},
-		"negative window": {Multiple: 1, Window: -1},
-		"minrows>window":  {Multiple: 1, Window: 5, MinRows: 6},
-		"break outside":   {Multiple: 1, SegmentStarts: []int{3}},
+	for name, c := range map[string]struct {
+		multiple float64
+		o        VolatilityThresholdOptions
+	}{
+		"zero multiple":     {0, VolatilityThresholdOptions{}},
+		"negative multiple": {-1, VolatilityThresholdOptions{}},
+		"NaN multiple":      {math.NaN(), VolatilityThresholdOptions{}},
+		"negative window":   {1, VolatilityThresholdOptions{Window: -1}},
+		"minrows>window":    {1, VolatilityThresholdOptions{Window: 5, MinRows: 6}},
+		"break outside":     {1, VolatilityThresholdOptions{SegmentStarts: []int{3}}},
 	} {
-		if _, err := VolatilityThresholds(good, o); err == nil {
+		if _, err := VolatilityThresholds(good, c.multiple, c.o); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
 	}
-	if _, err := VolatilityThresholds(prices(100, 0, 101), VolatilityThresholdOptions{Multiple: 1}); err == nil {
+	if _, err := VolatilityThresholds(good, 1, VolatilityThresholdOptions{}, VolatilityThresholdOptions{}); err == nil {
+		t.Error("two option sets should be an error")
+	}
+	if _, err := VolatilityThresholds(prices(100, 0, 101), 1); err == nil {
 		t.Error("a zero price should be an error")
 	}
 }
@@ -361,7 +369,7 @@ func TestDetectPatternsIsCausal(t *testing.T) {
 	for i := 1; i < n; i++ {
 		s[i] = s[i-1] * math.Exp(0.015*rng.NormFloat64()+0.01*math.Sin(float64(i)/9))
 	}
-	th, _ := VolatilityThresholds(prices(s...), VolatilityThresholdOptions{Multiple: 1.5})
+	th, _ := VolatilityThresholds(prices(s...), 1.5)
 	pivots, _ := ZigZagAdaptive(prices(s...), th)
 	full, err := DetectPatterns(prices(s...), pivots)
 	if err != nil || len(full) < 20 {

@@ -666,13 +666,12 @@ Turns the pivots into bull stretches (low to the next high) and bear stretches (
 
 ```go
 func ZigZagAdaptive(prices, thresholds insyra.IDataList, opts ...ZigZagOptions) ([]Pivot, error)
-func VolatilityThresholds(prices insyra.IDataList, opts VolatilityThresholdOptions) (*insyra.DataList, error)
+func VolatilityThresholds(prices insyra.IDataList, multiple float64, opts ...VolatilityThresholdOptions) (*insyra.DataList, error)
 
 type ZigZagOptions struct {
     SegmentStarts []int // rows on which a new data segment starts
 }
 type VolatilityThresholdOptions struct {
-    Multiple         float64 // required, standard deviations of the daily log return
     Window           int     // default 60
     MinRows          int     // default 20; fewer returns than this use WarmupVolatility
     Floor            float64 // default 0.02
@@ -686,7 +685,7 @@ type VolatilityThresholdOptions struct {
 `SegmentStarts` are the rows on which a new data segment starts, for example after a trading halt or a relisting. Nothing is carried over a break: the extreme being tracked is dropped, a pivot is never made from rows on both sides, and the volatility window restarts. `Pivot.Segment` counts the breaks before a pivot. Pass the same `SegmentStarts` to `DetectPatterns`, `FanBreaks` and `ClassifyGaps`; `DetectPatterns` and `FanBreaks` return an error when a pivot's `Segment` does not match the `SegmentStarts` they are given. `Regimes` never joins pivots of different segments.
 
 ```go
-th, _ := quant.VolatilityThresholds(close, quant.VolatilityThresholdOptions{Multiple: 3, SegmentStarts: breaks})
+th, _ := quant.VolatilityThresholds(close, 3, quant.VolatilityThresholdOptions{SegmentStarts: breaks})
 pivots, _ := quant.ZigZagAdaptive(close, th, quant.ZigZagOptions{SegmentStarts: breaks})
 ```
 
@@ -804,7 +803,7 @@ The result is a table with the columns `Open`, `High`, `Low`, `Close` and `Volum
 ```go
 // how many ascending triangles break down
 count := func(close insyra.IDataList) int {
-    th, _ := quant.VolatilityThresholds(close, quant.VolatilityThresholdOptions{Multiple: 3})
+    th, _ := quant.VolatilityThresholds(close, 3)
     pivots, _ := quant.ZigZagAdaptive(close, th)
     patterns, _ := quant.DetectPatterns(close, pivots)
     n := 0

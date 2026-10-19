@@ -228,9 +228,6 @@ func zigzagSegment(pivots []Pivot, p, th []float64, from, to, seg int) []Pivot {
 // VolatilityThresholdOptions are the settings of VolatilityThresholds. A zero field
 // takes the default shown.
 type VolatilityThresholdOptions struct {
-	// Multiple is how many standard deviations of the daily log return a
-	// reversal must reach. Required, and above 0.
-	Multiple float64
 	// Window is the number of rows of returns the standard deviation looks at.
 	// Default 60.
 	Window int
@@ -248,15 +245,28 @@ type VolatilityThresholdOptions struct {
 	SegmentStarts []int
 }
 
-// VolatilityThresholds returns, for every row, max(Floor, Multiple times the
+// VolatilityThresholds returns, for every row, max(Floor, multiple times the
 // standard deviation of the daily log returns over the last Window rows), the
 // per-row threshold ZigZagAdaptive takes. It looks only at returns up to the row
 // itself, so using it does not look ahead. The standard deviation is the
-// population one over the returns available, up to Window of them.
-func VolatilityThresholds(prices insyra.IDataList, opts VolatilityThresholdOptions) (*insyra.DataList, error) {
-	if math.IsNaN(opts.Multiple) || opts.Multiple <= 0 {
-		return nil, errors.New("option Multiple must be above 0")
+// population one over the returns available, up to Window of them. multiple is
+// how many standard deviations of the daily log return a reversal must reach,
+// for example 3, and must be above 0.
+func VolatilityThresholds(prices insyra.IDataList, multiple float64, opts ...VolatilityThresholdOptions) (*insyra.DataList, error) {
+	if math.IsNaN(multiple) || multiple <= 0 {
+		return nil, errors.New("multiple must be above 0")
 	}
+	if len(opts) > 1 {
+		return nil, errors.New("VolatilityThresholds accepts at most one VolatilityThresholdOptions")
+	}
+	var opt VolatilityThresholdOptions
+	if len(opts) == 1 {
+		opt = opts[0]
+	}
+	return volatilityThresholds(prices, multiple, opt)
+}
+
+func volatilityThresholds(prices insyra.IDataList, multiple float64, opts VolatilityThresholdOptions) (*insyra.DataList, error) {
 	if opts.Window < 0 || opts.MinRows < 0 || opts.Floor < 0 || opts.WarmupVolatility < 0 {
 		return nil, errors.New("options Window, MinRows, Floor and WarmupVolatility must not be negative")
 	}
@@ -291,7 +301,7 @@ func VolatilityThresholds(prices insyra.IDataList, opts VolatilityThresholdOptio
 				k = opts.Window
 			}
 			if k < opts.MinRows {
-				out[i] = math.Max(opts.Floor, opts.Multiple*opts.WarmupVolatility)
+				out[i] = math.Max(opts.Floor, multiple*opts.WarmupVolatility)
 				continue
 			}
 			var sum, sumSq float64
@@ -305,7 +315,7 @@ func VolatilityThresholds(prices insyra.IDataList, opts VolatilityThresholdOptio
 			if v > 0 {
 				sd = math.Sqrt(v)
 			}
-			out[i] = math.Max(opts.Floor, opts.Multiple*sd)
+			out[i] = math.Max(opts.Floor, multiple*sd)
 		}
 	}
 	return insyra.NewDataList(out...), nil

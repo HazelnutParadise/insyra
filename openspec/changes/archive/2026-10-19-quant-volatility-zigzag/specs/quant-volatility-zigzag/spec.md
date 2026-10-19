@@ -15,14 +15,14 @@
 - **THEN** a pivot at row 250 has Segment 1 and was confirmed before row 350
 
 ### Requirement: Volatility thresholds use only past returns
-`quant.VolatilityThresholds` SHALL return for every row the larger of Floor and Multiple times the population standard deviation of the log returns of the last Window rows of its segment, SHALL return Multiple times WarmupVolatility (at least Floor) while fewer than MinRows returns exist, and SHALL restart at every break.
+`quant.VolatilityThresholds` SHALL return for every row the larger of Floor and the multiple given times the population standard deviation of the log returns of the last Window rows of its segment, SHALL return the multiple times WarmupVolatility (at least Floor) while fewer than MinRows returns exist, and SHALL restart at every break.
 
 #### Scenario: A flat series
-- **WHEN** all prices are 100 and Multiple is 3
+- **WHEN** all prices are 100 and the multiple is 3
 - **THEN** the thresholds are the 0.02 floor once MinRows returns exist
 
 ### Requirement: Unusable input is refused
-`quant.ZigZagAdaptive` and `quant.VolatilityThresholds` SHALL return an error for a threshold outside (0, 1), thresholds of a different length than the prices, a break outside the series, a non-positive Multiple, and a price that is not positive.
+`quant.ZigZagAdaptive` and `quant.VolatilityThresholds` SHALL return an error for a threshold outside (0, 1), thresholds of a different length than the prices, a break outside the series, a non-positive multiple, and a price that is not positive.
 
 #### Scenario: A threshold of 1
 - **WHEN** a threshold is 1

@@ -61,7 +61,7 @@ func listOf(v []float64) *insyra.DataList { return insyra.NewDataList(toAny(v)..
 
 func baselinePivots(t *testing.T, c baselineCase) []Pivot {
 	t.Helper()
-	th, err := VolatilityThresholds(listOf(c.Close), VolatilityThresholdOptions{Multiple: c.Multiple, SegmentStarts: c.Breaks})
+	th, err := VolatilityThresholds(listOf(c.Close), c.Multiple, VolatilityThresholdOptions{SegmentStarts: c.Breaks})
 	if err != nil {
 		t.Fatal(err)
 	}
