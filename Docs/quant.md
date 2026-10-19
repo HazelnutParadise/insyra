@@ -2,7 +2,16 @@
 
 This document describes all public APIs in the `quant` package, designed for AI/automated applications to directly understand each function, type, parameter, and return value.
 
-> **Technical analysis is bullshit.** The indicators and chart-pattern tools in this package are here so you can test that claim yourself, not because they make money. In our own study ([#471](https://github.com/HazelnutParadise/insyra/issues/471)) of 1,808 Taiwan stocks (delisted ones included) and 3,671 US stocks, out of sample from 2015 to 2026, every textbook chart pattern appeared about as often in shuffled prices as in real ones (within 10%), and ascending triangles broke down about 77% of the time in both, the opposite of the textbook. Run a theory against a shuffled control (`ShuffleBars`) before you trade it.
+> **Technical analysis is bullshit.** The indicators and chart-pattern tools in this package are here so you can test that claim yourself, not because they make money.
+>
+> In our own study (October 2026), 17 common theories (Dow theory, moving averages, KD, RSI, MACD, Elliott waves, chart patterns and others) were checked on real data: Taiwan stocks (about 2,300, over 300 of them delisted), US stocks, and 47 national indexes, with trading costs deducted and the rules fixed before looking at the results. Scored only on 2015 to 2026, data the rules were not tuned on:
+>
+> - Following an indicator stock by stock beat buy-and-hold for 0% to 0.1% of Taiwan and US stocks, after costs and after correcting for luck.
+> - Of 90-odd rules for moving in and out of the whole market, none beat buy-and-hold significantly (Taiwan after 2003, US after 1970).
+> - Elliott waves, head and shoulders and triangles appear as often in shuffled prices as in real ones, and ascending triangles break down nearly 80% of the time in both, the opposite of the textbook.
+> - The rules that did once work (US moving-average timing before 1970, for one) stopped working. None of the 17 theories was tested on a large sample when it was proposed.
+>
+> Prices are not perfectly random, but what is left is smaller than the cost of trading it or has already vanished. This is a test of history, not investment advice. Run any theory against a shuffled control (`ShuffleBars`) before you trade it.
 
 ---
 
