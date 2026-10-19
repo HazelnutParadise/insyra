@@ -22,8 +22,6 @@ This document describes all public APIs in the `quant` package, designed for AI/
 > | `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` | On-balance volume, volume and price | Description only. Volume is a shadow of the price move, not the fuel for it. |
 > | `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio` | Market breadth | Description only. A majority of advancers marks broad strength, not an overbought market, and the "triple confirmation" is one dataset. |
 > | `ZigZag`, `Regimes` | Dow theory | Description only. Bull stretches are long and bear ones short, and pullbacks are common, but mechanical Dow trading did not beat holding. |
->
-> Runs of the study not listed here (for example KD, MACD, moving averages and chart patterns) apply to the matching functions once they exist in this package.
 
 ---
 
