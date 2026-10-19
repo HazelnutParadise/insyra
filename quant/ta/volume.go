@@ -1,4 +1,4 @@
-package quant
+package ta
 
 import (
 	"errors"
@@ -130,7 +130,7 @@ func SignedVolumeRatio(returns, volume insyra.IDataList, n int) (*insyra.DataLis
 	return insyra.NewDataList(out...), nil
 }
 
-// Divergence flags the days a price makes a new n-day extreme that an
+// PriceDivergence flags the days a price makes a new n-day extreme that an
 // indicator does not confirm. A day is -1 (bearish) when price is above its
 // highest value over the previous n days while the indicator is below its
 // highest over the same days, +1 (bullish) when price is below its lowest of
@@ -145,7 +145,7 @@ func SignedVolumeRatio(returns, volume insyra.IDataList, n int) (*insyra.DataLis
 // have enough rows: a day whose indicator or any of the previous n values of it
 // is NaN is 0, as the first n rows are. Price must be finite. An infinite
 // indicator value is an error.
-func Divergence(price, indicator insyra.IDataList, n, cooldown int) (*insyra.DataList, error) {
+func PriceDivergence(price, indicator insyra.IDataList, n, cooldown int) (*insyra.DataList, error) {
 	if n < 1 {
 		return nil, errors.New("window n must be at least 1")
 	}
