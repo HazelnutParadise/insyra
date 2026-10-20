@@ -27,6 +27,9 @@ func TestEnumsPrintTheirNames(t *testing.T) {
 		{CRMidTypical, "CRMidTypical"},
 		{CRMidOHLC, "CRMidOHLC"},
 		{CRMidpoint(99), "CRMidpoint(99)"},
+		{PFRising, "PFRising"},
+		{PFFalling, "PFFalling"},
+		{PFKind(99), "PFKind(99)"},
 	}
 	for _, c := range cases {
 		if got := fmt.Sprint(c.got); got != c.want {
