@@ -18,6 +18,7 @@
 
 ## 5. Docs and release notes
 - [ ] 5.1 `Docs/nn.md`: both modes, what differs, when to use which; English and Traditional Chinese kept in step
-- [ ] 5.2 `CHANGELOG.md` and `CHANGELOG_TW.md` under `## Unreleased`, headings `### Core`/`### nn`
-- [ ] 5.3 Update `delivery-status.md` (M38 progress, next change) and the skills only if a principle changed
-- [ ] 5.4 `openspec validate --specs --strict`, `golangci-lint run`, `go test ./nn/... ./accel/...`, and the gated device tests on the M3
+- [ ] 5.2 godoc on every exported name this change adds (`Tensor.To`, `ToHost`, `Device`, `Tape.Clear`, `Close`, `SetPrecision`, `GetPrecision`, `accel.PrecisionFloat32Rounded`): what it does, when to use it, what differs from the default, and an `Example` where the call sequence is not obvious
+- [ ] 5.3 `CHANGELOG.md` and `CHANGELOG_TW.md` under `## Unreleased`, headings `### Core`/`### nn`
+- [ ] 5.4 Update `delivery-status.md` (M38 progress, next change) and the skills only if a principle changed
+- [ ] 5.5 `openspec validate --specs --strict`, `golangci-lint run`, `go test ./nn/... ./accel/...`, and the gated device tests on the M3
