@@ -37,8 +37,8 @@ func NeweyWestLag(n int) int {
 // heteroskedasticity-and-autocorrelation-consistent one with Bartlett weights
 // 1 - j/(lag+1), and the statistic is mean / standard error.
 //
-// lag is the number of autocovariances to include. A negative lag
-// (AutoLag) asks for NeweyWestLag(n); 0 and above are used as given. A lag of 0 gives the one-sample t-test of mean zero whose
+// lag is the number of autocovariances to include. Use stats.AutoLag to choose
+// it automatically; any negative lag (AutoLag) asks for NeweyWestLag(n); 0 and above are used as given. A lag of 0 gives the one-sample t-test of mean zero whose
 // variance divides by n instead of n-1. The lag must be smaller than the
 // number of observations.
 //

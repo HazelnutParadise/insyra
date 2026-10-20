@@ -489,6 +489,18 @@ func NeweyWestLag(n int) int
 
 The variance has no small-sample correction, which matches `sandwich::NeweyWest(prewhite = FALSE, adjust = FALSE)` and statsmodels `cov_type="HAC"` with `use_correction=False`. statsmodels reads the p-value from the normal distribution rather than from t.
 
+Pass `stats.AutoLag` to let insyra choose the lag from the sample size (the rule of thumb `floor(4*(n/100)^(2/9))`).
+
+**Example:**
+
+```go
+result, err := stats.NeweyWestMeanTest(dailyReturns, stats.AutoLag)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("mean=%.5f, t=%.2f (lag %d)\n", result.Mean, result.Statistic, result.Lag)
+```
+
 ---
 
 ## Z-Tests
@@ -2169,7 +2181,9 @@ The classical standard errors assume every error has the same variance and is un
 
 `Lag` is ignored for the other CovTypes, and the result records 0.
 
-**Lag conventions.** `stats` has one rule for every lag it takes (`NeweyWestMeanTest`, `LinearRegressionOptions.Lag`): a negative lag is automatic and means `NeweyWestLag(n)`, written `stats.AutoLag` (`-1`), and 0 and above are used as given, where 0 is a literal lag of 0. The `quant` options (`FactorModelOptions.Lag`, `ForwardOptions.NeweyWestLag`) are built for struct zero values, so they read it another way: 0 is automatic, a positive lag is used as given, and a negative one is an error. Switching the correction off there is its own setting, `NoNeweyWest` on `ForwardOptions`, and `stats.CovHC0` for `FactorModel`. See [quant](quant.md). The result's `CovType` and `Lag` fields say which covariance produced the inference. An unknown CovType or a HAC lag not smaller than the number of observations is an error. The results are checked against statsmodels for every CovType.
+Pass `stats.AutoLag` as `Lag` to let insyra choose the lag from the sample size (the rule of thumb `floor(4*(n/100)^(2/9))`).
+
+**Lag conventions.** `stats` has one rule for every lag it takes (`NeweyWestMeanTest`, `LinearRegressionOptions.Lag`): a negative lag is automatic and means `NeweyWestLag(n)`, written `stats.AutoLag` (`-1`; use it rather than a bare number), and 0 and above are used as given, where 0 is a literal lag of 0. The `quant` options (`FactorModelOptions.Lag`, `ForwardOptions.NeweyWestLag`) are built for struct zero values, so they read it another way: 0 is automatic, a positive lag is used as given, and a negative one is an error. Switching the correction off there is its own setting, `NoNeweyWest` on `ForwardOptions`, and `stats.CovHC0` for `FactorModel`. See [quant](quant.md). The result's `CovType` and `Lag` fields say which covariance produced the inference. An unknown CovType or a HAC lag not smaller than the number of observations is an error. The results are checked against statsmodels for every CovType.
 
 **Example:**
 

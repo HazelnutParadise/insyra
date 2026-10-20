@@ -253,8 +253,8 @@ const (
 type LinearRegressionOptions struct {
 	// CovType chooses the covariance. The default is CovOLS.
 	CovType CovType
-	// Lag is the number of autocovariances CovHAC includes. A negative lag
-	// (AutoLag) asks for NeweyWestLag(n); 0 and above are used as given, and 0
+	// Lag is the number of autocovariances CovHAC includes. Use stats.AutoLag to choose it
+	// automatically (any negative lag asks for NeweyWestLag(n)); 0 and above are used as given, and 0
 	// makes CovHAC equal CovHC0. It must be smaller than the number of
 	// observations. Other CovTypes ignore it.
 	Lag int

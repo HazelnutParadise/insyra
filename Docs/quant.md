@@ -338,7 +338,15 @@ type FactorModelOptions struct {
 
 The model requires at least `k + 2` observations for `k` factors. It refuses nil inputs, an empty factor table, unequal asset/factor lengths, unreadable cells, and `NaN` or `Inf` values. Errors identify the factor column and zero-based row index where applicable. A collinear factor set returns the regression error instead of a near-singular numeric result.
 
-Without options the standard errors are ordinary OLS ones and the result is what it always was. The residuals of daily strategy returns are usually heteroskedastic and autocorrelated, which makes the OLS standard error of alpha too small and its t value too large. `FactorModelOptions{CovType: stats.CovHAC}` reports Newey–West standard errors instead; `stats.CovHC0` to `stats.CovHC3` correct for heteroskedasticity only. The covariance and its small-sample conventions are those of [`stats.LinearRegressionWithOptions`](stats.md#linear-regression-with-robust-or-hac-standard-errors): no n/(n−k) factor for HAC, p-values from the t distribution with n−k degrees of freedom. `Lag` follows the same three rules as `ForwardOptions.NeweyWestLag`: 0 chooses `stats.NeweyWestLag(n)`, a positive value is used as given and must be smaller than n, and a negative value is an error (use `stats.CovHC0` for no autocorrelation terms). `stats` itself reads the lag the other way, with `stats.AutoLag` for automatic and 0 as a literal lag of 0; `FactorModel` passes `stats.AutoLag` on for you. Other covariance types ignore `Lag`. At most one `FactorModelOptions` may be passed.
+Without options the standard errors are ordinary OLS ones and the result is what it always was. The residuals of daily strategy returns are usually heteroskedastic and autocorrelated, which makes the OLS standard error of alpha too small and its t value too large. `FactorModelOptions{CovType: stats.CovHAC}` reports Newey–West standard errors instead; `stats.CovHC0` to `stats.CovHC3` correct for heteroskedasticity only. The covariance and its small-sample conventions are those of [`stats.LinearRegressionWithOptions`](stats.md#linear-regression-with-robust-or-hac-standard-errors): no n/(n−k) factor for HAC, p-values from the t distribution with n−k degrees of freedom. `Lag` follows the same three rules as `ForwardOptions.NeweyWestLag`: 0 chooses `stats.NeweyWestLag(n)`, a positive value is used as given and must be smaller than n, and a negative value is an error (use `stats.CovHC0` for no autocorrelation terms). This differs from `stats`, where you pass `stats.AutoLag` for automatic and 0 is a literal lag of 0; `FactorModel` passes `stats.AutoLag` on for you.
+
+```go
+// quant: 0 is automatic.
+quant.FactorModel(asset, factors, 0, quant.FactorModelOptions{CovType: stats.CovHAC})
+// stats: pass stats.AutoLag.
+stats.LinearRegressionWithOptions(stats.LinearRegressionOptions{CovType: stats.CovHAC, Lag: stats.AutoLag}, y, x)
+```
+ Other covariance types ignore `Lag`. At most one `FactorModelOptions` may be passed.
 
 ---
 
