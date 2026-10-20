@@ -1,9 +1,9 @@
 package datafetch
 
 import (
-	"errors"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
