@@ -1143,26 +1143,6 @@ func reduceBroadcastGradientTape(upstream *Tensor, targetShape []int) (*Tensor, 
 	return result, nil
 }
 
-func addGradient(grads map[*Tensor]*Tensor, input, gradient *Tensor) error {
-	if input == nil {
-		return fmt.Errorf("gradient input is nil")
-	}
-	if err := requireFloat32(gradient, "gradient"); err != nil {
-		return err
-	}
-	if existing := grads[input]; existing != nil {
-		if !sameShape(existing.shape, gradient.shape) {
-			return fmt.Errorf("gradient shape %v does not match existing shape %v", gradient.shape, existing.shape)
-		}
-		for index := range existing.data {
-			existing.data[index] += gradient.data[index]
-		}
-		return nil
-	}
-	grads[input], _ = copyTensor(gradient)
-	return nil
-}
-
 func mseLossForward(prediction, target *Tensor) (*Tensor, error) {
 	if err := requireFloat32(prediction, "mse prediction"); err != nil {
 		return nil, err

@@ -29,23 +29,23 @@
 - **WHEN** a resident tensor and a host tensor reach one operation
 - **THEN** it returns an error naming both locations
 
-### Requirement: An operation without a device kernel falls back in the open
-An operation on resident operands that has no device kernel SHALL download its inputs, run on the host, upload its result and record a fallback reason in the accel report. In strict GPU mode it SHALL return an error instead.
+### Requirement: An operation without a device kernel refuses a device tensor
+An operation on a device tensor that has no device kernel yet SHALL return an error that names `ToHost`. It SHALL NOT read the tensor back by itself. Automatic download, host execution and upload with a recorded fallback reason arrive with the kernels that need them.
 
 #### Scenario: No kernel yet
-- **WHEN** an operation without a device kernel receives resident tensors
-- **THEN** it returns the host result as a resident tensor and the report names the fallback
+- **WHEN** `Relu` or `Tape.Relu` receives a device tensor
+- **THEN** it returns an error naming `ToHost` and nothing runs on the host
 
-#### Scenario: Strict mode
-- **WHEN** the same operation runs in strict GPU mode
-- **THEN** it returns an error and nothing runs on the host
+#### Scenario: A device tensor on a default tape
+- **WHEN** a device tensor reaches a tape not set to `PrecisionFloat32Rounded`
+- **THEN** the operation returns an error naming `PrecisionFloat32Rounded`
 
 ### Requirement: A missing device changes speed, never the answer
-With no usable device, `To` SHALL return a host tensor, every operation SHALL run on the host, and the results SHALL equal those of a run with a device, bit for bit in `PrecisionFloat32Rounded`. The report SHALL say why no device ran.
+`accel.DefaultDevice` SHALL return the zero Device when no device is usable and record why in the report; `To` with the zero Device SHALL return a host copy. A step on host tensors in `PrecisionFloat32Rounded` SHALL equal the same step on a device, bit for bit.
 
 #### Scenario: No accelerator
 - **WHEN** the same training step runs on a machine without a usable device
-- **THEN** it returns the same loss and gradients and the report names `no-accelerator`
+- **THEN** it returns the same loss and gradients, and the report names the reason
 
 ### Requirement: A tape releases what it holds
 `Tape.Clear()` SHALL drop the recorded operations and every intermediate tensor of the step and SHALL keep parameters and optimizer state. `Tape.Close()` SHALL release everything the tape holds on a device. Resident tensors SHALL be charged to the accel memory budget, and a tensor that cannot be placed within it SHALL fail with an error.

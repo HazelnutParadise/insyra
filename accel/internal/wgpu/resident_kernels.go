@@ -7,8 +7,6 @@ import "fmt"
 // float32, and an exactly-zero result is +0. They are the device half of
 // nn's PrecisionFloat32Rounded; the CPU half is in package nn.
 
-const oneBits uint32 = 0x3f800000
-
 // matMulRoundedKernel: params = m, k, n, flags (bit 0 transA, bit 1 transB).
 var matMulRoundedKernel = &kernel{name: "rounded-matmul", nRead: 2, nWrite: 1, body: `
 struct Params { m: u32, k: u32, n: u32, flags: u32, }

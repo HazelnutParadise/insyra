@@ -14,12 +14,12 @@ import (
 // then asks big.Float to perform the single final nearest-even float32 round.
 func matMulRoundedOracle(a, b *Tensor, transA, transB bool) []float32 {
 	ar, ac := a.shape[0], a.shape[1]
-	br, bc := b.shape[0], b.shape[1]
+	bc := b.shape[1]
 	if transA {
 		ar, ac = ac, ar
 	}
 	if transB {
-		br, bc = bc, br
+		bc = b.shape[0]
 	}
 	out := make([]float32, ar*bc)
 	for i := 0; i < ar; i++ {
@@ -122,7 +122,7 @@ func TestMatMulRoundedExactOracle(t *testing.T) {
 		{"infinity times zero", []int{1, 2}, []int{2, 1}, []float32{float32(math.Inf(1)), 2}, []float32{0, 5}},
 		{"opposite infinities", []int{1, 2}, []int{2, 1}, []float32{float32(math.Inf(1)), float32(math.Inf(1))}, []float32{1, -1}},
 		{"exactly zero from nonzero terms", []int{1, 2}, []int{2, 1}, []float32{1.5, -1.5}, []float32{2, 2}},
-		{"signed zero", []int{1, 3}, []int{3, 1}, []float32{float32(math.Copysign(0, -1)), 0, -0.0}, []float32{1, -1, 3}},
+		{"signed zero", []int{1, 3}, []int{3, 1}, []float32{float32(math.Copysign(0, -1)), 0, float32(math.Copysign(0, -1))}, []float32{1, -1, 3}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
