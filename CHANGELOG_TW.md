@@ -202,6 +202,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `ta.ZigZag(prices, threshold)`，在不偷看未來的前提下找出價格序列的轉折點，每個轉折附極值位置與確認位置；`ta.Regimes(swings, opts)` 把轉折點轉成多頭與空頭期間，可設定 Pagan 與 Sossounov 的最短階段與最短循環。新增 `quant.BacktestSignal(signal, assetReturns, opts)`，把 0～1 的部位訊號轉成淨報酬：訊號落後一列生效，可帶現金報酬與各自的買進、賣出成本（[#442](https://github.com/HazelnutParadise/insyra/issues/442)）。
 - 新增 `ta.SMA`、`EMA`、`MACD`、`Bollinger`、`TrueRange`、`ATR` 與 `KD`，依 TA-Lib 的定義計算常用技術指標，並以種子固定的合成序列與 TA-Lib 逐筆比對。`KD` 有台灣券商軟體慣用的遞迴平滑（預設）與 TA-Lib STOCH 的移動平均兩種算法（[#474](https://github.com/HazelnutParadise/insyra/issues/474)）。
 - 新增 `ta.Keltner`、`KeltnerClassic`、`Donchian`、`SuperTrend`、`ParabolicSAR` 與 `Chandelier`，計算通道與移動停損，每條線都有名字。`ParabolicSAR` 與 TA-Lib 一致，其餘以依定義另寫的實作比對（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
+- 新增 `ta.Aroon`、`TRIX`、`KAMA` 與 `Ichimoku`，計算趨勢指標。Aroon、TRIX、KAMA 與 TA-Lib 一致；Ichimoku 的雲是當列正在生效的雲，不往前投影（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 
 ## v0.3.4
 

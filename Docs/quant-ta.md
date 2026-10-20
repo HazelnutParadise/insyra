@@ -20,7 +20,7 @@ This document describes the public API of `github.com/HazelnutParadise/insyra/qu
 > | `SMA`, `EMA` | Moving averages (均線), Granville's rules | Partly usable. A stock below a falling 200-day line that bounces and fails to get back above it went on to lag by 0.91% over the next 20 days in Taiwan, the only claim that beat the costs, and only on stocks that still exist. As a market-timing rule no moving-average rule beat buy-and-hold (US rules won every year until 1969 and none since 1970). |
 > | `MACD` | MACD | Ineffective. It is the distance between two moving averages, so by the time it moves the price already has. |
 > | `KD` | Stochastic (KD, KDJ) | Ineffective. In Taiwan, stocks that were "overbought" went on to do better, and it is the same data as RSI. |
-> | `Bollinger`, `TrueRange`, `ATR`, `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier` | Bollinger bands, channels and trailing stops | Not tested in the study. |
+> | `Bollinger`, `TrueRange`, `ATR`, `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier`, `Aroon`, `TRIX`, `KAMA`, `Ichimoku` | Bollinger bands, channels, trailing stops, Aroon, TRIX, KAMA, Ichimoku | Not tested in the study. |
 > | `RSI` | RSI, overbought and oversold | Ineffective. In Taiwan, stocks with a high RSI did better afterwards, not worse. Trading it stock by stock lost to holding. |
 > | `Bias`, `BiasZ` | Bias ratio (乖離率) | Only useful read backwards. Taiwan stocks continue for one to three months, they do not revert, and the gap does not pay the costs. |
 > | `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `PriceDivergence` | On-balance volume, volume and price | Description only. Volume is a shadow of the price move, not the fuel for it. |
@@ -40,6 +40,7 @@ go get github.com/HazelnutParadise/insyra/quant/ta
 ## Overview
 
 - **Moving averages and bands**: `SMA`, `EMA`, `MACD`, `Bollinger`, `TrueRange`, `ATR`, `KD`
+- **Trend**: `Aroon`, `TRIX`, `KAMA`, `Ichimoku`
 - **Channels and stops**: `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier`
 - **Oscillators and strength**: `RSI`, `Bias`, `BiasZ`
 - **Volume**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `PriceDivergence`
@@ -212,6 +213,29 @@ type ChandelierResult struct{ Long, Short *insyra.DataList }
 - **`Chandelier`** is the highest high of the last `n` rows (the current one included) minus `k` ATRs as the stop of a long position, and the lowest low plus `k` ATRs for a short one (common 22 and 3).
 
 `Keltner`, `Donchian`, `SuperTrend` and `Chandelier` are not in TA-Lib; the tests compare them with implementations written from the definitions in `testdata/channels_baseline.py` (Parabolic SAR and the ATR and EMA they use come from TA-Lib). The channels are named by their lines (`Upper`, `Middle`, `Lower`, `Long`, `Short`, `Direction`, `SAR`), so a line can be added to a table as it is.
+
+---
+
+## Trend Indicators
+
+```go
+func Aroon(high, low insyra.IDataList, n int) (*AroonResult, error)             // Up, Down, Oscillator
+func TRIX(prices insyra.IDataList, n, signal int) (*TRIXResult, error)           // TRIX, Signal
+func KAMA(prices insyra.IDataList, n, fast, slow int) (*insyra.DataList, error)
+func Ichimoku(high, low, close insyra.IDataList, tenkan, kijun, senkouB int, opts ...IchimokuOptions) (*IchimokuResult, error)
+
+type IchimokuOptions struct {
+    Displacement int // rows the cloud is drawn ahead of where it is computed; default 26
+}
+type IchimokuResult struct{ Tenkan, Kijun, SenkouA, SenkouB *insyra.DataList }
+```
+
+- **`Aroon`**: `Up` is `100 × (n − rows since the highest high of the last n+1 rows) / n`, so 100 means the high is today; `Down` is the same for the lowest low; `Oscillator` is `Up − Down`. When an extreme occurs more than once the most recent counts. The first `n` rows are `NaN`. It equals TA-Lib's `AROON` and `AROONOSC`.
+- **`TRIX`** is the one-row percentage change (5 means 5%) of a triple EMA, each `n` rows long, as TA-Lib's `TRIX`; `Signal` is the `signal`-row EMA of it, the usual trading form, which TA-Lib does not have.
+- **`KAMA`** is Kaufman's adaptive moving average: the efficiency ratio of the last `n` rows (net change over the sum of absolute changes) picks a smoothing constant between the fast and the slow EMA's, so the line follows a trend and barely moves sideways (usual 10, 2 and 30). It equals TA-Lib's `KAMA`, which fixes `fast` and `slow` at 2 and 30, and is reported from row `n`.
+- **`Ichimoku`** returns the conversion line `Tenkan` and base line `Kijun` (midpoints of the highest high and lowest low of 9 and 26 rows, the current one included), and the two cloud lines. Charting software draws the cloud 26 rows ahead; here `SenkouA[t]` and `SenkouB[t]` are the cloud *in force on row t*, computed from row `t − Displacement`, so a close can be compared with the cloud it actually sat against and nothing is seen ahead of time. The lagging line (the close drawn 26 rows back) is just the close aligned this way and is not returned. Projecting the cloud ahead is left to charting.
+
+Aroon, TRIX and KAMA are compared with TA-Lib; Ichimoku, and KAMA with periods other than TA-Lib's, with implementations written from the definitions (`testdata/trend_baseline.py`).
 
 ---
 
