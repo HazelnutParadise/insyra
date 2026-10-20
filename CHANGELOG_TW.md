@@ -196,6 +196,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `quant.EventStudy(prices, events, dates, opts)` 與 `quant.SignalBuckets(signal, prices, dates, opts)`，量測事件之後、或依訊號分桶之後，多個持有期的超額報酬。部位至少在訊號後一列才進場，基準可用橫斷面平均、指數或序列自身的平均，t 檢定是對月平均做 Newey-West。新增 `quant.Bias` 與 `quant.BiasZ`，計算乖離率與只用前幾天波動度調整的乖離率（[#445](https://github.com/HazelnutParadise/insyra/issues/445)、[#446](https://github.com/HazelnutParadise/insyra/issues/446)）。
 - 新增 `quant.ToneCounts(texts, lexicon, opts)`，依你提供的字詞表計算每則文字的正面與負面詞數，支援否定詞，中文則用最長優先的子字串比對。新增 `quant.DailyTone(published, counts, tradingDays, opts)`，依交易日加總，週末與收盤後的新聞算到下一個交易日，並提供滾動淨語氣與不含當日的往前 z 分數（[#460](https://github.com/HazelnutParadise/insyra/issues/460)）。該 issue 的 NYT Archive 客戶端尚未包含。
 - 新增 `quant.SMA`、`EMA`、`MACD`、`Bollinger`、`TrueRange`、`ATR` 與 `KD`，依 TA-Lib 的定義計算常用技術指標，並以種子固定的合成序列與 TA-Lib 逐筆比對。`KD` 有台灣券商軟體慣用的遞迴平滑（預設）與 TA-Lib STOCH 的移動平均兩種算法（[#474](https://github.com/HazelnutParadise/insyra/issues/474)）。
+- 新增 `quant.RealityCheck(perf, opts)` 與 `quant.SPATest(perf, opts)`，用 White 的 Reality Check 與 Hansen 的 SPA 檢定（含 lower、consistent、upper 三個 p 值），檢驗試過很多策略之後，最好的那個是不是真的贏過基準。輸入和 `PBO` 一樣是每個策略一欄的表格，每次自助抽樣對所有欄位用同一組區塊抽樣（預設 stationary bootstrap），所以保留策略之間的相關性，同一個 `Seed` 得到同樣的結果。定義採 Hansen (2005)；Python `arch` 的 SPA 算法不同，差異寫在 `Docs/quant.md`（[#478](https://github.com/HazelnutParadise/insyra/issues/478)）。
 
 ## v0.3.4
 
