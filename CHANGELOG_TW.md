@@ -199,7 +199,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `quant.ToneCounts(texts, lexicon, opts)`，依你提供的字詞表計算每則文字的正面與負面詞數，支援否定詞，中文則用最長優先的子字串比對。新增 `quant.DailyTone(published, counts, tradingDays, opts)`，依交易日加總，週末與收盤後的新聞算到下一個交易日，並提供滾動淨語氣與不含當日的往前 z 分數（[#460](https://github.com/HazelnutParadise/insyra/issues/460)）。該 issue 的 NYT Archive 客戶端尚未包含。
 - 新增 `quant.SMA`、`EMA`、`MACD`、`Bollinger`、`TrueRange`、`ATR` 與 `KD`，依 TA-Lib 的定義計算常用技術指標，並以種子固定的合成序列與 TA-Lib 逐筆比對。`KD` 有台灣券商軟體慣用的遞迴平滑（預設）與 TA-Lib STOCH 的移動平均兩種算法（[#474](https://github.com/HazelnutParadise/insyra/issues/474)）。
 - `quant.FactorModel` 可多傳一個 `FactorModelOptions{CovType, Lag}`，讓 alpha 的 t 值改用 Newey-West（`stats.CovHAC`）或異質變異穩健標準誤，不再只有 OLS 標準誤；日報酬有自我相關時，OLS 會把 alpha 的 t 值算得太大。`Lag` 為 0 時用 `stats.NeweyWestLag(n)`，正數照用，負數會回錯。不給選項時結果不變，`FactorModelResult` 會記錄 `CovType` 與 `Lag`（[#478](https://github.com/HazelnutParadise/insyra/issues/478)）。
-- **BREAKING**：`quant.ForwardOptions.NeweyWestLag` 給負數（原本代表不校正）現在會回錯，請改設 `NoNeweyWest: true`。`ForwardOptions` 新增 `NoNeweyWest`，可在 `EventStudy` 與 `SignalBuckets` 關掉 Newey-West 校正。月序列的 t 檢定此時用 lag 0，變異數除以月數，等同 linearmodels 的 `cov_type="unadjusted"`、`debiased=False`，與除以少一的 `stats.SingleSampleTTest` 不同。`NeweyWestLag` 給負數會回錯，`NoNeweyWest` 與非 0 的 `NeweyWestLag` 並用也會回錯。
+- `quant.ForwardOptions` 新增 `NoNeweyWest`，可在 `EventStudy` 與 `SignalBuckets` 關掉 Newey-West 校正。月序列的 t 檢定此時用 lag 0，變異數除以月數，等同 linearmodels 的 `cov_type="unadjusted"`、`debiased=False`，與除以少一的 `stats.SingleSampleTTest` 不同。`NeweyWestLag` 為 0 代表自動、正數為指定 lag，負數會回錯，`NoNeweyWest` 與非 0 的 `NeweyWestLag` 並用也會回錯。
 
 ## v0.3.4
 
