@@ -61,10 +61,10 @@ type FactorModelOptions struct {
 	// such as those of daily strategy returns.
 	CovType stats.CovType
 	// Lag is the number of autocovariances stats.CovHAC includes. 0 chooses
-	// stats.NeweyWestLag(n), as ForwardOptions.NeweyWestLag does; a positive
-	// value is used as it is and must be smaller than n. A negative value is
-	// refused: for no autocorrelation terms use stats.CovHC0. Other covariance
-	// types ignore it.
+	// stats.NeweyWestLag(n), a positive value is used as it is and must be
+	// smaller than n, and a negative value is an error: for no autocorrelation
+	// terms use stats.CovHC0. ForwardOptions.NeweyWestLag follows the same three
+	// rules. Other covariance types ignore it.
 	Lag int
 }
 
@@ -123,7 +123,7 @@ func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate
 		}
 		regressionOptions.Lag = o.Lag
 		if o.Lag == 0 {
-			regressionOptions.Lag = -1 // stats.NeweyWestLag(n)
+			regressionOptions.Lag = stats.AutoLag
 		}
 	}
 	if asset == nil {

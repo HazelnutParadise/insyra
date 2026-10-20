@@ -330,7 +330,7 @@ func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate
 
 type FactorModelOptions struct {
     CovType stats.CovType // stats.CovOLS (default), CovHC0–CovHC3, or CovHAC
-    Lag     int           // CovHAC: 0 = stats.NeweyWestLag(n), > 0 used as given
+    Lag     int           // CovHAC: 0 = stats.NeweyWestLag(n), > 0 used as given, < 0 is an error
 }
 ```
 
@@ -338,7 +338,7 @@ type FactorModelOptions struct {
 
 The model requires at least `k + 2` observations for `k` factors. It refuses nil inputs, an empty factor table, unequal asset/factor lengths, unreadable cells, and `NaN` or `Inf` values. Errors identify the factor column and zero-based row index where applicable. A collinear factor set returns the regression error instead of a near-singular numeric result.
 
-Without options the standard errors are ordinary OLS ones and the result is what it always was. The residuals of daily strategy returns are usually heteroskedastic and autocorrelated, which makes the OLS standard error of alpha too small and its t value too large. `FactorModelOptions{CovType: stats.CovHAC}` reports Newey–West standard errors instead; `stats.CovHC0` to `stats.CovHC3` correct for heteroskedasticity only. The covariance and its small-sample conventions are those of [`stats.LinearRegressionWithOptions`](stats.md#linear-regression-with-robust-or-hac-standard-errors): no n/(n−k) factor for HAC, p-values from the t distribution with n−k degrees of freedom. `Lag` follows the quant convention of `ForwardOptions.NeweyWestLag`: 0 chooses `stats.NeweyWestLag(n)`, a positive value is used as given and must be smaller than n, and a negative value is refused (use `stats.CovHC0` for no autocorrelation terms). Other covariance types ignore `Lag`. At most one `FactorModelOptions` may be passed.
+Without options the standard errors are ordinary OLS ones and the result is what it always was. The residuals of daily strategy returns are usually heteroskedastic and autocorrelated, which makes the OLS standard error of alpha too small and its t value too large. `FactorModelOptions{CovType: stats.CovHAC}` reports Newey–West standard errors instead; `stats.CovHC0` to `stats.CovHC3` correct for heteroskedasticity only. The covariance and its small-sample conventions are those of [`stats.LinearRegressionWithOptions`](stats.md#linear-regression-with-robust-or-hac-standard-errors): no n/(n−k) factor for HAC, p-values from the t distribution with n−k degrees of freedom. `Lag` follows the same three rules as `ForwardOptions.NeweyWestLag`: 0 chooses `stats.NeweyWestLag(n)`, a positive value is used as given and must be smaller than n, and a negative value is an error (use `stats.CovHC0` for no autocorrelation terms). `stats` itself reads the lag the other way, with `stats.AutoLag` for automatic and 0 as a literal lag of 0; `FactorModel` passes `stats.AutoLag` on for you. Other covariance types ignore `Lag`. At most one `FactorModelOptions` may be passed.
 
 ---
 
@@ -624,7 +624,7 @@ Both tools answer "what happened to the price after the signal". They share one 
 - `BenchmarkLevels`: the change of an index over the window, from `BenchmarkLevels`.
 - `BenchmarkOwnMean`: the mean of that series' own returns over the same horizon, for a single series such as a market index.
 
-Observations are averaged within calendar months of the signal date, and the Newey-West test (`stats.NeweyWestMeanTest`) is run on the monthly means, so many events on one day are not treated as independent samples. `NeweyWestLag` 0 chooses `stats.NeweyWestLag(months)`, a positive value is used as it is, and a negative one means the plain t-test. An observation whose window has a missing price, runs past the last row or is not tradable at the entry is counted in `Missing` and left out. To study a sub-period, pass the matching slices of every table and of `dates`.
+Observations are averaged within calendar months of the signal date, and the Newey-West test (`stats.NeweyWestMeanTest`) is run on the monthly means, so many events on one day are not treated as independent samples. `NeweyWestLag` 0 chooses `stats.NeweyWestLag(months)`, a positive value is used as it is, and a negative one is an error. To switch the correction off set `NoNeweyWest: true`: the test then runs with lag 0, whose variance divides by the number of months T, the same as linearmodels `cov_type="unadjusted"` with `debiased=False`. That is not `stats.SingleSampleTTest`, which divides by T-1, so the t-test's t is smaller than the `NoNeweyWest` one by a factor of sqrt((T-1)/T). `NoNeweyWest` together with a non-zero `NeweyWestLag` is an error. An observation whose window has a missing price, runs past the last row or is not tradable at the entry is counted in `Missing` and left out. To study a sub-period, pass the matching slices of every table and of `dates`.
 
 Each horizon gives a `ForwardSummary`: `Observations`, `Missing`, `MeanExcess`, `WinRate`, `Months`, `MonthlyMean`, `TStat`, `PValue` and `Lag`. The t statistic is `NaN` with fewer than two months.
 
@@ -634,7 +634,7 @@ Each horizon gives a `ForwardSummary`: `Observations`, `Missing`, `MeanExcess`, 
 func EventStudy(prices, events insyra.IDataTable, dates insyra.IDataList, opts EventStudyOptions) ([]ForwardSummary, error)
 ```
 
-`events` has the shape of `prices` with `true` where an event happened at that row's close. `EventStudyOptions` embeds `ForwardOptions` (`Horizons`, `Delay`, `Benchmark`, `BenchmarkLevels`, `Tradable`, `NeweyWestLag`) and adds `MinGap`, the fewest rows between two counted events of the same stock. It returns one summary per horizon.
+`events` has the shape of `prices` with `true` where an event happened at that row's close. `EventStudyOptions` embeds `ForwardOptions` (`Horizons`, `Delay`, `Benchmark`, `BenchmarkLevels`, `Tradable`, `NeweyWestLag`, `NoNeweyWest`) and adds `MinGap`, the fewest rows between two counted events of the same stock. It returns one summary per horizon.
 
 ### SignalBuckets
 

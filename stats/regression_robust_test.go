@@ -68,7 +68,7 @@ func TestCrossLangLinearRegressionRobustCovariance(t *testing.T) {
 		{stats.LinearRegressionOptions{CovType: stats.CovHAC, Lag: 0}, "HAC", 0},
 		{stats.LinearRegressionOptions{CovType: stats.CovHAC, Lag: 4}, "HAC", 4},
 		{stats.LinearRegressionOptions{CovType: stats.CovHAC, Lag: 12}, "HAC", 12},
-		{stats.LinearRegressionOptions{CovType: stats.CovHAC, Lag: -1}, "HAC", stats.NeweyWestLag(120)},
+		{stats.LinearRegressionOptions{CovType: stats.CovHAC, Lag: stats.AutoLag}, "HAC", stats.NeweyWestLag(120)},
 	}
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("%v/lag%d", c.opts.CovType, c.opts.Lag), func(t *testing.T) {

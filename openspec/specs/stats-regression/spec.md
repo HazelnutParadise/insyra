@@ -173,10 +173,10 @@ The system SHALL fit linear models where each observation carries a caller-suppl
 - **THEN** every field of the two results is identical and `CovType` is `CovOLS`
 
 ### Requirement: The covariance used is recorded and its settings validated
-`LinearRegressionResult` SHALL record `CovType` and `Lag`. For `CovHAC` a negative `Lag` SHALL select `NeweyWestLag(n)` and the recorded `Lag` SHALL be the one used; for other CovTypes `Lag` SHALL be ignored and recorded as 0. The function SHALL return an error for an unknown CovType or a HAC lag not smaller than n. `CovType` SHALL print its constant name.
+`LinearRegressionResult` SHALL record `CovType` and `Lag`. For `CovHAC` a negative `Lag` (the exported constant `stats.AutoLag`) SHALL select `NeweyWestLag(n)`, and 0 and above SHALL be used as given and the recorded `Lag` SHALL be the one used; for other CovTypes `Lag` SHALL be ignored and recorded as 0. The function SHALL return an error for an unknown CovType or a HAC lag not smaller than n. `CovType` SHALL print its constant name.
 
 #### Scenario: Automatic HAC lag
-- **WHEN** 120 observations are fitted with `CovHAC` and lag -1
+- **WHEN** 120 observations are fitted with `CovHAC` and lag `stats.AutoLag`
 - **THEN** the recorded lag is `NeweyWestLag(120)`
 
 #### Scenario: Unknown CovType

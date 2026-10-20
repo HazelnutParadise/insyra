@@ -113,6 +113,7 @@ Layer 4 — 對外統計方法（公開 API）
 | 係數的 SE / t / p（矩陣版） | `computeCoeffInference(coeffs, XTXInv, mse, df)` |
 | 由各係數變異數算 SE / t / p | `coeffInferenceFromVariances(coeffs, variances, df)` |
 | 穩健／HAC（sandwich）係數變異數 | `olsSandwichVariances(X, residuals, XTXInv, leveragePower, meatScale, lag)` |
+| 「自動選 lag」 | 傳 `stats.AutoLag`（負數即自動，0 以上照用，0 是真的 0）；`quant` 選項的 0 才是自動，由 quant 端轉成 `stats.AutoLag` |
 | 兩係數 CI（截距 + 斜率） | `buildTwoCoeffCIs(a, b, seA, seB, df)` |
 | 多係數 CI 切片 | `buildMultiCoeffCIs(coeffs, standardErrors, df)` |
 

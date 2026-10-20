@@ -24,7 +24,7 @@ Statistics are t with n-k degrees of freedom for every CovType, as `lmtest::coef
 
 ## Lag conventions
 
-`stats` uses its existing convention: negative picks `NeweyWestLag(n)`, 0 and above are used as given, and a lag not smaller than n is refused. `quant` keeps its own convention (`ForwardOptions.NeweyWestLag`): 0 is automatic. A negative quant lag would mean "no correction" there, which for HAC is HC0 under another name, so `FactorModel` refuses it and points to `CovHC0`. `Lag` is ignored for the other CovTypes, the way `LogisticRegressionOptions.Ridge` is ignored without `SepRidge`, and the result records 0.
+`stats` uses its existing convention, now named: a negative lag is `stats.AutoLag` and picks `NeweyWestLag(n)`, 0 and above are used as given, and a lag not smaller than n is refused. The `quant` options are built for struct zero values, so 0 is automatic, a positive lag is used as given and a negative one is an error, for `FactorModelOptions.Lag` and `ForwardOptions.NeweyWestLag` alike. Turning the correction off is not a lag: `ForwardOptions.NoNeweyWest` does it (lag 0, variance divided by the number of months), and `FactorModel` points to `CovHC0`. `Lag` is ignored for the other CovTypes, the way `LogisticRegressionOptions.Ridge` is ignored without `SepRidge`, and the result records 0.
 
 ## Reference
 

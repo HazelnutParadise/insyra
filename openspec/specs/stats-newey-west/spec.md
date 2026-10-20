@@ -6,7 +6,7 @@ Testing whether the mean of an autocorrelated series is zero with a Newey-West s
 ## Requirements
 
 ### Requirement: The mean of an autocorrelated series is tested with a Newey-West standard error
-`stats.NeweyWestMeanTest` SHALL return the mean, the Newey-West standard error with Bartlett weights 1 - j/(lag+1), the t statistic, the two-tailed p-value from the t distribution with n-1 degrees of freedom, the lag used and n, with no small-sample correction, and SHALL use floor(4 * (n/100)^(2/9)) as the lag when given a negative lag.
+`stats.NeweyWestMeanTest` SHALL return the mean, the Newey-West standard error with Bartlett weights 1 - j/(lag+1), the t statistic, the two-tailed p-value from the t distribution with n-1 degrees of freedom, the lag used and n, with no small-sample correction, and SHALL use floor(4 * (n/100)^(2/9)) as the lag when given a negative lag, which the exported constant `stats.AutoLag` names.
 
 #### Scenario: Lag zero is the n-divisor t-test
 - **WHEN** the lag is 0

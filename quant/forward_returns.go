@@ -61,8 +61,14 @@ type ForwardOptions struct {
 	Tradable insyra.IDataTable
 	// NeweyWestLag is the lag of the t-test on the monthly series. 0 chooses
 	// stats.NeweyWestLag(months), a positive value is used as it is, and a
-	// negative value means no correction (the plain t-test).
+	// negative value is an error.
 	NeweyWestLag int
+	// NoNeweyWest switches the Newey-West correction off: the t-test then uses
+	// lag 0, whose variance divides by the number of months T. That equals
+	// linearmodels cov_type="unadjusted" with debiased=False, and is not
+	// stats.SingleSampleTTest, which divides by T-1. It cannot be combined with
+	// a non-zero NeweyWestLag.
+	NoNeweyWest bool
 }
 
 // ForwardSummary is the forward excess return for one horizon.
@@ -122,6 +128,12 @@ func newPanel(prices insyra.IDataTable, dates insyra.IDataList, o ForwardOptions
 		if h < 1 {
 			return nil, fmt.Errorf("horizon %d must be at least 1", h)
 		}
+	}
+	if o.NeweyWestLag < 0 {
+		return nil, fmt.Errorf("NeweyWestLag %d is negative; 0 chooses it automatically, and NoNeweyWest switches the correction off", o.NeweyWestLag)
+	}
+	if o.NoNeweyWest && o.NeweyWestLag != 0 {
+		return nil, fmt.Errorf("NoNeweyWest cannot be combined with NeweyWestLag %d", o.NeweyWestLag)
 	}
 	if o.Delay == 0 {
 		o.Delay = 1
@@ -373,7 +385,7 @@ func (a *accumulator) add(month string, excess float64) {
 
 // summary finishes a horizon: the plain statistics and the Newey-West t-test on
 // the monthly means.
-func (a *accumulator) summary(horizon, lag int) (ForwardSummary, error) {
+func (a *accumulator) summary(horizon, lag int, noNeweyWest bool) (ForwardSummary, error) {
 	s := ForwardSummary{Horizon: horizon, Observations: a.n, Missing: a.missing, Months: len(a.monthOrder),
 		MeanExcess: math.NaN(), WinRate: math.NaN(), MonthlyMean: math.NaN(), TStat: math.NaN(), PValue: math.NaN()}
 	if a.n == 0 {
@@ -396,10 +408,10 @@ func (a *accumulator) summary(horizon, lag int) (ForwardSummary, error) {
 	}
 	useLag := lag
 	switch {
+	case noNeweyWest:
+		useLag = 0
 	case lag == 0:
 		useLag = stats.NeweyWestLag(len(months))
-	case lag < 0:
-		useLag = 0
 	}
 	if useLag >= len(months) {
 		useLag = len(months) - 1
