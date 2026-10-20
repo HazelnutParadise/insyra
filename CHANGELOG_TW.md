@@ -206,6 +206,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `ta.CCI`、`Momentum`、`ROC`（與 TA-Lib 相同，回傳百分比）、`UltimateOscillator`、`StochRSI`、`ARBR`、`CR`（可選四種中間價）、`ForceIndex` 與 `ElderRay`，計算擺盪與動能指標；前五個與 TA-Lib 一致（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 - 新增 `ta.MFI`、`AccumulationDistribution`、`CMF`、`ChaikinOscillator`、`EaseOfMovement`、`NVI`、`PVI` 與 `VolumeProfile`，計算成交量指標；`MFI`、`AccumulationDistribution`、`ChaikinOscillator` 與 TA-Lib 一致，`VolumeProfile` 回傳每個視窗的最大量價位與價值區（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 - 新增 `ta.PivotPoints`、`HeikinAshi`、`TDSequential` 與 `PointAndFigure`，計算價格結構工具：樞軸點價位、以資料表回傳的平均足、TD Sequential 的 setup 與 countdown 計數，以及點數圖欄（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
+- 新增 `ta.CandlePatterns`，標記十三種 K 線型態（十字星、錘子、吊人、倒錘子、流星、吞噬、孕線、貫穿線、烏雲罩頂、晨星與夜星、紅三兵、黑三鴉），每種一條有名字的清單，實體與影線比例可用選項調整（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 
 ## v0.3.4
 

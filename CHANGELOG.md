@@ -206,6 +206,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `ta.CCI`, `Momentum`, `ROC` (a percentage, as TA-Lib), `UltimateOscillator`, `StochRSI`, `ARBR`, `CR` (with a choice of four midpoints), `ForceIndex` and `ElderRay` compute oscillators and momentum indicators; the first five equal TA-Lib's ([#481](https://github.com/HazelnutParadise/insyra/issues/481)).
 - `ta.MFI`, `AccumulationDistribution`, `CMF`, `ChaikinOscillator`, `EaseOfMovement`, `NVI`, `PVI` and `VolumeProfile` compute volume indicators; `MFI`, `AccumulationDistribution` and `ChaikinOscillator` equal TA-Lib's, and `VolumeProfile` returns the point of control and value area of each window ([#481](https://github.com/HazelnutParadise/insyra/issues/481)).
 - `ta.PivotPoints`, `HeikinAshi`, `TDSequential` and `PointAndFigure` compute price-structure tools: floor-trader pivot levels, Heikin-Ashi bars as a table, TD Sequential setup and countdown counts, and point-and-figure columns ([#481](https://github.com/HazelnutParadise/insyra/issues/481)).
+- `ta.CandlePatterns` flags thirteen candlestick patterns (doji, hammer, hanging man, inverted hammer, shooting star, engulfing, harami, piercing line, dark cloud cover, morning and evening star, three white soldiers, three black crows), one named list each, with the body and shadow ratios as options ([#481](https://github.com/HazelnutParadise/insyra/issues/481)).
 
 ## v0.3.4
 
