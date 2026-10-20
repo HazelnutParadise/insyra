@@ -2,6 +2,7 @@ package datafetch
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -143,8 +144,14 @@ func TestTAIFEXHistoryRefusesWhatTheWebsiteRefuses(t *testing.T) {
 	client, transport := newHistoryClient(t)
 	addTAIFEXFixture(t, transport, historyKey("/cht/3/futContractsDateDown", "queryStartDate", "2023/06/03", "queryEndDate", "2023/06/07", "commodityId", ""), "history_refused.html")
 	_, err := client.InstitutionalFuturesHistory(dateUTC(2023, time.June, 3), dateUTC(2023, time.June, 7))
-	if err == nil || !strings.Contains(err.Error(), "DateTime error") || !strings.Contains(err.Error(), "2023-06-03") {
+	if !errors.Is(err, ErrTAIFEXRefused) {
+		t.Fatalf("a refusal should match ErrTAIFEXRefused: %v", err)
+	}
+	if !strings.Contains(err.Error(), "DateTime error") || !strings.Contains(err.Error(), "2023-06-03") {
 		t.Fatalf("the website's alert should come back with the range: %v", err)
+	}
+	if _, err := client.PutCallRatioHistory(time.Time{}, dateUTC(2026, time.October, 12)); err == nil || errors.Is(err, ErrTAIFEXRefused) {
+		t.Errorf("a zero from should be refused before any request: %v", err)
 	}
 	if _, err := client.PutCallRatioHistory(dateUTC(2026, time.October, 16), dateUTC(2026, time.October, 12)); err == nil {
 		t.Error("from after to should be an error")

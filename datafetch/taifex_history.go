@@ -1,6 +1,7 @@
 package datafetch
 
 import (
+	"errors"
 	"bytes"
 	"context"
 	"fmt"
@@ -23,6 +24,12 @@ type taifexHistory struct {
 	commodity bool
 }
 
+// ErrTAIFEXRefused matches (with errors.Is) an error returned because the
+// exchange website refused a history range: the table does not reach back that
+// far, or the range is longer than the website allows. A caller can move from
+// forward and ask again.
+var ErrTAIFEXRefused = errors.New("datafetch: TAIFEX website refused the date range")
+
 var taifexAlert = regexp.MustCompile(`alert\("([^"]*)"\)`)
 
 // historyTable downloads the website's CSV for each calendar month of
@@ -34,6 +41,9 @@ func (c *TAIFEXClient) historyTable(ctx context.Context, h taifexHistory, from, 
 	}
 	if err := c.usable(); err != nil {
 		return nil, err
+	}
+	if from.IsZero() || to.IsZero() {
+		return nil, errors.New("datafetch: TAIFEX history needs both from and to; a zero time is not an open end")
 	}
 	from, to = normalizeDate(from), normalizeDate(to)
 	if to.Before(from) {
@@ -86,8 +96,8 @@ func (c *TAIFEXClient) historyChunk(ctx context.Context, h taifexHistory, from, 
 			if m := taifexAlert.FindSubmatch(body); m != nil {
 				message = string(m[1])
 			}
-			return &finalError{err: fmt.Errorf("datafetch: TAIFEX refused %s from %s to %s: %s; the website serves each table only back to a limit and the exchange sets a longest query range",
-				h.path, from.Format("2006-01-02"), to.Format("2006-01-02"), message)}
+			return &finalError{err: fmt.Errorf("%w: %s from %s to %s: %s; the website serves each table only back to a limit and sets a longest query range",
+				ErrTAIFEXRefused, h.path, from.Format("2006-01-02"), to.Format("2006-01-02"), message)}
 		}
 		text, err := traditionalchinese.Big5.NewDecoder().Bytes(body)
 		if err != nil {

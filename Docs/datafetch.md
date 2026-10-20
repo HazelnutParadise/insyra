@@ -832,9 +832,9 @@ LargeTradersOptionsHistory(from, to time.Time) (*insyra.DataTable, error)
 PutCallRatioHistory(from, to time.Time) (*insyra.DataTable, error)
 ```
 
-Each returns every trading day from `from` to `to` in the columns of the matching method above, oldest first (`PutCallRatio` gives newest first). They read the CSV downloads of `www.taifex.com.tw` (Big5 encoded), month by month, since the exchange limits how long a range may be, so a long range makes many requests under the client's `Interval`; for a multi-year range set `Interval` and `Retries` as for `TWStock`.
+Each returns every trading day from `from` to `to` in the columns of the matching method above, oldest first (only the latest-day `PutCallRatio` lists newest first). They read the CSV downloads of `www.taifex.com.tw` (Big5 encoded), month by month, since the exchange limits how long a range may be, so a long range makes many requests under the client's `Interval`; for a multi-year range set `Interval` and `Retries` as for `TWStock`.
 
-How far back each table goes was measured on 2026-10-20 and is the exchange's, not the library's: the two institutional tables only about the last 2.4 years (from 2024), the large-trader tables to about 2004 for futures and to about 2005 for options, and the put/call ratio to about 2003. A date the website refuses makes the call return an error that quotes the website's message and the range, never an empty table; a range with no trading day (a weekend) is an empty table. A contract's code and settlement month are trimmed of the padding the website puts around them.
+How far back each table goes was measured on 2026-10-20 and is the exchange's, not the library's: the two institutional tables only about the last 2.4 years (from 2024), the large-trader tables to about 2004 for futures and to about 2005 for options, and the put/call ratio to about 2003. A date the website refuses makes the call return an error that quotes the website's message and the range, never an empty table; it matches `errors.Is(err, datafetch.ErrTAIFEXRefused)`, so a caller can move `from` forward and ask again. A zero `from` or `to` is an error: unlike `FinMind`, a zero time is not an open end here; a range with no trading day (a weekend) is an empty table. A contract's code and settlement month are trimmed of the padding the website puts around them.
 
 ## FinMind
 
