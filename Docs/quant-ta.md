@@ -20,7 +20,7 @@ This document describes the public API of `github.com/HazelnutParadise/insyra/qu
 > | `SMA`, `EMA` | Moving averages (均線), Granville's rules | Partly usable. A stock below a falling 200-day line that bounces and fails to get back above it went on to lag by 0.91% over the next 20 days in Taiwan, the only claim that beat the costs, and only on stocks that still exist. As a market-timing rule no moving-average rule beat buy-and-hold (US rules won every year until 1969 and none since 1970). |
 > | `MACD` | MACD | Ineffective. It is the distance between two moving averages, so by the time it moves the price already has. |
 > | `KD` | Stochastic (KD, KDJ) | Ineffective. In Taiwan, stocks that were "overbought" went on to do better, and it is the same data as RSI. |
-> | `Bollinger`, `TrueRange`, `ATR`, `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier`, `Aroon`, `TRIX`, `KAMA`, `Ichimoku` | Bollinger bands, channels, trailing stops, Aroon, TRIX, KAMA, Ichimoku | Not tested in the study. |
+> | `Bollinger`, `TrueRange`, `ATR`, `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier`, `Aroon`, `TRIX`, `KAMA`, `Ichimoku`, `CCI`, `Momentum`, `ROC`, `UltimateOscillator`, `StochRSI`, `ARBR`, `CR`, `ForceIndex`, `ElderRay` | Bollinger bands, channels, trailing stops, Aroon, TRIX, KAMA, Ichimoku, CCI, momentum, ultimate oscillator, stochastic RSI, AR/BR, CR, force index, Elder-ray | Not tested in the study. (KD and RSI, which the study did test, are rows above; StochRSI is built from the RSI.) |
 > | `RSI` | RSI, overbought and oversold | Ineffective. In Taiwan, stocks with a high RSI did better afterwards, not worse. Trading it stock by stock lost to holding. |
 > | `Bias`, `BiasZ` | Bias ratio (乖離率) | Only useful read backwards. Taiwan stocks continue for one to three months, they do not revert, and the gap does not pay the costs. |
 > | `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `PriceDivergence` | On-balance volume, volume and price | Description only. Volume is a shadow of the price move, not the fuel for it. |
@@ -40,6 +40,7 @@ go get github.com/HazelnutParadise/insyra/quant/ta
 ## Overview
 
 - **Moving averages and bands**: `SMA`, `EMA`, `MACD`, `Bollinger`, `TrueRange`, `ATR`, `KD`
+- **Oscillators and momentum**: `CCI`, `Momentum`, `ROC`, `UltimateOscillator`, `StochRSI`, `ARBR`, `CR`, `ForceIndex`, `ElderRay`
 - **Trend**: `Aroon`, `TRIX`, `KAMA`, `Ichimoku`
 - **Channels and stops**: `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier`
 - **Oscillators and strength**: `RSI`, `Bias`, `BiasZ`
@@ -236,6 +237,37 @@ type IchimokuResult struct{ Tenkan, Kijun, SenkouA, SenkouB *insyra.DataList }
 - **`Ichimoku`** returns the conversion line `Tenkan` and base line `Kijun` (midpoints of the highest high and lowest low of 9 and 26 rows, the current one included), and the two cloud lines. Charting software draws the cloud 26 rows ahead; here `SenkouA[t]` and `SenkouB[t]` are the cloud *in force on row t*, computed from row `t − Displacement`, so a close can be compared with the cloud it actually sat against and nothing is seen ahead of time. The lagging line (the close drawn 26 rows back) is just the close aligned this way and is not returned. Projecting the cloud ahead is left to charting.
 
 Aroon, TRIX and KAMA are compared with TA-Lib; Ichimoku, and KAMA with periods other than TA-Lib's, with implementations written from the definitions (`testdata/trend_baseline.py`).
+
+---
+
+## Oscillators and Momentum
+
+```go
+func CCI(high, low, close insyra.IDataList, n int) (*insyra.DataList, error)
+func Momentum(prices insyra.IDataList, n int) (*insyra.DataList, error)
+func ROC(prices insyra.IDataList, n int) (*insyra.DataList, error)
+func UltimateOscillator(high, low, close insyra.IDataList, short, medium, long int) (*insyra.DataList, error)
+func StochRSI(prices insyra.IDataList, n, stochN int, opts ...KDOptions) (*KDResult, error)
+func ARBR(open, high, low, close insyra.IDataList, n int) (*ARBRResult, error)            // AR, BR
+func CR(high, low, close insyra.IDataList, n int, opts ...CROptions) (*insyra.DataList, error)
+func ForceIndex(close, volume insyra.IDataList, n int) (*insyra.DataList, error)
+func ElderRay(high, low, close insyra.IDataList, n int) (*ElderRayResult, error)          // BullPower, BearPower
+
+type CROptions struct {
+    Midpoint CRMidpoint       // CRMidHighLow (default), CRMidWeightedClose, CRMidTypical, CRMidOHLC
+    Open     insyra.IDataList // required for CRMidOHLC
+}
+```
+
+- **`CCI`** is the typical price `(high + low + close) / 3` minus its `n`-row average, over `0.015` times the mean absolute deviation (usual 20). A window whose typical price does not move is `NaN`.
+- **`Momentum`** is the price change over `n` rows, in price units. **`ROC`** is the rate of change as a **percentage**, as TA-Lib does (5 means up 5%); like `RSI` and `KD` it is on a 0 to 100 scale, while `Bias` is a fraction.
+- **`UltimateOscillator`** is Larry Williams' buying pressure over true range summed over a short, a medium and a long window and weighted 4, 2 and 1 (usual 7, 14, 28).
+- **`StochRSI`** is the stochastic of the `n`-row RSI over the last `stochN` rows, smoothed as `KDOptions` say, with the same default as `KD`. `KDOptions{Method: KDMovingAverage, SlowK: 1, SlowD: 3}` equals TA-Lib's `STOCHRSI`.
+- **`ARBR`** is the popularity and willingness pair common in Taiwan and China (usual 26): `AR` is `100 × Σ(high − open) / Σ(open − low)`, `BR` is `100 × Σ max(0, high − previous close) / Σ max(0, previous close − low)`; 100 is balance.
+- **`CR`** is the intermediate willingness index (usual 26): `100 × Σ max(0, high − previous midpoint) / Σ max(0, previous midpoint − low)`. Platforms disagree on the midpoint, so it is an option: `(high + low) / 2` (default, the original), `(2 × close + high + low) / 4`, `(high + low + close) / 3`, or `(open + high + low + close) / 4`, which needs `CROptions.Open`.
+- **`ForceIndex`** is the `n`-row EMA of `(close − previous close) × volume` (Elder; usual 13). **`ElderRay`** is the high and the low minus the `n`-row EMA of the close.
+
+`CCI`, `Momentum`, `ROC`, `UltimateOscillator` and `StochRSI` equal TA-Lib's. `ARBR`, `CR`, `ForceIndex` and `ElderRay` are not in TA-Lib and are compared with implementations written from the definitions (`testdata/oscillators_baseline.py`).
 
 ---
 

@@ -22,6 +22,11 @@ func TestEnumsPrintTheirNames(t *testing.T) {
 		{KDRecursive, "KDRecursive"},
 		{KDMovingAverage, "KDMovingAverage"},
 		{KDMethod(99), "KDMethod(99)"},
+		{CRMidHighLow, "CRMidHighLow"},
+		{CRMidWeightedClose, "CRMidWeightedClose"},
+		{CRMidTypical, "CRMidTypical"},
+		{CRMidOHLC, "CRMidOHLC"},
+		{CRMidpoint(99), "CRMidpoint(99)"},
 	}
 	for _, c := range cases {
 		if got := fmt.Sprint(c.got); got != c.want {

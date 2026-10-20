@@ -203,6 +203,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `ta.SMA`, `EMA`, `MACD`, `Bollinger`, `TrueRange`, `ATR` and `KD` compute the common technical indicators with TA-Lib's definitions and are checked against TA-Lib on seeded synthetic series. `KD` has the recursive smoothing used by Taiwanese brokers' software (the default) and TA-Lib's STOCH ([#474](https://github.com/HazelnutParadise/insyra/issues/474)).
 - `ta.Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR` and `Chandelier` compute channels and trailing stops, each returning named lines. `ParabolicSAR` matches TA-Lib; the others are checked against implementations written from their definitions ([#481](https://github.com/HazelnutParadise/insyra/issues/481)).
 - `ta.Aroon`, `TRIX`, `KAMA` and `Ichimoku` compute trend indicators. Aroon, TRIX and KAMA equal TA-Lib's; Ichimoku's cloud is the cloud in force on each row, with no projection ahead ([#481](https://github.com/HazelnutParadise/insyra/issues/481)).
+- `ta.CCI`, `Momentum`, `ROC` (a percentage, as TA-Lib), `UltimateOscillator`, `StochRSI`, `ARBR`, `CR` (with a choice of four midpoints), `ForceIndex` and `ElderRay` compute oscillators and momentum indicators; the first five equal TA-Lib's ([#481](https://github.com/HazelnutParadise/insyra/issues/481)).
 
 ## v0.3.4
 
