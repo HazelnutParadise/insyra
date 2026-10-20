@@ -279,6 +279,7 @@ func TestMatMulRoundedSeesBelowAFloat64Midpoint(t *testing.T) {
 func TestMatMulRoundedRejectsInvalidOperands(t *testing.T) {
 	valid := roundedTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
 	rankOne := roundedTensor(t, []int{2}, []float32{1, 2})
+	rankThree := roundedTensor(t, []int{2, 2, 2}, make([]float32, 8))
 	intTensor, err := NewInt64Tensor([]int{2, 3}, []int64{1, 2, 3, 4, 5, 6})
 	if err != nil {
 		t.Fatal(err)
@@ -289,6 +290,7 @@ func TestMatMulRoundedRejectsInvalidOperands(t *testing.T) {
 	}{
 		{"nil left", nil, valid}, {"nil right", valid, nil}, {"incompatible inner dimensions", valid, roundedTensor(t, []int{4, 2}, make([]float32, 8))},
 		{"rank one", rankOne, valid}, {"non float32", valid, intTensor},
+		{"rank three left", rankThree, valid}, {"rank three right", valid, rankThree},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -296,7 +298,7 @@ func TestMatMulRoundedRejectsInvalidOperands(t *testing.T) {
 			if err == nil {
 				t.Fatal("matMulRounded succeeded, want error")
 			}
-			if tc.name == "incompatible inner dimensions" || tc.name == "rank one" || tc.name == "non float32" {
+			if tc.name == "incompatible inner dimensions" || tc.name == "rank one" || tc.name == "rank three left" || tc.name == "rank three right" || tc.name == "non float32" {
 				if !strings.Contains(err.Error(), "shape") {
 					t.Errorf("error %q does not name the operand shapes", err)
 				}
@@ -313,5 +315,254 @@ func TestMatMulRoundedDoesNotModifyOperands(t *testing.T) {
 	}
 	if !reflect.DeepEqual(a.data, aBefore) || !reflect.DeepEqual(b.data, bBefore) {
 		t.Fatal("matMulRounded modified an operand")
+	}
+}
+
+// TestMatMulRoundedNearestEvenTiePins pins the single-rounding boundary cases
+// with hand-computed float32 bit patterns, then cross-checks the oracle.
+// A tie picks the even mantissa, a sum past the overflow midpoint becomes
+// infinity, one product short of the midpoint does not, and a huge cancelling
+// pair cannot swallow a subnormal survivor.
+func TestMatMulRoundedNearestEvenTiePins(t *testing.T) {
+	maxFloat := float32(math.MaxFloat32)
+	tests := []struct {
+		name   string
+		as, bs []int
+		a, b   []float32
+		want   uint32
+	}{
+		{
+			name: "one plus half an ulp ties to even, which is one",
+			as:   []int{1, 2}, bs: []int{2, 1},
+			a: []float32{1, exactPow2(-24)}, b: []float32{1, 1},
+			want: 0x3f800000,
+		},
+		{
+			name: "one plus one and a half ulps ties to even",
+			as:   []int{1, 3}, bs: []int{3, 1},
+			a: []float32{1, exactPow2(-23), exactPow2(-24)}, b: []float32{1, 1, 1},
+			want: 0x3f800002,
+		},
+		{
+			name: "twice the largest float32 overflows",
+			as:   []int{1, 2}, bs: []int{2, 1},
+			a: []float32{maxFloat, maxFloat}, b: []float32{1, 1},
+			want: 0x7f800000,
+		},
+		{
+			name: "twice the negative largest float32 overflows to negative infinity",
+			as:   []int{1, 2}, bs: []int{2, 1},
+			a: []float32{-maxFloat, -maxFloat}, b: []float32{1, 1},
+			want: 0xff800000,
+		},
+		{
+			name: "the largest float32 with its negation cancels to positive zero",
+			as:   []int{1, 2}, bs: []int{2, 1},
+			a: []float32{maxFloat, -maxFloat}, b: []float32{1, 1},
+			want: 0x00000000,
+		},
+		{
+			// A sequential float32 sum sees maxFloat+maxFloat=+Inf and stays
+			// there; the exact sum is maxFloat again.
+			name: "an overflowing pair that cancels leaves the third product",
+			as:   []int{1, 3}, bs: []int{3, 1},
+			a: []float32{maxFloat, maxFloat, -maxFloat}, b: []float32{1, 1, 1},
+			want: 0x7f7fffff,
+		},
+		{
+			name: "huge cancelling pairs leave a subnormal survivor",
+			as:   []int{1, 3}, bs: []int{3, 1},
+			a: []float32{float32(1e30), float32(-1e30), exactPow2(-140)}, b: []float32{1, 1, 1},
+			want: math.Float32bits(exactPow2(-140)),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			a, b := roundedTensor(t, tc.as, tc.a), roundedTensor(t, tc.bs, tc.b)
+			got, err := matMulRounded(a, b, false, false)
+			if err != nil {
+				t.Fatalf("matMulRounded: %v", err)
+			}
+			if gb := math.Float32bits(got.data[0]); gb != tc.want {
+				t.Fatalf("output bits = %#08x, want %#08x (value %g)", gb, tc.want, got.data[0])
+			}
+			assertRoundedBits(t, got.data, matMulRoundedOracle(a, b, false, false))
+		})
+	}
+}
+
+// TestMatMulRoundedSubnormalPins pins the underflow boundary: a product
+// below half the smallest subnormal rounds to zero, positive or negative by
+// the sign of the exact sum, and an exactly-zero sum is +0 either way.
+func TestMatMulRoundedSubnormalPins(t *testing.T) {
+	smallest := math.Float32frombits(1)
+	tests := []struct {
+		name   string
+		as, bs []int
+		a, b   []float32
+		want   uint32
+	}{
+		{
+			name: "twice the smallest subnormal is exact",
+			as:   []int{1, 2}, bs: []int{2, 1},
+			a: []float32{smallest, smallest}, b: []float32{1, 1},
+			want: 0x00000002,
+		},
+		{
+			name: "the smallest subnormal times itself underflows to positive zero",
+			as:   []int{1, 1}, bs: []int{1, 1},
+			a: []float32{smallest}, b: []float32{smallest},
+			want: 0x00000000,
+		},
+		{
+			// An exactly-zero sum is +0; a tiny negative one is not zero and
+			// rounds to -0, the nearest float32 on that side.
+			name: "a negative product below half the smallest subnormal rounds to negative zero",
+			as:   []int{1, 1}, bs: []int{1, 1},
+			a: []float32{-smallest}, b: []float32{smallest},
+			want: 0x80000000,
+		},
+		{
+			name: "the smallest subnormal times one and a half ties to even",
+			as:   []int{1, 1}, bs: []int{1, 1},
+			a: []float32{smallest}, b: []float32{1.5},
+			want: 0x00000002,
+		},
+		{
+			name: "the smallest subnormal times a half ties to even, which is zero",
+			as:   []int{1, 1}, bs: []int{1, 1},
+			a: []float32{smallest}, b: []float32{0.5},
+			want: 0x00000000,
+		},
+		{
+			name: "subnormals cancelling through normals leave positive zero",
+			as:   []int{1, 4}, bs: []int{4, 1},
+			a: []float32{smallest, 1, -smallest, -1}, b: []float32{1, 1, 1, 1},
+			want: 0x00000000,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			a, b := roundedTensor(t, tc.as, tc.a), roundedTensor(t, tc.bs, tc.b)
+			got, err := matMulRounded(a, b, false, false)
+			if err != nil {
+				t.Fatalf("matMulRounded: %v", err)
+			}
+			if gb := math.Float32bits(got.data[0]); gb != tc.want {
+				t.Fatalf("output bits = %#08x, want %#08x (value %g)", gb, tc.want, got.data[0])
+			}
+			assertRoundedBits(t, got.data, matMulRoundedOracle(a, b, false, false))
+		})
+	}
+
+	a := roundedTensor(t, []int{2, 3}, []float32{smallest, math.Float32frombits(3), 0.5, -smallest, math.Float32frombits(1 << 22), 1e-40})
+	b := roundedTensor(t, []int{3, 2}, []float32{smallest, -0.5, 2, math.Float32frombits(7), 1, -3})
+	got, err := matMulRounded(a, b, false, false)
+	if err != nil {
+		t.Fatalf("matMulRounded: %v", err)
+	}
+	assertRoundedBits(t, got.data, matMulRoundedOracle(a, b, false, false))
+}
+
+// TestMatMulRoundedRandomMatricesMatchOracle multiplies seeded random
+// matrices, drawn from a wide exponent range with subnormals and a sparse
+// sprinkling of infinities and NaNs, against the exact oracle.
+func TestMatMulRoundedRandomMatricesMatchOracle(t *testing.T) {
+	rng := rand.New(rand.NewSource(20261021))
+	value := func() float32 {
+		switch rng.Intn(8) {
+		case 0:
+			return math.Float32frombits(uint32(rng.Intn(1 << 23))) // subnormal
+		case 1:
+			return 0
+		case 2:
+			return float32(math.Copysign(0, -1))
+		case 3:
+			return float32(math.Inf(1 - 2*rng.Intn(2)))
+		case 4:
+			return float32(math.NaN())
+		default:
+			return float32(math.Ldexp(rng.NormFloat64(), rng.Intn(121)-60))
+		}
+	}
+	for _, shape := range [][3]int{{1, 1, 1}, {2, 3, 4}, {5, 7, 1}, {17, 13, 19}, {4, 1, 9}, {3, 25, 7}} {
+		m, k, n := shape[0], shape[1], shape[2]
+		for round := 0; round < 3; round++ {
+			aData, bData := make([]float32, m*k), make([]float32, k*n)
+			for i := range aData {
+				aData[i] = value()
+			}
+			for i := range bData {
+				bData[i] = value()
+			}
+			a, b := roundedTensor(t, []int{m, k}, aData), roundedTensor(t, []int{k, n}, bData)
+			got, err := matMulRounded(a, b, false, false)
+			if err != nil {
+				t.Fatalf("matMulRounded %v: %v", shape, err)
+			}
+			if !reflect.DeepEqual(got.shape, []int{m, n}) {
+				t.Fatalf("output shape = %v, want %v", got.shape, []int{m, n})
+			}
+			assertRoundedBits(t, got.data, matMulRoundedOracle(a, b, false, false))
+		}
+	}
+}
+
+func TestMatMulRoundedZeroInnerDimensionWithTransposeFlags(t *testing.T) {
+	tests := []struct {
+		name           string
+		as, bs         []int
+		transA, transB bool
+		want           []int
+	}{
+		{"transA", []int{0, 3}, []int{0, 4}, true, false, []int{3, 4}},
+		{"transB", []int{3, 0}, []int{5, 0}, false, true, []int{3, 5}},
+		{"transA and transB", []int{0, 4}, []int{6, 0}, true, true, []int{4, 6}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			a, b := roundedTensor(t, tc.as, nil), roundedTensor(t, tc.bs, nil)
+			got, err := matMulRounded(a, b, tc.transA, tc.transB)
+			if err != nil {
+				t.Fatalf("matMulRounded: %v", err)
+			}
+			if !reflect.DeepEqual(got.shape, tc.want) {
+				t.Fatalf("output shape = %v, want %v", got.shape, tc.want)
+			}
+			assertRoundedBits(t, got.data, make([]float32, tc.want[0]*tc.want[1]))
+		})
+	}
+}
+
+func TestMatMulRoundedDoesNotModifyOperandsWithSpecialsAndFlags(t *testing.T) {
+	specials := []float32{
+		float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1)),
+		0, float32(math.Copysign(0, -1)), math.SmallestNonzeroFloat32,
+		math.MaxFloat32, -math.MaxFloat32, 1.5, -2.25, 1e20, -1e-20,
+	}
+	aData := make([]float32, 3*3)
+	for i := range aData {
+		aData[i] = specials[i%len(specials)]
+	}
+	bData := make([]float32, 3*3)
+	for i := range bData {
+		bData[i] = specials[(i+5)%len(specials)]
+	}
+	a, b := roundedTensor(t, []int{3, 3}, aData), roundedTensor(t, []int{3, 3}, bData)
+	aBefore, bBefore := append([]float32(nil), a.data...), append([]float32(nil), b.data...)
+	for _, flags := range [][2]bool{{false, false}, {true, false}, {false, true}, {true, true}} {
+		if _, err := matMulRounded(a, b, flags[0], flags[1]); err != nil {
+			t.Fatalf("matMulRounded(transA=%t, transB=%t): %v", flags[0], flags[1], err)
+		}
+		for i := range aBefore {
+			if gb, wb := math.Float32bits(a.data[i]), math.Float32bits(aBefore[i]); gb != wb {
+				t.Fatalf("transA=%t transB=%t: a.data[%d] bits = %#08x, want %#08x", flags[0], flags[1], i, gb, wb)
+			}
+		}
+		for i := range bBefore {
+			if gb, wb := math.Float32bits(b.data[i]), math.Float32bits(bBefore[i]); gb != wb {
+				t.Fatalf("transA=%t transB=%t: b.data[%d] bits = %#08x, want %#08x", flags[0], flags[1], i, gb, wb)
+			}
+		}
 	}
 }
