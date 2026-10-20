@@ -157,7 +157,7 @@ func Ichimoku(high, low, close insyra.IDataList, tenkan, kijun, senkouB int, opt
 		o = opts[0]
 	}
 	if o.Displacement < 0 {
-		return nil, errors.New("Displacement must not be negative")
+		return nil, errors.New("option Displacement must not be negative")
 	}
 	if o.Displacement == 0 {
 		o.Displacement = 26
