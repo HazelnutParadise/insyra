@@ -239,10 +239,16 @@ func ATR(high, low, close insyra.IDataList, n int) (*insyra.DataList, error) {
 	if err != nil {
 		return nil, err
 	}
+	return listOfFloats("ATR", atrOf(h, l, c, n)), nil
+}
+
+// atrOf is Wilder's average true range of the bars h, l, c: row n is the mean of
+// the true ranges of rows 1 to n and each later row is smoothed with weight 1/n.
+func atrOf(h, l, c []float64, n int) []float64 {
 	tr := trueRangeOf(h, l, c)
 	out := nanSeries(len(h))
 	if len(h) <= n {
-		return listOfFloats("ATR", out), nil
+		return out
 	}
 	var sum float64
 	for i := 1; i <= n; i++ {
@@ -254,7 +260,7 @@ func ATR(high, low, close insyra.IDataList, n int) (*insyra.DataList, error) {
 		prev = (prev*float64(n-1) + tr[i]) / float64(n)
 		out[i] = prev
 	}
-	return listOfFloats("ATR", out), nil
+	return out
 }
 
 // KDMethod chooses how the raw stochastic value is smoothed into K and D.
