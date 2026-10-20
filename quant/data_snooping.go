@@ -294,13 +294,25 @@ func relativePerformance(fn string, perf insyra.IDataTable, opts DataSnoopingOpt
 	if insyra.IsNilTable(perf) {
 		return nil, nil, fmt.Errorf("%s: perf is nil", fn)
 	}
-	var benchmark insyra.IDataList
+	// AtomicDoAll locks only the core types, so a wrapper such as
+	// *isr.DataTable is unwrapped to the core object it hands to AtomicDo.
+	var lockBenchmark any
 	if !insyra.IsNilList(opts.Benchmark) {
-		benchmark = opts.Benchmark
+		opts.Benchmark.AtomicDo(func(l *insyra.DataList) {
+			if l != nil {
+				lockBenchmark = l
+			}
+		})
 	}
+	var lockPerf any
+	perf.AtomicDo(func(tb *insyra.DataTable) {
+		if tb != nil {
+			lockPerf = tb
+		}
+	})
 	insyra.AtomicDoAll(func() {
 		d, names, err = snapshotRelativePerformance(fn, perf, opts)
-	}, perf, benchmark)
+	}, lockPerf, lockBenchmark)
 	return d, names, err
 }
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/isr"
 )
 
 type dataSnoopingCase struct {
@@ -392,6 +393,21 @@ func TestDataSnoopingRefusesOverflowingMean(t *testing.T) {
 // leaves both columns and the benchmark equal to the same version. A
 // snapshot mixing versions would show columns or a benchmark that differ.
 func TestRelativePerformanceSnapshotIsConsistent(t *testing.T) {
+	checkConsistentSnapshot(t, func(tb *insyra.DataTable, b *insyra.DataList) (insyra.IDataTable, insyra.IDataList) {
+		return tb, b
+	})
+}
+
+// The same through isr's wrappers, which are not the core types
+// AtomicDoAll recognises.
+func TestRelativePerformanceSnapshotThroughIsrWrappers(t *testing.T) {
+	checkConsistentSnapshot(t, func(tb *insyra.DataTable, b *insyra.DataList) (insyra.IDataTable, insyra.IDataList) {
+		return isr.UseDT(tb), isr.UseDL(b)
+	})
+}
+
+func checkConsistentSnapshot(t *testing.T, wrap func(*insyra.DataTable, *insyra.DataList) (insyra.IDataTable, insyra.IDataList)) {
+	t.Helper()
 	version := func(v float64) []*insyra.DataList {
 		a := make([]any, 50)
 		for i := range a {
@@ -402,6 +418,7 @@ func TestRelativePerformanceSnapshotIsConsistent(t *testing.T) {
 	init := version(0)
 	table := insyra.NewDataTable(init[0], init[1])
 	bench := init[2]
+	readTable, readBench := wrap(table, bench)
 
 	stop := make(chan struct{})
 	done := make(chan struct{})
@@ -422,7 +439,7 @@ func TestRelativePerformanceSnapshotIsConsistent(t *testing.T) {
 		}
 	}()
 	for range 300 {
-		d, _, err := relativePerformance("test", table, DataSnoopingOptions{Replications: 1, BlockSize: 2, Benchmark: bench})
+		d, _, err := relativePerformance("test", readTable, DataSnoopingOptions{Replications: 1, BlockSize: 2, Benchmark: readBench})
 		if err != nil {
 			t.Fatal(err)
 		}
