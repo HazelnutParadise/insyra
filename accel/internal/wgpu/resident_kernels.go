@@ -1,0 +1,208 @@
+package wgpu
+
+import "fmt"
+
+// The kernels below compute in the exact-sum register (exact_sum.go): every
+// output is the exact value of its operation rounded once to nearest-even
+// float32, and an exactly-zero result is +0. They are the device half of
+// nn's PrecisionFloat32Rounded; the CPU half is in package nn.
+
+const oneBits uint32 = 0x3f800000
+
+// matMulRoundedKernel: params = m, k, n, flags (bit 0 transA, bit 1 transB).
+var matMulRoundedKernel = &kernel{name: "rounded-matmul", nRead: 2, nWrite: 1, body: `
+struct Params { m: u32, k: u32, n: u32, flags: u32, }
+@group(0) @binding(0) var<storage, read> a: array<u32>;
+@group(0) @binding(1) var<storage, read> b: array<u32>;
+@group(0) @binding(2) var<storage, read_write> c: array<u32>;
+@group(0) @binding(3) var<uniform> p: Params;
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let col = gid.x;
+    let row = gid.y;
+    if (row >= p.m || col >= p.n) {
+        return;
+    }
+    let transA = (p.flags & 1u) != 0u;
+    let transB = (p.flags & 2u) != 0u;
+    var r: ExactRegister;
+    exact_clear(&r);
+    for (var kk: u32 = 0u; kk < p.k; kk = kk + 1u) {
+        var ai = row * p.k + kk;
+        if (transA) {
+            ai = kk * p.m + row;
+        }
+        var bi = kk * p.n + col;
+        if (transB) {
+            bi = col * p.k + kk;
+        }
+        exact_add_product(&r, a[ai], b[bi]);
+    }
+    c[row * p.n + col] = exact_round(r);
+}
+`}
+
+// addRoundedKernel: params = length, bLength, 0, stride. out[i] = a[i] + b[i % bLength].
+var addRoundedKernel = &kernel{name: "rounded-add", nRead: 2, nWrite: 1, body: `
+struct Params { length: u32, b_length: u32, unused: u32, stride: u32, }
+@group(0) @binding(0) var<storage, read> a: array<u32>;
+@group(0) @binding(1) var<storage, read> b: array<u32>;
+@group(0) @binding(2) var<storage, read_write> c: array<u32>;
+@group(0) @binding(3) var<uniform> p: Params;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x + gid.y * p.stride;
+    if (i >= p.length) {
+        return;
+    }
+    var r: ExactRegister;
+    exact_clear(&r);
+    exact_add_product(&r, a[i], 0x3f800000u);
+    exact_add_product(&r, b[i % p.b_length], 0x3f800000u);
+    c[i] = exact_round(r);
+}
+`}
+
+// sumRowsRoundedKernel: params = m, n. out[j] = sum over rows of x[i*n+j].
+var sumRowsRoundedKernel = &kernel{name: "rounded-sum-rows", nRead: 1, nWrite: 1, body: `
+struct Params { m: u32, n: u32, unused0: u32, unused1: u32, }
+@group(0) @binding(0) var<storage, read> x: array<u32>;
+@group(0) @binding(1) var<storage, read_write> c: array<u32>;
+@group(0) @binding(2) var<uniform> p: Params;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let col = gid.x;
+    if (col >= p.n) {
+        return;
+    }
+    var r: ExactRegister;
+    exact_clear(&r);
+    for (var row: u32 = 0u; row < p.m; row = row + 1u) {
+        exact_add_product(&r, x[row * p.n + col], 0x3f800000u);
+    }
+    c[col] = exact_round(r);
+}
+`}
+
+// sgdRoundedKernel: params = length, negated rate bits, 0, stride.
+// w[i] = w[i] + (-rate) * g[i], rounded once, in place.
+var sgdRoundedKernel = &kernel{name: "rounded-sgd", nRead: 1, nWrite: 1, body: `
+struct Params { length: u32, neg_rate: u32, unused: u32, stride: u32, }
+@group(0) @binding(0) var<storage, read> g: array<u32>;
+@group(0) @binding(1) var<storage, read_write> w: array<u32>;
+@group(0) @binding(2) var<uniform> p: Params;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x + gid.y * p.stride;
+    if (i >= p.length) {
+        return;
+    }
+    var r: ExactRegister;
+    exact_clear(&r);
+    exact_add_product(&r, w[i], 0x3f800000u);
+    exact_add_product(&r, p.neg_rate, g[i]);
+    w[i] = exact_round(r);
+}
+`}
+
+// elementwiseGroups spreads length invocations over a two-dimensional grid
+// so a long vector stays within the per-dimension dispatch limit, and returns
+// the grid and the row stride in invocations.
+func elementwiseGroups(length int) (groupsX, groupsY, stride uint32) {
+	groups := (length + 63) / 64
+	if groups < 1 {
+		groups = 1
+	}
+	const maxX = 32768
+	x := groups
+	if x > maxX {
+		x = maxX
+	}
+	y := (groups + x - 1) / x
+	return uint32(x), uint32(y), uint32(x) * 64
+}
+
+// MatMulRounded computes c = op(a) x op(b) where op transposes when asked.
+// a and b are row-major as stored: a holds [m,k] (or [k,m] when transA) and b
+// holds [k,n] (or [n,k] when transB).
+func MatMulRounded(a, b *Buffer, m, k, n int, transA, transB bool) (*Buffer, error) {
+	if m < 0 || k < 0 || n < 0 {
+		return nil, fmt.Errorf("wgpu: rounded matmul dimensions must not be negative, got [%d,%d]x[%d,%d]", m, k, k, n)
+	}
+	if a.Len() != m*k || b.Len() != k*n {
+		return nil, fmt.Errorf("wgpu: rounded matmul buffers hold %d and %d values, want %d and %d", a.Len(), b.Len(), m*k, k*n)
+	}
+	out, err := NewBuffer(m * n)
+	if err != nil {
+		return nil, err
+	}
+	if m == 0 || n == 0 {
+		return out, nil
+	}
+	var flags uint32
+	if transA {
+		flags |= 1
+	}
+	if transB {
+		flags |= 2
+	}
+	if err := matMulRoundedKernel.run([]*Buffer{a, b}, []*Buffer{out}, [4]uint32{uint32(m), uint32(k), uint32(n), flags},
+		uint32((n+7)/8), uint32((m+7)/8)); err != nil {
+		out.Release()
+		return nil, err
+	}
+	return out, nil
+}
+
+// AddRounded computes out[i] = a[i] + b[i mod b.Len()], so a same-length b is
+// an elementwise sum and a shorter b broadcasts over the trailing dimension.
+func AddRounded(a, b *Buffer) (*Buffer, error) {
+	if b.Len() == 0 || a.Len()%b.Len() != 0 {
+		return nil, fmt.Errorf("wgpu: rounded add cannot broadcast %d values over %d", b.Len(), a.Len())
+	}
+	out, err := NewBuffer(a.Len())
+	if err != nil {
+		return nil, err
+	}
+	gx, gy, stride := elementwiseGroups(a.Len())
+	if err := addRoundedKernel.run([]*Buffer{a, b}, []*Buffer{out}, [4]uint32{uint32(a.Len()), uint32(b.Len()), 0, stride}, gx, gy); err != nil {
+		out.Release()
+		return nil, err
+	}
+	return out, nil
+}
+
+// SumRowsRounded reduces x, shaped [m,n], over its rows to n values.
+func SumRowsRounded(x *Buffer, m, n int) (*Buffer, error) {
+	if m < 0 || n < 0 || x.Len() != m*n {
+		return nil, fmt.Errorf("wgpu: rounded row sum buffer holds %d values, want %d", x.Len(), m*n)
+	}
+	out, err := NewBuffer(n)
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return out, nil
+	}
+	if err := sumRowsRoundedKernel.run([]*Buffer{x}, []*Buffer{out}, [4]uint32{uint32(m), uint32(n), 0, 0}, uint32((n+63)/64), 1); err != nil {
+		out.Release()
+		return nil, err
+	}
+	return out, nil
+}
+
+// SGDRounded updates w in place: w = w - rate*g, rounded once.
+func SGDRounded(w, g *Buffer, negatedRateBits uint32) error {
+	if w.Len() != g.Len() {
+		return fmt.Errorf("wgpu: rounded sgd parameter holds %d values and gradient %d", w.Len(), g.Len())
+	}
+	if w.Len() == 0 {
+		return nil
+	}
+	gx, gy, stride := elementwiseGroups(w.Len())
+	return sgdRoundedKernel.run([]*Buffer{g}, []*Buffer{w}, [4]uint32{uint32(w.Len()), negatedRateBits, 0, stride}, gx, gy)
+}
