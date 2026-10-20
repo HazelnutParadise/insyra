@@ -117,6 +117,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `stats.VarianceRatio(returns, qs...)`，計算 Lo-MacKinlay 變異數比 VR(q)，同時給同質變異與異質變異穩健的 z 值；`stats.ChowDenning` 一次檢驗多個持有期。新增 `stats.KaplanMeier(durations, observed)`，從含有「還沒結束」（截尾）的持續時間估計存活曲線，附 Greenwood 標準誤與中位數，結果與 R 的 `survival::survfit` 一致（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
 - 新增 `stats.LinearRegressionWithOptions(opts, y, xs...)`，可回報穩健或 HAC 標準誤：`LinearRegressionOptions{CovType, Lag}` 可選 `CovHC0`～`CovHC3`（R `sandwich::vcovHC` 的異質變異穩健估計），或 `CovHAC`（Bartlett 權重、不做小樣本校正的 Newey-West，同 `sandwich::NeweyWest(prewhite = FALSE, adjust = FALSE)`）。lag 給負數（寫成 `stats.AutoLag`）時用 `NeweyWestLag(n)`。t 值與 p 值用自由度 n-k 的 t 分配，結果已與 statsmodels 比對。`LinearRegression` 的數字與過去完全相同；結果多了 `CovType` 與 `Lag` 欄位，`String()` 也會印出（[#478](https://github.com/HazelnutParadise/insyra/issues/478)）。
 - 新增 `stats.AutoLag`（`-1`），代表「請用 `NeweyWestLag(n)`」的 lag。`NeweyWestMeanTest` 與 `LinearRegressionOptions.Lag` 仍是負數自動、0 以上照用，既有呼叫不受影響。`quant` 的選項讀法相反（0 為自動、負數會回錯），`Docs/stats.md` 把兩種讀法並列說明。
+- 新增 `stats.NeweyWestMeanTest(series, lag)`，用 Newey-West（Bartlett 核）標準誤檢定自我相關序列的平均數是否為零，例如重疊持有期的報酬，一般 t 檢定會把 t 值高估。`lag` 為負數（`stats.AutoLag`）時用 `NeweyWestLag(n)`，為 0 時等於以 `n` 為除數的單樣本 t 檢定（[#457](https://github.com/HazelnutParadise/insyra/issues/457)）。
 
 ### `csvxl`
 
@@ -186,7 +187,6 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `LinearRegression`、`PoissonRegression`、`LogisticRegression`、`Correlation`、`Covariance`、`ChiSquareGoodnessOfFit`、`ChiSquareIndependenceTest`、`Silhouette`、`KNNClassify`、`KNNRegress`、`Skewness`、`Kurtosis` 收到 nil 清單（直接傳入或包在 `isr.DL` 這類包裝裡）時回傳錯誤。過去會 panic，迴歸函式還是在自己啟動的 goroutine 裡 panic，讓程式結束。`insyra.ProcessData` 把 nil 清單當成不支援的輸入。
 - `AppendCsvToExcel` 與 `ToExcel` 搭配 `SheetExistsReplace` 取代工作表時，會保留舊工作表的欄寬與檢視（縮放、格線、凍結或分割窗格），這些在 v0.3.4 會一起消失。隱藏的列與欄、合併範圍、列高、註解、超連結與該工作表自己的定義名稱仍會移除，因為它們會藏住或錯置新資料（[#401](https://github.com/HazelnutParadise/insyra/issues/401)）。
 - 新增 `stats.AdjustPValues(pvals, method)`，一次檢驗很多假設時，用 Holm、Bonferroni、Hochberg、Benjamini-Hochberg 或 Benjamini-Yekutieli（`PAdjustHolm`、`PAdjustBonferroni`、`PAdjustHochberg`、`PAdjustBH`、`PAdjustBY`）校正一批 p 值，結果與 R 的 `p.adjust` 一致。`NaN` 維持 `NaN`，也不算進檢驗數（[#444](https://github.com/HazelnutParadise/insyra/issues/444)）。
-- 新增 `stats.NeweyWestMeanTest(series, lag)`，用 Newey-West（Bartlett 核）標準誤檢定自我相關序列的平均數是否為零，例如重疊持有期的報酬，一般 t 檢定會把 t 值高估。`lag` 為負數（`stats.AutoLag`）時用 `NeweyWestLag(n)`，為 0 時等於以 `n` 為除數的單樣本 t 檢定（[#457](https://github.com/HazelnutParadise/insyra/issues/457)）。
 
 ### `quant`
 
