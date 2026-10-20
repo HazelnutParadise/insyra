@@ -267,6 +267,16 @@ func TestFamaMacBethRefusesReservedCharacteristicNames(t *testing.T) {
 	}
 }
 
+func TestFamaMacBethRefusesDateAsReturn(t *testing.T) {
+	table := fmbPanel(4, 8, func(int, int) float64 { return 0 })
+	for _, ret := range []string{"date", "A"} {
+		_, err := FamaMacBeth(table, "date", ret, []string{"x1"})
+		if err == nil || !strings.Contains(err.Error(), "same column") {
+			t.Errorf("return %q: error %v, want one containing %q", ret, err, "same column")
+		}
+	}
+}
+
 func TestFamaMacBethRefusesBadInput(t *testing.T) {
 	good := func() *insyra.DataTable { return fmbPanel(4, 8, func(int, int) float64 { return 0 }) }
 	set := func(col int, v any) *insyra.DataTable {

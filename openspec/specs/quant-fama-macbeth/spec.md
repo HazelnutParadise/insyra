@@ -44,7 +44,7 @@ Fama-MacBeth cross-sectional regressions on a long stock-by-date panel, testing 
 - **THEN** the day's coefficient is unchanged
 
 ### Requirement: Input that cannot be regressed is refused
-`quant.FamaMacBeth` SHALL return an error for a nil table, no characteristic, a repeated characteristic, the return or date column listed as a characteristic, a characteristic named date, intercept, r2 or count, a column that is not found, a missing date, a text or infinite value, more than one options value, a negative lag, and a lag not smaller than the number of estimated days.
+`quant.FamaMacBeth` SHALL return an error for a nil table, no characteristic, a date column that is also the return column, a repeated characteristic, the return or date column listed as a characteristic, a characteristic named date, intercept, r2 or count, a column that is not found, a missing date, a text or infinite value, more than one options value, a negative lag, and a lag not smaller than the number of estimated days.
 
 #### Scenario: A column that does not exist
 - **WHEN** a characteristic is named "size" and the table has no such column

@@ -76,7 +76,7 @@ type FamaMacBethResult struct {
 // than MinObservations, or whose characteristics are collinear (including one
 // that is constant that day), is listed in Skipped rather than failing the
 // call. Fewer than two estimated days is an error, and so is a characteristic named
-// date, intercept, r2 or count (the fixed columns of Daily) or the date column.
+// date, intercept, r2 or count (the fixed columns of Daily) or the date column, and so is naming one column as both date and return.
 //
 // The standard errors equal Python's linearmodels.FamaMacBeth with
 // cov_type="kernel", kernel="bartlett", the same bandwidth and debiased=False:
@@ -115,6 +115,10 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []
 	table.AtomicDo(func(dt *insyra.DataTable) {
 		retNum := columnNumber(dt, returnCol)
 		dateNum := columnNumber(dt, dateCol)
+		if dateNum >= 0 && dateNum == retNum {
+			readErr = fmt.Errorf("the date column %q and the return column %q are the same column", dateCol, returnCol)
+			return
+		}
 		seen := map[int]string{}
 		for i, c := range charCols {
 			num := columnNumber(dt, c)
