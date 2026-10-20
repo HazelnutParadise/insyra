@@ -20,7 +20,7 @@ Each horizon's summary SHALL report the observation count, the number left out f
 - **THEN** the monthly means are 5% and 0% and the observation count is 3
 
 ### Requirement: The Newey-West lag has one setting and the correction its own switch
-`ForwardOptions.NeweyWestLag` SHALL choose `stats.NeweyWestLag(months)` when 0, be used as given when positive and smaller than the number of months, and be an error when negative or not smaller than the number of months; the automatic lag SHALL be capped at months-1. `ForwardOptions.NoNeweyWest` SHALL switch the correction off by running the test with lag 0, whose variance divides by the number of months, and SHALL be an error together with a non-zero `NeweyWestLag`.
+`ForwardOptions.NeweyWestLag` SHALL choose `stats.NeweyWestLag(months)` when 0, be used as given when positive and smaller than the number of months, and be an error when negative or not smaller than the number of months with an observation in any horizon or bucket; the automatic lag SHALL be capped at months-1. `ForwardOptions.NoNeweyWest` SHALL switch the correction off by running the test with lag 0, whose variance divides by the number of months, and SHALL be an error together with a non-zero `NeweyWestLag`.
 
 #### Scenario: A negative lag is refused
 - **WHEN** `NeweyWestLag` is -1

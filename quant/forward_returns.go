@@ -62,8 +62,9 @@ type ForwardOptions struct {
 	// NeweyWestLag is the lag of the t-test on the monthly series. 0 chooses
 	// stats.NeweyWestLag(months), a positive value is used as it is, and a
 	// negative value is an error. A positive lag must be smaller than the
-	// number of months with an observation; EventStudy and SignalBuckets return
-	// an error otherwise, instead of shortening it. The automatic lag is capped
+	// number of months with an observation in every horizon and bucket, empty
+	// ones included; EventStudy and SignalBuckets return an error otherwise,
+	// instead of shortening it. The automatic lag is capped
 	// at months-1.
 	NeweyWestLag int
 	// NoNeweyWest switches the Newey-West correction off: the t-test then uses
@@ -391,6 +392,11 @@ func (a *accumulator) add(month string, excess float64) {
 func (a *accumulator) summary(horizon, lag int, noNeweyWest bool) (ForwardSummary, error) {
 	s := ForwardSummary{Horizon: horizon, Observations: a.n, Missing: a.missing, Months: len(a.monthOrder),
 		MeanExcess: math.NaN(), WinRate: math.NaN(), MonthlyMean: math.NaN(), TStat: math.NaN(), PValue: math.NaN()}
+	// An explicit lag is checked first, so a horizon or bucket with fewer than
+	// two months is held to the same rule as any other.
+	if lag > 0 && lag >= len(a.monthOrder) {
+		return s, fmt.Errorf("NeweyWestLag %d must be smaller than the number of months with an observation %d", lag, len(a.monthOrder))
+	}
 	if a.n == 0 {
 		return s, nil
 	}

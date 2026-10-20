@@ -109,7 +109,7 @@ func TestForwardExplicitLagNotBelowMonthsIsRefused(t *testing.T) {
 	for _, lag := range []int{8, 12} {
 		o := ForwardOptions{Horizons: []int{1}, Benchmark: BenchmarkLevels, BenchmarkLevels: flat, NeweyWestLag: lag}
 		_, err := EventStudy(prices, events, dates, EventStudyOptions{ForwardOptions: o})
-		if err == nil || !strings.Contains(err.Error(), "must be smaller than the number of observations 8") {
+		if err == nil || !strings.Contains(err.Error(), "must be smaller than the number of months with an observation 8") {
 			t.Errorf("lag %d: err %v", lag, err)
 		}
 	}
@@ -123,5 +123,30 @@ func TestForwardAutomaticLagIsCappedByMonths(t *testing.T) {
 	res, err := EventStudy(prices, events, dates, EventStudyOptions{ForwardOptions: ForwardOptions{Horizons: []int{1}}})
 	if err != nil || res[0].Lag >= res[0].Months {
 		t.Errorf("%+v, %v", res, err)
+	}
+}
+
+func TestForwardExplicitLagIsCheckedWithFewMonths(t *testing.T) {
+	prices, _, dates, flat, _ := lagStudy()
+	// eventsIn fires on the first row of the first k months.
+	eventsIn := func(k int) *insyra.DataTable {
+		ev := make([]any, 24)
+		for i := range ev {
+			ev[i] = i%3 == 0 && i/3 < k
+		}
+		return insyra.NewDataTable(insyra.NewDataList(ev...).SetName("A"))
+	}
+	for months := 0; months <= 2; months++ {
+		for _, lag := range []int{0, 1} {
+			o := ForwardOptions{Horizons: []int{1}, Benchmark: BenchmarkLevels, BenchmarkLevels: flat, NeweyWestLag: lag}
+			res, err := EventStudy(prices, eventsIn(months), dates, EventStudyOptions{ForwardOptions: o})
+			wantErr := lag >= 1 && lag >= months
+			if (err != nil) != wantErr {
+				t.Errorf("%d months, lag %d: err %v, want error %v", months, lag, err, wantErr)
+			}
+			if err == nil && months < 2 && !math.IsNaN(res[0].TStat) {
+				t.Errorf("%d months, lag %d: t %v, want NaN", months, lag, res[0].TStat)
+			}
+		}
 	}
 }
