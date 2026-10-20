@@ -75,7 +75,8 @@ type FamaMacBethResult struct {
 // any characteristic is missing (nil or NaN). A day with fewer usable stocks
 // than MinObservations, or whose characteristics are collinear (including one
 // that is constant that day), is listed in Skipped rather than failing the
-// call. Fewer than two estimated days is an error.
+// call. Fewer than two estimated days is an error, and so is a characteristic named
+// date, intercept, r2 or count (the fixed columns of Daily) or the date column.
 //
 // The standard errors equal Python's linearmodels.FamaMacBeth with
 // cov_type="kernel", kernel="bartlett", the same bandwidth and debiased=False:
@@ -113,11 +114,21 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []
 	var readErr error
 	table.AtomicDo(func(dt *insyra.DataTable) {
 		retNum := columnNumber(dt, returnCol)
+		dateNum := columnNumber(dt, dateCol)
 		seen := map[int]string{}
 		for i, c := range charCols {
 			num := columnNumber(dt, c)
 			if num < 0 {
 				readErr = fmt.Errorf("characteristic column %q not found", c)
+				return
+			}
+			switch c {
+			case "date", "intercept", "r2", "count":
+				readErr = fmt.Errorf("characteristic column %q is reserved: Daily has columns of that name for its own values", c)
+				return
+			}
+			if num == dateNum {
+				readErr = fmt.Errorf("characteristic column %q is the date column", c)
 				return
 			}
 			if num == retNum {

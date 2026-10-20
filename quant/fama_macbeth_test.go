@@ -241,6 +241,32 @@ func TestFamaMacBethColumnLetters(t *testing.T) {
 	}
 }
 
+// A characteristic named like a fixed Daily column would make NewDataTable
+// rename one of the two, so the documented schema would not hold.
+func TestFamaMacBethRefusesReservedCharacteristicNames(t *testing.T) {
+	for _, name := range []string{"date", "intercept", "r2", "count"} {
+		var date, ret, x []any
+		for d := 0; d < 4; d++ {
+			for s := 0; s < 8; s++ {
+				a := float64((s*7+d*3)%11) - 5
+				date, x, ret = append(date, d), append(x, a), append(ret, 1+2*a+float64(s%3))
+			}
+		}
+		tables := map[string]*insyra.DataTable{
+			"date": insyra.NewDataTable(insyra.NewDataList(date...).SetName("d"), insyra.NewDataList(ret...).SetName("ret"), insyra.NewDataList(x...).SetName(name)),
+		}
+		_, err := FamaMacBeth(tables["date"], "d", "ret", []string{name})
+		if err == nil || !strings.Contains(err.Error(), "reserved") {
+			t.Errorf("characteristic %q: error %v, want one containing %q", name, err, "reserved")
+		}
+	}
+	// The date column itself is not a characteristic either.
+	_, err := FamaMacBeth(fmbPanel(4, 8, func(int, int) float64 { return 0 }), "date", "ret", []string{"x1", "A"})
+	if err == nil || !strings.Contains(err.Error(), "date column") {
+		t.Errorf("date as characteristic: error %v", err)
+	}
+}
+
 func TestFamaMacBethRefusesBadInput(t *testing.T) {
 	good := func() *insyra.DataTable { return fmbPanel(4, 8, func(int, int) float64 { return 0 }) }
 	set := func(col int, v any) *insyra.DataTable {
