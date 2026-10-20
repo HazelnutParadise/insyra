@@ -206,3 +206,42 @@ func SGDRounded(w, g *Buffer, negatedRateBits uint32) error {
 	gx, gy, stride := elementwiseGroups(w.Len())
 	return sgdRoundedKernel.run([]*Buffer{g}, []*Buffer{w}, [4]uint32{uint32(w.Len()), negatedRateBits, 0, stride}, gx, gy)
 }
+
+// Clone copies a buffer on the device without a host round trip.
+func Clone(source *Buffer) (*Buffer, error) {
+	out, err := NewBuffer(source.Len())
+	if err != nil {
+		return nil, err
+	}
+	if source.Len() == 0 {
+		return out, nil
+	}
+	submitMu.Lock()
+	defer submitMu.Unlock()
+	h, err := acquire()
+	if err != nil {
+		out.Release()
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
+	}
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	out.mu.Lock()
+	defer out.mu.Unlock()
+	if source.released || source.buffer == nil {
+		out.released = true
+		return nil, fmt.Errorf("wgpu: clone of a released buffer")
+	}
+	encoder, err := h.device.CreateCommandEncoder(nil)
+	if err != nil {
+		return nil, fmt.Errorf("wgpu: create clone encoder: %w", err)
+	}
+	encoder.CopyBufferToBuffer(source.buffer, 0, out.buffer, 0, bufferBytes(source.Len()))
+	commands, err := encoder.Finish()
+	if err != nil {
+		return nil, fmt.Errorf("wgpu: finish clone encoder: %w", err)
+	}
+	if _, err := h.device.Queue().Submit(commands); err != nil {
+		return nil, fmt.Errorf("wgpu: submit clone: %w", err)
+	}
+	return out, nil
+}
