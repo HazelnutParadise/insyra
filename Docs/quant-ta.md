@@ -112,27 +112,27 @@ buckets, err := ta.SignalBuckets(biasTable, closes, dates, ta.BucketOptions{
 ### ZigZag
 
 ```go
-func ZigZag(prices insyra.IDataList, threshold float64) ([]Pivot, error)
+func ZigZag(prices insyra.IDataList, threshold float64) ([]Swing, error)
 
-type Pivot struct {
-    Kind        PivotKind // PivotLow or PivotHigh
+type Swing struct {
+    Kind        SwingKind // SwingLow or SwingHigh
     Index       int       // row of the extreme
     Price       float64
     ConfirmedAt int       // first row on which the price was `threshold` away from the extreme
 }
 ```
 
-Finds the turning points of a positive price series that reverse by at least `threshold`, a fraction such as `0.10` for 10%. Trade on `ConfirmedAt`, the earliest the pivot could be known, and describe the series with `Index`.
+Finds the turning points of a positive price series that reverse by at least `threshold`, a fraction such as `0.10` for 10%. Trade on `ConfirmedAt`, the earliest the swing could be known, and describe the series with `Index`.
 
-It is causal: a pivot is reported at the row that confirms it and uses no later price, so recomputing on a series cut short returns exactly the pivots of the full series whose `ConfirmedAt` lies before the cut (the tests check this on random series). Pivots alternate between lows and highs, and the extreme still being tracked at the end is not reported. For `100, 111, 120, 105, 95, 100, 115, 130, 116` with a threshold of 0.10 the pivots are low at 0 confirmed at 1, high at 2 confirmed at 3, low at 4 confirmed at 6, high at 7 confirmed at 8.
+It is causal: a swing is reported at the row that confirms it and uses no later price, so recomputing on a series cut short returns exactly the swings of the full series whose `ConfirmedAt` lies before the cut (the tests check this on random series). Swings alternate between lows and highs, and the extreme still being tracked at the end is not reported. For `100, 111, 120, 105, 95, 100, 115, 130, 116` with a threshold of 0.10 the swings are low at 0 confirmed at 1, high at 2 confirmed at 3, low at 4 confirmed at 6, high at 7 confirmed at 8.
 
 ### Regimes
 
 ```go
-func Regimes(pivots []Pivot, opts ...RegimeOptions) ([]Regime, error)
+func Regimes(swings []Swing, opts ...RegimeOptions) ([]Regime, error)
 ```
 
-Turns the pivots into bull stretches (low to the next high) and bear stretches (high to the next low). Each `Regime` has `Kind` (`RegimeBull` or `RegimeBear`), `Start` and `End` rows, `Length`, `Change` (the price change as a fraction) and `ConfirmedAt`. The stretch before the first pivot and after the last is not reported.
+Turns the swings into bull stretches (low to the next high) and bear stretches (high to the next low). Each `Regime` has `Kind` (`RegimeBull` or `RegimeBear`), `Start` and `End` rows, `Length`, `Change` (the price change as a fraction) and `ConfirmedAt`. The stretch before the first swing and after the last is not reported.
 
 `RegimeOptions.MinPhase` removes a stretch shorter than that many rows together with the two turning points around it, so its neighbours join; `MinCycle` removes a turning point that makes a low-to-low or high-to-high cycle shorter than that, with the one before it. They follow the minimum phase and cycle lengths of Pagan and Sossounov (2003). Using them looks at the whole list, so it is not causal.
 

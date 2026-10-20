@@ -24,18 +24,18 @@ func TestZigZagWorkedExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Pivot{
-		{PivotLow, 0, 100, 1},
-		{PivotHigh, 2, 120, 3},
-		{PivotLow, 4, 95, 6},
-		{PivotHigh, 7, 130, 8},
+	want := []Swing{
+		{SwingLow, 0, 100, 1},
+		{SwingHigh, 2, 120, 3},
+		{SwingLow, 4, 95, 6},
+		{SwingHigh, 7, 130, 8},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v\nwant %+v", got, want)
 	}
 }
 
-// A pivot found on a series cut short is exactly a pivot of the full series
+// A swing found on a series cut short is exactly a swing of the full series
 // that was confirmed before the cut.
 func TestZigZagIsCausal(t *testing.T) {
 	rng := rand.New(rand.NewSource(11))
@@ -46,14 +46,14 @@ func TestZigZagIsCausal(t *testing.T) {
 	}
 	full, err := ZigZag(prices(series...), 0.08)
 	if err != nil || len(full) < 5 {
-		t.Fatalf("expected several pivots, got %d, %v", len(full), err)
+		t.Fatalf("expected several swings, got %d, %v", len(full), err)
 	}
 	for cut := 1; cut <= len(series); cut += 7 {
 		part, err := ZigZag(prices(series[:cut]...), 0.08)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var want []Pivot
+		var want []Swing
 		for _, pv := range full {
 			if pv.ConfirmedAt < cut {
 				want = append(want, pv)
@@ -70,13 +70,13 @@ func TestZigZagStartsWithAFallAndAlternates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Pivot{{PivotHigh, 0, 100, 2}, {PivotLow, 2, 85, 3}, {PivotHigh, 4, 120, 5}}
+	want := []Swing{{SwingHigh, 0, 100, 2}, {SwingLow, 2, 85, 3}, {SwingHigh, 4, 120, 5}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v\nwant %+v", got, want)
 	}
 	flat, _ := ZigZag(prices(100, 101, 100, 102), 0.10)
 	if len(flat) != 0 {
-		t.Errorf("small moves are not pivots: %+v", flat)
+		t.Errorf("small moves are not swings: %+v", flat)
 	}
 }
 
@@ -116,8 +116,8 @@ func sameRegimes(a, b []Regime) bool {
 }
 
 func TestRegimes(t *testing.T) {
-	pivots, _ := ZigZag(prices(100, 111, 120, 105, 95, 100, 115, 130, 116), 0.10)
-	got, err := Regimes(pivots)
+	swings, _ := ZigZag(prices(100, 111, 120, 105, 95, 100, 115, 130, 116), 0.10)
+	got, err := Regimes(swings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,13 +132,13 @@ func TestRegimes(t *testing.T) {
 }
 
 func TestRegimesMinimums(t *testing.T) {
-	pivots := []Pivot{
-		{PivotLow, 0, 100, 3}, {PivotHigh, 10, 150, 12}, {PivotLow, 12, 140, 14},
-		{PivotHigh, 25, 190, 27}, {PivotLow, 40, 120, 42},
+	swings := []Swing{
+		{SwingLow, 0, 100, 3}, {SwingHigh, 10, 150, 12}, {SwingLow, 12, 140, 14},
+		{SwingHigh, 25, 190, 27}, {SwingLow, 40, 120, 42},
 	}
 	// The bear stretch 10 -> 12 is 2 rows long; with MinPhase 3 it goes, and the
 	// two bull stretches around it join into one from 0 to 25.
-	phases, err := Regimes(pivots, RegimeOptions{MinPhase: 3})
+	phases, err := Regimes(swings, RegimeOptions{MinPhase: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,17 +147,17 @@ func TestRegimesMinimums(t *testing.T) {
 		t.Errorf("MinPhase: got %+v\nwant %+v", phases, want)
 	}
 	// Lows at 0 and 12 make a cycle of 12 rows; MinCycle 13 removes the high at 10 and the low at 12.
-	cycles, err := Regimes(pivots, RegimeOptions{MinCycle: 13})
+	cycles, err := Regimes(swings, RegimeOptions{MinCycle: 13})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !sameRegimes(cycles, want) {
 		t.Errorf("MinCycle: got %+v\nwant %+v", cycles, want)
 	}
-	if _, err := Regimes([]Pivot{{PivotLow, 0, 1, 1}, {PivotLow, 2, 1, 3}}); err == nil {
-		t.Error("pivots that do not alternate should be an error")
+	if _, err := Regimes([]Swing{{SwingLow, 0, 1, 1}, {SwingLow, 2, 1, 3}}); err == nil {
+		t.Error("swings that do not alternate should be an error")
 	}
-	if _, err := Regimes(pivots, RegimeOptions{MinPhase: -1}); err == nil {
+	if _, err := Regimes(swings, RegimeOptions{MinPhase: -1}); err == nil {
 		t.Error("a negative minimum should be an error")
 	}
 }
