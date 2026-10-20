@@ -110,7 +110,10 @@ func RealityCheck(perf insyra.IDataTable, opts DataSnoopingOptions) (*RealityChe
 	if err != nil {
 		return nil, err
 	}
-	res := realityCheckF64(d, opts.Replications, jointDraws(len(d), opts))
+	res, err := realityCheckF64(d, opts.Replications, jointDraws(len(d), opts))
+	if err != nil {
+		return nil, err
+	}
 	res.BestName = names[res.Best]
 	return res, nil
 }
@@ -127,7 +130,7 @@ func jointDraws(n int, opts DataSnoopingOptions) func() []int {
 
 // realityCheckF64 is RealityCheck on validated relative performance, with
 // the time positions of each replication supplied by draw.
-func realityCheckF64(d [][]float64, replications int, draw func() []int) *RealityCheckResult {
+func realityCheckF64(d [][]float64, replications int, draw func() []int) (*RealityCheckResult, error) {
 	n := len(d)
 	k := len(d[0])
 	means := columnMeans(d)
@@ -144,7 +147,9 @@ func realityCheckF64(d [][]float64, replications int, draw func() []int) *Realit
 	resampled := make([]float64, k)
 	exceed := 0
 	for range replications {
-		resampledMeans(d, draw(), resampled)
+		if !resampledMeans(d, draw(), resampled) {
+			return nil, errResampledOverflow("RealityCheck")
+		}
 		vStar := 0.0
 		for j := range k {
 			vStar = math.Max(vStar, rootN*(resampled[j]-means[j]))
@@ -158,7 +163,7 @@ func realityCheckF64(d [][]float64, replications int, draw func() []int) *Realit
 		Statistic:    statistic,
 		Best:         best,
 		Replications: replications,
-	}
+	}, nil
 }
 
 // SPATest runs Hansen's (2005) test for Superior Predictive Ability on the
@@ -245,7 +250,9 @@ func spaF64(d [][]float64, blockSize, replications int, draw func() []int) (*SPA
 	resampled := make([]float64, k)
 	var exceedLower, exceedConsistent, exceedUpper int
 	for range replications {
-		resampledMeans(d, draw(), resampled)
+		if !resampledMeans(d, draw(), resampled) {
+			return nil, errResampledOverflow("SPATest")
+		}
 		var tLower, tConsistent, tUpper float64
 		for j := range k {
 			scale := rootN / omegas[j]
@@ -371,16 +378,29 @@ func columnMeans(d [][]float64) []float64 {
 
 // resampledMeans writes into out the mean of every column of d over the
 // rows indices names, the same rows for every column.
-func resampledMeans(d [][]float64, indices []int, out []float64) {
+//
+// It returns false when a resampled mean is not finite: finite values that
+// cancel in the original order can overflow once a draw repeats same-sign
+// rows, and an infinite or NaN mean must not be counted as an exceedance.
+func resampledMeans(d [][]float64, indices []int, out []float64) bool {
 	clear(out)
 	for _, t := range indices {
 		for j, v := range d[t] {
 			out[j] += v
 		}
 	}
+	finite := true
 	for j := range out {
 		out[j] /= float64(len(indices))
+		if math.IsNaN(out[j]) || math.IsInf(out[j], 0) {
+			finite = false
+		}
 	}
+	return finite
+}
+
+func errResampledOverflow(fn string) error {
+	return fmt.Errorf("%s: a resampled mean is not finite (the values are too large to sum when a draw repeats same-sign rows)", fn)
 }
 
 // spaLongRunVariance is Hansen's (2005) ω_k² for column j: the kernel

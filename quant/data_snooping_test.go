@@ -81,7 +81,10 @@ func TestDataSnoopingMatchesReference(t *testing.T) {
 				}
 			}
 
-			rc := realityCheckF64(d, len(c.Positions), replay(c.Positions))
+			rc, err := realityCheckF64(d, len(c.Positions), replay(c.Positions))
+			if err != nil {
+				t.Fatal(err)
+			}
 			if !closeRel(rc.Statistic, c.RCStatistic) || rc.Best != c.RCBest || rc.PValue != c.PRC {
 				t.Errorf("RealityCheck = %+v, want statistic %v, best %d, p %v", rc, c.RCStatistic, c.RCBest, c.PRC)
 			}
@@ -445,5 +448,31 @@ func TestDataSnoopingHugeBlockSizeIsRefused(t *testing.T) {
 			_, err = SPATest(perf, opts)
 			wantErrContains(t, err, "at most half")
 		}
+	}
+}
+
+func TestDataSnoopingRefusesOverflowingResampledMean(t *testing.T) {
+	rows := make([][]float64, 20)
+	for i := range rows {
+		rows[i] = []float64{1e308 * math.Pow(-1, float64(i))}
+	}
+	perf := toDT(rows)
+	for _, scheme := range []ResamplingScheme{ResampleStationary, ResampleMovingBlock} {
+		opts := DataSnoopingOptions{Replications: 200, BlockSize: 3, Seed: 5, Scheme: scheme}
+		_, err := RealityCheck(perf, opts)
+		wantErrContains(t, err, "resampled mean")
+		_, err = SPATest(perf, opts)
+		if err == nil {
+			t.Errorf("%v: SPATest accepted a column whose resampled means overflow", scheme)
+		}
+	}
+	// The same through the core, with draws that repeat same-sign rows.
+	d := make([][]float64, 6)
+	for i := range d {
+		d[i] = []float64{1e308 * math.Pow(-1, float64(i))}
+	}
+	_, err := spaF64(d, 1, 3, func() []int { return []int{0, 2, 4, 0, 2, 4} })
+	if err == nil {
+		t.Error("spaF64 accepted overflowing resampled means")
 	}
 }

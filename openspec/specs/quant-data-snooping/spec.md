@@ -66,7 +66,7 @@ Splitting `BlockBootstrap`'s resampling into drawing indices and reading values 
 - **THEN** `SPATest` returns an error naming that column
 
 ### Requirement: Options are validated
-Both functions SHALL return an error, never a substituted default, for a table with fewer than 3 rows or no columns, a cell that is not a finite number, `Replications` below 1, `BlockSize` below 1 or above T/2 (2·BlockSize greater than T), a column mean over the benchmark that is not finite, and a `ResamplingScheme` that is not one of its constants. `ResamplingScheme` SHALL have `String()`.
+Both functions SHALL return an error, never a substituted default, for a table with fewer than 3 rows or no columns, a cell that is not a finite number, `Replications` below 1, `BlockSize` below 1 or above T/2 (2·BlockSize greater than T), a column mean over the benchmark or a resampled mean that is not finite (never counted as an exceedance), and a `ResamplingScheme` that is not one of its constants. `ResamplingScheme` SHALL have `String()`.
 
 #### Scenario: Bad block size
 - **WHEN** `BlockSize` is 0 or greater than T/2 (2·BlockSize greater than T)
