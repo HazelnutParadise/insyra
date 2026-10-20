@@ -204,6 +204,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `ta.Keltner`、`KeltnerClassic`、`Donchian`、`SuperTrend`、`ParabolicSAR` 與 `Chandelier`，計算通道與移動停損，每條線都有名字。`ParabolicSAR` 與 TA-Lib 一致，其餘以依定義另寫的實作比對（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 - 新增 `ta.Aroon`、`TRIX`、`KAMA` 與 `Ichimoku`，計算趨勢指標。Aroon、TRIX、KAMA 與 TA-Lib 一致；Ichimoku 的雲是當列正在生效的雲，不往前投影（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 - 新增 `ta.CCI`、`Momentum`、`ROC`（與 TA-Lib 相同，回傳百分比）、`UltimateOscillator`、`StochRSI`、`ARBR`、`CR`（可選四種中間價）、`ForceIndex` 與 `ElderRay`，計算擺盪與動能指標；前五個與 TA-Lib 一致（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
+- 新增 `ta.MFI`、`AccumulationDistribution`、`CMF`、`ChaikinOscillator`、`EaseOfMovement`、`NVI`、`PVI` 與 `VolumeProfile`，計算成交量指標；`MFI`、`AccumulationDistribution`、`ChaikinOscillator` 與 TA-Lib 一致，`VolumeProfile` 回傳每個視窗的最大量價位與價值區（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 
 ## v0.3.4
 
