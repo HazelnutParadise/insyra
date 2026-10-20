@@ -424,7 +424,7 @@ type ResamplingScheme int // ResampleStationary (default), ResampleMovingBlock
 type DataSnoopingOptions struct {
     Benchmark    insyra.IDataList // nil compares every column with 0
     Replications int              // bootstrap replications, at least 1
-    BlockSize    int              // (mean) block length, 1 <= BlockSize <= T
+    BlockSize    int              // (mean) block length, 1 <= BlockSize <= T/2
     Seed         uint64           // always applies; same input and options → same result
     Scheme       ResamplingScheme
 }
@@ -435,7 +435,7 @@ func SPATest(perf insyra.IDataTable, opts DataSnoopingOptions) (*SPAResult, erro
 
 After trying many strategies or parameter sets and keeping the best, these answer **"does the best one really beat the benchmark, or did it win by luck?"** Both take the same `T×N` table as `PBO` (column k is strategy k, row t is period t, higher is better: returns, or negated losses) and compare every column with `Benchmark`. The null hypothesis is that no strategy has a positive expected edge, so a **small p-value means the best strategy's edge survives the search**.
 
-Both use a block bootstrap that keeps the correlation between strategies: every replication draws one sequence of time positions and applies it to all columns. The positions come from the same seeded stream as `BlockBootstrap`, so the results are bit-identical for the same input and options. Nothing is defaulted: `Replications` and `BlockSize` must be set. The p-values move in steps of `1/Replications`; 1,000–10,000 is typical. `BlockSize` should cover the serial dependence of the series; the stationary bootstrap White and Hansen use is the default.
+Both use a block bootstrap that keeps the correlation between strategies: every replication draws one sequence of time positions and applies it to all columns. The positions come from the same seeded stream as `BlockBootstrap`, so the results are bit-identical for the same input and options. Nothing is defaulted: `Replications` and `BlockSize` must be set. The p-values move in steps of `1/Replications`; 1,000–10,000 is typical. `BlockSize` should cover the serial dependence of the series; the stationary bootstrap White and Hansen use is the default. `BlockSize` may be at most half the rows (`2·BlockSize ≤ T`), because with blocks near `T` the moving block bootstrap resamples the original series almost unchanged, so the bootstrap has no spread, and as `q = 1/BlockSize` approaches 0 the weights `κ` approach 1 and `ω_k²` shrinks toward the sum of all autocovariances of the demeaned series, which is 0; both tests then call pure noise significant. Even at `T/2` the p-values are too small on noise more often than the nominal level, so keep `BlockSize` well below `T`.
 
 With `d_k,t` = column k minus the benchmark in period t, `dbar_k` its mean, `T` the number of rows and `dbar*_k` the mean of a resample:
 
@@ -445,7 +445,9 @@ With `d_k,t` = column k minus the benchmark in period t, `dbar_k` its mean, `T` 
 
 `RealityCheckResult` holds `PValue`, `Statistic`, `Best` (zero-based column number), `BestName` (its name, `""` if none) and `Replications`. `SPAResult` holds `PValueLower`, `PValueConsistent`, `PValueUpper`, `Statistic`, `Best`, `BestName` and `Replications`.
 
-**Errors:** a nil table, no columns, fewer than 3 rows, an unreadable or non-finite cell (named with its column and row index), `Replications < 1`, `BlockSize` outside `[1, T]`, an unknown `Scheme`, a benchmark whose length is not `T` or that is a nil list, and, for `SPATest` only, a column with no variance relative to the benchmark (such as a column equal to it).
+**Errors:** a nil table, no columns, fewer than 3 rows, an unreadable or non-finite cell (named with its column and row index), `Replications < 1`, `BlockSize` outside `[1, T/2]`, an unknown `Scheme`, a benchmark whose length is not `T` or that is a nil list, a column whose mean over the benchmark is not finite (values too large to sum), and, for `SPATest` only, a column with no variance relative to the benchmark: `d_k` constant (such as a column equal to the benchmark), or `ω_k²` not finite or at most `10⁻²⁴` times the mean of `d_k²`, which is rounding noise.
+
+**Speed.** `ω_k²` is computed directly from the formula above, which costs `O(T²·N)` for `SPATest`; it is slow for very large `T` (about 10 seconds at `T = 8000`, `N = 50`).
 
 **Compared with Python `arch`.** The definitions above are the paper's, checked against an independent implementation of its formulas (`quant/testdata/data_snooping_baseline.py`). `arch.bootstrap.SPA` does not reproduce them and its numbers will differ: in arch 8.0.0 the SPA statistic and its bootstrap values are the unstandardized maximum mean (`ω_k` is computed but used only to pick the consistent p-value's columns) without the `max(0, ·)`, and in later versions the standard error is re-estimated in every replication and the moving-block bootstrap uses the Bartlett kernel. arch also takes losses (lower is better), where these take performance. The bootstrap streams differ too, so even matching definitions give p-values that agree only within bootstrap error.
 
@@ -1232,7 +1234,7 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`ExpectedMaxSharpe`** — negative `sharpeVariance`
 - **`DeflatedSharpeRatio`** — nil, empty, or unreadable `trialSharpes` (the error names the series and row), or any downstream error
 - **`PBO`** — empty matrix, an unreadable cell (the error names the zero-based `column <j>` and the zero-based row index), columns of unequal length, fewer than 2 strategies, odd/non-positive `nSplits`, `nSplits > T`
-- **`RealityCheck`**, **`SPATest`** — nil table, no columns, fewer than 3 rows, an unreadable cell (named with its column and row index), `Replications < 1`, `BlockSize` outside `[1, T]`, an unknown `Scheme`, a benchmark of the wrong length or a nil list; `SPATest` also refuses a column with no variance relative to the benchmark
+- **`RealityCheck`**, **`SPATest`** — nil table, no columns, fewer than 3 rows, an unreadable cell (named with its column and row index), `Replications < 1`, `BlockSize` outside `[1, T/2]`, an unknown `Scheme`, a benchmark of the wrong length or a nil list, a column mean over the benchmark that is not finite; `SPATest` also refuses a column with no variance relative to the benchmark (constant or rounding-noise `ω²`)
 - **`WalkForward`** — non-positive `n`/`TrainSize`/`TestSize`, `TrainSize >= n`, nil callback
 - **`BlockBootstrap`** — empty or unreadable `returns` (non-numeric, NaN, Inf — the error names the row), non-positive `Horizon`/`Paths`, `BlockSize < 1`, `BlockSize > len(returns)`
 - **`PercentileBands`** — empty or ragged `paths`, empty `percentiles`, a percentile outside `[0, 100]`

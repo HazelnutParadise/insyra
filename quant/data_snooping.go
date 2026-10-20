@@ -34,9 +34,14 @@ type DataSnoopingOptions struct {
 	// typical.
 	Replications int
 	// BlockSize is the (mean, for the stationary bootstrap) block length
-	// in periods, 1 <= BlockSize <= T. It also sets q = 1/BlockSize in
-	// SPATest's variance estimate. Longer blocks keep more serial
-	// dependence.
+	// in periods, 1 <= BlockSize <= T/2 (2*BlockSize <= T). It also sets
+	// q = 1/BlockSize in SPATest's variance estimate. Longer blocks keep
+	// more serial dependence. Blocks longer than half the sample are
+	// refused: at BlockSize = T the moving block bootstrap resamples the
+	// original series every time, so the bootstrap has no variance, and as
+	// q approaches 0 the kernel weights approach 1, which makes ω² shrink
+	// toward the sum of all the demeaned series' autocovariances, which is
+	// 0. Both tests then call pure noise significant.
 	BlockSize int
 	// Seed initializes the random stream and always applies: the same table
 	// and options reproduce bit-identical results. It is the stream
@@ -173,7 +178,9 @@ func realityCheckF64(d [][]float64, replications int, draw func() []int) *Realit
 // autocovariance of column k's relative performance divided by T, and
 // κ(T,i) = ((T−i)/T)(1−q)^i + (i/T)(1−q)^(T−i), q = 1/BlockSize. A column
 // whose ω_k² is not positive, such as one equal to the benchmark, is an
-// error.
+// error, and so is one whose ω_k² is within rounding noise of zero
+// relative to the column's scale, or whose relative performance is
+// constant.
 func SPATest(perf insyra.IDataTable, opts DataSnoopingOptions) (*SPAResult, error) {
 	d, names, err := relativePerformance("SPATest", perf, opts)
 	if err != nil {
@@ -195,8 +202,21 @@ func spaF64(d [][]float64, blockSize, replications int, draw func() []int) (*SPA
 	means := columnMeans(d)
 	omegas := make([]float64, k)
 	for j := range k {
+		lo, hi, meanSq := d[0][j], d[0][j], 0.0
+		for t := range n {
+			lo, hi = math.Min(lo, d[t][j]), math.Max(hi, d[t][j])
+			meanSq += d[t][j] * d[t][j] / float64(n)
+		}
 		omega2 := spaLongRunVariance(d, j, means[j], blockSize)
-		if !(omega2 > 0) {
+		if math.IsNaN(omega2) || math.IsInf(omega2, 0) || math.IsInf(meanSq, 0) {
+			return nil, fmt.Errorf("SPATest: column %d has a long-run variance that is not finite (ω² = %v)", j, omega2)
+		}
+		// Rounding leaves the centered values of a constant column at about
+		// eps times its size, so ω² of such a column is about eps² (5e-32)
+		// times its mean square. 1e-24 sits seven orders of magnitude above
+		// that and far below the ω² of any series whose spread is visible
+		// at 12 significant digits.
+		if lo == hi || !(omega2 > 1e-24*meanSq) {
 			return nil, fmt.Errorf("SPATest: column %d has no variance relative to the benchmark (ω² = %v)", j, omega2)
 		}
 		omegas[j] = math.Sqrt(omega2)
@@ -256,10 +276,27 @@ func spaF64(d [][]float64, blockSize, replications int, draw func() []int) (*SPA
 
 // relativePerformance validates the input and returns d[t][k], column k
 // minus the benchmark in period t, with the column names.
-func relativePerformance(fn string, perf insyra.IDataTable, opts DataSnoopingOptions) ([][]float64, []string, error) {
+//
+// The table and the benchmark are read inside one AtomicDoAll, so a
+// concurrent writer cannot leave the result with columns or a benchmark
+// from different versions.
+func relativePerformance(fn string, perf insyra.IDataTable, opts DataSnoopingOptions) (d [][]float64, names []string, err error) {
 	if insyra.IsNilTable(perf) {
 		return nil, nil, fmt.Errorf("%s: perf is nil", fn)
 	}
+	var benchmark insyra.IDataList
+	if !insyra.IsNilList(opts.Benchmark) {
+		benchmark = opts.Benchmark
+	}
+	insyra.AtomicDoAll(func() {
+		d, names, err = snapshotRelativePerformance(fn, perf, opts)
+	}, perf, benchmark)
+	return d, names, err
+}
+
+// snapshotRelativePerformance is relativePerformance's body, run while the
+// table and the benchmark are locked.
+func snapshotRelativePerformance(fn string, perf insyra.IDataTable, opts DataSnoopingOptions) ([][]float64, []string, error) {
 	rows, cols := perf.Size()
 	if cols == 0 {
 		return nil, nil, fmt.Errorf("%s: perf has no columns", fn)
@@ -270,8 +307,8 @@ func relativePerformance(fn string, perf insyra.IDataTable, opts DataSnoopingOpt
 	if opts.Replications < 1 {
 		return nil, nil, fmt.Errorf("%s: Replications must be at least 1, got %d", fn, opts.Replications)
 	}
-	if opts.BlockSize < 1 || opts.BlockSize > rows {
-		return nil, nil, fmt.Errorf("%s: BlockSize must be between 1 and the number of rows (%d), got %d", fn, rows, opts.BlockSize)
+	if opts.BlockSize < 1 || 2*opts.BlockSize > rows {
+		return nil, nil, fmt.Errorf("%s: BlockSize must be at least 1 and at most half the number of rows (%d rows, so at most %d), got %d", fn, rows, rows/2, opts.BlockSize)
 	}
 	if opts.Scheme != ResampleStationary && opts.Scheme != ResampleMovingBlock {
 		return nil, nil, fmt.Errorf("%s: unknown Scheme %v", fn, opts.Scheme)
@@ -309,6 +346,11 @@ func relativePerformance(fn string, perf insyra.IDataTable, opts DataSnoopingOpt
 			}
 		}
 		names[j] = perf.GetColNameByNumber(j)
+	}
+	for j, m := range columnMeans(d) {
+		if math.IsNaN(m) || math.IsInf(m, 0) {
+			return nil, nil, fmt.Errorf("%s: the mean of perf column %d over the benchmark is not finite (the values are too large to sum)", fn, j)
+		}
 	}
 	return d, names, nil
 }

@@ -62,7 +62,11 @@ func TestDataSnoopingMatchesReference(t *testing.T) {
 			if c.Benchmark != nil {
 				opts.Benchmark = toDL(c.Benchmark...)
 			}
-			d, _, err := relativePerformance("test", toDT(c.Perf), opts)
+			// The reference includes a block as long as the sample, which the
+			// public functions refuse; the core still has to match it.
+			coreOpts := opts
+			coreOpts.BlockSize = 1
+			d, _, err := relativePerformance("test", toDT(c.Perf), coreOpts)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -93,6 +97,11 @@ func TestDataSnoopingMatchesReference(t *testing.T) {
 			}
 
 			// The public functions report the same statistics.
+			if 2*c.BlockSize > len(c.Perf) {
+				_, err := RealityCheck(toDT(c.Perf), opts)
+				wantErrContains(t, err, "at most half")
+				return
+			}
 			pubRC, err := RealityCheck(toDT(c.Perf), opts)
 			if err != nil {
 				t.Fatal(err)
@@ -317,4 +326,111 @@ func TestDataSnoopingRejectsBadInput(t *testing.T) {
 	if _, err := RealityCheck(same, DataSnoopingOptions{Replications: 10, BlockSize: 2, Benchmark: toDL(0.03, 0.01, 0.0, 0.02)}); err != nil {
 		t.Errorf("RealityCheck refused a column equal to the benchmark: %v", err)
 	}
+}
+
+func noiseTable(seed uint64, n int) insyra.IDataTable {
+	rng := rand.New(rand.NewPCG(seed, seed+1))
+	col := make([]any, n)
+	for t := range col {
+		col[t] = 0.0005 + 0.01*rng.NormFloat64()
+	}
+	return insyra.NewDataTable(insyra.NewDataList(col...))
+}
+
+func TestDataSnoopingBlockSizeAtMostHalfTheRows(t *testing.T) {
+	perf := noiseTable(7, 200)
+	for _, scheme := range []ResamplingScheme{ResampleStationary, ResampleMovingBlock} {
+		for _, bs := range []int{101, 199, 200} {
+			opts := DataSnoopingOptions{Replications: 200, BlockSize: bs, Seed: 1, Scheme: scheme}
+			_, err := RealityCheck(perf, opts)
+			wantErrContains(t, err, "at most half")
+			_, err = SPATest(perf, opts)
+			wantErrContains(t, err, "at most half")
+		}
+		// Half the rows is allowed, and pure noise does not look significant.
+		opts := DataSnoopingOptions{Replications: 500, BlockSize: 100, Seed: 1, Scheme: scheme}
+		rc, err := RealityCheck(perf, opts)
+		if err != nil {
+			t.Fatalf("BlockSize T/2 refused: %v", err)
+		}
+		spa, err := SPATest(perf, opts)
+		if err != nil {
+			t.Fatalf("BlockSize T/2 refused: %v", err)
+		}
+		if rc.PValue < 0.02 || spa.PValueConsistent < 0.02 {
+			t.Errorf("%v: noise looks significant at BlockSize T/2: RC %v, SPA %v", scheme, rc.PValue, spa.PValueConsistent)
+		}
+	}
+}
+
+func TestSPARefusesConstantRelativePerformance(t *testing.T) {
+	opts := DataSnoopingOptions{Replications: 10, BlockSize: 1}
+	// A constant column against a nil benchmark: rounding noise in the
+	// centered values must not pass for variance.
+	_, err := SPATest(toDT([][]float64{{0.1}, {0.1}, {0.1}}), opts)
+	wantErrContains(t, err, "no variance relative to the benchmark")
+	// Constant difference from a moving benchmark.
+	perf := toDT([][]float64{{0.1}, {0.2}, {0.3}, {0.4}})
+	opts.Benchmark = toDL(0.0, 0.1, 0.2, 0.3)
+	_, err = SPATest(perf, opts)
+	wantErrContains(t, err, "no variance relative to the benchmark")
+}
+
+func TestDataSnoopingRefusesOverflowingMean(t *testing.T) {
+	perf := toDT([][]float64{{1e308}, {1e308}, {1e308}, {-1e308}})
+	opts := DataSnoopingOptions{Replications: 10, BlockSize: 2}
+	_, err := RealityCheck(perf, opts)
+	wantErrContains(t, err, "not finite")
+	_, err = SPATest(perf, opts)
+	wantErrContains(t, err, "not finite")
+}
+
+// TestRelativePerformanceSnapshotIsConsistent runs a writer that always
+// leaves both columns and the benchmark equal to the same version. A
+// snapshot mixing versions would show columns or a benchmark that differ.
+func TestRelativePerformanceSnapshotIsConsistent(t *testing.T) {
+	version := func(v float64) []*insyra.DataList {
+		a := make([]any, 50)
+		for i := range a {
+			a[i] = v + float64(i)
+		}
+		return []*insyra.DataList{insyra.NewDataList(a...), insyra.NewDataList(a...), insyra.NewDataList(a...)}
+	}
+	init := version(0)
+	table := insyra.NewDataTable(init[0], init[1])
+	bench := init[2]
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for v := 1.0; ; v++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			next := version(v)
+			insyra.AtomicDoAll(func() {
+				table.UpdateColByNumber(0, next[0])
+				table.UpdateColByNumber(1, next[1])
+				bench.AtomicDo(func(l *insyra.DataList) { l.Clear(); l.Append(next[2].Data()...) })
+			}, table, bench)
+		}
+	}()
+	for range 300 {
+		d, _, err := relativePerformance("test", table, DataSnoopingOptions{Replications: 1, BlockSize: 2, Benchmark: bench})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for r := range d {
+			if d[r][0] != 0 || d[r][1] != 0 {
+				close(stop)
+				<-done
+				t.Fatalf("mixed snapshot: row %d has relative performance %v", r, d[r])
+			}
+		}
+	}
+	close(stop)
+	<-done
 }

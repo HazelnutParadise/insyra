@@ -55,7 +55,7 @@ Splitting `BlockBootstrap`'s resampling into drawing indices and reading values 
 - **THEN** the consistent p-value stays near 0
 
 ### Requirement: Long-run variance of the SPA test
-ω_k² SHALL be γ_0 + 2·Σ_{i=1}^{T−1} κ(T, i)·γ_i, where γ_i is the lag-i autocovariance of d_k divided by T and κ(T, i) = ((T−i)/T)·(1−q)^i + (i/T)·(1−q)^(T−i) with q = 1/BlockSize, as in Hansen (2005). A column whose ω_k² is not positive SHALL be an error.
+ω_k² SHALL be γ_0 + 2·Σ_{i=1}^{T−1} κ(T, i)·γ_i, where γ_i is the lag-i autocovariance of d_k divided by T and κ(T, i) = ((T−i)/T)·(1−q)^i + (i/T)·(1−q)^(T−i) with q = 1/BlockSize, as in Hansen (2005). A column whose relative performance is constant, or whose ω_k² is not finite or is at most 1e-24 times the mean of d_k², SHALL be an error.
 
 #### Scenario: Matches an independent implementation
 - **WHEN** ω_k, dbar_k and T_SPA are computed for a fixed table
@@ -66,10 +66,10 @@ Splitting `BlockBootstrap`'s resampling into drawing indices and reading values 
 - **THEN** `SPATest` returns an error naming that column
 
 ### Requirement: Options are validated
-Both functions SHALL return an error, never a substituted default, for a table with fewer than 3 rows or no columns, a cell that is not a finite number, `Replications` below 1, `BlockSize` below 1 or above T, and a `ResamplingScheme` that is not one of its constants. `ResamplingScheme` SHALL have `String()`.
+Both functions SHALL return an error, never a substituted default, for a table with fewer than 3 rows or no columns, a cell that is not a finite number, `Replications` below 1, `BlockSize` below 1 or above T/2 (2·BlockSize greater than T), a column mean over the benchmark that is not finite, and a `ResamplingScheme` that is not one of its constants. `ResamplingScheme` SHALL have `String()`.
 
 #### Scenario: Bad block size
-- **WHEN** `BlockSize` is 0 or greater than T
+- **WHEN** `BlockSize` is 0 or greater than T/2 (2·BlockSize greater than T)
 - **THEN** the call returns an error and no result
 
 #### Scenario: Non-numeric cell
