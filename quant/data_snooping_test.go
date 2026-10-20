@@ -434,3 +434,16 @@ func TestRelativePerformanceSnapshotIsConsistent(t *testing.T) {
 	close(stop)
 	<-done
 }
+
+func TestDataSnoopingHugeBlockSizeIsRefused(t *testing.T) {
+	perf := noiseTable(3, 20)
+	for _, bs := range []int{math.MaxInt, math.MaxInt/2 + 1, 11} {
+		for _, scheme := range []ResamplingScheme{ResampleStationary, ResampleMovingBlock} {
+			opts := DataSnoopingOptions{Replications: 5, BlockSize: bs, Scheme: scheme}
+			_, err := RealityCheck(perf, opts)
+			wantErrContains(t, err, "at most half")
+			_, err = SPATest(perf, opts)
+			wantErrContains(t, err, "at most half")
+		}
+	}
+}

@@ -307,7 +307,7 @@ func snapshotRelativePerformance(fn string, perf insyra.IDataTable, opts DataSno
 	if opts.Replications < 1 {
 		return nil, nil, fmt.Errorf("%s: Replications must be at least 1, got %d", fn, opts.Replications)
 	}
-	if opts.BlockSize < 1 || 2*opts.BlockSize > rows {
+	if opts.BlockSize < 1 || opts.BlockSize > rows/2 {
 		return nil, nil, fmt.Errorf("%s: BlockSize must be at least 1 and at most half the number of rows (%d rows, so at most %d), got %d", fn, rows, rows/2, opts.BlockSize)
 	}
 	if opts.Scheme != ResampleStationary && opts.Scheme != ResampleMovingBlock {
