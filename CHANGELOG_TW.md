@@ -115,6 +115,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 檢定結果現在可以一起處理：共用的結果型別匯出為 `TestResult`，所有檢定結果都符合新的 `HypothesisTestResult` 介面（`Base() *TestResult`），同一個函式或同一個 slice 可以接 t 檢定、Mann-Whitney U 與卡方檢定的結果。`stats` 的每個結果型別都有版面一致的 `String()` 與 `Show()`，`fmt.Println(res)` 會印出可讀的結果，不再是 Go 的原始結構；`fmt.Fprintln(w, res)` 可寫到任何 writer。`ChiSquareTestResult.Show()` 與 `FactorAnalysisResult.Show()` 改印這個版面。
 - **BREAKING**：`FactorAnalysis` 在 `Rotation.Method: FactorRotationOblimin` 且 `Rotation.Restarts` 大於 1 時，現在真的會做參數所描述的搜尋。Oblimin 過去每一輪都自己建一個單位矩陣當起點，忽略傳進來的起點，所以 `Restarts: 20` 是把同一份計算跑 20 次再回傳第一個結果，實測 20 個起點花 202 ms 回傳和 9.9 ms 一模一樣的答案。現在它和其他九個方法一樣從每個起點各旋轉一次，而且 `Delta: 0` 時與同樣 `Restarts` 的 Quartimin 結果逐位元相同，因為兩者本來就是同一個準則。在測試套件的 12 個生成資料集上，載荷最多移動 1.2e-5；在過因子的模型上（用三因子資料抽四個因子），額外的起點會找到單位矩陣起點到不了的另一個盆地，準則值低 47 倍。那個解的因子相關也高達 0.905：`Restarts` 要的是最低的準則值，不保證那個解就是你要的，這對任何多起點的斜交旋轉都成立。預設的 `Restarts: 1` 不變。SPSS 的 Direct Oblimin 是單起點，`Restarts: 1` 仍然是。
 - 新增 `stats.VarianceRatio(returns, qs...)`，計算 Lo-MacKinlay 變異數比 VR(q)，同時給同質變異與異質變異穩健的 z 值；`stats.ChowDenning` 一次檢驗多個持有期。新增 `stats.KaplanMeier(durations, observed)`，從含有「還沒結束」（截尾）的持續時間估計存活曲線，附 Greenwood 標準誤與中位數，結果與 R 的 `survival::survfit` 一致（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
+- 新增 `stats.LinearRegressionWithOptions(opts, y, xs...)`，可回報穩健或 HAC 標準誤：`LinearRegressionOptions{CovType, Lag}` 可選 `CovHC0`～`CovHC3`（R `sandwich::vcovHC` 的異質變異穩健估計），或 `CovHAC`（Bartlett 權重、不做小樣本校正的 Newey-West，同 `sandwich::NeweyWest(prewhite = FALSE, adjust = FALSE)`）。lag 給負數時用 `NeweyWestLag(n)`。t 值與 p 值用自由度 n-k 的 t 分配，結果已與 statsmodels 比對。`LinearRegression` 的數字與過去完全相同；結果多了 `CovType` 與 `Lag` 欄位，`String()` 也會印出（[#478](https://github.com/HazelnutParadise/insyra/issues/478)）。
 
 ### `csvxl`
 
@@ -196,6 +197,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `quant.EventStudy(prices, events, dates, opts)` 與 `quant.SignalBuckets(signal, prices, dates, opts)`，量測事件之後、或依訊號分桶之後，多個持有期的超額報酬。部位至少在訊號後一列才進場，基準可用橫斷面平均、指數或序列自身的平均，t 檢定是對月平均做 Newey-West。新增 `quant.Bias` 與 `quant.BiasZ`，計算乖離率與只用前幾天波動度調整的乖離率（[#445](https://github.com/HazelnutParadise/insyra/issues/445)、[#446](https://github.com/HazelnutParadise/insyra/issues/446)）。
 - 新增 `quant.ToneCounts(texts, lexicon, opts)`，依你提供的字詞表計算每則文字的正面與負面詞數，支援否定詞，中文則用最長優先的子字串比對。新增 `quant.DailyTone(published, counts, tradingDays, opts)`，依交易日加總，週末與收盤後的新聞算到下一個交易日，並提供滾動淨語氣與不含當日的往前 z 分數（[#460](https://github.com/HazelnutParadise/insyra/issues/460)）。該 issue 的 NYT Archive 客戶端尚未包含。
 - 新增 `quant.SMA`、`EMA`、`MACD`、`Bollinger`、`TrueRange`、`ATR` 與 `KD`，依 TA-Lib 的定義計算常用技術指標，並以種子固定的合成序列與 TA-Lib 逐筆比對。`KD` 有台灣券商軟體慣用的遞迴平滑（預設）與 TA-Lib STOCH 的移動平均兩種算法（[#474](https://github.com/HazelnutParadise/insyra/issues/474)）。
+- `quant.FactorModel` 可多傳一個 `FactorModelOptions{CovType, Lag}`，讓 alpha 的 t 值改用 Newey-West（`stats.CovHAC`）或異質變異穩健標準誤，不再只有 OLS 標準誤；日報酬有自我相關時，OLS 會把 alpha 的 t 值算得太大。`Lag` 為 0 時用 `stats.NeweyWestLag(n)`。不給選項時結果不變，`FactorModelResult` 會記錄 `CovType` 與 `Lag`（[#478](https://github.com/HazelnutParadise/insyra/issues/478)）。
 
 ## v0.3.4
 

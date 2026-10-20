@@ -2091,6 +2091,9 @@ type LinearRegressionResult struct {
     Residuals        []float64
     RSquared         float64
     AdjustedRSquared float64
+
+    CovType CovType // covariance the inference fields come from; CovOLS here
+    Lag     int     // lag CovHAC used, after any automatic choice; 0 otherwise
 }
 ```
 
@@ -2132,6 +2135,51 @@ for i := range result.Coefficients {
         result.ConfidenceIntervals[i][1],
     )
 }
+```
+
+### Linear Regression With Robust or HAC Standard Errors
+
+```go
+type CovType int
+
+const (
+    CovOLS CovType = iota // classical s²(XᵀX)⁻¹ (the default)
+    CovHC0                // White
+    CovHC1                // HC0 · n/(n−k)
+    CovHC2                // squared residuals divided by 1−h
+    CovHC3                // squared residuals divided by (1−h)²
+    CovHAC                // Newey–West
+)
+
+type LinearRegressionOptions struct {
+    CovType CovType
+    Lag     int // CovHAC only: < 0 = NeweyWestLag(n), 0 = HC0, must be < n
+}
+
+func LinearRegressionWithOptions(opts LinearRegressionOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error)
+```
+
+**Description:** The same least-squares fit as `LinearRegression`, with standard errors, t values, p values and confidence intervals from the covariance `opts.CovType` names. The coefficients, residuals and R² do not change. `LinearRegression` is this function with zero options and returns the same numbers it always has.
+
+The classical standard errors assume every error has the same variance and is uncorrelated with the others. When the spread of the errors changes with the predictors (heteroskedasticity), `CovHC0`–`CovHC3` stay valid; `CovHC3` is the usual choice in small samples. When the errors are also correlated over time, as with daily returns, use `CovHAC`.
+
+- **HC0–HC3** are the estimators of R's `sandwich::vcovHC` with the same names; h is an observation's leverage. A leverage of exactly 1 makes HC2 and HC3 divide by zero, and the affected values come out `NaN` or `Inf`, as they do in `sandwich`.
+- **HAC** is `(XᵀX)⁻¹ S (XᵀX)⁻¹`, where S sums the autocovariances of the scores up to `Lag` with Bartlett weights `1 − j/(Lag+1)`. No n/(n−k) small-sample factor is applied, matching `sandwich::NeweyWest(lag = L, prewhite = FALSE, adjust = FALSE)` and statsmodels' `cov_type="HAC"` with `use_correction=False`. A negative `Lag` chooses `NeweyWestLag(n)`, as `NeweyWestMeanTest` does; `Lag` 0 gives exactly `CovHC0`.
+- **Distribution.** Every CovType reads t values against the t distribution with n−k degrees of freedom, as `lmtest::coeftest` and `NeweyWestMeanTest` do. statsmodels reads robust p-values from the normal distribution unless `use_t=True`, so its default p-values are slightly smaller.
+
+`Lag` is ignored for the other CovTypes, and the result records 0. The result's `CovType` and `Lag` fields say which covariance produced the inference. An unknown CovType or a HAC lag not smaller than the number of observations is an error. The results are checked against statsmodels for every CovType.
+
+**Example:**
+
+```go
+result, err := stats.LinearRegressionWithOptions(
+    stats.LinearRegressionOptions{CovType: stats.CovHAC, Lag: -1},
+    returns, marketExcess,
+)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("alpha=%.5f, HAC t=%.2f (lag %d)\n", result.Coefficients[0], result.TValues[0], result.Lag)
 ```
 
 ### Polynomial Regression

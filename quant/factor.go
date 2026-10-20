@@ -1,6 +1,7 @@
 package quant
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/HazelnutParadise/insyra"
@@ -13,22 +14,24 @@ type FactorModelResult struct {
 	// Alpha is the intercept after subtracting the per-period risk-free rate
 	// from the asset return.
 	Alpha float64
-	// AlphaStdErr is the OLS standard error of Alpha.
+	// AlphaStdErr is the standard error of Alpha under CovType.
 	AlphaStdErr float64
-	// AlphaTValue is the OLS t statistic for Alpha.
+	// AlphaTValue is the t statistic for Alpha under CovType.
 	AlphaTValue float64
-	// AlphaPValue is the OLS p value for Alpha.
+	// AlphaPValue is the two-tailed p value for Alpha under CovType.
 	AlphaPValue float64
 
 	// FactorNames contains factor column names in table order.
 	FactorNames []string
 	// Exposures contains the OLS coefficient for each factor.
 	Exposures []float64
-	// StdErrs contains the OLS standard error for each factor exposure.
+	// StdErrs contains the standard error of each factor exposure under
+	// CovType.
 	StdErrs []float64
-	// TValues contains the OLS t statistic for each factor exposure.
+	// TValues contains the t statistic of each factor exposure under CovType.
 	TValues []float64
-	// PValues contains the OLS p value for each factor exposure.
+	// PValues contains the two-tailed p value of each factor exposure under
+	// CovType.
 	PValues []float64
 
 	// RSquared is the coefficient of determination.
@@ -39,6 +42,30 @@ type FactorModelResult struct {
 	N int
 	// Residuals contains one regression residual per observation.
 	Residuals []float64
+
+	// CovType is the covariance the standard errors come from; stats.CovOLS,
+	// the ordinary OLS standard errors, unless FactorModelOptions chose another.
+	CovType stats.CovType
+	// Lag is the number of autocovariances stats.CovHAC used, after any
+	// automatic choice; it is 0 for the other covariance types.
+	Lag int
+}
+
+// FactorModelOptions are the optional settings of FactorModel. The zero value
+// gives the ordinary OLS standard errors.
+type FactorModelOptions struct {
+	// CovType chooses the covariance of the coefficients, passed to
+	// stats.LinearRegressionWithOptions: stats.CovOLS (the default), the
+	// heteroskedasticity-consistent stats.CovHC0 to stats.CovHC3, or the
+	// Newey-West stats.CovHAC, which also allows for autocorrelated residuals
+	// such as those of daily strategy returns.
+	CovType stats.CovType
+	// Lag is the number of autocovariances stats.CovHAC includes. 0 chooses
+	// stats.NeweyWestLag(n), as ForwardOptions.NeweyWestLag does; a positive
+	// value is used as it is and must be smaller than n. A negative value is
+	// refused: for no autocorrelation terms use stats.CovHC0. Other covariance
+	// types ignore it.
+	Lag int
 }
 
 func newFloat64DataList(values []float64) *insyra.DataList {
@@ -71,12 +98,34 @@ func (r *FactorModelResult) Exposure(name string) (float64, bool) {
 // subtract riskFreeRate from that column before passing it here. All values
 // are aligned per period and riskFreeRate is a per-period rate.
 //
+// Standard errors are ordinary OLS ones unless opts chooses a robust or HAC
+// covariance; at most one FactorModelOptions may be given. Without opts the
+// result is the same as before the options existed.
+//
 // Returns an error if either input is nil, factors has no columns, a factor
 // length differs from the asset length, fewer than k+2 observations are
-// supplied for k factors, or a cell is non-numeric or non-finite. Errors from
-// stats.LinearRegression, including a singular factor matrix, are returned
-// unchanged.
-func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64) (*FactorModelResult, error) {
+// supplied for k factors, a cell is non-numeric or non-finite, more than one
+// FactorModelOptions is given, or the HAC lag is negative. Errors from
+// stats.LinearRegressionWithOptions, including a singular factor matrix, an
+// unknown covariance type or a lag not smaller than n, are returned unchanged.
+func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64, opts ...FactorModelOptions) (*FactorModelResult, error) {
+	if len(opts) > 1 {
+		return nil, errors.New("FactorModel: accepts at most one FactorModelOptions")
+	}
+	var o FactorModelOptions
+	if len(opts) == 1 {
+		o = opts[0]
+	}
+	regressionOptions := stats.LinearRegressionOptions{CovType: o.CovType}
+	if o.CovType == stats.CovHAC {
+		if o.Lag < 0 {
+			return nil, fmt.Errorf("FactorModel: HAC lag %d is negative; 0 chooses it automatically, and stats.CovHC0 has no autocorrelation terms", o.Lag)
+		}
+		regressionOptions.Lag = o.Lag
+		if o.Lag == 0 {
+			regressionOptions.Lag = -1 // stats.NeweyWestLag(n)
+		}
+	}
 	if asset == nil {
 		return nil, fmt.Errorf("FactorModel: asset is nil")
 	}
@@ -124,7 +173,7 @@ func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate
 		factorValues[i] = newFloat64DataList(values)
 	}
 
-	regression, err := stats.LinearRegression(newFloat64DataList(assetExcess), factorValues...)
+	regression, err := stats.LinearRegressionWithOptions(regressionOptions, newFloat64DataList(assetExcess), factorValues...)
 	if err != nil {
 		return nil, err
 	}
@@ -143,5 +192,7 @@ func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate
 		AdjustedRSquared: regression.AdjustedRSquared,
 		N:                assetLength,
 		Residuals:        append([]float64(nil), regression.Residuals...),
+		CovType:          regression.CovType,
+		Lag:              regression.Lag,
 	}, nil
 }

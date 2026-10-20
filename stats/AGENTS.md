@@ -111,6 +111,8 @@ Layer 4 — 對外統計方法（公開 API）
 | Σ(x-x̄)² | `simpleOLSSxx(xs)` |
 | 殘差、SSE、R²、Adjusted R² | `computeGoodnessOfFit(ys, yHatFn, df)` |
 | 係數的 SE / t / p（矩陣版） | `computeCoeffInference(coeffs, XTXInv, mse, df)` |
+| 由各係數變異數算 SE / t / p | `coeffInferenceFromVariances(coeffs, variances, df)` |
+| 穩健／HAC（sandwich）係數變異數 | `olsSandwichVariances(X, residuals, XTXInv, leveragePower, meatScale, lag)` |
 | 兩係數 CI（截距 + 斜率） | `buildTwoCoeffCIs(a, b, seA, seB, df)` |
 | 多係數 CI 切片 | `buildMultiCoeffCIs(coeffs, standardErrors, df)` |
 

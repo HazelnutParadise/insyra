@@ -314,6 +314,8 @@ type FactorModelResult struct {
     AdjustedRSquared float64
     N                int
     Residuals        []float64
+    CovType          stats.CovType // covariance the standard errors come from
+    Lag              int           // lag stats.CovHAC used; 0 for the others
 }
 
 func (r *FactorModelResult) Exposure(name string) (float64, bool)
@@ -324,12 +326,19 @@ func (r *FactorModelResult) Exposure(name string) (float64, bool)
 ### FactorModel
 
 ```go
-func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64) (*FactorModelResult, error)
+func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64, opts ...FactorModelOptions) (*FactorModelResult, error)
+
+type FactorModelOptions struct {
+    CovType stats.CovType // stats.CovOLS (default), CovHC0–CovHC3, or CovHAC
+    Lag     int           // CovHAC: 0 = stats.NeweyWestLag(n), > 0 used as given
+}
 ```
 
-`FactorModel` uses the same OLS coefficients, inference values, R², adjusted R², and residuals as `stats.LinearRegression`. With one factor, pass an already excess market column and the raw market return plus `riskFreeRate` to `CAPM`; the factor-model exposure, alpha, and standard errors agree with CAPM.
+`FactorModel` uses the same OLS coefficients, inference values, R², adjusted R², and residuals as `stats.LinearRegressionWithOptions` with the chosen covariance. With one factor, pass an already excess market column and the raw market return plus `riskFreeRate` to `CAPM`; the factor-model exposure, alpha, and standard errors agree with CAPM.
 
-The model requires at least `k + 2` observations for `k` factors. It refuses nil inputs, an empty factor table, unequal asset/factor lengths, unreadable cells, and `NaN` or `Inf` values. Errors identify the factor column and zero-based row index where applicable. A collinear factor set returns the regression error instead of a near-singular numeric result. Standard errors are ordinary OLS standard errors; heteroskedasticity and autocorrelation adjustments such as Newey–West are outside this API.
+The model requires at least `k + 2` observations for `k` factors. It refuses nil inputs, an empty factor table, unequal asset/factor lengths, unreadable cells, and `NaN` or `Inf` values. Errors identify the factor column and zero-based row index where applicable. A collinear factor set returns the regression error instead of a near-singular numeric result.
+
+Without options the standard errors are ordinary OLS ones and the result is what it always was. The residuals of daily strategy returns are usually heteroskedastic and autocorrelated, which makes the OLS standard error of alpha too small and its t value too large. `FactorModelOptions{CovType: stats.CovHAC}` reports Newey–West standard errors instead; `stats.CovHC0` to `stats.CovHC3` correct for heteroskedasticity only. The covariance and its small-sample conventions are those of [`stats.LinearRegressionWithOptions`](stats.md#linear-regression-with-robust-or-hac-standard-errors): no n/(n−k) factor for HAC, p-values from the t distribution with n−k degrees of freedom. `Lag` follows the quant convention of `ForwardOptions.NeweyWestLag`: 0 chooses `stats.NeweyWestLag(n)`, a positive value is used as given and must be smaller than n, and a negative value is refused (use `stats.CovHC0` for no autocorrelation terms). Other covariance types ignore `Lag`. At most one `FactorModelOptions` may be passed.
 
 ---
 
@@ -1021,6 +1030,14 @@ if err != nil {
 }
 smbExposure, _ := model.Exposure("SMB")
 fmt.Printf("alpha = %.4f, SMB exposure = %.3f\n", model.Alpha, smbExposure)
+
+// The same model with Newey-West standard errors and an automatic lag.
+hac, err := quant.FactorModel(assetReturns, factors, dailyRiskFreeRate,
+    quant.FactorModelOptions{CovType: stats.CovHAC})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("alpha t = %.2f (OLS) vs %.2f (HAC, lag %d)\n", model.AlphaTValue, hac.AlphaTValue, hac.Lag)
 ```
 
 ### Deflated Sharpe Ratio after a parameter search
@@ -1185,7 +1202,7 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`PercentileBands`** — empty or ragged `paths`, empty `percentiles`, a percentile outside `[0, 100]`
 - **`Beta`** — nil input, unequal lengths, fewer than 3 returns, zero benchmark variance, or an unreadable/non-finite cell named with its series and row
 - **`CAPM`** — the same input and benchmark validation as `Beta`; `riskFreeRate` is per period
-- **`FactorModel`** — nil input, no factor columns, unequal asset/factor lengths, fewer than `k+2` observations, unreadable/non-finite cells named with the factor and row, or collinear factors
+- **`FactorModel`** — nil input, no factor columns, unequal asset/factor lengths, fewer than `k+2` observations, unreadable/non-finite cells named with the factor and row, collinear factors, more than one `FactorModelOptions`, an unknown covariance type, or a HAC lag that is negative or not smaller than n
 - **`BlackScholes`** — non-positive Spot, Strike, or Volatility; negative TimeToExpiry; non-finite inputs; or an unknown option Type
 - **`ImpliedVolatility`** — non-finite price, zero TimeToExpiry, a price outside the option's named lower or upper bound, or failure to converge within 200 iterations
 - **`ValueAtRisk`** — fewer than 2 returns, confidence outside `(0, 1)`, unknown method, or an unreadable/non-finite return named with its row
