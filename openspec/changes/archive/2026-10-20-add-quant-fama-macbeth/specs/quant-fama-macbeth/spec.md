@@ -8,11 +8,22 @@
 - **THEN** the intercept is 1, the coefficients are 2 and −3, and every daily R² is 1
 
 ### Requirement: The averages are tested with a Newey-West t-test
-`quant.FamaMacBeth` SHALL test each average with `stats.NeweyWestMeanTest` on the series of daily estimates, choosing the lag automatically when NeweyWestLag is 0, using no autocorrelation correction when it is negative and the given lag when it is positive, and its standard errors SHALL equal `linearmodels.FamaMacBeth` with the Bartlett kernel, the same bandwidth and `debiased=False`.
+`quant.FamaMacBeth` SHALL test each average with `stats.NeweyWestMeanTest` on the series of daily estimates, choosing the lag automatically when NeweyWestLag is 0 and using the given lag when it is positive, and its standard errors SHALL equal `linearmodels.FamaMacBeth` with the Bartlett kernel, the same bandwidth and `debiased=False`.
 
 #### Scenario: Agreement with linearmodels
 - **WHEN** a seeded panel is fitted with lags 0, 3 and 5
 - **THEN** coefficients, standard errors and t statistics match the linearmodels baseline to 1e-9 relative
+
+### Requirement: The correction can be switched off, and a negative lag is refused
+`quant.FamaMacBeth` SHALL, when NoNeweyWest is true, run the t-test with lag 0 (variance divided by T, equal to `linearmodels` with `cov_type="unadjusted"` and `debiased=False`) and report Lag 0, and SHALL return an error for a negative NeweyWestLag and for NoNeweyWest together with a non-zero NeweyWestLag.
+
+#### Scenario: No correction
+- **WHEN** NoNeweyWest is true
+- **THEN** the standard errors equal `stats.NeweyWestMeanTest` with lag 0 on each daily series and Lag is 0
+
+#### Scenario: Contradictory or negative lag
+- **WHEN** NeweyWestLag is negative, or NoNeweyWest is true with NeweyWestLag 2
+- **THEN** the call returns an error
 
 ### Requirement: A day that cannot be estimated is skipped, not fatal
 `quant.FamaMacBeth` SHALL skip and list in Skipped a day with fewer usable stocks than MinObservations (at least k+2 for k characteristics) and a day whose cross-section is collinear, and SHALL return an error only when fewer than two days remain.
@@ -29,7 +40,7 @@
 - **THEN** the day's coefficient is unchanged
 
 ### Requirement: Input that cannot be regressed is refused
-`quant.FamaMacBeth` SHALL return an error for a nil table, no characteristic, a repeated characteristic, the return column listed as a characteristic, a column that is not found, a missing date, a text or infinite value, more than one options value, and a lag not smaller than the number of estimated days.
+`quant.FamaMacBeth` SHALL return an error for a nil table, no characteristic, a repeated characteristic, the return column listed as a characteristic, a column that is not found, a missing date, a text or infinite value, more than one options value, a negative lag, and a lag not smaller than the number of estimated days.
 
 #### Scenario: A column that does not exist
 - **WHEN** a characteristic is named "size" and the table has no such column

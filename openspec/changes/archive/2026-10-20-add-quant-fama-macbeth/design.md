@@ -8,7 +8,7 @@ Each date's rows with a finite return and every characteristic finite form an n 
 
 ## Time-series test
 
-Each coefficient's series over the estimated days goes to `stats.NeweyWestMeanTest`. The option's sign is translated: 0 → −1 (automatic, `stats.NeweyWestLag(T)`), negative → 0, positive unchanged. The automatic lag depends only on T, so every coefficient shares it, as in `linearmodels`; its own automatic bandwidth is the Newey-West (1994) data-driven one, so the baseline passes an explicit lag.
+Each coefficient's series over the estimated days goes to `stats.NeweyWestMeanTest`. `NeweyWestLag` 0 is automatic (`stats.NeweyWestLag(T)`, passed to the test as its automatic marker), positive is used as given and negative is an error. `NoNeweyWest` switches the correction off by calling the test with lag 0 (variance divided by T, not the T-1 of `stats.SingleSampleTTest`); combined with a non-zero `NeweyWestLag` it is an error. The automatic lag depends only on T, so every coefficient shares it, as in `linearmodels`; its own automatic bandwidth is the Newey-West (1994) data-driven one, so the baseline passes an explicit lag.
 
 The variance is `S/T` with Bartlett weights `1 − j/(lag+1)` and no small-sample factor, which equals `linearmodels.FamaMacBeth.fit(cov_type="kernel", kernel="bartlett", bandwidth=lag, debiased=False)`; `debiased=True` divides by T−1 instead. The p value is two-sided from t with T−1 degrees of freedom, as `NeweyWestMeanTest` reports it. `linearmodels` reads it from the normal when `debiased=False` and from t with N−k−1 (all stock-days, not T) when `debiased=True`, so the p values are compared against the t statistic, not against `linearmodels`.
 

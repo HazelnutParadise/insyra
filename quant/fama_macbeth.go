@@ -13,11 +13,15 @@ import (
 // FamaMacBethOptions are the optional settings of FamaMacBeth.
 type FamaMacBethOptions struct {
 	// NeweyWestLag is the lag of the Newey-West t-test on each coefficient's
-	// daily series. 0 chooses stats.NeweyWestLag(T) for T estimated days, a
-	// negative value applies no autocorrelation correction, and a positive
-	// value is used as given. This is the quant convention, the opposite sign
-	// of stats.NeweyWestMeanTest, where a negative lag is automatic.
+	// daily series. 0 chooses stats.NeweyWestLag(T) for T estimated days and
+	// a positive value is used as given. A negative value is an error.
 	NeweyWestLag int
+	// NoNeweyWest switches the Newey-West correction off: the t-test then
+	// uses lag 0, whose variance divides by T. That equals linearmodels with
+	// cov_type="unadjusted" and debiased=False; it is not the one-sample
+	// t-test of stats.SingleSampleTTest, which divides by T-1. Setting it
+	// together with a non-zero NeweyWestLag is an error.
+	NoNeweyWest bool
 	// MinObservations is the fewest usable stocks a day needs. A day with
 	// fewer is skipped. At least k+2 are always needed for k characteristics,
 	// which is also the default.
@@ -78,6 +82,7 @@ type FamaMacBethResult struct {
 // Bartlett weights 1 - j/(lag+1) and no small-sample factor. linearmodels
 // reads the p value from the normal distribution in that setting; FamaMacBeth
 // uses t with T-1 degrees of freedom, as stats.NeweyWestMeanTest does.
+// NoNeweyWest runs the same test with lag 0, which divides the variance by T.
 func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []string, opts ...FamaMacBethOptions) (*FamaMacBethResult, error) {
 	k := len(charCols)
 	if k == 0 {
@@ -89,6 +94,12 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []
 	var o FamaMacBethOptions
 	if len(opts) == 1 {
 		o = opts[0]
+	}
+	if o.NeweyWestLag < 0 {
+		return nil, fmt.Errorf("NeweyWestLag is %d; it must be 0 (automatic) or positive, and NoNeweyWest switches the correction off", o.NeweyWestLag)
+	}
+	if o.NoNeweyWest && o.NeweyWestLag != 0 {
+		return nil, fmt.Errorf("NoNeweyWest cannot be combined with NeweyWestLag %d", o.NeweyWestLag)
 	}
 	if o.MinObservations < k+2 {
 		o.MinObservations = k + 2
@@ -196,10 +207,10 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []
 	}
 	lag := o.NeweyWestLag
 	switch {
+	case o.NoNeweyWest:
+		lag = 0
 	case lag == 0:
 		lag = -1 // stats.NeweyWestMeanTest chooses automatically
-	case lag < 0:
-		lag = 0
 	}
 
 	tests := make([]*stats.NeweyWestResult, k+1)

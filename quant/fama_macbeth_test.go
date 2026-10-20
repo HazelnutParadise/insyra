@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/stats"
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
@@ -105,9 +106,9 @@ func TestFamaMacBethMatchesLinearmodels(t *testing.T) {
 		insyra.NewDataList(cols[3]...).SetName("mom"),
 		insyra.NewDataList(cols[4]...).SetName("size"),
 	)
-	for lagName, lag := range map[string]int{"0": -1, "3": 3, "5": 5} {
+	for lagName, lag := range map[string]int{"0": 0, "3": 3, "5": 5} {
 		fit := base.Fits[lagName]
-		res, err := FamaMacBeth(table, "date", "ret", []string{"mom", "size"}, FamaMacBethOptions{NeweyWestLag: lag})
+		res, err := FamaMacBeth(table, "date", "ret", []string{"mom", "size"}, FamaMacBethOptions{NeweyWestLag: lag, NoNeweyWest: lagName == "0"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -132,8 +133,30 @@ func TestFamaMacBethMatchesLinearmodels(t *testing.T) {
 				t.Errorf("lag %s, p value %d: got %v, want %v", lagName, j, res.PValues[j], want)
 			}
 		}
-		if wantLag := max(lag, 0); res.Lag != wantLag {
+		if res.Lag != lag {
 			t.Errorf("lag %s: Lag %d", lagName, res.Lag)
+		}
+	}
+}
+
+// NoNeweyWest is the t-test the old negative lag produced: lag 0, variance
+// divided by T, not the T-1 of a one-sample t-test.
+func TestFamaMacBethNoNeweyWest(t *testing.T) {
+	table := fmbPanel(30, 8, func(d, s int) float64 { return math.Sin(float64(d*s + d)) })
+	res, err := FamaMacBeth(table, "date", "ret", []string{"x1", "x2"}, FamaMacBethOptions{NoNeweyWest: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Lag != 0 {
+		t.Errorf("Lag %d, want 0", res.Lag)
+	}
+	for j, name := range []string{"x1", "x2"} {
+		want, err := stats.NeweyWestMeanTest(newFloat64DataList(column(t, res.Daily, name)), 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Coefs[j] != want.Mean || res.StdErrs[j] != want.StdErr || res.TValues[j] != want.Statistic || res.PValues[j] != want.PValue {
+			t.Errorf("%s: got %v %v %v %v, want lag-0 test %+v", name, res.Coefs[j], res.StdErrs[j], res.TValues[j], res.PValues[j], want)
 		}
 	}
 }
@@ -241,6 +264,8 @@ func TestFamaMacBethRefusesBadInput(t *testing.T) {
 		{"infinite value", inf, []string{"x1"}, nil, "non-finite"},
 		{"missing date", noDate, []string{"x1"}, nil, "date is missing"},
 		{"two options", good(), []string{"x1"}, []FamaMacBethOptions{{}, {}}, "at most one"},
+		{"negative lag", good(), []string{"x1"}, []FamaMacBethOptions{{NeweyWestLag: -1}}, "NeweyWestLag"},
+		{"no correction with a lag", good(), []string{"x1"}, []FamaMacBethOptions{{NoNeweyWest: true, NeweyWestLag: 2}}, "NoNeweyWest"},
 		{"lag too long", good(), []string{"x1"}, []FamaMacBethOptions{{NeweyWestLag: 4}}, "lag"},
 	}
 	for _, c := range cases {

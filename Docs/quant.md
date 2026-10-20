@@ -750,7 +750,8 @@ Fama-MacBeth regressions: on every date, the return is regressed on an intercept
 
 **Options (`FamaMacBethOptions`)**
 
-- `NeweyWestLag`: the lag of the t-test. `0` (default) chooses `stats.NeweyWestLag(T)` for `T` estimated dates, a negative value applies no autocorrelation correction, and a positive value is used as given. This is the opposite sign of `stats.NeweyWestMeanTest`, where a negative lag means automatic. A lag not smaller than `T` is an error.
+- `NeweyWestLag`: the lag of the t-test. `0` (default) chooses `stats.NeweyWestLag(T)` for `T` estimated dates and a positive value is used as given. A negative value, or a lag not smaller than `T`, is an error.
+- `NoNeweyWest`: `true` switches the Newey-West correction off, so the t-test runs with lag 0, whose variance divides by `T`. This equals `linearmodels` with `cov_type="unadjusted", debiased=False`; it is not the same as `stats.SingleSampleTTest`, which divides by `T-1`. Setting it together with a non-zero `NeweyWestLag` is an error, and the reported `Lag` is 0.
 - `MinObservations`: the fewest usable stocks a date needs; fewer skips the date. At least k+2 are always needed for k characteristics, which is also the default.
 - `Standardize`: replace each characteristic by its z-score over the date's usable stocks (sample standard deviation) before regressing, so the coefficients are per one standard deviation.
 
@@ -763,7 +764,7 @@ Fama-MacBeth regressions: on every date, the return is regressed on an intercept
 - `Lag`: the lag used, after any automatic choice. `Days`: the number of estimated dates, `T`.
 - `Skipped`: the dates left out and why.
 
-The standard errors equal Python's `linearmodels.FamaMacBeth(...).fit(cov_type="kernel", kernel="bartlett", bandwidth=lag, debiased=False)`, and with no correction `cov_type="unadjusted", debiased=False`: Bartlett weights `1 - j/(lag+1)` and no small-sample factor. `debiased=True` divides the variance by `T-1` instead of `T`. The p values are two-sided from the t distribution with `T-1` degrees of freedom, as `stats.NeweyWestMeanTest` reports them; linearmodels uses the normal distribution with `debiased=False`. Its automatic bandwidth is a data-driven choice, not `stats.NeweyWestLag`, so pass the lag explicitly to compare.
+The standard errors equal Python's `linearmodels.FamaMacBeth(...).fit(cov_type="kernel", kernel="bartlett", bandwidth=lag, debiased=False)`, and with `NoNeweyWest` `cov_type="unadjusted", debiased=False`: Bartlett weights `1 - j/(lag+1)` and no small-sample factor. `debiased=True` divides the variance by `T-1` instead of `T`. The p values are two-sided from the t distribution with `T-1` degrees of freedom, as `stats.NeweyWestMeanTest` reports them; linearmodels uses the normal distribution with `debiased=False`. Its automatic bandwidth is a data-driven choice, not `stats.NeweyWestLag`, so pass the lag explicitly to compare.
 
 ```go
 res, err := quant.FamaMacBeth(panel, "date", "ret_next", []string{"momentum", "size", "bias"},
