@@ -54,9 +54,9 @@ type DataSnoopingOptions struct {
 
 // RealityCheckResult is the outcome of White's Reality Check.
 type RealityCheckResult struct {
-	// PValue is the share of replications whose statistic is strictly
-	// greater than Statistic: the probability of a best column this good
-	// when no column beats the benchmark.
+	// PValue is the share of replications whose statistic is at least
+	// Statistic (a tie counts): the probability of a best column this good
+	// when no column beats the benchmark. It is 1 when Statistic is 0.
 	PValue float64
 	// Statistic is max(max_k sqrt(T)·dbar_k, 0), dbar_k being column k's
 	// mean performance over the benchmark.
@@ -102,7 +102,10 @@ type SPAResult struct {
 //
 // The statistic is V = max(max_k sqrt(T)·dbar_k, 0); each replication
 // computes V* = max(0, max_k sqrt(T)·(dbar*_k − dbar_k)), and the p-value
-// is the share of replications with V* > V. A small p-value means the best
+// is the share of replications with V* >= V. Hansen and White write a strict
+// inequality, which differs only on exact ties; counting a tie keeps the
+// p-value at 1, not 0, when no column beats the benchmark and both
+// statistics are 0. A small p-value means the best
 // strategy's edge is unlikely to be luck. SPATest is the same question with
 // a statistic that a poor or very noisy strategy cannot dilute.
 func RealityCheck(perf insyra.IDataTable, opts DataSnoopingOptions) (*RealityCheckResult, error) {
@@ -154,7 +157,7 @@ func realityCheckF64(d [][]float64, replications int, draw func() []int) (*Reali
 		for j := range k {
 			vStar = math.Max(vStar, rootN*(resampled[j]-means[j]))
 		}
-		if vStar > statistic {
+		if vStar >= statistic {
 			exceed++
 		}
 	}
@@ -175,7 +178,7 @@ func realityCheckF64(d [][]float64, replications int, draw func() []int) (*Reali
 // The statistic is T_SPA = max(max_k sqrt(T)·dbar_k/ω_k, 0). Each
 // replication computes T* = max(0, max_k sqrt(T)·(dbar*_k − g(dbar_k))/ω_k)
 // with the same ω_k, and a p-value is the share of replications with
-// T* > T_SPA. The lower p-value uses g(x) = max(0, x), the upper g(x) = x,
+// T* >= T_SPA. The lower p-value uses g(x) = max(0, x), the upper g(x) = x,
 // and the consistent g(x) = x when x >= −sqrt(ω_k²/T·2·log log T) and 0
 // otherwise.
 //
@@ -260,13 +263,13 @@ func spaF64(d [][]float64, blockSize, replications int, draw func() []int) (*SPA
 			tConsistent = math.Max(tConsistent, scale*(resampled[j]-consistent[j]))
 			tUpper = math.Max(tUpper, scale*(resampled[j]-means[j]))
 		}
-		if tLower > statistic {
+		if tLower >= statistic {
 			exceedLower++
 		}
-		if tConsistent > statistic {
+		if tConsistent >= statistic {
 			exceedConsistent++
 		}
-		if tUpper > statistic {
+		if tUpper >= statistic {
 			exceedUpper++
 		}
 	}

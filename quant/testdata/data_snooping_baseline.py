@@ -78,10 +78,10 @@ def case(seed, n, k, block, benchmark, scheme, reps, edge=None, poor=None):
     counts = {"rc": 0, "lower": 0, "consistent": 0, "upper": 0}
     for pos in positions:
         star = d[pos].mean(axis=0)
-        if max(0.0, (root * (star - dbar)).max()) > v_rc:
+        if max(0.0, (root * (star - dbar)).max()) >= v_rc:
             counts["rc"] += 1
         for name, center in (("lower", lower), ("consistent", consistent), ("upper", dbar)):
-            if max(0.0, (root * (star - center) / omega).max()) > t_spa:
+            if max(0.0, (root * (star - center) / omega).max()) >= t_spa:
                 counts[name] += 1
 
     return {

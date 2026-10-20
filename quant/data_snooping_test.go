@@ -476,3 +476,33 @@ func TestDataSnoopingRefusesOverflowingResampledMean(t *testing.T) {
 		t.Error("spaF64 accepted overflowing resampled means")
 	}
 }
+
+// With no edge at all the statistic is 0 and so is every centered
+// replication, so a tie must count as an exceedance: the p-value is 1, never
+// the 0 a strict comparison would give for a null that is exactly true.
+func TestDataSnoopingTiesCountAsExceedances(t *testing.T) {
+	zeros := toDT([][]float64{{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}})
+	under := toDT([][]float64{{-0.02, -0.01}, {-0.03, -0.05}, {-0.01, -0.02}, {-0.04, -0.01}, {-0.02, -0.03}, {-0.05, -0.02}})
+	for _, scheme := range []ResamplingScheme{ResampleStationary, ResampleMovingBlock} {
+		opts := DataSnoopingOptions{Replications: 50, BlockSize: 2, Seed: 3, Scheme: scheme}
+		for name, perf := range map[string]insyra.IDataTable{"zeros": zeros, "underperforming": under} {
+			rc, err := RealityCheck(perf, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rc.Statistic != 0 || rc.PValue != 1 {
+				t.Errorf("%s/%v: RealityCheck statistic %v p %v, want 0 and 1", name, scheme, rc.Statistic, rc.PValue)
+			}
+		}
+		spa, err := SPATest(under, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if spa.Statistic != 0 || spa.PValueLower != 1 || spa.PValueConsistent != 1 || spa.PValueUpper != 1 {
+			t.Errorf("%v: SPATest %+v, want statistic 0 and every p-value 1", scheme, spa)
+		}
+		if !(spa.PValueLower <= spa.PValueConsistent && spa.PValueConsistent <= spa.PValueUpper) {
+			t.Errorf("%v: p-value order broken: %+v", scheme, spa)
+		}
+	}
+}

@@ -33,7 +33,7 @@ Splitting `BlockBootstrap`'s resampling into drawing indices and reading values 
 - **THEN** it returns the same paths as before
 
 ### Requirement: White's Reality Check
-`RealityCheck` SHALL return the statistic V = max(max_k sqrt(T)·dbar_k, 0), the column with the largest dbar_k, and the p-value equal to the share of replications whose V* = max(0, max_k sqrt(T)·(dbar*_k − dbar_k)) is strictly greater than V.
+`RealityCheck` SHALL return the statistic V = max(max_k sqrt(T)·dbar_k, 0), the column with the largest dbar_k, and the p-value equal to the share of replications whose V* = max(0, max_k sqrt(T)·(dbar*_k − dbar_k)) is at least V (a tie counts, so the p-value is 1 when V is 0).
 
 #### Scenario: A strong strategy
 - **WHEN** one column beats the benchmark by a wide margin in every period
@@ -44,7 +44,7 @@ Splitting `BlockBootstrap`'s resampling into drawing indices and reading values 
 - **THEN** the p-value is not small
 
 ### Requirement: Hansen's SPA test
-`SPATest` SHALL return T_SPA = max(max_k sqrt(T)·dbar_k/ω_k, 0) and three p-values, each the share of replications with T* strictly greater than T_SPA, where T* = max(0, max_k sqrt(T)·(dbar*_k − g(dbar_k))/ω_k) and ω_k is the same for the statistic and every replication. The lower p-value SHALL use g(x) = max(0, x), the upper g(x) = x and the consistent g(x) = x when x ≥ −sqrt(ω_k²/T·2·log log T) and 0 otherwise.
+`SPATest` SHALL return T_SPA = max(max_k sqrt(T)·dbar_k/ω_k, 0) and three p-values, each the share of replications with T* at least T_SPA (a tie counts), where T* = max(0, max_k sqrt(T)·(dbar*_k − g(dbar_k))/ω_k) and ω_k is the same for the statistic and every replication. The lower p-value SHALL use g(x) = max(0, x), the upper g(x) = x and the consistent g(x) = x when x ≥ −sqrt(ω_k²/T·2·log log T) and 0 otherwise.
 
 #### Scenario: Ordering of the three p-values
 - **WHEN** any table is tested
