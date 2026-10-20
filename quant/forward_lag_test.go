@@ -3,6 +3,7 @@ package quant
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -95,5 +96,32 @@ func TestForwardNeweyWestLagErrors(t *testing.T) {
 		if _, err := EventStudy(prices, events, dates, EventStudyOptions{ForwardOptions: o}); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
+	}
+}
+
+func TestForwardExplicitLagNotBelowMonthsIsRefused(t *testing.T) {
+	// Eight months: lag 7 is the largest allowed, 8 and 12 are refused rather
+	// than shortened.
+	if s := lagTStat(t, ForwardOptions{NeweyWestLag: 7}); s.Lag != 7 {
+		t.Errorf("lag 7 ran with lag %d", s.Lag)
+	}
+	prices, events, dates, flat, _ := lagStudy()
+	for _, lag := range []int{8, 12} {
+		o := ForwardOptions{Horizons: []int{1}, Benchmark: BenchmarkLevels, BenchmarkLevels: flat, NeweyWestLag: lag}
+		_, err := EventStudy(prices, events, dates, EventStudyOptions{ForwardOptions: o})
+		if err == nil || !strings.Contains(err.Error(), "must be smaller than the number of observations 8") {
+			t.Errorf("lag %d: err %v", lag, err)
+		}
+	}
+}
+
+func TestForwardAutomaticLagIsCappedByMonths(t *testing.T) {
+	// Two months: NeweyWestLag(2) is 1 here, but never more than months-1.
+	prices := insyra.NewDataTable(insyra.NewDataList(100.0, 100.0, 110.0, 110.0, 110.0, 99.0).SetName("A"))
+	events := insyra.NewDataTable(insyra.NewDataList(true, false, false, true, false, false).SetName("A"))
+	dates := insyra.NewDataList("2026-01-01", "2026-01-02", "2026-01-03", "2026-02-01", "2026-02-02", "2026-02-03")
+	res, err := EventStudy(prices, events, dates, EventStudyOptions{ForwardOptions: ForwardOptions{Horizons: []int{1}}})
+	if err != nil || res[0].Lag >= res[0].Months {
+		t.Errorf("%+v, %v", res, err)
 	}
 }

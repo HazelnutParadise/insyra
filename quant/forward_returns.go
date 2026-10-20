@@ -61,7 +61,10 @@ type ForwardOptions struct {
 	Tradable insyra.IDataTable
 	// NeweyWestLag is the lag of the t-test on the monthly series. 0 chooses
 	// stats.NeweyWestLag(months), a positive value is used as it is, and a
-	// negative value is an error.
+	// negative value is an error. A positive lag must be smaller than the
+	// number of months with an observation; EventStudy and SignalBuckets return
+	// an error otherwise, instead of shortening it. The automatic lag is capped
+	// at months-1.
 	NeweyWestLag int
 	// NoNeweyWest switches the Newey-West correction off: the t-test then uses
 	// lag 0, whose variance divides by the number of months T. That equals
@@ -411,10 +414,8 @@ func (a *accumulator) summary(horizon, lag int, noNeweyWest bool) (ForwardSummar
 	case noNeweyWest:
 		useLag = 0
 	case lag == 0:
-		useLag = stats.NeweyWestLag(len(months))
-	}
-	if useLag >= len(months) {
-		useLag = len(months) - 1
+		// Automatic is not a request for a particular lag, so it is capped.
+		useLag = min(stats.NeweyWestLag(len(months)), len(months)-1)
 	}
 	res, err := stats.NeweyWestMeanTest(insyra.NewDataList(monthly...), useLag)
 	if err != nil {
