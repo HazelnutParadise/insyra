@@ -20,7 +20,7 @@ Chart patterns and fan-principle breaks found from causal turning points, each r
 - **THEN** BreakoutAt is -1 and Direction is BreakNone
 
 ### Requirement: Tolerances are options
-`ta.DetectPatterns` SHALL take how flat a line counts as flat, how alike peaks must be, the longest wait for a breakout, the least separation of a double and the trend look-back from `PatternOptions`, and SHALL NOT join pivots from different segments.
+`ta.DetectPatterns` SHALL take how flat a line counts as flat, how alike peaks must be, the longest wait for a breakout, the least separation of a double and the trend look-back from `PatternOptions`, and SHALL NOT join swings from different segments.
 
 #### Scenario: A wider flat tolerance
 - **WHEN** lows rise by 25% of the height and FlatTolerance is 0.3
@@ -34,15 +34,15 @@ Chart patterns and fan-principle breaks found from causal turning points, each r
 - **THEN** breaks 1, 2 and 3 are returned, all BreakDown
 
 ### Requirement: Unusable input is refused
-`ta.DetectPatterns` and `ta.FanBreaks` SHALL return an error for pivots that are out of order or do not fit the prices, for a negative option and for a price that is not positive.
+`ta.DetectPatterns` and `ta.FanBreaks` SHALL return an error for swings that are out of order or do not fit the prices, for a negative option and for a price that is not positive.
 
-#### Scenario: A pivot confirmed before it happened
+#### Scenario: A swing confirmed before it happened
 - **WHEN** ConfirmedAt is not after Index
-- **THEN** an error names the pivot's list position
+- **THEN** an error names the swing's list position
 
-### Requirement: SegmentStarts that differ from the pivots are refused
-`ta.DetectPatterns` and `ta.FanBreaks` SHALL return an error when a pivot's Segment does not match the segment its row lies in under the SegmentStarts they are given.
+### Requirement: SegmentStarts that differ from the swings are refused
+`ta.DetectPatterns` and `ta.FanBreaks` SHALL return an error when a swing's Segment does not match the segment its row lies in under the SegmentStarts they are given.
 
-#### Scenario: Pivots made without breaks
-- **WHEN** the pivots all have Segment 0 and SegmentStarts is `[15]` with a pivot after row 15
-- **THEN** an error names the pivot's list position
+#### Scenario: Swings made without breaks
+- **WHEN** the swings all have Segment 0 and SegmentStarts is `[15]` with a swing after row 15
+- **THEN** an error names the swing's list position

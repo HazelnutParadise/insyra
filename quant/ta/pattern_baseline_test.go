@@ -59,33 +59,33 @@ func baseline(t *testing.T) []baselineCase {
 
 func listOf(v []float64) *insyra.DataList { return insyra.NewDataList(toAny(v)...) }
 
-func baselinePivots(t *testing.T, c baselineCase) []Pivot {
+func baselineSwings(t *testing.T, c baselineCase) []Swing {
 	t.Helper()
 	th, err := VolatilityThresholds(listOf(c.Close), c.Multiple, VolatilityThresholdOptions{SegmentStarts: c.Breaks})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pivots, err := ZigZagAdaptive(listOf(c.Close), th, ZigZagOptions{SegmentStarts: c.Breaks})
+	swings, err := ZigZagAdaptive(listOf(c.Close), th, ZigZagOptions{SegmentStarts: c.Breaks})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return pivots
+	return swings
 }
 
 func TestZigZagByMatchesTheReference(t *testing.T) {
 	for _, c := range baseline(t) {
-		got := baselinePivots(t, c)
+		got := baselineSwings(t, c)
 		if len(got) != len(c.Pivots) {
-			t.Fatalf("%s: %d pivots, reference has %d", c.Name, len(got), len(c.Pivots))
+			t.Fatalf("%s: %d swings, reference has %d", c.Name, len(got), len(c.Pivots))
 		}
 		for i, w := range c.Pivots {
-			kind := PivotLow
+			kind := SwingLow
 			if w.Kind == 1 {
-				kind = PivotHigh
+				kind = SwingHigh
 			}
-			want := Pivot{kind, w.Index, w.Price, w.Confirmed, w.Segment}
+			want := Swing{kind, w.Index, w.Price, w.Confirmed, w.Segment}
 			if got[i] != want {
-				t.Fatalf("%s pivot %d: got %+v, reference %+v", c.Name, i, got[i], want)
+				t.Fatalf("%s swing %d: got %+v, reference %+v", c.Name, i, got[i], want)
 			}
 		}
 	}
@@ -94,7 +94,7 @@ func TestZigZagByMatchesTheReference(t *testing.T) {
 func TestDetectPatternsMatchesTheReference(t *testing.T) {
 	kindsSeen := map[PatternKind]bool{}
 	for _, c := range baseline(t) {
-		got, err := DetectPatterns(listOf(c.Close), baselinePivots(t, c), PatternOptions{SegmentStarts: c.Breaks})
+		got, err := DetectPatterns(listOf(c.Close), baselineSwings(t, c), PatternOptions{SegmentStarts: c.Breaks})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,7 +127,7 @@ func TestDetectPatternsMatchesTheReference(t *testing.T) {
 func TestFanBreaksMatchesTheReference(t *testing.T) {
 	total := 0
 	for _, c := range baseline(t) {
-		got, err := FanBreaks(listOf(c.Close), baselinePivots(t, c), FanOptions{SegmentStarts: c.Breaks})
+		got, err := FanBreaks(listOf(c.Close), baselineSwings(t, c), FanOptions{SegmentStarts: c.Breaks})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -1,18 +1,18 @@
 ## ADDED Requirements
 
 ### Requirement: A threshold for every row keeps the search causal
-`quant.ZigZagAdaptive` SHALL confirm a high or low when the price has moved the threshold of the row of the extreme away from it, SHALL give the same pivots as `ZigZag` for a constant threshold, and a series cut short SHALL give exactly the pivots of the full series whose confirming row lies before the cut.
+`quant.ZigZagAdaptive` SHALL confirm a high or low when the price has moved the threshold of the row of the extreme away from it, SHALL give the same swings as `ZigZag` for a constant threshold, and a series cut short SHALL give exactly the swings of the full series whose confirming row lies before the cut.
 
 #### Scenario: A loose threshold at a peak
 - **WHEN** a peak at row 1 has a threshold of 0.30 and the price falls 12.5% from it
-- **THEN** no pivot is reported at row 1
+- **THEN** no swing is reported at row 1
 
 ### Requirement: Nothing is carried over a data break
-`quant.ZigZagAdaptive` SHALL start a new search at every row in `ZigZagOptions.SegmentStarts`, SHALL NOT report a pivot confirmed after its segment ended, and SHALL set `Pivot.Segment` to the number of breaks before the pivot.
+`quant.ZigZagAdaptive` SHALL start a new search at every row in `ZigZagOptions.SegmentStarts`, SHALL NOT report a swing confirmed after its segment ended, and SHALL set `Swing.Segment` to the number of breaks before the swing.
 
 #### Scenario: Two breaks
 - **WHEN** the breaks are rows 200 and 350
-- **THEN** a pivot at row 250 has Segment 1 and was confirmed before row 350
+- **THEN** a swing at row 250 has Segment 1 and was confirmed before row 350
 
 ### Requirement: Volatility thresholds use only past returns
 `quant.VolatilityThresholds` SHALL return for every row the larger of Floor and the multiple given times the population standard deviation of the log returns of the last Window rows of its segment, SHALL return the multiple times WarmupVolatility (at least Floor) while fewer than MinRows returns exist, and SHALL restart at every break.
@@ -29,7 +29,7 @@
 - **THEN** an error names its row index
 
 ### Requirement: Regimes never cross a data break
-`quant.Regimes` SHALL turn the pivots of each segment into regimes on its own, SHALL apply MinPhase and MinCycle inside a segment, and SHALL NOT report two pivots of different segments as an alternation error or join them into a regime.
+`quant.Regimes` SHALL turn the swings of each segment into regimes on its own, SHALL apply MinPhase and MinCycle inside a segment, and SHALL NOT report two swings of different segments as an alternation error or join them into a regime.
 
 #### Scenario: Two highs either side of a break
 - **WHEN** one segment ends with a high and the next starts with a high

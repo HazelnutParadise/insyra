@@ -191,26 +191,26 @@ type patternCandidate struct {
 	invLow       float64
 }
 
-func checkPivots(pivots []Pivot, n int) error {
-	for i, p := range pivots {
+func checkSwings(swings []Swing, n int) error {
+	for i, p := range swings {
 		if p.Index < 0 || p.ConfirmedAt <= p.Index || p.ConfirmedAt >= n {
-			return fmt.Errorf("pivot at list position %d has Index %d and ConfirmedAt %d, which do not fit %d rows", i, p.Index, p.ConfirmedAt, n)
+			return fmt.Errorf("swing at list position %d has Index %d and ConfirmedAt %d, which do not fit %d rows", i, p.Index, p.ConfirmedAt, n)
 		}
-		if i > 0 && (p.ConfirmedAt < pivots[i-1].ConfirmedAt || p.Segment < pivots[i-1].Segment || p.Index <= pivots[i-1].Index) {
-			return fmt.Errorf("pivot at list position %d is not after the one before it; pass the pivots as ZigZag returns them", i)
+		if i > 0 && (p.ConfirmedAt < swings[i-1].ConfirmedAt || p.Segment < swings[i-1].Segment || p.Index <= swings[i-1].Index) {
+			return fmt.Errorf("swing at list position %d is not after the one before it; pass the swings as ZigZag returns them", i)
 		}
 	}
 	return nil
 }
 
-// checkSegments refuses pivots whose Segment does not match the segment their
-// row lies in under segment starts, which is what happens when the pivots were made
+// checkSegments refuses swings whose Segment does not match the segment their
+// row lies in under segment starts, which is what happens when the swings were made
 // with different SegmentStarts than the ones passed now.
-func checkSegments(pivots []Pivot, starts []int) error {
-	for i, p := range pivots {
-		seg := sort.SearchInts(starts, p.Index+1) // starts at or before the pivot's row
+func checkSegments(swings []Swing, starts []int) error {
+	for i, p := range swings {
+		seg := sort.SearchInts(starts, p.Index+1) // starts at or before the swing's row
 		if p.Segment != seg {
-			return fmt.Errorf("pivot at list position %d has Segment %d but row index %d lies in segment %d of the SegmentStarts given; pass the SegmentStarts used for ZigZagAdaptive", i, p.Segment, p.Index, seg)
+			return fmt.Errorf("swing at list position %d has Segment %d but row index %d lies in segment %d of the SegmentStarts given; pass the SegmentStarts used for ZigZagAdaptive", i, p.Segment, p.Index, seg)
 		}
 	}
 	return nil
@@ -231,7 +231,7 @@ func segmentStartOf(n int, starts []int) []int {
 // ZigZag or ZigZagAdaptive, using only information available at the close of each
 // row: a pattern is first known on the row that confirms its last turning
 // point, and its breakout is the first later close beyond its line. The
-// pivots must come from the same prices.
+// swings must come from the same prices.
 //
 // It watches head and shoulders tops and bottoms, double tops and bottoms,
 // boxes, ascending, descending and symmetric triangles, rising and falling
@@ -243,7 +243,7 @@ func segmentStartOf(n int, starts []int) []int {
 // reader would draw through intraday highs and lows. The same pattern is
 // found again from every turning point that completes it, so a long
 // sideways stretch yields many overlapping boxes.
-func DetectPatterns(prices insyra.IDataList, pivots []Pivot, opts ...PatternOptions) ([]Pattern, error) {
+func DetectPatterns(prices insyra.IDataList, swings []Swing, opts ...PatternOptions) ([]Pattern, error) {
 	if len(opts) > 1 {
 		return nil, errors.New("DetectPatterns accepts at most one PatternOptions")
 	}
@@ -273,29 +273,29 @@ func DetectPatterns(prices insyra.IDataList, pivots []Pivot, opts ...PatternOpti
 	if err != nil {
 		return nil, err
 	}
-	if err := checkPivots(pivots, len(c)); err != nil {
+	if err := checkSwings(swings, len(c)); err != nil {
 		return nil, err
 	}
 	starts, err := cleanSegmentStarts(o.SegmentStarts, len(c))
 	if err != nil {
 		return nil, err
 	}
-	if err := checkSegments(pivots, starts); err != nil {
+	if err := checkSegments(swings, starts); err != nil {
 		return nil, err
 	}
 	segStart := segmentStartOf(len(c), starts)
 
 	var cands []*patternCandidate
 	var live []*patternCandidate
-	next := 0 // pivots confirmed so far
+	next := 0 // swings confirmed so far
 	for t := range c {
 		if segStart[t] == t {
 			live = live[:0]
 		}
-		for next < len(pivots) && pivots[next].ConfirmedAt <= t {
+		for next < len(swings) && swings[next].ConfirmedAt <= t {
 			p := next
 			next++
-			for _, cand := range newCandidates(pivots, p, t, c, segStart, o) {
+			for _, cand := range newCandidates(swings, p, t, c, segStart, o) {
 				cands = append(cands, cand)
 				live = append(live, cand)
 			}
@@ -330,14 +330,14 @@ func DetectPatterns(prices insyra.IDataList, pivots []Pivot, opts ...PatternOpti
 	return out, nil
 }
 
-// newCandidates returns the patterns whose last turning point is pivots[p],
+// newCandidates returns the patterns whose last turning point is swings[p],
 // confirmed on row t.
-func newCandidates(pivots []Pivot, p, t int, c []float64, segStart []int, o PatternOptions) []*patternCandidate {
+func newCandidates(swings []Swing, p, t int, c []float64, segStart []int, o PatternOptions) []*patternCandidate {
 	var out []*patternCandidate
-	price := func(i int) float64 { return pivots[i].Price }
-	row := func(i int) int { return pivots[i].Index }
+	price := func(i int) float64 { return swings[i].Price }
+	row := func(i int) int { return swings[i].Index }
 	sameSegment := func(back int) bool {
-		return p >= back && pivots[p].Segment == pivots[p-back].Segment
+		return p >= back && swings[p].Segment == swings[p-back].Segment
 	}
 	line := func(a, b int) patternLine {
 		return patternLine{float64(row(a)), price(a), float64(row(b)), price(b)}
@@ -362,7 +362,7 @@ func newCandidates(pivots []Pivot, p, t int, c []float64, segStart []int, o Patt
 	// Two peaks and two troughs: box, triangles, wedges.
 	if sameSegment(3) {
 		var hA, hB, lA, lB int
-		if pivots[p].Kind == PivotHigh {
+		if swings[p].Kind == SwingHigh {
 			hA, hB, lA, lB = p-2, p, p-3, p-1
 		} else {
 			hA, hB, lA, lB = p-3, p-1, p-2, p
@@ -401,11 +401,11 @@ func newCandidates(pivots []Pivot, p, t int, c []float64, segStart []int, o Patt
 
 	for _, sgn := range []int{1, -1} {
 		s := float64(sgn)
-		want := PivotHigh
+		want := SwingHigh
 		if sgn == -1 {
-			want = PivotLow
+			want = SwingLow
 		}
-		if pivots[p].Kind != want {
+		if swings[p].Kind != want {
 			continue
 		}
 		// Head and shoulders: the last turning point is the right shoulder.
@@ -457,7 +457,7 @@ func newCandidates(pivots []Pivot, p, t int, c []float64, segStart []int, o Patt
 	}
 
 	// Diamond: the last turning point is the third trough.
-	if pivots[p].Kind == PivotLow && sameSegment(6) {
+	if swings[p].Kind == SwingLow && sameSegment(6) {
 		l0, h1, l1, h2, l2, h3, l3 := p-6, p-5, p-4, p-3, p-2, p-1, p
 		if price(h2) > price(h1) && price(l2) < price(l1) && price(h3) < price(h2) && price(l3) > price(l2) && price(l0) < price(l2) {
 			cand := base(PatternDiamond, h1, row(p)+min(row(p)-row(h1), o.MaxRows))
@@ -497,7 +497,7 @@ type FanOptions struct {
 // than the last line; each close through such a line is a break, and the third
 // ends the fan. A close past the anchor itself discards the fan. Pass the
 // SegmentStarts given to ZigZagAdaptive in FanOptions.
-func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...FanOptions) ([]FanBreak, error) {
+func FanBreaks(prices insyra.IDataList, swings []Swing, opts ...FanOptions) ([]FanBreak, error) {
 	if len(opts) > 1 {
 		return nil, errors.New("FanBreaks accepts at most one FanOptions")
 	}
@@ -509,14 +509,14 @@ func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...FanOptions) ([]F
 	if err != nil {
 		return nil, err
 	}
-	if err := checkPivots(pivots, len(c)); err != nil {
+	if err := checkSwings(swings, len(c)); err != nil {
 		return nil, err
 	}
 	starts, err := cleanSegmentStarts(o.SegmentStarts, len(c))
 	if err != nil {
 		return nil, err
 	}
-	if err := checkSegments(pivots, starts); err != nil {
+	if err := checkSegments(swings, starts); err != nil {
 		return nil, err
 	}
 	segStart := segmentStartOf(len(c), starts)
@@ -537,27 +537,27 @@ func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...FanOptions) ([]F
 			reset(&fans[0])
 			reset(&fans[1])
 		}
-		for next < len(pivots) && pivots[next].ConfirmedAt <= t {
+		for next < len(swings) && swings[next].ConfirmedAt <= t {
 			p := next
 			next++
 			for side := 0; side < 2; side++ {
-				want := PivotLow
+				want := SwingLow
 				if side == 1 {
-					want = PivotHigh
+					want = SwingHigh
 				}
-				if pivots[p].Kind != want {
+				if swings[p].Kind != want {
 					continue
 				}
 				f := &fans[side]
-				if f.anchor < 0 || pivots[f.anchor].Segment != pivots[p].Segment {
+				if f.anchor < 0 || swings[f.anchor].Segment != swings[p].Segment {
 					reset(f)
 					f.anchor = p
 					continue
 				}
 				a := f.anchor
-				beyond := pivots[p].Price <= pivots[a].Price
+				beyond := swings[p].Price <= swings[a].Price
 				if side == 1 {
-					beyond = pivots[p].Price >= pivots[a].Price
+					beyond = swings[p].Price >= swings[a].Price
 				}
 				if beyond {
 					reset(f)
@@ -565,7 +565,7 @@ func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...FanOptions) ([]F
 					continue
 				}
 				if f.through < 0 {
-					slope := math.Abs(pivots[p].Price-pivots[a].Price) / float64(pivots[p].Index-pivots[a].Index)
+					slope := math.Abs(swings[p].Price-swings[a].Price) / float64(swings[p].Index-swings[a].Index)
 					if slope < f.slope {
 						f.through = p
 					}
@@ -580,15 +580,15 @@ func FanBreaks(prices insyra.IDataList, pivots []Pivot, opts ...FanOptions) ([]F
 			if f.anchor < 0 {
 				continue
 			}
-			a := pivots[f.anchor]
+			a := swings[f.anchor]
 			if (side == 0 && c[t] < a.Price) || (side == 1 && c[t] > a.Price) {
 				reset(f)
 				continue
 			}
-			if f.through < 0 || pivots[f.through].ConfirmedAt > t {
+			if f.through < 0 || swings[f.through].ConfirmedAt > t {
 				continue
 			}
-			b := pivots[f.through]
+			b := swings[f.through]
 			level := patternLine{float64(a.Index), a.Price, float64(b.Index), b.Price}.at(t)
 			crossed := c[t] < level
 			dir := BreakDown

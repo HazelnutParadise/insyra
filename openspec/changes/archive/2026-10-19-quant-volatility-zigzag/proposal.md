@@ -6,9 +6,9 @@
 
 ## What Changes
 
-- `quant.ZigZagAdaptive(prices, thresholds, opts)` is ZigZag with a threshold for every row, taken at the extreme being confirmed, so it stays causal. `ZigZagOptions.Breaks` restarts the search at each break, and `Pivot.Segment` says which segment a pivot is in.
+- `quant.ZigZagAdaptive(prices, thresholds, opts)` is ZigZag with a threshold for every row, taken at the extreme being confirmed, so it stays causal. `ZigZagOptions.Breaks` restarts the search at each break, and `Swing.Segment` says which segment a swing is in.
 - `quant.VolatilityThresholds(prices, opts)` returns `max(Floor, Multiple x standard deviation of the last Window daily log returns)` for every row, with a stand-in volatility while there are too few returns.
-- `quant.ZigZag` returns what it did before; `Pivot` gains a `Segment` field, always 0 there.
+- `quant.ZigZag` returns what it did before; `Swing` gains a `Segment` field, always 0 there.
 
 ## Capabilities
 

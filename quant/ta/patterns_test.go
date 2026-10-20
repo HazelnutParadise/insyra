@@ -128,7 +128,7 @@ func TestZigZagByIsCausalAndHonoursBreaks(t *testing.T) {
 	breaks := []int{200, 350}
 	full, err := ZigZagAdaptive(prices(s...), prices(th...), ZigZagOptions{SegmentStarts: breaks})
 	if err != nil || len(full) < 5 {
-		t.Fatalf("pivots: %d, %v", len(full), err)
+		t.Fatalf("swings: %d, %v", len(full), err)
 	}
 	for _, pv := range full {
 		seg := 0
@@ -138,10 +138,10 @@ func TestZigZagByIsCausalAndHonoursBreaks(t *testing.T) {
 			}
 		}
 		if pv.Segment != seg {
-			t.Fatalf("pivot %+v is in segment %d", pv, seg)
+			t.Fatalf("swing %+v is in segment %d", pv, seg)
 		}
 		if seg < len(breaks) && pv.ConfirmedAt >= breaks[seg] {
-			t.Fatalf("pivot %+v was confirmed after its segment ended", pv)
+			t.Fatalf("swing %+v was confirmed after its segment ended", pv)
 		}
 	}
 	for cut := 1; cut <= len(s); cut += 11 {
@@ -155,7 +155,7 @@ func TestZigZagByIsCausalAndHonoursBreaks(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var want []Pivot
+		var want []Swing
 		for _, pv := range full {
 			if pv.ConfirmedAt < cut {
 				want = append(want, pv)
@@ -201,8 +201,8 @@ func flatWith(n int, at map[int]float64) []float64 {
 	return c
 }
 
-func pv(kind PivotKind, index int, price float64, confirmed int) Pivot {
-	return Pivot{kind, index, price, confirmed, 0}
+func pv(kind SwingKind, index int, price float64, confirmed int) Swing {
+	return Swing{kind, index, price, confirmed, 0}
 }
 
 func findPattern(ps []Pattern, kind PatternKind) []Pattern {
@@ -215,7 +215,7 @@ func findPattern(ps []Pattern, kind PatternKind) []Pattern {
 	return out
 }
 
-var doubleTop = []Pivot{pv(PivotLow, 0, 80, 1), pv(PivotHigh, 10, 100, 12), pv(PivotLow, 20, 85, 22), pv(PivotHigh, 30, 99, 32)}
+var doubleTop = []Swing{pv(SwingLow, 0, 80, 1), pv(SwingHigh, 10, 100, 12), pv(SwingLow, 20, 85, 22), pv(SwingHigh, 30, 99, 32)}
 
 func TestDoubleTopBreaksDownThroughTheTrough(t *testing.T) {
 	c := flatWith(60, nil)
@@ -277,9 +277,9 @@ func TestPatternToleranceOptions(t *testing.T) {
 	}
 }
 
-var headAndShoulders = []Pivot{
-	pv(PivotLow, 0, 80, 2), pv(PivotHigh, 10, 100, 12), pv(PivotLow, 20, 90, 22),
-	pv(PivotHigh, 30, 110, 32), pv(PivotLow, 40, 91, 42), pv(PivotHigh, 50, 99, 52),
+var headAndShoulders = []Swing{
+	pv(SwingLow, 0, 80, 2), pv(SwingHigh, 10, 100, 12), pv(SwingLow, 20, 90, 22),
+	pv(SwingHigh, 30, 110, 32), pv(SwingLow, 40, 91, 42), pv(SwingHigh, 50, 99, 52),
 }
 
 func TestHeadAndShouldersBreaksThroughTheNeckline(t *testing.T) {
@@ -297,11 +297,11 @@ func TestHeadAndShouldersBreaksThroughTheNeckline(t *testing.T) {
 }
 
 func TestHeadAndShouldersBottomIsTheMirror(t *testing.T) {
-	var mirrored []Pivot
+	var mirrored []Swing
 	for _, p := range headAndShoulders {
-		k := PivotLow
-		if p.Kind == PivotLow {
-			k = PivotHigh
+		k := SwingLow
+		if p.Kind == SwingLow {
+			k = SwingHigh
 		}
 		mirrored = append(mirrored, pv(k, p.Index, 200-p.Price, p.ConfirmedAt))
 	}
@@ -320,8 +320,8 @@ func TestHeadAndShouldersBottomIsTheMirror(t *testing.T) {
 }
 
 func TestHeadAndShouldersNeedsAHigherHead(t *testing.T) {
-	flat := append([]Pivot(nil), headAndShoulders...)
-	flat[3] = pv(PivotHigh, 30, 99.5, 32) // the middle peak is no longer the highest
+	flat := append([]Swing(nil), headAndShoulders...)
+	flat[3] = pv(SwingHigh, 30, 99.5, 32) // the middle peak is no longer the highest
 	got, _ := DetectPatterns(prices(flatWith(80, nil)...), flat)
 	if len(findPattern(got, PatternHeadAndShouldersTop)) != 0 {
 		t.Fatalf("no head, no pattern: %+v", got)
@@ -329,7 +329,7 @@ func TestHeadAndShouldersNeedsAHigherHead(t *testing.T) {
 }
 
 func TestPatternsDoNotCrossASegment(t *testing.T) {
-	split := append([]Pivot(nil), doubleTop...)
+	split := append([]Swing(nil), doubleTop...)
 	for i := 2; i < 4; i++ {
 		split[i].Segment = 1
 	}
@@ -338,15 +338,15 @@ func TestPatternsDoNotCrossASegment(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got) != 0 {
-		t.Fatalf("pivots from two segments make no pattern: %+v", got)
+		t.Fatalf("swings from two segments make no pattern: %+v", got)
 	}
 }
 
 func TestDiamondBreaksDown(t *testing.T) {
 	// widening: peak 100 -> 110, trough 90 -> 85; narrowing: peak 105, trough 92
-	d := []Pivot{
-		pv(PivotLow, 0, 80, 1), pv(PivotHigh, 10, 100, 12), pv(PivotLow, 20, 90, 22), pv(PivotHigh, 30, 110, 32),
-		pv(PivotLow, 40, 85, 42), pv(PivotHigh, 50, 105, 52), pv(PivotLow, 60, 92, 62),
+	d := []Swing{
+		pv(SwingLow, 0, 80, 1), pv(SwingHigh, 10, 100, 12), pv(SwingLow, 20, 90, 22), pv(SwingHigh, 30, 110, 32),
+		pv(SwingLow, 40, 85, 42), pv(SwingHigh, 50, 105, 52), pv(SwingLow, 60, 92, 62),
 	}
 	c := flatWith(100, map[int]float64{66: 80})
 	got, err := DetectPatterns(prices(c...), d)
@@ -370,8 +370,8 @@ func TestDetectPatternsIsCausal(t *testing.T) {
 		s[i] = s[i-1] * math.Exp(0.015*rng.NormFloat64()+0.01*math.Sin(float64(i)/9))
 	}
 	th, _ := VolatilityThresholds(prices(s...), 1.5)
-	pivots, _ := ZigZagAdaptive(prices(s...), th)
-	full, err := DetectPatterns(prices(s...), pivots)
+	swings, _ := ZigZagAdaptive(prices(s...), th)
+	full, err := DetectPatterns(prices(s...), swings)
 	if err != nil || len(full) < 20 {
 		t.Fatalf("patterns: %d, %v", len(full), err)
 	}
@@ -407,12 +407,12 @@ func toFloats(v []any) []float64 {
 
 func TestDetectPatternsRefusesBadInput(t *testing.T) {
 	p := prices(flatWith(60, nil)...)
-	for name, pivots := range map[string][]Pivot{
-		"confirmed before it happened": {pv(PivotLow, 10, 90, 5)},
-		"outside the series":           {pv(PivotLow, 10, 90, 60)},
-		"out of order":                 {pv(PivotLow, 10, 90, 12), pv(PivotHigh, 5, 100, 14)},
+	for name, swings := range map[string][]Swing{
+		"confirmed before it happened": {pv(SwingLow, 10, 90, 5)},
+		"outside the series":           {pv(SwingLow, 10, 90, 60)},
+		"out of order":                 {pv(SwingLow, 10, 90, 12), pv(SwingHigh, 5, 100, 14)},
 	} {
-		if _, err := DetectPatterns(p, pivots); err == nil {
+		if _, err := DetectPatterns(p, swings); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
 	}
@@ -426,14 +426,14 @@ func TestDetectPatternsRefusesBadInput(t *testing.T) {
 		t.Error("nil prices should be an error")
 	}
 	if got, err := DetectPatterns(p, nil); err != nil || len(got) != 0 {
-		t.Errorf("no pivots, no patterns: %v, %v", got, err)
+		t.Errorf("no swings, no patterns: %v, %v", got, err)
 	}
 }
 
 // A fan from a rising trough: each close under the line through the next
 // higher trough is a break, and the third ends it.
 func TestFanBreaksCountsThreeBreaks(t *testing.T) {
-	lows := []Pivot{pv(PivotLow, 0, 100, 2), pv(PivotLow, 20, 110, 22), pv(PivotLow, 60, 120, 62), pv(PivotLow, 100, 128, 102)}
+	lows := []Swing{pv(SwingLow, 0, 100, 2), pv(SwingLow, 20, 110, 22), pv(SwingLow, 60, 120, 62), pv(SwingLow, 100, 128, 102)}
 	c := flatWith(130, nil)
 	for i := range c {
 		c[i] = 200
@@ -452,7 +452,7 @@ func TestFanBreaksCountsThreeBreaks(t *testing.T) {
 }
 
 func TestFanIsDiscardedWhenThePricePassesTheAnchor(t *testing.T) {
-	lows := []Pivot{pv(PivotLow, 0, 100, 2), pv(PivotLow, 20, 110, 22)}
+	lows := []Swing{pv(SwingLow, 0, 100, 2), pv(SwingLow, 20, 110, 22)}
 	c := make([]float64, 60)
 	for i := range c {
 		c[i] = 200
@@ -465,15 +465,15 @@ func TestFanIsDiscardedWhenThePricePassesTheAnchor(t *testing.T) {
 	}
 }
 
-// Regimes never join pivots from different data segments: a high ending one
+// Regimes never join swings from different data segments: a high ending one
 // segment and a high starting the next is not an alternation error, and a high
 // followed by a low across a break is not a bear stretch.
 func TestRegimesStayInsideTheirSegment(t *testing.T) {
-	pivots := []Pivot{
-		{PivotLow, 0, 100, 2, 0}, {PivotHigh, 10, 120, 12, 0},
-		{PivotHigh, 30, 90, 32, 1}, {PivotLow, 40, 80, 42, 1}, {PivotHigh, 50, 95, 52, 1},
+	swings := []Swing{
+		{SwingLow, 0, 100, 2, 0}, {SwingHigh, 10, 120, 12, 0},
+		{SwingHigh, 30, 90, 32, 1}, {SwingLow, 40, 80, 42, 1}, {SwingHigh, 50, 95, 52, 1},
 	}
-	got, err := Regimes(pivots)
+	got, err := Regimes(swings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -486,23 +486,23 @@ func TestRegimesStayInsideTheirSegment(t *testing.T) {
 		}
 	}
 	// Inside one segment the alternation check still applies.
-	if _, err := Regimes([]Pivot{{PivotLow, 0, 1, 1, 0}, {PivotLow, 2, 1, 3, 0}}); err == nil {
+	if _, err := Regimes([]Swing{{SwingLow, 0, 1, 1, 0}, {SwingLow, 2, 1, 3, 0}}); err == nil {
 		t.Error("two lows in one segment should be an error")
 	}
-	if _, err := Regimes([]Pivot{{PivotLow, 0, 1, 1, 1}, {PivotHigh, 2, 1, 3, 0}}); err == nil {
+	if _, err := Regimes([]Swing{{SwingLow, 0, 1, 1, 1}, {SwingHigh, 2, 1, 3, 0}}); err == nil {
 		t.Error("segments out of order should be an error")
 	}
 	// MinPhase applies inside a segment only.
-	short := []Pivot{{PivotLow, 0, 100, 1, 0}, {PivotHigh, 1, 101, 2, 0}, {PivotHigh, 30, 90, 31, 1}, {PivotLow, 40, 80, 41, 1}}
+	short := []Swing{{SwingLow, 0, 100, 1, 0}, {SwingHigh, 1, 101, 2, 0}, {SwingHigh, 30, 90, 31, 1}, {SwingLow, 40, 80, 41, 1}}
 	got, err = Regimes(short, RegimeOptions{MinPhase: 3})
 	if err != nil || len(got) != 1 || got[0].Kind != RegimeBear {
 		t.Fatalf("the one-row bull stretch in segment 0 is removed, the bear stretch in segment 1 stays: %+v, %v", got, err)
 	}
 }
 
-func TestPatternsRefuseBreaksThatDifferFromThePivots(t *testing.T) {
+func TestPatternsRefuseBreaksThatDifferFromTheSwings(t *testing.T) {
 	c := prices(flatWith(60, nil)...)
-	// doubleTop was made without breaks, so every pivot is in segment 0.
+	// doubleTop was made without breaks, so every swing is in segment 0.
 	if _, err := DetectPatterns(c, doubleTop, PatternOptions{SegmentStarts: []int{15}}); err == nil || !strings.Contains(err.Error(), "Segment") {
 		t.Errorf("DetectPatterns: %v", err)
 	}
