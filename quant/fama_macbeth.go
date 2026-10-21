@@ -348,13 +348,13 @@ func crossSection(ret []float64, x [][]float64, idx []int, standardize bool) ([]
 
 // famaMacBethDateKey groups dates by value, as documented: a string is kept
 // exactly (surrounding whitespace is part of the value), a time.Time is its
-// instant, and any other type is keyed by its type and value.
+// instant (seconds and nanoseconds, location ignored), and any other type is keyed by its type and value.
 func famaMacBethDateKey(d any) string {
 	switch v := d.(type) {
 	case string:
 		return "s:" + v
 	case time.Time:
-		return "t:" + fmt.Sprint(v.UnixNano())
+		return fmt.Sprintf("t:%d.%09d", v.Unix(), v.Nanosecond())
 	}
 	return fmt.Sprintf("%T:%v", d, d)
 }

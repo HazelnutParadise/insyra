@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats"
@@ -286,6 +287,22 @@ func TestFamaMacBethKeepsWhitespaceDatesApart(t *testing.T) {
 	}
 	if res.Days != 6 {
 		t.Errorf("Days %d, want 6: dates differing by whitespace were merged", res.Days)
+	}
+}
+
+// UnixNano wraps outside 1678-2262; two distinct instants share a nanosecond
+// count there and must still be different dates.
+func TestFamaMacBethDateKeyDistinguishesFarInstants(t *testing.T) {
+	a := time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
+	b := time.Date(585, 7, 21, 23, 34, 33, 709551616, time.UTC)
+	if a.UnixNano() != b.UnixNano() {
+		t.Skip("UnixNano no longer collides for these instants")
+	}
+	if famaMacBethDateKey(a) == famaMacBethDateKey(b) {
+		t.Errorf("distinct instants share the key %q", famaMacBethDateKey(a))
+	}
+	if famaMacBethDateKey(a) != famaMacBethDateKey(a.In(time.FixedZone("x", 3600))) {
+		t.Error("the same instant in another zone got a different key")
 	}
 }
 
