@@ -100,8 +100,8 @@ func BiasZ(prices insyra.IDataList, n, window int) (*insyra.DataList, error)
 
 ```go
 bias, _ := ta.Bias(close, 20)
-buckets, err := ta.SignalBuckets(biasTable, closes, dates, ta.BucketOptions{
-    ForwardOptions: ta.ForwardOptions{Horizons: []int{1, 5, 20, 60}},
+buckets, err := quant.SignalBuckets(biasTable, closes, dates, quant.BucketOptions{
+    ForwardOptions: quant.ForwardOptions{Horizons: []int{1, 5, 20, 60}},
     Edges:          []float64{-0.2, -0.1, 0, 0.1, 0.2},
 })
 ```
@@ -158,7 +158,7 @@ They follow TA-Lib's definitions, and the tests compare every one with TA-Lib on
 - A window that is not full is `NaN`, and the result has one row per price. Every returned list is named after its line (`SMA`, `MACD`, `Signal`, `Upper`, `K` and so on). A `NaN` is not accepted by the other `quant` functions that take a series, so drop the leading rows before passing an indicator on.
 - `EMA` has weight `2/(n+1)` and starts from the simple average of its first `n` values. `MACD` starts both EMAs on row `slow-1`, the fast one from the simple average of the `fast` prices ending there. TA-Lib leaves the MACD line (and K of the stochastic) empty until the signal line (D) exists; here they start earlier, and the values agree wherever both have one.
 - `Bollinger` uses the population standard deviation. `ATR` is Wilder's: row `n` is the mean of the first `n` true ranges and later rows are smoothed with weight `1/n`. `TrueRange` is `NaN` on row 0.
-- `KD` takes where the close lies in the range of the last `n` rows (RSV, 0 to 100; a flat window counts as 50). `KDOptions.Method` chooses the smoothing: `KDRecursive` (default) is the KD of Taiwanese brokers' software, which TA-Lib and pandas-ta do not have, so their `STOCH` numbers differ from it (use `KDMovingAverage` to compare with them), where K and D start at 50 and `K = (1 − 1/SlowK) × previous K + RSV/SlowK`, then D from K the same way; `KDMovingAverage` is TA-Lib's STOCH, simple averages of RSV and then K. `SlowK` and `SlowD` default to 3. The usual setting is `n = 9`.
+- `KD` takes where the close lies in the range of the last `n` rows (RSV, 0 to 100; a flat window counts as 50). `KDOptions.Method` chooses the smoothing: `KDRecursive` (default) is the KD of Taiwanese brokers' software, which TA-Lib and pandas-ta do not have, so their `STOCH` numbers differ from it (use `KDMovingAverage` to compare with them), where K and D start at 50 and `K = (1 − 1/SlowK) × previous K + RSV/SlowK`, then D from K the same way; `KDMovingAverage` is TA-Lib's STOCH, simple averages of RSV and then K. `SlowK` and `SlowD` default to 3. The usual setting is `n = 9`. `KDOptions.SegmentStarts` lists the rows on which a new data segment starts (a trading halt, a relisting, a change of price basis): each segment is computed on its own, so K and D start again from 50, the highest-high and lowest-low windows start again, nothing carries across, and a segment shows `NaN` through its own warm-up (a segment shorter than the warm-up is all `NaN`). A start outside the series is an error; unsorted or repeated starts and row 0 are accepted. Left empty, the result is unchanged.
 
 A missing, non-numeric or non-finite value is an error naming its row index, since a moving average over a hole is not the average of anything.
 
@@ -197,7 +197,7 @@ func Keltner(high, low, close insyra.IDataList, n, atrN int, k float64) (*Channe
 func KeltnerClassic(high, low, close insyra.IDataList, n int) (*ChannelResult, error)
 func Donchian(high, low insyra.IDataList, n int) (*ChannelResult, error)
 func SuperTrend(high, low, close insyra.IDataList, n int, k float64) (*SuperTrendResult, error)
-func ParabolicSAR(high, low insyra.IDataList, start, step, max float64) (*insyra.DataList, error)
+func ParabolicSAR(high, low insyra.IDataList, start, step, maxAF float64) (*insyra.DataList, error)
 func Chandelier(high, low, close insyra.IDataList, n int, k float64) (*ChandelierResult, error)
 
 type ChannelResult struct{ Upper, Middle, Lower *insyra.DataList }
@@ -205,10 +205,10 @@ type SuperTrendResult struct{ Line, Direction *insyra.DataList } // Direction is
 type ChandelierResult struct{ Long, Short *insyra.DataList }
 ```
 
-- **`Keltner`** is Raschke's form, the one trading platforms show: the `n`-row EMA of the close, plus and minus `k` times the `atrN`-row ATR (common settings 20, 10, 2). **`KeltnerClassic`** is the 1960 form: the `n`-row simple average of the typical price `(high + low + close) / 3`, plus and minus the `n`-row simple average of the day's high minus low. They are two functions because the two forms take different parameters.
+- **`Keltner`** is Raschke's form, the one trading platforms show: the `n`-row EMA of the close, plus and minus `k` times the `atrN`-row ATR (common settings 20, 10, 2). `k` in `Keltner`, `SuperTrend` and `Chandelier` must be a finite number above 0. **`KeltnerClassic`** is the 1960 form: the `n`-row simple average of the typical price `(high + low + close) / 3`, plus and minus the `n`-row simple average of the day's high minus low. They are two functions because the two forms take different parameters.
 - **`Donchian`** is the highest high and the lowest low of the `n` rows *before* each row, and their midpoint. The current row is left out, so a close above `Upper` is a breakout of the earlier range, not a tie with its own high. The first `n` rows are `NaN`.
 - **`SuperTrend`** follows the TradingView script: bands of `(high + low) / 2` plus and minus `k` ATRs (common 10 and 3), each band only allowed to move toward the price, and a direction that flips when the close crosses the band the line is on. `Line` is the lower band while `Direction` is `1` and the upper band while it is `-1`. It starts on the first row the ATR exists (row `n`), pointing down; the ATR is TA-Lib's, whose first value is row `n`, so the first rows differ from a platform whose ATR starts one row earlier.
-- **`ParabolicSAR`** is Wilder's stop and reverse. `start` is the acceleration factor a trend begins with, `step` how much it grows with each new extreme and `max` its cap (Wilder's are 0.02, 0.02 and 0.2). It matches TA-Lib's `SAR` and `SAREXT` (without the minus sign `SAREXT` puts on a short trend).
+- **`ParabolicSAR`** is Wilder's stop and reverse. `start` is the acceleration factor a trend begins with, `step` how much it grows with each new extreme and `maxAF` its cap (Wilder's are 0.02, 0.02 and 0.2). It matches TA-Lib's `SAR` and `SAREXT` (without the minus sign `SAREXT` puts on a short trend).
 - **`Chandelier`** is the highest high of the last `n` rows (the current one included) minus `k` ATRs as the stop of a long position, and the lowest low plus `k` ATRs for a short one (common 22 and 3).
 
 `Keltner`, `Donchian`, `SuperTrend` and `Chandelier` are not in TA-Lib; the tests compare them with implementations written from the definitions in `testdata/channels_baseline.py` (Parabolic SAR and the ATR and EMA they use come from TA-Lib). The channels are named by their lines (`Upper`, `Middle`, `Lower`, `Long`, `Short`, `Direction`, `SAR`), so a line can be added to a table as it is.

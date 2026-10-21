@@ -45,8 +45,8 @@ func Keltner(high, low, close insyra.IDataList, n, atrN int, k float64) (*Channe
 	if err := checkPeriod("atrN", atrN, 1); err != nil {
 		return nil, err
 	}
-	if math.IsNaN(k) || math.IsInf(k, 0) || k < 0 {
-		return nil, errors.New("k must be a finite number of ATRs, 0 or more")
+	if math.IsNaN(k) || math.IsInf(k, 0) || k <= 0 {
+		return nil, errors.New("k must be a finite number of ATRs above 0")
 	}
 	h, l, c, err := barSeries(high, low, close)
 	if err != nil {
@@ -177,17 +177,17 @@ func SuperTrend(high, low, close insyra.IDataList, n int, k float64) (*SuperTren
 
 // ParabolicSAR returns Wilder's parabolic stop and reverse. start is the
 // acceleration factor a trend begins with, step how much it grows each time the
-// trend makes a new extreme, and max its cap; Wilder's are 0.02, 0.02 and 0.2.
+// trend makes a new extreme, and maxAF its cap; Wilder's are 0.02, 0.02 and 0.2.
 // The first row is NaN, and the starting direction comes from the first two
 // bars as in TA-Lib's SAR.
-func ParabolicSAR(high, low insyra.IDataList, start, step, max float64) (*insyra.DataList, error) {
-	for name, v := range map[string]float64{"start": start, "step": step, "max": max} {
+func ParabolicSAR(high, low insyra.IDataList, start, step, maxAF float64) (*insyra.DataList, error) {
+	for name, v := range map[string]float64{"start": start, "step": step, "maxAF": maxAF} {
 		if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 {
 			return nil, fmt.Errorf("%s must be a finite number above 0", name)
 		}
 	}
-	if max < start {
-		return nil, errors.New("max must not be below start")
+	if maxAF < start {
+		return nil, errors.New("maxAF must not be below start")
 	}
 	h, l, err := highLowSeries(high, low)
 	if err != nil {
@@ -226,7 +226,7 @@ func ParabolicSAR(high, low insyra.IDataList, start, step, max float64) (*insyra
 				out[i] = sar
 				if newHigh > ep {
 					ep = newHigh
-					af = math.Min(af+step, max)
+					af = math.Min(af+step, maxAF)
 				}
 				sar += af * (ep - sar)
 				sar = math.Min(sar, math.Min(prevLow, newLow))
@@ -245,7 +245,7 @@ func ParabolicSAR(high, low insyra.IDataList, start, step, max float64) (*insyra
 				out[i] = sar
 				if newLow < ep {
 					ep = newLow
-					af = math.Min(af+step, max)
+					af = math.Min(af+step, maxAF)
 				}
 				sar += af * (ep - sar)
 				sar = math.Max(sar, math.Max(prevHigh, newHigh))
@@ -269,8 +269,8 @@ func Chandelier(high, low, close insyra.IDataList, n int, k float64) (*Chandelie
 	if err := checkPeriod("n", n, 1); err != nil {
 		return nil, err
 	}
-	if math.IsNaN(k) || math.IsInf(k, 0) || k < 0 {
-		return nil, errors.New("k must be a finite number of ATRs, 0 or more")
+	if math.IsNaN(k) || math.IsInf(k, 0) || k <= 0 {
+		return nil, errors.New("k must be a finite number of ATRs above 0")
 	}
 	h, l, c, err := barSeries(high, low, close)
 	if err != nil {

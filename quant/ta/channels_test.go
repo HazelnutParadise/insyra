@@ -2,6 +2,7 @@ package ta
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"testing"
 )
@@ -180,5 +181,26 @@ func TestChannelListsAreNamed(t *testing.T) {
 		if got != want {
 			t.Errorf("a list is named %q, want %q", got, want)
 		}
+	}
+}
+
+func TestTheMultiplierMustBeAboveZeroInEveryChannel(t *testing.T) {
+	p := prices(10, 11, 12, 13, 14, 15)
+	for _, k := range []float64{0, -1, math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if _, err := Keltner(p, p, p, 3, 3, k); err == nil {
+			t.Errorf("Keltner accepted k %v", k)
+		}
+		if _, err := SuperTrend(p, p, p, 3, k); err == nil {
+			t.Errorf("SuperTrend accepted k %v", k)
+		}
+		if _, err := Chandelier(p, p, p, 3, k); err == nil {
+			t.Errorf("Chandelier accepted k %v", k)
+		}
+	}
+	_, e1 := Keltner(p, p, p, 3, 3, 0)
+	_, e2 := SuperTrend(p, p, p, 3, 0)
+	_, e3 := Chandelier(p, p, p, 3, 0)
+	if e1 == nil || e2 == nil || e3 == nil || e1.Error() != e2.Error() || e2.Error() != e3.Error() {
+		t.Errorf("the three errors should read the same: %v / %v / %v", e1, e2, e3)
 	}
 }

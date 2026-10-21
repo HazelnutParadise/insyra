@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strings"
-	"time"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -114,21 +112,13 @@ func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols
 	var weights []any
 	var readErr error
 	table.AtomicDo(func(dt *insyra.DataTable) {
-		names := dt.ColNames()
 		find := func(sel, role string) []any {
 			if readErr != nil {
 				return nil
 			}
-			for i, name := range names {
-				if name == sel {
-					return dt.GetColByNumber(i).Data()
-				}
-			}
-			if i, ok := insyra.ColIndexToNumber(sel); ok && i < len(names) {
-				return dt.GetColByNumber(i).Data()
-			}
-			readErr = fmt.Errorf("%s column %q not found", role, sel)
-			return nil
+			data, err := columnData(dt, sel, role)
+			readErr = err
+			return data
 		}
 		dates = find(dateCol, "date")
 		signals = find(signalCol, "signal")
@@ -174,7 +164,10 @@ func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols
 		if d == nil {
 			return nil, fmt.Errorf("date is missing at row index %d", i)
 		}
-		key := dateKey(d)
+		key, err := dateKey(d)
+		if err != nil {
+			return nil, fmt.Errorf("row index %d: %w", i, err)
+		}
 		if _, seen := byDate[key]; !seen {
 			order = append(order, key)
 			dateValue[key] = d
@@ -276,6 +269,31 @@ func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols
 	return res, nil
 }
 
+// columnNumber finds a column by name, or by Excel-style letters when no
+// column has that name. It returns -1 when neither matches.
+func columnNumber(dt *insyra.DataTable, sel string) int {
+	names := dt.ColNames()
+	for i, name := range names {
+		if name == sel {
+			return i
+		}
+	}
+	if i, ok := insyra.ColIndexToNumber(sel); ok && i < len(names) {
+		return i
+	}
+	return -1
+}
+
+// columnData returns the cells of the column columnNumber finds, or an error
+// naming the column's role when it is not found. Call it inside AtomicDo.
+func columnData(dt *insyra.DataTable, sel, role string) ([]any, error) {
+	i := columnNumber(dt, sel)
+	if i < 0 {
+		return nil, fmt.Errorf("%s column %q not found", role, sel)
+	}
+	return dt.GetColByNumber(i).Data(), nil
+}
+
 func weightAt(wt []float64, i int) float64 {
 	if wt == nil {
 		return 1
@@ -312,16 +330,6 @@ func finiteOrMissing(raw []any, label string, rows int) ([]float64, error) {
 		out[i] = f
 	}
 	return out, nil
-}
-
-func dateKey(d any) string {
-	switch v := d.(type) {
-	case time.Time:
-		return "t:" + fmt.Sprint(v.UnixNano())
-	case string:
-		return "s:" + strings.TrimSpace(v)
-	}
-	return fmt.Sprintf("%T:%v", d, d)
 }
 
 // assignQuantileGroups returns, for each position in idx, a group from 0 to
