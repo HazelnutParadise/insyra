@@ -66,6 +66,9 @@ type Tensor struct {
 	stringData []string
 	// device holds the values of a resident float32 tensor; data is nil then.
 	device *accel.DeviceBuffer
+	// maxLabel is the largest class index of a resident int64 label tensor,
+	// recorded when it was moved so no kernel has to report a bad label.
+	maxLabel int64
 }
 
 // NewTensor constructs a float32 tensor with the supplied row-major data.
@@ -170,6 +173,9 @@ func (t *Tensor) Int64Data() ([]int64, error) {
 	}
 	if t.dtype != DTypeInt64 {
 		return nil, unsupportedDTypeError(t.dtype)
+	}
+	if t.device != nil {
+		return nil, residentRefusal(t, "tensor")
 	}
 	return append([]int64(nil), t.int64Data...), nil
 }

@@ -131,16 +131,28 @@ garbage-collected without `Release` is freed with a warning.
 
 In this release the precision mode covers `MatMul` and `Add` (a second operand
 that matches the first or repeats over its trailing dimensions) with their
-gradients, gradient accumulation, `SGD`, `Adam` and `AdamW`, in 2-D. In this
+gradients, gradient accumulation, `SGD`, `Adam`, `AdamW` and `SoftmaxCrossEntropy`, in 2-D. In this
 mode `Adam` and `AdamW` are defined entirely in float32: each step is one
 correctly rounded operation or an exact two-term sum rounded once, and the
 constants (`1-beta`, the bias corrections, `lr*weightDecay`) are rounded once
 on the host. Their moments live on the device with the parameter, and the
 result equals the host's bit for bit. They differ from the default tape's
-float64 `AdamW` by a few ulps per step, as PyTorch's float32 `AdamW` does. Any other operation on a
+float64 `AdamW` by a few ulps per step, as PyTorch's float32 `AdamW` does.
+
+`SoftmaxCrossEntropy` is covered too. Per row, with `m` the row maximum:
+`d = x - m`, `e = exp(d)`, `s` the exact sum of `e` rounded once,
+`loss = log(s) - d[label]`; the mean loss is the exact sum of the row losses
+rounded once, divided by the row count. The gradient is `e/s` times
+`upstream/rows`, with `upstream/rows` subtracted at the label. `exp` and `log`
+here are correctly rounded, the same bits on every platform (the host builds
+them from `+ - * /` only, the device in 128-bit integer arithmetic), and both
+agree on all 2^32 float32 inputs. A row with a non-finite logit gives NaN.
+Labels are `int64` tensors: `labels.To(dev)` holds them as int32 on the device
+and refuses a negative value or one that does not fit, naming it. `rows` must be
+below 2^24. Any other operation on a
 device tensor returns an error telling you to call `ToHost`; on host tensors
-in this mode they keep their default arithmetic. `SoftmaxCrossEntropy` and
-the rest follow in later releases.
+in this mode they keep their default arithmetic. `SoftmaxCrossEntropy`, which
+needs integer `exp` and `log`; the rest follow in later releases.
 
 On an Apple M3, best of five, the exact device `MatMul` took 18 to 19 ms for
 `[4096,96]x[96,128]` and `[4096,128]x[128,96]`. The exact CPU reference took

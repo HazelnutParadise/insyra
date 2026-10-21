@@ -1,6 +1,6 @@
 ## 1. Host
-- [ ] 1.1 `exp` and `log` with oracle and exception tables; equal exhaustively
+- [x] 1.1 `exp` and `log` with oracle and exception tables; equal exhaustively
 ## 2. Device
-- [ ] 2.1 Integer `exp` and `log` in WGSL; equal to the host on hardware
+- [x] 2.1 Integer `exp` and `log` in WGSL; equal to the host on hardware
 ## 3. Docs and release notes
-- [ ] 3.1 godoc; `Docs/nn.md`; both changelogs; `delivery-status.md`; validation and lint
+- [x] 3.1 godoc; `Docs/nn.md`; both changelogs; `delivery-status.md`; validation and lint

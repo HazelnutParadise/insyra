@@ -74,9 +74,7 @@ func oracleLog(x float32) float32 {
 func expLogInputs(r *rand.Rand, forExp bool) []float32 {
 	var in []float32
 	if forExp {
-		for _, v := range []float32{0, 1, -1, 0.5, -0.5, 88.72283, 88.72284, 88.7229, -87.33655, -87.4, -100, -103.9, -103.97208, -103.9721, -104, 1e-8, -1e-8, 1e-5, 0x1p-25, -0x1p-25, 0x1p-24, -0x1p-24, 10, -10, 50, -50} {
-			in = append(in, v)
-		}
+		in = append(in, []float32{0, 1, -1, 0.5, -0.5, 88.72283, 88.72284, 88.7229, -87.33655, -87.4, -100, -103.9, -103.97208, -103.9721, -104, 1e-8, -1e-8, 1e-5, 0x1p-25, -0x1p-25, 0x1p-24, -0x1p-24, 10, -10, 50, -50}...)
 		for i := 0; i < 400; i++ {
 			in = append(in, float32(r.Float64()*193-104))
 		}
@@ -85,9 +83,7 @@ func expLogInputs(r *rand.Rand, forExp bool) []float32 {
 		}
 		return in
 	}
-	for _, v := range []float32{1, 2, 0.5, 10, 0x1p-149, 0x1p-126, math.MaxFloat32, 1.0000001, 0.99999994, 1.4142135, 1.4142137, 0.70710677, 3, 100, 1e-10, 1e10, 0.9, 1.1} {
-		in = append(in, v)
-	}
+	in = append(in, []float32{1, 2, 0.5, 10, 0x1p-149, 0x1p-126, math.MaxFloat32, 1.0000001, 0.99999994, 1.4142135, 1.4142137, 0.70710677, 3, 100, 1e-10, 1e10, 0.9, 1.1}...)
 	for i := 0; i < 300; i++ {
 		in = append(in, math.Float32frombits(r.Uint32()&0x7fffffff))
 	}

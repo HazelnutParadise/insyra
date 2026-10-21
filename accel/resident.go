@@ -305,3 +305,124 @@ func RoundedAdam(w, g, m, v *DeviceBuffer, s AdamScalars) error {
 func NewZeroDeviceBuffer(device Device, length int) (*DeviceBuffer, error) {
 	return NewDeviceBuffer(device, make([]float32, length))
 }
+
+// RoundedExp computes e^x for each element of a resident array, correctly
+// rounded: the exact value rounded once to nearest-even float32.
+func RoundedExp(x *DeviceBuffer) (*DeviceBuffer, error) {
+	if x == nil {
+		return nil, errors.New("accel: device buffer is nil")
+	}
+	out, err := wgpu.ExpRounded(x.inner)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return x.wrap(out)
+}
+
+// RoundedLog computes the natural logarithm of each element of a resident
+// array, correctly rounded.
+func RoundedLog(x *DeviceBuffer) (*DeviceBuffer, error) {
+	if x == nil {
+		return nil, errors.New("accel: device buffer is nil")
+	}
+	out, err := wgpu.LogRounded(x.inner)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return x.wrap(out)
+}
+
+// SoftmaxCrossEntropyState holds what the gradient of a cross-entropy loss
+// reuses from its forward pass, so each exponential is computed once. It
+// occupies device memory until Release is called.
+type SoftmaxCrossEntropyState struct {
+	inner  *wgpu.CEState
+	device Device
+	bytes  uint64
+}
+
+// Release frees the state. It is idempotent.
+func (s *SoftmaxCrossEntropyState) Release() {
+	if s == nil || s.inner == nil {
+		return
+	}
+	unreserveResident(s.device, s.bytes)
+	s.inner.Release()
+	s.inner = nil
+}
+
+// RoundedSoftmaxCrossEntropy returns the mean cross-entropy loss, one value,
+// of resident logits [rows,classes] against resident labels: rows int32 class
+// indices, each in [0,classes), uploaded with NewLabelBuffer. Every step is one
+// correctly rounded operation or an exact sum rounded once. The state it
+// returns feeds RoundedSoftmaxCrossEntropyGrad.
+func RoundedSoftmaxCrossEntropy(logits, labels *DeviceBuffer, rows, classes int) (*DeviceBuffer, *SoftmaxCrossEntropyState, error) {
+	if err := sameDevice(logits, labels); err != nil {
+		return nil, nil, err
+	}
+	stateBytes := uint64(rows*classes+rows) * 4
+	if err := reserveResident(logits.device, stateBytes); err != nil {
+		return nil, nil, err
+	}
+	out, state, err := wgpu.SoftmaxCrossEntropyRounded(logits.inner, labels.inner, rows, classes)
+	if err != nil {
+		unreserveResident(logits.device, stateBytes)
+		return nil, nil, residentFailure(err)
+	}
+	loss, err := logits.wrap(out)
+	if err != nil {
+		unreserveResident(logits.device, stateBytes)
+		state.Release()
+		return nil, nil, err
+	}
+	return loss, &SoftmaxCrossEntropyState{inner: state, device: logits.device, bytes: stateBytes}, nil
+}
+
+// RoundedSoftmaxCrossEntropyGrad returns the gradient of the loss with respect
+// to the logits, scaled by the one-value upstream gradient.
+func RoundedSoftmaxCrossEntropyGrad(state *SoftmaxCrossEntropyState, labels, upstream *DeviceBuffer, rows, classes int) (*DeviceBuffer, error) {
+	if state == nil || state.inner == nil {
+		return nil, errors.New("accel: cross-entropy state was released")
+	}
+	if err := sameDevice(labels, upstream); err != nil {
+		return nil, err
+	}
+	out, err := wgpu.SoftmaxCrossEntropyGradRounded(state.inner, labels.inner, upstream.inner, rows, classes)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return labels.wrap(out)
+}
+
+// NewLabelBuffer uploads class indices to device as int32. A negative index or
+// one above the int32 range is an error naming it; the largest index is
+// returned so the caller can check it against the class count without reading
+// the buffer back.
+func NewLabelBuffer(device Device, labels []int64) (*DeviceBuffer, int64, error) {
+	values := make([]float32, len(labels))
+	var largest int64 = -1
+	for i, label := range labels {
+		if label < 0 || label > math.MaxInt32 {
+			return nil, 0, fmt.Errorf("accel: label %d at index %d does not fit a non-negative int32", label, i)
+		}
+		if label > largest {
+			largest = label
+		}
+		values[i] = math.Float32frombits(uint32(label))
+	}
+	buffer, err := NewDeviceBuffer(device, values)
+	return buffer, largest, err
+}
+
+// LabelsToHost reads a label buffer back as class indices.
+func (b *DeviceBuffer) LabelsToHost() ([]int64, error) {
+	values, err := b.ToHost()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]int64, len(values))
+	for i, v := range values {
+		out[i] = int64(math.Float32bits(v))
+	}
+	return out, nil
+}

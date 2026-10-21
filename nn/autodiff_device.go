@@ -50,6 +50,10 @@ func (t *Tape) Clear() {
 	t.grads = make(map[*Tensor]*Tensor)
 	releaseAll(t.owned)
 	releaseAll(t.gradOwned)
+	for _, release := range t.releasers {
+		release()
+	}
+	t.releasers = nil
 	t.owned, t.gradOwned = nil, nil
 	for _, parameter := range t.params {
 		parameter.grad = nil
@@ -387,4 +391,52 @@ func (t *Tape) addGradient(grads map[*Tensor]*Tensor, input, gradient *Tensor) e
 		existing.data[index] = sum
 	}
 	return nil
+}
+
+// softmaxCrossEntropyResident computes the mean cross-entropy of resident
+// logits against resident int64 labels. The labels were checked when moved;
+// the largest one is compared with the class count here, so no kernel needs to
+// report a bad label.
+func (t *Tape) softmaxCrossEntropyResident(logits, labels *Tensor) (*Tensor, error) {
+	if logits.dtype != DTypeFloat32 || labels.dtype != DTypeInt64 {
+		return nil, fmt.Errorf("cross-entropy on a device needs float32 logits and int64 labels")
+	}
+	if len(logits.shape) != 2 || len(labels.shape) != 1 || logits.shape[0] != labels.shape[0] {
+		return nil, fmt.Errorf("cross-entropy requires logits [N,C] and labels [N], got %v and %v", logits.shape, labels.shape)
+	}
+	rows, classes := logits.shape[0], logits.shape[1]
+	if rows == 0 || classes == 0 {
+		return nil, fmt.Errorf("cross-entropy requires non-empty logits")
+	}
+	if rows >= 1<<24 {
+		return nil, fmt.Errorf("cross-entropy in PrecisionFloat32Rounded supports fewer than 2^24 rows, got %d", rows)
+	}
+	if labels.maxLabel >= int64(classes) {
+		return nil, fmt.Errorf("cross-entropy label %d is outside [0,%d)", labels.maxLabel, classes)
+	}
+	buffer, state, err := accel.RoundedSoftmaxCrossEntropy(logits.device, labels.device, rows, classes)
+	if err != nil {
+		return nil, err
+	}
+	t.releasers = append(t.releasers, state.Release)
+	loss, err := newResidentTensor(nil, buffer)
+	if err != nil {
+		return nil, err
+	}
+	t.own(loss)
+	t.record("SoftmaxCrossEntropy", []*Tensor{logits, labels}, loss, func(upstream *Tensor) ([]*Tensor, error) {
+		if !upstream.onDevice() || len(upstream.shape) != 0 {
+			return nil, fmt.Errorf("cross-entropy upstream must be a scalar on the device")
+		}
+		grad, err := accel.RoundedSoftmaxCrossEntropyGrad(state, labels.device, upstream.device, rows, classes)
+		if err != nil {
+			return nil, err
+		}
+		gradient, err := newResidentTensor(logits.shape, grad)
+		if err != nil {
+			return nil, err
+		}
+		return []*Tensor{t.own(gradient), nil}, nil
+	})
+	return loss, nil
 }

@@ -24,6 +24,9 @@ type Tape struct {
 	owned      []*Tensor
 	gradOwned  []*Tensor
 	passOwned  []*Tensor
+	// releasers free device state that is not a tensor, such as the
+	// intermediates a cross-entropy gradient reuses.
+	releasers []func()
 }
 
 // Parameter is a tensor marked for gradient retrieval and SGD updates.
@@ -553,6 +556,27 @@ func (t *Tape) Gemm(a, b, c *Tensor, options ...GemmOptions) (*Tensor, error) {
 // operation. Its VJP is softmax(logits)-onehot(labels), divided by the batch
 // size; there is intentionally no separate training Softmax or log-loss API.
 func (t *Tape) SoftmaxCrossEntropy(logits, labels *Tensor) (*Tensor, error) {
+	resident, err := t.residency("softmax cross-entropy", logits, labels)
+	if err != nil {
+		return nil, err
+	}
+	if resident {
+		return t.softmaxCrossEntropyResident(logits, labels)
+	}
+	if t.rounded() && logits != nil && labels != nil && logits.dtype == DTypeFloat32 && labels.dtype == DTypeInt64 {
+		loss, err := softmaxCrossEntropyRoundedForward(logits, labels)
+		if err != nil {
+			return nil, err
+		}
+		t.record("SoftmaxCrossEntropy", []*Tensor{logits, labels}, loss, func(upstream *Tensor) ([]*Tensor, error) {
+			gradient, err := softmaxCrossEntropyRoundedVJP(logits, labels, upstream)
+			if err != nil {
+				return nil, err
+			}
+			return []*Tensor{gradient, nil}, nil
+		})
+		return loss, nil
+	}
 	loss, err := softmaxCrossEntropyForward(logits, labels)
 	if err != nil {
 		return nil, err

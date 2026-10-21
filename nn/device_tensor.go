@@ -17,7 +17,10 @@ func (t *Tensor) Device() accel.Device {
 // onDevice reports whether the tensor's values live on a device.
 func (t *Tensor) onDevice() bool { return t != nil && t.device != nil }
 
-// To returns a copy of a float32 tensor on device. The zero Device stands for
+// To returns a copy of a tensor on device. Float32 tensors and int64 label
+// tensors can move. Int64 values are held as int32 on the device, so a value
+// that is negative or does not fit is an error naming it; such a tensor can be
+// used only as the labels of SoftmaxCrossEntropy. The zero Device stands for
 // the host, so code written against accel.DefaultDevice runs unchanged on a
 // machine without a GPU. Moving never changes the source tensor, and values
 // cross bit for bit. A tensor already on another device is moved through the
@@ -27,8 +30,11 @@ func (t *Tensor) onDevice() bool { return t != nil && t.device != nil }
 // tensors it creates itself on Clear and Close, but not the ones a caller
 // hands it.
 func (t *Tensor) To(device accel.Device) (*Tensor, error) {
-	if err := requireFloat32Any(t, "tensor"); err != nil {
-		return nil, err
+	if t == nil {
+		return nil, fmt.Errorf("tensor is nil")
+	}
+	if t.dtype != DTypeFloat32 && t.dtype != DTypeInt64 {
+		return nil, fmt.Errorf("tensor has unsupported dtype %s; only float32 and int64 labels can move to a device", dtypeName(t.dtype))
 	}
 	if device.ID == "" {
 		return t.ToHost()
@@ -38,6 +44,19 @@ func (t *Tensor) To(device accel.Device) (*Tensor, error) {
 			return nil, fmt.Errorf("tensor lives on device %s; move it to the host with ToHost before moving it to %s", t.device.Device().ID, device.ID)
 		}
 		return t.cloneResident()
+	}
+	if t.dtype == DTypeInt64 {
+		buffer, largest, err := accel.NewLabelBuffer(device, t.int64Data)
+		if err != nil {
+			return nil, err
+		}
+		moved, err := newResidentTensor(t.shape, buffer)
+		if err != nil {
+			return nil, err
+		}
+		moved.dtype = DTypeInt64
+		moved.maxLabel = largest
+		return moved, nil
 	}
 	buffer, err := accel.NewDeviceBuffer(device, t.data)
 	if err != nil {
@@ -50,11 +69,18 @@ func (t *Tensor) To(device accel.Device) (*Tensor, error) {
 // that wrote the tensor, and it is the only way a resident tensor's values
 // are read.
 func (t *Tensor) ToHost() (*Tensor, error) {
-	if err := requireFloat32Any(t, "tensor"); err != nil {
-		return nil, err
+	if t == nil {
+		return nil, fmt.Errorf("tensor is nil")
 	}
 	if t.device == nil {
 		return copyTensor(t)
+	}
+	if t.dtype == DTypeInt64 {
+		values, err := t.device.LabelsToHost()
+		if err != nil {
+			return nil, err
+		}
+		return newInt64Tensor(t.shape, values)
 	}
 	values, err := t.device.ToHost()
 	if err != nil {
@@ -78,7 +104,12 @@ func (t *Tensor) cloneResident() (*Tensor, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newResidentTensor(t.shape, buffer)
+	clone, err := newResidentTensor(t.shape, buffer)
+	if err != nil {
+		return nil, err
+	}
+	clone.dtype, clone.maxLabel = t.dtype, t.maxLabel
+	return clone, nil
 }
 
 func newResidentTensor(shape []int, buffer *accel.DeviceBuffer) (*Tensor, error) {
