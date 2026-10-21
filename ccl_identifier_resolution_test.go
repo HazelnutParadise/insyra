@@ -42,6 +42,7 @@ func cclFailure(t *testing.T, dt *DataTable) string {
 	err := dt.Err()
 	if err == nil {
 		t.Fatal("expected a CCL failure, got none")
+		return ""
 	}
 	dt.ClearErr()
 	return err.Error()

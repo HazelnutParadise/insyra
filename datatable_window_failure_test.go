@@ -69,6 +69,7 @@ func TestRollingColInvalidOptionIsRecordedOnTheTable(t *testing.T) {
 	err := dt.Err()
 	if err == nil {
 		t.Fatal("expected an error recorded on dt")
+		return
 	}
 	if err.FuncName != "RollingCol" {
 		t.Errorf("FuncName = %q, want %q", err.FuncName, "RollingCol")
@@ -88,6 +89,7 @@ func TestEWMColInvalidOptionIsRecordedOnTheTable(t *testing.T) {
 	err := dt.Err()
 	if err == nil {
 		t.Fatal("expected an error recorded on dt")
+		return
 	}
 	if err.FuncName != "EWMCol" {
 		t.Errorf("FuncName = %q, want %q", err.FuncName, "EWMCol")

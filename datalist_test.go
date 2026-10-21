@@ -406,6 +406,7 @@ func TestDataListDoubleExponentialSmoothing(t *testing.T) {
 	got := dl.DoubleExponentialSmoothing(0.5, 0.5)
 	if got == nil {
 		t.Fatal("DoubleExponentialSmoothing returned nil")
+		return
 	}
 	// level0=10 trend0=0
 	// i=1: level=0.5*20+0.5*(10+0)=15, trend=0.5*(15-10)+0.5*0=2.5, out=17.5

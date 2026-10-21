@@ -71,6 +71,7 @@ func TestRollingInvalidOptionsCarryTheError(t *testing.T) {
 	err := src.Err()
 	if err == nil {
 		t.Fatal("expected an error recorded on the source list")
+		return
 	}
 	if err.FuncName != "Rolling" {
 		t.Errorf("FuncName = %q, want %q", err.FuncName, "Rolling")
@@ -145,6 +146,7 @@ func TestEWMInvalidDecayCarriesTheError(t *testing.T) {
 	err := src.Err()
 	if err == nil {
 		t.Fatal("expected an error recorded on the source list")
+		return
 	}
 	if want := "exactly one of Alpha, Span, or HalfLife must be specified"; err.Message != want {
 		t.Errorf("Message = %q, want %q", err.Message, want)

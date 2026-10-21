@@ -46,6 +46,7 @@ func TestClassesNeverReturnsNil(t *testing.T) {
 			err := got.Err()
 			if err == nil {
 				t.Fatal("Err() is nil; the empty result says nothing about why it is empty")
+				return
 			}
 			if !strings.Contains(strings.ToLower(err.Error()), "fit") {
 				t.Errorf("the reason should say the model is not fitted: %v", err)

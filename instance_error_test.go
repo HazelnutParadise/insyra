@@ -18,6 +18,7 @@ func TestErrIsSticky(t *testing.T) {
 	err := dl.Err()
 	if err == nil {
 		t.Fatal("no error recorded")
+		return
 	}
 	if err.FuncName != "Diff" {
 		t.Fatalf("Err() reports %q; the first failure (Diff) must win", err.FuncName)
