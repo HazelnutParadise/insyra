@@ -4,6 +4,8 @@ import (
 	"math"
 	"reflect"
 	"testing"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
 func TestPivotPointsByHand(t *testing.T) {
@@ -33,6 +35,32 @@ func TestHeikinAshiByHand(t *testing.T) {
 	// Row 0: close (10+12+9+11)/4 = 10.5, open (10+11)/2 = 10.5. Row 1: open (10.5+10.5)/2, close (11+13+10+12)/4 = 11.5.
 	if o[0] != 10.5 || c[0] != 10.5 || h[0] != 12 || l[0] != 9 || o[1] != 10.5 || c[1] != 11.5 || h[1] != 13 || l[1] != 10 {
 		t.Fatalf("o %v h %v l %v c %v", o, h, l, c)
+	}
+}
+
+func TestHeikinAshiValidatesAllFourSeries(t *testing.T) {
+	p := prices(10, 11, 12)
+	for name, args := range map[string][4]insyra.IDataList{
+		"zero open":      {prices(10, 0, 12), p, p, p},
+		"zero high":      {p, prices(10, 0, 12), p, p},
+		"negative low":   {p, p, prices(10, -1, 12), p},
+		"zero close":     {p, p, p, prices(10, 0, 12)},
+		"high below low": {p, prices(9, 9, 9), p, p},
+		"nan close":      {p, p, p, prices(10, math.NaN(), 12)},
+		"short high":     {p, prices(10, 11), p, p},
+		"short low":      {p, p, prices(10, 11), p},
+		"short open":     {prices(10, 11), p, p, p},
+	} {
+		if _, err := HeikinAshi(args[0], args[1], args[2], args[3]); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}
+
+func TestPivotPointsResultTypeName(t *testing.T) {
+	r, err := PivotPoints(prices(1, 2), prices(1, 2), prices(1, 2))
+	if err != nil || r == nil {
+		t.Fatal(err)
 	}
 }
 
@@ -145,5 +173,20 @@ func TestStructureListsAreNamed(t *testing.T) {
 		if dt.GetColByName(name) == nil {
 			t.Errorf("Heikin-Ashi has no %s column", name)
 		}
+	}
+}
+
+func TestTDSequentialRestartsASetupPastNine(t *testing.T) {
+	c := []float64{20, 20, 20, 20}
+	for v := 19.0; v >= 9; v-- { // ten falling closes after four flat ones
+		c = append(c, v)
+	}
+	got, err := TDSequential(prices(c...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bs := floats(t, got.BuySetup)
+	if bs[12] != 9 || bs[13] != 1 {
+		t.Fatalf("buy setup %v", bs)
 	}
 }

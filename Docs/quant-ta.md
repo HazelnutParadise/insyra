@@ -480,7 +480,7 @@ type VolumeProfileResult struct{ POC, ValueAreaHigh, ValueAreaLow *insyra.DataLi
 ## Price Structure
 
 ```go
-func PivotPoints(high, low, close insyra.IDataList) (*PivotLevelsResult, error)    // P, R1, R2, R3, S1, S2, S3
+func PivotPoints(high, low, close insyra.IDataList) (*PivotPointsResult, error)    // P, R1, R2, R3, S1, S2, S3
 func HeikinAshi(open, high, low, close insyra.IDataList) (*insyra.DataTable, error) // Open, High, Low, Close
 func TDSequential(close insyra.IDataList) (*TDSequentialResult, error)              // BuySetup, SellSetup, BuyCountdown, SellCountdown
 func PointAndFigure(close insyra.IDataList, boxSize float64, reversal int) ([]PFColumn, error)
@@ -494,8 +494,8 @@ type PFColumn struct {
 ```
 
 - **`PivotPoints`** are the floor-trader levels for each row, from the previous row's high `H`, low `L` and close `C`: `P = (H + L + C) / 3`, `R1 = 2P − L`, `R2 = P + (H − L)`, `R3 = H + 2(P − L)`, `S1 = 2P − H`, `S2 = P − (H − L)`, `S3 = L − 2(H − P)`. They are known at yesterday's close, so row 0 is `NaN`. They are price levels, not the turning points `ZigZag` returns (those are `Swing`s).
-- **`HeikinAshi`** returns the smoothed bars as a table: the close is `(open + high + low + close) / 4`, the open is the midpoint of the previous Heikin-Ashi bar (the first is `(open + close) / 2`), and the high and low extend to cover them.
-- **`TDSequential`** counts on closes only. A buy setup counts consecutive closes below the close four rows earlier (1 to 9, a broken run resets to 0, and a run that goes on past 9 starts again from 1); a sell setup is the mirror. A completed setup starts a countdown on the next row: the buy countdown counts, not necessarily in a row, the rows whose close is at or below the close two rows earlier, up to 13 (the original rule uses lows and highs); a completed opposite setup cancels it, and a second setup of the same side does not restart it. Platforms differ in the finer rules (perfection, qualifiers, recycling), and there is no reference implementation to match, so the tests use hand-built series.
+- **`HeikinAshi`** returns the smoothed bars as a table: the close is `(open + high + low + close) / 4`, the open is the midpoint of the previous Heikin-Ashi bar (the first is `(open + close) / 2`), and the high and low extend to cover them. All four series must be finite, positive prices of the same length, and no high may be below its low; otherwise it returns an error.
+- **`TDSequential`** counts on closes only. A buy setup counts consecutive closes below the close four rows earlier (1 to 9, a broken run resets to 0, and a run that goes on past 9 starts again from 1); a sell setup is the mirror. A completed setup starts a countdown on the next row: the buy countdown counts, not necessarily in a row, the rows whose close is at or below the close two rows earlier, up to 13; a completed opposite setup cancels it, and a second setup of the same side does not restart it. This is not DeMark's original rule set: the countdown compares the close with the close two rows earlier where the original compares with the low (buy) or high (sell) of two rows earlier, and a setup that goes on past 9 starts again from 1. It has no perfection, qualifier or recycling rules, so do not expect it to match a charting platform. There is no reference implementation to match, so the tests use hand-built series.
 - **`PointAndFigure`** builds the columns from closes: a price lies in the box `floor(price / boxSize)`, a rising column grows when the close reaches a higher box and turns into a falling one when the close falls `reversal` boxes below its top (usual 3), and the other way round. A new column starts one box beyond the old column's end.
 
 ---
