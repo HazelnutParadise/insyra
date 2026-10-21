@@ -41,6 +41,7 @@ func TestExecuteCCLIsAllOrNothing(t *testing.T) {
 	dt.ExecuteCCL("NEW('x') = A + 1\nA = A * 2\nNEW('y') = A / B\nNEW('z') = A")
 	if dt.PopErr() == nil {
 		t.Fatal("the script should fail on its third statement")
+		return
 	}
 	if n := dt.NumCols(); n != 2 {
 		t.Errorf("a failed script left %d columns %v, want the original 2", n, dt.ColNames())

@@ -23,6 +23,7 @@ func TestCCLCompileAndEvalFailuresAreDistinguishable(t *testing.T) {
 	compileErr := dt.PopErr()
 	if compileErr == nil {
 		t.Fatal("SUM(A B) was accepted")
+		return
 	}
 	var ce *ccl.CompileError
 	if !errors.As(compileErr, &ce) {
@@ -40,6 +41,7 @@ func TestCCLCompileAndEvalFailuresAreDistinguishable(t *testing.T) {
 	evalErr := dt2.PopErr()
 	if evalErr == nil {
 		t.Fatal("A / B on a zero was accepted")
+		return
 	}
 	var ee *ccl.EvalError
 	if !errors.As(evalErr, &ee) {
@@ -68,6 +70,7 @@ func TestCCLEvalFailureMessageNamesTheRow(t *testing.T) {
 	err := dt.PopErr()
 	if err == nil {
 		t.Fatal("A / B on a zero was accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), "row 2") {
 		t.Errorf("message should name row 2: %v", err)
@@ -84,6 +87,7 @@ func TestCCLFailureMessageHasNoElapsedTime(t *testing.T) {
 	err := dt.PopErr()
 	if err == nil {
 		t.Fatal("SUM(A B) was accepted")
+		return
 	}
 	if strings.Contains(err.Error(), "after ") {
 		t.Errorf("the elapsed time is noise on a failure: %v", err)
@@ -119,6 +123,7 @@ func TestExecuteCCLNamesTheFailingStatement(t *testing.T) {
 	err := dt.PopErr()
 	if err == nil {
 		t.Fatal("the script was accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), "NEW('y') = A / B") {
 		t.Errorf("the error must name the statement that failed: %v", err)

@@ -227,6 +227,7 @@ func TestCCLRowRangeErrorSaysWhatToDo(t *testing.T) {
 	err := dt.PopErr()
 	if err == nil {
 		t.Fatal("a bare row range was accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), "attach it to a column") {
 		t.Errorf("error should say how to write it instead: %v", err)
