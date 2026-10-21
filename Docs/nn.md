@@ -140,9 +140,11 @@ On an Apple M3, best of five, the exact device `MatMul` took 18 to 19 ms for
 `[4096,96]x[96,128]` and `[4096,128]x[128,96]`. The exact CPU reference took
 39 to 44 ms, and the default float32 CPU `MatMul` took 6.6 to 8 ms. So the
 exact device kernel is two to three times faster than the exact CPU but slower
-than the default CPU on this machine; the gain from staying on the device is
-that the rest of the step avoids the transfers. It has not been measured on a
-discrete GPU.
+than the default CPU on this machine. Choose the mode for results that are the
+same everywhere and for a step that stays on the device, not for a faster
+product: if you only want speed on a multi-core CPU, the default tape is
+faster. The kernel is bound by the arithmetic of the exact sum, so tiling it
+did not help. Only Apple Metal has been measured; other GPUs have not.
 
 ## Loading and running an ONNX model
 
