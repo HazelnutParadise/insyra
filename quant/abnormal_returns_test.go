@@ -556,6 +556,66 @@ func TestAbnormalReturnsKeepsASliceDateAsOneCell(t *testing.T) {
 	}
 }
 
+func TestAbnormalReturnsRefusesWindowsThatCannotBeHeld(t *testing.T) {
+	pt, et, dates, lv := exactPanel(100, []int{50}, nil)
+	for _, w := range [][2]int{{math.MinInt, 0}, {0, math.MaxInt}, {math.MinInt, math.MaxInt}, {-(1 << 40), 1}, {-200, 0}} {
+		_, err := AbnormalReturns(pt, et, dates, AbnormalReturnsOptions{EventWindow: w, MarketLevels: lv})
+		if err == nil {
+			t.Errorf("event window %v: no error", w)
+		}
+	}
+	for _, w := range [][2]int{{math.MinInt, -11}, {-(1 << 40), -11}} {
+		_, err := AbnormalReturns(pt, et, dates, AbnormalReturnsOptions{Model: AbnormalMarketModel, EstimationWindow: w,
+			EventWindow: [2]int{-1, 1}, MinEstimation: 10, MarketLevels: lv})
+		if err == nil {
+			t.Errorf("estimation window %v: no error", w)
+		}
+	}
+	// A huge MinGap, or an estimation window longer than the table, is fine.
+	res, err := AbnormalReturns(pt, et, dates, AbnormalReturnsOptions{Model: AbnormalMarketModel,
+		EstimationWindow: [2]int{-(1 << 28), -11}, EventWindow: [2]int{-1, 1}, MinEstimation: 10, MinGap: math.MaxInt, MarketLevels: lv})
+	if err != nil || res.Events != 1 {
+		t.Errorf("err %v, events %v", err, res)
+	}
+}
+
+// Each abnormal return is finite but their sum is not: the event is dropped.
+func TestAbnormalReturnsDropsAnEventWhoseCARIsNotFinite(t *testing.T) {
+	pt, et, dates, lv := exactPanel(100, []int{30, 70}, nil)
+	prices := []float64{1e-5, 1e303, 1e-5, 1e303, 1e-5} // returns 1e308, -1, 1e308 on rows 29, 30, 31
+	for r := 28; r < 100; r++ {
+		v := 1e-5
+		if r-28 < len(prices) {
+			v = prices[r-28]
+		}
+		pt.UpdateElement(r, "A", v)
+	}
+	res, err := AbnormalReturns(pt, et, dates, AbnormalReturnsOptions{EventWindow: [2]int{-1, 3}, MarketLevels: lv})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Events != 1 || res.Missing != 1 {
+		t.Fatalf("events %d missing %d, want 1 and 1", res.Events, res.Missing)
+	}
+	for d := range res.Days {
+		if math.IsInf(res.MeanCAR[d], 0) || math.IsInf(res.MeanAR[d], 0) {
+			t.Errorf("day %d is infinite", res.Days[d])
+		}
+	}
+}
+
+// Sums that overflow in the cross-sectional test leave NaN, not Inf.
+func TestCrossSectionalTWithSumsThatOverflow(t *testing.T) {
+	mean, tt, p := crossSectionalT([]float64{1.5e308, 1.5e308, 1.5e308})
+	if !math.IsNaN(mean) || !math.IsNaN(tt) || !math.IsNaN(p) {
+		t.Errorf("mean %v t %v p %v, want NaN", mean, tt, p)
+	}
+	mean, tt, p = crossSectionalT([]float64{1e200, -1e200, 1e200, -1e200})
+	if math.IsInf(mean, 0) || !math.IsNaN(tt) || !math.IsNaN(p) {
+		t.Errorf("mean %v t %v p %v", mean, tt, p)
+	}
+}
+
 // A ratio of two finite prices can overflow; that return is missing data, so
 // the event is dropped as a whole instead of carrying an infinity.
 func TestAbnormalReturnsTreatsAnOverflowingReturnAsMissing(t *testing.T) {
