@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strings"
-	"time"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -166,7 +164,10 @@ func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols
 		if d == nil {
 			return nil, fmt.Errorf("date is missing at row index %d", i)
 		}
-		key := dateKey(d)
+		key, err := dateKey(d)
+		if err != nil {
+			return nil, fmt.Errorf("row index %d: %w", i, err)
+		}
 		if _, seen := byDate[key]; !seen {
 			order = append(order, key)
 			dateValue[key] = d
@@ -329,16 +330,6 @@ func finiteOrMissing(raw []any, label string, rows int) ([]float64, error) {
 		out[i] = f
 	}
 	return out, nil
-}
-
-func dateKey(d any) string {
-	switch v := d.(type) {
-	case time.Time:
-		return "t:" + fmt.Sprint(v.UnixNano())
-	case string:
-		return "s:" + strings.TrimSpace(v)
-	}
-	return fmt.Sprintf("%T:%v", d, d)
 }
 
 // assignQuantileGroups returns, for each position in idx, a group from 0 to

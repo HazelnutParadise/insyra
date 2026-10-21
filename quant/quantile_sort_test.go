@@ -3,6 +3,7 @@ package quant
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -185,6 +186,60 @@ func TestQuantileSortRefusesBadInput(t *testing.T) {
 	for name, f := range cases {
 		if f() == nil {
 			t.Errorf("%s: want an error", name)
+		}
+	}
+}
+
+func dateKeyTable(dates []any) *insyra.DataTable {
+	n := len(dates)
+	sig, ret := make([]any, n), make([]any, n)
+	for i := range dates {
+		sig[i] = float64(i%4 + 1)
+		ret[i] = float64(i%4+1) * 10
+	}
+	return insyra.NewDataTable(insyra.NewDataList().Append(dates...).SetName("date"), insyra.NewDataList(sig...).SetName("signal"), insyra.NewDataList(ret...).SetName("ret"))
+}
+
+func quantileSortDateCount(t *testing.T, dates []any) int {
+	t.Helper()
+	res, err := QuantileSort(dateKeyTable(dates), "date", "signal", []string{"ret"}, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := res.Spread.Size()
+	return rows
+}
+
+func TestQuantileSortWhitespaceDatesStayDifferent(t *testing.T) {
+	d := []any{"2026-01-02", "2026-01-02", "2026-01-02", "2026-01-02", " 2026-01-02 ", " 2026-01-02 ", " 2026-01-02 ", " 2026-01-02 "}
+	if got := quantileSortDateCount(t, d); got != 2 {
+		t.Errorf("dates = %d, want 2", got)
+	}
+}
+
+func TestQuantileSortFarInstantsStayDifferent(t *testing.T) {
+	a := time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
+	b := time.Date(585, 7, 21, 23, 34, 33, 709551616, time.UTC)
+	d := []any{a, a, a, a, b, b, b, b}
+	if got := quantileSortDateCount(t, d); got != 2 {
+		t.Errorf("dates = %d, want 2", got)
+	}
+}
+
+func TestQuantileSortSameInstantInOtherZoneIsOneDate(t *testing.T) {
+	a := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	z := a.In(time.FixedZone("x", 3600))
+	d := []any{a, a, z, z, a, a, z, z}
+	if got := quantileSortDateCount(t, d); got != 1 {
+		t.Errorf("dates = %d, want 1", got)
+	}
+}
+
+func TestQuantileSortRefusesUnsupportedDateTypes(t *testing.T) {
+	for _, bad := range []any{[]int{1}, struct{}{}, math.NaN()} {
+		d := []any{bad, bad, bad, bad}
+		if _, err := QuantileSort(dateKeyTable(d), "date", "signal", []string{"ret"}, 2); err == nil {
+			t.Errorf("date %T %v: want an error", bad, bad)
 		}
 	}
 }

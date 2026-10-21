@@ -772,7 +772,7 @@ func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols
 
 Every day, sorts the stocks into `n` groups by a signal and reports each group's mean return and the spread between the top and the bottom group, the standard check of whether a signal ranks future returns. The table is in long form, one row per stock and date. Each day is sorted on its own, and 9.6 million stock-days take about 3 seconds.
 
-`dateCol`, `signalCol`, `returnCols` and `WeightCol` are column names, or Excel-style letters when no column has that name. Dates are grouped by value and appear in the order they first appear in the table. A stock with a missing (`nil` or `NaN`) signal is left out of its day, and a missing return is left out of that column's means. Text, an infinity, a missing date or a non-positive weight is an error.
+`dateCol`, `signalCol`, `returnCols` and `WeightCol` are column names, or Excel-style letters when no column has that name. Dates are grouped by value and appear in the order they first appear in the table. A date is a string (compared exactly, whitespace included), `time.Time` (by instant, any zone), `bool`, an integer or a float (not `NaN`); `int` 1 and `float64` 1 are different dates, and any other type is an error. A stock with a missing (`nil` or `NaN`) signal is left out of its day, and a missing return is left out of that column's means. Text, an infinity, a missing date or a non-positive weight is an error.
 
 **Options (`QuantileSortOptions`)**
 

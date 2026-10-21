@@ -298,9 +298,9 @@ func TestFamaMacBethDateKeyDistinguishesFarInstants(t *testing.T) {
 	if a.UnixNano() != b.UnixNano() {
 		t.Skip("UnixNano no longer collides for these instants")
 	}
-	ka, _ := famaMacBethDateKey(a)
-	kb, _ := famaMacBethDateKey(b)
-	kz, _ := famaMacBethDateKey(a.In(time.FixedZone("x", 3600)))
+	ka, _ := dateKey(a)
+	kb, _ := dateKey(b)
+	kz, _ := dateKey(a.In(time.FixedZone("x", 3600)))
 	if ka == kb {
 		t.Errorf("distinct instants share the key %q", ka)
 	}
