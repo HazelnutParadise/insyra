@@ -453,17 +453,24 @@ func ChaikinOscillator(high, low, close, volume insyra.IDataList, fast, slow int
 func EaseOfMovement(high, low, volume insyra.IDataList, n int, opts ...EaseOfMovementOptions) (*insyra.DataList, error)
 func NVI(close, volume insyra.IDataList) (*insyra.DataList, error)
 func PVI(close, volume insyra.IDataList) (*insyra.DataList, error)
-func VolumeProfile(high, low, close, volume insyra.IDataList, n int, opts ...VolumeProfileOptions) (*VolumeProfileResult, error)
+func VolumeProfile(high, low, volume insyra.IDataList, n int, opts ...VolumeProfileOptions) (*VolumeProfileResult, error)
 
-type EaseOfMovementOptions struct{ Scale float64 }              // volume divisor, default 100,000,000
-type VolumeProfileOptions struct{ Bins int; ValueArea float64 } // default 24 and 0.7
+type EaseOfMovementOptions struct {
+    Scale         float64 // volume divisor, default 100,000,000
+    SegmentStarts []int   // rows on which a new data segment starts; each segment is computed on its own
+}
+type VolumeProfileOptions struct {
+    Bins          int     // default 24
+    ValueArea     float64 // default 0.7
+    SegmentStarts []int   // rows on which a new data segment starts; the window restarts there
+}
 type VolumeProfileResult struct{ POC, ValueAreaHigh, ValueAreaLow *insyra.DataList }
 ```
 
 - **`MFI`** is the money flow index (usual 14), an RSI of the typical price weighted by volume, from 0 to 100. **`AccumulationDistribution`** is the running total of the money flow volume, `((close − low) − (high − close)) / (high − low) × volume` (0 when high equals low). **`CMF`** is Chaikin money flow (usual 20): the sum of that over the sum of the volume, from −1 to 1. **`ChaikinOscillator`** is the fast EMA of the accumulation/distribution line minus the slow one (usual 3 and 10), started from its first value as TA-Lib does.
-- **`EaseOfMovement`** is Arms' ease of movement (usual 14): the `n`-row simple average of the move of the range's midpoint divided by the box ratio `(volume / Scale) / (high − low)`. The scale only sets the size of the numbers; StockCharts uses 100,000,000.
+- **`EaseOfMovement`** is Arms' ease of movement (usual 14): the `n`-row simple average of the move of the range's midpoint divided by the box ratio `(volume / Scale) / (high − low)`. The scale only sets the size of the numbers; StockCharts uses 100,000,000. With `SegmentStarts` (for example after a trading halt or a relisting) each segment is computed on its own: the midpoint move is not taken across a start, and a segment shows `NaN` through its first `n` rows. Left empty, the result does not change.
 - **`NVI`** and **`PVI`** are the negative and positive volume indexes: they start at 1000 and move by the price's percentage change on rows whose volume is lower (NVI) or higher (PVI) than the previous row's.
-- **`VolumeProfile`** returns, for the window of the last `n` rows ending on each row, the price level with the most volume (`POC`) and the value area around it (`ValueAreaHigh`, `ValueAreaLow`). The window's range is cut into `Bins` equal bins; each bar's volume is spread over the bins it covers in proportion to the overlap (a bar with no range goes into the bin it sits in); the value area grows one bin at a time toward the side with more volume until it holds `ValueArea` of the volume. How a bar's volume is spread changes the answer, and this is the common even spread.
+- **`VolumeProfile`** returns, for the window of the last `n` rows ending on each row, the price level with the most volume (`POC`) and the value area around it (`ValueAreaHigh`, `ValueAreaLow`). The window's range is cut into `Bins` equal bins; each bar's volume is spread over the bins it covers in proportion to the overlap (a bar with no range goes into the bin it sits in); the value area grows one bin at a time toward the side with more volume until it holds `ValueArea` of the volume. How a bar's volume is spread changes the answer, and this is the common even spread. A volume profile needs no close, so `VolumeProfile` takes none. With `SegmentStarts` the window restarts at each start, so it never holds rows from before a halt or a relisting, and a segment shows `NaN` until its window is full.
 
 `MFI`, `AccumulationDistribution` and `ChaikinOscillator` equal TA-Lib's `MFI`, `AD` and `ADOSC`. The rest are compared with implementations written from the definitions (`testdata/volume_baseline.py`).
 
