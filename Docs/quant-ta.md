@@ -99,8 +99,8 @@ func BiasZ(prices insyra.IDataList, n, window int) (*insyra.DataList, error)
 
 ```go
 bias, _ := ta.Bias(close, 20)
-buckets, err := ta.SignalBuckets(biasTable, closes, dates, ta.BucketOptions{
-    ForwardOptions: ta.ForwardOptions{Horizons: []int{1, 5, 20, 60}},
+buckets, err := quant.SignalBuckets(biasTable, closes, dates, quant.BucketOptions{
+    ForwardOptions: quant.ForwardOptions{Horizons: []int{1, 5, 20, 60}},
     Edges:          []float64{-0.2, -0.1, 0, 0.1, 0.2},
 })
 ```
