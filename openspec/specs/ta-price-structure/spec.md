@@ -20,7 +20,7 @@ Price-structure tools (floor pivot levels, Heikin-Ashi bars, TD Sequential count
 - **THEN** the Heikin-Ashi open and close are both 10.5
 
 ### Requirement: TD Sequential counts setups and countdowns on closes
-`ta.TDSequential` SHALL count 1 to 9 consecutive closes below, or above, the close four rows earlier as a buy, or sell, setup, SHALL start a countdown to 13 after a completed setup that counts rows closing at or beyond the close two rows earlier, and SHALL cancel it when the opposite setup completes.
+`ta.TDSequential` SHALL count 1 to 9 consecutive closes below, or above, the close four rows earlier as a buy, or sell, setup, SHALL start a countdown to 13 after a completed setup that counts rows closing at or beyond the close two rows earlier, SHALL start a new one when a setup completes after the previous countdown reached 13, and SHALL cancel it when the opposite setup completes.
 
 #### Scenario: A nine-row fall
 - **WHEN** nine rows in a row close below the close four rows earlier
@@ -48,7 +48,7 @@ Price-structure tools (floor pivot levels, Heikin-Ashi bars, TD Sequential count
 - **THEN** an error is returned
 
 ### Requirement: Unusable input is refused
-Each function here SHALL return an error naming the row index for a missing, non-numeric or non-finite value and for a price that must be positive and is not, and an error for a box size that is not above 0, a reversal below 1 and series of different lengths.
+Each function here SHALL return an error naming the row index for a missing, non-numeric or non-finite value and for a price that must be positive and is not, and an error for a box size that is not above 0, a reversal below 1 a close whose box index exceeds 2^53, and series of different lengths.
 
 #### Scenario: A box size of 0
 - **WHEN** boxSize is 0

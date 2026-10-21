@@ -154,13 +154,13 @@ func TDSequential(close insyra.IDataList) (*TDSequentialResult, error) {
 		// A completed setup starts a countdown unless one of the same side is
 		// already running; the opposite side's countdown is cancelled.
 		if buy == 9 {
-			if !buyActive && buyCD != 13 {
+			if !buyActive {
 				buyActive, buyCD, buyFrom = true, 0, i
 			}
 			sellActive, sellCD = false, 0
 		}
 		if sell == 9 {
-			if !sellActive && sellCD != 13 {
+			if !sellActive {
 				sellActive, sellCD, sellFrom = true, 0, i
 			}
 			buyActive, buyCD = false, 0
@@ -241,6 +241,14 @@ func PointAndFigure(close insyra.IDataList, boxSize float64, reversal int) ([]PF
 	if err != nil {
 		return nil, err
 	}
+	// A box index must be an integer a float64 holds exactly, so converting it
+	// to int cannot wrap or saturate.
+	const maxBox = 1 << 53
+	for i, p := range c {
+		if q := math.Floor(p / boxSize); !(math.Abs(q) <= maxBox) {
+			return nil, fmt.Errorf("close %v at row index %d lies in a box beyond %d with boxSize %v; use a larger boxSize", p, i, int64(maxBox), boxSize)
+		}
+	}
 	box := func(p float64) int { return int(math.Floor(p / boxSize)) }
 	if len(c) == 0 {
 		return nil, nil
@@ -273,14 +281,14 @@ func PointAndFigure(close insyra.IDataList, boxSize float64, reversal int) ([]PF
 		case PFRising:
 			if b > high {
 				high, last = b, i
-			} else if b <= high-reversal {
+			} else if high-b >= reversal {
 				flush(last)
 				kind, high, low, start, last = PFFalling, high-1, b, i, i
 			}
 		case PFFalling:
 			if b < low {
 				low, last = b, i
-			} else if b >= low+reversal {
+			} else if b-low >= reversal {
 				flush(last)
 				kind, low, high, start, last = PFRising, low+1, b, i, i
 			}

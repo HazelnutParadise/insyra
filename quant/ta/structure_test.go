@@ -190,3 +190,54 @@ func TestTDSequentialRestartsASetupPastNine(t *testing.T) {
 		t.Fatalf("buy setup %v", bs)
 	}
 }
+
+func TestTDSequentialStartsANewCountdownAfterOneCompletes(t *testing.T) {
+	c := []float64{100, 100, 100, 100}
+	for v := 99.0; v >= 50; v-- {
+		c = append(c, v)
+	}
+	got, err := TDSequential(prices(c...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bc := floats(t, got.BuyCountdown)
+	if bc[25] != 13 || bc[29] != 13 {
+		t.Fatalf("the first countdown should complete at row 25 and stay: %v", bc)
+	}
+	// the setup completed again on row 30, so a new countdown starts on row 31
+	if bc[30] != 0 || bc[31] != 1 {
+		t.Fatalf("a new countdown should restart at row 30: %v", bc[28:34])
+	}
+	// the mirror image on a rising series
+	r := []float64{100, 100, 100, 100}
+	for v := 101.0; v <= 150; v++ {
+		r = append(r, v)
+	}
+	gs, err := TDSequential(prices(r...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := floats(t, gs.SellCountdown)
+	if sc[25] != 13 || sc[30] != 0 || sc[31] != 1 {
+		t.Fatalf("sell countdown %v", sc[24:34])
+	}
+}
+
+func TestPointAndFigureRefusesUnrepresentableBoxes(t *testing.T) {
+	if _, err := PointAndFigure(prices(10, 11, 12, 13, 10), 1e-20, 3); err == nil {
+		t.Error("a box index beyond the exactly representable integers should be an error")
+	}
+	if _, err := PointAndFigure(prices(1e300, 1e300), 1e-300, 3); err == nil {
+		t.Error("an infinite quotient should be an error")
+	}
+	if _, err := PointAndFigure(prices(10, 11, 12, 13, 10), 1, 3); err != nil {
+		t.Errorf("an ordinary chart: %v", err)
+	}
+}
+
+func TestPointAndFigureHugeReversalNeverReverses(t *testing.T) {
+	got, err := PointAndFigure(prices(10, 12, 9, 15, 2), 1, math.MaxInt)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("got %v, %v", got, err)
+	}
+}
