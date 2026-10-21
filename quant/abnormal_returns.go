@@ -227,13 +227,16 @@ func readAbnormalInput(prices, events insyra.IDataTable, dates insyra.IDataList,
 }
 
 // simpleReturns returns r[t] = x[t]/x[t-1]-1, NaN for t = 0 and wherever
-// either level is missing.
+// either level is missing or the ratio overflows (a return that is not a
+// finite number is missing data).
 func simpleReturns(x []float64) []float64 {
 	r := make([]float64, len(x))
 	for t := range x {
 		r[t] = math.NaN()
 		if t > 0 && !math.IsNaN(x[t]) && !math.IsNaN(x[t-1]) {
-			r[t] = x[t]/x[t-1] - 1
+			if v := x[t]/x[t-1] - 1; !math.IsInf(v, 0) {
+				r[t] = v
+			}
 		}
 	}
 	return r
@@ -302,7 +305,7 @@ func computeAbnormalReturns(in *abnormalInput, o AbnormalReturnsOptions) *Abnorm
 	dateCol := make([]any, len(kept))
 	for i, k := range kept {
 		stockCol[i] = in.names[k.stock]
-		dateCol[i] = in.dates[k.row]
+		dateCol[i] = insyra.Cell(in.dates[k.row]) // one cell, even for a slice
 	}
 	table = append(table, insyra.NewDataList(stockCol...).SetName("stock"), insyra.NewDataList(dateCol...).SetName("event date"))
 	for d := range nd {

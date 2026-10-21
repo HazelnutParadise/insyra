@@ -534,3 +534,55 @@ func TestAbnormalReturnsAcceptsIsrWrappers(t *testing.T) {
 	closeTo(t, "MeanAR", got.MeanAR, want.MeanAR, 0)
 	closeTo(t, "CARPValue", got.CARPValue, want.CARPValue, 0)
 }
+
+// A date cell that is a slice stays one cell: the table has one row per event.
+func TestAbnormalReturnsKeepsASliceDateAsOneCell(t *testing.T) {
+	pt, et, dates, lv := exactPanel(100, []int{40, 70}, nil)
+	dates.Update(40, insyra.Cell([]int{2026, 1, 2}))
+	res, err := AbnormalReturns(pt, et, dates, AbnormalReturnsOptions{EventWindow: [2]int{-1, 1}, MarketLevels: lv})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, cols := res.CARs.Size()
+	if res.Events != 2 || rows != 2 || cols != 5 {
+		t.Fatalf("events %d, CARs %dx%d, want 2 events and 2x5", res.Events, rows, cols)
+	}
+	got, ok := res.CARs.GetElementByNumberIndex(0, 1).([]int)
+	if !ok || len(got) != 3 || got[0] != 2026 {
+		t.Errorf("event date of row 0 is %v", res.CARs.GetElementByNumberIndex(0, 1))
+	}
+	if g := res.CARs.GetElementByNumberIndex(1, 1); g != monthlyDate(70) {
+		t.Errorf("event date of row 1 is %v", g)
+	}
+}
+
+// A ratio of two finite prices can overflow; that return is missing data, so
+// the event is dropped as a whole instead of carrying an infinity.
+func TestAbnormalReturnsTreatsAnOverflowingReturnAsMissing(t *testing.T) {
+	pt, et, dates, lv := exactPanel(100, []int{30, 70}, nil)
+	pt.UpdateElement(31, "A", 1e-300)
+	pt.UpdateElement(32, "A", 1e300) // 1e300/1e-300 overflows
+	res, err := AbnormalReturns(pt, et, dates, AbnormalReturnsOptions{EventWindow: [2]int{-2, 3}, MarketLevels: lv})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Events != 1 || res.Missing != 1 {
+		t.Fatalf("events %d missing %d, want 1 and 1", res.Events, res.Missing)
+	}
+	for d := range res.Days {
+		if math.IsInf(res.MeanAR[d], 0) || math.IsInf(res.MeanCAR[d], 0) {
+			t.Errorf("day %d is infinite", res.Days[d])
+		}
+	}
+	// The same holds for the market.
+	pt, et, dates, lv = exactPanel(100, []int{30, 70}, nil)
+	lv.Update(31, 1e-300)
+	lv.Update(32, 1e300)
+	res, err = AbnormalReturns(pt, et, dates, AbnormalReturnsOptions{EventWindow: [2]int{-2, 3}, MarketLevels: lv})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Events != 1 || res.Missing != 1 {
+		t.Errorf("market: events %d missing %d, want 1 and 1", res.Events, res.Missing)
+	}
+}
