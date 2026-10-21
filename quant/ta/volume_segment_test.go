@@ -105,3 +105,16 @@ func TestVolumeProfileSegmentStartsEqualSeparateSegments(t *testing.T) {
 		t.Error("a high below its low must be an error")
 	}
 }
+
+// A bar covering the whole range spreads its volume evenly, so every bin ties
+// and the lowest wins, even when the prices are decimals whose edges round.
+func TestVolumeProfileUniformDecimalProfileTiesToLowestBin(t *testing.T) {
+	vp, err := VolumeProfile(prices(10.1), prices(10), prices(100), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := 10 + 0.1/24/2
+	if got := floats(t, vp.POC)[0]; math.Abs(got-want) > 1e-12 {
+		t.Fatalf("POC %v, want the middle of the lowest bin %v", got, want)
+	}
+}

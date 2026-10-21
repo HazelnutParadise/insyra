@@ -91,6 +91,12 @@ func VolumeProfile(high, low, volume insyra.IDataList, n int, opts ...VolumeProf
 	return &VolumeProfileResult{listOfFloats("POC", poc), listOfFloats("ValueAreaHigh", vah), listOfFloats("ValueAreaLow", val)}, nil
 }
 
+// tieTolerance is the share of a window's volume by which two bins may differ
+// and still count as tied. The overlaps that split a bar's volume are computed
+// from rounded price edges, so bins that hold equal volume differ by about 1e-16
+// of it; without the tolerance a spread bar would not tie the way it should.
+const tieTolerance = 1e-9
+
 // volumeProfileWindow fills row i of poc, vah and val from the n rows ending
 // on it, leaving them NaN when the window has no price range or no volume.
 func volumeProfileWindow(h, l, v []float64, i, n int, o VolumeProfileOptions, bins, poc, vah, val []float64) {
@@ -129,7 +135,7 @@ func volumeProfileWindow(h, l, v []float64, i, n int, o VolumeProfileOptions, bi
 	}
 	best := 0
 	for k := range bins {
-		if bins[k] > bins[best] {
+		if bins[k] > bins[best]+tieTolerance*total {
 			best = k
 		}
 	}
@@ -143,7 +149,7 @@ func volumeProfileWindow(h, l, v []float64, i, n int, o VolumeProfileOptions, bi
 		if b < o.Bins-1 {
 			above = bins[b+1]
 		}
-		if above > below {
+		if above > below+tieTolerance*total {
 			b++
 			held += bins[b]
 		} else {
