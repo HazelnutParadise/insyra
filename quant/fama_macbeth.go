@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats"
@@ -174,7 +175,7 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []
 		if d == nil {
 			return nil, fmt.Errorf("date is missing at row index %d", i)
 		}
-		key := dateKey(d)
+		key := famaMacBethDateKey(d)
 		if _, seen := byDate[key]; !seen {
 			order = append(order, key)
 			dateValue[key] = d
@@ -343,4 +344,17 @@ func crossSection(ret []float64, x [][]float64, idx []int, standardize bool) ([]
 		out[c] = beta.AtVec(c)
 	}
 	return out, r2, true
+}
+
+// famaMacBethDateKey groups dates by value, as documented: a string is kept
+// exactly (surrounding whitespace is part of the value), a time.Time is its
+// instant, and any other type is keyed by its type and value.
+func famaMacBethDateKey(d any) string {
+	switch v := d.(type) {
+	case string:
+		return "s:" + v
+	case time.Time:
+		return "t:" + fmt.Sprint(v.UnixNano())
+	}
+	return fmt.Sprintf("%T:%v", d, d)
 }

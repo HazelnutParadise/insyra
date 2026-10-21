@@ -2,6 +2,7 @@ package quant
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"strings"
@@ -264,6 +265,27 @@ func TestFamaMacBethRefusesReservedCharacteristicNames(t *testing.T) {
 	_, err := FamaMacBeth(fmbPanel(4, 8, func(int, int) float64 { return 0 }), "date", "ret", []string{"x1", "A"})
 	if err == nil || !strings.Contains(err.Error(), "date column") {
 		t.Errorf("date as characteristic: error %v", err)
+	}
+}
+
+// Dates are grouped by value: strings that differ only by whitespace are
+// different dates.
+func TestFamaMacBethKeepsWhitespaceDatesApart(t *testing.T) {
+	table := fmbPanelEdit(6, 8, func(d, s int) float64 { return math.Sin(float64(d*s + d)) }, func(cols [4][]any) {
+		for i, d := range cols[0] {
+			if d.(int)%2 == 1 {
+				cols[0][i] = " day" + fmt.Sprint(d.(int)-1) + " "
+			} else {
+				cols[0][i] = "day" + fmt.Sprint(d.(int))
+			}
+		}
+	})
+	res, err := FamaMacBeth(table, "date", "ret", []string{"x1", "x2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Days != 6 {
+		t.Errorf("Days %d, want 6: dates differing by whitespace were merged", res.Days)
 	}
 }
 
