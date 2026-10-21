@@ -7,6 +7,11 @@ import (
 
 // Run executes the graph in dependency order and returns named output tensors.
 func (m *Model) Run(inputs map[string]*Tensor) (outputs map[string]*Tensor, err error) {
+	for name, tensor := range inputs {
+		if err := rejectResident("run input "+name, tensor); err != nil {
+			return nil, err
+		}
+	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			outputs = nil

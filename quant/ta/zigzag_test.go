@@ -25,10 +25,10 @@ func TestZigZagWorkedExample(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []Swing{
-		{SwingLow, 0, 100, 1},
-		{SwingHigh, 2, 120, 3},
-		{SwingLow, 4, 95, 6},
-		{SwingHigh, 7, 130, 8},
+		{SwingLow, 0, 100, 1, 0},
+		{SwingHigh, 2, 120, 3, 0},
+		{SwingLow, 4, 95, 6, 0},
+		{SwingHigh, 7, 130, 8, 0},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v\nwant %+v", got, want)
@@ -70,7 +70,7 @@ func TestZigZagStartsWithAFallAndAlternates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Swing{{SwingHigh, 0, 100, 2}, {SwingLow, 2, 85, 3}, {SwingHigh, 4, 120, 5}}
+	want := []Swing{{SwingHigh, 0, 100, 2, 0}, {SwingLow, 2, 85, 3, 0}, {SwingHigh, 4, 120, 5, 0}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v\nwant %+v", got, want)
 	}
@@ -133,8 +133,8 @@ func TestRegimes(t *testing.T) {
 
 func TestRegimesMinimums(t *testing.T) {
 	swings := []Swing{
-		{SwingLow, 0, 100, 3}, {SwingHigh, 10, 150, 12}, {SwingLow, 12, 140, 14},
-		{SwingHigh, 25, 190, 27}, {SwingLow, 40, 120, 42},
+		{SwingLow, 0, 100, 3, 0}, {SwingHigh, 10, 150, 12, 0}, {SwingLow, 12, 140, 14, 0},
+		{SwingHigh, 25, 190, 27, 0}, {SwingLow, 40, 120, 42, 0},
 	}
 	// The bear stretch 10 -> 12 is 2 rows long; with MinPhase 3 it goes, and the
 	// two bull stretches around it join into one from 0 to 25.
@@ -154,7 +154,7 @@ func TestRegimesMinimums(t *testing.T) {
 	if !sameRegimes(cycles, want) {
 		t.Errorf("MinCycle: got %+v\nwant %+v", cycles, want)
 	}
-	if _, err := Regimes([]Swing{{SwingLow, 0, 1, 1}, {SwingLow, 2, 1, 3}}); err == nil {
+	if _, err := Regimes([]Swing{{SwingLow, 0, 1, 1, 0}, {SwingLow, 2, 1, 3, 0}}); err == nil {
 		t.Error("swings that do not alternate should be an error")
 	}
 	if _, err := Regimes(swings, RegimeOptions{MinPhase: -1}); err == nil {
