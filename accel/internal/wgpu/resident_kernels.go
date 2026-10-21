@@ -8,6 +8,10 @@ import "fmt"
 // nn's PrecisionFloat32Rounded; the CPU half is in package nn.
 
 // matMulRoundedKernel: params = m, k, n, flags (bit 0 transA, bit 1 transB).
+// Each workgroup computes a 16x16 tile of the output, staging 16x16 tiles of
+// both operands in workgroup memory so each is read from device memory once
+// per tile instead of once per output. Zero bit patterns pad the edges; a
+// product with a zero factor adds nothing to the register.
 var matMulRoundedKernel = &kernel{name: "rounded-matmul", nRead: 2, nWrite: 1, body: `
 struct Params { m: u32, k: u32, n: u32, flags: u32, }
 @group(0) @binding(0) var<storage, read> a: array<u32>;
@@ -15,29 +19,48 @@ struct Params { m: u32, k: u32, n: u32, flags: u32, }
 @group(0) @binding(2) var<storage, read_write> c: array<u32>;
 @group(0) @binding(3) var<uniform> p: Params;
 
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+var<workgroup> tile_a: array<u32, 256>;
+var<workgroup> tile_b: array<u32, 256>;
+
+@compute @workgroup_size(16, 16)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>) {
     let col = gid.x;
     let row = gid.y;
-    if (row >= p.m || col >= p.n) {
-        return;
-    }
     let transA = (p.flags & 1u) != 0u;
     let transB = (p.flags & 2u) != 0u;
     var r: ExactRegister;
     exact_clear(&r);
-    for (var kk: u32 = 0u; kk < p.k; kk = kk + 1u) {
-        var ai = row * p.k + kk;
-        if (transA) {
-            ai = kk * p.m + row;
+    let tiles = (p.k + 15u) / 16u;
+    for (var t: u32 = 0u; t < tiles; t = t + 1u) {
+        let ka = t * 16u + lid.x;
+        var av: u32 = 0u;
+        if (row < p.m && ka < p.k) {
+            var ai = row * p.k + ka;
+            if (transA) {
+                ai = ka * p.m + row;
+            }
+            av = a[ai];
         }
-        var bi = kk * p.n + col;
-        if (transB) {
-            bi = col * p.k + kk;
+        tile_a[lid.y * 16u + lid.x] = av;
+        let kb = t * 16u + lid.y;
+        var bv: u32 = 0u;
+        if (col < p.n && kb < p.k) {
+            var bi = kb * p.n + col;
+            if (transB) {
+                bi = col * p.k + kb;
+            }
+            bv = b[bi];
         }
-        exact_add_product(&r, a[ai], b[bi]);
+        tile_b[lid.y * 16u + lid.x] = bv;
+        workgroupBarrier();
+        for (var kk: u32 = 0u; kk < 16u; kk = kk + 1u) {
+            exact_add_product(&r, tile_a[lid.y * 16u + kk], tile_b[kk * 16u + lid.x]);
+        }
+        workgroupBarrier();
     }
-    c[row * p.n + col] = exact_round(r);
+    if (row < p.m && col < p.n) {
+        c[row * p.n + col] = exact_round(r);
+    }
 }
 `}
 
@@ -149,7 +172,7 @@ func MatMulRounded(a, b *Buffer, m, k, n int, transA, transB bool) (*Buffer, err
 		flags |= 2
 	}
 	if err := matMulRoundedKernel.run([]*Buffer{a, b}, []*Buffer{out}, [4]uint32{uint32(m), uint32(k), uint32(n), flags},
-		uint32((n+7)/8), uint32((m+7)/8)); err != nil {
+		uint32((n+15)/16), uint32((m+15)/16)); err != nil {
 		out.Release()
 		return nil, err
 	}
