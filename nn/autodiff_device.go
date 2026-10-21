@@ -232,6 +232,17 @@ func (t *Tape) addResident(a, b *Tensor) (*Tensor, error) {
 			return []*Tensor{upstream, upstream}, nil
 		}
 		columns := sizeOf(b.shape)
+		if columns == 0 {
+			empty, err := accel.NewZeroDeviceBuffer(upstream.Device(), 0)
+			if err != nil {
+				return nil, err
+			}
+			dB, err := newResidentTensor(b.shape, empty)
+			if err != nil {
+				return nil, err
+			}
+			return []*Tensor{upstream, t.own(dB)}, nil
+		}
 		reduced, err := accel.RoundedSumRows(upstream.device, sizeOf(a.shape)/columns, columns)
 		if err != nil {
 			return nil, err
@@ -278,11 +289,14 @@ func reduceBroadcastRounded(upstream *Tensor, targetShape []int) (*Tensor, error
 		return reduceBroadcastGradientTape(upstream, targetShape)
 	}
 	columns := sizeOf(targetShape)
-	rows := len(upstream.data) / columns
 	result, err := newZeroFloat32Tensor(targetShape)
 	if err != nil {
 		return nil, err
 	}
+	if columns == 0 {
+		return result, nil // an empty target has nothing to sum
+	}
+	rows := len(upstream.data) / columns
 	var fast float64ProductSum
 	var exact exactAccumulator
 	for column := 0; column < columns; column++ {

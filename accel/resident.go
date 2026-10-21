@@ -55,6 +55,12 @@ func ResidentDevice() (Device, error) {
 		}
 		return Device{}, &ResidentError{Reason: reason, Cause: fmt.Errorf("no usable accelerator (%s)", reason)}
 	}
+	// Discovery can list a device through a native probe that the WebGPU
+	// backend, which holds every resident buffer, cannot open. Offering that
+	// device would make the first To fail, so ask the backend itself.
+	if _, err := wgpu.Probe(); err != nil {
+		return Device{}, &ResidentError{Reason: FallbackReasonNoAccelerator, Cause: fmt.Errorf("the resident backend cannot open a device: %w", err)}
+	}
 	return devices[0], nil
 }
 

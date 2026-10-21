@@ -44,6 +44,9 @@ func NewBuffer(length int) (*Buffer, error) {
 	}
 	submitMu.Lock()
 	defer submitMu.Unlock()
+	if err := boundPendingLocked(); err != nil {
+		return nil, err
+	}
 	return newBufferLocked(length)
 }
 
@@ -70,6 +73,9 @@ func newBufferLocked(length int) (*Buffer, error) {
 func Upload(values []float32) (*Buffer, error) {
 	submitMu.Lock()
 	defer submitMu.Unlock()
+	if err := boundPendingLocked(); err != nil {
+		return nil, err
+	}
 	buffer, err := newBufferLocked(len(values))
 	if err != nil {
 		return nil, err
@@ -102,6 +108,18 @@ func (b *Buffer) Release() {
 	submitMu.Lock()
 	defer submitMu.Unlock()
 	b.releaseLocked()
+	// A loop that uploads and releases without ever dispatching a kernel
+	// would otherwise keep every released allocation until the next sync.
+	_ = boundPendingLocked()
+}
+
+// boundPendingLocked waits for the queue to go idle and frees the deferred
+// releases once there are too many of them. submitMu must be held.
+func boundPendingLocked() error {
+	if len(pending) < maxPendingObjects {
+		return nil
+	}
+	return syncLocked()
 }
 
 func (b *Buffer) releaseLocked() {

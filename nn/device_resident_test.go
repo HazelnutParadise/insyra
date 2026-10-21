@@ -417,3 +417,33 @@ func TestAdamStateAllocationFailureLeavesNothingHalfBuilt(t *testing.T) {
 	}
 	tape.Close()
 }
+
+func TestRoundedAddBackwardOnEmptyTensors(t *testing.T) {
+	a, _ := NewTensor([]int{2, 0}, nil)
+	b, _ := NewTensor([]int{0}, nil)
+	up, _ := NewTensor([]int{2, 0}, nil)
+	tape := NewTape()
+	_ = tape.SetPrecision(accel.PrecisionFloat32Rounded)
+	_, _ = tape.Param(b)
+	out, err := tape.Add(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tape.BackwardFrom(out, up); err != nil {
+		t.Fatal(err)
+	}
+	grad, err := tape.Grad(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grad.Len() != 0 {
+		t.Fatalf("gradient length = %d, want 0", grad.Len())
+	}
+}
+
+func TestDefaultDeviceIsTheHostWhenTheBackendIsDisabled(t *testing.T) {
+	t.Setenv("INSYRA_ACCEL_DISABLE_WGPU", "1")
+	if dev := accel.DefaultDevice(); dev.ID != "" {
+		t.Fatalf("DefaultDevice = %q with the backend disabled, want the host", dev.ID)
+	}
+}

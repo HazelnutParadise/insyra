@@ -209,3 +209,20 @@ func TestManyDispatchesWithoutReadbackStayBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUploadAndReleaseLoopKeepsDeferredReleasesBounded(t *testing.T) {
+	requireResidentDevice(t)
+	for i := 0; i < 3*maxPendingObjects; i++ {
+		b, err := Upload([]float32{1, 2, 3})
+		if err != nil {
+			t.Fatalf("upload %d: %v", i, err)
+		}
+		b.Release()
+	}
+	submitMu.Lock()
+	n := len(pending)
+	submitMu.Unlock()
+	if n > maxPendingObjects {
+		t.Fatalf("%d deferred releases are pending, want at most %d", n, maxPendingObjects)
+	}
+}
