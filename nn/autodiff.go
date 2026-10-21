@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+
+	"github.com/HazelnutParadise/insyra/accel"
 )
 
 // Tape records differentiable operations and replays their vector-Jacobian
@@ -19,6 +21,16 @@ type Tape struct {
 	// error result, so Param and Backward, which every training step calls,
 	// report it.
 	err error
+
+	precision  accel.Precision
+	closed     bool
+	inBackward bool
+	owned      []*Tensor
+	gradOwned  []*Tensor
+	passOwned  []*Tensor
+	// releasers free device state that is not a tensor, such as the
+	// intermediates a cross-entropy gradient reuses.
+	releasers []func()
 }
 
 // Parameter is a tensor marked for gradient retrieval and SGD updates.
@@ -29,6 +41,9 @@ type Parameter struct {
 	adamM    []float32
 	adamV    []float32
 	adamStep uint64
+
+	// adamMDev and adamVDev hold the Adam moments of a parameter on a device.
+	adamMDev, adamVDev *accel.DeviceBuffer
 }
 
 // Value returns the parameter tensor used by the tape wrappers.
@@ -44,7 +59,7 @@ func (p *Parameter) Grad() *Tensor {
 	if p == nil || p.grad == nil {
 		return nil
 	}
-	gradient, _ := copyTensor(p.grad)
+	gradient, _ := copyTensor(p.grad) // a resident gradient is cloned on the device; the caller releases it
 	return gradient
 }
 
@@ -63,6 +78,9 @@ func (p *Parameter) Update(fn func(value, grad []float32)) error {
 	}
 	if fn == nil {
 		return fmt.Errorf("parameter update: function is nil")
+	}
+	if p.value.device != nil {
+		return residentRefusal(p.value, "parameter update value")
 	}
 	if err := requireFloat32(p.value, "parameter update value"); err != nil {
 		return err
@@ -114,7 +132,10 @@ func (t *Tape) Param(value *Tensor) (*Parameter, error) {
 	if t.err != nil {
 		return nil, t.err
 	}
-	if err := requireFloat32(value, "parameter"); err != nil {
+	if err := t.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := requireFloat32Any(value, "parameter"); err != nil {
 		return nil, err
 	}
 	if parameter := t.marked[value]; parameter != nil {
@@ -131,6 +152,23 @@ func (t *Tape) Param(value *Tensor) (*Parameter, error) {
 func (t *Tape) MatMul(a, b *Tensor) (*Tensor, error) {
 	if a == nil || b == nil {
 		return nil, fmt.Errorf("autodiff matmul inputs must not be nil")
+	}
+	resident, err := t.residency("matmul", a, b)
+	if err != nil {
+		return nil, err
+	}
+	if resident {
+		return t.matMulResident(a, b)
+	}
+	if t.rounded() && len(a.shape) == 2 && len(b.shape) == 2 && a.dtype == DTypeFloat32 && b.dtype == DTypeFloat32 {
+		output, err := matMulRounded(a, b, false, false)
+		if err != nil {
+			return nil, err
+		}
+		t.record("MatMul", []*Tensor{a, b}, output, func(upstream *Tensor) ([]*Tensor, error) {
+			return matMulVJPRounded(a, b, upstream)
+		})
+		return output, nil
 	}
 	output, err := MatMul(a, b)
 	if err != nil {
@@ -168,6 +206,23 @@ func (t *Tape) Div(a, b *Tensor) (*Tensor, error) {
 
 // Add runs the existing broadcast Add kernel and records its VJP.
 func (t *Tape) Add(a, b *Tensor) (*Tensor, error) {
+	resident, err := t.residency("add", a, b)
+	if err != nil {
+		return nil, err
+	}
+	if resident {
+		return t.addResident(a, b)
+	}
+	if t.rounded() && a.dtype == DTypeFloat32 && b.dtype == DTypeFloat32 {
+		output, err := addRounded(a, b)
+		if err != nil {
+			return nil, err
+		}
+		t.record("Add", []*Tensor{a, b}, output, func(upstream *Tensor) ([]*Tensor, error) {
+			return addVJPRounded(a, b, upstream)
+		})
+		return output, nil
+	}
 	output, err := Add(a, b)
 	if err != nil {
 		return nil, err
@@ -340,6 +395,9 @@ func (t *Tape) ReduceMean(input *Tensor, axes []int, keepdims bool) (*Tensor, er
 
 // Reshape records the inverse reshape VJP.
 func (t *Tape) Reshape(input *Tensor, shape []int) (*Tensor, error) {
+	if err := rejectResident("Reshape", input); err != nil {
+		return nil, err
+	}
 	output, err := Reshape(input, shape)
 	if err != nil {
 		return nil, err
@@ -353,6 +411,9 @@ func (t *Tape) Reshape(input *Tensor, shape []int) (*Tensor, error) {
 
 // Flatten records the inverse reshape VJP for Flatten.
 func (t *Tape) Flatten(input *Tensor, axes ...int) (*Tensor, error) {
+	if err := rejectResident("Flatten", input); err != nil {
+		return nil, err
+	}
 	output, err := Flatten(input, axes...)
 	if err != nil {
 		return nil, err
@@ -513,6 +574,27 @@ func (t *Tape) Gemm(a, b, c *Tensor, options ...GemmOptions) (*Tensor, error) {
 // operation. Its VJP is softmax(logits)-onehot(labels), divided by the batch
 // size; there is intentionally no separate training Softmax or log-loss API.
 func (t *Tape) SoftmaxCrossEntropy(logits, labels *Tensor) (*Tensor, error) {
+	resident, err := t.residency("softmax cross-entropy", logits, labels)
+	if err != nil {
+		return nil, err
+	}
+	if resident {
+		return t.softmaxCrossEntropyResident(logits, labels)
+	}
+	if t.rounded() && logits != nil && labels != nil && logits.dtype == DTypeFloat32 && labels.dtype == DTypeInt64 {
+		loss, err := softmaxCrossEntropyRoundedForward(logits, labels)
+		if err != nil {
+			return nil, err
+		}
+		t.record("SoftmaxCrossEntropy", []*Tensor{logits, labels}, loss, func(upstream *Tensor) ([]*Tensor, error) {
+			gradient, err := softmaxCrossEntropyRoundedVJP(logits, labels, upstream)
+			if err != nil {
+				return nil, err
+			}
+			return []*Tensor{gradient, nil}, nil
+		})
+		return loss, nil
+	}
 	loss, err := softmaxCrossEntropyForward(logits, labels)
 	if err != nil {
 		return nil, err
@@ -620,11 +702,25 @@ func (t *Tape) Backward(loss *Tensor) error {
 	if loss == nil {
 		return fmt.Errorf("backward loss is nil")
 	}
-	if err := requireFloat32(loss, "backward loss"); err != nil {
+	if err := t.checkOpen(); err != nil {
+		return err
+	}
+	if err := requireFloat32Any(loss, "backward loss"); err != nil {
 		return err
 	}
 	if len(loss.shape) != 0 {
 		return fmt.Errorf("backward requires a scalar loss, got shape %v", loss.shape)
+	}
+	if loss.device != nil {
+		buffer, err := accel.NewDeviceBuffer(loss.Device(), []float32{1})
+		if err != nil {
+			return err
+		}
+		initial, err := newResidentTensor(nil, buffer)
+		if err != nil {
+			return err
+		}
+		return t.backwardFrom(loss, initial)
 	}
 	initial, err := newFloat32Tensor(nil, []float32{1})
 	if err != nil {
@@ -647,11 +743,17 @@ func (t *Tape) BackwardFrom(output, upstream *Tensor) error {
 	if t.err != nil {
 		return t.err
 	}
-	if err := requireFloat32(output, "backward output"); err != nil {
+	if err := t.checkOpen(); err != nil {
 		return err
 	}
-	if err := requireFloat32(upstream, "backward upstream"); err != nil {
+	if err := requireFloat32Any(output, "backward output"); err != nil {
 		return err
+	}
+	if err := requireFloat32Any(upstream, "backward upstream"); err != nil {
+		return err
+	}
+	if output.onDevice() != upstream.onDevice() || (output.onDevice() && output.Device().ID != upstream.Device().ID) {
+		return fmt.Errorf("backward upstream lives on %q but output lives on %q", upstream.Device().ID, output.Device().ID)
 	}
 	if !sameShape(upstream.shape, output.shape) {
 		return fmt.Errorf("backward upstream shape %v does not match output shape %v", upstream.shape, output.shape)
@@ -673,9 +775,18 @@ func (t *Tape) BackwardFrom(output, upstream *Tensor) error {
 	return t.backwardFrom(output, seed)
 }
 
-func (t *Tape) backwardFrom(output, seed *Tensor) error {
+func (t *Tape) backwardFrom(output, seed *Tensor) (err error) {
 	grads := make(map[*Tensor]*Tensor)
 	grads[output] = seed
+	t.inBackward, t.passOwned = true, nil
+	t.own(seed) // the seed may end up aliased as a gradient, so the tape frees it with the pass's gradients
+	defer func() {
+		t.inBackward = false
+		if err != nil {
+			releaseAll(t.passOwned)
+			t.passOwned = nil
+		}
+	}()
 	for index := len(t.ops) - 1; index >= 0; index-- {
 		op := t.ops[index]
 		upstream := grads[op.output]
@@ -704,11 +815,13 @@ func (t *Tape) backwardFrom(output, seed *Tensor) error {
 					return fmt.Errorf("backward %s input %d: gradient shape %v does not match input shape %v", op.name, inputIndex, gradient.shape, op.inputs[inputIndex].shape)
 				}
 			}
-			if err := addGradient(grads, op.inputs[inputIndex], gradient); err != nil {
+			if err := t.addGradient(grads, op.inputs[inputIndex], gradient); err != nil {
 				return fmt.Errorf("backward %s input %d: %w", op.name, inputIndex, err)
 			}
 		}
 	}
+	releaseAll(t.gradOwned)
+	t.gradOwned, t.passOwned = t.passOwned, nil
 	t.grads = grads
 	for value, parameter := range t.marked {
 		parameter.grad = t.grads[value]
@@ -725,6 +838,9 @@ func (t *Tape) Grad(param *Tensor) (*Tensor, error) {
 	if gradient := t.grads[param]; gradient != nil {
 		return copyTensor(gradient)
 	}
+	if param.device != nil {
+		return nil, fmt.Errorf("parameter on device %s received no gradient", param.Device().ID)
+	}
 	return newZeroFloat32Tensor(param.shape)
 }
 
@@ -733,13 +849,32 @@ func (t *Tape) SGD(rate float32) error {
 	if math.IsNaN(float64(rate)) || math.IsInf(float64(rate), 0) {
 		return fmt.Errorf("sgd learning rate must be finite")
 	}
+	if err := t.checkOpen(); err != nil {
+		return err
+	}
 	for _, param := range t.params {
 		value := param.value
-		if err := requireFloat32(value, "sgd parameter"); err != nil {
+		if err := requireFloat32Any(value, "sgd parameter"); err != nil {
 			return err
 		}
 		gradient := t.grads[value]
 		if gradient == nil {
+			continue
+		}
+		if value.device != nil {
+			if !t.rounded() {
+				return fmt.Errorf("sgd on a device needs SetPrecision(accel.PrecisionFloat32Rounded)")
+			}
+			if gradient.device == nil {
+				return fmt.Errorf("sgd parameter is on device %s but its gradient is on the host", value.Device().ID)
+			}
+			if err := accel.RoundedSGD(value.device, gradient.device, rate); err != nil {
+				return err
+			}
+			continue
+		}
+		if t.rounded() {
+			sgdRounded(value, gradient, rate)
 			continue
 		}
 		for index := range value.data {
@@ -789,6 +924,11 @@ func (t *Tape) ClipGradNorm(maxNorm float32) (float32, error) {
 	if math.IsNaN(float64(maxNorm)) || math.IsInf(float64(maxNorm), 0) || maxNorm < 0 {
 		return 0, fmt.Errorf("clip grad norm maximum must be finite and non-negative")
 	}
+	for _, param := range t.params {
+		if err := rejectResident("clip grad norm", param.value, t.grads[param.value]); err != nil {
+			return 0, err
+		}
+	}
 	var squaredNorm float64
 	for _, param := range t.params {
 		gradient := t.grads[param.value]
@@ -836,6 +976,12 @@ func (t *Tape) AdamW(rate, weightDecay float32) error {
 func (t *Tape) adamStep(rate, weightDecay float32) error {
 	if math.IsNaN(float64(rate)) || math.IsInf(float64(rate), 0) || rate < 0 {
 		return fmt.Errorf("adam learning rate must be finite and non-negative")
+	}
+	if err := t.checkOpen(); err != nil {
+		return err
+	}
+	if t.rounded() {
+		return t.adamRounded(rate, weightDecay, weightDecay != 0)
 	}
 	const (
 		beta1 = float32(0.9)
@@ -1057,26 +1203,6 @@ func reduceBroadcastGradientTape(upstream *Tensor, targetShape []int) (*Tensor, 
 		result.data[targetIndex] += upstream.data[outputIndex]
 	}
 	return result, nil
-}
-
-func addGradient(grads map[*Tensor]*Tensor, input, gradient *Tensor) error {
-	if input == nil {
-		return fmt.Errorf("gradient input is nil")
-	}
-	if err := requireFloat32(gradient, "gradient"); err != nil {
-		return err
-	}
-	if existing := grads[input]; existing != nil {
-		if !sameShape(existing.shape, gradient.shape) {
-			return fmt.Errorf("gradient shape %v does not match existing shape %v", gradient.shape, existing.shape)
-		}
-		for index := range existing.data {
-			existing.data[index] += gradient.data[index]
-		}
-		return nil
-	}
-	grads[input], _ = copyTensor(gradient)
-	return nil
 }
 
 func mseLossForward(prediction, target *Tensor) (*Tensor, error) {

@@ -118,6 +118,8 @@ WGSL has no `f64`, and Apple GPUs have no double-precision hardware at all. A `f
 
 The surviving operation resolves that rather than trading it away: the device ranks in single precision, and the host settles the answer in `float64`. Narrowing happens inside, where it cannot reach the result, so no precision opt-in is needed and none is offered.
 
+`PrecisionFloat32Rounded` is the third `Precision` value. It runs in float32 and defines each result as the exact value of its operation rounded once, so every device and the CPU fallback return the same bits. It is what `nn`'s device-resident training uses (see [nn](nn.md#training-on-the-device)); `accel.DefaultDevice`, `accel.NewDeviceBuffer` and the `accel.Rounded…` functions are its programmatic surface.
+
 ## Operations
 
 | Operation | Shape | Notes |
