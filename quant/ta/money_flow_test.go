@@ -85,7 +85,7 @@ func TestMoneyFlowMatchesTheReference(t *testing.T) {
 			va      float64
 			key     string
 		}{{20, 24, 0.7, "profile20_24_0.7"}, {10, 12, 0.5, "profile10_12_0.5"}} {
-			got, err := VolumeProfile(hi, lo, cl, vo, s.n, VolumeProfileOptions{Bins: s.bins, ValueArea: s.va})
+			got, err := VolumeProfile(hi, lo, vo, s.n, VolumeProfileOptions{Bins: s.bins, ValueArea: s.va})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -118,13 +118,13 @@ func TestMoneyFlowByHand(t *testing.T) {
 	}
 	// With no price range or no volume the profile is undefined.
 	flat := prices(5, 5, 5)
-	vp, err := VolumeProfile(flat, flat, flat, prices(1, 1, 1), 2)
+	vp, err := VolumeProfile(flat, flat, prices(1, 1, 1), 2)
 	if err != nil || !math.IsNaN(floats(t, vp.POC)[2]) {
 		t.Fatalf("a flat window has no profile: %v", err)
 	}
 	// Volume at one price level only: that level is the point of control and the value area.
-	h2, l2, c2 := prices(10, 10, 12, 10), prices(10, 10, 10, 10), prices(10, 10, 10, 10)
-	vp, err = VolumeProfile(h2, l2, c2, prices(0, 0, 9, 0), 4, VolumeProfileOptions{Bins: 2, ValueArea: 0.5})
+	h2, l2 := prices(10, 10, 12, 10), prices(10, 10, 10, 10)
+	vp, err = VolumeProfile(h2, l2, prices(0, 0, 9, 0), 4, VolumeProfileOptions{Bins: 2, ValueArea: 0.5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,10 +150,10 @@ func TestMoneyFlowRefuseBadInput(t *testing.T) {
 		"emv two":    second(EaseOfMovement(p, p, p, 2, EaseOfMovementOptions{}, EaseOfMovementOptions{})),
 		"nvi close":  second(NVI(prices(1, 0, 1), prices(1, 1, 1))),
 		"nvi len":    second(NVI(p, prices(1))),
-		"vp n":       vpErr(VolumeProfile(p, p, p, p, 0)),
-		"vp bins":    vpErr(VolumeProfile(p, p, p, p, 2, VolumeProfileOptions{Bins: -1})),
-		"vp va":      vpErr(VolumeProfile(p, p, p, p, 2, VolumeProfileOptions{ValueArea: 1.5})),
-		"vp two":     vpErr(VolumeProfile(p, p, p, p, 2, VolumeProfileOptions{}, VolumeProfileOptions{})),
+		"vp n":       vpErr(VolumeProfile(p, p, p, 0)),
+		"vp bins":    vpErr(VolumeProfile(p, p, p, 2, VolumeProfileOptions{Bins: -1})),
+		"vp va":      vpErr(VolumeProfile(p, p, p, 2, VolumeProfileOptions{ValueArea: 1.5})),
+		"vp two":     vpErr(VolumeProfile(p, p, p, 2, VolumeProfileOptions{}, VolumeProfileOptions{})),
 	} {
 		if err == nil {
 			t.Errorf("%s: want an error", name)
@@ -176,7 +176,7 @@ func TestMoneyFlowListsAreNamed(t *testing.T) {
 	em, _ := EaseOfMovement(p, p, v, 3)
 	nv, _ := NVI(p, v)
 	pv, _ := PVI(p, v)
-	vp, _ := VolumeProfile(p, p, p, v, 3)
+	vp, _ := VolumeProfile(p, p, v, 3)
 	for want, got := range map[string]string{
 		"MFI": mfi.GetName(), "AccumulationDistribution": ad.GetName(), "CMF": cmf.GetName(),
 		"ChaikinOscillator": ch.GetName(), "EaseOfMovement": em.GetName(), "NVI": nv.GetName(), "PVI": pv.GetName(),

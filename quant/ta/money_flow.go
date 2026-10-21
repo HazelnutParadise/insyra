@@ -157,13 +157,21 @@ type EaseOfMovementOptions struct {
 	// Scale divides the volume so the values are of a readable size. Default
 	// 100,000,000, the value StockCharts uses.
 	Scale float64
+	// SegmentStarts are the rows on which a new data segment starts, for
+	// example the first row after a trading halt or a relisting. Each segment is
+	// computed on its own: the move of the midpoint is not taken across a start,
+	// the average never reaches back across one, and a segment shows NaN through
+	// its first n rows. Row 0 starts the first segment and need not be listed.
+	// Left empty, the result does not change.
+	SegmentStarts []int
 }
 
 // EaseOfMovement returns Richard Arms' ease of movement over n rows (usually
 // 14): the n-row simple average of how far the midpoint of the day's range moved
 // from the previous row's, divided by the box ratio (volume / Scale) / (high -
 // low), so a big move on little volume reads high. A row with zero volume or a
-// zero range is NaN. The first n rows are NaN.
+// zero range is NaN. The first n rows are NaN, and so are the first n rows of
+// every segment in EaseOfMovementOptions.SegmentStarts.
 func EaseOfMovement(high, low, volume insyra.IDataList, n int, opts ...EaseOfMovementOptions) (*insyra.DataList, error) {
 	if err := checkPeriod("n", n, 1); err != nil {
 		return nil, err
@@ -172,8 +180,11 @@ func EaseOfMovement(high, low, volume insyra.IDataList, n int, opts ...EaseOfMov
 		return nil, errors.New("EaseOfMovement accepts at most one EaseOfMovementOptions")
 	}
 	o := EaseOfMovementOptions{Scale: 1e8}
-	if len(opts) == 1 && opts[0].Scale != 0 {
-		o = opts[0]
+	if len(opts) == 1 {
+		o.SegmentStarts = opts[0].SegmentStarts
+		if opts[0].Scale != 0 {
+			o.Scale = opts[0].Scale
+		}
 	}
 	if math.IsNaN(o.Scale) || math.IsInf(o.Scale, 0) || o.Scale < 0 {
 		return nil, errors.New("option Scale must be a finite number above 0")
@@ -190,8 +201,16 @@ func EaseOfMovement(high, low, volume insyra.IDataList, n int, opts ...EaseOfMov
 		return nil, fmt.Errorf("volume has %d rows but high has %d", len(v), len(h))
 	}
 	raw := nanSeries(len(h))
+	starts, err := cleanSegmentStarts(o.SegmentStarts, len(h))
+	if err != nil {
+		return nil, err
+	}
+	atStart := make(map[int]bool, len(starts))
+	for _, b := range starts {
+		atStart[b] = true
+	}
 	for i := 1; i < len(h); i++ {
-		if v[i] == 0 || h[i] == l[i] {
+		if atStart[i] || v[i] == 0 || h[i] == l[i] {
 			continue
 		}
 		distance := (h[i]+l[i])/2 - (h[i-1]+l[i-1])/2
@@ -199,18 +218,22 @@ func EaseOfMovement(high, low, volume insyra.IDataList, n int, opts ...EaseOfMov
 		raw[i] = distance / box
 	}
 	out := nanSeries(len(h))
-	for i := n; i < len(h); i++ {
-		var s float64
-		ok := true
-		for j := i - n + 1; j <= i; j++ {
-			if math.IsNaN(raw[j]) {
-				ok = false
-				break
+	for _, b := range segmentBounds(len(h), starts) {
+		// the first row of a segment has no previous midpoint, so a segment's
+		// first n rows have no value
+		for i := b[0] + n; i < b[1]; i++ {
+			var s float64
+			ok := true
+			for j := i - n + 1; j <= i; j++ {
+				if math.IsNaN(raw[j]) {
+					ok = false
+					break
+				}
+				s += raw[j]
 			}
-			s += raw[j]
-		}
-		if ok {
-			out[i] = s / float64(n)
+			if ok {
+				out[i] = s / float64(n)
+			}
 		}
 	}
 	return listOfFloats("EaseOfMovement", out), nil

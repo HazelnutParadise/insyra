@@ -3,6 +3,8 @@ package nn
 
 import (
 	"fmt"
+
+	"github.com/HazelnutParadise/insyra/accel"
 )
 
 // DType identifies the element type carried by a Tensor. Float32 is the
@@ -62,6 +64,11 @@ type Tensor struct {
 	int64Data  []int64
 	boolData   []bool
 	stringData []string
+	// device holds the values of a resident float32 tensor; data is nil then.
+	device *accel.DeviceBuffer
+	// maxLabel is the largest class index of a resident int64 label tensor,
+	// recorded when it was moved so no kernel has to report a bad label.
+	maxLabel int64
 }
 
 // NewTensor constructs a float32 tensor with the supplied row-major data.
@@ -138,7 +145,7 @@ func (t *Tensor) Strides() []int {
 // Deprecated: use Float32Data, which reports a nil tensor or another dtype as
 // an error instead of returning nil. Removed in 0.4.
 func (t *Tensor) Data() []float32 {
-	if t == nil || t.dtype != DTypeFloat32 {
+	if t == nil || t.dtype != DTypeFloat32 || t.device != nil {
 		return nil
 	}
 	return append([]float32(nil), t.data...)
@@ -153,6 +160,9 @@ func (t *Tensor) Float32Data() ([]float32, error) {
 	if t.dtype != DTypeFloat32 {
 		return nil, unsupportedDTypeError(t.dtype)
 	}
+	if t.device != nil {
+		return nil, residentRefusal(t, "tensor")
+	}
 	return append([]float32(nil), t.data...), nil
 }
 
@@ -163,6 +173,9 @@ func (t *Tensor) Int64Data() ([]int64, error) {
 	}
 	if t.dtype != DTypeInt64 {
 		return nil, unsupportedDTypeError(t.dtype)
+	}
+	if t.device != nil {
+		return nil, residentRefusal(t, "tensor")
 	}
 	return append([]int64(nil), t.int64Data...), nil
 }
@@ -193,6 +206,9 @@ func (t *Tensor) BoolData() ([]bool, error) {
 func (t *Tensor) Len() int {
 	if t == nil {
 		return 0
+	}
+	if t.device != nil {
+		return t.device.Len()
 	}
 	switch t.dtype {
 	case DTypeFloat32:
@@ -299,6 +315,9 @@ func copyTensor(t *Tensor) (*Tensor, error) {
 	if t == nil {
 		return nil, fmt.Errorf("tensor is nil")
 	}
+	if t.device != nil {
+		return t.cloneResident()
+	}
 	result := &Tensor{
 		dtype:      t.dtype,
 		shape:      append([]int(nil), t.shape...),
@@ -356,6 +375,9 @@ func requireFloat32(t *Tensor, operand string) error {
 	}
 	if t.dtype != DTypeFloat32 {
 		return fmt.Errorf("%s has unsupported dtype %s", operand, dtypeName(t.dtype))
+	}
+	if t.device != nil {
+		return residentRefusal(t, operand)
 	}
 	return nil
 }
