@@ -106,6 +106,19 @@ func TestVolumeProfileSegmentStartsEqualSeparateSegments(t *testing.T) {
 	}
 }
 
+// A value area that reaches the lowest bin and still needs volume must grow
+// upward, however large the volumes are.
+func TestVolumeProfileHugeVolumeValueAreaStopsAtTheEdge(t *testing.T) {
+	h, l := prices(10, 12, 20), prices(10, 12, 20)
+	vp, err := VolumeProfile(h, l, prices(6e9, 4e9, 0), 3, VolumeProfileOptions{Bins: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := floats(t, vp.ValueAreaLow)[2]; v != 10 {
+		t.Fatalf("value area low %v, want 10", v)
+	}
+}
+
 // A bar covering the whole range spreads its volume evenly, so every bin ties
 // and the lowest wins, even when the prices are decimals whose edges round.
 func TestVolumeProfileUniformDecimalProfileTiesToLowestBin(t *testing.T) {

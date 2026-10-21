@@ -142,14 +142,18 @@ func volumeProfileWindow(h, l, v []float64, i, n int, o VolumeProfileOptions, bi
 	a, b := best, best
 	held := bins[best]
 	for held < o.ValueArea*total && (a > 0 || b < o.Bins-1) {
-		var below, above float64 = -1, -1
-		if a > 0 {
-			below = bins[a-1]
+		// a side that does not exist is never chosen; of two that do, the one
+		// with more volume is, and the lower one on a tie
+		var up bool
+		switch {
+		case a == 0:
+			up = true
+		case b == o.Bins-1:
+			up = false
+		default:
+			up = bins[b+1] > bins[a-1]+tieTolerance*total
 		}
-		if b < o.Bins-1 {
-			above = bins[b+1]
-		}
-		if above > below+tieTolerance*total {
+		if up {
 			b++
 			held += bins[b]
 		} else {
