@@ -785,12 +785,12 @@ sharpe, err := quant.SharpeRatio(spread, 0, 252)
 ### FamaMacBeth
 
 ```go
-func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []string, opts ...FamaMacBethOptions) (*FamaMacBethResult, error)
+func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol any, charCols []any, opts ...FamaMacBethOptions) (*FamaMacBethResult, error)
 ```
 
 Fama-MacBeth regressions: on every date, the return is regressed on an intercept and the characteristics across stocks, and each coefficient's daily series is then tested for a zero mean with `stats.NeweyWestMeanTest`. Where `QuantileSort` looks at one signal, this asks whether a characteristic still explains the cross-section of returns once the others are controlled for. The table is the same long form `QuantileSort` takes, one row per stock and date.
 
-`dateCol`, `returnCol` and `charCols` are column names, or Excel-style letters when no column has that name. Dates are grouped by value and appear in the order they first appear. A date is a string (compared exactly, whitespace included), `time.Time` (by instant), `bool`, an integer or a float (not `NaN`); `int` 1 and `float64` 1 are different dates, and any other type, `nil` included, is an error. A stock is left out of its day when its return or any characteristic is missing (`nil` or `NaN`). A date with too few usable stocks, or whose characteristics are collinear (including one that is constant that day), is listed in `Skipped` and does not fail the call. Fewer than two estimated dates, a text or infinite value, a missing date, the date and return columns being the same column, a repeated characteristic, the date or return column listed as a characteristic, or a characteristic named `date`, `intercept`, `r2` or `count` (the fixed names of `Daily`'s columns, compared exactly) is an error.
+`dateCol`, `returnCol` and every element of `charCols` pick a column the way every column selector in the library does: a bare string is an Excel-style index (`"A"`, `"AA"`), `insyra.Name("ret_next")` is a column name compared exactly, and an `int` is a 0-based position (negative counts from the end). A bare string is never read as a name, so a column that happens to be called `"A"` is not picked by `"A"`. `FamaMacBethResult.Names` and `Daily`'s columns carry the characteristics' column names (their Excel-style index for an unnamed column), and the reserved-name check applies to those names. Dates are grouped by value and appear in the order they first appear. A date is a string (compared exactly, whitespace included), `time.Time` (by instant), `bool`, an integer or a float (not `NaN`); `int` 1 and `float64` 1 are different dates, and any other type, `nil` included, is an error. A stock is left out of its day when its return or any characteristic is missing (`nil` or `NaN`). A date with too few usable stocks, or whose characteristics are collinear (including one that is constant that day), is listed in `Skipped` and does not fail the call. Fewer than two estimated dates, a text or infinite value, a missing date, the date and return columns being the same column, a repeated characteristic, the date or return column listed as a characteristic, or a characteristic named `date`, `intercept`, `r2` or `count` (the fixed names of `Daily`'s columns, compared exactly) is an error.
 
 **Options (`FamaMacBethOptions`)**
 
@@ -811,7 +811,8 @@ Fama-MacBeth regressions: on every date, the return is regressed on an intercept
 The standard errors equal Python's `linearmodels.FamaMacBeth(...).fit(cov_type="kernel", kernel="bartlett", bandwidth=lag, debiased=False)`, and with `NoNeweyWest` `cov_type="unadjusted", debiased=False`: Bartlett weights `1 - j/(lag+1)` and no small-sample factor. `debiased=True` divides the variance by `T-1` instead of `T`. The p values are two-sided from the t distribution with `T-1` degrees of freedom, as `stats.NeweyWestMeanTest` reports them; linearmodels uses the normal distribution with `debiased=False`. Its automatic bandwidth is a data-driven choice, not `stats.NeweyWestLag`, so pass the lag explicitly to compare.
 
 ```go
-res, err := quant.FamaMacBeth(panel, "date", "ret_next", []string{"momentum", "size", "bias"},
+res, err := quant.FamaMacBeth(panel, insyra.Name("date"), insyra.Name("ret_next"),
+    []any{insyra.Name("momentum"), insyra.Name("size"), insyra.Name("bias")},
     quant.FamaMacBethOptions{Standardize: true})
 for i, name := range res.Names {
     fmt.Printf("%s: %.4f (t = %.2f)\n", name, res.Coefs[i], res.TValues[i])

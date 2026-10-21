@@ -54,6 +54,16 @@ Fama-MacBeth cross-sectional regressions on a long stock-by-date panel, testing 
 `quant.FamaMacBeth` SHALL return an error for a nil table, no characteristic, a date column that is also the return column, a repeated characteristic, the return or date column listed as a characteristic, a characteristic named date, intercept, r2 or count, a column that is not found, a missing date, a text or infinite value, more than one options value, a negative lag, and a lag not smaller than the number of estimated days.
 
 #### Scenario: A column that does not exist
-- **WHEN** a characteristic is named "size" and the table has no such column
+- **WHEN** a characteristic is `insyra.Name("size")` and the table has no such column
 - **THEN** an error names the column
 
+### Requirement: Columns are picked with the library's one selector
+`quant.FamaMacBeth` SHALL take its date, return and characteristic columns as selectors: a string is an Excel-style index, `insyra.Name` is a column name, and an int is a 0-based position counting from the end when negative. A bare string SHALL never be read as a name, a nil or other type is an error, and `Names` and `Daily` use the resolved column names.
+
+#### Scenario: Three spellings of one column
+- **WHEN** the date column is picked as `"A"`, as `insyra.Name("date")` and as `0`
+- **THEN** the results are identical
+
+#### Scenario: A column named like another's letter
+- **WHEN** the first column is named "B" and the date selector is `"A"`
+- **THEN** the first column is the date column

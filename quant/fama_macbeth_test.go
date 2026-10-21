@@ -50,7 +50,7 @@ func nearRel(a, b, rel float64) bool {
 }
 
 func TestFamaMacBethExactCrossSection(t *testing.T) {
-	res, err := FamaMacBeth(fmbPanel(5, 8, func(int, int) float64 { return 0 }), "date", "ret", []string{"x1", "x2"})
+	res, err := FamaMacBeth(fmbPanel(5, 8, func(int, int) float64 { return 0 }), insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1"), insyra.Name("x2")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestFamaMacBethMatchesLinearmodels(t *testing.T) {
 	)
 	for lagName, lag := range map[string]int{"0": 0, "3": 3, "5": 5} {
 		fit := base.Fits[lagName]
-		res, err := FamaMacBeth(table, "date", "ret", []string{"mom", "size"}, FamaMacBethOptions{NeweyWestLag: lag, NoNeweyWest: lagName == "0"})
+		res, err := FamaMacBeth(table, insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("mom"), insyra.Name("size")}, FamaMacBethOptions{NeweyWestLag: lag, NoNeweyWest: lagName == "0"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,7 +145,7 @@ func TestFamaMacBethMatchesLinearmodels(t *testing.T) {
 // divided by T, not the T-1 of a one-sample t-test.
 func TestFamaMacBethNoNeweyWest(t *testing.T) {
 	table := fmbPanel(30, 8, func(d, s int) float64 { return math.Sin(float64(d*s + d)) })
-	res, err := FamaMacBeth(table, "date", "ret", []string{"x1", "x2"}, FamaMacBethOptions{NoNeweyWest: true})
+	res, err := FamaMacBeth(table, insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1"), insyra.Name("x2")}, FamaMacBethOptions{NoNeweyWest: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestFamaMacBethNoNeweyWest(t *testing.T) {
 
 func TestFamaMacBethAutomaticLag(t *testing.T) {
 	table := fmbPanel(30, 8, func(d, s int) float64 { return math.Sin(float64(d*s + d)) })
-	res, err := FamaMacBeth(table, "date", "ret", []string{"x1", "x2"})
+	res, err := FamaMacBeth(table, insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1"), insyra.Name("x2")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestFamaMacBethSkipsThinAndCollinearDays(t *testing.T) {
 			cols[1][i] = nil
 		}
 	})
-	res, err := FamaMacBeth(table, "date", "ret", []string{"x1", "x2"})
+	res, err := FamaMacBeth(table, insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1"), insyra.Name("x2")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,14 +197,14 @@ func TestFamaMacBethSkipsThinAndCollinearDays(t *testing.T) {
 	}
 
 	// MinObservations raises the floor.
-	if _, err := FamaMacBeth(fmbPanel(3, 8, func(int, int) float64 { return 0 }), "date", "ret", []string{"x1", "x2"}, FamaMacBethOptions{MinObservations: 9}); err == nil {
+	if _, err := FamaMacBeth(fmbPanel(3, 8, func(int, int) float64 { return 0 }), insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1"), insyra.Name("x2")}, FamaMacBethOptions{MinObservations: 9}); err == nil {
 		t.Error("no day has 9 stocks, want an error")
 	}
 }
 
 func TestFamaMacBethStandardize(t *testing.T) {
 	noise := func(d, s int) float64 { return math.Sin(float64(5*d + s)) }
-	plain, err := FamaMacBeth(fmbPanel(6, 10, noise), "date", "ret", []string{"x1", "x2"}, FamaMacBethOptions{Standardize: true})
+	plain, err := FamaMacBeth(fmbPanel(6, 10, noise), insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1"), insyra.Name("x2")}, FamaMacBethOptions{Standardize: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestFamaMacBethStandardize(t *testing.T) {
 			cols[2][i] = 10*v.(float64) + 4
 		}
 	})
-	res, err := FamaMacBeth(scaled, "date", "ret", []string{"x1", "x2"}, FamaMacBethOptions{Standardize: true})
+	res, err := FamaMacBeth(scaled, insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1"), insyra.Name("x2")}, FamaMacBethOptions{Standardize: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,16 +230,80 @@ func TestFamaMacBethStandardize(t *testing.T) {
 
 func TestFamaMacBethColumnLetters(t *testing.T) {
 	table := fmbPanel(4, 8, func(d, s int) float64 { return math.Sin(float64(d*s + s)) })
-	byName, err := FamaMacBeth(table, "date", "ret", []string{"x1", "x2"})
+	byName, err := FamaMacBeth(table, insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1"), insyra.Name("x2")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	byLetter, err := FamaMacBeth(table, "A", "B", []string{"C", "D"})
+	byLetter, err := FamaMacBeth(table, "A", "B", []any{"C", "D"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if byName.Coefs[0] != byLetter.Coefs[0] || byName.Coefs[1] != byLetter.Coefs[1] || byLetter.Names[0] != "C" {
+	if byName.Coefs[0] != byLetter.Coefs[0] || byName.Coefs[1] != byLetter.Coefs[1] || byLetter.Names[0] != "x1" {
 		t.Errorf("by name %v, by letter %v %v", byName.Coefs, byLetter.Coefs, byLetter.Names)
+	}
+}
+
+// One selector everywhere: a bare string is an Excel-style index even when a
+// column is named like another column's letters, Name picks by name, an int is
+// a position counting from the end when negative.
+func TestFamaMacBethSelectorContract(t *testing.T) {
+	base := fmbPanel(4, 8, func(d, s int) float64 { return math.Sin(float64(d*s + s)) })
+	want, err := FamaMacBeth(base, "A", "B", []any{"C", "D"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := map[string]func() (*FamaMacBethResult, error){
+		"names": func() (*FamaMacBethResult, error) {
+			return FamaMacBeth(base, insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1"), insyra.Name("x2")})
+		},
+		"positions": func() (*FamaMacBethResult, error) { return FamaMacBeth(base, 0, 1, []any{2, -1}) },
+		"mixed":     func() (*FamaMacBethResult, error) { return FamaMacBeth(base, "A", insyra.Name("ret"), []any{2, "D"}) },
+	}
+	for name, call := range calls {
+		res, err := call()
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if res.Coefs[0] != want.Coefs[0] || res.Coefs[1] != want.Coefs[1] {
+			t.Errorf("%s: %v, want %v", name, res.Coefs, want.Coefs)
+		}
+		if res.Names[0] != "x1" || res.Names[1] != "x2" {
+			t.Errorf("%s: Names %v, want the column names", name, res.Names)
+		}
+	}
+	// Columns named like each other's letters: "A" is still the first column.
+	swapped := insyra.NewDataTable(
+		insyra.NewDataList(base.GetColByNumber(0).Data()...).SetName("B"),
+		insyra.NewDataList(base.GetColByNumber(1).Data()...).SetName("A"),
+		insyra.NewDataList(base.GetColByNumber(2).Data()...).SetName("x1"),
+		insyra.NewDataList(base.GetColByNumber(3).Data()...).SetName("x2"),
+	)
+	got, err := FamaMacBeth(swapped, "A", "B", []any{"C", "D"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Coefs[0] != want.Coefs[0] {
+		t.Errorf("a column named A captured the bare string: %v, want %v", got.Coefs, want.Coefs)
+	}
+	for _, bad := range []any{nil, 1.5, "date", insyra.Name("nope"), 9, "Z"} {
+		if _, err := FamaMacBeth(base, bad, "B", []any{"C"}); err == nil {
+			t.Errorf("date selector %v: want an error", bad)
+		}
+	}
+	if _, err := FamaMacBeth(base, "A", "B", []any{nil}); err == nil {
+		t.Error("nil characteristic selector: want an error")
+	}
+	// The reserved check applies to the resolved name, whatever the selector.
+	reserved := insyra.NewDataTable(
+		insyra.NewDataList(base.GetColByNumber(0).Data()...).SetName("d"),
+		insyra.NewDataList(base.GetColByNumber(1).Data()...).SetName("ret"),
+		insyra.NewDataList(base.GetColByNumber(2).Data()...).SetName("r2"),
+	)
+	if _, err := FamaMacBeth(reserved, "A", "B", []any{"C"}); err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Errorf("reserved name picked by letter: error %v", err)
+	}
+	if _, err := FamaMacBeth(reserved, 0, 1, []any{-1}); err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Errorf("reserved name picked by position: error %v", err)
 	}
 }
 
@@ -257,13 +321,13 @@ func TestFamaMacBethRefusesReservedCharacteristicNames(t *testing.T) {
 		tables := map[string]*insyra.DataTable{
 			"date": insyra.NewDataTable(insyra.NewDataList(date...).SetName("d"), insyra.NewDataList(ret...).SetName("ret"), insyra.NewDataList(x...).SetName(name)),
 		}
-		_, err := FamaMacBeth(tables["date"], "d", "ret", []string{name})
+		_, err := FamaMacBeth(tables["date"], insyra.Name("d"), insyra.Name("ret"), []any{insyra.Name(name)})
 		if err == nil || !strings.Contains(err.Error(), "reserved") {
 			t.Errorf("characteristic %q: error %v, want one containing %q", name, err, "reserved")
 		}
 	}
 	// The date column itself is not a characteristic either.
-	_, err := FamaMacBeth(fmbPanel(4, 8, func(int, int) float64 { return 0 }), "date", "ret", []string{"x1", "A"})
+	_, err := FamaMacBeth(fmbPanel(4, 8, func(int, int) float64 { return 0 }), insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1"), "A"})
 	if err == nil || !strings.Contains(err.Error(), "date column") {
 		t.Errorf("date as characteristic: error %v", err)
 	}
@@ -281,7 +345,7 @@ func TestFamaMacBethKeepsWhitespaceDatesApart(t *testing.T) {
 			}
 		}
 	})
-	res, err := FamaMacBeth(table, "date", "ret", []string{"x1", "x2"})
+	res, err := FamaMacBeth(table, insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1"), insyra.Name("x2")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +392,7 @@ func TestFamaMacBethRefusesUnsupportedDateTypes(t *testing.T) {
 		"NaN":      math.NaN(),
 	} {
 		table := fmbPanelEdit(4, 8, func(int, int) float64 { return 0 }, func(cols [4][]any) { cols[0][5] = insyra.Cell(bad) })
-		_, err := FamaMacBeth(table, "date", "ret", []string{"x1"})
+		_, err := FamaMacBeth(table, insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1")})
 		if err == nil {
 			t.Errorf("%s: no error", name)
 		} else if name != "NaN" && !strings.Contains(err.Error(), "not a supported date type") {
@@ -344,7 +408,7 @@ func TestFamaMacBethRefusesUnsupportedDateTypes(t *testing.T) {
 				}
 			}
 		})
-		if _, err := FamaMacBeth(table, "date", "ret", []string{"x1"}); err != nil {
+		if _, err := FamaMacBeth(table, insyra.Name("date"), insyra.Name("ret"), []any{insyra.Name("x1")}); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -352,10 +416,10 @@ func TestFamaMacBethRefusesUnsupportedDateTypes(t *testing.T) {
 
 func TestFamaMacBethRefusesDateAsReturn(t *testing.T) {
 	table := fmbPanel(4, 8, func(int, int) float64 { return 0 })
-	for _, ret := range []string{"date", "A"} {
-		_, err := FamaMacBeth(table, "date", ret, []string{"x1"})
+	for _, ret := range []any{insyra.Name("date"), "A", 0} {
+		_, err := FamaMacBeth(table, insyra.Name("date"), ret, []any{insyra.Name("x1")})
 		if err == nil || !strings.Contains(err.Error(), "same column") {
-			t.Errorf("return %q: error %v, want one containing %q", ret, err, "same column")
+			t.Errorf("return %v: error %v, want one containing %q", ret, err, "same column")
 		}
 	}
 }
@@ -370,25 +434,25 @@ func TestFamaMacBethRefusesBadInput(t *testing.T) {
 	cases := []struct {
 		name    string
 		table   insyra.IDataTable
-		chars   []string
+		chars   []any
 		opts    []FamaMacBethOptions
 		message string
 	}{
-		{"nil table", nil, []string{"x1"}, nil, "nil"},
+		{"nil table", nil, []any{insyra.Name("x1")}, nil, "nil"},
 		{"no characteristic", good(), nil, nil, "characteristic"},
-		{"repeated characteristic", good(), []string{"x1", "C"}, nil, "same column"},
-		{"return as characteristic", good(), []string{"ret"}, nil, "return column"},
-		{"missing column", good(), []string{"size"}, nil, `"size"`},
-		{"text value", text, []string{"x1"}, nil, "non-numeric"},
-		{"infinite value", inf, []string{"x1"}, nil, "non-finite"},
-		{"missing date", noDate, []string{"x1"}, nil, "date is missing"},
-		{"two options", good(), []string{"x1"}, []FamaMacBethOptions{{}, {}}, "at most one"},
-		{"negative lag", good(), []string{"x1"}, []FamaMacBethOptions{{NeweyWestLag: -1}}, "NeweyWestLag"},
-		{"no correction with a lag", good(), []string{"x1"}, []FamaMacBethOptions{{NoNeweyWest: true, NeweyWestLag: 2}}, "NoNeweyWest"},
-		{"lag too long", good(), []string{"x1"}, []FamaMacBethOptions{{NeweyWestLag: 4}}, "lag"},
+		{"repeated characteristic", good(), []any{insyra.Name("x1"), "C"}, nil, "same column"},
+		{"return as characteristic", good(), []any{insyra.Name("ret")}, nil, "return column"},
+		{"missing column", good(), []any{insyra.Name("size")}, nil, `"size"`},
+		{"text value", text, []any{insyra.Name("x1")}, nil, "non-numeric"},
+		{"infinite value", inf, []any{insyra.Name("x1")}, nil, "non-finite"},
+		{"missing date", noDate, []any{insyra.Name("x1")}, nil, "date is missing"},
+		{"two options", good(), []any{insyra.Name("x1")}, []FamaMacBethOptions{{}, {}}, "at most one"},
+		{"negative lag", good(), []any{insyra.Name("x1")}, []FamaMacBethOptions{{NeweyWestLag: -1}}, "NeweyWestLag"},
+		{"no correction with a lag", good(), []any{insyra.Name("x1")}, []FamaMacBethOptions{{NoNeweyWest: true, NeweyWestLag: 2}}, "NoNeweyWest"},
+		{"lag too long", good(), []any{insyra.Name("x1")}, []FamaMacBethOptions{{NeweyWestLag: 4}}, "lag"},
 	}
 	for _, c := range cases {
-		_, err := FamaMacBeth(c.table, "date", "ret", c.chars, c.opts...)
+		_, err := FamaMacBeth(c.table, insyra.Name("date"), insyra.Name("ret"), c.chars, c.opts...)
 		if err == nil || !strings.Contains(err.Error(), c.message) {
 			t.Errorf("%s: error %v, want one containing %q", c.name, err, c.message)
 		}

@@ -71,8 +71,10 @@ type FamaMacBethResult struct {
 // cross-section of returns once the other characteristics are controlled for.
 // The table is in long form, one row per stock and date, as for QuantileSort.
 //
-// dateCol, returnCol and charCols are column names, or Excel-style letters
-// when no column has that name. Dates are grouped by value and appear in the
+// dateCol, returnCol and each of charCols pick a column the way every selector
+// in the library does: a bare string is an Excel-style index ("A", "AA"),
+// insyra.Name("price") is a column name, and an int is a 0-based position
+// (negative counts from the end). Dates are grouped by value and appear in the
 // order they first appear. A date is a string, time.Time, bool, integer or
 // float (not NaN); any other type, nil included, is an error. A stock is left out of its day when its return or
 // any characteristic is missing (nil or NaN). A day with fewer usable stocks
@@ -87,7 +89,7 @@ type FamaMacBethResult struct {
 // reads the p value from the normal distribution in that setting; FamaMacBeth
 // uses t with T-1 degrees of freedom, as stats.NeweyWestMeanTest does.
 // NoNeweyWest runs the same test with lag 0, which divides the variance by T.
-func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []string, opts ...FamaMacBethOptions) (*FamaMacBethResult, error) {
+func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol any, charCols []any, opts ...FamaMacBethOptions) (*FamaMacBethResult, error) {
 	k := len(charCols)
 	if k == 0 {
 		return nil, errors.New("at least one characteristic column is needed")
@@ -114,57 +116,67 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []
 
 	var dates, returns []any
 	chars := make([][]any, k)
+	charNames := make([]string, k)
+	var returnName string
 	var readErr error
 	table.AtomicDo(func(dt *insyra.DataTable) {
-		retNum := columnNumber(dt, returnCol)
-		dateNum := columnNumber(dt, dateCol)
-		if dateNum >= 0 && dateNum == retNum {
-			readErr = fmt.Errorf("the date column %q and the return column %q are the same column", dateCol, returnCol)
+		retNum, retName, err := famaMacBethColumn(dt, returnCol, "return")
+		if err != nil {
+			readErr = err
+			return
+		}
+		dateNum, dateName, err := famaMacBethColumn(dt, dateCol, "date")
+		if err != nil {
+			readErr = err
+			return
+		}
+		if dateNum == retNum {
+			readErr = fmt.Errorf("the date column %q and the return column %q are the same column", dateName, retName)
 			return
 		}
 		seen := map[int]string{}
 		for i, c := range charCols {
-			num := columnNumber(dt, c)
-			if num < 0 {
-				readErr = fmt.Errorf("characteristic column %q not found", c)
-				return
-			}
-			switch c {
-			case "date", "intercept", "r2", "count":
-				readErr = fmt.Errorf("characteristic column %q is reserved: Daily has columns of that name for its own values", c)
+			num, name, err := famaMacBethColumn(dt, c, "characteristic")
+			if err != nil {
+				readErr = err
 				return
 			}
 			if num == dateNum {
-				readErr = fmt.Errorf("characteristic column %q is the date column", c)
+				readErr = fmt.Errorf("characteristic column %q is the date column", name)
 				return
 			}
 			if num == retNum {
-				readErr = fmt.Errorf("characteristic column %q is the return column", c)
+				readErr = fmt.Errorf("characteristic column %q is the return column", name)
+				return
+			}
+			switch name {
+			case "date", "intercept", "r2", "count":
+				readErr = fmt.Errorf("characteristic column %q is reserved: Daily has columns of that name for its own values", name)
 				return
 			}
 			if prev, dup := seen[num]; dup {
-				readErr = fmt.Errorf("characteristic columns %q and %q are the same column", prev, c)
+				readErr = fmt.Errorf("characteristic columns %q and %q are the same column", prev, name)
 				return
 			}
-			seen[num] = c
+			seen[num] = name
+			charNames[i] = name
 			chars[i] = dt.GetColByNumber(num).Data()
 		}
-		if dates, readErr = columnData(dt, dateCol, "date"); readErr != nil {
-			return
-		}
-		returns, readErr = columnData(dt, returnCol, "return")
+		dates = dt.GetColByNumber(dateNum).Data()
+		returns = dt.GetColByNumber(retNum).Data()
+		returnName = retName
 	})
 	if readErr != nil {
 		return nil, readErr
 	}
 	rows := len(dates)
 
-	ret, err := finiteOrMissing(returns, returnCol, rows)
+	ret, err := finiteOrMissing(returns, returnName, rows)
 	if err != nil {
 		return nil, err
 	}
 	x := make([][]float64, k)
-	for j, c := range charCols {
+	for j, c := range charNames {
 		if x[j], err = finiteOrMissing(chars[j], c, rows); err != nil {
 			return nil, err
 		}
@@ -188,7 +200,7 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []
 		byDate[key] = append(byDate[key], i)
 	}
 
-	res := &FamaMacBethResult{Names: append([]string(nil), charCols...)}
+	res := &FamaMacBethResult{Names: append([]string(nil), charNames...)}
 	dDate, dR2, dCount := []any{}, []any{}, []any{}
 	coefs := make([][]float64, k+1) // intercept first
 	for _, key := range order {
@@ -266,7 +278,7 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []
 		insyra.NewDataList(dDate...).SetName("date"),
 		newFloat64DataList(coefs[0]).SetName("intercept"),
 	}
-	for j, name := range charCols {
+	for j, name := range charNames {
 		cols = append(cols, newFloat64DataList(coefs[j+1]).SetName(name))
 	}
 	cols = append(cols, insyra.NewDataList(dR2...).SetName("r2"), insyra.NewDataList(dCount...).SetName("count"))
@@ -380,4 +392,52 @@ func famaMacBethFloatKey(name string, v float64) (string, error) {
 		v = 0 // -0 and 0 are the same date
 	}
 	return name + ":" + strconv.FormatFloat(v, 'g', -1, 64), nil
+}
+
+// famaMacBethColumn resolves a column selector with the library's one rule: a
+// string is an Excel-style index, insyra.Name is a name compared exactly, an
+// int is a 0-based position counting from the end when negative. It returns the
+// column's position and its name (its Excel-style index when it has none).
+// Call it inside AtomicDo.
+func famaMacBethColumn(dt *insyra.DataTable, sel any, role string) (int, string, error) {
+	names := dt.ColNames()
+	num := -1
+	switch v := sel.(type) {
+	case nil:
+		return -1, "", fmt.Errorf("%s column: no column given; use an Excel-style index such as \"A\", insyra.Name(\"price\"), or an int position", role)
+	case string:
+		i, ok := insyra.ColIndexToNumber(v)
+		if !ok {
+			return -1, "", fmt.Errorf("%s column %q is not an Excel-style column index; write insyra.Name(%q) for a column name", role, v, v)
+		}
+		if i >= len(names) {
+			return -1, "", fmt.Errorf("%s column %q does not exist, the table has %d column(s); write insyra.Name(%q) for a column name", role, v, len(names), v)
+		}
+		num = i
+	case insyra.NameSelector:
+		for i, n := range names {
+			if n == v.Value() {
+				num = i
+				break
+			}
+		}
+		if num < 0 {
+			return -1, "", fmt.Errorf("%s column: no column is named %q", role, v.Value())
+		}
+	case int:
+		num = v
+		if num < 0 {
+			num += len(names)
+		}
+		if num < 0 || num >= len(names) {
+			return -1, "", fmt.Errorf("%s column number %d is out of range, the table has %d column(s)", role, v, len(names))
+		}
+	default:
+		return -1, "", fmt.Errorf("%s column selector of type %T; use an Excel-style index such as \"A\", insyra.Name(\"price\"), or an int position", role, sel)
+	}
+	name := names[num]
+	if name == "" {
+		name, _ = insyra.ColNumberToIndex(num)
+	}
+	return num, name, nil
 }
