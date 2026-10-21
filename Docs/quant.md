@@ -756,18 +756,18 @@ res, err := quant.BacktestSignal(signal, returns, quant.BacktestOptions{BuyCost:
 ### QuantileSort
 
 ```go
-func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols []string, n int, opts ...QuantileSortOptions) (*QuantileSortResult, error)
+func QuantileSort(table insyra.IDataTable, dateCol, signalCol any, returnCols []any, n int, opts ...QuantileSortOptions) (*QuantileSortResult, error)
 ```
 
 Every day, sorts the stocks into `n` groups by a signal and reports each group's mean return and the spread between the top and the bottom group, the standard check of whether a signal ranks future returns. The table is in long form, one row per stock and date. Each day is sorted on its own, and 9.6 million stock-days take about 3 seconds.
 
-`dateCol`, `signalCol`, `returnCols` and `WeightCol` are column names, or Excel-style letters when no column has that name. Dates are grouped by value and appear in the order they first appear in the table. A stock with a missing (`nil` or `NaN`) signal is left out of its day, and a missing return is left out of that column's means. Text, an infinity, a missing date or a non-positive weight is an error.
+`dateCol`, `signalCol`, every element of `returnCols` and `WeightCol` pick a column the way every column selector in the library does: a bare string is an Excel-style index (`"A"`, `"AA"`), `insyra.Name("ret_5d")` is a column name compared exactly, and an `int` is a 0-based position (negative counts from the end). A bare string is never read as a name, so a column that happens to be called `"A"` is not picked by `"A"`; a nil, unsupported, unknown or out-of-range selector is an error. The return columns appear in the output under their own column names. Dates are grouped by value and appear in the order they first appear in the table. A stock with a missing (`nil` or `NaN`) signal is left out of its day, and a missing return is left out of that column's means. Text, an infinity, a missing date or a non-positive weight is an error.
 
 **Options (`QuantileSortOptions`)**
 
 - `MinStocks`: the fewest stocks with a signal a day needs; fewer skips the day. At least `n` are always needed.
 - `Ties`: `QuantileTiesRank` (default) gives equal signals their average rank and puts the stock in group `ceil(rank * n / m)`, so equal signals share a group. `QuantileTiesQcut` cuts at the day's quantiles with linear interpolation like `pandas.qcut`, with the first group including the minimum; a day whose edges coincide is skipped, where pandas would raise.
-- `WeightCol`: a column of positive weights; group means are weighted. Empty means equal weights.
+- `WeightCol`: a column selector for positive weights; group means are weighted. Nil means equal weights.
 - `Demean`: subtract the day's mean return over the sorted stocks, so the group means are excess returns.
 
 **Result (`QuantileSortResult`)**
@@ -777,7 +777,7 @@ Every day, sorts the stocks into `n` groups by a signal and reports each group's
 - `Skipped`: the dates left out and why.
 
 ```go
-res, err := quant.QuantileSort(panel, "date", "signal", []string{"ret_5d"}, 5)
+res, err := quant.QuantileSort(panel, insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret_5d")}, 5)
 spread := res.Spread.GetColByName("spread_ret_5d")
 sharpe, err := quant.SharpeRatio(spread, 0, 252)
 ```

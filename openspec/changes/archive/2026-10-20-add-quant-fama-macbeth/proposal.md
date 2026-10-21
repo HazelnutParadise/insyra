@@ -9,7 +9,7 @@
 - `quant.FamaMacBeth(table, dateCol, returnCol, charCols, opts)` takes the same long table as `QuantileSort` (one row per stock and date), regresses the return on an intercept and the characteristics each date, and tests the time average of every coefficient with `stats.NeweyWestMeanTest`.
 - `FamaMacBethOptions`: `NeweyWestLag` (0 = automatic, positive = as given, negative = error), `NoNeweyWest` (switches the correction off, lag 0; an error together with a non-zero `NeweyWestLag`), `MinObservations` (default and floor k+2), `Standardize` (per-day z-scores of the characteristics).
 - `FamaMacBethResult`: the intercept and each characteristic's mean coefficient, standard error, t and p value, the per-day table, the mean R², the lag used, and the skipped days. A day with too few stocks or a collinear cross-section is skipped and listed, never an error for the whole call.
-- On `0.4` the columns are picked with the library's one column selector (an Excel-style string, `insyra.Name`, or an int position), so `FamaMacBeth` takes `any` selectors; `QuantileSort`'s behaviour does not change.
+- On `0.4` the columns are picked with the library's one column selector (an Excel-style string, `insyra.Name`, or an int position), so `FamaMacBeth` and `QuantileSort` take `any` selectors; `QuantileSort` takes the same selectors through the same helper (`quant/column_selector.go`).
 
 ## Capabilities
 

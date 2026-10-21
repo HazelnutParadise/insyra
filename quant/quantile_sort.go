@@ -45,9 +45,9 @@ type QuantileSortOptions struct {
 	MinStocks int
 	// Ties is how equal signals are placed. The default is QuantileTiesRank.
 	Ties QuantileTies
-	// WeightCol names a column of positive weights. Group means are weighted
-	// by it. Empty means equal weights.
-	WeightCol string
+	// WeightCol picks a column of positive weights, as a column selector. Group
+	// means are weighted by it. Nil (or the empty string) means equal weights.
+	WeightCol any
 	// Demean subtracts the day's mean return over all the stocks that were
 	// sorted (weighted when WeightCol is set) from every return, so the group
 	// means are excess returns.
@@ -79,13 +79,17 @@ type QuantileSortResult struct {
 // bottom group, the standard check of whether a signal ranks future returns.
 // The table is in long form, one row per stock and date.
 //
-// dateCol, signalCol, returnCols and WeightCol are column names, or Excel-style
-// letters when no column has that name. Dates are grouped by value and appear
+// dateCol, signalCol, every element of returnCols and WeightCol pick a column
+// the way every column selector in the library does: a bare string is an
+// Excel-style index ("A", "AA"), insyra.Name("ret") is a column name compared
+// exactly, and an int is a 0-based position (negative counts from the end). A
+// bare string is never read as a name. The return columns appear in the output
+// under their own names. Dates are grouped by value and appear
 // in the output in the order they first appear in the table. A stock with a
 // missing or non-finite signal is left out of its day; a missing return is
 // left out of that column's means. Dates are never mixed: every day is sorted
 // on its own.
-func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols []string, n int, opts ...QuantileSortOptions) (*QuantileSortResult, error) {
+func QuantileSort(table insyra.IDataTable, dateCol, signalCol any, returnCols []any, n int, opts ...QuantileSortOptions) (*QuantileSortResult, error) {
 	if n < 2 {
 		return nil, errors.New("n must be at least 2")
 	}
@@ -111,24 +115,29 @@ func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols
 
 	var dates, signals []any
 	returns := make([][]any, len(returnCols))
+	returnNames := make([]string, len(returnCols))
 	var weights []any
+	var weightName string
 	var readErr error
 	table.AtomicDo(func(dt *insyra.DataTable) {
-		find := func(sel, role string) []any {
+		find := func(sel any, role string) ([]any, string) {
 			if readErr != nil {
-				return nil
+				return nil, ""
 			}
-			data, err := columnData(dt, sel, role)
-			readErr = err
-			return data
+			num, name, err := resolveColumn(dt, sel, role)
+			if err != nil {
+				readErr = err
+				return nil, ""
+			}
+			return dt.GetColByNumber(num).Data(), name
 		}
-		dates = find(dateCol, "date")
-		signals = find(signalCol, "signal")
+		dates, _ = find(dateCol, "date")
+		signals, _ = find(signalCol, "signal")
 		for i, c := range returnCols {
-			returns[i] = find(c, "return")
+			returns[i], returnNames[i] = find(c, "return")
 		}
-		if o.WeightCol != "" {
-			weights = find(o.WeightCol, "weight")
+		if w := o.WeightCol; w != nil && w != "" {
+			weights, weightName = find(w, "weight")
 		}
 	})
 	if readErr != nil {
@@ -142,18 +151,18 @@ func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols
 	}
 	rets := make([][]float64, len(returnCols))
 	for i := range returnCols {
-		if rets[i], err = finiteOrMissing(returns[i], returnCols[i], rows); err != nil {
+		if rets[i], err = finiteOrMissing(returns[i], returnNames[i], rows); err != nil {
 			return nil, err
 		}
 	}
 	var wt []float64
 	if weights != nil {
-		if wt, err = finiteOrMissing(weights, o.WeightCol, rows); err != nil {
+		if wt, err = finiteOrMissing(weights, weightName, rows); err != nil {
 			return nil, err
 		}
 		for i, w := range wt {
 			if !math.IsNaN(w) && w <= 0 {
-				return nil, fmt.Errorf("%s holds %v at row index %d; weights must be positive", o.WeightCol, w, i)
+				return nil, fmt.Errorf("%s holds %v at row index %d; weights must be positive", weightName, w, i)
 			}
 		}
 	}
@@ -259,38 +268,13 @@ func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols
 		insyra.NewDataList(gCount...).SetName("count"),
 	}
 	spreadCols := []*insyra.DataList{insyra.NewDataList(sDate...).SetName("date")}
-	for c, name := range returnCols {
+	for c, name := range returnNames {
 		groupCols = append(groupCols, insyra.NewDataList(gMean[c]...).SetName(name))
 		spreadCols = append(spreadCols, insyra.NewDataList(sSpread[c]...).SetName("spread_"+name))
 	}
 	res.Groups = insyra.NewDataTable(groupCols...)
 	res.Spread = insyra.NewDataTable(spreadCols...)
 	return res, nil
-}
-
-// columnNumber finds a column by name, or by Excel-style letters when no
-// column has that name. It returns -1 when neither matches.
-func columnNumber(dt *insyra.DataTable, sel string) int {
-	names := dt.ColNames()
-	for i, name := range names {
-		if name == sel {
-			return i
-		}
-	}
-	if i, ok := insyra.ColIndexToNumber(sel); ok && i < len(names) {
-		return i
-	}
-	return -1
-}
-
-// columnData returns the cells of the column columnNumber finds, or an error
-// naming the column's role when it is not found. Call it inside AtomicDo.
-func columnData(dt *insyra.DataTable, sel, role string) ([]any, error) {
-	i := columnNumber(dt, sel)
-	if i < 0 {
-		return nil, fmt.Errorf("%s column %q not found", role, sel)
-	}
-	return dt.GetColByNumber(i).Data(), nil
 }
 
 func weightAt(wt []float64, i int) float64 {

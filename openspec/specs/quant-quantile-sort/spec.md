@@ -23,5 +23,16 @@ Sorting the stocks of every date into signal groups and reporting group means an
 `quant.QuantileSort` SHALL return an error for n below 2, no return column, a nil table, a column that is not found, a text or infinite value in the signal, return or weight columns, a missing date, a non-positive weight and an unknown tie method.
 
 #### Scenario: A column that does not exist
-- **WHEN** the date column is named "day" and the table has no such column
+- **WHEN** the date column is `insyra.Name("day")` and the table has no such column
 - **THEN** an error names the column
+
+### Requirement: Columns are picked with the library's one selector
+`quant.QuantileSort` SHALL take its date, signal, return and weight columns as selectors: a string is an Excel-style index, `insyra.Name` is a column name, and an int is a 0-based position counting from the end when negative. A bare string SHALL never be read as a name, a nil or other type is an error, and the output names each return column after the column picked.
+
+#### Scenario: Three spellings of one column
+- **WHEN** the date column is picked as `"A"`, as `insyra.Name("date")` and as `0`
+- **THEN** the results are identical
+
+#### Scenario: A column named like another's letter
+- **WHEN** the third column is named "C" and the signal selector is `"C"`
+- **THEN** the third column is the signal column

@@ -120,12 +120,12 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol any, charCols []any
 	var returnName string
 	var readErr error
 	table.AtomicDo(func(dt *insyra.DataTable) {
-		retNum, retName, err := famaMacBethColumn(dt, returnCol, "return")
+		retNum, retName, err := resolveColumn(dt, returnCol, "return")
 		if err != nil {
 			readErr = err
 			return
 		}
-		dateNum, dateName, err := famaMacBethColumn(dt, dateCol, "date")
+		dateNum, dateName, err := resolveColumn(dt, dateCol, "date")
 		if err != nil {
 			readErr = err
 			return
@@ -136,7 +136,7 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol any, charCols []any
 		}
 		seen := map[int]string{}
 		for i, c := range charCols {
-			num, name, err := famaMacBethColumn(dt, c, "characteristic")
+			num, name, err := resolveColumn(dt, c, "characteristic")
 			if err != nil {
 				readErr = err
 				return
@@ -392,52 +392,4 @@ func famaMacBethFloatKey(name string, v float64) (string, error) {
 		v = 0 // -0 and 0 are the same date
 	}
 	return name + ":" + strconv.FormatFloat(v, 'g', -1, 64), nil
-}
-
-// famaMacBethColumn resolves a column selector with the library's one rule: a
-// string is an Excel-style index, insyra.Name is a name compared exactly, an
-// int is a 0-based position counting from the end when negative. It returns the
-// column's position and its name (its Excel-style index when it has none).
-// Call it inside AtomicDo.
-func famaMacBethColumn(dt *insyra.DataTable, sel any, role string) (int, string, error) {
-	names := dt.ColNames()
-	num := -1
-	switch v := sel.(type) {
-	case nil:
-		return -1, "", fmt.Errorf("%s column: no column given; use an Excel-style index such as \"A\", insyra.Name(\"price\"), or an int position", role)
-	case string:
-		i, ok := insyra.ColIndexToNumber(v)
-		if !ok {
-			return -1, "", fmt.Errorf("%s column %q is not an Excel-style column index; write insyra.Name(%q) for a column name", role, v, v)
-		}
-		if i >= len(names) {
-			return -1, "", fmt.Errorf("%s column %q does not exist, the table has %d column(s); write insyra.Name(%q) for a column name", role, v, len(names), v)
-		}
-		num = i
-	case insyra.NameSelector:
-		for i, n := range names {
-			if n == v.Value() {
-				num = i
-				break
-			}
-		}
-		if num < 0 {
-			return -1, "", fmt.Errorf("%s column: no column is named %q", role, v.Value())
-		}
-	case int:
-		num = v
-		if num < 0 {
-			num += len(names)
-		}
-		if num < 0 || num >= len(names) {
-			return -1, "", fmt.Errorf("%s column number %d is out of range, the table has %d column(s)", role, v, len(names))
-		}
-	default:
-		return -1, "", fmt.Errorf("%s column selector of type %T; use an Excel-style index such as \"A\", insyra.Name(\"price\"), or an int position", role, sel)
-	}
-	name := names[num]
-	if name == "" {
-		name, _ = insyra.ColNumberToIndex(num)
-	}
-	return num, name, nil
 }

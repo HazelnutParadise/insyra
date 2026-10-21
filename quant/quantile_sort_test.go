@@ -39,7 +39,7 @@ func column(t *testing.T, dt *insyra.DataTable, name string) []float64 {
 }
 
 func TestQuantileSortTertiles(t *testing.T) {
-	res, err := QuantileSort(panel(), "date", "signal", []string{"ret"}, 3)
+	res, err := QuantileSort(panel(), insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestQuantileSortTertiles(t *testing.T) {
 }
 
 func TestQuantileSortWeightsAndDemean(t *testing.T) {
-	res, err := QuantileSort(panel(), "date", "signal", []string{"ret"}, 3, QuantileSortOptions{WeightCol: "weight"})
+	res, err := QuantileSort(panel(), insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 3, QuantileSortOptions{WeightCol: insyra.Name("weight")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestQuantileSortWeightsAndDemean(t *testing.T) {
 	if math.Abs(got[0]-50.0/3) > 1e-12 || math.Abs(got[2]-610.0/11) > 1e-12 {
 		t.Errorf("weighted means: %v", got)
 	}
-	demeaned, err := QuantileSort(panel(), "date", "signal", []string{"ret"}, 3, QuantileSortOptions{Demean: true})
+	demeaned, err := QuantileSort(panel(), insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 3, QuantileSortOptions{Demean: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestQuantileSortSkipsThinDaysAndMissingSignals(t *testing.T) {
 		insyra.NewDataList(1.0, 2.0, 3.0, 1.0, nil, math.NaN(), 4.0).SetName("signal"),
 		insyra.NewDataList(1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 4.0).SetName("ret"),
 	)
-	res, err := QuantileSort(tbl, "date", "signal", []string{"ret"}, 2, QuantileSortOptions{MinStocks: 3})
+	res, err := QuantileSort(tbl, insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 2, QuantileSortOptions{MinStocks: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestQuantileSortTies(t *testing.T) {
 		insyra.NewDataList(1.0, 1.0, 1.0, 1.0, 2.0, 3.0).SetName("signal"),
 		insyra.NewDataList(1.0, 2.0, 3.0, 4.0, 5.0, 6.0).SetName("ret"),
 	)
-	res, err := QuantileSort(tbl, "date", "signal", []string{"ret"}, 2)
+	res, err := QuantileSort(tbl, insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestQuantileSortTies(t *testing.T) {
 	}
 	// qcut on the same signal: the median edge equals the minimum, so the edges
 	// coincide and pandas.qcut would raise; the day is skipped.
-	q, err := QuantileSort(tbl, "date", "signal", []string{"ret"}, 2, QuantileSortOptions{Ties: QuantileTiesQcut})
+	q, err := QuantileSort(tbl, insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 2, QuantileSortOptions{Ties: QuantileTiesQcut})
 	if err != nil || len(q.Skipped) != 1 {
 		t.Errorf("qcut with coinciding edges: %+v, %v", q, err)
 	}
@@ -127,7 +127,7 @@ func TestQuantileSortTies(t *testing.T) {
 		insyra.NewDataList(1.0, 2.0, 2.0, 3.0, 4.0, 5.0).SetName("signal"),
 		insyra.NewDataList(1.0, 2.0, 3.0, 4.0, 5.0, 6.0).SetName("ret"),
 	)
-	qc, err := QuantileSort(cut, "date", "signal", []string{"ret"}, 2, QuantileSortOptions{Ties: QuantileTiesQcut})
+	qc, err := QuantileSort(cut, insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 2, QuantileSortOptions{Ties: QuantileTiesQcut})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,14 +140,14 @@ func TestQuantileSortTies(t *testing.T) {
 		insyra.NewDataList(1.0, 1.0, 1.0, 1.0).SetName("signal"),
 		insyra.NewDataList(1.0, 2.0, 3.0, 4.0).SetName("ret"),
 	)
-	skipped, err := QuantileSort(flat, "date", "signal", []string{"ret"}, 2, QuantileSortOptions{Ties: QuantileTiesQcut})
+	skipped, err := QuantileSort(flat, insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 2, QuantileSortOptions{Ties: QuantileTiesQcut})
 	if err != nil || len(skipped.Skipped) != 1 {
 		t.Errorf("qcut on a constant signal: %+v, %v", skipped, err)
 	}
 }
 
 func TestQuantileSortAcceptsColumnLetters(t *testing.T) {
-	res, err := QuantileSort(panel(), "A", "C", []string{"D"}, 3)
+	res, err := QuantileSort(panel(), "A", "C", []any{"D"}, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,29 +156,104 @@ func TestQuantileSortAcceptsColumnLetters(t *testing.T) {
 	}
 }
 
+// One selector everywhere: a bare string is an Excel-style index and never a
+// name, Name picks by exact name, an int is a position counting from the end
+// when negative, and anything else is an error.
+func TestQuantileSortSelectorContract(t *testing.T) {
+	want, err := QuantileSort(panel(), "A", "C", []any{"D"}, 3, QuantileSortOptions{WeightCol: "E"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := func(label string, got *QuantileSortResult, err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("%s: %v", label, err)
+		}
+		if got.Groups.NumRows() != want.Groups.NumRows() {
+			t.Fatalf("%s: rows %d, want %d", label, got.Groups.NumRows(), want.Groups.NumRows())
+		}
+		a, b := column(t, got.Groups, "ret"), column(t, want.Groups, "ret")
+		for i := range a {
+			if a[i] != b[i] {
+				t.Errorf("%s: group %d mean %v, want %v", label, i, a[i], b[i])
+			}
+		}
+	}
+	got, err := QuantileSort(panel(), insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 3, QuantileSortOptions{WeightCol: insyra.Name("weight")})
+	same("names", got, err)
+	got, err = QuantileSort(panel(), 0, 2, []any{3}, 3, QuantileSortOptions{WeightCol: -1})
+	same("positions", got, err)
+	got, err = QuantileSort(panel(), "A", insyra.Name("signal"), []any{-2}, 3, QuantileSortOptions{WeightCol: "E"})
+	same("mixed", got, err)
+
+	// A column named like another column's letter does not capture the bare
+	// string: "C" is still the third column.
+	src := panel()
+	tbl := insyra.NewDataTable(
+		insyra.NewDataList(src.GetColByName("date").Data()...).SetName("date"),
+		insyra.NewDataList(src.GetColByName("code").Data()...).SetName("code"),
+		insyra.NewDataList(src.GetColByName("signal").Data()...).SetName("signal"),
+		insyra.NewDataList(src.GetColByName("ret").Data()...).SetName("C"),
+	)
+	if res, err := QuantileSort(tbl, "A", "C", []any{"D"}, 3); err != nil {
+		t.Fatal(err)
+	} else if res.Groups.GetColByName("C") == nil {
+		t.Errorf("the return column keeps its own name, got %v", res.Groups.ColNames())
+	}
+	for label, call := range map[string]func() error{
+		"nil date":     func() error { _, e := QuantileSort(panel(), nil, "C", []any{"D"}, 3); return e },
+		"float":        func() error { _, e := QuantileSort(panel(), 1.5, "C", []any{"D"}, 3); return e },
+		"bare name":    func() error { _, e := QuantileSort(panel(), "signal", "C", []any{"D"}, 3); return e },
+		"unknown Name": func() error { _, e := QuantileSort(panel(), "A", insyra.Name("nope"), []any{"D"}, 3); return e },
+		"out of range": func() error { _, e := QuantileSort(panel(), "A", "C", []any{9}, 3); return e },
+		"past the end": func() error { _, e := QuantileSort(panel(), "A", "C", []any{"Z"}, 3); return e },
+		"nil return":   func() error { _, e := QuantileSort(panel(), "A", "C", []any{nil}, 3); return e },
+		"bad weight": func() error {
+			_, e := QuantileSort(panel(), "A", "C", []any{"D"}, 3, QuantileSortOptions{WeightCol: 1.5})
+			return e
+		},
+	} {
+		if call() == nil {
+			t.Errorf("%s: want an error", label)
+		}
+	}
+}
+
 func TestQuantileSortRefusesBadInput(t *testing.T) {
 	var nilTable *insyra.DataTable
 	cases := map[string]func() error{
-		"n":          func() error { _, e := QuantileSort(panel(), "date", "signal", []string{"ret"}, 1); return e },
-		"no returns": func() error { _, e := QuantileSort(panel(), "date", "signal", nil, 3); return e },
-		"nil":        func() error { _, e := QuantileSort(nilTable, "date", "signal", []string{"ret"}, 3); return e },
-		"no column":  func() error { _, e := QuantileSort(panel(), "day", "signal", []string{"ret"}, 3); return e },
+		"n": func() error {
+			_, e := QuantileSort(panel(), insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 1)
+			return e
+		},
+		"no returns": func() error {
+			_, e := QuantileSort(panel(), insyra.Name("date"), insyra.Name("signal"), nil, 3)
+			return e
+		},
+		"nil": func() error {
+			_, e := QuantileSort(nilTable, insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 3)
+			return e
+		},
+		"no column": func() error {
+			_, e := QuantileSort(panel(), insyra.Name("day"), insyra.Name("signal"), []any{insyra.Name("ret")}, 3)
+			return e
+		},
 		"ties": func() error {
-			_, e := QuantileSort(panel(), "date", "signal", []string{"ret"}, 3, QuantileSortOptions{Ties: 9})
+			_, e := QuantileSort(panel(), insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 3, QuantileSortOptions{Ties: 9})
 			return e
 		},
 		"bad weight": func() error {
 			tbl := insyra.NewDataTable(
 				insyra.NewDataList("d", "d").SetName("date"), insyra.NewDataList(1.0, 2.0).SetName("signal"),
 				insyra.NewDataList(1.0, 2.0).SetName("ret"), insyra.NewDataList(1.0, -1.0).SetName("w"))
-			_, e := QuantileSort(tbl, "date", "signal", []string{"ret"}, 2, QuantileSortOptions{WeightCol: "w"})
+			_, e := QuantileSort(tbl, insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 2, QuantileSortOptions{WeightCol: insyra.Name("w")})
 			return e
 		},
 		"text signal": func() error {
 			tbl := insyra.NewDataTable(
 				insyra.NewDataList("d", "d").SetName("date"), insyra.NewDataList(1.0, "x").SetName("signal"),
 				insyra.NewDataList(1.0, 2.0).SetName("ret"))
-			_, e := QuantileSort(tbl, "date", "signal", []string{"ret"}, 2)
+			_, e := QuantileSort(tbl, insyra.Name("date"), insyra.Name("signal"), []any{insyra.Name("ret")}, 2)
 			return e
 		},
 	}
