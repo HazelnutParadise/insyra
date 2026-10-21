@@ -207,6 +207,9 @@ func (t *Tensor) Len() int {
 	if t == nil {
 		return 0
 	}
+	if t.device != nil {
+		return t.device.Len()
+	}
 	switch t.dtype {
 	case DTypeFloat32:
 		return len(t.data)

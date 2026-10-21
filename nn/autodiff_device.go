@@ -139,6 +139,9 @@ func (t *Tape) residency(op string, tensors ...*Tensor) (bool, error) {
 // matMulResident multiplies two resident 2-D tensors and records a VJP whose
 // two products read the transposes in place.
 func (t *Tape) matMulResident(a, b *Tensor) (*Tensor, error) {
+	if a.dtype != DTypeFloat32 || b.dtype != DTypeFloat32 {
+		return nil, fmt.Errorf("autodiff matmul on a device needs float32 operands, got %s and %s", dtypeName(a.dtype), dtypeName(b.dtype))
+	}
 	if len(a.shape) != 2 || len(b.shape) != 2 || a.shape[1] != b.shape[0] {
 		return nil, fmt.Errorf("autodiff matmul on a device needs 2-D operands with matching inner dimensions, got %v and %v", a.shape, b.shape)
 	}
@@ -206,6 +209,9 @@ func sizeOf(shape []int) int {
 // addResident adds two resident tensors, b broadcasting over a's trailing
 // dimensions or matching it exactly.
 func (t *Tape) addResident(a, b *Tensor) (*Tensor, error) {
+	if a.dtype != DTypeFloat32 || b.dtype != DTypeFloat32 {
+		return nil, fmt.Errorf("autodiff add on a device needs float32 operands, got %s and %s", dtypeName(a.dtype), dtypeName(b.dtype))
+	}
 	if !trailingBroadcast(a.shape, b.shape) {
 		return nil, fmt.Errorf("autodiff add on a device needs the second operand to match or broadcast over the trailing dimensions of the first, got %v and %v", a.shape, b.shape)
 	}

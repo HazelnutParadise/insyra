@@ -256,3 +256,62 @@ func TestClearReleasesStepTensorsAndCloseReleasesParameters(t *testing.T) {
 		t.Fatal("a closed tape must refuse operations")
 	}
 }
+
+// The Codex review of the first pull request found three holes in the resident
+// representation; each test below failed before its fix.
+
+func TestResidentTensorKeepsItsLength(t *testing.T) {
+	device := residentTestDevice(t)
+	x, _ := NewTensor([]int{3, 4}, make([]float32, 12))
+	moved, err := x.To(device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer moved.Release()
+	if moved.Len() != 12 {
+		t.Fatalf("Len() = %d on a device, want 12", moved.Len())
+	}
+}
+
+func TestSaveSafeTensorsRefusesAResidentTensor(t *testing.T) {
+	device := residentTestDevice(t)
+	x, _ := NewTensor([]int{2}, []float32{1, 2})
+	moved, err := x.To(device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer moved.Release()
+	var out strings.Builder
+	err = SaveSafeTensors(&out, map[string]*Tensor{"w": moved})
+	if err == nil || !strings.Contains(err.Error(), "ToHost") {
+		t.Fatalf("SaveSafeTensors error = %v, want one naming ToHost", err)
+	}
+	if out.Len() != 0 {
+		t.Fatal("SaveSafeTensors wrote bytes before refusing")
+	}
+}
+
+func TestResidentArithmeticRefusesLabelTensors(t *testing.T) {
+	device := residentTestDevice(t)
+	labels, _ := NewInt64Tensor([]int{4}, []int64{1, 1, 1, 1})
+	moved, err := labels.To(device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer moved.Release()
+	tape := NewTape()
+	defer tape.Close()
+	_ = tape.SetPrecision(accel.PrecisionFloat32Rounded)
+	if _, err := tape.Add(moved, moved); err == nil || !strings.Contains(err.Error(), "float32") {
+		t.Fatalf("Add on int64 labels error = %v", err)
+	}
+	square, _ := NewInt64Tensor([]int{2, 2}, []int64{1, 0, 0, 1})
+	sq, err := square.To(device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sq.Release()
+	if _, err := tape.MatMul(sq, sq); err == nil || !strings.Contains(err.Error(), "float32") {
+		t.Fatalf("MatMul on int64 labels error = %v", err)
+	}
+}
