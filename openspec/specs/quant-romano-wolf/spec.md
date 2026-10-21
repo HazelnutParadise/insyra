@@ -49,6 +49,13 @@ The procedure SHALL stop at the first step that rejects no column or when every 
 - **WHEN** a column equals the benchmark, or a resampled series has a variance that is not finite or at most 1e-24 times its mean square
 - **THEN** the call returns an error naming the column
 
+### Requirement: Non-finite statistics are errors
+`RomanoWolf` SHALL return an error, never a result, when w_k, any replication's w*_k or any critical value is NaN or infinite, including when σ or σ* is finite and positive but the quotient overflows. An infinite or NaN value SHALL NOT be used as a candidate for a critical value.
+
+#### Scenario: A draw that misses a huge value
+- **WHEN** a column's mean comes from one huge value and a resample without it has a tiny positive σ*
+- **THEN** the call returns an error saying the statistic is not finite, for both resampling schemes
+
 ### Requirement: Options and inputs are validated
 `RomanoWolf` SHALL return an error, never a substituted default, for an `Alpha` that is NaN, at most 0 or at least 1, and for every input `RealityCheck` refuses. It SHALL accept a table with one column and read `isr` wrappers under the same lock as core types.
 
