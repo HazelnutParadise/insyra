@@ -6,7 +6,7 @@ Market-breadth indicators from the daily counts of advancing and declining stock
 ## Requirements
 
 ### Requirement: Breadth indicators follow their definitions
-`quant.AdvanceDeclineRatio`, `OverboughtOversold` and `NetAdvanceRatio` SHALL return, over the last window valid days, the advancing total over the declining total, the advancing total minus the declining total, and that difference over the sum of the two. `quant.AdvanceDeclineLine` SHALL return the start value plus the running sum of advancing minus declining.
+`ta.AdvanceDeclineRatio`, `OverboughtOversold` and `NetAdvanceRatio` SHALL return, over the last window valid days, the advancing total over the declining total, the advancing total minus the declining total, and that difference over the sum of the two. `ta.AdvanceDeclineLine` SHALL return the start value plus the running sum of advancing minus declining.
 
 #### Scenario: A two-day window
 - **WHEN** adv is 10, 20, 30, 0, 5, dec is 5, 20, 10, 0, 15 and the window is 2

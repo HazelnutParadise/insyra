@@ -25,22 +25,12 @@ func TestEnumsPrintTheirNames(t *testing.T) {
 		{VaRHistorical, "VaRHistorical"},
 		{VaRParametric, "VaRParametric"},
 		{VaRMethod(99), "VaRMethod(99)"},
-		{RSIWilder, "RSIWilder"},
-		{RSISimple, "RSISimple"},
-		{RSIMethod(99), "RSIMethod(99)"},
-		{RSIMissingError, "RSIMissingError"},
-		{RSIMissingFlat, "RSIMissingFlat"},
-		{RSIMissingBreak, "RSIMissingBreak"},
-		{RSIMissing(99), "RSIMissing(99)"},
 		{ResampleStationary, "ResampleStationary"},
 		{ResampleMovingBlock, "ResampleMovingBlock"},
 		{ResamplingScheme(99), "ResamplingScheme(99)"},
 		{AbnormalMarketAdjusted, "AbnormalMarketAdjusted"},
 		{AbnormalMarketModel, "AbnormalMarketModel"},
 		{AbnormalModel(99), "AbnormalModel(99)"},
-		{KDRecursive, "KDRecursive"},
-		{KDMovingAverage, "KDMovingAverage"},
-		{KDMethod(99), "KDMethod(99)"},
 	}
 	for _, c := range cases {
 		if got := fmt.Sprint(c.got); got != c.want {

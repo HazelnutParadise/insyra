@@ -67,7 +67,7 @@ A positive `NeweyWestLag` that is not smaller than the number of months with an 
 - **THEN** signals below 0 are in bucket 0 and signals of 0 or more in bucket 1
 
 ### Requirement: Bias indicators do not look ahead
-`quant.Bias` SHALL return price over its n-day moving average less 1, and `quant.BiasZ` SHALL divide it by the standard deviation of the previous window biases, so that changing a later price never changes an earlier value.
+`ta.Bias` SHALL return price over its n-day moving average less 1, and `ta.BiasZ` SHALL divide it by the standard deviation of the previous window biases, so that changing a later price never changes an earlier value.
 
 #### Scenario: A changed last price
 - **WHEN** only the last price is changed

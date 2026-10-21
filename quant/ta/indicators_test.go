@@ -1,4 +1,4 @@
-package quant
+package ta
 
 import (
 	"encoding/json"
