@@ -225,7 +225,7 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []
 	case o.NoNeweyWest:
 		lag = 0
 	case lag == 0:
-		lag = -1 // stats.NeweyWestMeanTest chooses automatically
+		lag = stats.AutoLag
 	}
 
 	tests := make([]*stats.NeweyWestResult, k+1)
