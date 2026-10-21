@@ -170,23 +170,11 @@ func newPanel(prices insyra.IDataTable, dates insyra.IDataList, o ForwardOptions
 		p.month[i] = m
 	}
 
-	var cols [][]any
-	prices.AtomicDo(func(dt *insyra.DataTable) {
-		for c := 0; c < dt.NumCols(); c++ {
-			cols = append(cols, dt.GetColByNumber(c).Data())
-		}
-	})
-	if len(cols) == 0 {
-		return nil, errors.New("prices has no columns")
+	cols, _, err := readPriceColumns(prices, p.rows)
+	if err != nil {
+		return nil, err
 	}
-	p.prices = make([][]float64, len(cols))
-	for c, col := range cols {
-		series, err := priceColumn(col, c, p.rows)
-		if err != nil {
-			return nil, err
-		}
-		p.prices[c] = series
-	}
+	p.prices = cols
 
 	if o.Tradable != nil {
 		if insyra.IsNilTable(o.Tradable) {
@@ -227,6 +215,32 @@ func newPanel(prices insyra.IDataTable, dates insyra.IDataList, o ForwardOptions
 		p.levels = lv
 	}
 	return p, nil
+}
+
+// readPriceColumns reads every column of a price table as float64 series of
+// the given length, NaN where a cell is missing, with the column names. A
+// price that is not positive, or a cell that is not a number, is an error.
+func readPriceColumns(prices insyra.IDataTable, rows int) ([][]float64, []string, error) {
+	var cols [][]any
+	var names []string
+	prices.AtomicDo(func(dt *insyra.DataTable) {
+		for c := 0; c < dt.NumCols(); c++ {
+			cols = append(cols, dt.GetColByNumber(c).Data())
+			names = append(names, dt.GetColNameByNumber(c))
+		}
+	})
+	if len(cols) == 0 {
+		return nil, nil, errors.New("prices has no columns")
+	}
+	out := make([][]float64, len(cols))
+	for c, col := range cols {
+		series, err := priceColumn(col, c, rows)
+		if err != nil {
+			return nil, nil, err
+		}
+		out[c] = series
+	}
+	return out, names, nil
 }
 
 func priceColumn(col []any, c, rows int) ([]float64, error) {

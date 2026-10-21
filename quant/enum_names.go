@@ -51,3 +51,15 @@ func (s ResamplingScheme) String() string {
 	}
 	return fmt.Sprintf("ResamplingScheme(%d)", int(s))
 }
+
+// String returns the constant name of m, or AbnormalModel(n) for a value that
+// is not one of the constants.
+func (m AbnormalModel) String() string {
+	switch m {
+	case AbnormalMarketAdjusted:
+		return "AbnormalMarketAdjusted"
+	case AbnormalMarketModel:
+		return "AbnormalMarketModel"
+	}
+	return fmt.Sprintf("AbnormalModel(%d)", int(m))
+}
