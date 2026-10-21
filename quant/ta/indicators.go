@@ -288,8 +288,8 @@ func (m KDMethod) String() string {
 	return fmt.Sprintf("KDMethod(%d)", int(m))
 }
 
-// KDOptions are the optional settings of KD. A zero field takes the default
-// shown.
+// KDOptions are the optional settings of KD and StochRSI. A zero field takes the
+// default shown.
 type KDOptions struct {
 	Method KDMethod // KDRecursive (default) or KDMovingAverage
 	SlowK  int      // smoothing of K, default 3
@@ -369,6 +369,11 @@ func smoothStochastic(rsv []float64, first int, o KDOptions) (k, d []float64) {
 	case KDRecursive:
 		pk, pd := 50.0, 50.0
 		for i := first; i < len(rsv); i++ {
+			if math.IsNaN(rsv[i]) {
+				// no raw value (StochRSI over an undefined RSI): leave the state as
+				// it is, at its initial 50 until the first row that has one
+				continue
+			}
 			pk = pk*float64(o.SlowK-1)/float64(o.SlowK) + rsv[i]/float64(o.SlowK)
 			pd = pd*float64(o.SlowD-1)/float64(o.SlowD) + pk/float64(o.SlowD)
 			k[i], d[i] = pk, pd

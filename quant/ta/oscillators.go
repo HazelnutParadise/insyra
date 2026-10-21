@@ -121,9 +121,21 @@ func UltimateOscillator(high, low, close insyra.IDataList, short, medium, long i
 // (Wilder) RSI lies between its lowest and highest values of the last stochN
 // rows, from 0 to 100, smoothed into K and D as KDOptions say, with the same
 // default as KD (the Taiwanese recursive form, a flat window counting as 50).
-// With KDOptions{Method: KDMovingAverage, SlowK: 1, SlowD: 3} it equals TA-Lib's
-// STOCHRSI with fastk_period stochN and fastd_period 3. The first n+stochN-1
-// rows are NaN.
+// The first n+stochN-1 rows are NaN.
+//
+// The default smoothing is not TA-Lib's or TradingView's, so the numbers differ
+// from theirs. To get TA-Lib's STOCHRSI (fastk_period stochN, fastd_period 3)
+// pass KDOptions{Method: KDMovingAverage, SlowK: 1, SlowD: 3}: K is then the raw
+// value itself and D its 3-row average, and the tests check this against TA-Lib.
+// TradingView's "Stoch RSI" averages the raw value by simple moving averages too,
+// K over 3 rows and D over 3 rows, which is KDMovingAverage with SlowK 3 and
+// SlowD 3 (taken from its published definition, not checked against it here). A
+// window in which the RSI is undefined (no gain and no loss yet) is NaN, and
+// recursive smoothing starts from 50 on the first row that has a value.
+//
+// KDOptions.SegmentStarts restarts everything on its own at each segment: the
+// RSI, the stochastic window and the smoothing, so nothing is carried across a
+// data break and a segment shows NaN through its own warm-up.
 func StochRSI(prices insyra.IDataList, n, stochN int, opts ...KDOptions) (*KDResult, error) {
 	if err := checkPeriod("n", n, 1); err != nil {
 		return nil, err
@@ -139,6 +151,22 @@ func StochRSI(prices insyra.IDataList, n, stochN int, opts ...KDOptions) (*KDRes
 	if err != nil {
 		return nil, err
 	}
+	starts, err := cleanSegmentStarts(o.SegmentStarts, len(p))
+	if err != nil {
+		return nil, err
+	}
+	k, d := nanSeries(len(p)), nanSeries(len(p))
+	for _, b := range segmentBounds(len(p), starts) {
+		sk, sd := stochRSISegment(p[b[0]:b[1]], n, stochN, o)
+		copy(k[b[0]:b[1]], sk)
+		copy(d[b[0]:b[1]], sd)
+	}
+	return &KDResult{listOfFloats("K", k), listOfFloats("D", d)}, nil
+}
+
+// stochRSISegment is StochRSI over one data segment, with the settings of o
+// already checked.
+func stochRSISegment(p []float64, n, stochN int, o KDOptions) (k, d []float64) {
 	rsi := rsiRun(p, n, RSIWilder)
 	first := n + stochN - 1
 	rsv := nanSeries(len(p))
@@ -156,8 +184,7 @@ func StochRSI(prices insyra.IDataList, n, stochN int, opts ...KDOptions) (*KDRes
 			rsv[i] = (rsi[i] - lo) / (hi - lo) * 100
 		}
 	}
-	k, d := smoothStochastic(rsv, first, o)
-	return &KDResult{listOfFloats("K", k), listOfFloats("D", d)}, nil
+	return smoothStochastic(rsv, first, o)
 }
 
 // ARBRResult holds the two sentiment indicators of the AR/BR pair.
@@ -248,6 +275,12 @@ type CROptions struct {
 	Midpoint CRMidpoint
 	// Open is the open prices, required for CRMidOHLC and ignored otherwise.
 	Open insyra.IDataList
+	// SegmentStarts are the rows on which a new data segment starts, for
+	// example the first row after a trading halt or a relisting. Each segment is
+	// computed on its own: a window never reaches back across a start, and a
+	// segment shows NaN through its first n rows. Row 0 starts the first segment
+	// and need not be listed. Left empty, the result does not change.
+	SegmentStarts []int
 }
 
 // CR returns the intermediate willingness index over n rows (usually 26): 100
@@ -298,15 +331,23 @@ func CR(high, low, close insyra.IDataList, n int, opts ...CROptions) (*insyra.Da
 			mid[i] = (o[i] + h[i] + l[i] + c[i]) / 4
 		}
 	}
+	starts, err := cleanSegmentStarts(opt.SegmentStarts, len(c))
+	if err != nil {
+		return nil, err
+	}
 	out := nanSeries(len(c))
-	for i := n; i < len(c); i++ {
-		var up, down float64
-		for j := i - n + 1; j <= i; j++ {
-			up += math.Max(0, h[j]-mid[j-1])
-			down += math.Max(0, mid[j-1]-l[j])
-		}
-		if down != 0 {
-			out[i] = 100 * up / down
+	for _, b := range segmentBounds(len(c), starts) {
+		// a row needs the midpoint of the row before it, so the first n rows of
+		// every segment have no value
+		for i := b[0] + n; i < b[1]; i++ {
+			var up, down float64
+			for j := i - n + 1; j <= i; j++ {
+				up += math.Max(0, h[j]-mid[j-1])
+				down += math.Max(0, mid[j-1]-l[j])
+			}
+			if down != 0 {
+				out[i] = 100 * up / down
+			}
 		}
 	}
 	return listOfFloats("CR", out), nil
