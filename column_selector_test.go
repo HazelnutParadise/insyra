@@ -26,6 +26,7 @@ func firstCell(t *testing.T, dl *DataList) any {
 	t.Helper()
 	if dl == nil {
 		t.Fatal("column is nil")
+		return nil
 	}
 	data := dl.Data()
 	if len(data) == 0 {
@@ -67,6 +68,7 @@ func TestGetColRefusesANameWrittenAsABareString(t *testing.T) {
 	err := dt.Err()
 	if err == nil {
 		t.Fatal("a name written as a bare string must not resolve")
+		return
 	}
 	if !strings.Contains(err.Error(), `Name("price")`) {
 		t.Errorf("the failure does not say how to write the name: %v", err)
@@ -106,6 +108,7 @@ func TestColumnSelectorOfAnotherTypeIsRefused(t *testing.T) {
 	err := dt.Err()
 	if err == nil {
 		t.Fatal("a float is not a column selector")
+		return
 	}
 	if !strings.Contains(err.Error(), "float64") {
 		t.Errorf("the failure does not name the type it was given: %v", err)
@@ -132,6 +135,7 @@ func TestGetColByIndexDoesNotTryTheName(t *testing.T) {
 	err := dt.Err()
 	if err == nil {
 		t.Fatal("GetColByIndex must read its argument as an index only")
+		return
 	}
 	if !strings.Contains(err.Error(), "PRICE") {
 		t.Errorf("the failure does not name the index it decoded: %v", err)

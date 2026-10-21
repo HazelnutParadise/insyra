@@ -597,6 +597,7 @@ func TestReadCSV_StringWithOptions_RaggedExtraColNameStableAcrossRowNames(t *tes
 		col := dt.GetColByName("extra_3")
 		if col == nil {
 			t.Fatalf("rownames=%v: column extra_3 not found (cols=%v)", rownames, dt.ColNames())
+			return
 		}
 		if got := col.Data()[1]; got != "extra" {
 			t.Errorf("rownames=%v: expected extra cell in extra_3, got %v", rownames, got)

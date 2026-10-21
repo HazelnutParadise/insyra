@@ -104,6 +104,7 @@ func TestReferencedColumnsNeedsABoundExpression(t *testing.T) {
 			got, err := ReferencedColumns(node, 4)
 			if err == nil {
 				t.Fatalf("ReferencedColumns(%q) = %v, want an error", expression, got)
+				return
 			}
 			if !strings.Contains(err.Error(), "not bound") {
 				t.Fatalf("error %q does not say the expression is not bound", err)

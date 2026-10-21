@@ -146,6 +146,7 @@ func TestExponentialSmoothingAgainstEWMMean(t *testing.T) {
 		legacy := legacySrc.ExponentialSmoothing(0.5)
 		if legacy == nil {
 			t.Fatalf("ExponentialSmoothing(0.5) on an empty list returned nil, want a usable empty list")
+			return
 		}
 		if got := legacy.Len(); got != 0 {
 			t.Errorf("ExponentialSmoothing(0.5).Len() = %d, want 0", got)
@@ -161,6 +162,7 @@ func TestExponentialSmoothingAgainstEWMMean(t *testing.T) {
 		replacement := replacementSrc.EWM(EWMOptions{Alpha: 0.5}).Mean()
 		if replacement == nil {
 			t.Fatalf("EWM(Alpha: 0.5).Mean() on an empty list returned nil, want a usable empty list")
+			return
 		}
 		if got := replacement.Len(); got != 0 {
 			t.Errorf("EWM(Alpha: 0.5).Mean().Len() = %d, want 0", got)

@@ -56,6 +56,7 @@ func TestLoadSafeTensorsReportsEveryUnsupportedDTypeAtOnce(t *testing.T) {
 	_, err := LoadSafeTensors(bytes.NewReader(safeTensorsFile(header, make([]byte, 10))))
 	if err == nil {
 		t.Fatal("LoadSafeTensors accepted unsupported dtypes")
+		return
 	}
 	message := err.Error()
 	for _, want := range []string{"quant", "I8", "double", "F64"} {

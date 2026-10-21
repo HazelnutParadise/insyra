@@ -26,6 +26,7 @@ func TestNumericValuesRefusesEveryUnreadableForm(t *testing.T) {
 			_, err := numericValues([]any{1.0, 2.0, tc.bad, 4.0}, "predictor 0")
 			if err == nil {
 				t.Fatalf("value %v was accepted", tc.bad)
+				return
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error %q does not say %q", err, tc.want)
@@ -88,6 +89,7 @@ func TestAppendNumericValuesNamesThePositionAndAppends(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatalf("%v was accepted", tc.raw)
+				return
 			}
 			if err.Error() != tc.want {
 				t.Fatalf("error %q, want %q", err.Error(), tc.want)
@@ -102,6 +104,7 @@ func TestAppendNumericValuesReturnsNilOnRefusal(t *testing.T) {
 	values, err := appendNumericValues([]float64{7}, []any{1.0, nil}, func() string { return "subject 2" }, "condition")
 	if err == nil {
 		t.Fatalf("nil was accepted")
+		return
 	}
 	if want := "subject 2 contains a non-numeric value at condition index 1: <nil>"; err.Error() != want {
 		t.Fatalf("error %q, want %q", err.Error(), want)

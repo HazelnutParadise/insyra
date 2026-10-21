@@ -492,6 +492,7 @@ func TestResolveComputesAggregatesOnAnEmptyTable(t *testing.T) {
 			if tt.fails != "" {
 				if err == nil {
 					t.Fatalf("%s evaluated to %v, want the error of a part that cannot be computed", tt.expr, got)
+					return
 				}
 				// The part's own reason, not the one an unresolved part gives.
 				if !strings.Contains(err.Error(), tt.fails) {

@@ -163,6 +163,7 @@ func TestSliceOutOfRange(t *testing.T) {
 		}
 		if got == nil {
 			t.Fatalf("%s(%d, %d) returned nil", c.name, c.from, c.to)
+			return
 		}
 		if got.NumCols() != 0 || got.NumRows() != 0 {
 			t.Errorf("%s(%d, %d) returned %d x %d, want an empty table", c.name, c.from, c.to, got.NumRows(), got.NumCols())

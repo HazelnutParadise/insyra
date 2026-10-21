@@ -68,6 +68,7 @@ func TestGoogleMapsStoresNeedsNoNetwork(t *testing.T) {
 	c := GoogleMapsStores()
 	if c == nil {
 		t.Fatal("GoogleMapsStores returned nil")
+		return
 	}
 	if c.client.Timeout <= 0 {
 		t.Error("requests have no timeout")

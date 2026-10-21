@@ -76,6 +76,7 @@ func TestSolveWithTheDefaultEngine(t *testing.T) {
 			}
 			if sol == nil {
 				t.Fatal("a nil error came with a nil solution")
+				return
 			}
 			if sol.Engine != EngineMILP {
 				t.Errorf("engine %q, want %q", sol.Engine, EngineMILP)
@@ -327,6 +328,7 @@ func TestSolutionToDataTable(t *testing.T) {
 	empty := (&Solution{Status: StatusInfeasible}).ToDataTable()
 	if empty == nil {
 		t.Fatal("ToDataTable returned nil")
+		return
 	}
 	if rows, cols := empty.Size(); rows != 0 || cols != 2 {
 		t.Errorf("an infeasible solution gave %d rows and %d columns, want 0 and 2", rows, cols)

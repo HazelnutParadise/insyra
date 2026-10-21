@@ -426,6 +426,7 @@ func TestArgumentListErrorMentionsTheComma(t *testing.T) {
 	_, err := CompileExpression("SUM(A B)")
 	if err == nil {
 		t.Fatal("SUM(A B) compiled")
+		return
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "comma") {
 		t.Errorf("error should mention the missing comma: %v", err)

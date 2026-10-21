@@ -10,6 +10,7 @@ func assertEmptyWithError(t *testing.T, name string, got *DataList) {
 	t.Helper()
 	if got == nil {
 		t.Fatalf("%s: returned nil", name)
+		return
 	}
 	if n := got.Len(); n != 0 {
 		t.Errorf("%s: expected length 0, got %d", name, n)
@@ -69,6 +70,7 @@ func TestRollingColInvalidOptionIsRecordedOnTheTable(t *testing.T) {
 	err := dt.Err()
 	if err == nil {
 		t.Fatal("expected an error recorded on dt")
+		return
 	}
 	if err.FuncName != "RollingCol" {
 		t.Errorf("FuncName = %q, want %q", err.FuncName, "RollingCol")
@@ -88,6 +90,7 @@ func TestEWMColInvalidOptionIsRecordedOnTheTable(t *testing.T) {
 	err := dt.Err()
 	if err == nil {
 		t.Fatal("expected an error recorded on dt")
+		return
 	}
 	if err.FuncName != "EWMCol" {
 		t.Errorf("FuncName = %q, want %q", err.FuncName, "EWMCol")

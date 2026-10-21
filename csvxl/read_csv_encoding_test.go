@@ -18,6 +18,7 @@ func TestReadCSVToStringRefusesAnEncodingItCannotDecode(t *testing.T) {
 	got, err := ReadCSVToString(path, "klingon-1")
 	if err == nil {
 		t.Fatalf("ReadCSVToString(klingon-1) = %q with no error", got)
+		return
 	}
 	if !strings.Contains(err.Error(), "klingon-1") || !strings.Contains(err.Error(), "utf8") {
 		t.Fatalf("the error should name the encoding and what is supported: %v", err)
@@ -54,6 +55,7 @@ func TestReadCSVToStringRefusesADetectedEncodingItCannotDecode(t *testing.T) {
 	got, err := ReadCSVToString(path)
 	if err == nil {
 		t.Fatalf("ReadCSVToString(auto) returned %d bytes with no error", len(got))
+		return
 	}
 	if !strings.Contains(err.Error(), "ibm424_rtl") {
 		t.Fatalf("the error should name the detected encoding: %v", err)

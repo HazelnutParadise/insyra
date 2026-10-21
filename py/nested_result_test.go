@@ -19,6 +19,7 @@ func checkFrame(t *testing.T, what string, dt *insyra.DataTable) {
 	t.Helper()
 	if dt == nil {
 		t.Fatalf("%s: no table", what)
+		return
 	}
 	if rows, cols := dt.Size(); rows != 2 || cols != 2 {
 		t.Errorf("%s: the table is %d x %d, want 2 x 2", what, rows, cols)

@@ -84,6 +84,7 @@ func buildAutodiffEncoder(t *testing.T, tape *Tape, parameters map[string]*Param
 		value := parameters[name]
 		if value == nil {
 			t.Fatalf("missing encoder parameter %q", name)
+			return nil
 		}
 		return value.Value()
 	}

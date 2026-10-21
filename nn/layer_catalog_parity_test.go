@@ -75,6 +75,7 @@ func TestBatchNormCatalogPyTorchParity(t *testing.T) {
 			parameter := model.NamedParameters()[name]
 			if parameter == nil {
 				t.Fatalf("step %d missing parameter %q", step, name)
+				return
 			}
 			assertCatalogClose(t, fmt.Sprintf("step %d gradient %s", step, name), torchStateValues(name, parameter.Grad()), values, 5e-5)
 		}

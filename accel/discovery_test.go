@@ -383,6 +383,7 @@ func TestOpenReportsDiscoveryErrorReasonCode(t *testing.T) {
 	}
 	if session == nil {
 		t.Fatal("expected session to be returned on discovery error")
+		return
 	}
 	t.Cleanup(func() {
 		_ = session.Close()
@@ -421,6 +422,7 @@ func TestOpenHonorsDiscoveryTimeout(t *testing.T) {
 	}
 	if session == nil {
 		t.Fatal("expected session even when discovery times out")
+		return
 	}
 	t.Cleanup(func() {
 		_ = session.Close()

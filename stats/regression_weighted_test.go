@@ -99,6 +99,7 @@ func TestWeightedRefusals(t *testing.T) {
 		_, err := stats.WeightedLinearRegression(y, bad(tc.value), x1, x2)
 		if err == nil {
 			t.Fatalf("a %s weight was accepted", tc.name)
+			return
 		}
 		// The row is what makes the refusal actionable.
 		if !strings.Contains(err.Error(), "4") && !strings.Contains(err.Error(), "row") {

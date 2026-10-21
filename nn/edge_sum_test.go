@@ -62,6 +62,7 @@ func TestNewEdgeTopologyRefuses(t *testing.T) {
 			_, err := NewEdgeTopology(tt.nodes, tt.sources, tt.targets)
 			if err == nil {
 				t.Fatalf("NewEdgeTopology(%d, %v, %v) succeeded, want error %q", tt.nodes, tt.sources, tt.targets, tt.wantErr)
+				return
 			}
 			if err.Error() != tt.wantErr {
 				t.Fatalf("NewEdgeTopology(%d, %v, %v) error = %q, want %q", tt.nodes, tt.sources, tt.targets, err.Error(), tt.wantErr)
@@ -381,6 +382,7 @@ func TestEdgeSumRefuses(t *testing.T) {
 			_, err := EdgeSum(tt.top, tt.weights, tt.values)
 			if err == nil {
 				t.Fatalf("EdgeSum succeeded, want error %q", tt.wantErr)
+				return
 			}
 			if tt.wantErr != "" && err.Error() != tt.wantErr {
 				t.Fatalf("EdgeSum error = %q, want %q", err.Error(), tt.wantErr)

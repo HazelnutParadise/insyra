@@ -273,6 +273,7 @@ func TestSessionExecuteFileIncludesLineNumber(t *testing.T) {
 	err = session.ExecuteFile(scriptPath)
 	if err == nil {
 		t.Fatalf("expected error for bad script command")
+		return
 	}
 	if !strings.Contains(err.Error(), "line 2") {
 		t.Fatalf("expected line number in error, got: %v", err)

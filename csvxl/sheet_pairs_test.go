@@ -46,6 +46,7 @@ func TestCSVToExcelRefusesTwoCSVsForOneSheet(t *testing.T) {
 			err := CSVToExcel(sheets, out)
 			if err == nil {
 				t.Fatal("two CSVs for one sheet were converted")
+				return
 			}
 			for _, s := range sheets {
 				if !strings.Contains(err.Error(), s.Path) {
@@ -129,6 +130,7 @@ func TestExcelToCSVRefusesTwoSheetsForOneFile(t *testing.T) {
 			err := ExcelToCSV(threeSheetBook(t), out, ExcelToCSVOptions{FileNames: fileNames})
 			if err == nil {
 				t.Fatal("two sheets for one file were converted")
+				return
 			}
 			if !strings.Contains(err.Error(), "Q1") || !strings.Contains(err.Error(), "Q2") {
 				t.Errorf("the error should name both sheets: %v", err)

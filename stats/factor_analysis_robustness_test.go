@@ -58,6 +58,7 @@ func TestFactorAnalysis_RejectsAllRowsHaveNaN(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("expected error: every row contains NaN")
+		return
 	}
 	if !strings.Contains(err.Error(), "row") && !strings.Contains(err.Error(), "missing") {
 		t.Logf("error message: %v", err)
@@ -126,6 +127,7 @@ func TestFactorAnalysis_RejectsZeroVarianceColumn(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("expected error for zero-variance column")
+		return
 	}
 	if !strings.Contains(err.Error(), "variance") {
 		t.Logf("error message: %v", err)

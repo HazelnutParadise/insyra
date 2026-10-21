@@ -69,6 +69,7 @@ func TestReverseTableReadsABareStringAsAnIndex(t *testing.T) {
 
 	if err == nil {
 		t.Fatal(`ReverseTable(dt, "lat", "lng") read the strings as column names`)
+		return
 	}
 	for _, want := range []string{"latitude", `"lat"`, "insyra.Name"} {
 		if !strings.Contains(err.Error(), want) {

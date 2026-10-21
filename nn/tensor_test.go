@@ -90,6 +90,7 @@ func TestBroadcastBinaryNamesBothIncompatibleShapes(t *testing.T) {
 	_, err = tensorBroadcastBinary(left, right, "add", func(a, b float32) float32 { return a + b })
 	if err == nil {
 		t.Fatal("broadcastBinary accepted incompatible shapes")
+		return
 	}
 	if !strings.Contains(err.Error(), "[2 3]") || !strings.Contains(err.Error(), "[2 4]") {
 		t.Fatalf("error %q does not name both shapes", err)

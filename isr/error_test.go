@@ -28,6 +28,7 @@ func TestDTFromFailureIsChainable(t *testing.T) {
 	dt := isr.DT.From(isr.CSV{FilePath: "no_such_file_for_insyra_test.csv"})
 	if dt == nil {
 		t.Fatal("DT.From returned nil for a missing file")
+		return
 	}
 	if dt.Err() == nil {
 		t.Fatal("DT.From did not record the read failure")
@@ -45,6 +46,7 @@ func TestDTFromUnexpectedTypeIsChainable(t *testing.T) {
 	dt := isr.DT.From(struct{ X int }{1})
 	if dt == nil {
 		t.Fatal("DT.From returned nil for an unsupported type")
+		return
 	}
 	if dt.Err() == nil {
 		t.Fatal("DT.From did not record the unsupported type")
@@ -62,6 +64,7 @@ func TestColRowPushFailuresAreChainable(t *testing.T) {
 	col := dt.Col(3.5) // not an int, string, or name
 	if col == nil {
 		t.Fatal("Col returned nil for an unsupported selector")
+		return
 	}
 	if col.Err() == nil {
 		t.Fatal("Col did not record the unsupported selector")
@@ -70,6 +73,7 @@ func TestColRowPushFailuresAreChainable(t *testing.T) {
 	row := dt.Row(3.5)
 	if row == nil {
 		t.Fatal("Row returned nil for an unsupported selector")
+		return
 	}
 	if row.Err() == nil {
 		t.Fatal("Row did not record the unsupported selector")
@@ -78,6 +82,7 @@ func TestColRowPushFailuresAreChainable(t *testing.T) {
 	pushed := isr.DT.From(nil).Push(3.5)
 	if pushed == nil {
 		t.Fatal("Push returned nil for an unsupported type")
+		return
 	}
 	if pushed.Err() == nil {
 		t.Fatal("Push did not record the unsupported type")
@@ -97,6 +102,7 @@ func TestUseDLUseDTNeverReturnNil(t *testing.T) {
 	got := isr.UseDL(nilList)
 	if got == nil {
 		t.Fatal("UseDL returned nil for a nil DataList")
+		return
 	}
 	if got.Err() == nil {
 		t.Fatal("UseDL did not record the nil input")
@@ -105,6 +111,7 @@ func TestUseDLUseDTNeverReturnNil(t *testing.T) {
 	gotDT := isr.UseDT(nilTable)
 	if gotDT == nil {
 		t.Fatal("UseDT returned nil for a nil DataTable")
+		return
 	}
 	if gotDT.Err() == nil {
 		t.Fatal("UseDT did not record the nil input")
@@ -122,6 +129,7 @@ func TestErrSurfaceStaysChainable(t *testing.T) {
 		Push(isr.Row{"a": 1})
 	if tbl == nil {
 		t.Fatal("chain returned nil")
+		return
 	}
 	if err := tbl.Err(); err != nil {
 		t.Fatalf("ClearErr did not clear the read failure: %v", err)

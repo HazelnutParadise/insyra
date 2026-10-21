@@ -147,6 +147,7 @@ func TestLayerBuiltEncoderAdamWParity(t *testing.T) {
 		parameter := parameters[name]
 		if parameter == nil {
 			t.Fatalf("missing parameter %q", name)
+			return
 		}
 		assertAutodiffValue(t, name+" gradient", attentionTorchLayout(name, parameter.Grad()), reference.Gradients[name])
 	}

@@ -173,6 +173,7 @@ func TestDeflatedSharpeRatioRejectsUnreadableInput(t *testing.T) {
 			got, err := DeflatedSharpeRatio(1.0, 100, 0, 3, insyra.NewDataList(tc.values...))
 			if err == nil {
 				t.Fatalf("DeflatedSharpeRatio returned nil error, got %v", got)
+				return
 			}
 			if !strings.Contains(err.Error(), "trialSharpes") || !strings.Contains(err.Error(), tc.row) {
 				t.Errorf("error = %q, want trialSharpes and %s", err, tc.row)
@@ -196,6 +197,7 @@ func TestPBORejectsUnreadableInput(t *testing.T) {
 	got, err := PBO(insyra.NewDataTable(colA, colB), 2)
 	if err == nil {
 		t.Fatalf("PBO returned nil error, got %v", got)
+		return
 	}
 	if !strings.Contains(err.Error(), "column 1") || !strings.Contains(err.Error(), "row index 2") {
 		t.Errorf("PBO error = %q, want column 1 and row index 2", err)

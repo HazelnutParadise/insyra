@@ -60,6 +60,7 @@ func TestExactSplitsRefusesABinCap(t *testing.T) {
 	_, err := ml.FitDecisionTreeClassifier(x, y, ml.DecisionTreeOptions{ExactSplits: true, MaxBins: 64})
 	if err == nil {
 		t.Fatal("ExactSplits combined with MaxBins was accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), "ExactSplits") {
 		t.Fatalf("error %q does not name the conflict", err)

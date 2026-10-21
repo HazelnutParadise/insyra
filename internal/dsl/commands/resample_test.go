@@ -88,6 +88,7 @@ func TestRunResampleCommand_UnknownOpListsOperators(t *testing.T) {
 	err := runResampleCommand(ctx, []string{"dt", "Date", "monthly", "Close:average"})
 	if err == nil {
 		t.Fatalf("expected an error for an unknown op")
+		return
 	}
 	message := err.Error()
 	if !strings.HasPrefix(message, "resample: ") {
@@ -117,6 +118,7 @@ func TestRunResampleCommand_BadSpecShape(t *testing.T) {
 		err := runResampleCommand(ctx, []string{"dt", "Date", "monthly", spec})
 		if err == nil {
 			t.Fatalf("expected an error for spec %q", spec)
+			return
 		}
 		if !strings.Contains(err.Error(), "<col>:<op>[:<name>]") {
 			t.Errorf("error for %q = %q, should show the expected shape", spec, err)
@@ -136,6 +138,7 @@ func TestRunResampleCommand_NonTimeColumn(t *testing.T) {
 	err := runResampleCommand(ctx, []string{"dt", "Date", "monthly", "Close:last"})
 	if err == nil {
 		t.Fatalf("expected an error for a non-time column")
+		return
 	}
 	message := err.Error()
 	if !strings.HasPrefix(message, "resample: ") {

@@ -33,6 +33,7 @@ func TestNumberLiteralOverflowIsAnError(t *testing.T) {
 	_, err := evalExpr(t, huge)
 	if err == nil {
 		t.Fatal("a 400-digit literal compiled")
+		return
 	}
 	if !strings.Contains(err.Error(), "out of range") && !strings.Contains(err.Error(), "too large") {
 		t.Errorf("the error %q does not say the number is out of range", err)
@@ -179,6 +180,7 @@ func TestNonASCIIErrorsPointAtACharacter(t *testing.T) {
 			_, err := evalExpr(t, tt.expr)
 			if err == nil {
 				t.Fatal("a non-ASCII identifier compiled")
+				return
 			}
 			if !strings.Contains(err.Error(), tt.near) {
 				t.Errorf("the error %q does not quote the character: want %s", err, tt.near)

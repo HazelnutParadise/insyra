@@ -258,6 +258,7 @@ func sameTableColumns(t *testing.T, got, want *insyra.DataTable, script string) 
 		gotCol := got.GetColByName(name)
 		if gotCol == nil {
 			t.Fatalf("ApplyCCL(%q) wrote no column %q", script, name)
+			return
 		}
 		gotData := gotCol.Data()
 		wantData := want.GetColByName(name).Data()
@@ -361,6 +362,7 @@ func TestCCLErrorsNameTheFileRow(t *testing.T) {
 	res, err := FilterWithCCL(context.Background(), path, expr)
 	if err == nil {
 		t.Fatalf("FilterWithCCL(%q) kept %d rows instead of failing at row 1500", expr, len(filteredRows(t, res)))
+		return
 	}
 	if res != nil {
 		t.Errorf("FilterWithCCL(%q) returned a table as well as the error", expr)
@@ -411,6 +413,7 @@ func TestFilterWithCCLGivesTheTablesAnswerForWholeColumnParts(t *testing.T) {
 			res, err := FilterWithCCL(context.Background(), path, tt.expr)
 			if err == nil {
 				t.Fatalf("FilterWithCCL(%q) kept %d rows where the loaded table fails", tt.expr, len(filteredRows(t, res)))
+				return
 			}
 			if res != nil {
 				t.Errorf("FilterWithCCL(%q) returned a table as well as the error", tt.expr)
@@ -440,10 +443,12 @@ func sameNamedColumns(t *testing.T, got, want *insyra.DataTable, script string, 
 		gotCol := got.GetColByName(name)
 		if gotCol == nil {
 			t.Fatalf("ApplyCCL(%q) wrote no column %q", script, name)
+			return
 		}
 		wantCol := want.GetColByName(name)
 		if wantCol == nil {
 			t.Fatalf("ExecuteCCL(%q) left no column %q on the loaded table", script, name)
+			return
 		}
 		gotData := gotCol.Data()
 		wantData := wantCol.Data()

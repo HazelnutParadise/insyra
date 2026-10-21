@@ -423,6 +423,7 @@ func TestPortfolioInfeasibleBounds(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected an infeasibility error")
+		return
 	}
 	if !strings.Contains(err.Error(), "MaxWeight") && !strings.Contains(strings.ToLower(err.Error()), "infeasible") {
 		t.Errorf("error does not report infeasibility: %v", err)
@@ -436,6 +437,7 @@ func TestPortfolioUnattainableTargetReturn(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected an unattainable-target error")
+		return
 	}
 	if !strings.Contains(err.Error(), "TargetReturn") {
 		t.Errorf("error does not name TargetReturn: %v", err)
@@ -463,6 +465,7 @@ func TestPortfolioUnreadableCellNamesTheColumn(t *testing.T) {
 	_, err := OptimizePortfolio(insyra.NewDataTable(cols...), PortfolioConfig{})
 	if err == nil {
 		t.Fatal("expected an unreadable-cell error")
+		return
 	}
 	if !strings.Contains(err.Error(), "B") || !strings.Contains(err.Error(), "row index 3") {
 		t.Errorf("error does not name column B and row 4: %v", err)
@@ -473,6 +476,7 @@ func TestPortfolioNonPSDCovarianceIsRefused(t *testing.T) {
 	_, err := OptimizePortfolioMoments([]float64{0.01, 0.02}, [][]float64{{1, 2}, {2, 1}}, nil, PortfolioConfig{})
 	if err == nil {
 		t.Fatal("expected a non-PSD error")
+		return
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "positive semidefinite") {
 		t.Errorf("error does not report a non-PSD covariance: %v", err)
@@ -499,6 +503,7 @@ func TestPortfolioValidationErrors(t *testing.T) {
 		_, err := OptimizePortfolio(short, PortfolioConfig{})
 		if err == nil {
 			t.Fatal("expected an error")
+			return
 		}
 		if !strings.Contains(err.Error(), "observations") {
 			t.Errorf("error does not mention observations: %v", err)
@@ -508,6 +513,7 @@ func TestPortfolioValidationErrors(t *testing.T) {
 		_, err := OptimizePortfolio(table, PortfolioConfig{MinWeight: []float64{0, 0}})
 		if err == nil {
 			t.Fatal("expected an error")
+			return
 		}
 		if !strings.Contains(err.Error(), "MinWeight") {
 			t.Errorf("error does not name MinWeight: %v", err)
@@ -520,18 +526,21 @@ func TestPortfolioValidationErrors(t *testing.T) {
 		})
 		if err == nil {
 			t.Fatal("expected an error")
+			return
 		}
 	})
 	t.Run("lower bounds sum above one", func(t *testing.T) {
 		_, err := OptimizePortfolio(table, PortfolioConfig{MinWeight: []float64{0.5, 0.5, 0.5}})
 		if err == nil {
 			t.Fatal("expected an error")
+			return
 		}
 	})
 	t.Run("unknown objective", func(t *testing.T) {
 		_, err := OptimizePortfolio(table, PortfolioConfig{Objective: PortfolioObjective(42)})
 		if err == nil {
 			t.Fatal("expected an error")
+			return
 		}
 		if !strings.Contains(err.Error(), "Objective") {
 			t.Errorf("error does not name Objective: %v", err)
@@ -541,12 +550,14 @@ func TestPortfolioValidationErrors(t *testing.T) {
 		_, err := OptimizePortfolioMoments([]float64{0.01, 0.02}, interiorCov, nil, PortfolioConfig{})
 		if err == nil {
 			t.Fatal("expected an error")
+			return
 		}
 	})
 	t.Run("asymmetric covariance", func(t *testing.T) {
 		_, err := OptimizePortfolioMoments([]float64{0.01, 0.02}, [][]float64{{0.1, 0.02}, {0.03, 0.1}}, nil, PortfolioConfig{})
 		if err == nil {
 			t.Fatal("expected an error")
+			return
 		}
 		if !strings.Contains(strings.ToLower(err.Error()), "symmetric") {
 			t.Errorf("error does not report asymmetry: %v", err)

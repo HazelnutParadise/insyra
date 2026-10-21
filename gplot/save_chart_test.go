@@ -41,6 +41,7 @@ func TestSaveChartReturnsError(t *testing.T) {
 	err = SaveChart(plt, filepath.Join(t.TempDir(), "no", "such", "dir", "chart.png"))
 	if err == nil {
 		t.Fatal("SaveChart returned nil for an unwritable path")
+		return
 	}
 	if !strings.Contains(err.Error(), "chart.png") {
 		t.Fatalf("error should name the file: %v", err)

@@ -17,6 +17,7 @@ func TestCCLRange(t *testing.T) {
 	col := dt.GetColByName("Range1")
 	if col == nil {
 		t.Fatal("Range1 not created")
+		return
 	}
 	val := col.Data()[0]
 	fmt.Printf("Range1: %v (Type: %T)\n", val, val)

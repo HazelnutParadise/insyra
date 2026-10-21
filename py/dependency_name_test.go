@@ -45,6 +45,7 @@ func TestPipInstall_RefusesAnOptionBeforeDoingAnything(t *testing.T) {
 	err := PipInstall("--requirement=/etc/passwd")
 	if err == nil {
 		t.Fatal("PipInstall accepted an option as a dependency name")
+		return
 	}
 	if !strings.Contains(err.Error(), "PipInstall") {
 		t.Errorf("the error %q does not name the function", err)

@@ -120,6 +120,7 @@ func TestKMeansAssignRejectsColumnCountMismatch(t *testing.T) {
 	_, _, err = result.Assign(dataTableFromRows([][]float64{{0}}))
 	if err == nil {
 		t.Fatal("expected Assign to reject a column count mismatch")
+		return
 	}
 	if !strings.Contains(err.Error(), "1") || !strings.Contains(err.Error(), "2") {
 		t.Fatalf("error should name both column counts, got %q", err)

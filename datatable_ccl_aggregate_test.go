@@ -17,6 +17,7 @@ func TestDataTable_ExecuteCCL_AggregateFunctions(t *testing.T) {
 	colSumA := dt.GetColByName("sum_A")
 	if colSumA == nil {
 		t.Fatal("Column sum_A not found")
+		return
 	}
 	for i := 0; i < 3; i++ {
 		if colSumA.Get(i) != int64(6) {
@@ -29,6 +30,7 @@ func TestDataTable_ExecuteCCL_AggregateFunctions(t *testing.T) {
 	colAvgB := dt.GetColByName("avg_B")
 	if colAvgB == nil {
 		t.Fatal("Column avg_B not found")
+		return
 	}
 	for i := 0; i < 3; i++ {
 		if colAvgB.Get(i) != 20.0 {
@@ -41,6 +43,7 @@ func TestDataTable_ExecuteCCL_AggregateFunctions(t *testing.T) {
 	colCountA := dt.GetColByName("count_A")
 	if colCountA == nil {
 		t.Fatal("Column count_A not found")
+		return
 	}
 	for i := 0; i < 3; i++ {
 		if colCountA.Get(i) != 3.0 {
@@ -78,6 +81,7 @@ func TestDataTable_ExecuteCCL_AggregateFunctions_Advanced(t *testing.T) {
 	colRowSum := dt.GetColByName("row_sum")
 	if colRowSum == nil {
 		t.Fatal("Column row_sum not found")
+		return
 	}
 	for i := 0; i < 3; i++ {
 		if colRowSum.Get(i) != int64(11) {
@@ -90,6 +94,7 @@ func TestDataTable_ExecuteCCL_AggregateFunctions_Advanced(t *testing.T) {
 	colSpecSum := dt.GetColByName("spec_sum")
 	if colSpecSum == nil {
 		t.Fatal("Column spec_sum not found")
+		return
 	}
 	for i := 0; i < 3; i++ {
 		if colSpecSum.Get(i) != int64(21) {
@@ -102,6 +107,7 @@ func TestDataTable_ExecuteCCL_AggregateFunctions_Advanced(t *testing.T) {
 	colExprSum := dt.GetColByName("expr_sum")
 	if colExprSum == nil {
 		t.Fatal("Column expr_sum not found")
+		return
 	}
 	for i := 0; i < 3; i++ {
 		if colExprSum.Get(i) != int64(66) {
@@ -121,6 +127,7 @@ func TestDataTable_ExecuteCCL_AggregateFunctions_Advanced(t *testing.T) {
 	colRowSums := dt2.GetColByName("row_sums")
 	if colRowSums == nil {
 		t.Fatal("Column row_sums not found")
+		return
 	}
 	expectedSums := []int64{11, 22, 33}
 	for i := 0; i < 3; i++ {

@@ -26,6 +26,7 @@ func TestParseLingoAndParseLingoFileReadTheSameModel(t *testing.T) {
 	}
 	if fromString == nil {
 		t.Fatal("ParseLingo returned a nil model with a nil error")
+		return
 	}
 
 	fromFile, err := ParseLingoFile(path)

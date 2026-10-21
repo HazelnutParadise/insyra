@@ -163,6 +163,7 @@ func TestScoreValidatesItsArguments(t *testing.T) {
 	_, err = ml.Score(model, x, short, ml.RMSEMetric{})
 	if err == nil {
 		t.Fatal("mismatched lengths were accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), "5") {
 		t.Fatalf("error %q does not name both counts", err)

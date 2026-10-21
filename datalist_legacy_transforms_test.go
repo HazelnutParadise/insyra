@@ -23,6 +23,7 @@ func assertLegacyFailed(t *testing.T, result, source *DataList) {
 	t.Helper()
 	if result == nil {
 		t.Fatalf("failed transform returned nil, want a usable empty list")
+		return
 	}
 	if got := result.Len(); got != 0 {
 		t.Errorf("failed transform returned a list of length %d, want 0", got)
@@ -41,6 +42,7 @@ func assertLegacySucceeded(t *testing.T, result, source *DataList) {
 	t.Helper()
 	if result == nil {
 		t.Fatalf("transform returned nil, want a usable list")
+		return
 	}
 	if result.Err() != nil {
 		t.Errorf("result Err() = %v, want nil", result.Err())

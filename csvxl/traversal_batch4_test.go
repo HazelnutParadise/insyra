@@ -76,6 +76,7 @@ func TestExcelToCSVRejectsTraversingSheetName(t *testing.T) {
 	err := ExcelToCSV(xlsx, outDir)
 	if err == nil {
 		t.Fatal("ExcelToCSV accepted a sheet name that escapes the output directory")
+		return
 	}
 	if !strings.Contains(err.Error(), "sheet name") {
 		t.Fatalf("error should name the sheet-name check, got %v", err)

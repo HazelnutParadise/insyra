@@ -99,6 +99,7 @@ func TestExitOutsideTheREPLOrAScriptSaysSo(t *testing.T) {
 		err := Dispatch(ctx, word, nil)
 		if err == nil {
 			t.Fatalf("%s outside the REPL or a script succeeded", word)
+			return
 		}
 		if !errors.Is(err, ErrExit) {
 			t.Errorf("%s: error %v does not wrap ErrExit", word, err)

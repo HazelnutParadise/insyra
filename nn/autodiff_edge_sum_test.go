@@ -299,6 +299,7 @@ func TestTapeEdgeSumRejectsMisshapedUpstream(t *testing.T) {
 	_, err = edgeSumVJP(top, weights, values, upstream)
 	if err == nil {
 		t.Fatalf("edgeSumVJP with upstream [5] and values [6] succeeded, want error")
+		return
 	}
 	if !strings.Contains(err.Error(), "[5]") || !strings.Contains(err.Error(), "[6]") {
 		t.Fatalf("error = %q, want it to name shapes [5] and [6]", err.Error())

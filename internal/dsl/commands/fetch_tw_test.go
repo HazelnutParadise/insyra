@@ -372,6 +372,7 @@ func TestRunFetchCommand_TWRejectsBeforeRequest(t *testing.T) {
 			err := runFetchCommand(ctx, testCase.args)
 			if err == nil {
 				t.Fatalf("expected an error for %v", testCase.args)
+				return
 			}
 			if !strings.Contains(err.Error(), testCase.contains) {
 				t.Errorf("error %q should contain %q", err, testCase.contains)
@@ -399,6 +400,7 @@ func TestRunFetchCommand_TWLibraryErrorSurfaced(t *testing.T) {
 	err := runFetchCommand(ctx, []string{"tw", "exrights", "2026-08-01", "2026-08-31", "tpex", "as", "x"})
 	if err == nil {
 		t.Fatal("expected the library error to surface")
+		return
 	}
 	if !strings.HasPrefix(err.Error(), "fetch tw:") {
 		t.Errorf("error %q should start with \"fetch tw:\"", err)
