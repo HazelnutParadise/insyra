@@ -3,8 +3,10 @@ package quant
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"runtime"
 	"slices"
+	"strconv"
 	"sync"
 
 	"gonum.org/v1/gonum/dsp/fourier"
@@ -44,17 +46,20 @@ type RomanoWolfResult struct {
 
 // RomanoWolf runs Romano and Wolf's (2005) stepdown: given many strategies
 // (the columns of a T×N performance table, as for RealityCheck) and a
-// benchmark, it names the strategies that beat the benchmark while keeping
-// the chance of even one false claim at or below opts.Alpha (the familywise
-// error rate). RealityCheck and SPATest only judge whether the best one is
-// real.
+// benchmark, it names the strategies that beat the benchmark, aiming to
+// keep the chance of even one false claim (the familywise error rate) at
+// opts.Alpha. The control is asymptotic (Romano and Wolf 2005): the critical
+// values are estimated from finitely many bootstrap draws on a finite sample,
+// so the realised rate can exceed Alpha. RealityCheck and SPATest only judge
+// whether the best one is real.
 //
 // With d_k,t the column minus the benchmark, dbar_k its mean and σ_k its
 // long-run standard deviation, w_k = sqrt(T)·dbar_k/σ_k. Every replication
 // draws one sequence of time positions for all columns, as RealityCheck
 // does, and computes w*_k = sqrt(T)·(dbar*_k − dbar_k)/σ*_k, with σ*_k
 // estimated again on that replication's resampled series. At step s the
-// critical value is the ceil(Alpha·B)-th largest, over the B replications,
+// critical value is the ceil(Alpha·B)-th largest (Alpha read as its shortest
+// decimal form, so 0.1 with B = 120 is exactly 12), over the B replications,
 // of the maximum of w* over the columns not rejected so far, and every such
 // column with w_k above it is rejected at step s. The steps repeat on the
 // remaining columns until one rejects nothing or none is left. A tie with the
@@ -174,13 +179,30 @@ func longRunVarianceFFT(y []float64, mean float64, blockSize int) float64 {
 // stepCriticalValue returns the ceil(alpha·B)-th largest of maxima (sorting
 // it): a statistic above it has fewer than alpha·B replications at or above
 // it, which is a p-value below alpha counted with ties as RealityCheck does.
-// The 1e-9 keeps an alpha·B that is an integer, such as 0.1·120, from
-// rounding up to the next one.
 func stepCriticalValue(maxima []float64, alpha float64) float64 {
 	b := len(maxima)
-	j := min(max(int(math.Ceil(alpha*float64(b)-1e-9)), 1), b)
 	slices.Sort(maxima)
-	return maxima[b-j]
+	return maxima[b-criticalRank(alpha, b)]
+}
+
+// criticalRank is ceil(alpha·b) clamped to [1, b], computed exactly on the
+// shortest decimal form of alpha: float64 arithmetic gives 0.1·120 =
+// 12.000000000000002 and would pick rank 13, and a tolerance would move the
+// rank for levels just above a grid point.
+func criticalRank(alpha float64, b int) int {
+	r, ok := new(big.Rat).SetString(strconv.FormatFloat(alpha, 'g', -1, 64))
+	if !ok {
+		return b
+	}
+	r.Mul(r, new(big.Rat).SetInt64(int64(b)))
+	q, m := new(big.Int).DivMod(r.Num(), r.Denom(), new(big.Int))
+	if m.Sign() > 0 {
+		q.Add(q, big.NewInt(1))
+	}
+	if !q.IsInt64() || q.Int64() > int64(b) {
+		return b
+	}
+	return max(int(q.Int64()), 1)
 }
 
 // romanoWolfF64 is RomanoWolf on validated relative performance, with the

@@ -2,7 +2,7 @@
 
 ## Why
 
-[#478 策略檢定補齊](https://github.com/HazelnutParadise/insyra/issues/478), part 3b: `RealityCheck` and `SPATest` (part 3, 資料窺探檢定) say whether the best of many strategies beats a benchmark, but not which of the others also do. Romano and Wolf's stepdown names every strategy that beats the benchmark while keeping the chance of even one false claim at or below a chosen level (the familywise error rate).
+[#478 策略檢定補齊](https://github.com/HazelnutParadise/insyra/issues/478), part 3b: `RealityCheck` and `SPATest` (part 3, 資料窺探檢定) say whether the best of many strategies beats a benchmark, but not which of the others also do. Romano and Wolf's stepdown names every strategy that beats the benchmark while aiming to hold the chance of even one false claim (the familywise error rate) at a chosen level; the control is asymptotic.
 
 ## What Changes
 

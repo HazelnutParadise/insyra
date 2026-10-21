@@ -1,7 +1,7 @@
 # quant-romano-wolf Specification
 
 ## Purpose
-Names which of many strategies truly beat a benchmark, with Romano and Wolf's stepdown on a jointly resampled block bootstrap, keeping the chance of any false claim at a chosen familywise level.
+Names which of many strategies truly beat a benchmark, with Romano and Wolf's stepdown on a jointly resampled block bootstrap, aiming to hold the familywise error rate at a chosen level, asymptotically.
 
 ## Requirements
 
@@ -17,7 +17,7 @@ Names which of many strategies truly beat a benchmark, with Romano and Wolf's st
 - **THEN** both have a non-zero `RejectedAt`, the stronger at the same step or an earlier one
 
 ### Requirement: Stepdown critical values
-Each replication SHALL draw one sequence of time indices shared by all columns, as `RealityCheck` does, and compute w*_k = sqrt(T)·(dbar*_k − dbar_k)/σ*_k. At step s the critical value SHALL be the ceil(Alpha·B)-th largest, over the B replications, of the maximum of w* over the columns not yet rejected, and every such column with w_k above it SHALL be rejected at step s.
+Each replication SHALL draw one sequence of time indices shared by all columns, as `RealityCheck` does, and compute w*_k = sqrt(T)·(dbar*_k − dbar_k)/σ*_k. At step s the critical value SHALL be the ceil(Alpha·B)-th largest (exact on Alpha's shortest decimal form), over the B replications, of the maximum of w* over the columns not yet rejected, and every such column with w_k above it SHALL be rejected at step s.
 
 #### Scenario: Matches an independent implementation
 - **WHEN** statistics, critical values and `RejectedAt` are computed for fixed tables and bootstrap indices

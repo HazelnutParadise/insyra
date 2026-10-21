@@ -14,6 +14,7 @@ the Go code obtains the same autocovariances by FFT.
 """
 import json
 import math
+from fractions import Fraction
 import sys
 
 import numpy as np
@@ -82,8 +83,8 @@ def case(name, seed, n, k, block, benchmark, scheme, reps, alpha, edges):
         s = sigmas(y, ybar, block)
         w_star[b] = root * (ybar - dbar) / s
 
-    # the ceil(alpha*B)-th largest maximum; the 1e-9 keeps 0.1*120 from rounding up to 13
-    j = max(1, math.ceil(alpha * reps - 1e-9))
+    # the ceil(alpha*B)-th largest maximum, with alpha taken as its shortest decimal form
+    j = min(max(1, math.ceil(Fraction(repr(alpha)) * reps)), reps)
     rejected_at = [0] * k
     critical = []
     active = list(range(k))

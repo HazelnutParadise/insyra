@@ -148,6 +148,31 @@ func TestRomanoWolfCriticalValueTies(t *testing.T) {
 	}
 }
 
+func TestRomanoWolfCriticalRankIsExact(t *testing.T) {
+	for _, c := range []struct {
+		alpha float64
+		b     int
+		want  int
+	}{
+		{0.1, 120, 12},             // 0.1*120 is 12.000000000000002 in float64
+		{0.1, 10, 1},               // a grid point: one exceedance is p = alpha, not below it
+		{0.10000000001, 10, 2},     // just above the grid point: one exceedance has p < alpha
+		{0.05, 1000, 50},           // exact in decimal, not in binary
+		{0.3, 10, 3},               // 0.3*10 is 3.0000000000000004 in float64
+		{0.5, 3, 2},                // 1.5 rounds up
+		{1e-12, 10, 1},             // never below the largest
+		{0.9999999999999999, 4, 4}, // never past B
+	} {
+		if got := criticalRank(c.alpha, c.b); got != c.want {
+			t.Errorf("criticalRank(%v, %d) = %d, want %d", c.alpha, c.b, got, c.want)
+		}
+	}
+	m := []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	if c := stepCriticalValue(m, 0.10000000001); c != 9 {
+		t.Errorf("critical value at alpha just above 1/10 = %v, want the 2nd largest, 9", c)
+	}
+}
+
 func rwOpts(alpha float64, reps, block int, seed uint64) RomanoWolfOptions {
 	return RomanoWolfOptions{DataSnoopingOptions: DataSnoopingOptions{Replications: reps, BlockSize: block, Seed: seed}, Alpha: alpha}
 }
