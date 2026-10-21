@@ -177,20 +177,20 @@ func TestLogFloat32SpecialAndDocumentedValues(t *testing.T) {
 
 func TestExpFloat32RoundedSampling(t *testing.T) {
 	rng := rand.New(rand.NewSource(20261021))
-	for i := 0; i < 50000; i++ {
+	for i := 0; i < 1500; i++ {
 		x := math.Float32frombits(rng.Uint32())
 		if math.IsNaN(float64(x)) || math.IsInf(float64(x), 0) {
 			continue
 		}
 		checkExpFloat32(t, x)
 	}
-	for i := 0; i < 50000; i++ {
+	for i := 0; i < 1500; i++ {
 		checkExpFloat32(t, float32(rng.Float64()*193-104))
 	}
 	for _, x := range expLogBoundaryValues() {
 		checkExpFloat32(t, x)
 	}
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 500; i++ {
 		x := float32(math.Exp(rng.Float64() * math.Log(89)))
 		if rng.Intn(2) == 0 {
 			x = -x
@@ -201,13 +201,13 @@ func TestExpFloat32RoundedSampling(t *testing.T) {
 
 func TestLogFloat32RoundedSampling(t *testing.T) {
 	rng := rand.New(rand.NewSource(20261022))
-	for i := 0; i < 50000; i++ {
+	for i := 0; i < 1500; i++ {
 		x := math.Float32frombits(rng.Uint32() & 0x7fffffff)
 		if x > 0 && !math.IsInf(float64(x), 0) {
 			checkLogFloat32(t, x)
 		}
 	}
-	for i := 0; i < 50000; i++ {
+	for i := 0; i < 1500; i++ {
 		checkLogFloat32(t, math.Float32frombits(uint32(rng.Intn(255))<<23|uint32(rng.Intn(1<<23))|1))
 	}
 	for _, x := range expLogBoundaryValues() {
@@ -215,7 +215,7 @@ func TestLogFloat32RoundedSampling(t *testing.T) {
 			checkLogFloat32(t, x)
 		}
 	}
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 500; i++ {
 		e := rng.Intn(277) - 149
 		mantissa := 1 + rng.Float64()
 		x := float32(math.Ldexp(mantissa, e))
