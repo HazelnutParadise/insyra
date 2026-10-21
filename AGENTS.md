@@ -297,6 +297,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-20] — `excelize` pinned to an untagged commit for two advisories
+- **Where**: `go.mod`, `github.com/xuri/excelize/v2`, reached through `ReadExcel`, `ReadExcelSheet`, `DataTable.WriteExcel` and `csvxl.AppendCSVToExcel`
+- **What**: v2.11.0, the newest tag, is inside GO-2026-6689 (a panic and memory exhaustion from an unbounded CFB stream allocation) and GO-2026-6688 (mutually referencing array formulas recurse until the stack overflows); govulncheck traces both to these four functions, and the Vulnerability Scan job went red on every branch. The fixes are on the module's `master` and in no tag, so `go.mod` names the commit `v2.11.1-0.20261020033641-611b222fd8f7`. `govulncheck ./...` reports 0 affected vulnerabilities with it, `go.mod`'s `go` directive is unchanged, and the root and `csvxl` tests pass.
+- **Suggestion**: move to the next tagged release (v2.11.1 or later) as soon as it exists and drop this entry. Until then the dependency refresh before a release must not step back to v2.11.0.
+- **Status**: pending (a pseudo-version is a decision for the owner: it trades a tagged release for a fix)
+
 ### [2026-09-28] — remove `ReverseTableByColName` one release after it was deprecated
 - **Where**: `datafetch/geocoding.go`, its row in `datafetch/deprecated_names_test.go`, and its note in `Docs/datafetch.md`
 - **What**: `datafetch-naming-cleanup` deprecated it in favour of `ReverseTable` with `insyra.Name(...)` selectors (DF-5, filed under #212). The other deprecated `datafetch` names were deleted by `remove-dev-deprecated-apis`; this one is a method that 0.4 deprecated alone, so it stays.

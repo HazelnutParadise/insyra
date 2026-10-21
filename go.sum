@@ -477,8 +477,8 @@ github.com/wnjoon/go-yfinance v1.7.0 h1:PtRmItTOVZ8x478vC5X/+iBWFRLoTC7T3di1P2g/
 github.com/wnjoon/go-yfinance v1.7.0/go.mod h1:z4wXvhd7FPUsM4bHmMu8hKUoNnq8FCuzMs5z7rgOwYs=
 github.com/xuri/efp v0.0.2 h1:74yhBh0nfIWLOrN76wtShYVse94pADGYS0/c86jOp8Q=
 github.com/xuri/efp v0.0.2/go.mod h1:ybY/Jr0T0GTCnYjKqmdwxyxn2BQf2RcQIIvex5QldPI=
-github.com/xuri/excelize/v2 v2.11.0 h1:HxaEFl6sRN2+8J5a8HaKq+0M4FsjBGMnWWtjOCPSG88=
-github.com/xuri/excelize/v2 v2.11.0/go.mod h1:jxFLbzaIwGQ5ufFNvYfUOHqXhfPaNmP14KWfmNz2Uak=
+github.com/xuri/excelize/v2 v2.11.1-0.20261020033641-611b222fd8f7 h1:efCKxR08ruHYZhGyNnbn+5q2lHfN3X9O4n4IHzoL9D4=
+github.com/xuri/excelize/v2 v2.11.1-0.20261020033641-611b222fd8f7/go.mod h1:d2KG/tW81cIhSeC3S7wENv3qRnOC3MDcrjDicKuZa6U=
 github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 h1:+C0TIdyyYmzadGaL/HBLbf3WdLgC29pgyhTjAT/0nuE=
 github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9/go.mod h1:WwHg+CVyzlv/TX9xqBFXEZAuxOPxn2k1GNHwG41IIUQ=
 github.com/xyproto/randomstring v1.0.5 h1:YtlWPoRdgMu3NZtP45drfy1GKoojuR7hmRcnhZqKjWU=

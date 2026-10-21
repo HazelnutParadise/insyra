@@ -816,7 +816,7 @@ LargeTradersOptions() (*insyra.DataTable, error)
 PutCallRatio() (*insyra.DataTable, error)
 ```
 
-**Only the latest day.** The OpenAPI gives the latest trading day for the first four tables, and the last 20 trading days for `PutCallRatio`. Longer histories come from the exchange's website (for example `https://www.taifex.com.tw/cht/3/futContractsDate`), which this client does not read, so keep each day's result if you want a series.
+**Only the latest day.** The OpenAPI gives the latest trading day for the first four tables, and the last 20 trading days for `PutCallRatio`. The `...History` methods below read longer histories from the exchange's website CSV downloads.
 
 | Method | Columns |
 | :--- | :--- |
@@ -827,6 +827,20 @@ PutCallRatio() (*insyra.DataTable, error)
 | `PutCallRatio` | `Date`, `PutVolume`, `CallVolume`, `PutOI`, `CallOI` (`int64`), `VolumeRatio`, `OIRatio` (`float64`, percent: 88.75 means the put volume is 88.75% of the call volume) |
 
 In the large-trader tables, `Top5Buy` and the others are the open long and short positions held by the 5 and 10 largest traders, and `MarketOI` is the whole market's open interest. `SettlementMonth` is kept as the exchange publishes it, a string such as `"202610"`, where `"999912"` is the total over all months. `TraderType` is `"0"` for all traders and `"1"` for the specific institutional traders. The exchange answers some of its tables as CSV with Chinese headers whatever is asked for; the client reads either form into the same columns.
+
+### History from the website
+
+```go
+InstitutionalFuturesHistory(from, to time.Time) (*insyra.DataTable, error)
+InstitutionalOptionsHistory(from, to time.Time) (*insyra.DataTable, error)
+LargeTradersFuturesHistory(from, to time.Time) (*insyra.DataTable, error)
+LargeTradersOptionsHistory(from, to time.Time) (*insyra.DataTable, error)
+PutCallRatioHistory(from, to time.Time) (*insyra.DataTable, error)
+```
+
+Each returns every trading day from `from` to `to` in the columns of the matching method above, oldest first (only the latest-day `PutCallRatio` lists newest first). They read the CSV downloads of `www.taifex.com.tw` (Big5 encoded), month by month, since the exchange limits how long a range may be, so a long range makes many requests under the client's `Interval`; for a multi-year range set `Interval` and `Retries` as for `TWStock`.
+
+How far back each table goes was measured on 2026-10-20 and is the exchange's, not the library's: the two institutional tables only about the last 2.4 years (from 2024), the large-trader tables to about 2004 for futures and to about 2005 for options, and the put/call ratio to about 2003. A date the website refuses makes the call return an error that quotes the website's message and the range, never an empty table; it matches `errors.Is(err, datafetch.ErrTAIFEXRefused)`, so a caller can move `from` forward and ask again. A zero `from` or `to` is an error: unlike `FinMind`, a zero time is not an open end here; a range with no trading day (a weekend) is an empty table. A contract's code and settlement month are trimmed of the padding the website puts around them.
 
 ## FinMind
 

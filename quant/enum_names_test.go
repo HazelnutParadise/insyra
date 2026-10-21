@@ -32,6 +32,9 @@ func TestEnumsPrintTheirNames(t *testing.T) {
 		{RSIMissingFlat, "RSIMissingFlat"},
 		{RSIMissingBreak, "RSIMissingBreak"},
 		{RSIMissing(99), "RSIMissing(99)"},
+		{ResampleStationary, "ResampleStationary"},
+		{ResampleMovingBlock, "ResampleMovingBlock"},
+		{ResamplingScheme(99), "ResamplingScheme(99)"},
 	}
 	for _, c := range cases {
 		if got := fmt.Sprint(c.got); got != c.want {
