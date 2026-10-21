@@ -107,6 +107,24 @@ func TestCandleSegmentStartsLeaveDefaultsAlone(t *testing.T) {
 	}
 }
 
+// A harami is the opposite colour of the long bar before it.
+func TestCandleHaramiNeedsOppositeColour(t *testing.T) {
+	long := bar{12, 12.1, 9.9, 10} // a long falling bar
+	if flagAt(t, runCandles(t, CandleOptions{}, long, bar{10.4, 10.9, 10.3, 10.8}).Harami, 1) != 1 {
+		t.Fatal("setup: a small rising bar inside a long falling one is a bullish harami")
+	}
+	if flagAt(t, runCandles(t, CandleOptions{}, long, bar{10.8, 10.9, 10.4, 10.6}).Harami, 1) != 0 {
+		t.Error("a small falling bar after a long falling bar is not a harami")
+	}
+	rise := bar{10, 12.1, 9.9, 12}
+	if flagAt(t, runCandles(t, CandleOptions{}, rise, bar{11.6, 11.7, 11.1, 11.2}).Harami, 1) != -1 {
+		t.Fatal("setup: a small falling bar inside a long rising one is a bearish harami")
+	}
+	if flagAt(t, runCandles(t, CandleOptions{}, rise, bar{11.2, 11.7, 11.1, 11.6}).Harami, 1) != 0 {
+		t.Error("a small rising bar after a long rising bar is not a harami")
+	}
+}
+
 // LongShadowRatio and ShortShadowRatio are separate rules.
 func TestCandleShadowRatiosAreSeparate(t *testing.T) {
 	two := CandleOptions{TrendRows: 2}

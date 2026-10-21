@@ -210,9 +210,9 @@ func candleSegment(bars []candle, o CandleOptions, flags map[string][]any, off i
 			}
 			if long(p) && k.body() < p.body() && k.top() <= p.top() && k.bottom() >= p.bottom() && k.body() > 0 {
 				switch {
-				case p.down():
+				case p.down() && k.up():
 					flags["Harami"][off+i] = 1
-				case p.up():
+				case p.up() && k.down():
 					flags["Harami"][off+i] = -1
 				}
 			}
