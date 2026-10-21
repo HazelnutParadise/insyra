@@ -7,6 +7,10 @@
 - **WHEN** a float32 or int64 tensor is moved with `To` and back with `ToHost`
 - **THEN** every element equals the original
 
+#### Scenario: A host tensor reports the host
+- **WHEN** `Device()` is called on a tensor that was never moved
+- **THEN** it reports the host
+
 #### Scenario: A label that does not fit
 - **WHEN** an int64 tensor holding 2^40 is moved to a device
 - **THEN** `To` returns an error naming that value
