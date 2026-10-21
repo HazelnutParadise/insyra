@@ -288,8 +288,8 @@ func (m KDMethod) String() string {
 	return fmt.Sprintf("KDMethod(%d)", int(m))
 }
 
-// KDOptions are the optional settings of KD. A zero field takes the default
-// shown.
+// KDOptions are the optional settings of KD and StochRSI. A zero field takes the
+// default shown.
 type KDOptions struct {
 	Method KDMethod // KDRecursive (default) or KDMovingAverage
 	SlowK  int      // smoothing of K, default 3
@@ -323,26 +323,8 @@ func KD(high, low, close insyra.IDataList, n int, opts ...KDOptions) (*KDResult,
 	if err := checkPeriod("n", n, 1); err != nil {
 		return nil, err
 	}
-	if len(opts) > 1 {
-		return nil, errors.New("KD accepts at most one KDOptions")
-	}
-	var o KDOptions
-	if len(opts) == 1 {
-		o = opts[0]
-	}
-	if o.Method != KDRecursive && o.Method != KDMovingAverage {
-		return nil, fmt.Errorf("unsupported KD method %v", o.Method)
-	}
-	if o.SlowK == 0 {
-		o.SlowK = 3
-	}
-	if o.SlowD == 0 {
-		o.SlowD = 3
-	}
-	if err := checkPeriod("SlowK", o.SlowK, 1); err != nil {
-		return nil, err
-	}
-	if err := checkPeriod("SlowD", o.SlowD, 1); err != nil {
+	o, err := kdOptions("KD", opts)
+	if err != nil {
 		return nil, err
 	}
 	h, l, c, err := barSeries(high, low, close)
@@ -376,26 +358,36 @@ func kdSegment(h, l, c []float64, n int, o KDOptions) (k, d []float64) {
 			rsv[i] = (c[i] - ll) / (hh - ll) * 100
 		}
 	}
-	k, d = nanSeries(len(c)), nanSeries(len(c))
+	return smoothStochastic(rsv, n-1, o)
+}
+
+// smoothStochastic turns a raw stochastic value, defined from row first on, into
+// K and D as o.Method says. It is the smoothing shared by KD and StochRSI.
+func smoothStochastic(rsv []float64, first int, o KDOptions) (k, d []float64) {
+	k, d = nanSeries(len(rsv)), nanSeries(len(rsv))
 	switch o.Method {
 	case KDRecursive:
 		pk, pd := 50.0, 50.0
-		for i := n - 1; i < len(c); i++ {
+		for i := first; i < len(rsv); i++ {
+			if math.IsNaN(rsv[i]) {
+				// no raw value (StochRSI over an undefined RSI): leave the state as
+				// it is, at its initial 50 until the first row that has one
+				continue
+			}
 			pk = pk*float64(o.SlowK-1)/float64(o.SlowK) + rsv[i]/float64(o.SlowK)
 			pd = pd*float64(o.SlowD-1)/float64(o.SlowD) + pk/float64(o.SlowD)
 			k[i], d[i] = pk, pd
 		}
 	case KDMovingAverage:
-		first := n - 1
-		for i := first + o.SlowK - 1; i < len(c); i++ {
+		kFirst := first + o.SlowK - 1
+		for i := kFirst; i < len(rsv); i++ {
 			var s float64
 			for j := i - o.SlowK + 1; j <= i; j++ {
 				s += rsv[j]
 			}
 			k[i] = s / float64(o.SlowK)
 		}
-		kFirst := first + o.SlowK - 1
-		for i := kFirst + o.SlowD - 1; i < len(c); i++ {
+		for i := kFirst + o.SlowD - 1; i < len(rsv); i++ {
 			var s float64
 			for j := i - o.SlowD + 1; j <= i; j++ {
 				s += k[j]
@@ -404,4 +396,32 @@ func kdSegment(h, l, c []float64, n int, o KDOptions) (k, d []float64) {
 		}
 	}
 	return k, d
+}
+
+// kdOptions resolves the optional KDOptions of the function called name: at most
+// one set, a known method, and the smoothing periods defaulting to 3.
+func kdOptions(name string, opts []KDOptions) (KDOptions, error) {
+	var o KDOptions
+	if len(opts) > 1 {
+		return o, fmt.Errorf("%s accepts at most one KDOptions", name)
+	}
+	if len(opts) == 1 {
+		o = opts[0]
+	}
+	if o.Method != KDRecursive && o.Method != KDMovingAverage {
+		return o, fmt.Errorf("unsupported KD method %v", o.Method)
+	}
+	if o.SlowK == 0 {
+		o.SlowK = 3
+	}
+	if o.SlowD == 0 {
+		o.SlowD = 3
+	}
+	if err := checkPeriod("SlowK", o.SlowK, 1); err != nil {
+		return o, err
+	}
+	if err := checkPeriod("SlowD", o.SlowD, 1); err != nil {
+		return o, err
+	}
+	return o, nil
 }
