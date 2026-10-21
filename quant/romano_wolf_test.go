@@ -25,7 +25,7 @@ type romanoWolfCase struct {
 	RejectedAt     []int       `json:"rejected_at"`
 }
 
-func closeTo(a, b, tol float64) bool {
+func relClose(a, b, tol float64) bool {
 	return math.Abs(a-b) <= tol*math.Max(1, math.Max(math.Abs(a), math.Abs(b)))
 }
 
@@ -64,12 +64,12 @@ func TestRomanoWolfMatchesReference(t *testing.T) {
 				t.Fatalf("%d critical values, want %d", len(res.CriticalValues), len(c.CriticalValues))
 			}
 			for s := range c.CriticalValues {
-				if !closeTo(res.CriticalValues[s], c.CriticalValues[s], 1e-9) {
+				if !relClose(res.CriticalValues[s], c.CriticalValues[s], 1e-9) {
 					t.Errorf("critical value of step %d = %v, want %v", s+1, res.CriticalValues[s], c.CriticalValues[s])
 				}
 			}
 			for j := range c.Statistics {
-				if !closeTo(res.Statistics[j], c.Statistics[j], 1e-9) {
+				if !relClose(res.Statistics[j], c.Statistics[j], 1e-9) {
 					t.Errorf("statistic[%d] = %v, want %v", j, res.Statistics[j], c.Statistics[j])
 				}
 			}
@@ -79,7 +79,7 @@ func TestRomanoWolfMatchesReference(t *testing.T) {
 				for i := range d {
 					col[i] = d[i][j]
 				}
-				if got := math.Sqrt(longRunVarianceFFT(col, means[j], c.BlockSize)); !closeTo(got, c.Sigma[j], 1e-9) {
+				if got := math.Sqrt(longRunVarianceFFT(col, means[j], c.BlockSize)); !relClose(got, c.Sigma[j], 1e-9) {
 					t.Errorf("sigma[%d] = %v, want %v", j, got, c.Sigma[j])
 				}
 			}
@@ -126,7 +126,7 @@ func TestFFTVarianceMatchesTheDirectSum(t *testing.T) {
 			}
 			want := spaLongRunVariance(d, 0, mean, bs)
 			got := longRunVarianceFFT(x, mean, bs)
-			if !closeTo(got, want, 1e-9) {
+			if !relClose(got, want, 1e-9) {
 				t.Errorf("%s n=%d BlockSize=%d: FFT %v, direct %v", c.name, c.n, bs, got, want)
 			}
 		}
