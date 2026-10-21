@@ -20,7 +20,7 @@ This document describes the public API of `github.com/HazelnutParadise/insyra/qu
 > | `SMA`, `EMA` | Moving averages (均線), Granville's rules | Partly usable. A stock below a falling 200-day line that bounces and fails to get back above it went on to lag by 0.91% over the next 20 days in Taiwan, the only claim that beat the costs, and only on stocks that still exist. As a market-timing rule no moving-average rule beat buy-and-hold (US rules won every year until 1969 and none since 1970). |
 > | `MACD` | MACD | Ineffective. It is the distance between two moving averages, so by the time it moves the price already has. |
 > | `KD` | Stochastic (KD, KDJ) | Ineffective. In Taiwan, stocks that were "overbought" went on to do better, and it is the same data as RSI. |
-> | `Bollinger`, `TrueRange`, `ATR` | Bollinger bands, true range | Not tested in the study. |
+> | `Bollinger`, `TrueRange`, `ATR`, `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier` | Bollinger bands, channels and trailing stops | Not tested in the study. |
 > | `RSI` | RSI, overbought and oversold | Ineffective. In Taiwan, stocks with a high RSI did better afterwards, not worse. Trading it stock by stock lost to holding. |
 > | `Bias`, `BiasZ` | Bias ratio (乖離率) | Only useful read backwards. Taiwan stocks continue for one to three months, they do not revert, and the gap does not pay the costs. |
 > | `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `PriceDivergence` | On-balance volume, volume and price | Description only. Volume is a shadow of the price move, not the fuel for it. |
@@ -42,6 +42,7 @@ go get github.com/HazelnutParadise/insyra/quant/ta
 ## Overview
 
 - **Moving averages and bands**: `SMA`, `EMA`, `MACD`, `Bollinger`, `TrueRange`, `ATR`, `KD`
+- **Channels and stops**: `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier`
 - **Oscillators and strength**: `RSI`, `Bias`, `BiasZ`
 - **Volume**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `PriceDivergence`
 - **Market breadth**: `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio`
@@ -355,6 +356,31 @@ Relative strength index of a price series over `n` days, `100 * avgGain / (avgGa
 The first `n` values, which lack `n` changes, are `NaN`. A stretch with no gain and no loss has no defined RSI and is `NaN`; gains only is 100 and losses only is 0. Wilder's RSI(14) on the closes of the StockCharts worked example is 70.53, 66.32, 66.55, 69.41, … and the tests pin those values.
 
 A missing price (nil or `NaN`) is an error unless `Missing` says otherwise: `RSIMissingFlat` carries the last price over, so the missing day counts as a change of 0 (its own value is `NaN`), and `RSIMissingBreak` ends the series there and starts a new one after it, which needs `n` changes of its own. Infinities and non-numbers are always errors.
+
+---
+
+## Channels and Stops
+
+```go
+func Keltner(high, low, close insyra.IDataList, n, atrN int, k float64) (*ChannelResult, error)
+func KeltnerClassic(high, low, close insyra.IDataList, n int) (*ChannelResult, error)
+func Donchian(high, low insyra.IDataList, n int) (*ChannelResult, error)
+func SuperTrend(high, low, close insyra.IDataList, n int, k float64) (*SuperTrendResult, error)
+func ParabolicSAR(high, low insyra.IDataList, start, step, maxAF float64) (*insyra.DataList, error)
+func Chandelier(high, low, close insyra.IDataList, n int, k float64) (*ChandelierResult, error)
+
+type ChannelResult struct{ Upper, Middle, Lower *insyra.DataList }
+type SuperTrendResult struct{ Line, Direction *insyra.DataList } // Direction is 1 up, -1 down
+type ChandelierResult struct{ Long, Short *insyra.DataList }
+```
+
+- **`Keltner`** is Raschke's form, the one trading platforms show: the `n`-row EMA of the close, plus and minus `k` times the `atrN`-row ATR (common settings 20, 10, 2). `k` in `Keltner`, `SuperTrend` and `Chandelier` must be a finite number above 0. **`KeltnerClassic`** is the 1960 form: the `n`-row simple average of the typical price `(high + low + close) / 3`, plus and minus the `n`-row simple average of the day's high minus low. They are two functions because the two forms take different parameters.
+- **`Donchian`** is the highest high and the lowest low of the `n` rows *before* each row, and their midpoint. The current row is left out, so a close above `Upper` is a breakout of the earlier range, not a tie with its own high. The first `n` rows are `NaN`.
+- **`SuperTrend`** follows the TradingView script: bands of `(high + low) / 2` plus and minus `k` ATRs (common 10 and 3), each band only allowed to move toward the price, and a direction that flips when the close crosses the band the line is on. `Line` is the lower band while `Direction` is `1` and the upper band while it is `-1`. It starts on the first row the ATR exists (row `n`), pointing down; the ATR is TA-Lib's, whose first value is row `n`, so the first rows differ from a platform whose ATR starts one row earlier.
+- **`ParabolicSAR`** is Wilder's stop and reverse. `start` is the acceleration factor a trend begins with, `step` how much it grows with each new extreme and `maxAF` its cap (Wilder's are 0.02, 0.02 and 0.2). It matches TA-Lib's `SAR` and `SAREXT` (without the minus sign `SAREXT` puts on a short trend).
+- **`Chandelier`** is the highest high of the last `n` rows (the current one included) minus `k` ATRs as the stop of a long position, and the lowest low plus `k` ATRs for a short one (common 22 and 3).
+
+`Keltner`, `Donchian`, `SuperTrend` and `Chandelier` are not in TA-Lib; the tests compare them with implementations written from the definitions in `testdata/channels_baseline.py` (Parabolic SAR and the ATR and EMA they use come from TA-Lib). The channels are named by their lines (`Upper`, `Middle`, `Lower`, `Long`, `Short`, `Direction`, `SAR`), so a line can be added to a table as it is.
 
 ---
 
