@@ -84,7 +84,9 @@ func ROC(prices insyra.IDataList, n int) (*insyra.DataList, error) {
 // pressure (close minus the lower of the low and the previous close) over the
 // true range, summed over a short, a medium and a long window, and combined with
 // weights 4, 2 and 1. The usual windows are 7, 14 and 28. It lies between 0 and
-// 100, and the first long rows are NaN.
+// 100, and the first long rows are NaN. A window with no true range (the price
+// did not move) adds nothing to the sum while the weights still total 7, as in
+// TA-Lib, so a series that never moves gives 0.
 func UltimateOscillator(high, low, close insyra.IDataList, short, medium, long int) (*insyra.DataList, error) {
 	for name, v := range map[string]int{"short": short, "medium": medium, "long": long} {
 		if err := checkPeriod(name, v, 1); err != nil {
@@ -109,7 +111,7 @@ func UltimateOscillator(high, low, close insyra.IDataList, short, medium, long i
 			b, r = b+bp[j], r+tr[j]
 		}
 		if r == 0 {
-			return math.NaN()
+			return 0 // no range in the window: it adds nothing, as in TA-Lib
 		}
 		return b / r
 	}

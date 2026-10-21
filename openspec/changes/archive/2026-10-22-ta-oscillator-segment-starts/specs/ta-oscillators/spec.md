@@ -20,3 +20,10 @@
 #### Scenario: A flat start
 - **WHEN** the prices are flat for the first rows and then move
 - **THEN** K and D are finite from the first row whose raw stochastic value is finite
+
+### Requirement: A window without range adds nothing to the ultimate oscillator
+`ta.UltimateOscillator` SHALL treat a window whose true range sums to zero as contributing 0 while the weights still total 7, as TA-Lib does, instead of returning NaN for the row.
+
+#### Scenario: A flat short window
+- **WHEN** the price has not moved for the whole short window but has in the longer ones
+- **THEN** the value is 100 times (2 times the medium ratio plus the long ratio) over 7, and not NaN

@@ -188,6 +188,47 @@ func TestStochRSIRecoversAfterUndefinedRSI(t *testing.T) {
 	}
 }
 
+// A window with no true range adds nothing to the ultimate oscillator while the
+// weights still total 7, as in TA-Lib, instead of making the whole value NaN.
+func TestUltimateOscillatorZeroRangeWindowAddsNothing(t *testing.T) {
+	c := []float64{10, 11, 12, 11, 13, 14, 12, 13, 13, 13, 13, 13}
+	p := prices(c...)
+	got, err := UltimateOscillator(p, p, p, 2, 4, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := floats(t, got)
+	avg := func(i, n int) float64 {
+		var b, r float64
+		for j := i - n + 1; j <= i; j++ {
+			b += math.Max(c[j]-c[j-1], 0)
+			r += math.Abs(c[j] - c[j-1])
+		}
+		if r == 0 {
+			return 0
+		}
+		return b / r
+	}
+	// row 10: the short window (rows 9, 10) is flat, the others are not.
+	// row 11: the medium window (rows 8 to 11) is flat too.
+	for _, i := range []int{10, 11} {
+		want := 100 * (4*avg(i, 2) + 2*avg(i, 4) + avg(i, 6)) / 7
+		if math.IsNaN(v[i]) || math.Abs(v[i]-want) > 1e-9 {
+			t.Errorf("row %d: %v, want %v", i, v[i], want)
+		}
+	}
+	flat := prices(5, 5, 5, 5, 5, 5, 5, 5, 5, 5)
+	z, err := UltimateOscillator(flat, flat, flat, 2, 3, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, x := range floats(t, z)[4:] {
+		if x != 0 {
+			t.Errorf("flat series row %d: %v, want 0", i+4, x)
+		}
+	}
+}
+
 // A window whose typical price does not move is NaN even when the price is a
 // decimal whose running mean is not exactly the price.
 func TestCCIFlatDecimalWindowIsNaN(t *testing.T) {
