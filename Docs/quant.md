@@ -21,7 +21,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Market exposure**: `Beta`, `CAPM` — measure an asset's exposure and per-period alpha against a benchmark return series
 - **Options**: `BlackScholes`, `ImpliedVolatility` — price European calls and puts, report five greeks, and recover volatility from a market price
 - **Factor models**: `FactorModel` — attribute an asset's excess returns to named market, size, value, momentum, or other factor columns
-- **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado); `RealityCheck`, `SPATest` — bootstrap tests of whether the best of many strategies beats a benchmark (White, Hansen)
+- **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado); `RealityCheck`, `SPATest` — bootstrap tests of whether the best of many strategies beats a benchmark (White, Hansen); `RomanoWolf` — which of them do, at a familywise level (Romano & Wolf)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 - **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
@@ -448,7 +448,46 @@ With `d_k,t` = column k minus the benchmark in period t, `dbar_k` its mean, `T` 
 
 **Compared with Python `arch`.** The definitions above are the paper's, checked against an independent implementation of its formulas (`quant/testdata/data_snooping_baseline.py`). `arch.bootstrap.SPA` does not reproduce them and its numbers will differ: in arch 8.0.0 the SPA statistic and its bootstrap values are the unstandardized maximum mean (`ω_k` is computed but used only to pick the consistent p-value's columns) without the `max(0, ·)`, and in later versions the standard error is re-estimated in every replication and the moving-block bootstrap uses the Bartlett kernel. arch also takes losses (lower is better), where these take performance. The bootstrap streams differ too, so even matching definitions give p-values that agree only within bootstrap error.
 
-`RealityCheck` and `SPATest` say whether the best strategy beats the benchmark; they do not say which of the others also do (Romano and Wolf's stepdown answers that, and is not in this package yet).
+`RealityCheck` and `SPATest` say whether the best strategy beats the benchmark; they do not say which of the others also do. `RomanoWolf` does.
+
+### RomanoWolf
+
+```go
+type RomanoWolfOptions struct {
+    DataSnoopingOptions         // Benchmark, Replications, BlockSize, Seed, Scheme: as for RealityCheck
+    Alpha float64               // familywise level in (0, 1); required, 0 is an error
+}
+
+func RomanoWolf(perf insyra.IDataTable, opts RomanoWolfOptions) (*RomanoWolfResult, error)
+```
+
+Given many strategies (the columns of a `T×N` table) and a benchmark, `RomanoWolf` **names which strategies truly beat the benchmark**, aiming to hold the chance of even one false claim (the familywise error rate) at `Alpha`. The control is asymptotic (Romano and Wolf 2005): the critical values are estimated from finitely many bootstrap draws on a finite sample, so the realised rate can exceed `Alpha` (200 simulated null tables of 250 rows gave 8.5% at `Alpha` 0.1, and a test allows up to 15%). A column with a non-zero `RejectedAt` is declared better than the benchmark. It is **one-sided**, as `RealityCheck` and `SPATest` are: only outperformance is rejected, and a column far below the benchmark is never a finding.
+
+```go
+res, err := quant.RomanoWolf(perf, quant.RomanoWolfOptions{
+    DataSnoopingOptions: quant.DataSnoopingOptions{Replications: 5000, BlockSize: 10, Seed: 1},
+    Alpha:               0.1,
+})
+if err != nil { /* ... */ }
+for k, step := range res.RejectedAt {
+    if step > 0 {
+        fmt.Println(res.Names[k], "beats the benchmark, found at step", step, "statistic", res.Statistics[k])
+    }
+}
+```
+
+Procedure (Romano and Wolf 2005, studentized): with `d_k,t` the column minus the benchmark, `dbar_k` its mean and `σ_k` its long-run standard deviation, `w_k = √T·dbar_k/σ_k`. Every replication draws one sequence of time positions for all columns (as `RealityCheck` does, from the same seeded stream) and computes `w*_k = √T·(dbar*_k − dbar_k)/σ*_k`, where `σ*_k` is estimated again on that replication's resampled series (per-sample re-estimation, as Götze and Künsch 1996 do and Python `arch` does). At step `s` the critical value `c_s` is the `⌈Alpha·B⌉`-th largest (computed exactly on the shortest decimal form of `Alpha`, so `0.1` with `B = 120` is rank 12), over the `B` replications, of the maximum of `w*` over the columns not rejected so far; every such column with `w_k > c_s` is rejected at step `s`. The steps repeat until one rejects nothing or every column is rejected. Rejecting a column removes it from the maximum, so later steps have lower critical values and can find weaker strategies.
+
+- **`σ_k` and `σ*_k`** are the same `ω_k` as `SPATest` (Hansen's exact kernel with `q = 1/BlockSize`), computed with the autocovariances of every lag from a fast Fourier transform (zero-padded to at least `2T`), which is algebraically the same sum in `O(T log T)` instead of `O(T²)` per column and replication.
+- **Ties are not rejections.** A column equal to the critical value is not rejected, which agrees with `RealityCheck` counting a tie as an exceedance: when everything is tied nothing is rejected.
+- **No adjusted p-values.** Neither Romano and Wolf (2005) nor Python `arch`'s `StepM` defines them; the result is the rejection decision at `Alpha`. To see the decision at another level, call `RomanoWolf` again: a smaller `Alpha` never rejects more columns.
+- **N = 1 is accepted** (a single column is just a one-sided test); `RealityCheck` takes it as well.
+
+`RomanoWolfResult` holds `Alpha`, `Names` (table order, `""` without a name), `RejectedAt` (1-based step, 0 if not rejected), `Statistics` (`w_k`), `CriticalValues` (`CriticalValues[s-1]` is the value used at step `s`; its length is the number of steps that ran) and `Replications`.
+
+**Errors:** `Alpha` that is NaN, at most 0 or at least 1, plus everything `RealityCheck` refuses. As with `SPATest`, a column with no variance relative to the benchmark (constant `d_k`, or `σ_k²` not finite or at most `10⁻²⁴` times the mean of `d_k²`) is an error, and so is a replication in which a resampled series has no usable variance or a resampled mean is not finite.
+
+**Speed.** Every replication re-estimates `N` variances, each two FFTs of length about `2T`; replications run on all cores and give the same result for any number of cores. With `Replications 5000`, `T = 2500` and `N = 100`, about 44 seconds on an 8-core Apple M3 (`BenchmarkRomanoWolfLarge`).
 
 ---
 
