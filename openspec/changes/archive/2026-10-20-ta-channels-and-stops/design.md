@@ -1,0 +1,3 @@
+# Design: ta-channels-and-stops
+
+Shapes were reviewed before writing code. Single lines are `*insyra.DataList`, several lines a struct of named lists. Keltner is two functions, not a method switch, because the two forms take different parameters (as `OBV` and `OBVFromReturns` do). Donchian leaves the current row out so a breakout is meaningful. `ParabolicSAR` takes `start`, `step` and `max` separately; TA-Lib's `SAR` ties start to step and `SAREXT` has them apart, so both are used as references. SuperTrend follows the TradingView script, whose ATR starts one row earlier than TA-Lib's; the documentation says so.
