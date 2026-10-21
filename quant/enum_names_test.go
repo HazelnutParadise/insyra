@@ -38,6 +38,9 @@ func TestEnumsPrintTheirNames(t *testing.T) {
 		{ResampleStationary, "ResampleStationary"},
 		{ResampleMovingBlock, "ResampleMovingBlock"},
 		{ResamplingScheme(99), "ResamplingScheme(99)"},
+		{AbnormalMarketAdjusted, "AbnormalMarketAdjusted"},
+		{AbnormalMarketModel, "AbnormalMarketModel"},
+		{AbnormalModel(99), "AbnormalModel(99)"},
 	}
 	for _, c := range cases {
 		if got := fmt.Sprint(c.got); got != c.want {
