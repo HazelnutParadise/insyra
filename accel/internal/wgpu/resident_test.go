@@ -257,3 +257,34 @@ func TestEmptyDownloadDoesNotFreeWhatTheQueueMayStillUse(t *testing.T) {
 	out.Release()
 	empty.Release()
 }
+
+func TestAddRoundedAcceptsEmptyOperands(t *testing.T) {
+	requireResidentDevice(t)
+	a, _ := Upload(nil)
+	b, _ := Upload(nil)
+	out, err := AddRounded(a, b)
+	if err != nil {
+		t.Fatalf("an empty add failed: %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("length = %d", out.Len())
+	}
+}
+
+func TestFailedCloneReleasesItsDestination(t *testing.T) {
+	requireResidentDevice(t)
+	src, _ := Upload([]float32{1, 2, 3})
+	src.Release()
+	submitMu.Lock()
+	before := len(pending)
+	submitMu.Unlock()
+	if _, err := Clone(src); err == nil {
+		t.Fatal("cloning a released buffer succeeded")
+	}
+	submitMu.Lock()
+	after := len(pending)
+	submitMu.Unlock()
+	if after <= before {
+		t.Fatalf("the failed clone left its destination allocated (pending %d -> %d)", before, after)
+	}
+}

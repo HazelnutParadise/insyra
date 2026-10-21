@@ -185,6 +185,9 @@ func MatMulRounded(a, b *Buffer, m, k, n int, transA, transB bool) (*Buffer, err
 // AddRounded computes out[i] = a[i] + b[i mod b.Len()], so a same-length b is
 // an elementwise sum and a shorter b broadcasts over the trailing dimension.
 func AddRounded(a, b *Buffer) (*Buffer, error) {
+	if a.Len() == 0 {
+		return NewBuffer(0) // nothing to add, whatever b broadcasts from
+	}
 	if b.Len() == 0 || a.Len()%b.Len() != 0 {
 		return nil, fmt.Errorf("wgpu: rounded add cannot broadcast %d values over %d", b.Len(), a.Len())
 	}
@@ -242,30 +245,32 @@ func Clone(source *Buffer) (*Buffer, error) {
 	}
 	submitMu.Lock()
 	defer submitMu.Unlock()
+	// out is not shared yet, so it is released on every failure path below.
+	fail := func(err error) (*Buffer, error) {
+		out.releaseLocked()
+		return nil, err
+	}
 	h, err := acquire()
 	if err != nil {
-		out.Release()
-		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
+		return fail(fmt.Errorf("%w: %w", ErrUnavailable, err))
 	}
 	source.mu.Lock()
-	defer source.mu.Unlock()
-	out.mu.Lock()
-	defer out.mu.Unlock()
-	if source.released || source.buffer == nil {
-		out.released = true
-		return nil, fmt.Errorf("wgpu: clone of a released buffer")
+	sourceBuffer, sourceReleased := source.buffer, source.released
+	source.mu.Unlock()
+	if sourceReleased || sourceBuffer == nil {
+		return fail(fmt.Errorf("wgpu: clone of a released buffer"))
 	}
 	encoder, err := h.device.CreateCommandEncoder(nil)
 	if err != nil {
-		return nil, fmt.Errorf("wgpu: create clone encoder: %w", err)
+		return fail(fmt.Errorf("wgpu: create clone encoder: %w", err))
 	}
-	encoder.CopyBufferToBuffer(source.buffer, 0, out.buffer, 0, bufferBytes(source.Len()))
+	encoder.CopyBufferToBuffer(sourceBuffer, 0, out.buffer, 0, bufferBytes(source.Len()))
 	commands, err := encoder.Finish()
 	if err != nil {
-		return nil, fmt.Errorf("wgpu: finish clone encoder: %w", err)
+		return fail(fmt.Errorf("wgpu: finish clone encoder: %w", err))
 	}
 	if _, err := h.device.Queue().Submit(commands); err != nil {
-		return nil, fmt.Errorf("wgpu: submit clone: %w", err)
+		return fail(fmt.Errorf("wgpu: submit clone: %w", err))
 	}
 	return out, nil
 }
