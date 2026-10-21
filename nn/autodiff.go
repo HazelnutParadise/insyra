@@ -34,6 +34,9 @@ type Parameter struct {
 	adamM    []float32
 	adamV    []float32
 	adamStep uint64
+
+	// adamMDev and adamVDev hold the Adam moments of a parameter on a device.
+	adamMDev, adamVDev *accel.DeviceBuffer
 }
 
 // Value returns the parameter tensor used by the tape wrappers.
@@ -920,6 +923,12 @@ func (t *Tape) AdamW(rate, weightDecay float32) error {
 func (t *Tape) adamStep(rate, weightDecay float32) error {
 	if math.IsNaN(float64(rate)) || math.IsInf(float64(rate), 0) || rate < 0 {
 		return fmt.Errorf("adam learning rate must be finite and non-negative")
+	}
+	if err := t.checkOpen(); err != nil {
+		return err
+	}
+	if t.rounded() {
+		return t.adamRounded(rate, weightDecay, weightDecay != 0)
 	}
 	const (
 		beta1 = float32(0.9)

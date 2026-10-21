@@ -131,10 +131,16 @@ garbage-collected without `Release` is freed with a warning.
 
 In this release the precision mode covers `MatMul` and `Add` (a second operand
 that matches the first or repeats over its trailing dimensions) with their
-gradients, gradient accumulation and `SGD`, in 2-D. Any other operation on a
+gradients, gradient accumulation, `SGD`, `Adam` and `AdamW`, in 2-D. In this
+mode `Adam` and `AdamW` are defined entirely in float32: each step is one
+correctly rounded operation or an exact two-term sum rounded once, and the
+constants (`1-beta`, the bias corrections, `lr*weightDecay`) are rounded once
+on the host. Their moments live on the device with the parameter, and the
+result equals the host's bit for bit. They differ from the default tape's
+float64 `AdamW` by a few ulps per step, as PyTorch's float32 `AdamW` does. Any other operation on a
 device tensor returns an error telling you to call `ToHost`; on host tensors
-in this mode they keep their default arithmetic. `Adam`, `AdamW`,
-`SoftmaxCrossEntropy` and the rest follow in later releases.
+in this mode they keep their default arithmetic. `SoftmaxCrossEntropy` and
+the rest follow in later releases.
 
 On an Apple M3, best of five, the exact device `MatMul` took 18 to 19 ms for
 `[4096,96]x[96,128]` and `[4096,128]x[128,96]`. The exact CPU reference took

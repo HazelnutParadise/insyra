@@ -15,7 +15,7 @@ import (
 // a device cannot reproduce the host's default arithmetic.
 //
 // In this release the mode covers MatMul, Add and their gradients, gradient
-// accumulation and SGD. Other operations keep their default arithmetic on the
+// accumulation, SGD, Adam and AdamW. Other operations keep their default arithmetic on the
 // host and are refused on resident tensors. accel.PrecisionFloat32, which
 // would accept whatever a device returns, is not available on a tape.
 func (t *Tape) SetPrecision(precision accel.Precision) error {
@@ -66,6 +66,7 @@ func (t *Tape) Close() {
 	t.Clear()
 	for _, parameter := range t.params {
 		parameter.value.Release()
+		parameter.releaseState()
 	}
 	t.closed = true
 }

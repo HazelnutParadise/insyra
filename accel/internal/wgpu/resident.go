@@ -219,7 +219,7 @@ func syncLocked() error {
 
 // kernel is one compute shader over resident buffers: nRead read-only storage
 // buffers, then nWrite read-write ones, then one 16-byte uniform. Its source
-// is the exact-sum library followed by body.
+// is the exact-sum and IEEE library followed by body.
 type kernel struct {
 	name   string
 	body   string
@@ -235,7 +235,7 @@ type kernel struct {
 func (k *kernel) build(h *handle) {
 	k.once.Do(func() {
 		shader, err := h.device.CreateShaderModule(&gowgpu.ShaderModuleDescriptor{
-			Label: "accel-" + k.name, WGSL: exactSumWGSL + k.body,
+			Label: "accel-" + k.name, WGSL: exactSumWGSL + ieeeWGSL + k.body,
 		})
 		if err != nil {
 			k.err = fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
@@ -284,7 +284,7 @@ func (k *kernel) build(h *handle) {
 }
 
 // run submits the kernel and returns without waiting for it to finish.
-func (k *kernel) run(reads, writes []*Buffer, params [4]uint32, groupsX, groupsY uint32) error {
+func (k *kernel) run(reads, writes []*Buffer, params [16]uint32, groupsX, groupsY uint32) error {
 	if len(reads) != k.nRead || len(writes) != k.nWrite {
 		return fmt.Errorf("wgpu: %s takes %d read and %d write buffers, got %d and %d", k.name, k.nRead, k.nWrite, len(reads), len(writes))
 	}
@@ -315,21 +315,21 @@ func (k *kernel) run(reads, writes []*Buffer, params [4]uint32, groupsX, groupsY
 		entries = append(entries, gowgpu.BindGroupEntry{Binding: uint32(i), Buffer: handle, Size: size})
 	}
 	uniform, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{
-		Label: "accel-" + k.name + "-params", Size: 16,
+		Label: "accel-" + k.name + "-params", Size: 64,
 		Usage: gowgpu.BufferUsageUniform | gowgpu.BufferUsageCopyDst,
 	})
 	if err != nil {
 		return fmt.Errorf("wgpu: %s: create parameters: %w", k.name, err)
 	}
 	pending = append(pending, uniform)
-	raw := make([]byte, 16)
+	raw := make([]byte, 64)
 	for i, value := range params {
 		binary.LittleEndian.PutUint32(raw[i*4:], value)
 	}
 	if err := h.device.Queue().WriteBuffer(uniform, 0, raw); err != nil {
 		return fmt.Errorf("wgpu: %s: upload parameters: %w", k.name, err)
 	}
-	entries = append(entries, gowgpu.BindGroupEntry{Binding: uint32(len(all)), Buffer: uniform, Size: 16})
+	entries = append(entries, gowgpu.BindGroupEntry{Binding: uint32(len(all)), Buffer: uniform, Size: 64})
 	bindGroup, err := h.device.CreateBindGroup(&gowgpu.BindGroupDescriptor{
 		Label: "accel-" + k.name + "-bg", Layout: k.layout, Entries: entries,
 	})

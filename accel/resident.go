@@ -271,3 +271,37 @@ func (b *DeviceBuffer) Clone() (*DeviceBuffer, error) {
 
 // SynchronizeResident waits until every kernel submitted so far has finished.
 func SynchronizeResident() error { return residentFailure(wgpu.Synchronize()) }
+
+// AdamScalars are the float32 constants of one Adam or AdamW step. The caller
+// computes each once on the host and rounds it once to float32, so the host
+// and the device read the same bits.
+type AdamScalars struct {
+	// Beta1, Beta2 and their complements 1-Beta1 and 1-Beta2.
+	Beta1, OneMinusBeta1, Beta2, OneMinusBeta2 float32
+	// Bias1 and Bias2 are the bias corrections 1-Beta1^t and 1-Beta2^t.
+	Bias1, Bias2 float32
+	// Epsilon is added to the square root of the corrected second moment.
+	Epsilon float32
+	// NegRate is -lr. NegDecay is -(lr*weightDecay), used when Decay is true
+	// for AdamW's decoupled decay.
+	NegRate, NegDecay float32
+	Decay             bool
+}
+
+// RoundedAdam applies one Adam or AdamW step in place to w, m and v from the
+// gradient g, all on the device. Every operation is correctly rounded or an
+// exact two-term sum rounded once, so the host definition in package nn
+// returns the same bits.
+func RoundedAdam(w, g, m, v *DeviceBuffer, s AdamScalars) error {
+	for _, b := range []*DeviceBuffer{g, m, v} {
+		if err := sameDevice(w, b); err != nil {
+			return err
+		}
+	}
+	return residentFailure(wgpu.AdamRounded(w.inner, g.inner, m.inner, v.inner, wgpu.AdamScalars(s)))
+}
+
+// NewZeroDeviceBuffer allocates a zero-filled buffer of length values on device.
+func NewZeroDeviceBuffer(device Device, length int) (*DeviceBuffer, error) {
+	return NewDeviceBuffer(device, make([]float32, length))
+}

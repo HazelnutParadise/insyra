@@ -1,6 +1,9 @@
 package wgpu
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // The kernels below compute in the exact-sum register (exact_sum.go): every
 // output is the exact value of its operation rounded once to nearest-even
@@ -171,7 +174,7 @@ func MatMulRounded(a, b *Buffer, m, k, n int, transA, transB bool) (*Buffer, err
 	if transB {
 		flags |= 2
 	}
-	if err := matMulRoundedKernel.run([]*Buffer{a, b}, []*Buffer{out}, [4]uint32{uint32(m), uint32(k), uint32(n), flags},
+	if err := matMulRoundedKernel.run([]*Buffer{a, b}, []*Buffer{out}, [16]uint32{uint32(m), uint32(k), uint32(n), flags},
 		uint32((n+15)/16), uint32((m+15)/16)); err != nil {
 		out.Release()
 		return nil, err
@@ -190,7 +193,7 @@ func AddRounded(a, b *Buffer) (*Buffer, error) {
 		return nil, err
 	}
 	gx, gy, stride := elementwiseGroups(a.Len())
-	if err := addRoundedKernel.run([]*Buffer{a, b}, []*Buffer{out}, [4]uint32{uint32(a.Len()), uint32(b.Len()), 0, stride}, gx, gy); err != nil {
+	if err := addRoundedKernel.run([]*Buffer{a, b}, []*Buffer{out}, [16]uint32{uint32(a.Len()), uint32(b.Len()), 0, stride}, gx, gy); err != nil {
 		out.Release()
 		return nil, err
 	}
@@ -209,7 +212,7 @@ func SumRowsRounded(x *Buffer, m, n int) (*Buffer, error) {
 	if n == 0 {
 		return out, nil
 	}
-	if err := sumRowsRoundedKernel.run([]*Buffer{x}, []*Buffer{out}, [4]uint32{uint32(m), uint32(n), 0, 0}, uint32((n+63)/64), 1); err != nil {
+	if err := sumRowsRoundedKernel.run([]*Buffer{x}, []*Buffer{out}, [16]uint32{uint32(m), uint32(n), 0, 0}, uint32((n+63)/64), 1); err != nil {
 		out.Release()
 		return nil, err
 	}
@@ -225,7 +228,7 @@ func SGDRounded(w, g *Buffer, negatedRateBits uint32) error {
 		return nil
 	}
 	gx, gy, stride := elementwiseGroups(w.Len())
-	return sgdRoundedKernel.run([]*Buffer{g}, []*Buffer{w}, [4]uint32{uint32(w.Len()), negatedRateBits, 0, stride}, gx, gy)
+	return sgdRoundedKernel.run([]*Buffer{g}, []*Buffer{w}, [16]uint32{uint32(w.Len()), negatedRateBits, 0, stride}, gx, gy)
 }
 
 // Clone copies a buffer on the device without a host round trip.
@@ -265,4 +268,163 @@ func Clone(source *Buffer) (*Buffer, error) {
 		return nil, fmt.Errorf("wgpu: submit clone: %w", err)
 	}
 	return out, nil
+}
+
+// divRoundedKernel: params = length, 0, 0, stride. out[i] = a[i] / b[i].
+var divRoundedKernel = &kernel{name: "rounded-div", nRead: 2, nWrite: 1, body: `
+struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
+@group(0) @binding(0) var<storage, read> a: array<u32>;
+@group(0) @binding(1) var<storage, read> b: array<u32>;
+@group(0) @binding(2) var<storage, read_write> c: array<u32>;
+@group(0) @binding(3) var<uniform> p: Params;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x + gid.y * p.stride;
+    if (i >= p.length) {
+        return;
+    }
+    c[i] = f32_div(a[i], b[i]);
+}
+`}
+
+// sqrtRoundedKernel: params = length, 0, 0, stride. out[i] = sqrt(a[i]).
+var sqrtRoundedKernel = &kernel{name: "rounded-sqrt", nRead: 1, nWrite: 1, body: `
+struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
+@group(0) @binding(0) var<storage, read> a: array<u32>;
+@group(0) @binding(1) var<storage, read_write> c: array<u32>;
+@group(0) @binding(2) var<uniform> p: Params;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x + gid.y * p.stride;
+    if (i >= p.length) {
+        return;
+    }
+    c[i] = f32_sqrt(a[i]);
+}
+`}
+
+// DivRounded divides a by b elementwise, each quotient correctly rounded.
+func DivRounded(a, b *Buffer) (*Buffer, error) {
+	if a.Len() != b.Len() {
+		return nil, fmt.Errorf("wgpu: rounded div buffers hold %d and %d values", a.Len(), b.Len())
+	}
+	out, err := NewBuffer(a.Len())
+	if err != nil {
+		return nil, err
+	}
+	if a.Len() == 0 {
+		return out, nil
+	}
+	gx, gy, stride := elementwiseGroups(a.Len())
+	if err := divRoundedKernel.run([]*Buffer{a, b}, []*Buffer{out}, [16]uint32{uint32(a.Len()), 0, 0, stride}, gx, gy); err != nil {
+		out.Release()
+		return nil, err
+	}
+	return out, nil
+}
+
+// SqrtRounded takes the square root of each element, correctly rounded.
+func SqrtRounded(a *Buffer) (*Buffer, error) {
+	out, err := NewBuffer(a.Len())
+	if err != nil {
+		return nil, err
+	}
+	if a.Len() == 0 {
+		return out, nil
+	}
+	gx, gy, stride := elementwiseGroups(a.Len())
+	if err := sqrtRoundedKernel.run([]*Buffer{a}, []*Buffer{out}, [16]uint32{uint32(a.Len()), 0, 0, stride}, gx, gy); err != nil {
+		out.Release()
+		return nil, err
+	}
+	return out, nil
+}
+
+// AdamScalars are the float32 constants of one Adam or AdamW step, each
+// computed once on the host so the host and the device read the same bits.
+type AdamScalars struct {
+	Beta1, OneMinusBeta1, Beta2, OneMinusBeta2 float32
+	Bias1, Bias2, Epsilon                      float32
+	// NegRate and NegDecay are -lr and -(lr*weightDecay); Decay says whether
+	// the decoupled decay of AdamW applies.
+	NegRate, NegDecay float32
+	Decay             bool
+}
+
+// adamRoundedKernel: params = length, flags, 0, stride, then the scalars.
+// Every step is one correctly rounded operation or one exact two-term sum
+// rounded once; see nn's adam_rounded.go for the definition.
+var adamRoundedKernel = &kernel{name: "rounded-adam", nRead: 1, nWrite: 3, body: `
+struct Params {
+    length: u32, flags: u32, unused: u32, stride: u32,
+    b1: u32, c1: u32, b2: u32, c2: u32,
+    bias1: u32, bias2: u32, eps: u32, neg_rate: u32,
+    neg_decay: u32, pad0: u32, pad1: u32, pad2: u32,
+}
+@group(0) @binding(0) var<storage, read> g: array<u32>;
+@group(0) @binding(1) var<storage, read_write> w: array<u32>;
+@group(0) @binding(2) var<storage, read_write> m: array<u32>;
+@group(0) @binding(3) var<storage, read_write> v: array<u32>;
+@group(0) @binding(4) var<uniform> p: Params;
+
+fn sum2(a: u32, b: u32, c: u32, d: u32) -> u32 {
+    var r: ExactRegister;
+    exact_clear(&r);
+    exact_add_product(&r, a, b);
+    exact_add_product(&r, c, d);
+    return exact_round(r);
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x + gid.y * p.stride;
+    if (i >= p.length) {
+        return;
+    }
+    let one = 0x3f800000u;
+    var wv = w[i];
+    if ((p.flags & 1u) != 0u) {
+        wv = sum2(wv, one, p.neg_decay, wv);
+    }
+    let gv = g[i];
+    let mn = sum2(p.b1, m[i], p.c1, gv);
+    var rg: ExactRegister;
+    exact_clear(&rg);
+    exact_add_product(&rg, gv, gv);
+    let g2 = exact_round(rg);
+    let vn = sum2(p.b2, v[i], p.c2, g2);
+    let mhat = f32_div(mn, p.bias1);
+    let vhat = f32_div(vn, p.bias2);
+    let den = sum2(f32_sqrt(vhat), one, p.eps, one);
+    let q = f32_div(mhat, den);
+    w[i] = sum2(wv, one, p.neg_rate, q);
+    m[i] = mn;
+    v[i] = vn;
+}
+`}
+
+// AdamRounded applies one Adam or AdamW step in place to w, m and v from the
+// gradient g.
+func AdamRounded(w, g, m, v *Buffer, s AdamScalars) error {
+	n := w.Len()
+	if g.Len() != n || m.Len() != n || v.Len() != n {
+		return fmt.Errorf("wgpu: rounded adam buffers hold %d, %d, %d and %d values", n, g.Len(), m.Len(), v.Len())
+	}
+	if n == 0 {
+		return nil
+	}
+	var flags uint32
+	if s.Decay {
+		flags = 1
+	}
+	gx, gy, stride := elementwiseGroups(n)
+	bits := math.Float32bits
+	return adamRoundedKernel.run([]*Buffer{g}, []*Buffer{w, m, v}, [16]uint32{
+		uint32(n), flags, 0, stride,
+		bits(s.Beta1), bits(s.OneMinusBeta1), bits(s.Beta2), bits(s.OneMinusBeta2),
+		bits(s.Bias1), bits(s.Bias2), bits(s.Epsilon), bits(s.NegRate),
+		bits(s.NegDecay), 0, 0, 0,
+	}, gx, gy)
 }
