@@ -243,3 +243,42 @@ func TestQuantileSortRefusesUnsupportedDateTypes(t *testing.T) {
 		}
 	}
 }
+
+type testTradingDay int32
+type testDateText string
+type testDateStruct struct{ D string }
+type testDateSlice []int
+
+func TestDateKeyDefinedTypes(t *testing.T) {
+	k := func(d any) string {
+		s, err := dateKey(d)
+		if err != nil {
+			t.Fatalf("%T: %v", d, err)
+		}
+		return s
+	}
+	if k(testTradingDay(1)) == k(int32(1)) || k(testTradingDay(1)) == k(int(1)) {
+		t.Error("a defined int32 shares a key with a builtin")
+	}
+	if k(testTradingDay(1)) == k(testTradingDay(2)) {
+		t.Error("a defined int32 is not keyed by value")
+	}
+	if k(testDateText("a")) == k("a") || k(testDateText("a")) == k(testDateText("a ")) {
+		t.Error("a defined string is not keyed by type and exact value")
+	}
+	if k(uintptr(7)) == k(uint(7)) {
+		t.Error("uintptr shares a key with uint")
+	}
+	if k(true) == k(false) {
+		t.Error("bools share a key")
+	}
+	for _, bad := range []any{testDateStruct{"a"}, testDateSlice{1}, map[string]int{}, new(int), nil} {
+		if _, err := dateKey(bad); err == nil {
+			t.Errorf("%T: want an error", bad)
+		}
+	}
+	d := []any{testTradingDay(1), testTradingDay(1), testTradingDay(1), testTradingDay(1), 1, 1, 1, 1}
+	if got := quantileSortDateCount(t, d); got != 2 {
+		t.Errorf("dates = %d, want 2", got)
+	}
+}

@@ -315,14 +315,14 @@ func (fmbStringer) String() string { return "same" }
 
 type fmbMyInt int
 
-// A date is a string, time.Time, bool, integer or float; anything whose
+// A date is a string, time.Time, bool, integer or float, or a defined type over
+// one of them; anything whose
 // printed form could be shared by two values is refused.
 func TestFamaMacBethRefusesUnsupportedDateTypes(t *testing.T) {
 	one := 1
 	for name, bad := range map[string]any{
 		"slice":    []string{"a b"},
 		"stringer": fmbStringer{1},
-		"named":    fmbMyInt(1),
 		"pointer":  &one,
 		"map":      map[string]int{"a": 1},
 		"NaN":      math.NaN(),
@@ -335,7 +335,7 @@ func TestFamaMacBethRefusesUnsupportedDateTypes(t *testing.T) {
 			t.Errorf("%s: error %v", name, err)
 		}
 	}
-	for name, ok := range map[string]any{"int64": int64(1), "float": 1.5, "bool": true, "uint8": uint8(1), "string": "x", "time": time.Unix(1, 0)} {
+	for name, ok := range map[string]any{"int64": int64(1), "float": 1.5, "bool": true, "uint8": uint8(1), "string": "x", "named int": fmbMyInt(1), "uintptr": uintptr(1), "time": time.Unix(1, 0)} {
 		table := fmbPanelEdit(4, 8, func(d, s int) float64 { return math.Sin(float64(d*s + 1)) }, func(cols [4][]any) {
 			for i := range cols[0] {
 				cols[0][i] = ok

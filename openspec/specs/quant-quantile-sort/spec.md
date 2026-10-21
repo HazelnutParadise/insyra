@@ -27,7 +27,7 @@ Sorting the stocks of every date into signal groups and reporting group means an
 - **THEN** an error names the column
 
 ### Requirement: A date has a type that can be compared exactly
-`quant.QuantileSort` SHALL group dates by exact value, comparing a string as given with its whitespace and a time.Time by instant, and SHALL return an error for a date that is not a string, time.Time, bool, integer or float, or is NaN, so no two different dates share a group.
+`quant.QuantileSort` SHALL group dates by exact value, comparing a string as given with its whitespace and a time.Time by instant, and SHALL return an error for a date that is not a string, time.Time, bool, integer or float, or a defined type whose underlying type is one of these, or is NaN, so no two different dates share a group.
 
 #### Scenario: Dates that differ only by whitespace
 - **WHEN** a date column holds "2026-01-02" and " 2026-01-02 "
