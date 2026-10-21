@@ -280,6 +280,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-10-21] — device tensors live on one card per process
+- **Where**: `accel/internal/wgpu/wgpu.go` `open`, `accel/resident.go` `ResidentDevice`, `nn/device_tensor.go` `To`
+- **What**: the WebGPU backend opens the adapter WebGPU names as its default and has no way to be told which one. `accel.DefaultDevice` returns the first device of the session's list, which on a host with several cards may not be that adapter, and `Tensor.To(device)` uses the `Device` only as a label. Operands on different devices are refused, so nothing runs wrongly, but a program cannot choose a card. `Config.Devices`, `PreferredDevices` and `INSYRA_ACCEL_DEVICES` narrow what is discovered, not where tensors are placed. Only a single-card host has been available to test.
+- **Suggestion**: one WebGPU handle per adapter, buffers and queues per handle, `To(cards[i])` choosing the card, and a gated multi-card test on a host that has two. Data-parallel training across cards (gradient synchronisation) is a separate, larger change.
+- **Status**: pending
+
 ### [2026-10-20] — `excelize` pinned to an untagged commit for two advisories
 - **Where**: `go.mod`, `github.com/xuri/excelize/v2`, reached through `ReadExcel`, `ReadExcelSheet`, `DataTable.WriteExcel` and `csvxl.AppendCsvToExcel`
 - **What**: v2.11.0, the newest tag, is inside GO-2026-6689 (a panic and memory exhaustion from an unbounded CFB stream allocation) and GO-2026-6688 (mutually referencing array formulas recurse until the stack overflows); govulncheck traces both to these four functions, and the Vulnerability Scan job went red on every branch. The fixes are on the module's `master` and in no tag, so `go.mod` names the commit `v2.11.1-0.20261020033641-611b222fd8f7`. `govulncheck ./...` reports 0 affected vulnerabilities with it, `go.mod`'s `go` directive is unchanged, and the root and `csvxl` tests pass.

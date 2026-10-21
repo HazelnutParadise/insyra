@@ -7,6 +7,9 @@ import (
 
 // Div performs float32 division with numpy-style broadcasting.
 func Div(a, b *Tensor) (*Tensor, error) {
+	if err := rejectResident("Div", a, b); err != nil {
+		return nil, err
+	}
 	if a != nil && b != nil && a.dtype == DTypeInt64 && b.dtype == DTypeInt64 {
 		return tensorBroadcastInt64Binary(a, b, "div", func(left, right int64) (int64, error) {
 			if right == 0 {
@@ -20,6 +23,9 @@ func Div(a, b *Tensor) (*Tensor, error) {
 
 // Unsqueeze inserts dimensions of size one at the supplied output axes.
 func Unsqueeze(input *Tensor, axes []int) (*Tensor, error) {
+	if err := rejectResident("Unsqueeze", input); err != nil {
+		return nil, err
+	}
 	if input == nil {
 		return nil, fmt.Errorf("unsqueeze input is nil")
 	}
@@ -86,6 +92,9 @@ func inputAxisForOutputAxis(outputAxis int, inserted map[int]struct{}) int {
 // Concat concatenates tensors along one axis. The participating tensors may
 // carry float32, int64, bool, or string values, but must share rank and dtype.
 func Concat(inputs []*Tensor, axis int) (*Tensor, error) {
+	if err := rejectResident("Concat", inputs...); err != nil {
+		return nil, err
+	}
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("concat requires at least one input")
 	}
@@ -157,6 +166,9 @@ func Concat(inputs []*Tensor, axis int) (*Tensor, error) {
 // scalar-index form emitted by the ml pipeline exporter as well as general
 // ONNX index shapes for small standalone graphs.
 func Gather(data, indices *Tensor, axis int) (*Tensor, error) {
+	if err := rejectResident("Gather", data, indices); err != nil {
+		return nil, err
+	}
 	if data == nil || indices == nil {
 		return nil, fmt.Errorf("gather inputs must not be nil")
 	}
@@ -210,6 +222,9 @@ func Gather(data, indices *Tensor, axis int) (*Tensor, error) {
 // Squeeze removes dimensions of size one. When axes is empty, all singleton
 // dimensions are removed, matching the ONNX optional-axes form.
 func Squeeze(input *Tensor, axes []int) (*Tensor, error) {
+	if err := rejectResident("Squeeze", input); err != nil {
+		return nil, err
+	}
 	if input == nil {
 		return nil, fmt.Errorf("squeeze input is nil")
 	}
@@ -255,6 +270,9 @@ func Squeeze(input *Tensor, axes []int) (*Tensor, error) {
 
 // Expand broadcasts a tensor to targetShape without changing its dtype.
 func Expand(input *Tensor, targetShape []int) (*Tensor, error) {
+	if err := rejectResident("Expand", input); err != nil {
+		return nil, err
+	}
 	if input == nil {
 		return nil, fmt.Errorf("expand input is nil")
 	}
@@ -284,6 +302,9 @@ func Expand(input *Tensor, targetShape []int) (*Tensor, error) {
 // With no bounds it returns every dimension. Bounds follow ONNX's start/end
 // convention and may be negative.
 func Shape(input *Tensor, bounds ...int) (*Tensor, error) {
+	if err := rejectResident("Shape", input); err != nil {
+		return nil, err
+	}
 	if input == nil {
 		return nil, fmt.Errorf("shape input is nil")
 	}
@@ -312,6 +333,9 @@ func Shape(input *Tensor, bounds ...int) (*Tensor, error) {
 // ConstantOfShape fills a tensor with one scalar value. ONNX defaults the
 // value to a float32 zero when the optional value attribute is absent.
 func ConstantOfShape(shapeTensor, value *Tensor) (*Tensor, error) {
+	if err := rejectResident("ConstantOfShape", shapeTensor, value); err != nil {
+		return nil, err
+	}
 	if shapeTensor == nil {
 		return nil, fmt.Errorf("constant of shape input is nil")
 	}
@@ -360,6 +384,9 @@ func normalizeShapeBound(bound, rank, fallback int) int {
 
 // Slice applies ONNX starts, ends, axes, and steps to an N-dimensional tensor.
 func Slice(input *Tensor, starts, ends, axes, steps []int64) (*Tensor, error) {
+	if err := rejectResident("Slice", input); err != nil {
+		return nil, err
+	}
 	if input == nil {
 		return nil, fmt.Errorf("slice input is nil")
 	}
@@ -498,6 +525,9 @@ func normalizeSliceEnd(value int64, length int, reverse bool) int64 {
 // Split partitions input along axis. If splits is nil, outputCount must name
 // the number of equal partitions.
 func Split(input *Tensor, splits []int, axis int, outputCount ...int) ([]*Tensor, error) {
+	if err := rejectResident("Split", input); err != nil {
+		return nil, err
+	}
 	if input == nil {
 		return nil, fmt.Errorf("split input is nil")
 	}
@@ -565,6 +595,9 @@ func Split(input *Tensor, splits []int, axis int, outputCount ...int) ([]*Tensor
 
 // GreaterOrEqual compares float32 or int64 tensors with broadcasting.
 func GreaterOrEqual(left, right *Tensor) (*Tensor, error) {
+	if err := rejectResident("GreaterOrEqual", left, right); err != nil {
+		return nil, err
+	}
 	if left == nil || right == nil {
 		return nil, fmt.Errorf("greater-or-equal operands must not be nil")
 	}
@@ -595,11 +628,17 @@ func GreaterOrEqual(left, right *Tensor) (*Tensor, error) {
 
 // Equal compares matching tensors with numpy-style broadcasting.
 func Equal(left, right *Tensor) (*Tensor, error) {
+	if err := rejectResident("Equal", left, right); err != nil {
+		return nil, err
+	}
 	return compareBinary(left, right, "equal", func(a, b comparisonValue) bool { return a.equal(b) })
 }
 
 // Greater compares matching numeric tensors with numpy-style broadcasting.
 func Greater(left, right *Tensor) (*Tensor, error) {
+	if err := rejectResident("Greater", left, right); err != nil {
+		return nil, err
+	}
 	if left == nil || right == nil {
 		return nil, fmt.Errorf("greater operands must not be nil")
 	}
@@ -685,6 +724,9 @@ func tensorComparisonValue(tensor *Tensor, index int) comparisonValue {
 
 // Where selects values from left and right using a broadcast bool condition.
 func Where(condition, left, right *Tensor) (*Tensor, error) {
+	if err := rejectResident("Where", condition, left, right); err != nil {
+		return nil, err
+	}
 	if condition == nil || left == nil || right == nil {
 		return nil, fmt.Errorf("where inputs must not be nil")
 	}
