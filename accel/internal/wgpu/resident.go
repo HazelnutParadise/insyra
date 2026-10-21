@@ -145,7 +145,9 @@ func (b *Buffer) Download(ctx context.Context) ([]float32, error) {
 	submitMu.Lock()
 	defer submitMu.Unlock()
 	values, err := b.downloadLocked(ctx)
-	if err == nil {
+	// Only a download that waited for the queue proves earlier work is done;
+	// an empty buffer returns without waiting, so it must not free anything.
+	if err == nil && b.length > 0 {
 		flushPending()
 	}
 	return values, err

@@ -226,3 +226,34 @@ func TestUploadAndReleaseLoopKeepsDeferredReleasesBounded(t *testing.T) {
 		t.Fatalf("%d deferred releases are pending, want at most %d", n, maxPendingObjects)
 	}
 }
+
+func TestEmptyDownloadDoesNotFreeWhatTheQueueMayStillUse(t *testing.T) {
+	requireResidentDevice(t)
+	a, _ := Upload([]float32{1, 2, 3, 4})
+	b, _ := Upload([]float32{1, 2, 3, 4})
+	out, err := MatMulRounded(a, b, 2, 2, 2, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Release()
+	b.Release()
+	empty, _ := Upload(nil)
+	submitMu.Lock()
+	before := len(pending)
+	submitMu.Unlock()
+	if _, err := empty.Download(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	submitMu.Lock()
+	after := len(pending)
+	submitMu.Unlock()
+	if after < before {
+		t.Fatalf("an empty download freed %d deferred resources it had not waited for", before-after)
+	}
+	got, err := out.Download(context.Background())
+	if err != nil || got[0] != 7 {
+		t.Fatalf("matmul after the empty download = %v, %v", got, err)
+	}
+	out.Release()
+	empty.Release()
+}
