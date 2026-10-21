@@ -186,11 +186,11 @@ func ClassifyGaps(high, low, close, volume insyra.IDataList, opts ...GapOptions)
 	if o.ExhaustionZ < o.RunawayZ {
 		return nil, errors.New("ExhaustionZ must not be below RunawayZ")
 	}
-	h, err := numericSeries(high, "high")
+	h, err := positiveSeries(high, "high")
 	if err != nil {
 		return nil, err
 	}
-	l, err := numericSeries(low, "low")
+	l, err := positiveSeries(low, "low")
 	if err != nil {
 		return nil, err
 	}

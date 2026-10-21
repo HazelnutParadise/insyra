@@ -167,6 +167,16 @@ func TestClassifyGapsRefusesBadInput(t *testing.T) {
 	if _, err := ClassifyGaps(prices(h2...), prices(l...), prices(c...), prices(v...)); err == nil {
 		t.Error("a high below the low should be an error")
 	}
+	l3 := append([]float64(nil), l...)
+	l3[5] = 0 // a zero low would invent a gap
+	if _, err := ClassifyGaps(prices(h...), prices(l3...), prices(c...), prices(v...)); err == nil {
+		t.Error("a low that is not positive should be an error")
+	}
+	h3 := append([]float64(nil), h...)
+	h3[5] = -1
+	if _, err := ClassifyGaps(prices(h3...), prices(l...), prices(c...), prices(v...)); err == nil {
+		t.Error("a high that is not positive should be an error")
+	}
 	v2 := append([]float64(nil), v...)
 	v2[5] = -1
 	if _, err := ClassifyGaps(prices(h...), prices(l...), prices(c...), prices(v2...)); err == nil {
