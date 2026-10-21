@@ -20,7 +20,7 @@ This document describes the public API of `github.com/HazelnutParadise/insyra/qu
 > | `SMA`, `EMA` | Moving averages (均線), Granville's rules | Partly usable. A stock below a falling 200-day line that bounces and fails to get back above it went on to lag by 0.91% over the next 20 days in Taiwan, the only claim that beat the costs, and only on stocks that still exist. As a market-timing rule no moving-average rule beat buy-and-hold (US rules won every year until 1969 and none since 1970). |
 > | `MACD` | MACD | Ineffective. It is the distance between two moving averages, so by the time it moves the price already has. |
 > | `KD` | Stochastic (KD, KDJ) | Ineffective. In Taiwan, stocks that were "overbought" went on to do better, and it is the same data as RSI. |
-> | `Bollinger`, `TrueRange`, `ATR`, `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier`, `Aroon`, `TRIX`, `KAMA`, `Ichimoku`, `CCI`, `Momentum`, `ROC`, `UltimateOscillator`, `StochRSI`, `ARBR`, `CR`, `ForceIndex`, `ElderRay`, `MFI`, `AccumulationDistribution`, `CMF`, `ChaikinOscillator`, `EaseOfMovement`, `NVI`, `PVI`, `VolumeProfile` | Bollinger bands, channels, trailing stops, Aroon, TRIX, KAMA, Ichimoku, CCI, momentum, ultimate oscillator, stochastic RSI, AR/BR, CR, force index, Elder-ray, money flow index, accumulation/distribution, Chaikin, ease of movement, volume indexes, volume profile | Not tested in the study (the study found volume indicators "description only": volume is a shadow of the price move). (KD and RSI, which the study did test, are rows above; StochRSI is built from the RSI.) |
+> | `Bollinger`, `TrueRange`, `ATR`, `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier`, `Aroon`, `TRIX`, `KAMA`, `Ichimoku`, `CCI`, `Momentum`, `ROC`, `UltimateOscillator`, `StochRSI`, `ARBR`, `CR`, `ForceIndex`, `ElderRay`, `MFI`, `AccumulationDistribution`, `CMF`, `ChaikinOscillator`, `EaseOfMovement`, `NVI`, `PVI`, `VolumeProfile`, `PivotPoints`, `HeikinAshi`, `TDSequential`, `PointAndFigure` | Bollinger bands, channels, trailing stops, Aroon, TRIX, KAMA, Ichimoku, CCI, momentum, ultimate oscillator, stochastic RSI, AR/BR, CR, force index, Elder-ray, money flow index, accumulation/distribution, Chaikin, ease of movement, volume indexes, volume profile, pivot points, Heikin-Ashi, TD Sequential, point-and-figure | Not tested in the study (the study found volume indicators "description only": volume is a shadow of the price move). (KD and RSI, which the study did test, are rows above; StochRSI is built from the RSI.) |
 > | `RSI` | RSI, overbought and oversold | Ineffective. In Taiwan, stocks with a high RSI did better afterwards, not worse. Trading it stock by stock lost to holding. |
 > | `Bias`, `BiasZ` | Bias ratio (乖離率) | Only useful read backwards. Taiwan stocks continue for one to three months, they do not revert, and the gap does not pay the costs. |
 > | `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `PriceDivergence` | On-balance volume, volume and price | Description only. Volume is a shadow of the price move, not the fuel for it. |
@@ -42,6 +42,7 @@ go get github.com/HazelnutParadise/insyra/quant/ta
 ## Overview
 
 - **Moving averages and bands**: `SMA`, `EMA`, `MACD`, `Bollinger`, `TrueRange`, `ATR`, `KD`
+- **Price structure**: `PivotPoints`, `HeikinAshi`, `TDSequential`, `PointAndFigure`
 - **Money flow and volume profile**: `MFI`, `AccumulationDistribution`, `CMF`, `ChaikinOscillator`, `EaseOfMovement`, `NVI`, `PVI`, `VolumeProfile`
 - **Oscillators and momentum**: `CCI`, `Momentum`, `ROC`, `UltimateOscillator`, `StochRSI`, `ARBR`, `CR`, `ForceIndex`, `ElderRay`
 - **Trend**: `Aroon`, `TRIX`, `KAMA`, `Ichimoku`
@@ -473,6 +474,29 @@ type VolumeProfileResult struct{ POC, ValueAreaHigh, ValueAreaLow *insyra.DataLi
 - **`VolumeProfile`** returns, for the window of the last `n` rows ending on each row, the price level with the most volume (`POC`) and the value area around it (`ValueAreaHigh`, `ValueAreaLow`). The window's range is cut into `Bins` equal bins; each bar's volume is spread over the bins it covers in proportion to the overlap (a bar with no range goes into the bin it sits in); the value area grows one bin at a time toward the side with more volume until it holds `ValueArea` of the volume. How a bar's volume is spread changes the answer, and this is the common even spread. A volume profile needs no close, so `VolumeProfile` takes none. With `SegmentStarts` the window restarts at each start, so it never holds rows from before a halt or a relisting, and a segment shows `NaN` until its window is full.
 
 `MFI`, `AccumulationDistribution` and `ChaikinOscillator` equal TA-Lib's `MFI`, `AD` and `ADOSC`. The rest are compared with implementations written from the definitions (`testdata/volume_baseline.py`).
+
+---
+
+## Price Structure
+
+```go
+func PivotPoints(high, low, close insyra.IDataList) (*PivotPointsResult, error)    // P, R1, R2, R3, S1, S2, S3
+func HeikinAshi(open, high, low, close insyra.IDataList) (*insyra.DataTable, error) // Open, High, Low, Close
+func TDSequential(close insyra.IDataList) (*TDSequentialResult, error)              // BuySetup, SellSetup, BuyCountdown, SellCountdown
+func PointAndFigure(close insyra.IDataList, boxSize float64, reversal int) ([]PFColumn, error)
+
+type PFColumn struct {
+    Kind             PFKind // PFRising (X) or PFFalling (O)
+    StartRow, EndRow int
+    Top, Bottom      float64 // prices of the highest and lowest box
+    Boxes            int
+}
+```
+
+- **`PivotPoints`** are the floor-trader levels for each row, from the previous row's high `H`, low `L` and close `C`: `P = (H + L + C) / 3`, `R1 = 2P − L`, `R2 = P + (H − L)`, `R3 = H + 2(P − L)`, `S1 = 2P − H`, `S2 = P − (H − L)`, `S3 = L − 2(H − P)`. They are known at yesterday's close, so row 0 is `NaN`. They are price levels, not the turning points `ZigZag` returns (those are `Swing`s).
+- **`HeikinAshi`** returns the smoothed bars as a table: the close is `(open + high + low + close) / 4`, the open is the midpoint of the previous Heikin-Ashi bar (the first is `(open + close) / 2`), and the high and low extend to cover them. All four series must be finite, positive prices of the same length, and no high may be below its low; otherwise it returns an error.
+- **`TDSequential`** counts on closes only. A buy setup counts consecutive closes below the close four rows earlier (1 to 9, a broken run resets to 0, and a run that goes on past 9 starts again from 1); a sell setup is the mirror. A completed setup starts a countdown on the next row: the buy countdown counts, not necessarily in a row, the rows whose close is at or below the close two rows earlier, up to 13; a completed opposite setup cancels it, and a second setup of the same side does not restart it. This is not DeMark's original rule set: the countdown compares the close with the close two rows earlier where the original compares with the low (buy) or high (sell) of two rows earlier, and a setup that goes on past 9 starts again from 1. It has no perfection, qualifier or recycling rules, so do not expect it to match a charting platform. There is no reference implementation to match, so the tests use hand-built series.
+- **`PointAndFigure`** builds the columns from closes: a price lies in the box `floor(price / boxSize)`, a rising column grows when the close reaches a higher box and turns into a falling one when the close falls `reversal` boxes below its top (usual 3), and the other way round. A new column starts one box beyond the old column's end. A close whose box index would exceed 2^53 (a `boxSize` far too small for the prices) is an error.
 
 ---
 
