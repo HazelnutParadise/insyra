@@ -352,6 +352,34 @@ func TestRomanoWolfRefusesOverflowingResampledMean(t *testing.T) {
 	wantErrContains(t, err, "not finite")
 }
 
+// TestRomanoWolfRefusesNonFiniteStudentizedStatistic uses a column whose
+// full-sample mean comes from one huge value while the rest vary at 1e-160:
+// a draw that misses the spike has a positive, finite σ*² (a denormal), yet
+// its mean differs from the full mean by about 5e151, so dividing by σ*
+// overflows. That must be an error, not an infinite candidate for the
+// critical value.
+func TestRomanoWolfRefusesNonFiniteStudentizedStatistic(t *testing.T) {
+	rows := make([][]float64, 20)
+	for i := range rows {
+		rows[i] = []float64{1e-160}
+		if i%2 == 1 {
+			rows[i][0] = -1e-160
+		}
+	}
+	rows[7][0] = 1e153
+	for _, scheme := range []ResamplingScheme{ResampleStationary, ResampleMovingBlock} {
+		for _, bs := range []int{1, 2} {
+			opts := rwOpts(0.1, 300, bs, 1)
+			opts.Scheme = scheme
+			res, err := RomanoWolf(toDT(rows), opts)
+			wantErrContains(t, err, "not finite")
+			if res != nil {
+				t.Errorf("%v block %d: got a result with an error", scheme, bs)
+			}
+		}
+	}
+}
+
 func BenchmarkRomanoWolfLarge(b *testing.B) {
 	rng := rand.New(rand.NewPCG(1, 2))
 	shift := make([]float64, 100)
