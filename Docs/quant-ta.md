@@ -52,7 +52,7 @@ go get github.com/HazelnutParadise/insyra/quant/ta
 - **Gaps**: `ClassifyGaps`
 - **Random-walk control**: `ShuffleBars`
 
-**Conventions.** Every function takes its series as `insyra.IDataList` and returns an `error` for invalid input, naming the row index (counted from 0). The tools use only information known at the close of each row, so a series cut short gives the results of the full series for the rows before the cut. A row without enough history is `NaN`. They were first part of `quant`, which keeps the evaluation tools (performance and risk metrics, event studies, signal buckets, backtests); see [`quant`](./quant.md).
+**Conventions.** Every function takes its series as `insyra.IDataList` and returns an `error` for invalid input, naming the row index (counted from 0). The tools use only information known at the close of each row (the one exception is `Ichimoku`'s `Chikou`, which is the close of later rows by definition), so a series cut short gives the results of the full series for the rows before the cut. A row without enough history is `NaN`. They were first part of `quant`, which keeps the evaluation tools (performance and risk metrics, event studies, signal buckets, backtests); see [`quant`](./quant.md).
 
 ---
 
@@ -394,15 +394,16 @@ func KAMA(prices insyra.IDataList, n, fast, slow int) (*insyra.DataList, error)
 func Ichimoku(high, low, close insyra.IDataList, tenkan, kijun, senkouB int, opts ...IchimokuOptions) (*IchimokuResult, error)
 
 type IchimokuOptions struct {
-    Displacement int // rows the cloud is drawn ahead of where it is computed; default 26
+    Displacement  int   // rows the cloud is drawn ahead of where it is computed, and Chikou back; default 26
+    SegmentStarts []int // rows on which a new data segment starts
 }
-type IchimokuResult struct{ Tenkan, Kijun, SenkouA, SenkouB *insyra.DataList }
+type IchimokuResult struct{ Tenkan, Kijun, SenkouA, SenkouB, Chikou *insyra.DataList }
 ```
 
 - **`Aroon`**: `Up` is `100 × (n − rows since the highest high of the last n+1 rows) / n`, so 100 means the high is today; `Down` is the same for the lowest low; `Oscillator` is `Up − Down`. When an extreme occurs more than once the most recent counts. The first `n` rows are `NaN`. It equals TA-Lib's `AROON` and `AROONOSC`.
 - **`TRIX`** is the one-row percentage change (5 means 5%) of a triple EMA, each `n` rows long, as TA-Lib's `TRIX`; `Signal` is the `signal`-row EMA of it, the usual trading form, which TA-Lib does not have.
 - **`KAMA`** is Kaufman's adaptive moving average: the efficiency ratio of the last `n` rows (net change over the sum of absolute changes) picks a smoothing constant between the fast and the slow EMA's, so the line follows a trend and barely moves sideways (usual 10, 2 and 30). It equals TA-Lib's `KAMA`, which fixes `fast` and `slow` at 2 and 30, and is reported from row `n`.
-- **`Ichimoku`** returns the conversion line `Tenkan` and base line `Kijun` (midpoints of the highest high and lowest low of 9 and 26 rows, the current one included), and the two cloud lines. Charting software draws the cloud 26 rows ahead; here `SenkouA[t]` and `SenkouB[t]` are the cloud *in force on row t*, computed from row `t − Displacement`, so a close can be compared with the cloud it actually sat against and nothing is seen ahead of time. The lagging line (the close drawn 26 rows back) is just the close aligned this way and is not returned. Projecting the cloud ahead is left to charting.
+- **`Ichimoku`** returns the conversion line `Tenkan` and base line `Kijun` (midpoints of the highest high and lowest low of 9 and 26 rows, the current one included), and the two cloud lines. Charting software draws the cloud 26 rows ahead; here `SenkouA[t]` and `SenkouB[t]` are the cloud *in force on row t*, computed from row `t − Displacement`, so a close can be compared with the cloud it actually sat against and nothing is seen ahead of time. `Chikou` is Hosoda's lagging span, the close plotted `Displacement` (26) rows behind: `Chikou[t]` is `close[t+Displacement]`, and the last `Displacement` rows of each segment are `NaN`. It looks ahead by construction, so use it to study a chart in hindsight and never in a rule that must be decided on row `t`; every other line uses only rows up to `t`. Projecting the cloud ahead is left to charting. `SegmentStarts` works as in `RSIOptions` and `KDOptions`: each segment is computed on its own, so nothing is carried across a trading halt or a relisting, a segment shows `NaN` until it has its own data, and neither the cloud nor `Chikou` takes a value from the next segment. Without `SegmentStarts` the result is the same as before.
 
 Aroon, TRIX and KAMA are compared with TA-Lib; Ichimoku, and KAMA with periods other than TA-Lib's, with implementations written from the definitions (`testdata/trend_baseline.py`).
 
