@@ -15,7 +15,7 @@
 - **THEN** the values equal TA-Lib's SAR on the same bars
 
 ### Requirement: Unusable input is refused
-Each channel and stop function SHALL return an error naming the row index for a missing, non-numeric or non-finite value and for a high below its low, and an error for a period below 1, a negative k and series of different lengths.
+Each channel and stop function SHALL return an error naming the row index for a missing, non-numeric or non-finite value and for a high below its low, and an error for a period below 1, a multiplier k that is not a finite number above 0 in Keltner, SuperTrend and Chandelier, and series of different lengths.
 
 #### Scenario: A period of 0
 - **WHEN** n is 0

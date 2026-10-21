@@ -114,11 +114,28 @@ const (
 // precision, because narrowing a column silently would change the numbers a
 // data-analysis library returns. WGSL has no f64 and Apple GPUs have no
 // double-precision hardware, so float64 columns need an explicit opt-in.
+//
+// Three values exist. In order of what they promise: PrecisionExact leaves
+// every value at its own precision, PrecisionFloat32Rounded runs in float32
+// and fixes one answer, and PrecisionFloat32 runs in float32 and accepts
+// whatever the device returns.
 type Precision string
 
 const (
-	PrecisionExact   Precision = "exact"
+	// PrecisionExact keeps every value at its own precision. It is the
+	// default, and the only value that never narrows a float64.
+	PrecisionExact Precision = "exact"
+	// PrecisionFloat32 accepts float32 device execution. The device's own
+	// arithmetic decides the low bits, so two devices may disagree.
 	PrecisionFloat32 Precision = "float32"
+	// PrecisionFloat32Rounded runs in float32 and defines each result as the
+	// exact value of its operation rounded once to nearest-even float32. Every
+	// device, every driver and the CPU fallback return the same bits, so a
+	// missing device changes speed and never the answer. Choose it for
+	// training that must reproduce on any machine; expect it to differ by a
+	// few ulps from a float64-intermediate computation, which is more accurate
+	// but cannot run on a GPU. It is never the default.
+	PrecisionFloat32Rounded Precision = "float32-rounded"
 )
 
 type WorkloadClass string

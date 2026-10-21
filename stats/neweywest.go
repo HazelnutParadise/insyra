@@ -17,6 +17,10 @@ type NeweyWestResult struct {
 	N          int     // number of observations
 }
 
+// AutoLag, passed as a lag, asks for NeweyWestLag(n). Any negative lag means
+// the same; 0 and above are used as given, and 0 is a literal lag of 0.
+const AutoLag = -1
+
 // NeweyWestLag returns the lag NeweyWestMeanTest uses when it is asked to
 // choose one: floor(4 * (n/100)^(2/9)), the rule of thumb Newey and West (1994)
 // give for the Bartlett kernel.
@@ -33,8 +37,8 @@ func NeweyWestLag(n int) int {
 // heteroskedasticity-and-autocorrelation-consistent one with Bartlett weights
 // 1 - j/(lag+1), and the statistic is mean / standard error.
 //
-// lag is the number of autocovariances to include. A negative lag asks for
-// NeweyWestLag(n). A lag of 0 gives the one-sample t-test of mean zero whose
+// lag is the number of autocovariances to include. Use stats.AutoLag to choose
+// it automatically; any negative lag (AutoLag) asks for NeweyWestLag(n); 0 and above are used as given. A lag of 0 gives the one-sample t-test of mean zero whose
 // variance divides by n instead of n-1. The lag must be smaller than the
 // number of observations.
 //

@@ -61,8 +61,18 @@ type ForwardOptions struct {
 	Tradable insyra.IDataTable
 	// NeweyWestLag is the lag of the t-test on the monthly series. 0 chooses
 	// stats.NeweyWestLag(months), a positive value is used as it is, and a
-	// negative value means no correction (the plain t-test).
+	// negative value is an error. A positive lag must be smaller than the
+	// number of months with an observation in every horizon and bucket, empty
+	// ones included; EventStudy and SignalBuckets return an error otherwise,
+	// instead of shortening it. The automatic lag is capped
+	// at months-1.
 	NeweyWestLag int
+	// NoNeweyWest switches the Newey-West correction off: the t-test then uses
+	// lag 0, whose variance divides by the number of months T. That equals
+	// linearmodels cov_type="unadjusted" with debiased=False, and is not
+	// stats.SingleSampleTTest, which divides by T-1. It cannot be combined with
+	// a non-zero NeweyWestLag.
+	NoNeweyWest bool
 }
 
 // ForwardSummary is the forward excess return for one horizon.
@@ -123,6 +133,12 @@ func newPanel(prices insyra.IDataTable, dates insyra.IDataList, o ForwardOptions
 			return nil, fmt.Errorf("horizon %d must be at least 1", h)
 		}
 	}
+	if o.NeweyWestLag < 0 {
+		return nil, fmt.Errorf("NeweyWestLag %d is negative; 0 chooses it automatically, and NoNeweyWest switches the correction off", o.NeweyWestLag)
+	}
+	if o.NoNeweyWest && o.NeweyWestLag != 0 {
+		return nil, fmt.Errorf("NoNeweyWest cannot be combined with NeweyWestLag %d", o.NeweyWestLag)
+	}
 	if o.Delay == 0 {
 		o.Delay = 1
 	}
@@ -154,23 +170,11 @@ func newPanel(prices insyra.IDataTable, dates insyra.IDataList, o ForwardOptions
 		p.month[i] = m
 	}
 
-	var cols [][]any
-	prices.AtomicDo(func(dt *insyra.DataTable) {
-		for c := 0; c < dt.NumCols(); c++ {
-			cols = append(cols, dt.GetColByNumber(c).Data())
-		}
-	})
-	if len(cols) == 0 {
-		return nil, errors.New("prices has no columns")
+	cols, _, err := readPriceColumns(prices, p.rows)
+	if err != nil {
+		return nil, err
 	}
-	p.prices = make([][]float64, len(cols))
-	for c, col := range cols {
-		series, err := priceColumn(col, c, p.rows)
-		if err != nil {
-			return nil, err
-		}
-		p.prices[c] = series
-	}
+	p.prices = cols
 
 	if o.Tradable != nil {
 		if insyra.IsNilTable(o.Tradable) {
@@ -211,6 +215,32 @@ func newPanel(prices insyra.IDataTable, dates insyra.IDataList, o ForwardOptions
 		p.levels = lv
 	}
 	return p, nil
+}
+
+// readPriceColumns reads every column of a price table as float64 series of
+// the given length, NaN where a cell is missing, with the column names. A
+// price that is not positive, or a cell that is not a number, is an error.
+func readPriceColumns(prices insyra.IDataTable, rows int) ([][]float64, []string, error) {
+	var cols [][]any
+	var names []string
+	prices.AtomicDo(func(dt *insyra.DataTable) {
+		for c := 0; c < dt.NumCols(); c++ {
+			cols = append(cols, dt.GetColByNumber(c).Data())
+			names = append(names, dt.GetColNameByNumber(c))
+		}
+	})
+	if len(cols) == 0 {
+		return nil, nil, errors.New("prices has no columns")
+	}
+	out := make([][]float64, len(cols))
+	for c, col := range cols {
+		series, err := priceColumn(col, c, rows)
+		if err != nil {
+			return nil, nil, err
+		}
+		out[c] = series
+	}
+	return out, names, nil
 }
 
 func priceColumn(col []any, c, rows int) ([]float64, error) {
@@ -373,9 +403,14 @@ func (a *accumulator) add(month string, excess float64) {
 
 // summary finishes a horizon: the plain statistics and the Newey-West t-test on
 // the monthly means.
-func (a *accumulator) summary(horizon, lag int) (ForwardSummary, error) {
+func (a *accumulator) summary(horizon, lag int, noNeweyWest bool) (ForwardSummary, error) {
 	s := ForwardSummary{Horizon: horizon, Observations: a.n, Missing: a.missing, Months: len(a.monthOrder),
 		MeanExcess: math.NaN(), WinRate: math.NaN(), MonthlyMean: math.NaN(), TStat: math.NaN(), PValue: math.NaN()}
+	// An explicit lag is checked first, so a horizon or bucket with fewer than
+	// two months is held to the same rule as any other.
+	if lag > 0 && lag >= len(a.monthOrder) {
+		return s, fmt.Errorf("NeweyWestLag %d must be smaller than the number of months with an observation %d", lag, len(a.monthOrder))
+	}
 	if a.n == 0 {
 		return s, nil
 	}
@@ -396,13 +431,11 @@ func (a *accumulator) summary(horizon, lag int) (ForwardSummary, error) {
 	}
 	useLag := lag
 	switch {
-	case lag == 0:
-		useLag = stats.NeweyWestLag(len(months))
-	case lag < 0:
+	case noNeweyWest:
 		useLag = 0
-	}
-	if useLag >= len(months) {
-		useLag = len(months) - 1
+	case lag == 0:
+		// Automatic is not a request for a particular lag, so it is capped.
+		useLag = min(stats.NeweyWestLag(len(months)), len(months)-1)
 	}
 	res, err := stats.NeweyWestMeanTest(insyra.NewDataList(monthly...), useLag)
 	if err != nil {
