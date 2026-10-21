@@ -35,6 +35,9 @@ func TestEnumsPrintTheirNames(t *testing.T) {
 		{KDRecursive, "KDRecursive"},
 		{KDMovingAverage, "KDMovingAverage"},
 		{KDMethod(99), "KDMethod(99)"},
+		{ResampleStationary, "ResampleStationary"},
+		{ResampleMovingBlock, "ResampleMovingBlock"},
+		{ResamplingScheme(99), "ResamplingScheme(99)"},
 	}
 	for _, c := range cases {
 		if got := fmt.Sprint(c.got); got != c.want {
