@@ -21,7 +21,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Market exposure**: `Beta`, `CAPM` — measure an asset's exposure and per-period alpha against a benchmark return series
 - **Options**: `BlackScholes`, `ImpliedVolatility` — price European calls and puts, report five greeks, and recover volatility from a market price
 - **Factor models**: `FactorModel` — attribute an asset's excess returns to named market, size, value, momentum, or other factor columns
-- **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado)
+- **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado); `RealityCheck`, `SPATest` — bootstrap tests of whether the best of many strategies beats a benchmark (White, Hansen)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 - **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
@@ -411,6 +411,44 @@ If `T` is not a multiple of `nSplits`, the trailing `T mod nSplits` rows are dro
 **Returns:** `(pbo, err)` — a probability in `[0, 1]`. `err` is non-nil for an empty matrix, columns of unequal length, fewer than 2 strategies, an odd or non-positive `nSplits`, or `nSplits > T`.
 
 > Combination count is `C(S, S/2)`, which grows fast: `S=16 → 12,870`. Keep `nSplits` modest (typically 8–16).
+
+### RealityCheck and SPATest
+
+```go
+type ResamplingScheme int // ResampleStationary (default), ResampleMovingBlock
+
+type DataSnoopingOptions struct {
+    Benchmark    insyra.IDataList // nil compares every column with 0
+    Replications int              // bootstrap replications, at least 1
+    BlockSize    int              // (mean) block length, 1 <= BlockSize <= T/2
+    Seed         uint64           // always applies; same input and options → same result
+    Scheme       ResamplingScheme
+}
+
+func RealityCheck(perf insyra.IDataTable, opts DataSnoopingOptions) (*RealityCheckResult, error)
+func SPATest(perf insyra.IDataTable, opts DataSnoopingOptions) (*SPAResult, error)
+```
+
+After trying many strategies or parameter sets and keeping the best, these answer **"does the best one really beat the benchmark, or did it win by luck?"** Both take the same `T×N` table as `PBO` (column k is strategy k, row t is period t, higher is better: returns, or negated losses) and compare every column with `Benchmark`. The null hypothesis is that no strategy has a positive expected edge, so a **small p-value means the best strategy's edge survives the search**.
+
+Both use a block bootstrap that keeps the correlation between strategies: every replication draws one sequence of time positions and applies it to all columns. The positions come from the same seeded stream as `BlockBootstrap`, so the results are bit-identical for the same input and options. Nothing is defaulted: `Replications` and `BlockSize` must be set. The p-values move in steps of `1/Replications`; 1,000–10,000 is typical. `BlockSize` should cover the serial dependence of the series; the stationary bootstrap White and Hansen use is the default. `BlockSize` may be at most half the rows (`2·BlockSize ≤ T`), because with blocks near `T` the moving block bootstrap resamples the original series almost unchanged, so the bootstrap has no spread, and as `q = 1/BlockSize` approaches 0 the weights `κ` approach 1 and `ω_k²` shrinks toward the sum of all autocovariances of the demeaned series, which is 0; both tests then call pure noise significant. Even at `T/2` the p-values are too small on noise more often than the nominal level, so keep `BlockSize` well below `T`.
+
+With `d_k,t` = column k minus the benchmark in period t, `dbar_k` its mean, `T` the number of rows and `dbar*_k` the mean of a resample:
+
+- **`RealityCheck`** (White 2000): statistic `V = max(max_k √T·dbar_k, 0)`; each replication computes `V* = max(0, max_k √T·(dbar*_k − dbar_k))`, and `PValue` is the share of replications with `V* ≥ V`. `Best` is the column with the largest `dbar_k`.
+- **`SPATest`** (Hansen 2005): each mean is divided by its long-run standard deviation `ω_k`, so a strategy that is merely noisy cannot hide a good one. Statistic `T_SPA = max(max_k √T·dbar_k/ω_k, 0)`; each replication computes `T* = max(0, max_k √T·(dbar*_k − g(dbar_k))/ω_k)` with the **same** `ω_k`, and each p-value is the share with `T* ≥ T_SPA`. `PValueLower` uses `g(x) = max(0, x)`, `PValueUpper` uses `g(x) = x`, and `PValueConsistent` uses `g(x) = x` when `x ≥ −√(ω_k²/T·2·log log T)` and 0 otherwise, which sets aside strategies far below the benchmark. `PValueConsistent` is the test; the other two bound it (`Lower ≤ Consistent ≤ Upper`). `Best` is the column with the largest `√T·dbar_k/ω_k`.
+- **Ties count as exceedances.** The papers write a strict inequality (`>`); this package uses `≥`. The two differ only on exact ties, which have probability zero for continuous data, but a strict comparison reports `p = 0` (maximal significance) when no column beats the benchmark, because then the statistic and every centered replication are all 0. With `≥` the p-value is 1 in that case.
+- `ω_k² = γ_0 + 2·Σ_{i=1}^{T−1} κ(T,i)·γ_i`, where `γ_i` is the lag-i autocovariance of `d_k` divided by `T` and `κ(T,i) = ((T−i)/T)(1−q)^i + (i/T)(1−q)^(T−i)` with `q = 1/BlockSize` — Hansen's estimate implied by the stationary bootstrap. It is used for both schemes.
+
+`RealityCheckResult` holds `PValue`, `Statistic`, `Best` (zero-based column number), `BestName` (its name, `""` if none) and `Replications`. `SPAResult` holds `PValueLower`, `PValueConsistent`, `PValueUpper`, `Statistic`, `Best`, `BestName` and `Replications`.
+
+**Errors:** a nil table, no columns, fewer than 3 rows, an unreadable or non-finite cell (named with its column and row index), `Replications < 1`, `BlockSize` outside `[1, T/2]`, an unknown `Scheme`, a benchmark whose length is not `T` or that is a nil list, a column whose mean over the benchmark is not finite (values too large to sum), a bootstrap replication whose resampled mean is not finite (finite values that cancel in the original order can overflow when a draw repeats same-sign rows; it is an error, never counted as an exceedance), and, for `SPATest` only, a column with no variance relative to the benchmark: `d_k` constant (such as a column equal to the benchmark), or `ω_k²` not finite or at most `10⁻²⁴` times the mean of `d_k²`, which is rounding noise.
+
+**Speed.** `ω_k²` is computed directly from the formula above, which costs `O(T²·N)` for `SPATest`; it is slow for very large `T` (about 10 seconds at `T = 8000`, `N = 50`).
+
+**Compared with Python `arch`.** The definitions above are the paper's, checked against an independent implementation of its formulas (`quant/testdata/data_snooping_baseline.py`). `arch.bootstrap.SPA` does not reproduce them and its numbers will differ: in arch 8.0.0 the SPA statistic and its bootstrap values are the unstandardized maximum mean (`ω_k` is computed but used only to pick the consistent p-value's columns) without the `max(0, ·)`, and in later versions the standard error is re-estimated in every replication and the moving-block bootstrap uses the Bartlett kernel. arch also takes losses (lower is better), where these take performance. The bootstrap streams differ too, so even matching definitions give p-values that agree only within bootstrap error.
+
+`RealityCheck` and `SPATest` say whether the best strategy beats the benchmark; they do not say which of the others also do (Romano and Wolf's stepdown answers that, and is not in this package yet).
 
 ---
 
@@ -1076,6 +1114,23 @@ if err != nil {
 fmt.Printf("PBO = %.1f%%\n", pbo*100) // high → in-sample winners fail out-of-sample
 ```
 
+### Does the best strategy beat the index?
+
+```go
+// perf: one column of daily returns per strategy tried; index: the index's daily returns.
+spa, err := quant.SPATest(perf, quant.DataSnoopingOptions{
+    Benchmark:    index,
+    Replications: 5000,
+    BlockSize:    10,
+    Seed:         1,
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("best %s, SPA p = %.3f (lower %.3f, upper %.3f)\n",
+    spa.BestName, spa.PValueConsistent, spa.PValueLower, spa.PValueUpper)
+```
+
 ### Walk-forward validation
 
 ```go
@@ -1204,6 +1259,7 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`ExpectedMaxSharpe`** — negative `sharpeVariance`
 - **`DeflatedSharpeRatio`** — nil, empty, or unreadable `trialSharpes` (the error names the series and row), or any downstream error
 - **`PBO`** — empty matrix, an unreadable cell (the error names the zero-based `column <j>` and the one-based row), columns of unequal length, fewer than 2 strategies, odd/non-positive `nSplits`, `nSplits > T`
+- **`RealityCheck`**, **`SPATest`** — nil table, no columns, fewer than 3 rows, an unreadable cell (named with its column and row index), `Replications < 1`, `BlockSize` outside `[1, T/2]`, an unknown `Scheme`, a benchmark of the wrong length or a nil list, a column mean over the benchmark or a resampled mean that is not finite; `SPATest` also refuses a column with no variance relative to the benchmark (constant or rounding-noise `ω²`)
 - **`WalkForward`** — non-positive `n`/`TrainSize`/`TestSize`, `TrainSize >= n`, nil callback
 - **`BlockBootstrap`** — empty or unreadable `returns` (non-numeric, NaN, Inf — the error names the row), non-positive `Horizon`/`Paths`, `BlockSize < 1`, `BlockSize > len(returns)`
 - **`PercentileBands`** — empty or ragged `paths`, empty `percentiles`, a percentile outside `[0, 100]`
