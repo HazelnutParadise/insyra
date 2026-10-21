@@ -116,7 +116,9 @@ The surviving operation resolves that rather than trading it away: the device ra
 
 `Precision` is the selector for the general case. `PrecisionExact` is the default — an empty `WorkloadEstimate.Precision` means it — and under it a `float64` or `int64` column is refused wherever the device would need it narrowed, with `precision-not-accepted` as the reason: the runtime does not narrow one unasked. `PrecisionFloat32` is the explicit choice that lets those columns be narrowed before upload, values above 2^24 losing precision, which is exactly what asking for it acknowledges.
 
-Nothing released reads that choice yet. `ExecuteNearestExact` sets its device precision itself, and it is the only operation the runtime ships, so a `float64` workload is answered exactly either way: passing `PrecisionFloat32` today changes no result and no fallback reason. The selector is what a future device operation that returns new `float64` values would have to read before narrowing anything, and the default is what keeps that from happening by accident.
+`PrecisionFloat32Rounded` is the third value. It runs in float32 and defines each result as the exact value of its operation rounded once, so every device and the CPU fallback return the same bits. It is what `nn`'s device-resident training uses (see [nn](nn.md#training-on-the-device)); `accel.DefaultDevice`, `accel.NewDeviceBuffer` and the `accel.Rounded…` functions are its programmatic surface.
+
+Nothing else released reads that choice yet. `ExecuteNearestExact` sets its device precision itself, and it is the only operation the runtime ships, so a `float64` workload is answered exactly either way: passing `PrecisionFloat32` today changes no result and no fallback reason. The selector is what a future device operation that returns new `float64` values would have to read before narrowing anything, and the default is what keeps that from happening by accident.
 
 ## Operations
 

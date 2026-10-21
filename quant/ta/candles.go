@@ -20,13 +20,24 @@ type CandleOptions struct {
 	// LongBody is the smallest body a "long" candle has: the first candle of a
 	// star or a harami and the engulfed one in piercing lines. Default 0.6.
 	LongBody float64
-	// ShadowRatio is how many times the body a long shadow is, and how many
-	// times shorter the opposite shadow is than the long one. Default 2.
-	ShadowRatio float64
+	// LongShadowRatio is how many times the body the long shadow of a hammer or
+	// a star must be at least: the shadow is at least body times this. Default 2.
+	LongShadowRatio float64
+	// ShortShadowRatio is how many times shorter than its reference a shadow
+	// that must be small is: the opposite shadow of a hammer or a star is at most
+	// the long shadow divided by this, and a shadow of a soldier or a crow is at
+	// most the body divided by this. Default 2.
+	ShortShadowRatio float64
 	// TrendRows is how many rows back the trend before a hammer or a star is
 	// read: up when the close of the previous row is above the close TrendRows
 	// rows before it. Default 5.
 	TrendRows int
+	// SegmentStarts are the rows on which a new data segment starts, for example
+	// after a trading halt or a relisting. Each segment is computed on its own:
+	// no pattern uses a bar of an earlier segment, and the first rows of a segment
+	// that lack the bars a pattern needs are 0. Rows are 0-based and must lie
+	// within the series; empty gives one segment.
+	SegmentStarts []int
 }
 
 // CandlePatternResult holds one list per candlestick pattern, as many rows as the
@@ -73,7 +84,7 @@ func CandlePatterns(open, high, low, close insyra.IDataList, opts ...CandleOptio
 	if len(opts) == 1 {
 		o = opts[0]
 	}
-	if o.DojiBody < 0 || o.BodyRatio < 0 || o.LongBody < 0 || o.ShadowRatio < 0 || o.TrendRows < 0 {
+	if o.DojiBody < 0 || o.BodyRatio < 0 || o.LongBody < 0 || o.LongShadowRatio < 0 || o.ShortShadowRatio < 0 || o.TrendRows < 0 {
 		return nil, errors.New("CandleOptions fields must not be negative")
 	}
 	for name, v := range map[string]float64{"DojiBody": o.DojiBody, "BodyRatio": o.BodyRatio, "LongBody": o.LongBody} {
@@ -90,8 +101,11 @@ func CandlePatterns(open, high, low, close insyra.IDataList, opts ...CandleOptio
 	if o.LongBody == 0 {
 		o.LongBody = 0.6
 	}
-	if o.ShadowRatio == 0 {
-		o.ShadowRatio = 2
+	if o.LongShadowRatio == 0 {
+		o.LongShadowRatio = 2
+	}
+	if o.ShortShadowRatio == 0 {
+		o.ShortShadowRatio = 2
 	}
 	if o.TrendRows == 0 {
 		o.TrendRows = 5
@@ -108,6 +122,10 @@ func CandlePatterns(open, high, low, close insyra.IDataList, opts ...CandleOptio
 		return nil, fmt.Errorf("open has %d rows but close has %d", len(op), len(c))
 	}
 	n := len(c)
+	starts, err := cleanSegmentStarts(o.SegmentStarts, n)
+	if err != nil {
+		return nil, err
+	}
 	bars := make([]candle, n)
 	for i := range bars {
 		if op[i] > h[i] || op[i] < l[i] || c[i] > h[i] || c[i] < l[i] {
@@ -123,13 +141,32 @@ func CandlePatterns(open, high, low, close insyra.IDataList, opts ...CandleOptio
 			flags[name][i] = 0
 		}
 	}
+	for _, seg := range segmentBounds(n, starts) {
+		candleSegment(bars[seg[0]:seg[1]], o, flags, seg[0])
+	}
+	list := func(name string) *insyra.DataList { return insyra.NewDataList(flags[name]...).SetName(name) }
+	return &CandlePatternResult{
+		Doji: list("Doji"), Hammer: list("Hammer"), HangingMan: list("HangingMan"), InvertedHammer: list("InvertedHammer"),
+		ShootingStar: list("ShootingStar"), Engulfing: list("Engulfing"), Harami: list("Harami"), PiercingLine: list("PiercingLine"),
+		DarkCloudCover: list("DarkCloudCover"), MorningStar: list("MorningStar"), EveningStar: list("EveningStar"),
+		ThreeWhiteSoldiers: list("ThreeWhiteSoldiers"), ThreeBlackCrows: list("ThreeBlackCrows"),
+	}, nil
+}
+
+// candleSegment flags the patterns of one segment of bars into flags, whose row
+// off is the segment's first row. It reads nothing outside bars.
+func candleSegment(bars []candle, o CandleOptions, flags map[string][]any, off int) {
+	c := make([]float64, len(bars))
+	for i, k := range bars {
+		c[i] = k.c
+	}
 	small := func(k candle) bool { return k.rng() > 0 && k.body() <= o.BodyRatio*k.rng() }
 	long := func(k candle) bool { return k.rng() > 0 && k.body() >= o.LongBody*k.rng() }
 	lowerShadowed := func(k candle) bool {
-		return small(k) && k.lower() > 0 && k.lower() >= o.ShadowRatio*k.body() && k.upper() <= k.lower()/o.ShadowRatio
+		return small(k) && k.lower() > 0 && k.lower() >= o.LongShadowRatio*k.body() && k.upper() <= k.lower()/o.ShortShadowRatio
 	}
 	upperShadowed := func(k candle) bool {
-		return small(k) && k.upper() > 0 && k.upper() >= o.ShadowRatio*k.body() && k.lower() <= k.upper()/o.ShadowRatio
+		return small(k) && k.upper() > 0 && k.upper() >= o.LongShadowRatio*k.body() && k.lower() <= k.upper()/o.ShortShadowRatio
 	}
 	trend := func(i int) int { // before row i: 1 up, -1 down, 0 unknown
 		if i-1-o.TrendRows < 0 {
@@ -145,72 +182,65 @@ func CandlePatterns(open, high, low, close insyra.IDataList, opts ...CandleOptio
 	}
 	for i, k := range bars {
 		if k.rng() > 0 && k.body() <= o.DojiBody*k.rng() {
-			flags["Doji"][i] = 1
+			flags["Doji"][off+i] = 1
 		}
 		if lowerShadowed(k) {
 			switch trend(i) {
 			case -1:
-				flags["Hammer"][i] = 1
+				flags["Hammer"][off+i] = 1
 			case 1:
-				flags["HangingMan"][i] = -1
+				flags["HangingMan"][off+i] = -1
 			}
 		}
 		if upperShadowed(k) {
 			switch trend(i) {
 			case -1:
-				flags["InvertedHammer"][i] = 1
+				flags["InvertedHammer"][off+i] = 1
 			case 1:
-				flags["ShootingStar"][i] = -1
+				flags["ShootingStar"][off+i] = -1
 			}
 		}
 		if i >= 1 {
 			p := bars[i-1]
 			switch {
 			case p.down() && k.up() && k.o <= p.c && k.c >= p.o && k.body() > p.body():
-				flags["Engulfing"][i] = 1
+				flags["Engulfing"][off+i] = 1
 			case p.up() && k.down() && k.o >= p.c && k.c <= p.o && k.body() > p.body():
-				flags["Engulfing"][i] = -1
+				flags["Engulfing"][off+i] = -1
 			}
 			if long(p) && k.body() < p.body() && k.top() <= p.top() && k.bottom() >= p.bottom() && k.body() > 0 {
 				switch {
 				case p.down():
-					flags["Harami"][i] = 1
+					flags["Harami"][off+i] = 1
 				case p.up():
-					flags["Harami"][i] = -1
+					flags["Harami"][off+i] = -1
 				}
 			}
 			if long(p) && p.down() && k.up() && k.o < p.l && k.c > p.mid() && k.c < p.o {
-				flags["PiercingLine"][i] = 1
+				flags["PiercingLine"][off+i] = 1
 			}
 			if long(p) && p.up() && k.down() && k.o > p.h && k.c < p.mid() && k.c > p.o {
-				flags["DarkCloudCover"][i] = -1
+				flags["DarkCloudCover"][off+i] = -1
 			}
 		}
 		if i >= 2 {
 			a, b := bars[i-2], bars[i-1]
 			if long(a) && a.down() && small(b) && b.top() < a.c && k.up() && k.c > a.mid() {
-				flags["MorningStar"][i] = 1
+				flags["MorningStar"][off+i] = 1
 			}
 			if long(a) && a.up() && small(b) && b.bottom() > a.c && k.down() && k.c < a.mid() {
-				flags["EveningStar"][i] = -1
+				flags["EveningStar"][off+i] = -1
 			}
-			noUpperWick := func(x candle) bool { return x.upper()*o.ShadowRatio <= x.body() }
-			noLowerWick := func(x candle) bool { return x.lower()*o.ShadowRatio <= x.body() }
+			noUpperWick := func(x candle) bool { return x.upper()*o.ShortShadowRatio <= x.body() }
+			noLowerWick := func(x candle) bool { return x.lower()*o.ShortShadowRatio <= x.body() }
 			if a.up() && b.up() && k.up() && b.c > a.c && k.c > b.c &&
 				b.o > a.o && b.o < a.c && k.o > b.o && k.o < b.c && noUpperWick(a) && noUpperWick(b) && noUpperWick(k) {
-				flags["ThreeWhiteSoldiers"][i] = 1
+				flags["ThreeWhiteSoldiers"][off+i] = 1
 			}
 			if a.down() && b.down() && k.down() && b.c < a.c && k.c < b.c &&
 				b.o < a.o && b.o > a.c && k.o < b.o && k.o > b.c && noLowerWick(a) && noLowerWick(b) && noLowerWick(k) {
-				flags["ThreeBlackCrows"][i] = -1
+				flags["ThreeBlackCrows"][off+i] = -1
 			}
 		}
 	}
-	list := func(name string) *insyra.DataList { return insyra.NewDataList(flags[name]...).SetName(name) }
-	return &CandlePatternResult{
-		Doji: list("Doji"), Hammer: list("Hammer"), HangingMan: list("HangingMan"), InvertedHammer: list("InvertedHammer"),
-		ShootingStar: list("ShootingStar"), Engulfing: list("Engulfing"), Harami: list("Harami"), PiercingLine: list("PiercingLine"),
-		DarkCloudCover: list("DarkCloudCover"), MorningStar: list("MorningStar"), EveningStar: list("EveningStar"),
-		ThreeWhiteSoldiers: list("ThreeWhiteSoldiers"), ThreeBlackCrows: list("ThreeBlackCrows"),
-	}, nil
 }

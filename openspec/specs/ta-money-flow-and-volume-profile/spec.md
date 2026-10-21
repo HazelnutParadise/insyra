@@ -26,6 +26,20 @@ Volume-based indicators (money flow index, accumulation/distribution, Chaikin, e
 - **WHEN** all the volume traded in the lower of two bins
 - **THEN** POC is the middle of that bin
 
+### Requirement: Volume profile takes no close
+`ta.VolumeProfile` SHALL take high, low and volume and no close, and SHALL return an error for a high below its low, for a volume that is missing, non-numeric, non-finite or negative, and for series of different lengths.
+
+#### Scenario: Three series
+- **WHEN** high, low and volume are given
+- **THEN** the profile is returned without any close
+
+### Requirement: Segment starts restart ease of movement and the profile
+`ta.EaseOfMovementOptions` and `ta.VolumeProfileOptions` SHALL take `SegmentStarts`, the rows where a new data segment starts, and SHALL compute each segment on its own, with no midpoint move, average or window reaching across a start and NaN until a segment has its own data. An empty list SHALL leave the result bit-identical, and a start outside the rows SHALL be an error.
+
+#### Scenario: A trading halt
+- **WHEN** a segment starts at row 20
+- **THEN** rows from 20 equal the indicator computed on rows 20 onward alone
+
 ### Requirement: Unusable input is refused
 Each function here SHALL return an error naming the row index for a missing, non-numeric, non-finite or negative volume value and for a high below its low, and an error for a period below 1, slow not above fast, a negative bin count or scale, a value area outside 0 to 1 and series of different lengths.
 

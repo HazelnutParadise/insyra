@@ -8,8 +8,8 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-// PivotLevelsResult holds the floor-trader pivot levels in force on each row.
-type PivotLevelsResult struct {
+// PivotPointsResult holds the floor-trader pivot levels in force on each row.
+type PivotPointsResult struct {
 	P  *insyra.DataList
 	R1 *insyra.DataList
 	R2 *insyra.DataList
@@ -25,7 +25,7 @@ type PivotLevelsResult struct {
 // S1 = 2P - H, S2 = P - (H - L), S3 = L - 2(H - P). They are the levels to
 // watch on this row, known at yesterday's close, so row 0 is NaN. (These are
 // price levels, not the turning points ZigZag finds, which are Swings.)
-func PivotPoints(high, low, close insyra.IDataList) (*PivotLevelsResult, error) {
+func PivotPoints(high, low, close insyra.IDataList) (*PivotPointsResult, error) {
 	h, l, c, err := barSeries(high, low, close)
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func PivotPoints(high, low, close insyra.IDataList) (*PivotLevelsResult, error) 
 		lines[0][i], lines[1][i], lines[2][i], lines[3][i] = p, 2*p-L, p+(H-L), H+2*(p-L)
 		lines[4][i], lines[5][i], lines[6][i] = 2*p-H, p-(H-L), L-2*(H-p)
 	}
-	return &PivotLevelsResult{
+	return &PivotPointsResult{
 		listOfFloats("P", lines[0]), listOfFloats("R1", lines[1]), listOfFloats("R2", lines[2]), listOfFloats("R3", lines[3]),
 		listOfFloats("S1", lines[4]), listOfFloats("S2", lines[5]), listOfFloats("S3", lines[6]),
 	}, nil
@@ -50,18 +50,29 @@ func PivotPoints(high, low, close insyra.IDataList) (*PivotLevelsResult, error) 
 // with the columns Open, High, Low and Close: the close is (open + high + low +
 // close) / 4, the open is the midpoint of the previous Heikin-Ashi bar (the first
 // is (open + close) / 2), and the high and low extend to cover them. The bars
-// smooth the price, and each depends on all the bars before it.
+// smooth the price, and each depends on all the bars before it. All four series
+// must be numeric, finite, positive prices of the same length, and no high may be
+// below its low.
 func HeikinAshi(open, high, low, close insyra.IDataList) (*insyra.DataTable, error) {
-	o, err := positiveCloseSeries(open, "open")
-	if err != nil {
-		return nil, err
+	series := make([][]float64, 4)
+	for k, in := range []struct {
+		dl    insyra.IDataList
+		label string
+	}{{open, "open"}, {high, "high"}, {low, "low"}, {close, "close"}} {
+		p, err := positiveCloseSeries(in.dl, in.label)
+		if err != nil {
+			return nil, err
+		}
+		series[k] = p
 	}
-	h, l, c, err := barSeries(high, low, close)
-	if err != nil {
-		return nil, err
+	o, h, l, c := series[0], series[1], series[2], series[3]
+	if len(o) != len(h) || len(o) != len(l) || len(o) != len(c) {
+		return nil, fmt.Errorf("open, high, low and close must have the same length, got %d, %d, %d and %d", len(o), len(h), len(l), len(c))
 	}
-	if len(o) != len(c) {
-		return nil, fmt.Errorf("open has %d rows but close has %d", len(o), len(c))
+	for i := range h {
+		if h[i] < l[i] {
+			return nil, fmt.Errorf("high %v is below low %v at row index %d", h[i], l[i], i)
+		}
 	}
 	ho, hh, hl, hc := make([]any, len(c)), make([]any, len(c)), make([]any, len(c)), make([]any, len(c))
 	var prevOpen, prevClose float64
@@ -98,14 +109,18 @@ type TDSequentialResult struct {
 // earlier, 1 to 9, and a sell setup the mirror image; a row that breaks the run
 // resets the count to 0, and a run that reaches 9 starts again from 1 if it goes
 // on. A completed setup (9) starts a countdown on the next row: a buy countdown
-// counts, not necessarily in a row, the rows whose close is at or below the low
-// of two rows earlier, up to 13, and a sell countdown the rows whose close is at
-// or above the high of two rows earlier. This version uses closes in place of
-// highs and lows, so the lows and highs of the countdown are closes two rows
-// earlier. A countdown is cancelled when the opposite setup completes, and a
-// second setup of the same side while it runs does not restart it. Platforms
-// differ in the finer rules (perfection, qualifiers, recycling); these are the
-// plain ones.
+// counts, not necessarily in a row, the rows whose close is at or below the close
+// two rows earlier, up to 13, and a sell countdown the rows whose close is at or
+// above the close two rows earlier.
+//
+// This is not DeMark's original rule set. It differs in two ways: the countdown
+// compares the close with the close two rows earlier, where the original compares
+// with the low (buy) or high (sell) of two rows earlier, and a setup that goes on
+// past 9 starts again from 1. A countdown is cancelled when the opposite setup
+// completes, and a second setup of the same side while it runs does not restart
+// it. Platforms differ in the finer rules (perfection, qualifiers, recycling);
+// this version has none of them, so do not expect it to match a charting
+// platform's TD Sequential.
 func TDSequential(close insyra.IDataList) (*TDSequentialResult, error) {
 	c, err := numericSeries(close, "close")
 	if err != nil {
@@ -139,13 +154,13 @@ func TDSequential(close insyra.IDataList) (*TDSequentialResult, error) {
 		// A completed setup starts a countdown unless one of the same side is
 		// already running; the opposite side's countdown is cancelled.
 		if buy == 9 {
-			if !buyActive && buyCD != 13 {
+			if !buyActive {
 				buyActive, buyCD, buyFrom = true, 0, i
 			}
 			sellActive, sellCD = false, 0
 		}
 		if sell == 9 {
-			if !sellActive && sellCD != 13 {
+			if !sellActive {
 				sellActive, sellCD, sellFrom = true, 0, i
 			}
 			buyActive, buyCD = false, 0
@@ -226,6 +241,14 @@ func PointAndFigure(close insyra.IDataList, boxSize float64, reversal int) ([]PF
 	if err != nil {
 		return nil, err
 	}
+	// A box index must be an integer a float64 holds exactly, so converting it
+	// to int cannot wrap or saturate.
+	const maxBox = 1 << 53
+	for i, p := range c {
+		if q := math.Floor(p / boxSize); !(math.Abs(q) <= maxBox) {
+			return nil, fmt.Errorf("close %v at row index %d lies in a box beyond %d with boxSize %v; use a larger boxSize", p, i, int64(maxBox), boxSize)
+		}
+	}
 	box := func(p float64) int { return int(math.Floor(p / boxSize)) }
 	if len(c) == 0 {
 		return nil, nil
@@ -258,14 +281,14 @@ func PointAndFigure(close insyra.IDataList, boxSize float64, reversal int) ([]PF
 		case PFRising:
 			if b > high {
 				high, last = b, i
-			} else if b <= high-reversal {
+			} else if high-b >= reversal {
 				flush(last)
 				kind, high, low, start, last = PFFalling, high-1, b, i, i
 			}
 		case PFFalling:
 			if b < low {
 				low, last = b, i
-			} else if b >= low+reversal {
+			} else if b-low >= reversal {
 				flush(last)
 				kind, low, high, start, last = PFRising, low+1, b, i, i
 			}

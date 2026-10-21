@@ -43,3 +43,23 @@ func (s SkewnessMethod) String() string {
 	}
 	return fmt.Sprintf("SkewnessMethod(%d)", int(s))
 }
+
+// String returns the constant name of c, or CovType(n) for a value that is not
+// one of the constants.
+func (c CovType) String() string {
+	switch c {
+	case CovOLS:
+		return "CovOLS"
+	case CovHC0:
+		return "CovHC0"
+	case CovHC1:
+		return "CovHC1"
+	case CovHC2:
+		return "CovHC2"
+	case CovHC3:
+		return "CovHC3"
+	case CovHAC:
+		return "CovHAC"
+	}
+	return fmt.Sprintf("CovType(%d)", int(c))
+}

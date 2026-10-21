@@ -87,13 +87,17 @@ def profile(h, l, v, n, bins, va):
         total = v[s].sum()
         if total == 0:
             continue
-        best = int(np.argmax(vol))
+        tol = 1e-9 * total  # bins within rounding noise of each other tie, the lowest wins
+        best = 0
+        for k in range(bins):
+            if vol[k] > vol[best] + tol:
+                best = k
         a = b = best
         held = vol[best]
         while held < va * total and (a > 0 or b < bins - 1):
             below = vol[a - 1] if a > 0 else -1
             above = vol[b + 1] if b < bins - 1 else -1
-            if above > below:
+            if above > below + tol:
                 b += 1
                 held += vol[b]
             else:

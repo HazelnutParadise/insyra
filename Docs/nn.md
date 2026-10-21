@@ -79,6 +79,91 @@ that clears the MatMul hook.
 The device path is not wired in `-race` builds because the upstream Metal
 binding currently trips `checkptr`; those builds remain on the CPU path.
 
+## Training on the device
+
+A training step can keep its tensors on the GPU: parameters, activations,
+gradients and the update all stay in device memory, and only what you ask for
+(for example the loss) comes back. The tape has two precision modes. Choose
+by what you need the numbers to do.
+
+| | Default tape | `accel.PrecisionFloat32Rounded` |
+| --- | --- | --- |
+| How a result is defined | The host kernels, and `AdamW` with float64 intermediates | The exact value of each operation, rounded once to float32 |
+| Same bits on the host, on any GPU and with no GPU | No: a device cannot reproduce it | Yes |
+| Tensors on a device | Refused | Yes |
+| Accuracy | The more accurate of the two where float64 is used | Float32 throughout, as PyTorch's float32 optimizers are |
+| Choose it when | Nothing asks for a GPU, or results must equal an earlier release | The step should run on a GPU, or must reproduce on any machine |
+
+The default is unchanged from earlier releases. `PrecisionFloat32Rounded` is
+never the default: set it with `tape.SetPrecision`.
+
+```go
+dev := accel.DefaultDevice()           // the zero Device (the host) when there is no GPU
+tape := nn.NewTape()
+defer tape.Close()                      // frees parameters and everything the tape made
+_ = tape.SetPrecision(accel.PrecisionFloat32Rounded)
+
+E, _ := enc.To(dev)                     // upload once; the zero Device returns a host copy
+R, _ := readout.To(dev)
+tape.Param(E)
+tape.Param(R)
+
+for step := 0; step < steps; step++ {
+    tape.Clear()                        // drops last step's operations and tensors; keeps parameters
+    X, _ := batch.To(dev)
+    h, _ := tape.MatMul(X, E)
+    y, _ := tape.MatMul(h, R)
+    _ = tape.BackwardFrom(y, upstream)  // upstream lives on dev as well
+    _ = tape.SGD(0.05)
+    X.Release()                         // tensors you create with To are yours to release
+}
+loss, _ := y.ToHost()                   // the only way values come back
+```
+
+`Tensor.To(dev)` copies a tensor to a device, `Tensor.ToHost()` copies it
+back, `Tensor.Device()` says where it lives and `Tensor.Release()` frees its
+device memory (safe to repeat). Moving never changes the source and keeps
+every bit. A tape frees the tensors it creates on `Clear` and `Close`, but not
+the ones you pass in. A tensor on a device refuses `Float32Data` and every
+kernel with an error that names `ToHost`; nothing reads back by itself.
+Tensors count against the device's memory budget, and a buffer that is
+garbage-collected without `Release` is freed with a warning.
+
+In this release the precision mode covers `MatMul` and `Add` (a second operand
+that matches the first or repeats over its trailing dimensions) with their
+gradients, gradient accumulation, `SGD`, `Adam`, `AdamW` and `SoftmaxCrossEntropy`, in 2-D. In this
+mode `Adam` and `AdamW` are defined entirely in float32: each step is one
+correctly rounded operation or an exact two-term sum rounded once, and the
+constants (`1-beta`, the bias corrections, `lr*weightDecay`) are rounded once
+on the host. Their moments live on the device with the parameter, and the
+result equals the host's bit for bit. They differ from the default tape's
+float64 `AdamW` by a few ulps per step, as PyTorch's float32 `AdamW` does.
+
+`SoftmaxCrossEntropy` is covered too. Per row, with `m` the row maximum:
+`d = x - m`, `e = exp(d)`, `s` the exact sum of `e` rounded once,
+`loss = log(s) - d[label]`; the mean loss is the exact sum of the row losses
+rounded once, divided by the row count. The gradient is `e/s` times
+`upstream/rows`, with `upstream/rows` subtracted at the label. `exp` and `log`
+here are correctly rounded, the same bits on every platform (the host builds
+them from `+ - * /` only, the device in 128-bit integer arithmetic), and both
+agree on all 2^32 float32 inputs. A row with a non-finite logit gives NaN.
+Labels are `int64` tensors: `labels.To(dev)` holds them as int32 on the device
+and refuses a negative value or one that does not fit, naming it. `rows` must be
+below 2^24. Any other operation on a
+device tensor returns an error telling you to call `ToHost`; on host tensors
+in this mode they keep their default arithmetic. `SoftmaxCrossEntropy`, which
+needs integer `exp` and `log`; the rest follow in later releases.
+
+On an Apple M3, best of five, the exact device `MatMul` took 18 to 19 ms for
+`[4096,96]x[96,128]` and `[4096,128]x[128,96]`. The exact CPU reference took
+39 to 44 ms, and the default float32 CPU `MatMul` took 6.6 to 8 ms. So the
+exact device kernel is two to three times faster than the exact CPU but slower
+than the default CPU on this machine. Choose the mode for results that are the
+same everywhere and for a step that stays on the device, not for a faster
+product: if you only want speed on a multi-core CPU, the default tape is
+faster. The kernel is bound by the arithmetic of the exact sum, so tiling it
+did not help. Only Apple Metal has been measured; other GPUs have not. A program uses one card: the one WebGPU selects by default, whatever `Device` it passes to `To`; choosing among several cards is not supported yet.
+
 ## Loading and running an ONNX model
 
 ```go

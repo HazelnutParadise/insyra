@@ -288,12 +288,20 @@ func (m KDMethod) String() string {
 	return fmt.Sprintf("KDMethod(%d)", int(m))
 }
 
-// KDOptions are the optional settings of KD. A zero field takes the default
-// shown.
+// KDOptions are the optional settings of KD and StochRSI. A zero field takes the
+// default shown.
 type KDOptions struct {
 	Method KDMethod // KDRecursive (default) or KDMovingAverage
 	SlowK  int      // smoothing of K, default 3
 	SlowD  int      // smoothing of D, default 3
+	// SegmentStarts are the rows on which a new data segment starts, for
+	// example the first row after a trading halt, a relisting or a change of
+	// price basis. Each segment is computed on its own: K and D start again from
+	// their initial value on the segment's first row, the highest-high and
+	// lowest-low windows start again, nothing is carried across, and a segment
+	// shows NaN through its own warm-up. A segment shorter than the warm-up
+	// shows only NaN. Row 0 starts the first segment and need not be listed.
+	SegmentStarts []int
 }
 
 // KDResult holds the two lines of the stochastic oscillator.
@@ -323,6 +331,21 @@ func KD(high, low, close insyra.IDataList, n int, opts ...KDOptions) (*KDResult,
 	if err != nil {
 		return nil, err
 	}
+	starts, err := cleanSegmentStarts(o.SegmentStarts, len(c))
+	if err != nil {
+		return nil, err
+	}
+	k, d := nanSeries(len(c)), nanSeries(len(c))
+	for _, b := range segmentBounds(len(c), starts) {
+		sk, sd := kdSegment(h[b[0]:b[1]], l[b[0]:b[1]], c[b[0]:b[1]], n, o)
+		copy(k[b[0]:b[1]], sk)
+		copy(d[b[0]:b[1]], sd)
+	}
+	return &KDResult{listOfFloats("K", k), listOfFloats("D", d)}, nil
+}
+
+// kdSegment is KD over one data segment, with the settings of o already checked.
+func kdSegment(h, l, c []float64, n int, o KDOptions) (k, d []float64) {
 	rsv := nanSeries(len(c))
 	for i := n - 1; i < len(c); i++ {
 		hh, ll := h[i], l[i]
@@ -335,8 +358,7 @@ func KD(high, low, close insyra.IDataList, n int, opts ...KDOptions) (*KDResult,
 			rsv[i] = (c[i] - ll) / (hh - ll) * 100
 		}
 	}
-	k, d := smoothStochastic(rsv, n-1, o)
-	return &KDResult{listOfFloats("K", k), listOfFloats("D", d)}, nil
+	return smoothStochastic(rsv, n-1, o)
 }
 
 // smoothStochastic turns a raw stochastic value, defined from row first on, into
@@ -347,6 +369,11 @@ func smoothStochastic(rsv []float64, first int, o KDOptions) (k, d []float64) {
 	case KDRecursive:
 		pk, pd := 50.0, 50.0
 		for i := first; i < len(rsv); i++ {
+			if math.IsNaN(rsv[i]) {
+				// no raw value (StochRSI over an undefined RSI): leave the state as
+				// it is, at its initial 50 until the first row that has one
+				continue
+			}
 			pk = pk*float64(o.SlowK-1)/float64(o.SlowK) + rsv[i]/float64(o.SlowK)
 			pd = pd*float64(o.SlowD-1)/float64(o.SlowD) + pk/float64(o.SlowD)
 			k[i], d[i] = pk, pd
