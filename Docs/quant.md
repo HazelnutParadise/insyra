@@ -51,6 +51,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Turning points and regimes**: `ZigZag`, `Regimes` — causal turning points of a price series and the bull and bear stretches between them
 - **Signal backtest**: `BacktestSignal` — a 0–1 position signal into a net return series with a one-row delay, cash returns and separate buy and sell costs
 - **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
+- **Cross-sectional regression**: `FamaMacBeth` — regress every date's returns on several characteristics and test each coefficient's time average with a Newey-West t-test
 - **Oscillators**: `RSI` — relative strength index with Wilder or simple averaging and a choice for missing prices
 - **Technical indicators**: `SMA`, `EMA`, `MACD`, `Bollinger`, `TrueRange`, `ATR`, `KD` — the common moving-average, volatility and stochastic indicators, checked against TA-Lib
 - **Sharpe comparison**: `SharpeDifferenceTest` — Jobson-Korkie test with Memmel's correction for whether two return series have the same Sharpe ratio
@@ -790,6 +791,42 @@ Every day, sorts the stocks into `n` groups by a signal and reports each group's
 res, err := quant.QuantileSort(panel, "date", "signal", []string{"ret_5d"}, 5)
 spread := res.Spread.GetColByName("spread_ret_5d")
 sharpe, err := quant.SharpeRatio(spread, 0, 252)
+```
+
+### FamaMacBeth
+
+```go
+func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []string, opts ...FamaMacBethOptions) (*FamaMacBethResult, error)
+```
+
+Fama-MacBeth regressions: on every date, the return is regressed on an intercept and the characteristics across stocks, and each coefficient's daily series is then tested for a zero mean with `stats.NeweyWestMeanTest`. Where `QuantileSort` looks at one signal, this asks whether a characteristic still explains the cross-section of returns once the others are controlled for. The table is the same long form `QuantileSort` takes, one row per stock and date.
+
+`dateCol`, `returnCol` and `charCols` are column names, or Excel-style letters when no column has that name. Dates are grouped by value and appear in the order they first appear. A date is a string (compared exactly, whitespace included), `time.Time` (by instant), `bool`, an integer or a float (not `NaN`); `int` 1 and `float64` 1 are different dates, and any other type, `nil` included, is an error. A stock is left out of its day when its return or any characteristic is missing (`nil` or `NaN`). A date with too few usable stocks, or whose characteristics are collinear (including one that is constant that day), is listed in `Skipped` and does not fail the call. Fewer than two estimated dates, a text or infinite value, a missing date, the date and return columns being the same column, a repeated characteristic, the date or return column listed as a characteristic, or a characteristic named `date`, `intercept`, `r2` or `count` (the fixed names of `Daily`'s columns, compared exactly) is an error.
+
+**Options (`FamaMacBethOptions`)**
+
+- `NeweyWestLag`: the lag of the t-test. `0` (default) chooses `stats.NeweyWestLag(T)` for `T` estimated dates and a positive value is used as given. A negative value, or a lag not smaller than `T`, is an error.
+- `NoNeweyWest`: `true` switches the Newey-West correction off, so the t-test runs with lag 0, whose variance divides by `T`. This equals `linearmodels` with `cov_type="unadjusted", debiased=False`; it is not the same as `stats.SingleSampleTTest`, which divides by `T-1`. Setting it together with a non-zero `NeweyWestLag` is an error, and the reported `Lag` is 0.
+- `MinObservations`: the fewest usable stocks a date needs; fewer skips the date. At least k+2 are always needed for k characteristics, which is also the default.
+- `Standardize`: replace each characteristic by its z-score over the date's usable stocks (sample standard deviation) before regressing, so the coefficients are per one standard deviation.
+
+**Result (`FamaMacBethResult`)**
+
+- `Intercept`, `InterceptStdErr`, `InterceptTValue`, `InterceptPValue`: the mean daily intercept and its test.
+- `Names`, `Coefs`, `StdErrs`, `TValues`, `PValues`: per characteristic, in the order of `charCols`, the mean daily coefficient and its test.
+- `Daily`: one row per estimated date, with columns `date`, `intercept`, one per characteristic under the name it was given, `r2` and `count` (stocks regressed). A date whose returns are all equal has `r2` `NaN`.
+- `MeanR2`: the mean of the finite daily R².
+- `Lag`: the lag used, after any automatic choice. `Days`: the number of estimated dates, `T`.
+- `Skipped`: the dates left out and why.
+
+The standard errors equal Python's `linearmodels.FamaMacBeth(...).fit(cov_type="kernel", kernel="bartlett", bandwidth=lag, debiased=False)`, and with `NoNeweyWest` `cov_type="unadjusted", debiased=False`: Bartlett weights `1 - j/(lag+1)` and no small-sample factor. `debiased=True` divides the variance by `T-1` instead of `T`. The p values are two-sided from the t distribution with `T-1` degrees of freedom, as `stats.NeweyWestMeanTest` reports them; linearmodels uses the normal distribution with `debiased=False`. Its automatic bandwidth is a data-driven choice, not `stats.NeweyWestLag`, so pass the lag explicitly to compare.
+
+```go
+res, err := quant.FamaMacBeth(panel, "date", "ret_next", []string{"momentum", "size", "bias"},
+    quant.FamaMacBethOptions{Standardize: true})
+for i, name := range res.Names {
+    fmt.Printf("%s: %.4f (t = %.2f)\n", name, res.Coefs[i], res.TValues[i])
+}
 ```
 
 ---

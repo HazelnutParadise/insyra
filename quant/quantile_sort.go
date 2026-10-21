@@ -114,21 +114,13 @@ func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols
 	var weights []any
 	var readErr error
 	table.AtomicDo(func(dt *insyra.DataTable) {
-		names := dt.ColNames()
 		find := func(sel, role string) []any {
 			if readErr != nil {
 				return nil
 			}
-			for i, name := range names {
-				if name == sel {
-					return dt.GetColByNumber(i).Data()
-				}
-			}
-			if i, ok := insyra.ColIndexToNumber(sel); ok && i < len(names) {
-				return dt.GetColByNumber(i).Data()
-			}
-			readErr = fmt.Errorf("%s column %q not found", role, sel)
-			return nil
+			data, err := columnData(dt, sel, role)
+			readErr = err
+			return data
 		}
 		dates = find(dateCol, "date")
 		signals = find(signalCol, "signal")
@@ -274,6 +266,31 @@ func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols
 	res.Groups = insyra.NewDataTable(groupCols...)
 	res.Spread = insyra.NewDataTable(spreadCols...)
 	return res, nil
+}
+
+// columnNumber finds a column by name, or by Excel-style letters when no
+// column has that name. It returns -1 when neither matches.
+func columnNumber(dt *insyra.DataTable, sel string) int {
+	names := dt.ColNames()
+	for i, name := range names {
+		if name == sel {
+			return i
+		}
+	}
+	if i, ok := insyra.ColIndexToNumber(sel); ok && i < len(names) {
+		return i
+	}
+	return -1
+}
+
+// columnData returns the cells of the column columnNumber finds, or an error
+// naming the column's role when it is not found. Call it inside AtomicDo.
+func columnData(dt *insyra.DataTable, sel, role string) ([]any, error) {
+	i := columnNumber(dt, sel)
+	if i < 0 {
+		return nil, fmt.Errorf("%s column %q not found", role, sel)
+	}
+	return dt.GetColByNumber(i).Data(), nil
 }
 
 func weightAt(wt []float64, i int) float64 {
