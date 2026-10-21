@@ -306,3 +306,28 @@ func TestIchimokuSegmentStartsAndCloseAreChecked(t *testing.T) {
 		}
 	}
 }
+
+func TestTRIXSignalSurvivesAnUndefinedRow(t *testing.T) {
+	nan := math.NaN()
+	// Row 1 has no TRIX because the triple EMA before it is 0; the signal is seeded from the first two defined values.
+	r, err := TRIX(prices(0, 1, 2, 3, 4), 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []float64{nan, nan, nan, 75, 75 + (100.0/3-75)*2/3}
+	if got := floats(t, r.Signal); !sameFloats(got, want) {
+		t.Fatalf("signal %v, want %v", got, want)
+	}
+	// A stretch of zero prices leaves TRIX undefined; the signal restarts from the next full window instead of staying NaN for good.
+	r, err = TRIX(prices(1, 2, 3, 0, 0, 0, 5, 6, 7, 8), 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := floats(t, r.Signal)
+	if got[2] != 75 || got[4] == got[4] || got[7] == got[7] {
+		t.Fatalf("signal around the gap: %v", got)
+	}
+	if want := (20 + 100.0/6) / 2; math.Abs(got[8]-want) > 1e-12 {
+		t.Fatalf("signal after the gap %v, want %v", got[8], want)
+	}
+}

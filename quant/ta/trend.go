@@ -76,8 +76,39 @@ func TRIX(prices insyra.IDataList, n, signal int) (*TRIXResult, error) {
 			trix[i] = 100 * (e3[i]/e3[i-1] - 1)
 		}
 	}
-	sig := emaOf(trix, signal, 3*(n-1)+1)
+	sig := signalOf(trix, signal)
 	return &TRIXResult{listOfFloats("TRIX", trix), listOfFloats("Signal", sig)}, nil
+}
+
+// signalOf is the EMA of the defined values of v, seeded with the simple average
+// of the first n consecutive defined values. A NaN row (TRIX is undefined when
+// the triple EMA before it is 0) is NaN in the result and ends the average, which
+// starts again from the next n consecutive defined values, so one undefined row
+// does not silence the signal for good. Without gaps it equals emaOf from the
+// first defined value.
+func signalOf(v []float64, n int) []float64 {
+	out := nanSeries(len(v))
+	k := 2 / float64(n+1)
+	run, seed := 0, 0.0
+	have, prev := false, 0.0
+	for i, x := range v {
+		if math.IsNaN(x) {
+			run, seed, have = 0, 0, false
+			continue
+		}
+		if have {
+			prev = (x-prev)*k + prev
+			out[i] = prev
+			continue
+		}
+		run++
+		seed += x
+		if run == n {
+			prev, have = seed/float64(n), true
+			out[i] = prev
+		}
+	}
+	return out
 }
 
 // KAMA returns Perry Kaufman's adaptive moving average. The efficiency ratio of
