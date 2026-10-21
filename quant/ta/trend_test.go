@@ -307,6 +307,18 @@ func TestIchimokuSegmentStartsAndCloseAreChecked(t *testing.T) {
 	}
 }
 
+func TestKAMAFlatWindowHasEfficiencyRatioOne(t *testing.T) {
+	// As in TA-Lib, a window with no movement has ratio 1, so the line moves fast towards the flat price.
+	k, err := KAMA(prices(1, 2, 3, 3, 3), 2, 2, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := floats(t, k)
+	if math.Abs(got[4]-2.828532) > 1e-6 {
+		t.Fatalf("KAMA on a plateau %v, want about 2.828532", got[4])
+	}
+}
+
 func TestTRIXSignalSurvivesAnUndefinedRow(t *testing.T) {
 	nan := math.NaN()
 	// Row 1 has no TRIX because the triple EMA before it is 0; the signal is seeded from the first two defined values.

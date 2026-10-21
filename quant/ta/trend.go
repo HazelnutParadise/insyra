@@ -142,9 +142,11 @@ func KAMA(prices insyra.IDataList, n, fast, slow int) (*insyra.DataList, error) 
 		for j := i - n + 1; j <= i; j++ {
 			path += math.Abs(p[j] - p[j-1])
 		}
-		er := 0.0
-		if path != 0 {
-			er = math.Abs(p[i]-p[i-n]) / path
+		// As in TA-Lib a window that did not move (no path) has ratio 1, as does
+		// one whose path is no longer than its net change.
+		er := 1.0
+		if net := math.Abs(p[i] - p[i-n]); path > net {
+			er = net / path
 		}
 		sc := er*(fastSC-slowSC) + slowSC
 		prev += sc * sc * (p[i] - prev)
