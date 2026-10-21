@@ -243,6 +243,7 @@ func TestReadOnACancelledContextIsNotDamage(t *testing.T) {
 	dt, err := Read(ctx, path, ReadOptions{})
 	if err == nil {
 		t.Fatalf("Read returned %d rows and no error on a cancelled context", dt.NumRows())
+		return
 	}
 	t.Logf("Read: %v", err)
 	if !errors.Is(err, context.Canceled) {

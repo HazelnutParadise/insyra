@@ -191,6 +191,7 @@ func TestBiIndex_CloneOfNil(t *testing.T) {
 
 	if c == nil {
 		t.Fatal("Clone on a nil receiver returned nil")
+		return
 	}
 	if got := c.Len(); got != 0 {
 		t.Errorf("Len of a nil clone: got %d, want 0", got)

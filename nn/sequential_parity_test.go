@@ -167,6 +167,7 @@ func assertSequentialParameters(t *testing.T, model *Sequential, want map[string
 		parameter := model.NamedParameters()[name]
 		if parameter == nil {
 			t.Fatalf("post-step parameter %q is missing", name)
+			return
 		}
 		got := float32Values(t, parameter.Value())
 		if strings.HasSuffix(name, ".weight") {

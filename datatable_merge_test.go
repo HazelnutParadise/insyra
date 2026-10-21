@@ -66,6 +66,7 @@ func TestDataTable_Merge_Vertical_RowNames(t *testing.T) {
 	idCol := res.GetColByName("ID")
 	if idCol == nil {
 		t.Fatal("ID column not found")
+		return
 	}
 	expectedID := []any{1, 2, 1, 3}
 	for i, v := range expectedID {

@@ -83,6 +83,7 @@ func buildAutodiffCNN(t *testing.T, tape *Tape, parameters map[string]*Parameter
 		value := parameters[name]
 		if value == nil {
 			t.Fatalf("missing CNN parameter %q", name)
+			return nil
 		}
 		return value.Value()
 	}

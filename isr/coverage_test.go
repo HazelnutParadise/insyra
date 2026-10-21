@@ -401,6 +401,7 @@ func TestDT_WindowWrappers(t *testing.T) {
 			got := tt.get(build())
 			if got == nil {
 				t.Fatal("the wrapper returned nil")
+				return
 			}
 			if !reflect.DeepEqual(got.Data(), tt.want) {
 				t.Errorf("got %v, want %v", got.Data(), tt.want)
@@ -425,6 +426,7 @@ func TestDT_CCL(t *testing.T) {
 	col := table.GetColByName("C")
 	if col == nil {
 		t.Fatal("CCL did not create column C")
+		return
 	}
 	if got, want := col.Data(), []any{int64(11), int64(22), int64(33)}; !reflect.DeepEqual(got, want) {
 		t.Errorf("C: got %v, want %v", got, want)
@@ -437,6 +439,7 @@ func TestDT_CCL_BadStatement(t *testing.T) {
 	table := sampleDT().CCL("NEW('C') = (((")
 	if table == nil {
 		t.Fatal("CCL returned nil")
+		return
 	}
 	if table.Err() == nil {
 		t.Error("a statement that does not compile recorded no error")
@@ -452,6 +455,7 @@ func TestUse_ValueWithNilPointer(t *testing.T) {
 	table := UseDT(DataTable{})
 	if table == nil {
 		t.Fatal("UseDT(DataTable{}) returned nil")
+		return
 	}
 	if table.Err() == nil {
 		t.Error("UseDT on a value with a nil table recorded no error")
@@ -460,6 +464,7 @@ func TestUse_ValueWithNilPointer(t *testing.T) {
 	list := UseDL(DataList{})
 	if list == nil {
 		t.Fatal("UseDL(DataList{}) returned nil")
+		return
 	}
 	if list.Err() == nil {
 		t.Error("UseDL on a value with a nil list recorded no error")

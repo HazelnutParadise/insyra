@@ -334,6 +334,7 @@ func TestUnderlyingFitErrorIsReturnedUnchanged(t *testing.T) {
 	_, wantErr := stats.LinearRegression(y, x.GetColByNumber(0))
 	if wantErr == nil {
 		t.Fatal("direct stats fit unexpectedly succeeded")
+		return
 	}
 	_, gotErr := ml.FitLinearRegression(x, y)
 	if gotErr == nil || gotErr.Error() != wantErr.Error() {

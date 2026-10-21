@@ -164,6 +164,7 @@ func TestCustomRefusesAnOutputAlreadyOnTheTape(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("Custom(...) succeeded, want error")
+		return
 	}
 	if !strings.Contains(err.Error(), "dup") || !strings.Contains(err.Error(), "Mul") {
 		t.Fatalf("error %q does not name the operation and its producer", err)
@@ -279,6 +280,7 @@ func TestCustomRefusesMalformedDeclarations(t *testing.T) {
 			err := tape.Custom(tc.name, tc.inputs, tc.output, tc.vjp)
 			if err == nil {
 				t.Fatalf("Custom(%q, ...) succeeded, want error", tc.name)
+				return
 			}
 			if err.Error() != tc.wantErr {
 				t.Fatalf("Custom(%q, ...) error = %q, want %q", tc.name, err.Error(), tc.wantErr)
@@ -314,6 +316,7 @@ func TestCustomBackwardRejectsMalformedGradients(t *testing.T) {
 		err = tape.Backward(loss)
 		if err == nil {
 			t.Fatal("Backward succeeded, want error")
+			return
 		}
 		if !strings.Contains(err.Error(), "badshape") {
 			t.Fatalf("error %q does not name the operation", err)
@@ -343,6 +346,7 @@ func TestCustomBackwardRejectsMalformedGradients(t *testing.T) {
 		err = tape.Backward(loss)
 		if err == nil {
 			t.Fatal("Backward succeeded, want error")
+			return
 		}
 		if !strings.Contains(err.Error(), "shortvec") {
 			t.Fatalf("error %q does not name the operation", err)
@@ -365,6 +369,7 @@ func TestCustomBackwardRejectsMalformedGradients(t *testing.T) {
 		err = tape.Backward(loss)
 		if err == nil {
 			t.Fatal("Backward succeeded, want error")
+			return
 		}
 		if !strings.Contains(err.Error(), "boolgrad") {
 			t.Fatalf("error %q does not name the operation", err)
@@ -439,6 +444,7 @@ func TestFailedBackwardKeepsPreviousGradients(t *testing.T) {
 	firstParamGrad := param.Grad()
 	if firstParamGrad == nil {
 		t.Fatal("parameter gradient is nil after success")
+		return
 	}
 	firstParamGradData := append([]float32(nil), firstParamGrad.data...)
 
@@ -469,6 +475,7 @@ func TestFailedBackwardKeepsPreviousGradients(t *testing.T) {
 	afterParamGrad := param.Grad()
 	if afterParamGrad == nil {
 		t.Fatal("parameter gradient is nil after failure")
+		return
 	}
 	if !equalFloat32Slices(afterParamGrad.data, firstParamGradData) {
 		t.Fatalf("Parameter.Grad after failure = %v, want %v", afterParamGrad.data, firstParamGradData)
@@ -515,6 +522,7 @@ func TestCustomRefusesAnOutputAnEarlierOperationRead(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("Custom accepted an output an earlier operation had read")
+		return
 	}
 	if !strings.Contains(err.Error(), "square") || !strings.Contains(err.Error(), "Mul") {
 		t.Fatalf("error %q does not name the operation and the reader", err)

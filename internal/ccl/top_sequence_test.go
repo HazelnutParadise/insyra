@@ -311,6 +311,7 @@ func TestTopSequenceRefusesAReRegisteredName(t *testing.T) {
 	_, ok, err = NewTopSequence(node, len(data["A"]), []string{"A", "B"})
 	if err == nil {
 		t.Fatal("a re-registered LAG: no error, want one saying it is not supported")
+		return
 	}
 	if !strings.Contains(err.Error(), "LAG") || !strings.Contains(err.Error(), "not supported") {
 		t.Errorf("a re-registered LAG: error %q does not say LAG is not supported", err)

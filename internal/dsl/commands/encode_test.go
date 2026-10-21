@@ -20,6 +20,7 @@ func assertEncodeCommandData(t *testing.T, dl *insyra.DataList, want []any) {
 	t.Helper()
 	if dl == nil {
 		t.Fatalf("got nil DataList")
+		return
 	}
 	if got := dl.Data(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("data = %#v, want %#v", got, want)

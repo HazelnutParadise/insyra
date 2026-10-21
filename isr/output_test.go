@@ -164,6 +164,7 @@ func TestFromRowErrorNamesTheKey(t *testing.T) {
 	got := isr.DT.From(isr.Row{"A": 1, 3.5: 2}).Err()
 	if got == nil {
 		t.Fatal("want an error")
+		return
 	}
 	msg := got.Error()
 	if !strings.Contains(msg, "isr.Row") || !strings.Contains(msg, "3.5") {

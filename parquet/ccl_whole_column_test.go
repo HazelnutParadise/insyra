@@ -171,6 +171,7 @@ func TestApplyCCLGivesTheTablesErrorForAWholeColumnPart(t *testing.T) {
 			tableErr := tableScriptError(t, writeWholeFileFixture(t), tt.script)
 			if tableErr == nil {
 				t.Fatalf("ExecuteCCL(%q) on the loaded table did not fail, so it is no comparison", tt.script)
+				return
 			}
 			if !strings.Contains(tableErr.Error(), tt.want) {
 				t.Fatalf("the table's error %q does not hold %q", shorten(tableErr), tt.want)
@@ -184,6 +185,7 @@ func TestApplyCCLGivesTheTablesErrorForAWholeColumnPart(t *testing.T) {
 			err = ApplyCCL(context.Background(), path, tt.script)
 			if err == nil {
 				t.Fatalf("ApplyCCL(%q) wrote the file although the table fails on it", tt.script)
+				return
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("error %q does not hold %q, which the table's error does", shorten(err), tt.want)
@@ -418,6 +420,7 @@ func TestWholeColumnValuesAreTheTables(t *testing.T) {
 		_, err = wholeColumnValues(context.Background(), path, colNames, nil, totalRows, nil, node)
 		if err == nil {
 			t.Fatal("wholeColumnValues read a column past the end of the file")
+			return
 		}
 		dt := insyra.NewDataTable(insyra.NewDataList(1.0).SetName("A"), insyra.NewDataList(2.0).SetName("B"))
 		dt.AddColUsingCCL("__v", "MEDIAN(Z) > 0")
@@ -631,6 +634,7 @@ func TestApplyCCLReportsAMissingTargetFirst(t *testing.T) {
 	err = ApplyCCL(context.Background(), path, script)
 	if err == nil {
 		t.Fatalf("ApplyCCL(%q) wrote the file although its target is not there", script)
+		return
 	}
 	if !strings.Contains(err.Error(), reason) {
 		t.Errorf("error %q does not hold %q, which the table's error does", shorten(err), reason)

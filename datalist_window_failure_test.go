@@ -11,6 +11,7 @@ func assertCarriesError(t *testing.T, name string, got *DataList) {
 	t.Helper()
 	if got == nil {
 		t.Fatalf("%s: returned nil", name)
+		return
 	}
 	if n := got.Len(); n != 0 {
 		t.Errorf("%s: expected length 0, got %d", name, n)
@@ -71,6 +72,7 @@ func TestRollingInvalidOptionsCarryTheError(t *testing.T) {
 	err := src.Err()
 	if err == nil {
 		t.Fatal("expected an error recorded on the source list")
+		return
 	}
 	if err.FuncName != "Rolling" {
 		t.Errorf("FuncName = %q, want %q", err.FuncName, "Rolling")
@@ -145,6 +147,7 @@ func TestEWMInvalidDecayCarriesTheError(t *testing.T) {
 	err := src.Err()
 	if err == nil {
 		t.Fatal("expected an error recorded on the source list")
+		return
 	}
 	if want := "exactly one of Alpha, Span, or HalfLife must be specified"; err.Message != want {
 		t.Errorf("Message = %q, want %q", err.Message, want)

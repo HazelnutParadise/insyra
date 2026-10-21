@@ -46,6 +46,7 @@ func TestDataTable_CCL_StdlibIntegration(t *testing.T) {
 		col := dt.GetColByName(name)
 		if col == nil {
 			t.Fatalf("column %q not found", name)
+			return nil
 		}
 		out := make([]float64, 0, len(col.Data()))
 		for _, v := range col.Data() {
@@ -62,6 +63,7 @@ func TestDataTable_CCL_StdlibIntegration(t *testing.T) {
 		col := dt.GetColByName(name)
 		if col == nil {
 			t.Fatalf("column %q not found", name)
+			return nil
 		}
 		out := make([]string, 0, len(col.Data()))
 		for _, v := range col.Data() {

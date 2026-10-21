@@ -20,6 +20,7 @@ func TestDataTable_CCL_LAG_AddCol(t *testing.T) {
 	col := dt.GetColByName("prev")
 	if col == nil {
 		t.Fatal("prev column missing")
+		return
 	}
 	got := col.Data()
 	want := []any{nil, 10.0, 12.0, 11.0, 13.0}
@@ -90,6 +91,7 @@ func TestDataTable_CCL_RegressionAggregateStillWorks(t *testing.T) {
 	col := dt.GetColByName("total")
 	if col == nil {
 		t.Fatal("total col missing")
+		return
 	}
 	got := col.Data()
 	// Aggregate broadcasts to every row.

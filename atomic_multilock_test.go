@@ -149,6 +149,7 @@ func TestTableInsert_ClonesInput(t *testing.T) {
 	check := func(name string, tableCol *DataList) {
 		if tableCol == nil {
 			t.Fatalf("%s: table column is nil", name)
+			return
 		}
 		if got := tableCol.Len(); got != 3 {
 			t.Fatalf("%s aliased the source: table col len=%d, want 3", name, got)

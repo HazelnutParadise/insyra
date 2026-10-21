@@ -34,6 +34,7 @@ func TestNumericArgumentErrorsNameTheCommandAndField(t *testing.T) {
 			err := Dispatch(ctx, tt.cmd, tt.args)
 			if err == nil {
 				t.Fatal("a non-numeric argument gave no error")
+				return
 			}
 			msg := err.Error()
 			if strings.Contains(msg, "strconv.") {
@@ -66,6 +67,7 @@ func TestKMeansAndKNNOptionParsing(t *testing.T) {
 		_, err := parseKMeansOptions(nil, []string{"nope", "1"})
 		if err == nil {
 			t.Fatal("an unknown option was accepted")
+			return
 		}
 		for _, want := range []string{"kmeans", "nstart", "itermax", "seed"} {
 			if !strings.Contains(err.Error(), want) {

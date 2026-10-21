@@ -33,6 +33,7 @@ func TestConversionsRefuseAnUnknownEncoding(t *testing.T) {
 	err := CSVToExcel([]SheetFromCSV{{Path: csvPath}}, out, "klingon-1")
 	if err == nil {
 		t.Fatal("CSVToExcel accepted an encoding no decoder handles")
+		return
 	}
 	if !strings.Contains(err.Error(), "klingon-1") {
 		t.Errorf("the error should name the encoding: %v", err)
@@ -60,6 +61,7 @@ func TestConversionsRefuseAnUnknownEncoding(t *testing.T) {
 	err = AppendCSVToExcel([]SheetFromCSV{{Path: csvPath, Sheet: "Sheet1"}}, book, "klingon-1")
 	if err == nil {
 		t.Fatal("AppendCSVToExcel accepted an encoding no decoder handles")
+		return
 	}
 	if !strings.Contains(err.Error(), "klingon-1") {
 		t.Errorf("the error should name the encoding: %v", err)
@@ -78,6 +80,7 @@ func TestConversionsRefuseAnUnknownEncoding(t *testing.T) {
 	err = CSVDirToExcel(csvDir, out2, "klingon-1")
 	if err == nil {
 		t.Fatal("CSVDirToExcel accepted an encoding no decoder handles")
+		return
 	}
 	if !strings.Contains(err.Error(), "klingon-1") {
 		t.Errorf("the error should name the encoding: %v", err)
@@ -135,6 +138,7 @@ func TestAnUnknownEncodingIsRefusedWithNoFiles(t *testing.T) {
 	err := CSVToExcel(nil, out, "klingon-1")
 	if err == nil {
 		t.Fatal("CSVToExcel accepted an encoding no decoder handles")
+		return
 	}
 	if !strings.Contains(err.Error(), "klingon-1") {
 		t.Errorf("the error should name the encoding: %v", err)
@@ -148,6 +152,7 @@ func TestAnUnknownEncodingIsRefusedWithNoFiles(t *testing.T) {
 	err = CSVDirToExcel(emptyDir, out2, "klingon-1")
 	if err == nil {
 		t.Fatal("CSVDirToExcel accepted an encoding no decoder handles")
+		return
 	}
 	if !strings.Contains(err.Error(), "klingon-1") {
 		t.Errorf("the error should name the encoding: %v", err)
@@ -175,6 +180,7 @@ func TestAnUnknownEncodingIsRefusedWithNoFiles(t *testing.T) {
 	err = AppendCSVToExcel(nil, book, "klingon-1")
 	if err == nil {
 		t.Fatal("AppendCSVToExcel accepted an encoding no decoder handles")
+		return
 	}
 	if !strings.Contains(err.Error(), "klingon-1") {
 		t.Errorf("the error should name the encoding: %v", err)
@@ -201,6 +207,7 @@ func TestAnUnknownEncodingIsNamedOnce(t *testing.T) {
 	err := CSVToExcel(files, out, "klingon-1")
 	if err == nil {
 		t.Fatal("CSVToExcel accepted an encoding no decoder handles")
+		return
 	}
 	if n := strings.Count(err.Error(), "klingon-1"); n != 1 {
 		t.Errorf("the error names the encoding %d times, want once: %v", n, err)

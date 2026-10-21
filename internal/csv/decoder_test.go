@@ -69,6 +69,7 @@ func TestUnknownEncodingIsRefused(t *testing.T) {
 	_, err := DecodingReader(strings.NewReader("a"), "klingon-1")
 	if err == nil {
 		t.Fatal("DecodingReader accepted an unknown encoding")
+		return
 	}
 	if !strings.Contains(err.Error(), "klingon-1") || !strings.Contains(err.Error(), "utf8") {
 		t.Fatalf("error should name the input and the supported list: %v", err)

@@ -91,6 +91,7 @@ func TestSavePNG_PathWithoutExtension(t *testing.T) {
 	err = SavePNG(chart, filepath.Join(t.TempDir(), "out"))
 	if err == nil {
 		t.Fatal("SavePNG accepted a path with no extension")
+		return
 	}
 	if !strings.Contains(err.Error(), "extension") {
 		t.Errorf("error %q does not mention the missing extension", err)

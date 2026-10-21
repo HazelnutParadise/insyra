@@ -53,6 +53,7 @@ func TestRFM(t *testing.T) {
 	result := RFM(dt, config)
 	if result == nil {
 		t.Fatal("RFM returned nil")
+		return
 	}
 
 	// 檢查結果

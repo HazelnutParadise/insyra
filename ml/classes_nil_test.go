@@ -37,6 +37,7 @@ func TestClassesNeverReturnsNil(t *testing.T) {
 			got := classes()
 			if got == nil {
 				t.Fatal("Classes() returned nil; a caller cannot even ask Err() why")
+				return
 			}
 			// Everything a caller might reach for must be safe.
 			if n := got.Len(); n != 0 {
@@ -46,6 +47,7 @@ func TestClassesNeverReturnsNil(t *testing.T) {
 			err := got.Err()
 			if err == nil {
 				t.Fatal("Err() is nil; the empty result says nothing about why it is empty")
+				return
 			}
 			if !strings.Contains(strings.ToLower(err.Error()), "fit") {
 				t.Errorf("the reason should say the model is not fitted: %v", err)
@@ -76,6 +78,7 @@ func TestPipelineClassesNeverReturnsNil(t *testing.T) {
 			got := classes()
 			if got == nil {
 				t.Fatal("Classes() returned nil")
+				return
 			}
 			if got.Err() == nil {
 				t.Error("Err() is nil; the empty result says nothing about why it is empty")

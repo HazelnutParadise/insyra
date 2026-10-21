@@ -11,6 +11,7 @@ func assertGroupedEmptyWithError(t *testing.T, name string, got *DataList) {
 	t.Helper()
 	if got == nil {
 		t.Fatalf("%s: returned nil", name)
+		return
 	}
 	if n := got.Len(); n != 0 {
 		t.Errorf("%s: expected length 0, got %d", name, n)

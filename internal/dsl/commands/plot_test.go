@@ -17,6 +17,7 @@ func TestPlotReportsWhyTheChartCannotBeBuilt(t *testing.T) {
 	err := Dispatch(ctx, "plot", []string{"line", "empty", "save", filepath.Join(t.TempDir(), "line.html")})
 	if err == nil {
 		t.Fatalf("plot drew a table with no columns; output was %q", outputOf(ctx))
+		return
 	}
 	if !strings.Contains(err.Error(), "CreateLineChart: no data to draw") {
 		t.Errorf("error %q does not carry the constructor's reason", err)

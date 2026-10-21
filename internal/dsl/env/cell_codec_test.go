@@ -47,6 +47,7 @@ func encodeRejects(t *testing.T, v any, wantSubstring string) {
 	tag, value, err := encodeCell(v)
 	if err == nil {
 		t.Fatalf("encodeCell(%T) accepted the value and returned tag %q, value %#v", v, tag, value)
+		return
 	}
 	if !strings.Contains(err.Error(), wantSubstring) {
 		t.Errorf("encodeCell(%T) error = %q, want it to mention %q", v, err.Error(), wantSubstring)
@@ -363,6 +364,7 @@ func TestCellCodec_DecodeErrorNamesTheTagAndTheValue(t *testing.T) {
 	_, err := decodeCell("int64", "12")
 	if err == nil {
 		t.Fatal("decodeCell(\"int64\", \"12\") returned no error")
+		return
 	}
 	if message := err.Error(); !strings.Contains(message, "int64") || !strings.Contains(message, "string") {
 		t.Errorf("decodeCell(\"int64\", \"12\") error = %q, want it to name the tag and the value's type", message)
@@ -502,6 +504,7 @@ func TestColumnCodec_EncodeErrorNamesTheRow(t *testing.T) {
 	_, err := encodeColumn("mixed", []any{1, struct{ X int }{1}, "a"})
 	if err == nil {
 		t.Fatal("encodeColumn accepted a cell it cannot store")
+		return
 	}
 	if message := err.Error(); !strings.Contains(message, "row 1") || !strings.Contains(message, "struct { X int }") {
 		t.Errorf("encodeColumn error = %q, want it to name row 1 and the type it refused", message)
@@ -547,6 +550,7 @@ func TestColumnCodec_DecodeErrorNamesTheRow(t *testing.T) {
 	_, _, err := decodeColumn(raw)
 	if err == nil {
 		t.Fatalf("decodeColumn(%#v) returned no error", raw)
+		return
 	}
 	if message := err.Error(); !strings.Contains(message, "row 1") {
 		t.Errorf("decodeColumn error = %q, want it to name row 1", message)

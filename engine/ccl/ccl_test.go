@@ -93,6 +93,7 @@ func TestEvaluateReturnsTheUnderlyingError(t *testing.T) {
 	_, err = ccl.Evaluate(bound, ctx)
 	if err == nil {
 		t.Fatal("dividing by zero gave no error")
+		return
 	}
 	if !strings.Contains(err.Error(), "division by zero") {
 		t.Errorf("error %q does not name the cause", err)

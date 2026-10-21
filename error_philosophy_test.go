@@ -108,6 +108,7 @@ func TestErrorLevelOrdering(t *testing.T) {
 	err := dl.Err()
 	if err == nil {
 		t.Fatal("Normalize over a non-numeric cell recorded nothing")
+		return
 	}
 	if err.Level != LogLevelError {
 		t.Fatalf("instance error level = %v, want Error", err.Level)

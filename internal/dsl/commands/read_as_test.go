@@ -15,6 +15,7 @@ func TestReadRefusesAsWithGuidance(t *testing.T) {
 	err := Dispatch(ctx, "read", []string{"sales.csv", "as", "x"})
 	if err == nil {
 		t.Fatal("read accepted an alias")
+		return
 	}
 	msg := err.Error()
 	if strings.Contains(msg, "unknown option") {

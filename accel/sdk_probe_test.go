@@ -167,6 +167,7 @@ func TestSDKProbeRealErrorPropagatesAsDiscoveryError(t *testing.T) {
 	}
 	if session == nil {
 		t.Fatal("expected a session even when sdk probe returns a non-unavailable error")
+		return
 	}
 	t.Cleanup(func() { _ = session.Close() })
 

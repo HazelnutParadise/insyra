@@ -18,6 +18,7 @@ func floatsOf(t *testing.T, dl *DataList) []float64 {
 	t.Helper()
 	if dl == nil {
 		t.Fatalf("got nil DataList")
+		return nil
 	}
 	raw := dl.Data()
 	out := make([]float64, len(raw))

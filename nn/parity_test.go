@@ -1021,6 +1021,7 @@ func assertParityOutputTolerance(t *testing.T, got *Tensor, want parityOutput, t
 	t.Helper()
 	if got == nil {
 		t.Fatal("got nil tensor")
+		return
 	}
 	if fmt.Sprint(got.shape) != fmt.Sprint(want.Shape) {
 		t.Fatalf("shape = %v, want %v", got.shape, want.Shape)

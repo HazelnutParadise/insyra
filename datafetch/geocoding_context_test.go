@@ -120,6 +120,7 @@ func TestReverseColsContextKeepsWhatItResolved(t *testing.T) {
 	}
 	if dt == nil {
 		t.Fatal("a cancelled batch returned no table")
+		return
 	}
 	want := []any{geocodeStatusOK, geocodeStatusPending, geocodeStatusOK, geocodeStatusPending}
 	if got := dt.GetColByName("GeocodeStatus").Data(); !reflect.DeepEqual(got, want) {

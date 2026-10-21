@@ -326,6 +326,7 @@ func TestReadUnrepresentableColumnSaysSo(t *testing.T) {
 	}
 	if dt == nil {
 		t.Fatal("nil table")
+		return
 	}
 
 	// The readable column still works.
@@ -345,6 +346,7 @@ func TestReadUnrepresentableColumnSaysSo(t *testing.T) {
 	e := dt.Err()
 	if e == nil {
 		t.Fatal("a column that could not be read was not reported")
+		return
 	}
 	msg := e.Error()
 	if !contains(msg, "tags") || !contains(msg, "list") {

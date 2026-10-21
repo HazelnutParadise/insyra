@@ -120,6 +120,7 @@ func TestCCLRangeWithNames(t *testing.T) {
 	colAB := dt.GetColByName("TestAB")
 	if colAB == nil {
 		t.Fatal("TestAB column not created")
+		return
 	}
 	valAB := colAB.Data()[0]
 	if toFloat(valAB) != 0.0 {

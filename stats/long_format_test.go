@@ -471,6 +471,7 @@ func TestLongFormatErrors(t *testing.T) {
 			_, err := stats.TwoWayANOVAFromTable(tc.dt, tc.valueCol, tc.factorA, tc.factorB)
 			if err == nil {
 				t.Fatalf("expected error %q, got nil", tc.wantError)
+				return
 			}
 			if tc.name == "value column not found" {
 				if !strings.HasPrefix(err.Error(), tc.wantError) {
@@ -781,6 +782,7 @@ func TestRepeatedMeasuresLongErrors(t *testing.T) {
 					_, err := fn.f(tc.dt, insyra.Name("value"), insyra.Name("cond"), insyra.Name("subj"))
 					if err == nil {
 						t.Fatalf("expected error %q, got nil", tc.wantError)
+						return
 					}
 					if err.Error() != tc.wantError {
 						t.Errorf("error mismatch: got %q, want %q", err.Error(), tc.wantError)

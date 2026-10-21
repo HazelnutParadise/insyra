@@ -146,6 +146,7 @@ func TestPerformanceRejectsUnreadableInput(t *testing.T) {
 			got, err := SharpeRatio(insyra.NewDataList(tc.values...), 0, 252)
 			if err == nil {
 				t.Fatalf("SharpeRatio returned nil error, got %v", got)
+				return
 			}
 			if !strings.Contains(err.Error(), tc.series) || !strings.Contains(err.Error(), tc.row) {
 				t.Errorf("SharpeRatio error = %q, want %s and %s", err, tc.series, tc.row)
@@ -174,6 +175,7 @@ func TestPerformanceRejectsUnreadableInput(t *testing.T) {
 				t.Helper()
 				if err == nil {
 					t.Fatalf("%s returned nil error, got %v", name, got)
+					return
 				}
 				if !strings.Contains(err.Error(), "equity") || !strings.Contains(err.Error(), tc.row) {
 					t.Errorf("%s error = %q, want equity and %s", name, err, tc.row)

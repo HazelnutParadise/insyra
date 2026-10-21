@@ -109,6 +109,7 @@ func TestPairedAndOneSampleTestsRefuseUnreadableCells(t *testing.T) {
 					resultNil, err := call.run()
 					if err == nil {
 						t.Fatalf("%s accepted a series holding %v", call.wantName, tc.bad)
+						return
 					}
 					if err.Error() != call.want {
 						t.Fatalf("%s error %q, want %q", call.wantName, err.Error(), call.want)
@@ -233,6 +234,7 @@ func TestANOVAFamilyRefusesUnreadableCells(t *testing.T) {
 					resultNil, err := call.run()
 					if err == nil {
 						t.Fatalf("%s accepted a cell holding %v", call.name, tc.bad)
+						return
 					}
 					if err.Error() != call.want {
 						t.Fatalf("%s error %q, want %q", call.name, err.Error(), call.want)
@@ -294,6 +296,7 @@ func TestANOVAFamilyNumbersPositionsFromOne(t *testing.T) {
 			resultNil, err := call.run()
 			if err == nil {
 				t.Fatalf("%s accepted an empty cell without an error", call.name)
+				return
 			}
 			if err.Error() != call.want {
 				t.Fatalf("%s error %q, want %q", call.name, err.Error(), call.want)
@@ -356,6 +359,7 @@ func TestANOVAFamilyRefusesNilLists(t *testing.T) {
 			err := call.run()
 			if err == nil {
 				t.Fatalf("a nil list was accepted without an error")
+				return
 			}
 			if err.Error() != call.want {
 				t.Errorf("error %q, want %q", err.Error(), call.want)
@@ -446,6 +450,7 @@ func TestRankAndVarianceTestsRefuseUnreadableCells(t *testing.T) {
 					resultNil, err := call.run()
 					if err == nil {
 						t.Fatalf("%s accepted a cell holding %v", call.name, tc.bad)
+						return
 					}
 					if err.Error() != call.want {
 						t.Fatalf("%s error %q, want %q", call.name, err.Error(), call.want)
@@ -500,6 +505,7 @@ func TestRankAndVarianceTestsNumberPositionsFromOne(t *testing.T) {
 			resultNil, err := call.run()
 			if err == nil {
 				t.Fatalf("%s accepted an empty or degenerate list without an error", call.name)
+				return
 			}
 			if err.Error() != call.want {
 				t.Fatalf("%s error %q, want %q", call.name, err.Error(), call.want)
@@ -557,6 +563,7 @@ func TestRankTestsRefuseNilLists(t *testing.T) {
 			err := call.run()
 			if err == nil {
 				t.Fatalf("a nil list was accepted without an error")
+				return
 			}
 			if err.Error() != call.want {
 				t.Errorf("error %q, want %q", err.Error(), call.want)

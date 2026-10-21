@@ -27,6 +27,7 @@ func TestYFNewsTabConvertsToGoYFinance(t *testing.T) {
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error for %q", tc.tab)
+					return
 				}
 				if !strings.Contains(err.Error(), tc.errSubstr) {
 					t.Errorf("error %q does not contain %q", err.Error(), tc.errSubstr)
@@ -53,6 +54,7 @@ func TestNewsRefusesAnUnknownTabBeforeAnyRequest(t *testing.T) {
 	_, err = y.Ticker("AAPL").News(5, YFNewsTab("videos"))
 	if err == nil {
 		t.Fatal("expected error for unknown tab")
+		return
 	}
 	if !strings.Contains(err.Error(), "videos") {
 		t.Errorf("error %q does not contain %q", err.Error(), "videos")

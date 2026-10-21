@@ -48,6 +48,7 @@ func TestCCL_NumericStringComparison(t *testing.T) {
 			result := dt.GetColByName("result")
 			if result == nil {
 				t.Fatal("Result column not found")
+				return
 			}
 
 			for i, expected := range tt.expected {
@@ -138,6 +139,7 @@ func TestCCL_NilHandling(t *testing.T) {
 			result := dt.GetColByName("result")
 			if result == nil {
 				t.Fatal("Result column not found")
+				return
 			}
 
 			for i, expected := range tt.expected {
@@ -197,6 +199,7 @@ func TestCCL_StringConcatenation(t *testing.T) {
 			result := dt.GetColByName("result")
 			if result == nil {
 				t.Fatal("Result column not found")
+				return
 			}
 
 			for i, expected := range tt.expected {
@@ -255,6 +258,7 @@ func TestCCL_BooleanOperations(t *testing.T) {
 			result := dt.GetColByName("result")
 			if result == nil {
 				t.Fatal("Result column not found")
+				return
 			}
 
 			for i, expected := range tt.expected {
@@ -303,6 +307,7 @@ func TestCCL_ChainedComparison(t *testing.T) {
 			result := dt.GetColByName("result")
 			if result == nil {
 				t.Fatal("Result column not found")
+				return
 			}
 
 			for i, expected := range tt.expected {

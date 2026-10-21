@@ -522,6 +522,7 @@ func TestApplyCCLRefusesAValueItCannotWriteWithoutPanicking(t *testing.T) {
 			got := arr.DataType()
 			arr.Release()
 			t.Fatalf("buildArrowArray built a %s array for a list column", got)
+			return
 		}
 		if !strings.Contains(err.Error(), `"d"`) || !strings.Contains(err.Error(), "list") {
 			t.Errorf("error %q names neither the column nor its type", err)

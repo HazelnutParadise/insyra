@@ -104,6 +104,7 @@ func TestApplyCCLKeepsAZstdFileInOneRowGroup(t *testing.T) {
 	col := dt.GetColByName("b")
 	if col == nil {
 		t.Fatalf("column \"b\" is missing from the result")
+		return
 	}
 	if got := fmt.Sprint(col.Get(10)); got != "20" {
 		t.Errorf("column \"b\" value 10 = %s, want \"20\"", got)

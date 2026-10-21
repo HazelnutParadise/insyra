@@ -340,6 +340,7 @@ func TestScalerJSONRefusesAnEmptyReference(t *testing.T) {
 	err = json.Unmarshal([]byte(badJSON), got)
 	if err == nil {
 		t.Fatalf("expected an error for empty ref, got none")
+		return
 	}
 	if !strings.Contains(err.Error(), "a column reference needs exactly one of index, name or position") {
 		t.Fatalf("wrong error: %v", err)
