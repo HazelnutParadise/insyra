@@ -137,7 +137,7 @@ func AbnormalReturns(prices, events insyra.IDataTable, dates insyra.IDataList, o
 		}
 	})
 	insyra.AtomicDoAll(func() {
-		snap, err = readAbnormalInput(prices, events, dates, opts.MarketLevels)
+		snap, err = readAbnormalInput(prices, events, dates, opts.MarketLevels, opts.EventWindow)
 	}, lockPrices, lockEvents, lockDates, lockLevels)
 	if err != nil {
 		return nil, err
@@ -145,7 +145,23 @@ func AbnormalReturns(prices, events insyra.IDataTable, dates insyra.IDataList, o
 	return computeAbnormalReturns(snap, opts), nil
 }
 
+// maxAbnormalOffset bounds every window end and the number of rows, so that
+// no sum of a row and an offset, or a window's length, can overflow an int,
+// even on 32 bits.
+const maxAbnormalOffset = 1 << 29
+
 func checkAbnormalOptions(o AbnormalReturnsOptions) error {
+	windows := []struct {
+		name string
+		v    [2]int
+	}{{"EstimationWindow", o.EstimationWindow}, {"EventWindow", o.EventWindow}}
+	for _, w := range windows {
+		for _, x := range w.v {
+			if x < -maxAbnormalOffset || x > maxAbnormalOffset {
+				return fmt.Errorf("%s %v is out of range; each end must be within %d rows of the event", w.name, w.v, maxAbnormalOffset)
+			}
+		}
+	}
 	switch o.Model {
 	case AbnormalMarketAdjusted:
 		if o.EstimationWindow != [2]int{} {
@@ -189,10 +205,18 @@ type abnormalInput struct {
 	levels []float64
 }
 
-func readAbnormalInput(prices, events insyra.IDataTable, dates insyra.IDataList, levels insyra.IDataList) (*abnormalInput, error) {
+func readAbnormalInput(prices, events insyra.IDataTable, dates insyra.IDataList, levels insyra.IDataList, eventWindow [2]int) (*abnormalInput, error) {
 	in := &abnormalInput{}
 	dates.AtomicDo(func(l *insyra.DataList) { in.dates = l.Data() })
 	in.rows = len(in.dates)
+	if in.rows > maxAbnormalOffset {
+		return nil, fmt.Errorf("dates has %d rows; at most %d are supported", in.rows, maxAbnormalOffset)
+	}
+	// Checked before the prices, events and levels are copied. The window ends
+	// were bounded by checkAbnormalOptions, so this cannot overflow.
+	if span := eventWindow[1] - eventWindow[0] + 1; span > in.rows {
+		return nil, fmt.Errorf("EventWindow %v spans %d rows and the table has %d; no event could fit", eventWindow, span, in.rows)
+	}
 	var err error
 	if in.prices, in.names, err = readPriceColumns(prices, in.rows); err != nil {
 		return nil, err
@@ -279,11 +303,22 @@ func computeAbnormalReturns(in *abnormalInput, o AbnormalReturnsOptions) *Abnorm
 			}
 			car := make([]float64, nd)
 			sum := 0.0
+			finite := true
 			for d, v := range day {
 				sum += v
+				if math.IsNaN(sum) || math.IsInf(sum, 0) {
+					finite = false
+					break
+				}
 				car[d] = sum
+			}
+			if !finite { // the running total overflowed: missing, like a non-finite return
+				missing++
+				continue
+			}
+			for d, v := range day {
 				ar[d] = append(ar[d], v)
-				cars[d] = append(cars[d], sum)
+				cars[d] = append(cars[d], car[d])
 			}
 			kept = append(kept, abnormalEvent{stock: stock, row: s, car: car})
 		}
@@ -343,6 +378,9 @@ func eventAbnormal(rs, rm []float64, flagged []int, s int, o AbnormalReturnsOpti
 	for d := range out {
 		t := s + w0 + d
 		out[d] = rs[t] - (alpha + beta*rm[t])
+		if math.IsNaN(out[d]) || math.IsInf(out[d], 0) {
+			return nil, false
+		}
 	}
 	return out, true
 }
@@ -351,8 +389,10 @@ func eventAbnormal(rs, rm []float64, flagged []int, s int, o AbnormalReturnsOpti
 // rows of the estimation window of the event at row s.
 func fitMarketModel(rs, rm []float64, flagged []int, s int, o AbnormalReturnsOptions) (alpha, beta float64, ok bool) {
 	var xs, ys []float64
-	for t := s + o.EstimationWindow[0]; t <= s+o.EstimationWindow[1]; t++ {
-		if t < 1 || t >= len(rs) || math.IsNaN(rs[t]) || math.IsNaN(rm[t]) {
+	// Only rows 1..len-1 have a return, so the loop is bounded by the table
+	// whatever the window's length.
+	for t := max(s+o.EstimationWindow[0], 1); t <= min(s+o.EstimationWindow[1], len(rs)-1); t++ {
+		if math.IsNaN(rs[t]) || math.IsNaN(rm[t]) {
 			continue
 		}
 		contaminated := false
@@ -388,7 +428,11 @@ func fitMarketModel(rs, rm []float64, flagged []int, s int, o AbnormalReturnsOpt
 		return 0, 0, false
 	}
 	beta = sxy / sxx
-	return my - beta*mx, beta, true
+	alpha = my - beta*mx
+	if math.IsNaN(alpha) || math.IsInf(alpha, 0) || math.IsNaN(beta) || math.IsInf(beta, 0) {
+		return 0, 0, false
+	}
+	return alpha, beta, true
 }
 
 // crossSectionalT returns the mean of x and the t statistic and two-tailed p
@@ -403,6 +447,9 @@ func crossSectionalT(x []float64) (mean, t, p float64) {
 		mean += v
 	}
 	mean /= float64(n)
+	if math.IsNaN(mean) || math.IsInf(mean, 0) { // the sum overflowed
+		return math.NaN(), math.NaN(), math.NaN()
+	}
 	if n < 2 {
 		return mean, math.NaN(), math.NaN()
 	}
@@ -411,7 +458,7 @@ func crossSectionalT(x []float64) (mean, t, p float64) {
 		ss += (v - mean) * (v - mean)
 	}
 	sd := math.Sqrt(ss / float64(n-1))
-	if sd == 0 {
+	if math.IsNaN(sd) || math.IsInf(sd, 0) || sd == 0 {
 		return mean, math.NaN(), math.NaN()
 	}
 	t = mean / (sd / math.Sqrt(float64(n)))
