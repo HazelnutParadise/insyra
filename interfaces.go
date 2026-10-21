@@ -296,6 +296,7 @@ type IDataTable interface {
 	FilterRowsWhere(keep func(row *DataList) bool) *DataTable
 	SliceRows(from, to int) *DataTable
 	SliceCols(from, to any) *DataTable
+	ColRange(from, to any) *DataTable
 	FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable
 	FilterColsByColNameEqualTo(name string) *DataTable
 	FilterColsByColNameContains(substring string) *DataTable
