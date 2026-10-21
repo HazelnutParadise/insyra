@@ -6,7 +6,7 @@ Chart patterns and fan-principle breaks found from causal turning points, each r
 ## Requirements
 
 ### Requirement: Patterns are known only from the row that confirms them
-`ta.DetectPatterns` SHALL report each pattern from the row that confirms its last turning point, SHALL measure its breakout as the first later close beyond its line before its expiry, and a series cut short SHALL give the patterns of the full series formed before the cut with any later breakout forgotten.
+`ta.DetectPatterns` SHALL report each pattern from the row that confirms its last turning point, SHALL measure its breakout as the first close beyond its line before its expiry, the confirming row's own close included, and a series cut short SHALL give the patterns of the full series formed before the cut with any later breakout forgotten.
 
 #### Scenario: A double top
 - **WHEN** peaks at 100 and 99 either side of a trough at 85 and a close of 84 on row 36

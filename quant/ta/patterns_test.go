@@ -513,3 +513,48 @@ func TestPatternsRefuseBreaksThatDifferFromTheSwings(t *testing.T) {
 		t.Error("two option sets should be an error")
 	}
 }
+
+func TestPriorTrendIsSetForEveryPatternKind(t *testing.T) {
+	d := []Swing{
+		pv(SwingLow, 0, 80, 1), pv(SwingHigh, 10, 100, 12), pv(SwingLow, 20, 90, 22), pv(SwingHigh, 30, 110, 32),
+		pv(SwingLow, 40, 85, 42), pv(SwingHigh, 50, 105, 52), pv(SwingLow, 60, 92, 62),
+	}
+	c := flatWith(100, map[int]float64{5: 90}) // the close on the pattern's first row, 100, is above the 90 five rows before
+	opts := PatternOptions{TrendRows: 5}
+	for name, tc := range map[string]struct {
+		swings []Swing
+		kind   PatternKind
+	}{
+		"double top":         {doubleTop, PatternDoubleTop},
+		"head and shoulders": {headAndShoulders, PatternHeadAndShouldersTop},
+		"diamond":            {d, PatternDiamond},
+	} {
+		got, err := DetectPatterns(prices(c...), tc.swings, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ps := findPattern(got, tc.kind)
+		if len(ps) == 0 {
+			t.Fatalf("%s: not found", name)
+		}
+		for _, p := range ps {
+			if p.PriorTrend != TrendUp {
+				t.Errorf("%s: PriorTrend %v, want TrendUp", name, p.PriorTrend)
+			}
+		}
+	}
+}
+
+func TestBreakoutCanBeOnTheConfirmingRow(t *testing.T) {
+	// Row 32 confirms the second peak and closes under the 85 trough: that close is known on row 32,
+	// so the break is dated there.
+	c := flatWith(60, map[int]float64{32: 84})
+	got, err := DetectPatterns(prices(c...), doubleTop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dt := findPattern(got, PatternDoubleTop)
+	if len(dt) != 1 || dt[0].BreakoutAt != 32 || dt[0].Direction != BreakDown {
+		t.Fatalf("got %+v", dt)
+	}
+}

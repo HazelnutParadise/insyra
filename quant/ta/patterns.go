@@ -130,7 +130,7 @@ func (d BreakDirection) String() string {
 // ConfirmedAt is the row that confirmed the last turning point of the pattern,
 // the first day it could be known; Start is the row of its first turning
 // point, which is in the past by then. The breakout is the first close beyond
-// the pattern's line before ExpiresAt. BreakoutAt is -1 and Direction is
+// the pattern's line before ExpiresAt, which may be the close of ConfirmedAt itself. BreakoutAt is -1 and Direction is
 // BreakNone for a pattern that expired, or that the price invalidated by
 // passing the head or the top of the double, before it broke out. A pattern
 // that breaks the way its kind does not allow (a head and shoulders top
@@ -230,7 +230,8 @@ func segmentStartOf(n int, starts []int) []int {
 // DetectPatterns finds the chart patterns formed by the turning points of
 // ZigZag or ZigZagAdaptive, using only information available at the close of each
 // row: a pattern is first known on the row that confirms its last turning
-// point, and its breakout is the first later close beyond its line. The
+// point, and its breakout is the first close beyond its line, counting the close of
+// the confirming row itself, which is known at the same time. The
 // swings must come from the same prices.
 //
 // It watches head and shoulders tops and bottoms, double tops and bottoms,
@@ -353,7 +354,7 @@ func newCandidates(swings []Swing, p, t int, c []float64, segStart []int, o Patt
 	}
 	base := func(kind PatternKind, first int, expires int) patternCandidate {
 		return patternCandidate{
-			Pattern: Pattern{Kind: kind, Start: row(first), ConfirmedAt: t, ExpiresAt: expires, BreakoutAt: -1},
+			Pattern: Pattern{Kind: kind, Start: row(first), ConfirmedAt: t, ExpiresAt: expires, BreakoutAt: -1, PriorTrend: priorTrend(row(first))},
 			invHigh: math.Inf(1),
 			invLow:  math.Inf(-1),
 		}
@@ -393,7 +394,6 @@ func newCandidates(swings []Swing, p, t int, c []float64, segStart []int, o Patt
 				width := min(row(p)-row(p-3), o.MaxRows)
 				cand := base(kind, p-3, row(p)+width)
 				cand.upper, cand.lower = line(hA, hB), line(lA, lB)
-				cand.PriorTrend = priorTrend(row(p - 3))
 				out = append(out, &cand)
 			}
 		}

@@ -193,9 +193,9 @@ type Pattern struct {
 }
 ```
 
-Finds the patterns formed by the turning points of `ZigZag` or `ZigZagAdaptive` using only what is known at each close: a pattern is first known on the row that confirms its last turning point (`ConfirmedAt`), and its breakout is the first later close beyond its line (`BreakoutAt`) before `ExpiresAt`. A series cut short gives the patterns of the full series formed before the cut, with any later breakout forgotten (the tests check this).
+Finds the patterns formed by the turning points of `ZigZag` or `ZigZagAdaptive` using only what is known at each close: a pattern is first known on the row that confirms its last turning point (`ConfirmedAt`), and its breakout is the first close beyond its line (`BreakoutAt`) before `ExpiresAt`, which may be the close of the confirming row itself, known at the same time. A series cut short gives the patterns of the full series formed before the cut, with any later breakout forgotten (the tests check this).
 
-Only the textbook direction is watched: a head and shoulders top, double top and diamond break down, a bottom breaks up, a rectangle and the triangles and wedges either way. A pattern the price cancels by passing the head or the peaks before breaking never breaks. The same pattern is found again from every turning point that completes it, so patterns overlap and several can break out on the same day.
+Only the textbook direction is watched: a head and shoulders top, double top and diamond break down, a bottom breaks up, a rectangle and the triangles and wedges either way. Wedges are told from other shapes by the rise of each line measured as a share of the pattern's height, the lower line rising faster than the upper for a rising wedge, and not by the slope per row, so with unevenly spaced turning points the two lines can widen slightly; this is how the reference implementation the tests compare against defines them. A pattern the price cancels by passing the head or the peaks before breaking never breaks. The same pattern is found again from every turning point that completes it, so patterns overlap and several can break out on the same day.
 
 Prices are closes, so a pattern's lines are drawn through closes and not intraday highs and lows.
 
