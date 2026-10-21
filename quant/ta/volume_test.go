@@ -1,4 +1,4 @@
-package quant
+package ta
 
 import (
 	"math"
@@ -57,21 +57,21 @@ func TestSignedVolumeRatio(t *testing.T) {
 	}
 }
 
-func TestDivergence(t *testing.T) {
-	bear, _ := Divergence(insyra.NewDataList(1.0, 2.0, 3.0, 4.0), insyra.NewDataList(1.0, 2.0, 3.0, 2.0), 2, 0)
+func TestPriceDivergence(t *testing.T) {
+	bear, _ := PriceDivergence(insyra.NewDataList(1.0, 2.0, 3.0, 4.0), insyra.NewDataList(1.0, 2.0, 3.0, 2.0), 2, 0)
 	if want := []float64{0, 0, 0, -1}; !reflect.DeepEqual(floats(t, bear), want) {
 		t.Errorf("bearish: got %v, want %v", floats(t, bear), want)
 	}
-	bull, _ := Divergence(insyra.NewDataList(5.0, 4.0, 3.0, 2.0), insyra.NewDataList(5.0, 4.0, 3.0, 4.0), 2, 0)
+	bull, _ := PriceDivergence(insyra.NewDataList(5.0, 4.0, 3.0, 2.0), insyra.NewDataList(5.0, 4.0, 3.0, 4.0), 2, 0)
 	if want := []float64{0, 0, 0, 1}; !reflect.DeepEqual(floats(t, bull), want) {
 		t.Errorf("bullish: got %v, want %v", floats(t, bull), want)
 	}
 	p, ind := insyra.NewDataList(1.0, 2.0, 3.0, 4.0, 5.0), insyra.NewDataList(1.0, 2.0, 3.0, 2.0, 1.0)
-	every, _ := Divergence(p, ind, 2, 0)
+	every, _ := PriceDivergence(p, ind, 2, 0)
 	if want := []float64{0, 0, 0, -1, -1}; !reflect.DeepEqual(floats(t, every), want) {
 		t.Errorf("no cooldown: got %v, want %v", floats(t, every), want)
 	}
-	once, _ := Divergence(p, ind, 2, 1)
+	once, _ := PriceDivergence(p, ind, 2, 1)
 	if want := []float64{0, 0, 0, -1, 0}; !reflect.DeepEqual(floats(t, once), want) {
 		t.Errorf("cooldown 1: got %v, want %v", floats(t, once), want)
 	}
@@ -88,8 +88,8 @@ func TestVolumeFunctionsRefuseBadInput(t *testing.T) {
 		"nil close":         func() error { _, e := OBV(nilList, good); return e },
 		"returns mismatch":  func() error { _, e := OBVFromReturns(good, insyra.NewDataList(1.0)); return e },
 		"ratio window zero": func() error { _, e := SignedVolumeRatio(good, good, 0); return e },
-		"divergence n":      func() error { _, e := Divergence(good, good, 0, 0); return e },
-		"divergence cool":   func() error { _, e := Divergence(good, good, 1, -1); return e },
+		"divergence n":      func() error { _, e := PriceDivergence(good, good, 0, 0); return e },
+		"divergence cool":   func() error { _, e := PriceDivergence(good, good, 1, -1); return e },
 	}
 	for name, f := range cases {
 		if f() == nil {
@@ -98,13 +98,13 @@ func TestVolumeFunctionsRefuseBadInput(t *testing.T) {
 	}
 }
 
-// An indicator such as RSI starts with NaN. Divergence skips the days whose
+// An indicator such as RSI starts with NaN. PriceDivergence skips the days whose
 // window reaches a NaN, and still refuses a NaN price or an infinite indicator.
-func TestDivergenceAcceptsAnIndicatorThatStartsWithNaN(t *testing.T) {
+func TestPriceDivergenceAcceptsAnIndicatorThatStartsWithNaN(t *testing.T) {
 	nan := math.NaN()
 	price := prices(1, 2, 3, 4, 5, 6, 7, 8)
 	ind := prices(nan, nan, 5, 4, 3, 2, 1, 0)
-	got, err := Divergence(price, ind, 3, 0)
+	got, err := PriceDivergence(price, ind, 3, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,13 +124,13 @@ func TestDivergenceAcceptsAnIndicatorThatStartsWithNaN(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Divergence(closePrices, rsi, 5, 1); err != nil {
-		t.Errorf("Divergence(close, RSI) should work: %v", err)
+	if _, err := PriceDivergence(closePrices, rsi, 5, 1); err != nil {
+		t.Errorf("PriceDivergence(close, RSI) should work: %v", err)
 	}
-	if _, err := Divergence(prices(1, nan, 3, 4), prices(1, 2, 3, 4), 2, 0); err == nil {
+	if _, err := PriceDivergence(prices(1, nan, 3, 4), prices(1, 2, 3, 4), 2, 0); err == nil {
 		t.Error("a NaN price should still be an error")
 	}
-	if _, err := Divergence(prices(1, 2, 3, 4), prices(1, math.Inf(1), 3, 4), 2, 0); err == nil {
+	if _, err := PriceDivergence(prices(1, 2, 3, 4), prices(1, math.Inf(1), 3, 4), 2, 0); err == nil {
 		t.Error("an infinite indicator should still be an error")
 	}
 }

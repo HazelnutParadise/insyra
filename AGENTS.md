@@ -192,6 +192,8 @@ The root package defines everything central:
 | `parallel/` | Parallel map/reduce over DataList/DataTable |
 | `lp/` / `lpgen/` | Linear programming |
 | `mkt/` | Market data helpers |
+| `quant/` | Strategy and portfolio evaluation: performance and risk metrics, CAPM, options, bootstrap, walk-forward, event studies |
+| `quant/ta/` | Technical-analysis tools (indicators, turning points, regimes) to test, not to trust |
 | `py/` | Python interop (runs Python via embedded env) |
 | `pd/` | Pandas-like wrappers built on `py/` |
 | `engine/` | Re-exported stable internals (BiIndex, Ring, AtomicDo, CCL compiler, sort utils) |

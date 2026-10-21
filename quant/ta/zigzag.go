@@ -1,4 +1,4 @@
-package quant
+package ta
 
 import (
 	"errors"
@@ -8,34 +8,34 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-// PivotKind says whether a turning point is a high or a low.
-type PivotKind int
+// SwingKind says whether a turning point is a high or a low.
+type SwingKind int
 
 const (
-	// PivotLow is a trough: the price rose by the threshold after it.
-	PivotLow PivotKind = iota
-	// PivotHigh is a peak: the price fell by the threshold after it.
-	PivotHigh
+	// SwingLow is a trough: the price rose by the threshold after it.
+	SwingLow SwingKind = iota
+	// SwingHigh is a peak: the price fell by the threshold after it.
+	SwingHigh
 )
 
-// String returns the constant name of k, or PivotKind(n) for a value that is
+// String returns the constant name of k, or SwingKind(n) for a value that is
 // not one of the constants.
-func (k PivotKind) String() string {
+func (k SwingKind) String() string {
 	switch k {
-	case PivotLow:
-		return "PivotLow"
-	case PivotHigh:
-		return "PivotHigh"
+	case SwingLow:
+		return "SwingLow"
+	case SwingHigh:
+		return "SwingHigh"
 	}
-	return fmt.Sprintf("PivotKind(%d)", int(k))
+	return fmt.Sprintf("SwingKind(%d)", int(k))
 }
 
-// Pivot is one turning point found by ZigZag. Index and Price locate the
+// Swing is one turning point found by ZigZag. Index and Price locate the
 // extreme; ConfirmedAt is the first row on which the price had moved the
 // threshold away from it, the earliest a trader could know about it. Trade on
 // ConfirmedAt and describe the series with Index.
-type Pivot struct {
-	Kind        PivotKind
+type Swing struct {
+	Kind        SwingKind
 	Index       int
 	Price       float64
 	ConfirmedAt int
@@ -45,13 +45,13 @@ type Pivot struct {
 // threshold, a fraction such as 0.10 for 10%. Prices must be positive and
 // finite.
 //
-// It is causal: a pivot is reported at the row that confirms it and uses no
-// later price, so recomputing on a series cut short returns exactly the pivots
-// of the full series whose ConfirmedAt lies before the cut. Pivots alternate
+// It is causal: a swing is reported at the row that confirms it and uses no
+// later price, so recomputing on a series cut short returns exactly the swings
+// of the full series whose ConfirmedAt lies before the cut. Swings alternate
 // between lows and highs. The extreme still being tracked at the end, which has
 // not been confirmed, is not reported. A price that ties the running extreme
 // leaves the earlier row as the extreme.
-func ZigZag(prices insyra.IDataList, threshold float64) ([]Pivot, error) {
+func ZigZag(prices insyra.IDataList, threshold float64) ([]Swing, error) {
 	if math.IsNaN(threshold) || threshold <= 0 || threshold >= 1 {
 		return nil, errors.New("threshold must be a fraction between 0 and 1, such as 0.10 for 10%")
 	}
@@ -68,7 +68,7 @@ func ZigZag(prices insyra.IDataList, threshold float64) ([]Pivot, error) {
 		return nil, nil
 	}
 
-	var pivots []Pivot
+	var swings []Swing
 	lowIdx, highIdx := 0, 0
 	direction := 0 // 0 undecided, +1 rising since a confirmed low, -1 falling since a confirmed high
 	for t := 1; t < len(p); t++ {
@@ -81,29 +81,29 @@ func ZigZag(prices insyra.IDataList, threshold float64) ([]Pivot, error) {
 				highIdx = t
 			}
 			if p[t] >= p[lowIdx]*(1+threshold) {
-				pivots = append(pivots, Pivot{PivotLow, lowIdx, p[lowIdx], t})
+				swings = append(swings, Swing{SwingLow, lowIdx, p[lowIdx], t})
 				direction, highIdx = 1, t
 			} else if p[t] <= p[highIdx]*(1-threshold) {
-				pivots = append(pivots, Pivot{PivotHigh, highIdx, p[highIdx], t})
+				swings = append(swings, Swing{SwingHigh, highIdx, p[highIdx], t})
 				direction, lowIdx = -1, t
 			}
 		case 1:
 			if p[t] > p[highIdx] {
 				highIdx = t
 			} else if p[t] <= p[highIdx]*(1-threshold) {
-				pivots = append(pivots, Pivot{PivotHigh, highIdx, p[highIdx], t})
+				swings = append(swings, Swing{SwingHigh, highIdx, p[highIdx], t})
 				direction, lowIdx = -1, t
 			}
 		case -1:
 			if p[t] < p[lowIdx] {
 				lowIdx = t
 			} else if p[t] >= p[lowIdx]*(1+threshold) {
-				pivots = append(pivots, Pivot{PivotLow, lowIdx, p[lowIdx], t})
+				swings = append(swings, Swing{SwingLow, lowIdx, p[lowIdx], t})
 				direction, highIdx = 1, t
 			}
 		}
 	}
-	return pivots, nil
+	return swings, nil
 }
 
 // RegimeKind says whether a stretch of the price series is a bull or a bear
@@ -129,10 +129,10 @@ func (k RegimeKind) String() string {
 	return fmt.Sprintf("RegimeKind(%d)", int(k))
 }
 
-// Regime is one bull or bear stretch between two consecutive pivots. Start and
+// Regime is one bull or bear stretch between two consecutive swings. Start and
 // End are the rows of the two extremes, Length is End - Start, Change is the
 // price change from the first to the second as a fraction, and ConfirmedAt is
-// the row that confirmed the closing pivot, when the regime could first be
+// the row that confirmed the closing swing, when the regime could first be
 // known to have ended.
 type Regime struct {
 	Kind        RegimeKind
@@ -156,16 +156,16 @@ type RegimeOptions struct {
 	MinCycle int
 }
 
-// Regimes turns the pivots of ZigZag into bull stretches (low to high) and bear
-// stretches (high to low). The stretch before the first pivot and after the
-// last are not reported, since neither has both ends. Pivots must alternate, as
+// Regimes turns the swings of ZigZag into bull stretches (low to high) and bear
+// stretches (high to low). The stretch before the first swing and after the
+// last are not reported, since neither has both ends. Swings must alternate, as
 // ZigZag returns them.
 //
 // Removing turning points to enforce MinPhase and MinCycle uses the whole list,
-// so unlike ZigZag it is not causal: a regime reported as ending at a pivot may
-// be merged into a longer one once later pivots are known. Use ConfirmedAt only
+// so unlike ZigZag it is not causal: a regime reported as ending at a swing may
+// be merged into a longer one once later swings are known. Use ConfirmedAt only
 // without minimums.
-func Regimes(pivots []Pivot, opts ...RegimeOptions) ([]Regime, error) {
+func Regimes(swings []Swing, opts ...RegimeOptions) ([]Regime, error) {
 	if len(opts) > 1 {
 		return nil, errors.New("Regimes accepts at most one RegimeOptions")
 	}
@@ -176,15 +176,15 @@ func Regimes(pivots []Pivot, opts ...RegimeOptions) ([]Regime, error) {
 	if o.MinPhase < 0 || o.MinCycle < 0 {
 		return nil, errors.New("MinPhase and MinCycle must not be negative")
 	}
-	for i := 1; i < len(pivots); i++ {
-		if pivots[i].Kind == pivots[i-1].Kind {
-			return nil, fmt.Errorf("pivots at list positions %d and %d are both %v; they must alternate", i-1, i, pivots[i].Kind)
+	for i := 1; i < len(swings); i++ {
+		if swings[i].Kind == swings[i-1].Kind {
+			return nil, fmt.Errorf("swings at list positions %d and %d are both %v; they must alternate", i-1, i, swings[i].Kind)
 		}
-		if pivots[i].Index <= pivots[i-1].Index {
-			return nil, fmt.Errorf("pivot at list position %d is not after the one before it", i)
+		if swings[i].Index <= swings[i-1].Index {
+			return nil, fmt.Errorf("swing at list position %d is not after the one before it", i)
 		}
 	}
-	kept := append([]Pivot(nil), pivots...)
+	kept := append([]Swing(nil), swings...)
 	for changed := true; changed; {
 		changed = false
 		if o.MinPhase > 0 {
@@ -210,7 +210,7 @@ func Regimes(pivots []Pivot, opts ...RegimeOptions) ([]Regime, error) {
 	for i := 0; i+1 < len(kept); i++ {
 		a, b := kept[i], kept[i+1]
 		kind := RegimeBull
-		if a.Kind == PivotHigh {
+		if a.Kind == SwingHigh {
 			kind = RegimeBear
 		}
 		regimes = append(regimes, Regime{kind, a.Index, b.Index, b.Index - a.Index, b.Price/a.Price - 1, b.ConfirmedAt})
