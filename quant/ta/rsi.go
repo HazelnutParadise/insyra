@@ -67,6 +67,12 @@ func (m RSIMissing) String() string {
 type RSIOptions struct {
 	Method  RSIMethod
 	Missing RSIMissing
+	// SegmentStarts are the rows on which a new data segment starts, as in
+	// ZigZagOptions: each segment is computed on its own, so nothing is carried
+	// across a trading halt or a relisting, and a segment needs n changes of its
+	// own before it shows a value. It is for known boundaries in the data;
+	// Missing is for prices that are missing.
+	SegmentStarts []int
 }
 
 // RSI returns the relative strength index of a price series over n days, in
@@ -126,6 +132,24 @@ func RSI(prices insyra.IDataList, n int, opts ...RSIOptions) (*insyra.DataList, 
 		}
 	}
 
+	starts, err := cleanSegmentStarts(o.SegmentStarts, len(values))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]float64, len(values))
+	for _, seg := range segmentBounds(len(values), starts) {
+		copy(out[seg[0]:seg[1]], rsiSegment(values[seg[0]:seg[1]], missing[seg[0]:seg[1]], n, o))
+	}
+
+	result := make([]any, len(out))
+	for i, v := range out {
+		result[i] = v
+	}
+	return insyra.NewDataList(result...), nil
+}
+
+// rsiSegment is RSI over one data segment, with the missing-price policy of o.
+func rsiSegment(values []float64, missing []bool, n int, o RSIOptions) []float64 {
 	out := make([]float64, len(values))
 	for i := range out {
 		out[i] = math.NaN()
@@ -168,12 +192,7 @@ func RSI(prices insyra.IDataList, n int, opts ...RSIOptions) (*insyra.DataList, 
 			start = end
 		}
 	}
-
-	result := make([]any, len(out))
-	for i, v := range out {
-		result[i] = v
-	}
-	return insyra.NewDataList(result...), nil
+	return out
 }
 
 // rsiRun computes RSI over one stretch of prices without gaps. The first n
