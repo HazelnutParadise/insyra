@@ -187,3 +187,22 @@ func TestStochRSIRecoversAfterUndefinedRSI(t *testing.T) {
 		}
 	}
 }
+
+// A window whose typical price does not move is NaN even when the price is a
+// decimal whose running mean is not exactly the price.
+func TestCCIFlatDecimalWindowIsNaN(t *testing.T) {
+	flat := make([]float64, 30)
+	for i := range flat {
+		flat[i] = 100.1
+	}
+	p := prices(flat...)
+	got, err := CCI(p, p, p, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, v := range floats(t, got) {
+		if !math.IsNaN(v) {
+			t.Fatalf("row %d of a flat series is %v, want NaN", i, v)
+		}
+	}
+}

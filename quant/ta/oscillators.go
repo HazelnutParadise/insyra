@@ -29,10 +29,13 @@ func CCI(high, low, close insyra.IDataList, n int) (*insyra.DataList, error) {
 	out := nanSeries(len(c))
 	for i := n - 1; i < len(c); i++ {
 		var dev float64
+		lo, hi := tp[i], tp[i]
 		for j := i - n + 1; j <= i; j++ {
 			dev += math.Abs(tp[j] - mean[i])
+			lo, hi = math.Min(lo, tp[j]), math.Max(hi, tp[j])
 		}
-		if dev = dev / float64(n); dev != 0 {
+		// a window that does not move is undefined, whatever rounding left in the mean
+		if dev = dev / float64(n); dev != 0 && lo != hi {
 			out[i] = (tp[i] - mean[i]) / (0.015 * dev)
 		}
 	}
