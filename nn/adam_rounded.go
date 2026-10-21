@@ -90,8 +90,8 @@ func (t *Tape) adamRounded(rate, weightDecay float32, decay bool) error {
 		if (value.device != nil) != (gradient.device != nil) {
 			return fmt.Errorf("adam parameter and gradient must both be on the host or on the same device")
 		}
-		param.adamStep++
-		scalars := adamRoundedScalars(rate, weightDecay, param.adamStep, decay)
+		step := param.adamStep + 1
+		scalars := adamRoundedScalars(rate, weightDecay, step, decay)
 		if value.device == nil {
 			if len(param.adamM) == 0 {
 				param.adamM = make([]float32, len(value.data))
@@ -103,20 +103,27 @@ func (t *Tape) adamRounded(rate, weightDecay float32, decay bool) error {
 			for i := range value.data {
 				value.data[i], param.adamM[i], param.adamV[i] = adamRoundedElement(value.data[i], gradient.data[i], param.adamM[i], param.adamV[i], scalars)
 			}
+			param.adamStep = step
 			continue
 		}
 		if param.adamMDev == nil {
-			var err error
-			if param.adamMDev, err = accel.NewZeroDeviceBuffer(value.Device(), value.device.Len()); err != nil {
+			// Both moments or neither: a failure between them must not leave
+			// the state half built, nor advance the step count.
+			m, err := accel.NewZeroDeviceBuffer(value.Device(), value.device.Len())
+			if err != nil {
 				return err
 			}
-			if param.adamVDev, err = accel.NewZeroDeviceBuffer(value.Device(), value.device.Len()); err != nil {
+			v, err := accel.NewZeroDeviceBuffer(value.Device(), value.device.Len())
+			if err != nil {
+				m.Release()
 				return err
 			}
+			param.adamMDev, param.adamVDev = m, v
 		}
 		if err := accel.RoundedAdam(value.device, gradient.device, param.adamMDev, param.adamVDev, scalars); err != nil {
 			return err
 		}
+		param.adamStep = step
 	}
 	return nil
 }

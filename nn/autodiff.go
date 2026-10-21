@@ -900,6 +900,11 @@ func (t *Tape) ClipGradNorm(maxNorm float32) (float32, error) {
 	if math.IsNaN(float64(maxNorm)) || math.IsInf(float64(maxNorm), 0) || maxNorm < 0 {
 		return 0, fmt.Errorf("clip grad norm maximum must be finite and non-negative")
 	}
+	for _, param := range t.params {
+		if err := rejectResident("clip grad norm", param.value, t.grads[param.value]); err != nil {
+			return 0, err
+		}
+	}
 	var squaredNorm float64
 	for _, param := range t.params {
 		gradient := t.grads[param.value]

@@ -1509,6 +1509,9 @@ func ReduceMin(input *Tensor, axes []int, keepdims bool) (*Tensor, error) {
 // Tile repeats input along every axis. repeats is the ONNX int64 control
 // tensor and must contain one non-negative value per input dimension.
 func Tile(input, repeats *Tensor) (*Tensor, error) {
+	if err := rejectResident("Tile", input, repeats); err != nil {
+		return nil, err
+	}
 	if input == nil {
 		return nil, fmt.Errorf("tile input is nil")
 	}
@@ -1855,6 +1858,9 @@ func Flatten(input *Tensor, axes ...int) (*Tensor, error) {
 
 // Transpose permutes dimensions. With no permutation, dimensions are reversed.
 func Transpose(input *Tensor, perms ...[]int) (*Tensor, error) {
+	if err := rejectResident("Transpose", input); err != nil {
+		return nil, err
+	}
 	if input == nil {
 		return nil, fmt.Errorf("transpose input is nil")
 	}
@@ -1909,6 +1915,9 @@ func Transpose(input *Tensor, perms ...[]int) (*Tensor, error) {
 // BFLOAT16 target rounds the f32 value to that storage format and widens it
 // back immediately, because Tensor computation remains f32.
 func Cast(input *Tensor, to DType) (*Tensor, error) {
+	if err := rejectResident("Cast", input); err != nil {
+		return nil, err
+	}
 	if input == nil {
 		return nil, fmt.Errorf("cast input is nil")
 	}

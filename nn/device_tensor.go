@@ -139,3 +139,15 @@ func requireFloat32Any(t *Tensor, operand string) error {
 func residentRefusal(t *Tensor, operand string) error {
 	return fmt.Errorf("%s is on device %s; call ToHost to read it on the host", operand, t.device.Device().ID)
 }
+
+// rejectResident returns an error naming ToHost when any of tensors is on a
+// device. The host kernels read host slices, which a resident tensor does not
+// have, so they refuse it up front instead of reading nothing.
+func rejectResident(operation string, tensors ...*Tensor) error {
+	for _, tensor := range tensors {
+		if tensor != nil && tensor.device != nil {
+			return residentRefusal(tensor, operation+" input")
+		}
+	}
+	return nil
+}

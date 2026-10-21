@@ -315,3 +315,105 @@ func TestResidentArithmeticRefusesLabelTensors(t *testing.T) {
 		t.Fatalf("MatMul on int64 labels error = %v", err)
 	}
 }
+
+// The second Codex review found more places a resident tensor could be read as
+// if it were a host one.
+
+func TestHostKernelsRefuseAResidentTensor(t *testing.T) {
+	device := residentTestDevice(t)
+	x, _ := NewTensor([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	moved, err := x.To(device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer moved.Release()
+	check := func(name string, err error) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), "ToHost") {
+			t.Errorf("%s on a resident tensor: error = %v, want one naming ToHost", name, err)
+		}
+	}
+	_, err = Transpose(moved)
+	check("Transpose", err)
+	_, err = Cast(moved, DTypeFloat32)
+	check("Cast", err)
+	_, err = Cast(moved, DTypeFloat16)
+	check("Cast to float16", err)
+	_, err = Unsqueeze(moved, []int{0})
+	check("Unsqueeze", err)
+	_, err = Concat([]*Tensor{moved, moved}, 0)
+	check("Concat", err)
+	_, err = Slice(moved, []int64{0}, []int64{1}, []int64{0}, []int64{1})
+	check("Slice", err)
+	_, err = Where(moved, moved, moved)
+	check("Where", err)
+}
+
+func TestClipGradNormRefusesResidentGradients(t *testing.T) {
+	device := residentTestDevice(t)
+	rng := rand.New(rand.NewSource(5))
+	X, E, up := randomTensor(t, rng, 3, 3), randomTensor(t, rng, 3, 3), randomTensor(t, rng, 3, 3)
+	X, E, up = mustTo(t, X, device), mustTo(t, E, device), mustTo(t, up, device)
+	defer X.Release()
+	defer up.Release()
+	tape := NewTape()
+	defer tape.Close()
+	_ = tape.SetPrecision(accel.PrecisionFloat32Rounded)
+	_, _ = tape.Param(E)
+	y, err := tape.MatMul(X, E)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tape.BackwardFrom(y, up); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tape.ClipGradNorm(1); err == nil || !strings.Contains(err.Error(), "ToHost") {
+		t.Fatalf("ClipGradNorm error = %v, want one naming ToHost", err)
+	}
+}
+
+func mustTo(t *testing.T, x *Tensor, device accel.Device) *Tensor {
+	t.Helper()
+	moved, err := x.To(device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return moved
+}
+
+func TestAdamStateAllocationFailureLeavesNothingHalfBuilt(t *testing.T) {
+	device := residentTestDevice(t)
+	before := accel.ResidentBytes(device)
+	// X, E and the upstream (3 x 64 B), y, dX and dE (3 x 64 B) and room for
+	// exactly one moment buffer (64 B), but not two.
+	limited := device
+	limited.BudgetBytes = before + 7*64
+	rng := rand.New(rand.NewSource(6))
+	X, E, up := mustTo(t, randomTensor(t, rng, 4, 4), limited), mustTo(t, randomTensor(t, rng, 4, 4), limited), mustTo(t, randomTensor(t, rng, 4, 4), limited)
+	defer X.Release()
+	defer up.Release()
+	tape := NewTape()
+	_ = tape.SetPrecision(accel.PrecisionFloat32Rounded)
+	param, _ := tape.Param(E)
+	y, err := tape.MatMul(X, E)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tape.BackwardFrom(y, up); err != nil {
+		t.Fatal(err)
+	}
+	during := accel.ResidentBytes(device)
+	if err := tape.Adam(0.01); err == nil {
+		t.Fatal("Adam must fail when the second moment does not fit")
+	}
+	if param.adamMDev != nil || param.adamVDev != nil {
+		t.Fatal("a failed allocation left half the Adam state behind")
+	}
+	if param.adamStep != 0 {
+		t.Fatalf("a failed step advanced the step count to %d", param.adamStep)
+	}
+	if got := accel.ResidentBytes(device); got != during {
+		t.Fatalf("resident bytes after the failure = %d, want %d", got, during)
+	}
+	tape.Close()
+}
