@@ -314,6 +314,8 @@ type FactorModelResult struct {
     AdjustedRSquared float64
     N                int
     Residuals        []float64
+    CovType          stats.CovType // covariance the standard errors come from
+    Lag              int           // lag stats.CovHAC used; 0 for the others
 }
 
 func (r *FactorModelResult) Exposure(name string) (float64, bool)
@@ -324,12 +326,27 @@ func (r *FactorModelResult) Exposure(name string) (float64, bool)
 ### FactorModel
 
 ```go
-func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64) (*FactorModelResult, error)
+func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64, opts ...FactorModelOptions) (*FactorModelResult, error)
+
+type FactorModelOptions struct {
+    CovType stats.CovType // stats.CovOLS (default), CovHC0–CovHC3, or CovHAC
+    Lag     int           // CovHAC: 0 = stats.NeweyWestLag(n), > 0 used as given, < 0 is an error
+}
 ```
 
-`FactorModel` uses the same OLS coefficients, inference values, R², adjusted R², and residuals as `stats.LinearRegression`. With one factor, pass an already excess market column and the raw market return plus `riskFreeRate` to `CAPM`; the factor-model exposure, alpha, and standard errors agree with CAPM.
+`FactorModel` uses the same OLS coefficients, inference values, R², adjusted R², and residuals as `stats.LinearRegressionWithOptions` with the chosen covariance. With one factor, pass an already excess market column and the raw market return plus `riskFreeRate` to `CAPM`; the factor-model exposure, alpha, and standard errors agree with CAPM.
 
-The model requires at least `k + 2` observations for `k` factors. It refuses nil inputs, an empty factor table, unequal asset/factor lengths, unreadable cells, and `NaN` or `Inf` values. Errors identify the factor column and zero-based row index where applicable. A collinear factor set returns the regression error instead of a near-singular numeric result. Standard errors are ordinary OLS standard errors; heteroskedasticity and autocorrelation adjustments such as Newey–West are outside this API.
+The model requires at least `k + 2` observations for `k` factors. It refuses nil inputs, an empty factor table, unequal asset/factor lengths, unreadable cells, and `NaN` or `Inf` values. Errors identify the factor column and zero-based row index where applicable. A collinear factor set returns the regression error instead of a near-singular numeric result.
+
+Without options the standard errors are ordinary OLS ones and the result is what it always was. The residuals of daily strategy returns are usually heteroskedastic and autocorrelated, which makes the OLS standard error of alpha too small and its t value too large. `FactorModelOptions{CovType: stats.CovHAC}` reports Newey–West standard errors instead; `stats.CovHC0` to `stats.CovHC3` correct for heteroskedasticity only. The covariance and its small-sample conventions are those of [`stats.LinearRegressionWithOptions`](stats.md#linear-regression-with-robust-or-hac-standard-errors): no n/(n−k) factor for HAC, p-values from the t distribution with n−k degrees of freedom. `Lag` follows the same three rules as `ForwardOptions.NeweyWestLag`: 0 chooses `stats.NeweyWestLag(n)`, a positive value is used as given and must be smaller than n, and a negative value is an error (use `stats.CovHC0` for no autocorrelation terms). This differs from `stats`, where you pass `stats.AutoLag` for automatic and 0 is a literal lag of 0; `FactorModel` passes `stats.AutoLag` on for you.
+
+```go
+// quant: 0 is automatic.
+quant.FactorModel(asset, factors, 0, quant.FactorModelOptions{CovType: stats.CovHAC})
+// stats: pass stats.AutoLag.
+stats.LinearRegressionWithOptions(stats.LinearRegressionOptions{CovType: stats.CovHAC, Lag: stats.AutoLag}, y, x)
+```
+ Other covariance types ignore `Lag`. At most one `FactorModelOptions` may be passed.
 
 ---
 
@@ -653,7 +670,7 @@ Both tools answer "what happened to the price after the signal". They share one 
 - `BenchmarkLevels`: the change of an index over the window, from `BenchmarkLevels`.
 - `BenchmarkOwnMean`: the mean of that series' own returns over the same horizon, for a single series such as a market index.
 
-Observations are averaged within calendar months of the signal date, and the Newey-West test (`stats.NeweyWestMeanTest`) is run on the monthly means, so many events on one day are not treated as independent samples. `NeweyWestLag` 0 chooses `stats.NeweyWestLag(months)`, a positive value is used as it is, and a negative one means the plain t-test. An observation whose window has a missing price, runs past the last row or is not tradable at the entry is counted in `Missing` and left out. To study a sub-period, pass the matching slices of every table and of `dates`.
+Observations are averaged within calendar months of the signal date, and the Newey-West test (`stats.NeweyWestMeanTest`) is run on the monthly means, so many events on one day are not treated as independent samples. `NeweyWestLag` 0 chooses `stats.NeweyWestLag(months)`, a positive value is used as it is, a negative one is an error, and a positive lag must be smaller than the number of months with an observation in every horizon and bucket, empty ones included (otherwise the study returns an error rather than shortening it; the automatic lag is capped at months-1). To switch the correction off set `NoNeweyWest: true`: the test then runs with lag 0, whose variance divides by the number of months T, the same as linearmodels `cov_type="unadjusted"` with `debiased=False`. That is not `stats.SingleSampleTTest`, which divides by T-1, so the t-test's t is smaller than the `NoNeweyWest` one by a factor of sqrt((T-1)/T). `NoNeweyWest` together with a non-zero `NeweyWestLag` is an error. An observation whose window has a missing price, runs past the last row or is not tradable at the entry is counted in `Missing` and left out. To study a sub-period, pass the matching slices of every table and of `dates`.
 
 Each horizon gives a `ForwardSummary`: `Observations`, `Missing`, `MeanExcess`, `WinRate`, `Months`, `MonthlyMean`, `TStat`, `PValue` and `Lag`. The t statistic is `NaN` with fewer than two months.
 
@@ -663,7 +680,7 @@ Each horizon gives a `ForwardSummary`: `Observations`, `Missing`, `MeanExcess`, 
 func EventStudy(prices, events insyra.IDataTable, dates insyra.IDataList, opts EventStudyOptions) ([]ForwardSummary, error)
 ```
 
-`events` has the shape of `prices` with `true` where an event happened at that row's close. `EventStudyOptions` embeds `ForwardOptions` (`Horizons`, `Delay`, `Benchmark`, `BenchmarkLevels`, `Tradable`, `NeweyWestLag`) and adds `MinGap`, the fewest rows between two counted events of the same stock. It returns one summary per horizon.
+`events` has the shape of `prices` with `true` where an event happened at that row's close. `EventStudyOptions` embeds `ForwardOptions` (`Horizons`, `Delay`, `Benchmark`, `BenchmarkLevels`, `Tradable`, `NeweyWestLag`, `NoNeweyWest`) and adds `MinGap`, the fewest rows between two counted events of the same stock. It returns one summary per horizon.
 
 ### SignalBuckets
 
@@ -1059,6 +1076,14 @@ if err != nil {
 }
 smbExposure, _ := model.Exposure("SMB")
 fmt.Printf("alpha = %.4f, SMB exposure = %.3f\n", model.Alpha, smbExposure)
+
+// The same model with Newey-West standard errors and an automatic lag.
+hac, err := quant.FactorModel(assetReturns, factors, dailyRiskFreeRate,
+    quant.FactorModelOptions{CovType: stats.CovHAC})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("alpha t = %.2f (OLS) vs %.2f (HAC, lag %d)\n", model.AlphaTValue, hac.AlphaTValue, hac.Lag)
 ```
 
 ### Deflated Sharpe Ratio after a parameter search
@@ -1241,7 +1266,7 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`PercentileBands`** — empty or ragged `paths`, empty `percentiles`, a percentile outside `[0, 100]`
 - **`Beta`** — nil input, unequal lengths, fewer than 3 returns, zero benchmark variance, or an unreadable/non-finite cell named with its series and row
 - **`CAPM`** — the same input and benchmark validation as `Beta`; `riskFreeRate` is per period
-- **`FactorModel`** — nil input, no factor columns, unequal asset/factor lengths, fewer than `k+2` observations, unreadable/non-finite cells named with the factor and row, or collinear factors
+- **`FactorModel`** — nil input, no factor columns, unequal asset/factor lengths, fewer than `k+2` observations, unreadable/non-finite cells named with the factor and row, collinear factors, more than one `FactorModelOptions`, an unknown covariance type, or a HAC lag that is negative or not smaller than n
 - **`BlackScholes`** — non-positive Spot, Strike, or Volatility; negative TimeToExpiry; non-finite inputs; or an unknown option Type
 - **`ImpliedVolatility`** — non-finite price, zero TimeToExpiry, a price outside the option's named lower or upper bound, or failure to converge within 200 iterations
 - **`ValueAtRisk`** — fewer than 2 returns, confidence outside `(0, 1)`, unknown method, or an unreadable/non-finite return named with its row

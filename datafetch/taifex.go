@@ -20,11 +20,13 @@ import (
 // such as a zero value, returns an error from every method.
 //
 // The OpenAPI gives only the latest trading day for most tables, and the last
-// 20 days for the put/call ratio. Longer histories come from the exchange's
-// website, which this client does not read.
+// 20 days for the put/call ratio. The ...History methods read longer histories
+// from the exchange's website, whose CSV downloads limit how far back each
+// table goes.
 type TAIFEXClient struct {
-	base    *TWStockClient
-	baseURL string
+	base       *TWStockClient
+	baseURL    string
+	websiteURL string
 }
 
 // TAIFEX creates a client for the exchange's OpenAPI. It takes the same
@@ -34,7 +36,7 @@ func TAIFEX(cfg TWStockConfig) (*TAIFEXClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &TAIFEXClient{base: base, baseURL: "https://openapi.taifex.com.tw"}, nil
+	return &TAIFEXClient{base: base, baseURL: "https://openapi.taifex.com.tw", websiteURL: "https://www.taifex.com.tw"}, nil
 }
 
 var errTAIFEXNotCreated = errors.New("datafetch: TAIFEXClient was not created with TAIFEX")
@@ -152,7 +154,7 @@ func taifexTable(path string, records []map[string]string, columns []column) (*i
 			case kindFloat:
 				values[c][r] = parseFloat(raw)
 			case kindDate:
-				d, err := time.Parse("20060102", strings.TrimSpace(raw))
+				d, err := parseTAIFEXDate(raw)
 				if err != nil {
 					return nil, fmt.Errorf("datafetch: TAIFEX %s record %d has date %q", path, r, raw)
 				}
@@ -173,25 +175,25 @@ func taifexTable(path string, records []map[string]string, columns []column) (*i
 func institutionalColumns(withCallPut bool) []column {
 	cols := []column{
 		{"Date", []string{"Date", "日期"}, kindDate},
-		{"Contract", []string{"ContractCode"}, kindText},
+		{"Contract", []string{"ContractCode", "商品名稱"}, kindText},
 	}
 	if withCallPut {
-		cols = append(cols, column{"CallPut", []string{"CallPut"}, kindText})
+		cols = append(cols, column{"CallPut", []string{"CallPut", "買賣權別"}, kindText})
 	}
 	return append(cols,
-		column{"Trader", []string{"Item"}, kindText},
-		column{"TradeLong", []string{"TradingVolume(Long)"}, kindInt},
-		column{"TradeLongValue", []string{"TradingValue(Long)(Thousands)"}, kindInt},
-		column{"TradeShort", []string{"TradingVolume(Short)"}, kindInt},
-		column{"TradeShortValue", []string{"TradingValue(Short)(Thousands)"}, kindInt},
-		column{"TradeNet", []string{"TradingVolume(Net)"}, kindInt},
-		column{"TradeNetValue", []string{"TradingValue(Net)(Thousands)"}, kindInt},
-		column{"OILong", []string{"OpenInterest(Long)"}, kindInt},
-		column{"OILongValue", []string{"ContractValueofOpenInterest(Long)(Thousands)"}, kindInt},
-		column{"OIShort", []string{"OpenInterest(Short)"}, kindInt},
-		column{"OIShortValue", []string{"ContractValueofOpenInterest(Short)(Thousands)"}, kindInt},
-		column{"OINet", []string{"OpenInterest(Net)"}, kindInt},
-		column{"OINetValue", []string{"ContractValueofOpenInterest(Net)(Thousands)"}, kindInt},
+		column{"Trader", []string{"Item", "身份別"}, kindText},
+		column{"TradeLong", []string{"TradingVolume(Long)", "多方交易口數", "買方交易口數"}, kindInt},
+		column{"TradeLongValue", []string{"TradingValue(Long)(Thousands)", "多方交易契約金額(千元)", "買方交易契約金額(千元)"}, kindInt},
+		column{"TradeShort", []string{"TradingVolume(Short)", "空方交易口數", "賣方交易口數"}, kindInt},
+		column{"TradeShortValue", []string{"TradingValue(Short)(Thousands)", "空方交易契約金額(千元)", "賣方交易契約金額(千元)"}, kindInt},
+		column{"TradeNet", []string{"TradingVolume(Net)", "多空交易口數淨額", "交易口數買賣淨額"}, kindInt},
+		column{"TradeNetValue", []string{"TradingValue(Net)(Thousands)", "多空交易契約金額淨額(千元)", "交易契約金額買賣淨額(千元)"}, kindInt},
+		column{"OILong", []string{"OpenInterest(Long)", "多方未平倉口數", "買方未平倉口數"}, kindInt},
+		column{"OILongValue", []string{"ContractValueofOpenInterest(Long)(Thousands)", "多方未平倉契約金額(千元)", "買方未平倉契約金額(千元)"}, kindInt},
+		column{"OIShort", []string{"OpenInterest(Short)", "空方未平倉口數", "賣方未平倉口數"}, kindInt},
+		column{"OIShortValue", []string{"ContractValueofOpenInterest(Short)(Thousands)", "空方未平倉契約金額(千元)", "賣方未平倉契約金額(千元)"}, kindInt},
+		column{"OINet", []string{"OpenInterest(Net)", "多空未平倉口數淨額", "未平倉口數買賣淨額"}, kindInt},
+		column{"OINetValue", []string{"ContractValueofOpenInterest(Net)(Thousands)", "多空未平倉契約金額淨額(千元)", "未平倉契約金額買賣淨額(千元)"}, kindInt},
 	)
 }
 
@@ -228,8 +230,8 @@ func (c *TAIFEXClient) InstitutionalOptionsContext(ctx context.Context) (*insyra
 func largeTraderColumns(withCallPut bool) []column {
 	cols := []column{
 		{"Date", []string{"Date", "日期"}, kindDate},
-		{"Contract", []string{"Contract", "契約"}, kindText},
-		{"ContractName", []string{"ContractName", "商品名稱(契約名稱)"}, kindText},
+		{"Contract", []string{"Contract", "契約", "商品(契約)"}, kindText},
+		{"ContractName", []string{"ContractName", "商品名稱(契約名稱)", "商品名稱"}, kindText},
 	}
 	if withCallPut {
 		cols = append(cols, column{"CallPut", []string{"CallPut", "買賣權"}, kindText})
@@ -289,13 +291,26 @@ func (c *TAIFEXClient) PutCallRatio() (*insyra.DataTable, error) {
 // VolumeRatio, OIRatio (float64, in percent: 88.75 means the put volume is 88.75%
 // of the call volume).
 func (c *TAIFEXClient) PutCallRatioContext(ctx context.Context) (*insyra.DataTable, error) {
-	return c.fetchTable(ctx, "/v1/PutCallRatio", []column{
+	return c.fetchTable(ctx, "/v1/PutCallRatio", putCallColumns())
+}
+
+// parseTAIFEXDate reads the OpenAPI's 20261016 and the website's 2026/10/16.
+func parseTAIFEXDate(raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if strings.Contains(raw, "/") {
+		return time.Parse("2006/01/02", raw)
+	}
+	return time.Parse("20060102", raw)
+}
+
+func putCallColumns() []column {
+	return []column{
 		{"Date", []string{"Date", "日期"}, kindDate},
-		{"PutVolume", []string{"PutVolume"}, kindInt},
-		{"CallVolume", []string{"CallVolume"}, kindInt},
-		{"VolumeRatio", []string{"PutCallVolumeRatio%"}, kindFloat},
-		{"PutOI", []string{"PutOI"}, kindInt},
-		{"CallOI", []string{"CallOI"}, kindInt},
-		{"OIRatio", []string{"PutCallOIRatio%"}, kindFloat},
-	})
+		{"PutVolume", []string{"PutVolume", "賣權成交量"}, kindInt},
+		{"CallVolume", []string{"CallVolume", "買權成交量"}, kindInt},
+		{"VolumeRatio", []string{"PutCallVolumeRatio%", "買賣權成交量比率%"}, kindFloat},
+		{"PutOI", []string{"PutOI", "賣權未平倉量"}, kindInt},
+		{"CallOI", []string{"CallOI", "買權未平倉量"}, kindInt},
+		{"OIRatio", []string{"PutCallOIRatio%", "買賣權未平倉量比率%"}, kindFloat},
+	}
 }
