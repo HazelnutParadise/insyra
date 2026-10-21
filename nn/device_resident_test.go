@@ -447,3 +447,27 @@ func TestDefaultDeviceIsTheHostWhenTheBackendIsDisabled(t *testing.T) {
 		t.Fatalf("DefaultDevice = %q with the backend disabled, want the host", dev.ID)
 	}
 }
+
+func TestResidentAddRefusesAnOperandThatWouldAddDimensions(t *testing.T) {
+	device := residentTestDevice(t)
+	a, _ := NewTensor([]int{2, 3}, make([]float32, 6))
+	b, _ := NewTensor([]int{1, 2, 3}, make([]float32, 6))
+	ra, rb := mustTo(t, a, device), mustTo(t, b, device)
+	defer ra.Release()
+	defer rb.Release()
+	tape := NewTape()
+	defer tape.Close()
+	_ = tape.SetPrecision(accel.PrecisionFloat32Rounded)
+	if _, err := tape.Add(ra, rb); err == nil {
+		t.Fatal("a resident Add that would return [1,2,3] for [2,3]+[1,2,3] must be refused, not return [2,3]")
+	}
+	host := NewTape()
+	_ = host.SetPrecision(accel.PrecisionFloat32Rounded)
+	out, err := host.Add(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := out.Shape(); len(got) != 3 {
+		t.Fatalf("host shape = %v", got)
+	}
+}

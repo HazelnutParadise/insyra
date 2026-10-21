@@ -182,6 +182,9 @@ func (t *Tape) residentMatMul(a, b *Tensor, m, k, n int, transA, transB bool, sh
 // trailingBroadcast reports whether b broadcasts over a's trailing dimensions,
 // the shape of a bias added to a batch.
 func trailingBroadcast(a, b []int) bool {
+	if len(b) > len(a) {
+		return false // the result would have more dimensions than a
+	}
 	stripped := b
 	for len(stripped) > 0 && stripped[0] == 1 {
 		stripped = stripped[1:]
