@@ -36,6 +36,13 @@ Fama-MacBeth cross-sectional regressions on a long stock-by-date panel, testing 
 - **WHEN** one characteristic is the same for every stock on one date
 - **THEN** that date is in Skipped with a collinearity reason and the other dates are estimated
 
+### Requirement: A date has a type that can be compared exactly
+`quant.FamaMacBeth` SHALL group dates by exact value and SHALL return an error for a date that is not a string, time.Time, bool, integer or float, or is NaN, so no two different dates share a group.
+
+#### Scenario: A slice as a date
+- **WHEN** a date cell is the slice {"a b"}
+- **THEN** the call returns an error naming the type
+
 ### Requirement: Standardize uses per-day z-scores
 `quant.FamaMacBeth` SHALL, when Standardize is set, replace each characteristic by its z-score over the day's used stocks with the sample standard deviation before regressing.
 

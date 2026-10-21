@@ -298,11 +298,55 @@ func TestFamaMacBethDateKeyDistinguishesFarInstants(t *testing.T) {
 	if a.UnixNano() != b.UnixNano() {
 		t.Skip("UnixNano no longer collides for these instants")
 	}
-	if famaMacBethDateKey(a) == famaMacBethDateKey(b) {
-		t.Errorf("distinct instants share the key %q", famaMacBethDateKey(a))
+	ka, _ := famaMacBethDateKey(a)
+	kb, _ := famaMacBethDateKey(b)
+	kz, _ := famaMacBethDateKey(a.In(time.FixedZone("x", 3600)))
+	if ka == kb {
+		t.Errorf("distinct instants share the key %q", ka)
 	}
-	if famaMacBethDateKey(a) != famaMacBethDateKey(a.In(time.FixedZone("x", 3600))) {
+	if ka != kz {
 		t.Error("the same instant in another zone got a different key")
+	}
+}
+
+type fmbStringer struct{ n int }
+
+func (fmbStringer) String() string { return "same" }
+
+type fmbMyInt int
+
+// A date is a string, time.Time, bool, integer or float; anything whose
+// printed form could be shared by two values is refused.
+func TestFamaMacBethRefusesUnsupportedDateTypes(t *testing.T) {
+	one := 1
+	for name, bad := range map[string]any{
+		"slice":    []string{"a b"},
+		"stringer": fmbStringer{1},
+		"named":    fmbMyInt(1),
+		"pointer":  &one,
+		"map":      map[string]int{"a": 1},
+		"NaN":      math.NaN(),
+	} {
+		table := fmbPanelEdit(4, 8, func(int, int) float64 { return 0 }, func(cols [4][]any) { cols[0][5] = insyra.Cell(bad) })
+		_, err := FamaMacBeth(table, "date", "ret", []string{"x1"})
+		if err == nil {
+			t.Errorf("%s: no error", name)
+		} else if name != "NaN" && !strings.Contains(err.Error(), "not a supported date type") {
+			t.Errorf("%s: error %v", name, err)
+		}
+	}
+	for name, ok := range map[string]any{"int64": int64(1), "float": 1.5, "bool": true, "uint8": uint8(1), "string": "x", "time": time.Unix(1, 0)} {
+		table := fmbPanelEdit(4, 8, func(d, s int) float64 { return math.Sin(float64(d*s + 1)) }, func(cols [4][]any) {
+			for i := range cols[0] {
+				cols[0][i] = ok
+				if i >= 16 {
+					cols[0][i] = "other"
+				}
+			}
+		})
+		if _, err := FamaMacBeth(table, "date", "ret", []string{"x1"}); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 
