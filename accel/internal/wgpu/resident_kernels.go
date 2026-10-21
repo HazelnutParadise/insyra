@@ -428,3 +428,65 @@ func AdamRounded(w, g, m, v *Buffer, s AdamScalars) error {
 		bits(s.NegDecay), 0, 0, 0,
 	}, gx, gy)
 }
+
+// expRoundedKernel and logRoundedKernel: params = length, 0, 0, stride.
+var expRoundedKernel = &kernel{name: "rounded-exp", nRead: 2, nWrite: 1, fixed: true, body: `
+struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
+@group(0) @binding(0) var<storage, read> a: array<u32>;
+@group(0) @binding(1) var<storage, read> consts: array<u32>;
+@group(0) @binding(2) var<storage, read_write> c: array<u32>;
+@group(0) @binding(3) var<uniform> p: Params;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x + gid.y * p.stride;
+    if (i >= p.length) {
+        return;
+    }
+    c[i] = exp_rounded(a[i]);
+}
+`}
+
+var logRoundedKernel = &kernel{name: "rounded-log", nRead: 2, nWrite: 1, fixed: true, body: `
+struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
+@group(0) @binding(0) var<storage, read> a: array<u32>;
+@group(0) @binding(1) var<storage, read> consts: array<u32>;
+@group(0) @binding(2) var<storage, read_write> c: array<u32>;
+@group(0) @binding(3) var<uniform> p: Params;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x + gid.y * p.stride;
+    if (i >= p.length) {
+        return;
+    }
+    c[i] = log_rounded(a[i]);
+}
+`}
+
+// ExpRounded computes e^x for each element, correctly rounded.
+func ExpRounded(a *Buffer) (*Buffer, error) { return unaryRounded(expRoundedKernel, a) }
+
+// LogRounded computes the natural logarithm of each element, correctly rounded.
+func LogRounded(a *Buffer) (*Buffer, error) { return unaryRounded(logRoundedKernel, a) }
+
+func unaryRounded(k *kernel, a *Buffer) (*Buffer, error) {
+	out, err := NewBuffer(a.Len())
+	if err != nil {
+		return nil, err
+	}
+	if a.Len() == 0 {
+		return out, nil
+	}
+	consts, err := fixedConstants()
+	if err != nil {
+		out.Release()
+		return nil, err
+	}
+	gx, gy, stride := elementwiseGroups(a.Len())
+	if err := k.run([]*Buffer{a, consts}, []*Buffer{out}, [16]uint32{uint32(a.Len()), 0, 0, stride}, gx, gy); err != nil {
+		out.Release()
+		return nil, err
+	}
+	return out, nil
+}

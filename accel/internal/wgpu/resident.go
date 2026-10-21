@@ -225,6 +225,8 @@ type kernel struct {
 	body   string
 	nRead  int
 	nWrite int
+	// fixed adds the fixed-point library, with its constants, to the source.
+	fixed bool
 
 	once   sync.Once
 	pipe   *gowgpu.ComputePipeline
@@ -232,10 +234,17 @@ type kernel struct {
 	err    error
 }
 
+func (k *kernel) library() string {
+	if k.fixed {
+		return fixedLibrary()
+	}
+	return ""
+}
+
 func (k *kernel) build(h *handle) {
 	k.once.Do(func() {
 		shader, err := h.device.CreateShaderModule(&gowgpu.ShaderModuleDescriptor{
-			Label: "accel-" + k.name, WGSL: exactSumWGSL + ieeeWGSL + k.body,
+			Label: "accel-" + k.name, WGSL: exactSumWGSL + ieeeWGSL + k.library() + k.body,
 		})
 		if err != nil {
 			k.err = fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
