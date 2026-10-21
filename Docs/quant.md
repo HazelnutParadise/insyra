@@ -21,12 +21,12 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Market exposure**: `Beta`, `CAPM` — measure an asset's exposure and per-period alpha against a benchmark return series
 - **Options**: `BlackScholes`, `ImpliedVolatility` — price European calls and puts, report five greeks, and recover volatility from a market price
 - **Factor models**: `FactorModel` — attribute an asset's excess returns to named market, size, value, momentum, or other factor columns
-- **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado); `RealityCheck`, `SPATest` — bootstrap tests of whether the best of many strategies beats a benchmark (White, Hansen)
+- **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado); `RealityCheck`, `SPATest` — bootstrap tests of whether the best of many strategies beats a benchmark (White, Hansen); `RomanoWolf` — which of them do, at a familywise level (Romano & Wolf)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 - **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
 - **Text tone**: `ToneCounts`, `DailyTone` — count positive and negative words from a lexicon (with negation, for English or Chinese) and add them up by trading day without looking ahead
-- **Event studies and signal buckets**: `EventStudy`, `SignalBuckets`, `Bias`, `BiasZ` — forward excess returns after events or by signal bucket, with a monthly Newey-West t-test, and the bias indicators that feed them
+- **Event studies and signal buckets**: `EventStudy`, `SignalBuckets`, `AbnormalReturns`, `Bias`, `BiasZ` — forward excess returns after events or by signal bucket, with a monthly Newey-West t-test; abnormal returns and CAR from before to after each event; and the bias indicators that feed them
 - **Turning points and regimes**: `ZigZag`, `Regimes` — causal turning points of a price series and the bull and bear stretches between them
 - **Signal backtest**: `BacktestSignal` — a 0–1 position signal into a net return series with a one-row delay, cash returns and separate buy and sell costs
 - **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
@@ -448,7 +448,46 @@ With `d_k,t` = column k minus the benchmark in period t, `dbar_k` its mean, `T` 
 
 **Compared with Python `arch`.** The definitions above are the paper's, checked against an independent implementation of its formulas (`quant/testdata/data_snooping_baseline.py`). `arch.bootstrap.SPA` does not reproduce them and its numbers will differ: in arch 8.0.0 the SPA statistic and its bootstrap values are the unstandardized maximum mean (`ω_k` is computed but used only to pick the consistent p-value's columns) without the `max(0, ·)`, and in later versions the standard error is re-estimated in every replication and the moving-block bootstrap uses the Bartlett kernel. arch also takes losses (lower is better), where these take performance. The bootstrap streams differ too, so even matching definitions give p-values that agree only within bootstrap error.
 
-`RealityCheck` and `SPATest` say whether the best strategy beats the benchmark; they do not say which of the others also do (Romano and Wolf's stepdown answers that, and is not in this package yet).
+`RealityCheck` and `SPATest` say whether the best strategy beats the benchmark; they do not say which of the others also do. `RomanoWolf` does.
+
+### RomanoWolf
+
+```go
+type RomanoWolfOptions struct {
+    DataSnoopingOptions         // Benchmark, Replications, BlockSize, Seed, Scheme: as for RealityCheck
+    Alpha float64               // familywise level in (0, 1); required, 0 is an error
+}
+
+func RomanoWolf(perf insyra.IDataTable, opts RomanoWolfOptions) (*RomanoWolfResult, error)
+```
+
+Given many strategies (the columns of a `T×N` table) and a benchmark, `RomanoWolf` **names which strategies truly beat the benchmark**, aiming to hold the chance of even one false claim (the familywise error rate) at `Alpha`. The control is asymptotic (Romano and Wolf 2005): the critical values are estimated from finitely many bootstrap draws on a finite sample, so the realised rate can exceed `Alpha` (200 simulated null tables of 250 rows gave 8.5% at `Alpha` 0.1, and a test allows up to 15%). A column with a non-zero `RejectedAt` is declared better than the benchmark. It is **one-sided**, as `RealityCheck` and `SPATest` are: only outperformance is rejected, and a column far below the benchmark is never a finding.
+
+```go
+res, err := quant.RomanoWolf(perf, quant.RomanoWolfOptions{
+    DataSnoopingOptions: quant.DataSnoopingOptions{Replications: 5000, BlockSize: 10, Seed: 1},
+    Alpha:               0.1,
+})
+if err != nil { /* ... */ }
+for k, step := range res.RejectedAt {
+    if step > 0 {
+        fmt.Println(res.Names[k], "beats the benchmark, found at step", step, "statistic", res.Statistics[k])
+    }
+}
+```
+
+Procedure (Romano and Wolf 2005, studentized): with `d_k,t` the column minus the benchmark, `dbar_k` its mean and `σ_k` its long-run standard deviation, `w_k = √T·dbar_k/σ_k`. Every replication draws one sequence of time positions for all columns (as `RealityCheck` does, from the same seeded stream) and computes `w*_k = √T·(dbar*_k − dbar_k)/σ*_k`, where `σ*_k` is estimated again on that replication's resampled series (per-sample re-estimation, as Götze and Künsch 1996 do and Python `arch` does). At step `s` the critical value `c_s` is the `⌈Alpha·B⌉`-th largest (computed exactly on the shortest decimal form of `Alpha`, so `0.1` with `B = 120` is rank 12), over the `B` replications, of the maximum of `w*` over the columns not rejected so far; every such column with `w_k > c_s` is rejected at step `s`. The steps repeat until one rejects nothing or every column is rejected. Rejecting a column removes it from the maximum, so later steps have lower critical values and can find weaker strategies.
+
+- **`σ_k` and `σ*_k`** are the same `ω_k` as `SPATest` (Hansen's exact kernel with `q = 1/BlockSize`), computed with the autocovariances of every lag from a fast Fourier transform (zero-padded to at least `2T`), which is algebraically the same sum in `O(T log T)` instead of `O(T²)` per column and replication.
+- **Ties are not rejections.** A column equal to the critical value is not rejected, which agrees with `RealityCheck` counting a tie as an exceedance: when everything is tied nothing is rejected.
+- **No adjusted p-values.** Neither Romano and Wolf (2005) nor Python `arch`'s `StepM` defines them; the result is the rejection decision at `Alpha`. To see the decision at another level, call `RomanoWolf` again: a smaller `Alpha` never rejects more columns.
+- **N = 1 is accepted** (a single column is just a one-sided test); `RealityCheck` takes it as well.
+
+`RomanoWolfResult` holds `Alpha`, `Names` (table order, `""` without a name), `RejectedAt` (1-based step, 0 if not rejected), `Statistics` (`w_k`), `CriticalValues` (`CriticalValues[s-1]` is the value used at step `s`; its length is the number of steps that ran) and `Replications`.
+
+**Errors:** `Alpha` that is NaN, at most 0 or at least 1, plus everything `RealityCheck` refuses. As with `SPATest`, a column with no variance relative to the benchmark (constant `d_k`, or `σ_k²` not finite or at most `10⁻²⁴` times the mean of `d_k²`) is an error, and so is a replication in which a resampled series has no usable variance or a resampled mean is not finite. A statistic that is not finite is an error too, whether it is `w_k` or a replication's `w*_k`: the quotient can overflow when both parts are finite, for example when a draw misses a column's one huge value and its `σ*` is tiny. No infinite value is ever used as a critical value candidate.
+
+**Speed.** Every replication re-estimates `N` variances, each two FFTs of length about `2T`; replications run on all cores and give the same result for any number of cores. With `Replications 5000`, `T = 2500` and `N = 100`, about 44 seconds on an 8-core Apple M3 (`BenchmarkRomanoWolfLarge`).
 
 ---
 
@@ -680,6 +719,47 @@ func SignalBuckets(signal, prices insyra.IDataTable, dates insyra.IDataList, opt
 
 Every non-missing cell of `signal` is an observation, sorted into a bucket by `Edges` (n ascending edges make n+1 buckets; the bucket above an edge includes it) or, when `Edges` is empty, by `Quantiles` of all signal values pooled over all dates and stocks. Each `BucketSummary` has `Index`, `Lower`, `Upper` and one `ForwardSummary` per horizon. With one column and `BenchmarkOwnMean` this is the single-series version.
 
+### AbnormalReturns
+
+```go
+func AbnormalReturns(prices, events insyra.IDataTable, dates insyra.IDataList, opts AbnormalReturnsOptions) (*AbnormalReturnsResult, error)
+```
+
+`EventStudy` starts counting after the entry. `AbnormalReturns` looks at the days around the event, before it too. For each event it works out how the stock normally moves with the market, then reports for every day from before to after the event how far the stock was above or below that normal (the abnormal return, AR) and the running total of those gaps (the cumulative abnormal return, CAR). Seeing the days before the event shows whether the news leaked early.
+
+`prices` has one column per stock and one row per date; `events` has the same shape with `true` where the event happened at that row's close (an earnings release, an ex-dividend date, a monthly revenue release). `dates` gives each row's date; it is used only to check the number of rows and to fill the event-date column of `CARs`, so it may hold any values (strings, `time.Time`, numbers). Rows must be in date order. Returns are simple returns, `p[t]/p[t-1]-1`, for the stock and for the market.
+
+`AbnormalReturnsOptions`:
+
+| Field | Meaning |
+| --- | --- |
+| `Model` | `AbnormalMarketAdjusted` (default): expected return is the market's return that day, nothing is estimated. `AbnormalMarketModel`: expected return is `alpha + beta * market return`, fitted by ordinary least squares on the estimation window. |
+| `EventWindow` | First and last row relative to the event row (row 0), for example `{-10, 20}`. The first must not be after the last. |
+| `EstimationWindow` | Market model only, for example `{-250, -11}`: the rows the fit uses, relative to the event row. It must end before `EventWindow` starts. Must be the zero value for the market-adjusted model. |
+| `MinEstimation` | Market model only, **required, at least 3, no default**: the fewest usable estimation rows an event needs. Must be 0 for the market-adjusted model. |
+| `MarketLevels` | Market index levels, one per row, required for both models. A `NaN` level is a missing one. |
+| `MinGap` | As in `EventStudy`: an event of the same stock closer than this to the last counted one is dropped. |
+
+The result has `Days` (the relative day numbers), `MeanAR` and `MeanCAR` (CAR is cumulated from the first day of `EventWindow`), `ARTStat`/`ARPValue` and `CARTStat`/`CARPValue`, `Events`, `Missing`, and `CARs`, a table with one row per used event: `stock` (the column name in `prices`), `event date` (from `dates`, as given; a date that is a slice stays one cell) and one `CAR[day]` column per relative day.
+
+```go
+res, err := quant.AbnormalReturns(prices, events, dates, quant.AbnormalReturnsOptions{
+    Model:            quant.AbnormalMarketModel,
+    EstimationWindow: [2]int{-250, -11},
+    EventWindow:      [2]int{-10, 20},
+    MinEstimation:    100,
+    MarketLevels:     marketIndex,
+})
+// res.MeanCAR[i] is the average CAR on res.Days[i]; a CAR that climbs before day 0 hints at a leak.
+```
+
+**Rules.**
+
+- **Whole events are dropped.** If the stock's price or the market level is missing on any row the event window needs (including the row before the first one, which the first return is taken from), or the window runs outside the table, the whole event is counted in `Missing`. A return that is not a finite number, such as a price that jumps from `1e-300` to `1e300` so the ratio overflows, counts as missing data in the same way, and so does an event whose abnormal return or running CAR is not finite (a sum that overflows). Every day therefore averages the same events. For the market model an event is also dropped when fewer than `MinEstimation` usable estimation rows remain, or when the market did not move at all over them.
+- **Contaminated estimation rows are left out.** A row of a stock's estimation window that lies inside the event window of another event of the same stock (including one `MinGap` dropped) is not used for the fit, so one event's reaction does not distort another's normal. This is common practice in event studies, not a specific published rule; `MinGap` does not do it.
+- **The test is across events.** For each relative day the events are the sample: `t = mean(AR) / (sd(AR) / sqrt(N))`, with `N-1` degrees of freedom and a two-tailed p; the same for CAR. It is `NaN` when fewer than 2 events were used or the events agree exactly, and also when a sum in the mean or spread overflows (the value is then not representable). Each end of `EventWindow` and `EstimationWindow` must be within 2^29 rows of the event, and `EventWindow` must not span more rows than `dates` has, otherwise an error is returned. These checks run before anything sized by a window or an offset is allocated; copying your input tables is proportional to their own size; an estimation window longer than the table is fine, since only rows that exist are used. This is a plain cross-sectional t-test in the manner of Brown and Warner's event studies; nothing more specific is claimed.
+- **Limits.** Events that fall on the same dates are not independent (the market moves them together), so this t-test can reject too often. `EventStudy`'s monthly-average Newey-West test remains the option that is robust to that clustering. Patell, BMP (Boehmer-Musumeci-Poulsen) and Kolari-Pynnonen tests are **not implemented**. The market-adjusted and market models are the only expected-return models; there is no factor model and no default estimation length, because the number of rows needed has no single accepted value.
+
 ### Bias and BiasZ
 
 ```go
@@ -761,7 +841,7 @@ func QuantileSort(table insyra.IDataTable, dateCol, signalCol any, returnCols []
 
 Every day, sorts the stocks into `n` groups by a signal and reports each group's mean return and the spread between the top and the bottom group, the standard check of whether a signal ranks future returns. The table is in long form, one row per stock and date. Each day is sorted on its own, and 9.6 million stock-days take about 3 seconds.
 
-`dateCol`, `signalCol`, every element of `returnCols` and `WeightCol` pick a column the way every column selector in the library does: a bare string is an Excel-style index (`"A"`, `"AA"`), `insyra.Name("ret_5d")` is a column name compared exactly, and an `int` is a 0-based position (negative counts from the end). A bare string is never read as a name, so a column that happens to be called `"A"` is not picked by `"A"`; a nil, unsupported, unknown or out-of-range selector is an error. The return columns appear in the output under their own column names. Dates are grouped by value and appear in the order they first appear in the table. A stock with a missing (`nil` or `NaN`) signal is left out of its day, and a missing return is left out of that column's means. Text, an infinity, a missing date or a non-positive weight is an error.
+`dateCol`, `signalCol`, every element of `returnCols` and `WeightCol` pick a column the way every column selector in the library does: a bare string is an Excel-style index (`"A"`, `"AA"`), `insyra.Name("ret_5d")` is a column name compared exactly, and an `int` is a 0-based position (negative counts from the end). A bare string is never read as a name, so a column that happens to be called `"A"` is not picked by `"A"`; a nil, unsupported, unknown or out-of-range selector is an error. The return columns appear in the output under their own column names. Dates are grouped by value and appear in the order they first appear in the table. A date is a string (compared exactly, whitespace included), `time.Time` (by instant, any zone), `bool`, an integer or a float (not `NaN`), or a defined type whose underlying type is one of these (`type TradingDay int32`); the key includes the concrete type, so `int` 1, `float64` 1 and `TradingDay(1)` are different dates, and any other type is an error. A stock with a missing (`nil` or `NaN`) signal is left out of its day, and a missing return is left out of that column's means. Text, an infinity, a missing date or a non-positive weight is an error.
 
 **Options (`QuantileSortOptions`)**
 
@@ -790,7 +870,7 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol any, charCols []any
 
 Fama-MacBeth regressions: on every date, the return is regressed on an intercept and the characteristics across stocks, and each coefficient's daily series is then tested for a zero mean with `stats.NeweyWestMeanTest`. Where `QuantileSort` looks at one signal, this asks whether a characteristic still explains the cross-section of returns once the others are controlled for. The table is the same long form `QuantileSort` takes, one row per stock and date.
 
-`dateCol`, `returnCol` and every element of `charCols` pick a column the way every column selector in the library does: a bare string is an Excel-style index (`"A"`, `"AA"`), `insyra.Name("ret_next")` is a column name compared exactly, and an `int` is a 0-based position (negative counts from the end). A bare string is never read as a name, so a column that happens to be called `"A"` is not picked by `"A"`. `FamaMacBethResult.Names` and `Daily`'s columns carry the characteristics' column names (their Excel-style index for an unnamed column), and the reserved-name check applies to those names. Dates are grouped by value and appear in the order they first appear. A date is a string (compared exactly, whitespace included), `time.Time` (by instant), `bool`, an integer or a float (not `NaN`); `int` 1 and `float64` 1 are different dates, and any other type, `nil` included, is an error. A stock is left out of its day when its return or any characteristic is missing (`nil` or `NaN`). A date with too few usable stocks, or whose characteristics are collinear (including one that is constant that day), is listed in `Skipped` and does not fail the call. Fewer than two estimated dates, a text or infinite value, a missing date, the date and return columns being the same column, a repeated characteristic, the date or return column listed as a characteristic, or a characteristic named `date`, `intercept`, `r2` or `count` (the fixed names of `Daily`'s columns, compared exactly) is an error.
+`dateCol`, `returnCol` and every element of `charCols` pick a column the way every column selector in the library does: a bare string is an Excel-style index (`"A"`, `"AA"`), `insyra.Name("ret_next")` is a column name compared exactly, and an `int` is a 0-based position (negative counts from the end). A bare string is never read as a name, so a column that happens to be called `"A"` is not picked by `"A"`. `FamaMacBethResult.Names` and `Daily`'s columns carry the characteristics' column names (their Excel-style index for an unnamed column), and the reserved-name check applies to those names. Dates are grouped by value and appear in the order they first appear. A date is a string (compared exactly, whitespace included), `time.Time` (by instant), `bool`, an integer or a float (not `NaN`), or a defined type whose underlying type is one of these (`type TradingDay int32`); the key includes the concrete type, so `int` 1, `float64` 1 and `TradingDay(1)` are different dates, and any other type, `nil` included, is an error. A stock is left out of its day when its return or any characteristic is missing (`nil` or `NaN`). A date with too few usable stocks, or whose characteristics are collinear (including one that is constant that day), is listed in `Skipped` and does not fail the call. Fewer than two estimated dates, a text or infinite value, a missing date, the date and return columns being the same column, a repeated characteristic, the date or return column listed as a characteristic, or a characteristic named `date`, `intercept`, `r2` or `count` (the fixed names of `Daily`'s columns, compared exactly) is an error.
 
 **Options (`FamaMacBethOptions`)**
 

@@ -42,6 +42,7 @@ func TestPopErrReadsAndClears(t *testing.T) {
 	first := dl.PopErr()
 	if first == nil {
 		t.Fatal("PopErr returned nil for a failed call")
+		return
 	}
 	if again := dl.PopErr(); again != nil {
 		t.Fatalf("PopErr did not clear the error: %v", again)
@@ -54,6 +55,7 @@ func TestPopErrReadsAndClears(t *testing.T) {
 	dt.SetRowToColNames(99)
 	if dt.PopErr() == nil {
 		t.Fatal("DataTable.PopErr returned nil for a failed call")
+		return
 	}
 	if dt.PopErr() != nil {
 		t.Fatal("DataTable.PopErr did not clear the error")
