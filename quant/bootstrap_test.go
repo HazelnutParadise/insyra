@@ -155,13 +155,12 @@ func TestGeometricBlockLengthMean(t *testing.T) {
 }
 
 func TestAppendCircularWraps(t *testing.T) {
-	src := []float64{0, 1, 2, 3, 4}
-	got := appendCircular(nil, src, 3, 4)
-	want := []float64{3, 4, 0, 1}
+	got := appendCircular(nil, 5, 3, 4)
+	want := []int{3, 4, 0, 1}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("appendCircular = %v, want %v", got, want)
 	}
-	if got := appendCircular([]float64{9}, src, 4, 7); !reflect.DeepEqual(got, []float64{9, 4, 0, 1, 2, 3, 4, 0}) {
+	if got := appendCircular([]int{9}, 5, 4, 7); !reflect.DeepEqual(got, []int{9, 4, 0, 1, 2, 3, 4, 0}) {
 		t.Errorf("appendCircular with prefix = %v", got)
 	}
 }

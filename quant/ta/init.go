@@ -12,7 +12,7 @@
 //
 // Every function takes its series as insyra.IDataList and returns an error for
 // invalid input, naming the row index. The tools use only information known at
-// the close of each row, so a series cut short gives the results of the full
+// the close of each row (except Ichimoku's Chikou, the close of later rows by definition), so a series cut short gives the results of the full
 // series for the rows before the cut. A row without enough history is NaN, and
 // SegmentStarts, where a function takes it, lists the rows on which a new data
 // segment starts (a trading halt, a relisting, a gap in the data) so nothing is

@@ -76,8 +76,39 @@ func TRIX(prices insyra.IDataList, n, signal int) (*TRIXResult, error) {
 			trix[i] = 100 * (e3[i]/e3[i-1] - 1)
 		}
 	}
-	sig := emaOf(trix, signal, 3*(n-1)+1)
+	sig := signalOf(trix, signal)
 	return &TRIXResult{listOfFloats("TRIX", trix), listOfFloats("Signal", sig)}, nil
+}
+
+// signalOf is the EMA of the defined values of v, seeded with the simple average
+// of the first n consecutive defined values. A NaN row (TRIX is undefined when
+// the triple EMA before it is 0) is NaN in the result and ends the average, which
+// starts again from the next n consecutive defined values, so one undefined row
+// does not silence the signal for good. Without gaps it equals emaOf from the
+// first defined value.
+func signalOf(v []float64, n int) []float64 {
+	out := nanSeries(len(v))
+	k := 2 / float64(n+1)
+	run, seed := 0, 0.0
+	have, prev := false, 0.0
+	for i, x := range v {
+		if math.IsNaN(x) {
+			run, seed, have = 0, 0, false
+			continue
+		}
+		if have {
+			prev = (x-prev)*k + prev
+			out[i] = prev
+			continue
+		}
+		run++
+		seed += x
+		if run == n {
+			prev, have = seed/float64(n), true
+			out[i] = prev
+		}
+	}
+	return out
 }
 
 // KAMA returns Perry Kaufman's adaptive moving average. The efficiency ratio of
@@ -111,9 +142,11 @@ func KAMA(prices insyra.IDataList, n, fast, slow int) (*insyra.DataList, error) 
 		for j := i - n + 1; j <= i; j++ {
 			path += math.Abs(p[j] - p[j-1])
 		}
-		er := 0.0
-		if path != 0 {
-			er = math.Abs(p[i]-p[i-n]) / path
+		// As in TA-Lib a window that did not move (no path) has ratio 1, as does
+		// one whose path is no longer than its net change.
+		er := 1.0
+		if net := math.Abs(p[i] - p[i-n]); path > net {
+			er = net / path
 		}
 		sc := er*(fastSC-slowSC) + slowSC
 		prev += sc * sc * (p[i] - prev)
@@ -126,8 +159,17 @@ func KAMA(prices insyra.IDataList, n, fast, slow int) (*insyra.DataList, error) 
 // default shown.
 type IchimokuOptions struct {
 	// Displacement is how many rows the two cloud lines are drawn ahead of the
-	// rows they are computed from. Default 26.
+	// rows they are computed from, and how many rows back the lagging span is
+	// drawn. Default 26.
 	Displacement int
+	// SegmentStarts are the rows on which a new data segment starts, for
+	// example the first row after a trading halt or a relisting, as in
+	// RSIOptions and KDOptions. Each segment is computed on its own: every line
+	// starts again on the segment's first row and shows NaN until the segment has
+	// its own data, and the displacement of the cloud and of Chikou never crosses
+	// a boundary, so a value that would come from the next segment is NaN. Row 0
+	// starts the first segment and need not be listed.
+	SegmentStarts []int
 }
 
 // IchimokuResult holds the lines of Ichimoku Kinko Hyo.
@@ -136,6 +178,7 @@ type IchimokuResult struct {
 	Kijun   *insyra.DataList // base line: the same over kijun rows
 	SenkouA *insyra.DataList // cloud line A in force on this row
 	SenkouB *insyra.DataList // cloud line B in force on this row
+	Chikou  *insyra.DataList // lagging span: the close Displacement rows later, NaN for the last Displacement rows of a segment
 }
 
 // Ichimoku returns Goichi Hosoda's Ichimoku lines with the usual settings tenkan
@@ -145,9 +188,15 @@ type IchimokuResult struct {
 // are drawn Displacement rows ahead on a chart; here SenkouA[t] and SenkouB[t]
 // are the values in force on row t, computed from row t minus Displacement, so
 // a close can be compared with the cloud it actually sat against, using only
-// earlier rows. The chikou line, the close drawn back Displacement rows, is the
-// close itself aligned this way and is not returned. Rows before a line exists
-// are NaN.
+// earlier rows.
+//
+// Chikou is the lagging span, the close plotted Displacement rows behind:
+// Chikou[t] is close[t+Displacement], so reading it at row t compares the close
+// of Displacement rows later with the prices of row t. It therefore looks ahead
+// by construction and is for studying the chart in hindsight, never for a rule
+// that must be decided on row t; every other line uses only rows up to t. The
+// last Displacement rows of a segment are NaN. Rows before a line exists are
+// NaN.
 func Ichimoku(high, low, close insyra.IDataList, tenkan, kijun, senkouB int, opts ...IchimokuOptions) (*IchimokuResult, error) {
 	if len(opts) > 1 {
 		return nil, errors.New("Ichimoku accepts at most one IchimokuOptions")
@@ -167,29 +216,45 @@ func Ichimoku(high, low, close insyra.IDataList, tenkan, kijun, senkouB int, opt
 			return nil, err
 		}
 	}
-	h, l, _, err := barSeries(high, low, close)
+	h, l, c, err := barSeries(high, low, close)
 	if err != nil {
 		return nil, err
 	}
-	mid := func(n int) []float64 {
-		out := nanSeries(len(h))
-		for i := n - 1; i < len(h); i++ {
-			hi, lo := h[i], l[i]
-			for j := i - n + 1; j < i; j++ {
-				hi, lo = math.Max(hi, h[j]), math.Min(lo, l[j])
+	starts, err := cleanSegmentStarts(o.SegmentStarts, len(h))
+	if err != nil {
+		return nil, err
+	}
+	tk, kj, a, b, ch := nanSeries(len(h)), nanSeries(len(h)), nanSeries(len(h)), nanSeries(len(h)), nanSeries(len(h))
+	for _, bd := range segmentBounds(len(h), starts) {
+		lo, hi := bd[0], bd[1]
+		hs, ls := h[lo:hi], l[lo:hi]
+		stk, skj, ssb := ichimokuMid(hs, ls, tenkan), ichimokuMid(hs, ls, kijun), ichimokuMid(hs, ls, senkouB)
+		copy(tk[lo:hi], stk)
+		copy(kj[lo:hi], skj)
+		for i := o.Displacement; i < hi-lo; i++ {
+			j := i - o.Displacement
+			if !math.IsNaN(stk[j]) && !math.IsNaN(skj[j]) {
+				a[lo+i] = (stk[j] + skj[j]) / 2
 			}
-			out[i] = (hi + lo) / 2
+			b[lo+i] = ssb[j]
 		}
-		return out
-	}
-	tk, kj, sb := mid(tenkan), mid(kijun), mid(senkouB)
-	a, b := nanSeries(len(h)), nanSeries(len(h))
-	for i := o.Displacement; i < len(h); i++ {
-		j := i - o.Displacement
-		if !math.IsNaN(tk[j]) && !math.IsNaN(kj[j]) {
-			a[i] = (tk[j] + kj[j]) / 2
+		for i := 0; i+o.Displacement < hi-lo; i++ {
+			ch[lo+i] = c[lo+i+o.Displacement]
 		}
-		b[i] = sb[j]
 	}
-	return &IchimokuResult{listOfFloats("Tenkan", tk), listOfFloats("Kijun", kj), listOfFloats("SenkouA", a), listOfFloats("SenkouB", b)}, nil
+	return &IchimokuResult{listOfFloats("Tenkan", tk), listOfFloats("Kijun", kj), listOfFloats("SenkouA", a), listOfFloats("SenkouB", b), listOfFloats("Chikou", ch)}, nil
+}
+
+// ichimokuMid is the midpoint of the highest high and lowest low of the last n
+// rows, NaN before the n-th row.
+func ichimokuMid(h, l []float64, n int) []float64 {
+	out := nanSeries(len(h))
+	for i := n - 1; i < len(h); i++ {
+		hi, lo := h[i], l[i]
+		for j := i - n + 1; j < i; j++ {
+			hi, lo = math.Max(hi, h[j]), math.Min(lo, l[j])
+		}
+		out[i] = (hi + lo) / 2
+	}
+	return out
 }

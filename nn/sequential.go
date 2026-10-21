@@ -77,6 +77,9 @@ func (s *Sequential) Forward(t *Tape, x *Tensor) (*Tensor, error) {
 // Predict runs inference on a throwaway tape and structurally omits every
 // TrainingOnly layer.
 func (s *Sequential) Predict(x *Tensor) (*Tensor, error) {
+	if err := rejectResident("Predict", x); err != nil {
+		return nil, err
+	}
 	if s == nil {
 		return nil, fmt.Errorf("sequential is nil")
 	}
@@ -146,6 +149,11 @@ func (s *Sequential) NamedParameters() map[string]*Parameter {
 func (s *Sequential) LoadWeights(weights map[string]*Tensor) error {
 	if s == nil {
 		return fmt.Errorf("sequential is nil")
+	}
+	for name, tensor := range weights {
+		if err := rejectResident("load weights "+name, tensor); err != nil {
+			return err
+		}
 	}
 	expected := make(map[string]struct{})
 	for index, layer := range s.layers {

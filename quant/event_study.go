@@ -86,7 +86,7 @@ func EventStudy(prices, events insyra.IDataTable, dates insyra.IDataList, opts E
 func finishSummaries(p *forwardPanel, acc []*accumulator) ([]ForwardSummary, error) {
 	out := make([]ForwardSummary, len(acc))
 	for hi, a := range acc {
-		s, err := a.summary(p.opts.Horizons[hi], p.opts.NeweyWestLag)
+		s, err := a.summary(p.opts.Horizons[hi], p.opts.NeweyWestLag, p.opts.NoNeweyWest)
 		if err != nil {
 			return nil, err
 		}
