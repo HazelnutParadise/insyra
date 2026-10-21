@@ -162,7 +162,7 @@ than the default CPU on this machine. Choose the mode for results that are the
 same everywhere and for a step that stays on the device, not for a faster
 product: if you only want speed on a multi-core CPU, the default tape is
 faster. The kernel is bound by the arithmetic of the exact sum, so tiling it
-did not help. Only Apple Metal has been measured; other GPUs have not.
+did not help. Only Apple Metal has been measured; other GPUs have not. A program uses one card: the one WebGPU selects by default, whatever `Device` it passes to `To`; choosing among several cards is not supported yet.
 
 ## Loading and running an ONNX model
 
