@@ -26,7 +26,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 - **Volume indicators**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `Divergence` — on-balance volume, a scale-free signed-volume ratio, and price/indicator divergence flags
 - **Text tone**: `ToneCounts`, `DailyTone` — count positive and negative words from a lexicon (with negation, for English or Chinese) and add them up by trading day without looking ahead
-- **Event studies and signal buckets**: `EventStudy`, `SignalBuckets`, `Bias`, `BiasZ` — forward excess returns after events or by signal bucket, with a monthly Newey-West t-test, and the bias indicators that feed them
+- **Event studies and signal buckets**: `EventStudy`, `SignalBuckets`, `AbnormalReturns`, `Bias`, `BiasZ` — forward excess returns after events or by signal bucket, with a monthly Newey-West t-test; abnormal returns and CAR from before to after each event; and the bias indicators that feed them
 - **Turning points and regimes**: `ZigZag`, `Regimes` — causal turning points of a price series and the bull and bear stretches between them
 - **Signal backtest**: `BacktestSignal` — a 0–1 position signal into a net return series with a one-row delay, cash returns and separate buy and sell costs
 - **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
@@ -718,6 +718,47 @@ func SignalBuckets(signal, prices insyra.IDataTable, dates insyra.IDataList, opt
 ```
 
 Every non-missing cell of `signal` is an observation, sorted into a bucket by `Edges` (n ascending edges make n+1 buckets; the bucket above an edge includes it) or, when `Edges` is empty, by `Quantiles` of all signal values pooled over all dates and stocks. Each `BucketSummary` has `Index`, `Lower`, `Upper` and one `ForwardSummary` per horizon. With one column and `BenchmarkOwnMean` this is the single-series version.
+
+### AbnormalReturns
+
+```go
+func AbnormalReturns(prices, events insyra.IDataTable, dates insyra.IDataList, opts AbnormalReturnsOptions) (*AbnormalReturnsResult, error)
+```
+
+`EventStudy` starts counting after the entry. `AbnormalReturns` looks at the days around the event, before it too. For each event it works out how the stock normally moves with the market, then reports for every day from before to after the event how far the stock was above or below that normal (the abnormal return, AR) and the running total of those gaps (the cumulative abnormal return, CAR). Seeing the days before the event shows whether the news leaked early.
+
+`prices` has one column per stock and one row per date; `events` has the same shape with `true` where the event happened at that row's close (an earnings release, an ex-dividend date, a monthly revenue release). `dates` gives each row's date; it is used only to check the number of rows and to fill the event-date column of `CARs`, so it may hold any values (strings, `time.Time`, numbers). Rows must be in date order. Returns are simple returns, `p[t]/p[t-1]-1`, for the stock and for the market.
+
+`AbnormalReturnsOptions`:
+
+| Field | Meaning |
+| --- | --- |
+| `Model` | `AbnormalMarketAdjusted` (default): expected return is the market's return that day, nothing is estimated. `AbnormalMarketModel`: expected return is `alpha + beta * market return`, fitted by ordinary least squares on the estimation window. |
+| `EventWindow` | First and last row relative to the event row (row 0), for example `{-10, 20}`. The first must not be after the last. |
+| `EstimationWindow` | Market model only, for example `{-250, -11}`: the rows the fit uses, relative to the event row. It must end before `EventWindow` starts. Must be the zero value for the market-adjusted model. |
+| `MinEstimation` | Market model only, **required, at least 3, no default**: the fewest usable estimation rows an event needs. Must be 0 for the market-adjusted model. |
+| `MarketLevels` | Market index levels, one per row, required for both models. A `NaN` level is a missing one. |
+| `MinGap` | As in `EventStudy`: an event of the same stock closer than this to the last counted one is dropped. |
+
+The result has `Days` (the relative day numbers), `MeanAR` and `MeanCAR` (CAR is cumulated from the first day of `EventWindow`), `ARTStat`/`ARPValue` and `CARTStat`/`CARPValue`, `Events`, `Missing`, and `CARs`, a table with one row per used event: `stock` (the column name in `prices`), `event date` (from `dates`, as given) and one `CAR[day]` column per relative day.
+
+```go
+res, err := quant.AbnormalReturns(prices, events, dates, quant.AbnormalReturnsOptions{
+    Model:            quant.AbnormalMarketModel,
+    EstimationWindow: [2]int{-250, -11},
+    EventWindow:      [2]int{-10, 20},
+    MinEstimation:    100,
+    MarketLevels:     marketIndex,
+})
+// res.MeanCAR[i] is the average CAR on res.Days[i]; a CAR that climbs before day 0 hints at a leak.
+```
+
+**Rules.**
+
+- **Whole events are dropped.** If the stock's price or the market level is missing on any row the event window needs (including the row before the first one, which the first return is taken from), or the window runs outside the table, the whole event is counted in `Missing`. Every day therefore averages the same events. For the market model an event is also dropped when fewer than `MinEstimation` usable estimation rows remain, or when the market did not move at all over them.
+- **Contaminated estimation rows are left out.** A row of a stock's estimation window that lies inside the event window of another event of the same stock (including one `MinGap` dropped) is not used for the fit, so one event's reaction does not distort another's normal. This is common practice in event studies, not a specific published rule; `MinGap` does not do it.
+- **The test is across events.** For each relative day the events are the sample: `t = mean(AR) / (sd(AR) / sqrt(N))`, with `N-1` degrees of freedom and a two-tailed p; the same for CAR. It is `NaN` when fewer than 2 events were used or the events agree exactly. This is a plain cross-sectional t-test in the manner of Brown and Warner's event studies; nothing more specific is claimed.
+- **Limits.** Events that fall on the same dates are not independent (the market moves them together), so this t-test can reject too often. `EventStudy`'s monthly-average Newey-West test remains the option that is robust to that clustering. Patell, BMP (Boehmer-Musumeci-Poulsen) and Kolari-Pynnonen tests are **not implemented**. The market-adjusted and market models are the only expected-return models; there is no factor model and no default estimation length, because the number of rows needed has no single accepted value.
 
 ### Bias and BiasZ
 
