@@ -78,3 +78,31 @@ With `MinGap` above 0, an event of a stock closer than `MinGap` rows to its last
 #### Scenario: Two events used
 - **WHEN** two events are used over a window of 16 days
 - **THEN** the table has 2 rows and 18 columns
+
+### Requirement: A return that is not finite is missing data
+A simple return of a stock or of the market that is not a finite number, such as the ratio of two finite levels overflowing, SHALL be treated as a missing value, so an event whose window needs it is dropped as a whole and counted in `Missing`.
+
+#### Scenario: A price jump that overflows
+- **WHEN** a price goes from 1e-300 to 1e300 inside an event's window
+- **THEN** the event is counted in `Missing` and no mean abnormal return is infinite
+
+### Requirement: Each event date is one cell
+The event-date column of `CARs` SHALL hold each date as given in `dates` in a single cell, including a date that is a slice, so the table has one row per used event.
+
+#### Scenario: A slice as a date
+- **WHEN** an event's date cell is the slice `[2026 1 2]`
+- **THEN** the table has one row for that event and its date cell is that slice
+
+### Requirement: Windows are bounded before their size is used
+`AbnormalReturns` SHALL return an error, without panicking, when an end of `EventWindow` or `EstimationWindow` is more than 2^29 rows from the event, when `dates` has more than 2^29 rows, or when `EventWindow` spans more rows than `dates` has. No allocation or arithmetic sized by a window or offset SHALL happen before these checks; copying the input tables is proportional to their own size.
+
+#### Scenario: An extreme window
+- **WHEN** `EventWindow` is `[minInt, 0]`
+- **THEN** an error is returned
+
+### Requirement: A non-finite abnormal return or CAR is missing data
+An event whose abnormal return, running CAR or market-model fit is not a finite number SHALL be dropped as a whole and counted in `Missing`, and a cross-sectional mean or spread whose sum overflows SHALL give NaN statistics.
+
+#### Scenario: A CAR that overflows
+- **WHEN** an event has abnormal returns of 1e308, -1 and 1e308
+- **THEN** the event is counted in `Missing` and no mean CAR is infinite
