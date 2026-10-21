@@ -124,7 +124,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `quant.RSI(prices, n, opts)`，以 Wilder 或簡單平均（`RSIWilder`、`RSISimple`）計算相對強弱指標，並可選擇缺值的處理方式（`RSIMissingError`、`RSIMissingFlat`、`RSIMissingBreak`）。新增 `quant.SharpeDifferenceTest(a, b, riskFree)`，用 Memmel 修正的 Jobson-Korkie 統計量檢定兩組報酬的 Sharpe 是否相同；有一組沒有變異時回傳 `ErrSharpeUndefined`（[#464](https://github.com/HazelnutParadise/insyra/issues/464)）。
 - 新增 `quant.QuantileSort(table, dateCol, signalCol, returnCols, n, opts)`，每天各自把股票依訊號分成 `n` 組，回傳每日每組的平均報酬與檔數，以及最高組減最低組的價差；可設定每天最少檔數、同分處理方式（平均排名或 `pandas.qcut`）、權重欄與是否減掉當天平均（[#458](https://github.com/HazelnutParadise/insyra/issues/458)）。新增 `insyra.IsNilTable`，判斷資料表是否為 nil（含包裝），作法與 `IsNilList` 相同。
 - 新增 `quant.ZigZag(prices, threshold)`，在不偷看未來的前提下找出價格序列的轉折點，每個轉折附極值位置與確認位置；`quant.Regimes(pivots, opts)` 把轉折點轉成多頭與空頭期間，可設定 Pagan 與 Sossounov 的最短階段與最短循環。新增 `quant.BacktestSignal(signal, assetReturns, opts)`，把 0～1 的部位訊號轉成淨報酬：訊號落後一列生效，可帶現金報酬與各自的買進、賣出成本（[#442](https://github.com/HazelnutParadise/insyra/issues/442)）。
-- 新增 `quant.EventStudy(prices, events, dates, opts)` 與 `quant.SignalBuckets(signal, prices, dates, opts)`，量測事件之後、或依訊號分桶之後，多個持有期的超額報酬。部位至少在訊號後一列才進場，基準可用橫斷面平均、指數或序列自身的平均，t 檢定是對月平均做 Newey-West。新增 `quant.Bias` 與 `quant.BiasZ`，計算乖離率與只用前幾天波動度調整的乖離率（[#445](https://github.com/HazelnutParadise/insyra/issues/445)、[#446](https://github.com/HazelnutParadise/insyra/issues/446)）。
+- 新增 `quant.EventStudy(prices, events, dates, opts)` 與 `quant.SignalBuckets(signal, prices, dates, opts)`，量測事件之後、或依訊號分桶之後，多個持有期的超額報酬。部位至少在訊號後一列才進場，基準可用橫斷面平均、指數或序列自身的平均，t 檢定是對月平均做 Newey-West，`NeweyWestLag` 為 0 時自動（上限為月數減 1）、正數照用但不小於月數會回錯、負數會回錯。新增 `quant.Bias` 與 `quant.BiasZ`，計算乖離率與只用前幾天波動度調整的乖離率（[#445](https://github.com/HazelnutParadise/insyra/issues/445)、[#446](https://github.com/HazelnutParadise/insyra/issues/446)）。
 - 新增 `quant.ToneCounts(texts, lexicon, opts)`，依你提供的字詞表計算每則文字的正面與負面詞數，支援否定詞，中文則用最長優先的子字串比對。新增 `quant.DailyTone(published, counts, tradingDays, opts)`，依交易日加總，週末與收盤後的新聞算到下一個交易日，並提供滾動淨語氣與不含當日的往前 z 分數（[#460](https://github.com/HazelnutParadise/insyra/issues/460)）。該 issue 的 NYT Archive 客戶端尚未包含。
 
 ### CLI
@@ -248,9 +248,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING（錯誤訊息文字）**：指出儲存格位置的錯誤訊息，現在改從 0 算起，與 `Get(i)` 收的數字一致，並明寫是索引：`data contains a non-finite value at row index 2: NaN`。`v0.3.4` 的假說檢定從 1 算（`row 3`），容易被當成 DataTable 自己的編號，與它差一。範圍包含假說檢定、回歸、相關、偏度、峰度與動差，以及回歸、GLM 與因素分析的 `(index N)`、`row N` 檢查；依傳入順序命名的群組、儲存格與受試者（`group 2`、`subject 3`）仍從 1 算。數值與錯誤型別不變，只有文字改變，比對舊文字的程式需要更新。
 - `CutTreeByK` 與 `CutTreeByHeight` 會拒絕葉子或合併步驟被併入超過一次的樹（手動編輯 `state.json` 可能產生）。過去它們會在要求 1 群時回傳 2 群，且沒有錯誤。
 - 新增 `stats.VarianceRatio(returns, qs...)`，計算 Lo-MacKinlay 變異數比 VR(q)，同時給同質變異與異質變異穩健的 z 值；`stats.ChowDenning` 一次檢驗多個持有期。新增 `stats.KaplanMeier(durations, observed)`，從含有「還沒結束」（截尾）的持續時間估計存活曲線，附 Greenwood 標準誤與中位數，結果與 R 的 `survival::survfit` 一致（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
+- 新增 `stats.LinearRegressionWithOptions(opts, y, xs...)`，可回報穩健或 HAC 標準誤：`LinearRegressionOptions{CovType, Lag}` 可選 `CovHC0`～`CovHC3`（R `sandwich::vcovHC` 的異質變異穩健估計），或 `CovHAC`（Bartlett 權重、不做小樣本校正的 Newey-West，同 `sandwich::NeweyWest(prewhite = FALSE, adjust = FALSE)`）。lag 給負數（寫成 `stats.AutoLag`）時用 `NeweyWestLag(n)`。t 值與 p 值用自由度 n-k 的 t 分配，結果已與 statsmodels 比對。`LinearRegression` 的數字與過去完全相同；結果多了 `CovType` 與 `Lag` 欄位，`String()` 也會印出（[#478](https://github.com/HazelnutParadise/insyra/issues/478)）。
+- 新增 `stats.AutoLag`（`-1`），代表「請用 `NeweyWestLag(n)`」的 lag；傳給 `NeweyWestMeanTest` 或 `LinearRegressionOptions.Lag`，就由 insyra 依樣本數選 lag，文件範例也改用它。`NeweyWestMeanTest` 與 `LinearRegressionOptions.Lag` 仍是負數自動、0 以上照用，既有呼叫不受影響。`quant` 的選項讀法相反（0 為自動、負數會回錯），`Docs/stats.md` 把兩種讀法並列說明。
+- 新增 `stats.NeweyWestMeanTest(series, lag)`，用 Newey-West（Bartlett 核）標準誤檢定自我相關序列的平均數是否為零，例如重疊持有期的報酬，一般 t 檢定會把 t 值高估。`lag` 為負數（`stats.AutoLag`）時用 `NeweyWestLag(n)`，為 0 時等於以 `n` 為除數的單樣本 t 檢定（[#457](https://github.com/HazelnutParadise/insyra/issues/457)）。
 - `LinearRegression`、`PoissonRegression`、`LogisticRegression`、`Correlation`、`Covariance`、`ChiSquareGoodnessOfFit`、`ChiSquareIndependenceTest`、`Silhouette`、`KNNClassify`、`KNNRegress`、`Skewness`、`Kurtosis` 收到 nil 清單（直接傳入或包在 `isr.DL` 這類包裝裡）時回傳錯誤。過去會 panic，迴歸函式還是在自己啟動的 goroutine 裡 panic，讓程式結束。`insyra.ProcessData` 把 nil 清單當成不支援的輸入。
 - 新增 `stats.AdjustPValues(pvals, method)`，一次檢驗很多假設時，用 Holm、Bonferroni、Hochberg、Benjamini-Hochberg 或 Benjamini-Yekutieli（`PAdjustHolm`、`PAdjustBonferroni`、`PAdjustHochberg`、`PAdjustBH`、`PAdjustBY`）校正一批 p 值，結果與 R 的 `p.adjust` 一致。`NaN` 維持 `NaN`，也不算進檢驗數（[#444](https://github.com/HazelnutParadise/insyra/issues/444)）。
-- 新增 `stats.NeweyWestMeanTest(series, lag)`，用 Newey-West（Bartlett 核）標準誤檢定自我相關序列的平均數是否為零，例如重疊持有期的報酬，一般 t 檢定會把 t 值高估。`lag` 為負數時用 `NeweyWestLag(n)`，為 0 時等於以 `n` 為除數的單樣本 t 檢定（[#457](https://github.com/HazelnutParadise/insyra/issues/457)）。
 
 ### `csvxl`
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 會用 v0.3.3 檢查工作表名稱的同一套規則檢查 `csvNames` 指定的檔名：含路徑分隔符號、或不會直接落在輸出目錄內的檔名都會被拒絕，所以 `csvNames: []string{"sub/out.csv"}` 不再寫進子目錄。每張 CSV 先寫入暫存檔再 rename 到目標位置，寫入失敗時不會留下截斷的檔案。
@@ -378,6 +380,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `quant`
 - **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。
+- `quant.FactorModel` 可多傳一個 `FactorModelOptions{CovType, Lag}`，讓 alpha 的 t 值改用 Newey-West（`stats.CovHAC`）或異質變異穩健標準誤，不再只有 OLS 標準誤；日報酬有自我相關時，OLS 會把 alpha 的 t 值算得太大。`Lag` 為 0 時用 `stats.NeweyWestLag(n)`，正數照用，負數會回錯。不給選項時結果不變，`FactorModelResult` 會記錄 `CovType` 與 `Lag`（[#478](https://github.com/HazelnutParadise/insyra/issues/478)）。
+- `quant.ForwardOptions` 新增 `NoNeweyWest`，可在 `EventStudy` 與 `SignalBuckets` 關掉 Newey-West 校正。月序列的 t 檢定此時用 lag 0，變異數除以月數，等同 linearmodels 的 `cov_type="unadjusted"`、`debiased=False`，與除以少一的 `stats.SingleSampleTTest` 不同。`NeweyWestLag` 為 0 代表自動、正數為指定 lag，負數會回錯，`NoNeweyWest` 與非 0 的 `NeweyWestLag` 並用也會回錯。
 
 ## v0.3.3
 

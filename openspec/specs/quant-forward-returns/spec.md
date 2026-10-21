@@ -19,6 +19,39 @@ Each horizon's summary SHALL report the observation count, the number left out f
 - **WHEN** three events produce excess returns of 5%, 5% and 0%, the first two in January
 - **THEN** the monthly means are 5% and 0% and the observation count is 3
 
+### Requirement: The Newey-West lag has one setting and the correction its own switch
+`ForwardOptions.NeweyWestLag` SHALL choose `stats.NeweyWestLag(months)` when 0, capped at months-1, and SHALL be used as given when positive. A negative `NeweyWestLag` SHALL be an error.
+
+#### Scenario: A negative lag is refused
+- **WHEN** `NeweyWestLag` is -1
+- **THEN** an error is returned
+
+#### Scenario: Automatic lag is capped
+- **WHEN** `NeweyWestLag` is 0 and the automatic lag is not below the number of months
+- **THEN** the lag used is the number of months minus 1
+
+### Requirement: An explicit lag must be smaller than the number of months
+A positive `NeweyWestLag` that is not smaller than the number of months with an observation in any horizon or bucket SHALL be an error, including when that horizon or bucket has fewer than two months, and SHALL NOT be shortened.
+
+#### Scenario: Lag not below the months
+- **WHEN** `NeweyWestLag` is 8 and a horizon has 8 months
+- **THEN** an error is returned
+
+#### Scenario: Few months
+- **WHEN** `NeweyWestLag` is 1 and a horizon has 0 or 1 months
+- **THEN** an error is returned
+
+### Requirement: The correction can be switched off
+`ForwardOptions.NoNeweyWest` SHALL switch the correction off by running the test with lag 0, whose variance divides by the number of months, and SHALL be an error together with a non-zero `NeweyWestLag`.
+
+#### Scenario: The correction is off
+- **WHEN** `NoNeweyWest` is true
+- **THEN** `Lag` is 0 and the t statistic equals `stats.NeweyWestMeanTest` of the monthly means with lag 0
+
+#### Scenario: Switch and lag together
+- **WHEN** `NoNeweyWest` is true and `NeweyWestLag` is 2
+- **THEN** an error is returned
+
 ### Requirement: Events are de-duplicated and filtered
 `quant.EventStudy` SHALL drop an event closer than MinGap rows to the last counted event of the same stock, and both functions SHALL leave out an observation that is not tradable at its entry row and count it as missing.
 

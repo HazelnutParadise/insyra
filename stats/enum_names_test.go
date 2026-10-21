@@ -30,6 +30,13 @@ func TestEnumsPrintTheirNames(t *testing.T) {
 		{PAdjustBH, "PAdjustBH"},
 		{PAdjustBY, "PAdjustBY"},
 		{PAdjustMethod(99), "PAdjustMethod(99)"},
+		{CovOLS, "CovOLS"},
+		{CovHC0, "CovHC0"},
+		{CovHC1, "CovHC1"},
+		{CovHC2, "CovHC2"},
+		{CovHC3, "CovHC3"},
+		{CovHAC, "CovHAC"},
+		{CovType(99), "CovType(99)"},
 	}
 	for _, c := range cases {
 		if got := fmt.Sprint(c.got); got != c.want {

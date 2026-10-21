@@ -1946,6 +1946,23 @@ def main():
             "n_total": N, "group_rank_sum": group_rank_sum,
             "epsilon_squared": eps2,
         }
+    elif method == "ols_robust":
+        # Robust and HAC standard errors of ordinary least squares. use_t=True
+        # reads p-values from t(n-k), as lmtest::coeftest does; HAC without
+        # the n/(n-k) correction is sandwich::NeweyWest(adjust = FALSE).
+        y = np.array(payload["y"], dtype=float)
+        X = sm.add_constant(np.column_stack([np.array(c, dtype=float) for c in payload["xs"]]), has_constant="add")
+        cov_type = payload["cov_type"]
+        if cov_type == "HAC":
+            fit = sm.OLS(y, X).fit(cov_type="HAC", cov_kwds={"maxlags": int(payload["lag"]), "use_correction": False}, use_t=True)
+        else:
+            fit = sm.OLS(y, X).fit(cov_type=cov_type, use_t=True)
+        out = {
+            "coef": [float(v) for v in fit.params],
+            "se": [float(v) for v in fit.bse],
+            "t": [float(v) for v in fit.tvalues],
+            "p": [float(v) for v in fit.pvalues],
+        }
     elif method == "friedman":
         subjects = [np.array(s, dtype=float) for s in payload["subjects"]]
         mat = np.array(subjects)
