@@ -100,21 +100,82 @@ func (dt *DataTable) SliceCols(from, to any) *DataTable {
 			dt.fail("SliceCols", "from %v (column %d) comes after to %v (column %d)", from, start, to, end)
 			return
 		}
-		rowNames := core.NewBiIndex(0)
-		if start < end {
-			rowNames = cloneRowNames(dt.rowNames)
-		}
-		result = &DataTable{
-			columns:           cloneColumns(padColumnsToLength(dt.columns[start:end], dt.getMaxColLength())),
-			rowNames:          rowNames,
-			name:              dt.name,
-			creationTimestamp: dt.creationTimestamp,
-		}
-		result.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+		result = dt.copyColRange(start, end)
 	})
 	if result == nil {
 		return NewDataTable()
 	}
+	return result
+}
+
+// ColRange returns the columns from from through to, both included, as a new
+// DataTable. It reads like Excel's B:D, pandas' df.loc[:, "open":"volume"],
+// dplyr's open:volume and CCL's A:C, where SliceCols reads like s[from:to].
+//
+// Each bound is a column selector, and the three spellings of one column are
+// the same bound, so ColRange("B", "D"), ColRange(1, 3) and, where those
+// columns are named b and d, ColRange(Name("b"), Name("d")) all give columns
+// B, C and D. Every bound must be a column the table has: unlike SliceCols,
+// an int equal to NumCols() is out of range. from == to gives that one column.
+// nil opens the end: the first column for from, the last for to. A negative
+// int counts from the end and names that column, so ColRange(-2, nil) is the
+// last two columns.
+//
+// The result keeps every row, the row names and the table's name, and owns
+// its data. A bound that picks no column, lies outside the table, or comes
+// after the other records an error on the table and returns an empty
+// DataTable. If selected columns have unequal lengths, the shorter columns
+// are padded with nil to the table's longest column.
+func (dt *DataTable) ColRange(from, to any) *DataTable {
+	var result *DataTable
+	dt.AtomicDo(func(dt *DataTable) {
+		numCols := len(dt.columns)
+		start, end := 0, numCols
+		if from != nil {
+			position, ok := dt.resolveColSelector("ColRange", from)
+			if !ok {
+				return
+			}
+			start = position
+		}
+		if to != nil {
+			position, ok := dt.resolveColSelector("ColRange", to)
+			if !ok {
+				return
+			}
+			end = position + 1
+		}
+		// end is one past the last column kept, so start >= end means from is
+		// after to. An empty table with two nil bounds is the one empty range
+		// that is not an error.
+		if start >= end && numCols > 0 {
+			dt.fail("ColRange", "from %v (column %d) comes after to %v (column %d)", from, start, to, end-1)
+			return
+		}
+		result = dt.copyColRange(start, end)
+	})
+	if result == nil {
+		return NewDataTable()
+	}
+	return result
+}
+
+// copyColRange builds the table SliceCols and ColRange return: columns start
+// up to, not including, end, padded to the table's longest column, with a
+// copy of the row names. The table must already be locked and 0 <= start <=
+// end <= the column count.
+func (dt *DataTable) copyColRange(start, end int) *DataTable {
+	rowNames := core.NewBiIndex(0)
+	if start < end {
+		rowNames = cloneRowNames(dt.rowNames)
+	}
+	result := &DataTable{
+		columns:           cloneColumns(padColumnsToLength(dt.columns[start:end], dt.getMaxColLength())),
+		rowNames:          rowNames,
+		name:              dt.name,
+		creationTimestamp: dt.creationTimestamp,
+	}
+	result.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
 	return result
 }
 
