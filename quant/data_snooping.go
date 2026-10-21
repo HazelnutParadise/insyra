@@ -21,8 +21,8 @@ const (
 	ResampleMovingBlock
 )
 
-// DataSnoopingOptions configures RealityCheck and SPATest. Nothing is
-// defaulted: Replications and BlockSize must be set.
+// DataSnoopingOptions configures RealityCheck, SPATest and RomanoWolf.
+// Nothing is defaulted: Replications and BlockSize must be set.
 type DataSnoopingOptions struct {
 	// Benchmark is the benchmark's performance in the same periods as the
 	// table's rows. nil compares every column with 0, as for a table that
