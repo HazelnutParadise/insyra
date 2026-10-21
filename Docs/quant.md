@@ -507,7 +507,7 @@ Procedure (Romano and Wolf 2005, studentized): with `d_k,t` the column minus the
 
 `RomanoWolfResult` holds `Alpha`, `Names` (table order, `""` without a name), `RejectedAt` (1-based step, 0 if not rejected), `Statistics` (`w_k`), `CriticalValues` (`CriticalValues[s-1]` is the value used at step `s`; its length is the number of steps that ran) and `Replications`.
 
-**Errors:** `Alpha` that is NaN, at most 0 or at least 1, plus everything `RealityCheck` refuses. As with `SPATest`, a column with no variance relative to the benchmark (constant `d_k`, or `σ_k²` not finite or at most `10⁻²⁴` times the mean of `d_k²`) is an error, and so is a replication in which a resampled series has no usable variance or a resampled mean is not finite.
+**Errors:** `Alpha` that is NaN, at most 0 or at least 1, plus everything `RealityCheck` refuses. As with `SPATest`, a column with no variance relative to the benchmark (constant `d_k`, or `σ_k²` not finite or at most `10⁻²⁴` times the mean of `d_k²`) is an error, and so is a replication in which a resampled series has no usable variance or a resampled mean is not finite. A statistic that is not finite is an error too, whether it is `w_k` or a replication's `w*_k`: the quotient can overflow when both parts are finite, for example when a draw misses a column's one huge value and its `σ*` is tiny. No infinite value is ever used as a critical value candidate.
 
 **Speed.** Every replication re-estimates `N` variances, each two FFTs of length about `2T`; replications run on all cores and give the same result for any number of cores. With `Replications 5000`, `T = 2500` and `N = 100`, about 44 seconds on an 8-core Apple M3 (`BenchmarkRomanoWolfLarge`).
 

@@ -244,6 +244,9 @@ func romanoWolfF64(d [][]float64, blockSize int, alpha float64, replications int
 			return nil, fmt.Errorf("RomanoWolf: column %d has no variance relative to the benchmark (σ² = %v)", j, sigma2)
 		}
 		statistics[j] = rootN * means[j] / math.Sqrt(sigma2)
+		if math.IsNaN(statistics[j]) || math.IsInf(statistics[j], 0) {
+			return nil, fmt.Errorf("RomanoWolf: the statistic of column %d is not finite (σ² = %v)", j, sigma2)
+		}
 	}
 
 	wStar, err := resampledStatistics(cols, d, means, kernel, replications, draw)
@@ -267,6 +270,9 @@ func romanoWolfF64(d [][]float64, blockSize int, alpha float64, replications int
 			maxima[b] = m
 		}
 		c := stepCriticalValue(maxima, alpha)
+		if math.IsNaN(c) || math.IsInf(c, 0) {
+			return nil, fmt.Errorf("RomanoWolf: the critical value of step %d is not finite", step)
+		}
 		critical = append(critical, c)
 		rejected := false
 		remaining := active[:0]
@@ -338,7 +344,14 @@ func resampledStatistics(cols, d [][]float64, means []float64, kernel *lrvKernel
 							errs[r] = fmt.Errorf("RomanoWolf: column %d has no usable variance in the resampled series of replication %d (σ*² = %v)", j, b, sigma2)
 							break
 						}
-						row[j] = rootN * (out[j] - means[j]) / math.Sqrt(sigma2)
+						// The quotient can overflow even when both parts are finite:
+						// a draw that misses a huge value has a tiny σ*.
+						w := rootN * (out[j] - means[j]) / math.Sqrt(sigma2)
+						if math.IsNaN(w) || math.IsInf(w, 0) {
+							errs[r] = fmt.Errorf("RomanoWolf: the studentized statistic of column %d is not finite in replication %d (σ*² = %v)", j, b, sigma2)
+							break
+						}
+						row[j] = w
 					}
 					wStar[b] = row
 				}
