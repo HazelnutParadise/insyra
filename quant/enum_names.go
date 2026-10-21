@@ -39,3 +39,27 @@ func (v VaRMethod) String() string {
 	}
 	return fmt.Sprintf("VaRMethod(%d)", int(v))
 }
+
+// String returns the constant name of s, or ResamplingScheme(n) for a value
+// that is not one of the constants.
+func (s ResamplingScheme) String() string {
+	switch s {
+	case ResampleStationary:
+		return "ResampleStationary"
+	case ResampleMovingBlock:
+		return "ResampleMovingBlock"
+	}
+	return fmt.Sprintf("ResamplingScheme(%d)", int(s))
+}
+
+// String returns the constant name of m, or AbnormalModel(n) for a value that
+// is not one of the constants.
+func (m AbnormalModel) String() string {
+	switch m {
+	case AbnormalMarketAdjusted:
+		return "AbnormalMarketAdjusted"
+	case AbnormalMarketModel:
+		return "AbnormalMarketModel"
+	}
+	return fmt.Sprintf("AbnormalModel(%d)", int(m))
+}

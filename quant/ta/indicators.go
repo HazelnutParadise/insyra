@@ -288,6 +288,14 @@ type KDOptions struct {
 	Method KDMethod // KDRecursive (default) or KDMovingAverage
 	SlowK  int      // smoothing of K, default 3
 	SlowD  int      // smoothing of D, default 3
+	// SegmentStarts are the rows on which a new data segment starts, for
+	// example the first row after a trading halt, a relisting or a change of
+	// price basis. Each segment is computed on its own: K and D start again from
+	// their initial value on the segment's first row, the highest-high and
+	// lowest-low windows start again, nothing is carried across, and a segment
+	// shows NaN through its own warm-up. A segment shorter than the warm-up
+	// shows only NaN. Row 0 starts the first segment and need not be listed.
+	SegmentStarts []int
 }
 
 // KDResult holds the two lines of the stochastic oscillator.
@@ -335,6 +343,21 @@ func KD(high, low, close insyra.IDataList, n int, opts ...KDOptions) (*KDResult,
 	if err != nil {
 		return nil, err
 	}
+	starts, err := cleanSegmentStarts(o.SegmentStarts, len(c))
+	if err != nil {
+		return nil, err
+	}
+	k, d := nanSeries(len(c)), nanSeries(len(c))
+	for _, b := range segmentBounds(len(c), starts) {
+		sk, sd := kdSegment(h[b[0]:b[1]], l[b[0]:b[1]], c[b[0]:b[1]], n, o)
+		copy(k[b[0]:b[1]], sk)
+		copy(d[b[0]:b[1]], sd)
+	}
+	return &KDResult{listOfFloats("K", k), listOfFloats("D", d)}, nil
+}
+
+// kdSegment is KD over one data segment, with the settings of o already checked.
+func kdSegment(h, l, c []float64, n int, o KDOptions) (k, d []float64) {
 	rsv := nanSeries(len(c))
 	for i := n - 1; i < len(c); i++ {
 		hh, ll := h[i], l[i]
@@ -347,7 +370,7 @@ func KD(high, low, close insyra.IDataList, n int, opts ...KDOptions) (*KDResult,
 			rsv[i] = (c[i] - ll) / (hh - ll) * 100
 		}
 	}
-	k, d := nanSeries(len(c)), nanSeries(len(c))
+	k, d = nanSeries(len(c)), nanSeries(len(c))
 	switch o.Method {
 	case KDRecursive:
 		pk, pd := 50.0, 50.0
@@ -374,5 +397,5 @@ func KD(high, low, close insyra.IDataList, n int, opts ...KDOptions) (*KDResult,
 			d[i] = s / float64(o.SlowD)
 		}
 	}
-	return &KDResult{listOfFloats("K", k), listOfFloats("D", d)}, nil
+	return k, d
 }
