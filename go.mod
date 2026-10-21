@@ -143,7 +143,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 	github.com/wnjoon/go-yfinance v1.7.0
-	github.com/xuri/excelize/v2 v2.11.0
+	github.com/xuri/excelize/v2 v2.11.1-0.20261020033641-611b222fd8f7
 	golang.org/x/term v0.46.0
 	gonum.org/v1/gonum v0.17.0
 	gonum.org/v1/plot v0.17.0
