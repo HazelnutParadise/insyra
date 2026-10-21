@@ -437,7 +437,7 @@ func TestAbnormalReturnsRejectsBadInput(t *testing.T) {
 	badEvents.UpdateElement(3, "A", "yes")
 	twoCols := insyra.NewDataTable(et.GetColByNumber(0), et.GetColByNumber(0))
 	wrongRows := insyra.NewDataList(dates.Data()[:50]...)
-	text := insyra.NewDataTable(insyra.NewDataList("a", "b").SetName("S0"))
+	text := insyra.NewDataTable(insyra.NewDataList(dates.Data()...).SetName("S0")) // dates are strings: not prices
 
 	cases := []struct {
 		name string
@@ -462,7 +462,7 @@ func TestAbnormalReturnsRejectsBadInput(t *testing.T) {
 		{"events not boolean", func() error { _, e := AbnormalReturns(pt, badEvents, dates, good); return e }, "events column 0"},
 		{"event columns differ", func() error { _, e := AbnormalReturns(pt, twoCols, dates, good); return e }, "events has 2 columns"},
 		{"dates length", func() error { _, e := AbnormalReturns(pt, et, wrongRows, good); return e }, "price column 0 has 100 rows"},
-		{"text prices", func() error { _, e := AbnormalReturns(text, et, insyra.NewDataList(1, 2), good); return e }, "non-numeric"},
+		{"text prices", func() error { _, e := AbnormalReturns(text, et, dates, good); return e }, "non-numeric"},
 		{"unsupported model", func() error {
 			_, e := AbnormalReturns(pt, et, dates, with(func(o *AbnormalReturnsOptions) { o.Model = AbnormalModel(7) }))
 			return e

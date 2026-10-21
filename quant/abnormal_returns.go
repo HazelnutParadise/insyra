@@ -137,13 +137,10 @@ func AbnormalReturns(prices, events insyra.IDataTable, dates insyra.IDataList, o
 		}
 	})
 	insyra.AtomicDoAll(func() {
-		snap, err = readAbnormalInput(prices, events, dates, opts.MarketLevels)
+		snap, err = readAbnormalInput(prices, events, dates, opts.MarketLevels, opts.EventWindow)
 	}, lockPrices, lockEvents, lockDates, lockLevels)
 	if err != nil {
 		return nil, err
-	}
-	if span := opts.EventWindow[1] - opts.EventWindow[0] + 1; span > snap.rows {
-		return nil, fmt.Errorf("EventWindow %v spans %d rows and the table has %d; no event could fit", opts.EventWindow, span, snap.rows)
 	}
 	return computeAbnormalReturns(snap, opts), nil
 }
@@ -208,12 +205,17 @@ type abnormalInput struct {
 	levels []float64
 }
 
-func readAbnormalInput(prices, events insyra.IDataTable, dates insyra.IDataList, levels insyra.IDataList) (*abnormalInput, error) {
+func readAbnormalInput(prices, events insyra.IDataTable, dates insyra.IDataList, levels insyra.IDataList, eventWindow [2]int) (*abnormalInput, error) {
 	in := &abnormalInput{}
 	dates.AtomicDo(func(l *insyra.DataList) { in.dates = l.Data() })
 	in.rows = len(in.dates)
 	if in.rows > maxAbnormalOffset {
 		return nil, fmt.Errorf("dates has %d rows; at most %d are supported", in.rows, maxAbnormalOffset)
+	}
+	// Checked before the prices, events and levels are copied. The window ends
+	// were bounded by checkAbnormalOptions, so this cannot overflow.
+	if span := eventWindow[1] - eventWindow[0] + 1; span > in.rows {
+		return nil, fmt.Errorf("EventWindow %v spans %d rows and the table has %d; no event could fit", eventWindow, span, in.rows)
 	}
 	var err error
 	if in.prices, in.names, err = readPriceColumns(prices, in.rows); err != nil {

@@ -93,8 +93,8 @@ The event-date column of `CARs` SHALL hold each date as given in `dates` in a si
 - **WHEN** an event's date cell is the slice `[2026 1 2]`
 - **THEN** the table has one row for that event and its date cell is that slice
 
-### Requirement: Windows are bounded before anything is allocated
-`AbnormalReturns` SHALL return an error, without panicking, when an end of `EventWindow` or `EstimationWindow` is more than 2^29 rows from the event, when the table has more than 2^29 rows, or when `EventWindow` spans more rows than the table has.
+### Requirement: Windows are bounded before their size is used
+`AbnormalReturns` SHALL return an error, without panicking, when an end of `EventWindow` or `EstimationWindow` is more than 2^29 rows from the event, when `dates` has more than 2^29 rows, or when `EventWindow` spans more rows than `dates` has. No allocation or arithmetic sized by a window or offset SHALL happen before these checks; copying the input tables is proportional to their own size.
 
 #### Scenario: An extreme window
 - **WHEN** `EventWindow` is `[minInt, 0]`
