@@ -391,7 +391,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `ta.AdvanceDeclineRatio`、`AdvanceDeclineLine`、`OverboughtOversold` 與 `NetAdvanceRatio`，用每日上漲與下跌家數計算市場寬幅指標。缺值日輸出 `NaN` 並略過，窗口只算有效日，分母為 0 時回 `NaN`（[#448](https://github.com/HazelnutParadise/insyra/issues/448)）。
 - 新增 `ta.RSI(prices, n, opts)`，以 Wilder 或簡單平均（`RSIWilder`、`RSISimple`）計算相對強弱指標，並可選擇缺值的處理方式（`RSIMissingError`、`RSIMissingFlat`、`RSIMissingBreak`）。新增 `quant.SharpeDifferenceTest(a, b, riskFree)`，用 Memmel 修正的 Jobson-Korkie 統計量檢定兩組報酬的 Sharpe 是否相同；有一組沒有變異時回傳 `ErrSharpeUndefined`（[#464](https://github.com/HazelnutParadise/insyra/issues/464)）。
 - 新增 `ta.ZigZag(prices, threshold)`，在不偷看未來的前提下找出價格序列的轉折點，每個轉折附極值位置與確認位置；`ta.Regimes(swings, opts)` 把轉折點轉成多頭與空頭期間，可設定 Pagan 與 Sossounov 的最短階段與最短循環。新增 `quant.BacktestSignal(signal, assetReturns, opts)`，把 0～1 的部位訊號轉成淨報酬：訊號落後一列生效，可帶現金報酬與各自的買進、賣出成本（[#442](https://github.com/HazelnutParadise/insyra/issues/442)）。
-- 新增 `ta.SMA`、`EMA`、`MACD`、`Bollinger`、`TrueRange`、`ATR` 與 `KD`，依 TA-Lib 的定義計算常用技術指標，並以種子固定的合成序列與 TA-Lib 逐筆比對。`KD` 有台灣券商軟體慣用的遞迴平滑（預設）與 TA-Lib STOCH 的移動平均兩種算法（[#474](https://github.com/HazelnutParadise/insyra/issues/474)）。
+- 新增 `ta.SMA`、`EMA`、`MACD`、`Bollinger`、`TrueRange`、`ATR` 與 `KD`，依 TA-Lib 的定義計算常用技術指標，並以種子固定的合成序列與 TA-Lib 逐筆比對。`KD` 有台灣券商軟體慣用的遞迴平滑（預設）與 TA-Lib STOCH 的移動平均兩種算法（[#474](https://github.com/HazelnutParadise/insyra/issues/474)）。 `KDOptions.SegmentStarts` 可列出新資料段開始的列（停牌、重新上市、價格基準改變）：K、D 與最高價、最低價視窗都在該列重新開始，不跨段延續，每一段的結果等於單獨對該段計算 KD。不設定時結果不變。
 
 ## v0.3.3
 
