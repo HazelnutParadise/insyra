@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -216,4 +217,36 @@ func Regimes(swings []Swing, opts ...RegimeOptions) ([]Regime, error) {
 		regimes = append(regimes, Regime{kind, a.Index, b.Index, b.Index - a.Index, b.Price/a.Price - 1, b.ConfirmedAt})
 	}
 	return regimes, nil
+}
+
+// cleanSegmentStarts returns segment starts sorted, without duplicates and without row 0.
+func cleanSegmentStarts(starts []int, n int) ([]int, error) {
+	out := make([]int, 0, len(starts))
+	for _, b := range starts {
+		if b < 0 || b >= n {
+			return nil, fmt.Errorf("break at row index %d is outside the %d rows", b, n)
+		}
+		if b > 0 {
+			out = append(out, b)
+		}
+	}
+	sort.Ints(out)
+	uniq := out[:0]
+	for i, b := range out {
+		if i == 0 || b != out[i-1] {
+			uniq = append(uniq, b)
+		}
+	}
+	return uniq, nil
+}
+
+// segmentBounds returns the [start, end) row ranges the segment starts cut n rows into.
+func segmentBounds(n int, starts []int) [][2]int {
+	var out [][2]int
+	start := 0
+	for _, b := range starts {
+		out = append(out, [2]int{start, b})
+		start = b
+	}
+	return append(out, [2]int{start, n})
 }
