@@ -145,6 +145,7 @@ func TestConstructorsReturnAnErrorForWhatTheyCannotDraw(t *testing.T) {
 			isNil, err := tt.call()
 			if err == nil {
 				t.Fatal("no error")
+				return
 			}
 			if !isNil {
 				t.Error("a chart came back together with the error")

@@ -324,6 +324,7 @@ func TestEdgeCaseSmallSample(t *testing.T) {
 		// refuse rather than return factors from a rank-deficient input.
 		if err == nil {
 			t.Fatalf("[%s n=%d p=%d] expected an error for p > n, got %d factors", ex, n, p, res.CountUsed)
+			return
 		}
 		if !strings.Contains(err.Error(), "singular") {
 			t.Fatalf("[%s n=%d p=%d] error should name the singular matrix, got: %v", ex, n, p, err)
@@ -506,6 +507,7 @@ func TestEdgeCaseHighCollinearity(t *testing.T) {
 	// current contract is an explicit error, never a silent degenerate fit.
 	if err == nil {
 		t.Fatalf("high-collinearity: expected an error, got %d factors (converged=%v)", res.CountUsed, res.Converged)
+		return
 	}
 	if !strings.Contains(err.Error(), "singular") {
 		t.Fatalf("high-collinearity: error should name the singular matrix, got: %v", err)

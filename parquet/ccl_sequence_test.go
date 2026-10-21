@@ -98,6 +98,7 @@ func TestCCLGivesTheTablesAnswerForASequenceInsideAnExpression(t *testing.T) {
 		res, err := FilterWithCCL(context.Background(), path, expr)
 		if err == nil {
 			t.Fatalf("FilterWithCCL(%q) kept %d rows where the loaded table fails", expr, len(filteredRows(t, res)))
+			return
 		}
 		if res != nil {
 			t.Errorf("FilterWithCCL(%q) returned a table as well as the error", expr)
@@ -127,6 +128,7 @@ func TestCCLGivesTheTablesAnswerForASequenceInsideAnExpression(t *testing.T) {
 		err = ApplyCCL(context.Background(), path, script)
 		if err == nil {
 			t.Fatalf("ApplyCCL(%q) wrote the file where the loaded table fails", script)
+			return
 		}
 		if !strings.Contains(err.Error(), "invalid operands") {
 			t.Errorf("error %.200q does not hold %q, which the table's does", err, "invalid operands")

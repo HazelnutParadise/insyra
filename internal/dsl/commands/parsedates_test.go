@@ -121,6 +121,7 @@ func TestRunParseDatesCommand_TableWithoutCols(t *testing.T) {
 	err := runParseDatesCommand(ctx, []string{"dt"})
 	if err == nil {
 		t.Fatal("expected an error when cols is missing on a DataTable")
+		return
 	}
 	message := err.Error()
 	if !strings.HasPrefix(message, "parsedates: ") {

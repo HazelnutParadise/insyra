@@ -35,6 +35,7 @@ func renderToHTML(t *testing.T, chart Renderable) string {
 	t.Helper()
 	if chart == nil {
 		t.Fatal("the chart is nil")
+		return ""
 	}
 	path := filepath.Join(t.TempDir(), "chart.html")
 	if err := SaveHTML(chart, path); err != nil {
@@ -180,6 +181,7 @@ func TestSaveHTML(t *testing.T) {
 		err := SaveHTML(chart, filepath.Join(t.TempDir(), "no", "such", "dir", "chart.html"))
 		if err == nil {
 			t.Fatal("SaveHTML returned no error for an unwritable path")
+			return
 		}
 		if !strings.Contains(err.Error(), "chart.html") {
 			t.Errorf("error %q does not name the file", err)

@@ -83,6 +83,7 @@ func cellFloat(t *testing.T, dt *insyra.DataTable, col string, row int) float64 
 	column := dt.GetColByName(col)
 	if column == nil {
 		t.Fatalf("column %q missing (have %v)", col, dt.ColNames())
+		return 0
 	}
 	data := column.Data()
 	if row >= len(data) {
@@ -309,6 +310,7 @@ func TestRunQuantCommand_UnknownVaRMethod(t *testing.T) {
 	err := runQuantCommand(ctx, []string{"var", "r", "0.95", "montecarlo"})
 	if err == nil {
 		t.Fatalf("expected an error for an unknown VaR method")
+		return
 	}
 	message := err.Error()
 	if !strings.HasPrefix(message, "quant var: ") {
@@ -586,6 +588,7 @@ func TestRunQuantCommand_UnknownFormListsEveryForm(t *testing.T) {
 	err := runQuantCommand(ctx, []string{"omega", "r"})
 	if err == nil {
 		t.Fatalf("expected an error for an unknown form")
+		return
 	}
 	message := err.Error()
 	for _, form := range []string{
@@ -633,6 +636,7 @@ func TestRunQuantCommand_MissingRequiredPositional(t *testing.T) {
 			err := runQuantCommand(ctx, testCase.args)
 			if err == nil {
 				t.Fatalf("expected a usage error")
+				return
 			}
 			if !strings.Contains(err.Error(), testCase.wantUsage) {
 				t.Errorf("error %q should show the usage %q", err, testCase.wantUsage)
@@ -682,6 +686,7 @@ func TestRunQuantCommand_LibraryErrorIsSurfaced(t *testing.T) {
 	err := runQuantCommand(ctx, []string{"sortino", "bad", "252"})
 	if err == nil {
 		t.Fatalf("expected the library to refuse a nil observation")
+		return
 	}
 	message := err.Error()
 	if !strings.HasPrefix(message, "quant sortino: ") {
@@ -690,6 +695,7 @@ func TestRunQuantCommand_LibraryErrorIsSurfaced(t *testing.T) {
 	want, libErr := quant.SortinoRatio(insyra.NewDataList(0.01, nil, 0.02, -0.01), 0, 252)
 	if libErr == nil {
 		t.Fatalf("quant.SortinoRatio unexpectedly succeeded with %v", want)
+		return
 	}
 	if !strings.Contains(message, libErr.Error()) {
 		t.Errorf("error %q should carry the library message %q verbatim", message, libErr)
@@ -707,6 +713,7 @@ func TestRunQuantCommand_UnknownOption(t *testing.T) {
 	err := runQuantCommand(ctx, []string{"sharpe", "r", "252", "mar", "0.1"})
 	if err == nil {
 		t.Fatalf("expected an error for an option the form does not take")
+		return
 	}
 	message := err.Error()
 	if !strings.HasPrefix(message, "quant sharpe: ") {
@@ -741,6 +748,7 @@ func TestRunQuantCommand_UnknownOptionType(t *testing.T) {
 	err := runQuantCommand(ctx, []string{"bs", "straddle", "42", "40", "0.10", "0.20", "0.5"})
 	if err == nil {
 		t.Fatalf("expected an error for an unknown option type")
+		return
 	}
 	if !strings.Contains(err.Error(), "call") || !strings.Contains(err.Error(), "put") {
 		t.Errorf("error %q should list call and put", err)

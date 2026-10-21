@@ -150,6 +150,7 @@ func TestGridSearchRefusals(t *testing.T) {
 	_, err := ml.GridSearch(x, y, []ml.Estimator{failing}, 4, ml.RMSEMetric{})
 	if err == nil {
 		t.Fatal("a failing candidate did not fail the search")
+		return
 	}
 	if !strings.Contains(err.Error(), "broken") {
 		t.Fatalf("error %q does not name the failing candidate", err)

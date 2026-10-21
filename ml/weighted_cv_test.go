@@ -105,6 +105,7 @@ func TestWeightedCrossValidationRefusals(t *testing.T) {
 	_, err := ml.CrossValidateWeighted(x, y, insyra.NewDataList(good...), unweighted, 4, ml.RMSEMetric{})
 	if err == nil {
 		t.Fatal("an estimator without FitWeighted was fitted")
+		return
 	}
 	if !strings.Contains(err.Error(), "FitWeighted") {
 		t.Fatalf("error %q does not say what is missing", err)

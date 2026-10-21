@@ -124,6 +124,7 @@ func TestMathErrors(t *testing.T) {
 		_, err := callFn(t, c.name, c.args...)
 		if err == nil {
 			t.Fatalf("%s%v: expected error containing %q, got nil", c.name, c.args, c.msg)
+			return
 		}
 		if !strings.Contains(err.Error(), c.msg) {
 			t.Fatalf("%s%v: expected error containing %q, got %v", c.name, c.args, c.msg, err)

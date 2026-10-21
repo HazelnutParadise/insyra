@@ -29,6 +29,7 @@ func first(t *testing.T, dt *DataTable, colName string) float64 {
 	col := dt.GetColByName(colName)
 	if col == nil {
 		t.Fatalf("column %q is missing", colName)
+		return 0
 	}
 	data := col.Data()
 	if len(data) == 0 {

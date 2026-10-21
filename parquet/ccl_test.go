@@ -48,6 +48,7 @@ func colValues(t *testing.T, dt *insyra.DataTable, name string) []any {
 	col := dt.GetColByName(name)
 	if col == nil {
 		t.Fatalf("column %q is missing from the result", name)
+		return nil
 	}
 	return col.Data()
 }
@@ -218,6 +219,7 @@ func TestFilterWithCCL_InvalidExpression(t *testing.T) {
 			res, err := FilterWithCCL(context.Background(), path, tt.expr)
 			if err == nil {
 				t.Fatalf("expected an error, got a result of %v", res)
+				return
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("error %q does not mention %q", err, tt.want)
@@ -234,6 +236,7 @@ func TestFilterWithCCL_CompileErrorBeatsAMissingFile(t *testing.T) {
 	_, err := FilterWithCCL(context.Background(), missing, "((")
 	if err == nil {
 		t.Fatal("expected a compile error")
+		return
 	}
 	if !strings.Contains(err.Error(), "failed to compile CCL expression") {
 		t.Errorf("error %q is not the compile error", err)
@@ -246,6 +249,7 @@ func TestFilterWithCCL_MissingFile(t *testing.T) {
 	_, err := FilterWithCCL(context.Background(), missing, "['num'] > 1")
 	if err == nil {
 		t.Fatal("a missing file gave no error")
+		return
 	}
 	if !strings.Contains(err.Error(), "no such file") && !strings.Contains(err.Error(), "cannot find") {
 		t.Errorf("error %q does not look like a missing-file error", err)
@@ -470,6 +474,7 @@ func TestParquetContext_GetColByNameUnknown(t *testing.T) {
 	_, err := c.GetColByName("nope")
 	if err == nil {
 		t.Fatal("an unknown column name gave no error")
+		return
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("error %q does not say the name was not found", err)
@@ -634,6 +639,7 @@ func TestParquetContext_RowNamesAreNotSupported(t *testing.T) {
 	idx, err := c.GetRowIndexByName("anything")
 	if err == nil {
 		t.Fatal("GetRowIndexByName gave no error")
+		return
 	}
 	if idx != -1 {
 		t.Errorf("GetRowIndexByName: got index %d, want -1", idx)

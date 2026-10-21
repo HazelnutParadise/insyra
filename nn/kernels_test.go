@@ -624,6 +624,7 @@ func TestModelRejectsLayerNormalizationStatisticsOutputs(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("Run unexpectedly accepted LayerNormalization statistics outputs")
+		return
 	}
 	if outputs != nil {
 		t.Fatalf("Run returned outputs with error: %v", outputs)
@@ -674,6 +675,7 @@ func assertTestTensor(t *testing.T, got *Tensor, shape []int, want []float32, to
 	t.Helper()
 	if got == nil {
 		t.Fatal("got nil tensor")
+		return
 	}
 	if len(got.shape) != len(shape) {
 		t.Fatalf("shape = %v, want %v", got.shape, shape)

@@ -320,6 +320,7 @@ func TestSequenceStreamReportsBadParams(t *testing.T) {
 		_, wantErr := callSequenceFunction(tc.name, append([][]any{{}}, tc.params...))
 		if wantErr == nil {
 			t.Fatalf("%s %v: the function itself accepted these params, so there is no message to match", tc.name, tc.params)
+			return
 		}
 		s, ok, err := NewSequenceStream(tc.name, tc.params)
 		if !ok {

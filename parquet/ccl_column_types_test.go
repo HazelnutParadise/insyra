@@ -312,6 +312,7 @@ func TestRunArraysFollowTheirRows(t *testing.T) {
 		tail := slicedArray(t, got, 0)
 		if tail == nil {
 			t.Fatal("tailRun(r, 2) dropped the array")
+			return
 		}
 		if want := []int64{30, 40, 50, 60}; !slices.Equal(int64Values(t, tail), want) {
 			t.Errorf("tailRun(r, 2) array is %v, want %v", int64Values(t, tail), want)
@@ -917,6 +918,7 @@ func TestBuildArrowArrayRefusesWhatANarrowTypeCannotHold(t *testing.T) {
 			if err == nil {
 				arr.Release()
 				t.Fatalf("buildArrowArray wrote %v (%T) as %s without an error", tt.value, tt.value, tt.dtype)
+				return
 			}
 			if !strings.Contains(err.Error(), `"c"`) || !strings.Contains(err.Error(), tt.dtype.String()) {
 				t.Errorf("error %q names neither the column nor %s", err, tt.dtype)

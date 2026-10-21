@@ -214,6 +214,7 @@ func TestSaveChart_NilChart(t *testing.T) {
 	err := SaveChart(nil, filepath.Join(t.TempDir(), "chart.png"))
 	if err == nil {
 		t.Fatal("SaveChart(nil, …) returned no error")
+		return
 	}
 	if !strings.Contains(err.Error(), "no plot to save") {
 		t.Errorf("error %q does not say there was no plot to save", err)

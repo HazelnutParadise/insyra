@@ -77,6 +77,7 @@ func TestRunCodeReturnsTheIPCStartFailure(t *testing.T) {
 	for _, err := range errs {
 		if err == nil {
 			t.Fatal("a runner succeeded without an IPC server")
+			return
 		}
 		if !errors.Is(err, syscall.EINVAL) {
 			t.Errorf("the error %q does not carry the failed listen", err)

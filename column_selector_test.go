@@ -26,6 +26,7 @@ func firstCell(t *testing.T, dl *DataList) any {
 	t.Helper()
 	if dl == nil {
 		t.Fatal("column is nil")
+		return nil
 	}
 	data := dl.Data()
 	if len(data) == 0 {

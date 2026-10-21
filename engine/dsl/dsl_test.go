@@ -25,6 +25,7 @@ func TestNewSessionAndExecute(t *testing.T) {
 	}
 	if session == nil {
 		t.Fatalf("session should not be nil")
+		return
 	}
 
 	if err := session.Execute("newdl 1 2 3 as x"); err != nil {

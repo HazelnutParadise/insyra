@@ -16,6 +16,7 @@ func TestWriteMessage_RefusesWhatCannotBeRead(t *testing.T) {
 	err := WriteMessage(&buf, make([]byte, maxMessageSize+1))
 	if err == nil {
 		t.Fatal("a payload over the maximum was written")
+		return
 	}
 	if !strings.Contains(err.Error(), "exceeds maximum") {
 		t.Errorf("the error %q does not say the message is too large", err)

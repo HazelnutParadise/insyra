@@ -123,6 +123,7 @@ func TestAccelUsageMatchesTheCommand(t *testing.T) {
 	registryMu.RUnlock()
 	if handler == nil {
 		t.Fatal("accel is not registered")
+		return
 	}
 	if strings.Contains(handler.Usage, "run") {
 		t.Errorf("Usage claims an `accel run` subcommand that does not exist: %q", handler.Usage)
@@ -224,6 +225,7 @@ func TestFetchYahooRejectsExtraParams(t *testing.T) {
 	err := Dispatch(ctx, "fetch", []string{"yahoo", "AAPL", "quote", "extra"})
 	if err == nil {
 		t.Fatal("fetch yahoo AAPL quote extra was accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), "extra") {
 		t.Fatalf("the error should name the unexpected argument: %v", err)

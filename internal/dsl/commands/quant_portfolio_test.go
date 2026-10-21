@@ -83,6 +83,7 @@ func assertStats(t *testing.T, table *insyra.DataTable, want *quant.PortfolioRes
 	converged := table.GetColByName("Converged")
 	if converged == nil {
 		t.Fatalf("stats table has no Converged column (have %v)", table.ColNames())
+		return
 	}
 	if got := converged.Data()[0]; got != want.Converged {
 		t.Errorf("Converged = %v want %v", got, want.Converged)
@@ -209,6 +210,7 @@ func TestRunQuantCommand_PortfolioErrors(t *testing.T) {
 			err := runQuantCommand(ctx, testCase.args)
 			if err == nil {
 				t.Fatalf("expected an error")
+				return
 			}
 			for _, fragment := range testCase.contains {
 				if !strings.Contains(err.Error(), fragment) {
@@ -228,6 +230,7 @@ func TestRunQuantCommand_PortfolioLibraryErrorIsSurfaced(t *testing.T) {
 	err := runQuantCommand(ctx, []string{"portfolio", "dt", "minvar", "max", "0.3,0.3,0.3"})
 	if err == nil {
 		t.Fatalf("expected the library to refuse infeasible bounds")
+		return
 	}
 	if !strings.HasPrefix(err.Error(), "quant portfolio: ") {
 		t.Errorf("error %q should carry the quant portfolio: prefix", err)
@@ -237,6 +240,7 @@ func TestRunQuantCommand_PortfolioLibraryErrorIsSurfaced(t *testing.T) {
 	})
 	if libErr == nil {
 		t.Fatalf("quant.OptimizePortfolio unexpectedly accepted infeasible bounds")
+		return
 	}
 	if !strings.Contains(err.Error(), libErr.Error()) {
 		t.Errorf("error %q should carry the library message %q verbatim", err, libErr)
@@ -369,6 +373,7 @@ func TestRunQuantCommand_FrontierErrors(t *testing.T) {
 			err := runQuantCommand(ctx, testCase.args)
 			if err == nil {
 				t.Fatalf("expected an error")
+				return
 			}
 			for _, fragment := range testCase.contains {
 				if !strings.Contains(err.Error(), fragment) {

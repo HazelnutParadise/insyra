@@ -279,6 +279,7 @@ func TestMNISTIDXReaderRejectsMalformedFiles(t *testing.T) {
 			err := testCase.read(filename)
 			if err == nil {
 				t.Fatal("malformed IDX file was accepted")
+				return
 			}
 			if !strings.Contains(err.Error(), filename) {
 				t.Fatalf("error %q does not name %q", err, filename)

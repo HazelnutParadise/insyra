@@ -206,6 +206,7 @@ func TestCCLPanicReturnsReceiver(t *testing.T) {
 	noPanic(t, "AddColUsingCCL", func() { out = dt.AddColUsingCCL("b", "ZZPANIC(A)") })
 	if out == nil {
 		t.Fatal("AddColUsingCCL returned nil after recovered panic")
+		return
 	}
 	if out.Err() == nil {
 		t.Fatal("expected Err")

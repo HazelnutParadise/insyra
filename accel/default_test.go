@@ -59,6 +59,7 @@ func TestDefaultIsUsableWithoutAnyAccelerator(t *testing.T) {
 	session := Default()
 	if session == nil {
 		t.Fatal("a host with no device must still get a session")
+		return
 	}
 	if len(session.Devices()) != 0 {
 		t.Fatalf("expected no devices, got %d", len(session.Devices()))

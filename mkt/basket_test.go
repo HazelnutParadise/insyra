@@ -43,6 +43,7 @@ func TestBasketAnalysis(t *testing.T) {
 	})
 	if result == nil {
 		t.Fatal("BasketAnalysis returned nil")
+		return
 	}
 
 	for name, table := range map[string]insyra.IDataTable{

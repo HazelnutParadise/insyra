@@ -54,6 +54,7 @@ func jpxRows(t *testing.T, dt *insyra.DataTable) [][]any {
 		col := dt.GetColByName(name)
 		if col == nil {
 			t.Fatalf("missing column %s", name)
+			return nil
 		}
 		cols[i] = col.Data()
 	}

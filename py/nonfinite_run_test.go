@@ -19,6 +19,7 @@ func TestANaNInAResultComesBackAsNaN(t *testing.T) {
 	}
 	if dt == nil {
 		t.Fatal("the table came back nil")
+		return
 	}
 	if !math.IsNaN(asFloat(dt.GetElementByNumberIndex(0, 1))) || !math.IsInf(asFloat(dt.GetElementByNumberIndex(1, 0)), 1) || !math.IsInf(asFloat(dt.GetElementByNumberIndex(1, 1)), -1) {
 		t.Errorf("the cells are %v", dt.To2DSlice())

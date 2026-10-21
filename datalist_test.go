@@ -390,6 +390,7 @@ func TestDataListExponentialSmoothing(t *testing.T) {
 	got := dl.ExponentialSmoothing(0.5)
 	if got == nil {
 		t.Fatal("ExponentialSmoothing returned nil")
+		return
 	}
 	// s0 = 10, s1 = 0.5*20 + 0.5*10 = 15, s2 = 0.5*30 + 0.5*15 = 22.5
 	if !reflect.DeepEqual(got.Data(), []any{10.0, 15.0, 22.5}) {

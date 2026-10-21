@@ -155,6 +155,7 @@ func assertFloatTensorAgainstDataList(t *testing.T, name string, got *nn.Tensor,
 	t.Helper()
 	if got == nil {
 		t.Fatalf("%s is nil", name)
+		return
 	}
 	data, err := got.Float32Data()
 	if err != nil {

@@ -263,6 +263,7 @@ func TestBlockBootstrapRejectsUnreadableInput(t *testing.T) {
 	res, err := BlockBootstrap(bad, cfg)
 	if err == nil {
 		t.Fatal("non-numeric element: expected error")
+		return
 	}
 	if !strings.Contains(err.Error(), "row index 2") {
 		t.Errorf("error %q does not name row index 2", err)

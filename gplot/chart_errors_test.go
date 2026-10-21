@@ -168,6 +168,7 @@ func TestConstructorsReturnAnErrorForWhatTheyCannotDraw(t *testing.T) {
 			plt, err := tt.call()
 			if err == nil {
 				t.Fatal("no error")
+				return
 			}
 			if plt != nil {
 				t.Error("a chart came back together with the error")
@@ -238,6 +239,7 @@ func TestAnySeriesThatCannotBeDrawnFailsTheChart(t *testing.T) {
 			plt, err := tt.call()
 			if err == nil {
 				t.Fatal("a chart missing a series came back with no error")
+				return
 			}
 			if plt != nil {
 				t.Error("a chart came back together with the error")

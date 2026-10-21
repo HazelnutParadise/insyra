@@ -28,6 +28,7 @@ func TestChainableTransformsNeverReturnNil(t *testing.T) {
 			got := c.call(base)
 			if got == nil {
 				t.Fatalf("%s returned nil on failure", c.name)
+				return
 			}
 			// The result must be usable: chaining off it must not panic.
 			if n := got.Sort().Len(); n != 0 {

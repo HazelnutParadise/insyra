@@ -44,6 +44,7 @@ func TestLoadONNXReportsEveryUnsupportedOperatorAtOnce(t *testing.T) {
 	_, err := LoadONNX(strings.NewReader(string(data)))
 	if err == nil {
 		t.Fatal("LoadONNX accepted unsupported operators")
+		return
 	}
 	message := err.Error()
 	for _, operator := range []string{"ConvTranspose", "Attention"} {
@@ -131,6 +132,7 @@ func TestLoadONNXRejectsInitializerElementCountMismatch(t *testing.T) {
 	_, err := LoadONNX(strings.NewReader(string(data)))
 	if err == nil {
 		t.Fatal("LoadONNX accepted an int64 initializer with the wrong element count")
+		return
 	}
 	if !strings.Contains(err.Error(), "int64 values, want 3") {
 		t.Fatalf("error %q does not name the int64 element-count mismatch", err)

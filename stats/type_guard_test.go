@@ -182,6 +182,7 @@ func TestNonConcreteDataListKeepsSliceCells(t *testing.T) {
 			err := c.run()
 			if err == nil {
 				t.Fatalf("%s: expected an error naming the slice cell, got nil", c.name)
+				return
 			}
 			if err.Error() != c.want {
 				t.Fatalf("%s:\n got %q\nwant %q", c.name, err.Error(), c.want)

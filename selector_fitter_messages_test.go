@@ -46,6 +46,7 @@ func TestFittersTeachNameForABareColumnName(t *testing.T) {
 			err := tc.run()
 			if err == nil {
 				t.Fatal("a bare column name was accepted")
+				return
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error %q does not say to write %s", err, tc.want)

@@ -22,6 +22,7 @@ func TestDataTable_ExecuteCCL_Assignment(t *testing.T) {
 	colB := dt.GetColByName("B")
 	if colB == nil {
 		t.Fatal("Column B not found")
+		return
 	}
 	for i, v := range colB.Data() {
 		if v != expected[i] {
@@ -45,6 +46,7 @@ func TestDataTable_ExecuteCCL_AssignmentWithColIndex(t *testing.T) {
 	colA := dt.GetColByNumber(0)
 	if colA == nil {
 		t.Fatal("Column A (index 0) not found")
+		return
 	}
 	for i, v := range colA.Data() {
 		if v != expected[i] {
@@ -68,6 +70,7 @@ func TestDataTable_ExecuteCCL_NewColumn(t *testing.T) {
 	colSum := dt.GetColByName("Sum")
 	if colSum == nil {
 		t.Fatal("Column Sum not found")
+		return
 	}
 	for i, v := range colSum.Data() {
 		if v != expected[i] {
@@ -104,6 +107,7 @@ func TestDataTable_ExecuteCCL_MultilineStatements(t *testing.T) {
 	colD := dt.GetColByName("D")
 	if colD == nil {
 		t.Fatal("Column D not found")
+		return
 	}
 	for i, v := range colD.Data() {
 		if v != expectedD[i] {
@@ -136,6 +140,7 @@ func TestDataTable_ExecuteCCL_MultilineWithSemicolon(t *testing.T) {
 	colZ := dt.GetColByName("Z")
 	if colZ == nil {
 		t.Fatal("Column Z not found")
+		return
 	}
 	for i, v := range colZ.Data() {
 		if v != expectedZ[i] {
@@ -196,6 +201,7 @@ func TestDataTable_EditColByIndexUsingCCL(t *testing.T) {
 	colA := dt.GetColByNumber(0)
 	if colA == nil {
 		t.Fatal("Column A (index 0) not found")
+		return
 	}
 	for i, v := range colA.Data() {
 		if v != expected[i] {
@@ -240,6 +246,7 @@ func TestDataTable_EditColByNameUsingCCL(t *testing.T) {
 	colPrice := dt.GetColByName("price")
 	if colPrice == nil {
 		t.Fatal("Column 'price' not found")
+		return
 	}
 	for i, v := range colPrice.Data() {
 		if v != expected[i] {
@@ -419,6 +426,7 @@ func TestDataTable_ExecuteCCL_AggregateTotal(t *testing.T) {
 		colTotalSum := dt.GetColByName("total_sum")
 		if colTotalSum == nil {
 			t.Fatal("Column total_sum not found")
+			return
 		}
 		for i := 0; i < 3; i++ {
 			if colTotalSum.Get(i) != 21.0 {
@@ -434,6 +442,7 @@ func TestDataTable_ExecuteCCL_AggregateTotal(t *testing.T) {
 		colTotalCount := dt.GetColByName("total_count")
 		if colTotalCount == nil {
 			t.Fatal("Column total_count not found")
+			return
 		}
 		for i := 0; i < 3; i++ {
 			if colTotalCount.Get(i) != 6.0 {
@@ -449,6 +458,7 @@ func TestDataTable_ExecuteCCL_AggregateTotal(t *testing.T) {
 		colTotalAvg := dt.GetColByName("total_avg")
 		if colTotalAvg == nil {
 			t.Fatal("Column total_avg not found")
+			return
 		}
 		for i := 0; i < 3; i++ {
 			if colTotalAvg.Get(i) != 3.5 {
@@ -464,6 +474,7 @@ func TestDataTable_ExecuteCCL_AggregateTotal(t *testing.T) {
 		colTotalMax := dt.GetColByName("total_max")
 		if colTotalMax == nil {
 			t.Fatal("Column total_max not found")
+			return
 		}
 		for i := 0; i < 3; i++ {
 			if colTotalMax.Get(i) != 6.0 {
@@ -479,6 +490,7 @@ func TestDataTable_ExecuteCCL_AggregateTotal(t *testing.T) {
 		colTotalMin := dt.GetColByName("total_min")
 		if colTotalMin == nil {
 			t.Fatal("Column total_min not found")
+			return
 		}
 		for i := 0; i < 3; i++ {
 			if colTotalMin.Get(i) != 1.0 {
@@ -534,6 +546,7 @@ func TestDataTable_ExecuteCCL_Transposition(t *testing.T) {
 	colN := dt.GetColByName("n")
 	if colN == nil {
 		t.Fatal("Column 'n' not found")
+		return
 	}
 
 	data := colN.Data()
@@ -632,6 +645,7 @@ func TestDataTable_CCL_LongChainFormula(t *testing.T) {
 	col := dt.GetColByName("sum")
 	if col == nil {
 		t.Fatal("column 'sum' not found")
+		return
 	}
 	want := []float64{1.0 + terms, 2.0 + terms, 3.0 + terms}
 	for i, v := range col.Data() {
@@ -648,6 +662,7 @@ func TestDataTable_CCL_LongChainFormula(t *testing.T) {
 	colX := dt2.GetColByName("X")
 	if colX == nil {
 		t.Fatal("column 'X' not found")
+		return
 	}
 	if got := colX.Data()[0]; got != int64(terms+1) {
 		t.Errorf("ExecuteCCL long chain: got %v (%T), want int64 %v", got, got, terms+1)

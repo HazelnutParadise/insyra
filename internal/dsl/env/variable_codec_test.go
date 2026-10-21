@@ -355,6 +355,7 @@ func TestVariableCodec_RejectsValuesItCannotStore(t *testing.T) {
 	_, err := encodeVariable(struct{ X int }{1})
 	if err == nil {
 		t.Fatal("encodeVariable(struct{ X int }{1}) returned no error")
+		return
 	}
 	if !strings.Contains(err.Error(), "struct { X int }") {
 		t.Errorf("encodeVariable error = %q, want it to name the type it refused", err.Error())
@@ -371,6 +372,7 @@ func TestVariableCodec_RejectsACellItCannotStore(t *testing.T) {
 	_, err := encodeVariable(table)
 	if err == nil {
 		t.Fatal("encodeVariable accepted a table holding a cell it cannot store")
+		return
 	}
 	if message := err.Error(); !strings.Contains(message, `column "payload"`) || !strings.Contains(message, "row 1") {
 		t.Errorf("encodeVariable error = %q, want it to name column \"payload\" and row 1", message)
@@ -581,6 +583,7 @@ func TestVariableCodec_DecodeRejectsAScalerKindItDoesNotKnow(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatalf("decodeVariable of a scaler of kind %q = (%#v, %v), want an error", "bogus", got, ok)
+		return
 	}
 	if !strings.Contains(err.Error(), "bogus") {
 		t.Errorf("decodeVariable error = %q, want it to name the kind it refused", err.Error())
@@ -596,6 +599,7 @@ func TestVariableCodec_RejectsASliceOfANamedType(t *testing.T) {
 	_, err := encodeVariable(celsiusSlice{1.5})
 	if err == nil {
 		t.Fatal("encodeVariable(celsiusSlice{1.5}) returned no error")
+		return
 	}
 	if !strings.Contains(err.Error(), "celsiusSlice") {
 		t.Errorf("encodeVariable error = %q, want it to name the type it refused", err.Error())

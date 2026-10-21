@@ -29,6 +29,7 @@ func TestCommandsTellAMissingVariableFromAWrongOne(t *testing.T) {
 			err := Dispatch(ctx, c.name, c.args)
 			if err == nil {
 				t.Fatal("a missing variable gave no error")
+				return
 			}
 			if !strings.Contains(err.Error(), "not found") {
 				t.Errorf("error %q does not say the variable is missing", err)
@@ -41,6 +42,7 @@ func TestCommandsTellAMissingVariableFromAWrongOne(t *testing.T) {
 			err := Dispatch(ctx, c.name, c.args)
 			if err == nil {
 				t.Fatal("a variable of the wrong type gave no error")
+				return
 			}
 			if strings.Contains(err.Error(), "not found") {
 				t.Errorf("error %q claims the variable is missing; it is right there", err)

@@ -124,6 +124,7 @@ func TestInstallUVRefusesAnArchiveWhoseChecksumDiffers(t *testing.T) {
 	err := installUV(context.Background(), srv.Client(), srv.URL+"/0.0.0/uv-x86_64-unknown-linux-musl.tar.gz", want, dest)
 	if err == nil {
 		t.Fatal("installUV accepted an archive whose checksum differs")
+		return
 	}
 	if !strings.Contains(err.Error(), sha256Hex(body)) || !strings.Contains(err.Error(), want) {
 		t.Errorf("the error %q does not name both checksums", err)

@@ -39,6 +39,7 @@ func TestChiSqGof_RejectsBareProportions(t *testing.T) {
 	err := Dispatch(ctx, "chisq", []string{"gof", "colors", "0.5", "0.3", "0.2"})
 	if err == nil {
 		t.Fatal("chisq gof with bare proportions was accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), `chisq gof: expected label=proportion, got "0.5"`) {
 		t.Errorf("wrong error: %v", err)
@@ -53,6 +54,7 @@ func TestChiSqGof_RejectsDuplicateLabel(t *testing.T) {
 	err := Dispatch(ctx, "chisq", []string{"gof", "colors", "red=0.5", "red=0.5"})
 	if err == nil {
 		t.Fatal("chisq gof with duplicate label was accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), `category "red" is given twice`) {
 		t.Errorf("wrong error: %v", err)
@@ -67,6 +69,7 @@ func TestChiSqGof_RejectsInvalidNumber(t *testing.T) {
 	err := Dispatch(ctx, "chisq", []string{"gof", "colors", "red=abc"})
 	if err == nil {
 		t.Fatal("chisq gof with invalid number was accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), "proportion") {
 		t.Errorf("error should mention proportion; got: %v", err)
@@ -146,6 +149,7 @@ func TestChiSqGof_UnknownLabelIsReported(t *testing.T) {
 	err := Dispatch(ctx, "chisq", []string{"gof", "colors", "red=0.5", "green=0.3", "Blue=0.2"})
 	if err == nil {
 		t.Fatal("chisq gof with unknown label was accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), `p names category "Blue", which does not occur in input`) {
 		t.Errorf("wrong error: %v", err)

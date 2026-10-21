@@ -115,6 +115,7 @@ func TestPrecisionRecallF1Refusals(t *testing.T) {
 	_, err := (ml.F1Metric{Average: ml.BinaryAverage, PositiveClass: "q"}).Evaluate(yTrue, prediction)
 	if err == nil {
 		t.Fatal("an unobserved positive class was accepted")
+		return
 	}
 	for _, want := range []string{"q", "p", "n"} {
 		if !strings.Contains(err.Error(), want) {

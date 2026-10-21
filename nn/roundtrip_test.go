@@ -99,6 +99,7 @@ func TestMLExportsReadBackAndReproduceTheirOwnPredictions(t *testing.T) {
 			gotProba := got["probabilities"]
 			if gotProba == nil {
 				t.Fatal("the exported classifier produced no probabilities output")
+				return
 			}
 			shape := gotProba.Shape()
 			if len(shape) != 2 || shape[0] != wantProba.NumRows() || shape[1] != wantProba.NumCols() {
@@ -228,6 +229,7 @@ func compareLists(t *testing.T, name string, got *nn.Tensor, want *insyra.DataLi
 	t.Helper()
 	if got == nil {
 		t.Fatalf("output %q is missing", name)
+		return
 	}
 	shape := got.Shape()
 	rows := shape[0]

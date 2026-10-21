@@ -238,6 +238,7 @@ func TestGenerateLPFile_UnwritablePath(t *testing.T) {
 	err := NewLPModel().SetObjective("min", "x").GenerateLPFile(path)
 	if err == nil {
 		t.Fatal("an unwritable path was accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), path) {
 		t.Errorf("the error does not name the path %q: %v", path, err)

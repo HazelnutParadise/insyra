@@ -26,6 +26,7 @@ func TestConformanceRejectsNilClasses(t *testing.T) {
 	err := checkClassesUsable(nilClassesModel{}.Classes())
 	if err == nil {
 		t.Fatal("a nil Classes() was accepted; the suite would panic on Len() instead of reporting")
+		return
 	}
 	if !strings.Contains(err.Error(), "nil") || !strings.Contains(err.Error(), "Err()") {
 		t.Errorf("the message should name the problem and the fix: %v", err)

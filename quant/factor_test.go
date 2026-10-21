@@ -202,6 +202,7 @@ func TestFactorModelRejectsInvalidInput(t *testing.T) {
 			}()
 			if err == nil {
 				t.Fatal("FactorModel returned nil error")
+				return
 			}
 			if !strings.Contains(err.Error(), tc.series) || !strings.Contains(err.Error(), tc.row) {
 				t.Errorf("FactorModel error = %q, want %s and %s", err, tc.series, tc.row)

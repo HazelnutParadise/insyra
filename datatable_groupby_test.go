@@ -27,6 +27,7 @@ func mustGetFloat(t *testing.T, dl *DataList, idx int) float64 {
 	t.Helper()
 	if dl == nil {
 		t.Fatalf("DataList is nil")
+		return 0
 	}
 	d := dl.Data()
 	if idx < 0 || idx >= len(d) {

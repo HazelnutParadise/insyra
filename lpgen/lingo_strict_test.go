@@ -24,6 +24,7 @@ func TestParseLingoRefusesAnUnterminatedStatement(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("an unterminated statement gave a nil error")
+		return
 	}
 	for _, want := range []string{"line 2", "MIN= X1 + X2"} {
 		if !strings.Contains(err.Error(), want) {
@@ -41,6 +42,7 @@ func TestParseLingoRefusesAStatementItDoesNotRecognise(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("an unreadable statement gave a nil error")
+		return
 	}
 	for _, want := range []string{"line 3", "hello world"} {
 		if !strings.Contains(err.Error(), want) {
@@ -70,6 +72,7 @@ func TestParseLingoRefusesADeclarationItCannotRead(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatalf("%q gave a nil error", tt.declaration)
+				return
 			}
 			if !strings.Contains(err.Error(), "line 3") {
 				t.Errorf("the error does not name line 3: %v", err)

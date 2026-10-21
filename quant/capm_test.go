@@ -175,6 +175,7 @@ func TestCAPMRejectsInvalidInput(t *testing.T) {
 				t.Helper()
 				if err == nil {
 					t.Fatalf("%s returned nil error", name)
+					return
 				}
 				if !strings.Contains(err.Error(), tc.series) || !strings.Contains(err.Error(), tc.row) {
 					t.Errorf("%s error = %q, want %s and %s", name, err, tc.series, tc.row)

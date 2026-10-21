@@ -19,6 +19,7 @@ func assertEncodeData(t *testing.T, dl *DataList, want []any) {
 	t.Helper()
 	if dl == nil {
 		t.Fatalf("got nil DataList")
+		return
 	}
 	got := dl.Data()
 	if !reflect.DeepEqual(got, want) {

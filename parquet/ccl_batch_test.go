@@ -98,6 +98,7 @@ func TestApplyCCLRowIndexIsTheFileRow(t *testing.T) {
 	col := res.GetColByName("i")
 	if col == nil {
 		t.Fatalf("column \"i\" is missing from the result")
+		return
 	}
 	data := col.Data()
 	if len(data) != 2500 {

@@ -421,6 +421,7 @@ func TestRunEWMCommand_InvalidDecayIsRefused(t *testing.T) {
 	err := runEWMCommand(ctx, []string{"x", "alpha", "0", "mean"})
 	if err == nil {
 		t.Fatalf("expected an error for alpha 0")
+		return
 	}
 	if !strings.HasPrefix(err.Error(), "ewm: ") {
 		t.Errorf("error %q should carry the ewm: prefix", err)
@@ -542,6 +543,7 @@ func TestRunRollingCommand_CovMissingOther(t *testing.T) {
 	err := runRollingCommand(ctx, []string{"a", "3", "cov"})
 	if err == nil {
 		t.Fatalf("expected an error when the second variable is missing")
+		return
 	}
 	if !strings.Contains(err.Error(), "second DataList") {
 		t.Errorf("error %q should say a second DataList variable is required", err)
@@ -610,6 +612,7 @@ func TestRollingCommand_InvalidWindowIsAnError(t *testing.T) {
 	err := runRollingCommand(ctx, []string{"x", "0", "mean", "as", "m"})
 	if err == nil {
 		t.Fatal("rolling with a zero window was accepted")
+		return
 	}
 	if !strings.HasPrefix(err.Error(), "rolling: ") {
 		t.Errorf("error %q does not name the command", err.Error())
@@ -624,6 +627,7 @@ func TestRollingCommand_MinObsAboveWindowIsAnError(t *testing.T) {
 	err := runRollingCommand(ctx, []string{"x", "2", "mean", "minobs", "3", "as", "m"})
 	if err == nil {
 		t.Fatal("rolling with minobs above the window was accepted")
+		return
 	}
 	if !strings.HasPrefix(err.Error(), "rolling: ") {
 		t.Errorf("error %q does not name the command", err.Error())

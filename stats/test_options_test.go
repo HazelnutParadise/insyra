@@ -73,6 +73,7 @@ func TestZTestOptionsConfidenceLevelErrors(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("expected an error")
+				return
 			}
 			if err.Error() != c.want {
 				t.Errorf("error: got %q, want %q", err.Error(), c.want)
@@ -90,6 +91,7 @@ func TestZTestOptionsRejectsUnknownAlternative(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected an error")
+		return
 	}
 	if want := `alternative must be two-sided, greater or less, got "sideways"`; err.Error() != want {
 		t.Errorf("error: got %q, want %q", err.Error(), want)
@@ -109,6 +111,7 @@ func TestZTestRejectsMoreThanOneOptionsValue(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected an error")
+		return
 	}
 	if want := "at most one stats.ZTestOptions may be given, got 2"; err.Error() != want {
 		t.Errorf("error: got %q, want %q", err.Error(), want)
@@ -168,6 +171,7 @@ func TestSingleSampleWilcoxonOptionsConfidenceLevelErrors(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("expected an error")
+				return
 			}
 			if err.Error() != c.want {
 				t.Errorf("error: got %q, want %q", err.Error(), c.want)
@@ -186,6 +190,7 @@ func TestPairedWilcoxonRejectsUnknownAlternative(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected an error")
+		return
 	}
 	if want := `alternative must be two-sided, greater or less, got "up"`; err.Error() != want {
 		t.Errorf("error: got %q, want %q", err.Error(), want)
@@ -240,6 +245,7 @@ func TestMannWhitneyURejectsMoreThanOneOptionsValue(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected an error")
+		return
 	}
 	if want := "at most one stats.MannWhitneyUOptions may be given, got 2"; err.Error() != want {
 		t.Errorf("error: got %q, want %q", err.Error(), want)
@@ -396,6 +402,7 @@ func TestTTestOptionsConfidenceLevelErrors(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected an error")
+		return
 	}
 	if want := "confidence level must be strictly between 0 and 1, got NaN"; err.Error() != want {
 		t.Errorf("error: got %q, want %q", err.Error(), want)
@@ -412,6 +419,7 @@ func TestTTestRejectsUnknownAlternative(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected an error")
+		return
 	}
 	if want := `alternative must be two-sided, greater or less, got "sideways"`; err.Error() != want {
 		t.Errorf("error: got %q, want %q", err.Error(), want)
@@ -427,6 +435,7 @@ func TestTTestRejectsMoreThanOneOptionsValue(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected an error")
+		return
 	}
 	if want := "at most one stats.TTestOptions may be given, got 2"; err.Error() != want {
 		t.Errorf("error: got %q, want %q", err.Error(), want)
@@ -503,6 +512,7 @@ func TestFactorAnalysisRunsWithoutOptions(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected an error")
+		return
 	}
 	if want := "at most one stats.FactorAnalysisOptions may be given, got 2"; err.Error() != want {
 		t.Errorf("error: got %q, want %q", err.Error(), want)

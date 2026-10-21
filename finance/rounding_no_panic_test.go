@@ -31,6 +31,7 @@ func TestRoundUnnecessary_ReportsInsteadOfPanicking(t *testing.T) {
 
 	if err == nil {
 		t.Fatalf("a result that had to be rounded reported no error (got %v)", got)
+		return
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "round") {
 		t.Errorf("the error %q does not say rounding was needed", err)

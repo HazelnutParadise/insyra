@@ -326,6 +326,7 @@ func TestReadUnrepresentableColumnSaysSo(t *testing.T) {
 	}
 	if dt == nil {
 		t.Fatal("nil table")
+		return
 	}
 
 	// The readable column still works.

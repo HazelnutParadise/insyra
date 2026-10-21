@@ -151,6 +151,7 @@ func TestGradientBoostingRefusals(t *testing.T) {
 	_, err := ml.FitGradientBoostingClassifier(tx, ty)
 	if err == nil {
 		t.Fatal("a three-class target was accepted by a binary-only booster")
+		return
 	}
 	if !strings.Contains(err.Error(), "binary") {
 		t.Fatalf("error %q does not name the binary limit", err)

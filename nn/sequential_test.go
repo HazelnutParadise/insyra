@@ -46,6 +46,7 @@ func TestSequentialDimensionMismatchNamesLayer(t *testing.T) {
 	_, err := NewSequential(NewTape(), Dense(3, 4), NewSigmoid(), Dense(5, 2))
 	if err == nil {
 		t.Fatal("dimension mismatch was accepted")
+		return
 	}
 	if !strings.Contains(err.Error(), "layer 2") || !strings.Contains(err.Error(), "Dense") {
 		t.Fatalf("dimension error %q does not name layer index and kind", err)
