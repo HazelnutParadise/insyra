@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
-	"time"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats"
@@ -177,7 +175,7 @@ func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []
 		if d == nil {
 			return nil, fmt.Errorf("date is missing at row index %d", i)
 		}
-		key, err := famaMacBethDateKey(d)
+		key, err := dateKey(d)
 		if err != nil {
 			return nil, fmt.Errorf("row index %d: %w", i, err)
 		}
@@ -349,35 +347,4 @@ func crossSection(ret []float64, x [][]float64, idx []int, standardize bool) ([]
 		out[c] = beta.AtVec(c)
 	}
 	return out, r2, true
-}
-
-// famaMacBethDateKey groups dates by value. A date is a string (kept exactly,
-// surrounding whitespace included), a time.Time (its instant, location
-// ignored), a bool, an integer or a float (not NaN), keyed by its Go type and
-// exact value, so int 1 and float64 1 are different dates. Any other type has
-// no key that cannot be shared by two values and is an error.
-func famaMacBethDateKey(d any) (string, error) {
-	switch v := d.(type) {
-	case string:
-		return "s:" + v, nil
-	case time.Time:
-		return fmt.Sprintf("t:%d.%09d", v.Unix(), v.Nanosecond()), nil
-	case bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return fmt.Sprintf("%T:%d", d, d), nil
-	case float32:
-		return famaMacBethFloatKey("float32", float64(v))
-	case float64:
-		return famaMacBethFloatKey("float64", v)
-	}
-	return "", fmt.Errorf("a date of type %T is not a supported date type; use a string, time.Time, bool, integer or float", d)
-}
-
-func famaMacBethFloatKey(name string, v float64) (string, error) {
-	if math.IsNaN(v) {
-		return "", errors.New("a date is NaN")
-	}
-	if v == 0 {
-		v = 0 // -0 and 0 are the same date
-	}
-	return name + ":" + strconv.FormatFloat(v, 'g', -1, 64), nil
 }
