@@ -20,7 +20,7 @@ This document describes the public API of `github.com/HazelnutParadise/insyra/qu
 > | `SMA`, `EMA` | Moving averages (均線), Granville's rules | Partly usable. A stock below a falling 200-day line that bounces and fails to get back above it went on to lag by 0.91% over the next 20 days in Taiwan, the only claim that beat the costs, and only on stocks that still exist. As a market-timing rule no moving-average rule beat buy-and-hold (US rules won every year until 1969 and none since 1970). |
 > | `MACD` | MACD | Ineffective. It is the distance between two moving averages, so by the time it moves the price already has. |
 > | `KD` | Stochastic (KD, KDJ) | Ineffective. In Taiwan, stocks that were "overbought" went on to do better, and it is the same data as RSI. |
-> | `Bollinger`, `TrueRange`, `ATR`, `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier`, `Aroon`, `TRIX`, `KAMA`, `Ichimoku`, `CCI`, `Momentum`, `ROC`, `UltimateOscillator`, `StochRSI`, `ARBR`, `CR`, `ForceIndex`, `ElderRay`, `MFI`, `AccumulationDistribution`, `CMF`, `ChaikinOscillator`, `EaseOfMovement`, `NVI`, `PVI`, `VolumeProfile`, `PivotPoints`, `HeikinAshi`, `TDSequential`, `PointAndFigure` | Bollinger bands, channels, trailing stops, Aroon, TRIX, KAMA, Ichimoku, CCI, momentum, ultimate oscillator, stochastic RSI, AR/BR, CR, force index, Elder-ray, money flow index, accumulation/distribution, Chaikin, ease of movement, volume indexes, volume profile, pivot points, Heikin-Ashi, TD Sequential, point-and-figure | Not tested in the study (the study found volume indicators "description only": volume is a shadow of the price move). (KD and RSI, which the study did test, are rows above; StochRSI is built from the RSI.) |
+> | `Bollinger`, `TrueRange`, `ATR`, `Keltner`, `KeltnerClassic`, `Donchian`, `SuperTrend`, `ParabolicSAR`, `Chandelier`, `Aroon`, `TRIX`, `KAMA`, `Ichimoku`, `CCI`, `Momentum`, `ROC`, `UltimateOscillator`, `StochRSI`, `ARBR`, `CR`, `ForceIndex`, `ElderRay`, `MFI`, `AccumulationDistribution`, `CMF`, `ChaikinOscillator`, `EaseOfMovement`, `NVI`, `PVI`, `VolumeProfile`, `PivotPoints`, `HeikinAshi`, `TDSequential`, `PointAndFigure`, `CandlePatterns` | Bollinger bands, channels, trailing stops, Aroon, TRIX, KAMA, Ichimoku, CCI, momentum, ultimate oscillator, stochastic RSI, AR/BR, CR, force index, Elder-ray, money flow index, accumulation/distribution, Chaikin, ease of movement, volume indexes, volume profile, pivot points, Heikin-Ashi, TD Sequential, point-and-figure, candlestick patterns | Not tested in the study (the study found volume indicators "description only": volume is a shadow of the price move). (KD and RSI, which the study did test, are rows above; StochRSI is built from the RSI.) |
 > | `RSI` | RSI, overbought and oversold | Ineffective. In Taiwan, stocks with a high RSI did better afterwards, not worse. Trading it stock by stock lost to holding. |
 > | `Bias`, `BiasZ` | Bias ratio (乖離率) | Only useful read backwards. Taiwan stocks continue for one to three months, they do not revert, and the gap does not pay the costs. |
 > | `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `PriceDivergence` | On-balance volume, volume and price | Description only. Volume is a shadow of the price move, not the fuel for it. |
@@ -42,6 +42,7 @@ go get github.com/HazelnutParadise/insyra/quant/ta
 ## Overview
 
 - **Moving averages and bands**: `SMA`, `EMA`, `MACD`, `Bollinger`, `TrueRange`, `ATR`, `KD`
+- **Candlestick patterns**: `CandlePatterns`
 - **Price structure**: `PivotPoints`, `HeikinAshi`, `TDSequential`, `PointAndFigure`
 - **Money flow and volume profile**: `MFI`, `AccumulationDistribution`, `CMF`, `ChaikinOscillator`, `EaseOfMovement`, `NVI`, `PVI`, `VolumeProfile`
 - **Oscillators and momentum**: `CCI`, `Momentum`, `ROC`, `UltimateOscillator`, `StochRSI`, `ARBR`, `CR`, `ForceIndex`, `ElderRay`
@@ -497,6 +498,36 @@ type PFColumn struct {
 - **`HeikinAshi`** returns the smoothed bars as a table: the close is `(open + high + low + close) / 4`, the open is the midpoint of the previous Heikin-Ashi bar (the first is `(open + close) / 2`), and the high and low extend to cover them. All four series must be finite, positive prices of the same length, and no high may be below its low; otherwise it returns an error.
 - **`TDSequential`** counts on closes only. A buy setup counts consecutive closes below the close four rows earlier (1 to 9, a broken run resets to 0, and a run that goes on past 9 starts again from 1); a sell setup is the mirror. A completed setup starts a countdown on the next row: the buy countdown counts, not necessarily in a row, the rows whose close is at or below the close two rows earlier, up to 13; a completed opposite setup cancels it, and a second setup of the same side does not restart it. This is not DeMark's original rule set: the countdown compares the close with the close two rows earlier where the original compares with the low (buy) or high (sell) of two rows earlier, and a setup that goes on past 9 starts again from 1. It has no perfection, qualifier or recycling rules, so do not expect it to match a charting platform. There is no reference implementation to match, so the tests use hand-built series.
 - **`PointAndFigure`** builds the columns from closes: a price lies in the box `floor(price / boxSize)`, a rising column grows when the close reaches a higher box and turns into a falling one when the close falls `reversal` boxes below its top (usual 3), and the other way round. A new column starts one box beyond the old column's end. A close whose box index would exceed 2^53 (a `boxSize` far too small for the prices) is an error.
+
+---
+
+## Candlestick Patterns
+
+```go
+func CandlePatterns(open, high, low, close insyra.IDataList, opts ...CandleOptions) (*CandlePatternResult, error)
+
+type CandleOptions struct {
+    DojiBody         float64 // largest body of a doji, share of the range; default 0.1
+    BodyRatio        float64 // largest "small" body; default 0.3
+    LongBody         float64 // smallest "long" body; default 0.6
+    LongShadowRatio  float64 // the long shadow is at least the body times this; default 2
+    ShortShadowRatio float64 // a shadow that must be small is at most its reference divided by this; default 2
+    TrendRows        int     // rows back the trend before a hammer or a star is read; default 5
+    SegmentStarts    []int   // rows on which a new data segment starts; each segment is computed on its own
+}
+```
+
+`CandlePatternResult` has one list per pattern, each as long as the bars and holding `+1` (bullish), `-1` (bearish) or `0`: `Doji` (1 or 0), `Hammer`, `HangingMan`, `InvertedHammer`, `ShootingStar`, `Engulfing`, `Harami`, `PiercingLine`, `DarkCloudCover`, `MorningStar`, `EveningStar`, `ThreeWhiteSoldiers` and `ThreeBlackCrows`. A flag is on the row whose close completes the pattern, so it is known at that close. Adding a pattern later adds a field and breaks nothing.
+
+The definitions are the plain textbook ones, with `body`, `range` (high minus low) and the two shadows taken from the bar:
+
+- **Doji**: body at most `DojiBody` of the range. **Hammer** and **hanging man**: small body (`BodyRatio`), a lower shadow at least `LongShadowRatio` times the body and the upper shadow at most that shadow divided by `ShortShadowRatio`; a hammer after a fall, a hanging man after a rise (the trend is the close of the previous row against the close `TrendRows` rows before it). **Inverted hammer** and **shooting star** are the same with the shadows swapped.
+- **Engulfing**: a body of the opposite colour that opens at or beyond the previous close and closes at or beyond the previous open, and is bigger. **Harami**: a smaller body inside a previous long (`LongBody`) body of the opposite colour. **Piercing line**: after a long fall, opens below the previous low and closes above the previous body's midpoint but below its open; **dark cloud cover** is the mirror.
+- **Morning star**: a long fall, a small body whose top is below that close, then a rise closing above the first body's midpoint; **evening star** is the mirror. **Three white soldiers**: three rising bars, each closing higher, opening inside the last body, with small upper shadows (each at most the body divided by `ShortShadowRatio`); **three black crows** is the mirror.
+
+`SegmentStarts` are the rows on which a new data segment starts, for example after a trading halt or a relisting. Each segment is computed on its own: no pattern uses a bar of an earlier segment (an engulfing pair, the trend before a hammer, the bars of a star), and the first rows of a segment that lack the bars a pattern needs are 0. Left empty, the result does not change.
+
+Platforms differ on the cut-offs, which is why they are options, and TA-Lib's candle functions use different rules (a 10-bar average body, global settings) and will not match. There is no reference implementation to match, so the tests use hand-built bars for each pattern and for the bars that must not be flagged.
 
 ---
 
