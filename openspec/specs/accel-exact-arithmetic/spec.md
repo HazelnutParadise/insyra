@@ -2,9 +2,7 @@
 
 ## Purpose
 Exact arithmetic for device kernels. Float32 values cross into and out of a kernel as bit patterns, products and sums are formed exactly in unsigned integers, and the result is rounded once to the nearest float32. A device result therefore equals the CPU's bit for bit whatever the hardware, the shader compiler or the way the work is split.
-
 ## Requirements
-
 ### Requirement: A device sum of products is the CPU's sum
 
 The device library SHALL compute, for any list of float32 operand pairs, the exact sum of their products rounded once to the nearest float32 with ties to even, under the rules `nn-edge-sum` gives for `EdgeSum`. Those rules cover subnormal results, overflow to infinity, a NaN operand, `0·∞`, infinities of both signs, `+0` for an exact zero, and the sign of a nonzero total that rounds to zero. Every NaN result SHALL be the bit pattern `0x7fc00000`.
@@ -32,3 +30,15 @@ The library SHALL use no floating-point type and no signed integer type. Float32
 #### Scenario: The source is inspected
 - **WHEN** the library source is scanned for `f16`, `f32`, `f64` and `i32`
 - **THEN** none appears
+
+### Requirement: Float32Rounded fixes one answer for every device
+`accel.PrecisionFloat32Rounded` SHALL mean that each float32 result is the exact value of its operation rounded once to nearest-even, so that every device, every driver and the CPU fallback return the same bits. It SHALL be stricter than `PrecisionFloat32` and looser than `PrecisionExact` in what it asks of the caller, and it SHALL never be the default. The mode SHALL appear in `Workload.Precision` and `Result.Precision`, and a device that cannot meet it SHALL be reported as a fallback, not used.
+
+#### Scenario: Two devices agree
+- **WHEN** one operation runs in `PrecisionFloat32Rounded` on two different devices and on the CPU
+- **THEN** all results have the same bits
+
+#### Scenario: The default is untouched
+- **WHEN** no precision is requested
+- **THEN** behaviour is that of `PrecisionExact`, as before
+
