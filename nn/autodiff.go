@@ -383,6 +383,9 @@ func (t *Tape) ReduceMean(input *Tensor, axes []int, keepdims bool) (*Tensor, er
 
 // Reshape records the inverse reshape VJP.
 func (t *Tape) Reshape(input *Tensor, shape []int) (*Tensor, error) {
+	if err := rejectResident("Reshape", input); err != nil {
+		return nil, err
+	}
 	output, err := Reshape(input, shape)
 	if err != nil {
 		return nil, err
@@ -396,6 +399,9 @@ func (t *Tape) Reshape(input *Tensor, shape []int) (*Tensor, error) {
 
 // Flatten records the inverse reshape VJP for Flatten.
 func (t *Tape) Flatten(input *Tensor, axes ...int) (*Tensor, error) {
+	if err := rejectResident("Flatten", input); err != nil {
+		return nil, err
+	}
 	output, err := Flatten(input, axes...)
 	if err != nil {
 		return nil, err

@@ -7,6 +7,9 @@ import (
 
 // Div performs float32 division with numpy-style broadcasting.
 func Div(a, b *Tensor) (*Tensor, error) {
+	if err := rejectResident("Div", a, b); err != nil {
+		return nil, err
+	}
 	if a != nil && b != nil && a.dtype == DTypeInt64 && b.dtype == DTypeInt64 {
 		return tensorBroadcastInt64Binary(a, b, "div", func(left, right int64) (int64, error) {
 			if right == 0 {
@@ -299,6 +302,9 @@ func Expand(input *Tensor, targetShape []int) (*Tensor, error) {
 // With no bounds it returns every dimension. Bounds follow ONNX's start/end
 // convention and may be negative.
 func Shape(input *Tensor, bounds ...int) (*Tensor, error) {
+	if err := rejectResident("Shape", input); err != nil {
+		return nil, err
+	}
 	if input == nil {
 		return nil, fmt.Errorf("shape input is nil")
 	}
@@ -622,11 +628,17 @@ func GreaterOrEqual(left, right *Tensor) (*Tensor, error) {
 
 // Equal compares matching tensors with numpy-style broadcasting.
 func Equal(left, right *Tensor) (*Tensor, error) {
+	if err := rejectResident("Equal", left, right); err != nil {
+		return nil, err
+	}
 	return compareBinary(left, right, "equal", func(a, b comparisonValue) bool { return a.equal(b) })
 }
 
 // Greater compares matching numeric tensors with numpy-style broadcasting.
 func Greater(left, right *Tensor) (*Tensor, error) {
+	if err := rejectResident("Greater", left, right); err != nil {
+		return nil, err
+	}
 	if left == nil || right == nil {
 		return nil, fmt.Errorf("greater operands must not be nil")
 	}

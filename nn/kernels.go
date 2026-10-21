@@ -1139,6 +1139,9 @@ func Add(a, b *Tensor) (*Tensor, error) {
 
 // Sub performs subtraction with numpy-style broadcasting for float32 and int64 tensors.
 func Sub(a, b *Tensor) (*Tensor, error) {
+	if err := rejectResident("Sub", a, b); err != nil {
+		return nil, err
+	}
 	if a != nil && b != nil && a.dtype == DTypeInt64 && b.dtype == DTypeInt64 {
 		return tensorBroadcastInt64Binary(a, b, "sub", func(left, right int64) (int64, error) { return left - right, nil })
 	}
@@ -1165,11 +1168,17 @@ func Relu(input *Tensor) (*Tensor, error) {
 
 // Floor rounds each float32 element toward negative infinity.
 func Floor(input *Tensor) (*Tensor, error) {
+	if err := rejectResident("Floor", input); err != nil {
+		return nil, err
+	}
 	return unary("floor", input, func(value float32) float32 { return float32(math.Floor(float64(value))) })
 }
 
 // LeakyRelu applies max(input, 0) + alpha*min(input, 0) element by element.
 func LeakyRelu(input *Tensor, alpha ...float32) (*Tensor, error) {
+	if err := rejectResident("LeakyRelu", input); err != nil {
+		return nil, err
+	}
 	coefficient := float32(0.01)
 	if len(alpha) > 1 {
 		return nil, fmt.Errorf("leaky relu accepts at most one alpha")
@@ -1187,17 +1196,26 @@ func LeakyRelu(input *Tensor, alpha ...float32) (*Tensor, error) {
 
 // Exp computes the natural exponential element by element.
 func Exp(input *Tensor) (*Tensor, error) {
+	if err := rejectResident("Exp", input); err != nil {
+		return nil, err
+	}
 	return unary("exp", input, func(value float32) float32 { return float32(math.Exp(float64(value))) })
 }
 
 // Ceil rounds each float32 element toward positive infinity.
 func Ceil(input *Tensor) (*Tensor, error) {
+	if err := rejectResident("Ceil", input); err != nil {
+		return nil, err
+	}
 	return unary("ceil", input, func(value float32) float32 { return float32(math.Ceil(float64(value))) })
 }
 
 // Round rounds each element to the nearest integer, with halfway cases going
 // to the nearest even integer as required by ONNX.
 func Round(input *Tensor) (*Tensor, error) {
+	if err := rejectResident("Round", input); err != nil {
+		return nil, err
+	}
 	return unary("round", input, func(value float32) float32 { return float32(math.RoundToEven(float64(value))) })
 }
 
@@ -1763,12 +1781,18 @@ func Softmax(input *Tensor, axes ...int) (*Tensor, error) {
 
 // Identity returns an independent tensor with the same dtype, shape, and data.
 func Identity(input *Tensor) (*Tensor, error) {
+	if err := rejectResident("Identity", input); err != nil {
+		return nil, err
+	}
 	return copyTensor(input)
 }
 
 // Reshape changes the row-major shape without changing data order. A single -1
 // dimension is inferred from the input element count.
 func Reshape(input *Tensor, shape []int) (*Tensor, error) {
+	if err := rejectResident("Reshape", input); err != nil {
+		return nil, err
+	}
 	return reshapeWithOptions(input, shape, false)
 }
 
@@ -2033,6 +2057,9 @@ func castElement(destination *Tensor, destinationIndex int, source *Tensor, sour
 
 // Constant returns an independent copy of a tensor attribute.
 func Constant(value *Tensor) (*Tensor, error) {
+	if err := rejectResident("Constant", value); err != nil {
+		return nil, err
+	}
 	return copyTensor(value)
 }
 

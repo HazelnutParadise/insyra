@@ -471,3 +471,29 @@ func TestResidentAddRefusesAnOperandThatWouldAddDimensions(t *testing.T) {
 		t.Fatalf("host shape = %v", got)
 	}
 }
+
+func TestWeightLoadingAndModelRunRefuseResidentTensors(t *testing.T) {
+	device := residentTestDevice(t)
+	x, _ := NewTensor([]int{2, 2}, []float32{1, 2, 3, 4})
+	moved := mustTo(t, x, device)
+	defer moved.Release()
+	seq, err := NewSequential(NewTape(), NewDense(2, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seq.LoadWeights(map[string]*Tensor{"0.weight": moved}); err == nil || !strings.Contains(err.Error(), "ToHost") {
+		t.Fatalf("LoadWeights error = %v, want one naming ToHost", err)
+	}
+	if _, err := Reshape(moved, []int{4}); err == nil || !strings.Contains(err.Error(), "ToHost") {
+		t.Fatalf("Reshape error = %v", err)
+	}
+	if _, err := Identity(moved); err == nil || !strings.Contains(err.Error(), "ToHost") {
+		t.Fatalf("Identity error = %v", err)
+	}
+	if _, err := Sub(moved, moved); err == nil || !strings.Contains(err.Error(), "ToHost") {
+		t.Fatalf("Sub error = %v", err)
+	}
+	if _, err := Shape(moved); err == nil || !strings.Contains(err.Error(), "ToHost") {
+		t.Fatalf("Shape error = %v", err)
+	}
+}
