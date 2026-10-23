@@ -90,6 +90,7 @@ Layer 4 — 對外統計方法（公開 API）
 | Fisher's z-transform | `fisherZTransform(r float64)` |
 | Fisher's z 反函數 | `fisherZInverse(z float64)` |
 | Pearson/Spearman CI（z-space） | `pearsonFisherCI(r, n, cl float64)` |
+| 多重檢定 p 值校正（R 的 `p.adjust`） | `adjustPValues(p []float64, method PAdjustMethod)`（輸入須全為 [0,1] 的數字；公開方法是 `AdjustPValues`） |
 
 ### 需要矩陣運算？直接用 gonum/mat
 
