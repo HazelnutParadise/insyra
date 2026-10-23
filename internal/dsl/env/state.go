@@ -75,7 +75,7 @@ func (m *Manager) SaveVariables(envName string, vars map[string]any) ([]UnsavedV
 	if err := os.WriteFile(tmpPath, payload, 0o644); err != nil {
 		return nil, err
 	}
-	if err := os.Rename(tmpPath, finalPath); err != nil {
+	if err := replaceFile(tmpPath, finalPath); err != nil {
 		return nil, err
 	}
 	if len(unsaved) == 0 {
