@@ -98,7 +98,7 @@ func (m *Manager) SaveVariables(envName string, vars map[string]any) ([]UnsavedV
 		_ = os.Remove(tmpPath)
 		return nil, err
 	}
-	if err := os.Rename(tmpPath, finalPath); err != nil {
+	if err := replaceFile(tmpPath, finalPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return nil, err
 	}
