@@ -385,6 +385,9 @@ func tensorBroadcastInt64Binary(left, right *Tensor, operation string, fn func(i
 	if fn == nil {
 		return nil, fmt.Errorf("%s operation is nil", operation)
 	}
+	if err := rejectResident(operation, left, right); err != nil {
+		return nil, err
+	}
 	shape, err := tensorBroadcastShape(left.shape, right.shape)
 	if err != nil {
 		return nil, err

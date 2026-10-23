@@ -181,6 +181,9 @@ func oneHotEncoder(input *Tensor, attributes map[string]protoAttribute) (*Tensor
 	if input == nil {
 		return nil, fmt.Errorf("one-hot encoder input is nil")
 	}
+	if err := rejectResident("OneHotEncoder", input); err != nil {
+		return nil, err
+	}
 	if len(input.shape) != 1 {
 		return nil, fmt.Errorf("one-hot encoder requires a rank-1 input, got %v", input.shape)
 	}
@@ -230,6 +233,9 @@ func oneHotEncoder(input *Tensor, attributes map[string]protoAttribute) (*Tensor
 func labelEncoder(input *Tensor, attributes map[string]protoAttribute) (*Tensor, error) {
 	if input == nil {
 		return nil, fmt.Errorf("label encoder input is nil")
+	}
+	if err := rejectResident("LabelEncoder", input); err != nil {
+		return nil, err
 	}
 	keysStrings, hasStrings := attributes["keys_strings"]
 	keysInts, hasInts := attributes["keys_int64s"]
