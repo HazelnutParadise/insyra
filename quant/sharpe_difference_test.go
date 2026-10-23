@@ -110,3 +110,53 @@ func TestSharpeDifferenceTestRefusesWhatItCannotTest(t *testing.T) {
 		}
 	}
 }
+
+// memmelZ is the statistic written in the correlation form of Memmel (2003):
+// Var(SR_A - SR_B) = (2 - 2*rho + (SR_A^2 + SR_B^2 - 2*SR_A*SR_B*rho^2)/2) / n.
+// It shares no code with SharpeDifferenceTest, which works in covariances.
+func memmelZ(a, b []float64) float64 {
+	n := float64(len(a))
+	var ma, mb float64
+	for i := range a {
+		ma += a[i]
+		mb += b[i]
+	}
+	ma, mb = ma/n, mb/n
+	var va, vb, cov float64
+	for i := range a {
+		va += (a[i] - ma) * (a[i] - ma)
+		vb += (b[i] - mb) * (b[i] - mb)
+		cov += (a[i] - ma) * (b[i] - mb)
+	}
+	va, vb, cov = va/n, vb/n, cov/n
+	sa, sb := ma/math.Sqrt(va), mb/math.Sqrt(vb)
+	rho := cov / math.Sqrt(va*vb)
+	variance := (2 - 2*rho + (sa*sa+sb*sb-2*sa*sb*rho*rho)/2) / n
+	return (sa - sb) / math.Sqrt(variance)
+}
+
+// Two nearly parallel series with the same mean level used to be refused with
+// "the variance of the Sharpe difference is not positive": the cross term
+// carried an extra product of the two variances that Memmel's correction
+// removes.
+func TestSharpeDifferenceTestMatchesMemmelsCorrelationForm(t *testing.T) {
+	cases := map[string][2][]float64{
+		"parallel series":     {{0.01, 0.02, 0.03, 0.04}, {0.011, 0.021, 0.031, 0.041}},
+		"ordinary series":     {{0.02, -0.01, 0.03, 0.01, -0.02, 0.04}, {0.01, 0.00, 0.02, -0.01, 0.01, 0.02}},
+		"negative covariance": {{0.02, -0.01, 0.03, 0.01, -0.02, 0.04}, {-0.01, 0.02, -0.02, 0.00, 0.03, -0.03}},
+	}
+	for name, c := range cases {
+		x, y := make([]any, len(c[0])), make([]any, len(c[1]))
+		for i := range c[0] {
+			x[i], y[i] = c[0][i], c[1][i]
+		}
+		res, err := SharpeDifferenceTest(insyra.NewDataList(x...), insyra.NewDataList(y...), 0)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if want := memmelZ(c[0], c[1]); math.Abs(res.Z-want) > 1e-9*math.Max(1, math.Abs(want)) {
+			t.Errorf("%s: Z = %v, want %v", name, res.Z, want)
+		}
+	}
+}

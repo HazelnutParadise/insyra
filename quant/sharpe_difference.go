@@ -82,7 +82,7 @@ func SharpeDifferenceTest(a, b insyra.IDataList, riskFree float64) (*SharpeDiffe
 	sA, sB := math.Sqrt(vA), math.Sqrt(vB)
 
 	theta := (2*vA*vB - 2*sA*sB*cov + 0.5*muA*muA*vB + 0.5*muB*muB*vA -
-		(muA*muB/(sA*sB))*(cov*cov+vA*vB)) / nf
+		(muA*muB/(sA*sB))*cov*cov) / nf
 	result := &SharpeDifferenceResult{SharpeA: muA / sA, SharpeB: muB / sB, N: n}
 	result.Difference = result.SharpeA - result.SharpeB
 	if theta <= 0 {
