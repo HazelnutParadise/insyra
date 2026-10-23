@@ -81,31 +81,126 @@ func (dt *DataTable) SliceCols(from, to any) *DataTable {
 			dt.warn("SliceCols", "from %v (column %d) comes after to %v (column %d)", from, start, to, end)
 			return
 		}
-		rowNames := core.NewBiIndex(0)
-		if start < end {
-			rowNames = cloneRowNames(dt.rowNames)
-		}
-		cols := cloneColumns(dt.columns[start:end])
-		// A table's columns may differ in length; the slice keeps every row,
-		// so a short column is padded with nil to the table's row count.
-		numRows := dt.getMaxColLength()
-		for _, c := range cols {
-			for len(c.data) < numRows {
-				c.data = append(c.data, nil)
-			}
-		}
-		result = &DataTable{
-			columns:           cols,
-			rowNames:          rowNames,
-			name:              dt.name,
-			creationTimestamp: dt.creationTimestamp,
-		}
-		result.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+		result = dt.copyColRange(start, end)
 	})
 	if result == nil {
 		return NewDataTable()
 	}
 	return result
+}
+
+// ColRange returns the columns from from through to, both included, as a new
+// DataTable. It reads like Excel's B:D, pandas' df.loc[:, "open":"volume"]
+// and CCL's A:C, where SliceCols reads like s[from:to].
+//
+// Each bound is a column selector: an Excel-style letter ("B") or an int
+// position, and the two spellings of one column are the same bound, so
+// ColRange("B", "D") and ColRange(1, 3) both give columns B, C and D. Every
+// bound must be a column the table has: unlike SliceCols, an int equal to
+// NumCols() is out of range. from == to gives that one column. nil opens the
+// end: the first column for from, the last for to. A negative int counts from
+// the end and names that column, so ColRange(-2, nil) is the last two columns.
+//
+// The result keeps every row, the row names and the table's name, and owns
+// its data. A bound that picks no column, lies outside the table, is of
+// another type, or comes after the other, and an empty table, record an error
+// on the table and return an empty DataTable. If columns have unequal
+// lengths, the shorter ones are padded with nil to the table's longest column.
+func (dt *DataTable) ColRange(from, to any) *DataTable {
+	var result *DataTable
+	dt.AtomicDo(func(dt *DataTable) {
+		numCols := len(dt.columns)
+		if numCols == 0 {
+			dt.warn("ColRange", "the table has no columns")
+			return
+		}
+		start, end := 0, numCols-1
+		if from != nil {
+			position, ok := dt.colRangeBound(from)
+			if !ok {
+				return
+			}
+			start = position
+		}
+		if to != nil {
+			position, ok := dt.colRangeBound(to)
+			if !ok {
+				return
+			}
+			end = position
+		}
+		if start > end {
+			dt.warn("ColRange", "from %v (column %d) comes after to %v (column %d)", from, start, to, end)
+			return
+		}
+		result = dt.copyColRange(start, end+1)
+	})
+	if result == nil {
+		return NewDataTable()
+	}
+	return result
+}
+
+// copyColRange builds the table SliceCols and ColRange return: columns start
+// up to, not including, end, padded with nil to the table's longest column,
+// with a copy of the row names. The table must already be locked and
+// 0 <= start <= end <= the column count.
+func (dt *DataTable) copyColRange(start, end int) *DataTable {
+	rowNames := core.NewBiIndex(0)
+	if start < end {
+		rowNames = cloneRowNames(dt.rowNames)
+	}
+	cols := cloneColumns(dt.columns[start:end])
+	// A table's columns may differ in length; the result keeps every row, so
+	// a short column is padded with nil to the table's row count.
+	numRows := dt.getMaxColLength()
+	for _, c := range cols {
+		for len(c.data) < numRows {
+			c.data = append(c.data, nil)
+		}
+	}
+	result := &DataTable{
+		columns:           cols,
+		rowNames:          rowNames,
+		name:              dt.name,
+		creationTimestamp: dt.creationTimestamp,
+	}
+	result.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+	return result
+}
+
+// colRangeBound turns one non-nil bound of ColRange into the position of a
+// column the table has. A negative int counts from the end; unlike
+// sliceColBound, the column count itself is out of range. The table must
+// already be locked.
+func (dt *DataTable) colRangeBound(bound any) (int, bool) {
+	numCols := len(dt.columns)
+	switch v := bound.(type) {
+	case int:
+		position := v
+		if position < 0 {
+			position += numCols
+		}
+		if position < 0 || position >= numCols {
+			dt.warn("ColRange", "bound %d is out of range for %d columns; an int bound runs from %d to %d", v, numCols, -numCols, numCols-1)
+			return 0, false
+		}
+		return position, true
+	case string:
+		position, ok := utils.ParseColIndex(v)
+		if !ok {
+			dt.warn("ColRange", "%q is not an Excel-style column index", v)
+			return 0, false
+		}
+		if position >= numCols {
+			letters, _ := utils.CalcColIndex(position)
+			dt.warn("ColRange", "column %s does not exist, the table has %d column(s)", letters, numCols)
+			return 0, false
+		}
+		return position, true
+	}
+	dt.warn("ColRange", "bound %v (%T) is not an int position or an Excel-style letter", bound, bound)
+	return 0, false
 }
 
 // sliceColBound turns one bound of SliceCols into a position from 0 to the

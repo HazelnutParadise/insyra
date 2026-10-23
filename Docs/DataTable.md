@@ -3703,6 +3703,8 @@ colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 
 `SliceRows` and `SliceCols` take a contiguous range of rows or columns the way `s[from:to]` slices a Go slice: `from` is included and `to` is not. `SliceRows` takes positions with `0 <= from <= to <= NumRows()`. `SliceCols` takes each bound either as an Excel-style letter (`"B"`) or as an int position (`1`), so `"B"` and `1` mark the same column; `nil` leaves that end open, and an int bound may be negative, counting from the end, or `NumCols()`, one past the last column. A bound the method cannot use is an error recorded on the table, and the result is an empty DataTable. Both return a new table that owns its data.
 
+`ColRange` is the column version that includes both ends, like Excel's `B:D`, pandas' `df.loc[:, "open":"volume"]` and CCL's `A:C`: `ColRange("B", "D")` keeps column D, where `SliceCols("B", "D")` stops before it. Use `SliceCols` when you think in positions, `ColRange` when you name the first and the last column you want.
+
 ### SliceRows
 
 ```go
@@ -3757,6 +3759,47 @@ A bound that picks no column (a letter past the last column, an int outside `-Nu
 fromB := dt.SliceCols("B", nil)    // columns B, C, D, ...
 firstTwo := dt.SliceCols(nil, "C") // columns A and B
 lastTwo := dt.SliceCols(-2, nil)   // the last two columns
+```
+
+### ColRange
+
+```go
+func (dt *DataTable) ColRange(from, to any) *DataTable
+```
+
+**Description:** Returns the columns from `from` through `to`, both included. The result keeps every row, the row names and the table's name, and owns its data.
+
+Each bound is a column selector with two spellings, an Excel-style letter or an int position, and both spellings of one column are the same bound: on a table whose columns are named `a`, `b`, `c`, `d`, the calls `ColRange("B", "D")` and `ColRange(1, 3)` both return columns B, C and D.
+
+| Call (columns `a` to `d`) | Columns returned |
+| --- | --- |
+| `ColRange("B", "D")`, `ColRange(1, 3)` | B, C, D |
+| `ColRange("B", "B")` | B only (`SliceCols("B", "B")` is an empty table) |
+| `ColRange("C", nil)` | C, D |
+| `ColRange(nil, "B")` | A, B |
+| `ColRange(nil, nil)` | A, B, C, D |
+| `ColRange(-2, nil)` | C, D (a negative int counts from the end and names that column) |
+
+**Parameters:**
+
+- `from`: The first column to keep: a letter or an int position; `nil` for the first column.
+- `to`: The last column to keep, in the same forms; `nil` for the last column.
+
+Every bound must be a column the table has. Unlike `SliceCols`, an int equal to `NumCols()` is out of range, because there is no column there to include. A bound that picks no column (a letter past the last column, an int outside `-NumCols()` to `NumCols()-1`), a value of another type, a `from` that comes after `to`, or a table with no columns records an error on the table and returns an empty DataTable. When columns have unequal lengths, the shorter ones are padded with `nil` to the table's longest column.
+
+**Returns:**
+
+- `*DataTable`: New DataTable with the columns in the range
+
+**Example:**
+
+```go
+bToD := dt.ColRange("B", "D")   // columns B, C, D, D included
+fromC := dt.ColRange("C", nil)  // columns C, D, ...
+lastTwo := dt.ColRange(-2, nil) // the last two columns
+if err := dt.Err(); err != nil {
+    // a bound was not a column of the table, or from came after to
+}
 ```
 
 ## Filtering

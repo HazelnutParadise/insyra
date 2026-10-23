@@ -57,6 +57,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 巢狀超過 32 層 `[]any` 的值，不再因為只有很深的葉子不同，就在 `Count` 與查找時被當成同一個值；超過深度限制後，容器以位址識別，所以這種值的另一份複本是不同的值。原本能用的行為不變，因為 `Count` 在 v0.3.2 對這類值會 panic。
 - 把包含自己的 slice 用 `Append` 放進清單後，`Show` 印出它、或 `stats` 函式拒絕它時，不再因 stack overflow 讓程式結束，這種儲存格改以型別顯示。其他儲存格的顯示不變。
 - 編碼偵測對相同的位元組給出相同的答案。chardet 的辨識器平手時，例如 24 位元組的 Big5 CSV，過去每次呼叫可能被判成 Shift_JIS、GB18030 或 Big5；現在平手時依編碼名稱決定。低信心猜測的處理方式不變。
+- 新增 `DataTable.ColRange(from, to)`，取出從 `from` 到 `to` 的欄，**頭尾都包含**，和 Excel 的 `B:D`、pandas 的 `df.loc[:, "open":"volume"]` 以及 CCL 的 `A:C` 一致。每個邊界可以是欄位字母或整數位置，所以 `ColRange("B", "D")` 與 `ColRange(1, 3)` 是同一個呼叫，`nil` 表示從第一欄開始或到最後一欄為止。每個邊界都必須是表中真正存在的欄，所以和 `SliceCols` 不同，整數等於 `NumCols()` 會是錯誤。遇到無法使用的邊界時，和 `SliceCols` 一樣記錄錯誤並回傳空表。`SliceCols` 仍然不包含 `to`。([#408](https://github.com/HazelnutParadise/insyra/issues/408))
 
 ### CLI
 
