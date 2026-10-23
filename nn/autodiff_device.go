@@ -48,7 +48,7 @@ func (t *Tape) rounded() bool { return t.precision == accel.PrecisionFloat32Roun
 func (t *Tape) Clear() {
 	t.ops = nil
 	t.grads = make(map[*Tensor]*Tensor)
-	releaseAll(t.owned)
+	releaseAll(t.withoutParameters(t.owned))
 	releaseAll(t.gradOwned)
 	for _, release := range t.releasers {
 		release()
@@ -80,6 +80,19 @@ func (t *Tape) checkOpen() error {
 		return fmt.Errorf("tape is closed")
 	}
 	return nil
+}
+
+// withoutParameters drops tensors that were marked as parameters after an
+// operation produced them: a parameter belongs to the tape until Close, not
+// to the step that created it.
+func (t *Tape) withoutParameters(tensors []*Tensor) []*Tensor {
+	kept := make([]*Tensor, 0, len(tensors))
+	for _, tensor := range tensors {
+		if t.marked[tensor] == nil {
+			kept = append(kept, tensor)
+		}
+	}
+	return kept
 }
 
 func releaseAll(tensors []*Tensor) {
