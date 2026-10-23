@@ -1456,6 +1456,9 @@ func reshapeShape(input *Tensor) ([]int, error) {
 	if input == nil {
 		return nil, fmt.Errorf("reshape shape tensor is nil")
 	}
+	if err := rejectResident("Reshape", input); err != nil {
+		return nil, err
+	}
 	if input.dtype != DTypeInt64 {
 		return nil, fmt.Errorf("reshape shape has unsupported dtype %s", dtypeName(input.dtype))
 	}
@@ -1472,6 +1475,9 @@ func reshapeShape(input *Tensor) ([]int, error) {
 func tensorInt64Values(input *Tensor, name string) ([]int64, error) {
 	if input == nil {
 		return nil, fmt.Errorf("%s tensor is nil", name)
+	}
+	if err := rejectResident(name, input); err != nil {
+		return nil, err
 	}
 	if input.dtype != DTypeInt64 {
 		return nil, fmt.Errorf("%s has dtype %s, want %s", name, dtypeName(input.dtype), dtypeName(DTypeInt64))

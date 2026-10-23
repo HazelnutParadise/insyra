@@ -522,6 +522,9 @@ func Resize(input, scales, sizes *Tensor, options ...ResizeOptions) (*Tensor, er
 }
 
 func resizeOutputShape(inputShape []int, scales, sizes *Tensor) (int, int, error) {
+	if err := rejectResident("Resize", sizes); err != nil {
+		return 0, 0, err
+	}
 	if scales != nil {
 		if err := requireFloat32(scales, "resize scales"); err != nil {
 			return 0, 0, err
@@ -1578,6 +1581,9 @@ func Tile(input, repeats *Tensor) (*Tensor, error) {
 // Optional control tensors are scalar inputs. An omitted max-output tensor is
 // ONNX's zero default, which selects no boxes.
 func NonMaxSuppression(boxes, scores, maxOutputBoxesPerClass, iouThreshold, scoreThreshold *Tensor, centerPointBox ...int) (*Tensor, error) {
+	if err := rejectResident("NonMaxSuppression", maxOutputBoxesPerClass); err != nil {
+		return nil, err
+	}
 	if err := requireFloat32(boxes, "non max suppression boxes"); err != nil {
 		return nil, err
 	}

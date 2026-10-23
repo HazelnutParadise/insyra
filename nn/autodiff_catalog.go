@@ -8,6 +8,9 @@ func (t *Tape) Embedding(table, indices *Tensor) (*Tensor, error) {
 	if err := requireFloat32(table, "embedding table"); err != nil {
 		return nil, err
 	}
+	if err := rejectResident("Embedding", indices); err != nil {
+		return nil, err
+	}
 	if indices == nil || indices.dtype != DTypeInt64 {
 		return nil, fmt.Errorf("embedding indices must be int64")
 	}
