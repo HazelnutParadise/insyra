@@ -313,6 +313,9 @@ func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error) {
 // the last epoch's Progress call. A context that is already done when
 // FitContext is called changes nothing. A nil context is an error.
 func (s *Sequential) FitContext(ctx context.Context, x, y *Tensor, cfg FitConfig) (*FitResult, error) {
+	if err := rejectResident("FitContext", x, y); err != nil {
+		return nil, err
+	}
 	if s == nil {
 		return nil, fmt.Errorf("fit sequential is nil")
 	}

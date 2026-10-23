@@ -140,6 +140,9 @@ func SaveSafeTensors(w io.Writer, tensors map[string]*Tensor) error {
 		if name == "__metadata__" {
 			return fmt.Errorf("tensor %q is reserved for SafeTensors metadata", name)
 		}
+		if tensor := tensors[name]; tensor != nil && tensor.device != nil {
+			return fmt.Errorf("save safetensors: tensor %q is on device %s; call ToHost before saving it", name, tensor.Device().ID)
+		}
 		names = append(names, name)
 	}
 	sort.Strings(names)
