@@ -242,3 +242,25 @@ func TestForwardStudiesRefuseBadInput(t *testing.T) {
 		}
 	}
 }
+
+// MinGap counts rows from the last event that was counted, and an event with
+// no usable forward return is not counted. Row 0 here has a missing price at
+// its delayed entry, so it must not push row 1's valid return out.
+func TestEventStudyMinGapIgnoresAnEventThatHasNoData(t *testing.T) {
+	a := insyra.NewDataList(100.0, nil, 110.0, 121.0, 133.1).SetName("A")
+	b := insyra.NewDataList(100.0, 100.0, 100.0, 100.0, 100.0).SetName("B")
+	prices := insyra.NewDataTable(a, b)
+	dates := insyra.NewDataList("2026-01-26", "2026-01-27", "2026-01-28", "2026-01-29", "2026-01-30")
+	events := flagTable([]bool{true, true, false, false, false}, make([]bool, 5))
+
+	res, err := EventStudy(prices, events, dates, EventStudyOptions{
+		ForwardOptions: ForwardOptions{Horizons: []int{1}, Delay: 1},
+		MinGap:         2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res[0].Observations != 1 {
+		t.Errorf("row 1 is the only event with data and must be counted: %+v", res[0])
+	}
+}

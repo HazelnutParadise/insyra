@@ -13,8 +13,8 @@ import (
 type EventStudyOptions struct {
 	ForwardOptions
 	// MinGap is the fewest rows between two events of the same stock that are
-	// both counted: an event closer than that to the last counted one is
-	// dropped. 0 counts every event.
+	// both counted: an event closer than that to the last counted one (one with a
+	// usable return at some horizon) is dropped. 0 counts every event.
 	MinGap int
 }
 
@@ -70,13 +70,19 @@ func EventStudy(prices, events insyra.IDataTable, dates insyra.IDataList, opts E
 			if opts.MinGap > 0 && last >= 0 && s-last < opts.MinGap {
 				continue
 			}
-			last = s
+			counted := false
 			for hi := range acc {
 				if v, ok := p.excess(stock, s, hi); ok {
 					acc[hi].add(p.month[s], v)
+					counted = true
 				} else {
 					acc[hi].missing++
 				}
+			}
+			// An event with no usable return at any horizon is not counted, so
+			// it does not hold back the next one.
+			if counted {
+				last = s
 			}
 		}
 	}
