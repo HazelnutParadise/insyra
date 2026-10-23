@@ -411,6 +411,7 @@ dl := insyra.NewDataList(prices) // 每個價格一格
 | **[mkt](/Docs/mkt.md)** | 行銷分析：RFM、顧客活躍度指標、購物籃分析。 |
 | **[finance](/Docs/finance.md)** | 高精度定點財務計算：TVM、NPV／IRR、折舊、債券定價、攤還表。值的型別是 [`go-decimal`](https://github.com/TimLai666/go-decimal) 的十進位數；傳入與讀出都建議用同一個套件，邊界上就不會卡一層轉換。 |
 | **[quant](/Docs/quant.md)** | 量化金融策略／回測評估：夏普比率、VaR／CVaR、Sortino／Calmar 比率、最大回撤、年化報酬、市場 Beta／CAPM、歐式選擇權定價與 greeks、隱含波動率、多因子歸因、過擬合機率（CSCV PBO）、通縮夏普比率、walk-forward 驗證、block bootstrap 路徑模擬與百分位帶、均值—變異數投資組合最適化與效率前緣掃描。 |
+| **[quant/ta](/Docs/quant-ta.md)** | 用來檢驗、不是用來相信的技術分析工具：均線、MACD、KD、RSI、布林通道、ATR、成交量與市場廣度指標、轉折點與多空期間、圖形型態、跳空與打散價格的對照組，並附上我們的研究對它們的結論 |
 | **[py](/Docs/py.md)** | 在 Go 中執行 Python，免手動安裝環境；變數雙向傳遞。 |
 | **[pd](/Docs/pd.md)** | 基於 `gpandas` 的 Pandas 風格 `DataFrame` 工具，含 `DataTable` 轉換。 |
 | **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance、台灣逆地理編碼，以及 TWSE／TPEx 股票資料。 |

@@ -19,6 +19,9 @@
 // failing to converge within MaxIterations is reported through
 // PortfolioResult.Converged with the best weights found, because a slow
 // covariance is not a caller mistake.
+//
+// The technical-analysis tools (moving averages, MACD, KD, RSI, volume and
+// breadth indicators, turning points) are in the subpackage quant/ta.
 package quant
 
 func init() {}
