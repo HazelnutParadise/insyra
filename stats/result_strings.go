@@ -26,6 +26,12 @@ func (r *NeweyWestResult) String() string { return formatResult("Newey-West mean
 // Show prints String to standard output.
 func (r *NeweyWestResult) Show() { fmt.Println(r.String()) }
 
+// String returns the result as text: "Autocorrelation", then one line per field.
+func (r *AutocorrelationResult) String() string { return formatResult("Autocorrelation", r) }
+
+// Show prints String to standard output.
+func (r *AutocorrelationResult) Show() { fmt.Println(r.String()) }
+
 // String returns the result as text: "Variance ratio", then one line per field.
 func (r *VarianceRatioResult) String() string { return formatResult("Variance ratio", r) }
 

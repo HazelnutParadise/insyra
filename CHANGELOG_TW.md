@@ -12,6 +12,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - CCL 讀取超出表格列數的列現在會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本（例如把 `@.(# + 1)` 當作「下一列」，最後一列為空）會在那一列失敗。
 
+### `stats`
+
+- `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+
 ### `ml` 與 `nn`
 
 - `nn` 的矩陣乘法、卷積與 edge sum 現在依 `runtime.GOMAXPROCS(0)` 決定執行緒數，不再用 `runtime.NumCPU()`，所以調低 `GOMAXPROCS` 或同時跑多個乘法的程式不會再超額使用 CPU；結果不變（[#537](https://github.com/HazelnutParadise/insyra/issues/537)）。
