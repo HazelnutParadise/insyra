@@ -123,7 +123,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `quant.EventStudy(prices, events, dates, opts)` 與 `quant.SignalBuckets(signal, prices, dates, opts)`，量測事件之後、或依訊號分桶之後，多個持有期的超額報酬。部位至少在訊號後一列才進場，基準可用橫斷面平均、指數或序列自身的平均，t 檢定是對月平均做 Newey-West，`NeweyWestLag` 為 0 時自動（上限為月數減 1）、正數照用但不小於月數會回錯、負數會回錯。新增 `ta.Bias` 與 `ta.BiasZ`，計算乖離率與只用前幾天波動度調整的乖離率（[#445](https://github.com/HazelnutParadise/insyra/issues/445)、[#446](https://github.com/HazelnutParadise/insyra/issues/446)）。`EventStudyOptions.MinGap` 從上一個「有資料」的事件算起，窗口缺資料的事件不再壓掉 `MinGap` 內之後有效的事件。
 - 新增 `quant.ToneCounts(texts, lexicon, opts)`，依你提供的字詞表計算每則文字的正面與負面詞數，支援否定詞，中文則用最長優先的子字串比對。新增 `quant.DailyTone(published, counts, tradingDays, opts)`，依交易日加總，週末與收盤後的新聞算到下一個交易日，並提供滾動淨語氣與不含當日的往前 z 分數（[#460](https://github.com/HazelnutParadise/insyra/issues/460)）。該 issue 的 NYT Archive 客戶端尚未包含。
 - 新增 `DataTable.ColRange(from, to)`，取出從 `from` 到 `to` 的欄，**頭尾都包含**，和 Excel 的 `B:D`、pandas 的 `df.loc[:, "open":"volume"]` 以及 CCL 的 `A:C` 一致。每個邊界都是欄位選擇器，所以 `ColRange("B", "D")`、`ColRange(1, 3)` 與 `ColRange(insyra.Name("b"), insyra.Name("d"))` 是同一個呼叫，`nil` 表示從第一欄開始或到最後一欄為止。每個邊界都必須是表中真正存在的欄，所以和 `SliceCols` 不同，整數等於 `NumCols()` 會是錯誤。遇到無法使用的邊界時，和 `SliceCols` 一樣記錄錯誤並回傳空表。`SliceCols` 仍然不包含 `to`。
-- 0.4 系列命名為 Zeelandia：`insyra.VersionName`、REPL 歡迎訊息與 `insyra version` 現在顯示 `Zeelandia`，v0.3.x 則是 `Huashan`。
+- 0.4 系列命名為 Zeelandia，正式發布前版本號為 `0.4.0-dev`：`insyra.VersionName`、`insyra.Version`、REPL 歡迎訊息與 `insyra version` 現在顯示 `Zeelandia` 與 `0.4.0-dev`，v0.3.x 則是 `Huashan` 與其發布版號。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
