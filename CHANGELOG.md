@@ -16,6 +16,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `nn.NewTape` no longer seeds a `math/rand` source when it is called; the tape seeds it the first time something draws from it (`Dropout`, a layer's random initialisation). A tape that never draws costs about 0.15–0.65 µs and 304 B instead of 13–34 µs and 5.7 KB, measured on an M3. Masks and initial weights are the same values as before for every seed, including the default one and a zero `Tape{}`. ([#536](https://github.com/HazelnutParadise/insyra/issues/536))
 
+- `nn.Tape.SoftmaxCrossEntropy` no longer loses the label's gradient when the label's logit is far above the rest: the backward used p - 1, which is exactly 0 in float32 once the margin passes about 16.6 while the other classes' gradients stay nonzero, so the gradients of a row stopped summing to zero; it now uses the negated sum of the other classes' probabilities. The loss no longer rounds to 0 past a margin of about 36 either. Only the default precision changes; `PrecisionFloat32Rounded` is unchanged. (Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642))
+
 ### `stats`
 
 - `stats.Autocorrelation(series, maxLag)` estimates the autocorrelation at each lag from 1 to `maxLag`, matching R's `acf`, with a white-noise test and a heteroskedasticity-robust test (Lo and MacKinlay 1988) for series whose volatility changes, such as daily returns ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
