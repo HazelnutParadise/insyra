@@ -33,7 +33,8 @@ type AutocorrelationResult struct {
 // and PRobust use Lo and MacKinlay's heteroskedasticity-robust variance, the
 // same one VarianceRatio uses. The p-values are asymptotic and need a long
 // series. maxLag must be between 1 and n-1, and the series must not be
-// constant.
+// constant. It fails when the robust variance at a lag is zero, which happens
+// when every lagged product of deviations is zero, as in a sparse series.
 func Autocorrelation(series insyra.IDataList, maxLag int) ([]AutocorrelationResult, error) {
 	x, err := testSeries(series, "series")
 	if err != nil {
@@ -65,6 +66,9 @@ func Autocorrelation(series insyra.IDataList, maxLag int) ([]AutocorrelationResu
 		rho := cross / ss
 		t := math.Sqrt(nf) * rho
 		delta := nf * sq / (ss * ss)
+		if delta == 0 {
+			return nil, fmt.Errorf("the robust variance is zero at lag %d: every lagged product of deviations is zero, so TRobust is undefined", j)
+		}
 		tr := t / math.Sqrt(delta)
 		out[j-1] = AutocorrelationResult{
 			Lag: j, Rho: rho,
