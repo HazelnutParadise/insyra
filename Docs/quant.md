@@ -29,7 +29,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Text tone**: `ToneCounts`, `DailyTone` — count positive and negative words from a lexicon (with negation, for English or Chinese) and add them up by trading day without looking ahead
 - **Event studies and signal buckets**: `EventStudy`, `SignalBuckets`, `AbnormalReturns` — forward excess returns after events or by signal bucket, with a monthly Newey-West t-test; abnormal returns and CAR from before to after each event; and the bias indicators (`ta.Bias`, `ta.BiasZ`) that feed them
 - **Signal backtest**: `BacktestSignal` — a position signal from -1 (short) to 1 (long) into a net return series with a one-row delay, cash returns, separate buy and sell costs and a borrow fee on shorts
-- **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
+- **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread; `MomentumPortfolios` — Jegadeesh and Titman momentum portfolios with overlapping holding periods
 - **Cross-sectional regression**: `FamaMacBeth` — regress every date's returns on several characteristics and test each coefficient's time average with a Newey-West t-test
 - **Sharpe comparison**: `SharpeDifferenceTest` — Jobson-Korkie test with Memmel's correction for whether two return series have the same Sharpe ratio
 - **Portfolio optimization**: `OptimizePortfolio`, `OptimizePortfolioMoments`, `EfficientFrontier` — mean-variance weights under a sum-to-one and per-asset box constraint, for minimum variance, a target return, or maximum Sharpe, plus the frontier between them
@@ -777,6 +777,34 @@ res, err := quant.QuantileSort(panel, insyra.Name("date"), insyra.Name("signal")
 spread := res.Spread.GetColByName("spread_ret_5d")
 sharpe, err := quant.SharpeRatio(spread, 0, 252)
 ```
+
+### MomentumPortfolios
+
+```go
+func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol any, formation, groups int, opts ...MomentumOptions) (*MomentumResult, error)
+```
+
+Jegadeesh and Titman's (1993) momentum portfolios, the standard check of whether past winners keep winning. Each month the stocks are ranked by their return over the past `formation` months and cut into `groups` groups; a group is held for `Hold` months, and since a new portfolio is formed every month, `Hold` of them overlap and the month's return is their equal-weighted average. Winners minus losers is the momentum return.
+
+The table is in long form, one row per stock and month, like `QuantileSort`. `dateCol`, `stockCol` and `returnCol` are column selectors (an Excel-style index such as `"A"`, `insyra.Name("price")` or an int position), and `returnCol` holds simple (not log) returns, `nil` or `NaN` where missing. Months are the dates in the order they first appear and must be consecutive; a stock must not appear twice in a month. A stock is ranked when every return of its formation period is present; its formation return is the compounded `(1 + r)` product less 1. Equal signals share a group, as in `QuantileSort`. Stocks are equally weighted inside a group, and one with no return in a holding month is left out of that month's average. A group with no return at all in one of the overlapping portfolios has no defined return that month and is `NaN`. A stock whose compounded formation return overflows is not ranked. A month is reported once `Hold` portfolios have been formed, and at least `groups` stocks must be ranked for a portfolio to be formed.
+
+**Options (`MomentumOptions`)**
+
+- `Skip`: months between the end of the formation period and the first month held. `0` (default) is Jegadeesh and Titman's baseline; `1` is the convention of Carhart (1997) and the Fama-French momentum factor, which ranks on months t-12 to t-2.
+- `Hold`: months a portfolio is held; `0` means 1.
+
+**Result (`MomentumResult`)**
+
+- `Groups`: one row per reported month, with `date` and `group_1` (the losers) to `group_n` (the winners).
+- `LongShort`: the winners' return minus the losers' for each row of `Groups`.
+- `Skipped`: months left out because a portfolio they average could not be formed, and why.
+
+```go
+res, err := quant.MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 6, 10, quant.MomentumOptions{Skip: 1, Hold: 6})
+sharpe, err := quant.SharpeRatio(res.LongShort, 0, 12)
+```
+
+Turnover is not reported: it needs the weights to be carried forward with the returns, which this version leaves out.
 
 ### FamaMacBeth
 
