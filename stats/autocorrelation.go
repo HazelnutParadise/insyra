@@ -52,7 +52,7 @@ func Autocorrelation(series insyra.IDataList, maxLag int) ([]AutocorrelationResu
 		d[i] = v - mu
 		ss += d[i] * d[i]
 	}
-	if ss == 0 {
+	if ss == 0 || allEqualF64(x) {
 		return nil, errors.New("series has no variance")
 	}
 

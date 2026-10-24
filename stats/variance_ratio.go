@@ -59,7 +59,7 @@ func VarianceRatio(returns insyra.IDataList, qs ...int) ([]VarianceRatioResult, 
 		d[i] = v - mu
 		ss += d[i] * d[i]
 	}
-	if ss == 0 {
+	if ss == 0 || allEqualF64(x) {
 		return nil, errors.New("returns have no variance")
 	}
 	varA := ss / (nf - 1)
@@ -135,4 +135,16 @@ func ChowDenning(returns insyra.IDataList, robust bool, qs ...int) (*ChowDenning
 	k := float64(len(qs))
 	p := 1 - math.Pow(2*zCDF(maxZ)-1, k)
 	return &ChowDenningResult{Qs: append([]int(nil), qs...), MaxZ: maxZ, P: p}, nil
+}
+
+// allEqualF64 reports whether every value equals the first. The mean of equal
+// decimals such as 100 copies of 0.1 is not exactly that decimal, so squared
+// deviations from it can be nonzero for a series that has no variance.
+func allEqualF64(x []float64) bool {
+	for _, v := range x[1:] {
+		if v != x[0] {
+			return false
+		}
+	}
+	return true
 }
