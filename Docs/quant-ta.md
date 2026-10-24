@@ -27,7 +27,7 @@ This document describes the public API of `github.com/HazelnutParadise/insyra/qu
 > | `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio` | Market breadth | Description only. A majority of advancers marks broad strength, not an overbought market, and the "triple confirmation" is one dataset. |
 > | `DetectPatterns`, `FanBreaks` | Head and shoulders, double tops and bottoms, triangles, wedges, rectangles, diamonds, fan lines, Elliott-style counting | Ineffective. These patterns appear as often in shuffled prices as in real ones, and ascending triangles break down nearly 80% of the time in both, the opposite of the textbook. |
 > | `ClassifyGaps` | Common, breakaway, runaway and exhaustion gaps | Description only. After an exhaustion gap US stocks fell 1.07% over the next 5 days before 2015, and the effect was gone after 2015. The other gap classes were not tested on their own. |
-> | `ZigZag`, `ZigZagAdaptive`, `Regimes` | Dow theory | Description only. Bull stretches are long and bear ones short, and pullbacks are common, but mechanical Dow trading did not beat holding. |
+> | `ZigZag`, `ZigZagAdaptive`, `Regimes`, `FilterRule` | Dow theory, Alexander's filter rule | Description only. Bull stretches are long and bear ones short, and pullbacks are common, but mechanical Dow trading did not beat holding. |
 
 ---
 
@@ -51,7 +51,7 @@ go get github.com/HazelnutParadise/insyra/quant/ta
 - **Oscillators and strength**: `RSI`, `Bias`, `BiasZ`
 - **Volume**: `OBV`, `OBVFromReturns`, `SignedVolumeRatio`, `PriceDivergence`
 - **Market breadth**: `AdvanceDeclineRatio`, `AdvanceDeclineLine`, `OverboughtOversold`, `NetAdvanceRatio`
-- **Turning points and regimes**: `ZigZag`, `ZigZagAdaptive`, `VolatilityThresholds`, `Regimes`
+- **Turning points and regimes**: `ZigZag`, `ZigZagAdaptive`, `VolatilityThresholds`, `Regimes`, `FilterRule`
 - **Chart patterns and fans**: `DetectPatterns`, `FanBreaks`
 - **Gaps**: `ClassifyGaps`
 - **Random-walk control**: `ShuffleBars`
@@ -147,6 +147,21 @@ func Regimes(swings []Swing, opts ...RegimeOptions) ([]Regime, error)
 Turns the swings into bull stretches (low to the next high) and bear stretches (high to the next low). Each `Regime` has `Kind` (`RegimeBull` or `RegimeBear`), `Start` and `End` rows, `Length`, `Change` (the price change as a fraction) and `ConfirmedAt`. The stretch before the first swing and after the last is not reported.
 
 `RegimeOptions.MinPhase` removes a stretch shorter than that many rows together with the two turning points around it, so its neighbours join; `MinCycle` removes a turning point that makes a low-to-low or high-to-high cycle shorter than that, with the one before it. They follow the minimum phase and cycle lengths of Pagan and Sossounov (2003). Using them looks at the whole list, so it is not causal.
+
+### FilterRule
+
+```go
+func FilterRule(prices insyra.IDataList, threshold float64, opts ...FilterRuleOptions) (*insyra.DataList, error)
+```
+
+Alexander's filter rule (1961), the rule Fama and Blume (1966) used to test whether price trends can be traded: buy when the price has risen `threshold` from its lowest close since the last sell, sell (and, unless `LongOnly`, sell short) when it has fallen `threshold` from its highest close since the last buy. It returns one position per row, 1 long, 0 flat, -1 short, built on the confirmed turning points of `ZigZag`, so it is flat until the first threshold move has happened and uses no later price. A position is decided from the closes up to and including its row; `quant.BacktestSignal` applies it one row later.
+
+`FilterRuleOptions` holds `LongOnly` (a sell signal goes flat instead of short) and `SegmentStarts` (as in `ZigZagAdaptive`: the position is flat on the first row of a segment and nothing is carried over a break).
+
+```go
+pos, err := ta.FilterRule(close, 0.05)
+res, err := quant.BacktestSignal(pos, returns, quant.BacktestOptions{BuyCost: 0.0015, SellCost: 0.0045, BorrowFee: 0.0001})
+```
 
 ### ZigZagAdaptive and VolatilityThresholds
 

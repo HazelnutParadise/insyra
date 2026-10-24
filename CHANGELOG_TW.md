@@ -410,6 +410,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `ta.MFI`、`AccumulationDistribution`、`CMF`、`ChaikinOscillator`、`EaseOfMovement`、`NVI`、`PVI` 與 `VolumeProfile`，計算成交量指標；`MFI`、`AccumulationDistribution`、`ChaikinOscillator` 與 TA-Lib 一致，`VolumeProfile` 回傳每個視窗的最大量價位與價值區。`VolumeProfile(high, low, volume, n, opts)` 不再接收從未用到的 close。`EaseOfMovementOptions` 與 `VolumeProfileOptions` 新增 `SegmentStarts`，每個資料段（例如停牌或重新上市之後）各自計算，不設定時結果不變（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 - 新增 `ta.PivotPoints`、`HeikinAshi`、`TDSequential` 與 `PointAndFigure`，計算價格結構工具：樞軸點價位、以資料表回傳的平均足、TD Sequential 的 setup 與 countdown 計數，以及點數圖欄。`PivotPoints` 回傳 `*PivotPointsResult`。`HeikinAshi` 要求四組序列都是有限、為正、長度相同的價格，且最高價不得低於最低價。`TDSequential` 不是 DeMark 原版規則：countdown 拿收盤價與兩列前的收盤價比較（原版用最低價或最高價），setup 超過 9 之後會從 1 重新開始；countdown 數到 13 之後再完成的 setup 會開始新的 countdown。`PointAndFigure` 遇到箱號超過 2^53 的收盤價（boxSize 相對價格太小）會回傳錯誤（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 - 新增 `ta.CandlePatterns`，標記十三種 K 線型態（十字星、錘子、吊人、倒錘子、流星、吞噬、孕線、貫穿線、烏雲罩頂、晨星與夜星、紅三兵、黑三鴉），每種一條有名字的清單，實體與影線比例可用選項調整（`LongShadowRatio` 是錘子或星線的長影線至少為實體的幾倍，`ShortShadowRatio` 是相反方向的影線，或紅三兵與黑三鴉的影線，要比參照短幾倍），並有 `CandleOptions.SegmentStarts`，每段資料各自計算，型態不會用到停牌或重新上市之前的 K 線；不設定時結果不變（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
+- `ta.FilterRule(prices, threshold, opts...)` 是 Alexander 的濾嘴法則（Fama 與 Blume 1966）：從最近低點漲了 `threshold` 就買進，從最近高點跌了 `threshold` 就賣出或放空，回傳每列 1／0／-1 的部位，可直接交給 `quant.BacktestSignal`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 
 ## v0.3.3
 
