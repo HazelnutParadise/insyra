@@ -59,7 +59,7 @@ func VarianceRatio(returns insyra.IDataList, qs ...int) ([]VarianceRatioResult, 
 		d[i] = v - mu
 		ss += d[i] * d[i]
 	}
-	if ss == 0 {
+	if ss == 0 || allEqualF64(x) {
 		return nil, errors.New("returns have no variance")
 	}
 	varA := ss / (nf - 1)

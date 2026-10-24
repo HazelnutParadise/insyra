@@ -20,6 +20,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 - `stats.RunsTest(series, opts...)` 檢定漲跌順序是否隨機（Wald-Wolfowitz）：計算高於與低於切點（預設 0）的連數，回傳期望連數、`Z` 與 p 值（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `stats.Autocorrelation` 與 `stats.VarianceRatio` 現在會拒絕由小數（例如 0.1）組成的常數序列：100 個 0.1 的平均值不是剛好 0.1，以前會對沒有變異的序列回報 `Rho` 0.99 和極小的 p 值。
 
 ### `ml` 與 `nn`
 
