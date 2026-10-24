@@ -28,7 +28,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 - **Text tone**: `ToneCounts`, `DailyTone` — count positive and negative words from a lexicon (with negation, for English or Chinese) and add them up by trading day without looking ahead
 - **Event studies and signal buckets**: `EventStudy`, `SignalBuckets`, `AbnormalReturns` — forward excess returns after events or by signal bucket, with a monthly Newey-West t-test; abnormal returns and CAR from before to after each event; and the bias indicators (`ta.Bias`, `ta.BiasZ`) that feed them
-- **Signal backtest**: `BacktestSignal` — a 0–1 position signal into a net return series with a one-row delay, cash returns and separate buy and sell costs
+- **Signal backtest**: `BacktestSignal` — a position signal from -1 (short) to 1 (long) into a net return series with a one-row delay, cash returns, separate buy and sell costs and a borrow fee on shorts
 - **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
 - **Cross-sectional regression**: `FamaMacBeth` — regress every date's returns on several characteristics and test each coefficient's time average with a Newey-West t-test
 - **Sharpe comparison**: `SharpeDifferenceTest` — Jobson-Korkie test with Memmel's correction for whether two return series have the same Sharpe ratio
@@ -732,11 +732,13 @@ res, err := quant.AbnormalReturns(prices, events, dates, quant.AbnormalReturnsOp
 func BacktestSignal(signal, assetReturns insyra.IDataList, opts ...BacktestOptions) (*BacktestResult, error)
 ```
 
-`signal[t]` is the position from 0 to 1 decided from the close of row `t`. It takes effect one row later, so the position during row `t` is `signal[t-1]` and the asset return of row `t` is never earned by a signal that saw it. Row 0 is held at `InitialPosition` (default 0).
+`signal[t]` is the position from -1 (fully short) to 1 (fully long) decided from the close of row `t`. It takes effect one row later, so the position during row `t` is `signal[t-1]` and the asset return of row `t` is never earned by a signal that saw it. Row 0 is held at `InitialPosition` (default 0).
 
 The return of a row is `position * assetReturn + (1 - position) * cashReturn` less `BuyCost` times the position added and `SellCost` times the position removed at the start of that row. The portfolio is taken to be rebalanced to the target every row, so drift is ignored.
 
-`BacktestOptions` holds `CashReturns` (a list; nil means 0), `BuyCost`, `SellCost` (fractions of the portfolio traded, from 0 up to 1) and `InitialPosition`. The result has `NetReturns`, `Positions` (the share in the asset during each row), `Turnover` (how much was traded at the start of each row) and `Trades` (rows on which the position changed). Feed `NetReturns` to `SharpeRatio` or `MaxDrawdown`.
+A negative position is a short of that share of the portfolio. At -1 the row return is `-assetReturn + 2 * cashReturn`: the capital and the proceeds of the sale, held as collateral, both earn the cash return, which is the usual simple model of a fully collateralised short. `BorrowFee`, a fraction of the short position charged on every row held below 0, is the cost of borrowing the asset (in practice the cash rate less the rebate the lender pays). Use total returns, so that a dividend the short owes is already in `assetReturn`. Going from 1 to -1 removes 2 of position, so it pays twice `SellCost` and `Turnover` is 2; `Trades` counts the rows on which the position changed. Margin requirements are not modelled.
+
+`BacktestOptions` holds `CashReturns` (a list; nil means 0), `BuyCost`, `SellCost` and `BorrowFee` (fractions, from 0 up to 1) and `InitialPosition` (from -1 to 1). The result has `NetReturns`, `Positions` (the share in the asset during each row), `Turnover` (how much was traded at the start of each row) and `Trades` (rows on which the position changed). Feed `NetReturns` to `SharpeRatio` or `MaxDrawdown`.
 
 ```go
 swings, err := ta.ZigZag(close, 0.10)

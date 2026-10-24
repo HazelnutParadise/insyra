@@ -87,3 +87,62 @@ func TestBacktestSignalRefusesBadInput(t *testing.T) {
 		}
 	}
 }
+
+// A short earns the opposite of the asset and the cash rate twice (the capital
+// and the proceeds held as collateral), and pays BorrowFee while it is held.
+// Signal -1, -1, 0, 0 is in force as 0, -1, -1, 0.
+func TestBacktestSignalShortPositions(t *testing.T) {
+	res, err := BacktestSignal(prices(-1, -1, 0, 0), prices(0, 0.10, -0.05, 0.02),
+		BacktestOptions{CashReturns: prices(0.001, 0.001, 0.001, 0.001), BuyCost: 0.002, SellCost: 0.003, BorrowFee: 0.0004})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Row 1: -0.10 + 2*0.001 - 0.003 (sell 1) - 0.0004. Row 2: +0.05 + 0.002 - 0.0004.
+	// Row 3: 0.001 - 0.002 (buy 1 back).
+	nearlyAll(t, "net", res.NetReturns, []float64{0.001, -0.1014, 0.0516, -0.001})
+	nearlyAll(t, "positions", res.Positions, []float64{0, -1, -1, 0})
+	nearlyAll(t, "turnover", res.Turnover, []float64{0, 1, 0, 1})
+	if res.Trades != 2 {
+		t.Errorf("trades: %d", res.Trades)
+	}
+}
+
+// Going from long to short is a change of -2: it sells the long and sells the
+// asset short, so it pays 2 * SellCost.
+func TestBacktestSignalFlipPaysTwiceTheSellCost(t *testing.T) {
+	res, err := BacktestSignal(prices(1, -1, -1), prices(0, 0, 0), BacktestOptions{BuyCost: 0.02, SellCost: 0.01})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nearlyAll(t, "net", res.NetReturns, []float64{0, -0.02, -0.02})
+	nearlyAll(t, "turnover", res.Turnover, []float64{0, 1, 2})
+}
+
+func TestBacktestSignalStartsShortFromInitialPosition(t *testing.T) {
+	res, err := BacktestSignal(prices(-1), prices(0.01), BacktestOptions{InitialPosition: -1, BorrowFee: 0.001})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nearlyAll(t, "net", res.NetReturns, []float64{-0.011})
+}
+
+func TestBacktestSignalRefusesPositionsBeyondFullShort(t *testing.T) {
+	for name, f := range map[string]func() error{
+		"signal below -1": func() error { _, e := BacktestSignal(prices(-1.5, 0), prices(0, 0)); return e },
+		"signal above 1":  func() error { _, e := BacktestSignal(prices(1.5, 0), prices(0, 0)); return e },
+		"initial below -1": func() error {
+			_, e := BacktestSignal(prices(0), prices(0), BacktestOptions{InitialPosition: -2})
+			return e
+		},
+		"negative fee": func() error { _, e := BacktestSignal(prices(0), prices(0), BacktestOptions{BorrowFee: -0.1}); return e },
+		"fee of one":   func() error { _, e := BacktestSignal(prices(0), prices(0), BacktestOptions{BorrowFee: 1}); return e },
+		"fee not a number": func() error {
+			_, e := BacktestSignal(prices(0), prices(0), BacktestOptions{BorrowFee: math.NaN()})
+			return e
+		},
+	} {
+		if f() == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}
