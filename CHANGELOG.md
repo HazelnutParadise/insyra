@@ -26,6 +26,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `nn` matrix products, convolutions and edge sums now size their worker pool by `runtime.GOMAXPROCS(0)` instead of `runtime.NumCPU()`, so a program that lowers `GOMAXPROCS`, or runs several products at once, is no longer oversubscribed. Results are unchanged ([#537](https://github.com/HazelnutParadise/insyra/issues/537)).
 
+### `quant`
+
+- **Behavior change**: `quant.BacktestSignal` now accepts a position from -1 (fully short) to 1; a signal or `InitialPosition` below 0 used to be an error. A short earns `-assetReturn + 2 * cashReturn` (the capital and the sale proceeds both earn the cash return), and the new `BacktestOptions.BorrowFee` charges a per-row fee on the short position. Every call that succeeded before gives the same result ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
+
 ## v0.3.5
 
 ### Core
