@@ -8,10 +8,6 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ## Unreleased
 
-### `stats`
-
-- `stats.KaplanMeier`: when the curve ends on a plateau at exactly 0.5, the median now runs to the last observation time, censored or not, as R's `survival` does; before, it stopped at the last event ([#528](https://github.com/HazelnutParadise/insyra/issues/528)).
-
 ## v0.3.5
 
 ### Core

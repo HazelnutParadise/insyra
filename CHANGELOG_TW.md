@@ -8,10 +8,6 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
-### `stats`
-
-- `stats.KaplanMeier`：存活曲線最後剛好停在 0.5 的平台時，中位數現在算到最後一個觀察時間（含被截尾者），與 R 的 `survival` 一致；以前只算到最後一次事件（[#528](https://github.com/HazelnutParadise/insyra/issues/528)）。
-
 ## v0.3.5
 
 ### Core
