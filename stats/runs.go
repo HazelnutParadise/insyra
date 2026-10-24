@@ -45,12 +45,9 @@ type RunsTestResult struct {
 // normal distribution, which is an asymptotic result and needs a long series.
 // It fails when no value lies above or none below the threshold.
 func RunsTest(series insyra.IDataList, opts ...RunsTestOptions) (*RunsTestResult, error) {
-	if len(opts) > 1 {
-		return nil, fmt.Errorf("RunsTest takes at most one RunsTestOptions, got %d", len(opts))
-	}
-	var o RunsTestOptions
-	if len(opts) == 1 {
-		o = opts[0]
+	o, err := oneOptions(opts)
+	if err != nil {
+		return nil, err
 	}
 	if math.IsNaN(o.Threshold) || math.IsInf(o.Threshold, 0) {
 		return nil, errors.New("the threshold must be a finite number")
