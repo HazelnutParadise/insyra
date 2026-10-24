@@ -261,6 +261,9 @@ type kernel struct {
 	// noLibrary leaves the exact-sum and IEEE library out: a caller's kernel
 	// that does not ask for it gets only its own source.
 	noLibrary bool
+	// dynamicUniform makes the uniform binding take a dynamic offset, so a
+	// caller's launches read their parameters from one shared ring.
+	dynamicUniform bool
 
 	once   sync.Once
 	pipe   *gowgpu.ComputePipeline
@@ -306,7 +309,7 @@ func (k *kernel) build(h *handle) {
 		}
 		entries = append(entries, gputypes.BindGroupLayoutEntry{
 			Binding: uint32(k.nRead + k.nWrite), Visibility: gowgpu.ShaderStageCompute,
-			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform},
+			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform, HasDynamicOffset: k.dynamicUniform},
 		})
 		layout, err := h.device.CreateBindGroupLayout(&gowgpu.BindGroupLayoutDescriptor{
 			Label: "accel-" + k.name + "-bgl", Entries: entries,

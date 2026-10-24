@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: A caller's kernel runs on resident buffers
-`accel.NewKernel` SHALL accept a WGSL compute shader whose bindings are `ReadOnly` read-only storage buffers, then `ReadWrite` read-write storage buffers, then one 64-byte uniform of sixteen `u32`. `accel.Submit` SHALL bind the given `DeviceBuffer`s and uniform values in that order and dispatch the given workgroup counts on the resident device.
+`accel.NewKernel` SHALL accept a WGSL compute shader whose bindings are `ReadOnly` read-only storage buffers, then `ReadWrite` read-write storage buffers, then one 64-byte uniform of sixteen `u32`. `Kernel.Bind` SHALL tie the kernel to the given `DeviceBuffer`s in that order, and `accel.Submit` SHALL launch a binding with the given uniform values and workgroup counts on the resident device.
 
 #### Scenario: A kernel writes a resident buffer
 - **WHEN** a kernel that doubles each element of its read buffer into its write buffer runs on two resident buffers
@@ -18,19 +18,19 @@
 - **WHEN** a built-in resident matrix product feeds a caller's `Submit`, whose output feeds another built-in product, with no synchronisation between them
 - **THEN** the final result is correct
 
-### Requirement: A Submit that cannot be bound submits nothing
-`accel.Submit` SHALL return an error naming the dispatch and submit no work when a dispatch has no kernel, the wrong number of buffers, a nil or released buffer, a buffer on the host or on another device, one buffer both read and written or written twice, or a workgroup count of zero or above the device's limit.
+### Requirement: A Bind or Submit that cannot run does nothing
+`Kernel.Bind` SHALL return an error when given the wrong number of buffers, a nil or released buffer, a buffer on the host or on another device, one buffer both read and written or written twice, or more storage buffers than the device allows. `accel.Submit` SHALL return an error naming the dispatch and submit no work when a dispatch has a released binding or a binding whose buffer was released, or a workgroup count of zero or above the device's limit.
 
 #### Scenario: A released buffer
-- **WHEN** the second of two dispatches binds a buffer that was released
+- **WHEN** the second of two dispatches uses a binding whose buffer was released
 - **THEN** `Submit` returns an error naming dispatch 1 and the first dispatch has not run
 
 #### Scenario: A buffer read and written
-- **WHEN** a dispatch binds one buffer as both a read and a write buffer
-- **THEN** `Submit` returns an error naming that dispatch and the buffer is unchanged
+- **WHEN** `Bind` is given one buffer as both a read and a write buffer
+- **THEN** it returns an error and no binding
 
 ### Requirement: A kernel config is checked at creation
-`accel.NewKernel` SHALL refuse an empty name, an empty source and a negative buffer count. A shader that does not compile SHALL fail the first `Submit` that uses it with `ErrShaderCompile`.
+`accel.NewKernel` SHALL refuse an empty name, an empty source and a negative buffer count. A shader that does not compile SHALL fail `Bind` with `ErrShaderCompile`.
 
 #### Scenario: Bad configs
 - **WHEN** `NewKernel` receives no name, or a negative count
@@ -53,3 +53,14 @@
 #### Scenario: Limits are usable
 - **WHEN** a resident device exists
 - **THEN** `ResidentLimits` returns positive values for all four
+
+### Requirement: Launches reuse their bind group and read their own parameters
+A `Binding` SHALL be built once and reused by every `Submit`, and the parameters of each dispatch in a `Submit` SHALL be read from their own block of a shared ring, so two launches of one binding with different parameters in one `Submit` each see their own. A block SHALL be rewritten only after the queue has been drained.
+
+#### Scenario: One binding, four parameter sets
+- **WHEN** one binding is launched four times in one `Submit` with different element counts
+- **THEN** each element is incremented by exactly the launches whose count covers it
+
+#### Scenario: More launches than the ring holds
+- **WHEN** successive Submits together launch more dispatches than the ring has blocks
+- **THEN** every launch still ran with its own parameters and the final buffer is correct
