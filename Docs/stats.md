@@ -1090,6 +1090,31 @@ func ChowDenning(returns insyra.IDataList, robust bool, qs ...int) (*ChowDenning
 - `*ChowDenningResult` from `ChowDenning`: `MaxZ`, the largest absolute `z` over the periods, and `P`, its p-value with the Sidak correction `1 - (2Φ(max) - 1)^k`, so choosing the best `q` does not inflate the false-positive rate (Chow and Denning 1993).
 - `error`: no `q`, a `q` out of range, a nil list, a value that is not a finite number, or returns with no variance.
 
+### Autocorrelation
+
+```go
+func Autocorrelation(series insyra.IDataList, maxLag int) ([]AutocorrelationResult, error)
+```
+
+**Description:** Asks whether a value is related to the one before it, or two, or `k` before it. For daily stock returns, a positive lag-1 value means a rise tends to follow a rise. `Rho` is the sample autocorrelation as R's `acf` computes it. `T` and `P` test each lag against white noise (independent values with a constant variance). Volatility that comes in clusters makes that test reject too often, so `TRobust` and `PRobust` use Lo and MacKinlay's (1988) heteroskedasticity-robust variance, the same one `VarianceRatio` uses. The p-values are asymptotic and need a long series. The series can be any numbers in time order, not only returns.
+
+**Parameters:**
+
+- `series`: The values in time order, at least two, not all equal.
+- `maxLag`: The largest lag, from 1 to `n - 1`.
+
+**Returns:**
+
+- `[]AutocorrelationResult`, one per lag: `Lag`, `Rho`, `T` (`sqrt(n) * Rho`) and `P`, `TRobust` and `PRobust`.
+- `error`: a nil or empty list, a value that is not a finite number, a constant series, or a `maxLag` out of range.
+
+```go
+res, err := stats.Autocorrelation(returns, 10)
+for _, a := range res {
+    fmt.Println(a.Lag, a.Rho, a.PRobust)
+}
+```
+
 ### Runs Test
 
 ```go
