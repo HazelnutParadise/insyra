@@ -3,6 +3,7 @@ package quant
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -184,5 +185,55 @@ func TestMomentumPortfoliosRefusesBadInput(t *testing.T) {
 	)
 	if _, err := MomentumPortfolios(dup, "date", "stock", "ret", 1, 2); err == nil {
 		t.Error("a stock twice in one month: no error")
+	}
+}
+
+// With Hold 2 the group is the average of two portfolios; if one of them has no
+// return in the month, the average is unknown, not the other portfolio alone.
+func TestMomentumPortfoliosOverlapWithAMissingPortfolioIsNaN(t *testing.T) {
+	panel := momentumPanel()
+	// Month 2, stocks A and B (the m0 cohort's winners): both returns missing.
+	// Rows: m2 starts at row 8, A=8, B=9.
+	panel.UpdateElement(8, "C", nil)
+	panel.UpdateElement(9, "C", nil)
+	res, err := MomentumPortfolios(panel, "date", "stock", "ret", 1, 2, MomentumOptions{Hold: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	winners := columnFloats(t, res.Groups, "group_2")
+	if !math.IsNaN(winners[0]) {
+		t.Errorf("m2 winners = %v, want NaN: the portfolio formed at m0 has no return in m2", winners[0])
+	}
+}
+
+// 1e308 twice then -1 overflows the compounded product to NaN; the stock must be
+// left unranked, not hang the ranking.
+func TestMomentumPortfoliosDoesNotHangOnAnOverflowingSignal(t *testing.T) {
+	dates, stocks, rets := []any{}, []any{}, []any{}
+	add := func(m string, vals map[string]float64) {
+		for _, s := range []string{"A", "B", "C"} {
+			dates = append(dates, m)
+			stocks = append(stocks, s)
+			rets = append(rets, vals[s])
+		}
+	}
+	add("m0", map[string]float64{"A": 1e308, "B": 0.1, "C": -0.1})
+	add("m1", map[string]float64{"A": 1e308, "B": 0.0, "C": 0.0})
+	add("m2", map[string]float64{"A": -1, "B": 0.1, "C": -0.1})
+	add("m3", map[string]float64{"A": 0.0, "B": 0.1, "C": -0.1})
+	panel := insyra.NewDataTable(
+		insyra.NewDataList(dates...).SetName("date"),
+		insyra.NewDataList(stocks...).SetName("stock"),
+		insyra.NewDataList(rets...).SetName("ret"),
+	)
+	done := make(chan error, 1)
+	go func() {
+		_, err := MomentumPortfolios(panel, "date", "stock", "ret", 3, 2)
+		done <- err
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("MomentumPortfolios did not return on an overflowing compounded signal")
 	}
 }

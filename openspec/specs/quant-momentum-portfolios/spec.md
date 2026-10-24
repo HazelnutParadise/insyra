@@ -14,7 +14,7 @@ Jegadeesh and Titman momentum portfolios with overlapping holding periods, so a 
 
 ### Requirement: MomentumPortfolios averages overlapping portfolios
 
-Each group SHALL be held for Hold months (1 when Hold is 0) with equal weights, a stock with no return in a holding month left out of that month's average, and a month's return for a group SHALL be the equal-weighted average over the Hold portfolios formed in the Hold months before it.
+Each group SHALL be held for Hold months (1 when Hold is 0) with equal weights, a stock with no return in a holding month left out of that month's average, and a month's return for a group SHALL be the equal-weighted average over the Hold portfolios formed in the Hold months before it, or NaN when any of them has no return in that group that month. A stock whose compounded formation return is not finite SHALL not be ranked.
 
 #### Scenario: Two overlapping portfolios
 
