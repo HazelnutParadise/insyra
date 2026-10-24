@@ -35,9 +35,14 @@ func scaleOnDevice(t *testing.T, k *accel.Kernel, x *Tensor) *Tensor {
 		t.Fatal(err)
 	}
 	groups := uint32((in.Len() + 63) / 64)
+	bound, err := k.Bind([]*accel.DeviceBuffer{in}, []*accel.DeviceBuffer{out})
+	if err != nil {
+		out.Release()
+		t.Fatal(err)
+	}
+	defer bound.Release()
 	err = accel.Submit(accel.Dispatch{
-		Kernel: k, Reads: []*accel.DeviceBuffer{in}, Writes: []*accel.DeviceBuffer{out},
-		Params: [16]uint32{uint32(in.Len()), 0x40000000}, Workgroups: [3]uint32{groups, 1, 1},
+		Binding: bound, Params: [16]uint32{uint32(in.Len()), 0x40000000}, Workgroups: [3]uint32{groups, 1, 1},
 	})
 	if err != nil {
 		out.Release()

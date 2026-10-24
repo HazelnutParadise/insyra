@@ -3,7 +3,7 @@
 ## 1. accel: caller kernels and one-submission dispatch
 
 - [x] 1.1 Route `kernel.run` through a shared multi-dispatch submit that builds every bind group and uniform under one lock, encodes all passes into one encoder and submits once; Insyra's own kernels keep their results.
-- [x] 1.2 `accel.KernelConfig`, `NewKernel`, `Dispatch`, `Submit`, with the refusals of the spec.
+- [x] 1.2 `accel.KernelConfig`, `NewKernel`, `Kernel.Bind`, `Binding`, `Dispatch`, `Submit` with a shared parameter ring, with the refusals of the spec.
 - [x] 1.3 `NewBitsBuffer`, `BitsToHost` (read as bytes), `Write`, `WriteBits`, `Zero`, `DeviceBuffer.Released`, `ResidentLimits`.
 - [x] 1.4 Host and hardware-gated tests.
 

@@ -200,15 +200,18 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }`,
 })
 if err != nil { log.Fatal(err) }
+bound, err := k.Bind([]*accel.DeviceBuffer{in}, []*accel.DeviceBuffer{out}) // once
+if err != nil { log.Fatal(err) }
+defer bound.Release()
 err = accel.Submit(accel.Dispatch{
-	Kernel: k, Reads: []*accel.DeviceBuffer{in}, Writes: []*accel.DeviceBuffer{out},
-	Params: [16]uint32{uint32(in.Len())}, Workgroups: [3]uint32{uint32(in.Len()+63) / 64, 1, 1},
+	Binding: bound, Params: [16]uint32{uint32(in.Len())}, Workgroups: [3]uint32{uint32(in.Len()+63) / 64, 1, 1},
 })
 ```
 
 - **Bindings.** Group 0 holds `ReadOnly` read-only storage buffers (bindings `0` to `ReadOnly-1`), then `ReadWrite` read-write ones, then one uniform of sixteen `u32` (64 bytes). The entry point is `main`. The source is compiled as written, with none of Insyra's WGSL before it.
-- **Order.** `Submit` puts all its dispatches into one submission, in order, so each sees what the ones before it wrote. Insyra's own resident operations (`RoundedMatMul`, the tape's resident `MatMul`, `AdamW`, …) go through the same queue and lock, so a built-in operation followed by `Submit`, or the other way round, needs no synchronisation between them. Batching matters: on an Apple M3, 168 trivial dispatches took 19 ms in one `Submit` and 80 ms as 168 separate calls.
-- **Nothing half-submitted.** `Submit` sends nothing when any dispatch has the wrong number of buffers, a nil or released buffer, a buffer on the host or on another device, a buffer both read and written, or a workgroup count of zero or past the device's limit. A shader that does not compile fails the first `Submit` with `ErrShaderCompile`. Create a `Kernel` once and reuse it: it keeps its compiled pipeline for the life of the process.
+- **Bind once, launch many times.** `Kernel.Bind(reads, writes)` ties a kernel to its buffers, compiles it, and builds its bind group once; every `Submit` of that `Binding` reuses it, and all the dispatches of one `Submit` read their `Params` from one shared ring through a dynamic offset. A launch therefore allocates nothing. The ring drains the queue only when it is used up, every 4096 dispatches. Create a `Kernel` and its `Binding`s once and reuse them: a `Kernel` keeps its compiled pipeline for the life of the process, and `Binding.Release` frees a binding's bind group when you are done (the buffers stay with their owners).
+- **Order.** `Submit` puts all its dispatches (at most 4096) into one submission, in order, so each sees what the ones before it wrote. Insyra's own resident operations (`RoundedMatMul`, the tape's resident `MatMul`, `AdamW`, …) go through the same queue and lock, so a built-in operation followed by `Submit`, or the other way round, needs no synchronisation between them. Batching matters: on an Apple M3, 168 trivial dispatches took 3.7 ms in one `Submit` and 23.8 ms as 168 separate calls.
+- **Nothing half-submitted.** `Bind` refuses the wrong number of buffers, a nil or released buffer, a buffer on the host or on another device, a buffer both read and written (or written twice), and more storage buffers than the device allows; a shader that does not compile fails there with `ErrShaderCompile`. `Submit` sends nothing when any dispatch has a released binding or a binding whose buffer was released, bindings on different devices, or a workgroup count of zero or past the device's limit.
 - **What the device allows.** `accel.ResidentLimits()` reports how many storage buffers a kernel may bind (8 on Metal, usually 16 or more on Vulkan, 64 on DirectX 12), the largest buffer, the most workgroups per dimension and the most invocations per workgroup. A buffer larger than the limit cannot be created. Optional shader features such as `f16` or subgroups are not enabled on the device.
 - **Indices and other 32-bit data.** `accel.NewBitsBuffer(device, []uint32)` and `DeviceBuffer.BitsToHost()` move bit patterns unchanged, for buffers a kernel reads as `u32` or `i32`.
 - **Updating a buffer in place.** `DeviceBuffer.Write`, `WriteBits` and `Zero` overwrite a whole buffer without allocating a new one. Each first waits for every kernel already submitted, so a kernel never sees a half-written buffer, and a loop that rewrites inputs every step waits once per call.

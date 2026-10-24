@@ -23,7 +23,7 @@ func NewKernel(name, source string, nRead, nWrite int) (*Kernel, error) {
 	case nRead < 0 || nWrite < 0:
 		return nil, fmt.Errorf("wgpu: kernel %s binds a negative number of buffers", name)
 	}
-	return &Kernel{k: &kernel{name: "custom-" + name, body: source, nRead: nRead, nWrite: nWrite, noLibrary: true}}, nil
+	return &Kernel{k: &kernel{name: "custom-" + name, body: source, nRead: nRead, nWrite: nWrite, noLibrary: true, dynamicUniform: true}}, nil
 }
 
 // Kernel is a caller's compute shader.
@@ -32,31 +32,201 @@ type Kernel struct{ k *kernel }
 // Name reports the name the kernel was created with.
 func (k *Kernel) Name() string { return k.k.name[len("custom-"):] }
 
-// Dispatch is one launch of a kernel: its buffers in binding order, its
-// uniform values and its workgroup counts.
+// Binding is a kernel tied to its buffers: the bind group is built once and
+// every Submit reuses it, so a loop that launches the same kernel on the same
+// buffers allocates nothing per launch. Release it when done.
+type Binding struct {
+	k             *Kernel
+	reads, writes []*Buffer
+	group         *gowgpu.BindGroup
+	released      bool
+}
+
+// uniformSlots is how many 64-byte parameter blocks the shared ring holds.
+// The blocks of one Submit are consecutive; when a Submit would run past the
+// end the queue is drained and the ring starts again at its beginning, so a
+// block is rewritten only when no submitted work can still be reading it.
+const uniformSlots = 4096
+
+var (
+	uniformRing   *gowgpu.Buffer
+	uniformStride uint64
+	uniformNext   int
+)
+
+// ensureRingLocked creates the shared parameter ring. submitMu must be held.
+func ensureRingLocked(h *handle) error {
+	if uniformRing != nil {
+		return nil
+	}
+	stride := uint64(256)
+	if align := uint64(h.limits.MinUniformBufferOffsetAlignment); align > stride {
+		stride = align
+	}
+	ring, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{
+		Label: "accel-custom-params", Size: stride * uniformSlots,
+		Usage: gowgpu.BufferUsageUniform | gowgpu.BufferUsageCopyDst,
+	})
+	if err != nil {
+		return fmt.Errorf("wgpu: create the parameter ring: %w", err)
+	}
+	uniformRing, uniformStride = ring, stride
+	return nil
+}
+
+// Bind ties the kernel to its buffers. It compiles the kernel if needed and
+// refuses the wrong number of buffers, a nil or released buffer, one buffer
+// both read and written, and more storage buffers than the device allows.
+func (k *Kernel) Bind(reads, writes []*Buffer) (*Binding, error) {
+	name := k.k.name
+	if len(reads) != k.k.nRead || len(writes) != k.k.nWrite {
+		return nil, fmt.Errorf("wgpu: %s takes %d read-only and %d read-write buffers, got %d and %d", name, k.k.nRead, k.k.nWrite, len(reads), len(writes))
+	}
+	if err := distinctBuffers(reads, writes); err != nil {
+		return nil, fmt.Errorf("wgpu: %s: %w", name, err)
+	}
+	submitMu.Lock()
+	defer submitMu.Unlock()
+	h, err := acquire()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
+	}
+	if limit := int(h.limits.MaxStorageBuffersPerShaderStage); limit > 0 && k.k.nRead+k.k.nWrite > limit {
+		return nil, fmt.Errorf("wgpu: %s binds %d storage buffers, the device allows %d", name, k.k.nRead+k.k.nWrite, limit)
+	}
+	k.k.build(h)
+	if k.k.err != nil {
+		return nil, k.k.err
+	}
+	if err := ensureRingLocked(h); err != nil {
+		return nil, err
+	}
+	all := append(append([]*Buffer(nil), reads...), writes...)
+	entries := make([]gowgpu.BindGroupEntry, 0, len(all)+1)
+	for j, buffer := range all {
+		if buffer == nil {
+			return nil, fmt.Errorf("wgpu: %s: buffer %d is nil", name, j)
+		}
+		buffer.mu.Lock()
+		released, handle, size := buffer.released, buffer.buffer, bufferBytes(buffer.length)
+		buffer.mu.Unlock()
+		if released || handle == nil {
+			return nil, fmt.Errorf("wgpu: %s: buffer %d was released", name, j)
+		}
+		entries = append(entries, gowgpu.BindGroupEntry{Binding: uint32(j), Buffer: handle, Size: size})
+	}
+	entries = append(entries, gowgpu.BindGroupEntry{Binding: uint32(len(all)), Buffer: uniformRing, Size: 64})
+	group, err := h.device.CreateBindGroup(&gowgpu.BindGroupDescriptor{
+		Label: "accel-" + name + "-bg", Layout: k.k.layout, Entries: entries,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("wgpu: %s: create bind group: %w", name, err)
+	}
+	return &Binding{k: k, reads: append([]*Buffer(nil), reads...), writes: append([]*Buffer(nil), writes...), group: group}, nil
+}
+
+// Release frees the bind group once the queue is idle. It is idempotent. The
+// buffers stay with their owners.
+func (b *Binding) Release() {
+	submitMu.Lock()
+	defer submitMu.Unlock()
+	if b.released {
+		return
+	}
+	b.released = true
+	pending = append(pending, b.group)
+	b.group = nil
+}
+
+// Dispatch is one launch of a binding: its uniform values and its workgroup
+// counts.
 type Dispatch struct {
-	Kernel  *Kernel
-	Reads   []*Buffer
-	Writes  []*Buffer
+	Binding *Binding
 	Params  [16]uint32
 	X, Y, Z uint32
 }
 
 // Submit encodes the dispatches, in order, into one submission and returns
-// without waiting for it. Nothing is submitted when any dispatch cannot be
-// bound.
+// without waiting for it. Nothing is submitted when any dispatch cannot run.
+// The parameters of all dispatches are written to the shared ring in one
+// upload before the submission, each at its own offset, and read through a
+// dynamic offset, so no uniform buffer or bind group is created per launch.
 func Submit(dispatches []Dispatch) error {
-	launches := make([]launch, len(dispatches))
-	for i, d := range dispatches {
-		if d.Kernel == nil {
-			return fmt.Errorf("wgpu: dispatch %d has no kernel", i)
-		}
-		if d.X == 0 || d.Y == 0 || d.Z == 0 {
-			return fmt.Errorf("wgpu: dispatch %d: %s has a zero workgroup count", i, d.Kernel.Name())
-		}
-		launches[i] = launch{k: d.Kernel.k, reads: d.Reads, writes: d.Writes, params: d.Params, x: d.X, y: d.Y, z: d.Z}
+	if len(dispatches) == 0 {
+		return nil
 	}
-	return submit(launches)
+	if len(dispatches) > uniformSlots {
+		return fmt.Errorf("wgpu: %d dispatches in one submission, at most %d", len(dispatches), uniformSlots)
+	}
+	submitMu.Lock()
+	defer submitMu.Unlock()
+	h, err := acquire()
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
+	}
+	most := h.limits.MaxComputeWorkgroupsPerDimension
+	for i, d := range dispatches {
+		if d.Binding == nil || d.Binding.released {
+			return fmt.Errorf("wgpu: dispatch %d has no binding or its binding was released", i)
+		}
+		name := d.Binding.k.k.name
+		if d.X == 0 || d.Y == 0 || d.Z == 0 {
+			return fmt.Errorf("wgpu: dispatch %d: %s has a zero workgroup count", i, name)
+		}
+		if most > 0 && (d.X > most || d.Y > most || d.Z > most) {
+			return fmt.Errorf("wgpu: dispatch %d: %s asks for %d x %d x %d workgroups, the device allows %d in each dimension", i, name, d.X, d.Y, d.Z, most)
+		}
+		for j, buffer := range append(append([]*Buffer(nil), d.Binding.reads...), d.Binding.writes...) {
+			buffer.mu.Lock()
+			released := buffer.released
+			buffer.mu.Unlock()
+			if released {
+				return fmt.Errorf("wgpu: dispatch %d: %s: buffer %d was released", i, name, j)
+			}
+		}
+	}
+	if uniformNext+len(dispatches) > uniformSlots {
+		if err := syncLocked(); err != nil {
+			return err
+		}
+		uniformNext = 0
+	}
+	first := uniformNext
+	raw := make([]byte, uint64(len(dispatches))*uniformStride)
+	for i, d := range dispatches {
+		for j, value := range d.Params {
+			binary.LittleEndian.PutUint32(raw[uint64(i)*uniformStride+uint64(j)*4:], value)
+		}
+	}
+	if err := h.device.Queue().WriteBuffer(uniformRing, uint64(first)*uniformStride, raw); err != nil {
+		return fmt.Errorf("wgpu: upload parameters: %w", err)
+	}
+	encoder, err := h.device.CreateCommandEncoder(nil)
+	if err != nil {
+		return fmt.Errorf("wgpu: create command encoder: %w", err)
+	}
+	for i, d := range dispatches {
+		k := d.Binding.k.k
+		pass, err := encoder.BeginComputePass(nil)
+		if err != nil {
+			return fmt.Errorf("wgpu: dispatch %d: %s: begin compute pass: %w", i, k.name, err)
+		}
+		pass.SetPipeline(k.pipe)
+		pass.SetBindGroup(0, d.Binding.group, []uint32{uint32(uint64(first+i) * uniformStride)})
+		pass.Dispatch(d.X, d.Y, d.Z)
+		if err := pass.End(); err != nil {
+			return fmt.Errorf("wgpu: dispatch %d: %s: end compute pass: %w", i, k.name, err)
+		}
+	}
+	commands, err := encoder.Finish()
+	if err != nil {
+		return fmt.Errorf("wgpu: finish command encoder: %w", err)
+	}
+	if _, err := h.device.Queue().Submit(commands); err != nil {
+		return fmt.Errorf("wgpu: submit: %w", err)
+	}
+	uniformNext = first + len(dispatches)
+	return nil
 }
 
 // launch is one dispatch on the internal path every resident kernel takes.

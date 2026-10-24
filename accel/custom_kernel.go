@@ -31,7 +31,7 @@ type KernelConfig struct {
 	ReadWrite int
 }
 
-// Kernel is a caller's compute shader, compiled on its first Submit.
+// Kernel is a caller's compute shader, compiled by its first Bind.
 // Create it once and reuse it: each Kernel keeps its compiled pipeline for
 // the life of the process.
 type Kernel struct {
@@ -51,35 +51,81 @@ func NewKernel(config KernelConfig) (*Kernel, error) {
 	return &Kernel{inner: inner, config: config}, nil
 }
 
-// Dispatch is one launch of a kernel: its buffers in binding order, the
-// sixteen uniform values, and the workgroup counts in x, y and z. Every
-// workgroup count must be at least one.
+// Binding ties a kernel to the buffers it reads and writes. Bind builds it
+// once, and every Submit reuses it, so a loop that launches the same kernel on
+// the same buffers allocates nothing per launch. Release it when done; the
+// buffers stay with their owners.
+type Binding struct {
+	inner  *wgpu.Binding
+	kernel *Kernel
+	device Device
+}
+
+// Bind ties the kernel to its buffers: ReadOnly buffers it only reads, then
+// ReadWrite buffers it may write, in binding order. It compiles the kernel,
+// so a shader that does not compile fails here with ErrShaderCompile. It
+// refuses the wrong number of buffers, a nil or released buffer, a buffer on
+// the host or on another device, one buffer both read and written (or written
+// twice), no buffer at all, and more storage buffers than the device allows
+// (ResidentLimits). A buffer on the host is refused rather than computed
+// there: a caller keeps its own host implementation for when there is no
+// device.
+//
+// A Binding refers to its buffers until it is released. Submitting it after
+// one of them was released is an error.
+func (k *Kernel) Bind(reads, writes []*DeviceBuffer) (*Binding, error) {
+	name := k.config.Name
+	if len(reads) != k.config.ReadOnly || len(writes) != k.config.ReadWrite {
+		return nil, fmt.Errorf("accel: kernel %s takes %d read-only and %d read-write buffers, got %d and %d", name, k.config.ReadOnly, k.config.ReadWrite, len(reads), len(writes))
+	}
+	if len(reads)+len(writes) == 0 {
+		return nil, fmt.Errorf("accel: kernel %s binds no buffer, so there is no device to run it on", name)
+	}
+	var device *Device
+	innerReads, err := innerBuffers(name, "read-only", reads, &device)
+	if err != nil {
+		return nil, err
+	}
+	innerWrites, err := innerBuffers(name, "read-write", writes, &device)
+	if err != nil {
+		return nil, err
+	}
+	inner, err := k.inner.Bind(innerReads, innerWrites)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return &Binding{inner: inner, kernel: k, device: *device}, nil
+}
+
+// Release frees the binding's bind group once the queue is idle. It is
+// idempotent. The buffers it referred to are untouched.
+func (b *Binding) Release() {
+	if b == nil || b.inner == nil {
+		return
+	}
+	b.inner.Release()
+}
+
+// Dispatch is one launch of a binding: the sixteen uniform values and the
+// workgroup counts in x, y and z. Every workgroup count must be at least one.
 type Dispatch struct {
-	Kernel     *Kernel
-	Reads      []*DeviceBuffer
-	Writes     []*DeviceBuffer
+	Binding    *Binding
 	Params     [16]uint32
 	Workgroups [3]uint32
 }
 
-// Submit sends the dispatches, in order, as one submission on the device
-// their buffers live on, and returns without waiting for them. Each dispatch
-// sees every write of the dispatches before it. Submit and Insyra's own
-// resident operations share one queue and one submit lock, so work submitted
-// by separate calls, either way round, also runs in the order it was
-// submitted, with no synchronisation needed between them.
+// Submit sends the dispatches, in order, as one submission and returns
+// without waiting for them. Each dispatch sees every write of the dispatches
+// before it. Submit and Insyra's own resident operations share one queue and
+// one submit lock, so work submitted by separate calls, either way round,
+// also runs in the order it was submitted, with no synchronisation needed
+// between them. At most 4096 dispatches go in one Submit.
 //
-// Submit sends nothing when any dispatch has no kernel, the wrong number of
-// buffers, a nil or released buffer, a buffer on the host or on another
-// device, a buffer both read and written (or written twice), or a workgroup
-// count of zero or past what the device allows. A buffer on the host is
-// refused rather than computed there: a caller keeps its own host
-// implementation for when there is no device.
-//
-// Each dispatch keeps a small uniform buffer and bind group alive until the
-// queue next goes idle. Submit waits for earlier work first when that would
-// pass an internal bound, so a very long loop of Submit calls is safe, but
-// one that never reads anything back pays for that wait now and then.
+// Submit sends nothing when any dispatch has no binding or a released one,
+// a binding whose buffer was released, bindings on different devices, or a
+// workgroup count of zero or past what the device allows. Parameters go to
+// one shared ring, each dispatch at its own offset, and the queue is drained
+// only when the ring is used up, which is every few thousand dispatches.
 func Submit(dispatches ...Dispatch) error {
 	if len(dispatches) == 0 {
 		return nil
@@ -87,44 +133,39 @@ func Submit(dispatches ...Dispatch) error {
 	var device *Device
 	inner := make([]wgpu.Dispatch, len(dispatches))
 	for i, d := range dispatches {
-		if d.Kernel == nil {
-			return fmt.Errorf("accel: dispatch %d has no kernel", i)
+		if d.Binding == nil || d.Binding.inner == nil {
+			return fmt.Errorf("accel: dispatch %d has no binding", i)
 		}
-		name := d.Kernel.config.Name
-		if len(d.Reads) != d.Kernel.config.ReadOnly || len(d.Writes) != d.Kernel.config.ReadWrite {
-			return fmt.Errorf("accel: dispatch %d: kernel %s takes %d read-only and %d read-write buffers, got %d and %d", i, name, d.Kernel.config.ReadOnly, d.Kernel.config.ReadWrite, len(d.Reads), len(d.Writes))
+		switch {
+		case device == nil:
+			dev := d.Binding.device
+			device = &dev
+		case device.ID != d.Binding.device.ID:
+			return fmt.Errorf("accel: dispatch %d: kernel %s: bindings live on different devices (%s and %s)", i, d.Binding.kernel.config.Name, device.ID, d.Binding.device.ID)
 		}
-		if d.Workgroups[0] == 0 || d.Workgroups[1] == 0 || d.Workgroups[2] == 0 {
-			return fmt.Errorf("accel: dispatch %d: kernel %s has a zero workgroup count %v", i, name, d.Workgroups)
-		}
-		reads, err := innerBuffers(i, name, d.Reads, &device)
-		if err != nil {
-			return err
-		}
-		writes, err := innerBuffers(i, name, d.Writes, &device)
-		if err != nil {
-			return err
-		}
-		inner[i] = wgpu.Dispatch{Kernel: d.Kernel.inner, Reads: reads, Writes: writes, Params: d.Params, X: d.Workgroups[0], Y: d.Workgroups[1], Z: d.Workgroups[2]}
+		inner[i] = wgpu.Dispatch{Binding: d.Binding.inner, Params: d.Params, X: d.Workgroups[0], Y: d.Workgroups[1], Z: d.Workgroups[2]}
 	}
-	return residentFailure(wgpu.Submit(inner))
+	if err := wgpu.Submit(inner); err != nil {
+		return residentFailure(fmt.Errorf("accel: %w", err))
+	}
+	return nil
 }
 
-func innerBuffers(dispatch int, kernel string, buffers []*DeviceBuffer, device **Device) ([]*wgpu.Buffer, error) {
+func innerBuffers(kernel, role string, buffers []*DeviceBuffer, device **Device) ([]*wgpu.Buffer, error) {
 	out := make([]*wgpu.Buffer, len(buffers))
 	for i, b := range buffers {
 		switch {
 		case b == nil || b.inner == nil:
-			return nil, fmt.Errorf("accel: dispatch %d: kernel %s: buffer %d is nil", dispatch, kernel, i)
+			return nil, fmt.Errorf("accel: kernel %s: %s buffer %d is nil", kernel, role, i)
 		case b.inner.Released():
-			return nil, fmt.Errorf("accel: dispatch %d: kernel %s: buffer %d was released", dispatch, kernel, i)
+			return nil, fmt.Errorf("accel: kernel %s: %s buffer %d was released", kernel, role, i)
 		case b.device.ID == "":
-			return nil, fmt.Errorf("accel: dispatch %d: kernel %s: buffer %d is on the host; a kernel runs on device buffers only", dispatch, kernel, i)
+			return nil, fmt.Errorf("accel: kernel %s: %s buffer %d is on the host; a kernel runs on device buffers only", kernel, role, i)
 		case *device == nil:
 			d := b.device
 			*device = &d
 		case (*device).ID != b.device.ID:
-			return nil, fmt.Errorf("accel: dispatch %d: kernel %s: buffers live on different devices (%s and %s)", dispatch, kernel, (*device).ID, b.device.ID)
+			return nil, fmt.Errorf("accel: kernel %s: buffers live on different devices (%s and %s)", kernel, (*device).ID, b.device.ID)
 		}
 		out[i] = b.inner
 	}
