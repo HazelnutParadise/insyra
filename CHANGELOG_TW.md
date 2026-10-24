@@ -199,6 +199,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CPU 上的 2-D float32 `MatMul` 快了 1.2 到 2.9 倍：在 4 vCPU 的 Linux amd64 機器上，1×784×28 從 23.0 µs 降到 19.5 µs，64×784×28 從 694 µs 降到 331 µs，256×256×256 從 5.32 ms 降到 1.81 ms。每個輸出仍照原本的順序累加乘積，所以不是 NaN 的結果每個位元都和原本相同；兩個 NaN 在同一次加法相遇時，得到的 NaN 位元可能不同。（[#463](https://github.com/HazelnutParadise/insyra/issues/463)）
 - 一步訓練現在可以整個留在 GPU。`Tensor.To(dev)`、`ToHost()`、`Device()`、`Release()` 把 float32 張量搬到裝置再搬回來，逐位元不變；`Tape.SetPrecision(accel.PrecisionFloat32Rounded)` 選用一種模式：每個結果都是該運算的精確值只捨入一次到 float32。在這個模式下，`Tape.MatMul`、`Add`（含廣播的偏置）、它們的梯度、梯度累加、`SGD`、`Adam`、`AdamW` 與 `SoftmaxCrossEntropy` 都在不離開裝置的張量上執行。同一步在主機、在 GPU、以及沒有 GPU 時，算出的位元完全一樣。`Tape.Clear()` 丟掉一步的運算與裝置張量、保留參數；`Tape.Close()` 釋放全部。預設的 tape 完全不變。還沒有裝置核心的運算（其餘）收到裝置張量時回傳錯誤並提示 `ToHost`。`Docs/nn.md` 說明兩種模式的差別與使用時機。
 - `nn.NewTape` 呼叫時不再立刻為 `math/rand` 建立種子來源，改在第一次有東西從 tape 抽亂數時才建立（`Dropout`、層的隨機初始化）。從不抽亂數的 tape 在 M3 上量測從 13–34 µs、5.7 KB 降到約 0.15–0.65 µs、304 B。每個種子（包括預設種子與零值 `Tape{}`）產生的遮罩與初始權重都和以前相同。（[#536](https://github.com/HazelnutParadise/insyra/issues/536)）
+- `nn` 的矩陣乘法、卷積與 edge sum 現在依 `runtime.GOMAXPROCS(0)` 決定執行緒數，不再用 `runtime.NumCPU()`，所以調低 `GOMAXPROCS` 或同時跑多個乘法的程式不會再超額使用 CPU；結果不變（[#537](https://github.com/HazelnutParadise/insyra/issues/537)）。
 
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。
@@ -255,6 +256,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `stats.NeweyWestMeanTest(series, lag)`，用 Newey-West（Bartlett 核）標準誤檢定自我相關序列的平均數是否為零，例如重疊持有期的報酬，一般 t 檢定會把 t 值高估。`lag` 為負數（`stats.AutoLag`）時用 `NeweyWestLag(n)`，為 0 時等於以 `n` 為除數的單樣本 t 檢定（[#457](https://github.com/HazelnutParadise/insyra/issues/457)）。
 - `LinearRegression`、`PoissonRegression`、`LogisticRegression`、`Correlation`、`Covariance`、`ChiSquareGoodnessOfFit`、`ChiSquareIndependenceTest`、`Silhouette`、`KNNClassify`、`KNNRegress`、`Skewness`、`Kurtosis` 收到 nil 清單（直接傳入或包在 `isr.DL` 這類包裝裡）時回傳錯誤。過去會 panic，迴歸函式還是在自己啟動的 goroutine 裡 panic，讓程式結束。`insyra.ProcessData` 把 nil 清單當成不支援的輸入。
 - 新增 `stats.AdjustPValues(pvals, method)`，一次檢驗很多假設時，用 Holm、Bonferroni、Hochberg、Benjamini-Hochberg 或 Benjamini-Yekutieli（`PAdjustHolm`、`PAdjustBonferroni`、`PAdjustHochberg`、`PAdjustBH`、`PAdjustBY`）校正一批 p 值，結果與 R 的 `p.adjust` 一致。`NaN` 維持 `NaN`，也不算進檢驗數（[#444](https://github.com/HazelnutParadise/insyra/issues/444)）。
+- `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `stats.RunsTest(series, opts...)` 檢定漲跌順序是否隨機（Wald-Wolfowitz）：計算高於與低於切點（預設 0）的連數，回傳期望連數、`Z` 與 p 值（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `stats.Autocorrelation` 與 `stats.VarianceRatio` 現在會拒絕由小數（例如 0.1）組成的常數序列：100 個 0.1 的平均值不是剛好 0.1，以前會對沒有變異的序列回報 `Rho` 0.99 和極小的 p 值。
 
 ### `csvxl`
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 會用 v0.3.3 檢查工作表名稱的同一套規則檢查 `csvNames` 指定的檔名：含路徑分隔符號、或不會直接落在輸出目錄內的檔名都會被拒絕，所以 `csvNames: []string{"sub/out.csv"}` 不再寫進子目錄。每張 CSV 先寫入暫存檔再 rename 到目標位置，寫入失敗時不會留下截斷的檔案。

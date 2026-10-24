@@ -139,3 +139,13 @@ func TestVarianceRatioRefusesBadInput(t *testing.T) {
 		}
 	}
 }
+
+func TestVarianceRatioRefusesAConstantSeriesOfDecimals(t *testing.T) {
+	vals := make([]any, 100)
+	for i := range vals {
+		vals[i] = 0.1
+	}
+	if _, err := VarianceRatio(insyra.NewDataList(vals...), 2); err == nil {
+		t.Fatal("a constant series of 0.1 was not refused")
+	}
+}

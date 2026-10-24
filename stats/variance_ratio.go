@@ -26,10 +26,14 @@ type VarianceRatioResult struct {
 // (Lo and MacKinlay 1988). A ratio above 1 means returns trend (positive
 // autocorrelation), below 1 that they reverse.
 //
-// returns are single-period returns, ideally log returns, so that q-period
-// returns are their sums. It computes the unbiased estimators and the
-// overlapping q-period sums of Lo and MacKinlay, with n the number of
-// returns, and gives both the homoscedastic z and the heteroskedasticity-robust
+// returns are single-period changes, which need not be stock returns: any
+// series of per-period changes works (an exchange-rate change, a daily
+// temperature difference). Pass log returns for a price, or first differences
+// for a level series, never the price itself. Changes must add up over q
+// periods, which log returns do, so q-period returns are their sums.
+//
+// It computes the unbiased estimators and the overlapping q-period sums of Lo
+// and MacKinlay, with n the number of returns, and gives both the homoscedastic z and the heteroskedasticity-robust
 // z*. Each q must be between 2 and n-1. The p-values come from the standard
 // normal distribution, which is an asymptotic result and needs a long series.
 func VarianceRatio(returns insyra.IDataList, qs ...int) ([]VarianceRatioResult, error) {
@@ -55,7 +59,7 @@ func VarianceRatio(returns insyra.IDataList, qs ...int) ([]VarianceRatioResult, 
 		d[i] = v - mu
 		ss += d[i] * d[i]
 	}
-	if ss == 0 {
+	if ss == 0 || allEqualF64(x) {
 		return nil, errors.New("returns have no variance")
 	}
 	varA := ss / (nf - 1)

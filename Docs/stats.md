@@ -1190,7 +1190,7 @@ func VarianceRatio(returns insyra.IDataList, qs ...int) ([]VarianceRatioResult, 
 func ChowDenning(returns insyra.IDataList, robust bool, qs ...int) (*ChowDenningResult, error)
 ```
 
-**Description:** Tests whether returns follow a random walk by comparing the variance of `q`-period returns with `q` times the variance of one-period returns (Lo and MacKinlay 1988). A ratio above 1 means returns trend (positive autocorrelation), below 1 that they reverse. `returns` are single-period returns, ideally log returns so that `q`-period returns are their sums. The unbiased estimators and overlapping `q`-period sums are used, with `n` the number of returns.
+**Description:** Tests whether returns follow a random walk by comparing the variance of `q`-period returns with `q` times the variance of one-period returns (Lo and MacKinlay 1988). A ratio above 1 means returns trend (positive autocorrelation), below 1 that they reverse. `returns` are single-period returns, ideally log returns so that `q`-period returns are their sums. The unbiased estimators and overlapping `q`-period sums are used, with `n` the number of returns. The input can be any series of per-period changes, not only stock returns (an exchange-rate change, the daily difference of a temperature); for a price or level series, take log returns or first differences first, because the test needs changes that add up over `q` periods.
 
 **Parameters:**
 
@@ -1203,6 +1203,55 @@ func ChowDenning(returns insyra.IDataList, robust bool, qs ...int) (*ChowDenning
 - `[]VarianceRatioResult`, one per `q`: `Q`, `VR`, `ZHomoscedastic` and `PHomoscedastic` (valid for independent increments with a constant variance), `ZRobust` and `PRobust` (Lo and MacKinlay's `z*`, valid under heteroskedasticity). The p-values are two-tailed from the normal distribution, an asymptotic result that needs a long series.
 - `*ChowDenningResult` from `ChowDenning`: `MaxZ`, the largest absolute `z` over the periods, and `P`, its p-value with the Sidak correction `1 - (2Φ(max) - 1)^k`, so choosing the best `q` does not inflate the false-positive rate (Chow and Denning 1993).
 - `error`: no `q`, a `q` out of range, a nil list, a value that is not a finite number, or returns with no variance.
+
+### Autocorrelation
+
+```go
+func Autocorrelation(series insyra.IDataList, maxLag int) ([]AutocorrelationResult, error)
+```
+
+**Description:** Asks whether a value is related to the one before it, or two, or `k` before it. For daily stock returns, a positive lag-1 value means a rise tends to follow a rise. `Rho` is the sample autocorrelation as R's `acf` computes it. `T` and `P` test each lag against white noise (independent values with a constant variance). Volatility that comes in clusters makes that test reject too often, so `TRobust` and `PRobust` use Lo and MacKinlay's (1988) heteroskedasticity-robust variance, the same one `VarianceRatio` uses. The p-values are asymptotic and need a long series. The series can be any numbers in time order, not only returns.
+
+**Parameters:**
+
+- `series`: The values in time order, at least two, not all equal.
+- `maxLag`: The largest lag, from 1 to `n - 1`.
+
+**Returns:**
+
+- `[]AutocorrelationResult`, one per lag: `Lag`, `Rho`, `T` (`sqrt(n) * Rho`) and `P`, `TRobust` and `PRobust`.
+- `error`: a nil or empty list, a value that is not a finite number, a constant series, or a `maxLag` out of range.
+
+```go
+res, err := stats.Autocorrelation(returns, 10)
+for _, a := range res {
+    fmt.Println(a.Lag, a.Rho, a.PRobust)
+}
+```
+
+### Runs Test
+
+```go
+func RunsTest(series insyra.IDataList, opts ...RunsTestOptions) (*RunsTestResult, error)
+```
+
+**Description:** Tests whether the order of up and down moves is random (Wald and Wolfowitz 1940). Each value is marked above or below a threshold, and a run is an unbroken stretch of one mark, so `++--+-` has four runs. Too few runs means the series keeps going the same way, too many means it keeps reversing. Values equal to the threshold are dropped before the runs are counted. The p-value comes from the standard normal distribution and needs a long series.
+
+**Parameters:**
+
+- `series`: The values in time order, with at least one above and one below the threshold.
+- `opts`: Optional `RunsTestOptions`: `Threshold` (default 0, the sign of a return; use the mean or median for other series) and `Correction` (a continuity correction of 0.5, off by default).
+
+**Returns:**
+
+- `*RunsTestResult`: `Runs`, `Above`, `Below`, `Dropped` (values equal to the threshold), `Expected` and `Variance` of the number of runs under a random order, `Z` and `PValue`.
+- `error`: a nil or empty list, a value that is not a finite number, a non-finite `Threshold`, more than one options value, or no value on one side of the threshold.
+
+```go
+res, err := stats.RunsTest(returns)
+fmt.Println(res.Runs, res.Expected, res.Z, res.PValue)
+res, err = stats.RunsTest(returns, stats.RunsTestOptions{Threshold: 0.0005})
+```
 
 ### Kaplan-Meier
 

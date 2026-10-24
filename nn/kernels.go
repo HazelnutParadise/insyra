@@ -17,6 +17,10 @@ import (
 // Keep the threshold in multiply-accumulate units so it applies to both.
 const parallelMACThreshold = 100_000
 
+// parallelWorkerCountForMACs returns 1 for a product at or below
+// parallelMACThreshold and runtime.GOMAXPROCS(0) above it, so a caller that
+// lowered GOMAXPROCS is respected. Each output element keeps its own summation
+// order, so the count never changes a result.
 func parallelWorkerCountForMACs(factors ...int) int {
 	work := 1
 	for _, factor := range factors {
@@ -24,14 +28,14 @@ func parallelWorkerCountForMACs(factors ...int) int {
 			return 1
 		}
 		if work > parallelMACThreshold/factor {
-			return runtime.NumCPU()
+			return runtime.GOMAXPROCS(0)
 		}
 		work *= factor
 	}
 	if work <= parallelMACThreshold {
 		return 1
 	}
-	return runtime.NumCPU()
+	return runtime.GOMAXPROCS(0)
 }
 
 func parallelFor(total, workers int, work func(start, end int)) {
