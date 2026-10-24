@@ -45,8 +45,8 @@ type MomentumResult struct {
 // winners keep winning.
 //
 // The table is in long form, one row per stock and month, like QuantileSort:
-// dateCol, stockCol and returnCol are column names, or Excel-style letters when
-// no column has that name, and returnCol holds simple (not log) returns, nil or
+// dateCol, stockCol and returnCol are column selectors: an Excel-style index such as "A",
+// insyra.Name("price") or an int position, and returnCol holds simple (not log) returns, nil or
 // NaN where missing. Months are the dates in the order they first appear and
 // must be consecutive; a stock must not appear twice in a month. A stock is ranked
 // when every return of its formation period is present, the formation return
@@ -59,7 +59,7 @@ type MomentumResult struct {
 //
 // formation and groups have no safe default and are required: formation is the
 // number of months ranked on, groups at least 2 (10 for deciles).
-func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol string, formation, groups int, opts ...MomentumOptions) (*MomentumResult, error) {
+func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol any, formation, groups int, opts ...MomentumOptions) (*MomentumResult, error) {
 	if formation < 1 {
 		return nil, errors.New("formation must be at least 1 month")
 	}
@@ -88,28 +88,32 @@ func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol st
 	}
 
 	var dates, stocks, returns []any
+	var returnName string
 	var readErr error
 	table.AtomicDo(func(dt *insyra.DataTable) {
-		find := func(sel, role string) []any {
+		find := func(sel any, role string) ([]any, string) {
 			if readErr != nil {
-				return nil
+				return nil, ""
 			}
-			data, err := columnData(dt, sel, role)
-			readErr = err
-			return data
+			num, name, err := resolveColumn(dt, sel, role)
+			if err != nil {
+				readErr = err
+				return nil, ""
+			}
+			return dt.GetColByNumber(num).Data(), name
 		}
-		dates = find(dateCol, "date")
-		stocks = find(stockCol, "stock")
-		returns = find(returnCol, "return")
+		dates, _ = find(dateCol, "date")
+		stocks, _ = find(stockCol, "stock")
+		returns, returnName = find(returnCol, "return")
 	})
 	if readErr != nil {
 		return nil, readErr
 	}
 	rows := len(dates)
 	if len(stocks) != rows {
-		return nil, fmt.Errorf("column %s has %d rows, the date column has %d", stockCol, len(stocks), rows)
+		return nil, fmt.Errorf("the stock column has %d rows, the date column has %d", len(stocks), rows)
 	}
-	ret, err := finiteOrMissing(returns, returnCol, rows)
+	ret, err := finiteOrMissing(returns, returnName, rows)
 	if err != nil {
 		return nil, err
 	}

@@ -68,7 +68,7 @@ func expectClose(t *testing.T, name string, got, want []float64) {
 // J=1, S=0, K=1: rank on last month's return, hold the next month. Losers are
 // C and D then A and C then A and D; winners the other half.
 func TestMomentumPortfoliosOneMonthHold(t *testing.T) {
-	res, err := MomentumPortfolios(momentumPanel(), "date", "stock", "ret", 1, 2)
+	res, err := MomentumPortfolios(momentumPanel(), insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestMomentumPortfoliosOneMonthHold(t *testing.T) {
 // K=2: each month averages the two cohorts formed one and two months before, so
 // the first month with both is m2.
 func TestMomentumPortfoliosOverlappingCohorts(t *testing.T) {
-	res, err := MomentumPortfolios(momentumPanel(), "date", "stock", "ret", 1, 2, MomentumOptions{Hold: 2})
+	res, err := MomentumPortfolios(momentumPanel(), insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2, MomentumOptions{Hold: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestMomentumPortfoliosOverlappingCohorts(t *testing.T) {
 // S=1 ranks on the return of the month before last: the cohort formed in m1
 // ranks on m0 and holds m2.
 func TestMomentumPortfoliosSkipsTheMostRecentMonth(t *testing.T) {
-	res, err := MomentumPortfolios(momentumPanel(), "date", "stock", "ret", 1, 2, MomentumOptions{Skip: 1})
+	res, err := MomentumPortfolios(momentumPanel(), insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2, MomentumOptions{Skip: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestMomentumPortfoliosSkipsTheMostRecentMonth(t *testing.T) {
 
 // J=2 compounds the two months: A 1.10*1.02-1, B 1.05*1.04-1, C 0.95*1.01-1, D 0.90*1.03-1.
 func TestMomentumPortfoliosCompoundsTheFormationMonths(t *testing.T) {
-	res, err := MomentumPortfolios(momentumPanel(), "date", "stock", "ret", 2, 2)
+	res, err := MomentumPortfolios(momentumPanel(), insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 2, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestMomentumPortfoliosDropsAMissingHoldingReturn(t *testing.T) {
 	// Remove B's return in m1: winners of the first cohort are {A,B}, now only A (0.02).
 	panel.GetColByName("ret").Data() // read to confirm the column exists
 	panel.UpdateElement(5, "C", nil)
-	res, err := MomentumPortfolios(panel, "date", "stock", "ret", 1, 2)
+	res, err := MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestMomentumPortfoliosSkipsAMonthWithTooFewStocks(t *testing.T) {
 	)
 	// Three groups need three stocks; one return of m0 is missing below.
 	dt.UpdateElement(2, "C", nil)
-	res, err := MomentumPortfolios(dt, "date", "stock", "ret", 1, 3)
+	res, err := MomentumPortfolios(dt, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,24 +153,36 @@ func TestMomentumPortfoliosSkipsAMonthWithTooFewStocks(t *testing.T) {
 func TestMomentumPortfoliosRefusesBadInput(t *testing.T) {
 	panel := momentumPanel()
 	for name, f := range map[string]func() error{
-		"formation 0": func() error { _, e := MomentumPortfolios(panel, "date", "stock", "ret", 0, 2); return e },
-		"one group":   func() error { _, e := MomentumPortfolios(panel, "date", "stock", "ret", 1, 1); return e },
+		"formation 0": func() error {
+			_, e := MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 0, 2)
+			return e
+		},
+		"one group": func() error {
+			_, e := MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 1)
+			return e
+		},
 		"negative skip": func() error {
-			_, e := MomentumPortfolios(panel, "date", "stock", "ret", 1, 2, MomentumOptions{Skip: -1})
+			_, e := MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2, MomentumOptions{Skip: -1})
 			return e
 		},
 		"negative hold": func() error {
-			_, e := MomentumPortfolios(panel, "date", "stock", "ret", 1, 2, MomentumOptions{Hold: -1})
+			_, e := MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2, MomentumOptions{Hold: -1})
 			return e
 		},
 		"two options": func() error {
-			_, e := MomentumPortfolios(panel, "date", "stock", "ret", 1, 2, MomentumOptions{}, MomentumOptions{})
+			_, e := MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2, MomentumOptions{}, MomentumOptions{})
 			return e
 		},
-		"no column": func() error { _, e := MomentumPortfolios(panel, "date", "stock", "nope", 1, 2); return e },
-		"nil table": func() error { _, e := MomentumPortfolios(nil, "date", "stock", "ret", 1, 2); return e },
+		"no column": func() error {
+			_, e := MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("nope"), 1, 2)
+			return e
+		},
+		"nil table": func() error {
+			_, e := MomentumPortfolios(nil, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2)
+			return e
+		},
 		"too short": func() error {
-			_, e := MomentumPortfolios(panel, "date", "stock", "ret", 3, 2, MomentumOptions{Hold: 3})
+			_, e := MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 3, 2, MomentumOptions{Hold: 3})
 			return e
 		},
 	} {
@@ -183,7 +195,7 @@ func TestMomentumPortfoliosRefusesBadInput(t *testing.T) {
 		insyra.NewDataList("A", "A", "A", "B").SetName("stock"),
 		insyra.NewDataList(0.1, 0.2, 0.3, 0.4).SetName("ret"),
 	)
-	if _, err := MomentumPortfolios(dup, "date", "stock", "ret", 1, 2); err == nil {
+	if _, err := MomentumPortfolios(dup, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2); err == nil {
 		t.Error("a stock twice in one month: no error")
 	}
 }
@@ -196,7 +208,7 @@ func TestMomentumPortfoliosOverlapWithAMissingPortfolioIsNaN(t *testing.T) {
 	// Rows: m2 starts at row 8, A=8, B=9.
 	panel.UpdateElement(8, "C", nil)
 	panel.UpdateElement(9, "C", nil)
-	res, err := MomentumPortfolios(panel, "date", "stock", "ret", 1, 2, MomentumOptions{Hold: 2})
+	res, err := MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2, MomentumOptions{Hold: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +240,7 @@ func TestMomentumPortfoliosDoesNotHangOnAnOverflowingSignal(t *testing.T) {
 	)
 	done := make(chan error, 1)
 	go func() {
-		_, err := MomentumPortfolios(panel, "date", "stock", "ret", 3, 2)
+		_, err := MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 3, 2)
 		done <- err
 	}()
 	select {

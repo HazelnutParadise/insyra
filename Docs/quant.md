@@ -781,12 +781,12 @@ sharpe, err := quant.SharpeRatio(spread, 0, 252)
 ### MomentumPortfolios
 
 ```go
-func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol string, formation, groups int, opts ...MomentumOptions) (*MomentumResult, error)
+func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol any, formation, groups int, opts ...MomentumOptions) (*MomentumResult, error)
 ```
 
 Jegadeesh and Titman's (1993) momentum portfolios, the standard check of whether past winners keep winning. Each month the stocks are ranked by their return over the past `formation` months and cut into `groups` groups; a group is held for `Hold` months, and since a new portfolio is formed every month, `Hold` of them overlap and the month's return is their equal-weighted average. Winners minus losers is the momentum return.
 
-The table is in long form, one row per stock and month, like `QuantileSort`. `dateCol`, `stockCol` and `returnCol` are column names, or Excel-style letters when no column has that name, and `returnCol` holds simple (not log) returns, `nil` or `NaN` where missing. Months are the dates in the order they first appear and must be consecutive; a stock must not appear twice in a month. A stock is ranked when every return of its formation period is present; its formation return is the compounded `(1 + r)` product less 1. Equal signals share a group, as in `QuantileSort`. Stocks are equally weighted inside a group, and one with no return in a holding month is left out of that month's average. A group with no return at all in one of the overlapping portfolios has no defined return that month and is `NaN`. A stock whose compounded formation return overflows is not ranked. A month is reported once `Hold` portfolios have been formed, and at least `groups` stocks must be ranked for a portfolio to be formed.
+The table is in long form, one row per stock and month, like `QuantileSort`. `dateCol`, `stockCol` and `returnCol` are column selectors (an Excel-style index such as `"A"`, `insyra.Name("price")` or an int position), and `returnCol` holds simple (not log) returns, `nil` or `NaN` where missing. Months are the dates in the order they first appear and must be consecutive; a stock must not appear twice in a month. A stock is ranked when every return of its formation period is present; its formation return is the compounded `(1 + r)` product less 1. Equal signals share a group, as in `QuantileSort`. Stocks are equally weighted inside a group, and one with no return in a holding month is left out of that month's average. A group with no return at all in one of the overlapping portfolios has no defined return that month and is `NaN`. A stock whose compounded formation return overflows is not ranked. A month is reported once `Hold` portfolios have been formed, and at least `groups` stocks must be ranked for a portfolio to be formed.
 
 **Options (`MomentumOptions`)**
 
@@ -800,7 +800,7 @@ The table is in long form, one row per stock and month, like `QuantileSort`. `da
 - `Skipped`: months left out because a portfolio they average could not be formed, and why.
 
 ```go
-res, err := quant.MomentumPortfolios(panel, "date", "stock", "ret", 6, 10, quant.MomentumOptions{Skip: 1, Hold: 6})
+res, err := quant.MomentumPortfolios(panel, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 6, 10, quant.MomentumOptions{Skip: 1, Hold: 6})
 sharpe, err := quant.SharpeRatio(res.LongShort, 0, 12)
 ```
 
