@@ -1190,7 +1190,7 @@ func VarianceRatio(returns insyra.IDataList, qs ...int) ([]VarianceRatioResult, 
 func ChowDenning(returns insyra.IDataList, robust bool, qs ...int) (*ChowDenningResult, error)
 ```
 
-**Description:** Tests whether returns follow a random walk by comparing the variance of `q`-period returns with `q` times the variance of one-period returns (Lo and MacKinlay 1988). A ratio above 1 means returns trend (positive autocorrelation), below 1 that they reverse. `returns` are single-period returns, ideally log returns so that `q`-period returns are their sums. The unbiased estimators and overlapping `q`-period sums are used, with `n` the number of returns.
+**Description:** Tests whether returns follow a random walk by comparing the variance of `q`-period returns with `q` times the variance of one-period returns (Lo and MacKinlay 1988). A ratio above 1 means returns trend (positive autocorrelation), below 1 that they reverse. `returns` are single-period returns, ideally log returns so that `q`-period returns are their sums. The unbiased estimators and overlapping `q`-period sums are used, with `n` the number of returns. The input can be any series of per-period changes, not only stock returns (an exchange-rate change, the daily difference of a temperature); for a price or level series, take log returns or first differences first, because the test needs changes that add up over `q` periods.
 
 **Parameters:**
 
