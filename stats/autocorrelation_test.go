@@ -97,6 +97,10 @@ func TestAutocorrelationRefusesBadInput(t *testing.T) {
 			t.Errorf("%s: no error", name)
 		}
 	}
+	// Not constant, but every lagged product is zero: TRobust would be 0/0.
+	if _, err := Autocorrelation(insyra.NewDataList(-1.0, 0.0, 1.0), 1); err == nil {
+		t.Error("zero robust variance: no error")
+	}
 	if _, err := Autocorrelation(ok, len(acfRSeries)-1); err != nil {
 		t.Errorf("maxLag n-1 should work: %v", err)
 	}
