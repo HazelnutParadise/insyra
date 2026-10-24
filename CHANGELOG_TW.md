@@ -26,6 +26,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `nn` 的矩陣乘法、卷積與 edge sum 現在依 `runtime.GOMAXPROCS(0)` 決定執行緒數，不再用 `runtime.NumCPU()`，所以調低 `GOMAXPROCS` 或同時跑多個乘法的程式不會再超額使用 CPU；結果不變（[#537](https://github.com/HazelnutParadise/insyra/issues/537)）。
 
+### `quant`
+
+- **行為改變**：`quant.BacktestSignal` 現在接受從 -1（完全放空）到 1 的部位；訊號或 `InitialPosition` 小於 0 以前會報錯。放空的報酬是 `-資產報酬 + 2 * 現金報酬`（本金與賣空所得都賺現金利率），新的 `BacktestOptions.BorrowFee` 對放空部位每列收一筆借券費。以前成功的呼叫結果不變（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+
 ## v0.3.5
 
 ### Core
