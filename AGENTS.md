@@ -481,12 +481,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: take the predictors as a `[]insyra.IDataList` followed by `opts ...XxxOptions`, keep one name per regression with the `...WithOptions` names as Deprecated wrappers for one release, and read the level through `resolveTestSettings`'s rule. Every regression call changes, so it is its own change; the reason for the slice is the one `stats-test-settings` gives for the k-sample tests.
 - **Status**: pending
 
-### [2026-09-28] — cutting a tree accepts a node merged twice
-- **Where**: `stats/internal/clustering/cluster.go` `validateTree`
-- **What**: `validateTree` checks that every merge joins a leaf or an earlier merge, but not that each is used once. Measured on 2026-09-28 with three labels: merges `{-1,-2},{-1,-2}`, `{-1,-2},{1,1}` or `{-1,-1},{-2,1}` all pass, and `CutTreeByK(tree, 1)` returns `[1 1 2]`, two clusters where one was asked for, with no error. A hand-edited `state.json` reaches `cutree` this way. `dev` has the same check and records the same follow-up.
-- **Suggestion**: track which leaves and merges have been used and refuse an id seen a second time, a merge joining something with itself included.
-- **Status**: pending
-
 ### [2026-09-28] — a rebuilt sheet leaves its old comments, drawing and table parts in the file
 - **Where**: `internal/excelsheet/replace.go` `Replace`, through excelize's `DeleteSheet`; reached by `csvxl.AppendCSVToExcel` and `DataTable.ToExcel` with `SheetExistsReplace`
 - **What**: `DeleteSheet` removes the worksheet and its relationships but not the parts they pointed to. Measured on 2026-09-28: after replacing a sheet that had a comment and a table, `xl/comments1.xml`, `xl/drawings/vmlDrawing1.vml` and `xl/tables/table1.xml` are still in the saved file and in `[Content_Types].xml`, referenced by nothing, so the old comment text is still inside the file; excelize also refuses a new table under the old table's name (`the same name table already exists`). Not checked in Excel or LibreOffice, neither of which was available. `dev` records the same follow-up.
@@ -527,12 +521,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `utils.go` `DetectEncoding`, whose UTF-8 check runs before chardet is asked; `internal/csv/decoder.go` `decoders`
 - **What**: both encodings use only 7-bit bytes, so `DetectEncoding` accepts such a file as UTF-8 before chardet, which knows both, sees it. Measured on 2026-09-27: a 30-line Korean CSV written in ISO-2022-KR is detected as `utf-8`, and `csvxl.ReadCSVToString` returns its `ESC $ ) C` header and shift codes inside the cells with a nil error. x/text has no decoder for either, so naming the encoding fails with the unsupported-encoding error. `Docs/csvxl.md` states this.
 - **Suggestion**: look for the ISO-2022 designator escape before the UTF-8 check and refuse the file with the unsupported-encoding error, the way IBM420 and IBM424 are refused. Decoding them would need a decoder x/text does not ship; both are rare enough in CSV files that the refusal is enough.
-- **Status**: pending
-
-### [2026-09-28] — two nested values whose strings contain the separators count as one
-- **Where**: `cell_identity.go`, the string arm of `writeCellValue`
-- **What**: a string inside a nested value is written without escaping the characters the encoding uses as separators, so different values can encode alike. Measured on 2026-09-28: a list holding `[]any{"a,s:b"}` and `[]any{"a", "b"}` reports `Count([]any{"a", "b"})` 2 and a `Counter` of one entry; grouping, pivoting and merging key on the same encoding. Present on `origin/0.4` before the dev merge. Separately, an array or a struct shared through interfaces is still encoded once per path, so a hand-built value of `[2]any{x, x}` nested 20 levels deep takes about 200 ms and 31 levels about a minute; slices and maps are memoized.
-- **Suggestion**: write each string with a length prefix (`s<len>:`), which makes any content unambiguous, and give arrays and structs the same work bound slices have. The first changes every key a nested string produces, so group keys and `Counter` keys for such values change once.
 - **Status**: pending
 
 ### [2026-09-28] — what the typed `state.json` codec still accepts badly
@@ -601,12 +589,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: the same treatment. Run the documented hand loop inside the test and compare the two curves, keeping only bounds any platform meets. It costs one more MNIST run, about 30 seconds in CI. Worth doing the next time `nn`'s training path is touched, or sooner if a third platform disagrees.
 - **Status**: pending
 
-### [2026-09-19] — `BartlettTest` panics when the group variances come out equal
-- **Where**: `stats/ftest.go` `BartlettTest`, through `stats/distutil.go` `chiSquaredPValue`
-- **What**: Bartlett's `T` is a difference of logs, so for groups whose variances agree it lands at or just below zero by rounding. `chiSquaredPValue` passes it straight to `distuv.ChiSquared{K: df}.CDF`, which panics with `cephes: parameter out of bounds` for any negative argument. Measured on this line on 2026-09-27: `chiSquaredPValue(-1e-16, 1)` panics while `chiSquaredPValue(0, 1)` returns 1. Whether two identical groups panic therefore depends on the values: `{0.1, 0.2, 0.3}` twice returns statistic 0 and p 1, while `{-0.32329881667362437, -0.319580921043235, 0.9093452052941211, 0.9788142136474671}` twice panics. `df <= 0` panics the same way (`chiSquaredPValue(1, 0)`), which `FriedmanTest`, `KruskalWallis`, `ChiSquareTest`, `PartialCorrelation` and `FactorAnalysis` also reach. `KruskalWallis` and `FriedmanTest` reach it on finite data too, when every value is equal: `KruskalWallis` on four all-zero groups of sizes 24, 4, 27 and 11, and `FriedmanTest` on 21 subjects with 7 conditions each, all zero, both panic with `cephes: parameter out of bounds`.
-- **Suggestion**: clamp in `chiSquaredPValue`. A negative `chi2` is a rounding artefact of a statistic that is zero, so returning 1 for it is the right answer, and a non-positive `df` should return NaN the way `tQuantile` already does. That changes a panic into a value for every caller at once, which needs deciding before it is done: it is a behaviour change, though the old behaviour was a panic.
-- **Status**: pending
-
 ### [2026-09-17] — psych 2.6.5's `faRotations` tie-break picks a start that did not tie, and nobody upstream has been told
 - **Where**: upstream `psych::faRotations`; recorded on our side in [stats/testdata/crosslang_baseline.R](stats/testdata/crosslang_baseline.R) and in the comment at `factorParityTol` in [stats/factor_analysis_test.go](stats/factor_analysis_test.go)
 - **What**: when several rotation starts tie on the highest hyperplane count, psych breaks the tie by applying `which()` to the tied rows alone and then uses that result as a start number. `which()` returns a position within the subset, so with starts 1 and 3 tied and start 3 the simpler one, psych selects start 2, which never tied. The fit comparison that follows is computed and never assigned, so it has no effect. Our port selects by criterion value and does not share the defect; the only thing that depends on it is which solution psych's own baselines record.
@@ -623,12 +605,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `cell_identity.go` `maxCellEncodeDepth` and the interface arm of `writeCellValue`
 - **What**: a `[]any` level spends two encoding levels (the slice and the interface inside it), so a value nested more than 32 `[]any` deep reaches the limit of 64. Past it an interface is written as its type with no address, so two such values that differ only in their deepest leaf encode alike. Measured on this line on 2026-09-27: a list holding a depth-40 value with leaf 1 and two with leaf 2 reports `Count` 3 for either, while the same list at depth 30 reports 1 and 2. Grouping, pivoting and merging key on the same encoding. The answer is silently wrong.
 - **Suggestion**: at the limit, unwrap the interface and write the address of the value inside it, which is what the comment above `maxCellEncodeDepth` says already happens.
-- **Status**: pending
-
-### [2026-09-14] — `DataList.Shift` and `Rolling.Apply` flatten a slice cell
-- **Where**: `datalist_window.go` `Shift` and `RollingDataList.Apply`
-- **What**: both build their result through `NewDataList`, which flattens every slice. Measured on this line on 2026-09-27: `Append([]byte{1, 2}, 3)` then `Shift(0)` gives `[1 2 3]`, three cells for two, and on a four-row list `Rolling(RollingOptions{Window: 2}).Apply` with a function returning `[]float64{1, 2}` gives seven cells, `[<nil> 1 2 1 2 1 2]`.
-- **Suggestion**: build the result with `Append`, or wrap each cell with `Cell`. The length and cells of the result change for lists holding slices, which this line can take.
 - **Status**: pending
 
 ### [2026-09-12] — a bare `[]byte` still flattens in the constructors
