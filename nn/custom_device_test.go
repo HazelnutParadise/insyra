@@ -226,3 +226,25 @@ func TestNewDeviceTensorLeavesTheBufferWithTheCallerOnAnError(t *testing.T) {
 		t.Fatalf("DeviceBuffer = %v, %v; want the adopted buffer", lent, err)
 	}
 }
+
+// A host operation whose reverse rule returns a resident gradient is refused,
+// as it was before Custom accepted resident tensors.
+func TestCustomRefusesAResidentGradientForAHostInput(t *testing.T) {
+	device := residentTestDevice(t)
+	x, _ := NewTensor([]int{2}, []float32{1, 2})
+	y, _ := NewTensor([]int{2}, []float32{2, 4})
+	resident, _ := x.To(device)
+	defer resident.Release()
+	tape := NewTape()
+	if _, err := tape.Param(x); err != nil {
+		t.Fatal(err)
+	}
+	err := tape.Custom("hostop", []*Tensor{x}, y, func(upstream *Tensor) ([]*Tensor, error) { return []*Tensor{resident}, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	up, _ := NewTensor([]int{2}, []float32{1, 1})
+	if err := tape.BackwardFrom(y, up); err == nil || !strings.Contains(err.Error(), "both be on the host") {
+		t.Fatalf("a resident gradient for a host input = %v", err)
+	}
+}

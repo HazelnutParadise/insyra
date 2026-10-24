@@ -858,6 +858,9 @@ func (t *Tape) backwardFrom(output, seed *Tensor) (err error) {
 				if err := requireFloat32Any(gradient, fmt.Sprintf("backward %s input %d gradient", op.name, inputIndex)); err != nil {
 					return err
 				}
+				if gradient.onDevice() != op.inputs[inputIndex].onDevice() {
+					return fmt.Errorf("backward %s input %d: the gradient and the input must both be on the host or both on a device", op.name, inputIndex)
+				}
 				if !sameShape(gradient.shape, op.inputs[inputIndex].shape) {
 					return fmt.Errorf("backward %s input %d: gradient shape %v does not match input shape %v", op.name, inputIndex, gradient.shape, op.inputs[inputIndex].shape)
 				}
