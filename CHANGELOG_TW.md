@@ -255,6 +255,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `LinearRegression`、`PoissonRegression`、`LogisticRegression`、`Correlation`、`Covariance`、`ChiSquareGoodnessOfFit`、`ChiSquareIndependenceTest`、`Silhouette`、`KNNClassify`、`KNNRegress`、`Skewness`、`Kurtosis` 收到 nil 清單（直接傳入或包在 `isr.DL` 這類包裝裡）時回傳錯誤。過去會 panic，迴歸函式還是在自己啟動的 goroutine 裡 panic，讓程式結束。`insyra.ProcessData` 把 nil 清單當成不支援的輸入。
 - 新增 `stats.AdjustPValues(pvals, method)`，一次檢驗很多假設時，用 Holm、Bonferroni、Hochberg、Benjamini-Hochberg 或 Benjamini-Yekutieli（`PAdjustHolm`、`PAdjustBonferroni`、`PAdjustHochberg`、`PAdjustBH`、`PAdjustBY`）校正一批 p 值，結果與 R 的 `p.adjust` 一致。`NaN` 維持 `NaN`，也不算進檢驗數（[#444](https://github.com/HazelnutParadise/insyra/issues/444)）。
 - `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `stats.RunsTest(series, opts...)` 檢定漲跌順序是否隨機（Wald-Wolfowitz）：計算高於與低於切點（預設 0）的連數，回傳期望連數、`Z` 與 p 值（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 
 ### `csvxl`
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 會用 v0.3.3 檢查工作表名稱的同一套規則檢查 `csvNames` 指定的檔名：含路徑分隔符號、或不會直接落在輸出目錄內的檔名都會被拒絕，所以 `csvNames: []string{"sub/out.csv"}` 不再寫進子目錄。每張 CSV 先寫入暫存檔再 rename 到目標位置，寫入失敗時不會留下截斷的檔案。
