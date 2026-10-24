@@ -23,7 +23,9 @@ type KaplanMeierResult struct {
 	StdErr []float64
 	// Median is the first time the curve is at or below 0.5. When it equals 0.5
 	// on a stretch, the median is the midpoint of that stretch, as R's survival
-	// package reports it. It is NaN when the curve never reaches 0.5.
+	// package prints it. A curve that ends on that plateau at a censored time has
+	// no known end, so the midpoint stops at the last event; R's quantile() would
+	// run it to the last observation instead. It is NaN when the curve never reaches 0.5.
 	Median float64
 	N      int // subjects
 	Total  int // events in all
