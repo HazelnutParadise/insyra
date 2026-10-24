@@ -186,6 +186,9 @@ func (b *DeviceBuffer) Device() Device { return b.device }
 // Len reports how many float32 values the buffer holds.
 func (b *DeviceBuffer) Len() int { return b.inner.Len() }
 
+// Released reports whether Release has been called.
+func (b *DeviceBuffer) Released() bool { return b == nil || b.inner == nil || b.inner.Released() }
+
 // ToHost copies the values back, waiting for every earlier kernel that wrote
 // to the buffer. It is the only way values leave the device.
 func (b *DeviceBuffer) ToHost() ([]float32, error) {

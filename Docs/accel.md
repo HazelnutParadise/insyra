@@ -182,6 +182,42 @@ if !result.Accelerated {
 
 Two cases deliberately return nothing instead. A dataset nothing can read — `dtype-not-eligible`, `workload-unsupported` — has no answer to give, and the reason says so. And strict GPU mode returns an error rather than falling back, which is the whole point of asking for it.
 
+## Your own kernels on resident buffers
+
+A program that has its own GPU code can run it on the same buffers Insyra's resident tensors live in, so a training step never crosses the host. `accel.NewKernel` takes a WGSL compute shader and `accel.Submit` launches it on `DeviceBuffer`s:
+
+```go
+k, err := accel.NewKernel(accel.KernelConfig{
+	Name: "double", ReadOnly: 1, ReadWrite: 1,
+	WGSL: `
+struct Params { n: u32, p1: u32, p2: u32, p3: u32, }
+@group(0) @binding(0) var<storage, read> a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> b: array<f32>;
+@group(0) @binding(2) var<uniform> p: Params;
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    if (gid.x < p.n) { b[gid.x] = a[gid.x] * 2.0; }
+}`,
+})
+if err != nil { log.Fatal(err) }
+err = accel.Submit(accel.Dispatch{
+	Kernel: k, Reads: []*accel.DeviceBuffer{in}, Writes: []*accel.DeviceBuffer{out},
+	Params: [16]uint32{uint32(in.Len())}, Workgroups: [3]uint32{uint32(in.Len()+63) / 64, 1, 1},
+})
+```
+
+- **Bindings.** Group 0 holds `ReadOnly` read-only storage buffers (bindings `0` to `ReadOnly-1`), then `ReadWrite` read-write ones, then one uniform of sixteen `u32` (64 bytes). The entry point is `main`. The source is compiled as written, with none of Insyra's WGSL before it.
+- **Order.** `Submit` puts all its dispatches into one submission, in order, so each sees what the ones before it wrote. Insyra's own resident operations (`RoundedMatMul`, the tape's resident `MatMul`, `AdamW`, …) go through the same queue and lock, so a built-in operation followed by `Submit`, or the other way round, needs no synchronisation between them. Batching matters: on an Apple M3, 168 trivial dispatches took 19 ms in one `Submit` and 80 ms as 168 separate calls.
+- **Nothing half-submitted.** `Submit` sends nothing when any dispatch has the wrong number of buffers, a nil or released buffer, a buffer on the host or on another device, a buffer both read and written, or a workgroup count of zero or past the device's limit. A shader that does not compile fails the first `Submit` with `ErrShaderCompile`. Create a `Kernel` once and reuse it: it keeps its compiled pipeline for the life of the process.
+- **What the device allows.** `accel.ResidentLimits()` reports how many storage buffers a kernel may bind (8 on Metal, usually 16 or more on Vulkan, 64 on DirectX 12), the largest buffer, the most workgroups per dimension and the most invocations per workgroup. A buffer larger than the limit cannot be created. Optional shader features such as `f16` or subgroups are not enabled on the device.
+- **Indices and other 32-bit data.** `accel.NewBitsBuffer(device, []uint32)` and `DeviceBuffer.BitsToHost()` move bit patterns unchanged, for buffers a kernel reads as `u32` or `i32`.
+- **Updating a buffer in place.** `DeviceBuffer.Write`, `WriteBits` and `Zero` overwrite a whole buffer without allocating a new one. Each first waits for every kernel already submitted, so a kernel never sees a half-written buffer, and a loop that rewrites inputs every step waits once per call.
+- **No device.** `Submit` only runs on a device. When `accel.DefaultDevice` is the host, your program runs its own host code instead.
+
+**Precision.** Insyra cannot check a kernel of your own. Its arithmetic is whatever the device does with your `f32` code, and WGSL lets a GPU contract, reassociate and flush subnormals, so the same kernel may return different bits on different devices. A tape that runs one therefore uses `accel.PrecisionFloat32` (see [Custom operations on the device](nn.md#custom-operations-on-the-device)), the mode that says results depend on the device; `PrecisionFloat32Rounded` stays the promise of Insyra's own kernels.
+
+**Memory safety differs by platform.** A kernel can write anywhere in a read-write buffer it is given. On Metal an access past the end is clamped or skipped. The Vulkan backend Insyra uses does not turn that protection on, so on a Vulkan device a kernel that indexes past its buffer can overwrite another resident buffer, such as a weight or optimizer state, or lose the device. Check your indices against the buffer length inside the shader. On Windows a single dispatch that runs for about two seconds is stopped by the operating system, so keep each dispatch well under one. DirectX 12 was not checked.
+
 ## Still Not Implemented
 
 - One operation only: the exact nearest query points per row
