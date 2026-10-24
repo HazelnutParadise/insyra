@@ -92,3 +92,25 @@ func TestFilterRuleRefusesBadInput(t *testing.T) {
 		}
 	}
 }
+
+// Many breaks must not make the rule quadratic: 20,000 rows in 10,000 two-row
+// segments finish at once, and each segment starts flat.
+func TestFilterRuleWithManySegments(t *testing.T) {
+	const segments = 10000
+	vals := make([]float64, 0, 2*segments)
+	starts := make([]int, 0, segments)
+	for i := 0; i < segments; i++ {
+		starts = append(starts, 2*i)
+		vals = append(vals, 100, 90)
+	}
+	got, err := FilterRule(prices(vals...), 0.05, FilterRuleOptions{SegmentStarts: starts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := floats(t, got)
+	for i := 0; i < segments; i++ {
+		if g[2*i] != 0 || g[2*i+1] != -1 {
+			t.Fatalf("segment %d: positions %v, %v, want 0, -1", i, g[2*i], g[2*i+1])
+		}
+	}
+}

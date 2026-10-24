@@ -62,8 +62,9 @@ func FilterRule(prices insyra.IDataList, threshold float64, opts ...FilterRuleOp
 		sell = 0
 	}
 	pos := make([]float64, len(p))
+	bounds := segmentBounds(len(p), starts)
 	for i, s := range swings {
-		end := segmentBounds(len(p), starts)[s.Segment][1]
+		end := bounds[s.Segment][1]
 		if i+1 < len(swings) && swings[i+1].Segment == s.Segment {
 			end = swings[i+1].ConfirmedAt
 		}
