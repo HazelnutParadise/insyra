@@ -29,6 +29,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `quant`
 
 - **行為改變**：`quant.BacktestSignal` 現在接受從 -1（完全放空）到 1 的部位；訊號或 `InitialPosition` 小於 0 以前會報錯。放空的報酬是 `-資產報酬 + 2 * 現金報酬`（本金與賣空所得都賺現金利率），新的 `BacktestOptions.BorrowFee` 對放空部位每列收一筆借券費。以前成功的呼叫結果不變（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `quant.MomentumPortfolios(table, dateCol, stockCol, returnCol, formation, groups, opts...)` 建立 Jegadeesh 與 Titman 的動能組合：每月依過去 `formation` 個月的報酬把股票排名分組，持有 `Hold` 個月並平均重疊的組合，回傳各組報酬與贏家減輸家的價差（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 
 ### `quant/ta`
 

@@ -29,6 +29,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `quant`
 
 - **Behavior change**: `quant.BacktestSignal` now accepts a position from -1 (fully short) to 1; a signal or `InitialPosition` below 0 used to be an error. A short earns `-assetReturn + 2 * cashReturn` (the capital and the sale proceeds both earn the cash return), and the new `BacktestOptions.BorrowFee` charges a per-row fee on the short position. Every call that succeeded before gives the same result ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
+- `quant.MomentumPortfolios(table, dateCol, stockCol, returnCol, formation, groups, opts...)` builds Jegadeesh and Titman's momentum portfolios: each month it ranks stocks by their past `formation`-month return, holds the groups for `Hold` months with the overlapping portfolios averaged, and returns the groups' returns and the winners-minus-losers spread ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 
 ### `quant/ta`
 
