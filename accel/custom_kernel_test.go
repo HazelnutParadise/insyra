@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -445,5 +446,30 @@ func BenchmarkSubmitDispatches(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// A binding keeps its buffers alive: dropping every other reference to them
+// and collecting garbage must not release them under the binding.
+func TestBindingKeepsItsBuffersAlive(t *testing.T) {
+	device := residentDeviceForTest(t)
+	k := mustKernel(t, KernelConfig{Name: "increment", WGSL: incrementWGSL, ReadWrite: 1})
+	bound := func() *Binding {
+		b, err := NewDeviceBuffer(device, []float32{0})
+		if err != nil {
+			t.Fatal(err)
+		}
+		binding, err := k.Bind(nil, bufs(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return binding
+	}()
+	defer bound.Release()
+	for range 3 {
+		runtime.GC()
+	}
+	if err := Submit(Dispatch{Binding: bound, Params: [16]uint32{1}, Workgroups: workgroups(1)}); err != nil {
+		t.Fatalf("Submit after the caller dropped its buffer = %v", err)
 	}
 }
