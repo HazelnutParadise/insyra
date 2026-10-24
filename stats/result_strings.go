@@ -38,6 +38,12 @@ func (r *ChowDenningResult) String() string { return formatResult("Chow-Denning 
 // Show prints String to standard output.
 func (r *ChowDenningResult) Show() { fmt.Println(r.String()) }
 
+// String returns the result as text: "Runs test", then one line per field.
+func (r *RunsTestResult) String() string { return formatResult("Runs test", r) }
+
+// Show prints String to standard output.
+func (r *RunsTestResult) Show() { fmt.Println(r.String()) }
+
 // String returns the result as text: "Kaplan-Meier", then one line per field.
 func (r *KaplanMeierResult) String() string { return formatResult("Kaplan-Meier", r) }
 

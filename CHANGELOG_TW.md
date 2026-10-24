@@ -12,6 +12,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - CCL 讀取超出表格列數的列現在會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本（例如把 `@.(# + 1)` 當作「下一列」，最後一列為空）會在那一列失敗。
 
+### `stats`
+
+- `stats.RunsTest(series, opts...)` 檢定漲跌順序是否隨機（Wald-Wolfowitz）：計算高於與低於切點（預設 0）的連數，回傳期望連數、`Z` 與 p 值（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+
 ## v0.3.5
 
 ### Core
