@@ -14,7 +14,7 @@ The Wald-Wolfowitz runs test on a threshold, for checking whether the order of u
 
 ### Requirement: RunsTest tests the number of runs against a random order
 
-`RunsTest` SHALL report `Expected` as 2·n1·n2/n + 1, `Variance` as 2·n1·n2·(2·n1·n2 − n)/(n²·(n − 1)), `Z` as (Runs − Expected)/√Variance and `PValue` as its two-tailed normal p-value. With `Correction` set, the difference SHALL move 0.5 toward zero before it is divided.
+`RunsTest` SHALL report `Expected` as 2·n1·n2/n + 1, `Variance` as 2·n1·n2·(2·n1·n2 − n)/(n²·(n − 1)), `Z` as (Runs − Expected)/√Variance and `PValue` as its two-tailed normal p-value. With `Correction` set, the difference SHALL move toward zero by 0.5 or to zero, whichever is smaller, before it is divided.
 
 #### Scenario: Statistics and correction
 

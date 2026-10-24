@@ -88,3 +88,24 @@ func TestRunsTestRefusesBadInput(t *testing.T) {
 		}
 	}
 }
+
+func TestRunsTestCorrectionNeverCrossesZero(t *testing.T) {
+	// "+---+": two above, three below, three runs. Expected is 2*2*3/5+1 = 3.4,
+	// so the runs are 0.4 short, inside the 0.5 correction: the corrected
+	// difference must stop at 0, not turn into +0.1.
+	x := []float64{1, -1, -1, -1, 1}
+	plain, err := RunsTest(runsList(x))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.Runs != 3 || plain.Above != 2 || plain.Below != 3 || plain.Z >= 0 {
+		t.Fatalf("setup: runs %d above %d below %d z %v", plain.Runs, plain.Above, plain.Below, plain.Z)
+	}
+	corrected, err := RunsTest(runsList(x), RunsTestOptions{Correction: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if corrected.Z != 0 || corrected.PValue != 1 {
+		t.Errorf("a difference of %v is inside 0.5, so the corrected Z should be 0 and P 1, got Z %v P %v", float64(plain.Runs)-plain.Expected, corrected.Z, corrected.PValue)
+	}
+}
