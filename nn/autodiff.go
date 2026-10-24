@@ -16,7 +16,11 @@ type Tape struct {
 	params []*Parameter
 	marked map[*Tensor]*Parameter
 	grads  map[*Tensor]*Tensor
-	rng    *rand.Rand
+	// rng is created from seed on the first draw, so a tape that never
+	// draws does not pay for seeding a source.
+	rng     *rand.Rand
+	seed    int64
+	seedSet bool
 	// err is set when NewTape was given more than one seed. NewTape has no
 	// error result, so Param and Backward, which every training step calls,
 	// report it.
@@ -111,8 +115,7 @@ type tapeOp struct {
 // a seed makes masks reproducible, and the default seed is deterministic.
 // More than one seed is an error, reported by Param, Backward and BackwardFrom.
 func NewTape(seed ...int64) *Tape {
-	const defaultSeed = int64(1)
-	rngSeed := defaultSeed
+	rngSeed := defaultTapeSeed
 	var err error
 	if len(seed) > 1 {
 		err = fmt.Errorf("NewTape: at most one seed may be given, got %d", len(seed))
@@ -120,11 +123,27 @@ func NewTape(seed ...int64) *Tape {
 		rngSeed = seed[0]
 	}
 	return &Tape{
-		marked: make(map[*Tensor]*Parameter),
-		grads:  make(map[*Tensor]*Tensor),
-		rng:    rand.New(rand.NewSource(rngSeed)),
-		err:    err,
+		marked:  make(map[*Tensor]*Parameter),
+		grads:   make(map[*Tensor]*Tensor),
+		seed:    rngSeed,
+		seedSet: true,
+		err:     err,
 	}
+}
+
+// defaultTapeSeed seeds a tape built without one, including a zero Tape.
+const defaultTapeSeed = int64(1)
+
+// random returns the tape's generator, seeding it on the first call.
+func (t *Tape) random() *rand.Rand {
+	if t.rng == nil {
+		seed := defaultTapeSeed
+		if t.seedSet {
+			seed = t.seed
+		}
+		t.rng = rand.New(rand.NewSource(seed))
+	}
+	return t.rng
 }
 
 // Param marks a float32 tensor for gradient retrieval and SGD updates.
