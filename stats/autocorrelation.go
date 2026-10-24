@@ -46,14 +46,25 @@ func Autocorrelation(series insyra.IDataList, maxLag int) ([]AutocorrelationResu
 	}
 	nf := float64(n)
 	mu := meanOfF64(x)
+	if allEqualF64(x) {
+		return nil, errors.New("series has no variance")
+	}
+	// Work on deviations scaled to a largest magnitude of 1: Rho and delta are
+	// ratios that do not depend on the scale, and squares and fourth powers of
+	// raw deviations overflow or underflow for very large or small values.
 	d := make([]float64, n)
-	var ss float64
+	var scale float64
 	for i, v := range x {
 		d[i] = v - mu
-		ss += d[i] * d[i]
+		scale = math.Max(scale, math.Abs(d[i]))
 	}
-	if ss == 0 || allEqualF64(x) {
-		return nil, errors.New("series has no variance")
+	if scale == 0 || math.IsInf(scale, 0) || math.IsNaN(scale) {
+		return nil, errors.New("series has no usable variance")
+	}
+	var ss float64
+	for i := range d {
+		d[i] /= scale
+		ss += d[i] * d[i]
 	}
 
 	out := make([]AutocorrelationResult, maxLag)

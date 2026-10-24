@@ -117,3 +117,28 @@ func TestAutocorrelationRefusesAConstantSeriesOfDecimals(t *testing.T) {
 		t.Fatal("a constant series of 0.1 was not refused")
 	}
 }
+
+func TestAutocorrelationDoesNotDependOnTheScale(t *testing.T) {
+	base := []float64{1, 2, 3, 4, 2, 5, 1, 6}
+	want, err := Autocorrelation(acfList(base), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scale := range []float64{1e80, 1e-80, 1e150} {
+		scaled := make([]float64, len(base))
+		for i, v := range base {
+			scaled[i] = v * scale
+		}
+		got, err := Autocorrelation(acfList(scaled), 2)
+		if err != nil {
+			t.Fatalf("scale %g: %v", scale, err)
+		}
+		for j := range want {
+			for label, pair := range map[string][2]float64{"Rho": {got[j].Rho, want[j].Rho}, "T": {got[j].T, want[j].T}, "TRobust": {got[j].TRobust, want[j].TRobust}, "PRobust": {got[j].PRobust, want[j].PRobust}} {
+				if math.IsNaN(pair[0]) || math.Abs(pair[0]-pair[1]) > 1e-9*math.Max(1, math.Abs(pair[1])) {
+					t.Errorf("scale %g lag %d: %s = %v, want %v", scale, j+1, label, pair[0], pair[1])
+				}
+			}
+		}
+	}
+}

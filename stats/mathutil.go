@@ -236,3 +236,15 @@ func adjustPValues(p []float64, method PAdjustMethod) []float64 {
 	}
 	return adj
 }
+
+// allEqualF64 reports whether every value equals the first. The mean of equal
+// decimals such as 100 copies of 0.1 is not exactly that decimal, so squared
+// deviations from it can be nonzero for a series that has no variance.
+func allEqualF64(x []float64) bool {
+	for _, v := range x[1:] {
+		if v != x[0] {
+			return false
+		}
+	}
+	return true
+}
