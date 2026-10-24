@@ -613,6 +613,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: documentation, not code. `Docs/DataList.md` now describes the flattening and `Cell` together; check that the `Count`/`Counter` examples build their list with `Append` or `Cell` so they are runnable as written, and consider whether `Count` should say something when it is handed a slice that the receiving list could not be holding.
 - **Status**: pending
 
+### [2026-09-14] — `Rolling.Apply` flattens a slice returned by its function
+- **Where**: `datalist_window.go` `RollingDataList.Apply`
+- **What**: it builds its result through `NewDataList`, which flattens every slice. Measured on 2026-09-14: on a four-row list, `Rolling(RollingOptions{Window: 2}).Apply` with a function returning `[]float64{1, 2}` gives seven cells, `[<nil> 1 2 1 2 1 2]`. `Shift` has since been fixed (it wraps existing cells); `Apply` was not, and a reviewer re-checked it statically on 2026-10-24.
+- **Suggestion**: build the result with `Append`, or wrap each returned value with `Cell`, and add a regression test with a slice-returning function. The length and cells of the result change for such functions.
+- **Status**: pending
+
 ### [2026-09-12] — `labelKey` still merges nested values that print alike
 - **Where**: `datatable_encode.go` `labelKey`, its default arm
 - **What**: `identify-uncomparable-cells` gave `encodeGroupKey` and `uniqueKey` a recursive encoder, so `[]any{1}` and `[]any{"1"}` are no longer one group. `labelKey` has the same non-recursive shape (`%T:%#v`), so it still merges them — `%#v` separates an int from a string but not `[]any{1}` from `[]any{1.0}`. It was left out on purpose: its integer rule is by value where cell identity is by type, so folding it into the same encoder would change what a label means, not just fix a collision.
