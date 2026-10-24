@@ -59,6 +59,10 @@ type Binding struct {
 	inner  *wgpu.Binding
 	kernel *Kernel
 	device Device
+	// buffers keeps the DeviceBuffer wrappers reachable: each has a finalizer
+	// that releases its memory, so a binding must not outlive the wrapper of a
+	// buffer it still uses.
+	buffers []*DeviceBuffer
 }
 
 // Bind ties the kernel to its buffers: ReadOnly buffers it only reads, then
@@ -94,7 +98,7 @@ func (k *Kernel) Bind(reads, writes []*DeviceBuffer) (*Binding, error) {
 	if err != nil {
 		return nil, residentFailure(err)
 	}
-	return &Binding{inner: inner, kernel: k, device: *device}, nil
+	return &Binding{inner: inner, kernel: k, device: *device, buffers: append(append([]*DeviceBuffer(nil), reads...), writes...)}, nil
 }
 
 // Release frees the binding's bind group once the queue is idle. It is
@@ -104,6 +108,7 @@ func (b *Binding) Release() {
 		return
 	}
 	b.inner.Release()
+	b.buffers = nil
 }
 
 // Dispatch is one launch of a binding: the sixteen uniform values and the
