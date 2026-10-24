@@ -14,7 +14,8 @@ type RunsTestOptions struct {
 	// Threshold splits the values into above and below. The default 0 is the
 	// sign of a return (Fama 1965); use the mean or the median for other series.
 	Threshold float64
-	// Correction applies a continuity correction of 0.5 to the number of runs.
+	// Correction applies a continuity correction of 0.5 to the number of runs,
+	// stopping at zero if the difference is smaller.
 	// Textbook formulas have none, so it is off by default.
 	Correction bool
 }
@@ -92,12 +93,9 @@ func RunsTest(series insyra.IDataList, opts ...RunsTestOptions) (*RunsTestResult
 	}
 	diff := float64(res.Runs) - res.Expected
 	if o.Correction {
-		switch {
-		case diff > 0:
-			diff -= 0.5
-		case diff < 0:
-			diff += 0.5
-		}
+		// Move the difference toward zero by 0.5, but never past it.
+		shift := math.Min(0.5, math.Abs(diff))
+		diff -= math.Copysign(shift, diff)
 	}
 	res.Z = diff / math.Sqrt(res.Variance)
 	res.PValue = zPValue(res.Z, TwoSided)
