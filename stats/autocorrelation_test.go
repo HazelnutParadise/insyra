@@ -105,3 +105,15 @@ func TestAutocorrelationRefusesBadInput(t *testing.T) {
 		t.Errorf("maxLag n-1 should work: %v", err)
 	}
 }
+
+func TestAutocorrelationRefusesAConstantSeriesOfDecimals(t *testing.T) {
+	// The mean of 100 copies of 0.1 is not exactly 0.1, so squared deviations
+	// alone would call this series non-constant and report Rho 0.99.
+	vals := make([]any, 100)
+	for i := range vals {
+		vals[i] = 0.1
+	}
+	if _, err := Autocorrelation(insyra.NewDataList(vals...), 1); err == nil {
+		t.Fatal("a constant series of 0.1 was not refused")
+	}
+}
