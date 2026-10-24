@@ -12,6 +12,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - CCL 讀取超出表格列數的列現在會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本（例如把 `@.(# + 1)` 當作「下一列」，最後一列為空）會在那一列失敗。
 
+### `ml` 與 `nn`
+
+- `nn.NewTape` 不再一開始就建立亂數來源，改成 `Dropout` 或層初始化第一次抽亂數時才建立。不抽亂數的 tape 從約 13 µs、5.7 KB 降到約 20 ns、不配置記憶體；同一個種子的遮罩與初始權重不變（[#536](https://github.com/HazelnutParadise/insyra/issues/536)）。
+
 ## v0.3.5
 
 ### Core

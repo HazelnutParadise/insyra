@@ -66,9 +66,7 @@ func (l *denseLayer) Build(t *Tape) error {
 	if l.weight != nil {
 		return nil
 	}
-	if t.rng == nil {
-		t.rng = newDefaultTapeRNG()
-	}
+	t.tapeRNG()
 	scale := math.Sqrt(2 / float64(l.in))
 	values := make([]float32, l.in*l.out)
 	for index := range values {

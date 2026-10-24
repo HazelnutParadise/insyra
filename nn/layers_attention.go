@@ -46,9 +46,7 @@ func (l *multiHeadAttentionLayer) Build(t *Tape) error {
 		return nil
 	}
 	l.headDim = l.embed / l.heads
-	if t.rng == nil {
-		t.rng = newDefaultTapeRNG()
-	}
+	t.tapeRNG()
 	init := func(shape []int, scale float64) (*Parameter, error) {
 		values := make([]float32, elementCount(shape))
 		for index := range values {

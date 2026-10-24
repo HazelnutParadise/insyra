@@ -16,9 +16,7 @@ func (t *Tape) Dropout(input *Tensor, probability float32) (*Tensor, error) {
 	if math.IsNaN(float64(probability)) || math.IsInf(float64(probability), 0) || probability < 0 || probability >= 1 {
 		return nil, fmt.Errorf("dropout probability must be in [0, 1), got %g", probability)
 	}
-	if t.rng == nil {
-		t.rng = newDefaultTapeRNG()
-	}
+	t.tapeRNG()
 	keepScale := float32(1 / (1 - probability))
 	mask := make([]bool, len(input.data))
 	values := make([]float32, len(input.data))
@@ -49,8 +47,12 @@ func (t *Tape) Dropout(input *Tensor, probability float32) (*Tensor, error) {
 	return output, nil
 }
 
-func newDefaultTapeRNG() *rand.Rand {
-	return rand.New(rand.NewSource(1))
+// tapeRNG returns the tape's random source, seeding it on first use.
+func (t *Tape) tapeRNG() *rand.Rand {
+	if t.rng == nil {
+		t.rng = rand.New(rand.NewSource(t.seed))
+	}
+	return t.rng
 }
 
 // StepLR decays an initial learning rate by gamma every stepSize steps.

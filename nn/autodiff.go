@@ -16,7 +16,8 @@ type Tape struct {
 	params []*Parameter
 	marked map[*Tensor]*Parameter
 	grads  map[*Tensor]*Tensor
-	rng    *rand.Rand
+	rng    *rand.Rand // created on first use from seed; most tapes never draw
+	seed   int64
 
 	precision  accel.Precision
 	closed     bool
@@ -103,8 +104,10 @@ type tapeOp struct {
 	custom bool
 }
 
-// NewTape creates an empty reverse-mode tape. Dropout uses the tape-owned RNG;
-// a seed makes masks reproducible, and the default seed is deterministic.
+// NewTape creates an empty reverse-mode tape. Dropout and the layer
+// initialisers use the tape-owned RNG, which is built on first use so a tape
+// that draws nothing pays nothing; a seed makes masks reproducible, and the
+// default seed is deterministic.
 func NewTape(seed ...int64) *Tape {
 	const defaultSeed = int64(1)
 	rngSeed := defaultSeed
@@ -114,7 +117,7 @@ func NewTape(seed ...int64) *Tape {
 	return &Tape{
 		marked: make(map[*Tensor]*Parameter),
 		grads:  make(map[*Tensor]*Tensor),
-		rng:    rand.New(rand.NewSource(rngSeed)),
+		seed:   rngSeed,
 	}
 }
 
