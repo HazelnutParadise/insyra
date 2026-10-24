@@ -1,6 +1,9 @@
 package stats
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 func resolveConfidenceLevel(cl float64) float64 {
 	if cl > 0 && cl < 1 {
@@ -172,4 +175,58 @@ func pearsonFisherCI(r, n, confidenceLevel float64) *[2]float64 {
 	lower := fisherZInverse(z - zCritical*se)
 	upper := fisherZInverse(z + zCritical*se)
 	return &[2]float64{lower, upper}
+}
+
+// adjustPValues is R's p.adjust on p-values that are all numbers in [0, 1].
+func adjustPValues(p []float64, method PAdjustMethod) []float64 {
+	n := len(p)
+	fn := float64(n)
+	adj := make([]float64, n)
+	if method == PAdjustBonferroni {
+		for i, v := range p {
+			adj[i] = math.Min(1, fn*v)
+		}
+		return adj
+	}
+
+	// order lists positions by p, ascending, ties kept in input order as R's
+	// order() does.
+	order := make([]int, n)
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return p[order[a]] < p[order[b]] })
+
+	switch method {
+	case PAdjustHolm:
+		running := 0.0
+		for rank, pos := range order {
+			running = math.Max(running, (fn-float64(rank))*p[pos])
+			adj[pos] = math.Min(1, running)
+		}
+	case PAdjustHochberg, PAdjustBH, PAdjustBY:
+		scale := 1.0
+		if method == PAdjustBY {
+			scale = 0
+			for k := 1; k <= n; k++ {
+				scale += 1 / float64(k)
+			}
+		}
+		// Walk from the largest p-value down, keeping the running minimum.
+		running := math.Inf(1)
+		for k := n - 1; k >= 0; k-- {
+			pos := order[k]
+			rank := float64(k + 1) // 1-based ascending rank
+			var term float64
+			switch method {
+			case PAdjustHochberg:
+				term = (fn - rank + 1) * p[pos]
+			default: // BH and BY
+				term = scale * fn / rank * p[pos]
+			}
+			running = math.Min(running, term)
+			adj[pos] = math.Min(1, running)
+		}
+	}
+	return adj
 }
