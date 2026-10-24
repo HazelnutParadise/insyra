@@ -17,8 +17,14 @@ type BacktestOptions struct {
 	// the portfolio traded: moving from 0 to 1 costs BuyCost, from 1 to 0 costs
 	// SellCost, and half a position costs half as much.
 	BuyCost, SellCost float64
-	// InitialPosition is the position held before the first row, from 0 to 1.
-	// The first row then pays to move from it to the first effective position.
+	// BorrowFee is the fee for borrowing the asset while it is sold short, per
+	// row and as a fraction of the short position (the cash rate less the rebate
+	// the lender pays on the proceeds). Zero means shorting is free. It is charged
+	// on every row whose position is below 0.
+	BorrowFee float64
+	// InitialPosition is the position held before the first row, from -1 (fully
+	// short) to 1 (fully long). The first row then pays to move from it to the
+	// first effective position.
 	InitialPosition float64
 }
 
@@ -27,7 +33,8 @@ type BacktestOptions struct {
 type BacktestResult struct {
 	// NetReturns is the portfolio return after costs.
 	NetReturns *insyra.DataList
-	// Positions is the share of the portfolio in the asset during each row.
+	// Positions is the share of the portfolio in the asset during each row;
+	// negative means short.
 	Positions *insyra.DataList
 	// Turnover is how much of the portfolio was traded at the start of each row,
 	// the absolute change in position.
@@ -37,14 +44,18 @@ type BacktestResult struct {
 }
 
 // BacktestSignal turns a position signal into a net return series. signal[t] is
-// the position, from 0 to 1, decided from the close of row t; it takes effect
+// the position, from -1 (fully short) to 1 (fully long), decided from the close of row t; it takes effect
 // one row later, so the position during row t is signal[t-1] and the row-t asset
 // return is never earned by a signal that saw it. Row 0 is held at
 // InitialPosition.
 //
 // The return of row t is position * assetReturn + (1 - position) * cashReturn,
-// less BuyCost times the position added and SellCost times the position removed
-// at the start of that row. The portfolio is taken to be rebalanced to the
+// less BorrowFee times the short position, and less BuyCost times the position
+// added and SellCost times the position removed at the start of that row. For a
+// short (position -1) this is -assetReturn + 2 * cashReturn: the capital and the
+// proceeds of the sale, held as collateral, both earn the cash return. Use total
+// returns, so that a dividend the short owes is already in assetReturn. Going from
+// +1 to -1 removes 2 and so pays twice SellCost. The portfolio is taken to be rebalanced to the
 // target position every row, so drift between rows is ignored.
 func BacktestSignal(signal, assetReturns insyra.IDataList, opts ...BacktestOptions) (*BacktestResult, error) {
 	if len(opts) > 1 {
@@ -54,21 +65,21 @@ func BacktestSignal(signal, assetReturns insyra.IDataList, opts ...BacktestOptio
 	if len(opts) == 1 {
 		o = opts[0]
 	}
-	for name, c := range map[string]float64{"BuyCost": o.BuyCost, "SellCost": o.SellCost} {
+	for name, c := range map[string]float64{"BuyCost": o.BuyCost, "SellCost": o.SellCost, "BorrowFee": o.BorrowFee} {
 		if math.IsNaN(c) || c < 0 || c >= 1 {
 			return nil, fmt.Errorf("%s must be a fraction from 0 up to, not including, 1", name)
 		}
 	}
-	if math.IsNaN(o.InitialPosition) || o.InitialPosition < 0 || o.InitialPosition > 1 {
-		return nil, errors.New("InitialPosition must be from 0 to 1")
+	if math.IsNaN(o.InitialPosition) || o.InitialPosition < -1 || o.InitialPosition > 1 {
+		return nil, errors.New("InitialPosition must be from -1 to 1")
 	}
 	sig, err := numericSeries(signal, "signal")
 	if err != nil {
 		return nil, err
 	}
 	for i, s := range sig {
-		if s < 0 || s > 1 {
-			return nil, fmt.Errorf("signal holds %v at row index %d; a position must be from 0 to 1", s, i)
+		if s < -1 || s > 1 {
+			return nil, fmt.Errorf("signal holds %v at row index %d; a position must be from -1 to 1", s, i)
 		}
 	}
 	asset, err := numericSeries(assetReturns, "assetReturns")
@@ -106,7 +117,11 @@ func BacktestSignal(signal, assetReturns insyra.IDataList, opts ...BacktestOptio
 		if change != 0 {
 			res.Trades++
 		}
-		net[t] = held*asset[t] + (1-held)*cash[t] - cost
+		borrow := 0.0
+		if held < 0 {
+			borrow = -held * o.BorrowFee
+		}
+		net[t] = held*asset[t] + (1-held)*cash[t] - cost - borrow
 		pos[t] = held
 		turn[t] = math.Abs(change)
 		previous = held
