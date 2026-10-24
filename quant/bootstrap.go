@@ -100,11 +100,10 @@ func blockBootstrapF64(returns []float64, cfg BootstrapConfig) (*BootstrapResult
 		Equity:  make([][]float64, cfg.Paths),
 	}
 	for p := range cfg.Paths {
-		var series []float64
-		if cfg.Stationary {
-			series = stationaryBootstrapSeries(returns, cfg.Horizon, cfg.BlockSize, rng)
-		} else {
-			series = movingBlockSeries(returns, cfg.Horizon, cfg.BlockSize, rng)
+		indices := blockIndices(n, cfg.Horizon, cfg.BlockSize, cfg.Stationary, rng)
+		series := make([]float64, cfg.Horizon)
+		for t, i := range indices {
+			series[t] = returns[i]
 		}
 		equity := make([]float64, cfg.Horizon+1)
 		equity[0] = 1
@@ -117,34 +116,46 @@ func blockBootstrapF64(returns []float64, cfg BootstrapConfig) (*BootstrapResult
 	return res, nil
 }
 
-// movingBlockSeries draws fixed-length blocks with a uniform start in
-// [0, n-blockSize] until horizon values are collected, then truncates.
-func movingBlockSeries(returns []float64, horizon, blockSize int, rng *bootstrapRNG) []float64 {
-	series := make([]float64, 0, horizon+blockSize)
-	starts := uint64(len(returns) - blockSize + 1)
-	for len(series) < horizon {
-		start := int(rng.uintN(starts))
-		series = append(series, returns[start:start+blockSize]...)
+// blockIndices draws the source positions of one resampled series of length
+// horizon from a series of length n. BlockBootstrap reads one series of
+// values through them; RealityCheck and SPATest apply the same positions to
+// every column, so the columns stay aligned in time.
+func blockIndices(n, horizon, blockSize int, stationary bool, rng *bootstrapRNG) []int {
+	if stationary {
+		return stationaryBlockIndices(n, horizon, blockSize, rng)
 	}
-	return series[:horizon:horizon]
+	return movingBlockIndices(n, horizon, blockSize, rng)
 }
 
-// stationaryBootstrapSeries draws blocks whose start is uniform over the
-// whole series and whose length is geometric with mean blockSize, reading
-// circularly past the end, until horizon values are collected. A block that
-// would overrun the horizon is cut at the horizon.
-func stationaryBootstrapSeries(returns []float64, horizon, blockSize int, rng *bootstrapRNG) []float64 {
-	n := len(returns)
-	series := make([]float64, 0, horizon)
-	for len(series) < horizon {
+// movingBlockIndices draws fixed-length blocks with a uniform start in
+// [0, n-blockSize] until horizon positions are collected, then truncates.
+func movingBlockIndices(n, horizon, blockSize int, rng *bootstrapRNG) []int {
+	indices := make([]int, 0, horizon+blockSize)
+	starts := uint64(n - blockSize + 1)
+	for len(indices) < horizon {
+		start := int(rng.uintN(starts))
+		for j := range blockSize {
+			indices = append(indices, start+j)
+		}
+	}
+	return indices[:horizon:horizon]
+}
+
+// stationaryBlockIndices draws blocks whose start is uniform over the whole
+// series and whose length is geometric with mean blockSize, reading
+// circularly past the end, until horizon positions are collected. A block
+// that would overrun the horizon is cut at the horizon.
+func stationaryBlockIndices(n, horizon, blockSize int, rng *bootstrapRNG) []int {
+	indices := make([]int, 0, horizon)
+	for len(indices) < horizon {
 		start := int(rng.uintN(uint64(n)))
 		length := geometricBlockLength(rng, blockSize)
-		if remaining := horizon - len(series); length > remaining {
+		if remaining := horizon - len(indices); length > remaining {
 			length = remaining
 		}
-		series = appendCircular(series, returns, start, length)
+		indices = appendCircular(indices, n, start, length)
 	}
-	return series
+	return indices
 }
 
 // geometricBlockLength draws L >= 1 with P(L = k) = p(1-p)^(k-1),
@@ -158,14 +169,13 @@ func geometricBlockLength(rng *bootstrapRNG, mean int) int {
 	return 1 + int(math.Floor(math.Log(rng.unitOpen())/logQ))
 }
 
-// appendCircular appends length values of returns starting at start,
-// wrapping past the end back to index 0.
-func appendCircular(series, returns []float64, start, length int) []float64 {
-	n := len(returns)
+// appendCircular appends length positions of a series of length n
+// starting at start, wrapping past the end back to 0.
+func appendCircular(indices []int, n, start, length int) []int {
 	for j := range length {
-		series = append(series, returns[(start+j)%n])
+		indices = append(indices, (start+j)%n)
 	}
-	return series
+	return indices
 }
 
 // bootstrapSeedXor mirrors the core sampling seeding so one uint64 seeds
@@ -287,7 +297,22 @@ func quantileType7(sorted []float64, p float64) float64 {
 // value it cannot parse; a resampled zero would silently flatten the
 // forecast. label prefixes the error so the caller can find the cell.
 func numericSeries(dl insyra.IDataList, label string) ([]float64, error) {
-	if dl == nil {
+	out, err := numericSeriesAllowNaN(dl, label)
+	if err != nil {
+		return nil, err
+	}
+	for i, v := range out {
+		if math.IsNaN(v) {
+			return nil, fmt.Errorf("%s contains a non-finite value at row index %d: %v", label, i, v)
+		}
+	}
+	return out, nil
+}
+
+// numericSeriesAllowNaN is numericSeries for an indicator that starts with NaN:
+// a NaN is kept, while a non-numeric cell or an infinity is still an error.
+func numericSeriesAllowNaN(dl insyra.IDataList, label string) ([]float64, error) {
+	if insyra.IsNilList(dl) {
 		return nil, fmt.Errorf("%s is nil", label)
 	}
 	var raw []any
@@ -298,10 +323,10 @@ func numericSeries(dl insyra.IDataList, label string) ([]float64, error) {
 	for i, value := range raw {
 		converted, ok := insyra.ToFloat64Safe(value)
 		if !ok {
-			return nil, fmt.Errorf("%s contains a non-numeric value at row %d: %v", label, i+1, value)
+			return nil, fmt.Errorf("%s contains a non-numeric value at row index %d: %v", label, i, value)
 		}
-		if math.IsNaN(converted) || math.IsInf(converted, 0) {
-			return nil, fmt.Errorf("%s contains a non-finite value at row %d: %v", label, i+1, converted)
+		if math.IsInf(converted, 0) {
+			return nil, fmt.Errorf("%s contains a non-finite value at row index %d: %v", label, i, converted)
 		}
 		out[i] = converted
 	}

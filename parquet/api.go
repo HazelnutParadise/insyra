@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/apache/arrow/go/v17/parquet"
-	"github.com/apache/arrow/go/v17/parquet/file"
-	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	"github.com/HazelnutParadise/insyra/internal/utils"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet"
+	"github.com/apache/arrow-go/v18/parquet/compress"
+	"github.com/apache/arrow-go/v18/parquet/file"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
 
 // ReadOptions selects what a read covers. An empty field means everything.
@@ -55,7 +58,13 @@ type RowGroupInfo struct {
 }
 
 // Inspect reads a Parquet file's metadata without reading any values.
-func Inspect(path string) (FileInfo, error) {
+func Inspect(path string) (info FileInfo, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			info = FileInfo{}
+			err = unreadableFile(path, r)
+		}
+	}()
 	f, err := os.Open(path)
 	if err != nil {
 		return FileInfo{}, err
@@ -71,7 +80,7 @@ func Inspect(path string) (FileInfo, error) {
 		}
 	}()
 
-	r, err := file.NewParquetReader(f)
+	r, err := file.NewParquetReader(f, file.WithReadProps(readerProperties()))
 	if err != nil {
 		return FileInfo{}, err
 	}
@@ -99,7 +108,7 @@ func Inspect(path string) (FileInfo, error) {
 		createdBy = wv.App
 	}
 
-	info := FileInfo{
+	info = FileInfo{
 		NumRows:      r.NumRows(),
 		NumRowGroups: r.NumRowGroups(),
 		Version:      metadata.Version().String(),
@@ -131,40 +140,172 @@ func Inspect(path string) (FileInfo, error) {
 	return info, nil
 }
 
-// Write writes dt to path as a Parquet file, creating or truncating it. It
-// writes to path directly, so a failure part-way can leave an incomplete file
-// there.
+// Write writes dt to path as a Parquet file using the default WriteOptions.
+// The target is opened in place and closed after writing.
 func Write(dt insyra.IDataTable, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-
-	arrowTable, err := dataTableToArrowTable(dt)
-	if err != nil {
-		_ = f.Close()
-		return err
+	writeErr := writeFileContents(context.Background(), dt, f)
+	closeErr := f.Close()
+	if writeErr != nil {
+		return writeErr
 	}
-	defer arrowTable.Release()
-
-	createdBy := fmt.Sprintf("go-insyra v%s", insyra.Version)
-
-	writer, err := pqarrow.NewFileWriter(arrowTable.Schema(), f, parquet.NewWriterProperties(parquet.WithCreatedBy(createdBy)), pqarrow.DefaultWriterProps())
-	if err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err := writer.WriteTable(arrowTable, 1024*1024); err != nil {
-		_ = writer.Close()
-		return err
-	}
-	// pqarrow.FileWriter.Close writes the footer and closes the underlying
-	// *os.File as well, so its error decides whether the file is readable.
-	if err := writer.Close(); err != nil {
-		return fmt.Errorf("parquet: failed to close writer: %w", err)
+	if closeErr != nil {
+		return fmt.Errorf("parquet: failed to close writer: %w", closeErr)
 	}
 	return nil
 }
+
+// Compression selects the codec used for every column.
+type Compression int
+
+const (
+	CompressionNone Compression = iota
+	CompressionSnappy
+	CompressionGzip
+	CompressionBrotli
+	CompressionZstd
+)
+
+const defaultRowGroupSize = 1024 * 1024
+
+// WriteOptions configures Parquet compression and row group size.
+type WriteOptions struct {
+	// Compression selects a codec. CompressionNone is the zero value.
+	Compression Compression
+	// RowGroupSize is the maximum rows per row group. Zero uses the default.
+	RowGroupSize int
+}
+
+func resolveWriteOptions(opts []WriteOptions) (compress.Compression, int64, error) {
+	if len(opts) > 1 {
+		return compress.Codecs.Uncompressed, 0, fmt.Errorf("parquet: at most one WriteOptions may be given, got %d", len(opts))
+	}
+	var opt WriteOptions
+	if len(opts) == 1 {
+		opt = opts[0]
+	}
+	var codec compress.Compression
+	switch opt.Compression {
+	case CompressionNone:
+		codec = compress.Codecs.Uncompressed
+	case CompressionSnappy:
+		codec = compress.Codecs.Snappy
+	case CompressionGzip:
+		codec = compress.Codecs.Gzip
+	case CompressionBrotli:
+		codec = compress.Codecs.Brotli
+	case CompressionZstd:
+		codec = compress.Codecs.Zstd
+	default:
+		return codec, 0, fmt.Errorf("parquet: unknown Compression %v", opt.Compression)
+	}
+	if opt.RowGroupSize < 0 {
+		return codec, 0, fmt.Errorf("parquet: RowGroupSize must not be negative, got %d", opt.RowGroupSize)
+	}
+	size := int64(opt.RowGroupSize)
+	if size == 0 {
+		size = defaultRowGroupSize
+	}
+	if size > parquet.DefaultMaxRowGroupLen {
+		size = parquet.DefaultMaxRowGroupLen
+	}
+	return codec, size, nil
+}
+
+var errNilContext = errors.New("parquet: nil context")
+
+func WriteContext(ctx context.Context, dt insyra.IDataTable, path string, opts ...WriteOptions) error {
+	if ctx == nil {
+		return errNilContext
+	}
+	if _, _, err := resolveWriteOptions(opts); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return utils.WriteFileAtomically(path, func(w io.Writer) error {
+		if err := writeFileContents(ctx, dt, w, opts...); err != nil {
+			return err
+		}
+		return ctx.Err()
+	})
+}
+
+// WriteTo writes a Parquet file to w without closing the caller's writer.
+func WriteTo(dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error {
+	return WriteToContext(context.Background(), dt, w, opts...)
+}
+func WriteToContext(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error {
+	return writeFileContents(ctx, dt, w, opts...)
+}
+
+func writeFileContents(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error {
+	if ctx == nil {
+		return errNilContext
+	}
+	codec, groupSize, err := resolveWriteOptions(opts)
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	arrowTable, err := dataTableToArrowTable(dt)
+	if err != nil {
+		return err
+	}
+	defer arrowTable.Release()
+	createdBy := fmt.Sprintf("go-insyra v%s", insyra.Version)
+	writer, err := pqarrow.NewFileWriter(arrowTable.Schema(), writerOnly{w}, parquet.NewWriterProperties(parquet.WithCreatedBy(createdBy), parquet.WithCompression(codec)), pqarrow.DefaultWriterProps())
+	if err != nil {
+		return err
+	}
+	rows := arrowTable.NumRows()
+	writeGroup := func(offset, size int64) error {
+		if err := writer.NewRowGroupChecked(); err != nil {
+			return err
+		}
+		for i := 0; i < int(arrowTable.NumCols()); i++ {
+			if err := writer.WriteColumnChunked(arrowTable.Column(i).Data(), offset, size); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if rows == 0 {
+		if err := writeGroup(0, 0); err != nil {
+			_ = writer.Close()
+			return err
+		}
+	}
+	for offset := int64(0); offset < rows; offset += groupSize {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := writeGroup(offset, min(groupSize, rows-offset)); err != nil {
+			_ = writer.Close()
+			return err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("parquet: failed to close writer: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+type writerOnly struct{ w io.Writer }
+
+func (o writerOnly) Write(p []byte) (int, error) { return o.w.Write(p) }
 
 // Read reads a Parquet file into a DataTable in one go. For a file too large to
 // hold in memory, use Stream.
@@ -183,13 +324,43 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 		}
 	}()
 
-	r, err := file.NewParquetReader(f)
+	return readTableFrom(ctx, f, path, opt)
+}
+
+// ReadFrom reads a Parquet file from any random access source.
+func ReadFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions) (*insyra.DataTable, error) {
+	return readTableFrom(ctx, io.NewSectionReader(panicSafeReaderAt{r}, 0, size), "the Parquet input", opt)
+}
+
+type panicSafeReaderAt struct{ io.ReaderAt }
+
+func (r panicSafeReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			n = 0
+			err = unreadableFile("the Parquet input", v)
+		}
+	}()
+	return r.ReaderAt.ReadAt(p, off)
+}
+
+func readTableFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string, opt ReadOptions) (dt *insyra.DataTable, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			dt = nil
+			err = unreadableFile(label, r)
+		}
+	}()
+	r, err := file.NewParquetReader(src, file.WithReadProps(readerProperties()))
 	if err != nil {
+		return nil, err
+	}
+	if err := normalizeStoredDurationSchema(r); err != nil {
 		return nil, err
 	}
 	defer func() {
 		if err := r.Close(); err != nil {
-			insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", path, err)
+			insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", label, err)
 		}
 	}()
 
@@ -226,11 +397,27 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 			rowGroups[i] = i
 		}
 	}
+	var expectedRows int64
+	counts := make([]int64, len(rowGroups))
+	countable := len(rowGroups) > 0
+	for i, rg := range rowGroups {
+		if rg < 0 || rg >= r.NumRowGroups() {
+			countable = false
+			break
+		}
+		counts[i] = r.MetaData().RowGroup(rg).NumRows()
+		expectedRows += counts[i]
+	}
 
 	var arrowTable arrow.Table
 	arrowTable, err = fr.ReadRowGroups(ctx, colIndices, rowGroups)
 	if err != nil {
-		return nil, err
+		return nil, readerFailed(ctx, label, err, src, colIndices, rowGroups, counts, countable)
+	}
+	if countable && int64(arrowTable.NumRows()) != expectedRows {
+		got := arrowTable.NumRows()
+		arrowTable.Release()
+		return nil, damagedFile(label, int64(got), expectedRows, shortRowGroupsFrom(ctx, src, colIndices, rowGroups, counts))
 	}
 	defer arrowTable.Release()
 
@@ -263,6 +450,17 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 //	for dt := range dtChan { … }
 //	if err := <-errChan; err != nil { … }
 func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error) {
+	return streamTablesFrom(ctx, func() (<-chan arrow.RecordBatch, <-chan error) { return streamAsArrowRecord(ctx, path, opt, batchSize) })
+}
+
+// StreamFrom streams batches from a random-access source using the same channel contract as Stream.
+func StreamFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error) {
+	return streamTablesFrom(ctx, func() (<-chan arrow.RecordBatch, <-chan error) {
+		return streamArrowRecordsFrom(ctx, io.NewSectionReader(panicSafeReaderAt{r}, 0, size), "the Parquet input", opt, batchSize, nil)
+	})
+}
+
+func streamTablesFrom(ctx context.Context, start func() (<-chan arrow.RecordBatch, <-chan error)) (<-chan *insyra.DataTable, <-chan error) {
 	dtChan := make(chan *insyra.DataTable)
 	errChan := make(chan error, 1)
 
@@ -270,7 +468,7 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<
 		defer close(dtChan)
 		defer close(errChan)
 
-		recChan, internalErrChan := streamAsArrowRecord(ctx, path, opt, batchSize)
+		recChan, internalErrChan := start()
 
 		for {
 			select {

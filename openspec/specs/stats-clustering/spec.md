@@ -1,8 +1,10 @@
 # stats-clustering Specification
 
 ## Purpose
-TBD - created by archiving change add-kmeans-assign. Update Purpose after archive.
+Applying a fitted clustering to observations it was not fitted on, so new rows can be assigned to the clusters a model has already found.
+
 ## Requirements
+
 ### Requirement: A fitted clustering assigns new observations
 The system SHALL let a caller assign observations to the centres a clustering converged on, whether or not those observations were part of the fit.
 
@@ -27,3 +29,9 @@ The system SHALL let a caller assign observations to the centres a clustering co
 - **WHEN** the assignment is computed
 - **THEN** the result is what a `float64` computation over every centre would produce
 
+### Requirement: Tree cutting refuses a node joined more than once
+The system SHALL return an error from CutTreeByK and CutTreeByHeight when any leaf or any merge of the tree is joined by more than one merge step, naming the step and the node.
+
+#### Scenario: A leaf is joined twice
+- **WHEN** two merge steps both join leaf -1
+- **THEN** cutting the tree returns an error

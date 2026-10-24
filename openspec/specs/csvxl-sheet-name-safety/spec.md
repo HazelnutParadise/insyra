@@ -2,7 +2,6 @@
 
 ## Purpose
 `ExcelToCsv`／`EachExcelToCsv` 的工作表名稱安全契約：名稱不得逃出輸出目錄，讀不出來的工作表也不得截斷既有的 CSV 檔。
-
 ## Requirements
 ### Requirement: Sheet names cannot escape the output directory
 
@@ -19,3 +18,12 @@
 #### Scenario: A csvNames entry is used as given
 - **WHEN** 呼叫端以 `csvNames` 指定 `sub/renamed`，且 `outDir/sub` 已存在
 - **THEN** 寫出 `outDir/sub/renamed.csv`，不回錯誤
+
+### Requirement: ExcelToCSV checks every file name before writing
+
+`ExcelToCSV`／`ExcelDirToCSV` SHALL 對每張工作表實際使用的 CSV 檔名（工作表名稱加 `.csv`、`ExcelDirToCSV` 加上活頁簿檔名前綴的檔名，或 `FileNames` 指定的名稱）做同樣的檢查，且 SHALL 在寫入第一個 CSV 之前檢查完所有工作表（`ExcelDirToCSV` 是所有活頁簿）的檔名，所以被拒絕的檔名不會留下部分輸出。
+
+#### Scenario: A FileNames entry that leaves the output directory
+- **WHEN** 活頁簿有 `Q1`、`Q2`、`Q3`，呼叫端以 `FileNames` 把 `Q3` 指定為 `../escape`
+- **THEN** 回傳錯誤，輸出目錄內外都不會寫出任何 CSV
+

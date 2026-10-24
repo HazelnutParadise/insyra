@@ -172,7 +172,10 @@ func (dt *DataTable) ColNames() []string {
 	return result
 }
 
-// Headers is an alias for ColNames, returning the column names of the DataTable.
+// Headers returns the column names, exactly as ColNames does.
+//
+// Deprecated: use ColNames.
+// Removed in 0.4.
 func (dt *DataTable) Headers() []string {
 	return dt.ColNames()
 }
@@ -203,7 +206,10 @@ func (dt *DataTable) SetColNames(colNames []string) *DataTable {
 	return result
 }
 
-// SetHeaders is an alias for SetColNames, setting the column names of the DataTable.
+// SetHeaders names the columns, exactly as SetColNames does.
+//
+// Deprecated: use SetColNames.
+// Removed in 0.4.
 func (dt *DataTable) SetHeaders(headers []string) *DataTable {
 	return dt.SetColNames(headers)
 }

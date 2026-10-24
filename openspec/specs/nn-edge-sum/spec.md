@@ -59,7 +59,7 @@ No production device kernel for `EdgeSum` SHALL exist until a recorded measureme
 
 ### Requirement: Each output is the correctly rounded exact sum
 
-Each output of `EdgeSum` SHALL be the exact sum of its products `weights[e]·values[..., sources[e]]`, rounded once to the nearest float32 with ties to even, including subnormal results and overflow to infinity. The result SHALL NOT depend on the order of the edges, the order of the batch, or the number of workers. A NaN operand, a product of zero and infinity, or infinite products of both signs SHALL make the output NaN; otherwise an infinite product SHALL make the output that infinity. An output whose exact sum is zero, including one with no incoming edge, SHALL be `+0`.
+Each output of `EdgeSum` SHALL be the exact sum of its products `weights[e]·values[..., sources[e]]`, rounded once to the nearest float32 with ties to even, including subnormal results and overflow to infinity. A NaN operand, a product of zero and infinity, or infinite products of both signs SHALL make the output NaN; otherwise an infinite product SHALL make the output that infinity. An output whose exact sum is zero, including one with no incoming edge, SHALL be `+0`.
 
 #### Scenario: Against an exact oracle
 - **WHEN** `EdgeSum` runs on random graphs with repeated targets and negative weights
@@ -73,10 +73,13 @@ Each output of `EdgeSum` SHALL be the exact sum of its products `weights[e]·val
 - **WHEN** a node's exact sum lies exactly half-way between two float32 values, or below the smallest normal float32, or beyond the largest
 - **THEN** the output is the tie rounded to even, the correctly rounded subnormal, or the infinity round-to-nearest gives
 
+### Requirement: EdgeSum does not depend on order or workers
+
+The result of `EdgeSum` SHALL NOT depend on the order of the edges, the order of the batch, or the number of workers.
+
 #### Scenario: Edge order does not matter
 - **WHEN** the same edges are given to `NewEdgeTopology` in a different order, with their weights permuted to match
 - **THEN** every output is bit-identical
-
 ### Requirement: The reverse rule is the exact sum too
 
 `Tape.EdgeSum` SHALL record the operation so that the gradient of `values[..., s]` is the sum over edges with source `s` of `weights[e]·upstream[..., targets[e]]`, and the gradient of `weights[e]` is the sum over the batch of `upstream[b, targets[e]]·values[b, sources[e]]`, each gradient the correctly rounded exact sum of its products under the same rules as the forward pass.

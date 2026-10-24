@@ -49,7 +49,7 @@ func runSampleCommand(ctx *ExecContext, args []string) error {
 		if len(coreArgs) < 3 {
 			return fmt.Errorf("sample: frac requires a value")
 		}
-		frac, parseErr := strconv.ParseFloat(coreArgs[2], 64)
+		frac, parseErr := parseFloatToken(ctx, coreArgs[2])
 		if parseErr != nil {
 			return fmt.Errorf("invalid sample fraction: %s", coreArgs[2])
 		}
@@ -65,7 +65,7 @@ func runSampleCommand(ctx *ExecContext, args []string) error {
 		}
 		result, err = applyShuffle(ctx, varName, opts)
 	default:
-		n, parseErr := strconv.Atoi(coreArgs[1])
+		n, parseErr := atoiArg(ctx, coreArgs[1])
 		if parseErr != nil {
 			return fmt.Errorf("invalid sample size: %s", coreArgs[1])
 		}
@@ -163,9 +163,9 @@ func applyShuffle(ctx *ExecContext, varName string, opts sampleCommandOptions) (
 	samplingOpts := samplingOptionsFromCLI(opts)
 	switch v := value.(type) {
 	case *insyra.DataTable:
-		return v.Shuffle(samplingOpts...), nil
+		return v.Shuffled(samplingOpts...), nil
 	case *insyra.DataList:
-		return v.Shuffle(samplingOpts...), nil
+		return v.Shuffled(samplingOpts...), nil
 	default:
 		return nil, fmt.Errorf("variable %s is not a DataList or DataTable", varName)
 	}

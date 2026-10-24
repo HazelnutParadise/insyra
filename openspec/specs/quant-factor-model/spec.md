@@ -2,31 +2,34 @@
 
 ## Purpose
 `quant` 的多因子歸因：把資產超額報酬（只從資產扣無風險利率）以 OLS 回歸在具名因子欄上，包裝 `stats.LinearRegression`，回傳依因子名索引的曝險、alpha、標準誤、t／p 值、R²、調整 R²、殘差；單因子結果與 `CAPM` 一致，輸入驗證拒絕不可讀值並指出因子欄與列號。
-
 ## Requirements
 ### Requirement: Multi-factor attribution of excess returns
 
-`quant` SHALL 提供 `FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64) (*FactorModelResult, error)`，以 OLS 把 `asset − riskFreeRate` 回歸在 `factors` 的每一欄上（因子欄不減 `riskFreeRate`）。`FactorModelResult` SHALL 含 `Alpha`、`AlphaStdErr`、`AlphaTValue`、`AlphaPValue float64`；`FactorNames []string`（依表格欄序）；`Exposures`、`StdErrs`、`TValues`、`PValues []float64`（與 `FactorNames` 同索引）；`RSquared`、`AdjustedRSquared float64`；`N int`；`Residuals []float64`；方法 `Exposure(name string) (float64, bool)`。數值 SHALL 與 `stats.LinearRegression(assetExcess, factorCols...)` 的 `Coefficients`、`StandardErrors`、`TValues`、`PValues`、`RSquared`、`AdjustedRSquared`、`Residuals` 一致。
-
-#### Scenario: Agrees with stats.LinearRegression
-
-- **WHEN** 三個隨機因子與一個隨機資產、`riskFreeRate: 0`
-- **THEN** `Alpha` 等於 `Coefficients[0]`，`Exposures[j]` 等於 `Coefficients[j+1]`，標準誤、t 值、p 值、R²、調整 R²、殘差逐一相等（1e-12 內），`N` 等於長度
+`quant` SHALL 提供 `FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64, opts ...FactorModelOptions) (*FactorModelResult, error)`，以 OLS 把 `asset − riskFreeRate` 回歸在 `factors` 的每一欄上（因子欄不減 `riskFreeRate`）。不給 `opts` 時結果 SHALL 與給零值選項相同，標準誤為一般 OLS 標準誤。
 
 #### Scenario: One factor agrees with CAPM
 
 - **WHEN** `factors` 只有一欄且該欄已是超額市場報酬、`riskFreeRate: r`
 - **THEN** `Exposures[0]`、`Alpha`、`StdErrs[0]`、`AlphaStdErr` 分別等於 `CAPM(asset, marketRaw, r)` 的 `Beta`、`Alpha`、`BetaStdErr`、`AlphaStdErr`（1e-12 內，`marketRaw = market + r`）
 
-#### Scenario: Exposure lookup by name
-
-- **WHEN** `factors` 欄名為 `MKT`、`SMB`、`HML`
-- **THEN** `Exposure("SMB")` 回傳第二個係數與 `true`；`Exposure("MOM")` 回傳 `0, false`
-
 #### Scenario: Risk-free rate shifts only alpha
 
 - **WHEN** 同一輸入以 `riskFreeRate: 0` 與 `riskFreeRate: r` 各呼叫一次
 - **THEN** `Exposures` 相等，第二次 `Alpha` 等於第一次 `Alpha − r`
+
+### Requirement: The factor model's result agrees with the regression
+
+`FactorModelResult` SHALL 含 `Alpha`、`AlphaStdErr`、`AlphaTValue`、`AlphaPValue float64`；`FactorNames []string`（依表格欄序）；`Exposures`、`StdErrs`、`TValues`、`PValues []float64`（與 `FactorNames` 同索引）；`RSquared`、`AdjustedRSquared float64`；`N int`；`Residuals []float64`；方法 `Exposure(name string) (float64, bool)`。數值 SHALL 與 `stats.LinearRegression(assetExcess, factorCols...)` 的 `Coefficients`、`StandardErrors`、`TValues`、`PValues`、`RSquared`、`AdjustedRSquared`、`Residuals` 一致。
+
+#### Scenario: Agrees with stats.LinearRegression
+
+- **WHEN** 三個隨機因子與一個隨機資產、`riskFreeRate: 0`
+- **THEN** `Alpha` 等於 `Coefficients[0]`，`Exposures[j]` 等於 `Coefficients[j+1]`，標準誤、t 值、p 值、R²、調整 R²、殘差逐一相等（1e-12 內），`N` 等於長度
+
+#### Scenario: Exposure lookup by name
+
+- **WHEN** `factors` 欄名為 `MKT`、`SMB`、`HML`
+- **THEN** `Exposure("SMB")` 回傳第二個係數與 `true`；`Exposure("MOM")` 回傳 `0, false`
 
 ### Requirement: Factor model input is validated and never coerced
 
@@ -51,4 +54,23 @@
 
 - **WHEN** 兩個因子欄完全相同
 - **THEN** 回傳來自回歸的錯誤而不是數值結果
+
+### Requirement: The factor model can use robust or HAC standard errors
+
+`FactorModelOptions{CovType stats.CovType; Lag int}` SHALL 把 `CovType` 交給 `stats.LinearRegressionWithOptions`，`StdErrs`、`TValues`、`PValues` 與 alpha 的對應值 SHALL 與該回歸相同。`CovHAC` 的 `Lag` 為 0 時 SHALL 用 `stats.NeweyWestLag(n)`，正數照用，負數 SHALL 回錯。`FactorModelResult` SHALL 記錄 `CovType` 與實際使用的 `Lag`。給超過一個 `FactorModelOptions` SHALL 回錯。
+
+#### Scenario: HAC alpha agrees with the regression
+
+- **WHEN** `FactorModelOptions{CovType: stats.CovHAC, Lag: 3}`
+- **THEN** `AlphaStdErr`、`AlphaTValue`、`AlphaPValue` 與 `stats.LinearRegressionWithOptions` 以 `CovHAC`、lag 3 回歸的截距結果逐一相等，`Lag` 為 3
+
+#### Scenario: Automatic lag
+
+- **WHEN** `CovHAC` 且 `Lag: 0`、120 筆觀察
+- **THEN** `Lag` 等於 `stats.NeweyWestLag(120)`
+
+#### Scenario: Negative lag is refused
+
+- **WHEN** `CovHAC` 且 `Lag: -1`
+- **THEN** 回傳錯誤
 

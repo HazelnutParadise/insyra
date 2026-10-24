@@ -615,6 +615,9 @@ func TestCutTreeRefusesAMalformedTree(t *testing.T) {
 		"leaf out of range":         func(h *stats.HierarchicalResult) { h.Merge[0][0] = -4 },
 		"zero id":                   func(h *stats.HierarchicalResult) { h.Merge[0][1] = 0 },
 		"merge from the future":     func(h *stats.HierarchicalResult) { h.Merge[1][1] = 2 },
+		"leaf joined twice":         func(h *stats.HierarchicalResult) { h.Merge[1] = [2]int{-1, 1} },
+		"merge joined twice":        func(h *stats.HierarchicalResult) { h.Merge[1] = [2]int{1, 1} },
+		"merge joins itself twice":  func(h *stats.HierarchicalResult) { h.Merge[0] = [2]int{-1, -1} },
 	}
 	for name, breakIt := range cases {
 		t.Run(name, func(t *testing.T) {

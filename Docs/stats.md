@@ -38,8 +38,8 @@ Take the values you need and check `err` last.
 
 A few functions return **no** error, because there is nothing that can fail:
 `NormCDF(x float64) float64`, `DefaultFactorAnalysisOptions()`, and
-`RegisterKNNDeviceSearcher(fn)` each return a bare value, and the two `Show()`
-methods (`ChiSquareTestResult.Show`, `FactorAnalysisResult.Show`) only print.
+`RegisterKNNDeviceSearcher(fn)` each return a bare value, and every result's
+`String()` and `Show()` only print.
 Every other exported function in the package ends in `error`.
 
 `stats` never calls `LogFatal`, so nothing here ends your program the way
@@ -56,8 +56,8 @@ the result, not after.
 | Do two measurements of the same subjects differ? | `PairedTTest(data1, data2, confidenceLevel...)` |
 | The same questions with the population σ known | `SingleSampleZTest(data, mu, sigma, alternative, confidenceLevel)` / `TwoSampleZTest(data1, data2, sigma1, sigma2, alternative, confidenceLevel)` |
 | Do three or more groups differ? | `OneWayANOVA(groups...)` |
-| Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells...)` |
-| Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects...)` |
+| Two factors and their interaction? | `TwoWayANOVA(factorALevels, factorBLevels, cells...)` or `TwoWayANOVAFromTable` |
+| Repeated measures across conditions? | `RepeatedMeasuresANOVA(subjects...)` or `RepeatedMeasuresANOVAFromTable` |
 | Are two categorical variables related? | `ChiSquareIndependenceTest(rowData, colData)` |
 | Does a distribution match the expected counts? | `ChiSquareGoodnessOfFit(input, p, rescaleP)` |
 | Do groups have equal variance? | `FTestForVarianceEquality(data1, data2)`, `LeveneTest(groups)`, `BartlettTest(groups)` |
@@ -71,6 +71,10 @@ row is the fallback when a parametric assumption fails — see
 [Nonparametric Tests (Rank-Based)](#nonparametric-tests-rank-based) for the
 parametric → rank-based mapping and the decision flow.
 
+### Long-format ANOVA and Friedman entry points
+
+`TwoWayANOVAFromTable(dt, valueCol, factorACol, factorBCol)` accepts a long-format table with one observation per row. `RepeatedMeasuresANOVAFromTable(dt, valueCol, conditionCol, subjectCol)` and `FriedmanTestFromTable` accept one row per subject-condition measurement. Column selectors are strings: an in-range Excel-style letter takes precedence, then an exact column name is checked. Each function returns the corresponding existing test result and an error; input tables are not modified. Values must be finite numbers, factor levels cannot be nil or NaN, and repeated-measures inputs require one value per subject and condition.
+
 ### Values that are not numbers
 
 A value that cannot be read as a finite number — a missing value, a blank, text,
@@ -81,30 +85,30 @@ depends on the family, and each family states which:
 | --- | --- |
 | Regression (linear, polynomial, exponential, logarithmic, logistic, Poisson, GLM) | refused, with an error naming the series and the row |
 | Correlation and covariance | refused, with an error naming the series and the row |
-| Hypothesis tests: t, z, F, Levene, Bartlett, Wilcoxon, Mann-Whitney U, one-way, two-way and repeated-measures ANOVA, Kruskal-Wallis, Friedman | refused, with an error naming the list and the position, both counted from one |
-| Skewness, kurtosis, moments | refused, with an error naming the series and the one-based row |
+| Hypothesis tests: t, z, F, Levene, Bartlett, Wilcoxon, Mann-Whitney U, one-way, two-way and repeated-measures ANOVA, Kruskal-Wallis, Friedman | refused, with an error naming the list and the zero-based position |
+| Skewness, kurtosis, moments | refused, with an error naming the series and the zero-based row index |
 | Clustering, and the features KNN reads | refused |
-| PCA, and the targets `KNNRegress` reads | a blank or text cell is refused, but `NaN` and `±Inf` are **not**: they reach the result, so `PCA` returns `NaN` eigenvalues and `KNNRegress` returns a `NaN` or infinite prediction, with a nil error |
+| PCA, and the targets `KNNRegress` reads | refused with an error: a blank or text cell, `NaN` and `±Inf` all stop the call |
 | Factor analysis | a `NaN` or `±Inf` removes the whole observation (listwise deletion); a blank or text cell is refused |
 | Decision trees in [`insyra/ml`](/Docs/ml.md) | a direction is learned per node for missing *features*; a missing *target* is refused |
 
 The functions below word a refusal the same way. A blank or text cell gives
 `<list> contains a non-numeric value at <position>: <value>`, and a `NaN` or
 `±Inf` gives `<list> contains a non-finite value at <position>: <value>`. The
-list and the position are both counted from one:
+position is a zero-based index, the same number `Get(i)` takes, and the list is numbered from one when it is named by the order you passed it:
 
-| Function | The list is called | The position is a | Example |
+| Function | The list is called | The position is a (zero-based) | Example |
 | --- | --- | --- | --- |
-| `SingleSampleTTest`, `SingleSampleZTest`, `SingleSampleWilcoxon`, `CalculateMoment` | `data` | row | `data contains a non-numeric value at row 3: <nil>` |
-| `TwoSampleTTest`, `TwoSampleZTest`, `FTestForVarianceEquality`, `PairedTTest`, `PairedWilcoxon`, `MannWhitneyU` | `data1` or `data2` | row | `data2 contains a non-finite value at row 3: NaN` |
-| `OneWayANOVA`, `KruskalWallis`, `LeveneTest`, `BartlettTest` | `group N`, the Nth list you passed | row | `group 2 contains a non-finite value at row 3: +Inf` |
-| `TwoWayANOVA` | `cell (A=a, B=b)`, the cell for level a of factor A and level b of factor B | row | `cell (A=2, B=1) contains a non-numeric value at row 2: x` |
-| `RepeatedMeasuresANOVA`, `FriedmanTest` | `subject N`, the Nth list you passed | condition, because each list holds one subject's conditions | `subject 2 contains a non-finite value at condition 2: NaN` |
-| `Skewness`, `Kurtosis` | `sample` | row | `sample contains a non-numeric value at row 3: <nil>` |
-| `Correlation`, `Covariance` | `x` or `y` | row | `x contains a non-numeric value at row 3: <nil>` |
+| `SingleSampleTTest`, `SingleSampleZTest`, `SingleSampleWilcoxon`, `CalculateMoment` | `data` | row index | `data contains a non-numeric value at row index 2: <nil>` |
+| `TwoSampleTTest`, `TwoSampleZTest`, `FTestForVarianceEquality`, `PairedTTest`, `PairedWilcoxon`, `MannWhitneyU` | `data1` or `data2` | row index | `data2 contains a non-finite value at row index 2: NaN` |
+| `OneWayANOVA`, `KruskalWallis`, `LeveneTest`, `BartlettTest` | `group N`, the Nth list you passed | row index | `group 2 contains a non-finite value at row index 2: +Inf` |
+| `TwoWayANOVA` | `cell (A=a, B=b)`, the cell for level a of factor A and level b of factor B | row index | `cell (A=2, B=1) contains a non-numeric value at row index 1: x` |
+| `RepeatedMeasuresANOVA`, `FriedmanTest` | `subject N`, the Nth list you passed | condition index, because each list holds one subject's conditions | `subject 2 contains a non-finite value at condition index 1: NaN` |
+| `Skewness`, `Kurtosis` | `sample` | row index | `sample contains a non-numeric value at row index 2: <nil>` |
+| `Correlation`, `Covariance` | `x` or `y` | row index | `x contains a non-numeric value at row index 2: <nil>` |
 
 The other errors the hypothesis tests raise about a group, a cell or a subject
-count from one too: `group 2 is empty`, `empty cell at A=1, B=2`,
+name it by the order you passed it, counted from one: `group 2 is empty`, `empty cell at A=1, B=2`,
 `subject 2 has 2 observations, expected 3`. In the hypothesis tests, a `nil`
 list, typed or not, counts as an empty list and gets the error an empty one
 would.
@@ -140,20 +144,55 @@ For clustering APIs, Insyra uses an R-oriented result shape and cross-language v
 
 ### Common Result Structure
 
+Every hypothesis test's result embeds `TestResult`, so the fields below read directly on any result (`r.PValue`).
+
 ```go
-type testResultBase struct {
-    Statistic   float64           // Test statistic value
-    PValue      float64           // P-value
-    DF          *float64          // Degrees of freedom (nil if not applicable)
-    CI          *[2]float64       // Confidence interval (nil if not calculated)
-    EffectSizes []EffectSizeEntry // Effect size measures
+type TestResult struct {
+    Statistic   float64           // the test statistic (t, z, F, χ², U, W+, H, Q, …)
+    PValue      float64           // p-value under the test's alternative hypothesis
+    DF          *float64          // degrees of freedom; nil if the test has none
+    CI          *[2]float64       // confidence interval; nil if the test reports none
+    EffectSizes []EffectSizeEntry // effect sizes
 }
 
 type EffectSizeEntry struct {
     Type  string  // "cohen_d", "hedges_g", etc.
     Value float64 // Effect size value
 }
+
+type HypothesisTestResult interface {
+    Base() *TestResult
+}
 ```
+
+`TTestResult`, `ZTestResult`, `FTestResult`, `ChiSquareTestResult`, `CorrelationResult`, `WilcoxonTestResult`, `MannWhitneyUResult`, `KruskalWallisResult` and `FriedmanTestResult` all satisfy `HypothesisTestResult`, so one function or one slice can take any of them. `Base()` returns the embedded `TestResult` itself, not a copy.
+
+```go
+tt, err := stats.TwoSampleTTest(control, variant, true)
+if err != nil {
+    log.Fatal(err)
+}
+mw, err := stats.MannWhitneyU(control, variant, stats.TwoSided)
+if err != nil {
+    log.Fatal(err)
+}
+for _, r := range []stats.HypothesisTestResult{tt, mw} {
+    fmt.Printf("statistic=%.4f p=%.4f\n", r.Base().Statistic, r.Base().PValue)
+}
+```
+
+### Printing a result
+
+Every result type in `stats` has `String()` and `Show()`, so `fmt.Println(res)`, `log.Print(res)` and `res.Show()` all print the whole result, and `fmt.Fprintln(w, res)` writes it to any `io.Writer`, such as a file or an HTTP response. `Show()` prints exactly `String()` and a newline to standard output, except `FactorAnalysisResult.Show(startEndRange...)`, which given a row range shows each table through that range instead. Every result is laid out by the same rules:
+
+- The first line names the analysis, such as `t-test` or `Two-way ANOVA`.
+- Then comes one line per field, `  Name: value`, with the field's Go name, in the order the type declares them. The fields of the embedded `TestResult` come first.
+- A field that is `nil` does not apply to this result and is left out.
+- Numbers are written as a plain decimal from 0.000001 up to 1e21, so a sum of squares of 1,500,000 prints as `1500000`, and in exponent form outside that range.
+- A list prints on its line in brackets. Past 60 values it shows the first 20 and the last 5 and says how many there are, the rule the table views follow.
+- A table field, such as `ContingencyTable` in a chi-square result or `Loadings` in a factor analysis, prints as a grid under its name, with row and column names, cut the same way past 60 rows.
+
+The text carries no colour codes and does not depend on the terminal, so it is the same in a log file and in a test. `ChiSquareTestResult.Show()` and `FactorAnalysisResult.Show()` used to print their own layouts; they now print this one.
 
 ### Alternative Hypothesis
 
@@ -272,7 +311,7 @@ const (
 
 ```go
 type CorrelationResult struct {
-    testResultBase // Statistic = correlation coefficient, PValue = significance
+    TestResult // Statistic = correlation coefficient, PValue = significance
 }
 ```
 
@@ -344,7 +383,7 @@ fmt.Printf("Bartlett's test: chi-square=%.4f, p=%.4f, df=%d\n", chiSquare, pValu
 func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error)
 ```
 
-**Description:** Test if sample mean differs from hypothesized population mean. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
+**Description:** Test if sample mean differs from hypothesized population mean. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the zero-based row index, and is never counted in `n`.
 
 **Parameters:**
 
@@ -362,7 +401,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error)
 ```
 
-**Description:** Compare means of two independent samples. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
+**Description:** Compare means of two independent samples. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the zero-based row index, and is never counted in `n`.
 
 **Parameters:**
 
@@ -380,7 +419,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TTestResult, error)
 ```
 
-**Description:** Compare means of paired/dependent samples. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming `data1` or `data2` and the one-based row.
+**Description:** Compare means of paired/dependent samples. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming `data1` or `data2` and the zero-based row index.
 
 **Parameters:**
 
@@ -395,7 +434,7 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TT
 
 ```go
 type TTestResult struct {
-    testResultBase
+    TestResult
     Mean     *float64 // Mean of first group
     Mean2    *float64 // Mean of second group (nil for single sample)
     MeanDiff *float64 // Mean difference (paired t-test only)
@@ -429,6 +468,39 @@ if err != nil {
 fmt.Printf("t=%.4f, p=%.4f, mean diff=%.4f\n", result.Statistic, result.PValue, *result.MeanDiff)
 ```
 
+### Newey-West Mean Test
+
+```go
+func NeweyWestMeanTest(series insyra.IDataList, lag int) (*NeweyWestResult, error)
+func NeweyWestLag(n int) int
+```
+
+**Description:** Tests whether the mean of a series is zero when the series is autocorrelated. A plain t-test overstates the t value several times over for a series like the daily returns of a position held 20 days, where neighbours share 19 days. The standard error here is the Newey-West (HAC) one with Bartlett weights `1 - j/(lag+1)`.
+
+**Parameters:**
+
+- `series`: The observations. Type: `insyra.IDataList`.
+- `lag`: Number of autocovariances to include, smaller than the number of observations. A negative `lag` (`stats.AutoLag`) uses `NeweyWestLag(n)`, which is `floor(4 * (n/100)^(2/9))`; 0 and above are used as given. A `lag` of 0 gives the one-sample t-test of mean zero whose variance divides by `n` instead of `n-1`. A common choice for overlapping returns is the holding period plus a few days.
+
+**Returns:**
+
+- `*NeweyWestResult`: `Statistic` (t), `PValue` (two-tailed, t distribution with `N-1` degrees of freedom), `DF`, `Mean`, `StdErr`, `Lag` and `N`.
+- `error`: Fewer than two observations, a value that is not a finite number, or a `lag` that is not smaller than `N`.
+
+The variance has no small-sample correction, which matches `sandwich::NeweyWest(prewhite = FALSE, adjust = FALSE)` and statsmodels `cov_type="HAC"` with `use_correction=False`. statsmodels reads the p-value from the normal distribution rather than from t.
+
+Pass `stats.AutoLag` to let insyra choose the lag from the sample size (the rule of thumb `floor(4*(n/100)^(2/9))`).
+
+**Example:**
+
+```go
+result, err := stats.NeweyWestMeanTest(dailyReturns, stats.AutoLag)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("mean=%.5f, t=%.2f (lag %d)\n", result.Mean, result.Statistic, result.Lag)
+```
+
 ---
 
 ## Z-Tests
@@ -439,7 +511,7 @@ fmt.Printf("t=%.4f, p=%.4f, mean diff=%.4f\n", result.Statistic, result.PValue, 
 func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error)
 ```
 
-**Description:** Test sample mean against population mean when population standard deviation is known. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
+**Description:** Test sample mean against population mean when population standard deviation is known. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the zero-based row index, and is never counted in `n`.
 
 **Parameters:**
 
@@ -457,7 +529,7 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 
 ```go
 type ZTestResult struct {
-    testResultBase
+    TestResult
     Mean  float64  // Sample mean
     Mean2 *float64 // Second sample mean (nil for single sample)
     N     int      // Sample size
@@ -517,7 +589,7 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTes
 
 ```go
 type ChiSquareTestResult struct {
-    testResultBase           // Statistic = chi-square statistic
+    TestResult           // Statistic = chi-square statistic
     ContingencyTable *insyra.DataTable // Contingency table with observed and expected values
 }
 ```
@@ -549,7 +621,7 @@ for i := 0; i < rows; i++ {
 func (r *ChiSquareTestResult) Show()
 ```
 
-**Description:** Displays the chi-square test results including the test statistic, p-value, degrees of freedom, and the contingency table.
+**Description:** Prints the result, the same text `String()` returns, followed by a newline. See [Printing a result](#printing-a-result).
 
 **Parameters:**
 
@@ -589,7 +661,7 @@ result.Show() // Display complete test results with contingency table
 func Skewness(sample any, method ...SkewnessMethod) (float64, error)
 ```
 
-**Description:** Calculate skewness (asymmetry) of a distribution. A cell that is not a finite number (blank, text, `NaN`, `Inf`) is refused with an error naming `sample` and the one-based row; nothing is substituted for it.
+**Description:** Calculate skewness (asymmetry) of a distribution. A cell that is not a finite number (blank, text, `NaN`, `Inf`) is refused with an error naming `sample` and the zero-based row index; nothing is substituted for it.
 
 **Parameters:**
 
@@ -619,7 +691,7 @@ const (
 func Kurtosis(data any, method ...KurtosisMethod) (float64, error)
 ```
 
-**Description:** Calculate kurtosis (tail heaviness) of a distribution. A cell that is not a finite number (blank, text, `NaN`, `Inf`) is refused with an error naming `sample` and the one-based row; nothing is substituted for it.
+**Description:** Calculate kurtosis (tail heaviness) of a distribution. A cell that is not a finite number (blank, text, `NaN`, `Inf`) is refused with an error naming `sample` and the zero-based row index; nothing is substituted for it.
 
 **Parameters:**
 
@@ -649,7 +721,7 @@ const (
 func CalculateMoment(dl insyra.IDataList, n int, central bool) (float64, error)
 ```
 
-**Description:** Calculate n-th moment of a dataset. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
+**Description:** Calculate n-th moment of a dataset. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the zero-based row index, and is never counted in `n`.
 
 **Parameters:**
 
@@ -746,7 +818,7 @@ fmt.Printf("p = %.4f\n", stats.NormCDF(crit)) // 0.9750
 func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)
 ```
 
-**Description:** Compare means across multiple independent groups. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the group and the row, both counted from one.
+**Description:** Compare means across multiple independent groups. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the group (counted from one) and the zero-based row index.
 
 **Parameters:**
 
@@ -762,7 +834,7 @@ func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)
 func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error)
 ```
 
-**Description:** Analyze effects of two factors and their interaction. Cells must be in row-major order: cell `i*factorBLevels + j` holds the data for `A=i, B=j`, so you pass exactly `factorALevels × factorBLevels` of them. Both level counts must be at least 2, and a level count below 2 or a cell count that is not their product fails with `invalid levels or cells`. There is no long-format entry point — reshape your data into cells yourself before calling this function. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the cell and the row. Errors count levels from one, so `cell (A=2, B=1)` is `cells[factorBLevels]`, the first level of B under the second level of A.
+**Description:** Analyze effects of two factors and their interaction. Cells must be in row-major order: cell `i*factorBLevels + j` holds the data for `A=i, B=j`, so you pass exactly `factorALevels × factorBLevels` of them. Both level counts must be at least 2, and a level count below 2 or a cell count that is not their product fails with `invalid levels or cells`. For a one-row-per-observation table, use `TwoWayANOVAFromTable` below instead of splitting rows into cell lists yourself. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the cell and the row. Errors count levels from one, so `cell (A=2, B=1)` is `cells[factorBLevels]`, the first level of B under the second level of A.
 
 **Parameters:**
 
@@ -772,6 +844,23 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 **Returns:**
 
 - `*TwoWayANOVAResult`: Return value.
+
+#### Two Way ANOVA from a long-format table
+
+```go
+func TwoWayANOVAFromTable(dt insyra.IDataTable, valueCol, factorACol, factorBCol string) (*TwoWayANOVAResult, error)
+```
+
+`dt` has one observation per row. The three selectors are column names or Excel letters; an in-range letter takes precedence over an identical name. The function groups observations by the two factors and passes row-major cells to `TwoWayANOVA`. Each factor needs at least two levels, every combination needs an observation, and the table must contain within-cell replication so the error term can be estimated. Values must be finite; factor levels cannot be nil or NaN. Levels follow `insyra.ToMapKey`'s Go map-key equality, so `int(1)` and `int64(1)` are distinct. The input table is not modified.
+
+#### Repeated Measures ANOVA
+
+```go
+func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) (*RepeatedMeasuresANOVAResult, error)
+func RepeatedMeasuresANOVAFromTable(dt insyra.IDataTable, valueCol, conditionCol, subjectCol string) (*RepeatedMeasuresANOVAResult, error)
+```
+
+Each list is one subject's observations in condition order. The table form accepts one subject-condition measurement per row and requires exactly one finite value for every subject and condition. It groups levels in first-seen order and leaves the source table unchanged. Both return `RepeatedMeasuresANOVAResult`.
 
 #### ANOVA Result Types
 
@@ -836,7 +925,7 @@ fmt.Printf("Factor A F=%.4f, p=%.4f\n", result.FactorA.F, result.FactorA.P)
 func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, error)
 ```
 
-**Description:** Test equality of variances between two groups. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
+**Description:** Test equality of variances between two groups. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the zero-based row index, and is never counted in `n`.
 
 **Parameters:**
 
@@ -918,7 +1007,7 @@ func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) (*
 
 ```go
 type FTestResult struct {
-    testResultBase
+    TestResult
     DF2 float64 // Second degrees of freedom
 }
 ```
@@ -948,6 +1037,71 @@ if err != nil {
 }
 fmt.Printf("Regression F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 ```
+
+---
+
+## Multiple Comparisons
+
+### Adjust P-Values
+
+```go
+func AdjustPValues(pvals insyra.IDataList, method PAdjustMethod) (*insyra.DataList, error)
+```
+
+**Description:** Corrects a batch of p-values for testing many hypotheses at once, for example 6 moving-average crossovers × long and short. The result has the same order as the input and each value is capped at 1. It matches R's `p.adjust` for the same method.
+
+**Parameters:**
+
+- `pvals`: The raw p-values. Each must be a number in [0, 1], or `NaN` for a test that was not run. Type: `insyra.IDataList`.
+- `method`: One of `PAdjustHolm` (family-wise error rate, step-down), `PAdjustBonferroni`, `PAdjustHochberg` (family-wise, step-up), `PAdjustBH` (Benjamini-Hochberg false discovery rate) and `PAdjustBY` (Benjamini-Yekutieli, any dependence). Type: `PAdjustMethod`.
+
+**Returns:**
+
+- `*insyra.DataList`: The adjusted p-values. A `NaN` stays `NaN` and is not counted in the number of tests, as in R.
+- `error`: A nil or empty list, a value that is not a number or lies outside [0, 1], or an unknown method.
+
+```go
+adj, err := stats.AdjustPValues(insyra.NewDataList(0.01, 0.04, 0.03, 0.005), stats.PAdjustHolm)
+// adj: 0.03, 0.06, 0.06, 0.02
+```
+
+---
+
+## Random-Walk and Survival Tests
+
+### Variance Ratio
+
+```go
+func VarianceRatio(returns insyra.IDataList, qs ...int) ([]VarianceRatioResult, error)
+func ChowDenning(returns insyra.IDataList, robust bool, qs ...int) (*ChowDenningResult, error)
+```
+
+**Description:** Tests whether returns follow a random walk by comparing the variance of `q`-period returns with `q` times the variance of one-period returns (Lo and MacKinlay 1988). A ratio above 1 means returns trend (positive autocorrelation), below 1 that they reverse. `returns` are single-period returns, ideally log returns so that `q`-period returns are their sums. The unbiased estimators and overlapping `q`-period sums are used, with `n` the number of returns.
+
+**Parameters:**
+
+- `returns`: Single-period returns, at least `q + 1` of them.
+- `qs`: One or more holding periods, each from 2 to `n - 1`.
+- `robust` (`ChowDenning`): use the heteroskedasticity-robust `z*` instead of the homoscedastic `z`.
+
+**Returns:**
+
+- `[]VarianceRatioResult`, one per `q`: `Q`, `VR`, `ZHomoscedastic` and `PHomoscedastic` (valid for independent increments with a constant variance), `ZRobust` and `PRobust` (Lo and MacKinlay's `z*`, valid under heteroskedasticity). The p-values are two-tailed from the normal distribution, an asymptotic result that needs a long series.
+- `*ChowDenningResult` from `ChowDenning`: `MaxZ`, the largest absolute `z` over the periods, and `P`, its p-value with the Sidak correction `1 - (2Φ(max) - 1)^k`, so choosing the best `q` does not inflate the false-positive rate (Chow and Denning 1993).
+- `error`: no `q`, a `q` out of range, a nil list, a value that is not a finite number, or returns with no variance.
+
+### Kaplan-Meier
+
+```go
+func KaplanMeier(durations, observed insyra.IDataList) (*KaplanMeierResult, error)
+```
+
+**Description:** Estimates the survival curve from how long each subject was observed and whether the event happened. `observed` is `true` (or 1) when the event happened at that duration and `false` (or 0) when the subject was censored, that is, still going when observation ended. A subject censored at the same time as an event is counted as at risk for that event. To ask whether a bull market is more likely to end the longer it has lasted, pass each bull market's length, and `false` for the one still running.
+
+**Returns:**
+
+- `*KaplanMeierResult`: one entry per distinct event time in `Times`, `AtRisk`, `Events`, `Censored`, `Survival` and `StdErr` (Greenwood's standard error of the survival probability, `NaN` where every subject at risk had the event), plus `Median` (the first time the curve is at or below 0.5, the midpoint of the stretch when it is exactly 0.5, `NaN` if it never gets there), `N` and `Total`. The values match R's `survival::survfit`.
+- `error`: a nil or empty list, lists of different lengths, a negative or non-finite duration, or an `observed` that is not a bool or 0/1.
 
 ---
 
@@ -1030,7 +1184,7 @@ signed-rank test on `data - mu`). Zero differences are dropped before
 ranking (R `wilcox.test` default zero-method). The CI is the
 Hodges-Lehmann pseudo-median interval on the `data` scale. Every
 observation must be a finite number: a blank, text, `NaN`, or `Inf` cell
-is refused with an error naming `data` and the one-based row.
+is refused with an error naming `data` and the zero-based row index.
 
 **Parameters:**
 
@@ -1053,7 +1207,7 @@ func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, co
 `data1` and `data2` must have the same length. CI is for the median
 paired difference. Every observation must be a finite number: a blank,
 text, `NaN`, or `Inf` cell is refused with an error naming `data1` or
-`data2` and the one-based row.
+`data2` and the zero-based row index.
 
 **Parameters:**
 
@@ -1075,7 +1229,7 @@ func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, conf
 samples. `U1` is for `data1`, `U2 = n1·n2 − U1`; `Statistic` is
 `min(U1, U2)`. CI is the Hodges-Lehmann shift interval. Every
 observation must be a finite number: a blank, text, `NaN`, or `Inf` cell
-is refused with an error naming `data1` or `data2` and the one-based row.
+is refused with an error naming `data1` or `data2` and the zero-based row index.
 
 **Parameters:**
 
@@ -1096,8 +1250,8 @@ func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error)
 **Description:** Kruskal-Wallis H test on ≥ 2 independent samples.
 `Statistic` is the tie-corrected H referred to χ² with `k − 1` df.
 Every observation must be a finite number: a blank, text, `NaN`, or
-`Inf` cell is refused with an error naming the group and the row, both
-counted from one.
+`Inf` cell is refused with an error naming the group (counted from one) and the zero-based row
+index.
 
 **Parameters:**
 
@@ -1118,7 +1272,7 @@ is one subject's measurements across `k` conditions; all subjects must
 have the same length `k`. `Statistic` is the tie-corrected Q referred
 to χ² with `k − 1` df. Every measurement must be a finite number: a
 blank, text, `NaN`, or `Inf` cell is refused with an error naming the
-subject and the condition, both counted from one.
+subject (counted from one) and the zero-based condition index.
 
 **Parameters:**
 
@@ -1132,14 +1286,14 @@ subject and the condition, both counted from one.
 
 ```go
 type WilcoxonTestResult struct {
-    testResultBase             // Statistic = W+ ; DF nil ; CI = Hodges-Lehmann ; EffectSizes: rank_biserial
+    TestResult             // Statistic = W+ ; DF nil ; CI = Hodges-Lehmann ; EffectSizes: rank_biserial
     Z          float64         // asymptotic z (NaN for exact)
     Method     string          // "exact" | "asymptotic"
     NEffective int             // nonzero |d_i| used (zeros dropped)
 }
 
 type MannWhitneyUResult struct {
-    testResultBase             // Statistic = min(U1,U2) ; DF nil ; CI = HL shift ; EffectSizes: rank_biserial, cles_a12
+    TestResult             // Statistic = min(U1,U2) ; DF nil ; CI = HL shift ; EffectSizes: rank_biserial, cles_a12
     U1     float64
     U2     float64
     Z      float64             // asymptotic z (NaN for exact)
@@ -1147,13 +1301,13 @@ type MannWhitneyUResult struct {
 }
 
 type KruskalWallisResult struct {
-    testResultBase             // Statistic = H (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: epsilon_squared
+    TestResult             // Statistic = H (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: epsilon_squared
     NTotal       int
     GroupRankSum []float64      // rank sum per group, input order
 }
 
 type FriedmanTestResult struct {
-    testResultBase             // Statistic = Q (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: kendalls_w
+    TestResult             // Statistic = Q (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: kendalls_w
     NSubjects   int
     KConditions int
 }
@@ -1422,7 +1576,11 @@ OptimMaxIter=100 (matching R `psych::fa` defaults).
 `Restarts` is the number of starting points the rotation is run from; the
 solution with the best criterion value wins, preferring one that converged. The
 criteria are not convex, and geomin and simplimax in particular have local
-minima, so more than one start is worth trying. Every start is an orthogonal
+minima, so more than one start is worth trying. What wins is the lowest
+criterion value, which is not the same as the most readable solution: on an
+over-factored model the extra starts can reach a solution whose factors
+correlate at 0.9, so look at `Phi` before preferring a multi-start result over
+the single-start one. Every start is an orthogonal
 matrix — the identity, the Varimax solution, then random ones — which is what
 `GPArotation::Random.Start` produces for orthogonal and oblique rotations
 alike. The random ones are drawn from a fixed seed, not from the loadings, so
@@ -1945,6 +2103,9 @@ type LinearRegressionResult struct {
     Residuals        []float64
     RSquared         float64
     AdjustedRSquared float64
+
+    CovType CovType // covariance the inference fields come from; CovOLS here
+    Lag     int     // lag CovHAC used, after any automatic choice; 0 otherwise
 }
 ```
 
@@ -1986,6 +2147,55 @@ for i := range result.Coefficients {
         result.ConfidenceIntervals[i][1],
     )
 }
+```
+
+### Linear Regression With Robust or HAC Standard Errors
+
+```go
+type CovType int
+
+const (
+    CovOLS CovType = iota // classical s²(XᵀX)⁻¹ (the default)
+    CovHC0                // White
+    CovHC1                // HC0 · n/(n−k)
+    CovHC2                // squared residuals divided by 1−h
+    CovHC3                // squared residuals divided by (1−h)²
+    CovHAC                // Newey–West
+)
+
+type LinearRegressionOptions struct {
+    CovType CovType
+    Lag     int // CovHAC only: < 0 (stats.AutoLag) = NeweyWestLag(n), 0 = HC0, > 0 as given; must be < n
+}
+
+func LinearRegressionWithOptions(opts LinearRegressionOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error)
+```
+
+**Description:** The same least-squares fit as `LinearRegression`, with standard errors, t values, p values and confidence intervals from the covariance `opts.CovType` names. The coefficients, residuals and R² do not change. `LinearRegression` is this function with zero options and returns the same numbers it always has.
+
+The classical standard errors assume every error has the same variance and is uncorrelated with the others. When the spread of the errors changes with the predictors (heteroskedasticity), `CovHC0`–`CovHC3` stay valid; `CovHC3` is the usual choice in small samples. When the errors are also correlated over time, as with daily returns, use `CovHAC`.
+
+- **HC0–HC3** are the estimators of R's `sandwich::vcovHC` with the same names; h is an observation's leverage. A leverage of exactly 1 makes HC2 and HC3 divide by zero, and the affected values come out `NaN` or `Inf`, as they do in `sandwich`.
+- **HAC** is `(XᵀX)⁻¹ S (XᵀX)⁻¹`, where S sums the autocovariances of the scores up to `Lag` with Bartlett weights `1 − j/(Lag+1)`. No n/(n−k) small-sample factor is applied, matching `sandwich::NeweyWest(lag = L, prewhite = FALSE, adjust = FALSE)` and statsmodels' `cov_type="HAC"` with `use_correction=False`. A negative `Lag` (`stats.AutoLag`) chooses `NeweyWestLag(n)`, as `NeweyWestMeanTest` does; `Lag` 0 is a literal lag of 0 and gives exactly `CovHC0`.
+- **Distribution.** Every CovType reads t values against the t distribution with n−k degrees of freedom, as `lmtest::coeftest` and `NeweyWestMeanTest` do. statsmodels reads robust p-values from the normal distribution unless `use_t=True`, so its default p-values are slightly smaller.
+
+`Lag` is ignored for the other CovTypes, and the result records 0.
+
+Pass `stats.AutoLag` as `Lag` to let insyra choose the lag from the sample size (the rule of thumb `floor(4*(n/100)^(2/9))`).
+
+**Lag conventions.** `stats` has one rule for every lag it takes (`NeweyWestMeanTest`, `LinearRegressionOptions.Lag`): a negative lag is automatic and means `NeweyWestLag(n)`, written `stats.AutoLag` (`-1`; use it rather than a bare number), and 0 and above are used as given, where 0 is a literal lag of 0. The `quant` options (`FactorModelOptions.Lag`, `ForwardOptions.NeweyWestLag`) are built for struct zero values, so they read it another way: 0 is automatic, a positive lag is used as given, and a negative one is an error. Switching the correction off there is its own setting, `NoNeweyWest` on `ForwardOptions`, and `stats.CovHC0` for `FactorModel`. See [quant](quant.md). The result's `CovType` and `Lag` fields say which covariance produced the inference. An unknown CovType or a HAC lag not smaller than the number of observations is an error. The results are checked against statsmodels for every CovType.
+
+**Example:**
+
+```go
+result, err := stats.LinearRegressionWithOptions(
+    stats.LinearRegressionOptions{CovType: stats.CovHAC, Lag: stats.AutoLag},
+    returns, marketExcess,
+)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("alpha=%.5f, HAC t=%.2f (lag %d)\n", result.Coefficients[0], result.TValues[0], result.Lag)
 ```
 
 ### Polynomial Regression
@@ -2249,60 +2459,85 @@ These methods provide point predictions only; R's `predict.lm` and
 
 ## Matrix Operations
 
-### Diag
+Four functions build or read a diagonal. Each takes and returns one type, and none panics: a size below 1 and a nil matrix are errors, and so is an empty slice given to `DiagMatrix`. `DiagMatrixSize` accepts an empty slice and returns a zero matrix of the size asked for.
+
+### DiagOf
+
+```go
+func DiagOf(m mat.Matrix) ([]float64, error)
+```
+
+**Description:** Returns the main diagonal of `m`, `m[i][i]` for `i` up to the smaller of its row and column counts. Any gonum matrix works, including `*mat.Dense` and `*mat.SymDense`.
+
+### DiagMatrix
+
+```go
+func DiagMatrix(v []float64) (*mat.Dense, error)
+```
+
+**Description:** Returns the `len(v)`×`len(v)` matrix with `v` on its diagonal and zeros elsewhere.
+
+### DiagMatrixSize
+
+```go
+func DiagMatrixSize(v []float64, nrow, ncol int) (*mat.Dense, error)
+```
+
+**Description:** Returns an `nrow`×`ncol` matrix whose diagonal starts with `v` and is zero past the end of `v`; every other entry is zero. A `v` of ones gives a rectangular identity. A `v` longer than the diagonal is an error rather than being cut short.
+
+### IdentityMatrix
+
+```go
+func IdentityMatrix(n int) (*mat.Dense, error)
+```
+
+**Description:** Returns the `n`×`n` identity matrix.
+
+**Examples**:
+
+```go
+m := mat.NewDense(2, 3, []float64{1, 2, 3, 4, 5, 6})
+d, err := stats.DiagOf(m) // [1 5]
+if err != nil {
+    log.Fatal(err)
+}
+
+sq, err := stats.DiagMatrix([]float64{1, 2, 3}) // 3x3, 1 2 3 on the diagonal
+if err != nil {
+    log.Fatal(err)
+}
+
+rect, err := stats.DiagMatrixSize([]float64{1, 1}, 2, 3) // [[1 0 0] [0 1 0]]
+if err != nil {
+    log.Fatal(err)
+}
+
+id, err := stats.IdentityMatrix(3)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(d, mat.Formatted(sq), mat.Formatted(rect), mat.Formatted(id))
+```
+
+### Diag (Deprecated)
 
 ```go
 func Diag(x any, dims ...int) (any, error)
 ```
 
-**Description:** Create diagonal matrices or extract diagonal elements from matrices, mimicking R's `diag()` function.
+**Deprecated:** `Diag` took and returned `any`, so every caller had to type-assert the result. It keeps its old behaviour on this line, including the panic for a size below 1 such as `Diag(0)` or `Diag([]float64{})`, and is removed in 0.4. The typed functions return an error there instead. Replace each call with the typed function:
 
-**Parameters:**
+| `Diag` call | Replacement |
+| --- | --- |
+| `Diag(m)` | `DiagOf(m)` |
+| `Diag(v)` | `DiagMatrix(v)` |
+| `Diag(v, n)` | `DiagMatrixSize(v, n, n)` |
+| `Diag(v, nrow, ncol)` | `DiagMatrixSize(v, nrow, ncol)` |
+| `Diag(n)` | `IdentityMatrix(n)` |
+| `Diag(nil)` | `IdentityMatrix(1)` |
+| `Diag(nil, nrow, ncol)` | `DiagMatrixSize(ones, nrow, ncol)`, with `ones` holding `min(nrow, ncol)` ones |
 
-- `x`: Input value of various types:
-  - `*mat.Dense`: Extract diagonal elements as `[]float64`
-  - `[]float64`: Create diagonal matrix from slice
-  - `int` or `float64`: Create identity matrix of specified size
-  - `nil`: Create identity matrix (default 1x1)
-- `dims`: Optional dimensions (0, 1, or 2 values):
-  - No dims: Use default sizing based on input
-  - 1 dim: Set nrow = ncol = dim[0]
-  - 2 dims: Set nrow = dim[0], ncol = dim[1]
-
-**Returns:**
-
-- When extracting: `[]float64` containing diagonal elements
-- When creating: `*mat.Dense` diagonal or identity matrix
-
-**Examples**:
-
-```go
-// Extract diagonal from matrix
-matrix := mat.NewDense(3, 3, []float64{1, 2, 3, 4, 5, 6, 7, 8, 9})
-diagonal, err := Diag(matrix) // Returns []float64{1, 5, 9}
-if err != nil {
-    log.Fatal(err)
-}
-
-// Create diagonal matrix from slice
-values := []float64{1, 2, 3}
-diagMatrix, err := Diag(values) // Returns 3x3 diagonal matrix
-if err != nil {
-    log.Fatal(err)
-}
-
-// Create identity matrix
-identity, err := Diag(3) // Returns 3x3 identity matrix
-if err != nil {
-    log.Fatal(err)
-}
-
-// Create rectangular identity matrix
-rectIdentity, err := Diag(nil, 2, 3) // Returns 2x3 matrix with diagonal 1s
-if err != nil {
-    log.Fatal(err)
-}
-```
+`DiagMatrixSize` refuses a `v` longer than the diagonal, where `Diag(v, nrow, ncol)` cut it short.
 
 ---
 

@@ -1,10 +1,8 @@
 # env-management Specification
 
 ## Purpose
-TBD - created by archiving change cli-repl. Update Purpose after archive.
-
+The CLI's named environments: creating, listing, opening, renaming, deleting and describing them, how their variables, history and config are stored and restored between commands, the default environment, creating one safely from several callers at once, and how a variable the environment cannot store is reported.
 ## Requirements
-
 ### Requirement: Environment create
 系統 SHALL 提供 `env create <name>` 命令建立新環境。
 
@@ -145,3 +143,86 @@ TBD - created by archiving change cli-repl. Update Purpose after archive.
 #### Scenario: A session keeps an unsaved variable
 - **WHEN** 在 REPL 或 DSL session 中建立一個無法保存的變數，之後再執行多個命令
 - **THEN** 警告只出現一次，該變數在 session 結束或以 `env open` 開啟另一個環境之前都能使用
+
+### Requirement: Concurrent Create calls for one environment have one winner
+
+`Create` SHALL succeed for exactly one of several concurrent calls for the same environment name.
+
+#### Scenario: Concurrent Create
+- **WHEN** eight goroutines call `Create("shared")` on the same Manager at once
+- **THEN** exactly one returns nil, and the others report that the environment already exists
+
+### Requirement: Creating an environment never overwrites a file
+
+Creating an environment SHALL NOT overwrite a file already in its folder.
+
+#### Scenario: A state saved before the default files are written
+- **WHEN** an environment's folder already holds a `state.json` with a variable, and the default files are written into it
+- **THEN** the `state.json` still holds that variable, and `history.txt` and `config.json` exist
+
+### Requirement: EnsureDefaultEnvironment tolerates a concurrent creator
+
+`EnsureDefaultEnvironment` SHALL succeed when another caller creates `default` while it runs.
+
+#### Scenario: Concurrent EnsureDefaultEnvironment
+- **WHEN** four goroutines call `EnsureDefaultEnvironment` on a Manager whose root is empty
+- **THEN** every call returns nil
+
+### Requirement: Environment operations have one public name
+
+Every environment operation SHALL be a method of `Manager`; the package-level wrappers that only call `Default()` carry a `Deprecated:` notice and keep acting on `Default()` until 0.4 removes them.
+
+#### Scenario: A deprecated wrapper keeps its meaning
+- **WHEN** a caller runs `SetBasePath(dir)` and then `Create("wrapped")`
+- **THEN** `Default().Exists("wrapped")` is true and `Default().BasePath()` is `dir`
+
+### Requirement: A failed creation leaves no environment
+
+`Manager.Create` SHALL remove the environment directory it made when writing the default files fails, and SHALL return that error. A default file path that holds anything other than a regular file SHALL be an error naming the file, not skipped.
+
+#### Scenario: A directory where a default file belongs
+- **WHEN** the path of `history.txt` holds a directory while the default files are written
+- **THEN** the write fails with an error saying the path is not a regular file
+
+#### Scenario: Creating twice
+- **WHEN** an environment is created a second time
+- **THEN** the call returns `ErrAlreadyExists` and the first environment is untouched
+
+### Requirement: Concurrent saves keep each other's variables
+When a process saves an environment's variables after restoring them, the system SHALL write the variables that process added or changed and remove the ones it removed, leaving the variables another process saved in between unchanged.
+
+#### Scenario: Two commands add different variables
+- **WHEN** two processes restore the same environment, one adds `from_a` and the other adds `from_b`, and both save
+- **THEN** the saved state holds both `from_a` and `from_b`
+
+#### Scenario: One process removes a variable
+- **WHEN** a process removes a variable it restored and saves
+- **THEN** the variable is absent from the saved state, and variables it did not touch are kept
+
+### Requirement: Saves do not collide on a temporary file
+The system SHALL write each save through a temporary file named for that writer and SHALL leave no temporary or lock file behind.
+
+#### Scenario: Twelve simultaneous saves
+- **WHEN** twelve processes each restore, add one variable and save
+- **THEN** every save succeeds and the saved state holds all twelve variables
+
+### Requirement: An unreadable state file stops the command
+When an environment's `state.json` exists but cannot be read, the system SHALL stop before running the command and SHALL report an error naming the file and the cause, and SHALL leave the file unchanged.
+
+#### Scenario: Truncated state file
+- **WHEN** `state.json` is cut off mid-object and a command is run on that environment
+- **THEN** the command fails with an error naming the file, and the file's bytes are unchanged
+
+### Requirement: A missing state file starts an empty environment
+When an environment has no `state.json`, the system SHALL start it with no variables and SHALL NOT report an error.
+
+#### Scenario: No state file
+- **WHEN** the environment's `state.json` does not exist and a command is run
+- **THEN** the command runs with no variables
+
+### Requirement: A lock being released is waited for on Windows
+The system SHALL treat a refusal to create the state lock as a held lock to wait for, and not as a failure, when Windows reports "access denied" for a lock file another process is still deleting.
+
+#### Scenario: Twelve saves at once on Windows
+- **WHEN** twelve processes save one environment at the same moment
+- **THEN** every save succeeds and every variable is present afterwards

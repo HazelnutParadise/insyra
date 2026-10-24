@@ -3,6 +3,7 @@ package stats
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/HazelnutParadise/insyra"
 	internalknn "github.com/HazelnutParadise/insyra/stats/internal/knn"
@@ -174,6 +175,9 @@ type categoricalLabelSet struct {
 }
 
 func categoricalLabelsFromDataList(labels insyra.IDataList, expected int) (*categoricalLabelSet, error) {
+	if insyra.IsNilList(labels) {
+		return nil, errors.New("labels data list is nil")
+	}
 	out := &categoricalLabelSet{
 		encoded: make([]string, 0, expected),
 		values:  make(map[string]any, expected),
@@ -206,8 +210,12 @@ func categoricalLabelsFromDataList(labels insyra.IDataList, expected int) (*cate
 }
 
 func numericVectorFromDataList(values insyra.IDataList, expected int) ([]float64, error) {
+	if insyra.IsNilList(values) {
+		return nil, errors.New("values data list is nil")
+	}
 	out := make([]float64, 0, expected)
 	var size int
+	nonFinite := false
 	values.AtomicDo(func(dl *insyra.DataList) {
 		size = dl.Len()
 		for i := 0; i < dl.Len(); i++ {
@@ -216,9 +224,17 @@ func numericVectorFromDataList(values insyra.IDataList, expected int) ([]float64
 				out = nil
 				return
 			}
+			if math.IsNaN(v) || math.IsInf(v, 0) {
+				nonFinite = true
+				out = nil
+				return
+			}
 			out = append(out, v)
 		}
 	})
+	if out == nil && nonFinite {
+		return nil, errors.New("targets must be finite numbers, found a NaN or infinite value")
+	}
 	if out == nil {
 		return nil, errors.New("targets must contain numeric values")
 	}

@@ -20,6 +20,8 @@ const (
 	defaultEnvsDirName = "envs"
 )
 
+var ErrAlreadyExists = errors.New("environment already exists")
+
 type EnvironmentInfo struct {
 	Name          string
 	Path          string
@@ -48,6 +50,9 @@ type Manager struct {
 	mu          sync.RWMutex
 	basePath    string // empty = use UserHomeDir/.insyra
 	envsDirName string // empty = "envs"
+
+	baseMu    sync.Mutex
+	baselines map[string]map[string]string // env path -> variable -> encoded form last read or written
 }
 
 // NewManager constructs a Manager rooted at basePath. envsDirName overrides
@@ -78,6 +83,8 @@ func Default() *Manager { return defaultManager }
 // default <UserHomeDir>/.insyra. This only affects the package-level
 // wrappers and any caller that explicitly uses Default(); per-session
 // Managers created via NewManager are unaffected.
+//
+// Deprecated: use Default().SetBasePath instead. Removed in 0.4.
 func SetBasePath(path string) { defaultManager.SetBasePath(path) }
 
 // SetBasePath updates this Manager's root. Pass "" to fall back to the
@@ -159,7 +166,7 @@ func (m *Manager) EnsureDefaultEnvironment() error {
 		return err
 	}
 	if !m.Exists("default") {
-		if err := m.Create("default"); err != nil {
+		if err := m.Create("default"); err != nil && !errors.Is(err, ErrAlreadyExists) {
 			return err
 		}
 	}
@@ -201,16 +208,37 @@ func (m *Manager) Create(name string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(envPath); err == nil {
-		return fmt.Errorf("environment already exists: %s", name)
+	if err := os.MkdirAll(filepath.Dir(envPath), 0o755); err != nil {
+		return err
 	}
-	if err := os.MkdirAll(envPath, 0o755); err != nil {
+	if err := os.Mkdir(envPath, 0o755); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("%w: %s", ErrAlreadyExists, name)
+		}
 		return err
 	}
 	if err := writeDefaultFiles(envPath); err != nil {
+		if cleanupErr := os.RemoveAll(envPath); cleanupErr != nil {
+			return errors.Join(err, fmt.Errorf("remove incomplete environment: %w", cleanupErr))
+		}
 		return err
 	}
 	return nil
+}
+
+// HasCompleteDefaults reports whether an existing environment has all default files.
+func (m *Manager) HasCompleteDefaults(name string) bool {
+	path, err := m.ResolveEnvPath(name)
+	if err != nil {
+		return false
+	}
+	for _, file := range []string{"state.json", "history.txt", "config.json"} {
+		info, err := os.Stat(filepath.Join(path, file))
+		if err != nil || !info.Mode().IsRegular() {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Manager) Open(name string) (string, error) {
@@ -537,38 +565,120 @@ func (m *Manager) isEnvironmentEmpty(name string) (bool, error) {
 }
 
 func writeDefaultFiles(envPath string) error {
-	if err := os.WriteFile(filepath.Join(envPath, "history.txt"), []byte(""), 0o600); err != nil {
-		return err
+	files := []struct {
+		name string
+		data string
+		perm os.FileMode
+	}{
+		{"history.txt", "", 0o600},
+		{"state.json", "{\n  \"variables\": {},\n  \"lastAccess\": \"\"\n}\n", 0o644},
+		{"config.json", "{}\n", 0o644},
 	}
-	if err := os.WriteFile(filepath.Join(envPath, "state.json"), []byte("{\n  \"variables\": {},\n  \"lastAccess\": \"\"\n}\n"), 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(envPath, "config.json"), []byte("{}\n"), 0o644); err != nil {
-		return err
+	for _, f := range files {
+		handle, err := os.OpenFile(filepath.Join(envPath, f.name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, f.perm)
+		if errors.Is(err, fs.ErrExist) {
+			info, statErr := os.Lstat(filepath.Join(envPath, f.name))
+			if statErr != nil {
+				return statErr
+			}
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("default environment path %s is not a regular file", f.name)
+			}
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		_, writeErr := handle.WriteString(f.data)
+		closeErr := handle.Close()
+		if writeErr != nil {
+			return writeErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
 	}
 	return nil
 }
 
-// Package-level wrappers around the default Manager. These exist for
-// backward compatibility with code that doesn't yet thread a Manager
-// through. New code should prefer NewManager + method calls.
+// Package-level wrappers around the default Manager. Use the corresponding
+// method on Default() instead.
 
+// BasePath calls Default().BasePath.
+//
+// Deprecated: use Default().BasePath instead. Removed in 0.4.
 func BasePath() (string, error) { return defaultManager.BasePath() }
+
+// EnvsPath calls Default().EnvsPath.
+//
+// Deprecated: use Default().EnvsPath instead. Removed in 0.4.
 func EnvsPath() (string, error) { return defaultManager.EnvsPath() }
+
+// ResolveEnvPath calls Default().ResolveEnvPath.
+//
+// Deprecated: use Default().ResolveEnvPath instead. Removed in 0.4.
 func ResolveEnvPath(name string) (string, error) {
 	return defaultManager.ResolveEnvPath(name)
 }
-func EnsureDefaultEnvironment() error           { return defaultManager.EnsureDefaultEnvironment() }
-func EnsureBaseStructure() error                { return defaultManager.EnsureBaseStructure() }
-func Exists(name string) bool                   { return defaultManager.Exists(name) }
-func Create(name string) error                  { return defaultManager.Create(name) }
-func Open(name string) (string, error)          { return defaultManager.Open(name) }
-func Delete(name string) error                  { return defaultManager.Delete(name) }
+
+// EnsureDefaultEnvironment calls Default().EnsureDefaultEnvironment.
+//
+// Deprecated: use Default().EnsureDefaultEnvironment instead. Removed in 0.4.
+func EnsureDefaultEnvironment() error { return defaultManager.EnsureDefaultEnvironment() }
+
+// EnsureBaseStructure calls Default().EnsureBaseStructure.
+//
+// Deprecated: use Default().EnsureBaseStructure instead. Removed in 0.4.
+func EnsureBaseStructure() error { return defaultManager.EnsureBaseStructure() }
+
+// Exists calls Default().Exists.
+//
+// Deprecated: use Default().Exists instead. Removed in 0.4.
+func Exists(name string) bool { return defaultManager.Exists(name) }
+
+// Create calls Default().Create.
+//
+// Deprecated: use Default().Create instead. Removed in 0.4.
+func Create(name string) error { return defaultManager.Create(name) }
+
+// Open calls Default().Open.
+//
+// Deprecated: use Default().Open instead. Removed in 0.4.
+func Open(name string) (string, error) { return defaultManager.Open(name) }
+
+// Delete calls Default().Delete.
+//
+// Deprecated: use Default().Delete instead. Removed in 0.4.
+func Delete(name string) error { return defaultManager.Delete(name) }
+
+// Clear calls Default().Clear.
+//
+// Deprecated: use Default().Clear instead. Removed in 0.4.
 func Clear(name string, keepHistory bool) error { return defaultManager.Clear(name, keepHistory) }
-func Rename(oldName, newName string) error      { return defaultManager.Rename(oldName, newName) }
-func List() ([]EnvironmentInfo, error)          { return defaultManager.List() }
+
+// Rename calls Default().Rename.
+//
+// Deprecated: use Default().Rename instead. Removed in 0.4.
+func Rename(oldName, newName string) error { return defaultManager.Rename(oldName, newName) }
+
+// List calls Default().List.
+//
+// Deprecated: use Default().List instead. Removed in 0.4.
+func List() ([]EnvironmentInfo, error) { return defaultManager.List() }
+
+// Info calls Default().Info.
+//
+// Deprecated: use Default().Info instead. Removed in 0.4.
 func Info(name string) (EnvironmentInfo, error) { return defaultManager.Info(name) }
-func Export(name, outputPath string) error      { return defaultManager.Export(name, outputPath) }
+
+// Export calls Default().Export.
+//
+// Deprecated: use Default().Export instead. Removed in 0.4.
+func Export(name, outputPath string) error { return defaultManager.Export(name, outputPath) }
+
+// Import calls Default().Import.
+//
+// Deprecated: use Default().Import instead. Removed in 0.4.
 func Import(inputPath, targetName string, force bool) (string, error) {
 	return defaultManager.Import(inputPath, targetName, force)
 }

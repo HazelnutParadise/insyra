@@ -299,7 +299,7 @@ func numericTargets(y *insyra.DataList) ([]float64, error) {
 	for i, value := range raw {
 		converted, ok := insyra.ToFloat64Safe(value)
 		if !ok || math.IsNaN(converted) || math.IsInf(converted, 0) {
-			return nil, fmt.Errorf("ml: regression target must be finite numeric at row %d", i)
+			return nil, fmt.Errorf("ml: regression target must be finite numeric at row index %d", i)
 		}
 		out[i] = converted
 	}

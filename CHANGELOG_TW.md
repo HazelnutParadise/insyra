@@ -8,6 +8,221 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
+## v0.3.5
+
+### Core
+
+- **BREAKING**：Insyra 現在需要 Go 1.26，`go.mod` 的 `go` 指示為 `1.26.9`。Go 1.27 發布後，Go 1.25 就不再有修正版。2026-10-08 公布的十一則標準函式庫漏洞只從 Go 1.26.9 起修正，其中幾則在 `plot.SavePNG` 與 `DataTable.ToSQL` 會用到的 `net/http`。HTTP/2 那幾則在 `golang.org/x/net` 的修正版也需要 Go 1.26。使用 Go 1.21 以上時，除非設定 `GOTOOLCHAIN=local`，`go` 指令會自動下載 1.26.9 工具鏈。
+- CCL 字串字面值裡連寫兩個引號代表一個引號，跟 Excel 一樣：`'it''s'` 是 `it's`，`"say ""hi"""` 是 `say "hi"`。以前字串裡沒辦法放跟外層相同的引號。連續兩個引號以前一定編譯失敗，所以原本能編譯的運算式意思都不變。中括號裡的欄名也適用同樣規則（`['O''Brien']`），statement mode 把腳本切成多個敘述時也照這個規則判斷。反斜線仍然是一般字元。
+- CCL 新增 `DATEPART(d, unit)`，取出日期的某個部分並回傳數字：`'year'`、`'month'`、`'day'`、`'hour'`、`'minute'` 或 `'second'`，以日期本身的時區來算。這條線上的 `DAY`、`HOUR`、`MINUTE`、`SECOND` 是換算時間長度用的，要取日期的這些部分就用 `DATEPART`。
+- CCL 把每一種 Go 整數型別與 `float32` 的格子都當成數字。`int8`、`int16` 與無號整數欄（`parquet.Read` 讀到檔案裡這類欄位時給的就是這些型別）過去不被 CCL 當成數字：`SUM` 回 0、`MAX` 回 `nil`、`A == 1` 回 false，全都不報錯，而 `A * 2`、`IF(A, 'y', 'n')` 與 `ROUND(A, 2)` 會失敗。`A.B` 也接受存成 `int32`、`int64`、`float32` 或其他整數型別的列號，過去會被拒絕；小數部分和 `float64` 列號一樣捨去。`ISNA` 與 `IFNA` 也把 `float32` 的 NaN 當成缺值。
+- CCL 的列號是 NaN、無限大或超出 `int32` 範圍時，在每個平台上都會報錯。以前 `float64` 的這種列號在 arm64 會讀到第 0 列，在 amd64 會報錯。
+- `engine/ccl` 可以註冊序列函式了：用 `RegisterSequenceFunction(name, fn)` 搭配新的 `SeqFunc` 型別，加入一個吃整欄、回傳同樣長度一欄的函式，就像 `LAG`、`CUMSUM` 那樣。以前從模組外只能註冊純量函式與彙總函式。註冊函式的說明也寫清楚函式登錄表的行為：整個程式共用同一份，可以從任意多個 goroutine 同時使用，名稱不分大小寫，同名再註冊一次會取代同一類的函式。什麼都不做的 `ResetEvalDepth`、`ResetFuncCallDepth` 標為 Deprecated。
+- 讀寫不再非得經過硬碟上的檔案。`ReadCSV(r io.Reader, opts)` 可以從任何來源讀 CSV，例如 HTTP 回應、壓縮檔裡的檔案、`embed.FS` 檔案或記憶體中的位元組，`Encoding` 留空時會從開頭的位元組偵測編碼；`ReadCSV_FileWithOptions` 與 `ReadCSV_StringWithOptions` 現在走同一套程式，同樣的位元組不論走哪個入口都得到同樣的表格。`StreamCSV(r, opts, batchSize)` 以 `for dt, err := range insyra.StreamCSV(...)` 一批一批讀 CSV，記憶體裡只放當下這一批；標題列會命名每一批的欄位，型別逐批推斷。`ReadJSON` 接受 `io.Reader`，`ReadExcel(r, sheet, …)` 從來源讀活頁簿，`(*DataTable).WriteCSV` 與 `WriteJSON` 可寫到任何 `io.Writer`，`ToCSVWithOptions` 與 `ToJSON` 現在也透過它們寫檔。既有函式的簽名與結果都沒有改變。
+- DataTable 現在可以寫成 Excel。`(*DataTable).ToExcel(path, ExcelWriteOptions)` 把表格寫成活頁簿裡的一張工作表，活頁簿其他工作表維持原樣，檔案不存在時會自動建立，所以一份報表可以一年放一張表。工作表已經存在時會回傳可用 `ErrSheetExists` 比對的錯誤，檔案完全不動；設定 `IfSheetExists: SheetExistsReplace` 才會取代那張表，而且保留它原本的位置，原本隱藏的也維持隱藏，其他工作表定義的名稱也留在原處。`Sheet` 預設為 `Sheet1`。數字、布林值與時間會存成 Excel 的原生值。檔案要整份寫完才會取代原檔，既有檔案的權限不變。`(*DataTable).WriteExcel(w, opts)` 可以把單一工作表的活頁簿寫到任何 `io.Writer`。
+- `DataList.DataType()` 與 `DataTable.ColDataTypes()` 說明一欄裝的是哪種值：`DataTypeNumber`、`DataTypeString`、`DataTypeBool`、`DataTypeTime`、`DataTypeOther`、`DataTypeMixed`，沒有值時是 `DataTypeEmpty`。缺值（nil，以及任何浮點型別的 NaN）不算，整數和浮點數都算數字，看起來像數字的文字仍是文字。這條線上 decimal 判為 `DataTypeOther`，因為數值函式不把它當數字讀。`ShowTypes` 開頭多一列 `DataType`，在逐格的 Go 型別上方總結每一欄；DataList 的型別資訊也多一行 `DataType:`。
+- DataList 與 DataTable 新增 `ShowHead(n)`、`ShowTail(n)` 以及 `ShowHeadTo`、`ShowTailTo`，是 `ShowRange(n)` 與 `ShowRange(-n)` 更直白的寫法。數量小於 1 時印出錯誤行。
+- 在 nil 的 `DataList` 或 `DataTable`（例如 `GetCol` 找不到欄時回傳的值）上呼叫 `Err()`，會回報 `nil DataList` 或 `nil DataTable`，不再崩潰。只有 `Err()` 有這層保護，nil 值上的其他方法照樣會失敗。
+- DataTable 的 `Show`、`ShowRange`、`ShowTypesRange` 改成只依要印出的列決定欄寬，不再格式化每一格，所以 `ShowRange(5)` 不會再隨表格變大而變慢。會印出全部列的視圖，輸出逐位元組不變。超過 25 列、只印前 20 列與後 5 列時，若某欄最寬的格子落在沒印出的列，該欄會變窄。`Show` 接受的介面匯出為 `Showable`。
+- `DataTable.SliceRows(from, to)` 與 `SliceCols(from, to)` 像 Go 的 `s[from:to]` 那樣取連續的列或欄。`SliceRows` 用 0 起算的位置；`SliceCols` 的兩端可以是 Excel 欄字母或 int 位置，int 可為負數從尾端算，`nil` 代表不限該端：在四欄的表上 `SliceCols("B", "D")`、`SliceCols(1, 3)`、`SliceCols("B", -1)` 是同一個呼叫。無法使用的邊界會記錄錯誤並回傳空表。十個 `FilterRowsByRowIndex…`、`FilterColsByColIndex…` 方法以及 `Headers`、`SetHeaders` 改為 Deprecated，請改用 `SliceRows`、`SliceCols`、`ColNames`、`SetColNames`；它們在 0.3.x 線照常可用。`FilterColsByColIndexLessThan` 與 `…LessThanOrEqualTo` 收到超過最後一欄的字母時回傳所有欄，不再 panic。
+- `DataTable.FilterRowsWhere(keep func(row *DataList) bool)` 把整列交給 `keep`，條件可以比較同一列的兩欄。`Filter` 與 `FilterRows` 改用呼叫開始時的欄位運作，判斷式裡新增或刪除欄位不會再讓篩選崩潰或讀錯欄。`FilterByCustomElement` 改為 Deprecated，`Filter` 做的是同一件事。
+- `Rolling`、`Expanding`、`EWM` 的選項被拒絕時，各 reducer 回傳的空清單會在 `Err()` 帶著錯誤，原本是沒有錯誤的空清單。`ShiftCol`、`DiffCol`、`PctChangeCol` 與四個 `Cum…Col` 遇到不存在的欄時，回傳帶著表格錯誤的空清單；`GroupedColumnTransform.As` 遇到第一個轉換失敗的群組就停止。成功的呼叫結果不變。
+- `GroupBy`、`Pivot`、`Merge` 的鍵以及 `Describe` 的相異值計數，把 `uintptr` 和其他整數寬度視為同一群，`Count` 與 `Counter` 原本就是如此。
+- `DataList.Difference`、`MovingAverage`、`MovingStdev`、`WeightedMovingAverage` 改為 Deprecated，行為不變，在 0.4 移除。替代寫法 `Diff(1)`、`Rolling(RollingOptions{Window: w}).Mean()`、`Rolling(...).Std()` 與帶 `Weights` 的 `Rolling(...)` 會保留輸入長度，並在舊方法失敗或給 NaN 的地方給 `nil`；`Docs/DataList.md` 列出每一項差異。
+- `SqrtRat`、`PowRat`、`SortTimes`、`F64orRat` 改為 Deprecated，它們和資料表無關，在 0.4 移除。`SqrtRat` 遇到 nil 或負值、`PowRat` 遇到 nil 底數時回傳 nil，原本會 panic；`PowRat` 收到負指數時回傳倒數次方，原本回傳 1。
+- `FillNaNWithMean` 的 Deprecated 說明改成給出保留其行為的寫法 `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())`；原本指向會連 nil 一起填的 `FillWithMean`。
+- MySQL 上用 `Replace` 的 `ToSQL` 寫入失敗時會保留舊表。MySQL 在 `DROP TABLE` 時就結束交易，所以插入失敗後舊表和新資料都沒了。現在資料先寫進暫存表，再用一次 `RENAME TABLE` 換上，最後才刪掉舊表；被其他表以外鍵參照的表會在任何變更前被拒絕。帳號需要資料庫層級的 `CREATE`、`INSERT`、`ALTER`、`DROP` 權限。SQLite 與 PostgreSQL 照舊使用單一交易。
+- `ScalerParams.PassThrough` 改為 Deprecated，在這條線意義不變，在 0.4 移除；0.4 的 `SimpleImputer` 會在 fit 時拒絕這種欄位。
+- 新增 `insyra.IsNilList(dl)`，判斷一個 `IDataList` 背後是否沒有清單，包含內嵌 nil `*DataList` 的包裝（例如 `isr.DL`）。`plot` 圖表與 `stats` 函式收到這種包裝時，會當成 nil 清單處理，不再 panic（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。
+- `ReadSlice2D` 的表格寬度改以最寬的一列為準。過去比第一列長的列，多出來的值會默默消失，也沒有錯誤：`[][]float64{{1}, {2, 3}}` 得到的 2x1 表格裡沒有 3。較短的列仍補 nil（[#410](https://github.com/HazelnutParadise/insyra/issues/410)）。
+- `NewDataList` 收到包含自己的 slice 時，不再以 `fatal error: stack overflow` 讓整個程式結束。它最多往下展開 64 層，更深的部分當成一個儲存格保留；一般的巢狀照舊展開。
+- `DataList.Shift` 會把儲存格裡的 slice 當成一個儲存格保留。過去它透過會展開所有 slice 的 `NewDataList` 建立結果，所以含有 `[]byte{1, 2}` 與 `3` 的清單經 `Shift(0)` 後會變成三格。
+- `quant`、`ml`、`nn` 與 `DataTable.Resample` 中指出壞儲存格的錯誤訊息，現在一律寫 `row index N`，從 0 算起，與 `Get(N)` 一致；過去 `quant` 與 `Resample` 從 1 算（`row 3`），`ml` 與 `nn` 從 0 算但只寫 `row N`。只有文字改變，比對舊文字的程式需要更新。
+- 讀入 JSON 的 scaler 會拒絕 `"ref"` 為空的欄位。過去它會綁到第一個沒有名稱的欄並默默改掉該欄的值。`Fit` 不會寫出空參照，所以只有手寫的 JSON 會遇到。
+- 兩個巢狀值的字串內含編碼用的分隔字元時，不再被當成同一個值：清單裡有 `Cell([]any{"a,s:b"})` 與 `Cell([]any{"a", "b"})` 時，`Count([]any{"a", "b"})` 會回 2，`Counter` 只有一筆。巢狀字串現在加上長度前綴。非巢狀的儲存格，以及不含這類字串的巢狀值，計數與過去相同。
+- `Config.TurnOnThreadSafety()` 在 `Config.Dangerously_TurnOffThreadSafety()` 之後把 `DataList` 與 `DataTable` 的實例鎖開回來，其他設定都不動。以前只有 `SetDefaultConfig()` 能開回來，但它會連 log 等級、彩色輸出、panic-on-error、錯誤 hook 與加速設定一起重設。`Dangerously_TurnOffThreadSafety` 的文件也寫明了關掉的範圍：`AtomicDo` 與 `AtomicDoAll` 的鎖，也就是 `DataList` 與 `DataTable` 的每個方法；`Config`、全域錯誤緩衝區與 log 仍然安全。
+- `Config.SetLogger(*slog.Logger)` 讓 insyra 的日誌改送到 `log/slog` 的 logger，不再寫進標準 `log` 套件。每一行會變成一筆 record，保留原本的等級（Fatal 對應 `ERROR+4`），帶有 `package` 與 `func` 屬性，來源標示為寫日誌的那個 insyra 函式，而且不加 `[insyra - …]` 前綴和顏色碼。`SetLogger(nil)` 會改回標準 `log` 套件，`GetLogger` 回傳目前設定的 logger，`SetDefaultConfig` 會清除它。哪些行要送出仍由 `SetLogLevel` 決定，`LogFatal` 在沒有開 `SetDontPanic(true)` 時仍會結束程式。沒有設定 logger 時，輸出和以前完全一樣。CCL 的警告現在也會遵守日誌等級，並送到 logger、錯誤緩衝區與錯誤 hook。
+- `ColIndexToNumber` 與 `ColNumberToIndex` 在 Excel 式欄位索引與從 0 起算的欄位編號之間轉換：`ColIndexToNumber("AA")` 是 `26`，`ColNumberToIndex(26)` 是 `"AA"`。`Config.GetUseColoredOutput` 回報 `SetUseColoredOutput` 設定的值。`ParseColIndex`、`CalcColIndex` 與 `Config.GetDoesUseColoredOutput` 標為 **Deprecated**，回傳值與新名稱相同，0.4 移除。`Config.Dangerously_TurnOffThreadSafety` 刻意保留底線作為警告；取值方法保留 `Get` 前綴，與對應的 `Set` 方法成對。
+- `DataTable.IsEqualTo(other)` 與 `IsTheSameAs(other)` 用來比較兩張表。`IsEqualTo` 在兩張表的列數、欄數相同且每一格都相等時為 true（型別必須相同，兩個 NaN 視為相等，短欄超出的格子視為 `nil`），不看表名、欄名與列名。`IsTheSameAs` 另外要求表名、欄名與列名依序相同。
+- `DataList` 與 `DataTable` 新增 `CreationTime()` 與 `LastModifiedTime()`，回傳依時鐘完整精度記錄的 `time.Time`，相隔不到一秒的兩次修改也分得出來。`GetCreationTimestamp` 與 `GetLastModifiedTimestamp` 標為 **Deprecated**，仍回傳 Unix 秒，0.4 移除。`DataList.IsTheSameAs` 仍以整秒比較這兩個時間，和以前一樣。
+- `DataList.Quantile(p)` 以 pandas、R 與 gonum 使用的 0 到 1 刻度回傳 p 分位數：採用 R 的 type-7 分位數，與 `Percentile`、`Quartile` 使用的定義相同。`nil` 與 `NaN` 會被略過；`p` 超出 `[0, 1]`、儲存格不是數字或整個列表沒有數字時，會記錄警告並回傳 `NaN`。
+- `DataList.Shuffled` 與 `DataTable.Shuffled` 回傳一份名為 `<名稱>_Shuffled` 的洗牌副本，原物件不變。這個版本的 `Shuffle` 仍回傳副本，也沒有棄用，但 0.4 的 `Shuffle` 會就地洗牌，要副本請用 `Shuffled`。
+- `ReadSlice2D` 現在是把二維切片轉成 DataTable 的函式，`Slice2DToDataTable` 標為 **Deprecated**，0.4 移除。`ReadJSONFile`、`DataTable.ToJSONBytes` 與 `DataTable.ToJSONString` 取代 `ReadJSON_File`、`ToJSON_Bytes` 與 `ToJSON_String`；舊名稱標為 **Deprecated**，行為不變，0.4 移除。
+- 修正 `Counter` 對每個 `NaN` 各建立一個取不回來的項目的問題。`NaN` 在 Go 中可以比較，但永遠不等於自己，所以每次 `counter[NaN]++` 都會產生一個沒有人查得到的新 key：一欄有三個 `NaN` 時，結果是三筆各為 1，而 `Count` 正確回報 3。現在同一欄的所有 `NaN` 合成一個項目，計數正確，用 `counter[insyra.ToMapKey(math.NaN())]` 讀取。含有 `NaN` 的陣列或結構同樣不等於自己，也比照處理。`counter[math.NaN()]` 仍然回傳 0，這點一直如此、也必然如此，因為 Go 的 map 無法比對 `NaN` key。
+- 呼叫已經用回傳值告訴你成功時，insyra 不再另外寫一行日誌。`csvxl` 的轉換函式（`CSVToExcel`、`AppendCSVToExcel`、`ExcelToCSV`、`ExcelDirToCSV` 與它們已棄用的舊拼法），以及 `plot.SaveHTML`、`plot.SavePNG`、`gplot.SaveChart`、`py.PipInstall`、`PipUninstall`、`PipList` 的 Info 訊息都拿掉了。留下來的 Info 訊息都是回傳值沒說的事：insyra 猜出來的編碼、`ToSQL` 幫既有資料表加的欄位、`nn.Sequential.Fit` 與準備 Python 環境的進度，以及加速與 thread safety 開關的切換。預設等級維持 `LogLevelInfo`。只想看警告和錯誤，可以呼叫 `SetLogLevel(insyra.LogLevelWarning)`。
+- CCL 中單獨作為整個運算式的欄位範圍或 `@`，現在是目前這一列的值。`AddColUsingCCL("r", "A:B")` 在每個儲存格放入該列 A、B 的值（`[]any`），過去每格放的是呼叫端無法使用的內部範圍值；`LAG(@, 1)`、`LAG(A:B, 1)`、`LEAD(@, 1)` 與 `LEAD(A:B, 1)` 會給每一列前一列或後一列的內容，過去 `LAG(@, 1)` 會把整張攤平的表位移成一個 slice，重複放進每一列。其他序列函數遇到整列時會回報錯誤，因為它們要對每個元素做運算；單獨的列範圍（例如 `1:2`）也是錯誤，訊息會提示改寫成 `A.(1:2)`。`SUM(A:C)`、`SUM(A.(0:1))` 與其他讀取範圍的地方不變。
+- `CsvToExcel`、`CSVToExcel`、`AppendCsvToExcel` 與 `AppendCSVToExcel` 會照呼叫端寫的路徑讀取輸入檔。名為 `export.txt`、`DATA.CSV` 或完全沒有副檔名的 CSV 會當成它本身讀入；過去所有不以小寫 `.csv` 結尾的名稱都會被補上 `.csv`，這些檔案因此打不開。路徑指向的檔案不存在時仍會嘗試補上 `.csv`，所以以前讀得到的檔案現在照樣讀得到。`x` 與 `x.csv` 同時存在時，讀的是 `x`。
+- 值是數字的 enum 現在都會印出名稱。`MergeMode`、`NaNPolicy`、`UnknownPolicy`、`LabelSort`、`ResampleFreq`、`SheetExistsPolicy`、`SQLActionIfTableExists`、`MergeDirection` 與 `ErrPoppingMode` 新增 `String()`，`quant`（`VaRMethod`、`OptionType`、`PortfolioObjective`）、`finance`（`DayCountBasis`、`PaymentTiming`）、`datafetch`、`parquet`、`stats`、`ml` 與 `lp` 的數字 enum 也一樣。`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。不在常數之內的值印成 `型別名(n)`，原本就有 `String()` 的型別也一樣：`DataType(9)` 過去印 `unknown`、`LogLevel(9)` 印 `UNKNOWN`、`AggregateOp(99)` 印 `op(99)`、`ml.ClassAverage(9)` 印 `macro`。回報未知設定的錯誤會寫出名稱：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。所有 enum 的底層型別都沒有變，呼叫端不用改動。
+- **BREAKING**：`ToSQL` 遇到沒有名字的欄位，改用欄位字母（`A`、`B`…）當欄名，不再寫成 MySQL 和 PostgreSQL 都不接受的空白名稱 `""`。例如 `NewDataTable(NewDataList(1, 2, 3)).ToSQL(db, "t")` 在 MySQL 上以前會失敗並回傳 `Incorrect column name ''`，現在會寫出欄位 `A`。寫進 SQLite 的表也一樣，以前的 `""` 欄位現在會叫 `A`。如果已經有別的欄位用了這個字母當名稱（不分大小寫），在寫入任何東西之前就會回傳錯誤。
+- **BREAKING**：CCL 把浮點數轉成文字時，改寫成一般的十進位數字。A = 0.0000001 時，`'x' & A` 現在是 `x0.0000001`，不再是 `x1e-07`；`CONCAT('n=', 1000000)` 是 `n=1000000`，不再是 `n=1e+06`；`LEN(1000000)` 是 7，跟整數欄位存 1000000 時一致，以前是 5。範圍包含 `&`、`CONCAT`、沒有指定格式的 `TOSTR`，以及所有字串函式。1e21 以上、NaN 與無限大維持原本寫法，`ToCSV`、`ToJSON`、`Show` 不變，因為科學記號的數字儲存格讀回來還是同一個數。用浮點數組字串的運算式會得到不同的字串；想要舊寫法請用 `TOSTR(x, '%g')`。
+- 過去用 1 起算數字指出列或欄的錯誤與警告訊息（`ToExcel`、`ToSQL`、`csvxl` 的 Excel 轉 CSV、`mkt.RFM`），現在改寫成從 0 算的 `row index N` / `column index N`，與函式庫其他地方一致。
+- 巢狀超過 32 層 `[]any` 的值，不再因為只有很深的葉子不同，就在 `Count` 與查找時被當成同一個值；超過深度限制後，容器以位址識別，所以這種值的另一份複本是不同的值。原本能用的行為不變，因為 `Count` 在 v0.3.2 對這類值會 panic。
+- 把包含自己的 slice 用 `Append` 放進清單後，`Show` 印出它、或 `stats` 函式拒絕它時，不再因 stack overflow 讓程式結束，這種儲存格改以型別顯示。其他儲存格的顯示不變。
+- 編碼偵測對相同的位元組給出相同的答案。chardet 的辨識器平手時，例如 24 位元組的 Big5 CSV，過去每次呼叫可能被判成 Shift_JIS、GB18030 或 Big5；現在平手時依編碼名稱決定。低信心猜測的處理方式不變。
+
+### CLI
+
+- `save <var> <file.xlsx>` 把表格寫成活頁簿裡的一張工作表：`sheet <name>` 指定工作表（預設 `Sheet1`），`if-exists replace` 會取代已經存在的工作表，不加則拒絕寫入。活頁簿裡的其他工作表都保留。
+- `rolling` 的選項被函式庫拒絕時（例如 `minobs` 大於視窗），指令會帶著原因失敗，不再存下一個空結果。
+- `anova twoway`、`anova repeated` 與新的 `friedman` 指令可直接用每列一筆觀測值的表格，也就是讀進 CSV 後常見的形狀：`anova twoway scores score drug dose`、`anova repeated trial value visit patient`、`friedman trial value visit patient`。第一個參數是 DataTable 變數時採用這種形式；用 DataList 變數時，`anova twoway` 與 `anova repeated` 和以前完全一樣，`friedman s1 s2 s3` 則是每位受試者一個清單。`friedman` 印出 `Q`、自由度與 p 值。
+- CLI 新增等級檢定：`wilcoxon single <var> <mu>`、`wilcoxon paired <var1> <var2>`、`mannwhitney <var1> <var2>`（都可加 `two-sided`、`greater` 或 `less`）以及 `kruskal <group1> <group2> [groupN]`，分別印出 `W=… p=…`、`U=… p=…`、`H=… df=… p=…`。以前只能從 Go 使用。
+- `fillna … ffill|bfill … missing nan|nil` 不再把另一種缺值算進 `limit`：對 `[1, nil, NaN]` 執行 `fillna x ffill limit 1 missing nan` 會得到 `[1, nil, 1]`，原本 `NaN` 會留著沒填。沒有指定 `limit` 時，以及 `mean`、`median`、`mode`、`interpolate`，結果都不變。
+- `engine/dsl` 提供程式不必 import `cli/` 就能用的功能：`Manager`、`NewManager`、`DefaultManager` 用來開啟與建立環境，`Register` 讓你加入自己的指令，並可設定參數數量上限（例如 `MaxArgs(1)`）。`NewSession` 遇到還不存在的環境會建立它，多個 session 同時啟動也安全；`insyra` CLI 的 `--env` 仍會拒絕不存在的環境。
+- `cli/env` 的每個環境操作只留一個名字，也就是 `Manager` 上的方法；`SetBasePath`、`LoadState`、`ReadHistory` 等套件層級函式改為呼叫 `Default()` 的 Deprecated 包裝，照常可用。`env clear --keep-history`、`env import --force`、`accel --mode` 等一次性旗標改成和指令一起宣告，行為不變。
+- 會存下多個變數的指令（例如 `pca`、`kmeans`）現在會在輸出中列出存下的每個變數名稱，存下的值不變。
+- `ttest single` 與 `ztest single` 在一次性模式接受負數的 `mu`；原本 `insyra ttest single x -1` 會把 `-1` 當成旗標而失敗。`wilcoxon single` 本來就可以。
+- 新增 `quantile <var> <p>` 指令，印出 DataList 的分位數，`p` 範圍為 0 到 1；`percentile` 則是 0 到 100。`shuffle ... as` 指令改呼叫 `Shuffled`，所以在每個版本線上都不會改動來源變數的順序。
+- 環境的預設檔案寫入失敗時，`env create`（以及任何會建立 `default` 環境的指令）會移除建到一半的資料夾，不再留下殘缺的環境；預設檔案的路徑上若是一個資料夾，會回報錯誤，不再略過。
+- `convert <file.xlsx> sheet <name> <file.csv> [sheet <name> <file.csv> ...]` 只轉出指名的工作表，各自寫成指定的檔案，檔案可以在不同目錄。指定不存在的工作表、同一張工作表給兩次，或兩張工作表寫到同一個檔案，都會在寫出任何檔案前回錯誤。這個形式預設會在試算表會當成公式執行的文字前加單引號，給 `allowformulas true` 才原樣寫出。`convert <file.xlsx> <file.csv>` 照舊。新增的 `sheets <file.xlsx>` 依順序列出活頁簿的工作表。
+- `col` 現在接受 Excel 風格的欄位字母：`insyra col t A as x`。整數仍是從 0 開始的位置，欄名會先於字母比對，所以原本能用的呼叫意思不變，名稱剛好叫 `A` 的欄位也仍然優先於 A 欄（[#438](https://github.com/HazelnutParadise/insyra/issues/438)）。
+- 所有接受數字的指令參數，現在也可以填數字變數的名稱：`sample frac f`、`kmeans … k`、`shift x n`、`ttest … mu`、`quant` 各形式等，會使用該變數的值；過去填非數字的名稱會報錯。數字變數可由 `sum`、`mean`、`median`、`mode`、`stdev`、`var`、`min`、`max`、`range` 結尾加上 `as <var>` 產生（照常印出結果，只有寫了 `as` 才存下），並可用 `show <var>` 顯示。能解析成數字的字串仍視為數字，所以原本能用的寫法意義不變。
+- 兩個 `insyra` 指令同時使用同一個環境時，不會再互相蓋掉對方的變數。過去存檔會把自己手上那份 `state.json` 整份寫回去，後存的就吃掉先存的；現在只把自己這個指令新增、修改、刪除的部分，疊在存檔當下檔案裡的內容上，過程只用一個很短的鎖和各自獨立的暫存檔。指令之間不會因此排隊等待。
+- `state.json` 讀不了（被截斷、手動改成不合法的 JSON）時，指令現在會停下來並報錯，錯誤訊息指出檔名。以前指令會拿一份空的變數去跑，存檔時把檔案整個蓋掉，環境裡所有變數就此消失；`env open` 還會把前一個環境的變數帶進剛打開的環境。現在什麼都不執行，檔案維持原樣，可以讓你修復。完全沒有 `state.json` 的環境仍然從空的開始。
+- 修正 Windows 上兩個指令同時儲存同一個環境時會遺失變數。Windows 在鎖檔正被另一個程序刪除時，建立鎖檔回報的是「存取被拒」而不是「已存在」，儲存因此直接放棄而不是等待。Windows 在另一個讀取剛好開著 `state.json` 的瞬間也會拒絕取代它；儲存現在會重試這個改名最多兩秒，不再直接失敗。
+
+### `ml` 與 `nn`
+
+- `nn.CustomLoss{Name, Loss, Validate}` 讓 `Sequential.Fit` 能用呼叫者在 tape 上計算的 loss 訓練，原本只接受 `CrossEntropy`、`MSE`、`BCEWithLogits`。`Loss` 回傳由 tape 運算組成、型別為 float32 的純量 loss，`Validate` 可選，用來檢查每個批次的目標值，`Name` 用於錯誤訊息。`Fit` 會在第一個批次前拒絕沒有 `Loss` 的 `CustomLoss`，也會拒絕回傳 nil、不是 float32 純量，或不在 tape 上算出的結果。
+- `Sequential.FitContext(ctx, x, y, cfg)` 讓訓練可以中途取消。每個批次前檢查 context；context 結束時回傳 `ctx.Err()` 與已完成的 epoch，模型保留已經做過的更新。`Fit` 就是以 `context.Background()` 呼叫 `FitContext`，結果不變。
+- `nn.LayerNormShape(dims []int)` 對最後幾個維度做正規化，相當於 torch 的 `normalized_shape` 清單。`LayerNorm` 保留 `interface{}` 參數與原本接受的輸入。
+- `nn` 的每個東西只留一個名字。下列名稱改為 Deprecated，意義不變，在 0.4 移除：十二個層建構子的 `New…` 版本（`NewDense`、`NewReLU`、`NewDropout`、`NewFunc`、`NewMultiHeadAttention`、`NewConv2D`、`NewMaxPool2D`、`NewAvgPool2D`、`NewGlobalAvgPool`、`NewBatchNorm2D`、`NewLayerNorm`、`NewEmbedding`；請用沒有 `New` 的名稱）；loss 選擇器 `SoftmaxCrossEntropy`、`MSELoss`、`BCEWithLogitsLoss`（請用 `CrossEntropy`、`MSE`、`BCEWithLogits`）；`Classifier`、`Regressor`（請用 `BoundClassifier`、`BoundRegressor`）；`MaxPoolOptions`、`AveragePoolOptions`（請用 `PoolOptions`）；`DataType` 與常數 `Float32`、`Float16`、`Float64`（請用 `DType` 與 `DType…` 常數）；`NewFloat32Tensor`、`NewTensorWithDType`（請用 `NewTensor`）；以及 `Tensor.Data`（請用 `Tensor.Float32Data`，它會把其他 dtype 回報為錯誤）。
+- 在 nil 的迴歸模型（`LinearModel`、`RidgeModel`、`LogisticModel` 等迴歸系列）上呼叫 `Predict`，或把 nil 模型指標交給 `ExportONNX`，會回傳錯誤，不再 panic。`Features` 仍是模型值上的方法，`Fit` 系列函式的回傳型別不變。
+- `ml.WriteONNX` 改為 Deprecated，`ExportONNX` 是同一個函式，參數仍是 `any`。`DecisionTreeOptions` 的別名 `DecisionTreeClassifierOptions`、`DecisionTreeRegressorOptions` 也改為 Deprecated。兩者都在 0.4 移除。
+- 新增 `nn.CustomOptimizer{Name, Step}` 與 `Parameter.Update(fn)`，`Sequential.Fit` 可以用呼叫者自己寫的 optimizer 訓練，不再只限 `SGD`、`SGDMomentum`、`Adam`、`AdamW`。`Fit` 每個 batch 呼叫一次 `Step`，傳入模型 tape 上的所有參數；`Update` 把參數的 float32 資料和梯度交給 `fn`（loss 沒有影響到這個參數時，梯度是 nil），`fn` 寫進去的值會保留下來，手寫的訓練迴圈也能用。`Fit` 會在跑任何 batch 之前拒絕沒有 `Step` 的 `CustomOptimizer`。內建的 optimizer 行為不變。（[issue #266](https://github.com/HazelnutParadise/insyra/issues/266)）
+- CPU 上的 2-D float32 `MatMul` 快了 1.2 到 2.9 倍：在 4 vCPU 的 Linux amd64 機器上，1×784×28 從 23.0 µs 降到 19.5 µs，64×784×28 從 694 µs 降到 331 µs，256×256×256 從 5.32 ms 降到 1.81 ms。每個輸出仍照原本的順序累加乘積，所以不是 NaN 的結果每個位元都和原本相同；兩個 NaN 在同一次加法相遇時，得到的 NaN 位元可能不同。（[#463](https://github.com/HazelnutParadise/insyra/issues/463)）
+- 一步訓練現在可以整個留在 GPU。`Tensor.To(dev)`、`ToHost()`、`Device()`、`Release()` 把 float32 張量搬到裝置再搬回來，逐位元不變；`Tape.SetPrecision(accel.PrecisionFloat32Rounded)` 選用一種模式：每個結果都是該運算的精確值只捨入一次到 float32。在這個模式下，`Tape.MatMul`、`Add`（含廣播的偏置）、它們的梯度、梯度累加、`SGD`、`Adam`、`AdamW` 與 `SoftmaxCrossEntropy` 都在不離開裝置的張量上執行。同一步在主機、在 GPU、以及沒有 GPU 時，算出的位元完全一樣。`Tape.Clear()` 丟掉一步的運算與裝置張量、保留參數；`Tape.Close()` 釋放全部。預設的 tape 完全不變。還沒有裝置核心的運算（其餘）收到裝置張量時回傳錯誤並提示 `ToHost`。`Docs/nn.md` 說明兩種模式的差別與使用時機。
+
+### `datafetch`
+
+- 建構子回傳的客戶端改為匯出型別：`TWStock` 回傳 `*TWStockClient`，`YFinance` 回傳 `*YFinanceClient`，它的 `Ticker` 回傳 `*YFTicker`，`TWGeocoding` 回傳 `*TWGeocodingClient`，`GoogleMapsStores` 回傳 `*GoogleMapsStoresClient`。現在可以把客戶端存進自己的 struct 欄位或當成參數傳遞，既有的呼叫不必修改。不是由建構子建立的 TWSE／TPEx 或地理編碼客戶端（例如建構子出錯時回傳的 `nil` 或零值），過去會直接 panic 的地方現在回傳錯誤；原本就有回應的呼叫，回應不變。
+- 每個抓取方法都有接收 `context.Context` 的 `...Context` 版本，做法與 `ReadSQLContext` 相同，原本的方法改為以 `context.Background()` 呼叫它：`TWStockClient` 的六個方法（例如 `DailyPricesContext`）、`ReverseContext`、`ReverseColsContext`、`ReverseTableContext`、`SearchContext`、`GetReviewsContext`，以及 `YFTicker` 所有會發出請求的 26 個方法（例如 `HistoryContext`）。context 會傳到限流等待、重試前的退避、每個 HTTP 請求與評論翻頁之間的等待。被取消的呼叫回傳 `ctx.Err()` 且不重試。`ReverseContext` 的請求若被 context 中斷，回報的是 context 的錯誤而不是 `ErrGeocodeTimeout`，`ErrGeocodeTimeout` 仍只代表服務沒在 `Timeout` 內回應。`ReverseCols` 批次中途被取消時，會回傳已解析的列，其餘標為 `pending`，與配額用完時相同。go-yfinance 無法中途停止已經開始的呼叫，所以 Yahoo Finance 的方法在 context 結束時會立刻返回，那次呼叫則留在背景跑完，期間仍可能送出剩下的請求。`ReverseTableByColName` 沒有 Context 版本，請把同樣的欄位以 Excel 式索引傳給 `ReverseTableContext`。
+- `YFPeriodYearly` 改為 Deprecated，請改用抓取相同財報的 `YFPeriodAnnual`，它產生的表格仍標示 `yearly`。評論排序常數改為 `GoogleMapsStoreReviewSortByRelevance`、`GoogleMapsStoreReviewSortByNewest`、`GoogleMapsStoreReviewSortByHighestRating`、`GoogleMapsStoreReviewSortByLowestRating`，`SortByRelevance` 等四個舊名改為數值相同的 Deprecated 常數。`GoogleMapsStoreReviewsFetchingOptions.MaxWaitingInterval` 以 `time.Duration` 設定翻頁之間最長的等待，規則與原本的毫秒欄位相同，`MaxWaitingInterval_Milliseconds` 改為 Deprecated，兩個都設定時 `GetReviews` 會在發出請求前回傳 `nil` 並記錄警告。這些 Deprecated 名稱在 0.3.x 線上照常可用。
+- `TWStock` 的方法遇到 HTTP 307 或 429 時，會明說是被來源節流：錯誤訊息指出來源認為請求太頻繁，請調大 `Interval` 與 `Retries`，`errors.Is(err, datafetch.ErrTWStockThrottled)` 也會成立（[#434](https://github.com/HazelnutParadise/insyra/issues/434)）。證交所會隨機以安全性頁面回 307，所以 `Docs/datafetch.md` 補上回填歷史時的起始設定值。預設值不變。
+- 新增 `TWStockClient.OddLotQuotes(date, session, market)`，讀取指定市場的每日零股行情單，盤中（`TWOddLotIntraday`，2020-10-26 起）或盤後（`TWOddLotAfterHours`），市場可選證交所或櫃買中心（上櫃，盤後 2011 年 1 月起），回傳數值已轉型、兩個市場欄位相同的資料表；證交所顯示為 `--` 或櫃買顯示為 `0.00` 的價格是 `nil`，沒有報表的日子回傳空表（[#451](https://github.com/HazelnutParadise/insyra/issues/451)）。
+- 新增 `TWStockClient.ShareholdingDistribution()`，讀取集保結算所每週的股權分散表（每檔證券在 17 個持股分級的人數與股數），回傳數值已轉型的資料表。只提供最新一週，需要時間序列請每週自行存檔（[#436](https://github.com/HazelnutParadise/insyra/issues/436)）。
+- 新增 `TWStockClient.DailyQuotesOn(date, market)`，回傳任一過去交易日所有證券的收盤行情，來源是證交所（2004-02-11 起，含之後下市的證券）或櫃買中心，`Change` 帶正負號並以交易所自己的參考價計算，另有交易所的漲跌標記 `Sign`。新增 `TWStockClient.AdvanceDecline(date, market, commonStockOnly)`，交易所有公布時回傳官方的上漲、下跌家數（含漲停、跌停），沒有時由收盤行情計算（[#447](https://github.com/HazelnutParadise/insyra/issues/447)）。
+- 新增 `datafetch.TAIFEX(cfg)`，讀取期交所免金鑰的公開資料：`InstitutionalFutures`、`InstitutionalOptions`（三大法人的成交與未平倉）、`LargeTradersFutures`、`LargeTradersOptions`（大額交易人的未沖銷部位）與 `PutCallRatio`，每個都是數值已轉型的資料表。OpenAPI 只有最新一天（Put/Call 比有 20 天），網站上更長的歷史由 `...History` 方法讀取（[#437](https://github.com/HazelnutParadise/insyra/issues/437)）。
+- `TAIFEXClient` 新增 `InstitutionalFuturesHistory`、`InstitutionalOptionsHistory`、`LargeTradersFuturesHistory`、`LargeTradersOptionsHistory` 與 `PutCallRatioHistory`，從期交所網站的 CSV 下載讀取一段期間內每個交易日，欄位與只給最新一天的方法相同，由舊到新排列。它們依月份分段請求；網站拒絕的範圍會回傳引用網站訊息的錯誤（[#437](https://github.com/HazelnutParadise/insyra/issues/437)）。
+- 新增 `datafetch.ErrTAIFEXRefused`，`TAIFEXClient` 歷史方法在網站拒絕某個範圍時回傳的錯誤可用 `errors.Is` 比對；`from` 或 `to` 為零值時回傳錯誤（[#437](https://github.com/HazelnutParadise/insyra/issues/437)）。
+- 新增 `TWStockClient.MonthlyRevenue(year, month, market)`，從公開資訊觀測站的彙總頁讀取所有上市櫃公司的月營收（與累計營收），2003 年 1 月起，每頁一次請求，回傳數值已轉型的資料表。`PageDate` 是整頁的出表日期，不是各公司公告日（[#435](https://github.com/HazelnutParadise/insyra/issues/435)）。
+- 新增 `datafetch.FinMind(cfg)`，連到 [FinMind](https://finmindtrade.com)，一次請求就能拿到一檔證券的整段歷史。`FinMindClient.Dataset(name, dataID, from, to)` 把任何資料集回傳成數值已轉型的資料表，欄位照 FinMind 原樣。超過請求上限（`ErrFinMindLimit`）與方案權限不足（`ErrFinMindLevel`）可以和其他錯誤分辨，而且不會重試（[#433](https://github.com/HazelnutParadise/insyra/issues/433)）。
+- 新增 `datafetch.JPX(cfg)` 與 `JPXClient.InvestorTypes(from, to, unit)`，讀取日本交易所集團每週的投資部門別売買状況（2016 年起）：每週、每個市場、14 個投資人類別各一列，單位為千日圓或千股。舊的 `.xls` 與 2026 年 9 月起每週一份的 `.xlsx` 都能讀，並處理假日週與跨年週。數字在下一週的第四個營業日公布（[#468](https://github.com/HazelnutParadise/insyra/issues/468)）。
+
+### `stats`
+
+- `DiagOf`、`DiagMatrix`、`DiagMatrixSize`、`IdentityMatrix` 以單一型別建立與讀取對角線，大小小於 1 或矩陣為 nil 時回傳錯誤而不是 panic。`Diag(x any, dims ...int)` 改為 Deprecated，行為不變（包括大小小於 1 時 panic），在 0.4 移除。
+- `TwoWayANOVAFromTable(dt, valueCol, factorACol, factorBCol)`、`RepeatedMeasuresANOVAFromTable(dt, valueCol, conditionCol, subjectCol)` 與 `FriedmanTestFromTable(dt, valueCol, conditionCol, subjectCol)` 讀取每列一筆觀測值的表格，也就是 R 的 `aov` 與 `friedman.test` 讀的形狀，不必再手動拆成各格或每位受試者一個清單。欄位指定為既有欄的 Excel 欄字母，找不到時再比完全相同的欄名。因子層級依 `ToMapKey` 比較，所以 `int(1)` 與 `int64(1)` 是不同層級。`nil` 或 `NaN` 層級、不是有限數字的值、沒有觀測值的組合、各格內沒有重複觀測的雙因子表，以及缺少某個條件或同一條件量了兩次的受試者，都會被拒絕。結果與用同樣資料呼叫 `TwoWayANOVA`、`RepeatedMeasuresANOVA`、`FriedmanTest` 相同。
+- `ChiSquareIndependenceTest` 在同一個 `AtomicDoAll` 裡一次讀取兩個清單，和兩樣本檢定的做法相同。
+- `BartlettTest`、`KruskalWallis`、`FriedmanTest` 與其他卡方類檢定，在各組完全一致時不再以 `cephes: parameter out of bounds` panic：Bartlett 統計量會因捨入誤差略小於 0（兩組相同），`KruskalWallis` 或 `FriedmanTest` 遇到全部數值相同時統計量為 0。現在會回傳結果，p 值為 1；自由度不是正數時，p 值為 NaN 而不是 panic。原本沒有 panic 的結果不變。
+- `PCA` 與 `KNNRegress` 的目標值遇到 `NaN` 或 `±Inf` 會回傳錯誤。過去它們只檢查儲存格能否轉成數字，所以 `PCA` 會回傳 `NaN` 特徵值、`KNNRegress` 會預測出 `NaN` 或 `±Inf`，而且沒有錯誤。原本就回傳錯誤的呼叫不變；原本回傳 `NaN` 結果的呼叫現在改回傳錯誤。
+- **BREAKING（錯誤訊息文字）**：指出儲存格位置的錯誤訊息，現在改從 0 算起，與 `Get(i)` 收的數字一致，並明寫是索引：`data contains a non-finite value at row index 2: NaN`。`v0.3.4` 的假說檢定從 1 算（`row 3`），容易被當成 DataTable 自己的編號，與它差一。範圍包含假說檢定、回歸、相關、偏度、峰度與動差，以及回歸、GLM 與因素分析的 `(index N)`、`row N` 檢查；依傳入順序命名的群組、儲存格與受試者（`group 2`、`subject 3`）仍從 1 算。數值與錯誤型別不變，只有文字改變，比對舊文字的程式需要更新。
+- `CutTreeByK` 與 `CutTreeByHeight` 會拒絕葉子或合併步驟被併入超過一次的樹（手動編輯 `state.json` 可能產生）。過去它們會在要求 1 群時回傳 2 群，且沒有錯誤。
+- 檢定結果現在可以一起處理：共用的結果型別匯出為 `TestResult`，所有檢定結果都符合新的 `HypothesisTestResult` 介面（`Base() *TestResult`），同一個函式或同一個 slice 可以接 t 檢定、Mann-Whitney U 與卡方檢定的結果。`stats` 的每個結果型別都有版面一致的 `String()` 與 `Show()`，`fmt.Println(res)` 會印出可讀的結果，不再是 Go 的原始結構；`fmt.Fprintln(w, res)` 可寫到任何 writer。`ChiSquareTestResult.Show()` 與 `FactorAnalysisResult.Show()` 改印這個版面。
+- **BREAKING**：`FactorAnalysis` 在 `Rotation.Method: FactorRotationOblimin` 且 `Rotation.Restarts` 大於 1 時，現在真的會做參數所描述的搜尋。Oblimin 過去每一輪都自己建一個單位矩陣當起點，忽略傳進來的起點，所以 `Restarts: 20` 是把同一份計算跑 20 次再回傳第一個結果，實測 20 個起點花 202 ms 回傳和 9.9 ms 一模一樣的答案。現在它和其他九個方法一樣從每個起點各旋轉一次，而且 `Delta: 0` 時與同樣 `Restarts` 的 Quartimin 結果逐位元相同，因為兩者本來就是同一個準則。在測試套件的 12 個生成資料集上，載荷最多移動 1.2e-5；在過因子的模型上（用三因子資料抽四個因子），額外的起點會找到單位矩陣起點到不了的另一個盆地，準則值低 47 倍。那個解的因子相關也高達 0.905：`Restarts` 要的是最低的準則值，不保證那個解就是你要的，這對任何多起點的斜交旋轉都成立。預設的 `Restarts: 1` 不變。SPSS 的 Direct Oblimin 是單起點，`Restarts: 1` 仍然是。
+- 新增 `stats.VarianceRatio(returns, qs...)`，計算 Lo-MacKinlay 變異數比 VR(q)，同時給同質變異與異質變異穩健的 z 值；`stats.ChowDenning` 一次檢驗多個持有期。新增 `stats.KaplanMeier(durations, observed)`，從含有「還沒結束」（截尾）的持續時間估計存活曲線，附 Greenwood 標準誤與中位數，結果與 R 的 `survival::survfit` 一致（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
+- 新增 `stats.LinearRegressionWithOptions(opts, y, xs...)`，可回報穩健或 HAC 標準誤：`LinearRegressionOptions{CovType, Lag}` 可選 `CovHC0`～`CovHC3`（R `sandwich::vcovHC` 的異質變異穩健估計），或 `CovHAC`（Bartlett 權重、不做小樣本校正的 Newey-West，同 `sandwich::NeweyWest(prewhite = FALSE, adjust = FALSE)`）。lag 給負數（寫成 `stats.AutoLag`）時用 `NeweyWestLag(n)`。t 值與 p 值用自由度 n-k 的 t 分配，結果已與 statsmodels 比對。`LinearRegression` 的數字與過去完全相同；結果多了 `CovType` 與 `Lag` 欄位，`String()` 也會印出（[#478](https://github.com/HazelnutParadise/insyra/issues/478)）。
+- 新增 `stats.AutoLag`（`-1`），代表「請用 `NeweyWestLag(n)`」的 lag；傳給 `NeweyWestMeanTest` 或 `LinearRegressionOptions.Lag`，就由 insyra 依樣本數選 lag，文件範例也改用它。`NeweyWestMeanTest` 與 `LinearRegressionOptions.Lag` 仍是負數自動、0 以上照用，既有呼叫不受影響。`quant` 的選項讀法相反（0 為自動、負數會回錯），`Docs/stats.md` 把兩種讀法並列說明。
+- 新增 `stats.NeweyWestMeanTest(series, lag)`，用 Newey-West（Bartlett 核）標準誤檢定自我相關序列的平均數是否為零，例如重疊持有期的報酬，一般 t 檢定會把 t 值高估。`lag` 為負數（`stats.AutoLag`）時用 `NeweyWestLag(n)`，為 0 時等於以 `n` 為除數的單樣本 t 檢定（[#457](https://github.com/HazelnutParadise/insyra/issues/457)）。
+
+### `csvxl`
+
+- 編碼參數給空字串，或任何大小寫的 `"auto"`，現在都代表自動偵測，跟核心的 CSV 讀取函式一致。以前空字串代表直接當成 UTF-8，`"AUTO"` 則會被當成不支援的編碼而報錯。
+- 活頁簿唯一的工作表就算名叫 `__insyra_placeholder__`，`AppendCsvToExcel` 也能取代它。以前它用的暫存工作表名稱剛好撞名，結果舊的儲存格都留下來。
+- 函式名稱改用 Go 的拼法，新名稱把每個 CSV 和它的工作表寫在一起，不再用兩個 slice 依位置配對。`CSVToExcel(sheets []SheetFromCSV, output, csvEncoding...)` 與 `AppendCSVToExcel(sheets []SheetFromCSV, existingFile, csvEncoding...)` 接受 `SheetFromCSV{Path, Sheet}`，`Sheet` 留空就用檔名；`CSVDirToExcel`、`ReadCSVToString` 是原本的函式換上新名字。新增 `ExcelToCSV(excelFile, outputDir, options...)` 與 `ExcelDirToCSV`，接受 `ExcelToCSVOptions{Sheets, FileNames, AllowFormulas}`：`FileNames` 以工作表名稱對應 CSV 檔名，鍵不是要轉的工作表時回錯誤，`ExcelDirToCSV` 不接受它；試算表會當成公式執行的文字（以 `=`、`+`、`-`、`@` 開頭且不是數字）預設會在前面加單引號，設定 `AllowFormulas` 才原樣寫出；指定活頁簿沒有的工作表會回錯誤；檔名保留給定的副檔名。兩個 CSV 寫到同一張工作表，或兩張工作表寫到同一個 CSV 檔（不分大小寫，`ExcelDirToCSV` 也跨活頁簿比對），都會在寫出任何東西前回錯誤，`ExcelToCSV` 也會先檢查完所有檔名才寫第一個檔。新增 `SheetNames(excelFile)` 列出活頁簿的工作表。`CsvToExcel`、`AppendCsvToExcel`、`EachCsvToOneExcel`、`ReadCsvToString`、`ExcelToCsv`、`EachExcelToCsv` 改為 Deprecated，簽名、依位置配對的方式與輸出都不變，CLI 一般的 `convert` 仍使用它們。
+- 取代工作表時（`AppendCSVToExcel`，或 `DataTable.ToExcel` 搭配 `SheetExistsReplace`），現在會把舊工作表擁有的東西一併從存檔中移除：註解、表格、繪圖，以及只有它們用到的圖片和圖表。以前這些會原封不動留在檔案裡、沒有任何地方參照，所以舊註解文字還在檔案內，新表格也不能沿用舊表格的名稱。驗證方式是讀存檔內容並用 excelize 重新開啟，沒有用 Excel 或 LibreOffice 實際開過。
+
+### `parquet`
+
+- `ReadFrom` 與 `StreamFrom` 從任何 `io.ReaderAt` 讀取 Parquet 檔，`WriteTo` 寫到任何 `io.Writer` 且不會關閉它。這條線的 `StreamFrom` 和 `Stream` 一樣用 channel 傳送批次。
+- 新的 `WriteContext` 與 `WriteToContext` 搭配 `WriteOptions{Compression, RowGroupSize}` 指定壓縮方式與 row group 大小，context 結束時停止。`WriteContext` 先寫到同目錄的暫存檔，完整寫完才換上，寫入失敗時舊檔不受影響。`Write(dt, path)` 簽名不變，仍是原地寫入。
+- Arrow 讀不了的檔案在每個讀取函式都回傳錯誤，不再 panic；row group 的列數比中繼資料少時，回傳指出哪些 row group 的錯誤，不再靜默少讀。
+- `ApplyCCL` 使用 `@` 時每一列拿到自己的值；原本同一批 1,000 列都拿到該批最後一列的值。
+- Arrow 依賴從 `github.com/apache/arrow/go/v17` 換成 `github.com/apache/arrow-go/v18` v18.8.0。讀出的表格相同，duration 欄仍讀成 `int64` 計數。
+- `ApplyCCL` 改用同目錄裡自己專用名稱的暫存檔，並保留原檔的權限。原本固定寫到 `<path>.tmp`，會覆寫再刪掉使用者自己放在那個名稱的檔案。
+- `ApplyCCL` 改寫檔案時，會沿用每一欄原本的壓縮格式，row group 也維持原檔最大的那一組的大小；腳本新增的欄位則採用第一欄的壓縮格式。過去一律寫成未壓縮、每 1,000 列一組：一個 20 萬列、用 Zstd 壓縮的檔案加一欄後，從 1.7 MB 變成 9.3 MB，分成 200 組。也可以像 `WriteContext` 一樣傳入 `WriteOptions` 自行指定這兩項。路徑是符號連結時會寫到連結指向的檔案，並保留檔案原本的權限，與其他寫檔函式一致。
+- `FilterWithCCL` 與 `ApplyCCL` 因錯誤提早返回時，會停止讀檔。過去負責讀檔的 goroutine 會卡在送下一批資料，檔案也一直開著，直到 context 結束為止；用 `context.Background()` 的話，就是一直到程式結束。
+- `FilterWithCCL` 與 `ApplyCCL` 的結果，現在和先用 `Read` 載入檔案再執行同一個運算式相同。過去它們一次讀 1,000 列、每一批各自計算，所以 `A > AVG(A)` 比的是該批的平均、`SUM(A) > 1000000` 加總的是一批、`# == 0` 會符合每一批的第一列、`A == A.0` 讀到的是該批的第一列，`NEW('c') = CUMSUM(A)` 則把該批整串累計值以文字寫進每個儲存格。聚合函式（`SUM`、`AVG`、`COUNT`、`MIN`、`MAX`、`VAR`、`VARP`、`STDEV`、`STDEVP`）、列索引 `#`、固定列（例如 `A.1500`）現在都對整個檔案計算；內建序列函式（`LAG`、`LEAD`、`DIFF`、`PCT_CHANGE`、`CUMSUM`、`CUMPROD`、`CUMMAX`、`CUMMIN`、`ROLLING_*`）可以跨批次，只保留跨過批次邊界所需的列；其他會讀到目前列以外的部分（`MEDIAN`、你註冊的函式、`A.(# - 1)`、放在其他運算式裡的序列函式），則讀入它所用到的整欄再計算。除非運算式需要整欄，記憶體仍只放一批。`ApplyCCL` 的後一條陳述式現在看得到前面陳述式新增或取代的欄位，`NEW('r') = @` 也會給每一列自己的值。多出來的讀檔次數寫在 `Docs/parquet.md`。
+- `ApplyCCL` 現在接受所有欄位型別。沒有被任何陳述式寫入的欄位，會直接用檔案原本的資料寫回、完全不變：各種寬度的整數與浮點數、日期、decimal、list、struct 等；過去只要有 `int64`、`float64`、文字、布林、時間戳以外的欄位，整個呼叫就失敗。被陳述式寫入的欄位在所有新值都放得進去時，會保留原本的型別，現在也包含 `int8` 到 `int32`、無號整數、`float32`、`Date32` 與 `Date64`；放不進去時則和 `Write` 一樣決定型別。型別改由所有值決定，不再只看前 1,000 列，所以一開始是空值的欄位不會再被寫成文字，把小數指定給整數欄時會改成浮點數，不再被截掉。
+- `Write` 會把所有儲存格都是 `[]byte` 的欄位存成 Parquet 的 `Binary` 欄位，讀回來還是同樣的位元組。以前它把每格寫成 Go 對切片的文字表示，`A-01` 會被存成 `[65 45 48 49]`，二進位欄位讀進來再寫出去，資料就壞了。`[]byte` 與其他種類的值混在同一欄時，若是合法 UTF-8 就寫成它的文字。這種欄位寫出來的檔案跟以前不同。其他型別在來回一趟後仍會變（`Date32` 變成 timestamp、decimal 變成文字、`Int16` 變成 `Int64`）。
+
+### `pd`
+
+- `FromDataList` 遇到空清單時回傳空 Series，原本回傳錯誤。
+
+### `lp`
+
+- `lp.Solve(model, opts)` 與 `lp.SolveFile(path, opts)` 用純 Go 的 go-milp 求解，回傳 `*Solution` 與錯誤，不需要安裝 GLPK；設 `Engine: lp.EngineGLPK` 則改用已安裝的 `glpsol`（透過 `GLPK_PATH` 或 `PATH` 尋找），不會替你安裝任何東西。`SolveFromFile` 與 `SolveModel` 保留原本的 GLPK 行為（包括自動安裝 GLPK），改為 Deprecated，在 0.4 移除。
+
+### `lpgen`
+
+- `LPModel.WriteLP(w)` 把模型以 LP 格式寫到任何 `io.Writer`。`GenerateLPFile` 簽名不變，寫出的檔案和以前相同。
+- `ParseLingo(r)` 與 `ParseLingoFile(path)` 讀取 LINGO 模型，遇到讀不懂的敘述會回傳指出行號的錯誤；底線名稱的舊讀法則是直接略過。新讀法也讀 `@GIN`、`@FREE`、`@BND`。`ParseLingoModel_txt` 與 `ParseLingoModel_str` 行為不變，改為 Deprecated，在 0.4 移除。
+- `GenerateLPFile` 先檢查目標函數型別再開檔。目標型別不合法的模型原本會把既有的 LP 檔截成只剩兩行標頭；現在不動既有檔案，也不建立新檔。
+
+### `isr`
+
+- isr 的表格與清單型別匯出為 `isr.DataTable` 與 `isr.DataList`，自己的函式可以直接接收：`func f(t *isr.DataTable)`。`isr.DT`、`isr.DL` 與 `t.DataTable` 不變。
+- 新增 `(*isr.DataTable).To`，把表格寫到 `isr.CSV`、`isr.JSON` 或 `isr.Excel`，是 `DT.From` 的對應操作，並回傳 error。沒有 `FilePath` 的 `*isr.CSV` 或 `*isr.JSON` 會把輸出放進 `String` 或 `Bytes`。`CSV.OutputOpts` 新增 `IncludeBOM`；`JSON` 與 `Excel` 新增 `OutputOpts`（`UseColIndex`；`RowNames2FirstCol`、`ColNames2FirstRow` 與 `IfSheetExists`）。和 `ToCSV` 一樣，只有設定 `ColNames2FirstRow` 與 `RowNames2FirstCol` 時才會寫出欄名與列名。JSON 預設以欄名為鍵，設定 `UseColIndex` 才改用欄位索引。
+- `DT.From` 與 `Push` 會指出 `Row` 或 `Col` 裡無法使用的型別與鍵：`DT.From(isr.Row{"A": 1, 3.5: 2})` 過去回報 `got unexpected type map[interface {}]interface {}`，現在改為 `isr.Row keys must be all column indices (string or int) or all Name selectors; key 3.5 has type float64`。
+
+### `py`
+
+- 把 Python 結果傳回 Go 的 IPC 伺服器，改成在 `Run…` 呼叫需要時才開啟，同時執行的最後一個呼叫結束時關閉；在 Unix 上關閉時會一併刪掉暫存目錄裡的 socket 檔，v0.3.4 每個執行過 Python 的程式都會留下一個。伺服器開不起來時（例如暫存目錄的路徑太長，放不下 Unix socket），呼叫會在準備環境、啟動 Python 之前回傳包住原因的錯誤，下一次呼叫會再試一次。v0.3.4 只記一則警告，照樣啟動 Python，最後回傳 `exit status 1`。伺服器接受連線失敗時現在會關閉，正在執行的呼叫會回傳錯誤，下一次呼叫會開一個新的伺服器。
+- Python 行程失敗時（回傳值之前就崩潰，或因 context 結束被終止），呼叫會回傳這個失敗；context 結束時回傳 `ctx.Err()`。過去約有一半機率回傳 nil 錯誤且沒有結果，因為執行器同時看到失敗與行程結束，隨機挑了其中一個。Python 在行程失敗前已經送回的結果仍會回傳。
+- 結果裡的表格與清單現在會解碼成表格與清單。`insyra.Return` 會把 dict、list、tuple 裡的 DataFrame 與 Series 轉成表格或清單的格式；過去 `json.dumps` 會失敗，錯誤是 `Object of type DataFrame is not JSON serializable`。型別是 `*insyra.DataTable`、`*insyra.DataList`、`insyra.IDataTable` 或 `insyra.IDataList` 的 struct 欄位、map 值、slice 或 array 元素，會解碼成表格或清單；過去走 JSON 解碼只會得到空表。這類型別的其他部分，解碼方式和 `encoding/json` 完全相同。結果本身是表格或清單時，名叫 `DataTable` 或 `DataList` 的 struct 欄位跟以前一樣收到整個結果；結果是 dict 時逐欄解碼。
+- 空的 DataFrame 回傳時保留欄名；過去欄名會被改成 `a_1`、`b_1` 之類的名稱。
+- 結果裡的 NaN 或無限大會解碼成 `math.NaN()`、`math.Inf(1)` 或 `math.Inf(-1)`。Python 的 `json.dumps` 會把它們寫成 `NaN`、`Infinity`、`-Infinity`，過去整個呼叫會回傳 `nil`，也不報錯：DataFrame 裡只要有一個缺值，拿回來的就是 nil。`None` 跟以前一樣解碼成 `nil`。因為其他原因讀不了的結果（例如 float64 放不下的 `10**400`），現在也會回傳錯誤並說明原因，過去同樣會變成 `nil`。Go 端拒收結果或沒有回應時，`insyra.Return` 會在 Python 裡 raise。
+- 有一欄叫 `name` 的 pandas DataFrame，回傳後不會有表名。pandas 會把欄位當成屬性回傳，過去表名會變成那一欄印出來的內容。直接設在 DataFrame 本身的名稱一樣會成為表名。
+- `RunCodef`、`RunFilef` 與它們的 `Context` 版本的參數，不會再變成 Python 程式碼。過去佔位字元是一個參數接一個參數、對整份程式碼輪流替換，後面的參數替換時，也會改到前面參數插進去的文字：傳入 `$v2` 和 `+__import__('os').system('id')+` 兩段文字，就會執行那個指令。`$v1` 也會吃掉 `$v10` 的開頭。JSON 寫不出來的值（例如 `[]any{文字, math.NaN()}`）會照 Go 的格式原樣寫進程式碼，裡面的文字就成了程式碼。現在佔位字元只在原本的模板裡找一次，依完整編號替換，也只轉換模板用到的參數。寫不成 Python 值的參數，會在 Python 啟動前回傳錯誤，並註明是哪個佔位字元。含有 NaN 或無限大的 `[]float64` 也一樣，過去會寫成 Python 不認得的 `NaN` 或 `+Inf`。
+- 在 ARM64 的 Windows 上用 x86-64 的 Python 也能執行了。polars 的 CPU 檢查把機器讀成 ARM64，在每段程式開頭的 `import polars` 拋出 `unknown feature flag`，所以每次執行都失敗。產生的程式現在會在 ARM64 Windows 上的 x86-64 Python 設定 `POLARS_SKIP_CPU_CHECK=1`，已經設過這個變數時不動它。
+- `py.Run[T](code)` 直接回傳解碼成 `T` 的 Python 結果，不必先宣告變數。新增 `PipInstallContext` 與 `PipUninstallContext`，context 結束時會停止安裝。所有接受 context 的函式傳入 nil 時回傳錯誤（過去會當機），傳入已結束的 context 時回傳 `ctx.Err()`。`RunCodeWithTimeout` 已棄用，請改用 `RunCodeContext` 搭配 `context.WithTimeout`，兩者行為相同。0.4 移除。
+
+### `accel`
+
+- 手動組出來的 `Buffer` 如果宣告為數值欄，但 `Values` 讀不了（`[]float32`、`[]int`、nil）、`Type` 與 `Values` 不符，或欄位長度不一致，`ExecuteNearestExact` 現在會回傳指出欄位的錯誤。過去它會回傳空結果且沒有錯誤（[#441](https://github.com/HazelnutParadise/insyra/issues/441)）。由 `ProjectDataList`、`ProjectDataTable` 建出的資料集不受影響；`bool`、`string`、`any` 欄位仍回報 `dtype-not-eligible`，不會出錯。
+- `accel.PrecisionFloat32Rounded` 是第三種 `Precision`：以 float32 執行，每個結果是精確值只捨入一次，在每個裝置與 CPU 後備路徑上完全相同。`accel.DeviceBuffer`（`NewDeviceBuffer`、`ToHost`、`Clone`、`Release`）、`DefaultDevice`、`ResidentBytes` 與 `RoundedMatMul`、`RoundedAdd`、`RoundedSumRows`、`RoundedSGD` 核心把 float32 陣列留在裝置上；常駐的位元組受裝置記憶體預算限制。
+
+### `plot`
+
+- `CreateWordCloud` 依圖上顯示的文字計數，清單裡有 slice 型儲存格時不再 panic（`hash of unhashable type`）（[#411](https://github.com/HazelnutParadise/insyra/issues/411)）。`1` 和 `"1"` 會算成同一個詞，和它們在圖上看起來一樣。
+- 圖表資料含 `NaN` 或無限大時（`NaN` 的長條、空清單的箱型圖摘要、`NaN` 的儀表），`SaveHTML` 與 `SavePNG` 會回傳錯誤。過去它們會寫出一頁沒有圖的內容並回傳 nil（[#409](https://github.com/HazelnutParadise/insyra/issues/409)）。圖表建構函式不變，在這條線上仍會回傳圖表。
+
+### `gplot`
+
+- `CreateBarChart` 與 `CreateHistogram` 收到 `isr.DL` 這類包著 nil 清單的包裝時，會記錄警告並回傳 nil，不再 panic（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。
+- `LinearRegression`、`PoissonRegression`、`LogisticRegression`、`Correlation`、`Covariance`、`ChiSquareGoodnessOfFit`、`ChiSquareIndependenceTest`、`Silhouette`、`KNNClassify`、`KNNRegress`、`Skewness`、`Kurtosis` 收到 nil 清單（直接傳入或包在 `isr.DL` 這類包裝裡）時回傳錯誤。過去會 panic，迴歸函式還是在自己啟動的 goroutine 裡 panic，讓程式結束。`insyra.ProcessData` 把 nil 清單當成不支援的輸入。
+- `AppendCsvToExcel` 與 `ToExcel` 搭配 `SheetExistsReplace` 取代工作表時，會保留舊工作表的欄寬與檢視（縮放、格線、凍結或分割窗格），這些在 v0.3.4 會一起消失。隱藏的列與欄、合併範圍、列高、註解、超連結與該工作表自己的定義名稱仍會移除，因為它們會藏住或錯置新資料（[#401](https://github.com/HazelnutParadise/insyra/issues/401)）。
+- 新增 `stats.AdjustPValues(pvals, method)`，一次檢驗很多假設時，用 Holm、Bonferroni、Hochberg、Benjamini-Hochberg 或 Benjamini-Yekutieli（`PAdjustHolm`、`PAdjustBonferroni`、`PAdjustHochberg`、`PAdjustBH`、`PAdjustBY`）校正一批 p 值，結果與 R 的 `p.adjust` 一致。`NaN` 維持 `NaN`，也不算進檢驗數（[#444](https://github.com/HazelnutParadise/insyra/issues/444)）。
+
+### `quant`
+
+
+- 新增 `quant.QuantileSort(table, dateCol, signalCol, returnCols, n, opts)`，每天各自把股票依訊號分成 `n` 組，回傳每日每組的平均報酬與檔數，以及最高組減最低組的價差；可設定每天最少檔數、同分處理方式（平均排名或 `pandas.qcut`）、權重欄與是否減掉當天平均（[#458](https://github.com/HazelnutParadise/insyra/issues/458)）。日期依完全相同的值分組（字串連空白一起比，`time.Time` 比時間點），日期不是字串、`time.Time`、布林、整數、浮點數，或底層型別為這些的自訂型別時回傳錯誤，規則與 `FamaMacBeth` 相同。新增 `insyra.IsNilTable`，判斷資料表是否為 nil（含包裝），作法與 `IsNilList` 相同。
+- 新增 `quant.EventStudy(prices, events, dates, opts)` 與 `quant.SignalBuckets(signal, prices, dates, opts)`，量測事件之後、或依訊號分桶之後，多個持有期的超額報酬。部位至少在訊號後一列才進場，基準可用橫斷面平均、指數或序列自身的平均，t 檢定是對月平均做 Newey-West，`NeweyWestLag` 為 0 時自動（上限為月數減 1）、正數照用但不小於月數會回錯、負數會回錯。新增 `ta.Bias` 與 `ta.BiasZ`，計算乖離率與只用前幾天波動度調整的乖離率（[#445](https://github.com/HazelnutParadise/insyra/issues/445)、[#446](https://github.com/HazelnutParadise/insyra/issues/446)）。
+- 新增 `quant.ToneCounts(texts, lexicon, opts)`，依你提供的字詞表計算每則文字的正面與負面詞數，支援否定詞，中文則用最長優先的子字串比對。新增 `quant.DailyTone(published, counts, tradingDays, opts)`，依交易日加總，週末與收盤後的新聞算到下一個交易日，並提供滾動淨語氣與不含當日的往前 z 分數（[#460](https://github.com/HazelnutParadise/insyra/issues/460)）。該 issue 的 NYT Archive 客戶端尚未包含。
+- 新增 `quant.RomanoWolf(perf, opts)`，在許多策略中指出哪些真的贏過基準，目標是把「至少誤報一個」的機率控制在 `Alpha`（Romano 與 Wolf 的逐步檢定，標準化、單尾；此控制是漸近的，有限樣本可能超過 `Alpha`）。輸入和 `RealityCheck` 相同（表格與 `DataSnoopingOptions`），另需設定 `Alpha`，回傳每一欄被判定較佳的步驟（0 表示沒有）、統計量與各步驟的臨界值，不提供調整後 p 值。長期標準差在每次重抽樣上重新估計，用與 `SPATest` 相同的核函數，並以 FFT 計算（[#478 策略檢定補齊](https://github.com/HazelnutParadise/insyra/issues/478)）。
+- 新增 `quant.RealityCheck(perf, opts)` 與 `quant.SPATest(perf, opts)`，用 White 的 Reality Check 與 Hansen 的 SPA 檢定（含 lower、consistent、upper 三個 p 值），檢驗試過很多策略之後，最好的那個是不是真的贏過基準。輸入和 `PBO` 一樣是每個策略一欄的表格，每次自助抽樣對所有欄位用同一組區塊抽樣（預設 stationary bootstrap），所以保留策略之間的相關性，同一個 `Seed` 得到同樣的結果。定義採 Hansen (2005)；Python `arch` 的 SPA 算法不同，差異寫在 `Docs/quant.md`（[#478](https://github.com/HazelnutParadise/insyra/issues/478)）。
+- `quant.FactorModel` 可多傳一個 `FactorModelOptions{CovType, Lag}`，讓 alpha 的 t 值改用 Newey-West（`stats.CovHAC`）或異質變異穩健標準誤，不再只有 OLS 標準誤；日報酬有自我相關時，OLS 會把 alpha 的 t 值算得太大。`Lag` 為 0 時用 `stats.NeweyWestLag(n)`，正數照用，負數會回錯。不給選項時結果不變，`FactorModelResult` 會記錄 `CovType` 與 `Lag`（[#478](https://github.com/HazelnutParadise/insyra/issues/478)）。
+- `quant.ForwardOptions` 新增 `NoNeweyWest`，可在 `EventStudy` 與 `SignalBuckets` 關掉 Newey-West 校正。月序列的 t 檢定此時用 lag 0，變異數除以月數，等同 linearmodels 的 `cov_type="unadjusted"`、`debiased=False`，與除以少一的 `stats.SingleSampleTTest` 不同。`NeweyWestLag` 為 0 代表自動、正數為指定 lag，負數會回錯，`NoNeweyWest` 與非 0 的 `NeweyWestLag` 並用也會回錯。
+- 新增 `quant.FamaMacBeth(table, dateCol, returnCol, charCols, opts)`，對 `QuantileSort` 用的同一種長表格做 Fama-MacBeth 迴歸：每天把報酬對截距與各特徵做一次橫斷面迴歸，再用 Newey-West t 檢定每個係數的時間平均，可以看出某個特徵在控制其他特徵後還能不能解釋報酬。`NeweyWestLag` 為 0 時自動選落後期數，正數照給的值用，負數會回傳錯誤；`NoNeweyWest` 設為 true 則不做自我相關校正（落後期數 0，變異數除以 T，與 `stats.SingleSampleTTest` 除以 T-1 不同），不能和非 0 的 `NeweyWestLag` 一起用。選項還有 `MinObservations`（至少 k+2）與 `Standardize`（每天轉成 z 分數）。特徵欄位若叫 `date`、`intercept`、`r2` 或 `count`，或就是日期欄、報酬欄，會回傳錯誤，日期欄與報酬欄指到同一欄、日期不是字串、`time.Time`、布林、整數、浮點數，或底層型別為這些的自訂型別也一樣，所以 `Daily` 一定是文件寫的那些欄位。個股太少或特徵共線的日子會列進 `Skipped`，不會讓整個呼叫失敗。係數與標準誤和 Python `linearmodels.FamaMacBeth` 用 Bartlett kernel、`debiased=False` 時一致；p 值用自由度 T-1 的 t 分配，linearmodels 則用常態分配。
+- 新增 `quant.AbnormalReturns(prices, events, dates, opts)`，看事件（財報、除息日、月營收公布）前後每一天，個股比它平常的走法高了或低了多少。平常的走法可以是大盤當天的報酬（`AbnormalMarketAdjusted`），也可以是用事件前的 `EstimationWindow` 配出來的 alpha + beta × 大盤報酬（`AbnormalMarketModel`，另需 `MinEstimation`，沒有預設值）；`EventWindow` 決定要看哪幾天。回傳每個相對日的平均異常報酬與累積異常報酬（CAR）、跨事件的 t 檢定與雙尾 p 值，以及每個事件一列的 `CARs` 表。事件所需的任一列缺股價或大盤指數，整個事件會被剔除並計入 `Missing`，所以每一天用的都是同一批事件；同一檔股票的估計期若落在另一個事件的事件窗內，那幾列不會拿來配模型。同一天發生的事件並不獨立，t 檢定可能太容易拒絕，要處理這點時仍用 `EventStudy`。Patell、BMP 與 Kolari-Pynnonen 檢定未實作。屬於 [#478](https://github.com/HazelnutParadise/insyra/issues/478)。
+
+### `quant/ta`
+
+- 技術分析工具放在新套件 `github.com/HazelnutParadise/insyra/quant/ta`，有專屬文件頁 `Docs/quant-ta.md`，寫明我們的研究對這些工具的結論。`quant` 保留評估工具。
+- 新增 `ta.OBV(close, volume)` 與 `OBVFromReturns(returns, volume)`，回傳葛蘭碧的能量潮（OBV）；後者的漲跌方向取自報酬序列，因此可以用還原權息的報酬搭配原始成交股數。`SignedVolumeRatio(returns, volume, n)` 是 `n` 日內的無單位帶號成交量比，`PriceDivergence(price, indicator, n, cooldown)` 標出價格創 `n` 日新高或新低、指標卻沒有跟上的日子（[#456](https://github.com/HazelnutParadise/insyra/issues/456)）。`PriceDivergence` 接受前面幾列是 NaN 的指標（例如 `RSI`），窗口碰到 NaN 的日子回傳 0。
+- 新增 `ta.AdvanceDeclineRatio`、`AdvanceDeclineLine`、`OverboughtOversold` 與 `NetAdvanceRatio`，用每日上漲與下跌家數計算市場寬幅指標。缺值日輸出 `NaN` 並略過，窗口只算有效日，分母為 0 時回 `NaN`（[#448](https://github.com/HazelnutParadise/insyra/issues/448)）。
+- 新增 `ta.RSI(prices, n, opts)`，以 Wilder 或簡單平均（`RSIWilder`、`RSISimple`）計算相對強弱指標，並可選擇缺值的處理方式（`RSIMissingError`、`RSIMissingFlat`、`RSIMissingBreak`）。新增 `quant.SharpeDifferenceTest(a, b, riskFree)`，用 Memmel 修正的 Jobson-Korkie 統計量檢定兩組報酬的 Sharpe 是否相同；有一組沒有變異時回傳 `ErrSharpeUndefined`（[#464](https://github.com/HazelnutParadise/insyra/issues/464)）。
+- 新增 `ta.ZigZag(prices, threshold)`，在不偷看未來的前提下找出價格序列的轉折點，每個轉折附極值位置與確認位置；`ta.Regimes(swings, opts)` 把轉折點轉成多頭與空頭期間，可設定 Pagan 與 Sossounov 的最短階段與最短循環。新增 `quant.BacktestSignal(signal, assetReturns, opts)`，把 0～1 的部位訊號轉成淨報酬：訊號落後一列生效，可帶現金報酬與各自的買進、賣出成本（[#442](https://github.com/HazelnutParadise/insyra/issues/442)）。
+- 新增 `ta.SMA`、`EMA`、`MACD`、`Bollinger`、`TrueRange`、`ATR` 與 `KD`，依 TA-Lib 的定義計算常用技術指標，並以種子固定的合成序列與 TA-Lib 逐筆比對。`KD` 有台灣券商軟體慣用的遞迴平滑（預設）與 TA-Lib STOCH 的移動平均兩種算法（[#474](https://github.com/HazelnutParadise/insyra/issues/474)）。`KDOptions.SegmentStarts` 可列出新資料段開始的列（停牌、重新上市、價格基準改變）：K、D 與最高價、最低價視窗都在該列重新開始，不跨段延續，每一段的結果等於單獨對該段計算 KD。不設定時結果不變。
+- 新增 `ta.ZigZagAdaptive(prices, thresholds, opts)`，是每一列各自有門檻的 `ZigZag`；`ta.VolatilityThresholds(prices, opts)` 回傳隨波動變化的門檻（日對數報酬 60 日標準差的倍數，並有下限）。兩者都會在 `SegmentStarts` 指定的資料斷點重新開始，`Swing` 多了 `Segment` 欄位。`ta.DetectPatterns(prices, swings, opts)` 從這些轉折點找出頭肩頂與頭肩底、雙重頂與雙重底、箱型、三角形、楔型與菱形，每個型態附形成列、突破列與方向、到期列與先前趨勢，且只用當天已知的資訊；`ta.FanBreaks` 找出扇形原理的三次突破。`ta.ClassifyGaps(high, low, close, volume, opts)` 用跳空當天已知的資訊把跳空分成一般、突破、持續與竭盡四類，並回報是否在 5 列與 20 列內回補。`ta.ShuffleBars(open, high, low, close, opts)` 把整根日 K 棒打散再重建價格路徑，作為型態研究的隨機漫步對照組。以種子固定的合成序列與獨立實作比對：每個轉折點、型態、扇形突破與跳空分類皆一致（[#471](https://github.com/HazelnutParadise/insyra/issues/471)）。 `ta.RSI` 也接受同樣的 `SegmentStarts` 選項，在每一段重新開始。
+- 新增 `ta.Keltner`、`KeltnerClassic`、`Donchian`、`SuperTrend`、`ParabolicSAR` 與 `Chandelier`，計算通道與移動停損，每條線都有名字。`Keltner`、`SuperTrend` 與 `Chandelier` 的倍數 `k` 必須是大於 0 的有限數，`ParabolicSAR` 的上限參數名為 `maxAF`。`ParabolicSAR` 與 TA-Lib 一致，其餘以依定義另寫的實作比對（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
+- 新增 `ta.Aroon`、`TRIX`、`KAMA` 與 `Ichimoku`，計算趨勢指標。Aroon、TRIX、KAMA 與 TA-Lib 一致；Ichimoku 的雲是當列正在生效的雲，不往前投影；`IchimokuResult.Chikou` 是延遲線（`Displacement` 列之後的收盤價，依定義會看到未來）；`IchimokuOptions.SegmentStarts` 讓每個資料段各自計算（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
+- 新增 `ta.CCI`、`Momentum`、`ROC`（與 TA-Lib 相同，回傳百分比）、`UltimateOscillator`、`StochRSI`、`ARBR`、`CR`（可選四種中間價）、`ForceIndex` 與 `ElderRay`，計算擺盪與動能指標；前五個與 TA-Lib 一致。`StochRSI` 預設的平滑方式與 `KD` 相同，所以數字和 TA-Lib、TradingView 不同；改用 `KDOptions{Method: KDMovingAverage, SlowK: 1, SlowD: 3}` 就與 TA-Lib 一致。`StochRSI` 接受 `KDOptions.SegmentStarts`，`CROptions` 也多了 `SegmentStarts`：每個資料段各自計算（`StochRSI` 連內部的 RSI 也是），不會跨停牌或重新上市延續，不設定時結果不變。遞迴平滑的 `StochRSI` 從第一個有值的列開始，所以開頭一段價格不動時，K 與 D 不會一路都是 `NaN`（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
+- 新增 `ta.MFI`、`AccumulationDistribution`、`CMF`、`ChaikinOscillator`、`EaseOfMovement`、`NVI`、`PVI` 與 `VolumeProfile`，計算成交量指標；`MFI`、`AccumulationDistribution`、`ChaikinOscillator` 與 TA-Lib 一致，`VolumeProfile` 回傳每個視窗的最大量價位與價值區。`VolumeProfile(high, low, volume, n, opts)` 不再接收從未用到的 close。`EaseOfMovementOptions` 與 `VolumeProfileOptions` 新增 `SegmentStarts`，每個資料段（例如停牌或重新上市之後）各自計算，不設定時結果不變（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
+- 新增 `ta.PivotPoints`、`HeikinAshi`、`TDSequential` 與 `PointAndFigure`，計算價格結構工具：樞軸點價位、以資料表回傳的平均足、TD Sequential 的 setup 與 countdown 計數，以及點數圖欄。`PivotPoints` 回傳 `*PivotPointsResult`。`HeikinAshi` 要求四組序列都是有限、為正、長度相同的價格，且最高價不得低於最低價。`TDSequential` 不是 DeMark 原版規則：countdown 拿收盤價與兩列前的收盤價比較（原版用最低價或最高價），setup 超過 9 之後會從 1 重新開始；countdown 數到 13 之後再完成的 setup 會開始新的 countdown。`PointAndFigure` 遇到箱號超過 2^53 的收盤價（boxSize 相對價格太小）會回傳錯誤（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
+- 新增 `ta.CandlePatterns`，標記十三種 K 線型態（十字星、錘子、吊人、倒錘子、流星、吞噬、孕線、貫穿線、烏雲罩頂、晨星與夜星、紅三兵、黑三鴉），每種一條有名字的清單，實體與影線比例可用選項調整（`LongShadowRatio` 是錘子或星線的長影線至少為實體的幾倍，`ShortShadowRatio` 是相反方向的影線，或紅三兵與黑三鴉的影線，要比參照短幾倍），並有 `CandleOptions.SegmentStarts`，每段資料各自計算，型態不會用到停牌或重新上市之前的 K 線；不設定時結果不變（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
+
 ## v0.3.4
 
 ### Core

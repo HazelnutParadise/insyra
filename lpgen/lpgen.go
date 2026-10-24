@@ -68,6 +68,15 @@ func (lp *LPModel) AddIntegerVar(varName string) *LPModel {
 
 // generate lp file
 func (lp *LPModel) GenerateLPFile(filename string) {
+	// Refuse an unknown objective before opening the file: os.Create
+	// truncates it, so checking afterwards left an existing file cut down to
+	// the banner.
+	switch strings.ToLower(strings.TrimSpace(lp.ObjectiveType)) {
+	case "minimize", "min", "minimum", "maximize", "max", "maximum":
+	default:
+		insyra.LogWarning("lpgen", "GenerateLPFile", "Unknown ObjectiveType %q (expected Minimize/Maximize), returning", lp.ObjectiveType)
+		return
+	}
 	file, err := os.Create(filename)
 	if err != nil {
 		insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to create LP file: %v", err)

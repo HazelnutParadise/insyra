@@ -2,30 +2,87 @@ package parquet
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"time"
+	"unicode/utf8"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 	"github.com/TimLai666/go-decimal/decimal"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/apache/arrow/go/v17/parquet/file"
-	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/flight"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet"
+	"github.com/apache/arrow-go/v18/parquet/file"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
 
-// streamAsArrowRecord：串流讀（可選欄、可選包），一批一批吐出 arrow.Record
-func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan arrow.Record, <-chan error) {
-	recChan := make(chan arrow.Record)
+// pqarrow v18 cannot decode a stored Duration schema even though its Parquet
+// physical type is INT64. Present those columns to pqarrow as INT64; the public
+// table representation has always been the raw int64 count.
+func normalizeStoredDurationSchema(r *file.Reader) error {
+	pairs := r.MetaData().FileMetaData.KeyValueMetadata
+	for _, pair := range pairs {
+		if pair.Key != "ARROW:schema" || pair.Value == nil {
+			continue
+		}
+		serialized, err := base64.StdEncoding.DecodeString(*pair.Value)
+		if err != nil {
+			return fmt.Errorf("parquet: decode stored Arrow schema: %w", err)
+		}
+		stored, err := flight.DeserializeSchema(serialized, memory.DefaultAllocator)
+		if err != nil {
+			return fmt.Errorf("parquet: decode stored Arrow schema: %w", err)
+		}
+		fields := stored.Fields()
+		changed := false
+		for i := range fields {
+			if fields[i].Type.ID() == arrow.DURATION {
+				column := r.MetaData().Schema.ColumnIndexByName(fields[i].Name)
+				if column >= 0 && r.MetaData().Schema.Column(column).PhysicalType() == parquet.Types.Int64 {
+					fields[i].Type = arrow.PrimitiveTypes.Int64
+					changed = true
+				}
+			}
+		}
+		if changed {
+			metadata := stored.Metadata()
+			normalized := arrow.NewSchema(fields, &metadata)
+			*pair.Value = base64.StdEncoding.EncodeToString(flight.SerializeSchema(normalized, memory.DefaultAllocator))
+		}
+		return nil
+	}
+	return nil
+}
+
+func readerProperties() *parquet.ReaderProperties {
+	props := parquet.NewReaderProperties(memory.DefaultAllocator)
+	props.MaxCompressedPageSize = 1 << 40
+	props.MaxUncompressedPageSize = 1 << 40
+	return props
+}
+
+// streamAsArrowRecord：串流讀（可選欄、可選包），一批一批吐出 arrow.RecordBatch
+func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan arrow.RecordBatch, <-chan error) {
+	recChan := make(chan arrow.RecordBatch)
 	errChan := make(chan error, 1)
 
 	go func() {
 		defer close(recChan)
 		defer close(errChan)
+		defer func() {
+			if r := recover(); r != nil {
+				select {
+				case errChan <- unreadableFile(path, r):
+				default:
+				}
+			}
+		}()
 
 		f, err := os.Open(path)
 		if err != nil {
@@ -44,8 +101,12 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 			}
 		}()
 
-		r, err := file.NewParquetReader(f)
+		r, err := file.NewParquetReader(f, file.WithReadProps(readerProperties()))
 		if err != nil {
+			errChan <- err
+			return
+		}
+		if err := normalizeStoredDurationSchema(r); err != nil {
 			errChan <- err
 			return
 		}
@@ -82,6 +143,36 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 				rowGroups[i] = i
 			}
 		}
+		if len(colIndices) == 0 {
+			colIndices = make([]int, r.MetaData().Schema.NumColumns())
+			for i := range colIndices {
+				colIndices[i] = i
+			}
+		}
+		groups := opt.RowGroups
+		if len(groups) == 0 {
+			groups = make([]int, r.NumRowGroups())
+			for i := range groups {
+				groups[i] = i
+			}
+		}
+		if len(colIndices) == 0 {
+			colIndices = make([]int, r.MetaData().Schema.NumColumns())
+			for i := range colIndices {
+				colIndices[i] = i
+			}
+		}
+		counts := make([]int64, len(groups))
+		var want int64
+		countable := len(groups) > 0
+		for i, rg := range groups {
+			if rg < 0 || rg >= r.NumRowGroups() {
+				countable = false
+				break
+			}
+			counts[i] = r.MetaData().RowGroup(rg).NumRows()
+			want += counts[i]
+		}
 
 		rr, err := fr.GetRecordReader(ctx, colIndices, rowGroups)
 		if err != nil {
@@ -90,9 +181,11 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 		}
 		defer rr.Release()
 
+		var read int64
 		for rr.Next() {
-			rec := rr.Record()
+			rec := rr.RecordBatch()
 			rec.Retain()
+			read += rec.NumRows()
 			select {
 			case <-ctx.Done():
 				rec.Release()
@@ -102,12 +195,181 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 			}
 		}
 		if rr.Err() != nil && !errors.Is(rr.Err(), io.EOF) {
-			errChan <- rr.Err()
+			errChan <- readerFailed(ctx, path, rr.Err(), f, colIndices, groups, counts, countable)
+			return
+		}
+		if countable && read != want {
+			errChan <- damagedFile(path, read, want, shortRowGroupsFrom(ctx, f, colIndices, groups, counts))
 		}
 	}()
 
 	return recChan, errChan
 }
+
+// streamArrowRecordsFrom streams records from a random-access Parquet source.
+func streamArrowRecordsFrom(ctx context.Context, src parquet.ReaderAtSeeker, label string, opt ReadOptions, batchSize int, done func()) (<-chan arrow.RecordBatch, <-chan error) {
+	recChan := make(chan arrow.RecordBatch)
+	errChan := make(chan error, 1)
+	go func() {
+		defer close(recChan)
+		defer close(errChan)
+		defer func() {
+			if r := recover(); r != nil {
+				select {
+				case errChan <- unreadableFile(label, r):
+				default:
+				}
+			}
+		}()
+		if done != nil {
+			defer done()
+		}
+		r, err := file.NewParquetReader(src, file.WithReadProps(readerProperties()))
+		if err != nil {
+			errChan <- err
+			return
+		}
+		if err := normalizeStoredDurationSchema(r); err != nil {
+			errChan <- err
+			return
+		}
+		defer func() {
+			if err := r.Close(); err != nil {
+				insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", label, err)
+			}
+		}()
+		fr, err := pqarrow.NewFileReader(r, pqarrow.ArrowReadProperties{Parallel: true, BatchSize: int64(batchSize)}, memory.DefaultAllocator)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		var colIndices []int
+		if len(opt.Columns) > 0 {
+			for _, name := range opt.Columns {
+				idx := r.MetaData().Schema.ColumnIndexByName(name)
+				if idx < 0 {
+					errChan <- fmt.Errorf("column %s not found", name)
+					return
+				}
+				colIndices = append(colIndices, idx)
+			}
+		}
+		groups := opt.RowGroups
+		if len(groups) == 0 {
+			groups = make([]int, r.NumRowGroups())
+			for i := range groups {
+				groups[i] = i
+			}
+		}
+		if len(colIndices) == 0 {
+			colIndices = make([]int, r.MetaData().Schema.NumColumns())
+			for i := range colIndices {
+				colIndices[i] = i
+			}
+		}
+		counts := make([]int64, len(groups))
+		var want int64
+		countable := len(groups) > 0
+		for i, rg := range groups {
+			if rg < 0 || rg >= r.NumRowGroups() {
+				countable = false
+				break
+			}
+			counts[i] = r.MetaData().RowGroup(rg).NumRows()
+			want += counts[i]
+		}
+		rr, err := fr.GetRecordReader(ctx, colIndices, groups)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer rr.Release()
+		var read int64
+		for rr.Next() {
+			rec := rr.RecordBatch()
+			rec.Retain()
+			read += rec.NumRows()
+			select {
+			case <-ctx.Done():
+				rec.Release()
+				errChan <- ctx.Err()
+				return
+			case recChan <- rec:
+			}
+		}
+		if rr.Err() != nil && !errors.Is(rr.Err(), io.EOF) {
+			errChan <- readerFailed(ctx, label, rr.Err(), src, colIndices, groups, counts, countable)
+			return
+		}
+		if countable && read != want {
+			errChan <- damagedFile(label, read, want, shortRowGroupsFrom(ctx, src, colIndices, groups, counts))
+		}
+	}()
+	return recChan, errChan
+}
+
+func unreadableFile(label string, r any) error {
+	return fmt.Errorf("parquet: %s is not a readable Parquet file: %v", label, r)
+}
+
+func damagedFile(label string, read, want int64, groups []int) error {
+	return fmt.Errorf("parquet: %s is damaged: its metadata holds %d rows in the row groups read, but %d were read; row groups %v did not read in full", label, want, read, groups)
+}
+
+func readerFailed(ctx context.Context, label string, err error, src parquet.ReaderAtSeeker, columns, groups []int, counts []int64, countable bool) error {
+	if ctx.Err() != nil || !countable {
+		return err
+	}
+	bad := shortRowGroupsFrom(ctx, src, columns, groups, counts)
+	if len(bad) == 0 {
+		return err
+	}
+	var want int64
+	for _, n := range counts {
+		want += n
+	}
+	return fmt.Errorf("parquet: %s is damaged: its metadata holds %d rows in the row groups read; row groups %v did not read in full: %w", label, want, bad, err)
+}
+
+func shortRowGroupsFrom(ctx context.Context, src parquet.ReaderAtSeeker, columns, groups []int, counts []int64) []int {
+	var bad []int
+	for i, rg := range groups {
+		pr, err := file.NewParquetReader(readerAtSeekerNoClose{ReaderAtSeeker: src}, file.WithReadProps(readerProperties()))
+		if err != nil {
+			bad = append(bad, rg)
+			continue
+		}
+		if err := normalizeStoredDurationSchema(pr); err != nil {
+			_ = pr.Close()
+			bad = append(bad, rg)
+			continue
+		}
+		fr, err := pqarrow.NewFileReader(pr, pqarrow.ArrowReadProperties{Parallel: true}, memory.DefaultAllocator)
+		if err != nil {
+			_ = pr.Close()
+			bad = append(bad, rg)
+			continue
+		}
+		t, err := fr.ReadRowGroups(ctx, columns, []int{rg})
+		if err != nil {
+			_ = pr.Close()
+			bad = append(bad, rg)
+			continue
+		}
+		rows := t.NumRows()
+		t.Release()
+		_ = pr.Close()
+		if rows != counts[i] {
+			bad = append(bad, rg)
+			continue
+		}
+	}
+	return bad
+}
+
+type readerAtSeekerNoClose struct{ parquet.ReaderAtSeeker }
+
+func (readerAtSeekerNoClose) Close() error { return nil }
 
 func chunkedToSlice(chunked *arrow.Chunked) any {
 	if chunked.Len() == 0 {
@@ -217,7 +479,7 @@ func supportedArrowType(dt arrow.DataType) bool {
 		arrow.BOOL,
 		arrow.STRING, arrow.LARGE_STRING,
 		arrow.BINARY, arrow.LARGE_BINARY, arrow.FIXED_SIZE_BINARY,
-		arrow.TIMESTAMP, arrow.DATE32, arrow.DATE64,
+		arrow.TIMESTAMP, arrow.DATE32, arrow.DATE64, arrow.DURATION,
 		arrow.DECIMAL128, arrow.DECIMAL256,
 		arrow.NULL:
 		return true
@@ -280,6 +542,8 @@ func getVal(arr arrow.Array, i int) any {
 		return append([]byte(nil), a.Value(i)...)
 	case *array.Timestamp:
 		return a.Value(i).ToTime(a.DataType().(*arrow.TimestampType).Unit)
+	case *array.Duration:
+		return int64(a.Value(i))
 	case *array.Date32:
 		return a.Value(i).ToTime().UTC()
 	case *array.Date64:
@@ -326,7 +590,7 @@ func newColumn(data any, name string) *insyra.DataList {
 	return insyra.NewDataList(data).SetName(name)
 }
 
-func recordToDataTable(rec arrow.Record) *insyra.DataTable {
+func recordToDataTable(rec arrow.RecordBatch) *insyra.DataTable {
 	dataTable := insyra.NewDataTable()
 	if rec == nil {
 		return dataTable
@@ -394,6 +658,98 @@ func dataTableToArrowTable(dt insyra.IDataTable) (arrow.Table, error) {
 	return table, nil
 }
 
+// columnKinds is which kinds of value a column holds, kept apart from the type
+// it decides so that a caller with several batches of the same column can feed
+// all of them in and read one answer, which is what ApplyCCL needs when a
+// column's type is settled from a file rather than from one batch.
+type columnKinds struct {
+	hasInt, hasFloat, hasString, hasBool, hasTime, hasBytes, hasOther bool
+
+	// lossyInt64 says a value has been added that an int64 cannot hold without
+	// loss: a float that is not a whole number, one outside int64's range, or a
+	// number of a type that is not one. The flags above cannot say that on their
+	// own, because hasFloat is just as true of 1.5 as of 2, which is what lets
+	// ApplyCCL keep an int64 column written into with whole numbers and widen it
+	// for anything else.
+	lossyInt64 bool
+
+	// lossyFloat64 says an integer has been added that a float64 cannot hold
+	// exactly: one of magnitude above 2^53, whatever Go type it arrived as. A
+	// float64 holds every integer up to there and skips some past it, so one
+	// written into a float64 column comes back as a neighbour of itself, a number
+	// nobody wrote. A float needs no flag: it is a float64 already.
+	lossyFloat64 bool
+
+	// lossyNarrow says, for each type narrower than int64 and float64 that a column
+	// the file had can keep, that a value has been added which that type cannot
+	// hold: a whole number outside an integer type's range, a number with a
+	// fraction for an integer type, a float that does not survive the trip through
+	// float32, a time that is not midnight UTC for a date, and any value of another
+	// kind. Like lossyInt64 it does not change the type Write gives the column; it
+	// is what lets ApplyCCL keep the file's own type.
+	lossyNarrow narrowTypes
+}
+
+// add records one batch of a column's values. A value it does not know is
+// counted as hasOther, which is what makes the column's answer String, the one
+// type every value can be written as.
+func (k *columnKinds) add(data []any) {
+	for _, v := range data {
+		if v == nil {
+			continue
+		}
+		if exceedsInt64Loss(v) {
+			k.lossyInt64 = true
+		}
+		if exceedsFloat64Loss(v) {
+			k.lossyFloat64 = true
+		}
+		if k.lossyNarrow != narrowEvery {
+			k.lossyNarrow |= narrowLossOf(v, k.lossyNarrow)
+		}
+		switch v.(type) {
+		case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
+			k.hasInt = true
+		case float64, float32:
+			k.hasFloat = true
+		case string:
+			k.hasString = true
+		case bool:
+			k.hasBool = true
+		case time.Time:
+			k.hasTime = true
+		case []byte:
+			k.hasBytes = true
+		default:
+			k.hasOther = true
+		}
+	}
+}
+
+// arrowType is the Arrow type the kinds answer, under the same rules
+// inferArrowType applies to one batch.
+func (k *columnKinds) arrowType() arrow.DataType {
+	numeric := k.hasInt || k.hasFloat
+	switch {
+	case k.hasBytes && !k.hasString && !k.hasOther && !k.hasInt && !k.hasFloat && !k.hasBool && !k.hasTime:
+		// Only byte slices: the column is Binary, so the bytes come back as bytes.
+		return arrow.BinaryTypes.Binary
+	case k.hasString || k.hasOther || k.hasBytes:
+		return arrow.BinaryTypes.String
+	case k.hasBool && !numeric && !k.hasTime:
+		return arrow.FixedWidthTypes.Boolean
+	case k.hasTime && !numeric && !k.hasBool:
+		return arrow.FixedWidthTypes.Timestamp_ns
+	case k.hasFloat && !k.hasBool && !k.hasTime:
+		return arrow.PrimitiveTypes.Float64
+	case k.hasInt && !k.hasBool && !k.hasTime:
+		return arrow.PrimitiveTypes.Int64
+	default:
+		// mixed incompatible kinds (bool+numeric, time+numeric, ...) or all nil
+		return arrow.BinaryTypes.String
+	}
+}
+
 // inferArrowType scans ALL values in a column (not just the first non-nil one)
 // so a mixed column does not panic or silently truncate on Write:
 //   - a column mixing ints and floats is promoted to Float64 (no truncation);
@@ -401,42 +757,9 @@ func dataTableToArrowTable(dt insyra.IDataTable) (arrow.Table, error) {
 //     time+number), falls back to String, which conv.ToString can represent for
 //     every value.
 func inferArrowType(data []any) arrow.DataType {
-	var hasInt, hasFloat, hasString, hasBool, hasTime, hasOther bool
-	for _, v := range data {
-		if v == nil {
-			continue
-		}
-		switch v.(type) {
-		case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
-			hasInt = true
-		case float64, float32:
-			hasFloat = true
-		case string:
-			hasString = true
-		case bool:
-			hasBool = true
-		case time.Time:
-			hasTime = true
-		default:
-			hasOther = true
-		}
-	}
-	numeric := hasInt || hasFloat
-	switch {
-	case hasString || hasOther:
-		return arrow.BinaryTypes.String
-	case hasBool && !numeric && !hasTime:
-		return arrow.FixedWidthTypes.Boolean
-	case hasTime && !numeric && !hasBool:
-		return arrow.FixedWidthTypes.Timestamp_ns
-	case hasFloat && !hasBool && !hasTime:
-		return arrow.PrimitiveTypes.Float64
-	case hasInt && !hasBool && !hasTime:
-		return arrow.PrimitiveTypes.Int64
-	default:
-		// mixed incompatible kinds (bool+numeric, time+numeric, ...) or all nil
-		return arrow.BinaryTypes.String
-	}
+	var kinds columnKinds
+	kinds.add(data)
+	return kinds.arrowType()
 }
 
 func appendValue(b array.Builder, v any) {
@@ -446,7 +769,18 @@ func appendValue(b array.Builder, v any) {
 	case *array.Float64Builder:
 		builder.Append(conv.ParseF64(v))
 	case *array.StringBuilder:
-		builder.Append(conv.ToString(v))
+		if raw, ok := v.([]byte); ok && utf8.Valid(raw) {
+			// conv.ToString would write a byte slice as "[65 45 48 49]".
+			builder.Append(string(raw))
+		} else {
+			builder.Append(conv.ToString(v))
+		}
+	case *array.BinaryBuilder:
+		if raw, ok := v.([]byte); ok {
+			builder.Append(raw)
+		} else {
+			builder.AppendNull()
+		}
 	case *array.BooleanBuilder:
 		builder.Append(conv.ParseBool(v))
 	case *array.TimestampBuilder:

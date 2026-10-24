@@ -79,7 +79,7 @@ func (o AggregateOp) String() string {
 	case OpCustom:
 		return "custom"
 	}
-	return fmt.Sprintf("op(%d)", int(o))
+	return fmt.Sprintf("AggregateOp(%d)", int(o))
 }
 
 // AggregateConfig describes a single aggregation operation produced by Aggregate.
@@ -276,7 +276,7 @@ func encodeGroupKey(values []any) string {
 				fmt.Fprintf(&b, "f:%v", f)
 			}
 		case int, int8, int16, int32, int64,
-			uint, uint8, uint16, uint32, uint64:
+			uint, uint8, uint16, uint32, uint64, uintptr:
 			fmt.Fprintf(&b, "i:%v", v)
 		default:
 			fmt.Fprintf(&b, "o:%T:%v", v, v)
@@ -559,7 +559,7 @@ func uniqueKey(v any) string {
 		}
 		return "b:0"
 	case int, int8, int16, int32, int64,
-		uint, uint8, uint16, uint32, uint64:
+		uint, uint8, uint16, uint32, uint64, uintptr:
 		return fmt.Sprintf("i:%v", v)
 	case float32, float64:
 		f, _ := utils.ToFloat64Safe(v)

@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
 // The whole CCL bridge — FilterWithCCL, ApplyCCL and the 17 parquetContext
@@ -287,6 +287,25 @@ func TestApplyCCL_AddsAColumn(t *testing.T) {
 	}
 }
 
+func TestApplyCCL_CurrentRowValuesRemainPerRow(t *testing.T) {
+	path := fixture(t)
+	if err := ApplyCCL(context.Background(), path, "NEW('r') = @"); err != nil {
+		t.Fatalf("ApplyCCL: %v", err)
+	}
+	dt, err := Read(context.Background(), path, ReadOptions{})
+	if err != nil {
+		t.Fatalf("reading back: %v", err)
+	}
+	if got, want := colValues(t, dt, "r"), []any{
+		"[1 10 a true]",
+		"[2 20 b false]",
+		"[3 30 c true]",
+		"[4 40 d false]",
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("r: got %#v (%T), want %#v (%T)", got, got, want, want)
+	}
+}
+
 func TestApplyCCL_OverwritesAnExistingColumn(t *testing.T) {
 	path := fixture(t)
 
@@ -303,9 +322,10 @@ func TestApplyCCL_OverwritesAnExistingColumn(t *testing.T) {
 	}
 }
 
-// An assignment into an int64 column is written back as int64, so a fractional
-// result is truncated rather than widening the column.
-func TestApplyCCL_KeepsTheColumnType(t *testing.T) {
+// An assignment into an int64 column takes the type Write would give its new
+// values, as the loaded table holds them: a fractional result widens the column
+// to float64. It used to be written back as int64, truncating 1.5 to 1.
+func TestApplyCCL_WidensAnAssignedColumn(t *testing.T) {
 	path := fixture(t)
 
 	if err := ApplyCCL(context.Background(), path, "['num'] = ['num'] * 1.5"); err != nil {
@@ -316,8 +336,7 @@ func TestApplyCCL_KeepsTheColumnType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading back: %v", err)
 	}
-	// 1.5, 3.0, 4.5, 6.0 written into an int64 column.
-	if got, want := colValues(t, dt, "num"), []any{int64(1), int64(3), int64(4), int64(6)}; !reflect.DeepEqual(got, want) {
+	if got, want := colValues(t, dt, "num"), []any{1.5, 3.0, 4.5, 6.0}; !reflect.DeepEqual(got, want) {
 		t.Errorf("num: got %v, want %v", got, want)
 	}
 }
@@ -396,7 +415,7 @@ func TestApplyCCL_MissingFile(t *testing.T) {
 
 // record builds the same four columns as the fixture as an in-memory Arrow
 // record. The caller releases it.
-func record(t *testing.T) arrow.Record {
+func record(t *testing.T) arrow.RecordBatch {
 	t.Helper()
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "num", Type: arrow.PrimitiveTypes.Int64},
@@ -411,14 +430,14 @@ func record(t *testing.T) arrow.Record {
 	b.Field(1).(*array.Float64Builder).AppendValues([]float64{10, 20, 30, 40}, nil)
 	b.Field(2).(*array.StringBuilder).AppendValues([]string{"a", "b", "c", "d"}, nil)
 	b.Field(3).(*array.BooleanBuilder).AppendValues([]bool{true, false, true, false}, nil)
-	return b.NewRecord()
+	return b.NewRecordBatch()
 }
 
 func newTestContext(t *testing.T) *parquetContext {
 	t.Helper()
 	rec := record(t)
 	t.Cleanup(rec.Release)
-	return newParquetContext(rec, []string{"num", "score", "label", "flag"})
+	return newParquetContext(rec, []string{"num", "score", "label", "flag"}, 0)
 }
 
 // GetCol and GetColByName read the current row; the rest read the record.
@@ -646,7 +665,7 @@ func TestParquetContext_RowNamesAreNotSupported(t *testing.T) {
 // Every accessor has to survive a context built with no record at all, because
 // that is what an empty batch produces.
 func TestParquetContext_NoRecord(t *testing.T) {
-	c := newParquetContext(nil, []string{"num"})
+	c := newParquetContext(nil, []string{"num"}, 0)
 
 	if got := c.GetColCount(); got != 0 {
 		t.Errorf("GetColCount: got %d, want 0", got)

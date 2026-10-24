@@ -42,8 +42,8 @@ type DataList struct {
 
 - `data`: Slice containing the actual data elements of any type
 - `name`: Optional name for the DataList
-- `creationTimestamp`: Unix timestamp when the DataList was created
-- `lastModifiedTimestamp`: Unix timestamp when the DataList was last modified
+- `creationTimestamp`: when the DataList was created, in Unix nanoseconds; read it with `CreationTime()`
+- `lastModifiedTimestamp`: when the DataList was last modified, in Unix nanoseconds; read it with `LastModifiedTime()`
 - `atomicActor`: Internal mutex + holder pair used by `AtomicDo` to serialise execution; same-goroutine re-entry runs inline without re-locking
 
 ### Naming Conventions
@@ -67,6 +67,8 @@ every exported method still fails to satisfy `IDataList`. The interface is the
 parameter type for readability and to keep the signatures stable, not an
 extension point. If you have values of your own type, put them in a `*DataList`
 with `NewDataList` and pass that.
+
+`insyra.IsNilList(dl)` reports whether an `IDataList` has no list behind it: a nil interface, a nil `*DataList`, or a wrapper that embeds a nil `*DataList`, such as `isr.DL` (which satisfies `IDataList` but panics on its first method call). Use it to refuse such a value before calling a method on it.
 
 ## Creating DataList
 
@@ -176,6 +178,39 @@ func (dl *DataList) Data() []any
 ```go
 dl := insyra.NewDataList(1, 2, 3)
 data := dl.Data() // []any{1, 2, 3}
+```
+
+### DataType
+
+```go
+func (dl *DataList) DataType() DataType
+```
+
+**Description:** Returns what kind of values the list holds, so a program can check before it analyses: can this column be averaged, grouped as text, read as dates. Missing values (`nil`, `NaN`) are left out, so `[10, nil, 30]` is a number column.
+
+| Value | Meaning | Example |
+|---|---|---|
+| `DataTypeNumber` | every value is a number; integers and floats alike | `[10, 2.5, nil]` |
+| `DataTypeString` | every value is text; text that looks numeric, such as `"0050"`, stays text | `["Taipei", "Taichung"]` |
+| `DataTypeBool` | every value is `true` or `false` | `[true, false]` |
+| `DataTypeTime` | every value is a `time.Time` | a date column |
+| `DataTypeOther` | every value is one kind none of the above covers; a `decimal.Decimal` is one, because the numeric functions cannot read it as a number | `[]byte` blobs |
+| `DataTypeMixed` | values of more than one kind | `[1, "a", true]` |
+| `DataTypeEmpty` | no values, or only `nil` and `NaN` | `[nil, NaN]` |
+
+`String()` gives the name (`"number"`, `"mixed"`, ...). `ShowTypes` answers a different question: it prints the Go type of every cell (`int`, `float64`, `nil`), where `DataType` sums the column up in one word.
+
+**Example:**
+
+```go
+switch dl.DataType() {
+case insyra.DataTypeNumber:
+    dl.FillWithMean()
+case insyra.DataTypeString:
+    dl.FillWithMode()
+case insyra.DataTypeMixed:
+    fmt.Println("mixed column, clean it first")
+}
 ```
 
 ### Len
@@ -793,7 +828,9 @@ func (dl *DataList) FillNaNWithMean() *DataList
 
 **Description:** Replaces all NaN values with the mean value of numeric elements.
 
-> **Deprecated:** Use [`FillWithMean`](#fillwithmean) instead, which also fills `nil` (not just `NaN`), leaves non-numeric values untouched, and matches the other `Fill*` imputation methods.
+> A `nil` cell makes the call fail: `Err()` is set and the list is left untouched. `NaN` cells are replaced with the mean, and every other number is rewritten as a `float64`.
+
+> **Deprecated:** to fill `NaN` alone, as this method does, use `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())`, which leaves the other values as they were. [`FillWithMean`](#fillwithmean) fills `nil` as well. See [Methods that look alike but differ](#methods-that-look-alike-but-differ).
 
 **Parameters:**
 
@@ -1250,6 +1287,43 @@ dl := insyra.NewDataList(1, 5, 3, 9, 2)
 range := dl.Range() // 8.0 (9 - 1)
 ```
 
+### Quantile
+
+```go
+func (dl *DataList) Quantile(p float64) float64
+```
+
+**Description:** Returns the p-quantile of the list's numeric values, with `p` on the 0..1 scale: `Quantile(0.25)` is the first quartile, `Quantile(0.5)` the median and `Quantile(0.9)` the 90th percentile. It is the same as pandas' `Series.quantile(p)` and R's `quantile(x, p, na.rm = TRUE)`.
+
+It uses R's type-7 definition, the default of R, NumPy and pandas (pandas calls it `linear`), which `Quartile` and `Percentile` also use. The scale follows the name:
+
+| Call | Scale | First quartile |
+| --- | --- | --- |
+| `Quantile(p)` | 0 to 1 | `Quantile(0.25)` |
+| `Percentile(p)` | 0 to 100 | `Percentile(25)` |
+| `Quartile(q)` | 1, 2 or 3 | `Quartile(1)` |
+| `DescribeOptions.Percentiles` | 0 to 1, like pandas' `describe` | `0.25` |
+
+`nil` and `NaN` cells are missing and skipped, the way `Describe` and pandas skip them. `Percentile` and `Quartile` do not skip a `NaN` on this line, so on a list that holds one they differ from `Quantile`; 0.4 makes them skip it too.
+
+**Parameters:**
+
+- `p`: The probability, from 0 to 1 inclusive.
+
+**Returns:**
+
+- `float64`: The p-quantile. It is `NaN` with a warning recorded on the list when `p` is `NaN` or outside `[0, 1]`, when a cell is neither a number nor missing, or when the list has no numeric values.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, 2, 3, 4, 10)
+dl.Quantile(0.25) // 2
+dl.Quantile(0.9)  // 7.6
+
+insyra.NewDataList(1, 2, 3, math.NaN()).Quantile(0.75) // 2.5, the NaN is skipped
+```
+
 ### Quartile
 
 ```go
@@ -1370,15 +1444,34 @@ ranksAsc := dl.Rank()      // default ascending
 ranksDesc := dl.Rank(false) // descending
 ```
 
+### Methods that look alike but differ
+
+Six pairs of methods compute the same thing and give the same numbers on a fully numeric series, over the positions both produce. They are not two names for one function: each keeps its own output length, its own handling of `nil` and `NaN`, and its own failures, and a test pins every row of this table.
+
+`Difference`, `MovingAverage`, `MovingStdev` and `WeightedMovingAverage` are **Deprecated** and removed in 0.4. Until then they behave exactly as described here, and the table is what changes when you move to the method beside them. `ExponentialSmoothing` is not deprecated, because `EWM` refuses `alpha = 0`. `FillNaNWithMean` has been Deprecated since v0.2.19.
+
+The method in the second column keeps the input's length and gives `nil` where a window has too few values, so its result lines up with the other columns of a table. The one in the first column gives only the positions it can compute, and most of them refuse a gap outright rather than skip it.
+
+| Method | Similar method | Where they differ |
+| --- | --- | --- |
+| `Difference()` | `Diff(1)` | Length `n-1` against `n` with a leading `nil`. A `nil` operand makes the call fail against giving `nil` for the pair. A `NaN` operand gives `NaN` on both. A non-numeric cell makes the call fail against giving `nil`. Fewer than two values make the call fail against `[nil]`. |
+| `FillNaNWithMean()` | `FillWithMean()` | Fills `NaN` only and leaves `nil`; a `nil` cell makes the call fail and leaves the list untouched, against filling both. Rewrites every other number as `float64`, against leaving it as it was. |
+| `MovingAverage(w)` | `Rolling(RollingOptions{Window: w}).Mean()` | Length `n-w+1` against `n` with `w-1` leading `nil`. A `nil` or non-numeric cell makes the call fail against `nil` for each window holding it. `NaN` propagates against `nil`. `w > n` or `w < 1` makes the call fail against a list of `nil` or an empty list. |
+| `MovingStdev(w)` | `Rolling(RollingOptions{Window: w}).Std()` | Length `n-w+1` against `n`. A `nil` or non-numeric cell is skipped against `nil` for the window. `NaN` propagates against `nil`. `w = 1` gives `NaN` against `nil`. `w > n` makes the call fail against a list of `nil`. |
+| `ExponentialSmoothing(a)` | `EWM(EWMOptions{Alpha: a}).Mean()` | `a = 0` is accepted against refused. A `nil` or non-numeric cell is read as `0` against carrying the last mean forward. A `NaN` cell propagates against carrying the mean forward. |
+| `WeightedMovingAverage(w, ws)` | `Rolling(RollingOptions{Window: w, Weights: ws}).Mean()` | Length `n-w+1` against `n`. A `nil` or non-numeric cell makes the call fail against `nil`. `NaN` propagates against `nil`. Weights summing to zero give `±Inf` or `NaN` against `nil`. `w > n` makes the call fail against a list of `nil`. |
+
+For the positions both produce, `Rolling(...).Mean().Data()[w-1:]` equals `MovingAverage(w)` on a fully numeric series, and `Diff(1).Data()[1:]` equals `Difference()`.
+
 ### Difference
 
 ```go
 func (dl *DataList) Difference() *DataList
 ```
 
-**Description:** Calculates differences between consecutive elements. The output is one element **shorter** than the input (`out[i] = in[i+1] - in[i]`).
+**Description:** Calculates differences between consecutive elements. The output is one element **shorter** than the input (`out[i] = in[i+1] - in[i]`). A `NaN` operand yields `NaN`; a `nil` or any other non-numeric cell makes the call fail, with `Err()` set and `nil` returned. A list of fewer than two values also fails.
 
-> For column-aligned use (same length as the input, leading `nil` instead of a shorter result) prefer [`Diff(1)`](#diff). `Difference` is retained for backwards compatibility.
+> **Deprecated:** use [`Diff(1)`](#diff), which keeps the input's length with a leading `nil`; on a fully numeric list `Diff(1).Data()[1:]` is this method's result. It gives `nil`, not a failure, for a `nil` or non-numeric operand; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in 0.4.
 
 **Parameters:**
 
@@ -1402,7 +1495,9 @@ diff := dl.Difference()
 func (dl *DataList) MovingAverage(windowSize int) *DataList
 ```
 
-**Description:** Calculates moving average with specified window size.
+**Description:** Calculates moving average with specified window size. The result has `n - windowSize + 1` values, one per full window. Every cell must be a number: a `nil` or non-numeric cell makes the call fail, with `Err()` set and `nil` returned, and a `NaN` makes every window holding it `NaN`. A `windowSize` below 1 or above the length also fails.
+
+> **Deprecated:** use [`Rolling(RollingOptions{Window: windowSize}).Mean()`](#rolling), which keeps the input's length with `windowSize-1` leading `nil`; on a fully numeric list its `Data()[windowSize-1:]` is this method's result. It gives `nil` for a window holding a gap instead of failing; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in 0.4.
 
 **Parameters:**
 
@@ -1425,7 +1520,9 @@ ma := dl.MovingAverage(3) // 3-period moving average
 func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 ```
 
-**Description:** Calculates weighted moving average with specified window size and weights.
+**Description:** Calculates weighted moving average with specified window size and weights. Each window's value is the weighted sum divided by the sum of the weights, so weights summing to zero give `±Inf` or `NaN`. The result has `n - windowSize + 1` values. A `nil` or non-numeric cell, a `windowSize` below 1 or above the length, or weights of the wrong length make the call fail, with `Err()` set and `nil` returned; a `NaN` makes every window holding it `NaN`.
+
+> **Deprecated:** use [`Rolling(RollingOptions{Window: windowSize, Weights: weights}).Mean()`](#rolling), with the weights as a `[]float64` (`RollingOptions.Weights` takes no other type, so convert a DataList or an integer slice first), which keeps the input's length; on a fully numeric list its `Data()[windowSize-1:]` is this method's result. It gives `nil` for a window holding a gap and for weights summing to zero; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in 0.4.
 
 **Parameters:**
 
@@ -1450,11 +1547,13 @@ wma := dl.WeightedMovingAverage(3, weights)
 func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList
 ```
 
-**Description:** Calculates exponential smoothing with specified smoothing factor.
+**Description:** Calculates exponential smoothing with specified smoothing factor: the first value is kept and each later one is `alpha*x + (1-alpha)*previous`.
+
+> A `nil` or non-numeric cell is read as `0`, and a `NaN` carries through; the call does not fail on a gap. An `alpha` below `0` or above `1` makes the call fail. [`EWM(EWMOptions{Alpha: alpha}).Mean()`](#exponentially-weighted-windows) carries the mean across a gap instead; see [Methods that look alike but differ](#methods-that-look-alike-but-differ).
 
 **Parameters:**
 
-- `alpha`: Smoothing factor (0 < alpha < 1)
+- `alpha`: Smoothing factor, `0 <= alpha <= 1`; `0` repeats the first value and `1` returns the data
 
 **Returns:**
 
@@ -1477,8 +1576,8 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList
 
 **Parameters:**
 
-- `alpha`: Level smoothing factor (0 < alpha < 1)
-- `beta`: Trend smoothing factor (0 < beta < 1)
+- `alpha`: Level smoothing factor, `0 <= alpha <= 1`
+- `beta`: Trend smoothing factor, `0 <= beta <= 1`
 
 **Returns:**
 
@@ -1497,7 +1596,9 @@ smoothed := dl.DoubleExponentialSmoothing(0.3, 0.2)
 func (dl *DataList) MovingStdev(windowSize int) *DataList
 ```
 
-**Description:** Calculates moving standard deviation with specified window size.
+**Description:** Calculates the moving sample standard deviation with specified window size. The result has `n - windowSize + 1` values. A `nil` or non-numeric cell is skipped within its window, a window left with fewer than two numbers gives `NaN` (so a `windowSize` of 1 gives `NaN` everywhere), and a `NaN` makes every window holding it `NaN`. A `windowSize` below 1 or above the length makes the call fail.
+
+> **Deprecated:** use [`Rolling(RollingOptions{Window: windowSize}).Std()`](#rolling), which keeps the input's length; on a fully numeric list its `Data()[windowSize-1:]` is this method's result. It gives `nil` where this method gives `NaN`, and skips a `NaN` this method lets through; see [Methods that look alike but differ](#methods-that-look-alike-but-differ). Removed in 0.4.
 
 **Parameters:**
 
@@ -1653,15 +1754,16 @@ dl := insyra.NewDataList(3, 1, 4, 1, 5, 9, 2)
 m := dl.CumMin() // [3, 1, 1, 1, 1, 1, 1]
 ```
 
-### Sample / SampleFrac / Shuffle
+### Sample / SampleFrac / Shuffle / Shuffled
 
 ```go
 func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
 func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList
 func (dl *DataList) Shuffle(options ...SamplingOptions) *DataList
+func (dl *DataList) Shuffled(options ...SamplingOptions) *DataList
 ```
 
-**Description:** Returns randomly sampled or shuffled copies of a DataList. `Sample` draws `n` elements, `SampleFrac` draws `floor(frac * Len())` elements with a minimum of 1 for non-empty lists, and `Shuffle` returns all elements in random order.
+**Description:** Returns randomly sampled or shuffled copies of a DataList. `Sample` draws `n` elements, `SampleFrac` draws `floor(frac * Len())` elements with a minimum of 1 for non-empty lists, and `Shuffled` returns all elements in random order, in a copy named `<name>_Shuffled`, leaving the list as it is. `Shuffle` does the same on this line, but on the 0.4 line it reorders the list itself and returns it, the way `Sort` does, so use `Shuffled` wherever a copy is meant.
 
 **Options:**
 
@@ -1681,7 +1783,7 @@ Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible results.
 dl := insyra.NewDataList(1, 2, 3, 4, 5)
 sample := dl.Sample(3, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
 preview := dl.SampleFrac(0.4, false)
-shuffled := dl.Shuffle(insyra.SamplingOptions{UseSeed: true, Seed: 42})
+shuffled := dl.Shuffled(insyra.SamplingOptions{UseSeed: true, Seed: 42}) // dl keeps its order
 ```
 
 **Errors:** Invalid `n`, invalid `frac`, empty input, and `n > Len()` without replacement are recorded via `dl.Err()` and return an empty DataList.
@@ -1739,9 +1841,12 @@ moved more than the benchmark, and a beta of `0.5` means it moved half as much.
 Benchmark scale is *not* cancelled — doubling the benchmark halves the beta. A
 **flat** benchmark has zero variance, which leaves beta undefined, so the
 position is `nil`; `Cov` against the same flat benchmark is a plain `0`.
-Passing `other == nil` records `[WARNING] DataList.RollingBeta: other DataList
-is nil` on the receiving list and returns an **empty** result, not a
-`nil`-filled one. `MinObs` above `Window` is a warning and an empty result too.
+Passing `other == nil`, or a `nil` function passed to `Apply`, records the error
+on the receiving list and returns an **empty** result carrying it, not a
+`nil`-filled one. An invalid `Window`, `MinObs` or `Weights` is recorded the same
+way, and every reducer then returns an empty list carrying that error, so
+`result.Err()` says why it is empty. A valid window with too few observations is
+different: it returns a list of `nil` the source's length, with no error.
 
 **Example:**
 
@@ -1797,8 +1902,8 @@ weighted population variance. `MinObs <= 0` means one observation.
 Available reducers are `Mean()`, `Var()`, and `Std()`. Each returns a
 same-length `*DataList`; nil and non-numeric cells are skipped without
 resetting the accumulated decay, and positions below `MinObs` are nil. An
-invalid or missing decay parameter records a warning and returns an empty
-result.
+invalid or missing decay parameter records the error on the list and returns an
+empty result carrying it.
 
 ```go
 prices := insyra.NewDataList(1, 2, 3, 4)
@@ -2132,10 +2237,12 @@ func (dl *DataList) ShowRangeTo(w io.Writer, startEnd ...any) // same output, wr
 
 The end index is exclusive, and a negative end counts back from the end and stays exclusive — exactly like a Python slice, so `ShowRange(2, -1)` stops before the last item. Pass `nil` as the end to run all the way to the end.
 
+`ShowHead(n)` / `ShowHeadTo(w, n)` and `ShowTail(n)` / `ShowTailTo(w, n)` are the plainer spellings of `ShowRange(n)` and `ShowRange(-n)`, and take a positive `n`; zero or a negative number prints an error line.
+
 **Parameters:**
 
 - `startEnd`: Variable parameters for range specification
-  - No parameters: shows all items
+  - No parameters: the whole list, as `Show` prints it: a list of more than 25 items prints its first 20 and last 5
   - Single positive integer (n): shows first n items
   - Single negative integer (-n): shows last n items
   - Two parameters (start, end): shows items from start to end (exclusive)
@@ -2152,6 +2259,8 @@ dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 dl.ShowRange(3)      // Show first 3 items
 dl.ShowRange(-3)     // Show last 3 items
 dl.ShowRange(2, 5)   // Show items from index 2 to 4
+dl.ShowHead(3)       // Same as ShowRange(3)
+dl.ShowTail(3)       // Same as ShowRange(-3)
 dl.ShowRange(2, -1)  // Show items from index 2 up to but NOT including the last one
 dl.ShowRange(5, nil) // Show items from index 5 to end
 ```
@@ -2163,7 +2272,7 @@ func (dl *DataList) ShowTypes()
 func (dl *DataList) ShowTypesTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the data types of each element in the DataList. `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
+**Description:** Displays the Go type of each element in the DataList, under a `DataType:` line that sums the whole list up in one word (the value of `DataType()`). `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
 
 **Parameters:**
 
@@ -2198,7 +2307,7 @@ func (dl *DataList) ShowTypesRangeTo(w io.Writer, startEnd ...any) // same outpu
 **Parameters:**
 
 - `startEnd`: Variable parameters for range specification (same as ShowRange)
-  - No parameters: shows all items
+  - No parameters: the whole list, as `Show` prints it: a list of more than 25 items prints its first 20 and last 5
   - Single positive integer (n): shows first n items
   - Single negative integer (-n): shows last n items
   - Two parameters (start, end): shows items from start to end (exclusive)
@@ -2250,7 +2359,15 @@ isEqual := dl1.IsEqualTo(dl2) // true
 func (dl *DataList) IsTheSameAs(other *DataList) bool
 ```
 
-**Description:** Checks if the DataList is identical to another (including metadata).
+**Description:** Checks whether another DataList holds equal data, by the same cell rule as `IsEqualTo`, has the same name, and was created and last modified in the same Unix second. A nil argument returns `false` with a warning. On the 0.4 line it compares the data and the name only.
+
+To ask whether two values are the same object, compare the pointers: `dl1 == dl2`.
+
+| Question | Use |
+| --- | --- |
+| Equal data? | `dl1.IsEqualTo(dl2)` |
+| Equal data, name and times? | `dl1.IsTheSameAs(dl2)` |
+| The same object? | `dl1 == dl2` |
 
 **Parameters:**
 
@@ -2258,14 +2375,15 @@ func (dl *DataList) IsTheSameAs(other *DataList) bool
 
 **Returns:**
 
-- `bool`: True if completely identical (data, name, timestamps)
+- `bool`: True if the data, the name and the two times (in whole seconds) are equal
 
 **Example:**
 
 ```go
-dl1 := insyra.NewDataList(1, 2, 3)
-dl2 := dl1 // Same reference
-isSame := dl1.IsTheSameAs(dl2) // true
+dl1 := insyra.NewDataList(1, 2, 3).SetName("x")
+dl2 := dl1 // the same object
+dl1.IsTheSameAs(dl2) // true
+dl1.IsEqualTo(insyra.NewDataList(1, 2, 3)) // true: the data is equal
 ```
 
 ## Data Conversion
@@ -2464,13 +2582,13 @@ dl := insyra.NewDataList(1, 2, 3)
 dl.SetName("Factor_Loadings")
 ```
 
-### GetCreationTimestamp
+### CreationTime
 
 ```go
-func (dl *DataList) GetCreationTimestamp() int64
+func (dl *DataList) CreationTime() time.Time
 ```
 
-**Description:** Returns the creation timestamp in Unix format.
+**Description:** Returns when the DataList was created, at the clock's full resolution.
 
 **Parameters:**
 
@@ -2478,14 +2596,49 @@ func (dl *DataList) GetCreationTimestamp() int64
 
 **Returns:**
 
-- `int64`: Unix timestamp when DataList was created
+- `time.Time`: when the DataList was created
 
 **Example:**
 
 ```go
 dl := insyra.NewDataList(1, 2, 3)
-timestamp := dl.GetCreationTimestamp()
+created := dl.CreationTime()
 ```
+
+### LastModifiedTime
+
+```go
+func (dl *DataList) LastModifiedTime() time.Time
+```
+
+**Description:** Returns when the DataList was last modified, at the clock's full resolution, so two changes less than a second apart give different times. It never moves backwards, even if the wall clock is set back. On a platform whose clock is coarser than the time between two changes, both can still read the same.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- `time.Time`: when the DataList was last modified
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, 2, 3)
+before := dl.LastModifiedTime()
+dl.Append(4) // This updates the time
+changed := dl.LastModifiedTime().After(before)
+```
+
+### GetCreationTimestamp
+
+```go
+func (dl *DataList) GetCreationTimestamp() int64
+```
+
+**Deprecated:** use `CreationTime`. This method is removed in 0.4.
+
+**Description:** Returns the creation time in Unix seconds, `CreationTime().Unix()`.
 
 ### GetLastModifiedTimestamp
 
@@ -2493,23 +2646,9 @@ timestamp := dl.GetCreationTimestamp()
 func (dl *DataList) GetLastModifiedTimestamp() int64
 ```
 
-**Description:** Returns the last modification timestamp in Unix format.
+**Deprecated:** use `LastModifiedTime`. This method is removed in 0.4.
 
-**Parameters:**
-
-- None.
-
-**Returns:**
-
-- `int64`: Unix timestamp when DataList was last modified
-
-**Example:**
-
-```go
-dl := insyra.NewDataList(1, 2, 3)
-dl.Append(4) // This updates the timestamp
-timestamp := dl.GetLastModifiedTimestamp()
-```
+**Description:** Returns the last modification time in Unix seconds, `LastModifiedTime().Unix()`. Two changes within one second read the same.
 
 ## Utility Methods
 
@@ -2570,6 +2709,12 @@ instance — cannot be a key in the returned map. Such a value is keyed by an
 by themselves, so `counter[1]` and `counter["a"]` work as before, and printing
 the whole map stays readable: a stand-in shows as its type with a shortened
 form of its content, such as `[]uint8(00ff41)`.
+
+`insyra.UncomparableKey` also stands in for a `NaN`, and for an array or
+struct holding one. A `NaN` is comparable to Go but never equal to itself, so
+using one as a map key would make an entry nobody could read back: three
+`NaN`s in a column used to become three counts of one. Read their count with
+`counter[insyra.ToMapKey(math.NaN())]`.
 
 **To read one value's count, use `Count`, not this map.** `Count` matches
 integers by value, where the map keys them by Go type: a CSV load stores
@@ -2773,6 +2918,12 @@ dl.ClearErr()
 | `PopErr() *ErrorInfo`  | Returns the last error and clears it, so the list can be reused straight away.                  |
 | `ClearErr() *DataList` | Clears the last error and returns the DataList for continued chaining.                          |
 | `SetErr(pkg, fn, msg string, args ...any) *DataList` | Records an error the way insyra's own methods do: logs a warning and sets `Err()`, replacing any earlier error. Wrapper packages (such as `isr`) use it; application code rarely needs it. |
+
+`Err()` is safe on a nil list, such as the one `GetColByName` returns for a column
+that is not there: it reports `nil DataList` instead of crashing. Every other
+method on a nil list still fails loudly, on purpose (most crash; the `Show`
+methods print an error line), so a nil cannot travel on unnoticed; check `Err()`
+right after a lookup.
 
 > **Note:** `setError` is an internal helper used by methods to record the last error on the instance. Most chainable methods will call it when an operation fails.
 

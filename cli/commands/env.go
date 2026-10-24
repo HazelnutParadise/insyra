@@ -12,6 +12,10 @@ func init() {
 		Usage:              "env <create|list|open|clear|export|import|delete|rename|info> [args]",
 		Description:        "Environment management",
 		DisableFlagParsing: false,
+		Flags: []CommandFlag{
+			{Name: "keep-history", Usage: "With 'env clear', keep command history", Form: "clear"},
+			{Name: "force", Usage: "With 'env import', overwrite non-empty target environment", Form: "import"},
+		},
 		Forms: []string{
 			"env create <name>                      make a new environment",
 			"env list                               list every environment",
@@ -79,12 +83,15 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
+		// Read the variables before switching, so an environment whose state
+		// cannot be read leaves the current one, and its variables, as they were.
+		vars, err := ctx.Env.OpenVariables(args[1])
+		if err != nil {
+			return err
+		}
 		ctx.EnvName = args[1]
 		ctx.EnvPath = envPath
-		vars, err := ctx.Env.RestoreVariables(args[1])
-		if err == nil {
-			ctx.Vars = vars
-		}
+		ctx.Vars = vars
 		_, _ = fmt.Fprintf(ctx.Output, "opened environment: %s\n", args[1])
 		if !ctx.InREPL && ctx.OpenREPL != nil {
 			return ctx.OpenREPL(ctx)
@@ -127,10 +134,11 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 			return err
 		}
 		if name == ctx.EnvName {
-			vars, restoreErr := ctx.Env.RestoreVariables(name)
-			if restoreErr == nil {
-				ctx.Vars = vars
+			vars, restoreErr := ctx.Env.OpenVariables(name)
+			if restoreErr != nil {
+				return restoreErr
 			}
+			ctx.Vars = vars
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "imported environment from %s -> %s\n", in, name)
 		return nil

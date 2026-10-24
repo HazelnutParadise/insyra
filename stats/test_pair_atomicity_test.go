@@ -151,3 +151,26 @@ func totalOf(counts map[float64]int) int {
 	}
 	return total
 }
+
+// The independence test pairs row i of one list with row i of the other,
+// so it too must read both at one moment.
+func TestChiSquareIndependenceReadsBothListsAtOneMoment(t *testing.T) {
+	dl1, dl2, stop := resizingPair(t)
+	defer stop()
+
+	mismatch := 0
+	for range pairAtomicityIterations {
+		_, err := ChiSquareIndependenceTest(dl1, dl2)
+		if err != nil {
+			if err.Error() == "both DataLists must have the same length" {
+				mismatch++
+				continue
+			}
+			t.Fatalf("ChiSquareIndependenceTest: unexpected error: %v", err)
+		}
+	}
+	if mismatch > 0 {
+		t.Errorf("ChiSquareIndependenceTest saw the two lists at different moments in %d of %d runs (length mismatch)",
+			mismatch, pairAtomicityIterations)
+	}
+}

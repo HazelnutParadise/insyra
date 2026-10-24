@@ -32,7 +32,18 @@ through a change first:
    (`openspec-verify-change`).
 4. **Archive** — once the change is implemented and merged, archive it into
    `openspec/changes/archive/` (`openspec-archive-change`). **Completed changes
-   must be archived, not left sitting in `openspec/changes/`.**
+   must be archived, not left sitting in `openspec/changes/`.** Archiving a
+   change that creates a capability leaves `TBD - created by archiving change …`
+   as its Purpose; replace it in the same commit with one or two sentences on
+   what the capability is for.
+
+Every main spec must pass `openspec validate --specs --strict`, and the
+GolangCI-Lint workflow runs it on every push and pull request: a Purpose of at
+least 50 characters, every requirement's text before its first scenario at most
+500 characters, a SHALL or MUST in each, and a scenario under each. To shorten a
+requirement, split it into requirements that each state one behaviour, keep
+the original header on the first so a later `MODIFIED` delta still finds it,
+and keep every rule and scenario.
 
 Trivial edits (typos, formatting, comment/doc-only touch-ups) may skip OpenSpec.
 When in doubt, propose a change. The docs/changelog/skills-in-sync rule below
@@ -151,7 +162,7 @@ Dependencies move on their own schedule; ours is the release. **Before `dev` is 
 - **Never move a module into a vulnerable range.** Stop at the newest version outside every range.
 - **Never let a bump raise the `go` directive.** The minimum-Go promise to downstream users is a separate, explicit decision. Stop at the newest version that keeps the current directive.
 - **A bump that changes what insyra returns is not part of the refresh.** If updating a module changes a result or an output insyra produces, stop at the newest version that changes nothing and record the difference. The update then lands as its own change, with its changelog entry, so the behaviour change is reviewed and announced rather than carried in with a version bump.
-- Anything held back — its newest version needs a newer Go, is inside an advisory, breaks a tool CI depends on, or changes what insyra returns — goes into the Follow-ups below with the reason, the way the modules held back by the Go 1.25 directive already are.
+- Anything held back — its newest version needs a newer Go, is inside an advisory, breaks the build or a tool CI depends on, or changes what insyra returns — goes into the Follow-ups below with the reason, the way `chromedp` is.
 
 Why this is a rule and not a habit: dependencies only moved when Dependabot filed an alert, which means the graph only moved once something was already broken, and the fix was taken under time pressure. Dependabot also reads the default branch, so an alert raised against a released version stays open until the next merge to `main` no matter how quickly it is fixed on `dev`.
 
@@ -181,6 +192,8 @@ The root package defines everything central:
 | `parallel/` | Parallel map/reduce over DataList/DataTable |
 | `lp/` / `lpgen/` | Linear programming |
 | `mkt/` | Market data helpers |
+| `quant/` | Strategy and portfolio evaluation: performance and risk metrics, CAPM, options, bootstrap, walk-forward, event studies |
+| `quant/ta/` | Technical-analysis tools (indicators, turning points, regimes) to test, not to trust |
 | `py/` | Python interop (runs Python via embedded env) |
 | `pd/` | Pandas-like wrappers built on `py/` |
 | `engine/` | Re-exported stable internals (BiIndex, Ring, AtomicDo, CCL compiler, sort utils) |
@@ -213,7 +226,15 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 
 - Column indexing is Excel-style alphabetic (`"A"`, `"B"`, `"AA"`), not numeric, for `GetCol`/`UpdateCol` etc.
 - `GetRowIndexByName` returns `(-1, false)` when not found — always check the boolean, because `-1` is also a valid "last element" index in many `Get` methods.
-- Thread safety is on by default via the actor model. `Config.Dangerously_TurnOffThreadSafety()` exists but is explicitly discouraged.
+- Thread safety is on by default via the actor model. `Config.Dangerously_TurnOffThreadSafety()` exists but is explicitly discouraged; `Config.TurnOnThreadSafety()` turns it back on without resetting other settings.
+- **Names that depart from Go convention on purpose.** Ruled by the owner on 2026-10-12 (#212). Do not raise them again in a review.
+  - **Getters keep the `Get` prefix** and pair with a `Set…` setter (`GetName`/`SetName`, `GetLogLevel`/`SetLogLevel`). Effective Go drops `Get` from field getters, but the module has more than a hundred exported `Get…` names. Dropping the prefix would break almost every caller for no change in behaviour. A new getter follows the library: `Get` plus the setter's noun (`GetUseColoredOutput` for `SetUseColoredOutput`).
+  - **`Dangerously_TurnOffThreadSafety` keeps its underscore.** A name that looks wrong is the warning. Naming linters report only the declaration, never a caller.
+  - **`isr` keeps both `Of` and `From`** on `DL` and `DT`, an exception to the one-name rule, after Java's `List.of` (list the elements) and Rust's `From::from` (convert what you have).
+  - **`isr`'s `Push` is not a second name.** `dl.Push` is `Append` returning the isr list so the chain continues, which `Append` cannot do without the isr list leaving `IDataList`. `dt.Push` adds rows or columns depending on the type it is given.
+  - Column conversions use the library's two nouns: an index is the Excel-style letters (`"AA"`), and a number is the 0-based position (`ColIndexToNumber`, `ColNumberToIndex`, `GetColIndexByNumber`).
+- **Log at Info only what the return value does not say.** Ruled by the owner on 2026-10-13 (#215). An Info line is for a guess the library made about the data (an encoding it detected), a change made outside the call's own result (a column `ToSQL` added to an existing table), the progress of a long operation (`nn.Sequential.Fit`'s epochs, preparing the Python environment), or a switch changing state (acceleration, thread safety). Never log a line that only confirms success: a nil error already says the file was saved. The default level stays `LogLevelInfo`, because the lines that remain are the ones a user needs to see; a program that wants only warnings calls `SetLogLevel(LogLevelWarning)`, and one with its own logging calls `Config.SetLogger`.
+- **Every enum whose underlying type is an integer has `String()`.** A known value prints its constant's name, an unknown one prints `TypeName(n)`, and an error that reports an enum value formats it with `%v`, never `%d`.
 - `AtomicDo` serializes access to ONE instance (same-instance nesting is safe, e.g. `Stdev`→`Var`). To read/operate on MULTIPLE instances atomically, use `insyra.AtomicDoAll(func(){...}, a, b, ...)` — it locks all given DataList/DataTable instances together in a deadlock-free order. Do NOT nest `AtomicDo` on a *different* instance inside a callback: that inner call runs WITHOUT locking the other instance and can race a concurrent mutation. (`engine/atomic.AtomicDoN([]*Actor, f)` is the same primitive for arbitrary user structs holding an `*atomic.Actor`.)
 - Error handling uses an instance-level `Err()` pattern rather than returning errors from every method (check `.Err()` after chained calls; `PopErr()` reads and clears it). Wrapper packages such as `isr` record their failures through the exported `SetErr(packageName, funcName, msg, args...)`.
 - Use the `isr` package for convenient syntax and the root `insyra` package where performance matters: some `isr` constructors convert or copy their input (building a table from lists measured about 9x slower than `insyra.NewDataTable`), while methods called through the wrapper cost almost nothing extra.
@@ -259,46 +280,34 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-09-28] — scaler JSON with an empty column reference binds to an unnamed column
-- **Where**: `datatable_scale.go` `unmarshalJSON`, and `resolveEncodingColumn` in `datatable_preprocess.go`
-- **What**: `json.Unmarshal` accepts a fitted column whose `"ref"` is `""`, and `Transform` then resolves `""` by name, which matches the first column that has no name. Measured on 2026-09-28: a `StandardScaler` read from JSON holding one column with `"ref":""`, mean 1 and std 1, transformed the unnamed column A of a table from `[5, 7]` to `[4, 6]` with no error. `Fit` never writes an empty reference, because an unnamed column is remembered by its letter, so only JSON written by hand or by another program reaches this. `0.4` refuses an empty reference (`TestScalerJSONRefusesAnEmptyReference`), but as part of its typed reference format (`decodeScalerRef`), which this line does not have.
-- **Suggestion**: refuse an empty `"ref"` in `unmarshalJSON`, next to the check for a column listed twice, and leave the receiver as it was. The JSON format stays as it is.
+### [2026-10-21] — device tensors live on one card per process
+- **Where**: `accel/internal/wgpu/wgpu.go` `open`, `accel/resident.go` `ResidentDevice`, `nn/device_tensor.go` `To`
+- **What**: the WebGPU backend opens the adapter WebGPU names as its default and has no way to be told which one. `accel.DefaultDevice` returns the first device of the session's list, which on a host with several cards may not be that adapter, and `Tensor.To(device)` uses the `Device` only as a label. Operands on different devices are refused, so nothing runs wrongly, but a program cannot choose a card. `Config.Devices`, `PreferredDevices` and `INSYRA_ACCEL_DEVICES` narrow what is discovered, not where tensors are placed. Only a single-card host has been available to test.
+- **Suggestion**: one WebGPU handle per adapter, buffers and queues per handle, `To(cards[i])` choosing the card, and a gated multi-card test on a host that has two. Data-parallel training across cards (gradient synchronisation) is a separate, larger change.
 - **Status**: pending
 
-### [2026-09-28] — cutting a tree accepts a node merged twice
-- **Where**: `stats/internal/clustering/cluster.go` `validateTree`
-- **What**: `validateTree` checks that every merge joins a leaf or an earlier merge, but not that each is used once. Measured on 2026-09-28 with three labels: merges `{-1,-2},{-1,-2}`, `{-1,-2},{1,1}` or `{-1,-1},{-2,1}` all pass, and `CutTreeByK(tree, 1)` returns `[1 1 2]`, two clusters where one was asked for, with no error. A hand-edited `state.json` reaches `cutree` this way. Present before the port of `0.4`'s check, and on `0.4` too.
-- **Suggestion**: track which leaves and merges have been used and refuse an id seen a second time, a merge joining something with itself included.
+### [2026-10-20] — `excelize` pinned to an untagged commit for two advisories
+- **Where**: `go.mod`, `github.com/xuri/excelize/v2`, reached through `ReadExcel`, `ReadExcelSheet`, `DataTable.WriteExcel` and `csvxl.AppendCsvToExcel`
+- **What**: v2.11.0, the newest tag, is inside GO-2026-6689 (a panic and memory exhaustion from an unbounded CFB stream allocation) and GO-2026-6688 (mutually referencing array formulas recurse until the stack overflows); govulncheck traces both to these four functions, and the Vulnerability Scan job went red on every branch. The fixes are on the module's `master` and in no tag, so `go.mod` names the commit `v2.11.1-0.20261020033641-611b222fd8f7`. `govulncheck ./...` reports 0 affected vulnerabilities with it, `go.mod`'s `go` directive is unchanged, and the root and `csvxl` tests pass.
+- **Suggestion**: move to the next tagged release (v2.11.1 or later) as soon as it exists and drop this entry. Until then the dependency refresh before a release must not step back to v2.11.0.
+- **Status**: pending (a pseudo-version is a decision for the owner: it trades a tagged release for a fix)
+
+### [2026-10-17] — remove `py.RunCodeWithTimeout` in 0.4
+- **Where**: `py/py.go`
+- **What**: `RunCodeWithTimeout` is marked Deprecated on this line (`RunCodeContext` with `context.WithTimeout` is the same call). `0.4` has no such function.
+- **Suggestion**: delete it when this line is merged into `0.4`, together with its test `TestRunCodeWithTimeoutKeepsItsMeaning`.
 - **Status**: pending
 
-### [2026-09-28] — two nested values whose strings contain the separators count as one
-- **Where**: `cell_identity.go` `encodeCell`, the string arm inside a nested value
-- **What**: a string inside a nested value is written without escaping the characters the encoding uses as separators. Measured on 2026-09-28: a list holding `Cell([]any{"a,s:b"})` and `Cell([]any{"a", "b"})` reports `Count([]any{"a", "b"})` 2 and a `Counter` of one entry. `0.4` tracks the same defect.
-- **Suggestion**: write a nested string length-prefixed or quoted, so no content can stand for a separator.
+### [2026-10-10] — `chromedp` held at v0.16.0
+- **Where**: `go.mod`, `github.com/chromedp/chromedp` and the `cdproto` it requires, reached through `github.com/go-echarts/snapshot-chromedp` v0.0.5, which `plot.SavePNG` uses
+- **What**: v0.16.0 is the newest `chromedp` insyra can take. v0.17.0 through v0.19.1 declare `go 1.27`. v0.20.0 and v0.20.1 declare `go 1.25` but change `chromedp.Run`, `FullScreenshot` and the query options to a generic API, so `snapshot-chromedp` v0.0.5, its newest release, no longer compiles (`too many arguments in call to chromedp.Run`, `undefined: chromedp.ByQuery`). Measured on 2026-10-10: a bar chart saved through `plot.SavePNG` with `chromedp` v0.12.1 and with v0.16.0 produced byte-identical PNGs.
+- **Suggestion**: take `chromedp` v0.20 or later once `snapshot-chromedp` releases a version that compiles against it, and compare `plot.SavePNG` output before and after, as above.
 - **Status**: pending
 
-### [2026-09-28] — a rebuilt sheet leaves its old comments, drawing and table parts in the file
-- **Where**: `csvxl/convert.go` `replaceSheet`, through excelize's `DeleteSheet`
-- **What**: `DeleteSheet` removes the worksheet and its relationships but not the parts they pointed to. Measured on 2026-09-28: after replacing a sheet that had a comment and a table, `xl/comments1.xml`, `xl/drawings/vmlDrawing1.vml` and `xl/tables/table1.xml` are still in the saved file and in `[Content_Types].xml`, referenced by nothing, so the old comment text is still inside the file; excelize also refuses a new table under the old table's name (`the same name table already exists`). Not checked in Excel or LibreOffice, neither of which was available. `0.4`'s `excelsheet.Replace` does the same.
-- **Suggestion**: open such a file in Excel and LibreOffice first. If either complains, or if leaving the old comment text in the file matters, remove the parts the old sheet's relationships pointed to before deleting it.
-- **Status**: pending
-
-### [2026-09-27] — outside the hypothesis tests, `stats` still numbers some positions from zero, and two paths let `NaN` through
-- **Where**: the `predictor %d` label in `stats/regression_shared.go`; the `(index %d)` checks in `stats/regression.go`, `stats/regression_glm.go`, `stats/regression_poisson.go` and `stats/glm_irls.go`; `row %d column %d` and `column %d` in `stats/factor_analysis.go`; `columns %d and %d` in `stats/correlation.go`; `stats/pca.go`, which also reads cells with `ToFloat64Safe` alone; `stats/knn.go` `numericVectorFromDataList`
-- **What**: every hypothesis test now counts the list and the position from one (`hypothesis-tests-refuse-non-finite`). Elsewhere the old numbering is still there. Measured on 2026-09-27: `LinearRegression(y, x1, x2)` with a blank at row 3 of `x2` says `predictor 1 contains a non-numeric value at row 3: <nil>`, `LogarithmicRegression` with `x = -2` at row 2 says `(index 1)`, and `FactorAnalysis` with text at row 2 of its second column says `non-numeric value at row 1 column 1: x`. The correlation and PCA column numbers are zero-based in the code and were not measured. Separately, `PCA` and `KNNRegress`'s targets check only that a cell converts, so a `NaN` or `+Inf` reaches the result with a nil error: `PCA` returns `NaN` eigenvalues, and `KNNRegress` predicts `NaN` or `+Inf`. `Docs/stats.md` states the `PCA` and `KNNRegress` behaviour.
-- **Suggestion**: number every position from one, and read `PCA` and `numericVectorFromDataList` through `numericValues`. Both change what callers see, the error text in one case and an error where a result came back in the other, so decide first whether they go on 0.3.x the way the hypothesis tests did. That change rested on the documentation already saying such a value is never used.
-- **Status**: pending
-
-### [2026-09-27] — two one-shot commands on one environment lose one command's variables
-- **Where**: `cli/env/state.go` `SaveVariables` (the save every command ends with) and `RestoreVariables` (the load it starts with)
-- **What**: each command reads the whole `state.json`, runs, and writes the whole file back through the same `state.json.tmp` path. Two `insyra` commands against one environment at the same time each save their own copy, so the later rename wins and the variables the other command created are gone; if both write the temporary file at once, one rename can also fail. Found by the review of `cli-env-typed-state` on 2026-09-27, by reading the code; not reproduced. It predates that change, which did not alter the read-modify-write.
-- **Suggestion**: a per-environment lock file held from restore to save, or a unique temporary name per writer plus a check that the file has not changed since it was read. The lock serialises commands, which a user running commands in parallel may not expect, so decide which.
-- **Status**: pending
-
-### [2026-09-27] — an unreadable `state.json` is overwritten by the next command
-- **Where**: `cli/root.go` `openEnvironment`, `cli/repl/repl.go` `Start`, `cli/repl/api.go` `NewDSLSession`, and `env open` in `cli/commands/env.go`
-- **What**: when `RestoreVariables` fails, the first three start from an empty variable map without saying so, and the save after the next command writes that map over the file, so every variable in the environment is lost. Measured on 2026-09-27 with the CLI built from `dev` at 550cf94: after `newdl 1 2 3 as x`, truncating `state.json` mid-object and running `newdl 9 as y` left a `state.json` holding only `y`. `env open` fails differently, going by its code: when the opened environment's state cannot be read, it keeps the previous environment's variables, and the next save writes them into the environment just opened. `cli-env-typed-state` does not make this more likely, because a file it writes always decodes, but it does not change it.
-- **Suggestion**: stop before running a command against an environment whose state could not be read, naming the file and the error, or move the unreadable file aside before saving over it. Either changes what a command does in a damaged environment, so decide which first.
+### [2026-10-13] — a guess below some confidence is still returned as the encoding
+- **Where**: `utils.go` `detectEncodingOfSample`
+- **What**: the answer for one input is now stable (`encoding-detection-is-deterministic`), but a 24-byte Big5 CSV (`名稱,數量` / `蘋果,3` / `香蕉,5`) can still be read as another encoding when the recognizers tie, and the read returns a nil error with a garbled header. The only sign is the Info line naming the guess.
+- **Suggestion**: decide whether a guess below some confidence should be a warning or an error that asks for the encoding. That changes what a read does with such a file.
 - **Status**: pending
 
 ### [2026-09-25] — device MatMul's bit-parity rests on behaviour WGSL does not promise
@@ -313,52 +322,16 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: the same treatment. Run the documented hand loop inside the test and compare the two curves, keeping only bounds any platform meets. It costs one more MNIST run, about 30 seconds in CI. Worth doing the next time `nn`'s training path is touched, or sooner if a third platform disagrees.
 - **Status**: pending
 
-### [2026-09-20] — `oblimin` ignores its starting point, so `Restarts` costs it N identical runs
-- **Where**: `stats/internal/fa/psych_faRotations.go`, the `"oblimin"` arm of the switch in `FaRotations`
-- **What**: every other method rotates from the start it was handed; oblimin builds its own identity matrix and rotates from that, ignoring the start entirely. The comment says the identity start is deliberate, "better SPSS compatibility than random starts". Measured on 2026-09-20 after `orthogonal-rotation-starts` landed here: over the 20 datasets of `stats/factor_analysis_test.go` and all four extractions, oblimin returns the `Restarts: 1` answer in all 240 combinations at `Restarts` 2, 5 and 20, while every other GPA method differs from its single-start answer in more than half of them. On the `noisyStructure` fixture, best of 5, `Restarts: 20` takes 74.6 ms to return the 2.6 ms answer. It matters more now than before: the starts oblimin is refusing used to include two oblique matrices and are now all legitimate.
-- **Suggestion**: the decision is SPSS parity against an honest `Restarts`, not how to write it. Either let oblimin use the starts like everything else, which moves oblimin results for `Restarts > 1` and may move them away from SPSS, or keep the identity start and reject `Restarts > 1` for oblimin so the parameter stops claiming a search it does not run. `0.4` took the first (6c4fce1, which also pins that at `Delta` 0 oblimin then agrees with quartimin bit for bit); it is not on this line because it moves results with nothing in v0.3's documentation describing the move. `TestRestartsParameter` in `stats/verify_more_test.go` already covers oblimin and will pin whichever is chosen. `Docs/stats.md` states the current behaviour meanwhile.
-- **Status**: pending
-
 ### [2026-09-19] — `gplot.SaveChart` still ends the program on a path it cannot write
 - **Where**: `gplot/save_chart.go:17`
 - **What**: it calls `insyra.LogFatal`, which under the default configuration is `log.Fatalf`, so a bad path ends the host program. Measured on 2026-09-19: a program calling `gplot.SaveChart(plt, "/no/such/dir/chart.png")` printed `<{[insyra - FATAL!]}> gplot.SaveChart: Failed to save chart: open /no/such/dir/chart.png: no such file or directory` and exited with status 1; the statement after the call never ran. `insyra.Config.SetDontPanic(true)` downgrades it to a log line, which is what `Docs/gplot.md` and `Docs/Configuration.md` tell readers. The `error-philosophy` spec on this line covers `gplot` and `plot` chart *construction* and `plot.SavePNG`'s path check; it does not cover `gplot`'s saving, correctly, and no doc, skill or spec claims otherwise.
 - **Suggestion**: the fix is the error-returning `SaveChart`, which changes the signature and therefore stays on `0.4`. Nothing to do on the 0.3.x line but keep the documentation honest. When the two lines merge, this entry goes away with it.
 - **Status**: pending (0.4 carries the fix; recorded here so the gap is not mistaken for closed)
 
-### [2026-09-19] — `BartlettTest` panics when the group variances come out equal
-- **Where**: `stats/ftest.go` `BartlettTest`, through `stats/distutil.go` `chiSquaredPValue`
-- **What**: Bartlett's `T` is a difference of logs, so for groups whose variances agree it lands at or just below zero by rounding. `chiSquaredPValue` passes it straight to `distuv.ChiSquared{K: df}.CDF`, which panics with `cephes: parameter out of bounds` for any negative argument — measured on 2026-09-19, `chiSquaredPValue(-1e-16, 1)` panics while `chiSquaredPValue(0, 1)` returns 1. Whether two identical groups panic therefore depends on the values: `{0.1, 0.2, 0.3}` twice returns statistic 0 and p 1, while `{-0.32329881667362437, -0.319580921043235, 0.9093452052941211, 0.9788142136474671}` twice panics. A random sweep over k=2..4 and n=2..40 hit it 5 times in 135 tries. Pre-existing: the same input panics identically on e6fbb53, so this is not a backport regression. `df <= 0` panics the same way (`chiSquaredPValue(1, 0)`), which `FriedmanTest`, `KruskalWallis`, `ChiSquareTest`, `PartialCorrelation` and `FactorAnalysis` also reach. `KruskalWallis` and `FriedmanTest` reach it on finite data too, when every value is equal: measured on 2026-09-27, `KruskalWallis` on four all-zero groups of sizes 24, 4, 27 and 11, and `FriedmanTest` on 21 subjects with 7 conditions each, all zero, both panic with `cephes: parameter out of bounds`.
-- **Suggestion**: clamp in `chiSquaredPValue` — a negative `chi2` is a rounding artefact of a statistic that is zero, so returning 1 for it is the right answer, and a non-positive `df` should return NaN the way `tQuantile` already does. That changes a panic into a value for every caller at once, which needs deciding before it is done: it is a behaviour change, though the old behaviour was a panic.
-- **Status**: pending
-
 ### [2026-09-17] — psych 2.6.5's `faRotations` tie-break picks a start that did not tie, and nobody upstream has been told
 - **Where**: upstream `psych::faRotations`; recorded on our side in [stats/testdata/crosslang_baseline.R](stats/testdata/crosslang_baseline.R) and in the comment at `factorParityTol` in [stats/factor_analysis_test.go](stats/factor_analysis_test.go)
 - **What**: when several rotation starts tie on the highest hyperplane count, psych breaks the tie by applying `which()` to the tied rows alone and then uses that result as a start number. `which()` returns a position within the subset, so with starts 1 and 3 tied and start 3 the simpler one, psych selects start 2, which never tied. The fit comparison that follows is computed and never assigned, so it has no effect. Our port selects by criterion value and does not share the defect; the only thing that depends on it is which solution psych's own baselines record.
 - **Suggestion**: report it to the maintainer. There is no GitHub route: psych declares no `BugReports` URL, `revelle` has no psych repository, and `cran/psych` is a read-only mirror with issues disabled, so the only channel is the maintainer address in `DESCRIPTION` (`revelle@northwestern.edu`). A report needs the reproduction (hyperplane `c(.5,.4,.5,.3)` with complexity `c(1.3,1.0,1.1,1.0)` selects 2, not 3) and the fix — index back into the tied set at both steps, and assign the fit step. Sending it goes out under the owner's name, so it waits for the owner.
-- **Status**: pending
-
-### [2026-09-14] — `stats` functions outside the input guard still crash on a nil list
-- **Where**: `stats/numericinput.go` `numericSlice`, reached from goroutines in `stats/regression_shared.go` `gatherRegressionInputs`; `Correlation` and `Covariance`, which reach `numericSlice` through `requireNumericPair`; and the functions that call `AtomicDo` or `Data` on an argument without converting it: `LogisticRegression`, `ChiSquareGoodnessOfFit`, `ChiSquareIndependenceTest`, `Silhouette`'s labels, `KNNClassify`'s labels, `KNNRegress`'s targets, `Skewness`, `Kurtosis`
-- **What**: `numericSlice` checks only for a nil interface, so a typed nil `*DataList` reaches `AtomicDo` and panics, and `gatherRegressionInputs` calls it from goroutines it starts itself. Measured on 2026-09-27: `LinearRegression(x, typedNil)` and `PoissonRegression(typedNil, x)` end the process with a nil-pointer panic that no caller can recover, and every other function named above panics in the caller's goroutine on a typed nil. The hypothesis tests are no longer on this list: `hypothesis-tests-refuse-non-finite` converts every argument of the paired, rank and ANOVA tests through `asDataList` before any goroutine starts, so a nil list there gets the error an empty one gets. One nil still gets through `asDataList` itself: a wrapper holding a nil list, such as `isr.UseDL((*insyra.DataList)(nil))`, panics in its `AtomicDo` (measured with `OneWayANOVA`), now in the caller's goroutine rather than inside one the function started.
-- **Suggestion**: convert the remaining entry points through `asDataList`, or add a typed-nil check to `numericSlice` so the goroutines in `gatherRegressionInputs` get an error back instead of panicking, then widen `stats-input-type-guard` to name them. Decide first whether a nil list is an error or an empty sample. The hypothesis tests did not need that decision, because every one of them already refused an empty list.
-- **Status**: pending
-
-### [2026-09-14] — two deeply nested values with different leaves count as one
-- **Where**: `cell_identity.go` `maxCellEncodeDepth` and the interface arm of `writeCellValue`
-- **What**: a `[]any` level spends two encoding levels (the slice and the interface inside it), so a value nested more than 32 `[]any` deep reaches the limit of 64. Past it an interface is written as `p:interface {}`, its type with no address, so two such values that differ only in their deepest leaf encode alike: measured on 2026-09-14, a list holding a depth-40 value with leaf 1 and two with leaf 2 reports `Count` 3 for either. On v0.3.2 the same `Count` panicked, so nothing that worked changed, but the answer is silently wrong.
-- **Suggestion**: at the limit, unwrap the interface and write the address of the value inside it, which is what the comment above `maxCellEncodeDepth` says already happens.
-- **Status**: pending
-
-### [2026-09-14] — `DataList.Shift` flattens a slice cell
-- **Where**: `datalist_window.go` `Shift`
-- **What**: `Shift` builds its result through `NewDataList`, which flattens every slice, so a list holding `[]byte{1, 2}` and `3` comes back three cells long: measured on 2026-09-14, `Append([]byte{1, 2}, 3)` then `Shift(0)` gives `[1 2 3]`. Present on v0.3.2; found while backporting `one-value-one-cell`.
-- **Suggestion**: build the result with `Append`, or wrap each cell with `Cell`. The length and cells of the result change for lists holding slices, so decide which line takes it.
-- **Status**: pending
-
-### [2026-09-14] — 26 main specs fail `openspec validate --specs --strict`
-- **Where**: `openspec/specs/*/spec.md`, mostly the `## Purpose` section
-- **What**: on 2026-09-14 the strict run reports 26 failures of 101 specs: the seven `accel-*` specs, `changelog`, `cli-entry`, `command-registry`, `core-preprocessing`, `dsl-commands`, `env-management`, the five `ml-*` specs, `nn-inference`, `nn-training`, `repl-engine`, `script-runner`, `stats-clustering`, `stats-decomposition`, `stats-knn` and `stats-regression`. dev at e6fbb53 had 27 of 50; the 0.4 backport fixed `verification-integrity` and gave every spec it added a real Purpose. Nothing in CI runs the command.
-- **Suggestion**: write each Purpose from its requirements as its own change, then add the strict run to the lint workflow so the count cannot climb again.
 - **Status**: pending
 
 ### [2026-09-12] — grouping, pivoting, merging and `Describe` still merge nested values that print alike
@@ -373,12 +346,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: documentation, not code. `Docs/DataList.md` describes the flattening and `Cell` together; keep the `Count`/`Counter` examples building their list with `Append` or `Cell` so they are runnable as written, and consider whether `Count` should say something when it is handed a slice that the receiving list could not be holding.
 - **Status**: pending
 
-### [2026-09-12] — a self-referential slice takes the process down in `NewDataList`
-- **Where**: `datalist.go` `flattenWithNilSupport`
-- **What**: it recurses into every `reflect.Slice` with no depth limit, so a slice containing itself exhausts the stack. Measured on 2026-09-13: `cyclic := []any{1}; cyclic[0] = cyclic; insyra.NewDataList(cyclic)` ends with `fatal error: stack overflow`. That is not a panic: `recover` cannot catch it, and the whole program ends. `encodeCell` was given a depth limit of 64 for exactly this reason; the flattener was not touched because it is the constructor's hot path and the fix should be measured against it. `Append` does not flatten, so it can put such a slice into a list as one cell, and printing that cell overflows the stack the same way: `stats` formats a refused cell with `%v` in its error, so measured on 2026-09-27, `OneWayANOVA` on a list holding `cyclic` ends with `fatal error: stack overflow`. Every function that reads through `numericValues` shares this, and the hypothesis tests joined them in `hypothesis-tests-refuse-non-finite`; before that they reported only the position.
-- **Suggestion**: the same depth bound, or a visited-pointer set. A bound is cheaper and a 64-deep slice literal is already pathological; a visited set is exact but costs an allocation per construction. Measure `NewDataList` on a large flat slice before and after, because that path runs for every table built from a slice. For the error text, print a composite cell by its type instead of its contents, or through the same bounded encoder.
-- **Status**: pending
-
 ### [2026-09-12] — a decimal column is exact but is not a number to the rest of the library
 - **Where**: `internal/utils` `IsNumeric` / `ToFloat64Safe`, and every numeric path behind them
 - **Note (2026-09-14)**: measured on this line, a decimal column reaches `stats.SingleSampleTTest`, which returns a `NaN` result with a nil error, and `stats.Skewness`, which fails with "zero variance" because `SliceToF64` reads every decimal as 0; `stats.Correlation` refuses it. `ToJSON` writes a decimal cell as `{}`. `0.4` fixes these through changes that stayed there.
@@ -388,7 +355,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-09-12] — reading a Parquet file and writing it back still changes column types
 - **Where**: `parquet/internal.go` `inferArrowType`
-- **What**: the reader handles more Arrow types than the writer's seven, so a read-then-write round trip downgrades: a `Date32` column comes back as a timestamp, a decimal or a `Binary` column as a string column, an `Int16` as an `Int64`. A `Binary` column loses more than its type: `appendValue` writes each `[]byte` through `conv.ToString`, so `A-01` goes out as the text `[65 45 48 49]` (measured 2026-09-14). On 0.4 `parquet-binary-is-bytes` also writes a column of `[]byte` cells as Arrow `Binary`; that changes file output, so it stayed off the 0.3.x line. Nothing is silently wrong, but the file is not the file that went in. Found on 2026-09-12 while fixing #371, which only concerned the read half.
+- **What**: the reader handles more Arrow types than the writer's seven, so a read-then-write round trip downgrades: a `Date32` column comes back as a timestamp, a decimal as a string column, an `Int16` as an `Int64`. A column of `[]byte` cells now survives, written as `Binary` (`parquet-write-bytes-as-binary`, 2026-10-18); before that it was written as the text `[65 45 48 49]`. Nothing is silently wrong, but the file is not the file that went in. Found on 2026-09-12 while fixing #371, which only concerned the read half.
 - **Suggestion**: `inferArrowType` infers from Go values, so it cannot tell an `int16` that came from a `Date32` column from any other. Carrying the source schema through a read would fix it properly; inferring `time.Time` to `Date64` would not, and would guess wrong on ordinary data. Worth doing only if round-tripping is a use case someone has.
 - **Status**: pending
 
@@ -396,26 +363,13 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: `lp/lp.go` `SolveFromFile` and `SolveModel`; the example in `Docs/lp.md`
 - **What**: on a timeout or a solver error both functions return `nil` as the first DataTable, and `SolveFromFile` returns `nil, nil` for more than one `timeoutSeconds` argument. `Docs/lp.md` says only "returns the result as two DataTable" and its example calls `result.Show()` straight away. A nil `*DataTable` panics on `Show()`; measured on 2026-09-12. Found while writing the parser tests in `test-unpinned-behaviour`, which cover the failure path of `parseGLPKOutputFromFile` (also nil on an unreadable file).
 - **Suggestion**: returning an empty table instead of nil changes a returned value, so on the 0.3.x line the nil stays (the never-nil version lives on 0.4 as `lp-never-returns-a-nil-table`). `Docs/lp.md` was corrected on 2026-09-18: both Returns sections say the solution is nil when the solve produces none, and both examples check it. What is left is the code decision for a future release.
-- **Status**: pending (documentation corrected; the nil return itself is undecided)
-
-### [2026-09-10] — how insyra turns a number into text is decided nowhere
-- **Where**: every path that writes a number as text — `internal/ccl/stdlib_string.go` `toString` (behind CCL's `CONCAT`, `TOSTR` without a format, `LEN`, `UPPER`, …), the `&` operator in `internal/ccl/ccl_evaluator.go`, `ToCSV`, `ToJSON`, and `Show`.
-- **What**: each path uses Go's default formatting, so a `float64` outside roughly 1e-5..1e21 comes out in exponent form. Measured on one column `[0.0000001, 1e6, 1e21, 12345.678]`: CCL `'x' & A` gives `x1e-07`, `x1e+06`, `x1e+21`; `ToCSV` writes `1e-07`, `1e+06`, `1e+21`; `ToJSON` writes `1e-7` (it wrote `1e-07` until go-json v0.11, which spells numbers the way `encoding/json` does); `Show` prints `1.0000e-07`, `1000000`, `1.0000e+21`, `1.2346e+04`, a display format of its own. Every numeric literal in CCL is a `float64`, so `LEN(1000000)` is `5` while the same value read from an integer column gives `7`.
-- **Why it is not a CCL-only fix**: CCL is not the odd one out — `ToCSV` and `ToJSON` both write exponent form, and since go-json v0.11 they no longer even spell it alike (`1e-07` against `1e-7`). Changing CCL alone would make `'x' & A` say `x0.0000001` while `ToCSV` of the same column still says `1e-07`. That split may well be the right answer: a serialised number and a number embedded in text do different jobs, and `1e-07` in a CSV or JSON number cell reads back as the same value, whereas `id-1e-07` in a string reads back as nothing useful. But it should be chosen, not fall out of a patch to one file. It is also a different question from the `<nil>` that CCL's `&` still writes for a nil operand on this line: CCL is the only path that writes that — `ToCSV` writes an empty cell and `ToJSON` writes `null`.
-- **Suggestion**: decide per path. The strongest case for a change is text built inside CCL, where `strconv.FormatFloat(f, 'f', -1, 64)` gives the shortest exact decimal with no exponent (`"0.0000001"`). The cost is that a genuinely huge value gets long (`1e300` is 301 characters), so a magnitude threshold may be wanted. Any change is **breaking** for expressions that build text from a float.
-- **Status**: pending
+- **Status**: won't fix (2026-10-18). Both functions are Deprecated and removed in 0.4, where `Solve` and `SolveFile` return an error. Changing a returned value on a function that is about to go would break `result == nil` checks for little gain, and the documentation already tells callers to check. Delete this entry with the functions.
 
 ### [2026-08-01] — multi-GPU planning and execution coverage
 - **Where**: `accel/planner.go` (`PlanShardable`, weighted per-device `ShardAssignment`s), `accel/exact.go` (per-assignment dispatch)
 - **What**: the planner retains capability-weighted heterogeneous assignments and its existing `MergePolicy`. `ExecuteNearestExact` now dispatches one worker per assignment, uses the bounded chunk seam, merges by input range, and falls back per assignment without changing the exact CPU decision.
 - **Suggestion**: run `INSYRA_ACCEL_GPU_TESTS=1 go test ./accel -run TestMultiDeviceParityConcurrentAndSequentialOnHardware` on a multi-GPU host, then record concurrent-versus-sequential wall clock for the 32k/8k saturation classes. The single-device host verifies correctness only; it cannot supply a multi-GPU speedup number.
 - **Status**: single-device correctness verified; multi-GPU wall clock and non-Apple parity remain pending
-
-### [2026-08-01] — `ToF64Slice` still fabricates zeros for 54 callers outside `stats`
-- **Where**: `datalist.go` `ToF64Slice`, and its callers in `plot/`, `gplot/`, `cli/`, `datalist_interpolation.go`
-- **What**: it routes every value through `insyra.ToFloat64`, which has no failure channel and yields `0` for anything it cannot parse, then returns a full-length slice — so a caller cannot tell a real zero from a value that was never read. `stats` was moved off it on 2026-08-01 after a blank among six observations was measured moving a Pearson coefficient from 0.9992 to 0.9879. `quant` followed on 2026-09-05 (`fix-quant-legacy-numeric-input`): its last five call sites — `SharpeRatio`, `MaxDrawdown`, `AnnualizedReturn`, `DeflatedSharpeRatio`, and `PBO`'s column loop — now read through `numericSeries`, so the whole package refuses an unreadable cell instead of zeroing it. The remaining callers were left deliberately: they are display and reporting paths, where a fabricated zero shows up as a point on a chart rather than inside a coefficient.
-- **Suggestion**: leave them, but decide rather than drift. If they are to stay, the method's doc comment should say what it does with a value it cannot read, because it currently does not. A new numeric analysis must not use it.
-- **Status**: pending
 
 ### [2026-08-01] — the GPU backend is verified on Apple and Metal only
 - **Where**: `accel/`, the whole device path
@@ -433,11 +387,4 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: [read.go](read.go) `ReadExcelSheet` → `ReadSlice2D`
 - **What**: excelize `GetRows` returns strings and `ReadSlice2D` appends them as-is, so Excel loads produce all-string DataTables while CSV loads run column-level inference (`inferCSVColumnTypes`). Opposite defaults for the two spreadsheet formats. Noticed while adding `CSVReadOptions.RawStrings` (issue #188).
 - **Suggestion**: Decide whether Excel reads should run the same column inference by default (with the same opt-out), or stay raw; either way document the behavior in `Docs/DataTable.md`.
-- **Status**: pending
-
-### [2026-07-11] — dependencies held back by the Go 1.25 directive
-- **Where**: `go.mod`
-- **What**: the 2026-09-28 refresh left two groups below their newest versions. (1) The newest version of each of these declares `go 1.26` or later, so taking it would raise insyra's directive: `golang.org/x/crypto`, `exp`, `image`, `mod`, `net`, `oauth2`, `sync`, `sys`, `telemetry`, `term`, `text`, `time` and `tools`; `google.golang.org/api`; `google.golang.org/genproto` with its `googleapis/api` and `googleapis/rpc`; `cloud.google.com/go/auth` with `auth/oauth2adapt`, `bigquery`, `compute/metadata` and `iam`; `github.com/googleapis/gax-go/v2`; `github.com/quic-go/quic-go`; `github.com/twpayne/go-geom` (`go 1.26.3`); `modernc.org/libc`; and `chromedp` from `v0.15.0` (newest `v0.16.0`) with the `cdproto` it needs. `golang.org/x/crypto` v0.56.0 is also the first version outside GO-2026-6355 and GO-2026-6354, which #203 tracks; insyra does not import the affected `ssh` package. (2) `chromedp` stops at `v0.12.1`, below the newest Go-1.25 version `v0.14.2`, because from `v0.13.0` it requires `go-json-experiment/json`, and govulncheck panics on that package's generic variadics ("got jsontext.Value, want variadic parameter of unnamed slice or string type") when govulncheck itself is built with Go 1.25. Measured 2026-09-24: x/vuln v1.3.0 and v1.7.0 built with go1.25.14 both panic on it, and v1.7.0 built with go1.26.5 completes. The Vulnerability Scan job builds govulncheck with Go 1.25, so taking `v0.14.2` would break it.
-- **Note (2026-09-28)**: `google.golang.org/grpc` is no longer held back. GitHub's advisory now gives the v1.84 line its own fix (`d5a41119`, in v1.84.0), so v1.84.0 is outside every range of GHSA-2v4p-qf9q-27wj. The Go vulnerability database has not caught up: GO-2026-6443, last modified two days before v1.84.0 was tagged, still covers it, so govulncheck lists it among the packages insyra imports but does not call.
-- **Suggestion**: when the minimum Go rises to 1.26, take group (1) and the whole chromedp chain together, and move the Vulnerability Scan job to Go 1.26 in the same change.
 - **Status**: pending

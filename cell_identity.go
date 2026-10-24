@@ -39,9 +39,11 @@ const maxCellEncodeDepth = 64
 // string cell's own content can contain one and the closer would be a guess.
 const uncomparableDisplayBytes = 64
 
-// UncomparableKey stands in for a cell value that Go cannot use as a map key —
-// a slice, a map, or anything containing one. It is what ToMapKey returns
-// for such a value, and what appears as the key in a Counter result.
+// UncomparableKey stands in for a cell value that cannot serve as a map key:
+// a slice, a map or anything containing one, which Go refuses to compare, and
+// a NaN or anything containing one, which compares unequal to itself and so
+// would make an entry nobody could look up. It is what ToMapKey returns for
+// such a value, and what appears as the key in a Counter result.
 //
 // Two of them are equal exactly when the values they stand for count and match
 // as the same value. The content they carry is deliberately not exported: it
@@ -105,7 +107,7 @@ func truncateForDisplay(s string) string {
 // loaded data. To ask how often one value appears, prefer Count(v), which
 // matches integers by value.
 func ToMapKey(v any) any {
-	if comparableCell(v) {
+	if usableAsMapKey(v) {
 		return v
 	}
 	typ, content := splitCellEncoding(v)
@@ -114,6 +116,21 @@ func ToMapKey(v any) any {
 		key.text = s.String()
 	}
 	return key
+}
+
+// usableAsMapKey reports whether v can serve as a map key, which asks not only
+// whether == is legal but whether it is useful: a value must equal itself. A
+// NaN is comparable by the type system and NaN != NaN, so using one as a map
+// key makes an entry nobody can look up: three NaNs in a column became three
+// counts of one. Self-equality catches the nested shapes too, since an array
+// or a struct holding a NaN compares element by element and is unequal to
+// itself as well. comparableCell is checked first, because == panics without
+// it.
+func usableAsMapKey(v any) bool {
+	if !comparableCell(v) {
+		return false
+	}
+	return v == v
 }
 
 // comparableCell reports whether == on v is safe.
@@ -156,7 +173,7 @@ func encodeCell(v any) string {
 		}
 		return "b:0"
 	case int, int8, int16, int32, int64,
-		uint, uint8, uint16, uint32, uint64:
+		uint, uint8, uint16, uint32, uint64, uintptr:
 		return fmt.Sprintf("i:%v", v)
 	case float32, float64:
 		return encodeCellFloat(toFloatForKey(v))
@@ -383,8 +400,18 @@ func writeCellValue(b *strings.Builder, rv reflect.Value, depth int, path []cell
 		return noCellRef
 	}
 	if depth > maxCellEncodeDepth {
-		writeCellAddress(b, rv)
-		return noCellRef
+		// An interface only wraps what it holds; look through it so a scalar
+		// leaf is written by value and two deep values that differ in a leaf
+		// stay different. Only a container is cut off, by its address.
+		inner := rv
+		for inner.Kind() == reflect.Interface && !inner.IsNil() {
+			inner = inner.Elem()
+		}
+		if !isScalarKind(inner.Kind()) {
+			writeCellAddress(b, inner)
+			return noCellRef
+		}
+		rv = inner
 	}
 
 	switch rv.Kind() {
@@ -401,8 +428,14 @@ func writeCellValue(b *strings.Builder, rv reflect.Value, depth int, path []cell
 		return writeCellValue(b, rv.Elem(), depth+1, path, memo)
 
 	case reflect.String:
-		b.WriteString("s:")
-		b.WriteString(rv.String())
+		// Length-prefixed, so a string holding the encoding's own separators
+		// cannot stand for two values: []any{"a,s:b"} and []any{"a", "b"}
+		// would otherwise write the same elements.
+		str := rv.String()
+		b.WriteString("s")
+		b.WriteString(strconv.Itoa(len(str)))
+		b.WriteString(":")
+		b.WriteString(str)
 
 	case reflect.Bool:
 		if rv.Bool() {
@@ -502,4 +535,16 @@ func writeCellAddress(b *strings.Builder, rv reflect.Value) {
 	default:
 		fmt.Fprintf(b, "p:%s", rv.Type())
 	}
+}
+
+// isScalarKind reports whether a value of kind k holds no reference to descend
+// into, so writing it cannot recurse.
+func isScalarKind(k reflect.Kind) bool {
+	switch k {
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.String:
+		return true
+	}
+	return false
 }

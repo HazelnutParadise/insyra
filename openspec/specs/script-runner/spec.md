@@ -1,7 +1,8 @@
 # script-runner Specification
 
 ## Purpose
-TBD - created by archiving change cli-repl. Update Purpose after archive.
+Running a `.isr` script with `run` or `insyra run`: each line is sent to the command registry in order, comments and blank lines are skipped, the lines share one session's variables, and the environment's state is saved when the script finishes.
+
 ## Requirements
 ### Requirement: Script file execution
 系統 SHALL 提供 `run` 命令執行 `.isr` 腳本檔。

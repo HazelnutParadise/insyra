@@ -1,6 +1,10 @@
 package quant
 
-import "github.com/HazelnutParadise/insyra"
+import (
+	"testing"
+
+	"github.com/HazelnutParadise/insyra"
+)
 
 // toDL builds an IDataList from float64 values for tests.
 func toDL(vs ...float64) insyra.IDataList {
@@ -28,4 +32,25 @@ func toDT(perf [][]float64) insyra.IDataTable {
 		cols[j] = insyra.NewDataList(vals...)
 	}
 	return insyra.NewDataTable(cols...)
+}
+
+func prices(v ...float64) *insyra.DataList {
+	a := make([]any, len(v))
+	for i := range v {
+		a[i] = v[i]
+	}
+	return insyra.NewDataList(a...)
+}
+
+func floats(t *testing.T, dl *insyra.DataList) []float64 {
+	t.Helper()
+	out := make([]float64, 0, dl.Len())
+	for _, v := range dl.Data() {
+		f, ok := insyra.ToFloat64Safe(v)
+		if !ok {
+			t.Fatalf("not a number: %v", v)
+		}
+		out = append(out, f)
+	}
+	return out
 }

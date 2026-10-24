@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/HazelnutParadise/insyra/stats"
 )
@@ -20,7 +19,7 @@ func runPCACommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	n, err := strconv.Atoi(coreArgs[1])
+	n, err := atoiArg(ctx, coreArgs[1])
 	if err != nil || n < 1 {
 		return fmt.Errorf("invalid number of components: %s", coreArgs[1])
 	}
@@ -31,6 +30,6 @@ func runPCACommand(ctx *ExecContext, args []string) error {
 	ctx.Vars[alias] = result.Components
 	ctx.Vars[alias+"_eigenvalues"] = result.Eigenvalues
 	ctx.Vars[alias+"_explained_variance"] = result.ExplainedVariance
-	_, _ = fmt.Fprintf(ctx.Output, "stored %s (components)\n", alias)
+	_, _ = fmt.Fprintf(ctx.Output, "stored %s (components) and %s\n", alias, alsoStored(alias, "eigenvalues", "explained_variance"))
 	return nil
 }

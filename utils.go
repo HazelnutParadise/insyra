@@ -18,6 +18,9 @@ import (
 	"github.com/saintfish/chardet"
 )
 
+// F64orRat is a type constraint satisfied by float64 and *big.Rat.
+//
+// Deprecated: no insyra function uses F64orRat. Removed in 0.4.
 type F64orRat = utils.F64orRat
 
 var ToFloat64 = utils.ToFloat64
@@ -61,7 +64,7 @@ func ProcessData(input any) ([]any, int) {
 		}
 	case reflect.Interface:
 		// 支持 IDataList 的断言
-		if dl, ok := input.(IDataList); ok {
+		if dl, ok := input.(IDataList); ok && !IsNilList(dl) {
 			data = dl.Data()
 		} else {
 			LogWarning("core", "ProcessData", "Unsupported data type %T, returning nil.", input)
@@ -75,7 +78,7 @@ func ProcessData(input any) ([]any, int) {
 		}
 	default:
 		// 尝试类型断言为 IDataList
-		if dl, ok := input.(IDataList); ok {
+		if dl, ok := input.(IDataList); ok && !IsNilList(dl) {
 			data = dl.Data()
 		} else {
 			LogWarning("core", "ProcessData", "Unsupported data type %T, returning nil.", input)
@@ -86,29 +89,43 @@ func ProcessData(input any) ([]any, int) {
 	return data, len(data)
 }
 
-// SqrtRat calculates the square root of a big.Rat.
-// 計算 big.Rat 的平方根
+// SqrtRat returns the square root of x, rounded to the precision of a
+// big.Float holding x. It returns nil when x is nil or negative.
+//
+// Deprecated: SqrtRat has nothing to do with data tables and was removed in
+// 0.4. Use math/big directly:
+//
+//	f := new(big.Float).SetRat(x)
+//	root, _ := f.Sqrt(f).Rat(nil)
 func SqrtRat(x *big.Rat) *big.Rat {
-	// 將 *big.Rat 轉換為 *big.Float
+	if x == nil || x.Sign() < 0 {
+		return nil
+	}
 	floatValue := new(big.Float).SetRat(x)
-
-	// 計算平方根
 	sqrtValue := new(big.Float).Sqrt(floatValue)
-
-	// 將 *big.Float 轉換為 *big.Rat
-	result := new(big.Rat)
-	sqrtXRat, _ := sqrtValue.Rat(result)
-	return sqrtXRat
+	result, _ := sqrtValue.Rat(nil)
+	return result
 }
 
-// PowRat calculates the power of a big.Rat.
-// 計算 big.Rat 的次方 (v^n)
+// PowRat returns base raised to exponent as a new value. A negative exponent
+// gives the reciprocal of the positive power, so PowRat(2/3, -2) is 9/4. Any
+// base to the power 0 is 1. It returns nil when base is nil, or when base is 0
+// and exponent is negative, since 0 has no reciprocal.
+//
+// Deprecated: PowRat has nothing to do with data tables and was removed in
+// 0.4. Use math/big directly: raise base.Num() and base.Denom() with
+// big.Int.Exp and combine them with big.Rat.SetFrac.
 func PowRat(base *big.Rat, exponent int) *big.Rat {
-	result := new(big.Rat).SetInt64(1) // 初始化為 1
-	for range exponent {
-		result.Mul(result, base) // result = result * base
+	if base == nil || (exponent < 0 && base.Sign() == 0) {
+		return nil
 	}
-	return result
+	n := new(big.Int).Abs(big.NewInt(int64(exponent)))
+	num := new(big.Int).Exp(base.Num(), n, nil)
+	den := new(big.Int).Exp(base.Denom(), n, nil)
+	if exponent < 0 {
+		num, den = den, num
+	}
+	return new(big.Rat).SetFrac(num, den)
 }
 
 // Deprecated: ConvertLongDataToWide is misleadingly named — it does not produce
@@ -241,18 +258,40 @@ func IsNumeric(v any) bool {
 	return false
 }
 
-// ParseColIndex converts an Excel-like column name (e.g., "A", "Z", "AA") to its 0-based integer index.
-func ParseColIndex(colIndex string) (colNumber int, ok bool) {
+// ColIndexToNumber turns an Excel-style column index ("A", "Z", "AA", in
+// either case) into its column number, which counts from 0: "A" is 0 and "AA"
+// is 26. It reports -1, false for an empty string or any character that is not
+// a letter. ColNumberToIndex is the reverse.
+func ColIndexToNumber(colIndex string) (colNumber int, ok bool) {
 	return utils.ParseColIndex(colIndex)
 }
 
-// CalcColIndex converts a 0-based column number to its Excel-style index (A, B, C, ..., Z, AA, AB, ...).
-func CalcColIndex(colNumber int) (colIndex string, ok bool) {
+// ColNumberToIndex turns a column number, which counts from 0, into its
+// Excel-style column index: 0 is "A" and 26 is "AA". It reports "", false for
+// a negative number. ColIndexToNumber is the reverse.
+func ColNumberToIndex(colNumber int) (colIndex string, ok bool) {
 	return utils.CalcColIndex(colNumber)
+}
+
+// ParseColIndex turns an Excel-style column index into its 0-based number.
+//
+// Deprecated: use ColIndexToNumber, which is the same function. Removed in 0.4.
+func ParseColIndex(colIndex string) (colNumber int, ok bool) {
+	return ColIndexToNumber(colIndex)
+}
+
+// CalcColIndex turns a 0-based column number into its Excel-style index.
+//
+// Deprecated: use ColNumberToIndex, which is the same function. Removed in 0.4.
+func CalcColIndex(colNumber int) (colIndex string, ok bool) {
+	return ColNumberToIndex(colNumber)
 }
 
 // SortTimes sorts a slice of time.Time in ascending order.
 // It sorts the times directly in the provided slice.
+//
+// Deprecated: SortTimes has nothing to do with data tables and was removed in
+// 0.4. Use slices.SortStableFunc(times, time.Time.Compare).
 func SortTimes(times []time.Time) {
 	algorithms.ParallelSortStableFunc(times, func(a, b time.Time) int {
 		if a.Before(b) {
@@ -267,7 +306,7 @@ func SortTimes(times []time.Time) {
 // colorText 根據環境支持自動決定是否添加顏色到文本
 // code 是 ANSI 顏色代碼，text 是要設置顏色的文本
 func colorText(code string, text any) string {
-	if Config.GetDoesUseColoredOutput() && utils.IsColorSupported() {
+	if Config.GetUseColoredOutput() && utils.IsColorSupported() {
 		return fmt.Sprintf("\033[%sm%v\033[0m", code, text)
 	}
 	return fmt.Sprintf("%v", text)
@@ -285,15 +324,24 @@ func DetectEncoding(filePath string) (string, error) {
 	defer func() { _ = f.Close() }()
 
 	// Read a reasonably large sample to improve detection accuracy
-	buf := make([]byte, 8192)
+	buf := make([]byte, encodingSampleSize)
 	n, err := f.Read(buf)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
 	}
-	if n == 0 {
-		return "", fmt.Errorf("empty file %s", filePath)
+	return detectEncodingOfSample(buf[:n], filePath)
+}
+
+// encodingSampleSize is how much of an input the encoding is judged from.
+const encodingSampleSize = 8192
+
+// detectEncodingOfSample names the encoding of the first bytes of an input.
+// source only labels the messages, so a file and a reader are judged by the
+// same rule.
+func detectEncodingOfSample(sample []byte, source string) (string, error) {
+	if len(sample) == 0 {
+		return "", fmt.Errorf("empty file %s", source)
 	}
-	sample := buf[:n]
 
 	// BOM checks. UTF-32's BOMs start with UTF-16's, so they must be tested
 	// first or every UTF-32LE file is reported as UTF-16LE.
@@ -316,19 +364,30 @@ func DetectEncoding(filePath string) (string, error) {
 	// Quick UTF-8 heuristic. A sample that filled the buffer may end in the
 	// middle of a multi-byte rune, which is not invalid UTF-8, just truncated:
 	// back off to the last complete rune before judging. A shorter sample is
-	// the whole file, so its tail is judged as it is.
-	if utf8.Valid(sample) || (n == len(buf) && utf8.Valid(trimIncompleteRune(sample))) {
+	// the whole input, so its tail is judged as it is.
+	if utf8.Valid(sample) || (len(sample) == encodingSampleSize && utf8.Valid(trimIncompleteRune(sample))) {
 		return "utf-8", nil
 	}
 
 	// Fallback to chardet
+	// chardet runs its recognizers concurrently and sorts their answers by
+	// confidence alone, so recognizers that tie come back in whatever order they
+	// finished. DetectBest returns the first of them, which made a short Big5
+	// file read as Shift_JIS, GB18030 or Big5 from one call to the next. Take
+	// every answer and break a tie by name, so one input always gets one answer.
 	detector := chardet.NewTextDetector()
-	res, err := detector.DetectBest(sample)
+	results, err := detector.DetectAll(sample)
 	if err != nil {
-		return "", fmt.Errorf("failed to detect encoding for file %s: %w", filePath, err)
+		return "", fmt.Errorf("failed to detect encoding for file %s: %w", source, err)
+	}
+	best := results[0]
+	for _, r := range results[1:] {
+		if r.Confidence == best.Confidence && r.Charset < best.Charset {
+			best = r
+		}
 	}
 
-	charset := strings.ToLower(res.Charset)
+	charset := strings.ToLower(best.Charset)
 	return charset, nil
 }
 

@@ -1512,3 +1512,47 @@ func eigenvaluesDescending(S *mat.Dense) []float64 {
 	}
 	return out
 }
+
+// obliminCriterion is vgQ.oblimin's objective at gamma = 0 (the default
+// Delta): sum_i sum_{j != k} L_ij^2 L_ik^2 / 4. Invariant to the column order
+// and sign standardisation FactorAnalysis applies after rotating.
+func obliminCriterion(L *mat.Dense) float64 {
+	rows, cols := L.Dims()
+	f := 0.0
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			for k := 0; k < cols; k++ {
+				if j != k {
+					f += L.At(i, j) * L.At(i, j) * L.At(i, k) * L.At(i, k)
+				}
+			}
+		}
+	}
+	return f / 4
+}
+
+// Restarts is documented as the number of starts the rotation is run from,
+// best criterion value winning. Oblimin ignored its start, so the parameter
+// bought it nothing: four factors fitted to this three-factor table stop at
+// f = 0.0444 from the identity, while a random start reaches f = 0.00094.
+func TestObliminRestartsSearchTheCriterion(t *testing.T) {
+	tbl := buildSyntheticTable(60, 6, syntheticGen3Factor)
+	run := func(restarts int) float64 {
+		opt := stats.DefaultFactorAnalysisOptions()
+		opt.Count.Method = stats.FactorCountFixed
+		opt.Count.FixedK = 4
+		opt.Extraction = stats.FactorExtractionML
+		opt.Rotation.Method = stats.FactorRotationOblimin
+		opt.Rotation.Restarts = restarts
+		opt.Scoring = stats.FactorScoreNone
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			t.Fatalf("restarts=%d: %v", restarts, err)
+		}
+		return obliminCriterion(dtToDense(res.Loadings))
+	}
+	one, five := run(1), run(5)
+	if five >= one/10 {
+		t.Errorf("oblimin f = %.6f at Restarts 1 and %.6f at Restarts 5; the extra starts were not used", one, five)
+	}
+}

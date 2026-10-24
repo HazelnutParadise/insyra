@@ -2,6 +2,8 @@
 
 This document describes all public APIs in the `quant` package, designed for AI/automated applications to directly understand each function, type, parameter, and return value.
 
+> The technical-analysis tools (moving averages, MACD, KD, RSI, volume and breadth indicators, the bias ratio, turning points, chart patterns, gaps and the shuffled-price control) are in the [`quant/ta`](./quant-ta.md) package, with what our own study found about them. The rest of this package is not technical analysis.
+
 ---
 
 ## Installation
@@ -21,16 +23,22 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Market exposure**: `Beta`, `CAPM` — measure an asset's exposure and per-period alpha against a benchmark return series
 - **Options**: `BlackScholes`, `ImpliedVolatility` — price European calls and puts, report five greeks, and recover volatility from a market price
 - **Factor models**: `FactorModel` — attribute an asset's excess returns to named market, size, value, momentum, or other factor columns
-- **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado)
+- **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado); `RealityCheck`, `SPATest` — bootstrap tests of whether the best of many strategies beats a benchmark (White, Hansen); `RomanoWolf` — which of them do, at a familywise level (Romano & Wolf)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
+- **Text tone**: `ToneCounts`, `DailyTone` — count positive and negative words from a lexicon (with negation, for English or Chinese) and add them up by trading day without looking ahead
+- **Event studies and signal buckets**: `EventStudy`, `SignalBuckets`, `AbnormalReturns` — forward excess returns after events or by signal bucket, with a monthly Newey-West t-test; abnormal returns and CAR from before to after each event; and the bias indicators (`ta.Bias`, `ta.BiasZ`) that feed them
+- **Signal backtest**: `BacktestSignal` — a 0–1 position signal into a net return series with a one-row delay, cash returns and separate buy and sell costs
+- **Cross-sectional sorting**: `QuantileSort` — sort the stocks of every date into signal groups and report each group's mean return and the top-minus-bottom spread
+- **Cross-sectional regression**: `FamaMacBeth` — regress every date's returns on several characteristics and test each coefficient's time average with a Newey-West t-test
+- **Sharpe comparison**: `SharpeDifferenceTest` — Jobson-Korkie test with Memmel's correction for whether two return series have the same Sharpe ratio
 - **Portfolio optimization**: `OptimizePortfolio`, `OptimizePortfolioMoments`, `EfficientFrontier` — mean-variance weights under a sum-to-one and per-asset box constraint, for minimum variance, a target return, or maximum Sharpe, plus the frontier between them
 
 Unlike the [`finance`](./finance.md) package (which uses high-precision `decimal.Decimal` for TVM, NPV/IRR, and bond pricing), `quant` works with ordinary floating-point numbers — the industry convention for return/equity analytics, where statistical noise dwarfs floating-point error.
 
 **Input convention.** Functions that take your *raw data series* accept `insyra.IDataList` (a return or equity column) or `insyra.IDataTable` (a strategy×period matrix), the same as the [`stats`](./stats.md) package. Values that are *not* raw data — scalar Sharpe/variance inputs, and the returns/equity that walk-forward and the bootstrap *compute* — stay as `float64`. Every exported function follows an **error-first** convention: invalid input returns an `error` rather than logging or panicking. Always handle `err` at the call site.
 
-Every function that reads a `DataList` or `DataTable` refuses values it cannot read: a non-numeric cell, a `NaN`, or an `Inf` returns an error naming the series and the one-based row, and a `nil` series returns an error naming it. No cell is ever silently coerced to `0`. Clean a series with gaps before the call — `ClearNils` drops blanks (a `PctChange` column starts with one), or fill them explicitly.
+Every function that reads a `DataList` or `DataTable` refuses values it cannot read: a non-numeric cell, a `NaN`, or an `Inf` returns an error naming the series and the zero-based row index, and a `nil` series returns an error naming it. No cell is ever silently coerced to `0`. Clean a series with gaps before the call — `ClearNils` drops blanks (a `PctChange` column starts with one), or fill them explicitly.
 
 > **Annualized vs per-period Sharpe.** `SharpeRatio` returns an *annualized* Sharpe (it multiplies by `√periodsPerYear`). The overfitting diagnostics (`ProbabilisticSharpeRatio`, `DeflatedSharpeRatio`, and the Sharpe ratios you feed to them) use the *per-period, non-annualized* Sharpe — i.e. `mean/stddev` with no annualization. Compute that with `SharpeRatio(returns, 0, 1)`. Mixing the two conventions silently corrupts DSR/PBO results.
 
@@ -193,7 +201,7 @@ Regresses `asset - riskFreeRate` on `market - riskFreeRate`. `riskFreeRate` is a
 
 The standard errors use residual degrees of freedom `N-2`. A constant asset excess-return series is valid: `Beta` is `0`, `Alpha` is the constant, `BetaStdErr` and `AlphaStdErr` are `0`, and `RSquared` is `NaN` because total asset variance is zero.
 
-Both functions return an error for nil input, unequal lengths, fewer than 3 observations, a zero-variance benchmark, or a non-numeric, `NaN`, or `Inf` cell. Unreadable cells are named with their series (`asset` or `market`) and one-based row number.
+Both functions return an error for nil input, unequal lengths, fewer than 3 observations, a zero-variance benchmark, or a non-numeric, `NaN`, or `Inf` cell. Unreadable cells are named with their series (`asset` or `market`) and zero-based row index.
 
 ## Options (Black–Scholes–Merton)
 
@@ -283,6 +291,8 @@ type FactorModelResult struct {
     AdjustedRSquared float64
     N                int
     Residuals        []float64
+    CovType          stats.CovType // covariance the standard errors come from
+    Lag              int           // lag stats.CovHAC used; 0 for the others
 }
 
 func (r *FactorModelResult) Exposure(name string) (float64, bool)
@@ -293,12 +303,27 @@ func (r *FactorModelResult) Exposure(name string) (float64, bool)
 ### FactorModel
 
 ```go
-func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64) (*FactorModelResult, error)
+func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64, opts ...FactorModelOptions) (*FactorModelResult, error)
+
+type FactorModelOptions struct {
+    CovType stats.CovType // stats.CovOLS (default), CovHC0–CovHC3, or CovHAC
+    Lag     int           // CovHAC: 0 = stats.NeweyWestLag(n), > 0 used as given, < 0 is an error
+}
 ```
 
-`FactorModel` uses the same OLS coefficients, inference values, R², adjusted R², and residuals as `stats.LinearRegression`. With one factor, pass an already excess market column and the raw market return plus `riskFreeRate` to `CAPM`; the factor-model exposure, alpha, and standard errors agree with CAPM.
+`FactorModel` uses the same OLS coefficients, inference values, R², adjusted R², and residuals as `stats.LinearRegressionWithOptions` with the chosen covariance. With one factor, pass an already excess market column and the raw market return plus `riskFreeRate` to `CAPM`; the factor-model exposure, alpha, and standard errors agree with CAPM.
 
-The model requires at least `k + 2` observations for `k` factors. It refuses nil inputs, an empty factor table, unequal asset/factor lengths, unreadable cells, and `NaN` or `Inf` values. Errors identify the factor column and one-based row where applicable. A collinear factor set returns the regression error instead of a near-singular numeric result. Standard errors are ordinary OLS standard errors; heteroskedasticity and autocorrelation adjustments such as Newey–West are outside this API.
+The model requires at least `k + 2` observations for `k` factors. It refuses nil inputs, an empty factor table, unequal asset/factor lengths, unreadable cells, and `NaN` or `Inf` values. Errors identify the factor column and zero-based row index where applicable. A collinear factor set returns the regression error instead of a near-singular numeric result.
+
+Without options the standard errors are ordinary OLS ones and the result is what it always was. The residuals of daily strategy returns are usually heteroskedastic and autocorrelated, which makes the OLS standard error of alpha too small and its t value too large. `FactorModelOptions{CovType: stats.CovHAC}` reports Newey–West standard errors instead; `stats.CovHC0` to `stats.CovHC3` correct for heteroskedasticity only. The covariance and its small-sample conventions are those of [`stats.LinearRegressionWithOptions`](stats.md#linear-regression-with-robust-or-hac-standard-errors): no n/(n−k) factor for HAC, p-values from the t distribution with n−k degrees of freedom. `Lag` follows the same three rules as `ForwardOptions.NeweyWestLag`: 0 chooses `stats.NeweyWestLag(n)`, a positive value is used as given and must be smaller than n, and a negative value is an error (use `stats.CovHC0` for no autocorrelation terms). This differs from `stats`, where you pass `stats.AutoLag` for automatic and 0 is a literal lag of 0; `FactorModel` passes `stats.AutoLag` on for you.
+
+```go
+// quant: 0 is automatic.
+quant.FactorModel(asset, factors, 0, quant.FactorModelOptions{CovType: stats.CovHAC})
+// stats: pass stats.AutoLag.
+stats.LinearRegressionWithOptions(stats.LinearRegressionOptions{CovType: stats.CovHAC, Lag: stats.AutoLag}, y, x)
+```
+ Other covariance types ignore `Lag`. At most one `FactorModelOptions` may be passed.
 
 ---
 
@@ -384,6 +409,83 @@ If `T` is not a multiple of `nSplits`, the trailing `T mod nSplits` rows are dro
 **Returns:** `(pbo, err)` — a probability in `[0, 1]`. `err` is non-nil for an empty matrix, columns of unequal length, fewer than 2 strategies, an odd or non-positive `nSplits`, or `nSplits > T`.
 
 > Combination count is `C(S, S/2)`, which grows fast: `S=16 → 12,870`. Keep `nSplits` modest (typically 8–16).
+
+### RealityCheck and SPATest
+
+```go
+type ResamplingScheme int // ResampleStationary (default), ResampleMovingBlock
+
+type DataSnoopingOptions struct {
+    Benchmark    insyra.IDataList // nil compares every column with 0
+    Replications int              // bootstrap replications, at least 1
+    BlockSize    int              // (mean) block length, 1 <= BlockSize <= T/2
+    Seed         uint64           // always applies; same input and options → same result
+    Scheme       ResamplingScheme
+}
+
+func RealityCheck(perf insyra.IDataTable, opts DataSnoopingOptions) (*RealityCheckResult, error)
+func SPATest(perf insyra.IDataTable, opts DataSnoopingOptions) (*SPAResult, error)
+```
+
+After trying many strategies or parameter sets and keeping the best, these answer **"does the best one really beat the benchmark, or did it win by luck?"** Both take the same `T×N` table as `PBO` (column k is strategy k, row t is period t, higher is better: returns, or negated losses) and compare every column with `Benchmark`. The null hypothesis is that no strategy has a positive expected edge, so a **small p-value means the best strategy's edge survives the search**.
+
+Both use a block bootstrap that keeps the correlation between strategies: every replication draws one sequence of time positions and applies it to all columns. The positions come from the same seeded stream as `BlockBootstrap`, so the results are bit-identical for the same input and options. Nothing is defaulted: `Replications` and `BlockSize` must be set. The p-values move in steps of `1/Replications`; 1,000–10,000 is typical. `BlockSize` should cover the serial dependence of the series; the stationary bootstrap White and Hansen use is the default. `BlockSize` may be at most half the rows (`2·BlockSize ≤ T`), because with blocks near `T` the moving block bootstrap resamples the original series almost unchanged, so the bootstrap has no spread, and as `q = 1/BlockSize` approaches 0 the weights `κ` approach 1 and `ω_k²` shrinks toward the sum of all autocovariances of the demeaned series, which is 0; both tests then call pure noise significant. Even at `T/2` the p-values are too small on noise more often than the nominal level, so keep `BlockSize` well below `T`.
+
+With `d_k,t` = column k minus the benchmark in period t, `dbar_k` its mean, `T` the number of rows and `dbar*_k` the mean of a resample:
+
+- **`RealityCheck`** (White 2000): statistic `V = max(max_k √T·dbar_k, 0)`; each replication computes `V* = max(0, max_k √T·(dbar*_k − dbar_k))`, and `PValue` is the share of replications with `V* ≥ V`. `Best` is the column with the largest `dbar_k`.
+- **`SPATest`** (Hansen 2005): each mean is divided by its long-run standard deviation `ω_k`, so a strategy that is merely noisy cannot hide a good one. Statistic `T_SPA = max(max_k √T·dbar_k/ω_k, 0)`; each replication computes `T* = max(0, max_k √T·(dbar*_k − g(dbar_k))/ω_k)` with the **same** `ω_k`, and each p-value is the share with `T* ≥ T_SPA`. `PValueLower` uses `g(x) = max(0, x)`, `PValueUpper` uses `g(x) = x`, and `PValueConsistent` uses `g(x) = x` when `x ≥ −√(ω_k²/T·2·log log T)` and 0 otherwise, which sets aside strategies far below the benchmark. `PValueConsistent` is the test; the other two bound it (`Lower ≤ Consistent ≤ Upper`). `Best` is the column with the largest `√T·dbar_k/ω_k`.
+- **Ties count as exceedances.** The papers write a strict inequality (`>`); this package uses `≥`. The two differ only on exact ties, which have probability zero for continuous data, but a strict comparison reports `p = 0` (maximal significance) when no column beats the benchmark, because then the statistic and every centered replication are all 0. With `≥` the p-value is 1 in that case.
+- `ω_k² = γ_0 + 2·Σ_{i=1}^{T−1} κ(T,i)·γ_i`, where `γ_i` is the lag-i autocovariance of `d_k` divided by `T` and `κ(T,i) = ((T−i)/T)(1−q)^i + (i/T)(1−q)^(T−i)` with `q = 1/BlockSize` — Hansen's estimate implied by the stationary bootstrap. It is used for both schemes.
+
+`RealityCheckResult` holds `PValue`, `Statistic`, `Best` (zero-based column number), `BestName` (its name, `""` if none) and `Replications`. `SPAResult` holds `PValueLower`, `PValueConsistent`, `PValueUpper`, `Statistic`, `Best`, `BestName` and `Replications`.
+
+**Errors:** a nil table, no columns, fewer than 3 rows, an unreadable or non-finite cell (named with its column and row index), `Replications < 1`, `BlockSize` outside `[1, T/2]`, an unknown `Scheme`, a benchmark whose length is not `T` or that is a nil list, a column whose mean over the benchmark is not finite (values too large to sum), a bootstrap replication whose resampled mean is not finite (finite values that cancel in the original order can overflow when a draw repeats same-sign rows; it is an error, never counted as an exceedance), and, for `SPATest` only, a column with no variance relative to the benchmark: `d_k` constant (such as a column equal to the benchmark), or `ω_k²` not finite or at most `10⁻²⁴` times the mean of `d_k²`, which is rounding noise.
+
+**Speed.** `ω_k²` is computed directly from the formula above, which costs `O(T²·N)` for `SPATest`; it is slow for very large `T` (about 10 seconds at `T = 8000`, `N = 50`).
+
+**Compared with Python `arch`.** The definitions above are the paper's, checked against an independent implementation of its formulas (`quant/testdata/data_snooping_baseline.py`). `arch.bootstrap.SPA` does not reproduce them and its numbers will differ: in arch 8.0.0 the SPA statistic and its bootstrap values are the unstandardized maximum mean (`ω_k` is computed but used only to pick the consistent p-value's columns) without the `max(0, ·)`, and in later versions the standard error is re-estimated in every replication and the moving-block bootstrap uses the Bartlett kernel. arch also takes losses (lower is better), where these take performance. The bootstrap streams differ too, so even matching definitions give p-values that agree only within bootstrap error.
+
+`RealityCheck` and `SPATest` say whether the best strategy beats the benchmark; they do not say which of the others also do. `RomanoWolf` does.
+
+### RomanoWolf
+
+```go
+type RomanoWolfOptions struct {
+    DataSnoopingOptions         // Benchmark, Replications, BlockSize, Seed, Scheme: as for RealityCheck
+    Alpha float64               // familywise level in (0, 1); required, 0 is an error
+}
+
+func RomanoWolf(perf insyra.IDataTable, opts RomanoWolfOptions) (*RomanoWolfResult, error)
+```
+
+Given many strategies (the columns of a `T×N` table) and a benchmark, `RomanoWolf` **names which strategies truly beat the benchmark**, aiming to hold the chance of even one false claim (the familywise error rate) at `Alpha`. The control is asymptotic (Romano and Wolf 2005): the critical values are estimated from finitely many bootstrap draws on a finite sample, so the realised rate can exceed `Alpha` (200 simulated null tables of 250 rows gave 8.5% at `Alpha` 0.1, and a test allows up to 15%). A column with a non-zero `RejectedAt` is declared better than the benchmark. It is **one-sided**, as `RealityCheck` and `SPATest` are: only outperformance is rejected, and a column far below the benchmark is never a finding.
+
+```go
+res, err := quant.RomanoWolf(perf, quant.RomanoWolfOptions{
+    DataSnoopingOptions: quant.DataSnoopingOptions{Replications: 5000, BlockSize: 10, Seed: 1},
+    Alpha:               0.1,
+})
+if err != nil { /* ... */ }
+for k, step := range res.RejectedAt {
+    if step > 0 {
+        fmt.Println(res.Names[k], "beats the benchmark, found at step", step, "statistic", res.Statistics[k])
+    }
+}
+```
+
+Procedure (Romano and Wolf 2005, studentized): with `d_k,t` the column minus the benchmark, `dbar_k` its mean and `σ_k` its long-run standard deviation, `w_k = √T·dbar_k/σ_k`. Every replication draws one sequence of time positions for all columns (as `RealityCheck` does, from the same seeded stream) and computes `w*_k = √T·(dbar*_k − dbar_k)/σ*_k`, where `σ*_k` is estimated again on that replication's resampled series (per-sample re-estimation, as Götze and Künsch 1996 do and Python `arch` does). At step `s` the critical value `c_s` is the `⌈Alpha·B⌉`-th largest (computed exactly on the shortest decimal form of `Alpha`, so `0.1` with `B = 120` is rank 12), over the `B` replications, of the maximum of `w*` over the columns not rejected so far; every such column with `w_k > c_s` is rejected at step `s`. The steps repeat until one rejects nothing or every column is rejected. Rejecting a column removes it from the maximum, so later steps have lower critical values and can find weaker strategies.
+
+- **`σ_k` and `σ*_k`** are the same `ω_k` as `SPATest` (Hansen's exact kernel with `q = 1/BlockSize`), computed with the autocovariances of every lag from a fast Fourier transform (zero-padded to at least `2T`), which is algebraically the same sum in `O(T log T)` instead of `O(T²)` per column and replication.
+- **Ties are not rejections.** A column equal to the critical value is not rejected, which agrees with `RealityCheck` counting a tie as an exceedance: when everything is tied nothing is rejected.
+- **No adjusted p-values.** Neither Romano and Wolf (2005) nor Python `arch`'s `StepM` defines them; the result is the rejection decision at `Alpha`. To see the decision at another level, call `RomanoWolf` again: a smaller `Alpha` never rejects more columns.
+- **N = 1 is accepted** (a single column is just a one-sided test); `RealityCheck` takes it as well.
+
+`RomanoWolfResult` holds `Alpha`, `Names` (table order, `""` without a name), `RejectedAt` (1-based step, 0 if not rejected), `Statistics` (`w_k`), `CriticalValues` (`CriticalValues[s-1]` is the value used at step `s`; its length is the number of steps that ran) and `Replications`.
+
+**Errors:** `Alpha` that is NaN, at most 0 or at least 1, plus everything `RealityCheck` refuses. As with `SPATest`, a column with no variance relative to the benchmark (constant `d_k`, or `σ_k²` not finite or at most `10⁻²⁴` times the mean of `d_k²`) is an error, and so is a replication in which a resampled series has no usable variance or a resampled mean is not finite. A statistic that is not finite is an error too, whether it is `w_k` or a replication's `w*_k`: the quotient can overflow when both parts are finite, for example when a draw misses a column's one huge value and its `σ*` is tiny. No infinite value is ever used as a critical value candidate.
+
+**Speed.** Every replication re-estimates `N` variances, each two FFTs of length about `2T`; replications run on all cores and give the same result for any number of cores. With `Replications 5000`, `T = 2500` and `N = 100`, about 44 seconds on an 8-core Apple M3 (`BenchmarkRomanoWolfLarge`).
 
 ---
 
@@ -496,6 +598,219 @@ For every time step, the requested percentiles across all paths — the vertical
 The quantile is R's **type-7** (linear interpolation between order statistics), the same definition as `DataList.Percentile`, `Quartile`, and `Describe`, so the bands agree with the rest of the library.
 
 **Returns:** `(bands, err)` — `err` is non-nil if `paths` is empty or ragged, or `percentiles` is empty or contains a value outside `[0, 100]`.
+
+---
+
+## Text Tone
+
+News and filing tone is a standard input (Tetlock 2007; Loughran and McDonald 2011). Two functions do the counting and the look-ahead-safe alignment to trading days; you supply the word lists.
+
+### ToneCounts
+
+```go
+func ToneCounts(texts insyra.IDataList, lex Lexicon, opts ...ToneOptions) (*insyra.DataTable, error)
+
+type Lexicon struct{ Positive, Negative, Negation []string }
+```
+
+Counts positive and negative words in each text and returns a table with `Positive`, `Negative` and `Words` (`int64`), one row per text; a nil or empty text counts zero. `Lexicon` is not shipped: the Loughran-McDonald finance lists are available from their authors under their own terms, and a Chinese list has to come from you. A term in more than one list is an error.
+
+`ToneOptions`:
+
+- `Mode`: `ToneWords` (default) splits text into words at spaces and punctuation and matches whole words. `ToneSubstring` matches terms as substrings, **longest first**, for text with no spaces such as Chinese. Each matched term is consumed, so with both 大漲 and 漲 in the lexicon, 大漲 is counted once and 漲 is not counted again inside it. `Words` is then the number of letters, digits and characters, spaces and punctuation left out.
+- `NegationWindow`: a positive word is **not counted** when a word of `lex.Negation` comes within this many words before it (characters, with `ToneSubstring`, counted between the end of the negation and the start of the positive word). 0 turns it off. Only positive words are cancelled; a negated negative word still counts as negative.
+- `CaseSensitive`: match the lexicon exactly; otherwise case is ignored.
+
+### DailyTone
+
+```go
+func DailyTone(published insyra.IDataList, counts *insyra.DataTable, tradingDays insyra.IDataList, opts DailyToneOptions) (*insyra.DataTable, error)
+```
+
+Adds the counts up by trading day. `published` holds each article's time (`time.Time`), `counts` is the table from `ToneCounts` (one row per article, in the same order) and `tradingDays` the trading dates in ascending order. An article is assigned to the first trading day on or after its date, and to the **next** trading day when it was published at or after the close (`CloseHour`, `CloseMinute`, read in `Location`) or on a day with no trading, so weekend and after-close news is seen in the next session and never in one already over. Articles after the last trading day are dropped. With the default close of 0:00, every article published on a trading day counts for that day.
+
+The result has one row per trading day: `Date`, `Positive`, `Negative`, `Words` for that day, `NetTone`, the rolling `(positive - negative) / words` over the last `Window` trading days including the day, and `Z`, the z-score of `NetTone` against the `ZWindow` days **before** the day, never including it (`ZWindow` 0 leaves it `NaN`). A window with no words is `NaN`.
+
+```go
+counts, err := quant.ToneCounts(headlines, lex, quant.ToneOptions{NegationWindow: 3})
+daily, err := quant.DailyTone(publishedAt, counts, tradingDays,
+    quant.DailyToneOptions{CloseHour: 16, Location: newYork, Window: 5, ZWindow: 60})
+```
+
+---
+
+## Event Studies and Signal Buckets
+
+Both tools answer "what happened to the price after the signal". They share one setup: `prices` has one column per stock and one row per date, in date order, and `dates` gives each row's date as a `time.Time` or a `"YYYY-MM-DD"` string. A stock whose signal fires on row `s` is bought at the close of row `s + Delay` (`Delay` is at least 1, default 1, so a signal is never traded at the close that produced it) and held for each horizon. Its return is measured against a benchmark over the same window:
+
+- `BenchmarkCrossSection` (default): the equal-weighted mean return of every stock with a price at both ends of the window, and tradable when a mask is given.
+- `BenchmarkLevels`: the change of an index over the window, from `BenchmarkLevels`.
+- `BenchmarkOwnMean`: the mean of that series' own returns over the same horizon, for a single series such as a market index.
+
+Observations are averaged within calendar months of the signal date, and the Newey-West test (`stats.NeweyWestMeanTest`) is run on the monthly means, so many events on one day are not treated as independent samples. `NeweyWestLag` 0 chooses `stats.NeweyWestLag(months)`, a positive value is used as it is, a negative one is an error, and a positive lag must be smaller than the number of months with an observation in every horizon and bucket, empty ones included (otherwise the study returns an error rather than shortening it; the automatic lag is capped at months-1). To switch the correction off set `NoNeweyWest: true`: the test then runs with lag 0, whose variance divides by the number of months T, the same as linearmodels `cov_type="unadjusted"` with `debiased=False`. That is not `stats.SingleSampleTTest`, which divides by T-1, so the t-test's t is smaller than the `NoNeweyWest` one by a factor of sqrt((T-1)/T). `NoNeweyWest` together with a non-zero `NeweyWestLag` is an error. An observation whose window has a missing price, runs past the last row or is not tradable at the entry is counted in `Missing` and left out. To study a sub-period, pass the matching slices of every table and of `dates`.
+
+Each horizon gives a `ForwardSummary`: `Observations`, `Missing`, `MeanExcess`, `WinRate`, `Months`, `MonthlyMean`, `TStat`, `PValue` and `Lag`. The t statistic is `NaN` with fewer than two months.
+
+### EventStudy
+
+```go
+func EventStudy(prices, events insyra.IDataTable, dates insyra.IDataList, opts EventStudyOptions) ([]ForwardSummary, error)
+```
+
+`events` has the shape of `prices` with `true` where an event happened at that row's close. `EventStudyOptions` embeds `ForwardOptions` (`Horizons`, `Delay`, `Benchmark`, `BenchmarkLevels`, `Tradable`, `NeweyWestLag`, `NoNeweyWest`) and adds `MinGap`, the fewest rows between two counted events of the same stock. It returns one summary per horizon.
+
+### SignalBuckets
+
+```go
+func SignalBuckets(signal, prices insyra.IDataTable, dates insyra.IDataList, opts BucketOptions) ([]BucketSummary, error)
+```
+
+Every non-missing cell of `signal` is an observation, sorted into a bucket by `Edges` (n ascending edges make n+1 buckets; the bucket above an edge includes it) or, when `Edges` is empty, by `Quantiles` of all signal values pooled over all dates and stocks. Each `BucketSummary` has `Index`, `Lower`, `Upper` and one `ForwardSummary` per horizon. With one column and `BenchmarkOwnMean` this is the single-series version.
+
+### AbnormalReturns
+
+```go
+func AbnormalReturns(prices, events insyra.IDataTable, dates insyra.IDataList, opts AbnormalReturnsOptions) (*AbnormalReturnsResult, error)
+```
+
+`EventStudy` starts counting after the entry. `AbnormalReturns` looks at the days around the event, before it too. For each event it works out how the stock normally moves with the market, then reports for every day from before to after the event how far the stock was above or below that normal (the abnormal return, AR) and the running total of those gaps (the cumulative abnormal return, CAR). Seeing the days before the event shows whether the news leaked early.
+
+`prices` has one column per stock and one row per date; `events` has the same shape with `true` where the event happened at that row's close (an earnings release, an ex-dividend date, a monthly revenue release). `dates` gives each row's date; it is used only to check the number of rows and to fill the event-date column of `CARs`, so it may hold any values (strings, `time.Time`, numbers). Rows must be in date order. Returns are simple returns, `p[t]/p[t-1]-1`, for the stock and for the market.
+
+`AbnormalReturnsOptions`:
+
+| Field | Meaning |
+| --- | --- |
+| `Model` | `AbnormalMarketAdjusted` (default): expected return is the market's return that day, nothing is estimated. `AbnormalMarketModel`: expected return is `alpha + beta * market return`, fitted by ordinary least squares on the estimation window. |
+| `EventWindow` | First and last row relative to the event row (row 0), for example `{-10, 20}`. The first must not be after the last. |
+| `EstimationWindow` | Market model only, for example `{-250, -11}`: the rows the fit uses, relative to the event row. It must end before `EventWindow` starts. Must be the zero value for the market-adjusted model. |
+| `MinEstimation` | Market model only, **required, at least 3, no default**: the fewest usable estimation rows an event needs. Must be 0 for the market-adjusted model. |
+| `MarketLevels` | Market index levels, one per row, required for both models. A `NaN` level is a missing one. |
+| `MinGap` | As in `EventStudy`: an event of the same stock closer than this to the last counted one is dropped. |
+
+The result has `Days` (the relative day numbers), `MeanAR` and `MeanCAR` (CAR is cumulated from the first day of `EventWindow`), `ARTStat`/`ARPValue` and `CARTStat`/`CARPValue`, `Events`, `Missing`, and `CARs`, a table with one row per used event: `stock` (the column name in `prices`), `event date` (from `dates`, as given; a date that is a slice stays one cell) and one `CAR[day]` column per relative day.
+
+```go
+res, err := quant.AbnormalReturns(prices, events, dates, quant.AbnormalReturnsOptions{
+    Model:            quant.AbnormalMarketModel,
+    EstimationWindow: [2]int{-250, -11},
+    EventWindow:      [2]int{-10, 20},
+    MinEstimation:    100,
+    MarketLevels:     marketIndex,
+})
+// res.MeanCAR[i] is the average CAR on res.Days[i]; a CAR that climbs before day 0 hints at a leak.
+```
+
+**Rules.**
+
+- **Whole events are dropped.** If the stock's price or the market level is missing on any row the event window needs (including the row before the first one, which the first return is taken from), or the window runs outside the table, the whole event is counted in `Missing`. A return that is not a finite number, such as a price that jumps from `1e-300` to `1e300` so the ratio overflows, counts as missing data in the same way, and so does an event whose abnormal return or running CAR is not finite (a sum that overflows). Every day therefore averages the same events. For the market model an event is also dropped when fewer than `MinEstimation` usable estimation rows remain, or when the market did not move at all over them.
+- **Contaminated estimation rows are left out.** A row of a stock's estimation window that lies inside the event window of another event of the same stock (including one `MinGap` dropped) is not used for the fit, so one event's reaction does not distort another's normal. This is common practice in event studies, not a specific published rule; `MinGap` does not do it.
+- **The test is across events.** For each relative day the events are the sample: `t = mean(AR) / (sd(AR) / sqrt(N))`, with `N-1` degrees of freedom and a two-tailed p; the same for CAR. It is `NaN` when fewer than 2 events were used or the events agree exactly, and also when a sum in the mean or spread overflows (the value is then not representable). Each end of `EventWindow` and `EstimationWindow` must be within 2^29 rows of the event, and `EventWindow` must not span more rows than `dates` has, otherwise an error is returned. These checks run before anything sized by a window or an offset is allocated; copying your input tables is proportional to their own size; an estimation window longer than the table is fine, since only rows that exist are used. This is a plain cross-sectional t-test in the manner of Brown and Warner's event studies; nothing more specific is claimed.
+- **Limits.** Events that fall on the same dates are not independent (the market moves them together), so this t-test can reject too often. `EventStudy`'s monthly-average Newey-West test remains the option that is robust to that clustering. Patell, BMP (Boehmer-Musumeci-Poulsen) and Kolari-Pynnonen tests are **not implemented**. The market-adjusted and market models are the only expected-return models; there is no factor model and no default estimation length, because the number of rows needed has no single accepted value.
+
+---
+
+## Signal Backtest
+
+### BacktestSignal
+
+```go
+func BacktestSignal(signal, assetReturns insyra.IDataList, opts ...BacktestOptions) (*BacktestResult, error)
+```
+
+`signal[t]` is the position from 0 to 1 decided from the close of row `t`. It takes effect one row later, so the position during row `t` is `signal[t-1]` and the asset return of row `t` is never earned by a signal that saw it. Row 0 is held at `InitialPosition` (default 0).
+
+The return of a row is `position * assetReturn + (1 - position) * cashReturn` less `BuyCost` times the position added and `SellCost` times the position removed at the start of that row. The portfolio is taken to be rebalanced to the target every row, so drift is ignored.
+
+`BacktestOptions` holds `CashReturns` (a list; nil means 0), `BuyCost`, `SellCost` (fractions of the portfolio traded, from 0 up to 1) and `InitialPosition`. The result has `NetReturns`, `Positions` (the share in the asset during each row), `Turnover` (how much was traded at the start of each row) and `Trades` (rows on which the position changed). Feed `NetReturns` to `SharpeRatio` or `MaxDrawdown`.
+
+```go
+swings, err := ta.ZigZag(close, 0.10)
+res, err := quant.BacktestSignal(signal, returns, quant.BacktestOptions{BuyCost: 0.0015, SellCost: 0.0045})
+```
+
+---
+
+## Cross-Sectional Sorting
+
+### QuantileSort
+
+```go
+func QuantileSort(table insyra.IDataTable, dateCol, signalCol string, returnCols []string, n int, opts ...QuantileSortOptions) (*QuantileSortResult, error)
+```
+
+Every day, sorts the stocks into `n` groups by a signal and reports each group's mean return and the spread between the top and the bottom group, the standard check of whether a signal ranks future returns. The table is in long form, one row per stock and date. Each day is sorted on its own, and 9.6 million stock-days take about 3 seconds.
+
+`dateCol`, `signalCol`, `returnCols` and `WeightCol` are column names, or Excel-style letters when no column has that name. Dates are grouped by value and appear in the order they first appear in the table. A date is a string (compared exactly, whitespace included), `time.Time` (by instant, any zone), `bool`, an integer or a float (not `NaN`), or a defined type whose underlying type is one of these (`type TradingDay int32`); the key includes the concrete type, so `int` 1, `float64` 1 and `TradingDay(1)` are different dates, and any other type is an error. A stock with a missing (`nil` or `NaN`) signal is left out of its day, and a missing return is left out of that column's means. Text, an infinity, a missing date or a non-positive weight is an error.
+
+**Options (`QuantileSortOptions`)**
+
+- `MinStocks`: the fewest stocks with a signal a day needs; fewer skips the day. At least `n` are always needed.
+- `Ties`: `QuantileTiesRank` (default) gives equal signals their average rank and puts the stock in group `ceil(rank * n / m)`, so equal signals share a group. `QuantileTiesQcut` cuts at the day's quantiles with linear interpolation like `pandas.qcut`, with the first group including the minimum; a day whose edges coincide is skipped, where pandas would raise.
+- `WeightCol`: a column of positive weights; group means are weighted. Empty means equal weights.
+- `Demean`: subtract the day's mean return over the sorted stocks, so the group means are excess returns.
+
+**Result (`QuantileSortResult`)**
+
+- `Groups`: one row per date and group, with columns `date`, `group` (1 is the lowest signal), `count`, then the mean of each return column under its own name. A return with no value in a group is `NaN`.
+- `Spread`: one row per date, with `date` and `spread_<column>`, the highest group's mean minus the lowest group's.
+- `Skipped`: the dates left out and why.
+
+```go
+res, err := quant.QuantileSort(panel, "date", "signal", []string{"ret_5d"}, 5)
+spread := res.Spread.GetColByName("spread_ret_5d")
+sharpe, err := quant.SharpeRatio(spread, 0, 252)
+```
+
+### FamaMacBeth
+
+```go
+func FamaMacBeth(table insyra.IDataTable, dateCol, returnCol string, charCols []string, opts ...FamaMacBethOptions) (*FamaMacBethResult, error)
+```
+
+Fama-MacBeth regressions: on every date, the return is regressed on an intercept and the characteristics across stocks, and each coefficient's daily series is then tested for a zero mean with `stats.NeweyWestMeanTest`. Where `QuantileSort` looks at one signal, this asks whether a characteristic still explains the cross-section of returns once the others are controlled for. The table is the same long form `QuantileSort` takes, one row per stock and date.
+
+`dateCol`, `returnCol` and `charCols` are column names, or Excel-style letters when no column has that name. Dates are grouped by value and appear in the order they first appear. A date is a string (compared exactly, whitespace included), `time.Time` (by instant), `bool`, an integer or a float (not `NaN`), or a defined type whose underlying type is one of these (`type TradingDay int32`); the key includes the concrete type, so `int` 1, `float64` 1 and `TradingDay(1)` are different dates, and any other type, `nil` included, is an error. A stock is left out of its day when its return or any characteristic is missing (`nil` or `NaN`). A date with too few usable stocks, or whose characteristics are collinear (including one that is constant that day), is listed in `Skipped` and does not fail the call. Fewer than two estimated dates, a text or infinite value, a missing date, the date and return columns being the same column, a repeated characteristic, the date or return column listed as a characteristic, or a characteristic named `date`, `intercept`, `r2` or `count` (the fixed names of `Daily`'s columns, compared exactly) is an error.
+
+**Options (`FamaMacBethOptions`)**
+
+- `NeweyWestLag`: the lag of the t-test. `0` (default) chooses `stats.NeweyWestLag(T)` for `T` estimated dates and a positive value is used as given. A negative value, or a lag not smaller than `T`, is an error.
+- `NoNeweyWest`: `true` switches the Newey-West correction off, so the t-test runs with lag 0, whose variance divides by `T`. This equals `linearmodels` with `cov_type="unadjusted", debiased=False`; it is not the same as `stats.SingleSampleTTest`, which divides by `T-1`. Setting it together with a non-zero `NeweyWestLag` is an error, and the reported `Lag` is 0.
+- `MinObservations`: the fewest usable stocks a date needs; fewer skips the date. At least k+2 are always needed for k characteristics, which is also the default.
+- `Standardize`: replace each characteristic by its z-score over the date's usable stocks (sample standard deviation) before regressing, so the coefficients are per one standard deviation.
+
+**Result (`FamaMacBethResult`)**
+
+- `Intercept`, `InterceptStdErr`, `InterceptTValue`, `InterceptPValue`: the mean daily intercept and its test.
+- `Names`, `Coefs`, `StdErrs`, `TValues`, `PValues`: per characteristic, in the order of `charCols`, the mean daily coefficient and its test.
+- `Daily`: one row per estimated date, with columns `date`, `intercept`, one per characteristic under the name it was given, `r2` and `count` (stocks regressed). A date whose returns are all equal has `r2` `NaN`.
+- `MeanR2`: the mean of the finite daily R².
+- `Lag`: the lag used, after any automatic choice. `Days`: the number of estimated dates, `T`.
+- `Skipped`: the dates left out and why.
+
+The standard errors equal Python's `linearmodels.FamaMacBeth(...).fit(cov_type="kernel", kernel="bartlett", bandwidth=lag, debiased=False)`, and with `NoNeweyWest` `cov_type="unadjusted", debiased=False`: Bartlett weights `1 - j/(lag+1)` and no small-sample factor. `debiased=True` divides the variance by `T-1` instead of `T`. The p values are two-sided from the t distribution with `T-1` degrees of freedom, as `stats.NeweyWestMeanTest` reports them; linearmodels uses the normal distribution with `debiased=False`. Its automatic bandwidth is a data-driven choice, not `stats.NeweyWestLag`, so pass the lag explicitly to compare.
+
+```go
+res, err := quant.FamaMacBeth(panel, "date", "ret_next", []string{"momentum", "size", "bias"},
+    quant.FamaMacBethOptions{Standardize: true})
+for i, name := range res.Names {
+    fmt.Printf("%s: %.4f (t = %.2f)\n", name, res.Coefs[i], res.TValues[i])
+}
+```
+
+---
+
+## Sharpe Ratio Comparison
+
+### SharpeDifferenceTest
+
+```go
+func SharpeDifferenceTest(a, b insyra.IDataList, riskFree float64) (*SharpeDifferenceResult, error)
+```
+
+Tests whether two return series over the same periods have the same Sharpe ratio, with the Jobson-Korkie (1981) statistic as corrected by Memmel (2003). `riskFree` is the per-period risk-free rate subtracted from both. The result holds the per-period (not annualized) `SharpeA` and `SharpeB`, `Difference`, `Z`, and the p-values `PValue` (two-tailed), `PValueGreater` (H1: A is higher) and `PValueLess`, all from the standard normal distribution.
+
+It is a closed formula, cheap enough for thousands of series. It assumes roughly normal, uncorrelated returns; with fat tails or serial correlation it rejects too often, and a HAC or bootstrap test (Ledoit and Wolf 2008) is more reliable, which this package does not have yet. A series with no variance, such as a strategy that never entered, returns `ErrSharpeUndefined`. At least 3 observations of the same length are needed. When several series are tested, correct the p-values with `stats.AdjustPValues`.
 
 ---
 
@@ -696,6 +1011,14 @@ if err != nil {
 }
 smbExposure, _ := model.Exposure("SMB")
 fmt.Printf("alpha = %.4f, SMB exposure = %.3f\n", model.Alpha, smbExposure)
+
+// The same model with Newey-West standard errors and an automatic lag.
+hac, err := quant.FactorModel(assetReturns, factors, dailyRiskFreeRate,
+    quant.FactorModelOptions{CovType: stats.CovHAC})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("alpha t = %.2f (OLS) vs %.2f (HAC, lag %d)\n", model.AlphaTValue, hac.AlphaTValue, hac.Lag)
 ```
 
 ### Deflated Sharpe Ratio after a parameter search
@@ -725,6 +1048,23 @@ if err != nil {
     log.Fatal(err)
 }
 fmt.Printf("PBO = %.1f%%\n", pbo*100) // high → in-sample winners fail out-of-sample
+```
+
+### Does the best strategy beat the index?
+
+```go
+// perf: one column of daily returns per strategy tried; index: the index's daily returns.
+spa, err := quant.SPATest(perf, quant.DataSnoopingOptions{
+    Benchmark:    index,
+    Replications: 5000,
+    BlockSize:    10,
+    Seed:         1,
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("best %s, SPA p = %.3f (lower %.3f, upper %.3f)\n",
+    spa.BestName, spa.PValueConsistent, spa.PValueLower, spa.PValueUpper)
 ```
 
 ### Walk-forward validation
@@ -854,13 +1194,14 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`ProbabilisticSharpeRatio`** — `n < 2`, non-positive variance term (extreme skew/kurtosis)
 - **`ExpectedMaxSharpe`** — negative `sharpeVariance`
 - **`DeflatedSharpeRatio`** — nil, empty, or unreadable `trialSharpes` (the error names the series and row), or any downstream error
-- **`PBO`** — empty matrix, an unreadable cell (the error names the zero-based `column <j>` and the one-based row), columns of unequal length, fewer than 2 strategies, odd/non-positive `nSplits`, `nSplits > T`
+- **`PBO`** — empty matrix, an unreadable cell (the error names the zero-based `column <j>` and the zero-based row index), columns of unequal length, fewer than 2 strategies, odd/non-positive `nSplits`, `nSplits > T`
+- **`RealityCheck`**, **`SPATest`** — nil table, no columns, fewer than 3 rows, an unreadable cell (named with its column and row index), `Replications < 1`, `BlockSize` outside `[1, T/2]`, an unknown `Scheme`, a benchmark of the wrong length or a nil list, a column mean over the benchmark or a resampled mean that is not finite; `SPATest` also refuses a column with no variance relative to the benchmark (constant or rounding-noise `ω²`)
 - **`WalkForward`** — non-positive `n`/`TrainSize`/`TestSize`, `TrainSize >= n`, nil callback
 - **`BlockBootstrap`** — empty or unreadable `returns` (non-numeric, NaN, Inf — the error names the row), non-positive `Horizon`/`Paths`, `BlockSize < 1`, `BlockSize > len(returns)`
 - **`PercentileBands`** — empty or ragged `paths`, empty `percentiles`, a percentile outside `[0, 100]`
 - **`Beta`** — nil input, unequal lengths, fewer than 3 returns, zero benchmark variance, or an unreadable/non-finite cell named with its series and row
 - **`CAPM`** — the same input and benchmark validation as `Beta`; `riskFreeRate` is per period
-- **`FactorModel`** — nil input, no factor columns, unequal asset/factor lengths, fewer than `k+2` observations, unreadable/non-finite cells named with the factor and row, or collinear factors
+- **`FactorModel`** — nil input, no factor columns, unequal asset/factor lengths, fewer than `k+2` observations, unreadable/non-finite cells named with the factor and row, collinear factors, more than one `FactorModelOptions`, an unknown covariance type, or a HAC lag that is negative or not smaller than n
 - **`BlackScholes`** — non-positive Spot, Strike, or Volatility; negative TimeToExpiry; non-finite inputs; or an unknown option Type
 - **`ImpliedVolatility`** — non-finite price, zero TimeToExpiry, a price outside the option's named lower or upper bound, or failure to converge within 200 iterations
 - **`ValueAtRisk`** — fewer than 2 returns, confidence outside `(0, 1)`, unknown method, or an unreadable/non-finite return named with its row
@@ -869,7 +1210,7 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`CalmarRatio`** — invalid annualized-return input, zero maximum drawdown, or an unreadable/non-finite equity point
 - **`InformationRatio`** — unequal lengths, fewer than 2 observations, non-positive periods per year, zero tracking error, or an unreadable/non-finite cell
 - **`DrawdownSeries`** — empty equity or an unreadable/non-finite equity point; non-positive running peaks are represented as `nil`
-- **`OptimizePortfolio`** — `nil` table, fewer than 2 asset columns, columns of unequal length, fewer observations than assets plus one, an unreadable/non-finite cell named with its column and one-based row, `MinWeight`/`MaxWeight` of the wrong length or with `MinWeight[i] > MaxWeight[i]`, infeasible bounds (`Σ MinWeight > 1` or `Σ MaxWeight < 1`), a `TargetReturn` outside the attainable range (the error reports that range), or an unknown `Objective`. Hitting `MaxIterations` is **not** an error — it returns `Converged: false`
+- **`OptimizePortfolio`** — `nil` table, fewer than 2 asset columns, columns of unequal length, fewer observations than assets plus one, an unreadable/non-finite cell named with its column and zero-based row index, `MinWeight`/`MaxWeight` of the wrong length or with `MinWeight[i] > MaxWeight[i]`, infeasible bounds (`Σ MinWeight > 1` or `Σ MaxWeight < 1`), a `TargetReturn` outside the attainable range (the error reports that range), or an unknown `Objective`. Hitting `MaxIterations` is **not** an error — it returns `Converged: false`
 - **`OptimizePortfolioMoments`** — everything above, plus a `cov` that is not square, disagrees with `mean` in length, holds a non-finite value, is not symmetric, or is not positive semidefinite (the error reports the smallest eigenvalue), and a non-`nil` `names` of the wrong length
 - **`EfficientFrontier`** — `points < 2`, plus every `OptimizePortfolio` error
 

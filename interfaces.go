@@ -1,10 +1,17 @@
 package insyra
 
-import "gorm.io/gorm"
+import (
+	"io"
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // IDataList defines the behavior expected from a DataList.
 type IDataList interface {
 	AtomicDo(func(*DataList))
+	CreationTime() time.Time
+	LastModifiedTime() time.Time
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	updateTimestamp()
@@ -51,16 +58,22 @@ type IDataList interface {
 	FillWithMedian() *DataList
 	FillWithMode() *DataList
 	FillByInterpolation(extrapolate ...bool) *DataList
+	// Deprecated: use Rolling(...).Mean(); see DataList.MovingAverage.
 	MovingAverage(int) *DataList
+	// Deprecated: use Rolling(...).Mean() with Weights; see DataList.WeightedMovingAverage.
 	WeightedMovingAverage(int, any) *DataList
 	ExponentialSmoothing(float64) *DataList
 	DoubleExponentialSmoothing(float64, float64) *DataList
 	EWM(EWMOptions) *EWMDataList
+	// Deprecated: use Rolling(...).Std(); see DataList.MovingStdev.
 	MovingStdev(int) *DataList
 	Len() int
+	// DataType returns the kind of values the list holds, ignoring missing ones.
+	DataType() DataType
 	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
 	SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList
 	Shuffle(options ...SamplingOptions) *DataList
+	Shuffled(options ...SamplingOptions) *DataList
 	Sort(ascending ...bool) *DataList
 	Map(mapFunc func(int, any) any) *DataList
 	Rank(ascending ...bool) *DataList
@@ -85,6 +98,8 @@ type IDataList interface {
 	Quartile(int) float64
 	IQR() float64
 	Percentile(float64) float64
+	Quantile(float64) float64
+	// Deprecated: use Diff(1); see DataList.Difference.
 	Difference() *DataList
 	Describe(...DescribeOptions) *DataTable
 	Summary()
@@ -100,6 +115,8 @@ type IDataList interface {
 	IsTheSameAs(*DataList) bool
 	Show()
 	ShowRange(startEnd ...any)
+	ShowHead(n int)
+	ShowTail(n int)
 	ShowTypes()
 	ShowTypesRange(startEnd ...any)
 
@@ -149,6 +166,8 @@ type IDataTable interface {
 	ColNamesToFirstRow() *DataTable
 	DropColNames() *DataTable
 	ColNames() []string
+	// ColDataTypes returns each column's DataType in column order.
+	ColDataTypes() []DataType
 	Headers() []string
 	SetColNames(colNames []string) *DataTable
 	SetHeaders(headers []string) *DataTable
@@ -188,6 +207,8 @@ type IDataTable interface {
 	Show()
 	ShowTypes()
 	ShowRange(startEnd ...any)
+	ShowHead(n int)
+	ShowTail(n int)
 	ShowTypesRange(startEnd ...any)
 	// GetRowIndexByName returns the index of a row by its name.
 	// Returns -1 and false if the row name does not exist.
@@ -203,8 +224,12 @@ type IDataTable interface {
 	DropRowNames() *DataTable
 	RowNames() []string
 	SetRowNames(rowNames []string) *DataTable
+	CreationTime() time.Time
+	LastModifiedTime() time.Time
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
+	IsEqualTo(other *DataTable) bool
+	IsTheSameAs(other *DataTable) bool
 	getRowNameByIndex(index int) (string, bool)
 	getMaxColLength() int
 	updateTimestamp()
@@ -231,11 +256,14 @@ type IDataTable interface {
 	// Operations
 	Transpose() *DataTable
 	Clone() *DataTable
+	SliceRows(from, to int) *DataTable
+	SliceCols(from, to any) *DataTable
 	To2DSlice() [][]any
 	SimpleRandomSample(sampleSize int) *DataTable
 	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable
 	SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable
 	Shuffle(options ...SamplingOptions) *DataTable
+	Shuffled(options ...SamplingOptions) *DataTable
 	TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable)
 	Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable
 	SortBy(configs ...DataTableSortConfig) *DataTable
@@ -244,6 +272,7 @@ type IDataTable interface {
 	Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 	FilterByCustomElement(f func(value any) bool) *DataTable
 	FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
+	FilterRowsWhere(keep func(row *DataList) bool) *DataTable
 	FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable
 	FilterColsByColIndexGreaterThan(threshold string) *DataTable
 	FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
@@ -268,6 +297,7 @@ type IDataTable interface {
 	SwapRowsByName(rowName1 string, rowName2 string) *DataTable
 	// CSV
 	ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
+	WriteCSV(w io.Writer, opts CSVWriteOptions) error
 	// JSON
 	// ToJSON saves the DataTable as a JSON file.
 	// Parameters:
@@ -276,6 +306,7 @@ type IDataTable interface {
 	// Returns:
 	// - error: Error information, returns nil if successful
 	ToJSON(filePath string, useColNames bool) error
+	WriteJSON(w io.Writer, useColNames bool) error
 	// ToJSON_Bytes converts the DataTable to JSON format and returns it as a byte slice.
 	// Parameters:
 	// - useColNames: Whether to use column names as keys in JSON objects
@@ -288,6 +319,14 @@ type IDataTable interface {
 	// Returns:
 	// - string: JSON data as a string
 	ToJSON_String(useColNames bool) string
+	// ToJSONBytes and ToJSONString are the one-name spellings of ToJSON_Bytes and
+	// ToJSON_String, which are deprecated.
+	ToJSONBytes(useColNames bool) []byte
+	ToJSONString(useColNames bool) string
+	// ToExcel writes the DataTable as one sheet of the workbook at filePath,
+	// leaving the workbook's other sheets as they were.
+	ToExcel(filePath string, opts ExcelWriteOptions) error
+	WriteExcel(w io.Writer, opts ExcelWriteOptions) error
 
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 

@@ -2,7 +2,6 @@ package stats
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -12,21 +11,10 @@ import (
 )
 
 type ChiSquareTestResult struct {
-	testResultBase
+	TestResult
 
 	// a DataTable representing the contingency table([2]float64{observed, expected})
 	ContingencyTable *insyra.DataTable
-}
-
-func (r *ChiSquareTestResult) Show() {
-	if r == nil {
-		fmt.Println("Chi-Square Test failed: cannot show results")
-		return
-	}
-	fmt.Printf("Chi-Square Test Statistic: %v\n", r.Statistic)
-	fmt.Printf("Chi-Square Test P-Value: %v\n", r.PValue)
-	fmt.Printf("Chi-Square Test Degrees of Freedom: %v\n", *r.DF)
-	insyra.Show("Contingency Table([2]float64{observed, expected})", r.ContingencyTable)
 }
 
 // calculateChiSquare calculates the chi-square statistic and related results.
@@ -47,7 +35,7 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 
 	float64DF := float64(df)
 	return &ChiSquareTestResult{
-		testResultBase: testResultBase{
+		TestResult: TestResult{
 			Statistic: chiSquare,
 			PValue:    pValue,
 			DF:        &float64DF,
@@ -67,6 +55,9 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 //
 // rescaleP: Whether to rescale p to sum to 1. p is not mutated (a copy is used).
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) (*ChiSquareTestResult, error) {
+	if insyra.IsNilList(input) {
+		return nil, errors.New("input DataList is nil")
+	}
 	// 計算類別頻率
 	data := input.Data()
 	if len(data) == 0 {
@@ -159,8 +150,14 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 
 // ChiSquareIndependenceTest performs a chi-square test of independence.
 func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTestResult, error) {
-	rowVals := rowData.Data()
-	colVals := colData.Data()
+	if insyra.IsNilList(rowData) || insyra.IsNilList(colData) {
+		return nil, errors.New("input DataLists cannot be nil")
+	}
+	var rowVals, colVals []any
+	insyra.AtomicDoAll(func() {
+		rowVals = rowData.Data()
+		colVals = colData.Data()
+	}, rowData, colData)
 
 	if len(rowVals) == 0 || len(colVals) == 0 {
 		return nil, errors.New("input DataLists cannot be empty")

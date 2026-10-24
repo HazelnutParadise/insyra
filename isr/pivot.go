@@ -28,7 +28,7 @@ type Unpivot struct {
 // Pivot reshapes long-form data into wide form. Errors from the underlying
 // (*DataTable).Pivot are surfaced via the returned dt's Err(); callers who
 // want to branch on failure should check Err() before using the result.
-func (t *dt) Pivot(p Pivot) *dt {
+func (t *DataTable) Pivot(p Pivot) *DataTable {
 	out, _ := t.DataTable.Pivot(insyra.PivotConfig{
 		Index:    p.Index,
 		Columns:  p.Columns,
@@ -43,7 +43,7 @@ func (t *dt) Pivot(p Pivot) *dt {
 
 // Unpivot reshapes wide-form data into long form. See Pivot for the chain /
 // error contract.
-func (t *dt) Unpivot(u Unpivot) *dt {
+func (t *DataTable) Unpivot(u Unpivot) *DataTable {
 	out, _ := t.DataTable.Unpivot(insyra.UnpivotConfig{
 		IDVars:    u.IDVars,
 		ValueVars: u.ValueVars,

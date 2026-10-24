@@ -110,7 +110,47 @@ func runFillNACommand(ctx *ExecContext, args []string) error {
 	return varTypeError(ctx, "fillna", coreArgs[0])
 }
 
+func fillSkippingOtherKind(dl *insyra.DataList, strategy string, opts fillNAOptions) (*insyra.DataList, error) {
+	skip := snapshotPreservedDL(dl, opts.Missing)
+	data := dl.Data()
+	kept := make([]any, 0, len(data)-len(skip))
+	next := 0
+	for i, v := range data {
+		if next < len(skip) && skip[next] == i {
+			next++
+			continue
+		}
+		kept = append(kept, v)
+	}
+	compact := insyra.NewDataList().Append(kept...)
+	if strategy == "ffill" {
+		compact.FillForward(opts.Limit)
+	} else {
+		compact.FillBackward(opts.Limit)
+	}
+	if e := compact.PopErr(); e != nil {
+		return nil, fmt.Errorf("fillna: %w", e)
+	}
+	filled := compact.Data()
+	rebuilt := make([]any, len(data))
+	next = 0
+	taken := 0
+	for i, v := range data {
+		if next < len(skip) && skip[next] == i {
+			next++
+			rebuilt[i] = v
+			continue
+		}
+		rebuilt[i] = filled[taken]
+		taken++
+	}
+	return insyra.NewDataList().Append(rebuilt...).SetName(dl.GetName()), nil
+}
+
 func applyFillNAToList(dl *insyra.DataList, strategy string, opts fillNAOptions) (*insyra.DataList, error) {
+	if (strategy == "ffill" || strategy == "bfill") && (opts.Missing == "nan" || opts.Missing == "nil") {
+		return fillSkippingOtherKind(dl.Clone(), strategy, opts)
+	}
 	result := dl.Clone()
 	preserved := snapshotPreservedDL(result, opts.Missing)
 	if err := runListStrategy(result, strategy, opts); err != nil {
@@ -120,8 +160,61 @@ func applyFillNAToList(dl *insyra.DataList, strategy string, opts fillNAOptions)
 	return result, nil
 }
 
+// fillNAColumnNumbers resolves cols the way DataTable.FillForward and
+// FillBackward do: every column when cols is empty, otherwise an exact column
+// name first and then an Excel-style letter. A column neither reading finds is
+// skipped with the warning those methods log.
+func fillNAColumnNumbers(dt *insyra.DataTable, cols []string, methodName string) []int {
+	if len(cols) == 0 {
+		numbers := make([]int, dt.NumCols())
+		for i := range numbers {
+			numbers[i] = i
+		}
+		return numbers
+	}
+	names := dt.ColNames()
+	numbers := make([]int, 0, len(cols))
+	for _, col := range cols {
+		found := false
+		for i, name := range names {
+			if name == col {
+				numbers = append(numbers, i)
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		if i, ok := insyra.ColIndexToNumber(col); ok && i >= 0 && i < len(names) {
+			numbers = append(numbers, i)
+			continue
+		}
+		insyra.LogWarning("DataTable", methodName, "Column '%s' not found, skipping", col)
+	}
+	return numbers
+}
+
 func applyFillNAToTable(dt *insyra.DataTable, strategy string, opts fillNAOptions) (*insyra.DataTable, error) {
 	result := dt.Clone()
+	if (strategy == "ffill" || strategy == "bfill") && (opts.Missing == "nan" || opts.Missing == "nil") {
+		methodName := "FillForward"
+		if strategy == "bfill" {
+			methodName = "FillBackward"
+		}
+		for _, number := range fillNAColumnNumbers(result, opts.Cols, methodName) {
+			// GetColByNumber returns a copy, so the filled column is written back.
+			filled, err := fillSkippingOtherKind(result.GetColByNumber(number), strategy, opts)
+			if err != nil {
+				return nil, err
+			}
+			result.UpdateColByNumber(number, filled)
+			if err := result.PopErr(); err != nil {
+				return nil, fmt.Errorf("fillna: %w", err)
+			}
+		}
+		return result, nil
+	}
 	preserved := snapshotPreservedDT(result, opts.Cols, opts.Missing)
 	if err := runTableStrategy(result, strategy, opts); err != nil {
 		return nil, err

@@ -9,7 +9,7 @@ import (
 	"github.com/HazelnutParadise/insyra/isr"
 )
 
-func TestSlice2DToDataTable(t *testing.T) {
+func TestReadSlice2D(t *testing.T) {
 	// Test with [][]any
 	data := [][]any{
 		{1, "Alice", 3.5},
@@ -17,150 +17,154 @@ func TestSlice2DToDataTable(t *testing.T) {
 		{3, "Charlie", 2.8},
 	}
 
-	dt, err := insyra.Slice2DToDataTable(data)
+	dt, err := insyra.ReadSlice2D(data)
 	if err != nil {
-		t.Errorf("Slice2DToDataTable() returned error: %v", err)
+		t.Errorf("ReadSlice2D() returned error: %v", err)
 		return
 	}
 	if dt == nil {
-		t.Errorf("Slice2DToDataTable() returned nil DataTable")
+		t.Errorf("ReadSlice2D() returned nil DataTable")
 		return
 	}
 	dt.Show()
 	if len(dt.ColNames()) != 3 {
-		t.Errorf("Slice2DToDataTable() did not create the correct number of columns")
+		t.Errorf("ReadSlice2D() did not create the correct number of columns")
 		return
 	}
 	if dt.GetElement(1, "A") != 2 {
-		t.Errorf("Slice2DToDataTable() did not set the correct data, expected 2, got %v", dt.GetElement(1, "A"))
+		t.Errorf("ReadSlice2D() did not set the correct data, expected 2, got %v", dt.GetElement(1, "A"))
 		return
 	}
 	if dt.GetElement(0, "B") != "Alice" {
-		t.Errorf("Slice2DToDataTable() did not set the correct data, expected 'Alice', got '%s'", dt.GetElement(0, "B"))
+		t.Errorf("ReadSlice2D() did not set the correct data, expected 'Alice', got '%s'", dt.GetElement(0, "B"))
 		return
 	}
 	if dt.GetElement(2, "C") != 2.8 {
-		t.Errorf("Slice2DToDataTable() did not set the correct data, expected 2.8, got %v", dt.GetElement(2, "C"))
+		t.Errorf("ReadSlice2D() did not set the correct data, expected 2.8, got %v", dt.GetElement(2, "C"))
 		return
 	}
 }
 
 // Test with [][]int64
-func TestSlice2DToDataTable_Int64(t *testing.T) {
+func TestReadSlice2D_Int64(t *testing.T) {
 	data := [][]int64{
 		{1, 2, 3},
 		{4, 5, 6},
 		{7, 8, 9},
 	}
 
-	dt, err := insyra.Slice2DToDataTable(data)
+	dt, err := insyra.ReadSlice2D(data)
 	if err != nil {
-		t.Errorf("Slice2DToDataTable() with [][]int64 returned error: %v", err)
+		t.Errorf("ReadSlice2D() with [][]int64 returned error: %v", err)
 		return
 	}
 	if dt == nil {
-		t.Errorf("Slice2DToDataTable() with [][]int64 returned nil DataTable")
+		t.Errorf("ReadSlice2D() with [][]int64 returned nil DataTable")
 		return
 	}
 	dt.Show()
 	if len(dt.ColNames()) != 3 {
-		t.Errorf("Slice2DToDataTable() with [][]int64 did not create the correct number of columns")
+		t.Errorf("ReadSlice2D() with [][]int64 did not create the correct number of columns")
 		return
 	}
 	if dt.GetElement(1, "A") != int64(4) {
-		t.Errorf("Slice2DToDataTable() with [][]int64 expected int64(4), got %v", dt.GetElement(1, "A"))
+		t.Errorf("ReadSlice2D() with [][]int64 expected int64(4), got %v", dt.GetElement(1, "A"))
 		return
 	}
 }
 
 // Test with [][]float64
-func TestSlice2DToDataTable_Float64(t *testing.T) {
+func TestReadSlice2D_Float64(t *testing.T) {
 	data := [][]float64{
 		{1.1, 2.2, 3.3},
 		{4.4, 5.5, 6.6},
 		{7.7, 8.8, 9.9},
 	}
 
-	dt, err := insyra.Slice2DToDataTable(data)
+	dt, err := insyra.ReadSlice2D(data)
 	if err != nil {
-		t.Errorf("Slice2DToDataTable() with [][]float64 returned error: %v", err)
+		t.Errorf("ReadSlice2D() with [][]float64 returned error: %v", err)
 		return
 	}
 	if dt == nil {
-		t.Errorf("Slice2DToDataTable() with [][]float64 returned nil DataTable")
+		t.Errorf("ReadSlice2D() with [][]float64 returned nil DataTable")
 		return
 	}
 	dt.Show()
 	if len(dt.ColNames()) != 3 {
-		t.Errorf("Slice2DToDataTable() with [][]float64 did not create the correct number of columns")
+		t.Errorf("ReadSlice2D() with [][]float64 did not create the correct number of columns")
 		return
 	}
 	if dt.GetElement(0, "A") != 1.1 {
-		t.Errorf("Slice2DToDataTable() with [][]float64 expected 1.1, got %v", dt.GetElement(0, "A"))
+		t.Errorf("ReadSlice2D() with [][]float64 expected 1.1, got %v", dt.GetElement(0, "A"))
 		return
 	}
 }
 
 // Test with [][]string
-func TestSlice2DToDataTable_String(t *testing.T) {
+func TestReadSlice2D_String(t *testing.T) {
 	data := [][]string{
 		{"Alice", "Bob", "Charlie"},
 		{"Denver", "New York", "San Francisco"},
 		{"Engineer", "Manager", "Developer"},
 	}
 
-	dt, err := insyra.Slice2DToDataTable(data)
+	dt, err := insyra.ReadSlice2D(data)
 	if err != nil {
-		t.Errorf("Slice2DToDataTable() with [][]string returned error: %v", err)
+		t.Errorf("ReadSlice2D() with [][]string returned error: %v", err)
 		return
 	}
 	if dt == nil {
-		t.Errorf("Slice2DToDataTable() with [][]string returned nil DataTable")
+		t.Errorf("ReadSlice2D() with [][]string returned nil DataTable")
 		return
 	}
 	dt.Show()
 	if len(dt.ColNames()) != 3 {
-		t.Errorf("Slice2DToDataTable() with [][]string did not create the correct number of columns")
+		t.Errorf("ReadSlice2D() with [][]string did not create the correct number of columns")
 		return
 	}
 	if dt.GetElement(0, "A") != "Alice" {
-		t.Errorf("Slice2DToDataTable() with [][]string expected 'Alice', got %v", dt.GetElement(0, "A"))
+		t.Errorf("ReadSlice2D() with [][]string expected 'Alice', got %v", dt.GetElement(0, "A"))
 		return
 	}
 }
 
 // Test with inconsistent row lengths
-func TestSlice2DToDataTable_InconsistentLengths(t *testing.T) {
+func TestReadSlice2D_InconsistentLengths(t *testing.T) {
 	data := [][]any{
 		{1, "Alice", 3.5},
 		{2, "Bob"},                   // 少一列
 		{3, "Charlie", 2.8, "Extra"}, // 多一列
 	}
 
-	dt, err := insyra.Slice2DToDataTable(data)
+	dt, err := insyra.ReadSlice2D(data)
 	if err != nil {
-		t.Errorf("Slice2DToDataTable() with inconsistent lengths returned error: %v", err)
+		t.Errorf("ReadSlice2D() with inconsistent lengths returned error: %v", err)
 		return
 	}
 	if dt == nil {
-		t.Errorf("Slice2DToDataTable() with inconsistent lengths returned nil DataTable")
+		t.Errorf("ReadSlice2D() with inconsistent lengths returned nil DataTable")
 		return
 	}
 	dt.Show()
-	// 應該以第一行的列數為準
-	if len(dt.ColNames()) != 3 {
-		t.Errorf("Slice2DToDataTable() with inconsistent lengths expected 3 columns, got %d", len(dt.ColNames()))
+	// 以最寬那一列的欄數為準，不丟掉多出來的值
+	if len(dt.ColNames()) != 4 {
+		t.Errorf("ReadSlice2D() with inconsistent lengths expected 4 columns, got %d", len(dt.ColNames()))
+		return
+	}
+	if dt.GetElement(2, "D") != "Extra" {
+		t.Errorf("the value past the first row was lost: got %v", dt.GetElement(2, "D"))
 		return
 	}
 	// 第二行的第三列應該是 nil
 	if dt.GetElement(1, "C") != nil {
-		t.Errorf("Slice2DToDataTable() with inconsistent lengths expected nil for missing cell, got %v", dt.GetElement(1, "C"))
+		t.Errorf("ReadSlice2D() with inconsistent lengths expected nil for missing cell, got %v", dt.GetElement(1, "C"))
 		return
 	}
 }
 
 // Test error cases
-func TestSlice2DToDataTable_ErrorCases(t *testing.T) {
+func TestReadSlice2D_ErrorCases(t *testing.T) {
 	tests := []struct {
 		name    string
 		data    any
@@ -195,15 +199,15 @@ func TestSlice2DToDataTable_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dt, err := insyra.Slice2DToDataTable(tt.data)
+			dt, err := insyra.ReadSlice2D(tt.data)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Slice2DToDataTable() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ReadSlice2D() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if !tt.wantErr && dt == nil {
-				t.Errorf("Slice2DToDataTable() returned nil DataTable when no error expected")
+				t.Errorf("ReadSlice2D() returned nil DataTable when no error expected")
 			}
 			if tt.wantErr && dt != nil {
-				t.Errorf("Slice2DToDataTable() returned DataTable when error was expected: %v", err)
+				t.Errorf("ReadSlice2D() returned DataTable when error was expected: %v", err)
 			}
 		})
 	}
@@ -621,5 +625,77 @@ func TestReadCSV_StringWithOptions_RaggedPaddingAffectsInference(t *testing.T) {
 	}
 	if v, ok := qty[1].(float64); !ok || !math.IsNaN(v) {
 		t.Errorf("expected NaN for padded cell, got %v (%T)", qty[1], qty[1])
+	}
+}
+
+func TestReadSlice2DKeepsValuesPastTheFirstRow(t *testing.T) {
+	dt, err := insyra.ReadSlice2D([][]float64{{1}, {2, 3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, cols := dt.Size()
+	if rows != 2 || cols != 2 {
+		t.Fatalf("want 2x2, got %dx%d", rows, cols)
+	}
+	if got := dt.GetElementByNumberIndex(1, 1); got != 3.0 {
+		t.Fatalf("the 3 past the first row was lost: got %v", got)
+	}
+	if got := dt.GetElementByNumberIndex(0, 1); got != nil {
+		t.Fatalf("a short row should be padded with nil, got %v", got)
+	}
+	if _, err := insyra.ReadSlice2D([][]int{{}, {1}}); err == nil {
+		t.Fatal("an empty first row should still be an error")
+	}
+}
+
+// M6: CSV columns get pandas-style, column-level type inference. An all-integer
+// column parses as int64 so large integers keep full precision; a column with
+// any decimal parses as float64; empty cells in a numeric column become NaN;
+// non-numeric columns stay strings.
+func TestReadCSV_M6ColumnTypeInference(t *testing.T) {
+	dt, err := insyra.ReadCSV_String(
+		"id,val,mix,note\n9007199254740993,1,1,a\n9007199254740994,2,2.5,b\n", false, true)
+	if err != nil {
+		t.Fatalf("ReadCSV_String: %v", err)
+	}
+
+	// Large integers (> 2^53) must survive exactly as int64. As float64 both rows
+	// would collapse to 9007199254740992.
+	id0 := dt.GetColByName("id").Data()[0]
+	if got, ok := id0.(int64); !ok || got != 9007199254740993 {
+		t.Fatalf("id[0] = %v (%T), want int64(9007199254740993)", id0, id0)
+	}
+
+	// All-integer column -> int64.
+	if _, ok := dt.GetColByName("val").Data()[0].(int64); !ok {
+		t.Fatalf("val column not int64: %T", dt.GetColByName("val").Data()[0])
+	}
+	// Column containing 2.5 -> whole column float64.
+	if _, ok := dt.GetColByName("mix").Data()[0].(float64); !ok {
+		t.Fatalf("mix column not float64: %T", dt.GetColByName("mix").Data()[0])
+	}
+	// Non-numeric column -> string.
+	if _, ok := dt.GetColByName("note").Data()[0].(string); !ok {
+		t.Fatalf("note column not string: %T", dt.GetColByName("note").Data()[0])
+	}
+
+	// Empty cell in an otherwise-numeric column -> NaN (float64), homogeneous.
+	// A two-column CSV is used because encoding/csv skips fully blank lines, so a
+	// lone empty line would not produce an empty cell.
+	dt2, err := insyra.ReadCSV_String("y,z\n1,10\n,20\n3,30\n", false, true)
+	if err != nil {
+		t.Fatalf("ReadCSV_String: %v", err)
+	}
+	yc := dt2.GetColByName("y").Data()
+	if _, ok := yc[0].(float64); !ok {
+		t.Fatalf("y[0] not float64: %T", yc[0])
+	}
+	if f, ok := yc[1].(float64); !ok || !math.IsNaN(f) {
+		t.Fatalf("y[1] (empty) should be NaN float64, got %v (%T)", yc[1], yc[1])
+	}
+
+	// int64 CSV data must flow through numeric operations without panicking.
+	if mean := dt.GetColByName("val").Mean(); mean != 1.5 {
+		t.Fatalf("Mean over int64 column = %v, want 1.5", mean)
 	}
 }

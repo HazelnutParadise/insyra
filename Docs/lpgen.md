@@ -178,6 +178,25 @@ This example defines a simple linear programming model with two variables and co
 
 The `lpgen` package also supports **LINGO**, which is a popular optimization software.
 
+### Write LP Text
+
+```go
+func (lp *LPModel) WriteLP(w io.Writer) error
+```
+
+Writes the model in CPLEX LP format to a writer. An unsupported objective type or writer failure is returned as an error. `GenerateLPFile` retains its existing signature and output behavior.
+
+### Parse LINGO with Errors
+
+```go
+func ParseLingo(model string) (*LPModel, error)
+func ParseLingoFile(path string) (*LPModel, error)
+```
+
+These parsers return errors for unreadable input or statements they do not understand. They recognize `@BIN`, `@INT`, `@GIN`, `@FREE`, and `@BND` declarations.
+
+The legacy `ParseLingoModel_str` and `ParseLingoModel_txt` names remain available and continue ignoring statements they do not understand. They are deprecated; use `ParseLingo` and `ParseLingoFile` for error reporting.
+
 ### Parse LINGO Model from Text File
 
 ```go
@@ -185,6 +204,8 @@ func ParseLingoModel_txt(filePath string) *LPModel
 ```
 
 **Description:** Parses a LINGO model from a text file and converts it to a standard LP model. Use `LINGO > Generate > Display Model` to export the model.
+
+Deprecated: use `ParseLingoFile` to receive errors and reject statements the parser cannot understand. This legacy name continues to ignore unrecognized statements.
 
 **Parameters:**
 
@@ -201,6 +222,8 @@ func ParseLingoModel_str(modelStr string) *LPModel
 ```
 
 **Description:** Parses a LINGO model from a string and converts it to a standard LP model. Use `LINGO > Generate > Display Model` to export the model.
+
+Deprecated: use `ParseLingo` to receive errors and reject statements the parser cannot understand. This legacy name continues to ignore unrecognized statements.
 
 **Parameters:**
 

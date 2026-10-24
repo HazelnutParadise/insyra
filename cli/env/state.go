@@ -56,6 +56,19 @@ func (m *Manager) SaveVariables(envName string, vars map[string]any) ([]UnsavedV
 		}
 		stored[key] = raw
 	}
+	finalPath := filepath.Join(envPath, "state.json")
+	unlock, err := lockState(envPath)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	// A save that follows RestoreVariables on this Manager writes only what this
+	// process changed since, on top of what the file holds now, so a variable
+	// another process saved in between survives. A save with no restore before
+	// it replaces the file, as it always has.
+	if base, ok := m.baselineFor(envPath); ok {
+		stored = mergeStored(stored, unsavedNames(unsaved), base, currentStored(finalPath))
+	}
 	document := struct {
 		Variables  map[string]json.RawMessage `json:"variables"`
 		LastAccess string                     `json:"lastAccess"`
@@ -69,15 +82,27 @@ func (m *Manager) SaveVariables(envName string, vars map[string]any) ([]UnsavedV
 	}
 	// Atomic write: write to a temp file then rename over state.json (rename is
 	// atomic on the same filesystem), so an interruption mid-write cannot leave a
-	// truncated/corrupted state.json that would wipe the user's variables.
-	finalPath := filepath.Join(envPath, "state.json")
-	tmpPath := finalPath + ".tmp"
-	if err := os.WriteFile(tmpPath, payload, 0o644); err != nil {
+	// truncated/corrupted state.json that would wipe the user's variables. The
+	// temporary name is unique to this writer.
+	tmp, err := os.CreateTemp(envPath, "state.json.*.tmp")
+	if err != nil {
 		return nil, err
 	}
-	if err := os.Rename(tmpPath, finalPath); err != nil {
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(payload); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return nil, err
 	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return nil, err
+	}
+	if err := replaceFile(tmpPath, finalPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return nil, err
+	}
+	m.setBaseline(envPath, stored)
 	if len(unsaved) == 0 {
 		return nil, nil
 	}
@@ -163,6 +188,10 @@ func (m *Manager) RestoreVariables(envName string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	envPath, err := m.ResolveEnvPath(envName)
+	if err != nil {
+		return nil, err
+	}
 	vars := make(map[string]any, len(state.Variables))
 	for key, serialized := range state.Variables {
 		value, ok, err := decodeVariable(serialized)
@@ -184,6 +213,7 @@ func (m *Manager) RestoreVariables(envName string) (map[string]any, error) {
 		}
 		vars[key] = value
 	}
+	m.setBaselineFromVars(envPath, vars)
 	return vars, nil
 }
 
@@ -351,28 +381,47 @@ func (m *Manager) ReadHistory(envName string) ([]string, error) {
 	return lines, nil
 }
 
-// Package-level wrappers around the default Manager.
+// Package-level wrappers around the default Manager. Use the corresponding
+// method on Default() instead.
 
+// SaveState calls Default().SaveState.
+//
+// Deprecated: use Default().SaveState instead. Removed in 0.4.
 func SaveState(envName string, vars map[string]any) error {
 	return defaultManager.SaveState(envName, vars)
 }
 
+// SaveVariables calls Default().SaveVariables.
+//
+// Deprecated: use Default().SaveVariables instead. Removed in 0.4.
 func SaveVariables(envName string, vars map[string]any) ([]UnsavedVariable, error) {
 	return defaultManager.SaveVariables(envName, vars)
 }
 
+// LoadState calls Default().LoadState.
+//
+// Deprecated: use Default().LoadState instead. Removed in 0.4.
 func LoadState(envName string) (*State, error) {
 	return defaultManager.LoadState(envName)
 }
 
+// RestoreVariables calls Default().RestoreVariables.
+//
+// Deprecated: use Default().RestoreVariables instead. Removed in 0.4.
 func RestoreVariables(envName string) (map[string]any, error) {
 	return defaultManager.RestoreVariables(envName)
 }
 
+// AppendHistory calls Default().AppendHistory.
+//
+// Deprecated: use Default().AppendHistory instead. Removed in 0.4.
 func AppendHistory(envName, command string) error {
 	return defaultManager.AppendHistory(envName, command)
 }
 
+// ReadHistory calls Default().ReadHistory.
+//
+// Deprecated: use Default().ReadHistory instead. Removed in 0.4.
 func ReadHistory(envName string) ([]string, error) {
 	return defaultManager.ReadHistory(envName)
 }

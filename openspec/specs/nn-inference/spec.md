@@ -1,7 +1,7 @@
 # dl-inference Specification
 
 ## Purpose
-TBD - created by archiving change add-dl-onnx-mlp-inference. Update Purpose after archive.
+Running exported neural networks in pure Go with `nn`: loading ONNX and SafeTensors files, kernels proved against the reference runtime, published checkpoints that run unmodified, tensors with one constructor and accessor per dtype, and device matrix multiplication that is measured first and changes no bit.
 ## Requirements
 ### Requirement: An exported network loads and predicts in pure Go
 The system SHALL load an ONNX model from bytes and execute its graph on caller-supplied named inputs, in pure Go, returning named output tensors.
@@ -210,12 +210,10 @@ harness.
 
 `dl` SHALL run 2-D f32 matmuls at or above the measured MAC floor on a
 device by default, wiring the device implementation at package init through
-`accel`'s exported surface — no opt-in import. Setting
-`INSYRA_ACCEL_DISABLE_WGPU=1` or calling `RegisterDeviceMatMul(nil)` SHALL
-restore the pure CPU path. Device results SHALL remain asserted bit-equal to
-the CPU path on hardware, and any device absence, error, or parity failure
-SHALL fall back to the CPU path observably rather than change any answer.
-Under the `race` build tag the device path SHALL NOT be wired.
+`accel`'s exported surface — no opt-in import. Device results SHALL remain
+asserted bit-equal to the CPU path on hardware, and any device absence, error,
+or parity failure SHALL fall back to the CPU path observably rather than change
+any answer.
 
 #### Scenario: Default on, results exact
 
@@ -223,13 +221,6 @@ Under the `race` build tag the device path SHALL NOT be wired.
   present, and a 2-D matmul at or above the measured floor executes
 - **THEN** the result SHALL be bit-equal to the CPU path's result, asserted
   by a hardware test with exact equality
-
-#### Scenario: The switch restores the CPU path
-
-- **WHEN** `INSYRA_ACCEL_DISABLE_WGPU=1` is set or the hook is cleared with
-  `RegisterDeviceMatMul(nil)`
-- **THEN** every matmul SHALL take the pure CPU path and produce the
-  existing CPU results byte-for-byte
 
 #### Scenario: Device trouble is a performance event
 
@@ -243,6 +234,19 @@ Under the `race` build tag the device path SHALL NOT be wired.
 - **WHEN** a matmul is batched or below the measured MAC floor
 - **THEN** the device SHALL NOT be consulted, because measurement refused
   those shapes
+
+### Requirement: The device matmul can be switched off
+
+Setting `INSYRA_ACCEL_DISABLE_WGPU=1` or calling `RegisterDeviceMatMul(nil)`
+SHALL restore the pure CPU path. Under the `race` build tag the device path
+SHALL NOT be wired.
+
+#### Scenario: The switch restores the CPU path
+
+- **WHEN** `INSYRA_ACCEL_DISABLE_WGPU=1` is set or the hook is cleared with
+  `RegisterDeviceMatMul(nil)`
+- **THEN** every matmul SHALL take the pure CPU path and produce the
+  existing CPU results byte-for-byte
 
 ### Requirement: Acceleration obeys the Config system, layered under the ops override
 
@@ -400,4 +404,35 @@ and ReduceMin.
 
 - **WHEN** the generated one-op suite runs for the seven new operators
 - **THEN** each case SHALL match onnxruntime
+
+### Requirement: A tensor has one constructor and one accessor per dtype
+
+`NewTensor` SHALL be the float32 tensor constructor and `Float32Data` the float32 accessor, while `NewFloat32Tensor`, `NewTensorWithDType` and `Tensor.Data` SHALL remain for one release as Deprecated names, each naming its replacement.
+
+#### Scenario: Reading a tensor of another dtype
+- **WHEN** 對 int64 張量呼叫 `Float32Data`
+- **THEN** 回傳指出 dtype 的錯誤；已 Deprecated 的 `Data` 仍回傳 nil
+
+#### Scenario: The deprecated constructors keep their meaning
+- **WHEN** 以同樣的形狀與資料呼叫 `NewFloat32Tensor`、`NewTensorWithDType(DTypeFloat32, …)` 與 `NewTensor`，再以 `DTypeInt64` 呼叫 `NewTensorWithDType`
+- **THEN** 前三者得到相同的張量，最後一個回傳錯誤；兩個 Deprecated 函式的 doc comment 都指名 `NewTensor`
+
+### Requirement: A dtype, a binding and pooling options have one name each
+
+`DType`, the `DType…` constants, `BoundClassifier`, `BoundRegressor` and `PoolOptions` SHALL be the names of these things, while `DataType`, `Float32`, `Float16`, `Float64`, `Classifier`, `Regressor`, `MaxPoolOptions` and `AveragePoolOptions` SHALL remain for one release as Deprecated aliases or constants.
+
+#### Scenario: The deprecated aliases are the same types and values
+- **WHEN** 比較 `nn.Float32` 與 `nn.DTypeFloat32`，並把 `nn.MaxPoolOptions{}` 傳給 `nn.MaxPool`
+- **THEN** 值相同、可以編譯；每個 Deprecated 名稱的 doc comment 都指名替代名稱
+
+### Requirement: 2-D MatMul keeps each output's dot-product order
+The system SHALL compute every output element of a 2-D float32 `MatMul` on the CPU as one running sum that starts at zero and adds the products `a[i][p]*b[p][j]` in increasing `p`, so that every non-NaN output is bit-identical to that per-element dot product however the loops over rows and columns are arranged.
+
+#### Scenario: The kernel matches the per-element dot product
+- **WHEN** a 2-D MatMul is computed serially or in parallel on inputs that hold signed zeros, infinities and subnormal products
+- **THEN** every output that is not NaN SHALL have the same bits as the per-element dot product, and every NaN output SHALL be NaN
+
+#### Scenario: An empty inner dimension gives zeros
+- **WHEN** a 2-D MatMul multiplies an m×0 tensor by a 0×n tensor
+- **THEN** the result SHALL be an m×n tensor of positive zeros
 

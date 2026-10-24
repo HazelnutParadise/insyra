@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -108,7 +109,7 @@ func fixtureKey(path string, query url.Values) string {
 	return path + "?" + query.Encode()
 }
 
-func newFixtureTWStock(t *testing.T, cfg TWStockConfig) (*twStock, *fixtureTransport) {
+func newFixtureTWStock(t *testing.T, cfg TWStockConfig) (*TWStockClient, *fixtureTransport) {
 	t.Helper()
 	stock, err := TWStock(cfg)
 	if err != nil {
@@ -120,6 +121,8 @@ func newFixtureTWStock(t *testing.T, cfg TWStockConfig) (*twStock, *fixtureTrans
 	stock.tpexBaseURL = "https://tpex.test"
 	stock.twseOpenAPIBaseURL = "https://twse-openapi.test"
 	stock.tpexOpenAPIBaseURL = "https://tpex-openapi.test"
+	stock.tdccBaseURL = "https://tdcc.test"
+	stock.mopsBaseURL = "https://mops.test"
 	return stock, transport
 }
 
@@ -679,5 +682,464 @@ func TestTWStockDailyPricesAdjustedKeepsNils(t *testing.T) {
 	}
 	if got := dt.GetColByName("AdjClose").Data()[0]; math.Abs(got.(float64)-98) > 1e-12 {
 		t.Errorf("AdjClose[0] = %v, want 98", got)
+	}
+}
+
+func TestTWStockOddLotQuotes(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, fixtureKey("/rwd/zh/afterTrading/TWTC7U", query("date", "20260102", "response", "json", "selectType", "ALL")), "twse_twtc7u_20260102.json")
+	transport.addFixture(t, fixtureKey("/rwd/zh/afterTrading/TWT53U", query("date", "20260102", "response", "json", "selectType", "ALL")), "twse_twt53u_20260102.json")
+
+	intraday, err := stock.OddLotQuotes(dateUTC(2026, time.January, 2), TWOddLotIntraday, TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("intraday error: %v", err)
+	}
+	// Fixture: 0050, 0051, 0052 and the 合計 totals row, which is dropped.
+	if got := intraday.GetColByName("Code").Data(); len(got) != 3 || got[0] != "0050" {
+		t.Fatalf("intraday codes = %v", got)
+	}
+	for name, want := range map[string]any{"Volume": int64(3257147), "Transactions": int64(36193), "Turnover": int64(216356465), "Open": 66.0, "Close": 67.0, "High": 67.0, "Low": 65.95, "BidPrice": 66.95, "BidVolume": int64(9148), "AskPrice": 67.0, "AskVolume": int64(147266)} {
+		if got := intraday.GetColByName(name).Data()[0]; got != want {
+			t.Errorf("intraday %s = %v (%T), want %v", name, got, got, want)
+		}
+	}
+
+	after, err := stock.OddLotQuotes(dateUTC(2026, time.January, 2), TWOddLotAfterHours, TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("after-hours error: %v", err)
+	}
+	// 0057 traded nothing, so its price is "--" and nil.
+	codes := after.GetColByName("Code").Data()
+	if len(codes) != 4 || codes[3] != "0057" {
+		t.Fatalf("after-hours codes = %v", codes)
+	}
+	if got := after.GetColByName("Price").Data()[0]; got != 67.0 {
+		t.Errorf("after-hours Price = %v, want 67", got)
+	}
+	if got := after.GetColByName("Price").Data()[3]; got != nil {
+		t.Errorf("a price of -- should be nil, got %v", got)
+	}
+	if after.GetColByName("Open") != nil {
+		t.Error("the after-hours table has no Open column")
+	}
+}
+
+func TestTWStockOddLotQuotesNoDataAndBadSession(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.replies[fixtureKey("/rwd/zh/afterTrading/TWTC7U", query("date", "20260103", "response", "json", "selectType", "ALL"))] = []fixtureReply{{status: http.StatusOK, body: []byte(`{"stat":"很抱歉，沒有符合條件的資料!","total":0}`)}}
+	transport.replies[fixtureKey("/rwd/zh/afterTrading/TWTC7U", query("date", "20190102", "response", "json", "selectType", "ALL"))] = []fixtureReply{{status: http.StatusOK, body: []byte(`{"stat":"查詢日期小於109年10月26日，請重新查詢!","total":0}`)}}
+	for _, day := range []time.Time{dateUTC(2026, time.January, 3), dateUTC(2019, time.January, 2)} {
+		dt, err := stock.OddLotQuotes(day, TWOddLotIntraday, TWMarketTWSE)
+		if err != nil {
+			t.Fatalf("%v: %v", day, err)
+		}
+		if dt.NumRows() != 0 || dt.GetColByName("Code") == nil {
+			t.Errorf("%v: want an empty table with columns, got %d rows", day, dt.NumRows())
+		}
+	}
+	if _, err := stock.OddLotQuotes(dateUTC(2026, time.January, 2), TWOddLotSession("Night"), TWMarketTWSE); err == nil {
+		t.Error("an unknown session should be an error")
+	}
+	var zero TWStockClient
+	if _, err := zero.OddLotQuotes(dateUTC(2026, time.January, 2), TWOddLotIntraday, TWMarketTWSE); err == nil {
+		t.Error("a zero client should be an error")
+	}
+}
+
+func TestTWStockTPExOddLotQuotes(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, fixtureKey("/www/zh-tw/afterTrading/oddQuote", query("date", "2026/10/16", "type", "Daily", "response", "json")), "tpex_oddquote_20261016.json")
+	transport.addFixture(t, fixtureKey("/www/zh-tw/afterTrading/odd", query("date", "2026/10/16", "type", "Daily", "response", "json")), "tpex_odd_20261016.json")
+	day := dateUTC(2026, time.October, 16)
+
+	intraday, err := stock.OddLotQuotes(day, TWOddLotIntraday, TWMarketTPEx)
+	if err != nil {
+		t.Fatalf("intraday error: %v", err)
+	}
+	// Fixture: 00411A, 006201, 00679B and 00687C, which did not trade.
+	if got := intraday.GetColByName("Code").Data(); len(got) != 4 || got[0] != "00411A" || got[3] != "00687C" {
+		t.Fatalf("intraday codes = %v", got)
+	}
+	for name, want := range map[string]any{"Volume": int64(46322), "Transactions": int64(426), "Turnover": int64(471215), "Open": 10.12, "Close": 10.17, "High": 10.44, "Low": 10.12, "BidPrice": 10.17, "BidVolume": int64(130), "AskPrice": 10.2, "AskVolume": int64(560)} {
+		if got := intraday.GetColByName(name).Data()[0]; got != want {
+			t.Errorf("intraday %s = %v (%T), want %v", name, got, got, want)
+		}
+	}
+	for _, name := range []string{"Open", "Close", "High", "Low", "AskPrice"} {
+		if got := intraday.GetColByName(name).Data()[3]; got != nil {
+			t.Errorf("a stock that did not trade has %s = %v, want nil", name, got)
+		}
+	}
+	if intraday.GetColByName("Change") != nil || intraday.GetColByName("漲跌") != nil {
+		t.Error("the change column is left out")
+	}
+	if got := intraday.GetColByName("Date").Data()[0]; got != day {
+		t.Errorf("Date = %v, want %v", got, day)
+	}
+
+	after, err := stock.OddLotQuotes(day, TWOddLotAfterHours, TWMarketTPEx)
+	if err != nil {
+		t.Fatalf("after-hours error: %v", err)
+	}
+	for name, want := range map[string]any{"Volume": int64(620), "Transactions": int64(5), "Turnover": int64(6322), "Price": 10.2, "BidPrice": 10.2, "BidVolume": int64(6854), "AskVolume": int64(0)} {
+		if got := after.GetColByName(name).Data()[0]; got != want {
+			t.Errorf("after-hours %s = %v (%T), want %v", name, got, got, want)
+		}
+	}
+	if got := after.GetColByName("AskPrice").Data()[0]; got != nil {
+		t.Errorf("an ask of 0.00 means no quote and should be nil, got %v", got)
+	}
+	// Same columns as the TWSE's table for the session, so the two stack.
+	twse := oddLotTable(oddLotColumns[TWOddLotAfterHours], nil)
+	if !reflect.DeepEqual(after.ColNames(), twse.ColNames()) {
+		t.Errorf("columns %v differ from the TWSE's %v", after.ColNames(), twse.ColNames())
+	}
+}
+
+func TestTWStockTPExOddLotQuotesNoDataAndBadSession(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	empty := []byte(`{"tables":[{"title":"盤中零股每日收盤行情","date":"20261018","fields":["代號","名稱"],"data":[]}],"stat":"ok"}`)
+	transport.replies[fixtureKey("/www/zh-tw/afterTrading/oddQuote", query("date", "2026/10/18", "type", "Daily", "response", "json"))] = []fixtureReply{{status: http.StatusOK, body: empty}}
+	dt, err := stock.OddLotQuotes(dateUTC(2026, time.October, 18), TWOddLotIntraday, TWMarketTPEx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dt.NumRows() != 0 || dt.GetColByName("Code") == nil {
+		t.Errorf("a day with no data should be an empty table with columns, got %d rows", dt.NumRows())
+	}
+	if _, err := stock.OddLotQuotes(dateUTC(2026, time.October, 16), TWOddLotSession("Night"), TWMarketTPEx); err == nil {
+		t.Error("an unknown session should be an error")
+	}
+	var zero TWStockClient
+	if _, err := zero.OddLotQuotes(dateUTC(2026, time.October, 16), TWOddLotIntraday, TWMarketTPEx); err == nil {
+		t.Error("a zero client should be an error")
+	}
+	// A header the code needs but the report lacks is refused, not guessed.
+	bad := []byte(`{"tables":[{"fields":["代號","名稱"],"data":[["00411A","x"]]}],"stat":"ok"}`)
+	transport.replies[fixtureKey("/www/zh-tw/afterTrading/odd", query("date", "2026/10/16", "type", "Daily", "response", "json"))] = []fixtureReply{{status: http.StatusOK, body: bad}}
+	if _, err := stock.OddLotQuotes(dateUTC(2026, time.October, 16), TWOddLotAfterHours, TWMarketTPEx); err == nil {
+		t.Error("a report without the required headers should be an error")
+	}
+}
+
+func TestTWStockOddLotQuotesMarkets(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	if _, err := stock.OddLotQuotes(dateUTC(2026, time.October, 16), TWOddLotIntraday, TWMarket("NYSE")); err == nil {
+		t.Error("an unknown market should be an error")
+	}
+	// Auto reads the TWSE and stops there when it has data.
+	transport.addFixture(t, fixtureKey("/rwd/zh/afterTrading/TWTC7U", query("date", "20260102", "response", "json", "selectType", "ALL")), "twse_twtc7u_20260102.json")
+	got, err := stock.OddLotQuotes(dateUTC(2026, time.January, 2), TWOddLotIntraday, TWMarketAuto)
+	if err != nil || got.NumRows() != 3 || got.GetColByName("Code").Data()[0] != "0050" {
+		t.Fatalf("auto with TWSE data: %v rows, %v", got.NumRows(), err)
+	}
+	if n := transport.requestCount(); n != 1 {
+		t.Errorf("auto made %d requests, want only the TWSE's 1", n)
+	}
+	// With no TWSE data it falls through to the TPEx.
+	transport.replies[fixtureKey("/rwd/zh/afterTrading/TWTC7U", query("date", "20261016", "response", "json", "selectType", "ALL"))] = []fixtureReply{{status: http.StatusOK, body: []byte(`{"stat":"很抱歉，沒有符合條件的資料!","total":0}`)}}
+	transport.addFixture(t, fixtureKey("/www/zh-tw/afterTrading/oddQuote", query("date", "2026/10/16", "type", "Daily", "response", "json")), "tpex_oddquote_20261016.json")
+	got, err = stock.OddLotQuotes(dateUTC(2026, time.October, 16), TWOddLotIntraday, TWMarketAuto)
+	if err != nil || got.NumRows() != 4 || got.GetColByName("Code").Data()[0] != "00411A" {
+		t.Fatalf("auto without TWSE data: %v rows, %v", got.NumRows(), err)
+	}
+}
+
+func TestTWStockShareholdingDistribution(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, "/getOD.ashx?id=1-5", "tdcc_shareholding_20261016.csv.txt")
+	dt, err := stock.ShareholdingDistribution()
+	if err != nil {
+		t.Fatalf("ShareholdingDistribution error: %v", err)
+	}
+	// Fixture: securities 000218 and 0050, 17 levels each.
+	if dt.NumRows() != 34 {
+		t.Fatalf("rows = %d, want 34", dt.NumRows())
+	}
+	row := func(code string, level int64) int {
+		codes, levels := dt.GetColByName("Code").Data(), dt.GetColByName("Level").Data()
+		for i := range codes {
+			if codes[i] == code && levels[i] == level {
+				return i
+			}
+		}
+		t.Fatalf("no row for %s level %d", code, level)
+		return -1
+	}
+	i := row("000218", 15)
+	if got := dt.GetColByName("Date").Data()[i].(time.Time); !got.Equal(dateUTC(2026, time.October, 16)) {
+		t.Errorf("Date = %v", got)
+	}
+	for name, want := range map[string]any{"Holders": int64(1), "Shares": int64(422278902), "Percent": 100.0, "LevelLabel": "1,000,001 and above"} {
+		if got := dt.GetColByName(name).Data()[i]; got != want {
+			t.Errorf("%s = %v (%T), want %v", name, got, got, want)
+		}
+	}
+	if label := dt.GetColByName("LevelLabel").Data()[row("0050", 17)]; label != "total" {
+		t.Errorf("level 17 label = %v", label)
+	}
+	if label := dt.GetColByName("LevelLabel").Data()[row("0050", 16)]; label != "difference adjustment" {
+		t.Errorf("level 16 label = %v", label)
+	}
+}
+
+func TestTWStockShareholdingDistributionRefusesBadFiles(t *testing.T) {
+	for name, body := range map[string]string{
+		"header":    "\xef\xbb\xbf日期,代號\r\n20261016,1\r\n",
+		"short row": "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\r\n20261016,0050,1,2\r\n",
+		"bad date":  "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\r\n2026-10-16,0050,1,2,3,0.1\r\n",
+		"bad level": "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\r\n20261016,0050,x,2,3,0.1\r\n",
+		"empty":     "",
+	} {
+		stock, transport := newFixtureTransportTWStock(t)
+		transport.replies["/getOD.ashx?id=1-5"] = []fixtureReply{{status: http.StatusOK, body: []byte(body)}}
+		if _, err := stock.ShareholdingDistribution(); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+	stock, transport := newFixtureTransportTWStock(t)
+	transport.addStatus("/getOD.ashx?id=1-5", http.StatusInternalServerError)
+	if _, err := stock.ShareholdingDistribution(); err == nil {
+		t.Error("a server error should be an error")
+	}
+	var zero TWStockClient
+	if _, err := zero.ShareholdingDistribution(); err == nil {
+		t.Error("a zero client should be an error")
+	}
+}
+
+func newFixtureTransportTWStock(t *testing.T) (*TWStockClient, *fixtureTransport) {
+	t.Helper()
+	return newFixtureTWStock(t, TWStockConfig{})
+}
+
+func miIndexKey(date string) string {
+	return fixtureKey("/rwd/zh/afterTrading/MI_INDEX", query("date", date, "type", "ALLBUT0999", "response", "json"))
+}
+
+func TestTWStockDailyQuotesOn(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, miIndexKey("20261016"), "twse_mi_index_20261016.json")
+	dt, err := stock.DailyQuotesOn(dateUTC(2026, time.October, 16), TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("DailyQuotesOn error: %v", err)
+	}
+	if dt.NumRows() != 9 {
+		t.Fatalf("rows = %d, want 9", dt.NumRows())
+	}
+	row := func(code string) int {
+		for i, c := range dt.GetColByName("Code").Data() {
+			if c == code {
+				return i
+			}
+		}
+		t.Fatalf("no row for %s", code)
+		return -1
+	}
+	check := func(code string, want map[string]any) {
+		for name, w := range want {
+			if got := dt.GetColByName(name).Data()[row(code)]; got != w {
+				t.Errorf("%s %s = %v (%T), want %v", code, name, got, got, w)
+			}
+		}
+	}
+	// 台泥 rose 0.07-style marks: the sign comes from the markup, the size from 漲跌價差.
+	check("1101", map[string]any{"Sign": "+", "Close": 27.3, "Volume": int64(57437884), "Transactions": int64(16647), "Turnover": int64(1574086796), "Open": 27.1})
+	check("1203", map[string]any{"Sign": "-"})
+	check("1108", map[string]any{"Sign": "=", "Change": 0.0})
+	check("1470", map[string]any{"Sign": "=", "Close": nil, "Volume": int64(0)})
+	check("8908", map[string]any{"Sign": "X", "Change": nil})
+	if got := dt.GetColByName("Change").Data()[row("1203")].(float64); got >= 0 {
+		t.Errorf("a falling stock has Change %v, want it negative", got)
+	}
+	if got := dt.GetColByName("Date").Data()[0].(time.Time); !got.Equal(dateUTC(2026, time.October, 16)) {
+		t.Errorf("Date = %v", got)
+	}
+}
+
+func TestTWStockDailyQuotesOnTPEx(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, fixtureKey("/www/zh-tw/afterTrading/otc", query("date", "2026/10/16", "type", "EW", "response", "json")), "tpex_daily_otc_20261016.json")
+	dt, err := stock.DailyQuotesOn(dateUTC(2026, time.October, 16), TWMarketTPEx)
+	if err != nil {
+		t.Fatalf("TPEx DailyQuotesOn error: %v", err)
+	}
+	if dt.NumRows() != 6 {
+		t.Fatalf("rows = %d, want 6", dt.NumRows())
+	}
+	signs := dt.GetColByName("Sign").Data()
+	changes := dt.GetColByName("Change").Data()
+	if signs[0] != "+" || changes[0] != 0.05 || signs[2] != "-" || changes[2] != -0.25 || signs[4] != "=" || signs[5] != "X" || changes[5] != nil {
+		t.Errorf("signs %v changes %v", signs, changes)
+	}
+	if got := dt.GetColByName("Volume").Data()[0]; got != int64(13452000) {
+		t.Errorf("Volume = %v, want 13452000 shares", got)
+	}
+}
+
+func TestTWStockDailyQuotesOnEmptyDay(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.replies[miIndexKey("20261017")] = []fixtureReply{{status: http.StatusOK, body: []byte(`{"stat":"很抱歉，沒有符合條件的資料!","type":"ALLBUT0999"}`)}}
+	dt, err := stock.DailyQuotesOn(dateUTC(2026, time.October, 17), TWMarketTWSE)
+	if err != nil || dt.NumRows() != 0 || dt.GetColByName("Close") == nil {
+		t.Errorf("empty day: %v rows, err %v", dt.NumRows(), err)
+	}
+	if _, err := stock.DailyQuotesOn(dateUTC(2026, time.October, 17), TWMarket("NYSE")); err == nil {
+		t.Error("an unknown market should be an error")
+	}
+	var zero TWStockClient
+	if _, err := zero.DailyQuotesOn(dateUTC(2026, time.October, 16), TWMarketTWSE); err == nil {
+		t.Error("a zero client should be an error")
+	}
+}
+
+func TestTWStockAdvanceDecline(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, miIndexKey("20261016"), "twse_mi_index_20261016.json")
+	transport.addFixture(t, miIndexKey("20261016"), "twse_mi_index_20261016.json")
+	transport.addFixture(t, miIndexKey("20161004"), "twse_mi_index_no_breadth.json")
+	transport.addFixture(t, miIndexKey("20161004"), "twse_mi_index_no_breadth.json")
+	day := dateUTC(2026, time.October, 16)
+	value := func(dt *insyra.DataTable, name string) any { return dt.GetColByName(name).Data()[0] }
+
+	// The official table: the stock column when commonStockOnly, the whole market otherwise.
+	stocks, err := stock.AdvanceDecline(day, TWMarketTWSE, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]any{"Advancing": int64(684), "AdvancingLimit": int64(19), "Declining": int64(286), "DecliningLimit": int64(0), "Unchanged": int64(106), "NoTrade": int64(5), "NoReference": int64(1), "Source": "official"} {
+		if got := value(stocks, name); got != want {
+			t.Errorf("stock %s = %v, want %v", name, got, want)
+		}
+	}
+	market, err := stock.AdvanceDecline(day, TWMarketTWSE, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value(market, "Advancing") != int64(9016) || value(market, "AdvancingLimit") != int64(68) || value(market, "NoReference") != int64(3528) {
+		t.Errorf("market counts: %v %v %v", value(market, "Advancing"), value(market, "AdvancingLimit"), value(market, "NoReference"))
+	}
+
+	// A day without the official table is counted from the closes.
+	oldDay := dateUTC(2016, time.October, 4)
+	common, err := stock.AdvanceDecline(oldDay, TWMarketTWSE, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]any{"Advancing": int64(2), "Declining": int64(2), "Unchanged": int64(1), "NoTrade": int64(1), "NoReference": int64(1), "AdvancingLimit": nil, "Source": "computed"} {
+		if got := value(common, name); got != want {
+			t.Errorf("computed common %s = %v, want %v", name, got, want)
+		}
+	}
+	all, err := stock.AdvanceDecline(oldDay, TWMarketTWSE, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value(all, "Advancing") != int64(3) || value(all, "Declining") != int64(3) {
+		t.Errorf("computed all: %v up, %v down", value(all, "Advancing"), value(all, "Declining"))
+	}
+}
+
+func TestIsCommonStockCode(t *testing.T) {
+	for code, want := range map[string]bool{"2330": true, "1101": true, "9958": true, "9103": false, "00400A": false, "0050": false, "23": false, "A123": false, "": false} {
+		if got := isCommonStockCode(code); got != want {
+			t.Errorf("isCommonStockCode(%q) = %v, want %v", code, got, want)
+		}
+	}
+}
+
+func mopsFixture(t *testing.T, transport *fixtureTransport, key, name string) {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join("testdata", "mops", name))
+	if err != nil {
+		t.Fatalf("read fixture %s: %v", name, err)
+	}
+	transport.replies[key] = append(transport.replies[key], fixtureReply{status: http.StatusOK, body: body})
+}
+
+func TestTWStockMonthlyRevenue(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	mopsFixture(t, transport, "/nas/t21/sii/t21sc03_114_9_0.html", "sii_114_9_0.html")
+	mopsFixture(t, transport, "/nas/t21/sii/t21sc03_114_9_1.html", "sii_114_9_1.html")
+	dt, err := stock.MonthlyRevenue(2025, 9, TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("MonthlyRevenue error: %v", err)
+	}
+	// Fixture: six domestic companies in two industries and one foreign company.
+	if dt.NumRows() != 7 {
+		t.Fatalf("rows = %d, want 7", dt.NumRows())
+	}
+	want := map[string]any{
+		"Month": dateUTC(2025, time.September, 1), "Code": "1101", "Name": "台泥", "Industry": "水泥工業", "Market": "TWSE",
+		"Revenue": int64(13306676), "PrevMonthRevenue": int64(12214776), "LastYearRevenue": int64(13325249),
+		"MoMChange": 8.93, "YoYChange": -0.13, "Cumulative": int64(109438297), "LastYearCumulative": int64(105591346),
+		"CumulativeChange": 3.64, "Remark": "", "PageDate": dateUTC(2026, time.October, 16),
+	}
+	for name, w := range want {
+		if got := dt.GetColByName(name).Data()[0]; got != w {
+			t.Errorf("%s = %v (%T), want %v", name, got, got, w)
+		}
+	}
+	if got := dt.GetColByName("Industry").Data()[3]; got != "食品工業" {
+		t.Errorf("fourth company's industry = %v, want 食品工業", got)
+	}
+}
+
+func TestTWStockMonthlyRevenueBothMarketsAndOldPages(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	mopsFixture(t, transport, "/nas/t21/sii/t21sc03_114_9_0.html", "sii_114_9_0.html")
+	transport.replies["/nas/t21/sii/t21sc03_114_9_1.html"] = []fixtureReply{{status: http.StatusNotFound, body: []byte("Not Found")}}
+	mopsFixture(t, transport, "/nas/t21/otc/t21sc03_114_9_0.html", "otc_114_9_0.html")
+	transport.replies["/nas/t21/otc/t21sc03_114_9_1.html"] = []fixtureReply{{status: http.StatusNotFound, body: []byte("Not Found")}}
+	both, err := stock.MonthlyRevenue(2025, 9, TWMarketAuto)
+	if err != nil {
+		t.Fatalf("both markets: %v", err)
+	}
+	markets := map[any]int{}
+	for _, m := range both.GetColByName("Market").Data() {
+		markets[m]++
+	}
+	if markets["TWSE"] != 6 || markets["TPEx"] != 4 {
+		t.Errorf("markets = %v, want 6 TWSE and 4 TPEx", markets)
+	}
+
+	// January 2003 has one page with no suffix, ten cells to a row and no remark.
+	transport.replies["/nas/t21/sii/t21sc03_92_1_0.html"] = []fixtureReply{{status: http.StatusNotFound, body: []byte("Not Found")}}
+	mopsFixture(t, transport, "/nas/t21/sii/t21sc03_92_1.html", "sii_92_1.html")
+	old, err := stock.MonthlyRevenue(2003, 1, TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("2003: %v", err)
+	}
+	if old.NumRows() != 4 || old.GetColByName("Revenue").Data()[0] != int64(2273373) || old.GetColByName("Remark").Data()[0] != "" {
+		t.Errorf("2003: %d rows, first revenue %v", old.NumRows(), old.GetColByName("Revenue").Data()[0])
+	}
+	if got := old.GetColByName("Month").Data()[0]; got != dateUTC(2003, time.January, 1) {
+		t.Errorf("2003 Month = %v", got)
+	}
+
+	// A month with no page at all is an empty table.
+	transport.replies["/nas/t21/sii/t21sc03_115_12_0.html"] = []fixtureReply{{status: http.StatusNotFound, body: []byte("Not Found")}}
+	transport.replies["/nas/t21/sii/t21sc03_115_12.html"] = []fixtureReply{{status: http.StatusNotFound, body: []byte("Not Found")}}
+	none, err := stock.MonthlyRevenue(2026, 12, TWMarketTWSE)
+	if err != nil || none.NumRows() != 0 || none.GetColByName("Revenue") == nil {
+		t.Errorf("missing month: %v, %v", none, err)
+	}
+}
+
+func TestTWStockMonthlyRevenueRefusesBadCalls(t *testing.T) {
+	stock, _ := newFixtureTWStock(t, TWStockConfig{})
+	for name, f := range map[string]func() error{
+		"early year": func() error { _, e := stock.MonthlyRevenue(2002, 12, TWMarketTWSE); return e },
+		"month 13":   func() error { _, e := stock.MonthlyRevenue(2025, 13, TWMarketTWSE); return e },
+		"month 0":    func() error { _, e := stock.MonthlyRevenue(2025, 0, TWMarketTWSE); return e },
+		"market":     func() error { _, e := stock.MonthlyRevenue(2025, 9, TWMarket("NYSE")); return e },
+	} {
+		if f() == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+	var zero TWStockClient
+	if _, err := zero.MonthlyRevenue(2025, 9, TWMarketTWSE); err == nil {
+		t.Error("a zero client should be an error")
 	}
 }

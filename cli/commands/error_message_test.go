@@ -24,6 +24,7 @@ func TestNumericArgumentErrorsNameTheCommandAndField(t *testing.T) {
 		{name: "expsmooth alpha", cmd: "expsmooth", args: []string{"x", "abc"}, field: "alpha"},
 		{name: "quartile q", cmd: "quartile", args: []string{"x", "abc"}, field: "q"},
 		{name: "percentile p", cmd: "percentile", args: []string{"x", "abc"}, field: "p"},
+		{name: "quantile p", cmd: "quantile", args: []string{"x", "abc"}, field: "p"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -52,7 +53,7 @@ func TestNumericArgumentErrorsNameTheCommandAndField(t *testing.T) {
 // says what is supported.
 func TestKMeansAndKNNOptionParsing(t *testing.T) {
 	t.Run("kmeans keys are case-insensitive", func(t *testing.T) {
-		opts, err := parseKMeansOptions([]string{"NSTART", "3", "IterMax", "10"})
+		opts, err := parseKMeansOptions(nil, []string{"NSTART", "3", "IterMax", "10"})
 		if err != nil {
 			t.Fatalf("uppercase option keys were refused: %v", err)
 		}
@@ -62,7 +63,7 @@ func TestKMeansAndKNNOptionParsing(t *testing.T) {
 	})
 
 	t.Run("kmeans unknown option lists what is supported", func(t *testing.T) {
-		_, err := parseKMeansOptions([]string{"nope", "1"})
+		_, err := parseKMeansOptions(nil, []string{"nope", "1"})
 		if err == nil {
 			t.Fatal("an unknown option was accepted")
 		}
@@ -74,7 +75,7 @@ func TestKMeansAndKNNOptionParsing(t *testing.T) {
 	})
 
 	t.Run("knn keys are case-insensitive", func(t *testing.T) {
-		opts, err := parseKNNCommandOptions([]string{"WEIGHTING", "Distance", "Algorithm", "KD_TREE"})
+		opts, err := parseKNNCommandOptions(nil, []string{"WEIGHTING", "Distance", "Algorithm", "KD_TREE"})
 		if err != nil {
 			t.Fatalf("uppercase option keys were refused: %v", err)
 		}
@@ -86,10 +87,10 @@ func TestKMeansAndKNNOptionParsing(t *testing.T) {
 	// A misspelled value used to be converted straight into the enum and handed
 	// to the library.
 	t.Run("knn rejects an unknown value", func(t *testing.T) {
-		if _, err := parseKNNCommandOptions([]string{"weighting", "inverse"}); err == nil {
+		if _, err := parseKNNCommandOptions(nil, []string{"weighting", "inverse"}); err == nil {
 			t.Error("an unknown weighting was accepted")
 		}
-		if _, err := parseKNNCommandOptions([]string{"algorithm", "quadtree"}); err == nil {
+		if _, err := parseKNNCommandOptions(nil, []string{"algorithm", "quadtree"}); err == nil {
 			t.Error("an unknown algorithm was accepted")
 		}
 	})

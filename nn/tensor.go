@@ -3,6 +3,8 @@ package nn
 
 import (
 	"fmt"
+
+	"github.com/HazelnutParadise/insyra/accel"
 )
 
 // DType identifies the element type carried by a Tensor. Float32 is the
@@ -30,15 +32,25 @@ const (
 	DTypeBFloat16 DType = "bfloat16"
 )
 
-// Short aliases make kernel call sites read like the ONNX dtype names while
-// the DType-prefixed constants remain unambiguous in documentation.
+// Short names for three dtypes, with the same values.
 const (
+	// Float32 is DTypeFloat32.
+	//
+	// Deprecated: use DTypeFloat32. Removed in 0.4.
 	Float32 = DTypeFloat32
+	// Float16 is DTypeFloat16.
+	//
+	// Deprecated: use DTypeFloat16. Removed in 0.4.
 	Float16 = DTypeFloat16
+	// Float64 is DTypeFloat64.
+	//
+	// Deprecated: use DTypeFloat64. Removed in 0.4.
 	Float64 = DTypeFloat64
 )
 
-// DataType is kept as an alias for callers that use ONNX's terminology.
+// DataType is the same type as DType.
+//
+// Deprecated: use DType. Removed in 0.4.
 type DataType = DType
 
 // Tensor is a row-major, N-dimensional tensor. Its data slice is private so a
@@ -52,16 +64,24 @@ type Tensor struct {
 	int64Data  []int64
 	boolData   []bool
 	stringData []string
+	// device holds the values of a resident float32 tensor; data is nil then.
+	device *accel.DeviceBuffer
+	// maxLabel is the largest class index of a resident int64 label tensor,
+	// recorded when it was moved so no kernel has to report a bad label.
+	maxLabel int64
 }
 
 // NewTensor constructs a float32 tensor with the supplied row-major data.
 // A nil or empty shape denotes a scalar and therefore requires one value.
+// NewInt64Tensor, NewStringTensor and NewBoolTensor construct the other
+// dtypes.
 func NewTensor(shape []int, data []float32) (*Tensor, error) {
 	return newFloat32Tensor(shape, data)
 }
 
-// NewFloat32Tensor is an explicit spelling of NewTensor for code that builds
-// tensors alongside values of other, future dtypes.
+// NewFloat32Tensor constructs the same tensor as NewTensor.
+//
+// Deprecated: use NewTensor. Removed in 0.4.
 func NewFloat32Tensor(shape []int, data []float32) (*Tensor, error) {
 	return newFloat32Tensor(shape, data)
 }
@@ -81,9 +101,12 @@ func NewBoolTensor(shape []int, data []bool) (*Tensor, error) {
 	return newBoolTensor(shape, data)
 }
 
-// NewTensorWithDType constructs a tensor when the dtype is known at a call
-// site. The data argument is float32, so this constructor is intentionally
-// limited to float32 tensors.
+// NewTensorWithDType constructs a float32 tensor. Its data is float32, so
+// every dtype other than DTypeFloat32 is refused.
+//
+// Deprecated: use NewTensor, which builds the same tensor; NewInt64Tensor,
+// NewStringTensor and NewBoolTensor build the other dtypes. Removed in
+// 0.4.
 func NewTensorWithDType(dtype DType, shape []int, data []float32) (*Tensor, error) {
 	if dtype != DTypeFloat32 {
 		return nil, unsupportedDTypeError(dtype)
@@ -116,22 +139,29 @@ func (t *Tensor) Strides() []int {
 	return append([]int(nil), t.strides...)
 }
 
-// Data returns a copy of float32 data. It returns nil for a non-float32
-// control tensor used internally by an ONNX shape operation.
+// Data returns a copy of the float32 data, or nil for a nil tensor or one of
+// another dtype.
+//
+// Deprecated: use Float32Data, which reports a nil tensor or another dtype as
+// an error instead of returning nil. Removed in 0.4.
 func (t *Tensor) Data() []float32 {
-	if t == nil || t.dtype != DTypeFloat32 {
+	if t == nil || t.dtype != DTypeFloat32 || t.device != nil {
 		return nil
 	}
 	return append([]float32(nil), t.data...)
 }
 
-// Float32Data is the error-reporting form of Data.
+// Float32Data returns a copy of float32 data. It returns an error for a nil
+// tensor or a tensor of another dtype.
 func (t *Tensor) Float32Data() ([]float32, error) {
 	if t == nil {
 		return nil, fmt.Errorf("tensor is nil")
 	}
 	if t.dtype != DTypeFloat32 {
 		return nil, unsupportedDTypeError(t.dtype)
+	}
+	if t.device != nil {
+		return nil, residentRefusal(t, "tensor")
 	}
 	return append([]float32(nil), t.data...), nil
 }
@@ -143,6 +173,9 @@ func (t *Tensor) Int64Data() ([]int64, error) {
 	}
 	if t.dtype != DTypeInt64 {
 		return nil, unsupportedDTypeError(t.dtype)
+	}
+	if t.device != nil {
+		return nil, residentRefusal(t, "tensor")
 	}
 	return append([]int64(nil), t.int64Data...), nil
 }
@@ -173,6 +206,9 @@ func (t *Tensor) BoolData() ([]bool, error) {
 func (t *Tensor) Len() int {
 	if t == nil {
 		return 0
+	}
+	if t.device != nil {
+		return t.device.Len()
 	}
 	switch t.dtype {
 	case DTypeFloat32:
@@ -279,6 +315,9 @@ func copyTensor(t *Tensor) (*Tensor, error) {
 	if t == nil {
 		return nil, fmt.Errorf("tensor is nil")
 	}
+	if t.device != nil {
+		return t.cloneResident()
+	}
 	result := &Tensor{
 		dtype:      t.dtype,
 		shape:      append([]int(nil), t.shape...),
@@ -336,6 +375,9 @@ func requireFloat32(t *Tensor, operand string) error {
 	}
 	if t.dtype != DTypeFloat32 {
 		return fmt.Errorf("%s has unsupported dtype %s", operand, dtypeName(t.dtype))
+	}
+	if t.device != nil {
+		return residentRefusal(t, operand)
 	}
 	return nil
 }
@@ -395,6 +437,9 @@ func tensorBroadcastInt64Binary(left, right *Tensor, operation string, fn func(i
 	}
 	if fn == nil {
 		return nil, fmt.Errorf("%s operation is nil", operation)
+	}
+	if err := rejectResident(operation, left, right); err != nil {
+		return nil, err
 	}
 	shape, err := tensorBroadcastShape(left.shape, right.shape)
 	if err != nil {

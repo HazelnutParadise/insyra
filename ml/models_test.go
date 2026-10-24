@@ -424,6 +424,17 @@ func dataList(values []any, name string) *insyra.DataList {
 	return insyra.NewDataList(values...).SetName(name)
 }
 
+// isRecordedTime reports whether field i of t is when a DataList or DataTable
+// was created or changed. Two results computed one after the other differ in
+// those by a few nanoseconds; the comparison is about what was computed.
+func isRecordedTime(t reflect.Type, i int) bool {
+	if t != reflect.TypeFor[insyra.DataList]() && t != reflect.TypeFor[insyra.DataTable]() {
+		return false
+	}
+	name := t.Field(i).Name
+	return name == "creationTimestamp" || name == "lastModifiedTimestamp"
+}
+
 func bitwiseEqual(left, right any) bool {
 	return bitwiseValueEqual(reflect.ValueOf(left), reflect.ValueOf(right))
 }
@@ -452,6 +463,9 @@ func bitwiseValueEqual(left, right reflect.Value) bool {
 		return bitwiseValueEqual(left.Elem(), right.Elem())
 	case reflect.Struct:
 		for i := 0; i < left.NumField(); i++ {
+			if isRecordedTime(left.Type(), i) {
+				continue
+			}
 			if !bitwiseValueEqual(left.Field(i), right.Field(i)) {
 				return false
 			}

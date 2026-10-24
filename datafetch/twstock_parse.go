@@ -8,6 +8,7 @@ import (
 )
 
 type twStockTable struct {
+	Title  string     `json:"title"`
 	Fields []string   `json:"fields"`
 	Data   [][]string `json:"data"`
 }

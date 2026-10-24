@@ -1,7 +1,8 @@
 # accel-memory-cache Specification
 
 ## Purpose
-TBD - created by archiving change add-accel-columnar-layout-cache. Update Purpose after archive.
+How a table's columns are laid out for a device and kept there: a typed columnar projection that accepts the values the CPU path accepts, cache budgets for discrete and shared memory, and a content-addressed fingerprint that decides when a cached copy can be reused.
+
 ## Requirements
 ### Requirement: Typed columnar projection
 The system SHALL project GPU-eligible data into typed columnar layouts before accel execution.

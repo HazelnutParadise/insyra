@@ -71,7 +71,7 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 				colNames[i] = dl.GetName()
 				label := colNames[i]
 				if label == "" {
-					label = fmt.Sprintf("column %d", i+1)
+					label = fmt.Sprintf("column %d", i)
 				}
 				var convErr error
 				if colSlices[i], convErr = numericValues(dl.Data(), label); convErr != nil && err == nil {
@@ -382,7 +382,7 @@ func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
 }
 
 type CorrelationResult struct {
-	testResultBase
+	TestResult
 }
 
 // Correlation calculates correlation between two IDataLists.

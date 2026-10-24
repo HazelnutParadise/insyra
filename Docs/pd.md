@@ -46,7 +46,7 @@ You will also need `gpandas` as a dependency; the package imports `github.com/ap
 - `func FromDataList(dl insyra.IDataList) (*Series, error)`
   - Creates a `pd.Series` from an `insyra.DataList`.
   - Infers element type across the list: `int` (normalized to `int64`), `float` (`float64`), or `string`. If types are mixed or unknown, falls back to `any`.
-  - Returns an error for `nil` or empty `DataList`.
+  - Returns an error for `nil` `DataList`; an empty list becomes an empty `any`-typed Series.
 
 - `func FromGPandasSeries(gpds gpdc.Series) (*Series, error)`
   - Wraps an existing `gpandas` series into `pd.Series`.
@@ -94,5 +94,5 @@ if err != nil {
 
 - `pd.FromDataList` inspects elements in the `DataList` and returns a `Series` of one of: `int` (normalized to `int64`), `float` (`float64`), `string`, or `any` (when mixed/unrecognized).
 - Mixed element types produce an `any`-typed series.
-- `pd.FromDataList` returns an error for `nil` or empty `DataList`.
+- `pd.FromDataList` returns an error for `nil` `DataList`; an empty list becomes an empty `any`-typed Series.
 - `nil` values inside a `DataList` are preserved when converting to a `Series` and back via `ToDataList()`.

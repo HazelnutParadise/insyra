@@ -126,9 +126,12 @@ rounded, and it sorts by value rather than by the text of its digits. Like a
 path; convert it first if you need arithmetic. See [Exact Decimals](Decimal.md).
 
 A binary column exports to JSON as base64, which is what a `[]byte` becomes
-in JSON, so nothing is lost. `Write` still writes a column of `[]byte` cells
-as a string column holding Go's text for the slice, such as `[65 45 48 49]`,
-so a read-then-write round trip keeps neither the binary type nor the bytes.
+in JSON, so nothing is lost. `Write` writes a column whose cells are all `[]byte`
+as a `Binary` column, so those bytes come back as bytes. A `[]byte` cell in a
+column that also holds other values is written as text when it is valid UTF-8.
+Other types still change on a read-then-write round trip, because `Write` infers
+a column's type from its Go values: a `Date32` column comes back as a timestamp,
+a decimal as text and an `Int16` as an `Int64`.
 
 A dictionary-encoded column reads as the values it holds, in the Go type the
 table above gives their Arrow type, so a pandas `category` column of strings
@@ -150,7 +153,7 @@ for an unsupported column, but records no reason.
 func Write(dt insyra.IDataTable, path string) error
 ```
 
-**Description:** Writes an `insyra.IDataTable` to a Parquet file. The file footer is written when the writer closes, so an error from that close is returned rather than only logged.
+**Description:** Writes an `insyra.IDataTable` to a Parquet file, opening the file in place as it always has. `WriteContext` accepts cancellation and optional `WriteOptions`, and writes to a same-directory temporary file that replaces the target only once it is complete, so a failed write leaves the old file untouched.
 
 **Parameters:**
 
@@ -160,6 +163,21 @@ func Write(dt insyra.IDataTable, path string) error
 **Returns:**
 
 - `error`: Error when the operation fails.
+
+`WriteTo` and `WriteToContext` write to any `io.Writer` without closing it. `WriteContext` and `WriteToContext` accept an optional `WriteOptions` value. `Compression` supports uncompressed (default), Snappy, Gzip, Brotli, and Zstandard. `RowGroupSize` sets the maximum rows per row group; zero uses 1,048,576. Negative sizes and more than one options value return an error.
+
+```go
+func WriteContext(ctx context.Context, dt insyra.IDataTable, path string, opts ...WriteOptions) error
+func WriteTo(dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error
+func WriteToContext(ctx context.Context, dt insyra.IDataTable, w io.Writer, opts ...WriteOptions) error
+```
+
+`ReadFrom` reads from any `io.ReaderAt` and its total size. `StreamFrom` uses the same two-channel contract as `Stream`.
+
+```go
+func ReadFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions) (*insyra.DataTable, error)
+func StreamFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error)
+```
 
 ### Stream
 
@@ -208,12 +226,48 @@ The `parquet` package provides CCL (Column Calculation Language) support for dir
 > [!IMPORTANT]
 > **⚠️ Important Note on Type Constraints:**
 >
-> Due to the nature of Parquet format, **each column must have a consistent data type**. This means CCL operations in Parquet may behave differently from DataTable operations in the following ways:
+> A Parquet column holds one type, while a `DataTable` column can hold values of any kind. `ApplyCCL` settles the type of every column a statement writes so that no value is lost:
 >
-> - When creating new columns or modifying existing ones, ensure that the resulting values maintain type consistency within each column
-> - Type coercion may occur automatically to maintain column type consistency
-> - Operations that would create mixed types in a column may result in errors or unexpected behavior
-> - This is a fundamental constraint of the Parquet format, not a limitation of the CCL implementation
+> - a column the file had keeps its type when every value written into it fits, such as whole numbers in an integer column; a fraction widens an integer column to `float64` rather than being cut off;
+> - a column the script creates, or a column whose new values do not fit its type, takes the type `Write` gives a table's column: CCL computes arithmetic as `float64`, a column mixing integers and `float64` values is `float64`, and a column mixing text, numbers or booleans is text, so its values read back as strings;
+> - a column the script does not write is written back exactly as the file had it, whatever its type;
+> - see [Type Constraints](#type-constraints) for the rest.
+
+### Batches of 1,000 rows
+
+`FilterWithCCL` and `ApplyCCL` read the file 1,000 rows at a time and give the answer the same expression gives on the file loaded with `Read`:
+
+- an aggregate such as `AVG(A)`, `SUM(A:C)` or `STDEV(A - 1)` is computed over the whole file;
+- the row index `#` is the row's position in the file, counted from 0;
+- a reference to a fixed row or range of rows, such as `A.0`, `@.1500` or `A.0:1999`, reads those rows of the file.
+
+For example, on a file whose column `A` holds 1 to 2,500, `FilterWithCCL(ctx, path, "A > AVG(A)")` keeps the 1,250 rows from 1,251 on, and `"# == 0"` keeps the first row only. In `ApplyCCL`, each statement sees the file as the statements before it leave it, so `NEW('c') = A - AVG(A); NEW('d') = ['c'] / SUM(['c'])` divides by the sum of the new column.
+
+The aggregates computed this way are `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`, `VAR`, `VARP`, `STDEV` and `STDEVP`. Before any row is evaluated, the file is read again for them, keeping only running totals, so memory still holds one batch at a time:
+
+- each extra read feeds one argument of an aggregate, and each column of a range or of `@` is an argument of its own;
+- `VAR`, `VARP`, `STDEV` and `STDEVP` read each argument twice;
+- aggregates side by side share their reads, and an aggregate inside another waits for the inner one;
+- fixed rows take a read of their own, separate from the aggregates', and one more when they sit inside an aggregate or another fixed row; the rows they name are kept in memory, so `A.0:1999` holds 2,000 rows.
+
+`A > AVG(A)` reads the file twice in all, `A > STDEV(A)` and `A > AVG(A - AVG(A))` three times. An expression that needs none of this is read once, as before. In `ApplyCCL`, every extra read for a statement applies the statements before it to each batch again.
+
+A sequence function, `LAG`, `LEAD`, `DIFF`, `PCT_CHANGE`, `CUMSUM`, `CUMPROD`, `CUMMAX`, `CUMMIN`, `ROLLING_SUM`, `ROLLING_MEAN`, `ROLLING_MIN`, `ROLLING_MAX` or `ROLLING_STD`, works when it is the whole filter expression or the whole right-hand side of a `NEW` or an assignment: `ApplyCCL(ctx, path, "NEW('c') = CUMSUM(A)")` writes the running sum of the whole file. Its column argument can be any expression of the row, such as `A - AVG(A)`, and its other arguments must be constants. It is computed as the file is read, with no extra read of its own, and holds only what crosses a batch boundary:
+
+- the last `n` values of its column for `LAG(x, n)`, `DIFF(x, n)` and `PCT_CHANGE(x, n)`, and the last `w - 1` for `ROLLING_*(x, w)`;
+- the running value for `CUMSUM`, `CUMPROD`, `CUMMAX` and `CUMMIN`;
+- for `LEAD(x, n)`, the next `n` rows of the file, every column of them: a row waits until the value it needs has been read.
+
+A part that cannot be computed, such as `STDEV(A)` over a single value or `A.5000` in a file of 2,500 rows, fails only the rows that reach it, as it does on a loaded table: `IF(COUNT(A) >= 2, A > STDEV(A), TRUE)` keeps every row of a one-row file.
+
+Anything else that reads beyond the current row is computed by reading the whole of the columns the expression reads, and only those, into memory, and evaluating the expression the way `AddColUsingCCL` and `ExecuteCCL` do on a loaded table, so its answer is the table's, and it fails where the table fails, for the same reason:
+
+- `MEDIAN`, or an aggregate registered with `RegisterAggregateFunction` from `engine/ccl`, including one registered under a built-in name;
+- a row reference computed from the current row, such as `A.(# - 1)`;
+- a column range inside an expression an aggregate is computed over, such as `COUNT(IF(A > 0, A:B, 0))`;
+- a sequence function anywhere but as the whole expression: inside another sequence function or an aggregate, such as `LAG(CUMSUM(A), 1)` or `SUM(CUMSUM(A))`, or inside another expression, such as `CUMSUM(A) + 1`, which fails here as it fails on a loaded table.
+
+`A > MEDIAN(A)` on a file with ten columns holds column `A`, whole, and nothing else. `@` reads every column, so such an expression that uses `@` holds the whole file. It costs one more read of the file. In `ApplyCCL`, such a statement is computed before the file is written, against the file as the statements before it leave it, and the column it writes is held until the file is written.
 
 ### FilterWithCCL
 
@@ -249,7 +303,7 @@ filtered.Show()
 ### ApplyCCL
 
 ```go
-func ApplyCCL(ctx context.Context, path string, cclScript string) error
+func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteOptions) error
 ```
 
 **Description:** Applies CCL expressions directly to a Parquet file in streaming mode, processing data batch by batch to minimize memory usage. The CCL script can contain multiple statements separated by semicolons.
@@ -259,6 +313,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error
 - `ctx`: Context for cancellation
 - `path`: Path to the Parquet file (will be modified in-place)
 - `cclScript`: CCL script containing one or more statements separated by `;` or newlines
+- `opts`: Optional, at most one. The compression and row group size to write with, as `WriteContext` uses them; see [WriteOptions](#writeoptions-and-compression). Without it the file keeps its own.
 
 **Returns:**
 
@@ -266,9 +321,12 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error
 
 **Important:**
 
-- The input file **will be overwritten** with the transformed data (via a temporary file).
-- Processing is done in batches to handle large files efficiently.
-- Supports creating new columns with `NEW()`, but modifying existing columns may not work.
+- The input file **will be overwritten** with the transformed data. The new file goes to a temporary file with a name of its own in the same directory and replaces the original only once it is complete, so a failure leaves the original as it was. An input with no rows leaves it untouched.
+- Without `opts`, the file keeps its layout: each column is written with the codec it had, a column the script adds takes the codec of the first column, and row groups are as large as the original's largest one. A 200,000-row Zstd file with one column added used to come back uncompressed in 200 row groups, from 1.7 MB to 9.3 MB.
+- With one `WriteOptions`, every column is written with its `Compression` and row groups of its `RowGroupSize`. More than one, or one `WriteContext` would refuse, is an error before the file is read.
+- Processing is done in batches to handle large files efficiently. Building a row group larger than a batch holds that row group of the output in memory until it is full. Until every column a statement writes has shown a value, the rows written so far also wait in memory, at most one row group of them, so their types can be settled.
+- Each statement sees the file as the statements before it leave it, the way `ExecuteCCL` does on a table: a column an earlier `NEW()` created, or an earlier assignment such as `['A'] = A * 2` replaced, reads its new values. A statement that has to hold whole columns (see [Batches of 1,000 rows](#batches-of-1000-rows)) is computed before anything is written, so an error in it leaves the file as it was.
+- Supports creating new columns with `NEW()` and replacing existing ones by assignment.
 
 **Example:**
 
@@ -286,14 +344,11 @@ if err != nil {
 
 When using CCL with Parquet files, be aware of these type-related considerations:
 
-1. **Column Type Consistency**: Each column must maintain a single data type throughout. Mixed-type columns are not supported.
+1. **Column Type Consistency**: Each column of the written file holds one type. A column whose values are of several kinds is written as text, as `Write` writes it.
 
-2. **Type Inference**: When creating new columns with `NEW()`, the type is determined from the first batch of data processed.
+2. **Type Inference**: A column the file had and a statement assigns keeps its type when every value written into it can be held by that type without loss, for the types `ApplyCCL` writes: whole numbers in an `int64` column, numbers a `float64` holds exactly in a `float64` column, text in a text column, booleans, timestamps and byte strings in theirs. Otherwise, and for a column `NEW()` creates, the column takes the type `Write` would give it from all its values. `ApplyCCL` settles the types from the rows it writes first, once every written column has shown a value or a row group is full. When a written column has shown no value by then, or a later value would change a type, it abandons that write, reads the file once more to settle the types from every value, and writes the file again: a run of missing values as long as a row group, such as the first rows of `LAG(A, n)` with `n` at least the row group's size, costs those two extra reads. Every column a statement writes is nullable, so a missing value reads back as `nil`. A column the script does not write is written back from the file's own data, its type and every value exactly as they were, whatever the type: integer and float widths, dates, decimals, lists, structs and the rest. A column a statement assigns can keep `int8` to `int64`, the unsigned widths, `float32`, `float64`, text, booleans, `Date32`, `Date64`, timestamps and byte strings; a decimal it assigns, or a column of another type, takes the type `Write` gives its values.
 
-3. **Type Coercion**: Operations may automatically coerce types to maintain consistency. For example:
-
-   - Numeric operations on integer columns may produce float results
-   - String concatenation with numbers will convert numbers to strings
+3. **Type Coercion**: Values are converted to the column's type when the file is written, and only where nothing is lost: a whole number computed as `float64` is written into an integer column as that integer, and every value in a text column becomes its text. A fraction is never cut off; it makes the column `float64`.
 
 4. **Differences from DataTable CCL**:
    - DataTable allows more flexible type handling per cell

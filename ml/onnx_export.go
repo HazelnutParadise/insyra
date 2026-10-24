@@ -19,7 +19,8 @@ const (
 
 // ExportONNX writes a fitted model as a standard ONNX ModelProto. The model
 // is built completely before w is touched, so unsupported models never leave
-// a partial file behind.
+// a partial file behind. A nil model, or one holding a nil pointer, is an
+// error.
 func ExportONNX(w io.Writer, fitted any) error {
 	if w == nil {
 		return errors.New("ml: ONNX export writer is nil")
@@ -39,8 +40,9 @@ func ExportONNX(w io.Writer, fitted any) error {
 	return nil
 }
 
-// WriteONNX is an explicit synonym for ExportONNX for callers that prefer a
-// verb describing the destination.
+// WriteONNX writes a fitted model the way ExportONNX does.
+//
+// Deprecated: use ExportONNX. Removed in 0.4.
 func WriteONNX(w io.Writer, fitted any) error { return ExportONNX(w, fitted) }
 
 func (m *LinearModel) ExportONNX(w io.Writer) error { return ExportONNX(w, m) }
@@ -188,6 +190,9 @@ func (b *onnxBuilder) addOutput(name string, dtype int32, shape []int64) {
 }
 
 func buildONNXModel(fitted any) (*onnxModelProto, error) {
+	if fitted == nil || isNilPointer(fitted) {
+		return nil, errors.New("ml: ONNX export model is nil")
+	}
 	switch model := fitted.(type) {
 	case *fittedPipeline:
 		return buildPipelineONNX(model)
@@ -724,7 +729,7 @@ func applyONNXOneHot(b *onnxBuilder, groups []onnxGroup, encoder *insyra.OneHotE
 	}
 	options := encoder.Options()
 	if options.Unknown != insyra.UnknownIgnore {
-		return nil, fmt.Errorf("one-hot encoder unknown policy %d cannot be represented by ONNX", options.Unknown)
+		return nil, fmt.Errorf("one-hot encoder unknown policy %v cannot be represented by ONNX", options.Unknown)
 	}
 	columns := encoder.Columns()
 	categories := encoder.Categories()
@@ -811,7 +816,7 @@ func applyONNXScalarEncoder(b *onnxBuilder, groups []onnxGroup, source, output s
 		return nil, errors.New("scalar encoder has no fitted column name")
 	}
 	if unknown != insyra.UnknownIgnore {
-		return nil, fmt.Errorf("encoder column %q unknown policy %d cannot be represented by ONNX", source, unknown)
+		return nil, fmt.Errorf("encoder column %q unknown policy %v cannot be represented by ONNX", source, unknown)
 	}
 	if len(classes) == 0 {
 		return nil, fmt.Errorf("encoder column %q has no fitted classes", source)

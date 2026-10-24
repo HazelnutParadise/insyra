@@ -2,7 +2,6 @@ package ccl
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -30,7 +29,38 @@ type EvaluationResult struct {
 
 // Evaluate evaluates a CCL node with the given context.
 func Evaluate(n cclNode, ctx Context) (any, error) {
-	return evaluateWithContext(n, ctx, 0)
+	val, err := evaluateWithContext(n, ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	return resolveResultValue(val, ctx)
+}
+
+// sequenceColumn reads one argument of the sequence function name over every
+// row of ctx: a whole row per element for '@' or a column range, which only
+// LAG and LEAD accept, and the argument's value per row otherwise. The
+// evaluator builds a call's arguments with it, and TopSequence.Push reads a
+// batch's column argument the same way the evaluator reads the whole table's.
+func sequenceColumn(name string, arg cclNode, ctx Context, depth, callDepth int) ([]any, error) {
+	// A row-shaped argument — '@' or a column range — is one row
+	// per element, not one value per element. evaluateToColumn
+	// flattens both into the whole table, which LAG would then
+	// shift into a single nonsense slice repeated in every cell.
+	rows, isRowShaped, err := rowShapedColumn(arg, ctx, depth, callDepth)
+	if err != nil {
+		return nil, fmt.Errorf("sequence function %s: %w", name, err)
+	}
+	if isRowShaped {
+		if !SequenceFunctionTakesRows(strings.ToUpper(name)) {
+			return nil, fmt.Errorf("sequence function %s needs numbers, and %s is a whole row; only LAG and LEAD accept one", name, describeRowShaped(arg))
+		}
+		return rows, nil
+	}
+	colData, err := evaluateToColumn(arg, ctx, depth, callDepth)
+	if err != nil {
+		return nil, fmt.Errorf("sequence function %s: %w", name, err)
+	}
+	return colData, nil
 }
 
 // EvaluateStatement evaluates a CCL statement and returns detailed result
@@ -39,6 +69,9 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 	case *cclAssignmentNode:
 		// Evaluate the expression
 		val, err := evaluateWithContext(t.expr, ctx, 0)
+		if err == nil {
+			val, err = resolveResultValue(val, ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -50,6 +83,9 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 	case *cclNewColNode:
 		// Evaluate the expression for new column
 		val, err := evaluateWithContext(t.expr, ctx, 0)
+		if err == nil {
+			val, err = resolveResultValue(val, ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -61,6 +97,9 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 	default:
 		// Regular expression
 		val, err := evaluateWithContext(n, ctx, 0)
+		if err == nil {
+			val, err = resolveResultValue(val, ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -111,7 +150,7 @@ func IsNewColNode(n cclNode) bool {
 // IsRowDependent checks if the expression depends on the current row.
 func IsRowDependent(n cclNode) bool {
 	switch t := n.(type) {
-	case *cclNumberNode, *cclStringNode, *cclBooleanNode, *cclNilNode, *cclFoldedValueNode:
+	case *cclNumberNode, *cclStringNode, *cclBooleanNode, *cclNilNode, *cclFoldedValueNode, *cclFailedPartNode:
 		return false
 	case *cclIdentifierNode, *cclColIndexNode, *cclColNameNode, *cclResolvedColNode, *cclAtNode, *cclRowIndexNode:
 		return true
@@ -119,11 +158,14 @@ func IsRowDependent(n cclNode) bool {
 		if t.op == "." {
 			return IsRowDependent(t.right)
 		}
-		if t.op == ":" {
-			// 範圍運算符特殊處理：如果兩邊都是靜態欄位引用，則視為行無關
-			if isStaticColumnNode(t.left) && isStaticColumnNode(t.right) {
-				return false
-			}
+		if t.op == ":" && isStaticColumnNode(t.left) && isStaticColumnNode(t.right) {
+			// A COLUMN range on its own is the current row restricted to those
+			// columns — the same defaulting that makes a bare `A` mean `A.#` —
+			// so it changes from row to row. A ROW range (`0:1`) has no such
+			// reading and falls through to the operand check below. Inside an
+			// aggregate the range never reaches this case: evaluateToColumn
+			// expands it before asking.
+			return true
 		}
 		return IsRowDependent(t.left) || IsRowDependent(t.right)
 	case *cclFoldChainNode:
@@ -240,9 +282,17 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		return nil, nil
 	case *cclFoldedValueNode:
 		return t.value, nil
+	case *cclFailedPartNode:
+		// A whole-table part the streaming resolver could not compute. It
+		// fails here, so only a row that reaches it fails — the way the part
+		// fails on a whole table only where it is evaluated.
+		return nil, t.err
 	case *cclAtNode:
 		return ctx.GetCurrentRow(), nil
 	case *cclRowIndexNode:
+		if g, ok := ctx.(GlobalRowContext); ok {
+			return float64(g.GlobalRowIndex()), nil
+		}
 		return float64(ctx.GetRowIndex()), nil
 	case *cclIdentifierNode:
 		idx, ok := utils.ParseColIndex(t.name)
@@ -322,11 +372,11 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			functionDepth := callDepth + 1
 			seqArgs := make([][]any, len(t.args))
 			for i, arg := range t.args {
-				colData, err := evaluateToColumn(arg, ctx, depth+1, functionDepth)
+				column, err := sequenceColumn(t.name, arg, ctx, depth+1, functionDepth)
 				if err != nil {
-					return nil, fmt.Errorf("sequence function %s: %w", t.name, err)
+					return nil, err
 				}
-				seqArgs[i] = colData
+				seqArgs[i] = column
 			}
 			return callSequenceFunction(t.name, seqArgs)
 		}
@@ -666,7 +716,7 @@ func isWordAgainstNumber(a, b any) bool {
 		return false
 	}
 	switch b.(type) {
-	case float64, float32, int, int32, int64:
+	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		return true
 	}
 	return false
@@ -774,8 +824,8 @@ func applyOperator(op string, left, right any) (any, error) {
 
 	// 處理 & 運算符（字串連接，等同於 CONCAT）
 	if op == "&" {
-		leftStr := fmt.Sprintf("%v", left)
-		rightStr := fmt.Sprintf("%v", right)
+		leftStr := textOf(left)
+		rightStr := textOf(right)
 		return leftStr + rightStr, nil
 	}
 	// 處理 && 運算符（邏輯與，等同於 AND）
@@ -922,6 +972,31 @@ func applyOperator(op string, left, right any) (any, error) {
 }
 
 func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, error) {
+	// 0. A column range names columns; here we want everything in them. This
+	// has to be decided before the row-dependence check below, because a range
+	// that IS the whole answer means something else — the current row
+	// restricted to those columns — and is therefore row-dependent.
+	if bin, ok := n.(*cclBinaryOpNode); ok && bin.op == ":" {
+		v, err := evaluateRange(bin.left, bin.right, ctx, depth, callDepth)
+		if err != nil {
+			return nil, err
+		}
+		switch r := v.(type) {
+		case ColumnRange:
+			var allData []any
+			for i := r.Start; i <= r.End; i++ {
+				col, err := ctx.GetColData(i)
+				if err != nil {
+					return nil, err
+				}
+				allData = append(allData, col...)
+			}
+			return allData, nil
+		case RowRange:
+			return nil, fmt.Errorf("raw row range cannot be used as a data source; use @.start:end instead")
+		}
+	}
+
 	// 1. 針對直接欄位引用的優化
 	switch t := n.(type) {
 	case *cclAtNode:
@@ -1000,7 +1075,7 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 		originalRowIdx := ctx.GetRowIndex()
 		defer func() {
 			if err := ctx.SetRowIndex(originalRowIdx); err != nil {
-				log.Printf("ccl: failed to restore row index: %v", err)
+				Warn("evaluate", "failed to restore row index: %v", err)
 			}
 		}()
 	}
@@ -1054,10 +1129,19 @@ func evaluateRowAccess(left, right cclNode, ctx Context, depth, callDepth int) (
 				rowIndices = append(rowIndices, i)
 			}
 		}
-	case float64:
-		rowIndices = []int{int(v)}
 	case int:
 		rowIndices = []int{v}
+	case float64, float32, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		// Every other Go numeric type reads like a float64 index, a fraction
+		// dropped. NaN, the infinities and values past the int32 range are
+		// refused, as rangeBound refuses them: int(f) is undefined there, and
+		// amd64 and arm64 disagree, so a float64 NaN used to read row 0 on one
+		// and fail on the other.
+		f, _ := toFloat64(v)
+		if math.IsNaN(f) || f > math.MaxInt32 || f < math.MinInt32 {
+			return nil, fmt.Errorf("row index %v is out of range", v)
+		}
+		rowIndices = []int{int(f)}
 	case string:
 		idx, err := ctx.GetRowIndexByName(v)
 		if err != nil {
@@ -1066,6 +1150,15 @@ func evaluateRowAccess(left, right cclNode, ctx Context, depth, callDepth int) (
 		rowIndices = []int{idx}
 	default:
 		return nil, fmt.Errorf("invalid row index type: %T", rowVal)
+	}
+
+	// A row written in the expression is a position in the whole table, while
+	// a context holding one part of it reads rows by their place in the part.
+	if g, ok := ctx.(GlobalRowContext); ok {
+		offset := g.GlobalRowIndex() - ctx.GetRowIndex()
+		for i := range rowIndices {
+			rowIndices[i] -= offset
+		}
 	}
 
 	// 2. Prepare to fetch data from left

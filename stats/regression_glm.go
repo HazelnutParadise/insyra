@@ -218,16 +218,16 @@ func resolveGLMLink(fam glmFamily, linkName GLMLink) (glmLink, GLMLink, error) {
 func validateGLMResponse(y []float64, fam glmFamily) error {
 	for i, v := range y {
 		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return fmt.Errorf("response must be finite (index %d)", i)
+			return fmt.Errorf("response must be finite (row index %d)", i)
 		}
 		switch fam.name() {
 		case string(Binomial):
 			if v < 0 || v > 1 {
-				return fmt.Errorf("binomial response must be in [0,1] (index %d)", i)
+				return fmt.Errorf("binomial response must be in [0,1] (row index %d)", i)
 			}
 		case string(Poisson):
 			if v < 0 {
-				return fmt.Errorf("poisson response must be non-negative (index %d)", i)
+				return fmt.Errorf("poisson response must be non-negative (row index %d)", i)
 			}
 		}
 	}

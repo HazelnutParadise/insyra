@@ -5,9 +5,12 @@ package py
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -49,118 +52,60 @@ func ReinstallPyEnv() error {
 	return nil
 }
 
+// Run runs the Python code and returns the value passed to insyra.Return as a
+// T, bound by the same rules RunCode uses: *insyra.DataTable and
+// *insyra.DataList for DataFrames and Series, and a struct, map, slice or
+// scalar through JSON. $v1, $v2, ... in code are filled from args, as RunCodef
+// fills them. On failure it returns T's zero value and the error.
+//
+// ctx bounds the run: cancelling it kills the Python process and Run returns
+// ctx.Err(); a nil ctx is an error. T must not be insyra.DataTable or
+// insyra.DataList itself, which cannot be copied; use a pointer.
+func Run[T any](ctx context.Context, code string, args ...any) (T, error) {
+	var out T
+	switch any(&out).(type) {
+	case *insyra.DataTable:
+		return out, errors.New("py: Run cannot return an insyra.DataTable by value; use Run[*insyra.DataTable]")
+	case *insyra.DataList:
+		return out, errors.New("py: Run cannot return an insyra.DataList by value; use Run[*insyra.DataList]")
+	}
+	if err := RunCodefContext(ctx, &out, code, args...); err != nil {
+		var zero T
+		return zero, err
+	}
+	return out, nil
+}
+
 // Run the Python file and bind the result to the provided struct pointer.
 func RunFile(out any, filePath string) error {
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
 	}
 	code := string(file)
-	return RunCode(out, code)
+	return RunCodeContext(context.Background(), out, code)
 }
 
 // Run the Python file with the given Golang variables and bind the result to the provided struct pointer.
 // The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
 func RunFilef(out any, filePath string, args ...any) error {
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
 	}
 	code := string(file)
-	return RunCodef(out, code, args...)
+	return RunCodefContext(context.Background(), out, code, args...)
 }
 
 // Run the Python code and bind the result to the provided struct pointer.
 func RunCode(out any, code string) error {
-	return runPythonCode(out, code)
+	return RunCodeContext(context.Background(), out, code)
 }
 
 // Run the Python code with the given Golang variables and bind the result to the provided struct pointer.
 // The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
 func RunCodef(out any, code string, args ...any) error {
-	formattedCode, err := replacePlaceholders(code, args...)
-	if err != nil {
-		return fmt.Errorf("failed to format code: %w", err)
-	}
-	return runPythonCode(out, formattedCode)
-}
-
-// runPythonCode executes the Python code and binds the result to the provided struct pointer.
-func runPythonCode(out any, code string) error {
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
-
-	// 生成執行ID
-	executionID := generateExecutionID()
-
-	code = generateDefaultPyCode(executionID) + fmt.Sprintf(`
-try:
-%v
-except Exception as e:
-    import sys
-    sys.stdout.flush()
-    sys.stderr.flush()
-    insyra_return(None, str(e))
-finally:
-    import sys
-    sys.stdout.flush()
-    sys.stderr.flush()
-    if not sent:
-        insyra_return(None, None)
-`, indentCode(code))
-
-	// 創建進程結束通知channel
-	processDone := make(chan struct{})
-	execErr := make(chan error, 1)
-
-	scriptPath, cleanup, err := createTempPythonScript(code)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	// 在goroutine中執行Python代碼
-	go func(path string) {
-		defer close(processDone)
-		pythonCmd := exec.Command(pyPath, path)
-		pythonCmd.Stdout = os.Stdout
-		pythonCmd.Stderr = os.Stderr
-		utils.ApplyHideWindow(pythonCmd)
-		if err := pythonCmd.Run(); err != nil {
-			execErr <- err
-		}
-	}(scriptPath)
-
-	// 等待並接收結果
-	pyResult := waitForResult(executionID, processDone, execErr)
-	// 如果有錯誤（從系統執行或 Python 返回），直接返回
-	if pyResult[1] != nil {
-		return fmt.Errorf("%v", pyResult[1])
-	}
-	// 正常執行且無錯誤；即使回傳值為 nil 也要呼叫 bindPyResult 以便把 nil 綁定到 out（例如清空 interface 變數）
-	if pyResult[0] == nil {
-		if out != nil {
-			if err := bindPyResult(out, nil); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	// 將結果 bind 到傳入的結構指標
-	if out != nil {
-		if err := bindPyResult(out, pyResult[0]); err != nil {
-			return err
-		}
-	}
-	return nil
+	return RunCodefContext(context.Background(), out, code, args...)
 }
 
 // Run the Python code using the provided context. If the context is canceled
@@ -183,9 +128,6 @@ func RunCodefContext(ctx context.Context, out any, code string, args ...any) err
 
 // Run the Python file and bind the result to the provided struct pointer, with context.
 func RunFileContext(ctx context.Context, out any, filePath string) error {
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -196,9 +138,6 @@ func RunFileContext(ctx context.Context, out any, filePath string) error {
 
 // Run the Python file with the given Golang variables and bind the result to the provided struct pointer, with context.
 func RunFilefContext(ctx context.Context, out any, filePath string, args ...any) error {
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -214,15 +153,29 @@ func RunFilefContext(ctx context.Context, out any, filePath string, args ...any)
 // Run the Python code with a timeout. This is a convenience wrapper that creates
 // a context with timeout and runs the code. If the timeout occurs it returns
 // context.DeadlineExceeded (i.e., ctx.Err()).
+//
+// Deprecated: use RunCodeContext with a context from context.WithTimeout,
+// which is the same call. Removed in 0.4.
 func RunCodeWithTimeout(timeout time.Duration, out any, code string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return runPythonCodeContext(ctx, out, code)
+	return RunCodeContext(ctx, out, code)
 }
 
 // runPythonCodeContext executes the Python code and binds the result to the provided struct pointer.
 // It behaves like runPythonCode but uses the provided Context so callers can cancel the execution.
 func runPythonCodeContext(ctx context.Context, out any, code string) error {
+	if ctx == nil {
+		return errors.New("py: nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	addr, err := acquireIPCServer()
+	if err != nil {
+		return err
+	}
+	defer releaseIPCServer()
 	if err := pyEnvInit(); err != nil {
 		return err
 	}
@@ -230,7 +183,7 @@ func runPythonCodeContext(ctx context.Context, out any, code string) error {
 	// 生成執行ID
 	executionID := generateExecutionID()
 
-	code = generateDefaultPyCode(executionID) + fmt.Sprintf(`
+	code = generateDefaultPyCode(executionID, addr) + fmt.Sprintf(`
 try:
 %v
 except Exception as e:
@@ -257,16 +210,16 @@ finally:
 	defer cleanup()
 
 	// 在goroutine中執行Python代碼
-	go func(path string) {
+	go func(python, path string) {
 		defer close(processDone)
-		pythonCmd := exec.CommandContext(ctx, pyPath, path)
+		pythonCmd := exec.CommandContext(ctx, python, path)
 		pythonCmd.Stdout = os.Stdout
 		pythonCmd.Stderr = os.Stderr
 		utils.ApplyHideWindow(pythonCmd)
 		if err := pythonCmd.Run(); err != nil {
 			execErr <- err
 		}
-	}(scriptPath)
+	}(pyPath, scriptPath)
 
 	// 等待並接收結果
 	pyResult := waitForResult(executionID, processDone, execErr)
@@ -299,37 +252,49 @@ finally:
 
 // Install dependencies using uv pip
 func PipInstall(dep string) error {
-	if err := pyEnvInit(); err != nil {
-		return err
-	}
-	pythonCmd := exec.Command("uv", "pip", "install", dep, "--python", pyPath)
-	pythonCmd.Dir = absInstallDir
-	var stdout, stderr bytes.Buffer
-	pythonCmd.Stdout = &stdout
-	pythonCmd.Stderr = &stderr
-	utils.ApplyHideWindow(pythonCmd)
-	if err := pythonCmd.Run(); err != nil {
-		return fmt.Errorf("failed to install dependency %s: %w. stderr: %s", dep, err, stderr.String())
-	}
-	insyra.LogInfo("py", "PipInstall", "Installed dependency: %s", dep)
-	return nil
+	return PipInstallContext(context.Background(), dep)
+}
+
+// PipInstallContext installs a dependency with uv pip. Cancelling ctx stops
+// the uv command and returns ctx.Err(); a nil ctx is an error. The first-use
+// preparation of the environment is not interrupted by ctx.
+func PipInstallContext(ctx context.Context, dep string) error {
+	return runPip(ctx, "install", dep)
 }
 
 // Uninstall dependencies using uv pip
 func PipUninstall(dep string) error {
+	return PipUninstallContext(context.Background(), dep)
+}
+
+// PipUninstallContext uninstalls a dependency with uv pip, with the same
+// context rules as PipInstallContext.
+func PipUninstallContext(ctx context.Context, dep string) error {
+	return runPip(ctx, "uninstall", dep)
+}
+
+func runPip(ctx context.Context, verb, dep string) error {
+	if ctx == nil {
+		return errors.New("py: nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := pyEnvInit(); err != nil {
 		return err
 	}
-	pythonCmd := exec.Command("uv", "pip", "uninstall", dep, "--python", pyPath)
+	pythonCmd := exec.CommandContext(ctx, "uv", "pip", verb, dep, "--python", pyPath)
 	pythonCmd.Dir = absInstallDir
 	var stdout, stderr bytes.Buffer
 	pythonCmd.Stdout = &stdout
 	pythonCmd.Stderr = &stderr
 	utils.ApplyHideWindow(pythonCmd)
 	if err := pythonCmd.Run(); err != nil {
-		return fmt.Errorf("failed to uninstall dependency %s: %w. stderr: %s", dep, err, stderr.String())
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		return fmt.Errorf("failed to %s dependency %s: %w. stderr: %s", verb, dep, err, stderr.String())
 	}
-	insyra.LogInfo("py", "PipUninstall", "Uninstalled dependency: %s", dep)
 	return nil
 }
 
@@ -366,7 +331,6 @@ func PipList() (map[string]string, error) {
 		result[p.Name] = p.Version
 	}
 
-	insyra.LogInfo("py", "PipList", "Found %d installed packages", len(pkgs))
 	return result, nil
 }
 
@@ -426,135 +390,178 @@ func createTempPythonScript(code string) (string, func(), error) {
 	return scriptPath, cleanup, nil
 }
 
-func generateDefaultPyCode(executionID string) string {
+// skipPolarsCPUCheckUnderEmulation runs before the imports. On Windows on
+// arm64 uv installs the x86-64 CPython, which Windows runs through emulation;
+// polars' CPU check reads the machine as ARM64 there, finds no x86 feature
+// flags and refuses to import. The check is skipped for that case only, and a
+// value the caller set is kept.
+const skipPolarsCPUCheckUnderEmulation = `import os
+import platform
+import sysconfig
+if os.name == "nt" and platform.machine().lower() == "arm64" and sysconfig.get_platform() == "win-amd64":
+	os.environ.setdefault("POLARS_SKIP_CPU_CHECK", "1")
+`
+
+func generateDefaultPyCode(executionID, addr string) string {
 	imports := ""
 	for imps := range pyDependencies {
 		if imps != "" {
 			imports += fmt.Sprintf("%s\n", imps)
 		}
 	}
-	// Get IPC address (waits for server if needed)
-	addr := getIPCAddress()
 	return fmt.Sprintf(`
+%v
 %v
 import sys
 sent = False
 %v
-`, imports, builtInFunc(addr, executionID))
+`, skipPolarsCPUCheckUnderEmulation, imports, builtInFunc(addr, executionID))
 }
 
-// replacePlaceholders replaces $v1, $v2, etc. placeholders with the corresponding argument values
+// placeholderPattern matches $v1, $v2, … by their whole number. A number with
+// a leading zero is not a placeholder.
+var placeholderPattern = regexp.MustCompile(`\$v([1-9][0-9]*)`)
+
+// replacePlaceholders replaces $v1, $v2, … in template with the Python
+// literals of the arguments at those positions. It reads the template once, so
+// text inserted for one placeholder is never searched for another, and $v10 is
+// the tenth argument rather than $v1 followed by 0. A placeholder past the last
+// argument is left as written. Only the arguments the template uses are
+// converted, and one that cannot be written as a Python literal is an error.
 func replacePlaceholders(template string, args ...any) (string, error) {
-	result := template
-	for i, arg := range args {
-		placeholder := fmt.Sprintf("$v%d", i+1)
-		var replacement string
-
-		// Convert the argument to a string representation suitable for Python
-		switch v := arg.(type) {
-		case insyra.IDataList:
-			// For IDataList, marshal to JSON and format as pd.Series
-			jsonBytes, err := json.Marshal(v.Data())
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal IDataList argument: %w", err)
-			}
-			jsonStr := string(jsonBytes)
-			// Replace JSON literals with Python literals, avoiding strings
-			jsonStr = replaceJsonLiterals(jsonStr)
-			replacement = "pd.Series("
-			if name := v.GetName(); name != "" {
-				// Marshal the name to a JSON string literal so quotes/newlines in
-				// the name cannot break out of the Python source (code injection).
-				// JSON double-quoted string literals are valid Python literals.
-				nameBytes, err := json.Marshal(name)
-				if err != nil {
-					return "", fmt.Errorf("failed to marshal IDataList name: %w", err)
-				}
-				replacement += "name=" + string(nameBytes) + ","
-			}
-			replacement += "data=" + jsonStr + ")"
-		case insyra.IDataTable:
-			data := v.To2DSlice()
-			// For IDataTable, marshal to JSON and format as pd.DataFrame
-			jsonBytes, err := json.Marshal(data)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal IDataTable argument: %w", err)
-			}
-			jsonStr := string(jsonBytes)
-			// Replace JSON literals with Python literals, avoiding strings
-			jsonStr = replaceJsonLiterals(jsonStr)
-			replacement = "pd.DataFrame("
-			if colnames := v.ColNames(); len(colnames) > 0 {
-				var allempty = true
-				for _, name := range colnames {
-					if name != "" {
-						allempty = false
-						break
-					}
-				}
-				if !allempty {
-					colsJson, _ := json.Marshal(colnames)
-					replacement += "columns=" + replaceJsonLiterals(string(colsJson)) + ","
-				}
-			}
-			if rownames := v.RowNames(); len(rownames) > 0 {
-				var allempty = true
-				for _, name := range rownames {
-					if name != "" {
-						allempty = false
-						break
-					}
-				}
-				if !allempty {
-					rownamesJson, _ := json.Marshal(rownames)
-					replacement += "index=" + replaceJsonLiterals(string(rownamesJson)) + ","
-				}
-			}
-			replacement += "data=" + jsonStr + ")"
-		case string:
-			// For strings, wrap in quotes
-			replacement = fmt.Sprintf("%q", v)
-		case bool:
-			// For bool, use Python boolean literals
-			if v {
-				replacement = "True"
-			} else {
-				replacement = "False"
-			}
-		case []int:
-			// For int slices, convert to Python list format
-			var elements []string
-			for _, val := range v {
-				elements = append(elements, strconv.Itoa(val))
-			}
-			replacement = fmt.Sprintf("[%s]", strings.Join(elements, ", "))
-		case []float64:
-			// For float64 slices, convert to Python list format
-			var elements []string
-			for _, val := range v {
-				elements = append(elements, strconv.FormatFloat(val, 'f', -1, 64))
-			}
-			replacement = fmt.Sprintf("[%s]", strings.Join(elements, ", "))
-		case []string:
-			// For string slices, convert to Python list format
-			var elements []string
-			for _, val := range v {
-				elements = append(elements, fmt.Sprintf("%q", val))
-			}
-			replacement = fmt.Sprintf("[%s]", strings.Join(elements, ", "))
-		default:
-			// For other types, try to marshal as JSON for complex structures
-			if jsonBytes, err := json.Marshal(v); err == nil {
-				replacement = replaceJsonLiterals(string(jsonBytes))
-			} else {
-				// Fallback to fmt.Sprintf %v
-				replacement = fmt.Sprintf("%v", v)
-			}
+	literals := make([]string, len(args))
+	converted := make([]bool, len(args))
+	var convErr error
+	result := placeholderPattern.ReplaceAllStringFunc(template, func(placeholder string) string {
+		n, err := strconv.Atoi(placeholder[len("$v"):])
+		if err != nil || n > len(args) || convErr != nil {
+			return placeholder
 		}
-
-		result = strings.ReplaceAll(result, placeholder, replacement)
+		if !converted[n-1] {
+			literal, err := pythonLiteral(args[n-1])
+			if err != nil {
+				convErr = fmt.Errorf("%s: %w", placeholder, err)
+				return placeholder
+			}
+			literals[n-1], converted[n-1] = literal, true
+		}
+		return literals[n-1]
+	})
+	if convErr != nil {
+		return "", convErr
 	}
 	return result, nil
+}
+
+// pythonLiteral writes arg as Python source that evaluates to it.
+func pythonLiteral(arg any) (string, error) {
+	var replacement string
+	switch v := arg.(type) {
+	case insyra.IDataList:
+		// For IDataList, marshal to JSON and format as pd.Series
+		jsonBytes, err := json.Marshal(v.Data())
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal IDataList argument: %w", err)
+		}
+		jsonStr := string(jsonBytes)
+		// Replace JSON literals with Python literals, avoiding strings
+		jsonStr = replaceJsonLiterals(jsonStr)
+		replacement = "pd.Series("
+		if name := v.GetName(); name != "" {
+			// Marshal the name to a JSON string literal so quotes/newlines in
+			// the name cannot break out of the Python source (code injection).
+			// JSON double-quoted string literals are valid Python literals.
+			nameBytes, err := json.Marshal(name)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal IDataList name: %w", err)
+			}
+			replacement += "name=" + string(nameBytes) + ","
+		}
+		replacement += "data=" + jsonStr + ")"
+	case insyra.IDataTable:
+		data := v.To2DSlice()
+		// For IDataTable, marshal to JSON and format as pd.DataFrame
+		jsonBytes, err := json.Marshal(data)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal IDataTable argument: %w", err)
+		}
+		jsonStr := string(jsonBytes)
+		// Replace JSON literals with Python literals, avoiding strings
+		jsonStr = replaceJsonLiterals(jsonStr)
+		replacement = "pd.DataFrame("
+		if colnames := v.ColNames(); len(colnames) > 0 {
+			var allempty = true
+			for _, name := range colnames {
+				if name != "" {
+					allempty = false
+					break
+				}
+			}
+			if !allempty {
+				colsJson, _ := json.Marshal(colnames)
+				replacement += "columns=" + replaceJsonLiterals(string(colsJson)) + ","
+			}
+		}
+		if rownames := v.RowNames(); len(rownames) > 0 {
+			var allempty = true
+			for _, name := range rownames {
+				if name != "" {
+					allempty = false
+					break
+				}
+			}
+			if !allempty {
+				rownamesJson, _ := json.Marshal(rownames)
+				replacement += "index=" + replaceJsonLiterals(string(rownamesJson)) + ","
+			}
+		}
+		replacement += "data=" + jsonStr + ")"
+	case string:
+		// For strings, wrap in quotes
+		replacement = fmt.Sprintf("%q", v)
+	case bool:
+		// For bool, use Python boolean literals
+		if v {
+			replacement = "True"
+		} else {
+			replacement = "False"
+		}
+	case []int:
+		// For int slices, convert to Python list format
+		var elements []string
+		for _, val := range v {
+			elements = append(elements, strconv.Itoa(val))
+		}
+		replacement = fmt.Sprintf("[%s]", strings.Join(elements, ", "))
+	case []float64:
+		// For float64 slices, convert to Python list format. A NaN or an
+		// infinity has no Python literal, so it is refused as a scalar one is.
+		var elements []string
+		for _, val := range v {
+			if math.IsNaN(val) || math.IsInf(val, 0) {
+				return "", fmt.Errorf("a []float64 holding %v cannot be written as a Python value", val)
+			}
+			elements = append(elements, strconv.FormatFloat(val, 'f', -1, 64))
+		}
+		replacement = fmt.Sprintf("[%s]", strings.Join(elements, ", "))
+	case []string:
+		// For string slices, convert to Python list format
+		var elements []string
+		for _, val := range v {
+			elements = append(elements, fmt.Sprintf("%q", val))
+		}
+		replacement = fmt.Sprintf("[%s]", strings.Join(elements, ", "))
+	default:
+		// For other types, try to marshal as JSON for complex structures.
+		// A value JSON cannot write is refused rather than written as
+		// formatted text, which would put it into the script as code.
+		jsonBytes, err := json.Marshal(v)
+		if err != nil {
+			return "", fmt.Errorf("a %T cannot be written as a Python value: %w", v, err)
+		}
+		replacement = replaceJsonLiterals(string(jsonBytes))
+	}
+	return replacement, nil
 }
 
 func indentCode(code string) string {

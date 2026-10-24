@@ -74,15 +74,22 @@ func ProcessData(input any) ([]any, int)
 func SqrtRat(x *big.Rat) *big.Rat
 ```
 
-**Description:** Calculates the square root of a `*big.Rat` and returns the result as another `*big.Rat`.
+**Deprecated.** Removed in 0.4. Use `math/big` directly:
+
+```go
+f := new(big.Float).SetRat(x)
+root, _ := f.Sqrt(f).Rat(nil)
+```
+
+**Description:** Returns the square root of `x`, rounded to the precision of a `big.Float` holding `x`. Returns `nil` when `x` is `nil` or negative.
 
 **Parameters:**
 
-- `x`: Numeric parameter value. Type: `*big.Rat`.
+- `x`: The value to take the square root of. Type: `*big.Rat`.
 
 **Returns:**
 
-- `*big.Rat`: Return value. Type: `*big.Rat`.
+- `*big.Rat`: The square root, or `nil`. Type: `*big.Rat`.
 
 ### PowRat
 
@@ -90,16 +97,18 @@ func SqrtRat(x *big.Rat) *big.Rat
 func PowRat(base *big.Rat, exponent int) *big.Rat
 ```
 
-**Description:** Computes `base^exponent` for `*big.Rat` values.
+**Deprecated.** Removed in 0.4. Use `math/big` directly: raise `base.Num()` and `base.Denom()` with `big.Int.Exp` and combine them with `big.Rat.SetFrac`.
+
+**Description:** Returns `base` raised to `exponent` as a new value. A negative exponent gives the reciprocal of the positive power, so `PowRat(big.NewRat(2, 3), -2)` is `9/4`. Any base to the power 0 is 1. Returns `nil` when `base` is `nil`, or when `base` is 0 and `exponent` is negative, since 0 has no reciprocal.
 
 **Parameters:**
 
-- `base`: Input value for `base`. Type: `*big.Rat`.
-- `exponent`: Input value for `exponent`. Type: `int`.
+- `base`: The value to raise. Type: `*big.Rat`.
+- `exponent`: The power, which may be negative. Type: `int`.
 
 **Returns:**
 
-- `*big.Rat`: Return value. Type: `*big.Rat`.
+- `*big.Rat`: The power, or `nil`. Type: `*big.Rat`.
 
 ### ConvertLongDataToWide
 
@@ -136,38 +145,53 @@ wide := insyra.ConvertLongDataToWide(data, factor, []insyra.IDataList{ind1, ind2
 wide.Show()
 ```
 
-### ParseColIndex
+### ColIndexToNumber
 
 ```go
-func ParseColIndex(colIndex string) (int, bool)
+func ColIndexToNumber(colIndex string) (int, bool)
 ```
 
-**Description:** Converts Excel-style column index (e.g., `A`, `Z`, `AA`) into a 0-based index. The second return value is a boolean `ok` indicating whether parsing succeeded (false for invalid column index).
+**Description:** Turns an Excel-style column index (`A`, `Z`, `AA`, in either case) into its column number, which counts from 0: `A` is 0 and `AA` is 26. The second return value is `false`, with the number `-1`, for an empty string or any character that is not a letter. `ColNumberToIndex` is the reverse.
 
 **Parameters:**
 
-- `colIndex`: Index value to use. Type: `string`.
+- `colIndex`: Excel-style column index. Type: `string`.
 
   **Returns:**
 
-- `int`: Computed value (0-based index). Type: `int`.
-- `bool`: Success flag (`ok`) indicating whether parsing succeeded. Type: `bool`.
+- `int`: Column number, counting from 0. Type: `int`.
+- `bool`: Whether `colIndex` is a column index. Type: `bool`.
 
-### CalcColIndex
+**Example:**
 
 ```go
-func CalcColIndex(index int) (string, bool)
+n, ok := insyra.ColIndexToNumber("AA") // 26, true
 ```
 
-**Description:** Converts a 0-based column index into an Excel-style column index (e.g., `A`, `Z`, `AA`). The second return value is a boolean `ok` indicating whether conversion succeeded (false for negative indices).
+### ColNumberToIndex
+
+```go
+func ColNumberToIndex(colNumber int) (string, bool)
+```
+
+**Description:** Turns a column number, which counts from 0, into its Excel-style column index: 0 is `A` and 26 is `AA`. The second return value is `false`, with an empty string, for a negative number. `ColIndexToNumber` is the reverse.
+
 **Parameters:**
 
-- `index`: 0-based index value to use. Type: `int`.
+- `colNumber`: Column number, counting from 0. Type: `int`.
 
   **Returns:**
 
-- `string`: Computed value (Excel-style column index). Type: `string`.
-- `bool`: Success flag (`ok`) indicating whether conversion succeeded. Type: `bool`.
+- `string`: Excel-style column index. Type: `string`.
+- `bool`: Whether `colNumber` is a column number. Type: `bool`.
+
+**Example:**
+
+```go
+index, ok := insyra.ColNumberToIndex(26) // "AA", true
+```
+
+> `ParseColIndex` and `CalcColIndex` are the deprecated names of `ColIndexToNumber` and `ColNumberToIndex`. They return the same values and are removed in 0.4.
 
 ### IsNumeric
 
@@ -191,11 +215,13 @@ func IsNumeric(v any) bool
 func SortTimes(times []time.Time)
 ```
 
-**Description:** Sorts a slice of `time.Time` in ascending order.
+**Deprecated.** Removed in 0.4. Use `slices.SortStableFunc(times, time.Time.Compare)`, which keeps the same stable order.
+
+**Description:** Sorts a slice of `time.Time` in ascending order, in place.
 
 **Parameters:**
 
-- `times`: Input value for `times`. Type: `[]time.Time`.
+- `times`: The times to sort. Type: `[]time.Time`.
 
 **Returns:**
 
@@ -204,15 +230,27 @@ func SortTimes(times []time.Time)
 ### Show
 
 ```go
-func Show(label string, object showable, startEnd ...any)
+func Show(label string, object Showable, startEnd ...any)
+
+type Showable interface {
+    ShowRange(startEnd ...any)
+}
 ```
 
-**Description:** Displays a labeled preview of any structure that implements `ShowRange` (e.g., `DataTable` or `DataList`). The `startEnd` arguments behave the same as `ShowRange`.
+**Description:** Displays a labeled preview of any structure that implements `ShowRange` (e.g., `DataTable`, `DataList` or the `isr` wrappers). The `startEnd` arguments behave the same as `ShowRange`. `Showable` is exported, so a function of your own can take anything `Show` takes:
+
+```go
+func preview(items map[string]insyra.Showable) {
+    for label, item := range items {
+        insyra.Show(label, item, 5)
+    }
+}
+```
 
 **Parameters:**
 
 - `label`: Input value for `label`. Type: `string`.
-- `object`: Input value for `object`. Type: `showable`.
+- `object`: What to show. Type: `Showable`.
 - `startEnd`: Input value for `startEnd`. Type: `...any`.
 
 **Returns:**
@@ -271,7 +309,6 @@ package main
 
 import (
     "fmt"
-    "math/big"
 
     "github.com/HazelnutParadise/insyra"
 )
@@ -280,9 +317,5 @@ func main() {
     num := 42
     f := insyra.ToFloat64(num)
     fmt.Println("Converted:", f)
-
-    rat := big.NewRat(16, 1)
-    sqrtRat := insyra.SqrtRat(rat)
-    fmt.Println("Square root:", sqrtRat)
 }
 ```

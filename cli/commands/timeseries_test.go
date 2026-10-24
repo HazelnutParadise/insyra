@@ -63,6 +63,12 @@ func approxEqualAny(got, want []any, tol float64) bool {
 		gf, gok := insyra.ToFloat64Safe(got[i])
 		wf, wok := insyra.ToFloat64Safe(want[i])
 		if gok && wok {
+			if math.IsNaN(gf) || math.IsNaN(wf) {
+				if math.IsNaN(gf) && math.IsNaN(wf) {
+					continue
+				}
+				return false
+			}
 			if math.Abs(gf-wf) > tol {
 				return false
 			}
@@ -551,5 +557,90 @@ func TestRollingHelpListsCovAndBeta(t *testing.T) {
 	joined := strings.Join(handler.Forms, "\n")
 	if !strings.Contains(joined, "cov <other>") || !strings.Contains(joined, "beta <other>") {
 		t.Errorf("rolling Forms should list cov and beta, got:\n%s", joined)
+	}
+}
+
+// A rolling window the library refused is an error, not a saved variable
+// holding an empty list.
+func TestRollingCommand_InvalidWindowIsAnError(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"x": namedList("x", 1, 2, 3)})
+	err := runRollingCommand(ctx, []string{"x", "0", "mean", "as", "m"})
+	if err == nil {
+		t.Fatal("rolling with a zero window was accepted")
+	}
+	if !strings.HasPrefix(err.Error(), "rolling: ") {
+		t.Errorf("error %q does not name the command", err.Error())
+	}
+	if _, saved := ctx.Vars["m"]; saved {
+		t.Error("the failed rolling was saved")
+	}
+}
+
+func TestRollingCommand_MinObsAboveWindowIsAnError(t *testing.T) {
+	ctx := newTimeSeriesContext(t, map[string]any{"x": namedList("x", 1, 2, 3)})
+	err := runRollingCommand(ctx, []string{"x", "2", "mean", "minobs", "3", "as", "m"})
+	if err == nil {
+		t.Fatal("rolling with minobs above the window was accepted")
+	}
+	if !strings.HasPrefix(err.Error(), "rolling: ") {
+		t.Errorf("error %q does not name the command", err.Error())
+	}
+	if _, saved := ctx.Vars["m"]; saved {
+		t.Error("the failed rolling was saved")
+	}
+}
+
+// Other missing cells must not consume the replacement limit.
+func TestFillNACommand_MissingNaNLimitSkipsNil(t *testing.T) {
+	ctx := newWindowCtx(1.0, nil, math.NaN())
+	if err := runFillNACommand(ctx, []string{"x", "ffill", "limit", "1", "missing", "nan", "as", "f"}); err != nil {
+		t.Fatalf("fillna failed: %v", err)
+	}
+	if got := resultDL(t, ctx, "f").Data(); !approxEqualAny(got, []any{1.0, nil, 1.0}, 1e-9) {
+		t.Errorf("got %v", got)
+	}
+}
+
+func TestFillNACommand_MissingNilLimitSkipsNaN(t *testing.T) {
+	ctx := newWindowCtx(nil, math.NaN(), 5.0)
+	if err := runFillNACommand(ctx, []string{"x", "bfill", "limit", "1", "missing", "nil", "as", "f"}); err != nil {
+		t.Fatalf("fillna failed: %v", err)
+	}
+	if got := resultDL(t, ctx, "f").Data(); !approxEqualAny(got, []any{5.0, math.NaN(), 5.0}, 1e-9) {
+		t.Errorf("got %v", got)
+	}
+}
+
+func TestFillNACommand_MissingNaNLimitCountsOnlyNaN(t *testing.T) {
+	ctx := newWindowCtx(1.0, math.NaN(), nil, math.NaN())
+	if err := runFillNACommand(ctx, []string{"x", "ffill", "limit", "1", "missing", "nan", "as", "f"}); err != nil {
+		t.Fatalf("fillna failed: %v", err)
+	}
+	if got := resultDL(t, ctx, "f").Data(); !approxEqualAny(got, []any{1.0, 1.0, nil, math.NaN()}, 1e-9) {
+		t.Errorf("got %v", got)
+	}
+}
+
+func TestFillNACommand_TableMissingNaNLimitSkipsNil(t *testing.T) {
+	ctx := newTestExecContext(t)
+	ctx.Vars["t"] = insyra.NewDataTable(insyra.NewDataList(1.0, nil, math.NaN()).SetName("v"), insyra.NewDataList("a", nil, "c").SetName("w"))
+	if err := runFillNACommand(ctx, []string{"t", "ffill", "cols", "v", "limit", "1", "missing", "nan", "as", "f"}); err != nil {
+		t.Fatalf("fillna failed: %v", err)
+	}
+	result := resultDT(t, ctx, "f")
+	if got := result.GetColByName("v").Data(); !approxEqualAny(got, []any{1.0, nil, 1.0}, 1e-9) {
+		t.Errorf("column v got %v", got)
+	}
+	if got := result.GetColByName("w").Data(); !approxEqualAny(got, []any{"a", nil, "c"}, 1e-9) {
+		t.Errorf("unselected column changed: %v", got)
+	}
+}
+
+func TestApproxEqualAnyTreatsNaNOnlyAsNaN(t *testing.T) {
+	if approxEqualAny([]any{math.NaN()}, []any{1.0}, 1e-9) || approxEqualAny([]any{1.0}, []any{math.NaN()}, 1e-9) {
+		t.Fatal("NaN compared equal to a number")
+	}
+	if !approxEqualAny([]any{math.NaN()}, []any{math.NaN()}, 1e-9) {
+		t.Fatal("two NaNs should compare equal")
 	}
 }

@@ -4,6 +4,7 @@
 `DataList`／`DataTable` 實例錯誤的讀取與記錄契約：`Err()` 保存最近一次錯誤，`PopErr()` 讀取並清除，`SetErr()` 讓包裝套件以與核心相同的方式記錄錯誤。
 
 ## Requirements
+
 ### Requirement: PopErr reads and clears
 
 `PopErr()` SHALL 回傳目前的錯誤並清除它；再次呼叫 SHALL 回傳 nil。`IDataList` 與 `IDataTable` SHALL 包含 `PopErr()`。
@@ -19,3 +20,12 @@
 #### Scenario: Later SetErr wins
 - **WHEN** 對同一實例先後呼叫兩次 `SetErr`
 - **THEN** `Err()` 回報第二次的錯誤，等級為 `LogLevelWarning`
+
+### Requirement: Err answers on a nil receiver
+
+`Err()` on a nil `*DataList` or `*DataTable` SHALL return a new error naming the nil type instead of crashing. No other method SHALL be made safe on a nil receiver by this requirement.
+
+#### Scenario: A lookup that found nothing
+
+- **WHEN** `dt.GetColByName("missing")` returns nil and `Err()` is called on the result
+- **THEN** it returns an error saying `nil DataList`

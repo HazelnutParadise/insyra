@@ -36,7 +36,7 @@ func (dt *DataTable) Resample(timeCol string, freq ResampleFreq, aggs ...Resampl
 		return empty, fmt.Errorf("Resample: at least one aggregate is required")
 	}
 	if !validResampleFreq(freq) {
-		return empty, fmt.Errorf("Resample: unknown frequency %d", freq)
+		return empty, fmt.Errorf("Resample: unknown frequency %v", freq)
 	}
 
 	var (
@@ -73,12 +73,12 @@ func (dt *DataTable) Resample(timeCol string, freq ResampleFreq, aggs ...Resampl
 		times = make([]time.Time, nRows)
 		for row := 0; row < nRows; row++ {
 			if row >= len(timeValues) {
-				resErr = fmt.Errorf("Resample: time column row %d is not a time.Time", row+1)
+				resErr = fmt.Errorf("Resample: time column row index %d is not a time.Time", row)
 				return
 			}
 			value, ok := timeValues[row].(time.Time)
 			if !ok {
-				resErr = fmt.Errorf("Resample: time column row %d is not a time.Time: %v", row+1, timeValues[row])
+				resErr = fmt.Errorf("Resample: time column row index %d is not a time.Time: %v", row, timeValues[row])
 				return
 			}
 			times[row] = value

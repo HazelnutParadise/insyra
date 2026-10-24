@@ -161,13 +161,13 @@ func TestCAPMRejectsInvalidInput(t *testing.T) {
 		series string
 		row    string
 	}{
-		{"nil asset cell", insyra.NewDataList(nil, 0.02, 0.03), validMarket, "asset", "row 1"},
-		{"asset text cell", insyra.NewDataList(0.01, 0.02, "n/a"), validMarket, "asset", "row 3"},
-		{"market text cell", validAsset, insyra.NewDataList(0.006, "n/a", 0.008), "market", "row 2"},
-		{"asset NaN", insyra.NewDataList(0.01, math.NaN(), 0.03), validMarket, "asset", "row 2"},
-		{"market NaN", validAsset, insyra.NewDataList(0.006, math.NaN(), 0.008), "market", "row 2"},
-		{"asset Inf", insyra.NewDataList(0.01, math.Inf(1), 0.03), validMarket, "asset", "row 2"},
-		{"market Inf", validAsset, insyra.NewDataList(0.006, math.Inf(-1), 0.008), "market", "row 2"},
+		{"nil asset cell", insyra.NewDataList(nil, 0.02, 0.03), validMarket, "asset", "row index 0"},
+		{"asset text cell", insyra.NewDataList(0.01, 0.02, "n/a"), validMarket, "asset", "row index 2"},
+		{"market text cell", validAsset, insyra.NewDataList(0.006, "n/a", 0.008), "market", "row index 1"},
+		{"asset NaN", insyra.NewDataList(0.01, math.NaN(), 0.03), validMarket, "asset", "row index 1"},
+		{"market NaN", validAsset, insyra.NewDataList(0.006, math.NaN(), 0.008), "market", "row index 1"},
+		{"asset Inf", insyra.NewDataList(0.01, math.Inf(1), 0.03), validMarket, "asset", "row index 1"},
+		{"market Inf", validAsset, insyra.NewDataList(0.006, math.Inf(-1), 0.008), "market", "row index 1"},
 	}
 	for _, tc := range badCases {
 		t.Run(tc.name, func(t *testing.T) {

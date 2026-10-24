@@ -2,6 +2,8 @@ package commands
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
@@ -23,7 +25,10 @@ func init() {
 			"insyra ttest two before after equal",
 			"insyra ttest paired pre post",
 		},
-		Run: runTTestCommand,
+		// mu may be negative; a leading '-' must reach the command, not the
+		// flag parser.
+		DisableFlagParsing: true,
+		Run:                runTTestCommand,
 	})
 	_ = Register(&CommandHandler{
 		Name:        "ztest",
@@ -37,7 +42,10 @@ func init() {
 			"insyra ztest single iq 100 15",
 			"insyra ztest two a b 1.0 1.2 greater",
 		},
-		Run: runZTestCommand,
+		// mu may be negative; a leading '-' must reach the command, not the
+		// flag parser.
+		DisableFlagParsing: true,
+		Run:                runZTestCommand,
 	})
 	_ = Register(&CommandHandler{
 		Name:        "anova",
@@ -46,12 +54,16 @@ func init() {
 		Forms: []string{
 			"anova oneway <group1> <group2> [group3...]                  one-way ANOVA across groups",
 			"anova twoway <aLevels> <bLevels> <cell1> <cell2> ...        two-way ANOVA; cell count must equal aLevels*bLevels",
+			"anova twoway <table> <value> <factorA> <factorB>            two-way ANOVA from long-format table",
 			"anova repeated <subject1> <subject2> [subjectN]             repeated-measures ANOVA",
+			"anova repeated <table> <value> <condition> <subject>        repeated-measures ANOVA from long-format table",
 		},
 		Examples: []string{
 			"insyra anova oneway g1 g2 g3",
 			"insyra anova twoway 2 3 c11 c12 c13 c21 c22 c23",
 			"insyra anova repeated s1 s2 s3",
+			"insyra anova twoway scores value drug dose",
+			"insyra anova repeated trial value visit patient",
 		},
 		Run: runAnovaCommand,
 	})
@@ -86,6 +98,13 @@ func init() {
 		},
 		Run: runChiSqCommand,
 	})
+	_ = Register(&CommandHandler{
+		Name: "friedman", Usage: "friedman <table> <value> <condition> <subject> | friedman <subject1> <subject2> [subjectN]",
+		Description: "Friedman test for repeated measures", Forms: []string{
+			"friedman <table> <value> <condition> <subject>    one row per measurement",
+			"friedman <subject1> <subject2> [subjectN]         one list per subject",
+		}, Examples: []string{"insyra friedman trial value visit patient", "insyra friedman s1 s2 s3"}, Run: runFriedmanCommand,
+	})
 }
 
 func runTTestCommand(ctx *ExecContext, args []string) error {
@@ -101,7 +120,7 @@ func runTTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		mu, err := parseFloatArg("ttest", "mu", args[2])
+		mu, err := parseFloatArg(ctx, "ttest", "mu", args[2])
 		if err != nil {
 			return err
 		}
@@ -169,11 +188,11 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		mu, err := parseFloatArg("ztest", "mu", args[2])
+		mu, err := parseFloatArg(ctx, "ztest", "mu", args[2])
 		if err != nil {
 			return err
 		}
-		sigma, err := parseFloatArg("ztest", "sigma", args[3])
+		sigma, err := parseFloatArg(ctx, "ztest", "sigma", args[3])
 		if err != nil {
 			return err
 		}
@@ -199,11 +218,11 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		s1, err := parseFloatArg("ztest", "s1", args[3])
+		s1, err := parseFloatArg(ctx, "ztest", "s1", args[3])
 		if err != nil {
 			return err
 		}
-		s2, err := parseFloatArg("ztest", "s2", args[4])
+		s2, err := parseFloatArg(ctx, "ztest", "s2", args[4])
 		if err != nil {
 			return err
 		}
@@ -242,14 +261,29 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintf(ctx.Output, "F=%v p=%v\n", result.Factor.F, result.Factor.P)
 		return nil
 	case "twoway":
+		// A first argument that reads as a level count is the list form, as
+		// it always was, even when a table happens to be named like a number.
+		if len(args) >= 2 && !isIntArg(args[1]) {
+			if table, ok := ctx.Vars[args[1]].(*insyra.DataTable); ok {
+				if len(args) != 5 {
+					return fmt.Errorf("usage: anova twoway <table> <value> <factorA> <factorB>")
+				}
+				result, err := stats.TwoWayANOVAFromTable(table, args[2], args[3], args[4])
+				if err != nil {
+					return fmt.Errorf("anova failed: %w", err)
+				}
+				_, _ = fmt.Fprintf(ctx.Output, "FA=%v pA=%v FB=%v pB=%v\n", result.FactorA.F, result.FactorA.P, result.FactorB.F, result.FactorB.P)
+				return nil
+			}
+		}
 		if len(args) < 4 {
 			return fmt.Errorf("usage: anova twoway <aLevels> <bLevels> <cell1> <cell2> [cellN]")
 		}
-		aLevels, err := parseIntArg("anova", "aLevels", args[1])
+		aLevels, err := parseIntArg(ctx, "anova", "aLevels", args[1])
 		if err != nil {
 			return err
 		}
-		bLevels, err := parseIntArg("anova", "bLevels", args[2])
+		bLevels, err := parseIntArg(ctx, "anova", "bLevels", args[2])
 		if err != nil {
 			return err
 		}
@@ -267,6 +301,19 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		_, _ = fmt.Fprintf(ctx.Output, "FA=%v pA=%v FB=%v pB=%v\n", result.FactorA.F, result.FactorA.P, result.FactorB.F, result.FactorB.P)
 		return nil
 	case "repeated":
+		if len(args) >= 2 {
+			if table, ok := ctx.Vars[args[1]].(*insyra.DataTable); ok {
+				if len(args) != 5 {
+					return fmt.Errorf("usage: anova repeated <table> <value> <condition> <subject>")
+				}
+				result, err := stats.RepeatedMeasuresANOVAFromTable(table, args[2], args[3], args[4])
+				if err != nil {
+					return fmt.Errorf("anova failed: %w", err)
+				}
+				_, _ = fmt.Fprintf(ctx.Output, "F=%v p=%v\n", result.Factor.F, result.Factor.P)
+				return nil
+			}
+		}
 		if len(args) < 3 {
 			return fmt.Errorf("usage: anova repeated <subject1> <subject2> [subjectN]")
 		}
@@ -356,7 +403,7 @@ func runChiSqCommand(ctx *ExecContext, args []string) error {
 		}
 		probabilities := make([]float64, 0, len(args)-2)
 		for _, raw := range args[2:] {
-			value, parseErr := parseFloatArg("chisq", "value", raw)
+			value, parseErr := parseFloatArg(ctx, "chisq", "value", raw)
 			if parseErr != nil {
 				return parseErr
 			}
@@ -412,4 +459,51 @@ func getDataListGroups(ctx *ExecContext, names []string) ([]insyra.IDataList, er
 		groups = append(groups, dl)
 	}
 	return groups, nil
+}
+
+const friedmanUsage = "friedman <table> <value> <condition> <subject> | friedman <subject1> <subject2> [subjectN]"
+
+func runFriedmanCommand(ctx *ExecContext, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: %s", friedmanUsage)
+	}
+	if table, ok := ctx.Vars[args[0]].(*insyra.DataTable); ok {
+		if len(args) != 4 {
+			return fmt.Errorf("usage: friedman <table> <value> <condition> <subject>")
+		}
+		result, err := stats.FriedmanTestFromTable(table, args[1], args[2], args[3])
+		if err != nil {
+			return fmt.Errorf("friedman failed: %w", err)
+		}
+		printFriedmanResult(ctx, result)
+		return nil
+	}
+	if len(args) < 2 {
+		return fmt.Errorf("usage: friedman <subject1> <subject2> [subjectN]")
+	}
+	subjects, err := getDataListGroups(ctx, args)
+	if err != nil {
+		return err
+	}
+	result, err := stats.FriedmanTest(subjects...)
+	if err != nil {
+		return fmt.Errorf("friedman failed: %w", err)
+	}
+	printFriedmanResult(ctx, result)
+	return nil
+}
+
+func printFriedmanResult(ctx *ExecContext, result *stats.FriedmanTestResult) {
+	df := math.NaN()
+	if result.DF != nil {
+		df = *result.DF
+	}
+	_, _ = fmt.Fprintf(ctx.Output, "Q=%v df=%v p=%v\n", result.Statistic, df, result.PValue)
+}
+
+// isIntArg reports whether arg reads as an integer, the way the list forms'
+// level counts are read.
+func isIntArg(arg string) bool {
+	_, err := strconv.Atoi(arg)
+	return err == nil
 }

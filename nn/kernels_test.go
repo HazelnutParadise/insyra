@@ -303,8 +303,8 @@ func TestMatMulBatchedBroadcast(t *testing.T) {
 		100, 76, 136, 103,
 		124, 100, 169, 136,
 	}
-	if !slices.Equal(got.Data(), want) {
-		t.Fatalf("data = %v, want %v", got.Data(), want)
+	if !slices.Equal(float32Values(t, got), want) {
+		t.Fatalf("data = %v, want %v", float32Values(t, got), want)
 	}
 }
 
@@ -323,8 +323,8 @@ func TestMatMulSupportsVectorEdges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vector-column MatMul: %v", err)
 	}
-	if !slices.Equal(got.Shape(), []int{1}) || !slices.Equal(got.Data(), []float32{32}) {
-		t.Fatalf("vector-column result = shape %v data %v", got.Shape(), got.Data())
+	if !slices.Equal(got.Shape(), []int{1}) || !slices.Equal(float32Values(t, got), []float32{32}) {
+		t.Fatalf("vector-column result = shape %v data %v", got.Shape(), float32Values(t, got))
 	}
 }
 

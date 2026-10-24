@@ -93,6 +93,7 @@ dt.Show()
 | --------------------- | ------------------------------------------------------------------------------------------------- |
 | [finance](finance.md) | High-precision TVM, NPV/IRR/MIRR/XNPV/XIRR, depreciation, bonds, T-bills, amortization schedules  |
 | [quant](quant.md)     | Strategy/backtest evaluation: Sharpe, VaR/CVaR, Sortino/Calmar, max drawdown, annualized return, market beta/CAPM, European option pricing and greeks, implied volatility, multi-factor attribution, PBO (CSCV), Deflated Sharpe Ratio, walk-forward, block-bootstrap path simulation, mean-variance portfolio optimization |
+| [quant/ta](quant-ta.md) | Technical-analysis tools to test, not to trust: moving averages, MACD, KD, RSI, Bollinger bands, ATR, volume and breadth indicators, turning points and regimes, with what our own study found about them |
 
 #### Integration & Utilities
 
@@ -148,6 +149,7 @@ go get github.com/HazelnutParadise/insyra/plot
 | Price European options and their greeks   | [quant](quant.md)               |
 | Simulate future equity paths (fan chart)  | [quant](quant.md)               |
 | Choose portfolio weights (mean-variance)  | [quant](quant.md)               |
+| Compute technical indicators (MA, MACD, KD, RSI) | [quant/ta](quant-ta.md)        |
 | Use Python libraries from Go              | [py](py.md)                     |
 | Run functions in parallel                 | [parallel](parallel.md)         |
 
@@ -162,6 +164,6 @@ This site documents the newest release. For the version a project actually uses,
 
 ### Requirements & Notes
 
-- Go 1.25+ (per `go.mod`).
+- Go 1.26+ (per `go.mod`).
 - Some packages download external tools or use network access (see each package doc for details).
 - For numbers that must stay exact, such as money and rates, use [`github.com/TimLai666/go-decimal`](https://github.com/TimLai666/go-decimal). It is the decimal type `finance` takes and returns and a Parquet `Decimal128` column reads as. How cells treat it, including converting a column for `Mean` and `Sum`, and the comparison with other Go decimal packages are in [Decimal](Decimal.md).

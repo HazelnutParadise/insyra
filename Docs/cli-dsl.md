@@ -91,12 +91,11 @@ package main
 import (
     "fmt"
 
-    "github.com/HazelnutParadise/insyra/cli/env"
     "github.com/HazelnutParadise/insyra/engine/dsl"
 )
 
 func main() {
-    session, err := dsl.NewSession(env.Default(), "default", nil)
+    session, err := dsl.NewSession(dsl.DefaultManager(), "default", nil)
     if err != nil {
         panic(err)
     }
@@ -116,41 +115,69 @@ func main() {
 
 #### Custom environment storage location
 
-`NewSession` takes an `*env.Manager` that owns where environment files live.
-Pass `env.Default()` for the standard `<UserHomeDir>/.insyra/envs/` layout,
-or `env.NewManager(basePath, envsDirName)` for a custom root and/or a
+`NewSession` takes a `*dsl.Manager` that owns where environment files live.
+Pass `dsl.DefaultManager()` for the standard `<UserHomeDir>/.insyra/envs/` layout,
+or `dsl.NewManager(basePath, envsDirName)` for a custom root and/or a
 custom per-environment subfolder name:
 
 ```go
 // /workspace/.idensyra/envs/<name>/
-mgr := env.NewManager("/workspace/.idensyra", "")
+mgr := dsl.NewManager("/workspace/.idensyra", "")
 
 // /workspace/.idensyra/insights/<name>/  (Idensyra's layout)
-mgr := env.NewManager("/workspace/.idensyra", "insights")
+mgr := dsl.NewManager("/workspace/.idensyra", "insights")
 
 session, err := dsl.NewSession(mgr, "default", &out)
 ```
 
 Both arguments accept "" to fall back to the defaults
-(`<UserHomeDir>/.insyra` and `"envs"`).
+(`<UserHomeDir>/.insyra` and `"envs"`). `NewSession` creates a missing named
+environment. This automatic creation applies to the Go API; the CLI still
+reports an error when `--env` names an environment that does not exist.
 
 Each session keeps its own Manager, so multiple sessions can coexist in
 the same process with different roots and not interfere:
 
 ```go
-mgrA := env.NewManager("/wsA", "")
-mgrB := env.NewManager("/wsB", "")
+mgrA := dsl.NewManager("/wsA", "")
+mgrB := dsl.NewManager("/wsB", "")
 
 sessionA, _ := dsl.NewSession(mgrA, "default", outA)
 sessionB, _ := dsl.NewSession(mgrB, "default", outB)
 // sessionA reads/writes /wsA/envs/...; sessionB reads/writes /wsB/envs/...
 ```
 
+#### Register a command
+
+Register a handler through `engine/dsl`; it is available to DSL sessions and
+the CLI process without importing `cli/commands`:
+
+```go
+err := dsl.Register(&dsl.CommandHandler{
+    Name: "copy",
+    Usage: "copy <var> [as <var>]",
+    Args: dsl.MaxArgs(1).WithAlias(),
+    Run: func(ctx *dsl.ExecContext, args []string) error {
+        if len(args) == 0 {
+            return fmt.Errorf("copy requires a variable name")
+        }
+        target := "copy"
+        if len(args) == 3 && args[1] == "as" {
+            target = args[2]
+        }
+        ctx.Vars[target] = ctx.Vars[args[0]]
+        return nil
+    },
+})
+```
+
+`ArgLimit` 只檢查參數數量上限，不會檢查必要參數；指令仍須自行檢查最低參數數量。
+
 The Manager is also useful on its own when you only need the storage layer
 (listing envs, exporting, reading history) without spinning up a session:
 
 ```go
-mgr := env.NewManager("/workspace/.idensyra", "insights")
+mgr := dsl.NewManager("/workspace/.idensyra", "insights")
 envs, _ := mgr.List()
 mgr.Create("scratch")
 mgr.Export("scratch", "/tmp/backup.json")
@@ -197,8 +224,9 @@ Each environment contains:
 Default behavior:
 
 - On first run, `default` environment is auto-created.
-- A one-shot command restores the environment's variables from `state.json` before it runs and saves them after, and the next command gets back what the previous one stored. A DataTable keeps its column order, its column and row names, and the Go type of every cell, so a column letter points at the same column in every command and a column `parsedates` turned into `time.Time` values is still one, as is a column of `time.Duration` values from a CCL date subtraction. DataLists and single values keep their types too: a `3.0` stays a `float64` and an `int` stays an `int`. A scaler fitted by `scale fit` and a tree built by `hclust` keep their fitted state, so `scale transform` and `cutree` can run as separate commands.
+- A one-shot command restores the environment's variables from `state.json` before it runs and saves them after, and the next command gets back what the previous one stored. Two commands on the same environment at the same time keep each other's variables: a save writes what its own command added, changed or removed on top of what the file holds then. A DataTable keeps its column order, its column and row names, and the Go type of every cell, so a column letter points at the same column in every command and a column `parsedates` turned into `time.Time` values is still one, as is a column of `time.Duration` values from a CCL date subtraction. DataLists and single values keep their types too: a `3.0` stays a `float64` and an `int` stays an `int`. A scaler fitted by `scale fit` and a tree built by `hclust` keep their fitted state, so `scale transform` and `cutree` can run as separate commands.
 - A variable the environment cannot store, such as a `regression` result, is left out when the environment is saved, and the save prints a warning such as `warning: r (*stats.LinearRegressionResult) was not saved to environment default: ...; it is gone when this process ends or another environment is opened`. The command that created it still succeeds. After a one-shot command the variable is gone. In the REPL or a script it lasts until the session ends or `env open` switches to another environment, and the warning appears once.
+- A `state.json` that exists but cannot be read stops the command with an error naming the file, and the file is left as it was so it can be repaired or deleted. An environment with no `state.json` starts empty.
 - A `state.json` written by an earlier release still loads, and the next save rewrites it in the current layout. Column order or cell types that the earlier release had already lost are not recovered.
 - REPL saves history and state continuously.
 - DSL session `Execute` saves state after successful command.
@@ -236,6 +264,18 @@ newdl 1 2 3 as x
 newdl 4 5 6
 # second command writes to $result
 ```
+
+### Number Variables
+
+Any argument that expects a number can name a number variable instead. `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max` and `range` store their result when they end with `as <var>`, and `show <var>` prints it:
+
+```text
+mean x as m
+sample y frac m
+show m
+```
+
+A token that parses as a number is always read as a number. Free-form value positions (`fillna`, `set`, filter values) and name-or-number selectors such as `col` keep their own rules.
 
 ### Literal Values
 
@@ -344,6 +384,8 @@ insyra --env demo run pipeline.isr
 - `ragged true|false` — read-side, CSV only. `ragged true` pads short rows with empty cells and keeps extra cells in automatically named columns. Padded cells count as empty for type inference (an otherwise-integer column becomes float with `NaN`); combine with `infer false` to keep cells verbatim. Default `false`, so uneven rows remain strict errors unless enabled.
 - `trimspace true|false` — read-side, CSV only. `trimspace true` ignores leading whitespace before fields, including before quoted fields. Default `false`.
 - `bom true|false` — save-side, write a UTF-8 BOM (helps Windows Excel open Chinese CSVs). Default `false`.
+- `sheet <name>` — Excel only. On `load` it names the sheet to read and is required; on `save` it names the sheet to write, default `Sheet1`, and the workbook's other sheets are kept.
+- `if-exists fail|replace` — save-side, Excel only. What to do when the workbook already has that sheet. Default `fail`: the save is refused and the file is left as it was; `replace` overwrites that one sheet.
 
 Boolean values accept `true|false`, `yes|no`, `on|off`, `1|0` (case-insensitive).
 
@@ -352,7 +394,7 @@ The shared list above is the union, not what every format accepts. An option a f
 | Format | `load` / `read` options | `save` options |
 | --- | --- | --- |
 | CSV | `headers`, `rownames`, `encoding`, `infer`, `ragged`, `trimspace` | `headers`, `rownames`, `bom` |
-| Excel | `sheet` (required), `headers`, `rownames` | not a save target — `save` refuses an `.xlsx` path |
+| Excel | `sheet` (required), `headers`, `rownames` | `sheet`, `if-exists`, `headers`, `rownames` (`.xlsx`/`.xlsm`; `.xls` cannot be written) |
 | JSON | `headers` | `headers` |
 | Parquet | `cols`, `rowgroups` | none |
 
@@ -383,9 +425,34 @@ save gdp out.csv rownames true
 
 # Pure data dump, no header row
 save matrix data.csv headers false
+
+# Excel: writes one sheet (default Sheet1); the workbook's other sheets are kept
+save sales2025 report.xlsx sheet 2025
+
+# The sheet already exists: saving again is refused unless you say to replace it
+save sales2025 report.xlsx sheet 2025 if-exists replace
 ```
 
 `read` is a quick previewer that forwards the same options to `load` (e.g. `read big5.csv encoding big5`). It never stores a variable: `read` prints what it loaded and throws the table away, so it has no `as` form and an explicit `as <var>` is an error rather than a silent no-op. Use `load` when the preview should become a variable.
+
+### A2. Converting a workbook to CSV
+
+A CSV holds one sheet, so `convert` can name each sheet together with the file it goes to. `sheets` lists what a workbook holds, in workbook order.
+
+```text
+# Which sheets are there?
+sheets book.xlsx
+
+# Q1 to q1.csv and Q3 to q3.csv; the other sheets are not converted
+convert book.xlsx sheet Q1 q1.csv sheet Q3 q3.csv
+
+# A sheet name with a space is quoted
+convert book.xlsx sheet "2025 Q2" q2.csv
+```
+
+An unknown sheet, a sheet given twice, or two sheets for one file (also when the names differ only in case) is an error, and nothing is written. The files may be in different directories. The `sheet` form puts a leading quote before text a spreadsheet would run as a formula (starting with `=`, `+`, `-` or `@`, and not a number); `allowformulas true` writes it as is.
+
+`convert book.xlsx out.csv` works as before: the first sheet goes to `out.csv`, every other sheet to `<sheet>.csv` beside it, and no text is guarded.
 
 ### B0. SQL workflow (load and save against a live DB)
 
@@ -530,7 +597,7 @@ ewm returns halflife 5 std minobs 3 as ewvol
 
 `rolling` additionally takes two paired reducers, each consuming a second DataList variable: `rolling <var> <window> cov <other> [...]` and `rolling <var> <window> beta <other> [...]`. `beta` is `Cov(var, other) / Var(other)`; a flat benchmark window yields nil.
 
-A window shorter than `minobs` has to be asked for explicitly. Omit `minobs` and it defaults to `window`, which means a `rolling ... 20` over 1,000 rows emits nil for the first 19 rows instead of computing from a partial window; `minobs 5` is what makes the first four rows real numbers. `minobs` above `window` is not refused: it logs a warning and stores an empty result. `center yes` shifts the window to straddle each position the way pandas' `rolling(center=True)` does; with the default `minobs` the first and last few rows are still nil, and a smaller `minobs` is what fills them from a partial window.
+A window shorter than `minobs` has to be asked for explicitly. Omit `minobs` and it defaults to `window`, which means a `rolling ... 20` over 1,000 rows emits nil for the first 19 rows instead of computing from a partial window; `minobs 5` is what makes the first four rows real numbers. `minobs` above `window` is an error: the command fails with the reason and stores nothing. `center yes` shifts the window to straddle each position the way pandas' `rolling(center=True)` does; with the default `minobs` the first and last few rows are still nil, and a smaller `minobs` is what fills them from a partial window.
 
 `expanding <var> <minobs> <reducer>` reduces over everything from row 1 to the current row. Its `minobs` is a required argument, and until that many valid observations have arrived the position is nil.
 
@@ -680,14 +747,13 @@ import (
     "bytes"
     "fmt"
 
-    "github.com/HazelnutParadise/insyra/cli/env"
     "github.com/HazelnutParadise/insyra/engine/dsl"
 )
 
 func main() {
     var out bytes.Buffer
 
-    session, err := dsl.NewSession(env.Default(), "demo", &out)
+    session, err := dsl.NewSession(dsl.DefaultManager(), "demo", &out)
     if err != nil {
         panic(err)
     }
@@ -707,13 +773,13 @@ High-level command map:
 
 - **Core**: `help`, `version`, `exit`, `history`, `clear`, `config`, `run`, `completion`
 - **Environment**: `env`, `vars`, `drop`, `clone`, `rename`, `shape`, `types`, `show`, `summary`, `describe`
-- **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`
+- **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`, `sheets`
 - **Database**: `db` (`connect` / `list` / `tables` / `disconnect`), `load sql`, `save <var> sql`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
 - **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `fillnan` (deprecated), `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
-- **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
+- **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `quantile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `parsedates`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
-- **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
+- **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `wilcoxon`, `mannwhitney`, `kruskal`, `friedman`, `plot`, `fetch`
 - **Quant**: `quant` (`sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`, `portfolio`, `frontier`)
 - **Acceleration**: `accel` (`devices`, `cache`, `plan`)
 
@@ -724,7 +790,7 @@ fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [ex
 fillnan <var> mean [as <var>]   # deprecated; only fills NaN, mean only
 ```
 
-`fillna` clones the input (DataList or DataTable) and saves the filled result under `as <var>` or `$result`. `cols` filters which DataTable columns to touch (ignored for DataList). `limit` caps consecutive forward/backward fills — and `limit 0` means **no cap at all**, filling a gap as far as the data reaches, not "fill nothing". `extrapolate` controls whether interpolation fills leading/trailing gaps; `missing` selects which kind of missing to fill (default `both`). `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
+`fillna` clones the input (DataList or DataTable) and saves the filled result under `as <var>` or `$result`. `cols` filters which DataTable columns to touch (ignored for DataList). For `ffill`/`bfill`, cells of the unselected missing kind are skipped and do not consume `limit`. `limit` caps consecutive forward/backward fills — and `limit 0` means **no cap at all**, filling a gap as far as the data reaches, not "fill nothing". `extrapolate` controls whether interpolation fills leading/trailing gaps; `missing` selects which kind of missing to fill (default `both`). `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
 
 `fillnan <var> mean` is a legacy alias kept for backward compatibility — it only fills NaN (leaves nil alone) and only supports the `mean` strategy. New code should use `fillna ... missing nan` instead.
 
@@ -758,11 +824,11 @@ Source policy:
 | `clean` | `clean <var> nan\|nil\|strings\|outliers [<stddev>]` | Clean values from DataTable/DataList |
 | `clear` | `clear` | Clear terminal screen |
 | `clone` | `clone <var> [as <var>]` | Deep clone DataTable/DataList variable |
-| `col` | `col <var> <name\|index> [as <var>]` | Extract DataTable column as DataList |
+| `col` | `col <var> <name\|number\|letter> [as <var>]` | Extract DataTable column as DataList. A whole number is a 0-based position; otherwise an exact column name is tried first, then an Excel-style letter (`A`, `B`, ..., `AA`). A column literally named `A` therefore beats column A |
 | `cols` | `cols <var>` | List DataTable column names |
 | `completion` | `completion [command]` | Generate the autocompletion script for insyra for the specified shell. |
 | `config` | `config [key] [value]` | Read or update global CLI config |
-| `convert` | `convert <input> <output>` | Convert file formats (csv<->xlsx) |
+| `convert` | `convert <input> <output> \| convert <file.xlsx> sheet <name> <file.csv> [sheet <name> <file.csv> ...] [allowformulas true\|false]` | Convert file formats (csv<->xlsx) |
 | `corr` | `corr <x> <y> [pearson\|kendall\|spearman]` | Correlation between two DataLists |
 | `corrmatrix` | `corrmatrix <datatable> [pearson\|kendall\|spearman] [as <var>]` | Correlation matrix for a DataTable; also stores the matching p-value matrix as `<var>_p` |
 | `count` | `count <var> <value>` | Count occurrences |
@@ -791,6 +857,7 @@ Source policy:
 | `filter` | `filter <var> <expr> [as <var>]` | Filter DataTable by CCL expression |
 | `find` | `find <var> <value>` | Find rows containing value |
 | `ftest` | `ftest var\|levene\|bartlett ...` | F-test commands |
+| `friedman` | `friedman <table> <value> <condition> <subject> \| friedman <subject1> <subject2> [subjectN]` | Friedman test for repeated measures |
 | `get` | `get <var> <row> <col>` | Get single element from DataTable |
 | `groupby` | `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` | Group a DataTable and aggregate columns (split-apply-combine) |
 | `help` | `help [command]` | Show command help |
@@ -801,14 +868,16 @@ Source policy:
 | `knn_neighbors` | `knn_neighbors <train_var> <test_var> <k> [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors search |
 | `kmeans` | `kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]` | K-means clustering |
 | `kurtosis` | `kurtosis <var>` | Kurtosis of a DataList |
+| `kruskal` | `kruskal <group1> <group2> [groupN]` | Kruskal-Wallis test across groups |
 | `load` | `load <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [ragged true\|false] [trimspace true\|false] [sheet <name>] \| load parquet <file> [...] \| load sql <conn> <table>\|query "<sql>" [...] [as <var>]` | Load data into a DataTable variable from a file, parquet, or SQL connection |
 | `lower` | `lower <var> [as <var>]` | Lowercase DataList strings |
-| `max` | `max <var>` | DataList maximum |
-| `mean` | `mean <var>` | DataList mean |
-| `median` | `median <var>` | DataList median |
+| `mannwhitney` | `mannwhitney <var1> <var2> [two-sided\|greater\|less]` | Mann-Whitney U test for two independent samples |
+| `max` | `max <var> [as <var>]` | DataList maximum |
+| `mean` | `mean <var> [as <var>]` | DataList mean |
+| `median` | `median <var> [as <var>]` | DataList median |
 | `merge` | `merge <var1> <var2> <direction> <mode> [on <cols>] [as <var>]` | Merge two DataTables |
-| `min` | `min <var>` | DataList minimum |
-| `mode` | `mode <var>` | DataList mode |
+| `min` | `min <var> [as <var>]` | DataList minimum |
+| `mode` | `mode <var> [as <var>]` | DataList mode |
 | `movavg` | `movavg <var> <window> [as <var>]` | Moving average |
 | `newdl` | `newdl <values...> [as <var>]` | Create DataList manually |
 | `newdt` | `newdt <dl_vars...> [as <var>]` | Create DataTable from DataList variables |
@@ -823,11 +892,12 @@ Source policy:
 | `cutree` | `cutree <tree_var> k <n>\|h <value> [as <var>]` | Cut a hierarchical clustering tree |
 | `dbscan` | `dbscan <var> <eps> <minpts> [as <var>]` | Density-based clustering |
 | `silhouette` | `silhouette <var> <labels_var> [as <var>]` | Silhouette analysis |
-| `percentile` | `percentile <var> <p>` | DataList percentile |
+| `percentile` | `percentile <var> <p>` | DataList percentile, p from 0 to 100 |
 | `plot` | `plot <type> <var> [options...] [save <file>]` | Create charts from variables |
 | `quant` | `quant sharpe\|sortino\|ir\|maxdd\|annret\|calmar\|drawdown\|var\|cvar\|beta\|capm\|factor\|bs\|iv\|portfolio\|frontier ...` | Quantitative finance: performance, risk, exposure, factor, option and portfolio analytics |
+| `quantile` | `quantile <var> <p>` | DataList quantile, p from 0 to 1 |
 | `quartile` | `quartile <var> <q>` | DataList quartile |
-| `range` | `range <var>` | DataList range |
+| `range` | `range <var> [as <var>]` | DataList range |
 | `rank` | `rank <var> [asc\|desc\|true\|false] [as <var>]` | Rank DataList |
 | `read` | `read <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [ragged true\|false] [trimspace true\|false] [sheet <name>]` | Quick preview a file without saving variable |
 | `regression` | `regression <type> <y> <x...> [as <var>]` | Regression analysis: linear/poly/exp/log/logistic/poisson |
@@ -840,20 +910,21 @@ Source policy:
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |
 | `sample` | `sample <var> <n>\|frac <frac>\|shuffle [replace true\|false] [seed N] [as <var>]` | Randomly sample or shuffle a DataList/DataTable |
-| `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames [true\|false]]` | Save a DataTable variable to a file or SQL connection |
+| `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] [sheet <name>] [if-exists fail\|replace] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames [true\|false]]` | Save a DataTable variable to a file or SQL connection |
 | `scale` | `scale fit std\|minmax\|robust\|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...> \| scale transform\|inverse <scalerVar> <tableVar> as <outVar>` | Fit a reusable feature scaler and transform/inverse tables with it |
 | `set` | `set <var> <row> <col> <value>` | Set single element in DataTable |
 | `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |
 | `setrownames` | `setrownames <var> <names...>` | Set DataTable row names |
 | `shape` | `shape <var>` | Show shape of DataTable/DataList |
+| `sheets` | `sheets <file.xlsx>` | List the sheets of an Excel workbook, one per line, in workbook order |
 | `shift` | `shift <var> <periods> [fill <value>] [as <var>]` | Shift / lag (periods > 0) / lead (periods < 0); empty slots default to nil |
 | `show` | `show <var> [N] [M]` | Display data with optional range (supports negative and _) |
 | `skewness` | `skewness <var>` | Skewness of a DataList |
 | `sort` | `sort <var> <col> [asc\|desc]` | Sort DataTable by one column |
 | `split` | `split <var> train <frac> [shuffle true\|false] [seed N] as <trainVar> <testVar>` | Split DataTable rows into train/test tables |
 | `standardize` | `standardize <var> [as <var>]` | Standardize DataList |
-| `stdev` | `stdev <var>` | DataList standard deviation |
-| `sum` | `sum <var>` | DataList sum |
+| `stdev` | `stdev <var> [as <var>]` | DataList standard deviation |
+| `sum` | `sum <var> [as <var>]` | DataList sum |
 | `summary` | `summary <var>` | Show summary statistics |
 | `swap` | `swap <var> col\|row <a> <b>` | Swap DataTable columns or rows |
 | `transpose` | `transpose <var> [as <var>]` | Transpose DataTable |
@@ -861,7 +932,8 @@ Source policy:
 | `types` | `types <var>` | Show value types of DataTable/DataList |
 | `unpivot` | `unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true\|false] [as <var>]` | Reshape wide-form DataTable to long form |
 | `upper` | `upper <var> [as <var>]` | Uppercase DataList strings |
-| `var` | `var <var>` | DataList variance |
+| `var` | `var <var> [as <var>]` | DataList variance |
+| `wilcoxon` | `wilcoxon single\|paired ...` | Wilcoxon signed-rank tests |
 | `vars` | `vars` | List variables in current environment |
 | `version` | `version` | Show insyra version |
 | `ztest` | `ztest single\|two ...` | Z-test commands |
@@ -880,7 +952,7 @@ save region_summary region_summary.csv
 
 Without `as`, the result is stored in `$result`. `all true` includes non-numeric and mixed columns. `by` is available for DataTable variables only.
 
-`describe`'s `percentiles` are fractions between 0 and 1 (`0.1,0.5,0.9`), and a value outside that range is refused. The DataList command `percentile <var> <p>` takes a percentage between 0 and 100 instead, so `percentile x 50` is the median.
+`describe`'s `percentiles` are fractions between 0 and 1 (`0.1,0.5,0.9`), and a value outside that range is refused. The DataList command `quantile <var> <p>` takes the same 0 to 1 fraction, so `quantile x 0.5` is the median. `percentile <var> <p>` takes a percentage between 0 and 100 instead, so `percentile x 50` is the median.
 
 ## Chi-square Command
 
@@ -981,6 +1053,7 @@ show sil_avg
 - **Variable not found**: use `vars` to inspect current environment variables.
 - **Variable type mismatch**: many commands require specific variable types (`DataTable` vs `DataList`).
 - **Excel load fails**: `load <file.xlsx> sheet <sheet-name> [headers true|false] [rownames true|false] [as <var>]` always requires `sheet <name>`.
+- **Excel save says the sheet already exists**: `save` never overwrites a sheet unless asked, and it does not pick another name such as `Sheet2` on its own. Add `if-exists replace` to overwrite that one sheet (the others are kept), or pick another name with `sheet <name>`. `.xls` cannot be written; save as `.xlsx`.
 - **Parquet option errors**:
   - `cols` and `rowgroups` must be followed by comma-separated values.
   - `rowgroups` must be non-negative integers.
@@ -995,3 +1068,19 @@ load parquet data.parquet cols id,amount,status rowgroups 0,1 as t
 # invalid (unknown option)
 load parquet data.parquet columns id
 ```
+
+
+## Rank-based CLI tests
+
+- `wilcoxon single <var> <mu> [two-sided|greater|less]`
+- `wilcoxon paired <var1> <var2> [two-sided|greater|less]`
+- `mannwhitney <var1> <var2> [two-sided|greater|less]`
+- `kruskal <group1> <group2> [groupN]`
+
+## Long-format ANOVA and Friedman
+
+- `anova twoway <table> <value> <factorA> <factorB>`
+- `anova repeated <table> <value> <condition> <subject>`
+- `friedman <table> <value> <condition> <subject>` or `friedman <subject1> <subject2> [subjectN]`
+
+Table column selectors accept a column name or Excel-style letter.

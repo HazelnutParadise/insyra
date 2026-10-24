@@ -37,8 +37,8 @@ func TestSequentialStructuralSurface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sameFloat32(got.Data(), want.Data()) {
-		t.Fatalf("Predict with Dropout changed output: got %v, want %v", got.Data(), want.Data())
+	if !sameFloat32(float32Values(t, got), float32Values(t, want)) {
+		t.Fatalf("Predict with Dropout changed output: got %v, want %v", float32Values(t, got), float32Values(t, want))
 	}
 }
 
@@ -64,8 +64,8 @@ func TestSequentialFuncResidual(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sameFloat32(output.Data(), []float32{2, -4, 6, 8}) {
-		t.Fatalf("residual output = %v", output.Data())
+	if !sameFloat32(float32Values(t, output), []float32{2, -4, 6, 8}) {
+		t.Fatalf("residual output = %v", float32Values(t, output))
 	}
 }
 

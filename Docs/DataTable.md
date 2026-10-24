@@ -15,9 +15,11 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Data Replacement](#data-replacement)
 - [Column Calculation](#column-calculation)
 - [Searching](#searching)
+- [Slicing](#slicing)
 - [Filtering](#filtering)
 - [Statistical Analysis](#statistical-analysis)
 - [Utility Methods](#utility-methods)
+- [Comparison](#comparison)
 - [Error Handling](#error-handling)
 - [AtomicDo](#atomicdo)
 - [Notes](#notes)
@@ -46,8 +48,8 @@ type DataTable struct {
 - `columnIndex`: Maps column indices (A, B, C...) to slice positions
 - `rowNames`: Maps row names to their indices
 - `name`: Name of the DataTable
-- `creationTimestamp`: Unix timestamp when the table was created
-- `lastModifiedTimestamp`: Unix timestamp when the table was last modified
+- `creationTimestamp`: when the table was created, in Unix nanoseconds; read it with `CreationTime()`
+- `lastModifiedTimestamp`: when the table was last modified, in Unix nanoseconds; read it with `LastModifiedTime()`
 - `atomicActor`: Internal mutex + holder pair used by `AtomicDo` to serialise execution; same-goroutine re-entry runs inline without re-locking
 
 ### Naming Conventions
@@ -153,7 +155,7 @@ if err != nil {
 type CSVReadOptions struct {
     FirstColToRowNames bool
     FirstRowToColNames bool
-    Encoding           string // file input only; "" or "auto" auto-detects
+    Encoding           string // "" or "auto" detects from the first bytes; ignored for a string, which is UTF-8
     RawStrings         bool   // keep every cell as its original string; skip type inference
     AllowRaggedRows    bool   // pad short rows; keep long rows in extra columns
     TrimLeadingSpace   bool   // ignore leading spaces before fields and quotes
@@ -187,10 +189,39 @@ if err != nil {
 // dt cells are all strings: "0050", "00878", "600.855", ...
 ```
 
-### ReadJSON_File
+### ReadCSV / StreamCSV — from any source
 
 ```go
-func ReadJSON_File(filePath string) (*DataTable, error)
+func ReadCSV(r io.Reader, opts CSVReadOptions) (*DataTable, error)
+func StreamCSV(r io.Reader, opts CSVReadOptions, batchSize int) iter.Seq2[*DataTable, error]
+```
+
+**Description:** Read CSV that is not a file on disk — an HTTP response body, a zip entry, an `embed.FS` file, bytes in memory — without writing it to a temporary file first. `ReadCSV` reads the way `ReadCSV_FileWithOptions` reads a file, and `ReadCSV_FileWithOptions` now calls the same code, so a reader and a file holding the same bytes give the same table. With `Encoding` empty or `"auto"`, the encoding is detected from the first bytes of `r`.
+
+`StreamCSV` reads a batch at a time and holds only the current batch in memory, so it handles files larger than memory. Range over it; leaving the loop early stops reading `r`. With `FirstRowToColNames`, the header names the columns of every batch. Column types are inferred batch by batch, as pandas does for `read_csv(chunksize=…)`, so a column can come back as numbers in one batch and strings in another; set `RawStrings` to keep every batch as strings. A failure arrives once, as a nil table with the error, and ends the loop.
+
+**Example:**
+
+```go
+resp, err := http.Get("https://example.com/data.csv")
+if err != nil {
+    log.Fatal(err)
+}
+defer resp.Body.Close()
+
+for dt, err := range insyra.StreamCSV(resp.Body, insyra.CSVReadOptions{FirstRowToColNames: true}, 1000) {
+    if err != nil {
+        log.Fatal(err)
+    }
+    rows, _ := dt.Size()
+    fmt.Println("batch of", rows, "rows")
+}
+```
+
+### ReadJSONFile
+
+```go
+func ReadJSONFile(filePath string) (*DataTable, error)
 ```
 
 **Description:** Reads a JSON file and loads the data into a new DataTable. JSON numbers are typed per value: an integer literal (`25`) becomes `int64` so large integers keep full precision, while a decimal literal (`25.5`, `25.0`) stays `float64` — matching Python's `json.loads` and consistent with `ReadCSV` loading integer columns as `int64`. It decodes through the same path as `ReadJSON`, so a file and its bytes always load identically; a file holding a single object loads as one row.
@@ -207,11 +238,13 @@ func ReadJSON_File(filePath string) (*DataTable, error)
 **Example:**
 
 ```go
-dt, err := insyra.ReadJSON_File("data.json")
+dt, err := insyra.ReadJSONFile("data.json")
 if err != nil {
     log.Fatal(err)
 }
 ```
+
+`ReadJSON_File` is the deprecated name of `ReadJSONFile`. It does the same and is removed in 0.4.
 
 ### ReadJSON
 
@@ -219,11 +252,11 @@ if err != nil {
 func ReadJSON(data any) (*DataTable, error)
 ```
 
-**Description:** Reads JSON data (supports bytes, string, slice, map, or any JSON-compatible value) and loads it into a new DataTable. Bytes and strings are decoded the way `encoding/json` decodes them: input that is not valid JSON, such as a number with a leading zero (`01`) or a trailing comma, is an error; invalid UTF-8 inside a string becomes U+FFFD; and errors are worded as `encoding/json` words them. Numbers are typed as in `ReadJSON_File`; a number that is neither an `int64` nor a finite `float64`, such as `1e400`, is kept as the string it was written as, the way `ReadCSV` keeps the same text.
+**Description:** Reads JSON data (supports bytes, string, an `io.Reader` such as an HTTP response body or an open file, slice, map, or any JSON-compatible value) and loads it into a new DataTable. A reader is read in full and decoded the same way as bytes. Bytes and strings are decoded the way `encoding/json` decodes them: input that is not valid JSON, such as a number with a leading zero (`01`) or a trailing comma, is an error; invalid UTF-8 inside a string becomes U+FFFD; and errors are worded as `encoding/json` words them. Numbers are typed as in `ReadJSONFile`; a number that is neither an `int64` nor a finite `float64`, such as `1e400`, is kept as the string it was written as, the way `ReadCSV` keeps the same text.
 
 **Parameters:**
 
-- `data`: JSON input (e.g., []byte, string, []map[string]any, map[string]any, etc.)
+- `data`: JSON input (e.g., []byte, string, io.Reader, []map[string]any, map[string]any, etc.)
 
 **Returns:**
 
@@ -240,10 +273,10 @@ if err != nil {
 }
 ```
 
-### Slice2DToDataTable
+### ReadSlice2D
 
 ```go
-func Slice2DToDataTable(data any) (*DataTable, error)
+func ReadSlice2D(data any) (*DataTable, error)
 ```
 
 **Description:** Converts a 2D slice of any type into a DataTable. Supports various 2D array types including `[][]any`, `[][]int`, `[][]int64`, `[][]float32`, `[][]float64`, `[][]string`, and more.
@@ -257,12 +290,11 @@ func Slice2DToDataTable(data any) (*DataTable, error)
 - `*DataTable`: New DataTable with converted data (nil if error occurs)
 - `error`: Error information, returns nil if successful
 
-**Alias:** `ReadSlice2D` — provided as a convenience alias for `Slice2DToDataTable`.
+**Deprecated name:** `Slice2DToDataTable` is the same function under its old name. It is removed in 0.4.
 
-**Quick example using the alias:**
+**Quick example:**
 
 ```go
-// Using the alias
 dt, err := insyra.ReadSlice2D([][]any{
     {1, "Alice", 3.5},
     {2, "Bob", 4.0},
@@ -271,6 +303,8 @@ if err != nil {
     log.Fatal(err)
 }
 ```
+
+**Row lengths:** the table is as wide as the widest row. A shorter row is padded with `nil`, and a row longer than the first keeps all its values. (Before v0.3.5 the width came from the first row and values past it were dropped without an error.)
 
 **Error Cases:**
 
@@ -308,7 +342,7 @@ data1 := [][]any{
     {2, "Bob", 4.0},
     {3, "Charlie", 2.8},
 }
-dt1, err := insyra.Slice2DToDataTable(data1)
+dt1, err := insyra.ReadSlice2D(data1)
 if err != nil {
     log.Fatal(err)
 }
@@ -319,7 +353,7 @@ data2 := [][]int64{
     {4, 5, 6},
     {7, 8, 9},
 }
-dt2, err := insyra.Slice2DToDataTable(data2)
+dt2, err := insyra.ReadSlice2D(data2)
 if err != nil {
     log.Fatal(err)
 }
@@ -330,7 +364,7 @@ data3 := [][]float64{
     {4.4, 5.5, 6.6},
     {7.7, 8.8, 9.9},
 }
-dt3, err := insyra.Slice2DToDataTable(data3)
+dt3, err := insyra.ReadSlice2D(data3)
 if err != nil {
     log.Fatal(err)
 }
@@ -341,7 +375,7 @@ data4 := [][]string{
     {"Denver", "New York", "San Francisco"},
     {"Engineer", "Manager", "Developer"},
 }
-dt4, err := insyra.Slice2DToDataTable(data4)
+dt4, err := insyra.ReadSlice2D(data4)
 if err != nil {
     log.Fatal(err)
 }
@@ -352,7 +386,7 @@ data5 := [][]any{
     {2, "Bob"},              // Missing third column
     {3, "Charlie", 2.8, "Extra"}, // Extra column
 }
-dt5, err := insyra.Slice2DToDataTable(data5)
+dt5, err := insyra.ReadSlice2D(data5)
 if err != nil {
     log.Fatal(err)
 }
@@ -361,12 +395,12 @@ if err != nil {
 // Third row: {3, "Charlie", 2.8}
 
 // Example 6: Error handling
-_, err := insyra.Slice2DToDataTable(nil)
+_, err := insyra.ReadSlice2D(nil)
 if err != nil {
     fmt.Println(err) // Output: input data cannot be nil
 }
 
-_, err = insyra.Slice2DToDataTable([][]any{})
+_, err = insyra.ReadSlice2D([][]any{})
 if err != nil {
     fmt.Println(err) // Output: input data cannot be empty
 }
@@ -503,6 +537,14 @@ if err != nil {
 }
 ```
 
+### ReadExcel — from any source
+
+```go
+func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+```
+
+**Description:** Reads one sheet of a workbook that is not a file on disk — an upload, an HTTP response, a zip entry — the same way `ReadExcelSheet` reads a path.
+
 ## Data Saving
 
 ### ToCSV
@@ -562,6 +604,14 @@ if err != nil {
 }
 ```
 
+### WriteCSV — to any destination
+
+```go
+func (dt *DataTable) WriteCSV(w io.Writer, opts CSVWriteOptions) error
+```
+
+**Description:** Writes the table as CSV to any destination — an HTTP response, a zip entry, a buffer — with the same output `ToCSVWithOptions` writes to a file. `ToCSVWithOptions` uses it.
+
 ### ToJSON
 
 ```go
@@ -588,10 +638,18 @@ if err != nil {
 }
 ```
 
-### ToJSON_Bytes
+### WriteJSON — to any destination
 
 ```go
-func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte
+func (dt *DataTable) WriteJSON(w io.Writer, useColNames bool) error
+```
+
+**Description:** Writes the table as JSON to any destination, with the same bytes `ToJSON` writes to a file.
+
+### ToJSONBytes
+
+```go
+func (dt *DataTable) ToJSONBytes(useColNames bool) []byte
 ```
 
 **Description:** Converts the DataTable to JSON format and returns as bytes: the same bytes `ToJSON` writes.
@@ -607,14 +665,16 @@ func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte
 **Example:**
 
 ```go
-jsonData := dt.ToJSON_Bytes(true)
+jsonData := dt.ToJSONBytes(true)
 fmt.Println(string(jsonData))
 ```
 
-### ToJSON_String
+`ToJSON_Bytes` is the deprecated name of `ToJSONBytes`. It does the same and is removed in 0.4.
+
+### ToJSONString
 
 ```go
-func (dt *DataTable) ToJSON_String(useColNames bool) string
+func (dt *DataTable) ToJSONString(useColNames bool) string
 ```
 
 **Description:** Converts the DataTable to JSON format and returns it as a string: the same text `ToJSON` writes.
@@ -630,9 +690,50 @@ func (dt *DataTable) ToJSON_String(useColNames bool) string
 **Example:**
 
 ```go
-jsonStr := dt.ToJSON_String(true)
+jsonStr := dt.ToJSONString(true)
 fmt.Println(jsonStr)
 ```
+
+`ToJSON_String` is the deprecated name of `ToJSONString`. It does the same and is removed in 0.4.
+
+### ToExcel
+
+```go
+func (dt *DataTable) ToExcel(filePath string, opts ExcelWriteOptions) error
+
+type ExcelWriteOptions struct {
+    Sheet                 string            // sheet to write; "" means "Sheet1"
+    SetColNamesToFirstRow bool              // write the column names as the first row
+    SetRowNamesToFirstCol bool              // write the row names as the first column
+    IfSheetExists         SheetExistsPolicy // SheetExistsFail (default) or SheetExistsReplace
+}
+```
+
+**Description:** Writes the table as one sheet of the workbook at `filePath` and leaves every other sheet as it was. If the file does not exist, a new workbook is created. If the workbook lacks the sheet, the sheet is added after the existing ones.
+
+If the sheet already exists, the default is to refuse: the call returns an error matching `ErrSheetExists` and the file is not touched. With `IfSheetExists: SheetExistsReplace`, the old sheet is thrown away, comments, tables, drawings, hidden rows and columns and merged ranges included (they are removed from the file, not just hidden), the widths of its visible columns and its view (zoom, frozen panes) carry over, and the table is written in its place, in the same position among the other sheets. Formulas on other sheets that point at it by name then read the new values. Sheet names are matched the way Excel matches them, without regard to case, so `data` and `Data` are the same sheet.
+
+Numbers, booleans and `time.Time` values are written as Excel values, not text, so they sort and sum in a spreadsheet. A time keeps its wall-clock reading but not its time zone, because Excel does not store one. Anything else is written as the same text `ToCSV` would write. The workbook is written to a temporary file and renamed into place, so a failure never leaves a damaged workbook behind. The path must end in an extension Excel's current format uses (`.xlsx`, `.xlsm`, …); the legacy `.xls` format cannot be written.
+
+**Example:** keep one sheet per year in a single report.
+
+```go
+opts := insyra.ExcelWriteOptions{Sheet: "2025", SetColNamesToFirstRow: true}
+err := sales2025.ToExcel("report.xlsx", opts)
+if errors.Is(err, insyra.ErrSheetExists) {
+    // 2025 is already there. Overwrite it on purpose; 2023 and 2024 stay.
+    opts.IfSheetExists = insyra.SheetExistsReplace
+    err = sales2025.ToExcel("report.xlsx", opts)
+}
+```
+
+### WriteExcel — to any destination
+
+```go
+func (dt *DataTable) WriteExcel(w io.Writer, opts ExcelWriteOptions) error
+```
+
+**Description:** Writes the table as a new one-sheet workbook to any destination, such as an HTTP response, a zip entry or a buffer. The cells are written the same way `ToExcel` writes them. `IfSheetExists` is ignored, because the workbook is always new.
 
 ### ToMap
 
@@ -673,11 +774,12 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 
 **Behavior:**
 
-- All database operations (CREATE TABLE, ALTER TABLE, INSERT, etc.) are executed inside a single database transaction. If any step fails, the transaction is rolled back and no partial changes are committed.
+- SQLite and PostgreSQL operations run in one transaction. MySQL `Replace` writes to a staging table and atomically renames it into place, so a failed write leaves the old table intact. MySQL replacement refuses tables referenced by foreign keys.
 - Rows are inserted with **batched multi-value INSERTs**. The default batch size is 500 rows; tune via `ToSQLOptions.BatchSize`. Note that `BatchSize × column-count` must stay below the driver's bind-parameter limit (PostgreSQL/MySQL: 65535).
 - When `IfExists` is set to append mode, `ToSQL` fetches the existing table's columns once and adds any missing ones via `ALTER TABLE` before inserting (no per-row schema introspection).
 - Type inference samples the first non-nil value in each column. Recognized types include `time.Time` (→ `DATETIME`/`TIMESTAMP`), `[]byte` (→ `BLOB`/`BYTEA`), `sql.Null*` (unwraps the underlying value), and pointers (dereferenced). All-nil columns fall back to `TEXT`.
 - You can provide `ColumnTypes` to override the inferred SQL types.
+- A column with no name is written under its letter (`A`, `B`, …), because MySQL and PostgreSQL refuse an empty column name. If another column is already named that letter, compared without case, the call fails before anything is written.
 
 **Parameters:**
 
@@ -699,12 +801,12 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 **SQLActionIfTableExists values:**
 
 - `SQLActionIfTableExistsFail` — return an error if the table exists (default)
-- `SQLActionIfTableExistsReplace` — drop and recreate the table
+- `SQLActionIfTableExistsReplace` — replace the table; on MySQL, failed staging writes preserve the old table
 - `SQLActionIfTableExistsAppend` — keep the table and append rows, adding missing columns if needed
 
 **Returns:**
 
-- `error`: Error information, returns nil if successful; if any DDL/DML step fails, an error is returned and the entire operation is rolled back.
+- `error`: Error information, returns nil if successful; failed MySQL staging writes leave the prior table intact.
 
 **Examples:**
 
@@ -1171,6 +1273,8 @@ func NewMaxAbsScaler() *MaxAbsScaler
 ```
 
 `Params()` returns the fitted parameters keyed by column name (`Mean`/`Std`, `Min`/`Max`/`OutputMin`/`OutputMax`, `Median`/`Q1`/`Q3`/`IQR`, or `MaxAbs` depending on the kind).
+
+`ScalerParams.PassThrough` is deprecated. It reports the existing imputer pass-through state and is retained for compatibility; its value and behavior are unchanged.
 
 There is also a DataList-oriented counterpart (`DataListScaler`) on every scaler: `FitDataList`, `TransformDataList`, `FitTransformDataList`, `InverseTransformDataList`, each returning a new `*DataList`.
 
@@ -2310,7 +2414,9 @@ dt.SetColNames([]string{"Name", "Age", "Role"}) // Set column names
 func (dt *DataTable) SetHeaders(headers []string) *DataTable
 ```
 
-**Description:** Alias for SetColNames, sets the column names of the DataTable.
+**Deprecated.** Use `SetColNames`; `SetHeaders` is removed in 0.4.
+
+**Description:** Sets the column names, exactly as `SetColNames` does.
 
 **Parameters:**
 
@@ -2406,13 +2512,34 @@ for i, name := range names {
 }
 ```
 
+### ColDataTypes
+
+```go
+func (dt *DataTable) ColDataTypes() []DataType
+```
+
+**Description:** Returns each column's `DataType` in column order, the way `ColNames` returns each column's name. See `DataList.DataType` for what each value means.
+
+**Example:**
+
+```go
+names := dt.ColNames()
+for i, t := range dt.ColDataTypes() {
+    if t == insyra.DataTypeNumber {
+        fmt.Println(names[i], "can be analysed")
+    }
+}
+```
+
 ### Headers
 
 ```go
 func (dt *DataTable) Headers() []string
 ```
 
-**Description:** Alias for ColNames, returns a slice containing all column names in order.
+**Deprecated.** Use `ColNames`; `Headers` is removed in 0.4.
+
+**Description:** Returns the column names in order, exactly as `ColNames` does.
 
 **Parameters:**
 
@@ -2975,6 +3102,12 @@ by themselves, so `counter[1]` and `counter["a"]` work as before, and printing
 the whole map stays readable: a stand-in shows as its type with a shortened
 form of its content, such as `[]uint8(00ff41)`.
 
+`insyra.UncomparableKey` also stands in for a `NaN`, and for an array or
+struct holding one. A `NaN` is comparable to Go but never equal to itself, so
+using one as a map key would make an entry nobody could read back: three
+`NaN`s in a column used to become three counts of one. Read their count with
+`counter[insyra.ToMapKey(math.NaN())]`.
+
 **To read one value's count, use `Count`, not this map.** `Count` matches
 integers by value, where the map keys them by Go type: a CSV load stores
 integers as `int64`, so `counter[1]` finds nothing in a counter built from
@@ -2995,13 +3128,13 @@ counter := dt.Counter()
 n := counter[insyra.ToMapKey(blob)]
 ```
 
-### GetCreationTimestamp
+### CreationTime
 
 ```go
-func (dt *DataTable) GetCreationTimestamp() int64
+func (dt *DataTable) CreationTime() time.Time
 ```
 
-**Description:** Gets the creation timestamp of the DataTable.
+**Description:** Returns when the table was created, at the clock's full resolution.
 
 **Parameters:**
 
@@ -3009,14 +3142,45 @@ func (dt *DataTable) GetCreationTimestamp() int64
 
 **Returns:**
 
-- `int64`: Unix timestamp when the table was created
+- `time.Time`: when the table was created
 
 **Example:**
 
 ```go
-timestamp := dt.GetCreationTimestamp()
-fmt.Printf("Created at: %d\n", timestamp)
+fmt.Println("Created at:", dt.CreationTime())
 ```
+
+### LastModifiedTime
+
+```go
+func (dt *DataTable) LastModifiedTime() time.Time
+```
+
+**Description:** Returns when the table was last modified, at the clock's full resolution, so two changes less than a second apart give different times. It never moves backwards, even if the wall clock is set back. On a platform whose clock is coarser than the time between two changes, both can still read the same.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- `time.Time`: when the table was last modified
+
+**Example:**
+
+```go
+fmt.Println("Last modified at:", dt.LastModifiedTime())
+```
+
+### GetCreationTimestamp
+
+```go
+func (dt *DataTable) GetCreationTimestamp() int64
+```
+
+**Deprecated:** use `CreationTime`. This method is removed in 0.4.
+
+**Description:** Returns the creation time in Unix seconds, `CreationTime().Unix()`.
 
 ### GetLastModifiedTimestamp
 
@@ -3024,22 +3188,9 @@ fmt.Printf("Created at: %d\n", timestamp)
 func (dt *DataTable) GetLastModifiedTimestamp() int64
 ```
 
-**Description:** Gets the last modified timestamp of the DataTable.
+**Deprecated:** use `LastModifiedTime`. This method is removed in 0.4.
 
-**Parameters:**
-
-- None.
-
-**Returns:**
-
-- `int64`: Unix timestamp when the table was last modified
-
-**Example:**
-
-```go
-timestamp := dt.GetLastModifiedTimestamp()
-fmt.Printf("Last modified at: %d\n", timestamp)
-```
+**Description:** Returns the last modified time in Unix seconds, `LastModifiedTime().Unix()`. Two changes within one second read the same.
 
 ### SimpleRandomSample
 
@@ -3073,16 +3224,17 @@ sampled := dt.SimpleRandomSample(10)
 - If sample size is greater than or equal to the number of rows, returns a full copy
 - If sample size is less than or equal to 0, returns an empty DataTable
 
-### Sample / SampleFrac / Shuffle / TrainTestSplit
+### Sample / SampleFrac / Shuffle / Shuffled / TrainTestSplit
 
 ```go
 func (dt *DataTable) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable
 func (dt *DataTable) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable
 func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable
+func (dt *DataTable) Shuffled(options ...SamplingOptions) *DataTable
 func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable)
 ```
 
-**Description:** Performs row-wise random sampling, shuffling, and train/test splitting. DataTable operations always move whole rows together, so every column and row name remains aligned.
+**Description:** Performs row-wise random sampling, shuffling, and train/test splitting. DataTable operations always move whole rows together, so every column and row name remains aligned. `Shuffled` returns the shuffled copy, named `<name>_Shuffled`, and leaves the table as it is. `Shuffle` does the same on this line, but on the 0.4 line it reorders the table itself and returns it, so use `Shuffled` wherever a copy is meant.
 
 **Options:**
 
@@ -3101,7 +3253,7 @@ Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible samples. `TrainT
 ```go
 sample := dt.Sample(100, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
 preview := dt.SampleFrac(0.05, false)
-shuffled := dt.Shuffle()
+shuffled := dt.Shuffled() // dt keeps its order
 
 train, test := dt.TrainTestSplit(0.8, insyra.SamplingOptions{UseSeed: true, Seed: 42})
 orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{PreserveOrder: true})
@@ -3547,6 +3699,66 @@ func (dt *DataTable) FindColsIfAllElementsContainSubstring(substring string) []s
 colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 ```
 
+## Slicing
+
+`SliceRows` and `SliceCols` take a contiguous range of rows or columns the way `s[from:to]` slices a Go slice: `from` is included and `to` is not. `SliceRows` takes positions with `0 <= from <= to <= NumRows()`. `SliceCols` takes each bound either as an Excel-style letter (`"B"`) or as an int position (`1`), so `"B"` and `1` mark the same column; `nil` leaves that end open, and an int bound may be negative, counting from the end, or `NumCols()`, one past the last column. A bound the method cannot use is an error recorded on the table, and the result is an empty DataTable. Both return a new table that owns its data.
+
+### SliceRows
+
+```go
+func (dt *DataTable) SliceRows(from, to int) *DataTable
+```
+
+**Description:** Returns rows `from` through `to-1`, with `0 <= from <= to <= NumRows()`. The result keeps the table's name, the column names and the names of the rows it holds. `from == to` gives the columns with no rows.
+
+**Parameters:**
+
+- `from`: Position of the first row to keep (0-based)
+- `to`: Position one past the last row to keep
+
+**Returns:**
+
+- `*DataTable`: New DataTable with the rows in the range
+
+**Example:**
+
+```go
+firstTen := dt.SliceRows(0, 10)
+fromRow5 := dt.SliceRows(5, dt.NumRows())
+if err := dt.Err(); err != nil {
+    // a bound was outside the table
+}
+```
+
+### SliceCols
+
+```go
+func (dt *DataTable) SliceCols(from, to any) *DataTable
+```
+
+**Description:** Returns the columns from `from` up to, but not including, `to`. The result keeps every row, the row names and the table's name.
+
+Each bound is a column selector with two spellings, an Excel-style letter or an int position, and both spellings of one column are the same bound: on a table whose columns are named `a`, `b`, `c`, `d`, the calls `SliceCols("B", "D")` and `SliceCols(1, 3)` both return columns B and C. The end stays excluded whichever spelling is used, as in any Go slice, so ranges that meet do not overlap: `SliceCols(nil, "C")` and `SliceCols("C", nil)` split a table in two.
+
+**Parameters:**
+
+- `from`: The first column to keep: a letter or an int position; `nil` for the first column.
+- `to`: The column to stop before, in the same forms; `nil` to run to the last column. An int bound may be negative, counting from the end, and may be `NumCols()`, one past the last column.
+
+A bound that picks no column (a letter past the last column, an int outside `-NumCols()` to `NumCols()`), a value of another type, or a `from` that comes after `to` records an error on the table and returns an empty DataTable. `from` and `to` picking the same column gives a table with no columns.
+
+**Returns:**
+
+- `*DataTable`: New DataTable with the columns in the range
+
+**Example:**
+
+```go
+fromB := dt.SliceCols("B", nil)    // columns B, C, D, ...
+firstTwo := dt.SliceCols(nil, "C") // columns A and B
+lastTwo := dt.SliceCols(-2, nil)   // the last two columns
+```
+
 ## Filtering
 
 ### Filter
@@ -3555,17 +3767,17 @@ colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 ```
 
-**Description:** Filters the DataTable using a custom filter function. Keeps only rows where the filter function returns true for at least one cell. A `Filter*` method whose filter matches nothing returns an empty table that is safe to use.
+**Description:** Keeps a row when `filterFunc` returns `true` for **any one** of its cells. `filterFunc` is called cell by cell, so it cannot compare two cells of the same row; for a condition such as "price above cost", use [`FilterRowsWhere`](#filterrowswhere). A `Filter*` method whose filter matches nothing returns an empty table that is safe to use.
 
 **Parameters:**
 
-- `filterFunc`: Custom filter function that receives:
+- `filterFunc`: Called once per cell, until one cell of the row passes. It receives:
 
   - `rowIndex`: Row index (0-based)
-  - `columnIndex`: Column name
+  - `columnIndex`: The column's Excel-style letter (`"A"`, `"B"`, …), not its name
   - `value`: Cell value
 
-  Returns `true` to keep the cell/row, `false` to discard
+  Returns `true` to keep the row the cell belongs to.
 
 **Returns:**
 
@@ -3574,19 +3786,18 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 **Example:**
 
 ```go
-// Keep rows with non-nil values
+// Keep rows that have at least one non-nil cell
 filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
     return value != nil
 })
 
-// Keep rows where column "age" has values greater than 30
+// Keep rows whose column B holds a number greater than 30
 filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
-    if columnIndex == "age" {
-        if num, ok := value.(int); ok {
-            return num > 30
-        }
+    if columnIndex != "B" {
+        return false
     }
-    return false
+    num, ok := insyra.ToFloat64Safe(value)
+    return ok && num > 30
 })
 ```
 
@@ -3596,7 +3807,9 @@ filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 func (dt *DataTable) FilterByCustomElement(f func(value any) bool) *DataTable
 ```
 
-**Description:** Filters the DataTable based on a custom function applied to each element.
+**Deprecated.** `FilterByCustomElement` is `Filter` without the row and column arguments and returns exactly what `Filter` returns; it is removed in 0.4. Write `dt.Filter(func(_ int, _ string, value any) bool { return f(value) })` instead.
+
+**Description:** Keeps a row when `f` returns `true` for any one of its cells.
 
 **Parameters:**
 
@@ -3606,25 +3819,13 @@ func (dt *DataTable) FilterByCustomElement(f func(value any) bool) *DataTable
 
 - `*DataTable`: New filtered DataTable
 
-**Example:**
-
-```go
-// Filter to keep only numeric values greater than 10
-filtered := dt.FilterByCustomElement(func(value any) bool {
-    if num, ok := value.(float64); ok {
-        return num > 10
-    }
-    return false
-})
-```
-
 ### FilterRows
 
 ```go
 func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
 ```
 
-**Description:** Filters rows based on a custom function that checks each cell. Keeps only rows where the filter function returns true for at least one cell.
+**Description:** Keeps a row when `filterFunc` returns `true` for **any one** of its cells, like `Filter`, but hands `filterFunc` the column's name as well as its letter. It cannot compare two cells of the same row either; use [`FilterRowsWhere`](#filterrowswhere) for that.
 
 **Parameters:**
 
@@ -3645,14 +3846,44 @@ filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
     return x == 100
 })
 
-// Keep rows where column A value is greater than 25
-filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
-    return (colIndex == "A") && (x.(int) > 25)
+// Keep rows whose column A holds a number greater than 25
+filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
+    num, ok := insyra.ToFloat64Safe(x)
+    return colIndex == "A" && ok && num > 25
 })
 
-// Keep rows where column named "age" value is greater than 25
-filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
-    return (colName == "age") && (x.(int) > 25)
+// Keep rows whose column named "age" holds a number greater than 25
+filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
+    num, ok := insyra.ToFloat64Safe(x)
+    return colName == "age" && ok && num > 25
+})
+```
+
+### FilterRowsWhere
+
+```go
+func (dt *DataTable) FilterRowsWhere(keep func(row *DataList) bool) *DataTable
+```
+
+**Description:** Keeps the rows for which `keep` returns `true`, judging each row as a whole. `keep` is called once per row with a `DataList` holding the row's cells in column order, named with the row's name, so a condition can compare cells of the same row. The result keeps the table's name, the column names and the kept rows' names. The row handed to `keep` is a copy: changing it changes neither the table nor the result. A nil `keep` records an error on the table and returns an empty DataTable.
+
+**Parameters:**
+
+- `keep`: Called once per row. `row.Get(i)` is the cell in column `i` (0-based); look a position up by name with `GetColNumberByName`.
+
+**Returns:**
+
+- `*DataTable`: New DataTable with the kept rows
+
+**Example:**
+
+```go
+priceCol := dt.GetColNumberByName("price")
+costCol := dt.GetColNumberByName("cost")
+
+// Keep the rows sold at a loss
+losses := dt.FilterRowsWhere(func(row *insyra.DataList) bool {
+    return insyra.ToFloat64(row.Get(priceCol)) < insyra.ToFloat64(row.Get(costCol))
 })
 ```
 
@@ -3724,6 +3955,8 @@ filtered := dt.FilterColsByColNameEqualTo("age")
 func (dt *DataTable) FilterColsByColIndexGreaterThan(threshold string) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceCols(i+1, dt.NumCols())`, where `i` is the column's position (`ColIndexToNumber` turns a letter into one). `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
+
 **Description:** Filters columns by index greater than the specified threshold.
 
 **Parameters:**
@@ -3745,6 +3978,8 @@ filtered := dt.FilterColsByColIndexGreaterThan("B") // Columns C, D, E...
 ```go
 func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
 ```
+
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceCols(i, dt.NumCols())`, where `i` is the column's position (`ColIndexToNumber` turns a letter into one). `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
 
 **Description:** Filters columns by index greater than or equal to the specified threshold.
 
@@ -3768,6 +4003,8 @@ filtered := dt.FilterColsByColIndexGreaterThanOrEqualTo("B") // Columns B, C, D.
 func (dt *DataTable) FilterColsByColIndexLessThan(threshold string) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceCols(0, i)`, where `i` is the column's position (`ColIndexToNumber` turns a letter into one). A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
+
 **Description:** Filters columns by index less than the specified threshold.
 
 **Parameters:**
@@ -3790,6 +4027,8 @@ filtered := dt.FilterColsByColIndexLessThan("C") // Columns A, B
 func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceCols(0, i+1)`, where `i` is the column's position (`ColIndexToNumber` turns a letter into one). A column letter past the last column, which this method treats as "every column", is an error to `SliceCols`.
+
 **Description:** Filters columns by index less than or equal to the specified threshold.
 
 **Parameters:**
@@ -3811,6 +4050,8 @@ filtered := dt.FilterColsByColIndexLessThanOrEqualTo("C") // Columns A, B, C
 ```go
 func (dt *DataTable) FilterColsByColIndexEqualTo(index string) *DataTable
 ```
+
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceCols(i, i+1)`, where `i` is the column's position (`ColIndexToNumber` turns a letter into one), or `GetCol` to read the column as a DataList. `SliceCols` reports a bound past the last column as an error, where this method returns an empty table.
 
 **Description:** Filters columns by exact index match.
 
@@ -3900,6 +4141,8 @@ filtered := dt.FilterRowsByRowNameContains("John") // Rows with "John" in name
 func (dt *DataTable) FilterRowsByRowIndexGreaterThan(threshold int) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceRows(threshold+1, dt.NumRows())`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
+
 **Description:** Filters rows by index greater than the specified threshold.
 
 **Parameters:**
@@ -3921,6 +4164,8 @@ filtered := dt.FilterRowsByRowIndexGreaterThan(5) // Rows 6, 7, 8...
 ```go
 func (dt *DataTable) FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable
 ```
+
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceRows(threshold, dt.NumRows())`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
 
 **Description:** Filters rows by index greater than or equal to the specified threshold.
 
@@ -3944,6 +4189,8 @@ filtered := dt.FilterRowsByRowIndexGreaterThanOrEqualTo(5) // Rows 5, 6, 7...
 func (dt *DataTable) FilterRowsByRowIndexLessThan(threshold int) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceRows(0, threshold)`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
+
 **Description:** Filters rows by index less than the specified threshold.
 
 **Parameters:**
@@ -3966,6 +4213,8 @@ filtered := dt.FilterRowsByRowIndexLessThan(5) // Rows 0, 1, 2, 3, 4
 func (dt *DataTable) FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable
 ```
 
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceRows(0, threshold+1)`. `SliceRows` reports a bound outside the table as an error, where this method keeps what is in range.
+
 **Description:** Filters rows by index less than or equal to the specified threshold.
 
 **Parameters:**
@@ -3987,6 +4236,8 @@ filtered := dt.FilterRowsByRowIndexLessThanOrEqualTo(5) // Rows 0, 1, 2, 3, 4, 5
 ```go
 func (dt *DataTable) FilterRowsByRowIndexEqualTo(index int) *DataTable
 ```
+
+**Deprecated.** This is a slice, not a filter, and it is removed in 0.4. Use `SliceRows(index, index+1)`. `SliceRows` reports a bound outside the table as an error, where this method returns an empty table.
 
 **Description:** Filters rows by exact index match.
 
@@ -4157,7 +4408,7 @@ func (dt *DataTable) Show()
 func (dt *DataTable) ShowTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the DataTable content in the console. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`).
+**Description:** Displays the DataTable content in the console. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`). A table of more than 25 rows prints its first 20 and last 5 rows with a `...` line between them; the summary line above the table still covers every row. Column widths fit the rows that are printed.
 
 **Parameters:**
 
@@ -4180,12 +4431,12 @@ func (dt *DataTable) ShowRange(startEnd ...any)
 func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) // same output, written to w
 ```
 
-**Description:** Displays the DataTable with a specified range of rows. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout.
+**Description:** Displays the DataTable with a specified range of rows. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout. Only the printed rows are read to size the columns, so showing five rows of a million-row table takes as long as showing a five-row table, and a wide cell outside the range does not widen the columns. `ShowHead(n)` and `ShowTail(n)` are the plainer spellings of `ShowRange(n)` and `ShowRange(-n)`.
 
 **Parameters:**
 
 - `startEnd`: Optional parameters to specify the range of rows to display:
-  - No parameters: shows all rows
+  - No parameters: the whole table, as `Show` prints it: a table of more than 25 rows prints its first 20 and last 5 rows
   - One positive value: shows first N rows (e.g., ShowRange(5) shows first 5 rows)
   - One negative value: shows last N rows (e.g., ShowRange(-5) shows last 5 rows)
   - Two values [start, end]: shows rows from index start (inclusive) to index end (exclusive)
@@ -4198,12 +4449,16 @@ func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) // same output, w
 **Example:**
 
 ```go
-dt.ShowRange()      // Show all rows
+dt.ShowRange()      // Show the whole table (first 20 and last 5 rows past 25)
 dt.ShowRange(5)     // Show first 5 rows
 dt.ShowRange(-5)    // Show last 5 rows
 dt.ShowRange(2, 10) // Show rows 2-9
 dt.ShowRange(2, nil) // Show rows from index 2 to end
+dt.ShowHead(5)      // Same as ShowRange(5)
+dt.ShowTail(5)      // Same as ShowRange(-5)
 ```
+
+`ShowHead(n)` / `ShowHeadTo(w, n)` and `ShowTail(n)` / `ShowTailTo(w, n)` take a positive `n`; zero or a negative number prints an error line.
 
 ### ShowTypes
 
@@ -4212,7 +4467,17 @@ func (dt *DataTable) ShowTypes()
 func (dt *DataTable) ShowTypesTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the data types of each column. `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
+**Description:** Displays the Go type of every cell, column by column. The first row, `DataType`, sums each whole column up in one word (the values of `ColDataTypes()`), so the verdict sits above the detail it was judged from. `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
+
+```
+RowNames   A(price)  B(city)  C(notes)
+---------- --------- -------- ---------
+DataType   number    string   mixed
+---------- --------- -------- ---------
+0:         int       string   int
+1:         float64   nil      string
+2:         nil       string   nil
+```
 
 **Parameters:**
 
@@ -4235,7 +4500,7 @@ func (dt *DataTable) ShowTypesRange(startEnd ...any)
 func (dt *DataTable) ShowTypesRangeTo(w io.Writer, startEnd ...any) // same output, written to w
 ```
 
-**Description:** Displays the data types of columns within a specified range. `ShowTypesRangeTo` writes the same output to any `io.Writer` instead of stdout.
+**Description:** Displays the data types of columns within a specified range. `ShowTypesRangeTo` writes the same output to any `io.Writer` instead of stdout. The `DataType` row summarises each whole column; the per-cell types and the column widths come from the printed rows only.
 
 **Parameters:**
 
@@ -4454,8 +4719,7 @@ The Clone method creates a complete deep copy of the DataTable, including:
 - Column index mapping
 - Row names mapping
 - Table name
-- Creation timestamp (original timestamp is preserved)
-- Last modified timestamp (reset to current time)
+- Creation and last modified time, both set to the time of the clone
 
 The cloned DataTable is completely independent of the original, so modifications to one will not affect the other.
 
@@ -4540,6 +4804,63 @@ fmt.Printf("Number of columns: %d\n", len(slice[0]))
 fmt.Printf("Value at [0][0]: %v\n", slice[0][0])
 ```
 
+## Comparison
+
+| Question | Use |
+| --- | --- |
+| Same number of rows and columns, and equal cells? | `dt1.IsEqualTo(dt2)` |
+| All of that, and the same table, column and row names? | `dt1.IsTheSameAs(dt2)` |
+| The same object? | `dt1 == dt2` |
+
+### IsEqualTo
+
+```go
+func (dt *DataTable) IsEqualTo(other *DataTable) bool
+```
+
+**Description:** Checks whether another DataTable has the same number of rows and columns and equal cells. Cells are compared by type and value, as `DataList.IsEqualTo` does, so `int(1)` and `int64(1)` differ; unlike `DataList.IsEqualTo` on this line, two `NaN` cells are equal. A cell past the end of a column shorter than the table counts as `nil`. Table, column and row names are not compared, so two tables read from files with different headers but the same values are equal. A nil argument returns `false` with a warning and leaves `Err()` alone.
+
+**Parameters:**
+
+- `other`: the DataTable to compare with
+
+**Returns:**
+
+- `bool`: true if the shape and every cell are equal
+
+**Example:**
+
+```go
+a := insyra.NewDataTable(insyra.NewDataList(1, 2).SetName("x"))
+b := insyra.NewDataTable(insyra.NewDataList(1, 2).SetName("y"))
+a.IsEqualTo(b)   // true: the names are not compared
+a.IsTheSameAs(b) // false: the column names differ
+```
+
+### IsTheSameAs
+
+```go
+func (dt *DataTable) IsTheSameAs(other *DataTable) bool
+```
+
+**Description:** Checks everything `IsEqualTo` checks, and also that the table names, the column names in order, and the row names in order are equal. A row without a name matches only a row without a name. Creation and modification times are not compared, so a table and its `Clone()` are always the same. A nil argument returns `false` with a warning and leaves `Err()` alone.
+
+**Parameters:**
+
+- `other`: the DataTable to compare with
+
+**Returns:**
+
+- `bool`: true if the cells and every name are equal
+
+**Example:**
+
+```go
+dt := insyra.NewDataTable(insyra.NewDataList(1, 2).SetName("x"))
+dt.SetRowNames([]string{"r1", "r2"})
+dt.IsTheSameAs(dt.Clone()) // true
+```
+
 ## Error Handling
 
 Insyra provides a comprehensive error handling system that supports both global error buffering and instance-level error tracking, designed to work seamlessly with method chaining.
@@ -4582,6 +4903,8 @@ dt.ClearErr()
 | `PopErr() *ErrorInfo`   | Returns the last error and clears it, so the table can be reused straight away.                 |
 | `ClearErr() *DataTable` | Clears the last error and returns the DataTable for continued chaining.                         |
 | `SetErr(pkg, fn, msg string, args ...any) *DataTable` | Records an error the way insyra's own methods do: logs a warning and sets `Err()`, replacing any earlier error. Wrapper packages (such as `isr`) use it. |
+
+`Err()` is safe on a nil table: it reports `nil DataTable` instead of crashing. Every other method on a nil table still fails loudly, on purpose (most crash; a few, such as `Resample` and `ToSQL`, return an error), so a nil cannot travel on unnoticed.
 
 ### Global Error Buffer
 

@@ -79,6 +79,91 @@ that clears the MatMul hook.
 The device path is not wired in `-race` builds because the upstream Metal
 binding currently trips `checkptr`; those builds remain on the CPU path.
 
+## Training on the device
+
+A training step can keep its tensors on the GPU: parameters, activations,
+gradients and the update all stay in device memory, and only what you ask for
+(for example the loss) comes back. The tape has two precision modes. Choose
+by what you need the numbers to do.
+
+| | Default tape | `accel.PrecisionFloat32Rounded` |
+| --- | --- | --- |
+| How a result is defined | The host kernels, and `AdamW` with float64 intermediates | The exact value of each operation, rounded once to float32 |
+| Same bits on the host, on any GPU and with no GPU | No: a device cannot reproduce it | Yes |
+| Tensors on a device | Refused | Yes |
+| Accuracy | The more accurate of the two where float64 is used | Float32 throughout, as PyTorch's float32 optimizers are |
+| Choose it when | Nothing asks for a GPU, or results must equal an earlier release | The step should run on a GPU, or must reproduce on any machine |
+
+The default is unchanged from earlier releases. `PrecisionFloat32Rounded` is
+never the default: set it with `tape.SetPrecision`.
+
+```go
+dev := accel.DefaultDevice()           // the zero Device (the host) when there is no GPU
+tape := nn.NewTape()
+defer tape.Close()                      // frees parameters and everything the tape made
+_ = tape.SetPrecision(accel.PrecisionFloat32Rounded)
+
+E, _ := enc.To(dev)                     // upload once; the zero Device returns a host copy
+R, _ := readout.To(dev)
+tape.Param(E)
+tape.Param(R)
+
+for step := 0; step < steps; step++ {
+    tape.Clear()                        // drops last step's operations and tensors; keeps parameters
+    X, _ := batch.To(dev)
+    h, _ := tape.MatMul(X, E)
+    y, _ := tape.MatMul(h, R)
+    _ = tape.BackwardFrom(y, upstream)  // upstream lives on dev as well
+    _ = tape.SGD(0.05)
+    X.Release()                         // tensors you create with To are yours to release
+}
+loss, _ := y.ToHost()                   // the only way values come back
+```
+
+`Tensor.To(dev)` copies a tensor to a device, `Tensor.ToHost()` copies it
+back, `Tensor.Device()` says where it lives and `Tensor.Release()` frees its
+device memory (safe to repeat). Moving never changes the source and keeps
+every bit. A tape frees the tensors it creates on `Clear` and `Close`, but not
+the ones you pass in. A tensor on a device refuses `Float32Data` and every
+kernel with an error that names `ToHost`; nothing reads back by itself.
+Tensors count against the device's memory budget, and a buffer that is
+garbage-collected without `Release` is freed with a warning.
+
+In this release the precision mode covers `MatMul` and `Add` (a second operand
+that matches the first or repeats over its trailing dimensions) with their
+gradients, gradient accumulation, `SGD`, `Adam`, `AdamW` and `SoftmaxCrossEntropy`, in 2-D. In this
+mode `Adam` and `AdamW` are defined entirely in float32: each step is one
+correctly rounded operation or an exact two-term sum rounded once, and the
+constants (`1-beta`, the bias corrections, `lr*weightDecay`) are rounded once
+on the host. Their moments live on the device with the parameter, and the
+result equals the host's bit for bit. They differ from the default tape's
+float64 `AdamW` by a few ulps per step, as PyTorch's float32 `AdamW` does.
+
+`SoftmaxCrossEntropy` is covered too. Per row, with `m` the row maximum:
+`d = x - m`, `e = exp(d)`, `s` the exact sum of `e` rounded once,
+`loss = log(s) - d[label]`; the mean loss is the exact sum of the row losses
+rounded once, divided by the row count. The gradient is `e/s` times
+`upstream/rows`, with `upstream/rows` subtracted at the label. `exp` and `log`
+here are correctly rounded, the same bits on every platform (the host builds
+them from `+ - * /` only, the device in 128-bit integer arithmetic), and both
+agree on all 2^32 float32 inputs. A row with a non-finite logit gives NaN.
+Labels are `int64` tensors: `labels.To(dev)` holds them as int32 on the device
+and refuses a negative value or one that does not fit, naming it. `rows` must be
+below 2^24. Any other operation on a
+device tensor returns an error telling you to call `ToHost`; on host tensors
+in this mode they keep their default arithmetic. `SoftmaxCrossEntropy`, which
+needs integer `exp` and `log`; the rest follow in later releases.
+
+On an Apple M3, best of five, the exact device `MatMul` took 18 to 19 ms for
+`[4096,96]x[96,128]` and `[4096,128]x[128,96]`. The exact CPU reference took
+39 to 44 ms, and the default float32 CPU `MatMul` took 6.6 to 8 ms. So the
+exact device kernel is two to three times faster than the exact CPU but slower
+than the default CPU on this machine. Choose the mode for results that are the
+same everywhere and for a step that stays on the device, not for a faster
+product: if you only want speed on a multi-core CPU, the default tape is
+faster. The kernel is bound by the arithmetic of the exact sum, so tiling it
+did not help. Only Apple Metal has been measured; other GPUs have not. A program uses one card: the one WebGPU selects by default, whatever `Device` it passes to `To`; choosing among several cards is not supported yet.
+
 ## Loading and running an ONNX model
 
 ```go
@@ -188,6 +273,67 @@ if err != nil { log.Fatal(err) }
 _ = result.TrainLosses
 ```
 
+Built-in losses are `CrossEntropy`, `MSE`, and `BCEWithLogits`. For another
+loss, `CustomLoss` lets the caller compute it with tape operations so gradients
+still reach model parameters. `Loss` must return a float32 scalar produced on
+that tape. `Validate` is optional and runs for each training batch and for the
+validation set.
+
+For any other optimizer, `nn.CustomOptimizer` takes a function that updates
+the parameters from their gradients. This one is Lion's sign update without
+momentum; any state it needs, such as a moment per parameter, lives in the
+closure and can be keyed by `*nn.Parameter`:
+
+```go
+rate := float32(1e-4)
+result, err := model.Fit(trainX, trainY, nn.FitConfig{
+	Epochs: 5, BatchSize: 128, Loss: nn.CrossEntropy{},
+	Optimizer: nn.CustomOptimizer{
+		Name: "sign-sgd",
+		Step: func(params []*nn.Parameter) error {
+			for _, p := range params {
+				err := p.Update(func(value, grad []float32) {
+					if grad == nil {
+						return // the loss did not reach this parameter
+					}
+					for i, g := range grad {
+						if g > 0 {
+							value[i] -= rate
+						} else if g < 0 {
+							value[i] += rate
+						}
+					}
+				})
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
+})
+```
+
+`Step` is required, and `Fit` refuses a `CustomOptimizer` without it before
+any batch. `Fit` calls `Step` once per batch, after the reverse pass, with
+every parameter tracked on the model's tape in creation order, which for a
+`Sequential` is `model.Parameters()`. The slice is a copy `Step` may keep. An
+error from `Step` stops `Fit`, which returns it wrapped with the epoch, the
+batch and the optimizer's name. `Name` labels the optimizer in `Fit`'s errors
+and defaults to `CustomOptimizer`. The built-in optimizers do not go through
+`CustomOptimizer`, so their results are unchanged.
+
+`Parameter.Update(fn)` is how a parameter is written from outside the package,
+in a `CustomOptimizer` or in a training loop written by hand. It calls
+`fn(value, grad)` with the parameter's own float32 data and its most recent
+gradient, both in the layout `Value()` and `Grad()` report, and the next
+forward pass reads whatever `fn` wrote into `value`. `grad` is nil when the
+last reverse pass did not reach the parameter. Both slices are valid only
+while `fn` runs; keep a copy, not the slice. Writing into `grad` changes the
+gradient `Grad()` and the tape's optimizers read until the next reverse pass.
+`Update` returns an error for a nil parameter or a nil `fn`, and does not touch
+the state the tape's `SGDMomentum`, `Adam` and `AdamW` keep.
+
 `Seed` is always used as the source for `math/rand`'s `Perm` shuffle. Zero is
 a valid seed, not a request for time-based randomness. The same inputs,
 configuration, and seed reproduce the same parameter trajectory. Each epoch
@@ -196,7 +342,42 @@ validation loss when configured, elapsed time, and rows per second. Set
 `Quiet: true` to suppress that line, or use `Progress: func(nn.FitEpoch) {}`
 for custom reporting; `Quiet` does not suppress the callback. Fit v1 does not
 include schedules, early stopping, checkpointing, datasets, or `DataTable`
-integration.
+integration; a caller can still stop a run from `Progress`, as below.
+
+#### Stopping a run
+
+`FitContext(ctx, x, y, cfg)` is `Fit` under a `context.Context`, and `Fit`
+calls it with `context.Background()`. The context is checked before every
+batch, and after each epoch's last batch, before its validation. When it is
+done, `FitContext` returns `ctx.Err()`, so `errors.Is(err, context.Canceled)`
+or `errors.Is(err, context.DeadlineExceeded)` tells a stop from a failure,
+together with a `FitResult` listing the epochs that finished. The model keeps
+every optimizer step taken before the stop, including the steps of an epoch
+that did not finish. An epoch counts as finished once its batches, its
+validation and its `Progress` call have run, so a run whose every epoch
+finished returns its whole result and no error, even if the context was
+cancelled during the last `Progress` call. A context that is already done
+changes nothing, and a nil context is an error.
+
+Cancelling from `Progress` stops before the next epoch's first batch, so the
+model is exactly what a run of that many epochs would have produced:
+
+```go
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+best := math.Inf(1)
+cfg.Progress = func(epoch nn.FitEpoch) {
+	if epoch.HasValLoss && epoch.ValLoss >= best {
+		cancel() // validation stopped improving
+	}
+	best = math.Min(best, epoch.ValLoss)
+}
+result, err := model.FitContext(ctx, trainX, trainY, cfg)
+if err != nil && !errors.Is(err, context.Canceled) {
+	log.Fatal(err)
+}
+fmt.Println(len(result.Epochs), "epochs ran")
+```
 
 Validation calls `Predict`, so `TrainingOnly` layers such as Dropout are
 structurally excluded from validation just as they are from inference.
@@ -257,6 +438,8 @@ Gradients are float32 and are available through `Parameter.Grad()` or
 `Tape.Grad(parameter.Value())` after `Backward`; an unconnected tracked
 parameter receives a zero tensor. A `Backward` that returns an error publishes
 nothing: both keep returning what the last successful pass computed.
+`Parameter.Update` writes a parameter from its gradient for an optimizer the
+tape does not have; see `CustomOptimizer` above.
 `Tape.Tanh`'s gradient rounds every step to float32 without fusing any two, so
 it is the same bits on every platform. Exact-form GELU is differentiable; the tanh
 approximation is refused by the tape until its VJP is covered.
@@ -516,7 +699,8 @@ The catalog layers are:
 | `MaxPool2D` / `AvgPool2D` | NCHW pooling; omitted stride defaults to the kernel size, matching torch |
 | `GlobalAvgPool` | Reduces spatial dimensions to `[N,C,1,1]` |
 | `BatchNorm2D(features)` | Batch statistics and running-stat updates in `Forward`; running statistics in `Predict` |
-| `LayerNorm(dims)` | Learned suffix normalization over an integer or shape slice |
+| `LayerNorm(dims)` | Learned suffix normalization; retains the integer and shape-slice inputs |
+| `LayerNormShape(dims)` | Explicit shape form; copies the shape slice |
 | `Embedding(vocab, dim)` | Int64 `[N]` or `[N,S]` lookup with scatter-add gradients |
 | `MultiHeadAttention(embed, heads)` | Mask-free batch-first self-attention over `[batch, sequence, embed]` |
 | `Residual(layers...)` | Adds the input to a composable sub-stack; inference honors nested `EvalLayer` paths |

@@ -275,3 +275,12 @@ func TestScalerJSONRefusesAColumnListedTwice(t *testing.T) {
 		t.Fatal("JSON naming one column twice was accepted")
 	}
 }
+
+func TestScalerJSONRefusesAnEmptyColumnReference(t *testing.T) {
+	data := []byte(`{"kind":"standard","fitted":true,"columns":[{"ref":"","name":"","mean":1,"std":1}]}`)
+	s := NewStandardScaler()
+	err := json.Unmarshal(data, s)
+	if err == nil || !strings.Contains(err.Error(), "empty reference") {
+		t.Fatalf("a column with an empty reference: err = %v", err)
+	}
+}

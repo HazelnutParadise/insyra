@@ -1,7 +1,8 @@
 # accel-device-discovery Specification
 
 ## Purpose
-TBD - created by archiving change add-accel-backend-discovery. Update Purpose after archive.
+How `accel` finds the GPUs on a machine across CUDA, Metal and WebGPU, describes each one with the same metadata, picks a default backend, and decides which devices may share a multi-device job.
+
 ## Requirements
 ### Requirement: Multi-backend discovery support
 The system SHALL support acceleration backend discovery across `CUDA`, `Metal`, and `WebGPU native`.

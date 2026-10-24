@@ -291,7 +291,7 @@ func numericMatrixFromTable(dataTable insyra.IDataTable) ([][]float64, []string,
 		// the one policy has one implementation. The error text stays the
 		// broad one these callers already document; the detailed row is in
 		// the wrapped cause.
-		values, err := numericValues(raw, fmt.Sprintf("column %d", j+1))
+		values, err := numericValues(raw, fmt.Sprintf("column %d", j))
 		if err != nil {
 			return nil, nil, fmt.Errorf("input contains non-numeric values: %w", err)
 		}
@@ -303,6 +303,9 @@ func numericMatrixFromTable(dataTable insyra.IDataTable) ([][]float64, []string,
 }
 
 func intLabelsFromDataList(labels insyra.IDataList, expected int) ([]int, error) {
+	if insyra.IsNilList(labels) {
+		return nil, errors.New("labels data list is nil")
+	}
 	out := make([]int, 0, expected)
 	var size int
 	labels.AtomicDo(func(dl *insyra.DataList) {

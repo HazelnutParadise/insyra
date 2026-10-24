@@ -47,6 +47,16 @@ func (dl *DataList) Data() []any {
 // flattenWithNilSupport flattens a slice of any values, properly handling nil values
 // Only flattens slices, not arrays
 func flattenWithNilSupport(values []any) []any {
+	return flattenToDepth(values, 0)
+}
+
+// maxFlattenDepth bounds how many slices deep the flattener descends. A slice
+// that contains itself would otherwise recurse until the stack is exhausted,
+// which ends the process and cannot be recovered. Past the bound the slice is
+// kept as one cell, as Cell does.
+const maxFlattenDepth = 64
+
+func flattenToDepth(values []any, depth int) []any {
 	var result []any
 
 	for _, value := range values {
@@ -63,14 +73,16 @@ func flattenWithNilSupport(values []any) []any {
 
 		// Use reflection to check if the value is a slice (but not array)
 		rv := reflect.ValueOf(value)
-		if rv.Kind() == reflect.Slice {
+		if rv.Kind() == reflect.Slice && depth >= maxFlattenDepth {
+			result = append(result, value)
+		} else if rv.Kind() == reflect.Slice {
 			// Recursively flatten slice elements
 			sliceLen := rv.Len()
 			subSlice := make([]any, sliceLen)
 			for i := range sliceLen {
 				subSlice[i] = rv.Index(i).Interface()
 			}
-			result = append(result, flattenWithNilSupport(subSlice)...)
+			result = append(result, flattenToDepth(subSlice, depth+1)...)
 		} else {
 			result = append(result, value)
 		}
@@ -89,7 +101,7 @@ func NewDataList(values ...any) *DataList {
 	continuousMemData := make([]any, len(flatData))
 	copy(continuousMemData, flatData)
 
-	timestamp := time.Now().Unix()
+	timestamp := clock().UnixNano()
 	dl := &DataList{
 		data:              continuousMemData,
 		creationTimestamp: timestamp,
@@ -174,7 +186,7 @@ func (dl *DataList) Clone() *DataList {
 		newDL = &DataList{
 			data:              newData,
 			name:              dl.name,
-			creationTimestamp: time.Now().Unix(),
+			creationTimestamp: clock().UnixNano(),
 		}
 		newDL.lastModifiedTimestamp.Store(newDL.creationTimestamp)
 	})
@@ -832,9 +844,9 @@ func (dl *DataList) Standardize() *DataList {
 // FillNaNWithMean replaces all NaN values in the DataList with the mean value.
 // Directly modifies the DataList.
 //
-// Deprecated: use FillWithMean instead, which also fills nil (not just NaN),
-// leaves non-numeric values untouched, and matches the other Fill* imputation
-// methods.
+// Deprecated: to fill NaN alone, as this method does, use
+// dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean()), which leaves
+// other values unchanged.
 func (dl *DataList) FillNaNWithMean() *DataList {
 	defer func() {
 		r := recover()
@@ -861,6 +873,12 @@ func (dl *DataList) FillNaNWithMean() *DataList {
 
 // MovingAverage calculates the moving average of the DataList using a specified window size.
 // Returns a new DataList containing the moving average values.
+//
+// Deprecated: use Rolling(RollingOptions{Window: windowSize}).Mean(), which
+// keeps the input's length with windowSize-1 leading nils, so on a fully
+// numeric list its Data()[windowSize-1:] is this method's result. It gives nil
+// for a window holding a nil or non-numeric cell instead of failing. Removed in
+// 0.4.
 func (dl *DataList) MovingAverage(windowSize int) *DataList {
 	var movingAverageData []float64
 	isFailed := false
@@ -894,6 +912,12 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 // WeightedMovingAverage applies a weighted moving average to the DataList with a given window size.
 // The weights parameter should be a slice or a DataList of the same length as the window size.
 // Returns a new DataList containing the weighted moving average values.
+//
+// Deprecated: use Rolling(RollingOptions{Window: windowSize, Weights: weights}).Mean(),
+// with the weights as a []float64, which keeps the input's length, so on a fully numeric list its
+// Data()[windowSize-1:] is this method's result. It gives nil for a window
+// holding a gap and for weights summing to zero, where this method fails or
+// divides by zero. Removed in 0.4.
 func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList {
 	weightsSlice, sliceLen := ProcessData(weights)
 	var movingAvgData []float64
@@ -997,6 +1021,11 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 }
 
 // MovingStdev calculates the moving standard deviation for the DataList using a specified window size.
+//
+// Deprecated: use Rolling(RollingOptions{Window: windowSize}).Std(), which
+// keeps the input's length, so on a fully numeric list its
+// Data()[windowSize-1:] is this method's result. It gives nil where this method
+// gives NaN, and skips a NaN this method lets through. Removed in 0.4.
 func (dl *DataList) MovingStdev(windowSize int) *DataList {
 	var movingStdDevData []float64
 	isFailed := false
@@ -1746,6 +1775,47 @@ func quantileType7(sorted []float64, p float64) float64 {
 	return sorted[lower] + (h-float64(lower))*(sorted[upper]-sorted[lower])
 }
 
+// Quantile returns the p-quantile of the list's numeric values, with p on the
+// 0..1 scale: Quantile(0.25) is the first quartile, Quantile(0.5) the median
+// and Quantile(0.9) the 90th percentile. It uses R's type-7 quantile, the
+// default of R, NumPy and pandas (linear interpolation between order
+// statistics), the same definition Percentile and Quartile use.
+//
+// nil and NaN cells are missing and skipped. A p that is NaN or outside
+// [0, 1], or a cell that is neither a number nor missing, records a warning
+// naming the problem and returns NaN. A list with no numeric values returns
+// NaN with a warning.
+func (dl *DataList) Quantile(p float64) float64 {
+	result := math.NaN()
+	dl.AtomicDo(func(dl *DataList) {
+		if math.IsNaN(p) || p < 0 || p > 1 {
+			dl.warn("Quantile", "p %v is outside [0, 1]", p)
+			return
+		}
+		sorted := make([]float64, 0, len(dl.data))
+		for i, v := range dl.data {
+			if v == nil {
+				continue
+			}
+			f, ok := ToFloat64Safe(v)
+			if !ok {
+				dl.warn("Quantile", "non-numeric value at row %d", i)
+				return
+			}
+			if !math.IsNaN(f) {
+				sorted = append(sorted, f)
+			}
+		}
+		if len(sorted) == 0 {
+			dl.warn("Quantile", "no numeric values to compute a quantile from")
+			return
+		}
+		sort.Float64s(sorted)
+		result = quantileType7(sorted, p)
+	})
+	return result
+}
+
 // Quartile calculates the quartile based on the input value (1 to 3).
 // 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
 // Uses R's type-7 quantile (the R / numpy / pandas default), matching Percentile.
@@ -1875,9 +1945,10 @@ func (dl *DataList) Percentile(p float64) float64 {
 // DataList. The output is one element shorter than the input
 // (out[i] = in[i+1] - in[i]).
 //
-// For column-aligned use (same length as the input, leading nils) prefer
-// Diff(1) — it preserves length so the result can sit alongside other
-// columns in a DataTable. Difference is retained for backwards compatibility.
+// Deprecated: use Diff(1), which keeps the input's length with a leading nil,
+// so on a fully numeric list Diff(1).Data()[1:] is this method's result. It
+// gives nil, not NaN or a failure, for a nil or non-numeric operand. Removed in
+// 0.4.
 func (dl *DataList) Difference() *DataList {
 	var result *DataList
 	dl.AtomicDo(func(dl *DataList) {
@@ -1933,7 +2004,8 @@ func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 }
 
 // IsTheSameAs checks if the DataList is fully the same as another DataList.
-// It checks for equality in name, data, creation timestamp, and last modified timestamp.
+// It checks for equality in name, data, creation time, and last modified time,
+// the two times compared in whole Unix seconds. 0.4 compares data and name only.
 func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 	if dl == anotherDl {
 		return true
@@ -1977,7 +2049,8 @@ func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 			return
 		}
 
-		if dl.creationTimestamp != otherCreation || dl.lastModifiedTimestamp.Load() != otherLastModified {
+		if unixSecondsFromUnixNano(dl.creationTimestamp) != unixSecondsFromUnixNano(otherCreation) ||
+			unixSecondsFromUnixNano(dl.lastModifiedTimestamp.Load()) != unixSecondsFromUnixNano(otherLastModified) {
 			result = false
 			return
 		}
@@ -2079,23 +2152,46 @@ func (dl *DataList) ToStringSlice() []string {
 
 // ======================== Timestamp ========================
 
-// GetCreationTimestamp returns the creation time of the DataList in Unix timestamp.
-func (dl *DataList) GetCreationTimestamp() int64 {
-	var ts int64
+// CreationTime returns when the DataList was created, at the clock's full
+// resolution.
+func (dl *DataList) CreationTime() time.Time {
+	var ns int64
 	dl.AtomicDo(func(dl *DataList) {
-		ts = dl.creationTimestamp
+		ns = dl.creationTimestamp
 	})
-	return ts
+	return timeFromUnixNano(ns)
 }
 
-// GetLastModifiedTimestamp returns the last updated time of the DataList in Unix timestamp.
+// LastModifiedTime returns when the DataList was last changed, at the clock's
+// full resolution. It never moves backwards, even if the wall clock does.
+func (dl *DataList) LastModifiedTime() time.Time {
+	return timeFromUnixNano(dl.lastModifiedTimestamp.Load())
+}
+
+// GetCreationTimestamp returns the creation time of the DataList in Unix seconds.
+//
+// Deprecated: use CreationTime, which keeps sub-second changes apart. Removed
+// in 0.4.
+func (dl *DataList) GetCreationTimestamp() int64 {
+	var ns int64
+	dl.AtomicDo(func(dl *DataList) {
+		ns = dl.creationTimestamp
+	})
+	return unixSecondsFromUnixNano(ns)
+}
+
+// GetLastModifiedTimestamp returns the last updated time of the DataList in Unix seconds.
+//
+// Deprecated: use LastModifiedTime, which keeps sub-second changes apart.
+// Removed in 0.4.
 func (dl *DataList) GetLastModifiedTimestamp() int64 {
-	return dl.lastModifiedTimestamp.Load()
+	return unixSecondsFromUnixNano(dl.lastModifiedTimestamp.Load())
 }
 
-// updateTimestamp updates the lastModifiedTimestamp to the current Unix time.
+// updateTimestamp moves lastModifiedTimestamp to the current time, in Unix
+// nanoseconds, unless the clock reads earlier than the time already recorded.
 func (dl *DataList) updateTimestamp() {
-	now := time.Now().Unix()
+	now := clock().UnixNano()
 	oldTimestamp := dl.lastModifiedTimestamp.Load()
 
 	if oldTimestamp < now {
@@ -2134,6 +2230,9 @@ func (dl *DataList) SetName(newName string) *DataList {
 //	    // handle error
 //	}
 func (dl *DataList) Err() *ErrorInfo {
+	if dl == nil {
+		return nilReceiverError("DataList")
+	}
 	return dl.lastError
 }
 

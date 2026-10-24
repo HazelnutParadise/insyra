@@ -17,7 +17,7 @@ func resolveEncodingColumn(dt *DataTable, ref string) (int, string, bool) {
 		}
 		return idx, label, true
 	}
-	if idx, ok := ParseColIndex(ref); ok && idx >= 0 && idx < len(dt.columns) {
+	if idx, ok := ColIndexToNumber(ref); ok && idx >= 0 && idx < len(dt.columns) {
 		label := dt.columns[idx].name
 		if label == "" {
 			label = fallbackEncodingColumnName(idx)

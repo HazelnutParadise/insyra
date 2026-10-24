@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // Layer 0 — numeric input conversion.
@@ -32,10 +33,10 @@ func appendNumericValues(dst []float64, raw []any, label func() string, position
 	for i, value := range raw {
 		converted, ok := insyra.ToFloat64Safe(value)
 		if !ok {
-			return nil, fmt.Errorf("%s contains a non-numeric value at %s %d: %v", label(), position, i+1, value)
+			return nil, fmt.Errorf("%s contains a non-numeric value at %s index %d: %s", label(), position, i, utils.SprintBounded(value))
 		}
 		if math.IsNaN(converted) || math.IsInf(converted, 0) {
-			return nil, fmt.Errorf("%s contains a non-finite value at %s %d: %v", label(), position, i+1, converted)
+			return nil, fmt.Errorf("%s contains a non-finite value at %s index %d: %v", label(), position, i, converted)
 		}
 		dst = append(dst, converted)
 	}
@@ -53,7 +54,7 @@ func numericValues(raw []any, label string) ([]float64, error) {
 // numericValues. It returns the length separately so a caller checking that
 // several series agree in length still gets that length when conversion fails.
 func numericSlice(dl insyra.IDataList, label string) ([]float64, int, error) {
-	if dl == nil {
+	if insyra.IsNilList(dl) {
 		return nil, 0, fmt.Errorf("%s data list is nil", label)
 	}
 	var raw []any

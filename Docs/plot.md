@@ -209,7 +209,7 @@ func SaveHTML(chart Renderable, path string, animation ...bool) error
 
 **Returns:**
 
-- `error`: Error when the operation fails.
+- `error`: Error when the operation fails. A chart whose data holds `NaN` or an infinity returns an error instead of a page with no chart in it, because ECharts' JSON cannot hold those values. `SavePNG` does the same.
 
 **Note:** the generated HTML is not reproducible across runs. go-echarts gives
 each chart object a random id — an 11-character string such as `ZNEYhPGqrFjX` —
@@ -635,6 +635,8 @@ func CreateGaugeChart(config GaugeChartConfig, value float64) *charts.Gauge
 ### 9. WordCloud
 
 ![WordCloud Example](./img/plot/wordcloud_example.png)
+
+Words are counted by the text the chart shows, so a cell that is a slice is a word like any other and `1` and `"1"` count as one word.
 
 #### Configuration
 

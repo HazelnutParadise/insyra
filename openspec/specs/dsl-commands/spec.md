@@ -1,8 +1,10 @@
 # dsl-commands Specification
 
 ## Purpose
-TBD - created by archiving change cli-repl. Update Purpose after archive.
+What each command of the insyra command language does, from loading, inspecting and reshaping data to statistics, time series, CCL, charts, fetching and variable management, as run from the REPL, a `.isr` script, a one-shot command or `engine/dsl`.
+
 ## Requirements
+
 ### Requirement: Load data from file
 系統 SHALL 提供 `load` 命令從檔案載入資料為 DataTable。
 
@@ -53,11 +55,19 @@ TBD - created by archiving change cli-repl. Update Purpose after archive.
 - **THEN** 系統載入並顯示檔案前幾筆資料，不將結果存入環境變數
 
 ### Requirement: Convert format
-系統 SHALL 提供 `convert` 命令進行格式轉換。
+系統 SHALL 提供 `convert` 命令進行格式轉換。Excel 轉 CSV 時，SHALL 接受 `sheet <工作表> <檔名>` 成對指定，可重複多組，每組把該工作表寫成該檔，其他工作表不轉；不存在的工作表、同一張工作表給兩次、兩張工作表寫到同一個檔名（不分大小寫），SHALL 在寫出任何檔案前回錯誤。`convert <file.xlsx> <file.csv>` SHALL 照舊把第一張工作表寫成該檔、其他工作表寫成同目錄的 `<工作表>.csv`。
 
 #### Scenario: CSV to Excel
 - **WHEN** 使用者執行 `convert "data.csv" "data.xlsx"`
 - **THEN** 系統轉換 CSV 為 Excel
+
+#### Scenario: Pairs of sheets and files
+- **WHEN** 活頁簿有 `Q1`、`Q2`、`Q3`，使用者執行 `convert book.xlsx sheet Q1 q1.csv sheet Q3 q3.csv`
+- **THEN** 只寫出 `q1.csv`（Q1）與 `q3.csv`（Q3）
+
+#### Scenario: One output file for a workbook of several sheets
+- **WHEN** 活頁簿有 `Q1`、`Q2`、`Q3`，使用者執行 `convert book.xlsx out.csv`
+- **THEN** 寫出 `out.csv`（Q1）、`Q2.csv` 與 `Q3.csv`
 
 ### Requirement: Show data
 系統 SHALL 提供 `show` 命令顯示資料內容，支援正數（前 N 筆）、負數（後 N 筆）、範圍。
@@ -430,3 +440,62 @@ The DSL and REPL SHALL expose acceleration inspection commands for device state 
 - **WHEN** a user runs `show accel.cache`
 - **THEN** the runtime prints acceleration cache budget, residency summary, and related metrics
 
+### Requirement: A command that stores several variables names each one
+
+A command that stores variables besides its `as <var>` result SHALL name every variable it stores in its success line.
+
+#### Scenario: kmeans names all nine variables
+- **WHEN** the user runs `kmeans t 2 as km`
+- **THEN** the output lists `km` and the eight `km_*` variables, and all nine are stored
+
+#### Scenario: quant factor names its alpha table
+- **WHEN** the user runs `quant factor a f as fm`
+- **THEN** the output lists `fm` and `fm_alpha`
+
+#### Scenario: quant portfolio names its stats table
+- **WHEN** the user runs `quant portfolio rets maxsharpe rf 0.0001 as w`
+- **THEN** the output lists `w` and `w_stats`
+
+#### Scenario: A stored variable replaces one of the same name
+- **WHEN** a variable `km_size` already exists and the user runs `kmeans t 2 as km`
+- **THEN** the output names `km_size`, and `km_size` holds the new result
+
+### Requirement: List the sheets of a workbook
+系統 SHALL 提供 `sheets <file.xlsx>` 命令，依活頁簿順序每行印出一個工作表名稱。
+
+#### Scenario: Listing
+- **WHEN** 活頁簿有 `Q1`、`Q2`、`Q3`，使用者執行 `sheets book.xlsx`
+- **THEN** 輸出三行 `Q1`、`Q2`、`Q3`
+
+### Requirement: col accepts an Excel-style column letter
+The system SHALL resolve the selector of `col` as a 0-based position when it is a whole number, otherwise as an exact column name, otherwise as an Excel-style letter that names a column of the table, and SHALL report "column not found" when none applies.
+
+#### Scenario: A letter selects a column
+- **WHEN** `col t B` runs on a table with at least two columns and no column named `B`
+- **THEN** the second column is saved
+
+#### Scenario: A column name wins over a letter
+- **WHEN** a column is named `A` and is not the first column
+- **THEN** `col t A` saves the column named `A`
+
+#### Scenario: A letter past the last column
+- **WHEN** the letter names a column the table does not have
+- **THEN** the command fails with "column not found" and stores nothing
+
+### Requirement: Numeric arguments may name a number variable
+The system SHALL read a numeric command argument that does not parse as a number as the name of a variable holding a number, and SHALL use that value, reporting the usual invalid-argument error when no such variable exists.
+
+#### Scenario: A variable supplies the number
+- **WHEN** `n` holds 2 and `shift x n` runs
+- **THEN** the shift uses 2 periods
+
+#### Scenario: A literal number is unchanged
+- **WHEN** an argument parses as a number
+- **THEN** it is used as that number even if a variable has the same text as its name
+
+### Requirement: Statistic commands can store their result
+The system SHALL store the result of `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max` and `range` under the variable named by a trailing `as <var>`, and SHALL print the number of `show <var>` for a number variable.
+
+#### Scenario: Mean stored and shown
+- **WHEN** `mean x as m` then `show m` run
+- **THEN** `m` holds the mean and `show m` prints it

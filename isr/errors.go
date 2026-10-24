@@ -11,7 +11,7 @@ import "github.com/HazelnutParadise/insyra"
 //
 // recordDT records the error on the table as well, but only when there is a
 // table to record it on, so nothing that was nil becomes non-nil.
-func recordDT(t *dt, funcName, msg string, args ...any) {
+func recordDT(t *DataTable, funcName, msg string, args ...any) {
 	if t.DataTable == nil {
 		insyra.LogWarning("isr", funcName, msg, args...)
 		return

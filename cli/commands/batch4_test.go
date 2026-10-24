@@ -195,3 +195,60 @@ func TestDispatchHistoryIsSanitized(t *testing.T) {
 		t.Fatalf("history.txt is group/world readable: %o", perm)
 	}
 }
+
+// #438: col takes an Excel-style letter; a column's own name still wins.
+func TestColAcceptsExcelLetters(t *testing.T) {
+	ctx := newTestExecContext(t)
+	ctx.Vars["dt"] = insyra.NewDataTable(
+		insyra.NewDataList(1, 2).SetName("price"),
+		insyra.NewDataList(3, 4).SetName("A"),
+	)
+	check := func(selector string, want int) {
+		t.Helper()
+		if err := runColCommand(ctx, []string{"dt", selector, "as", "c"}); err != nil {
+			t.Fatalf("col %s: %v", selector, err)
+		}
+		if got := ctx.Vars["c"].(*insyra.DataList).Get(0); got != want {
+			t.Fatalf("col %s: first value %v, want %d", selector, got, want)
+		}
+	}
+	check("price", 1)
+	check("0", 1)
+	check("B", 3)
+	check("A", 3) // the column named "A" beats the letter A
+	if err := runColCommand(ctx, []string{"dt", "C", "as", "d"}); err == nil {
+		t.Fatal("a letter past the last column should be an error")
+	}
+}
+
+// #370: a number argument may name a number variable, and the stat commands can make one.
+func TestNumberVariablesFeedNumericArguments(t *testing.T) {
+	ctx := newTestExecContext(t)
+	ctx.Vars["x"] = insyra.NewDataList(1, 2, 3, 4, 5, 6)
+	handler, ok := LookupCommand("mean")
+	if !ok {
+		t.Fatal("mean is not registered")
+	}
+	if err := handler.Run(ctx, []string{"x", "as", "m"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := ctx.Vars["m"]; got != 3.5 {
+		t.Fatalf("m = %v, want 3.5", got)
+	}
+	ctx.Vars["n"] = 2
+	got, err := parseIntArg(ctx, "shift", "periods", "n")
+	if err != nil || got != 2 {
+		t.Fatalf("parseIntArg through a variable = %d, %v", got, err)
+	}
+	if f, err := parseFloatArg(ctx, "t", "mu", "m"); err != nil || f != 3.5 {
+		t.Fatalf("parseFloatArg through a variable = %v, %v", f, err)
+	}
+	if _, err := parseFloatArg(ctx, "t", "mu", "x"); err == nil {
+		t.Fatal("a list variable is not a number")
+	}
+	var out strings.Builder
+	ctx.Output = &out
+	if err := runShowCommand(ctx, []string{"m"}); err != nil || strings.TrimSpace(out.String()) != "3.5" {
+		t.Fatalf("show m = %q, %v", out.String(), err)
+	}
+}

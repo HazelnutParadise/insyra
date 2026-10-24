@@ -361,48 +361,72 @@ func FitKNNRegressor(x *insyra.DataTable, y *insyra.DataList, k int, opts ...KNN
 }
 
 func (m *LinearModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	if m == nil || m.Result == nil {
+		return nil, errors.New("ml: linear model is nil")
+	}
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictResponse, xs...)
 	})
 }
 
 func (m *WeightedLinearModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	if m == nil || m.Result == nil {
+		return nil, errors.New("ml: weighted linear model is nil")
+	}
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictResponse, xs...)
 	})
 }
 
 func (m *RidgeModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	if m == nil || m.Result == nil {
+		return nil, errors.New("ml: ridge model is nil")
+	}
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictResponse, xs...)
 	})
 }
 
 func (m *LassoModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	if m == nil || m.Result == nil {
+		return nil, errors.New("ml: lasso model is nil")
+	}
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictResponse, xs...)
 	})
 }
 
 func (m *PolynomialModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	if m == nil || m.Result == nil {
+		return nil, errors.New("ml: polynomial model is nil")
+	}
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictResponse, xs...)
 	})
 }
 
 func (m *ExponentialModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	if m == nil || m.Result == nil {
+		return nil, errors.New("ml: exponential model is nil")
+	}
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictResponse, xs...)
 	})
 }
 
 func (m *LogarithmicModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	if m == nil || m.Result == nil {
+		return nil, errors.New("ml: logarithmic model is nil")
+	}
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictResponse, xs...)
 	})
 }
 
 func (m *LogisticModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	if m == nil || m.Result == nil {
+		return nil, errors.New("ml: logistic model is nil")
+	}
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictClass, xs...)
 	})
@@ -435,12 +459,18 @@ func (m *LogisticModel) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, e
 }
 
 func (m *PoissonModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	if m == nil || m.Result == nil {
+		return nil, errors.New("ml: poisson model is nil")
+	}
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictResponse, xs...)
 	})
 }
 
 func (m *GLMModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	if m == nil || m.Result == nil {
+		return nil, errors.New("ml: GLM model is nil")
+	}
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictResponse, xs...)
 	})

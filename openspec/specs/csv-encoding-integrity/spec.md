@@ -4,6 +4,7 @@
 CSV 讀取時的文字解碼契約：解碼表內的字元集與常見別名會被解碼成 UTF-8，不會把可解碼的位元組原樣當成資料；表外的名稱，包括偵測器可能回報的少數字元集，在 `ReadCsvToString` 回傳錯誤，在其他讀取函式維持既有讀法。
 
 ## Requirements
+
 ### Requirement: Known charsets are decoded
 
 讀取 CSV 時，指定或偵測到的編碼名稱（忽略大小寫與 `-`、`_`、空白、`.`、`:`）若屬於解碼表，SHALL 解碼成 UTF-8。解碼表 SHALL 包含 UTF-8／16／32、Big5、GB18030（含 GBK、GB2312）、Shift-JIS、EUC-JP、ISO-2022-JP、EUC-KR、Windows-1250 至 1258、ISO-8859-1 至 10 與 13 至 16、KOI8-R／U、IBM866、Macintosh。不在表內的名稱 SHALL 沿用既有的子字串規則，依序比對 `utf8`、`big5`、`gb`、`utf16`；比對 SHALL 在同樣忽略大小寫與分隔符號的正規化名稱上進行，大小寫 SHALL NOT 影響結果。都不符合時，`ReadCsvToString` 以外的讀取函式 SHALL 原樣讀取且不回傳錯誤；偵測器也可能回報的 ISO-2022-KR、ISO-2022-CN、IBM424 與 IBM420 屬於這種情況。
@@ -43,3 +44,12 @@ CSV 讀取時的文字解碼契約：解碼表內的字元集與常見別名會�
 #### Scenario: A detected charset nothing decodes
 - **WHEN** 自動偵測回報 `ibm424_rtl`，以 `ReadCsvToString` 讀取
 - **THEN** 回傳錯誤，不回傳內容
+
+### Requirement: An encoding argument means the same in csvxl as in the core readers
+
+`csvxl`'s CSV readers SHALL detect the encoding when given an empty string or `"auto"` in any case, as the core CSV readers do.
+
+#### Scenario: Uppercase AUTO on a Big5 file
+
+- **WHEN** `ReadCsvToString(path, "AUTO")` reads a Big5 file
+- **THEN** the text is decoded from Big5 instead of the call failing

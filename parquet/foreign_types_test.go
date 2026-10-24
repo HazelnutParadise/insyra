@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/decimal128"
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/apache/arrow/go/v17/parquet"
-	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/decimal128"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 )
 
 // parquet.Write only ever emits seven Arrow types, so nothing in this package's
@@ -47,7 +47,7 @@ func writeForeignParquetWith(t *testing.T, fields []arrow.Field, fill func(*arra
 	defer b.Release()
 
 	fill(b)
-	rec := b.NewRecord()
+	rec := b.NewRecordBatch()
 	defer rec.Release()
 
 	path := filepath.Join(t.TempDir(), "foreign.parquet")
@@ -233,14 +233,14 @@ func TestABinaryColumnExportsToJSONAsBase64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := dt.ToJSON_String(true); !strings.Contains(got, `"AP9B"`) {
+	if got := dt.ToJSONString(true); !strings.Contains(got, `"AP9B"`) {
 		t.Errorf("JSON does not carry the bytes as base64 AP9B: %s", got)
 	}
 }
 
-// The writer is unchanged on this line: a column of []byte cells is still
-// written as a string column, as it was before binary columns read as bytes.
-func TestAByteColumnIsStillWrittenAsAString(t *testing.T) {
+// A column of []byte cells is written as Parquet Binary, so reading it back
+// gives the same bytes (see binary_write_test.go for the cell-level checks).
+func TestAByteColumnIsWrittenAsBinary(t *testing.T) {
 	dl := insyra.NewDataList()
 	dl.Append([]byte("A-01"), []byte("C-3"))
 	out := filepath.Join(t.TempDir(), "bytes.parquet")
@@ -251,10 +251,8 @@ func TestAByteColumnIsStillWrittenAsAString(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := back.GetElementByNumberIndex(0, 0).(string); !ok {
-		t.Errorf("a []byte column read back as %T, want the string column the writer produces", back.GetElementByNumberIndex(0, 0))
-	} else {
-		t.Logf("written as string %q", got)
+	if got, ok := back.GetElementByNumberIndex(0, 0).([]byte); !ok || string(got) != "A-01" {
+		t.Errorf("a []byte column read back as %#v, want the bytes A-01", back.GetElementByNumberIndex(0, 0))
 	}
 }
 
@@ -519,7 +517,7 @@ func getValHandles(arr arrow.Array) bool {
 		*array.Float64, *array.Float32,
 		*array.String, *array.LargeString, *array.Boolean,
 		*array.Binary, *array.LargeBinary, *array.FixedSizeBinary,
-		*array.Timestamp, *array.Date32, *array.Date64,
+		*array.Timestamp, *array.Date32, *array.Date64, *array.Duration,
 		*array.Decimal128, *array.Decimal256,
 		*array.Null:
 		return true

@@ -74,6 +74,12 @@ type LinearRegressionResult struct {
 	Residuals        []float64
 	RSquared         float64
 	AdjustedRSquared float64
+
+	// CovType is the covariance the inference fields come from.
+	CovType CovType
+	// Lag is the number of autocovariances CovHAC used, after any automatic
+	// choice; it is 0 for the other CovTypes.
+	Lag int
 }
 
 // PolynomialRegressionResult holds the result of polynomial regression.
@@ -214,15 +220,70 @@ func (r *LogarithmicRegressionResult) Predict(typ PredictType, newXs ...insyra.I
 	out := make([]any, n)
 	for i, x := range xs[0] {
 		if x <= 0 {
-			return nil, fmt.Errorf("x must be > 0 for ln prediction (index %d)", i)
+			return nil, fmt.Errorf("x must be > 0 for ln prediction (row index %d)", i)
 		}
 		out[i] = r.Intercept + r.Slope*math.Log(x)
 	}
 	return insyra.NewDataList(out), nil
 }
 
-// LinearRegression performs ordinary least-squares linear regression.
+// CovType chooses the covariance an ordinary least-squares fit reports its
+// standard errors, t values, p values and confidence intervals from.
+type CovType int
+
+const (
+	// CovOLS is the classical covariance s²(XᵀX)⁻¹, which assumes
+	// homoskedastic, uncorrelated errors. It is the zero value.
+	CovOLS CovType = iota
+	// CovHC0 is White's heteroskedasticity-consistent covariance.
+	CovHC0
+	// CovHC1 is CovHC0 scaled by n/(n-k).
+	CovHC1
+	// CovHC2 divides each squared residual by 1-h, h the observation's leverage.
+	CovHC2
+	// CovHC3 divides each squared residual by (1-h)².
+	CovHC3
+	// CovHAC is the Newey-West heteroskedasticity-and-autocorrelation-consistent
+	// covariance with Bartlett weights 1 - j/(lag+1) and no small-sample factor.
+	CovHAC
+)
+
+// LinearRegressionOptions are the settings of LinearRegressionWithOptions. The
+// zero value is LinearRegression.
+type LinearRegressionOptions struct {
+	// CovType chooses the covariance. The default is CovOLS.
+	CovType CovType
+	// Lag is the number of autocovariances CovHAC includes. Use stats.AutoLag to choose it
+	// automatically (any negative lag asks for NeweyWestLag(n)); 0 and above are used as given, and 0
+	// makes CovHAC equal CovHC0. It must be smaller than the number of
+	// observations. Other CovTypes ignore it.
+	Lag int
+}
+
+// LinearRegression performs ordinary least-squares linear regression with the
+// classical standard errors. It is LinearRegressionWithOptions with zero
+// options.
 func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error) {
+	return LinearRegressionWithOptions(LinearRegressionOptions{}, dlY, dlXs...)
+}
+
+// LinearRegressionWithOptions performs ordinary least-squares linear
+// regression and reports inference from the covariance opts.CovType names.
+// The coefficients, residuals and R² do not depend on it.
+//
+// CovHC0 to CovHC3 are the estimators of R's sandwich::vcovHC. CovHAC is
+// (XᵀX)⁻¹ S (XᵀX)⁻¹ with S the Bartlett-weighted long-run covariance of the
+// scores, as sandwich::NeweyWest(lag = L, prewhite = FALSE, adjust = FALSE)
+// and statsmodels' cov_type="HAC" with use_correction=False compute it.
+//
+// Every t value, p value and confidence interval uses the t distribution with
+// n-k degrees of freedom, as lmtest::coeftest reports them and as
+// NeweyWestMeanTest does; statsmodels reads robust p-values from the normal
+// distribution unless use_t=True.
+func LinearRegressionWithOptions(opts LinearRegressionOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error) {
+	if opts.CovType < CovOLS || opts.CovType > CovHAC {
+		return nil, fmt.Errorf("unsupported covariance type %v", opts.CovType)
+	}
 	p := len(dlXs)
 	if p == 0 {
 		return nil, errors.New("no independent variables provided")
@@ -284,7 +345,32 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 	if df > 0 {
 		mse = sse / df
 	}
-	standardErrors, tValues, pValues := computeCoeffInference(coeffs, XTXInv, mse, df)
+	lag := 0
+	var standardErrors, tValues, pValues []float64
+	switch opts.CovType {
+	case CovOLS:
+		standardErrors, tValues, pValues = computeCoeffInference(coeffs, XTXInv, mse, df)
+	default:
+		leveragePower, meatScale := 0.0, 1.0
+		switch opts.CovType {
+		case CovHC1:
+			meatScale = float64(n) / df
+		case CovHC2:
+			leveragePower = 0.5
+		case CovHC3:
+			leveragePower = 1
+		case CovHAC:
+			lag = opts.Lag
+			if lag < 0 {
+				lag = NeweyWestLag(n)
+			}
+			if lag >= n {
+				return nil, fmt.Errorf("lag %d must be smaller than the number of observations %d", lag, n)
+			}
+		}
+		variances := olsSandwichVariances(X, residuals, XTXInv, leveragePower, meatScale, lag)
+		standardErrors, tValues, pValues = coeffInferenceFromVariances(coeffs, variances, df)
+	}
 
 	result := &LinearRegressionResult{
 		Slope:                   math.NaN(),
@@ -303,6 +389,8 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 		StandardErrors:          standardErrors,
 		TValues:                 tValues,
 		PValues:                 pValues,
+		CovType:                 opts.CovType,
+		Lag:                     lag,
 	}
 
 	if p == 1 {
@@ -356,7 +444,7 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionRes
 	logYs := make([]float64, len(ys))
 	for i := range ys {
 		if ys[i] <= 0 {
-			return nil, fmt.Errorf("y must be > 0 for log computation (index %d)", i)
+			return nil, fmt.Errorf("y must be > 0 for log computation (row index %d)", i)
 		}
 		logYs[i] = math.Log(ys[i])
 	}
@@ -452,7 +540,7 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionRes
 	logXs := make([]float64, len(xs))
 	for i := range xs {
 		if xs[i] <= 0 {
-			return nil, fmt.Errorf("x must be > 0 for ln computation (index %d)", i)
+			return nil, fmt.Errorf("x must be > 0 for ln computation (row index %d)", i)
 		}
 		logXs[i] = math.Log(xs[i])
 	}

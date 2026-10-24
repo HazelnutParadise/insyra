@@ -130,9 +130,9 @@ func mustRandomFloat32Tensor(tb testing.TB, shape []int, size int, rng *rand.Ran
 	for index := range data {
 		data[index] = float32(rng.NormFloat64())
 	}
-	tensor, err := NewFloat32Tensor(shape, data)
+	tensor, err := NewTensor(shape, data)
 	if err != nil {
-		tb.Fatalf("NewFloat32Tensor: %v", err)
+		tb.Fatalf("NewTensor: %v", err)
 	}
 	return tensor
 }

@@ -1,7 +1,8 @@
 # accel-observability Specification
 
 ## Purpose
-TBD - created by archiving change add-accel-observability-fallback. Update Purpose after archive.
+What a program can see about accelerated work: a stable reason code for every fallback, which backend ran, what the cache and devices were used for, how strict and automatic modes report, and a single notice when acceleration switches on.
+
 ## Requirements
 ### Requirement: Stable fallback reason codes
 The system SHALL define stable reason codes for acceleration fallback outcomes.

@@ -2,7 +2,10 @@ package insyra
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"maps"
 	"reflect"
@@ -71,13 +74,187 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName st
 	}
 
 	cols, rows := dt.collectRowsForSQL(opts.RowNames)
+	if err := nameUnnamedSQLColumns(cols, opts.RowNames); err != nil {
+		return err
+	}
 	if len(rows) == 0 {
 		return fmt.Errorf("data is empty")
 	}
 
 	fullName := qualifiedTableName(opts.Schema, tableName)
 	tx := db.WithContext(ctx)
+	if opts.IfExists == SQLActionIfTableExistsReplace && db.Name() == "mysql" {
+		cols, rows := dt.collectRowsForSQL(opts.RowNames)
+		if err := nameUnnamedSQLColumns(cols, opts.RowNames); err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return fmt.Errorf("data is empty")
+		}
+		exists, err := tableExists(tx, tx.Name(), opts.Schema, tableName)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return replaceThroughStagingTable(tx, fullName, tableName, opts.Schema, cols, rows, opts)
+		}
+		// A concurrently created table must not be dropped by the ordinary path.
+		opts.IfExists = SQLActionIfTableExistsFail
+	}
 	return saveRowsToDB(tx, fullName, tableName, opts.Schema, cols, rows, opts)
+}
+
+const stagingCleanupTimeout = 30 * time.Second
+
+func replaceThroughStagingTable(db *gorm.DB, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
+	dialect := db.Name()
+	columnTypes := make(map[string]string, len(cols))
+	if len(opts.ColumnTypes) > 0 {
+		maps.Copy(columnTypes, opts.ColumnTypes)
+	}
+	for i, col := range cols {
+		if _, ok := columnTypes[col]; ok {
+			continue
+		}
+		var sample any
+		for _, row := range rows {
+			if row[i] != nil {
+				sample = row[i]
+				break
+			}
+		}
+		columnTypes[col] = inferSQLType(sample, dialect)
+	}
+	for _, col := range cols {
+		if err := validateSQLType(columnTypes[col]); err != nil {
+			return err
+		}
+	}
+	referrer, err := tableReferencedBy(db, dialect, schema, plainTable)
+	if err != nil {
+		return err
+	}
+	if referrer != "" {
+		return fmt.Errorf("table %s is referenced by a foreign key from %s; nothing was changed", fullName, referrer)
+	}
+	var random [8]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return fmt.Errorf("naming staging table: %w", err)
+	}
+	suffix := hex.EncodeToString(random[:])
+	staging, backup := "insyra_new_"+suffix, "insyra_old_"+suffix
+	quotedStaging := quoteQualifiedName(dialect, schema, staging)
+	ctx := db.Statement.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cleanup := func(run func(*gorm.DB) error) error {
+		c, cancel := context.WithTimeout(context.WithoutCancel(ctx), stagingCleanupTimeout)
+		defer cancel()
+		return run(db.WithContext(c))
+	}
+	dropStaging := func(cause error) error {
+		if e := cleanup(func(tx *gorm.DB) error { return tx.Exec("DROP TABLE IF EXISTS " + quotedStaging).Error }); e != nil {
+			return errors.Join(cause, fmt.Errorf("could not drop staging table: %w", e))
+		}
+		return cause
+	}
+	if err := db.Exec(fmt.Sprintf("CREATE TABLE %s (%s)", quotedStaging, sqlColumnDefs(dialect, cols, columnTypes))).Error; err != nil {
+		return fmt.Errorf("creating staging table: %w", err)
+	}
+	if err := db.Transaction(func(tx *gorm.DB) error { return insertSQLRows(tx, dialect, quotedStaging, cols, rows, opts.BatchSize) }); err != nil {
+		return dropStaging(err)
+	}
+	stmt := fmt.Sprintf("RENAME TABLE %s TO %s, %s TO %s", quoteQualifiedName(dialect, schema, plainTable), quoteQualifiedName(dialect, schema, backup), quotedStaging, quoteQualifiedName(dialect, schema, plainTable))
+	if err := db.Exec(stmt).Error; err != nil {
+		// Check what the rename did on a context of its own: when ctx itself
+		// ended during the rename, querying on it would fail and leave the
+		// staging table behind.
+		var swapped bool
+		checkErr := cleanup(func(tx *gorm.DB) error {
+			backupExists, err := tableExists(tx, dialect, schema, backup)
+			if err != nil {
+				return err
+			}
+			stagingExists, err := tableExists(tx, dialect, schema, staging)
+			if err != nil {
+				return err
+			}
+			swapped = backupExists && !stagingExists
+			return nil
+		})
+		if checkErr != nil {
+			return errors.Join(fmt.Errorf("replacing table %s: %w", fullName, err), fmt.Errorf("could not verify whether the rename completed: %w", checkErr))
+		}
+		if !swapped {
+			return dropStaging(err)
+		}
+	}
+	if err := cleanup(func(tx *gorm.DB) error {
+		return tx.Exec("DROP TABLE " + quoteQualifiedName(dialect, schema, backup)).Error
+	}); err != nil {
+		return fmt.Errorf("table %s has new rows but old table remains: %w", fullName, err)
+	}
+	return nil
+}
+
+func tableReferencedBy(db *gorm.DB, dialect, schema, table string) (string, error) {
+	if dialect != "mysql" {
+		return "", nil
+	}
+	var names []string
+	query := "SELECT CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_NAME = ? AND REFERENCED_TABLE_SCHEMA = "
+	args := []any{table}
+	if schema != "" {
+		query += "?"
+		args = append(args, schema)
+	} else {
+		query += "DATABASE()"
+	}
+	// A table referencing itself moves with the rename; the same name in
+	// another database is a different table and does block it.
+	query += " AND NOT (TABLE_NAME = ? AND TABLE_SCHEMA = REFERENCED_TABLE_SCHEMA) LIMIT 1"
+	args = append(args, table)
+	if err := db.Raw(query, args...).Scan(&names).Error; err != nil {
+		return "", err
+	}
+	if len(names) == 0 {
+		return "", nil
+	}
+	return names[0], nil
+}
+
+func sqlColumnDefs(dialect string, cols []string, types map[string]string) string {
+	defs := make([]string, 0, len(cols))
+	for _, col := range cols {
+		defs = append(defs, fmt.Sprintf("%s %s", quoteSQLIdent(dialect, col), types[col]))
+	}
+	return strings.Join(defs, ", ")
+}
+
+func insertSQLRows(tx *gorm.DB, dialect, table string, cols []string, rows [][]any, batchSize int) error {
+	if batchSize <= 0 {
+		batchSize = defaultBatchSize
+	}
+	quoted := make([]string, len(cols))
+	for i, col := range cols {
+		quoted[i] = quoteSQLIdent(dialect, col)
+	}
+	for start := 0; start < len(rows); start += batchSize {
+		end := min(start+batchSize, len(rows))
+		builder := sq.Insert(table).PlaceholderFormat(placeholderFormat(dialect)).Columns(quoted...)
+		for _, row := range rows[start:end] {
+			builder = builder.Values(row...)
+		}
+		s, args, err := builder.ToSql()
+		if err != nil {
+			return err
+		}
+		if err := tx.Exec(s, args...).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // collectRowsForSQL extracts the canonical column ordering and row values
@@ -113,6 +290,38 @@ func (dt *DataTable) collectRowsForSQL(includeRowName bool) (cols []string, rows
 		}
 	})
 	return cols, rows
+}
+
+// nameUnnamedSQLColumns gives a column with no name its Excel-style letter,
+// the name insyra already uses for it elsewhere: MySQL and PostgreSQL refuse
+// an empty identifier. A letter another column already goes by is refused,
+// compared without case because MySQL and SQLite compare column names so.
+func nameUnnamedSQLColumns(cols []string, hasRowNames bool) error {
+	first := 0
+	if hasRowNames {
+		first = 1
+	}
+	taken := make(map[string]bool, len(cols))
+	for _, c := range cols {
+		if c != "" {
+			taken[strings.ToLower(c)] = true
+		}
+	}
+	for i := first; i < len(cols); i++ {
+		if cols[i] != "" {
+			continue
+		}
+		letter, ok := ColNumberToIndex(i - first)
+		if !ok {
+			return fmt.Errorf("column index %d has no name", i-first)
+		}
+		if taken[strings.ToLower(letter)] {
+			return fmt.Errorf("column %s has no name, and another column is already named %s; name the column before writing it", letter, letter)
+		}
+		cols[i] = letter
+		taken[strings.ToLower(letter)] = true
+	}
+	return nil
 }
 
 func qualifiedTableName(schema, table string) string {
