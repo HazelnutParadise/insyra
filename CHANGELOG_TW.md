@@ -30,6 +30,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - **行為改變**：`quant.BacktestSignal` 現在接受從 -1（完全放空）到 1 的部位；訊號或 `InitialPosition` 小於 0 以前會報錯。放空的報酬是 `-資產報酬 + 2 * 現金報酬`（本金與賣空所得都賺現金利率），新的 `BacktestOptions.BorrowFee` 對放空部位每列收一筆借券費。以前成功的呼叫結果不變（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 
+### `quant/ta`
+
+- `ta.FilterRule(prices, threshold, opts...)` 是 Alexander 的濾嘴法則（Fama 與 Blume 1966）：從最近低點漲了 `threshold` 就買進，從最近高點跌了 `threshold` 就賣出或放空，回傳每列 1／0／-1 的部位，可直接交給 `quant.BacktestSignal`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+
 ## v0.3.5
 
 ### Core

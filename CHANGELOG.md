@@ -30,6 +30,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - **Behavior change**: `quant.BacktestSignal` now accepts a position from -1 (fully short) to 1; a signal or `InitialPosition` below 0 used to be an error. A short earns `-assetReturn + 2 * cashReturn` (the capital and the sale proceeds both earn the cash return), and the new `BacktestOptions.BorrowFee` charges a per-row fee on the short position. Every call that succeeded before gives the same result ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 
+### `quant/ta`
+
+- `ta.FilterRule(prices, threshold, opts...)` is Alexander's filter rule (Fama and Blume 1966): buy after a rise of `threshold` from the last low, sell or sell short after a fall of `threshold` from the last high, returned as a 1 / 0 / -1 position per row that `quant.BacktestSignal` takes as it is ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
+
 ## v0.3.5
 
 ### Core
