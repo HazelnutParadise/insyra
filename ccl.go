@@ -77,6 +77,13 @@ func (c *dataTableContext) GetRowAt(rowIndex int) (any, error) {
 	if rowIndex < 0 {
 		return nil, fmt.Errorf("row index %d out of range", rowIndex)
 	}
+	rows := 0
+	for i := range c.tableData {
+		rows = max(rows, len(c.tableData[i]))
+	}
+	if rowIndex >= rows {
+		return nil, fmt.Errorf("row index %d out of range, the table has %d row(s)", rowIndex, rows)
+	}
 	// Construct row from tableData
 	row := make([]any, len(c.tableData))
 	for i := range c.tableData {
