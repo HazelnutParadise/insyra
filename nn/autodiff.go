@@ -1327,13 +1327,27 @@ func softmaxCrossEntropyForward(logits, labels *Tensor) (*Tensor, error) {
 				maxValue = logits.data[row*classes+class]
 			}
 		}
-		var sum float64
+		// The loss is softplus(-m) with the margin m = z_label - log(sum of the
+		// other exponentials), not -z_label + log(sum): adding the other
+		// exponentials to 1 first loses them once the margin passes about 36.
+		var others float64
 		for class := 0; class < classes; class++ {
-			sum += math.Exp(float64(logits.data[row*classes+class] - maxValue))
+			if class != int(label) {
+				others += math.Exp(float64(logits.data[row*classes+class] - maxValue))
+			}
 		}
-		total += -float64(logits.data[row*classes+int(label)]-maxValue) + math.Log(sum)
+		margin := float64(logits.data[row*classes+int(label)]-maxValue) - math.Log(others)
+		total += softplus(-margin)
 	}
 	return newFloat32Tensor(nil, []float32{float32(total / float64(rows))})
+}
+
+// softplus is log(1+e^x) without overflow or the loss of a small e^x.
+func softplus(x float64) float64 {
+	if x > 0 {
+		return x + math.Log1p(math.Exp(-x))
+	}
+	return math.Log1p(math.Exp(x))
 }
 
 func softmaxCrossEntropyVJP(logits, labels, upstream *Tensor) (*Tensor, error) {
@@ -1356,15 +1370,24 @@ func softmaxCrossEntropyVJP(logits, labels, upstream *Tensor) (*Tensor, error) {
 				maxValue = logits.data[row*classes+class]
 			}
 		}
-		var sum float64
+		label := int(labels.int64Data[row])
+		var sum, others float64
 		for class := 0; class < classes; class++ {
-			sum += math.Exp(float64(logits.data[row*classes+class] - maxValue))
+			e := math.Exp(float64(logits.data[row*classes+class] - maxValue))
+			sum += e
+			if class != label {
+				others += e
+			}
 		}
 		for class := 0; class < classes; class++ {
 			probability := float32(math.Exp(float64(logits.data[row*classes+class]-maxValue)) / sum)
 			gradient.data[row*classes+class] = probability * scale
 		}
-		gradient.data[row*classes+int(labels.int64Data[row])] -= scale
+		// The label's gradient is p-1 = -(sum of the others)/sum. Taking p and
+		// subtracting 1 rounds to exactly 0 once the margin passes about 16.6
+		// in float32, while the other classes' gradients stay nonzero and the
+		// row stops summing to zero.
+		gradient.data[row*classes+label] = float32(-others/sum) * scale
 	}
 	return gradient, nil
 }
