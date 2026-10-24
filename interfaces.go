@@ -258,6 +258,7 @@ type IDataTable interface {
 	Clone() *DataTable
 	SliceRows(from, to int) *DataTable
 	SliceCols(from, to any) *DataTable
+	ColRange(from, to any) *DataTable
 	To2DSlice() [][]any
 	SimpleRandomSample(sampleSize int) *DataTable
 	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable
