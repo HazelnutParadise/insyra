@@ -38,6 +38,26 @@ func TestKaplanMeierMatchesSurvfit(t *testing.T) {
 	}
 }
 
+func TestKaplanMeierMedianOnATerminalPlateauUsesTheLastObservation(t *testing.T) {
+	// R: survfit(Surv(c(1,3), c(1,0))) leaves S at 0.5 after time 1 until the
+	// censored subject at time 3, so the median is (1+3)/2 = 2.
+	got, err := KaplanMeier(insyra.NewDataList(1.0, 3.0), insyra.NewDataList(true, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Median != 2 {
+		t.Errorf("median %v, want 2", got.Median)
+	}
+	// Several censored subjects after the plateau: the last one counts.
+	got, err = KaplanMeier(insyra.NewDataList(1.0, 2.0, 4.0, 5.0), insyra.NewDataList(true, true, false, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Median != 3.5 {
+		t.Errorf("median %v, want 3.5", got.Median)
+	}
+}
+
 func TestKaplanMeierMedianAtExactlyHalf(t *testing.T) {
 	// R: survfit(Surv(1:4, rep(1, 4))) has S = 0.75, 0.5, 0.25, 0 and median 2.5.
 	got, err := KaplanMeier(insyra.NewDataList(1.0, 2.0, 3.0, 4.0), insyra.NewDataList(true, true, true, true))

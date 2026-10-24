@@ -23,7 +23,8 @@ type KaplanMeierResult struct {
 	StdErr []float64
 	// Median is the first time the curve is at or below 0.5. When it equals 0.5
 	// on a stretch, the median is the midpoint of that stretch, as R's survival
-	// package reports it. It is NaN when the curve never reaches 0.5.
+	// package reports it; a stretch that runs to the end of the data ends at the
+	// last observation, censored or not. It is NaN when the curve never reaches 0.5.
 	Median float64
 	N      int // subjects
 	Total  int // events in all
@@ -103,8 +104,14 @@ func KaplanMeier(durations, observed insyra.IDataList) (*KaplanMeierResult, erro
 	for i, s := range res.Survival {
 		if s <= 0.5+1e-12 {
 			res.Median = res.Times[i]
-			if math.Abs(s-0.5) <= 1e-12 && i+1 < len(res.Times) {
-				res.Median = (res.Times[i] + res.Times[i+1]) / 2
+			if math.Abs(s-0.5) <= 1e-12 {
+				// The curve stays at 0.5 until the next event, or, on a terminal
+				// plateau, until the last observation, censored or not.
+				next := t[order[len(order)-1]]
+				if i+1 < len(res.Times) {
+					next = res.Times[i+1]
+				}
+				res.Median = (res.Times[i] + next) / 2
 			}
 			break
 		}
