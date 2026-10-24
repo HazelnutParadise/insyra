@@ -16,6 +16,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `stats.Autocorrelation(series, maxLag)` estimates the autocorrelation at each lag from 1 to `maxLag`, matching R's `acf`, with a white-noise test and a heteroskedasticity-robust test (Lo and MacKinlay 1988) for series whose volatility changes, such as daily returns ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 
+### `ml` and `nn`
+
+- `nn` matrix products, convolutions and edge sums now size their worker pool by `runtime.GOMAXPROCS(0)` instead of `runtime.NumCPU()`, so a program that lowers `GOMAXPROCS`, or runs several products at once, is no longer oversubscribed. Results are unchanged ([#537](https://github.com/HazelnutParadise/insyra/issues/537)).
+
 ## v0.3.5
 
 ### Core
