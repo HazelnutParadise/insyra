@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/quant/ta"
 )
 
 func nearlyAll(t *testing.T, name string, got *insyra.DataList, want []float64) {
@@ -145,4 +146,19 @@ func TestBacktestSignalRefusesPositionsBeyondFullShort(t *testing.T) {
 			t.Errorf("%s: no error", name)
 		}
 	}
+}
+
+// The long-short filter rule goes straight into the backtest: the position
+// during row t is what the rule decided on row t-1.
+func TestBacktestSignalTakesTheFilterRuleAsItIs(t *testing.T) {
+	closes := prices(100, 94, 100, 110, 103, 100)
+	signal, err := ta.FilterRule(closes, 0.05)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := BacktestSignal(signal, prices(0, -0.06, 0.0638, 0.10, -0.0636, -0.029))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nearlyAll(t, "positions", res.Positions, []float64{0, 0, -1, 1, 1, -1})
 }
