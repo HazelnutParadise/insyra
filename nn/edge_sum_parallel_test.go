@@ -52,7 +52,7 @@ func TestEdgeSumWorkerThreshold(t *testing.T) {
 	if got := edgeSumWorkers(1, 3, 3); got != 1 {
 		t.Fatalf("edgeSumWorkers(1, 3, 3) = %d, want 1", got)
 	}
-	if got, want := edgeSumWorkers(3, 20_000, 200_000), runtime.NumCPU(); got != want {
+	if got, want := edgeSumWorkers(3, 20_000, 200_000), runtime.GOMAXPROCS(0); got != want {
 		t.Fatalf("edgeSumWorkers(3, 20000, 200000) = %d, want %d", got, want)
 	}
 }

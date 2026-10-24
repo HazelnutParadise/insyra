@@ -13,16 +13,16 @@ func TestParallelMACThreshold(t *testing.T) {
 	if workers := parallelWorkerCountForMACs(parallelMACThreshold); workers != 1 {
 		t.Fatalf("worker count at threshold = %d, want serial", workers)
 	}
-	if workers := parallelWorkerCountForMACs(parallelMACThreshold + 1); workers != runtime.NumCPU() {
-		t.Fatalf("worker count above threshold = %d, want %d", workers, runtime.NumCPU())
+	if workers := parallelWorkerCountForMACs(parallelMACThreshold + 1); workers != runtime.GOMAXPROCS(0) {
+		t.Fatalf("worker count above threshold = %d, want %d", workers, runtime.GOMAXPROCS(0))
 	}
 }
 
 func TestBitIdenticalMatMul2D(t *testing.T) {
 	a := mustTestTensor(t, []int{64, 64}, patternedTestData(64*64))
 	b := mustTestTensor(t, []int{64, 64}, patternedTestData(64*64))
-	if workers := parallelWorkerCountForMACs(64, 64, 64); workers != runtime.NumCPU() {
-		t.Fatalf("2-D MatMul worker count = %d, want %d above threshold", workers, runtime.NumCPU())
+	if workers := parallelWorkerCountForMACs(64, 64, 64); workers != runtime.GOMAXPROCS(0) {
+		t.Fatalf("2-D MatMul worker count = %d, want %d above threshold", workers, runtime.GOMAXPROCS(0))
 	}
 
 	serial, err := matMul2DWithWorkers(a, b, 1)
@@ -44,8 +44,8 @@ func TestBitIdenticalMatMul2D(t *testing.T) {
 func TestBitIdenticalBatchedMatMul(t *testing.T) {
 	a := mustTestTensor(t, []int{2, 1, 32, 32}, patternedTestData(2*32*32))
 	b := mustTestTensor(t, []int{1, 3, 32, 32}, patternedTestData(3*32*32))
-	if workers := parallelWorkerCountForMACs(6, 32, 32, 32); workers != runtime.NumCPU() {
-		t.Fatalf("batched MatMul worker count = %d, want %d above threshold", workers, runtime.NumCPU())
+	if workers := parallelWorkerCountForMACs(6, 32, 32, 32); workers != runtime.GOMAXPROCS(0) {
+		t.Fatalf("batched MatMul worker count = %d, want %d above threshold", workers, runtime.GOMAXPROCS(0))
 	}
 
 	serial, err := matMulBatchedWithWorkers(a, b, 1)
@@ -69,8 +69,8 @@ func TestBitIdenticalConvWithGroupsAndDilation(t *testing.T) {
 	weights := mustTestTensor(t, []int{8, 2, 3, 3}, patternedTestData(8*2*3*3))
 	bias := mustTestTensor(t, []int{8}, patternedTestData(8))
 	options := ConvOptions{Pads: []int{2, 2, 2, 2}, Dilations: []int{2, 2}, Group: 2}
-	if workers := parallelWorkerCountForMACs(4, 8, 16, 16, 2, 3, 3); workers != runtime.NumCPU() {
-		t.Fatalf("Conv worker count = %d, want %d above threshold", workers, runtime.NumCPU())
+	if workers := parallelWorkerCountForMACs(4, 8, 16, 16, 2, 3, 3); workers != runtime.GOMAXPROCS(0) {
+		t.Fatalf("Conv worker count = %d, want %d above threshold", workers, runtime.GOMAXPROCS(0))
 	}
 
 	serial, err := convWithWorkers(input, weights, bias, 1, options)
