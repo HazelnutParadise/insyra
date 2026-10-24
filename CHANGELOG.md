@@ -12,6 +12,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - A row past the end of a table is now an error in CCL: `@.5000` or `@.(# + 1)` on the last row used to read as a row of nils and give a quiet wrong answer, and now fails like `A.5000` does. A script that relied on the nil row (for example `@.(# + 1)` as a "next row" that is empty on the last row) now fails there.
 
+### `ml` and `nn`
+
+- `nn` matrix products, convolutions and edge sums now size their worker pool by `runtime.GOMAXPROCS(0)` instead of `runtime.NumCPU()`, so a program that lowers `GOMAXPROCS`, or runs several products at once, is no longer oversubscribed. Results are unchanged ([#537](https://github.com/HazelnutParadise/insyra/issues/537)).
+
 ## v0.3.5
 
 ### Core
