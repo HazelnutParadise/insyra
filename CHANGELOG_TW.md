@@ -12,6 +12,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - CCL 讀取超出表格列數的列現在會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本（例如把 `@.(# + 1)` 當作「下一列」，最後一列為空）會在那一列失敗。
 
+### `stats`
+
+- `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+
 ### `ml` 與 `nn`
 
 - `nn.NewTape` 呼叫時不再立刻為 `math/rand` 建立種子來源，改在第一次有東西從 tape 抽亂數時才建立（`Dropout`、層的隨機初始化）。從不抽亂數的 tape 在 M3 上量測從 13–34 µs、5.7 KB 降到約 0.15–0.65 µs、304 B。每個種子（包括預設種子與零值 `Tape{}`）產生的遮罩與初始權重都和以前相同。（[#536](https://github.com/HazelnutParadise/insyra/issues/536)）

@@ -12,6 +12,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - A row past the end of a table is now an error in CCL: `@.5000` or `@.(# + 1)` on the last row used to read as a row of nils and give a quiet wrong answer, and now fails like `A.5000` does. A script that relied on the nil row (for example `@.(# + 1)` as a "next row" that is empty on the last row) now fails there.
 
+### `stats`
+
+- `stats.Autocorrelation(series, maxLag)` estimates the autocorrelation at each lag from 1 to `maxLag`, matching R's `acf`, with a white-noise test and a heteroskedasticity-robust test (Lo and MacKinlay 1988) for series whose volatility changes, such as daily returns ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
+
 ### `ml` and `nn`
 
 - `nn.NewTape` no longer seeds a `math/rand` source when it is called; the tape seeds it the first time something draws from it (`Dropout`, a layer's random initialisation). A tape that never draws costs about 0.15–0.65 µs and 304 B instead of 13–34 µs and 5.7 KB, measured on an M3. Masks and initial weights are the same values as before for every seed, including the default one and a zero `Tape{}`. ([#536](https://github.com/HazelnutParadise/insyra/issues/536))
