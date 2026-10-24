@@ -3,7 +3,6 @@ package nn
 import (
 	"fmt"
 	"math"
-	"math/rand"
 )
 
 // Dropout applies training-time inverted dropout. The mask comes from the
@@ -16,14 +15,12 @@ func (t *Tape) Dropout(input *Tensor, probability float32) (*Tensor, error) {
 	if math.IsNaN(float64(probability)) || math.IsInf(float64(probability), 0) || probability < 0 || probability >= 1 {
 		return nil, fmt.Errorf("dropout probability must be in [0, 1), got %g", probability)
 	}
-	if t.rng == nil {
-		t.rng = newDefaultTapeRNG()
-	}
+	rng := t.random()
 	keepScale := float32(1 / (1 - probability))
 	mask := make([]bool, len(input.data))
 	values := make([]float32, len(input.data))
 	for index, value := range input.data {
-		kept := probability == 0 || t.rng.Float32() >= probability
+		kept := probability == 0 || rng.Float32() >= probability
 		mask[index] = kept
 		if kept {
 			values[index] = value * keepScale
@@ -47,10 +44,6 @@ func (t *Tape) Dropout(input *Tensor, probability float32) (*Tensor, error) {
 		return []*Tensor{result}, err
 	})
 	return output, nil
-}
-
-func newDefaultTapeRNG() *rand.Rand {
-	return rand.New(rand.NewSource(1))
 }
 
 // StepLR decays an initial learning rate by gamma every stepSize steps.

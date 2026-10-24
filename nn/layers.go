@@ -66,13 +66,11 @@ func (l *denseLayer) Build(t *Tape) error {
 	if l.weight != nil {
 		return nil
 	}
-	if t.rng == nil {
-		t.rng = newDefaultTapeRNG()
-	}
+	rng := t.random()
 	scale := math.Sqrt(2 / float64(l.in))
 	values := make([]float32, l.in*l.out)
 	for index := range values {
-		values[index] = float32(t.rng.NormFloat64() * scale)
+		values[index] = float32(rng.NormFloat64() * scale)
 	}
 	weight, err := newFloat32Tensor([]int{l.in, l.out}, values)
 	if err != nil {

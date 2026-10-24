@@ -46,14 +46,12 @@ func (l *conv2DLayer) Build(t *Tape) error {
 	if l.weight != nil {
 		return nil
 	}
-	if t.rng == nil {
-		t.rng = newDefaultTapeRNG()
-	}
+	rng := t.random()
 	perGroup := l.in / l.opts.Group
 	scale := math.Sqrt(2 / float64(perGroup*l.kernel*l.kernel))
 	weightValues := make([]float32, l.out*perGroup*l.kernel*l.kernel)
 	for index := range weightValues {
-		weightValues[index] = float32(t.rng.NormFloat64() * scale)
+		weightValues[index] = float32(rng.NormFloat64() * scale)
 	}
 	weight, err := newFloat32Tensor([]int{l.out, perGroup, l.kernel, l.kernel}, weightValues)
 	if err != nil {
@@ -435,12 +433,10 @@ func (l *embeddingLayer) Build(t *Tape) error {
 	if l.weight != nil {
 		return nil
 	}
-	if t.rng == nil {
-		t.rng = newDefaultTapeRNG()
-	}
+	rng := t.random()
 	values := make([]float32, l.vocab*l.dims)
 	for index := range values {
-		values[index] = float32(t.rng.NormFloat64() * 0.02)
+		values[index] = float32(rng.NormFloat64() * 0.02)
 	}
 	weight, err := newFloat32Tensor([]int{l.vocab, l.dims}, values)
 	if err != nil {
