@@ -1115,6 +1115,30 @@ for _, a := range res {
 }
 ```
 
+### Runs Test
+
+```go
+func RunsTest(series insyra.IDataList, opts ...RunsTestOptions) (*RunsTestResult, error)
+```
+
+**Description:** Tests whether the order of up and down moves is random (Wald and Wolfowitz 1940). Each value is marked above or below a threshold, and a run is an unbroken stretch of one mark, so `++--+-` has four runs. Too few runs means the series keeps going the same way, too many means it keeps reversing. Values equal to the threshold are dropped before the runs are counted. The p-value comes from the standard normal distribution and needs a long series.
+
+**Parameters:**
+
+- `series`: The values in time order, with at least one above and one below the threshold.
+- `opts`: Optional `RunsTestOptions`: `Threshold` (default 0, the sign of a return; use the mean or median for other series) and `Correction` (a continuity correction of 0.5, off by default).
+
+**Returns:**
+
+- `*RunsTestResult`: `Runs`, `Above`, `Below`, `Dropped` (values equal to the threshold), `Expected` and `Variance` of the number of runs under a random order, `Z` and `PValue`.
+- `error`: a nil or empty list, a value that is not a finite number, a non-finite `Threshold`, more than one options value, or no value on one side of the threshold.
+
+```go
+res, err := stats.RunsTest(returns)
+fmt.Println(res.Runs, res.Expected, res.Z, res.PValue)
+res, err = stats.RunsTest(returns, stats.RunsTestOptions{Threshold: 0.0005})
+```
+
 ### Kaplan-Meier
 
 ```go

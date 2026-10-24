@@ -15,6 +15,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `stats`
 
 - `stats.Autocorrelation(series, maxLag)` estimates the autocorrelation at each lag from 1 to `maxLag`, matching R's `acf`, with a white-noise test and a heteroskedasticity-robust test (Lo and MacKinlay 1988) for series whose volatility changes, such as daily returns ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
+- `stats.RunsTest(series, opts...)` tests whether the order of up and down moves is random (Wald-Wolfowitz): it counts the runs above and below a threshold, 0 by default, and returns the expected number, `Z` and the p-value ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 
 ### `ml` and `nn`
 
