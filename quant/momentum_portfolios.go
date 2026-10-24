@@ -26,7 +26,7 @@ type MomentumResult struct {
 	// Groups has one row per reported month: the date, then group_1 to group_n,
 	// the return of the equal-weighted group (group_1 the losers, group_n the
 	// winners) averaged over the overlapping portfolios. A group with no
-	// return in a month is NaN there.
+	// return in a month, or in any of the overlapping portfolios averaged, is NaN there.
 	Groups *insyra.DataTable
 	// LongShort is group_n minus group_1 for each row of Groups.
 	LongShort *insyra.DataList
@@ -52,7 +52,8 @@ type MomentumResult struct {
 // when every return of its formation period is present, the formation return
 // being the compounded product of (1 + r) less 1, and equal signals share a
 // group as in QuantileSort. Within a group the stocks are equally weighted, and
-// one with no return in a holding month is left out of that month's average.
+// one with no return in a holding month is left out of that month's average. A group that has no
+// return at all in one of the overlapping portfolios makes that month's group return NaN. A stock whose compounded formation return overflows is not ranked.
 // A month is reported once Hold portfolios have been formed; at least groups
 // stocks must be ranked in a month for its portfolio to be formed.
 //
@@ -192,6 +193,11 @@ func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol st
 				continue
 			}
 			sig[s] = growth - 1
+			if math.IsNaN(sig[s]) || math.IsInf(sig[s], 0) {
+				// The compounded product overflowed; the stock cannot be ranked.
+				sig[s] = math.NaN()
+				continue
+			}
 			idx = append(idx, s)
 		}
 		if len(idx) < groups {
@@ -244,16 +250,20 @@ func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol st
 		outDates = append(outDates, monthValue[m])
 		g1, gn := 0.0, 0.0
 		for g := 0; g < groups; g++ {
-			sum, n := 0.0, 0
+			// A group is the average of all Hold portfolios; if one of them has no
+			// return in this month the average is unknown, not the mean of the rest.
+			sum, missing := 0.0, false
 			for k := 1; k <= hold; k++ {
-				if v := held[m-k][g][k-1]; !math.IsNaN(v) {
-					sum += v
-					n++
+				v := held[m-k][g][k-1]
+				if math.IsNaN(v) {
+					missing = true
+					break
 				}
+				sum += v
 			}
 			v := math.NaN()
-			if n > 0 {
-				v = sum / float64(n)
+			if !missing {
+				v = sum / float64(hold)
 			}
 			cols[g] = append(cols[g], v)
 			if g == 0 {
