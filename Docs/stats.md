@@ -1100,7 +1100,7 @@ func KaplanMeier(durations, observed insyra.IDataList) (*KaplanMeierResult, erro
 
 **Returns:**
 
-- `*KaplanMeierResult`: one entry per distinct event time in `Times`, `AtRisk`, `Events`, `Censored`, `Survival` and `StdErr` (Greenwood's standard error of the survival probability, `NaN` where every subject at risk had the event), plus `Median` (the first time the curve is at or below 0.5, the midpoint of the stretch when it is exactly 0.5, `NaN` if it never gets there), `N` and `Total`. The values match R's `survival::survfit`.
+- `*KaplanMeierResult`: one entry per distinct event time in `Times`, `AtRisk`, `Events`, `Censored`, `Survival` and `StdErr` (Greenwood's standard error of the survival probability, `NaN` where every subject at risk had the event), plus `Median` (the first time the curve is at or below 0.5, the midpoint of the stretch when it is exactly 0.5 and an event ends it (as R prints it; a stretch that runs out at a censored time stays at the last event, where R's `quantile()` would use the last observation), `NaN` if it never gets there), `N` and `Total`. The values match R's `survival::survfit`.
 - `error`: a nil or empty list, lists of different lengths, a negative or non-finite duration, or an `observed` that is not a bool or 0/1.
 
 ---
