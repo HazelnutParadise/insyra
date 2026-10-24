@@ -623,6 +623,8 @@ When used in `NEW()` or assignment, `@.n` can be used to copy an entire row into
 
 #### Total Table Reference
 
+A row number past the last row, such as `@.5000` on a 3-row table or `@.(# + 1)` on the last row, is an error, the same as `A.5000`.
+
 When `@` is used as an argument to an **Aggregate Function** (like `SUM`, `AVG`, etc.), it represents **all numeric values in the entire table**.
 
 ```
