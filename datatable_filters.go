@@ -103,15 +103,15 @@ func (dt *DataTable) SliceCols(from, to any) *DataTable {
 //
 // The result keeps every row, the row names and the table's name, and owns
 // its data. A bound that picks no column, lies outside the table, is of
-// another type, or comes after the other, and an empty table, record an error
-// on the table and return an empty DataTable. If columns have unequal
-// lengths, the shorter ones are padded with nil to the table's longest column.
+// another type, or comes after the other record an error on the table and
+// return an empty DataTable. ColRange(nil, nil) on a table with no columns is
+// the one empty range that is not an error. If columns have unequal lengths,
+// the shorter ones are padded with nil to the table's longest column.
 func (dt *DataTable) ColRange(from, to any) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		numCols := len(dt.columns)
-		if numCols == 0 {
-			dt.warn("ColRange", "the table has no columns")
+		if numCols == 0 && from == nil && to == nil {
 			return
 		}
 		start, end := 0, numCols-1

@@ -3785,7 +3785,7 @@ Each bound is a column selector with two spellings, an Excel-style letter or an 
 - `from`: The first column to keep: a letter or an int position; `nil` for the first column.
 - `to`: The last column to keep, in the same forms; `nil` for the last column.
 
-Every bound must be a column the table has. Unlike `SliceCols`, an int equal to `NumCols()` is out of range, because there is no column there to include. A bound that picks no column (a letter past the last column, an int outside `-NumCols()` to `NumCols()-1`), a value of another type, a `from` that comes after `to`, or a table with no columns records an error on the table and returns an empty DataTable. When columns have unequal lengths, the shorter ones are padded with `nil` to the table's longest column.
+Every bound must be a column the table has. Unlike `SliceCols`, an int equal to `NumCols()` is out of range, because there is no column there to include. A bound that picks no column (a letter past the last column, an int outside `-NumCols()` to `NumCols()-1`), a value of another type, or a `from` that comes after `to` records an error on the table and returns an empty DataTable. `ColRange(nil, nil)` on a table with no columns is not an error; it returns an empty DataTable. When columns have unequal lengths, the shorter ones are padded with `nil` to the table's longest column.
 
 **Returns:**
 

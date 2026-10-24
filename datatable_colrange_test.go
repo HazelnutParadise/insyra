@@ -79,7 +79,13 @@ func TestColRangeRefusesWhatItCannotRead(t *testing.T) {
 }
 
 func TestColRangeOnEmptyTable(t *testing.T) {
-	for _, c := range [][2]any{{nil, nil}, {"A", nil}, {0, 0}} {
+	// Two nil bounds on a table with no columns are the one empty range that
+	// is not an error; a bound that names a column is, as the column is absent.
+	dt := NewDataTable()
+	if got := dt.ColRange(nil, nil); got == nil || got.NumCols() != 0 || dt.Err() != nil {
+		t.Errorf("ColRange(nil, nil) on an empty table = %v, err %v, want an empty table and no error", got, dt.Err())
+	}
+	for _, c := range [][2]any{{"A", nil}, {nil, "A"}, {0, 0}} {
 		dt := NewDataTable()
 		got := dt.ColRange(c[0], c[1])
 		if got == nil || got.NumCols() != 0 {

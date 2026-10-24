@@ -119,7 +119,7 @@ Each bound of `ColRange` SHALL be an Excel-style letter or an int position, and 
 
 ### Requirement: A ColRange bound outside the table is an error
 
-A bound that picks no column, an int outside `-NumCols()` to `NumCols()-1`, a value of another type, a `from` that comes after `to`, or a table with no columns SHALL record an error on the table. `ColRange` SHALL then return an empty, non-nil DataTable and SHALL NOT panic.
+A bound that picks no column, an int outside `-NumCols()` to `NumCols()-1`, a value of another type, or a `from` that comes after `to` SHALL record an error on the table. `ColRange` SHALL then return an empty, non-nil DataTable and SHALL NOT panic.
 
 #### Scenario: A letter past the last column
 
