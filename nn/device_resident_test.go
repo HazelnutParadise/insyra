@@ -177,13 +177,18 @@ func TestToTheZeroDeviceIsAHostCopy(t *testing.T) {
 	}
 }
 
-func TestSetPrecisionRefusesTheToleranceMode(t *testing.T) {
+func TestSetPrecisionAcceptsTheThreeModesAndRefusesTheRest(t *testing.T) {
 	tape := NewTape()
-	if err := tape.SetPrecision(accel.PrecisionFloat32); err == nil {
-		t.Fatal("PrecisionFloat32 must be refused")
-	}
 	if tape.GetPrecision() != accel.PrecisionExact {
 		t.Fatalf("default precision = %q", tape.GetPrecision())
+	}
+	for _, precision := range []accel.Precision{accel.PrecisionFloat32Rounded, accel.PrecisionFloat32, accel.PrecisionExact} {
+		if err := tape.SetPrecision(precision); err != nil || tape.GetPrecision() != precision {
+			t.Fatalf("SetPrecision(%q) = %v, now %q", precision, err, tape.GetPrecision())
+		}
+	}
+	if err := tape.SetPrecision("float16"); err == nil {
+		t.Fatal("an unknown precision must be refused")
 	}
 }
 

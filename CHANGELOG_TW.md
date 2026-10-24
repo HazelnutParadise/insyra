@@ -6,6 +6,12 @@ v0.3.0 及更早的版本不重複收錄於此，請見 [GitHub Releases](https:
 
 English: [CHANGELOG.md](CHANGELOG.md)
 
+- `Tape.Custom` 現在接受裝置上的張量，所以你自己的 kernel 可以夾在 Insyra 的常駐運算之間並參與反向傳播，資料全程不離開裝置。tape 必須使用新的 `accel.PrecisionFloat32` 模式，`SetPrecision` 現在接受它：所有內建運算的計算方式與 `PrecisionFloat32Rounded` 相同，但因為你的 kernel 結果取決於裝置，tape 不再保證換一個裝置仍得到相同的位元。常駐的輸出與反向規則回傳的梯度由 tape 擁有，並在 `Clear` 時釋放。`Tensor.DeviceBuffer()` 把常駐張量的緩衝區借給 kernel，`nn.NewDeviceTensor(shape, buffer)` 則把 kernel 寫好的緩衝區包成擁有它的張量（[#546](https://github.com/HazelnutParadise/insyra/issues/546)）。
+
+### `accel`
+
+- `accel.NewKernel`、`Kernel.Bind` 與 `accel.Submit` 可以在 Insyra 張量所在的常駐 `DeviceBuffer` 上執行你自己的 WGSL compute shader，綁定配置與 Insyra 內建 kernel 相同：先是唯讀緩衝區，再來是可讀寫緩衝區，最後是 64 位元組的 uniform。`Bind` 只建一次 bind group，`Submit` 重複使用，每個 dispatch 的參數透過 dynamic offset 從共用的環形緩衝區讀取，所以每次啟動都不需要配置新物件。`Submit` 把所有 dispatch 依序放進同一次提交，並和 Insyra 的常駐運算共用一條佇列，因此兩者之間不需要同步；在 Apple M3 上，168 個 dispatch 一次 `Submit` 花 3.7 毫秒，分成 168 次呼叫則花 23.8 毫秒。`accel.ResidentLimits()` 回報裝置的緩衝區、workgroup 與大小上限，`accel.NewBitsBuffer` 與 `DeviceBuffer.BitsToHost` 能原封不動地搬移索引等 32 位元樣式，`DeviceBuffer.Write`、`WriteBits` 與 `Zero` 會先等前面的 kernel 做完，再就地覆寫緩衝區。Insyra 無法檢查你自己的 kernel，而且 Vulkan 後端不會夾住超出緩衝區尾端的寫入，請自行檢查索引（[#546](https://github.com/HazelnutParadise/insyra/issues/546)）。
+
 ## Unreleased
 
 ### Core
