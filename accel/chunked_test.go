@@ -246,8 +246,10 @@ func requireHardwareGPU(t *testing.T) {
 // use were sized on an M3; on Windows a single dispatch that runs past about
 // two seconds is aborted by the system, which loses the Vulkan device for the
 // rest of the process (measured on a GT 1030: every later submit failed with
-// vkQueueSubmit -4). The budget is deliberately far below that limit.
-const hardwareDispatchFMAs = 2e10
+// vkQueueSubmit -4). On that card 2e10 multiply-adds took about 2.4 s per
+// dispatch and lost the device in a full run, so the budget is 5e9, about 0.6 s
+// there.
+const hardwareDispatchFMAs = 5e9
 
 // hardwareQueryRows returns how many queries a hardware test should send so
 // that one dispatch over rowsPerDispatch rows of dims columns stays inside
