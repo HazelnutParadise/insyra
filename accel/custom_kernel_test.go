@@ -473,3 +473,25 @@ func TestBindingKeepsItsBuffersAlive(t *testing.T) {
 		t.Fatalf("Submit after the caller dropped its buffer = %v", err)
 	}
 }
+
+// A loop that binds and releases over the same buffer without submitting must
+// not keep every released bind group: the deferred releases are bounded.
+func TestBindAndReleaseWithoutSubmittingStaysBounded(t *testing.T) {
+	device := residentDeviceForTest(t)
+	k := mustKernel(t, KernelConfig{Name: "increment", WGSL: incrementWGSL, ReadWrite: 1})
+	b := mustBuffer(t, device, []float32{0})
+	for range 3000 {
+		bound, err := k.Bind(nil, bufs(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		bound.Release()
+	}
+	last := mustBind(t, k, nil, bufs(b))
+	if err := Submit(Dispatch{Binding: last, Params: [16]uint32{1}, Workgroups: workgroups(1)}); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustHost(t, b); got[0] != 1 {
+		t.Fatalf("after the loop the buffer = %v, want [1]", got)
+	}
+}

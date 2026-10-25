@@ -17,5 +17,5 @@
 ## 3. Documentation and verification
 
 - [x] 3.1 `Docs/accel.md`, `Docs/nn.md`, ENG.md, both CHANGELOGs.
-- [ ] 3.2 `go vet ./...`, `golangci-lint run`, `go test ./...`, the `INSYRA_ACCEL_GPU_TESTS=1` suites of `accel`, `accel/internal/wgpu` and `nn` on the M3.
+- [x] 3.2 `go vet ./...`, `golangci-lint run`, `go test ./...`, the `INSYRA_ACCEL_GPU_TESTS=1` suites of `accel`, `accel/internal/wgpu` and `nn` on the M3.
 - [x] 3.3 `openspec validate accel-custom-kernels --strict`.

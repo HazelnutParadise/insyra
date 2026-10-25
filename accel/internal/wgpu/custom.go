@@ -101,6 +101,9 @@ func (k *Kernel) Bind(reads, writes []*Buffer) (*Binding, error) {
 	if err := ensureRingLocked(h); err != nil {
 		return nil, err
 	}
+	if err := boundPendingLocked(); err != nil {
+		return nil, err
+	}
 	all := append(append([]*Buffer(nil), reads...), writes...)
 	entries := make([]gowgpu.BindGroupEntry, 0, len(all)+1)
 	for j, buffer := range all {
@@ -136,6 +139,9 @@ func (b *Binding) Release() {
 	b.released = true
 	pending = append(pending, b.group)
 	b.group = nil
+	// A loop that binds and releases without ever submitting would otherwise
+	// keep every released bind group until the next synchronisation.
+	_ = boundPendingLocked()
 }
 
 // Dispatch is one launch of a binding: its uniform values and its workgroup

@@ -14,6 +14,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
+- `accel.RoundedLog1p` 與 `accel.RoundedExpm1` 在常駐陣列上計算 `log(1+x)` 與 `e^x - 1`，結果正確捨入，並且在全部 2^32 個 float32 輸入上與主機逐位元一致，和 `RoundedExp`、`RoundedLog` 一樣。
+
 ### Core
 
 - CCL 讀取超出表格列數的列現在會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本（例如把 `@.(# + 1)` 當作「下一列」，最後一列為空）會在那一列失敗。
@@ -21,6 +23,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `ml` 與 `nn`
 
 - `nn.NewTape` 呼叫時不再立刻為 `math/rand` 建立種子來源，改在第一次有東西從 tape 抽亂數時才建立（`Dropout`、層的隨機初始化）。從不抽亂數的 tape 在 M3 上量測從 13–34 µs、5.7 KB 降到約 0.15–0.65 µs、304 B。每個種子（包括預設種子與零值 `Tape{}`）產生的遮罩與初始權重都和以前相同。（[#536](https://github.com/HazelnutParadise/insyra/issues/536)）
+
+- `nn.Tape.SoftmaxCrossEntropy` 在標籤的 logit 遠大於其他類別時，不再丟掉標籤那一項的梯度：反向以前用 p - 1，margin 超過約 16.6 後在 float32 裡剛好等於 0，其他類別的梯度卻還不是 0，整列梯度就不再加總為 0；現在改用其他類別機率總和的負值。損失也不會在 margin 超過約 36 後被捨入成 0。只有預設精度改變，`PrecisionFloat32Rounded` 不變。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
 
 - `nn.Tape.SoftTargetCrossEntropy(logits, targets)` 是對每個樣本一列機率的平均交叉熵（標籤平滑、mixup），`nn.Tape.DistillationLoss(student, teacher)` 是學生 logits 對 `softmax(teacher)` 的交叉熵，老師視為常數。某個 logit 領先超過約 16.6 時梯度仍然準確，學生等於老師時梯度剛好是 0，這是 Barron 描述的兩個數值錯誤（[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）。只支援主機張量，裝置上的張量會被拒絕。
 

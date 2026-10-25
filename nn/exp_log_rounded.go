@@ -252,7 +252,11 @@ func logHighPrecision(x float32) float32 {
 func logHighPrecisionExact(x float32) *big.Float {
 	const prec = uint(384)
 	p := uint(prec + 32)
-	v := new(big.Float).SetPrec(p).SetFloat64(float64(x))
+	return logBigFloat(new(big.Float).SetPrec(p).SetFloat64(float64(x)), p)
+}
+
+// logBigFloat returns the natural logarithm of v > 0 at precision p.
+func logBigFloat(v *big.Float, p uint) *big.Float {
 	m := new(big.Float).SetPrec(p)
 	e := v.MantExp(m)
 	m.Mul(m, new(big.Float).SetPrec(p).SetInt64(2))
@@ -297,4 +301,60 @@ func expLogLn2Big(prec uint) *big.Float {
 		sum.Set(next)
 	}
 	return sum.Mul(sum, new(big.Float).SetPrec(prec).SetInt64(2))
+}
+
+// log1pFloat32 returns the correctly rounded float32 value of log(1+x). The
+// float64 library result is used when it is farther than expLogSettleSteps
+// float64 steps from either adjacent float32 midpoint; otherwise 1+x, which a
+// float32 x makes exactly representable at this precision, goes through the
+// high-precision logarithm.
+func log1pFloat32(x float32) float32 {
+	switch {
+	case math.IsNaN(float64(x)):
+		return x
+	case x < -1:
+		return float32(math.NaN())
+	case x == -1:
+		return float32(math.Inf(-1))
+	case math.IsInf(float64(x), 1):
+		return x
+	case x == 0:
+		return x
+	}
+	t := math.Log1p(float64(x))
+	if expLogFloat64Settles(t) {
+		return float32(t)
+	}
+	const p = uint(416)
+	v := new(big.Float).SetPrec(p).SetFloat64(float64(x))
+	v.Add(v, new(big.Float).SetPrec(p).SetInt64(1))
+	out, _ := logBigFloat(v, p).Float32()
+	return out
+}
+
+// expm1Float32 returns the correctly rounded float32 value of e^x - 1, on the
+// same terms as log1pFloat32.
+func expm1Float32(x float32) float32 {
+	switch {
+	case math.IsNaN(float64(x)):
+		return x
+	case math.IsInf(float64(x), 1):
+		return x
+	case math.IsInf(float64(x), -1):
+		return -1
+	case x == 0:
+		return x
+	case x > 89:
+		return float32(math.Inf(1))
+	case x < -104:
+		return -1
+	}
+	t := math.Expm1(float64(x))
+	if expLogFloat64Settles(t) {
+		return float32(t)
+	}
+	r := expHighPrecisionExact(x)
+	r.Sub(r, new(big.Float).SetPrec(r.Prec()).SetInt64(1))
+	out, _ := r.Float32()
+	return out
 }

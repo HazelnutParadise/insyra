@@ -341,6 +341,32 @@ func RoundedLog(x *DeviceBuffer) (*DeviceBuffer, error) {
 	return x.wrap(out)
 }
 
+// RoundedExpm1 computes e^x - 1 for each element of a resident array,
+// correctly rounded.
+func RoundedExpm1(x *DeviceBuffer) (*DeviceBuffer, error) {
+	if x == nil {
+		return nil, errors.New("accel: device buffer is nil")
+	}
+	out, err := wgpu.Expm1Rounded(x.inner)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return x.wrap(out)
+}
+
+// RoundedLog1p computes log(1+x) for each element of a resident array,
+// correctly rounded.
+func RoundedLog1p(x *DeviceBuffer) (*DeviceBuffer, error) {
+	if x == nil {
+		return nil, errors.New("accel: device buffer is nil")
+	}
+	out, err := wgpu.Log1pRounded(x.inner)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return x.wrap(out)
+}
+
 // SoftmaxCrossEntropyState holds what the gradient of a cross-entropy loss
 // reuses from its forward pass, so each exponential is computed once. It
 // occupies device memory until Release is called.

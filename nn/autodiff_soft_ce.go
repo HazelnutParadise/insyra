@@ -110,11 +110,13 @@ func softmaxRow64(x []float32, q, logSoft []float64) int {
 			others += math.Exp(float64(v) - maxValue)
 		}
 	}
-	lse := maxValue + math.Log1p(others)
+	logOthers := math.Log1p(others)
 	for c, v := range x {
-		l := float64(v) - lse
+		// Shifted by the maximum first, so a large common offset in the
+		// logits cannot round the normalisation away.
+		l := (float64(v) - maxValue) - logOthers
 		if c == peak {
-			l = -math.Log1p(others)
+			l = -logOthers
 		}
 		if logSoft != nil {
 			logSoft[c] = l
@@ -163,6 +165,9 @@ func (t *Tape) softCE(name string, distill bool, logits, second *Tensor, target 
 			target(r, z, second.data[r*classes:(r+1)*classes], p)
 			peak := softmaxRow64(z, q, nil)
 			g := gradient.data[r*classes : (r+1)*classes]
+			if distill && distillNearEqualGradient(z, second.data[r*classes:(r+1)*classes], p, q, g, scale) {
+				continue
+			}
 			var mass float64 = 1
 			if !distill {
 				mass = 0
@@ -187,4 +192,45 @@ func (t *Tape) softCE(name string, distill bool, logits, second *Tensor, target 
 		return []*Tensor{gradient, nil}, nil
 	})
 	return loss, nil
+}
+
+// distillNearEqualGradient writes the gradient of a distillation row from the
+// student-teacher differences when they are small, where q - p subtracts two
+// probabilities that are almost equal and loses a difference that float32
+// could hold (Barron, arXiv 2610.31642, Eq. 9). With delta = z_S - z_T,
+// d = delta - sum(p*delta), s = d - log1p(sum(p*expm1(d))) = log(q/p),
+// u = p*expm1(s) = q - p, the gradient is u - q*sum(u). p holds softmax of the
+// teacher and q softmax of the student. It reports false, leaving g alone,
+// when some p underflows to 0 or d is larger than 1, where q - p is
+// accurate and expm1 would not be.
+func distillNearEqualGradient(student, teacher []float32, p, q []float64, g []float32, scale float64) bool {
+	var mean float64
+	for c := range p {
+		if !(p[c] > 0) {
+			return false
+		}
+		mean += p[c] * (float64(student[c]) - float64(teacher[c]))
+	}
+	d := make([]float64, len(p))
+	for c := range p {
+		d[c] = (float64(student[c]) - float64(teacher[c])) - mean
+		if !(math.Abs(d[c]) <= 1) {
+			return false
+		}
+	}
+	var drift float64
+	for c := range p {
+		drift += p[c] * math.Expm1(d[c])
+	}
+	shift := math.Log1p(drift)
+	u := make([]float64, len(p))
+	var total float64
+	for c := range p {
+		u[c] = p[c] * math.Expm1(d[c]-shift)
+		total += u[c]
+	}
+	for c := range p {
+		g[c] = float32((u[c] - q[c]*total) * scale)
+	}
+	return true
 }

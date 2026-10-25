@@ -251,3 +251,48 @@ func TestSoftCrossEntropyRefusesBadInput(t *testing.T) {
 		t.Error("shape mismatch: want an error")
 	}
 }
+
+// Differences far below float64's resolution of a probability near 1/2 still
+// give a gradient (Codex on #564).
+func TestDistillationGradientOfAVanishingDifference(t *testing.T) {
+	s, _ := NewTensor([]int{1, 2}, []float32{1e-20, 0})
+	te, _ := NewTensor([]int{1, 2}, []float32{0, 0})
+	tape := NewTape()
+	defer tape.Close()
+	if _, err := tape.Param(s); err != nil {
+		t.Fatal(err)
+	}
+	loss, err := tape.DistillationLoss(s, te)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := softCEBackward(t, tape, loss, s)
+	if got := float64(g.data[0]); math.Abs(got-2.5e-21) > 1e-6*2.5e-21 {
+		t.Errorf("grad[0] = %g, want 2.5e-21", got)
+	}
+	if got := float64(g.data[1]); math.Abs(got+2.5e-21) > 1e-6*2.5e-21 {
+		t.Errorf("grad[1] = %g, want -2.5e-21", got)
+	}
+}
+
+// A large common offset in the logits changes nothing (Codex on #564).
+func TestSoftTargetCrossEntropyIgnoresACommonOffset(t *testing.T) {
+	z, _ := NewTensor([]int{1, 2}, []float32{1e20, 1e20})
+	p, _ := NewTensor([]int{1, 2}, []float32{0, 1})
+	tape := NewTape()
+	defer tape.Close()
+	if _, err := tape.Param(z); err != nil {
+		t.Fatal(err)
+	}
+	loss, err := tape.SoftTargetCrossEntropy(z, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := softCEBackward(t, tape, loss, z)
+	if got := float64(loss.data[0]); math.Abs(got-math.Ln2) > 1e-6 {
+		t.Errorf("loss = %g, want ln 2", got)
+	}
+	if g.data[0] != 0.5 || g.data[1] != -0.5 {
+		t.Errorf("grad = %v, want [0.5 -0.5]", g.data)
+	}
+}
