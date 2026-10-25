@@ -491,7 +491,10 @@ func (noopExecutor) Execute(context.Context, ExecuteRequest) (ExecuteResponse, e
 // One physical card seen as CUDA and as WebGPU keeps the WebGPU entry when only
 // WebGPU has an executor, and keeps CUDA when both do.
 func TestDedupePrefersTheBackendThatHasAnExecutor(t *testing.T) {
-	t.Cleanup(ResetBackendExecutorsForTest)
+	// Capture the built-in registrations first, so the cleanup restores them
+	// instead of leaving the registry empty for every later test.
+	resetBackendExecutorsForTest()
+	t.Cleanup(resetBackendExecutorsForTest)
 	ResetBackendExecutorsForTest()
 	cuda := Device{ID: "cuda:nvml:0", Name: "GPU", Vendor: "nvidia", Backend: BackendCUDA}
 	web := Device{ID: "webgpu:wgpu:0", Name: "GPU", Vendor: "nvidia", Backend: BackendWebGPU}
