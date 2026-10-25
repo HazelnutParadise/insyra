@@ -48,6 +48,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `datafetch`
 
 - `datafetch.Fugle(cfg)` reads Taiwan stock data from Fugle's market data API: `Stock.HistoricalCandles` (historical candles, ranges over a year cut into pieces), `Stock.IntradayCandles`, `Stock.IntradayQuote`, `Stock.IntradayTrades`, `Stock.IntradayVolumes` and `Stock.IntradayTickers`, each with a `Context` form, and the typed errors `ErrFugleAuth`, `ErrFuglePlan` and `ErrFugleThrottled` ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
+- `client.FutOpt` of `datafetch.Fugle` reads Fugle's intraday futures and options data: `IntradayProducts`, `IntradayTickers`, `IntradayTicker`, `IntradayQuote`, `IntradayCandles`, `IntradayTrades` and `IntradayVolumes`, each with a `Context` form ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
 
 ## v0.3.5
 
