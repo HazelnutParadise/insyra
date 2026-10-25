@@ -111,8 +111,19 @@ type FugleConfig struct {
 // Fugle. A client that did not come from Fugle returns an error from every
 // method.
 type FugleClient struct {
+	// Stock holds the stock endpoints.
+	Stock FugleStock
+
 	base    *TWStockClient
 	baseURL string
+}
+
+// FugleStock is the stock endpoints of a FugleClient, reached as client.Stock.
+// The Intraday methods are about the current trading day and the Historical
+// methods about past days. A FugleStock that is not the Stock field of a client
+// from Fugle returns an error from every method.
+type FugleStock struct {
+	c *FugleClient
 }
 
 // Fugle creates a client for the Fugle market data REST API.
@@ -138,7 +149,9 @@ func Fugle(cfg FugleConfig) (*FugleClient, error) {
 	if baseURL == "" {
 		baseURL = defaultFugleBaseURL
 	}
-	return &FugleClient{base: base, baseURL: baseURL}, nil
+	client := &FugleClient{base: base, baseURL: baseURL}
+	client.Stock = FugleStock{c: client}
+	return client, nil
 }
 
 func (c *FugleClient) usable() error {
@@ -296,7 +309,7 @@ func oneFlag(flags []bool, name string) (bool, error) {
 	return false, fmt.Errorf("datafetch: at most one %s flag may be given, got %d", name, len(flags))
 }
 
-// FugleHistoricalCandlesParams are the settings of StockHistoricalCandles.
+// FugleHistoricalCandlesParams are the settings of HistoricalCandles.
 type FugleHistoricalCandlesParams struct {
 	// From and To are the first and last day wanted. Leave both zero for the API's
 	// default, the last month. To alone defaults From to nothing and is refused;
@@ -317,13 +330,13 @@ var fugleCandleFields = map[string]bool{"open": true, "high": true, "low": true,
 
 var fugleCandleColumns = []string{"date", "open", "high", "low", "close", "volume", "average", "turnover", "change"}
 
-// StockHistoricalCandles returns a stock's historical candles. It is StockHistoricalCandlesContext
+// HistoricalCandles returns a stock's historical candles. It is HistoricalCandlesContext
 // with context.Background().
-func (c *FugleClient) StockHistoricalCandles(symbol string, p FugleHistoricalCandlesParams) (*insyra.DataTable, error) {
-	return c.StockHistoricalCandlesContext(context.Background(), symbol, p)
+func (s FugleStock) HistoricalCandles(symbol string, p FugleHistoricalCandlesParams) (*insyra.DataTable, error) {
+	return s.HistoricalCandlesContext(context.Background(), symbol, p)
 }
 
-// StockHistoricalCandlesContext is StockHistoricalCandles with a context. The limiter wait, each
+// HistoricalCandlesContext is HistoricalCandles with a context. The limiter wait, each
 // request and each retry backoff stop when ctx is done.
 //
 // The API refuses a range of a year or more, so a day or minute range longer
@@ -335,7 +348,8 @@ func (c *FugleClient) StockHistoricalCandles(symbol string, p FugleHistoricalCan
 // day, and a minute's is the exchange's timestamp. Volume is in shares for day,
 // week and month candles and in lots (1,000 shares) for minute candles of listed
 // stocks. Adjusted prices are adjusted as of the day of the request.
-func (c *FugleClient) StockHistoricalCandlesContext(ctx context.Context, symbol string, p FugleHistoricalCandlesParams) (*insyra.DataTable, error) {
+func (s FugleStock) HistoricalCandlesContext(ctx context.Context, symbol string, p FugleHistoricalCandlesParams) (*insyra.DataTable, error) {
+	c := s.c
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
@@ -438,7 +452,7 @@ func (c *FugleClient) StockHistoricalCandlesContext(ctx context.Context, symbol 
 	return fugleTable(out, fugleCandleColumns), nil
 }
 
-// FugleIntradayCandlesParams are the settings of StockIntradayCandles.
+// FugleIntradayCandlesParams are the settings of IntradayCandles.
 type FugleIntradayCandlesParams struct {
 	// Timeframe is the candle length in minutes, FugleTimeframe1Min to
 	// FugleTimeframe60Min. Empty means the API default.
@@ -449,15 +463,16 @@ type FugleIntradayCandlesParams struct {
 	Descending bool
 }
 
-// StockIntradayCandles returns today's candles of a stock. It is
-// StockIntradayCandlesContext with context.Background().
-func (c *FugleClient) StockIntradayCandles(symbol string, p FugleIntradayCandlesParams) (*insyra.DataTable, error) {
-	return c.StockIntradayCandlesContext(context.Background(), symbol, p)
+// IntradayCandles returns today's candles of a stock. It is
+// IntradayCandlesContext with context.Background().
+func (s FugleStock) IntradayCandles(symbol string, p FugleIntradayCandlesParams) (*insyra.DataTable, error) {
+	return s.IntradayCandlesContext(context.Background(), symbol, p)
 }
 
-// StockIntradayCandlesContext is StockIntradayCandles with a context. The
+// IntradayCandlesContext is IntradayCandles with a context. The
 // columns are date (a time.Time), open, high, low, close, volume and average.
-func (c *FugleClient) StockIntradayCandlesContext(ctx context.Context, symbol string, p FugleIntradayCandlesParams) (*insyra.DataTable, error) {
+func (s FugleStock) IntradayCandlesContext(ctx context.Context, symbol string, p FugleIntradayCandlesParams) (*insyra.DataTable, error) {
+	c := s.c
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
@@ -492,10 +507,10 @@ func (c *FugleClient) StockIntradayCandlesContext(ctx context.Context, symbol st
 	return fugleTable(rows, fugleCandleColumns), nil
 }
 
-// StockIntradayQuote returns a stock's current quote as a one-row table. It is
-// StockIntradayQuoteContext with context.Background().
-func (c *FugleClient) StockIntradayQuote(symbol string, oddLot ...bool) (*insyra.DataTable, error) {
-	return c.StockIntradayQuoteContext(context.Background(), symbol, oddLot...)
+// IntradayQuote returns a stock's current quote as a one-row table. It is
+// IntradayQuoteContext with context.Background().
+func (s FugleStock) IntradayQuote(symbol string, oddLot ...bool) (*insyra.DataTable, error) {
+	return s.IntradayQuoteContext(context.Background(), symbol, oddLot...)
 }
 
 var fugleQuoteColumns = []string{
@@ -510,13 +525,14 @@ var fugleQuoteColumns = []string{
 	"tradingHalt_isHalted", "tradingHalt_time", "lastUpdated", "serial",
 }
 
-// StockIntradayQuoteContext is StockIntradayQuote with a context. oddLot asks for the odd-lot
+// IntradayQuoteContext is IntradayQuote with a context. oddLot asks for the odd-lot
 // quote; more than one flag is an error. The table has one row. A nested object
 // becomes columns named after it and its field (total_tradeVolume,
 // lastTrade_price), and the best bids and asks become bids_1_price,
 // bids_1_size, asks_1_price and so on, best first. A field the API leaves out is
 // a missing column, not a zero.
-func (c *FugleClient) StockIntradayQuoteContext(ctx context.Context, symbol string, oddLot ...bool) (*insyra.DataTable, error) {
+func (s FugleStock) IntradayQuoteContext(ctx context.Context, symbol string, oddLot ...bool) (*insyra.DataTable, error) {
+	c := s.c
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
@@ -565,7 +581,7 @@ func flattenFugle(prefix string, v any, out map[string]any) {
 	}
 }
 
-// FugleIntradayTickersParams are the settings of StockIntradayTickers.
+// FugleIntradayTickersParams are the settings of IntradayTickers.
 type FugleIntradayTickersParams struct {
 	// Type is the kind of security. It is required.
 	Type FugleTickerType
@@ -577,15 +593,16 @@ type FugleIntradayTickersParams struct {
 	IsNormal, IsAttention, IsDisposition, IsHalted bool
 }
 
-// StockIntradayTickers returns the list of securities. It is StockIntradayTickersContext with
+// IntradayTickers returns the list of securities. It is IntradayTickersContext with
 // context.Background().
-func (c *FugleClient) StockIntradayTickers(p FugleIntradayTickersParams) (*insyra.DataTable, error) {
-	return c.StockIntradayTickersContext(context.Background(), p)
+func (s FugleStock) IntradayTickers(p FugleIntradayTickersParams) (*insyra.DataTable, error) {
+	return s.IntradayTickersContext(context.Background(), p)
 }
 
-// StockIntradayTickersContext is StockIntradayTickers with a context. The columns are symbol,
+// IntradayTickersContext is IntradayTickers with a context. The columns are symbol,
 // name and industry, which is nil for a ticker without one.
-func (c *FugleClient) StockIntradayTickersContext(ctx context.Context, p FugleIntradayTickersParams) (*insyra.DataTable, error) {
+func (s FugleStock) IntradayTickersContext(ctx context.Context, p FugleIntradayTickersParams) (*insyra.DataTable, error) {
+	c := s.c
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
@@ -619,7 +636,7 @@ func (c *FugleClient) StockIntradayTickersContext(ctx context.Context, p FugleIn
 	return fugleTable(rows, []string{"symbol", "name", "industry"}), nil
 }
 
-// FugleIntradayTradesParams are the settings of StockIntradayTrades.
+// FugleIntradayTradesParams are the settings of IntradayTrades.
 type FugleIntradayTradesParams struct {
 	// OddLot asks for odd-lot trades.
 	OddLot bool
@@ -632,16 +649,17 @@ type FugleIntradayTradesParams struct {
 	Trial bool
 }
 
-// StockIntradayTrades returns today's trades of a stock. It is StockIntradayTradesContext with
+// IntradayTrades returns today's trades of a stock. It is IntradayTradesContext with
 // context.Background().
-func (c *FugleClient) StockIntradayTrades(symbol string, p FugleIntradayTradesParams) (*insyra.DataTable, error) {
-	return c.StockIntradayTradesContext(context.Background(), symbol, p)
+func (s FugleStock) IntradayTrades(symbol string, p FugleIntradayTradesParams) (*insyra.DataTable, error) {
+	return s.IntradayTradesContext(context.Background(), symbol, p)
 }
 
-// StockIntradayTradesContext is StockIntradayTrades with a context. The columns are bid, ask,
+// IntradayTradesContext is IntradayTrades with a context. The columns are bid, ask,
 // price, size, volume, time and serial; bid, ask and volume are nil where the
 // API leaves them out. time is the API's number, unchanged.
-func (c *FugleClient) StockIntradayTradesContext(ctx context.Context, symbol string, p FugleIntradayTradesParams) (*insyra.DataTable, error) {
+func (s FugleStock) IntradayTradesContext(ctx context.Context, symbol string, p FugleIntradayTradesParams) (*insyra.DataTable, error) {
+	c := s.c
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
@@ -682,16 +700,17 @@ func (c *FugleClient) StockIntradayTradesContext(ctx context.Context, symbol str
 	return fugleTable(rows, []string{"bid", "ask", "price", "size", "volume", "time", "serial"}), nil
 }
 
-// StockIntradayVolumes returns today's volume at each price. It is StockIntradayVolumesContext
+// IntradayVolumes returns today's volume at each price. It is IntradayVolumesContext
 // with context.Background().
-func (c *FugleClient) StockIntradayVolumes(symbol string, oddLot ...bool) (*insyra.DataTable, error) {
-	return c.StockIntradayVolumesContext(context.Background(), symbol, oddLot...)
+func (s FugleStock) IntradayVolumes(symbol string, oddLot ...bool) (*insyra.DataTable, error) {
+	return s.IntradayVolumesContext(context.Background(), symbol, oddLot...)
 }
 
-// StockIntradayVolumesContext is StockIntradayVolumes with a context. The columns are price,
+// IntradayVolumesContext is IntradayVolumes with a context. The columns are price,
 // volume, volumeAtBid and volumeAtAsk. The two at-bid and at-ask volumes may not
 // add up to volume, because the first trade of the session is not split.
-func (c *FugleClient) StockIntradayVolumesContext(ctx context.Context, symbol string, oddLot ...bool) (*insyra.DataTable, error) {
+func (s FugleStock) IntradayVolumesContext(ctx context.Context, symbol string, oddLot ...bool) (*insyra.DataTable, error) {
+	c := s.c
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}

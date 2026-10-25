@@ -57,7 +57,7 @@ func TestFugleSendsTheAPIKeyAndReadsDailyCandles(t *testing.T) {
 			{"date":"2024-01-02","open":585,"high":589,"low":583,"close":590,"volume":21000000,"change":5}],"sort":"asc"}`))
 	})
 	c := fs.client(t, FugleConfig{APIKey: "key=="})
-	dt, err := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2024, 1, 1), To: day(2024, 1, 31), Adjusted: true, Fields: []string{"open", "close", "volume", "change"}})
+	dt, err := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2024, 1, 1), To: day(2024, 1, 31), Adjusted: true, Fields: []string{"open", "close", "volume", "change"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestFugleCandlesCutARangeOverAYearIntoPieces(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[{"date":"` + from.Format("2006-01-02") + `","open":1,"high":1,"low":1,"close":1,"volume":1}]}`))
 	})
 	c := fs.client(t, FugleConfig{})
-	dt, err := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2022, 1, 1), To: day(2024, 6, 30)})
+	dt, err := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2022, 1, 1), To: day(2024, 6, 30)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestFugleCandlesTreatA404AsNoDataInThatPiece(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[{"date":"` + r.URL.Query().Get("from") + `","open":1,"high":1,"low":1,"close":1,"volume":1}]}`))
 	})
 	c := fs.client(t, FugleConfig{Retries: 3})
-	dt, err := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2022, 1, 1), To: day(2024, 6, 30)})
+	dt, err := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2022, 1, 1), To: day(2024, 6, 30)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestFugleCandlesTreatA404AsNoDataInThatPiece(t *testing.T) {
 func TestFugleCandlesWithNoDataAnywhereAreAnEmptyTable(t *testing.T) {
 	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) { http.Error(w, `{}`, http.StatusNotFound) })
 	c := fs.client(t, FugleConfig{})
-	dt, err := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2024, 1, 1), To: day(2024, 1, 5)})
+	dt, err := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2024, 1, 1), To: day(2024, 1, 5)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,13 +155,13 @@ func TestFugleCandlesWithNoDataAnywhereAreAnEmptyTable(t *testing.T) {
 func TestFugleWeeklyAndMonthlyCandlesAreNotCut(t *testing.T) {
 	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"data":[]}`)) })
 	c := fs.client(t, FugleConfig{})
-	if _, err := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2020, 1, 1), To: day(2024, 1, 1), Timeframe: FugleTimeframeMonth}); err == nil {
+	if _, err := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2020, 1, 1), To: day(2024, 1, 1), Timeframe: FugleTimeframeMonth}); err == nil {
 		t.Error("a monthly range over a year was accepted")
 	}
 	if len(fs.requests) != 0 {
 		t.Errorf("%d requests were sent for a refused range", len(fs.requests))
 	}
-	if _, err := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2023, 6, 1), To: day(2024, 1, 1), Timeframe: FugleTimeframeWeek}); err != nil {
+	if _, err := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2023, 6, 1), To: day(2024, 1, 1), Timeframe: FugleTimeframeWeek}); err != nil {
 		t.Errorf("a weekly range under a year: %v", err)
 	}
 	if len(fs.requests) != 1 {
@@ -175,7 +175,7 @@ func TestFugleMinuteCandlesParseTheirTimestamps(t *testing.T) {
 			{"date":"2024-01-02T09:00:00.000+08:00","open":589,"high":591,"low":588,"close":590,"volume":3000,"average":589.8}]}`))
 	})
 	c := fs.client(t, FugleConfig{})
-	dt, err := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2024, 1, 2), To: day(2024, 1, 2), Timeframe: FugleTimeframe5Min})
+	dt, err := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2024, 1, 2), To: day(2024, 1, 2), Timeframe: FugleTimeframe5Min})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestFugleErrorsAreTypedAndOnlyThrottlingIsRetried(t *testing.T) {
 			http.Error(w, `{"statusCode":`+http.StatusText(tc.status)+`,"message":"nope"}`, tc.status)
 		})
 		c := fs.client(t, FugleConfig{Retries: 2})
-		_, err := c.StockIntradayQuote("2330")
+		_, err := c.Stock.IntradayQuote("2330")
 		if !errors.Is(err, tc.want) {
 			t.Errorf("status %d: error %v, want %v", tc.status, err, tc.want)
 		}
@@ -225,7 +225,7 @@ func TestFugleQuoteIsOneRowWithNestedFieldsFlattened(t *testing.T) {
 			"asks":[{"price":590,"size":5}],"isClose":false}`))
 	})
 	c := fs.client(t, FugleConfig{})
-	dt, err := c.StockIntradayQuote("2330", true)
+	dt, err := c.Stock.IntradayQuote("2330", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestFugleQuoteIsOneRowWithNestedFieldsFlattened(t *testing.T) {
 			t.Errorf("%s = %#v, want %#v", name, got, want)
 		}
 	}
-	if _, err := c.StockIntradayQuote("2330", true, false); err == nil {
+	if _, err := c.Stock.IntradayQuote("2330", true, false); err == nil {
 		t.Error("two odd-lot flags were accepted")
 	}
 }
@@ -275,18 +275,18 @@ func TestFugleTickersTradesVolumesAndIntradayCandles(t *testing.T) {
 	})
 	c := fs.client(t, FugleConfig{})
 
-	tickers, err := c.StockIntradayTickers(FugleIntradayTickersParams{Type: FugleTickerEquity, Exchange: "TWSE", IsNormal: true})
+	tickers, err := c.Stock.IntradayTickers(FugleIntradayTickersParams{Type: FugleTickerEquity, Exchange: "TWSE", IsNormal: true})
 	if err != nil || tickers.NumRows() != 2 {
 		t.Fatalf("tickers: %v rows=%d", err, tickers.NumRows())
 	}
 	if got := tickers.GetColByName("industry").Data(); got[0] != nil || got[1] != "24" {
 		t.Errorf("industry column %v: a ticker without one must be nil", got)
 	}
-	if _, err := c.StockIntradayTickers(FugleIntradayTickersParams{}); err == nil {
+	if _, err := c.Stock.IntradayTickers(FugleIntradayTickersParams{}); err == nil {
 		t.Error("tickers without a type were accepted")
 	}
 
-	trades, err := c.StockIntradayTrades("2330", FugleIntradayTradesParams{Limit: 5, Offset: 2, Ascending: true, Trial: true})
+	trades, err := c.Stock.IntradayTrades("2330", FugleIntradayTradesParams{Limit: 5, Offset: 2, Ascending: true, Trial: true})
 	if err != nil || trades.NumRows() != 2 {
 		t.Fatalf("trades: %v", err)
 	}
@@ -294,12 +294,12 @@ func TestFugleTickersTradesVolumesAndIntradayCandles(t *testing.T) {
 		t.Errorf("bid column %v", got)
 	}
 
-	volumes, err := c.StockIntradayVolumes("2330")
+	volumes, err := c.Stock.IntradayVolumes("2330")
 	if err != nil || volumes.NumRows() != 1 || volumes.GetColByName("volumeAtBid").Data()[0] != int64(1500) {
 		t.Fatalf("volumes: %v", err)
 	}
 
-	bars, err := c.StockIntradayCandles("2330", FugleIntradayCandlesParams{Timeframe: FugleTimeframe5Min})
+	bars, err := c.Stock.IntradayCandles("2330", FugleIntradayCandlesParams{Timeframe: FugleTimeframe5Min})
 	if err != nil || bars.NumRows() != 1 {
 		t.Fatalf("intraday candles: %v", err)
 	}
@@ -312,34 +312,33 @@ func TestFugleRefusesBadInputBeforeSendingAnything(t *testing.T) {
 	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"data":[]}`)) })
 	c := fs.client(t, FugleConfig{})
 	for name, call := range map[string]func() error{
-		"empty symbol": func() error { _, e := c.StockIntradayQuote(""); return e },
+		"empty symbol": func() error { _, e := c.Stock.IntradayQuote(""); return e },
 		"bad timeframe": func() error {
-			_, e := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{Timeframe: "2"})
+			_, e := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{Timeframe: "2"})
 			return e
 		},
 		"bad field": func() error {
-			_, e := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{Fields: []string{"nope"}})
+			_, e := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{Fields: []string{"nope"}})
 			return e
 		},
 		"from after to": func() error {
-			_, e := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2024, 2, 1), To: day(2024, 1, 1)})
+			_, e := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{From: day(2024, 2, 1), To: day(2024, 1, 1)})
 			return e
 		},
 		"to without from": func() error {
-			_, e := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{To: day(2024, 1, 1)})
+			_, e := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{To: day(2024, 1, 1)})
 			return e
 		},
 		"adjusted minute": func() error {
-			_, e := c.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{Timeframe: FugleTimeframe5Min, Adjusted: true})
+			_, e := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{Timeframe: FugleTimeframe5Min, Adjusted: true})
 			return e
 		},
 		"daily as intraday": func() error {
-			_, e := c.StockIntradayCandles("2330", FugleIntradayCandlesParams{Timeframe: FugleTimeframeDay})
+			_, e := c.Stock.IntradayCandles("2330", FugleIntradayCandlesParams{Timeframe: FugleTimeframeDay})
 			return e
 		},
-		"negative limit": func() error { _, e := c.StockIntradayTrades("2330", FugleIntradayTradesParams{Limit: -1}); return e },
-		"zero client":    func() error { _, e := (&FugleClient{}).StockIntradayQuote("2330"); return e },
-		"nil client":     func() error { var n *FugleClient; _, e := n.StockIntradayQuote("2330"); return e },
+		"negative limit": func() error { _, e := c.Stock.IntradayTrades("2330", FugleIntradayTradesParams{Limit: -1}); return e },
+		"zero client":    func() error { _, e := (&FugleClient{}).Stock.IntradayQuote("2330"); return e },
 	} {
 		if call() == nil {
 			t.Errorf("%s: no error", name)
@@ -358,7 +357,7 @@ func TestFugleContextCancellationStopsTheCall(t *testing.T) {
 	c := fs.client(t, FugleConfig{})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := c.StockIntradayQuoteContext(ctx, "2330"); !errors.Is(err, context.Canceled) {
+	if _, err := c.Stock.IntradayQuoteContext(ctx, "2330"); !errors.Is(err, context.Canceled) {
 		t.Errorf("error %v, want context.Canceled", err)
 	}
 	if len(fs.requests) != 0 {
@@ -378,7 +377,7 @@ func TestFugleThrottlingWaitsAsLongAsRetryAfterAsks(t *testing.T) {
 	})
 	c := fs.client(t, FugleConfig{Retries: 1})
 	start := time.Now()
-	if _, err := c.StockIntradayQuote("2330"); err != nil {
+	if _, err := c.Stock.IntradayQuote("2330"); err != nil {
 		t.Fatal(err)
 	}
 	if elapsed := time.Since(start); elapsed < 900*time.Millisecond {

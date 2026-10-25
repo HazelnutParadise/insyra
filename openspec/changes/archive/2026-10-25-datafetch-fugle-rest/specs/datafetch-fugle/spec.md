@@ -11,7 +11,7 @@
 
 ### Requirement: Historical candles cover any range
 
-`StockHistoricalCandles` SHALL fetch a day or minute range longer than 364 days in consecutive pieces of at most 364 days and return the rows in ascending date order without duplicates, treat an HTTP 404 piece as having no rows, return an empty table when no piece has rows, and refuse a week or month range over 364 days without sending a request.
+`Stock.HistoricalCandles` SHALL fetch a day or minute range longer than 364 days in consecutive pieces of at most 364 days and return the rows in ascending date order without duplicates, treat an HTTP 404 piece as having no rows, return an empty table when no piece has rows, and refuse a week or month range over 364 days without sending a request.
 
 #### Scenario: Two and a half years
 
@@ -20,7 +20,7 @@
 
 ### Requirement: Intraday methods return tables
 
-`StockIntradayQuote` SHALL return one row whose nested objects are joined with underscores and whose bids and asks are numbered from 1; `StockIntradayCandles`, `StockIntradayTrades`, `StockIntradayVolumes` and `StockIntradayTickers` SHALL return one row per data item with a field the API leaves out as nil.
+`Stock.IntradayQuote` SHALL return one row whose nested objects are joined with underscores and whose bids and asks are numbered from 1; `Stock.IntradayCandles`, `Stock.IntradayTrades`, `Stock.IntradayVolumes` and `Stock.IntradayTickers` SHALL return one row per data item with a field the API leaves out as nil.
 
 #### Scenario: A quote
 
