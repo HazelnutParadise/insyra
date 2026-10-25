@@ -158,3 +158,144 @@ func TestFugleFutOptRefusesBadInputBeforeSendingAnything(t *testing.T) {
 		t.Errorf("%d requests were sent for refused input", len(fs.requests))
 	}
 }
+
+func TestFugleFutOptHistoricalCandlesSendTheirQueryAndKeepTheContractMonth(t *testing.T) {
+	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if r.URL.Path != "/futopt/historical/candles/TXO" || q.Get("contractMonth") != "202610" || q.Get("strikePrice") != "23000" ||
+			q.Get("callPut") != "CALL" || q.Get("timeframe") != "D" || q.Get("session") != "afterhours" ||
+			q.Get("sort") != "asc" || q.Get("fields") != "open,close,volume,change,transaction" ||
+			q.Get("from") != "2026-10-01" || q.Get("to") != "2026-10-09" {
+			t.Errorf("request %s", r.URL.String())
+		}
+		_, _ = w.Write([]byte(`{"product":"TXO","data":[
+			{"date":"2026-10-02","contractMonth":"202610","open":null,"close":null,"volume":0,"change":null},
+			{"date":"2026-10-01","contractMonth":"202610","open":120.5,"close":125,"volume":1500,"change":4.5}]}`))
+	})
+	c := fs.client(t, FugleConfig{})
+	dt, err := c.FutOpt.HistoricalCandles("TXO", FugleFutOptHistoricalCandlesOptions{
+		ContractMonth: "202610", Strike: 23000, CallPut: FugleCall, From: day(2026, 10, 1), To: day(2026, 10, 9),
+		AfterHours: true, Fields: []string{"open", "close", "volume", "change", "transaction"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dt.NumRows() != 2 {
+		t.Fatalf("%d rows", dt.NumRows())
+	}
+	// Ascending dates, a day with no trade has nil prices and volume 0, and the contract month stays.
+	if d := dt.GetColByName("date").Data(); !d[0].(time.Time).Equal(day(2026, 10, 1)) {
+		t.Errorf("dates %v", d)
+	}
+	if got := dt.GetColByName("open").Data(); got[0] != float64(120.5) || got[1] != nil {
+		t.Errorf("open %v", got)
+	}
+	if got := dt.GetColByName("contractMonth").Data(); got[0] != "202610" {
+		t.Errorf("contractMonth %v", got)
+	}
+}
+
+func TestFugleFutOptHistoricalCandlesCutLongRangesAndKeepRowsOfDifferentContracts(t *testing.T) {
+	var n int
+	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		n++
+		from := r.URL.Query().Get("from")
+		// One date appears for two contract months, as on a roll day of a continuous contract.
+		_, _ = w.Write([]byte(`{"data":[{"date":"` + from + `","contractMonth":"202610","close":1},{"date":"` + from + `","contractMonth":"202611","close":2}]}`))
+	})
+	c := fs.client(t, FugleConfig{})
+	dt, err := c.FutOpt.HistoricalCandles("TXF", FugleFutOptHistoricalCandlesOptions{From: day(2022, 1, 1), To: day(2024, 6, 30)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 || dt.NumRows() != 6 {
+		t.Errorf("%d requests and %d rows, want 3 and 6: two contracts on one date are two rows", n, dt.NumRows())
+	}
+	if q := fs.requests[0].URL.Query(); q.Get("contractMonth") != "" || q.Get("timeframe") != "D" {
+		t.Errorf("first request %s", fs.requests[0].URL.RawQuery)
+	}
+}
+
+func TestFugleFutOptHistoricalDailyIsOneRowPerContract(t *testing.T) {
+	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if r.URL.Path != "/futopt/historical/daily/TXO" || q.Get("date") != "2026-10-02" || q.Get("session") != "afterhours" || q.Get("contractMonth") != "202610" {
+			t.Errorf("request %s", r.URL.String())
+		}
+		_, _ = w.Write([]byte(`{"date":"2026-10-02","product":"TXO","exchange":"TAIFEX","session":"AFTERHOURS","contractMonth":"202610","data":[
+			{"contractMonth":"202610","strikePrice":23000,"callPut":"CALL","exchange":"TAIFEX","openPrice":100,"closePrice":110,"change":10,"volume":2500,"openInterest":null,"settlementPrice":null},
+			{"contractMonth":"202610","strikePrice":23000,"callPut":"PUT","exchange":"TAIFEX","openPrice":null,"closePrice":null,"change":null,"volume":0}]}`))
+	})
+	c := fs.client(t, FugleConfig{})
+	dt, err := c.FutOpt.HistoricalDaily("TXO", FugleFutOptHistoricalDailyOptions{Date: day(2026, 10, 2), AfterHours: true, ContractMonth: "202610"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dt.NumRows() != 2 {
+		t.Fatalf("%d rows", dt.NumRows())
+	}
+	if d := dt.GetColByName("date").Data()[0]; !d.(time.Time).Equal(day(2026, 10, 2)) {
+		t.Errorf("date %v", d)
+	}
+	for name, want := range map[string]any{"callPut": "CALL", "strikePrice": int64(23000), "volume": int64(2500)} {
+		if got := dt.GetColByName(name).Data()[0]; got != want {
+			t.Errorf("%s = %#v, want %#v", name, got, want)
+		}
+	}
+	// A column the API leaves out of every row is still there; a missing price is nil.
+	if col := dt.GetColByName("volumeSpread"); col == nil || col.Data()[0] != nil {
+		t.Errorf("volumeSpread %v", col)
+	}
+	if got := dt.GetColByName("openPrice").Data()[1]; got != nil {
+		t.Errorf("openPrice = %#v", got)
+	}
+}
+
+func TestFugleFutOptHistoricalNoDataIsAnEmptyTable(t *testing.T) {
+	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) { http.Error(w, `{}`, http.StatusNotFound) })
+	c := fs.client(t, FugleConfig{})
+	if dt, err := c.FutOpt.HistoricalDaily("TXO"); err != nil || dt.NumRows() != 0 {
+		t.Errorf("daily: rows and error %v", err)
+	}
+	if dt, err := c.FutOpt.HistoricalCandles("TXF"); err != nil || dt.NumRows() != 0 {
+		t.Errorf("candles: rows and error %v", err)
+	}
+}
+
+func TestFugleFutOptHistoricalRefusesBadInputBeforeSendingAnything(t *testing.T) {
+	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"data":[]}`)) })
+	c := fs.client(t, FugleConfig{})
+	opt := func(o FugleFutOptHistoricalCandlesOptions) func() error {
+		return func() error { _, e := c.FutOpt.HistoricalCandles("TXO", o); return e }
+	}
+	for name, call := range map[string]func() error{
+		"empty product":       func() error { _, e := c.FutOpt.HistoricalCandles(""); return e },
+		"spread as product":   func() error { _, e := c.FutOpt.HistoricalCandles("TXFJ6/K6"); return e },
+		"strike without side": opt(FugleFutOptHistoricalCandlesOptions{Strike: 23000}),
+		"side without strike": opt(FugleFutOptHistoricalCandlesOptions{CallPut: FugleCall}),
+		"bad side":            opt(FugleFutOptHistoricalCandlesOptions{Strike: 1, CallPut: "BOTH"}),
+		"negative strike":     opt(FugleFutOptHistoricalCandlesOptions{Strike: -1, CallPut: FugleCall}),
+		"3 minute candles":    opt(FugleFutOptHistoricalCandlesOptions{Timeframe: FugleTimeframe3Min}),
+		"turnover":            opt(FugleFutOptHistoricalCandlesOptions{Fields: []string{"turnover"}}),
+		"month over a year":   opt(FugleFutOptHistoricalCandlesOptions{Timeframe: FugleTimeframeMonth, From: day(2020, 1, 1), To: day(2024, 1, 1)}),
+		"to without from":     opt(FugleFutOptHistoricalCandlesOptions{To: day(2024, 1, 1)}),
+		"two candle options": func() error {
+			_, e := c.FutOpt.HistoricalCandles("TXF", FugleFutOptHistoricalCandlesOptions{}, FugleFutOptHistoricalCandlesOptions{})
+			return e
+		},
+		"daily empty product":  func() error { _, e := c.FutOpt.HistoricalDaily(""); return e },
+		"daily spread product": func() error { _, e := c.FutOpt.HistoricalDaily("TXFJ6/K6"); return e },
+		"two daily options": func() error {
+			_, e := c.FutOpt.HistoricalDaily("TXO", FugleFutOptHistoricalDailyOptions{}, FugleFutOptHistoricalDailyOptions{})
+			return e
+		},
+		"zero client": func() error { _, e := (&FugleClient{}).FutOpt.HistoricalDaily("TXO"); return e },
+	} {
+		if call() == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+	if len(fs.requests) != 0 {
+		t.Errorf("%d requests were sent for refused input", len(fs.requests))
+	}
+}

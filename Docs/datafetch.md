@@ -860,7 +860,7 @@ Dataset(name, dataID string, from, to time.Time) (*insyra.DataTable, error)
 
 ## Fugle
 
-Fugle (developer.fugle.tw) serves Taiwan stock quotes, intraday candles and historical candles over a REST API, with no brokerage account needed. `FugleClient` reads its intraday and historical stock endpoints through `client.Stock` and the intraday futures and options endpoints through `client.FutOpt`. Historical futures and options, snapshots, technical indicators, corporate actions, ownership and the WebSocket stream are not in this version.
+Fugle (developer.fugle.tw) serves Taiwan stock quotes, intraday candles and historical candles over a REST API, with no brokerage account needed. `FugleClient` reads its intraday and historical stock endpoints through `client.Stock` and the intraday futures and options endpoints through `client.FutOpt`. Snapshots, technical indicators, corporate actions, ownership and the WebSocket stream are not in this version.
 
 ```go
 client, err := datafetch.Fugle(datafetch.FugleConfig{APIKey: os.Getenv("FUGLE_API_KEY")})
@@ -872,7 +872,7 @@ bars, err := client.Stock.HistoricalCandles("2330", datafetch.FugleHistoricalCan
 quote, err := client.Stock.IntradayQuote("2330")
 ```
 
-**Futures and options.** `client.FutOpt` has the same intraday groups for futures and options (the historical endpoints are not in this version):
+**Futures and options.** `client.FutOpt` has the same groups for futures and options:
 
 | Method | Fugle endpoint | Result |
 | :--- | :--- | :--- |
@@ -883,6 +883,10 @@ quote, err := client.Stock.IntradayQuote("2330")
 | `FutOpt.IntradayCandles(symbol, opts...)` | `futopt/intraday/candles/{symbol}` | `date`, `open`, `high`, `low`, `close`, `volume`, `average` (1, 5, 10, 15, 30 or 60 minutes; no 3-minute candles) |
 | `FutOpt.IntradayTrades(symbol, opts...)` | `futopt/intraday/trades/{symbol}` | `bid`, `ask`, `price`, `size`, `time`, `serial` |
 | `FutOpt.IntradayVolumes(symbol, afterHours...)` | `futopt/intraday/volumes/{symbol}` | `price`, `volume` |
+| `FutOpt.HistoricalCandles(product, opts...)` | `futopt/historical/candles/{product}` | `date`, `contractMonth`, `open`, `high`, `low`, `close`, `volume`, then `average`, `transaction` and `change` when asked for |
+| `FutOpt.HistoricalDaily(product, opts...)` | `futopt/historical/daily/{product}` | one trading day, a row per contract: `date`, `contractMonth`, `strikePrice`, `callPut`, the day's prices, `volume`, `openInterest`, `settlementPrice` |
+
+For `HistoricalCandles`, `product` is the code without a month (`TXF`, `MXF`, `TXO`) and `ContractMonth` names the contract: `202610`, a weekly option `202610W1` (Wednesday expiry) or `202610F1` (Friday expiry), a futures spread `202610/202611`, or for futures a continuous contract `1!`, `2!`, `3!` (the front month is the default). An option needs a `ContractMonth`, a `Strike` and a `CallPut` (`FugleCall` or `FuglePut`). A day or minute range over 364 days is cut and joined as for stocks, a week or month range over 364 days is refused, and a date that has candles for two contracts has two rows, with `contractMonth` saying which. A continuous contract is not adjusted when it rolls, so its candles gap on the roll day. Daily data is available after about 17:30; it goes back to 2010, and minute data to June 2017. `HistoricalDaily` asks for one trading day (`Date`, today by default) and cannot take a range or filter by strike; filter the table, or use `HistoricalCandles` for one contract over many days. A day with no data gives an empty table.
 
 The night session is one `AfterHours` setting (or the `afterHours` flag); the client sends it the way each endpoint wants it, since Fugle writes it `AFTERHOURS` for products and tickers and `afterhours` for the rest. A night session belongs to the next trading day. A spread contract such as `TXFJ6/K6` is a valid symbol here. The symbol column of a quote holds the contract the API answered for, which is not the symbol asked for when a continuous code such as `TXF1!` was used. Futures and options are not on the free plan, so a free key gets `ErrFuglePlan`; these endpoints were written from Fugle's documentation and tested against a local server only.
 
