@@ -190,12 +190,18 @@ func softmaxVJP(output, upstream *Tensor, axis int) *Tensor {
 					peak = index
 				}
 			}
-			var peakGap, dot float64
+			// The sums are kept in double-double (a high and a low float64)
+			// and every product of two float32 values is exact in float64,
+			// so cancelling terms leave the small contribution a plain
+			// float64 sum would round away.
+			var peakGap, dot ddSum
 			for axisIndex := 0; axisIndex < axisSize; axisIndex++ {
 				index := base + axisIndex*inner
-				dot += float64(upstream.data[index]) * float64(output.data[index])
+				y, u := float64(output.data[index]), float64(upstream.data[index])
+				dot.add(y * u)
 				if index != peak {
-					peakGap += float64(output.data[index]) * (float64(upstream.data[peak]) - float64(upstream.data[index]))
+					peakGap.add(y * float64(upstream.data[peak]))
+					peakGap.add(-(y * u))
 				}
 			}
 			// Only the peak needs the pivot form. The other classes keep
@@ -203,10 +209,11 @@ func softmaxVJP(output, upstream *Tensor, axis int) *Tensor {
 			// would cancel a small u_k against a large u_peak.
 			for axisIndex := 0; axisIndex < axisSize; axisIndex++ {
 				index := base + axisIndex*inner
+				y := float64(output.data[index])
 				if index == peak {
-					gradient.data[index] = float32(float64(output.data[index]) * peakGap)
+					gradient.data[index] = float32(y * peakGap.value())
 				} else {
-					gradient.data[index] = float32(float64(output.data[index]) * (float64(upstream.data[index]) - dot))
+					gradient.data[index] = float32(y * ((float64(upstream.data[index]) - dot.hi) - dot.lo))
 				}
 			}
 		}
@@ -530,3 +537,16 @@ func splitVJP(input *Tensor, axis, offset int, upstream *Tensor) *Tensor {
 	}
 	return gradient
 }
+
+// ddSum accumulates float64 values without losing the low bits of each
+// partial sum: hi + lo is the running total to about 106 bits.
+type ddSum struct{ hi, lo float64 }
+
+func (s *ddSum) add(x float64) {
+	sum := s.hi + x
+	bb := sum - s.hi
+	s.lo += (s.hi - (sum - bb)) + (x - bb)
+	s.hi = sum
+}
+
+func (s *ddSum) value() float64 { return s.hi + s.lo }

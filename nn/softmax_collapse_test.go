@@ -136,3 +136,16 @@ func TestSoftmaxGradientKeepsASmallUpstreamComponent(t *testing.T) {
 		t.Errorf("g[2] = %g, want %g", g, want)
 	}
 }
+
+// Mixed-sign upstream values whose pivot differences cancel keep the small
+// peak contribution (Codex on #561).
+func TestSoftmaxGradientKeepsASmallPeakContribution(t *testing.T) {
+	y, _ := NewTensor([]int{1, 3}, []float32{0.25, 0.25, 0.5})
+	upstream, _ := NewTensor([]int{1, 3}, []float32{1, -1, 1e-20})
+	got := softmaxVJP(y, upstream, 1)
+	// dot = 0.25 - 0.25 + 0.5e-20; g2 = 0.5*(1e-20 - 0.5e-20).
+	want := 0.5 * (1e-20 - 0.5e-20)
+	if g := float64(got.data[2]); math.Abs(g-want) > 1e-5*want {
+		t.Errorf("g[2] = %g, want %g", g, want)
+	}
+}
