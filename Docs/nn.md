@@ -149,7 +149,8 @@ float64 `AdamW` by a few ulps per step, as PyTorch's float32 `AdamW` does.
 `d = x - m`, `e = exp(d)`, `s` the exact sum of `e` rounded once,
 `loss = log(s) - d[label]`; the mean loss is the exact sum of the row losses
 rounded once, divided by the row count. The gradient is `e/s` times
-`upstream/rows`, with `upstream/rows` subtracted at the label. `exp` and `log`
+`upstream/rows`, except at the label, where it is `-(o/s)` times `upstream/rows` with `o` the exact sum of the
+other `e` rounded once (`p - 1` would be exactly 0 once the label leads by about 16.6). `exp` and `log`
 here are correctly rounded, the same bits on every platform (the host builds
 them from `+ - * /` only, the device in 128-bit integer arithmetic), and both
 agree on all 2^32 float32 inputs. A row with a non-finite logit gives NaN.
@@ -455,6 +456,28 @@ if err := tape.Backward(loss); err != nil { log.Fatal(err) }
 if err := tape.SGD(0.01); err != nil { log.Fatal(err) }
 gradient := w1.Grad()
 ```
+
+Two more losses take a probability row instead of a class index. Both are
+the mean over rows and run on host tensors only.
+
+```go
+// Label smoothing, mixup: targets is one probability row per sample.
+loss, err := tape.SoftTargetCrossEntropy(logits, targets)
+
+// Distillation: the teacher is a constant given as logits. For a temperature
+// T, divide both logits by T (and multiply the loss by T*T if you want that
+// scaling).
+loss, err = tape.DistillationLoss(studentLogits, teacherLogits)
+```
+
+`SoftTargetCrossEntropy` needs finite, non-negative rows that sum to 1 within
+1e-5 and names the row that does not. `DistillationLoss` gives a gradient of
+exactly 0 when the student's logits equal the teacher's. In both, a class with
+probability 0 adds nothing to the loss, and the gradient of the largest logit is
+minus the sum of the others', so it stays nonzero when that logit leads by more
+than the float32 precision cliff of about 16.6, where `p - 1` would be 0
+(Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642)). A tensor on a
+device is refused; call `ToHost`.
 
 The differentiable wrappers are `MatMul`, `Add`, `Relu`, `Sigmoid`, `Tanh`,
 `Gemm`, `Mul`, `Div`, `Softmax`, `LayerNormalization`, `Gelu`, `Erf`, `Sqrt`,
