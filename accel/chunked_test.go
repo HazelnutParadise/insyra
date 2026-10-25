@@ -147,8 +147,11 @@ func TestExactNearestChunked64K128Hardware(t *testing.T) {
 	if !result.Accelerated {
 		t.Fatalf("expected device execution, got fallback %q", result.FallbackReason)
 	}
-	if result.Chunks != 4 {
-		t.Fatalf("got %d chunks, want 4", result.Chunks)
+	// Each device that takes a share rounds its own rows up to whole chunks, so
+	// a host with a second adapter (an integrated GPU next to a discrete one)
+	// reports more than 64,000 / 16,000 chunks.
+	if result.Chunks < 4 {
+		t.Fatalf("got %d chunks, want at least 4", result.Chunks)
 	}
 	wantIndex, wantDistance, _, err := nearestExactCPU(dataset, queries, 5)
 	if err != nil {
