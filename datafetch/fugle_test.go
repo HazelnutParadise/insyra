@@ -365,3 +365,32 @@ func TestFugleContextCancellationStopsTheCall(t *testing.T) {
 		t.Errorf("%d requests after cancel", len(fs.requests))
 	}
 }
+
+func TestFugleThrottlingWaitsAsLongAsRetryAfterAsks(t *testing.T) {
+	var calls atomic.Int32
+	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, `{}`, http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write([]byte(`{"symbol":"2330"}`))
+	})
+	c := fs.client(t, FugleConfig{Retries: 1})
+	start := time.Now()
+	if _, err := c.StockIntradayQuote("2330"); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed < 900*time.Millisecond {
+		t.Errorf("retried after %v, want at least the 1s Retry-After asked", elapsed)
+	}
+	if calls.Load() != 2 {
+		t.Errorf("%d requests, want 2", calls.Load())
+	}
+}
+
+func TestFugleDefaultIntervalStaysUnderTheLimit(t *testing.T) {
+	if defaultFugleInterval < 1020*time.Millisecond {
+		t.Errorf("default interval %v lets 61 requests through in a minute", defaultFugleInterval)
+	}
+}

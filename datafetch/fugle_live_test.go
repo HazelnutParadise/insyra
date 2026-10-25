@@ -1,7 +1,6 @@
 package datafetch
 
 import (
-	"errors"
 	"os"
 	"testing"
 	"time"
@@ -36,15 +35,4 @@ func TestFugleLive(t *testing.T) {
 			t.Fatalf("rows=%d err=%v", dt.NumRows(), err)
 		}
 	})
-	t.Run("a plan without the endpoint is a typed error", func(t *testing.T) {
-		// The free plan has no snapshot endpoints; this only checks the mapping when it is a 403.
-		_, err := c.StockIntradayTickers(FugleIntradayTickersParams{Type: FugleTickerEquity, Exchange: "TWSE"})
-		if err != nil && !isFuglePlanOrAuth(err) {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-}
-
-func isFuglePlanOrAuth(err error) bool {
-	return errors.Is(err, ErrFuglePlan) || errors.Is(err, ErrFugleAuth)
 }

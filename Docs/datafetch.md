@@ -874,7 +874,7 @@ quote, err := client.StockIntradayQuote("2330")
 
 **Real time versus history.** The method names follow Fugle's two groups. The `Intraday` methods are about the current trading day: the quote is the latest state of the order book and the last trade, and the trades, volumes and intraday candles are today's, building up while the market is open. The `Historical` method is about past days: Fugle updates it by 16:30 on each trading day, so today's finished day appears there only after that, and it is the one that reaches back years (day candles from 2010, minute candles from 2023-05-23, per Fugle's documentation). Whether the free plan's intraday data is delayed is Fugle's plan term, not something the client decides.
 
-`FugleConfig` has `APIKey` (the whole string, which usually ends in `==`, sent as `X-API-KEY`; leave it empty when a proxy adds it), `BaseURL` (default `https://api.fugle.tw/marketdata/v1.0`), `Timeout`, `Interval` (zero means one request a second, under the 60 a minute every plan allows; negative turns throttling off), `UserAgent`, `Retries` and `RetryBackoff`. Every method has a `...Context` form.
+`FugleConfig` has `APIKey` (the whole string, which usually ends in `==`, sent as `X-API-KEY`; leave it empty when a proxy adds it), `BaseURL` (default `https://api.fugle.tw/marketdata/v1.0`), `Timeout`, `Interval` (zero means 1.1 seconds, which stays under the 60 requests a minute every plan allows; a spacing of 1 second reaches the limit on the 61st request; negative turns throttling off), `UserAgent`, `Retries` and `RetryBackoff`. Every method has a `...Context` form.
 
 | Method | Fugle endpoint | Result |
 | :--- | :--- | :--- |
@@ -897,7 +897,7 @@ Coming from the official Python SDK (`fugle-marketdata`), the parameters keep th
 
 **Units.** Volume is in shares for day, week and month candles, and in lots (1,000 shares) for the minute candles of listed stocks. `time` in trades and quotes is the API's number, unchanged. A day's `date` is midnight UTC of that day and a minute's is the exchange's timestamp.
 
-**Plans and errors.** The free plan has the intraday and historical endpoints at 60 requests a minute; the other Fugle endpoints need a paid plan. `errors.Is` tells the failures apart: `ErrFugleAuth` (HTTP 401, the key is wrong or cut short), `ErrFuglePlan` (HTTP 403, the plan does not include the endpoint) and `ErrFugleThrottled` (HTTP 429 on every attempt). Only throttling is retried.
+**Plans and errors.** The free plan has the intraday and historical endpoints at 60 requests a minute; the other Fugle endpoints need a paid plan. `errors.Is` tells the failures apart: `ErrFugleAuth` (HTTP 401, the key is wrong or cut short), `ErrFuglePlan` (HTTP 403, the plan does not include the endpoint) and `ErrFugleThrottled` (HTTP 429 on every attempt). Only throttling is retried, after the wait the response's `Retry-After` header asks for (at most 60 seconds) and the retry backoff.
 
 ## Japan Exchange Group (JPX)
 
