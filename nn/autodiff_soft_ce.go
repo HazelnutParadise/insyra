@@ -204,20 +204,23 @@ func (t *Tape) softCE(name string, distill bool, logits, second *Tensor, target 
 // when some p underflows to 0 or d is larger than 1, where q - p is
 // accurate and expm1 would not be.
 func distillNearEqualGradient(student, teacher []float32, p, q []float64, g []float32, scale float64) bool {
-	// Each row is shifted by its own maximum first, so a common offset in
-	// either row cannot erase the class differences.
-	studentMax, teacherMax := float64(student[0]), float64(teacher[0])
-	for c := range p {
-		studentMax = math.Max(studentMax, float64(student[c]))
-		teacherMax = math.Max(teacherMax, float64(teacher[c]))
-	}
+	// delta[c] is the student-teacher difference at class c measured from
+	// class 0's. Each difference is formed exactly as a high and a low
+	// float64 (TwoSum) before the two are subtracted, so neither a common
+	// offset in a row nor a tiny perturbation beside a large logit is lost.
 	delta := make([]float64, len(p))
+	high := make([]float64, len(p))
+	low := make([]float64, len(p))
 	var mean float64
 	for c := range p {
 		if !(p[c] > 0) {
 			return false
 		}
-		delta[c] = (float64(student[c]) - studentMax) - (float64(teacher[c]) - teacherMax)
+		a, b := float64(student[c]), -float64(teacher[c])
+		sum := a + b
+		bb := sum - a
+		high[c], low[c] = sum, (a-(sum-bb))+(b-bb)
+		delta[c] = (high[c] - high[0]) + (low[c] - low[0])
 		mean += p[c] * delta[c]
 	}
 	d := make([]float64, len(p))

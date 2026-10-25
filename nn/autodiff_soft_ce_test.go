@@ -325,3 +325,25 @@ func TestDistillationIgnoresCommonOffsets(t *testing.T) {
 		t.Errorf("grad[0] = %g, want -0.23105858", got[0])
 	}
 }
+
+// A tiny perturbation beside a nonzero row maximum is kept (Codex on #564).
+func TestDistillationGradientOfAPerturbationBesideALargeLogit(t *testing.T) {
+	s, _ := NewTensor([]int{1, 3}, []float32{1e-20, 0, 1})
+	te, _ := NewTensor([]int{1, 3}, []float32{0, 0, 1})
+	tape := NewTape()
+	defer tape.Close()
+	if _, err := tape.Param(s); err != nil {
+		t.Fatal(err)
+	}
+	loss, err := tape.DistillationLoss(s, te)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := softCEBackward(t, tape, loss, s)
+	want := []float64{1.6702e-21, -4.4919e-22, -1.2210e-21}
+	for i, w := range want {
+		if got := float64(g.data[i]); math.Abs(got-w) > 1e-3*math.Abs(w) {
+			t.Errorf("grad[%d] = %g, want %g", i, got, w)
+		}
+	}
+}
