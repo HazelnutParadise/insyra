@@ -406,6 +406,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `accel.PrecisionFloat32Rounded` 是第三種 `Precision`：以 float32 執行，每個結果是精確值只捨入一次，在每個裝置與 CPU 後備路徑上完全相同。`accel.DeviceBuffer`（`NewDeviceBuffer`、`ToHost`、`Clone`、`Release`）、`DefaultDevice`、`ResidentBytes` 與 `RoundedMatMul`、`RoundedAdd`、`RoundedSumRows`、`RoundedSGD` 核心把 float32 陣列留在裝置上；常駐的位元組受裝置記憶體預算限制。
 - 在 Vulkan 上，`DeviceBuffer.Write`、`WriteBits`、`Zero` 以及建立 `DeviceBuffer` 時的上傳，讀回來可能還是舊內容，因為佇列寫入沒有排在隨後的 kernel 或複製之前；在 GT 1030 上，`Zero` 之後讀取，20 次裡有 3 次拿到舊的字。現在除了自己會排序的 Metal 以外，這些呼叫都會等寫入完成，所以每次呼叫都會等佇列清空。
 - 在 Vulkan 上，正確捨入的除法、平方根、exp 與 log（`PrecisionFloat32Rounded` 與常駐的優化器步驟）遇到次正規輸入會回傳錯誤的值，例如 `1e-45 / 3e-45` 得到 1.5。WGSL 的 `countLeadingZeros` 被編成最高有效位的位元索引，而不是它上方零的個數，所以你自己的 kernel 用到它時在 Vulkan 上會得到錯誤答案；對非零的 `x` 請改用 `31u - firstLeadingBit(x)`。
+- 當 NVIDIA 顯卡同時被 NVML（CUDA）與 WebGPU 找到時，Insyra 現在保留 WebGPU 那一筆，因為 CUDA 沒有執行器。以前探索階段保留 CUDA 那一筆，所有加速運算都以 `no-backend-executor` 退回 CPU，Windows 上有 NVIDIA 顯卡的主機就是這種情況；現在加速運算會在該顯卡上執行。沒有執行器的後端不再優先於有執行器的後端。
 
 ### `quant`
 - **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。
