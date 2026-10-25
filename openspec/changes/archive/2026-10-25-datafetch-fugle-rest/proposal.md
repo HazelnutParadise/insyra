@@ -7,7 +7,7 @@
 ## What Changes
 
 - New `datafetch.Fugle(FugleConfig)` returning a `FugleClient`, a thin client over the shared `TWStockClient` request machinery (limiter, retries, context).
-- Methods, each with a `Context` form: `StockHistoricalCandles`, `StockIntradayCandles`, `StockIntradayQuote`, `StockIntradayTrades`, `StockIntradayVolumes`, `StockIntradayTickers`. Results are `*insyra.DataTable`.
+- Methods, each with a `Context` form: `Stock.HistoricalCandles`, `Stock.IntradayCandles`, `Stock.IntradayQuote`, `Stock.IntradayTrades`, `Stock.IntradayVolumes`, `Stock.IntradayTickers`. Results are `*insyra.DataTable`.
 - A historical range over a year is cut into 364-day pieces fetched in turn and joined in ascending order; a 404 piece adds nothing. Week and month candles are not cut and are refused beyond 364 days.
 - Typed errors `ErrFugleAuth` (401), `ErrFuglePlan` (403) and `ErrFugleThrottled` (429); only throttling is retried.
 - Not in this change: futures and options, snapshots, technical indicators, corporate actions, ownership (paid plans), the WebSocket stream.
