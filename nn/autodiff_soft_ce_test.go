@@ -296,3 +296,32 @@ func TestSoftTargetCrossEntropyIgnoresACommonOffset(t *testing.T) {
 		t.Errorf("grad = %v, want [0.5 -0.5]", g.data)
 	}
 }
+
+// A common offset in the student or teacher row changes nothing (Codex on #564).
+func TestDistillationIgnoresCommonOffsets(t *testing.T) {
+	grad := func(student, teacher []float32) []float32 {
+		s, _ := NewTensor([]int{1, 2}, student)
+		te, _ := NewTensor([]int{1, 2}, teacher)
+		tape := NewTape()
+		defer tape.Close()
+		if _, err := tape.Param(s); err != nil {
+			t.Fatal(err)
+		}
+		loss, err := tape.DistillationLoss(s, te)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return softCEBackward(t, tape, loss, s).data
+	}
+	got := grad([]float32{1e20, 1e20}, []float32{1, 0})
+	want := grad([]float32{0, 0}, []float32{1, 0})
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("grad = %v, want %v", got, want)
+			break
+		}
+	}
+	if math.Abs(float64(got[0])+0.23105858) > 1e-6 {
+		t.Errorf("grad[0] = %g, want -0.23105858", got[0])
+	}
+}
