@@ -155,7 +155,7 @@ if err != nil {
 type CSVReadOptions struct {
     FirstColToRowNames bool
     FirstRowToColNames bool
-    Encoding           string // "" or "auto" detects from the first bytes; ignored for a string, which is UTF-8
+    Encoding           string // "" or "auto" detects from the first bytes; a name insyra cannot decode is an error; ignored for a string, which is UTF-8
     RawStrings         bool   // keep every cell as its original string; skip type inference
     AllowRaggedRows    bool   // pad short rows; keep long rows in extra columns
     TrimLeadingSpace   bool   // ignore leading spaces before fields and quotes

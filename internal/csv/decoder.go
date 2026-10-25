@@ -42,10 +42,12 @@ var decoders = map[string]encoding.Encoding{
 
 	// CJK.
 	"big5":      traditionalchinese.Big5,
+	"cp950":     traditionalchinese.Big5,
 	"gb18030":   simplifiedchinese.GB18030,
 	"gbk":       simplifiedchinese.GB18030,
 	"gb2312":    simplifiedchinese.GB18030,
 	"gb":        simplifiedchinese.GB18030,
+	"cp936":     simplifiedchinese.GB18030,
 	"shiftjis":  japanese.ShiftJIS,
 	"sjis":      japanese.ShiftJIS,
 	"cp932":     japanese.ShiftJIS,

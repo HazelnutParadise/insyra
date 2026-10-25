@@ -19,6 +19,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### Core
 
 - CCL 讀取超出表格列數的列現在會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本（例如把 `@.(# + 1)` 當作「下一列」，最後一列為空）會在那一列失敗。
+- **行為改變**：讀取 CSV 時，若 `Encoding` 是 insyra 無法解碼的名稱（`ReadCSV`、`ReadCSV_FileWithOptions`、`StreamCSV`，以及 `csvxl.CsvToExcel`、`AppendCsvToExcel`），現在會回傳列出支援名稱的錯誤。以前會把位元組原樣交回，所以像 "big6" 這種打錯的名稱會把 Big5 檔案讀成亂碼而且沒有錯誤。Windows 的 `cp950`、`cp936` 現在視為 Big5 與 GBK。
 
 ### `ml` 與 `nn`
 

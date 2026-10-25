@@ -111,7 +111,9 @@ type CSVReadOptions struct {
 	FirstColToRowNames bool
 	FirstRowToColNames bool
 	// Encoding names the input's encoding; "" or "auto" detects it from the
-	// first bytes. A string is UTF-8 already, so the string readers ignore it.
+	// first bytes. A name insyra cannot decode is an error that lists the
+	// supported names, not a file read as mojibake. A string is UTF-8 already, so
+	// the string readers ignore it.
 	Encoding string
 	// RawStrings keeps every cell as its original string and skips column
 	// type inference entirely. Use it for data that looks numeric but must
@@ -287,7 +289,8 @@ func decodeCSVFileInput(f *os.File, encoding string, filePath string) (io.Reader
 
 func decodeCSVStream(r io.Reader, encoding string, source string, fromFile bool) (io.Reader, error) {
 	useEncoding := strings.ToLower(encoding)
-	if useEncoding == "" || useEncoding == "auto" {
+	explicit := useEncoding != "" && useEncoding != "auto"
+	if !explicit {
 		buffered := bufio.NewReaderSize(r, encodingSampleSize)
 		sample, err := buffered.Peek(encodingSampleSize)
 		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, bufio.ErrBufferFull) {
@@ -303,6 +306,14 @@ func decodeCSVStream(r io.Reader, encoding string, source string, fromFile bool)
 		useEncoding = detected
 		LogInfo("insyra", "ReadCSV", "Auto-detected encoding %s for %s", useEncoding, source)
 		r = buffered
+	}
+	// A name the caller gave that nothing decodes would hand the bytes back as
+	// they are, which reads a Big5 file as mojibake without an error, so it is
+	// refused. A charset the detector reported is read as it always was.
+	if explicit {
+		if err := csvInternal.CheckDecodable(useEncoding); err != nil {
+			return nil, fmt.Errorf("%s: %w", source, err)
+		}
 	}
 	return csvInternal.DecodingReader(r, useEncoding), nil
 }

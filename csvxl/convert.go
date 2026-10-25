@@ -45,6 +45,13 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 	} else if len(csvEncoding) > 1 {
 		return fmt.Errorf("too many arguments for csvEncoding")
 	}
+	// A name nothing decodes would read every file as mojibake, so refuse it
+	// before opening or writing anything.
+	if !isAutoEncoding(encoding) {
+		if err := insyracsv.CheckDecodable(encoding); err != nil {
+			return err
+		}
+	}
 
 	f := excelize.NewFile()
 	defer func() { _ = f.Close() }()
@@ -128,6 +135,13 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 		encoding = csvEncoding[0]
 	} else if len(csvEncoding) > 1 {
 		return fmt.Errorf("too many arguments for csvEncoding")
+	}
+	// A name nothing decodes would read every file as mojibake, so refuse it
+	// before opening or writing anything.
+	if !isAutoEncoding(encoding) {
+		if err := insyracsv.CheckDecodable(encoding); err != nil {
+			return err
+		}
 	}
 
 	f, err := excelize.OpenFile(existingFile)

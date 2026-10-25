@@ -19,6 +19,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### Core
 
 - A row past the end of a table is now an error in CCL: `@.5000` or `@.(# + 1)` on the last row used to read as a row of nils and give a quiet wrong answer, and now fails like `A.5000` does. A script that relied on the nil row (for example `@.(# + 1)` as a "next row" that is empty on the last row) now fails there.
+- **Behavior change**: reading a CSV with an `Encoding` name insyra cannot decode (`ReadCSV`, `ReadCSV_FileWithOptions`, `StreamCSV`, and `csvxl.CsvToExcel` and `AppendCsvToExcel`) is now an error that lists the supported names. It used to hand the bytes back undecoded, so a typo such as "big6" read a Big5 file as mojibake with no error. The Windows code page names `cp950` and `cp936` are now accepted as Big5 and GBK.
 
 ### `ml` and `nn`
 
