@@ -488,3 +488,90 @@ func (t *Tape) softmaxCrossEntropyResident(logits, labels *Tensor) (*Tensor, err
 	})
 	return loss, nil
 }
+
+// softResidentShape checks the operands of a soft-target loss that live on a
+// device and returns their rows and classes.
+func softResidentShape(op string, logits, other *Tensor) (int, int, error) {
+	if logits.dtype != DTypeFloat32 || other.dtype != DTypeFloat32 {
+		return 0, 0, fmt.Errorf("%s on a device needs float32 tensors", op)
+	}
+	if len(logits.shape) != 2 || !sameShape(logits.shape, other.shape) {
+		return 0, 0, fmt.Errorf("%s requires two [N,C] tensors of the same shape, got %v and %v", op, logits.shape, other.shape)
+	}
+	rows, classes := logits.shape[0], logits.shape[1]
+	if rows == 0 || classes == 0 {
+		return 0, 0, fmt.Errorf("%s requires non-empty logits", op)
+	}
+	if rows >= 1<<24 {
+		return 0, 0, fmt.Errorf("%s in PrecisionFloat32Rounded supports fewer than 2^24 rows, got %d", op, rows)
+	}
+	return rows, classes, nil
+}
+
+// softTargetResident is SoftTargetCrossEntropy for logits and targets on one
+// device. The targets are not read back, so a row that is not a probability
+// distribution is not refused.
+func (t *Tape) softTargetResident(logits, targets *Tensor) (*Tensor, error) {
+	rows, classes, err := softResidentShape("soft-target cross-entropy", logits, targets)
+	if err != nil {
+		return nil, err
+	}
+	buffer, state, err := accel.RoundedSoftTargetCrossEntropy(logits.device, targets.device, rows, classes)
+	if err != nil {
+		return nil, err
+	}
+	t.releasers = append(t.releasers, state.Release)
+	loss, err := newResidentTensor(nil, buffer)
+	if err != nil {
+		return nil, err
+	}
+	t.own(loss)
+	t.record("SoftTargetCrossEntropy", []*Tensor{logits, targets}, loss, func(upstream *Tensor) ([]*Tensor, error) {
+		if !upstream.onDevice() || len(upstream.shape) != 0 {
+			return nil, fmt.Errorf("soft-target cross-entropy upstream must be a scalar on the device")
+		}
+		grad, err := accel.RoundedSoftTargetCrossEntropyGrad(state, targets.device, upstream.device, rows, classes)
+		if err != nil {
+			return nil, err
+		}
+		gradient, err := newResidentTensor(logits.shape, grad)
+		if err != nil {
+			return nil, err
+		}
+		return []*Tensor{t.own(gradient), nil}, nil
+	})
+	return loss, nil
+}
+
+// distillationResident is DistillationLoss for student and teacher on one device.
+func (t *Tape) distillationResident(student, teacher *Tensor) (*Tensor, error) {
+	rows, classes, err := softResidentShape("distillation loss", student, teacher)
+	if err != nil {
+		return nil, err
+	}
+	buffer, state, err := accel.RoundedDistillation(student.device, teacher.device, rows, classes)
+	if err != nil {
+		return nil, err
+	}
+	t.releasers = append(t.releasers, state.Release)
+	loss, err := newResidentTensor(nil, buffer)
+	if err != nil {
+		return nil, err
+	}
+	t.own(loss)
+	t.record("DistillationLoss", []*Tensor{student, teacher}, loss, func(upstream *Tensor) ([]*Tensor, error) {
+		if !upstream.onDevice() || len(upstream.shape) != 0 {
+			return nil, fmt.Errorf("distillation upstream must be a scalar on the device")
+		}
+		grad, err := accel.RoundedDistillationGrad(state, student.device, teacher.device, upstream.device, rows, classes)
+		if err != nil {
+			return nil, err
+		}
+		gradient, err := newResidentTensor(student.shape, grad)
+		if err != nil {
+			return nil, err
+		}
+		return []*Tensor{t.own(gradient), nil}, nil
+	})
+	return loss, nil
+}
