@@ -375,7 +375,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let row = i / p.classes;
     if (fb[row] == 1u) {
         if (i % p.classes == peak[row]) {
-            u[i] = sce_peak_u(q[i]);
+            // 0, or the NaN of either the student's or the teacher's
+            // probability, so a one-class row keeps a non-finite logit.
+            u[i] = sce_peak_u(q[i]) | sce_peak_u(pt[i]);
         } else {
             u[i] = sce_sum2(q[i], ONE, sce_neg(pt[i]), ONE);
         }
