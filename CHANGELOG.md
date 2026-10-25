@@ -6,7 +6,15 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 繁體中文：[CHANGELOG_TW.md](CHANGELOG_TW.md)
 
+- `Tape.Custom` now accepts tensors on a device, so a kernel of your own can sit between Insyra's resident operations and join the reverse pass without the data leaving the device. The tape must be in the new `accel.PrecisionFloat32` mode, which `SetPrecision` now accepts: every built-in operation computes as in `PrecisionFloat32Rounded`, and the tape no longer promises the same bits on another device because your kernel's result depends on the device. The tape owns a resident output and the gradients the reverse rule returns and releases them at `Clear`. `Tensor.DeviceBuffer()` lends a resident tensor's buffer to a kernel and `nn.NewDeviceTensor(shape, buffer)` wraps a buffer a kernel wrote as a tensor that owns it ([#546](https://github.com/HazelnutParadise/insyra/issues/546)).
+
+### `accel`
+
+- `accel.NewKernel`, `Kernel.Bind` and `accel.Submit` run your own WGSL compute shader on the resident `DeviceBuffer`s Insyra's tensors live in, with the same bindings Insyra's own kernels use: read-only buffers, then read-write buffers, then a 64-byte uniform. `Bind` builds the bind group once and `Submit` reuses it, reading each dispatch's parameters from a shared ring through a dynamic offset, so a launch allocates nothing. `Submit` sends all its dispatches in order as one submission and shares one queue with Insyra's resident operations, so the two need no synchronisation between them; on an Apple M3, 168 dispatches took 3.7 ms in one `Submit` and 23.8 ms as separate calls. `accel.ResidentLimits()` reports the device's buffer, workgroup and size limits, `accel.NewBitsBuffer` and `DeviceBuffer.BitsToHost` move 32-bit patterns such as indices unchanged, and `DeviceBuffer.Write`, `WriteBits` and `Zero` overwrite a buffer in place after waiting for earlier kernels. Insyra cannot check a kernel of your own, and the Vulkan backend does not clamp a write past the end of a buffer, so check your indices ([#546](https://github.com/HazelnutParadise/insyra/issues/546)).
+
 ## Unreleased
+
+- `accel.RoundedLog1p` and `accel.RoundedExpm1` compute `log(1+x)` and `e^x - 1` on a resident array, correctly rounded and bit for bit equal to the host's on all 2^32 float32 inputs, like `RoundedExp` and `RoundedLog`.
 
 ### Core
 
@@ -33,6 +41,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `quant`
 
 - **Behavior change**: `quant.BacktestSignal` now accepts a position from -1 (fully short) to 1; a signal or `InitialPosition` below 0 used to be an error. A short earns `-assetReturn + 2 * cashReturn` (the capital and the sale proceeds both earn the cash return), and the new `BacktestOptions.BorrowFee` charges a per-row fee on the short position. Every call that succeeded before gives the same result ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
+- `quant.MomentumPortfolios(table, dateCol, stockCol, returnCol, formation, groups, opts...)` builds Jegadeesh and Titman's momentum portfolios: each month it ranks stocks by their past `formation`-month return, holds the groups for `Hold` months with the overlapping portfolios averaged, and returns the groups' returns and the winners-minus-losers spread ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 
 ### `quant/ta`
 

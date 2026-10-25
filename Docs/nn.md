@@ -511,6 +511,33 @@ During `Backward`, a rule that returns an error, the wrong number of
 gradients, or a gradient of the wrong type or shape fails the pass with an
 error naming the operation.
 
+### Custom operations on the device
+
+`Custom` also takes resident tensors, so a kernel of your own launched with `accel.Submit` can sit between Insyra's resident operations without the data leaving the device. The tape must be in `PrecisionFloat32`:
+
+```go
+tape := nn.NewTape()
+if err := tape.SetPrecision(accel.PrecisionFloat32); err != nil { log.Fatal(err) }
+
+in, _ := x.DeviceBuffer()                      // lends the buffer, no copy
+out, _ := accel.NewDeviceBuffer(in.Device(), make([]float32, in.Len()))
+err := accel.Submit(accel.Dispatch{ /* your kernel: in -> out */ })
+y, _ := nn.NewDeviceTensor(x.Shape(), out)    // y now owns out
+
+err = tape.Custom("mykernel", []*nn.Tensor{x}, y,
+	func(upstream *nn.Tensor) ([]*nn.Tensor, error) {
+		// run your backward kernel; return new resident tensors
+		return []*nn.Tensor{dx}, nil
+	})
+```
+
+- **`PrecisionFloat32` tape.** It computes every built-in operation exactly as `PrecisionFloat32Rounded` does, and additionally lets `Custom` accept resident tensors. Your kernel's result depends on the device, so the tape no longer promises the same bits on another device or on the host. `Custom` on resident tensors in any other mode is refused, naming this one.
+- **Same place.** All inputs and the output are on the same device. Mixed host and device tensors, or two devices, are an error. The reverse rule returns resident float32 tensors on that device, shaped like their inputs, or `nil`.
+- **Ownership.** The tape owns a resident output and the gradients the rule returns, and releases them with `Clear` and `Close`, as it does for its own operations. Give `Custom` a tensor made for this step, never a parameter or a step input, and return new tensors from the rule.
+- **Do not write into a tensor the tape uses elsewhere.** A kernel that changes a parameter's buffer in place leaves the tape unaware, and the gradients silently wrong.
+- **Lending and adopting.** `Tensor.DeviceBuffer()` lends the buffer of a resident float32 tensor; the tensor keeps owning it, so do not release it yourself. `nn.NewDeviceTensor(shape, buffer)` wraps a buffer as a tensor that owns it, and leaves the buffer with you when it returns an error. A buffer lent by another tensor must not be adopted, or it is released twice.
+- **Host fallback.** `Custom` does not choose between a host and a device implementation. If a program must also run without a GPU, check `x.Device().ID` yourself and compute the host result in your own code.
+
 `BackwardFrom(output, upstream)` starts the reverse pass from any tensor an
 operation on the tape produced, seeded with an upstream gradient of the same
 shape, for a loss that is computed outside the tape:

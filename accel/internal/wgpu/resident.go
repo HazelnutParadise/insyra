@@ -154,17 +154,32 @@ func (b *Buffer) Download(ctx context.Context) ([]float32, error) {
 }
 
 func (b *Buffer) downloadLocked(ctx context.Context) ([]float32, error) {
+	values := make([]float32, b.length)
+	err := b.downloadRawLocked(ctx, func(raw []byte) {
+		for i := range values {
+			values[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[i*4:]))
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+// downloadRawLocked copies the buffer to a staging buffer and calls decode
+// with its bytes while they are mapped. decode must not keep raw.
+func (b *Buffer) downloadRawLocked(ctx context.Context, decode func(raw []byte)) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.released {
-		return nil, fmt.Errorf("wgpu: buffer was released")
+		return fmt.Errorf("wgpu: buffer was released")
 	}
 	if b.length == 0 {
-		return []float32{}, nil
+		return nil
 	}
 	h, err := acquire()
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	size := bufferBytes(b.length)
 	staging, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{
@@ -172,40 +187,36 @@ func (b *Buffer) downloadLocked(ctx context.Context) ([]float32, error) {
 		Usage: gowgpu.BufferUsageCopyDst | gowgpu.BufferUsageMapRead,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: create staging buffer: %w", ErrBufferTooLarge, err)
+		return fmt.Errorf("%w: create staging buffer: %w", ErrBufferTooLarge, err)
 	}
 	defer staging.Release()
 	encoder, err := h.device.CreateCommandEncoder(nil)
 	if err != nil {
-		return nil, fmt.Errorf("wgpu: create download encoder: %w", err)
+		return fmt.Errorf("wgpu: create download encoder: %w", err)
 	}
 	encoder.CopyBufferToBuffer(b.buffer, 0, staging, 0, size)
 	commands, err := encoder.Finish()
 	if err != nil {
-		return nil, fmt.Errorf("wgpu: finish download encoder: %w", err)
+		return fmt.Errorf("wgpu: finish download encoder: %w", err)
 	}
 	if _, err := h.device.Queue().Submit(commands); err != nil {
-		return nil, fmt.Errorf("wgpu: submit download: %w", err)
+		return fmt.Errorf("wgpu: submit download: %w", err)
 	}
 	mapCtx, cancel := context.WithTimeout(ctx, readbackTimeout)
 	defer cancel()
 	if err := staging.Map(mapCtx, gowgpu.MapModeRead, 0, size); err != nil {
-		return nil, fmt.Errorf("%w: map resident readback: %w", ErrReadbackTimeout, err)
+		return fmt.Errorf("%w: map resident readback: %w", ErrReadbackTimeout, err)
 	}
 	mapped, err := staging.MappedRange(0, size)
 	if err != nil {
 		_ = staging.Unmap()
-		return nil, fmt.Errorf("wgpu: resident mapped range: %w", err)
+		return fmt.Errorf("wgpu: resident mapped range: %w", err)
 	}
-	raw := mapped.Bytes()
-	values := make([]float32, b.length)
-	for i := range values {
-		values[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[i*4:]))
-	}
+	decode(mapped.Bytes())
 	if err := staging.Unmap(); err != nil {
-		return nil, fmt.Errorf("wgpu: unmap resident readback: %w", err)
+		return fmt.Errorf("wgpu: unmap resident readback: %w", err)
 	}
-	return values, nil
+	return nil
 }
 
 // flushPending releases what earlier dispatches kept alive. It is called only
@@ -247,6 +258,12 @@ type kernel struct {
 	nWrite int
 	// fixed adds the fixed-point library, with its constants, to the source.
 	fixed bool
+	// noLibrary leaves the exact-sum and IEEE library out: a caller's kernel
+	// that does not ask for it gets only its own source.
+	noLibrary bool
+	// dynamicUniform makes the uniform binding take a dynamic offset, so a
+	// caller's launches read their parameters from one shared ring.
+	dynamicUniform bool
 
 	once   sync.Once
 	pipe   *gowgpu.ComputePipeline
@@ -261,10 +278,17 @@ func (k *kernel) library() string {
 	return ""
 }
 
+func (k *kernel) source() string {
+	if k.noLibrary {
+		return k.body
+	}
+	return exactSumWGSL + ieeeWGSL + k.library() + k.body
+}
+
 func (k *kernel) build(h *handle) {
 	k.once.Do(func() {
 		shader, err := h.device.CreateShaderModule(&gowgpu.ShaderModuleDescriptor{
-			Label: "accel-" + k.name, WGSL: exactSumWGSL + ieeeWGSL + k.library() + k.body,
+			Label: "accel-" + k.name, WGSL: k.source(),
 		})
 		if err != nil {
 			k.err = fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
@@ -285,7 +309,7 @@ func (k *kernel) build(h *handle) {
 		}
 		entries = append(entries, gputypes.BindGroupLayoutEntry{
 			Binding: uint32(k.nRead + k.nWrite), Visibility: gowgpu.ShaderStageCompute,
-			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform},
+			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform, HasDynamicOffset: k.dynamicUniform},
 		})
 		layout, err := h.device.CreateBindGroupLayout(&gowgpu.BindGroupLayoutDescriptor{
 			Label: "accel-" + k.name + "-bgl", Entries: entries,
@@ -314,80 +338,7 @@ func (k *kernel) build(h *handle) {
 
 // run submits the kernel and returns without waiting for it to finish.
 func (k *kernel) run(reads, writes []*Buffer, params [16]uint32, groupsX, groupsY uint32) error {
-	if len(reads) != k.nRead || len(writes) != k.nWrite {
-		return fmt.Errorf("wgpu: %s takes %d read and %d write buffers, got %d and %d", k.name, k.nRead, k.nWrite, len(reads), len(writes))
-	}
-	submitMu.Lock()
-	defer submitMu.Unlock()
-	h, err := acquire()
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrUnavailable, err)
-	}
-	k.build(h)
-	if k.err != nil {
-		return k.err
-	}
-	if len(pending) >= maxPendingObjects {
-		if err := syncLocked(); err != nil {
-			return err
-		}
-	}
-	all := append(append([]*Buffer(nil), reads...), writes...)
-	entries := make([]gowgpu.BindGroupEntry, 0, len(all)+1)
-	for i, buffer := range all {
-		buffer.mu.Lock()
-		released, handle, size := buffer.released, buffer.buffer, bufferBytes(buffer.length)
-		buffer.mu.Unlock()
-		if released || handle == nil {
-			return fmt.Errorf("wgpu: %s: buffer %d was released", k.name, i)
-		}
-		entries = append(entries, gowgpu.BindGroupEntry{Binding: uint32(i), Buffer: handle, Size: size})
-	}
-	uniform, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{
-		Label: "accel-" + k.name + "-params", Size: 64,
-		Usage: gowgpu.BufferUsageUniform | gowgpu.BufferUsageCopyDst,
-	})
-	if err != nil {
-		return fmt.Errorf("wgpu: %s: create parameters: %w", k.name, err)
-	}
-	pending = append(pending, uniform)
-	raw := make([]byte, 64)
-	for i, value := range params {
-		binary.LittleEndian.PutUint32(raw[i*4:], value)
-	}
-	if err := h.device.Queue().WriteBuffer(uniform, 0, raw); err != nil {
-		return fmt.Errorf("wgpu: %s: upload parameters: %w", k.name, err)
-	}
-	entries = append(entries, gowgpu.BindGroupEntry{Binding: uint32(len(all)), Buffer: uniform, Size: 64})
-	bindGroup, err := h.device.CreateBindGroup(&gowgpu.BindGroupDescriptor{
-		Label: "accel-" + k.name + "-bg", Layout: k.layout, Entries: entries,
-	})
-	if err != nil {
-		return fmt.Errorf("wgpu: %s: create bind group: %w", k.name, err)
-	}
-	pending = append(pending, bindGroup)
-	encoder, err := h.device.CreateCommandEncoder(nil)
-	if err != nil {
-		return fmt.Errorf("wgpu: %s: create command encoder: %w", k.name, err)
-	}
-	pass, err := encoder.BeginComputePass(nil)
-	if err != nil {
-		return fmt.Errorf("wgpu: %s: begin compute pass: %w", k.name, err)
-	}
-	pass.SetPipeline(k.pipe)
-	pass.SetBindGroup(0, bindGroup, nil)
-	pass.Dispatch(groupsX, groupsY, 1)
-	if err := pass.End(); err != nil {
-		return fmt.Errorf("wgpu: %s: end compute pass: %w", k.name, err)
-	}
-	commands, err := encoder.Finish()
-	if err != nil {
-		return fmt.Errorf("wgpu: %s: finish command encoder: %w", k.name, err)
-	}
-	if _, err := h.device.Queue().Submit(commands); err != nil {
-		return fmt.Errorf("wgpu: %s: submit: %w", k.name, err)
-	}
-	return nil
+	return submit([]launch{{k: k, reads: reads, writes: writes, params: params, x: groupsX, y: groupsY, z: 1}})
 }
 
 // Synchronize waits until every earlier submission has finished.

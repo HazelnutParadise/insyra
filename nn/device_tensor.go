@@ -151,3 +151,64 @@ func rejectResident(operation string, tensors ...*Tensor) error {
 	}
 	return nil
 }
+
+// DeviceBuffer lends the device buffer of a resident float32 tensor, so a
+// kernel of your own can read or write it in place (accel.Submit). The tensor
+// keeps owning the buffer: releasing the tensor releases it, and the buffer
+// must not be released separately. A host tensor, and an int64 tensor, which
+// a device holds as int32 class indices, are refused.
+func (t *Tensor) DeviceBuffer() (*accel.DeviceBuffer, error) {
+	switch {
+	case t == nil:
+		return nil, fmt.Errorf("tensor is nil")
+	case t.device == nil:
+		return nil, fmt.Errorf("tensor is on the host; move it with To first")
+	case t.dtype != DTypeFloat32:
+		return nil, fmt.Errorf("tensor has dtype %s; only a float32 tensor lends its device buffer", dtypeName(t.dtype))
+	}
+	return t.device, nil
+}
+
+// NewDeviceTensor wraps buffer, a float32 buffer on a device, as a tensor of
+// shape. The tensor owns the buffer from then on, so only give it a buffer you
+// made yourself and no longer release: a buffer lent by another tensor's
+// DeviceBuffer would be released twice. On an error the buffer stays yours.
+func NewDeviceTensor(shape []int, buffer *accel.DeviceBuffer) (*Tensor, error) {
+	switch {
+	case buffer == nil:
+		return nil, fmt.Errorf("device buffer is nil")
+	case buffer.Device().ID == "":
+		return nil, fmt.Errorf("device buffer is on the host; a device tensor needs a buffer on a device")
+	case buffer.Released():
+		return nil, fmt.Errorf("device buffer was released")
+	}
+	if _, _, count, err := makeLayout(shape); err != nil {
+		return nil, err
+	} else if buffer.Len() != count {
+		return nil, fmt.Errorf("device buffer holds %d values, want %d for shape %v", buffer.Len(), count, shape)
+	}
+	return newResidentTensor(shape, buffer)
+}
+
+// ownResidentGradients wraps the vjp of a Custom operation on a device so that
+// every gradient it returns is a float32 tensor on the same device as the
+// output, which the tape releases at Clear.
+func (t *Tape) ownResidentGradients(name string, output *Tensor, vjp func(upstream *Tensor) ([]*Tensor, error)) func(upstream *Tensor) ([]*Tensor, error) {
+	device := output.Device().ID
+	return func(upstream *Tensor) ([]*Tensor, error) {
+		gradients, err := vjp(upstream)
+		if err != nil {
+			return nil, err
+		}
+		// Own every gradient first, so a refusal below leaves none behind.
+		for _, gradient := range gradients {
+			t.own(gradient)
+		}
+		for index, gradient := range gradients {
+			if gradient != nil && (gradient.device == nil || gradient.Device().ID != device) {
+				return nil, fmt.Errorf("tape custom %s: gradient %d is not on the device %s of the output; the vjp of an operation on a device returns tensors on that device", name, index, device)
+			}
+		}
+		return gradients, nil
+	}
+}

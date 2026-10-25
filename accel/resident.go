@@ -186,6 +186,9 @@ func (b *DeviceBuffer) Device() Device { return b.device }
 // Len reports how many float32 values the buffer holds.
 func (b *DeviceBuffer) Len() int { return b.inner.Len() }
 
+// Released reports whether Release has been called.
+func (b *DeviceBuffer) Released() bool { return b == nil || b.inner == nil || b.inner.Released() }
+
 // ToHost copies the values back, waiting for every earlier kernel that wrote
 // to the buffer. It is the only way values leave the device.
 func (b *DeviceBuffer) ToHost() ([]float32, error) {
@@ -332,6 +335,32 @@ func RoundedLog(x *DeviceBuffer) (*DeviceBuffer, error) {
 		return nil, errors.New("accel: device buffer is nil")
 	}
 	out, err := wgpu.LogRounded(x.inner)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return x.wrap(out)
+}
+
+// RoundedExpm1 computes e^x - 1 for each element of a resident array,
+// correctly rounded.
+func RoundedExpm1(x *DeviceBuffer) (*DeviceBuffer, error) {
+	if x == nil {
+		return nil, errors.New("accel: device buffer is nil")
+	}
+	out, err := wgpu.Expm1Rounded(x.inner)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return x.wrap(out)
+}
+
+// RoundedLog1p computes log(1+x) for each element of a resident array,
+// correctly rounded.
+func RoundedLog1p(x *DeviceBuffer) (*DeviceBuffer, error) {
+	if x == nil {
+		return nil, errors.New("accel: device buffer is nil")
+	}
+	out, err := wgpu.Log1pRounded(x.inner)
 	if err != nil {
 		return nil, residentFailure(err)
 	}
