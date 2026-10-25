@@ -72,6 +72,11 @@ func softLossRow(p []float32, row roundedSoftmaxRow) float32 {
 	a := make([]float32, 0, 2*len(p))
 	b := make([]float32, 0, 2*len(p))
 	for c := range p {
+		// A class with probability 0 adds nothing, even when its centred
+		// difference overflowed to -Inf and 0 * Inf would be NaN.
+		if p[c] == 0 {
+			continue
+		}
 		a = append(a, p[c], p[c])
 		b = append(b, row.ell, -row.d[c])
 	}
