@@ -30,6 +30,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `PrecisionFloat32Rounded` cross-entropy, on the host and on the device, no longer loses the label's gradient when the label leads by more than about 16.6: it is now `-(o/s)` times `upstream/rows`, with `o` the exact sum of the other exponentials, rather than `p - 1`. **Breaking**: the label's gradient has different bits for every input, so a run recorded in this mode will not reproduce. The loss in this mode is unchanged and still rounds to 0 past a margin of about 16.6. `nn.Tape.Softmax` no longer loses its peak's gradient the same way. (Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642))
 
+- `PrecisionFloat32Rounded`: `SoftTargetCrossEntropy` and `DistillationLoss` now run on a device and on the host as fixed sequences of correctly rounded operations, with the same bits, and distillation takes the gradient of Barron's paper ([arXiv 2610.31642](https://arxiv.org/abs/2610.31642)). The cross-entropy loss in this mode uses `log1p` of the other exponentials' sum instead of `log` of the sum, so a label that leads by more than about 16.6 no longer reads a loss of 0. **Breaking**: the loss of `SoftmaxCrossEntropy` in this mode has different bits wherever the two differ, so a run recorded in this mode will not reproduce.
+
 ### `stats`
 
 - `stats.Autocorrelation(series, maxLag)` estimates the autocorrelation at each lag from 1 to `maxLag`, matching R's `acf`, with a white-noise test and a heteroskedasticity-robust test (Lo and MacKinlay 1988) for series whose volatility changes, such as daily returns ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
