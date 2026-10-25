@@ -37,3 +37,31 @@ func TestKernelBindRefusesTheWrongBufferCount(t *testing.T) {
 		t.Fatalf("Bind with no buffers = %v", err)
 	}
 }
+
+// Releasing bindings in a loop that never submits keeps the deferred releases
+// under the pending bound.
+func TestBindingReleaseBoundsThePendingList(t *testing.T) {
+	requireResidentDevice(t)
+	k, err := NewKernel("increment", testIncrementWGSL, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Upload([]float32{0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Release()
+	for range 2 * maxPendingObjects {
+		bound, err := k.Bind(nil, []*Buffer{b})
+		if err != nil {
+			t.Fatal(err)
+		}
+		bound.Release()
+	}
+	submitMu.Lock()
+	n := len(pending)
+	submitMu.Unlock()
+	if n > maxPendingObjects {
+		t.Fatalf("pending after the loop = %d, want at most %d", n, maxPendingObjects)
+	}
+}
