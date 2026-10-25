@@ -50,6 +50,8 @@ func deviceMatMulFallbackReason(err error) FallbackReason {
 		return FallbackReasonShaderCompileFailed
 	case errors.Is(err, wgpu.ErrBufferTooLarge):
 		return FallbackReasonBufferTooLarge
+	case errors.Is(err, wgpu.ErrDeviceLost):
+		return FallbackReasonDeviceLost
 	case errors.Is(err, wgpu.ErrReadbackTimeout):
 		return FallbackReasonReadbackTimeout
 	case errors.Is(err, wgpu.ErrUnavailable):

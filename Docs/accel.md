@@ -223,6 +223,8 @@ err = accel.Submit(accel.Dispatch{
 
 **Do not use `countLeadingZeros` in a kernel you write.** The WGSL compiler Insyra uses turns it into the bit index of the highest set bit on Vulkan, not the count of zeros above it, so it gives a different answer than on Metal. Use `31u - firstLeadingBit(x)` for a nonzero `x`.
 
+**A lost device.** The driver can reset the GPU, the operating system stops a dispatch that runs about two seconds or more on Windows, and an adapter can be removed. Everything made on the device is then gone. The call that meets the loss returns an error for which `errors.Is(err, accel.ErrDeviceLost)` is true, and its `ResidentError` carries the reason `device-lost`. Every `DeviceBuffer` and `Binding` made before the loss keeps returning that error, even though `Released` now reports true. The next call that needs a device opens a new one, so recovery is to create new buffers (upload the data again from the host copy you kept), bind the same `Kernel`, which recompiles itself, and submit again. Insyra's own operations need nothing from you: the call that meets the loss runs on the CPU and the following calls use the new device. This follows what WebGPU specifies for `GPUDevice.lost`: a lost device never works again, and the application requests a new adapter and device.
+
 ## Still Not Implemented
 
 - One operation only: the exact nearest query points per row
