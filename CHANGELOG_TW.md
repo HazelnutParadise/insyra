@@ -14,6 +14,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
+- `accel.RoundedLog1p` 與 `accel.RoundedExpm1` 在常駐陣列上計算 `log(1+x)` 與 `e^x - 1`，結果正確捨入，並且在全部 2^32 個 float32 輸入上與主機逐位元一致，和 `RoundedExp`、`RoundedLog` 一樣。
+
 ### Core
 - **BREAKING**：`DataList` 的數值轉換不再改到一半才失敗，也不再把讀不出來的格子當成 `0`。`Normalize`、`Standardize`、`ClearOutliers` 會先掃過整份資料；格子既非數值也非 `nil`／`NaN` 時設定 `Err()`（指出列號）並保持所有格子原樣，過去 `[1, "x", 3].Normalize()` 會先把第一格改成 `0` 再回傳 `nil`。`nil` 與 `NaN` 格子原樣保留，且不計入轉換所用的平均、標準差、最小與最大值，所以含空白的 list 呼叫 `ClearOutliers` 現在會檢查每個數值格子，而不是在第一個空白就停住。`Rank`、`ExponentialSmoothing`、`DoubleExponentialSmoothing` 與六個 `*Interpolation` 方法不再經由 `ToF64Slice` 讀值：`Rank` 對 `nil`／`NaN` 給 `NaN` 名次且不佔名次位置，其他非數值格子則失敗（過去 `[3, "b", 1].Rank()` 把 `"b"` 當成 `0` 排第一）；平滑與插值方法要求整份資料為數值，否則失敗。全數值輸入的結果不變。
 - `DataTable` 產生的結果不再和原表共用資料：`Data()` 與 `ToMap()` 回傳複本，每個 `Filter*` 的結果也擁有自己的欄位與列名，修改過濾後的表不會再改到原表。`ChangeRowName` 改成另一列已在使用的名字時，會替被改名的列加上後綴，不再悄悄拿走另一列的名字。`DropColsContainNumber`／`DropRowsContainNumber` 現在也會刪除含有具名數值型別（例如 `time.Duration`）或十進位數的欄與列，v0.3.3 會保留它們。`ToCSV` 把 `time.Time` 寫成 RFC 3339，`ParseDates` 讀得回來。`AddColUsingCCL`、`EditColByIndexUsingCCL`、`EditColByNameUsingCCL`、`ExecuteCCL` 攔下 panic 後回傳接收者，不再回傳 nil。
