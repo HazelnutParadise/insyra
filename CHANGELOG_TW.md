@@ -28,6 +28,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `nn.Tape.SoftTargetCrossEntropy(logits, targets)` 是對每個樣本一列機率的平均交叉熵（標籤平滑、mixup），`nn.Tape.DistillationLoss(student, teacher)` 是學生 logits 對 `softmax(teacher)` 的交叉熵，老師視為常數。某個 logit 領先超過約 16.6 時梯度仍然準確，學生等於老師時梯度剛好是 0，這是 Barron 描述的兩個數值錯誤（[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）。只支援主機張量，裝置上的張量會被拒絕。
 
+- `PrecisionFloat32Rounded` 的交叉熵（主機與裝置都是）在標籤領先超過約 16.6 時，不再丟掉標籤的梯度：改為 `upstream/rows` 乘以 `-(o/s)`，`o` 是其他類別指數的精確總和，不再用 `p - 1`。**破壞性變更**：標籤的梯度對每個輸入的位元都不同，這個模式下先前記錄的執行無法重現。此模式的損失不變，在 margin 超過約 16.6 後仍會被捨入成 0。`nn.Tape.Softmax` 的反向也不再以同樣方式丟掉最大機率那一項的梯度。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
+
 ### `stats`
 
 - `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
@@ -46,6 +48,15 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `quant/ta`
 
 - `ta.FilterRule(prices, threshold, opts...)` 是 Alexander 的濾嘴法則（Fama 與 Blume 1966）：從最近低點漲了 `threshold` 就買進，從最近高點跌了 `threshold` 就賣出或放空，回傳每列 1／0／-1 的部位，可直接交給 `quant.BacktestSignal`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+
+### `accel`
+
+- 在 Vulkan 上，`DeviceBuffer.Write`、`WriteBits`、`Zero` 以及建立 `DeviceBuffer` 時的上傳，讀回來可能還是舊內容，因為佇列寫入沒有排在隨後的 kernel 或複製之前；在 GT 1030 上，`Zero` 之後讀取，20 次裡有 3 次拿到舊的字。現在除了自己會排序的 Metal 以外，這些呼叫都會等寫入完成，所以每次呼叫都會等佇列清空。
+- 在 Vulkan 上，正確捨入的除法、平方根、exp 與 log（`PrecisionFloat32Rounded` 與常駐的優化器步驟）遇到次正規輸入會回傳錯誤的值，例如 `1e-45 / 3e-45` 得到 1.5。WGSL 的 `countLeadingZeros` 被編成最高有效位的位元索引，而不是它上方零的個數，所以你自己的 kernel 用到它時在 Vulkan 上會得到錯誤答案；對非零的 `x` 請改用 `31u - firstLeadingBit(x)`。
+
+### `datafetch`
+
+- `datafetch.Fugle(cfg)` 讀取富果行情 API 的台股資料：`Stock.HistoricalCandles`（歷史 K 線，超過一年的區間自動切段）、`Stock.IntradayCandles`、`Stock.IntradayQuote`、`Stock.IntradayTrades`、`Stock.IntradayVolumes`、`Stock.IntradayTickers`，各有 `Context` 版本，以及 `ErrFugleAuth`、`ErrFuglePlan`、`ErrFugleThrottled` 三種錯誤。設定是最後一個可省略的 `...Options` 參數（`HistoricalCandles("2330")` 用預設值），股票清單、成交明細、分價量的表格固定保留文件列的欄位，API 沒給的欄位是空值（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 
 ## v0.3.5
 

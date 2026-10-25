@@ -150,7 +150,8 @@ fn main() {
 `}
 
 // sceGradKernel: params = length, classes, rows as float32 bits, stride. One
-// thread per logit.
+// thread per logit; the thread of a row's label also sums the row's other
+// exponentials.
 var sceGradKernel = &kernel{name: "rounded-ce-grad", nRead: 4, nWrite: 1, body: sceCommon + `
 struct Params { length: u32, classes: u32, rows_bits: u32, stride: u32, }
 @group(0) @binding(0) var<storage, read> ee: array<u32>;
@@ -169,15 +170,25 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let row = i / p.classes;
     let c = i % p.classes;
     let scale = f32_div(upstream[0], p.rows_bits);
-    let prob = f32_div(ee[i], sums[row]);
     var pr: ExactRegister;
     exact_clear(&pr);
-    exact_add_product(&pr, prob, scale);
-    var g = exact_round(pr);
     if (c == labels[row]) {
-        g = sce_sum2(g, ONE, NEG_ONE, scale);
+        // p - 1 is -(sum of the others)/s. Written as p - 1 it is exactly 0
+        // once the margin passes the float32 precision cliff.
+        var others: ExactRegister;
+        exact_clear(&others);
+        let base = row * p.classes;
+        for (var k: u32 = 0u; k < p.classes; k = k + 1u) {
+            if (k != c) {
+                exact_add_product(&others, ee[base + k], ONE);
+            }
+        }
+        let q = f32_div(exact_round(others), sums[row]);
+        exact_add_product(&pr, q ^ 0x80000000u, scale);
+    } else {
+        exact_add_product(&pr, f32_div(ee[i], sums[row]), scale);
     }
-    grad[i] = g;
+    grad[i] = exact_round(pr);
 }
 `}
 
