@@ -5,3 +5,4 @@
 - [x] Keep the documented columns of tickers, trades and volumes.
 - [x] `Docs/datafetch.md`: the settings paragraph.
 - [x] `openspec validate datafetch-fugle-optional-settings --strict` passes.
+- [x] The Fugle entry under `## Unreleased` / `### `datafetch`` in both CHANGELOGs now says settings are one optional trailing `...Options` value and the documented columns are kept (the client is unreleased, so one entry covers it).

@@ -45,9 +45,14 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `ta.FilterRule(prices, threshold, opts...)` 是 Alexander 的濾嘴法則（Fama 與 Blume 1966）：從最近低點漲了 `threshold` 就買進，從最近高點跌了 `threshold` 就賣出或放空，回傳每列 1／0／-1 的部位，可直接交給 `quant.BacktestSignal`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 
+### `accel`
+
+- 在 Vulkan 上，`DeviceBuffer.Write`、`WriteBits`、`Zero` 以及建立 `DeviceBuffer` 時的上傳，讀回來可能還是舊內容，因為佇列寫入沒有排在隨後的 kernel 或複製之前；在 GT 1030 上，`Zero` 之後讀取，20 次裡有 3 次拿到舊的字。現在除了自己會排序的 Metal 以外，這些呼叫都會等寫入完成，所以每次呼叫都會等佇列清空。
+- 在 Vulkan 上，正確捨入的除法、平方根、exp 與 log（`PrecisionFloat32Rounded` 與常駐的優化器步驟）遇到次正規輸入會回傳錯誤的值，例如 `1e-45 / 3e-45` 得到 1.5。WGSL 的 `countLeadingZeros` 被編成最高有效位的位元索引，而不是它上方零的個數，所以你自己的 kernel 用到它時在 Vulkan 上會得到錯誤答案；對非零的 `x` 請改用 `31u - firstLeadingBit(x)`。
+
 ### `datafetch`
 
-- `datafetch.Fugle(cfg)` 讀取富果行情 API 的台股資料：`Stock.HistoricalCandles`（歷史 K 線，超過一年的區間自動切段）、`Stock.IntradayCandles`、`Stock.IntradayQuote`、`Stock.IntradayTrades`、`Stock.IntradayVolumes`、`Stock.IntradayTickers`，各有 `Context` 版本，以及 `ErrFugleAuth`、`ErrFuglePlan`、`ErrFugleThrottled` 三種錯誤（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
+- `datafetch.Fugle(cfg)` 讀取富果行情 API 的台股資料：`Stock.HistoricalCandles`（歷史 K 線，超過一年的區間自動切段）、`Stock.IntradayCandles`、`Stock.IntradayQuote`、`Stock.IntradayTrades`、`Stock.IntradayVolumes`、`Stock.IntradayTickers`，各有 `Context` 版本，以及 `ErrFugleAuth`、`ErrFuglePlan`、`ErrFugleThrottled` 三種錯誤。設定是最後一個可省略的 `...Options` 參數（`HistoricalCandles("2330")` 用預設值），股票清單、成交明細、分價量的表格固定保留文件列的欄位，API 沒給的欄位是空值（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `datafetch.Fugle` 的 `client.FutOpt` 讀取富果的盤中期貨選擇權資料：`IntradayProducts`、`IntradayTickers`、`IntradayTicker`、`IntradayQuote`、`IntradayCandles`、`IntradayTrades`、`IntradayVolumes`，各有 `Context` 版本（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 
 ## v0.3.5
