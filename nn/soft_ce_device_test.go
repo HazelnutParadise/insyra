@@ -134,6 +134,14 @@ func TestRoundedSoftLossesZeroTermsAndOneClassNaN(t *testing.T) {
 		}
 	}
 	for _, bad := range []float32{float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1))} {
+		// A finite student against a non-finite one-class teacher.
+		fine, _ := NewTensor([]int{1, 1}, []float32{0})
+		broken, _ := NewTensor([]int{1, 1}, []float32{bad})
+		hostT := softCERun(t, accel.Device{}, true, fine, broken)
+		devT := softCERun(t, device, true, fine, broken)
+		if !math.IsNaN(float64(hostT.grad[0])) || !math.IsNaN(float64(devT.grad[0])) {
+			t.Errorf("teacher %g: gradient host %g device %g, want NaN", bad, hostT.grad[0], devT.grad[0])
+		}
 		one, _ := NewTensor([]int{1, 1}, []float32{bad})
 		prob, _ := NewTensor([]int{1, 1}, []float32{1})
 		for _, distill := range []bool{false, true} {
