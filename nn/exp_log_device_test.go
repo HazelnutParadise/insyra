@@ -24,7 +24,7 @@ func TestDeviceExpAndLogEqualTheHost(t *testing.T) {
 	if !exhaustive {
 		stride = 61 // a prime stride visits chunks across the whole range
 	}
-	for _, name := range []string{"exp", "log"} {
+	for _, name := range []string{"exp", "log", "expm1", "log1p"} {
 		var mismatches int
 		inputs := make([]float32, chunk)
 		for base := uint64(0); base < 1<<32; base += step * stride {
@@ -39,25 +39,16 @@ func TestDeviceExpAndLogEqualTheHost(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var out *Tensor
-			if name == "exp" {
-				buffer, err := accel.RoundedExp(resident.device)
-				if err != nil {
-					t.Fatal(err)
-				}
-				out, err = newResidentTensor([]int{chunk}, buffer)
-				if err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				buffer, err := accel.RoundedLog(resident.device)
-				if err != nil {
-					t.Fatal(err)
-				}
-				out, err = newResidentTensor([]int{chunk}, buffer)
-				if err != nil {
-					t.Fatal(err)
-				}
+			run := map[string]func(*accel.DeviceBuffer) (*accel.DeviceBuffer, error){
+				"exp": accel.RoundedExp, "log": accel.RoundedLog, "expm1": accel.RoundedExpm1, "log1p": accel.RoundedLog1p,
+			}[name]
+			buffer, err := run(resident.device)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := newResidentTensor([]int{chunk}, buffer)
+			if err != nil {
+				t.Fatal(err)
 			}
 			got, err := out.ToHost()
 			if err != nil {
@@ -71,12 +62,9 @@ func TestDeviceExpAndLogEqualTheHost(t *testing.T) {
 				go func(w int) {
 					defer wg.Done()
 					for i := w; i < chunk; i += workers {
-						var want float32
-						if name == "exp" {
-							want = expFloat32(inputs[i])
-						} else {
-							want = logFloat32(inputs[i])
-						}
+						want := map[string]func(float32) float32{
+							"exp": expFloat32, "log": logFloat32, "expm1": expm1Float32, "log1p": log1pFloat32,
+						}[name](inputs[i])
 						g := got.data[i]
 						if math.IsNaN(float64(want)) && math.IsNaN(float64(g)) {
 							continue
