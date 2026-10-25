@@ -22,6 +22,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `nn.NewTape` no longer seeds a `math/rand` source when it is called; the tape seeds it the first time something draws from it (`Dropout`, a layer's random initialisation). A tape that never draws costs about 0.15–0.65 µs and 304 B instead of 13–34 µs and 5.7 KB, measured on an M3. Masks and initial weights are the same values as before for every seed, including the default one and a zero `Tape{}`. ([#536](https://github.com/HazelnutParadise/insyra/issues/536))
 
+- `nn.Tape.SoftTargetCrossEntropy(logits, targets)` is the mean cross-entropy against a probability row per sample (label smoothing, mixup), and `nn.Tape.DistillationLoss(student, teacher)` is the cross-entropy of a student's logits against `softmax(teacher)`, with the teacher a constant. Gradients stay accurate when one logit leads by more than about 16.6 and are exactly 0 when the student equals the teacher, the two numerical errors Barron describes ([arXiv 2610.31642](https://arxiv.org/abs/2610.31642)). Host tensors only; a tensor on a device is refused.
+
 ### `stats`
 
 - `stats.Autocorrelation(series, maxLag)` estimates the autocorrelation at each lag from 1 to `maxLag`, matching R's `acf`, with a white-noise test and a heteroskedasticity-robust test (Lo and MacKinlay 1988) for series whose volatility changes, such as daily returns ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).

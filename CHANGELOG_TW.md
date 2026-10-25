@@ -22,6 +22,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `nn.NewTape` 呼叫時不再立刻為 `math/rand` 建立種子來源，改在第一次有東西從 tape 抽亂數時才建立（`Dropout`、層的隨機初始化）。從不抽亂數的 tape 在 M3 上量測從 13–34 µs、5.7 KB 降到約 0.15–0.65 µs、304 B。每個種子（包括預設種子與零值 `Tape{}`）產生的遮罩與初始權重都和以前相同。（[#536](https://github.com/HazelnutParadise/insyra/issues/536)）
 
+- `nn.Tape.SoftTargetCrossEntropy(logits, targets)` 是對每個樣本一列機率的平均交叉熵（標籤平滑、mixup），`nn.Tape.DistillationLoss(student, teacher)` 是學生 logits 對 `softmax(teacher)` 的交叉熵，老師視為常數。某個 logit 領先超過約 16.6 時梯度仍然準確，學生等於老師時梯度剛好是 0，這是 Barron 描述的兩個數值錯誤（[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）。只支援主機張量，裝置上的張量會被拒絕。
+
 ### `stats`
 
 - `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
