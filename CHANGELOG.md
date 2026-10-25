@@ -41,6 +41,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `ta.FilterRule(prices, threshold, opts...)` is Alexander's filter rule (Fama and Blume 1966): buy after a rise of `threshold` from the last low, sell or sell short after a fall of `threshold` from the last high, returned as a 1 / 0 / -1 position per row that `quant.BacktestSignal` takes as it is ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 
+### `datafetch`
+
+- `datafetch.Fugle(cfg)` reads Taiwan stock data from Fugle's market data API: `StockHistoricalCandles` (historical candles, ranges over a year cut into pieces), `StockIntradayCandles`, `StockIntradayQuote`, `StockIntradayTrades`, `StockIntradayVolumes` and `StockIntradayTickers`, each with a `Context` form, and the typed errors `ErrFugleAuth`, `ErrFuglePlan` and `ErrFugleThrottled` ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
+
 ## v0.3.5
 
 ### Core
