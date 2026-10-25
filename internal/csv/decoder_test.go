@@ -123,3 +123,26 @@ func TestLegacyCharsetAliasesDecode(t *testing.T) {
 		}
 	}
 }
+
+// The Windows code page names for Big5 and GBK decode like the names they stand for.
+func TestWindowsCodePageNamesForBig5AndGBK(t *testing.T) {
+	big5, err := traditionalchinese.Big5.NewEncoder().String("中文")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gbk, err := simplifiedchinese.GB18030.NewEncoder().String("中文")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, encoded := range map[string]string{"cp950": big5, "CP-950": big5, "cp936": gbk} {
+		r, err := DecodingReader(strings.NewReader(encoded), name)
+		if err != nil {
+			t.Errorf("DecodingReader(%q): %v", name, err)
+			continue
+		}
+		got, err := io.ReadAll(r)
+		if err != nil || string(got) != "中文" {
+			t.Errorf("%q decoded to %q (%v), want 中文", name, got, err)
+		}
+	}
+}
