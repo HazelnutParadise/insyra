@@ -7,17 +7,38 @@ import (
 
 // SoftTargetCrossEntropy is the mean over rows of -sum_k p_k*log(softmax(z)_k)
 // for logits [N,C] and a probability row per sample in targets [N,C]. Rows of
-// targets must be finite, non-negative and sum to 1 within 1e-5; the gradient
-// of the logits is (q*sum(p) - p)/N, and targets receive none.
+// a host targets tensor must be finite, non-negative and sum to 1 within 1e-5;
+// a tensor on a device is not read back to check. The gradient of the logits
+// is (q*sum(p) - p)/N, and targets receive none. In PrecisionFloat32Rounded
+// every step is one correctly rounded operation or an exact sum rounded once,
+// and the same bits come back from a device.
 func (t *Tape) SoftTargetCrossEntropy(logits, targets *Tensor) (*Tensor, error) {
-	if err := t.softCEOperands("soft-target cross-entropy", logits, targets); err != nil {
+	resident, err := t.softCEOperands("soft-target cross-entropy", logits, targets)
+	if err != nil {
 		return nil, err
+	}
+	if resident {
+		return t.softTargetResident(logits, targets)
 	}
 	rows, classes := logits.shape[0], logits.shape[1]
 	for r := 0; r < rows; r++ {
 		if err := checkProbabilityRow(targets.data[r*classes:(r+1)*classes], r); err != nil {
 			return nil, err
 		}
+	}
+	if t.rounded() {
+		loss, err := softTargetRoundedForward(logits, targets)
+		if err != nil {
+			return nil, err
+		}
+		t.record("SoftTargetCrossEntropy", []*Tensor{logits, targets}, loss, func(upstream *Tensor) ([]*Tensor, error) {
+			gradient, err := softTargetRoundedVJP(logits, targets, upstream)
+			if err != nil {
+				return nil, err
+			}
+			return []*Tensor{gradient, nil}, nil
+		})
+		return loss, nil
 	}
 	return t.softCE("SoftTargetCrossEntropy", false, logits, targets, func(r int, student, target []float32, p []float64) {
 		for c, v := range target {
@@ -30,37 +51,58 @@ func (t *Tape) SoftTargetCrossEntropy(logits, targets *Tensor) (*Tensor, error) 
 // p = softmax(teacher) and q = softmax(student), both [N,C]. The teacher is a
 // constant. Give logits already divided by the temperature; the gradient is
 // then the temperature-scaled one, to be multiplied by T^2 by the caller if
-// wanted. Equal logits give a gradient of exactly 0.
+// wanted. Equal logits give a gradient of exactly 0. In
+// PrecisionFloat32Rounded every step is one correctly rounded operation or an
+// exact sum rounded once, and the same bits come back from a device.
 func (t *Tape) DistillationLoss(student, teacher *Tensor) (*Tensor, error) {
-	if err := t.softCEOperands("distillation loss", student, teacher); err != nil {
+	resident, err := t.softCEOperands("distillation loss", student, teacher)
+	if err != nil {
 		return nil, err
+	}
+	if resident {
+		return t.distillationResident(student, teacher)
+	}
+	if t.rounded() {
+		loss, err := distillationRoundedForward(student, teacher)
+		if err != nil {
+			return nil, err
+		}
+		t.record("DistillationLoss", []*Tensor{student, teacher}, loss, func(upstream *Tensor) ([]*Tensor, error) {
+			gradient, err := distillationRoundedVJP(student, teacher, upstream)
+			if err != nil {
+				return nil, err
+			}
+			return []*Tensor{gradient, nil}, nil
+		})
+		return loss, nil
 	}
 	return t.softCE("DistillationLoss", true, student, teacher, func(r int, student, teacher []float32, p []float64) {
 		_ = softmaxRow64(teacher, p, nil)
 	})
 }
 
-func (t *Tape) softCEOperands(op string, logits, other *Tensor) error {
+// softCEOperands checks the operands and says whether they live on a device.
+func (t *Tape) softCEOperands(op string, logits, other *Tensor) (bool, error) {
 	resident, err := t.residency(op, logits, other)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if resident {
-		return fmt.Errorf("autodiff %s has no device kernel yet; call ToHost", op)
+		return true, nil
 	}
 	if err := requireFloat32(logits, op+" logits"); err != nil {
-		return err
+		return false, err
 	}
 	if err := requireFloat32(other, op+" second operand"); err != nil {
-		return err
+		return false, err
 	}
 	if len(logits.shape) != 2 || !sameShape(logits.shape, other.shape) {
-		return fmt.Errorf("%s requires two [N,C] tensors of the same shape, got %v and %v", op, logits.shape, other.shape)
+		return false, fmt.Errorf("%s requires two [N,C] tensors of the same shape, got %v and %v", op, logits.shape, other.shape)
 	}
 	if logits.shape[0] == 0 || logits.shape[1] == 0 {
-		return fmt.Errorf("%s requires non-empty logits", op)
+		return false, fmt.Errorf("%s requires non-empty logits", op)
 	}
-	return nil
+	return false, nil
 }
 
 func checkProbabilityRow(row []float32, index int) error {
