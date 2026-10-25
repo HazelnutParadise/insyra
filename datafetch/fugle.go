@@ -113,6 +113,8 @@ type FugleConfig struct {
 type FugleClient struct {
 	// Stock holds the stock endpoints.
 	Stock FugleStock
+	// FutOpt holds the futures and options endpoints.
+	FutOpt FugleFutOpt
 
 	base    *TWStockClient
 	baseURL string
@@ -151,6 +153,7 @@ func Fugle(cfg FugleConfig) (*FugleClient, error) {
 	}
 	client := &FugleClient{base: base, baseURL: baseURL}
 	client.Stock = FugleStock{c: client}
+	client.FutOpt = FugleFutOpt{c: client}
 	return client, nil
 }
 
