@@ -41,6 +41,11 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `ta.FilterRule(prices, threshold, opts...)` is Alexander's filter rule (Fama and Blume 1966): buy after a rise of `threshold` from the last low, sell or sell short after a fall of `threshold` from the last high, returned as a 1 / 0 / -1 position per row that `quant.BacktestSignal` takes as it is ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 
+### `accel`
+
+- On Vulkan, `DeviceBuffer.Write`, `WriteBits`, `Zero` and the upload that creates a `DeviceBuffer` could be read back as the old contents, because the queue write was not ordered before the kernel or copy that followed it; on a GT 1030, `Zero` followed by a read returned the old words in 3 of 20 runs. These calls now wait for the write to land on every backend except Metal, which orders it itself, so each now waits for the queue to go idle.
+- On Vulkan, the correctly rounded division, square root, exp and log (`PrecisionFloat32Rounded` and the resident optimizer steps) returned wrong values for subnormal inputs, for example `1e-45 / 3e-45` gave 1.5. The WGSL `countLeadingZeros` compiled to the bit index of the highest set bit instead of the count of zeros above it, so a kernel of your own that uses it gets the wrong answer on Vulkan; use `31u - firstLeadingBit(x)` for a nonzero `x`.
+
 ## v0.3.5
 
 ### Core
