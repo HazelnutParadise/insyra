@@ -136,7 +136,8 @@ func TestExactNearestChunked64K128Hardware(t *testing.T) {
 
 	rnd := rand.New(rand.NewSource(20260805 + 128 + 64_000))
 	dataset := exactDataset(64_000, 128, rnd)
-	queries := exactQueries(100_000, 128, rnd)
+	requireDeviceExecutor(t, device)
+	queries := exactQueries(hardwareQueryRows(100_000, exactNearestChunkRows, 128), 128, rnd)
 	start := time.Now()
 	result, err := session.ExecuteNearestExact(dataset, queries, 5, WorkloadEstimate{Rows: 64_000})
 	wall := time.Since(start)
@@ -180,7 +181,8 @@ func TestExactNearestChunkedOverheadHardware(t *testing.T) {
 
 	rnd := rand.New(rand.NewSource(20260805 + 32 + 32_000))
 	dataset := exactDataset(32_000, 32, rnd)
-	queries := exactQueries(100_000, 32, rnd)
+	requireDeviceExecutor(t, device)
+	queries := exactQueries(hardwareQueryRows(100_000, 32_000, 32), 32, rnd)
 	productionStart := time.Now()
 	production, err := session.ExecuteNearestExact(dataset, queries, 5, WorkloadEstimate{Rows: 32_000})
 	productionWall := time.Since(productionStart)
@@ -233,5 +235,42 @@ func requireHardwareGPU(t *testing.T) {
 	}
 	if info.Name == "" {
 		t.Skip("GPU backend returned no hardware adapter information")
+	}
+}
+
+// hardwareDispatchFMAs bounds the multiply-adds one device dispatch may carry
+// when the adapter is not Apple silicon. The 100,000-query shapes these tests
+// use were sized on an M3; on Windows a single dispatch that runs past about
+// two seconds is aborted by the system, which loses the Vulkan device for the
+// rest of the process (measured on a GT 1030: every later submit failed with
+// vkQueueSubmit -4). The budget is deliberately far below that limit.
+const hardwareDispatchFMAs = 2e10
+
+// hardwareQueryRows returns how many queries a hardware test should send so
+// that one dispatch over rowsPerDispatch rows of dims columns stays inside
+// hardwareDispatchFMAs on an adapter that is not Metal. Chunk counts depend on
+// the dataset rows alone, so shrinking the queries keeps every assertion.
+func hardwareQueryRows(want, rowsPerDispatch, dims int) int {
+	info, err := wgpu.Probe()
+	if err != nil || info.IsMetal {
+		return want
+	}
+	limit := int(hardwareDispatchFMAs / (float64(rowsPerDispatch) * float64(dims)))
+	if limit < 256 {
+		limit = 256
+	}
+	if limit < want {
+		return limit
+	}
+	return want
+}
+
+// requireDeviceExecutor skips when the discovered device's backend has no
+// registered executor, which sends every operation to the CPU and makes a
+// test that expects device execution meaningless.
+func requireDeviceExecutor(t *testing.T, device Device) {
+	t.Helper()
+	if _, ok := lookupBackendExecutor(device.Backend); !ok {
+		t.Skipf("no executor registered for backend %q (device %s)", device.Backend, device.Name)
 	}
 }
