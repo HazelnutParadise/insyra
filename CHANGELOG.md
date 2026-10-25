@@ -56,6 +56,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `datafetch.Fugle(cfg)` reads Taiwan stock data from Fugle's market data API: `Stock.HistoricalCandles` (historical candles, ranges over a year cut into pieces), `Stock.IntradayCandles`, `Stock.IntradayQuote`, `Stock.IntradayTrades`, `Stock.IntradayVolumes` and `Stock.IntradayTickers`, each with a `Context` form, and the typed errors `ErrFugleAuth`, `ErrFuglePlan` and `ErrFugleThrottled`. Settings are one optional trailing `...Options` value (`HistoricalCandles("2330")` uses the defaults) and the tickers, trades and volumes tables always carry their documented columns, as nil where the API leaves a field out ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
 - `client.FutOpt` of `datafetch.Fugle` reads Fugle's intraday futures and options data: `IntradayProducts`, `IntradayTickers`, `IntradayTicker`, `IntradayQuote`, `IntradayCandles`, `IntradayTrades` and `IntradayVolumes`, each with a `Context` form ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
+- `client.FutOpt.HistoricalCandles` and `client.FutOpt.HistoricalDaily` read Fugle's historical futures and options data: candles of a contract or a continuous contract (ranges over a year cut into pieces) and one trading day of a product with a row per contract ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
 
 ## v0.3.5
 
