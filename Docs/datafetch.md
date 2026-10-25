@@ -862,6 +862,47 @@ Dataset(name, dataID string, from, to time.Time) (*insyra.DataTable, error)
 
 **Traps in the data.** One is checked: the `date` of `TaiwanStockMonthRevenue` is the first day of the month *after* the revenue month (`revenue_month` 7 has `date` 2026-08-01) and is not the announcement date, so aligning it with prices on `date` looks ahead. The rest were reported when the dataset was tried on 2026-10-17 and are not checked here: individual institutional trades start on 2012-05-02, not 2005 as the documentation says; a daily price row with no trade has all four prices 0, so filter with `close > 0`; and the free tier refuses adjusted prices (`TaiwanStockPriceAdj`) though the documentation says it allows them.
 
+## Fugle
+
+Fugle (developer.fugle.tw) serves Taiwan stock quotes, intraday candles and historical candles over a REST API, with no brokerage account needed. `FugleClient` reads its intraday and historical stock endpoints. Futures and options, snapshots, technical indicators, corporate actions, ownership and the WebSocket stream are not in this version.
+
+```go
+client, err := datafetch.Fugle(datafetch.FugleConfig{APIKey: os.Getenv("FUGLE_API_KEY")})
+
+bars, err := client.StockHistoricalCandles("2330", datafetch.FugleHistoricalCandlesParams{
+    From: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), To: time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
+    Timeframe: datafetch.FugleTimeframeDay, Adjusted: true,
+})
+quote, err := client.StockIntradayQuote("2330")
+```
+
+**Real time versus history.** The method names follow Fugle's two groups. The `Intraday` methods are about the current trading day: the quote is the latest state of the order book and the last trade, and the trades, volumes and intraday candles are today's, building up while the market is open. The `Historical` method is about past days: Fugle updates it by 16:30 on each trading day, so today's finished day appears there only after that, and it is the one that reaches back years (day candles from 2010, minute candles from 2023-05-23, per Fugle's documentation). Whether the free plan's intraday data is delayed is Fugle's plan term, not something the client decides.
+
+`FugleConfig` has `APIKey` (the whole string, which usually ends in `==`, sent as `X-API-KEY`; leave it empty when a proxy adds it), `BaseURL` (default `https://api.fugle.tw/marketdata/v1.0`), `Timeout`, `Interval` (zero means one request a second, under the 60 a minute every plan allows; negative turns throttling off), `UserAgent`, `Retries` and `RetryBackoff`. Every method has a `...Context` form.
+
+| Method | Fugle endpoint | Result |
+| :--- | :--- | :--- |
+| `StockHistoricalCandles(symbol, FugleHistoricalCandlesParams)` | `historical/candles/{symbol}` | `date`, `open`, `high`, `low`, `close`, `volume`, then `average`, `turnover` and `change` when asked for |
+| `StockIntradayCandles(symbol, FugleIntradayCandlesParams)` | `intraday/candles/{symbol}` | the same columns for today |
+| `StockIntradayQuote(symbol, oddLot...)` | `intraday/quote/{symbol}` | one row; nested fields are joined (`total_tradeVolume`, `lastTrade_price`) and the best bids and asks are `bids_1_price`, `bids_1_size`, `asks_1_price`... |
+| `StockIntradayTrades(symbol, FugleIntradayTradesParams)` | `intraday/trades/{symbol}` | `bid`, `ask`, `price`, `size`, `volume`, `time`, `serial` |
+| `StockIntradayVolumes(symbol, oddLot...)` | `intraday/volumes/{symbol}` | `price`, `volume`, `volumeAtBid`, `volumeAtAsk` |
+| `StockIntradayTickers(FugleIntradayTickersParams)` | `intraday/tickers` | `symbol`, `name`, `industry` |
+
+Coming from the official Python SDK (`fugle-marketdata`), the parameters keep their names and the method is one flat name:
+
+| Python | Go |
+| :--- | :--- |
+| `client.stock.intraday.quote(symbol="2330")` | `client.StockIntradayQuote("2330")` |
+| `client.stock.historical.candles(symbol="2330", timeframe="D", adjusted=True)` | `client.StockHistoricalCandles("2330", FugleHistoricalCandlesParams{Timeframe: FugleTimeframeDay, Adjusted: true})` |
+| `client.stock.intraday.tickers(type="EQUITY")` | `client.StockIntradayTickers(FugleIntradayTickersParams{Type: FugleTickerEquity})` |
+
+**Ranges over a year.** The API refuses a historical range of a year or more, so `StockHistoricalCandles` cuts a day or minute range into pieces of 364 days, fetches them one after another and joins them in ascending date order. A piece with no data answers HTTP 404, which adds nothing; a range with no data at all is an empty table. Week and month candles are not cut, since a candle would be split between two pieces, so their range must be at most 364 days. Adjusted prices are adjusted as of the day of the request.
+
+**Units.** Volume is in shares for day, week and month candles, and in lots (1,000 shares) for the minute candles of listed stocks. `time` in trades and quotes is the API's number, unchanged. A day's `date` is midnight UTC of that day and a minute's is the exchange's timestamp.
+
+**Plans and errors.** The free plan has the intraday and historical endpoints at 60 requests a minute; the other Fugle endpoints need a paid plan. `errors.Is` tells the failures apart: `ErrFugleAuth` (HTTP 401, the key is wrong or cut short), `ErrFuglePlan` (HTTP 403, the plan does not include the endpoint) and `ErrFugleThrottled` (HTTP 429 on every attempt). Only throttling is retried.
+
 ## Japan Exchange Group (JPX)
 
 ```go
