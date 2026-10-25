@@ -26,6 +26,14 @@ fn sce_neg(bits: u32) -> u32 {
     return bits ^ 0x80000000u;
 }
 
+// The peak's entry of u: 0, or the probability itself when it is NaN.
+fn sce_peak_u(q: u32) -> u32 {
+    if ((q & 0x7fffffffu) > 0x7f800000u) {
+        return q;
+    }
+    return 0u;
+}
+
 fn sce_mul(a: u32, b: u32) -> u32 {
     var r: ExactRegister;
     exact_clear(&r);
@@ -116,6 +124,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var r: ExactRegister;
     exact_clear(&r);
     for (var c: u32 = 0u; c < p.classes; c = c + 1u) {
+        // A class with probability 0 adds nothing, even when its centred
+        // difference overflowed to -Inf and 0 * Inf would be NaN.
+        if ((pr[base + c] & 0x7fffffffu) == 0u) {
+            continue;
+        }
         exact_add_product(&r, pr[base + c], ell[row]);
         exact_add_product(&r, pr[base + c], sce_neg(dd[base + c]));
     }
@@ -162,7 +175,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     let row = i / p.classes;
     if (i % p.classes == peak[row]) {
-        u[i] = 0u;
+        // 0 for a finite row; a NaN probability (a non-finite logit in the
+        // row) stays NaN, so a one-class row does not hide it.
+        u[i] = sce_peak_u(q[i]);
         return;
     }
     var m = mass[row];
@@ -360,7 +375,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let row = i / p.classes;
     if (fb[row] == 1u) {
         if (i % p.classes == peak[row]) {
-            u[i] = 0u;
+            u[i] = sce_peak_u(q[i]);
         } else {
             u[i] = sce_sum2(q[i], ONE, sce_neg(pt[i]), ONE);
         }
