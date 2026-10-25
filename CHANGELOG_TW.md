@@ -119,6 +119,71 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`ToSQL` 遇到沒有名字的欄位，改用欄位字母（`A`、`B`…）當欄名，不再寫成 MySQL 和 PostgreSQL 都不接受的空白名稱 `""`。例如 `NewDataTable(NewDataList(1, 2, 3)).ToSQL(db, insyra.SQLDialectMySQL, "t")` 以前會失敗並回傳 `Incorrect column name ''`，現在會寫出欄位 `A`。寫進 SQLite 的表也一樣，以前的 `""` 欄位現在會叫 `A`。如果已經有別的欄位用了這個字母當名稱，在寫入任何東西之前就會回傳錯誤。
 - 在 MySQL 上，`ToSQL` 寫入失敗時不會再留下做到一半的表。要新建的表會先用暫存名稱寫入，所有資料列都寫完才改名成目標名稱，所以寫入失敗時不會留下任何表。以前會留下一張空表，害下一次寫入因為 `already exists` 失敗。追加模式新增的欄位，在資料列寫入失敗時會被刪掉；以前資料列會回滾，但新增的欄位會留下來。在 MySQL 上建表現在需要對整個資料庫有 CREATE、INSERT、ALTER、DROP 權限，跟 Replace 原本的要求相同。
 - 值是數字的 enum 現在都會印出名稱。`MergeMode`、`NaNPolicy`、`UnknownPolicy`、`LabelSort`、`ResampleFreq`、`SheetExistsPolicy`、`SQLActionIfTableExists`、`MergeDirection` 與 `ErrPoppingMode` 新增 `String()`，`fmt.Print(insyra.MergeModeOuter)` 印出 `MergeModeOuter`，不再是 `1`。不在常數之內的值印成 `型別名(n)`，原本就有 `String()` 的型別也一樣：`DataType(9)` 過去印 `unknown`、`LogLevel(9)` 印 `UNKNOWN`、`AggregateOp(99)` 印 `op(99)`。回報未知設定的錯誤會寫出名稱：`LabelEncode` 收到 `LabelSort(9)` 時，訊息從 `unknown LabelSort 9` 改為 `unknown LabelSort LabelSort(9)`。
+
+
+- CCL 讀取超出表格列數的列現在會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本（例如把 `@.(# + 1)` 當作「下一列」，最後一列為空）會在那一列失敗。
+
+### `ml` 與 `nn`
+
+- `nn.NewTape` 呼叫時不再立刻為 `math/rand` 建立種子來源，改在第一次有東西從 tape 抽亂數時才建立（`Dropout`、層的隨機初始化）。從不抽亂數的 tape 在 M3 上量測從 13–34 µs、5.7 KB 降到約 0.15–0.65 µs、304 B。每個種子（包括預設種子與零值 `Tape{}`）產生的遮罩與初始權重都和以前相同。（[#536](https://github.com/HazelnutParadise/insyra/issues/536)）
+
+- `nn.Tape.SoftmaxCrossEntropy` 在標籤的 logit 遠大於其他類別時，不再丟掉標籤那一項的梯度：反向以前用 p - 1，margin 超過約 16.6 後在 float32 裡剛好等於 0，其他類別的梯度卻還不是 0，整列梯度就不再加總為 0；現在改用其他類別機率總和的負值。損失也不會在 margin 超過約 36 後被捨入成 0。只有預設精度改變，`PrecisionFloat32Rounded` 不變。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
+
+- `PrecisionFloat32Rounded` 的交叉熵（主機與裝置都是）在標籤領先超過約 16.6 時，不再丟掉標籤的梯度：改為 `upstream/rows` 乘以 `-(o/s)`，`o` 是其他類別指數的精確總和，不再用 `p - 1`。**破壞性變更**：標籤的梯度對每個輸入的位元都不同，這個模式下先前記錄的執行無法重現。此模式的損失不變，在 margin 超過約 16.6 後仍會被捨入成 0。`nn.Tape.Softmax` 的反向也不再以同樣方式丟掉最大機率那一項的梯度。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
+
+### `stats`
+
+- `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `stats.RunsTest(series, opts...)` 檢定漲跌順序是否隨機（Wald-Wolfowitz）：計算高於與低於切點（預設 0）的連數，回傳期望連數、`Z` 與 p 值（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `stats.Autocorrelation` 與 `stats.VarianceRatio` 現在會拒絕由小數（例如 0.1）組成的常數序列：100 個 0.1 的平均值不是剛好 0.1，以前會對沒有變異的序列回報 `Rho` 0.99 和極小的 p 值。
+
+### `ml` 與 `nn`
+
+- `nn` 的矩陣乘法、卷積與 edge sum 現在依 `runtime.GOMAXPROCS(0)` 決定執行緒數，不再用 `runtime.NumCPU()`，所以調低 `GOMAXPROCS` 或同時跑多個乘法的程式不會再超額使用 CPU；結果不變（[#537](https://github.com/HazelnutParadise/insyra/issues/537)）。
+
+### `quant`
+
+- **行為改變**：`quant.BacktestSignal` 現在接受從 -1（完全放空）到 1 的部位；訊號或 `InitialPosition` 小於 0 以前會報錯。放空的報酬是 `-資產報酬 + 2 * 現金報酬`（本金與賣空所得都賺現金利率），新的 `BacktestOptions.BorrowFee` 對放空部位每列收一筆借券費。以前成功的呼叫結果不變（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `quant.MomentumPortfolios(table, dateCol, stockCol, returnCol, formation, groups, opts...)` 建立 Jegadeesh 與 Titman 的動能組合：每月依過去 `formation` 個月的報酬把股票排名分組，持有 `Hold` 個月並平均重疊的組合，回傳各組報酬與贏家減輸家的價差（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+
+### `quant/ta`
+
+- `ta.FilterRule(prices, threshold, opts...)` 是 Alexander 的濾嘴法則（Fama 與 Blume 1966）：從最近低點漲了 `threshold` 就買進，從最近高點跌了 `threshold` 就賣出或放空，回傳每列 1／0／-1 的部位，可直接交給 `quant.BacktestSignal`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+
+### `accel`
+
+- 在 Vulkan 上，`DeviceBuffer.Write`、`WriteBits`、`Zero` 以及建立 `DeviceBuffer` 時的上傳，讀回來可能還是舊內容，因為佇列寫入沒有排在隨後的 kernel 或複製之前；在 GT 1030 上，`Zero` 之後讀取，20 次裡有 3 次拿到舊的字。現在除了自己會排序的 Metal 以外，這些呼叫都會等寫入完成，所以每次呼叫都會等佇列清空。
+- 在 Vulkan 上，正確捨入的除法、平方根、exp 與 log（`PrecisionFloat32Rounded` 與常駐的優化器步驟）遇到次正規輸入會回傳錯誤的值，例如 `1e-45 / 3e-45` 得到 1.5。WGSL 的 `countLeadingZeros` 被編成最高有效位的位元索引，而不是它上方零的個數，所以你自己的 kernel 用到它時在 Vulkan 上會得到錯誤答案；對非零的 `x` 請改用 `31u - firstLeadingBit(x)`。
+
+### `datafetch`
+
+- `datafetch.Fugle(cfg)` 讀取富果行情 API 的台股資料：`Stock.HistoricalCandles`（歷史 K 線，超過一年的區間自動切段）、`Stock.IntradayCandles`、`Stock.IntradayQuote`、`Stock.IntradayTrades`、`Stock.IntradayVolumes`、`Stock.IntradayTickers`，各有 `Context` 版本，以及 `ErrFugleAuth`、`ErrFuglePlan`、`ErrFugleThrottled` 三種錯誤。設定是最後一個可省略的 `...Options` 參數（`HistoricalCandles("2330")` 用預設值），股票清單、成交明細、分價量的表格固定保留文件列的欄位，API 沒給的欄位是空值（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
+
+## v0.3.5
+
+### Core
+
+- **BREAKING**：Insyra 現在需要 Go 1.26，`go.mod` 的 `go` 指示為 `1.26.9`。Go 1.27 發布後，Go 1.25 就不再有修正版。2026-10-08 公布的十一則標準函式庫漏洞只從 Go 1.26.9 起修正，其中幾則在 `plot.SavePNG` 與 `DataTable.ToSQL` 會用到的 `net/http`。HTTP/2 那幾則在 `golang.org/x/net` 的修正版也需要 Go 1.26。使用 Go 1.21 以上時，除非設定 `GOTOOLCHAIN=local`，`go` 指令會自動下載 1.26.9 工具鏈。
+- CCL 字串字面值裡連寫兩個引號代表一個引號，跟 Excel 一樣：`'it''s'` 是 `it's`，`"say ""hi"""` 是 `say "hi"`。以前字串裡沒辦法放跟外層相同的引號。連續兩個引號以前一定編譯失敗，所以原本能編譯的運算式意思都不變。中括號裡的欄名也適用同樣規則（`['O''Brien']`），statement mode 把腳本切成多個敘述時也照這個規則判斷。反斜線仍然是一般字元。
+- CCL 新增 `DATEPART(d, unit)`，取出日期的某個部分並回傳數字：`'year'`、`'month'`、`'day'`、`'hour'`、`'minute'` 或 `'second'`，以日期本身的時區來算。這條線上的 `DAY`、`HOUR`、`MINUTE`、`SECOND` 是換算時間長度用的，要取日期的這些部分就用 `DATEPART`。
+- CCL 把每一種 Go 整數型別與 `float32` 的格子都當成數字。`int8`、`int16` 與無號整數欄（`parquet.Read` 讀到檔案裡這類欄位時給的就是這些型別）過去不被 CCL 當成數字：`SUM` 回 0、`MAX` 回 `nil`、`A == 1` 回 false，全都不報錯，而 `A * 2`、`IF(A, 'y', 'n')` 與 `ROUND(A, 2)` 會失敗。`A.B` 也接受存成 `int32`、`int64`、`float32` 或其他整數型別的列號，過去會被拒絕；小數部分和 `float64` 列號一樣捨去。`ISNA` 與 `IFNA` 也把 `float32` 的 NaN 當成缺值。
+- CCL 的列號是 NaN、無限大或超出 `int32` 範圍時，在每個平台上都會報錯。以前 `float64` 的這種列號在 arm64 會讀到第 0 列，在 amd64 會報錯。
+- `engine/ccl` 可以註冊序列函式了：用 `RegisterSequenceFunction(name, fn)` 搭配新的 `SeqFunc` 型別，加入一個吃整欄、回傳同樣長度一欄的函式，就像 `LAG`、`CUMSUM` 那樣。以前從模組外只能註冊純量函式與彙總函式。註冊函式的說明也寫清楚函式登錄表的行為：整個程式共用同一份，可以從任意多個 goroutine 同時使用，名稱不分大小寫，同名再註冊一次會取代同一類的函式。什麼都不做的 `ResetEvalDepth`、`ResetFuncCallDepth` 標為 Deprecated。
+- 讀寫不再非得經過硬碟上的檔案。`ReadCSV(r io.Reader, opts)` 可以從任何來源讀 CSV，例如 HTTP 回應、壓縮檔裡的檔案、`embed.FS` 檔案或記憶體中的位元組，`Encoding` 留空時會從開頭的位元組偵測編碼；`ReadCSV_FileWithOptions` 與 `ReadCSV_StringWithOptions` 現在走同一套程式，同樣的位元組不論走哪個入口都得到同樣的表格。`StreamCSV(r, opts, batchSize)` 以 `for dt, err := range insyra.StreamCSV(...)` 一批一批讀 CSV，記憶體裡只放當下這一批；標題列會命名每一批的欄位，型別逐批推斷。`ReadJSON` 接受 `io.Reader`，`ReadExcel(r, sheet, …)` 從來源讀活頁簿，`(*DataTable).WriteCSV` 與 `WriteJSON` 可寫到任何 `io.Writer`，`ToCSVWithOptions` 與 `ToJSON` 現在也透過它們寫檔。既有函式的簽名與結果都沒有改變。
+- DataTable 現在可以寫成 Excel。`(*DataTable).ToExcel(path, ExcelWriteOptions)` 把表格寫成活頁簿裡的一張工作表，活頁簿其他工作表維持原樣，檔案不存在時會自動建立，所以一份報表可以一年放一張表。工作表已經存在時會回傳可用 `ErrSheetExists` 比對的錯誤，檔案完全不動；設定 `IfSheetExists: SheetExistsReplace` 才會取代那張表，而且保留它原本的位置，原本隱藏的也維持隱藏，其他工作表定義的名稱也留在原處。`Sheet` 預設為 `Sheet1`。數字、布林值與時間會存成 Excel 的原生值。檔案要整份寫完才會取代原檔，既有檔案的權限不變。`(*DataTable).WriteExcel(w, opts)` 可以把單一工作表的活頁簿寫到任何 `io.Writer`。
+- `DataList.DataType()` 與 `DataTable.ColDataTypes()` 說明一欄裝的是哪種值：`DataTypeNumber`、`DataTypeString`、`DataTypeBool`、`DataTypeTime`、`DataTypeOther`、`DataTypeMixed`，沒有值時是 `DataTypeEmpty`。缺值（nil，以及任何浮點型別的 NaN）不算，整數和浮點數都算數字，看起來像數字的文字仍是文字。這條線上 decimal 判為 `DataTypeOther`，因為數值函式不把它當數字讀。`ShowTypes` 開頭多一列 `DataType`，在逐格的 Go 型別上方總結每一欄；DataList 的型別資訊也多一行 `DataType:`。
+- DataList 與 DataTable 新增 `ShowHead(n)`、`ShowTail(n)` 以及 `ShowHeadTo`、`ShowTailTo`，是 `ShowRange(n)` 與 `ShowRange(-n)` 更直白的寫法。數量小於 1 時印出錯誤行。
+- 在 nil 的 `DataList` 或 `DataTable`（例如 `GetCol` 找不到欄時回傳的值）上呼叫 `Err()`，會回報 `nil DataList` 或 `nil DataTable`，不再崩潰。只有 `Err()` 有這層保護，nil 值上的其他方法照樣會失敗。
+- DataTable 的 `Show`、`ShowRange`、`ShowTypesRange` 改成只依要印出的列決定欄寬，不再格式化每一格，所以 `ShowRange(5)` 不會再隨表格變大而變慢。會印出全部列的視圖，輸出逐位元組不變。超過 25 列、只印前 20 列與後 5 列時，若某欄最寬的格子落在沒印出的列，該欄會變窄。`Show` 接受的介面匯出為 `Showable`。
+- `DataTable.SliceRows(from, to)` 與 `SliceCols(from, to)` 像 Go 的 `s[from:to]` 那樣取連續的列或欄。`SliceRows` 用 0 起算的位置；`SliceCols` 的兩端可以是 Excel 欄字母或 int 位置，int 可為負數從尾端算，`nil` 代表不限該端：在四欄的表上 `SliceCols("B", "D")`、`SliceCols(1, 3)`、`SliceCols("B", -1)` 是同一個呼叫。無法使用的邊界會記錄錯誤並回傳空表。十個 `FilterRowsByRowIndex…`、`FilterColsByColIndex…` 方法以及 `Headers`、`SetHeaders` 改為 Deprecated，請改用 `SliceRows`、`SliceCols`、`ColNames`、`SetColNames`；它們在 0.3.x 線照常可用。`FilterColsByColIndexLessThan` 與 `…LessThanOrEqualTo` 收到超過最後一欄的字母時回傳所有欄，不再 panic。
+- `DataTable.FilterRowsWhere(keep func(row *DataList) bool)` 把整列交給 `keep`，條件可以比較同一列的兩欄。`Filter` 與 `FilterRows` 改用呼叫開始時的欄位運作，判斷式裡新增或刪除欄位不會再讓篩選崩潰或讀錯欄。`FilterByCustomElement` 改為 Deprecated，`Filter` 做的是同一件事。
+- `Rolling`、`Expanding`、`EWM` 的選項被拒絕時，各 reducer 回傳的空清單會在 `Err()` 帶著錯誤，原本是沒有錯誤的空清單。`ShiftCol`、`DiffCol`、`PctChangeCol` 與四個 `Cum…Col` 遇到不存在的欄時，回傳帶著表格錯誤的空清單；`GroupedColumnTransform.As` 遇到第一個轉換失敗的群組就停止。成功的呼叫結果不變。
+- `GroupBy`、`Pivot`、`Merge` 的鍵以及 `Describe` 的相異值計數，把 `uintptr` 和其他整數寬度視為同一群，`Count` 與 `Counter` 原本就是如此。
+- `DataList.Difference`、`MovingAverage`、`MovingStdev`、`WeightedMovingAverage` 改為 Deprecated，行為不變，在 0.4 移除。替代寫法 `Diff(1)`、`Rolling(RollingOptions{Window: w}).Mean()`、`Rolling(...).Std()` 與帶 `Weights` 的 `Rolling(...)` 會保留輸入長度，並在舊方法失敗或給 NaN 的地方給 `nil`；`Docs/DataList.md` 列出每一項差異。
+- `SqrtRat`、`PowRat`、`SortTimes`、`F64orRat` 改為 Deprecated，它們和資料表無關，在 0.4 移除。`SqrtRat` 遇到 nil 或負值、`PowRat` 遇到 nil 底數時回傳 nil，原本會 panic；`PowRat` 收到負指數時回傳倒數次方，原本回傳 1。
+- `FillNaNWithMean` 的 Deprecated 說明改成給出保留其行為的寫法 `dl.ReplaceNaNsWith(dl.Clone().ClearNilsAndNaNs().Mean())`；原本指向會連 nil 一起填的 `FillWithMean`。
+- MySQL 上用 `Replace` 的 `ToSQL` 寫入失敗時會保留舊表。MySQL 在 `DROP TABLE` 時就結束交易，所以插入失敗後舊表和新資料都沒了。現在資料先寫進暫存表，再用一次 `RENAME TABLE` 換上，最後才刪掉舊表；被其他表以外鍵參照的表會在任何變更前被拒絕。帳號需要資料庫層級的 `CREATE`、`INSERT`、`ALTER`、`DROP` 權限。SQLite 與 PostgreSQL 照舊使用單一交易。
+- `ScalerParams.PassThrough` 改為 Deprecated，在這條線意義不變，在 0.4 移除；0.4 的 `SimpleImputer` 會在 fit 時拒絕這種欄位。
 - 新增 `insyra.IsNilList(dl)`，判斷一個 `IDataList` 背後是否沒有清單，包含內嵌 nil `*DataList` 的包裝（例如 `isr.DL`）。`plot` 圖表與 `stats` 函式收到這種包裝時，會當成 nil 清單處理，不再 panic（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。
 - `ReadSlice2D` 的表格寬度改以最寬的一列為準。過去比第一列長的列，多出來的值會默默消失，也沒有錯誤：`[][]float64{{1}, {2, 3}}` 得到的 2x1 表格裡沒有 3。較短的列仍補 nil（[#410](https://github.com/HazelnutParadise/insyra/issues/410)）。
 - `NewDataList` 收到包含自己的 slice 時，不再以 `fatal error: stack overflow` 讓整個程式結束。它最多往下展開 64 層，更深的部分當成一個儲存格保留；一般的巢狀照舊展開。
