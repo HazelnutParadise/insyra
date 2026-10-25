@@ -58,6 +58,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 在 Vulkan 上，`DeviceBuffer.Write`、`WriteBits`、`Zero` 以及建立 `DeviceBuffer` 時的上傳，讀回來可能還是舊內容，因為佇列寫入沒有排在隨後的 kernel 或複製之前；在 GT 1030 上，`Zero` 之後讀取，20 次裡有 3 次拿到舊的字。現在除了自己會排序的 Metal 以外，這些呼叫都會等寫入完成，所以每次呼叫都會等佇列清空。
 - 在 Vulkan 上，正確捨入的除法、平方根、exp 與 log（`PrecisionFloat32Rounded` 與常駐的優化器步驟）遇到次正規輸入會回傳錯誤的值，例如 `1e-45 / 3e-45` 得到 1.5。WGSL 編譯器升級到 gogpu/naga v0.20.4，`countLeadingZeros` 和 `countTrailingZeros(0)` 在 Vulkan、DirectX 12 與 OpenGL 上都編對了，你自己的 kernel 可以直接用。
 - 當 NVIDIA 顯卡同時被 NVML（CUDA）與 WebGPU 找到時，Insyra 現在保留 WebGPU 那一筆，因為 CUDA 沒有執行器。以前探索階段保留 CUDA 那一筆，所有加速運算都以 `no-backend-executor` 退回 CPU，Windows 上有 NVIDIA 顯卡的主機就是這種情況；現在加速運算會在該顯卡上執行。沒有執行器的後端不再優先於有執行器的後端。
+- GPU 裝置遺失不再讓整個程序從此無法使用 GPU。在 Windows 上，單次 dispatch 跑到約兩秒以上會被系統中止並造成裝置遺失；以前之後每次呼叫都回 `vkQueueSubmit failed: -4`，直到程式重啟。現在遇到遺失的那次呼叫會回傳 `accel.ErrDeviceLost`（用 `errors.Is` 判斷，fallback 理由是新的 `device-lost`），遺失之前建立的 `DeviceBuffer` 或 binding 會持續回傳它，下一次需要裝置的呼叫會開一個新裝置，所以重新建立緩衝區與 binding 就能繼續。Insyra 自己的運算（最近列搜尋、裝置 `MatMul`）在遇到遺失的那次呼叫改用 CPU，之後使用新裝置。
 
 ### `datafetch`
 
