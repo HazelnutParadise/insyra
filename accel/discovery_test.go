@@ -1,6 +1,7 @@
 package accel
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -474,5 +475,38 @@ func TestParseWindowsVideoControllersJSONBuildsWebGPUDevices(t *testing.T) {
 	}
 	if !devices[0].SharedMemory || !devices[1].SharedMemory {
 		t.Fatal("expected windows intel/amd graphics to normalize as shared-memory devices")
+	}
+}
+
+type noopExecutor struct{}
+
+func (noopExecutor) Name() string { return "noop" }
+
+func (noopExecutor) Execute(context.Context, ExecuteRequest) (ExecuteResponse, error) {
+	return ExecuteResponse{}, nil
+}
+
+// One physical card seen as CUDA and as WebGPU keeps the WebGPU entry when only
+// WebGPU has an executor, and keeps CUDA when both do.
+func TestDedupePrefersTheBackendThatHasAnExecutor(t *testing.T) {
+	t.Cleanup(ResetBackendExecutorsForTest)
+	ResetBackendExecutorsForTest()
+	cuda := Device{ID: "cuda:nvml:0", Name: "GPU", Vendor: "nvidia", Backend: BackendCUDA}
+	web := Device{ID: "webgpu:wgpu:0", Name: "GPU", Vendor: "nvidia", Backend: BackendWebGPU}
+
+	if err := RegisterBackendExecutor(BackendWebGPU, noopExecutor{}); err != nil {
+		t.Fatal(err)
+	}
+	got := dedupeDiscoveredDevices([]Device{cuda, web})
+	if len(got) != 1 || got[0].Backend != BackendWebGPU {
+		t.Fatalf("only WebGPU has an executor: kept %+v", got)
+	}
+
+	if err := RegisterBackendExecutor(BackendCUDA, noopExecutor{}); err != nil {
+		t.Fatal(err)
+	}
+	got = dedupeDiscoveredDevices([]Device{web, cuda})
+	if len(got) != 1 || got[0].Backend != BackendCUDA {
+		t.Fatalf("both have an executor: kept %+v", got)
 	}
 }

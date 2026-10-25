@@ -378,7 +378,15 @@ func canonicalDeviceKey(device Device) string {
 	return string(normalizeVendor(device.Vendor)) + ":" + name
 }
 
+// backendPriority orders the backends that can serve the same physical card.
+// A backend with no registered executor sorts last: choosing it would send every
+// operation to the CPU while the card is reachable through another backend
+// (an NVIDIA card on Windows is found by NVML as CUDA, which has no executor,
+// and by WebGPU, which does).
 func backendPriority(backend Backend) int {
+	if _, ok := lookupBackendExecutor(backend); !ok {
+		return 10
+	}
 	switch backend {
 	case BackendCUDA:
 		return 0

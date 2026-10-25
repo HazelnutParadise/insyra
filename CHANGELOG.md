@@ -45,6 +45,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - On Vulkan, `DeviceBuffer.Write`, `WriteBits`, `Zero` and the upload that creates a `DeviceBuffer` could be read back as the old contents, because the queue write was not ordered before the kernel or copy that followed it; on a GT 1030, `Zero` followed by a read returned the old words in 3 of 20 runs. These calls now wait for the write to land on every backend except Metal, which orders it itself, so each now waits for the queue to go idle.
 - On Vulkan, the correctly rounded division, square root, exp and log (`PrecisionFloat32Rounded` and the resident optimizer steps) returned wrong values for subnormal inputs, for example `1e-45 / 3e-45` gave 1.5. The WGSL `countLeadingZeros` compiled to the bit index of the highest set bit instead of the count of zeros above it, so a kernel of your own that uses it gets the wrong answer on Vulkan; use `31u - firstLeadingBit(x)` for a nonzero `x`.
+- On a host where an NVIDIA card is found both through NVML (CUDA) and through WebGPU, Insyra now keeps the WebGPU entry, because CUDA has no executor. Before, discovery kept the CUDA entry and every accelerated operation fell back to the CPU with `no-backend-executor`; this is the case on Windows with an NVIDIA GPU. Accelerated operations now run on that card. A backend with no executor is never preferred over one that has it.
 
 ## v0.3.5
 
