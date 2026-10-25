@@ -85,6 +85,7 @@ func softCEDeviceInputs() (*Tensor, *Tensor, *Tensor) {
 	add([]float32{90, 0, 0, 3}, []float32{90.5, 0, 0, 3})
 	add([]float32{1e20, 1e20}, []float32{1, 0})
 	add([]float32{1, 1, 0, 0, 0, 0, 0}, []float32{1, 0, 1, 0, 0, 0, 0})
+	add([]float32{math.MaxFloat32, -math.MaxFloat32}, []float32{math.MaxFloat32, -math.MaxFloat32})
 	rows := len(zs) / classes
 	student, _ := NewTensor([]int{rows, classes}, zs)
 	teacher, _ := NewTensor([]int{rows, classes}, zt)
@@ -114,6 +115,36 @@ func TestRoundedSoftLossesOnTheDeviceEqualTheHost(t *testing.T) {
 		for i, v := range host.grad {
 			if math.IsNaN(float64(v)) {
 				t.Errorf("%s gradient[%d] is NaN", c.name, i)
+			}
+		}
+	}
+}
+
+// A class with probability 0 and an overflowed difference adds nothing to the
+// loss, and a one-class row keeps a non-finite logit's NaN, on the host and on
+// the device (Codex on #580).
+func TestRoundedSoftLossesZeroTermsAndOneClassNaN(t *testing.T) {
+	device := residentTestDevice(t)
+	wide, _ := NewTensor([]int{1, 2}, []float32{math.MaxFloat32, -math.MaxFloat32})
+	hard, _ := NewTensor([]int{1, 2}, []float32{1, 0})
+	for _, dev := range []accel.Device{{}, device} {
+		got := softCERun(t, dev, false, wide, hard)
+		if math.IsNaN(float64(got.loss[0])) || got.loss[0] != 0 {
+			t.Errorf("device %q loss = %g, want 0", dev.ID, got.loss[0])
+		}
+	}
+	for _, bad := range []float32{float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1))} {
+		one, _ := NewTensor([]int{1, 1}, []float32{bad})
+		prob, _ := NewTensor([]int{1, 1}, []float32{1})
+		for _, distill := range []bool{false, true} {
+			second := prob
+			if distill {
+				second, _ = NewTensor([]int{1, 1}, []float32{0})
+			}
+			host := softCERun(t, accel.Device{}, distill, one, second)
+			dev := softCERun(t, device, distill, one, second)
+			if !math.IsNaN(float64(host.grad[0])) || !math.IsNaN(float64(dev.grad[0])) {
+				t.Errorf("logit %g distill=%v: gradient host %g device %g, want NaN", bad, distill, host.grad[0], dev.grad[0])
 			}
 		}
 	}
