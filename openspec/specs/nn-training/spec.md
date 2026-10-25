@@ -510,3 +510,12 @@ The system SHALL create a tape's random generator only when something first draw
 - **WHEN** two consecutive `Dropout` calls run on a tape made by `NewTape()`, `NewTape(0)`, `NewTape(7)`, `NewTape(-3)` or a zero `Tape`
 - **THEN** each kept-or-dropped decision SHALL equal the next value of `rand.New(rand.NewSource(seed))` compared with the probability, with seed 1 for the default and the zero tape
 
+### Requirement: The fused cross-entropy gradient survives a large margin
+
+The host `SoftmaxCrossEntropy` backward SHALL give the label's gradient as the negated sum of the other classes' probabilities rather than as the label's probability minus one, so that it is nonzero whenever the other classes' gradients are and each row sums to zero within float32 rounding.
+
+#### Scenario: Logits far apart
+
+- **WHEN** a row of logits `[m, 0]` with label 0 is differentiated for m of 20, 30, 40 and 60
+- **THEN** the label's gradient equals -e^-m/(1+e^-m) to within 1e-6 relative, and is not 0
+

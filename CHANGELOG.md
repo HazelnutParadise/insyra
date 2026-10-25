@@ -14,6 +14,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ## Unreleased
 
+- `accel.RoundedLog1p` and `accel.RoundedExpm1` compute `log(1+x)` and `e^x - 1` on a resident array, correctly rounded and bit for bit equal to the host's on all 2^32 float32 inputs, like `RoundedExp` and `RoundedLog`.
+
 ### Core
 
 - A row past the end of a table is now an error in CCL: `@.5000` or `@.(# + 1)` on the last row used to read as a row of nils and give a quiet wrong answer, and now fails like `A.5000` does. A script that relied on the nil row (for example `@.(# + 1)` as a "next row" that is empty on the last row) now fails there.
@@ -21,6 +23,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `ml` and `nn`
 
 - `nn.NewTape` no longer seeds a `math/rand` source when it is called; the tape seeds it the first time something draws from it (`Dropout`, a layer's random initialisation). A tape that never draws costs about 0.15–0.65 µs and 304 B instead of 13–34 µs and 5.7 KB, measured on an M3. Masks and initial weights are the same values as before for every seed, including the default one and a zero `Tape{}`. ([#536](https://github.com/HazelnutParadise/insyra/issues/536))
+
+- `nn.Tape.SoftmaxCrossEntropy` no longer loses the label's gradient when the label's logit is far above the rest: the backward used p - 1, which is exactly 0 in float32 once the margin passes about 16.6 while the other classes' gradients stay nonzero, so the gradients of a row stopped summing to zero; it now uses the negated sum of the other classes' probabilities. The loss no longer rounds to 0 past a margin of about 36 either. Only the default precision changes; `PrecisionFloat32Rounded` is unchanged. (Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642))
 
 ### `stats`
 
@@ -45,6 +49,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - On Vulkan, `DeviceBuffer.Write`, `WriteBits`, `Zero` and the upload that creates a `DeviceBuffer` could be read back as the old contents, because the queue write was not ordered before the kernel or copy that followed it; on a GT 1030, `Zero` followed by a read returned the old words in 3 of 20 runs. These calls now wait for the write to land on every backend except Metal, which orders it itself, so each now waits for the queue to go idle.
 - On Vulkan, the correctly rounded division, square root, exp and log (`PrecisionFloat32Rounded` and the resident optimizer steps) returned wrong values for subnormal inputs, for example `1e-45 / 3e-45` gave 1.5. The WGSL `countLeadingZeros` compiled to the bit index of the highest set bit instead of the count of zeros above it, so a kernel of your own that uses it gets the wrong answer on Vulkan; use `31u - firstLeadingBit(x)` for a nonzero `x`.
+
+### `datafetch`
+
+- `datafetch.Fugle(cfg)` reads Taiwan stock data from Fugle's market data API: `Stock.HistoricalCandles` (historical candles, ranges over a year cut into pieces), `Stock.IntradayCandles`, `Stock.IntradayQuote`, `Stock.IntradayTrades`, `Stock.IntradayVolumes` and `Stock.IntradayTickers`, each with a `Context` form, and the typed errors `ErrFugleAuth`, `ErrFuglePlan` and `ErrFugleThrottled` ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
 
 ## v0.3.5
 

@@ -331,27 +331,10 @@ fn fx_pack_exp(p: Fx, k: i32) -> u32 {
     return ieee_pack_subnormal(0u, biased, kept, guard, sticky);
 }
 
-fn exp_rounded(x: u32) -> u32 {
-    let ax = x & 0x7fffffffu;
-    let negative = (x >> 31u) == 1u;
-    if (ax > 0x7f800000u) {
-        return 0x7fc00000u;
-    }
-    if (ax == 0x7f800000u) {
-        if (negative) {
-            return 0u;
-        }
-        return 0x7f800000u;
-    }
-    if (ax < 0x32000000u) {
-        return 0x3f800000u;
-    }
-    if (!negative && ax >= 0x42b20000u) {
-        return 0x7f800000u;
-    }
-    if (negative && ax >= 0x42d00000u) {
-        return 0u;
-    }
+struct ExpFx { p: Fx, k: i32, }
+
+// e^x = p * 2^k with p in [1, 2], for a finite x with 2^-25 <= |x| in range.
+fn exp_reduce(ax: u32, negative: bool) -> ExpFx {
     let ex = (ax >> 23u) & 0xffu;
     let m = (ax & 0x7fffffu) | 0x800000u;
     let big_x = fx_from_shifted(m, ex - 38u);
@@ -393,7 +376,100 @@ fn exp_rounded(x: u32) -> u32 {
     if (negative) {
         k = -k;
     }
-    return fx_pack_exp(acc, k);
+    var out: ExpFx;
+    out.p = acc;
+    out.k = k;
+    return out;
+}
+
+fn exp_rounded(x: u32) -> u32 {
+    let ax = x & 0x7fffffffu;
+    let negative = (x >> 31u) == 1u;
+    if (ax > 0x7f800000u) {
+        return 0x7fc00000u;
+    }
+    if (ax == 0x7f800000u) {
+        if (negative) {
+            return 0u;
+        }
+        return 0x7f800000u;
+    }
+    if (ax < 0x32000000u) {
+        return 0x3f800000u;
+    }
+    if (!negative && ax >= 0x42b20000u) {
+        return 0x7f800000u;
+    }
+    if (negative && ax >= 0x42d00000u) {
+        return 0u;
+    }
+    let e = exp_reduce(ax, negative);
+    return fx_pack_exp(e.p, e.k);
+}
+
+struct LogMag { mag: Fx, negative: bool, }
+
+// |e ln 2 + 2 atanh(z)| and its sign, for z = +-(num/den) already divided to
+// 112 fractional bits.
+fn log_mag(z: Fx, z_negative: bool, e: i32) -> LogMag {
+    let w = fx_mul(z, z);
+    var q = fx_const(22u, 1u);
+    for (var j: u32 = 0u; j < 22u; j = j + 1u) {
+        let n = 21u - j;
+        q = fx_add(fx_const(n, 1u), fx_mul(w, q));
+    }
+    var s = fx_mul(z, q);
+    s = fx_add(s, s);
+    var abs_e = e;
+    var e_negative = false;
+    if (e < 0) {
+        abs_e = -e;
+        e_negative = true;
+    }
+    let a = fx_mul_small(fx_ln2(), u32(abs_e));
+    var out: LogMag;
+    if (e_negative == z_negative) {
+        out.mag = fx_add(a, s);
+        out.negative = e_negative;
+    } else if (fx_ge(a, s)) {
+        out.mag = fx_sub(a, s);
+        out.negative = e_negative;
+    } else {
+        out.mag = fx_sub(s, a);
+        out.negative = z_negative;
+    }
+    return out;
+}
+
+// Packs a fixed-point magnitude, scaled by 2^off, with the sign.
+fn fx_pack_mag(mag: Fx, negative: bool, off: i32) -> u32 {
+    if (fx_is_zero(mag)) {
+        return 0u;
+    }
+    let p = fx_msb(mag);
+    let kept = fx_kept24(mag, p);
+    let guard = fx_bit(mag, p - 24u) == 1u;
+    let sticky = fx_any_below(mag, p - 24u);
+    var sign = 0u;
+    if (negative) {
+        sign = 0x80000000u;
+    }
+    return ieee_pack_normal(sign, i32(p) - 112 + 127 + off, kept, guard, sticky);
+}
+
+// num / den to 112 fractional bits by restoring division, num < den < 2^28.
+fn fx_div_u32(num: u32, den: u32) -> Fx {
+    var z = fx_zero();
+    var rem = num;
+    for (var j: u32 = 1u; j <= 112u; j = j + 1u) {
+        rem = rem << 1u;
+        if (rem >= den) {
+            rem = rem - den;
+            let bit = 112u - j;
+            z.d[bit >> 4u] = z.d[bit >> 4u] | (1u << (bit & 15u));
+        }
+    }
+    return z;
 }
 
 fn log_rounded(x: u32) -> u32 {
@@ -425,55 +501,240 @@ fn log_rounded(x: u32) -> u32 {
         z_negative = true;
         e = e + 1;
     }
-    // z = num / den to 112 fractional bits by restoring division.
-    var z = fx_zero();
-    var rem = num;
-    for (var j: u32 = 1u; j <= 112u; j = j + 1u) {
-        rem = rem << 1u;
-        if (rem >= den) {
-            rem = rem - den;
-            let bit = 112u - j;
-            z.d[bit >> 4u] = z.d[bit >> 4u] | (1u << (bit & 15u));
+    let m = log_mag(fx_div_u32(num, den), z_negative, e);
+    return fx_pack_mag(m.mag, m.negative, 0);
+}
+
+fn fx_one() -> Fx {
+    var r = fx_zero();
+    r.d[7] = 1u;
+    return r;
+}
+
+// 2^n as a fixed-point digit pattern, n < 128.
+fn fx_bit_at(n: u32) -> Fx {
+    var r = fx_zero();
+    r.d[n >> 4u] = 1u << (n & 15u);
+    return r;
+}
+
+fn fx_shl1(a: Fx) -> Fx {
+    var r: Fx;
+    var carry: u32 = 0u;
+    for (var i: u32 = 0u; i < 8u; i = i + 1u) {
+        let x = a.d[i];
+        let t = (x << 1u) | carry;
+        r.d[i] = t & 0xffffu;
+        carry = t >> 16u;
+    }
+    return r;
+}
+
+// a << s for s < 16, discarding what leaves the top digit.
+fn fx_shl_small(a: Fx, s: u32) -> Fx {
+    var r: Fx;
+    var carry: u32 = 0u;
+    for (var i: u32 = 0u; i < 8u; i = i + 1u) {
+        let x = a.d[i];
+        let t = (x << s) | carry;
+        r.d[i] = t & 0xffffu;
+        carry = t >> 16u;
+    }
+    return r;
+}
+
+// a >> s, flooring.
+fn fx_shr(a: Fx, s: u32) -> Fx {
+    if (s >= 128u) {
+        return fx_zero();
+    }
+    let q = s >> 4u;
+    let b = s & 15u;
+    var r = fx_zero();
+    for (var i: u32 = 0u; i + q < 8u; i = i + 1u) {
+        let lo = a.d[i + q];
+        var v = lo >> b;
+        if (b > 0u && i + q + 1u < 8u) {
+            let hi = a.d[i + q + 1u];
+            v = v | ((hi << (16u - b)) & 0xffffu);
         }
+        r.d[i] = v;
     }
-    let w = fx_mul(z, z);
-    var q = fx_const(22u, 1u);
-    for (var j: u32 = 0u; j < 22u; j = j + 1u) {
-        let n = 21u - j;
-        q = fx_add(fx_const(n, 1u), fx_mul(w, q));
+    return r;
+}
+
+// a / n for a small integer n < 65536.
+fn fx_div_small(a: Fx, n: u32) -> Fx {
+    var r = fx_zero();
+    var rem: u32 = 0u;
+    for (var j: u32 = 0u; j < 8u; j = j + 1u) {
+        let i = 7u - j;
+        let cur = (rem << 16u) | a.d[i];
+        r.d[i] = cur / n;
+        rem = cur % n;
     }
-    var s = fx_mul(z, q);
-    s = fx_add(s, s);
-    var abs_e = e;
-    var e_negative = false;
-    if (e < 0) {
-        abs_e = -e;
-        e_negative = true;
+    return r;
+}
+
+// e^x - 1, correctly rounded.
+fn expm1_rounded(x: u32) -> u32 {
+    let ax = x & 0x7fffffffu;
+    let negative = (x >> 31u) == 1u;
+    if (ax > 0x7f800000u) {
+        return 0x7fc00000u;
     }
-    let a = fx_mul_small(fx_ln2(), u32(abs_e));
-    var mag: Fx;
-    var negative_result = false;
-    if (e_negative == z_negative) {
-        mag = fx_add(a, s);
-        negative_result = e_negative;
-    } else if (fx_ge(a, s)) {
-        mag = fx_sub(a, s);
-        negative_result = e_negative;
+    if (ax == 0x7f800000u) {
+        if (negative) {
+            return 0xbf800000u;
+        }
+        return 0x7f800000u;
+    }
+    // Below 2^-24, e^x - 1 rounds to x.
+    if (ax < 0x33800000u) {
+        return x;
+    }
+    if (!negative && ax >= 0x42b20000u) {
+        return 0x7f800000u;
+    }
+    if (negative && ax >= 0x41900000u) {
+        return 0xbf800000u;
+    }
+    let e = exp_reduce(ax, negative);
+    if (negative) {
+        let q = fx_shr(e.p, u32(-e.k));
+        return fx_pack_mag(fx_sub(fx_one(), q), true, 0);
+    }
+    if (e.k <= 15) {
+        let q = fx_shl_small(e.p, u32(e.k));
+        return fx_pack_mag(fx_sub(q, fx_one()), false, 0);
+    }
+    if (e.k <= 112) {
+        return fx_pack_mag(fx_sub(e.p, fx_bit_at(u32(112 - e.k))), false, e.k);
+    }
+    return fx_pack_mag(e.p, false, e.k);
+}
+
+// log(1 + x), correctly rounded.
+fn log1p_rounded(x: u32) -> u32 {
+    let ax = x & 0x7fffffffu;
+    let negative = (x >> 31u) == 1u;
+    if (ax > 0x7f800000u) {
+        return 0x7fc00000u;
+    }
+    if (ax == 0x7f800000u) {
+        if (negative) {
+            return 0x7fc00000u;
+        }
+        return x;
+    }
+    if (negative && ax > 0x3f800000u) {
+        return 0x7fc00000u;
+    }
+    if (negative && ax == 0x3f800000u) {
+        return 0xff800000u;
+    }
+    // Below 2^-24, log(1 + x) rounds to x.
+    if (ax < 0x33800000u) {
+        return x;
+    }
+    let fax = bitcast<f32>(ax);
+    let mant = (ax & 0x7fffffu) | 0x800000u;
+    let ex2 = i32((ax >> 23u) & 0xffu) - 150;
+    var small_edge = 0.4140625;
+    if (negative) {
+        small_edge = 0.2890625;
+    }
+    if (fax < small_edge) {
+        // z = x / (2 + x) = +-mant / (2^(s+1) +- mant), 24 <= s <= 47.
+        let s = u32(-ex2);
+        var num = fx_zero();
+        num.d[0] = mant & 0xffffu;
+        num.d[1] = mant >> 16u;
+        var den = fx_bit_at(s + 1u);
+        if (negative) {
+            den = fx_sub(den, num);
+        } else {
+            den = fx_add(den, num);
+        }
+        var z = fx_zero();
+        var rem = num;
+        for (var j: u32 = 1u; j <= 112u; j = j + 1u) {
+            rem = fx_shl1(rem);
+            if (fx_ge(rem, den)) {
+                rem = fx_sub(rem, den);
+                let bit = 112u - j;
+                z.d[bit >> 4u] = z.d[bit >> 4u] | (1u << (bit & 15u));
+            }
+        }
+        let m = log_mag(z, negative, 0);
+        return fx_pack_mag(m.mag, m.negative, 0);
+    }
+    if (ex2 <= 0) {
+        // 1 + x = A / 2^s exactly, A below 2^26.
+        var s: u32 = 0u;
+        var a: u32;
+        if (ex2 < 0) {
+            s = u32(-ex2);
+            if (negative) {
+                a = (1u << s) - mant;
+            } else {
+                a = (1u << s) + mant;
+            }
+        } else {
+            a = (mant << u32(ex2)) + 1u;
+        }
+        let b = firstLeadingBit(a);
+        var ma: u32;
+        if (b <= 23u) {
+            ma = a << (23u - b);
+        } else {
+            ma = a >> (b - 23u);
+        }
+        var t = b;
+        if (ma >= 11863283u) {
+            t = b + 1u;
+        }
+        let pow = 1u << t;
+        var num: u32;
+        var z_negative = false;
+        if (a >= pow) {
+            num = a - pow;
+        } else {
+            num = pow - a;
+            z_negative = true;
+        }
+        let z = fx_div_u32(num, a + pow);
+        let m = log_mag(z, z_negative, i32(t) - i32(s));
+        return fx_pack_mag(m.mag, m.negative, 0);
+    }
+    // x >= 2^24: log(x) + log1p(1/x).
+    let d = ieee_decode(x);
+    let mant2 = u32(d.x);
+    var e = d.y;
+    var num2: u32;
+    var den2: u32;
+    var z_negative2 = false;
+    if (mant2 < 11863283u) {
+        num2 = mant2 - 0x800000u;
+        den2 = mant2 + 0x800000u;
     } else {
-        mag = fx_sub(s, a);
-        negative_result = z_negative;
+        num2 = 0x1000000u - mant2;
+        den2 = mant2 + 0x1000000u;
+        z_negative2 = true;
+        e = e + 1;
     }
-    if (fx_is_zero(mag)) {
-        return 0u;
-    }
-    let p = fx_msb(mag);
-    let kept = fx_kept24(mag, p);
-    let guard = fx_bit(mag, p - 24u) == 1u;
-    let sticky = fx_any_below(mag, p - 24u);
-    var sign = 0u;
-    if (negative_result) {
-        sign = 0x80000000u;
-    }
-    return ieee_pack_normal(sign, i32(p) - 112 + 127, kept, guard, sticky);
+    let big_log = log_mag(fx_div_u32(num2, den2), z_negative2, e);
+    // u = 1 / x = (1 / mant) * 2^-ex2, with ex2 >= 1.
+    let u = fx_shr(fx_div_u32(1u, mant), u32(ex2));
+    let u2 = fx_mul(u, u);
+    let u3 = fx_mul(u2, u);
+    let u4 = fx_mul(u3, u);
+    let u5 = fx_mul(u4, u);
+    var plus = fx_add(u, fx_div_small(u3, 3u));
+    plus = fx_add(plus, fx_div_small(u5, 5u));
+    let minus = fx_add(fx_div_small(u2, 2u), fx_div_small(u4, 4u));
+    let corr = fx_sub(plus, minus);
+    let total = fx_add(big_log.mag, corr);
+    return fx_pack_mag(total, false, 0);
 }
 `

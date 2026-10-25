@@ -14,6 +14,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
+- `accel.RoundedLog1p` 與 `accel.RoundedExpm1` 在常駐陣列上計算 `log(1+x)` 與 `e^x - 1`，結果正確捨入，並且在全部 2^32 個 float32 輸入上與主機逐位元一致，和 `RoundedExp`、`RoundedLog` 一樣。
+
 ### Core
 
 - CCL 讀取超出表格列數的列現在會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本（例如把 `@.(# + 1)` 當作「下一列」，最後一列為空）會在那一列失敗。
@@ -21,6 +23,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `ml` 與 `nn`
 
 - `nn.NewTape` 呼叫時不再立刻為 `math/rand` 建立種子來源，改在第一次有東西從 tape 抽亂數時才建立（`Dropout`、層的隨機初始化）。從不抽亂數的 tape 在 M3 上量測從 13–34 µs、5.7 KB 降到約 0.15–0.65 µs、304 B。每個種子（包括預設種子與零值 `Tape{}`）產生的遮罩與初始權重都和以前相同。（[#536](https://github.com/HazelnutParadise/insyra/issues/536)）
+
+- `nn.Tape.SoftmaxCrossEntropy` 在標籤的 logit 遠大於其他類別時，不再丟掉標籤那一項的梯度：反向以前用 p - 1，margin 超過約 16.6 後在 float32 裡剛好等於 0，其他類別的梯度卻還不是 0，整列梯度就不再加總為 0；現在改用其他類別機率總和的負值。損失也不會在 margin 超過約 36 後被捨入成 0。只有預設精度改變，`PrecisionFloat32Rounded` 不變。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
 
 ### `stats`
 
@@ -45,6 +49,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - 在 Vulkan 上，`DeviceBuffer.Write`、`WriteBits`、`Zero` 以及建立 `DeviceBuffer` 時的上傳，讀回來可能還是舊內容，因為佇列寫入沒有排在隨後的 kernel 或複製之前；在 GT 1030 上，`Zero` 之後讀取，20 次裡有 3 次拿到舊的字。現在除了自己會排序的 Metal 以外，這些呼叫都會等寫入完成，所以每次呼叫都會等佇列清空。
 - 在 Vulkan 上，正確捨入的除法、平方根、exp 與 log（`PrecisionFloat32Rounded` 與常駐的優化器步驟）遇到次正規輸入會回傳錯誤的值，例如 `1e-45 / 3e-45` 得到 1.5。WGSL 的 `countLeadingZeros` 被編成最高有效位的位元索引，而不是它上方零的個數，所以你自己的 kernel 用到它時在 Vulkan 上會得到錯誤答案；對非零的 `x` 請改用 `31u - firstLeadingBit(x)`。
+
+### `datafetch`
+
+- `datafetch.Fugle(cfg)` 讀取富果行情 API 的台股資料：`Stock.HistoricalCandles`（歷史 K 線，超過一年的區間自動切段）、`Stock.IntradayCandles`、`Stock.IntradayQuote`、`Stock.IntradayTrades`、`Stock.IntradayVolumes`、`Stock.IntradayTickers`，各有 `Context` 版本，以及 `ErrFugleAuth`、`ErrFuglePlan`、`ErrFugleThrottled` 三種錯誤（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 
 ## v0.3.5
 

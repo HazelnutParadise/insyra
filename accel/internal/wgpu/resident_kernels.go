@@ -469,6 +469,35 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `}
 
+var expm1RoundedKernel = &kernel{name: "rounded-expm1", nRead: 2, nWrite: 1, fixed: true, body: unaryRoundedBody("expm1_rounded")}
+
+var log1pRoundedKernel = &kernel{name: "rounded-log1p", nRead: 2, nWrite: 1, fixed: true, body: unaryRoundedBody("log1p_rounded")}
+
+func unaryRoundedBody(fn string) string {
+	return `
+struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
+@group(0) @binding(0) var<storage, read> a: array<u32>;
+@group(0) @binding(1) var<storage, read> consts: array<u32>;
+@group(0) @binding(2) var<storage, read_write> c: array<u32>;
+@group(0) @binding(3) var<uniform> p: Params;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x + gid.y * p.stride;
+    if (i >= p.length) {
+        return;
+    }
+    c[i] = ` + fn + `(a[i]);
+}
+`
+}
+
+// Expm1Rounded computes e^x - 1 for each element, correctly rounded.
+func Expm1Rounded(a *Buffer) (*Buffer, error) { return unaryRounded(expm1RoundedKernel, a) }
+
+// Log1pRounded computes log(1+x) for each element, correctly rounded.
+func Log1pRounded(a *Buffer) (*Buffer, error) { return unaryRounded(log1pRoundedKernel, a) }
+
 // ExpRounded computes e^x for each element, correctly rounded.
 func ExpRounded(a *Buffer) (*Buffer, error) { return unaryRounded(expRoundedKernel, a) }
 
