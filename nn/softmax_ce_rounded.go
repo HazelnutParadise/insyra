@@ -13,7 +13,7 @@ type softmaxCERow struct {
 	e      []float32 // e[c] = exp(x[c] - max)
 	d      []float32 // d[c] = x[c] - max
 	s      float32   // exact sum of e, rounded once
-	loss   float32   // log(s) - d[label]
+	loss   float32   // log1p(o) - d[label], o the sum of the exponentials but the peak's
 	finite bool
 }
 
@@ -73,7 +73,19 @@ func softmaxCERowOf(x []float32, label int) softmaxCERow {
 		row.e[c] = expFloat32(row.d[c])
 	}
 	row.s = roundedSumOf(row.e)
-	row.loss = sum2Rounded(logFloat32(row.s), 1, -1, row.d[label])
+	// log(s) is log1p of the other exponentials' sum o, with the peak's
+	// exp(0) = 1 left out, so 1 + o is never rounded first: once the peak leads
+	// by about 16.6, s rounds to 1 and log(s) reads 0 while log1p(o) does not.
+	peak := 0
+	for c, v := range x {
+		if v > x[peak] {
+			peak = c
+		}
+	}
+	others := make([]float32, 0, len(x))
+	others = append(others, row.e[:peak]...)
+	others = append(others, row.e[peak+1:]...)
+	row.loss = sum2Rounded(log1pFloat32(roundedSumOf(others)), 1, -1, row.d[label])
 	return row
 }
 

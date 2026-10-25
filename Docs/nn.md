@@ -147,13 +147,23 @@ float64 `AdamW` by a few ulps per step, as PyTorch's float32 `AdamW` does.
 
 `SoftmaxCrossEntropy` is covered too. Per row, with `m` the row maximum:
 `d = x - m`, `e = exp(d)`, `s` the exact sum of `e` rounded once,
-`loss = log(s) - d[label]`; the mean loss is the exact sum of the row losses
+`loss = log1p(o) - d[label]` with `o` the exact sum of the `e` but the first peak's,
+rounded once (`log(s)` would read 0 once the label leads by about 16.6, because `1 + o` rounds to 1 first); the mean loss is the exact sum of the row losses
 rounded once, divided by the row count. The gradient is `e/s` times
 `upstream/rows`, except at the label, where it is `-(o/s)` times `upstream/rows` with `o` the exact sum of the
 other `e` rounded once (`p - 1` would be exactly 0 once the label leads by about 16.6). `exp` and `log`
 here are correctly rounded, the same bits on every platform (the host builds
 them from `+ - * /` only, the device in 128-bit integer arithmetic), and both
-agree on all 2^32 float32 inputs. A row with a non-finite logit gives NaN.
+agree on all 2^32 float32 inputs, as do `log1p` and `expm1`. A row with a non-finite logit gives NaN.
+
+`SoftTargetCrossEntropy` and `DistillationLoss` are covered the same way, on host tensors and on
+a device with the same bits. A row's loss is the exact sum of `p*log1p(o) - p*d` rounded once; the
+gradient is `q*P - p` rounded once for every class but the first peak, whose gradient is minus the
+rounded sum of the others (`P` is the sum of the target row, 1 for a teacher). For distillation a row
+whose teacher probabilities are all above 0 and whose centred differences are at most 1 takes the
+gradient of Barron's [paper](https://arxiv.org/abs/2610.31642) (Eq. 9) with every step rounded once,
+which is exactly 0 when the student equals the teacher; any other row takes `q - p`. A targets
+tensor on a device is not read back, so a row that is not a distribution is not refused there.
 Labels are `int64` tensors: `labels.To(dev)` holds them as int32 on the device
 and refuses a negative value or one that does not fit, naming it. `rows` must be
 below 2^24. Any other operation on a

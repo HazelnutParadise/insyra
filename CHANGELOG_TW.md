@@ -216,6 +216,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `PrecisionFloat32Rounded` 的交叉熵（主機與裝置都是）在標籤領先超過約 16.6 時，不再丟掉標籤的梯度：改為 `upstream/rows` 乘以 `-(o/s)`，`o` 是其他類別指數的精確總和，不再用 `p - 1`。**破壞性變更**：標籤的梯度對每個輸入的位元都不同，這個模式下先前記錄的執行無法重現。此模式的損失不變，在 margin 超過約 16.6 後仍會被捨入成 0。`nn.Tape.Softmax` 的反向也不再以同樣方式丟掉最大機率那一項的梯度。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
 
+- `PrecisionFloat32Rounded`：`SoftTargetCrossEntropy` 與 `DistillationLoss` 現在可在裝置與主機上以固定的正確捨入運算序列執行，位元一致，蒸餾採用 Barron 論文的梯度（[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）。此模式的交叉熵損失改用其他類別指數總和的 `log1p`，不再用總和的 `log`，所以標籤領先超過約 16.6 時損失不再顯示 0。**破壞性變更**：此模式下 `SoftmaxCrossEntropy` 的損失在兩種算法不同之處位元不同，先前在這個模式下記錄的執行無法重現。
+
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。
 - `GetReviews` 收到超過一個設定包時，會記錄問題並在發出任何請求前回傳 nil，不再改用預設設定抓取。

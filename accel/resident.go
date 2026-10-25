@@ -429,6 +429,103 @@ func RoundedSoftmaxCrossEntropyGrad(state *SoftmaxCrossEntropyState, labels, ups
 	return labels.wrap(out)
 }
 
+// SoftLossState holds what the gradient of a soft-target loss reuses from its
+// forward pass. It occupies device memory until Release is called.
+type SoftLossState struct {
+	inner  *wgpu.SoftState
+	device Device
+	bytes  uint64
+}
+
+// Release frees the state. It is idempotent.
+func (s *SoftLossState) Release() {
+	if s == nil || s.inner == nil {
+		return
+	}
+	unreserveResident(s.device, s.bytes)
+	s.inner.Release()
+	s.inner = nil
+}
+
+func softLoss(a, b *DeviceBuffer, rows, classes int, withTeacher bool, run func() (*wgpu.Buffer, *wgpu.SoftState, error)) (*DeviceBuffer, *SoftLossState, error) {
+	if err := sameDevice(a, b); err != nil {
+		return nil, nil, err
+	}
+	elements := uint64(rows) * uint64(classes)
+	stateBytes := (elements + uint64(rows)) * 4
+	if withTeacher {
+		stateBytes += elements * 4
+	}
+	if err := reserveResident(a.device, stateBytes); err != nil {
+		return nil, nil, err
+	}
+	out, state, err := run()
+	if err != nil {
+		unreserveResident(a.device, stateBytes)
+		return nil, nil, residentFailure(err)
+	}
+	loss, err := a.wrap(out)
+	if err != nil {
+		unreserveResident(a.device, stateBytes)
+		state.Release()
+		return nil, nil, err
+	}
+	return loss, &SoftLossState{inner: state, device: a.device, bytes: stateBytes}, nil
+}
+
+// RoundedSoftTargetCrossEntropy returns the mean cross-entropy loss, one value,
+// of resident logits [rows,classes] against resident probability rows. Every
+// step is one correctly rounded operation or an exact sum rounded once. The
+// state feeds RoundedSoftTargetCrossEntropyGrad.
+func RoundedSoftTargetCrossEntropy(logits, targets *DeviceBuffer, rows, classes int) (*DeviceBuffer, *SoftLossState, error) {
+	return softLoss(logits, targets, rows, classes, false, func() (*wgpu.Buffer, *wgpu.SoftState, error) {
+		return wgpu.SoftTargetCrossEntropyRounded(logits.inner, targets.inner, rows, classes)
+	})
+}
+
+// RoundedSoftTargetCrossEntropyGrad returns the gradient with respect to the
+// logits, scaled by the one-value upstream gradient.
+func RoundedSoftTargetCrossEntropyGrad(state *SoftLossState, targets, upstream *DeviceBuffer, rows, classes int) (*DeviceBuffer, error) {
+	if state == nil || state.inner == nil {
+		return nil, errors.New("accel: soft-target state was released")
+	}
+	if err := sameDevice(targets, upstream); err != nil {
+		return nil, err
+	}
+	out, err := wgpu.SoftTargetCrossEntropyGradRounded(state.inner, targets.inner, upstream.inner, rows, classes)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return targets.wrap(out)
+}
+
+// RoundedDistillation returns the mean cross-entropy of resident student
+// logits against the softmax of resident teacher logits.
+func RoundedDistillation(student, teacher *DeviceBuffer, rows, classes int) (*DeviceBuffer, *SoftLossState, error) {
+	return softLoss(student, teacher, rows, classes, true, func() (*wgpu.Buffer, *wgpu.SoftState, error) {
+		return wgpu.DistillationRounded(student.inner, teacher.inner, rows, classes)
+	})
+}
+
+// RoundedDistillationGrad returns the gradient with respect to the student's
+// logits, scaled by the one-value upstream gradient.
+func RoundedDistillationGrad(state *SoftLossState, student, teacher, upstream *DeviceBuffer, rows, classes int) (*DeviceBuffer, error) {
+	if state == nil || state.inner == nil {
+		return nil, errors.New("accel: distillation state was released")
+	}
+	if err := sameDevice(student, teacher); err != nil {
+		return nil, err
+	}
+	if err := sameDevice(student, upstream); err != nil {
+		return nil, err
+	}
+	out, err := wgpu.DistillationGradRounded(state.inner, student.inner, teacher.inner, upstream.inner, rows, classes)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return student.wrap(out)
+}
+
 // NewLabelBuffer uploads class indices to device as int32. A negative index or
 // one above the int32 range is an error naming it; the largest index is
 // returned so the caller can check it against the class count without reading

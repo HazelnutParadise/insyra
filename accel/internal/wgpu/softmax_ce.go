@@ -98,16 +98,29 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 `}
 
 // sceRowKernel: params = rows, classes, 0, stride. s[row] is the exact sum of
-// e, rounded once; loss[row] is log(s) - d[label].
-var sceRowKernel = &kernel{name: "rounded-ce-rows", nRead: 4, nWrite: 2, fixed: true, body: sceCommon + `
+// e, rounded once; loss[row] is log1p(o) - d[label], o the exact sum of the
+// exponentials but the first peak's, so 1 + o is never rounded.
+var sceRowKernel = &kernel{name: "rounded-ce-rows", nRead: 5, nWrite: 2, fixed: true, body: sceCommon + `
 struct Params { rows: u32, classes: u32, unused: u32, stride: u32, }
-@group(0) @binding(0) var<storage, read> dd: array<u32>;
-@group(0) @binding(1) var<storage, read> ee: array<u32>;
-@group(0) @binding(2) var<storage, read> labels: array<u32>;
-@group(0) @binding(3) var<storage, read> consts: array<u32>;
-@group(0) @binding(4) var<storage, read_write> sums: array<u32>;
-@group(0) @binding(5) var<storage, read_write> loss: array<u32>;
-@group(0) @binding(6) var<uniform> p: Params;
+@group(0) @binding(0) var<storage, read> x: array<u32>;
+@group(0) @binding(1) var<storage, read> dd: array<u32>;
+@group(0) @binding(2) var<storage, read> ee: array<u32>;
+@group(0) @binding(3) var<storage, read> labels: array<u32>;
+@group(0) @binding(4) var<storage, read> consts: array<u32>;
+@group(0) @binding(5) var<storage, read_write> sums: array<u32>;
+@group(0) @binding(6) var<storage, read_write> loss: array<u32>;
+@group(0) @binding(7) var<uniform> p: Params;
+
+// Orders float32 bit patterns as the floats compare, with -0 equal to +0.
+fn sce_key(bits: u32) -> u32 {
+    if ((bits & 0x7fffffffu) == 0u) {
+        return 0x80000000u;
+    }
+    if ((bits >> 31u) == 1u) {
+        return ~bits;
+    }
+    return bits | 0x80000000u;
+}
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -116,14 +129,27 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let base = row * p.classes;
-    var r: ExactRegister;
-    exact_clear(&r);
-    for (var c: u32 = 0u; c < p.classes; c = c + 1u) {
-        exact_add_product(&r, ee[base + c], ONE);
+    var best: u32 = 0u;
+    var best_key = sce_key(x[base]);
+    for (var c: u32 = 1u; c < p.classes; c = c + 1u) {
+        let k = sce_key(x[base + c]);
+        if (k > best_key) {
+            best_key = k;
+            best = c;
+        }
     }
-    let s = exact_round(r);
-    sums[row] = s;
-    let l = log_rounded(s);
+    var total: ExactRegister;
+    var others: ExactRegister;
+    exact_clear(&total);
+    exact_clear(&others);
+    for (var c: u32 = 0u; c < p.classes; c = c + 1u) {
+        exact_add_product(&total, ee[base + c], ONE);
+        if (c != best) {
+            exact_add_product(&others, ee[base + c], ONE);
+        }
+    }
+    sums[row] = exact_round(total);
+    let l = log1p_rounded(exact_round(others));
     let li = labels[row];
     let dl = dd[base + li];
     loss[row] = sce_sum2(l, ONE, NEG_ONE, dl);
@@ -265,7 +291,7 @@ func SoftmaxCrossEntropyRounded(logits, labels *Buffer, rows, classes int) (*Buf
 		release()
 		return nil, nil, err
 	}
-	if err := sceRowKernel.run([]*Buffer{d, e, labels, consts}, []*Buffer{sums, losses}, [16]uint32{uint32(rows), uint32(classes), 0, rstride}, rg, ry); err != nil {
+	if err := sceRowKernel.run([]*Buffer{logits, d, e, labels, consts}, []*Buffer{sums, losses}, [16]uint32{uint32(rows), uint32(classes), 0, rstride}, rg, ry); err != nil {
 		release()
 		return nil, nil, err
 	}
