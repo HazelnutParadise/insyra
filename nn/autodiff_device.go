@@ -14,18 +14,26 @@ import (
 // missing and the host runs it instead. Resident tensors need that mode, since
 // a device cannot reproduce the host's default arithmetic.
 //
+// accel.PrecisionFloat32 is PrecisionFloat32Rounded for every operation of
+// the tape, and in addition lets Custom record an operation on resident
+// tensors, whose kernel is the caller's own and returns whatever the device
+// computes. Use it only for a step that runs a kernel of your own through
+// accel.Submit: its results then depend on the device, and the tape no longer
+// promises the same bits on another device or on the host.
+//
 // In this release the mode covers MatMul, Add and their gradients, gradient
 // accumulation, SGD, Adam and AdamW. Other operations keep their default arithmetic on the
-// host and are refused on resident tensors. accel.PrecisionFloat32, which
-// would accept whatever a device returns, is not available on a tape.
+// host and are refused on resident tensors.
 func (t *Tape) SetPrecision(precision accel.Precision) error {
 	switch precision {
 	case "", accel.PrecisionExact:
 		t.precision = accel.PrecisionExact
 	case accel.PrecisionFloat32Rounded:
 		t.precision = accel.PrecisionFloat32Rounded
+	case accel.PrecisionFloat32:
+		t.precision = accel.PrecisionFloat32
 	default:
-		return fmt.Errorf("tape precision %q is not supported; use %q or %q", precision, accel.PrecisionExact, accel.PrecisionFloat32Rounded)
+		return fmt.Errorf("tape precision %q is not supported; use %q, %q or %q", precision, accel.PrecisionExact, accel.PrecisionFloat32Rounded, accel.PrecisionFloat32)
 	}
 	return nil
 }
@@ -38,7 +46,11 @@ func (t *Tape) GetPrecision() accel.Precision {
 	return t.precision
 }
 
-func (t *Tape) rounded() bool { return t.precision == accel.PrecisionFloat32Rounded }
+// rounded reports whether the built-in operations compute in the rounded
+// float32 arithmetic, which a PrecisionFloat32 tape does too.
+func (t *Tape) rounded() bool {
+	return t.precision == accel.PrecisionFloat32Rounded || t.precision == accel.PrecisionFloat32
+}
 
 // Clear forgets the recorded operations and releases every device tensor the
 // tape created for the step: operation outputs and gradients. Parameters and

@@ -672,6 +672,18 @@ func (t *Tape) BCEWithLogitsLoss(logits, targets *Tensor) (*Tensor, error) {
 // or the input of one: the reverse pass visits operations in reverse order, so
 // a reader recorded earlier would be visited after this operation and its
 // gradient would never reach this operation's inputs.
+//
+// The tensors may live on the host or all on one device. On a device the
+// forward result is typically written by a kernel of the caller's own
+// (accel.Submit), which the tape cannot check, so the tape must be in
+// accel.PrecisionFloat32 (SetPrecision), and the step's results depend on the
+// device. The tape then owns a resident output, as it owns the output of every
+// resident operation, and releases it at Clear: give Custom a tensor made for
+// this step, never a parameter or an input of the step. The gradients vjp
+// returns must be new resident tensors the tape may release at Clear, as
+// float32 tensors shaped like their inputs. A kernel must not write into a
+// tensor the tape also uses elsewhere, such as a parameter: the tape cannot
+// see the change and its gradients would silently be wrong.
 func (t *Tape) Custom(name string, inputs []*Tensor, output *Tensor, vjp func(upstream *Tensor) ([]*Tensor, error)) error {
 	if name == "" {
 		return fmt.Errorf("tape custom operation needs a name")
@@ -679,16 +691,28 @@ func (t *Tape) Custom(name string, inputs []*Tensor, output *Tensor, vjp func(up
 	if vjp == nil {
 		return fmt.Errorf("tape custom %s: vjp is nil", name)
 	}
-	if err := requireFloat32(output, "tape custom "+name+" output"); err != nil {
+	if err := requireFloat32Any(output, "tape custom "+name+" output"); err != nil {
 		return err
 	}
+	operands := []*Tensor{output}
 	for index, input := range inputs {
-		if err := requireFloat32(input, fmt.Sprintf("tape custom %s input %d", name, index)); err != nil {
+		if err := requireFloat32Any(input, fmt.Sprintf("tape custom %s input %d", name, index)); err != nil {
 			return err
 		}
 		if input == output {
 			return fmt.Errorf("tape custom %s: output is also input %d", name, index)
 		}
+		operands = append(operands, input)
+	}
+	resident := false
+	for _, operand := range operands {
+		resident = resident || operand.onDevice()
+	}
+	if resident && t.precision != accel.PrecisionFloat32 {
+		return fmt.Errorf("tape custom %s: tensors on a device need SetPrecision(accel.PrecisionFloat32), because the tape cannot check the kernel that computed the output", name)
+	}
+	if _, err := t.residency("custom "+name, operands...); err != nil {
+		return err
 	}
 	for _, op := range t.ops {
 		if op.output == output {
@@ -699,6 +723,10 @@ func (t *Tape) Custom(name string, inputs []*Tensor, output *Tensor, vjp func(up
 				return fmt.Errorf("tape custom %s: output was already read by %s; record the custom operation before the operations that use its output", name, op.name)
 			}
 		}
+	}
+	if resident {
+		vjp = t.ownResidentGradients(name, output, vjp)
+		t.own(output)
 	}
 	t.ops = append(t.ops, tapeOp{
 		name:   name,
@@ -827,8 +855,11 @@ func (t *Tape) backwardFrom(output, seed *Tensor) (err error) {
 				continue
 			}
 			if op.custom {
-				if err := requireFloat32(gradient, fmt.Sprintf("backward %s input %d gradient", op.name, inputIndex)); err != nil {
+				if err := requireFloat32Any(gradient, fmt.Sprintf("backward %s input %d gradient", op.name, inputIndex)); err != nil {
 					return err
+				}
+				if gradient.onDevice() != op.inputs[inputIndex].onDevice() {
+					return fmt.Errorf("backward %s input %d: the gradient and the input must both be on the host or both on a device", op.name, inputIndex)
 				}
 				if !sameShape(gradient.shape, op.inputs[inputIndex].shape) {
 					return fmt.Errorf("backward %s input %d: gradient shape %v does not match input shape %v", op.name, inputIndex, gradient.shape, op.inputs[inputIndex].shape)
