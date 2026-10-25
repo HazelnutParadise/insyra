@@ -311,6 +311,77 @@ func oneFugleOptions[T any](opts []T) (T, error) {
 	return zero, fmt.Errorf("datafetch: at most one %T may be given, got %d", zero, len(opts))
 }
 
+// fugleWindow is one request's range; the zero window asks for the API default.
+type fugleWindow struct{ from, to time.Time }
+
+// fugleWindows cuts a historical range into the requests that cover it: the
+// API's default for no range, one request for a range of at most 364 days, and
+// consecutive pieces of at most 364 days for a longer day or minute range. A
+// week or month range over 364 days is refused, since a candle would be split
+// between two pieces.
+func fugleWindows(fromIn, toIn time.Time, tf FugleTimeframe) ([]fugleWindow, error) {
+	switch {
+	case fromIn.IsZero() && toIn.IsZero():
+		return []fugleWindow{{}}, nil
+	case fromIn.IsZero():
+		return nil, errors.New("datafetch: Fugle To needs a From")
+	}
+	from := normalizeDate(fromIn)
+	to := time.Now().UTC()
+	if !toIn.IsZero() {
+		to = toIn
+	}
+	to = normalizeDate(to)
+	if from.After(to) {
+		return nil, errors.New("datafetch: Fugle From is after To")
+	}
+	if to.Sub(from) <= fugleMaxSpan {
+		return []fugleWindow{{from, to}}, nil
+	}
+	if tf == FugleTimeframeWeek || tf == FugleTimeframeMonth {
+		return nil, errors.New("datafetch: Fugle week and month candles cannot span more than 364 days in one call; ask for a shorter range or use day candles")
+	}
+	var windows []fugleWindow
+	for start := from; !start.After(to); {
+		end := start.Add(fugleMaxSpan - 24*time.Hour)
+		if end.After(to) {
+			end = to
+		}
+		windows = append(windows, fugleWindow{start, end})
+		start = end.AddDate(0, 0, 1)
+	}
+	return windows, nil
+}
+
+// fugleFetchWindows fetches each window in turn and returns the data rows of
+// all of them. A window with no data (HTTP 404) adds nothing.
+func (c *FugleClient) fugleFetchWindows(ctx context.Context, path string, base url.Values, windows []fugleWindow) ([]map[string]any, error) {
+	var rows []map[string]any
+	for _, w := range windows {
+		values := url.Values{}
+		for k, v := range base {
+			values[k] = v
+		}
+		if !w.from.IsZero() {
+			values.Set("from", w.from.Format("2006-01-02"))
+			values.Set("to", w.to.Format("2006-01-02"))
+		}
+		resp, err := c.fugleGet(ctx, path, values)
+		if errors.Is(err, errTWStockNoData) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		part, err := fugleRows(resp)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, part...)
+	}
+	return rows, nil
+}
+
 func fugleSymbol(symbol string) (string, error) {
 	symbol = strings.TrimSpace(symbol)
 	if symbol == "" || strings.ContainsAny(symbol, "/?#") {
@@ -408,62 +479,13 @@ func (s FugleStock) HistoricalCandlesContext(ctx context.Context, symbol string,
 		base.Set("fields", strings.Join(p.Fields, ","))
 	}
 
-	type window struct{ from, to time.Time }
-	var windows []window
-	switch {
-	case p.From.IsZero() && p.To.IsZero():
-		windows = []window{{}}
-	case p.From.IsZero():
-		return nil, errors.New("datafetch: Fugle To needs a From")
-	default:
-		from := normalizeDate(p.From)
-		to := time.Now().UTC()
-		if !p.To.IsZero() {
-			to = p.To
-		}
-		to = normalizeDate(to)
-		if from.After(to) {
-			return nil, errors.New("datafetch: Fugle From is after To")
-		}
-		if to.Sub(from) <= fugleMaxSpan {
-			windows = []window{{from, to}}
-			break
-		}
-		if tf == FugleTimeframeWeek || tf == FugleTimeframeMonth {
-			return nil, errors.New("datafetch: Fugle week and month candles cannot span more than 364 days in one call; ask for a shorter range or use day candles")
-		}
-		for start := from; !start.After(to); {
-			end := start.Add(fugleMaxSpan - 24*time.Hour)
-			if end.After(to) {
-				end = to
-			}
-			windows = append(windows, window{start, end})
-			start = end.AddDate(0, 0, 1)
-		}
+	windows, err := fugleWindows(p.From, p.To, tf)
+	if err != nil {
+		return nil, err
 	}
-
-	var rows []map[string]any
-	for _, w := range windows {
-		values := url.Values{}
-		for k, v := range base {
-			values[k] = v
-		}
-		if !w.from.IsZero() {
-			values.Set("from", w.from.Format("2006-01-02"))
-			values.Set("to", w.to.Format("2006-01-02"))
-		}
-		resp, err := c.fugleGet(ctx, path, values)
-		if errors.Is(err, errTWStockNoData) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		part, err := fugleRows(resp)
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, part...)
+	rows, err := c.fugleFetchWindows(ctx, path, base, windows)
+	if err != nil {
+		return nil, err
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return fmt.Sprint(rows[i]["date"]) < fmt.Sprint(rows[j]["date"]) })
 	out := rows[:0]
