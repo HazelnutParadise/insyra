@@ -86,6 +86,10 @@ func Upload(values []float32) (*Buffer, error) {
 			buffer.releaseLocked()
 			return nil, fmt.Errorf("wgpu: upload resident buffer: %w", err)
 		}
+		if err := settleWriteLocked(h); err != nil {
+			buffer.releaseLocked()
+			return nil, fmt.Errorf("wgpu: upload resident buffer: %w", err)
+		}
 	}
 	return buffer, nil
 }
@@ -345,5 +349,20 @@ func (k *kernel) run(reads, writes []*Buffer, params [16]uint32, groupsX, groups
 func Synchronize() error {
 	submitMu.Lock()
 	defer submitMu.Unlock()
+	return syncLocked()
+}
+
+// settleWriteLocked makes a queue write to a resident buffer complete before
+// anything else uses the buffer. gogpu stages Queue.WriteBuffer into a copy
+// recorded ahead of the next submission, and its flush emits a barrier after
+// that copy only for a buffer used as vertex, index, uniform or indirect data
+// (pending_writes.go, bufferReadUsage). A storage buffer gets none, so on
+// Vulkan the copy and the kernel or readback that follows it are unordered:
+// measured on a GT 1030, Zero() followed by a readback returned the old words
+// in 3 of 20 runs. Metal tracks the hazard itself. submitMu must be held.
+func settleWriteLocked(h *handle) error {
+	if h.info.Backend == gputypes.BackendMetal {
+		return nil
+	}
 	return syncLocked()
 }
