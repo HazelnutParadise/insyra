@@ -39,3 +39,12 @@ The client SHALL return an error matching ErrFugleAuth for HTTP 401 and ErrFugle
 - **WHEN** the API answers 403
 - **THEN** one request is sent and the error matches ErrFuglePlan
 
+### Requirement: Settings are one optional trailing value
+
+Methods with defaultable settings SHALL take them as one optional trailing options value, refuse more than one before sending a request, and take a required choice such as the ticker type as a parameter. Columns the API may omit from a row SHALL be present as nil cells even when no row has them.
+
+#### Scenario: Defaults
+
+- **WHEN** `Stock.HistoricalCandles("2330")` is called
+- **THEN** it asks for day candles with the API's default range, and `Stock.IntradayTickers` of tickers without an industry still has an industry column of nils
+
