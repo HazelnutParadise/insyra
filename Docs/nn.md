@@ -417,6 +417,28 @@ if err := tape.SGD(0.01); err != nil { log.Fatal(err) }
 gradient := w1.Grad()
 ```
 
+Two more losses take a probability row instead of a class index. Both are
+the mean over rows and run on host tensors only.
+
+```go
+// Label smoothing, mixup: targets is one probability row per sample.
+loss, err := tape.SoftTargetCrossEntropy(logits, targets)
+
+// Distillation: the teacher is a constant given as logits. For a temperature
+// T, divide both logits by T (and multiply the loss by T*T if you want that
+// scaling).
+loss, err = tape.DistillationLoss(studentLogits, teacherLogits)
+```
+
+`SoftTargetCrossEntropy` needs finite, non-negative rows that sum to 1 within
+1e-5 and names the row that does not. `DistillationLoss` gives a gradient of
+exactly 0 when the student's logits equal the teacher's. In both, a class with
+probability 0 adds nothing to the loss, and the gradient of the largest logit is
+minus the sum of the others', so it stays nonzero when that logit leads by more
+than the float32 precision cliff of about 16.6, where `p - 1` would be 0
+(Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642)). A tensor on a
+device is refused; call `ToHost`.
+
 The differentiable wrappers are `MatMul`, `Add`, `Relu`, `Sigmoid`, `Tanh`,
 `Gemm`, `Mul`, `Div`, `Softmax`, `LayerNormalization`, `Gelu`, `Erf`, `Sqrt`,
 `Pow`, `ReduceMean`, and the shape wrappers `Transpose`, `Reshape`, `Flatten`,

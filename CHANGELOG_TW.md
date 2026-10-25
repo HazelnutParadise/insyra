@@ -26,6 +26,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `nn.Tape.SoftmaxCrossEntropy` 在標籤的 logit 遠大於其他類別時，不再丟掉標籤那一項的梯度：反向以前用 p - 1，margin 超過約 16.6 後在 float32 裡剛好等於 0，其他類別的梯度卻還不是 0，整列梯度就不再加總為 0；現在改用其他類別機率總和的負值。損失也不會在 margin 超過約 36 後被捨入成 0。只有預設精度改變，`PrecisionFloat32Rounded` 不變。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
 
+- `nn.Tape.SoftTargetCrossEntropy(logits, targets)` 是對每個樣本一列機率的平均交叉熵（標籤平滑、mixup），`nn.Tape.DistillationLoss(student, teacher)` 是學生 logits 對 `softmax(teacher)` 的交叉熵，老師視為常數。某個 logit 領先超過約 16.6 時梯度仍然準確，學生等於老師時梯度剛好是 0，這是 Barron 描述的兩個數值錯誤（[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）。只支援主機張量，裝置上的張量會被拒絕。
+
 - `PrecisionFloat32Rounded` 的交叉熵（主機與裝置都是）在標籤領先超過約 16.6 時，不再丟掉標籤的梯度：改為 `upstream/rows` 乘以 `-(o/s)`，`o` 是其他類別指數的精確總和，不再用 `p - 1`。**破壞性變更**：標籤的梯度對每個輸入的位元都不同，這個模式下先前記錄的執行無法重現。此模式的損失不變，在 margin 超過約 16.6 後仍會被捨入成 0。`nn.Tape.Softmax` 的反向也不再以同樣方式丟掉最大機率那一項的梯度。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
 
 ### `stats`
