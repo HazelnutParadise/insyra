@@ -26,6 +26,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `nn.Tape.SoftmaxCrossEntropy` no longer loses the label's gradient when the label's logit is far above the rest: the backward used p - 1, which is exactly 0 in float32 once the margin passes about 16.6 while the other classes' gradients stay nonzero, so the gradients of a row stopped summing to zero; it now uses the negated sum of the other classes' probabilities. The loss no longer rounds to 0 past a margin of about 36 either. Only the default precision changes; `PrecisionFloat32Rounded` is unchanged. (Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642))
 
+- `nn.Tape.SoftTargetCrossEntropy(logits, targets)` is the mean cross-entropy against a probability row per sample (label smoothing, mixup), and `nn.Tape.DistillationLoss(student, teacher)` is the cross-entropy of a student's logits against `softmax(teacher)`, with the teacher a constant. Gradients stay accurate when one logit leads by more than about 16.6 and are exactly 0 when the student equals the teacher, the two numerical errors Barron describes ([arXiv 2610.31642](https://arxiv.org/abs/2610.31642)). Host tensors only; a tensor on a device is refused.
+
+- `PrecisionFloat32Rounded` cross-entropy, on the host and on the device, no longer loses the label's gradient when the label leads by more than about 16.6: it is now `-(o/s)` times `upstream/rows`, with `o` the exact sum of the other exponentials, rather than `p - 1`. **Breaking**: the label's gradient has different bits for every input, so a run recorded in this mode will not reproduce. The loss in this mode is unchanged and still rounds to 0 past a margin of about 16.6. `nn.Tape.Softmax` no longer loses its peak's gradient the same way. (Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642))
+
 ### `stats`
 
 - `stats.Autocorrelation(series, maxLag)` estimates the autocorrelation at each lag from 1 to `maxLag`, matching R's `acf`, with a white-noise test and a heteroskedasticity-robust test (Lo and MacKinlay 1988) for series whose volatility changes, such as daily returns ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
@@ -53,7 +57,9 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `datafetch`
 
-- `datafetch.Fugle(cfg)` reads Taiwan stock data from Fugle's market data API: `Stock.HistoricalCandles` (historical candles, ranges over a year cut into pieces), `Stock.IntradayCandles`, `Stock.IntradayQuote`, `Stock.IntradayTrades`, `Stock.IntradayVolumes` and `Stock.IntradayTickers`, each with a `Context` form, and the typed errors `ErrFugleAuth`, `ErrFuglePlan` and `ErrFugleThrottled` ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
+- `datafetch.Fugle(cfg)` reads Taiwan stock data from Fugle's market data API: `Stock.HistoricalCandles` (historical candles, ranges over a year cut into pieces), `Stock.IntradayCandles`, `Stock.IntradayQuote`, `Stock.IntradayTrades`, `Stock.IntradayVolumes` and `Stock.IntradayTickers`, each with a `Context` form, and the typed errors `ErrFugleAuth`, `ErrFuglePlan` and `ErrFugleThrottled`. Settings are one optional trailing `...Options` value (`HistoricalCandles("2330")` uses the defaults) and the tickers, trades and volumes tables always carry their documented columns, as nil where the API leaves a field out ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
+- `client.FutOpt` of `datafetch.Fugle` reads Fugle's intraday futures and options data: `IntradayProducts`, `IntradayTickers`, `IntradayTicker`, `IntradayQuote`, `IntradayCandles`, `IntradayTrades` and `IntradayVolumes`, each with a `Context` form ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
+- `client.FutOpt.HistoricalCandles` and `client.FutOpt.HistoricalDaily` read Fugle's historical futures and options data: candles of a contract or a continuous contract (ranges over a year cut into pieces) and one trading day of a product with a row per contract ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
 
 ## v0.3.5
 

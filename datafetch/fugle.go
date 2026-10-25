@@ -113,6 +113,8 @@ type FugleConfig struct {
 type FugleClient struct {
 	// Stock holds the stock endpoints.
 	Stock FugleStock
+	// FutOpt holds the futures and options endpoints.
+	FutOpt FugleFutOpt
 
 	base    *TWStockClient
 	baseURL string
@@ -151,6 +153,7 @@ func Fugle(cfg FugleConfig) (*FugleClient, error) {
 	}
 	client := &FugleClient{base: base, baseURL: baseURL}
 	client.Stock = FugleStock{c: client}
+	client.FutOpt = FugleFutOpt{c: client}
 	return client, nil
 }
 
@@ -236,8 +239,12 @@ func fugleRows(resp map[string]any) ([]map[string]any, error) {
 // fugleTable builds a table from rows. Columns appear in the order of
 // preferred, then any other key sorted; a missing value is nil. A string column
 // named date is read as time.Time when every value is a date or a timestamp.
-func fugleTable(rows []map[string]any, preferred []string) *insyra.DataTable {
+// The columns in always are kept even when no row has them, as nil cells.
+func fugleTable(rows []map[string]any, preferred, always []string) *insyra.DataTable {
 	present := map[string]bool{}
+	for _, k := range always {
+		present[k] = true
+	}
 	for _, row := range rows {
 		for k := range row {
 			present[k] = true
@@ -291,6 +298,90 @@ func fugleDates(values []any) []any {
 	return out
 }
 
+// oneFugleOptions returns the value a trailing opts ...T parameter was given, or
+// the zero value when it was given none; more than one is an error.
+func oneFugleOptions[T any](opts []T) (T, error) {
+	var zero T
+	switch len(opts) {
+	case 0:
+		return zero, nil
+	case 1:
+		return opts[0], nil
+	}
+	return zero, fmt.Errorf("datafetch: at most one %T may be given, got %d", zero, len(opts))
+}
+
+// fugleWindow is one request's range; the zero window asks for the API default.
+type fugleWindow struct{ from, to time.Time }
+
+// fugleWindows cuts a historical range into the requests that cover it: the
+// API's default for no range, one request for a range of at most 364 days, and
+// consecutive pieces of at most 364 days for a longer day or minute range. A
+// week or month range over 364 days is refused, since a candle would be split
+// between two pieces.
+func fugleWindows(fromIn, toIn time.Time, tf FugleTimeframe) ([]fugleWindow, error) {
+	switch {
+	case fromIn.IsZero() && toIn.IsZero():
+		return []fugleWindow{{}}, nil
+	case fromIn.IsZero():
+		return nil, errors.New("datafetch: Fugle To needs a From")
+	}
+	from := normalizeDate(fromIn)
+	to := time.Now().UTC()
+	if !toIn.IsZero() {
+		to = toIn
+	}
+	to = normalizeDate(to)
+	if from.After(to) {
+		return nil, errors.New("datafetch: Fugle From is after To")
+	}
+	if to.Sub(from) <= fugleMaxSpan {
+		return []fugleWindow{{from, to}}, nil
+	}
+	if tf == FugleTimeframeWeek || tf == FugleTimeframeMonth {
+		return nil, errors.New("datafetch: Fugle week and month candles cannot span more than 364 days in one call; ask for a shorter range or use day candles")
+	}
+	var windows []fugleWindow
+	for start := from; !start.After(to); {
+		end := start.Add(fugleMaxSpan - 24*time.Hour)
+		if end.After(to) {
+			end = to
+		}
+		windows = append(windows, fugleWindow{start, end})
+		start = end.AddDate(0, 0, 1)
+	}
+	return windows, nil
+}
+
+// fugleFetchWindows fetches each window in turn and returns the data rows of
+// all of them. A window with no data (HTTP 404) adds nothing.
+func (c *FugleClient) fugleFetchWindows(ctx context.Context, path string, base url.Values, windows []fugleWindow) ([]map[string]any, error) {
+	var rows []map[string]any
+	for _, w := range windows {
+		values := url.Values{}
+		for k, v := range base {
+			values[k] = v
+		}
+		if !w.from.IsZero() {
+			values.Set("from", w.from.Format("2006-01-02"))
+			values.Set("to", w.to.Format("2006-01-02"))
+		}
+		resp, err := c.fugleGet(ctx, path, values)
+		if errors.Is(err, errTWStockNoData) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		part, err := fugleRows(resp)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, part...)
+	}
+	return rows, nil
+}
+
 func fugleSymbol(symbol string) (string, error) {
 	symbol = strings.TrimSpace(symbol)
 	if symbol == "" || strings.ContainsAny(symbol, "/?#") {
@@ -309,8 +400,8 @@ func oneFlag(flags []bool, name string) (bool, error) {
 	return false, fmt.Errorf("datafetch: at most one %s flag may be given, got %d", name, len(flags))
 }
 
-// FugleHistoricalCandlesParams are the settings of HistoricalCandles.
-type FugleHistoricalCandlesParams struct {
+// FugleHistoricalCandlesOptions are the optional settings of HistoricalCandles.
+type FugleHistoricalCandlesOptions struct {
 	// From and To are the first and last day wanted. Leave both zero for the API's
 	// default, the last month. To alone defaults From to nothing and is refused;
 	// From alone runs to today.
@@ -332,8 +423,8 @@ var fugleCandleColumns = []string{"date", "open", "high", "low", "close", "volum
 
 // HistoricalCandles returns a stock's historical candles. It is HistoricalCandlesContext
 // with context.Background().
-func (s FugleStock) HistoricalCandles(symbol string, p FugleHistoricalCandlesParams) (*insyra.DataTable, error) {
-	return s.HistoricalCandlesContext(context.Background(), symbol, p)
+func (s FugleStock) HistoricalCandles(symbol string, opts ...FugleHistoricalCandlesOptions) (*insyra.DataTable, error) {
+	return s.HistoricalCandlesContext(context.Background(), symbol, opts...)
 }
 
 // HistoricalCandlesContext is HistoricalCandles with a context. The limiter wait, each
@@ -348,15 +439,19 @@ func (s FugleStock) HistoricalCandles(symbol string, p FugleHistoricalCandlesPar
 // day, and a minute's is the exchange's timestamp. Volume is in shares for day,
 // week and month candles and in lots (1,000 shares) for minute candles of listed
 // stocks. Adjusted prices are adjusted as of the day of the request.
-func (s FugleStock) HistoricalCandlesContext(ctx context.Context, symbol string, p FugleHistoricalCandlesParams) (*insyra.DataTable, error) {
+func (s FugleStock) HistoricalCandlesContext(ctx context.Context, symbol string, opts ...FugleHistoricalCandlesOptions) (*insyra.DataTable, error) {
 	c := s.c
+	p, err := oneFugleOptions(opts)
+	if err != nil {
+		return nil, err
+	}
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
 	if err := c.usable(); err != nil {
 		return nil, err
 	}
-	symbol, err := fugleSymbol(symbol)
+	symbol, err = fugleSymbol(symbol)
 	if err != nil {
 		return nil, err
 	}
@@ -384,62 +479,13 @@ func (s FugleStock) HistoricalCandlesContext(ctx context.Context, symbol string,
 		base.Set("fields", strings.Join(p.Fields, ","))
 	}
 
-	type window struct{ from, to time.Time }
-	var windows []window
-	switch {
-	case p.From.IsZero() && p.To.IsZero():
-		windows = []window{{}}
-	case p.From.IsZero():
-		return nil, errors.New("datafetch: Fugle To needs a From")
-	default:
-		from := normalizeDate(p.From)
-		to := time.Now().UTC()
-		if !p.To.IsZero() {
-			to = p.To
-		}
-		to = normalizeDate(to)
-		if from.After(to) {
-			return nil, errors.New("datafetch: Fugle From is after To")
-		}
-		if to.Sub(from) <= fugleMaxSpan {
-			windows = []window{{from, to}}
-			break
-		}
-		if tf == FugleTimeframeWeek || tf == FugleTimeframeMonth {
-			return nil, errors.New("datafetch: Fugle week and month candles cannot span more than 364 days in one call; ask for a shorter range or use day candles")
-		}
-		for start := from; !start.After(to); {
-			end := start.Add(fugleMaxSpan - 24*time.Hour)
-			if end.After(to) {
-				end = to
-			}
-			windows = append(windows, window{start, end})
-			start = end.AddDate(0, 0, 1)
-		}
+	windows, err := fugleWindows(p.From, p.To, tf)
+	if err != nil {
+		return nil, err
 	}
-
-	var rows []map[string]any
-	for _, w := range windows {
-		values := url.Values{}
-		for k, v := range base {
-			values[k] = v
-		}
-		if !w.from.IsZero() {
-			values.Set("from", w.from.Format("2006-01-02"))
-			values.Set("to", w.to.Format("2006-01-02"))
-		}
-		resp, err := c.fugleGet(ctx, path, values)
-		if errors.Is(err, errTWStockNoData) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		part, err := fugleRows(resp)
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, part...)
+	rows, err := c.fugleFetchWindows(ctx, path, base, windows)
+	if err != nil {
+		return nil, err
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return fmt.Sprint(rows[i]["date"]) < fmt.Sprint(rows[j]["date"]) })
 	out := rows[:0]
@@ -449,11 +495,11 @@ func (s FugleStock) HistoricalCandlesContext(ctx context.Context, symbol string,
 		}
 		out = append(out, row)
 	}
-	return fugleTable(out, fugleCandleColumns), nil
+	return fugleTable(out, fugleCandleColumns, nil), nil
 }
 
-// FugleIntradayCandlesParams are the settings of IntradayCandles.
-type FugleIntradayCandlesParams struct {
+// FugleIntradayCandlesOptions are the optional settings of IntradayCandles.
+type FugleIntradayCandlesOptions struct {
 	// Timeframe is the candle length in minutes, FugleTimeframe1Min to
 	// FugleTimeframe60Min. Empty means the API default.
 	Timeframe FugleTimeframe
@@ -465,21 +511,25 @@ type FugleIntradayCandlesParams struct {
 
 // IntradayCandles returns today's candles of a stock. It is
 // IntradayCandlesContext with context.Background().
-func (s FugleStock) IntradayCandles(symbol string, p FugleIntradayCandlesParams) (*insyra.DataTable, error) {
-	return s.IntradayCandlesContext(context.Background(), symbol, p)
+func (s FugleStock) IntradayCandles(symbol string, opts ...FugleIntradayCandlesOptions) (*insyra.DataTable, error) {
+	return s.IntradayCandlesContext(context.Background(), symbol, opts...)
 }
 
 // IntradayCandlesContext is IntradayCandles with a context. The
 // columns are date (a time.Time), open, high, low, close, volume and average.
-func (s FugleStock) IntradayCandlesContext(ctx context.Context, symbol string, p FugleIntradayCandlesParams) (*insyra.DataTable, error) {
+func (s FugleStock) IntradayCandlesContext(ctx context.Context, symbol string, opts ...FugleIntradayCandlesOptions) (*insyra.DataTable, error) {
 	c := s.c
+	p, err := oneFugleOptions(opts)
+	if err != nil {
+		return nil, err
+	}
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
 	if err := c.usable(); err != nil {
 		return nil, err
 	}
-	symbol, err := fugleSymbol(symbol)
+	symbol, err = fugleSymbol(symbol)
 	if err != nil {
 		return nil, err
 	}
@@ -504,7 +554,7 @@ func (s FugleStock) IntradayCandlesContext(ctx context.Context, symbol string, p
 	if err != nil {
 		return nil, err
 	}
-	return fugleTable(rows, fugleCandleColumns), nil
+	return fugleTable(rows, fugleCandleColumns, nil), nil
 }
 
 // IntradayQuote returns a stock's current quote as a one-row table. It is
@@ -557,7 +607,7 @@ func (s FugleStock) IntradayQuoteContext(ctx context.Context, symbol string, odd
 	}
 	flat := map[string]any{}
 	flattenFugle("", resp, flat)
-	return fugleTable([]map[string]any{flat}, fugleQuoteColumns), nil
+	return fugleTable([]map[string]any{flat}, fugleQuoteColumns, nil), nil
 }
 
 // flattenFugle copies m into out, joining nested names with "_" and numbering
@@ -581,10 +631,8 @@ func flattenFugle(prefix string, v any, out map[string]any) {
 	}
 }
 
-// FugleIntradayTickersParams are the settings of IntradayTickers.
-type FugleIntradayTickersParams struct {
-	// Type is the kind of security. It is required.
-	Type FugleTickerType
+// FugleIntradayTickersOptions are the optional settings of IntradayTickers.
+type FugleIntradayTickersOptions struct {
 	// Exchange is TWSE or TPEx; Market is TSE, OTC, ESB or TIB; Industry is an
 	// industry code. Empty means any.
 	Exchange, Market, Industry string
@@ -595,26 +643,30 @@ type FugleIntradayTickersParams struct {
 
 // IntradayTickers returns the list of securities. It is IntradayTickersContext with
 // context.Background().
-func (s FugleStock) IntradayTickers(p FugleIntradayTickersParams) (*insyra.DataTable, error) {
-	return s.IntradayTickersContext(context.Background(), p)
+func (s FugleStock) IntradayTickers(kind FugleTickerType, opts ...FugleIntradayTickersOptions) (*insyra.DataTable, error) {
+	return s.IntradayTickersContext(context.Background(), kind, opts...)
 }
 
 // IntradayTickersContext is IntradayTickers with a context. The columns are symbol,
 // name and industry, which is nil for a ticker without one.
-func (s FugleStock) IntradayTickersContext(ctx context.Context, p FugleIntradayTickersParams) (*insyra.DataTable, error) {
+func (s FugleStock) IntradayTickersContext(ctx context.Context, kind FugleTickerType, opts ...FugleIntradayTickersOptions) (*insyra.DataTable, error) {
 	c := s.c
+	p, err := oneFugleOptions(opts)
+	if err != nil {
+		return nil, err
+	}
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
 	if err := c.usable(); err != nil {
 		return nil, err
 	}
-	switch p.Type {
+	switch kind {
 	case FugleTickerEquity, FugleTickerIndex, FugleTickerWarrant, FugleTickerOddLot:
 	default:
-		return nil, fmt.Errorf("datafetch: Fugle ticker type %q must be EQUITY, INDEX, WARRANT or ODDLOT", string(p.Type))
+		return nil, fmt.Errorf("datafetch: Fugle ticker type %q must be EQUITY, INDEX, WARRANT or ODDLOT", string(kind))
 	}
-	values := url.Values{"type": {string(p.Type)}}
+	values := url.Values{"type": {string(kind)}}
 	for name, v := range map[string]string{"exchange": p.Exchange, "market": p.Market, "industry": p.Industry} {
 		if v != "" {
 			values.Set(name, v)
@@ -633,11 +685,11 @@ func (s FugleStock) IntradayTickersContext(ctx context.Context, p FugleIntradayT
 	if err != nil {
 		return nil, err
 	}
-	return fugleTable(rows, []string{"symbol", "name", "industry"}), nil
+	return fugleTable(rows, []string{"symbol", "name", "industry"}, []string{"symbol", "name", "industry"}), nil
 }
 
-// FugleIntradayTradesParams are the settings of IntradayTrades.
-type FugleIntradayTradesParams struct {
+// FugleIntradayTradesOptions are the optional settings of IntradayTrades.
+type FugleIntradayTradesOptions struct {
 	// OddLot asks for odd-lot trades.
 	OddLot bool
 	// Offset skips that many trades and Limit returns at most that many; zero
@@ -651,22 +703,26 @@ type FugleIntradayTradesParams struct {
 
 // IntradayTrades returns today's trades of a stock. It is IntradayTradesContext with
 // context.Background().
-func (s FugleStock) IntradayTrades(symbol string, p FugleIntradayTradesParams) (*insyra.DataTable, error) {
-	return s.IntradayTradesContext(context.Background(), symbol, p)
+func (s FugleStock) IntradayTrades(symbol string, opts ...FugleIntradayTradesOptions) (*insyra.DataTable, error) {
+	return s.IntradayTradesContext(context.Background(), symbol, opts...)
 }
 
 // IntradayTradesContext is IntradayTrades with a context. The columns are bid, ask,
 // price, size, volume, time and serial; bid, ask and volume are nil where the
 // API leaves them out. time is the API's number, unchanged.
-func (s FugleStock) IntradayTradesContext(ctx context.Context, symbol string, p FugleIntradayTradesParams) (*insyra.DataTable, error) {
+func (s FugleStock) IntradayTradesContext(ctx context.Context, symbol string, opts ...FugleIntradayTradesOptions) (*insyra.DataTable, error) {
 	c := s.c
+	p, err := oneFugleOptions(opts)
+	if err != nil {
+		return nil, err
+	}
 	if err := contextErr(ctx); err != nil {
 		return nil, err
 	}
 	if err := c.usable(); err != nil {
 		return nil, err
 	}
-	symbol, err := fugleSymbol(symbol)
+	symbol, err = fugleSymbol(symbol)
 	if err != nil {
 		return nil, err
 	}
@@ -697,7 +753,7 @@ func (s FugleStock) IntradayTradesContext(ctx context.Context, symbol string, p 
 	if err != nil {
 		return nil, err
 	}
-	return fugleTable(rows, []string{"bid", "ask", "price", "size", "volume", "time", "serial"}), nil
+	return fugleTable(rows, []string{"bid", "ask", "price", "size", "volume", "time", "serial"}, []string{"bid", "ask", "price", "size", "volume", "time", "serial"}), nil
 }
 
 // IntradayVolumes returns today's volume at each price. It is IntradayVolumesContext
@@ -737,5 +793,5 @@ func (s FugleStock) IntradayVolumesContext(ctx context.Context, symbol string, o
 	if err != nil {
 		return nil, err
 	}
-	return fugleTable(rows, []string{"price", "volume", "volumeAtBid", "volumeAtAsk"}), nil
+	return fugleTable(rows, []string{"price", "volume", "volumeAtBid", "volumeAtAsk"}, []string{"price", "volume", "volumeAtBid", "volumeAtAsk"}), nil
 }

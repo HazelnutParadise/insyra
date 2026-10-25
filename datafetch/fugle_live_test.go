@@ -18,7 +18,7 @@ func TestFugleLive(t *testing.T) {
 	}
 	t.Run("daily candles over a year are cut and joined", func(t *testing.T) {
 		to := time.Now().UTC()
-		dt, err := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{From: to.AddDate(-2, 0, 0), To: to})
+		dt, err := c.Stock.HistoricalCandles("2330", FugleHistoricalCandlesOptions{From: to.AddDate(-2, 0, 0), To: to})
 		if err != nil || dt.NumRows() < 300 {
 			t.Fatalf("rows=%d err=%v", dt.NumRows(), err)
 		}

@@ -26,6 +26,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `nn.Tape.SoftmaxCrossEntropy` 在標籤的 logit 遠大於其他類別時，不再丟掉標籤那一項的梯度：反向以前用 p - 1，margin 超過約 16.6 後在 float32 裡剛好等於 0，其他類別的梯度卻還不是 0，整列梯度就不再加總為 0；現在改用其他類別機率總和的負值。損失也不會在 margin 超過約 36 後被捨入成 0。只有預設精度改變，`PrecisionFloat32Rounded` 不變。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
 
+- `nn.Tape.SoftTargetCrossEntropy(logits, targets)` 是對每個樣本一列機率的平均交叉熵（標籤平滑、mixup），`nn.Tape.DistillationLoss(student, teacher)` 是學生 logits 對 `softmax(teacher)` 的交叉熵，老師視為常數。某個 logit 領先超過約 16.6 時梯度仍然準確，學生等於老師時梯度剛好是 0，這是 Barron 描述的兩個數值錯誤（[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）。只支援主機張量，裝置上的張量會被拒絕。
+
+- `PrecisionFloat32Rounded` 的交叉熵（主機與裝置都是）在標籤領先超過約 16.6 時，不再丟掉標籤的梯度：改為 `upstream/rows` 乘以 `-(o/s)`，`o` 是其他類別指數的精確總和，不再用 `p - 1`。**破壞性變更**：標籤的梯度對每個輸入的位元都不同，這個模式下先前記錄的執行無法重現。此模式的損失不變，在 margin 超過約 16.6 後仍會被捨入成 0。`nn.Tape.Softmax` 的反向也不再以同樣方式丟掉最大機率那一項的梯度。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
+
 ### `stats`
 
 - `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
@@ -53,7 +57,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `datafetch`
 
-- `datafetch.Fugle(cfg)` 讀取富果行情 API 的台股資料：`Stock.HistoricalCandles`（歷史 K 線，超過一年的區間自動切段）、`Stock.IntradayCandles`、`Stock.IntradayQuote`、`Stock.IntradayTrades`、`Stock.IntradayVolumes`、`Stock.IntradayTickers`，各有 `Context` 版本，以及 `ErrFugleAuth`、`ErrFuglePlan`、`ErrFugleThrottled` 三種錯誤（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
+- `datafetch.Fugle(cfg)` 讀取富果行情 API 的台股資料：`Stock.HistoricalCandles`（歷史 K 線，超過一年的區間自動切段）、`Stock.IntradayCandles`、`Stock.IntradayQuote`、`Stock.IntradayTrades`、`Stock.IntradayVolumes`、`Stock.IntradayTickers`，各有 `Context` 版本，以及 `ErrFugleAuth`、`ErrFuglePlan`、`ErrFugleThrottled` 三種錯誤。設定是最後一個可省略的 `...Options` 參數（`HistoricalCandles("2330")` 用預設值），股票清單、成交明細、分價量的表格固定保留文件列的欄位，API 沒給的欄位是空值（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
+- `datafetch.Fugle` 的 `client.FutOpt` 讀取富果的盤中期貨選擇權資料：`IntradayProducts`、`IntradayTickers`、`IntradayTicker`、`IntradayQuote`、`IntradayCandles`、`IntradayTrades`、`IntradayVolumes`，各有 `Context` 版本（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
+- `client.FutOpt.HistoricalCandles` 與 `client.FutOpt.HistoricalDaily` 讀取富果的歷史期貨選擇權資料：單一合約或連續合約的 K 線（超過一年的區間自動切段），以及某商品單一交易日、每個合約一列的日行情（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 
 ## v0.3.5
 

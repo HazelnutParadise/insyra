@@ -39,3 +39,80 @@ The client SHALL return an error matching ErrFugleAuth for HTTP 401 and ErrFugle
 - **WHEN** the API answers 403
 - **THEN** one request is sent and the error matches ErrFuglePlan
 
+### Requirement: Settings are one optional trailing value
+
+Methods with defaultable settings SHALL take them as one optional trailing options value, refuse more than one before sending a request, and take a required choice such as the ticker type as a parameter.
+
+#### Scenario: Defaults
+
+- **WHEN** `Stock.HistoricalCandles("2330")` is called
+- **THEN** it asks for day candles with the API's default range
+
+#### Scenario: Two settings values
+
+- **WHEN** two options values are passed
+- **THEN** an error is returned and no request is sent
+
+### Requirement: Documented columns are kept
+
+The tickers, trades and volumes tables SHALL carry every column the documentation lists, as nil cells where the API leaves a field out of every row.
+
+#### Scenario: Tickers without an industry
+
+- **WHEN** every returned ticker lacks an industry
+- **THEN** the table still has an industry column of nils
+
+### Requirement: Futures and options intraday methods return tables
+
+`client.FutOpt` SHALL provide IntradayProducts, IntradayTickers, IntradayTicker, IntradayQuote, IntradayCandles, IntradayTrades and IntradayVolumes, each returning a table with one row per data item (one row for a ticker or a quote), the nested objects and arrays of a row flattened into numbered or underscore-joined columns, and a field the API leaves out as nil.
+
+#### Scenario: A stepped price limit
+
+- **WHEN** a ticker has two priceLimitLevels
+- **THEN** its row has priceLimitLevels_1_level and priceLimitLevels_2_limitUpPrice columns, nil for a contract without them
+
+### Requirement: The night session is one setting
+
+The futures and options methods SHALL take the night session as AfterHours or an afterHours flag, send session=AFTERHOURS to the products and tickers endpoints and session=afterhours to the others, and send nothing for the day session.
+
+#### Scenario: A night quote
+
+- **WHEN** IntradayQuote is called with afterHours true
+- **THEN** the request carries session=afterhours
+
+### Requirement: Spread symbols and timeframes are checked
+
+A futures or options symbol SHALL be accepted with at most one slash between two non-empty parts, each escaped, and refused when empty, with more than one slash, or with a space, a question mark or a hash. Intraday candles SHALL refuse a timeframe other than 1, 5, 10, 15, 30 and 60 minutes before sending a request.
+
+#### Scenario: A spread contract
+
+- **WHEN** IntradayQuote is called with TXFJ6/K6
+- **THEN** the request path ends with /TXFJ6/K6
+
+### Requirement: Futures and options historical candles keep each contract
+
+`client.FutOpt.HistoricalCandles` SHALL fetch a day or minute range over 364 days in consecutive pieces, refuse a week or month range over 364 days, treat a piece with no data as empty, and return the rows in ascending order of date and contract month with a contractMonth column, so that a date with candles for two contracts has two rows.
+
+#### Scenario: A roll day
+
+- **WHEN** a continuous contract has candles for two contract months on one date
+- **THEN** the table has two rows for that date, each with its contract month
+
+### Requirement: Options and fields are checked
+
+`HistoricalCandles` SHALL require Strike and CallPut together, with CallPut CALL or PUT and Strike positive and finite, refuse a product containing a slash, a timeframe other than 1, 5, 10, 15, 30, 60, D, W and M, and a field other than open, high, low, close, volume, average, transaction and change, before sending a request.
+
+#### Scenario: Turnover
+
+- **WHEN** the field turnover is asked for
+- **THEN** an error is returned and no request is sent
+
+### Requirement: Daily data is one row per contract
+
+`client.FutOpt.HistoricalDaily` SHALL return one trading day of a product with a row per contract carrying date, contractMonth, strikePrice, callPut, the day's prices, volume, volumeSpread, openInterest and settlementPrice, with a field the API leaves out as nil, and an empty table for a day with no data.
+
+#### Scenario: A put without trades
+
+- **WHEN** a contract has no trade
+- **THEN** its prices are nil and its volume is 0
+

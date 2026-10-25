@@ -860,17 +860,35 @@ Dataset(name, dataID string, from, to time.Time) (*insyra.DataTable, error)
 
 ## Fugle
 
-Fugle (developer.fugle.tw) serves Taiwan stock quotes, intraday candles and historical candles over a REST API, with no brokerage account needed. `FugleClient` reads its intraday and historical stock endpoints through `client.Stock`. Futures and options, snapshots, technical indicators, corporate actions, ownership and the WebSocket stream are not in this version.
+Fugle (developer.fugle.tw) serves Taiwan stock quotes, intraday candles and historical candles over a REST API, with no brokerage account needed. `FugleClient` reads its intraday and historical stock endpoints through `client.Stock` and the intraday futures and options endpoints through `client.FutOpt`. Snapshots, technical indicators, corporate actions, ownership and the WebSocket stream are not in this version.
 
 ```go
 client, err := datafetch.Fugle(datafetch.FugleConfig{APIKey: os.Getenv("FUGLE_API_KEY")})
 
-bars, err := client.Stock.HistoricalCandles("2330", datafetch.FugleHistoricalCandlesParams{
+bars, err := client.Stock.HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{
     From: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), To: time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
     Timeframe: datafetch.FugleTimeframeDay, Adjusted: true,
 })
 quote, err := client.Stock.IntradayQuote("2330")
 ```
+
+**Futures and options.** `client.FutOpt` has the same groups for futures and options:
+
+| Method | Fugle endpoint | Result |
+| :--- | :--- | :--- |
+| `FutOpt.IntradayProducts(kind, opts...)` | `futopt/intraday/products` | the products of a kind (`FugleFuture` or `FugleOption`): `symbol`, `type`, `name`, `contractSize`, `expiryType`... |
+| `FutOpt.IntradayTickers(kind, opts...)` | `futopt/intraday/tickers` | the contracts, with price limits; a stepped limit becomes `priceLimitLevels_1_level`, `priceLimitLevels_1_limitUpPrice`... |
+| `FutOpt.IntradayTicker(symbol, afterHours...)` | `futopt/intraday/ticker/{symbol}` | one row of a contract's details |
+| `FutOpt.IntradayQuote(symbol, afterHours...)` | `futopt/intraday/quote/{symbol}` | one row; nested fields are joined (`total_tradeVolume`, `lastTrade_price`) |
+| `FutOpt.IntradayCandles(symbol, opts...)` | `futopt/intraday/candles/{symbol}` | `date`, `open`, `high`, `low`, `close`, `volume`, `average` (1, 5, 10, 15, 30 or 60 minutes; no 3-minute candles) |
+| `FutOpt.IntradayTrades(symbol, opts...)` | `futopt/intraday/trades/{symbol}` | `bid`, `ask`, `price`, `size`, `time`, `serial` |
+| `FutOpt.IntradayVolumes(symbol, afterHours...)` | `futopt/intraday/volumes/{symbol}` | `price`, `volume` |
+| `FutOpt.HistoricalCandles(product, opts...)` | `futopt/historical/candles/{product}` | `date`, `contractMonth`, `open`, `high`, `low`, `close`, `volume`, then `average`, `transaction` and `change` when asked for |
+| `FutOpt.HistoricalDaily(product, opts...)` | `futopt/historical/daily/{product}` | one trading day, a row per contract: `date`, `contractMonth`, `strikePrice`, `callPut`, the day's prices, `volume`, `openInterest`, `settlementPrice` |
+
+For `HistoricalCandles`, `product` is the code without a month (`TXF`, `MXF`, `TXO`) and `ContractMonth` names the contract: `202610`, a weekly option `202610W1` (Wednesday expiry) or `202610F1` (Friday expiry), a futures spread `202610/202611`, or for futures a continuous contract `1!`, `2!`, `3!` (the front month is the default). An option needs a `ContractMonth`, a `Strike` and a `CallPut` (`FugleCall` or `FuglePut`). A day or minute range over 364 days is cut and joined as for stocks, a week or month range over 364 days is refused, and a date that has candles for two contracts has two rows, with `contractMonth` saying which. A continuous contract is not adjusted when it rolls, so its candles gap on the roll day. Daily data is available after about 17:30; it goes back to 2010, and minute data to June 2017. `HistoricalDaily` asks for one trading day (`Date`, today by default) and cannot take a range or filter by strike; filter the table, or use `HistoricalCandles` for one contract over many days. A day with no data gives an empty table.
+
+The night session is one `AfterHours` setting (or the `afterHours` flag); the client sends it the way each endpoint wants it, since Fugle writes it `AFTERHOURS` for products and tickers and `afterhours` for the rest. A night session belongs to the next trading day. A spread contract such as `TXFJ6/K6` is a valid symbol here. The symbol column of a quote holds the contract the API answered for, which is not the symbol asked for when a continuous code such as `TXF1!` was used. Futures and options are not on the free plan, so a free key gets `ErrFuglePlan`; these endpoints were written from Fugle's documentation and tested against a local server only.
 
 **Real time versus history.** The method names follow Fugle's two groups, and `client.Stock` is the market, so futures and options will be `client.FutOpt`. The `Intraday` methods are about the current trading day: the quote is the latest state of the order book and the last trade, and the trades, volumes and intraday candles are today's, building up while the market is open. The `Historical` method is about past days: Fugle updates it by 16:30 on each trading day, so today's finished day appears there only after that, and it is the one that reaches back years (day candles from 2010, minute candles from 2023-05-23, per Fugle's documentation). Whether the free plan's intraday data is delayed is Fugle's plan term, not something the client decides.
 
@@ -878,20 +896,22 @@ quote, err := client.Stock.IntradayQuote("2330")
 
 | Method | Fugle endpoint | Result |
 | :--- | :--- | :--- |
-| `Stock.HistoricalCandles(symbol, FugleHistoricalCandlesParams)` | `historical/candles/{symbol}` | `date`, `open`, `high`, `low`, `close`, `volume`, then `average`, `turnover` and `change` when asked for |
-| `Stock.IntradayCandles(symbol, FugleIntradayCandlesParams)` | `intraday/candles/{symbol}` | the same columns for today |
+| `Stock.HistoricalCandles(symbol, opts...)` | `historical/candles/{symbol}` | `date`, `open`, `high`, `low`, `close`, `volume`, then `average`, `turnover` and `change` when asked for |
+| `Stock.IntradayCandles(symbol, opts...)` | `intraday/candles/{symbol}` | the same columns for today |
 | `Stock.IntradayQuote(symbol, oddLot...)` | `intraday/quote/{symbol}` | one row; nested fields are joined (`total_tradeVolume`, `lastTrade_price`) and the best bids and asks are `bids_1_price`, `bids_1_size`, `asks_1_price`... |
-| `Stock.IntradayTrades(symbol, FugleIntradayTradesParams)` | `intraday/trades/{symbol}` | `bid`, `ask`, `price`, `size`, `volume`, `time`, `serial` |
+| `Stock.IntradayTrades(symbol, opts...)` | `intraday/trades/{symbol}` | `bid`, `ask`, `price`, `size`, `volume`, `time`, `serial` |
 | `Stock.IntradayVolumes(symbol, oddLot...)` | `intraday/volumes/{symbol}` | `price`, `volume`, `volumeAtBid`, `volumeAtAsk` |
-| `Stock.IntradayTickers(FugleIntradayTickersParams)` | `intraday/tickers` | `symbol`, `name`, `industry` |
+| `Stock.IntradayTickers(kind, opts...)` | `intraday/tickers` | `symbol`, `name`, `industry` |
 
 Coming from the official Python SDK (`fugle-marketdata`), the parameters keep their names and the three levels become two (`client.stock.intraday.quote` is `client.Stock.IntradayQuote`):
 
 | Python | Go |
 | :--- | :--- |
 | `client.stock.intraday.quote(symbol="2330")` | `client.Stock.IntradayQuote("2330")` |
-| `client.stock.historical.candles(symbol="2330", timeframe="D", adjusted=True)` | `client.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{Timeframe: FugleTimeframeDay, Adjusted: true})` |
-| `client.stock.intraday.tickers(type="EQUITY")` | `client.Stock.IntradayTickers(FugleIntradayTickersParams{Type: FugleTickerEquity})` |
+| `client.stock.historical.candles(symbol="2330", timeframe="D", adjusted=True)` | `client.Stock.HistoricalCandles("2330", FugleHistoricalCandlesOptions{Timeframe: FugleTimeframeDay, Adjusted: true})` |
+| `client.stock.intraday.tickers(type="EQUITY")` | `client.Stock.IntradayTickers(FugleTickerEquity)` |
+
+**Settings.** A method that takes optional settings takes one trailing options value, so `HistoricalCandles("2330")` works with the defaults and `HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{Timeframe: datafetch.FugleTimeframeWeek})` changes them; more than one value is an error. `IntradayTickers` takes the ticker type first because it has no default. The columns the API may omit from a row (`industry` of a ticker, `bid`, `ask` and `volume` of a trade, the at-bid and at-ask volumes) are always present and nil where missing, even when no row has them.
 
 **Ranges over a year.** The API refuses a historical range of a year or more, so `Stock.HistoricalCandles` cuts a day or minute range into pieces of 364 days, fetches them one after another and joins them in ascending date order. A piece with no data answers HTTP 404, which adds nothing; a range with no data at all is an empty table. Week and month candles are not cut, since a candle would be split between two pieces, so their range must be at most 364 days. Adjusted prices are adjusted as of the day of the request.
 
