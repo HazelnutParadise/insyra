@@ -57,7 +57,9 @@ fn ieee_decode(x: u32) -> vec2<i32> {
     let ex = (x >> 23u) & 0xffu;
     let fx = x & 0x7fffffu;
     if (ex == 0u) {
-        let shift = countLeadingZeros(fx) - 8u;
+        // countLeadingZeros is not used: naga compiles it to FindUMsb without the
+        // 31 - x, so on Vulkan it returns the bit index instead of the count.
+        let shift = 23u - firstLeadingBit(fx);
         return vec2<i32>(i32(fx << shift), 1 - i32(shift) - 127);
     }
     return vec2<i32>(i32(fx | 0x800000u), i32(ex) - 127);
