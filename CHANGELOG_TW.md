@@ -14,6 +14,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ## Unreleased
 
+- `accel.RoundedLog1p` 與 `accel.RoundedExpm1` 在常駐陣列上計算 `log(1+x)` 與 `e^x - 1`，結果正確捨入，並且在全部 2^32 個 float32 輸入上與主機逐位元一致，和 `RoundedExp`、`RoundedLog` 一樣。
+
 ### Core
 
 - CCL 讀取超出表格列數的列現在會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本（例如把 `@.(# + 1)` 當作「下一列」，最後一列為空）會在那一列失敗。
