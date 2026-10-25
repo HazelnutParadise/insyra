@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/HazelnutParadise/insyra/accel/internal/wgpu"
 )
 
 // Sentinel errors a backend wraps so the runtime can map a failure onto a
@@ -15,6 +17,13 @@ var (
 	ErrBufferTooLarge  = errors.New("accel: column exceeds device buffer limit")
 	ErrReadbackTimeout = errors.New("accel: device readback timed out")
 )
+
+// ErrDeviceLost reports that the GPU device was lost (a driver reset, the
+// operating system stopping a dispatch that ran too long, an adapter removed).
+// Resident buffers made before the loss are gone and report this error; the
+// next call that needs a device opens a new one, so a caller re-creates its
+// buffers and carries on. Test for it with errors.Is.
+var ErrDeviceLost = wgpu.ErrDeviceLost
 
 // executeColumn is one projected column, already narrowed to float32 and with
 // nulls replaced by the operation's identity, so a backend never has to know
@@ -123,6 +132,8 @@ func fallbackReasonForExecError(err error) FallbackReason {
 		return FallbackReasonShaderCompileFailed
 	case errors.Is(err, ErrBufferTooLarge):
 		return FallbackReasonBufferTooLarge
+	case errors.Is(err, ErrDeviceLost):
+		return FallbackReasonDeviceLost
 	case errors.Is(err, ErrReadbackTimeout), errors.Is(err, context.DeadlineExceeded):
 		return FallbackReasonReadbackTimeout
 	default:

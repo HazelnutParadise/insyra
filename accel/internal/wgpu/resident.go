@@ -20,6 +20,7 @@ type Buffer struct {
 	buffer   *gowgpu.Buffer
 	length   int
 	released bool
+	lost     bool // the device was lost; released is also set, so every use is refused
 }
 
 // maxPendingObjects bounds the uniform buffers and bind groups kept alive
@@ -66,7 +67,9 @@ func newBufferLocked(length int) (*Buffer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: create resident buffer: %w", ErrBufferTooLarge, err)
 	}
-	return &Buffer{buffer: buffer, length: length}, nil
+	b := &Buffer{buffer: buffer, length: length}
+	liveBuffers[b] = struct{}{}
+	return b, nil
 }
 
 // Upload allocates a buffer holding values.
@@ -133,6 +136,7 @@ func (b *Buffer) releaseLocked() {
 		return
 	}
 	b.released = true
+	delete(liveBuffers, b)
 	if b.buffer != nil {
 		// The queue may still be reading the buffer; keep it until idle.
 		pending = append(pending, b.buffer)
@@ -176,7 +180,7 @@ func (b *Buffer) downloadRawLocked(ctx context.Context, decode func(raw []byte))
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.released {
-		return fmt.Errorf("wgpu: buffer was released")
+		return b.unusableLocked("buffer")
 	}
 	if b.length == 0 {
 		return nil
@@ -193,7 +197,7 @@ func (b *Buffer) downloadRawLocked(ctx context.Context, decode func(raw []byte))
 	if err != nil {
 		return fmt.Errorf("%w: create staging buffer: %w", ErrBufferTooLarge, err)
 	}
-	defer staging.Release()
+	defer releaseQuietly(staging)
 	encoder, err := h.device.CreateCommandEncoder(nil)
 	if err != nil {
 		return fmt.Errorf("wgpu: create download encoder: %w", err)
@@ -204,12 +208,12 @@ func (b *Buffer) downloadRawLocked(ctx context.Context, decode func(raw []byte))
 		return fmt.Errorf("wgpu: finish download encoder: %w", err)
 	}
 	if _, err := h.device.Queue().Submit(commands); err != nil {
-		return fmt.Errorf("wgpu: submit download: %w", err)
+		return h.failed(fmt.Errorf("wgpu: submit download: %w", err))
 	}
 	mapCtx, cancel := context.WithTimeout(ctx, readbackTimeout)
 	defer cancel()
 	if err := staging.Map(mapCtx, gowgpu.MapModeRead, 0, size); err != nil {
-		return fmt.Errorf("%w: map resident readback: %w", ErrReadbackTimeout, err)
+		return h.failed(fmt.Errorf("%w: map resident readback: %w", ErrReadbackTimeout, err))
 	}
 	mapped, err := staging.MappedRange(0, size)
 	if err != nil {
@@ -245,6 +249,7 @@ func syncLocked() error {
 		probe.buffer = nil
 	}
 	probe.released = true
+	delete(liveBuffers, probe)
 	probe.mu.Unlock()
 	if err == nil {
 		flushPending()
@@ -337,6 +342,7 @@ func (k *kernel) build(h *handle) {
 			return
 		}
 		k.pipe, k.layout = pipeline, layout
+		builtKernels[k] = struct{}{}
 	})
 }
 
