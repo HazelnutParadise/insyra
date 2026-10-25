@@ -36,10 +36,12 @@ var errFugleNotCreated = errors.New("datafetch: FugleClient was not created with
 
 const (
 	defaultFugleBaseURL  = "https://api.fugle.tw/marketdata/v1.0"
-	defaultFugleInterval = time.Second // under the 60 requests a minute every plan allows
+	defaultFugleInterval = 1100 * time.Millisecond // under the 60 requests a minute every plan allows; a 1s spacing hits the limit on the 61st request
 	// fugleMaxSpan is the longest range one historical request may cover: the
 	// API refuses a range of a year or more, so 364 days is the longest safe one.
 	fugleMaxSpan = 364 * 24 * time.Hour
+	// fugleMaxRetryAfter caps how long a Retry-After header can make a call wait.
+	fugleMaxRetryAfter = 60
 )
 
 // FugleTimeframe is the length of a candle.
@@ -92,8 +94,9 @@ type FugleConfig struct {
 	// Timeout is the per-request timeout. Default: 15s.
 	Timeout time.Duration
 	// Interval is the minimum spacing between the scheduled starts of successive
-	// requests. Zero means 1s, which keeps a client under the 60 requests a
-	// minute every plan allows; a negative value turns throttling off.
+	// requests. Zero means 1.1s, which keeps a client under the 60 requests a
+	// minute every plan allows (1s reaches the limit on the 61st request); a
+	// negative value turns throttling off.
 	Interval time.Duration
 	// UserAgent is the HTTP User-Agent header.
 	UserAgent string
@@ -165,6 +168,15 @@ func (c *FugleClient) fugleGet(ctx context.Context, path string, values url.Valu
 			return fmt.Errorf("datafetch: Fugle has no data for this request (HTTP 404): %w", errTWStockNoData)
 		case resp.StatusCode == http.StatusTooManyRequests:
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+			// Wait as long as the server asks before the retry's own backoff.
+			if secs, err := strconv.Atoi(strings.TrimSpace(resp.Header.Get("Retry-After"))); err == nil && secs > 0 {
+				if secs > fugleMaxRetryAfter {
+					secs = fugleMaxRetryAfter
+				}
+				if err := sleepContext(ctx, time.Duration(secs)*time.Second); err != nil {
+					return &finalError{err}
+				}
+			}
 			return fmt.Errorf("%w; raise Interval or Retries in FugleConfig", ErrFugleThrottled)
 		case resp.StatusCode == http.StatusBadRequest:
 			return &finalError{fmt.Errorf("datafetch: Fugle rejected the request (HTTP 400): %s", snippet())}
