@@ -391,6 +391,10 @@ func UploadBits(bits []uint32) (*Buffer, error) {
 			buffer.releaseLocked()
 			return nil, fmt.Errorf("wgpu: upload resident buffer: %w", err)
 		}
+		if err := settleWriteLocked(h); err != nil {
+			buffer.releaseLocked()
+			return nil, fmt.Errorf("wgpu: upload resident buffer: %w", err)
+		}
 	}
 	return buffer, nil
 }
@@ -462,7 +466,7 @@ func (b *Buffer) write(length int, raw []byte) error {
 	if err := h.device.Queue().WriteBuffer(b.buffer, 0, raw); err != nil {
 		return fmt.Errorf("wgpu: write resident buffer: %w", err)
 	}
-	return nil
+	return settleWriteLocked(h)
 }
 
 // Limits is what a device allows a caller's kernel.
