@@ -194,26 +194,33 @@ func softmaxVJP(output, upstream *Tensor, axis int) *Tensor {
 			// and every product of two float32 values is exact in float64,
 			// so cancelling terms leave the small contribution a plain
 			// float64 sum would round away.
-			var peakGap, dot ddSum
+			var peakGap, dot, mass ddSum
 			for axisIndex := 0; axisIndex < axisSize; axisIndex++ {
 				index := base + axisIndex*inner
 				y, u := float64(output.data[index]), float64(upstream.data[index])
+				mass.add(y)
 				dot.add(y * u)
 				if index != peak {
 					peakGap.add(y * float64(upstream.data[peak]))
 					peakGap.add(-(y * u))
 				}
 			}
+			// The float32 probabilities add to 1 only within rounding. Dividing
+			// by their sum makes the row consistent, so a constant upstream
+			// gives a zero gradient and the gradients add to zero.
+			total := mass.value()
+			dotNormal := dot.value() / total
+			peakNormal := peakGap.value() / total
 			// Only the peak needs the pivot form. The other classes keep
 			// u_k - dot, where re-expressing it as u_k - u_peak + peakGap
 			// would cancel a small u_k against a large u_peak.
 			for axisIndex := 0; axisIndex < axisSize; axisIndex++ {
 				index := base + axisIndex*inner
-				y := float64(output.data[index])
+				y := float64(output.data[index]) / total
 				if index == peak {
-					gradient.data[index] = float32(y * peakGap.value())
+					gradient.data[index] = float32(y * peakNormal)
 				} else {
-					gradient.data[index] = float32(y * ((float64(upstream.data[index]) - dot.hi) - dot.lo))
+					gradient.data[index] = float32(y * (float64(upstream.data[index]) - dotNormal))
 				}
 			}
 		}

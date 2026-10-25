@@ -149,3 +149,16 @@ func TestSoftmaxGradientKeepsASmallPeakContribution(t *testing.T) {
 		t.Errorf("g[2] = %g, want %g", g, want)
 	}
 }
+
+// A constant upstream has a zero gradient even though the rounded
+// probabilities do not add to exactly 1 (Codex on #561).
+func TestSoftmaxGradientOfAConstantUpstreamIsZero(t *testing.T) {
+	y, _ := NewTensor([]int{1, 3}, []float32{float32(1.0 / 3), float32(1.0 / 3), float32(1.0 / 3)})
+	upstream, _ := NewTensor([]int{1, 3}, []float32{1, 1, 1})
+	got := softmaxVJP(y, upstream, 1)
+	for i, g := range got.data {
+		if math.Abs(float64(g)) > 1e-15 {
+			t.Errorf("g[%d] = %g, want 0", i, g)
+		}
+	}
+}
