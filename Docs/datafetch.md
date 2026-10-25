@@ -864,7 +864,7 @@ Dataset(name, dataID string, from, to time.Time) (*insyra.DataTable, error)
 
 ## Fugle
 
-Fugle (developer.fugle.tw) serves Taiwan stock quotes, intraday candles and historical candles over a REST API, with no brokerage account needed. `FugleClient` reads its intraday and historical stock endpoints through `client.Stock`. Futures and options, snapshots, technical indicators, corporate actions, ownership and the WebSocket stream are not in this version.
+Fugle (developer.fugle.tw) serves Taiwan stock quotes, intraday candles and historical candles over a REST API, with no brokerage account needed. `FugleClient` reads its intraday and historical stock endpoints through `client.Stock` and the intraday futures and options endpoints through `client.FutOpt`. Historical futures and options, snapshots, technical indicators, corporate actions, ownership and the WebSocket stream are not in this version.
 
 ```go
 client, err := datafetch.Fugle(datafetch.FugleConfig{APIKey: os.Getenv("FUGLE_API_KEY")})
@@ -875,6 +875,20 @@ bars, err := client.Stock.HistoricalCandles("2330", datafetch.FugleHistoricalCan
 })
 quote, err := client.Stock.IntradayQuote("2330")
 ```
+
+**Futures and options.** `client.FutOpt` has the same intraday groups for futures and options (the historical endpoints are not in this version):
+
+| Method | Fugle endpoint | Result |
+| :--- | :--- | :--- |
+| `FutOpt.IntradayProducts(kind, opts...)` | `futopt/intraday/products` | the products of a kind (`FugleFuture` or `FugleOption`): `symbol`, `type`, `name`, `contractSize`, `expiryType`... |
+| `FutOpt.IntradayTickers(kind, opts...)` | `futopt/intraday/tickers` | the contracts, with price limits; a stepped limit becomes `priceLimitLevels_1_level`, `priceLimitLevels_1_limitUpPrice`... |
+| `FutOpt.IntradayTicker(symbol, afterHours...)` | `futopt/intraday/ticker/{symbol}` | one row of a contract's details |
+| `FutOpt.IntradayQuote(symbol, afterHours...)` | `futopt/intraday/quote/{symbol}` | one row; nested fields are joined (`total_tradeVolume`, `lastTrade_price`) |
+| `FutOpt.IntradayCandles(symbol, opts...)` | `futopt/intraday/candles/{symbol}` | `date`, `open`, `high`, `low`, `close`, `volume`, `average` (1, 5, 10, 15, 30 or 60 minutes; no 3-minute candles) |
+| `FutOpt.IntradayTrades(symbol, opts...)` | `futopt/intraday/trades/{symbol}` | `bid`, `ask`, `price`, `size`, `time`, `serial` |
+| `FutOpt.IntradayVolumes(symbol, afterHours...)` | `futopt/intraday/volumes/{symbol}` | `price`, `volume` |
+
+The night session is one `AfterHours` setting (or the `afterHours` flag); the client sends it the way each endpoint wants it, since Fugle writes it `AFTERHOURS` for products and tickers and `afterhours` for the rest. A night session belongs to the next trading day. A spread contract such as `TXFJ6/K6` is a valid symbol here. The symbol column of a quote holds the contract the API answered for, which is not the symbol asked for when a continuous code such as `TXF1!` was used. Futures and options are not on the free plan, so a free key gets `ErrFuglePlan`; these endpoints were written from Fugle's documentation and tested against a local server only.
 
 **Real time versus history.** The method names follow Fugle's two groups, and `client.Stock` is the market, so futures and options will be `client.FutOpt`. The `Intraday` methods are about the current trading day: the quote is the latest state of the order book and the last trade, and the trades, volumes and intraday candles are today's, building up while the market is open. The `Historical` method is about past days: Fugle updates it by 16:30 on each trading day, so today's finished day appears there only after that, and it is the one that reaches back years (day candles from 2010, minute candles from 2023-05-23, per Fugle's documentation). Whether the free plan's intraday data is delayed is Fugle's plan term, not something the client decides.
 
