@@ -91,7 +91,10 @@ func TestRoundedSoftmaxCrossEntropyGradientIsTheSpecifiedSequence(t *testing.T) 
 		for c := 0; c < classes; c++ {
 			g := mulRounded(e[c]/s, scale)
 			if c == int(labels[r]) {
-				g = sum2Rounded(g, 1, -1, scale)
+				var others []float32
+				others = append(others, e[:c]...)
+				others = append(others, e[c+1:]...)
+				g = mulRounded(-(roundedSumOf(others) / s), scale)
 			}
 			if math.Float32bits(gradient.data[r*classes+c]) != math.Float32bits(g) {
 				t.Fatalf("grad[%d,%d] = %g, want %g", r, c, gradient.data[r*classes+c], g)

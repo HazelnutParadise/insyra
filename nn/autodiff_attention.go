@@ -177,14 +177,28 @@ func softmaxVJP(output, upstream *Tensor, axis int) *Tensor {
 	for outerIndex := 0; outerIndex < outer; outerIndex++ {
 		for innerIndex := 0; innerIndex < inner; innerIndex++ {
 			base := outerIndex*axisSize*inner + innerIndex
-			var dot float64
+			// The gradient of y_k is y_k*(u_k - sum_i y_i*u_i). The sum is
+			// close to u_peak when the largest probability rounds to 1, and
+			// u_peak - sum then loses everything that is not already in the
+			// sum's float32 rounding: the peak's gradient becomes 0 while the
+			// others stay nonzero. Since the probabilities add to 1,
+			// u_peak - sum = sum over j != peak of y_j*(u_peak - u_j), which
+			// has no cancellation (Barron, arXiv 2610.31642).
+			peak := base
+			for axisIndex := 1; axisIndex < axisSize; axisIndex++ {
+				if index := base + axisIndex*inner; output.data[index] > output.data[peak] {
+					peak = index
+				}
+			}
+			var peakGap float64
 			for axisIndex := 0; axisIndex < axisSize; axisIndex++ {
-				index := base + axisIndex*inner
-				dot += float64(upstream.data[index]) * float64(output.data[index])
+				if index := base + axisIndex*inner; index != peak {
+					peakGap += float64(output.data[index]) * (float64(upstream.data[peak]) - float64(upstream.data[index]))
+				}
 			}
 			for axisIndex := 0; axisIndex < axisSize; axisIndex++ {
 				index := base + axisIndex*inner
-				gradient.data[index] = output.data[index] * (upstream.data[index] - float32(dot))
+				gradient.data[index] = float32(float64(output.data[index]) * (float64(upstream.data[index]) - float64(upstream.data[peak]) + peakGap))
 			}
 		}
 	}

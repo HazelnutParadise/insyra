@@ -18,6 +18,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `nn.Tape.SoftmaxCrossEntropy` no longer loses the label's gradient when the label's logit is far above the rest: the backward used p - 1, which is exactly 0 in float32 once the margin passes about 16.6 while the other classes' gradients stay nonzero, so the gradients of a row stopped summing to zero; it now uses the negated sum of the other classes' probabilities. The loss no longer rounds to 0 past a margin of about 36 either. Only the default precision changes; `PrecisionFloat32Rounded` is unchanged. (Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642))
 
+- `PrecisionFloat32Rounded` cross-entropy, on the host and on the device, no longer loses the label's gradient when the label leads by more than about 16.6: it is now `-(o/s)` times `upstream/rows`, with `o` the exact sum of the other exponentials, rather than `p - 1`. **Breaking**: the label's gradient has different bits for every input, so a run recorded in this mode will not reproduce. The loss in this mode is unchanged and still rounds to 0 past a margin of about 16.6. `nn.Tape.Softmax` no longer loses its peak's gradient the same way. (Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642))
+
 ### `stats`
 
 - `stats.Autocorrelation(series, maxLag)` estimates the autocorrelation at each lag from 1 to `maxLag`, matching R's `acf`, with a white-noise test and a heteroskedasticity-robust test (Lo and MacKinlay 1988) for series whose volatility changes, such as daily returns ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
