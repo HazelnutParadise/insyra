@@ -42,3 +42,20 @@ func TestEncodingNamesMeanWhatTheCoreReadersMean(t *testing.T) {
 		}
 	}
 }
+
+// A name no decoder knows is an error naming the supported ones, not a file read
+// as mojibake.
+func TestCsvToExcelRefusesAnEncodingNameItCannotDecode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.csv")
+	if err := os.WriteFile(path, []byte("a,b\n1,2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "out.xlsx")
+	err := CsvToExcel([]string{path}, []string{"s"}, out, "big6")
+	if err == nil || !strings.Contains(err.Error(), "unsupported encoding") {
+		t.Fatalf("CsvToExcel with big6: error %v", err)
+	}
+	if _, statErr := os.Stat(out); statErr == nil {
+		t.Error("an output file was written for an unsupported encoding")
+	}
+}
