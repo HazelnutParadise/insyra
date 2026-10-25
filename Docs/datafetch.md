@@ -865,7 +865,7 @@ Fugle (developer.fugle.tw) serves Taiwan stock quotes, intraday candles and hist
 ```go
 client, err := datafetch.Fugle(datafetch.FugleConfig{APIKey: os.Getenv("FUGLE_API_KEY")})
 
-bars, err := client.Stock.HistoricalCandles("2330", datafetch.FugleHistoricalCandlesParams{
+bars, err := client.Stock.HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{
     From: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), To: time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
     Timeframe: datafetch.FugleTimeframeDay, Adjusted: true,
 })
@@ -878,20 +878,22 @@ quote, err := client.Stock.IntradayQuote("2330")
 
 | Method | Fugle endpoint | Result |
 | :--- | :--- | :--- |
-| `Stock.HistoricalCandles(symbol, FugleHistoricalCandlesParams)` | `historical/candles/{symbol}` | `date`, `open`, `high`, `low`, `close`, `volume`, then `average`, `turnover` and `change` when asked for |
-| `Stock.IntradayCandles(symbol, FugleIntradayCandlesParams)` | `intraday/candles/{symbol}` | the same columns for today |
+| `Stock.HistoricalCandles(symbol, opts...)` | `historical/candles/{symbol}` | `date`, `open`, `high`, `low`, `close`, `volume`, then `average`, `turnover` and `change` when asked for |
+| `Stock.IntradayCandles(symbol, opts...)` | `intraday/candles/{symbol}` | the same columns for today |
 | `Stock.IntradayQuote(symbol, oddLot...)` | `intraday/quote/{symbol}` | one row; nested fields are joined (`total_tradeVolume`, `lastTrade_price`) and the best bids and asks are `bids_1_price`, `bids_1_size`, `asks_1_price`... |
-| `Stock.IntradayTrades(symbol, FugleIntradayTradesParams)` | `intraday/trades/{symbol}` | `bid`, `ask`, `price`, `size`, `volume`, `time`, `serial` |
+| `Stock.IntradayTrades(symbol, opts...)` | `intraday/trades/{symbol}` | `bid`, `ask`, `price`, `size`, `volume`, `time`, `serial` |
 | `Stock.IntradayVolumes(symbol, oddLot...)` | `intraday/volumes/{symbol}` | `price`, `volume`, `volumeAtBid`, `volumeAtAsk` |
-| `Stock.IntradayTickers(FugleIntradayTickersParams)` | `intraday/tickers` | `symbol`, `name`, `industry` |
+| `Stock.IntradayTickers(kind, opts...)` | `intraday/tickers` | `symbol`, `name`, `industry` |
 
 Coming from the official Python SDK (`fugle-marketdata`), the parameters keep their names and the three levels become two (`client.stock.intraday.quote` is `client.Stock.IntradayQuote`):
 
 | Python | Go |
 | :--- | :--- |
 | `client.stock.intraday.quote(symbol="2330")` | `client.Stock.IntradayQuote("2330")` |
-| `client.stock.historical.candles(symbol="2330", timeframe="D", adjusted=True)` | `client.Stock.HistoricalCandles("2330", FugleHistoricalCandlesParams{Timeframe: FugleTimeframeDay, Adjusted: true})` |
-| `client.stock.intraday.tickers(type="EQUITY")` | `client.Stock.IntradayTickers(FugleIntradayTickersParams{Type: FugleTickerEquity})` |
+| `client.stock.historical.candles(symbol="2330", timeframe="D", adjusted=True)` | `client.Stock.HistoricalCandles("2330", FugleHistoricalCandlesOptions{Timeframe: FugleTimeframeDay, Adjusted: true})` |
+| `client.stock.intraday.tickers(type="EQUITY")` | `client.Stock.IntradayTickers(FugleTickerEquity)` |
+
+**Settings.** A method that takes optional settings takes one trailing options value, so `HistoricalCandles("2330")` works with the defaults and `HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{Timeframe: datafetch.FugleTimeframeWeek})` changes them; more than one value is an error. `IntradayTickers` takes the ticker type first because it has no default. The columns the API may omit from a row (`industry` of a ticker, `bid`, `ask` and `volume` of a trade, the at-bid and at-ask volumes) are always present and nil where missing, even when no row has them.
 
 **Ranges over a year.** The API refuses a historical range of a year or more, so `Stock.HistoricalCandles` cuts a day or minute range into pieces of 364 days, fetches them one after another and joins them in ascending date order. A piece with no data answers HTTP 404, which adds nothing; a range with no data at all is an empty table. Week and month candles are not cut, since a candle would be split between two pieces, so their range must be at most 364 days. Adjusted prices are adjusted as of the day of the request.
 

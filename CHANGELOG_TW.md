@@ -52,7 +52,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `datafetch`
 
-- `datafetch.Fugle(cfg)` 讀取富果行情 API 的台股資料：`Stock.HistoricalCandles`（歷史 K 線，超過一年的區間自動切段）、`Stock.IntradayCandles`、`Stock.IntradayQuote`、`Stock.IntradayTrades`、`Stock.IntradayVolumes`、`Stock.IntradayTickers`，各有 `Context` 版本，以及 `ErrFugleAuth`、`ErrFuglePlan`、`ErrFugleThrottled` 三種錯誤（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
+- `datafetch.Fugle(cfg)` 讀取富果行情 API 的台股資料：`Stock.HistoricalCandles`（歷史 K 線，超過一年的區間自動切段）、`Stock.IntradayCandles`、`Stock.IntradayQuote`、`Stock.IntradayTrades`、`Stock.IntradayVolumes`、`Stock.IntradayTickers`，各有 `Context` 版本，以及 `ErrFugleAuth`、`ErrFuglePlan`、`ErrFugleThrottled` 三種錯誤。設定是最後一個可省略的 `...Options` 參數（`HistoricalCandles("2330")` 用預設值），股票清單、成交明細、分價量的表格固定保留文件列的欄位，API 沒給的欄位是空值（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 
 ## v0.3.5
 
