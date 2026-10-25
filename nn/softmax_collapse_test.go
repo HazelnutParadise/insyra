@@ -123,3 +123,16 @@ func TestSoftmaxGradientSurvivesALargeMargin(t *testing.T) {
 		}
 	}
 }
+
+// A small upstream component beside a large one keeps its gradient: the pivot
+// form is for the largest probability only.
+func TestSoftmaxGradientKeepsASmallUpstreamComponent(t *testing.T) {
+	y, _ := NewTensor([]int{1, 3}, []float32{0.5, 0.25, 0.25})
+	upstream, _ := NewTensor([]int{1, 3}, []float32{1, -2, 1e-20})
+	got := softmaxVJP(y, upstream, 1)
+	// dot = 0.5 - 0.5 + 0.25e-20; g2 = 0.25*(1e-20 - dot).
+	want := 0.25 * (1e-20 - 0.25e-20)
+	if g := float64(got.data[2]); g == 0 || math.Abs(g-want) > 1e-5*want {
+		t.Errorf("g[2] = %g, want %g", g, want)
+	}
+}

@@ -190,15 +190,24 @@ func softmaxVJP(output, upstream *Tensor, axis int) *Tensor {
 					peak = index
 				}
 			}
-			var peakGap float64
+			var peakGap, dot float64
 			for axisIndex := 0; axisIndex < axisSize; axisIndex++ {
-				if index := base + axisIndex*inner; index != peak {
+				index := base + axisIndex*inner
+				dot += float64(upstream.data[index]) * float64(output.data[index])
+				if index != peak {
 					peakGap += float64(output.data[index]) * (float64(upstream.data[peak]) - float64(upstream.data[index]))
 				}
 			}
+			// Only the peak needs the pivot form. The other classes keep
+			// u_k - dot, where re-expressing it as u_k - u_peak + peakGap
+			// would cancel a small u_k against a large u_peak.
 			for axisIndex := 0; axisIndex < axisSize; axisIndex++ {
 				index := base + axisIndex*inner
-				gradient.data[index] = float32(float64(output.data[index]) * (float64(upstream.data[index]) - float64(upstream.data[peak]) + peakGap))
+				if index == peak {
+					gradient.data[index] = float32(float64(output.data[index]) * peakGap)
+				} else {
+					gradient.data[index] = float32(float64(output.data[index]) * (float64(upstream.data[index]) - dot))
+				}
 			}
 		}
 	}
