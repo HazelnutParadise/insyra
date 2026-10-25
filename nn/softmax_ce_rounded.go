@@ -94,8 +94,9 @@ func softmaxCrossEntropyRoundedForward(logits, labels *Tensor) (*Tensor, error) 
 }
 
 // softmaxCrossEntropyRoundedVJP returns the gradient with respect to the
-// logits: p[c] = e[c]/s, g[c] = p[c]*scale with scale = upstream/rows, and at
-// the label g = g - scale, each one correctly rounded operation.
+// logits: p[c] = e[c]/s and g[c] = p[c]*scale with scale = upstream/rows, except at
+// the label, where g = -(o/s)*scale with o the exact sum of the other e[c]
+// rounded once; each one correctly rounded operation.
 func softmaxCrossEntropyRoundedVJP(logits, labels, upstream *Tensor) (*Tensor, error) {
 	if err := requireFloat32(upstream, "cross-entropy upstream"); err != nil {
 		return nil, err
@@ -122,7 +123,12 @@ func softmaxCrossEntropyRoundedVJP(logits, labels, upstream *Tensor) (*Tensor, e
 		for c := range out {
 			out[c] = mulRounded(row.e[c]/row.s, scale)
 		}
-		out[label] = sum2Rounded(out[label], 1, -1, scale)
+		// p - 1 is -(sum of the others)/s; written as p - 1 it is exactly 0
+		// once the margin passes the float32 precision cliff.
+		others := make([]float32, 0, classes-1)
+		others = append(others, row.e[:label]...)
+		others = append(others, row.e[label+1:]...)
+		out[label] = mulRounded(-(roundedSumOf(others) / row.s), scale)
 	}
 	return gradient, nil
 }

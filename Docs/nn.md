@@ -143,7 +143,8 @@ float64 `AdamW` by a few ulps per step, as PyTorch's float32 `AdamW` does.
 `d = x - m`, `e = exp(d)`, `s` the exact sum of `e` rounded once,
 `loss = log(s) - d[label]`; the mean loss is the exact sum of the row losses
 rounded once, divided by the row count. The gradient is `e/s` times
-`upstream/rows`, with `upstream/rows` subtracted at the label. `exp` and `log`
+`upstream/rows`, except at the label, where it is `-(o/s)` times `upstream/rows` with `o` the exact sum of the
+other `e` rounded once (`p - 1` would be exactly 0 once the label leads by about 16.6). `exp` and `log`
 here are correctly rounded, the same bits on every platform (the host builds
 them from `+ - * /` only, the device in 128-bit integer arithmetic), and both
 agree on all 2^32 float32 inputs. A row with a non-finite logit gives NaN.
