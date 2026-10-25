@@ -22,6 +22,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `nn.NewTape` 呼叫時不再立刻為 `math/rand` 建立種子來源，改在第一次有東西從 tape 抽亂數時才建立（`Dropout`、層的隨機初始化）。從不抽亂數的 tape 在 M3 上量測從 13–34 µs、5.7 KB 降到約 0.15–0.65 µs、304 B。每個種子（包括預設種子與零值 `Tape{}`）產生的遮罩與初始權重都和以前相同。（[#536](https://github.com/HazelnutParadise/insyra/issues/536)）
 
+- `nn.Tape.SoftmaxCrossEntropy` 在標籤的 logit 遠大於其他類別時，不再丟掉標籤那一項的梯度：反向以前用 p - 1，margin 超過約 16.6 後在 float32 裡剛好等於 0，其他類別的梯度卻還不是 0，整列梯度就不再加總為 0；現在改用其他類別機率總和的負值。損失也不會在 margin 超過約 36 後被捨入成 0。只有預設精度改變，`PrecisionFloat32Rounded` 不變。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
+
 ### `stats`
 
 - `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
