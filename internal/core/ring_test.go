@@ -211,3 +211,149 @@ func TestRing_ToSliceIsACopy(t *testing.T) {
 		t.Errorf("writing to the ToSlice result changed the ring: Get(0) = %v, want 1", v)
 	}
 }
+
+// A removed element must not stay reachable from the backing array, or a ring of
+// pointers keeps whatever they point to alive after it is popped.
+func TestRingPopsLeaveNoReferenceBehind(t *testing.T) {
+	type payload struct{ n int }
+	newRing := func() *Ring[*payload] {
+		r := NewRing[*payload](4)
+		for i := 1; i <= 3; i++ {
+			r.Push(&payload{i})
+		}
+		return r
+	}
+	nonNil := func(r *Ring[*payload]) int {
+		count := 0
+		for _, p := range r.buf {
+			if p != nil {
+				count++
+			}
+		}
+		return count
+	}
+
+	r := newRing()
+	if v, ok := r.PopFront(); !ok || v.n != 1 {
+		t.Fatalf("PopFront = %v, %v", v, ok)
+	}
+	if got := nonNil(r); got != 2 {
+		t.Errorf("after PopFront %d slots hold a reference, want 2", got)
+	}
+
+	r = newRing()
+	if v, ok := r.PopBack(); !ok || v.n != 3 {
+		t.Fatalf("PopBack = %v, %v", v, ok)
+	}
+	if got := nonNil(r); got != 2 {
+		t.Errorf("after PopBack %d slots hold a reference, want 2", got)
+	}
+	if got := r.ToSlice(); len(got) != 2 || got[0].n != 1 || got[1].n != 2 {
+		t.Errorf("the rest of the ring changed: %v", got)
+	}
+
+	// Wrapped around, grown, and a single element, alternating the two ends.
+	r = NewRing[*payload](2)
+	for i := 1; i <= 6; i++ {
+		r.Push(&payload{i})
+		if i%2 == 0 {
+			r.PopFront()
+		}
+	}
+	for r.Len() > 0 {
+		r.PopBack()
+		if r.Len() > 0 {
+			r.PopFront()
+		}
+	}
+	if got := nonNil(r); got != 0 {
+		t.Errorf("an emptied ring still holds %d references", got)
+	}
+	if _, ok := r.PopFront(); ok {
+		t.Error("PopFront on an empty ring returned a value")
+	}
+	if _, ok := r.PopBack(); ok {
+		t.Error("PopBack on an empty ring returned a value")
+	}
+}
+
+func TestRingClearEmptiesTheSlotsAndKeepsTheArray(t *testing.T) {
+	type payload struct{ n int }
+	r := NewRing[*payload](8)
+	for i := 0; i < 8; i++ {
+		r.Push(&payload{i})
+	}
+	r.PopFront()
+	r.PopFront()
+	r.Push(&payload{9}) // the elements now wrap around the end of the array
+	before := &r.buf[0]
+	capBefore := len(r.buf)
+
+	r.Clear()
+	if r.Len() != 0 || len(r.buf) != capBefore {
+		t.Errorf("after Clear: len %d, capacity %d, want 0 and %d", r.Len(), len(r.buf), capBefore)
+	}
+	if &r.buf[0] != before {
+		t.Error("Clear allocated a new backing array")
+	}
+	for i, p := range r.buf {
+		if p != nil {
+			t.Errorf("slot %d still holds a reference after Clear", i)
+		}
+	}
+	r.Push(&payload{1})
+	r.Push(&payload{2})
+	if v, _ := r.PopFront(); v.n != 1 {
+		t.Errorf("the ring does not work after Clear: front is %v", v)
+	}
+}
+
+func TestRingClearOfAnAllocatedRingDoesNotAllocate(t *testing.T) {
+	r := NewRing[*int](16)
+	x := 1
+	allocs := testing.AllocsPerRun(100, func() {
+		for i := 0; i < 16; i++ {
+			r.Push(&x)
+		}
+		r.Clear()
+	})
+	if allocs != 0 {
+		t.Errorf("Push and Clear allocated %v times, want 0", allocs)
+	}
+}
+
+// A zero Ring is usable, and clearing it gives it a buffer.
+func TestRingClearOfAZeroRing(t *testing.T) {
+	var r Ring[int]
+	r.Clear()
+	r.Push(7)
+	if v, ok := r.PopFront(); !ok || v != 7 {
+		t.Errorf("PopFront after Clear of a zero ring = %v, %v", v, ok)
+	}
+}
+
+func BenchmarkRingPushPop(b *testing.B) {
+	r := NewRing[*int](64)
+	x := 1
+	b.ReportAllocs()
+	for b.Loop() {
+		for i := 0; i < 64; i++ {
+			r.Push(&x)
+		}
+		for i := 0; i < 64; i++ {
+			r.PopFront()
+		}
+	}
+}
+
+func BenchmarkRingPushClear(b *testing.B) {
+	r := NewRing[*int](64)
+	x := 1
+	b.ReportAllocs()
+	for b.Loop() {
+		for i := 0; i < 64; i++ {
+			r.Push(&x)
+		}
+		r.Clear()
+	}
+}
