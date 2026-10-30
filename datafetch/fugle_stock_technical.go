@@ -53,7 +53,7 @@ func (s FugleStock) technical(ctx context.Context, indicator, symbol string, tim
 		return nil, errors.New("datafetch: Fugle technical indicators take From and To together")
 	case timeframe.minute():
 		return nil, errors.New("datafetch: Fugle technical indicators of minute candles cover the last 30 days and take no From or To")
-	case p.To.Before(p.From):
+	case normalizeDate(p.To).Before(normalizeDate(p.From)):
 		return nil, errors.New("datafetch: Fugle To is before From")
 	default:
 		values.Set("from", p.From.Format("2006-01-02"))

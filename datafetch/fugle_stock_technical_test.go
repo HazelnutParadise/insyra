@@ -70,6 +70,11 @@ func TestFugleTechnicalIndicators(t *testing.T) {
 		t.Errorf("empty rsi table %v %d", dt.ColNames(), dt.NumRows())
 	}
 
+	// A To earlier in the day than From is still the same date.
+	if _, err := c.Stock.TechnicalRSI("2330", FugleTimeframeDay, 6, FugleTechnicalOptions{From: day(2024, 2, 1).Add(12 * time.Hour), To: day(2024, 2, 1)}); err != nil {
+		t.Errorf("the same calendar day was refused: %v", err)
+	}
+
 	sent := len(fs.requests)
 	bad := map[string]func() error{
 		"zero period":      func() error { _, e := c.Stock.TechnicalSMA("2330", FugleTimeframeDay, 0); return e },
