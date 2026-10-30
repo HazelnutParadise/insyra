@@ -374,7 +374,7 @@ first failure, so one check at the end of a chain reports the root cause.
 `insyra.Config.SetPanicOnError(true)`, which panics (recoverably) on any
 recorded error.
 
-Both `DataList` and `DataTable` support instance-level error tracking for fluent/chained operations. Use `Err()` to obtain the last error on the instance (returns `*ErrorInfo` or `nil`) and `ClearErr()` to clear it.
+Both `DataList` and `DataTable` track errors on the instance for fluent/chained operations. Use `Err()` to obtain the first error recorded on the instance since it was created or last cleared (returns `*ErrorInfo` or `nil`), and `ClearErr()` to clear it.
 
 Example:
 
