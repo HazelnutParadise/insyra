@@ -908,6 +908,11 @@ The night session is one `AfterHours` setting (or the `afterHours` flag); the cl
 | `Stock.SnapshotQuotes(market, opts...)` | `snapshot/quotes/{market}` | every stock of a market now: `date`, `time`, `market` on every row, `type`, `symbol`, `name`, prices, `change`, `changePercent`, `tradeVolume`, `tradeValue`, `lastPrice`, `lastUpdated` |
 | `Stock.SnapshotMovers(market, direction, basis, opts...)` | `snapshot/movers/{market}` | the same columns, the biggest gainers (`FugleMoverUp`) or losers (`FugleMoverDown`) by percent or price change (`FugleChangePercent`, `FugleChangeValue`) |
 | `Stock.SnapshotActives(market, basis, opts...)` | `snapshot/actives/{market}` | the same columns, the most active stocks by volume or value (`FugleTradeVolume`, `FugleTradeValue`) |
+| `Stock.TechnicalSMA(symbol, timeframe, period, opts...)` | `technical/sma/{symbol}` | `date`, `sma` |
+| `Stock.TechnicalRSI(symbol, timeframe, period, opts...)` | `technical/rsi/{symbol}` | `date`, `rsi` |
+| `Stock.TechnicalKDJ(symbol, timeframe, rPeriod, kPeriod, dPeriod, opts...)` | `technical/kdj/{symbol}` | `date`, `k`, `d`, `j` |
+| `Stock.TechnicalMACD(symbol, timeframe, fast, slow, signal, opts...)` | `technical/macd/{symbol}` | `date`, `macdLine`, `signalLine` |
+| `Stock.TechnicalBB(symbol, timeframe, period, opts...)` | `technical/bb/{symbol}` | `date`, `upper`, `middle`, `lower` |
 
 Coming from the official Python SDK (`fugle-marketdata`), the parameters keep their names and the three levels become two (`client.stock.intraday.quote` is `client.Stock.IntradayQuote`):
 
@@ -916,6 +921,9 @@ Coming from the official Python SDK (`fugle-marketdata`), the parameters keep th
 | `client.stock.intraday.quote(symbol="2330")` | `client.Stock.IntradayQuote("2330")` |
 | `client.stock.historical.candles(symbol="2330", timeframe="D", adjusted=True)` | `client.Stock.HistoricalCandles("2330", FugleHistoricalCandlesOptions{Timeframe: FugleTimeframeDay, Adjusted: true})` |
 | `client.stock.intraday.tickers(type="EQUITY")` | `client.Stock.IntradayTickers(FugleTickerEquity)` |
+| `client.stock.technical.kdj(symbol="2330", timeframe="D", rPeriod=9, kPeriod=3, dPeriod=3)` | `client.Stock.TechnicalKDJ("2330", FugleTimeframeDay, 9, 3, 3)` |
+
+**Technical indicators.** Fugle computes SMA, RSI, KDJ, MACD and Bollinger bands from its own candles. The timeframe and the periods are required, in the order of Fugle's parameters, and are refused when they are not positive or when MACD's fast period is not shorter than its slow one. `FugleTechnicalOptions{From, To}` bounds the dates, both or neither; without them Fugle picks the range. Minute timeframes always cover the last 30 days, so a range with one is refused rather than ignored. A request with no data gives an empty table with the columns. These endpoints were written from Fugle's documentation and tested against a local server only. To compute SMA, RSI, MACD or Bollinger bands over your own data, or with settings Fugle does not take, use [`quant/ta`](quant-ta.md).
 
 **Settings.** A method that takes optional settings takes one trailing options value, so `HistoricalCandles("2330")` works with the defaults and `HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{Timeframe: datafetch.FugleTimeframeWeek})` changes them; more than one value is an error. `IntradayTickers` takes the ticker type first because it has no default. The columns the API may omit from a row (`industry` of a ticker, `bid`, `ask` and `volume` of a trade, the at-bid and at-ask volumes) are always present and nil where missing, even when no row has them.
 
