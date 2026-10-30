@@ -39,12 +39,14 @@ func (r *Ring[T]) ToSlice() []T {
 	return out
 }
 
-// Clear removes all elements while keeping the capacity.
+// Clear removes all elements while keeping the capacity and the backing array.
+// Every slot is set to the zero value, so nothing a removed element referred to
+// is kept alive by the ring.
 func (r *Ring[T]) Clear() {
 	if len(r.buf) == 0 {
 		r.buf = make([]T, 1)
 	} else {
-		r.buf = make([]T, len(r.buf))
+		clear(r.buf)
 	}
 	r.head = 0
 	r.size = 0
@@ -63,19 +65,22 @@ func (r *Ring[T]) Push(v T) {
 	r.size++
 }
 
-// PopFront removes and returns the front element.
+// PopFront removes and returns the front element. The vacated slot is set to
+// the zero value so the ring does not keep what the element refers to alive.
 func (r *Ring[T]) PopFront() (T, bool) {
 	var zero T
 	if r.size == 0 {
 		return zero, false
 	}
-	v, _ := r.Get(0)
+	v := r.buf[r.head]
+	r.buf[r.head] = zero
 	r.head = (r.head + 1) % len(r.buf)
 	r.size--
 	return v, true
 }
 
-// PopBack removes and returns the last element.
+// PopBack removes and returns the last element. The vacated slot is set to the
+// zero value so the ring does not keep what the element refers to alive.
 func (r *Ring[T]) PopBack() (T, bool) {
 	var zero T
 	if r.size == 0 {
@@ -83,6 +88,7 @@ func (r *Ring[T]) PopBack() (T, bool) {
 	}
 	backIdx := (r.head + r.size - 1) % len(r.buf)
 	v := r.buf[backIdx]
+	r.buf[backIdx] = zero
 	r.size--
 	return v, true
 }
