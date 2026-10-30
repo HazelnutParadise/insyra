@@ -3,6 +3,7 @@ package datafetch
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -464,5 +465,111 @@ func TestFugleKeepsTheNullableColumnsOfTableEndpoints(t *testing.T) {
 		if col := trades.GetColByName(name); col == nil || col.Data()[0] != nil {
 			t.Errorf("%s column %v", name, col)
 		}
+	}
+}
+
+func TestFugleHistoricalStatsIsOneRow(t *testing.T) {
+	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/stock/historical/stats/2330" || r.URL.RawQuery != "" {
+			t.Errorf("request %s", r.URL.String())
+		}
+		_, _ = w.Write([]byte(`{"date":"2026-10-23","type":"EQUITY","exchange":"TWSE","market":"TSE","symbol":"2330","name":"台積電",
+			"openPrice":590,"highPrice":595,"lowPrice":588,"closePrice":593,"change":3,"changePercent":0.51,
+			"tradeVolume":23000000,"tradeValue":13600000000,"previousClose":590,"week52High":680,"week52Low":480}`))
+	})
+	c := fs.client(t, FugleConfig{})
+	dt, err := c.Stock.HistoricalStats("2330")
+	if err != nil || dt.NumRows() != 1 {
+		t.Fatalf("stats: %v", err)
+	}
+	if got := dt.GetColByName("week52High").Data()[0]; got != int64(680) {
+		t.Errorf("week52High = %#v", got)
+	}
+	if d := dt.GetColByName("date").Data()[0]; !d.(time.Time).Equal(day(2026, 10, 23)) {
+		t.Errorf("date %v", d)
+	}
+	// Emerging stocks and warrants answer 404: an error, not an empty table.
+	fs404 := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) { http.Error(w, `{}`, http.StatusNotFound) })
+	if _, err := fs404.client(t, FugleConfig{}).Stock.HistoricalStats("6488"); err == nil {
+		t.Error("a 404 was an empty table, want an error")
+	}
+}
+
+func TestFugleSnapshotsSendTheirQueryAndKeepTheSnapshotTime(t *testing.T) {
+	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/stock/snapshot/quotes/"):
+			if r.URL.Path != "/stock/snapshot/quotes/TSE" || q.Get("type") != "COMMONSTOCK" {
+				t.Errorf("quotes request %s", r.URL.String())
+			}
+		case strings.HasPrefix(r.URL.Path, "/stock/snapshot/movers/"):
+			if r.URL.Path != "/stock/snapshot/movers/OTC" || q.Get("direction") != "down" || q.Get("change") != "value" ||
+				q.Get("gte") != "5" || q.Get("type") != "" {
+				t.Errorf("movers request %s", r.URL.String())
+			}
+		case strings.HasPrefix(r.URL.Path, "/stock/snapshot/actives/"):
+			if r.URL.Path != "/stock/snapshot/actives/TSE" || q.Get("trade") != "value" {
+				t.Errorf("actives request %s", r.URL.String())
+			}
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"date":"2026-10-23","time":"13:30:00","market":"TSE","data":[
+			{"type":"EQUITY","symbol":"2330","name":"台積電","openPrice":590,"closePrice":593,"change":3,"changePercent":0.51,"tradeVolume":100,"tradeValue":59000,"lastPrice":593,"lastUpdated":1},
+			{"type":"INDEX","symbol":"IX0001","name":"加權指數","openPrice":20000,"closePrice":20100,"change":100,"changePercent":0.5,"tradeVolume":0,"tradeValue":0,"lastUpdated":2}]}`))
+	})
+	c := fs.client(t, FugleConfig{})
+	quotes, err := c.Stock.SnapshotQuotes(FugleMarketTSE, FugleSnapshotQuotesOptions{OnlyCommonStock: true})
+	if err != nil || quotes.NumRows() != 2 {
+		t.Fatalf("quotes: %v", err)
+	}
+	if col := quotes.GetColByName("time"); col == nil || col.Data()[0] != "13:30:00" {
+		t.Errorf("time column %v: the snapshot time must be on every row", col)
+	}
+	if got := quotes.GetColByName("lastPrice").Data(); got[0] != int64(593) || got[1] != nil {
+		t.Errorf("lastPrice %v: an index has none", got)
+	}
+	if _, err := c.Stock.SnapshotMovers(FugleMarketOTC, FugleMoverDown, FugleChangeValue,
+		FugleSnapshotMoversOptions{Threshold: FugleThreshold{Op: FugleGreaterOrEqual, Value: 5}}); err != nil {
+		t.Errorf("movers: %v", err)
+	}
+	if _, err := c.Stock.SnapshotActives(FugleMarketTSE, FugleTradeValue); err != nil {
+		t.Errorf("actives: %v", err)
+	}
+}
+
+func TestFugleSnapshotsRefuseBadInputBeforeSendingAnything(t *testing.T) {
+	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"data":[]}`)) })
+	c := fs.client(t, FugleConfig{})
+	for name, call := range map[string]func() error{
+		"market":       func() error { _, e := c.Stock.SnapshotQuotes("NYSE"); return e },
+		"direction":    func() error { _, e := c.Stock.SnapshotMovers(FugleMarketTSE, "sideways", FugleChangePercent); return e },
+		"change basis": func() error { _, e := c.Stock.SnapshotMovers(FugleMarketTSE, FugleMoverUp, "ratio"); return e },
+		"trade basis":  func() error { _, e := c.Stock.SnapshotActives(FugleMarketTSE, "count"); return e },
+		"threshold op": func() error {
+			_, e := c.Stock.SnapshotMovers(FugleMarketTSE, FugleMoverUp, FugleChangePercent, FugleSnapshotMoversOptions{Threshold: FugleThreshold{Op: "ge", Value: 1}})
+			return e
+		},
+		"threshold NaN": func() error {
+			_, e := c.Stock.SnapshotMovers(FugleMarketTSE, FugleMoverUp, FugleChangePercent, FugleSnapshotMoversOptions{Threshold: FugleThreshold{Op: FugleGreaterThan, Value: math.NaN()}})
+			return e
+		},
+		"two options": func() error {
+			_, e := c.Stock.SnapshotQuotes(FugleMarketTSE, FugleSnapshotQuotesOptions{}, FugleSnapshotQuotesOptions{})
+			return e
+		},
+		"stats symbol": func() error { _, e := c.Stock.HistoricalStats(""); return e },
+		"tickers market": func() error {
+			_, e := c.Stock.IntradayTickers(FugleTickerEquity, FugleIntradayTickersOptions{Market: "NYSE"})
+			return e
+		},
+	} {
+		if call() == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+	if len(fs.requests) != 0 {
+		t.Errorf("%d requests were sent for refused input", len(fs.requests))
 	}
 }
