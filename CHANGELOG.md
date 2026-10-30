@@ -65,6 +65,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `client.FutOpt` of `datafetch.Fugle` reads Fugle's intraday futures and options data: `IntradayProducts`, `IntradayTickers`, `IntradayTicker`, `IntradayQuote`, `IntradayCandles`, `IntradayTrades` and `IntradayVolumes`, each with a `Context` form ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
 - `client.FutOpt.HistoricalCandles` and `client.FutOpt.HistoricalDaily` read Fugle's historical futures and options data: candles of a contract or a continuous contract (ranges over a year cut into pieces) and one trading day of a product with a row per contract ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
 - `client.Stock.HistoricalStats` returns a stock's price statistics (52-week high and low, the day's change and volume), and `SnapshotQuotes`, `SnapshotMovers` and `SnapshotActives` return a whole market as of now, its biggest movers and its most active stocks (Developer or Advanced plan). The market is now a typed `FugleMarket`, also in `FugleIntradayTickersOptions.Market` ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
+- `client.Stock.CorporateActionsDividends`, `CorporateActionsCapitalChanges` and `CorporateActionsListingApplicants` of `datafetch.Fugle` return ex-dividend events, capital changes (par value changes, capital reductions, ETF splits) and listing applications from a date onwards, with `Context` forms (Developer or Advanced plan) ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
 
 ## v0.3.5
 

@@ -908,6 +908,9 @@ The night session is one `AfterHours` setting (or the `afterHours` flag); the cl
 | `Stock.SnapshotQuotes(market, opts...)` | `snapshot/quotes/{market}` | every stock of a market now: `date`, `time`, `market` on every row, `type`, `symbol`, `name`, prices, `change`, `changePercent`, `tradeVolume`, `tradeValue`, `lastPrice`, `lastUpdated` |
 | `Stock.SnapshotMovers(market, direction, basis, opts...)` | `snapshot/movers/{market}` | the same columns, the biggest gainers (`FugleMoverUp`) or losers (`FugleMoverDown`) by percent or price change (`FugleChangePercent`, `FugleChangeValue`) |
 | `Stock.SnapshotActives(market, basis, opts...)` | `snapshot/actives/{market}` | the same columns, the most active stocks by volume or value (`FugleTradeVolume`, `FugleTradeValue`) |
+| `Stock.CorporateActionsDividends(from, opts...)` | `corporate-actions/dividends` | ex-dividend and ex-rights events: `date`, `exchange`, `symbol`, `name`, `dividendType`, `dividend`, `cashDividend`, `stockDividendShares`, the prices before and after |
+| `Stock.CorporateActionsCapitalChanges(from, opts...)` | `corporate-actions/capital-changes` | par value changes, capital reductions and ETF splits: `symbol`, `name`, `exchange`, `actionType`, `haltDate`, `resumeDate`, then the details as `raw_splitRatio`, `raw_reason`, `raw_refundPerShare`, `raw_referencePrice`... |
+| `Stock.CorporateActionsListingApplicants(from, opts...)` | `corporate-actions/listing-applicants` | companies applying to list: `symbol`, `name`, `exchange`, `applicationDate`, each review step's date, `listedDate`, `underwriter`, `underwritingPrice`, `remarks` |
 
 Coming from the official Python SDK (`fugle-marketdata`), the parameters keep their names and the three levels become two (`client.stock.intraday.quote` is `client.Stock.IntradayQuote`):
 
@@ -916,6 +919,9 @@ Coming from the official Python SDK (`fugle-marketdata`), the parameters keep th
 | `client.stock.intraday.quote(symbol="2330")` | `client.Stock.IntradayQuote("2330")` |
 | `client.stock.historical.candles(symbol="2330", timeframe="D", adjusted=True)` | `client.Stock.HistoricalCandles("2330", FugleHistoricalCandlesOptions{Timeframe: FugleTimeframeDay, Adjusted: true})` |
 | `client.stock.intraday.tickers(type="EQUITY")` | `client.Stock.IntradayTickers(FugleTickerEquity)` |
+| `client.stock.corporate_actions.dividends(start_date="2025-01-01", end_date="2025-12-31")` | `client.Stock.CorporateActionsDividends(from, FugleCorporateActionsOptions{To: to})` |
+
+**Corporate actions.** The three corporate action methods need the Developer or Advanced plan. Each takes the first date as a required `from` and `FugleCorporateActionsOptions{To, Descending}`; a `To` in the future includes announced events that have not happened yet, whose prices are nil. Rows come oldest first unless `Descending` is set (Fugle's own default is newest first). Every documented column is present even when no row has it, and the event dates (`haltDate`, `listedDate` and the rest) are times, nil where a step has not happened. `capitalAtApplication` keeps Fugle's units: thousands of dollars for TWSE and dollars for TPEx. These endpoints were written from Fugle's documentation and tested against a local server only.
 
 **Settings.** A method that takes optional settings takes one trailing options value, so `HistoricalCandles("2330")` works with the defaults and `HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{Timeframe: datafetch.FugleTimeframeWeek})` changes them; more than one value is an error. `IntradayTickers` takes the ticker type first because it has no default. The columns the API may omit from a row (`industry` of a ticker, `bid`, `ask` and `volume` of a trade, the at-bid and at-ask volumes) are always present and nil where missing, even when no row has them.
 
