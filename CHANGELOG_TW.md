@@ -134,6 +134,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 0.4 系列命名為 Zeelandia，正式發布前版本號為 `0.4.0-dev`：`insyra.VersionName`、`insyra.Version`、REPL 歡迎訊息與 `insyra version` 現在顯示 `Zeelandia` 與 `0.4.0-dev`，v0.3.x 則是 `Huashan` 與其發布版號。
 - CCL：讀取超出表格列數的列會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本會在那一列失敗，請改用 `IF(# < COUNT(A) - 1, ..., nil)` 保護。
 - CSV 檔案的編碼名稱現在接受 Windows 的 `cp950`、`cp936`，分別視為 Big5 與 GBK。
+- `engine/ring`：`PopFront`、`PopBack` 現在會把被移除的格子設回零值，所以放指標、字串或 slice 的 Ring 不會再讓已移除元素指向的資料無法回收；`Clear` 改成清空既有的底層陣列，不再配置新的（推 64 個再 `Clear`：修改前 188 ns、配置一次 512 位元組，修改後 138 ns、不配置；64 次推入與取出因為清格子多花約 7%）。先進先出與後進先出的順序、容量與零值 Ring 的行為不變（[#588](https://github.com/HazelnutParadise/insyra/issues/588)）。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
