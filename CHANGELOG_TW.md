@@ -133,6 +133,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `DataTable.ColRange(from, to)`，取出從 `from` 到 `to` 的欄，**頭尾都包含**，和 Excel 的 `B:D`、pandas 的 `df.loc[:, "open":"volume"]` 以及 CCL 的 `A:C` 一致。每個邊界都是欄位選擇器，所以 `ColRange("B", "D")`、`ColRange(1, 3)` 與 `ColRange(insyra.Name("b"), insyra.Name("d"))` 是同一個呼叫，`nil` 表示從第一欄開始或到最後一欄為止。每個邊界都必須是表中真正存在的欄，所以和 `SliceCols` 不同，整數等於 `NumCols()` 會是錯誤。遇到無法使用的邊界時，和 `SliceCols` 一樣記錄錯誤並回傳空表。`SliceCols` 仍然不包含 `to`。
 - 0.4 系列命名為 Zeelandia，正式發布前版本號為 `0.4.0-dev`：`insyra.VersionName`、`insyra.Version`、REPL 歡迎訊息與 `insyra version` 現在顯示 `Zeelandia` 與 `0.4.0-dev`，v0.3.x 則是 `Huashan` 與其發布版號。
 - CCL：讀取超出表格列數的列會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本會在那一列失敗，請改用 `IF(# < COUNT(A) - 1, ..., nil)` 保護。
+- CSV 檔案的編碼名稱現在接受 Windows 的 `cp950`、`cp936`，分別視為 Big5 與 GBK。
 - `engine/ring`：`PopFront`、`PopBack` 現在會把被移除的格子設回零值，所以放指標、字串或 slice 的 Ring 不會再讓已移除元素指向的資料無法回收；`Clear` 改成清空既有的底層陣列，不再配置新的（推 64 個再 `Clear`：修改前 188 ns、配置一次 512 位元組，修改後 138 ns、不配置；64 次推入與取出因為清格子多花約 7%）。先進先出與後進先出的順序、容量與零值 Ring 的行為不變（[#588](https://github.com/HazelnutParadise/insyra/issues/588)）。
 
 ### CLI

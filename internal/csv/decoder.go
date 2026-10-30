@@ -47,6 +47,7 @@ var decoders = map[string]encoding.Encoding{
 
 	// CJK.
 	"big5":            traditionalchinese.Big5,
+	"cp950":           traditionalchinese.Big5,
 	"big5hkscs":       traditionalchinese.Big5, // x/text's Big5 is WHATWG's, which carries the HKSCS additions
 	"csbig5":          traditionalchinese.Big5,
 	"cnbig5":          traditionalchinese.Big5,
@@ -54,6 +55,7 @@ var decoders = map[string]encoding.Encoding{
 	"gb18030":         simplifiedchinese.GB18030,
 	"gbk":             simplifiedchinese.GB18030,
 	"gb2312":          simplifiedchinese.GB18030,
+	"cp936":           simplifiedchinese.GB18030,
 	"gb":              simplifiedchinese.GB18030,
 	"xgbk":            simplifiedchinese.GB18030,
 	"gb231280":        simplifiedchinese.GB18030,
