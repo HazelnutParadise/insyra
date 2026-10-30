@@ -80,6 +80,11 @@ func TestFugleCorporateActions(t *testing.T) {
 		t.Errorf("applicationDate = %#v, want a time", dt.GetColByName("applicationDate").Data()[0])
 	}
 
+	// A To earlier in the day than from is still the same date.
+	if _, err := c.Stock.CorporateActionsDividends(day(2025, 2, 1).Add(12*time.Hour), FugleCorporateActionsOptions{To: day(2025, 2, 1)}); err != nil {
+		t.Errorf("the same calendar day was refused: %v", err)
+	}
+
 	sent := len(fs.requests)
 	bad := map[string]func() error{
 		"zero from": func() error { _, e := c.Stock.CorporateActionsDividends(time.Time{}); return e },

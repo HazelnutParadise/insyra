@@ -62,7 +62,7 @@ func (s FugleStock) corporateActions(ctx context.Context, path string, from time
 	}
 	values := url.Values{"start_date": {from.Format("2006-01-02")}, "sort": {"asc"}}
 	if !p.To.IsZero() {
-		if p.To.Before(from) {
+		if normalizeDate(p.To).Before(normalizeDate(from)) {
 			return nil, errors.New("datafetch: Fugle To is before from")
 		}
 		values.Set("end_date", p.To.Format("2006-01-02"))
