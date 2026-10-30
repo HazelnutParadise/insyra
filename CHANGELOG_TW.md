@@ -65,6 +65,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `datafetch.Fugle` 的 `client.FutOpt` 讀取富果的盤中期貨選擇權資料：`IntradayProducts`、`IntradayTickers`、`IntradayTicker`、`IntradayQuote`、`IntradayCandles`、`IntradayTrades`、`IntradayVolumes`，各有 `Context` 版本（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `client.FutOpt.HistoricalCandles` 與 `client.FutOpt.HistoricalDaily` 讀取富果的歷史期貨選擇權資料：單一合約或連續合約的 K 線（超過一年的區間自動切段），以及某商品單一交易日、每個合約一列的日行情（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `client.Stock.HistoricalStats` 回傳個股的價格統計（52 週高低、當日漲跌與成交量），`SnapshotQuotes`、`SnapshotMovers`、`SnapshotActives` 回傳整個市場此刻的報價、漲跌幅排行與成交活躍排行（需要開發者或進階方案）。市場現在是有型別的 `FugleMarket`，`FugleIntradayTickersOptions.Market` 也是（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
+- `datafetch.Fugle` 的 `client.Stock.OwnershipETFHoldings`、`OwnershipInstitutionalTrades`、`OwnershipDirectorHoldings`、`OwnershipTDCCDistribution` 以長表格回傳 ETF 每日持股、三大法人每日買賣超、董監經理人每月持股與集保股權分散表，各有 `Context` 版本；一年以上的區間會自動切段再接起來（需要開發者或進階方案）（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 
 ## v0.3.5
 

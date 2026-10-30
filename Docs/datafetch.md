@@ -908,6 +908,10 @@ The night session is one `AfterHours` setting (or the `afterHours` flag); the cl
 | `Stock.SnapshotQuotes(market, opts...)` | `snapshot/quotes/{market}` | every stock of a market now: `date`, `time`, `market` on every row, `type`, `symbol`, `name`, prices, `change`, `changePercent`, `tradeVolume`, `tradeValue`, `lastPrice`, `lastUpdated` |
 | `Stock.SnapshotMovers(market, direction, basis, opts...)` | `snapshot/movers/{market}` | the same columns, the biggest gainers (`FugleMoverUp`) or losers (`FugleMoverDown`) by percent or price change (`FugleChangePercent`, `FugleChangeValue`) |
 | `Stock.SnapshotActives(market, basis, opts...)` | `snapshot/actives/{market}` | the same columns, the most active stocks by volume or value (`FugleTradeVolume`, `FugleTradeValue`) |
+| `Stock.OwnershipETFHoldings(symbol, opts...)` | `ownership/etf-holdings/{symbol}` | an ETF's stock holdings, a row per day and holding: `date`, `symbol`, `name`, `quantity`, `weight`, `quantityChange`, `weightChange` |
+| `Stock.OwnershipInstitutionalTrades(symbol, opts...)` | `ownership/institutional-trades/{symbol}` | a row per day institutions traded: `date`, `foreign_buy`, `foreign_sell`, `foreign_net`, the same for `trust_` and `dealer_`, `total` |
+| `Stock.OwnershipDirectorHoldings(symbol, opts...)` | `ownership/director-holdings/{symbol}` | a row per month and person: `date` (first of the month), `order`, `title`, `name`, `electedShares`, `heldShares`, `pledgedShares`, `pledgeRatio`, the related holdings |
+| `Stock.OwnershipTDCCDistribution(symbol, opts...)` | `ownership/tdcc-distribution/{symbol}` | a row per report and holding range: `date`, `range`, `holders`, `shares`, `proportion` |
 
 Coming from the official Python SDK (`fugle-marketdata`), the parameters keep their names and the three levels become two (`client.stock.intraday.quote` is `client.Stock.IntradayQuote`):
 
@@ -916,6 +920,9 @@ Coming from the official Python SDK (`fugle-marketdata`), the parameters keep th
 | `client.stock.intraday.quote(symbol="2330")` | `client.Stock.IntradayQuote("2330")` |
 | `client.stock.historical.candles(symbol="2330", timeframe="D", adjusted=True)` | `client.Stock.HistoricalCandles("2330", FugleHistoricalCandlesOptions{Timeframe: FugleTimeframeDay, Adjusted: true})` |
 | `client.stock.intraday.tickers(type="EQUITY")` | `client.Stock.IntradayTickers(FugleTickerEquity)` |
+| `client.stock.ownership.institutional_trades(symbol="2330", **{"from": "2026-08-01", "to": "2026-08-31"})` | `client.Stock.OwnershipInstitutionalTrades("2330", FugleOwnershipOptions{From: from, To: to})` |
+
+**Ownership.** The four ownership methods need the Developer or Advanced plan and share one call quota on Fugle's side. `FugleOwnershipOptions{From, To, Descending}` sets the period the same way for all four: with neither, Fugle picks it (the last 30 days of ETF holdings and institutional trades, the latest director holdings and distribution report); `From` alone runs to today; `To` needs a `From`; a period of a year or more is cut into pieces and joined. This differs from Fugle's own API, where `from` or `to` alone asks for that one day or month: for one report, give the same date as `From` and `To`. Director holdings are monthly, so their dates are read as months. Rows are oldest first unless `Descending` is set. A symbol Fugle does not know, or a period with no data, gives an empty table with the columns rather than an error, because Fugle answers both the same way. These endpoints were written from Fugle's documentation and tested against a local server only.
 
 **Settings.** A method that takes optional settings takes one trailing options value, so `HistoricalCandles("2330")` works with the defaults and `HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{Timeframe: datafetch.FugleTimeframeWeek})` changes them; more than one value is an error. `IntradayTickers` takes the ticker type first because it has no default. The columns the API may omit from a row (`industry` of a ticker, `bid`, `ask` and `volume` of a trade, the at-bid and at-ask volumes) are always present and nil where missing, even when no row has them.
 
