@@ -127,7 +127,16 @@ A futures or options symbol SHALL be accepted with at most one slash between two
 
 ### Requirement: Snapshots keep their time and take typed choices
 
-`SnapshotQuotes`, `SnapshotMovers` and `SnapshotActives` SHALL take the market, and for movers the direction and the change basis, and for actives the trade basis, as positional values refused unless they are among the documented ones, put the snapshot's date, time and market on every row, and keep lastPrice as a column that is nil where the API leaves it out. `SnapshotMovers` SHALL send a non-zero FugleThreshold as its operator query with the value, refuse an unknown operator and a value that is not finite, and send nothing for the zero value.
+`SnapshotQuotes`, `SnapshotMovers` and `SnapshotActives` SHALL take the market, and for movers the direction and the change basis, and for actives the trade basis, as positional values refused unless they are among the documented ones. They SHALL put the snapshot's date, time and market on every row and keep lastPrice as a column that is nil where the API leaves it out.
+
+#### Scenario: A market outside the four
+
+- **WHEN** SnapshotQuotes is given a market that is not TSE, OTC, ESB or TIB
+- **THEN** it returns an error and sends no request
+
+### Requirement: Movers take a threshold
+
+`SnapshotMovers` SHALL send a non-zero FugleThreshold as its operator query with the value, refuse an unknown operator and a value that is not finite, and send nothing for the zero value.
 
 #### Scenario: A threshold
 
