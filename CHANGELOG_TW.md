@@ -64,6 +64,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `datafetch.Fugle(cfg)` 讀取富果行情 API 的台股資料：`Stock.HistoricalCandles`（歷史 K 線，超過一年的區間自動切段）、`Stock.IntradayCandles`、`Stock.IntradayQuote`、`Stock.IntradayTrades`、`Stock.IntradayVolumes`、`Stock.IntradayTickers`，各有 `Context` 版本，以及 `ErrFugleAuth`、`ErrFuglePlan`、`ErrFugleThrottled` 三種錯誤。設定是最後一個可省略的 `...Options` 參數（`HistoricalCandles("2330")` 用預設值），股票清單、成交明細、分價量的表格固定保留文件列的欄位，API 沒給的欄位是空值（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `datafetch.Fugle` 的 `client.FutOpt` 讀取富果的盤中期貨選擇權資料：`IntradayProducts`、`IntradayTickers`、`IntradayTicker`、`IntradayQuote`、`IntradayCandles`、`IntradayTrades`、`IntradayVolumes`，各有 `Context` 版本（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `client.FutOpt.HistoricalCandles` 與 `client.FutOpt.HistoricalDaily` 讀取富果的歷史期貨選擇權資料：單一合約或連續合約的 K 線（超過一年的區間自動切段），以及某商品單一交易日、每個合約一列的日行情（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
+- `client.Stock.HistoricalStats` 回傳個股的價格統計（52 週高低、當日漲跌與成交量），`SnapshotQuotes`、`SnapshotMovers`、`SnapshotActives` 回傳整個市場此刻的報價、漲跌幅排行與成交活躍排行（需要開發者或進階方案）。市場現在是有型別的 `FugleMarket`，`FugleIntradayTickersOptions.Market` 也是（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 
 ## v0.3.5
 
