@@ -418,6 +418,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 在 Vulkan 上，正確捨入的除法、平方根、exp 與 log（`PrecisionFloat32Rounded` 與常駐的優化器步驟）遇到次正規輸入會回傳錯誤的值，例如 `1e-45 / 3e-45` 得到 1.5，因為 WGSL 編譯器把 `countLeadingZeros` 編成最高有效位的位元索引。編譯器升級到 gogpu/naga v0.20.4，`countLeadingZeros` 和 `countTrailingZeros(0)` 在 Vulkan、DirectX 12 與 OpenGL 上都編對了，你自己的 kernel 也可以直接用。
 - 在 Vulkan 上，`DeviceBuffer.Write`、`WriteBits`、`Zero` 以及建立 `DeviceBuffer` 時的上傳，讀回來可能還是舊內容，因為佇列寫入沒有排在隨後的 kernel 或複製之前；在 GT 1030 上，`Zero` 之後讀取，20 次裡有 3 次拿到舊的字。現在除了自己會排序的 Metal 以外，這些呼叫都會等寫入完成，所以每次呼叫都會等佇列清空。
 - 當 NVIDIA 顯卡同時被 NVML（CUDA）與 WebGPU 找到時，Insyra 現在保留 WebGPU 那一筆，因為 CUDA 沒有執行器。以前探索階段保留 CUDA 那一筆，所有加速運算都以 `no-backend-executor` 退回 CPU，Windows 上有 NVIDIA 顯卡的主機就是這種情況；現在加速運算會在該顯卡上執行。沒有執行器的後端不再優先於有執行器的後端。
+- 在 Vulkan 與 DirectX 12 上，裝置端 `MatMul`（`nn` 的大型矩陣乘法）與最近鄰候選清單會先等輸入資料上傳完成，kernel 才讀取。gogpu 對儲存緩衝區的佇列寫入不保證排在後續指令之前，kernel 可能讀到舊資料；Metal 不受影響（[#572](https://github.com/HazelnutParadise/insyra/issues/572)）。
 
 ### `quant`
 - **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。
