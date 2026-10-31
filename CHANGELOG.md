@@ -70,6 +70,11 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `client.Stock.CorporateActionsDividends`, `CorporateActionsCapitalChanges` and `CorporateActionsListingApplicants` of `datafetch.Fugle` return ex-dividend events, capital changes (par value changes, capital reductions, ETF splits) and listing applications from a date onwards, with `Context` forms (Developer or Advanced plan) ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
 - `client.Stock.OwnershipETFHoldings`, `OwnershipInstitutionalTrades`, `OwnershipDirectorHoldings` and `OwnershipTDCCDistribution` of `datafetch.Fugle` return an ETF's daily holdings, institutional investors' daily trades, directors' monthly holdings and the TDCC shareholding distribution as long tables, with `Context` forms; a period of a year or more is cut and joined (Developer or Advanced plan) ([#440](https://github.com/HazelnutParadise/insyra/issues/440)).
 
+### Container image
+
+- Every release now publishes a container image, `ghcr.io/hazelnutparadise/insyra:<version>`, for `linux/amd64` and `linux/arm64`: the release's `insyra` CLI on the official Go image, with the Vulkan loader and drivers that let `accel` use the host's GPU (`--gpus all` for NVIDIA, `--device /dev/dri` for AMD and Intel on Linux). `0.3` and `latest` follow the highest stable release by version number. See [Docs/container.md](Docs/container.md).
+
+
 ## v0.3.5
 
 ### Core

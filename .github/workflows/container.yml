@@ -1,0 +1,164 @@
+# Builds the Insyra container image for a release and pushes it to GHCR as
+# ghcr.io/hazelnutparadise/insyra:<version>, for linux/amd64 and linux/arm64.
+#
+# Each architecture is built and tested on its own native runner and pushed by
+# digest only; the tags are attached afterwards, so a failed build or test
+# never moves a tag. A published release builds its own tag. workflow_dispatch
+# rebuilds an existing tag with the Dockerfile of the branch it runs from; it
+# only works once this file is on the default branch.
+
+name: Container image
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build, such as v0.3.6"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/hazelnutparadise/insyra
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+  # The official Go image the container is built on, pinned by digest. Its Go
+  # must be at least the go directive of the tag being built; the job checks.
+  # Refresh it with the other dependencies before a release.
+  GO_IMAGE: golang:1.26.10-trixie@sha256:a050dcceee6eb9bf110151662dfac7662f3bec40927c7dee48731e3d92083d42
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    # The workflow's own checkout carries the Dockerfile; the tag's checkout is
+    # what gets built.
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        path: ci
+        persist-credentials: false
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: refs/tags/${{ env.TAG }}
+        path: src
+        persist-credentials: false
+
+    - name: Check the tag, the version and the Go image agree
+      working-directory: src
+      run: |
+        version="${TAG#v}"
+        grep -q "const Version = \"$version\"" version.go \
+          || { echo "version.go does not say $version"; exit 1; }
+        want=$(awk '$1=="go"{print $2}' go.mod)
+        have=$(echo "$GO_IMAGE" | sed -E 's/^golang:([0-9.]+)-.*/\1/')
+        [ "$(printf '%s\n%s\n' "$want" "$have" | sort -V | head -1)" = "$want" ] \
+          || { echo "go.mod needs Go $want, $GO_IMAGE has $have"; exit 1; }
+
+    - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+    - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - id: push
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      with:
+        context: src
+        file: ci/Dockerfile
+        platforms: ${{ matrix.platform }}
+        build-args: GO_IMAGE=${{ env.GO_IMAGE }}
+        labels: |
+          org.opencontainers.image.title=Insyra
+          org.opencontainers.image.description=Insyra CLI on the official Go image, with Vulkan for the host's GPU
+          org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          org.opencontainers.image.version=${{ env.TAG }}
+          org.opencontainers.image.licenses=MIT
+        provenance: mode=max
+        sbom: true
+        outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+    - name: Smoke-test the image
+      run: |
+        out=$(docker run --rm "$IMAGE@${{ steps.push.outputs.digest }}" insyra version)
+        echo "$out"
+        echo "$out" | grep -q "v${TAG#v} " || { echo "the image reports the wrong version"; exit 1; }
+
+    # A matrix job has one set of outputs, so each leg hands its digest over
+    # as an artifact instead.
+    - name: Record the digest
+      run: |
+        mkdir -p digests
+        echo "${{ steps.push.outputs.digest }}" > "digests/${PLATFORM#linux/}"
+      env:
+        PLATFORM: ${{ matrix.platform }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: digest-${{ strategy.job-index }}
+        path: digests/*
+        retention-days: 1
+
+  tag:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    # The floating tags follow version numbers, not GitHub's Latest flag, so a
+    # rebuild of an old tag or a patch to an older line never moves them back:
+    # 0.3 goes to the highest 0.3.x release, latest to the highest release, and
+    # a prerelease gets only its own tag.
+    - name: Decide the tags
+      id: tags
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        version="${TAG#v}"
+        tags="${IMAGE}:${version}"
+        case "$version" in *-*) ;; *)
+          releases=$(gh api --paginate "repos/${{ github.repository }}/releases" \
+            --jq '.[] | select(.draft or .prerelease | not) | .tag_name | select(contains("-") | not)' \
+            | sed 's/^v//' | sort -V)
+          minor="${version%.*}"
+          [ "$(echo "$releases" | grep "^$minor\." | tail -1)" = "$version" ] && tags="${tags},${IMAGE}:${minor}"
+          [ "$(echo "$releases" | tail -1)" = "$version" ] && tags="${tags},${IMAGE}:latest"
+        esac
+        echo "value=$tags" >> "$GITHUB_OUTPUT"
+        echo "Tags: $tags"
+
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        pattern: digest-*
+        merge-multiple: true
+        path: digests
+    - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+    - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Tag the multi-platform image
+      env:
+        TAGS: ${{ steps.tags.outputs.value }}
+      run: |
+        args=""
+        for t in $(echo "$TAGS" | tr ',' ' '); do args="$args -t $t"; done
+        docker buildx imagetools create $args "$IMAGE@$(cat digests/amd64)" "$IMAGE@$(cat digests/arm64)"
+        docker buildx imagetools inspect "$IMAGE:${TAG#v}"

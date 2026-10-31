@@ -195,6 +195,16 @@ CSV 準備 -> DataTable 載入 -> CCL 衍生欄位 -> 排序 -> KPI 彙總 -> �
   go get github.com/HazelnutParadise/insyra/allpkgs@latest
   ```
 
+### 容器映像
+
+每次發版也會發佈容器映像，內含 CLI 與 Go 工具鏈，在 Linux 上可直接使用宿主機的 GPU：
+
+```sh
+docker run --rm -it --gpus all -v "$PWD":/work ghcr.io/hazelnutparadise/insyra:<版號>
+```
+
+tag 規則、GPU 設定與哪些主機能把 GPU 交給容器，請見 [Docs/container.md](/Docs/container.md)。
+
 ### 快速範例
 
 ```go

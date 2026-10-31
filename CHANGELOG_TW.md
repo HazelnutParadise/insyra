@@ -70,6 +70,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `datafetch.Fugle` 的 `client.Stock.CorporateActionsDividends`、`CorporateActionsCapitalChanges`、`CorporateActionsListingApplicants` 回傳某日起的除權息、資本變動（面額變更、減資、ETF 分割）與申請上市櫃資料，各有 `Context` 版本（需要開發者或進階方案）（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `datafetch.Fugle` 的 `client.Stock.OwnershipETFHoldings`、`OwnershipInstitutionalTrades`、`OwnershipDirectorHoldings`、`OwnershipTDCCDistribution` 以長表格回傳 ETF 每日持股、三大法人每日買賣超、董監經理人每月持股與集保股權分散表，各有 `Context` 版本；一年以上的區間會自動切段再接起來（需要開發者或進階方案）（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 
+### 容器映像
+
+- 每次發版都會發佈容器映像 `ghcr.io/hazelnutparadise/insyra:<版號>`，支援 `linux/amd64` 與 `linux/arm64`：以 Go 官方映像為底，預裝該版本的 `insyra` CLI，並附 Vulkan loader 與驅動，讓 `accel` 能用宿主機的 GPU（Linux 上 NVIDIA 用 `--gpus all`，AMD、Intel 用 `--device /dev/dri`）。`0.3` 與 `latest` 依版號指向最高的正式版。詳見 [Docs/container.md](Docs/container.md)。
+
+
 ## v0.3.5
 
 ### Core
