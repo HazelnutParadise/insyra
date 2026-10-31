@@ -633,9 +633,10 @@ func flattenFugle(prefix string, v any, out map[string]any) {
 
 // FugleIntradayTickersOptions are the optional settings of IntradayTickers.
 type FugleIntradayTickersOptions struct {
-	// Exchange is TWSE or TPEx; Market is TSE, OTC, ESB or TIB; Industry is an
-	// industry code. Empty means any.
-	Exchange, Market, Industry string
+	// Exchange is TWSE or TPEx and Industry is an industry code. Empty means any.
+	Exchange, Industry string
+	// Market narrows the list to one market. Empty means any.
+	Market FugleMarket
 	// IsNormal, IsAttention, IsDisposition and IsHalted narrow the list to such
 	// stocks. When any is set the API lists equities only and ignores Type.
 	IsNormal, IsAttention, IsDisposition, IsHalted bool
@@ -666,8 +667,11 @@ func (s FugleStock) IntradayTickersContext(ctx context.Context, kind FugleTicker
 	default:
 		return nil, fmt.Errorf("datafetch: Fugle ticker type %q must be EQUITY, INDEX, WARRANT or ODDLOT", string(kind))
 	}
+	if p.Market != "" && !p.Market.valid() {
+		return nil, fmt.Errorf("datafetch: Fugle market %q must be TSE, OTC, ESB or TIB", string(p.Market))
+	}
 	values := url.Values{"type": {string(kind)}}
-	for name, v := range map[string]string{"exchange": p.Exchange, "market": p.Market, "industry": p.Industry} {
+	for name, v := range map[string]string{"exchange": p.Exchange, "market": string(p.Market), "industry": p.Industry} {
 		if v != "" {
 			values.Set(name, v)
 		}
