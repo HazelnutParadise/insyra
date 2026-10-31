@@ -317,38 +317,6 @@ The `DataTable` structure provides a tabular data representation, allowing for t
 
 **You can also convert between DataTables and CSV files with simply one line of code, enabling seamless integration with external data sources.**
 
-## Error Handling
-
-Insyra never ends your program: a failure is recorded and the call returns
-something usable. Ordinary functions return an `error`; the chainable types
-(`DataList`, `DataTable`, `isr`) record a **sticky** `Err()` that keeps the
-first failure, so one check at the end of a chain reports the root cause.
-`PopErr()` reads and clears it. Opt into fail-fast with
-`insyra.Config.SetPanicOnError(true)`, which panics (recoverably) on any
-recorded error.
-
-Both `DataList` and `DataTable` support instance-level error tracking for fluent/chained operations. Use `Err()` to obtain the last error on the instance (returns `*ErrorInfo` or `nil`) and `ClearErr()` to clear it.
-
-Example:
-
-```go
-// DataList example
-dl := insyra.NewDataList(1,2,3).Sort().Reverse()
-if err := dl.Err(); err != nil {
-    fmt.Println("Error:", err.Message)
-    dl.ClearErr()
-}
-
-// DataTable example (pseudo-args shown)
-dt := insyra.NewDataTable(insyra.NewDataList(1), insyra.NewDataList(2)).SortBy(/*config*/)
-if err := dt.Err(); err != nil {
-    fmt.Println("Error:", err.Message)
-    dt.ClearErr()
-}
-```
-
-For more details, see the **[DataList Documentation](/Docs/DataList.md)** and **[DataTable Documentation](/Docs/DataTable.md)**.
-
 ### [Column Calculation Language (CCL)](/Docs/CCL.md)
 
 **Insyra** features a powerful **Column Calculation Language (CCL)** that works just like Excel formulas!
@@ -395,6 +363,38 @@ This approach reduces memory usage when working with large datasets by processin
 For a complete guide to CCL syntax and features, see the **[CCL Documentation](/Docs/CCL.md)**.
 
 For a complete list of DataTable methods and features, please refer to the **[DataTable Documentation](/Docs/DataTable.md)**.
+
+## Error Handling
+
+Insyra never ends your program: a failure is recorded and the call returns
+something usable. Ordinary functions return an `error`; the chainable types
+(`DataList`, `DataTable`, `isr`) record a **sticky** `Err()` that keeps the
+first failure, so one check at the end of a chain reports the root cause.
+`PopErr()` reads and clears it. Opt into fail-fast with
+`insyra.Config.SetPanicOnError(true)`, which panics (recoverably) on any
+recorded error.
+
+Both `DataList` and `DataTable` support instance-level error tracking for fluent/chained operations. Use `Err()` to obtain the last error on the instance (returns `*ErrorInfo` or `nil`) and `ClearErr()` to clear it.
+
+Example:
+
+```go
+// DataList example
+dl := insyra.NewDataList(1,2,3).Sort().Reverse()
+if err := dl.Err(); err != nil {
+    fmt.Println("Error:", err.Message)
+    dl.ClearErr()
+}
+
+// DataTable example (pseudo-args shown)
+dt := insyra.NewDataTable(insyra.NewDataList(1), insyra.NewDataList(2)).SortBy(/*config*/)
+if err := dt.Err(); err != nil {
+    fmt.Println("Error:", err.Message)
+    dt.ClearErr()
+}
+```
+
+For more details, see the **[DataList Documentation](/Docs/DataList.md)** and **[DataTable Documentation](/Docs/DataTable.md)**.
 
 ## Exact Decimals
 
