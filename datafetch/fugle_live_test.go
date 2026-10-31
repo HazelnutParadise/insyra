@@ -41,6 +41,25 @@ func TestFugleLive(t *testing.T) {
 			t.Fatalf("err=%v", err)
 		}
 	})
+	t.Run("stream", func(t *testing.T) {
+		st, err := c.Stock.Stream()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = st.Close() }()
+		// Aggregates send a snapshot whenever the stock has data for the day.
+		if err := st.Subscribe(FugleChannelAggregates, []string{"2330"}); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case m := <-st.Messages():
+			if m.Symbol != "2330" || m.Channel != FugleChannelAggregates {
+				t.Errorf("message %+v", m)
+			}
+		case <-time.After(10 * time.Second):
+			t.Log("no aggregates message within 10s; Fugle sends none before the day's first data")
+		}
+	})
 	t.Run("quote", func(t *testing.T) {
 		dt, err := c.Stock.IntradayQuote("2330")
 		if err != nil || dt.NumRows() != 1 || dt.GetColByName("symbol") == nil {
