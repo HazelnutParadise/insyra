@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestDeviceLostIsRecognisedFromEveryBackendsText(t *testing.T) {
@@ -58,8 +59,8 @@ func TestRetiringADeviceMarksItsBuffersLost(t *testing.T) {
 	if !errors.Is(err, ErrDeviceLost) {
 		t.Fatalf("failed() = %v, want ErrDeviceLost", err)
 	}
-	if !before.Lost() || !before.released {
-		t.Fatalf("a buffer from before the loss: lost=%v released=%v", before.Lost(), before.released)
+	if !before.Lost() || !before.Released() {
+		t.Fatalf("a buffer from before the loss: lost=%v released=%v", before.Lost(), before.Released())
 	}
 	if !binding.lost || !binding.released {
 		t.Fatalf("a binding from before the loss: lost=%v released=%v", binding.lost, binding.released)
@@ -91,5 +92,44 @@ func TestRetiringADeviceMarksItsBuffersLost(t *testing.T) {
 	submitMu.Lock()
 	if !errors.Is(err, ErrDeviceLost) {
 		t.Fatalf("downloading a lost buffer = %v, want ErrDeviceLost", err)
+	}
+}
+
+// A download holds its buffer's lock when its submit or readback meets the
+// loss, so retiring the device must not take that lock again: it did, and the
+// call never returned while holding submitMu, which every GPU call needs.
+func TestRetiringWhileACallHoldsItsBufferDoesNotDeadlock(t *testing.T) {
+	submitMu.Lock()
+	defer submitMu.Unlock()
+
+	held := &Buffer{length: 1}
+	liveBuffers[held] = struct{}{}
+	h := &handle{}
+	sharedMu.Lock()
+	previous, previousErr, previousTried := shared, sharedErr, sharedTried
+	shared, sharedErr, sharedTried = h, nil, true
+	sharedMu.Unlock()
+	t.Cleanup(func() {
+		sharedMu.Lock()
+		shared, sharedErr, sharedTried = previous, previousErr, previousTried
+		teardown = nil
+		sharedMu.Unlock()
+	})
+
+	held.mu.Lock()
+	done := make(chan error, 1)
+	go func() { done <- h.failed(errors.New("vkQueueSubmit failed: -4")) }()
+	select {
+	case err := <-done:
+		held.mu.Unlock()
+		if !errors.Is(err, ErrDeviceLost) {
+			t.Fatalf("failed() = %v, want ErrDeviceLost", err)
+		}
+	case <-time.After(5 * time.Second):
+		held.mu.Unlock()
+		t.Fatal("retiring the device waited for a buffer lock the failing call holds")
+	}
+	if !held.Lost() {
+		t.Fatal("the held buffer was not marked lost")
 	}
 }
