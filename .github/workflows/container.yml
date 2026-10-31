@@ -45,6 +45,13 @@ jobs:
       contents: read
       packages: write
     steps:
+    # A manual rebuild takes its Dockerfile from the branch it runs on, so only
+    # the default branch, whose changes are reviewed, may publish.
+    - name: Refuse a manual run from another branch
+      if: github.event_name == 'workflow_dispatch' && github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+      run: |
+        echo "Run this workflow from the default branch; $GITHUB_REF may not publish images."
+        exit 1
     # The workflow's own checkout carries the Dockerfile; the tag's checkout is
     # what gets built.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
