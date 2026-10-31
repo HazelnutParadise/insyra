@@ -12,9 +12,11 @@ import (
 // ErrDeviceLost reports that the GPU device was lost: the driver reset it, the
 // operating system stopped a dispatch that ran too long (Windows does this to
 // a dispatch of about two seconds or more), or the adapter was removed. Every
-// buffer, binding and pipeline made on that device is gone. The next call
-// that needs a device opens a new one; a Buffer or Binding from before the
-// loss stays unusable and reports this error, so its owner re-creates it.
+// buffer, binding and pipeline made on that device is gone. A Buffer or
+// Binding from before the loss stays unusable and reports this error. The next
+// call that needs a device tries to open a new one; a driver may refuse (a
+// GT 1030 answered vkCreateDevice -3 in the same process however long it was
+// retried), and then the call reports ErrUnavailable.
 //
 // This is the recovery WebGPU specifies for GPUDevice.lost: a lost device
 // never works again and the application requests a new adapter and device
@@ -68,6 +70,10 @@ var (
 	builtKernels = map[*kernel]struct{}{}
 )
 
+// teardown is what a lost device left to release, in order, before the
+// next device is opened. It is guarded by sharedMu.
+var teardown []interface{ Release() }
+
 func releaseQuietly(resource interface{ Release() }) {
 	defer func() { _ = recover() }()
 	resource.Release()
@@ -109,6 +115,12 @@ func retireLocked(h *handle) {
 		if k.layout != nil {
 			objects = append(objects, k.layout)
 		}
+		if k.plLayout != nil {
+			objects = append(objects, k.plLayout)
+		}
+		if k.module != nil {
+			objects = append(objects, k.module)
+		}
 		k.reset()
 	}
 	builtKernels = map[*kernel]struct{}{}
@@ -132,23 +144,26 @@ func retireLocked(h *handle) {
 	if h.matmulBGLayout != nil {
 		objects = append(objects, h.matmulBGLayout)
 	}
-	for _, resource := range objects {
-		releaseQuietly(resource)
-	}
+	objects = append(objects, h.retained...)
+	h.retained = nil
 	if h.device != nil {
-		releaseQuietly(h.device)
+		objects = append(objects, h.device)
 	}
 	if h.adapter != nil {
-		releaseQuietly(h.adapter)
+		objects = append(objects, h.adapter)
 	}
 	if h.instance != nil {
-		releaseQuietly(h.instance)
+		objects = append(objects, h.instance)
 	}
 
 	sharedMu.Lock()
 	if shared == h {
 		shared, sharedErr, sharedTried = nil, nil, false
 	}
+	// The release waits for the next acquire: the call that met the loss
+	// still holds transient objects (a staging buffer, a command encoder) that
+	// it releases on its way out, and they must go before the device does.
+	teardown = append(teardown, objects...)
 	sharedMu.Unlock()
 }
 
@@ -171,5 +186,22 @@ func (b *Buffer) unusableLocked(what string) error {
 
 func (k *kernel) reset() {
 	k.once = sync.Once{}
-	k.pipe, k.layout, k.err = nil, nil, nil
+	k.pipe, k.layout, k.module, k.plLayout, k.err = nil, nil, nil, nil, nil
+}
+
+// lostBuffers returns ErrDeviceLost when any of buffers died with a lost
+// device. submitMu must be held.
+func lostBuffers(what string, buffers []*Buffer) error {
+	for j, b := range buffers {
+		if b == nil {
+			continue
+		}
+		b.mu.Lock()
+		lost := b.lost
+		b.mu.Unlock()
+		if lost {
+			return fmt.Errorf("%w: %s: buffer %d", ErrDeviceLost, what, j)
+		}
+	}
+	return nil
 }
