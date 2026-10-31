@@ -11,9 +11,9 @@
 
 ### Requirement: A cell holding a table or list is one line
 
-Every view SHALL show a cell that holds a `*DataTable` as `DataTable(rows x cols)` and one that holds a `*DataList` as `DataList(n)`, so a table or list that holds itself can be shown.
+Every view SHALL show a cell that holds a `*DataTable` as `<DataTable>` and one that holds a `*DataList` as `<DataList>`, so a table or list that holds itself can be shown.
 
 #### Scenario: A table holding itself
 
 - **WHEN** a two-row table holds itself in a cell and its String is called
-- **THEN** it returns, and the cell reads DataTable(2x1)
+- **THEN** it returns, and the cell reads <DataTable>

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestStringIsTheUncolouredView(t *testing.T) {
@@ -52,23 +54,58 @@ func TestStringPreviewsALongTable(t *testing.T) {
 	}
 }
 
+// wrappedTable embeds a table the way the isr wrappers do.
+type wrappedTable struct{ *DataTable }
+
+type wrappedList struct{ *DataList }
+
 func TestCellsHoldingTablesAreSummarised(t *testing.T) {
 	inner := NewDataTable(NewDataList(1, 2), NewDataList(3, 4))
-	dt := NewDataTable(NewDataList(inner, NewDataList(7, 8, 9)))
+	dt := NewDataTable(NewDataList(inner, NewDataList(7, 8, 9), wrappedTable{inner}, (*DataTable)(nil)))
 	s := dt.String()
-	if !strings.Contains(s, "DataTable(2x2)") || !strings.Contains(s, "DataList(3)") {
+	if strings.Count(s, "<DataTable>") != 2 || !strings.Contains(s, "<DataList>") || !strings.Contains(s, "<nil>") {
 		t.Errorf("nested cells are not summarised:\n%s", s)
 	}
 
-	// A table holding itself must finish.
+	// A table or list holding itself, directly or through a wrapper, must
+	// finish.
 	self := NewDataTable(NewDataList(1, 2))
 	self.UpdateElement(0, "A", self)
-	if s := self.String(); !strings.Contains(s, "DataTable(2x1)") {
+	self.UpdateElement(1, "A", &wrappedTable{self})
+	if s := self.String(); strings.Count(s, "<DataTable>") != 2 {
 		t.Errorf("self-holding table:\n%s", s)
 	}
 	selfList := NewDataList(1)
-	selfList.Append(selfList)
-	if s := selfList.String(); !strings.Contains(s, "DataList(") {
+	selfList.Append(selfList, wrappedList{selfList})
+	if s := selfList.String(); strings.Count(s, "<DataList>") != 2 {
 		t.Errorf("self-holding list:\n%s", s)
+	}
+}
+
+func TestStringOfTablesHoldingEachOtherDoesNotDeadlock(t *testing.T) {
+	tbl := NewDataTable(NewDataList(1))
+	lst := NewDataList(tbl)
+	tbl.UpdateElement(0, "A", lst)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var wg sync.WaitGroup
+		for i := 0; i < 200; i++ {
+			wg.Add(2)
+			go func() { defer wg.Done(); _ = tbl.String() }()
+			go func() { defer wg.Done(); _ = lst.String() }()
+		}
+		wg.Wait()
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("String on a table and a list holding each other deadlocked")
+	}
+}
+
+func TestStringOfANilReceiver(t *testing.T) {
+	if (*DataTable)(nil).String() != "<nil>" || (*DataList)(nil).String() != "<nil>" {
+		t.Error("a nil receiver did not give <nil>")
 	}
 }

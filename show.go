@@ -1268,35 +1268,75 @@ func (st showStyle) colorText(code string, text any) string {
 	return fmt.Sprintf("%v", text)
 }
 
-// showCell writes one cell of a view. A cell holding a table or a list is
-// written as a one-line summary rather than expanded, since its own view
-// spans several lines and a table holding itself would never finish.
+// showCell writes one cell of a view. A cell holding a table or a list, or a
+// value that embeds one, is written as <DataTable> or <DataList> rather than
+// expanded: its own view spans several lines, a table holding itself would
+// never finish, and reading its size would take its lock while the outer
+// view holds another, which two goroutines showing tables that hold each
+// other could deadlock on.
 func showCell(v any) string {
-	switch x := v.(type) {
-	case *DataTable:
-		if x == nil {
-			return "<nil>"
-		}
-		var rows, cols int
-		x.AtomicDo(func(t *DataTable) { rows, cols = t.getMaxColLength(), len(t.columns) })
-		return fmt.Sprintf("DataTable(%dx%d)", rows, cols)
-	case *DataList:
-		if x == nil {
-			return "<nil>"
-		}
-		var n int
-		x.AtomicDo(func(l *DataList) { n = len(l.data) })
-		return fmt.Sprintf("DataList(%d)", n)
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
+		return utils.FormatValue(v)
+	}
+	switch {
+	case embedsShowable[DataTable](v):
+		return "<DataTable>"
+	case embedsShowable[DataList](v):
+		return "<DataList>"
 	}
 	return utils.FormatValue(v)
+}
+
+// embedsShowable reports whether v is a *T or a struct, or pointer to one,
+// that embeds a *T, as the isr wrappers do.
+func embedsShowable[T DataTable | DataList](v any) bool {
+	if _, ok := v.(*T); ok {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	if !rv.IsValid() {
+		return false
+	}
+	target := reflect.TypeOf((*T)(nil))
+	rt := rv.Type()
+	for depth := 0; depth < 4; depth++ {
+		if rt.Kind() == reflect.Pointer {
+			rt = rt.Elem()
+		}
+		if rt.Kind() != reflect.Struct {
+			return false
+		}
+		found := false
+		for i := 0; i < rt.NumField(); i++ {
+			f := rt.Field(i)
+			if !f.Anonymous {
+				continue
+			}
+			if f.Type == target {
+				return true
+			}
+			if f.Type.Kind() == reflect.Struct || (f.Type.Kind() == reflect.Pointer && f.Type.Elem().Kind() == reflect.Struct) {
+				rt = f.Type
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return false
 }
 
 // String returns the view Show prints, without colour and laid out for an
 // 80-column terminal, so fmt.Println(dt), %v and %s print the table. Like
 // Show it is a preview: a table of more than 25 rows shows its first 20 and
-// last 5. A cell holding another table or list is shown as DataTable(rows x
-// cols) or DataList(n) rather than expanded.
+// last 5. A cell holding another table or list is shown as <DataTable> or
+// <DataList> rather than expanded. A nil table gives "<nil>".
 func (dt *DataTable) String() string {
+	if dt == nil {
+		return "<nil>"
+	}
 	var b strings.Builder
 	dt.renderRange(&b, stringShowStyle)
 	return b.String()
@@ -1304,9 +1344,12 @@ func (dt *DataTable) String() string {
 
 // String returns the view Show prints, without colour and laid out for an
 // 80-column terminal, so fmt.Println(dl), %v and %s print the list. Like Show
-// it is a preview of a long list, and a cell holding a table or another list
-// is shown as a one-line summary.
+// it is a preview of a long list, and a value that is a table or another list
+// is shown as <DataTable> or <DataList>. A nil list gives "<nil>".
 func (dl *DataList) String() string {
+	if dl == nil {
+		return "<nil>"
+	}
 	var b strings.Builder
 	dl.renderRange(&b, stringShowStyle)
 	return b.String()

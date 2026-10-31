@@ -4467,7 +4467,7 @@ func (dt *DataTable) ShowTo(w io.Writer) // same output, written to w instead of
 dt.Show() // Display table content in console
 ```
 
-A cell that holds another table or list is shown as `DataTable(rows x cols)` or `DataList(n)` rather than expanded.
+A cell that holds another table or list is shown as `<DataTable>` or `<DataList>` rather than expanded.
 
 ### String
 
