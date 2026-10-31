@@ -2,6 +2,7 @@ package stats
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
