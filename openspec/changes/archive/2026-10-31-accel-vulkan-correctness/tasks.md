@@ -6,4 +6,4 @@
 - [x] Shortlist smoke test compares to a few ulps.
 - [x] `Docs/accel.md` warns against `countLeadingZeros` in a user kernel.
 - [x] Entries under `## Unreleased` / `### `accel`` in both CHANGELOGs.
-- [ ] `openspec validate accel-vulkan-correctness --strict` passes (the CLI is not installed on this host; CI runs it).
+- [x] `openspec validate accel-vulkan-correctness --strict` passes (CI, OpenSpec strict validation on the PR).
