@@ -901,6 +901,7 @@ The night session is one `AfterHours` setting (or the `afterHours` flag); the cl
 | `Stock.HistoricalCandles(symbol, opts...)` | `historical/candles/{symbol}` | `date`, `open`, `high`, `low`, `close`, `volume`, then `average`, `turnover` and `change` when asked for |
 | `Stock.IntradayCandles(symbol, opts...)` | `intraday/candles/{symbol}` | the same columns for today |
 | `Stock.IntradayQuote(symbol, oddLot...)` | `intraday/quote/{symbol}` | one row; nested fields are joined (`total_tradeVolume`, `lastTrade_price`) and the best bids and asks are `bids_1_price`, `bids_1_size`, `asks_1_price`... |
+| `Stock.IntradayTicker(symbol, oddLot...)` | `intraday/ticker/{symbol}` | one row of the day's details: `name`, `industry`, `securityType`, `referencePrice`, `limitUpPrice`, `limitDownPrice`, the day-trading and short-selling flags, `isAttention`, `isDisposition`, `securityStatus`, `boardLot`... (an emerging stock's price limits are nil; a warrant's or an index's own fields follow) |
 | `Stock.IntradayTrades(symbol, opts...)` | `intraday/trades/{symbol}` | `bid`, `ask`, `price`, `size`, `volume`, `time`, `serial` |
 | `Stock.IntradayVolumes(symbol, oddLot...)` | `intraday/volumes/{symbol}` | `price`, `volume`, `volumeAtBid`, `volumeAtAsk` |
 | `Stock.IntradayTickers(kind, opts...)` | `intraday/tickers` | `symbol`, `name`, `industry` |
@@ -915,6 +916,7 @@ Coming from the official Python SDK (`fugle-marketdata`), the parameters keep th
 | :--- | :--- |
 | `client.stock.intraday.quote(symbol="2330")` | `client.Stock.IntradayQuote("2330")` |
 | `client.stock.historical.candles(symbol="2330", timeframe="D", adjusted=True)` | `client.Stock.HistoricalCandles("2330", FugleHistoricalCandlesOptions{Timeframe: FugleTimeframeDay, Adjusted: true})` |
+| `client.stock.intraday.ticker(symbol="2330")` | `client.Stock.IntradayTicker("2330")` |
 | `client.stock.intraday.tickers(type="EQUITY")` | `client.Stock.IntradayTickers(FugleTickerEquity)` |
 
 **Settings.** A method that takes optional settings takes one trailing options value, so `HistoricalCandles("2330")` works with the defaults and `HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{Timeframe: datafetch.FugleTimeframeWeek})` changes them; more than one value is an error. `IntradayTickers` takes the ticker type first because it has no default. The columns the API may omit from a row (`industry` of a ticker, `bid`, `ask` and `volume` of a trade, the at-bid and at-ask volumes) are always present and nil where missing, even when no row has them.
