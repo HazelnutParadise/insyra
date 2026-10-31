@@ -35,6 +35,12 @@ func TestFugleLive(t *testing.T) {
 			t.Fatalf("err=%v", err)
 		}
 	})
+	t.Run("ticker", func(t *testing.T) {
+		dt, err := c.Stock.IntradayTicker("2330")
+		if err != nil || dt.NumRows() != 1 || dt.GetColByName("referencePrice").Data()[0] == nil {
+			t.Fatalf("err=%v", err)
+		}
+	})
 	t.Run("quote", func(t *testing.T) {
 		dt, err := c.Stock.IntradayQuote("2330")
 		if err != nil || dt.NumRows() != 1 || dt.GetColByName("symbol") == nil {
