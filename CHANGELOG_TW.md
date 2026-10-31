@@ -42,6 +42,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `stats.Autocorrelation` 與 `stats.VarianceRatio` 現在會拒絕由小數（例如 0.1）組成的常數序列：100 個 0.1 的平均值不是剛好 0.1，以前會對沒有變異的序列回報 `Rho` 0.99 和極小的 p 值。
 - `stats.WrightVarianceRatio(returns, qs, opts...)` 用 Wright（2000）的名次與正負號變異數比 `R1`、`R2`、`S1` 檢定隨機漫步；p 值由模擬虛無分配算出，任何樣本數都準確；統計量與 R 的 `vrtest::Wright` 一致（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 - `VarianceRatio` 與 `Autocorrelation` 改回傳 `VarianceRatioResults`、`AutocorrelationResults`，也就是原本的結果切片多了 `Show()`，能把所有持有期或落後期印成一張表。原本用迴圈走訪或當切片傳遞的程式碼不受影響；只有把函式本身存進舊函式型別變數（例如 `var f func(insyra.IDataList, ...int) ([]stats.VarianceRatioResult, error) = stats.VarianceRatio`）的寫法要改用新的結果型別。
+- `stats.DiscreteTimeHazard(durations, observed, opts...)` 以 Allison 的人期（person-period）方法估計離散時間風險模型：一段狀態持續越久是否越容易結束、還有哪些因素會改變這個機率；`stats.PersonPeriod` 回傳它所用的人期表。`GLM` 的二項分布支援 `Cloglog` 連結函數。結果與 R 的 `glm` 一致（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
 
 ### `ml` 與 `nn`
 
@@ -55,6 +56,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `quant/ta`
 
 - `ta.FilterRule(prices, threshold, opts...)` 是 Alexander 的濾嘴法則（Fama 與 Blume 1966）：從最近低點漲了 `threshold` 就買進，從最近高點跌了 `threshold` 就賣出或放空，回傳每列 1／0／-1 的部位，可直接交給 `quant.BacktestSignal`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `ta.RegimeDurations(regimes, kind, rows, segmentStarts)` 把 `Regimes` 切出的行情整理成 `stats.KaplanMeier` 與 `stats.DiscreteTimeHazard` 要的持續期間與是否結束；每個分段最後一個轉折點之後尚未結束的那段，會以「尚未結束」補上（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
 
 ### `accel`
 

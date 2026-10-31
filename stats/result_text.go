@@ -55,9 +55,9 @@ func formatResult(title string, r any) string {
 }
 
 // formatRows renders rows, a slice of result structs, as a table: title,
-// then a header of the exported field names and one line per element. A float
-// is written to 6 significant digits so the columns stay narrow; the fields
-// hold the full values. Other cells are written as valueText writes them. It is the text form of a result that is a
+// then a header of the exported field names and one line per element. A float,
+// or a short array of them such as an interval, is written to 6 significant
+// digits so the columns stay narrow; the fields hold the full values. Other cells are written as valueText writes them. It is the text form of a result that is a
 // list of results, one per setting (such as one per holding period).
 func formatRows(title string, rows any) string {
 	rv := reflect.ValueOf(rows)
@@ -98,6 +98,14 @@ func formatRows(title string, rows any) string {
 
 // rowCellText writes one cell of formatRows.
 func rowCellText(v reflect.Value) string {
+	if (v.Kind() == reflect.Array || v.Kind() == reflect.Slice) && v.Len() <= 4 &&
+		(v.Type().Elem().Kind() == reflect.Float64 || v.Type().Elem().Kind() == reflect.Float32) {
+		parts := make([]string, v.Len())
+		for i := range parts {
+			parts[i] = rowCellText(v.Index(i))
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	}
 	if v.Kind() == reflect.Float64 || v.Kind() == reflect.Float32 {
 		f := v.Float()
 		if math.IsNaN(f) || math.IsInf(f, 0) {
