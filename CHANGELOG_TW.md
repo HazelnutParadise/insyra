@@ -14,6 +14,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `accel.RoundedLog1p` 與 `accel.RoundedExpm1` 在常駐陣列上計算 `log(1+x)` 與 `e^x - 1`，結果正確捨入，並且在全部 2^32 個 float32 輸入上與主機逐位元一致，和 `RoundedExp`、`RoundedLog` 一樣。
 
+- 在 Vulkan 上，正確捨入的除法、平方根、exp 與 log（`PrecisionFloat32Rounded` 與常駐的優化器步驟）遇到次正規輸入會回傳錯誤的值，例如 `1e-45 / 3e-45` 得到 1.5，因為 WGSL 編譯器把 `countLeadingZeros` 編成最高有效位的位元索引。編譯器升級到 gogpu/naga v0.20.4，`countLeadingZeros` 和 `countTrailingZeros(0)` 在 Vulkan、DirectX 12 與 OpenGL 上都編對了，你自己的 kernel 也可以直接用。
+
 ## Unreleased
 
 ### Core

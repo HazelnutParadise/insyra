@@ -14,6 +14,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `accel.RoundedLog1p` and `accel.RoundedExpm1` compute `log(1+x)` and `e^x - 1` on a resident array, correctly rounded and bit for bit equal to the host's on all 2^32 float32 inputs, like `RoundedExp` and `RoundedLog`.
 
+- On Vulkan, the correctly rounded division, square root, exp and log (`PrecisionFloat32Rounded` and the resident optimizer steps) returned wrong values for subnormal inputs, for example `1e-45 / 3e-45` gave 1.5, because the WGSL compiler turned `countLeadingZeros` into the bit index of the highest set bit. The compiler is now gogpu/naga v0.20.4, which compiles `countLeadingZeros` and `countTrailingZeros(0)` correctly on Vulkan, DirectX 12 and OpenGL, so a kernel of your own may use them too.
+
 ## Unreleased
 
 ### Core
