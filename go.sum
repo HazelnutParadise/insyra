@@ -198,8 +198,8 @@ github.com/gogpu/gpucontext v0.31.3 h1:SMnYOQgr+s5issi1R/Oezbo8lV5Lb6HWUZ4HujFgr
 github.com/gogpu/gpucontext v0.31.3/go.mod h1:pnyWQA9lpvESPAKoqzKlsg3pDMFSkxdjonu4gWvnNtA=
 github.com/gogpu/gputypes v0.8.0 h1:Iw4g9lqydTcAFKKQWfgbUpdY6WxObGtjf9SuRkzYMJw=
 github.com/gogpu/gputypes v0.8.0/go.mod h1:cnXrDMwTpWTvJLW1Vreop3PcT6a2YP/i3s91rPaOavw=
-github.com/gogpu/naga v0.20.3 h1:iklZY6jDXkhDAXMKPehd95Wi/mt4/+h7RGlUN1h15nI=
-github.com/gogpu/naga v0.20.3/go.mod h1:15sQaHKkbqXcwTN+hHYGLsA0WBBnkmYzne/eF5p5WEg=
+github.com/gogpu/naga v0.20.4 h1:z+/e6GiZKHRACr5R8+HZiN8ssaE/8iS8Sp9IFfZp5LU=
+github.com/gogpu/naga v0.20.4/go.mod h1:15sQaHKkbqXcwTN+hHYGLsA0WBBnkmYzne/eF5p5WEg=
 github.com/gogpu/wgpu v0.34.5 h1:fgfyyhHjhD1mSkScWbeeKXZ2MLDxzC9bemKWPTneyUs=
 github.com/gogpu/wgpu v0.34.5/go.mod h1:erhaIjD9psJKjHqAhn5MWdJETcACR1NGoqLhkTAHkFM=
 github.com/golang-sql/civil v0.0.0-20190719163853-cb61b32ac6fe/go.mod h1:8vg3r2VgvsThLBIFL93Qb5yWzgyZWhEmBwUJWevAkK0=
