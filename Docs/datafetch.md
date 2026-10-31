@@ -860,7 +860,7 @@ Dataset(name, dataID string, from, to time.Time) (*insyra.DataTable, error)
 
 ## Fugle
 
-Fugle (developer.fugle.tw) serves Taiwan stock quotes, intraday candles and historical candles over a REST API, with no brokerage account needed. `FugleClient` reads its intraday and historical stock endpoints through `client.Stock` and the intraday futures and options endpoints through `client.FutOpt`. Snapshots, technical indicators, corporate actions, ownership and the WebSocket stream are not in this version.
+Fugle (developer.fugle.tw) serves Taiwan stock, futures and options data over a REST API, with no brokerage account needed. `FugleClient` reads the stock endpoints (intraday, historical and snapshots) through `client.Stock` and the futures and options endpoints (intraday and historical) through `client.FutOpt`. Technical indicators, corporate actions, ownership and the WebSocket stream are not in this version.
 
 ```go
 client, err := datafetch.Fugle(datafetch.FugleConfig{APIKey: os.Getenv("FUGLE_API_KEY")})
@@ -901,6 +901,7 @@ The night session is one `AfterHours` setting (or the `afterHours` flag); the cl
 | `Stock.HistoricalCandles(symbol, opts...)` | `historical/candles/{symbol}` | `date`, `open`, `high`, `low`, `close`, `volume`, then `average`, `turnover` and `change` when asked for |
 | `Stock.IntradayCandles(symbol, opts...)` | `intraday/candles/{symbol}` | the same columns for today |
 | `Stock.IntradayQuote(symbol, oddLot...)` | `intraday/quote/{symbol}` | one row; nested fields are joined (`total_tradeVolume`, `lastTrade_price`) and the best bids and asks are `bids_1_price`, `bids_1_size`, `asks_1_price`... |
+| `Stock.IntradayTicker(symbol, oddLot...)` | `intraday/ticker/{symbol}` | one row of the day's details: `name`, `industry`, `securityType`, `referencePrice`, `limitUpPrice`, `limitDownPrice`, the day-trading and short-selling flags, `isAttention`, `isDisposition`, `securityStatus`, `boardLot`... (an emerging stock's price limits are nil; a warrant's or an index's own fields follow) |
 | `Stock.IntradayTrades(symbol, opts...)` | `intraday/trades/{symbol}` | `bid`, `ask`, `price`, `size`, `volume`, `time`, `serial` |
 | `Stock.IntradayVolumes(symbol, oddLot...)` | `intraday/volumes/{symbol}` | `price`, `volume`, `volumeAtBid`, `volumeAtAsk` |
 | `Stock.IntradayTickers(kind, opts...)` | `intraday/tickers` | `symbol`, `name`, `industry` |
@@ -908,6 +909,11 @@ The night session is one `AfterHours` setting (or the `afterHours` flag); the cl
 | `Stock.SnapshotQuotes(market, opts...)` | `snapshot/quotes/{market}` | every stock of a market now: `date`, `time`, `market` on every row, `type`, `symbol`, `name`, prices, `change`, `changePercent`, `tradeVolume`, `tradeValue`, `lastPrice`, `lastUpdated` |
 | `Stock.SnapshotMovers(market, direction, basis, opts...)` | `snapshot/movers/{market}` | the same columns, the biggest gainers (`FugleMoverUp`) or losers (`FugleMoverDown`) by percent or price change (`FugleChangePercent`, `FugleChangeValue`) |
 | `Stock.SnapshotActives(market, basis, opts...)` | `snapshot/actives/{market}` | the same columns, the most active stocks by volume or value (`FugleTradeVolume`, `FugleTradeValue`) |
+| `Stock.TechnicalSMA(symbol, timeframe, period, opts...)` | `technical/sma/{symbol}` | `date`, `sma` |
+| `Stock.TechnicalRSI(symbol, timeframe, period, opts...)` | `technical/rsi/{symbol}` | `date`, `rsi` |
+| `Stock.TechnicalKDJ(symbol, timeframe, rPeriod, kPeriod, dPeriod, opts...)` | `technical/kdj/{symbol}` | `date`, `k`, `d`, `j` |
+| `Stock.TechnicalMACD(symbol, timeframe, fast, slow, signal, opts...)` | `technical/macd/{symbol}` | `date`, `macdLine`, `signalLine` |
+| `Stock.TechnicalBB(symbol, timeframe, period, opts...)` | `technical/bb/{symbol}` | `date`, `upper`, `middle`, `lower` |
 | `Stock.CorporateActionsDividends(from, opts...)` | `corporate-actions/dividends` | ex-dividend and ex-rights events: `date`, `exchange`, `symbol`, `name`, `dividendType`, `dividend`, `cashDividend`, `stockDividendShares`, the prices before and after |
 | `Stock.CorporateActionsCapitalChanges(from, opts...)` | `corporate-actions/capital-changes` | par value changes, capital reductions and ETF splits: `symbol`, `name`, `exchange`, `actionType`, `haltDate`, `resumeDate`, then the details as `raw_splitRatio`, `raw_reason`, `raw_refundPerShare`, `raw_referencePrice`... |
 | `Stock.CorporateActionsListingApplicants(from, opts...)` | `corporate-actions/listing-applicants` | companies applying to list: `symbol`, `name`, `exchange`, `applicationDate`, each review step's date, `listedDate`, `underwriter`, `underwritingPrice`, `remarks` |
@@ -918,8 +924,12 @@ Coming from the official Python SDK (`fugle-marketdata`), the parameters keep th
 | :--- | :--- |
 | `client.stock.intraday.quote(symbol="2330")` | `client.Stock.IntradayQuote("2330")` |
 | `client.stock.historical.candles(symbol="2330", timeframe="D", adjusted=True)` | `client.Stock.HistoricalCandles("2330", FugleHistoricalCandlesOptions{Timeframe: FugleTimeframeDay, Adjusted: true})` |
+| `client.stock.intraday.ticker(symbol="2330")` | `client.Stock.IntradayTicker("2330")` |
 | `client.stock.intraday.tickers(type="EQUITY")` | `client.Stock.IntradayTickers(FugleTickerEquity)` |
+| `client.stock.technical.kdj(symbol="2330", timeframe="D", rPeriod=9, kPeriod=3, dPeriod=3)` | `client.Stock.TechnicalKDJ("2330", FugleTimeframeDay, 9, 3, 3)` |
 | `client.stock.corporate_actions.dividends(start_date="2025-01-01", end_date="2025-12-31")` | `client.Stock.CorporateActionsDividends(from, FugleCorporateActionsOptions{To: to})` |
+
+**Technical indicators.** Fugle computes SMA, RSI, KDJ, MACD and Bollinger bands from its own candles. The timeframe and the periods are required, in the order of Fugle's parameters, and are refused when they are not positive or when MACD's fast period is not shorter than its slow one. `FugleTechnicalOptions{From, To}` bounds the dates, both or neither; without them Fugle picks the range. Minute timeframes always cover the last 30 days, so a range with one is refused rather than ignored. A request with no data gives an empty table with the columns. These endpoints were written from Fugle's documentation and tested against a local server only. To compute SMA, RSI, MACD or Bollinger bands over your own data, or with settings Fugle does not take, use [`quant/ta`](quant-ta.md).
 
 **Corporate actions.** The three corporate action methods need the Developer or Advanced plan. Each takes the first date as a required `from` and `FugleCorporateActionsOptions{To, Descending}`; a `To` in the future includes announced events that have not happened yet, whose prices are nil. Rows come oldest first unless `Descending` is set (Fugle's own default is newest first). Every documented column is present even when no row has it, and the event dates (`haltDate`, `listedDate` and the rest) are times, nil where a step has not happened. `capitalAtApplication` keeps Fugle's units: thousands of dollars for TWSE and dollars for TPEx. These endpoints were written from Fugle's documentation and tested against a local server only.
 

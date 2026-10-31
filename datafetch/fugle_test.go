@@ -573,3 +573,57 @@ func TestFugleSnapshotsRefuseBadInputBeforeSendingAnything(t *testing.T) {
 		t.Errorf("%d requests were sent for refused input", len(fs.requests))
 	}
 }
+
+func TestFugleStockIntradayTicker(t *testing.T) {
+	fs := newFugleServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/stock/intraday/ticker/6488" {
+			// An emerging stock has no price limits.
+			_, _ = w.Write([]byte(`{"date":"2024-01-02","type":"EQUITY","exchange":"TPEx","market":"ESB","symbol":"6488","name":"環球晶","referencePrice":500,"securityStatus":"NORMAL"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"date":"2024-01-02","type":"WARRANT","exchange":"TWSE","market":"TSE","symbol":"030001","name":"權證","industry":"24","securityType":"10",
+			"referencePrice":1.5,"limitUpPrice":2.1,"limitDownPrice":0.9,"canDayTrade":true,"isAttention":false,"boardLot":1000,"exercisePrice":600}`))
+	})
+	c := fs.client(t, FugleConfig{})
+	dt, err := c.Stock.IntradayTicker("030001", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := fs.requests[0]
+	if r.URL.Path != "/stock/intraday/ticker/030001" || r.URL.Query().Get("type") != "oddlot" {
+		t.Errorf("request %s", r.URL.String())
+	}
+	if dt.NumRows() != 1 {
+		t.Fatalf("%d rows", dt.NumRows())
+	}
+	for name, want := range map[string]any{"securityType": "10", "limitUpPrice": 2.1, "canDayTrade": true, "isAttention": false, "boardLot": int64(1000), "exercisePrice": int64(600)} {
+		col := dt.GetColByName(name)
+		if col == nil {
+			t.Errorf("no column %q", name)
+			continue
+		}
+		if got := col.Data()[0]; got != want {
+			t.Errorf("%s = %#v, want %#v", name, got, want)
+		}
+	}
+
+	dt, err = c.Stock.IntradayTicker("6488")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q := fs.requests[1].URL.Query(); q.Has("type") {
+		t.Errorf("a board-lot request sent type=%q", q.Get("type"))
+	}
+	if dt.NumCols() != len(fugleStockTickerColumns) {
+		t.Errorf("%d columns, want the %d documented ones", dt.NumCols(), len(fugleStockTickerColumns))
+	}
+	if col := dt.GetColByName("limitUpPrice"); col == nil || col.Data()[0] != nil {
+		t.Errorf("limitUpPrice of an emerging stock should be a nil cell")
+	}
+	if _, err := c.Stock.IntradayTicker("2330", true, false); err == nil {
+		t.Error("two odd-lot flags were accepted")
+	}
+	if _, err := c.Stock.IntradayTicker(""); err == nil {
+		t.Error("an empty symbol was accepted")
+	}
+}
