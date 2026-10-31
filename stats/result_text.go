@@ -54,6 +54,47 @@ func formatResult(title string, r any) string {
 	return strings.Join(lines, "\n")
 }
 
+// formatRows renders rows, a slice of result structs, as a table: title,
+// then a header of the exported field names and one line per element, cells
+// written as valueText writes them. It is the text form of a result that is a
+// list of results, one per setting (such as one per holding period).
+func formatRows(title string, rows any) string {
+	rv := reflect.ValueOf(rows)
+	if rv.Kind() != reflect.Slice || rv.Type().Elem().Kind() != reflect.Struct {
+		return title + "\n  " + fmt.Sprint(rows)
+	}
+	if rv.Len() == 0 {
+		return title + "\n  (no results)"
+	}
+	et := rv.Type().Elem()
+	var header []string
+	var fields []int
+	for i := 0; i < et.NumField(); i++ {
+		if et.Field(i).IsExported() {
+			header = append(header, et.Field(i).Name)
+			fields = append(fields, i)
+		}
+	}
+	var buf strings.Builder
+	w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintln(w, strings.Join(header, "\t")+"\t")
+	for r := 0; r < rv.Len(); r++ {
+		cells := make([]string, len(fields))
+		for c, f := range fields {
+			cells[c] = valueText(rv.Index(r).Field(f))
+		}
+		fmt.Fprintln(w, strings.Join(cells, "\t")+"\t")
+	}
+	if err := w.Flush(); err != nil {
+		return title + "\n  (table could not be written)"
+	}
+	lines := []string{title}
+	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		lines = append(lines, strings.TrimRight("  "+line, " "))
+	}
+	return strings.Join(lines, "\n")
+}
+
 // writeFields loops over fields of v: skips unexported unless anonymous;
 // an anonymous struct or non-nil pointer to struct is flattened by recursion;
 // otherwise writes the field via writeField.
