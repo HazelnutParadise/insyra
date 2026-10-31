@@ -441,6 +441,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `ta.CandlePatterns` flags thirteen candlestick patterns (doji, hammer, hanging man, inverted hammer, shooting star, engulfing, harami, piercing line, dark cloud cover, morning and evening star, three white soldiers, three black crows), one named list each, with the body and shadow ratios as options (`LongShadowRatio` is how many times the body the long shadow of a hammer or a star must be, `ShortShadowRatio` how many times shorter the opposite shadow, or a soldier's or crow's shadow, must be) and `CandleOptions.SegmentStarts`, which computes each data segment on its own so no pattern uses a bar from before a trading halt or a relisting; the result without it does not change ([#481](https://github.com/HazelnutParadise/insyra/issues/481)).
 - `ta.FilterRule(prices, threshold, opts...)` is Alexander's filter rule (Fama and Blume 1966): buy after a rise of `threshold` from the last low, sell or sell short after a fall of `threshold` from the last high, returned as a 1 / 0 / -1 position per row that `quant.BacktestSignal` takes as it is ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 
+### Container image
+
+- Every release now publishes a container image, `ghcr.io/hazelnutparadise/insyra:<version>`, for `linux/amd64` and `linux/arm64`: the release's `insyra` CLI on the official Go image, with the Vulkan loader and drivers that let `accel` use the host's GPU (`--gpus all` for NVIDIA, `--device /dev/dri` for AMD and Intel on Linux). `0.3` and `latest` follow the highest stable release by version number. See [Docs/container.md](Docs/container.md).
+
 ## v0.3.3
 
 ### Core
