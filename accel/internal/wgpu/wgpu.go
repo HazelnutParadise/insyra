@@ -322,6 +322,12 @@ func NearestShortlist(ctx context.Context, columns []Column, queries [][]float32
 		release = append(release, bindGroup)
 		slices = append(slices, slice{bindGroup: bindGroup, groups: (count + 63) / 64})
 	}
+	// The data and query buffers are storage buffers, whose queue writes
+	// Vulkan does not order with the dispatches that follow
+	// (settleWriteLocked).
+	if err := settleWriteLocked(h); err != nil {
+		return nil, nil, nil, cost, fmt.Errorf("wgpu: upload inputs: %w", err)
+	}
 	cost.Transfer = time.Since(transferStart)
 
 	dispatchStart := time.Now()
