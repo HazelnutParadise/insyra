@@ -2,9 +2,7 @@
 
 ## Purpose
 What running an operation on a GPU must guarantee: the result is bit-identical to the CPU reference whatever the device, only operations measured to win are offered, the device is chosen by the work per row, and a submission too large for one dispatch is split rather than dropped.
-
 ## Requirements
-
 ### Requirement: A device result is bit-identical to its CPU reference
 The system SHALL ship a CPU reference implementation for every device operation, and SHALL verify on the running platform that the device result matches it bit for bit.
 
@@ -202,3 +200,18 @@ The system SHALL compile device kernels with a WGSL compiler under which `countL
 #### Scenario: A select used as an operand
 - **WHEN** a kernel computes `(v >> 24u) | select(0u, 0xffffff00u, (v & 0x80000000u) != 0u)` for v = 0x12345678
 - **THEN** the result is 0x12, not the value of the select alone
+
+### Requirement: A write to a resident buffer is complete before later work uses it
+The system SHALL make a write to a resident buffer (an upload, `Write`, `WriteBits` or `Zero`) land before any later kernel or readback reads the buffer, on every backend.
+
+#### Scenario: Zero then read
+- **WHEN** a buffer holding nonzero words is zeroed and then read back
+- **THEN** every word read is zero, in every run
+
+### Requirement: Discovery keeps the backend that can run work
+The system SHALL keep, when one card is discovered through two backends, the entry whose backend has an executor, and SHALL never prefer a backend without an executor over one that has it.
+
+#### Scenario: An NVIDIA card seen through NVML and WebGPU
+- **WHEN** discovery finds the same NVIDIA card as a CUDA device and as a WebGPU device, and only WebGPU has an executor
+- **THEN** the session keeps the WebGPU device and accelerated operations run on it
+
