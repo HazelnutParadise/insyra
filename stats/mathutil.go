@@ -272,11 +272,22 @@ func prefixSums(x []float64) (cum []float64, ss float64) {
 	return cum, ss
 }
 
-// atLeastAsExtreme reports whether a simulated statistic is at least as far
-// from 0 as the observed one, allowing for the rounding that summing the same
+// tailSides reports whether a simulated statistic is at or below, and at or
+// above, the observed one, allowing for the rounding that summing the same
 // values in another order brings, so a draw equal to the observed sample
-// counts.
-func atLeastAsExtreme(sim, obs float64) bool {
-	a, b := math.Abs(sim), math.Abs(obs)
-	return a >= b-1e-12*(1+b)
+// counts on both sides.
+func tailSides(sim, obs float64) (below, above bool) {
+	tol := 1e-12 * (1 + math.Abs(obs))
+	return sim <= obs+tol, sim >= obs-tol
+}
+
+// equalTailP is the equal-tailed two-sided Monte Carlo p-value of a statistic
+// with below draws at or below it and above draws at or above it out of reps:
+// twice the smaller of (1 + below) / (reps + 1) and (1 + above) / (reps + 1),
+// capped at 1. It matches tests whose critical values are the lower and upper
+// percentiles of the simulated distribution, as Wright's are, which matters
+// when that distribution is skewed.
+func equalTailP(below, above, reps int) float64 {
+	p := 2 * float64(1+min(below, above)) / float64(reps+1)
+	return math.Min(p, 1)
 }

@@ -11,12 +11,12 @@
 
 ### Requirement: Wright p-values come from a seeded simulation of the null
 
-Each p-value of `WrightVarianceRatio` SHALL be `(1 + b) / (B + 1)` for `b` of `B` replications at least as far from 0 as the observed statistic, where a replication permutes the observed `R1` and `R2` scores and draws independent signs for `S1`; `B` SHALL default to 10,000 and the seed SHALL always apply, so the same input and seed give the same p-values.
+Each p-value of `WrightVarianceRatio` SHALL be the equal-tailed two-sided `2 * min(1 + below, 1 + above) / (B + 1)`, capped at 1, for the `B` replications at or below and at or above the observed statistic, where a replication permutes the observed `R1` and `R2` scores and draws independent signs for `S1`; `B` SHALL default to 10,000 and the seed SHALL always apply, so the same input and seed give the same p-values.
 
 #### Scenario: A trending series
 
 - **WHEN** the 60 trending increments are tested with 999 replications
-- **THEN** every p-value is 1/1000
+- **THEN** every p-value is 2/1000
 
 ### Requirement: Variance ratio results print as one table
 

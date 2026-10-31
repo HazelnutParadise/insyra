@@ -1090,7 +1090,7 @@ func ChowDenning(returns insyra.IDataList, robust bool, qs ...int) (*ChowDenning
 - `*ChowDenningResult` from `ChowDenning`: `MaxZ`, the largest absolute `z` over the periods, and `P`, its p-value with the Sidak correction `1 - (2Φ(max) - 1)^k`, so choosing the best `q` does not inflate the false-positive rate (Chow and Denning 1993).
 - `error`: no `q`, a `q` out of range, a nil list, a value that is not a finite number, or returns with no variance.
 
-`res.Show()` prints all the holding periods as one table; each entry also has its own `Show()`, and the result can be ranged over or passed wherever a `[]VarianceRatioResult` is expected.
+`res.Show()` prints all the holding periods as one table, with numbers to 6 significant digits (the fields hold the full values); each entry also has its own `Show()`, and the result can be ranged over or passed wherever a `[]VarianceRatioResult` is expected.
 
 ```go
 res, err := stats.VarianceRatio(returns, 2, 5, 10)
@@ -1103,9 +1103,9 @@ res.Show()
 func WrightVarianceRatio(returns insyra.IDataList, qs []int, opts ...WrightVarianceRatioOptions) (WrightVarianceRatioResults, error)
 ```
 
-**Description:** Asks the question of `VarianceRatio`, whether returns follow a random walk, with Wright's (2000) rank and sign variance ratios. `R1` uses the ranks of the returns, `R2` their normal scores and `S1` only whether each return rose or fell, so outliers and heavy tails do not distort them, and their p-values are exact for any sample size instead of asymptotic. A positive statistic means returns trend, a negative one that they reverse. The statistics match R's `vrtest::Wright`.
+**Description:** Asks the question of `VarianceRatio`, whether returns follow a random walk, with Wright's (2000) rank and sign variance ratios. `R1` uses the ranks of the returns, `R2` their normal scores and `S1` only whether each return rose or fell, so outliers and heavy tails do not distort them, and their p-values hold for any sample size, up to simulation error, instead of relying on a large sample. A positive statistic means returns trend, a negative one that they reverse. The statistics match R's `vrtest::Wright`.
 
-`R1` and `R2` assume the returns are independent and identically distributed under the null. `S1` assumes only that each return is unpredictable with median 0; it counts a return of exactly 0 as a fall, as Wright does, which pulls `S1` down when there are many zeros, so `Zeros` reports how many. Tied returns get average ranks. The p-values come from simulating the null: each replication shuffles the observed rank scores (for `R1` and `R2`) and draws random signs (for `S1`).
+`R1` and `R2` assume the returns are independent and identically distributed under the null. `S1` assumes only that each return is unpredictable with median 0; it counts a return of exactly 0 as a fall, as Wright does. Zeros then make the signs lean negative, which pushes `S1` up and makes it reject a true random walk too often (a thinly traded stock whose price often stays put can look like it trends), so `Zeros` reports how many there were, and with many of them read `R1` and `R2` instead. Tied returns get average ranks. The p-values come from simulating the null: each replication shuffles the observed rank scores (for `R1` and `R2`) and draws random signs (for `S1`).
 
 **Parameters:**
 
@@ -1115,7 +1115,7 @@ func WrightVarianceRatio(returns insyra.IDataList, qs []int, opts ...WrightVaria
 
 **Returns:**
 
-- `WrightVarianceRatioResults`, one entry per `q`: `Q`, the statistics `R1`, `R2` and `S1`, their two-sided p-values `PR1`, `PR2` and `PS1` (`(1 + b) / (B + 1)` for `b` of `B` simulated draws at least as extreme, so never 0), and `Zeros`.
+- `WrightVarianceRatioResults`, one entry per `q`: `Q`, the statistics `R1`, `R2` and `S1`, their equal-tailed two-sided p-values `PR1`, `PR2` and `PS1` (twice the smaller tail share `(1 + b) / (B + 1)` of the `B` simulated draws, capped at 1, so never 0), and `Zeros`.
 - `error`: no `q`, a `q` out of range, a negative `Replications`, more than one options value, a nil list, a value that is not a finite number, or returns that are all equal.
 
 ```go

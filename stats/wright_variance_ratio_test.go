@@ -76,15 +76,15 @@ func TestWrightVarianceRatioMatchesVrtest(t *testing.T) {
 
 func TestWrightVarianceRatioPValues(t *testing.T) {
 	// A trending series is rejected at every q, with the smallest p-value a
-	// simulation of B draws can give.
+	// simulation of B draws can give, 2/(B+1).
 	res, err := WrightVarianceRatio(insyra.NewDataList(wrightTrend...), []int{2, 4}, WrightVarianceRatioOptions{Replications: 999})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, r := range res {
 		for _, p := range []float64{r.PR1, r.PR2, r.PS1} {
-			if p != 1.0/1000 {
-				t.Errorf("q=%d p = %v, want 1/1000", r.Q, p)
+			if p != 2.0/1000 {
+				t.Errorf("q=%d p = %v, want 2/1000", r.Q, p)
 			}
 		}
 	}

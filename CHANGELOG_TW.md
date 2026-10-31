@@ -40,7 +40,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `stats.RunsTest(series, opts...)` 檢定漲跌順序是否隨機（Wald-Wolfowitz）：計算高於與低於切點（預設 0）的連數，回傳期望連數、`Z` 與 p 值（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 - `stats.Autocorrelation` 與 `stats.VarianceRatio` 現在會拒絕由小數（例如 0.1）組成的常數序列：100 個 0.1 的平均值不是剛好 0.1，以前會對沒有變異的序列回報 `Rho` 0.99 和極小的 p 值。
 - `stats.WrightVarianceRatio(returns, qs, opts...)` 用 Wright（2000）的名次與正負號變異數比 `R1`、`R2`、`S1` 檢定隨機漫步；p 值由模擬虛無分配算出，任何樣本數都準確；統計量與 R 的 `vrtest::Wright` 一致（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
-- `VarianceRatio` 與 `Autocorrelation` 改回傳 `VarianceRatioResults`、`AutocorrelationResults`，也就是原本的結果切片多了 `Show()`，能把所有持有期或落後期印成一張表。原本用迴圈走訪或當切片傳遞的程式碼不受影響。
+- `VarianceRatio` 與 `Autocorrelation` 改回傳 `VarianceRatioResults`、`AutocorrelationResults`，也就是原本的結果切片多了 `Show()`，能把所有持有期或落後期印成一張表。原本用迴圈走訪或當切片傳遞的程式碼不受影響；只有把函式本身存進舊函式型別變數（例如 `var f func(insyra.IDataList, ...int) ([]stats.VarianceRatioResult, error) = stats.VarianceRatio`）的寫法要改用新的結果型別。
 
 ### `ml` 與 `nn`
 
