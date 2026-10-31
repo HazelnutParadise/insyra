@@ -197,13 +197,23 @@ CSV 準備 -> DataTable 載入 -> CCL 衍生欄位 -> 排序 -> KPI 彙總 -> �
 
 ### 容器映像
 
-每次發版也會發佈容器映像，內含 CLI 與 Go 工具鏈，在 Linux 上可直接使用宿主機的 GPU：
+每次發版也會發佈一份開箱即用的容器映像，不用安裝 Go 或 Insyra 就能開始做資料分析：
+
+- **內建 Insyra CLI**：容器一啟動就能用 REPL、單行指令和 `.isr` 腳本。
+- **完整的 Go 工具鏈**：可以直接用 `go run .` 建置並執行你自己寫、有用到 Insyra 的 Go 分析程式。
+- **吃得到宿主機的 GPU**：在裝有 NVIDIA、AMD 或 Intel 顯示卡的 Linux 上，`accel` 會替支援的運算加速；沒有 GPU 時一律改用 CPU，結果相同。
+- **一個版本一份映像**：每個 tag 裝的就是那一版的 CLI，日後要重跑分析，也能用同一個版本。
 
 ```sh
-docker run --rm -it --gpus all -v "$PWD":/work ghcr.io/hazelnutparadise/insyra:<版號>
+# 開啟 REPL，並把目前的資料夾掛到 /work
+docker run --rm -it -v "$PWD":/work ghcr.io/hazelnutparadise/insyra:<版號>
+
+# 用 GPU 跑腳本或你自己的 Go 程式（Linux＋NVIDIA）
+docker run --rm --gpus all -v "$PWD":/work ghcr.io/hazelnutparadise/insyra:<版號> insyra run job.isr
+docker run --rm --gpus all -v "$PWD":/work ghcr.io/hazelnutparadise/insyra:<版號> go run .
 ```
 
-tag 規則、GPU 設定與哪些主機能把 GPU 交給容器，請見 [Docs/container.md](/Docs/container.md)。
+tag 規則、GPU 設定，以及哪些主機能把 GPU 交給容器，請見 [Docs/container.md](/Docs/container.md)。
 
 ### 快速範例
 

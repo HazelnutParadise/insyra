@@ -205,10 +205,20 @@ CSV setup -> DataTable loading -> CCL enrichment -> sorting -> KPI aggregation -
 
 ### Container Image
 
-Every release also publishes a container image with the CLI and a Go toolchain, ready to use the host's GPU on Linux:
+Every release also ships as a ready-to-use container image, so you can start analysing data without installing Go or Insyra:
+
+- **The Insyra CLI, ready to run.** The REPL, one-shot commands and `.isr` scripts work as soon as the container starts.
+- **A complete Go toolchain.** Build and run your own Go analysis program that imports Insyra with `go run .`.
+- **Uses the host's GPU.** On Linux with an NVIDIA, AMD or Intel GPU, `accel` speeds up the operations it supports; without one, everything runs on the CPU with the same results.
+- **One image per release.** Each tag holds exactly that release's CLI, so an analysis can be rerun later on the same version.
 
 ```sh
-docker run --rm -it --gpus all -v "$PWD":/work ghcr.io/hazelnutparadise/insyra:<version>
+# Open the REPL with the current directory mounted at /work
+docker run --rm -it -v "$PWD":/work ghcr.io/hazelnutparadise/insyra:<version>
+
+# Run a script, or your own Go program, with the GPU (Linux + NVIDIA)
+docker run --rm --gpus all -v "$PWD":/work ghcr.io/hazelnutparadise/insyra:<version> insyra run job.isr
+docker run --rm --gpus all -v "$PWD":/work ghcr.io/hazelnutparadise/insyra:<version> go run .
 ```
 
 See [Docs/container.md](/Docs/container.md) for tags, GPU setup and the hosts that can pass a GPU through.
