@@ -66,13 +66,30 @@ func (identityLink) mu(eta float64) float64 { return eta }
 func (identityLink) muEta(float64) float64  { return 1 }
 func (identityLink) name() string           { return string(Identity) }
 
-type probitLink struct{}  // TODO: implement in a follow-up issue.
-type cloglogLink struct{} // TODO: implement in a follow-up issue.
+type probitLink struct{} // TODO: implement in a follow-up issue.
 
-var (
-	_ = probitLink{}
-	_ = cloglogLink{}
-)
+var _ = probitLink{}
+
+// cloglogLink is the complementary log-log link of a binomial model,
+// eta = log(-log(1 - mu)), as R's binomial("cloglog") computes it. It is the
+// exact discretisation of a continuous-time proportional-hazards model.
+type cloglogLink struct{}
+
+func (cloglogLink) eta(mu float64) float64 {
+	mu = clampProbability(mu)
+	return math.Log(-math.Log1p(-mu))
+}
+
+func (cloglogLink) mu(eta float64) float64 {
+	return clampProbability(-math.Expm1(-math.Exp(math.Min(eta, glmLogEtaMax))))
+}
+
+func (cloglogLink) muEta(eta float64) float64 {
+	e := math.Min(eta, glmLogEtaMax)
+	return math.Max(math.Exp(e-math.Exp(e)), glmSmall)
+}
+
+func (cloglogLink) name() string { return string(Cloglog) }
 
 func clampProbability(mu float64) float64 {
 	if math.IsNaN(mu) {

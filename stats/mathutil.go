@@ -1,8 +1,13 @@
 package stats
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"sort"
+	"strings"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
 func resolveConfidenceLevel(cl float64) float64 {
@@ -290,4 +295,56 @@ func tailSides(sim, obs float64) (below, above bool) {
 func equalTailP(below, above, reps int) float64 {
 	p := 2 * float64(1+min(below, above)) / float64(reps+1)
 	return math.Min(p, 1)
+}
+
+// spells reads and checks the durations and the event flags.
+func spells(durations, observed insyra.IDataList) ([]int, []bool, error) {
+	t, err := testSeries(durations, "durations")
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(t) == 0 {
+		return nil, nil, errors.New("durations is empty")
+	}
+	flags, err := eventFlags(observed, len(t))
+	if err != nil {
+		return nil, nil, err
+	}
+	d := make([]int, len(t))
+	for i, v := range t {
+		if v < 1 || v != math.Trunc(v) || v > math.MaxInt32 {
+			return nil, nil, fmt.Errorf("durations holds %v at row index %d; a duration must be a whole number of periods, at least 1", v, i)
+		}
+		d[i] = int(v)
+	}
+	return d, flags, nil
+}
+
+// spellCovariates reads the covariates, one value per spell, and their names.
+func spellCovariates(covariates []insyra.IDataList, n int) ([][]float64, []string, error) {
+	values := make([][]float64, len(covariates))
+	names := make([]string, len(covariates))
+	seen := map[string]bool{"Intercept": true, "LogPeriod": true, "Period": true, "Spell": true, "Event": true}
+	for j, c := range covariates {
+		label := fmt.Sprintf("covariate %d", j+1)
+		v, err := testSeries(c, label)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(v) != n {
+			return nil, nil, fmt.Errorf("%s has %d values for %d spells", label, len(v), n)
+		}
+		values[j] = v
+		var name string
+		c.AtomicDo(func(l *insyra.DataList) { name = l.GetName() })
+		if name == "" {
+			name = fmt.Sprintf("X%d", j+1)
+		}
+		if seen[name] || strings.HasPrefix(name, "Period") {
+			return nil, nil, fmt.Errorf("covariate %d is named %q, which another term already uses", j+1, name)
+		}
+		seen[name] = true
+		names[j] = name
+	}
+	return values, names, nil
 }

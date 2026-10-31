@@ -208,7 +208,12 @@ func resolveGLMLink(fam glmFamily, linkName GLMLink) (glmLink, GLMLink, error) {
 			return nil, "", fmt.Errorf("link %q is not supported for family %q", linkName, fam.name())
 		}
 		return identityLink{}, linkName, nil
-	case Probit, Cloglog:
+	case Cloglog:
+		if fam.name() != string(Binomial) {
+			return nil, "", fmt.Errorf("link %q is not supported for family %q", linkName, fam.name())
+		}
+		return cloglogLink{}, linkName, nil
+	case Probit:
 		return nil, "", fmt.Errorf("link %q is reserved but not implemented", linkName)
 	default:
 		return nil, "", fmt.Errorf("unsupported GLM link %q", linkName)

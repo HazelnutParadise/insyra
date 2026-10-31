@@ -1,6 +1,9 @@
 package stats
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // This file gives every result type its text form. Each String is
 // formatResult with the type's title, so every result prints by the rules
@@ -84,6 +87,25 @@ func (r *RunsTestResult) String() string { return formatResult("Runs test", r) }
 
 // Show prints String to standard output.
 func (r *RunsTestResult) Show() { fmt.Println(r.String()) }
+
+// String returns the result as text: "Discrete-time hazard", the link,
+// baseline, spells and events, then the terms as a table. The person-period
+// GLM is left out; read the GLM field for it.
+func (r *DiscreteTimeHazardResult) String() string {
+	if r == nil {
+		return "<nil>"
+	}
+	head := formatResult("Discrete-time hazard", &struct {
+		Link     GLMLink
+		Baseline HazardBaseline
+		N        int
+		Events   int
+	}{r.Link, r.Baseline, r.N, r.Events})
+	return head + "\n" + strings.ReplaceAll(formatRows("  Terms:", r.Terms), "\n", "\n  ")
+}
+
+// Show prints String to standard output.
+func (r *DiscreteTimeHazardResult) Show() { fmt.Println(r.String()) }
 
 // String returns the result as text: "Kaplan-Meier", then one line per field.
 func (r *KaplanMeierResult) String() string { return formatResult("Kaplan-Meier", r) }

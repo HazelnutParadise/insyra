@@ -1188,6 +1188,35 @@ func KaplanMeier(durations, observed insyra.IDataList) (*KaplanMeierResult, erro
 - `*KaplanMeierResult`: one entry per distinct event time in `Times`, `AtRisk`, `Events`, `Censored`, `Survival` and `StdErr` (Greenwood's standard error of the survival probability, `NaN` where every subject at risk had the event), plus `Median` (the first time the curve is at or below 0.5, the midpoint of the stretch when it is exactly 0.5 and an event ends it (as R prints it; a stretch that runs out at a censored time stays at the last event, where R's `quantile()` would use the last observation), `NaN` if it never gets there), `N` and `Total`. The values match R's `survival::survfit`.
 - `error`: a nil or empty list, lists of different lengths, a negative or non-finite duration, or an `observed` that is not a bool or 0/1.
 
+### Discrete-Time Hazard
+
+```go
+func DiscreteTimeHazard(durations, observed insyra.IDataList, opts ...DiscreteTimeHazardOptions) (*DiscreteTimeHazardResult, error)
+func PersonPeriod(durations, observed insyra.IDataList, covariates ...insyra.IDataList) (*insyra.DataTable, error)
+```
+
+**Description:** Asks whether a spell is more or less likely to end the longer it has lasted, and what else changes that chance: is a bull market that has run 30 days more likely to end tomorrow than one that has run 5? It models the hazard, the chance a spell ends in period `t` given that it lasted to `t`, with Allison's person-period method: each spell of `d` periods becomes `d` rows, and a binomial GLM is fitted to them (`PersonPeriod` returns that table). Spells still going when observation stopped are used as they are, which is the exact likelihood. The data have the shape `KaplanMeier` takes, except that durations are whole numbers of periods, at least 1. A spell that was already running when the data begins must be left out.
+
+**Parameters:**
+
+- `durations`: How many periods each spell lasted, whole numbers from 1.
+- `observed`: `true` (or 1) when the spell ended, `false` (or 0) when it was still going.
+- `opts`: Optional `DiscreteTimeHazardOptions`: `Covariates` (one value per spell, constant over its life, named by their list names or `X1`, `X2`, ...), `Link` (`stats.Logit`, the default, or `stats.Cloglog`), `Baseline` (`HazardBaselineLog`, the default, uses `log t`, whose coefficient does not depend on the unit of the period; `HazardBaselineLinear` uses `t`; `HazardBaselineDummies` gives every period its own level, period 1 being the reference) and `ConfidenceLevel` (default 0.95).
+
+**Returns:**
+
+- `*DiscreteTimeHazardResult`: `Duration`, the term in the period (`LogPeriod` or `Period`; `nil` for dummies), whose positive coefficient means a spell is more likely to end the longer it lasts; `Terms`, every term in order (`Intercept`, the baseline terms, the covariates) with `Coefficient`, `StdErr`, `ZValue`, `PValue` and `CI`, also found by name with `Term(name)`; `Link`, `Baseline`, `N` (spells), `Events` (spells that ended) and `GLM`, the whole fit, whose rows are person-periods. With `Cloglog` the `LogPeriod` coefficient is the shape of a discrete Weibull minus 1. `Show()` prints the terms as a table. The fits equal R's `glm(Event ~ log(Period) + x, family = binomial(link))` on the same person-period table.
+- `error`: a duration that is not a whole number of at least 1, all spells censored, a link other than Logit or Cloglog, a covariate with the wrong number of values or a name another term uses, more than one options value, or, for `HazardBaselineDummies`, a period in which no spell or every spell at risk ended (the error names the periods).
+
+```go
+swings, _ := ta.ZigZag(close, 0.10)
+regimes, _ := ta.Regimes(swings)
+d, ended, _ := ta.RegimeDurations(regimes, ta.RegimeBull, close.Len(), nil)
+res, err := stats.DiscreteTimeHazard(d, ended)
+res.Show()
+res.Duration.Coefficient // > 0: a bull market is more likely to end the longer it has run
+```
+
 ---
 
 ## Nonparametric Tests (Rank-Based)
@@ -2362,12 +2391,12 @@ fmt.Printf("IRR for x = %.4f\n", fit.IncidenceRateRatios[1])
 func GLM(opts GLMOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*GLMResult, error)
 ```
 
-**Description:** Fits a generalized linear model for supported family/link pairs. If `Link` is empty, the canonical link is used. Current supported pairs are `Binomial` + `Logit`, `Poisson` + `Log`, and `Gaussian` + `Identity`.
+**Description:** Fits a generalized linear model for supported family/link pairs. If `Link` is empty, the canonical link is used. Current supported pairs are `Binomial` + `Logit`, `Binomial` + `Cloglog`, `Poisson` + `Log`, and `Gaussian` + `Identity`. `Cloglog` is R's `binomial("cloglog")`, `log(-log(1 - p))`.
 
 ```go
 type GLMOptions struct {
     Family          stats.GLMFamily // Binomial, Poisson, Gaussian
-    Link            stats.GLMLink   // Logit, Log, Identity
+    Link            stats.GLMLink   // Logit, Cloglog, Log, Identity
     ConfidenceLevel float64
     MaxIter         int
     Tolerance       float64

@@ -42,6 +42,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `stats.Autocorrelation` and `stats.VarianceRatio` now refuse a constant series whose values are decimals such as 0.1: the mean of 100 copies of 0.1 is not exactly 0.1, so they reported `Rho` 0.99 and a tiny p-value for a series with no variance.
 - `stats.WrightVarianceRatio(returns, qs, opts...)` tests for a random walk with Wright's (2000) rank and sign variance ratios `R1`, `R2` and `S1`, whose p-values come from simulating the null and so hold for any sample size; the statistics match R's `vrtest::Wright` ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 - `VarianceRatio` and `Autocorrelation` return `VarianceRatioResults` and `AutocorrelationResults`, slices of their results with a `Show()` that prints every holding period or lag as one table. Code that ranges over the result or passes it as a slice is unchanged; only a variable of the old function type, such as `var f func(insyra.IDataList, ...int) ([]stats.VarianceRatioResult, error) = stats.VarianceRatio`, needs the new result type.
+- `stats.DiscreteTimeHazard(durations, observed, opts...)` fits a discrete-time hazard model, whether a spell is more likely to end the longer it lasts and what else changes that chance, by Allison's person-period method, and `stats.PersonPeriod` returns the person-period table it fits. `GLM` accepts the `Cloglog` link for the binomial family. The fits equal R's `glm` ([#443](https://github.com/HazelnutParadise/insyra/issues/443)).
 
 ### `ml` and `nn`
 
@@ -55,6 +56,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `quant/ta`
 
 - `ta.FilterRule(prices, threshold, opts...)` is Alexander's filter rule (Fama and Blume 1966): buy after a rise of `threshold` from the last low, sell or sell short after a fall of `threshold` from the last high, returned as a 1 / 0 / -1 position per row that `quant.BacktestSignal` takes as it is ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
+- `ta.RegimeDurations(regimes, kind, rows, segmentStarts)` turns the regimes of `Regimes` into the durations and ended flags `stats.KaplanMeier` and `stats.DiscreteTimeHazard` take, adding the still-going stretch after the last turning point of each segment as a censored spell ([#443](https://github.com/HazelnutParadise/insyra/issues/443)).
 
 ### `accel`
 

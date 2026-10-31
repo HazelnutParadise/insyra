@@ -148,6 +148,20 @@ Turns the swings into bull stretches (low to the next high) and bear stretches (
 
 `RegimeOptions.MinPhase` removes a stretch shorter than that many rows together with the two turning points around it, so its neighbours join; `MinCycle` removes a turning point that makes a low-to-low or high-to-high cycle shorter than that, with the one before it. They follow the minimum phase and cycle lengths of Pagan and Sossounov (2003). Using them looks at the whole list, so it is not causal.
 
+### RegimeDurations
+
+```go
+func RegimeDurations(regimes []Regime, kind RegimeKind, rows int, segmentStarts []int) (durations, observed *insyra.DataList, err error)
+```
+
+Turns regimes into the two lists `stats.KaplanMeier` and `stats.DiscreteTimeHazard` take: how many rows each regime of `kind` lasted, and whether it ended. Every regime `Regimes` reports ended. The stretch after the last turning point of each segment, which `Regimes` leaves out, is still going; when it is of `kind` it is added with `observed` false, so long regimes cut off by the end of the data are not lost. `rows` is the length of the price series and `segmentStarts` the `SegmentStarts` given to `ZigZagAdaptive` (`nil` without segments). A still-going stretch of 0 rows is left out, and a segment with a single turning point has no regime and adds nothing.
+
+```go
+regimes, _ := ta.Regimes(swings)
+d, ended, _ := ta.RegimeDurations(regimes, ta.RegimeBull, close.Len(), nil)
+res, _ := stats.DiscreteTimeHazard(d, ended)
+```
+
 ### FilterRule
 
 ```go
