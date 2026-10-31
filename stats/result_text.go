@@ -2,6 +2,7 @@ package stats
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -52,6 +53,60 @@ func formatResult(title string, r any) string {
 	lines = append(lines, title)
 	writeFields(&lines, rv)
 	return strings.Join(lines, "\n")
+}
+
+// formatRows renders rows, a slice of result structs, as a table: title,
+// then a header of the exported field names and one line per element. A float
+// is written to 6 significant digits so the columns stay narrow; the fields
+// hold the full values. Other cells are written as valueText writes them. It is the text form of a result that is a
+// list of results, one per setting (such as one per holding period).
+func formatRows(title string, rows any) string {
+	rv := reflect.ValueOf(rows)
+	if rv.Kind() != reflect.Slice || rv.Type().Elem().Kind() != reflect.Struct {
+		return title + "\n  " + fmt.Sprint(rows)
+	}
+	if rv.Len() == 0 {
+		return title + "\n  (no results)"
+	}
+	et := rv.Type().Elem()
+	var header []string
+	var fields []int
+	for i := 0; i < et.NumField(); i++ {
+		if et.Field(i).IsExported() {
+			header = append(header, et.Field(i).Name)
+			fields = append(fields, i)
+		}
+	}
+	var buf strings.Builder
+	w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintln(w, strings.Join(header, "\t")+"\t")
+	for r := 0; r < rv.Len(); r++ {
+		cells := make([]string, len(fields))
+		for c, f := range fields {
+			cells[c] = rowCellText(rv.Index(r).Field(f))
+		}
+		fmt.Fprintln(w, strings.Join(cells, "\t")+"\t")
+	}
+	if err := w.Flush(); err != nil {
+		return title + "\n  (table could not be written)"
+	}
+	lines := []string{title}
+	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		lines = append(lines, strings.TrimRight("  "+line, " "))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// rowCellText writes one cell of formatRows.
+func rowCellText(v reflect.Value) string {
+	if v.Kind() == reflect.Float64 || v.Kind() == reflect.Float32 {
+		f := v.Float()
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return valueText(v)
+		}
+		return strconv.FormatFloat(f, 'g', 6, 64)
+	}
+	return valueText(v)
 }
 
 // writeFields loops over fields of v: skips unexported unless anonymous;
