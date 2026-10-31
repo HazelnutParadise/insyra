@@ -860,7 +860,7 @@ Dataset(name, dataID string, from, to time.Time) (*insyra.DataTable, error)
 
 ## Fugle
 
-Fugle (developer.fugle.tw) serves Taiwan stock quotes, intraday candles and historical candles over a REST API, with no brokerage account needed. `FugleClient` reads its intraday and historical stock endpoints through `client.Stock` and the intraday futures and options endpoints through `client.FutOpt`. Snapshots, technical indicators, corporate actions, ownership and the WebSocket stream are not in this version.
+Fugle (developer.fugle.tw) serves Taiwan stock, futures and options data over a REST API, with no brokerage account needed. `FugleClient` reads the stock endpoints (intraday, historical and snapshots) through `client.Stock` and the futures and options endpoints (intraday and historical) through `client.FutOpt`. Technical indicators, corporate actions, ownership and the WebSocket stream are not in this version.
 
 ```go
 client, err := datafetch.Fugle(datafetch.FugleConfig{APIKey: os.Getenv("FUGLE_API_KEY")})

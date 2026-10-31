@@ -61,6 +61,23 @@ tape.Backward(loss)
 tape.AdamW(1e-3, 1e-2)
 ```
 
+## 用富果抓台股資料
+
+已經在用[富果行情 API](https://developer.fugle.tw) 嗎？把 API 金鑰帶進 Insyra，每個結果都直接是 `DataTable`，在 Go 裡就能篩選、畫圖、建模、回測，不用再轉格式。方法名稱對照富果 Python SDK，`stock.intraday.quote` 就是 `client.Stock.IntradayQuote`：
+
+- **股票**：盤中報價、K 線、成交明細與分價量，任意區間的歷史 K 線、價格統計，以及全市場快照（漲跌幅與成交排行）。
+- **期貨選擇權**：盤中商品、契約、報價與 K 線，還有歷史 K 線與每日行情。
+
+```go
+client, err := datafetch.Fugle(datafetch.FugleConfig{APIKey: os.Getenv("FUGLE_API_KEY")})
+bars, err := client.Stock.HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{
+    From: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), To: time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
+})
+bars.Show() // date, open, high, low, close, volume, ...
+```
+
+請求頻率限制、方案權限錯誤和超過一年的區間都會自動處理。**[看富果使用說明](/Docs/datafetch.md#fugle)**
+
 ## AI / Agent Skills
 
 這個 repo 內含兩份 **agent skill**：
@@ -414,7 +431,7 @@ dl := insyra.NewDataList(prices) // 每個價格一格
 | **[quant/ta](/Docs/quant-ta.md)** | 用來檢驗、不是用來相信的技術分析工具：均線、MACD、KD、RSI、布林通道、ATR、成交量與市場廣度指標、轉折點與多空期間、圖形型態、跳空與打散價格的對照組，並附上我們的研究對它們的結論 |
 | **[py](/Docs/py.md)** | 在 Go 中執行 Python，免手動安裝環境；變數雙向傳遞。 |
 | **[pd](/Docs/pd.md)** | 基於 `gpandas` 的 Pandas 風格 `DataFrame` 工具，含 `DataTable` 轉換。 |
-| **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance、台灣逆地理編碼，以及 TWSE／TPEx 股票資料。 |
+| **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance、富果行情、台灣逆地理編碼，以及 TWSE／TPEx 股票資料。 |
 | **[lpgen](/Docs/lpgen.md)** | 產生線性規劃（LP）模型並輸出 `.lp` 檔。 |
 | **[lp](/Docs/lp.md)** | 使用 [GLPK](https://www.gnu.org/software/glpk/) 的全自動 LP 求解器。 |
 | **[engine](/engine/README.md)** | 匯出部分 Insyra 內部實作，供其他專案重用。 |

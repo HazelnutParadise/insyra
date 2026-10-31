@@ -61,6 +61,23 @@ tape.Backward(loss)
 tape.AdamW(1e-3, 1e-2)
 ```
 
+## Taiwan Market Data with Fugle
+
+Already a [Fugle](https://developer.fugle.tw) market data user? Bring your API key to Insyra and every answer comes back as a `DataTable`, ready to filter, chart, model, or backtest in Go, with no conversion step. The methods follow the names of Fugle's Python SDK, so `stock.intraday.quote` becomes `client.Stock.IntradayQuote`:
+
+- **Stocks**: intraday quotes, candles, trades and volumes, historical candles over any range, price statistics, and market-wide snapshots (movers and most active).
+- **Futures and options**: intraday products, contracts, quotes and candles, plus historical candles and daily data.
+
+```go
+client, err := datafetch.Fugle(datafetch.FugleConfig{APIKey: os.Getenv("FUGLE_API_KEY")})
+bars, err := client.Stock.HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{
+    From: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), To: time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
+})
+bars.Show() // date, open, high, low, close, volume, ...
+```
+
+Rate limits, plan errors and long ranges are handled for you. **[See the Fugle guide](/Docs/datafetch.md#fugle)**
+
 ## AI / Agent Skills
 
 This repository includes **agent skills**:
@@ -427,7 +444,7 @@ How a cell treats a decimal (it sorts by value, but `Mean` and `Sum` need it con
 | **[quant/ta](/Docs/quant-ta.md)** | Technical-analysis tools to test, not to trust: moving averages, MACD, KD, RSI, Bollinger bands, ATR, volume and breadth indicators, turning points and regimes, chart patterns, gaps and a shuffled-price control, with what our own study found about them |
 | **[py](/Docs/py.md)** | Run Python from Go with no manual environment setup; pass variables both ways. |
 | **[pd](/Docs/pd.md)** | Pandas-like `DataFrame` helpers built on `gpandas`, with `DataTable` conversion. |
-| **[datafetch](/Docs/datafetch.md)** | Easy data fetching: Google Maps store reviews, Yahoo Finance, Taiwan reverse geocoding, and TWSE/TPEx stock data. |
+| **[datafetch](/Docs/datafetch.md)** | Easy data fetching: Google Maps store reviews, Yahoo Finance, Fugle market data, Taiwan reverse geocoding, and TWSE/TPEx stock data. |
 | **[lpgen](/Docs/lpgen.md)** | Generate linear programming (LP) models and export them as `.lp` files. |
 | **[lp](/Docs/lp.md)** | Fully automatic LP solver using [GLPK](https://www.gnu.org/software/glpk/). |
 | **[engine](/engine/README.md)** | Re-exports selected Insyra internals for reuse in other projects. |
