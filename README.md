@@ -65,7 +65,7 @@ tape.AdamW(1e-3, 1e-2)
 
 Already a [Fugle](https://developer.fugle.tw) market data user? Bring your API key to Insyra and every answer comes back as a `DataTable`, ready to filter, chart, model, or backtest in Go, with no conversion step. The methods follow the names of Fugle's Python SDK, so `stock.intraday.quote` becomes `client.Stock.IntradayQuote`:
 
-- **Stocks**: intraday quotes, candles, trades and volumes, historical candles over any range, price statistics, and market-wide snapshots (movers and most active).
+- **Stocks**: intraday quotes, candles, trades and volumes, historical candles over any range, price statistics, market-wide snapshots (movers and most active), technical indicators, dividends and other corporate actions, and ownership data (institutional trades, ETF holdings, director holdings, shareholding distribution).
 - **Futures and options**: intraday products, contracts, quotes and candles, plus historical candles and daily data.
 
 ```go
