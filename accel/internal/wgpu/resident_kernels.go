@@ -258,6 +258,12 @@ func Clone(source *Buffer) (*Buffer, error) {
 	sourceBuffer, sourceReleased := source.buffer, source.released
 	source.mu.Unlock()
 	if sourceReleased || sourceBuffer == nil {
+		source.mu.Lock()
+		lost := source.lost.Load()
+		source.mu.Unlock()
+		if lost {
+			return fail(fmt.Errorf("%w: clone of a buffer", ErrDeviceLost))
+		}
 		return fail(fmt.Errorf("wgpu: clone of a released buffer"))
 	}
 	encoder, err := h.device.CreateCommandEncoder(nil)
@@ -270,7 +276,7 @@ func Clone(source *Buffer) (*Buffer, error) {
 		return fail(fmt.Errorf("wgpu: finish clone encoder: %w", err))
 	}
 	if _, err := h.device.Queue().Submit(commands); err != nil {
-		return fail(fmt.Errorf("wgpu: submit clone: %w", err))
+		return fail(h.failed(fmt.Errorf("wgpu: submit clone: %w", err)))
 	}
 	return out, nil
 }

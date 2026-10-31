@@ -87,6 +87,7 @@ const (
 	FallbackReasonShaderCompileFailed   FallbackReason = "shader-compile-failed"
 	FallbackReasonBufferTooLarge        FallbackReason = "buffer-too-large"
 	FallbackReasonReadbackTimeout       FallbackReason = "readback-timeout"
+	FallbackReasonDeviceLost            FallbackReason = "device-lost"
 	FallbackReasonExecutionFailed       FallbackReason = "execution-failed"
 )
 

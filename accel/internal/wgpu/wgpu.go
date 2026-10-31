@@ -53,6 +53,10 @@ var (
 
 // Probe reports the adapter, or ErrUnavailable when there is no GPU worth using.
 func Probe() (Info, error) {
+	// submitMu, because acquire may release a lost device's objects, which
+	// must not happen while another call is still using them.
+	submitMu.Lock()
+	defer submitMu.Unlock()
 	h, err := acquire()
 	if err != nil {
 		return Info{}, ErrUnavailable
@@ -222,7 +226,7 @@ func NearestShortlist(ctx context.Context, columns []Column, queries [][]float32
 	release := make([]interface{ Release() }, 0, 8)
 	defer func() {
 		for _, r := range release {
-			r.Release()
+			releaseQuietly(r)
 		}
 	}()
 	mk := func(label string, size uint64, usage gputypes.BufferUsage) (*gowgpu.Buffer, error) {
@@ -345,7 +349,7 @@ func NearestShortlist(ctx context.Context, columns []Column, queries [][]float32
 		return nil, nil, nil, cost, fmt.Errorf("wgpu: finish encoder: %w", err)
 	}
 	if _, err := h.device.Queue().Submit(commands); err != nil {
-		return nil, nil, nil, cost, fmt.Errorf("wgpu: submit: %w", err)
+		return nil, nil, nil, cost, h.failed(fmt.Errorf("wgpu: submit: %w", err))
 	}
 	cost.Dispatch = time.Since(dispatchStart)
 
@@ -357,7 +361,7 @@ func NearestShortlist(ctx context.Context, columns []Column, queries [][]float32
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(mapCtx.Err(), context.DeadlineExceeded) {
 			return nil, nil, nil, cost, fmt.Errorf("%w: %w", ErrReadbackTimeout, err)
 		}
-		return nil, nil, nil, cost, fmt.Errorf("wgpu: map staging buffer: %w", err)
+		return nil, nil, nil, cost, h.failed(fmt.Errorf("wgpu: map staging buffer: %w", err))
 	}
 	mapped, err := staging.MappedRange(0, total)
 	if err != nil {
@@ -426,6 +430,10 @@ type handle struct {
 	device   *gowgpu.Device
 	info     gputypes.AdapterInfo
 	limits   gputypes.Limits
+	retired  bool // the device was lost; see retireLocked
+	// retained holds the shader modules and pipeline layouts behind the
+	// cached pipelines below, released only when the device is retired.
+	retained []interface{ Release() }
 
 	shortlistOnce     sync.Once
 	shortlistBGLayout *gowgpu.BindGroupLayout
@@ -482,14 +490,16 @@ func (h *handle) shortlistPipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroup
 		}
 		h.shortlistBGLayout = bgLayout
 		h.shortlistPipe = pipeline
+		h.retained = append(h.retained, shader, plLayout)
 	})
 	return h.shortlistPipe, h.shortlistBGLayout, h.shortlistErr
 }
 
 var (
-	sharedOnce sync.Once
-	shared     *handle
-	sharedErr  error
+	sharedMu    sync.Mutex
+	shared      *handle
+	sharedErr   error
+	sharedTried bool
 )
 
 // errSoftwareAdapter is returned when the only adapter on offer is gogpu's
@@ -498,10 +508,20 @@ var (
 // avoid.
 var errSoftwareAdapter = errors.New("wgpu: only a software (CPU) adapter is available")
 
+// acquire returns the shared device, opening it on first use. After the
+// device is lost (retireLocked) the next call opens a new one; a failure to
+// open is remembered, so a host without a GPU is probed once.
 func acquire() (*handle, error) {
-	sharedOnce.Do(func() {
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	if !sharedTried {
+		for _, resource := range teardown {
+			releaseQuietly(resource)
+		}
+		teardown = nil
 		shared, sharedErr = open()
-	})
+		sharedTried = true
+	}
 	return shared, sharedErr
 }
 
