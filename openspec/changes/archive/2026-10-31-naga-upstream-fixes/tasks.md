@@ -7,4 +7,4 @@
 - [x] `TestWGSLBuiltinsMatchTheHost` passes on an Apple M3 over Metal and fails there with naga v0.19.0.
 - [x] `INSYRA_ACCEL_GPU_TESTS=1 go test ./accel/... ./nn/...` passes on the M3. `-race` ran on `dev`'s port of this change, with the same gogpu/wgpu v0.34.5.
 - [x] An entry in the `### `accel`` section above `## Unreleased` in both CHANGELOGs.
-- [ ] The device tests pass on an NVIDIA GT 1030 over Vulkan.
+- [x] The device tests pass on an NVIDIA GT 1030 over Vulkan (`TestWGSLBuiltinsMatchTheHost` and the subnormal division, square root, exp and log tests, 2026-10-31).
