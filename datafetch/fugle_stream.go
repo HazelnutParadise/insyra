@@ -97,6 +97,7 @@ type fugleStream struct {
 	writeMu sync.Mutex
 	mu      sync.Mutex // guards conn, subs, err and closed
 	conn    *websocket.Conn
+	lost    chan struct{}             // closed when conn stops being read
 	subs    map[fugleStreamKey]string // the id Fugle gave each subscription
 	resub   []bool                    // flags of resubscriptions whose reply is pending, oldest first
 	err     error
@@ -157,6 +158,7 @@ func (c *FugleClient) openStream(ctx context.Context, product, flagName string, 
 		return nil, err
 	}
 	s.conn = conn
+	s.lost = make(chan struct{})
 	go s.run()
 	return s, nil
 }
@@ -195,6 +197,12 @@ func (s *fugleStream) connect(ctx context.Context) (*websocket.Conn, error) {
 		}
 		switch f.Event {
 		case "authenticated":
+			if !stop() {
+				// ctx ended as authentication succeeded and its deadline is
+				// being set; the connection cannot be trusted to read.
+				_ = conn.Close()
+				return nil, fmt.Errorf("datafetch: Fugle WebSocket authentication: %w", ctx.Err())
+			}
 			_ = conn.SetReadDeadline(time.Time{})
 			return conn, nil
 		case "error":
@@ -249,10 +257,11 @@ func (s *fugleStream) run() {
 	defer close(s.msgs)
 	for {
 		s.mu.Lock()
-		conn := s.conn
+		conn, lost := s.conn, s.lost
 		s.mu.Unlock()
 		fatal := s.read(conn)
 		_ = conn.Close()
+		close(lost)
 		if s.isClosed() {
 			return
 		}
@@ -344,6 +353,7 @@ func (s *fugleStream) reply(r fugleStreamReply) {
 // everything again. It returns false when the stream ended meanwhile.
 func (s *fugleStream) reconnect() bool {
 	wait := s.backoff
+	full := 0 // reconnects refused in a row because the plan's connections are all in use
 	for {
 		select {
 		case <-s.done:
@@ -372,6 +382,7 @@ func (s *fugleStream) reconnect() bool {
 				return false
 			}
 			s.conn = conn
+			s.lost = make(chan struct{})
 			type group struct {
 				ch   FugleChannel
 				flag bool
@@ -401,6 +412,16 @@ func (s *fugleStream) reconnect() bool {
 			}
 			insyra.LogWarning("datafetch", "FugleStream", "the connection dropped and was reopened; subscriptions were renewed and send their snapshots again")
 			return true
+		}
+		if strings.Contains(err.Error(), "Maximum number of connections") {
+			// The dropped connection may hold its place for a moment, so a few
+			// refusals are expected; more mean the limit is really reached.
+			if full++; full >= 5 {
+				s.fail(err)
+				return false
+			}
+		} else {
+			full = 0
 		}
 		if errors.Is(err, ErrFugleAuth) || errors.Is(err, ErrFuglePlan) {
 			s.fail(err)
@@ -545,8 +566,10 @@ func (s *fugleStream) checkSymbols(ch FugleChannel, symbols []string) ([]string,
 	return out, nil
 }
 
-// command sends one subscribe or unsubscribe and waits for its reply.
-func (s *fugleStream) command(frame map[string]any, want string) (json.RawMessage, error) {
+// command sends one subscribe or unsubscribe and waits for its reply. build
+// makes the frame and apply records the reply; both run under cmdMu, so a reconnect cannot come between
+// them.
+func (s *fugleStream) command(build func() (map[string]any, error), want string, apply func(json.RawMessage)) error {
 	s.cmdMu.Lock()
 	defer s.cmdMu.Unlock()
 	s.mu.Lock()
@@ -556,15 +579,19 @@ func (s *fugleStream) command(frame map[string]any, want string) (json.RawMessag
 		if err == nil {
 			err = errFugleStreamClosed
 		}
-		return nil, err
+		return err
 	}
-	conn := s.conn
+	conn, lost := s.conn, s.lost
 	s.mu.Unlock()
+	frame, err := build()
+	if err != nil {
+		return err
+	}
 	for len(s.replies) > 0 {
 		<-s.replies
 	}
 	if err := s.writeConn(conn, frame); err != nil {
-		return nil, err
+		return err
 	}
 	timer := time.NewTimer(s.timeout)
 	defer timer.Stop()
@@ -576,18 +603,22 @@ func (s *fugleStream) command(frame map[string]any, want string) (json.RawMessag
 					Message string `json:"message"`
 				}
 				_ = json.Unmarshal(r.data, &d)
-				return nil, fugleStreamError(r.code, d.Message)
+				return fugleStreamError(r.code, d.Message)
 			}
 			if r.event == want {
-				return r.data, nil
+				apply(r.data)
+				return nil
 			}
-		case <-s.exited:
+		case <-lost:
+			if s.isClosed() {
+				return errFugleStreamClosed
+			}
 			if err := s.Err(); err != nil {
-				return nil, err
+				return err
 			}
-			return nil, errFugleStreamClosed
+			return fmt.Errorf("datafetch: Fugle connection dropped before the %s request was answered; the stream is reconnecting, try again", frame["event"])
 		case <-timer.C:
-			return nil, fmt.Errorf("datafetch: Fugle did not answer the %s request within %s; the connection may have dropped, try again", frame["event"], s.timeout)
+			return fmt.Errorf("datafetch: Fugle did not answer the %s request within %s; try again", frame["event"], s.timeout)
 		}
 	}
 }
@@ -613,16 +644,14 @@ func (s *fugleStream) subscribe(ch FugleChannel, symbols []string, flags []bool)
 	if err != nil {
 		return err
 	}
-	data, err := s.command(s.subscribeFrame(ch, symbols, flag), "subscribed")
-	if err != nil {
-		return err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, e := range fugleStreamEntries(data) {
-		s.subs[fugleStreamKey{FugleChannel(e.Channel), e.Symbol, flag}] = e.ID
-	}
-	return nil
+	return s.command(func() (map[string]any, error) { return s.subscribeFrame(ch, symbols, flag), nil }, "subscribed",
+		func(data json.RawMessage) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			for _, e := range fugleStreamEntries(data) {
+				s.subs[fugleStreamKey{FugleChannel(e.Channel), e.Symbol, flag}] = e.ID
+			}
+		})
 }
 
 func (s *fugleStream) unsubscribe(ch FugleChannel, symbols []string, flags []bool) error {
@@ -634,32 +663,36 @@ func (s *fugleStream) unsubscribe(ch FugleChannel, symbols []string, flags []boo
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	var ids, missing []string
-	for _, sym := range symbols {
-		id, ok := s.subs[fugleStreamKey{ch, sym, flag}]
-		switch {
-		case !ok:
-			missing = append(missing, sym)
-		case id != "":
-			ids = append(ids, id)
+	build := func() (map[string]any, error) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		var ids, missing, renewing []string
+		for _, sym := range symbols {
+			id, ok := s.subs[fugleStreamKey{ch, sym, flag}]
+			switch {
+			case !ok:
+				missing = append(missing, sym)
+			case id == "":
+				renewing = append(renewing, sym)
+			default:
+				ids = append(ids, id)
+			}
 		}
-	}
-	s.mu.Unlock()
-	if len(missing) > 0 {
-		return fmt.Errorf("datafetch: Fugle stream is not subscribed to %s for %s", string(ch), strings.Join(missing, ", "))
-	}
-	if len(ids) > 0 {
-		if _, err := s.command(map[string]any{"event": "unsubscribe", "data": map[string]any{"ids": ids}}, "unsubscribed"); err != nil {
-			return err
+		if len(missing) > 0 {
+			return nil, fmt.Errorf("datafetch: Fugle stream is not subscribed to %s for %s", string(ch), strings.Join(missing, ", "))
 		}
+		if len(renewing) > 0 {
+			return nil, fmt.Errorf("datafetch: Fugle stream is renewing the %s subscription of %s after a reconnect; try again", string(ch), strings.Join(renewing, ", "))
+		}
+		return map[string]any{"event": "unsubscribe", "data": map[string]any{"ids": ids}}, nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, sym := range symbols {
-		delete(s.subs, fugleStreamKey{ch, sym, flag})
-	}
-	return nil
+	return s.command(build, "unsubscribed", func(json.RawMessage) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for _, sym := range symbols {
+			delete(s.subs, fugleStreamKey{ch, sym, flag})
+		}
+	})
 }
 
 // Err returns the error that ended the stream, or nil while it runs and after

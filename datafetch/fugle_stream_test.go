@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -23,6 +24,9 @@ type fakeFugleStream struct {
 	frames  []map[string]any // every frame received after auth
 	session func(n int32, c *websocket.Conn, read func() map[string]any)
 	badKey  bool
+	// authError, when set, answers the auth of connection n with an error
+	// frame instead of authenticating.
+	authError func(n int32) map[string]any
 }
 
 func newFakeFugleStream(t *testing.T, session func(n int32, c *websocket.Conn, read func() map[string]any)) *fakeFugleStream {
@@ -47,6 +51,12 @@ func newFakeFugleStream(t *testing.T, session func(n int32, c *websocket.Conn, r
 		if f.badKey {
 			_ = c.WriteJSON(map[string]any{"event": "error", "code": 1000, "data": map[string]any{"message": "Invalid authentication credentials"}})
 			return
+		}
+		if f.authError != nil {
+			if e := f.authError(n); e != nil {
+				_ = c.WriteJSON(e)
+				return
+			}
 		}
 		_ = c.WriteJSON(map[string]any{"event": "authenticated", "data": map[string]any{"message": "Authenticated successfully"}})
 		read := func() map[string]any {
@@ -378,5 +388,75 @@ func TestFugleStreamCloseAndBadInput(t *testing.T) {
 	cancel()
 	if _, err := c.Stock.StreamContext(ctx); !errors.Is(err, context.Canceled) {
 		t.Errorf("canceled context: %v", err)
+	}
+}
+
+func TestFugleStreamCommandWakesWhenTheConnectionDrops(t *testing.T) {
+	f := newFakeFugleStream(t, func(n int32, c *websocket.Conn, read func() map[string]any) {
+		m := read()
+		if n == 1 {
+			// Drop the connection instead of answering.
+			_ = c.UnderlyingConn().Close()
+			return
+		}
+		for ; m != nil; m = read() {
+			if m["event"] == "subscribe" {
+				subscribed(n, c, m)
+			}
+		}
+	})
+	st, err := f.client(t).Stock.Stream()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	start := time.Now()
+	err = st.Subscribe(FugleChannelTrades, []string{"2330"})
+	if err == nil || time.Since(start) > time.Second {
+		t.Fatalf("Subscribe on a dropped connection: %v after %s, want a prompt error", err, time.Since(start))
+	}
+	// The stream reconnects; a retry succeeds.
+	deadline := time.Now().Add(3 * time.Second)
+	for err != nil && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+		err = st.Subscribe(FugleChannelTrades, []string{"2330"})
+	}
+	if err != nil {
+		t.Fatalf("Subscribe after the reconnect: %v", err)
+	}
+	start = time.Now()
+	if err := st.Close(); err != nil || time.Since(start) > time.Second {
+		t.Errorf("Close took %s: %v", time.Since(start), err)
+	}
+}
+
+func TestFugleStreamStopsWhenConnectionsStayFull(t *testing.T) {
+	f := newFakeFugleStream(t, func(n int32, c *websocket.Conn, read func() map[string]any) {
+		if n == 1 {
+			_ = c.UnderlyingConn().Close()
+			return
+		}
+	})
+	f.authError = func(n int32) map[string]any {
+		if n == 1 {
+			return nil
+		}
+		return map[string]any{"event": "error", "code": 1003, "data": map[string]any{"message": "Maximum number of connections reached"}}
+	}
+	st, err := f.client(t).Stock.Stream()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	select {
+	case _, ok := <-st.Messages():
+		if ok {
+			t.Fatal("unexpected message")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stream kept reconnecting against a full connection limit")
+	}
+	if err := st.Err(); err == nil || !strings.Contains(err.Error(), "Maximum number of connections") {
+		t.Errorf("Err = %v", err)
 	}
 }
