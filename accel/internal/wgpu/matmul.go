@@ -101,7 +101,7 @@ func MatMul(ctx context.Context, a, b []float32, m, k, n int) ([]float32, Cost, 
 	release := make([]interface{ Release() }, 0, 6)
 	defer func() {
 		for _, resource := range release {
-			resource.Release()
+			releaseQuietly(resource)
 		}
 	}()
 	makeBuffer := func(label string, size uint64, usage gputypes.BufferUsage) (*gowgpu.Buffer, error) {
@@ -187,7 +187,7 @@ func MatMul(ctx context.Context, a, b []float32, m, k, n int) ([]float32, Cost, 
 		return nil, cost, fmt.Errorf("wgpu: finish matmul command encoder: %w", err)
 	}
 	if _, err := h.device.Queue().Submit(commands); err != nil {
-		return nil, cost, fmt.Errorf("wgpu: submit matmul: %w", err)
+		return nil, cost, h.failed(fmt.Errorf("wgpu: submit matmul: %w", err))
 	}
 	cost.Dispatch = time.Since(dispatchStart)
 
@@ -195,7 +195,7 @@ func MatMul(ctx context.Context, a, b []float32, m, k, n int) ([]float32, Cost, 
 	defer cancel()
 	readbackStart := time.Now()
 	if err := staging.Map(mapCtx, gowgpu.MapModeRead, 0, cBytes); err != nil {
-		return nil, cost, fmt.Errorf("%w: map matmul readback: %w", ErrReadbackTimeout, err)
+		return nil, cost, h.failed(fmt.Errorf("%w: map matmul readback: %w", ErrReadbackTimeout, err))
 	}
 	mapped, err := staging.MappedRange(0, cBytes)
 	if err != nil {
@@ -255,6 +255,7 @@ func (h *handle) matmulPipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroupLay
 		}
 		h.matmulPipe = pipeline
 		h.matmulBGLayout = layout
+		h.retained = append(h.retained, shader, pipelineLayout)
 	})
 	return h.matmulPipe, h.matmulBGLayout, h.matmulErr
 }

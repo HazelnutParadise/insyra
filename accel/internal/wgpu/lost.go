@@ -1,0 +1,198 @@
+package wgpu
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+
+	gowgpu "github.com/gogpu/wgpu"
+)
+
+// ErrDeviceLost reports that the GPU device was lost: the driver reset it, the
+// operating system stopped a dispatch that ran too long (Windows does this to
+// a dispatch of about two seconds or more), or the adapter was removed. Every
+// buffer, binding and pipeline made on that device is gone. A Buffer or
+// Binding from before the loss stays unusable and reports this error. The next
+// call that needs a device tries to open a new one; a driver may refuse (a
+// GT 1030 answered vkCreateDevice -3 in the same process however long it was
+// retried), and then the call reports ErrUnavailable.
+//
+// This is the recovery WebGPU specifies for GPUDevice.lost: a lost device
+// never works again and the application requests a new adapter and device
+// (https://www.w3.org/TR/webgpu/#device-lost).
+var ErrDeviceLost = errors.New("wgpu: the GPU device was lost")
+
+// deviceLost reports whether err says the device is gone. gogpu/wgpu v0.34.5
+// returns a Vulkan VK_ERROR_DEVICE_LOST from Queue.Submit as a plain formatted
+// string ("vkQueueSubmit failed: -4") that does not wrap its own ErrDeviceLost,
+// so the text is checked as well as the sentinel.
+func deviceLost(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gowgpu.ErrDeviceLost) {
+		return true
+	}
+	text := err.Error()
+	for _, marker := range []string{
+		"vkQueueSubmit failed: -4",
+		"VK_ERROR_DEVICE_LOST",
+		"DXGI_ERROR_DEVICE_REMOVED",
+		"DXGI_ERROR_DEVICE_RESET",
+		"device lost",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// failed turns a device-loss error into ErrDeviceLost after retiring the
+// device. Any other error comes back unchanged. submitMu must be held.
+func (h *handle) failed(err error) error {
+	if !deviceLost(err) {
+		return err
+	}
+	retireLocked(h)
+	return fmt.Errorf("%w: %w", ErrDeviceLost, err)
+}
+
+// Everything made on the shared device that outlives one call. All three are
+// guarded by submitMu. retireLocked walks them to release what the lost device
+// still holds, because gogpu cannot create a new device while the old one has
+// live children (vkCreateDevice failed: -3 on a GT 1030 until every buffer,
+// bind group and pipeline of the lost device was released).
+var (
+	liveBuffers  = map[*Buffer]struct{}{}
+	liveBindings = map[*Binding]struct{}{}
+	builtKernels = map[*kernel]struct{}{}
+)
+
+// teardown is what a lost device left to release, in order, before the
+// next device is opened. It is guarded by sharedMu.
+var teardown []interface{ Release() }
+
+func releaseQuietly(resource interface{ Release() }) {
+	defer func() { _ = recover() }()
+	resource.Release()
+}
+
+// retireLocked drops the lost device: it releases every object made on it,
+// marks the buffers and bindings that referred to it lost, and forgets the
+// shared handle so the next acquire opens a new device. It is idempotent per
+// handle. submitMu must be held.
+func retireLocked(h *handle) {
+	if h == nil || h.retired {
+		return
+	}
+	h.retired = true
+
+	var objects []interface{ Release() }
+	// b.mu is not taken: the call that met the loss may hold it (a download
+	// does), and every write of b.buffer happens under submitMu, which is held.
+	for b := range liveBuffers {
+		if b.buffer != nil {
+			objects = append(objects, b.buffer)
+			b.buffer = nil
+		}
+		b.lost.Store(true)
+	}
+	liveBuffers = map[*Buffer]struct{}{}
+	for b := range liveBindings {
+		if b.group != nil {
+			objects = append(objects, b.group)
+			b.group = nil
+		}
+		b.released, b.lost = true, true
+	}
+	liveBindings = map[*Binding]struct{}{}
+	for k := range builtKernels {
+		if k.pipe != nil {
+			objects = append(objects, k.pipe)
+		}
+		if k.layout != nil {
+			objects = append(objects, k.layout)
+		}
+		if k.plLayout != nil {
+			objects = append(objects, k.plLayout)
+		}
+		if k.module != nil {
+			objects = append(objects, k.module)
+		}
+		k.reset()
+	}
+	builtKernels = map[*kernel]struct{}{}
+	objects = append(objects, pending...)
+	pending = nil
+	if uniformRing != nil {
+		objects = append(objects, uniformRing)
+		uniformRing, uniformNext = nil, 0
+	}
+	if h.shortlistPipe != nil {
+		objects = append(objects, h.shortlistPipe)
+	}
+	if h.shortlistBGLayout != nil {
+		objects = append(objects, h.shortlistBGLayout)
+	}
+	if h.matmulPipe != nil {
+		objects = append(objects, h.matmulPipe)
+	}
+	if h.matmulBGLayout != nil {
+		objects = append(objects, h.matmulBGLayout)
+	}
+	objects = append(objects, h.retained...)
+	h.retained = nil
+	if h.device != nil {
+		objects = append(objects, h.device)
+	}
+	if h.adapter != nil {
+		objects = append(objects, h.adapter)
+	}
+	if h.instance != nil {
+		objects = append(objects, h.instance)
+	}
+
+	sharedMu.Lock()
+	if shared == h {
+		shared, sharedErr, sharedTried = nil, nil, false
+	}
+	// The release waits for the next acquire: the call that met the loss
+	// still holds transient objects (a staging buffer, a command encoder) that
+	// it releases on its way out, and they must go before the device does.
+	teardown = append(teardown, objects...)
+	sharedMu.Unlock()
+}
+
+// Lost reports whether the device was lost after the buffer was made. The
+// buffer's contents are gone with it.
+func (b *Buffer) Lost() bool { return b.lost.Load() }
+
+// unusableLocked is the error for a buffer that cannot be used: lost with the
+// device, or released. b.mu must be held.
+func (b *Buffer) unusableLocked(what string) error {
+	if b.lost.Load() {
+		return fmt.Errorf("%w: %s", ErrDeviceLost, what)
+	}
+	return fmt.Errorf("wgpu: %s was released", what)
+}
+
+func (k *kernel) reset() {
+	k.once = sync.Once{}
+	k.pipe, k.layout, k.module, k.plLayout, k.err = nil, nil, nil, nil, nil
+}
+
+// lostBuffers returns ErrDeviceLost when any of buffers died with a lost
+// device. submitMu must be held.
+func lostBuffers(what string, buffers []*Buffer) error {
+	for j, b := range buffers {
+		if b == nil {
+			continue
+		}
+		if b.lost.Load() {
+			return fmt.Errorf("%w: %s: buffer %d", ErrDeviceLost, what, j)
+		}
+	}
+	return nil
+}

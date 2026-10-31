@@ -40,6 +40,7 @@ type Binding struct {
 	reads, writes []*Buffer
 	group         *gowgpu.BindGroup
 	released      bool
+	lost          bool // the device was lost; see retireLocked
 }
 
 // uniformSlots is how many 64-byte parameter blocks the shared ring holds.
@@ -87,6 +88,11 @@ func (k *Kernel) Bind(reads, writes []*Buffer) (*Binding, error) {
 	}
 	submitMu.Lock()
 	defer submitMu.Unlock()
+	// A buffer that died with a lost device is reported as such, before
+	// acquire tries to open a device that may not come back.
+	if err := lostBuffers(name, append(append([]*Buffer(nil), reads...), writes...)); err != nil {
+		return nil, err
+	}
 	h, err := acquire()
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
@@ -111,8 +117,11 @@ func (k *Kernel) Bind(reads, writes []*Buffer) (*Binding, error) {
 			return nil, fmt.Errorf("wgpu: %s: buffer %d is nil", name, j)
 		}
 		buffer.mu.Lock()
-		released, handle, size := buffer.released, buffer.buffer, bufferBytes(buffer.length)
+		released, lost, handle, size := buffer.released, buffer.lost.Load(), buffer.buffer, bufferBytes(buffer.length)
 		buffer.mu.Unlock()
+		if lost {
+			return nil, fmt.Errorf("%w: %s: buffer %d", ErrDeviceLost, name, j)
+		}
 		if released || handle == nil {
 			return nil, fmt.Errorf("wgpu: %s: buffer %d was released", name, j)
 		}
@@ -125,7 +134,9 @@ func (k *Kernel) Bind(reads, writes []*Buffer) (*Binding, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wgpu: %s: create bind group: %w", name, err)
 	}
-	return &Binding{k: k, reads: append([]*Buffer(nil), reads...), writes: append([]*Buffer(nil), writes...), group: group}, nil
+	binding := &Binding{k: k, reads: append([]*Buffer(nil), reads...), writes: append([]*Buffer(nil), writes...), group: group}
+	liveBindings[binding] = struct{}{}
+	return binding, nil
 }
 
 // Release frees the bind group once the queue is idle. It is idempotent. The
@@ -137,6 +148,7 @@ func (b *Binding) Release() {
 		return
 	}
 	b.released = true
+	delete(liveBindings, b)
 	pending = append(pending, b.group)
 	b.group = nil
 	// A loop that binds and releases without ever submitting would otherwise
@@ -166,12 +178,20 @@ func Submit(dispatches []Dispatch) error {
 	}
 	submitMu.Lock()
 	defer submitMu.Unlock()
+	for i, d := range dispatches {
+		if d.Binding != nil && d.Binding.lost {
+			return fmt.Errorf("%w: dispatch %d: the binding", ErrDeviceLost, i)
+		}
+	}
 	h, err := acquire()
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	most := h.limits.MaxComputeWorkgroupsPerDimension
 	for i, d := range dispatches {
+		if d.Binding != nil && d.Binding.lost {
+			return fmt.Errorf("%w: dispatch %d: the binding", ErrDeviceLost, i)
+		}
 		if d.Binding == nil || d.Binding.released {
 			return fmt.Errorf("wgpu: dispatch %d has no binding or its binding was released", i)
 		}
@@ -184,8 +204,11 @@ func Submit(dispatches []Dispatch) error {
 		}
 		for j, buffer := range append(append([]*Buffer(nil), d.Binding.reads...), d.Binding.writes...) {
 			buffer.mu.Lock()
-			released := buffer.released
+			released, lost := buffer.released, buffer.lost.Load()
 			buffer.mu.Unlock()
+			if lost {
+				return fmt.Errorf("%w: dispatch %d: %s: buffer %d", ErrDeviceLost, i, name, j)
+			}
 			if released {
 				return fmt.Errorf("wgpu: dispatch %d: %s: buffer %d was released", i, name, j)
 			}
@@ -229,7 +252,7 @@ func Submit(dispatches []Dispatch) error {
 		return fmt.Errorf("wgpu: finish command encoder: %w", err)
 	}
 	if _, err := h.device.Queue().Submit(commands); err != nil {
-		return fmt.Errorf("wgpu: submit: %w", err)
+		return h.failed(fmt.Errorf("wgpu: submit: %w", err))
 	}
 	uniformNext = first + len(dispatches)
 	return nil
@@ -254,6 +277,11 @@ func submit(launches []launch) error {
 	}
 	submitMu.Lock()
 	defer submitMu.Unlock()
+	for _, l := range launches {
+		if err := lostBuffers(l.k.name, append(append([]*Buffer(nil), l.reads...), l.writes...)); err != nil {
+			return err
+		}
+	}
 	h, err := acquire()
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrUnavailable, err)
@@ -288,8 +316,11 @@ func submit(launches []launch) error {
 				return fmt.Errorf("wgpu: dispatch %d: %s: buffer %d is nil", i, k.name, j)
 			}
 			buffer.mu.Lock()
-			released, handle, size := buffer.released, buffer.buffer, bufferBytes(buffer.length)
+			released, lost, handle, size := buffer.released, buffer.lost.Load(), buffer.buffer, bufferBytes(buffer.length)
 			buffer.mu.Unlock()
+			if lost {
+				return fmt.Errorf("%w: dispatch %d: %s: buffer %d", ErrDeviceLost, i, k.name, j)
+			}
 			if released || handle == nil {
 				return fmt.Errorf("wgpu: dispatch %d: %s: buffer %d was released", i, k.name, j)
 			}
@@ -349,7 +380,7 @@ func submit(launches []launch) error {
 		return fmt.Errorf("wgpu: finish command encoder: %w", err)
 	}
 	if _, err := h.device.Queue().Submit(commands); err != nil {
-		return fmt.Errorf("wgpu: submit: %w", err)
+		return h.failed(fmt.Errorf("wgpu: submit: %w", err))
 	}
 	return nil
 }
@@ -450,7 +481,7 @@ func (b *Buffer) write(length int, raw []byte) error {
 	defer b.mu.Unlock()
 	switch {
 	case b.released || b.buffer == nil:
-		return errors.New("wgpu: buffer was released")
+		return b.unusableLocked("buffer")
 	case length != b.length:
 		return fmt.Errorf("wgpu: buffer holds %d values, got %d", b.length, length)
 	case length == 0:
