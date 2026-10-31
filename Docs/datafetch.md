@@ -914,6 +914,9 @@ The night session is one `AfterHours` setting (or the `afterHours` flag); the cl
 | `Stock.TechnicalKDJ(symbol, timeframe, rPeriod, kPeriod, dPeriod, opts...)` | `technical/kdj/{symbol}` | `date`, `k`, `d`, `j` |
 | `Stock.TechnicalMACD(symbol, timeframe, fast, slow, signal, opts...)` | `technical/macd/{symbol}` | `date`, `macdLine`, `signalLine` |
 | `Stock.TechnicalBB(symbol, timeframe, period, opts...)` | `technical/bb/{symbol}` | `date`, `upper`, `middle`, `lower` |
+| `Stock.CorporateActionsDividends(from, opts...)` | `corporate-actions/dividends` | ex-dividend and ex-rights events: `date`, `exchange`, `symbol`, `name`, `dividendType`, `dividend`, `cashDividend`, `stockDividendShares`, the prices before and after |
+| `Stock.CorporateActionsCapitalChanges(from, opts...)` | `corporate-actions/capital-changes` | par value changes, capital reductions and ETF splits: `symbol`, `name`, `exchange`, `actionType`, `haltDate`, `resumeDate`, then the details as `raw_splitRatio`, `raw_reason`, `raw_refundPerShare`, `raw_referencePrice`... |
+| `Stock.CorporateActionsListingApplicants(from, opts...)` | `corporate-actions/listing-applicants` | companies applying to list: `symbol`, `name`, `exchange`, `applicationDate`, each review step's date, `listedDate`, `underwriter`, `underwritingPrice`, `remarks` |
 
 Coming from the official Python SDK (`fugle-marketdata`), the parameters keep their names and the three levels become two (`client.stock.intraday.quote` is `client.Stock.IntradayQuote`):
 
@@ -924,8 +927,11 @@ Coming from the official Python SDK (`fugle-marketdata`), the parameters keep th
 | `client.stock.intraday.ticker(symbol="2330")` | `client.Stock.IntradayTicker("2330")` |
 | `client.stock.intraday.tickers(type="EQUITY")` | `client.Stock.IntradayTickers(FugleTickerEquity)` |
 | `client.stock.technical.kdj(symbol="2330", timeframe="D", rPeriod=9, kPeriod=3, dPeriod=3)` | `client.Stock.TechnicalKDJ("2330", FugleTimeframeDay, 9, 3, 3)` |
+| `client.stock.corporate_actions.dividends(start_date="2025-01-01", end_date="2025-12-31")` | `client.Stock.CorporateActionsDividends(from, FugleCorporateActionsOptions{To: to})` |
 
 **Technical indicators.** Fugle computes SMA, RSI, KDJ, MACD and Bollinger bands from its own candles. The timeframe and the periods are required, in the order of Fugle's parameters, and are refused when they are not positive or when MACD's fast period is not shorter than its slow one. `FugleTechnicalOptions{From, To}` bounds the dates, both or neither; without them Fugle picks the range. Minute timeframes always cover the last 30 days, so a range with one is refused rather than ignored. A request with no data gives an empty table with the columns. These endpoints were written from Fugle's documentation and tested against a local server only. To compute SMA, RSI, MACD or Bollinger bands over your own data, or with settings Fugle does not take, use [`quant/ta`](quant-ta.md).
+
+**Corporate actions.** The three corporate action methods need the Developer or Advanced plan. Each takes the first date as a required `from` and `FugleCorporateActionsOptions{To, Descending}`; a `To` in the future includes announced events that have not happened yet, whose prices are nil. Rows come oldest first unless `Descending` is set (Fugle's own default is newest first). Every documented column is present even when no row has it, and the event dates (`haltDate`, `listedDate` and the rest) are times, nil where a step has not happened. `capitalAtApplication` keeps Fugle's units: thousands of dollars for TWSE and dollars for TPEx. These endpoints were written from Fugle's documentation and tested against a local server only.
 
 **Settings.** A method that takes optional settings takes one trailing options value, so `HistoricalCandles("2330")` works with the defaults and `HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{Timeframe: datafetch.FugleTimeframeWeek})` changes them; more than one value is an error. `IntradayTickers` takes the ticker type first because it has no default. The columns the API may omit from a row (`industry` of a ticker, `bid`, `ask` and `volume` of a trade, the at-bid and at-ask volumes) are always present and nil where missing, even when no row has them.
 
