@@ -2,9 +2,7 @@
 
 ## Purpose
 What the table and list views print: `ShowHead` and `ShowTail`, how a view sizes its columns from the rows it prints, and the exported `Showable` interface `Show` takes.
-
 ## Requirements
-
 ### Requirement: ShowHead and ShowTail display the start and end of data
 
 `ShowHead(n)` and `ShowTail(n)` (and their `To` variants) on `DataTable` and `DataList` SHALL display what `ShowRange(n)` and `ShowRange(-n)` display, and SHALL print an error line for an `n` that is not positive without showing rows.
@@ -46,3 +44,22 @@ What the table and list views print: `ShowHead` and `ShowTail`, how a view sizes
 
 - **WHEN** a caller builds a `[]insyra.Showable` holding a DataTable and a DataList and passes each to `Show`
 - **THEN** it compiles and shows both
+
+### Requirement: String is the uncoloured view
+
+`DataList.String` and `DataTable.String` SHALL return exactly what their `Show` view writes when laid out for 80 columns without colour, whatever the terminal width and `Config.SetUseColoredOutput` say, so that `fmt`'s `%v` and `%s` print it.
+
+#### Scenario: Colour switched on
+
+- **WHEN** coloured output is on and `dt.String()` is called
+- **THEN** the text has no ANSI escape codes and equals `fmt.Sprint(dt)`
+
+### Requirement: A cell holding a table or list is one line
+
+Every view SHALL show a cell that holds a `*DataTable` as `<DataTable>` and one that holds a `*DataList` as `<DataList>`, so a table or list that holds itself can be shown.
+
+#### Scenario: A table holding itself
+
+- **WHEN** a two-row table holds itself in a cell and its String is called
+- **THEN** it returns, and the cell reads <DataTable>
+

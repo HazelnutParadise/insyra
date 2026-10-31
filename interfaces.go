@@ -119,6 +119,8 @@ type IDataList interface {
 	ShowTail(n int)
 	ShowTypes()
 	ShowTypesRange(startEnd ...any)
+	// String returns the view Show prints, without colour and 80 columns wide.
+	String() string
 
 	// conversion
 	ParseNumbers() *DataList
@@ -204,6 +206,8 @@ type IDataTable interface {
 	// Returns:
 	// - map[string][]any: DataTable represented as a map of columns
 	ToMap(useNamesAsKeys ...bool) map[string][]any
+	// String returns the view Show prints, without colour and 80 columns wide.
+	String() string
 	Show()
 	ShowTypes()
 	ShowRange(startEnd ...any)
