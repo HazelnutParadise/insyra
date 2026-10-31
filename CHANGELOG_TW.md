@@ -243,6 +243,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `datafetch.Fugle` 的 `client.FutOpt` 讀取富果的盤中期貨選擇權資料：`IntradayProducts`、`IntradayTickers`、`IntradayTicker`、`IntradayQuote`、`IntradayCandles`、`IntradayTrades`、`IntradayVolumes`，各有 `Context` 版本（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `client.FutOpt.HistoricalCandles` 與 `client.FutOpt.HistoricalDaily` 讀取富果的歷史期貨選擇權資料：單一合約或連續合約的 K 線（超過一年的區間自動切段），以及某商品單一交易日、每個合約一列的日行情（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `client.Stock.HistoricalStats` 回傳個股的價格統計（52 週高低、當日漲跌與成交量），`SnapshotQuotes`、`SnapshotMovers`、`SnapshotActives` 回傳整個市場此刻的報價、漲跌幅排行與成交活躍排行（需要開發者或進階方案）。市場現在是有型別的 `FugleMarket`，`FugleIntradayTickersOptions.Market` 也是（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
+- `datafetch.Fugle` 的 `client.Stock.IntradayTicker` 回傳個股當日基本資料（一列）：名稱、產業別、證券別、參考價、漲跌停價、現沖與平盤下融券借券資格、注意股與處置股標記、證券狀態與交易單位（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 
 ### `stats`
 - **BREAKING**：`FactorAnalysis` 在 `Rotation.Method: FactorRotationOblimin` 且 `Rotation.Restarts` 大於 1 時，現在真的會做參數所描述的搜尋。Oblimin 過去每一輪都自己建一個單位矩陣當起點，忽略傳進來的起點，所以 `Restarts: 20` 是把同一份計算跑 20 次再回傳第一個結果，實測 20 個起點花 202 ms 回傳和 9.9 ms 一模一樣的答案。現在它和其他九個方法一樣從每個起點各旋轉一次，而且 `Delta: 0` 時與同樣 `Restarts` 的 Quartimin 結果逐位元相同，因為兩者本來就是同一個準則。在測試套件的 12 個生成資料集上，載荷最多移動 1.2e-5；在過因子的模型上（用三因子資料抽四個因子），額外的起點會找到單位矩陣起點到不了的另一個盆地，準則值低 47 倍。那個解的因子相關也高達 0.905：`Restarts` 要的是最低的準則值，不保證那個解就是你要的，這對任何多起點的斜交旋轉都成立。預設的 `Restarts: 1` 不變。SPSS 的 Direct Oblimin 是單起點，`Restarts: 1` 仍然是。
