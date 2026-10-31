@@ -305,30 +305,6 @@ insyra split t train 0.8 seed 42 as train test
 
 **您還可以僅用一行代碼在 DataTables 和 CSV 文件之間進行轉換，實現與外部數據源的無縫整合。**
 
-## 錯誤處理（實例級）
-
-`DataList` 與 `DataTable` 均支援用於鏈式操作的實例級錯誤追蹤。使用 `Err()` 可取得該實例最後發生的錯誤（回傳 `*ErrorInfo` 或 `nil`），使用 `ClearErr()` 可清除該錯誤。
-
-範例：
-
-```go
-// DataList 範例
-dl := insyra.NewDataList(1,2,3).Sort().Reverse()
-if err := dl.Err(); err != nil {
-    fmt.Println("Error:", err.Message)
-    dl.ClearErr()
-}
-
-// DataTable 範例（簡示參數）
-dt := insyra.NewDataTable(insyra.NewDataList(1), insyra.NewDataList(2)).SortBy(/*config*/)
-if err := dt.Err(); err != nil {
-    fmt.Println("Error:", err.Message)
-    dt.ClearErr()
-}
-```
-
-更多細節請參閱 **[DataList 文檔](/Docs/DataList.md)** 與 **[DataTable 文檔](/Docs/DataTable.md)**。
-
 ### [Column Calculation Language (CCL)](/Docs/CCL.md)
 
 **Insyra** 提供強大的 **Column Calculation Language (CCL)** 功能，其使用方式就像 Excel 公式一樣直觀！
@@ -374,6 +350,30 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 關於 CCL 語法和功能的完整指南，請參閱 **[CCL 文檔](/Docs/CCL.md)**。
 
 有關 DataTable 方法和功能的完整列表，請參閱 **[DataTable 文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)**。
+
+## 錯誤處理（實例級）
+
+`DataList` 與 `DataTable` 均支援用於鏈式操作的實例級錯誤追蹤。使用 `Err()` 可取得該實例最後發生的錯誤（回傳 `*ErrorInfo` 或 `nil`），使用 `ClearErr()` 可清除該錯誤。
+
+範例：
+
+```go
+// DataList 範例
+dl := insyra.NewDataList(1,2,3).Sort().Reverse()
+if err := dl.Err(); err != nil {
+    fmt.Println("Error:", err.Message)
+    dl.ClearErr()
+}
+
+// DataTable 範例（簡示參數）
+dt := insyra.NewDataTable(insyra.NewDataList(1), insyra.NewDataList(2)).SortBy(/*config*/)
+if err := dt.Err(); err != nil {
+    fmt.Println("Error:", err.Message)
+    dt.ClearErr()
+}
+```
+
+更多細節請參閱 **[DataList 文檔](/Docs/DataList.md)** 與 **[DataTable 文檔](/Docs/DataTable.md)**。
 
 ## 精確小數
 
