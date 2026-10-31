@@ -149,6 +149,11 @@ func MatMul(ctx context.Context, a, b []float32, m, k, n int) ([]float32, Cost, 
 	if err := h.device.Queue().WriteBuffer(params, 0, paramsBytes); err != nil {
 		return nil, cost, fmt.Errorf("wgpu: upload matmul parameters: %w", err)
 	}
+	// A and B are storage buffers, whose queue writes Vulkan does not order
+	// with the dispatch that follows (settleWriteLocked).
+	if err := settleWriteLocked(h); err != nil {
+		return nil, cost, fmt.Errorf("wgpu: upload matmul inputs: %w", err)
+	}
 	cost.Transfer = time.Since(transferStart)
 	cost.BytesUploaded = aBytes + bBytes
 
