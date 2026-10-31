@@ -610,6 +610,55 @@ func (s FugleStock) IntradayQuoteContext(ctx context.Context, symbol string, odd
 	return fugleTable([]map[string]any{flat}, fugleQuoteColumns, nil), nil
 }
 
+// IntradayTicker returns a stock's details for the day as a one-row table: its
+// name, industry, security type, reference price, price limits and trading
+// flags. It is IntradayTickerContext with context.Background().
+func (s FugleStock) IntradayTicker(symbol string, oddLot ...bool) (*insyra.DataTable, error) {
+	return s.IntradayTickerContext(context.Background(), symbol, oddLot...)
+}
+
+var fugleStockTickerColumns = []string{
+	"date", "type", "exchange", "market", "symbol", "name", "industry", "securityType",
+	"previousClose", "referencePrice", "limitUpPrice", "limitDownPrice",
+	"canDayTrade", "canBuyDayTrade", "canBelowFlatMarginShortSell", "canBelowFlatSBLShortSell",
+	"isAttention", "isDisposition", "isUnusuallyRecommended", "isSpecificAbnormally",
+	"matchingInterval", "securityStatus", "boardLot", "tradingCurrency",
+}
+
+// IntradayTickerContext is IntradayTicker with a context. oddLot asks for the
+// odd-lot ticker; more than one flag is an error. The columns listed in the
+// documentation are always present, nil where the API leaves a field out (an
+// emerging stock has no price limits); fields only some securities have, such
+// as a warrant's exercisePrice or an index's openTime, follow when present.
+func (s FugleStock) IntradayTickerContext(ctx context.Context, symbol string, oddLot ...bool) (*insyra.DataTable, error) {
+	c := s.c
+	if err := contextErr(ctx); err != nil {
+		return nil, err
+	}
+	if err := c.usable(); err != nil {
+		return nil, err
+	}
+	symbol, err := fugleSymbol(symbol)
+	if err != nil {
+		return nil, err
+	}
+	odd, err := oneFlag(oddLot, "oddLot")
+	if err != nil {
+		return nil, err
+	}
+	values := url.Values{}
+	if odd {
+		values.Set("type", "oddlot")
+	}
+	resp, err := c.fugleGet(ctx, "/stock/intraday/ticker/"+url.PathEscape(symbol), values)
+	if err != nil {
+		return nil, err
+	}
+	flat := map[string]any{}
+	flattenFugle("", resp, flat)
+	return fugleTable([]map[string]any{flat}, fugleStockTickerColumns, fugleStockTickerColumns), nil
+}
+
 // flattenFugle copies m into out, joining nested names with "_" and numbering
 // array items from 1.
 func flattenFugle(prefix string, v any, out map[string]any) {

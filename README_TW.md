@@ -61,6 +61,23 @@ tape.Backward(loss)
 tape.AdamW(1e-3, 1e-2)
 ```
 
+## 用富果抓台股資料
+
+已經在用[富果行情 API](https://developer.fugle.tw) 嗎？把 API 金鑰帶進 Insyra，每個結果都直接是 `DataTable`，在 Go 裡就能篩選、畫圖、建模、回測，不用再轉格式。方法名稱對照富果 Python SDK，`stock.intraday.quote` 就是 `client.Stock.IntradayQuote`：
+
+- **股票**：盤中報價、K 線、成交明細與分價量，任意區間的歷史 K 線、價格統計、全市場快照（漲跌幅與成交排行）、技術指標、除權息等股務事件，以及籌碼資料（三大法人、ETF 持股、董監持股、集保分布）。
+- **期貨選擇權**：盤中商品、契約、報價與 K 線，還有歷史 K 線與每日行情。
+
+```go
+client, err := datafetch.Fugle(datafetch.FugleConfig{APIKey: os.Getenv("FUGLE_API_KEY")})
+bars, err := client.Stock.HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{
+    From: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), To: time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
+})
+bars.Show() // date, open, high, low, close, volume, ...
+```
+
+請求頻率限制、方案權限錯誤和超過一年的區間都會自動處理。**[看富果使用說明](/Docs/datafetch.md#fugle)**
+
 ## AI / Agent Skills
 
 這個 repo 內含兩份 **agent skill**：
@@ -305,30 +322,6 @@ insyra split t train 0.8 seed 42 as train test
 
 **您還可以僅用一行代碼在 DataTables 和 CSV 文件之間進行轉換，實現與外部數據源的無縫整合。**
 
-## 錯誤處理（實例級）
-
-`DataList` 與 `DataTable` 均支援用於鏈式操作的實例級錯誤追蹤。使用 `Err()` 可取得該實例最後發生的錯誤（回傳 `*ErrorInfo` 或 `nil`），使用 `ClearErr()` 可清除該錯誤。
-
-範例：
-
-```go
-// DataList 範例
-dl := insyra.NewDataList(1,2,3).Sort().Reverse()
-if err := dl.Err(); err != nil {
-    fmt.Println("Error:", err.Message)
-    dl.ClearErr()
-}
-
-// DataTable 範例（簡示參數）
-dt := insyra.NewDataTable(insyra.NewDataList(1), insyra.NewDataList(2)).SortBy(/*config*/)
-if err := dt.Err(); err != nil {
-    fmt.Println("Error:", err.Message)
-    dt.ClearErr()
-}
-```
-
-更多細節請參閱 **[DataList 文檔](/Docs/DataList.md)** 與 **[DataTable 文檔](/Docs/DataTable.md)**。
-
 ### [Column Calculation Language (CCL)](/Docs/CCL.md)
 
 **Insyra** 提供強大的 **Column Calculation Language (CCL)** 功能，其使用方式就像 Excel 公式一樣直觀！
@@ -375,6 +368,30 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 
 有關 DataTable 方法和功能的完整列表，請參閱 **[DataTable 文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)**。
 
+## 錯誤處理（實例級）
+
+`DataList` 與 `DataTable` 均支援用於鏈式操作的實例級錯誤追蹤。使用 `Err()` 可取得該實例最後發生的錯誤（回傳 `*ErrorInfo` 或 `nil`），使用 `ClearErr()` 可清除該錯誤。
+
+範例：
+
+```go
+// DataList 範例
+dl := insyra.NewDataList(1,2,3).Sort().Reverse()
+if err := dl.Err(); err != nil {
+    fmt.Println("Error:", err.Message)
+    dl.ClearErr()
+}
+
+// DataTable 範例（簡示參數）
+dt := insyra.NewDataTable(insyra.NewDataList(1), insyra.NewDataList(2)).SortBy(/*config*/)
+if err := dt.Err(); err != nil {
+    fmt.Println("Error:", err.Message)
+    dt.ClearErr()
+}
+```
+
+更多細節請參閱 **[DataList 文檔](/Docs/DataList.md)** 與 **[DataTable 文檔](/Docs/DataTable.md)**。
+
 ## 精確小數
 
 數字必須精確的時候，像是金額、利率，或任何 `0.1 + 0.2` 一定要等於 `0.3` 的情境，請使用 [`github.com/TimLai666/go-decimal`](https://github.com/TimLai666/go-decimal)。這是 Insyra 圍繞設計的十進位型別：[`finance`](/Docs/finance.md) 每個函式的傳入與回傳都是它，Parquet 的 `Decimal128` 欄也會讀成它。
@@ -414,7 +431,7 @@ dl := insyra.NewDataList(prices) // 每個價格一格
 | **[quant/ta](/Docs/quant-ta.md)** | 用來檢驗、不是用來相信的技術分析工具：均線、MACD、KD、RSI、布林通道、ATR、成交量與市場廣度指標、轉折點與多空期間、圖形型態、跳空與打散價格的對照組，並附上我們的研究對它們的結論 |
 | **[py](/Docs/py.md)** | 在 Go 中執行 Python，免手動安裝環境；變數雙向傳遞。 |
 | **[pd](/Docs/pd.md)** | 基於 `gpandas` 的 Pandas 風格 `DataFrame` 工具，含 `DataTable` 轉換。 |
-| **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance、台灣逆地理編碼，以及 TWSE／TPEx 股票資料。 |
+| **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance、富果行情、台灣逆地理編碼，以及 TWSE／TPEx 股票資料。 |
 | **[lpgen](/Docs/lpgen.md)** | 產生線性規劃（LP）模型並輸出 `.lp` 檔。 |
 | **[lp](/Docs/lp.md)** | 使用 [GLPK](https://www.gnu.org/software/glpk/) 的全自動 LP 求解器。 |
 | **[engine](/engine/README.md)** | 匯出部分 Insyra 內部實作，供其他專案重用。 |
