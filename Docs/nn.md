@@ -76,9 +76,6 @@ acceleration is enabled. Both layers must allow the device before a call uses
 it. `nn.RegisterDeviceMatMul(nil)` remains a low-level nn-only escape hatch
 that clears the MatMul hook.
 
-The device path is not wired in `-race` builds because the upstream Metal
-binding currently trips `checkptr`; those builds remain on the CPU path.
-
 ## Training on the device
 
 A training step can keep its tensors on the GPU: parameters, activations,

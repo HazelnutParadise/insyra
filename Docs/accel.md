@@ -221,8 +221,6 @@ err = accel.Submit(accel.Dispatch{
 
 **Memory safety differs by platform.** A kernel can write anywhere in a read-write buffer it is given. On Metal an access past the end is clamped or skipped. The Vulkan backend Insyra uses does not turn that protection on, so on a Vulkan device a kernel that indexes past its buffer can overwrite another resident buffer, such as a weight or optimizer state, or lose the device. Check your indices against the buffer length inside the shader. On Windows a single dispatch that runs for about two seconds is stopped by the operating system, so keep each dispatch well under one. DirectX 12 was not checked. On the NVIDIA GeForce GT 1030 with Vulkan, a write past the end of a buffer left the buffer and its neighbours unchanged, but that is one card and driver, not a guarantee.
 
-**Do not use `countLeadingZeros` in a kernel you write.** The WGSL compiler Insyra uses turns it into the bit index of the highest set bit on Vulkan, not the count of zeros above it, so it gives a different answer than on Metal. Use `31u - firstLeadingBit(x)` for a nonzero `x`.
-
 ## Still Not Implemented
 
 - One operation only: the exact nearest query points per row

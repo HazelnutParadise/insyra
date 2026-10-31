@@ -6,9 +6,7 @@ package wgpu
 // 24 bits in u32 with carries deferred for up to 64 additions. Float32 values
 // cross it as bit patterns and every operation is unsigned, so the result does
 // not depend on how a shader compiler treats floating point or signed
-// integers. Kernels prepend it to their own source. It uses no select():
-// gogpu/naga v0.19 writes a scalar select as an unparenthesized ternary in
-// Metal, which changes its meaning inside a larger expression.
+// integers. Kernels prepend it to their own source.
 const exactSumWGSL = `
 const EXACT_MASK: u32 = 0xffffffu;
 const EXACT_FLAG_NAN: u32 = 1u;
@@ -31,9 +29,7 @@ fn exact_clear(r: ptr<function, ExactRegister>) {
 // below 2^24, the top digit carries the sign, and explicit sign extension makes
 // subtraction of a whole negative limb exact. The carry is the signed value
 // arithmetic-shifted right by 24, with the high 8 bits sign-extended through
-// 0u - (v >> 31u), which is all ones when v is negative. It avoids select()
-// because gogpu/naga v0.19 writes a select used as an operand as an
-// unparenthesized ternary, which would re-associate the expression.
+// 0u - (v >> 31u), which is all ones when v is negative.
 fn exact_normalize(r: ptr<function, ExactRegister>) {
     for (var i: u32 = 0u; i < 26u; i = i + 1u) {
         let v = (*r).digits[i];
