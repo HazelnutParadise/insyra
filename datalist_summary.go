@@ -6,6 +6,8 @@ import (
 	"math"
 	"os"
 	"strings"
+
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // Summary displays a comprehensive statistical summary of the DataList directly to the console.
@@ -21,7 +23,7 @@ func (dl *DataList) SummaryTo(w io.Writer) {
 		dlData := dl.data
 
 		// Get terminal window width
-		width := getDataListTerminalWidth()
+		width := utils.GetTerminalWidth()
 
 		// Generate data title
 		dataTitle := "DataList Statistical Summary"

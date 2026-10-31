@@ -135,6 +135,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL：讀取超出表格列數的列會報錯：`@.5000` 或在最後一列用 `@.(# + 1)`，以前會讀到全是 nil 的一列並悄悄給出錯的答案，現在和 `A.5000` 一樣失敗。靠這個 nil 列運作的腳本會在那一列失敗，請改用 `IF(# < COUNT(A) - 1, ..., nil)` 保護。
 - CSV 檔案的編碼名稱現在接受 Windows 的 `cp950`、`cp936`，分別視為 Big5 與 GBK。
 - `engine/ring`：`PopFront`、`PopBack` 現在會把被移除的格子設回零值，所以放指標、字串或 slice 的 Ring 不會再讓已移除元素指向的資料無法回收；`Clear` 改成清空既有的底層陣列，不再配置新的（推 64 個再 `Clear`：修改前 188 ns、配置一次 512 位元組，修改後 138 ns、不配置；64 次推入與取出因為清格子多花約 7%）。先進先出與後進先出的順序、容量與零值 Ring 的行為不變（[#588](https://github.com/HazelnutParadise/insyra/issues/588)）。
+- `DataList` 與 `DataTable` 新增 `String()`，內容就是 `Show` 印的畫面，但不帶顏色、固定 80 字寬，所以 `fmt.Println(dt)`、`%v`、`%s` 會直接印出表格或清單，不再是一串內部欄位。格子裡裝的若是另一張表或清單，`Show` 與 `String` 都改顯示成 `<DataTable>` 或 `<DataList>`，表格裝著自己時也不會無窮遞迴。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
@@ -417,6 +418,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 在 Vulkan 上，正確捨入的除法、平方根、exp 與 log（`PrecisionFloat32Rounded` 與常駐的優化器步驟）遇到次正規輸入會回傳錯誤的值，例如 `1e-45 / 3e-45` 得到 1.5，因為 WGSL 編譯器把 `countLeadingZeros` 編成最高有效位的位元索引。編譯器升級到 gogpu/naga v0.20.4，`countLeadingZeros` 和 `countTrailingZeros(0)` 在 Vulkan、DirectX 12 與 OpenGL 上都編對了，你自己的 kernel 也可以直接用。
 - 在 Vulkan 上，`DeviceBuffer.Write`、`WriteBits`、`Zero` 以及建立 `DeviceBuffer` 時的上傳，讀回來可能還是舊內容，因為佇列寫入沒有排在隨後的 kernel 或複製之前；在 GT 1030 上，`Zero` 之後讀取，20 次裡有 3 次拿到舊的字。現在除了自己會排序的 Metal 以外，這些呼叫都會等寫入完成，所以每次呼叫都會等佇列清空。
 - 當 NVIDIA 顯卡同時被 NVML（CUDA）與 WebGPU 找到時，Insyra 現在保留 WebGPU 那一筆，因為 CUDA 沒有執行器。以前探索階段保留 CUDA 那一筆，所有加速運算都以 `no-backend-executor` 退回 CPU，Windows 上有 NVIDIA 顯卡的主機就是這種情況；現在加速運算會在該顯卡上執行。沒有執行器的後端不再優先於有執行器的後端。
+- 在 Vulkan 與 DirectX 12 上，裝置端 `MatMul`（`nn` 的大型矩陣乘法）與最近鄰候選清單會先等輸入資料上傳完成，kernel 才讀取。gogpu 對儲存緩衝區的佇列寫入不保證排在後續指令之前，kernel 可能讀到舊資料；Metal 不受影響（[#572](https://github.com/HazelnutParadise/insyra/issues/572)）。
 
 ### `quant`
 - **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。
