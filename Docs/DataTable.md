@@ -4467,6 +4467,23 @@ func (dt *DataTable) ShowTo(w io.Writer) // same output, written to w instead of
 dt.Show() // Display table content in console
 ```
 
+A cell that holds another table or list is shown as `DataTable(rows x cols)` or `DataList(n)` rather than expanded.
+
+### String
+
+```go
+func (dt *DataTable) String() string
+```
+
+**Description:** Returns the view `Show` prints, without colour and laid out for an 80-column terminal whatever the real terminal and `Config` say, so `fmt.Println(dt)`, `%v` and `%s` print the table. Like `Show` it is a preview: a table of more than 25 rows shows its first 20 and last 5 rows. A cell holding another table or list is shown as a one-line summary, so a table that holds itself still prints.
+
+**Example:**
+
+```go
+fmt.Println(dt)  // the table, as Show prints it but without colour
+s := dt.String() // the same text, e.g. for a log or a golden file
+```
+
 ### ShowRange
 
 ```go

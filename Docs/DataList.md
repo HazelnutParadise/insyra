@@ -2226,6 +2226,22 @@ dl.Show()
 // Displays elements with color coding based on data types
 ```
 
+
+### String
+
+```go
+func (dl *DataList) String() string
+```
+
+**Description:** Returns the view `Show` prints, without colour and laid out for an 80-column terminal, so `fmt.Println(dl)`, `%v` and `%s` print the list. Like `Show` it is a preview of a long list, and a value that is itself a table or list is shown as `DataTable(rows x cols)` or `DataList(n)`.
+
+**Example:**
+
+```go
+fmt.Println(dl)  // the list, as Show prints it but without colour
+s := dl.String()
+```
+
 ### ShowRange
 
 ```go
