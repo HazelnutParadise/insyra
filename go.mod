@@ -59,7 +59,6 @@ require (
 	github.com/google/s2a-go v0.1.11 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.23 // indirect
 	github.com/googleapis/gax-go/v2 v2.27.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -145,6 +144,7 @@ require (
 	github.com/gogpu/gputypes v0.8.0
 	github.com/gogpu/wgpu v0.34.5
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/mattn/go-runewidth v0.0.31
 	github.com/petermattis/goid v0.0.0-20260918085751-abfca077860b
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d

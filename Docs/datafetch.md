@@ -860,7 +860,7 @@ Dataset(name, dataID string, from, to time.Time) (*insyra.DataTable, error)
 
 ## Fugle
 
-Fugle (developer.fugle.tw) serves Taiwan stock, futures and options data over a REST API, with no brokerage account needed. `FugleClient` reads every stock REST endpoint (intraday, historical, snapshots, technical indicators, corporate actions and ownership) through `client.Stock` and the futures and options endpoints (intraday and historical) through `client.FutOpt`. The WebSocket stream is not in this version.
+Fugle (developer.fugle.tw) serves Taiwan stock, futures and options data over a REST API, with no brokerage account needed. `FugleClient` reads every stock REST endpoint (intraday, historical, snapshots, technical indicators, corporate actions and ownership) through `client.Stock` and the futures and options endpoints (intraday and historical) through `client.FutOpt`. `client.Stock.Stream()` and `client.FutOpt.Stream()` open Fugle's WebSocket stream of live data.
 
 ```go
 client, err := datafetch.Fugle(datafetch.FugleConfig{APIKey: os.Getenv("FUGLE_API_KEY")})
@@ -939,6 +939,30 @@ Coming from the official Python SDK (`fugle-marketdata`), the parameters keep th
 **Corporate actions.** The three corporate action methods need the Developer or Advanced plan. Each takes the first date as a required `from` and `FugleCorporateActionsOptions{To, Descending}`; a `To` in the future includes announced events that have not happened yet, whose prices are nil. Rows come oldest first unless `Descending` is set (Fugle's own default is newest first). Every documented column is present even when no row has it, and the event dates (`haltDate`, `listedDate` and the rest) are times, nil where a step has not happened. `capitalAtApplication` keeps Fugle's units: thousands of dollars for TWSE and dollars for TPEx. These endpoints were written from Fugle's documentation and tested against a local server only.
 
 **Ownership.** The four ownership methods need the Developer or Advanced plan and share one call quota on Fugle's side. `FugleOwnershipOptions{From, To, Descending}` sets the period the same way for all four: with neither, Fugle picks it (the last 30 days of ETF holdings and institutional trades, the latest director holdings and distribution report); `From` alone runs to today; `To` needs a `From`; a period of a year or more is cut into pieces and joined. This differs from Fugle's own API, where `from` or `to` alone asks for that one day or month: for one report, give the same date as `From` and `To`. Director holdings are monthly, so their dates are read as months. Rows are oldest first unless `Descending` is set. A symbol Fugle does not know, or a period with no data, gives an empty table with the columns rather than an error, because Fugle answers both the same way. These endpoints were written from Fugle's documentation and tested against a local server only.
+
+**Live data (WebSocket).** `Stream()` connects to Fugle's stream and checks the key; `StreamContext(ctx)` bounds only that step, and the stream then runs until `Close`. `Subscribe(channel, symbols, oddLot...)` asks for one channel of some symbols and waits for Fugle to confirm (`afterHours...` on the futures and options stream); `Unsubscribe` takes the same values. Fugle's replies carry no request number, so the stream sends one request at a time; a request made while the connection drops returns an error saying to try again once the stream has reconnected. The channels are `FugleChannelTrades`, `FugleChannelCandles`, `FugleChannelBooks`, `FugleChannelAggregates` and, for stocks, `FugleChannelIndices`.
+
+```go
+stream, err := client.Stock.Stream()
+defer stream.Close()
+err = stream.Subscribe(datafetch.FugleChannelTrades, []string{"2330", "2317"})
+for msg := range stream.Messages() {
+    fmt.Println(msg.Symbol, msg.Time, msg.Data["price"])
+}
+// or gather 1,000 trades into a table
+dt, err := stream.Collect(ctx, datafetch.FugleChannelTrades, 1000)
+```
+
+Each message is a `FugleStreamMessage`: `Channel`, `Symbol`, `Snapshot` (true for the latest data Fugle sends right after subscribing, false for live updates), `Time` (Fugle's microsecond timestamp, or a candle's date) and `Data`, Fugle's fields with nested ones joined by an underscore as in the REST tables (`bids_1_price`). A flag Fugle sends only when true (`isClose`, `isTrial`) is missing when false. A candles snapshot, which holds the day's candles so far, arrives as one message per candle. `Collect(ctx, channel, n)` reads `n` messages of one channel, or until `ctx` ends when `n` is 0, into a table with the columns `time`, `symbol`, `snapshot` and Fugle's fields; messages of other channels read meanwhile are discarded, so do not range over `Messages()` at the same time.
+
+The stream looks after the connection: Fugle's pings are answered, and after a drop Fugle says to retry (a lost connection, server maintenance, an authentication outage) it reconnects with growing pauses, authenticates and subscribes everything again, logging one warning each time. Resubscribing sends the snapshots again, so a consumer can see them twice. A wrong key, a plan without live data for the product, or the plan's connection limit ends the stream: `Messages()` closes and `Err()` says why (`ErrFugleAuth`, `ErrFuglePlan`, or the server's message); after a plain `Close`, `Err()` is nil. Messages wait in a buffer of 1,024. When they are read more slowly than they arrive, the oldest are dropped and counted in `Dropped()` rather than holding up the connection, because Fugle cuts a connection that stops answering for 60 seconds. Volumes are in lots for board-lot data and in shares for odd lots. These streams were written from Fugle's documentation and tested against a local server only.
+
+| Python | Go |
+| :--- | :--- |
+| `stock = WebSocketClient(api_key=key).stock; stock.connect()` | `stream, err := client.Stock.Stream()` |
+| `stock.subscribe({"channel": "trades", "symbol": "2330"})` | `stream.Subscribe(datafetch.FugleChannelTrades, []string{"2330"})` |
+| `stock.on("message", handle)` | `for msg := range stream.Messages() { handle(msg) }` |
+| `stock.on("disconnect", ...)` | handled for you; `Err()` after `Messages()` closes |
 
 **Settings.** A method that takes optional settings takes one trailing options value, so `HistoricalCandles("2330")` works with the defaults and `HistoricalCandles("2330", datafetch.FugleHistoricalCandlesOptions{Timeframe: datafetch.FugleTimeframeWeek})` changes them; more than one value is an error. `IntradayTickers` takes the ticker type first because it has no default. The columns the API may omit from a row (`industry` of a ticker, `bid`, `ask` and `volume` of a trade, the at-bid and at-ask volumes) are always present and nil where missing, even when no row has them.
 
