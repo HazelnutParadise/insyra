@@ -68,6 +68,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `datafetch.Fugle` 的 `client.Stock.TechnicalSMA`、`TechnicalRSI`、`TechnicalKDJ`、`TechnicalMACD`、`TechnicalBB` 回傳富果替個股算好的技術指標（均線、RSI、KD、MACD、布林通道），各有 `Context` 版本；K 線週期與指標週期必填，`FugleTechnicalOptions{From, To}` 可指定日期範圍（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `datafetch.Fugle` 的 `client.Stock.IntradayTicker` 回傳個股當日基本資料（一列）：名稱、產業別、證券別、參考價、漲跌停價、現沖與平盤下融券借券資格、注意股與處置股標記、證券狀態與交易單位（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `datafetch.Fugle` 的 `client.Stock.CorporateActionsDividends`、`CorporateActionsCapitalChanges`、`CorporateActionsListingApplicants` 回傳某日起的除權息、資本變動（面額變更、減資、ETF 分割）與申請上市櫃資料，各有 `Context` 版本（需要開發者或進階方案）（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
+- `datafetch.Fugle` 的 `client.Stock.OwnershipETFHoldings`、`OwnershipInstitutionalTrades`、`OwnershipDirectorHoldings`、`OwnershipTDCCDistribution` 以長表格回傳 ETF 每日持股、三大法人每日買賣超、董監經理人每月持股與集保股權分散表，各有 `Context` 版本；一年以上的區間會自動切段再接起來（需要開發者或進階方案）（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 
 ## v0.3.5
 
