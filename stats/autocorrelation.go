@@ -22,6 +22,10 @@ type AutocorrelationResult struct {
 	TRobust, PRobust float64
 }
 
+// AutocorrelationResults is the result of Autocorrelation, one entry per lag
+// from 1. Show prints it as a table.
+type AutocorrelationResults []AutocorrelationResult
+
 // Autocorrelation estimates the autocorrelation of series at lags 1 to
 // maxLag. It asks whether a value is related to the one before it, or two, or
 // k before it: for daily stock returns, a positive lag-1 value means a rise
@@ -35,7 +39,7 @@ type AutocorrelationResult struct {
 // series. maxLag must be between 1 and n-1, and the series must not be
 // constant. It fails when the robust variance at a lag is zero, which happens
 // when every lagged product of deviations is zero, as in a sparse series.
-func Autocorrelation(series insyra.IDataList, maxLag int) ([]AutocorrelationResult, error) {
+func Autocorrelation(series insyra.IDataList, maxLag int) (AutocorrelationResults, error) {
 	x, err := testSeries(series, "series")
 	if err != nil {
 		return nil, err
@@ -67,7 +71,7 @@ func Autocorrelation(series insyra.IDataList, maxLag int) ([]AutocorrelationResu
 		ss += d[i] * d[i]
 	}
 
-	out := make([]AutocorrelationResult, maxLag)
+	out := make(AutocorrelationResults, maxLag)
 	for j := 1; j <= maxLag; j++ {
 		var cross, sq float64
 		for t := j; t < n; t++ {

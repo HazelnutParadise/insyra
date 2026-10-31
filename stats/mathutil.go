@@ -248,3 +248,52 @@ func allEqualF64(x []float64) bool {
 	}
 	return true
 }
+
+// wrightPrefixStat is Wright's (2000) variance-ratio statistic of the series
+// whose prefix sums are cum (cum[0] = 0, cum[i] = x[0] + ... + x[i-1]) and
+// whose sum of squares is ss, for holding period q:
+// ((1/(T q)) * sum over t of the squared q-sum ending at t) / (ss/T) - 1,
+// divided by sqrt(2(2q-1)(q-1)/(3qT)).
+func wrightPrefixStat(cum []float64, ss float64, q int) float64 {
+	n := len(cum) - 1
+	nf, qf := float64(n), float64(q)
+	var sq float64
+	for t := q; t <= n; t++ {
+		s := cum[t] - cum[t-q]
+		sq += s * s
+	}
+	vr := (sq / (nf * qf)) / (ss / nf)
+	phi := 2 * (2*qf - 1) * (qf - 1) / (3 * qf * nf)
+	return (vr - 1) / math.Sqrt(phi)
+}
+
+// prefixSums returns cum with cum[0] = 0 and cum[i] = x[0] + ... + x[i-1],
+// and the sum of squares of x.
+func prefixSums(x []float64) (cum []float64, ss float64) {
+	cum = make([]float64, len(x)+1)
+	for i, v := range x {
+		cum[i+1] = cum[i] + v
+		ss += v * v
+	}
+	return cum, ss
+}
+
+// tailSides reports whether a simulated statistic is at or below, and at or
+// above, the observed one, allowing for the rounding that summing the same
+// values in another order brings, so a draw equal to the observed sample
+// counts on both sides.
+func tailSides(sim, obs float64) (below, above bool) {
+	tol := 1e-12 * (1 + math.Abs(obs))
+	return sim <= obs+tol, sim >= obs-tol
+}
+
+// equalTailP is the equal-tailed two-sided Monte Carlo p-value of a statistic
+// with below draws at or below it and above draws at or above it out of reps:
+// twice the smaller of (1 + below) / (reps + 1) and (1 + above) / (reps + 1),
+// capped at 1. It matches tests whose critical values are the lower and upper
+// percentiles of the simulated distribution, as Wright's are, which matters
+// when that distribution is skewed.
+func equalTailP(below, above, reps int) float64 {
+	p := 2 * float64(1+min(below, above)) / float64(reps+1)
+	return math.Min(p, 1)
+}

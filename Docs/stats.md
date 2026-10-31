@@ -1186,7 +1186,7 @@ adj, err := stats.AdjustPValues(insyra.NewDataList(0.01, 0.04, 0.03, 0.005), sta
 ### Variance Ratio
 
 ```go
-func VarianceRatio(returns insyra.IDataList, qs ...int) ([]VarianceRatioResult, error)
+func VarianceRatio(returns insyra.IDataList, qs ...int) (VarianceRatioResults, error)
 func ChowDenning(returns insyra.IDataList, robust bool, qs ...int) (*ChowDenningResult, error)
 ```
 
@@ -1200,14 +1200,49 @@ func ChowDenning(returns insyra.IDataList, robust bool, qs ...int) (*ChowDenning
 
 **Returns:**
 
-- `[]VarianceRatioResult`, one per `q`: `Q`, `VR`, `ZHomoscedastic` and `PHomoscedastic` (valid for independent increments with a constant variance), `ZRobust` and `PRobust` (Lo and MacKinlay's `z*`, valid under heteroskedasticity). The p-values are two-tailed from the normal distribution, an asymptotic result that needs a long series.
+- `VarianceRatioResults`, a `[]VarianceRatioResult` with one entry per `q`: `Q`, `VR`, `ZHomoscedastic` and `PHomoscedastic` (valid for independent increments with a constant variance), `ZRobust` and `PRobust` (Lo and MacKinlay's `z*`, valid under heteroskedasticity). The p-values are two-tailed from the normal distribution, an asymptotic result that needs a long series.
 - `*ChowDenningResult` from `ChowDenning`: `MaxZ`, the largest absolute `z` over the periods, and `P`, its p-value with the Sidak correction `1 - (2Φ(max) - 1)^k`, so choosing the best `q` does not inflate the false-positive rate (Chow and Denning 1993).
 - `error`: no `q`, a `q` out of range, a nil list, a value that is not a finite number, or returns with no variance.
+
+`res.Show()` prints all the holding periods as one table, with numbers to 6 significant digits (the fields hold the full values); each entry also has its own `Show()`, and the result can be ranged over or passed wherever a `[]VarianceRatioResult` is expected.
+
+```go
+res, err := stats.VarianceRatio(returns, 2, 5, 10)
+res.Show()
+```
+
+### Wright Variance Ratio
+
+```go
+func WrightVarianceRatio(returns insyra.IDataList, qs []int, opts ...WrightVarianceRatioOptions) (WrightVarianceRatioResults, error)
+```
+
+**Description:** Asks the question of `VarianceRatio`, whether returns follow a random walk, with Wright's (2000) rank and sign variance ratios. `R1` uses the ranks of the returns, `R2` their normal scores and `S1` only whether each return rose or fell, so outliers and heavy tails do not distort them, and their p-values hold for any sample size, up to simulation error, instead of relying on a large sample. A positive statistic means returns trend, a negative one that they reverse. The statistics match R's `vrtest::Wright`.
+
+`R1` and `R2` assume the returns are independent and identically distributed under the null. `S1` assumes only that each return is unpredictable with median 0; it counts a return of exactly 0 as a fall, as Wright does. Zeros then make the signs lean negative, which pushes `S1` up and makes it reject a true random walk too often (a thinly traded stock whose price often stays put can look like it trends), so `Zeros` reports how many there were, and with many of them read `R1` and `R2` instead. Tied returns get average ranks. The p-values come from simulating the null: each replication shuffles the observed rank scores (for `R1` and `R2`) and draws random signs (for `S1`).
+
+**Parameters:**
+
+- `returns`: Single-period returns, as for `VarianceRatio`.
+- `qs`: One or more holding periods, each from 2 to `n - 1`.
+- `opts`: Optional `WrightVarianceRatioOptions`: `Replications`, the number of simulated draws (default 10,000, the library's choice, which resolves p-values to about 0.0001), and `Seed`, which always applies: the zero value is seed 0, so the same input always gives the same p-values.
+
+**Returns:**
+
+- `WrightVarianceRatioResults`, one entry per `q`: `Q`, the statistics `R1`, `R2` and `S1`, their equal-tailed two-sided p-values `PR1`, `PR2` and `PS1` (twice the smaller tail share `(1 + b) / (B + 1)` of the `B` simulated draws, capped at 1, so never 0), and `Zeros`.
+- `error`: no `q`, a `q` out of range, a negative `Replications`, more than one options value, a nil list, a value that is not a finite number, or returns that are all equal.
+
+```go
+res, err := stats.WrightVarianceRatio(returns, []int{2, 5, 10})
+res.Show() // "Wright variance ratio", then a row per q: Q, R1, R2, S1, PR1, PR2, PS1, Zeros
+res, err = stats.WrightVarianceRatio(returns, []int{2, 5, 10},
+    stats.WrightVarianceRatioOptions{Replications: 20000, Seed: 7})
+```
 
 ### Autocorrelation
 
 ```go
-func Autocorrelation(series insyra.IDataList, maxLag int) ([]AutocorrelationResult, error)
+func Autocorrelation(series insyra.IDataList, maxLag int) (AutocorrelationResults, error)
 ```
 
 **Description:** Asks whether a value is related to the one before it, or two, or `k` before it. For daily stock returns, a positive lag-1 value means a rise tends to follow a rise. `Rho` is the sample autocorrelation as R's `acf` computes it. `T` and `P` test each lag against white noise (independent values with a constant variance). Volatility that comes in clusters makes that test reject too often, so `TRobust` and `PRobust` use Lo and MacKinlay's (1988) heteroskedasticity-robust variance, the same one `VarianceRatio` uses. The p-values are asymptotic and need a long series. The series can be any numbers in time order, not only returns.
@@ -1219,11 +1254,12 @@ func Autocorrelation(series insyra.IDataList, maxLag int) ([]AutocorrelationResu
 
 **Returns:**
 
-- `[]AutocorrelationResult`, one per lag: `Lag`, `Rho`, `T` (`sqrt(n) * Rho`) and `P`, `TRobust` and `PRobust`.
+- `AutocorrelationResults`, a `[]AutocorrelationResult` with one entry per lag: `Lag`, `Rho`, `T` (`sqrt(n) * Rho`) and `P`, `TRobust` and `PRobust`.
 - `error`: a nil or empty list, a value that is not a finite number, a constant series, or a `maxLag` out of range.
 
 ```go
 res, err := stats.Autocorrelation(returns, 10)
+res.Show() // one row per lag
 for _, a := range res {
     fmt.Println(a.Lag, a.Rho, a.PRobust)
 }

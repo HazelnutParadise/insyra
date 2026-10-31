@@ -21,6 +21,10 @@ type VarianceRatioResult struct {
 	ZRobust, PRobust float64
 }
 
+// VarianceRatioResults is the result of VarianceRatio, one entry per holding
+// period in the order given. Show prints it as a table.
+type VarianceRatioResults []VarianceRatioResult
+
 // VarianceRatio tests whether returns follow a random walk by comparing the
 // variance of q-period returns with q times the variance of one-period returns
 // (Lo and MacKinlay 1988). A ratio above 1 means returns trend (positive
@@ -36,7 +40,7 @@ type VarianceRatioResult struct {
 // and MacKinlay, with n the number of returns, and gives both the homoscedastic z and the heteroskedasticity-robust
 // z*. Each q must be between 2 and n-1. The p-values come from the standard
 // normal distribution, which is an asymptotic result and needs a long series.
-func VarianceRatio(returns insyra.IDataList, qs ...int) ([]VarianceRatioResult, error) {
+func VarianceRatio(returns insyra.IDataList, qs ...int) (VarianceRatioResults, error) {
 	if len(qs) == 0 {
 		return nil, errors.New("at least one holding period q is needed")
 	}
@@ -68,7 +72,7 @@ func VarianceRatio(returns insyra.IDataList, qs ...int) ([]VarianceRatioResult, 
 		cum[i+1] = cum[i] + v
 	}
 
-	out := make([]VarianceRatioResult, len(qs))
+	out := make(VarianceRatioResults, len(qs))
 	for k, q := range qs {
 		qf := float64(q)
 		var sq float64
