@@ -29,6 +29,12 @@ func TestFugleLive(t *testing.T) {
 			}
 		}
 	})
+	t.Run("technical", func(t *testing.T) {
+		dt, err := c.Stock.TechnicalKDJ("2330", FugleTimeframeDay, 9, 3, 3, FugleTechnicalOptions{From: time.Date(2024, 8, 1, 0, 0, 0, 0, time.UTC), To: time.Date(2024, 8, 10, 0, 0, 0, 0, time.UTC)})
+		if err != nil || dt.NumRows() == 0 || dt.GetColByName("j") == nil {
+			t.Fatalf("err=%v", err)
+		}
+	})
 	t.Run("ticker", func(t *testing.T) {
 		dt, err := c.Stock.IntradayTicker("2330")
 		if err != nil || dt.NumRows() != 1 || dt.GetColByName("referencePrice").Data()[0] == nil {
