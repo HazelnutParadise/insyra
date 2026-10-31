@@ -22,6 +22,10 @@ None in flight. Nothing left can be picked up without the owner answering someth
 **Awaiting a ruling:** nothing from the decision list that started on 2026-09-25; the open `api-review` issues are the next pickup.
 
 ## Latest Milestones
+- 2026-10-31 The device compiler's upstream fixes are in (change `naga-upstream-fixes`):
+  - **Decision.** Require gogpu/naga v0.20.4 and drop the workarounds for gogpu/naga#95 (an operand `select()` lost its parentheses in Metal, fixed in v0.19.1) and #133 (`countLeadingZeros` compiled to the bit index on Vulkan, DirectX 12 and OpenGL, fixed in v0.20.4). gogpu/wgpu stays at v0.34.5, its newest. This line's `ieee_decode` already used `countLeadingZeros`, so on Vulkan the upgrade alone fixes subnormal inputs to the correctly rounded division, square root, exp and log.
+  - **Measured on the Apple M3.** `TestWGSLBuiltinsMatchTheHost` passes with v0.20.4 and fails with v0.19.0. gogpu/wgpu#280 was fixed in v0.30.31; the device tests passed under `-race` on `dev`, which has the same gogpu/wgpu v0.34.5, and were not rerun under `-race` here.
+  - **Not verified.** Vulkan: the device tests on the GT 1030 are the next output. gogpu/wgpu#370 and #371 are still open. `delivery-status.md` changed; `AGENTS.md` did not.
 - 2026-10-25 Callers run their own kernels on resident buffers (ported from `dev`, issue 546; change `accel-custom-kernels`). The owner chose the shape on 2026-10-24:
   - **Decision.** `Tape.Custom` takes resident tensors on a tape in `accel.PrecisionFloat32`, rather than a second `DeviceOp`/`Apply` type. `PrecisionFloat32` runs every built-in operation as `PrecisionFloat32Rounded` does and adds caller kernels, whose result depends on the device; a caller-declared `PrecisionFloat32Rounded` and a required host half were rejected. `accel.NewKernel`, `Kernel.Bind` and `accel.Submit` launch a kernel from one shared parameter ring through a dynamic offset.
   - **Measured on the Apple M3.** 168 trivial dispatches take 3.7 ms in one `Submit` against 23.8 ms as separate calls; a tape step with a caller kernel between two built-in operations matches the host oracle bit for bit.
