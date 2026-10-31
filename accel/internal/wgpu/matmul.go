@@ -255,6 +255,7 @@ func (h *handle) matmulPipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroupLay
 		}
 		h.matmulPipe = pipeline
 		h.matmulBGLayout = layout
+		h.retained = append(h.retained, shader, pipelineLayout)
 	})
 	return h.matmulPipe, h.matmulBGLayout, h.matmulErr
 }

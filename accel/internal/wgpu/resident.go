@@ -277,7 +277,11 @@ type kernel struct {
 	once   sync.Once
 	pipe   *gowgpu.ComputePipeline
 	layout *gowgpu.BindGroupLayout
-	err    error
+	// The shader module and pipeline layout are kept only so retireLocked can
+	// release them: a device cannot be replaced while they are alive.
+	module   *gowgpu.ShaderModule
+	plLayout *gowgpu.PipelineLayout
+	err      error
 }
 
 func (k *kernel) library() string {
@@ -341,7 +345,7 @@ func (k *kernel) build(h *handle) {
 			k.err = fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
 			return
 		}
-		k.pipe, k.layout = pipeline, layout
+		k.pipe, k.layout, k.module, k.plLayout = pipeline, layout, shader, pipelineLayout
 		builtKernels[k] = struct{}{}
 	})
 }

@@ -23,11 +23,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 // A dispatch that runs long enough for the operating system to stop it loses
 // the device. Every buffer from before is gone and reports ErrDeviceLost, and
-// the next call that needs a device opens a new one: the same kernel binds to
-// a new buffer and computes correctly. It provokes a real GPU reset (on
+// the next call that needs a device tries to open a new one: either the same
+// kernel binds to a new buffer and computes correctly, or the call reports
+// that no device is available. It provokes a real GPU reset (on
 // Windows the driver recovers; a display can flicker), so it runs only when
 // INSYRA_ACCEL_DEVICE_LOSS_TESTS=1 and a GPU is available.
-func TestDeviceLossIsReportedAndTheNextCallGetsANewDevice(t *testing.T) {
+func TestDeviceLossIsReportedAndLaterCallsSayWhy(t *testing.T) {
 	requireGPU(t)
 	if os.Getenv("INSYRA_ACCEL_DEVICE_LOSS_TESTS") != "1" {
 		t.Skip("set INSYRA_ACCEL_DEVICE_LOSS_TESTS=1: this test makes the driver reset the GPU")
@@ -68,7 +69,18 @@ func TestDeviceLossIsReportedAndTheNextCallGetsANewDevice(t *testing.T) {
 		t.Fatalf("submitting a binding from before the loss = %v, want ErrDeviceLost", err)
 	}
 
-	in := mustBuffer(t, device, []float32{1, 2, 3})
+	// The next call tries a new device. A driver may refuse one in the same
+	// process (an NVIDIA GT 1030 answered vkCreateDevice -3 for as long as it
+	// was retried); then the call says no device is available.
+	in, err := NewDeviceBuffer(device, []float32{1, 2, 3})
+	if err != nil {
+		if !errors.As(err, &resident) || resident.Reason != FallbackReasonNoAccelerator {
+			t.Fatalf("after the loss, a new buffer = %v, want either a new device or the reason %q", err, FallbackReasonNoAccelerator)
+		}
+		t.Logf("the driver did not give this process a new device: %v", err)
+		return
+	}
+	t.Cleanup(in.Release)
 	out := mustBuffer(t, device, make([]float32, 3))
 	again := mustBind(t, double, bufs(in), bufs(out))
 	if err := Submit(Dispatch{Binding: again, Params: [16]uint32{3}, Workgroups: workgroups(3)}); err != nil {

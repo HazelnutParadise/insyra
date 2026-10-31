@@ -427,6 +427,9 @@ type handle struct {
 	info     gputypes.AdapterInfo
 	limits   gputypes.Limits
 	retired  bool // the device was lost; see retireLocked
+	// retained holds the shader modules and pipeline layouts behind the
+	// cached pipelines below, released only when the device is retired.
+	retained []interface{ Release() }
 
 	shortlistOnce     sync.Once
 	shortlistBGLayout *gowgpu.BindGroupLayout
@@ -483,6 +486,7 @@ func (h *handle) shortlistPipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroup
 		}
 		h.shortlistBGLayout = bgLayout
 		h.shortlistPipe = pipeline
+		h.retained = append(h.retained, shader, plLayout)
 	})
 	return h.shortlistPipe, h.shortlistBGLayout, h.shortlistErr
 }
@@ -507,6 +511,10 @@ func acquire() (*handle, error) {
 	sharedMu.Lock()
 	defer sharedMu.Unlock()
 	if !sharedTried {
+		for _, resource := range teardown {
+			releaseQuietly(resource)
+		}
+		teardown = nil
 		shared, sharedErr = open()
 		sharedTried = true
 	}

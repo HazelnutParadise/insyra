@@ -20,9 +20,9 @@ var (
 
 // ErrDeviceLost reports that the GPU device was lost (a driver reset, the
 // operating system stopping a dispatch that ran too long, an adapter removed).
-// Resident buffers made before the loss are gone and report this error; the
-// next call that needs a device opens a new one, so a caller re-creates its
-// buffers and carries on. Test for it with errors.Is.
+// Resident buffers made before the loss are gone and report this error. The
+// next call that needs a device tries to open a new one; when the driver
+// refuses, it reports no device instead. Test for it with errors.Is.
 var ErrDeviceLost = wgpu.ErrDeviceLost
 
 // executeColumn is one projected column, already narrowed to float32 and with

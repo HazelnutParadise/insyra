@@ -88,6 +88,11 @@ func (k *Kernel) Bind(reads, writes []*Buffer) (*Binding, error) {
 	}
 	submitMu.Lock()
 	defer submitMu.Unlock()
+	// A buffer that died with a lost device is reported as such, before
+	// acquire tries to open a device that may not come back.
+	if err := lostBuffers(name, append(append([]*Buffer(nil), reads...), writes...)); err != nil {
+		return nil, err
+	}
 	h, err := acquire()
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
@@ -173,6 +178,11 @@ func Submit(dispatches []Dispatch) error {
 	}
 	submitMu.Lock()
 	defer submitMu.Unlock()
+	for i, d := range dispatches {
+		if d.Binding != nil && d.Binding.lost {
+			return fmt.Errorf("%w: dispatch %d: the binding", ErrDeviceLost, i)
+		}
+	}
 	h, err := acquire()
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrUnavailable, err)
@@ -267,6 +277,11 @@ func submit(launches []launch) error {
 	}
 	submitMu.Lock()
 	defer submitMu.Unlock()
+	for _, l := range launches {
+		if err := lostBuffers(l.k.name, append(append([]*Buffer(nil), l.reads...), l.writes...)); err != nil {
+			return err
+		}
+	}
 	h, err := acquire()
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrUnavailable, err)
