@@ -37,6 +37,7 @@ dt.Show()
 | [CCL](CCL.md) | Column Calculation Language for DataTable column operations |
 | [isr](isr.md) | Syntax sugar for fluent, readable code; use the root package where performance matters |
 | [cli-dsl](cli-dsl.md) | Unified guide for CLI, REPL, `.isr` scripts, and Go DSL sessions |
+| [container](container.md) | The container image each release publishes: the CLI and Go toolchain, ready to use the host's GPU |
 
 #### Guided Tutorials
 

@@ -1,0 +1,7 @@
+# Only what the image needs goes to the build: the Go sources.
+.git
+.github
+Docs
+logo
+openspec
+skills
