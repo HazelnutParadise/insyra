@@ -440,6 +440,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `ta.CandlePatterns`，標記十三種 K 線型態（十字星、錘子、吊人、倒錘子、流星、吞噬、孕線、貫穿線、烏雲罩頂、晨星與夜星、紅三兵、黑三鴉），每種一條有名字的清單，實體與影線比例可用選項調整（`LongShadowRatio` 是錘子或星線的長影線至少為實體的幾倍，`ShortShadowRatio` 是相反方向的影線，或紅三兵與黑三鴉的影線，要比參照短幾倍），並有 `CandleOptions.SegmentStarts`，每段資料各自計算，型態不會用到停牌或重新上市之前的 K 線；不設定時結果不變（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 - `ta.FilterRule(prices, threshold, opts...)` 是 Alexander 的濾嘴法則（Fama 與 Blume 1966）：從最近低點漲了 `threshold` 就買進，從最近高點跌了 `threshold` 就賣出或放空，回傳每列 1／0／-1 的部位，可直接交給 `quant.BacktestSignal`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 
+### 容器映像
+
+- 每次發版都會發佈容器映像 `ghcr.io/hazelnutparadise/insyra:<版號>`，支援 `linux/amd64` 與 `linux/arm64`：以 Go 官方映像為底，預裝該版本的 `insyra` CLI，並附 Vulkan loader 與驅動，讓 `accel` 能用宿主機的 GPU（Linux 上 NVIDIA 用 `--gpus all`，AMD、Intel 用 `--device /dev/dri`）。`0.3` 與 `latest` 依版號指向最高的正式版。詳見 [Docs/container.md](Docs/container.md)。
+
 ## v0.3.3
 
 ### Core

@@ -203,6 +203,16 @@ CSV setup -> DataTable loading -> CCL enrichment -> sorting -> KPI aggregation -
   go get -u github.com/HazelnutParadise/insyra/allpkgs@latest
   ```
 
+### Container Image
+
+Every release also publishes a container image with the CLI and a Go toolchain, ready to use the host's GPU on Linux:
+
+```sh
+docker run --rm -it --gpus all -v "$PWD":/work ghcr.io/hazelnutparadise/insyra:<version>
+```
+
+See [Docs/container.md](/Docs/container.md) for tags, GPU setup and the hosts that can pass a GPU through.
+
 ### Quick Example
 
 ```go
