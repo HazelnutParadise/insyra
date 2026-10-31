@@ -14,8 +14,6 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `accel.RoundedLog1p` 與 `accel.RoundedExpm1` 在常駐陣列上計算 `log(1+x)` 與 `e^x - 1`，結果正確捨入，並且在全部 2^32 個 float32 輸入上與主機逐位元一致，和 `RoundedExp`、`RoundedLog` 一樣。
 
-- 在 Vulkan 上，正確捨入的除法、平方根、exp 與 log（`PrecisionFloat32Rounded` 與常駐的優化器步驟）遇到次正規輸入會回傳錯誤的值，例如 `1e-45 / 3e-45` 得到 1.5，因為 WGSL 編譯器把 `countLeadingZeros` 編成最高有效位的位元索引。編譯器升級到 gogpu/naga v0.20.4，`countLeadingZeros` 和 `countTrailingZeros(0)` 在 Vulkan、DirectX 12 與 OpenGL 上都編對了，你自己的 kernel 也可以直接用。
-
 ## Unreleased
 
 ### Core
@@ -409,6 +407,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **Deprecated**：`accel` 給後端作者用的 API 和測試鉤子改為內部使用。受影響的名稱：`RegisterBackendExecutor`、`BackendExecutor`、`ExecuteRequest`、`ExecuteResponse`、`ExecuteColumn`、`RegisterDiscoverer`、`Discoverer`、`RegisterSDKProbe`、`SDKProbe`、`Session.RegisterDevice`、`Session.RecordReport`、`Session.PlanShardableWorkload`、`NearestExactCPU`、`ResetBackendExecutorsForTest`、`ResetDefaultForTest`、`ResetDiscoverersForTest` 和 `ResetSDKProbesForTest`。這一版照舊能用，下一版移除。`accel` 以外沒有人用到它們，而且呼叫 `RegisterDevice` 加 `RecordReport`，就能讓 `Report().Accelerated` 在什麼都沒跑的情況下顯示 `true`。`ExecuteNearestExact` 不論有沒有裝置都會給出 `float64` 結果，所以 `NearestExactCPU` 已經沒有用處。要重新讀取裝置用 `Discover`，要看分配計畫用 `PlanShardable`。
 - 手動組出來的 `Buffer` 如果宣告為數值欄，但 `Values` 讀不了（`[]float32`、`[]int`、nil）、`Type` 與 `Values` 不符，或欄位長度不一致，`ExecuteNearestExact` 現在會回傳指出欄位的錯誤。過去它會回傳空結果且沒有錯誤（[#441](https://github.com/HazelnutParadise/insyra/issues/441)）。由 `ProjectDataList`、`ProjectDataTable` 建出的資料集不受影響；`bool`、`string`、`any` 欄位仍回報 `dtype-not-eligible`，不會出錯。
 - `accel.PrecisionFloat32Rounded` 是第三種 `Precision`：以 float32 執行，每個結果是精確值只捨入一次，在每個裝置與 CPU 後備路徑上完全相同。`accel.DeviceBuffer`（`NewDeviceBuffer`、`ToHost`、`Clone`、`Release`）、`DefaultDevice`、`ResidentBytes` 與 `RoundedMatMul`、`RoundedAdd`、`RoundedSumRows`、`RoundedSGD` 核心把 float32 陣列留在裝置上；常駐的位元組受裝置記憶體預算限制。
+- 在 Vulkan 上，正確捨入的除法、平方根、exp 與 log（`PrecisionFloat32Rounded` 與常駐的優化器步驟）遇到次正規輸入會回傳錯誤的值，例如 `1e-45 / 3e-45` 得到 1.5，因為 WGSL 編譯器把 `countLeadingZeros` 編成最高有效位的位元索引。編譯器升級到 gogpu/naga v0.20.4，`countLeadingZeros` 和 `countTrailingZeros(0)` 在 Vulkan、DirectX 12 與 OpenGL 上都編對了，你自己的 kernel 也可以直接用。
 
 ### `quant`
 - **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。
