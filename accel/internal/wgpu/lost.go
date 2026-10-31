@@ -90,14 +90,14 @@ func retireLocked(h *handle) {
 	h.retired = true
 
 	var objects []interface{ Release() }
+	// b.mu is not taken: the call that met the loss may hold it (a download
+	// does), and every write of b.buffer happens under submitMu, which is held.
 	for b := range liveBuffers {
-		b.mu.Lock()
 		if b.buffer != nil {
 			objects = append(objects, b.buffer)
 			b.buffer = nil
 		}
-		b.released, b.lost = true, true
-		b.mu.Unlock()
+		b.lost.Store(true)
 	}
 	liveBuffers = map[*Buffer]struct{}{}
 	for b := range liveBindings {
@@ -124,9 +124,7 @@ func retireLocked(h *handle) {
 		k.reset()
 	}
 	builtKernels = map[*kernel]struct{}{}
-	for _, resource := range pending {
-		objects = append(objects, resource)
-	}
+	objects = append(objects, pending...)
 	pending = nil
 	if uniformRing != nil {
 		objects = append(objects, uniformRing)
@@ -169,16 +167,12 @@ func retireLocked(h *handle) {
 
 // Lost reports whether the device was lost after the buffer was made. The
 // buffer's contents are gone with it.
-func (b *Buffer) Lost() bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.lost
-}
+func (b *Buffer) Lost() bool { return b.lost.Load() }
 
 // unusableLocked is the error for a buffer that cannot be used: lost with the
 // device, or released. b.mu must be held.
 func (b *Buffer) unusableLocked(what string) error {
-	if b.lost {
+	if b.lost.Load() {
 		return fmt.Errorf("%w: %s", ErrDeviceLost, what)
 	}
 	return fmt.Errorf("wgpu: %s was released", what)
@@ -196,10 +190,7 @@ func lostBuffers(what string, buffers []*Buffer) error {
 		if b == nil {
 			continue
 		}
-		b.mu.Lock()
-		lost := b.lost
-		b.mu.Unlock()
-		if lost {
+		if b.lost.Load() {
 			return fmt.Errorf("%w: %s: buffer %d", ErrDeviceLost, what, j)
 		}
 	}

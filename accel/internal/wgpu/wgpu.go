@@ -53,6 +53,10 @@ var (
 
 // Probe reports the adapter, or ErrUnavailable when there is no GPU worth using.
 func Probe() (Info, error) {
+	// submitMu, because acquire may release a lost device's objects, which
+	// must not happen while another call is still using them.
+	submitMu.Lock()
+	defer submitMu.Unlock()
 	h, err := acquire()
 	if err != nil {
 		return Info{}, ErrUnavailable

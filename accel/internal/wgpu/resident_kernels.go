@@ -259,7 +259,7 @@ func Clone(source *Buffer) (*Buffer, error) {
 	source.mu.Unlock()
 	if sourceReleased || sourceBuffer == nil {
 		source.mu.Lock()
-		lost := source.lost
+		lost := source.lost.Load()
 		source.mu.Unlock()
 		if lost {
 			return fail(fmt.Errorf("%w: clone of a buffer", ErrDeviceLost))

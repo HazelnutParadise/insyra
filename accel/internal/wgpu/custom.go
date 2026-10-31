@@ -117,7 +117,7 @@ func (k *Kernel) Bind(reads, writes []*Buffer) (*Binding, error) {
 			return nil, fmt.Errorf("wgpu: %s: buffer %d is nil", name, j)
 		}
 		buffer.mu.Lock()
-		released, lost, handle, size := buffer.released, buffer.lost, buffer.buffer, bufferBytes(buffer.length)
+		released, lost, handle, size := buffer.released, buffer.lost.Load(), buffer.buffer, bufferBytes(buffer.length)
 		buffer.mu.Unlock()
 		if lost {
 			return nil, fmt.Errorf("%w: %s: buffer %d", ErrDeviceLost, name, j)
@@ -204,7 +204,7 @@ func Submit(dispatches []Dispatch) error {
 		}
 		for j, buffer := range append(append([]*Buffer(nil), d.Binding.reads...), d.Binding.writes...) {
 			buffer.mu.Lock()
-			released, lost := buffer.released, buffer.lost
+			released, lost := buffer.released, buffer.lost.Load()
 			buffer.mu.Unlock()
 			if lost {
 				return fmt.Errorf("%w: dispatch %d: %s: buffer %d", ErrDeviceLost, i, name, j)
@@ -316,7 +316,7 @@ func submit(launches []launch) error {
 				return fmt.Errorf("wgpu: dispatch %d: %s: buffer %d is nil", i, k.name, j)
 			}
 			buffer.mu.Lock()
-			released, lost, handle, size := buffer.released, buffer.lost, buffer.buffer, bufferBytes(buffer.length)
+			released, lost, handle, size := buffer.released, buffer.lost.Load(), buffer.buffer, bufferBytes(buffer.length)
 			buffer.mu.Unlock()
 			if lost {
 				return fmt.Errorf("%w: dispatch %d: %s: buffer %d", ErrDeviceLost, i, k.name, j)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gogpu/gputypes"
 	gowgpu "github.com/gogpu/wgpu"
@@ -20,7 +21,7 @@ type Buffer struct {
 	buffer   *gowgpu.Buffer
 	length   int
 	released bool
-	lost     bool // the device was lost; released is also set, so every use is refused
+	lost     atomic.Bool // the device was lost; set without b.mu, see retireLocked
 }
 
 // maxPendingObjects bounds the uniform buffers and bind groups kept alive
@@ -107,7 +108,7 @@ func (b *Buffer) Bytes() uint64 { return bufferBytes(b.length) }
 func (b *Buffer) Released() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.released
+	return b.released || b.lost.Load()
 }
 
 // Release frees the device memory. It is idempotent.
@@ -179,7 +180,7 @@ func (b *Buffer) downloadLocked(ctx context.Context) ([]float32, error) {
 func (b *Buffer) downloadRawLocked(ctx context.Context, decode func(raw []byte)) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.released {
+	if b.released || b.lost.Load() {
 		return b.unusableLocked("buffer")
 	}
 	if b.length == 0 {
@@ -300,6 +301,9 @@ func (k *kernel) source() string {
 
 func (k *kernel) build(h *handle) {
 	k.once.Do(func() {
+		// Registered before anything can fail, so a build that failed with
+		// the device is reset by retireLocked and tried again on the next one.
+		builtKernels[k] = struct{}{}
 		shader, err := h.device.CreateShaderModule(&gowgpu.ShaderModuleDescriptor{
 			Label: "accel-" + k.name, WGSL: k.source(),
 		})
@@ -346,7 +350,6 @@ func (k *kernel) build(h *handle) {
 			return
 		}
 		k.pipe, k.layout, k.module, k.plLayout = pipeline, layout, shader, pipelineLayout
-		builtKernels[k] = struct{}{}
 	})
 }
 
