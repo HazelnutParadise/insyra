@@ -351,9 +351,11 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 
 有關 DataTable 方法和功能的完整列表，請參閱 **[DataTable 文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)**。
 
-## 錯誤處理（實例級）
+## 錯誤處理
 
-`DataList` 與 `DataTable` 均支援用於鏈式操作的實例級錯誤追蹤。使用 `Err()` 可取得該實例最後發生的錯誤（回傳 `*ErrorInfo` 或 `nil`），使用 `ClearErr()` 可清除該錯誤。
+Insyra 不會讓你的程式中止：失敗會被記錄下來，呼叫仍會回傳可以繼續使用的結果。一般函式回傳 `error`，可串接的型別（`DataList`、`DataTable`、`isr`）則把錯誤記在 `Err()` 上，而且會**保留第一個**失敗，所以在整條鏈的最後檢查一次，就能看到根本原因。`PopErr()` 會讀取並清除這個錯誤。想要一出錯就停下來，可以開啟 `insyra.Config.SetPanicOnError(true)`，之後任何記錄到的錯誤都會觸發可 recover 的 panic。
+
+`DataList` 與 `DataTable` 都會在實例上追蹤鏈式操作的錯誤。使用 `Err()` 可取得該實例自建立或上次清除以來記錄到的第一個錯誤（回傳 `*ErrorInfo` 或 `nil`），使用 `ClearErr()` 可清除該錯誤。
 
 範例：
 
