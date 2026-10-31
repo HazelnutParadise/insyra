@@ -39,6 +39,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `stats.Autocorrelation(series, maxLag)` estimates the autocorrelation at each lag from 1 to `maxLag`, matching R's `acf`, with a white-noise test and a heteroskedasticity-robust test (Lo and MacKinlay 1988) for series whose volatility changes, such as daily returns ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 - `stats.RunsTest(series, opts...)` tests whether the order of up and down moves is random (Wald-Wolfowitz): it counts the runs above and below a threshold, 0 by default, and returns the expected number, `Z` and the p-value ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 - `stats.Autocorrelation` and `stats.VarianceRatio` now refuse a constant series whose values are decimals such as 0.1: the mean of 100 copies of 0.1 is not exactly 0.1, so they reported `Rho` 0.99 and a tiny p-value for a series with no variance.
+- `stats.WrightVarianceRatio(returns, qs, opts...)` tests for a random walk with Wright's (2000) rank and sign variance ratios `R1`, `R2` and `S1`, whose p-values come from simulating the null and so hold for any sample size; the statistics match R's `vrtest::Wright` ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
+- `VarianceRatio` and `Autocorrelation` return `VarianceRatioResults` and `AutocorrelationResults`, slices of their results with a `Show()` that prints every holding period or lag as one table. Code that ranges over the result or passes it as a slice is unchanged; only a variable of the old function type, such as `var f func(insyra.IDataList, ...int) ([]stats.VarianceRatioResult, error) = stats.VarianceRatio`, needs the new result type.
 
 ### `ml` and `nn`
 

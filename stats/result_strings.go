@@ -32,11 +32,46 @@ func (r *AutocorrelationResult) String() string { return formatResult("Autocorre
 // Show prints String to standard output.
 func (r *AutocorrelationResult) Show() { fmt.Println(r.String()) }
 
+// String returns the results as a table: "Autocorrelation", then one row per
+// lag.
+func (r AutocorrelationResults) String() string {
+	return formatRows("Autocorrelation", []AutocorrelationResult(r))
+}
+
+// Show prints String to standard output.
+func (r AutocorrelationResults) Show() { fmt.Println(r.String()) }
+
 // String returns the result as text: "Variance ratio", then one line per field.
 func (r *VarianceRatioResult) String() string { return formatResult("Variance ratio", r) }
 
 // Show prints String to standard output.
 func (r *VarianceRatioResult) Show() { fmt.Println(r.String()) }
+
+// String returns the results as a table: "Variance ratio", then one row per
+// holding period.
+func (r VarianceRatioResults) String() string {
+	return formatRows("Variance ratio", []VarianceRatioResult(r))
+}
+
+// Show prints String to standard output.
+func (r VarianceRatioResults) Show() { fmt.Println(r.String()) }
+
+// String returns the result as text: "Wright variance ratio", then one line per field.
+func (r *WrightVarianceRatioResult) String() string {
+	return formatResult("Wright variance ratio", r)
+}
+
+// Show prints String to standard output.
+func (r *WrightVarianceRatioResult) Show() { fmt.Println(r.String()) }
+
+// String returns the results as a table: "Wright variance ratio", then one
+// row per holding period.
+func (r WrightVarianceRatioResults) String() string {
+	return formatRows("Wright variance ratio", []WrightVarianceRatioResult(r))
+}
+
+// Show prints String to standard output.
+func (r WrightVarianceRatioResults) Show() { fmt.Println(r.String()) }
 
 // String returns the result as text: "Chow-Denning test", then one line per field.
 func (r *ChowDenningResult) String() string { return formatResult("Chow-Denning test", r) }
