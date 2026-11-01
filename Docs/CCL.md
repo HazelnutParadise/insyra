@@ -839,9 +839,9 @@ These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers an
 | --- | --- |
 | `YEAR(d)` | Year as number |
 | `MONTH(d)` | Month 1–12 |
-| `DAYOFMONTH(d)` | Day 1–31. **Deprecated**: removed in 0.4, where `DAY(d)` reads a date. Keep using it on 0.3.x |
+| `DAYOFMONTH(d)` | Day 1–31. **Deprecated**, logs a warning, and is removed in 0.4: use `DAY(d)` |
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday). **Changes in 0.4** to 1 (Sunday) – 7 (Saturday), as in Excel; it logs a warning the first time it runs |
-| `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped. **Deprecated**: removed in 0.4, where `HOUR(d)`, `MINUTE(d)`, `SECOND(d)` and `DAY(d)` read dates. Keep using it for those parts on 0.3.x; `YEAR(d)`, `MONTH(d)` and `DAYOFMONTH(d)` already give the others |
+| `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped. **Deprecated**, logs a warning, and is removed in 0.4: use `YEAR(d)`, `MONTH(d)`, `DAY(d)`, `HOUR(d)`, `MINUTE(d)` or `SECOND(d)` |
 | `DATE(year, month, day)` | The date with those numbers. Fractions are dropped, and numbers past the end carry over as in Excel: `DATE(2024, 13, 1)` is 2025-01-01 and `DATE(2024, 1, 0)` is 2023-12-31. An empty cell in any argument gives an empty result |
 | `TODAY()` | Today's date on the local clock, at midnight |
 | `NOW()` | The date and time on the local clock |
@@ -896,11 +896,9 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 
 ### DAY / HOUR / MINUTE / SECOND
 
-- `DAY(x)`: accepts a `time.Duration`, a duration string (e.g., `"24h"`), or a numeric value (interpreted as seconds); returns days as `float64`.
-- `HOUR(x)`: returns hours as `float64`.
-- `MINUTE(x)`: returns minutes as `float64`.
-- `SECOND(x)`: returns seconds as `float64`.
-- **These four change meaning in 0.4**, where they read a part of a date, as in Excel: `DAY('2024-01-02')` is `2`. The first call of each in a program logs a warning. Move duration conversions to `DUR(x, unit)` now, which gives the same answer on both: `DUR(x, 'day')` for `DAY(x)`. For a number of seconds, write `x / 86400`, since `DUR` refuses a number.
+- Given a date, each gives that part of it, as in Excel: `DAY('2024-01-02')` is `2`, and `HOUR('2024-01-02T06:30:15Z')` is `6`.
+- Given a `time.Duration`, a duration string such as `"24h"`, or a number read as seconds, each converts it to days, hours, minutes or seconds as `float64`.
+- **The duration form goes away in 0.4.** The first such call of each in a program logs a warning. Move it to `DUR(x, unit)` now, which gives the same answer on both: `DUR(x, 'day')` for `DAY(x)`. For a number of seconds, write `x / 86400`, since `DUR` refuses a number.
 - For all four, a numeric value of more than about 292 years of seconds, either way, is an error rather than a wrapped-around number.
 
 Examples:

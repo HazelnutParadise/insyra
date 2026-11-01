@@ -2,9 +2,7 @@
 
 ## Purpose
 CCL 遇到無法表示的數字字面值或與值不相符的格式時回報錯誤，不把 `+Inf` 或 `fmt` 的錯誤標記當成結果寫進儲存格。
-
 ## Requirements
-
 ### Requirement: A literal that cannot be represented is an error
 
 數字字面值 SHALL 在超出 float64 範圍時回報編譯錯誤，SHALL NOT 靜默變成 `+Inf`。指數形式（`1e5`、`1.5e-3`、`2E+3`）SHALL 是合法的數字字面值；`e` 後面沒有數字時 SHALL 仍視為識別字，讓名為 `E` 或 `E1` 的欄位不受影響。
@@ -198,6 +196,7 @@ A float of 1e21 or more in magnitude, NaN and the infinities SHALL keep Go's def
 #### Scenario: COUNT over text
 - **WHEN** `COUNT(A)` runs over a column holding numbers and text
 - **THEN** one warning names 0.4 and `COUNTA`, and the count is what it was
+
 ### Requirement: TEXT and FORMAT_DATE read Go and Excel formats
 
 `TEXT` and `FORMAT_DATE` SHALL read a format written the Go way or the Excel way, deciding from the format alone: a Go `fmt` verb is Go; a digit from 1 to 9 is a Go date layout; `0` or `#` with no letters is an Excel number code; other text with letters is a date format.
@@ -285,3 +284,17 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** column B holds 0
 - **THEN** `ISERROR(A / B)` is true
+### Requirement: Date part functions read a date on 0.3.x
+
+`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL give that part of a date or of text that reads as one. A duration, text that reads as a duration, and a number SHALL convert as before and SHALL warn once that the form goes away in 0.4. `DATEPART` and `DAYOFMONTH` SHALL warn once, naming what to use.
+
+#### Scenario: A date
+
+- **WHEN** an expression is `HOUR('2024-01-02T06:30:15Z')`
+- **THEN** the result is 6
+
+#### Scenario: A duration
+
+- **WHEN** an expression is `HOUR('36h')`
+- **THEN** the result is 36, and a warning names `DUR`
+
