@@ -56,7 +56,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `quant/ta`
 
 - `ta.FilterRule(prices, threshold, opts...)` is Alexander's filter rule (Fama and Blume 1966): buy after a rise of `threshold` from the last low, sell or sell short after a fall of `threshold` from the last high, returned as a 1 / 0 / -1 position per row that `quant.BacktestSignal` takes as it is ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
-- `ta.RegimeDurations(regimes, kind, rows, segmentStarts)` turns the regimes of `Regimes` into the durations and ended flags `stats.KaplanMeier` and `stats.DiscreteTimeHazard` take, adding the still-going stretch after the last turning point of each segment as a censored spell ([#443](https://github.com/HazelnutParadise/insyra/issues/443)).
+- `ta.RegimeDurations(regimes, kind, prices, segmentStarts)` turns the regimes of `Regimes` into the durations and ended flags `stats.KaplanMeier` and `stats.DiscreteTimeHazard` take, adding the still-going stretch after the last turning point of each segment as a censored spell, counted to its most extreme price ([#443](https://github.com/HazelnutParadise/insyra/issues/443)).
 
 ### `accel`
 

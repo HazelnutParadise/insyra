@@ -9,13 +9,17 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
+// maxPersonPeriodCells caps the person-period table DiscreteTimeHazard and
+// PersonPeriod build, since a spell of d periods becomes d rows.
+const maxPersonPeriodCells = 50_000_000
+
 // HazardBaseline is how DiscreteTimeHazard lets the hazard change with the
 // period.
 type HazardBaseline int
 
 const (
 	// HazardBaselineLog uses log t. Its coefficient does not depend on the unit
-	// of the period, and with the Cloglog link it is the shape of a discrete
+	// of the period, and with the Cloglog link it is close to the shape of a
 	// Weibull minus 1, so above 0 means a rising hazard. It is the default.
 	HazardBaselineLog HazardBaseline = iota
 	// HazardBaselineLinear uses t itself.
@@ -112,6 +116,9 @@ func PersonPeriod(durations, observed insyra.IDataList, covariates ...insyra.IDa
 	for _, v := range d {
 		rows += v
 	}
+	if cells := float64(rows) * float64(3+len(cov)); cells > maxPersonPeriodCells {
+		return nil, fmt.Errorf("the person-period table would have %d rows, more than %d cells; use coarser periods", rows, maxPersonPeriodCells)
+	}
 	spell := make([]any, 0, rows)
 	period := make([]any, 0, rows)
 	event := make([]any, 0, rows)
@@ -155,8 +162,8 @@ func PersonPeriod(durations, observed insyra.IDataList, covariates ...insyra.IDa
 //
 // The default, log t with the logit link, answers whether a spell is more
 // likely to end the longer it lasts: a positive Duration coefficient says
-// yes. With the Cloglog link the log t coefficient is the shape of a discrete
-// Weibull minus 1. Compare R's glm(Event ~ log(Period) + ..., family =
+// yes. With the Cloglog link the log t coefficient is close to the shape of
+// a Weibull minus 1. Compare R's glm(Event ~ log(Period) + ..., family =
 // binomial(link)) on the same person-period table.
 func DiscreteTimeHazard(durations, observed insyra.IDataList, opts ...DiscreteTimeHazardOptions) (*DiscreteTimeHazardResult, error) {
 	if len(opts) > 1 {
@@ -197,10 +204,21 @@ func DiscreteTimeHazard(durations, observed insyra.IDataList, opts ...DiscreteTi
 	if events == 0 {
 		return nil, errors.New("no spell ended, so the hazard cannot be estimated")
 	}
+	if maxD < 2 {
+		return nil, errors.New("every spell lasted one period, so how the hazard changes with the period cannot be estimated")
+	}
+	rows := 0
+	for _, v := range d {
+		rows += v
+	}
+	cols := 2 + len(cov)
 	if o.Baseline == HazardBaselineDummies {
-		if maxD < 2 {
-			return nil, errors.New("HazardBaselineDummies needs a spell of at least two periods")
-		}
+		cols = maxD + len(cov)
+	}
+	if cells := float64(rows) * float64(cols); cells > maxPersonPeriodCells {
+		return nil, fmt.Errorf("the person-period table would have %d rows and %d columns, more than %d cells; use coarser periods", rows, cols, maxPersonPeriodCells)
+	}
+	if o.Baseline == HazardBaselineDummies {
 		var empty, full []string
 		for p := 1; p <= maxD; p++ {
 			atRisk, ended := 0, 0

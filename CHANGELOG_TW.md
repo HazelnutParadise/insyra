@@ -56,7 +56,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `quant/ta`
 
 - `ta.FilterRule(prices, threshold, opts...)` 是 Alexander 的濾嘴法則（Fama 與 Blume 1966）：從最近低點漲了 `threshold` 就買進，從最近高點跌了 `threshold` 就賣出或放空，回傳每列 1／0／-1 的部位，可直接交給 `quant.BacktestSignal`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
-- `ta.RegimeDurations(regimes, kind, rows, segmentStarts)` 把 `Regimes` 切出的行情整理成 `stats.KaplanMeier` 與 `stats.DiscreteTimeHazard` 要的持續期間與是否結束；每個分段最後一個轉折點之後尚未結束的那段，會以「尚未結束」補上（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
+- `ta.RegimeDurations(regimes, kind, prices, segmentStarts)` 把 `Regimes` 切出的行情整理成 `stats.KaplanMeier` 與 `stats.DiscreteTimeHazard` 要的持續期間與是否結束；每個分段最後一個轉折點之後尚未結束的那段，會以「尚未結束」補上，長度算到那段之後的最高或最低價（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
 
 ### `accel`
 

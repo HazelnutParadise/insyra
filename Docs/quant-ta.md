@@ -151,14 +151,14 @@ Turns the swings into bull stretches (low to the next high) and bear stretches (
 ### RegimeDurations
 
 ```go
-func RegimeDurations(regimes []Regime, kind RegimeKind, rows int, segmentStarts []int) (durations, observed *insyra.DataList, err error)
+func RegimeDurations(regimes []Regime, kind RegimeKind, prices insyra.IDataList, segmentStarts []int) (durations, observed *insyra.DataList, err error)
 ```
 
-Turns regimes into the two lists `stats.KaplanMeier` and `stats.DiscreteTimeHazard` take: how many rows each regime of `kind` lasted, and whether it ended. Every regime `Regimes` reports ended. The stretch after the last turning point of each segment, which `Regimes` leaves out, is still going; when it is of `kind` it is added with `observed` false, so long regimes cut off by the end of the data are not lost. `rows` is the length of the price series and `segmentStarts` the `SegmentStarts` given to `ZigZagAdaptive` (`nil` without segments). A still-going stretch of 0 rows is left out, and a segment with a single turning point has no regime and adds nothing.
+Turns regimes into the two lists `stats.KaplanMeier` and `stats.DiscreteTimeHazard` take: how many rows each regime of `kind` lasted, and whether it ended. Every regime `Regimes` reports ended. The stretch after the last turning point of each segment, which `Regimes` leaves out, has not ended as far as the data show; when it is of `kind` it is added with `observed` false, so long regimes cut off by the end of the data are not lost. It is counted to its most extreme price since the turning point (the lowest for a bear stretch, the highest for a bull one), not to the last row, because `ZigZag` confirms a turning point only after the price reverses and the regime may already have ended there. `prices` are the prices given to `ZigZag` and `segmentStarts` the `SegmentStarts` given to `ZigZagAdaptive` (`nil` without segments); `regimes` must be all of what `Regimes` returned, in order, or it is an error. A still-going stretch of 0 rows is left out, and a segment with a single turning point has no regime and adds nothing.
 
 ```go
 regimes, _ := ta.Regimes(swings)
-d, ended, _ := ta.RegimeDurations(regimes, ta.RegimeBull, close.Len(), nil)
+d, ended, _ := ta.RegimeDurations(regimes, ta.RegimeBull, close, nil)
 res, _ := stats.DiscreteTimeHazard(d, ended)
 ```
 

@@ -71,8 +71,9 @@ type probitLink struct{} // TODO: implement in a follow-up issue.
 var _ = probitLink{}
 
 // cloglogLink is the complementary log-log link of a binomial model,
-// eta = log(-log(1 - mu)), as R's binomial("cloglog") computes it. It is the
-// exact discretisation of a continuous-time proportional-hazards model.
+// eta = log(-log(1 - mu)), as R's binomial("cloglog") computes it. With one
+// level per period it is the exact discretisation of a continuous-time
+// proportional-hazards model.
 type cloglogLink struct{}
 
 func (cloglogLink) eta(mu float64) float64 {

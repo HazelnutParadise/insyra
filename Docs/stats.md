@@ -1205,13 +1205,13 @@ func PersonPeriod(durations, observed insyra.IDataList, covariates ...insyra.IDa
 
 **Returns:**
 
-- `*DiscreteTimeHazardResult`: `Duration`, the term in the period (`LogPeriod` or `Period`; `nil` for dummies), whose positive coefficient means a spell is more likely to end the longer it lasts; `Terms`, every term in order (`Intercept`, the baseline terms, the covariates) with `Coefficient`, `StdErr`, `ZValue`, `PValue` and `CI`, also found by name with `Term(name)`; `Link`, `Baseline`, `N` (spells), `Events` (spells that ended) and `GLM`, the whole fit, whose rows are person-periods. With `Cloglog` the `LogPeriod` coefficient is the shape of a discrete Weibull minus 1. `Show()` prints the terms as a table. The fits equal R's `glm(Event ~ log(Period) + x, family = binomial(link))` on the same person-period table.
-- `error`: a duration that is not a whole number of at least 1, all spells censored, a link other than Logit or Cloglog, a covariate with the wrong number of values or a name another term uses, more than one options value, or, for `HazardBaselineDummies`, a period in which no spell or every spell at risk ended (the error names the periods).
+- `*DiscreteTimeHazardResult`: `Duration`, the term in the period (`LogPeriod` or `Period`; `nil` for dummies), whose positive coefficient means a spell is more likely to end the longer it lasts; `Terms`, every term in order (`Intercept`, the baseline terms, the covariates) with `Coefficient`, `StdErr`, `ZValue`, `PValue` and `CI`, also found by name with `Term(name)`; `Link`, `Baseline`, `N` (spells), `Events` (spells that ended) and `GLM`, the whole fit, whose rows are person-periods. With `Cloglog` the `LogPeriod` coefficient is close to the shape of a Weibull minus 1. As in R, a covariate that separates the spells that ended from the rest gives a huge coefficient and standard error rather than an error. `Show()` prints the terms as a table. The fits equal R's `glm(Event ~ log(Period) + x, family = binomial(link))` on the same person-period table.
+- `error`: a duration that is not a whole number of at least 1, all spells censored, every spell lasting one period, a person-period table of more than 50 million cells, a link other than Logit or Cloglog, a covariate with the wrong number of values or a name another term uses, more than one options value, or, for `HazardBaselineDummies`, a period in which no spell or every spell at risk ended (the error names the periods).
 
 ```go
 swings, _ := ta.ZigZag(close, 0.10)
 regimes, _ := ta.Regimes(swings)
-d, ended, _ := ta.RegimeDurations(regimes, ta.RegimeBull, close.Len(), nil)
+d, ended, _ := ta.RegimeDurations(regimes, ta.RegimeBull, close, nil)
 res, err := stats.DiscreteTimeHazard(d, ended)
 res.Show()
 res.Duration.Coefficient // > 0: a bull market is more likely to end the longer it has run
