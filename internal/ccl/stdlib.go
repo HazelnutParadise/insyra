@@ -10,6 +10,23 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
+// warnCountChanges warns when COUNT counts a value it will not count from 0.4:
+// text, a bool or NaN.
+func warnCountChanges(val any) {
+	counted := true
+	switch val.(type) {
+	case nil, string, bool:
+		counted = false
+	case time.Time:
+	default:
+		f, ok := toFloat64(val)
+		counted = ok && !math.IsNaN(f)
+	}
+	if !counted {
+		warnOnce("COUNT", "COUNT counts text here, and from 0.4 it counts numbers and dates only, as in Excel; COUNTA counts every value that is not nil in both")
+	}
+}
+
 // RegisterStandardFunctions registers the standard library of CCL functions.
 // Categories:
 //   - Logical: IF, AND, OR, CASE
@@ -24,7 +41,7 @@ import (
 //     TOBOOL, COALESCE, IFNULL
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAYOFMONTH,
 //     WEEKDAY, DATEPART, DATEDIFF, DATEADD, FORMAT_DATE
-//   - Aggregates: SUM, AVG, COUNT, MAX, MIN (this file) and
+//   - Aggregates: SUM, AVG, COUNT, COUNTA, MAX, MIN (this file) and
 //     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)
 func RegisterStandardFunctions() {
 	registerMathFunctions()
@@ -144,6 +161,19 @@ func RegisterStandardFunctions() {
 	})
 
 	registerAggregateFunction("COUNT", func(args ...[]any) (any, error) {
+		var count int
+		forEachValue(args, func(val any) {
+			if val != nil {
+				warnCountChanges(val)
+				count++
+			}
+		})
+		return float64(count), nil
+	})
+
+	// COUNTA counts every value that is not nil, as COUNT does here. From 0.4
+	// COUNT counts numbers and dates only, so COUNTA gives this answer on both.
+	registerAggregateFunction("COUNTA", func(args ...[]any) (any, error) {
 		var count int
 		forEachValue(args, func(val any) {
 			if val != nil {

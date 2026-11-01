@@ -98,7 +98,11 @@ func registerStringFunctions() {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("TRIM requires 1 argument")
 		}
-		return strings.TrimSpace(toString(args[0])), nil
+		trimmed := strings.TrimSpace(toString(args[0]))
+		if strings.Contains(trimmed, "  ") {
+			warnOnce("TRIM", "TRIM keeps a run of spaces inside the text here, and from 0.4 it turns each into one space, as in Excel")
+		}
+		return trimmed, nil
 	})
 
 	registerFunction("LTRIM", func(args ...any) (any, error) {

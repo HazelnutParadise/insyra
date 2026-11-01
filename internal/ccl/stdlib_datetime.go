@@ -74,6 +74,7 @@ func registerDateTimeFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("WEEKDAY: cannot convert %T to date", args[0])
 		}
+		warnOnce("WEEKDAY", "WEEKDAY(d) counts Sunday as 0 here, and from 0.4 it counts Sunday as 1 through Saturday as 7, as in Excel; a comparison with a day number will need changing")
 		return float64(t.Weekday()), nil
 	})
 
@@ -299,11 +300,17 @@ var warnedOnce sync.Map
 func registerDurationPart(name string, fn Func) {
 	unit := strings.ToLower(name)
 	registerFunction(name, func(args ...any) (any, error) {
-		if _, warned := warnedOnce.LoadOrStore(name, true); !warned {
-			Warn(name, "%s(x) converts a duration to %ss here, and from 0.4 it reads the %s of a date; for a duration use DUR(x, '%s'), which gives the same answer in both", name, unit, unit, unit)
-		}
+		warnOnce(name, "%s(x) converts a duration to %ss here, and from 0.4 it reads the %s of a date; for a duration use DUR(x, '%s'), which gives the same answer in both", name, unit, unit, unit)
 		return fn(args...)
 	})
+}
+
+// warnOnce logs a warning about name once per process, since these functions run
+// once per row.
+func warnOnce(name, format string, args ...any) {
+	if _, warned := warnedOnce.LoadOrStore(name, true); !warned {
+		Warn(name, format, args...)
+	}
 }
 
 // modulo is a % b with the sign of a, as MOD and % give it here. From 0.4 the
@@ -312,9 +319,7 @@ func registerDurationPart(name string, fn Func) {
 func modulo(a, b float64) float64 {
 	r := math.Mod(a, b)
 	if r != 0 && (r < 0) != (b < 0) {
-		if _, warned := warnedOnce.LoadOrStore("MOD", true); !warned {
-			Warn("MOD", "MOD(%v, %v) and %% give %v here, and from 0.4 they give %v: the remainder takes the sign of the second number, as in Excel", a, b, r, r+b)
-		}
+		warnOnce("MOD", "MOD(%v, %v) and %% give %v here, and from 0.4 they give %v: the remainder takes the sign of the second number, as in Excel", a, b, r, r+b)
 	}
 	return r
 }
@@ -323,9 +328,7 @@ func modulo(a, b float64) float64 {
 // replacement here. It warns once per process, since the function runs per row.
 func registerDeprecatedName(name, use string, fn Func) {
 	registerFunction(name, func(args ...any) (any, error) {
-		if _, warned := warnedOnce.LoadOrStore(name, true); !warned {
-			Warn(name, "%s is deprecated and removed in 0.4; use %s, which does the same", name, use)
-		}
+		warnOnce(name, "%s is deprecated and removed in 0.4; use %s, which does the same", name, use)
 		return fn(args...)
 	})
 }

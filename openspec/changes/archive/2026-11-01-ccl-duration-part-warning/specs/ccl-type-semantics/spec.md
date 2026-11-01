@@ -24,6 +24,14 @@
 - **WHEN** `MOD(7, 3)` and then `MOD(-7, 3)` are evaluated
 - **THEN** only the second warns, saying -1 becomes 2, and it still gives -1
 
+### Requirement: WEEKDAY, TRIM and COUNT warn about what changes in 0.4
+
+`WEEKDAY` SHALL warn once per process the first time it runs. `TRIM` SHALL warn once the first time a run of spaces stays inside its result. `COUNT` SHALL warn once the first time it counts text, a bool or `NaN`. Their results SHALL NOT change. `COUNTA` SHALL count every value that is not nil.
+
+#### Scenario: COUNT over text
+- **WHEN** `COUNT(A)` runs over a column holding numbers and text
+- **THEN** one warning names 0.4 and `COUNTA`, and the count is what it was
+
 ### Requirement: DUR expresses a duration in a unit
 
 `DUR(x, unit)` SHALL return `x` in `unit` as a number. `x` SHALL be a `time.Duration` or a string `time.ParseDuration` reads, with `d` and `w` also read as 24 and 168 hours. `unit` SHALL be required and be one of `day`, `hour`, `minute` or `second`, singular or plural, in any case.

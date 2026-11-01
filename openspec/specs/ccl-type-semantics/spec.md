@@ -190,3 +190,11 @@ A float of 1e21 or more in magnitude, NaN and the infinities SHALL keep Go's def
 #### Scenario: Signs that differ
 - **WHEN** `MOD(7, 3)` and then `MOD(-7, 3)` are evaluated
 - **THEN** only the second warns, saying -1 becomes 2, and it still gives -1
+
+### Requirement: WEEKDAY, TRIM and COUNT warn about what changes in 0.4
+
+`WEEKDAY` SHALL warn once per process the first time it runs. `TRIM` SHALL warn once the first time a run of spaces stays inside its result. `COUNT` SHALL warn once the first time it counts text, a bool or `NaN`. Their results SHALL NOT change. `COUNTA` SHALL count every value that is not nil.
+
+#### Scenario: COUNT over text
+- **WHEN** `COUNT(A)` runs over a column holding numbers and text
+- **THEN** one warning names 0.4 and `COUNTA`, and the count is what it was

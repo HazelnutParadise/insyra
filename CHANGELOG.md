@@ -27,6 +27,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - CCL's `DAY`, `HOUR`, `MINUTE` and `SECOND` log a warning the first time each runs in a program: they convert a duration here, and read a part of a date from 0.4, so `DAY(x)` will change its answer. Their results do not change now. Move duration conversions to `DUR(x, 'day')`, which gives the same answer on both.
 - CCL's `TONUM`, `TOSTR` and `SUBSTR` are deprecated and removed in 0.4: use `VALUE`, `TEXT` and `MID`, which do the same. Each logs a warning the first time it runs in a program. `DAYOFMONTH` is deprecated too, in favour of 0.4's `DAY`; it logs no warning, because `DAY` still converts a duration here.
 - CCL's `MOD` and `%` log a warning the first time they meet numbers whose answer changes in 0.4: from then the remainder takes the sign of the second number, as in Excel, so `MOD(-7, 3)` goes from `-1` to `2`. Their results do not change now, and formulas with only positive numbers never warn.
+- CCL's `WEEKDAY`, `TRIM` and `COUNT` change in 0.4 to answer as Excel does, and warn once now where the answer will change: `WEEKDAY` will count Sunday as 1 through Saturday as 7; `TRIM` will turn a run of spaces inside the text into one; `COUNT` will count numbers and dates only. Their results do not change now. CCL gains `COUNTA`, which counts every value that is not `nil` on both lines, so use it to count cells.
 
 ### `ml` and `nn`
 

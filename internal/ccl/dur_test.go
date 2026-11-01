@@ -223,3 +223,61 @@ func TestModuloWarnsOnlyWhereTheAnswerChanges(t *testing.T) {
 		t.Errorf("-7 %% 3: %v, warnings %v; want one", err, got)
 	}
 }
+
+// WEEKDAY, TRIM and COUNT change in 0.4. They warn once where the answer will
+// change, and give today's answer.
+func TestWeekdayTrimCountWarn(t *testing.T) {
+	var mu sync.Mutex
+	var got []string
+	SetWarnHook(func(funcName, format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, fmt.Sprintf(format, args...))
+	})
+	t.Cleanup(func() { SetWarnHook(nil) })
+	for _, n := range []string{"WEEKDAY", "TRIM", "COUNT"} {
+		warnedOnce.Delete(n)
+	}
+	day := time.Date(2024, 3, 9, 0, 0, 0, 0, time.UTC)
+	numbers := mapCtx(t, map[string][]any{"A": {1, 2.5, day, nil}})
+	mixed := mapCtx(t, map[string][]any{"A": {1, "text", true, nil}})
+
+	// Nothing here changes: no warning.
+	for _, c := range []struct {
+		ctx  *MapContext
+		expr string
+		want any
+	}{
+		{numbers, "COUNT(A)", 3.0},
+		{mixed, "COUNTA(A)", 3.0},
+		{numbers, "TRIM(' a b ')", "a b"},
+	} {
+		if v, err := evalOne(t, c.ctx, c.expr); err != nil || v != c.want {
+			t.Errorf("%s = %#v, %v; want %#v", c.expr, v, err, c.want)
+		}
+	}
+	if len(got) != 0 {
+		t.Fatalf("warned where nothing changes: %v", got)
+	}
+
+	for _, c := range []struct {
+		ctx  *MapContext
+		expr string
+		want any
+		hint string
+	}{
+		{mixed, "COUNT(A)", 3.0, "COUNTA"},
+		{numbers, "TRIM('a  b')", "a  b", "one space"},
+		{numbers, "WEEKDAY('2024-03-10')", 0.0, "Sunday as 1"},
+	} {
+		got = nil
+		for range 3 {
+			if v, err := evalOne(t, c.ctx, c.expr); err != nil || v != c.want {
+				t.Errorf("%s = %#v, %v; want %#v, unchanged here", c.expr, v, err, c.want)
+			}
+		}
+		if len(got) != 1 || !strings.Contains(got[0], "0.4") || !strings.Contains(got[0], c.hint) {
+			t.Errorf("%s: warnings %v; want one naming 0.4 and %q", c.expr, got, c.hint)
+		}
+	}
+}

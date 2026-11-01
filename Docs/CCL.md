@@ -765,7 +765,7 @@ All string functions are rune-aware (Unicode safe). `nil` is treated as the empt
 | --- | --- |
 | `LEN(s)` | Number of Unicode characters |
 | `UPPER(s)` / `LOWER(s)` | Case conversion |
-| `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip ASCII whitespace from both / left / right |
+| `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip ASCII whitespace from both / left / right. **`TRIM` changes in 0.4**: it also turns a run of spaces inside the text into one, as in Excel; it logs a warning the first time that would change an answer |
 | `LEFT(s, n)` | First `n` characters |
 | `RIGHT(s, n)` | Last `n` characters |
 | `MID(s, start, length)` | Substring (1-based start, like Excel). `SUBSTR(...)` is deprecated, logs a warning, and is removed in 0.4 |
@@ -810,7 +810,7 @@ These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers an
 | `YEAR(d)` | Year as number |
 | `MONTH(d)` | Month 1–12 |
 | `DAYOFMONTH(d)` | Day 1–31. **Deprecated**: removed in 0.4, where `DAY(d)` reads a date. Keep using it on 0.3.x |
-| `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
+| `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday). **Changes in 0.4** to 1 (Sunday) – 7 (Saturday), as in Excel; it logs a warning the first time it runs |
 | `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped. **Deprecated**: removed in 0.4, where `HOUR(d)`, `MINUTE(d)`, `SECOND(d)` and `DAY(d)` read dates. Keep using it for those parts on 0.3.x; `YEAR(d)`, `MONTH(d)` and `DAYOFMONTH(d)` already give the others |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
 | `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A fractional `n` truncates for `day`, `month` and `year`. A day, month or year count that is `NaN`, infinite or beyond `int64`, or more than about 292 years in hours, minutes or seconds, is an error |
@@ -896,6 +896,8 @@ three non-empty cells.
 
 ### COUNT
 
+**`COUNT` changes in 0.4**: it counts numbers and dates only, as in Excel, and logs a warning the first time it counts anything else. `COUNTA` counts every value that is not `nil` on both, so use it to count cells.
+
 Calculates the count of non-nil (non-empty) values in the input.
 
 ```
@@ -903,6 +905,7 @@ Calculates the count of non-nil (non-empty) values in the input.
 "COUNT(A, B)"        // Count of non-nil values in columns A and B
 "COUNT(@.#)"         // Count of non-nil values in the current row
 "COUNT(@)"           // Count of all non-nil values in the entire table
+"COUNTA(A)"          // Count of non-nil values in column A; the same as COUNT here
 ```
 
 ### MAX
