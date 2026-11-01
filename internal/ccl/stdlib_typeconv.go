@@ -39,7 +39,7 @@ func displayedNumber(text string) (value float64, ok bool, displayed bool) {
 }
 
 // registerTypeConversionFunctions registers value coercion and null-handling
-// helpers (VALUE, TEXT, TOBOOL, COALESCE, IFNULL).
+// helpers (VALUE, TEXT, BOOL, COALESCE, IFNULL).
 //
 // IFNULL differs from IFNA: IFNA only triggers on float NaN or the string
 // "#N/A", while IFNULL replaces actual nil values.
@@ -119,9 +119,10 @@ func registerTypeConversionFunctions() {
 		return v, nil
 	})
 
-	registerFunction("TOBOOL", func(args ...any) (any, error) {
+	registerRemovedName("TOBOOL", "BOOL")
+	registerFunction("BOOL", func(args ...any) (any, error) {
 		if len(args) != 1 {
-			return nil, fmt.Errorf("TOBOOL requires 1 argument")
+			return nil, fmt.Errorf("BOOL requires 1 argument")
 		}
 		if args[0] == nil {
 			return nil, nil

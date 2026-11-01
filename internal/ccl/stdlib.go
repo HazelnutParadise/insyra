@@ -77,7 +77,7 @@ func valuesWhere(name string, args [][]any) ([]any, error) {
 //     LEFT, RIGHT, MID, REPLACE, FIND, CONTAINS, STARTSWITH,
 //     ENDSWITH, REGEX_MATCH, REPEAT
 //   - Type conversion (stdlib_typeconv.go): VALUE, TEXT,
-//     TOBOOL, COALESCE, IFNULL
+//     BOOL, COALESCE, IFNULL
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAY, HOUR,
 //     MINUTE, SECOND, WEEKDAY, DATEDIFF, DUR, DATEADD,
 //     FORMAT_DATE, and DATE, TODAY, NOW (clock.go)

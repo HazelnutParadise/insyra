@@ -248,10 +248,10 @@ func TestTypeConversionFunctions(t *testing.T) {
 	got, _ = callFn(t, "TEXT", 42, "%05d")
 	wantString(t, got, "00042")
 
-	got, _ = callFn(t, "TOBOOL", "yes")
+	got, _ = callFn(t, "BOOL", "yes")
 	wantBool(t, got, true)
 
-	got, _ = callFn(t, "TOBOOL", "no")
+	got, _ = callFn(t, "BOOL", "no")
 	wantBool(t, got, false)
 
 	// COALESCE

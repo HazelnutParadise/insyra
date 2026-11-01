@@ -145,6 +145,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - CCL: `VALUE` reads a percent sign and thousands commas: `VALUE('10%')` is 0.1 and `VALUE('1,234.5')` is 1234.5, where both used to be empty.
 - CCL: `IFERROR(value, valueIfError)` gives `valueIfError` on the rows where `value` cannot be computed, so `IFERROR(A / B, 0)` no longer fails the whole column when B is 0. A misspelt function or a missing column still fails.
 - CCL: `ROUND` reads a number as it is written, so `ROUND(1.005, 2)` is 1.01 where it used to be 1, matching Excel and `TEXT`. Only numbers on such a boundary change, and `ROUND(-0.4)` is no longer a negative zero.
+- **BREAKING**: CCL: `TOBOOL` is now `BOOL`, and a formula using the old name gets an error naming the new one.
 
 ### CLI
 - **BREAKING**: an environment name may contain only letters, digits, `.`, `_` and `-`, must start with a letter or digit, and may not contain `..`. v0.3.3 refused only a name that resolved outside the environments directory and accepted any other, including names with spaces, non-ASCII letters or a `/`. The CLI can no longer open, rename or delete an environment created under such a name; rename its folder in the environments directory (`~/.insyra/envs/` by default) by hand.

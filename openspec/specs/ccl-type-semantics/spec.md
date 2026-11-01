@@ -2,9 +2,7 @@
 
 ## Purpose
 CCL never produces a value for an operation it cannot perform. Values that have no common ordering are an error rather than a silent false, an index that is not a whole number is an error rather than a truncation, a cell of every Go numeric type is a number, and the evaluator's internal representations never reach a cell.
-
 ## Requirements
-
 ### Requirement: Strings have an ordering
 
 When neither operand of `<`, `>`, `<=` or `>=` converts to a number and both are strings, CCL SHALL compare them lexicographically. When one operand converts to a number and the other is a string that does not, CCL SHALL return an error. `nil` compared for size against any value SHALL remain false, as documented.
@@ -312,6 +310,7 @@ A `time.Duration`, a string `time.ParseDuration` accepts, or a number given to `
 #### Scenario: A number and unreadable text
 - **WHEN** `DUR(36, 'hour')` and `DUR('soon', 'hour')` are evaluated
 - **THEN** each is an error naming the value
+
 ### Requirement: A formula using DATEPART is told what to write
 
 `DATEPART`, with any arguments, SHALL be an error that says it was removed and names `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE` and `SECOND`.
@@ -319,6 +318,7 @@ A `time.Duration`, a string `time.ParseDuration` accepts, or a number given to `
 #### Scenario: A formula still using it
 - **WHEN** `DATEPART(A, 'hour')` is evaluated
 - **THEN** the error says it was removed and names `HOUR(d)`
+
 ### Requirement: A removed function name says what to write
 
 `TONUM`, `TOSTR`, `SUBSTR` and `DAYOFMONTH`, with any arguments, SHALL be an error that says the name was removed and names `VALUE`, `TEXT`, `MID` and `DAY` respectively.
@@ -326,6 +326,7 @@ A `time.Duration`, a string `time.ParseDuration` accepts, or a number given to `
 #### Scenario: A formula still using one
 - **WHEN** `TONUM(A)` is evaluated
 - **THEN** the error says it was removed and to use `VALUE`
+
 ### Requirement: A remainder has the sign of the divisor
 
 `MOD(a, b)` and `a % b` SHALL give the remainder with the sign of `b`, as Excel's `MOD` does, for integers and floats alike. They SHALL give the same answer as each other.
@@ -333,6 +334,7 @@ A `time.Duration`, a string `time.ParseDuration` accepts, or a number given to `
 #### Scenario: Signs that differ
 - **WHEN** `MOD(-7, 3)`, `-7 % 3`, `MOD(7, -3)` and `MOD(-7.5, 2)` are evaluated
 - **THEN** they give 2, 2, -2 and 0.5
+
 ### Requirement: WEEKDAY counts Sunday as one
 
 `WEEKDAY(d)` SHALL return 1 for Sunday through 7 for Saturday, Excel's default.
@@ -356,6 +358,7 @@ A `time.Duration`, a string `time.ParseDuration` accepts, or a number given to `
 #### Scenario: A mixed column
 - **WHEN** a column holds `[1, 2.5, "4", "text", true, nil]`
 - **THEN** `COUNT` gives 2 and `COUNTA` gives 5
+
 ### Requirement: TEXT and FORMAT_DATE read Go and Excel formats
 
 `TEXT` and `FORMAT_DATE` SHALL read a format written the Go way or the Excel way, deciding from the format alone: a Go `fmt` verb is Go; a digit from 1 to 9 is a Go date layout; `0` or `#` with no letters is an Excel number code; other text with letters is a date format.
@@ -383,6 +386,7 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 #### Scenario: The wrong kind of value
 - **WHEN** `TEXT(1.5, 'yyyy')` is evaluated
 - **THEN** it is an error saying the value is not a date
+
 ### Requirement: VALUE reads numbers as a spreadsheet displays them
 
 `VALUE` and `TONUM` SHALL read text with a trailing percent sign as that number divided by 100, and SHALL read commas that group digits in threes as thousands separators, with or without decimals. Text with misplaced commas, or a percent sign on anything but a plain decimal, SHALL give an empty result.
@@ -396,6 +400,7 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** the text is `1,23` or `1234,567`
 - **THEN** `VALUE` gives an empty result
+
 ### Requirement: ROUND reads a number as it is written
 
 `ROUND` SHALL round half away from zero on the shortest decimal text of its number, not on the binary value, and SHALL keep `NaN` and infinities as they are. A result of zero SHALL NOT be negative.
@@ -409,4 +414,18 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** an expression is `ROUND(1250, -2)`
 - **THEN** the result is 1300
+
+### Requirement: BOOL converts a value to a boolean
+
+`BOOL(x)` SHALL read `x` as a boolean, give an empty result for `nil` and for a value that cannot be read as one, and require one argument. `TOBOOL` SHALL NOT be a second working name in a release that has removed it, and SHALL point to `BOOL` where it remains.
+
+#### Scenario: Text that reads as a boolean
+
+- **WHEN** an expression is `BOOL('yes')`
+- **THEN** the result is true
+
+#### Scenario: Text that does not
+
+- **WHEN** an expression is `BOOL('maybe')`
+- **THEN** the result is empty
 
