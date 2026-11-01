@@ -34,6 +34,14 @@ func TestTextNumberFormats(t *testing.T) {
 		{"TEXT(D, '%.2f')", "5.00"},
 		{"TEXT(E, '0.00')", "1.50"},
 		{"TEXT(1e21, '0')", "1000000000000000000000"},
+		{"TEXT(A, '0.00 \"v2\"')", "1.50 v2"},
+		{"TEXT(9007199254740993, '0')", "9007199254740993"},
+		{"TEXT(9007199254740993, '#,##0')", "9,007,199,254,740,993"},
+		{"TEXT('9007199254740993', '0')", "9007199254740993"},
+		{"TEXT(-5, '0.0')", "-5.0"},
+		{"TEXT(A, '%[1]f')", "1.500000"},
+		{"TEXT(A, '%.f')", "2"},
+		{"TEXT(7, '%[1]d')", "7"},
 	} {
 		got, err := evalOne(t, ctx, c.expr)
 		if err != nil || got != c.want {
@@ -69,6 +77,9 @@ func TestTextDateFormats(t *testing.T) {
 		{"TEXT(B, 'hh:mm')", "02:05"},
 		{"TEXT(A, 'h:mm a/p')", "2:05 p"},
 		{"TEXT(A, 'yyyy \"Q\" m')", "2024 Q 3"},
+		{"FORMAT_DATE(A, 'yyyy-mm-dd \"Q1\"')", "2024-03-09 Q1"},
+		{"FORMAT_DATE(A, 'Monday, pm')", "Saturday, pm"},
+		{"FORMAT_DATE(A, 'Monday, PM')", "Saturday, PM"},
 		{"FORMAT_DATE(A, 'Mon')", "Sat"},
 		{"FORMAT_DATE(A, 'Monday')", "Saturday"},
 		{"FORMAT_DATE(A, 'Jan')", "Mar"},
