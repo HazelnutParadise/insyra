@@ -57,16 +57,7 @@ func registerDateTimeFunctions() {
 		return float64(t.Month()), nil
 	})
 
-	registerFunction("DAYOFMONTH", func(args ...any) (any, error) {
-		if len(args) != 1 {
-			return nil, fmt.Errorf("DAYOFMONTH requires 1 argument")
-		}
-		t, ok := toTime(args[0])
-		if !ok {
-			return nil, fmt.Errorf("DAYOFMONTH: cannot convert %T to date", args[0])
-		}
-		return float64(t.Day()), nil
-	})
+	registerRemovedName("DAYOFMONTH", "DAY")
 
 	// WEEKDAY returns 0 (Sunday) through 6 (Saturday), matching time.Weekday.
 	registerFunction("WEEKDAY", func(args ...any) (any, error) {

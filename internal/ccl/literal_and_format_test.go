@@ -96,25 +96,25 @@ func TestScientificNotationDoesNotSwallowIdentifiers(t *testing.T) {
 }
 
 // A format verb that does not match the value used to put Go's own error text
-// into the cell: TOSTR(1.5, '%d') wrote "%!d(float64=1.5)".
+// into the cell: TEXT(1.5, '%d') wrote "%!d(float64=1.5)".
 func TestTOSTR_BadFormatIsAnError(t *testing.T) {
 	tests := []struct {
 		expr string
 		name string
 	}{
-		{name: "wrong verb", expr: "TOSTR(1.5, '%d')"},
-		{name: "no verb", expr: "TOSTR(1, '%')"},
-		{name: "too many verbs", expr: "TOSTR(1, '%d %d')"},
-		{name: "unknown verb", expr: "TOSTR(1, '%q%y')"},
+		{name: "wrong verb", expr: "TEXT(1.5, '%d')"},
+		{name: "no verb", expr: "TEXT(1, '%')"},
+		{name: "too many verbs", expr: "TEXT(1, '%d %d')"},
+		{name: "unknown verb", expr: "TEXT(1, '%q%y')"},
 		// A real complaint is still found beside look-alike text in the value.
-		{name: "missing argument after marker-like text", expr: "TOSTR('(MISSING)', '%s %d')"},
+		{name: "missing argument after marker-like text", expr: "TEXT('(MISSING)', '%s %d')"},
 		// fmt writes %!<verb>( for any verb, a punctuation mark or a
 		// non-ASCII letter included.
-		{name: "missing argument for a punctuation verb", expr: "TOSTR(1, '%v %_')"},
-		{name: "missing argument for a bang verb", expr: "TOSTR(1, '%v %!')"},
-		{name: "missing argument for a non-ASCII verb", expr: "TOSTR(1, '%v %é')"},
-		{name: "wrong value for a parenthesis verb", expr: "TOSTR(1, '%(')"},
-		{name: "missing argument for a parenthesis verb", expr: "TOSTR(1, '%v %(')"},
+		{name: "missing argument for a punctuation verb", expr: "TEXT(1, '%v %_')"},
+		{name: "missing argument for a bang verb", expr: "TEXT(1, '%v %!')"},
+		{name: "missing argument for a non-ASCII verb", expr: "TEXT(1, '%v %é')"},
+		{name: "wrong value for a parenthesis verb", expr: "TEXT(1, '%(')"},
+		{name: "missing argument for a parenthesis verb", expr: "TEXT(1, '%v %(')"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -135,18 +135,18 @@ func TestTOSTR_GoodFormats(t *testing.T) {
 		expr string
 		want string
 	}{
-		{expr: "TOSTR(1.5, '%.2f')", want: "1.50"},
-		{expr: "TOSTR(1.5)", want: "1.5"},
-		{expr: "TOSTR('x', '%s!')", want: "x!"},
-		{expr: "TOSTR(1, '%v')", want: "1"},
+		{expr: "TEXT(1.5, '%.2f')", want: "1.50"},
+		{expr: "TEXT(1.5)", want: "1.5"},
+		{expr: "TEXT('x', '%s!')", want: "x!"},
+		{expr: "TEXT(1, '%v')", want: "1"},
 		// A literal percent is not a verb.
-		{expr: "TOSTR(50, '%.0f%%')", want: "50%"},
+		{expr: "TEXT(50, '%.0f%%')", want: "50%"},
 		// Text that merely looks like fmt's complaint is not one: it was in
 		// the value or in the format before fmt ran.
-		{expr: "TOSTR('Item (MISSING)', '%s')", want: "Item (MISSING)"},
-		{expr: "TOSTR(3, 'n=%v (MISSING)')", want: "n=3 (MISSING)"},
-		{expr: "TOSTR('%!d(x)', '%s')", want: "%!d(x)"},
-		{expr: "TOSTR(1, '%v %%!(NOVERB)')", want: "1 %!(NOVERB)"},
+		{expr: "TEXT('Item (MISSING)', '%s')", want: "Item (MISSING)"},
+		{expr: "TEXT(3, 'n=%v (MISSING)')", want: "n=3 (MISSING)"},
+		{expr: "TEXT('%!d(x)', '%s')", want: "%!d(x)"},
+		{expr: "TEXT(1, '%v %%!(NOVERB)')", want: "1 %!(NOVERB)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.expr, func(t *testing.T) {

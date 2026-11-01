@@ -34,9 +34,8 @@ func TestDatePartFunctionsLikeExcel(t *testing.T) {
 		{"DAY(D)", 31},
 		{"HOUR(D)", 7},
 		{"DAY('2024-01-02T06:00:00Z')", 2},
-		// The same answers as DATEPART and DAYOFMONTH.
+		// The same answers as DATEPART and DAY.
 		{"DATEPART(A, 'day') - DAY(A)", 0},
-		{"DAYOFMONTH(A) - DAY(A)", 0},
 	} {
 		got, err := evalOne(t, ctx, c.expr)
 		if err != nil {

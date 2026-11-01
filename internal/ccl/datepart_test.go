@@ -7,7 +7,7 @@ import (
 
 // DATEPART(d, unit) takes one part of a date, the way Excel's YEAR, MONTH,
 // DAY, HOUR, MINUTE and SECOND do. CCL's HOUR, MINUTE and SECOND convert
-// durations, so before this the hour of a date was TONUM(FORMAT_DATE(d, '15')).
+// durations, so before this the hour of a date was VALUE(FORMAT_DATE(d, '15')).
 func TestDatePart(t *testing.T) {
 	taipei := time.FixedZone("UTC+8", 8*3600)
 	ctx := mapCtx(t, map[string][]any{
