@@ -3,7 +3,53 @@ package ccl
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 )
+
+// roundWritten rounds f half away from zero to digits decimal places, reading f
+// as its shortest decimal text. Multiplying instead would see the binary value:
+// the float64 closest to 1.005 lies just below it, and 1.005 would round to 1.
+func roundWritten(f float64, digits int) float64 {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return f
+	}
+	text := strconv.FormatFloat(math.Abs(f), 'f', -1, 64)
+	whole, frac, _ := strings.Cut(text, ".")
+	all := whole + frac
+	keep := len(whole) + digits
+	if keep >= len(all) {
+		return f
+	}
+	if keep < 0 {
+		return 0
+	}
+	kept := []byte(all[:keep])
+	if all[keep] >= '5' {
+		i := len(kept) - 1
+		for i >= 0 && kept[i] == '9' {
+			kept[i] = '0'
+			i--
+		}
+		if i >= 0 {
+			kept[i]++
+		} else {
+			kept = append([]byte{'1'}, kept...)
+		}
+	}
+	// The last kept digit stands digits places after the point.
+	result, err := strconv.ParseFloat("0"+string(kept)+"e"+strconv.Itoa(-digits), 64)
+	if err != nil {
+		return f
+	}
+	if result == 0 {
+		return 0
+	}
+	if f < 0 {
+		return -result
+	}
+	return result
+}
 
 // registerMathFunctions registers Excel/SQL-style scalar math functions.
 // All functions accept any value coercible to float64 via toFloat64; on
@@ -40,8 +86,7 @@ func registerMathFunctions() {
 			}
 			digits = n
 		}
-		shift := math.Pow(10, float64(digits))
-		return math.Round(f*shift) / shift, nil
+		return roundWritten(f, digits), nil
 	})
 
 	registerFunction("FLOOR", func(args ...any) (any, error) {

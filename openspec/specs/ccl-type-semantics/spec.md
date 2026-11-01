@@ -50,6 +50,7 @@ No internal representation SHALL become a cell value. A column range used as a w
 #### Scenario: A sequence function that needs numbers
 - **WHEN** 求值 `CUMSUM(@)`
 - **THEN** 回傳錯誤說明整列不是數字
+
 ### Requirement: AND and OR check their arguments
 
 `AND()` and `OR()` SHALL require at least two arguments, and SHALL return an error for an argument that cannot be converted to a boolean, matching `&&` and `||`.
@@ -233,6 +234,7 @@ Every numeric operation not covered by the integer rules SHALL compute in `float
 #### Scenario: Division and powers stay float64
 - **WHEN** 求值 `7 / 2`、`6 / 3`、`2 ^ 3`
 - **THEN** 分別得到 `float64` 的 3.5、2、8
+
 ### Requirement: A computed column holds one kind of number
 
 A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` or a statement of `ExecuteCCL` SHALL hold one kind of number: when the numbers among its values include a `float64` or `float32`, every value of a Go integer type whose magnitude is at most 2^53 SHALL become the `float64` of the same value. An integer of larger magnitude SHALL keep its type and value. A column whose numbers are all integers, and every value that is not a number, SHALL be left as computed.
@@ -296,3 +298,18 @@ A `time.Duration`, a string `time.ParseDuration` accepts, or a number given to `
 #### Scenario: What the error points to
 - **WHEN** A 為 2024-01-03 12:00、B 為 2024-01-02 00:00，求值 `DATEDIFF(A, B, 'day')` 與 `(A - B) / 3600`
 - **THEN** 分別得到 1.5 與 36
+
+### Requirement: ROUND reads a number as it is written
+
+`ROUND` SHALL round half away from zero on the shortest decimal text of its number, not on the binary value, and SHALL keep `NaN` and infinities as they are. A result of zero SHALL NOT be negative.
+
+#### Scenario: A number just below its written value in binary
+
+- **WHEN** an expression is `ROUND(1.005, 2)`
+- **THEN** the result is 1.01
+
+#### Scenario: Negative digits
+
+- **WHEN** an expression is `ROUND(1250, -2)`
+- **THEN** the result is 1300
+
