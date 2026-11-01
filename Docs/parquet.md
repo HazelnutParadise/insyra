@@ -262,7 +262,7 @@ A part that cannot be computed, such as `STDEV(A)` over a single value or `A.500
 
 Anything else that reads beyond the current row is computed by reading the whole of the columns the expression reads, and only those, into memory, and evaluating the expression the way `AddColUsingCCL` and `ExecuteCCL` do on a loaded table, so its answer is the table's, and it fails where the table fails, for the same reason:
 
-- `MEDIAN`, or an aggregate registered with `RegisterAggregateFunction` from `engine/ccl`, including one registered under a built-in name;
+- `MEDIAN`, `COUNTIF`, `SUMIF`, `AVGIF`, or an aggregate registered with `RegisterAggregateFunction` from `engine/ccl`, including one registered under a built-in name;
 - a row reference computed from the current row, such as `A.(# - 1)`;
 - a column range inside an expression an aggregate is computed over, such as `COUNT(IF(A > 0, A:B, 0))`;
 - a sequence function anywhere but as the whole expression: inside another sequence function or an aggregate, such as `LAG(CUMSUM(A), 1)` or `SUM(CUMSUM(A))`, or inside another expression, such as `CUMSUM(A) + 1`, which fails here as it fails on a loaded table.
