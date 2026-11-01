@@ -137,3 +137,33 @@ func TestTextLeavesAnEmptyCellEmpty(t *testing.T) {
 		}
 	}
 }
+
+// A % inside quoted text is that text, not a Go verb and not a percent format.
+func TestQuotedPercentIsLiteralText(t *testing.T) {
+	ctx := mapCtx(t, map[string][]any{"A": {1.0}})
+	for _, c := range []struct{ expr, want string }{
+		{`TEXT(5, '0 "%off"')`, "5 %off"},
+		{`TEXT(1.5, '0.00 "% savings"')`, "1.50 % savings"},
+		{`TEXT(1.5, '"%.2f"')`, `"1.50"`},
+		{`TEXT(1.5, '%.2f')`, "1.50"},
+		{`TEXT(1.5, '%.1f items')`, "1.5 items"},
+	} {
+		got, err := evalOne(t, ctx, c.expr)
+		if err != nil {
+			t.Errorf("%s: %v", c.expr, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("%s = %#v, want %q", c.expr, got, c.want)
+		}
+	}
+}
+
+func TestFormatKindPrintsItsName(t *testing.T) {
+	if got := kindDate.String(); got != "kindDate" {
+		t.Errorf("kindDate prints %q", got)
+	}
+	if got := formatKind(99).String(); got != "formatKind(99)" {
+		t.Errorf("an unknown kind prints %q", got)
+	}
+}
