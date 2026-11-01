@@ -524,15 +524,7 @@ func acquire() (*handle, error) {
 	sharedMu.Lock()
 	defer sharedMu.Unlock()
 	if !sharedTried {
-		// A warmup compiling on the lost device must finish before the
-		// device it uses is released.
-		warmMu.Lock()
-		for _, resource := range teardown {
-			releaseQuietly(resource)
-		}
-		teardown = nil
-		deviceGeneration++
-		warmMu.Unlock()
+		releaseLostDevice()
 		shared, sharedErr = open()
 		sharedTried = true
 	}
@@ -582,4 +574,21 @@ func float32Bytes(values []float32) []byte {
 		return nil
 	}
 	return unsafe.Slice((*byte)(unsafe.Pointer(&values[0])), len(values)*4)
+}
+
+// releaseLostDevice releases what a lost device left: the kernel warmup
+// compiled and has not installed, then the teardown list, the device last.
+// warmMu makes a warmup compiling on the device finish first. sharedMu must
+// be held.
+func releaseLostDevice() {
+	warmMu.Lock()
+	defer warmMu.Unlock()
+	if warmInFlight != nil {
+		warmInFlight.release()
+		warmInFlight = nil
+	}
+	for _, resource := range teardown {
+		releaseQuietly(resource)
+	}
+	teardown = nil
 }

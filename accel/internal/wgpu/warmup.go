@@ -19,13 +19,13 @@ var builtinKernels = []*kernel{
 // releases a lost device, so a device is never released under a compile.
 var warmMu sync.Mutex
 
-// deviceGeneration counts the lost devices acquire has released. Guarded by
-// warmMu: warmup compares it to know whether the device it compiled on is
-// still there before releasing what it compiled.
-var deviceGeneration int
+// warmInFlight is the kernel warmup has compiled and not yet installed or
+// released. Guarded by warmMu. acquire releases it with a lost device's other
+// children, since a lost device is not replaced while any of them is alive.
+var warmInFlight *compiledKernel
 
 // warmOnFirstBuffer starts warmup when the first resident buffer is made on
-// a device. Tests that must see kernels unbuilt turn it off.
+// a device; a test that needs kernels left unbuilt can turn it off.
 var warmOnFirstBuffer = true
 
 // startWarmupLocked starts building the built-in kernels in the background
@@ -58,32 +58,33 @@ func warm(h *handle) {
 			continue
 		}
 		warmMu.Lock()
-		generation := deviceGeneration
 		c, err := k.compile(h)
+		if err == nil {
+			warmInFlight = c
+		}
 		warmMu.Unlock()
 		if err != nil {
 			continue
 		}
-		// submitMu is taken without warmMu: a computation holding submitMu
-		// can take warmMu inside acquire.
-		used := false
+		// submitMu before warmMu, the order a computation takes them in when
+		// acquire reopens a lost device.
 		submitMu.Lock()
-		if !h.retired {
-			k.once.Do(func() {
-				builtKernels[k] = struct{}{}
-				k.install(c)
-				used = true
-			})
-		}
-		submitMu.Unlock()
-		if !used {
-			// Released only while its device is: once acquire has released
-			// the lost device, its children went with it.
-			warmMu.Lock()
-			if deviceGeneration == generation {
+		warmMu.Lock()
+		if warmInFlight == c {
+			warmInFlight = nil
+			used := false
+			if !h.retired {
+				k.once.Do(func() {
+					builtKernels[k] = struct{}{}
+					k.install(c)
+					used = true
+				})
+			}
+			if !used {
 				c.release()
 			}
-			warmMu.Unlock()
 		}
+		warmMu.Unlock()
+		submitMu.Unlock()
 	}
 }

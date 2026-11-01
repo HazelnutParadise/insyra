@@ -99,3 +99,30 @@ func TestFirstBufferWarmsTheKernels(t *testing.T) {
 		}
 	}
 }
+
+type recordedRelease struct{ order *[]string }
+
+func (r recordedRelease) Release() { *r.order = append(*r.order, "teardown") }
+
+// A kernel warmup compiled but had not installed when the device was lost is
+// released with the lost device's other children, so the device can be
+// replaced (a lost device is not replaced while any child is alive).
+func TestReleasingALostDeviceReleasesTheWarmupInFlight(t *testing.T) {
+	var order []string
+	sharedMu.Lock()
+	warmMu.Lock()
+	warmInFlight = &compiledKernel{}
+	warmMu.Unlock()
+	previous := teardown
+	teardown = []interface{ Release() }{recordedRelease{&order}}
+	releaseLostDevice()
+	left := teardown
+	teardown = previous
+	sharedMu.Unlock()
+	warmMu.Lock()
+	inFlight := warmInFlight
+	warmMu.Unlock()
+	if inFlight != nil || len(left) != 0 || len(order) != 1 {
+		t.Fatalf("after release: in flight %v, teardown %d, released %v", inFlight, len(left), order)
+	}
+}
