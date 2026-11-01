@@ -366,7 +366,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 熱圖改用 `gplot` 的名稱：`CreateHeatmapChart`，搭配 `HeatmapChartConfig`、`HeatmapPoint`、`HeatmapAxis`、`NewHeatmapPoint` 和 `NewHeatmapMissingPoint`。舊的 `HeatMap` 名稱再保留一個版本，並標為 Deprecated。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 - **BREAKING**：`CreateRadarChart` 跟其他建構函式一樣改用可變參數收系列：`CreateRadarChart(cfg, a, b)`。手上已經有 slice 時寫 `series...`。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 - **BREAKING（行為）**：`CreateBarChart` 和 `CreateLineChart` 收到空清單時回傳錯誤並指出是哪一個，例如 `plot: CreateLineChart: list 3 is empty`；以前會畫出一個空系列並回傳圖表。錯誤和警告裡的位置都照你寫的參數從 1 開始算，`nil` 參數也算進去；以前錯誤只算跳過 `nil` 之後剩下的清單，`nil` 清單的警告則是從 0 開始算。呼叫失敗時，也不會再先記下跳過 `nil` 清單的警告。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
-- **BREAKING（外觀）**：系列配色從原本的 64 色改成取自 Insyra 官網的 8 色：藍 `#2550B0`、橘 `#EE9A2C`、紅 `#D73E3E`、青綠 `#2A9D8F`、紫 `#764BA2`、粉 `#FF69B4`、綠 `#4CAF50`、亮藍 `#2196F3`。品牌藍 `#1F449B` 和橘 `#F9AC41` 為了圖表微調過，藍色調亮、橘色調深，讓細線在白底上看得清楚。顏色順序經過檢查，相鄰系列對色弱讀者也分得開。第 9 個系列會從第 1 色重新開始；超過 8 個系列時，建議把其餘的合併成「其他」，或拆成幾張圖。`gplot` 也用同一組配色。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
+- **BREAKING（外觀）**：系列配色從原本的 64 色改成取自 Insyra 官網的 9 色：藍 `#2550B0`、橘 `#EE9A2C`、紅 `#D73E3E`、青綠 `#2A9D8F`、紫 `#764BA2`、粉 `#FF69B4`、綠 `#4CAF50`、亮藍 `#2196F3`，以及給最後一個「其他」系列用的灰 `#7F8C8D`。品牌藍 `#1F449B` 和橘 `#F9AC41` 為了圖表微調過，藍色調亮、橘色調深，讓細線在白底上看得清楚。顏色順序經過檢查，相鄰系列對色弱讀者也分得開。第 10 個系列會從第 1 色重新開始，所以再多的話建議拆成幾張圖。`gplot` 也用同一組配色。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 
 ### `isr`
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。
@@ -391,7 +391,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING（行為）**：散佈圖遇到 `X` 或 `Y` 裡不是 Go 數字的格子（`nil`、文字、`"2"` 這種數字字串，或 `bool`）時回傳錯誤，指出是哪個系列、哪一軸、第幾列；以前會把那個點畫在 0。系列用「從 1 開始的位置加名稱」來指稱，例如 `series 2 ("empty") has no points`。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 - `CreateBarChart` 改收 `...insyra.IDataList`，可以把好幾個清單並排畫在每個類別上，每個清單一種顏色，圖例標出各清單的名稱：`gplot.CreateBarChart(cfg, sales2025, sales2026)`。只傳一個清單時畫法不變。清單長度不同會回傳錯誤並指出是哪一個；傳了不只一個清單時不能用 `ErrorBars`。每張長條圖的兩端都會留半個類別的空間，最左和最右的長條不再被邊框切掉。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 - `isr.DL` 這類包著 `nil` 清單的型別會被當成 `nil`，所以 `CreateLineChart(cfg, nilWrapper, list)` 會跳過它並發出警告，不再當掉（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。警告裡的位置從 1 開始算，呼叫失敗時也不會再記下這個警告。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
-- 每種圖都改用 `plot` 的配色畫系列，也就是取自 Insyra 官網的 8 色，所以第 *i* 個系列在每張 `gplot` 圖、以及對應的 `plot` 圖裡都是同一個顏色。長條圖和直方圖以前是黑色或灰色，現在改成彩色填色；折線、階梯和函式曲線以前是黑色，現在改成彩色，並保留原本的虛線樣式；散佈圖原本自己寫死的紅、藍、綠，也改用同一組配色。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
+- 每種圖都改用 `plot` 的配色畫系列，也就是取自 Insyra 官網的 9 色，所以第 *i* 個系列在每張 `gplot` 圖、以及對應的 `plot` 圖裡都是同一個顏色。長條圖和直方圖以前是黑色或灰色，現在改成彩色填色；折線、階梯和函式曲線以前是黑色，現在改成彩色，並保留原本的虛線樣式；散佈圖原本自己寫死的紅、藍、綠，也改用同一組配色。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 
 ### `py`
 - `PipInstall` 與 `PipUninstall` 拒絕以 `-` 開頭的依賴名稱，並在名稱前加上 `--`。呼叫端的字串過去是以單一 argv 交給 `uv pip install`，所以 `--requirement=/path` 會讓 uv 去讀那個檔案並安裝裡面列的東西。

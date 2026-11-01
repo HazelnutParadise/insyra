@@ -135,7 +135,7 @@ const (
 
 ## Series colours
 
-When a config's `Colors` is left empty, the bar, line, pie and scatter charts colour series *i* from one palette, the same one `gplot` uses: eight colours from the Insyra website, blue `#2550B0`, orange `#EE9A2C`, red `#D73E3E`, teal `#2A9D8F`, purple `#764BA2`, pink `#FF69B4`, green `#4CAF50` and bright blue `#2196F3`. The order is checked so neighbouring series stay apart for colour-blind readers. A ninth series starts again from the first colour; past eight series, fold the rest into "Other" or draw several charts. Set `Colors` to use your own.
+When a config's `Colors` is left empty, the bar, line, pie and scatter charts colour series *i* from one palette, the same one `gplot` uses: nine colours from the Insyra website, blue `#2550B0`, orange `#EE9A2C`, red `#D73E3E`, teal `#2A9D8F`, purple `#764BA2`, pink `#FF69B4`, green `#4CAF50`, bright blue `#2196F3` and gray `#7F8C8D`. The order is checked so neighbouring series stay apart for colour-blind readers. The ninth colour, gray `#7F8C8D`, is for a last series that folds the rest into "Other", so keep at most eight series plus that one, or draw several charts; a tenth series starts again from the first colour. With fewer series, set `Colors` to give an "Other" series that gray yourself. Set `Colors` to use your own.
 
 ## Things to be careful about
 

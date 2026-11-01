@@ -7,12 +7,14 @@ import (
 	"strconv"
 )
 
-// hex is the palette: eight colours taken from the Insyra website, in a fixed
+// hex is the palette: nine colours taken from the Insyra website, in a fixed
 // order checked for colour-blind safety between neighbours. Slots 1 and 2 are
 // the brand blue #1F449B and orange #F9AC41 tuned for charts (lighter blue,
 // deeper orange) so thin lines and small markers stay readable on white; the
-// rest are the website's colours as they are. A ninth series starts again
-// from the first colour rather than taking a new hue.
+// rest are the website's colours as they are. Slot 9 is a neutral gray for a
+// series that folds the rest into "Other", which should not look like one
+// more category. A tenth series starts again from the first colour rather
+// than taking a new hue.
 var hex = []string{
 	"#2550B0", // Insyra blue, tuned for charts
 	"#EE9A2C", // Insyra orange, tuned for charts
@@ -22,10 +24,11 @@ var hex = []string{
 	"#FF69B4", // Pink
 	"#4CAF50", // Green
 	"#2196F3", // Bright blue
+	"#7F8C8D", // Gray, for "Other"
 }
 
 // names are the colours' names, in palette order.
-var names = []string{"Insyra blue", "Insyra orange", "Insyra red", "Teal", "Purple", "Pink", "Green", "Bright blue"}
+var names = []string{"Insyra blue", "Insyra orange", "Insyra red", "Teal", "Purple", "Pink", "Green", "Bright blue", "Gray"}
 
 // Hex returns a copy of the palette as #RRGGBB strings.
 func Hex() []string {

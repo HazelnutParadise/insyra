@@ -13,7 +13,7 @@ import (
 func PrintColorPalette() {
 	colors := DefaultColors()
 	names := palette.Names()
-	fmt.Println("Insyra chart palette (series 1 to 8, then it starts again):")
+	fmt.Println("Insyra chart palette (series 1 to 9, then it starts again):")
 	for i, c := range colors {
 		fmt.Printf("  [%d] %s  %s\n", i+1, c, names[i])
 	}
@@ -40,7 +40,7 @@ body { font-family: sans-serif; background: #fff; color: #222; margin: 24px; }
 </head>
 <body>
 <h1>Insyra chart palette</h1>
-<p>Series 1 to 8 take these colours in order; a ninth series starts again from the first.</p>
+<p>Series 1 to 9 take these colours in order; a tenth series starts again from the first.</p>
 <div class="grid">
 `)
 	for i, c := range colors {

@@ -454,7 +454,7 @@ The table returned by `stats.CorrelationMatrix` can be passed as it is.
 
 ## Series colours
 
-Every chart colours series *i* from the palette `plot` uses, so a series is the same colour in a static chart and its interactive counterpart. The palette is eight colours from the Insyra website: blue `#2550B0`, orange `#EE9A2C`, red `#D73E3E`, teal `#2A9D8F`, purple `#764BA2`, pink `#FF69B4`, green `#4CAF50` and bright blue `#2196F3`. A ninth series starts again from the first colour, so past eight series the dash pattern or marker shape is what tells two series apart; fold the rest into "Other" or draw several charts instead. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
+Every chart colours series *i* from the palette `plot` uses, so a series is the same colour in a static chart and its interactive counterpart. The palette is nine colours from the Insyra website: blue `#2550B0`, orange `#EE9A2C`, red `#D73E3E`, teal `#2A9D8F`, purple `#764BA2`, pink `#FF69B4`, green `#4CAF50`, bright blue `#2196F3` and gray `#7F8C8D`. The gray is for a ninth series that folds the rest into "Other". A tenth series starts again from the first colour, so past that the dash pattern or marker shape is what tells two series apart; draw several charts instead. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
 
 ## A series that cannot be drawn fails the chart
 

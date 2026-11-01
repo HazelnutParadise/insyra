@@ -4,11 +4,11 @@ package internal
 
 import "github.com/HazelnutParadise/insyra/internal/palette"
 
-// DefaultColors returns the series palette plot and gplot share: eight
-// colours from the Insyra website, opening with its blue, orange and red.
-// The order is fixed and checked for colour-blind safety between neighbours;
-// a ninth series starts again from the first colour. The palette lives in
-// internal/palette.
+// DefaultColors returns the series palette plot and gplot share: nine colours
+// from the Insyra website, opening with its blue, orange and red and ending
+// with a neutral gray for "Other". The order is fixed and checked for
+// colour-blind safety between neighbours; a tenth series starts again from the
+// first colour. The palette lives in internal/palette.
 func DefaultColors() []string {
 	return palette.Hex()
 }

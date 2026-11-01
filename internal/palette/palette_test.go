@@ -7,8 +7,8 @@ import (
 
 func TestColorMatchesHexAndWraps(t *testing.T) {
 	hex := Hex()
-	if len(hex) != 8 || len(Names()) != len(hex) {
-		t.Fatalf("%d colours and %d names; want 8 of each", len(hex), len(Names()))
+	if len(hex) != 9 || len(Names()) != len(hex) {
+		t.Fatalf("%d colours and %d names; want 9 of each", len(hex), len(Names()))
 	}
 	if hex[0] != "#2550B0" || hex[1] != "#EE9A2C" || hex[2] != "#D73E3E" {
 		t.Fatalf("the palette opens with %v; want Insyra's blue, orange and red", hex[:3])

@@ -66,7 +66,7 @@ Both scatter charts SHALL return a nil chart and an error when a cell of `X` or 
 
 ### Requirement: gplot colours every chart from one palette
 
-Every `gplot` chart SHALL colour series *i* with colour *i* of the palette `plot` uses, eight colours from the Insyra website opening with `#2550B0`, `#EE9A2C` and `#D73E3E`. Line and step series SHALL also keep their dash patterns.
+Every `gplot` chart SHALL colour series *i* with colour *i* of the palette `plot` uses, nine colours from the Insyra website opening with `#2550B0`, `#EE9A2C` and `#D73E3E`. Line and step series SHALL also keep their dash patterns.
 
 #### Scenario: The first series of each chart
 - **WHEN** a bar chart, a line chart and a scatter chart are each drawn with two series
