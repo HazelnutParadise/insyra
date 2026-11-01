@@ -770,6 +770,9 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | --- | --- | --- |
 | `ABS(x)` | Absolute value | `ABS(-3.5)` → `3.5` |
 | `ROUND(x, n?)` | Round to `n` decimal places (default `0`), half away from zero, reading `x` as it is written: `ROUND(1.005, 2)` is `1.01`. A negative `n` rounds to tens, hundreds and so on. A `NaN` for `n` is an error | `ROUND(3.14159, 2)` → `3.14` |
+| `ROUNDUP(x, n)` | Round away from zero to `n` decimal places. `n` is required, and may be negative | `ROUNDUP(3.141, 2)` → `3.15`, `ROUNDUP(-3.141, 1)` → `-3.2` |
+| `ROUNDDOWN(x, n)` | Round toward zero to `n` decimal places. `n` is required, and may be negative | `ROUNDDOWN(3.149, 2)` → `3.14`, `ROUNDDOWN(-3.14, 1)` → `-3.1` |
+| `INT(x)` | The same as `FLOOR(x)`, under Excel's name | `INT(-8.9)` → `-9` |
 | `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
 | `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
 | `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
@@ -820,7 +823,7 @@ dt.ExecuteCCL(`
 | --- | --- |
 | `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails. Text may be written the way a spreadsheet displays a number: `'10%'` is 0.1 and `'1,234.5'` is 1234.5. Commas must group digits in threes, so `'1,23'` is `nil`, and a currency sign such as `'$12'` is `nil` `TONUM(x)` is deprecated, logs a warning, and is removed in 0.4 |
 | `TEXT(x, fmt?)` | Convert to string. With a second argument, formats by either kind of format, as described under **Formats** below: a Go `fmt` verb (e.g. `"%.2f"`), an Excel number code (`"0.00"`), or a date format (`"yyyy-mm-dd"`, `"2006-01-02"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is. `TOSTR(x, fmt?)` is deprecated, logs a warning, and is removed in 0.4 |
-| `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
+| `BOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil`. `TOBOOL(x)` is deprecated, logs a warning, and is removed in 0.4 |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
 
@@ -839,9 +842,9 @@ These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers an
 | --- | --- |
 | `YEAR(d)` | Year as number |
 | `MONTH(d)` | Month 1–12 |
-| `DAYOFMONTH(d)` | Day 1–31. **Deprecated**: removed in 0.4, where `DAY(d)` reads a date. Keep using it on 0.3.x |
+| `DAYOFMONTH(d)` | Day 1–31. **Deprecated**, logs a warning, and is removed in 0.4: use `DAY(d)` |
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday). **Changes in 0.4** to 1 (Sunday) – 7 (Saturday), as in Excel; it logs a warning the first time it runs |
-| `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped. **Deprecated**: removed in 0.4, where `HOUR(d)`, `MINUTE(d)`, `SECOND(d)` and `DAY(d)` read dates. Keep using it for those parts on 0.3.x; `YEAR(d)`, `MONTH(d)` and `DAYOFMONTH(d)` already give the others |
+| `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped. **Deprecated**, logs a warning, and is removed in 0.4: use `YEAR(d)`, `MONTH(d)`, `DAY(d)`, `HOUR(d)`, `MINUTE(d)` or `SECOND(d)` |
 | `DATE(year, month, day)` | The date with those numbers. Fractions are dropped, and numbers past the end carry over as in Excel: `DATE(2024, 13, 1)` is 2025-01-01 and `DATE(2024, 1, 0)` is 2023-12-31. An empty cell in any argument gives an empty result |
 | `TODAY()` | Today's date on the local clock, at midnight |
 | `NOW()` | The date and time on the local clock |
@@ -896,11 +899,9 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 
 ### DAY / HOUR / MINUTE / SECOND
 
-- `DAY(x)`: accepts a `time.Duration`, a duration string (e.g., `"24h"`), or a numeric value (interpreted as seconds); returns days as `float64`.
-- `HOUR(x)`: returns hours as `float64`.
-- `MINUTE(x)`: returns minutes as `float64`.
-- `SECOND(x)`: returns seconds as `float64`.
-- **These four change meaning in 0.4**, where they read a part of a date, as in Excel: `DAY('2024-01-02')` is `2`. The first call of each in a program logs a warning. Move duration conversions to `DUR(x, unit)` now, which gives the same answer on both: `DUR(x, 'day')` for `DAY(x)`. For a number of seconds, write `x / 86400`, since `DUR` refuses a number.
+- Given a date, each gives that part of it, as in Excel: `DAY('2024-01-02')` is `2`, and `HOUR('2024-01-02T06:30:15Z')` is `6`.
+- Given a `time.Duration`, a duration string such as `"24h"`, or a number read as seconds, each converts it to days, hours, minutes or seconds as `float64`.
+- **The duration form goes away in 0.4.** The first such call of each in a program logs a warning. Move it to `DUR(x, unit)` now, which gives the same answer on both: `DUR(x, 'day')` for `DAY(x)`. For a number of seconds, write `x / 86400`, since `DUR` refuses a number.
 - For all four, a numeric value of more than about 292 years of seconds, either way, is an error rather than a wrapped-around number.
 
 Examples:

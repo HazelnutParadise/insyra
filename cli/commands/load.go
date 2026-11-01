@@ -24,7 +24,7 @@ func init() {
 			"load sql <conn> query \"<SQL>\" [params <v1> <v2> ...] [as <var>]",
 			"",
 			"File option defaults: headers=true, rownames=false, infer=true, ragged=false, trimspace=false.",
-			"infer false (CSV only) keeps every cell as its original string — no type inference.",
+			"infer false (CSV and Excel) keeps every cell as its original string — no type inference. infer true types an Excel sheet's columns as CSV reading does; left out, a sheet stays text with a warning until 0.4.",
 			"ragged and trimspace are CSV-only; ragged pads short rows and keeps extra cells.",
 			"Booleans accept true|false|yes|no|on|off|1|0.",
 		},
@@ -99,16 +99,17 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 			if opts.Encoding != "" {
 				return fmt.Errorf("load excel: 'encoding' is not valid for Excel files")
 			}
-			if opts.InferSet {
-				return fmt.Errorf("load excel: 'infer' is not valid for Excel files")
-			}
 			if opts.RaggedSet || opts.TrimSpaceSet {
 				return fmt.Errorf("load excel: 'ragged' and 'trimspace' are not valid for Excel files")
 			}
 			if !opts.SheetSet || opts.Sheet == "" {
 				return fmt.Errorf("usage for excel: load <file.xlsx> sheet <sheet-name> [headers true|false] [rownames true|false] [as <var>]")
 			}
-			table, err = insyra.ReadExcelSheet(path, opts.Sheet, opts.RowNames, opts.Headers)
+			if opts.InferSet {
+				table, err = insyra.ReadExcelSheet(path, opts.Sheet, opts.RowNames, opts.Headers, !opts.Infer)
+			} else {
+				table, err = insyra.ReadExcelSheet(path, opts.Sheet, opts.RowNames, opts.Headers)
+			}
 		default:
 			return fmt.Errorf("unsupported file type: %s", path)
 		}

@@ -69,10 +69,15 @@ func TestRoundReadsTheWrittenNumber(t *testing.T) {
 }
 
 func TestRoundKeepsWhatIsNotANumber(t *testing.T) {
-	if got := roundWritten(math.NaN(), 2); !math.IsNaN(got) {
+	for _, rule := range []roundRule{roundNearest, roundAway, roundToward} {
+		if got := roundWritten(math.Copysign(0, -1), -1, rule); math.Signbit(got) {
+			t.Errorf("%v of a negative zero stayed negative", rule)
+		}
+	}
+	if got := roundWritten(math.NaN(), 2, roundNearest); !math.IsNaN(got) {
 		t.Errorf("NaN became %v", got)
 	}
-	if got := roundWritten(math.Inf(1), 2); !math.IsInf(got, 1) {
+	if got := roundWritten(math.Inf(1), 2, roundNearest); !math.IsInf(got, 1) {
 		t.Errorf("+Inf became %v", got)
 	}
 }

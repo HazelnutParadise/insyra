@@ -511,7 +511,7 @@ dt, err := insyra.ReadSQL(db, "events", insyra.ReadSQLOptions{
 ### ReadExcelSheet
 
 ```go
-func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool, rawStrings ...bool) (*DataTable, error)
 ```
 
 **Description:** Reads a specific sheet from an Excel file and loads the data into a new DataTable.
@@ -522,6 +522,7 @@ func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames boo
 - `sheetName`: The name of the sheet to read.
 - `setFirstColToRowNames`: If `true`, the first column of the sheet will be used as the row names for the DataTable.
 - `setFirstRowToColNames`: If `true`, the first row of the sheet will be used as the column names for the DataTable.
+- `rawStrings` (optional): `true` keeps every cell as text. `false` types the columns the way CSV reading does: all whole numbers become `int64`, all numbers become `float64`, any other value keeps the column as text, and an empty cell in a numeric column becomes `NaN`. Left out, every cell stays text and one warning is logged, because **from 0.4 columns are typed by default**: pass `true` or `false` now to choose. Passing more than one value is an error.
 
 **Returns:**
 
@@ -540,7 +541,7 @@ if err != nil {
 ### ReadExcel — from any source
 
 ```go
-func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool, rawStrings ...bool) (*DataTable, error)
 ```
 
 **Description:** Reads one sheet of a workbook that is not a file on disk — an upload, an HTTP response, a zip entry — the same way `ReadExcelSheet` reads a path.

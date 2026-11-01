@@ -76,13 +76,14 @@ func valuesWhere(name string, args [][]any) ([]any, error) {
 //   - Logical: IF, AND, OR, CASE
 //   - Null/NaN: ISNA, IFNA
 //   - String concat / duration helpers (this file)
-//   - Math (stdlib_math.go): ABS, ROUND, FLOOR, CEIL, TRUNC, MOD, POW,
+//   - Math (stdlib_math.go): ABS, ROUND, ROUNDUP, ROUNDDOWN, INT, FLOOR,
+//     CEIL, TRUNC, MOD, POW,
 //     SQRT, LN, LOG, LOG10, EXP, SIGN
 //   - String (stdlib_string.go): LEN, UPPER, LOWER, TRIM/L/RTRIM,
 //     LEFT, RIGHT, MID/SUBSTR, REPLACE, FIND, CONTAINS, STARTSWITH,
 //     ENDSWITH, REGEX_MATCH, REPEAT
 //   - Type conversion (stdlib_typeconv.go): TONUM/VALUE, TOSTR/TEXT,
-//     TOBOOL, COALESCE, IFNULL
+//     BOOL, COALESCE, IFNULL
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAYOFMONTH,
 //     WEEKDAY, DATEPART, DATEDIFF, DATEADD, FORMAT_DATE,
 //     and DATE, TODAY, NOW (clock.go)

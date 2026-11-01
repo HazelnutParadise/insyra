@@ -2,9 +2,7 @@
 
 ## Purpose
 CCL 遇到無法表示的數字字面值或與值不相符的格式時回報錯誤，不把 `+Inf` 或 `fmt` 的錯誤標記當成結果寫進儲存格。
-
 ## Requirements
-
 ### Requirement: A literal that cannot be represented is an error
 
 數字字面值 SHALL 在超出 float64 範圍時回報編譯錯誤，SHALL NOT 靜默變成 `+Inf`。指數形式（`1e5`、`1.5e-3`、`2E+3`）SHALL 是合法的數字字面值；`e` 後面沒有數字時 SHALL 仍視為識別字，讓名為 `E` 或 `E1` 的欄位不受影響。
@@ -198,6 +196,7 @@ A float of 1e21 or more in magnitude, NaN and the infinities SHALL keep Go's def
 #### Scenario: COUNT over text
 - **WHEN** `COUNT(A)` runs over a column holding numbers and text
 - **THEN** one warning names 0.4 and `COUNTA`, and the count is what it was
+
 ### Requirement: TEXT and FORMAT_DATE read Go and Excel formats
 
 `TEXT` and `FORMAT_DATE` SHALL read a format written the Go way or the Excel way, deciding from the format alone: a Go `fmt` verb is Go; a digit from 1 to 9 is a Go date layout; `0` or `#` with no letters is an Excel number code; other text with letters is a date format.
@@ -254,6 +253,19 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 - **WHEN** an expression is `ROUND(1250, -2)`
 - **THEN** the result is 1300
 
+### Requirement: BOOL converts a value to a boolean
+
+`BOOL(x)` SHALL read `x` as a boolean, give an empty result for `nil` and for a value that cannot be read as one, and require one argument. `TOBOOL` SHALL NOT be a second working name in a release that has removed it, and SHALL point to `BOOL` where it remains.
+
+#### Scenario: Text that reads as a boolean
+
+- **WHEN** an expression is `BOOL('yes')`
+- **THEN** the result is true
+
+#### Scenario: Text that does not
+
+- **WHEN** an expression is `BOOL('maybe')`
+- **THEN** the result is empty
 ### Requirement: CCL reports what kind of value a cell holds
 
 `ISBLANK` SHALL be true for `nil` and empty text and false for `NaN`. `ISNUM` SHALL be true for a value of a number type other than `NaN`, and false for text. `ISTEXT` and `ISBOOL` SHALL follow the value's type. `ISDATE` SHALL be true for a date and for text that reads as one. `ISERROR` SHALL be true when its argument cannot be computed on that row, and an undefined function or a missing column SHALL still be an error.
@@ -272,3 +284,35 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** column B holds 0
 - **THEN** `ISERROR(A / B)` is true
+### Requirement: Date part functions read a date on 0.3.x
+
+`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL give that part of a date or of text that reads as one. A duration, text that reads as a duration, and a number SHALL convert as before and SHALL warn once that the form goes away in 0.4. `DATEPART` and `DAYOFMONTH` SHALL warn once, naming what to use.
+
+#### Scenario: A date
+
+- **WHEN** an expression is `HOUR('2024-01-02T06:30:15Z')`
+- **THEN** the result is 6
+
+#### Scenario: A duration
+
+- **WHEN** an expression is `HOUR('36h')`
+- **THEN** the result is 36, and a warning names `DUR`
+
+### Requirement: CCL rounds in a chosen direction
+
+`ROUNDUP(x, n)` SHALL round away from zero and `ROUNDDOWN(x, n)` toward zero, each to `n` decimal places with `n` required and possibly negative, reading `x` as it is written. `INT(x)` SHALL round down to an integer, as `FLOOR` does.
+
+#### Scenario: Away from and toward zero
+
+- **WHEN** the number is -3.14159 and `n` is 1
+- **THEN** `ROUNDUP` gives -3.2 and `ROUNDDOWN` gives -3.1
+
+#### Scenario: Written value
+
+- **WHEN** an expression is `ROUNDUP(1.1, 1)`
+- **THEN** the result is 1.1
+
+#### Scenario: INT of a negative number
+
+- **WHEN** an expression is `INT(-8.9)`
+- **THEN** the result is -9

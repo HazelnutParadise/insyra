@@ -14,6 +14,7 @@ type Excel struct {
 type Excel_inOpts struct {
 	FirstCol2RowNames bool
 	FirstRow2ColNames bool
+	RawStrings        bool // keep every cell as text; left false, it stays text with a warning until 0.4
 }
 
 type Excel_outOpts struct {

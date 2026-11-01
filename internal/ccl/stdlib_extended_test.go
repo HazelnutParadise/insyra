@@ -253,6 +253,12 @@ func TestTypeConversionFunctions(t *testing.T) {
 	got, _ = callFn(t, "TOBOOL", "no")
 	wantBool(t, got, false)
 
+	got, _ = callFn(t, "BOOL", "yes")
+	wantBool(t, got, true)
+
+	got, _ = callFn(t, "BOOL", "no")
+	wantBool(t, got, false)
+
 	// COALESCE
 	got, _ = callFn(t, "COALESCE", nil, nil, "first", "second")
 	wantString(t, got, "first")
