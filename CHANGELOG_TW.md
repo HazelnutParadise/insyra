@@ -187,6 +187,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`convert <file.xlsx> <file.csv>` 只接受只有一張工作表的活頁簿，有多張時會回傳錯誤並列出工作表。原本在三張工作表的活頁簿上，它會把第一張寫成 `<file.csv>`，其他工作表則以各自的名稱寫在旁邊。改用 `convert <file.xlsx> sheet <名稱> <file.csv> [sheet <名稱> <file.csv> ...]` 把每張指定的工作表寫成對應的檔案；工作表不存在、同一張給兩次或兩張寫到同一個檔，都會在寫出任何東西前回傳錯誤。新增 `sheets <file.xlsx>` 列出活頁簿的工作表。
 - 所有接受數字的指令參數，現在也可以填數字變數的名稱：`sample frac f`、`kmeans … k`、`shift x n`、`ttest … mu`、`quant` 各形式等，會使用該變數的值；過去填非數字的名稱會報錯。數字變數可由 `sum`、`mean`、`median`、`mode`、`stdev`、`var`、`min`、`max`、`range` 結尾加上 `as <var>` 產生（照常印出結果，只有寫了 `as` 才存下），並可用 `show <var>` 顯示。能解析成數字的字串仍視為數字，所以原本能用的寫法意義不變。
 - 在 Windows 上儲存環境的 `state.json` 時，如果當下有別的程序或執行緒正開著這個檔案，不會再存檔失敗：取代檔案的改名動作會重試最多 2 秒。其他平台不受影響。
+- **BREAKING（行為）**：`plot scatter` 遇到表格前兩欄裡不是數字的格子時回傳錯誤，指出是哪一欄（`X` 或 `Y`）、第幾列；以前會畫在 0。兩欄的長度也必須相同。`plot line` 和 `plot bar` 遇到空的 DataList 會回傳錯誤。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。
@@ -360,6 +361,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `CreateBoxPlot` 丟掉沒有資料清單的系列時，會在警告裡指出是哪一個系列；全部都被丟掉時，錯誤會說沒有任何系列有資料。v0.3.3 明明收到了系列，警告卻寫「no series provided」。
 - **BREAKING**：`plot` 的每個圖表建構函式遇到資料裡有 `NaN` 或無限大時，會回傳指出該值的錯誤；過去它回傳圖表，但存出來的頁面是空白的，也沒有任何錯誤。`CreateBoxPlot` 的清單若沒有任何數字（空的或全是文字）也同樣被拒絕。`CreateGaugeChart` 的 error 不再永遠是 nil。（[#409](https://github.com/HazelnutParadise/insyra/issues/409)）
 - `CreateWordCloud` 依圖上顯示的文字計數，清單裡有 slice 型儲存格時不再 panic（`hash of unhashable type`）（[#411](https://github.com/HazelnutParadise/insyra/issues/411)）。`1` 和 `"1"` 會算成同一個詞，和它們在圖上看起來一樣。
+- **BREAKING**：`CreateScatterChart` 改收 `...plot.ScatterSeries`，每個系列是一個 `Name` 加上 `X`、`Y` 兩個清單，跟 `gplot.CreateScatterChart` 收的一樣，所以表格的兩欄就是一個系列：`plot.CreateScatterChart(cfg, plot.ScatterSeries{Name: "s", X: dt.GetColByName("x"), Y: dt.GetColByName("y")})`。`ScatterPoint` 和 `map[string][]ScatterPoint` 的寫法已移除。系列依傳入順序畫，以前 map 的寫法依 key 排序，所以顏色和符號現在跟著你寫的順序。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
+- **BREAKING**：`CreateScatterChart` 遇到 `X` 或 `Y` 裡不是 Go 數字的格子（`nil`、文字、`"2"` 這種數字字串，或 `bool`）時回傳錯誤，指出是哪個系列、哪一軸、第幾列。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
+- 熱圖改用 `gplot` 的名稱：`CreateHeatmapChart`，搭配 `HeatmapChartConfig`、`HeatmapPoint`、`HeatmapAxis`、`NewHeatmapPoint` 和 `NewHeatmapMissingPoint`。舊的 `HeatMap` 名稱再保留一個版本，並標為 Deprecated。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
+- **BREAKING**：`CreateRadarChart` 跟其他建構函式一樣改用可變參數收系列：`CreateRadarChart(cfg, a, b)`。手上已經有 slice 時寫 `series...`。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
+- **BREAKING（行為）**：`CreateBarChart` 和 `CreateLineChart` 收到空清單時回傳錯誤並指出是哪一個，例如 `plot: CreateLineChart: list 3 is empty`；以前會畫出一個空系列並回傳圖表。錯誤和警告裡的位置都照你寫的參數從 1 開始算，`nil` 參數也算進去；以前錯誤只算跳過 `nil` 之後剩下的清單，`nil` 清單的警告則是從 0 開始算。呼叫失敗時，也不會再先記下跳過 `nil` 清單的警告。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 
 ### `isr`
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。
@@ -380,6 +386,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING（行為改變）**：`CreateHistogram` 拒絕 `NaN` 與無限大，`CreateHeatmapChart` 拒絕無限大以及只有 `NaN` 的表格，`CreateFunctionPlot` 拒絕不是有限值的 `XMin`、`XMax`、`YMin`、`YMax`，都會回傳指出是哪個值的錯誤。v0.3.3 遇到這些值時，依圖表與平台不同，有的會 panic，有的會卡住，有的會畫出錯誤的圖。熱圖裡夾在數字之間的 `NaN` 仍然畫成空白格。
 - `CreateHeatmapChart` 能讀所有數值型別，`int8`、`int16` 或無號整數的欄位會畫出原本的值，不再全部畫成 0。它讀取儲存格的方式也和其他 `gplot` 圖表一致：不是數字的儲存格一律畫成 0，數字字串也一樣。
 - **BREAKING（行為改變）**：`gplot` 做不到的設定改為回傳錯誤，不再只記警告。`CreateStepChart` 遇到不是 `"pre"`、`"mid"`、`"post"` 也不是空字串的 `StepStyle` 會回傳錯誤；v0.3.3 會把拼錯的 `"pr"` 當成 `"post"` 畫出來。`CreateBarChart` 的 `ErrorBars` 數量和長條數不同，或含有 `NaN` 或無限大時，也會回傳錯誤；v0.3.3 會畫出沒有誤差線的長條圖。
+- `CreateScatterPlot` 和 `ScatterPlotConfig` 改名為 `CreateScatterChart` 和 `ScatterChartConfig`，跟 `plot` 同名。舊名稱再保留一個版本，並標為 Deprecated。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
+- **BREAKING（行為）**：散佈圖遇到 `X` 或 `Y` 裡不是 Go 數字的格子（`nil`、文字、`"2"` 這種數字字串，或 `bool`）時回傳錯誤，指出是哪個系列、哪一軸、第幾列；以前會把那個點畫在 0。系列用「從 1 開始的位置加名稱」來指稱，例如 `series 2 ("empty") has no points`。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
+- `CreateBarChart` 改收 `...insyra.IDataList`，可以把好幾個清單並排畫在每個類別上，每個清單一種顏色，圖例標出各清單的名稱：`gplot.CreateBarChart(cfg, sales2025, sales2026)`。只傳一個清單時畫法不變。清單長度不同會回傳錯誤並指出是哪一個；傳了不只一個清單時不能用 `ErrorBars`。每張長條圖的兩端都會留半個類別的空間，最左和最右的長條不再被邊框切掉。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
+- `isr.DL` 這類包著 `nil` 清單的型別會被當成 `nil`，所以 `CreateLineChart(cfg, nilWrapper, list)` 會跳過它並發出警告，不再當掉（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。警告裡的位置從 1 開始算，呼叫失敗時也不會再記下這個警告。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 
 ### `py`
 - `PipInstall` 與 `PipUninstall` 拒絕以 `-` 開頭的依賴名稱，並在名稱前加上 `--`。呼叫端的字串過去是以單一 argv 交給 `uv pip install`，所以 `--requirement=/path` 會讓 uv 去讀那個檔案並安裝裡面列的東西。

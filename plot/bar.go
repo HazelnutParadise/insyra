@@ -38,8 +38,10 @@ type BarChartConfig struct {
 
 // CreateBarChart draws one bar series per list, named after the list.
 //
-// It returns a nil chart and an error when no list is left to draw: none was
-// given, or every one was nil. A nil list among real ones is skipped with a
+// It returns a nil chart and an error when no list is left to draw (none was
+// given, or every one was nil), when a list is empty, or when one holds a NaN
+// or an infinity; the error names the list by its position among the
+// arguments, counting from one. A nil list among real ones is skipped with a
 // warning and the others are drawn.
 //
 // Before drawing, every cell is read as text to choose the Y axis. While every
@@ -50,13 +52,17 @@ type BarChartConfig struct {
 // distinct text becomes a category, and every cell, the numbers included, is
 // drawn at its category's position.
 func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*charts.Bar, error) {
-	data = nonNilLists("CreateBarChart", data)
+	data, pos, dropped := nonNilLists(data)
 	if len(data) == 0 {
 		return nil, chartError("CreateBarChart", "no data to draw")
 	}
-	if err := requireFiniteLists("CreateBarChart", data); err != nil {
+	if err := requireNonEmptyLists("CreateBarChart", data, pos); err != nil {
 		return nil, err
 	}
+	if err := requireFiniteLists("CreateBarChart", data, pos); err != nil {
+		return nil, err
+	}
+	warnNilLists("CreateBarChart", dropped)
 	bar := charts.NewBar()
 
 	// Set title and subtitle

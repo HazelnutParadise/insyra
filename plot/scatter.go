@@ -2,18 +2,23 @@ package plot
 
 import (
 	"fmt"
-	"sort"
+	"math"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/go-echarts/go-echarts/v2/types"
 )
 
-// ScatterPoint represents a 2D point for scatter charts.
-type ScatterPoint struct {
-	X float64
-	Y float64
+// ScatterSeries is one set of points for CreateScatterChart: point i is
+// (X[i], Y[i]), and Name labels the series in the legend. Two columns of a
+// table are one series: ScatterSeries{Name: "s", X: dt.GetColByName("x"),
+// Y: dt.GetColByName("y")}.
+type ScatterSeries struct {
+	Name string
+	X    insyra.IDataList
+	Y    insyra.IDataList
 }
 
 // ScatterChartConfig defines the configuration for a scatter chart.
@@ -47,21 +52,23 @@ type ScatterChartConfig struct {
 	SymbolSize       int           // Optional: Size of the scatter points. Default is 10.
 }
 
-// CreateScatterChart draws one series per map entry, named after its key, in
-// the keys' sorted order. It returns a nil chart and an error when data is
-// empty.
-func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoint) (*charts.Scatter, error) {
-	if len(data) == 0 {
+// CreateScatterChart draws one set of points per series, in argument order.
+//
+// It returns a nil chart and an error when no series is given, or when a
+// series has a nil X or Y, X and Y of different lengths, no points, or a cell
+// that is not a Go number (nil, text, a numeric string such as "2", or a
+// bool), a NaN or an infinity. The error names the series by its position,
+// counting from one, and its name.
+func CreateScatterChart(config ScatterChartConfig, series ...ScatterSeries) (*charts.Scatter, error) {
+	if len(series) == 0 {
 		return nil, chartError("CreateScatterChart", "no data to draw")
 	}
-	for name, points := range data {
-		for i, pt := range points {
-			if err := requireFinite("CreateScatterChart", fmt.Sprintf("X of point %d in %q", i+1, name), pt.X); err != nil {
-				return nil, err
-			}
-			if err := requireFinite("CreateScatterChart", fmt.Sprintf("Y of point %d in %q", i+1, name), pt.Y); err != nil {
-				return nil, err
-			}
+	xs := make([][]float64, len(series))
+	ys := make([][]float64, len(series))
+	for i, s := range series {
+		var err error
+		if xs[i], ys[i], err = readScatterSeries(i, s); err != nil {
+			return nil, chartError("CreateScatterChart", "%v", err)
 		}
 	}
 	scatter := charts.NewScatter()
@@ -132,29 +139,14 @@ func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoin
 
 	// 設置系列顏色（如果未提供則使用默認配色）
 	if len(config.Colors) == 0 {
-		config.Colors = internal.GetColors(len(data))
+		config.Colors = internal.GetColors(len(series))
 	}
 	scatter.SetGlobalOptions(
 		charts.WithColorsOpts(opts.Colors(config.Colors)),
 	)
 
-	// 處理多個系列的點資料。以排序後的系列名逐一加入，避免 map 迭代順序導致
-	// 每次執行的顏色/符號指派不同（非確定性輸出）。
-	seriesNames := make([]string, 0, len(data))
-	for seriesName := range data {
-		seriesNames = append(seriesNames, seriesName)
-	}
-	sort.Strings(seriesNames)
-	symbolIndex := 0
-	for _, seriesName := range seriesNames {
-		pts := data[seriesName]
-		if symbolIndex >= len(config.Symbol) {
-			symbolIndex = 0
-		}
-		scatterData := convertToScatterData(pts, config, symbolIndex)
-		symbolIndex++
-		// 添加系列數據
-		scatter.AddSeries(seriesName, scatterData)
+	for i, sr := range series {
+		scatter.AddSeries(sr.Name, convertToScatterData(xs[i], ys[i], config, i%len(config.Symbol)))
 	}
 
 	// 設置標籤
@@ -163,12 +155,54 @@ func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoin
 	return scatter, nil
 }
 
-// convertToScatterData 將 []Point 轉換為 []opts.ScatterData
-func convertToScatterData(data []ScatterPoint, config ScatterChartConfig, symbolIndex int) []opts.ScatterData {
-	scatterData := make([]opts.ScatterData, len(data))
-	for i, p := range data {
+// readScatterSeries reads one series' X and Y, or says why it cannot be drawn.
+// i is the series' place among the arguments, counting from zero.
+func readScatterSeries(i int, s ScatterSeries) ([]float64, []float64, error) {
+	if isNilList(s.X) || isNilList(s.Y) {
+		return nil, nil, fmt.Errorf("series %d (%q) needs both X and Y", i+1, s.Name)
+	}
+	if s.X.Len() != s.Y.Len() {
+		return nil, nil, fmt.Errorf("series %d (%q) has %d X values and %d Y values", i+1, s.Name, s.X.Len(), s.Y.Len())
+	}
+	if s.X.Len() == 0 {
+		return nil, nil, fmt.Errorf("series %d (%q) has no points", i+1, s.Name)
+	}
+	x, err := readScatterAxis(i, s.Name, "X", s.X)
+	if err != nil {
+		return nil, nil, err
+	}
+	y, err := readScatterAxis(i, s.Name, "Y", s.Y)
+	if err != nil {
+		return nil, nil, err
+	}
+	return x, y, nil
+}
+
+// readScatterAxis reads every cell of dl as a number. A scatter point has no
+// category axis to fall back on, so a cell that is not a Go number would be a
+// point drawn in the wrong place; it is refused instead.
+func readScatterAxis(i int, name, axis string, dl insyra.IDataList) ([]float64, error) {
+	cells := dl.Data()
+	out := make([]float64, len(cells))
+	for row, cell := range cells {
+		f, ok := insyra.ToFloat64Safe(cell)
+		if !ok {
+			return nil, fmt.Errorf("series %d (%q): %s at row index %d is %v (%T), not a number", i+1, name, axis, row, cell, cell)
+		}
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return nil, fmt.Errorf("series %d (%q): %s at row index %d is %v; a chart cannot draw NaN or an infinity", i+1, name, axis, row, f)
+		}
+		out[row] = f
+	}
+	return out, nil
+}
+
+// convertToScatterData pairs xs with ys as go-echarts points.
+func convertToScatterData(xs, ys []float64, config ScatterChartConfig, symbolIndex int) []opts.ScatterData {
+	scatterData := make([]opts.ScatterData, len(xs))
+	for i := range xs {
 		scatterData[i] = opts.ScatterData{
-			Value:      [2]float64{p.X, p.Y}, // 第一個是 X 值，第二個是 Y 值
+			Value:      [2]float64{xs[i], ys[i]},
 			Symbol:     config.Symbol[symbolIndex],
 			SymbolSize: config.SymbolSize,
 		}

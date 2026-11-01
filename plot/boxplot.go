@@ -62,31 +62,40 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) (*charts.BoxPl
 	// The dropped series are named only when a chart comes back; otherwise the
 	// error is the whole report.
 	kept := make([]BoxPlotSeries, 0, len(series))
+	keptPos := make([][]int, 0, len(series))
+	nilLists := make([][]int, 0, len(series))
 	var dropped []int
 	for i, s := range series {
-		s.Data = nonNilLists("CreateBoxPlot", s.Data)
+		var pos, nils []int
+		s.Data, pos, nils = nonNilLists(s.Data)
 		if len(s.Data) == 0 {
 			dropped = append(dropped, i)
 			continue
 		}
 		kept = append(kept, s)
+		keptPos = append(keptPos, pos)
+		nilLists = append(nilLists, nils)
 	}
 	if len(kept) == 0 {
 		return nil, chartError("CreateBoxPlot", "no series has any data")
 	}
-	for _, i := range dropped {
-		insyra.LogWarning("plot", "CreateBoxPlot", "series %d (%q) has no data lists; skipping it", i, series[i].Name)
-	}
+	original := series
 	series = kept
-	for _, s := range series {
-		if err := requireFiniteLists("CreateBoxPlot", s.Data); err != nil {
+	for si, s := range series {
+		if err := requireFiniteLists("CreateBoxPlot", s.Data, keptPos[si]); err != nil {
 			return nil, chartError("CreateBoxPlot", "series %q: %v", s.Name, err)
 		}
 		for i, dl := range s.Data {
 			if !hasNumericCell(dl) {
-				return nil, chartError("CreateBoxPlot", "series %q: list %d has no numeric value, so it has no five-number summary", s.Name, i+1)
+				return nil, chartError("CreateBoxPlot", "series %q: list %d has no numeric value, so it has no five-number summary", s.Name, keptPos[si][i]+1)
 			}
 		}
+	}
+	for _, nils := range nilLists {
+		warnNilLists("CreateBoxPlot", nils)
+	}
+	for _, i := range dropped {
+		insyra.LogWarning("plot", "CreateBoxPlot", "series %d (%q) has no data lists; skipping it", i+1, original[i].Name)
 	}
 	boxPlot := charts.NewBoxPlot()
 

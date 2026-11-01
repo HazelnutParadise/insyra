@@ -8,36 +8,52 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
+	"gonum.org/v1/plot/plotutil"
 	"gonum.org/v1/plot/vg"
 )
 
-// BarChartConfig defines the configuration for a single series bar chart.
+// BarChartConfig defines the configuration for a bar chart.
 type BarChartConfig struct {
 	Title     string    // Title of the chart.
 	XAxis     []string  // X-axis data (categories).
 	XAxisName string    // Optional: X-axis name.
 	YAxisName string    // Optional: Y-axis name.
-	BarWidth  float64   // Optional: Bar width for each bar in the chart. Default is 20.
-	ErrorBars []float64 // Optional: Error bar values for each bar. If provided, must match the length of Data.
+	BarWidth  float64   // Optional: Width of each bar, in points. Default is 20.
+	ErrorBars []float64 // Optional: Error bar values for each bar. Only with one list, and its length must match the list's.
 }
 
-// CreateBarChart draws one bar per value in data. A plain slice is passed as
-// insyra.NewDataList(values).
+// CreateBarChart draws one bar per value in each list. Several lists are
+// drawn side by side in each category, one colour per list, with a legend
+// naming each list. A plain slice is passed as insyra.NewDataList(values).
 //
 // The values are read through DataList.ToF64Slice: a number, a fixed-point
 // decimal included, is drawn as its value, and any other cell, whether nil,
 // text (a numeric string such as "2" included) or a bool, is drawn as 0.
 //
-// It returns a nil chart and an error when data is nil or empty, or holds a
-// NaN or an infinity, and when config.ErrorBars is given but its length
-// differs from the data's or it holds a NaN or an infinity.
-func CreateBarChart(config BarChartConfig, data insyra.IDataList) (*plot.Plot, error) {
-	if isNilList(data) {
+// It returns a nil chart and an error when no list is left to draw (none was
+// given, or every one was nil), when a list is empty, has a different length
+// from the first, or holds a NaN or an infinity, and when config.ErrorBars is
+// given with more than one list, its length differs from the data's, or it
+// holds a NaN or an infinity. A list is named by its position among the
+// arguments, counting from one. A nil list among real ones is skipped with a
+// warning.
+func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*plot.Plot, error) {
+	data, pos, dropped := nonNilLists(data)
+	if len(data) == 0 {
 		return nil, chartError("CreateBarChart", "no data to draw")
 	}
-	values := readValues(data)
-	if len(values) == 0 {
-		return nil, chartError("CreateBarChart", "the data list is empty")
+	if len(config.ErrorBars) > 0 && len(data) > 1 {
+		return nil, chartError("CreateBarChart", "ErrorBars needs exactly one list, but %d lists were given", len(data))
+	}
+	values := make([][]float64, len(data))
+	for i, dl := range data {
+		values[i] = readValues(dl)
+		if len(values[i]) == 0 {
+			return nil, chartError("CreateBarChart", "list %d is empty", pos[i]+1)
+		}
+		if len(values[i]) != len(values[0]) {
+			return nil, chartError("CreateBarChart", "list %d has %d values but list %d has %d", pos[i]+1, len(values[i]), pos[0]+1, len(values[0]))
+		}
 	}
 
 	barWidth := config.BarWidth
@@ -45,19 +61,31 @@ func CreateBarChart(config BarChartConfig, data insyra.IDataList) (*plot.Plot, e
 		barWidth = 20 // Default bar width
 	}
 
-	bars, err := plotter.NewBarChart(plotter.Values(values), vg.Points(barWidth))
-	if err != nil {
-		return nil, chartError("CreateBarChart", "cannot draw the bars: %w", err)
+	groups := make([]*plotter.BarChart, len(values))
+	for i, vs := range values {
+		bars, err := plotter.NewBarChart(plotter.Values(vs), vg.Points(barWidth))
+		if err != nil {
+			return nil, chartError("CreateBarChart", "cannot draw list %d: %w", pos[i]+1, err)
+		}
+		if len(values) > 1 {
+			// Centre the group on its category: bar i sits i widths right of
+			// the leftmost, and the group's middle sits on the tick.
+			bars.Offset = vg.Points((float64(i) - float64(len(values)-1)/2) * barWidth)
+			bars.Color = plotutil.Color(i)
+			bars.LineStyle.Width = 0
+		}
+		groups[i] = bars
 	}
 
 	// Error bars that were asked for are drawn, or the call fails: a chart
 	// without them would look complete while missing what was requested.
 	var errBars *plotter.YErrorBars
 	if len(config.ErrorBars) > 0 {
-		if len(config.ErrorBars) != len(values) {
-			return nil, chartError("CreateBarChart", "ErrorBars has %d values but the data has %d", len(config.ErrorBars), len(values))
+		if len(config.ErrorBars) != len(values[0]) {
+			return nil, chartError("CreateBarChart", "ErrorBars has %d values but the data has %d", len(config.ErrorBars), len(values[0]))
 		}
-		errBars, err = plotter.NewYErrorBars(&barErrorData{values: values, errorBars: config.ErrorBars})
+		var err error
+		errBars, err = plotter.NewYErrorBars(&barErrorData{values: values[0], errorBars: config.ErrorBars})
 		if err != nil {
 			return nil, chartError("CreateBarChart", "cannot draw the error bars: %w", err)
 		}
@@ -77,18 +105,37 @@ func CreateBarChart(config BarChartConfig, data insyra.IDataList) (*plot.Plot, e
 	// does, so a config without labels still gives a readable chart.
 	labels := config.XAxis
 	if len(labels) == 0 {
-		labels = make([]string, len(values))
+		labels = make([]string, len(values[0]))
 		for i := range labels {
 			labels[i] = strconv.Itoa(i + 1)
 		}
 	}
 	plt.NominalX(labels...)
 
-	plt.Add(bars)
+	for i, bars := range groups {
+		plt.Add(bars)
+		if len(groups) > 1 {
+			name := data[i].GetName()
+			if name == "" {
+				name = "list " + strconv.Itoa(pos[i]+1)
+			}
+			plt.Legend.Add(name, bars)
+		}
+	}
+	// Half a category of margin on each side keeps the outermost bars, and a
+	// group's outer bars, inside the frame instead of cut by it.
+	plt.X.Min = -0.5
+	plt.X.Max = float64(len(values[0])) - 0.5
+	if len(groups) > 1 {
+		// The legend sits in the top corner; headroom keeps it off the bars.
+		plt.Legend.Top = true
+		plt.Y.Max += 0.2 * (plt.Y.Max - plt.Y.Min)
+	}
 	if errBars != nil {
 		plt.Add(errBars)
 	}
 
+	warnNilLists("CreateBarChart", dropped)
 	return plt, nil
 }
 

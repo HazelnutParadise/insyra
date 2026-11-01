@@ -42,7 +42,7 @@ type RadarSeries struct {
 // It returns a nil chart and an error when series is empty, or when config has
 // neither Indicators nor MaxValues. A MaxValues key that is not an indicator
 // is ignored with a warning.
-func CreateRadarChart(config RadarChartConfig, series []RadarSeries) (*charts.Radar, error) {
+func CreateRadarChart(config RadarChartConfig, series ...RadarSeries) (*charts.Radar, error) {
 	if len(series) == 0 {
 		return nil, chartError("CreateRadarChart", "no series to draw")
 	}

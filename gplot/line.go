@@ -38,7 +38,7 @@ func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*plot.Pl
 
 // drawLines builds a line or step chart; stepKind is plotter.NoStep for a line.
 func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName string, stepKind plotter.StepKind, data []insyra.IDataList) (*plot.Plot, error) {
-	data = nonNilLists(funcName, data)
+	data, _, dropped := nonNilLists(data)
 	if len(data) == 0 {
 		return nil, chartError(funcName, "no data to draw")
 	}
@@ -64,6 +64,7 @@ func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName str
 	if err := seriesError(funcName, failed); err != nil {
 		return nil, err
 	}
+	warnNilLists(funcName, dropped)
 	return plt, nil
 }
 

@@ -59,7 +59,7 @@ func main() {
 | Line       | `CreateLineChart`       | Trends over time             |
 | Scatter    | `CreateScatterChart`    | Correlation analysis         |
 | Pie        | `CreatePieChart`        | Part-to-whole relationships  |
-| HeatMap    | `CreateHeatMap`         | Matrix visualization         |
+| Heatmap    | `CreateHeatmapChart`    | Matrix visualization         |
 | Radar      | `CreateRadarChart`      | Multi-dimensional comparison |
 | Funnel     | `CreateFunnelChart`     | Stage-based processes        |
 | Gauge      | `CreateGaugeChart`      | Single value display         |
@@ -151,13 +151,13 @@ err = plot.SaveHTML(chart, "sales.html")
 
 ### A `nil` list among real lists is skipped
 
-`CreateBarChart`, `CreateLineChart` and `CreateBoxPlot` drop a `nil` list, whether a nil interface or a nil `*insyra.DataList`. They log a warning naming its position and draw the rest. When no list is left, the call returns an error and logs nothing. `CreateBoxPlot` also drops a series left with no lists, including one given no lists at all, with a warning naming the series. When no series is left, the result is an error saying that no series has any data. `CreateWordCloud` takes one list, so a `nil` list there is an error.
+`CreateBarChart`, `CreateLineChart` and `CreateBoxPlot` drop a `nil` list, whether a nil interface, a nil `*insyra.DataList` or a wrapper such as `isr.DL` holding one. When the chart is drawn, they log a warning naming its position among the arguments, counting from one. When no list is left, or the call fails for another reason, it returns an error and logs nothing. `CreateBoxPlot` also drops a series left with no lists, including one given no lists at all, with a warning naming the series. When no series is left, the result is an error saying that no series has any data. `CreateWordCloud` takes one list, so a `nil` list there is an error.
 
-An empty list is not refused. The bar and line charts draw it as an empty series and return the chart.
+An empty list is refused. The bar and line charts return a `nil` chart and an error naming the list's position among the arguments, counting from one with `nil` arguments included, such as `plot: CreateLineChart: list 3 is empty`. Every position in an error counts the arguments you wrote, so a `nil` list before the one that failed does not shift the number.
 
 ### How a cell that is not a number is drawn
 
-`CreateBarChart`, `CreateLineChart` and `CreateBoxPlot` read `insyra.IDataList` values, and none of them refuses a cell that is not a number. What each one does with such a cell, measured on 2026-09-28:
+`CreateBarChart`, `CreateLineChart` and `CreateBoxPlot` read `insyra.IDataList` values, and none of them refuses a cell that is not a number. `CreateScatterChart` does: a point has no category axis to fall back on, so a cell of `X` or `Y` that is not a Go number (`nil`, text, a numeric string such as `"2"`, or a `bool`) is an error naming the series, the axis and the row. What each one does with such a cell, measured on 2026-09-28:
 
 - **The Y axis is chosen from the cells' text.** While every cell's text parses as a number, the Y axis is numeric. A single cell whose text does not parse, such as a word, a `bool`, or `nil` (whose text is `<nil>`), turns the Y axis of the bar and line charts into categories. Each distinct text becomes a category, and every cell, the numbers included, is drawn at its category's position. `NewDataList(1, "abc", 3)` gives a Y axis labelled `1`, `abc`, `3`, with the bars at 0, 1 and 2.
 - **On a numeric axis, a string is drawn as 0.** The values are read through `DataList.ToF64Slice`, which does not parse text, so `NewDataList(1, "2", 3)` is drawn as 1, 0, 3.
@@ -169,7 +169,7 @@ Clean a column before charting it rather than relying on any of this: `ParseNumb
 ### Two constructors write into what you pass
 
 - `CreateKlineChart` sorts its points by date in place. Called as `CreateKlineChart(cfg, points...)`, it reorders your `points` slice.
-- `CreateRadarChart` fills in an empty `Color` on each element of the `series` slice you pass, and adds an entry to `config.MaxValues` for every indicator that has none. Your map is changed only when you supplied one; a `nil` `MaxValues` stays `nil` in your config.
+- `CreateRadarChart` fills in an empty `Color` on each series. Called as `CreateRadarChart(cfg, series...)`, that writes into your `series` slice; and adds an entry to `config.MaxValues` for every indicator that has none. Your map is changed only when you supplied one; a `nil` `MaxValues` stays `nil` in your config.
 
 `CreateBoxPlot` also assigns default colours, but to its own copy of the series, so your slice is unchanged.
 
@@ -273,7 +273,7 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*charts.Ba
 **Returns:**
 
 - `*charts.Bar`: the chart, or `nil` when the error is non-nil.
-- `error`: non-nil, with a `nil` chart, when no list is given, or every one is `nil`.
+- `error`: non-nil, with a `nil` chart, when no list is given, every one is `nil`, or one is empty or holds a `NaN` or an infinity.
 
 ### 2. Line Chart
 
@@ -327,7 +327,7 @@ func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*charts.
 **Returns:**
 
 - `*charts.Line`: the chart, or `nil` when the error is non-nil.
-- `error`: non-nil, with a `nil` chart, when no list is given, or every one is `nil`.
+- `error`: non-nil, with a `nil` chart, when no list is given, every one is `nil`, or one is empty or holds a `NaN` or an infinity.
 
 ### 3. Scatter Chart
 
@@ -336,9 +336,10 @@ func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*charts.
 #### Configuration
 
 ```go
-type ScatterPoint struct {
-    X float64
-    Y float64
+type ScatterSeries struct {
+    Name string
+    X    insyra.IDataList
+    Y    insyra.IDataList
 }
 
 type ScatterChartConfig struct {
@@ -376,20 +377,26 @@ type ScatterChartConfig struct {
 #### Creation
 
 ```go
-func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoint) (*charts.Scatter, error)
+func CreateScatterChart(config ScatterChartConfig, series ...ScatterSeries) (*charts.Scatter, error)
 ```
 
-**Description:** Draws one series per map entry, named after its key. The series are added in the keys' sorted order, so their colours and symbols are the same on every run.
+**Description:** Draws one set of points per series, in argument order, so the colours and symbols follow the order you wrote. Point *i* of a series is `(X[i], Y[i])`, so two columns of a table are one series. `gplot.CreateScatterChart` takes the same series.
+
+```go
+chart, err := plot.CreateScatterChart(plot.ScatterChartConfig{Title: "Height and weight"},
+    plot.ScatterSeries{Name: "people", X: dt.GetColByName("height"), Y: dt.GetColByName("weight")},
+)
+```
 
 **Parameters:**
 
 - `config`: Configuration options. Type: `ScatterChartConfig`.
-- `data`: Input data values. Type: `map[string][]ScatterPoint`.
+- `series`: Variadic `ScatterSeries` values.
 
 **Returns:**
 
 - `*charts.Scatter`: the chart, or `nil` when the error is non-nil.
-- `error`: non-nil, with a `nil` chart, when `data` is empty.
+- `error`: non-nil, with a `nil` chart, when no series is given, or a series has a `nil` `X` or `Y`, `X` and `Y` of different lengths, no points, or a cell that is not a Go number, a `NaN` or an infinity. The error names the series by its position, counting from one, and its name.
 
 ### 4. Pie Chart
 
@@ -442,14 +449,14 @@ func CreatePieChart(config PieChartConfig, data ...PieItem) (*charts.Pie, error)
 - `*charts.Pie`: the chart, or `nil` when the error is non-nil.
 - `error`: non-nil, with a `nil` chart, when no item is given.
 
-### 5. HeatMap
+### 5. Heatmap
 
-![HeatMap Example](./img/plot/heatmap_example.png)
+![Heatmap Example](./img/plot/heatmap_example.png)
 
 #### Configuration
 
 ```go
-type HeatMapConfig struct {
+type HeatmapChartConfig struct {
     Width           string
     Height          string
     BackgroundColor string
@@ -474,33 +481,35 @@ type HeatMapConfig struct {
 
 ```go
 // An axis is an int index, a string label, or a time.Time (calendar mode).
-type HeatMapAxis interface{ int | string | time.Time }
+type HeatmapAxis interface{ int | string | time.Time }
 
-// HeatMapPoint is one cell; Valid is false for a cell with no value ("-").
-type HeatMapPoint[X HeatMapAxis, Y HeatMapAxis] struct {
+// HeatmapPoint is one cell; Valid is false for a cell with no value ("-").
+type HeatmapPoint[X HeatmapAxis, Y HeatmapAxis] struct {
     X, Y  ...
     Value float64
     Valid bool
 }
 
-func NewHeatMapPoint[X HeatMapAxis, Y HeatMapAxis](x X, y Y, value float64) HeatMapPoint[X, Y]
-func NewHeatMapMissingPoint[X HeatMapAxis, Y HeatMapAxis](x X, y Y) HeatMapPoint[X, Y]
-func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ...HeatMapPoint[X, Y]) (*charts.HeatMap, error)
+func NewHeatmapPoint[X HeatmapAxis, Y HeatmapAxis](x X, y Y, value float64) HeatmapPoint[X, Y]
+func NewHeatmapMissingPoint[X HeatmapAxis, Y HeatmapAxis](x X, y Y) HeatmapPoint[X, Y]
+func CreateHeatmapChart[X HeatmapAxis, Y HeatmapAxis](config HeatmapChartConfig, points ...HeatmapPoint[X, Y]) (*charts.HeatMap, error)
 ```
 
-`CreateHeatMap` returns a `nil` chart and an error when no point is given. With `UseCalendar` set, it also does so when a point's `X` is not a `time.Time` or `CalendarOpts` is `nil`.
+`CreateHeatmapChart` returns a `nil` chart and an error when no point is given. With `UseCalendar` set, it also does so when a point's `X` is not a `time.Time` or `CalendarOpts` is `nil`.
 
 Because the point type is exported, points can be collected in a loop:
 
 ```go
-var points []plot.HeatMapPoint[int, int]
+var points []plot.HeatmapPoint[int, int]
 for x := 0; x < 7; x++ {
     for y := 0; y < 24; y++ {
-        points = append(points, plot.NewHeatMapPoint(x, y, counts[x][y]))
+        points = append(points, plot.NewHeatmapPoint(x, y, counts[x][y]))
     }
 }
-chart, err := plot.CreateHeatMap(plot.HeatMapConfig{Title: "Activity"}, points...)
+chart, err := plot.CreateHeatmapChart(plot.HeatmapChartConfig{Title: "Activity"}, points...)
 ```
+
+The former names `CreateHeatMap`, `HeatMapConfig`, `HeatMapPoint`, `HeatMapAxis`, `NewHeatMapPoint` and `NewHeatMapMissingPoint` still work for one release and are marked Deprecated.
 
 ### 6. Radar Chart
 
@@ -534,7 +543,7 @@ type RadarSeries struct {
 #### Creation
 
 ```go
-func CreateRadarChart(config RadarChartConfig, series []RadarSeries) (*charts.Radar, error)
+func CreateRadarChart(config RadarChartConfig, series ...RadarSeries) (*charts.Radar, error)
 ```
 
 **Description:** Draws one polygon per series against the indicators: `config.Indicators`, or the sorted keys of `config.MaxValues` when `Indicators` is empty. A `MaxValues` key that is not an indicator is ignored with a warning.
@@ -542,7 +551,7 @@ func CreateRadarChart(config RadarChartConfig, series []RadarSeries) (*charts.Ra
 **Parameters:**
 
 - `config`: Configuration options. Type: `RadarChartConfig`.
-- `series`: Input value for `series`. Type: `[]RadarSeries`.
+- `series`: Variadic `RadarSeries` values. A slice you already have is passed as `series...`.
 
 **Returns:**
 

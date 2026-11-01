@@ -20,9 +20,10 @@ func requireFinite(funcName, what string, v float64) error {
 	return nil
 }
 
-// requireFiniteLists checks every numeric cell of every list. A cell that is
-// not a number is left to the chart's existing handling.
-func requireFiniteLists(funcName string, lists []insyra.IDataList) error {
+// requireFiniteLists checks every numeric cell of every list; pos holds each
+// list's position among the caller's arguments. A cell that is not a number
+// is left to the chart's existing handling.
+func requireFiniteLists(funcName string, lists []insyra.IDataList, pos []int) error {
 	for i, dl := range lists {
 		for row, cell := range dl.Data() {
 			if cell == nil {
@@ -32,7 +33,7 @@ func requireFiniteLists(funcName string, lists []insyra.IDataList) error {
 			if !ok {
 				continue
 			}
-			if err := requireFinite(funcName, sprintPos("list", i, row), f); err != nil {
+			if err := requireFinite(funcName, sprintPos("list", pos[i], row), f); err != nil {
 				return err
 			}
 		}

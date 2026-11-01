@@ -125,24 +125,14 @@ func extractPlotSeries(value any) ([]insyra.IDataList, error) {
 	}
 }
 
-func extractScatterSeries(value any) (map[string][]insyraplot.ScatterPoint, error) {
+func extractScatterSeries(value any) (insyraplot.ScatterSeries, error) {
 	dt, ok := value.(*insyra.DataTable)
 	if !ok {
-		return nil, fmt.Errorf("scatter plot requires DataTable with at least 2 columns")
+		return insyraplot.ScatterSeries{}, fmt.Errorf("scatter plot requires DataTable with at least 2 columns")
 	}
 	_, cols := dt.Size()
 	if cols < 2 {
-		return nil, fmt.Errorf("scatter plot requires DataTable with at least 2 columns")
+		return insyraplot.ScatterSeries{}, fmt.Errorf("scatter plot requires DataTable with at least 2 columns")
 	}
-	x := dt.GetColByNumber(0).ToF64Slice()
-	y := dt.GetColByNumber(1).ToF64Slice()
-	length := len(x)
-	if len(y) < length {
-		length = len(y)
-	}
-	points := make([]insyraplot.ScatterPoint, 0, length)
-	for i := 0; i < length; i++ {
-		points = append(points, insyraplot.ScatterPoint{X: x[i], Y: y[i]})
-	}
-	return map[string][]insyraplot.ScatterPoint{"series": points}, nil
+	return insyraplot.ScatterSeries{Name: "series", X: dt.GetColByNumber(0), Y: dt.GetColByNumber(1)}, nil
 }
