@@ -249,3 +249,178 @@ func TestMomentumPortfoliosDoesNotHangOnAnOverflowingSignal(t *testing.T) {
 		t.Fatal("MomentumPortfolios did not return on an overflowing compounded signal")
 	}
 }
+
+// Four stocks over four months for the turnover tests; D has no return in m3.
+//
+//	      m0     m1     m2     m3
+//	A   0.10   0.05   0.00   0.10
+//	B   0.00   0.10   0.20   0.00
+//	C  -0.10   0.00   0.10   0.05
+//	D   0.20  -0.05   0.15    nil
+func turnoverPanel() *insyra.DataTable {
+	data := map[string][]any{
+		"A": {0.10, 0.05, 0.00, 0.10},
+		"B": {0.00, 0.10, 0.20, 0.00},
+		"C": {-0.10, 0.00, 0.10, 0.05},
+		"D": {0.20, -0.05, 0.15, nil},
+	}
+	dates, stocks, rets := []any{}, []any{}, []any{}
+	for m := 0; m < 4; m++ {
+		for _, s := range []string{"A", "B", "C", "D"} {
+			dates = append(dates, "m"+string(rune('0'+m)))
+			stocks = append(stocks, s)
+			rets = append(rets, data[s][m])
+		}
+	}
+	return insyra.NewDataTable(
+		insyra.NewDataList(dates...).SetName("date"),
+		insyra.NewDataList(stocks...).SetName("stock"),
+		insyra.NewDataList(rets...).SetName("ret"),
+	)
+}
+
+// Hold 1. Losers are C,B then D,C then A,C; winners A,D then A,B then D,B.
+//
+// m2 winners: m1 weights A .5 D .5 drift to A .525 D .475; m2 holds A .5 B .5,
+// so |.5-.525| + .5 + .475 = 1. Losers: C .5 B .5 drift to C .5/1.05 and
+// B .55/1.05; m2 holds D .5 C .5, so the sum is 22/21.
+// m3 winners: A .5 B .5 drift to 5/11 and 6/11; D has no return in m3, so B
+// holds everything: 5/11 + 5/11 = 10/11. Losers: D .5 C .5 drift to .575/1.125
+// and .55/1.125; m3 holds A .5 C .5, so the sum is 46/45.
+func TestMomentumTurnoverOneMonthHold(t *testing.T) {
+	res, err := MomentumPortfolios(turnoverPanel(), insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Turnover.GetColByName("date").Data(); len(got) != 3 || got[0] != "m1" || got[2] != "m3" {
+		t.Fatalf("turnover dates %v, want the dates of Groups", got)
+	}
+	nan := math.NaN()
+	expectCloseNaN(t, "group_1", columnFloats(t, res.Turnover, "group_1"), []float64{nan, 22.0 / 21, 46.0 / 45})
+	expectCloseNaN(t, "group_2", columnFloats(t, res.Turnover, "group_2"), []float64{nan, 1, 10.0 / 11})
+	expectCloseNaN(t, "long_short", listFloats(res.LongShortTurnover), []float64{nan, 1 + 22.0/21, 10.0/11 + 46.0/45})
+	if res.LongShortTurnover.GetName() != "long_short_turnover" {
+		t.Errorf("name %q", res.LongShortTurnover.GetName())
+	}
+}
+
+// Hold 2: the weights of the overlapping cohorts add up per stock before the
+// difference is taken. m2 winners: cohort m1 A .25 B .25 plus cohort m0 A .25
+// D .25 is A .5 B .25 D .25, which drifts by m2's returns to A .5, B .3,
+// D .2875 over 1.0875. m3 winners: cohort m2 holds B alone (D has no return),
+// .5, and cohort m1 holds A .25 B .25, so A .25 B .75. Turnover 55/58.
+func TestMomentumTurnoverSumsOverlappingCohorts(t *testing.T) {
+	res, err := MomentumPortfolios(turnoverPanel(), insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2, MomentumOptions{Hold: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectCloseNaN(t, "group_2", columnFloats(t, res.Turnover, "group_2"), []float64{math.NaN(), 55.0 / 58})
+}
+
+// A month after a skipped one has no turnover: the previous holdings are unknown.
+func TestMomentumTurnoverIsNaNAfterASkippedMonth(t *testing.T) {
+	// In m1 only A and B have a return, so the m1 portfolio of 4 groups
+	// cannot be formed and m2 is skipped; m3 follows a skipped month.
+	data := map[string][]any{
+		"A": {0.10, 0.01, 0.02, 0.03, 0.01},
+		"B": {0.20, 0.02, 0.01, 0.02, 0.02},
+		"C": {0.30, nil, 0.03, 0.01, 0.03},
+		"D": {0.40, nil, 0.04, 0.04, 0.01},
+	}
+	dates, stocks, rets := []any{}, []any{}, []any{}
+	for m := 0; m < 5; m++ {
+		for _, s := range []string{"A", "B", "C", "D"} {
+			dates = append(dates, "m"+string(rune('0'+m)))
+			stocks = append(stocks, s)
+			rets = append(rets, data[s][m])
+		}
+	}
+	dt := insyra.NewDataTable(
+		insyra.NewDataList(dates...).SetName("date"),
+		insyra.NewDataList(stocks...).SetName("stock"),
+		insyra.NewDataList(rets...).SetName("ret"),
+	)
+	res, err := MomentumPortfolios(dt, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0].Date != "m2" {
+		t.Fatalf("skipped %v, want m2", res.Skipped)
+	}
+	got := res.Turnover.GetColByName("date").Data()
+	if len(got) != 3 || got[0] != "m1" || got[1] != "m3" || got[2] != "m4" {
+		t.Fatalf("turnover dates %v", got)
+	}
+	g1 := columnFloats(t, res.Turnover, "group_1")
+	if !math.IsNaN(g1[0]) || !math.IsNaN(g1[1]) || math.IsNaN(g1[2]) {
+		t.Fatalf("group_1 turnover %v, want NaN in m1 and m3 only", g1)
+	}
+}
+
+// A group with no return in a month has no weights there, so neither that
+// month nor the next has a turnover.
+func TestMomentumTurnoverIsNaNAroundAGroupWithNoReturn(t *testing.T) {
+	// The winners are D and B from m0's and m1's rankings, and neither has a
+	// return in m2; m2's ranking has A and C only.
+	data := map[string][]any{
+		"A": {0.10, 0.01, 0.02, 0.03},
+		"B": {0.40, 0.04, nil, 0.02},
+		"C": {0.20, 0.02, 0.03, 0.01},
+		"D": {0.30, 0.03, nil, 0.04},
+	}
+	dates, stocks, rets := []any{}, []any{}, []any{}
+	for m := 0; m < 4; m++ {
+		for _, s := range []string{"A", "B", "C", "D"} {
+			dates = append(dates, "m"+string(rune('0'+m)))
+			stocks = append(stocks, s)
+			rets = append(rets, data[s][m])
+		}
+	}
+	dt := insyra.NewDataTable(
+		insyra.NewDataList(dates...).SetName("date"),
+		insyra.NewDataList(stocks...).SetName("stock"),
+		insyra.NewDataList(rets...).SetName("ret"),
+	)
+	res, err := MomentumPortfolios(dt, insyra.Name("date"), insyra.Name("stock"), insyra.Name("ret"), 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g2 := columnFloats(t, res.Groups, "group_2"); !math.IsNaN(g2[1]) {
+		t.Fatalf("group_2 return %v, want NaN in m2", g2)
+	}
+	tg2 := columnFloats(t, res.Turnover, "group_2")
+	if !math.IsNaN(tg2[1]) || !math.IsNaN(tg2[2]) {
+		t.Fatalf("group_2 turnover %v, want NaN in m2 and m3", tg2)
+	}
+	ls := listFloats(res.LongShortTurnover)
+	if !math.IsNaN(ls[1]) || !math.IsNaN(ls[2]) {
+		t.Fatalf("long-short turnover %v, want NaN in m2 and m3", ls)
+	}
+	// The losers A and C are held in m1 and m2, then A alone in m3.
+	// m2: A .5 C .5 drift by m1's returns to .505/1.015 and .51/1.015.
+	// m3: A .5 C .5 drift by m2's returns to .51 and .515 over 1.025; A holds 1.
+	wantM2 := math.Abs(.5-.505/1.015) + math.Abs(.5-.51/1.015)
+	wantM3 := (1 - .51/1.025) + .515/1.025
+	expectCloseNaN(t, "group_1", columnFloats(t, res.Turnover, "group_1"), []float64{math.NaN(), wantM2, wantM3})
+}
+
+func listFloats(dl *insyra.DataList) []float64 {
+	out := []float64{}
+	for _, v := range dl.Data() {
+		f, _ := insyra.ToFloat64Safe(v)
+		out = append(out, f)
+	}
+	return out
+}
+
+func expectCloseNaN(t *testing.T, name string, got, want []float64) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s: got %v, want %v", name, got, want)
+	}
+	for i := range want {
+		if math.IsNaN(want[i]) != math.IsNaN(got[i]) || (!math.IsNaN(want[i]) && math.Abs(got[i]-want[i]) > 1e-12) {
+			t.Fatalf("%s: row %d: got %v, want %v (all %v)", name, i, got[i], want[i], got)
+		}
+	}
+}
