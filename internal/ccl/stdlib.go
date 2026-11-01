@@ -84,8 +84,9 @@ func valuesWhere(name string, args [][]any) ([]any, error) {
 //   - Type conversion (stdlib_typeconv.go): TONUM/VALUE, TOSTR/TEXT,
 //     TOBOOL, COALESCE, IFNULL
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAYOFMONTH,
-//     WEEKDAY, DATEPART, DATEDIFF, DATEADD, FORMAT_DATE
-//   - Aggregates: SUM, AVG, COUNT, COUNTA, COUNTIF, SUMIF, AVGIF, COUNTA, MAX, MIN (this file) and
+//     WEEKDAY, DATEPART, DATEDIFF, DATEADD, FORMAT_DATE,
+//     and DATE, TODAY, NOW (clock.go)
+//   - Aggregates: SUM, AVG, COUNT, COUNTA, COUNTIF, SUMIF, AVGIF, MAX, MIN (this file) and
 //     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)
 func RegisterStandardFunctions() {
 	registerMathFunctions()

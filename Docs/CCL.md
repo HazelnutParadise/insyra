@@ -812,6 +812,9 @@ These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers an
 | `DAYOFMONTH(d)` | Day 1–31. **Deprecated**: removed in 0.4, where `DAY(d)` reads a date. Keep using it on 0.3.x |
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday). **Changes in 0.4** to 1 (Sunday) – 7 (Saturday), as in Excel; it logs a warning the first time it runs |
 | `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped. **Deprecated**: removed in 0.4, where `HOUR(d)`, `MINUTE(d)`, `SECOND(d)` and `DAY(d)` read dates. Keep using it for those parts on 0.3.x; `YEAR(d)`, `MONTH(d)` and `DAYOFMONTH(d)` already give the others |
+| `DATE(year, month, day)` | The date with those numbers. Fractions are dropped, and numbers past the end carry over as in Excel: `DATE(2024, 13, 1)` is 2025-01-01 and `DATE(2024, 1, 0)` is 2023-12-31. An empty cell in any argument gives an empty result |
+| `TODAY()` | Today's date on the local clock, at midnight |
+| `NOW()` | The date and time on the local clock |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
 | `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A fractional `n` truncates for `day`, `month` and `year`. A day, month or year count that is `NaN`, infinite or beyond `int64`, or more than about 292 years in hours, minutes or seconds, is an error |
 | `FORMAT_DATE(d, format)` | Format a date, by a Go reference layout (`"2006-01-02"`) or Excel's codes (`"yyyy-mm-dd"`) |
@@ -1218,6 +1221,8 @@ dt.AddColUsingCCL("average", "(A + B + C) / 3")
 dt.AddColUsingCCL("square", "A ^ 2")
 dt.AddColUsingCCL("cube", "A ^ 3")
 ```
+
+`TODAY()` and `NOW()` read the clock once per call, so every row of one `AddColUsingCCL`, every statement of one `ExecuteCCL`, and every batch of one `ApplyCCL` or `FilterWithCCL` read the same moment. Through `engine/ccl`, each evaluation reads the clock anew. They hold the local clock's date and time with no zone, the way CCL holds a date read from text without a zone, so `DATEDIFF(TODAY(), '2024-01-02', 'day')` is a whole number wherever the program runs. Compared with a date that has a real zone, such as `2024-01-02T00:00:00+08:00`, they are read as UTC.
 
 ### Date & Duration Examples
 
