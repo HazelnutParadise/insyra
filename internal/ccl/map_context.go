@@ -61,7 +61,7 @@ func (c *MapContext) GetCol(index int) any {
 func (c *MapContext) GetColByName(name string) (any, error) {
 	col, ok := c.Data[name]
 	if !ok {
-		return nil, fmt.Errorf("column '%s' not found", name)
+		return nil, UnknownColumnError("column '%s' not found", name)
 	}
 	if c.CurrentRowIdx < 0 || c.CurrentRowIdx >= len(col) {
 		return nil, fmt.Errorf("row index %d out of range", c.CurrentRowIdx)
@@ -86,7 +86,7 @@ func (c *MapContext) GetCurrentRow() any {
 
 func (c *MapContext) GetCell(colIndex, rowIndex int) (any, error) {
 	if colIndex < 0 || colIndex >= len(c.ColNames) {
-		return nil, fmt.Errorf("column index %d out of range", colIndex)
+		return nil, UnknownColumnError("column index %d out of range", colIndex)
 	}
 	name := c.ColNames[colIndex]
 	col := c.Data[name]
@@ -99,7 +99,7 @@ func (c *MapContext) GetCell(colIndex, rowIndex int) (any, error) {
 func (c *MapContext) GetCellByName(colName string, rowIndex int) (any, error) {
 	col, ok := c.Data[colName]
 	if !ok {
-		return nil, fmt.Errorf("column '%s' not found", colName)
+		return nil, UnknownColumnError("column '%s' not found", colName)
 	}
 	if rowIndex < 0 || rowIndex >= len(col) {
 		return nil, fmt.Errorf("row index %d out of range", rowIndex)
@@ -137,7 +137,7 @@ func (c *MapContext) GetAllData() ([]any, error) {
 
 func (c *MapContext) GetColData(index int) ([]any, error) {
 	if index < 0 || index >= len(c.ColNames) {
-		return nil, fmt.Errorf("column index %d out of range", index)
+		return nil, UnknownColumnError("column index %d out of range", index)
 	}
 	name := c.ColNames[index]
 	return c.Data[name], nil
@@ -146,7 +146,7 @@ func (c *MapContext) GetColData(index int) ([]any, error) {
 func (c *MapContext) GetColDataByName(name string) ([]any, error) {
 	col, ok := c.Data[name]
 	if !ok {
-		return nil, fmt.Errorf("column '%s' not found", name)
+		return nil, UnknownColumnError("column '%s' not found", name)
 	}
 	return col, nil
 }
@@ -154,7 +154,7 @@ func (c *MapContext) GetColDataByName(name string) ([]any, error) {
 func (c *MapContext) GetColIndexByName(colName string) (int, error) {
 	idx, ok := c.ColNameMap[colName]
 	if !ok {
-		return -1, fmt.Errorf("column name '%s' not found", colName)
+		return -1, UnknownColumnError("column name '%s' not found", colName)
 	}
 	return idx, nil
 }

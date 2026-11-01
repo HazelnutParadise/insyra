@@ -10,6 +10,67 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
+// warnCountChanges warns when COUNT counts a value it will not count from 0.4:
+// text, a bool or NaN.
+func warnCountChanges(val any) {
+	counted := true
+	switch val.(type) {
+	case nil, string, bool:
+		counted = false
+	case time.Time:
+	default:
+		f, ok := toFloat64(val)
+		counted = ok && !math.IsNaN(f)
+	}
+	if !counted {
+		warnOnce("COUNT", "COUNT counts text here, and from 0.4 it counts numbers and dates only, as in Excel; COUNTA counts every value that is not nil in both")
+	}
+}
+
+// isConditionalAggregate reports whether name takes a condition first.
+func isConditionalAggregate(name string) bool {
+	switch strings.ToUpper(name) {
+	case "COUNTIF", "SUMIF", "AVGIF":
+		return true
+	}
+	return false
+}
+
+// conditionMet reads one row of a condition. An empty row does not meet it.
+func conditionMet(name string, cond any, row int) (bool, error) {
+	if cond == nil {
+		return false, nil
+	}
+	met, ok := toBool(cond)
+	if !ok {
+		return false, fmt.Errorf("%s: the condition at row %d is %v (%T), which is not true or false", name, row, cond, cond)
+	}
+	return met, nil
+}
+
+// valuesWhere gives the values of a column on the rows where the condition holds,
+// for SUMIF and AVGIF.
+func valuesWhere(name string, args [][]any) ([]any, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("%s requires 2 arguments, a condition and a column, such as %s(A > 0, B)", name, name)
+	}
+	conds, values := args[0], args[1]
+	if len(conds) != len(values) {
+		return nil, fmt.Errorf("%s: the condition has %d rows and the column %d", name, len(conds), len(values))
+	}
+	var kept []any
+	for row, v := range values {
+		met, err := conditionMet(name, conds[row], row)
+		if err != nil {
+			return nil, err
+		}
+		if met {
+			kept = append(kept, v)
+		}
+	}
+	return kept, nil
+}
+
 // RegisterStandardFunctions registers the standard library of CCL functions.
 // Categories:
 //   - Logical: IF, AND, OR, CASE
@@ -23,8 +84,9 @@ import (
 //   - Type conversion (stdlib_typeconv.go): TONUM/VALUE, TOSTR/TEXT,
 //     TOBOOL, COALESCE, IFNULL
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAYOFMONTH,
-//     WEEKDAY, DATEPART, DATEDIFF, DATEADD, FORMAT_DATE
-//   - Aggregates: SUM, AVG, COUNT, MAX, MIN (this file) and
+//     WEEKDAY, DATEPART, DATEDIFF, DATEADD, FORMAT_DATE,
+//     and DATE, TODAY, NOW (clock.go)
+//   - Aggregates: SUM, AVG, COUNT, COUNTA, COUNTIF, SUMIF, AVGIF, MAX, MIN (this file) and
 //     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)
 func RegisterStandardFunctions() {
 	registerMathFunctions()
@@ -112,7 +174,7 @@ func RegisterStandardFunctions() {
 	})
 
 	// Aggregate Functions
-	registerAggregateFunction("SUM", func(args ...[]any) (any, error) {
+	sumAggregate := func(args ...[]any) (any, error) {
 		if len(args) == 0 {
 			return 0.0, nil
 		}
@@ -123,9 +185,10 @@ func RegisterStandardFunctions() {
 			}
 		})
 		return sum, nil
-	})
+	}
+	registerAggregateFunction("SUM", sumAggregate)
 
-	registerAggregateFunction("AVG", func(args ...[]any) (any, error) {
+	avgAggregate := func(args ...[]any) (any, error) {
 		if len(args) == 0 {
 			return 0.0, nil
 		}
@@ -141,9 +204,23 @@ func RegisterStandardFunctions() {
 			return 0.0, nil
 		}
 		return sum / float64(count), nil
-	})
+	}
+	registerAggregateFunction("AVG", avgAggregate)
 
 	registerAggregateFunction("COUNT", func(args ...[]any) (any, error) {
+		var count int
+		forEachValue(args, func(val any) {
+			if val != nil {
+				warnCountChanges(val)
+				count++
+			}
+		})
+		return float64(count), nil
+	})
+
+	// COUNTA counts every value that is not nil, as COUNT does here. From 0.4
+	// COUNT counts numbers and dates only, so COUNTA gives this answer on both.
+	registerAggregateFunction("COUNTA", func(args ...[]any) (any, error) {
 		var count int
 		forEachValue(args, func(val any) {
 			if val != nil {
@@ -151,6 +228,41 @@ func RegisterStandardFunctions() {
 			}
 		})
 		return float64(count), nil
+	})
+
+	// COUNTIF(condition), SUMIF(condition, values) and AVGIF(condition, values)
+	// take the condition as an expression, not as text to parse: COUNTIF(A > 0).
+	registerAggregateFunction("COUNTIF", func(args ...[]any) (any, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("COUNTIF requires 1 argument, a condition such as A > 0")
+		}
+		var count int
+		for row, cond := range args[0] {
+			met, err := conditionMet("COUNTIF", cond, row)
+			if err != nil {
+				return nil, err
+			}
+			if met {
+				count++
+			}
+		}
+		return float64(count), nil
+	})
+
+	registerAggregateFunction("SUMIF", func(args ...[]any) (any, error) {
+		values, err := valuesWhere("SUMIF", args)
+		if err != nil {
+			return nil, err
+		}
+		return sumAggregate(values)
+	})
+
+	registerAggregateFunction("AVGIF", func(args ...[]any) (any, error) {
+		values, err := valuesWhere("AVGIF", args)
+		if err != nil {
+			return nil, err
+		}
+		return avgAggregate(values)
 	})
 
 	registerAggregateFunction("MAX", func(args ...[]any) (any, error) {
@@ -194,7 +306,7 @@ func RegisterStandardFunctions() {
 	})
 
 	// Duration helpers: convert time.Duration (or parsable duration string / numeric seconds) to units
-	registerFunction("DAY", func(args ...any) (any, error) {
+	registerDurationPart("DAY", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("DAY requires 1 argument")
 		}
@@ -224,7 +336,7 @@ func RegisterStandardFunctions() {
 		return d.Hours() / 24.0, nil
 	})
 
-	registerFunction("HOUR", func(args ...any) (any, error) {
+	registerDurationPart("HOUR", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("HOUR requires 1 argument")
 		}
@@ -253,7 +365,7 @@ func RegisterStandardFunctions() {
 		return d.Hours(), nil
 	})
 
-	registerFunction("MINUTE", func(args ...any) (any, error) {
+	registerDurationPart("MINUTE", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("MINUTE requires 1 argument")
 		}
@@ -282,7 +394,7 @@ func RegisterStandardFunctions() {
 		return d.Minutes(), nil
 	})
 
-	registerFunction("SECOND", func(args ...any) (any, error) {
+	registerDurationPart("SECOND", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("SECOND requires 1 argument")
 		}

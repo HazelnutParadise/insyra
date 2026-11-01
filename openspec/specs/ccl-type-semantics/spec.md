@@ -2,7 +2,9 @@
 
 ## Purpose
 CCL 遇到無法表示的數字字面值或與值不相符的格式時回報錯誤，不把 `+Inf` 或 `fmt` 的錯誤標記當成結果寫進儲存格。
+
 ## Requirements
+
 ### Requirement: A literal that cannot be represented is an error
 
 數字字面值 SHALL 在超出 float64 範圍時回報編譯錯誤，SHALL NOT 靜默變成 `+Inf`。指數形式（`1e5`、`1.5e-3`、`2E+3`）SHALL 是合法的數字字面值；`e` 後面沒有數字時 SHALL 仍視為識別字，讓名為 `E` 或 `E1` 的欄位不受影響。
@@ -149,3 +151,103 @@ A float of 1e21 or more in magnitude, NaN and the infinities SHALL keep Go's def
 - **WHEN** a string function converts 1e21 to text
 - **THEN** the text is `1e+21`
 
+### Requirement: DAY, HOUR, MINUTE and SECOND warn that they change in 0.4
+
+`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL log one warning per process per function, naming 0.4 and `DUR(x, unit)`. Their results SHALL NOT change.
+
+#### Scenario: Many rows
+- **WHEN** `DAY(A)` is evaluated on many rows
+- **THEN** one warning is logged, and every result is what it was
+
+### Requirement: DUR expresses a duration in a unit
+
+`DUR(x, unit)` SHALL return `x` in `unit` as a number. `x` SHALL be a `time.Duration` or a string `time.ParseDuration` reads, with `d` and `w` also read as 24 and 168 hours. `unit` SHALL be required and be one of `day`, `hour`, `minute` or `second`, singular or plural, in any case.
+
+#### Scenario: A duration string
+- **WHEN** `DUR('36h', 'day')`, `DUR('1h30m', 'minute')` and `DUR('2d', 'hour')` are evaluated
+- **THEN** they give 1.5, 90 and 48
+
+### Requirement: DUR leaves an empty cell empty and refuses what it cannot read
+
+`DUR` SHALL return nil for a nil `x`. A number, which has no unit, and text it cannot read SHALL be an error naming the value.
+
+#### Scenario: A number and unreadable text
+- **WHEN** `DUR(36, 'hour')` and `DUR('soon', 'hour')` are evaluated
+- **THEN** each is an error naming the value
+
+### Requirement: Names removed in 0.4 warn once
+
+`TONUM`, `TOSTR` and `SUBSTR` SHALL log one warning per process per name, naming 0.4 and `VALUE`, `TEXT` and `MID`. Their results SHALL NOT change. `DAYOFMONTH` SHALL log no warning, because it has no replacement on 0.3.x.
+
+#### Scenario: Many rows
+- **WHEN** `TONUM(A)` is evaluated on many rows
+- **THEN** one warning is logged, and every result is what it was
+
+### Requirement: MOD and % warn where their answer changes in 0.4
+
+`MOD` and `%` SHALL log one warning per process the first time a non-zero remainder's sign differs from the second number's, naming 0.4 and both answers. Their results SHALL NOT change, and other inputs SHALL NOT warn.
+
+#### Scenario: Signs that differ
+- **WHEN** `MOD(7, 3)` and then `MOD(-7, 3)` are evaluated
+- **THEN** only the second warns, saying -1 becomes 2, and it still gives -1
+
+### Requirement: WEEKDAY, TRIM and COUNT warn about what changes in 0.4
+
+`WEEKDAY` SHALL warn once per process the first time it runs. `TRIM` SHALL warn once the first time a run of spaces stays inside its result. `COUNT` SHALL warn once the first time it counts text, a bool or `NaN`. Their results SHALL NOT change. `COUNTA` SHALL count every value that is not nil.
+
+#### Scenario: COUNT over text
+- **WHEN** `COUNT(A)` runs over a column holding numbers and text
+- **THEN** one warning names 0.4 and `COUNTA`, and the count is what it was
+### Requirement: TEXT and FORMAT_DATE read Go and Excel formats
+
+`TEXT` and `FORMAT_DATE` SHALL read a format written the Go way or the Excel way, deciding from the format alone: a Go `fmt` verb is Go; a digit from 1 to 9 is a Go date layout; `0` or `#` with no letters is an Excel number code; other text with letters is a date format.
+
+#### Scenario: Both spellings
+- **WHEN** `TEXT(1.5, '%.2f')`, `TEXT(1.5, '0.00')`, `FORMAT_DATE(d, '2006-01-02')`, `FORMAT_DATE(d, 'yyyy-mm-dd')`, `TEXT(d, '15:04')` and `TEXT(d, 'hh:mm')` are evaluated for 2024-03-09 14:05
+- **THEN** they give `1.50`, `1.50`, `2024-03-09`, `2024-03-09`, `14:05` and `14:05`
+
+### Requirement: An Excel number code rounds half away from zero
+
+An Excel number code SHALL round half away from zero on the shortest decimal text of the number. Go verbs SHALL keep their own rounding.
+
+#### Scenario: Ties
+- **WHEN** `TEXT(2.5, '0')` and `TEXT(1.005, '0.00')` are evaluated
+- **THEN** they give `3` and `1.01`
+
+### Requirement: A format that cannot be read is an error
+
+A date format holding an ASCII letter that is not a code, or no code at all, SHALL be an error naming it, and SHALL NOT come back as its own text. A value of the other kind than the format SHALL be an error. Under an Excel code or a date format, a nil value SHALL give nil.
+
+#### Scenario: A typo
+- **WHEN** `FORMAT_DATE(d, 'yyyy-qq')` is evaluated
+- **THEN** the error names `qq`
+
+#### Scenario: The wrong kind of value
+- **WHEN** `TEXT(1.5, 'yyyy')` is evaluated
+- **THEN** it is an error saying the value is not a date
+### Requirement: VALUE reads numbers as a spreadsheet displays them
+
+`VALUE` and `TONUM` SHALL read text with a trailing percent sign as that number divided by 100, and SHALL read commas that group digits in threes as thousands separators, with or without decimals. Text with misplaced commas, or a percent sign on anything but a plain decimal, SHALL give an empty result.
+
+#### Scenario: Percent and thousands
+
+- **WHEN** the text is `10%`, `12.3%` or `1,234.5`
+- **THEN** `VALUE` gives 0.1, 0.123 and 1234.5
+
+#### Scenario: Misplaced commas
+
+- **WHEN** the text is `1,23` or `1234,567`
+- **THEN** `VALUE` gives an empty result
+### Requirement: ROUND reads a number as it is written
+
+`ROUND` SHALL round half away from zero on the shortest decimal text of its number, not on the binary value, and SHALL keep `NaN` and infinities as they are. A result of zero SHALL NOT be negative.
+
+#### Scenario: A number just below its written value in binary
+
+- **WHEN** an expression is `ROUND(1.005, 2)`
+- **THEN** the result is 1.01
+
+#### Scenario: Negative digits
+
+- **WHEN** an expression is `ROUND(1250, -2)`
+- **THEN** the result is 1300

@@ -269,10 +269,10 @@ func (c *parquetContext) GetCol(index int) any {
 func (c *parquetContext) GetColByName(name string) (any, error) {
 	idx, ok := c.colNameMap[name]
 	if !ok {
-		return nil, fmt.Errorf("column name '%s' not found", name)
+		return nil, ccl.UnknownColumnError("column name '%s' not found", name)
 	}
 	if idx >= len(c.currentRow) {
-		return nil, fmt.Errorf("column ['%s'] (index %d) out of range", name, idx)
+		return nil, ccl.UnknownColumnError("column ['%s'] (index %d) out of range", name, idx)
 	}
 	if err := c.notRead(idx); err != nil {
 		return nil, err
@@ -301,7 +301,7 @@ func (c *parquetContext) GetCell(colIndex, rowIndex int) (any, error) {
 		return nil, fmt.Errorf("no record available")
 	}
 	if colIndex < 0 || colIndex >= c.GetColCount() {
-		return nil, fmt.Errorf("column index %d out of range", colIndex)
+		return nil, ccl.UnknownColumnError("column index %d out of range", colIndex)
 	}
 	if err := c.notRead(colIndex); err != nil {
 		return nil, err
@@ -321,7 +321,7 @@ func (c *parquetContext) GetCell(colIndex, rowIndex int) (any, error) {
 func (c *parquetContext) GetCellByName(colName string, rowIndex int) (any, error) {
 	idx, ok := c.colNameMap[colName]
 	if !ok {
-		return nil, fmt.Errorf("column name '%s' not found", colName)
+		return nil, ccl.UnknownColumnError("column name '%s' not found", colName)
 	}
 	return c.GetCell(idx, rowIndex)
 }
@@ -356,7 +356,7 @@ func (c *parquetContext) GetRowIndexByName(rowName string) (int, error) {
 func (c *parquetContext) GetColIndexByName(colName string) (int, error) {
 	idx, ok := c.colNameMap[colName]
 	if !ok {
-		return -1, fmt.Errorf("column name '%s' not found", colName)
+		return -1, ccl.UnknownColumnError("column name '%s' not found", colName)
 	}
 	return idx, nil
 }
@@ -392,7 +392,7 @@ func (c *parquetContext) GetColData(index int) ([]any, error) {
 		return nil, fmt.Errorf("no record available")
 	}
 	if index < 0 || index >= c.GetColCount() {
-		return nil, fmt.Errorf("column index %d out of range", index)
+		return nil, ccl.UnknownColumnError("column index %d out of range", index)
 	}
 	if err := c.notRead(index); err != nil {
 		return nil, err
@@ -405,7 +405,7 @@ func (c *parquetContext) GetColData(index int) ([]any, error) {
 func (c *parquetContext) GetColDataByName(name string) ([]any, error) {
 	idx, ok := c.colNameMap[name]
 	if !ok {
-		return nil, fmt.Errorf("column name '%s' not found", name)
+		return nil, ccl.UnknownColumnError("column name '%s' not found", name)
 	}
 	return c.GetColData(idx)
 }
@@ -2376,6 +2376,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile CCL expression: %w", err)
 	}
+	compiledExpr = ccl.FreezeClock(compiledExpr, ccl.ClockNow())
 
 	// The whole-file parts are settled before any row is kept, so a filter is
 	// answered or fails before the file is read into a result. The file's shape
@@ -2632,6 +2633,10 @@ func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteO
 	compiledNodes, err := ccl.CompileMultiline(cclScript)
 	if err != nil {
 		return fmt.Errorf("failed to compile CCL script: %w", err)
+	}
+	now := ccl.ClockNow()
+	for i := range compiledNodes {
+		compiledNodes[i] = ccl.FreezeClock(compiledNodes[i], now)
 	}
 
 	// Every statement is resolved against the file as the statements before it

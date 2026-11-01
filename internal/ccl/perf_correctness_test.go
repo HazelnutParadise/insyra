@@ -128,7 +128,7 @@ func TestAggregateReadingTheRowIsNotFolded(t *testing.T) {
 	}
 }
 
-// An aggregate that cannot be evaluated must be left alone, so the error still
+// An aggregate that cannot be evaluated keeps its failure, so the error still
 // arrives from the row loop where it always did.
 func TestFoldingLeavesAFailingAggregateAlone(t *testing.T) {
 	ctx := perfCtx(t, 5)
@@ -136,12 +136,9 @@ func TestFoldingLeavesAFailingAggregateAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Z is past the last column, so the aggregate cannot be evaluated; the
-	// tree must survive untouched rather than swallowing the problem.
+	// Z is past the last column, so the aggregate cannot be evaluated, and
+	// folding must not swallow the problem.
 	folded := FoldRowInvariantAggregates(node, ctx)
-	if folded != node {
-		t.Error("a failing aggregate was rewritten")
-	}
 	if _, err := Evaluate(folded, ctx); err == nil {
 		t.Error("an aggregate over a missing column should still fail")
 	}

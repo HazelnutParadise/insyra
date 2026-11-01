@@ -3,7 +3,10 @@ package ccl
 import (
 	"fmt"
 	"math"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
@@ -27,6 +30,8 @@ func toTime(val any) (time.Time, bool) {
 // helpers. These complement the existing DAY/HOUR/MINUTE/SECOND duration
 // functions in stdlib.go, which operate on time.Duration values.
 func registerDateTimeFunctions() {
+	registerClockFunctions()
+
 	registerFunction("YEAR", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("YEAR requires 1 argument")
@@ -49,6 +54,8 @@ func registerDateTimeFunctions() {
 		return float64(t.Month()), nil
 	})
 
+	// Deprecated: DAYOFMONTH is removed in 0.4, where DAY reads a date. It stays
+	// the way to read that part on 0.3.x, so it logs no warning.
 	registerFunction("DAYOFMONTH", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("DAYOFMONTH requires 1 argument")
@@ -69,6 +76,7 @@ func registerDateTimeFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("WEEKDAY: cannot convert %T to date", args[0])
 		}
+		warnOnce("WEEKDAY", "WEEKDAY(d) counts Sunday as 0 here, and from 0.4 it counts Sunday as 1 through Saturday as 7, as in Excel; a comparison with a day number will need changing")
 		return float64(t.Weekday()), nil
 	})
 
@@ -106,6 +114,53 @@ func registerDateTimeFunctions() {
 		}
 	})
 
+	// DUR(x, unit) returns x in a unit, the units DATEDIFF takes. x is a duration,
+	// such as the difference of two dates, or a duration string such as "1h30m"
+	// or "2d". An empty cell stays empty. A number is refused, since it has no
+	// unit to convert from.
+	registerFunction("DUR", func(args ...any) (any, error) {
+		if len(args) != 2 {
+			return nil, fmt.Errorf("DUR requires 2 arguments (x, unit)")
+		}
+		unit, ok := args[1].(string)
+		if !ok {
+			return nil, fmt.Errorf("DUR: unit must be a string, got %T", args[1])
+		}
+		var d time.Duration
+		switch x := args[0].(type) {
+		case nil:
+			return nil, nil
+		case time.Duration:
+			d = x
+		case string:
+			if d, ok = readDuration(x); !ok {
+				return nil, fmt.Errorf("DUR: cannot read %q as a duration; write it like '36h', '1h30m' or '2d'", x)
+			}
+		default:
+			if _, isNumber := toFloat64(x); isNumber {
+				if _, isBool := x.(bool); !isBool {
+					return nil, fmt.Errorf("DUR: %v is a number, which has no unit; write a duration such as '36h'", x)
+				}
+			}
+			return nil, fmt.Errorf("DUR: cannot read %T as a duration", x)
+		}
+		switch strings.ToLower(unit) {
+		case "day", "days":
+			return d.Hours() / 24.0, nil
+		case "hour", "hours":
+			return d.Hours(), nil
+		case "minute", "minutes":
+			return d.Minutes(), nil
+		case "second", "seconds":
+			return d.Seconds(), nil
+		default:
+			return nil, fmt.Errorf("DUR: unknown unit %q (expected day/hour/minute/second)", unit)
+		}
+	})
+
+	// Deprecated: DATEPART is removed in 0.4, where HOUR, MINUTE, SECOND and DAY
+	// read dates. It stays the way to read those parts on 0.3.x.
+	//
 	// DATEPART(d, unit) returns one part of d, read in d's own time zone:
 	// "year", "month", "day", "hour", "minute" or "second" (singular or
 	// plural, any case). It is the third of the DATEADD / DATEDIFF / DATEPART
@@ -200,7 +255,87 @@ func registerDateTimeFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("FORMAT_DATE: layout must be a string, got %T", args[1])
 		}
-		return t.Format(layout), nil
+		out, err := formatDateValue(t, layout)
+		if err != nil {
+			return nil, fmt.Errorf("FORMAT_DATE: %w", err)
+		}
+		return out, nil
+	})
+}
+
+// dayWeekTerm matches the days and weeks of a duration string, which
+// time.ParseDuration does not read.
+var dayWeekTerm = regexp.MustCompile(`(\d+\.?\d*|\.\d+)[dw]`)
+
+// durationText matches a whole duration string, each term a number and a unit,
+// the way time.ParseDuration reads one, with d and w added. It is checked first:
+// a replacement inside malformed text such as "1.2.5d" could otherwise leave
+// text that parses to an unrelated duration.
+var durationText = regexp.MustCompile(`^[+-]?(0|((\d+\.?\d*|\.\d+)(ns|us|µs|μs|ms|s|m|h|d|w))+)$`)
+
+// readDuration reads what DUR takes: a time.Duration, or a string
+// time.ParseDuration reads, with d and w also accepted as 24 and 168 hours. A
+// string is rewritten in hours rather than added up afterwards, so a term out of
+// range fails in ParseDuration like any other.
+func readDuration(s string) (time.Duration, bool) {
+	if !durationText.MatchString(s) {
+		return 0, false
+	}
+	rewritten := dayWeekTerm.ReplaceAllStringFunc(s, func(term string) string {
+		n, err := strconv.ParseFloat(term[:len(term)-1], 64)
+		if err != nil {
+			return term
+		}
+		hours := 24.0
+		if term[len(term)-1] == 'w' {
+			hours = 168
+		}
+		return strconv.FormatFloat(n*hours, 'f', -1, 64) + "h"
+	})
+	d, err := time.ParseDuration(rewritten)
+	return d, err == nil
+}
+
+// warnedOnce holds what has warned already: DAY, HOUR, MINUTE and SECOND, the
+// deprecated names, and MOD.
+var warnedOnce sync.Map
+
+// registerDurationPart registers DAY, HOUR, MINUTE or SECOND, which convert a
+// duration here and read a date in 0.4. It warns once per process per function:
+// the function runs once per row, and one line is enough to say what will change.
+func registerDurationPart(name string, fn Func) {
+	unit := strings.ToLower(name)
+	registerFunction(name, func(args ...any) (any, error) {
+		warnOnce(name, "%s(x) converts a duration to %ss here, and from 0.4 it reads the %s of a date; for a duration use DUR(x, '%s'), which gives the same answer in both", name, unit, unit, unit)
+		return fn(args...)
+	})
+}
+
+// warnOnce logs a warning about name once per process, since these functions run
+// once per row.
+func warnOnce(name, format string, args ...any) {
+	if _, warned := warnedOnce.LoadOrStore(name, true); !warned {
+		Warn(name, format, args...)
+	}
+}
+
+// modulo is a % b with the sign of a, as MOD and % give it here. From 0.4 the
+// remainder has the sign of b, so it warns once the first time the two differ:
+// only then does the answer change.
+func modulo(a, b float64) float64 {
+	r := math.Mod(a, b)
+	if r != 0 && (r < 0) != (b < 0) {
+		warnOnce("MOD", "MOD(%v, %v) and %% give %v here, and from 0.4 they give %v: the remainder takes the sign of the second number, as in Excel", a, b, r, r+b)
+	}
+	return r
+}
+
+// registerDeprecatedName registers a function name removed in 0.4 that has a
+// replacement here. It warns once per process, since the function runs per row.
+func registerDeprecatedName(name, use string, fn Func) {
+	registerFunction(name, func(args ...any) (any, error) {
+		warnOnce(name, "%s is deprecated and removed in 0.4; use %s, which does the same", name, use)
+		return fn(args...)
 	})
 }
 

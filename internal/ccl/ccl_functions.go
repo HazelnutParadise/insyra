@@ -1,6 +1,7 @@
 package ccl
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -29,6 +30,18 @@ var sequenceFunctions = map[string]SeqFunc{}
 // arithmetic stands behind a name. Guarded by registryMu like the registries.
 var userAggregates = map[string]bool{}
 
+// userFunctions is the same for RegisterFunction: FreezeClock leaves a NOW or
+// TODAY the caller registered to be called.
+var userFunctions = map[string]bool{}
+
+// isBuiltinName reports whether the caller has registered nothing under name.
+func isBuiltinName(name string) bool {
+	key := strings.ToUpper(name)
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	return !userFunctions[key] && !userAggregates[key] && !userSequences[key]
+}
+
 // userSequences is the same for RegisterSequenceFunction: a built-in name a
 // caller re-registered has the caller's arithmetic, not the one a streaming form
 // reproduces. Guarded by registryMu like the registries.
@@ -38,6 +51,9 @@ var maxFuncCallDepth = 20 // 合理的函數調用深度上限
 // RegisterFunction registers a custom scalar function for CCL evaluation.
 func RegisterFunction(name string, fn Func) {
 	registerFunction(name, fn)
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	userFunctions[strings.ToUpper(name)] = true
 }
 
 // RegisterAggregateFunction registers a custom aggregate function for CCL evaluation.
@@ -66,7 +82,9 @@ func RegisterSequenceFunction(name string, fn SeqFunc) {
 func registerFunction(name string, fn Func) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
-	defaultFunctions[strings.ToUpper(name)] = fn
+	key := strings.ToUpper(name)
+	defaultFunctions[key] = fn
+	delete(userFunctions, key)
 }
 
 // registerAggregateFunction registers an aggregate function as the built-in it
@@ -87,6 +105,29 @@ func registerSequenceFunction(name string, fn SeqFunc) {
 	key := strings.ToUpper(name)
 	sequenceFunctions[key] = fn
 	delete(userSequences, key)
+}
+
+// errUnknownName is a mistake in the formula rather than in the data, so
+// IFERROR does not cover it.
+var errUnknownName = errors.New("undefined function")
+
+// unknownColumnError is a column a formula names that the table does not have,
+// which is also a mistake in the formula.
+type unknownColumnError struct{ msg string }
+
+func (e *unknownColumnError) Error() string { return e.msg }
+
+// UnknownColumnError makes the error a Context returns for a column the table
+// does not have, so that IFERROR does not cover it.
+func UnknownColumnError(format string, args ...any) error {
+	return &unknownColumnError{msg: fmt.Sprintf(format, args...)}
+}
+
+// isFormulaMistake reports whether err comes from the formula rather than from
+// the data on a row.
+func isFormulaMistake(err error) bool {
+	var column *unknownColumnError
+	return errors.Is(err, errUnknownName) || errors.As(err, &column)
 }
 
 func lookupFunction(name string) (Func, bool) {
@@ -125,7 +166,7 @@ func callFunction(name string, args []any, callDepth int) (result any, err error
 
 	fn, ok := lookupFunction(name)
 	if !ok {
-		return nil, fmt.Errorf("undefined function: %s", name)
+		return nil, fmt.Errorf("%w: %s", errUnknownName, name)
 	}
 
 	// panic 恢復：以具名返回值將 panic 轉為錯誤回報給呼叫端，

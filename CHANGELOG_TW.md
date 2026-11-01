@@ -22,6 +22,18 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **行為改變**：讀取 CSV 時，若 `Encoding` 是 insyra 無法解碼的名稱（`ReadCSV`、`ReadCSV_FileWithOptions`、`StreamCSV`，以及 `csvxl.CsvToExcel`、`AppendCsvToExcel`），現在會回傳列出支援名稱的錯誤。以前會把位元組原樣交回，所以像 "big6" 這種打錯的名稱會把 Big5 檔案讀成亂碼而且沒有錯誤。Windows 的 `cp950`、`cp936` 現在視為 Big5 與 GBK。
 - `engine/ring`：`PopFront`、`PopBack` 現在會把被移除的格子設回零值，所以放指標、字串或 slice 的 Ring 不會再讓已移除元素指向的資料無法回收；`Clear` 改成清空既有的底層陣列，不再配置新的（推 64 個再 `Clear`：修改前 188 ns、配置一次 512 位元組，修改後 138 ns、不配置；64 次推入與取出因為清格子多花約 7%）。先進先出與後進先出的順序、容量與零值 Ring 的行為不變（[#588](https://github.com/HazelnutParadise/insyra/issues/588)）。
 - `DataList` 與 `DataTable` 新增 `String()`，內容就是 `Show` 印的畫面，但不帶顏色、固定 80 字寬，所以 `fmt.Println(dt)`、`%v`、`%s` 會直接印出表格或清單，不再是一串內部欄位。格子裡裝的若是另一張表或清單，`Show` 與 `String` 都改顯示成 `<DataTable>` 或 `<DataList>`，表格裝著自己時也不會無窮遞迴。
+- CCL 的 `DATEPART` 標為棄用，將在 0.4 移除。0.4 的 `DAY`、`HOUR`、`MINUTE`、`SECOND` 會讀日期，結果跟它相同。它在 0.3.x 的行為沒有改變：這四個函式在這裡還是換算時間長度，所以要取日期的這幾個部分仍然要用 `DATEPART`，也不會記警告。另外兩個部分已經可以用 `YEAR` 和 `MONTH`。
+- CCL 新增 `DUR(x, unit)`，把時間長度換算成天、時、分或秒：`DUR('36h', 'day')` 是 `1.5`，`DUR(A - B, 'hour')` 跟 `DATEDIFF(A, B, 'hour')` 一樣。除了 Go 的單位，也認得 `d` 和 `w`；空值維持空值；數字和看不懂的文字會回傳錯誤並指出是哪個值。
+- CCL 的 `DAY`、`HOUR`、`MINUTE`、`SECOND` 在程式裡第一次執行時會記一則警告：它們在這裡是換算時間長度，從 0.4 開始會改成讀日期的部分，所以 `DAY(x)` 的答案會變。現在的結果不變。請把換算時間長度的公式改成 `DUR(x, 'day')`，兩邊答案都一樣。
+- CCL 的 `TONUM`、`TOSTR`、`SUBSTR` 標為棄用，將在 0.4 移除：請改用功能相同的 `VALUE`、`TEXT`、`MID`。它們在程式裡第一次執行時會各記一則警告。`DAYOFMONTH` 也標為棄用，之後改用 0.4 的 `DAY`；它不會記警告，因為 `DAY` 在這裡還是換算時間長度。
+- CCL 的 `MOD` 和 `%` 第一次遇到 0.4 會改變答案的數字時會記一則警告：從 0.4 開始，餘數改成跟著第二個數的正負號，跟 Excel 一樣，所以 `MOD(-7, 3)` 會從 `-1` 變成 `2`。現在的結果不變，只有正數的公式也不會警告。
+- CCL 的 `WEEKDAY`、`TRIM`、`COUNT` 在 0.4 會改成跟 Excel 一樣，現在遇到答案會變的情況時會警告一次：`WEEKDAY` 會改成週日 1～週六 7；`TRIM` 會把文字中間連續的空白縮成一個；`COUNT` 只數數字和日期。現在的結果不變。CCL 新增 `COUNTA`，在兩條版本線上都數所有非 `nil` 的值，要數儲存格請用它。
+- CCL 的 `TEXT` 和 `FORMAT_DATE` 同時認 Go 和 Excel 兩種格式寫法：`TEXT(x, '0.00')` 和 `TEXT(x, '%.2f')` 都得到 `1.50`，`FORMAT_DATE(d, 'yyyy-mm-dd')` 和 `FORMAT_DATE(d, '2006-01-02')` 都得到 `2024-03-09`。`TEXT` 也能處理日期。Excel 的數字格式跟 Excel 一樣四捨五入，所以 `TEXT(2.5, '0')` 是 `3`，`TEXT(2.5, '%.0f')` 是 `2`。日期格式裡有不是代碼的字母時，現在會回傳錯誤；以前 `FORMAT_DATE(d, 'yyyy-qq')` 會把格式字串原樣傳回。代碼清單在 `Docs/CCL.md`。
+- CCL：新增 `COUNTIF(條件)`、`SUMIF(條件, 值)`、`AVGIF(條件, 值)`，計算條件成立的列數、總和與平均。條件是不加引號的運算式，例如 `COUNTIF(A > 0)`，所以裡面可以用 `&&`、`||` 和 `REGEX_MATCH` 這類函式。
+- CCL：新增 `DATE(年, 月, 日)`、`TODAY()`、`NOW()`。`TODAY` 和 `NOW` 每次呼叫只讀一次本機時鐘，所以每一列拿到同一個時間；它們不帶時區，所以 `DATEDIFF(TODAY(), '2024-01-02', 'day')` 會是整數。
+- CCL：`VALUE` 看得懂百分比和千分位逗號：`VALUE('10%')` 是 0.1，`VALUE('1,234.5')` 是 1234.5，以前這兩個都是空值。
+- CCL：新增 `IFERROR(值, 出錯時的值)`，`值` 算不出來的列會改用 `出錯時的值`，所以 `IFERROR(A / B, 0)` 在 B 是 0 時不會讓整欄失敗。函式打錯或欄位不存在還是會報錯。
+- CCL：`ROUND` 改成看數字寫出來的樣子來四捨五入，所以 `ROUND(1.005, 2)` 是 1.01，以前是 1，現在跟 Excel 和 `TEXT` 一致。只有剛好在這種邊界上的數字結果會變，`ROUND(-0.4)` 也不再是負零。
 
 ### `ml` 與 `nn`
 

@@ -3,9 +3,40 @@ package ccl
 import (
 	"fmt"
 	"math"
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
+
+// displayedDecimal is a number with its thousands, if any, grouped in threes.
+var displayedDecimal = regexp.MustCompile(`^[+-]?(\d{1,3}(,\d{3})+|\d*)(\.\d*)?$`)
+
+// displayedNumber reads text the way a spreadsheet displays a number, with a
+// percent sign or thousands commas. displayed is false for text with neither,
+// which is left to the ordinary number rule.
+func displayedNumber(text string) (value float64, ok bool, displayed bool) {
+	body := strings.TrimSpace(text)
+	percent := strings.HasSuffix(body, "%")
+	if !percent && !strings.Contains(body, ",") {
+		return 0, false, false
+	}
+	exponent := ""
+	if percent {
+		body = strings.TrimSpace(strings.TrimSuffix(body, "%"))
+		exponent = "e-2"
+	}
+	if !displayedDecimal.MatchString(body) || !strings.ContainsAny(body, "0123456789") {
+		return 0, false, true
+	}
+	// Shifting the exponent, not dividing by 100, keeps 12.3% at the float64
+	// closest to 0.123.
+	f, err := strconv.ParseFloat(strings.ReplaceAll(body, ",", "")+exponent, 64)
+	if err != nil {
+		return 0, false, true
+	}
+	return f, true, true
+}
 
 // registerTypeConversionFunctions registers value coercion and null-handling
 // helpers (TONUM/VALUE, TOSTR/TEXT, TOBOOL, COALESCE, IFNULL).
@@ -21,13 +52,21 @@ func registerTypeConversionFunctions() {
 		if args[0] == nil {
 			return nil, nil
 		}
+		if text, isText := args[0].(string); isText {
+			if f, ok, displayed := displayedNumber(text); displayed {
+				if !ok {
+					return nil, nil
+				}
+				return f, nil
+			}
+		}
 		f, ok := toFloat64(args[0])
 		if !ok {
 			return nil, nil
 		}
 		return f, nil
 	}
-	registerFunction("TONUM", func(args ...any) (any, error) {
+	registerDeprecatedName("TONUM", "VALUE", func(args ...any) (any, error) {
 		v, err := tonum(args...)
 		if err != nil {
 			return nil, fmt.Errorf("TONUM %w", err)
@@ -43,7 +82,8 @@ func registerTypeConversionFunctions() {
 	})
 
 	// TOSTR / TEXT: 1-arg forms convert to string with default formatting;
-	// 2-arg form treats the second arg as a Go fmt verb format (e.g. "%.2f").
+	// 2-arg form reads the second arg as a Go fmt verb (e.g. "%.2f") or an Excel
+	// code (e.g. "0.00", "yyyy-mm-dd"); see text_format.go.
 	tostr := func(args ...any) (any, error) {
 		if len(args) < 1 || len(args) > 2 {
 			return nil, fmt.Errorf("requires 1 or 2 arguments")
@@ -55,16 +95,30 @@ func registerTypeConversionFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("format arg must be a string, got %T", args[1])
 		}
+		if kind := kindOfFormat(format); kind != kindGoVerb {
+			return textWithFormat(args[0], format, kind)
+		}
 		out := fmt.Sprintf(format, args[0])
 		// fmt writes its own complaint into the string when the verb does not
 		// match the value — TOSTR(1.5, '%d') gave "%!d(float64=1.5)" — and that
 		// went straight into the cell. Report it instead.
-		if marker := fmtErrorMarker(out, format, fmt.Sprint(args[0])); marker != "" {
-			return nil, fmt.Errorf("format %q does not fit %T: %s", format, args[0], marker)
+		marker := fmtErrorMarker(out, format, fmt.Sprint(args[0]))
+		if marker == "" {
+			return out, nil
 		}
-		return out, nil
+		// An integer under a float verb, TEXT(50, '%.1f'), is formatted as the
+		// float64 it equals.
+		switch args[0].(type) {
+		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+			if f, ok := toFloat64(args[0]); ok {
+				if out := fmt.Sprintf(format, f); fmtErrorMarker(out, format, fmt.Sprint(f)) == "" {
+					return out, nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("format %q does not fit %T: %s", format, args[0], marker)
 	}
-	registerFunction("TOSTR", func(args ...any) (any, error) {
+	registerDeprecatedName("TOSTR", "TEXT", func(args ...any) (any, error) {
 		v, err := tostr(args...)
 		if err != nil {
 			return nil, fmt.Errorf("TOSTR %w", err)

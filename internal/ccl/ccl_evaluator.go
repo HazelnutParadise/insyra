@@ -3,6 +3,7 @@ package ccl
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -297,14 +298,14 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 	case *cclIdentifierNode:
 		idx, ok := utils.ParseColIndex(t.name)
 		if !ok {
-			return nil, fmt.Errorf("invalid column index: %s", t.name)
+			return nil, UnknownColumnError("invalid column index: %s", t.name)
 		}
 		return ctx.GetCol(idx), nil
 	case *cclColIndexNode:
 		// [A] 形式的欄位索引引用
 		idx, ok := utils.ParseColIndex(t.index)
 		if !ok {
-			return nil, fmt.Errorf("invalid column index: %s", t.index)
+			return nil, UnknownColumnError("invalid column index: %s", t.index)
 		}
 		return ctx.GetCol(idx), nil
 	case *cclColNameNode:
@@ -333,6 +334,21 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 				return evaluateWithCallDepth(t.args[1], ctx, depth+1, functionDepth)
 			}
 			return evaluateWithCallDepth(t.args[2], ctx, depth+1, functionDepth)
+		}
+
+		if upper == "IFERROR" {
+			if len(t.args) != 2 {
+				return nil, fmt.Errorf("IFERROR requires 2 arguments")
+			}
+			functionDepth := callDepth + 1
+			val, err := evaluateWithCallDepth(t.args[0], ctx, depth+1, functionDepth)
+			if err == nil {
+				return val, nil
+			}
+			if isFormulaMistake(err) {
+				return nil, err
+			}
+			return evaluateWithCallDepth(t.args[1], ctx, depth+1, functionDepth)
 		}
 
 		if upper == "AND" || upper == "OR" {
@@ -413,12 +429,22 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 				if err != nil {
 					return nil, fmt.Errorf("aggregate function %s: %w", t.name, err)
 				}
+				// A condition that does not depend on the row holds for every row
+				// or none, so COUNTIF(TRUE) counts the rows.
+				if i == 0 && isConditionalAggregate(t.name) && isBuiltinName(t.name) && !IsRowDependent(arg) && len(colData) == 1 {
+					colData = slices.Repeat(colData, ctx.GetRowCount())
+				}
 				aggArgs[i] = colData
 			}
 			return callAggregateFunction(t.name, aggArgs)
 		}
 
-		// Default: evaluate all args then call function
+		// Default: evaluate all args then call function. The name is checked
+		// first, so an argument that fails cannot hide a misspelt function from
+		// IFERROR.
+		if _, known := lookupFunction(t.name); !known {
+			return nil, fmt.Errorf("%w: %s", errUnknownName, t.name)
+		}
 		functionDepth := callDepth + 1
 		args := []any{}
 		for _, arg := range t.args {
@@ -528,7 +554,10 @@ func foldAggregates(n cclNode, ctx Context) (cclNode, bool) {
 		if _, isAgg := lookupAggregateFunction(upper); isAgg && !containsRowIndex(t) {
 			val, err := evaluateWithCallDepth(t, ctx, 0, 0)
 			if err != nil {
-				return n, false
+				// Keep the failure. A row reaching this part fails with it, and
+				// under IFERROR the rows carry on, which must not scan the whole
+				// column again on every row.
+				return &cclFailedPartNode{err: err}, true
 			}
 			// Only a scalar is safe to inline. A column-shaped result belongs
 			// to the sequence path, which spreads it across the rows itself.
@@ -873,7 +902,7 @@ func applyOperator(op string, left, right any) (any, error) {
 			if rf == 0 {
 				return nil, fmt.Errorf("modulo by zero")
 			}
-			return math.Mod(lf, rf), nil
+			return modulo(lf, rf), nil
 		case "^":
 			return math.Pow(lf, rf), nil
 		case ">":
@@ -1005,7 +1034,7 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 	case *cclIdentifierNode:
 		idx, ok := utils.ParseColIndex(t.name)
 		if !ok {
-			return nil, fmt.Errorf("invalid column index: %s", t.name)
+			return nil, UnknownColumnError("invalid column index: %s", t.name)
 		}
 		// Try index
 		col, err := ctx.GetColData(idx)
@@ -1017,7 +1046,7 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 	case *cclColIndexNode:
 		idx, ok := utils.ParseColIndex(t.index)
 		if !ok {
-			return nil, fmt.Errorf("invalid column index: %s", t.index)
+			return nil, UnknownColumnError("invalid column index: %s", t.index)
 		}
 		return ctx.GetColData(idx)
 	case *cclColNameNode:
@@ -1217,7 +1246,7 @@ func evaluateRowAccess(left, right cclNode, ctx Context, depth, callDepth int) (
 				if ok {
 					val, err = ctx.GetCell(idx, rIdx)
 				} else {
-					err = fmt.Errorf("invalid column index")
+					err = UnknownColumnError("invalid column index")
 				}
 
 				if err != nil {
@@ -1229,7 +1258,7 @@ func evaluateRowAccess(left, right cclNode, ctx Context, depth, callDepth int) (
 				if ok {
 					val, err = ctx.GetCell(idx, rIdx)
 				} else {
-					err = fmt.Errorf("invalid column index")
+					err = UnknownColumnError("invalid column index")
 				}
 
 				if err != nil {
@@ -1313,23 +1342,23 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 	if lIsCol && rIsCol {
 		// Check for invalid indices (-1) which resolveColumnIndex might return if not found but "looks like" a column
 		if lIdx == -1 {
-			return nil, fmt.Errorf("column not found: %s", describeNode(left))
+			return nil, UnknownColumnError("column not found: %s", describeNode(left))
 		}
 		if rIdx == -1 {
-			return nil, fmt.Errorf("column not found: %s", describeNode(right))
+			return nil, UnknownColumnError("column not found: %s", describeNode(right))
 		}
 
 		// Check bounds
 		colCount := ctx.GetColCount()
 		if lIdx < 0 || lIdx >= colCount {
-			return nil, fmt.Errorf("column index %d out of range (total columns: %d)", lIdx, colCount)
+			return nil, UnknownColumnError("column index %d out of range (total columns: %d)", lIdx, colCount)
 		}
 		if rIdx < 0 || rIdx >= colCount {
-			return nil, fmt.Errorf("column index %d out of range (total columns: %d)", rIdx, colCount)
+			return nil, UnknownColumnError("column index %d out of range (total columns: %d)", rIdx, colCount)
 		}
 
 		if lIdx > rIdx {
-			return nil, fmt.Errorf("invalid column range: start index %d > end index %d", lIdx, rIdx)
+			return nil, UnknownColumnError("invalid column range: start index %d > end index %d", lIdx, rIdx)
 		}
 		return ColumnRange{Start: lIdx, End: rIdx}, nil
 	}
