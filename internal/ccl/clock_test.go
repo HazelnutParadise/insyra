@@ -111,3 +111,27 @@ func TestFreezeClockReachesEveryCall(t *testing.T) {
 		}
 	}
 }
+
+// A NOW the caller registered is called, as it is without FreezeClock.
+func TestFreezeClockLeavesARegisteredNow(t *testing.T) {
+	fixed := time.Date(2001, 2, 3, 0, 0, 0, 0, time.UTC)
+	RegisterFunction("NOW", func(args ...any) (any, error) { return fixed, nil })
+	t.Cleanup(func() {
+		registryMu.Lock()
+		delete(userFunctions, "NOW")
+		registryMu.Unlock()
+		registerClockFunctions()
+	})
+	node, err := CompileExpression("NOW()")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := mapCtx(t, map[string][]any{"A": {1.0}})
+	got, err := Evaluate(FreezeClock(node, time.Now()), ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != any(fixed) {
+		t.Errorf("NOW() = %v, want the registered %v", got, fixed)
+	}
+}

@@ -21,11 +21,12 @@ func dateOf(t time.Time) time.Time {
 }
 
 // FreezeClock replaces every TODAY() and NOW() in a compiled expression with
-// the date and time given, so every row of one call reads the same moment.
+// the date and time given, so every row of one call reads the same moment. One
+// the caller registered under either name is left to be called.
 func FreezeClock(n CCLNode, now time.Time) CCLNode {
 	switch t := n.(type) {
 	case *funcCallNode:
-		if len(t.args) == 0 {
+		if len(t.args) == 0 && isBuiltinName(t.name) {
 			switch strings.ToUpper(t.name) {
 			case "NOW":
 				return literalNode(now)

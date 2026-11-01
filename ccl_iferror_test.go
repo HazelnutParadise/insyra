@@ -1,6 +1,11 @@
 package insyra
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	engineccl "github.com/HazelnutParadise/insyra/engine/ccl"
+)
 
 func TestIfErrorOnATable(t *testing.T) {
 	dt := NewDataTable(NewDataList(6, 8).SetName("a"), NewDataList(2, 0).SetName("b"))
@@ -25,5 +30,26 @@ func TestIfErrorOnATable(t *testing.T) {
 	beyond.AddColUsingCCL("r", "IFERROR(E + 1, 0)")
 	if beyond.Err() == nil {
 		t.Error("a column past the last should fail, not read as the fallback")
+	}
+}
+
+// An aggregate that fails under IFERROR is computed once, not once per row.
+func TestIfErrorDoesNotRepeatAFailedAggregate(t *testing.T) {
+	calls := 0
+	engineccl.RegisterAggregateFunction("ZZFAILSONCE", func(args ...[]any) (any, error) {
+		calls++
+		return nil, errors.New("no")
+	})
+	col := NewDataList()
+	for i := range 200 {
+		col.Append(i)
+	}
+	dt := NewDataTable(col)
+	dt.AddColUsingCCL("r", "IFERROR(A / ZZFAILSONCE(A), 0)")
+	if err := dt.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Errorf("the aggregate ran %d times", calls)
 	}
 }

@@ -46,6 +46,19 @@ func TestRoundReadsTheWrittenNumber(t *testing.T) {
 			t.Errorf("%s = %#v, want %v", c.expr, got, c.want)
 		}
 	}
+	for _, c := range []struct {
+		expr string
+		sign int
+	}{{"ROUND(1.79e308, -308)", 1}, {"ROUND(-1.79e308, -308)", -1}} {
+		got, err := evalOne(t, ctx, c.expr)
+		if err != nil {
+			t.Errorf("%s: %v", c.expr, err)
+			continue
+		}
+		if f, _ := toFloat64(got); !math.IsInf(f, c.sign) {
+			t.Errorf("%s = %v, want an infinity", c.expr, got)
+		}
+	}
 	got, err := evalOne(t, ctx, "ROUND(-0.4)")
 	if err != nil {
 		t.Fatal(err)

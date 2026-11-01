@@ -168,3 +168,37 @@ func TestFormatKindPrintsItsName(t *testing.T) {
 		t.Errorf("an unknown kind prints %q", got)
 	}
 }
+
+func TestFormatEdges(t *testing.T) {
+	stamp := time.Date(2024, 3, 9, 14, 5, 6, 123_000_000, time.UTC)
+	ancient := time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		value  time.Time
+		format string
+		want   string
+	}{
+		{stamp, ".000", ".123"},
+		{stamp, ",000000", ",123000"},
+		{stamp, "ss.000", "06.123"},
+		{ancient, "yyyy-mm-dd", "0001-01-01"},
+	} {
+		got, err := formatDateValue(c.value, c.format)
+		if err != nil {
+			t.Errorf("%q: %v", c.format, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("%q = %q, want %q", c.format, got, c.want)
+		}
+	}
+	// Literal text costs no more than its length.
+	long := "yyyy" + strings.Repeat("-", 80000)
+	allocs := testing.AllocsPerRun(1, func() {
+		if _, err := formatDateValue(stamp, long); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if allocs > 200 {
+		t.Errorf("a long literal took %v allocations", allocs)
+	}
+}

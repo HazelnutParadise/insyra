@@ -115,3 +115,20 @@ func TestReadExcelInfersLikeReadExcelSheet(t *testing.T) {
 		t.Errorf("raw n = %#v, want text", got)
 	}
 }
+
+// COUNT counts numbers, so it needs the column read as numbers.
+func TestCountOnAColumnReadFromExcel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "count.xlsx")
+	writeInferWorkbook(t, path)
+	dt, err := ReadExcelSheet(path, "Sheet1", false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dt.AddColUsingCCL("n", "COUNT(['id'])")
+	if err := dt.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if got := dt.GetColByName("n").Data()[0]; got != 3.0 && got != int64(3) {
+		t.Errorf("COUNT = %#v, want 3", got)
+	}
+}
