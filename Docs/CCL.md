@@ -759,7 +759,7 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | Function | Description | Example |
 | --- | --- | --- |
 | `ABS(x)` | Absolute value | `ABS(-3.5)` → `3.5` |
-| `ROUND(x, n?)` | Round to `n` decimal places (default `0`); a `NaN` for `n` is an error | `ROUND(3.14159, 2)` → `3.14` |
+| `ROUND(x, n?)` | Round to `n` decimal places (default `0`), half away from zero, reading `x` as it is written: `ROUND(1.005, 2)` is `1.01`. A negative `n` rounds to tens, hundreds and so on. A `NaN` for `n` is an error | `ROUND(3.14159, 2)` → `3.14` |
 | `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
 | `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
 | `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
