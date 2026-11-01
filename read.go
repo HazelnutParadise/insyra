@@ -380,7 +380,7 @@ func csvRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 	}
 
 	if !opts.RawStrings {
-		inferCSVColumnTypes(dt)
+		inferColumnTypes(dt)
 	}
 	return dt
 }
@@ -467,12 +467,12 @@ func csvRaggedRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 	}
 
 	if !opts.RawStrings {
-		inferCSVColumnTypes(dt)
+		inferColumnTypes(dt)
 	}
 	return dt
 }
 
-// inferCSVColumnTypes converts each column's raw string cells to a homogeneous
+// inferColumnTypes converts each column's raw string cells to a homogeneous
 // type using pandas-style, column-level inference:
 //   - every cell a valid int64 and no cell empty  → []int64
 //   - otherwise every non-empty cell numeric       → []float64 (empty → NaN)
@@ -482,13 +482,19 @@ func csvRaggedRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 // (e.g. 19-digit IDs, nanosecond timestamps) keep full precision instead of
 // being rounded to the nearest float64 above 2^53. This matches how
 // pandas.read_csv types a column.
-func inferCSVColumnTypes(dt *DataTable) {
+func inferColumnTypes(dt *DataTable) {
 	for _, col := range dt.columns {
 		if len(col.data) == 0 {
 			continue
 		}
 		allInt, allFloat, hasEmpty := true, true, false
 		for _, v := range col.data {
+			// Nil is a cell the file left out, which Excel does past a row's
+			// last value; CSV never has one.
+			if v == nil {
+				hasEmpty = true
+				continue
+			}
 			s, ok := v.(string)
 			if !ok {
 				allInt, allFloat = false, false
@@ -513,7 +519,7 @@ func inferCSVColumnTypes(dt *DataTable) {
 			}
 		case allFloat:
 			for i, v := range col.data {
-				s := v.(string)
+				s, _ := v.(string)
 				if s == "" {
 					col.data[i] = math.NaN()
 					continue
@@ -560,30 +566,51 @@ func ExcelReadOptions() excelize.Options {
 	return excelize.Options{UnzipSizeLimit: excelUnzipSizeLimit}
 }
 
-// ReadExcelSheet reads a specific sheet from an Excel file and loads it into a DataTable.
-func ReadExcelSheet(filePath string, sheetName string, rowNames bool, headerRow bool) (*DataTable, error) {
+// ReadExcelSheet reads a specific sheet from an Excel file and loads it into a
+// DataTable. A column whose every cell reads as a number becomes numbers, the
+// rule CSV reading follows; rawStrings set to true keeps every cell as text.
+func ReadExcelSheet(filePath string, sheetName string, rowNames bool, headerRow bool, rawStrings ...bool) (*DataTable, error) {
+	raw, err := excelRawStrings(rawStrings)
+	if err != nil {
+		return nil, err
+	}
 	f, err := excelize.OpenFile(filePath, ExcelReadOptions())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Excel file %s: %w", filePath, err)
 	}
 	defer func() { _ = f.Close() }()
-	return readExcelSheetFrom(f, sheetName, rowNames, headerRow)
+	return readExcelSheetFrom(f, sheetName, rowNames, headerRow, raw)
 }
 
 // ReadExcel reads one sheet of an Excel workbook from any source — an HTTP
 // response body, a zip entry, bytes in memory — the same way ReadExcelSheet
 // reads a file, with the same limit on how far the workbook may expand.
-func ReadExcel(r io.Reader, sheetName string, rowNames bool, headerRow bool) (*DataTable, error) {
+func ReadExcel(r io.Reader, sheetName string, rowNames bool, headerRow bool, rawStrings ...bool) (*DataTable, error) {
+	raw, err := excelRawStrings(rawStrings)
+	if err != nil {
+		return nil, err
+	}
 	f, err := excelize.OpenReader(r, ExcelReadOptions())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Excel input: %w", err)
 	}
 	defer func() { _ = f.Close() }()
-	return readExcelSheetFrom(f, sheetName, rowNames, headerRow)
+	return readExcelSheetFrom(f, sheetName, rowNames, headerRow, raw)
+}
+
+// excelRawStrings reads the optional rawStrings argument of the Excel readers.
+func excelRawStrings(rawStrings []bool) (bool, error) {
+	switch len(rawStrings) {
+	case 0:
+		return false, nil
+	case 1:
+		return rawStrings[0], nil
+	}
+	return false, fmt.Errorf("rawStrings takes one value, got %d", len(rawStrings))
 }
 
 // readExcelSheetFrom is the sheet reader behind ReadExcelSheet and ReadExcel.
-func readExcelSheetFrom(f *excelize.File, sheetName string, rowNames bool, headerRow bool) (*DataTable, error) {
+func readExcelSheetFrom(f *excelize.File, sheetName string, rowNames bool, headerRow bool, rawStrings bool) (*DataTable, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rows from sheet %s: %w", sheetName, err)
@@ -597,6 +624,9 @@ func readExcelSheetFrom(f *excelize.File, sheetName string, rowNames bool, heade
 	}
 	if headerRow {
 		dt.SetRowToColNames(0)
+	}
+	if !rawStrings {
+		inferColumnTypes(dt)
 	}
 	return dt, nil
 }

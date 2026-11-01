@@ -2,9 +2,7 @@
 
 ## Purpose
 每種格式都能從任意來源讀、寫到任意去處，不必先落地成檔案：`insyra` 的 CSV、JSON、Excel 與 `parquet` 各有收 `io.Reader`／`io.Writer`（Parquet 讀取為 `io.ReaderAt` 加大小）的入口，路徑版與字串版只是呼叫它們，所以同樣的位元組走哪個入口都得到同樣結果；CSV 另有逐批讀取、只佔一批記憶體的 `StreamCSV`。
-
 ## Requirements
-
 ### Requirement: Every format reads from a reader and writes to a writer
 
 CSV, JSON and Excel in `insyra`, and Parquet in `parquet`, SHALL each offer a read entry point that takes a source rather than a path, and CSV, JSON and Parquet SHALL each offer a write entry point that takes a destination. The existing path-based entry points SHALL call them, so a path and a reader over the same bytes produce the same table.
@@ -44,3 +42,23 @@ CSV, JSON and Excel in `insyra`, and Parquet in `parquet`, SHALL each offer a re
 #### Scenario: A value that is both
 - **WHEN** a value's `MarshalJSON` returns `{"a": 17}` and its reader holds `{"a": 3}`, and the value is passed to `ReadJSON`
 - **THEN** the table's column `a` holds 17
+
+### Requirement: Excel readers infer column types
+
+`ReadExcelSheet` and `ReadExcel` SHALL infer each column's type by the rule CSV reading follows, after the header row and row names are taken out, and SHALL read a cell the file left out as empty. An optional `rawStrings` argument set to true SHALL keep every cell as text, and more than one value SHALL be an error.
+
+#### Scenario: Numeric and text columns
+
+- **WHEN** a sheet has a column of 1, 2, 3, a column of 1.5, 2.5, 3 and a column of apple, 12, pear
+- **THEN** the columns load as `int64`, `float64` and text, in that order
+
+#### Scenario: A gap in a numeric column
+
+- **WHEN** a numeric column has cells Excel left out
+- **THEN** those cells read as `NaN` and the column is `float64`
+
+#### Scenario: Keeping text
+
+- **WHEN** `rawStrings` is true
+- **THEN** every cell stays the text Excel displays
+

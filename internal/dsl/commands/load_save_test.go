@@ -134,11 +134,29 @@ func TestLoad_JSON_RejectsRaggedOption(t *testing.T) {
 	}
 }
 
-func TestLoad_Excel_RejectsInferOption(t *testing.T) {
-	ctx := newTestExecContext(t)
-	err := runLoadCommand(ctx, []string{"in.xlsx", "sheet", "S1", "infer", "false", "as", "t"})
-	if err == nil || !strings.Contains(err.Error(), "infer") {
-		t.Fatalf("expected error rejecting 'infer' for Excel, got %v", err)
+func TestLoad_Excel_InferFalseKeepsText(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "in.xlsx")
+	ctx := excelSaveContext(t)
+	if err := runSaveCommand(ctx, []string{"t", path, "sheet", "S1"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		args []string
+		want any
+	}{
+		{[]string{path, "sheet", "S1", "as", "r"}, int64(1)},
+		{[]string{path, "sheet", "S1", "infer", "false", "as", "r"}, "1"},
+	} {
+		if err := runLoadCommand(ctx, c.args); err != nil {
+			t.Fatalf("%v: %v", c.args, err)
+		}
+		dt, err := getDataTableVar(ctx, "r")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := dt.GetColByName("a").Data()[0]; got != c.want {
+			t.Errorf("%v: first cell = %#v, want %#v", c.args, got, c.want)
+		}
 	}
 }
 
