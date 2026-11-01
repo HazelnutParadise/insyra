@@ -26,6 +26,8 @@ func toTime(val any) (time.Time, bool) {
 // registerDateTimeFunctions registers date-component extraction and arithmetic
 // helpers.
 func registerDateTimeFunctions() {
+	registerClockFunctions()
+
 	// DAY, HOUR, MINUTE and SECOND take a part of a date, as in Excel, Google
 	// Sheets, DAX and Spark SQL. A duration is refused with a pointer to
 	// DATEDIFF, which expresses one in a unit.
