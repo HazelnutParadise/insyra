@@ -23,7 +23,7 @@ func NewKernel(name, source string, nRead, nWrite int) (*Kernel, error) {
 	case nRead < 0 || nWrite < 0:
 		return nil, fmt.Errorf("wgpu: kernel %s binds a negative number of buffers", name)
 	}
-	return &Kernel{k: &kernel{name: "custom-" + name, body: source, nRead: nRead, nWrite: nWrite, noLibrary: true, dynamicUniform: true}}, nil
+	return &Kernel{k: &kernel{name: "custom-" + name, body: source, nRead: nRead, nWrite: nWrite, noLibrary: true, dynamicUniform: true, bounded: true}}, nil
 }
 
 // Kernel is a caller's compute shader.

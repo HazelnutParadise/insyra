@@ -275,6 +275,10 @@ type kernel struct {
 	// dynamicUniform makes the uniform binding take a dynamic offset, so a
 	// caller's launches read their parameters from one shared ring.
 	dynamicUniform bool
+	// bounded compiles the kernel with buffer bounds checks where the backend
+	// does not add them itself (shaderModuleDescriptor), as a caller's kernel
+	// needs.
+	bounded bool
 
 	once   sync.Once
 	pipe   *gowgpu.ComputePipeline
@@ -344,9 +348,11 @@ func (k *kernel) install(c *compiledKernel) {
 // compile creates the kernel's shader module, layouts and pipeline on h. It
 // touches nothing shared, so warmup runs it without submitMu.
 func (k *kernel) compile(h *handle) (*compiledKernel, error) {
-	shader, err := h.device.CreateShaderModule(&gowgpu.ShaderModuleDescriptor{
-		Label: "accel-" + k.name, WGSL: k.source(),
-	})
+	desc, err := shaderModuleDescriptor(h, "accel-"+k.name, k.source(), k.bounded)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
+	}
+	shader, err := h.device.CreateShaderModule(desc)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
 	}
