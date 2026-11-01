@@ -290,6 +290,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `stats.Autocorrelation` 與 `stats.VarianceRatio` 現在會拒絕由小數（例如 0.1）組成的常數序列：100 個 0.1 的平均值不是剛好 0.1，以前會對沒有變異的序列回報 `Rho` 0.99 和極小的 p 值。
 - `stats.WrightVarianceRatio(returns, qs, opts...)` 用 Wright（2000）的名次與正負號變異數比 `R1`、`R2`、`S1` 檢定隨機漫步；p 值由模擬虛無分配算出，任何樣本數都準確；統計量與 R 的 `vrtest::Wright` 一致（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 - `VarianceRatio` 與 `Autocorrelation` 改回傳 `VarianceRatioResults`、`AutocorrelationResults`，也就是原本的結果切片多了 `Show()`，能把所有持有期或落後期印成一張表。原本用迴圈走訪或當切片傳遞的程式碼不受影響；只有把函式本身存進舊函式型別變數（例如 `var f func(insyra.IDataList, ...int) ([]stats.VarianceRatioResult, error) = stats.VarianceRatio`）的寫法要改用新的結果型別。
+- `stats.DiscreteTimeHazard(durations, observed, opts...)` 以 Allison 的人期（person-period）方法估計離散時間風險模型：一段狀態持續越久是否越容易結束、還有哪些因素會改變這個機率；`stats.PersonPeriod` 回傳它所用的人期表。`GLM` 的二項分布支援 `Cloglog` 連結函數。結果與 R 的 `glm` 一致（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
 
 ### `csvxl`
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 會用 v0.3.3 檢查工作表名稱的同一套規則檢查 `csvNames` 指定的檔名：含路徑分隔符號、或不會直接落在輸出目錄內的檔名都會被拒絕，所以 `csvNames: []string{"sub/out.csv"}` 不再寫進子目錄。每張 CSV 先寫入暫存檔再 rename 到目標位置，寫入失敗時不會留下截斷的檔案。
@@ -448,6 +449,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `ta.PivotPoints`、`HeikinAshi`、`TDSequential` 與 `PointAndFigure`，計算價格結構工具：樞軸點價位、以資料表回傳的平均足、TD Sequential 的 setup 與 countdown 計數，以及點數圖欄。`PivotPoints` 回傳 `*PivotPointsResult`。`HeikinAshi` 要求四組序列都是有限、為正、長度相同的價格，且最高價不得低於最低價。`TDSequential` 不是 DeMark 原版規則：countdown 拿收盤價與兩列前的收盤價比較（原版用最低價或最高價），setup 超過 9 之後會從 1 重新開始；countdown 數到 13 之後再完成的 setup 會開始新的 countdown。`PointAndFigure` 遇到箱號超過 2^53 的收盤價（boxSize 相對價格太小）會回傳錯誤（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 - 新增 `ta.CandlePatterns`，標記十三種 K 線型態（十字星、錘子、吊人、倒錘子、流星、吞噬、孕線、貫穿線、烏雲罩頂、晨星與夜星、紅三兵、黑三鴉），每種一條有名字的清單，實體與影線比例可用選項調整（`LongShadowRatio` 是錘子或星線的長影線至少為實體的幾倍，`ShortShadowRatio` 是相反方向的影線，或紅三兵與黑三鴉的影線，要比參照短幾倍），並有 `CandleOptions.SegmentStarts`，每段資料各自計算，型態不會用到停牌或重新上市之前的 K 線；不設定時結果不變（[#481](https://github.com/HazelnutParadise/insyra/issues/481)）。
 - `ta.FilterRule(prices, threshold, opts...)` 是 Alexander 的濾嘴法則（Fama 與 Blume 1966）：從最近低點漲了 `threshold` 就買進，從最近高點跌了 `threshold` 就賣出或放空，回傳每列 1／0／-1 的部位，可直接交給 `quant.BacktestSignal`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `ta.RegimeDurations(regimes, kind, prices, segmentStarts)` 把 `Regimes` 切出的行情整理成 `stats.KaplanMeier` 與 `stats.DiscreteTimeHazard` 要的持續期間與是否結束；每個分段最後一個轉折點之後尚未結束的那段，會以「尚未結束」補上，長度算到那段之後的最高或最低價（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
 
 ### 容器映像
 
