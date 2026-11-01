@@ -108,7 +108,7 @@ func (d DataTable) From(item any) *DataTable {
 		if val.FilePath == "" {
 			return failDT(&t, "DT.From", "Excel FilePath cannot be empty")
 		}
-		read, err := insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.HasRowNames, !val.InputOpts.NoHeaderRow)
+		read, err := insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.HasRowNames, !val.InputOpts.NoHeaderRow, val.InputOpts.RawStrings)
 		if err != nil {
 			return failDT(&t, "DT.From", "%v", err)
 		}

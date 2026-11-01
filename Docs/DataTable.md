@@ -566,7 +566,7 @@ dt, err := insyra.ReadSQL(db, insyra.SQLDialectMySQL, "events", insyra.ReadSQLOp
 ### ReadExcelSheet
 
 ```go
-func ReadExcelSheet(filePath string, sheetName string, rowNames bool, headerRow bool) (*DataTable, error)
+func ReadExcelSheet(filePath string, sheetName string, rowNames bool, headerRow bool, rawStrings ...bool) (*DataTable, error)
 ```
 
 **Description:** Reads a specific sheet from an Excel file and loads the data into a new DataTable.
@@ -577,6 +577,11 @@ func ReadExcelSheet(filePath string, sheetName string, rowNames bool, headerRow 
 - `sheetName`: The name of the sheet to read.
 - `rowNames`: If `true`, the first column of the sheet will be used as the row names for the DataTable.
 - `headerRow`: If `true`, the first row of the sheet will be used as the column names for the DataTable.
+- `rawStrings` (optional): If `true`, every cell stays text as Excel displays it. Passing more than one value is an error.
+
+A column is read the way a CSV column is: all whole numbers become `int64`, all numbers become `float64`, and any other value keeps the whole column as text. An empty cell in a numeric column becomes `NaN`, so a column of whole numbers with a gap is `float64`.
+
+The reader sees each cell as Excel displays it, so `1,234`, `50%`, `$12` and dates stay text, and one `#N/A` keeps its whole column as text. A code such as `007` becomes `7`; pass `rawStrings` as `true` to keep it.
 
 **Returns:**
 
@@ -595,7 +600,7 @@ if err != nil {
 ### ReadExcel — from any source
 
 ```go
-func ReadExcel(r io.Reader, sheetName string, rowNames bool, headerRow bool) (*DataTable, error)
+func ReadExcel(r io.Reader, sheetName string, rowNames bool, headerRow bool, rawStrings ...bool) (*DataTable, error)
 ```
 
 **Description:** Reads one sheet of a workbook that is not a file on disk — an upload, an HTTP response, a zip entry — the same way `ReadExcelSheet` reads a path, with the same limit on how far the workbook may expand while it is read.

@@ -14,6 +14,7 @@ type Excel struct {
 type Excel_inOpts struct {
 	NoHeaderRow bool // the first row is data, not column names
 	HasRowNames bool // the first column holds row names
+	RawStrings  bool // keep every cell as text; skip column type inference
 }
 
 type Excel_outOpts struct {
