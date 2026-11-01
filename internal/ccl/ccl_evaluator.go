@@ -1,6 +1,7 @@
 package ccl
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -473,6 +474,21 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 				return evaluateWithCallDepth(t.args[1], ctx, depth+1, functionDepth)
 			}
 			return evaluateWithCallDepth(t.args[2], ctx, depth+1, functionDepth)
+		}
+
+		if upper == "IFERROR" {
+			if len(t.args) != 2 {
+				return nil, fmt.Errorf("IFERROR requires 2 arguments")
+			}
+			functionDepth := callDepth + 1
+			val, err := evaluateWithCallDepth(t.args[0], ctx, depth+1, functionDepth)
+			if err == nil {
+				return val, nil
+			}
+			if errors.Is(err, errUnknownName) {
+				return nil, err
+			}
+			return evaluateWithCallDepth(t.args[1], ctx, depth+1, functionDepth)
 		}
 
 		if upper == "AND" || upper == "OR" {

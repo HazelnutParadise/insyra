@@ -2,9 +2,7 @@
 
 ## Purpose
 What `engine/ccl` lets code outside the module register into CCL's process-wide function registry, and how that registry behaves when several goroutines register and evaluate at once.
-
 ## Requirements
-
 ### Requirement: engine/ccl registers every kind of CCL function
 
 `engine/ccl` SHALL let a caller register a scalar function (`RegisterFunction`), an aggregate function (`RegisterAggregateFunction`) and a sequence function (`RegisterSequenceFunction`, with the type `SeqFunc`), each into the registry the evaluator reads.
@@ -39,3 +37,18 @@ The documentation of `engine/ccl` SHALL state that evaluation checks sequence fu
 
 - **WHEN** a caller reads the doc comment of `RegisterAggregateFunction`
 - **THEN** it says that evaluation checks sequence, aggregate, then scalar functions
+
+### Requirement: IFERROR replaces a failure on a row
+
+`IFERROR(value, valueIfError)` SHALL give `value`, and SHALL compute and give `valueIfError` only when computing `value` fails. An empty result or `NaN` SHALL NOT count as a failure. An undefined function and a column that does not exist SHALL still be errors.
+
+#### Scenario: Dividing by zero
+
+- **WHEN** column B holds 2 and 0 and column A holds 6 and 8
+- **THEN** `IFERROR(A / B, -1)` gives 3 and -1
+
+#### Scenario: A mistake in the formula
+
+- **WHEN** an expression is `IFERROR(NOSUCHFN(A), 0)`
+- **THEN** the expression fails with an undefined function error
+
