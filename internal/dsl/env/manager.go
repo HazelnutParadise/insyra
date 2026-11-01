@@ -335,11 +335,7 @@ func (m *Manager) Info(name string) (EnvironmentInfo, error) {
 		Name:          name,
 		Path:          envPath,
 		VariableCount: len(state.Variables),
-	}
-	if state.LastAccess != "" {
-		if parsed, parseErr := time.Parse(time.RFC3339, state.LastAccess); parseErr == nil {
-			info.LastAccess = parsed
-		}
+		LastAccess:    state.LastAccess,
 	}
 	return info, nil
 }
@@ -358,7 +354,7 @@ func (m *Manager) Export(name, outputPath string) error {
 
 	state, err := m.readState(name)
 	if err != nil {
-		state = &State{Variables: map[string]SerializedVariable{}, LastAccess: ""}
+		state = &State{Variables: map[string]SerializedVariable{}}
 	}
 
 	history, err := m.ReadHistory(name)
@@ -444,13 +440,13 @@ func (m *Manager) Import(inputPath, targetName string, force bool) (string, erro
 
 	state := payload.State
 	if state == nil {
-		state = &State{Variables: map[string]SerializedVariable{}, LastAccess: ""}
+		state = &State{Variables: map[string]SerializedVariable{}}
 	}
 	if state.Variables == nil {
 		state.Variables = map[string]SerializedVariable{}
 	}
-	if state.LastAccess == "" {
-		state.LastAccess = time.Now().UTC().Format(time.RFC3339)
+	if state.LastAccess.IsZero() {
+		state.LastAccess = time.Now().UTC().Truncate(time.Second)
 	}
 
 	stateBytes, err := json.MarshalIndent(state, "", "  ")

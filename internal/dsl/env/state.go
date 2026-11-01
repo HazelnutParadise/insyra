@@ -21,7 +21,50 @@ type SerializedVariable struct {
 
 type State struct {
 	Variables  map[string]SerializedVariable `json:"variables"`
-	LastAccess string                        `json:"lastAccess"`
+	LastAccess time.Time                     `json:"lastAccess"`
+}
+
+// UnmarshalJSON keeps the timestamp format used by earlier releases. An
+// invalid timestamp string means unknown time, not unreadable variables.
+func (s *State) UnmarshalJSON(data []byte) error {
+	var stored struct {
+		Variables  map[string]SerializedVariable `json:"variables"`
+		LastAccess string                        `json:"lastAccess"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	if err := dec.Decode(&stored); err != nil {
+		return err
+	}
+	var lastAccess time.Time
+	if stored.LastAccess != "" {
+		if parsed, err := time.Parse(time.RFC3339, stored.LastAccess); err == nil {
+			// Parse accepts some offsets (such as +24:00) that JSON cannot
+			// write. Treat those as unknown too, so exporting remains safe.
+			if _, err := parsed.MarshalJSON(); err == nil {
+				lastAccess = parsed
+			}
+		}
+	}
+	*s = State{Variables: stored.Variables, LastAccess: lastAccess}
+	return nil
+}
+
+// MarshalJSON preserves the string timestamp understood by earlier releases,
+// including an empty string for an environment that has not been accessed.
+func (s State) MarshalJSON() ([]byte, error) {
+	lastAccess := json.RawMessage(`""`)
+	if !s.LastAccess.IsZero() {
+		var err error
+		lastAccess, err = s.LastAccess.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return json.Marshal(struct {
+		Variables  map[string]SerializedVariable `json:"variables"`
+		LastAccess json.RawMessage               `json:"lastAccess"`
+	}{Variables: s.Variables, LastAccess: lastAccess})
 }
 
 // UnsavedVariable is a variable SaveVariables left out of state.json.

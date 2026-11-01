@@ -1,0 +1,19 @@
+{
+  "variables": {
+    "large": {
+      "type": "scalar",
+      "data": {
+        "type": "int64",
+        "value": 9007199254740993
+      }
+    },
+    "text": {
+      "type": "scalar",
+      "data": {
+        "type": "string",
+        "value": "old writer"
+      }
+    }
+  },
+  "lastAccess": "2026-11-01T16:39:10Z"
+}
