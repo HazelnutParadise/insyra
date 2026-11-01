@@ -452,3 +452,95 @@ func regimesOfSegment(swings []Swing, o RegimeOptions) []Regime {
 	}
 	return regimes
 }
+
+// RegimeDurations turns regimes into the two lists stats.KaplanMeier and
+// stats.DiscreteTimeHazard take: how long each regime of kind lasted, in rows,
+// and whether it ended. Every regime Regimes reported ended, at the turning
+// point that closed it. The stretch after the last turning point of each
+// segment, which Regimes leaves out, has not ended as far as the data show:
+// when it is of kind, it is added with observed false. Leaving those
+// stretches out would bias the durations short, since a long regime is the
+// one most likely to be cut off by the end of the data.
+//
+// A still-going stretch is censored at the most extreme price since its
+// turning point (the lowest for a bear stretch, the highest for a bull one,
+// the first if it repeats), not at the segment's last row: the regime may
+// already have ended there, and ZigZag reports a turning point only once the
+// price has reversed by the threshold. That is the longest it is known to
+// have lasted. A stretch of 0 rows is left out, since it carries no
+// information.
+//
+// prices are the prices given to ZigZag or ZigZagAdaptive, and segmentStarts
+// the SegmentStarts given to ZigZagAdaptive (nil without segments); regimes
+// must be what Regimes returned for them, in order. A segment with a single
+// turning point has no regime, so its still-going stretch cannot be known
+// from regimes and is not added.
+func RegimeDurations(regimes []Regime, kind RegimeKind, prices insyra.IDataList, segmentStarts []int) (durations, observed *insyra.DataList, err error) {
+	if kind != RegimeBull && kind != RegimeBear {
+		return nil, nil, fmt.Errorf("unknown regime kind %v", kind)
+	}
+	p, err := positivePrices(prices)
+	if err != nil {
+		return nil, nil, err
+	}
+	rows := len(p)
+	if rows < 1 {
+		return nil, nil, errors.New("prices is empty")
+	}
+	starts, err := cleanSegmentStarts(segmentStarts, rows)
+	if err != nil {
+		return nil, nil, err
+	}
+	segmentOf := func(row int) int { return sort.SearchInts(starts, row+1) }
+	lastRow := func(segment int) int {
+		if segment < len(starts) {
+			return starts[segment] - 1
+		}
+		return rows - 1
+	}
+	for i, r := range regimes {
+		if r.Start < 0 || r.End >= rows || r.End <= r.Start || r.Length != r.End-r.Start || (r.Kind != RegimeBull && r.Kind != RegimeBear) {
+			return nil, nil, fmt.Errorf("regime at list position %d (rows %d to %d) is not a regime of these %d prices", i, r.Start, r.End, rows)
+		}
+		if segmentOf(r.Start) != segmentOf(r.End) {
+			return nil, nil, fmt.Errorf("regime at list position %d crosses a segment start", i)
+		}
+		if i == 0 {
+			continue
+		}
+		prev := regimes[i-1]
+		switch {
+		case r.Start < prev.End:
+			return nil, nil, fmt.Errorf("regime at list position %d starts before the one before it ends; pass the regimes in order", i)
+		case segmentOf(r.Start) == segmentOf(prev.End) && (r.Start != prev.End || r.Kind == prev.Kind):
+			return nil, nil, fmt.Errorf("regimes at list positions %d and %d are not consecutive regimes of one segment; pass all the regimes Regimes returned", i-1, i)
+		}
+	}
+	var d, o []any
+	for i, r := range regimes {
+		if r.Kind == kind {
+			d = append(d, r.Length)
+			o = append(o, true)
+		}
+		seg := segmentOf(r.End)
+		if i+1 < len(regimes) && segmentOf(regimes[i+1].Start) == seg {
+			continue
+		}
+		// r is the last regime of its segment: the stretch after it is the
+		// other kind and has not ended as far as the data show.
+		if r.Kind == kind {
+			continue
+		}
+		ext := r.End
+		for row := r.End + 1; row <= lastRow(seg); row++ {
+			if (kind == RegimeBear && p[row] < p[ext]) || (kind == RegimeBull && p[row] > p[ext]) {
+				ext = row
+			}
+		}
+		if n := ext - r.End; n > 0 {
+			d = append(d, n)
+			o = append(o, false)
+		}
+	}
+	return insyra.NewDataList(d...), insyra.NewDataList(o...), nil
+}
