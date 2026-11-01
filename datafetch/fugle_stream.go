@@ -593,32 +593,51 @@ func (s *fugleStream) command(build func() (map[string]any, error), want string,
 	if err := s.writeConn(conn, frame); err != nil {
 		return err
 	}
+	return s.awaitReply(fmt.Sprint(frame["event"]), want, lost, apply)
+}
+
+// awaitReply waits for the reply a command asked for.
+func (s *fugleStream) awaitReply(event, want string, lost <-chan struct{}, apply func(json.RawMessage)) error {
 	timer := time.NewTimer(s.timeout)
 	defer timer.Stop()
+	settle := func(r fugleStreamReply) (bool, error) {
+		if r.event == "error" {
+			var d struct {
+				Message string `json:"message"`
+			}
+			_ = json.Unmarshal(r.data, &d)
+			return true, fugleStreamError(r.code, d.Message)
+		}
+		if r.event == want {
+			apply(r.data)
+			return true, nil
+		}
+		return false, nil
+	}
 	for {
 		select {
 		case r := <-s.replies:
-			if r.event == "error" {
-				var d struct {
-					Message string `json:"message"`
-				}
-				_ = json.Unmarshal(r.data, &d)
-				return fugleStreamError(r.code, d.Message)
-			}
-			if r.event == want {
-				apply(r.data)
-				return nil
+			if done, err := settle(r); done {
+				return err
 			}
 		case <-lost:
+			// The reader queues a reply before it closes lost, and select picks at
+			// random when both are ready, so a reply that came in before the
+			// connection dropped still answers the command.
+			for len(s.replies) > 0 {
+				if done, err := settle(<-s.replies); done {
+					return err
+				}
+			}
 			if s.isClosed() {
 				return errFugleStreamClosed
 			}
 			if err := s.Err(); err != nil {
 				return err
 			}
-			return fmt.Errorf("datafetch: Fugle connection dropped before the %s request was answered; the stream is reconnecting, try again", frame["event"])
+			return fmt.Errorf("datafetch: Fugle connection dropped before the %s request was answered; the stream is reconnecting, try again", event)
 		case <-timer.C:
-			return fmt.Errorf("datafetch: Fugle did not answer the %s request within %s; try again", frame["event"], s.timeout)
+			return fmt.Errorf("datafetch: Fugle did not answer the %s request within %s; try again", event, s.timeout)
 		}
 	}
 }
