@@ -476,7 +476,7 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			return evaluateWithCallDepth(t.args[2], ctx, depth+1, functionDepth)
 		}
 
-		if upper == "IFERROR" {
+		if upper == "IFERROR" && isBuiltinName(upper) {
 			if len(t.args) != 2 {
 				return nil, fmt.Errorf("IFERROR requires 2 arguments")
 			}
@@ -489,6 +489,17 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 				return nil, err
 			}
 			return evaluateWithCallDepth(t.args[1], ctx, depth+1, functionDepth)
+		}
+
+		if upper == "ISERROR" && isBuiltinName(upper) {
+			if len(t.args) != 1 {
+				return nil, fmt.Errorf("ISERROR requires 1 argument")
+			}
+			_, err := evaluateWithCallDepth(t.args[0], ctx, depth+1, callDepth+1)
+			if err != nil && isFormulaMistake(err) {
+				return nil, err
+			}
+			return err != nil, nil
 		}
 
 		if upper == "AND" || upper == "OR" {
