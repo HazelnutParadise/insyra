@@ -31,10 +31,10 @@ func (c *dataTableContext) GetColByName(name string) (any, error) {
 	}
 	idx, ok := c.colNameMap[name]
 	if !ok {
-		return nil, fmt.Errorf("column name '%s' not found", name)
+		return nil, ccl.UnknownColumnError("column name '%s' not found", name)
 	}
 	if idx >= len(c.row) {
-		return nil, fmt.Errorf("column ['%s'] (index %d) out of range", name, idx)
+		return nil, ccl.UnknownColumnError("column ['%s'] (index %d) out of range", name, idx)
 	}
 	return c.row[idx], nil
 }
@@ -54,7 +54,7 @@ func (c *dataTableContext) GetCurrentRow() any {
 
 func (c *dataTableContext) GetCell(colIndex, rowIndex int) (any, error) {
 	if colIndex < 0 || colIndex >= len(c.tableData) {
-		return nil, fmt.Errorf("column index %d out of range", colIndex)
+		return nil, ccl.UnknownColumnError("column index %d out of range", colIndex)
 	}
 	if rowIndex < 0 || rowIndex >= len(c.tableData[colIndex]) {
 		return nil, fmt.Errorf("row index %d out of range for column %d", rowIndex, colIndex)
@@ -68,7 +68,7 @@ func (c *dataTableContext) GetCellByName(colName string, rowIndex int) (any, err
 	}
 	idx, ok := c.colNameMap[colName]
 	if !ok {
-		return nil, fmt.Errorf("column name '%s' not found", colName)
+		return nil, ccl.UnknownColumnError("column name '%s' not found", colName)
 	}
 	return c.GetCell(idx, rowIndex)
 }
@@ -113,7 +113,7 @@ func (c *dataTableContext) GetColIndexByName(colName string) (int, error) {
 	}
 	idx, ok := c.colNameMap[colName]
 	if !ok {
-		return -1, fmt.Errorf("column name '%s' not found", colName)
+		return -1, ccl.UnknownColumnError("column name '%s' not found", colName)
 	}
 	return idx, nil
 }
@@ -124,7 +124,7 @@ func (c *dataTableContext) GetColCount() int {
 
 func (c *dataTableContext) GetColData(index int) ([]any, error) {
 	if index < 0 || index >= len(c.tableData) {
-		return nil, fmt.Errorf("column index %d out of range", index)
+		return nil, ccl.UnknownColumnError("column index %d out of range", index)
 	}
 	// A copy, not the snapshot itself: a registered aggregate or sequence
 	// function may sort or rewrite the slice it is given, and the rest of the
@@ -142,7 +142,7 @@ func (c *dataTableContext) GetColDataByName(name string) ([]any, error) {
 	}
 	idx, ok := c.colNameMap[name]
 	if !ok {
-		return nil, fmt.Errorf("column name '%s' not found", name)
+		return nil, ccl.UnknownColumnError("column name '%s' not found", name)
 	}
 	return c.GetColData(idx)
 }
@@ -204,6 +204,7 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	ast = ccl.FreezeClock(ast, ccl.ClockNow())
 
 	table.AtomicDo(func(table *DataTable) {
 		numRow, numCol := table.getMaxColLength(), len(table.columns)

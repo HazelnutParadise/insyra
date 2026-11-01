@@ -165,7 +165,7 @@ func TestStringFunctions(t *testing.T) {
 	got, _ = callFn(t, "MID", "abcdef", 2.0, 3.0) // 1-based start
 	wantString(t, got, "bcd")
 
-	got, _ = callFn(t, "SUBSTR", "abcdef", 2.0, 3.0)
+	got, _ = callFn(t, "MID", "abcdef", 2.0, 3.0)
 	wantString(t, got, "bcd")
 
 	got, _ = callFn(t, "REPLACE", "foo bar foo", "foo", "baz")
@@ -228,21 +228,21 @@ func TestStringEdgeCases(t *testing.T) {
 // ---------------------------------------------------- Type conversion ----
 
 func TestTypeConversionFunctions(t *testing.T) {
-	got, _ := callFn(t, "TONUM", "42.5")
+	got, _ := callFn(t, "VALUE", "42.5")
 	wantFloat(t, got, 42.5)
 
-	got, _ = callFn(t, "TONUM", "not a number")
+	got, _ = callFn(t, "VALUE", "not a number")
 	if got != nil {
-		t.Fatalf("TONUM('not a number') should return nil, got %v", got)
+		t.Fatalf("VALUE('not a number') should return nil, got %v", got)
 	}
 
 	got, _ = callFn(t, "VALUE", "  17  ")
 	wantFloat(t, got, 17)
 
-	got, _ = callFn(t, "TOSTR", 3.14)
+	got, _ = callFn(t, "TEXT", 3.14)
 	wantString(t, got, "3.14")
 
-	got, _ = callFn(t, "TOSTR", 3.14159, "%.2f")
+	got, _ = callFn(t, "TEXT", 3.14159, "%.2f")
 	wantString(t, got, "3.14")
 
 	got, _ = callFn(t, "TEXT", 42, "%05d")
@@ -287,11 +287,11 @@ func TestDateTimeFunctions(t *testing.T) {
 	got, _ = callFn(t, "MONTH", d)
 	wantFloat(t, got, 7)
 
-	got, _ = callFn(t, "DAYOFMONTH", d)
+	got, _ = callFn(t, "DAY", d)
 	wantFloat(t, got, 15)
 
 	got, _ = callFn(t, "WEEKDAY", d)
-	wantFloat(t, got, float64(time.Monday)) // 1
+	wantFloat(t, got, 2) // Monday, counting Sunday as 1
 
 	// String input gets parsed automatically.
 	got, _ = callFn(t, "YEAR", "2024-07-15")

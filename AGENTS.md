@@ -681,12 +681,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: leave it or remove it, but decide rather than drift. Keeping it costs a little projection work on tables with string columns and would be needed again by any future string operation; removing it trims code that is currently unreachable. Neither is urgent.
 - **Status**: pending
 
-### [2026-07-26] — ReadExcelSheet does no type inference (inconsistent with CSV)
-- **Where**: [read.go](read.go) `ReadExcelSheet` → `ReadSlice2D`
-- **What**: excelize `GetRows` returns strings and `ReadSlice2D` appends them as-is, so Excel loads produce all-string DataTables while CSV loads run column-level inference (`inferCSVColumnTypes`). Opposite defaults for the two spreadsheet formats. Noticed while adding `CSVReadOptions.RawStrings` (issue #188).
-- **Suggestion**: Decide whether Excel reads should run the same column inference by default (with the same opt-out), or stay raw; either way document the behavior in `Docs/DataTable.md`.
-- **Status**: pending
-
 ### [2026-07-11] — chromedp chain left at pre-refresh versions (two independent blockers)
 - **Where**: `go.mod` — `chromedp v0.12.1`, `cdproto v0.0.0-20250120090109-d38428e4d9c8` (pulled in via `go-echarts/snapshot-chromedp`)
 - **What**: two blockers held the chain back. (1) `chromedp v0.15.0+` and newer `cdproto` require go >= 1.26; this line's directive is 1.26.8, so that one no longer applies here. (2) From `v0.13.0` chromedp requires `go-json-experiment/json`, whose generic variadics panic govulncheck's SSA pass ("got jsontext.Value, want variadic parameter of unnamed slice or string type"). Measured on dev on 2026-09-24: x/vuln v1.3.0 and v1.7.0 built with go1.25.14 both panic on it, and v1.7.0 built with go1.26.5 completes. This line's Vulnerability Scan job builds x/vuln v1.3.0 with Go 1.26.x, a combination nobody has measured. The chain moved to dev's `v0.12.1` when dev was merged in on 2026-09-27, the newest version below `go-json-experiment`.

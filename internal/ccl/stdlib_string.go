@@ -25,7 +25,7 @@ func toString(val any) string {
 
 // runeAt returns a substring [start, start+length) measured in runes.
 // Behaves like Excel: clamps to bounds; returns "" if start is past end.
-// start is 0-based here (callers convert from 1-based MID/SUBSTR).
+// start is 0-based here (callers convert from 1-based MID).
 func runeSlice(s string, start, length int) string {
 	if length <= 0 {
 		return ""
@@ -49,6 +49,9 @@ func runeSlice(s string, start, length int) string {
 
 // registerStringFunctions registers Excel/SQL-style scalar string functions.
 // All functions are rune-aware; LEN counts runes, LEFT/RIGHT/MID slice by rune.
+// spaceRun matches a run of the space character.
+var spaceRun = regexp.MustCompile(` {2,}`)
+
 func registerStringFunctions() {
 	registerFunction("LEN", func(args ...any) (any, error) {
 		if len(args) != 1 {
@@ -75,7 +78,9 @@ func registerStringFunctions() {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("TRIM requires 1 argument")
 		}
-		return strings.TrimSpace(toString(args[0])), nil
+		// The ends lose any white space. Inside, a run of spaces becomes one, as in
+		// Excel, which touches only the space character, so a tab inside stays.
+		return spaceRun.ReplaceAllString(strings.TrimSpace(toString(args[0])), " "), nil
 	})
 
 	registerFunction("LTRIM", func(args ...any) (any, error) {
@@ -162,13 +167,7 @@ func registerStringFunctions() {
 		}
 		return v, nil
 	})
-	registerFunction("SUBSTR", func(args ...any) (any, error) {
-		v, err := mid(args...)
-		if err != nil {
-			return nil, fmt.Errorf("SUBSTR %w", err)
-		}
-		return v, nil
-	})
+	registerRemovedName("SUBSTR", "MID")
 
 	registerFunction("REPLACE", func(args ...any) (any, error) {
 		if len(args) != 3 {

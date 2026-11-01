@@ -36,6 +36,9 @@ var wholeColumnScripts = []struct {
 	columns []string
 }{
 	{script: "NEW('c') = A - MEDIAN(A)", columns: []string{"c"}},
+	{script: "NEW('c') = COUNTIF(A > 0)", columns: []string{"c"}},
+	{script: "NEW('c') = A + SUMIF(A > 1, A)", columns: []string{"c"}},
+	{script: "NEW('c') = AVGIF(A > 1, A)", columns: []string{"c"}},
 	{script: "NEW('p') = IF(# > 0, A.(# - 1), 0)", columns: []string{"p"}},
 	{script: "NEW('k') = COUNT(IF(A > 0, A:B, 0))", columns: []string{"k"}},
 	{script: "NEW('l') = LAG(CUMSUM(A), 1)", columns: []string{"l"}},

@@ -380,7 +380,7 @@ When performing arithmetic operations or comparisons, CCL attempts to convert op
 - **Integers stay integers.** When both operands are integers, of any Go integer type, `+`, `-`, `*`, `%` and unary minus compute in `int64` and give an `int64`, and `==`, `!=`, `<`, `>`, `<=`, `>=` compare them exactly. So `A * 1` on an integer column is an `int64` column, and `int64(9007199254740993) + 0` is `9007199254740993`. `SUM`, `MIN` and `MAX` give an `int64` when every value they use is an integer, and `MOD` follows `%`. In arithmetic a `nil` next to an integer is an integer `0`
 - **An integer result `int64` cannot hold is an error**, never a wrapped-around number: `9223372036854775807 + 1` fails with `integer overflow`. Write one operand with a decimal point, `A * 1.0`, to compute in `float64` instead
 - **Everything else is `float64`, as before.** `/` and `^` always give a `float64` (`7 / 2` is `3.5`, `6 / 3` is `2.0`, `2 ^ 3` is `8.0`), and so do `AVG`, `MEDIAN`, the variance family, `COUNT`, the math functions other than `MOD`, the sequence functions, and any operation with a `float64`, a numeric string or a boolean on either side. A `float64` holds every integer up to 2^53 (9,007,199,254,740,992) exactly; past that, an integer that meets a `float64`, such as `A + 0.5`, is read as the nearest `float64` and loses its last digits. A `uint64` above the `int64` range is always read that way
-- **A computed column holds one kind of number.** Each row follows the rules above, and then the column `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` or a statement of `ExecuteCCL` writes is settled as a whole, the way a pandas column has one dtype: when its numbers include a `float64` or `float32`, every integer a `float64` holds exactly becomes a `float64`. So `COALESCE(TONUM(A), 0)` over `["19.5", "abc", "30"]` is `[19.5, 0.0, 30.0]`, all `float64`. An integer past 2^53 keeps its digits rather than become a `float64` that changes it. A column whose numbers are all integers is left as it is, and values that are not numbers, such as text, booleans, `nil`, dates and durations, are never changed: `IF(A == 0, 'none', A * 1.5)` gives the text and `float64`s
+- **A computed column holds one kind of number.** Each row follows the rules above, and then the column `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` or a statement of `ExecuteCCL` writes is settled as a whole, the way a pandas column has one dtype: when its numbers include a `float64` or `float32`, every integer a `float64` holds exactly becomes a `float64`. So `COALESCE(VALUE(A), 0)` over `["19.5", "abc", "30"]` is `[19.5, 0.0, 30.0]`, all `float64`. An integer past 2^53 keeps its digits rather than become a `float64` that changes it. A column whose numbers are all integers is left as it is, and values that are not numbers, such as text, booleans, `nil`, dates and durations, are never changed: `IF(A == 0, 'none', A * 1.5)` gives the text and `float64`s
 - String-to-number conversion follows standard parsing rules
 - Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
 
@@ -400,7 +400,7 @@ The `&` operator always performs string concatenation by converting all operands
 "Value: " & 45.67           // "Value: 45.67"
 ```
 
-**How a number becomes text.** `&`, `CONCAT`, `TOSTR` without a format, `LEN`,
+**How a number becomes text.** `&`, `CONCAT`, `TEXT` without a format, `LEN`,
 `UPPER` and the other string functions write a number by the same rule as
 `ToJSON` and `ToCSV`: a plain decimal from 0.000001 up to (not including) 1e21,
 and exponent form outside that range.
@@ -412,8 +412,8 @@ LEN(1000000)               // 7
 "x" & 0.0000001            // "x1e-07" (below 0.000001, so exponent form)
 ```
 
-Use `TOSTR(x, fmt)` when you need a fixed number of decimals or a different
-layout, for example `TOSTR(A, '%.2f')`.
+Use `TEXT(x, fmt)` when you need a fixed number of decimals or a different
+layout, for example `TEXT(A, '%.2f')`.
 
 ### Handling `nil` Values
 
@@ -636,7 +636,7 @@ When `@` is used as an argument to an **Aggregate Function** (like `SUM`, `AVG`,
 
 ```
 "SUM(@)"             // Sum of all numeric values in the entire table
-"COUNT(@)"           // Count of all non-nil cells in the entire table
+"COUNTA(@)"          // Count of all non-nil cells in the entire table
 ```
 
 > **Performance Note:** Expressions like `A.0` or `@.0` are "row-independent" (they don't change based on the current row being evaluated). CCL optimizes these by evaluating them only once per execution.
@@ -703,6 +703,23 @@ Example:
 
 > **Note:** `ISNA` handles numeric `NaN`, `float64` or `float32`, and the string `"#N/A"`. It does **not** return true for `nil` values.
 
+### IFERROR Function
+
+```
+"IFERROR(value, valueIfError)"
+```
+
+Gives `value`, or `valueIfError` when computing `value` fails on that row, such as dividing by zero, adding to a word, or `SQRT` of a negative number. `valueIfError` is computed only on the rows that need it; an aggregate inside it, as anywhere in a formula, may be computed once ahead of the rows.
+
+```
+"IFERROR(A / B, 0)"          // 0 on the rows where B is 0
+"IFERROR(SQRT(A), -1)"       // -1 on the rows where A is negative
+```
+
+An empty result is not an error, so `IFERROR(A, 0)` on an empty cell stays empty: use `IFNULL` for that. `NaN` is not an error either: use `IFNA`. A misspelt function or a column that does not exist still fails, because that is a mistake in the formula and not in the data.
+
+IFERROR also hides a mistake you did not expect. When you know which failure to allow, naming it says more: `IF(B != 0, A / B, 0)` only allows B being 0.
+
 ### IFNA Function
 
 ```
@@ -742,11 +759,11 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | Function | Description | Example |
 | --- | --- | --- |
 | `ABS(x)` | Absolute value | `ABS(-3.5)` → `3.5` |
-| `ROUND(x, n?)` | Round to `n` decimal places (default `0`); a `NaN` for `n` is an error | `ROUND(3.14159, 2)` → `3.14` |
+| `ROUND(x, n?)` | Round to `n` decimal places (default `0`), half away from zero, reading `x` as it is written: `ROUND(1.005, 2)` is `1.01`. A negative `n` rounds to tens, hundreds and so on. A `NaN` for `n` is an error | `ROUND(3.14159, 2)` → `3.14` |
 | `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
 | `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
 | `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
-| `MOD(a, b)` | Remainder of `a / b`, with the sign of `a`; an `int64` when both are integers, otherwise a `float64` | `MOD(10, 3)` → `1`, `MOD(7.5, 2)` → `1.5` |
+| `MOD(a, b)` | Remainder of `a / b`, with the sign of `b`, as in Excel: `MOD(-7, 3)` is `2`; an `int64` when both are integers, otherwise a `float64` | `MOD(10, 3)` → `1`, `MOD(7.5, 2)` → `1.5` |
 | `POW(base, exp)` | Power | `POW(2, 10)` → `1024` |
 | `SQRT(x)` | Square root (errors on negatives) | `SQRT(16)` → `4` |
 | `LN(x)` | Natural log | `LN(EXP(1))` → `1` |
@@ -762,16 +779,16 @@ dt.AddColUsingCCL("delta", "ABS(['actual'] - ['target'])")
 
 ### String Functions
 
-All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID`/`SUBSTR` slice by rune. A count or position past the end of the string means "to the end", so `MID('abc', 2, 10^300)` is `"bc"`, and a `NaN` count is an error.
+All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID` slice by rune. A count or position past the end of the string means "to the end", so `MID('abc', 2, 10^300)` is `"bc"`, and a `NaN` count is an error.
 
 | Function | Description |
 | --- | --- |
 | `LEN(s)` | Number of Unicode characters |
 | `UPPER(s)` / `LOWER(s)` | Case conversion |
-| `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip ASCII whitespace from both / left / right |
+| `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip whitespace from both ends / the left / the right. `TRIM` also turns each run of spaces inside the text into one space, as in Excel; a tab inside stays |
 | `LEFT(s, n)` | First `n` characters |
 | `RIGHT(s, n)` | Last `n` characters |
-| `MID(s, start, length)` / `SUBSTR(...)` | Substring (1-based start, like Excel) |
+| `MID(s, start, length)` | Substring (1-based start, like Excel) |
 | `REPLACE(s, old, new)` | Replace all occurrences of `old` with `new` |
 | `FIND(needle, haystack)` | 1-based position of `needle`; `0` if not found |
 | `CONTAINS(s, sub)` / `STARTSWITH(s, p)` / `ENDSWITH(s, p)` | Boolean checks |
@@ -791,8 +808,8 @@ dt.ExecuteCCL(`
 
 | Function | Description |
 | --- | --- |
-| `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
-| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). An integer under a float verb is formatted as the `float64` it equals, so `TOSTR(50, '%.1f')` is `"50.0"`, and `%d` formats it as itself. A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
+| `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails. Text may be written the way a spreadsheet displays a number: `'10%'` is 0.1 and `'1,234.5'` is 1234.5. Commas must group digits in threes, so `'1,23'` is `nil`, and a currency sign such as `'$12'` is `nil` |
+| `TEXT(x, fmt?)` | Convert to string. With a second argument, formats by either kind of format, as described under **Formats** below: a Go `fmt` verb (e.g. `"%.2f"`), an Excel number code (`"0.00"`), or a date format (`"yyyy-mm-dd"`, `"2006-01-02"`). An integer under a float verb is formatted as the `float64` it equals, so `TOSTR(50, '%.1f')` is `"50.0"`, and `%d` formats it as itself. A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
@@ -800,8 +817,8 @@ dt.ExecuteCCL(`
 `IFNULL` differs from the existing `IFNA`: `IFNA` only triggers on float `NaN` or the string `"#N/A"`, while `IFNULL` matches actual `nil` values.
 
 ```go
-dt.AddColUsingCCL("price_num", "COALESCE(TONUM(['price_str']), 0)")
-dt.AddColUsingCCL("price_fmt", "TOSTR(['price'], '$%.2f')")
+dt.AddColUsingCCL("price_num", "COALESCE(VALUE(['price_str']), 0)")
+dt.AddColUsingCCL("price_fmt", "TEXT(['price'], '$%.2f')")
 ```
 
 ### Date Component & Arithmetic Functions
@@ -814,13 +831,14 @@ These operate on `time.Time` values (or strings parseable by Insyra's date parse
 | `MONTH(d)` | Month 1–12 |
 | `DAY(d)` | Day of the month, 1–31 |
 | `HOUR(d)` / `MINUTE(d)` / `SECOND(d)` | Hour 0–23, minute 0–59, second 0–59; a fraction of a second is dropped |
-| `DAYOFMONTH(d)` | **Deprecated**: the same as `DAY(d)`, kept so existing formulas keep working. Use `DAY` |
-| `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
-| `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped |
+| `WEEKDAY(d)` | 1 (Sunday) – 7 (Saturday), Excel's default |
+| `DATE(year, month, day)` | The date with those numbers. Fractions are dropped, and numbers past the end carry over as in Excel: `DATE(2024, 13, 1)` is 2025-01-01 and `DATE(2024, 1, 0)` is 2023-12-31. An empty cell in any argument gives an empty result |
+| `TODAY()` | Today's date on the local clock, at midnight |
+| `NOW()` | The date and time on the local clock |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
 | `DUR(x, unit)` | A duration in `'day'` / `'hour'` / `'minute'` / `'second'`. `x` is a `time.Duration`, such as `A - B`, or a string such as `'36h'`, `'1h30m'` or `'2d'`. An empty cell stays empty |
 | `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A `month` or `year` shift keeps the day of the month, and stops at the last day of a month that does not have it, as Excel's `EDATE` does: `DATEADD('2024-01-31', 1, 'month')` is `2024-02-29` and `DATEADD('2024-02-29', 1, 'year')` is `2025-02-28`. The time of day and the time zone are kept. A fractional `n` truncates for `day`, `month` and `year`. More than 2,147,483,647 days, months or years, or more than about 292 years in hours, minutes or seconds, is an error |
-| `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
+| `FORMAT_DATE(d, format)` | Format a date, by a Go reference layout (`"2006-01-02"`) or Excel's codes (`"yyyy-mm-dd"`) |
 
 ```go
 dt.AddColUsingCCL("order_year", "YEAR(['order_date'])")
@@ -846,9 +864,27 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 - Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
 - If a string cannot be parsed as a date (or the operands are other unsupported types), operations fall back to their original behavior (numeric/string comparison or an error).
 
+### Formats
+
+`TEXT` and `FORMAT_DATE` read a format written the Go way or the Excel way, and tell which from the format alone:
+
+| Wanted | Go | Excel |
+| --- | --- | --- |
+| `1.50` | `TEXT(x, '%.2f')` | `TEXT(x, '0.00')` |
+| `1,234.50` | | `TEXT(x, '#,##0.00')` |
+| `15.0%` | | `TEXT(x, '0.0%')` |
+| `2024-03-09` | `FORMAT_DATE(d, '2006-01-02')` | `FORMAT_DATE(d, 'yyyy-mm-dd')` |
+| `14:05` | `FORMAT_DATE(d, '15:04')` | `FORMAT_DATE(d, 'hh:mm')` |
+
+- A format holding a Go `fmt` verb is Go. One holding a digit from 1 to 9 is a Go date layout. `0` or `#` with no letters is an Excel number code. Anything else with letters is a date format, in Excel's codes or Go's names (`Mon`, `Monday`, `Jan`, `January`, `MST`).
+- Excel number codes: `0`, `#`, a thousands comma, a point, `%`, and literal text around them, such as `$0.00` or `0.0 "kg"`. Sections with `;`, a scaling comma and scientific notation are errors.
+- Excel date codes, in any case: `yyyy` `yy`, `m` `mm` `mmm` `mmmm`, `d` `dd` `ddd` `dddd`, `h` `hh`, `s` `ss`, `.000` after seconds, `AM/PM`, `A/P`. As in Excel, `m` or `mm` right after an hour code or right before a second code is minutes. Text such as `yyyy年mm月dd日`, or anything in `"..."`, is written as it is. Any other ASCII letter is an error, so a typo does not come back as its own text; `mon` in lower case is one, while Go's `Mon` is read.
+- The two kinds round differently. An Excel code rounds half away from zero on the number as written: `TEXT(2.5, '0')` is `3` and `TEXT(1.005, '0.00')` is `1.01`. A Go verb rounds the binary value: `TEXT(2.5, '%.0f')` is `2` and `TEXT(1.005, '%.2f')` is `1.00`.
+- Under an Excel code or a date format, an empty cell stays empty, and a value of the other kind is an error, such as a number under `yyyy-mm-dd`. A number is not read as an Excel serial date. A date is written in its own time zone.
+
 ### DAY / HOUR / MINUTE / SECOND
 
-These take a part of a date, as in Excel, Google Sheets and Power BI: `DAY('2024-01-02T06:30:15Z')` is `2`, `HOUR` of it `6`, `MINUTE` `30` and `SECOND` `15`. They accept a `time.Time` or a string Insyra's date parser reads, read in the date's own time zone, and return a `float64`, like `YEAR` and `MONTH`. `DATEPART(d, 'day')` and the other units give the same answers.
+These take a part of a date, as in Excel, Google Sheets and Power BI: `DAY('2024-01-02T06:30:15Z')` is `2`, `HOUR` of it `6`, `MINUTE` `30` and `SECOND` `15`. They accept a `time.Time` or a string Insyra's date parser reads, read in the date's own time zone, and return a `float64`, like `YEAR` and `MONTH`.
 
 A duration, a duration string such as `'36h'`, or a number is not a date, and is an error that names the way to express a duration in a unit. A number is not read as an Excel serial date. Use `DUR` for a duration or a duration string, and `DATEDIFF` for the difference between two dates, or divide the difference, which counts seconds:
 
@@ -888,22 +924,35 @@ Calculates the mean of the numeric values in the input.
 "AVG(A.(0:9))"       // Mean of the first ten rows of A
 ```
 
-**`AVG` is not `SUM` divided by `COUNT`.** `AVG` divides by how many values it
-could read as numbers; `COUNT` counts values that are not `nil`, including text.
-On a column holding `[10, nil, 30, "abc"]`, `SUM` is `40`, `COUNT` is `3`, and
-`AVG` is `20` — because the mean is taken over the two numbers, not over the
-three non-empty cells.
+**`AVG` is not always `SUM` divided by `COUNT`.** `AVG` and `SUM` also read text that holds a number; `COUNT` counts only numbers and dates. On a column holding `[10, nil, 30, "12", "abc"]`, `SUM` is `52`, `AVG` is `17.33…`, `COUNT` is `2` and `COUNTA` is `4`.
 
 ### COUNT
 
 Calculates the count of non-nil (non-empty) values in the input.
 
 ```
-"COUNT(A)"           // Count of non-nil values in column A
-"COUNT(A, B)"        // Count of non-nil values in columns A and B
-"COUNT(@.#)"         // Count of non-nil values in the current row
-"COUNT(@)"           // Count of all non-nil values in the entire table
+"COUNT(A)"           // Count of numbers and dates in column A
+"COUNTA(A)"          // Count of non-nil values in column A, text included
+"COUNTA(A, B)"       // Count of non-nil values in columns A and B
+"COUNTA(@.#)"        // Count of non-nil values in the current row
+"COUNTA(@)"          // Count of all non-nil values in the entire table
 ```
+
+### COUNTIF, SUMIF, AVGIF
+
+Count, add up or average the rows where a condition holds. The condition is an expression, written without quotes: quoted text in CCL is the text itself, so `'>0'` is not a condition.
+
+```
+"COUNTIF(A > 0)"                       // Rows where A is above 0
+"COUNTIF(A == 'apple')"                // Rows where A is apple
+"COUNTIF(A > 0 && B < 5)"              // Several conditions
+"COUNTIF(REGEX_MATCH(A, '^ap'))"       // A regular expression
+"SUMIF(A > 0, B)"                      // Add up B on the rows where A is above 0
+"SUMIF(A > 0, A)"                      // Add up the positive values of A
+"AVGIF(STARTSWITH(C, 'a'), B)"         // Average B on the rows where C starts with a
+```
+
+A condition reads each row the way `IF` does, so an empty cell is neither above 0 nor equal to `'apple'`, and it is different from `'apple'`: `COUNTIF(A != 'apple')` counts it. A condition that is empty on a row does not hold there. `SUMIF` and `AVGIF` read their values the way `SUM` and `AVG` do, and give 0 when no row holds. A condition that does not depend on the row holds for every row or none, so `COUNTIF(TRUE)` is the number of rows. A condition that is neither true nor false on a row, such as a column of words, is an error naming the row.
 
 ### MAX
 
@@ -984,7 +1033,7 @@ To calculate the average of all columns for each row:
 To count non-nil values in each row:
 
 ```
-"NEW('row_count') = COUNT(@.#)"
+"NEW('row_count') = COUNTA(@.#)"
 ```
 
 ## Differences from Excel
@@ -994,16 +1043,13 @@ CCL looks like an Excel formula, and most functions that share a name with an Ex
 | Excel | CCL | Difference |
 | --- | --- | --- |
 | `DAY(45000)` and the other date functions on a serial number | `DAY(d)` on a date | Excel counts dates as days since 1900; CCL reads a `time.Time` or a date string, and a number is an error |
-| `WEEKDAY(date)` | `WEEKDAY(d) + 1` | CCL counts Sunday as 0 through Saturday as 6; Excel's default counts Sunday as 1 through Saturday as 7 |
 | `EDATE(date, months)` | `DATEADD(d, n, 'month')` | Same month-end rule. CCL keeps the time of day, and returns a date rather than a serial number |
 | `DATEDIF(start, end, unit)` | `DATEDIFF(d1, d2, unit)` | CCL gives `d1 - d2`, with a fraction and a sign, in `'day'`, `'hour'`, `'minute'` or `'second'`. Excel gives whole units from `start` to `end` and is an error when `start` is later |
 | `AVERAGE(...)` | `AVG(...)` | Different name |
-| `COUNT(...)` | `COUNT(...)` | CCL counts every value that is not `nil`, text included, like Excel's `COUNTA`. Excel's `COUNT` counts numbers only |
+| `COUNT(...)` | `COUNT(...)` | The same over a range: numbers and dates count, and text does not, even when it reads as a number. A `NaN` is skipped. `COUNTA` counts every value that is not `nil` |
 | `MAX(...)` / `MIN(...)` | `MAX(...)` / `MIN(...)` | With no number to compare, CCL gives `nil`; Excel gives `0` |
-| `MOD(a, b)` | `MOD(a, b)` | CCL's result has the sign of `a`, Excel's the sign of `b`: `MOD(-7, 3)` is `-1` in CCL and `2` in Excel |
-| `TRIM(s)` | `TRIM(s)` | CCL strips the ends only; Excel also turns each run of spaces inside the text into one space |
+| `TRIM(s)` | `TRIM(s)` | CCL also strips tabs and line breaks from the ends; Excel strips only spaces. Inside the text both turn a run of spaces into one |
 | `FIND(find, within)` | `FIND(needle, haystack)` | Not found is `0` in CCL and an error in Excel. CCL has no start position argument |
-| `TEXT(value, format)` | `TEXT(x, fmt)` | The format is a Go `fmt` verb such as `'%.2f'`, not an Excel format code such as `"0.00"` |
 | Numbers | `int64` and `float64` | Excel stores every number as a double. CCL keeps integers as `int64` through `+`, `-`, `*`, `%`, `SUM`, `MIN` and `MAX`, so `7 % 3` is the integer `1`, an integer past 2^53 keeps every digit, and a result past the `int64` range is an error. `/` and `^` give a `float64` (see [Numeric Comparison and Arithmetic](#numeric-comparison-and-arithmetic)) |
 
 ## Sequence Functions
@@ -1199,6 +1245,8 @@ dt.AddColUsingCCL("average", "(A + B + C) / 3")
 dt.AddColUsingCCL("square", "A ^ 2")
 dt.AddColUsingCCL("cube", "A ^ 3")
 ```
+
+`TODAY()` and `NOW()` read the clock once per call, so every row of one `AddColUsingCCL`, every statement of one `ExecuteCCL`, and every batch of one `ApplyCCL` or `FilterWithCCL` read the same moment. Through `engine/ccl`, each evaluation reads the clock anew. They hold the local clock's date and time with no zone, the way CCL holds a date read from text without a zone, so `DATEDIFF(TODAY(), '2024-01-02', 'day')` is a whole number wherever the program runs. Compared with a date that has a real zone, such as `2024-01-02T00:00:00+08:00`, they are read as UTC.
 
 ### Date & Duration Examples
 

@@ -107,10 +107,25 @@ func integerArithmetic(op string, a, b int64) (any, error) {
 		if b == 0 {
 			return nil, fmt.Errorf("modulo by zero")
 		}
-		// Go defines MinInt64 % -1 as 0, so % cannot overflow.
-		return a % b, nil
+		// Go defines MinInt64 % -1 as 0, so % cannot overflow, and adding b to a
+		// remainder of the other sign stays between 0 and b.
+		r := a % b
+		if r != 0 && (r < 0) != (b < 0) {
+			r += b
+		}
+		return r, nil
 	}
 	return nil, fmt.Errorf("integer overflow: %d %s %d does not fit in an int64; write one operand as a decimal, such as %d.0, to compute in float64", a, op, b, a)
+}
+
+// floatModulo is a % b with the sign of b, as Excel's MOD gives it: the quotient
+// rounds down, so -7.5 % 2 is 0.5. math.Mod takes the sign of a.
+func floatModulo(a, b float64) float64 {
+	r := math.Mod(a, b)
+	if r != 0 && (r < 0) != (b < 0) {
+		r += b
+	}
+	return r
 }
 
 func addInt64(a, b int64) (int64, bool) {

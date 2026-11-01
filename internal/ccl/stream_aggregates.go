@@ -48,7 +48,7 @@ type streamingAggregate struct {
 }
 
 // NewStreamingAggregate returns the streaming form of the built-in aggregate
-// name, in any letter case: SUM, AVG, COUNT, MIN, MAX, VAR, VARP, STDEV or
+// name, in any letter case: SUM, AVG, COUNT, COUNTA, MIN, MAX, VAR, VARP, STDEV or
 // STDEVP. It returns false for any other name, MEDIAN included, which needs
 // every value at once, and for one of these names after a caller re-registered
 // it with RegisterAggregateFunction, whose arithmetic is then the caller's.
@@ -58,7 +58,7 @@ func NewStreamingAggregate(name string) (StreamingAggregate, bool) {
 	}
 	kind := strings.ToUpper(name)
 	switch kind {
-	case "SUM", "AVG", "COUNT", "MAX", "MIN", "VAR", "VARP", "STDEV", "STDEVP":
+	case "SUM", "AVG", "COUNT", "COUNTA", "MAX", "MIN", "VAR", "VARP", "STDEV", "STDEVP":
 	default:
 		return nil, false
 	}
@@ -113,7 +113,13 @@ func (s *streamingAggregate) Add(values []any) {
 			}
 		})
 	case "COUNT":
-		// forEachValue hands over everything but nil, which is all COUNT counts.
+		forEachValue([][]any{values}, func(val any) {
+			if countsAsNumber(val) {
+				s.count++
+			}
+		})
+	case "COUNTA":
+		// forEachValue hands over everything but nil, which is all COUNTA counts.
 		forEachValue([][]any{values}, func(val any) {
 			s.count++
 		})
@@ -168,7 +174,7 @@ func (s *streamingAggregate) Result() (any, error) {
 			return 0.0, nil
 		}
 		return s.sum / float64(s.count), nil
-	case "COUNT":
+	case "COUNT", "COUNTA":
 		return float64(s.count), nil
 	case "MAX":
 		if !s.found {

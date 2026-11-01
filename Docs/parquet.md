@@ -286,7 +286,7 @@ The `parquet` package provides CCL (Column Calculation Language) support for dir
 
 For example, on a file whose column `A` holds 1 to 2,500, `FilterWithCCL(ctx, path, "A > AVG(A)")` keeps the 1,250 rows from 1,251 on, and `"# == 0"` keeps the first row only. In `ApplyCCL`, each statement sees the file as the statements before it leave it, so `NEW('c') = A - AVG(A); NEW('d') = ['c'] / SUM(['c'])` divides by the sum of the new column.
 
-The aggregates computed this way are `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`, `VAR`, `VARP`, `STDEV` and `STDEVP`. Before any row is evaluated, the file is read again for them, keeping only running totals, so memory still holds one batch at a time:
+The aggregates computed this way are `SUM`, `AVG`, `COUNT`, `COUNTA`, `MIN`, `MAX`, `VAR`, `VARP`, `STDEV` and `STDEVP`. Before any row is evaluated, the file is read again for them, keeping only running totals, so memory still holds one batch at a time:
 
 - each extra read feeds one argument of an aggregate, and each column of a range or of `@` is an argument of its own;
 - `VAR`, `VARP`, `STDEV` and `STDEVP` read each argument twice;
@@ -305,7 +305,7 @@ A part that cannot be computed, such as `STDEV(A)` over a single value or `A.500
 
 Anything else that reads beyond the current row is computed by reading the whole of the columns the expression reads, and only those, into memory, and evaluating the expression the way `AddColUsingCCL` and `ExecuteCCL` do on a loaded table, so its answer is the table's, and it fails where the table fails, for the same reason:
 
-- `MEDIAN`, or an aggregate registered with `RegisterAggregateFunction` from `engine/ccl`, including one registered under a built-in name;
+- `MEDIAN`, `COUNTIF`, `SUMIF`, `AVGIF`, or an aggregate registered with `RegisterAggregateFunction` from `engine/ccl`, including one registered under a built-in name;
 - a row reference computed from the current row, such as `A.(# - 1)`;
 - a column range inside an expression an aggregate is computed over, such as `COUNT(IF(A > 0, A:B, 0))`;
 - a sequence function anywhere but as the whole expression: inside another sequence function or an aggregate, such as `LAG(CUMSUM(A), 1)` or `SUM(CUMSUM(A))`, or inside another expression, such as `CUMSUM(A) + 1`, which fails here as it fails on a loaded table.

@@ -99,14 +99,14 @@ Adding or subtracting a number of days to a date SHALL preserve sub-hour precisi
 
 ### Requirement: A format that does not fit is an error
 
-`TOSTR`／`TEXT` 的兩引數形式 SHALL 在格式與值不相符時回報錯誤，SHALL NOT 把 `fmt` 的錯誤標記（`%!d(...)`、`%!(NOVERB)`）當成結果寫進儲存格。原本就出現在值的文字或格式字串裡的相同文字 SHALL NOT 被當成錯誤標記。
+`TEXT` 的兩引數形式 SHALL 在格式與值不相符時回報錯誤，SHALL NOT 把 `fmt` 的錯誤標記（`%!d(...)`、`%!(NOVERB)`）當成結果寫進儲存格。原本就出現在值的文字或格式字串裡的相同文字 SHALL NOT 被當成錯誤標記。
 
 #### Scenario: A verb that does not fit
-- **WHEN** `TOSTR(1.5, '%d')`
+- **WHEN** `TEXT(1.5, '%d')`
 - **THEN** 回報錯誤，指出格式與值的型別
 
 #### Scenario: Text that only looks like a marker
-- **WHEN** 對值 `Item (MISSING)` 求值 `TOSTR(A, '%s')`，或求值 `TOSTR(3, 'n=%v (MISSING)')`
+- **WHEN** 對值 `Item (MISSING)` 求值 `TEXT(A, '%s')`，或求值 `TEXT(3, 'n=%v (MISSING)')`
 - **THEN** 分別得到 `Item (MISSING)` 與 `n=3 (MISSING)`，不回報錯誤
 
 ### Requirement: Every Go numeric type is a number
@@ -242,7 +242,7 @@ Every numeric operation not covered by the integer rules SHALL compute in `float
 A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` or a statement of `ExecuteCCL` SHALL hold one kind of number: when the numbers among its values include a `float64` or `float32`, every value of a Go integer type whose magnitude is at most 2^53 SHALL become the `float64` of the same value. An integer of larger magnitude SHALL keep its type and value. A column whose numbers are all integers, and every value that is not a number, SHALL be left as computed.
 
 #### Scenario: A literal fallback in a float column
-- **WHEN** 欄 `A` 為 `["19.5", "abc", "30"]`，`AddColUsingCCL("r", "COALESCE(TONUM(A), 0)")`
+- **WHEN** 欄 `A` 為 `["19.5", "abc", "30"]`，`AddColUsingCCL("r", "COALESCE(VALUE(A), 0)")`
 - **THEN** `r` 是 `float64` 的 `[19.5, 0, 30]`
 
 #### Scenario: Integers stay integers
@@ -261,25 +261,9 @@ A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUs
 - **WHEN** 欄 `A` 為 `int16` 的 `[1, 2]`，`AddColUsingCCL("b", "A")`
 - **THEN** `b` 仍是 `int16` 的 `[1, 2]`
 
-### Requirement: DATEPART gives one part of a date
-
-`DATEPART(d, unit)` SHALL return, as a `float64`, the year, month, day of the month, hour, minute or second of `d` for a unit of `year`, `month`, `day`, `hour`, `minute` or `second`, singular or plural and in any letter case, read in `d`'s own time zone, dropping any fraction of a second. `d` SHALL be a `time.Time` or a string Insyra's date parser reads as a date. Any other unit, a `d` that is not a date, a unit that is not a string, or a number of arguments other than two SHALL be an error.
-
-#### Scenario: Each part
-- **WHEN** 欄 `A` 存 `'2024-03-09T06:07:08Z'`，求值 `DATEPART(A, 'year')`、`'month'`、`'day'`、`'hour'`、`'minute'`、`'second'`
-- **THEN** 分別得到 2024、3、9、6、7、8
-
-#### Scenario: The date's own time zone
-- **WHEN** 欄 `B` 存 UTC+8 的 2024-12-31 23:59:58.999，求值 `DATEPART(B, 'hour')` 與 `DATEPART(B, 'second')`
-- **THEN** 分別得到 23 與 58
-
-#### Scenario: An unknown unit
-- **WHEN** 求值 `DATEPART(A, 'week')`
-- **THEN** 回傳錯誤
-
 ### Requirement: DAY, HOUR, MINUTE and SECOND take a part of a date
 
-`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL return, as a `float64`, the day of the month, hour, minute or second of a `time.Time` or of a string Insyra's date parser reads as a date, read in the date's own time zone and dropping any fraction of a second, giving what `DATEPART(d, 'day')`, `'hour'`, `'minute'` and `'second'` give. `DAYOFMONTH` SHALL keep giving what `DAY` gives.
+`DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL return, as a `float64`, the day of the month, hour, minute or second of a `time.Time` or of a string Insyra's date parser reads as a date, read in the date's own time zone and dropping any fraction of a second, giving what `DATEPART(d, 'day')`, `'hour'`, `'minute'` and `'second'` give. `DAY` SHALL keep giving what `DAY` gives.
 
 #### Scenario: Parts of a date
 - **WHEN** 欄 `A` 存 UTC 的 2024-01-02 06:30:15.999，求值 `DAY(A)`、`HOUR(A)`、`MINUTE(A)`、`SECOND(A)`
@@ -328,3 +312,101 @@ A `time.Duration`, a string `time.ParseDuration` accepts, or a number given to `
 #### Scenario: A number and unreadable text
 - **WHEN** `DUR(36, 'hour')` and `DUR('soon', 'hour')` are evaluated
 - **THEN** each is an error naming the value
+### Requirement: A formula using DATEPART is told what to write
+
+`DATEPART`, with any arguments, SHALL be an error that says it was removed and names `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE` and `SECOND`.
+
+#### Scenario: A formula still using it
+- **WHEN** `DATEPART(A, 'hour')` is evaluated
+- **THEN** the error says it was removed and names `HOUR(d)`
+### Requirement: A removed function name says what to write
+
+`TONUM`, `TOSTR`, `SUBSTR` and `DAYOFMONTH`, with any arguments, SHALL be an error that says the name was removed and names `VALUE`, `TEXT`, `MID` and `DAY` respectively.
+
+#### Scenario: A formula still using one
+- **WHEN** `TONUM(A)` is evaluated
+- **THEN** the error says it was removed and to use `VALUE`
+### Requirement: A remainder has the sign of the divisor
+
+`MOD(a, b)` and `a % b` SHALL give the remainder with the sign of `b`, as Excel's `MOD` does, for integers and floats alike. They SHALL give the same answer as each other.
+
+#### Scenario: Signs that differ
+- **WHEN** `MOD(-7, 3)`, `-7 % 3`, `MOD(7, -3)` and `MOD(-7.5, 2)` are evaluated
+- **THEN** they give 2, 2, -2 and 0.5
+### Requirement: WEEKDAY counts Sunday as one
+
+`WEEKDAY(d)` SHALL return 1 for Sunday through 7 for Saturday, Excel's default.
+
+#### Scenario: Sunday and Saturday
+- **WHEN** `WEEKDAY('2024-03-10')` and `WEEKDAY('2024-03-16')` are evaluated
+- **THEN** they give 1 and 7
+
+### Requirement: TRIM collapses runs of spaces
+
+`TRIM(s)` SHALL strip white space from both ends and turn each run of the space character inside the text into one space. Other white space inside the text SHALL stay.
+
+#### Scenario: Spaces inside
+- **WHEN** `TRIM('  a   b  ')` is evaluated
+- **THEN** it gives `'a b'`
+
+### Requirement: COUNT counts numbers and dates, COUNTA counts values
+
+`COUNT` SHALL count numbers and dates, and SHALL NOT count nil, text (including text that reads as a number), a bool or `NaN`. `COUNTA` SHALL count every value that is not nil. The streaming forms SHALL give the same answers.
+
+#### Scenario: A mixed column
+- **WHEN** a column holds `[1, 2.5, "4", "text", true, nil]`
+- **THEN** `COUNT` gives 2 and `COUNTA` gives 5
+### Requirement: TEXT and FORMAT_DATE read Go and Excel formats
+
+`TEXT` and `FORMAT_DATE` SHALL read a format written the Go way or the Excel way, deciding from the format alone: a Go `fmt` verb is Go; a digit from 1 to 9 is a Go date layout; `0` or `#` with no letters is an Excel number code; other text with letters is a date format.
+
+#### Scenario: Both spellings
+- **WHEN** `TEXT(1.5, '%.2f')`, `TEXT(1.5, '0.00')`, `FORMAT_DATE(d, '2006-01-02')`, `FORMAT_DATE(d, 'yyyy-mm-dd')`, `TEXT(d, '15:04')` and `TEXT(d, 'hh:mm')` are evaluated for 2024-03-09 14:05
+- **THEN** they give `1.50`, `1.50`, `2024-03-09`, `2024-03-09`, `14:05` and `14:05`
+
+### Requirement: An Excel number code rounds half away from zero
+
+An Excel number code SHALL round half away from zero on the shortest decimal text of the number. Go verbs SHALL keep their own rounding.
+
+#### Scenario: Ties
+- **WHEN** `TEXT(2.5, '0')` and `TEXT(1.005, '0.00')` are evaluated
+- **THEN** they give `3` and `1.01`
+
+### Requirement: A format that cannot be read is an error
+
+A date format holding an ASCII letter that is not a code, or no code at all, SHALL be an error naming it, and SHALL NOT come back as its own text. A value of the other kind than the format SHALL be an error. Under an Excel code or a date format, a nil value SHALL give nil.
+
+#### Scenario: A typo
+- **WHEN** `FORMAT_DATE(d, 'yyyy-qq')` is evaluated
+- **THEN** the error names `qq`
+
+#### Scenario: The wrong kind of value
+- **WHEN** `TEXT(1.5, 'yyyy')` is evaluated
+- **THEN** it is an error saying the value is not a date
+### Requirement: VALUE reads numbers as a spreadsheet displays them
+
+`VALUE` and `TONUM` SHALL read text with a trailing percent sign as that number divided by 100, and SHALL read commas that group digits in threes as thousands separators, with or without decimals. Text with misplaced commas, or a percent sign on anything but a plain decimal, SHALL give an empty result.
+
+#### Scenario: Percent and thousands
+
+- **WHEN** the text is `10%`, `12.3%` or `1,234.5`
+- **THEN** `VALUE` gives 0.1, 0.123 and 1234.5
+
+#### Scenario: Misplaced commas
+
+- **WHEN** the text is `1,23` or `1234,567`
+- **THEN** `VALUE` gives an empty result
+### Requirement: ROUND reads a number as it is written
+
+`ROUND` SHALL round half away from zero on the shortest decimal text of its number, not on the binary value, and SHALL keep `NaN` and infinities as they are. A result of zero SHALL NOT be negative.
+
+#### Scenario: A number just below its written value in binary
+
+- **WHEN** an expression is `ROUND(1.005, 2)`
+- **THEN** the result is 1.01
+
+#### Scenario: Negative digits
+
+- **WHEN** an expression is `ROUND(1250, -2)`
+- **THEN** the result is 1300
+

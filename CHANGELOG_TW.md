@@ -92,7 +92,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL 字串字面值裡連寫兩個引號代表一個引號，跟 Excel 一樣：`'it''s'` 是 `it's`，`"say ""hi"""` 是 `say "hi"`。以前字串裡沒辦法放跟外層相同的引號。連續兩個引號以前一定編譯失敗，所以原本能編譯的運算式意思都不變。中括號裡的欄名也適用同樣規則（`['O''Brien']`），statement mode 把腳本切成多個敘述時也照這個規則判斷。反斜線仍然是一般字元
 - **BREAKING**：CCL 的 `DATEADD` 以月或年位移時，目標月份如果沒有那一天，就停在該月最後一天，跟 Excel 的 `EDATE` 和 pandas 的 `DateOffset` 一樣：`DATEADD('2024-01-31', 1, 'month')` 是 `2024-02-29`，`DATEADD('2024-02-29', 1, 'year')` 是 `2025-02-28`。以前會把多出來的天數推進下個月，得到 `2024-03-02` 與 `2025-03-01`。以日、時、分、秒位移的結果不變
 - **BREAKING**：CCL 的整數保持精確。只由數字組成的字面值（例如 `1`、`-7`）是 `int64`。兩個運算元都是整數時，`+`、`-`、`*`、`%` 與負號都以 `int64` 計算，比較也精確；`SUM`、`MIN`、`MAX` 用到的值全是整數時回傳 `int64`，`MOD` 跟 `%` 一致，列號 `#` 也是 `int64`。以前所有數字都先轉成 `float64`，所以整數欄算過 `A * 1` 就變成 `float64` 欄，`int64(9007199254740993) + 0` 會得到 `9007199254740992`，而且不報錯。現在整數結果超出 `int64` 範圍會回傳錯誤。`/`、`^`、`AVG`、`COUNT`、其他數學與序列函式，以及含小數、數字字串或布林值的運算，仍然回傳 `float64`。CCL 算出的欄位只會有一種數字型別，跟 pandas 一欄只有一種 dtype 一樣：欄裡只要有小數，所有 `float64` 能精確表示的整數都會轉成 `float64`，所以 `COALESCE(TONUM(A), 0)` 不論備用值寫 `0` 或 `0.0`，都是 `float64` 欄。超過 2^53 的整數保留原本的位數，整欄都是整數時維持原樣，文字、布林值、`nil` 與日期都不會被改動。`TOSTR(A, '%.2f')` 現在可以用在整數上，會把整數當成相等的 `float64` 來格式化。`parquet.ApplyCCL` 中，新值都是整數但放不進原欄位型別時，欄位會改成 `int64`，不再是 `float64`
-- CCL 新增 `DATEPART(d, unit)`，取出日期的某個部分並回傳數字：`'year'`、`'month'`、`'day'`、`'hour'`、`'minute'` 或 `'second'`，以日期本身的時區來算。它補齊了 `DATEADD`／`DATEDIFF` 這一組，結果與 `YEAR`、`MONTH`、`DAY`、`HOUR`、`MINUTE`、`SECOND` 相同
+- **BREAKING**：移除 CCL 的 `DATEPART`。`DAY`、`HOUR`、`MINUTE`、`SECOND` 現在都能讀日期，它只是用比較長的名字重複這些函式和 `YEAR`、`MONTH`。把 `DATEPART(d, 'hour')` 改寫成 `HOUR(d)`，其他單位也一樣；還在用 `DATEPART` 的公式會收到說明這點的錯誤。它在 v0.3.6 已標為棄用。
 - **BREAKING**：`engine/ccl.CCLNode` 改成不透明型別，只有這個套件的編譯與節點函式能產生它。以前它是 `any` 的別名，所以 `ccl.Evaluate("A + B", ctx)`、`ccl.Evaluate(42, ctx)` 都能編譯，要到執行時才失敗，錯誤是 `invalid node`。先編譯再把節點傳回去的程式碼不受影響；原本拿節點和 `nil` 比較的地方，改成和 `ccl.CCLNode{}` 比較，`Evaluate`、`EvaluateStatement` 與 `Bind` 遇到這個零值會回傳錯誤。`CompiledStatement` 改成獨立的 struct，`Node` 與 `Src` 欄位不變。
 - **BREAKING**：`engine/ccl.MapContext` 不再有公開欄位。以前直接改欄位會繞過檢查：`ctx.CurrentRowIdx = 99` 會讓欄位讀成 `nil` 而且不報錯，`SetRowIndex(99)` 則會拒絕；在 `ctx.Data` 裡加一欄，那一欄永遠讀成 `nil`。請用 `NewMapContext` 建立、用 `SetRowIndex` 換列；`Context` 的方法全部都還在。
 - `engine/ccl.Context` 是程式把 CCL 套用到自己資料時要實作的介面，它的方法集從此固定：CCL 日後新增的能力會以獨立的選用介面提供，今天寫好的實作不會因此編譯失敗。套件說明寫明了這點，也有測試把方法釘在現有的 15 個。
@@ -137,6 +137,16 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `engine/ring`：`PopFront`、`PopBack` 現在會把被移除的格子設回零值，所以放指標、字串或 slice 的 Ring 不會再讓已移除元素指向的資料無法回收；`Clear` 改成清空既有的底層陣列，不再配置新的（推 64 個再 `Clear`：修改前 188 ns、配置一次 512 位元組，修改後 138 ns、不配置；64 次推入與取出因為清格子多花約 7%）。先進先出與後進先出的順序、容量與零值 Ring 的行為不變（[#588](https://github.com/HazelnutParadise/insyra/issues/588)）。
 - `DataList` 與 `DataTable` 新增 `String()`，內容就是 `Show` 印的畫面，但不帶顏色、固定 80 字寬，所以 `fmt.Println(dt)`、`%v`、`%s` 會直接印出表格或清單，不再是一串內部欄位。格子裡裝的若是另一張表或清單，`Show` 與 `String` 都改顯示成 `<DataTable>` 或 `<DataList>`，表格裝著自己時也不會無窮遞迴。
 - CCL 新增 `DUR(x, unit)`，把時間長度換算成天、時、分或秒：`DUR('36h', 'day')` 是 `1.5`，`DUR('1h30m', 'minute')` 是 `90`，`DUR(A - B, 'hour')` 跟 `DATEDIFF(A, B, 'hour')` 一樣。自從 `DAY`、`HOUR`、`MINUTE`、`SECOND` 改成讀日期之後，時間長度字串就沒辦法換算了。除了 Go 的單位，也認得 `d` 和 `w`；空值維持空值；數字和看不懂的文字會回傳錯誤並指出是哪個值。這四個函式收到時間長度時，錯誤訊息改成指向 `DUR`；收到空值時會說明值是空的，以前會說那是數字。
+- **BREAKING**：CCL 一個功能只留一個名字：移除 `TONUM`、`TOSTR`、`SUBSTR`、`DAYOFMONTH`，改用功能相同的 `VALUE`、`TEXT`、`MID`、`DAY`。還在用舊名的公式會收到錯誤，指出該怎麼寫。它們在 v0.3.6 已標為棄用。
+- **BREAKING**：CCL 的 `MOD` 和 `%` 改成餘數跟著第二個數的正負號，跟 Excel、Python、R 一樣：`MOD(-7, 3)` 和 `-7 % 3` 從 `-1` 變成 `2`。只有正數的公式答案不變。第一個數是負數、第二個數是正數，又想保留舊結果時，寫成 `-MOD(-a, b)`。
+- **BREAKING**：CCL 的 `WEEKDAY`、`TRIM`、`COUNT` 改成跟 Excel 一樣。`WEEKDAY` 從週日 0～週六 6 改成週日 1～週六 7，要舊的數字就寫 `WEEKDAY(d) - 1`。`TRIM` 也會把文字中間連續的空白縮成一個。`COUNT` 只數數字和日期，不數文字（包含看起來像數字的文字）、布林值和 `NaN`；新增的 `COUNTA` 數所有非 `nil` 的值，也就是 `COUNT` 原本的行為，所以要數儲存格請寫 `COUNTA(@)`。
+- CCL 的 `TEXT` 和 `FORMAT_DATE` 同時認 Go 和 Excel 兩種格式寫法：`TEXT(x, '0.00')` 和 `TEXT(x, '%.2f')` 都得到 `1.50`，`FORMAT_DATE(d, 'yyyy-mm-dd')` 和 `FORMAT_DATE(d, '2006-01-02')` 都得到 `2024-03-09`。`TEXT` 也能處理日期。Excel 的數字格式跟 Excel 一樣四捨五入，所以 `TEXT(2.5, '0')` 是 `3`，`TEXT(2.5, '%.0f')` 是 `2`。日期格式裡有不是代碼的字母時，現在會回傳錯誤；以前 `FORMAT_DATE(d, 'yyyy-qq')` 會把格式字串原樣傳回。代碼清單在 `Docs/CCL.md`。
+- CCL：新增 `COUNTIF(條件)`、`SUMIF(條件, 值)`、`AVGIF(條件, 值)`，計算條件成立的列數、總和與平均。條件是不加引號的運算式，例如 `COUNTIF(A > 0)`，所以裡面可以用 `&&`、`||` 和 `REGEX_MATCH` 這類函式。
+- **BREAKING**：`ReadExcelSheet` 和 `ReadExcel` 改成像讀 CSV 一樣判斷欄位型別，不再把每格都讀成文字：`1` 變成 `int64`，`1.5` 變成 `float64`，`007` 這類代碼會變成 `7`。在最後加上 `rawStrings` 參數並設為 `true` 可以還原舊結果，`isr.Excel_inOpts.RawStrings` 和 CLI `load` 的 `infer false` 也可以。
+- CCL：新增 `DATE(年, 月, 日)`、`TODAY()`、`NOW()`。`TODAY` 和 `NOW` 每次呼叫只讀一次本機時鐘，所以每一列拿到同一個時間；它們不帶時區，所以 `DATEDIFF(TODAY(), '2024-01-02', 'day')` 會是整數。
+- CCL：`VALUE` 看得懂百分比和千分位逗號：`VALUE('10%')` 是 0.1，`VALUE('1,234.5')` 是 1234.5，以前這兩個都是空值。
+- CCL：新增 `IFERROR(值, 出錯時的值)`，`值` 算不出來的列會改用 `出錯時的值`，所以 `IFERROR(A / B, 0)` 在 B 是 0 時不會讓整欄失敗。函式打錯或欄位不存在還是會報錯。
+- CCL：`ROUND` 改成看數字寫出來的樣子來四捨五入，所以 `ROUND(1.005, 2)` 是 1.01，以前是 1，現在跟 Excel 和 `TEXT` 一致。只有剛好在這種邊界上的數字結果會變，`ROUND(-0.4)` 也不再是負零。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。

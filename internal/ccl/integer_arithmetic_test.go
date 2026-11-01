@@ -45,7 +45,12 @@ func TestIntegerLiteralsAreInt64(t *testing.T) {
 		{"7 - 10", int64(-3)},
 		{"6 * 7", int64(42)},
 		{"7 % 3", int64(1)},
-		{"-7 % 3", int64(-1)},
+		{"-7 % 3", int64(2)},
+		{"7 % -3", int64(-2)},
+		{"-7 % -3", int64(-1)},
+		{"-6 % 3", int64(0)},
+		{"-7.5 % 2", 0.5},
+		{"7.5 % -2", -0.5},
 		{"1 + 2.0", 3.0},
 		{"7 / 2", 3.5},
 		{"6 / 3", 2.0},
@@ -236,7 +241,12 @@ func TestSumMinMaxModKeepIntegers(t *testing.T) {
 		// because the result is a float64 anyway.
 		{"SUM(F)", float64(1 << 63)},
 		{"MOD(7, 3)", int64(1)},
-		{"MOD(-7, 3)", int64(-1)},
+		{"MOD(-7, 3)", int64(2)},
+		{"MOD(7, -3)", int64(-2)},
+		{"MOD(-7, -3)", int64(-1)},
+		{"MOD(-6, 3)", int64(0)},
+		{"MOD(-7.5, 2)", 0.5},
+		{"MOD(7.5, -2)", -0.5},
 		{"MOD(A, 10)", int64(3)},
 		{"MOD(7.5, 2)", 1.5},
 		{"MOD(nil, 3)", int64(0)},
@@ -297,11 +307,11 @@ func TestTOSTRFormatsIntegers(t *testing.T) {
 		expr string
 		want string
 	}{
-		{"TOSTR(50, '%.1f')", "50.0"},
-		{"TOSTR(A, '%.2f')", "42.00"},
-		{"TOSTR(A, '%d items')", "42 items"},
-		{"TOSTR(A * 2, '%05d')", "00084"},
-		{"TOSTR(A)", "42"},
+		{"TEXT(50, '%.1f')", "50.0"},
+		{"TEXT(A, '%.2f')", "42.00"},
+		{"TEXT(A, '%d items')", "42 items"},
+		{"TEXT(A * 2, '%05d')", "00084"},
+		{"TEXT(A)", "42"},
 	} {
 		got, err := evalOne(t, ctx, c.expr)
 		if err != nil {
@@ -312,7 +322,7 @@ func TestTOSTRFormatsIntegers(t *testing.T) {
 			t.Errorf("%s = %q, want %q", c.expr, got, c.want)
 		}
 	}
-	if got, err := evalOne(t, ctx, "TOSTR(A, '%s')"); err == nil {
-		t.Errorf("TOSTR(A, '%%s') = %q, want an error", got)
+	if got, err := evalOne(t, ctx, "TEXT(A, '%s')"); err == nil {
+		t.Errorf("TEXT(A, '%%s') = %q, want an error", got)
 	}
 }
