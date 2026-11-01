@@ -7,6 +7,25 @@ import (
 
 	"github.com/HazelnutParadise/insyra/internal/palette"
 	"golang.org/x/image/colornames"
+	"gonum.org/v1/plot"
+)
+
+// The chart palette and the brand's background colour, usable in a config's
+// Colors and BackgroundColor fields. They are plain strings, so they mix with
+// your own values. Without Colors, series take the first nine in this order;
+// ColorGray is for a series that folds the rest into "Other". ColorCream is too
+// pale to be a series and is meant for BackgroundColor.
+const (
+	ColorBlue       = palette.Blue
+	ColorOrange     = palette.Orange
+	ColorRed        = palette.Red
+	ColorTeal       = palette.Teal
+	ColorPurple     = palette.Purple
+	ColorPink       = palette.Pink
+	ColorGreen      = palette.Green
+	ColorBrightBlue = palette.BrightBlue
+	ColorGray       = palette.Gray
+	ColorCream      = palette.Cream
 )
 
 // seriesColor is the default colour of series i in every chart: the palette
@@ -40,6 +59,21 @@ func readColors(funcName string, values []string) (seriesColors, error) {
 		colors[i] = c
 	}
 	return colors, nil
+}
+
+// newPlot starts a chart with the background a config asks for; empty keeps
+// gonum's white.
+func newPlot(funcName, background string) (*plot.Plot, error) {
+	plt := plot.New()
+	if background == "" {
+		return plt, nil
+	}
+	c, ok := parseColor(background)
+	if !ok {
+		return nil, chartError(funcName, "BackgroundColor is %q; use #RGB, #RRGGBB, #RRGGBBAA or a CSS colour name", background)
+	}
+	plt.BackgroundColor = c
+	return plt, nil
 }
 
 // parseColor reads #RGB, #RRGGBB, #RRGGBBAA or a CSS colour name in any case.

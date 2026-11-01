@@ -117,3 +117,83 @@ func TestAnUnreadableColourIsAnError(t *testing.T) {
 		})
 	}
 }
+
+// The constants are the palette, in order, so a config can name them.
+func TestColorConstantsAreThePalette(t *testing.T) {
+	want := []string{ColorBlue, ColorOrange, ColorRed, ColorTeal, ColorPurple, ColorPink, ColorGreen, ColorBrightBlue, ColorGray}
+	for i, c := range want {
+		if got := hexOf(seriesColor(i)); got != c {
+			t.Errorf("series %d is %s; the constant says %s", i+1, got, c)
+		}
+	}
+	if _, ok := parseColor(ColorCream); !ok {
+		t.Errorf("ColorCream %q does not parse", ColorCream)
+	}
+}
+
+func TestBackgroundColor(t *testing.T) {
+	quietFatal(t)
+	a := insyra.NewDataList(1.0, 2.0, 3.0).SetName("a")
+	grid, err := insyra.ReadSlice2D([][]float64{{1, 2}, {3, 4}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const bg = ColorCream
+	calls := map[string]func(string) (*gonumplot.Plot, error){
+		"CreateBarChart": func(c string) (*gonumplot.Plot, error) { return CreateBarChart(BarChartConfig{BackgroundColor: c}, a) },
+		"CreateLineChart": func(c string) (*gonumplot.Plot, error) {
+			return CreateLineChart(LineChartConfig{BackgroundColor: c}, a)
+		},
+		"CreateStepChart": func(c string) (*gonumplot.Plot, error) {
+			return CreateStepChart(StepChartConfig{BackgroundColor: c}, a)
+		},
+		"CreateScatterChart": func(c string) (*gonumplot.Plot, error) {
+			return CreateScatterChart(ScatterChartConfig{BackgroundColor: c}, ScatterSeries{Name: "a", X: a, Y: a})
+		},
+		"CreateHistogram": func(c string) (*gonumplot.Plot, error) {
+			return CreateHistogram(HistogramConfig{BackgroundColor: c}, a)
+		},
+		"CreateFunctionPlot": func(c string) (*gonumplot.Plot, error) {
+			return CreateFunctionPlot(FunctionPlotConfig{BackgroundColor: c, XMax: 1}, func(x float64) float64 { return x })
+		},
+		"CreateHeatmapChart": func(c string) (*gonumplot.Plot, error) {
+			return CreateHeatmapChart(HeatmapChartConfig{BackgroundColor: c}, grid)
+		},
+	}
+	for fn, call := range calls {
+		t.Run(fn, func(t *testing.T) {
+			plt, err := call(bg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := hexOf(plt.BackgroundColor); got != bg {
+				t.Errorf("background is %s; want %s", got, bg)
+			}
+			if svg := renderSVG(t, plt); !strings.Contains(svg, bg) {
+				t.Errorf("the saved chart does not use %s", bg)
+			}
+
+			plt, err = call("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := hexOf(plt.BackgroundColor); got != "#FFFFFF" {
+				t.Errorf("default background is %s; want white", got)
+			}
+
+			insyra.ClearErrors()
+			plt, err = call("nope")
+			if err == nil || plt != nil {
+				t.Fatalf("chart %v, error %v; want a nil chart and an error", plt, err)
+			}
+			for _, want := range []string{"gplot: " + fn, "BackgroundColor", `"nope"`} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not mention %q", err, want)
+				}
+			}
+			if recs := insyra.GetAllErrors(); len(recs) != 0 {
+				t.Errorf("the failure was also logged: %+v", recs)
+			}
+		})
+	}
+}

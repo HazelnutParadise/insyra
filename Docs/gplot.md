@@ -105,6 +105,7 @@ Creates a bar chart for comparing values across categories. Several lists are dr
 func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*plot.Plot, error)
 
 type BarChartConfig struct {
+    BackgroundColor string // Optional: chart background (see Series colours; default white)
     Title     string    // Chart title
     XAxis     []string  // Optional: category labels; omitted, the bars are numbered 1, 2, 3, ...
     XAxisName string    // Optional: X-axis label
@@ -180,6 +181,7 @@ Creates a histogram to visualize data distribution.
 func CreateHistogram(config HistogramConfig, data insyra.IDataList) (*plot.Plot, error)
 
 type HistogramConfig struct {
+    BackgroundColor string // Optional: chart background (see Series colours; default white)
     Title     string // Chart title
     XAxisName string // Optional: X-axis label
     YAxisName string // Optional: Y-axis label
@@ -223,6 +225,7 @@ Creates a line chart for visualizing trends. Each list is one line, named after 
 func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*plot.Plot, error)
 
 type LineChartConfig struct {
+    BackgroundColor string // Optional: chart background (see Series colours; default white)
     Title     string    // Chart title
     XAxis     []float64 // X-axis data
     XAxisName string    // Optional: X-axis label
@@ -261,6 +264,7 @@ Creates a scatter chart for correlation analysis. `plot.CreateScatterChart` take
 func CreateScatterChart(config ScatterChartConfig, series ...ScatterSeries) (*plot.Plot, error)
 
 type ScatterChartConfig struct {
+    BackgroundColor string // Optional: chart background (see Series colours; default white)
     Title     string // Chart title
     XAxisName string // Optional: X-axis label
     YAxisName string // Optional: Y-axis label
@@ -313,6 +317,7 @@ Creates a step chart for data that changes at discrete intervals. Each list is o
 func CreateStepChart(config StepChartConfig, data ...insyra.IDataList) (*plot.Plot, error)
 
 type StepChartConfig struct {
+    BackgroundColor string // Optional: chart background (see Series colours; default white)
     Title     string    // Chart title
     XAxis     []float64 // X-axis data
     XAxisName string    // Optional: X-axis label
@@ -357,6 +362,7 @@ Plots mathematical functions.
 func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) float64) (*plot.Plot, error)
 
 type FunctionPlotConfig struct {
+    BackgroundColor string // Optional: chart background (see Series colours; default white)
     Title     string  // Chart title
     XAxisName string  // X-axis label
     YAxisName string  // Y-axis label
@@ -414,6 +420,7 @@ Creates a heatmap for matrix visualization. Row *i* of the table is row *i* of t
 func CreateHeatmapChart(config HeatmapChartConfig, data insyra.IDataTable) (*plot.Plot, error)
 
 type HeatmapChartConfig struct {
+    BackgroundColor string // Optional: chart background (see Series colours; default white)
     Title     string    // Chart title
     XAxis     []float64 // Optional: X-axis coordinates
     YAxis     []float64 // Optional: Y-axis coordinates
@@ -463,11 +470,15 @@ Every chart colours series *i* from the palette `plot` uses, so a series is the 
 The bar, line, step and scatter configs have a `Colors` field that replaces the palette, series *i* taking value *i*; a short list repeats, as in `plot`. Use it to give an "Other" series the gray when it is not the ninth:
 
 ```go
-config := gplot.BarChartConfig{Colors: []string{"#2550B0", "#EE9A2C", "#7F8C8D"}}
+config := gplot.BarChartConfig{Colors: []string{gplot.ColorBlue, gplot.ColorOrange, gplot.ColorGray}}
 plt, err := gplot.CreateBarChart(config, north, south, other)
 ```
 
-A value is `#RGB`, `#RRGGBB`, `#RRGGBBAA` or a CSS colour name such as `green`, in any case; anything else is an error naming the value. `rgb()` and `hsl()` strings, which `plot` passes through to the browser, are not read here. Error bars stay black. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
+A value is `#RGB`, `#RRGGBB`, `#RRGGBBAA` or a CSS colour name such as `green`, in any case; anything else is an error naming the value. `rgb()` and `hsl()` strings, which `plot` passes through to the browser, are not read here. Error bars stay black.
+
+The palette has names: `ColorBlue`, `ColorOrange`, `ColorRed`, `ColorTeal`, `ColorPurple`, `ColorPink`, `ColorGreen`, `ColorBrightBlue` and `ColorGray`, in series order. `plot` has the same constants. They are plain strings, so they mix with your own values.
+
+`ColorCream`, `#FFF4E6`, is the brand's background colour. It is too pale to be a series, so it is not in the palette; use it for `BackgroundColor`, which every config has and which reads a value the way `Colors` does. On cream, orange, pink, green and bright blue fall below 3:1 contrast, so thin lines are harder to read than on white. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
 
 ## A series that cannot be drawn fails the chart
 

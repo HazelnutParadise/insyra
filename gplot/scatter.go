@@ -16,10 +16,11 @@ import (
 
 // ScatterChartConfig defines the configuration for a multi-series scatter chart.
 type ScatterChartConfig struct {
-	Title     string   // Title of the chart.
-	XAxisName string   // Optional: X-axis name.
-	YAxisName string   // Optional: Y-axis name.
-	Colors    []string // Optional: Series colours in place of the shared palette, as #RGB, #RRGGBB, #RRGGBBAA or a CSS name. A short list repeats.
+	BackgroundColor string   // Optional: Background of the chart, read like a value of Colors. Default is white.
+	Title           string   // Title of the chart.
+	XAxisName       string   // Optional: X-axis name.
+	YAxisName       string   // Optional: Y-axis name.
+	Colors          []string // Optional: Series colours in place of the shared palette, as #RGB, #RRGGBB, #RRGGBBAA or a CSS name. A short list repeats.
 }
 
 // ScatterSeries is one set of points for CreateScatterChart: point i is
@@ -61,7 +62,10 @@ func CreateScatterChart(config ScatterChartConfig, series ...ScatterSeries) (*pl
 	}
 
 	// Create a new plot.
-	plt := plot.New()
+	plt, err := newPlot("CreateScatterChart", config.BackgroundColor)
+	if err != nil {
+		return nil, err
+	}
 
 	// Set chart title and axis labels.
 	plt.Title.Text = config.Title

@@ -10,13 +10,14 @@ import (
 
 // FunctionPlotConfig defines the configuration for a function plot.
 type FunctionPlotConfig struct {
-	Title     string  // Title of the chart.
-	XAxisName string  // Label for the X-axis.
-	YAxisName string  // Label for the Y-axis.
-	XMin      float64 // Minimum value of X (optional).
-	XMax      float64 // Maximum value of X (optional).
-	YMin      float64 // Minimum value of Y (optional).
-	YMax      float64 // Maximum value of Y (optional).
+	BackgroundColor string  // Optional: Background of the chart, read like a value of Colors. Default is white.
+	Title           string  // Title of the chart.
+	XAxisName       string  // Label for the X-axis.
+	YAxisName       string  // Label for the Y-axis.
+	XMin            float64 // Minimum value of X (optional).
+	XMax            float64 // Maximum value of X (optional).
+	YMin            float64 // Minimum value of Y (optional).
+	YMax            float64 // Maximum value of Y (optional).
 }
 
 // CreateFunctionPlot draws function over the X range in config. It returns a
@@ -54,7 +55,10 @@ func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) floa
 	}
 
 	// Create a new plot.
-	plt := plot.New()
+	plt, err := newPlot("CreateFunctionPlot", config.BackgroundColor)
+	if err != nil {
+		return nil, err
+	}
 
 	// Set chart title and axis labels.
 	plt.Title.Text = config.Title

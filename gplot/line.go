@@ -15,11 +15,12 @@ import (
 
 // LineChartConfig defines the configuration for a multi-series line chart.
 type LineChartConfig struct {
-	Title     string    // Title of the chart.
-	XAxis     []float64 // X-axis data.
-	XAxisName string    // Optional: X-axis name.
-	YAxisName string    // Optional: Y-axis name.
-	Colors    []string  // Optional: Series colours in place of the shared palette, as #RGB, #RRGGBB, #RRGGBBAA or a CSS name. A short list repeats.
+	BackgroundColor string    // Optional: Background of the chart, read like a value of Colors. Default is white.
+	Title           string    // Title of the chart.
+	XAxis           []float64 // X-axis data.
+	XAxisName       string    // Optional: X-axis name.
+	YAxisName       string    // Optional: Y-axis name.
+	Colors          []string  // Optional: Series colours in place of the shared palette, as #RGB, #RRGGBB, #RRGGBBAA or a CSS name. A short list repeats.
 }
 
 // CreateLineChart draws one line per list, named after the list. A plain
@@ -35,11 +36,11 @@ type LineChartConfig struct {
 // decimal included, is drawn as its value, and any other cell, whether nil,
 // text (a numeric string such as "2" included) or a bool, is drawn as 0.
 func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*plot.Plot, error) {
-	return drawLines("CreateLineChart", config.Title, config.XAxis, config.XAxisName, config.YAxisName, config.Colors, plotter.NoStep, data)
+	return drawLines("CreateLineChart", config.Title, config.XAxis, config.XAxisName, config.YAxisName, config.Colors, config.BackgroundColor, plotter.NoStep, data)
 }
 
 // drawLines builds a line or step chart; stepKind is plotter.NoStep for a line.
-func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName string, colorValues []string, stepKind plotter.StepKind, data []insyra.IDataList) (*plot.Plot, error) {
+func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName string, colorValues []string, background string, stepKind plotter.StepKind, data []insyra.IDataList) (*plot.Plot, error) {
 	colors, err := readColors(funcName, colorValues)
 	if err != nil {
 		return nil, err
@@ -49,7 +50,10 @@ func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName str
 		return nil, chartError(funcName, "no data to draw")
 	}
 
-	plt := plot.New()
+	plt, err := newPlot(funcName, background)
+	if err != nil {
+		return nil, err
+	}
 	plt.Title.Text = title
 	plt.X.Label.Text = xAxisName
 	plt.Y.Label.Text = yAxisName
