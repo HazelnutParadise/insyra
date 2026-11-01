@@ -228,6 +228,7 @@ Default behavior:
 - A variable the environment cannot store, such as a `regression` result, is left out when the environment is saved, and the save prints a warning such as `warning: r (*stats.LinearRegressionResult) was not saved to environment default: ...; it is gone when this process ends or another environment is opened`. The command that created it still succeeds. After a one-shot command the variable is gone. In the REPL or a script it lasts until the session ends or `env open` switches to another environment, and the warning appears once.
 - A `state.json` that exists but cannot be read stops the command with an error naming the file, and the file is left as it was so it can be repaired or deleted. An environment with no `state.json` starts empty.
 - A `state.json` written by an earlier release still loads, and the next save rewrites it in the current layout. Column order or cell types that the earlier release had already lost are not recovered.
+- `cli/env.State.LastAccess` is an RFC3339 `string` in 0.3.6, with an empty string for unknown time. In 0.4 it becomes `time.Time`: use `IsZero()` to check for unknown time and `Format(time.RFC3339)` when text is needed. The on-disk timestamp remains a string readable by both versions.
 - REPL saves history and state continuously.
 - DSL session `Execute` saves state after successful command.
 - Variables that hold `NaN` or ±Inf (for example a CSV loaded with blank cells) are saved and restored intact.

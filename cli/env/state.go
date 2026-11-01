@@ -20,8 +20,10 @@ type SerializedVariable struct {
 }
 
 type State struct {
-	Variables  map[string]SerializedVariable `json:"variables"`
-	LastAccess string                        `json:"lastAccess"`
+	Variables map[string]SerializedVariable `json:"variables"`
+	// LastAccess is an RFC3339 timestamp, or empty when unknown.
+	// In 0.4 this field becomes time.Time; the JSON format remains a string.
+	LastAccess string `json:"lastAccess"`
 }
 
 // UnsavedVariable is a variable SaveVariables left out of state.json.
