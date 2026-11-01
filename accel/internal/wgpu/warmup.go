@@ -24,6 +24,11 @@ var warmMu sync.Mutex
 // children, since a lost device is not replaced while any of them is alive.
 var warmInFlight *compiledKernel
 
+// warmRunMu lets one warmup run at a time, since warmInFlight has room for
+// one kernel: a second device opened after a loss waits for the first
+// device's warmup, which stops at its next kernel.
+var warmRunMu sync.Mutex
+
 // releasedDevices counts the lost devices releaseLostDevice has released.
 // Guarded by warmMu. A warmup records it when it starts and compiles only
 // while it is unchanged, so it never compiles on a device already released.
@@ -56,6 +61,8 @@ func startWarmupLocked(h *handle) {
 // warm releases what it compiled. A kernel warm fails to compile is left for
 // its first use, which reports the error.
 func warm(h *handle, generation int) {
+	warmRunMu.Lock()
+	defer warmRunMu.Unlock()
 	for _, k := range builtinKernels {
 		submitMu.Lock()
 		retired, built := h.retired, k.pipe != nil || k.err != nil
