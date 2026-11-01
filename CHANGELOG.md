@@ -148,6 +148,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - **BREAKING**: CCL: `TOBOOL` is now `BOOL`, and a formula using the old name gets an error naming the new one.
 - CCL: `ISBLANK`, `ISNUM`, `ISTEXT`, `ISBOOL`, `ISDATE` and `ISERROR` say what a cell holds. `ISBLANK` counts `nil` and empty text, and `NaN` stays with `ISNA`.
 - CCL: `INT(x)`, `ROUNDUP(x, n)` and `ROUNDDOWN(x, n)`, as in Excel. `ROUNDUP` rounds away from zero and `ROUNDDOWN` toward zero, and `INT` gives what `FLOOR` gives.
+- **BREAKING**: CCL: `REGEX_MATCH` is now `REGEXTEST`, Excel 365's name, and a formula using the old name gets an error naming the new one.
+- CCL: `CEIL` and `FLOOR` take an optional positive multiple: `CEIL(12, 5)` is 15 and `FLOOR(12, 5)` is 10. `AVERAGE`, `POWER`, `CEILING`, `REPT` and other Excel names CCL spells differently now say which name to write.
 
 ### CLI
 - **BREAKING**: an environment name may contain only letters, digits, `.`, `_` and `-`, must start with a letter or digit, and may not contain `..`. v0.3.3 refused only a name that resolved outside the environments directory and accepted any other, including names with spaces, non-ASCII letters or a `/`. The CLI can no longer open, rename or delete an environment created under such a name; rename its folder in the environments directory (`~/.insyra/envs/` by default) by hand.

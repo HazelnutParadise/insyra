@@ -11,6 +11,7 @@ func TestRemovedNamesSayWhatToUse(t *testing.T) {
 	ctx := mapCtx(t, map[string][]any{"A": {"2024-03-09"}})
 	for _, c := range []struct{ expr, want string }{
 		{"TONUM(A)", "use VALUE"},
+		{"REGEX_MATCH(A, 'a')", "use REGEXTEST"},
 		{"TOBOOL(A)", "use BOOL"},
 		{"TOSTR(A)", "use TEXT"},
 		{"TOSTR(A, '%s')", "use TEXT"},

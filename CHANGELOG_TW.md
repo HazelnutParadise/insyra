@@ -150,6 +150,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：CCL 的 `TOBOOL` 改名為 `BOOL`，公式用舊名字會得到錯誤，並指出新名字。
 - CCL：新增 `ISBLANK`、`ISNUM`、`ISTEXT`、`ISBOOL`、`ISDATE`、`ISERROR`，判斷格子裡是什麼。`ISBLANK` 算 `nil` 和空字串，`NaN` 還是用 `ISNA` 判斷。
 - CCL：新增 `INT(x)`、`ROUNDUP(x, n)`、`ROUNDDOWN(x, n)`，行為跟 Excel 一樣。`ROUNDUP` 往離 0 遠的方向，`ROUNDDOWN` 往靠近 0 的方向，`INT` 跟 `FLOOR` 結果相同。
+- **BREAKING**：CCL 的 `REGEX_MATCH` 改名為 Excel 365 用的 `REGEXTEST`，公式用舊名字會得到錯誤，並指出新名字。
+- CCL：`CEIL`、`FLOOR` 可以指定正數倍數：`CEIL(12, 5)` 是 15，`FLOOR(12, 5)` 是 10。`AVERAGE`、`POWER`、`CEILING`、`REPT` 等 CCL 用其他名字的 Excel 函式，錯誤訊息會指出該寫哪個名字。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。

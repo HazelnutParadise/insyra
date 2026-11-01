@@ -76,7 +76,7 @@ func valuesWhere(name string, args [][]any) ([]any, error) {
 //     SQRT, LN, LOG, LOG10, EXP, SIGN
 //   - String (stdlib_string.go): LEN, UPPER, LOWER, TRIM/L/RTRIM,
 //     LEFT, RIGHT, MID, REPLACE, FIND, CONTAINS, STARTSWITH,
-//     ENDSWITH, REGEX_MATCH, REPEAT
+//     ENDSWITH, REGEXTEST, REPEAT
 //   - Type conversion (stdlib_typeconv.go): VALUE, TEXT,
 //     BOOL, COALESCE, IFNULL
 //   - Type checks (stdlib_typecheck.go): ISBLANK, ISNUM, ISTEXT, ISBOOL,
