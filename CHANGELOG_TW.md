@@ -22,6 +22,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **行為改變**：讀取 CSV 時，若 `Encoding` 是 insyra 無法解碼的名稱（`ReadCSV`、`ReadCSV_FileWithOptions`、`StreamCSV`，以及 `csvxl.CsvToExcel`、`AppendCsvToExcel`），現在會回傳列出支援名稱的錯誤。以前會把位元組原樣交回，所以像 "big6" 這種打錯的名稱會把 Big5 檔案讀成亂碼而且沒有錯誤。Windows 的 `cp950`、`cp936` 現在視為 Big5 與 GBK。
 - `engine/ring`：`PopFront`、`PopBack` 現在會把被移除的格子設回零值，所以放指標、字串或 slice 的 Ring 不會再讓已移除元素指向的資料無法回收；`Clear` 改成清空既有的底層陣列，不再配置新的（推 64 個再 `Clear`：修改前 188 ns、配置一次 512 位元組，修改後 138 ns、不配置；64 次推入與取出因為清格子多花約 7%）。先進先出與後進先出的順序、容量與零值 Ring 的行為不變（[#588](https://github.com/HazelnutParadise/insyra/issues/588)）。
 - `DataList` 與 `DataTable` 新增 `String()`，內容就是 `Show` 印的畫面，但不帶顏色、固定 80 字寬，所以 `fmt.Println(dt)`、`%v`、`%s` 會直接印出表格或清單，不再是一串內部欄位。格子裡裝的若是另一張表或清單，`Show` 與 `String` 都改顯示成 `<DataTable>` 或 `<DataList>`，表格裝著自己時也不會無窮遞迴。
+- CCL：`ROUND` 改成看數字寫出來的樣子來四捨五入，所以 `ROUND(1.005, 2)` 是 1.01，以前是 1，現在跟 Excel 和 `TEXT` 一致。只有剛好在這種邊界上的數字結果會變，`ROUND(-0.4)` 也不再是負零。
 
 ### `ml` 與 `nn`
 
