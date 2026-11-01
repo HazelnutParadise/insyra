@@ -225,6 +225,7 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 #### Scenario: The wrong kind of value
 - **WHEN** `TEXT(1.5, 'yyyy')` is evaluated
 - **THEN** it is an error saying the value is not a date
+
 ### Requirement: VALUE reads numbers as a spreadsheet displays them
 
 `VALUE` and `TONUM` SHALL read text with a trailing percent sign as that number divided by 100, and SHALL read commas that group digits in threes as thousands separators, with or without decimals. Text with misplaced commas, or a percent sign on anything but a plain decimal, SHALL give an empty result.
@@ -238,6 +239,7 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** the text is `1,23` or `1234,567`
 - **THEN** `VALUE` gives an empty result
+
 ### Requirement: ROUND reads a number as it is written
 
 `ROUND` SHALL round half away from zero on the shortest decimal text of its number, not on the binary value, and SHALL keep `NaN` and infinities as they are. A result of zero SHALL NOT be negative.
@@ -251,3 +253,22 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** an expression is `ROUND(1250, -2)`
 - **THEN** the result is 1300
+
+### Requirement: CCL reports what kind of value a cell holds
+
+`ISBLANK` SHALL be true for `nil` and empty text and false for `NaN`. `ISNUM` SHALL be true for a value of a number type other than `NaN`, and false for text. `ISTEXT` and `ISBOOL` SHALL follow the value's type. `ISDATE` SHALL be true for a date and for text that reads as one. `ISERROR` SHALL be true when its argument cannot be computed on that row, and an undefined function or a missing column SHALL still be an error.
+
+#### Scenario: A blank and a NaN
+
+- **WHEN** a cell holds `NaN`
+- **THEN** `ISBLANK` is false and `ISNA` is true
+
+#### Scenario: A number written as text
+
+- **WHEN** a cell holds the text `12`
+- **THEN** `ISNUM` is false and `ISTEXT` is true
+
+#### Scenario: A failure on a row
+
+- **WHEN** column B holds 0
+- **THEN** `ISERROR(A / B)` is true

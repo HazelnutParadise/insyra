@@ -86,9 +86,12 @@ func valuesWhere(name string, args [][]any) ([]any, error) {
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAYOFMONTH,
 //     WEEKDAY, DATEPART, DATEDIFF, DATEADD, FORMAT_DATE,
 //     and DATE, TODAY, NOW (clock.go)
+//   - Type checks (stdlib_typecheck.go): ISBLANK, ISNUM, ISTEXT, ISBOOL,
+//     ISDATE; ISERROR and IFERROR are in the evaluator
 //   - Aggregates: SUM, AVG, COUNT, COUNTA, COUNTIF, SUMIF, AVGIF, MAX, MIN (this file) and
 //     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)
 func RegisterStandardFunctions() {
+	registerTypeCheckFunctions()
 	registerMathFunctions()
 	registerStringFunctions()
 	registerTypeConversionFunctions()
