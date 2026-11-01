@@ -26,7 +26,7 @@ func TestConstructorsRefuseNonFiniteValues(t *testing.T) {
 			return e
 		},
 		"scatter inf": func() error {
-			_, e := CreateScatterChart(ScatterChartConfig{}, map[string][]ScatterPoint{"s": {{X: 1, Y: inf}}})
+			_, e := CreateScatterChart(ScatterChartConfig{}, ScatterSeries{Name: "s", X: insyra.NewDataList(1.0), Y: insyra.NewDataList(inf)})
 			return e
 		},
 		"river nan": func() error {
@@ -34,7 +34,7 @@ func TestConstructorsRefuseNonFiniteValues(t *testing.T) {
 			return e
 		},
 		"radar nan": func() error {
-			_, e := CreateRadarChart(RadarChartConfig{Indicators: []string{"a"}}, []RadarSeries{{Name: "s", Values: []float32{float32(nan)}}})
+			_, e := CreateRadarChart(RadarChartConfig{Indicators: []string{"a"}}, RadarSeries{Name: "s", Values: []float32{float32(nan)}})
 			return e
 		},
 		"box nan": func() error {

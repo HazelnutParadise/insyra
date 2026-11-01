@@ -13,45 +13,42 @@ func chartError(funcName, format string, args ...any) error {
 	return fmt.Errorf("gplot: "+funcName+": "+format, args...)
 }
 
-// A nil interface panics on its first method call, and so does a typed nil
-// *insyra.DataList or *insyra.DataTable, because AtomicDo dereferences the
-// receiver. These report either so the constructors can refuse it instead.
-
+// isNilList reports whether dl carries no usable list: no value at all, a nil
+// *insyra.DataList, or a wrapper such as isr.DL that embeds one. Each of them
+// panics on its first method call, so the constructors refuse it instead.
 func isNilList(dl insyra.IDataList) bool {
-	if dl == nil {
-		return true
-	}
-	v, ok := dl.(*insyra.DataList)
-	return ok && v == nil
+	return insyra.IsNilList(dl)
 }
 
+// isNilTable is isNilList for a table.
 func isNilTable(dt insyra.IDataTable) bool {
-	if dt == nil {
-		return true
-	}
-	v, ok := dt.(*insyra.DataTable)
-	return ok && v == nil
+	return insyra.IsNilTable(dt)
 }
 
-// nonNilLists returns data without its nil entries, the way the plot package
-// drops them. It warns once per dropped entry, but only when something is
-// left: a call left with nothing fails, and its error is the whole report.
-func nonNilLists(funcName string, data []insyra.IDataList) []insyra.IDataList {
-	kept := make([]insyra.IDataList, 0, len(data))
-	var dropped []int
+// nonNilLists returns data without its nil entries, each kept list's position
+// among the caller's arguments, and the positions it dropped, the way the plot
+// package drops them. It logs nothing: a call that goes on to fail reports
+// only its error, and one that draws a chart warns through warnNilLists.
+func nonNilLists(data []insyra.IDataList) (kept []insyra.IDataList, pos, dropped []int) {
+	kept = make([]insyra.IDataList, 0, len(data))
+	pos = make([]int, 0, len(data))
 	for i, dl := range data {
 		if isNilList(dl) {
 			dropped = append(dropped, i)
 			continue
 		}
 		kept = append(kept, dl)
+		pos = append(pos, i)
 	}
-	if len(kept) > 0 {
-		for _, i := range dropped {
-			insyra.LogWarning("gplot", funcName, "data list %d is nil; skipping it", i)
-		}
+	return kept, pos, dropped
+}
+
+// warnNilLists warns once per nil list a chart was drawn without, naming its
+// position counted from one.
+func warnNilLists(funcName string, dropped []int) {
+	for _, i := range dropped {
+		insyra.LogWarning("gplot", funcName, "data list %d is nil; skipping it", i+1)
 	}
-	return kept
 }
 
 // readValues reads dl through ToF64Slice. An empty list gives nil without the

@@ -26,11 +26,11 @@ func TestConstructorSignatures(t *testing.T) {
 		data     reflect.Type
 		variadic bool
 	}{
-		{"CreateBarChart", CreateBarChart, listType, false},
+		{"CreateBarChart", CreateBarChart, reflect.SliceOf(listType), true},
 		{"CreateHistogram", CreateHistogram, listType, false},
 		{"CreateLineChart", CreateLineChart, reflect.SliceOf(listType), true},
 		{"CreateStepChart", CreateStepChart, reflect.SliceOf(listType), true},
-		{"CreateScatterPlot", CreateScatterPlot, reflect.TypeFor[[]ScatterSeries](), true},
+		{"CreateScatterChart", CreateScatterChart, reflect.TypeFor[[]ScatterSeries](), true},
 		{"CreateHeatmapChart", CreateHeatmapChart, reflect.TypeFor[insyra.IDataTable](), false},
 		{"CreateFunctionPlot", CreateFunctionPlot, reflect.TypeFor[func(float64) float64](), false},
 	}
@@ -117,24 +117,24 @@ func TestConstructorsReturnAnErrorForWhatTheyCannotDraw(t *testing.T) {
 		{"step whose every series has the wrong length", "CreateStepChart", func() (*gonumplot.Plot, error) {
 			return CreateStepChart(StepChartConfig{XAxis: []float64{1, 2, 3}}, two)
 		}, "cannot draw every series"},
-		{"scatter with no series", "CreateScatterPlot", func() (*gonumplot.Plot, error) {
-			return CreateScatterPlot(ScatterPlotConfig{})
+		{"scatter with no series", "CreateScatterChart", func() (*gonumplot.Plot, error) {
+			return CreateScatterChart(ScatterChartConfig{})
 		}, "no data"},
-		{"scatter with a nil X", "CreateScatterPlot", func() (*gonumplot.Plot, error) {
-			return CreateScatterPlot(ScatterPlotConfig{}, ScatterSeries{Name: "s", Y: three})
+		{"scatter with a nil X", "CreateScatterChart", func() (*gonumplot.Plot, error) {
+			return CreateScatterChart(ScatterChartConfig{}, ScatterSeries{Name: "s", Y: three})
 		}, `"s"`},
-		{"scatter with a typed nil Y", "CreateScatterPlot", func() (*gonumplot.Plot, error) {
-			return CreateScatterPlot(ScatterPlotConfig{}, ScatterSeries{Name: "s", X: three, Y: typedNil})
+		{"scatter with a typed nil Y", "CreateScatterChart", func() (*gonumplot.Plot, error) {
+			return CreateScatterChart(ScatterChartConfig{}, ScatterSeries{Name: "s", X: three, Y: typedNil})
 		}, `"s"`},
-		{"scatter with X and Y of different lengths", "CreateScatterPlot", func() (*gonumplot.Plot, error) {
-			return CreateScatterPlot(ScatterPlotConfig{}, ScatterSeries{Name: "s", X: three, Y: two})
+		{"scatter with X and Y of different lengths", "CreateScatterChart", func() (*gonumplot.Plot, error) {
+			return CreateScatterChart(ScatterChartConfig{}, ScatterSeries{Name: "s", X: three, Y: two})
 		}, "3"},
-		{"scatter whose only series holds NaN", "CreateScatterPlot", func() (*gonumplot.Plot, error) {
-			return CreateScatterPlot(ScatterPlotConfig{}, ScatterSeries{Name: "s", X: three, Y: withNaN})
-		}, `cannot draw every series: series "s" cannot be drawn`},
-		{"scatter whose only series has no points", "CreateScatterPlot", func() (*gonumplot.Plot, error) {
-			return CreateScatterPlot(ScatterPlotConfig{}, ScatterSeries{Name: "s", X: insyra.NewDataList(), Y: insyra.NewDataList()})
-		}, `series "s" has no points`},
+		{"scatter whose only series holds NaN", "CreateScatterChart", func() (*gonumplot.Plot, error) {
+			return CreateScatterChart(ScatterChartConfig{}, ScatterSeries{Name: "s", X: three, Y: withNaN})
+		}, `cannot draw every series: series 1 ("s"): Y at row index 1 is NaN`},
+		{"scatter whose only series has no points", "CreateScatterChart", func() (*gonumplot.Plot, error) {
+			return CreateScatterChart(ScatterChartConfig{}, ScatterSeries{Name: "s", X: insyra.NewDataList(), Y: insyra.NewDataList()})
+		}, `series 1 ("s") has no points`},
 		{"heat map with a nil table", "CreateHeatmapChart", func() (*gonumplot.Plot, error) {
 			return CreateHeatmapChart(HeatmapChartConfig{}, nil)
 		}, "no data"},
@@ -223,15 +223,15 @@ func TestAnySeriesThatCannotBeDrawnFailsTheChart(t *testing.T) {
 				insyra.NewDataList(1.0, math.NaN(), 3.0).SetName("nan"))
 		}, []string{`series "empty" has 0 values but XAxis has 3`, `series "nan" cannot be drawn`}},
 		{"scatter: an empty series beside a real one", func() (*gonumplot.Plot, error) {
-			return CreateScatterPlot(ScatterPlotConfig{},
+			return CreateScatterChart(ScatterChartConfig{},
 				ScatterSeries{Name: "one", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, 2)},
 				ScatterSeries{Name: "empty", X: insyra.NewDataList(), Y: insyra.NewDataList()})
-		}, []string{`series "empty" has no points`}},
+		}, []string{`series 2 ("empty") has no points`}},
 		{"scatter: a NaN series beside a real one", func() (*gonumplot.Plot, error) {
-			return CreateScatterPlot(ScatterPlotConfig{},
+			return CreateScatterChart(ScatterChartConfig{},
 				ScatterSeries{Name: "one", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, 2)},
 				ScatterSeries{Name: "nan", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, math.NaN())})
-		}, []string{`series "nan" cannot be drawn`}},
+		}, []string{`series 2 ("nan"): Y at row index 1 is NaN`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -267,7 +267,7 @@ func TestANilListAmongRealOnesIsStillDropped(t *testing.T) {
 		t.Fatalf("CreateStepChart: %v", err)
 	}
 	mustSave(t, plt, "step.png")
-	if !loggedWarning("data list 0 is nil") {
+	if !loggedWarning("data list 1 is nil") {
 		t.Error("no warning names the nil list")
 	}
 }
@@ -279,10 +279,10 @@ func TestScatterSeriesPairsXWithY(t *testing.T) {
 		insyra.NewDataList(170, 175, 180).SetName("height"),
 		insyra.NewDataList(70, 75, 80).SetName("weight"),
 	)
-	plt, err := CreateScatterPlot(ScatterPlotConfig{},
+	plt, err := CreateScatterChart(ScatterChartConfig{},
 		ScatterSeries{Name: "people", X: dt.GetColByName("height"), Y: dt.GetColByName("weight")})
 	if err != nil {
-		t.Fatalf("CreateScatterPlot: %v", err)
+		t.Fatalf("CreateScatterChart: %v", err)
 	}
 	if plt.X.Min != 170 || plt.X.Max != 180 || plt.Y.Min != 70 || plt.Y.Max != 80 {
 		t.Errorf("axes span x [%v, %v], y [%v, %v]; want x [170, 180], y [70, 80]",

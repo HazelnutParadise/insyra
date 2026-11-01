@@ -26,23 +26,40 @@ func isNilList(dl insyra.IDataList) bool {
 	return insyra.IsNilList(dl)
 }
 
-// nonNilLists returns data without its nil entries. It warns once per
-// dropped entry, but only when something is left: a call left with nothing
-// fails, and its error is the whole report.
-func nonNilLists(funcName string, data []insyra.IDataList) []insyra.IDataList {
-	kept := make([]insyra.IDataList, 0, len(data))
-	var dropped []int
+// nonNilLists returns data without its nil entries, each kept list's position
+// among the caller's arguments, and the positions it dropped. An error about
+// a list names the argument the caller wrote. It logs nothing: a call that
+// goes on to fail reports only its error, and one that draws a chart warns
+// about the dropped lists through warnNilLists.
+func nonNilLists(data []insyra.IDataList) (kept []insyra.IDataList, pos, dropped []int) {
+	kept = make([]insyra.IDataList, 0, len(data))
+	pos = make([]int, 0, len(data))
 	for i, dl := range data {
 		if isNilList(dl) {
 			dropped = append(dropped, i)
 			continue
 		}
 		kept = append(kept, dl)
+		pos = append(pos, i)
 	}
-	if len(kept) > 0 {
-		for _, i := range dropped {
-			insyra.LogWarning("plot", funcName, "data list %d is nil; skipping it", i)
+	return kept, pos, dropped
+}
+
+// warnNilLists warns once per nil list a chart was drawn without, naming its
+// position counted from one.
+func warnNilLists(funcName string, dropped []int) {
+	for _, i := range dropped {
+		insyra.LogWarning("plot", funcName, "data list %d is nil; skipping it", i+1)
+	}
+}
+
+// requireNonEmptyLists returns an error naming the first list with no values.
+// It reads only lengths, so a call that fails here logs nothing.
+func requireNonEmptyLists(funcName string, lists []insyra.IDataList, pos []int) error {
+	for i, dl := range lists {
+		if dl.Len() == 0 {
+			return chartError(funcName, "list %d is empty", pos[i]+1)
 		}
 	}
-	return kept
+	return nil
 }

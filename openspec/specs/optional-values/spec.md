@@ -35,11 +35,11 @@ A function whose last parameter is a variadic standing for one optional value (`
 
 ### Requirement: Heat map points have an exported type
 
-The heat map point type SHALL be exported as `HeatMapPoint[X, Y]` with the exported axis constraint `HeatMapAxis`, built by `NewHeatMapPoint` and `NewHeatMapMissingPoint`, so points can be collected in a slice outside the package.
+The heat map point type SHALL be exported as `HeatmapPoint[X, Y]` with the exported axis constraint `HeatmapAxis`, built by `NewHeatmapPoint` and `NewHeatmapMissingPoint`, so points can be collected in a slice outside the package.
 
 #### Scenario: Points built in a loop
 
-- **WHEN** a caller appends `NewHeatMapPoint(x, y, v)` results to a `[]HeatMapPoint[int, int]` and passes it to `CreateHeatMap`
+- **WHEN** a caller appends `NewHeatmapPoint(x, y, v)` results to a `[]HeatmapPoint[int, int]` and passes it to `CreateHeatmapChart`
 - **THEN** it compiles and produces a chart
 
 ### Requirement: An encoding argument means the same in csvxl as in the core readers

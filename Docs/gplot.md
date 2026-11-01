@@ -41,15 +41,15 @@ func main() {
 
 | Chart Type | Function | Use Case | Data |
 | ---------- | -------- | -------- | ---- |
-| Bar Chart | `CreateBarChart` | Comparing categories | `insyra.IDataList` |
+| Bar Chart | `CreateBarChart` | Comparing categories | `...insyra.IDataList` |
 | Histogram | `CreateHistogram` | Distribution analysis | `insyra.IDataList` |
 | Line Chart | `CreateLineChart` | Trends over time | `...insyra.IDataList` |
-| Scatter Plot | `CreateScatterPlot` | Correlation analysis | `...gplot.ScatterSeries` |
+| Scatter Chart | `CreateScatterChart` | Correlation analysis | `...gplot.ScatterSeries` |
 | Step Chart | `CreateStepChart` | Discrete changes | `...insyra.IDataList` |
 | Function Plot | `CreateFunctionPlot` | Mathematical functions | `func(float64) float64` |
 | Heatmap | `CreateHeatmapChart` | Matrix visualization | `insyra.IDataTable` |
 
-Every constructor returns the chart and an `error`. When it cannot build a chart, it returns a `nil` chart and an error that starts with the function's name, such as `gplot: CreateBarChart: the data list is empty`. A failing call logs nothing, so reporting the error is up to you. Each chart's section lists what it refuses.
+Every constructor returns the chart and an `error`. When it cannot build a chart, it returns a `nil` chart and an error that starts with the function's name, such as `gplot: CreateBarChart: list 1 is empty`. A failing call logs nothing, so reporting the error is up to you. Each chart's section lists what it refuses.
 
 ### From plain slices
 
@@ -59,12 +59,14 @@ The data types are insyra's own, checked by the compiler. Values you hold in pla
 | -------- | ---- |
 | a `[]float64` | `insyra.NewDataList(values)` |
 | named series for a line or step chart | one `insyra.NewDataList(values).SetName("City A")` per series |
-| x and y values for a scatter plot | `gplot.ScatterSeries{Name: "s", X: insyra.NewDataList(xs), Y: insyra.NewDataList(ys)}` |
+| x and y values for a scatter chart | `gplot.ScatterSeries{Name: "s", X: insyra.NewDataList(xs), Y: insyra.NewDataList(ys)}` |
 | a `[][]float64` grid | the table from `insyra.ReadSlice2D(grid)`, one inner slice per row. It takes the number of columns from the first row: a shorter row is padded with `nil`, drawn as 0, and a longer row loses its extra values without a warning, so check that the rows agree first. |
 
 ### A cell that is not a number is drawn as 0
 
-Every chart reads its values through `DataList.ToF64Slice`, and the heat map reads each column of the table the same way. A number, a fixed-point decimal included, is drawn as its value. Any other cell is drawn as 0: `nil`, text, a numeric string such as `"2"`, and a `bool`. `NewDataList(1, "2", nil, "abc")` is drawn as the bars 1, 0, 0 and 0, with no warning. Clean a column before charting it: `ParseNumbers` turns numeric text into numbers, and `ClearNilsAndNaNs` removes `nil` and `NaN` cells.
+Every chart except the scatter chart reads its values through `DataList.ToF64Slice`, and the heat map reads each column of the table the same way. A number, a fixed-point decimal included, is drawn as its value. Any other cell is drawn as 0: `nil`, text, a numeric string such as `"2"`, and a `bool`. `NewDataList(1, "2", nil, "abc")` is drawn as the bars 1, 0, 0 and 0, with no warning. Clean a column before charting it: `ParseNumbers` turns numeric text into numbers, and `ClearNilsAndNaNs` removes `nil` and `NaN` cells.
+
+The scatter chart refuses such a cell instead, because a point drawn at 0 is a point in the wrong place: a cell of `X` or `Y` that is not a Go number is an error naming the series, the axis and the row. `plot.CreateScatterChart` does the same.
 
 A `NaN` or an infinity is not drawn as 0. The bar chart, the histogram, and the line, step and scatter charts refuse it with an error. The heat map refuses an infinity and a table of `NaN` alone, and draws a `NaN` among numbers as an empty cell.
 
@@ -97,22 +99,22 @@ if err := gplot.SaveChart(plt, "chart.png"); err != nil {
 
 ### Bar Chart
 
-Creates a bar chart for comparing values across categories.
+Creates a bar chart for comparing values across categories. Several lists are drawn side by side in each category, one colour per list, with a legend naming each list (a list with no name is called `list 1`, `list 2`, and so on by its position).
 
 ```go
-func CreateBarChart(config BarChartConfig, data insyra.IDataList) (*plot.Plot, error)
+func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*plot.Plot, error)
 
 type BarChartConfig struct {
     Title     string    // Chart title
     XAxis     []string  // Optional: category labels; omitted, the bars are numbered 1, 2, 3, ...
     XAxisName string    // Optional: X-axis label
     YAxisName string    // Optional: Y-axis label
-    BarWidth  float64   // Optional: Bar width (default: 20)
-    ErrorBars []float64 // Optional: Error bar values (if provided, must match data length)
+    BarWidth  float64   // Optional: width of each bar, in points (default: 20)
+    ErrorBars []float64 // Optional: error bar values; one list only, and the same length as it
 }
 ```
 
-Returns an error when `data` is `nil` or empty, or holds a `NaN` or an infinity. With `ErrorBars` set, it also returns an error when their number differs from the number of bars or one of them is a `NaN` or an infinity, instead of drawing the bars without them.
+Returns an error when no list is given, every list is `nil`, or a list is empty, has a different length from the first, or holds a `NaN` or an infinity; a list is named by its position among the arguments, counting from one. A `nil` list among real ones is skipped with a warning. With `ErrorBars` set, it also returns an error when more than one list is given, when their number differs from the number of bars, or when one of them is a `NaN` or an infinity, instead of drawing the bars without them.
 
 **Example:**
 
@@ -151,6 +153,23 @@ _ = gplot.SaveChart(plt, "experiment.png")
 ```
 
 ![bar_errorbars_example](./img/gplot_bar_errorbars_example.png)
+
+**Several lists:**
+
+```go
+config := gplot.BarChartConfig{
+    Title: "Revenue by Year",
+    XAxis: []string{"Q1", "Q2", "Q3", "Q4"},
+}
+plt, err := gplot.CreateBarChart(config,
+    insyra.NewDataList(250, 300, 280, 350).SetName("2025"),
+    insyra.NewDataList(270, 320, 310, 380).SetName("2026"),
+)
+if err != nil {
+    log.Fatal(err)
+}
+_ = gplot.SaveChart(plt, "revenue_by_year.png")
+```
 
 ### Histogram
 
@@ -232,14 +251,14 @@ _ = gplot.SaveChart(plt, "temperature.png")
 
 ![line_example](./img/gplot_line_example.png)
 
-### Scatter Plot
+### Scatter Chart
 
-Creates a scatter plot for correlation analysis.
+Creates a scatter chart for correlation analysis. `plot.CreateScatterChart` takes the same series.
 
 ```go
-func CreateScatterPlot(config ScatterPlotConfig, series ...ScatterSeries) (*plot.Plot, error)
+func CreateScatterChart(config ScatterChartConfig, series ...ScatterSeries) (*plot.Plot, error)
 
-type ScatterPlotConfig struct {
+type ScatterChartConfig struct {
     Title     string // Chart title
     XAxisName string // Optional: X-axis label
     YAxisName string // Optional: Y-axis label
@@ -253,12 +272,14 @@ type ScatterSeries struct {
 }
 ```
 
-Two columns of a table make one series. Returns an error when no series is given, when a series has a `nil` `X` or `Y`, when a series' `X` and `Y` differ in length, or when a series has no points or holds a `NaN` or an infinity. The error names the series and why.
+Two columns of a table make one series. Returns an error when no series is given, or when a series has a `nil` `X` or `Y`, `X` and `Y` of different lengths, no points, or a cell that is not a Go number, a `NaN` or an infinity. The error names every such series by its position, counting from one, and its name, and why.
+
+`CreateScatterPlot` and `ScatterPlotConfig`, the former names, still work for one release and are marked Deprecated.
 
 **Example:**
 
 ```go
-config := gplot.ScatterPlotConfig{
+config := gplot.ScatterChartConfig{
     Title:     "Height vs Weight",
     XAxisName: "Height (cm)",
     YAxisName: "Weight (kg)",
@@ -267,7 +288,7 @@ male := insyra.NewDataTable(
     insyra.NewDataList(170, 175, 180, 168, 185).SetName("height"),
     insyra.NewDataList(70, 75, 80, 68, 85).SetName("weight"),
 )
-plt, err := gplot.CreateScatterPlot(config,
+plt, err := gplot.CreateScatterChart(config,
     gplot.ScatterSeries{Name: "Male", X: male.GetColByName("height"), Y: male.GetColByName("weight")},
     gplot.ScatterSeries{
         Name: "Female",
@@ -431,11 +452,15 @@ The table returned by `stats.CorrelationMatrix` can be passed as it is.
 
 ![heatmap_example](./img/gplot_heatmap_example.png)
 
+## Series colours
+
+Every chart colours series *i* from the palette `plot` uses, so a series is the same colour in a static chart and its interactive counterpart. The palette is nine colours from the Insyra website: blue `#2550B0`, orange `#EE9A2C`, red `#D73E3E`, teal `#2A9D8F`, purple `#764BA2`, pink `#FF69B4`, green `#4CAF50`, bright blue `#2196F3` and gray `#7F8C8D`. The gray is for a ninth series that folds the rest into "Other". A tenth series starts again from the first colour, so past that the dash pattern or marker shape is what tells two series apart; draw several charts instead. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
+
 ## A series that cannot be drawn fails the chart
 
-`CreateLineChart`, `CreateStepChart` and `CreateScatterPlot` draw every series they are given, or none. A line or step series whose length differs from `XAxis`, an empty series, and a series holding a `NaN` or an infinity each make the call return a `nil` chart and an error, so a chart never comes back missing a series you asked for. When `XAxis` is left out, it is generated from the first list's length, so every other list has to match the first. The error names every series that failed and why, for example `gplot: CreateLineChart: cannot draw every series: series "two" has 2 values but XAxis has 3`, and nothing is logged.
+`CreateBarChart`, `CreateLineChart`, `CreateStepChart` and `CreateScatterChart` draw every series they are given, or none. A line or step series whose length differs from `XAxis`, an empty series, and a series holding a `NaN` or an infinity each make the call return a `nil` chart and an error, so a chart never comes back missing a series you asked for. When `XAxis` is left out, it is generated from the first list's length, so every other list has to match the first. The error names every series that failed and why, for example `gplot: CreateLineChart: cannot draw every series: series "two" has 2 values but XAxis has 3`, and nothing is logged.
 
-A `nil` list among real ones is different: it is missing input rather than a series, so the line and step charts drop it with a warning and draw the rest. It is the only case in `gplot` that is reported as a warning rather than an error.
+A `nil` list among real ones is different: it is missing input rather than a series, so the bar, line and step charts drop it with a warning naming its position, counting from one, and draw the rest. A wrapper such as `isr.DL` holding a `nil` list counts as `nil`. It is the only case in `gplot` that is reported as a warning rather than an error.
 
 ## Tips
 

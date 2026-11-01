@@ -11,17 +11,17 @@ import (
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
-// HeatMapAxis constrains the types a heat map axis may use: an int index, a
+// HeatmapAxis constrains the types a heat map axis may use: an int index, a
 // string label, or a time.Time for a calendar heat map.
-type HeatMapAxis interface {
+type HeatmapAxis interface {
 	int | string | time.Time
 }
 
-// HeatMapConfig defines the configuration for a heatmap chart.
+// HeatmapChartConfig defines the configuration for a heatmap chart.
 // It supports two modes:
 //   - grid heatmap: X/Y are either indices (int) or labels (string)
 //   - calendar heatmap: X should be time.Time and Y is ignored
-type HeatMapConfig struct {
+type HeatmapChartConfig struct {
 	Width           string // Width of the chart (default "900px").
 	Height          string // Height of the chart (default "500px").
 	BackgroundColor string // Background color of the chart (default "white").
@@ -45,34 +45,34 @@ type HeatMapConfig struct {
 	CalendarOpts *opts.Calendar
 }
 
-// HeatMapPoint is one cell of a heat map, e.g. HeatMapPoint[int, string] or
-// HeatMapPoint[time.Time, int]. Value is the cell's value and Valid reports
+// HeatmapPoint is one cell of a heat map, e.g. HeatmapPoint[int, string] or
+// HeatmapPoint[time.Time, int]. Value is the cell's value and Valid reports
 // whether it has one: a point that is not valid renders as "-". Build points
-// with NewHeatMapPoint and NewHeatMapMissingPoint.
-type HeatMapPoint[X HeatMapAxis, Y HeatMapAxis] struct {
+// with NewHeatmapPoint and NewHeatmapMissingPoint.
+type HeatmapPoint[X HeatmapAxis, Y HeatmapAxis] struct {
 	X     X
 	Y     Y
 	Value float64
 	Valid bool
 }
 
-// NewHeatMapPoint creates a point with a value.
-func NewHeatMapPoint[X HeatMapAxis, Y HeatMapAxis](x X, y Y, value float64) HeatMapPoint[X, Y] {
-	return HeatMapPoint[X, Y]{X: x, Y: y, Value: value, Valid: true}
+// NewHeatmapPoint creates a point with a value.
+func NewHeatmapPoint[X HeatmapAxis, Y HeatmapAxis](x X, y Y, value float64) HeatmapPoint[X, Y] {
+	return HeatmapPoint[X, Y]{X: x, Y: y, Value: value, Valid: true}
 }
 
-// NewHeatMapMissingPoint creates a point with no value, rendered as "-".
-func NewHeatMapMissingPoint[X HeatMapAxis, Y HeatMapAxis](x X, y Y) HeatMapPoint[X, Y] {
-	return HeatMapPoint[X, Y]{X: x, Y: y, Valid: false}
+// NewHeatmapMissingPoint creates a point with no value, rendered as "-".
+func NewHeatmapMissingPoint[X HeatmapAxis, Y HeatmapAxis](x X, y Y) HeatmapPoint[X, Y] {
+	return HeatmapPoint[X, Y]{X: x, Y: y, Valid: false}
 }
 
-// CreateHeatMap draws a heat map of points, one cell per point.
+// CreateHeatmapChart draws a heat map of points, one cell per point.
 //
 // It returns a nil chart and an error when no point is given, and, with
 // UseCalendar set, when a point's X is not a time.Time or CalendarOpts is nil.
-func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ...HeatMapPoint[X, Y]) (*charts.HeatMap, error) {
+func CreateHeatmapChart[X HeatmapAxis, Y HeatmapAxis](config HeatmapChartConfig, points ...HeatmapPoint[X, Y]) (*charts.HeatMap, error) {
 	if len(points) == 0 {
-		return nil, chartError("CreateHeatMap", "no points to draw")
+		return nil, chartError("CreateHeatmapChart", "no points to draw")
 	}
 	hm := charts.NewHeatMap()
 
@@ -110,11 +110,11 @@ func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ..
 			case time.Time:
 				// ok
 			default:
-				return nil, chartError("CreateHeatMap", "calendar mode requires X axis values to be time.Time, got %T", p.X)
+				return nil, chartError("CreateHeatmapChart", "calendar mode requires X axis values to be time.Time, got %T", p.X)
 			}
 		}
 		if config.CalendarOpts == nil {
-			return nil, chartError("CreateHeatMap", "calendar mode requires CalendarOpts to be set")
+			return nil, chartError("CreateHeatmapChart", "calendar mode requires CalendarOpts to be set")
 		}
 		if config.CalendarOpts.ItemStyle == nil {
 			config.CalendarOpts.ItemStyle = &opts.ItemStyle{BorderWidth: 0.5}
@@ -167,7 +167,7 @@ func CreateHeatMap[X HeatMapAxis, Y HeatMapAxis](config HeatMapConfig, points ..
 
 // convertToHeatMapData converts the heatmap data into the format needed by go-echarts.
 // Handles axis types int, string and time.Time (time.Time formatted as YYYY-MM-DD).
-func convertToHeatMapData[X HeatMapAxis, Y HeatMapAxis](data []HeatMapPoint[X, Y]) []opts.HeatMapData {
+func convertToHeatMapData[X HeatmapAxis, Y HeatmapAxis](data []HeatmapPoint[X, Y]) []opts.HeatMapData {
 	items := make([]opts.HeatMapData, 0, len(data))
 	for _, p := range data {
 		var x any
@@ -207,7 +207,7 @@ func convertToHeatMapData[X HeatMapAxis, Y HeatMapAxis](data []HeatMapPoint[X, Y
 
 // convertToCalendarHeatMapData converts points to calendar style heatmap data where each item is [date, value]
 // X is formatted as YYYY-MM-DD if it's a time.Time; otherwise it's stringified.
-func convertToCalendarHeatMapData[X HeatMapAxis, Y HeatMapAxis](data []HeatMapPoint[X, Y]) []opts.HeatMapData {
+func convertToCalendarHeatMapData[X HeatmapAxis, Y HeatmapAxis](data []HeatmapPoint[X, Y]) []opts.HeatMapData {
 	items := make([]opts.HeatMapData, 0, len(data))
 	for _, p := range data {
 		var date any
@@ -234,7 +234,7 @@ func convertToCalendarHeatMapData[X HeatMapAxis, Y HeatMapAxis](data []HeatMapPo
 }
 
 // computeMinMax returns the min and max among numeric values in points. If no numeric values exist, returns 0 and 1.
-func computeMinMax[X HeatMapAxis, Y HeatMapAxis](data []HeatMapPoint[X, Y]) (float64, float64) {
+func computeMinMax[X HeatmapAxis, Y HeatmapAxis](data []HeatmapPoint[X, Y]) (float64, float64) {
 	var minVal float64 = 0
 	var maxVal float64 = 1
 	found := false

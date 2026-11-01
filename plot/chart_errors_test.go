@@ -20,7 +20,7 @@ func TestEveryConstructorReturnsAChartAndAnError(t *testing.T) {
 		"CreateBoxPlot":         CreateBoxPlot,
 		"CreateFunnelChart":     CreateFunnelChart,
 		"CreateGaugeChart":      CreateGaugeChart,
-		"CreateHeatMap":         CreateHeatMap[string, string],
+		"CreateHeatmapChart":    CreateHeatmapChart[string, string],
 		"CreateKlineChart":      CreateKlineChart,
 		"CreateLineChart":       CreateLineChart,
 		"CreatePieChart":        CreatePieChart,
@@ -73,8 +73,8 @@ func TestConstructorsReturnAnErrorForWhatTheyCannotDraw(t *testing.T) {
 			c, err := CreateLineChart(LineChartConfig{}, nil, typedNil)
 			return c == nil, err
 		}},
-		{"scatter with an empty map", "CreateScatterChart", func() (bool, error) {
-			c, err := CreateScatterChart(ScatterChartConfig{}, map[string][]ScatterPoint{})
+		{"scatter with no series", "CreateScatterChart", func() (bool, error) {
+			c, err := CreateScatterChart(ScatterChartConfig{})
 			return c == nil, err
 		}},
 		{"pie with no items", "CreatePieChart", func() (bool, error) {
@@ -89,24 +89,24 @@ func TestConstructorsReturnAnErrorForWhatTheyCannotDraw(t *testing.T) {
 			c, err := CreateBoxPlot(BoxPlotConfig{}, BoxPlotSeries{Name: "s", Data: []insyra.IDataList{nil, typedNil}})
 			return c == nil, err
 		}},
-		{"heat map with no points", "CreateHeatMap", func() (bool, error) {
-			c, err := CreateHeatMap[string, string](HeatMapConfig{})
+		{"heat map with no points", "CreateHeatmapChart", func() (bool, error) {
+			c, err := CreateHeatmapChart[string, string](HeatmapChartConfig{})
 			return c == nil, err
 		}},
-		{"calendar heat map with string x values", "CreateHeatMap", func() (bool, error) {
-			c, err := CreateHeatMap(HeatMapConfig{UseCalendar: true}, NewHeatMapPoint("mon", "am", 1))
+		{"calendar heat map with string x values", "CreateHeatmapChart", func() (bool, error) {
+			c, err := CreateHeatmapChart(HeatmapChartConfig{UseCalendar: true}, NewHeatmapPoint("mon", "am", 1))
 			return c == nil, err
 		}},
-		{"calendar heat map with no calendar options", "CreateHeatMap", func() (bool, error) {
-			c, err := CreateHeatMap(HeatMapConfig{UseCalendar: true}, NewHeatMapPoint(day, "am", 1))
+		{"calendar heat map with no calendar options", "CreateHeatmapChart", func() (bool, error) {
+			c, err := CreateHeatmapChart(HeatmapChartConfig{UseCalendar: true}, NewHeatmapPoint(day, "am", 1))
 			return c == nil, err
 		}},
 		{"radar with no series", "CreateRadarChart", func() (bool, error) {
-			c, err := CreateRadarChart(RadarChartConfig{}, nil)
+			c, err := CreateRadarChart(RadarChartConfig{})
 			return c == nil, err
 		}},
 		{"radar with neither indicators nor maximums", "CreateRadarChart", func() (bool, error) {
-			c, err := CreateRadarChart(RadarChartConfig{}, []RadarSeries{{Name: "s", Values: []float32{1}}})
+			c, err := CreateRadarChart(RadarChartConfig{}, RadarSeries{Name: "s", Values: []float32{1}})
 			return c == nil, err
 		}},
 		{"kline with no points", "CreateKlineChart", func() (bool, error) {
@@ -183,7 +183,7 @@ func TestANilListAmongRealOnesIsAWarning(t *testing.T) {
 		t.Fatalf("CreateLineChart(nil, good) = %v, %v", c, err)
 	}
 	renderToHTML(t, c)
-	if !loggedWarning("CreateLineChart", "data list 0 is nil") {
+	if !loggedWarning("CreateLineChart", "data list 1 is nil") {
 		t.Error("no warning names the dropped list")
 	}
 }

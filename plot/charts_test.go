@@ -79,9 +79,7 @@ func TestEveryChartBuildsAndRenders(t *testing.T) {
 		{name: "scatter", build: func() (Renderable, error) {
 			return CreateScatterChart(ScatterChartConfig{
 				Title: "scatter chart", SymbolSize: 12, SplitLine: true,
-			}, map[string][]ScatterPoint{
-				"s": {{X: 0, Y: 1}, {X: 1, Y: 2}},
-			})
+			}, ScatterSeries{Name: "s", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, 2)})
 		}},
 		{name: "pie", build: func() (Renderable, error) {
 			return CreatePieChart(PieChartConfig{
@@ -100,16 +98,16 @@ func TestEveryChartBuildsAndRenders(t *testing.T) {
 			})
 		}},
 		{name: "heatmap", build: func() (Renderable, error) {
-			return CreateHeatMap(HeatMapConfig{Title: "heatmap chart"},
-				NewHeatMapPoint("mon", "am", 1),
-				NewHeatMapPoint("tue", "pm", 2),
-				NewHeatMapMissingPoint("wed", "am"),
+			return CreateHeatmapChart(HeatmapChartConfig{Title: "heatmap chart"},
+				NewHeatmapPoint("mon", "am", 1),
+				NewHeatmapPoint("tue", "pm", 2),
+				NewHeatmapMissingPoint("wed", "am"),
 			)
 		}},
 		{name: "radar", build: func() (Renderable, error) {
 			return CreateRadarChart(RadarChartConfig{
 				Title: "radar chart", Indicators: []string{"speed", "power"},
-			}, []RadarSeries{{Name: "s", Values: []float32{1, 2}}})
+			}, RadarSeries{Name: "s", Values: []float32{1, 2}})
 		}},
 		{name: "kline", build: func() (Renderable, error) {
 			day := time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)

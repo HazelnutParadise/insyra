@@ -43,8 +43,10 @@ type LineChartConfig struct {
 
 // CreateLineChart draws one line per list, named after the list.
 //
-// It returns a nil chart and an error when no list is left to draw: none was
-// given, or every one was nil. A nil list among real ones is skipped with a
+// It returns a nil chart and an error when no list is left to draw (none was
+// given, or every one was nil), when a list is empty, or when one holds a NaN
+// or an infinity; the error names the list by its position among the
+// arguments, counting from one. A nil list among real ones is skipped with a
 // warning and the others are drawn.
 //
 // Before drawing, every cell is read as text to choose the Y axis. While every
@@ -55,13 +57,17 @@ type LineChartConfig struct {
 // distinct text becomes a category, and every cell, the numbers included, is
 // drawn at its category's position.
 func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*charts.Line, error) {
-	data = nonNilLists("CreateLineChart", data)
+	data, pos, dropped := nonNilLists(data)
 	if len(data) == 0 {
 		return nil, chartError("CreateLineChart", "no data to draw")
 	}
-	if err := requireFiniteLists("CreateLineChart", data); err != nil {
+	if err := requireNonEmptyLists("CreateLineChart", data, pos); err != nil {
 		return nil, err
 	}
+	if err := requireFiniteLists("CreateLineChart", data, pos); err != nil {
+		return nil, err
+	}
+	warnNilLists("CreateLineChart", dropped)
 	line := charts.NewLine()
 
 	internal.SetBaseChartGlobalOptions(line, internal.BaseChartConfig{

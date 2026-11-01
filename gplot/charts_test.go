@@ -108,17 +108,17 @@ func TestCreateStepChart_RendersEveryStyle(t *testing.T) {
 func TestCreateScatterPlot_Renders(t *testing.T) {
 	quietFatal(t)
 
-	config := ScatterPlotConfig{Title: "scatter", XAxisName: "x", YAxisName: "y"}
+	config := ScatterChartConfig{Title: "scatter", XAxisName: "x", YAxisName: "y"}
 
 	t.Run("one series", func(t *testing.T) {
-		mustSave(t, built(t)(CreateScatterPlot(config, ScatterSeries{
+		mustSave(t, built(t)(CreateScatterChart(config, ScatterSeries{
 			Name: "one",
 			X:    insyra.NewDataList(0, 1, 2),
 			Y:    insyra.NewDataList(1, 2, 4),
 		})), "scatter.png")
 	})
 	t.Run("several series", func(t *testing.T) {
-		mustSave(t, built(t)(CreateScatterPlot(config,
+		mustSave(t, built(t)(CreateScatterChart(config,
 			ScatterSeries{Name: "one", X: insyra.NewDataList(0, 1), Y: insyra.NewDataList(1, 2)},
 			ScatterSeries{Name: "two", X: insyra.NewDataList(2, 3), Y: insyra.NewDataList(4, 1)},
 		)), "scatter.png")

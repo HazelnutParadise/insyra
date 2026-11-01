@@ -38,7 +38,7 @@ func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*plot.Pl
 
 // drawLines builds a line or step chart; stepKind is plotter.NoStep for a line.
 func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName string, stepKind plotter.StepKind, data []insyra.IDataList) (*plot.Plot, error) {
-	data = nonNilLists(funcName, data)
+	data, _, dropped := nonNilLists(data)
 	if len(data) == 0 {
 		return nil, chartError(funcName, "no data to draw")
 	}
@@ -64,6 +64,7 @@ func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName str
 	if err := seriesError(funcName, failed); err != nil {
 		return nil, err
 	}
+	warnNilLists(funcName, dropped)
 	return plt, nil
 }
 
@@ -98,7 +99,8 @@ func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []
 	}
 	line.StepStyle = stepKind
 
-	// Set different line styles for each series
+	// Each series has its own colour and dash pattern, so the lines stay
+	// apart in black and white too.
 	switch index % 5 {
 	case 0:
 		// 實線
@@ -120,6 +122,9 @@ func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []
 		line.LineStyle = plotter.DefaultLineStyle
 		line.Dashes = []vg.Length{vg.Points(6), vg.Points(2), vg.Points(1), vg.Points(2)}
 	}
+
+	line.Color = seriesColor(index)
+	line.Width = vg.Points(2)
 
 	plt.Add(line)
 	plt.Legend.Add(seriesName, line)

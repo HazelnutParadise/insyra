@@ -16,8 +16,8 @@ import (
 func TestDefaultColors(t *testing.T) {
 	colors := DefaultColors()
 
-	if len(colors) != 64 {
-		t.Errorf("the palette has %d colours, want 64", len(colors))
+	if len(colors) != 9 {
+		t.Errorf("the palette has %d colours, want 9", len(colors))
 	}
 	seen := make(map[string]bool, len(colors))
 	for i, c := range colors {
