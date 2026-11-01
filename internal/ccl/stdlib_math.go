@@ -96,7 +96,7 @@ func registerMathFunctions() {
 		if res, ok, err := applyIntegerOperator("%", args[0], args[1]); ok {
 			return res, err
 		}
-		return math.Mod(a, b), nil
+		return floatModulo(a, b), nil
 	})
 
 	registerFunction("POW", func(args ...any) (any, error) {

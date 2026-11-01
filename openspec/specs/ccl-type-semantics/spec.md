@@ -2,7 +2,9 @@
 
 ## Purpose
 CCL never produces a value for an operation it cannot perform. Values that have no common ordering are an error rather than a silent false, an index that is not a whole number is an error rather than a truncation, a cell of every Go numeric type is a number, and the evaluator's internal representations never reach a cell.
+
 ## Requirements
+
 ### Requirement: Strings have an ordering
 
 When neither operand of `<`, `>`, `<=` or `>=` converts to a number and both are strings, CCL SHALL compare them lexicographically. When one operand converts to a number and the other is a string that does not, CCL SHALL return an error. `nil` compared for size against any value SHALL remain false, as documented.
@@ -50,6 +52,7 @@ No internal representation SHALL become a cell value. A column range used as a w
 #### Scenario: A sequence function that needs numbers
 - **WHEN** 求值 `CUMSUM(@)`
 - **THEN** 回傳錯誤說明整列不是數字
+
 ### Requirement: AND and OR check their arguments
 
 `AND()` and `OR()` SHALL require at least two arguments, and SHALL return an error for an argument that cannot be converted to a boolean, matching `&&` and `||`.
@@ -233,6 +236,7 @@ Every numeric operation not covered by the integer rules SHALL compute in `float
 #### Scenario: Division and powers stay float64
 - **WHEN** 求值 `7 / 2`、`6 / 3`、`2 ^ 3`
 - **THEN** 分別得到 `float64` 的 3.5、2、8
+
 ### Requirement: A computed column holds one kind of number
 
 A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` or a statement of `ExecuteCCL` SHALL hold one kind of number: when the numbers among its values include a `float64` or `float32`, every value of a Go integer type whose magnitude is at most 2^53 SHALL become the `float64` of the same value. An integer of larger magnitude SHALL keep its type and value. A column whose numbers are all integers, and every value that is not a number, SHALL be left as computed.
@@ -296,3 +300,11 @@ A `time.Duration`, a string `time.ParseDuration` accepts, or a number given to `
 #### Scenario: What the error points to
 - **WHEN** A 為 2024-01-03 12:00、B 為 2024-01-02 00:00，求值 `DATEDIFF(A, B, 'day')` 與 `(A - B) / 3600`
 - **THEN** 分別得到 1.5 與 36
+
+### Requirement: A remainder has the sign of the divisor
+
+`MOD(a, b)` and `a % b` SHALL give the remainder with the sign of `b`, as Excel's `MOD` does, for integers and floats alike. They SHALL give the same answer as each other.
+
+#### Scenario: Signs that differ
+- **WHEN** `MOD(-7, 3)`, `-7 % 3`, `MOD(7, -3)` and `MOD(-7.5, 2)` are evaluated
+- **THEN** they give 2, 2, -2 and 0.5
