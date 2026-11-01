@@ -141,6 +141,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：CCL 的 `MOD` 和 `%` 改成餘數跟著第二個數的正負號，跟 Excel、Python、R 一樣：`MOD(-7, 3)` 和 `-7 % 3` 從 `-1` 變成 `2`。只有正數的公式答案不變。第一個數是負數、第二個數是正數，又想保留舊結果時，寫成 `-MOD(-a, b)`。
 - **BREAKING**：CCL 的 `WEEKDAY`、`TRIM`、`COUNT` 改成跟 Excel 一樣。`WEEKDAY` 從週日 0～週六 6 改成週日 1～週六 7，要舊的數字就寫 `WEEKDAY(d) - 1`。`TRIM` 也會把文字中間連續的空白縮成一個。`COUNT` 只數數字和日期，不數文字（包含看起來像數字的文字）、布林值和 `NaN`；新增的 `COUNTA` 數所有非 `nil` 的值，也就是 `COUNT` 原本的行為，所以要數儲存格請寫 `COUNTA(@)`。
 - CCL 的 `TEXT` 和 `FORMAT_DATE` 同時認 Go 和 Excel 兩種格式寫法：`TEXT(x, '0.00')` 和 `TEXT(x, '%.2f')` 都得到 `1.50`，`FORMAT_DATE(d, 'yyyy-mm-dd')` 和 `FORMAT_DATE(d, '2006-01-02')` 都得到 `2024-03-09`。`TEXT` 也能處理日期。Excel 的數字格式跟 Excel 一樣四捨五入，所以 `TEXT(2.5, '0')` 是 `3`，`TEXT(2.5, '%.0f')` 是 `2`。日期格式裡有不是代碼的字母時，現在會回傳錯誤；以前 `FORMAT_DATE(d, 'yyyy-qq')` 會把格式字串原樣傳回。代碼清單在 `Docs/CCL.md`。
+- CCL：新增 `COUNTIF(條件)`、`SUMIF(條件, 值)`、`AVGIF(條件, 值)`，計算條件成立的列數、總和與平均。條件是不加引號的運算式，例如 `COUNTIF(A > 0)`，所以裡面可以用 `&&`、`||` 和 `REGEX_MATCH` 這類函式。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
