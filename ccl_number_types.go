@@ -2,7 +2,7 @@ package insyra
 
 // unifyCCLNumbers gives a column CCL computed one kind of number, the way a
 // pandas column has one dtype, so whether a literal was written 0 or 0.0 does
-// not show in the result: COALESCE(TONUM(A), 0) over [19.5, "abc", 30] holds
+// not show in the result: COALESCE(VALUE(A), 0) over [19.5, "abc", 30] holds
 // three float64s, not two and an int64. When the column's numbers include a
 // float, every integer a float64 holds exactly becomes a float64; an integer
 // past 2^53 keeps its digits, because a float64 would change it. A column whose

@@ -297,11 +297,11 @@ func TestTOSTRFormatsIntegers(t *testing.T) {
 		expr string
 		want string
 	}{
-		{"TOSTR(50, '%.1f')", "50.0"},
-		{"TOSTR(A, '%.2f')", "42.00"},
-		{"TOSTR(A, '%d items')", "42 items"},
-		{"TOSTR(A * 2, '%05d')", "00084"},
-		{"TOSTR(A)", "42"},
+		{"TEXT(50, '%.1f')", "50.0"},
+		{"TEXT(A, '%.2f')", "42.00"},
+		{"TEXT(A, '%d items')", "42 items"},
+		{"TEXT(A * 2, '%05d')", "00084"},
+		{"TEXT(A)", "42"},
 	} {
 		got, err := evalOne(t, ctx, c.expr)
 		if err != nil {
@@ -312,7 +312,7 @@ func TestTOSTRFormatsIntegers(t *testing.T) {
 			t.Errorf("%s = %q, want %q", c.expr, got, c.want)
 		}
 	}
-	if got, err := evalOne(t, ctx, "TOSTR(A, '%s')"); err == nil {
-		t.Errorf("TOSTR(A, '%%s') = %q, want an error", got)
+	if got, err := evalOne(t, ctx, "TEXT(A, '%s')"); err == nil {
+		t.Errorf("TEXT(A, '%%s') = %q, want an error", got)
 	}
 }

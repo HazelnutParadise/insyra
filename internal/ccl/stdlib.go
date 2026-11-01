@@ -16,12 +16,12 @@ import (
 //   - Math (stdlib_math.go): ABS, ROUND, FLOOR, CEIL, TRUNC, MOD, POW,
 //     SQRT, LN, LOG, LOG10, EXP, SIGN
 //   - String (stdlib_string.go): LEN, UPPER, LOWER, TRIM/L/RTRIM,
-//     LEFT, RIGHT, MID/SUBSTR, REPLACE, FIND, CONTAINS, STARTSWITH,
+//     LEFT, RIGHT, MID, REPLACE, FIND, CONTAINS, STARTSWITH,
 //     ENDSWITH, REGEX_MATCH, REPEAT
-//   - Type conversion (stdlib_typeconv.go): TONUM/VALUE, TOSTR/TEXT,
+//   - Type conversion (stdlib_typeconv.go): VALUE, TEXT,
 //     TOBOOL, COALESCE, IFNULL
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAY, HOUR,
-//     MINUTE, SECOND, DAYOFMONTH, WEEKDAY, DATEDIFF, DUR, DATEADD,
+//     MINUTE, SECOND, WEEKDAY, DATEDIFF, DUR, DATEADD,
 //     FORMAT_DATE
 //   - Aggregates: SUM, AVG, COUNT, MAX, MIN (this file) and
 //     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)

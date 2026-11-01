@@ -380,7 +380,7 @@ When performing arithmetic operations or comparisons, CCL attempts to convert op
 - **Integers stay integers.** When both operands are integers, of any Go integer type, `+`, `-`, `*`, `%` and unary minus compute in `int64` and give an `int64`, and `==`, `!=`, `<`, `>`, `<=`, `>=` compare them exactly. So `A * 1` on an integer column is an `int64` column, and `int64(9007199254740993) + 0` is `9007199254740993`. `SUM`, `MIN` and `MAX` give an `int64` when every value they use is an integer, and `MOD` follows `%`. In arithmetic a `nil` next to an integer is an integer `0`
 - **An integer result `int64` cannot hold is an error**, never a wrapped-around number: `9223372036854775807 + 1` fails with `integer overflow`. Write one operand with a decimal point, `A * 1.0`, to compute in `float64` instead
 - **Everything else is `float64`, as before.** `/` and `^` always give a `float64` (`7 / 2` is `3.5`, `6 / 3` is `2.0`, `2 ^ 3` is `8.0`), and so do `AVG`, `MEDIAN`, the variance family, `COUNT`, the math functions other than `MOD`, the sequence functions, and any operation with a `float64`, a numeric string or a boolean on either side. A `float64` holds every integer up to 2^53 (9,007,199,254,740,992) exactly; past that, an integer that meets a `float64`, such as `A + 0.5`, is read as the nearest `float64` and loses its last digits. A `uint64` above the `int64` range is always read that way
-- **A computed column holds one kind of number.** Each row follows the rules above, and then the column `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` or a statement of `ExecuteCCL` writes is settled as a whole, the way a pandas column has one dtype: when its numbers include a `float64` or `float32`, every integer a `float64` holds exactly becomes a `float64`. So `COALESCE(TONUM(A), 0)` over `["19.5", "abc", "30"]` is `[19.5, 0.0, 30.0]`, all `float64`. An integer past 2^53 keeps its digits rather than become a `float64` that changes it. A column whose numbers are all integers is left as it is, and values that are not numbers, such as text, booleans, `nil`, dates and durations, are never changed: `IF(A == 0, 'none', A * 1.5)` gives the text and `float64`s
+- **A computed column holds one kind of number.** Each row follows the rules above, and then the column `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` or a statement of `ExecuteCCL` writes is settled as a whole, the way a pandas column has one dtype: when its numbers include a `float64` or `float32`, every integer a `float64` holds exactly becomes a `float64`. So `COALESCE(VALUE(A), 0)` over `["19.5", "abc", "30"]` is `[19.5, 0.0, 30.0]`, all `float64`. An integer past 2^53 keeps its digits rather than become a `float64` that changes it. A column whose numbers are all integers is left as it is, and values that are not numbers, such as text, booleans, `nil`, dates and durations, are never changed: `IF(A == 0, 'none', A * 1.5)` gives the text and `float64`s
 - String-to-number conversion follows standard parsing rules
 - Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
 
@@ -400,7 +400,7 @@ The `&` operator always performs string concatenation by converting all operands
 "Value: " & 45.67           // "Value: 45.67"
 ```
 
-**How a number becomes text.** `&`, `CONCAT`, `TOSTR` without a format, `LEN`,
+**How a number becomes text.** `&`, `CONCAT`, `TEXT` without a format, `LEN`,
 `UPPER` and the other string functions write a number by the same rule as
 `ToJSON` and `ToCSV`: a plain decimal from 0.000001 up to (not including) 1e21,
 and exponent form outside that range.
@@ -412,8 +412,8 @@ LEN(1000000)               // 7
 "x" & 0.0000001            // "x1e-07" (below 0.000001, so exponent form)
 ```
 
-Use `TOSTR(x, fmt)` when you need a fixed number of decimals or a different
-layout, for example `TOSTR(A, '%.2f')`.
+Use `TEXT(x, fmt)` when you need a fixed number of decimals or a different
+layout, for example `TEXT(A, '%.2f')`.
 
 ### Handling `nil` Values
 
@@ -762,7 +762,7 @@ dt.AddColUsingCCL("delta", "ABS(['actual'] - ['target'])")
 
 ### String Functions
 
-All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID`/`SUBSTR` slice by rune. A count or position past the end of the string means "to the end", so `MID('abc', 2, 10^300)` is `"bc"`, and a `NaN` count is an error.
+All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID` slice by rune. A count or position past the end of the string means "to the end", so `MID('abc', 2, 10^300)` is `"bc"`, and a `NaN` count is an error.
 
 | Function | Description |
 | --- | --- |
@@ -771,7 +771,7 @@ All string functions are rune-aware (Unicode safe). `nil` is treated as the empt
 | `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip ASCII whitespace from both / left / right |
 | `LEFT(s, n)` | First `n` characters |
 | `RIGHT(s, n)` | Last `n` characters |
-| `MID(s, start, length)` / `SUBSTR(...)` | Substring (1-based start, like Excel) |
+| `MID(s, start, length)` | Substring (1-based start, like Excel) |
 | `REPLACE(s, old, new)` | Replace all occurrences of `old` with `new` |
 | `FIND(needle, haystack)` | 1-based position of `needle`; `0` if not found |
 | `CONTAINS(s, sub)` / `STARTSWITH(s, p)` / `ENDSWITH(s, p)` | Boolean checks |
@@ -791,8 +791,8 @@ dt.ExecuteCCL(`
 
 | Function | Description |
 | --- | --- |
-| `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
-| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). An integer under a float verb is formatted as the `float64` it equals, so `TOSTR(50, '%.1f')` is `"50.0"`, and `%d` formats it as itself. A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
+| `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
+| `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). An integer under a float verb is formatted as the `float64` it equals, so `TEXT(50, '%.1f')` is `"50.0"`, and `%d` formats it as itself. A verb that does not fit the value — `TEXT(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
@@ -800,8 +800,8 @@ dt.ExecuteCCL(`
 `IFNULL` differs from the existing `IFNA`: `IFNA` only triggers on float `NaN` or the string `"#N/A"`, while `IFNULL` matches actual `nil` values.
 
 ```go
-dt.AddColUsingCCL("price_num", "COALESCE(TONUM(['price_str']), 0)")
-dt.AddColUsingCCL("price_fmt", "TOSTR(['price'], '$%.2f')")
+dt.AddColUsingCCL("price_num", "COALESCE(VALUE(['price_str']), 0)")
+dt.AddColUsingCCL("price_fmt", "TEXT(['price'], '$%.2f')")
 ```
 
 ### Date Component & Arithmetic Functions
@@ -814,7 +814,6 @@ These operate on `time.Time` values (or strings parseable by Insyra's date parse
 | `MONTH(d)` | Month 1–12 |
 | `DAY(d)` | Day of the month, 1–31 |
 | `HOUR(d)` / `MINUTE(d)` / `SECOND(d)` | Hour 0–23, minute 0–59, second 0–59; a fraction of a second is dropped |
-| `DAYOFMONTH(d)` | **Deprecated**: the same as `DAY(d)`, kept so existing formulas keep working. Use `DAY` |
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
 | `DUR(x, unit)` | A duration in `'day'` / `'hour'` / `'minute'` / `'second'`. `x` is a `time.Duration`, such as `A - B`, or a string such as `'36h'`, `'1h30m'` or `'2d'`. An empty cell stays empty |

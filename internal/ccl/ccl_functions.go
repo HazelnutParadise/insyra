@@ -66,6 +66,14 @@ func RegisterSequenceFunction(name string, fn SeqFunc) {
 	userSequences[key] = true
 }
 
+// registerRemovedName keeps a removed function's name only to say what to write
+// instead, rather than leaving a formula with an unknown function.
+func registerRemovedName(name, use string) {
+	registerFunction(name, func(args ...any) (any, error) {
+		return nil, fmt.Errorf("%s was removed; use %s", name, use)
+	})
+}
+
 func registerFunction(name string, fn Func) {
 	registryMu.Lock()
 	defer registryMu.Unlock()

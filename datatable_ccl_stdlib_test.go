@@ -30,7 +30,7 @@ func TestDataTable_CCL_StdlibIntegration(t *testing.T) {
 	dt.AddColUsingCCL("Prefix", "LEFT(B, 2)")
 
 	// Type conversion / null handling
-	dt.AddColUsingCCL("XStr", "TOSTR(A)")
+	dt.AddColUsingCCL("XStr", "TEXT(A)")
 	dt.AddColUsingCCL("XOrZero", "COALESCE(A, 0)")
 
 	// Aggregates: STDEV / VAR / MEDIAN broadcast across rows
@@ -145,7 +145,7 @@ func TestDataTable_ExecuteCCL_StdlibPipeline(t *testing.T) {
 	dt.ExecuteCCL(`
 		['Email'] = LOWER(TRIM(['Email']))
 		NEW('Domain') = MID(['Email'], FIND('@', ['Email']) + 1, LEN(['Email']))
-		NEW('AgeNum') = COALESCE(TONUM(['AgeStr']), 0)
+		NEW('AgeNum') = COALESCE(VALUE(['AgeStr']), 0)
 	`)
 
 	if err := dt.Err(); err != nil {

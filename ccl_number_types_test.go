@@ -21,7 +21,7 @@ func TestCCLColumnHoldsOneKindOfNumber(t *testing.T) {
 		{
 			name: "a literal fallback in a float column",
 			data: []any{"19.5", "abc", "30"},
-			expr: "COALESCE(TONUM(A), 0)",
+			expr: "COALESCE(VALUE(A), 0)",
 			want: []any{19.5, 0.0, 30.0},
 		},
 		{
