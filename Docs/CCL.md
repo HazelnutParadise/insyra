@@ -789,7 +789,7 @@ dt.ExecuteCCL(`
 | Function | Description |
 | --- | --- |
 | `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails. `TONUM(x)` is deprecated, logs a warning, and is removed in 0.4 |
-| `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is. `TOSTR(x, fmt?)` is deprecated, logs a warning, and is removed in 0.4 |
+| `TEXT(x, fmt?)` | Convert to string. With a second argument, formats by either kind of format, as described under **Formats** below: a Go `fmt` verb (e.g. `"%.2f"`), an Excel number code (`"0.00"`), or a date format (`"yyyy-mm-dd"`, `"2006-01-02"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is. `TOSTR(x, fmt?)` is deprecated, logs a warning, and is removed in 0.4 |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
@@ -814,7 +814,7 @@ These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers an
 | `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped. **Deprecated**: removed in 0.4, where `HOUR(d)`, `MINUTE(d)`, `SECOND(d)` and `DAY(d)` read dates. Keep using it for those parts on 0.3.x; `YEAR(d)`, `MONTH(d)` and `DAYOFMONTH(d)` already give the others |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
 | `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A fractional `n` truncates for `day`, `month` and `year`. A day, month or year count that is `NaN`, infinite or beyond `int64`, or more than about 292 years in hours, minutes or seconds, is an error |
-| `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
+| `FORMAT_DATE(d, format)` | Format a date, by a Go reference layout (`"2006-01-02"`) or Excel's codes (`"yyyy-mm-dd"`) |
 
 ```go
 dt.AddColUsingCCL("order_year", "YEAR(['order_date'])")
@@ -842,6 +842,24 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 ### DUR
 
 `DUR(x, unit)` gives a duration in `'day'`, `'hour'`, `'minute'` or `'second'`. `x` is a `time.Duration`, such as `A - B`, or a string such as `'36h'`, `'1h30m'` or `'2d'`; `d` and `w` are read as 24 and 168 hours. An empty cell stays empty, and a number or text it cannot read is an error naming the value.
+
+### Formats
+
+`TEXT` and `FORMAT_DATE` read a format written the Go way or the Excel way, and tell which from the format alone:
+
+| Wanted | Go | Excel |
+| --- | --- | --- |
+| `1.50` | `TEXT(x, '%.2f')` | `TEXT(x, '0.00')` |
+| `1,234.50` | | `TEXT(x, '#,##0.00')` |
+| `15.0%` | | `TEXT(x, '0.0%')` |
+| `2024-03-09` | `FORMAT_DATE(d, '2006-01-02')` | `FORMAT_DATE(d, 'yyyy-mm-dd')` |
+| `14:05` | `FORMAT_DATE(d, '15:04')` | `FORMAT_DATE(d, 'hh:mm')` |
+
+- A format holding a Go `fmt` verb is Go. One holding a digit from 1 to 9 is a Go date layout. `0` or `#` with no letters is an Excel number code. Anything else with letters is a date format, in Excel's codes or Go's names (`Mon`, `Monday`, `Jan`, `January`, `MST`).
+- Excel number codes: `0`, `#`, a thousands comma, a point, `%`, and literal text around them, such as `$0.00` or `0.0 "kg"`. Sections with `;`, a scaling comma and scientific notation are errors.
+- Excel date codes, in any case: `yyyy` `yy`, `m` `mm` `mmm` `mmmm`, `d` `dd` `ddd` `dddd`, `h` `hh`, `s` `ss`, `.000` after seconds, `AM/PM`, `A/P`. As in Excel, `m` or `mm` right after an hour code or right before a second code is minutes. Text such as `yyyy年mm月dd日`, or anything in `"..."`, is written as it is. Any other ASCII letter is an error, so a typo does not come back as its own text; `mon` in lower case is one, while Go's `Mon` is read.
+- The two kinds round differently. An Excel code rounds half away from zero on the number as written: `TEXT(2.5, '0')` is `3` and `TEXT(1.005, '0.00')` is `1.01`. A Go verb rounds the binary value: `TEXT(2.5, '%.0f')` is `2` and `TEXT(1.005, '%.2f')` is `1.00`.
+- Under an Excel code or a date format, an empty cell stays empty, and a value of the other kind is an error, such as a number under `yyyy-mm-dd`. A number is not read as an Excel serial date. A date is written in its own time zone.
 
 ### DAY / HOUR / MINUTE / SECOND
 

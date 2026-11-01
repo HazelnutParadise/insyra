@@ -28,6 +28,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL 的 `TONUM`、`TOSTR`、`SUBSTR` 標為棄用，將在 0.4 移除：請改用功能相同的 `VALUE`、`TEXT`、`MID`。它們在程式裡第一次執行時會各記一則警告。`DAYOFMONTH` 也標為棄用，之後改用 0.4 的 `DAY`；它不會記警告，因為 `DAY` 在這裡還是換算時間長度。
 - CCL 的 `MOD` 和 `%` 第一次遇到 0.4 會改變答案的數字時會記一則警告：從 0.4 開始，餘數改成跟著第二個數的正負號，跟 Excel 一樣，所以 `MOD(-7, 3)` 會從 `-1` 變成 `2`。現在的結果不變，只有正數的公式也不會警告。
 - CCL 的 `WEEKDAY`、`TRIM`、`COUNT` 在 0.4 會改成跟 Excel 一樣，現在遇到答案會變的情況時會警告一次：`WEEKDAY` 會改成週日 1～週六 7；`TRIM` 會把文字中間連續的空白縮成一個；`COUNT` 只數數字和日期。現在的結果不變。CCL 新增 `COUNTA`，在兩條版本線上都數所有非 `nil` 的值，要數儲存格請用它。
+- CCL 的 `TEXT` 和 `FORMAT_DATE` 同時認 Go 和 Excel 兩種格式寫法：`TEXT(x, '0.00')` 和 `TEXT(x, '%.2f')` 都得到 `1.50`，`FORMAT_DATE(d, 'yyyy-mm-dd')` 和 `FORMAT_DATE(d, '2006-01-02')` 都得到 `2024-03-09`。`TEXT` 也能處理日期。Excel 的數字格式跟 Excel 一樣四捨五入，所以 `TEXT(2.5, '0')` 是 `3`，`TEXT(2.5, '%.0f')` 是 `2`。日期格式裡有不是代碼的字母時，現在會回傳錯誤；以前 `FORMAT_DATE(d, 'yyyy-qq')` 會把格式字串原樣傳回。代碼清單在 `Docs/CCL.md`。
 
 ### `ml` 與 `nn`
 
