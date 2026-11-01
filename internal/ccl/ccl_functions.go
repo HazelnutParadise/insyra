@@ -111,6 +111,30 @@ func registerSequenceFunction(name string, fn SeqFunc) {
 // IFERROR does not cover it.
 var errUnknownName = errors.New("undefined function")
 
+// shortNames maps a name from Excel to the shorter one CCL spells it with, or to
+// the function that does the same thing under another name. Neither is a second
+// name: the long one stays an error that says what to write.
+var shortNames = map[string]string{
+	"AVERAGE":     "AVG",
+	"AVERAGEIF":   "AVGIF",
+	"POWER":       "POW",
+	"CEILING":     "CEIL",
+	"REPT":        "REPEAT",
+	"ISNUMBER":    "ISNUM",
+	"ISLOGICAL":   "ISBOOL",
+	"CONCATENATE": "CONCAT",
+	"SUBSTITUTE":  "REPLACE",
+}
+
+// undefinedFunctionError names the function, and what to write if CCL has it
+// under a shorter name.
+func undefinedFunctionError(name string) error {
+	if short, ok := shortNames[strings.ToUpper(name)]; ok {
+		return fmt.Errorf("%w: %s; use %s", errUnknownName, name, short)
+	}
+	return fmt.Errorf("%w: %s", errUnknownName, name)
+}
+
 // unknownColumnError is a column a formula names that the table does not have,
 // which is also a mistake in the formula.
 type unknownColumnError struct{ msg string }
@@ -166,7 +190,7 @@ func callFunction(name string, args []any, callDepth int) (result any, err error
 
 	fn, ok := lookupFunction(name)
 	if !ok {
-		return nil, fmt.Errorf("%w: %s", errUnknownName, name)
+		return nil, undefinedFunctionError(name)
 	}
 
 	// panic 恢復：以具名返回值將 panic 轉為錯誤回報給呼叫端，

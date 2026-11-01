@@ -3,9 +3,36 @@ package ccl
 import (
 	"fmt"
 	"math"
+	mathbig "math/big"
 	"strconv"
 	"strings"
 )
+
+// toMultiple rounds f down or up to a multiple of a positive number, reading both
+// as written: as float64s, 1.1 / 0.1 is just past 11, and CEIL(1.1, 0.1) would give
+// 1.2.
+func toMultiple(name string, f float64, multiple any, up bool) (any, error) {
+	m, ok := toFloat64(multiple)
+	if _, isBool := multiple.(bool); !ok || isBool || !(m > 0) || math.IsInf(m, 0) {
+		return nil, fmt.Errorf("%s: the multiple must be a positive number, got %v", name, multiple)
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return f, nil
+	}
+	exactF, _ := new(mathbig.Rat).SetString(strconv.FormatFloat(f, 'f', -1, 64))
+	exactM, _ := new(mathbig.Rat).SetString(strconv.FormatFloat(m, 'f', -1, 64))
+	q := new(mathbig.Rat).Quo(exactF, exactM)
+	// Int.Div rounds down for a positive divisor, and a Rat's denominator is one.
+	whole := new(mathbig.Int).Div(q.Num(), q.Denom())
+	if up && !q.IsInt() {
+		whole.Add(whole, mathbig.NewInt(1))
+	}
+	result, _ := new(mathbig.Rat).Mul(new(mathbig.Rat).SetInt(whole), exactM).Float64()
+	if result == 0 {
+		return 0.0, nil
+	}
+	return result, nil
+}
 
 // roundRule says which way roundWritten goes.
 type roundRule int
@@ -159,23 +186,29 @@ func registerMathFunctions() {
 	})
 
 	registerFunction("FLOOR", func(args ...any) (any, error) {
-		if len(args) != 1 {
-			return nil, fmt.Errorf("FLOOR requires 1 argument")
+		if len(args) < 1 || len(args) > 2 {
+			return nil, fmt.Errorf("FLOOR requires 1 or 2 arguments")
 		}
 		f, ok := toFloat64(args[0])
 		if !ok {
 			return nil, fmt.Errorf("FLOOR: cannot convert %T to number", args[0])
 		}
+		if len(args) == 2 {
+			return toMultiple("FLOOR", f, args[1], false)
+		}
 		return math.Floor(f), nil
 	})
 
 	registerFunction("CEIL", func(args ...any) (any, error) {
-		if len(args) != 1 {
-			return nil, fmt.Errorf("CEIL requires 1 argument")
+		if len(args) < 1 || len(args) > 2 {
+			return nil, fmt.Errorf("CEIL requires 1 or 2 arguments")
 		}
 		f, ok := toFloat64(args[0])
 		if !ok {
 			return nil, fmt.Errorf("CEIL: cannot convert %T to number", args[0])
+		}
+		if len(args) == 2 {
+			return toMultiple("CEIL", f, args[1], true)
 		}
 		return math.Ceil(f), nil
 	})

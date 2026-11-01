@@ -179,6 +179,7 @@ func TestDeprecatedNamesWarnOnce(t *testing.T) {
 	// DATEPART and DAYOFMONTH warn too, now that DAY, HOUR and the others read a date.
 	for _, c := range []struct{ name, expr, use string }{
 		{"DAYOFMONTH", "DAYOFMONTH('2024-03-09')", "use DAY"},
+		{"REGEX_MATCH", "REGEX_MATCH('a', 'a')", "use REGEXTEST"},
 		{"DATEPART", "DATEPART('2024-03-09', 'day')", "HOUR"},
 	} {
 		warnedOnce.Delete(c.name)
