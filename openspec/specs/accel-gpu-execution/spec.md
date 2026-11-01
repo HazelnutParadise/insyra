@@ -202,3 +202,43 @@ The system SHALL compile device kernels with a WGSL compiler under which `countL
 #### Scenario: A select used as an operand
 - **WHEN** a kernel computes `(v >> 24u) | select(0u, 0xffffff00u, (v & 0x80000000u) != 0u)` for v = 0x12345678
 - **THEN** the result is 0x12, not the value of the select alone
+
+### Requirement: Rounded arithmetic does not depend on a compiler built-in
+The system SHALL compute correctly rounded division, square root, exp and log on the device from integer operations whose WGSL built-ins are identical on every backend, so that a subnormal input gives the host's result on Metal, Vulkan and DirectX 12.
+
+#### Scenario: A subnormal division on Vulkan
+- **WHEN** the device divides the float32 with bits 0x1 by the one with bits 0x2
+- **THEN** the result is 0.5, as on the host
+
+### Requirement: A write to a resident buffer is complete before later work uses it
+The system SHALL make a write to a resident buffer (an upload, `Write`, `WriteBits` or `Zero`) land before any later kernel or readback reads the buffer, on every backend.
+
+#### Scenario: Zero then read
+- **WHEN** a buffer holding nonzero words is zeroed and then read back
+- **THEN** every word read is zero, in every run
+
+### Requirement: A lost device is reported as lost
+The system SHALL report a lost GPU device as `ErrDeviceLost` with the fallback reason `device-lost`, and SHALL refuse every buffer and binding made on the lost device with that error.
+
+#### Scenario: A dispatch is stopped by the operating system
+- **WHEN** a dispatch runs long enough for the device to be lost
+- **THEN** the call that meets the loss returns an error for which `errors.Is(err, ErrDeviceLost)` is true
+- **AND** reading a buffer or submitting a binding made before the loss returns the same error
+
+### Requirement: The next call tries a new device
+The system SHALL release every object it made on a lost device and SHALL try to open a new device on the next call that needs one, reporting no device when the driver refuses.
+
+#### Scenario: The driver gives a new device
+- **WHEN** a caller creates a new buffer and binds the same kernel after the loss, and a new device opens
+- **THEN** the kernel runs on the new device and returns the correct result
+
+#### Scenario: The driver refuses a new device
+- **WHEN** the driver refuses to create a device after the loss
+- **THEN** creating a resident buffer fails with the fallback reason `no-accelerator`
+
+### Requirement: Built-in operations survive a lost device
+The system SHALL return a correct result from a built-in operation whose call meets a device loss, by computing it on the CPU.
+
+#### Scenario: Nearest-row search meets a loss
+- **WHEN** the device is lost during an exact nearest-row search
+- **THEN** the search returns the CPU result and reports that it was not accelerated
