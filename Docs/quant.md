@@ -783,14 +783,28 @@ The table is in long form, one row per stock and month, like `QuantileSort`. `da
 
 - `Groups`: one row per reported month, with `date` and `group_1` (the losers) to `group_n` (the winners).
 - `LongShort`: the winners' return minus the losers' for each row of `Groups`.
+- `Turnover`: the rows and columns of `Groups`, each group's turnover in the month (below).
+- `LongShortTurnover`: the winners' turnover plus the losers' for each row, the turnover of the spread.
 - `Skipped`: months left out because a portfolio they average could not be formed, and why.
+
+`Turnover` is the share of a group traded at the start of the month, `sum over stocks of |w_m - w_(m-1)+|` (DeMiguel, Garlappi and Uppal 2009). `w_m` is the stock's weight in the month, the one the return is computed with: the sum over the `Hold` overlapping portfolios of `1/Hold` divided by the number of that portfolio's group stocks with a return in the month, so a stock held by several portfolios counts once. `w_(m-1)+` is its weight at the end of the month before, after that month's return has moved it: `w_(m-1) * (1 + r_(m-1))`, divided by the sum of those values over the group. 2 means the whole group was sold and bought again. Multiply by a one-way cost to get the month's trading cost (Novy-Marx and Velikov 2016):
+
+```go
+cost := 0.0025 // 25 basis points each way
+gross, turn := res.LongShort.Data(), res.LongShortTurnover.Data()
+net := make([]float64, len(gross))
+for i := range gross {
+    net[i] = gross[i].(float64) - cost*turn[i].(float64) // NaN where the turnover is
+}
+```
+
+A stock with no return in a month is taken as sold at its start and bought again when its return comes back, and a stock that stops trading is sold in full. `Turnover` is `NaN` in the first reported month, in a month after a skipped one, when the group's return is `NaN` in the month or the month before, and when the drifted weights sum to zero or less. It uses the same two-sided sum as `BacktestSignal`'s `Turnover`, but `BacktestSignal` compares positions as they were set, while this one lets each weight drift with its return first, so a group whose stocks stay the same still has turnover when their returns differ, from bringing them back to equal weights.
 
 ```go
 res, err := quant.MomentumPortfolios(panel, "date", "stock", "ret", 6, 10, quant.MomentumOptions{Skip: 1, Hold: 6})
 sharpe, err := quant.SharpeRatio(res.LongShort, 0, 12)
+fmt.Println(res.LongShortTurnover.Clone().ClearNaNs().Mean()) // the spread's average monthly turnover
 ```
-
-Turnover is not reported: it needs the weights to be carried forward with the returns, which this version leaves out.
 
 ### FamaMacBeth
 

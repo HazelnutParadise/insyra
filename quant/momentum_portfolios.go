@@ -30,6 +30,19 @@ type MomentumResult struct {
 	Groups *insyra.DataTable
 	// LongShort is group_n minus group_1 for each row of Groups.
 	LongShort *insyra.DataList
+	// Turnover has the rows and columns of Groups: for each group, the sum
+	// over stocks of |w_m - w_(m-1)+|, where w_m is a stock's weight in the
+	// month and w_(m-1)+ its weight at the end of the month before, after the
+	// returns of that month have moved it (DeMiguel, Garlappi and Uppal 2009).
+	// 2 means the whole group was sold and bought again; multiplied by a
+	// one-way cost it is the trading cost of the month. It is NaN in the first
+	// reported month, in a month after a skipped one, when the group return is
+	// NaN in the month or the month before, and when the drifted weights sum
+	// to zero or less.
+	Turnover *insyra.DataTable
+	// LongShortTurnover is group_n plus group_1 of Turnover for each row,
+	// the turnover of the winners-minus-losers spread.
+	LongShortTurnover *insyra.DataList
 	// Skipped lists the months left out because a portfolio they average could
 	// not be formed, with the reason. Months before the first full set of
 	// overlapping portfolios are not reported and not listed.
@@ -56,6 +69,13 @@ type MomentumResult struct {
 // return at all in one of the overlapping portfolios makes that month's group return NaN. A stock whose compounded formation return overflows is not ranked.
 // A month is reported once Hold portfolios have been formed; at least groups
 // stocks must be ranked in a month for its portfolio to be formed.
+//
+// Turnover follows the weights the returns are computed with: a stock's weight
+// in a group is the sum over the Hold overlapping portfolios of 1/Hold divided
+// by the number of that portfolio's group stocks with a return in the month.
+// A stock with no return in a month is taken as sold at its start and bought
+// again when its return comes back, and a stock that stops trading as sold
+// in full.
 //
 // formation and groups have no safe default and are required: formation is the
 // number of months ranked on, groups at least 2 (10 for deciles).
@@ -175,6 +195,8 @@ func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol st
 	// Cohort f is formed at the end of month f and held in months f+1 .. f+hold.
 	// held[f][g][k-1] is group g's mean return in month f+k, NaN if it has none.
 	held := make([][][]float64, months)
+	// member[f][s] is the group of stock s in cohort f, -1 when not ranked.
+	member := make([][]int, months)
 	skipReason := make([]string, months)
 	for f := first; f < months-1; f++ {
 		sig := make([]float64, nStocks)
@@ -209,6 +231,13 @@ func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol st
 			skipReason[f] = reason
 			continue
 		}
+		member[f] = make([]int, nStocks)
+		for s := range member[f] {
+			member[f][s] = -1
+		}
+		for p, s := range idx {
+			member[f][s] = group[p]
+		}
 		held[f] = make([][]float64, groups)
 		for g := range held[f] {
 			held[f][g] = make([]float64, hold)
@@ -232,10 +261,74 @@ func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol st
 		}
 	}
 
+	// weights returns, for each group, each stock's weight in month m summed
+	// over the overlapping portfolios, or nil for a group whose share of one
+	// portfolio has no return in m, which is when the group's return is NaN.
+	weights := func(m int) [][]float64 {
+		w := make([][]float64, groups)
+		for g := range w {
+			w[g] = make([]float64, nStocks)
+		}
+		empty := make([]bool, groups)
+		counts := make([]int, groups)
+		for k := 1; k <= hold; k++ {
+			f := m - k
+			clear(counts)
+			for s := 0; s < nStocks; s++ {
+				if g := member[f][s]; g >= 0 && !math.IsNaN(r[s][m]) {
+					counts[g]++
+				}
+			}
+			for s := 0; s < nStocks; s++ {
+				if g := member[f][s]; g >= 0 && !math.IsNaN(r[s][m]) {
+					w[g][s] += 1 / float64(hold*counts[g])
+				}
+			}
+			for g, c := range counts {
+				if c == 0 {
+					empty[g] = true
+				}
+			}
+		}
+		for g := range w {
+			if empty[g] {
+				w[g] = nil
+			}
+		}
+		return w
+	}
+	// turnover is sum |w - drifted prev| for a group, where prev were the
+	// weights of month m-1 and drift moves them by that month's returns.
+	turnover := func(prev, w []float64, m int) float64 {
+		if prev == nil || w == nil {
+			return math.NaN()
+		}
+		drift := make([]float64, nStocks)
+		var total float64
+		for s, v := range prev {
+			if v != 0 {
+				drift[s] = v * (1 + r[s][m-1])
+				total += drift[s]
+			}
+		}
+		if !(total > 0) || math.IsInf(total, 0) {
+			return math.NaN()
+		}
+		var sum float64
+		for s := range w {
+			sum += math.Abs(w[s] - drift[s]/total)
+		}
+		return sum
+	}
+
 	res := &MomentumResult{}
 	outDates := []any{}
 	cols := make([][]any, groups)
 	spread := []any{}
+	turnCols := make([][]any, groups)
+	spreadTurn := []any{}
+	prevMonth := -1
+	var prevW [][]float64
 	for m := first + hold; m < months; m++ {
 		bad := ""
 		for k := 1; k <= hold && bad == ""; k++ {
@@ -274,6 +367,24 @@ func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol st
 			}
 		}
 		spread = append(spread, gn-g1)
+
+		t1, tn := 0.0, 0.0
+		w := weights(m)
+		for g := 0; g < groups; g++ {
+			v := math.NaN()
+			if prevMonth == m-1 {
+				v = turnover(prevW[g], w[g], m)
+			}
+			turnCols[g] = append(turnCols[g], v)
+			if g == 0 {
+				t1 = v
+			}
+			if g == groups-1 {
+				tn = v
+			}
+		}
+		spreadTurn = append(spreadTurn, tn+t1)
+		prevW, prevMonth = w, m
 	}
 	tableCols := []*insyra.DataList{insyra.NewDataList(outDates...).SetName("date")}
 	for g := 0; g < groups; g++ {
@@ -281,5 +392,11 @@ func MomentumPortfolios(table insyra.IDataTable, dateCol, stockCol, returnCol st
 	}
 	res.Groups = insyra.NewDataTable(tableCols...)
 	res.LongShort = insyra.NewDataList(spread...).SetName("long_short")
+	turnTable := []*insyra.DataList{insyra.NewDataList(outDates...).SetName("date")}
+	for g := 0; g < groups; g++ {
+		turnTable = append(turnTable, insyra.NewDataList(turnCols[g]...).SetName(fmt.Sprintf("group_%d", g+1)))
+	}
+	res.Turnover = insyra.NewDataTable(turnTable...)
+	res.LongShortTurnover = insyra.NewDataList(spreadTurn...).SetName("long_short_turnover")
 	return res, nil
 }
