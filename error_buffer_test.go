@@ -1,6 +1,8 @@
 package insyra
 
 import (
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -197,4 +199,44 @@ func TestErrorTimestamp(t *testing.T) {
 	}
 
 	ClearErrors()
+}
+
+func TestErrorHookOrdered(t *testing.T) {
+	restoreConfig(t)
+	Config.SetLogLevel(LogLevelFatal)
+	var mu sync.Mutex
+	got := []string{}
+	done := make(chan struct{}, 200)
+	Config.SetDefaultErrHandlingFunc(func(_ LogLevel, _ string, _ string, msg string) {
+		mu.Lock()
+		got = append(got, msg)
+		mu.Unlock()
+		done <- struct{}{}
+	})
+	defer Config.SetDefaultErrHandlingFunc(nil)
+	for i := 0; i < 100; i++ {
+		LogWarning("t", "t", "m%03d", i)
+	}
+	for i := 0; i < 100; i++ {
+		<-done
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for i, m := range got {
+		if m != "m"+strings.Repeat("0", 3-len(itoa(i)))+itoa(i) {
+			t.Fatalf("out of order at %d: %v", i, got[:i+1])
+		}
+	}
+}
+
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	s := ""
+	for i > 0 {
+		s = string(rune('0'+i%10)) + s
+		i /= 10
+	}
+	return s
 }
