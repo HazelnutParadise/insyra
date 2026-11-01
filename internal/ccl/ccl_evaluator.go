@@ -873,7 +873,7 @@ func applyOperator(op string, left, right any) (any, error) {
 			if rf == 0 {
 				return nil, fmt.Errorf("modulo by zero")
 			}
-			return math.Mod(lf, rf), nil
+			return modulo(lf, rf), nil
 		case "^":
 			return math.Pow(lf, rf), nil
 		case ">":

@@ -92,7 +92,7 @@ func registerMathFunctions() {
 		if b == 0 {
 			return nil, fmt.Errorf("MOD: division by zero")
 		}
-		return math.Mod(a, b), nil
+		return modulo(a, b), nil
 	})
 
 	registerFunction("POW", func(args ...any) (any, error) {

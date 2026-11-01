@@ -400,7 +400,7 @@ The `&` operator always performs string concatenation by converting all operands
 "Value: " & 45.67           // "Value: 45.67"
 ```
 
-**How a number becomes text.** `&`, `CONCAT`, `TOSTR` without a format, `LEN`,
+**How a number becomes text.** `&`, `CONCAT`, `TEXT` without a format, `LEN`,
 `UPPER` and the other string functions write a `float64` or `float32` as plain
 decimal digits: the shortest decimal that reads back as the same number, with no
 exponent. A value of 1e21 or more, `NaN` and the infinities keep Go's default
@@ -414,7 +414,7 @@ LEN(1000000)                // 7, the same as an integer column holding 1000000
 
 `ToCSV`, `ToJSON` and `Show` do not follow this rule: a number in a CSV or JSON
 number cell reads back as the same value in exponent form, so they keep it. Use
-`TOSTR(x, fmt)` when the exact text matters.
+`TEXT(x, fmt)` when the exact text matters.
 
 ### Handling `nil` Values
 
@@ -743,7 +743,7 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
 | `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
 | `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
-| `MOD(a, b)` | Floating-point remainder of `a / b` | `MOD(10, 3)` → `1` |
+| `MOD(a, b)` | Floating-point remainder of `a / b`, with the sign of `a`. **Changes in 0.4**: the remainder takes the sign of `b`, as in Excel, so `MOD(-7, 3)` goes from `-1` to `2`. `%` changes with it. The first call whose answer will change logs a warning | `MOD(10, 3)` → `1` |
 | `POW(base, exp)` | Power | `POW(2, 10)` → `1024` |
 | `SQRT(x)` | Square root (errors on negatives) | `SQRT(16)` → `4` |
 | `LN(x)` | Natural log | `LN(EXP(1))` → `1` |
@@ -759,16 +759,16 @@ dt.AddColUsingCCL("delta", "ABS(['actual'] - ['target'])")
 
 ### String Functions
 
-All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID`/`SUBSTR` slice by rune. A count or position past the end of the string means "to the end", so `MID('abc', 2, 10^300)` is `"bc"`, and a `NaN` count is an error.
+All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID` slice by rune. A count or position past the end of the string means "to the end", so `MID('abc', 2, 10^300)` is `"bc"`, and a `NaN` count is an error.
 
 | Function | Description |
 | --- | --- |
 | `LEN(s)` | Number of Unicode characters |
 | `UPPER(s)` / `LOWER(s)` | Case conversion |
-| `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip ASCII whitespace from both / left / right |
+| `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip ASCII whitespace from both / left / right. **`TRIM` changes in 0.4**: it also turns a run of spaces inside the text into one, as in Excel; it logs a warning the first time that would change an answer |
 | `LEFT(s, n)` | First `n` characters |
 | `RIGHT(s, n)` | Last `n` characters |
-| `MID(s, start, length)` / `SUBSTR(...)` | Substring (1-based start, like Excel) |
+| `MID(s, start, length)` | Substring (1-based start, like Excel). `SUBSTR(...)` is deprecated, logs a warning, and is removed in 0.4 |
 | `REPLACE(s, old, new)` | Replace all occurrences of `old` with `new` |
 | `FIND(needle, haystack)` | 1-based position of `needle`; `0` if not found |
 | `CONTAINS(s, sub)` / `STARTSWITH(s, p)` / `ENDSWITH(s, p)` | Boolean checks |
@@ -788,8 +788,8 @@ dt.ExecuteCCL(`
 
 | Function | Description |
 | --- | --- |
-| `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
-| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
+| `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails. `TONUM(x)` is deprecated, logs a warning, and is removed in 0.4 |
+| `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is. `TOSTR(x, fmt?)` is deprecated, logs a warning, and is removed in 0.4 |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
@@ -797,8 +797,8 @@ dt.ExecuteCCL(`
 `IFNULL` differs from the existing `IFNA`: `IFNA` only triggers on float `NaN` or the string `"#N/A"`, while `IFNULL` matches actual `nil` values.
 
 ```go
-dt.AddColUsingCCL("price_num", "COALESCE(TONUM(['price_str']), 0)")
-dt.AddColUsingCCL("price_fmt", "TOSTR(['price'], '$%.2f')")
+dt.AddColUsingCCL("price_num", "COALESCE(VALUE(['price_str']), 0)")
+dt.AddColUsingCCL("price_fmt", "TEXT(['price'], '$%.2f')")
 ```
 
 ### Date Component & Arithmetic Functions
@@ -809,9 +809,9 @@ These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers an
 | --- | --- |
 | `YEAR(d)` | Year as number |
 | `MONTH(d)` | Month 1–12 |
-| `DAYOFMONTH(d)` | Day 1–31 |
-| `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
-| `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped |
+| `DAYOFMONTH(d)` | Day 1–31. **Deprecated**: removed in 0.4, where `DAY(d)` reads a date. Keep using it on 0.3.x |
+| `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday). **Changes in 0.4** to 1 (Sunday) – 7 (Saturday), as in Excel; it logs a warning the first time it runs |
+| `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped. **Deprecated**: removed in 0.4, where `HOUR(d)`, `MINUTE(d)`, `SECOND(d)` and `DAY(d)` read dates. Keep using it for those parts on 0.3.x; `YEAR(d)`, `MONTH(d)` and `DAYOFMONTH(d)` already give the others |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
 | `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A fractional `n` truncates for `day`, `month` and `year`. A day, month or year count that is `NaN`, infinite or beyond `int64`, or more than about 292 years in hours, minutes or seconds, is an error |
 | `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
@@ -839,12 +839,17 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 - Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
 - If a string cannot be parsed as a date (or the operands are other unsupported types), operations fall back to their original behavior (numeric/string comparison or an error).
 
+### DUR
+
+`DUR(x, unit)` gives a duration in `'day'`, `'hour'`, `'minute'` or `'second'`. `x` is a `time.Duration`, such as `A - B`, or a string such as `'36h'`, `'1h30m'` or `'2d'`; `d` and `w` are read as 24 and 168 hours. An empty cell stays empty, and a number or text it cannot read is an error naming the value.
+
 ### DAY / HOUR / MINUTE / SECOND
 
 - `DAY(x)`: accepts a `time.Duration`, a duration string (e.g., `"24h"`), or a numeric value (interpreted as seconds); returns days as `float64`.
 - `HOUR(x)`: returns hours as `float64`.
 - `MINUTE(x)`: returns minutes as `float64`.
 - `SECOND(x)`: returns seconds as `float64`.
+- **These four change meaning in 0.4**, where they read a part of a date, as in Excel: `DAY('2024-01-02')` is `2`. The first call of each in a program logs a warning. Move duration conversions to `DUR(x, unit)` now, which gives the same answer on both: `DUR(x, 'day')` for `DAY(x)`. For a number of seconds, write `x / 86400`, since `DUR` refuses a number.
 - For all four, a numeric value of more than about 292 years of seconds, either way, is an error rather than a wrapped-around number.
 
 Examples:
@@ -891,6 +896,8 @@ three non-empty cells.
 
 ### COUNT
 
+**`COUNT` changes in 0.4**: it counts numbers and dates only, as in Excel, and logs a warning the first time it counts anything else. `COUNTA` counts every value that is not `nil` on both, so use it to count cells.
+
 Calculates the count of non-nil (non-empty) values in the input.
 
 ```
@@ -898,6 +905,7 @@ Calculates the count of non-nil (non-empty) values in the input.
 "COUNT(A, B)"        // Count of non-nil values in columns A and B
 "COUNT(@.#)"         // Count of non-nil values in the current row
 "COUNT(@)"           // Count of all non-nil values in the entire table
+"COUNTA(A)"          // Count of non-nil values in column A; the same as COUNT here
 ```
 
 ### MAX

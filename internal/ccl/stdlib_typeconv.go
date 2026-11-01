@@ -27,7 +27,7 @@ func registerTypeConversionFunctions() {
 		}
 		return f, nil
 	}
-	registerFunction("TONUM", func(args ...any) (any, error) {
+	registerDeprecatedName("TONUM", "VALUE", func(args ...any) (any, error) {
 		v, err := tonum(args...)
 		if err != nil {
 			return nil, fmt.Errorf("TONUM %w", err)
@@ -64,7 +64,7 @@ func registerTypeConversionFunctions() {
 		}
 		return out, nil
 	}
-	registerFunction("TOSTR", func(args ...any) (any, error) {
+	registerDeprecatedName("TOSTR", "TEXT", func(args ...any) (any, error) {
 		v, err := tostr(args...)
 		if err != nil {
 			return nil, fmt.Errorf("TOSTR %w", err)
